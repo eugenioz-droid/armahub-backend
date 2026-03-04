@@ -10,6 +10,8 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.responses import HTMLResponse
 from jinja2 import Template
 import os
+import psycopg
+from urllib.parse import urlparse
 
 app = FastAPI(title="ArmaHub Backend")
 
@@ -18,6 +20,13 @@ DB = os.getenv("ARMAHUB_DB", "armahub.db")
 
 
 def conn():
+    db_url = os.getenv("DATABASE_URL")
+
+    if db_url:
+        if db_url.startswith("postgres://"):
+            db_url = "postgresql://" + db_url[len("postgres://"):]
+        return psycopg.connect(db_url)
+
     return sqlite3.connect(DB)
 
 def init_db():
@@ -49,7 +58,7 @@ def init_db():
     """)
     c.execute("""
     CREATE TABLE IF NOT EXISTS users (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        id SERIAL PRIMARY KEY,
         email TEXT UNIQUE NOT NULL,
         password_hash TEXT NOT NULL,
         role TEXT NOT NULL
