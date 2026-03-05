@@ -24,7 +24,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from passlib.context import CryptContext
 
-from ..db import get_conn, users_count
+from .db import get_conn, users_count
 
 router = APIRouter()
 

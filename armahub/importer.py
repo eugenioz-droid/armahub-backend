@@ -19,7 +19,7 @@ from io import StringIO
 from datetime import datetime, timezone
 
 from .db import get_conn
-from .armahub.auth import get_current_user
+from .auth import get_current_user
 
 router = APIRouter()
 
