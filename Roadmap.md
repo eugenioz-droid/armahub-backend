@@ -21,6 +21,27 @@ Con esta base ya es posible demostrar el concepto internamente y comenzar a reem
 
 ---
 
+## ESTADO ACTUAL (5 Marzo 2026)
+
+**Fase 0 — Preparación de datos**: ✅ COMPLETADA
+- Extracción de nombres de proyectos desde CSV (PROYECTO: PROY-XXX|Nombre)
+- Tabla proyectos + endpoints GET /proyectos y GET /proyectos/{id}/sectores
+
+**Fase 1.1 — Hardening UI**: ✅ COMPLETADA
+- Autenticación JWT, badges de usuario/rol, manejo de errores
+
+**Fase 1.2 — Tabla de barras**: ✅ COMPLETADA
+- Paginación, ordenamiento por columnas, búsqueda rápida
+
+**Fase 1.3 — Rediseño UX con estructura de tabs**: ✅ COMPLETADA (5 Marzo 2026)
+- 5 tabs funcionales: Mis Obras, Búsqueda, Dashboards, Pedidos (placeholder), Exportación (placeholder)
+- Colores Armacero implementados
+- Integración con endpoints existentes
+
+**Pendiente próximo checkpoint**: Backend para tracking de cargas (tabla imports, endpoints /cargas)
+
+---
+
 ## OBJETIVOS DE DISEÑO
 
 La interfaz debe ser intuitiva para **cubicadores** (usuarios principales) y **controladores de obra**, permitiendo:
@@ -122,29 +143,34 @@ ARMAHUB – PROGRAMA DE TRABAJO
    - Orden por columnas (kilos, plano, ciclo, fecha, etc.) - OK
    - Búsqueda rápida por id_unico, eje o plano_code - OK
 
-3. Rediseño UX/visual completo - En progreso
-   a) Layout general con sidebar/tabs de navegación - Pendiente
-   b) CSS profesional (colores tomados de armacero.cl, espacios, responsivo) - Pendiente
-   c) **Tab "Mis Obras"** (para cubicador) - Pendiente
-      - Tarjetas de proyectos con resumen kilos/barras - Pendiente
-      - Gráficos de barras sector inline - Pendiente
-      - Tabla de cargas (version, fecha, usuario, acciones) - Pendiente
-      - Botones: Cargar CSV | Recargar | Editar | Generar EXCEL | Eliminar - Pendiente
-   d) **Tab "Búsqueda de Barras"** - Pendiente
-      - Filtros dependientes (proyecto → plano → ciclo → piso) - Pendiente
-      - Tabla pageable con ordenamiento por click - Pendiente
-      - Búsqueda rápida por ID/Eje/Plano - Pendiente
-   e) **Tab "Dashboards"** - Pendiente
-      - Resúmenes generales (total kilos, cantidad proyectos, últimas cargas) - Pendiente
-      - Gráficos: Top 5 proyectos, distribución por sector - Pendiente
-   f) **Tab "Pedidos"** (Future MVP, UI skeleton) - Pendiente
-      - Formulario para ingresar barras manualmente - Pendiente
-      - Tabla de items agregados - Pendiente
-   g) **Tab "Exportación"** (Future, con placeholder) - Pendiente
-      - Selector de obra + vista previa - Pendiente
-      - Botón generar EXCEL - Pendiente (esperar formato específico)
+3. Rediseño UX/visual completo - OK (estructura de tabs implementada)
+   a) Layout general con sidebar/tabs de navegación - OK ✅
+      - 5 tabs: Mis Obras, Búsqueda, Dashboards, Pedidos, Exportación - OK
+      - Header con user info y rol badge - OK
+      - Tab switching con estado persistente en click - OK
+   b) CSS profesional (colores tomados de armacero.cl, espacios, responsivo) - OK (base)
+      - Colores: #8BC34A verde, #2C2C2C gris, #FFFFFF blanco - OK
+      - Espacios y layouts mejorados - OK
+      - Responsive (mobile-friendly) - OK (básico)
+   c) **Tab "Mis Obras"** (para cubicador) - OK (funcional)
+      - Tarjetas de proyectos con resumen kilos/barras - OK
+      - Importer CSV integrado - OK
+      - Tabla de cargas (placeholder para historia futura) - OK
+   d) **Tab "Búsqueda de Barras"** - OK (funcional)
+      - Filtros por proyecto, plano, sector, piso, ciclo - OK
+      - Tabla pageable con ordenamiento por click - OK
+      - Búsqueda rápida por ID/Eje/Plano - OK
+      - Paginación anterior/siguiente - OK
+   e) **Tab "Dashboards"** - OK (funcional)
+      - Selector de dimensión: sector, piso, ciclo, plano, proyecto - OK
+      - Gráficos Chart.js por dimensión - OK
+      - Resúmenes de totales (kilos, barras) - OK
+   f) **Tab "Pedidos"** (Future MVP, UI skeleton) - OK (placeholder)
+   g) **Tab "Exportación"** (Future, con placeholder) - OK (placeholder)
 
-4. Backend para nuevas funcionalidades - En progreso
+4. Backend para nuevas funcionalidades - Parcialmente hecho
+   - Endpoint GET /proyectos (lista obras con totales) - OK ✅
+   - Endpoint GET /proyectos/{id}/sectores (desglose por sector) - OK ✅
    - Endpoint DELETE /proyectos/{id} (eliminar obra con cascada) - Pendiente
    - Tabla "imports" (tracking de cargas: usuario, fecha, version, archivo) - Pendiente
    - Endpoint POST /cargas (registrar nueva carga) - Pendiente
