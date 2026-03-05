@@ -19,7 +19,6 @@ B (dashboard con gráficos):
 from fastapi import APIRouter
 from fastapi.responses import HTMLResponse
 from jinja2 import Template
-
 from .db import users_count
 
 router = APIRouter()
@@ -67,7 +66,10 @@ async function doLogin() {
   const params = new URLSearchParams({ email, password });
   const res = await fetch('/auth/login?' + params.toString(), { method: 'POST' });
   const data = await res.json();
-
+  let currentOffset = 0;
+  const pageLimit = 200; // puedes cambiar a 100 si quieres
+  let lastTotal = 0;
+                      
   if (!res.ok) {
     msg.textContent = "Error: " + (data.detail || JSON.stringify(data));
     return;
@@ -226,16 +228,42 @@ APP_HTML = Template("""
   </div>
 
   <div class="card">
-    <h3>3) Buscar barras</h3>
-    <div class="row">
-      <select id="proyecto"></select>
-      <select id="plano"></select>
-      <select id="sector"></select>
-      <select id="piso"></select>
-      <select id="ciclo"></select>
-      <button onclick="buscar()">Buscar</button>
+<h3>3) Buscar barras</h3>
+<div class="row">
+  <select id="proyecto"></select>
+  <select id="plano"></select>
+  <select id="sector"></select>
+  <select id="piso"></select>
+  <select id="ciclo"></select>
+</div>
+
+<div class="row" style="margin-top:10px;">
+    <input id="q" placeholder="Buscar (id_unico / eje / plano)..." />
+      <select id="order_by">
+        <option value="fecha_carga">Orden: fecha_carga</option>
+        <option value="peso_total">Orden: peso_total</option>
+        <option value="cant_total">Orden: cant_total</option>
+        <option value="diam">Orden: diam</option>
+        <option value="largo_total">Orden: largo_total</option>
+        <option value="plano_code">Orden: plano_code</option>
+        <option value="eje">Orden: eje</option>
+      </select>
+      <select id="order_dir">
+        <option value="desc">desc</option>
+        <option value="asc">asc</option>
+      </select>
+
+      <button onclick="buscar(true)">Buscar</button>
     </div>
+
+    <div class="row" style="margin-top:10px;">
+      <button onclick="prevPage()">◀ Anterior</button>
+      <button onclick="nextPage()">Siguiente ▶</button>
+      <span class="muted" id="pageInfo"></span>
+    </div>
+
     <div class="muted" id="count"></div>
+                    
     <div style="overflow:auto; max-height: 420px; margin-top:10px;">
       <table id="tabla"></table>
     </div>
@@ -395,13 +423,20 @@ async function loadDashboard(groupBy) {
   await setGlobalStatus("Dashboard actualizado ✅", "ok");
 }
 
-async function buscar() {
+async function buscar(reset=false) {
+  if (reset) currentOffset = 0;
+
   const params = new URLSearchParams();
+
   const proyecto = document.getElementById('proyecto').value;
   const plano = document.getElementById('plano').value;
   const sector = document.getElementById('sector').value;
   const piso = document.getElementById('piso').value;
   const ciclo = document.getElementById('ciclo').value;
+
+  const q = document.getElementById('q').value.trim();
+  const order_by = document.getElementById('order_by').value;
+  const order_dir = document.getElementById('order_dir').value;
 
   if (proyecto) params.set('proyecto', proyecto);
   if (plano) params.set('plano_code', plano);
@@ -409,10 +444,24 @@ async function buscar() {
   if (piso) params.set('piso', piso);
   if (ciclo) params.set('ciclo', ciclo);
 
+  if (q) params.set('q', q);
+
+  params.set('limit', String(pageLimit));
+  params.set('offset', String(currentOffset));
+  params.set('order_by', order_by);
+  params.set('order_dir', order_dir);
+
   const data = await apiGet('/barras?' + params.toString());
   if (!data) return;
 
-  document.getElementById('count').textContent = "Resultados: " + data.count;
+  lastTotal = data.total || 0;
+  document.getElementById('count').textContent =
+    `Resultados en esta página: ${data.count} — Total: ${lastTotal}`;
+
+  const page = Math.floor(currentOffset / pageLimit) + 1;
+  const totalPages = Math.max(1, Math.ceil(lastTotal / pageLimit));
+  document.getElementById('pageInfo').textContent =
+    `Página ${page} / ${totalPages} (limit ${pageLimit})`;
 
   const table = document.getElementById('tabla');
   table.innerHTML = '';
@@ -439,11 +488,22 @@ async function buscar() {
   });
 }
 
+  function prevPage() {
+    currentOffset = Math.max(0, currentOffset - pageLimit);
+    buscar(false);
+  }
+  function nextPage() {
+    if (currentOffset + pageLimit >= lastTotal) return;
+    currentOffset = currentOffset + pageLimit;
+    buscar(false);
+  }
+                    
 (async function init() {
   if (!token()) { window.location.href = '/ui/login'; return; }
   await loadMe();
   await loadFilters();
   await loadDashboard('ciclo');
+  await buscar(true);                  
 })();
 </script>
 </body>

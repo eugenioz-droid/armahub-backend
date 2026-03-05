@@ -30,10 +30,10 @@ ARMAHUB – PROGRAMA DE TRABAJO
 
 FASE 1 — MVP usable (UX + operación)
 
-1. Hardening de UI actual - No realizado
-   - Mostrar usuario y rol siempre en la interfaz
-   - Mejorar mensajes de error y estados de carga
-   - Ajustes menores de UX
+1. Hardening de UI actual - Realizado
+   - Mostrar usuario y rol siempre en la interfaz - OK
+   - Mejorar mensajes de error y estados de carga - OK
+   - Ajustes menores de UX - OK
 
 2. Tabla de barras usable - No realizado
    - Paginación en endpoint /barras (limit / offset)
