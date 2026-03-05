@@ -97,3 +97,85 @@ def get_barras(
         "q": q or "",
         "data": data
     }
+
+from fastapi import Query
+
+@router.get("/filters")
+def filters(user=Depends(get_current_user)):
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT DISTINCT sector FROM barras ORDER BY sector")
+            sectores = [r[0] for r in cur.fetchall() if r[0] is not None]
+
+            cur.execute("SELECT DISTINCT piso FROM barras ORDER BY piso")
+            pisos = [r[0] for r in cur.fetchall() if r[0] is not None]
+
+            cur.execute("SELECT DISTINCT ciclo FROM barras ORDER BY ciclo")
+            ciclos = [r[0] for r in cur.fetchall() if r[0] is not None]
+
+            cur.execute("SELECT DISTINCT plano_code FROM barras ORDER BY plano_code")
+            planos = [r[0] for r in cur.fetchall() if r[0] is not None]
+
+            cur.execute("SELECT DISTINCT id_proyecto FROM barras ORDER BY id_proyecto")
+            proyectos = [r[0] for r in cur.fetchall() if r[0] is not None]
+
+    return {
+        "sectores": sectores,
+        "pisos": pisos,
+        "ciclos": ciclos,
+        "planos": planos,
+        "proyectos": proyectos,
+    }
+
+
+@router.get("/stats")
+def stats(user=Depends(get_current_user)):
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT COUNT(*) FROM barras")
+            total_barras = int(cur.fetchone()[0])
+
+            cur.execute("SELECT COALESCE(SUM(peso_total),0) FROM barras")
+            total_kilos_exact = float(cur.fetchone()[0])
+
+            # “tipo GStarCAD”: redondeo por item a 2 decimales
+            cur.execute("SELECT COALESCE(peso_total,0) FROM barras")
+            rows = cur.fetchall()
+            total_kilos_item_rounded = float(sum(round(float(r[0] or 0), 2) for r in rows))
+
+    return {
+        "total_barras": total_barras,
+        "total_kilos_exact": total_kilos_exact,
+        "total_kilos_item_rounded": total_kilos_item_rounded,
+    }
+
+
+@router.get("/dashboard")
+def dashboard(
+    group_by: str = Query("ciclo"),
+    user=Depends(get_current_user),
+):
+    allowed = {"sector", "piso", "ciclo", "plano_code", "id_proyecto", "eje"}
+    if group_by not in allowed:
+        raise HTTPException(status_code=400, detail=f"group_by debe ser uno de {sorted(list(allowed))}")
+
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT COUNT(*) AS barras, COALESCE(SUM(peso_total),0) AS kilos FROM barras")
+            total_barras, total_kilos = cur.fetchone()
+
+            cur.execute(f"""
+                SELECT {group_by} AS grupo,
+                       COUNT(*) AS barras,
+                       COALESCE(SUM(peso_total),0) AS kilos
+                FROM barras
+                GROUP BY {group_by}
+                ORDER BY kilos DESC
+            """)
+            rows = cur.fetchall()
+
+    return {
+        "total": {"barras": int(total_barras), "kilos": float(total_kilos)},
+        "group_by": group_by,
+        "items": [{"grupo": r[0], "barras": int(r[1]), "kilos": float(r[2])} for r in rows],
+    }
