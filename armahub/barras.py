@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from .db import get_conn
 from .auth import get_current_user
 
@@ -98,7 +98,6 @@ def get_barras(
         "data": data
     }
 
-from fastapi import Query
 
 @router.get("/filters")
 def filters(user=Depends(get_current_user)):

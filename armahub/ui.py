@@ -4,9 +4,9 @@ ui.py
 UI mínima (sin frontend separado).
 
 Incluye:
-- GET /ui/login  (login)
-- GET /ui        (app: importar, filtros, tabla, dashboard con gráfico, crear usuario)
-- GET /ui/bootstrap (crear primer admin si no hay usuarios)
+- GET /ui/login      (login)
+- GET /ui            (app: importar, filtros, tabla, dashboard con gráfico, crear usuario)
+- GET /ui/bootstrap  (crear primer admin si no hay usuarios)
 
 A (crear usuarios desde UI):
 - Visible solo si rol = admin (usa /me)
@@ -66,10 +66,7 @@ async function doLogin() {
   const params = new URLSearchParams({ email, password });
   const res = await fetch('/auth/login?' + params.toString(), { method: 'POST' });
   const data = await res.json();
-  let currentOffset = 0;
-  const pageLimit = 200; // puedes cambiar a 100 si quieres
-  let lastTotal = 0;
-                      
+
   if (!res.ok) {
     msg.textContent = "Error: " + (data.detail || JSON.stringify(data));
     return;
@@ -80,12 +77,10 @@ async function doLogin() {
 }
 
 (async function checkBootstrap() {
-  // Este endpoint no existe; solo mostramos hint si el server indica que no hay usuarios.
-  // Lo hacemos con un fetch a /ui/bootstrap (GET) pero sin navegar.
+  // Mostramos hint si /ui/bootstrap existe y está habilitado (devuelve 200)
   try {
     const res = await fetch('/ui/bootstrap', { method: 'GET' });
     if (res.ok) {
-      // si devuelve html bootstrap, mostramos hint
       document.getElementById('bootstrapHint').style.display = 'block';
     }
   } catch(e) {}
@@ -110,7 +105,6 @@ BOOTSTRAP_HTML = Template("""
     .status-ok { color: #1a7f37; font-size: 12px; }
     .status-err { color: #b42318; font-size: 12px; }
     .status-warn { color: #a15c00; font-size: 12px; }
-    .badge { display:inline-block; padding: 4px 8px; border:1px solid #eee; border-radius: 999px; font-size: 12px; color:#444; margin-right:6px; }
   </style>
 </head>
 <body>
@@ -161,6 +155,9 @@ APP_HTML = Template("""
 <html>
 <head>
   <meta charset="utf-8" />
+  <!-- anti-cache en HTML -->
+  <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate, max-age=0">
+  <meta http-equiv="Pragma" content="no-cache">
   <title>ArmaHub</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
@@ -174,20 +171,24 @@ APP_HTML = Template("""
     th { background: #fafafa; text-align: left; position: sticky; top: 0; }
     .muted { color: #666; font-size: 12px; }
     .right { float: right; }
-    .pill { display:inline-block; padding: 4px 8px; border:1px solid #eee; border-radius: 999px; font-size: 12px; color:#444; }
+    .badge { display:inline-block; padding: 4px 8px; border:1px solid #eee; border-radius: 999px; font-size: 12px; color:#444; margin-right:6px; }
+    .status-ok { color: #1a7f37; font-size: 12px; }
+    .status-err { color: #b42318; font-size: 12px; }
+    .status-warn { color: #a15c00; font-size: 12px; }
   </style>
 </head>
 <body>
   <h2>
     ArmaHub
     <span class="right">
-    <span class="badge" id="whoEmail"></span>
-    <span class="badge" id="whoRole"></span>
+      <span class="badge" id="whoEmail"></span>
+      <span class="badge" id="whoRole"></span>
       <button onclick="logout()">Salir</button>
     </span>
   </h2>
+
   <div id="globalStatus" class="muted"></div>
-                    
+
   <div class="card">
     <h3>1) Importar CSV</h3>
     <input type="file" id="csvFile" />
@@ -228,17 +229,19 @@ APP_HTML = Template("""
   </div>
 
   <div class="card">
-<h3>3) Buscar barras</h3>
-<div class="row">
-  <select id="proyecto"></select>
-  <select id="plano"></select>
-  <select id="sector"></select>
-  <select id="piso"></select>
-  <select id="ciclo"></select>
-</div>
+    <h3>3) Buscar barras</h3>
 
-<div class="row" style="margin-top:10px;">
-    <input id="q" placeholder="Buscar (id_unico / eje / plano)..." />
+    <div class="row">
+      <select id="proyecto"></select>
+      <select id="plano"></select>
+      <select id="sector"></select>
+      <select id="piso"></select>
+      <select id="ciclo"></select>
+    </div>
+
+    <div class="row" style="margin-top:10px;">
+      <input id="q" placeholder="Buscar (id_unico / eje / plano)..." />
+
       <select id="order_by">
         <option value="fecha_carga">Orden: fecha_carga</option>
         <option value="peso_total">Orden: peso_total</option>
@@ -247,7 +250,9 @@ APP_HTML = Template("""
         <option value="largo_total">Orden: largo_total</option>
         <option value="plano_code">Orden: plano_code</option>
         <option value="eje">Orden: eje</option>
+        <option value="id_unico">Orden: id_unico</option>
       </select>
+
       <select id="order_dir">
         <option value="desc">desc</option>
         <option value="asc">asc</option>
@@ -263,13 +268,16 @@ APP_HTML = Template("""
     </div>
 
     <div class="muted" id="count"></div>
-                    
+
     <div style="overflow:auto; max-height: 420px; margin-top:10px;">
       <table id="tabla"></table>
     </div>
   </div>
 
 <script>
+/** =========================
+ *  Auth helpers
+ *  ========================= */
 function token() { return localStorage.getItem('armahub_token'); }
 function authHeaders() {
   const t = token();
@@ -282,8 +290,28 @@ function logout() {
 }
 async function apiGet(url) {
   const res = await fetch(url, { headers: authHeaders() });
-  if (res.status === 401) { logout(); return null; }
-  return await res.json();
+
+  if (res.status === 401) {
+    console.warn("401 Unauthorized, logging out");
+    logout();
+    return null;
+  }
+
+  let data = null;
+  try { data = await res.json(); } catch (e) {
+    console.error("Failed to parse JSON from " + url, e);
+    await setGlobalStatus("Error: respuesta inválida de " + url, "err");
+    return null;
+  }
+
+  if (!res.ok) {
+    const msg = (data && (data.detail || data.error)) ? (data.detail || data.error) : ("HTTP " + res.status);
+    console.error("API Error from " + url + ": " + msg, data);
+    await setGlobalStatus("Error API: " + url + " → " + msg, "err");
+    return null;
+  }
+
+  return data;
 }
 async function apiPost(url, params) {
   const res = await fetch(url + "?" + new URLSearchParams(params).toString(), {
@@ -301,6 +329,22 @@ async function apiPostFile(url, file) {
   return await res.json();
 }
 
+/** =========================
+ *  UI status
+ *  ========================= */
+async function setGlobalStatus(text, kind) {
+  const el = document.getElementById('globalStatus');
+  if (!el) return;
+  el.className = 'muted';
+  if (kind === 'ok') el.className = 'status-ok';
+  if (kind === 'err') el.className = 'status-err';
+  if (kind === 'warn') el.className = 'status-warn';
+  el.textContent = text || '';
+}
+
+/** =========================
+ *  Chart.js dashboard
+ *  ========================= */
 let chart = null;
 function renderChart(labels, values, title) {
   const ctx = document.getElementById('dashChart').getContext('2d');
@@ -312,16 +356,36 @@ function renderChart(labels, values, title) {
   });
 }
 
-async function setGlobalStatus(text, kind) {
-  const el = document.getElementById('globalStatus');
-  if (!el) return;
-  el.className = 'muted';
-  if (kind === 'ok') el.className = 'status-ok';
-  if (kind === 'err') el.className = 'status-err';
-  if (kind === 'warn') el.className = 'status-warn';
-  el.textContent = text || '';
-}
+/** =========================
+ *  Pagination + sorting state
+ *  ========================= */
+let currentOffset = 0;
+const pageLimit = 200;
+let lastTotal = 0;
 
+let currentOrderBy = "fecha_carga";
+let currentOrderDir = "desc";
+
+// Columnas permitidas para ordenar (blindaje UI)
+const ORDERABLE_COLS = new Set([
+  "fecha_carga",
+  "peso_total",
+  "peso_unitario",
+  "cant_total",
+  "diam",
+  "largo_total",
+  "id_proyecto",
+  "plano_code",
+  "sector",
+  "piso",
+  "ciclo",
+  "eje",
+  "id_unico"
+]);
+
+/** =========================
+ *  Load current user
+ *  ========================= */
 async function loadMe() {
   const me = await apiGet('/me');
   if (!me) return;
@@ -337,9 +401,13 @@ async function loadMe() {
   }
 }
 
+/** =========================
+ *  Admin create user
+ *  ========================= */
 async function crearUsuario() {
   const adminMsg = document.getElementById('adminMsg');
   adminMsg.textContent = "Creando...";
+
   const email = document.getElementById('newEmail').value.trim();
   const password = document.getElementById('newPassword').value;
   const role = document.getElementById('newRole').value;
@@ -357,6 +425,9 @@ async function crearUsuario() {
   document.getElementById('newPassword').value = '';
 }
 
+/** =========================
+ *  Filters
+ *  ========================= */
 async function loadFilters() {
   const data = await apiGet('/filters');
   if (!data) return;
@@ -368,7 +439,7 @@ async function loadFilters() {
     opt0.value = '';
     opt0.textContent = label;
     sel.appendChild(opt0);
-    items.forEach(x => {
+    (items || []).forEach(x => {
       const o = document.createElement('option');
       o.value = x;
       o.textContent = x;
@@ -383,16 +454,26 @@ async function loadFilters() {
   fill('ciclo', data.ciclos, 'Ciclo (todos)');
 }
 
+/** =========================
+ *  Import CSV
+ *  ========================= */
 async function importCSV() {
   const fileInput = document.getElementById('csvFile');
   const msg = document.getElementById('importMsg');
-  if (!fileInput.files.length) { msg.textContent = "Selecciona un CSV."; return; }
+
+  if (!fileInput.files.length) {
+    msg.textContent = "Selecciona un CSV.";
+    return;
+  }
 
   msg.textContent = "Importando...";
   await setGlobalStatus("Importando CSV...", "warn");
 
   const data = await apiPostFile('/import/armadetailer', fileInput.files[0]);
-  if (!data) { await setGlobalStatus("Sesión expirada.", "err"); return; }
+  if (!data) {
+    await setGlobalStatus("Sesión expirada.", "err");
+    return;
+  }
 
   if (data.ok === false) {
     msg.textContent = JSON.stringify(data);
@@ -405,13 +486,20 @@ async function importCSV() {
 
   await loadFilters();
   await loadDashboard('ciclo');
+  await buscar(true);
 }
 
+/** =========================
+ *  Dashboard
+ *  ========================= */
 async function loadDashboard(groupBy) {
   await setGlobalStatus("Cargando dashboard...", "warn");
 
   const data = await apiGet('/dashboard?group_by=' + encodeURIComponent(groupBy));
-  if (!data) { await setGlobalStatus("Sesión expirada.", "err"); return; }
+  if (!data) {
+    await setGlobalStatus("Sesión expirada.", "err");
+    return;
+  }
 
   document.getElementById('dashTotals').textContent =
     `Total: ${data.total.barras} barras — ${Number(data.total.kilos).toFixed(2)} kg`;
@@ -423,6 +511,9 @@ async function loadDashboard(groupBy) {
   await setGlobalStatus("Dashboard actualizado ✅", "ok");
 }
 
+/** =========================
+ *  Bars table (paged + ordered + search)
+ *  ========================= */
 async function buscar(reset=false) {
   if (reset) currentOffset = 0;
 
@@ -435,8 +526,10 @@ async function buscar(reset=false) {
   const ciclo = document.getElementById('ciclo').value;
 
   const q = document.getElementById('q').value.trim();
-  const order_by = document.getElementById('order_by').value;
-  const order_dir = document.getElementById('order_dir').value;
+
+  // sync selectors with current state
+  document.getElementById('order_by').value = currentOrderBy;
+  document.getElementById('order_dir').value = currentOrderDir;
 
   if (proyecto) params.set('proyecto', proyecto);
   if (plano) params.set('plano_code', plano);
@@ -448,35 +541,80 @@ async function buscar(reset=false) {
 
   params.set('limit', String(pageLimit));
   params.set('offset', String(currentOffset));
-  params.set('order_by', order_by);
-  params.set('order_dir', order_dir);
+  params.set('order_by', currentOrderBy);
+  params.set('order_dir', currentOrderDir);
 
-  const data = await apiGet('/barras?' + params.toString());
-  if (!data) return;
+  const url = '/barras?' + params.toString();
+  console.log("Fetching: " + url);
+  
+  const data = await apiGet(url);
+  if (!data) {
+    console.error("No data returned from /barras");
+    return;
+  }
+
+  console.log("Response from /barras:", data);
 
   lastTotal = data.total || 0;
+
   document.getElementById('count').textContent =
     `Resultados en esta página: ${data.count} — Total: ${lastTotal}`;
 
   const page = Math.floor(currentOffset / pageLimit) + 1;
   const totalPages = Math.max(1, Math.ceil(lastTotal / pageLimit));
+
   document.getElementById('pageInfo').textContent =
     `Página ${page} / ${totalPages} (limit ${pageLimit})`;
 
   const table = document.getElementById('tabla');
   table.innerHTML = '';
 
-  if (!data.data.length) return;
+  // BLINDAJE: data.data puede venir vacío o no venir
+  if (!data.data || !data.data.length) {
+    console.log("No data rows returned");
+    document.getElementById('count').textContent =
+      `Resultados en esta página: 0 — Total: ${lastTotal}`;
+    return;
+  }
 
+  console.log("Rendering " + data.data.length + " rows");
   const cols = Object.keys(data.data[0]);
-  const thead = document.createElement('tr');
+  const thead = document.createElement('thead');
+  const headerRow = document.createElement('tr');
+
   cols.forEach(c => {
     const th = document.createElement('th');
-    th.textContent = c;
-    thead.appendChild(th);
+
+    const isOrderable = ORDERABLE_COLS.has(c);
+
+    if (isOrderable) {
+      th.style.cursor = 'pointer';
+    } else {
+      th.style.color = "#888";
+    }
+
+    const arrow = (c === currentOrderBy) ? (currentOrderDir === 'asc' ? ' ▲' : ' ▼') : '';
+    th.textContent = c + arrow;
+
+    if (isOrderable) {
+      th.onclick = () => {
+        if (currentOrderBy === c) {
+          currentOrderDir = (currentOrderDir === 'asc') ? 'desc' : 'asc';
+        } else {
+          currentOrderBy = c;
+          currentOrderDir = 'asc';
+        }
+        buscar(true);
+      };
+    }
+
+    headerRow.appendChild(th);
   });
+  
+  thead.appendChild(headerRow);
   table.appendChild(thead);
 
+  const tbody = document.createElement('tbody');
   data.data.forEach(row => {
     const tr = document.createElement('tr');
     cols.forEach(c => {
@@ -484,37 +622,52 @@ async function buscar(reset=false) {
       td.textContent = row[c];
       tr.appendChild(td);
     });
-    table.appendChild(tr);
+    tbody.appendChild(tr);
   });
+  table.appendChild(tbody);
 }
 
-  function prevPage() {
-    currentOffset = Math.max(0, currentOffset - pageLimit);
-    buscar(false);
+function prevPage() {
+  currentOffset = Math.max(0, currentOffset - pageLimit);
+  buscar(false);
+}
+function nextPage() {
+  if (currentOffset + pageLimit >= lastTotal) return;
+  currentOffset = currentOffset + pageLimit;
+  buscar(false);
+}
+
+// Selector de orden: si el usuario cambia los selects, actualizamos estado y buscamos
+document.addEventListener('change', (e) => {
+  if (e.target && e.target.id === 'order_by') {
+    currentOrderBy = e.target.value;
+    buscar(true);
   }
-  function nextPage() {
-    if (currentOffset + pageLimit >= lastTotal) return;
-    currentOffset = currentOffset + pageLimit;
-    buscar(false);
+  if (e.target && e.target.id === 'order_dir') {
+    currentOrderDir = e.target.value;
+    buscar(true);
   }
-                    
+  // Filtros: cuando cambian proyecto, plano, sector, piso, ciclo, buscar nuevamente
+  if (e.target && ['proyecto', 'plano', 'sector', 'piso', 'ciclo'].includes(e.target.id)) {
+    buscar(true);
+  }
+});
+
 (async function init() {
   if (!token()) { window.location.href = '/ui/login'; return; }
   await loadMe();
   await loadFilters();
   await loadDashboard('ciclo');
-  await buscar(true);                  
+  await buscar(true);
 })();
 </script>
 </body>
 </html>
 """)
 
-
 @router.get("/ui/login", response_class=HTMLResponse)
 def ui_login():
     return LOGIN_HTML.render()
-
 
 @router.get("/ui/bootstrap", response_class=HTMLResponse)
 def ui_bootstrap():
@@ -526,7 +679,11 @@ def ui_bootstrap():
         )
     return BOOTSTRAP_HTML.render()
 
-
 @router.get("/ui", response_class=HTMLResponse)
 def ui_app():
-    return APP_HTML.render()
+    # anti-cache desde headers HTTP (más efectivo que solo HTML)
+    html = APP_HTML.render()
+    return HTMLResponse(
+        content=html,
+        headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0"}
+    )

@@ -35,7 +35,7 @@ FASE 1 — MVP usable (UX + operación)
    - Mejorar mensajes de error y estados de carga - OK
    - Ajustes menores de UX - OK
 
-2. Tabla de barras usable - No realizado
+2. Tabla de barras usable - Realizado
    - Paginación en endpoint /barras (limit / offset)
    - Orden por columnas (kilos, plano, ciclo, fecha, etc.)
    - Búsqueda rápida por id_unico, eje o plano_code
