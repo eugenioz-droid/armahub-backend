@@ -13,6 +13,8 @@ En Render, lo ideal es arrancar con:
 """
 
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
+import os
 
 from .db import init_db
 from .auth import router as auth_router
@@ -30,6 +32,11 @@ def create_app() -> FastAPI:
     app.include_router(importer_router)
     app.include_router(barras_router)
     app.include_router(ui_router)
+    
+    # Servir archivos estáticos (CSS, JS, imágenes)
+    static_path = os.path.join(os.path.dirname(__file__), "static")
+    if os.path.exists(static_path):
+        app.mount("/static", StaticFiles(directory=static_path), name="static")
 
     @app.get("/")
     def root():

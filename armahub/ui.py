@@ -342,7 +342,10 @@ APP_HTML = Template("""
 <body>
   <!-- Header -->
   <div class="header">
-    <h1>ArmaHub</h1>
+    <div style="display: flex; align-items: center; gap: 12px;">
+      <img src="/static/images/logo.png" alt="ArmaCero Logo" style="height: 40px; max-width: 100%;" onerror="this.style.display='none';">
+      <h1 style="margin: 0; color: #2C2C2C; font-size: 24px;">ArmaHub</h1>
+    </div>
     <div class="user-info">
       <span class="user-badge" id="whoEmail">—</span>
       <span class="user-badge" id="whoRole">—</span>

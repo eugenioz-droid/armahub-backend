@@ -163,14 +163,26 @@ def dashboard(
             cur.execute("SELECT COUNT(*) AS barras, COALESCE(SUM(peso_total),0) AS kilos FROM barras")
             total_barras, total_kilos = cur.fetchone()
 
-            cur.execute(f"""
-                SELECT {group_by} AS grupo,
-                       COUNT(*) AS barras,
-                       COALESCE(SUM(peso_total),0) AS kilos
-                FROM barras
-                GROUP BY {group_by}
-                ORDER BY kilos DESC
-            """)
+            if group_by == "id_proyecto":
+                # Si agrupamos por proyecto, traer también el nombre legible desde tabla proyectos
+                cur.execute("""
+                    SELECT COALESCE(p.nombre_proyecto, b.id_proyecto) AS grupo,
+                           COUNT(*) AS barras,
+                           COALESCE(SUM(b.peso_total),0) AS kilos
+                    FROM barras b
+                    LEFT JOIN proyectos p ON b.id_proyecto = p.id_proyecto
+                    GROUP BY b.id_proyecto, p.nombre_proyecto
+                    ORDER BY kilos DESC
+                """)
+            else:
+                cur.execute(f"""
+                    SELECT {group_by} AS grupo,
+                           COUNT(*) AS barras,
+                           COALESCE(SUM(peso_total),0) AS kilos
+                    FROM barras
+                    GROUP BY {group_by}
+                    ORDER BY kilos DESC
+                """)
             rows = cur.fetchall()
 
     return {
