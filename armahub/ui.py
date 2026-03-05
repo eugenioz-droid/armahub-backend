@@ -105,6 +105,10 @@ BOOTSTRAP_HTML = Template("""
     .card { border: 1px solid #ddd; border-radius: 10px; padding: 16px; }
     .muted { color: #666; font-size: 12px; }
     a { color: #0366d6; text-decoration:none; }
+    .status-ok { color: #1a7f37; font-size: 12px; }
+    .status-err { color: #b42318; font-size: 12px; }
+    .status-warn { color: #a15c00; font-size: 12px; }
+    .badge { display:inline-block; padding: 4px 8px; border:1px solid #eee; border-radius: 999px; font-size: 12px; color:#444; margin-right:6px; }
   </style>
 </head>
 <body>
@@ -175,11 +179,13 @@ APP_HTML = Template("""
   <h2>
     ArmaHub
     <span class="right">
-      <span class="pill" id="whoami"></span>
+    <span class="badge" id="whoEmail"></span>
+    <span class="badge" id="whoRole"></span>
       <button onclick="logout()">Salir</button>
     </span>
   </h2>
-
+  <div id="globalStatus" class="muted"></div>
+                    
   <div class="card">
     <h3>1) Importar CSV</h3>
     <input type="file" id="csvFile" />
@@ -278,11 +284,29 @@ function renderChart(labels, values, title) {
   });
 }
 
+async function setGlobalStatus(text, kind) {
+  const el = document.getElementById('globalStatus');
+  if (!el) return;
+  el.className = 'muted';
+  if (kind === 'ok') el.className = 'status-ok';
+  if (kind === 'err') el.className = 'status-err';
+  if (kind === 'warn') el.className = 'status-warn';
+  el.textContent = text || '';
+}
+
 async function loadMe() {
   const me = await apiGet('/me');
   if (!me) return;
-  document.getElementById('whoami').textContent = me.email + " (" + me.role + ")";
-  if (me.role === 'admin') document.getElementById('adminCard').style.display = 'block';
+
+  document.getElementById('whoEmail').textContent = me.email;
+  document.getElementById('whoRole').textContent = "Rol: " + me.role;
+
+  if (me.role === 'admin') {
+    document.getElementById('adminCard').style.display = 'block';
+    await setGlobalStatus("Sesión iniciada como admin. Puedes crear usuarios.", "ok");
+  } else {
+    await setGlobalStatus("Sesión iniciada.", "ok");
+  }
 }
 
 async function crearUsuario() {
@@ -337,17 +361,29 @@ async function importCSV() {
   if (!fileInput.files.length) { msg.textContent = "Selecciona un CSV."; return; }
 
   msg.textContent = "Importando...";
+  await setGlobalStatus("Importando CSV...", "warn");
+
   const data = await apiPostFile('/import/armadetailer', fileInput.files[0]);
-  if (!data) return;
+  if (!data) { await setGlobalStatus("Sesión expirada.", "err"); return; }
+
+  if (data.ok === false) {
+    msg.textContent = JSON.stringify(data);
+    await setGlobalStatus("Error importando: " + (data.error || "revisa el CSV"), "err");
+    return;
+  }
+
   msg.textContent = JSON.stringify(data);
+  await setGlobalStatus("Importación exitosa ✅", "ok");
 
   await loadFilters();
   await loadDashboard('ciclo');
 }
 
 async function loadDashboard(groupBy) {
+  await setGlobalStatus("Cargando dashboard...", "warn");
+
   const data = await apiGet('/dashboard?group_by=' + encodeURIComponent(groupBy));
-  if (!data) return;
+  if (!data) { await setGlobalStatus("Sesión expirada.", "err"); return; }
 
   document.getElementById('dashTotals').textContent =
     `Total: ${data.total.barras} barras — ${Number(data.total.kilos).toFixed(2)} kg`;
@@ -356,6 +392,7 @@ async function loadDashboard(groupBy) {
   const values = data.items.map(x => Number(x.kilos || 0));
 
   renderChart(labels, values, `Kilos por ${groupBy}`);
+  await setGlobalStatus("Dashboard actualizado ✅", "ok");
 }
 
 async function buscar() {
