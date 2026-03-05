@@ -164,14 +164,15 @@ def dashboard(
             total_barras, total_kilos = cur.fetchone()
 
             if group_by == "id_proyecto":
-                # Si agrupamos por proyecto, traer también el nombre legible desde tabla proyectos
+                # Si agrupamos por proyecto, traer el nombre legible
+                # Prioridad: p.nombre_proyecto > b.nombre_proyecto > b.id_proyecto
                 cur.execute("""
-                    SELECT COALESCE(p.nombre_proyecto, b.id_proyecto) AS grupo,
+                    SELECT COALESCE(p.nombre_proyecto, b.nombre_proyecto, b.id_proyecto) AS grupo,
                            COUNT(*) AS barras,
                            COALESCE(SUM(b.peso_total),0) AS kilos
                     FROM barras b
                     LEFT JOIN proyectos p ON b.id_proyecto = p.id_proyecto
-                    GROUP BY b.id_proyecto, p.nombre_proyecto
+                    GROUP BY COALESCE(p.nombre_proyecto, b.nombre_proyecto, b.id_proyecto)
                     ORDER BY kilos DESC
                 """)
             else:
