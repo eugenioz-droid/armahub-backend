@@ -178,3 +178,81 @@ def dashboard(
         "group_by": group_by,
         "items": [{"grupo": r[0], "barras": int(r[1]), "kilos": float(r[2])} for r in rows],
     }
+
+
+@router.get("/proyectos")
+def get_proyectos(user=Depends(get_current_user)):
+    """
+    Devuelve lista de proyectos con resumen de kilos y barras.
+    Estructura: [{id_proyecto, nombre_proyecto, total_kilos, total_barras}, ...]
+    """
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT 
+                    p.id_proyecto,
+                    p.nombre_proyecto,
+                    COUNT(DISTINCT b.id_unico) as total_barras,
+                    COALESCE(SUM(b.peso_total), 0) as total_kilos
+                FROM proyectos p
+                LEFT JOIN barras b ON p.id_proyecto = b.id_proyecto
+                GROUP BY p.id_proyecto, p.nombre_proyecto
+                ORDER BY p.fecha_creacion DESC
+            """)
+            rows = cur.fetchall()
+
+    return {
+        "proyectos": [
+            {
+                "id_proyecto": r[0],
+                "nombre_proyecto": r[1],
+                "total_barras": int(r[2]) if r[2] else 0,
+                "total_kilos": float(r[3]) if r[3] else 0.0,
+            }
+            for r in rows
+        ]
+    }
+
+
+@router.get("/proyectos/{id_proyecto}/sectores")
+def get_proyecto_sectores(
+    id_proyecto: str,
+    user=Depends(get_current_user),
+):
+    """
+    Devuelve desglose de kilos y barras por sector para un proyecto.
+    Estructura: [{sector, total_kilos, total_barras}, ...]
+    """
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            # Verificar que el proyecto existe
+            cur.execute("SELECT nombre_proyecto FROM proyectos WHERE id_proyecto = %s", (id_proyecto,))
+            proyecto = cur.fetchone()
+            if not proyecto:
+                raise HTTPException(status_code=404, detail="Proyecto no encontrado")
+
+            # Desglose por sector
+            cur.execute("""
+                SELECT 
+                    COALESCE(sector, '(sin sector)') as sector,
+                    COUNT(DISTINCT id_unico) as total_barras,
+                    COALESCE(SUM(peso_total), 0) as total_kilos
+                FROM barras
+                WHERE id_proyecto = %s
+                GROUP BY sector
+                ORDER BY total_kilos DESC
+            """, (id_proyecto,))
+            rows = cur.fetchall()
+
+    return {
+        "id_proyecto": id_proyecto,
+        "nombre_proyecto": proyecto[0],
+        "sectores": [
+            {
+                "sector": r[0],
+                "total_barras": int(r[1]) if r[1] else 0,
+                "total_kilos": float(r[2]) if r[2] else 0.0,
+            }
+            for r in rows
+        ]
+    }

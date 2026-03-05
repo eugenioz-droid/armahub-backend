@@ -56,10 +56,21 @@ def init_db() -> None:
     """
     with get_conn() as conn:
         with conn.cursor() as cur:
+            # Tabla de proyectos (nombre legible + metadatos)
+            cur.execute("""
+            CREATE TABLE IF NOT EXISTS proyectos (
+                id_proyecto TEXT PRIMARY KEY,
+                nombre_proyecto TEXT NOT NULL,
+                fecha_creacion TEXT,
+                usuario_creador TEXT
+            )
+            """)
+
             cur.execute("""
             CREATE TABLE IF NOT EXISTS barras (
                 id_unico TEXT PRIMARY KEY,
                 id_proyecto TEXT,
+                nombre_proyecto TEXT,
                 plano_code TEXT,
                 sector TEXT,
                 piso TEXT,
@@ -78,7 +89,9 @@ def init_db() -> None:
 
                 version_mod TEXT,
                 version_exp TEXT,
-                fecha_carga TEXT
+                fecha_carga TEXT,
+                
+                FOREIGN KEY (id_proyecto) REFERENCES proyectos(id_proyecto)
             )
             """)
 

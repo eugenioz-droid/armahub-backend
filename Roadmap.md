@@ -36,9 +36,9 @@ FASE 1 — MVP usable (UX + operación)
    - Ajustes menores de UX - OK
 
 2. Tabla de barras usable - Realizado
-   - Paginación en endpoint /barras (limit / offset)
-   - Orden por columnas (kilos, plano, ciclo, fecha, etc.)
-   - Búsqueda rápida por id_unico, eje o plano_code
+   - Paginación en endpoint /barras (limit / offset) - OK
+   - Orden por columnas (kilos, plano, ciclo, fecha, etc.) - OK
+   - Búsqueda rápida por id_unico, eje o plano_code - OK
 
 3. Filtros avanzados - No realizado
    - Filtros dependientes (proyecto → plano → ciclo → piso)

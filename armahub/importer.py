@@ -29,6 +29,22 @@ async def import_armadetailer(file: UploadFile = File(...), user=Depends(get_cur
     raw = (await file.read()).decode("utf-8", errors="replace")
     lines = raw.splitlines()
 
+    # Extraer nombre del proyecto desde línea 2: "PROYECTO: PROY-XXXX|Nombre Proyecto"
+    proyecto_id = None
+    proyecto_nombre = None
+    
+    for line in lines[:6]:  # Buscar en metadatos (primeras 6 líneas)
+        if line.startswith("PROYECTO:"):
+            partes = line.replace("PROYECTO:", "").strip().split("|")
+            if len(partes) >= 2:
+                proyecto_id = partes[0].strip()
+                proyecto_nombre = partes[1].strip()
+            break
+
+    if not proyecto_id or not proyecto_nombre:
+        return {"ok": False, "error": "No se encontró PROYECTO en línea 2 del formato 'PROYECTO: ID|NOMBRE'."}
+
+    # Buscar cabecera "ID|ESTRUCTURA|" para ignorar metadata previa
     header_idx = None
     for i, line in enumerate(lines):
         if line.startswith("ID|ESTRUCTURA|"):
@@ -49,6 +65,15 @@ async def import_armadetailer(file: UploadFile = File(...), user=Depends(get_cur
     missing = [c for c in required if c not in df.columns]
     if missing:
         return {"ok": False, "error": f"Faltan columnas requeridas: {missing}"}
+
+    # Guardar o actualizar proyecto en tabla proyectos
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO proyectos (id_proyecto, nombre_proyecto, usuario_creador)
+                VALUES (%s, %s, %s)
+                ON CONFLICT (id_proyecto) DO UPDATE SET nombre_proyecto = EXCLUDED.nombre_proyecto
+            """, (proyecto_id, proyecto_nombre, user.get("email", "unknown")))
 
     now_iso = datetime.now(timezone.utc).isoformat()
     rows_to_upsert = []
@@ -76,6 +101,7 @@ async def import_armadetailer(file: UploadFile = File(...), user=Depends(get_cur
         rows_to_upsert.append((
             str(r["ID_UNICO"]),
             str(r["ID_PROYECTO"]),
+            proyecto_nombre,
             str(r["PLANO_CODE"]),
             str(r["SECTOR"]),
             str(r["PISO"]),
@@ -95,10 +121,11 @@ async def import_armadetailer(file: UploadFile = File(...), user=Depends(get_cur
 
     upsert_sql = """
     INSERT INTO barras
-    (id_unico,id_proyecto,plano_code,sector,piso,ciclo,eje,diam,largo_total,mult,cant,cant_total,peso_unitario,peso_total,version_mod,version_exp,fecha_carga)
-    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+    (id_unico,id_proyecto,nombre_proyecto,plano_code,sector,piso,ciclo,eje,diam,largo_total,mult,cant,cant_total,peso_unitario,peso_total,version_mod,version_exp,fecha_carga)
+    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
     ON CONFLICT (id_unico) DO UPDATE SET
         id_proyecto=EXCLUDED.id_proyecto,
+        nombre_proyecto=EXCLUDED.nombre_proyecto,
         plano_code=EXCLUDED.plano_code,
         sector=EXCLUDED.sector,
         piso=EXCLUDED.piso,
@@ -120,4 +147,4 @@ async def import_armadetailer(file: UploadFile = File(...), user=Depends(get_cur
         with conn.cursor() as cur:
             cur.executemany(upsert_sql, rows_to_upsert)
 
-    return {"ok": True, "rows_upserted": len(rows_to_upsert)}
+    return {"ok": True, "proyecto": proyecto_nombre, "rows_upserted": len(rows_to_upsert)}
