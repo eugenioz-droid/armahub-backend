@@ -15,7 +15,7 @@ En Render, lo ideal es arrancar con:
 from fastapi import FastAPI
 
 from .db import init_db
-from .armahub.auth import router as auth_router
+from .auth import router as auth_router
 from .importer import router as importer_router
 from .barras import router as barras_router
 from .ui import router as ui_router
@@ -24,11 +24,8 @@ from .ui import router as ui_router
 def create_app() -> FastAPI:
     app = FastAPI(title="ArmaHub Backend")
 
-    # Inicializa DB una vez al arrancar el servicio.
-    # IMPORTANTE: init_db() usa CREATE TABLE IF NOT EXISTS (no borra datos).
     init_db()
 
-    # Routers
     app.include_router(auth_router)
     app.include_router(importer_router)
     app.include_router(barras_router)
