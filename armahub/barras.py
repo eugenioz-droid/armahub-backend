@@ -5,7 +5,7 @@ from .auth import get_current_user
 router = APIRouter()
 
 BARRAS_COLUMNS = [
-    "id_unico","id_proyecto","nombre_proyecto","plano_code","sector","piso","ciclo","eje",
+    "id_unico","id_proyecto","nombre_proyecto","plano_code","nombre_plano","sector","piso","ciclo","eje",
     "diam","largo_total","mult","cant","cant_total",
     "peso_unitario","peso_total","version_mod","version_exp","fecha_carga"
 ]
@@ -112,9 +112,9 @@ def filters(user=Depends(get_current_user)):
             cur.execute("SELECT DISTINCT ciclo FROM barras ORDER BY ciclo")
             ciclos = [r[0] for r in cur.fetchall() if r[0] is not None]
 
-            # Devolver planos como strings simples
-            cur.execute("SELECT DISTINCT plano_code FROM barras WHERE plano_code IS NOT NULL ORDER BY plano_code")
-            planos = [r[0] for r in cur.fetchall() if r[0] is not None]
+            # Devolver planos como objetos {code, nombre}
+            cur.execute("SELECT DISTINCT plano_code, nombre_plano FROM barras WHERE plano_code IS NOT NULL ORDER BY plano_code")
+            planos = [{"code": r[0], "nombre": r[1] or r[0]} for r in cur.fetchall() if r[0] is not None]
 
             cur.execute("SELECT DISTINCT id_proyecto FROM barras ORDER BY id_proyecto")
             proyectos = [r[0] for r in cur.fetchall() if r[0] is not None]
