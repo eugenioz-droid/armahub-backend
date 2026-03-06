@@ -326,6 +326,56 @@ APP_HTML = Template("""
       font-size: 12px;
       margin-right: 4px;
     }
+
+    /* KPI Cards (Tab Inicio) */
+    .kpi-row {
+      display: flex;
+      gap: 16px;
+      flex-wrap: wrap;
+      margin: 16px 0;
+    }
+    .kpi-card {
+      flex: 1;
+      min-width: 180px;
+      background: white;
+      border: 1px solid #ddd;
+      border-radius: 10px;
+      padding: 20px;
+      text-align: center;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.06);
+      border-top: 4px solid #8BC34A;
+    }
+    .kpi-card .kpi-value {
+      font-size: 32px;
+      font-weight: 700;
+      color: #8BC34A;
+      margin: 4px 0;
+    }
+    .kpi-card .kpi-label {
+      font-size: 13px;
+      color: #666;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .inicio-grid {
+      display: grid;
+      grid-template-columns: 3fr 2fr;
+      gap: 20px;
+      margin-top: 16px;
+    }
+    @media (max-width: 900px) {
+      .inicio-grid { grid-template-columns: 1fr; }
+    }
+    .proyecto-mini {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px 12px;
+      border-bottom: 1px solid #f0f0f0;
+    }
+    .proyecto-mini:last-child { border-bottom: none; }
+    .proyecto-mini .pm-name { font-weight: 500; color: #2C2C2C; font-size: 14px; }
+    .proyecto-mini .pm-kilos { font-weight: 700; color: #8BC34A; font-size: 14px; }
     
     /* Global status */
     #globalStatus {
@@ -356,7 +406,8 @@ APP_HTML = Template("""
 
   <!-- Tabs -->
   <div class="tabs">
-    <button class="tab-btn active" onclick="switchTab('obras')">📦 Mis Obras</button>
+    <button class="tab-btn active" onclick="switchTab('inicio')">🏠 Inicio</button>
+    <button class="tab-btn" onclick="switchTab('obras')">📦 Mis Obras</button>
     <button class="tab-btn" onclick="switchTab('buscar')">🔍 Buscar Barras</button>
     <button class="tab-btn" onclick="switchTab('dashboards')">📊 Dashboards</button>
     <button class="tab-btn" onclick="switchTab('pedidos')">📝 Pedidos</button>
@@ -364,8 +415,49 @@ APP_HTML = Template("""
     <button class="tab-btn" id="adminTabBtn" onclick="switchTab('admin')" style="display:none;">⚙️ Admin</button>
   </div>
 
+  <!-- TAB 0: INICIO (Landing) -->
+  <div id="tab-inicio" class="tab-content active">
+    <div class="kpi-row" id="kpiRow">
+      <div class="kpi-card">
+        <div class="kpi-label">Proyectos</div>
+        <div class="kpi-value" id="kpiProyectos">—</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Barras totales</div>
+        <div class="kpi-value" id="kpiBarras">—</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Kilos totales</div>
+        <div class="kpi-value" id="kpiKilos">—</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Última carga</div>
+        <div class="kpi-value" id="kpiUltimaCarga" style="font-size:18px;">—</div>
+      </div>
+    </div>
+
+    <div class="inicio-grid">
+      <div>
+        <div class="card">
+          <h3>Top 5 proyectos por kilos</h3>
+          <div style="height: 280px;">
+            <canvas id="inicioChart"></canvas>
+          </div>
+        </div>
+      </div>
+      <div>
+        <div class="card">
+          <h3>Resumen por proyecto</h3>
+          <div id="proyectosMiniList">
+            <div class="muted">Cargando...</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- TAB 1: MIS OBRAS -->
-  <div id="tab-obras" class="tab-content active">
+  <div id="tab-obras" class="tab-content">
     <div class="card">
       <h3>Cargar datos de obra</h3>
       <div class="row">
@@ -632,7 +724,9 @@ function switchTab(tabName) {
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
   
   document.getElementById('tab-' + tabName).classList.add('active');
-  event.target.classList.add('active');
+  // Find the button that triggered the switch
+  const btns = document.querySelectorAll('.tab-btn');
+  btns.forEach(b => { if (b.textContent.includes(tabName === 'inicio' ? 'Inicio' : tabName === 'obras' ? 'Mis Obras' : tabName === 'buscar' ? 'Buscar' : tabName === 'dashboards' ? 'Dashboards' : tabName === 'pedidos' ? 'Pedidos' : tabName === 'export' ? 'Exportación' : 'Admin')) b.classList.add('active'); });
 }
 
 // ========================= INIT =========================
@@ -876,6 +970,59 @@ async function loadDashboard(groupBy) {
   await setGlobalStatus("Gráfico actualizado", "ok");
 }
 
+// ========================= INICIO (Landing) =========================
+let inicioChart = null;
+
+async function loadInicio() {
+  const data = await apiGet('/stats');
+  if (!data) return;
+
+  document.getElementById('kpiProyectos').textContent = data.total_proyectos;
+  document.getElementById('kpiBarras').textContent = data.total_barras.toLocaleString();
+  document.getElementById('kpiKilos').textContent = Math.round(data.total_kilos).toLocaleString() + ' kg';
+  
+  if (data.ultima_carga) {
+    const d = new Date(data.ultima_carga);
+    document.getElementById('kpiUltimaCarga').textContent = d.toLocaleDateString('es-CL') + ' ' + d.toLocaleTimeString('es-CL', {hour:'2-digit', minute:'2-digit'});
+  } else {
+    document.getElementById('kpiUltimaCarga').textContent = 'Sin cargas';
+  }
+
+  // Top 5 chart
+  const top5 = data.top5 || [];
+  const labels = top5.map(p => p.nombre);
+  const values = top5.map(p => p.kilos);
+  const ctx = document.getElementById('inicioChart').getContext('2d');
+  if (inicioChart) inicioChart.destroy();
+  inicioChart = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{ label: 'Kilos', data: values, backgroundColor: '#8BC34A', borderRadius: 4 }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      indexAxis: 'y',
+      plugins: { legend: { display: false } },
+      scales: { x: { ticks: { callback: v => v.toLocaleString() + ' kg' } } }
+    }
+  });
+
+  // Project mini-cards
+  const list = document.getElementById('proyectosMiniList');
+  if (!data.proyectos || data.proyectos.length === 0) {
+    list.innerHTML = '<div class="muted" style="padding:12px;">No hay proyectos cargados</div>';
+    return;
+  }
+  list.innerHTML = data.proyectos.map(p => `
+    <div class="proyecto-mini">
+      <span class="pm-name">${p.nombre}</span>
+      <span class="pm-kilos">${Math.round(p.kilos).toLocaleString()} kg</span>
+    </div>
+  `).join('');
+}
+
 // ========================= ADMIN =========================
 async function loadDbInfo() {
   const data = await apiGet('/admin/db-info');
@@ -979,6 +1126,7 @@ async function createUser() {
 (async function init() {
   if (!token()) { window.location.href = '/ui/login'; return; }
   await loadMe();
+  await loadInicio();
   await loadProyectos();
   await loadFilters();
   await loadCargas();

@@ -129,24 +129,46 @@ def filters(user=Depends(get_current_user)):
 
 
 @router.get("/stats")
-def stats(user=Depends(get_current_user)):
+def get_stats(user=Depends(get_current_user)):
+    """KPIs generales para Tab Inicio. Accesible para todos los usuarios autenticados."""
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("SELECT COUNT(*) FROM barras")
             total_barras = int(cur.fetchone()[0])
 
-            cur.execute("SELECT COALESCE(SUM(peso_total),0) FROM barras")
-            total_kilos_exact = float(cur.fetchone()[0])
+            cur.execute("SELECT COUNT(*) FROM proyectos")
+            total_proyectos = int(cur.fetchone()[0])
 
-            # “tipo GStarCAD”: redondeo por item a 2 decimales
-            cur.execute("SELECT COALESCE(peso_total,0) FROM barras")
-            rows = cur.fetchall()
-            total_kilos_item_rounded = float(sum(round(float(r[0] or 0), 2) for r in rows))
+            cur.execute("SELECT COALESCE(SUM(peso_total), 0) FROM barras")
+            total_kilos = float(cur.fetchone()[0])
+
+            cur.execute("SELECT MAX(fecha_carga) FROM barras")
+            ultima_carga = cur.fetchone()[0]
+
+            cur.execute("""
+                SELECT COALESCE(p.nombre_proyecto, b.id_proyecto) AS nombre,
+                       b.id_proyecto,
+                       COUNT(*) AS barras,
+                       COALESCE(SUM(b.peso_total), 0) AS kilos
+                FROM barras b
+                LEFT JOIN proyectos p ON b.id_proyecto = p.id_proyecto
+                GROUP BY b.id_proyecto, p.nombre_proyecto
+                ORDER BY kilos DESC
+            """)
+            proyectos_rows = cur.fetchall()
+
+    proyectos_all = [
+        {"nombre": r[0], "id_proyecto": r[1], "barras": int(r[2]), "kilos": round(float(r[3]), 2)}
+        for r in proyectos_rows
+    ]
 
     return {
         "total_barras": total_barras,
-        "total_kilos_exact": total_kilos_exact,
-        "total_kilos_item_rounded": total_kilos_item_rounded,
+        "total_proyectos": total_proyectos,
+        "total_kilos": round(total_kilos, 2),
+        "ultima_carga": ultima_carga,
+        "top5": proyectos_all[:5],
+        "proyectos": proyectos_all,
     }
 
 
