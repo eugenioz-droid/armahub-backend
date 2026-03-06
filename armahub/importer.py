@@ -32,14 +32,19 @@ async def import_armadetailer(file: UploadFile = File(...), user=Depends(get_cur
     # Extraer nombre del proyecto desde línea 2: "PROYECTO: PROY-XXXX|Nombre Proyecto"
     proyecto_id = None
     proyecto_nombre = None
+    plano_nombre = None  # Nombre del plano (si viene en metadatos)
     
-    for line in lines[:6]:  # Buscar en metadatos (primeras 6 líneas)
+    for line in lines[:10]:  # Buscar en metadatos (primeras 10 líneas)
         if line.startswith("PROYECTO:"):
             partes = line.replace("PROYECTO:", "").strip().split("|")
             if len(partes) >= 2:
                 proyecto_id = partes[0].strip()
                 proyecto_nombre = partes[1].strip()
-            break
+        elif line.startswith("PLANO:"):
+            # Formato esperado: "PLANO: UID-XXXX|Nombre del Plano"
+            partes = line.replace("PLANO:", "").strip().split("|", 1)
+            if len(partes) >= 2:
+                plano_nombre = partes[1].strip()
 
     if not proyecto_id or not proyecto_nombre:
         return {"ok": False, "error": "No se encontró PROYECTO en línea 2 del formato 'PROYECTO: ID|NOMBRE'."}
@@ -103,6 +108,7 @@ async def import_armadetailer(file: UploadFile = File(...), user=Depends(get_cur
             str(r["ID_PROYECTO"]),
             proyecto_nombre,
             str(r["PLANO_CODE"]),
+            plano_nombre,  # Nombre del plano del metadato
             str(r["SECTOR"]),
             str(r["PISO"]),
             str(r["CICLO"]),
@@ -121,12 +127,13 @@ async def import_armadetailer(file: UploadFile = File(...), user=Depends(get_cur
 
     upsert_sql = """
     INSERT INTO barras
-    (id_unico,id_proyecto,nombre_proyecto,plano_code,sector,piso,ciclo,eje,diam,largo_total,mult,cant,cant_total,peso_unitario,peso_total,version_mod,version_exp,fecha_carga)
-    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+    (id_unico,id_proyecto,nombre_proyecto,plano_code,nombre_plano,sector,piso,ciclo,eje,diam,largo_total,mult,cant,cant_total,peso_unitario,peso_total,version_mod,version_exp,fecha_carga)
+    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
     ON CONFLICT (id_unico) DO UPDATE SET
         id_proyecto=EXCLUDED.id_proyecto,
         nombre_proyecto=EXCLUDED.nombre_proyecto,
         plano_code=EXCLUDED.plano_code,
+        nombre_plano=EXCLUDED.nombre_plano,
         sector=EXCLUDED.sector,
         piso=EXCLUDED.piso,
         ciclo=EXCLUDED.ciclo,

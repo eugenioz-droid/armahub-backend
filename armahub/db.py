@@ -72,6 +72,7 @@ def init_db() -> None:
                 id_proyecto TEXT,
                 nombre_proyecto TEXT,
                 plano_code TEXT,
+                nombre_plano TEXT,
                 sector TEXT,
                 piso TEXT,
                 ciclo TEXT,

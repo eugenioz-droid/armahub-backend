@@ -5,7 +5,7 @@ from .auth import get_current_user
 router = APIRouter()
 
 BARRAS_COLUMNS = [
-    "id_unico","id_proyecto","plano_code","sector","piso","ciclo","eje",
+    "id_unico","id_proyecto","nombre_proyecto","plano_code","nombre_plano","sector","piso","ciclo","eje",
     "diam","largo_total","mult","cant","cant_total",
     "peso_unitario","peso_total","version_mod","version_exp","fecha_carga"
 ]
@@ -13,7 +13,7 @@ BARRAS_COLUMNS = [
 ALLOWED_ORDER_BY = {
     "fecha_carga", "peso_total", "peso_unitario", "cant_total",
     "diam", "largo_total",
-    "id_proyecto", "plano_code", "sector", "piso", "ciclo", "eje", "id_unico"
+    "id_proyecto", "plano_code", "sector", "piso", "ciclo", "eje", "id_unico", "nombre_proyecto", "nombre_plano"
 }
 
 @router.get("/barras")
@@ -112,8 +112,10 @@ def filters(user=Depends(get_current_user)):
             cur.execute("SELECT DISTINCT ciclo FROM barras ORDER BY ciclo")
             ciclos = [r[0] for r in cur.fetchall() if r[0] is not None]
 
-            cur.execute("SELECT DISTINCT plano_code FROM barras ORDER BY plano_code")
-            planos = [r[0] for r in cur.fetchall() if r[0] is not None]
+            # Devolver planos con su nombre (si existe)
+            cur.execute("SELECT DISTINCT plano_code, nombre_plano FROM barras WHERE plano_code IS NOT NULL ORDER BY plano_code")
+            planos_raw = cur.fetchall()
+            planos = [{"code": r[0], "nombre": r[1] if r[1] else r[0]} for r in planos_raw]
 
             cur.execute("SELECT DISTINCT id_proyecto FROM barras ORDER BY id_proyecto")
             proyectos = [r[0] for r in cur.fetchall() if r[0] is not None]
@@ -173,6 +175,17 @@ def dashboard(
                     FROM barras b
                     LEFT JOIN proyectos p ON b.id_proyecto = p.id_proyecto
                     GROUP BY COALESCE(p.nombre_proyecto, b.nombre_proyecto, b.id_proyecto)
+                    ORDER BY kilos DESC
+                """)
+            elif group_by == "plano_code":
+                # Si agrupamos por plano, traer el nombre del plano o el código
+                cur.execute("""
+                    SELECT COALESCE(nombre_plano, plano_code) AS grupo,
+                           COUNT(*) AS barras,
+                           COALESCE(SUM(peso_total),0) AS kilos
+                    FROM barras
+                    WHERE plano_code IS NOT NULL
+                    GROUP BY COALESCE(nombre_plano, plano_code), plano_code
                     ORDER BY kilos DESC
                 """)
             else:

@@ -343,7 +343,7 @@ APP_HTML = Template("""
   <!-- Header -->
   <div class="header">
     <div style="display: flex; align-items: center; gap: 12px;">
-      <img src="/static/images/logo-vertical.png" alt="ArmaCero Logo" style="height: 60px; max-width: 100%;" onerror="this.style.display='none';">
+      <img src="/static/images/logo-vertical.png" alt="ArmaCero Logo" style="height: 50px; width: auto; max-width: 80px; object-fit: cover; object-position: center;" onerror="this.style.display='none';">
       <h1 style="margin: 0; color: #2C2C2C; font-size: 24px;">ArmaHub</h1>
     </div>
     <div class="user-info">
@@ -639,22 +639,27 @@ async function loadFilters() {
   const data = await apiGet('/filters');
   if (!data) return;
   
-  function fillSelect(selId, items) {
+  function fillSelect(selId, items, isPlanos = false) {
     const sel = document.getElementById(selId);
     if (!sel) return;
     const val = sel.value;
     sel.innerHTML = '<option value="">Todos</option>';
     (items || []).forEach(x => {
       const o = document.createElement('option');
-      o.value = x;
-      o.textContent = x;
+      if (isPlanos) {
+        o.value = x.code;
+        o.textContent = x.nombre || x.code;
+      } else {
+        o.value = x;
+        o.textContent = x;
+      }
       sel.appendChild(o);
     });
     sel.value = val;
   }
   
   fillSelect('proyecto', data.proyectos);
-  fillSelect('plano', data.planos);
+  fillSelect('plano', data.planos, true);  // true = isPlanos
   fillSelect('sector', data.sectores);
   fillSelect('piso', data.pisos);
   fillSelect('ciclo', data.ciclos);
