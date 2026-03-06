@@ -112,10 +112,9 @@ def filters(user=Depends(get_current_user)):
             cur.execute("SELECT DISTINCT ciclo FROM barras ORDER BY ciclo")
             ciclos = [r[0] for r in cur.fetchall() if r[0] is not None]
 
-            # Devolver planos con su nombre (si existe)
-            cur.execute("SELECT DISTINCT plano_code, nombre_plano FROM barras WHERE plano_code IS NOT NULL ORDER BY plano_code")
-            planos_raw = cur.fetchall()
-            planos = [{"code": r[0], "nombre": r[1] if r[1] else r[0]} for r in planos_raw]
+            # Devolver planos como strings simples
+            cur.execute("SELECT DISTINCT plano_code FROM barras WHERE plano_code IS NOT NULL ORDER BY plano_code")
+            planos = [r[0] for r in cur.fetchall() if r[0] is not None]
 
             cur.execute("SELECT DISTINCT id_proyecto FROM barras ORDER BY id_proyecto")
             proyectos = [r[0] for r in cur.fetchall() if r[0] is not None]
@@ -186,6 +185,17 @@ def dashboard(
                     FROM barras
                     WHERE plano_code IS NOT NULL
                     GROUP BY COALESCE(nombre_plano, plano_code), plano_code
+                    ORDER BY kilos DESC
+                """)
+            elif group_by == "eje":
+                # Si agrupamos por eje
+                cur.execute("""
+                    SELECT eje AS grupo,
+                           COUNT(*) AS barras,
+                           COALESCE(SUM(peso_total),0) AS kilos
+                    FROM barras
+                    WHERE eje IS NOT NULL
+                    GROUP BY eje
                     ORDER BY kilos DESC
                 """)
             else:
