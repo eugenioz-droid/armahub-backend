@@ -105,6 +105,20 @@ def init_db() -> None:
             )
             """)
 
+            # Migraciones: agregar columnas si no existen (para tablas ya creadas)
+            cur.execute("""
+                DO $$ BEGIN
+                    ALTER TABLE barras ADD COLUMN nombre_proyecto TEXT;
+                EXCEPTION WHEN duplicate_column THEN NULL;
+                END $$;
+            """)
+            cur.execute("""
+                DO $$ BEGIN
+                    ALTER TABLE barras ADD COLUMN nombre_plano TEXT;
+                EXCEPTION WHEN duplicate_column THEN NULL;
+                END $$;
+            """)
+
             # Índices para consultas rápidas (filtros/dashboard)
             cur.execute("CREATE INDEX IF NOT EXISTS idx_barras_proyecto ON barras (id_proyecto)")
             cur.execute("CREATE INDEX IF NOT EXISTS idx_barras_plano ON barras (plano_code)")
@@ -113,6 +127,32 @@ def init_db() -> None:
             cur.execute("CREATE INDEX IF NOT EXISTS idx_barras_ciclo ON barras (ciclo)")
             cur.execute("CREATE INDEX IF NOT EXISTS idx_barras_eje ON barras (eje)")
             cur.execute("CREATE INDEX IF NOT EXISTS idx_barras_fecha ON barras (fecha_carga)")
+
+
+def reset_database(keep_users: bool = True) -> dict:
+    """
+    Borra datos de barras y proyectos, y recrea las tablas.
+    Si keep_users=False, también borra usuarios (requiere bootstrap después).
+    Retorna resumen de lo eliminado.
+    """
+    summary = {}
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT COUNT(*) FROM barras")
+            summary["barras_eliminadas"] = int(cur.fetchone()[0])
+            cur.execute("SELECT COUNT(*) FROM proyectos")
+            summary["proyectos_eliminados"] = int(cur.fetchone()[0])
+            # Barras primero por FK
+            cur.execute("DROP TABLE IF EXISTS barras")
+            cur.execute("DROP TABLE IF EXISTS proyectos")
+            if not keep_users:
+                cur.execute("SELECT COUNT(*) FROM users")
+                summary["usuarios_eliminados"] = int(cur.fetchone()[0])
+                cur.execute("DROP TABLE IF EXISTS users")
+    # Recrear tablas fuera de la conexión anterior
+    init_db()
+    summary["status"] = "reset_completo"
+    return summary
 
 
 def users_count() -> int:

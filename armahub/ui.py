@@ -167,15 +167,15 @@ APP_HTML = Template("""
     
     /* Header */
     .header {
-      background: white;
+      background: #1a1a1a;
       border-bottom: 3px solid #8BC34A;
       padding: 16px 20px;
       display: flex;
       justify-content: space-between;
       align-items: center;
-      box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+      box-shadow: 0 2px 8px rgba(0,0,0,0.2);
     }
-    .header h1 { margin: 0; color: #2C2C2C; font-size: 24px; }
+    .header h1 { margin: 0; color: #8BC34A; font-size: 30px; letter-spacing: 1px; }
     .user-info {
       display: flex;
       gap: 12px;
@@ -184,11 +184,11 @@ APP_HTML = Template("""
     .user-badge { 
       display: inline-block;
       padding: 6px 12px; 
-      background: #F5F5F5;
-      border: 1px solid #ddd;
+      background: rgba(255,255,255,0.1);
+      border: 1px solid rgba(255,255,255,0.2);
       border-radius: 20px;
       font-size: 12px;
-      color: #555;
+      color: #ccc;
     }
     .btn-logout {
       background: #8BC34A;
@@ -342,14 +342,12 @@ APP_HTML = Template("""
 <body>
   <!-- Header -->
   <div class="header">
-    <div style="display: flex; align-items: center; gap: 12px;">
-      <img src="/static/images/logo-armacero.png" alt="ArmaCero Logo" style="height: auto; max-height: 70px; width: auto; object-fit: contain;" onerror="this.style.display='none';">
-      <h1 style="margin: 0; color: #2C2C2C; font-size: 24px;">ArmaHub</h1>
-    </div>
+    <h1>ArmaHub</h1>
     <div class="user-info">
       <span class="user-badge" id="whoEmail">—</span>
       <span class="user-badge" id="whoRole">—</span>
       <button class="btn-logout" onclick="logout()">Salir</button>
+      <img src="/static/Logo%20Banner%201.PNG" alt="ArmaCero" style="height: 40px; width: auto; margin-left: 12px;" onerror="this.style.display='none';">
     </div>
   </div>
 
@@ -363,6 +361,7 @@ APP_HTML = Template("""
     <button class="tab-btn" onclick="switchTab('dashboards')">📊 Dashboards</button>
     <button class="tab-btn" onclick="switchTab('pedidos')">📝 Pedidos</button>
     <button class="tab-btn" onclick="switchTab('export')">📥 Exportación</button>
+    <button class="tab-btn" id="adminTabBtn" onclick="switchTab('admin')" style="display:none;">⚙️ Admin</button>
   </div>
 
   <!-- TAB 1: MIS OBRAS -->
@@ -530,6 +529,47 @@ APP_HTML = Template("""
     </div>
   </div>
 
+  <!-- TAB 6: ADMIN (solo visible para admin) -->
+  <div id="tab-admin" class="tab-content">
+    <div class="card">
+      <h3>Estado de la base de datos</h3>
+      <div id="dbInfoContainer">
+        <div class="muted">Cargando...</div>
+      </div>
+      <button onclick="loadDbInfo()" class="secondary" style="margin-top: 12px;">Actualizar info</button>
+    </div>
+
+    <div class="card" style="border-left: 4px solid #b42318;">
+      <h3 style="color: #b42318;">Resetear base de datos</h3>
+      <p class="muted">Elimina todas las barras y proyectos. Los usuarios se mantienen.</p>
+      <div class="row">
+        <label style="display: flex; align-items: center; gap: 8px;">
+          <input type="checkbox" id="resetKeepUsers" checked>
+          Mantener usuarios
+        </label>
+      </div>
+      <div class="row">
+        <input id="resetConfirm" placeholder="Escribe CONFIRMAR para habilitar" style="max-width: 300px;" />
+        <button class="danger" onclick="resetDatabase()">Resetear BD</button>
+      </div>
+      <div id="resetMsg" class="muted" style="margin-top: 8px;"></div>
+    </div>
+
+    <div class="card">
+      <h3>Gestión de usuarios</h3>
+      <div class="row">
+        <input id="newUserEmail" placeholder="Email" style="max-width: 250px;" />
+        <input id="newUserPassword" type="password" placeholder="Contraseña" style="max-width: 200px;" />
+        <select id="newUserRole" style="max-width: 150px;">
+          <option value="operador">Operador</option>
+          <option value="admin">Admin</option>
+        </select>
+        <button onclick="createUser()">Crear usuario</button>
+      </div>
+      <div id="createUserMsg" class="muted" style="margin-top: 8px;"></div>
+    </div>
+  </div>
+
 <script>
 // ========================= AUTH =========================
 function token() { return localStorage.getItem('armahub_token'); }
@@ -602,6 +642,7 @@ async function loadMe() {
   document.getElementById('whoEmail').textContent = me.email;
   document.getElementById('whoRole').textContent = "Rol: " + me.role;
   if (me.role === 'admin') {
+    document.getElementById('adminTabBtn').style.display = '';
     await setGlobalStatus("Sesión como ADMIN", "ok");
   } else {
     await setGlobalStatus("Sesión iniciada", "ok");
@@ -833,6 +874,105 @@ async function loadDashboard(groupBy) {
   
   renderChart(labels, values, `Kilos por ${groupBy}`);
   await setGlobalStatus("Gráfico actualizado", "ok");
+}
+
+// ========================= ADMIN =========================
+async function loadDbInfo() {
+  const data = await apiGet('/admin/db-info');
+  if (!data) return;
+  document.getElementById('dbInfoContainer').innerHTML = `
+    <div class="row">
+      <div class="card" style="flex:1; text-align:center; margin:4px;">
+        <div style="font-size:28px; font-weight:bold; color:#8BC34A;">${data.barras}</div>
+        <div class="muted">Barras</div>
+      </div>
+      <div class="card" style="flex:1; text-align:center; margin:4px;">
+        <div style="font-size:28px; font-weight:bold; color:#8BC34A;">${data.proyectos}</div>
+        <div class="muted">Proyectos</div>
+      </div>
+      <div class="card" style="flex:1; text-align:center; margin:4px;">
+        <div style="font-size:28px; font-weight:bold; color:#8BC34A;">${data.usuarios}</div>
+        <div class="muted">Usuarios</div>
+      </div>
+      <div class="card" style="flex:1; text-align:center; margin:4px;">
+        <div style="font-size:28px; font-weight:bold; color:#8BC34A;">${data.kilos_totales.toFixed(0)}</div>
+        <div class="muted">Kilos totales</div>
+      </div>
+    </div>
+  `;
+}
+
+async function resetDatabase() {
+  const confirm = document.getElementById('resetConfirm').value.trim();
+  const keepUsers = document.getElementById('resetKeepUsers').checked;
+  const msg = document.getElementById('resetMsg');
+
+  if (confirm !== 'CONFIRMAR') {
+    msg.textContent = 'Debes escribir CONFIRMAR para ejecutar el reset.';
+    msg.className = 'status-err';
+    return;
+  }
+
+  if (!window.confirm('¿Estás seguro? Esta acción eliminará TODOS los datos de barras y proyectos.')) {
+    return;
+  }
+
+  msg.textContent = 'Reseteando...';
+  msg.className = 'status-warn';
+
+  const params = new URLSearchParams({ confirm: 'CONFIRMAR', keep_users: keepUsers });
+  const res = await fetch('/admin/reset-db?' + params.toString(), {
+    method: 'POST',
+    headers: authHeaders()
+  });
+  const data = await res.json();
+
+  if (!res.ok) {
+    msg.textContent = 'Error: ' + (data.detail || JSON.stringify(data));
+    msg.className = 'status-err';
+    return;
+  }
+
+  const r = data.reset;
+  msg.textContent = `Reset completo. Eliminadas: ${r.barras_eliminadas} barras, ${r.proyectos_eliminados} proyectos.`;
+  msg.className = 'status-ok';
+  document.getElementById('resetConfirm').value = '';
+
+  await loadDbInfo();
+  await loadProyectos();
+  await loadFilters();
+  await loadDashboard('sector');
+}
+
+async function createUser() {
+  const email = document.getElementById('newUserEmail').value.trim();
+  const password = document.getElementById('newUserPassword').value;
+  const role = document.getElementById('newUserRole').value;
+  const msg = document.getElementById('createUserMsg');
+
+  if (!email || !password) {
+    msg.textContent = 'Email y contraseña son requeridos.';
+    msg.className = 'status-err';
+    return;
+  }
+
+  const params = new URLSearchParams({ email, password, role });
+  const res = await fetch('/auth/register?' + params.toString(), {
+    method: 'POST',
+    headers: authHeaders()
+  });
+  const data = await res.json();
+
+  if (!res.ok) {
+    msg.textContent = 'Error: ' + (data.detail || JSON.stringify(data));
+    msg.className = 'status-err';
+    return;
+  }
+
+  msg.textContent = `Usuario ${email} (${role}) creado exitosamente.`;
+  msg.className = 'status-ok';
+  document.getElementById('newUserEmail').value = '';
+  document.getElementById('newUserPassword').value = '';
 }
 
 // ========================= INIT =========================
