@@ -172,6 +172,42 @@ def get_stats(user=Depends(get_current_user)):
     }
 
 
+@router.get("/cargas/recientes")
+def get_cargas_recientes(
+    limit: int = 5,
+    user=Depends(get_current_user),
+):
+    """Últimas N importaciones registradas."""
+    if limit < 1:
+        limit = 1
+    if limit > 50:
+        limit = 50
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT id, id_proyecto, nombre_proyecto, usuario, archivo, fecha, barras_count, kilos
+                FROM imports
+                ORDER BY id DESC
+                LIMIT %s
+            """, (limit,))
+            rows = cur.fetchall()
+    return {
+        "cargas": [
+            {
+                "id": r[0],
+                "id_proyecto": r[1],
+                "nombre_proyecto": r[2],
+                "usuario": r[3],
+                "archivo": r[4],
+                "fecha": r[5],
+                "barras_count": r[6],
+                "kilos": r[7],
+            }
+            for r in rows
+        ]
+    }
+
+
 @router.get("/dashboard")
 def dashboard(
     group_by: str = Query("ciclo"),

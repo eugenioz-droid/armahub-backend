@@ -460,43 +460,37 @@ APP_HTML = Template("""
   <div id="tab-obras" class="tab-content">
     <div class="card">
       <h3>Cargar datos de obra</h3>
-      <div class="row">
-        <input type="file" id="csvFile" placeholder="Seleccionar CSV..." />
-        <button onclick="importCSV()">📤 Importar CSV</button>
+      <div id="dropZone" style="border: 2px dashed #8BC34A; border-radius: 10px; padding: 30px; text-align: center; background: #f9fff4; cursor: pointer; transition: all 0.2s; margin-bottom: 12px;"
+           ondragover="event.preventDefault(); this.style.background='#e8f5e9'; this.style.borderColor='#558B2F';"
+           ondragleave="this.style.background='#f9fff4'; this.style.borderColor='#8BC34A';"
+           ondrop="handleDrop(event)"
+           onclick="document.getElementById('csvFile').click()">
+        <div style="font-size: 36px; margin-bottom: 8px;">📂</div>
+        <div style="font-size: 15px; font-weight: 500; color: #2C2C2C;">Arrastra archivos CSV aquí o haz clic para seleccionar</div>
+        <div class="muted" style="margin-top: 4px;">Puedes seleccionar múltiples archivos a la vez</div>
+        <div class="muted" style="margin-top: 4px; color: #ff9800;">Re-importar un archivo actualiza los datos existentes (no duplica)</div>
       </div>
-      <div id="importMsg" class="muted" style="margin-top: 8px;"></div>
+      <input type="file" id="csvFile" accept=".csv,.txt" multiple style="display: none;" onchange="handleFileSelect(this.files)" />
+      <div id="fileList" style="margin: 8px 0;"></div>
+      <div style="display: flex; gap: 8px; align-items: center;">
+        <button id="importBtn" onclick="importAllFiles()" disabled style="opacity: 0.5;">📤 Importar archivos</button>
+        <button class="secondary" id="clearBtn" onclick="clearFiles()" style="display: none;">Limpiar</button>
+        <span id="importProgress" class="muted"></span>
+      </div>
+      <div id="importResults" style="margin-top: 12px;"></div>
+    </div>
+
+    <div class="card">
+      <h3>Últimas cargas</h3>
+      <div id="cargasRecientes">
+        <div class="muted">Cargando...</div>
+      </div>
     </div>
 
     <div class="card">
       <h3>Mis proyectos</h3>
       <div id="proyectosContainer" style="min-height: 200px;">
         <div class="muted">Cargando...</div>
-      </div>
-    </div>
-
-    <div class="card">
-      <h3>Historial de cargas</h3>
-      <div class="row">
-        <select id="filtroProyectoCarga" onchange="loadCargas()">
-          <option value="">Todos los proyectos</option>
-        </select>
-      </div>
-      <div style="overflow-x: auto;">
-        <table id="cargasTable">
-          <thead>
-            <tr>
-              <th>Proyecto</th>
-              <th>Usuario</th>
-              <th>Fecha</th>
-              <th>Versión</th>
-              <th>Barras cargadas</th>
-              <th>Acciones</th>
-            </tr>
-          </thead>
-          <tbody id="cargasBody">
-            <tr><td colspan="6" class="muted">Cargando...</td></tr>
-          </tbody>
-        </table>
       </div>
     </div>
   </div>
@@ -801,43 +795,144 @@ async function loadFilters() {
   fillSelect('ciclo', data.ciclos);
 }
 
-async function importCSV() {
-  const fileInput = document.getElementById('csvFile');
-  const msg = document.getElementById('importMsg');
-  
-  if (!fileInput.files.length) {
-    msg.textContent = "Selecciona un archivo en formato CSV";
+// ========================= MULTI-FILE IMPORT =========================
+let pendingFiles = [];
+
+function handleDrop(e) {
+  e.preventDefault();
+  e.currentTarget.style.background = '#f9fff4';
+  e.currentTarget.style.borderColor = '#8BC34A';
+  const files = Array.from(e.dataTransfer.files).filter(f => f.name.endsWith('.csv') || f.name.endsWith('.txt'));
+  if (files.length === 0) { alert('Solo se aceptan archivos CSV (.csv o .txt)'); return; }
+  addFiles(files);
+}
+
+function handleFileSelect(fileList) {
+  addFiles(Array.from(fileList));
+}
+
+function addFiles(files) {
+  files.forEach(f => {
+    if (!pendingFiles.find(p => p.name === f.name && p.size === f.size)) {
+      pendingFiles.push(f);
+    }
+  });
+  renderFileList();
+}
+
+function renderFileList() {
+  const el = document.getElementById('fileList');
+  const btn = document.getElementById('importBtn');
+  const clearBtn = document.getElementById('clearBtn');
+  if (pendingFiles.length === 0) {
+    el.innerHTML = '';
+    btn.disabled = true; btn.style.opacity = '0.5';
+    clearBtn.style.display = 'none';
     return;
   }
-  
-  msg.textContent = "Importando...";
-  await setGlobalStatus("Cargando archivo...", "warn");
-  
-  const data = await apiPostFile('/import/armadetailer', fileInput.files[0]);
-  if (!data) {
-    await setGlobalStatus("Sesión expirada", "err");
-    return;
+  btn.disabled = false; btn.style.opacity = '1';
+  clearBtn.style.display = '';
+  el.innerHTML = pendingFiles.map((f, i) => `
+    <div style="display:flex; align-items:center; gap:8px; padding:4px 8px; background:#f5f5f5; border-radius:4px; margin:4px 0; font-size:13px;">
+      <span>📄 ${f.name}</span>
+      <span class="muted">(${(f.size/1024).toFixed(1)} KB)</span>
+      <button class="secondary" style="padding:2px 8px; font-size:11px;" onclick="removeFile(${i})">✕</button>
+    </div>
+  `).join('');
+}
+
+function removeFile(idx) {
+  pendingFiles.splice(idx, 1);
+  renderFileList();
+}
+
+function clearFiles() {
+  pendingFiles = [];
+  document.getElementById('csvFile').value = '';
+  document.getElementById('importResults').innerHTML = '';
+  document.getElementById('importProgress').textContent = '';
+  renderFileList();
+}
+
+async function importAllFiles() {
+  if (pendingFiles.length === 0) return;
+  const btn = document.getElementById('importBtn');
+  const progress = document.getElementById('importProgress');
+  const results = document.getElementById('importResults');
+  btn.disabled = true; btn.style.opacity = '0.5';
+  results.innerHTML = '';
+  const total = pendingFiles.length;
+  let successCount = 0;
+  let errorCount = 0;
+
+  for (let i = 0; i < total; i++) {
+    const f = pendingFiles[i];
+    progress.textContent = `Importando ${i+1} de ${total}: ${f.name}...`;
+    await setGlobalStatus(`Importando archivo ${i+1}/${total}...`, 'warn');
+
+    const data = await apiPostFile('/import/armadetailer', f);
+
+    if (!data) {
+      results.innerHTML += `<div class="status-err" style="padding:4px 0; font-size:13px;">❌ ${f.name}: sesión expirada</div>`;
+      errorCount++;
+      continue;
+    }
+    if (data.ok === false) {
+      results.innerHTML += `<div class="status-err" style="padding:4px 0; font-size:13px;">❌ ${f.name}: ${data.error || 'Error desconocido'}</div>`;
+      errorCount++;
+      continue;
+    }
+
+    const kilosText = data.kilos ? ` — ${Math.round(data.kilos).toLocaleString()} kg` : '';
+    results.innerHTML += `<div class="status-ok" style="padding:4px 0; font-size:13px;">✅ ${f.name}: ${data.rows_upserted} barras (${data.proyecto})${kilosText}</div>`;
+    successCount++;
   }
-  
-  if (data.ok === false) {
-    msg.textContent = "Error: " + (data.error || JSON.stringify(data));
-    await setGlobalStatus("Error importando CSV", "err");
-    return;
-  }
-  
-  msg.innerHTML = `✅ ${data.proyecto}: ${data.rows_upserted} barras importadas`;
-  await setGlobalStatus("Importación exitosa", "ok");
-  fileInput.value = '';
-  
+
+  progress.textContent = `Listo: ${successCount} exitosos, ${errorCount} con error`;
+  await setGlobalStatus(`Importación completa: ${successCount}/${total} archivos`, successCount === total ? 'ok' : 'warn');
+
+  pendingFiles = [];
+  document.getElementById('csvFile').value = '';
+  renderFileList();
+
+  await loadCargas();
   await loadProyectos();
   await loadFilters();
+  await loadInicio();
   await loadDashboard('sector');
 }
 
-// ========================= CARGAS (PLACEHOLDER) =========================
+// ========================= CARGAS RECIENTES =========================
 async function loadCargas() {
-  const tbody = document.getElementById('cargasBody');
-  tbody.innerHTML = '<tr><td colspan="6" class="muted">Funcionalidad en desarrollo</td></tr>';
+  const container = document.getElementById('cargasRecientes');
+  const data = await apiGet('/cargas/recientes?limit=5');
+  if (!data) { container.innerHTML = '<div class="muted">Error cargando historial</div>'; return; }
+  if (!data.cargas || data.cargas.length === 0) {
+    container.innerHTML = '<div class="muted">No hay cargas registradas</div>';
+    return;
+  }
+  container.innerHTML = `
+    <table style="width:100%;">
+      <thead><tr>
+        <th>Proyecto</th><th>Archivo</th><th>Barras</th><th>Kilos</th><th>Usuario</th><th>Fecha</th>
+      </tr></thead>
+      <tbody>${data.cargas.map(c => {
+        let fecha = '';
+        if (c.fecha) {
+          const d = new Date(c.fecha);
+          fecha = d.toLocaleDateString('es-CL') + ' ' + d.toLocaleTimeString('es-CL', {hour:'2-digit', minute:'2-digit'});
+        }
+        return `<tr>
+          <td><strong>${c.nombre_proyecto || c.id_proyecto}</strong></td>
+          <td class="muted">${c.archivo || '-'}</td>
+          <td>${c.barras_count}</td>
+          <td>${Math.round(c.kilos || 0).toLocaleString()} kg</td>
+          <td class="muted">${c.usuario}</td>
+          <td class="muted">${fecha}</td>
+        </tr>`;
+      }).join('')}</tbody>
+    </table>
+  `;
 }
 
 // ========================= BUSCAR BARRAS =========================

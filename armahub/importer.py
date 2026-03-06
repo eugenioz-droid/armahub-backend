@@ -150,8 +150,28 @@ async def import_armadetailer(file: UploadFile = File(...), user=Depends(get_cur
         fecha_carga=EXCLUDED.fecha_carga
     """
 
+    total_kilos = sum(r[15] for r in rows_to_upsert if r[15] is not None)
+
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.executemany(upsert_sql, rows_to_upsert)
+            # Registrar en historial de importaciones
+            cur.execute("""
+                INSERT INTO imports (id_proyecto, nombre_proyecto, usuario, archivo, fecha, barras_count, kilos)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+            """, (
+                proyecto_id,
+                proyecto_nombre,
+                user.get("email", "unknown"),
+                file.filename or "sin_nombre.csv",
+                now_iso,
+                len(rows_to_upsert),
+                round(total_kilos, 2),
+            ))
 
-    return {"ok": True, "proyecto": proyecto_nombre, "rows_upserted": len(rows_to_upsert)}
+    return {
+        "ok": True,
+        "proyecto": proyecto_nombre,
+        "rows_upserted": len(rows_to_upsert),
+        "kilos": round(total_kilos, 2),
+    }

@@ -59,13 +59,17 @@ Actualmente el sistema ya cuenta con:
 - Header oscuro (#1a1a1a) con título verde ArmaHub + logo banner Armacero a la derecha
 - Módulo admin.py separado con endpoints /admin/reset-db y /admin/db-info
 
-**Fase 1.6 — Tab Inicio + mejoras Mis Obras**: EN PROGRESO
-- Tab Inicio con KPIs, actividad reciente, resumen proyectos, chart top 5
-- Mis Obras: multi-file upload con drag & drop
-- Mis Obras: feedback visual importación, protección re-import
-- Mis Obras: historial últimas cargas (tabla imports)
+**Fase 1.6 — Tab Inicio**: 
+- Tab Inicio con KPIs, resumen proyectos, chart top 5
+- Endpoint GET /stats
+- Tab Inicio como tab activo por defecto
 
-**Pendiente próximo checkpoint**: Tab Inicio + mejoras importación en Mis Obras
+**Fase 1.7 — Mejoras Mis Obras**: EN PROGRESO
+- Multi-file upload con drag & drop
+- Feedback visual importación, protección re-import
+- Historial últimas cargas (tabla imports)
+
+**Pendiente próximo checkpoint**: Mejoras Mis Obras + sector constructivo en dashboards
 
 ---
 
@@ -168,19 +172,16 @@ ARMAHUB – PROGRAMA DE TRABAJO
 
 2. Nombres legibles en todo el sistema - OK
    - nombre_proyecto y nombre_plano en barras, filtros y dashboards - OK
-   - Migraciones ALTER TABLE automáticas en init_db - OK
-
 3. Panel de administración - OK
    - admin.py: POST /admin/reset-db, GET /admin/db-info - OK
    - UI: reset BD con doble confirmación, crear usuarios - OK
 
-4. Tab Inicio (Landing / Home) - Pendiente
-   - Endpoint GET /stats (KPIs: proyectos, barras, kilos, última carga) - Pendiente
-   - KPI cards en fila superior - Pendiente
-   - Actividad reciente: últimas 5-10 cargas (proyecto, usuario, fecha, barras) - Pendiente
-   - Resumen por proyecto: mini-cards con nombre + kilos - Pendiente
-   - Chart: Top 5 proyectos por kilos (gráfico horizontal Chart.js) - Pendiente
-   - Tab Inicio como tab activo por defecto al entrar - Pendiente
+4. Tab Inicio (Landing / Home) - OK
+   - Endpoint GET /stats (KPIs: proyectos, barras, kilos, última carga) - OK
+   - KPI cards en fila superior - OK
+   - Resumen por proyecto: mini-cards con nombre + kilos - OK
+   - Chart: Top 5 proyectos por kilos (gráfico horizontal Chart.js) - OK
+   - Tab Inicio como tab activo por defecto al entrar - OK
 
 5. Mejoras Mis Obras: importación multi-archivo con drag & drop - Pendiente
    a) Multi-file upload - Pendiente
@@ -201,12 +202,22 @@ ARMAHUB – PROGRAMA DE TRABAJO
       - Endpoint GET /cargas/recientes (últimas N cargas) - Pendiente
       - Tabla compacta debajo del importador con últimas 3 cargas - Pendiente
 
-6. Backend endpoints pendientes de Fase 1
+6. Dashboard: visualización de sectores constructivos - Pendiente
+   - Gráfico agrupado por combinación sector+piso+ciclo (ej: FUND S2 C1, ELEV S2 C1) - Pendiente
+   - Mostrar kilos y cantidad de barras por sector constructivo - Pendiente
+   - Selector o filtro por proyecto para desglose por sector constructivo - Pendiente
+
+7. Detección de proyectos duplicados (distinto ID, mismo nombre) - Pendiente
+   - Al importar, detectar si ya existe un proyecto con el mismo nombre pero diferente ID - Pendiente
+   - Consultar al usuario si desea reasignar al proyecto existente o crear uno nuevo - Pendiente
+   - Endpoint o lógica en importer para merge de proyectos duplicados - Pendiente
+
+8. Backend endpoints pendientes de Fase 1
    - Endpoint DELETE /proyectos/{id} (eliminar obra con cascada) - Pendiente
-   - Endpoint GET /stats (KPIs para tab Inicio) - Pendiente
+   - Endpoint GET /stats (KPIs para tab Inicio) - OK
    - Endpoint GET /cargas/recientes (historial importaciones) - Pendiente
 
-7. Filtros avanzados - Pendiente
+9. Filtros avanzados - Pendiente
    - Filtros dependientes (proyecto → plano → ciclo → piso) - Pendiente
    - Persistencia de filtros en URL o localStorage - Pendiente
 
@@ -214,17 +225,17 @@ ARMAHUB – PROGRAMA DE TRABAJO
 
 ## FASE 2 — Importación robusta y trazabilidad (operación real)
 
-8. Tracking de cargas completo - Pendiente
-   - Tabla "imports" completa con versión, estado, archivo_original - Pendiente
-   - UI: tabla de cargas por obra (quién, cuándo, versión) - Pendiente
-   - Posibilidad recargar/editar versión - Pendiente
+10. Tracking de cargas completo - Pendiente (amplía lo básico de Fase 1)
+    - Tabla "imports" completa con versión, estado, archivo_original - Pendiente
+    - UI: tabla de cargas por obra (quién, cuándo, versión) - Pendiente
+    - Posibilidad recargar/editar versión - Pendiente
 
-9. Validación de datos avanzada - Pendiente
-   - Reporte de filas rechazadas - Pendiente
-   - Normalización de formatos - Pendiente
-   - Advertencias: datos incompletos, duplicados - Pendiente
+11. Validación de datos avanzada - Pendiente
+    - Reporte de filas rechazadas - Pendiente
+    - Normalización de formatos - Pendiente
+    - Advertencias: datos incompletos, duplicados - Pendiente
 
-10. Sistema de migraciones robusto - Pendiente
+12. Sistema de migraciones robusto - Pendiente
     - Mecanismo para actualizar esquema sin perder datos - Pendiente
     - Versionado de migraciones - Pendiente
 
@@ -232,41 +243,49 @@ ARMAHUB – PROGRAMA DE TRABAJO
 
 ## FASE 3 — Export para producción (reemplazo Excel)
 
-11. Definir y documentar formato aSa Studio - Pendiente
-    - Mapear columnas, documentar unidades, crear plantillas - Pendiente
+13. Definir y documentar formato aSa Studio - Pendiente
+    - Mapear columnas por sector constructivo (sector+piso+ciclo) - Pendiente
+    - Documentar unidades, crear plantillas - Pendiente
 
-12. Endpoint de export a EXCEL - Pendiente
+14. Endpoint de export a EXCEL - Pendiente
     - POST /proyectos/{id}/exportar-excel con formato aSa Studio - Pendiente
+    - Agrupación por sector constructivo en la exportación - Pendiente
 
-13. UI para exportación - Pendiente
+15. UI para exportación - Pendiente
     - Tab "Exportación" con selector, vista previa, descarga - Pendiente
 
 ---
 
 ## FASE 4 — Funcionalidades avanzadas y multi-cliente
 
-14. Sistema de pedidos (MVP) - Future
+16. Navegador de sectores constructivos (Mis Obras avanzado) - Future
+    - Navegador por sector+piso+ciclo dentro de cada proyecto - Pendiente
+    - Visualizar ejes contenidos en cada sector constructivo - Pendiente
+    - Herramientas de edición y reasignación de barras entre sectores - Pendiente
+    - Mini-dashboard por sector: kilos, barras, diámetros predominantes - Pendiente
+
+17. Sistema de pedidos (MVP) - Future
     - Tablas "pedidos" y "pedido_items", endpoints CRUD - Pendiente
     - UI Tab "Pedidos": formulario + tabla de items - Pendiente
 
-15. Modelo de datos clientes + permisos - Future
+18. Modelo de datos clientes + permisos - Future
     - Tabla "clientes", relación con proyectos, permisos por rol - Pendiente
 
-16. Separación de UI en módulos - Future
+19. Separación de UI en módulos - Future
     - Dividir ui.py en archivos separados o migrar a frontend SPA - Pendiente
 
-17. Auditoría y logs en panel Admin - Future
+20. Auditoría y logs en panel Admin - Future
     - Registro de acciones, visualización en tab Admin - Pendiente
 
-18. Mis Obras: dashboard diario del cubicador - Future
+21. Mis Obras: dashboard diario del cubicador - Future
     - Sidebar con barras del día, kilos del día, mini-chart semanal - Pendiente
 
 ---
 
 ## FASE 5 — Preparación para Apps
 
-19. API versionada (/api/v1) - Pendiente
-20. CORS para aplicaciones externas - Pendiente
-21. Observabilidad: /health, logs estructurados - Pendiente
-22. Performance: queries optimizadas, pool de conexiones - Pendiente
-23. Bootstrap profesional (solo dev) - Pendiente
+22. API versionada (/api/v1) - Pendiente
+23. CORS para aplicaciones externas - Pendiente
+24. Observabilidad: /health, logs estructurados - Pendiente
+25. Performance: queries optimizadas, pool de conexiones - Pendiente
+26. Bootstrap profesional (solo dev) - Pendiente

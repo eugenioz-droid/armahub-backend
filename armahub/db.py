@@ -119,6 +119,20 @@ def init_db() -> None:
                 END $$;
             """)
 
+            # Tabla de historial de importaciones
+            cur.execute("""
+            CREATE TABLE IF NOT EXISTS imports (
+                id BIGSERIAL PRIMARY KEY,
+                id_proyecto TEXT,
+                nombre_proyecto TEXT,
+                usuario TEXT,
+                archivo TEXT,
+                fecha TEXT,
+                barras_count INTEGER DEFAULT 0,
+                kilos DOUBLE PRECISION DEFAULT 0
+            )
+            """)
+
             # Índices para consultas rápidas (filtros/dashboard)
             cur.execute("CREATE INDEX IF NOT EXISTS idx_barras_proyecto ON barras (id_proyecto)")
             cur.execute("CREATE INDEX IF NOT EXISTS idx_barras_plano ON barras (plano_code)")
@@ -127,6 +141,7 @@ def init_db() -> None:
             cur.execute("CREATE INDEX IF NOT EXISTS idx_barras_ciclo ON barras (ciclo)")
             cur.execute("CREATE INDEX IF NOT EXISTS idx_barras_eje ON barras (eje)")
             cur.execute("CREATE INDEX IF NOT EXISTS idx_barras_fecha ON barras (fecha_carga)")
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_imports_fecha ON imports (fecha)")
 
 
 def reset_database(keep_users: bool = True) -> dict:
@@ -142,7 +157,8 @@ def reset_database(keep_users: bool = True) -> dict:
             summary["barras_eliminadas"] = int(cur.fetchone()[0])
             cur.execute("SELECT COUNT(*) FROM proyectos")
             summary["proyectos_eliminados"] = int(cur.fetchone()[0])
-            # Barras primero por FK
+            # Barras e imports primero por FK
+            cur.execute("DROP TABLE IF EXISTS imports")
             cur.execute("DROP TABLE IF EXISTS barras")
             cur.execute("DROP TABLE IF EXISTS proyectos")
             if not keep_users:
