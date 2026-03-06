@@ -343,7 +343,7 @@ APP_HTML = Template("""
   <!-- Header -->
   <div class="header">
     <div style="display: flex; align-items: center; gap: 12px;">
-      <img src="/static/images/logo-armacero.png" alt="ArmaCero Logo" style="height: 50px; width: auto; max-width: 80px; object-fit: cover; object-position: center;" onerror="this.style.display='none';">
+      <img src="/static/images/logo-armacero.png" alt="ArmaCero Logo" style="height: auto; max-height: 70px; width: auto; object-fit: contain;" onerror="this.style.display='none';">
       <h1 style="margin: 0; color: #2C2C2C; font-size: 24px;">ArmaHub</h1>
     </div>
     <div class="user-info">

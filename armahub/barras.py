@@ -5,7 +5,7 @@ from .auth import get_current_user
 router = APIRouter()
 
 BARRAS_COLUMNS = [
-    "id_unico","id_proyecto","nombre_proyecto","plano_code","nombre_plano","sector","piso","ciclo","eje",
+    "id_unico","id_proyecto","nombre_proyecto","plano_code","sector","piso","ciclo","eje",
     "diam","largo_total","mult","cant","cant_total",
     "peso_unitario","peso_total","version_mod","version_exp","fecha_carga"
 ]
@@ -13,7 +13,7 @@ BARRAS_COLUMNS = [
 ALLOWED_ORDER_BY = {
     "fecha_carga", "peso_total", "peso_unitario", "cant_total",
     "diam", "largo_total",
-    "id_proyecto", "plano_code", "sector", "piso", "ciclo", "eje", "id_unico", "nombre_proyecto", "nombre_plano"
+    "id_proyecto", "plano_code", "sector", "piso", "ciclo", "eje", "id_unico", "nombre_proyecto"
 }
 
 @router.get("/barras")
