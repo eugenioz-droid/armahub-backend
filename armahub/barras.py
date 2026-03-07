@@ -274,6 +274,54 @@ def dashboard(
     }
 
 
+@router.get("/dashboard/sectores")
+def dashboard_sectores(
+    proyecto: str = None,
+    user=Depends(get_current_user),
+):
+    """
+    Agrupa barras por combinación sector+piso+ciclo (sector constructivo).
+    Opcionalmente filtra por proyecto.
+    """
+    where = ""
+    params = []
+    if proyecto:
+        where = "WHERE b.id_proyecto = %s"
+        params.append(proyecto)
+
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(f"""
+                SELECT
+                    COALESCE(b.sector, '?') || ' ' || COALESCE(b.piso, '?') || ' ' || COALESCE(b.ciclo, '?') AS sector_constructivo,
+                    b.sector,
+                    b.piso,
+                    b.ciclo,
+                    COUNT(*) AS barras,
+                    COALESCE(SUM(b.peso_total), 0) AS kilos
+                FROM barras b
+                {where}
+                GROUP BY b.sector, b.piso, b.ciclo
+                ORDER BY b.piso, b.ciclo, b.sector
+            """, params)
+            rows = cur.fetchall()
+
+    return {
+        "proyecto": proyecto,
+        "items": [
+            {
+                "sector_constructivo": r[0],
+                "sector": r[1],
+                "piso": r[2],
+                "ciclo": r[3],
+                "barras": int(r[4]),
+                "kilos": round(float(r[5]), 2),
+            }
+            for r in rows
+        ],
+    }
+
+
 @router.get("/proyectos")
 def get_proyectos(user=Depends(get_current_user)):
     """

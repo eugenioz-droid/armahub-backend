@@ -597,6 +597,33 @@ APP_HTML = Template("""
         <canvas id="dashChart"></canvas>
       </div>
     </div>
+
+    <div class="card">
+      <h3>Sectores constructivos (sector + piso + ciclo)</h3>
+      <div class="row" style="margin-bottom: 12px;">
+        <select id="sectorProyectoFilter" onchange="loadSectores()">
+          <option value="">Todos los proyectos</option>
+        </select>
+      </div>
+      <div id="sectoresTotals" class="muted" style="margin-bottom: 8px;"></div>
+      <div style="overflow-x: auto; max-height: 400px;">
+        <table id="sectoresTable" style="width: 100%;">
+          <thead>
+            <tr>
+              <th>Sector constructivo</th>
+              <th style="text-align:right;">Barras</th>
+              <th style="text-align:right;">Kilos</th>
+            </tr>
+          </thead>
+          <tbody id="sectoresBody">
+            <tr><td colspan="3" class="muted">Cargando...</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div style="height: 320px; margin-top: 16px;">
+        <canvas id="sectoresChart"></canvas>
+      </div>
+    </div>
   </div>
 
   <!-- TAB 4: PEDIDOS (Future MVP) -->
@@ -763,6 +790,13 @@ async function loadProyectos() {
       </div>
     </div>
   `).join('');
+
+  // Populate sector constructivo project filter
+  const spf = document.getElementById('sectorProyectoFilter');
+  const prev = spf.value;
+  spf.innerHTML = '<option value="">Todos los proyectos</option>' +
+    data.proyectos.map(p => `<option value="${p.id_proyecto}">${p.nombre_proyecto}</option>`).join('');
+  if (prev) spf.value = prev;
 }
 
 async function loadFilters() {
@@ -1065,6 +1099,67 @@ async function loadDashboard(groupBy) {
   await setGlobalStatus("Gráfico actualizado", "ok");
 }
 
+// ========================= SECTORES CONSTRUCTIVOS =========================
+let sectoresChart = null;
+
+async function loadSectores() {
+  const sel = document.getElementById('sectorProyectoFilter');
+  const proy = sel.value;
+  let url = '/dashboard/sectores';
+  if (proy) url += '?proyecto=' + encodeURIComponent(proy);
+
+  const data = await apiGet(url);
+  if (!data) return;
+
+  const tbody = document.getElementById('sectoresBody');
+  const totals = document.getElementById('sectoresTotals');
+
+  if (!data.items || data.items.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="3" class="muted">Sin datos de sectores</td></tr>';
+    totals.textContent = '';
+    if (sectoresChart) { sectoresChart.destroy(); sectoresChart = null; }
+    return;
+  }
+
+  const totalBarras = data.items.reduce((s, i) => s + i.barras, 0);
+  const totalKilos = data.items.reduce((s, i) => s + i.kilos, 0);
+  totals.textContent = `${data.items.length} sectores — ${totalBarras.toLocaleString()} barras — ${Math.round(totalKilos).toLocaleString()} kg`;
+
+  tbody.innerHTML = data.items.map(i => `
+    <tr>
+      <td><strong>${i.sector_constructivo}</strong></td>
+      <td style="text-align:right;">${i.barras.toLocaleString()}</td>
+      <td style="text-align:right;">${Math.round(i.kilos).toLocaleString()} kg</td>
+    </tr>
+  `).join('');
+
+  // Chart
+  const labels = data.items.map(i => i.sector_constructivo);
+  const kilosData = data.items.map(i => i.kilos);
+  const barrasData = data.items.map(i => i.barras);
+  const ctx = document.getElementById('sectoresChart').getContext('2d');
+  if (sectoresChart) sectoresChart.destroy();
+  sectoresChart = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [
+        { label: 'Kilos', data: kilosData, backgroundColor: '#8BC34A', borderRadius: 3, yAxisID: 'y' },
+        { label: 'Barras', data: barrasData, backgroundColor: '#42A5F5', borderRadius: 3, yAxisID: 'y1' }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { position: 'top' } },
+      scales: {
+        y: { type: 'linear', position: 'left', title: { display: true, text: 'Kilos' }, ticks: { callback: v => v.toLocaleString() } },
+        y1: { type: 'linear', position: 'right', title: { display: true, text: 'Barras' }, grid: { drawOnChartArea: false } }
+      }
+    }
+  });
+}
+
 // ========================= INICIO (Landing) =========================
 let inicioChart = null;
 
@@ -1226,6 +1321,7 @@ async function createUser() {
   await loadFilters();
   await loadCargas();
   await loadDashboard('sector');
+  await loadSectores();
   await buscar(true);
 })();
 </script>

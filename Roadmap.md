@@ -64,7 +64,7 @@ Actualmente el sistema ya cuenta con:
 - Endpoint GET /stats
 - Tab Inicio como tab activo por defecto
 
-**Fase 1.7 — Mejoras Mis Obras**: EN PROGRESO
+**Fase 1.7 — Mejoras Mis Obras**: 
 - Multi-file upload con drag & drop
 - Feedback visual importación, protección re-import
 - Historial últimas cargas (tabla imports)
@@ -152,7 +152,7 @@ El sistema tiene **pestañas horizontales** con acceso diferenciado por rol:
 
 ARMAHUB – PROGRAMA DE TRABAJO
 
-## FASE 0 — Preparación de datos ✅ COMPLETADA
+## FASE 0 — Preparación de datos 
 
 0. Extracción de nombres de proyectos y planos desde CSV - OK
    - Tabla proyectos con mapeo id_proyecto → nombre_proyecto - OK
@@ -183,24 +183,24 @@ ARMAHUB – PROGRAMA DE TRABAJO
    - Chart: Top 5 proyectos por kilos (gráfico horizontal Chart.js) - OK
    - Tab Inicio como tab activo por defecto al entrar - OK
 
-5. Mejoras Mis Obras: importación multi-archivo con drag & drop - Pendiente
-   a) Multi-file upload - Pendiente
-      - Input file con atributo multiple para seleccionar varios CSV - Pendiente
-      - Zona de drag & drop visual (borde punteado, icono, texto "arrastra archivos aquí") - Pendiente
-      - Importación secuencial automática de todos los archivos seleccionados - Pendiente
-      - Barra de progreso o contador (archivo 1/5, 2/5, etc.) - Pendiente
-   b) Feedback visual en importación - Pendiente
-      - Spinner/loading durante carga, botón deshabilitado - Pendiente
-      - Mensaje éxito con resumen (proyecto, barras importadas, kilos) - Pendiente
-      - Mensaje error claro si falla, con detalle del archivo - Pendiente
-      - Limpiar input file después de importar exitosamente - Pendiente
-   c) Protección contra re-importación - Pendiente
-      - Nota: el backend ya usa UPSERT (ON CONFLICT DO UPDATE), no duplica datos - Pendiente
-      - Informar al usuario que re-importar actualiza los datos existentes - Pendiente
-   d) Historial de últimas cargas - Pendiente
-      - Tabla "imports" en BD (id, id_proyecto, usuario, fecha, archivo, barras_count, kilos) - Pendiente
-      - Endpoint GET /cargas/recientes (últimas N cargas) - Pendiente
-      - Tabla compacta debajo del importador con últimas 3 cargas - Pendiente
+5. Mejoras Mis Obras: importación multi-archivo con drag & drop - OK
+   a) Multi-file upload - OK
+      - Input file con atributo multiple para seleccionar varios CSV - OK
+      - Zona de drag & drop visual (borde punteado, icono, texto "arrastra archivos aquí") - OK
+      - Importación secuencial automática de todos los archivos seleccionados - OK
+      - Barra de progreso o contador (archivo 1/5, 2/5, etc.) - OK
+   b) Feedback visual en importación - OK
+      - Spinner/loading durante carga, botón deshabilitado - OK
+      - Mensaje éxito con resumen (proyecto, barras importadas, kilos) - OK
+      - Mensaje error claro si falla, con detalle del archivo - OK
+      - Limpiar input file después de importar exitosamente - OK
+   c) Protección contra re-importación - OK
+      - Nota: el backend ya usa UPSERT (ON CONFLICT DO UPDATE), no duplica datos - OK
+      - Informar al usuario que re-importar actualiza los datos existentes - OK
+   d) Historial de últimas cargas - OK
+      - Tabla "imports" en BD (id, id_proyecto, usuario, fecha, archivo, barras_count, kilos) - OK
+      - Endpoint GET /cargas/recientes (últimas N cargas) - OK
+      - Tabla compacta debajo del importador con últimas 3 cargas - OK
 
 6. Dashboard: visualización de sectores constructivos - Pendiente
    - Gráfico agrupado por combinación sector+piso+ciclo (ej: FUND S2 C1, ELEV S2 C1) - Pendiente
@@ -215,7 +215,7 @@ ARMAHUB – PROGRAMA DE TRABAJO
 8. Backend endpoints pendientes de Fase 1
    - Endpoint DELETE /proyectos/{id} (eliminar obra con cascada) - Pendiente
    - Endpoint GET /stats (KPIs para tab Inicio) - OK
-   - Endpoint GET /cargas/recientes (historial importaciones) - Pendiente
+   - Endpoint GET /cargas/recientes (historial importaciones) - OK
 
 9. Filtros avanzados - Pendiente
    - Filtros dependientes (proyecto → plano → ciclo → piso) - Pendiente
