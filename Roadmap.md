@@ -80,7 +80,19 @@ Actualmente el sistema ya cuenta con:
 - Heatmap de kilos por celda, selector de proyecto
 - Detección de proyectos duplicados al importar (reasignar / forzar)
 
-**Pendiente próximo checkpoint**: Filtros avanzados + endpoints pendientes
+**Fase 1.10 — Administración de Obras**: ✅
+- Crear obra manualmente (sin CSV)
+- Eliminar obra con cascada
+- Mover barras masivamente entre proyectos
+- Renombrar obra / editar metadatos
+
+**Fase 1.11 — KPIs avanzados (métricas Detailer)**: ✅
+- Peso Promedio Barra (PPB)
+- Peso Promedio Item (PPI)
+- Diámetro Promedio
+- Integrar en Tab Inicio y Dashboards
+
+**Pendiente próximo checkpoint**: Filtros avanzados + Fase 2
 
 ---
 
@@ -226,39 +238,63 @@ ARMAHUB – PROGRAMA DE TRABAJO
    - Fundaciones solo en piso base - OK
    - Cada celda muestra kilos + barras del sector constructivo correspondiente - OK
    - Selector de proyecto obligatorio para la matriz - OK
-   - Colores de intensidad según kilos (heatmap verde) - OK
-   - Leyenda de intensidad - OK
-   - Separador verde entre pisos - OK
+   - Diseño tipo edificio: grises hormigón, sin espacios, pisos alternados - OK
+   - Leyenda de intensidad (gris claro → gris oscuro) - OK
+   - Separador fino entre pisos - OK
 
 7. Detección de proyectos duplicados (distinto ID, mismo nombre) - OK
    - Al importar, detectar si ya existe un proyecto con el mismo nombre pero diferente ID - OK
    - Consultar al usuario si desea reasignar al proyecto existente o crear uno nuevo - OK
    - Parámetros reasignar_a y forzar en POST /import/armadetailer - OK
 
-8. Backend endpoints pendientes de Fase 1
-   - Endpoint DELETE /proyectos/{id} (eliminar obra con cascada) - Pendiente
-   - Endpoint GET /stats (KPIs para tab Inicio) - OK
-   - Endpoint GET /cargas/recientes (historial importaciones) - OK
+8. Administración de Obras - OK
+   a) Crear obra manualmente (sin CSV) - OK
+      - Endpoint POST /proyectos (nombre, descripción) - OK
+      - UI: formulario en Mis Obras para crear obra vacía - OK
+   b) Eliminar obra con cascada - OK
+      - Endpoint DELETE /proyectos/{id} (elimina barras + imports asociados) - OK
+      - UI: botón eliminar en tarjeta de obra con doble confirmación (confirm + texto ELIMINAR) - OK
+   c) Mover barras masivamente entre proyectos - OK
+      - Endpoint POST /proyectos/{id}/mover-barras (body: {destino, sector, piso, ciclo}) - OK
+      - UI: selector origen → destino con filtros opcionales - OK
+   d) Editar metadatos de obra - OK
+      - Endpoint PATCH /proyectos/{id} (nombre, descripción) - OK
+      - UI: prompt de renombrar desde tarjeta de obra - OK
+      - Migración: columna descripcion en tabla proyectos - OK
 
-9. Filtros avanzados - Pendiente
-   - Filtros dependientes (proyecto → plano → ciclo → piso) - Pendiente
-   - Persistencia de filtros en URL o localStorage - Pendiente
+9. KPIs avanzados (métricas Detailer) - OK
+   - Peso Promedio Barra (PPB = kilos totales / cant barras) - OK
+   - Peso Promedio Item (PPI = kilos totales / cant items únicos) - OK
+   - Diámetro Promedio (ponderado por peso) - OK
+   - Mostrar en Tab Inicio como KPI cards adicionales - OK
+   - Endpoint GET /stats devuelve ppb, ppi, diam_promedio, total_items - OK
+
+10. Buscadores contextuales (lupas) en secciones con mucha data - OK
+    - Buscar proyecto en selector de sectores constructivos (lupa + typeahead) - OK
+    - Buscar proyecto en selector de matriz constructiva (lupa + typeahead) - OK
+    - Función filterProjectSelect reutilizable para cualquier selector - OK
+    - Buscar en tabla de barras (ya existe búsqueda rápida) - OK
+    - Evaluar caso por caso qué campo buscar (proyecto, sector, etc.) - Pendiente
+
+11. Filtros avanzados - Pendiente
+    - Filtros dependientes (proyecto → plano → ciclo → piso) - Pendiente
+    - Persistencia de filtros en URL o localStorage - Pendiente
 
 ---
 
 ## FASE 2 — Importación robusta y trazabilidad (operación real)
 
-10. Tracking de cargas completo - Pendiente (amplía lo básico de Fase 1)
+12. Tracking de cargas completo - Pendiente (amplía lo básico de Fase 1)
     - Tabla "imports" completa con versión, estado, archivo_original - Pendiente
     - UI: tabla de cargas por obra (quién, cuándo, versión) - Pendiente
     - Posibilidad recargar/editar versión - Pendiente
 
-11. Validación de datos avanzada - Pendiente
+13. Validación de datos avanzada - Pendiente
     - Reporte de filas rechazadas - Pendiente
     - Normalización de formatos - Pendiente
     - Advertencias: datos incompletos, duplicados - Pendiente
 
-12. Sistema de migraciones robusto - Pendiente
+14. Sistema de migraciones robusto - Pendiente
     - Mecanismo para actualizar esquema sin perder datos - Pendiente
     - Versionado de migraciones - Pendiente
 

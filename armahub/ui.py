@@ -435,6 +435,24 @@ APP_HTML = Template("""
         <div class="kpi-value" id="kpiUltimaCarga" style="font-size:18px;">—</div>
       </div>
     </div>
+    <div class="kpi-row" style="margin-top: 8px;">
+      <div class="kpi-card" style="border-top: 3px solid #8BC34A;">
+        <div class="kpi-label">PPB (Peso Prom. Barra)</div>
+        <div class="kpi-value" id="kpiPPB" style="font-size:20px;">—</div>
+      </div>
+      <div class="kpi-card" style="border-top: 3px solid #558B2F;">
+        <div class="kpi-label">PPI (Peso Prom. Item)</div>
+        <div class="kpi-value" id="kpiPPI" style="font-size:20px;">—</div>
+      </div>
+      <div class="kpi-card" style="border-top: 3px solid #33691E;">
+        <div class="kpi-label">Diámetro Promedio</div>
+        <div class="kpi-value" id="kpiDiam" style="font-size:20px;">—</div>
+      </div>
+      <div class="kpi-card" style="border-top: 3px solid #9E9E9E;">
+        <div class="kpi-label">Items únicos</div>
+        <div class="kpi-value" id="kpiItems">—</div>
+      </div>
+    </div>
 
     <div class="inicio-grid">
       <div>
@@ -488,10 +506,54 @@ APP_HTML = Template("""
     </div>
 
     <div class="card">
+      <h3>Crear obra manualmente</h3>
+      <div class="row" style="gap: 8px; align-items: flex-end;">
+        <div class="col">
+          <label style="font-size: 12px; color: #666;">Nombre de la obra</label>
+          <input type="text" id="newObraName" placeholder="Ej: Edificio Central - Torre A" style="width: 100%;" />
+        </div>
+        <div>
+          <button onclick="crearObra()">+ Crear obra</button>
+        </div>
+      </div>
+      <div id="crearObraMsg" style="margin-top: 8px;"></div>
+    </div>
+
+    <div class="card">
       <h3>Mis proyectos</h3>
       <div id="proyectosContainer" style="min-height: 200px;">
         <div class="muted">Cargando...</div>
       </div>
+    </div>
+
+    <div class="card" id="moverBarrasCard" style="display: none;">
+      <h3>Mover barras entre proyectos</h3>
+      <div class="row" style="gap: 8px; align-items: flex-end; flex-wrap: wrap;">
+        <div class="col">
+          <label style="font-size: 12px; color: #666;">Origen</label>
+          <select id="moverOrigen"></select>
+        </div>
+        <div class="col">
+          <label style="font-size: 12px; color: #666;">Destino</label>
+          <select id="moverDestino"></select>
+        </div>
+        <div class="col">
+          <label style="font-size: 12px; color: #666;">Sector (opcional)</label>
+          <input type="text" id="moverSector" placeholder="Ej: ELEV" />
+        </div>
+        <div class="col">
+          <label style="font-size: 12px; color: #666;">Piso (opcional)</label>
+          <input type="text" id="moverPiso" placeholder="Ej: P1" />
+        </div>
+        <div class="col">
+          <label style="font-size: 12px; color: #666;">Ciclo (opcional)</label>
+          <input type="text" id="moverCiclo" placeholder="Ej: C1" />
+        </div>
+      </div>
+      <div style="margin-top: 8px;">
+        <button onclick="moverBarras()">Mover barras</button>
+      </div>
+      <div id="moverBarrasMsg" style="margin-top: 8px;"></div>
     </div>
   </div>
 
@@ -600,8 +662,12 @@ APP_HTML = Template("""
 
     <div class="card">
       <h3>Sectores constructivos (sector + piso + ciclo)</h3>
-      <div class="row" style="margin-bottom: 12px;">
-        <select id="sectorProyectoFilter" onchange="loadSectores()">
+      <div class="row" style="margin-bottom: 12px; gap: 8px; align-items: center;">
+        <div style="position:relative; flex:1; max-width:280px;">
+          <span style="position:absolute; left:8px; top:50%; transform:translateY(-50%); font-size:14px; color:#999; pointer-events:none;">🔍</span>
+          <input type="text" id="sectorSearchInput" placeholder="Buscar proyecto..." oninput="filterProjectSelect('sectorSearchInput','sectorProyectoFilter')" style="padding-left:30px; width:100%; font-size:13px;" />
+        </div>
+        <select id="sectorProyectoFilter" onchange="loadSectores()" style="flex:1;">
           <option value="">Todos los proyectos</option>
         </select>
       </div>
@@ -627,8 +693,12 @@ APP_HTML = Template("""
 
     <div class="card">
       <h3>Matriz constructiva (vista edificio)</h3>
-      <div class="row" style="margin-bottom: 12px;">
-        <select id="matrizProyectoFilter" onchange="loadMatriz()">
+      <div class="row" style="margin-bottom: 12px; gap: 8px; align-items: center;">
+        <div style="position:relative; flex:1; max-width:280px;">
+          <span style="position:absolute; left:8px; top:50%; transform:translateY(-50%); font-size:14px; color:#999; pointer-events:none;">🔍</span>
+          <input type="text" id="matrizSearchInput" placeholder="Buscar proyecto..." oninput="filterProjectSelect('matrizSearchInput','matrizProyectoFilter')" style="padding-left:30px; width:100%; font-size:13px;" />
+        </div>
+        <select id="matrizProyectoFilter" onchange="loadMatriz()" style="flex:1;">
           <option value="">— Selecciona un proyecto —</option>
         </select>
       </div>
@@ -752,6 +822,27 @@ async function setGlobalStatus(text, kind = 'info') {
   el.textContent = text || '';
 }
 
+// Typeahead filter: filters <select> options by text typed in a search input
+function filterProjectSelect(inputId, selectId) {
+  const q = document.getElementById(inputId).value.toLowerCase().trim();
+  const sel = document.getElementById(selectId);
+  for (let i = 0; i < sel.options.length; i++) {
+    const opt = sel.options[i];
+    if (i === 0) { opt.style.display = ''; continue; } // always show first (placeholder)
+    opt.style.display = opt.textContent.toLowerCase().includes(q) ? '' : 'none';
+  }
+  // If current selection is hidden, reset to first option
+  if (sel.selectedIndex > 0 && sel.options[sel.selectedIndex].style.display === 'none') {
+    sel.selectedIndex = 0;
+  }
+  // If only one visible option (besides placeholder), auto-select it
+  const visible = Array.from(sel.options).filter((o, i) => i > 0 && o.style.display !== 'none');
+  if (visible.length === 1) {
+    visible[0].selected = true;
+    sel.dispatchEvent(new Event('change'));
+  }
+}
+
 function switchTab(tabName) {
   document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
@@ -790,14 +881,16 @@ async function loadProyectos() {
     <div class="card" style="margin: 12px 0; padding: 16px; border-left: 4px solid #8BC34A;">
       <div style="display: flex; justify-content: space-between; align-items: start;">
         <div>
-          <h4 style="margin: 0 0 8px 0;">${p.nombre_proyecto}</h4>
+          <h4 style="margin: 0 0 8px 0;" id="pname-${p.id_proyecto}">${p.nombre_proyecto}</h4>
           <div class="muted">
             <span class="badge">${p.total_kilos.toFixed(0)} kg</span>
             <span class="badge">${p.total_barras} barras</span>
+            <span class="muted" style="font-size:11px; margin-left:8px;">ID: ${p.id_proyecto}</span>
           </div>
         </div>
-        <div style="text-align: right;">
-          <button class="secondary" onclick="viewProyecto('${p.id_proyecto}')">Ver detalles</button>
+        <div style="display: flex; gap: 6px; align-items: center;">
+          <button class="secondary" style="font-size:12px; padding:4px 10px;" onclick="editarObra('${p.id_proyecto}', '${p.nombre_proyecto.replace(/'/g, "\\'")}')">Renombrar</button>
+          <button class="secondary" style="font-size:12px; padding:4px 10px; color:#b42318; border-color:#b42318;" onclick="eliminarObra('${p.id_proyecto}', '${p.nombre_proyecto.replace(/'/g, "\\'")}', ${p.total_barras})">Eliminar</button>
         </div>
       </div>
     </div>
@@ -816,6 +909,114 @@ async function loadProyectos() {
   mpf.innerHTML = '<option value="">\u2014 Selecciona un proyecto \u2014</option>' +
     data.proyectos.map(p => `<option value="${p.id_proyecto}">${p.nombre_proyecto}</option>`).join('');
   if (prevM) mpf.value = prevM;
+
+  // Populate mover barras selectors & show card if >1 project
+  const opts = data.proyectos.map(p => `<option value="${p.id_proyecto}">${p.nombre_proyecto}</option>`).join('');
+  document.getElementById('moverOrigen').innerHTML = opts;
+  document.getElementById('moverDestino').innerHTML = opts;
+  document.getElementById('moverBarrasCard').style.display = data.proyectos.length > 1 ? '' : 'none';
+}
+
+// ========================= ADMIN OBRAS =========================
+async function crearObra() {
+  const name = document.getElementById('newObraName').value.trim();
+  const msg = document.getElementById('crearObraMsg');
+  if (!name) { msg.innerHTML = '<span class="status-err">Ingresa un nombre para la obra</span>'; return; }
+  msg.innerHTML = '<span class="muted">Creando...</span>';
+  const res = await fetch('/proyectos', {
+    method: 'POST',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ nombre_proyecto: name })
+  });
+  if (res.status === 401) { logout(); return; }
+  const data = await res.json();
+  if (data.ok) {
+    msg.innerHTML = '<span class="status-ok">Obra creada: ' + data.nombre_proyecto + ' (ID: ' + data.id_proyecto + ')</span>';
+    document.getElementById('newObraName').value = '';
+    await loadProyectos();
+    await loadFilters();
+    await loadInicio();
+  } else {
+    msg.innerHTML = '<span class="status-err">Error: ' + (data.detail || data.error || 'desconocido') + '</span>';
+  }
+}
+
+async function editarObra(id, nombreActual) {
+  const nuevo = prompt('Nuevo nombre para la obra:', nombreActual);
+  if (!nuevo || nuevo.trim() === '' || nuevo.trim() === nombreActual) return;
+  const res = await fetch('/proyectos/' + encodeURIComponent(id), {
+    method: 'PATCH',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ nombre_proyecto: nuevo.trim() })
+  });
+  if (res.status === 401) { logout(); return; }
+  const data = await res.json();
+  if (data.ok) {
+    await setGlobalStatus('Obra renombrada: ' + nuevo.trim(), 'ok');
+    await loadProyectos();
+    await loadFilters();
+    await loadInicio();
+  } else {
+    alert('Error: ' + (data.detail || 'desconocido'));
+  }
+}
+
+async function eliminarObra(id, nombre, barrasCount) {
+  const msg = barrasCount > 0
+    ? 'Se eliminarán ' + barrasCount + ' barras asociadas a "' + nombre + '". Esta acción no se puede deshacer.'
+    : 'Se eliminará la obra "' + nombre + '" (sin barras). Esta acción no se puede deshacer.';
+  if (!confirm(msg)) return;
+  const confirmText = prompt('Escribe ELIMINAR para confirmar:');
+  if (confirmText !== 'ELIMINAR') { alert('Cancelado'); return; }
+  const res = await fetch('/proyectos/' + encodeURIComponent(id), {
+    method: 'DELETE',
+    headers: authHeaders()
+  });
+  if (res.status === 401) { logout(); return; }
+  const data = await res.json();
+  if (data.ok) {
+    await setGlobalStatus('Obra eliminada: ' + nombre + ' (' + data.barras_eliminadas + ' barras)', 'ok');
+    await loadProyectos();
+    await loadFilters();
+    await loadInicio();
+    await loadDashboard('sector');
+    await loadSectores();
+  } else {
+    alert('Error: ' + (data.detail || 'desconocido'));
+  }
+}
+
+async function moverBarras() {
+  const origen = document.getElementById('moverOrigen').value;
+  const destino = document.getElementById('moverDestino').value;
+  const msg = document.getElementById('moverBarrasMsg');
+  if (!origen || !destino) { msg.innerHTML = '<span class="status-err">Selecciona origen y destino</span>'; return; }
+  if (origen === destino) { msg.innerHTML = '<span class="status-err">Origen y destino deben ser diferentes</span>'; return; }
+  const body = { destino_id: destino };
+  const sector = document.getElementById('moverSector').value.trim();
+  const piso = document.getElementById('moverPiso').value.trim();
+  const ciclo = document.getElementById('moverCiclo').value.trim();
+  if (sector) body.sector = sector;
+  if (piso) body.piso = piso;
+  if (ciclo) body.ciclo = ciclo;
+  if (!confirm('Mover barras del proyecto seleccionado al destino. ¿Continuar?')) return;
+  msg.innerHTML = '<span class="muted">Moviendo...</span>';
+  const res = await fetch('/proyectos/' + encodeURIComponent(origen) + '/mover-barras', {
+    method: 'POST',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  if (res.status === 401) { logout(); return; }
+  const data = await res.json();
+  if (data.ok) {
+    msg.innerHTML = '<span class="status-ok">Movidas ' + data.movidas + ' barras</span>';
+    await loadProyectos();
+    await loadFilters();
+    await loadInicio();
+    await loadDashboard('sector');
+  } else {
+    msg.innerHTML = '<span class="status-err">Error: ' + (data.detail || data.message || 'desconocido') + '</span>';
+  }
 }
 
 async function loadFilters() {
@@ -1294,67 +1495,67 @@ async function loadMatriz() {
     return types.length > 0 ? types : ['ELEV']; // fallback
   }
 
-  // Heatmap color function
+  // Heatmap color function — concrete gray scale
   function heatColor(kilos) {
-    if (!kilos || maxKilos === 0) return '#f9f9f9';
+    if (!kilos || maxKilos === 0) return 'transparent';
     const ratio = Math.min(kilos / maxKilos, 1);
-    // From light (#f1f8e9) to intense green (#558B2F)
-    const r = Math.round(241 - ratio * (241 - 85));
-    const g = Math.round(248 - ratio * (248 - 139));
-    const b = Math.round(233 - ratio * (233 - 47));
-    return `rgb(${r},${g},${b})`;
+    // From light concrete (#D6D6D6) to dark concrete (#6B6B6B)
+    const v = Math.round(214 - ratio * (214 - 107));
+    return `rgb(${v},${v},${v})`;
   }
 
-  // Build HTML table
+  // Build HTML table — building look (no gaps, concrete gray)
   let html = '<table style="width:100%; border-collapse:collapse; font-size:12px; min-width:' + (ciclos.length * 110 + 120) + 'px;">';
-  // Header row: empty + ciclos
-  html += '<thead><tr><th style="border:1px solid #ddd; padding:6px 8px; background:#1a1a1a; color:#8BC34A; min-width:100px;">Piso</th>';
+  html += '<thead><tr><th style="border:1px solid #999; padding:6px 8px; background:#1a1a1a; color:#8BC34A; min-width:100px;">Piso</th>';
   ciclos.forEach(c => {
-    html += `<th style="border:1px solid #ddd; padding:6px 8px; background:#1a1a1a; color:#8BC34A; text-align:center; min-width:100px;">${c}</th>`;
+    html += `<th style="border:1px solid #999; padding:6px 8px; background:#1a1a1a; color:#8BC34A; text-align:center; min-width:100px;">${c}</th>`;
   });
   html += '</tr></thead><tbody>';
 
   pisos.forEach((piso, pisoIdx) => {
     const types = getTypesForPiso(piso);
+    // Alternate piso background: slightly different grays to distinguish floors
+    const pisoBg = pisoIdx % 2 === 0 ? '#E8E8E8' : '#F2F2F2';
+    const pisoLabelBg = pisoIdx % 2 === 0 ? '#4A4A4A' : '#5C5C5C';
     types.forEach((tipo, typeIdx) => {
       html += '<tr>';
-      // Piso label: only on first sub-row, with rowspan
       if (typeIdx === 0) {
-        html += `<td rowspan="${types.length}" style="border:1px solid #ddd; padding:8px; font-weight:bold; background:#f5f5f5; vertical-align:middle; text-align:center; font-size:13px;">${piso}</td>`;
+        html += `<td rowspan="${types.length}" style="border:1px solid #888; padding:8px; font-weight:bold; background:${pisoLabelBg}; color:#fff; vertical-align:middle; text-align:center; font-size:13px; letter-spacing:1px;">${piso}</td>`;
       }
       ciclos.forEach(ciclo => {
         const key = tipo + '|' + piso + '|' + ciclo;
         const d = lookup[key];
-        const bg = d ? heatColor(d.kilos) : '#f9f9f9';
-        const textColor = d && d.kilos > maxKilos * 0.6 ? '#fff' : '#2C2C2C';
+        const bg = d ? heatColor(d.kilos) : pisoBg;
+        const textColor = d && d.kilos > maxKilos * 0.5 ? '#fff' : '#1a1a1a';
         if (d) {
-          html += `<td style="border:1px solid #ddd; padding:4px 6px; background:${bg}; text-align:center; cursor:default;" title="${tipo} ${piso} ${ciclo}: ${d.barras} barras, ${Math.round(d.kilos).toLocaleString()} kg">`;
-          html += `<div style="font-weight:600; font-size:11px; color:${textColor};">${tipo}</div>`;
+          html += `<td style="border:1px solid #aaa; padding:4px 6px; background:${bg}; text-align:center; cursor:default;" title="${tipo} ${piso} ${ciclo}: ${d.barras} barras, ${Math.round(d.kilos).toLocaleString()} kg">`;
+          html += `<div style="font-weight:600; font-size:10px; color:${textColor}; opacity:0.85;">${tipo}</div>`;
           html += `<div style="font-size:12px; font-weight:bold; color:${textColor};">${Math.round(d.kilos).toLocaleString()} kg</div>`;
-          html += `<div style="font-size:10px; color:${textColor}; opacity:0.8;">${d.barras} barras</div>`;
+          html += `<div style="font-size:10px; color:${textColor}; opacity:0.7;">${d.barras} bar</div>`;
           html += '</td>';
         } else {
-          html += `<td style="border:1px solid #eee; padding:4px 6px; background:#f9f9f9; text-align:center;">`;
-          html += `<div style="font-size:10px; color:#ccc;">${tipo}</div>`;
+          html += `<td style="border:1px solid #ccc; padding:4px 6px; background:${pisoBg}; text-align:center;">`;
+          html += `<div style="font-size:10px; color:#aaa;">${tipo}</div>`;
           html += '</td>';
         }
       });
       html += '</tr>';
     });
-    // Separator between pisos (thicker border)
+    // Thin line between pisos for floor separation (no gap)
     if (pisoIdx < pisos.length - 1) {
-      html += `<tr><td colspan="${ciclos.length + 1}" style="border:none; height:3px; background:#8BC34A;"></td></tr>`;
+      html += `<tr><td colspan="${ciclos.length + 1}" style="border:none; height:2px; background:#888;"></td></tr>`;
     }
   });
 
   html += '</tbody></table>';
 
-  // Legend
-  html += '<div style="margin-top:12px; display:flex; gap:16px; align-items:center; font-size:12px;">';
-  html += '<span class="muted">Intensidad:</span>';
-  html += '<span style="display:inline-block; width:20px; height:14px; background:#f1f8e9; border:1px solid #ddd; vertical-align:middle;"></span> <span class="muted">Menos kilos</span>';
-  html += '<span style="display:inline-block; width:20px; height:14px; background:#8BC34A; border:1px solid #ddd; vertical-align:middle;"></span>';
-  html += '<span style="display:inline-block; width:20px; height:14px; background:#558B2F; border:1px solid #ddd; vertical-align:middle;"></span> <span class="muted">Más kilos</span>';
+  // Legend — concrete gray scale
+  html += '<div style="margin-top:12px; display:flex; gap:12px; align-items:center; font-size:12px;">';
+  html += '<span class="muted">Intensidad (kg):</span>';
+  html += '<span style="display:inline-block; width:20px; height:14px; background:#D6D6D6; border:1px solid #aaa; vertical-align:middle;"></span> <span class="muted">Menos</span>';
+  html += '<span style="display:inline-block; width:20px; height:14px; background:#A8A8A8; border:1px solid #aaa; vertical-align:middle;"></span>';
+  html += '<span style="display:inline-block; width:20px; height:14px; background:#6B6B6B; border:1px solid #aaa; vertical-align:middle;"></span> <span class="muted">Más</span>';
+  html += '<span style="margin-left:12px; display:inline-block; width:14px; height:14px; background:#4A4A4A; vertical-align:middle;"></span><span style="display:inline-block; width:14px; height:14px; background:#5C5C5C; vertical-align:middle;"></span> <span class="muted">= Pisos alternados</span>';
   html += '</div>';
 
   container.innerHTML = html;
@@ -1370,7 +1571,13 @@ async function loadInicio() {
   document.getElementById('kpiProyectos').textContent = data.total_proyectos;
   document.getElementById('kpiBarras').textContent = data.total_barras.toLocaleString();
   document.getElementById('kpiKilos').textContent = Math.round(data.total_kilos).toLocaleString() + ' kg';
-  
+
+  // KPIs avanzados
+  document.getElementById('kpiPPB').textContent = data.ppb ? data.ppb.toFixed(2) + ' kg' : '—';
+  document.getElementById('kpiPPI').textContent = data.ppi ? data.ppi.toFixed(2) + ' kg' : '—';
+  document.getElementById('kpiDiam').textContent = data.diam_promedio ? data.diam_promedio.toFixed(1) + ' mm' : '—';
+  document.getElementById('kpiItems').textContent = data.total_items ? data.total_items.toLocaleString() : '—';
+
   if (data.ultima_carga) {
     const d = new Date(data.ultima_carga);
     document.getElementById('kpiUltimaCarga').textContent = d.toLocaleDateString('es-CL') + ' ' + d.toLocaleTimeString('es-CL', {hour:'2-digit', minute:'2-digit'});

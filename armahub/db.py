@@ -119,6 +119,14 @@ def init_db() -> None:
                 END $$;
             """)
 
+            # Migración: agregar columna descripcion a proyectos
+            cur.execute("""
+                DO $$ BEGIN
+                    ALTER TABLE proyectos ADD COLUMN descripcion TEXT;
+                EXCEPTION WHEN duplicate_column THEN NULL;
+                END $$;
+            """)
+
             # Tabla de historial de importaciones
             cur.execute("""
             CREATE TABLE IF NOT EXISTS imports (

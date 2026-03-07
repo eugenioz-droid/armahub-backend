@@ -1,4 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
+from typing import Optional
 from .db import get_conn
 from .auth import get_current_user
 
@@ -145,6 +147,23 @@ def get_stats(user=Depends(get_current_user)):
             cur.execute("SELECT MAX(fecha_carga) FROM barras")
             ultima_carga = cur.fetchone()[0]
 
+            # KPIs avanzados: PPB, PPI, Diámetro promedio
+            # PPB = kilos totales / cantidad de barras
+            ppb = round(total_kilos / total_barras, 3) if total_barras > 0 else 0
+
+            # PPI = kilos totales / cantidad de items únicos (id_unico distintos por plano+sector)
+            cur.execute("SELECT COUNT(DISTINCT plano_code || '-' || COALESCE(sector,'') || '-' || COALESCE(piso,'') || '-' || COALESCE(ciclo,'')) FROM barras")
+            total_items = int(cur.fetchone()[0])
+            ppi = round(total_kilos / total_items, 3) if total_items > 0 else 0
+
+            # Diámetro promedio ponderado por peso
+            cur.execute("""
+                SELECT COALESCE(SUM(CAST(diam AS DOUBLE PRECISION) * peso_total) / NULLIF(SUM(peso_total), 0), 0)
+                FROM barras
+                WHERE diam IS NOT NULL AND diam ~ '^[0-9]+(\\.[0-9]+)?$'
+            """)
+            diam_prom = round(float(cur.fetchone()[0]), 1)
+
             cur.execute("""
                 SELECT COALESCE(p.nombre_proyecto, b.id_proyecto) AS nombre,
                        b.id_proyecto,
@@ -167,6 +186,10 @@ def get_stats(user=Depends(get_current_user)):
         "total_proyectos": total_proyectos,
         "total_kilos": round(total_kilos, 2),
         "ultima_carga": ultima_carga,
+        "ppb": ppb,
+        "ppi": ppi,
+        "diam_promedio": diam_prom,
+        "total_items": total_items,
         "top5": proyectos_all[:5],
         "proyectos": proyectos_all,
     }
@@ -397,4 +420,144 @@ def get_proyecto_sectores(
             }
             for r in rows
         ]
+    }
+
+
+# ========================= ADMIN OBRAS =========================
+
+class ProyectoCreate(BaseModel):
+    nombre_proyecto: str
+    descripcion: Optional[str] = None
+
+class ProyectoUpdate(BaseModel):
+    nombre_proyecto: Optional[str] = None
+    descripcion: Optional[str] = None
+
+class MoverBarrasRequest(BaseModel):
+    destino_id: str
+    sector: Optional[str] = None
+    piso: Optional[str] = None
+    ciclo: Optional[str] = None
+
+
+@router.post("/proyectos")
+def crear_proyecto(body: ProyectoCreate, user=Depends(get_current_user)):
+    """Crear una obra vacía manualmente (sin CSV)."""
+    import uuid
+    id_proyecto = "PROY-" + uuid.uuid4().hex[:8].upper()
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO proyectos (id_proyecto, nombre_proyecto, usuario_creador)
+                VALUES (%s, %s, %s)
+            """, (id_proyecto, body.nombre_proyecto, user.get("email", "unknown")))
+    return {
+        "ok": True,
+        "id_proyecto": id_proyecto,
+        "nombre_proyecto": body.nombre_proyecto,
+    }
+
+
+@router.patch("/proyectos/{id_proyecto}")
+def editar_proyecto(id_proyecto: str, body: ProyectoUpdate, user=Depends(get_current_user)):
+    """Editar nombre/descripción de una obra."""
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT id_proyecto FROM proyectos WHERE id_proyecto = %s", (id_proyecto,))
+            if not cur.fetchone():
+                raise HTTPException(status_code=404, detail="Proyecto no encontrado")
+
+            sets = []
+            params = []
+            if body.nombre_proyecto is not None:
+                sets.append("nombre_proyecto = %s")
+                params.append(body.nombre_proyecto)
+            if body.descripcion is not None:
+                sets.append("descripcion = %s")
+                params.append(body.descripcion)
+
+            if not sets:
+                return {"ok": True, "message": "Sin cambios"}
+
+            params.append(id_proyecto)
+            cur.execute(f"UPDATE proyectos SET {', '.join(sets)} WHERE id_proyecto = %s", params)
+
+            # Si se renombró, actualizar nombre en barras también
+            if body.nombre_proyecto is not None:
+                cur.execute(
+                    "UPDATE barras SET nombre_proyecto = %s WHERE id_proyecto = %s",
+                    (body.nombre_proyecto, id_proyecto)
+                )
+
+    return {"ok": True, "id_proyecto": id_proyecto, "nombre_proyecto": body.nombre_proyecto}
+
+
+@router.delete("/proyectos/{id_proyecto}")
+def eliminar_proyecto(id_proyecto: str, user=Depends(get_current_user)):
+    """Eliminar obra con cascada: borra barras, imports y proyecto."""
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT nombre_proyecto FROM proyectos WHERE id_proyecto = %s", (id_proyecto,))
+            row = cur.fetchone()
+            if not row:
+                raise HTTPException(status_code=404, detail="Proyecto no encontrado")
+            nombre = row[0]
+
+            cur.execute("SELECT COUNT(*) FROM barras WHERE id_proyecto = %s", (id_proyecto,))
+            barras_count = int(cur.fetchone()[0])
+
+            cur.execute("DELETE FROM imports WHERE id_proyecto = %s", (id_proyecto,))
+            cur.execute("DELETE FROM barras WHERE id_proyecto = %s", (id_proyecto,))
+            cur.execute("DELETE FROM proyectos WHERE id_proyecto = %s", (id_proyecto,))
+
+    return {
+        "ok": True,
+        "id_proyecto": id_proyecto,
+        "nombre_proyecto": nombre,
+        "barras_eliminadas": barras_count,
+    }
+
+
+@router.post("/proyectos/{id_proyecto}/mover-barras")
+def mover_barras(id_proyecto: str, body: MoverBarrasRequest, user=Depends(get_current_user)):
+    """Mover barras de un proyecto a otro, opcionalmente filtradas por sector/piso/ciclo."""
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT nombre_proyecto FROM proyectos WHERE id_proyecto = %s", (id_proyecto,))
+            if not cur.fetchone():
+                raise HTTPException(status_code=404, detail="Proyecto origen no encontrado")
+
+            cur.execute("SELECT nombre_proyecto FROM proyectos WHERE id_proyecto = %s", (body.destino_id,))
+            dest = cur.fetchone()
+            if not dest:
+                raise HTTPException(status_code=404, detail="Proyecto destino no encontrado")
+
+            where = "WHERE id_proyecto = %s"
+            params = [id_proyecto]
+            if body.sector:
+                where += " AND sector = %s"
+                params.append(body.sector)
+            if body.piso:
+                where += " AND piso = %s"
+                params.append(body.piso)
+            if body.ciclo:
+                where += " AND ciclo = %s"
+                params.append(body.ciclo)
+
+            cur.execute(f"SELECT COUNT(*) FROM barras {where}", params)
+            count = int(cur.fetchone()[0])
+
+            if count == 0:
+                return {"ok": True, "movidas": 0, "message": "No hay barras que coincidan con los filtros"}
+
+            cur.execute(
+                f"UPDATE barras SET id_proyecto = %s, nombre_proyecto = %s {where}",
+                [body.destino_id, dest[0]] + params
+            )
+
+    return {
+        "ok": True,
+        "movidas": count,
+        "origen": id_proyecto,
+        "destino": body.destino_id,
     }
