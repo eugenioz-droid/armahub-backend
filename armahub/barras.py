@@ -6,6 +6,24 @@ from .auth import get_current_user
 
 router = APIRouter()
 
+def _puede_editar_proyecto(cur, id_proyecto: str, user: dict) -> bool:
+    """Retorna True si el usuario es admin, owner del proyecto, o está autorizado."""
+    if user.get("role") == "admin":
+        return True
+    cur.execute("SELECT id FROM users WHERE email = %s", (user.get("email"),))
+    row = cur.fetchone()
+    if not row:
+        return False
+    uid = row[0]
+    cur.execute("SELECT owner_id FROM proyectos WHERE id_proyecto = %s", (id_proyecto,))
+    prow = cur.fetchone()
+    if not prow:
+        return False
+    if prow[0] == uid:
+        return True
+    cur.execute("SELECT 1 FROM proyecto_usuarios WHERE id_proyecto = %s AND user_id = %s", (id_proyecto, uid))
+    return cur.fetchone() is not None
+
 BARRAS_COLUMNS = [
     "id_unico","id_proyecto","nombre_proyecto","plano_code","nombre_plano","sector","piso","ciclo","eje",
     "diam","largo_total","mult","cant","cant_total",
@@ -192,13 +210,15 @@ def get_stats(user=Depends(get_current_user)):
 
             # Diámetro promedio ponderado por peso
             try:
+                cur.execute("SAVEPOINT sp_diam_prom")
                 cur.execute("""
-                    SELECT COALESCE(SUM(CAST(diam AS DOUBLE PRECISION) * peso_total) / NULLIF(SUM(peso_total), 0), 0)
+                    SELECT COALESCE(SUM(diam * peso_total) / NULLIF(SUM(peso_total), 0), 0)
                     FROM barras
-                    WHERE diam IS NOT NULL AND diam ~ '^[0-9]+(\\.[0-9]+)?$'
+                    WHERE diam IS NOT NULL AND peso_total IS NOT NULL
                 """)
                 diam_prom = round(float(cur.fetchone()[0]), 1)
             except Exception:
+                cur.execute("ROLLBACK TO SAVEPOINT sp_diam_prom")
                 diam_prom = 0
 
             cur.execute("""
@@ -515,12 +535,14 @@ def crear_proyecto(body: ProyectoCreate, user=Depends(get_current_user)):
 
 @router.patch("/proyectos/{id_proyecto}")
 def editar_proyecto(id_proyecto: str, body: ProyectoUpdate, user=Depends(get_current_user)):
-    """Editar nombre/descripción de una obra."""
+    """Editar nombre/descripción/calculista de una obra."""
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("SELECT id_proyecto FROM proyectos WHERE id_proyecto = %s", (id_proyecto,))
             if not cur.fetchone():
                 raise HTTPException(status_code=404, detail="Proyecto no encontrado")
+            if not _puede_editar_proyecto(cur, id_proyecto, user):
+                raise HTTPException(status_code=403, detail="No tienes permiso para editar este proyecto")
 
             sets = []
             params = []
@@ -559,6 +581,8 @@ def eliminar_proyecto(id_proyecto: str, user=Depends(get_current_user)):
             row = cur.fetchone()
             if not row:
                 raise HTTPException(status_code=404, detail="Proyecto no encontrado")
+            if not _puede_editar_proyecto(cur, id_proyecto, user):
+                raise HTTPException(status_code=403, detail="No tienes permiso para eliminar este proyecto")
             nombre = row[0]
 
             cur.execute("SELECT COUNT(*) FROM barras WHERE id_proyecto = %s", (id_proyecto,))
@@ -585,6 +609,8 @@ def mover_barras(id_proyecto: str, body: MoverBarrasRequest, user=Depends(get_cu
             cur.execute("SELECT nombre_proyecto FROM proyectos WHERE id_proyecto = %s", (id_proyecto,))
             if not cur.fetchone():
                 raise HTTPException(status_code=404, detail="Proyecto origen no encontrado")
+            if not _puede_editar_proyecto(cur, id_proyecto, user):
+                raise HTTPException(status_code=403, detail="No tienes permiso para mover barras de este proyecto")
 
             cur.execute("SELECT nombre_proyecto FROM proyectos WHERE id_proyecto = %s", (body.destino_id,))
             dest = cur.fetchone()
@@ -643,12 +669,14 @@ def list_users(user=Depends(get_current_user)):
 
 @router.post("/proyectos/{id_proyecto}/autorizar")
 def autorizar_usuario(id_proyecto: str, body: AutorizarUsuarioRequest, user=Depends(get_current_user)):
-    """Autorizar a un usuario adicional a editar un proyecto."""
+    """Autorizar a un usuario adicional a editar un proyecto. Solo owner o admin."""
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("SELECT id_proyecto FROM proyectos WHERE id_proyecto = %s", (id_proyecto,))
             if not cur.fetchone():
                 raise HTTPException(status_code=404, detail="Proyecto no encontrado")
+            if not _puede_editar_proyecto(cur, id_proyecto, user):
+                raise HTTPException(status_code=403, detail="No tienes permiso para gestionar autorizaciones de este proyecto")
             cur.execute("SELECT id FROM users WHERE id = %s", (body.user_id,))
             if not cur.fetchone():
                 raise HTTPException(status_code=404, detail="Usuario no encontrado")
@@ -662,9 +690,11 @@ def autorizar_usuario(id_proyecto: str, body: AutorizarUsuarioRequest, user=Depe
 
 @router.delete("/proyectos/{id_proyecto}/autorizar/{user_id}")
 def revocar_usuario(id_proyecto: str, user_id: int, user=Depends(get_current_user)):
-    """Revocar autorización de un usuario en un proyecto."""
+    """Revocar autorización de un usuario en un proyecto. Solo owner o admin."""
     with get_conn() as conn:
         with conn.cursor() as cur:
+            if not _puede_editar_proyecto(cur, id_proyecto, user):
+                raise HTTPException(status_code=403, detail="No tienes permiso para gestionar autorizaciones de este proyecto")
             cur.execute(
                 "DELETE FROM proyecto_usuarios WHERE id_proyecto = %s AND user_id = %s",
                 (id_proyecto, user_id)

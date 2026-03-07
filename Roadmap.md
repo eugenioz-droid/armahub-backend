@@ -108,14 +108,18 @@ Actualmente el sistema ya cuenta con:
 - Dashboard layout 2 columnas: charts izquierda (60%), matriz derecha (40%) sticky
 - pisoOrder global: SM siempre arriba, subterráneos abajo, orden edificio en charts
 
-**Fase 1.15 — Ownership de proyectos y auto-creación**: Pendiente
-- owner_id en tabla proyectos (FK a users), asignado al importar
-- Popup confirmación al detectar proyecto nuevo en importación
-- Campos al crear: nombre_proyecto, calculista (texto), usuario owner (select preseleccionado)
-- Autorizar usuarios adicionales a editar un proyecto
-- Solo owner/admin/autorizados pueden editar/eliminar/mover barras
+**Fase 1.15 — Ownership de proyectos y auto-creación**: OK
+- owner_id en tabla proyectos (FK a users), asignado al crear/importar - OK
+- Popup confirmación al detectar proyecto nuevo en importación - OK
+- Campos al crear: nombre_proyecto, calculista (texto), owner (select preseleccionado) - OK
+- Endpoints autorización: POST/DELETE/GET autorizados por proyecto - OK
+- GET /users/list para selectores - OK
+- Dashboard layout mejorado (1600px, matriz 100%) - OK
+- Enforcement permisos: _puede_editar_proyecto (admin/owner/autorizado) con 403 - OK
+- UI gestión autorizados: panel colapsable en tarjeta de proyecto - OK
+- Fix KPI /stats: corregido regex en DOUBLE PRECISION + SAVEPOINT recovery - OK
 
-**Pendiente próximo checkpoint**: Fase 1.15 → luego Fase 2
+**Pendiente próximo checkpoint**: Fase 2 (Importación robusta y trazabilidad)
 
 ---
 
@@ -315,20 +319,34 @@ ARMAHUB – PROGRAMA DE TRABAJO
     - pisoOrder global: SM=9999 siempre arriba, subterráneos abajo - OK
     - Orden de pisos correcto en gráficos y tabla sectores - OK
 
-13. Ownership de proyectos y auto-creación al importar - Pendiente
-    a) owner_id en tabla proyectos (FK a users) - Pendiente
-       - Migración: agregar columna owner_id a proyectos - Pendiente
-       - Asignar automáticamente al usuario que importa - Pendiente
-    b) Auto-creación de proyecto al importar - Pendiente
-       - Detectar proyecto nuevo en CSV al importar - Pendiente
-       - Popup confirmación con campos: nombre_proyecto, calculista (texto), owner (select preseleccionado) - Pendiente
-       - Crear proyecto automáticamente con estos datos - Pendiente
-    c) Autorización de usuarios adicionales - Pendiente
-       - Tabla proyecto_usuarios (id_proyecto, user_id, rol) - Pendiente
-       - Solo owner/admin/autorizados pueden editar/eliminar/mover barras - Pendiente
-    d) Columna calculista en tabla proyectos - Pendiente
-       - Migración: agregar columna calculista (texto) - Pendiente
-       - UI: mostrar calculista en tarjeta de proyecto - Pendiente
+13. Ownership de proyectos y auto-creación al importar - OK
+    a) owner_id en tabla proyectos (FK a users) - OK
+       - Migración: agregar columna owner_id a proyectos - OK
+       - Asignar automáticamente al usuario que crea/importa - OK
+       - GET /proyectos devuelve owner_id, owner_email - OK
+    b) Auto-creación de proyecto al importar - OK
+       - Detectar proyecto nuevo en CSV al importar (new_project flag) - OK
+       - Popup confirmación con campos: nombre_proyecto, calculista (texto), owner (select preseleccionado) - OK
+       - Crear proyecto automáticamente con owner_id + calculista - OK
+       - Parámetros confirmar_nuevo y calculista en endpoint import - OK
+    c) Autorización de usuarios adicionales - OK
+       - Tabla proyecto_usuarios (id_proyecto, user_id, rol) - OK
+       - POST /proyectos/{id}/autorizar (upsert) - OK
+       - DELETE /proyectos/{id}/autorizar/{user_id} (revocar) - OK
+       - GET /proyectos/{id}/autorizados (listar) - OK
+       - GET /users/list (para selectores) - OK
+       - Solo owner/admin/autorizados pueden editar/eliminar/mover barras - OK
+       - Helper _puede_editar_proyecto (admin/owner/autorizado) con 403 en PATCH/DELETE/mover/autorizar - OK
+       - UI: panel colapsable "Usuarios" en tarjeta de proyecto (listar, autorizar, revocar) - OK
+    d) Columna calculista en tabla proyectos - OK
+       - Migración: agregar columna calculista (texto) - OK
+       - POST/PATCH proyectos acepta calculista - OK
+       - UI: campo calculista en formulario crear obra manual - OK
+       - UI: mostrar calculista y owner en tarjeta de proyecto - OK
+    e) Dashboard layout mejorado - OK
+       - max-width 1600px en contenido de tabs - OK
+       - Matriz constructiva width:100% llena panel - OK
+       - Buscador sin max-width restrictivo - OK
 
 ---
 ## FASE 2 — Importación robusta y trazabilidad (operación real)

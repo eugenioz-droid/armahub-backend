@@ -979,8 +979,17 @@ async function loadProyectos() {
           </div>
         </div>
         <div style="display: flex; gap: 6px; align-items: center;">
+          <button class="secondary" style="font-size:12px; padding:4px 10px;" onclick="toggleAutorizados('${p.id_proyecto}')">Usuarios</button>
           <button class="secondary" style="font-size:12px; padding:4px 10px;" onclick="editarObra('${p.id_proyecto}', '${p.nombre_proyecto.replace(/'/g, "\\'")}')">Renombrar</button>
           <button class="secondary" style="font-size:12px; padding:4px 10px; color:#b42318; border-color:#b42318;" onclick="eliminarObra('${p.id_proyecto}', '${p.nombre_proyecto.replace(/'/g, "\\'")}', ${p.total_barras})">Eliminar</button>
+        </div>
+      </div>
+      <div id="autorizados-${p.id_proyecto}" style="display:none; margin-top:10px; padding-top:10px; border-top:1px solid #eee;">
+        <div style="font-size:12px; font-weight:bold; margin-bottom:6px;">Usuarios autorizados</div>
+        <div id="autorizados-list-${p.id_proyecto}" class="muted" style="font-size:12px;">Cargando...</div>
+        <div style="display:flex; gap:6px; align-items:center; margin-top:8px;">
+          <select id="autorizar-user-${p.id_proyecto}" style="font-size:12px; flex:1;"><option>Cargando...</option></select>
+          <button class="secondary" style="font-size:11px; padding:3px 8px;" onclick="autorizarUsuario('${p.id_proyecto}')">+ Autorizar</button>
         </div>
       </div>
     </div>
@@ -1032,6 +1041,77 @@ async function crearObra() {
     await loadInicio();
   } else {
     msg.innerHTML = '<span class="status-err">Error: ' + (data.detail || data.error || 'desconocido') + '</span>';
+  }
+}
+
+// ========================= AUTORIZADOS POR PROYECTO =========================
+async function toggleAutorizados(idProyecto) {
+  const panel = document.getElementById('autorizados-' + idProyecto);
+  if (panel.style.display === 'none') {
+    panel.style.display = '';
+    await loadAutorizados(idProyecto);
+    await loadUserSelect(idProyecto);
+  } else {
+    panel.style.display = 'none';
+  }
+}
+
+async function loadAutorizados(idProyecto) {
+  const list = document.getElementById('autorizados-list-' + idProyecto);
+  const data = await apiGet('/proyectos/' + encodeURIComponent(idProyecto) + '/autorizados');
+  if (!data || !data.autorizados) { list.innerHTML = '<span class="muted">Error cargando</span>'; return; }
+  if (data.autorizados.length === 0) {
+    list.innerHTML = '<span class="muted">Sin usuarios adicionales autorizados</span>';
+    return;
+  }
+  list.innerHTML = data.autorizados.map(a => `
+    <div style="display:flex; align-items:center; gap:6px; padding:3px 0;">
+      <span>${a.email}</span>
+      <span class="badge" style="font-size:10px;">${a.rol}</span>
+      <button class="secondary" style="font-size:10px; padding:1px 6px; color:#b42318; border-color:#b42318;" onclick="revocarUsuario('${idProyecto}', ${a.user_id})">✕</button>
+    </div>
+  `).join('');
+}
+
+async function loadUserSelect(idProyecto) {
+  const sel = document.getElementById('autorizar-user-' + idProyecto);
+  const data = await apiGet('/users/list');
+  if (!data || !data.users) { sel.innerHTML = '<option>Error</option>'; return; }
+  sel.innerHTML = data.users.map(u => `<option value="${u.id}">${u.email}</option>`).join('');
+}
+
+async function autorizarUsuario(idProyecto) {
+  const sel = document.getElementById('autorizar-user-' + idProyecto);
+  const userId = parseInt(sel.value);
+  if (!userId) return;
+  const res = await fetch('/proyectos/' + encodeURIComponent(idProyecto) + '/autorizar', {
+    method: 'POST',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ user_id: userId, rol: 'editor' })
+  });
+  if (res.status === 401) { logout(); return; }
+  const data = await res.json();
+  if (data.ok) {
+    await loadAutorizados(idProyecto);
+    await setGlobalStatus('Usuario autorizado', 'ok');
+  } else {
+    await setGlobalStatus(data.detail || 'Error autorizando', 'err');
+  }
+}
+
+async function revocarUsuario(idProyecto, userId) {
+  if (!confirm('Revocar acceso de este usuario?')) return;
+  const res = await fetch('/proyectos/' + encodeURIComponent(idProyecto) + '/autorizar/' + userId, {
+    method: 'DELETE',
+    headers: authHeaders()
+  });
+  if (res.status === 401) { logout(); return; }
+  const data = await res.json();
+  if (data.ok) {
+    await loadAutorizados(idProyecto);
+    await setGlobalStatus('Acceso revocado', 'ok');
+  } else {
+    await setGlobalStatus(data.detail || 'Error revocando', 'err');
   }
 }
 
