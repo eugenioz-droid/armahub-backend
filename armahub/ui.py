@@ -1139,7 +1139,7 @@ async function loadCargasProyecto(idProyecto) {
           '<td>' + (c.version_archivo || '-') + '</td>' +
           '<td class="muted">' + c.usuario + '</td>' +
           '<td class="muted">' + fecha + '</td>' +
-          '<td><button class="secondary" style="padding:2px 6px; font-size:10px; color:#b42318;" onclick="deleteCarga(' + c.id + ',\'' + idProyecto.replace(/'/g, "&#39;") + '\')">Eliminar</button></td>' +
+          '<td><button class="secondary" style="padding:2px 6px; font-size:10px; color:#b42318;" onclick="deleteCarga(' + c.id + ',\\'' + idProyecto.replace(/'/g, "&#39;") + '\\')">Eliminar</button></td>' +
         '</tr>';
       }).join('')}</tbody>
     </table>`;

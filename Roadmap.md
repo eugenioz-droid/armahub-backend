@@ -432,16 +432,19 @@ ARMAHUB – PROGRAMA DE TRABAJO
 ---
 ## FASE 3 — Export para producción (reemplazo Excel)
 
-18. Definir y documentar formato aSa Studio - Pendiente
-    - Mapear columnas por sector constructivo (sector+piso+ciclo) - Pendiente
-    - Documentar unidades, crear plantillas - Pendiente
+18. Definir y documentar formato aSa Studio - OK
+    - Migración 6: 21 columnas nuevas en barras (bar_id, estructura, tipo, marca, figura, esp, dim_a-i, ang1-3, radio, cod_proyecto, nombre_dwg) - OK
+    - Importer actualizado: almacena TODAS las columnas del CSV ArmaDetailer (40 campos) con helpers _opt_float/_opt_text - OK
+    - Formato Excel: 26 columnas (EJE, ELEMCONFIREQ, PISO, CICLO, CANT, Ømm, DE|PA, L/cm, Masa, Pied, A-Icm, Jcm, AngV1-3, Rcm, PesoKg, PesoTotal) - OK
 
-19. Endpoint de export a EXCEL - Pendiente
-    - POST /proyectos/{id}/exportar-excel con formato aSa Studio - Pendiente
-    - Agrupación por sector constructivo en la exportación - Pendiente
+19. Endpoint de export a EXCEL - OK
+    - GET /proyectos/{id}/exportar genera ZIP con .xlsx por SECTOR+PISO+CICLO - OK
+    - export.py: openpyxl, formato aSa Studio, headers en fila 5, datos desde fila 6 - OK
+    - Nombre archivo: "{SECTOR} {PISO} {CICLO}.xlsx" dentro del ZIP - OK
 
-20. UI para exportación - Pendiente
-    - Tab "Exportación" con selector, vista previa, descarga - Pendiente
+20. UI para exportación - OK
+    - Tab "Exportación" con selector proyecto (búsqueda), vista previa sectores/pisos/ciclos, botón descarga ZIP - OK
+    - loadFilters() pobla todos los selects de proyecto (búsqueda, export, dashboard) - OK
 
 ---
 ## FASE 4 — Funcionalidades avanzadas y multi-cliente
