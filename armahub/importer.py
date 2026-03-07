@@ -31,6 +31,8 @@ async def import_armadetailer(
     user=Depends(get_current_user),
     reasignar_a: Optional[str] = Query(None, description="ID de proyecto existente para reasignar barras"),
     forzar: bool = Query(False, description="Forzar importación ignorando duplicados de nombre"),
+    calculista: Optional[str] = Query(None, description="Nombre del calculista (solo al crear proyecto nuevo)"),
+    confirmar_nuevo: bool = Query(False, description="Confirmar creación de proyecto nuevo"),
 ):
     raw = (await file.read()).decode("utf-8", errors="replace")
     lines = raw.splitlines()
@@ -102,14 +104,41 @@ async def import_armadetailer(
     if missing:
         return {"ok": False, "error": f"Faltan columnas requeridas: {missing}"}
 
+    # Detectar si el proyecto es nuevo o existente
+    is_new_project = False
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT id_proyecto FROM proyectos WHERE id_proyecto = %s", (proyecto_id,))
+            is_new_project = cur.fetchone() is None
+
+    # Si es proyecto nuevo y no se confirmó → pedir confirmación via popup
+    if is_new_project and not confirmar_nuevo:
+        return {
+            "ok": False,
+            "new_project": True,
+            "mensaje": f"Proyecto nuevo detectado: \"{proyecto_nombre}\" (ID: {proyecto_id}). Confirma para crearlo.",
+            "proyecto_id": proyecto_id,
+            "proyecto_nombre": proyecto_nombre,
+            "archivo": file.filename,
+        }
+
     # Guardar o actualizar proyecto en tabla proyectos
     with get_conn() as conn:
         with conn.cursor() as cur:
-            cur.execute("""
-                INSERT INTO proyectos (id_proyecto, nombre_proyecto, usuario_creador)
-                VALUES (%s, %s, %s)
-                ON CONFLICT (id_proyecto) DO UPDATE SET nombre_proyecto = EXCLUDED.nombre_proyecto
-            """, (proyecto_id, proyecto_nombre, user.get("email", "unknown")))
+            if is_new_project:
+                # Nuevo: crear con owner_id y calculista
+                cur.execute("SELECT id FROM users WHERE email = %s", (user.get("email"),))
+                owner_row = cur.fetchone()
+                owner_id = owner_row[0] if owner_row else None
+                cur.execute("""
+                    INSERT INTO proyectos (id_proyecto, nombre_proyecto, usuario_creador, owner_id, calculista)
+                    VALUES (%s, %s, %s, %s, %s)
+                """, (proyecto_id, proyecto_nombre, user.get("email", "unknown"), owner_id, calculista))
+            else:
+                # Existente: solo actualizar nombre
+                cur.execute("""
+                    UPDATE proyectos SET nombre_proyecto = %s WHERE id_proyecto = %s
+                """, (proyecto_nombre, proyecto_id))
 
     now_iso = datetime.now(timezone.utc).isoformat()
     rows_to_upsert = []

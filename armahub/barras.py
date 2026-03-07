@@ -386,7 +386,7 @@ def dashboard_sectores(
 def get_proyectos(user=Depends(get_current_user)):
     """
     Devuelve lista de proyectos con resumen de kilos y barras.
-    Estructura: [{id_proyecto, nombre_proyecto, total_kilos, total_barras}, ...]
+    Incluye owner y calculista.
     """
     with get_conn() as conn:
         with conn.cursor() as cur:
@@ -395,10 +395,14 @@ def get_proyectos(user=Depends(get_current_user)):
                     p.id_proyecto,
                     p.nombre_proyecto,
                     COUNT(DISTINCT b.id_unico) as total_barras,
-                    COALESCE(SUM(b.peso_total), 0) as total_kilos
+                    COALESCE(SUM(b.peso_total), 0) as total_kilos,
+                    p.owner_id,
+                    u.email as owner_email,
+                    p.calculista
                 FROM proyectos p
                 LEFT JOIN barras b ON p.id_proyecto = b.id_proyecto
-                GROUP BY p.id_proyecto, p.nombre_proyecto
+                LEFT JOIN users u ON p.owner_id = u.id
+                GROUP BY p.id_proyecto, p.nombre_proyecto, p.owner_id, u.email, p.calculista
                 ORDER BY p.fecha_creacion DESC
             """)
             rows = cur.fetchall()
@@ -410,6 +414,9 @@ def get_proyectos(user=Depends(get_current_user)):
                 "nombre_proyecto": r[1],
                 "total_barras": int(r[2]) if r[2] else 0,
                 "total_kilos": float(r[3]) if r[3] else 0.0,
+                "owner_id": r[4],
+                "owner_email": r[5],
+                "calculista": r[6],
             }
             for r in rows
         ]
@@ -465,10 +472,16 @@ def get_proyecto_sectores(
 class ProyectoCreate(BaseModel):
     nombre_proyecto: str
     descripcion: Optional[str] = None
+    calculista: Optional[str] = None
 
 class ProyectoUpdate(BaseModel):
     nombre_proyecto: Optional[str] = None
     descripcion: Optional[str] = None
+    calculista: Optional[str] = None
+
+class AutorizarUsuarioRequest(BaseModel):
+    user_id: int
+    rol: str = 'editor’
 
 class MoverBarrasRequest(BaseModel):
     destino_id: str
@@ -479,15 +492,20 @@ class MoverBarrasRequest(BaseModel):
 
 @router.post("/proyectos")
 def crear_proyecto(body: ProyectoCreate, user=Depends(get_current_user)):
-    """Crear una obra vacía manualmente (sin CSV)."""
+    """Crear una obra vacía manualmente (sin CSV). Asigna owner automáticamente."""
     import uuid
     id_proyecto = "PROY-" + uuid.uuid4().hex[:8].upper()
     with get_conn() as conn:
         with conn.cursor() as cur:
+            # Resolve owner_id from current user email
+            cur.execute("SELECT id FROM users WHERE email = %s", (user.get("email"),))
+            owner_row = cur.fetchone()
+            owner_id = owner_row[0] if owner_row else None
+
             cur.execute("""
-                INSERT INTO proyectos (id_proyecto, nombre_proyecto, usuario_creador)
-                VALUES (%s, %s, %s)
-            """, (id_proyecto, body.nombre_proyecto, user.get("email", "unknown")))
+                INSERT INTO proyectos (id_proyecto, nombre_proyecto, usuario_creador, owner_id, calculista)
+                VALUES (%s, %s, %s, %s, %s)
+            """, (id_proyecto, body.nombre_proyecto, user.get("email", "unknown"), owner_id, body.calculista))
     return {
         "ok": True,
         "id_proyecto": id_proyecto,
@@ -512,6 +530,9 @@ def editar_proyecto(id_proyecto: str, body: ProyectoUpdate, user=Depends(get_cur
             if body.descripcion is not None:
                 sets.append("descripcion = %s")
                 params.append(body.descripcion)
+            if body.calculista is not None:
+                sets.append("calculista = %s")
+                params.append(body.calculista)
 
             if not sets:
                 return {"ok": True, "message": "Sin cambios"}
@@ -543,6 +564,7 @@ def eliminar_proyecto(id_proyecto: str, user=Depends(get_current_user)):
             cur.execute("SELECT COUNT(*) FROM barras WHERE id_proyecto = %s", (id_proyecto,))
             barras_count = int(cur.fetchone()[0])
 
+            cur.execute("DELETE FROM proyecto_usuarios WHERE id_proyecto = %s", (id_proyecto,))
             cur.execute("DELETE FROM imports WHERE id_proyecto = %s", (id_proyecto,))
             cur.execute("DELETE FROM barras WHERE id_proyecto = %s", (id_proyecto,))
             cur.execute("DELETE FROM proyectos WHERE id_proyecto = %s", (id_proyecto,))
@@ -597,4 +619,75 @@ def mover_barras(id_proyecto: str, body: MoverBarrasRequest, user=Depends(get_cu
         "movidas": count,
         "origen": id_proyecto,
         "destino": body.destino_id,
+    }
+
+
+# ========================= USERS LIST =========================
+
+@router.get("/users/list")
+def list_users(user=Depends(get_current_user)):
+    """Lista de usuarios (id, email, role) para selectores de ownership."""
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT id, email, role FROM users ORDER BY email")
+            rows = cur.fetchall()
+    return {
+        "users": [
+            {"id": r[0], "email": r[1], "role": r[2]}
+            for r in rows
+        ]
+    }
+
+
+# ========================= AUTORIZACIÓN DE PROYECTO =========================
+
+@router.post("/proyectos/{id_proyecto}/autorizar")
+def autorizar_usuario(id_proyecto: str, body: AutorizarUsuarioRequest, user=Depends(get_current_user)):
+    """Autorizar a un usuario adicional a editar un proyecto."""
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT id_proyecto FROM proyectos WHERE id_proyecto = %s", (id_proyecto,))
+            if not cur.fetchone():
+                raise HTTPException(status_code=404, detail="Proyecto no encontrado")
+            cur.execute("SELECT id FROM users WHERE id = %s", (body.user_id,))
+            if not cur.fetchone():
+                raise HTTPException(status_code=404, detail="Usuario no encontrado")
+            cur.execute("""
+                INSERT INTO proyecto_usuarios (id_proyecto, user_id, rol)
+                VALUES (%s, %s, %s)
+                ON CONFLICT (id_proyecto, user_id) DO UPDATE SET rol = EXCLUDED.rol
+            """, (id_proyecto, body.user_id, body.rol))
+    return {"ok": True, "id_proyecto": id_proyecto, "user_id": body.user_id, "rol": body.rol}
+
+
+@router.delete("/proyectos/{id_proyecto}/autorizar/{user_id}")
+def revocar_usuario(id_proyecto: str, user_id: int, user=Depends(get_current_user)):
+    """Revocar autorización de un usuario en un proyecto."""
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "DELETE FROM proyecto_usuarios WHERE id_proyecto = %s AND user_id = %s",
+                (id_proyecto, user_id)
+            )
+    return {"ok": True, "id_proyecto": id_proyecto, "user_id": user_id}
+
+
+@router.get("/proyectos/{id_proyecto}/autorizados")
+def get_autorizados(id_proyecto: str, user=Depends(get_current_user)):
+    """Lista de usuarios autorizados en un proyecto."""
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT pu.user_id, u.email, pu.rol
+                FROM proyecto_usuarios pu
+                JOIN users u ON pu.user_id = u.id
+                WHERE pu.id_proyecto = %s
+                ORDER BY u.email
+            """, (id_proyecto,))
+            rows = cur.fetchall()
+    return {
+        "autorizados": [
+            {"user_id": r[0], "email": r[1], "rol": r[2]}
+            for r in rows
+        ]
     }

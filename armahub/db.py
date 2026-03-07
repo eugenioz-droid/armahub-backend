@@ -127,6 +127,31 @@ def init_db() -> None:
                 END $$;
             """)
 
+            # Migración: agregar owner_id y calculista a proyectos
+            cur.execute("""
+                DO $$ BEGIN
+                    ALTER TABLE proyectos ADD COLUMN owner_id BIGINT REFERENCES users(id);
+                EXCEPTION WHEN duplicate_column THEN NULL;
+                END $$;
+            """)
+            cur.execute("""
+                DO $$ BEGIN
+                    ALTER TABLE proyectos ADD COLUMN calculista TEXT;
+                EXCEPTION WHEN duplicate_column THEN NULL;
+                END $$;
+            """)
+
+            # Tabla de usuarios autorizados por proyecto
+            cur.execute("""
+            CREATE TABLE IF NOT EXISTS proyecto_usuarios (
+                id BIGSERIAL PRIMARY KEY,
+                id_proyecto TEXT NOT NULL REFERENCES proyectos(id_proyecto) ON DELETE CASCADE,
+                user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                rol TEXT NOT NULL DEFAULT 'editor',
+                UNIQUE(id_proyecto, user_id)
+            )
+            """)
+
             # Tabla de historial de importaciones
             cur.execute("""
             CREATE TABLE IF NOT EXISTS imports (
@@ -165,7 +190,8 @@ def reset_database(keep_users: bool = True) -> dict:
             summary["barras_eliminadas"] = int(cur.fetchone()[0])
             cur.execute("SELECT COUNT(*) FROM proyectos")
             summary["proyectos_eliminados"] = int(cur.fetchone()[0])
-            # Barras e imports primero por FK
+            # Tablas dependientes primero por FK
+            cur.execute("DROP TABLE IF EXISTS proyecto_usuarios")
             cur.execute("DROP TABLE IF EXISTS imports")
             cur.execute("DROP TABLE IF EXISTS barras")
             cur.execute("DROP TABLE IF EXISTS proyectos")

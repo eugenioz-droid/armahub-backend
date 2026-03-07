@@ -228,7 +228,7 @@ APP_HTML = Template("""
     }
     
     /* Tab content */
-    .tab-content { display: none; padding: 20px; max-width: 1200px; margin: 0 auto; }
+    .tab-content { display: none; padding: 20px; max-width: 1600px; margin: 0 auto; }
     .tab-content.active { display: block; }
     
     /* Cards */
@@ -512,6 +512,10 @@ APP_HTML = Template("""
           <label style="font-size: 12px; color: #666;">Nombre de la obra</label>
           <input type="text" id="newObraName" placeholder="Ej: Edificio Central - Torre A" style="width: 100%;" />
         </div>
+        <div class="col" style="max-width:220px;">
+          <label style="font-size: 12px; color: #666;">Calculista (opcional)</label>
+          <input type="text" id="newObraCalculista" placeholder="Nombre calculista" style="width: 100%;" />
+        </div>
         <div>
           <button onclick="crearObra()">+ Crear obra</button>
         </div>
@@ -704,9 +708,9 @@ APP_HTML = Template("""
         <div class="card">
           <h3>Matriz constructiva</h3>
           <div class="row" style="margin-bottom: 8px; gap: 6px; align-items: center;">
-            <div style="position:relative; flex:1; max-width:200px;">
+            <div style="position:relative; flex:1;">
               <span style="position:absolute; left:8px; top:50%; transform:translateY(-50%); font-size:14px; color:#999; pointer-events:none;">🔍</span>
-              <input type="text" id="matrizSearchInput" placeholder="Buscar proyecto..." oninput="filterProjectSelect('matrizSearchInput','matrizProyectoFilter')" style="padding-left:28px; width:100%; font-size:12px;" />
+              <input type="text" id="matrizSearchInput" placeholder="Buscar proyecto..." oninput="filterProjectSelect('matrizSearchInput','matrizProyectoFilter')" style="padding-left:28px; width:100%; font-size:13px;" />
             </div>
             <select id="matrizProyectoFilter" onchange="loadMatriz()" style="flex:1; font-size:12px;">
               <option value="">— Selecciona proyecto —</option>
@@ -777,6 +781,32 @@ APP_HTML = Template("""
     </div>
   </div>
 
+  <!-- MODAL: Nuevo proyecto detectado al importar -->
+  <div id="newProjectModal" style="display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.5); z-index:9999; align-items:center; justify-content:center;">
+    <div style="background:#fff; border-radius:12px; padding:24px; max-width:420px; width:90%; box-shadow:0 8px 32px rgba(0,0,0,0.3);">
+      <h3 style="margin:0 0 4px 0; color:#1a1a1a;">Nuevo proyecto detectado</h3>
+      <p id="newProjMsg" class="muted" style="margin:0 0 16px 0; font-size:13px;"></p>
+      <div style="margin-bottom:12px;">
+        <label style="font-size:12px; color:#666; display:block; margin-bottom:4px;">Nombre del proyecto</label>
+        <input type="text" id="newProjNombre" readonly style="width:100%; background:#f5f5f5; font-size:13px;" />
+      </div>
+      <div style="margin-bottom:12px;">
+        <label style="font-size:12px; color:#666; display:block; margin-bottom:4px;">Calculista</label>
+        <input type="text" id="newProjCalculista" placeholder="Nombre del calculista (opcional)" style="width:100%; font-size:13px;" />
+      </div>
+      <div style="margin-bottom:12px;">
+        <label style="font-size:12px; color:#666; display:block; margin-bottom:4px;">Dueño del proyecto</label>
+        <select id="newProjOwner" style="width:100%; font-size:13px;">
+          <option value="">Cargando usuarios...</option>
+        </select>
+      </div>
+      <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:16px;">
+        <button class="secondary" onclick="closeNewProjectModal(false)" style="padding:8px 16px;">Cancelar</button>
+        <button onclick="closeNewProjectModal(true)" style="padding:8px 16px;">Crear y continuar</button>
+      </div>
+    </div>
+  </div>
+
 <script>
 // ========================= AUTH =========================
 function token() { return localStorage.getItem('armahub_token'); }
@@ -827,6 +857,46 @@ async function apiPostFile(url, file) {
   return await res.json();
 }
 
+// ========================= NEW PROJECT MODAL =========================
+let _newProjResolve = null;
+
+async function openNewProjectModal(data) {
+  document.getElementById('newProjMsg').textContent = data.mensaje || '';
+  document.getElementById('newProjNombre').value = data.proyecto_nombre || '';
+  document.getElementById('newProjCalculista').value = '';
+
+  // Load users for owner select
+  const sel = document.getElementById('newProjOwner');
+  sel.innerHTML = '<option value="">Cargando...</option>';
+  const usersData = await apiGet('/users/list');
+  if (usersData && usersData.users) {
+    const me = localStorage.getItem('armahub_email') || '';
+    sel.innerHTML = usersData.users.map(u =>
+      `<option value="${u.id}" ${u.email === me ? 'selected' : ''}>${u.email} (${u.role})</option>`
+    ).join('');
+  }
+
+  const modal = document.getElementById('newProjectModal');
+  modal.style.display = 'flex';
+
+  return new Promise(resolve => { _newProjResolve = resolve; });
+}
+
+function closeNewProjectModal(confirmed) {
+  document.getElementById('newProjectModal').style.display = 'none';
+  if (_newProjResolve) {
+    if (confirmed) {
+      _newProjResolve({
+        confirmed: true,
+        calculista: document.getElementById('newProjCalculista').value.trim(),
+      });
+    } else {
+      _newProjResolve({ confirmed: false });
+    }
+    _newProjResolve = null;
+  }
+}
+
 // ========================= UI =========================
 async function setGlobalStatus(text, kind = 'info') {
   const el = document.getElementById('globalStatus');
@@ -871,6 +941,7 @@ async function loadMe() {
   if (!me) return;
   document.getElementById('whoEmail').textContent = me.email;
   document.getElementById('whoRole').textContent = "Rol: " + me.role;
+  localStorage.setItem('armahub_email', me.email);
   if (me.role === 'admin') {
     document.getElementById('adminTabBtn').style.display = '';
     await setGlobalStatus("Sesión como ADMIN", "ok");
@@ -889,15 +960,22 @@ async function loadProyectos() {
     return;
   }
   
-  container.innerHTML = data.proyectos.map(p => `
+  container.innerHTML = data.proyectos.map(p => {
+    const ownerText = p.owner_email ? p.owner_email : '(sin dueño)';
+    const calcText = p.calculista ? p.calculista : '';
+    return `
     <div class="card" style="margin: 12px 0; padding: 16px; border-left: 4px solid #8BC34A;">
       <div style="display: flex; justify-content: space-between; align-items: start;">
         <div>
-          <h4 style="margin: 0 0 8px 0;" id="pname-${p.id_proyecto}">${p.nombre_proyecto}</h4>
-          <div class="muted">
+          <h4 style="margin: 0 0 6px 0;" id="pname-${p.id_proyecto}">${p.nombre_proyecto}</h4>
+          <div class="muted" style="margin-bottom:4px;">
             <span class="badge">${p.total_kilos.toFixed(0)} kg</span>
             <span class="badge">${p.total_barras} barras</span>
             <span class="muted" style="font-size:11px; margin-left:8px;">ID: ${p.id_proyecto}</span>
+          </div>
+          <div style="font-size:11px; color:#666;">
+            <span>👤 ${ownerText}</span>
+            ${calcText ? '<span style="margin-left:10px;">📐 Calculista: ' + calcText + '</span>' : ''}
           </div>
         </div>
         <div style="display: flex; gap: 6px; align-items: center;">
@@ -906,7 +984,7 @@ async function loadProyectos() {
         </div>
       </div>
     </div>
-  `).join('');
+  `}).join('');
 
   // Populate sector constructivo project filter
   const spf = document.getElementById('sectorProyectoFilter');
@@ -932,19 +1010,23 @@ async function loadProyectos() {
 // ========================= ADMIN OBRAS =========================
 async function crearObra() {
   const name = document.getElementById('newObraName').value.trim();
+  const calc = document.getElementById('newObraCalculista').value.trim();
   const msg = document.getElementById('crearObraMsg');
   if (!name) { msg.innerHTML = '<span class="status-err">Ingresa un nombre para la obra</span>'; return; }
   msg.innerHTML = '<span class="muted">Creando...</span>';
+  const body = { nombre_proyecto: name };
+  if (calc) body.calculista = calc;
   const res = await fetch('/proyectos', {
     method: 'POST',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
-    body: JSON.stringify({ nombre_proyecto: name })
+    body: JSON.stringify(body)
   });
   if (res.status === 401) { logout(); return; }
   const data = await res.json();
   if (data.ok) {
     msg.innerHTML = '<span class="status-ok">Obra creada: ' + data.nombre_proyecto + ' (ID: ' + data.id_proyecto + ')</span>';
     document.getElementById('newObraName').value = '';
+    document.getElementById('newObraCalculista').value = '';
     await loadProyectos();
     await loadFilters();
     await loadInicio();
@@ -1213,6 +1295,29 @@ async function importAllFiles() {
     if (!data) {
       results.innerHTML += `<div class="status-err" style="padding:4px 0; font-size:13px;">❌ ${f.name}: sesión expirada</div>`;
       errorCount++;
+      continue;
+    }
+    if (data.ok === false && data.new_project) {
+      // Proyecto nuevo detectado — mostrar popup para confirmar creación
+      const modalResult = await openNewProjectModal(data);
+      if (!modalResult.confirmed) {
+        results.innerHTML += `<div class="status-warn" style="padding:4px 0; font-size:13px;">⏭️ ${f.name}: creación cancelada</div>`;
+        errorCount++;
+        continue;
+      }
+      let retryUrl = '/import/armadetailer?confirmar_nuevo=true';
+      if (modalResult.calculista) {
+        retryUrl += '&calculista=' + encodeURIComponent(modalResult.calculista);
+      }
+      const data2 = await apiPostFile(retryUrl, f);
+      if (data2 && data2.ok) {
+        const kilosText2 = data2.kilos ? ` — ${Math.round(data2.kilos).toLocaleString()} kg` : '';
+        results.innerHTML += `<div class="status-ok" style="padding:4px 0; font-size:13px;">✅ ${f.name}: ${data2.rows_upserted} barras (${data2.proyecto})${kilosText2} (nuevo proyecto)</div>`;
+        successCount++;
+      } else {
+        results.innerHTML += `<div class="status-err" style="padding:4px 0; font-size:13px;">❌ ${f.name}: ${data2?.error || data2?.mensaje || 'Error creando proyecto'}</div>`;
+        errorCount++;
+      }
       continue;
     }
     if (data.ok === false && data.duplicate_warning) {
@@ -1622,7 +1727,7 @@ async function loadMatriz() {
   window._matrizToggle = toggleCompleted;
 
   // Build HTML table — compact building look
-  let html = '<table style="width:auto; border-collapse:collapse; font-size:11px;">';
+  let html = '<table style="width:100%; border-collapse:collapse; font-size:11px;">';
   html += '<thead><tr><th style="border:1px solid #ccc; padding:4px 6px; background:#1a1a1a; color:#8BC34A; white-space:nowrap;">Piso</th>';
   ciclos.forEach(c => {
     html += `<th style="border:1px solid #ccc; padding:4px 6px; background:#1a1a1a; color:#8BC34A; text-align:center; white-space:nowrap;">${c}</th>`;
