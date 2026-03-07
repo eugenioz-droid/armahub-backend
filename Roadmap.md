@@ -130,7 +130,16 @@ Actualmente el sistema ya cuenta con:
 - Admin Data: tab rediseñado con tabla compacta, checkboxes, acciones (mover proyecto/sector) - OK
 - POST /barras/mover: mover barras individuales por id_unico + cambiar sector - OK
 
-**Pendiente próximo checkpoint**: Fase 3 (Export para producción)
+**Fase 3 — Exportación a producción (aSa Studio)**: OK
+- Migración 6: 21 columnas nuevas en barras (bar_id, estructura, tipo, marca, figura, esp, dim_a-i, ang1-3, radio, cod_proyecto, nombre_dwg) - OK
+- Importer actualizado: almacena TODAS las columnas del CSV ArmaDetailer (40 campos) - OK
+- export.py: GET /proyectos/{id}/exportar genera ZIP con un .xlsx por SECTOR+PISO+CICLO - OK
+- Formato Excel aSa Studio: 26 columnas (EJE, ELEMCONFIREQ, PISO, CICLO, CANT, Ømm, DE|PA, L/cm, Masa, Pied, A-Icm, AngV1-3, Rcm, PesoKg, PesoTotal) - OK
+- UI Exportación: selector proyecto con búsqueda, preview sectores/pisos/ciclos, descarga ZIP - OK
+- Fix JS: corregido escaping roto en onclick deleteCarga que impedía carga de la página - OK
+- Dependencia: openpyxl agregada a requirements.txt - OK
+
+**Pendiente próximo checkpoint**: Fase 4 (Pedidos / solicitudes de material)
 
 ---
 

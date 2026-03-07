@@ -226,6 +226,19 @@ async def import_armadetailer(
             s = str(val).strip() if pd.notna(val) else ""
             return s if s and s.lower() != "nan" else ""
 
+        def _opt_float(col):
+            if col not in df.columns:
+                return None
+            try:
+                return float(r[col]) if pd.notna(r[col]) else None
+            except (ValueError, TypeError):
+                return None
+
+        def _opt_text(col):
+            if col not in df.columns:
+                return None
+            return _clean(r[col]) or None
+
         rows_to_upsert.append((
             id_unico,
             str(r["ID_PROYECTO"]).strip(),
@@ -246,12 +259,35 @@ async def import_armadetailer(
             _clean(r["VERSION_MOD"]),
             _clean(r["VERSION_EXP"]),
             now_iso,
+            # Columnas adicionales ArmaDetailer
+            _opt_text("ID"),
+            _opt_text("ESTRUCTURA"),
+            _opt_text("TIPO"),
+            _opt_text("MARCA"),
+            _opt_text("FIGURA"),
+            _opt_float("ESP"),
+            _opt_float("A"),
+            _opt_float("B"),
+            _opt_float("C"),
+            _opt_float("D"),
+            _opt_float("E"),
+            _opt_float("F"),
+            _opt_float("G"),
+            _opt_float("H"),
+            _opt_float("I"),
+            _opt_float("ANG1"),
+            _opt_float("ANG2"),
+            _opt_float("ANG3"),
+            _opt_float("R"),
+            _opt_text("COD_PROYECTO"),
+            _opt_text("NOMBRE_DWG"),
         ))
 
     upsert_sql = """
     INSERT INTO barras
-    (id_unico,id_proyecto,nombre_proyecto,plano_code,nombre_plano,sector,piso,ciclo,eje,diam,largo_total,mult,cant,cant_total,peso_unitario,peso_total,version_mod,version_exp,fecha_carga)
-    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+    (id_unico,id_proyecto,nombre_proyecto,plano_code,nombre_plano,sector,piso,ciclo,eje,diam,largo_total,mult,cant,cant_total,peso_unitario,peso_total,version_mod,version_exp,fecha_carga,
+     bar_id,estructura,tipo,marca,figura,esp,dim_a,dim_b,dim_c,dim_d,dim_e,dim_f,dim_g,dim_h,dim_i,ang1,ang2,ang3,radio,cod_proyecto,nombre_dwg)
+    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
     ON CONFLICT (id_unico) DO UPDATE SET
         id_proyecto=EXCLUDED.id_proyecto,
         nombre_proyecto=EXCLUDED.nombre_proyecto,
@@ -270,10 +306,31 @@ async def import_armadetailer(
         peso_total=EXCLUDED.peso_total,
         version_mod=EXCLUDED.version_mod,
         version_exp=EXCLUDED.version_exp,
-        fecha_carga=EXCLUDED.fecha_carga
+        fecha_carga=EXCLUDED.fecha_carga,
+        bar_id=EXCLUDED.bar_id,
+        estructura=EXCLUDED.estructura,
+        tipo=EXCLUDED.tipo,
+        marca=EXCLUDED.marca,
+        figura=EXCLUDED.figura,
+        esp=EXCLUDED.esp,
+        dim_a=EXCLUDED.dim_a,
+        dim_b=EXCLUDED.dim_b,
+        dim_c=EXCLUDED.dim_c,
+        dim_d=EXCLUDED.dim_d,
+        dim_e=EXCLUDED.dim_e,
+        dim_f=EXCLUDED.dim_f,
+        dim_g=EXCLUDED.dim_g,
+        dim_h=EXCLUDED.dim_h,
+        dim_i=EXCLUDED.dim_i,
+        ang1=EXCLUDED.ang1,
+        ang2=EXCLUDED.ang2,
+        ang3=EXCLUDED.ang3,
+        radio=EXCLUDED.radio,
+        cod_proyecto=EXCLUDED.cod_proyecto,
+        nombre_dwg=EXCLUDED.nombre_dwg
     """
 
-    total_kilos = sum(r[15] for r in rows_to_upsert if r[15] is not None)
+    total_kilos = sum(r[15] for r in rows_to_upsert if r[15] is not None)  # index 15 = peso_total
 
     # Extraer version y plano del primer row para tracking
     first_version = str(df.iloc[0]["VERSION_EXP"]) if len(df) > 0 and pd.notna(df.iloc[0]["VERSION_EXP"]) else None

@@ -6,3 +6,4 @@ psycopg[binary]
 PyJWT
 passlib
 jinja2
+openpyxl

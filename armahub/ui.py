@@ -756,11 +756,26 @@ APP_HTML = Template("""
     </div>
   </div>
 
-  <!-- TAB 5: EXPORTACIÓN (Future) -->
+  <!-- TAB 5: EXPORTACIÓN -->
   <div id="tab-export" class="tab-content">
     <div class="card">
       <h3>Exportar a producción (aSa Studio)</h3>
-      <p class="muted">Funcionalidad en desarrollo. Próximamente podrás descargar en formato aSa.</p>
+      <p class="muted" style="margin-bottom:12px;">Genera un ZIP con un archivo Excel por cada combinación SECTOR + PISO + CICLO.</p>
+      <div class="row" style="gap:8px; align-items:flex-end;">
+        <div class="col" style="flex:2; position:relative;">
+          <label style="font-size:11px; color:#666; font-weight:600;">Proyecto *</label>
+          <div style="position:relative;">
+            <span style="position:absolute; left:8px; top:50%; transform:translateY(-50%); font-size:14px; color:#999; pointer-events:none;">🔍</span>
+            <input type="text" id="exportProyectoSearch" placeholder="Buscar proyecto..." oninput="filterProjectSelect('exportProyectoSearch','exportProyecto')" style="padding-left:30px; width:100%; font-size:13px; margin-bottom:4px;" />
+          </div>
+          <select id="exportProyecto" onchange="previewExport()">
+            <option value="">-- Selecciona proyecto --</option>
+          </select>
+        </div>
+        <button onclick="descargarExport()" style="font-size:13px; padding:8px 20px;">📥 Descargar ZIP</button>
+      </div>
+      <div id="exportPreview" style="margin-top:16px;"></div>
+      <div id="exportStatus" class="muted" style="margin-top:8px;"></div>
     </div>
   </div>
 
@@ -1124,7 +1139,7 @@ async function loadCargasProyecto(idProyecto) {
           '<td>' + (c.version_archivo || '-') + '</td>' +
           '<td class="muted">' + c.usuario + '</td>' +
           '<td class="muted">' + fecha + '</td>' +
-          '<td><button class="secondary" style="padding:2px 6px; font-size:10px; color:#b42318;" onclick="deleteCarga(' + c.id + ',\\'' + idProyecto.replace(/'/g, "\\\\'") + '\\')">Eliminar</button></td>' +
+          '<td><button class="secondary" style="padding:2px 6px; font-size:10px; color:#b42318;" onclick="deleteCarga(' + c.id + ',\'' + idProyecto.replace(/'/g, "&#39;") + '\')">Eliminar</button></td>' +
         '</tr>';
       }).join('')}</tbody>
     </table>`;
@@ -1360,6 +1375,9 @@ async function loadFilters(depParams) {
   
   // Proyectos always full list
   fillSelect('proyecto', data.proyectos);
+  fillSelect('exportProyecto', data.proyectos);
+  fillSelect('sectorProyectoFilter', data.proyectos);
+  fillSelect('matrizProyectoFilter', data.proyectos);
   // Dependent selects
   fillSelect('plano', data.planos, true);
   fillSelect('sector', data.sectores);
@@ -1809,6 +1827,77 @@ function nextPage() {
   if (currentOffset + pageLimit >= lastTotal) return;
   currentOffset += pageLimit;
   buscar(false);
+}
+
+// ========================= EXPORTACIÓN =========================
+async function previewExport() {
+  const proy = document.getElementById('exportProyecto').value;
+  const preview = document.getElementById('exportPreview');
+  const status = document.getElementById('exportStatus');
+  if (!proy) { preview.innerHTML = ''; status.textContent = ''; return; }
+
+  status.textContent = 'Cargando vista previa...';
+  const data = await apiGet('/barras?proyecto=' + encodeURIComponent(proy) + '&limit=1&offset=0');
+  if (!data) { status.textContent = 'Error cargando datos'; return; }
+
+  const total = data.total || 0;
+  if (total === 0) {
+    preview.innerHTML = '<span class="muted">Este proyecto no tiene barras para exportar.</span>';
+    status.textContent = '';
+    return;
+  }
+
+  // Get sector/piso/ciclo combos
+  const filters = await apiGet('/filters?proyecto=' + encodeURIComponent(proy));
+  let combos = '';
+  if (filters) {
+    const sectores = filters.sectores || [];
+    const pisos = filters.pisos || [];
+    const ciclos = filters.ciclos || [];
+    combos = '<div style="margin-top:8px; font-size:12px;">' +
+      '<strong>Sectores:</strong> ' + (sectores.join(', ') || '-') + '<br>' +
+      '<strong>Pisos:</strong> ' + (pisos.join(', ') || '-') + '<br>' +
+      '<strong>Ciclos:</strong> ' + (ciclos.join(', ') || '-') +
+      '</div>';
+  }
+
+  preview.innerHTML = '<div style="background:#f8f9fa; padding:12px; border-radius:6px; font-size:13px;">' +
+    '<strong>' + total.toLocaleString() + ' barras</strong> disponibles para exportar.' +
+    combos +
+    '<p class="muted" style="margin-top:8px; font-size:11px;">Se generará un archivo .xlsx por cada combinación SECTOR + PISO + CICLO.</p>' +
+    '</div>';
+  status.textContent = '';
+}
+
+async function descargarExport() {
+  const proy = document.getElementById('exportProyecto').value;
+  if (!proy) return alert('Selecciona un proyecto');
+  const status = document.getElementById('exportStatus');
+  status.textContent = 'Generando archivos Excel...';
+
+  try {
+    const res = await fetch('/proyectos/' + encodeURIComponent(proy) + '/exportar', { headers: authHeaders() });
+    if (res.status === 401) { logout(); return; }
+    if (!res.ok) {
+      const err = await res.json();
+      status.textContent = 'Error: ' + (err.detail || 'desconocido');
+      return;
+    }
+    const blob = await res.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    const cd = res.headers.get('Content-Disposition');
+    const fn = cd ? cd.split('filename=')[1].replace(/"/g, '') : 'export.zip';
+    a.download = fn;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.URL.revokeObjectURL(url);
+    status.textContent = 'Descarga completada.';
+  } catch (e) {
+    status.textContent = 'Error: ' + e.message;
+  }
 }
 
 // ========================= DASHBOARD =========================
