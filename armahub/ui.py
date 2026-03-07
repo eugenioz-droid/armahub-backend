@@ -408,7 +408,7 @@ APP_HTML = Template("""
   <div class="tabs">
     <button class="tab-btn active" onclick="switchTab('inicio')">🏠 Inicio</button>
     <button class="tab-btn" onclick="switchTab('obras')">📦 Mis Obras</button>
-    <button class="tab-btn" onclick="switchTab('buscar')">🔍 Buscar Barras</button>
+    <button class="tab-btn" onclick="switchTab('buscar')">🔍 Admin Data</button>
     <button class="tab-btn" onclick="switchTab('dashboards')">📊 Dashboards</button>
     <button class="tab-btn" onclick="switchTab('pedidos')">📝 Pedidos</button>
     <button class="tab-btn" onclick="switchTab('export')">📥 Exportación</button>
@@ -561,84 +561,108 @@ APP_HTML = Template("""
     </div>
   </div>
 
-  <!-- TAB 2: BUSCAR BARRAS -->
+  <!-- TAB 2: ADMINISTRADOR DE DATA -->
   <div id="tab-buscar" class="tab-content">
     <div class="card">
-      <h3>Filtros</h3>
-      <div class="row">
-        <div class="col" style="position:relative;">
+      <h3>Administrador de Data</h3>
+      <div class="row" style="gap:8px; align-items:flex-end;">
+        <div class="col" style="position:relative; flex:2;">
+          <label style="font-size:11px; color:#666; font-weight:600;">Proyecto *</label>
           <div style="position:relative;">
             <span style="position:absolute; left:8px; top:50%; transform:translateY(-50%); font-size:14px; color:#999; pointer-events:none;">🔍</span>
             <input type="text" id="proyectoSearchInput" placeholder="Buscar proyecto..." oninput="filterProjectSelect('proyectoSearchInput','proyecto')" style="padding-left:30px; width:100%; font-size:13px; margin-bottom:4px;" />
           </div>
           <select id="proyecto" onchange="onProyectoChange()">
-            <option value="">Proyecto (todos)</option>
+            <option value="">-- Selecciona proyecto --</option>
           </select>
         </div>
         <div class="col">
+          <label style="font-size:11px; color:#666;">Plano</label>
           <select id="plano" onchange="onFilterChange()">
-            <option value="">Plano (todos)</option>
+            <option value="">Todos</option>
           </select>
         </div>
         <div class="col">
+          <label style="font-size:11px; color:#666;">Sector</label>
           <select id="sector" onchange="onFilterChange()">
-            <option value="">Sector (todos)</option>
+            <option value="">Todos</option>
           </select>
         </div>
         <div class="col">
+          <label style="font-size:11px; color:#666;">Piso</label>
           <select id="piso" onchange="onFilterChange()">
-            <option value="">Piso (todos)</option>
+            <option value="">Todos</option>
           </select>
         </div>
         <div class="col">
+          <label style="font-size:11px; color:#666;">Ciclo</label>
           <select id="ciclo" onchange="onFilterChange()">
-            <option value="">Ciclo (todos)</option>
+            <option value="">Todos</option>
           </select>
         </div>
       </div>
 
-      <div class="row">
-        <div class="col" style="flex: 2;">
-          <input id="q" placeholder="Buscar por ID, Eje o Plano..." onkeyup="if(event.key==='Enter') buscar(true)" />
+      <div class="row" style="gap:8px; margin-top:8px; align-items:flex-end;">
+        <div class="col" style="flex:2;">
+          <input id="q" placeholder="Buscar por ID, Eje..." onkeyup="if(event.key==='Enter') buscar(true)" style="font-size:13px;" />
         </div>
         <div class="col">
-          <select id="order_by" onchange="buscar(true)">
-            <option value="fecha_carga">Orden: Fecha carga</option>
+          <select id="order_by" onchange="buscar(true)" style="font-size:12px;">
+            <option value="sector">Orden: Sector</option>
+            <option value="piso">Orden: Piso</option>
+            <option value="ciclo">Orden: Ciclo</option>
+            <option value="eje">Orden: Eje</option>
+            <option value="diam">Orden: \u03c6</option>
             <option value="peso_total">Orden: Peso</option>
             <option value="cant_total">Orden: Cantidad</option>
-            <option value="diam">Orden: Diámetro</option>
             <option value="largo_total">Orden: Largo</option>
-            <option value="plano_code">Orden: Plano</option>
-            <option value="id_unico">Orden: ID único</option>
+            <option value="id_unico">Orden: ID</option>
           </select>
         </div>
-        <div class="col">
-          <select id="order_dir" onchange="buscar(true)">
-            <option value="desc">Descendente</option>
-            <option value="asc">Ascendente</option>
+        <div class="col" style="flex:0;">
+          <select id="order_dir" onchange="buscar(true)" style="font-size:12px;">
+            <option value="asc">ASC</option>
+            <option value="desc">DESC</option>
           </select>
         </div>
-      </div>
-
-      <div class="row">
-        <button onclick="buscar(true)">🔍 Buscar</button>
-        <button class="secondary" onclick="resetFiltros()">Limpiar filtros</button>
-        <span class="muted" id="pageInfo"></span>
+        <button onclick="buscar(true)" style="font-size:12px; padding:6px 14px;">🔍 Buscar</button>
+        <button class="secondary" onclick="resetFiltros()" style="font-size:12px; padding:6px 14px;">Limpiar</button>
       </div>
     </div>
 
-    <div class="card">
-      <div class="muted" id="count"></div>
-      <div style="overflow-x: auto; margin-top: 12px;">
-        <table id="tabla">
+    <!-- TOOLBAR ACCIONES SELECCIONADAS -->
+    <div id="barrasToolbar" class="card" style="display:none; background:#f9fff4; border:1px solid #8BC34A; padding:10px 16px;">
+      <div class="row" style="gap:10px; align-items:center; flex-wrap:wrap;">
+        <strong id="selectedCount" style="font-size:13px;">0 seleccionadas</strong>
+        <select id="accionDestProyecto" style="font-size:12px; max-width:200px;">
+          <option value="">Mover a proyecto...</option>
+        </select>
+        <button onclick="accionMoverProyecto()" style="font-size:12px; padding:4px 12px;">Mover proyecto</button>
+        <select id="accionSector" style="font-size:12px; max-width:140px;">
+          <option value="">Cambiar sector...</option>
+          <option value="FUND">FUND</option>
+          <option value="ELEV">ELEV</option>
+          <option value="LCIELO">LCIELO</option>
+          <option value="VCIELO">VCIELO</option>
+        </select>
+        <button onclick="accionCambiarSector()" style="font-size:12px; padding:4px 12px;">Cambiar sector</button>
+        <button class="secondary" onclick="clearSeleccion()" style="font-size:11px; padding:4px 10px;">Deseleccionar</button>
+      </div>
+    </div>
+
+    <div class="card" style="padding:8px 16px;">
+      <div class="muted" id="count" style="margin-bottom:6px;"></div>
+      <div style="overflow-x: auto;">
+        <table id="tabla" style="font-size:12px; white-space:nowrap;">
           <thead></thead>
           <tbody></tbody>
         </table>
       </div>
 
-      <div class="row" style="justify-content: center; margin-top: 16px;">
-        <button onclick="prevPage()">◀ Anterior</button>
-        <button onclick="nextPage()">Siguiente ▶</button>
+      <div class="row" style="justify-content: center; margin-top: 12px; gap:8px;">
+        <button onclick="prevPage()" style="font-size:12px; padding:4px 14px;">◀ Anterior</button>
+        <span class="muted" id="pageInfo" style="font-size:12px;"></span>
+        <button onclick="nextPage()" style="font-size:12px; padding:4px 14px;">Siguiente ▶</button>
       </div>
     </div>
   </div>
@@ -857,6 +881,20 @@ async function apiPostFile(url, file) {
   return await res.json();
 }
 
+async function apiPostJson(url, body) {
+  const h = authHeaders();
+  h['Content-Type'] = 'application/json';
+  const res = await fetch(url, { method: 'POST', headers: h, body: JSON.stringify(body) });
+  if (res.status === 401) { logout(); return null; }
+  return await res.json();
+}
+
+async function apiDelete(url) {
+  const res = await fetch(url, { method: 'DELETE', headers: authHeaders() });
+  if (res.status === 401) { logout(); return null; }
+  return await res.json();
+}
+
 // ========================= NEW PROJECT MODAL =========================
 let _newProjResolve = null;
 
@@ -979,10 +1017,15 @@ async function loadProyectos() {
           </div>
         </div>
         <div style="display: flex; gap: 6px; align-items: center;">
+          <button class="secondary" style="font-size:12px; padding:4px 10px;" onclick="toggleCargasProyecto('${p.id_proyecto}')">Cargas</button>
           <button class="secondary" style="font-size:12px; padding:4px 10px;" onclick="toggleAutorizados('${p.id_proyecto}')">Usuarios</button>
           <button class="secondary" style="font-size:12px; padding:4px 10px;" onclick="editarObra('${p.id_proyecto}', '${p.nombre_proyecto.replace(/'/g, "\\'")}')">Renombrar</button>
           <button class="secondary" style="font-size:12px; padding:4px 10px; color:#b42318; border-color:#b42318;" onclick="eliminarObra('${p.id_proyecto}', '${p.nombre_proyecto.replace(/'/g, "\\'")}', ${p.total_barras})">Eliminar</button>
         </div>
+      </div>
+      <div id="cargas-${p.id_proyecto}" style="display:none; margin-top:10px; padding-top:10px; border-top:1px solid #eee;">
+        <div style="font-size:12px; font-weight:bold; margin-bottom:6px;">Historial de cargas</div>
+        <div id="cargas-list-${p.id_proyecto}" class="muted" style="font-size:12px;">Cargando...</div>
       </div>
       <div id="autorizados-${p.id_proyecto}" style="display:none; margin-top:10px; padding-top:10px; border-top:1px solid #eee;">
         <div style="font-size:12px; font-weight:bold; margin-bottom:6px;">Usuarios autorizados</div>
@@ -1041,6 +1084,62 @@ async function crearObra() {
     await loadInicio();
   } else {
     msg.innerHTML = '<span class="status-err">Error: ' + (data.detail || data.error || 'desconocido') + '</span>';
+  }
+}
+
+// ========================= CARGAS POR PROYECTO =========================
+async function toggleCargasProyecto(idProyecto) {
+  const panel = document.getElementById('cargas-' + idProyecto);
+  if (panel.style.display === 'none') {
+    panel.style.display = '';
+    await loadCargasProyecto(idProyecto);
+  } else {
+    panel.style.display = 'none';
+  }
+}
+
+async function loadCargasProyecto(idProyecto) {
+  const list = document.getElementById('cargas-list-' + idProyecto);
+  const data = await apiGet('/proyectos/' + encodeURIComponent(idProyecto) + '/cargas?limit=10');
+  if (!data || !data.cargas) { list.innerHTML = '<span class="muted">Error cargando</span>'; return; }
+  if (data.cargas.length === 0) {
+    list.innerHTML = '<span class="muted">Sin cargas registradas para este proyecto</span>';
+    return;
+  }
+  list.innerHTML = `
+    <table style="width:100%; font-size:12px;">
+      <thead><tr><th>Archivo</th><th>Plano</th><th>Barras</th><th>Kilos</th><th>Versi\u00f3n</th><th>Usuario</th><th>Fecha</th><th></th></tr></thead>
+      <tbody>${data.cargas.map(c => {
+        let fecha = '';
+        if (c.fecha) {
+          const d = new Date(c.fecha);
+          fecha = d.toLocaleDateString('es-CL') + ' ' + d.toLocaleTimeString('es-CL', {hour:'2-digit', minute:'2-digit'});
+        }
+        const estadoBadge = c.estado && c.estado !== 'ok' ? '<span style="color:#856404; font-size:10px;">(' + c.estado + ')</span> ' : '';
+        return '<tr>' +
+          '<td>' + estadoBadge + (c.archivo || '-') + '</td>' +
+          '<td>' + (c.plano_code || '-') + '</td>' +
+          '<td>' + c.barras_count + '</td>' +
+          '<td>' + Math.round(c.kilos || 0).toLocaleString() + ' kg</td>' +
+          '<td>' + (c.version_archivo || '-') + '</td>' +
+          '<td class="muted">' + c.usuario + '</td>' +
+          '<td class="muted">' + fecha + '</td>' +
+          '<td><button class="secondary" style="padding:2px 6px; font-size:10px; color:#b42318;" onclick="deleteCarga(' + c.id + ',\\'' + idProyecto.replace(/'/g, "\\\\'") + '\\')">Eliminar</button></td>' +
+        '</tr>';
+      }).join('')}</tbody>
+    </table>`;
+}
+
+async function deleteCarga(cargaId, idProyecto) {
+  if (!confirm('Eliminar esta carga? Se borrar\u00e1n las barras importadas en esa fecha.')) return;
+  const res = await apiDelete('/cargas/' + cargaId);
+  if (res && res.ok) {
+    alert('Carga eliminada: ' + res.barras_eliminadas + ' barras borradas');
+    await loadCargasProyecto(idProyecto);
+    await loadProyectos();
+    await loadInicio();
+  } else {
+    alert('Error: ' + (res?.detail || 'desconocido'));
   }
 }
 
@@ -1424,14 +1523,26 @@ async function importAllFiles() {
       }
       continue;
     }
+    if (data.ok === false && data.invalid_sectors) {
+      results.innerHTML += `<div class="status-err" style="padding:4px 0; font-size:13px;">🚫 ${f.name}: ${data.mensaje}</div>`;
+      errorCount++;
+      continue;
+    }
     if (data.ok === false) {
-      results.innerHTML += `<div class="status-err" style="padding:4px 0; font-size:13px;">❌ ${f.name}: ${data.error || 'Error desconocido'}</div>`;
+      results.innerHTML += `<div class="status-err" style="padding:4px 0; font-size:13px;">❌ ${f.name}: ${data.error || data.mensaje || 'Error desconocido'}</div>`;
       errorCount++;
       continue;
     }
 
     const kilosText = data.kilos ? ` — ${Math.round(data.kilos).toLocaleString()} kg` : '';
-    results.innerHTML += `<div class="status-ok" style="padding:4px 0; font-size:13px;">✅ ${f.name}: ${data.rows_upserted} barras (${data.proyecto})${kilosText}</div>`;
+    let validInfo = '';
+    if (data.filas_rechazadas > 0) validInfo += ` ⚠️ ${data.filas_rechazadas} rechazadas`;
+    if (data.advertencias > 0) validInfo += ` ℹ️ ${data.advertencias} advertencias`;
+    const statusClass = data.estado === 'ok' ? 'status-ok' : 'status-warn';
+    results.innerHTML += `<div class="${statusClass}" style="padding:4px 0; font-size:13px;">✅ ${f.name}: ${data.rows_upserted} barras (${data.proyecto})${kilosText}${validInfo}</div>`;
+    if (data.rejected && data.rejected.length > 0) {
+      results.innerHTML += `<div class="muted" style="padding:2px 0 4px 20px; font-size:11px;">Rechazadas: ${data.rejected.slice(0,5).join(', ')}</div>`;
+    }
     successCount++;
   }
 
@@ -1461,7 +1572,7 @@ async function loadCargas() {
   container.innerHTML = `
     <table style="width:100%;">
       <thead><tr>
-        <th>Proyecto</th><th>Archivo</th><th>Barras</th><th>Kilos</th><th>Usuario</th><th>Fecha</th>
+        <th>Proyecto</th><th>Archivo</th><th>Plano</th><th>Barras</th><th>Kilos</th><th>Versión</th><th>Usuario</th><th>Fecha</th>
       </tr></thead>
       <tbody>${data.cargas.map(c => {
         let fecha = '';
@@ -1469,102 +1580,207 @@ async function loadCargas() {
           const d = new Date(c.fecha);
           fecha = d.toLocaleDateString('es-CL') + ' ' + d.toLocaleTimeString('es-CL', {hour:'2-digit', minute:'2-digit'});
         }
+        const estadoBadge = c.estado === 'ok' ? '' : `<span class="badge" style="background:#fff3cd; color:#856404; font-size:10px;">${c.estado}</span> `;
         return `<tr>
-          <td><strong>${c.nombre_proyecto || c.id_proyecto}</strong></td>
-          <td class="muted">${c.archivo || '-'}</td>
+          <td>${estadoBadge}<strong>${c.nombre_proyecto || c.id_proyecto}</strong></td>
+          <td class="muted" style="font-size:11px;">${c.archivo || '-'}</td>
+          <td class="muted" style="font-size:11px;">${c.plano_code || '-'}</td>
           <td>${c.barras_count}</td>
           <td>${Math.round(c.kilos || 0).toLocaleString()} kg</td>
+          <td class="muted" style="font-size:11px;">${c.version_archivo || '-'}</td>
           <td class="muted">${c.usuario}</td>
-          <td class="muted">${fecha}</td>
+          <td class="muted" style="font-size:11px;">${fecha}</td>
         </tr>`;
       }).join('')}</tbody>
     </table>
   `;
 }
 
-// ========================= BUSCAR BARRAS =========================
+// ========================= ADMINISTRADOR DE DATA =========================
 let currentOffset = 0;
-const pageLimit = 50;
+const pageLimit = 100;
 let lastTotal = 0;
-let currentOrderBy = "fecha_carga";
-let currentOrderDir = "desc";
+let selectedBarras = new Set();
 
-const ORDERABLE_COLS = new Set([
-  "fecha_carga", "peso_total", "peso_unitario", "cant_total",
-  "diam", "largo_total", "id_proyecto", "plano_code", "sector", "piso", "ciclo", "eje", "id_unico"
-]);
+// Columnas compactas para la tabla
+const DISPLAY_COLS = [
+  { key: 'id_unico', label: 'ID', short: true },
+  { key: 'sector',   label: 'Sector' },
+  { key: 'piso',     label: 'Piso' },
+  { key: 'ciclo',    label: 'Ciclo' },
+  { key: 'eje',      label: 'Eje' },
+  { key: 'diam',     label: '\u03c6', fmt: v => v != null ? Math.round(v) : '' },
+  { key: 'cant_total', label: 'Cant', fmt: v => v != null ? Math.round(v) : '' },
+  { key: 'largo_total', label: 'Largo', fmt: v => v != null ? Math.round(v) : '' },
+  { key: 'peso_unitario', label: 'Peso U.', fmt: v => v != null ? v.toFixed(2) : '' },
+  { key: 'peso_total', label: 'Peso Total', fmt: v => v != null ? v.toFixed(1) : '' },
+];
+
+function shortId(id) {
+  if (!id) return '';
+  const parts = id.split('-');
+  return parts.length > 1 ? parts[parts.length - 1] : id;
+}
+
+function updateToolbar() {
+  const tb = document.getElementById('barrasToolbar');
+  const cnt = document.getElementById('selectedCount');
+  if (selectedBarras.size > 0) {
+    tb.style.display = '';
+    cnt.textContent = selectedBarras.size + ' seleccionada' + (selectedBarras.size > 1 ? 's' : '');
+  } else {
+    tb.style.display = 'none';
+  }
+}
+
+function toggleBarra(id) {
+  if (selectedBarras.has(id)) selectedBarras.delete(id);
+  else selectedBarras.add(id);
+  const cb = document.getElementById('cb_' + CSS.escape(id));
+  if (cb) cb.checked = selectedBarras.has(id);
+  const row = document.getElementById('row_' + CSS.escape(id));
+  if (row) row.style.background = selectedBarras.has(id) ? '#f0f9e8' : '';
+  updateToolbar();
+}
+
+function toggleAllBarras(checked) {
+  document.querySelectorAll('.barra-cb').forEach(cb => {
+    const id = cb.dataset.id;
+    if (checked) selectedBarras.add(id); else selectedBarras.delete(id);
+    cb.checked = checked;
+    const row = document.getElementById('row_' + CSS.escape(id));
+    if (row) row.style.background = checked ? '#f0f9e8' : '';
+  });
+  updateToolbar();
+}
+
+function clearSeleccion() {
+  selectedBarras.clear();
+  document.querySelectorAll('.barra-cb').forEach(cb => { cb.checked = false; });
+  document.querySelectorAll('tbody tr').forEach(tr => { tr.style.background = ''; });
+  const sa = document.getElementById('selectAll');
+  if (sa) sa.checked = false;
+  updateToolbar();
+}
+
+async function accionMoverProyecto() {
+  if (selectedBarras.size === 0) return alert('Selecciona al menos una barra');
+  const dest = document.getElementById('accionDestProyecto').value;
+  if (!dest) return alert('Selecciona proyecto destino');
+  if (!confirm('Mover ' + selectedBarras.size + ' barra(s) al proyecto seleccionado?')) return;
+  const res = await apiPostJson('/barras/mover', { id_unicos: Array.from(selectedBarras), destino_id: dest });
+  if (res && res.ok) {
+    alert('Movidas: ' + res.movidas + ' barras');
+    clearSeleccion();
+    buscar(true);
+    loadProyectos();
+  } else {
+    alert('Error: ' + (res?.detail || 'desconocido'));
+  }
+}
+
+async function accionCambiarSector() {
+  if (selectedBarras.size === 0) return alert('Selecciona al menos una barra');
+  const sec = document.getElementById('accionSector').value;
+  if (!sec) return alert('Selecciona sector destino');
+  if (!confirm('Cambiar sector de ' + selectedBarras.size + ' barra(s) a ' + sec + '?')) return;
+  const res = await apiPostJson('/barras/mover', { id_unicos: Array.from(selectedBarras), nuevo_sector: sec });
+  if (res && res.ok) {
+    alert('Actualizadas: ' + res.movidas + ' barras');
+    clearSeleccion();
+    buscar(true);
+  } else {
+    alert('Error: ' + (res?.detail || 'desconocido'));
+  }
+}
 
 async function buscar(reset = false) {
-  if (reset) currentOffset = 0;
-  
+  if (reset) { currentOffset = 0; selectedBarras.clear(); updateToolbar(); }
+
+  const proy = document.getElementById('proyecto').value;
+  if (!proy) {
+    document.getElementById('count').textContent = 'Selecciona un proyecto para ver sus barras.';
+    document.getElementById('tabla').innerHTML = '';
+    return;
+  }
+
   const params = new URLSearchParams();
-  ['proyecto', 'plano', 'sector', 'piso', 'ciclo'].forEach(f => {
+  params.set('proyecto', proy);
+  ['plano', 'sector', 'piso', 'ciclo'].forEach(f => {
     const v = document.getElementById(f).value;
     if (v) params.set(f === 'plano' ? 'plano_code' : f, v);
   });
-  
+
   const q = document.getElementById('q').value.trim();
   if (q) params.set('q', q);
-  
+
   params.set('limit', pageLimit);
   params.set('offset', currentOffset);
   params.set('order_by', document.getElementById('order_by').value);
   params.set('order_dir', document.getElementById('order_dir').value);
-  
+
   saveFiltersToStorage();
-  const url = '/barras?' + params.toString();
-  console.log("Fetching: " + url);
-  
-  const data = await apiGet(url);
+  const data = await apiGet('/barras?' + params.toString());
   if (!data) return;
-  
+
   lastTotal = data.total || 0;
   const page = Math.floor(currentOffset / pageLimit) + 1;
   const totalPages = Math.max(1, Math.ceil(lastTotal / pageLimit));
-  
-  document.getElementById('count').textContent = `${data.count} de ${lastTotal} resultados — Página ${page}/${totalPages}`;
-  
+
+  document.getElementById('count').textContent = lastTotal.toLocaleString() + ' barras en proyecto';
+  document.getElementById('pageInfo').textContent = 'P\u00e1g ' + page + '/' + totalPages;
+
+  // Populate toolbar project selector
+  const destSel = document.getElementById('accionDestProyecto');
+  if (destSel.options.length <= 1) {
+    const fd = await apiGet('/filters');
+    if (fd && fd.proyectos) {
+      fd.proyectos.forEach(p => {
+        if (p !== proy) {
+          const o = document.createElement('option');
+          o.value = p; o.textContent = p;
+          destSel.appendChild(o);
+        }
+      });
+    }
+  }
+
   const table = document.getElementById('tabla');
   table.innerHTML = '';
-  
+
   if (!data.data || !data.data.length) {
-    table.innerHTML = '<tr><td colspan="20" class="muted" style="padding: 20px; text-align: center;">Sin resultados</td></tr>';
+    table.innerHTML = '<tr><td colspan="12" class="muted" style="padding:20px; text-align:center;">Sin resultados</td></tr>';
     return;
   }
-  
-  const cols = Object.keys(data.data[0]);
-  const thead = document.createElement('thead');
-  const headerRow = document.createElement('tr');
-  
-  cols.forEach(c => {
-    const th = document.createElement('th');
-    const isOrderable = ORDERABLE_COLS.has(c);
-    if (isOrderable) {
-      th.style.cursor = 'pointer';
-      th.onclick = () => {
-        currentOrderBy = c;
-        currentOrderDir = currentOrderDir === 'asc' ? 'desc' : 'asc';
-        buscar(true);
-      };
-    }
-    th.textContent = c + (c === currentOrderBy ? (currentOrderDir === 'asc' ? ' ▲' : ' ▼') : '');
-    headerRow.appendChild(th);
+
+  // Header
+  let hdr = '<thead><tr style="font-size:11px;"><th style="width:28px;"><input type="checkbox" id="selectAll" onchange="toggleAllBarras(this.checked)" /></th>';
+  DISPLAY_COLS.forEach(c => {
+    const ord = document.getElementById('order_by').value;
+    const dir = document.getElementById('order_dir').value;
+    const arrow = c.key === ord ? (dir === 'asc' ? ' \u25b2' : ' \u25bc') : '';
+    hdr += '<th style="cursor:pointer; padding:4px 6px;" onclick="document.getElementById(\'order_by\').value=\'' + c.key + '\'; buscar(true);">' + c.label + arrow + '</th>';
   });
-  
-  thead.appendChild(headerRow);
-  table.appendChild(thead);
-  
-  const tbody = document.createElement('tbody');
+  hdr += '</tr></thead>';
+
+  // Body
+  let body = '<tbody>';
   data.data.forEach(row => {
-    const tr = document.createElement('tr');
-    cols.forEach(c => {
-      const td = document.createElement('td');
-      td.textContent = row[c];
-      tr.appendChild(td);
+    const id = row.id_unico;
+    const sel = selectedBarras.has(id);
+    body += '<tr id="row_' + id.replace(/"/g, '') + '" style="' + (sel ? 'background:#f0f9e8;' : '') + '">';
+    body += '<td style="width:28px;"><input type="checkbox" class="barra-cb" data-id="' + id + '" id="cb_' + id.replace(/"/g, '') + '" ' + (sel ? 'checked' : '') + ' onchange="toggleBarra(\'' + id.replace(/'/g, "\\'") + '\')" /></td>';
+    DISPLAY_COLS.forEach(c => {
+      let val = row[c.key];
+      if (c.short) val = shortId(val);
+      if (c.fmt) val = c.fmt(row[c.key]);
+      body += '<td style="padding:3px 6px;">' + (val != null && val !== '' ? val : '') + '</td>';
     });
-    tbody.appendChild(tr);
+    body += '</tr>';
   });
-  table.appendChild(tbody);
+  body += '</tbody>';
+
+  table.innerHTML = hdr + body;
 }
 
 function resetFiltros() {
@@ -1575,7 +1791,12 @@ function resetFiltros() {
   const si = document.getElementById('proyectoSearchInput');
   if (si) si.value = '';
   try { localStorage.removeItem(FILTER_STORAGE_KEY); } catch(e) {}
-  loadFilters(); // reload all filters without dependency
+  // Reset toolbar project selector
+  const destSel = document.getElementById('accionDestProyecto');
+  if (destSel) { destSel.innerHTML = '<option value="">Mover a proyecto...</option>'; }
+  selectedBarras.clear();
+  updateToolbar();
+  loadFilters();
   buscar(true);
 }
 

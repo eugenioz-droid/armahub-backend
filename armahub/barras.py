@@ -265,7 +265,8 @@ def get_cargas_recientes(
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("""
-                SELECT id, id_proyecto, nombre_proyecto, usuario, archivo, fecha, barras_count, kilos
+                SELECT id, id_proyecto, nombre_proyecto, usuario, archivo, fecha, barras_count, kilos,
+                       estado, version_archivo, plano_code
                 FROM imports
                 ORDER BY id DESC
                 LIMIT %s
@@ -282,10 +283,145 @@ def get_cargas_recientes(
                 "fecha": r[5],
                 "barras_count": r[6],
                 "kilos": r[7],
+                "estado": r[8],
+                "version_archivo": r[9],
+                "plano_code": r[10],
             }
             for r in rows
         ]
     }
+
+
+@router.get("/proyectos/{id_proyecto}/cargas")
+def get_cargas_proyecto(
+    id_proyecto: str,
+    limit: int = 20,
+    user=Depends(get_current_user),
+):
+    """Historial de cargas de un proyecto específico."""
+    if limit < 1:
+        limit = 1
+    if limit > 100:
+        limit = 100
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT id_proyecto FROM proyectos WHERE id_proyecto = %s", (id_proyecto,))
+            if not cur.fetchone():
+                raise HTTPException(status_code=404, detail="Proyecto no encontrado")
+            cur.execute("""
+                SELECT id, usuario, archivo, fecha, barras_count, kilos,
+                       estado, version_archivo, plano_code
+                FROM imports
+                WHERE id_proyecto = %s
+                ORDER BY id DESC
+                LIMIT %s
+            """, (id_proyecto, limit))
+            rows = cur.fetchall()
+    return {
+        "id_proyecto": id_proyecto,
+        "cargas": [
+            {
+                "id": r[0],
+                "usuario": r[1],
+                "archivo": r[2],
+                "fecha": r[3],
+                "barras_count": r[4],
+                "kilos": r[5],
+                "estado": r[6],
+                "version_archivo": r[7],
+                "plano_code": r[8],
+            }
+            for r in rows
+        ]
+    }
+
+
+@router.delete("/cargas/{carga_id}")
+def delete_carga(carga_id: int, user=Depends(get_current_user)):
+    """Eliminar una carga: borra las barras importadas en esa carga y el registro de import."""
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT id, id_proyecto, archivo, fecha, barras_count FROM imports WHERE id = %s",
+                (carga_id,)
+            )
+            row = cur.fetchone()
+            if not row:
+                raise HTTPException(status_code=404, detail="Carga no encontrada")
+            id_proyecto = row[1]
+            archivo = row[2]
+            fecha = row[3]
+
+            if not _puede_editar_proyecto(cur, id_proyecto, user):
+                raise HTTPException(status_code=403, detail="No tienes permiso para eliminar cargas de este proyecto")
+
+            cur.execute(
+                "DELETE FROM barras WHERE id_proyecto = %s AND fecha_carga = %s",
+                (id_proyecto, fecha)
+            )
+            barras_eliminadas = cur.rowcount
+            cur.execute("DELETE FROM imports WHERE id = %s", (carga_id,))
+
+    return {
+        "ok": True,
+        "carga_id": carga_id,
+        "archivo": archivo,
+        "barras_eliminadas": barras_eliminadas,
+    }
+
+
+class MoverBarrasIndividualRequest(BaseModel):
+    id_unicos: list
+    destino_id: Optional[str] = None
+    nuevo_sector: Optional[str] = None
+
+
+@router.post("/barras/mover")
+def mover_barras_individual(body: MoverBarrasIndividualRequest, user=Depends(get_current_user)):
+    """Mover barras individuales (por lista de id_unico) a otro proyecto y/o cambiar sector."""
+    if not body.id_unicos:
+        raise HTTPException(status_code=400, detail="Lista de barras vacía")
+    if not body.destino_id and not body.nuevo_sector:
+        raise HTTPException(status_code=400, detail="Debe indicar destino_id o nuevo_sector")
+
+    SECTORES_VALIDOS = {"FUND", "ELEV", "LCIELO", "VCIELO"}
+    if body.nuevo_sector and body.nuevo_sector.upper() not in SECTORES_VALIDOS:
+        raise HTTPException(status_code=400, detail=f"Sector inválido. Válidos: {sorted(SECTORES_VALIDOS)}")
+
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            # Verificar permisos sobre el proyecto origen de la primera barra
+            cur.execute("SELECT id_proyecto FROM barras WHERE id_unico = %s", (body.id_unicos[0],))
+            brow = cur.fetchone()
+            if not brow:
+                raise HTTPException(status_code=404, detail="Barra no encontrada")
+            if not _puede_editar_proyecto(cur, brow[0], user):
+                raise HTTPException(status_code=403, detail="No tienes permiso para mover barras de este proyecto")
+
+            sets = []
+            params = []
+            if body.destino_id:
+                cur.execute("SELECT nombre_proyecto FROM proyectos WHERE id_proyecto = %s", (body.destino_id,))
+                dest = cur.fetchone()
+                if not dest:
+                    raise HTTPException(status_code=404, detail="Proyecto destino no encontrado")
+                sets.append("id_proyecto = %s")
+                params.append(body.destino_id)
+                sets.append("nombre_proyecto = %s")
+                params.append(dest[0])
+            if body.nuevo_sector:
+                sets.append("sector = %s")
+                params.append(body.nuevo_sector.upper())
+
+            placeholders = ",".join(["%s"] * len(body.id_unicos))
+            params.extend(body.id_unicos)
+            cur.execute(
+                f"UPDATE barras SET {', '.join(sets)} WHERE id_unico IN ({placeholders})",
+                params
+            )
+            count = cur.rowcount
+
+    return {"ok": True, "movidas": count}
 
 
 @router.get("/dashboard")

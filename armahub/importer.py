@@ -104,6 +104,31 @@ async def import_armadetailer(
     if missing:
         return {"ok": False, "error": f"Faltan columnas requeridas: {missing}"}
 
+    # Validación de sectores: rechazar archivo si contiene sectores inválidos
+    SECTORES_VALIDOS = {"FUND", "ELEV", "LCIELO", "VCIELO"}
+    sectores_en_csv = set()
+    for val in df["SECTOR"].dropna().unique():
+        s = str(val).strip().upper()
+        if s and s != "NAN":
+            sectores_en_csv.add(s)
+    sectores_invalidos = sectores_en_csv - SECTORES_VALIDOS
+    if sectores_invalidos:
+        # Contar barras por sector inválido
+        conteo = {}
+        for val in df["SECTOR"].dropna():
+            s = str(val).strip().upper()
+            if s in sectores_invalidos:
+                conteo[s] = conteo.get(s, 0) + 1
+        detalle = ", ".join(f"{s} ({n} barras)" for s, n in sorted(conteo.items()))
+        return {
+            "ok": False,
+            "invalid_sectors": True,
+            "mensaje": f"El archivo contiene sectores inválidos: {detalle}. Sectores permitidos: {', '.join(sorted(SECTORES_VALIDOS))}. Corrige el archivo y vuelve a cargarlo.",
+            "sectores_invalidos": sorted(sectores_invalidos),
+            "sectores_validos": sorted(SECTORES_VALIDOS),
+            "archivo": file.filename,
+        }
+
     # Detectar si el proyecto es nuevo o existente
     is_new_project = False
     with get_conn() as conn:
@@ -142,17 +167,50 @@ async def import_armadetailer(
 
     now_iso = datetime.now(timezone.utc).isoformat()
     rows_to_upsert = []
+    rejected_rows = []
+    warnings = []
 
-    for _, r in df.iterrows():
-        diam = float(r["DIAM"]) if pd.notna(r["DIAM"]) else None
-        largo = float(r["LARGO_TOTAL"]) if pd.notna(r["LARGO_TOTAL"]) else None
-        mult = float(r["MULT"]) if ("MULT" in df.columns and pd.notna(r["MULT"])) else None
+    for idx, r in df.iterrows():
+        row_num = idx + 2  # +2: 1-indexed + header row
 
-        cant_total = float(r["CANT"]) if pd.notna(r["CANT"]) else None
+        # Validación: ID_UNICO obligatorio
+        id_unico = str(r["ID_UNICO"]).strip() if pd.notna(r["ID_UNICO"]) else ""
+        if not id_unico or id_unico == "nan":
+            rejected_rows.append(f"Fila {row_num}: ID_UNICO vacío")
+            continue
+
+        # Parseo numérico con validación
+        try:
+            diam = float(r["DIAM"]) if pd.notna(r["DIAM"]) else None
+        except (ValueError, TypeError):
+            warnings.append(f"Fila {row_num}: DIAM inválido '{r['DIAM']}', se ignora")
+            diam = None
+
+        try:
+            largo = float(r["LARGO_TOTAL"]) if pd.notna(r["LARGO_TOTAL"]) else None
+        except (ValueError, TypeError):
+            warnings.append(f"Fila {row_num}: LARGO_TOTAL inválido '{r['LARGO_TOTAL']}', se ignora")
+            largo = None
+
+        try:
+            mult = float(r["MULT"]) if ("MULT" in df.columns and pd.notna(r["MULT"])) else None
+        except (ValueError, TypeError):
+            mult = None
+
+        try:
+            cant_total = float(r["CANT"]) if pd.notna(r["CANT"]) else None
+        except (ValueError, TypeError):
+            warnings.append(f"Fila {row_num}: CANT inválido '{r['CANT']}', se ignora")
+            cant_total = None
+
         if cant_total is not None and mult is not None and mult > 0:
             cant = cant_total / mult
         else:
             cant = cant_total
+
+        # Advertencia: datos incompletos para calcular peso
+        if diam is None or largo is None:
+            warnings.append(f"Fila {row_num}: sin diam/largo, peso no calculado")
 
         # Fórmula ArmaHub (diam mm, largo cm => kg)
         peso_unitario = None
@@ -163,16 +221,21 @@ async def import_armadetailer(
         if peso_unitario is not None and cant_total is not None:
             peso_total = peso_unitario * cant_total
 
+        # Normalización de texto: strip whitespace, reemplazar nan
+        def _clean(val):
+            s = str(val).strip() if pd.notna(val) else ""
+            return s if s and s.lower() != "nan" else ""
+
         rows_to_upsert.append((
-            str(r["ID_UNICO"]),
-            str(r["ID_PROYECTO"]),
+            id_unico,
+            str(r["ID_PROYECTO"]).strip(),
             proyecto_nombre,
-            str(r["PLANO_CODE"]),
-            plano_nombre,  # Nombre del plano del metadato
-            str(r["SECTOR"]),
-            str(r["PISO"]),
-            str(r["CICLO"]),
-            str(r["EJE"]),
+            _clean(r["PLANO_CODE"]),
+            plano_nombre,
+            _clean(r["SECTOR"]),
+            _clean(r["PISO"]),
+            _clean(r["CICLO"]),
+            _clean(r["EJE"]),
             diam,
             largo,
             mult,
@@ -180,8 +243,8 @@ async def import_armadetailer(
             cant_total,
             peso_unitario,
             peso_total,
-            str(r["VERSION_MOD"]),
-            str(r["VERSION_EXP"]),
+            _clean(r["VERSION_MOD"]),
+            _clean(r["VERSION_EXP"]),
             now_iso,
         ))
 
@@ -212,13 +275,32 @@ async def import_armadetailer(
 
     total_kilos = sum(r[15] for r in rows_to_upsert if r[15] is not None)
 
+    # Extraer version y plano del primer row para tracking
+    first_version = str(df.iloc[0]["VERSION_EXP"]) if len(df) > 0 and pd.notna(df.iloc[0]["VERSION_EXP"]) else None
+    first_plano = str(df.iloc[0]["PLANO_CODE"]) if len(df) > 0 and pd.notna(df.iloc[0]["PLANO_CODE"]) else None
+
+    # Determinar estado de la importación
+    if len(rows_to_upsert) == 0 and len(rejected_rows) > 0:
+        estado = "error"
+    elif len(rejected_rows) > 0:
+        estado = "parcial"
+    else:
+        estado = "ok"
+
+    # Construir resumen de errores (max 500 chars para BD)
+    errores_text = None
+    all_issues = rejected_rows + warnings[:20]  # Limitar warnings
+    if all_issues:
+        errores_text = "; ".join(all_issues)[:500]
+
     with get_conn() as conn:
         with conn.cursor() as cur:
-            cur.executemany(upsert_sql, rows_to_upsert)
+            if rows_to_upsert:
+                cur.executemany(upsert_sql, rows_to_upsert)
             # Registrar en historial de importaciones
             cur.execute("""
-                INSERT INTO imports (id_proyecto, nombre_proyecto, usuario, archivo, fecha, barras_count, kilos)
-                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                INSERT INTO imports (id_proyecto, nombre_proyecto, usuario, archivo, fecha, barras_count, kilos, estado, version_archivo, plano_code, errores)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """, (
                 proyecto_id,
                 proyecto_nombre,
@@ -227,11 +309,24 @@ async def import_armadetailer(
                 now_iso,
                 len(rows_to_upsert),
                 round(total_kilos, 2),
+                estado,
+                first_version,
+                first_plano,
+                errores_text,
             ))
 
-    return {
+    result = {
         "ok": True,
         "proyecto": proyecto_nombre,
         "rows_upserted": len(rows_to_upsert),
         "kilos": round(total_kilos, 2),
+        "total_filas_csv": len(df),
+        "filas_rechazadas": len(rejected_rows),
+        "advertencias": len(warnings),
+        "estado": estado,
     }
+    if rejected_rows:
+        result["rejected"] = rejected_rows[:10]
+    if warnings:
+        result["warnings"] = warnings[:10]
+    return result

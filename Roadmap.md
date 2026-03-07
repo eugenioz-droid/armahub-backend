@@ -119,7 +119,18 @@ Actualmente el sistema ya cuenta con:
 - UI gestión autorizados: panel colapsable en tarjeta de proyecto - OK
 - Fix KPI /stats: corregido regex en DOUBLE PRECISION + SAVEPOINT recovery - OK
 
-**Pendiente próximo checkpoint**: Fase 2 (Importación robusta y trazabilidad)
+**Fase 2 — Importación robusta y trazabilidad**: OK
+- Tracking de cargas completo: imports con estado/version/plano/errores, endpoint por proyecto, UI cargas por obra - OK
+- Validación de datos avanzada: filas rechazadas (ID_UNICO vacío), parseo numérico con try-except, normalización texto, advertencias sin peso - OK
+- Sistema de migraciones versionado: tabla schema_migrations, MIGRATIONS[], _run_migrations(), solo ejecuta pendientes - OK
+
+**Fase 2.5 — Calidad de datos y administración**: OK
+- Validación sectores: archivo rechazado si sector inválido (GEN, etc.) - OK
+- Gestión cargas: botón eliminar carga por proyecto (DELETE /cargas/{id}) - OK
+- Admin Data: tab rediseñado con tabla compacta, checkboxes, acciones (mover proyecto/sector) - OK
+- POST /barras/mover: mover barras individuales por id_unico + cambiar sector - OK
+
+**Pendiente próximo checkpoint**: Fase 3 (Export para producción)
 
 ---
 
@@ -351,38 +362,82 @@ ARMAHUB – PROGRAMA DE TRABAJO
 ---
 ## FASE 2 — Importación robusta y trazabilidad (operación real)
 
-14. Tracking de cargas completo - Pendiente (amplía lo básico de Fase 1)
-    - Tabla "imports" completa con versión, estado, archivo_original - Pendiente
-    - UI: tabla de cargas por obra (quién, cuándo, versión) - Pendiente
-    - Posibilidad recargar/editar versión - Pendiente
+14. Tracking de cargas completo - OK
+    - Tabla "imports" ampliada: estado (ok/parcial/error), version_archivo, plano_code, errores - OK
+    - Migraciones DB para columnas nuevas en imports - OK
+    - Endpoint GET /proyectos/{id}/cargas (historial por proyecto) - OK
+    - GET /cargas/recientes incluye estado, version, plano - OK
+    - Importer registra version_exp y plano_code del CSV en imports - OK
+    - UI: botón "Cargas" en tarjeta de proyecto → panel colapsable con tabla historial - OK
+    - UI: tabla cargas recientes muestra columnas Plano, Versión, estado badge - OK
 
-15. Validación de datos avanzada - Pendiente
-    - Reporte de filas rechazadas - Pendiente
-    - Normalización de formatos - Pendiente
-    - Advertencias: datos incompletos, duplicados - Pendiente
+15. Validación de datos avanzada - OK
+    - Validación ID_UNICO: filas sin ID se rechazan con reporte - OK
+    - Parseo numérico robusto: try-except en DIAM, LARGO_TOTAL, CANT con warnings - OK
+    - Normalización de texto: strip whitespace, filtrar "nan" - OK
+    - Advertencias: datos incompletos para cálculo de peso - OK
+    - Estado de importación: ok/parcial/error según filas rechazadas - OK
+    - Errores guardados en imports (max 500 chars) - OK
+    - Respuesta incluye: total_filas_csv, filas_rechazadas, advertencias, rejected[], warnings[] - OK
+    - UI: feedback visual con conteo rechazadas/advertencias y detalle primeras 5 - OK
 
-16. Sistema de migraciones robusto - Pendiente
-    - Mecanismo para actualizar esquema sin perder datos - Pendiente
-    - Versionado de migraciones - Pendiente
+16. Sistema de migraciones robusto - OK
+    - Tabla schema_migrations (version, description, applied_at) - OK
+    - Lista MIGRATIONS[] versionada en db.py (nunca modificar aplicadas) - OK
+    - _run_migrations(): ejecuta solo pendientes, registra versión - OK
+    - init_db refactorizado: _create_base_tables → _run_migrations → _create_indexes - OK
+    - reset_database dropea schema_migrations para slate limpio - OK
+
+---
+## FASE 2.5 — Calidad de datos y administración
+
+17. Validación de sectores en importación - OK
+    Sectores válidos: FUND, ELEV, LCIELO, VCIELO.
+    - Archivo rechazado si contiene sectores inválidos (ej: GEN) - OK
+    - Respuesta incluye: sectores_invalidos, conteo por sector, mensaje claro - OK
+    - UI muestra error detallado con lista de sectores inválidos encontrados - OK
+
+17b. Gestión de cargas por proyecto - OK
+    - Botón "Eliminar" en cada carga del panel de cargas por proyecto - OK
+    - DELETE /cargas/{id}: elimina barras (por fecha_carga) + registro de import - OK
+    - Confirmación antes de eliminar, feedback con cantidad de barras borradas - OK
+
+17c. Administrador de Data (rediseño tab Búsqueda) - OK
+    - Tab renombrado: "Admin Data" (antes "Buscar Barras") - OK
+    - Proyecto obligatorio como primer filtro (no muestra nada sin proyecto) - OK
+    - Tabla compacta: ID (corto) | Sector | Piso | Ciclo | Eje | φ | Cant | Largo | Peso U. | Peso Total - OK
+    - ID corto: extrae sufijo del id_unico (sin prefijo proyecto/plano) - OK
+    - φ (phi) como símbolo de diámetro - OK
+    - Checkboxes para selección individual y masiva de barras - OK
+    - Toolbar de acciones sobre barras seleccionadas:
+      - Mover a otro proyecto (selector) - OK
+      - Cambiar sector (selector con 4 válidos) - OK
+    - POST /barras/mover: mueve barras individuales por lista de id_unico - OK
+    - Validación de sector destino (solo FUND/ELEV/LCIELO/VCIELO) - OK
+    - Paginación 100 barras por página, headers clickeables para ordenar - OK
+
+17d. Helpers API - OK
+    - apiPostJson(): POST con body JSON - OK
+    - apiDelete(): DELETE request helper - OK
 
 ---
 ## FASE 3 — Export para producción (reemplazo Excel)
 
-17. Definir y documentar formato aSa Studio - Pendiente
+18. Definir y documentar formato aSa Studio - Pendiente
     - Mapear columnas por sector constructivo (sector+piso+ciclo) - Pendiente
     - Documentar unidades, crear plantillas - Pendiente
 
-18. Endpoint de export a EXCEL - Pendiente
+19. Endpoint de export a EXCEL - Pendiente
     - POST /proyectos/{id}/exportar-excel con formato aSa Studio - Pendiente
     - Agrupación por sector constructivo en la exportación - Pendiente
 
-19. UI para exportación - Pendiente
+20. UI para exportación - Pendiente
     - Tab "Exportación" con selector, vista previa, descarga - Pendiente
 
 ---
 ## FASE 4 — Funcionalidades avanzadas y multi-cliente
 
-20. Navegador de sectores constructivos (Mis Obras avanzado) - Future
+21. Navegador de sectores constructivos (Mis Obras avanzado) - Future
     - Navegador por sector+piso+ciclo dentro de cada proyecto - Pendiente
     - Visualizar ejes contenidos en cada sector constructivo - Pendiente
     - Herramientas de edición y reasignación de barras entre sectores - Pendiente
