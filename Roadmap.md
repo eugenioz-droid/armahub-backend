@@ -92,7 +92,30 @@ Actualmente el sistema ya cuenta con:
 - Diámetro Promedio
 - Integrar en Tab Inicio y Dashboards
 
-**Pendiente próximo checkpoint**: Filtros avanzados + Fase 2
+**Fase 1.12 — Buscadores contextuales (lupas)**: ✅
+- Lupa + typeahead en selectores de proyecto (búsqueda, sectores, matriz)
+- Función filterProjectSelect reutilizable
+
+**Fase 1.13 — Filtros avanzados**: ✅
+- Filtros dependientes: proyecto → plano → sector → piso → ciclo
+- Backend /filters acepta params de contexto
+- Persistencia de filtros en localStorage (save/restore/clear)
+
+**Fase 1.14 — Fix KPIs + Matriz constructiva + Dashboard layout**: ✅
+- Fix KPI cards vacíos (NULL plano_code, try-except diam, Optional[str])
+- Matriz: compact layout, piso blanco+negro, sin separador, celdas vacías en blanco
+- Matriz: checkbox completado (localStorage) → texto verde al marcar
+- Dashboard layout 2 columnas: charts izquierda (60%), matriz derecha (40%) sticky
+- pisoOrder global: SM siempre arriba, subterráneos abajo, orden edificio en charts
+
+**Fase 1.15 — Ownership de proyectos y auto-creación**: Pendiente
+- owner_id en tabla proyectos (FK a users), asignado al importar
+- Popup confirmación al detectar proyecto nuevo en importación
+- Campos al crear: nombre_proyecto, calculista (texto), usuario owner (select preseleccionado)
+- Autorizar usuarios adicionales a editar un proyecto
+- Solo owner/admin/autorizados pueden editar/eliminar/mover barras
+
+**Pendiente próximo checkpoint**: Fase 1.15 → luego Fase 2
 
 ---
 
@@ -270,81 +293,104 @@ ARMAHUB – PROGRAMA DE TRABAJO
    - Endpoint GET /stats devuelve ppb, ppi, diam_promedio, total_items - OK
 
 10. Buscadores contextuales (lupas) en secciones con mucha data - OK
+    - Buscar proyecto en tab Búsqueda (lupa + typeahead sobre select) - OK
     - Buscar proyecto en selector de sectores constructivos (lupa + typeahead) - OK
     - Buscar proyecto en selector de matriz constructiva (lupa + typeahead) - OK
     - Función filterProjectSelect reutilizable para cualquier selector - OK
     - Buscar en tabla de barras (ya existe búsqueda rápida) - OK
-    - Evaluar caso por caso qué campo buscar (proyecto, sector, etc.) - Pendiente
 
-11. Filtros avanzados - Pendiente
-    - Filtros dependientes (proyecto → plano → ciclo → piso) - Pendiente
-    - Persistencia de filtros en URL o localStorage - Pendiente
+11. Filtros avanzados - OK
+    - Filtros dependientes (proyecto → plano → sector → piso → ciclo) - OK
+    - Backend /filters acepta params: proyecto, plano_code, sector, piso - OK
+    - Frontend: onProyectoChange recarga plano/sector/piso/ciclo filtrados - OK
+    - Frontend: onFilterChange recarga filtros con contexto acumulado - OK
+    - Persistencia de filtros en localStorage (save/restore/clear) - OK
+    - Restauración automática al recargar página - OK
+
+12. Fix KPIs + Matriz constructiva + Dashboard layout - OK
+    - Fix KPI cards vacíos (NULL plano_code en query, try-except diam, Optional[str]) - OK
+    - Matriz: layout compacto, piso blanco+negro, sin separador, celdas vacías en blanco - OK
+    - Matriz: checkbox completado en esquina (localStorage por proyecto) → texto verde - OK
+    - Dashboard: layout 2 columnas (charts izq 60%, matriz der 40% sticky) - OK
+    - pisoOrder global: SM=9999 siempre arriba, subterráneos abajo - OK
+    - Orden de pisos correcto en gráficos y tabla sectores - OK
+
+13. Ownership de proyectos y auto-creación al importar - Pendiente
+    a) owner_id en tabla proyectos (FK a users) - Pendiente
+       - Migración: agregar columna owner_id a proyectos - Pendiente
+       - Asignar automáticamente al usuario que importa - Pendiente
+    b) Auto-creación de proyecto al importar - Pendiente
+       - Detectar proyecto nuevo en CSV al importar - Pendiente
+       - Popup confirmación con campos: nombre_proyecto, calculista (texto), owner (select preseleccionado) - Pendiente
+       - Crear proyecto automáticamente con estos datos - Pendiente
+    c) Autorización de usuarios adicionales - Pendiente
+       - Tabla proyecto_usuarios (id_proyecto, user_id, rol) - Pendiente
+       - Solo owner/admin/autorizados pueden editar/eliminar/mover barras - Pendiente
+    d) Columna calculista en tabla proyectos - Pendiente
+       - Migración: agregar columna calculista (texto) - Pendiente
+       - UI: mostrar calculista en tarjeta de proyecto - Pendiente
 
 ---
-
 ## FASE 2 — Importación robusta y trazabilidad (operación real)
 
-12. Tracking de cargas completo - Pendiente (amplía lo básico de Fase 1)
+14. Tracking de cargas completo - Pendiente (amplía lo básico de Fase 1)
     - Tabla "imports" completa con versión, estado, archivo_original - Pendiente
     - UI: tabla de cargas por obra (quién, cuándo, versión) - Pendiente
     - Posibilidad recargar/editar versión - Pendiente
 
-13. Validación de datos avanzada - Pendiente
+15. Validación de datos avanzada - Pendiente
     - Reporte de filas rechazadas - Pendiente
     - Normalización de formatos - Pendiente
     - Advertencias: datos incompletos, duplicados - Pendiente
 
-14. Sistema de migraciones robusto - Pendiente
+16. Sistema de migraciones robusto - Pendiente
     - Mecanismo para actualizar esquema sin perder datos - Pendiente
     - Versionado de migraciones - Pendiente
 
 ---
-
 ## FASE 3 — Export para producción (reemplazo Excel)
 
-13. Definir y documentar formato aSa Studio - Pendiente
+17. Definir y documentar formato aSa Studio - Pendiente
     - Mapear columnas por sector constructivo (sector+piso+ciclo) - Pendiente
     - Documentar unidades, crear plantillas - Pendiente
 
-14. Endpoint de export a EXCEL - Pendiente
+18. Endpoint de export a EXCEL - Pendiente
     - POST /proyectos/{id}/exportar-excel con formato aSa Studio - Pendiente
     - Agrupación por sector constructivo en la exportación - Pendiente
 
-15. UI para exportación - Pendiente
+19. UI para exportación - Pendiente
     - Tab "Exportación" con selector, vista previa, descarga - Pendiente
 
 ---
-
 ## FASE 4 — Funcionalidades avanzadas y multi-cliente
 
-16. Navegador de sectores constructivos (Mis Obras avanzado) - Future
+20. Navegador de sectores constructivos (Mis Obras avanzado) - Future
     - Navegador por sector+piso+ciclo dentro de cada proyecto - Pendiente
     - Visualizar ejes contenidos en cada sector constructivo - Pendiente
     - Herramientas de edición y reasignación de barras entre sectores - Pendiente
     - Mini-dashboard por sector: kilos, barras, diámetros predominantes - Pendiente
 
-17. Sistema de pedidos (MVP) - Future
+21. Sistema de pedidos (MVP) - Future
     - Tablas "pedidos" y "pedido_items", endpoints CRUD - Pendiente
     - UI Tab "Pedidos": formulario + tabla de items - Pendiente
 
-18. Modelo de datos clientes + permisos - Future
+22. Modelo de datos clientes + permisos - Future
     - Tabla "clientes", relación con proyectos, permisos por rol - Pendiente
 
-19. Separación de UI en módulos - Future
+23. Separación de UI en módulos - Future
     - Dividir ui.py en archivos separados o migrar a frontend SPA - Pendiente
 
-20. Auditoría y logs en panel Admin - Future
+24. Auditoría y logs en panel Admin - Future
     - Registro de acciones, visualización en tab Admin - Pendiente
 
-21. Mis Obras: dashboard diario del cubicador - Future
+25. Mis Obras: dashboard diario del cubicador - Future
     - Sidebar con barras del día, kilos del día, mini-chart semanal - Pendiente
 
 ---
-
 ## FASE 5 — Preparación para Apps
 
-22. API versionada (/api/v1) - Pendiente
-23. CORS para aplicaciones externas - Pendiente
-24. Observabilidad: /health, logs estructurados - Pendiente
-25. Performance: queries optimizadas, pool de conexiones - Pendiente
-26. Bootstrap profesional (solo dev) - Pendiente
+26. API versionada (/api/v1) - Pendiente
+27. CORS para aplicaciones externas - Pendiente
+28. Observabilidad: /health, logs estructurados - Pendiente
+29. Performance: queries optimizadas, pool de conexiones - Pendiente
+30. Bootstrap profesional (solo dev) - Pendiente

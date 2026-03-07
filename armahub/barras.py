@@ -102,24 +102,58 @@ def get_barras(
 
 
 @router.get("/filters")
-def filters(user=Depends(get_current_user)):
+def filters(
+    proyecto: Optional[str] = None,
+    plano_code: Optional[str] = None,
+    sector: Optional[str] = None,
+    piso: Optional[str] = None,
+    user=Depends(get_current_user),
+):
+    """Filtros dependientes en cascada: proyecto → plano → sector → piso → ciclo.
+    Cada select se filtra solo por sus padres upstream, nunca por sí mismo."""
+
+    def _where(parts, vals):
+        if not parts:
+            return "", []
+        return " WHERE " + " AND ".join(parts), list(vals)
+
     with get_conn() as conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT DISTINCT sector FROM barras ORDER BY sector")
-            sectores = [r[0] for r in cur.fetchall() if r[0] is not None]
-
-            cur.execute("SELECT DISTINCT piso FROM barras ORDER BY piso")
-            pisos = [r[0] for r in cur.fetchall() if r[0] is not None]
-
-            cur.execute("SELECT DISTINCT ciclo FROM barras ORDER BY ciclo")
-            ciclos = [r[0] for r in cur.fetchall() if r[0] is not None]
-
-            # Devolver planos como objetos {code, nombre}
-            cur.execute("SELECT DISTINCT plano_code, nombre_plano FROM barras WHERE plano_code IS NOT NULL ORDER BY plano_code")
-            planos = [{"code": r[0], "nombre": r[1] or r[0]} for r in cur.fetchall() if r[0] is not None]
-
+            # Proyectos: siempre sin filtro (raíz)
             cur.execute("SELECT DISTINCT id_proyecto FROM barras ORDER BY id_proyecto")
             proyectos = [r[0] for r in cur.fetchall() if r[0] is not None]
+
+            # Planos: filtrado solo por proyecto
+            w_parts, w_vals = [], []
+            if proyecto:
+                w_parts.append("id_proyecto = %s"); w_vals.append(proyecto)
+            wsql, wv = _where(w_parts, w_vals)
+            if wsql:
+                cur.execute(f"SELECT DISTINCT plano_code, nombre_plano FROM barras{wsql} AND plano_code IS NOT NULL ORDER BY plano_code", wv)
+            else:
+                cur.execute("SELECT DISTINCT plano_code, nombre_plano FROM barras WHERE plano_code IS NOT NULL ORDER BY plano_code")
+            planos = [{"code": r[0], "nombre": r[1] or r[0]} for r in cur.fetchall() if r[0] is not None]
+
+            # Sectores: filtrado por proyecto + plano
+            if plano_code:
+                w_parts.append("plano_code = %s"); w_vals.append(plano_code)
+            wsql, wv = _where(w_parts, w_vals)
+            cur.execute(f"SELECT DISTINCT sector FROM barras{wsql} ORDER BY sector" if wsql else "SELECT DISTINCT sector FROM barras ORDER BY sector", wv)
+            sectores = [r[0] for r in cur.fetchall() if r[0] is not None]
+
+            # Pisos: filtrado por proyecto + plano + sector
+            if sector:
+                w_parts.append("sector = %s"); w_vals.append(sector)
+            wsql, wv = _where(w_parts, w_vals)
+            cur.execute(f"SELECT DISTINCT piso FROM barras{wsql} ORDER BY piso" if wsql else "SELECT DISTINCT piso FROM barras ORDER BY piso", wv)
+            pisos = [r[0] for r in cur.fetchall() if r[0] is not None]
+
+            # Ciclos: filtrado por proyecto + plano + sector + piso
+            if piso:
+                w_parts.append("piso = %s"); w_vals.append(piso)
+            wsql, wv = _where(w_parts, w_vals)
+            cur.execute(f"SELECT DISTINCT ciclo FROM barras{wsql} ORDER BY ciclo" if wsql else "SELECT DISTINCT ciclo FROM barras ORDER BY ciclo", wv)
+            ciclos = [r[0] for r in cur.fetchall() if r[0] is not None]
 
     return {
         "sectores": sectores,
@@ -152,17 +186,20 @@ def get_stats(user=Depends(get_current_user)):
             ppb = round(total_kilos / total_barras, 3) if total_barras > 0 else 0
 
             # PPI = kilos totales / cantidad de items únicos (id_unico distintos por plano+sector)
-            cur.execute("SELECT COUNT(DISTINCT plano_code || '-' || COALESCE(sector,'') || '-' || COALESCE(piso,'') || '-' || COALESCE(ciclo,'')) FROM barras")
+            cur.execute("SELECT COUNT(DISTINCT COALESCE(plano_code,'') || '-' || COALESCE(sector,'') || '-' || COALESCE(piso,'') || '-' || COALESCE(ciclo,'')) FROM barras")
             total_items = int(cur.fetchone()[0])
             ppi = round(total_kilos / total_items, 3) if total_items > 0 else 0
 
             # Diámetro promedio ponderado por peso
-            cur.execute("""
-                SELECT COALESCE(SUM(CAST(diam AS DOUBLE PRECISION) * peso_total) / NULLIF(SUM(peso_total), 0), 0)
-                FROM barras
-                WHERE diam IS NOT NULL AND diam ~ '^[0-9]+(\\.[0-9]+)?$'
-            """)
-            diam_prom = round(float(cur.fetchone()[0]), 1)
+            try:
+                cur.execute("""
+                    SELECT COALESCE(SUM(CAST(diam AS DOUBLE PRECISION) * peso_total) / NULLIF(SUM(peso_total), 0), 0)
+                    FROM barras
+                    WHERE diam IS NOT NULL AND diam ~ '^[0-9]+(\\.[0-9]+)?$'
+                """)
+                diam_prom = round(float(cur.fetchone()[0]), 1)
+            except Exception:
+                diam_prom = 0
 
             cur.execute("""
                 SELECT COALESCE(p.nombre_proyecto, b.id_proyecto) AS nombre,

@@ -562,28 +562,32 @@ APP_HTML = Template("""
     <div class="card">
       <h3>Filtros</h3>
       <div class="row">
-        <div class="col">
-          <select id="proyecto" onchange="buscar(true)">
+        <div class="col" style="position:relative;">
+          <div style="position:relative;">
+            <span style="position:absolute; left:8px; top:50%; transform:translateY(-50%); font-size:14px; color:#999; pointer-events:none;">🔍</span>
+            <input type="text" id="proyectoSearchInput" placeholder="Buscar proyecto..." oninput="filterProjectSelect('proyectoSearchInput','proyecto')" style="padding-left:30px; width:100%; font-size:13px; margin-bottom:4px;" />
+          </div>
+          <select id="proyecto" onchange="onProyectoChange()">
             <option value="">Proyecto (todos)</option>
           </select>
         </div>
         <div class="col">
-          <select id="plano" onchange="buscar(true)">
+          <select id="plano" onchange="onFilterChange()">
             <option value="">Plano (todos)</option>
           </select>
         </div>
         <div class="col">
-          <select id="sector" onchange="buscar(true)">
+          <select id="sector" onchange="onFilterChange()">
             <option value="">Sector (todos)</option>
           </select>
         </div>
         <div class="col">
-          <select id="piso" onchange="buscar(true)">
+          <select id="piso" onchange="onFilterChange()">
             <option value="">Piso (todos)</option>
           </select>
         </div>
         <div class="col">
-          <select id="ciclo" onchange="buscar(true)">
+          <select id="ciclo" onchange="onFilterChange()">
             <option value="">Ciclo (todos)</option>
           </select>
         </div>
@@ -637,73 +641,81 @@ APP_HTML = Template("""
 
   <!-- TAB 3: DASHBOARDS -->
   <div id="tab-dashboards" class="tab-content">
-    <div class="card">
-      <h3>Resumen general</h3>
-      <div id="generalStats">
-        <div class="muted">Cargando...</div>
-      </div>
-    </div>
-
-    <div class="card">
-      <h3>Gráficos por dimensión</h3>
-      <div class="row">
-        <button onclick="loadDashboard('sector')">Sector</button>
-        <button onclick="loadDashboard('piso')">Piso</button>
-        <button onclick="loadDashboard('ciclo')">Ciclo</button>
-        <button onclick="loadDashboard('plano_code')">Plano</button>
-        <button onclick="loadDashboard('id_proyecto')">Proyecto</button>
-        <button onclick="loadDashboard('eje')">Eje</button>
-      </div>
-      <div id="dashTotals" class="muted" style="margin: 12px 0;"></div>
-      <div style="height: 360px; margin-top: 16px;">
-        <canvas id="dashChart"></canvas>
-      </div>
-    </div>
-
-    <div class="card">
-      <h3>Sectores constructivos (sector + piso + ciclo)</h3>
-      <div class="row" style="margin-bottom: 12px; gap: 8px; align-items: center;">
-        <div style="position:relative; flex:1; max-width:280px;">
-          <span style="position:absolute; left:8px; top:50%; transform:translateY(-50%); font-size:14px; color:#999; pointer-events:none;">🔍</span>
-          <input type="text" id="sectorSearchInput" placeholder="Buscar proyecto..." oninput="filterProjectSelect('sectorSearchInput','sectorProyectoFilter')" style="padding-left:30px; width:100%; font-size:13px;" />
+    <div style="display:flex; gap:16px; align-items:flex-start;">
+      <!-- COLUMNA IZQUIERDA (60%) — Resumen + Gráficos + Sectores -->
+      <div style="flex:3; min-width:0;">
+        <div class="card">
+          <h3>Resumen general</h3>
+          <div id="generalStats">
+            <div class="muted">Cargando...</div>
+          </div>
         </div>
-        <select id="sectorProyectoFilter" onchange="loadSectores()" style="flex:1;">
-          <option value="">Todos los proyectos</option>
-        </select>
-      </div>
-      <div id="sectoresTotals" class="muted" style="margin-bottom: 8px;"></div>
-      <div style="overflow-x: auto; max-height: 400px;">
-        <table id="sectoresTable" style="width: 100%;">
-          <thead>
-            <tr>
-              <th>Sector constructivo</th>
-              <th style="text-align:right;">Barras</th>
-              <th style="text-align:right;">Kilos</th>
-            </tr>
-          </thead>
-          <tbody id="sectoresBody">
-            <tr><td colspan="3" class="muted">Cargando...</td></tr>
-          </tbody>
-        </table>
-      </div>
-      <div style="height: 320px; margin-top: 16px;">
-        <canvas id="sectoresChart"></canvas>
-      </div>
-    </div>
 
-    <div class="card">
-      <h3>Matriz constructiva (vista edificio)</h3>
-      <div class="row" style="margin-bottom: 12px; gap: 8px; align-items: center;">
-        <div style="position:relative; flex:1; max-width:280px;">
-          <span style="position:absolute; left:8px; top:50%; transform:translateY(-50%); font-size:14px; color:#999; pointer-events:none;">🔍</span>
-          <input type="text" id="matrizSearchInput" placeholder="Buscar proyecto..." oninput="filterProjectSelect('matrizSearchInput','matrizProyectoFilter')" style="padding-left:30px; width:100%; font-size:13px;" />
+        <div class="card">
+          <h3>Gráficos por dimensión</h3>
+          <div class="row" style="flex-wrap:wrap; gap:4px;">
+            <button onclick="loadDashboard('sector')" style="font-size:12px; padding:4px 10px;">Sector</button>
+            <button onclick="loadDashboard('piso')" style="font-size:12px; padding:4px 10px;">Piso</button>
+            <button onclick="loadDashboard('ciclo')" style="font-size:12px; padding:4px 10px;">Ciclo</button>
+            <button onclick="loadDashboard('plano_code')" style="font-size:12px; padding:4px 10px;">Plano</button>
+            <button onclick="loadDashboard('id_proyecto')" style="font-size:12px; padding:4px 10px;">Proyecto</button>
+            <button onclick="loadDashboard('eje')" style="font-size:12px; padding:4px 10px;">Eje</button>
+          </div>
+          <div id="dashTotals" class="muted" style="margin: 8px 0;"></div>
+          <div style="height: 320px; margin-top: 8px;">
+            <canvas id="dashChart"></canvas>
+          </div>
         </div>
-        <select id="matrizProyectoFilter" onchange="loadMatriz()" style="flex:1;">
-          <option value="">— Selecciona un proyecto —</option>
-        </select>
+
+        <div class="card">
+          <h3>Sectores constructivos</h3>
+          <div class="row" style="margin-bottom: 8px; gap: 6px; align-items: center;">
+            <div style="position:relative; flex:1; max-width:220px;">
+              <span style="position:absolute; left:8px; top:50%; transform:translateY(-50%); font-size:14px; color:#999; pointer-events:none;">🔍</span>
+              <input type="text" id="sectorSearchInput" placeholder="Buscar proyecto..." oninput="filterProjectSelect('sectorSearchInput','sectorProyectoFilter')" style="padding-left:28px; width:100%; font-size:12px;" />
+            </div>
+            <select id="sectorProyectoFilter" onchange="loadSectores()" style="flex:1; font-size:12px;">
+              <option value="">Todos los proyectos</option>
+            </select>
+          </div>
+          <div id="sectoresTotals" class="muted" style="margin-bottom: 6px; font-size:12px;"></div>
+          <div style="overflow-x: auto; max-height: 350px;">
+            <table id="sectoresTable" style="width: 100%; font-size:12px;">
+              <thead>
+                <tr>
+                  <th>Sector constructivo</th>
+                  <th style="text-align:right;">Barras</th>
+                  <th style="text-align:right;">Kilos</th>
+                </tr>
+              </thead>
+              <tbody id="sectoresBody">
+                <tr><td colspan="3" class="muted">Cargando...</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div style="height: 280px; margin-top: 12px;">
+            <canvas id="sectoresChart"></canvas>
+          </div>
+        </div>
       </div>
-      <div id="matrizContainer" style="overflow-x: auto;">
-        <div class="muted">Selecciona un proyecto para ver la matriz constructiva</div>
+
+      <!-- COLUMNA DERECHA (40%) — Matriz constructiva (sticky) -->
+      <div style="flex:2; min-width:0; position:sticky; top:16px; align-self:flex-start;">
+        <div class="card">
+          <h3>Matriz constructiva</h3>
+          <div class="row" style="margin-bottom: 8px; gap: 6px; align-items: center;">
+            <div style="position:relative; flex:1; max-width:200px;">
+              <span style="position:absolute; left:8px; top:50%; transform:translateY(-50%); font-size:14px; color:#999; pointer-events:none;">🔍</span>
+              <input type="text" id="matrizSearchInput" placeholder="Buscar proyecto..." oninput="filterProjectSelect('matrizSearchInput','matrizProyectoFilter')" style="padding-left:28px; width:100%; font-size:12px;" />
+            </div>
+            <select id="matrizProyectoFilter" onchange="loadMatriz()" style="flex:1; font-size:12px;">
+              <option value="">— Selecciona proyecto —</option>
+            </select>
+          </div>
+          <div id="matrizContainer" style="overflow-x: auto; overflow-y: auto; max-height:70vh;">
+            <div class="muted">Selecciona un proyecto para ver la matriz constructiva</div>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -1019,15 +1031,55 @@ async function moverBarras() {
   }
 }
 
-async function loadFilters() {
-  const data = await apiGet('/filters');
+// ========================= FILTROS DEPENDIENTES + PERSISTENCIA =========================
+const FILTER_STORAGE_KEY = 'armahub_filters';
+
+function saveFiltersToStorage() {
+  const state = {};
+  ['proyecto','plano','sector','piso','ciclo','q','order_by','order_dir'].forEach(f => {
+    const el = document.getElementById(f);
+    if (el) state[f] = el.value;
+  });
+  try { localStorage.setItem(FILTER_STORAGE_KEY, JSON.stringify(state)); } catch(e) {}
+}
+
+function restoreFiltersFromStorage() {
+  try {
+    const raw = localStorage.getItem(FILTER_STORAGE_KEY);
+    if (!raw) return;
+    const state = JSON.parse(raw);
+    // Restore order fields first (they don't depend on data)
+    ['order_by','order_dir','q'].forEach(f => {
+      const el = document.getElementById(f);
+      if (el && state[f] !== undefined) el.value = state[f];
+    });
+    // Return filter state for loadFilters to use after populating selects
+    return state;
+  } catch(e) { return null; }
+}
+
+async function loadFilters(depParams) {
+  // Build query string for dependent filtering
+  const qp = new URLSearchParams();
+  if (depParams) {
+    if (depParams.proyecto) qp.set('proyecto', depParams.proyecto);
+    if (depParams.plano) qp.set('plano_code', depParams.plano);
+    if (depParams.sector) qp.set('sector', depParams.sector);
+    if (depParams.piso) qp.set('piso', depParams.piso);
+  }
+  const qs = qp.toString();
+  const data = await apiGet('/filters' + (qs ? '?' + qs : ''));
   if (!data) return;
   
   function fillSelect(selId, items, isPlanos = false) {
     const sel = document.getElementById(selId);
     if (!sel) return;
     const val = sel.value;
-    sel.innerHTML = '<option value="">Todos</option>';
+    const placeholder = sel.options[0] ? sel.options[0].textContent : 'Todos';
+    sel.innerHTML = '';
+    const opt0 = document.createElement('option');
+    opt0.value = ''; opt0.textContent = placeholder;
+    sel.appendChild(opt0);
     (items || []).forEach(x => {
       const o = document.createElement('option');
       if (isPlanos) {
@@ -1039,14 +1091,46 @@ async function loadFilters() {
       }
       sel.appendChild(o);
     });
-    sel.value = val;
+    // Restore previous value if still in options
+    if (val && Array.from(sel.options).some(o => o.value === val)) {
+      sel.value = val;
+    }
   }
   
+  // Proyectos always full list
   fillSelect('proyecto', data.proyectos);
-  fillSelect('plano', data.planos, true);  // true = isPlanos
+  // Dependent selects
+  fillSelect('plano', data.planos, true);
   fillSelect('sector', data.sectores);
   fillSelect('piso', data.pisos);
   fillSelect('ciclo', data.ciclos);
+
+}
+
+function onProyectoChange() {
+  // When project changes, reload dependent filters for that project
+  const proy = document.getElementById('proyecto').value;
+  // Clear dependent selects (their current values may not exist in new project)
+  ['plano','sector','piso','ciclo'].forEach(f => { document.getElementById(f).value = ''; });
+  loadFilters(proy ? { proyecto: proy } : null);
+  saveFiltersToStorage();
+  buscar(true);
+}
+
+function onFilterChange() {
+  // When any sub-filter changes, reload further dependent filters
+  const proy = document.getElementById('proyecto').value;
+  const plano = document.getElementById('plano').value;
+  const sector = document.getElementById('sector').value;
+  const piso = document.getElementById('piso').value;
+  const dep = {};
+  if (proy) dep.proyecto = proy;
+  if (plano) dep.plano = plano;
+  if (sector) dep.sector = sector;
+  if (piso) dep.piso = piso;
+  loadFilters(Object.keys(dep).length ? dep : null);
+  saveFiltersToStorage();
+  buscar(true);
 }
 
 // ========================= MULTI-FILE IMPORT =========================
@@ -1242,6 +1326,7 @@ async function buscar(reset = false) {
   params.set('order_by', document.getElementById('order_by').value);
   params.set('order_dir', document.getElementById('order_dir').value);
   
+  saveFiltersToStorage();
   const url = '/barras?' + params.toString();
   console.log("Fetching: " + url);
   
@@ -1302,6 +1387,10 @@ function resetFiltros() {
     document.getElementById(f).value = '';
   });
   document.getElementById('q').value = '';
+  const si = document.getElementById('proyectoSearchInput');
+  if (si) si.value = '';
+  try { localStorage.removeItem(FILTER_STORAGE_KEY); } catch(e) {}
+  loadFilters(); // reload all filters without dependency
   buscar(true);
 }
 
@@ -1329,6 +1418,19 @@ function renderChart(labels, values, title) {
   });
 }
 
+// Reusable piso ordering function (building order: SM top, subterráneos bottom)
+function pisoOrder(p) {
+  const up = (p || '').toUpperCase().trim();
+  if (up === 'SM' || up === 'SALA DE MAQUINAS') return 9999;
+  const m = up.match(/^S(\d+)/);
+  if (m) return -parseInt(m[1]);
+  const m2 = up.match(/^P(\d+)/);
+  if (m2) return parseInt(m2[1]);
+  const m3 = up.match(/(\d+)/);
+  if (m3) return parseInt(m3[1]);
+  return 0;
+}
+
 async function loadDashboard(groupBy) {
   await setGlobalStatus("Cargando gráfico...", "warn");
   const data = await apiGet('/dashboard?group_by=' + encodeURIComponent(groupBy));
@@ -1336,8 +1438,14 @@ async function loadDashboard(groupBy) {
   
   document.getElementById('dashTotals').textContent = `Total: ${data.total.barras} barras — ${data.total.kilos.toFixed(2)} kg`;
   
-  const labels = data.items.map(x => (x.grupo === null || x.grupo === '' || x.grupo === undefined) ? '(sin valor)' : x.grupo);
-  const values = data.items.map(x => Number(x.kilos || 0));
+  // Sort by building order when grouping by piso
+  let items = data.items;
+  if (groupBy === 'piso') {
+    items = [...items].sort((a, b) => pisoOrder(b.grupo) - pisoOrder(a.grupo));
+  }
+
+  const labels = items.map(x => (x.grupo === null || x.grupo === '' || x.grupo === undefined) ? '(sin valor)' : x.grupo);
+  const values = items.map(x => Number(x.kilos || 0));
   
   renderChart(labels, values, `Kilos por ${groupBy}`);
   await setGlobalStatus("Gráfico actualizado", "ok");
@@ -1364,6 +1472,9 @@ async function loadSectores() {
     if (sectoresChart) { sectoresChart.destroy(); sectoresChart = null; }
     return;
   }
+
+  // Sort by building order (piso)
+  data.items.sort((a, b) => pisoOrder(a.piso) - pisoOrder(b.piso));
 
   const totalBarras = data.items.reduce((s, i) => s + i.barras, 0);
   const totalKilos = data.items.reduce((s, i) => s + i.kilos, 0);
@@ -1442,18 +1553,7 @@ async function loadMatriz() {
     sectoresSet.add((i.sector || '?').toUpperCase().trim());
   });
 
-  // Sort pisos: subterráneos (S2, S1) at bottom, pisos (P1, P2...) above
-  // Attempt numeric sort by extracting number, with S prefix going negative
-  function pisoOrder(p) {
-    const up = p.toUpperCase();
-    const m = up.match(/^S(\d+)/);
-    if (m) return -parseInt(m[1]); // S2 = -2, S1 = -1
-    const m2 = up.match(/^P(\d+)/);
-    if (m2) return parseInt(m2[1]); // P1 = 1, P2 = 2
-    const m3 = up.match(/(\d+)/);
-    if (m3) return parseInt(m3[1]);
-    return 0;
-  }
+  // Sort pisos using global pisoOrder (building order: SM top, subterráneos bottom)
   const pisos = Array.from(pisosSet).sort((a, b) => pisoOrder(a) - pisoOrder(b));
   // Reverse so highest floor is at top of table
   pisos.reverse();
@@ -1497,65 +1597,76 @@ async function loadMatriz() {
 
   // Heatmap color function — concrete gray scale
   function heatColor(kilos) {
-    if (!kilos || maxKilos === 0) return 'transparent';
+    if (!kilos || maxKilos === 0) return '#fff';
     const ratio = Math.min(kilos / maxKilos, 1);
     // From light concrete (#D6D6D6) to dark concrete (#6B6B6B)
     const v = Math.round(214 - ratio * (214 - 107));
     return `rgb(${v},${v},${v})`;
   }
 
-  // Build HTML table — building look (no gaps, concrete gray)
-  let html = '<table style="width:100%; border-collapse:collapse; font-size:12px; min-width:' + (ciclos.length * 110 + 120) + 'px;">';
-  html += '<thead><tr><th style="border:1px solid #999; padding:6px 8px; background:#1a1a1a; color:#8BC34A; min-width:100px;">Piso</th>';
+  // Load completed sectors from localStorage
+  const completedKey = 'armahub_completed_' + proy;
+  let completedSectors = {};
+  try { completedSectors = JSON.parse(localStorage.getItem(completedKey) || '{}'); } catch(e) {}
+
+  function toggleCompleted(cellKey) {
+    if (completedSectors[cellKey]) {
+      delete completedSectors[cellKey];
+    } else {
+      completedSectors[cellKey] = true;
+    }
+    try { localStorage.setItem(completedKey, JSON.stringify(completedSectors)); } catch(e) {}
+    loadMatriz(); // re-render
+  }
+  // Expose to global scope for onclick
+  window._matrizToggle = toggleCompleted;
+
+  // Build HTML table — compact building look
+  let html = '<table style="width:auto; border-collapse:collapse; font-size:11px;">';
+  html += '<thead><tr><th style="border:1px solid #ccc; padding:4px 6px; background:#1a1a1a; color:#8BC34A; white-space:nowrap;">Piso</th>';
   ciclos.forEach(c => {
-    html += `<th style="border:1px solid #999; padding:6px 8px; background:#1a1a1a; color:#8BC34A; text-align:center; min-width:100px;">${c}</th>`;
+    html += `<th style="border:1px solid #ccc; padding:4px 6px; background:#1a1a1a; color:#8BC34A; text-align:center; white-space:nowrap;">${c}</th>`;
   });
   html += '</tr></thead><tbody>';
 
   pisos.forEach((piso, pisoIdx) => {
     const types = getTypesForPiso(piso);
-    // Alternate piso background: slightly different grays to distinguish floors
-    const pisoBg = pisoIdx % 2 === 0 ? '#E8E8E8' : '#F2F2F2';
-    const pisoLabelBg = pisoIdx % 2 === 0 ? '#4A4A4A' : '#5C5C5C';
     types.forEach((tipo, typeIdx) => {
       html += '<tr>';
       if (typeIdx === 0) {
-        html += `<td rowspan="${types.length}" style="border:1px solid #888; padding:8px; font-weight:bold; background:${pisoLabelBg}; color:#fff; vertical-align:middle; text-align:center; font-size:13px; letter-spacing:1px;">${piso}</td>`;
+        html += `<td rowspan="${types.length}" style="border:1px solid #ccc; padding:4px 6px; font-weight:bold; background:#fff; color:#1a1a1a; vertical-align:middle; text-align:center; font-size:12px; white-space:nowrap;">${piso}</td>`;
       }
       ciclos.forEach(ciclo => {
         const key = tipo + '|' + piso + '|' + ciclo;
         const d = lookup[key];
-        const bg = d ? heatColor(d.kilos) : pisoBg;
-        const textColor = d && d.kilos > maxKilos * 0.5 ? '#fff' : '#1a1a1a';
+        const isCompleted = !!completedSectors[key];
         if (d) {
-          html += `<td style="border:1px solid #aaa; padding:4px 6px; background:${bg}; text-align:center; cursor:default;" title="${tipo} ${piso} ${ciclo}: ${d.barras} barras, ${Math.round(d.kilos).toLocaleString()} kg">`;
-          html += `<div style="font-weight:600; font-size:10px; color:${textColor}; opacity:0.85;">${tipo}</div>`;
-          html += `<div style="font-size:12px; font-weight:bold; color:${textColor};">${Math.round(d.kilos).toLocaleString()} kg</div>`;
-          html += `<div style="font-size:10px; color:${textColor}; opacity:0.7;">${d.barras} bar</div>`;
+          const bg = heatColor(d.kilos);
+          const textColor = isCompleted ? '#558B2F' : (d.kilos > maxKilos * 0.5 ? '#fff' : '#1a1a1a');
+          html += `<td style="border:1px solid #aaa; padding:3px 4px; background:${bg}; text-align:center; position:relative;" title="${tipo} ${piso} ${ciclo}: ${d.barras} barras, ${Math.round(d.kilos).toLocaleString()} kg">`;
+          html += `<input type="checkbox" ${isCompleted ? 'checked' : ''} onclick="window._matrizToggle('${key}')" style="position:absolute; top:2px; right:2px; width:12px; height:12px; cursor:pointer; accent-color:#8BC34A;" title="Marcar como completado" />`;
+          html += `<div style="font-weight:600; font-size:9px; color:${textColor}; opacity:0.85;">${tipo}</div>`;
+          html += `<div style="font-size:11px; font-weight:bold; color:${textColor};">${Math.round(d.kilos).toLocaleString()} kg</div>`;
+          html += `<div style="font-size:9px; color:${textColor}; opacity:0.7;">${d.barras} bar</div>`;
           html += '</td>';
         } else {
-          html += `<td style="border:1px solid #ccc; padding:4px 6px; background:${pisoBg}; text-align:center;">`;
-          html += `<div style="font-size:10px; color:#aaa;">${tipo}</div>`;
-          html += '</td>';
+          html += `<td style="border:1px solid #eee; padding:3px 4px; background:#fff; text-align:center;"></td>`;
         }
       });
       html += '</tr>';
     });
-    // Thin line between pisos for floor separation (no gap)
-    if (pisoIdx < pisos.length - 1) {
-      html += `<tr><td colspan="${ciclos.length + 1}" style="border:none; height:2px; background:#888;"></td></tr>`;
-    }
   });
 
   html += '</tbody></table>';
 
-  // Legend — concrete gray scale
-  html += '<div style="margin-top:12px; display:flex; gap:12px; align-items:center; font-size:12px;">';
+  // Legend
+  html += '<div style="margin-top:8px; display:flex; gap:10px; align-items:center; font-size:11px; flex-wrap:wrap;">';
   html += '<span class="muted">Intensidad (kg):</span>';
-  html += '<span style="display:inline-block; width:20px; height:14px; background:#D6D6D6; border:1px solid #aaa; vertical-align:middle;"></span> <span class="muted">Menos</span>';
-  html += '<span style="display:inline-block; width:20px; height:14px; background:#A8A8A8; border:1px solid #aaa; vertical-align:middle;"></span>';
-  html += '<span style="display:inline-block; width:20px; height:14px; background:#6B6B6B; border:1px solid #aaa; vertical-align:middle;"></span> <span class="muted">Más</span>';
-  html += '<span style="margin-left:12px; display:inline-block; width:14px; height:14px; background:#4A4A4A; vertical-align:middle;"></span><span style="display:inline-block; width:14px; height:14px; background:#5C5C5C; vertical-align:middle;"></span> <span class="muted">= Pisos alternados</span>';
+  html += '<span style="display:inline-block; width:16px; height:12px; background:#D6D6D6; border:1px solid #aaa; vertical-align:middle;"></span> <span class="muted">Menos</span>';
+  html += '<span style="display:inline-block; width:16px; height:12px; background:#A8A8A8; border:1px solid #aaa; vertical-align:middle;"></span>';
+  html += '<span style="display:inline-block; width:16px; height:12px; background:#6B6B6B; border:1px solid #aaa; vertical-align:middle;"></span> <span class="muted">Más</span>';
+  html += '<span style="margin-left:8px;">☐ = Pendiente</span>';
+  html += '<span style="color:#558B2F; font-weight:bold;">☑ = Completado</span>';
   html += '</div>';
 
   container.innerHTML = html;
@@ -1565,7 +1676,10 @@ async function loadMatriz() {
 let inicioChart = null;
 
 async function loadInicio() {
-  const data = await apiGet('/stats');
+  let data;
+  try {
+    data = await apiGet('/stats');
+  } catch(e) { console.error('loadInicio error:', e); return; }
   if (!data) return;
 
   document.getElementById('kpiProyectos').textContent = data.total_proyectos;
@@ -1725,7 +1839,20 @@ async function createUser() {
   await loadMe();
   await loadInicio();
   await loadProyectos();
-  await loadFilters();
+
+  // Restore saved filters from localStorage
+  const saved = restoreFiltersFromStorage();
+  const dep = {};
+  if (saved && saved.proyecto) dep.proyecto = saved.proyecto;
+  await loadFilters(Object.keys(dep).length ? dep : null);
+  // Now set saved select values after options are populated
+  if (saved) {
+    ['proyecto','plano','sector','piso','ciclo'].forEach(f => {
+      const el = document.getElementById(f);
+      if (el && saved[f]) el.value = saved[f];
+    });
+  }
+
   await loadCargas();
   await loadDashboard('sector');
   await loadSectores();
