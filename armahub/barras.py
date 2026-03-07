@@ -481,7 +481,7 @@ class ProyectoUpdate(BaseModel):
 
 class AutorizarUsuarioRequest(BaseModel):
     user_id: int
-    rol: str = 'editor’
+    rol: str = "editor"
 
 class MoverBarrasRequest(BaseModel):
     destino_id: str
