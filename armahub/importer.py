@@ -13,10 +13,11 @@ Características:
 - UPSERT masivo (executemany + ON CONFLICT) para rendimiento
 """
 
-from fastapi import APIRouter, UploadFile, File, Depends
+from fastapi import APIRouter, UploadFile, File, Depends, Query
 import pandas as pd
 from io import StringIO
 from datetime import datetime, timezone
+from typing import Optional
 
 from .db import get_conn
 from .auth import get_current_user
@@ -25,7 +26,12 @@ router = APIRouter()
 
 
 @router.post("/import/armadetailer")
-async def import_armadetailer(file: UploadFile = File(...), user=Depends(get_current_user)):
+async def import_armadetailer(
+    file: UploadFile = File(...),
+    user=Depends(get_current_user),
+    reasignar_a: Optional[str] = Query(None, description="ID de proyecto existente para reasignar barras"),
+    forzar: bool = Query(False, description="Forzar importación ignorando duplicados de nombre"),
+):
     raw = (await file.read()).decode("utf-8", errors="replace")
     lines = raw.splitlines()
 
@@ -48,6 +54,31 @@ async def import_armadetailer(file: UploadFile = File(...), user=Depends(get_cur
 
     if not proyecto_id or not proyecto_nombre:
         return {"ok": False, "error": "No se encontró PROYECTO en línea 2 del formato 'PROYECTO: ID|NOMBRE'."}
+
+    # --- Detección de proyectos duplicados (mismo nombre, distinto ID) ---
+    if reasignar_a:
+        # El usuario eligió reasignar a un proyecto existente
+        proyecto_id = reasignar_a
+    elif not forzar:
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    SELECT id_proyecto, nombre_proyecto
+                    FROM proyectos
+                    WHERE nombre_proyecto = %s AND id_proyecto != %s
+                """, (proyecto_nombre, proyecto_id))
+                duplicado = cur.fetchone()
+                if duplicado:
+                    return {
+                        "ok": False,
+                        "duplicate_warning": True,
+                        "mensaje": f"Ya existe el proyecto \"{duplicado[1]}\" con ID {duplicado[0]}. El archivo trae ID {proyecto_id}.",
+                        "proyecto_existente_id": duplicado[0],
+                        "proyecto_existente_nombre": duplicado[1],
+                        "proyecto_nuevo_id": proyecto_id,
+                        "proyecto_nuevo_nombre": proyecto_nombre,
+                        "archivo": file.filename,
+                    }
 
     # Buscar cabecera "ID|ESTRUCTURA|" para ignorar metadata previa
     header_idx = None

@@ -69,7 +69,18 @@ Actualmente el sistema ya cuenta con:
 - Feedback visual importación, protección re-import
 - Historial últimas cargas (tabla imports)
 
-**Pendiente próximo checkpoint**: Mejoras Mis Obras + sector constructivo en dashboards
+**Fase 1.8 — Dashboard sectores constructivos**: 
+- Gráfico agrupado por sector+piso+ciclo con kilos y barras
+- Tabla resumen + chart dual-axis (kilos + barras)
+- Selector de proyecto para filtrar
+- Endpoint GET /dashboard/sectores
+
+**Fase 1.9 — Matriz constructiva + detección duplicados**: 
+- Matriz visual pisos x ciclos (ELEV / VCIELO / LCIELO por piso)
+- Heatmap de kilos por celda, selector de proyecto
+- Detección de proyectos duplicados al importar (reasignar / forzar)
+
+**Pendiente próximo checkpoint**: Filtros avanzados + endpoints pendientes
 
 ---
 
@@ -202,15 +213,27 @@ ARMAHUB – PROGRAMA DE TRABAJO
       - Endpoint GET /cargas/recientes (últimas N cargas) - OK
       - Tabla compacta debajo del importador con últimas 3 cargas - OK
 
-6. Dashboard: visualización de sectores constructivos - Pendiente
-   - Gráfico agrupado por combinación sector+piso+ciclo (ej: FUND S2 C1, ELEV S2 C1) - Pendiente
-   - Mostrar kilos y cantidad de barras por sector constructivo - Pendiente
-   - Selector o filtro por proyecto para desglose por sector constructivo - Pendiente
+6. Dashboard: visualización de sectores constructivos - OK
+   - Gráfico agrupado por combinación sector+piso+ciclo (ej: FUND S2 C1, ELEV S2 C1) - OK
+   - Mostrar kilos y cantidad de barras por sector constructivo - OK
+   - Selector o filtro por proyecto para desglose por sector constructivo - OK
+   - Tabla resumen + chart dual-axis (kilos y barras) - OK
+   - Endpoint GET /dashboard/sectores - OK
 
-7. Detección de proyectos duplicados (distinto ID, mismo nombre) - Pendiente
-   - Al importar, detectar si ya existe un proyecto con el mismo nombre pero diferente ID - Pendiente
-   - Consultar al usuario si desea reasignar al proyecto existente o crear uno nuevo - Pendiente
-   - Endpoint o lógica en importer para merge de proyectos duplicados - Pendiente
+6b. Matriz constructiva (visualización tipo edificio) - OK
+   - Matriz HTML: filas = pisos (de abajo hacia arriba), columnas = ciclos - OK
+   - Cada piso tiene sub-filas: LCIELO (arriba), VCIELO (medio), ELEV (abajo) - OK
+   - Fundaciones solo en piso base - OK
+   - Cada celda muestra kilos + barras del sector constructivo correspondiente - OK
+   - Selector de proyecto obligatorio para la matriz - OK
+   - Colores de intensidad según kilos (heatmap verde) - OK
+   - Leyenda de intensidad - OK
+   - Separador verde entre pisos - OK
+
+7. Detección de proyectos duplicados (distinto ID, mismo nombre) - OK
+   - Al importar, detectar si ya existe un proyecto con el mismo nombre pero diferente ID - OK
+   - Consultar al usuario si desea reasignar al proyecto existente o crear uno nuevo - OK
+   - Parámetros reasignar_a y forzar en POST /import/armadetailer - OK
 
 8. Backend endpoints pendientes de Fase 1
    - Endpoint DELETE /proyectos/{id} (eliminar obra con cascada) - Pendiente

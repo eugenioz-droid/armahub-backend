@@ -624,6 +624,18 @@ APP_HTML = Template("""
         <canvas id="sectoresChart"></canvas>
       </div>
     </div>
+
+    <div class="card">
+      <h3>Matriz constructiva (vista edificio)</h3>
+      <div class="row" style="margin-bottom: 12px;">
+        <select id="matrizProyectoFilter" onchange="loadMatriz()">
+          <option value="">— Selecciona un proyecto —</option>
+        </select>
+      </div>
+      <div id="matrizContainer" style="overflow-x: auto;">
+        <div class="muted">Selecciona un proyecto para ver la matriz constructiva</div>
+      </div>
+    </div>
   </div>
 
   <!-- TAB 4: PEDIDOS (Future MVP) -->
@@ -797,6 +809,13 @@ async function loadProyectos() {
   spf.innerHTML = '<option value="">Todos los proyectos</option>' +
     data.proyectos.map(p => `<option value="${p.id_proyecto}">${p.nombre_proyecto}</option>`).join('');
   if (prev) spf.value = prev;
+
+  // Populate matriz constructiva project filter
+  const mpf = document.getElementById('matrizProyectoFilter');
+  const prevM = mpf.value;
+  mpf.innerHTML = '<option value="">\u2014 Selecciona un proyecto \u2014</option>' +
+    data.proyectos.map(p => `<option value="${p.id_proyecto}">${p.nombre_proyecto}</option>`).join('');
+  if (prevM) mpf.value = prevM;
 }
 
 async function loadFilters() {
@@ -909,6 +928,30 @@ async function importAllFiles() {
     if (!data) {
       results.innerHTML += `<div class="status-err" style="padding:4px 0; font-size:13px;">❌ ${f.name}: sesión expirada</div>`;
       errorCount++;
+      continue;
+    }
+    if (data.ok === false && data.duplicate_warning) {
+      // Proyecto duplicado detectado — preguntar al usuario
+      const choice = confirm(
+        `⚠️ ${data.mensaje}\n\n` +
+        `¿Deseas reasignar las barras al proyecto existente (ID: ${data.proyecto_existente_id})?\n\n` +
+        `[Aceptar] = Reasignar al existente\n[Cancelar] = Crear proyecto nuevo con ID ${data.proyecto_nuevo_id}`
+      );
+      let retryUrl;
+      if (choice) {
+        retryUrl = '/import/armadetailer?reasignar_a=' + encodeURIComponent(data.proyecto_existente_id);
+      } else {
+        retryUrl = '/import/armadetailer?forzar=true';
+      }
+      const data2 = await apiPostFile(retryUrl, f);
+      if (data2 && data2.ok) {
+        const kilosText2 = data2.kilos ? ` — ${Math.round(data2.kilos).toLocaleString()} kg` : '';
+        results.innerHTML += `<div class="status-ok" style="padding:4px 0; font-size:13px;">✅ ${f.name}: ${data2.rows_upserted} barras (${data2.proyecto})${kilosText2} ${choice ? '(reasignado)' : '(nuevo)'}</div>`;
+        successCount++;
+      } else {
+        results.innerHTML += `<div class="status-err" style="padding:4px 0; font-size:13px;">❌ ${f.name}: ${data2?.error || 'Error en reimportación'}</div>`;
+        errorCount++;
+      }
       continue;
     }
     if (data.ok === false) {
@@ -1158,6 +1201,163 @@ async function loadSectores() {
       }
     }
   });
+}
+
+// ========================= MATRIZ CONSTRUCTIVA =========================
+async function loadMatriz() {
+  const container = document.getElementById('matrizContainer');
+  const proy = document.getElementById('matrizProyectoFilter').value;
+  if (!proy) {
+    container.innerHTML = '<div class="muted">Selecciona un proyecto para ver la matriz constructiva</div>';
+    return;
+  }
+
+  container.innerHTML = '<div class="muted">Cargando matriz...</div>';
+  const data = await apiGet('/dashboard/sectores?proyecto=' + encodeURIComponent(proy));
+  if (!data || !data.items || data.items.length === 0) {
+    container.innerHTML = '<div class="muted">Sin datos de sectores para este proyecto</div>';
+    return;
+  }
+
+  // Build lookup: key = "sector|piso|ciclo" => {barras, kilos}
+  const lookup = {};
+  let maxKilos = 0;
+  data.items.forEach(i => {
+    const s = (i.sector || '?').toUpperCase().trim();
+    const p = (i.piso || '?').trim();
+    const c = (i.ciclo || '?').trim();
+    const key = s + '|' + p + '|' + c;
+    lookup[key] = { barras: i.barras, kilos: i.kilos };
+    if (i.kilos > maxKilos) maxKilos = i.kilos;
+  });
+
+  // Collect unique pisos and ciclos
+  const pisosSet = new Set();
+  const ciclosSet = new Set();
+  const sectoresSet = new Set();
+  data.items.forEach(i => {
+    pisosSet.add((i.piso || '?').trim());
+    ciclosSet.add((i.ciclo || '?').trim());
+    sectoresSet.add((i.sector || '?').toUpperCase().trim());
+  });
+
+  // Sort pisos: subterráneos (S2, S1) at bottom, pisos (P1, P2...) above
+  // Attempt numeric sort by extracting number, with S prefix going negative
+  function pisoOrder(p) {
+    const up = p.toUpperCase();
+    const m = up.match(/^S(\d+)/);
+    if (m) return -parseInt(m[1]); // S2 = -2, S1 = -1
+    const m2 = up.match(/^P(\d+)/);
+    if (m2) return parseInt(m2[1]); // P1 = 1, P2 = 2
+    const m3 = up.match(/(\d+)/);
+    if (m3) return parseInt(m3[1]);
+    return 0;
+  }
+  const pisos = Array.from(pisosSet).sort((a, b) => pisoOrder(a) - pisoOrder(b));
+  // Reverse so highest floor is at top of table
+  pisos.reverse();
+
+  const ciclos = Array.from(ciclosSet).sort((a, b) => {
+    const na = parseInt((a.match(/(\d+)/) || [0,0])[1]);
+    const nb = parseInt((b.match(/(\d+)/) || [0,0])[1]);
+    return na - nb;
+  });
+
+  // Determine sub-row types per piso
+  // Standard order top-to-bottom within a piso: LCIELO, VCIELO, ELEV
+  // FUND only appears at the lowest piso
+  const TYPE_ORDER = ['LCIELO', 'VCIELO', 'ELEV'];
+  const lowestPiso = pisos[pisos.length - 1]; // after reverse, last = lowest
+
+  // For each piso, determine which sector types exist
+  function getTypesForPiso(piso) {
+    const types = [];
+    // Check for FUND (only lowest piso typically)
+    if (piso === lowestPiso) {
+      for (const c of ciclos) {
+        if (lookup['FUND|' + piso + '|' + c]) { types.push('FUND'); break; }
+      }
+    }
+    // Always check standard types, but only include if data exists for this piso
+    for (const t of TYPE_ORDER) {
+      for (const c of ciclos) {
+        if (lookup[t + '|' + piso + '|' + c]) { types.push(t); break; }
+      }
+    }
+    // Also check for any other sector types not in standard list
+    for (const s of sectoresSet) {
+      if (s === 'FUND' || TYPE_ORDER.includes(s)) continue;
+      for (const c of ciclos) {
+        if (lookup[s + '|' + piso + '|' + c]) { types.push(s); break; }
+      }
+    }
+    return types.length > 0 ? types : ['ELEV']; // fallback
+  }
+
+  // Heatmap color function
+  function heatColor(kilos) {
+    if (!kilos || maxKilos === 0) return '#f9f9f9';
+    const ratio = Math.min(kilos / maxKilos, 1);
+    // From light (#f1f8e9) to intense green (#558B2F)
+    const r = Math.round(241 - ratio * (241 - 85));
+    const g = Math.round(248 - ratio * (248 - 139));
+    const b = Math.round(233 - ratio * (233 - 47));
+    return `rgb(${r},${g},${b})`;
+  }
+
+  // Build HTML table
+  let html = '<table style="width:100%; border-collapse:collapse; font-size:12px; min-width:' + (ciclos.length * 110 + 120) + 'px;">';
+  // Header row: empty + ciclos
+  html += '<thead><tr><th style="border:1px solid #ddd; padding:6px 8px; background:#1a1a1a; color:#8BC34A; min-width:100px;">Piso</th>';
+  ciclos.forEach(c => {
+    html += `<th style="border:1px solid #ddd; padding:6px 8px; background:#1a1a1a; color:#8BC34A; text-align:center; min-width:100px;">${c}</th>`;
+  });
+  html += '</tr></thead><tbody>';
+
+  pisos.forEach((piso, pisoIdx) => {
+    const types = getTypesForPiso(piso);
+    types.forEach((tipo, typeIdx) => {
+      html += '<tr>';
+      // Piso label: only on first sub-row, with rowspan
+      if (typeIdx === 0) {
+        html += `<td rowspan="${types.length}" style="border:1px solid #ddd; padding:8px; font-weight:bold; background:#f5f5f5; vertical-align:middle; text-align:center; font-size:13px;">${piso}</td>`;
+      }
+      ciclos.forEach(ciclo => {
+        const key = tipo + '|' + piso + '|' + ciclo;
+        const d = lookup[key];
+        const bg = d ? heatColor(d.kilos) : '#f9f9f9';
+        const textColor = d && d.kilos > maxKilos * 0.6 ? '#fff' : '#2C2C2C';
+        if (d) {
+          html += `<td style="border:1px solid #ddd; padding:4px 6px; background:${bg}; text-align:center; cursor:default;" title="${tipo} ${piso} ${ciclo}: ${d.barras} barras, ${Math.round(d.kilos).toLocaleString()} kg">`;
+          html += `<div style="font-weight:600; font-size:11px; color:${textColor};">${tipo}</div>`;
+          html += `<div style="font-size:12px; font-weight:bold; color:${textColor};">${Math.round(d.kilos).toLocaleString()} kg</div>`;
+          html += `<div style="font-size:10px; color:${textColor}; opacity:0.8;">${d.barras} barras</div>`;
+          html += '</td>';
+        } else {
+          html += `<td style="border:1px solid #eee; padding:4px 6px; background:#f9f9f9; text-align:center;">`;
+          html += `<div style="font-size:10px; color:#ccc;">${tipo}</div>`;
+          html += '</td>';
+        }
+      });
+      html += '</tr>';
+    });
+    // Separator between pisos (thicker border)
+    if (pisoIdx < pisos.length - 1) {
+      html += `<tr><td colspan="${ciclos.length + 1}" style="border:none; height:3px; background:#8BC34A;"></td></tr>`;
+    }
+  });
+
+  html += '</tbody></table>';
+
+  // Legend
+  html += '<div style="margin-top:12px; display:flex; gap:16px; align-items:center; font-size:12px;">';
+  html += '<span class="muted">Intensidad:</span>';
+  html += '<span style="display:inline-block; width:20px; height:14px; background:#f1f8e9; border:1px solid #ddd; vertical-align:middle;"></span> <span class="muted">Menos kilos</span>';
+  html += '<span style="display:inline-block; width:20px; height:14px; background:#8BC34A; border:1px solid #ddd; vertical-align:middle;"></span>';
+  html += '<span style="display:inline-block; width:20px; height:14px; background:#558B2F; border:1px solid #ddd; vertical-align:middle;"></span> <span class="muted">Más kilos</span>';
+  html += '</div>';
+
+  container.innerHTML = html;
 }
 
 // ========================= INICIO (Landing) =========================
