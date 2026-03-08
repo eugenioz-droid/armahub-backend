@@ -1,0 +1,59 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>ArmaHub - Bootstrap</title>
+  <style>
+    body { font-family: Arial, sans-serif; max-width: 720px; margin: 40px auto; padding: 0 16px; background: #f5f5f5; }
+    input, button { padding: 10px; margin: 6px 0; width: 100%; box-sizing: border-box; border: 1px solid #ddd; border-radius: 4px; }
+    button { background: #8BC34A; color: white; cursor: pointer; font-weight: bold; }
+    button:hover { background: #558B2F; }
+    .card { border: 1px solid #ddd; border-radius: 10px; padding: 16px; background: white; }
+    .muted { color: #666; font-size: 12px; }
+    a { color: #8BC34A; text-decoration: none; font-weight: bold; }
+    .status-ok { color: #1a7f37; font-size: 12px; }
+    .status-err { color: #b42318; font-size: 12px; }
+    h2 { color: #2C2C2C; }
+  </style>
+</head>
+<body>
+  <h2>Crear Administrador Inaugural</h2>
+
+  <div class="card">
+    <div class="muted">
+      Esto solo funciona si <b>no existe ningún usuario</b> en la base de datos.
+      Si ya existe un usuario, esta pantalla se bloquea.
+    </div>
+
+    <h3>Crear primer admin</h3>
+    <input id="email" placeholder="Email admin" />
+    <input id="password" type="password" placeholder="Contraseña" />
+    <button onclick="createAdmin()">Crear admin</button>
+    <div id="msg" class="muted" style="margin-top:10px;"></div>
+
+    <div style="margin-top:10px;">
+      <a href="/ui/login">← Volver a login</a>
+    </div>
+  </div>
+
+<script>
+async function createAdmin() {
+  const email = document.getElementById('email').value.trim();
+  const password = document.getElementById('password').value;
+  const msg = document.getElementById('msg');
+  msg.textContent = "Creando...";
+
+  const params = new URLSearchParams({ email, password });
+  const res = await fetch('/bootstrap/create-admin?' + params.toString(), { method: 'POST' });
+  const data = await res.json();
+
+  if (!res.ok) {
+    msg.textContent = "Error: " + (data.detail || JSON.stringify(data));
+    return;
+  }
+
+  msg.innerHTML = "Admin creado ✅. Ahora puedes <a href='/ui/login'>loguearte</a>.";
+}
+</script>
+</body>
+</html>

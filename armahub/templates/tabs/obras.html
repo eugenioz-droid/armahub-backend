@@ -1,0 +1,86 @@
+  <!-- TAB 1: OBRAS -->
+  <div id="tab-obras" class="tab-content">
+    <div class="card">
+      <h3>Cargar datos de obra</h3>
+      <div id="dropZone" style="border: 2px dashed #8BC34A; border-radius: 10px; padding: 30px; text-align: center; background: #f9fff4; cursor: pointer; transition: all 0.2s; margin-bottom: 12px;"
+           ondragover="event.preventDefault(); this.style.background='#e8f5e9'; this.style.borderColor='#558B2F';"
+           ondragleave="this.style.background='#f9fff4'; this.style.borderColor='#8BC34A';"
+           ondrop="handleDrop(event)"
+           onclick="document.getElementById('csvFile').click()">
+        <div style="font-size: 36px; margin-bottom: 8px;">📂</div>
+        <div style="font-size: 15px; font-weight: 500; color: #2C2C2C;">Arrastra archivos CSV aquí o haz clic para seleccionar</div>
+        <div class="muted" style="margin-top: 4px;">Puedes seleccionar múltiples archivos a la vez</div>
+        <div class="muted" style="margin-top: 4px; color: #ff9800;">Re-importar un archivo actualiza los datos existentes (no duplica)</div>
+      </div>
+      <input type="file" id="csvFile" accept=".csv,.txt" multiple style="display: none;" onchange="handleFileSelect(this.files)" />
+      <div id="fileList" style="margin: 8px 0;"></div>
+      <div style="display: flex; gap: 8px; align-items: center;">
+        <button id="importBtn" onclick="importAllFiles()" disabled style="opacity: 0.5;">📤 Importar archivos</button>
+        <button class="secondary" id="clearBtn" onclick="clearFiles()" style="display: none;">Limpiar</button>
+        <span id="importProgress" class="muted"></span>
+      </div>
+      <div id="importResults" style="margin-top: 12px;"></div>
+    </div>
+
+    <div class="card">
+      <h3>Últimas cargas</h3>
+      <div id="cargasRecientes">
+        <div class="muted">Cargando...</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Crear obra manualmente</h3>
+      <div class="row" style="gap: 8px; align-items: flex-end;">
+        <div class="col">
+          <label style="font-size: 12px; color: #666;">Nombre de la obra</label>
+          <input type="text" id="newObraName" placeholder="Ej: Edificio Central - Torre A" style="width: 100%;" />
+        </div>
+        <div class="col" style="max-width:220px;">
+          <label style="font-size: 12px; color: #666;">Calculista (opcional)</label>
+          <input type="text" id="newObraCalculista" placeholder="Nombre calculista" style="width: 100%;" />
+        </div>
+        <div>
+          <button onclick="crearObra()">+ Crear obra</button>
+        </div>
+      </div>
+      <div id="crearObraMsg" style="margin-top: 8px;"></div>
+    </div>
+
+    <div class="card">
+      <h3>Mis proyectos</h3>
+      <div id="proyectosContainer" style="min-height: 200px;">
+        <div class="muted">Cargando...</div>
+      </div>
+    </div>
+
+    <div class="card" id="moverBarrasCard" style="display: none;">
+      <h3>Mover barras entre proyectos</h3>
+      <div class="row" style="gap: 8px; align-items: flex-end; flex-wrap: wrap;">
+        <div class="col">
+          <label style="font-size: 12px; color: #666;">Origen</label>
+          <select id="moverOrigen"></select>
+        </div>
+        <div class="col">
+          <label style="font-size: 12px; color: #666;">Destino</label>
+          <select id="moverDestino"></select>
+        </div>
+        <div class="col">
+          <label style="font-size: 12px; color: #666;">Sector (opcional)</label>
+          <input type="text" id="moverSector" placeholder="Ej: ELEV" />
+        </div>
+        <div class="col">
+          <label style="font-size: 12px; color: #666;">Piso (opcional)</label>
+          <input type="text" id="moverPiso" placeholder="Ej: P1" />
+        </div>
+        <div class="col">
+          <label style="font-size: 12px; color: #666;">Ciclo (opcional)</label>
+          <input type="text" id="moverCiclo" placeholder="Ej: C1" />
+        </div>
+      </div>
+      <div style="margin-top: 8px;">
+        <button onclick="moverBarras()">Mover barras</button>
+      </div>
+      <div id="moverBarrasMsg" style="margin-top: 8px;"></div>
+    </div>
+  </div>

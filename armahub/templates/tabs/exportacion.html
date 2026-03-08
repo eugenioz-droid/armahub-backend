@@ -1,0 +1,22 @@
+  <!-- TAB 5: EXPORTACIÓN -->
+  <div id="tab-export" class="tab-content">
+    <div class="card">
+      <h3>Exportar a producción (aSa Studio)</h3>
+      <p class="muted" style="margin-bottom:12px;">Genera un ZIP con un archivo Excel por cada combinación SECTOR + PISO + CICLO.</p>
+      <div class="row" style="gap:8px; align-items:flex-end;">
+        <div class="col" style="flex:2; position:relative;">
+          <label style="font-size:11px; color:#666; font-weight:600;">Proyecto *</label>
+          <div style="position:relative;">
+            <span style="position:absolute; left:8px; top:50%; transform:translateY(-50%); font-size:14px; color:#999; pointer-events:none;">🔍</span>
+            <input type="text" id="exportProyectoSearch" placeholder="Buscar proyecto..." oninput="filterProjectSelect('exportProyectoSearch','exportProyecto')" style="padding-left:30px; width:100%; font-size:13px; margin-bottom:4px;" />
+          </div>
+          <select id="exportProyecto" onchange="previewExport()">
+            <option value="">-- Selecciona proyecto --</option>
+          </select>
+        </div>
+        <button onclick="descargarExport()" style="font-size:13px; padding:8px 20px;">📥 Descargar ZIP</button>
+      </div>
+      <div id="exportPreview" style="margin-top:16px;"></div>
+      <div id="exportStatus" class="muted" style="margin-top:8px;"></div>
+    </div>
+  </div>

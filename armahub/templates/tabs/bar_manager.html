@@ -1,0 +1,105 @@
+  <!-- TAB 2: BAR MANAGER -->
+  <div id="tab-buscar" class="tab-content">
+    <div class="card">
+      <h3>Bar Manager</h3>
+      <div class="row" style="gap:8px; align-items:flex-end;">
+        <div class="col" style="position:relative; flex:2;">
+          <label style="font-size:11px; color:#666; font-weight:600;">Proyecto *</label>
+          <div style="position:relative;">
+            <span style="position:absolute; left:8px; top:50%; transform:translateY(-50%); font-size:14px; color:#999; pointer-events:none;">🔍</span>
+            <input type="text" id="proyectoSearchInput" placeholder="Buscar proyecto..." oninput="filterProjectSelect('proyectoSearchInput','proyecto')" style="padding-left:30px; width:100%; font-size:13px; margin-bottom:4px;" />
+          </div>
+          <select id="proyecto" onchange="onProyectoChange()">
+            <option value="">-- Selecciona proyecto --</option>
+          </select>
+        </div>
+        <div class="col">
+          <label style="font-size:11px; color:#666;">Plano</label>
+          <select id="plano" onchange="onFilterChange()">
+            <option value="">Todos</option>
+          </select>
+        </div>
+        <div class="col">
+          <label style="font-size:11px; color:#666;">Sector</label>
+          <select id="sector" onchange="onFilterChange()">
+            <option value="">Todos</option>
+          </select>
+        </div>
+        <div class="col">
+          <label style="font-size:11px; color:#666;">Piso</label>
+          <select id="piso" onchange="onFilterChange()">
+            <option value="">Todos</option>
+          </select>
+        </div>
+        <div class="col">
+          <label style="font-size:11px; color:#666;">Ciclo</label>
+          <select id="ciclo" onchange="onFilterChange()">
+            <option value="">Todos</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="row" style="gap:8px; margin-top:8px; align-items:flex-end;">
+        <div class="col" style="flex:2;">
+          <input id="q" placeholder="Buscar por ID, Eje..." onkeyup="if(event.key==='Enter') buscar(true)" style="font-size:13px;" />
+        </div>
+        <div class="col">
+          <select id="order_by" onchange="buscar(true)" style="font-size:12px;">
+            <option value="sector">Orden: Sector</option>
+            <option value="piso">Orden: Piso</option>
+            <option value="ciclo">Orden: Ciclo</option>
+            <option value="eje">Orden: Eje</option>
+            <option value="diam">Orden: φ</option>
+            <option value="peso_total">Orden: Peso</option>
+            <option value="cant_total">Orden: Cantidad</option>
+            <option value="largo_total">Orden: Largo</option>
+            <option value="id_unico">Orden: ID</option>
+          </select>
+        </div>
+        <div class="col" style="flex:0;">
+          <select id="order_dir" onchange="buscar(true)" style="font-size:12px;">
+            <option value="asc">ASC</option>
+            <option value="desc">DESC</option>
+          </select>
+        </div>
+        <button onclick="buscar(true)" style="font-size:12px; padding:6px 14px;">🔍 Buscar</button>
+        <button class="secondary" onclick="resetFiltros()" style="font-size:12px; padding:6px 14px;">Limpiar</button>
+      </div>
+    </div>
+
+    <!-- TOOLBAR ACCIONES SELECCIONADAS -->
+    <div id="barrasToolbar" class="card" style="display:none; background:#f9fff4; border:1px solid #8BC34A; padding:10px 16px;">
+      <div class="row" style="gap:10px; align-items:center; flex-wrap:wrap;">
+        <strong id="selectedCount" style="font-size:13px;">0 seleccionadas</strong>
+        <select id="accionDestProyecto" style="font-size:12px; max-width:200px;">
+          <option value="">Mover a proyecto...</option>
+        </select>
+        <button onclick="accionMoverProyecto()" style="font-size:12px; padding:4px 12px;">Mover proyecto</button>
+        <select id="accionSector" style="font-size:12px; max-width:140px;">
+          <option value="">Cambiar sector...</option>
+          <option value="FUND">FUND</option>
+          <option value="ELEV">ELEV</option>
+          <option value="LCIELO">LCIELO</option>
+          <option value="VCIELO">VCIELO</option>
+        </select>
+        <button onclick="accionCambiarSector()" style="font-size:12px; padding:4px 12px;">Cambiar sector</button>
+        <button class="secondary" onclick="clearSeleccion()" style="font-size:11px; padding:4px 10px;">Deseleccionar</button>
+      </div>
+    </div>
+
+    <div class="card" style="padding:8px 16px;">
+      <div class="muted" id="count" style="margin-bottom:6px;"></div>
+      <div style="overflow-x: auto;">
+        <table id="tabla" style="font-size:12px; white-space:nowrap;">
+          <thead></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
+      <div class="row" style="justify-content: center; margin-top: 12px; gap:8px;">
+        <button onclick="prevPage()" style="font-size:12px; padding:4px 14px;">◀ Anterior</button>
+        <span class="muted" id="pageInfo" style="font-size:12px;"></span>
+        <button onclick="nextPage()" style="font-size:12px; padding:4px 14px;">Siguiente ▶</button>
+      </div>
+    </div>
+  </div>

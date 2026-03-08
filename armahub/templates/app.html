@@ -1,0 +1,73 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate, max-age=0">
+  <meta http-equiv="Pragma" content="no-cache">
+  <title>ArmaHub — Sistema de Cubicación</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <link rel="stylesheet" href="/static/css/app.css">
+</head>
+<body>
+  <!-- Header -->
+  <div class="header">
+    <h1>ArmaHub</h1>
+    <div class="user-info">
+      <span class="user-badge" id="whoEmail">—</span>
+      <span class="user-badge" id="whoRole">—</span>
+      <button class="btn-logout" onclick="logout()">Salir</button>
+      <img src="/static/Logo%20Banner%201.PNG" alt="ArmaCero" style="height: 40px; width: auto; margin-left: 12px;" onerror="this.style.display='none';">
+    </div>
+  </div>
+
+  <!-- Global Status -->
+  <div id="globalStatus" class="muted"></div>
+
+  <!-- Tabs -->
+  <div class="tabs">
+    <button class="tab-btn active" onclick="switchTab('inicio')">🏠 Inicio</button>
+    <button class="tab-btn" onclick="switchTab('obras')">📦 Obras</button>
+    <button class="tab-btn" onclick="switchTab('buscar')">🔍 Bar Manager</button>
+    <button class="tab-btn" onclick="switchTab('dashboards')">📊 Dashboards</button>
+    <button class="tab-btn" onclick="switchTab('pedidos')">📝 Pedidos</button>
+    <button class="tab-btn" onclick="switchTab('export')">📥 Exportación</button>
+    <button class="tab-btn" id="adminTabBtn" onclick="switchTab('admin')" style="display:none;">⚙️ Admin</button>
+  </div>
+
+  {% include 'tabs/inicio.html' %}
+  {% include 'tabs/obras.html' %}
+  {% include 'tabs/bar_manager.html' %}
+  {% include 'tabs/dashboards.html' %}
+  {% include 'tabs/pedidos.html' %}
+  {% include 'tabs/exportacion.html' %}
+  {% include 'tabs/admin.html' %}
+
+  <!-- MODAL: Nuevo proyecto detectado al importar -->
+  <div id="newProjectModal" style="display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.5); z-index:9999; align-items:center; justify-content:center;">
+    <div style="background:#fff; border-radius:12px; padding:24px; max-width:420px; width:90%; box-shadow:0 8px 32px rgba(0,0,0,0.3);">
+      <h3 style="margin:0 0 4px 0; color:#1a1a1a;">Nuevo proyecto detectado</h3>
+      <p id="newProjMsg" class="muted" style="margin:0 0 16px 0; font-size:13px;"></p>
+      <div style="margin-bottom:12px;">
+        <label style="font-size:12px; color:#666; display:block; margin-bottom:4px;">Nombre del proyecto</label>
+        <input type="text" id="newProjNombre" readonly style="width:100%; background:#f5f5f5; font-size:13px;" />
+      </div>
+      <div style="margin-bottom:12px;">
+        <label style="font-size:12px; color:#666; display:block; margin-bottom:4px;">Calculista</label>
+        <input type="text" id="newProjCalculista" placeholder="Nombre del calculista (opcional)" style="width:100%; font-size:13px;" />
+      </div>
+      <div style="margin-bottom:12px;">
+        <label style="font-size:12px; color:#666; display:block; margin-bottom:4px;">Dueño del proyecto</label>
+        <select id="newProjOwner" style="width:100%; font-size:13px;">
+          <option value="">Cargando usuarios...</option>
+        </select>
+      </div>
+      <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:16px;">
+        <button class="secondary" onclick="closeNewProjectModal(false)" style="padding:8px 16px;">Cancelar</button>
+        <button onclick="closeNewProjectModal(true)" style="padding:8px 16px;">Crear y continuar</button>
+      </div>
+    </div>
+  </div>
+
+<script src="/static/js/app.js"></script>
+</body>
+</html>

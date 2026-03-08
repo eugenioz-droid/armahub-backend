@@ -1,0 +1,80 @@
+  <!-- TAB 3: DASHBOARDS -->
+  <div id="tab-dashboards" class="tab-content">
+    <div style="display:flex; gap:16px; align-items:flex-start;">
+      <!-- COLUMNA IZQUIERDA (60%) — Resumen + Gráficos + Sectores -->
+      <div style="flex:3; min-width:0;">
+        <div class="card">
+          <h3>Resumen general</h3>
+          <div id="generalStats">
+            <div class="muted">Cargando...</div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3>Gráficos por dimensión</h3>
+          <div class="row" style="flex-wrap:wrap; gap:4px;">
+            <button onclick="loadDashboard('sector')" style="font-size:12px; padding:4px 10px;">Sector</button>
+            <button onclick="loadDashboard('piso')" style="font-size:12px; padding:4px 10px;">Piso</button>
+            <button onclick="loadDashboard('ciclo')" style="font-size:12px; padding:4px 10px;">Ciclo</button>
+            <button onclick="loadDashboard('plano_code')" style="font-size:12px; padding:4px 10px;">Plano</button>
+            <button onclick="loadDashboard('id_proyecto')" style="font-size:12px; padding:4px 10px;">Proyecto</button>
+            <button onclick="loadDashboard('eje')" style="font-size:12px; padding:4px 10px;">Eje</button>
+          </div>
+          <div id="dashTotals" class="muted" style="margin: 8px 0;"></div>
+          <div style="height: 320px; margin-top: 8px;">
+            <canvas id="dashChart"></canvas>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3>Sectores constructivos</h3>
+          <div class="row" style="margin-bottom: 8px; gap: 6px; align-items: center;">
+            <div style="position:relative; flex:1; max-width:220px;">
+              <span style="position:absolute; left:8px; top:50%; transform:translateY(-50%); font-size:14px; color:#999; pointer-events:none;">🔍</span>
+              <input type="text" id="sectorSearchInput" placeholder="Buscar proyecto..." oninput="filterProjectSelect('sectorSearchInput','sectorProyectoFilter')" style="padding-left:28px; width:100%; font-size:12px;" />
+            </div>
+            <select id="sectorProyectoFilter" onchange="loadSectores()" style="flex:1; font-size:12px;">
+              <option value="">Todos los proyectos</option>
+            </select>
+          </div>
+          <div id="sectoresTotals" class="muted" style="margin-bottom: 6px; font-size:12px;"></div>
+          <div style="overflow-x: auto; max-height: 350px;">
+            <table id="sectoresTable" style="width: 100%; font-size:12px;">
+              <thead>
+                <tr>
+                  <th>Sector constructivo</th>
+                  <th style="text-align:right;">Barras</th>
+                  <th style="text-align:right;">Kilos</th>
+                </tr>
+              </thead>
+              <tbody id="sectoresBody">
+                <tr><td colspan="3" class="muted">Cargando...</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div style="height: 280px; margin-top: 12px;">
+            <canvas id="sectoresChart"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <!-- COLUMNA DERECHA (40%) — Matriz constructiva (sticky) -->
+      <div style="flex:2; min-width:0; position:sticky; top:16px; align-self:flex-start;">
+        <div class="card">
+          <h3>Matriz constructiva</h3>
+          <div class="row" style="margin-bottom: 8px; gap: 6px; align-items: center;">
+            <div style="position:relative; flex:1;">
+              <span style="position:absolute; left:8px; top:50%; transform:translateY(-50%); font-size:14px; color:#999; pointer-events:none;">🔍</span>
+              <input type="text" id="matrizSearchInput" placeholder="Buscar proyecto..." oninput="filterProjectSelect('matrizSearchInput','matrizProyectoFilter')" style="padding-left:28px; width:100%; font-size:13px;" />
+            </div>
+            <select id="matrizProyectoFilter" onchange="loadMatriz()" style="flex:1; font-size:12px;">
+              <option value="">— Selecciona proyecto —</option>
+            </select>
+          </div>
+          <div id="matrizContainer" style="overflow-x: auto; overflow-y: auto; max-height:70vh;">
+            <div class="muted">Selecciona un proyecto para ver la matriz constructiva</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>

@@ -1,0 +1,58 @@
+  <!-- TAB 0: INICIO (Landing) -->
+  <div id="tab-inicio" class="tab-content active">
+    <div class="kpi-row" id="kpiRow">
+      <div class="kpi-card">
+        <div class="kpi-label">Proyectos</div>
+        <div class="kpi-value" id="kpiProyectos">—</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Barras totales</div>
+        <div class="kpi-value" id="kpiBarras">—</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Kilos totales</div>
+        <div class="kpi-value" id="kpiKilos">—</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Última carga</div>
+        <div class="kpi-value" id="kpiUltimaCarga" style="font-size:18px;">—</div>
+      </div>
+    </div>
+    <div class="kpi-row" style="margin-top: 8px;">
+      <div class="kpi-card" style="border-top: 3px solid #8BC34A;">
+        <div class="kpi-label">PPB (Peso Prom. Barra)</div>
+        <div class="kpi-value" id="kpiPPB" style="font-size:20px;">—</div>
+      </div>
+      <div class="kpi-card" style="border-top: 3px solid #558B2F;">
+        <div class="kpi-label">PPI (Peso Prom. Item)</div>
+        <div class="kpi-value" id="kpiPPI" style="font-size:20px;">—</div>
+      </div>
+      <div class="kpi-card" style="border-top: 3px solid #33691E;">
+        <div class="kpi-label">Diámetro Promedio</div>
+        <div class="kpi-value" id="kpiDiam" style="font-size:20px;">—</div>
+      </div>
+      <div class="kpi-card" style="border-top: 3px solid #9E9E9E;">
+        <div class="kpi-label">Items únicos</div>
+        <div class="kpi-value" id="kpiItems">—</div>
+      </div>
+    </div>
+
+    <div class="inicio-grid">
+      <div>
+        <div class="card">
+          <h3>Top 5 proyectos por kilos</h3>
+          <div style="height: 280px;">
+            <canvas id="inicioChart"></canvas>
+          </div>
+        </div>
+      </div>
+      <div>
+        <div class="card">
+          <h3>Resumen por proyecto</h3>
+          <div id="proyectosMiniList">
+            <div class="muted">Cargando...</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>

@@ -1,0 +1,43 @@
+  <!-- TAB 6: ADMIN (solo visible para admin) -->
+  <div id="tab-admin" class="tab-content">
+    <div class="card">
+      <h3>Estado de la base de datos</h3>
+      <div id="dbInfoContainer">
+        <div class="muted">Cargando...</div>
+      </div>
+      <button onclick="loadDbInfo()" class="secondary" style="margin-top: 12px;">Actualizar info</button>
+    </div>
+
+    <div class="card" style="border-left: 4px solid #b42318;">
+      <h3 style="color: #b42318;">Resetear base de datos</h3>
+      <p class="muted">Elimina todas las barras y proyectos. Los usuarios se mantienen.</p>
+      <div class="row">
+        <label style="display: flex; align-items: center; gap: 8px;">
+          <input type="checkbox" id="resetKeepUsers" checked>
+          Mantener usuarios
+        </label>
+      </div>
+      <div class="row">
+        <input id="resetConfirm" placeholder="Escribe CONFIRMAR para habilitar" style="max-width: 300px;" />
+        <button class="danger" onclick="resetDatabase()">Resetear BD</button>
+      </div>
+      <div id="resetMsg" class="muted" style="margin-top: 8px;"></div>
+    </div>
+
+    <div class="card">
+      <h3>Gestión de usuarios</h3>
+      <div class="row">
+        <input id="newUserEmail" placeholder="Email" style="max-width: 250px;" />
+        <input id="newUserPassword" type="password" placeholder="Contraseña" style="max-width: 200px;" />
+        <select id="newUserRole" style="max-width: 150px;">
+          <option value="cubicador">Cubicador</option>
+          <option value="coordinador">Coordinador</option>
+          <option value="operador">Operador</option>
+          <option value="cliente">Cliente</option>
+          <option value="admin">Admin</option>
+        </select>
+        <button onclick="createUser()">Crear usuario</button>
+      </div>
+      <div id="createUserMsg" class="muted" style="margin-top: 8px;"></div>
+    </div>
+  </div>

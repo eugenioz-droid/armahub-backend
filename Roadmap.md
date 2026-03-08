@@ -450,6 +450,50 @@ ARMAHUB – PROGRAMA DE TRABAJO
     - Tab "Exportación" con selector proyecto (búsqueda), vista previa sectores/pisos/ciclos, botón descarga ZIP - OK
     - loadFilters() pobla todos los selects de proyecto (búsqueda, export, dashboard) - OK
 
+20b. Matriz de control de exportación por sector constructivo - Pendiente
+    **Objetivo**: Control visual y selectivo de qué sectores constructivos se exportan,
+    reutilizando el patrón de la matriz constructiva (piso × ciclo) del tab Dashboards.
+
+    a) Backend: exportación selectiva - Pendiente
+       - Modificar GET /proyectos/{id}/exportar para aceptar param opcional `sectores`
+       - Formato: `sectores=ELEV_P1_C1,FUND_P1_C1,LCIELO_P2_C1,...`
+       - Si `sectores` está vacío o ausente: comportamiento actual (exporta todo)
+       - Si `sectores` tiene valores: filtrar barras solo a esas combinaciones
+       - ZIP resultante contiene solo los archivos de las combinaciones solicitadas
+
+    b) Frontend: matriz de exportación - Pendiente
+       - Reutilizar layout de la matriz constructiva existente (piso × ciclo grid)
+       - Cada sub-fila de sector (FUND/ELEV/LCIELO/VCIELO) tiene un checkbox
+       - Cada celda muestra: checkbox + nombre sector + kilos + barras (compacto)
+       - Celdas vacías (sin datos) no muestran checkbox
+
+    c) Selección inteligente - Pendiente
+       - Click en header de piso → seleccionar/deseleccionar todo el piso
+       - Click en header de ciclo → seleccionar/deseleccionar todo el ciclo
+       - Botón "Seleccionar todo" / "Deseleccionar todo"
+       - Contador: "X de Y sectores seleccionados"
+
+    d) Acciones de exportación - Pendiente
+       - Botón "📥 Exportar seleccionados (N)" → ZIP parcial con solo los seleccionados
+       - Botón "📥 Exportar TODO" → ZIP completo (comportamiento actual)
+       - Deshabilitado si no hay selección (para el parcial)
+
+    e) Tracking visual de estado exportado - Pendiente
+       - Al completar descarga, marcar celdas exportadas con fondo verde + ✅
+       - Persistencia en localStorage por proyecto (clave: `export_done_{id_proyecto}`)
+       - Formato almacenado: array de strings `["ELEV_P1_C1", "FUND_P1_C2", ...]`
+       - Visual: celda no exportada = fondo blanco, exportada = fondo #e8f5e9 + ✅
+       - Botón "Limpiar estado exportación" para resetear todos los checks verdes
+
+    f) Flujo completo - Pendiente
+       1. Usuario selecciona proyecto en el selector
+       2. Se carga la matriz con todas las combinaciones sector+piso+ciclo
+       3. Usuario marca checkboxes (individualmente o por piso/ciclo)
+       4. Click "Exportar seleccionados" → descarga ZIP parcial
+       5. Celdas exportadas cambian a verde con ✅
+       6. Al volver al proyecto, el estado verde persiste (localStorage)
+       7. El usuario ve de un vistazo qué falta por exportar
+
 ---
 ## FASE 4 — Refactorización UI y sistema de roles
 
@@ -494,21 +538,22 @@ y sienta las bases para el crecimiento multi-cliente.
 - **Beneficio**: browser cachea archivos estáticos (performance)
 - Verificar que la app funcione idénticamente post-extracción
 
-### Paso 2: Modularizar HTML con Jinja2 templates — Pendiente
-- Crear carpeta `templates/`
-- `templates/base.html`: layout común (head, header, nav tabs, footer, scripts)
-- Cada tab como template parcial:
-  - `templates/tabs/inicio.html`
-  - `templates/tabs/obras.html`
-  - `templates/tabs/bar_manager.html`
-  - `templates/tabs/dashboards.html`
-  - `templates/tabs/exportacion.html`
-  - `templates/tabs/pedidos.html`
-  - `templates/tabs/admin.html`
-- `base.html` incluye cada tab con `{% include 'tabs/xxx.html' %}`
-- Refactorizar ui.py: reemplazar APP_HTML monolítico por Jinja2TemplateResponse
-- Agregar dependencia `jinja2` a requirements.txt (ya la tiene FastAPI como dep opcional)
-- **Beneficio**: cada tab se edita independientemente, menos conflictos
+### Paso 2: Modularizar HTML con Jinja2 templates — OK
+- Carpeta `templates/` creada con 10 archivos HTML - OK
+- `templates/app.html`: layout principal con head, header, nav tabs, modal, script refs - OK
+- `templates/login.html`: página de login standalone - OK
+- `templates/bootstrap.html`: página de bootstrap standalone - OK
+- Cada tab como template parcial con `{% include %}`:
+  - `templates/tabs/inicio.html` - OK
+  - `templates/tabs/obras.html` - OK
+  - `templates/tabs/bar_manager.html` - OK
+  - `templates/tabs/dashboards.html` - OK
+  - `templates/tabs/exportacion.html` - OK
+  - `templates/tabs/pedidos.html` - OK
+  - `templates/tabs/admin.html` - OK
+- ui.py refactorizado: Jinja2 Environment + FileSystemLoader (647→49 líneas) - OK
+- jinja2 ya estaba en requirements.txt - OK
+- **Beneficio**: cada tab se edita independientemente, sin bugs de escaping Python↔JS
 
 ### Paso 3: Renombrar tabs y limpiar navegación — OK
 - "Mis Obras" → "Obras"

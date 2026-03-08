@@ -1,0 +1,66 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>ArmaHub - Login</title>
+  <style>
+    body { font-family: Arial, sans-serif; max-width: 720px; margin: 40px auto; padding: 0 16px; background: #f5f5f5; }
+    input, button { padding: 10px; margin: 6px 0; width: 100%; box-sizing: border-box; border: 1px solid #ddd; border-radius: 4px; }
+    button { background: #8BC34A; color: white; cursor: pointer; font-weight: bold; }
+    button:hover { background: #558B2F; }
+    .card { border: 1px solid #ddd; border-radius: 10px; padding: 16px; background: white; }
+    .muted { color: #666; font-size: 12px; }
+    a { color: #8BC34A; text-decoration:none; font-weight: bold; }
+    h2 { color: #2C2C2C; }
+  </style>
+</head>
+<body>
+  <h2>ArmaHub — Sistema de Cubicación</h2>
+
+  <div class="card" id="bootstrapHint" style="display:none;">
+    <b>Primera vez (BD vacía)</b>
+    <div class="muted">Si aún no existen usuarios, crea el primer admin acá:</div>
+    <div style="margin-top:8px;">
+      <a href="/ui/bootstrap">Crear admin inaugural</a>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Ingreso</h3>
+    <input id="email" placeholder="Email" />
+    <input id="password" type="password" placeholder="Contraseña" />
+    <button onclick="doLogin()">Entrar</button>
+    <div id="msg" class="muted" style="margin-top:10px;"></div>
+  </div>
+
+<script>
+async function doLogin() {
+  const email = document.getElementById('email').value.trim();
+  const password = document.getElementById('password').value;
+  const msg = document.getElementById('msg');
+  msg.textContent = "Ingresando...";
+
+  const params = new URLSearchParams({ email, password });
+  const res = await fetch('/auth/login?' + params.toString(), { method: 'POST' });
+  const data = await res.json();
+
+  if (!res.ok) {
+    msg.textContent = "Error: " + (data.detail || JSON.stringify(data));
+    return;
+  }
+
+  localStorage.setItem('armahub_token', data.access_token);
+  window.location.href = '/ui';
+}
+
+(async function checkBootstrap() {
+  try {
+    const res = await fetch('/ui/bootstrap', { method: 'GET' });
+    if (res.ok) {
+      document.getElementById('bootstrapHint').style.display = 'block';
+    }
+  } catch(e) {}
+})();
+</script>
+</body>
+</html>
