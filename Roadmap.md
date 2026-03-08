@@ -483,7 +483,7 @@ y sienta las bases para el crecimiento multi-cliente.
 
 ---
 
-### Paso 1: Extraer archivos estáticos (CSS + JS) — Pendiente
+### Paso 1: Extraer archivos estáticos (CSS + JS) — OK
 - Crear carpeta `static/css/` y `static/js/`
 - Extraer TODO el bloque `<style>` de ui.py → `static/css/app.css`
 - Extraer TODO el bloque `<script>` de ui.py → `static/js/app.js`
@@ -510,7 +510,7 @@ y sienta las bases para el crecimiento multi-cliente.
 - Agregar dependencia `jinja2` a requirements.txt (ya la tiene FastAPI como dep opcional)
 - **Beneficio**: cada tab se edita independientemente, menos conflictos
 
-### Paso 3: Renombrar tabs y limpiar navegación — Pendiente
+### Paso 3: Renombrar tabs y limpiar navegación — OK
 - "Mis Obras" → "Obras"
 - "Admin Data" → "Bar Manager"
 - Actualizar switchTab() y botones de navegación
@@ -518,25 +518,33 @@ y sienta las bases para el crecimiento multi-cliente.
 - Reordenar tabs en la barra de navegación según tabla de arriba
 - Verificar que todos los onclick, IDs y referencias JS estén actualizados
 
-### Paso 4: Visibilidad de tabs por rol — Pendiente
+### Paso 4: Visibilidad de tabs por rol — OK
 - Backend: endpoint GET /me ya devuelve `role`
-- Frontend: al cargar, ocultar tabs no autorizados según rol
-- Lógica en init(): leer rol del usuario y aplicar display:none a tabs no permitidos
-- Coordinador: ocultar zona de importación CSV en tab Obras
-- Cubicador: filtrar proyectos a solo los asignados/autorizados
-- Admin: mostrar todo
-- Cliente (futuro): tabs read-only, sin acciones destructivas
+- Backend: roles válidos expandidos (admin, coordinador, cubicador, operador, cliente) - OK
+- Frontend: al cargar, ocultar tabs no autorizados según rol - OK
+- Lógica en loadMe(): leer rol del usuario y aplicar display:none a tabs no permitidos - OK
+- Coordinador: ocultar zona de importación CSV en tab Obras - OK
+- Cliente: ocultar Bar Manager y Exportación - OK
+- Admin: mostrar todo - OK
+- Dropdown de roles en panel Admin actualizado con 5 roles - OK
+- Cubicador: filtrar proyectos a solo los asignados/autorizados - Pendiente (requiere Paso 5)
 
-### Paso 5: Filtrado de datos por autorización — Pendiente
-- Backend: GET /proyectos filtra por owner_id + autorizados (no admin ve todo, cubicador ve solo los suyos)
-- GET /barras, /filters, /dashboard, /stats respetan el mismo filtrado
-- GET /cargas/recientes filtra por proyectos autorizados
-- Admin bypasea todos los filtros
-- Coordinador ve proyectos de sus clientes (requiere tabla clientes, Fase 5)
-- Cubicador ve solo proyectos donde es owner o autorizado
+### Paso 5: Filtrado de datos por autorización — OK
+- Helper _get_allowed_project_ids(): None para admin/coordinador, lista de IDs para cubicador/operador/cliente - OK
+- Helper _project_filter_sql(): genera fragmento SQL AND id_proyecto IN (...) con params - OK
+- GET /proyectos filtra por owner_id + autorizados - OK
+- GET /barras filtra por proyectos autorizados - OK
+- GET /filters filtra proyectos y filtros dependientes por autorización - OK
+- GET /stats filtra KPIs por proyectos autorizados - OK
+- GET /dashboard filtra todos los group_by por proyectos autorizados - OK
+- GET /dashboard/sectores filtra por proyectos autorizados - OK
+- GET /cargas/recientes filtra por proyectos autorizados - OK
+- Admin/coordinador bypasean todos los filtros (ven todo) - OK
+- Cubicador/operador/cliente ven solo proyectos donde son owner o están autorizados - OK
+- Migración 7: CHECK constraint expandido (admin/coordinador/cubicador/operador/cliente) - OK
+- Base table users actualizada con 5 roles para fresh DBs - OK
 
 ---
-
 ## FASE 5 — Funcionalidades avanzadas y multi-cliente
 
 21. Dashboard landing: analítica de cubicación - Pendiente

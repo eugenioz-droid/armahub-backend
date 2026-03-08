@@ -148,18 +148,53 @@ function switchTab(tabName) {
 }
 
 // ========================= INIT =========================
+let currentRole = 'operador';
+
 async function loadMe() {
   const me = await apiGet('/me');
   if (!me) return;
   document.getElementById('whoEmail').textContent = me.email;
   document.getElementById('whoRole').textContent = "Rol: " + me.role;
   localStorage.setItem('armahub_email', me.email);
-  if (me.role === 'admin') {
-    document.getElementById('adminTabBtn').style.display = '';
-    await setGlobalStatus("Sesión como ADMIN", "ok");
-  } else {
-    await setGlobalStatus("Sesión iniciada", "ok");
+  currentRole = me.role || 'operador';
+
+  // --- Role-based tab visibility ---
+  // Tab button mapping: { tabName: [roles that can see it] }
+  // admin sees everything, so no need to list explicitly
+  const tabAccess = {
+    inicio:     ['admin','coordinador','cubicador','operador','cliente'],
+    obras:      ['admin','coordinador','cubicador','operador','cliente'],
+    buscar:     ['admin','coordinador','cubicador','operador'],
+    dashboards: ['admin','coordinador','cubicador','operador','cliente'],
+    pedidos:    ['admin','coordinador','cubicador','operador','cliente'],
+    export:     ['admin','coordinador','cubicador','operador'],
+    admin:      ['admin']
+  };
+
+  // Show/hide tab buttons
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    const onclick = btn.getAttribute('onclick') || '';
+    const match = onclick.match(/switchTab\('(\w+)'\)/);
+    if (match) {
+      const tab = match[1];
+      const roles = tabAccess[tab] || [];
+      btn.style.display = roles.includes(currentRole) ? '' : 'none';
+    }
+  });
+
+  // Coordinador: hide import section in Obras (they manage, don't import)
+  const dropZone = document.getElementById('dropZone');
+  const csvFile = document.getElementById('csvFile');
+  const importBtn = document.getElementById('importBtn');
+  if (currentRole === 'coordinador') {
+    if (dropZone) dropZone.style.display = 'none';
+    if (csvFile) csvFile.style.display = 'none';
+    if (importBtn) importBtn.parentElement.style.display = 'none';
   }
+
+  // Status message
+  const roleLabels = {admin:'ADMIN', coordinador:'Coordinador', cubicador:'Cubicador', operador:'Operador', cliente:'Cliente'};
+  await setGlobalStatus("Sesión como " + (roleLabels[currentRole] || currentRole), "ok");
 }
 
 async function loadProyectos() {
@@ -893,8 +928,10 @@ async function buscar(reset = false) {
 
   params.set('limit', pageLimit);
   params.set('offset', currentOffset);
-  params.set('order_by', document.getElementById('order_by').value);
-  params.set('order_dir', document.getElementById('order_dir').value);
+  const orderBy = document.getElementById('order_by').value || 'sector';
+  const orderDir = document.getElementById('order_dir').value || 'asc';
+  params.set('order_by', orderBy);
+  params.set('order_dir', orderDir);
 
   saveFiltersToStorage();
   const data = await apiGet('/barras?' + params.toString());

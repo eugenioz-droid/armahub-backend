@@ -89,7 +89,7 @@ def _create_base_tables(cur) -> None:
         id BIGSERIAL PRIMARY KEY,
         email TEXT UNIQUE NOT NULL,
         password_hash TEXT NOT NULL,
-        role TEXT NOT NULL CHECK (role IN ('admin', 'operador'))
+        role TEXT NOT NULL CHECK (role IN ('admin', 'coordinador', 'cubicador', 'operador', 'cliente'))
     )
     """)
     cur.execute("""
@@ -165,6 +165,10 @@ MIGRATIONS = [
         "DO $$ BEGIN ALTER TABLE barras ADD COLUMN radio DOUBLE PRECISION; EXCEPTION WHEN duplicate_column THEN NULL; END $$;",
         "DO $$ BEGIN ALTER TABLE barras ADD COLUMN cod_proyecto TEXT; EXCEPTION WHEN duplicate_column THEN NULL; END $$;",
         "DO $$ BEGIN ALTER TABLE barras ADD COLUMN nombre_dwg TEXT; EXCEPTION WHEN duplicate_column THEN NULL; END $$;",
+    ]),
+    (7, "users: expandir roles válidos", [
+        "DO $$ BEGIN ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check; EXCEPTION WHEN undefined_object THEN NULL; END $$;",
+        "ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('admin', 'coordinador', 'cubicador', 'operador', 'cliente'))",
     ]),
 ]
 

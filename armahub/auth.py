@@ -83,8 +83,9 @@ def register(email: str, password: str, role: str = "operador", admin=Depends(re
     Esto es tu “Paso A” (crear usuarios desde UI) pero el endpoint debe ser seguro.
     La UI lo llama con token.
     """
-    if role not in ("admin", "operador"):
-        raise HTTPException(status_code=400, detail="role debe ser admin u operador")
+    VALID_ROLES = ("admin", "coordinador", "cubicador", "operador", "cliente")
+    if role not in VALID_ROLES:
+        raise HTTPException(status_code=400, detail=f"role debe ser uno de: {', '.join(VALID_ROLES)}")
 
     password_hash = pwd_context.hash(password)
 

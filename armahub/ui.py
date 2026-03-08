@@ -581,7 +581,10 @@ APP_HTML = Template("""
         <input id="newUserEmail" placeholder="Email" style="max-width: 250px;" />
         <input id="newUserPassword" type="password" placeholder="Contraseña" style="max-width: 200px;" />
         <select id="newUserRole" style="max-width: 150px;">
+          <option value="cubicador">Cubicador</option>
+          <option value="coordinador">Coordinador</option>
           <option value="operador">Operador</option>
+          <option value="cliente">Cliente</option>
           <option value="admin">Admin</option>
         </select>
         <button onclick="createUser()">Crear usuario</button>

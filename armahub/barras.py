@@ -6,6 +6,37 @@ from .auth import get_current_user
 
 router = APIRouter()
 
+def _get_allowed_project_ids(cur, user: dict):
+    """Returns list of project IDs the user can access, or None if unrestricted.
+    admin/coordinador: None (see everything).
+    cubicador/operador/cliente: only owned + authorized projects."""
+    role = user.get("role", "operador")
+    if role in ("admin", "coordinador"):
+        return None
+    cur.execute("SELECT id FROM users WHERE email = %s", (user.get("email"),))
+    row = cur.fetchone()
+    if not row:
+        return []
+    uid = row[0]
+    cur.execute("SELECT id_proyecto FROM proyectos WHERE owner_id = %s", (uid,))
+    owned = {r[0] for r in cur.fetchall()}
+    cur.execute("SELECT id_proyecto FROM proyecto_usuarios WHERE user_id = %s", (uid,))
+    authorized = {r[0] for r in cur.fetchall()}
+    return list(owned | authorized)
+
+
+def _project_filter_sql(allowed_ids, table_alias="", col="id_proyecto"):
+    """Build a WHERE/AND fragment + params for project filtering.
+    Returns (sql_fragment, params) where sql_fragment starts with ' AND ...' or is empty."""
+    if allowed_ids is None:
+        return "", []
+    prefix = f"{table_alias}." if table_alias else ""
+    if not allowed_ids:
+        return f" AND FALSE", []
+    placeholders = ",".join(["%s"] * len(allowed_ids))
+    return f" AND {prefix}{col} IN ({placeholders})", list(allowed_ids)
+
+
 def _puede_editar_proyecto(cur, id_proyecto: str, user: dict) -> bool:
     """Retorna True si el usuario es admin, owner del proyecto, o está autorizado."""
     if user.get("role") == "admin":
@@ -88,21 +119,27 @@ def get_barras(
 
     select_cols = ",".join(BARRAS_COLUMNS)
 
-    count_sql = "SELECT COUNT(*) FROM barras" + base_where
-    data_sql = f"""
-        SELECT {select_cols}
-        FROM barras
-        {base_where}
-        ORDER BY {order_by} {order_dir} NULLS LAST
-        LIMIT %s OFFSET %s
-    """
-
     with get_conn() as conn:
         with conn.cursor() as cur:
-            cur.execute(count_sql, params)
+            # Role-based project filter
+            allowed = _get_allowed_project_ids(cur, user)
+            pf_sql, pf_params = _project_filter_sql(allowed)
+            full_where = base_where + pf_sql
+            full_params = params + pf_params
+
+            count_sql = "SELECT COUNT(*) FROM barras" + full_where
+            data_sql = f"""
+                SELECT {select_cols}
+                FROM barras
+                {full_where}
+                ORDER BY {order_by} {order_dir} NULLS LAST
+                LIMIT %s OFFSET %s
+            """
+
+            cur.execute(count_sql, full_params)
             total = int(cur.fetchone()[0])
 
-            cur.execute(data_sql, params + [limit, offset])
+            cur.execute(data_sql, full_params + [limit, offset])
             rows = cur.fetchall()
 
     data = [dict(zip(BARRAS_COLUMNS, r)) for r in rows]
@@ -137,40 +174,43 @@ def filters(
 
     with get_conn() as conn:
         with conn.cursor() as cur:
-            # Proyectos: siempre sin filtro (raíz)
-            cur.execute("SELECT DISTINCT id_proyecto FROM barras ORDER BY id_proyecto")
+            # Role-based project filter
+            allowed = _get_allowed_project_ids(cur, user)
+            pf_sql, pf_params = _project_filter_sql(allowed)
+
+            # Proyectos: filtered by authorization
+            cur.execute("SELECT DISTINCT id_proyecto FROM barras WHERE 1=1" + pf_sql + " ORDER BY id_proyecto", pf_params)
             proyectos = [r[0] for r in cur.fetchall() if r[0] is not None]
 
-            # Planos: filtrado solo por proyecto
-            w_parts, w_vals = [], []
+            # Planos: filtrado solo por proyecto (+ auth)
+            w_parts, w_vals = ["1=1"], list(pf_params)
+            if pf_sql:
+                w_parts[0] = "1=1" + pf_sql
             if proyecto:
                 w_parts.append("id_proyecto = %s"); w_vals.append(proyecto)
-            wsql, wv = _where(w_parts, w_vals)
-            if wsql:
-                cur.execute(f"SELECT DISTINCT plano_code, nombre_plano FROM barras{wsql} AND plano_code IS NOT NULL ORDER BY plano_code", wv)
-            else:
-                cur.execute("SELECT DISTINCT plano_code, nombre_plano FROM barras WHERE plano_code IS NOT NULL ORDER BY plano_code")
+            wsql = " WHERE " + " AND ".join(w_parts)
+            cur.execute(f"SELECT DISTINCT plano_code, nombre_plano FROM barras{wsql} AND plano_code IS NOT NULL ORDER BY plano_code", w_vals)
             planos = [{"code": r[0], "nombre": r[1] or r[0]} for r in cur.fetchall() if r[0] is not None]
 
-            # Sectores: filtrado por proyecto + plano
+            # Sectores: filtrado por proyecto + plano (+ auth)
             if plano_code:
                 w_parts.append("plano_code = %s"); w_vals.append(plano_code)
-            wsql, wv = _where(w_parts, w_vals)
-            cur.execute(f"SELECT DISTINCT sector FROM barras{wsql} ORDER BY sector" if wsql else "SELECT DISTINCT sector FROM barras ORDER BY sector", wv)
+            wsql = " WHERE " + " AND ".join(w_parts)
+            cur.execute(f"SELECT DISTINCT sector FROM barras{wsql} ORDER BY sector", w_vals)
             sectores = [r[0] for r in cur.fetchall() if r[0] is not None]
 
-            # Pisos: filtrado por proyecto + plano + sector
+            # Pisos: filtrado por proyecto + plano + sector (+ auth)
             if sector:
                 w_parts.append("sector = %s"); w_vals.append(sector)
-            wsql, wv = _where(w_parts, w_vals)
-            cur.execute(f"SELECT DISTINCT piso FROM barras{wsql} ORDER BY piso" if wsql else "SELECT DISTINCT piso FROM barras ORDER BY piso", wv)
+            wsql = " WHERE " + " AND ".join(w_parts)
+            cur.execute(f"SELECT DISTINCT piso FROM barras{wsql} ORDER BY piso", w_vals)
             pisos = [r[0] for r in cur.fetchall() if r[0] is not None]
 
-            # Ciclos: filtrado por proyecto + plano + sector + piso
+            # Ciclos: filtrado por proyecto + plano + sector + piso (+ auth)
             if piso:
                 w_parts.append("piso = %s"); w_vals.append(piso)
-            wsql, wv = _where(w_parts, w_vals)
-            cur.execute(f"SELECT DISTINCT ciclo FROM barras{wsql} ORDER BY ciclo" if wsql else "SELECT DISTINCT ciclo FROM barras ORDER BY ciclo", wv)
+            wsql = " WHERE " + " AND ".join(w_parts)
+            cur.execute(f"SELECT DISTINCT ciclo FROM barras{wsql} ORDER BY ciclo", w_vals)
             ciclos = [r[0] for r in cur.fetchall() if r[0] is not None]
 
     return {
@@ -184,43 +224,52 @@ def filters(
 
 @router.get("/stats")
 def get_stats(user=Depends(get_current_user)):
-    """KPIs generales para Tab Inicio. Accesible para todos los usuarios autenticados."""
+    """KPIs generales para Tab Inicio. Filtered by user authorization."""
     with get_conn() as conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT COUNT(*) FROM barras")
+            allowed = _get_allowed_project_ids(cur, user)
+            pf_sql, pf_params = _project_filter_sql(allowed)
+            w = " WHERE 1=1" + pf_sql
+            wp = list(pf_params)
+
+            cur.execute("SELECT COUNT(*) FROM barras" + w, wp)
             total_barras = int(cur.fetchone()[0])
 
-            cur.execute("SELECT COUNT(*) FROM proyectos")
+            if allowed is None:
+                cur.execute("SELECT COUNT(*) FROM proyectos")
+            elif not allowed:
+                cur.execute("SELECT 0")
+            else:
+                ph = ",".join(["%s"] * len(allowed))
+                cur.execute(f"SELECT COUNT(*) FROM proyectos WHERE id_proyecto IN ({ph})", allowed)
             total_proyectos = int(cur.fetchone()[0])
 
-            cur.execute("SELECT COALESCE(SUM(peso_total), 0) FROM barras")
+            cur.execute("SELECT COALESCE(SUM(peso_total), 0) FROM barras" + w, wp)
             total_kilos = float(cur.fetchone()[0])
 
-            cur.execute("SELECT MAX(fecha_carga) FROM barras")
+            cur.execute("SELECT MAX(fecha_carga) FROM barras" + w, wp)
             ultima_carga = cur.fetchone()[0]
 
-            # KPIs avanzados: PPB, PPI, Diámetro promedio
-            # PPB = kilos totales / cantidad de barras
             ppb = round(total_kilos / total_barras, 3) if total_barras > 0 else 0
 
-            # PPI = kilos totales / cantidad de items únicos (id_unico distintos por plano+sector)
-            cur.execute("SELECT COUNT(DISTINCT COALESCE(plano_code,'') || '-' || COALESCE(sector,'') || '-' || COALESCE(piso,'') || '-' || COALESCE(ciclo,'')) FROM barras")
+            cur.execute("SELECT COUNT(DISTINCT COALESCE(plano_code,'') || '-' || COALESCE(sector,'') || '-' || COALESCE(piso,'') || '-' || COALESCE(ciclo,'')) FROM barras" + w, wp)
             total_items = int(cur.fetchone()[0])
             ppi = round(total_kilos / total_items, 3) if total_items > 0 else 0
 
-            # Diámetro promedio ponderado por peso
             try:
                 cur.execute("SAVEPOINT sp_diam_prom")
                 cur.execute("""
                     SELECT COALESCE(SUM(diam * peso_total) / NULLIF(SUM(peso_total), 0), 0)
                     FROM barras
                     WHERE diam IS NOT NULL AND peso_total IS NOT NULL
-                """)
+                """ + pf_sql, pf_params)
                 diam_prom = round(float(cur.fetchone()[0]), 1)
             except Exception:
                 cur.execute("ROLLBACK TO SAVEPOINT sp_diam_prom")
                 diam_prom = 0
 
+            # Join with auth filter on barras
+            pf_b, pf_bp = _project_filter_sql(allowed, "b")
             cur.execute("""
                 SELECT COALESCE(p.nombre_proyecto, b.id_proyecto) AS nombre,
                        b.id_proyecto,
@@ -228,9 +277,10 @@ def get_stats(user=Depends(get_current_user)):
                        COALESCE(SUM(b.peso_total), 0) AS kilos
                 FROM barras b
                 LEFT JOIN proyectos p ON b.id_proyecto = p.id_proyecto
+                WHERE 1=1""" + pf_b + """
                 GROUP BY b.id_proyecto, p.nombre_proyecto
                 ORDER BY kilos DESC
-            """)
+            """, pf_bp)
             proyectos_rows = cur.fetchall()
 
     proyectos_all = [
@@ -264,13 +314,16 @@ def get_cargas_recientes(
         limit = 50
     with get_conn() as conn:
         with conn.cursor() as cur:
+            allowed = _get_allowed_project_ids(cur, user)
+            pf_sql, pf_params = _project_filter_sql(allowed)
             cur.execute("""
                 SELECT id, id_proyecto, nombre_proyecto, usuario, archivo, fecha, barras_count, kilos,
                        estado, version_archivo, plano_code
                 FROM imports
+                WHERE 1=1""" + pf_sql + """
                 ORDER BY id DESC
                 LIMIT %s
-            """, (limit,))
+            """, (pf_params + [limit]))  # Added parentheses here
             rows = cur.fetchall()
     return {
         "cargas": [
@@ -435,52 +488,55 @@ def dashboard(
 
     with get_conn() as conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT COUNT(*) AS barras, COALESCE(SUM(peso_total),0) AS kilos FROM barras")
+            allowed_ids = _get_allowed_project_ids(cur, user)
+            pf_sql, pf_params = _project_filter_sql(allowed_ids)
+            pf_b, pf_bp = _project_filter_sql(allowed_ids, "b")
+            w = " WHERE 1=1" + pf_sql
+
+            cur.execute("SELECT COUNT(*) AS barras, COALESCE(SUM(peso_total),0) AS kilos FROM barras" + w, pf_params)
             total_barras, total_kilos = cur.fetchone()
 
             if group_by == "id_proyecto":
-                # Si agrupamos por proyecto, traer el nombre legible
-                # Prioridad: p.nombre_proyecto > b.nombre_proyecto > b.id_proyecto
                 cur.execute("""
                     SELECT COALESCE(p.nombre_proyecto, b.nombre_proyecto, b.id_proyecto) AS grupo,
                            COUNT(*) AS barras,
                            COALESCE(SUM(b.peso_total),0) AS kilos
                     FROM barras b
                     LEFT JOIN proyectos p ON b.id_proyecto = p.id_proyecto
+                    WHERE 1=1""" + pf_b + """
                     GROUP BY COALESCE(p.nombre_proyecto, b.nombre_proyecto, b.id_proyecto)
                     ORDER BY kilos DESC
-                """)
+                """, pf_bp)
             elif group_by == "plano_code":
-                # Si agrupamos por plano, traer el nombre del plano o el código
                 cur.execute("""
                     SELECT COALESCE(nombre_plano, plano_code) AS grupo,
                            COUNT(*) AS barras,
                            COALESCE(SUM(peso_total),0) AS kilos
                     FROM barras
-                    WHERE plano_code IS NOT NULL
+                    WHERE plano_code IS NOT NULL""" + pf_sql + """
                     GROUP BY COALESCE(nombre_plano, plano_code), plano_code
                     ORDER BY kilos DESC
-                """)
+                """, pf_params)
             elif group_by == "eje":
-                # Si agrupamos por eje
                 cur.execute("""
                     SELECT eje AS grupo,
                            COUNT(*) AS barras,
                            COALESCE(SUM(peso_total),0) AS kilos
                     FROM barras
-                    WHERE eje IS NOT NULL
+                    WHERE eje IS NOT NULL""" + pf_sql + """
                     GROUP BY eje
                     ORDER BY kilos DESC
-                """)
+                """, pf_params)
             else:
                 cur.execute(f"""
                     SELECT {group_by} AS grupo,
                            COUNT(*) AS barras,
                            COALESCE(SUM(peso_total),0) AS kilos
                     FROM barras
+                    """ + w + f"""
                     GROUP BY {group_by}
                     ORDER BY kilos DESC
-                """)
+                """, pf_params)
             rows = cur.fetchall()
 
     return {
@@ -499,14 +555,16 @@ def dashboard_sectores(
     Agrupa barras por combinación sector+piso+ciclo (sector constructivo).
     Opcionalmente filtra por proyecto.
     """
-    where = ""
-    params = []
-    if proyecto:
-        where = "WHERE b.id_proyecto = %s"
-        params.append(proyecto)
-
     with get_conn() as conn:
         with conn.cursor() as cur:
+            allowed_ids = _get_allowed_project_ids(cur, user)
+            pf_b, pf_bp = _project_filter_sql(allowed_ids, "b")
+            where = "WHERE 1=1" + pf_b
+            params = list(pf_bp)
+            if proyecto:
+                where += " AND b.id_proyecto = %s"
+                params.append(proyecto)
+
             cur.execute(f"""
                 SELECT
                     COALESCE(b.sector, '?') || ' ' || COALESCE(b.piso, '?') || ' ' || COALESCE(b.ciclo, '?') AS sector_constructivo,
@@ -542,10 +600,12 @@ def dashboard_sectores(
 def get_proyectos(user=Depends(get_current_user)):
     """
     Devuelve lista de proyectos con resumen de kilos y barras.
-    Incluye owner y calculista.
+    Incluye owner y calculista. Filtered by user authorization.
     """
     with get_conn() as conn:
         with conn.cursor() as cur:
+            allowed = _get_allowed_project_ids(cur, user)
+            pf_p, pf_pp = _project_filter_sql(allowed, "p")
             cur.execute("""
                 SELECT 
                     p.id_proyecto,
@@ -558,9 +618,10 @@ def get_proyectos(user=Depends(get_current_user)):
                 FROM proyectos p
                 LEFT JOIN barras b ON p.id_proyecto = b.id_proyecto
                 LEFT JOIN users u ON p.owner_id = u.id
+                WHERE 1=1""" + pf_p + """
                 GROUP BY p.id_proyecto, p.nombre_proyecto, p.owner_id, u.email, p.calculista
                 ORDER BY p.fecha_creacion DESC
-            """)
+            """, pf_pp)
             rows = cur.fetchall()
 
     return {
