@@ -241,7 +241,7 @@ async def import_armadetailer(
 
         rows_to_upsert.append((
             id_unico,
-            str(r["ID_PROYECTO"]).strip(),
+            proyecto_id,
             proyecto_nombre,
             _clean(r["PLANO_CODE"]),
             plano_nombre,

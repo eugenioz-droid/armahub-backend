@@ -139,7 +139,7 @@ Actualmente el sistema ya cuenta con:
 - Fix JS: corregido escaping roto en onclick deleteCarga que impedía carga de la página - OK
 - Dependencia: openpyxl agregada a requirements.txt - OK
 
-**Pendiente próximo checkpoint**: Fase 4 (Pedidos / solicitudes de material)
+**Pendiente próximo checkpoint**: Fase 4 (Refactorización UI y sistema de roles)
 
 ---
 
@@ -171,7 +171,8 @@ Basada en identidad visual ArmaCero:
 
 ## ESTRUCTURA DE NAVEGACIÓN Y SECCIONES
 
-El sistema tiene **pestañas horizontales** con acceso diferenciado por rol:
+El sistema tiene **pestañas horizontales** con acceso diferenciado por rol.
+**Principio**: mismos tabs, contenido adaptado por rol. No se duplican vistas.
 
 ### **TODOS LOS ROLES**
 - **Tab 1: 🏠 Inicio** (Landing / Home)
@@ -179,34 +180,37 @@ El sistema tiene **pestañas horizontales** con acceso diferenciado por rol:
   - Actividad reciente: últimas 5-10 cargas (proyecto, usuario, fecha, barras)
   - Resumen por proyecto: mini-cards con nombre + kilos
   - Chart: Top 5 proyectos por kilos (gráfico horizontal)
+  - Datos filtrados por acceso del usuario
 
-### **ROL: CUBICADOR / OPERADOR**
-- **Tab 2: 📦 Mis Obras** (Workspace del cubicador)
-  - Zona de carga CSV: multi-file upload con drag & drop
-  - Feedback visual: spinner durante carga, mensaje éxito/error con resumen
-  - Protección re-import: detectar duplicados, informar que es UPSERT
-  - Historial últimas 3 cargas (fecha, proyecto, barras, kilos)
+- **Tab 2: 📦 Obras** (Gestión de proyectos)
   - Tarjetas de proyectos con resumen kilos/barras
-  - Futuro: sidebar dashboard diario (barras del día, avance semanal)
-  
-- **Tab 3: 🔍 Búsqueda de Barras** (Detalle)
-  - Filtros (Proyecto, Plano con nombres legibles, Sector, Piso, Ciclo)
-  - Tabla pageable con ordenamiento
-  - Búsqueda rápida
+  - Crear/editar/eliminar obras, gestionar usuarios autorizados
+  - Zona de carga CSV: solo visible para cubicador y admin
+  - Historial de cargas por proyecto
+  - Admin/coordinador: ven todos los proyectos
+  - Cubicador: ve solo proyectos asignados (owner o autorizado)
+  - Cliente (futuro): ve solo su proyecto, sin acciones de edición
 
-- **Tab 4: 📊 Dashboards** (Análisis profundo)
+- **Tab 4: 📊 Dashboards** (Análisis)
   - Selector de dimensión: sector, piso, ciclo, plano, proyecto, eje
-  - Gráficos Chart.js con nombres legibles
-  - Resúmenes de totales
+  - Sectores constructivos + Matriz constructiva
+  - Datos filtrados por acceso del usuario
 
-- **Tab 5: 📝 Pedidos** (Future MVP)
+### **CUBICADOR, COORDINADOR, ADMIN**
+- **Tab 3: � Bar Manager** (Gestión de barras)
+  - Filtros (Proyecto, Plano, Sector, Piso, Ciclo) + búsqueda rápida
+  - Tabla compacta con checkboxes para selección
+  - Acciones: mover barras entre proyectos, cambiar sector
+  - Paginación y ordenamiento por columnas
+
+- **Tab 5: 📥 Exportación** (Producción)
+  - Selector de obra + vista previa sectores/pisos/ciclos + descarga ZIP Excel
+
+- **Tab 6: 📝 Pedidos** (Future MVP)
   - Selector de obra + formulario manual + tabla de items
 
-- **Tab 6: 📥 Exportación** (Producción)
-  - Selector de obra + vista previa + descarga EXCEL
-
-### **ROL: ADMIN** (hereda todo de cubicador)
-- **Tab 7: ⚙️ Admin** (solo visible para admin)
+### **SOLO ADMIN**
+- **Tab 7: ⚙️ Admin** (Panel sistema)
   - Info de BD en tiempo real (conteos, kilos totales)
   - Reset de base de datos (doble confirmación)
   - Gestión de usuarios (crear operador/admin)
@@ -214,9 +218,9 @@ El sistema tiene **pestañas horizontales** con acceso diferenciado por rol:
 
 ### **ROL: CLIENTE** (Future)
 - Tab Inicio (read-only, solo su proyecto)
-- Tab Búsqueda (read-only)
-- Tab Pedidos (read-only + crear pedido)
+- Tab Obras (read-only, sin acciones)
 - Tab Dashboards (read-only)
+- Tab Pedidos (crear pedido + ver estado)
 
 ---
 
@@ -447,35 +451,139 @@ ARMAHUB – PROGRAMA DE TRABAJO
     - loadFilters() pobla todos los selects de proyecto (búsqueda, export, dashboard) - OK
 
 ---
-## FASE 4 — Funcionalidades avanzadas y multi-cliente
+## FASE 4 — Refactorización UI y sistema de roles
 
-21. Navegador de sectores constructivos (Mis Obras avanzado) - Future
+**Objetivo**: Extraer CSS/JS de ui.py a archivos estáticos, modularizar templates,
+renombrar tabs y preparar la UI para vistas diferenciadas por rol.
+Esto elimina de raíz los bugs de escaping Python↔JS, mejora mantenibilidad
+y sienta las bases para el crecimiento multi-cliente.
+
+### Sistema de roles
+
+| Rol          | Descripción                          | Acceso                                              |
+|--------------|--------------------------------------|-----------------------------------------------------|
+| admin        | Gestor de plataforma                 | Todo + panel admin (usuarios, reset BD)              |
+| coordinador  | Administrador de proyecto / contacto cliente | Todos los proyectos de sus clientes, dashboards, export. No importa CSVs |
+| cubicador    | Detallador (usuario principal)       | Solo proyectos asignados. Importa, gestiona barras, exporta |
+| cliente      | Mandante (futuro)                    | Solo sus proyectos, read-only + pedidos              |
+
+### Tabs renombrados y visibilidad por rol
+
+| Tab            | Antes        | Roles que lo ven                  | Notas                                   |
+|----------------|--------------|-----------------------------------|-----------------------------------------|
+| Inicio         | Inicio       | todos                             | KPIs filtrados por acceso del usuario    |
+| Obras          | Mis Obras    | todos                             | Contenido adaptado: import solo cubicador |
+| Bar Manager    | Admin Data   | cubicador, coordinador, admin     | Gestión individual de barras             |
+| Dashboards     | Dashboards   | todos                             | Datos filtrados por acceso               |
+| Exportación    | Exportación  | cubicador, coordinador, admin     | Export Excel aSa Studio                  |
+| Pedidos        | Pedidos      | todos (futuro)                    | Solicitudes de material                  |
+| Admin          | Admin        | solo admin                        | Panel sistema                            |
+
+**Principio**: mismos tabs, contenido adaptado por rol. No se duplican vistas.
+
+---
+
+### Paso 1: Extraer archivos estáticos (CSS + JS) — Pendiente
+- Crear carpeta `static/css/` y `static/js/`
+- Extraer TODO el bloque `<style>` de ui.py → `static/css/app.css`
+- Extraer TODO el bloque `<script>` de ui.py → `static/js/app.js`
+- El HTML referencia con `<link href="/static/css/app.css">` y `<script src="/static/js/app.js">`
+- FastAPI ya monta `/static` en main.py; verificar que sirva estos archivos
+- **Beneficio**: elimina 100% de bugs de escaping Python↔JS
+- **Beneficio**: permite linting JS/CSS con herramientas estándar (ESLint, Prettier)
+- **Beneficio**: browser cachea archivos estáticos (performance)
+- Verificar que la app funcione idénticamente post-extracción
+
+### Paso 2: Modularizar HTML con Jinja2 templates — Pendiente
+- Crear carpeta `templates/`
+- `templates/base.html`: layout común (head, header, nav tabs, footer, scripts)
+- Cada tab como template parcial:
+  - `templates/tabs/inicio.html`
+  - `templates/tabs/obras.html`
+  - `templates/tabs/bar_manager.html`
+  - `templates/tabs/dashboards.html`
+  - `templates/tabs/exportacion.html`
+  - `templates/tabs/pedidos.html`
+  - `templates/tabs/admin.html`
+- `base.html` incluye cada tab con `{% include 'tabs/xxx.html' %}`
+- Refactorizar ui.py: reemplazar APP_HTML monolítico por Jinja2TemplateResponse
+- Agregar dependencia `jinja2` a requirements.txt (ya la tiene FastAPI como dep opcional)
+- **Beneficio**: cada tab se edita independientemente, menos conflictos
+
+### Paso 3: Renombrar tabs y limpiar navegación — Pendiente
+- "Mis Obras" → "Obras"
+- "Admin Data" → "Bar Manager"
+- Actualizar switchTab() y botones de navegación
+- Actualizar IDs de tabs (`tab-buscar` → `tab-barmanager`, `tab-obras` → `tab-obras`)
+- Reordenar tabs en la barra de navegación según tabla de arriba
+- Verificar que todos los onclick, IDs y referencias JS estén actualizados
+
+### Paso 4: Visibilidad de tabs por rol — Pendiente
+- Backend: endpoint GET /me ya devuelve `role`
+- Frontend: al cargar, ocultar tabs no autorizados según rol
+- Lógica en init(): leer rol del usuario y aplicar display:none a tabs no permitidos
+- Coordinador: ocultar zona de importación CSV en tab Obras
+- Cubicador: filtrar proyectos a solo los asignados/autorizados
+- Admin: mostrar todo
+- Cliente (futuro): tabs read-only, sin acciones destructivas
+
+### Paso 5: Filtrado de datos por autorización — Pendiente
+- Backend: GET /proyectos filtra por owner_id + autorizados (no admin ve todo, cubicador ve solo los suyos)
+- GET /barras, /filters, /dashboard, /stats respetan el mismo filtrado
+- GET /cargas/recientes filtra por proyectos autorizados
+- Admin bypasea todos los filtros
+- Coordinador ve proyectos de sus clientes (requiere tabla clientes, Fase 5)
+- Cubicador ve solo proyectos donde es owner o autorizado
+
+---
+
+## FASE 5 — Funcionalidades avanzadas y multi-cliente
+
+21. Dashboard landing: analítica de cubicación - Pendiente
+    - Dashboard en tab Inicio con resumen de cubicación de TODOS los cubicadores - Pendiente
+    - Filtros por rango de fecha: semana / mes / año / todo / rango personalizado - Pendiente
+    - Endpoint GET /stats acepta parámetros fecha_desde, fecha_hasta - Pendiente
+    - Gráfico de cubicación acumulada por período (barras/kilos por día/semana) - Pendiente
+    - Tabla resumen por cubicador: barras importadas, kilos, última actividad - Pendiente
+
+22. Dashboard diario del cubicador - Pendiente
+    - Sidebar o sección en tab Obras del cubicador - Pendiente
+    - Barras importadas hoy, kilos del día - Pendiente
+    - Mini-chart: avance semanal (barras/kilos por día, últimos 7 días) - Pendiente
+    - Comparativa vs semana anterior - Pendiente
+
+23. Navegador de sectores constructivos - Pendiente
     - Navegador por sector+piso+ciclo dentro de cada proyecto - Pendiente
     - Visualizar ejes contenidos en cada sector constructivo - Pendiente
     - Herramientas de edición y reasignación de barras entre sectores - Pendiente
     - Mini-dashboard por sector: kilos, barras, diámetros predominantes - Pendiente
 
-21. Sistema de pedidos (MVP) - Future
+24. Sistema de pedidos (MVP) - Pendiente
     - Tablas "pedidos" y "pedido_items", endpoints CRUD - Pendiente
     - UI Tab "Pedidos": formulario + tabla de items - Pendiente
 
-22. Modelo de datos clientes + permisos - Future
+25. Modelo de datos clientes + permisos - Pendiente
     - Tabla "clientes", relación con proyectos, permisos por rol - Pendiente
 
-23. Separación de UI en módulos - Future
-    - Dividir ui.py en archivos separados o migrar a frontend SPA - Pendiente
-
-24. Auditoría y logs en panel Admin - Future
+26. Auditoría y logs en panel Admin - Pendiente
     - Registro de acciones, visualización en tab Admin - Pendiente
 
-25. Mis Obras: dashboard diario del cubicador - Future
-    - Sidebar con barras del día, kilos del día, mini-chart semanal - Pendiente
+27. Gestión de calculistas y KPIs por calculista - Pendiente
+    - Tabla "calculistas" normalizada (id, nombre, fecha_creación) - Pendiente
+    - Relación proyectos → calculista (FK en tabla proyectos) - Pendiente
+    - Selector desplegable de calculistas en popup de nuevo proyecto y en crear obra manual - Pendiente
+    - Opción "Agregar nuevo calculista" dentro del selector si no existe - Pendiente
+    - El listado crece con el tiempo; evitar duplicados por typos (búsqueda fuzzy o autocompletado) - Pendiente
+    - Endpoint GET /calculistas (listar) y POST /calculistas (crear) - Pendiente
+    - KPIs por calculista: diámetro promedio ponderado, PPI, PPB, kilos totales, proyectos asociados - Pendiente
+    - Dashboard analítico de calculistas: comparar métricas entre calculistas - Pendiente
+    - Filtro por calculista en dashboards y exportaciones - Pendiente
 
 ---
-## FASE 5 — Preparación para Apps
+## FASE 6 — Preparación para Apps
 
-26. API versionada (/api/v1) - Pendiente
-27. CORS para aplicaciones externas - Pendiente
-28. Observabilidad: /health, logs estructurados - Pendiente
-29. Performance: queries optimizadas, pool de conexiones - Pendiente
-30. Bootstrap profesional (solo dev) - Pendiente
+28. API versionada (/api/v1) - Pendiente
+29. CORS para aplicaciones externas - Pendiente
+30. Observabilidad: /health, logs estructurados - Pendiente
+31. Performance: queries optimizadas, pool de conexiones - Pendiente
+32. Bootstrap profesional (solo dev) - Pendiente
