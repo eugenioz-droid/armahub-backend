@@ -1,7 +1,112 @@
-  <!-- TAB 4: PEDIDOS (Future MVP) -->
+  <!-- TAB 4: PEDIDOS -->
   <div id="tab-pedidos" class="tab-content">
+    <!-- Crear pedido -->
     <div class="card">
-      <h3>Solicitar material</h3>
-      <p class="muted">Funcionalidad en desarrollo. Próximamente podrás crear solicitudes de barras manualmente.</p>
+      <h3>Nuevo pedido de material</h3>
+      <div class="row" style="gap:8px; align-items:flex-end; flex-wrap:wrap;">
+        <div style="flex:1; min-width:160px;">
+          <label class="muted" style="font-size:11px;">Proyecto</label>
+          <select id="pedidoProyecto" style="width:100%; font-size:12px;">
+            <option value="">— Selecciona proyecto —</option>
+          </select>
+        </div>
+        <div style="flex:2; min-width:200px;">
+          <label class="muted" style="font-size:11px;">Título del pedido</label>
+          <input type="text" id="pedidoTitulo" placeholder="Ej: Pedido enfierradura P1 C1" style="width:100%; font-size:12px;" />
+        </div>
+        <button onclick="crearPedido()" style="font-size:12px; white-space:nowrap;">+ Crear pedido</button>
+      </div>
+      <div id="pedidoCreateMsg" style="margin-top:6px; font-size:12px;"></div>
+    </div>
+
+    <!-- Lista de pedidos -->
+    <div class="card">
+      <div class="row" style="justify-content:space-between; align-items:center; margin-bottom:8px;">
+        <h3 style="margin:0;">Pedidos</h3>
+        <div class="row" style="gap:6px; align-items:center;">
+          <select id="pedidoFiltroEstado" onchange="loadPedidos()" style="font-size:11px;">
+            <option value="">Todos los estados</option>
+            <option value="borrador">Borrador</option>
+            <option value="enviado">Enviado</option>
+            <option value="en_proceso">En proceso</option>
+            <option value="completado">Completado</option>
+            <option value="cancelado">Cancelado</option>
+          </select>
+        </div>
+      </div>
+      <div id="pedidosList">
+        <div class="muted">Cargando pedidos...</div>
+      </div>
+    </div>
+
+    <!-- Detalle del pedido seleccionado -->
+    <div class="card" id="pedidoDetailCard" style="display:none;">
+      <div class="row" style="justify-content:space-between; align-items:center; margin-bottom:8px;">
+        <div>
+          <h3 style="margin:0;" id="pedidoDetailTitle">—</h3>
+          <span class="muted" style="font-size:11px;" id="pedidoDetailMeta"></span>
+        </div>
+        <div class="row" style="gap:6px;">
+          <select id="pedidoDetailEstado" onchange="cambiarEstadoPedido()" style="font-size:11px;">
+            <option value="borrador">Borrador</option>
+            <option value="enviado">Enviado</option>
+            <option value="en_proceso">En proceso</option>
+            <option value="completado">Completado</option>
+            <option value="cancelado">Cancelado</option>
+          </select>
+          <button onclick="eliminarPedido()" class="secondary" style="font-size:11px; color:#b42318;">Eliminar</button>
+        </div>
+      </div>
+
+      <!-- Agregar item -->
+      <div style="background:#f9fff4; border:1px solid #e0e0e0; border-radius:6px; padding:8px 10px; margin-bottom:8px;">
+        <div class="row" style="gap:6px; flex-wrap:wrap; align-items:flex-end;">
+          <div>
+            <label class="muted" style="font-size:10px;">⌀ mm</label>
+            <input type="number" id="itemDiam" placeholder="12" style="width:60px; font-size:12px;" />
+          </div>
+          <div>
+            <label class="muted" style="font-size:10px;">Largo cm</label>
+            <input type="number" id="itemLargo" placeholder="600" style="width:70px; font-size:12px;" />
+          </div>
+          <div>
+            <label class="muted" style="font-size:10px;">Cantidad</label>
+            <input type="number" id="itemCant" value="1" min="1" style="width:55px; font-size:12px;" />
+          </div>
+          <div>
+            <label class="muted" style="font-size:10px;">Sector</label>
+            <select id="itemSector" style="font-size:11px; width:80px;">
+              <option value="">—</option>
+              <option>FUND</option><option>ELEV</option><option>LCIELO</option><option>VCIELO</option>
+            </select>
+          </div>
+          <div>
+            <label class="muted" style="font-size:10px;">Nota</label>
+            <input type="text" id="itemNota" placeholder="Opcional" style="width:100px; font-size:12px;" />
+          </div>
+          <button onclick="agregarItemPedido()" style="font-size:11px;">+ Agregar</button>
+        </div>
+      </div>
+
+      <!-- Items table -->
+      <div style="overflow-x:auto;">
+        <table style="width:100%; font-size:12px;">
+          <thead>
+            <tr>
+              <th>⌀ mm</th>
+              <th>Largo</th>
+              <th>Cant</th>
+              <th>Sector</th>
+              <th>Nota</th>
+              <th>Estado</th>
+              <th style="width:40px;"></th>
+            </tr>
+          </thead>
+          <tbody id="pedidoItemsBody">
+            <tr><td colspan="7" class="muted">Sin items</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div id="pedidoDetailMsg" style="margin-top:6px; font-size:11px;"></div>
     </div>
   </div>

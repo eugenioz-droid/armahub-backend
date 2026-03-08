@@ -223,14 +223,26 @@ def filters(
 
 
 @router.get("/stats")
-def get_stats(user=Depends(get_current_user)):
-    """KPIs generales para Tab Inicio. Filtered by user authorization."""
+def get_stats(
+    fecha_desde: Optional[str] = Query(None, description="ISO date start filter (inclusive)"),
+    fecha_hasta: Optional[str] = Query(None, description="ISO date end filter (inclusive)"),
+    user=Depends(get_current_user),
+):
+    """KPIs generales para Tab Inicio. Filtered by user authorization and optional date range."""
     with get_conn() as conn:
         with conn.cursor() as cur:
             allowed = _get_allowed_project_ids(cur, user)
             pf_sql, pf_params = _project_filter_sql(allowed)
             w = " WHERE 1=1" + pf_sql
             wp = list(pf_params)
+
+            # Date range filter on fecha_carga
+            if fecha_desde:
+                w += " AND fecha_carga >= %s"
+                wp.append(fecha_desde)
+            if fecha_hasta:
+                w += " AND fecha_carga <= %s"
+                wp.append(fecha_hasta + "T23:59:59Z")
 
             cur.execute("SELECT COUNT(*) FROM barras" + w, wp)
             total_barras = int(cur.fetchone()[0])
@@ -299,6 +311,197 @@ def get_stats(user=Depends(get_current_user)):
         "total_items": total_items,
         "top5": proyectos_all[:5],
         "proyectos": proyectos_all,
+    }
+
+
+@router.get("/stats/timeline")
+def get_stats_timeline(
+    fecha_desde: Optional[str] = Query(None, description="ISO date start filter"),
+    fecha_hasta: Optional[str] = Query(None, description="ISO date end filter"),
+    agrupacion: str = Query("dia", description="dia|semana|mes"),
+    user=Depends(get_current_user),
+):
+    """Cubicación acumulada por período (barras y kilos importados por día/semana/mes)."""
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            allowed = _get_allowed_project_ids(cur, user)
+            pf_sql, pf_params = _project_filter_sql(allowed, "i")
+
+            w = " WHERE 1=1" + pf_sql
+            wp = list(pf_params)
+
+            if fecha_desde:
+                w += " AND i.fecha >= %s"
+                wp.append(fecha_desde)
+            if fecha_hasta:
+                w += " AND i.fecha <= %s"
+                wp.append(fecha_hasta + "T23:59:59Z")
+
+            # Group by truncated date
+            if agrupacion == "semana":
+                trunc = "LEFT(i.fecha, 4) || '-W' || LPAD(CAST(EXTRACT(WEEK FROM CAST(LEFT(i.fecha, 10) AS DATE)) AS TEXT), 2, '0')"
+            elif agrupacion == "mes":
+                trunc = "LEFT(i.fecha, 7)"
+            else:
+                trunc = "LEFT(i.fecha, 10)"
+
+            cur.execute(f"""
+                SELECT {trunc} AS periodo,
+                       SUM(i.barras_count) AS barras,
+                       SUM(i.kilos) AS kilos,
+                       COUNT(*) AS cargas
+                FROM imports i
+                {w}
+                GROUP BY periodo
+                ORDER BY periodo
+            """, wp)
+            rows = cur.fetchall()
+
+    return {
+        "agrupacion": agrupacion,
+        "timeline": [
+            {"periodo": r[0], "barras": int(r[1] or 0), "kilos": round(float(r[2] or 0), 2), "cargas": int(r[3])}
+            for r in rows
+        ]
+    }
+
+
+@router.get("/stats/cubicadores")
+def get_stats_cubicadores(
+    fecha_desde: Optional[str] = Query(None, description="ISO date start filter"),
+    fecha_hasta: Optional[str] = Query(None, description="ISO date end filter"),
+    user=Depends(get_current_user),
+):
+    """Resumen de cubicación por usuario (cubicador): barras, kilos, última actividad."""
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            allowed = _get_allowed_project_ids(cur, user)
+            pf_sql, pf_params = _project_filter_sql(allowed, "i")
+
+            w = " WHERE 1=1" + pf_sql
+            wp = list(pf_params)
+
+            if fecha_desde:
+                w += " AND i.fecha >= %s"
+                wp.append(fecha_desde)
+            if fecha_hasta:
+                w += " AND i.fecha <= %s"
+                wp.append(fecha_hasta + "T23:59:59Z")
+
+            cur.execute(f"""
+                SELECT i.usuario,
+                       SUM(i.barras_count) AS barras,
+                       SUM(i.kilos) AS kilos,
+                       COUNT(*) AS cargas,
+                       COUNT(DISTINCT i.id_proyecto) AS proyectos,
+                       MAX(i.fecha) AS ultima_actividad
+                FROM imports i
+                {w}
+                GROUP BY i.usuario
+                ORDER BY kilos DESC
+            """, wp)
+            rows = cur.fetchall()
+
+    return {
+        "cubicadores": [
+            {
+                "email": r[0],
+                "barras": int(r[1] or 0),
+                "kilos": round(float(r[2] or 0), 2),
+                "cargas": int(r[3]),
+                "proyectos": int(r[4]),
+                "ultima_actividad": r[5],
+            }
+            for r in rows
+        ]
+    }
+
+
+@router.get("/stats/mi-actividad")
+def get_mi_actividad(user=Depends(get_current_user)):
+    """Stats personales del cubicador logueado: hoy, últimos 14 días, semana actual vs anterior."""
+    from datetime import datetime, timedelta, timezone
+    now = datetime.now(timezone.utc)
+    today = now.strftime("%Y-%m-%d")
+    # Last 14 days for daily breakdown
+    day14_ago = (now - timedelta(days=13)).strftime("%Y-%m-%d")
+    # Week boundaries (Monday-based)
+    weekday = now.weekday()  # 0=Monday
+    this_monday = (now - timedelta(days=weekday)).strftime("%Y-%m-%d")
+    last_monday = (now - timedelta(days=weekday + 7)).strftime("%Y-%m-%d")
+    last_sunday = (now - timedelta(days=weekday + 1)).strftime("%Y-%m-%d")
+
+    email = user.get("email", "")
+
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            # Today's stats
+            cur.execute("""
+                SELECT COALESCE(SUM(barras_count), 0), COALESCE(SUM(kilos), 0), COUNT(*)
+                FROM imports
+                WHERE usuario = %s AND LEFT(fecha, 10) = %s
+            """, (email, today))
+            hoy = cur.fetchone()
+
+            # Daily breakdown last 14 days
+            cur.execute("""
+                SELECT LEFT(fecha, 10) AS dia,
+                       COALESCE(SUM(barras_count), 0) AS barras,
+                       COALESCE(SUM(kilos), 0) AS kilos,
+                       COUNT(*) AS cargas
+                FROM imports
+                WHERE usuario = %s AND LEFT(fecha, 10) >= %s
+                GROUP BY dia
+                ORDER BY dia
+            """, (email, day14_ago))
+            daily_rows = cur.fetchall()
+
+            # This week totals
+            cur.execute("""
+                SELECT COALESCE(SUM(barras_count), 0), COALESCE(SUM(kilos), 0), COUNT(*)
+                FROM imports
+                WHERE usuario = %s AND LEFT(fecha, 10) >= %s
+            """, (email, this_monday))
+            sem_actual = cur.fetchone()
+
+            # Last week totals
+            cur.execute("""
+                SELECT COALESCE(SUM(barras_count), 0), COALESCE(SUM(kilos), 0), COUNT(*)
+                FROM imports
+                WHERE usuario = %s AND LEFT(fecha, 10) >= %s AND LEFT(fecha, 10) <= %s
+            """, (email, last_monday, last_sunday))
+            sem_anterior = cur.fetchone()
+
+    # Fill missing days in the 14-day window
+    daily_map = {r[0]: {"barras": int(r[1]), "kilos": round(float(r[2]), 2), "cargas": int(r[3])} for r in daily_rows}
+    dias = []
+    for i in range(14):
+        d = (now - timedelta(days=13 - i)).strftime("%Y-%m-%d")
+        entry = daily_map.get(d, {"barras": 0, "kilos": 0.0, "cargas": 0})
+        dias.append({"dia": d, **entry})
+
+    return {
+        "email": email,
+        "hoy": {
+            "fecha": today,
+            "barras": int(hoy[0]),
+            "kilos": round(float(hoy[1]), 2),
+            "cargas": int(hoy[2]),
+        },
+        "dias": dias,
+        "semana_actual": {
+            "desde": this_monday,
+            "barras": int(sem_actual[0]),
+            "kilos": round(float(sem_actual[1]), 2),
+            "cargas": int(sem_actual[2]),
+        },
+        "semana_anterior": {
+            "desde": last_monday,
+            "hasta": last_sunday,
+            "barras": int(sem_anterior[0]),
+            "kilos": round(float(sem_anterior[1]), 2),
+            "cargas": int(sem_anterior[2]),
+        },
     }
 
 
@@ -475,6 +678,74 @@ def mover_barras_individual(body: MoverBarrasIndividualRequest, user=Depends(get
             count = cur.rowcount
 
     return {"ok": True, "movidas": count}
+
+
+@router.get("/proyectos/{id_proyecto}/sectores-nav")
+def get_sectores_nav(id_proyecto: str, user=Depends(get_current_user)):
+    """Navegador de sectores: árbol sector->piso->ciclo con stats por nodo."""
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT id_proyecto FROM proyectos WHERE id_proyecto = %s", (id_proyecto,))
+            if not cur.fetchone():
+                raise HTTPException(status_code=404, detail="Proyecto no encontrado")
+
+            cur.execute("""
+                SELECT sector, piso, ciclo,
+                       COUNT(*) AS barras,
+                       COALESCE(SUM(peso_total), 0) AS kilos,
+                       COUNT(DISTINCT eje) AS ejes,
+                       COALESCE(
+                         ROUND(CAST(SUM(diam * peso_total) / NULLIF(SUM(peso_total), 0) AS NUMERIC), 1),
+                         0
+                       ) AS diam_prom
+                FROM barras
+                WHERE id_proyecto = %s
+                GROUP BY sector, piso, ciclo
+                ORDER BY sector, piso, ciclo
+            """, (id_proyecto,))
+            rows = cur.fetchall()
+
+    tree = {}
+    for r in rows:
+        sector, piso, ciclo = r[0] or '', r[1] or '', r[2] or ''
+        node = {"barras": int(r[3]), "kilos": round(float(r[4]), 2), "ejes": int(r[5]), "diam_prom": float(r[6])}
+
+        if sector not in tree:
+            tree[sector] = {"barras": 0, "kilos": 0.0, "pisos": {}}
+        tree[sector]["barras"] += node["barras"]
+        tree[sector]["kilos"] += node["kilos"]
+
+        if piso not in tree[sector]["pisos"]:
+            tree[sector]["pisos"][piso] = {"barras": 0, "kilos": 0.0, "ciclos": {}}
+        tree[sector]["pisos"][piso]["barras"] += node["barras"]
+        tree[sector]["pisos"][piso]["kilos"] += node["kilos"]
+
+        tree[sector]["pisos"][piso]["ciclos"][ciclo] = node
+
+    result = []
+    for sector in sorted(tree.keys()):
+        s = tree[sector]
+        pisos_list = []
+        for piso in sorted(s["pisos"].keys()):
+            p = s["pisos"][piso]
+            ciclos_list = [
+                {"ciclo": c, **p["ciclos"][c]}
+                for c in sorted(p["ciclos"].keys())
+            ]
+            pisos_list.append({
+                "piso": piso,
+                "barras": p["barras"],
+                "kilos": round(p["kilos"], 2),
+                "ciclos": ciclos_list,
+            })
+        result.append({
+            "sector": sector,
+            "barras": s["barras"],
+            "kilos": round(s["kilos"], 2),
+            "pisos": pisos_list,
+        })
+
+    return {"id_proyecto": id_proyecto, "sectores": result}
 
 
 @router.get("/dashboard")

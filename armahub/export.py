@@ -10,7 +10,8 @@ Endpoint:
 - GET /proyectos/{id_proyecto}/exportar
 """
 
-from fastapi import APIRouter, Depends, HTTPException
+from typing import Optional
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from io import BytesIO
 import zipfile
@@ -127,8 +128,25 @@ def _build_sheet(wb: Workbook, sheet_name: str, rows: list, sector: str, piso: s
 
 
 @router.get("/proyectos/{id_proyecto}/exportar")
-def exportar_proyecto(id_proyecto: str, user=Depends(get_current_user)):
-    """Exportar barras de un proyecto como ZIP de archivos Excel (uno por SECTOR+PISO+CICLO)."""
+def exportar_proyecto(
+    id_proyecto: str,
+    sectores: Optional[str] = Query(None, description="Comma-separated SECTOR_PISO_CICLO keys to export selectively"),
+    user=Depends(get_current_user),
+):
+    """Exportar barras de un proyecto como ZIP de archivos Excel (uno por SECTOR+PISO+CICLO).
+    
+    Si `sectores` se proporciona (ej: 'ELEV_P1_C1,FUND_P1_C2'), solo se exportan
+    esas combinaciones. Si está vacío o ausente, se exporta todo.
+    """
+
+    # Parse selective filter
+    selected_set = None
+    if sectores and sectores.strip():
+        selected_set = set()
+        for key in sectores.split(','):
+            parts = key.strip().split('_', 2)  # SECTOR_PISO_CICLO
+            if len(parts) == 3:
+                selected_set.add(tuple(parts))
 
     fields_sql = ", ".join(DB_FIELDS)
 
@@ -149,6 +167,10 @@ def exportar_proyecto(id_proyecto: str, user=Depends(get_current_user)):
                 ORDER BY sector, piso, ciclo
             """, (id_proyecto,))
             combos = cur.fetchall()
+
+            # Filter by selected combinations if provided
+            if selected_set is not None:
+                combos = [c for c in combos if (c[0], c[1], c[2]) in selected_set]
 
             if not combos:
                 raise HTTPException(status_code=404, detail="No hay barras para exportar en este proyecto")

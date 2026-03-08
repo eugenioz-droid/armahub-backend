@@ -100,6 +100,8 @@ button {
 button:hover { background: #558B2F; }
 button.secondary { background: #ddd; color: #2C2C2C; }
 button.secondary:hover { background: #ccc; }
+button.secondary.active { background: #8BC34A; color: #fff; }
+button.secondary.active:hover { background: #558B2F; }
 button.danger { background: #b42318; }
 button.danger:hover { background: #8b1a14; }
 
@@ -219,6 +221,16 @@ tr:hover { background: #fafafa; }
 .proyecto-mini:last-child { border-bottom: none; }
 .proyecto-mini .pm-name { font-weight: 500; color: #2C2C2C; font-size: 14px; }
 .proyecto-mini .pm-kilos { font-weight: 700; color: #8BC34A; font-size: 14px; }
+
+/* Navegador de sectores — collapsible tree */
+.nav-sector .nav-sector-body { display: none; }
+.nav-sector.open > .nav-sector-body { display: block; }
+.nav-sector.open > .nav-sector-header span:last-child { transform: rotate(180deg); display: inline-block; }
+.nav-piso .nav-piso-body { display: none; }
+.nav-piso.open > .nav-piso-body { display: block; }
+.nav-piso.open > .nav-piso-header span:last-child { transform: rotate(180deg); display: inline-block; }
+.nav-sector-header:hover { background: #eee !important; }
+.nav-piso-header:hover { background: #f0f0f0 !important; }
 
 /* Global status */
 #globalStatus {

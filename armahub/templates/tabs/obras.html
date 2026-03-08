@@ -1,5 +1,35 @@
   <!-- TAB 1: OBRAS -->
   <div id="tab-obras" class="tab-content">
+    <!-- Mini-dashboard cubicador -->
+    <div id="miActividadPanel" class="card" style="border-top: 3px solid #8BC34A;">
+      <div class="row" style="justify-content:space-between; align-items:center; margin-bottom:8px;">
+        <h3 style="margin:0;">Mi actividad</h3>
+        <span class="muted" id="miActividadEmail" style="font-size:11px;"></span>
+      </div>
+      <div class="kpi-row" style="margin-bottom:8px;">
+        <div class="kpi-card" style="border-top:2px solid #8BC34A;">
+          <div class="kpi-label">Hoy — Barras</div>
+          <div class="kpi-value" id="maHoyBarras" style="font-size:22px;">—</div>
+        </div>
+        <div class="kpi-card" style="border-top:2px solid #558B2F;">
+          <div class="kpi-label">Hoy — Kilos</div>
+          <div class="kpi-value" id="maHoyKilos" style="font-size:22px;">—</div>
+        </div>
+        <div class="kpi-card" style="border-top:2px solid #33691E;">
+          <div class="kpi-label">Hoy — Cargas</div>
+          <div class="kpi-value" id="maHoyCargas" style="font-size:22px;">—</div>
+        </div>
+        <div class="kpi-card" style="border-top:2px solid #9E9E9E;">
+          <div class="kpi-label">Semana — Kilos</div>
+          <div class="kpi-value" id="maSemKilos" style="font-size:22px;">—</div>
+          <div class="muted" id="maSemComp" style="font-size:10px; margin-top:2px;"></div>
+        </div>
+      </div>
+      <div style="height: 160px;">
+        <canvas id="miActividadChart"></canvas>
+      </div>
+    </div>
+
     <div class="card">
       <h3>Cargar datos de obra</h3>
       <div id="dropZone" style="border: 2px dashed #8BC34A; border-radius: 10px; padding: 30px; text-align: center; background: #f9fff4; cursor: pointer; transition: all 0.2s; margin-bottom: 12px;"

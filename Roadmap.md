@@ -450,42 +450,42 @@ ARMAHUB – PROGRAMA DE TRABAJO
     - Tab "Exportación" con selector proyecto (búsqueda), vista previa sectores/pisos/ciclos, botón descarga ZIP - OK
     - loadFilters() pobla todos los selects de proyecto (búsqueda, export, dashboard) - OK
 
-20b. Matriz de control de exportación por sector constructivo - Pendiente
+20b. Matriz de control de exportación por sector constructivo - OK
     **Objetivo**: Control visual y selectivo de qué sectores constructivos se exportan,
     reutilizando el patrón de la matriz constructiva (piso × ciclo) del tab Dashboards.
 
-    a) Backend: exportación selectiva - Pendiente
+    a) Backend: exportación selectiva - OK
        - Modificar GET /proyectos/{id}/exportar para aceptar param opcional `sectores`
        - Formato: `sectores=ELEV_P1_C1,FUND_P1_C1,LCIELO_P2_C1,...`
        - Si `sectores` está vacío o ausente: comportamiento actual (exporta todo)
        - Si `sectores` tiene valores: filtrar barras solo a esas combinaciones
        - ZIP resultante contiene solo los archivos de las combinaciones solicitadas
 
-    b) Frontend: matriz de exportación - Pendiente
+    b) Frontend: matriz de exportación - OK
        - Reutilizar layout de la matriz constructiva existente (piso × ciclo grid)
        - Cada sub-fila de sector (FUND/ELEV/LCIELO/VCIELO) tiene un checkbox
        - Cada celda muestra: checkbox + nombre sector + kilos + barras (compacto)
        - Celdas vacías (sin datos) no muestran checkbox
 
-    c) Selección inteligente - Pendiente
+    c) Selección inteligente - OK
        - Click en header de piso → seleccionar/deseleccionar todo el piso
        - Click en header de ciclo → seleccionar/deseleccionar todo el ciclo
        - Botón "Seleccionar todo" / "Deseleccionar todo"
        - Contador: "X de Y sectores seleccionados"
 
-    d) Acciones de exportación - Pendiente
+    d) Acciones de exportación - OK
        - Botón "📥 Exportar seleccionados (N)" → ZIP parcial con solo los seleccionados
        - Botón "📥 Exportar TODO" → ZIP completo (comportamiento actual)
        - Deshabilitado si no hay selección (para el parcial)
 
-    e) Tracking visual de estado exportado - Pendiente
+    e) Tracking visual de estado exportado - OK
        - Al completar descarga, marcar celdas exportadas con fondo verde + ✅
        - Persistencia en localStorage por proyecto (clave: `export_done_{id_proyecto}`)
        - Formato almacenado: array de strings `["ELEV_P1_C1", "FUND_P1_C2", ...]`
        - Visual: celda no exportada = fondo blanco, exportada = fondo #e8f5e9 + ✅
        - Botón "Limpiar estado exportación" para resetear todos los checks verdes
 
-    f) Flujo completo - Pendiente
+    f) Flujo completo - OK
        1. Usuario selecciona proyecto en el selector
        2. Se carga la matriz con todas las combinaciones sector+piso+ciclo
        3. Usuario marca checkboxes (individualmente o por piso/ciclo)
@@ -592,28 +592,43 @@ y sienta las bases para el crecimiento multi-cliente.
 ---
 ## FASE 5 — Funcionalidades avanzadas y multi-cliente
 
-21. Dashboard landing: analítica de cubicación - Pendiente
-    - Dashboard en tab Inicio con resumen de cubicación de TODOS los cubicadores - Pendiente
-    - Filtros por rango de fecha: semana / mes / año / todo / rango personalizado - Pendiente
-    - Endpoint GET /stats acepta parámetros fecha_desde, fecha_hasta - Pendiente
-    - Gráfico de cubicación acumulada por período (barras/kilos por día/semana) - Pendiente
-    - Tabla resumen por cubicador: barras importadas, kilos, última actividad - Pendiente
+21. Dashboard landing: analítica de cubicación - OK
+    - Dashboard en tab Inicio con resumen de cubicación de TODOS los cubicadores - OK
+    - Filtros por rango de fecha: semana / mes / año / todo / rango personalizado - OK
+    - Endpoint GET /stats acepta parámetros fecha_desde, fecha_hasta - OK
+    - Endpoint GET /stats/timeline (cubicación acumulada por día/semana/mes) - OK
+    - Endpoint GET /stats/cubicadores (resumen por usuario) - OK
+    - Gráfico dual-axis: kilos (barras) + barras (línea) por período con agrupación día/semana/mes - OK
+    - Tabla resumen por cubicador: email, barras, kilos, cargas, proyectos, última actividad - OK
+    - Botones de período con estado activo visual (CSS .secondary.active) - OK
+    - Inputs date para rango personalizado - OK
 
-22. Dashboard diario del cubicador - Pendiente
-    - Sidebar o sección en tab Obras del cubicador - Pendiente
-    - Barras importadas hoy, kilos del día - Pendiente
-    - Mini-chart: avance semanal (barras/kilos por día, últimos 7 días) - Pendiente
-    - Comparativa vs semana anterior - Pendiente
+22. Dashboard diario del cubicador - OK
+    - Panel "Mi actividad" en tab Obras con KPIs del día (barras, kilos, cargas) - OK
+    - KPI semana actual con comparativa % vs semana anterior (▲/▼ color) - OK
+    - Endpoint GET /stats/mi-actividad: hoy, últimos 14 días, semana actual vs anterior - OK
+    - Mini-chart dual-axis 14 días: kilos (barras) + barras (línea), hoy destacado - OK
+    - Auto-refresh tras importar, eliminar carga, crear obra - OK
 
-23. Navegador de sectores constructivos - Pendiente
-    - Navegador por sector+piso+ciclo dentro de cada proyecto - Pendiente
-    - Visualizar ejes contenidos en cada sector constructivo - Pendiente
-    - Herramientas de edición y reasignación de barras entre sectores - Pendiente
-    - Mini-dashboard por sector: kilos, barras, diámetros predominantes - Pendiente
+23. Navegador de sectores constructivos - OK
+    - Endpoint GET /proyectos/{id}/sectores-nav: árbol jerárquico sector→piso→ciclo con stats - OK
+    - Stats por nodo: barras, kilos, ejes distintos, diámetro promedio ponderado - OK
+    - UI collapsible tree en tab Dashboards con selector de proyecto - OK
+    - Colores por sector (FUND marrón, ELEV verde, LCIELO azul, VCIELO naranja) - OK
+    - Summary bar con totales de sectores, barras y kilos - OK
+    - Nivel ciclo muestra: barras, kilos, ejes, ⌀ promedio ponderado - OK
+    - CSS para hover y toggle open/close con animación de flecha - OK
 
-24. Sistema de pedidos (MVP) - Pendiente
-    - Tablas "pedidos" y "pedido_items", endpoints CRUD - Pendiente
-    - UI Tab "Pedidos": formulario + tabla de items - Pendiente
+24. Sistema de pedidos (MVP) - OK
+    - Migración 8: tablas pedidos (id, proyecto, titulo, estado, creado_por, fechas) + pedido_items (diam, largo, cantidad, sector, nota, estado) - OK
+    - pedidos.py: CRUD completo — GET/POST/PATCH/DELETE /pedidos, GET /pedidos/{id}, POST/PATCH/DELETE items - OK
+    - Estados pedido: borrador → enviado → en_proceso → completado / cancelado - OK
+    - Estados item: pendiente → en_proceso → completado - OK
+    - UI Tab Pedidos: crear pedido (proyecto + título), lista con filtro por estado, detalle con items - OK
+    - Agregar items inline: diámetro, largo, cantidad, sector, nota - OK
+    - Cambiar estado pedido desde dropdown, eliminar pedido/items con confirmación - OK
+    - Color-coded badges para estados (gris/azul/naranja/verde/rojo) - OK
+    - Registrado en main.py, selects de proyecto poblados en loadProyectos + loadFilters - OK
 
 25. Modelo de datos clientes + permisos - Pendiente
     - Tabla "clientes", relación con proyectos, permisos por rol - Pendiente

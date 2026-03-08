@@ -1,5 +1,21 @@
   <!-- TAB 0: INICIO (Landing) -->
   <div id="tab-inicio" class="tab-content active">
+    <!-- Date range filter -->
+    <div class="card" style="padding:10px 16px; margin-bottom:8px;">
+      <div class="row" style="gap:6px; align-items:center; flex-wrap:wrap;">
+        <span style="font-size:12px; font-weight:600; color:#666; margin-right:4px;">Periodo:</span>
+        <button class="secondary btn-periodo active" onclick="setDateRange('todo')" data-range="todo" style="font-size:11px; padding:4px 10px;">Todo</button>
+        <button class="secondary btn-periodo" onclick="setDateRange('semana')" data-range="semana" style="font-size:11px; padding:4px 10px;">Semana</button>
+        <button class="secondary btn-periodo" onclick="setDateRange('mes')" data-range="mes" style="font-size:11px; padding:4px 10px;">Mes</button>
+        <button class="secondary btn-periodo" onclick="setDateRange('anio')" data-range="anio" style="font-size:11px; padding:4px 10px;">Año</button>
+        <span style="font-size:11px; color:#999; margin:0 4px;">|</span>
+        <input type="date" id="fechaDesde" onchange="setDateRange('custom')" style="font-size:11px; padding:3px 6px; max-width:140px;" />
+        <span style="font-size:11px; color:#999;">a</span>
+        <input type="date" id="fechaHasta" onchange="setDateRange('custom')" style="font-size:11px; padding:3px 6px; max-width:140px;" />
+        <span class="muted" id="dateRangeLabel" style="font-size:11px; margin-left:8px;"></span>
+      </div>
+    </div>
+
     <div class="kpi-row" id="kpiRow">
       <div class="kpi-card">
         <div class="kpi-label">Proyectos</div>
@@ -53,6 +69,43 @@
             <div class="muted">Cargando...</div>
           </div>
         </div>
+      </div>
+    </div>
+
+    <!-- Cubicación timeline chart -->
+    <div class="card">
+      <div class="row" style="justify-content:space-between; align-items:center; margin-bottom:8px;">
+        <h3 style="margin:0;">Cubicación acumulada</h3>
+        <div class="row" style="gap:4px;">
+          <button class="secondary btn-agrupacion active" onclick="setAgrupacion('dia')" data-agrup="dia" style="font-size:11px; padding:3px 8px;">Día</button>
+          <button class="secondary btn-agrupacion" onclick="setAgrupacion('semana')" data-agrup="semana" style="font-size:11px; padding:3px 8px;">Semana</button>
+          <button class="secondary btn-agrupacion" onclick="setAgrupacion('mes')" data-agrup="mes" style="font-size:11px; padding:3px 8px;">Mes</button>
+        </div>
+      </div>
+      <div style="height: 280px;">
+        <canvas id="timelineChart"></canvas>
+      </div>
+    </div>
+
+    <!-- Cubicadores summary table -->
+    <div class="card">
+      <h3>Resumen por cubicador</h3>
+      <div style="overflow-x:auto;">
+        <table id="cubicadoresTable" style="width:100%; font-size:12px;">
+          <thead>
+            <tr>
+              <th style="text-align:left;">Cubicador</th>
+              <th style="text-align:right;">Barras</th>
+              <th style="text-align:right;">Kilos</th>
+              <th style="text-align:right;">Cargas</th>
+              <th style="text-align:right;">Proyectos</th>
+              <th style="text-align:right;">Última actividad</th>
+            </tr>
+          </thead>
+          <tbody id="cubicadoresBody">
+            <tr><td colspan="6" class="muted">Cargando...</td></tr>
+          </tbody>
+        </table>
       </div>
     </div>
   </div>

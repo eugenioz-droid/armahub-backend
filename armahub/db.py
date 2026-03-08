@@ -170,6 +170,30 @@ MIGRATIONS = [
         "DO $$ BEGIN ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check; EXCEPTION WHEN undefined_object THEN NULL; END $$;",
         "ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('admin', 'coordinador', 'cubicador', 'operador', 'cliente'))",
     ]),
+    (8, "tablas pedidos y pedido_items", [
+        """CREATE TABLE IF NOT EXISTS pedidos (
+            id BIGSERIAL PRIMARY KEY,
+            id_proyecto TEXT NOT NULL REFERENCES proyectos(id_proyecto) ON DELETE CASCADE,
+            titulo TEXT NOT NULL,
+            descripcion TEXT,
+            estado TEXT NOT NULL DEFAULT 'borrador' CHECK (estado IN ('borrador','enviado','en_proceso','completado','cancelado')),
+            creado_por TEXT NOT NULL,
+            fecha_creacion TEXT NOT NULL DEFAULT (NOW() AT TIME ZONE 'UTC'),
+            fecha_actualizacion TEXT
+        )""",
+        """CREATE TABLE IF NOT EXISTS pedido_items (
+            id BIGSERIAL PRIMARY KEY,
+            pedido_id BIGINT NOT NULL REFERENCES pedidos(id) ON DELETE CASCADE,
+            diam DOUBLE PRECISION NOT NULL,
+            largo DOUBLE PRECISION,
+            cantidad INTEGER NOT NULL DEFAULT 1,
+            sector TEXT,
+            piso TEXT,
+            ciclo TEXT,
+            nota TEXT,
+            estado TEXT NOT NULL DEFAULT 'pendiente' CHECK (estado IN ('pendiente','en_proceso','completado'))
+        )""",
+    ]),
 ]
 
 
@@ -230,6 +254,8 @@ def reset_database(keep_users: bool = True) -> dict:
             summary["proyectos_eliminados"] = int(cur.fetchone()[0])
             # Tablas dependientes primero por FK
             cur.execute("DROP TABLE IF EXISTS schema_migrations")
+            cur.execute("DROP TABLE IF EXISTS pedido_items")
+            cur.execute("DROP TABLE IF EXISTS pedidos")
             cur.execute("DROP TABLE IF EXISTS proyecto_usuarios")
             cur.execute("DROP TABLE IF EXISTS imports")
             cur.execute("DROP TABLE IF EXISTS barras")

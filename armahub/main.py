@@ -23,6 +23,7 @@ from .barras import router as barras_router
 from .ui import router as ui_router
 from .admin import router as admin_router
 from .export import router as export_router
+from .pedidos import router as pedidos_router
 
 
 def create_app() -> FastAPI:
@@ -36,6 +37,7 @@ def create_app() -> FastAPI:
     app.include_router(ui_router)
     app.include_router(admin_router)
     app.include_router(export_router)
+    app.include_router(pedidos_router)
     
     # Servir archivos estáticos (CSS, JS, imágenes)
     static_path = os.path.join(os.path.dirname(__file__), "static")

@@ -261,6 +261,20 @@ async function loadProyectos() {
     data.proyectos.map(p => `<option value="${p.id_proyecto}">${p.nombre_proyecto}</option>`).join('');
   if (prevM) mpf.value = prevM;
 
+  // Populate navegador sectores project filter
+  const npf = document.getElementById('navProyectoFilter');
+  const prevN = npf.value;
+  npf.innerHTML = '<option value="">\u2014 Selecciona proyecto \u2014</option>' +
+    data.proyectos.map(p => `<option value="${p.id_proyecto}">${p.nombre_proyecto}</option>`).join('');
+  if (prevN) npf.value = prevN;
+
+  // Populate pedidos project filter
+  const ppf = document.getElementById('pedidoProyecto');
+  const prevP = ppf.value;
+  ppf.innerHTML = '<option value="">\u2014 Selecciona proyecto \u2014</option>' +
+    data.proyectos.map(p => `<option value="${p.id_proyecto}">${p.nombre_proyecto}</option>`).join('');
+  if (prevP) ppf.value = prevP;
+
   // Populate mover barras selectors & show card if >1 project
   const opts = data.proyectos.map(p => `<option value="${p.id_proyecto}">${p.nombre_proyecto}</option>`).join('');
   document.getElementById('moverOrigen').innerHTML = opts;
@@ -291,6 +305,7 @@ async function crearObra() {
     await loadProyectos();
     await loadFilters();
     await loadInicio();
+    await loadMiActividad();
   } else {
     msg.innerHTML = '<span class="status-err">Error: ' + (data.detail || data.error || 'desconocido') + '</span>';
   }
@@ -347,6 +362,7 @@ async function deleteCarga(cargaId, idProyecto) {
     await loadCargasProyecto(idProyecto);
     await loadProyectos();
     await loadInicio();
+    await loadMiActividad();
   } else {
     alert('Error: ' + (res?.detail || 'desconocido'));
   }
@@ -572,6 +588,8 @@ async function loadFilters(depParams) {
   fillSelect('exportProyecto', data.proyectos);
   fillSelect('sectorProyectoFilter', data.proyectos);
   fillSelect('matrizProyectoFilter', data.proyectos);
+  fillSelect('navProyectoFilter', data.proyectos);
+  fillSelect('pedidoProyecto', data.proyectos);
   // Dependent selects
   fillSelect('plano', data.planos, true);
   fillSelect('sector', data.sectores);
@@ -769,6 +787,7 @@ async function importAllFiles() {
   await loadProyectos();
   await loadFilters();
   await loadInicio();
+  await loadMiActividad();
   await loadDashboard('sector');
 }
 
@@ -1026,50 +1045,277 @@ function nextPage() {
 }
 
 // ========================= EXPORTACIÓN =========================
+// State for export matrix
+let _exportSelected = new Set();   // keys like "ELEV_P1_C1"
+let _exportAllKeys = [];           // all available keys for current project
+let _exportProy = '';              // current project in export tab
+
+function _exportDoneKey(proy) { return 'armahub_export_done_' + proy; }
+
+function _getExportDone(proy) {
+  try { return JSON.parse(localStorage.getItem(_exportDoneKey(proy)) || '[]'); } catch(e) { return []; }
+}
+function _setExportDone(proy, arr) {
+  try { localStorage.setItem(_exportDoneKey(proy), JSON.stringify(arr)); } catch(e) {}
+}
+
 async function previewExport() {
   const proy = document.getElementById('exportProyecto').value;
   const preview = document.getElementById('exportPreview');
-  const status = document.getElementById('exportStatus');
-  if (!proy) { preview.innerHTML = ''; status.textContent = ''; return; }
+  const matrizCard = document.getElementById('exportMatrizCard');
+  _exportProy = proy;
+  _exportSelected = new Set();
+  _exportAllKeys = [];
 
-  status.textContent = 'Cargando vista previa...';
-  const data = await apiGet('/barras?proyecto=' + encodeURIComponent(proy) + '&limit=1&offset=0');
-  if (!data) { status.textContent = 'Error cargando datos'; return; }
-
-  const total = data.total || 0;
-  if (total === 0) {
-    preview.innerHTML = '<span class="muted">Este proyecto no tiene barras para exportar.</span>';
-    status.textContent = '';
+  if (!proy) {
+    preview.innerHTML = '';
+    matrizCard.style.display = 'none';
     return;
   }
 
-  // Get sector/piso/ciclo combos
-  const filters = await apiGet('/filters?proyecto=' + encodeURIComponent(proy));
-  let combos = '';
-  if (filters) {
-    const sectores = filters.sectores || [];
-    const pisos = filters.pisos || [];
-    const ciclos = filters.ciclos || [];
-    combos = '<div style="margin-top:8px; font-size:12px;">' +
-      '<strong>Sectores:</strong> ' + (sectores.join(', ') || '-') + '<br>' +
-      '<strong>Pisos:</strong> ' + (pisos.join(', ') || '-') + '<br>' +
-      '<strong>Ciclos:</strong> ' + (ciclos.join(', ') || '-') +
-      '</div>';
+  preview.innerHTML = '<div class="muted">Cargando...</div>';
+
+  const data = await apiGet('/dashboard/sectores?proyecto=' + encodeURIComponent(proy));
+  if (!data || !data.items || data.items.length === 0) {
+    preview.innerHTML = '<span class="muted">Este proyecto no tiene barras para exportar.</span>';
+    matrizCard.style.display = 'none';
+    return;
   }
 
+  // Summary
+  let totalBarras = 0, totalKilos = 0;
+  data.items.forEach(i => { totalBarras += i.barras || 0; totalKilos += i.kilos || 0; });
   preview.innerHTML = '<div style="background:#f8f9fa; padding:12px; border-radius:6px; font-size:13px;">' +
-    '<strong>' + total.toLocaleString() + ' barras</strong> disponibles para exportar.' +
-    combos +
-    '<p class="muted" style="margin-top:8px; font-size:11px;">Se generará un archivo .xlsx por cada combinación SECTOR + PISO + CICLO.</p>' +
+    '<strong>' + totalBarras.toLocaleString() + ' barras</strong> · <strong>' + Math.round(totalKilos).toLocaleString() + ' kg</strong> disponibles para exportar.' +
+    '<span class="muted" style="margin-left:8px; font-size:11px;">Un .xlsx por cada combinación SECTOR + PISO + CICLO.</span>' +
     '</div>';
-  status.textContent = '';
+
+  matrizCard.style.display = 'block';
+  buildExportMatriz(data.items, proy);
+}
+
+function buildExportMatriz(items, proy) {
+  const container = document.getElementById('exportMatrizContainer');
+
+  // Build lookup: key = "SECTOR|PISO|CICLO" => {barras, kilos}
+  const lookup = {};
+  items.forEach(i => {
+    const s = (i.sector || '?').toUpperCase().trim();
+    const p = (i.piso || '?').trim();
+    const c = (i.ciclo || '?').trim();
+    lookup[s + '|' + p + '|' + c] = { barras: i.barras, kilos: i.kilos };
+  });
+
+  // Collect unique pisos and ciclos
+  const pisosSet = new Set(), ciclosSet = new Set(), sectoresSet = new Set();
+  items.forEach(i => {
+    pisosSet.add((i.piso || '?').trim());
+    ciclosSet.add((i.ciclo || '?').trim());
+    sectoresSet.add((i.sector || '?').toUpperCase().trim());
+  });
+
+  const pisos = Array.from(pisosSet).sort((a, b) => pisoOrder(a) - pisoOrder(b));
+  pisos.reverse(); // highest floor at top
+
+  const ciclos = Array.from(ciclosSet).sort((a, b) => {
+    const na = parseInt((a.match(/(\d+)/) || [0,0])[1]);
+    const nb = parseInt((b.match(/(\d+)/) || [0,0])[1]);
+    return na - nb;
+  });
+
+  const TYPE_ORDER = ['LCIELO', 'VCIELO', 'ELEV'];
+  const lowestPiso = pisos[pisos.length - 1];
+
+  function getTypesForPiso(piso) {
+    const types = [];
+    if (piso === lowestPiso) {
+      for (const c of ciclos) { if (lookup['FUND|' + piso + '|' + c]) { types.push('FUND'); break; } }
+    }
+    for (const t of TYPE_ORDER) {
+      for (const c of ciclos) { if (lookup[t + '|' + piso + '|' + c]) { types.push(t); break; } }
+    }
+    for (const s of sectoresSet) {
+      if (s === 'FUND' || TYPE_ORDER.includes(s)) continue;
+      for (const c of ciclos) { if (lookup[s + '|' + piso + '|' + c]) { types.push(s); break; } }
+    }
+    return types.length > 0 ? types : ['ELEV'];
+  }
+
+  // Load export-done state
+  const doneSectors = new Set(_getExportDone(proy));
+
+  // Collect all exportable keys
+  _exportAllKeys = [];
+  pisos.forEach(piso => {
+    const types = getTypesForPiso(piso);
+    types.forEach(tipo => {
+      ciclos.forEach(ciclo => {
+        if (lookup[tipo + '|' + piso + '|' + ciclo]) {
+          _exportAllKeys.push(tipo + '_' + piso + '_' + ciclo);
+        }
+      });
+    });
+  });
+
+  // Build HTML table
+  let html = '<table style="width:100%; border-collapse:collapse; font-size:11px;">';
+  // Header row with ciclo names (clickable for column selection)
+  html += '<thead><tr>';
+  html += '<th style="border:1px solid #ccc; padding:4px 6px; background:#1a1a1a; color:#8BC34A; white-space:nowrap;">Piso</th>';
+  ciclos.forEach(c => {
+    html += '<th style="border:1px solid #ccc; padding:4px 6px; background:#1a1a1a; color:#8BC34A; text-align:center; white-space:nowrap; cursor:pointer;" onclick="exportToggleCiclo(\'' + c + '\')" title="Click para seleccionar/deseleccionar ' + c + '">' + c + '</th>';
+  });
+  html += '</tr></thead><tbody>';
+
+  pisos.forEach(piso => {
+    const types = getTypesForPiso(piso);
+    types.forEach((tipo, typeIdx) => {
+      html += '<tr>';
+      if (typeIdx === 0) {
+        html += '<td rowspan="' + types.length + '" style="border:1px solid #ccc; padding:4px 6px; font-weight:bold; background:#fff; color:#1a1a1a; vertical-align:middle; text-align:center; font-size:12px; white-space:nowrap; cursor:pointer;" onclick="exportTogglePiso(\'' + piso + '\')" title="Click para seleccionar/deseleccionar ' + piso + '">' + piso + '</td>';
+      }
+      ciclos.forEach(ciclo => {
+        const lookupKey = tipo + '|' + piso + '|' + ciclo;
+        const exportKey = tipo + '_' + piso + '_' + ciclo;
+        const d = lookup[lookupKey];
+        if (d) {
+          const isDone = doneSectors.has(exportKey);
+          const isSelected = _exportSelected.has(exportKey);
+          const bg = isDone ? '#e8f5e9' : (isSelected ? '#f3f8ff' : '#fff');
+          const border = isSelected ? '2px solid #4285f4' : '1px solid #ccc';
+          html += '<td style="border:' + border + '; padding:3px 4px; background:' + bg + '; text-align:center; cursor:pointer; position:relative; transition:all 0.15s;" ';
+          html += 'onclick="exportToggleCell(\'' + exportKey + '\')" ';
+          html += 'title="' + tipo + ' ' + piso + ' ' + ciclo + ': ' + d.barras + ' barras, ' + Math.round(d.kilos).toLocaleString() + ' kg">';
+          // Checkbox visual
+          html += '<input type="checkbox" ' + (isSelected ? 'checked' : '') + ' style="position:absolute; top:2px; left:2px; width:12px; height:12px; pointer-events:none; accent-color:#4285f4;" />';
+          // Done badge
+          if (isDone) {
+            html += '<span style="position:absolute; top:1px; right:3px; font-size:10px; color:#558B2F;" title="Ya exportado">✅</span>';
+          }
+          html += '<div style="font-weight:600; font-size:9px; color:#666; opacity:0.85;">' + tipo + '</div>';
+          html += '<div style="font-size:11px; font-weight:bold; color:#1a1a1a;">' + Math.round(d.kilos).toLocaleString() + ' kg</div>';
+          html += '<div style="font-size:9px; color:#888;">' + d.barras + ' bar</div>';
+          html += '</td>';
+        } else {
+          html += '<td style="border:1px solid #eee; padding:3px 4px; background:#fff;"></td>';
+        }
+      });
+      html += '</tr>';
+    });
+  });
+
+  html += '</tbody></table>';
+
+  // Legend
+  html += '<div style="margin-top:8px; display:flex; gap:12px; align-items:center; font-size:11px; flex-wrap:wrap;">';
+  html += '<span><span style="display:inline-block; width:14px; height:12px; background:#f3f8ff; border:2px solid #4285f4; vertical-align:middle;"></span> Seleccionado</span>';
+  html += '<span><span style="display:inline-block; width:14px; height:12px; background:#e8f5e9; border:1px solid #8BC34A; vertical-align:middle;"></span> ✅ Ya exportado</span>';
+  html += '<span><span style="display:inline-block; width:14px; height:12px; background:#fff; border:1px solid #ccc; vertical-align:middle;"></span> Pendiente</span>';
+  html += '</div>';
+
+  container.innerHTML = html;
+  updateExportSelCount();
+}
+
+function exportToggleCell(key) {
+  if (_exportSelected.has(key)) {
+    _exportSelected.delete(key);
+  } else {
+    _exportSelected.add(key);
+  }
+  // Re-render matrix to update visuals
+  reRenderExportMatriz();
+}
+
+function exportTogglePiso(piso) {
+  // Get all keys for this piso
+  const pisoKeys = _exportAllKeys.filter(k => {
+    const parts = k.split('_');
+    return parts.length >= 3 && parts[1] === piso;
+  });
+  // If all are selected, deselect all; otherwise select all
+  const allSelected = pisoKeys.every(k => _exportSelected.has(k));
+  pisoKeys.forEach(k => { allSelected ? _exportSelected.delete(k) : _exportSelected.add(k); });
+  reRenderExportMatriz();
+}
+
+function exportToggleCiclo(ciclo) {
+  // Get all keys for this ciclo
+  const cicloKeys = _exportAllKeys.filter(k => {
+    const parts = k.split('_');
+    return parts.length >= 3 && parts[parts.length - 1] === ciclo;
+  });
+  const allSelected = cicloKeys.every(k => _exportSelected.has(k));
+  cicloKeys.forEach(k => { allSelected ? _exportSelected.delete(k) : _exportSelected.add(k); });
+  reRenderExportMatriz();
+}
+
+function exportSelectAll(select) {
+  if (select) {
+    _exportAllKeys.forEach(k => _exportSelected.add(k));
+  } else {
+    _exportSelected.clear();
+  }
+  reRenderExportMatriz();
+}
+
+async function reRenderExportMatriz() {
+  if (!_exportProy) return;
+  const data = await apiGet('/dashboard/sectores?proyecto=' + encodeURIComponent(_exportProy));
+  if (data && data.items) buildExportMatriz(data.items, _exportProy);
+}
+
+function updateExportSelCount() {
+  const n = _exportSelected.size;
+  const total = _exportAllKeys.length;
+  const countEl = document.getElementById('exportSelCount');
+  const btn = document.getElementById('exportSelBtn');
+  if (countEl) countEl.textContent = n + ' de ' + total + ' seleccionados';
+  if (btn) {
+    btn.textContent = '📥 Exportar seleccionados (' + n + ')';
+    btn.disabled = (n === 0);
+    btn.style.opacity = n === 0 ? '0.5' : '1';
+  }
+}
+
+async function descargarExportSeleccionados() {
+  const proy = _exportProy;
+  if (!proy) return alert('Selecciona un proyecto');
+  if (_exportSelected.size === 0) return alert('Selecciona al menos un sector');
+
+  const sectoresParam = Array.from(_exportSelected).join(',');
+  const status = document.getElementById('exportStatus');
+  status.textContent = 'Generando ' + _exportSelected.size + ' archivos Excel...';
+
+  try {
+    const url = '/proyectos/' + encodeURIComponent(proy) + '/exportar?sectores=' + encodeURIComponent(sectoresParam);
+    const res = await fetch(url, { headers: authHeaders() });
+    if (res.status === 401) { logout(); return; }
+    if (!res.ok) {
+      const err = await res.json();
+      status.textContent = 'Error: ' + (err.detail || 'desconocido');
+      return;
+    }
+    const blob = await res.blob();
+    _triggerDownload(blob, res);
+
+    // Mark exported sectors as done in localStorage
+    const done = new Set(_getExportDone(proy));
+    _exportSelected.forEach(k => done.add(k));
+    _setExportDone(proy, Array.from(done));
+
+    status.textContent = 'Descarga completada — ' + _exportSelected.size + ' sectores exportados.';
+    reRenderExportMatriz();
+  } catch (e) {
+    status.textContent = 'Error: ' + e.message;
+  }
 }
 
 async function descargarExport() {
-  const proy = document.getElementById('exportProyecto').value;
+  const proy = document.getElementById('exportProyecto').value || _exportProy;
   if (!proy) return alert('Selecciona un proyecto');
   const status = document.getElementById('exportStatus');
-  status.textContent = 'Generando archivos Excel...';
+  status.textContent = 'Generando todos los archivos Excel...';
 
   try {
     const res = await fetch('/proyectos/' + encodeURIComponent(proy) + '/exportar', { headers: authHeaders() });
@@ -1080,20 +1326,41 @@ async function descargarExport() {
       return;
     }
     const blob = await res.blob();
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    const cd = res.headers.get('Content-Disposition');
-    const fn = cd ? cd.split('filename=')[1].replace(/"/g, '') : 'export.zip';
-    a.download = fn;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    window.URL.revokeObjectURL(url);
-    status.textContent = 'Descarga completada.';
+    _triggerDownload(blob, res);
+
+    // Mark ALL sectors as done
+    const done = new Set(_getExportDone(proy));
+    _exportAllKeys.forEach(k => done.add(k));
+    _setExportDone(proy, Array.from(done));
+
+    status.textContent = 'Descarga completada — todos los sectores exportados.';
+    reRenderExportMatriz();
   } catch (e) {
     status.textContent = 'Error: ' + e.message;
   }
+}
+
+function _triggerDownload(blob, res) {
+  const url = window.URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  const cd = res.headers.get('Content-Disposition');
+  const fn = cd ? cd.split('filename=')[1].replace(/"/g, '') : 'export.zip';
+  a.download = fn;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  window.URL.revokeObjectURL(url);
+}
+
+function limpiarEstadoExport() {
+  const proy = _exportProy;
+  if (!proy) return;
+  if (!confirm('¿Limpiar estado de exportación para este proyecto?')) return;
+  try { localStorage.removeItem(_exportDoneKey(proy)); } catch(e) {}
+  reRenderExportMatriz();
+  const status = document.getElementById('exportStatus');
+  if (status) status.textContent = 'Estado de exportación limpiado.';
 }
 
 // ========================= DASHBOARD =========================
@@ -1363,13 +1630,158 @@ async function loadMatriz() {
   container.innerHTML = html;
 }
 
+// ========================= NAVEGADOR DE SECTORES =========================
+async function loadSectoresNav() {
+  const container = document.getElementById('sectoresNavContainer');
+  const proy = document.getElementById('navProyectoFilter').value;
+  if (!proy) {
+    container.innerHTML = '<div class="muted">Selecciona un proyecto para explorar sus sectores constructivos</div>';
+    return;
+  }
+
+  container.innerHTML = '<div class="muted">Cargando navegador...</div>';
+  const data = await apiGet('/proyectos/' + encodeURIComponent(proy) + '/sectores-nav');
+  if (!data || !data.sectores || data.sectores.length === 0) {
+    container.innerHTML = '<div class="muted">Sin datos de sectores para este proyecto</div>';
+    return;
+  }
+
+  const sectores = data.sectores;
+
+  // Sector color map
+  const sectorColors = { 'FUND': '#795548', 'ELEV': '#8BC34A', 'LCIELO': '#03A9F4', 'VCIELO': '#FF9800' };
+
+  let html = '';
+  sectores.forEach(s => {
+    const sc = sectorColors[s.sector] || '#9E9E9E';
+    html += '<div class="nav-sector" style="margin-bottom:6px;">';
+    html += '<div class="nav-sector-header" onclick="this.parentElement.classList.toggle(\'open\')" style="cursor:pointer; padding:8px 10px; background:#f5f5f5; border-left:4px solid ' + sc + '; border-radius:4px; display:flex; justify-content:space-between; align-items:center;">';
+    html += '<div><span style="font-weight:700; font-size:13px; color:' + sc + ';">' + (s.sector || '?') + '</span>';
+    html += ' <span class="muted" style="font-size:11px;">' + s.pisos.length + ' pisos</span></div>';
+    html += '<div style="text-align:right; font-size:11px;">';
+    html += '<span style="font-weight:600;">' + Math.round(s.kilos).toLocaleString() + ' kg</span>';
+    html += ' <span class="muted">' + s.barras.toLocaleString() + ' bar</span>';
+    html += ' <span style="margin-left:4px; font-size:9px; color:#999;">&#9660;</span></div>';
+    html += '</div>';
+    html += '<div class="nav-sector-body" style="display:none; padding-left:12px;">';
+
+    s.pisos.forEach(p => {
+      html += '<div class="nav-piso" style="margin-top:4px;">';
+      html += '<div class="nav-piso-header" onclick="this.parentElement.classList.toggle(\'open\')" style="cursor:pointer; padding:5px 8px; background:#fafafa; border-radius:3px; display:flex; justify-content:space-between; align-items:center; font-size:12px;">';
+      html += '<div><span style="font-weight:600;">' + (p.piso || '?') + '</span>';
+      html += ' <span class="muted" style="font-size:10px;">' + p.ciclos.length + ' ciclos</span></div>';
+      html += '<div style="text-align:right;">';
+      html += '<span style="font-weight:500;">' + Math.round(p.kilos).toLocaleString() + ' kg</span>';
+      html += ' <span class="muted">' + p.barras.toLocaleString() + ' bar</span>';
+      html += ' <span style="margin-left:3px; font-size:8px; color:#999;">&#9660;</span></div>';
+      html += '</div>';
+      html += '<div class="nav-piso-body" style="display:none; padding-left:10px;">';
+
+      p.ciclos.forEach(c => {
+        const dp = c.diam_prom ? c.diam_prom.toFixed(1) : '—';
+        html += '<div style="padding:4px 8px; margin-top:2px; background:#fff; border:1px solid #eee; border-radius:3px; font-size:11px; display:flex; justify-content:space-between; align-items:center;">';
+        html += '<span style="font-weight:500;">' + (c.ciclo || '?') + '</span>';
+        html += '<div style="display:flex; gap:10px; align-items:center;">';
+        html += '<span title="Barras">' + c.barras.toLocaleString() + ' bar</span>';
+        html += '<span title="Kilos" style="font-weight:600;">' + Math.round(c.kilos).toLocaleString() + ' kg</span>';
+        html += '<span title="Ejes distintos" style="color:#666;">' + c.ejes + ' ejes</span>';
+        html += '<span title="Diámetro promedio ponderado" style="color:' + sc + '; font-weight:500;">&#x2300; ' + dp + ' mm</span>';
+        html += '</div></div>';
+      });
+
+      html += '</div></div>';
+    });
+
+    html += '</div></div>';
+  });
+
+  // Summary bar
+  const totalBarras = sectores.reduce((a, s) => a + s.barras, 0);
+  const totalKilos = sectores.reduce((a, s) => a + s.kilos, 0);
+  const summary = '<div style="margin-bottom:8px; padding:6px 10px; background:#e8f5e9; border-radius:4px; font-size:12px; display:flex; gap:16px;">' +
+    '<span><b>' + sectores.length + '</b> sectores</span>' +
+    '<span><b>' + totalBarras.toLocaleString() + '</b> barras</span>' +
+    '<span><b>' + Math.round(totalKilos).toLocaleString() + '</b> kg</span>' +
+    '</div>';
+
+  container.innerHTML = summary + html;
+}
+
 // ========================= INICIO (Landing) =========================
 let inicioChart = null;
+let timelineChart = null;
+let _inicioFechaDesde = '';
+let _inicioFechaHasta = '';
+let _inicioAgrupacion = 'dia';
+
+function _dateParams() {
+  const params = new URLSearchParams();
+  if (_inicioFechaDesde) params.set('fecha_desde', _inicioFechaDesde);
+  if (_inicioFechaHasta) params.set('fecha_hasta', _inicioFechaHasta);
+  return params.toString();
+}
+
+function setDateRange(range) {
+  const now = new Date();
+  const today = now.toISOString().slice(0, 10);
+
+  if (range === 'todo') {
+    _inicioFechaDesde = '';
+    _inicioFechaHasta = '';
+  } else if (range === 'semana') {
+    const d = new Date(now);
+    d.setDate(d.getDate() - 7);
+    _inicioFechaDesde = d.toISOString().slice(0, 10);
+    _inicioFechaHasta = today;
+  } else if (range === 'mes') {
+    const d = new Date(now);
+    d.setMonth(d.getMonth() - 1);
+    _inicioFechaDesde = d.toISOString().slice(0, 10);
+    _inicioFechaHasta = today;
+  } else if (range === 'anio') {
+    const d = new Date(now);
+    d.setFullYear(d.getFullYear() - 1);
+    _inicioFechaDesde = d.toISOString().slice(0, 10);
+    _inicioFechaHasta = today;
+  } else if (range === 'custom') {
+    _inicioFechaDesde = document.getElementById('fechaDesde').value || '';
+    _inicioFechaHasta = document.getElementById('fechaHasta').value || '';
+  }
+
+  // Update date inputs
+  document.getElementById('fechaDesde').value = _inicioFechaDesde;
+  document.getElementById('fechaHasta').value = _inicioFechaHasta;
+
+  // Update active button
+  document.querySelectorAll('.btn-periodo').forEach(b => b.classList.remove('active'));
+  const activeBtn = document.querySelector('.btn-periodo[data-range="' + range + '"]');
+  if (activeBtn) activeBtn.classList.add('active');
+
+  // Update label
+  const label = document.getElementById('dateRangeLabel');
+  if (_inicioFechaDesde || _inicioFechaHasta) {
+    label.textContent = (_inicioFechaDesde || '...') + ' → ' + (_inicioFechaHasta || '...');
+  } else {
+    label.textContent = '';
+  }
+
+  loadInicio();
+}
+
+function setAgrupacion(agrup) {
+  _inicioAgrupacion = agrup;
+  document.querySelectorAll('.btn-agrupacion').forEach(b => b.classList.remove('active'));
+  const activeBtn = document.querySelector('.btn-agrupacion[data-agrup="' + agrup + '"]');
+  if (activeBtn) activeBtn.classList.add('active');
+  loadTimeline();
+}
 
 async function loadInicio() {
+  const dp = _dateParams();
+  const url = '/stats' + (dp ? '?' + dp : '');
   let data;
   try {
-    data = await apiGet('/stats');
+    data = await apiGet(url);
   } catch(e) { console.error('loadInicio error:', e); return; }
   if (!data) return;
 
@@ -1415,14 +1827,361 @@ async function loadInicio() {
   const list = document.getElementById('proyectosMiniList');
   if (!data.proyectos || data.proyectos.length === 0) {
     list.innerHTML = '<div class="muted" style="padding:12px;">No hay proyectos cargados</div>';
+  } else {
+    list.innerHTML = data.proyectos.map(p => `
+      <div class="proyecto-mini">
+        <span class="pm-name">${p.nombre}</span>
+        <span class="pm-kilos">${Math.round(p.kilos).toLocaleString()} kg</span>
+      </div>
+    `).join('');
+  }
+
+  // Load timeline and cubicadores in parallel
+  loadTimeline();
+  loadCubicadores();
+}
+
+async function loadTimeline() {
+  const dp = _dateParams();
+  const params = new URLSearchParams(dp);
+  params.set('agrupacion', _inicioAgrupacion);
+  const data = await apiGet('/stats/timeline?' + params.toString());
+  if (!data || !data.timeline) return;
+
+  const items = data.timeline;
+  const labels = items.map(i => i.periodo);
+  const kilosData = items.map(i => i.kilos);
+  const barrasData = items.map(i => i.barras);
+
+  const ctx = document.getElementById('timelineChart').getContext('2d');
+  if (timelineChart) timelineChart.destroy();
+  timelineChart = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [
+        {
+          label: 'Kilos',
+          data: kilosData,
+          backgroundColor: '#8BC34A',
+          borderRadius: 3,
+          yAxisID: 'y'
+        },
+        {
+          label: 'Barras',
+          data: barrasData,
+          type: 'line',
+          borderColor: '#558B2F',
+          backgroundColor: 'rgba(85, 139, 47, 0.1)',
+          fill: true,
+          tension: 0.3,
+          pointRadius: 3,
+          yAxisID: 'y1'
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: { legend: { position: 'top', labels: { font: { size: 11 } } } },
+      scales: {
+        y: {
+          type: 'linear',
+          position: 'left',
+          title: { display: true, text: 'Kilos', font: { size: 11 } },
+          ticks: { callback: v => Math.round(v).toLocaleString() }
+        },
+        y1: {
+          type: 'linear',
+          position: 'right',
+          title: { display: true, text: 'Barras', font: { size: 11 } },
+          grid: { drawOnChartArea: false },
+          ticks: { callback: v => Math.round(v).toLocaleString() }
+        },
+        x: { ticks: { font: { size: 10 }, maxRotation: 45 } }
+      }
+    }
+  });
+}
+
+async function loadCubicadores() {
+  const dp = _dateParams();
+  const url = '/stats/cubicadores' + (dp ? '?' + dp : '');
+  const data = await apiGet(url);
+  if (!data || !data.cubicadores) return;
+
+  const tbody = document.getElementById('cubicadoresBody');
+  if (data.cubicadores.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="6" class="muted">Sin actividad en este período</td></tr>';
     return;
   }
-  list.innerHTML = data.proyectos.map(p => `
-    <div class="proyecto-mini">
-      <span class="pm-name">${p.nombre}</span>
-      <span class="pm-kilos">${Math.round(p.kilos).toLocaleString()} kg</span>
-    </div>
-  `).join('');
+
+  tbody.innerHTML = data.cubicadores.map(c => {
+    const fecha = c.ultima_actividad ? new Date(c.ultima_actividad).toLocaleDateString('es-CL') : '—';
+    return '<tr>' +
+      '<td style="font-weight:500;">' + (c.email || '—') + '</td>' +
+      '<td style="text-align:right;">' + (c.barras || 0).toLocaleString() + '</td>' +
+      '<td style="text-align:right;">' + Math.round(c.kilos || 0).toLocaleString() + ' kg</td>' +
+      '<td style="text-align:right;">' + (c.cargas || 0) + '</td>' +
+      '<td style="text-align:right;">' + (c.proyectos || 0) + '</td>' +
+      '<td style="text-align:right; font-size:11px; color:#666;">' + fecha + '</td>' +
+      '</tr>';
+  }).join('');
+}
+
+// ========================= MI ACTIVIDAD (Cubicador dashboard) =========================
+let miActividadChart = null;
+
+async function loadMiActividad() {
+  let data;
+  try {
+    data = await apiGet('/stats/mi-actividad');
+  } catch(e) { console.error('loadMiActividad error:', e); return; }
+  if (!data) return;
+
+  const el = id => document.getElementById(id);
+  el('miActividadEmail').textContent = data.email || '';
+  el('maHoyBarras').textContent = data.hoy.barras.toLocaleString();
+  el('maHoyKilos').textContent = Math.round(data.hoy.kilos).toLocaleString() + ' kg';
+  el('maHoyCargas').textContent = data.hoy.cargas;
+  el('maSemKilos').textContent = Math.round(data.semana_actual.kilos).toLocaleString() + ' kg';
+
+  // Week comparison
+  const comp = el('maSemComp');
+  const prev = data.semana_anterior.kilos;
+  const curr = data.semana_actual.kilos;
+  if (prev > 0) {
+    const pct = Math.round(((curr - prev) / prev) * 100);
+    if (pct >= 0) {
+      comp.innerHTML = '<span style="color:#558B2F;">&#9650; ' + pct + '% vs sem. anterior</span>';
+    } else {
+      comp.innerHTML = '<span style="color:#b42318;">&#9660; ' + Math.abs(pct) + '% vs sem. anterior</span>';
+    }
+  } else if (curr > 0) {
+    comp.innerHTML = '<span style="color:#558B2F;">Sin datos semana anterior</span>';
+  } else {
+    comp.textContent = '';
+  }
+
+  // Mini-chart: last 14 days
+  const dias = data.dias || [];
+  const labels = dias.map(d => {
+    const parts = d.dia.split('-');
+    return parts[2] + '/' + parts[1];
+  });
+  const kilosData = dias.map(d => d.kilos);
+  const barrasData = dias.map(d => d.barras);
+
+  // Highlight today (last bar)
+  const bgColors = dias.map((d, i) => i === dias.length - 1 ? '#558B2F' : '#8BC34A');
+
+  const ctx = el('miActividadChart').getContext('2d');
+  if (miActividadChart) miActividadChart.destroy();
+  miActividadChart = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [
+        {
+          label: 'Kilos',
+          data: kilosData,
+          backgroundColor: bgColors,
+          borderRadius: 2,
+          yAxisID: 'y'
+        },
+        {
+          label: 'Barras',
+          data: barrasData,
+          type: 'line',
+          borderColor: '#33691E',
+          backgroundColor: 'rgba(51,105,30,0.08)',
+          fill: true,
+          tension: 0.3,
+          pointRadius: 2,
+          borderWidth: 1.5,
+          yAxisID: 'y1'
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { display: true, position: 'top', labels: { font: { size: 10 }, boxWidth: 12 } }
+      },
+      scales: {
+        y: {
+          type: 'linear', position: 'left',
+          title: { display: false },
+          ticks: { font: { size: 9 }, callback: v => Math.round(v).toLocaleString() },
+          grid: { color: '#f0f0f0' }
+        },
+        y1: {
+          type: 'linear', position: 'right',
+          title: { display: false },
+          grid: { drawOnChartArea: false },
+          ticks: { font: { size: 9 }, callback: v => Math.round(v).toLocaleString() }
+        },
+        x: { ticks: { font: { size: 9 }, maxRotation: 45 } }
+      }
+    }
+  });
+}
+
+// ========================= PEDIDOS =========================
+let _pedidoActual = null;
+
+async function loadPedidos() {
+  const container = document.getElementById('pedidosList');
+  const estado = document.getElementById('pedidoFiltroEstado').value;
+  let url = '/pedidos';
+  const params = [];
+  if (estado) params.push('estado=' + encodeURIComponent(estado));
+  if (params.length) url += '?' + params.join('&');
+
+  const data = await apiGet(url);
+  if (!data || !data.pedidos) { container.innerHTML = '<div class="muted">Error cargando pedidos</div>'; return; }
+  if (data.pedidos.length === 0) { container.innerHTML = '<div class="muted">No hay pedidos</div>'; return; }
+
+  const estadoColors = { borrador: '#9E9E9E', enviado: '#2196F3', en_proceso: '#FF9800', completado: '#8BC34A', cancelado: '#b42318' };
+
+  container.innerHTML = data.pedidos.map(p => {
+    const sc = estadoColors[p.estado] || '#666';
+    const fecha = p.fecha_creacion ? p.fecha_creacion.substring(0, 10) : '';
+    return '<div style="display:flex; justify-content:space-between; align-items:center; padding:8px 10px; border-bottom:1px solid #f0f0f0; cursor:pointer;" onclick="openPedido(' + p.id + ')">' +
+      '<div>' +
+        '<span style="font-weight:600; font-size:13px;">' + (p.titulo || 'Sin título') + '</span>' +
+        ' <span class="muted" style="font-size:11px;">#' + p.id + '</span>' +
+        '<div class="muted" style="font-size:11px;">' + (p.nombre_proyecto || p.id_proyecto) + ' · ' + p.total_items + ' items · ' + fecha + '</div>' +
+      '</div>' +
+      '<span style="font-size:11px; padding:2px 8px; border-radius:10px; background:' + sc + '22; color:' + sc + '; font-weight:500;">' + p.estado + '</span>' +
+    '</div>';
+  }).join('');
+}
+
+async function crearPedido() {
+  const proy = document.getElementById('pedidoProyecto').value;
+  const titulo = document.getElementById('pedidoTitulo').value.trim();
+  const msg = document.getElementById('pedidoCreateMsg');
+  if (!proy) { msg.innerHTML = '<span class="status-err">Selecciona un proyecto</span>'; return; }
+  if (!titulo) { msg.innerHTML = '<span class="status-err">Ingresa un título</span>'; return; }
+
+  const res = await apiPostJson('/pedidos', { id_proyecto: proy, titulo: titulo });
+  if (res && res.ok) {
+    msg.innerHTML = '<span class="status-ok">Pedido #' + res.id + ' creado</span>';
+    document.getElementById('pedidoTitulo').value = '';
+    await loadPedidos();
+    openPedido(res.id);
+  } else {
+    msg.innerHTML = '<span class="status-err">Error: ' + (res?.detail || 'desconocido') + '</span>';
+  }
+}
+
+async function openPedido(id) {
+  _pedidoActual = id;
+  const card = document.getElementById('pedidoDetailCard');
+  card.style.display = '';
+
+  const data = await apiGet('/pedidos/' + id);
+  if (!data) { card.style.display = 'none'; return; }
+
+  document.getElementById('pedidoDetailTitle').textContent = data.titulo || 'Sin título';
+  document.getElementById('pedidoDetailMeta').textContent =
+    (data.nombre_proyecto || data.id_proyecto) + ' · Creado por ' + (data.creado_por || '—') +
+    ' · ' + (data.fecha_creacion || '').substring(0, 10);
+  document.getElementById('pedidoDetailEstado').value = data.estado;
+
+  const tbody = document.getElementById('pedidoItemsBody');
+  if (!data.items || data.items.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="7" class="muted">Sin items — agrega barras arriba</td></tr>';
+  } else {
+    const estadoItemColors = { pendiente: '#9E9E9E', en_proceso: '#FF9800', completado: '#8BC34A' };
+    tbody.innerHTML = data.items.map(i => {
+      const ic = estadoItemColors[i.estado] || '#666';
+      return '<tr>' +
+        '<td style="font-weight:600;">' + i.diam + '</td>' +
+        '<td>' + (i.largo || '—') + '</td>' +
+        '<td>' + i.cantidad + '</td>' +
+        '<td>' + (i.sector || '—') + '</td>' +
+        '<td class="muted">' + (i.nota || '') + '</td>' +
+        '<td><span style="font-size:10px; padding:1px 6px; border-radius:8px; background:' + ic + '22; color:' + ic + ';">' + i.estado + '</span></td>' +
+        '<td><button onclick="eliminarItemPedido(' + id + ',' + i.id + ')" style="font-size:10px; padding:2px 6px; background:#fff; border:1px solid #ddd; color:#b42318; cursor:pointer;" title="Eliminar item">✕</button></td>' +
+      '</tr>';
+    }).join('');
+  }
+}
+
+async function cambiarEstadoPedido() {
+  if (!_pedidoActual) return;
+  const estado = document.getElementById('pedidoDetailEstado').value;
+  const msg = document.getElementById('pedidoDetailMsg');
+  const res = await fetch('/pedidos/' + _pedidoActual, {
+    method: 'PATCH',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ estado: estado })
+  });
+  if (res.status === 401) { logout(); return; }
+  const data = await res.json();
+  if (data.ok) {
+    msg.innerHTML = '<span class="status-ok">Estado actualizado a: ' + estado + '</span>';
+    await loadPedidos();
+  } else {
+    msg.innerHTML = '<span class="status-err">Error: ' + (data.detail || 'desconocido') + '</span>';
+  }
+}
+
+async function eliminarPedido() {
+  if (!_pedidoActual) return;
+  if (!confirm('¿Eliminar este pedido y todos sus items?')) return;
+  const res = await apiDelete('/pedidos/' + _pedidoActual);
+  if (res && res.ok) {
+    document.getElementById('pedidoDetailCard').style.display = 'none';
+    _pedidoActual = null;
+    await loadPedidos();
+  } else {
+    alert('Error: ' + (res?.detail || 'desconocido'));
+  }
+}
+
+async function agregarItemPedido() {
+  if (!_pedidoActual) return;
+  const diam = parseFloat(document.getElementById('itemDiam').value);
+  const largo = parseFloat(document.getElementById('itemLargo').value) || null;
+  const cantidad = parseInt(document.getElementById('itemCant').value) || 1;
+  const sector = document.getElementById('itemSector').value || null;
+  const nota = document.getElementById('itemNota').value.trim() || null;
+  const msg = document.getElementById('pedidoDetailMsg');
+
+  if (!diam || isNaN(diam)) { msg.innerHTML = '<span class="status-err">Ingresa diámetro</span>'; return; }
+
+  const res = await apiPostJson('/pedidos/' + _pedidoActual + '/items', {
+    diam, largo, cantidad, sector, nota
+  });
+  if (res && res.ok) {
+    document.getElementById('itemDiam').value = '';
+    document.getElementById('itemLargo').value = '';
+    document.getElementById('itemCant').value = '1';
+    document.getElementById('itemSector').value = '';
+    document.getElementById('itemNota').value = '';
+    msg.innerHTML = '<span class="status-ok">Item agregado</span>';
+    await openPedido(_pedidoActual);
+    await loadPedidos();
+  } else {
+    msg.innerHTML = '<span class="status-err">Error: ' + (res?.detail || 'desconocido') + '</span>';
+  }
+}
+
+async function eliminarItemPedido(pedidoId, itemId) {
+  if (!confirm('¿Eliminar este item?')) return;
+  const res = await apiDelete('/pedidos/' + pedidoId + '/items/' + itemId);
+  if (res && res.ok) {
+    await openPedido(pedidoId);
+    await loadPedidos();
+  } else {
+    alert('Error: ' + (res?.detail || 'desconocido'));
+  }
 }
 
 // ========================= ADMIN =========================
@@ -1529,6 +2288,7 @@ async function createUser() {
   if (!token()) { window.location.href = '/ui/login'; return; }
   await loadMe();
   await loadInicio();
+  await loadMiActividad();
   await loadProyectos();
 
   // Restore saved filters from localStorage
@@ -1547,5 +2307,6 @@ async function createUser() {
   await loadCargas();
   await loadDashboard('sector');
   await loadSectores();
+  await loadPedidos();
   await buscar(true);
 })();
