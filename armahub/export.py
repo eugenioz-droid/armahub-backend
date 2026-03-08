@@ -28,41 +28,40 @@ router = APIRouter()
 # Columnas del formato de exportación aSa Studio
 EXPORT_COLUMNS = [
     ("EJE",       "eje",          "text"),
-    ("ELEMCONFIREQ", "estructura", "text"),
+    ("SECTOR",    "sector",       "text"),
     ("PISO",      "piso",         "text"),
     ("CICLO",     "ciclo",        "text"),
     ("CANT",      "cant_total",   "int"),
     ("Ømm",       "diam",         "int"),
-    ("DE|PA",     "esp",          "num"),
+    ("FIGURA",    "figura",       "text"),
     ("L/cm",      "largo_total",  "int"),
-    ("Masa",      "mult",         "num"),
-    ("Pied",      "cant",         "num"),
-    ("Acm",       "dim_a",        "num"),
-    ("Bcm",       "dim_b",        "num"),
-    ("Ccm",       "dim_c",        "num"),
-    ("Dcm",       "dim_d",        "num"),
-    ("Ecm",       "dim_e",        "num"),
-    ("Fcm",       "dim_f",        "num"),
-    ("Gcm",       "dim_g",        "num"),
-    ("Hcm",       "dim_h",        "num"),
-    ("Icm",       "dim_i",        "num"),
-    ("Jcm",       None,           "num"),   # No existe en CSV, siempre vacío
+    ("MARCA",     "marca",        "text"),
+    ("PROD",      "cod_proyecto", "text"),
+    ("A cm",      "dim_a",        "num"),
+    ("B cm",      "dim_b",        "num"),
+    ("C cm",      "dim_c",        "num"),
+    ("D cm",      "dim_d",        "num"),
+    ("E cm",      "dim_e",        "num"),
+    ("F cm",      "dim_f",        "num"),
+    ("G cm",      "dim_g",        "num"),
+    ("H cm",      "dim_h",        "num"),
+    ("I cm",      "dim_i",        "num"),
+    ("J cm",      None,           "num"),   # No existe en CSV, siempre vacío
     ("AngV1",     "ang1",         "num"),
     ("AngV2",     "ang2",         "num"),
     ("AngV3",     "ang3",         "num"),
-    ("Rcm",       "radio",        "num"),
-    ("PesoKg",    "peso_unitario","dec2"),
-    ("PesoTotal", "peso_total",   "dec1"),
+    ("R cm",      "radio",        "num"),
+    ("PesoKg",    "peso_unitario","dec3"),
+    ("PesoTotal", "peso_total",   "dec2"),
 ]
 
 # Columnas a consultar de la BD
 DB_FIELDS = [
-    "eje", "estructura", "piso", "ciclo", "cant_total", "diam", "esp",
-    "largo_total", "mult", "cant",
+    "eje", "sector", "piso", "ciclo", "cant_total", "diam", "figura",
+    "largo_total", "marca", "cod_proyecto",
     "dim_a", "dim_b", "dim_c", "dim_d", "dim_e", "dim_f", "dim_g", "dim_h", "dim_i",
     "ang1", "ang2", "ang3", "radio",
     "peso_unitario", "peso_total",
-    "sector",
 ]
 
 
@@ -112,6 +111,12 @@ def _build_sheet(wb: Workbook, sheet_name: str, rows: list, sector: str, piso: s
                 try:
                     cell = ws.cell(row=row_idx, column=col_idx, value=round(float(val), 2))
                     cell.number_format = '0.00'
+                except (ValueError, TypeError):
+                    ws.cell(row=row_idx, column=col_idx, value=0)
+            elif fmt == "dec3":
+                try:
+                    cell = ws.cell(row=row_idx, column=col_idx, value=round(float(val), 3))
+                    cell.number_format = '0.000'
                 except (ValueError, TypeError):
                     ws.cell(row=row_idx, column=col_idx, value=0)
             elif fmt == "num":

@@ -247,6 +247,13 @@ async function loadProyectos() {
     </div>
   `}).join('');
 
+  // Populate export project filter
+  const epf = document.getElementById('exportProyecto');
+  const prevE = epf.value;
+  epf.innerHTML = '<option value="">-- Selecciona proyecto --</option>' +
+    data.proyectos.map(p => `<option value="${p.id_proyecto}">${p.nombre_proyecto}</option>`).join('');
+  if (prevE) epf.value = prevE;
+
   // Populate sector constructivo project filter
   const spf = document.getElementById('sectorProyectoFilter');
   const prev = spf.value;
@@ -557,7 +564,7 @@ async function loadFilters(depParams) {
   const data = await apiGet('/filters' + (qs ? '?' + qs : ''));
   if (!data) return;
   
-  function fillSelect(selId, items, isPlanos = false) {
+  function fillSelect(selId, items, mode = 'plain') {
     const sel = document.getElementById(selId);
     if (!sel) return;
     const val = sel.value;
@@ -568,9 +575,12 @@ async function loadFilters(depParams) {
     sel.appendChild(opt0);
     (items || []).forEach(x => {
       const o = document.createElement('option');
-      if (isPlanos) {
+      if (mode === 'planos') {
         o.value = x.code;
         o.textContent = x.nombre || x.code;
+      } else if (mode === 'proyectos') {
+        o.value = x.id;
+        o.textContent = x.nombre || x.id;
       } else {
         o.value = x;
         o.textContent = x;
@@ -583,15 +593,15 @@ async function loadFilters(depParams) {
     }
   }
   
-  // Proyectos always full list
-  fillSelect('proyecto', data.proyectos);
-  fillSelect('exportProyecto', data.proyectos);
-  fillSelect('sectorProyectoFilter', data.proyectos);
-  fillSelect('matrizProyectoFilter', data.proyectos);
-  fillSelect('navProyectoFilter', data.proyectos);
-  fillSelect('pedidoProyecto', data.proyectos);
+  // Proyectos always full list (show nombre, value=id)
+  fillSelect('proyecto', data.proyectos, 'proyectos');
+  fillSelect('exportProyecto', data.proyectos, 'proyectos');
+  fillSelect('sectorProyectoFilter', data.proyectos, 'proyectos');
+  fillSelect('matrizProyectoFilter', data.proyectos, 'proyectos');
+  fillSelect('navProyectoFilter', data.proyectos, 'proyectos');
+  fillSelect('pedidoProyecto', data.proyectos, 'proyectos');
   // Dependent selects
-  fillSelect('plano', data.planos, true);
+  fillSelect('plano', data.planos, 'planos');
   fillSelect('sector', data.sectores);
   fillSelect('piso', data.pisos);
   fillSelect('ciclo', data.ciclos);

@@ -439,7 +439,9 @@ ARMAHUB – PROGRAMA DE TRABAJO
 18. Definir y documentar formato aSa Studio - OK
     - Migración 6: 21 columnas nuevas en barras (bar_id, estructura, tipo, marca, figura, esp, dim_a-i, ang1-3, radio, cod_proyecto, nombre_dwg) - OK
     - Importer actualizado: almacena TODAS las columnas del CSV ArmaDetailer (40 campos) con helpers _opt_float/_opt_text - OK
-    - Formato Excel: 26 columnas (EJE, ELEMCONFIREQ, PISO, CICLO, CANT, Ømm, DE|PA, L/cm, Masa, Pied, A-Icm, Jcm, AngV1-3, Rcm, PesoKg, PesoTotal) - OK
+    - Formato Excel: 26 columnas (EJE, SECTOR, PISO, CICLO, CANT, Ømm, FIGURA, L/cm, MARCA, PROD, A-I cm, J cm, AngV1-3, R cm, PesoKg, PesoTotal) - OK
+    - Corrección columnas: B=SECTOR (dato ELEV/FUND/etc), G=FIGURA (catálogo Detailer), I=MARCA (CB/TR/etc), J=PROD (código producto aSa) - OK
+    - Headers dimensiones con espacio: "A cm", "B cm"... "R cm" — PesoKg 3 decimales, PesoTotal 2 decimales - OK
 
 19. Endpoint de export a EXCEL - OK
     - GET /proyectos/{id}/exportar genera ZIP con .xlsx por SECTOR+PISO+CICLO - OK
@@ -647,11 +649,51 @@ y sienta las bases para el crecimiento multi-cliente.
     - Dashboard analítico de calculistas: comparar métricas entre calculistas - Pendiente
     - Filtro por calculista en dashboards y exportaciones - Pendiente
 
----
-## FASE 6 — Preparación para Apps
+28. Rediseño de dashboards y analítica avanzada - Pendiente
+    - Definir qué dashboards se necesitan (KPIs clave, vistas por rol, comparativas) - Pendiente
+    - Rediseñar tab Dashboards con métricas más relevantes y gráficos mejorados - Pendiente
+    - Dashboards específicos por rol (admin vs coordinador vs cubicador) - Pendiente
+    - Pendiente definición de requerimientos específicos por parte del usuario
 
-28. API versionada (/api/v1) - Pendiente
-29. CORS para aplicaciones externas - Pendiente
-30. Observabilidad: /health, logs estructurados - Pendiente
-31. Performance: queries optimizadas, pool de conexiones - Pendiente
-32. Bootstrap profesional (solo dev) - Pendiente
+---
+## FASE 6 — Gestión de errores y reclamos
+
+**Objetivo**: Módulo centralizado para registrar, clasificar, dar seguimiento y cerrar
+errores y reclamos levantados por clientes. Incluye formulario tipo, análisis de causa raíz
+(Ishikawa) y trazabilidad completa. Visible para todos los roles excepto cliente.
+
+29. Modelo de datos de reclamos - Pendiente
+    - Tabla "reclamos" (id, id_proyecto, titulo, descripcion, estado, prioridad, creado_por, fecha_creacion, fecha_cierre) - Pendiente
+    - Tabla "reclamo_seguimientos" (id, reclamo_id, usuario, comentario, fecha, estado_nuevo) - Pendiente
+    - Estados: abierto → en_análisis → acción_correctiva → cerrado / rechazado - Pendiente
+    - Prioridades: baja, media, alta, crítica - Pendiente
+    - Migración DB para tablas y relaciones - Pendiente
+
+30. Formulario de registro de reclamo - Pendiente
+    - Campos: proyecto, título, descripción detallada, prioridad, categoría - Pendiente
+    - Clasificación Ishikawa: Mano de obra, Método, Material, Máquina, Medición, Medio ambiente - Pendiente
+    - Adjuntar evidencia (texto/referencia, futuro: archivos) - Pendiente
+    - Asignación de responsable - Pendiente
+
+31. Seguimiento y cierre de reclamos - Pendiente
+    - Timeline de seguimientos por reclamo (comentarios, cambios de estado) - Pendiente
+    - Cambio de estado con registro automático de quién y cuándo - Pendiente
+    - Campo de acción correctiva y acción preventiva - Pendiente
+    - Cierre con resumen de resolución - Pendiente
+
+32. UI Tab Reclamos - Pendiente
+    - Nueva pestaña "Reclamos" visible para admin, coordinador, cubicador, operador - Pendiente
+    - Lista de reclamos con filtros (estado, prioridad, proyecto) - Pendiente
+    - Vista detalle con timeline de seguimientos - Pendiente
+    - Formulario de nuevo reclamo y de nuevo seguimiento - Pendiente
+    - KPIs: reclamos abiertos, tiempo promedio de resolución, por categoría Ishikawa - Pendiente
+    - Definir si cada rol ve todos los reclamos o solo los de sus obras - Pendiente
+
+---
+## FASE 7 — Preparación para Apps
+
+33. API versionada (/api/v1) - Pendiente
+34. CORS para aplicaciones externas - Pendiente
+35. Observabilidad: /health, logs estructurados - Pendiente
+36. Performance: queries optimizadas, pool de conexiones - Pendiente
+37. Bootstrap profesional (solo dev) - Pendiente

@@ -177,10 +177,17 @@ def filters(
             # Role-based project filter
             allowed = _get_allowed_project_ids(cur, user)
             pf_sql, pf_params = _project_filter_sql(allowed)
+            pf_b, pf_bp = _project_filter_sql(allowed, "b")
 
-            # Proyectos: filtered by authorization
-            cur.execute("SELECT DISTINCT id_proyecto FROM barras WHERE 1=1" + pf_sql + " ORDER BY id_proyecto", pf_params)
-            proyectos = [r[0] for r in cur.fetchall() if r[0] is not None]
+            # Proyectos: filtered by authorization (return id + nombre)
+            cur.execute("""
+                SELECT DISTINCT b.id_proyecto, COALESCE(p.nombre_proyecto, b.nombre_proyecto, b.id_proyecto)
+                FROM barras b
+                LEFT JOIN proyectos p ON b.id_proyecto = p.id_proyecto
+                WHERE 1=1""" + pf_b + """
+                ORDER BY COALESCE(p.nombre_proyecto, b.nombre_proyecto, b.id_proyecto)
+            """, pf_bp)
+            proyectos = [{"id": r[0], "nombre": r[1]} for r in cur.fetchall() if r[0] is not None]
 
             # Planos: filtrado solo por proyecto (+ auth)
             w_parts, w_vals = ["1=1"], list(pf_params)
