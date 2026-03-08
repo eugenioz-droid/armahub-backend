@@ -30,10 +30,15 @@
       </div>
       <div id="exportMatrizContainer" style="overflow-x:auto;"></div>
       <div class="row" style="gap:10px; margin-top:14px; align-items:center; flex-wrap:wrap;">
-        <button onclick="descargarExportSeleccionados()" id="exportSelBtn" style="font-size:13px; padding:8px 20px;" disabled>📥 Exportar seleccionados (0)</button>
-        <button onclick="descargarExport()" style="font-size:13px; padding:8px 20px;">📥 Exportar TODO</button>
-        <button onclick="limpiarEstadoExport()" class="secondary" style="font-size:11px; padding:6px 12px;">Limpiar estado exportación</button>
+        <button onclick="descargarExportSeleccionados()" id="exportSelBtn" style="font-size:13px; padding:8px 20px;" disabled>Exportar seleccionados (0)</button>
+        <button onclick="descargarExport()" style="font-size:13px; padding:8px 20px;">Exportar TODO</button>
       </div>
       <div id="exportStatus" class="muted" style="margin-top:8px;"></div>
+    </div>
+
+    <!-- Reporte de exportación -->
+    <div class="card" id="exportReportCard" style="display:none;">
+      <h3 style="margin:0 0 10px 0;">Reporte de exportación</h3>
+      <div id="exportReportContainer"></div>
     </div>
   </div>

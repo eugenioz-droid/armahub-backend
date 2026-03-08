@@ -215,6 +215,23 @@ def exportar_proyecto(
 
             zip_buffer.seek(0)
 
+            # Log each exported sector to export_log
+            email = user.get("email", "unknown")
+            now_iso = __import__("datetime").datetime.utcnow().isoformat() + "Z"
+            for sector, piso, ciclo in combos:
+                export_key = f"{sector}_{piso}_{ciclo}"
+                # Count barras/kilos for this combo
+                cur.execute("""
+                    SELECT COUNT(*), COALESCE(SUM(peso_total), 0)
+                    FROM barras WHERE id_proyecto = %s AND sector = %s AND piso = %s AND ciclo = %s
+                """, (id_proyecto, sector, piso, ciclo))
+                stats = cur.fetchone()
+                cur.execute("""
+                    INSERT INTO export_log (id_proyecto, sector, piso, ciclo, export_key, usuario, fecha, barras, kilos)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """, (id_proyecto, sector, piso, ciclo, export_key, email, now_iso,
+                      int(stats[0]) if stats else 0, round(float(stats[1]), 2) if stats else 0))
+
             # Nombre del ZIP: nombre del proyecto (sanitizado)
             safe_name = "".join(c for c in nombre_proyecto if c.isalnum() or c in " -_").strip()
             zip_filename = f"{safe_name or id_proyecto}_export.zip"
@@ -224,3 +241,105 @@ def exportar_proyecto(
                 media_type="application/zip",
                 headers={"Content-Disposition": f'attachment; filename="{zip_filename}"'}
             )
+
+
+@router.get("/proyectos/{id_proyecto}/export-history")
+def export_history(
+    id_proyecto: str,
+    user=Depends(get_current_user),
+):
+    """Retorna historial de exportaciones por sector para un proyecto.
+    Para cada export_key, indica si fue exportado, cuántas veces y la última fecha."""
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT 1 FROM proyectos WHERE id_proyecto = %s", (id_proyecto,))
+            if not cur.fetchone():
+                raise HTTPException(status_code=404, detail="Proyecto no encontrado")
+
+            cur.execute("""
+                SELECT export_key,
+                       COUNT(*) AS veces,
+                       MAX(fecha) AS ultima_fecha,
+                       (array_agg(usuario ORDER BY fecha DESC))[1] AS ultimo_usuario,
+                       SUM(barras) AS total_barras,
+                       SUM(kilos) AS total_kilos
+                FROM export_log
+                WHERE id_proyecto = %s
+                GROUP BY export_key
+                ORDER BY export_key
+            """, (id_proyecto,))
+            rows = cur.fetchall()
+
+    return {
+        "id_proyecto": id_proyecto,
+        "history": {
+            r[0]: {
+                "veces": int(r[1]),
+                "ultima_fecha": r[2],
+                "ultimo_usuario": r[3],
+                "total_barras": int(r[4] or 0),
+                "total_kilos": round(float(r[5] or 0), 2),
+            }
+            for r in rows
+        }
+    }
+
+
+@router.get("/proyectos/{id_proyecto}/export-report")
+def export_report(
+    id_proyecto: str,
+    user=Depends(get_current_user),
+):
+    """Reporte completo: todos los sectores del proyecto con estado de exportación."""
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT nombre_proyecto FROM proyectos WHERE id_proyecto = %s", (id_proyecto,))
+            prow = cur.fetchone()
+            if not prow:
+                raise HTTPException(status_code=404, detail="Proyecto no encontrado")
+
+            # All sector combos in project
+            cur.execute("""
+                SELECT sector, piso, ciclo, COUNT(*) AS barras, COALESCE(SUM(peso_total), 0) AS kilos
+                FROM barras
+                WHERE id_proyecto = %s AND sector IS NOT NULL AND sector != ''
+                GROUP BY sector, piso, ciclo
+                ORDER BY sector, piso, ciclo
+            """, (id_proyecto,))
+            combos = cur.fetchall()
+
+            # Export history
+            cur.execute("""
+                SELECT export_key, COUNT(*), MAX(fecha),
+                       (array_agg(usuario ORDER BY fecha DESC))[1]
+                FROM export_log WHERE id_proyecto = %s
+                GROUP BY export_key
+            """, (id_proyecto,))
+            history = {r[0]: {"veces": int(r[1]), "ultima_fecha": r[2], "ultimo_usuario": r[3]} for r in cur.fetchall()}
+
+    items = []
+    for sector, piso, ciclo, barras, kilos in combos:
+        key = f"{sector}_{piso}_{ciclo}"
+        h = history.get(key)
+        items.append({
+            "sector": sector, "piso": piso, "ciclo": ciclo,
+            "export_key": key,
+            "barras": int(barras), "kilos": round(float(kilos), 2),
+            "exportado": h is not None,
+            "veces_exportado": h["veces"] if h else 0,
+            "ultima_fecha": h["ultima_fecha"] if h else None,
+            "ultimo_usuario": h["ultimo_usuario"] if h else None,
+        })
+
+    total = len(items)
+    exportados = sum(1 for i in items if i["exportado"])
+
+    return {
+        "id_proyecto": id_proyecto,
+        "nombre_proyecto": prow[0],
+        "total_sectores": total,
+        "exportados": exportados,
+        "pendientes": total - exportados,
+        "porcentaje": round(exportados / total * 100, 1) if total > 0 else 0,
+        "items": items,
+    }

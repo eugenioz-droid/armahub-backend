@@ -468,33 +468,13 @@ ARMAHUB – PROGRAMA DE TRABAJO
        - Cada sub-fila de sector (FUND/ELEV/LCIELO/VCIELO) tiene un checkbox
        - Cada celda muestra: checkbox + nombre sector + kilos + barras (compacto)
        - Celdas vacías (sin datos) no muestran checkbox
-
-    c) Selección inteligente - OK
-       - Click en header de piso → seleccionar/deseleccionar todo el piso
-       - Click en header de ciclo → seleccionar/deseleccionar todo el ciclo
-       - Botón "Seleccionar todo" / "Deseleccionar todo"
-       - Contador: "X de Y sectores seleccionados"
-
-    d) Acciones de exportación - OK
-       - Botón "📥 Exportar seleccionados (N)" → ZIP parcial con solo los seleccionados
-       - Botón "📥 Exportar TODO" → ZIP completo (comportamiento actual)
-       - Deshabilitado si no hay selección (para el parcial)
-
-    e) Tracking visual de estado exportado - OK
-       - Al completar descarga, marcar celdas exportadas con fondo verde + ✅
-       - Persistencia en localStorage por proyecto (clave: `export_done_{id_proyecto}`)
-       - Formato almacenado: array de strings `["ELEV_P1_C1", "FUND_P1_C2", ...]`
-       - Visual: celda no exportada = fondo blanco, exportada = fondo #e8f5e9 + ✅
-       - Botón "Limpiar estado exportación" para resetear todos los checks verdes
-
-    f) Flujo completo - OK
        1. Usuario selecciona proyecto en el selector
-       2. Se carga la matriz con todas las combinaciones sector+piso+ciclo
-       3. Usuario marca checkboxes (individualmente o por piso/ciclo)
-       4. Click "Exportar seleccionados" → descarga ZIP parcial
-       5. Celdas exportadas cambian a verde con ✅
-       6. Al volver al proyecto, el estado verde persiste (localStorage)
-       7. El usuario ve de un vistazo qué falta por exportar
+       2. Se carga la matriz + historial de exportación del servidor
+       3. Usuario marca checkboxes (individualmente, por piso con checkbox, o por ciclo)
+       4. Click "Exportar seleccionados" descarga ZIP parcial + registra en export_log
+       5. Celdas exportadas cambian a verde con checkmark (persistido en servidor)
+       6. Al volver al proyecto, el estado se carga del servidor
+       7. Reporte muestra progreso, veces exportado, usuario y fecha
 
 ---
 ## FASE 4 — Refactorización UI y sistema de roles

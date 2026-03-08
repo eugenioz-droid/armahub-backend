@@ -279,7 +279,7 @@ async def import_armadetailer(
             _opt_float("ANG2"),
             _opt_float("ANG3"),
             _opt_float("R"),
-            _opt_text("COD_PROYECTO"),
+            _opt_text("COD_PROD") or _opt_text("COD_PROYECTO"),
             _opt_text("NOMBRE_DWG"),
         ))
 
