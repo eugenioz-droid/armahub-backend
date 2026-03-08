@@ -1777,7 +1777,7 @@ async function buscar(reset = false) {
     const ord = document.getElementById('order_by').value;
     const dir = document.getElementById('order_dir').value;
     const arrow = c.key === ord ? (dir === 'asc' ? ' \u25b2' : ' \u25bc') : '';
-    hdr += '<th style="cursor:pointer; padding:4px 6px;" onclick="document.getElementById(\'order_by\').value=\'' + c.key + '\'; buscar(true);">' + c.label + arrow + '</th>';
+    hdr += '<th style="cursor:pointer; padding:4px 6px;" onclick="document.getElementById(\\'order_by\\').value=\\'' + c.key + '\\'; buscar(true);">' + c.label + arrow + '</th>';
   });
   hdr += '</tr></thead>';
 
@@ -1787,7 +1787,7 @@ async function buscar(reset = false) {
     const id = row.id_unico;
     const sel = selectedBarras.has(id);
     body += '<tr id="row_' + id.replace(/"/g, '') + '" style="' + (sel ? 'background:#f0f9e8;' : '') + '">';
-    body += '<td style="width:28px;"><input type="checkbox" class="barra-cb" data-id="' + id + '" id="cb_' + id.replace(/"/g, '') + '" ' + (sel ? 'checked' : '') + ' onchange="toggleBarra(\'' + id.replace(/'/g, "\\'") + '\')" /></td>';
+    body += '<td style="width:28px;"><input type="checkbox" class="barra-cb" data-id="' + id + '" id="cb_' + id.replace(/"/g, '') + '" ' + (sel ? 'checked' : '') + ' onchange="toggleBarra(\\'' + id.replace(/'/g, "\\'") + '\\')" /></td>';
     DISPLAY_COLS.forEach(c => {
       let val = row[c.key];
       if (c.short) val = shortId(val);
