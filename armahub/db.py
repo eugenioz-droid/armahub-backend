@@ -370,6 +370,22 @@ MIGRATIONS = [
         )""",
         "CREATE INDEX IF NOT EXISTS idx_reclamo_img_reclamo ON reclamo_imagenes(reclamo_id)",
     ]),
+    (16, "reclamos: FK id_proyecto ON DELETE SET NULL en vez de CASCADE", [
+        # Drop the old CASCADE FK and recreate as SET NULL
+        """DO $$
+        DECLARE fk_name TEXT;
+        BEGIN
+            SELECT constraint_name INTO fk_name
+            FROM information_schema.table_constraints
+            WHERE table_name = 'reclamos'
+              AND constraint_type = 'FOREIGN KEY'
+              AND constraint_name LIKE '%id_proyecto%';
+            IF fk_name IS NOT NULL THEN
+                EXECUTE 'ALTER TABLE reclamos DROP CONSTRAINT ' || fk_name;
+            END IF;
+        END $$;""",
+        "ALTER TABLE reclamos ADD CONSTRAINT reclamos_id_proyecto_fkey FOREIGN KEY (id_proyecto) REFERENCES proyectos(id_proyecto) ON DELETE SET NULL",
+    ]),
 ]
 
 

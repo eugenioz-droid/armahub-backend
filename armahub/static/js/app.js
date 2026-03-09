@@ -3531,6 +3531,10 @@ switchModule = function(mod) {
   if (mod !== 'hub') loadModuleData(mod);
 };
 
+// Prevent browser from opening files dropped outside the drop zone
+document.addEventListener('dragover', function(e) { e.preventDefault(); });
+document.addEventListener('drop', function(e) { e.preventDefault(); });
+
 (async function init() {
   if (!token()) { window.location.href = '/ui/login'; return; }
   await loadMe();
