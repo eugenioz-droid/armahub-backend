@@ -528,12 +528,12 @@ def get_cargas_recientes(
             pf_sql, pf_params = _project_filter_sql(allowed)
             cur.execute("""
                 SELECT id, id_proyecto, nombre_proyecto, usuario, archivo, fecha, barras_count, kilos,
-                       estado, version_archivo, plano_code
+                       estado, version_archivo, plano_code, errores
                 FROM imports
                 WHERE 1=1""" + pf_sql + """
                 ORDER BY id DESC
                 LIMIT %s
-            """, (pf_params + [limit]))  # Added parentheses here
+            """, (pf_params + [limit]))
             rows = cur.fetchall()
     return {
         "cargas": [
@@ -549,6 +549,7 @@ def get_cargas_recientes(
                 "estado": r[8],
                 "version_archivo": r[9],
                 "plano_code": r[10],
+                "errores": r[11],
             }
             for r in rows
         ]
@@ -558,14 +559,14 @@ def get_cargas_recientes(
 @router.get("/proyectos/{id_proyecto}/cargas")
 def get_cargas_proyecto(
     id_proyecto: str,
-    limit: int = 20,
+    limit: int = 500,
     user=Depends(get_current_user),
 ):
     """Historial de cargas de un proyecto específico."""
     if limit < 1:
         limit = 1
-    if limit > 100:
-        limit = 100
+    if limit > 500:
+        limit = 500
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("SELECT id_proyecto FROM proyectos WHERE id_proyecto = %s", (id_proyecto,))
@@ -573,7 +574,7 @@ def get_cargas_proyecto(
                 raise HTTPException(status_code=404, detail="Proyecto no encontrado")
             cur.execute("""
                 SELECT id, usuario, archivo, fecha, barras_count, kilos,
-                       estado, version_archivo, plano_code
+                       estado, version_archivo, plano_code, errores
                 FROM imports
                 WHERE id_proyecto = %s
                 ORDER BY id DESC
@@ -593,6 +594,7 @@ def get_cargas_proyecto(
                 "estado": r[6],
                 "version_archivo": r[7],
                 "plano_code": r[8],
+                "errores": r[9],
             }
             for r in rows
         ]

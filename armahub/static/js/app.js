@@ -349,23 +349,32 @@ async function toggleCargasProyecto(idProyecto) {
 
 async function loadCargasProyecto(idProyecto) {
   const list = document.getElementById('cargas-list-' + idProyecto);
-  const data = await apiGet('/proyectos/' + encodeURIComponent(idProyecto) + '/cargas?limit=10');
+  const data = await apiGet('/proyectos/' + encodeURIComponent(idProyecto) + '/cargas?limit=500');
   if (!data || !data.cargas) { list.innerHTML = '<span class="muted">Error cargando</span>'; return; }
   if (data.cargas.length === 0) {
     list.innerHTML = '<span class="muted">Sin cargas registradas para este proyecto</span>';
     return;
   }
   list.innerHTML = `
+    <div style="max-height:350px; overflow-y:auto; border:1px solid #eee; border-radius:4px;">
     <table style="width:100%; font-size:12px;">
-      <thead><tr><th>Archivo</th><th>Plano</th><th>Barras</th><th>Kilos</th><th>Versión</th><th>Usuario</th><th>Fecha</th><th></th></tr></thead>
+      <thead style="position:sticky; top:0; background:#f8f8f8; z-index:1;"><tr><th>Archivo</th><th>Plano</th><th>Barras</th><th>Kilos</th><th>Versión</th><th>Usuario</th><th>Fecha</th><th></th></tr></thead>
       <tbody>${data.cargas.map(c => {
         let fecha = '';
         if (c.fecha) {
           const d = new Date(c.fecha);
           fecha = d.toLocaleDateString('es-CL') + ' ' + d.toLocaleTimeString('es-CL', {hour:'2-digit', minute:'2-digit'});
         }
-        const estadoBadge = c.estado && c.estado !== 'ok' ? '<span style="color:#856404; font-size:10px;">(' + c.estado + ')</span> ' : '';
-        return '<tr>' +
+        let estadoBadge = '';
+        let rowBg = '';
+        if (c.estado === 'parcial') {
+          estadoBadge = '<span style="background:#fff3cd; color:#856404; padding:1px 6px; border-radius:3px; font-size:10px; font-weight:600;" title="' + (c.errores || 'Algunas filas fueron rechazadas durante la importación').replace(/"/g, '&quot;') + '">&#9888; PARCIAL</span> ';
+          rowBg = ' style="background:#fffde7;"';
+        } else if (c.estado === 'error') {
+          estadoBadge = '<span style="background:#ffcdd2; color:#b42318; padding:1px 6px; border-radius:3px; font-size:10px; font-weight:600;" title="' + (c.errores || 'Todas las filas fueron rechazadas').replace(/"/g, '&quot;') + '">&#10060; ERROR</span> ';
+          rowBg = ' style="background:#fff5f5;"';
+        }
+        return '<tr' + rowBg + '>' +
           '<td>' + estadoBadge + (c.archivo || '-') + '</td>' +
           '<td>' + (c.plano_code || '-') + '</td>' +
           '<td>' + c.barras_count + '</td>' +
@@ -376,7 +385,9 @@ async function loadCargasProyecto(idProyecto) {
           '<td><button class="secondary" style="padding:2px 6px; font-size:10px; color:#b42318;" onclick="deleteCarga(' + c.id + ',\'' + idProyecto.replace(/'/g, "&#39;") + '\')">Eliminar</button></td>' +
         '</tr>';
       }).join('')}</tbody>
-    </table>`;
+    </table>
+    </div>
+    <div class="muted" style="font-size:10px; margin-top:4px;">${data.cargas.length} carga(s) en total</div>`;
 }
 
 async function deleteCarga(cargaId, idProyecto) {
@@ -839,8 +850,16 @@ async function loadCargas() {
           const d = new Date(c.fecha);
           fecha = d.toLocaleDateString('es-CL') + ' ' + d.toLocaleTimeString('es-CL', {hour:'2-digit', minute:'2-digit'});
         }
-        const estadoBadge = c.estado === 'ok' ? '' : `<span class="badge" style="background:#fff3cd; color:#856404; font-size:10px;">${c.estado}</span> `;
-        return `<tr>
+        let estadoBadge = '';
+        let rowBg = '';
+        if (c.estado === 'parcial') {
+          estadoBadge = `<span style="background:#fff3cd; color:#856404; padding:1px 6px; border-radius:3px; font-size:10px; font-weight:600;" title="${(c.errores || 'Algunas filas rechazadas').replace(/"/g, '&quot;')}">&#9888; PARCIAL</span> `;
+          rowBg = ' style="background:#fffde7;"';
+        } else if (c.estado === 'error') {
+          estadoBadge = `<span style="background:#ffcdd2; color:#b42318; padding:1px 6px; border-radius:3px; font-size:10px; font-weight:600;" title="${(c.errores || 'Todas las filas rechazadas').replace(/"/g, '&quot;')}">&#10060; ERROR</span> `;
+          rowBg = ' style="background:#fff5f5;"';
+        }
+        return `<tr${rowBg}>
           <td>${estadoBadge}<strong>${c.nombre_proyecto || c.id_proyecto}</strong></td>
           <td class="muted" style="font-size:11px;">${c.archivo || '-'}</td>
           <td class="muted" style="font-size:11px;">${c.plano_code || '-'}</td>
@@ -1191,11 +1210,14 @@ function buildExportMatriz(items, proy) {
     });
   });
 
+  // Section type initials for piso breakdown
+  const TYPE_INITIALS = { 'FUND': 'F', 'LCIELO': 'L', 'VCIELO': 'V', 'ELEV': 'E' };
+
   // Build HTML table
   let html = '<table style="width:100%; border-collapse:collapse; font-size:11px;">';
   // Header row with ciclo names (clickable for column selection)
   html += '<thead><tr>';
-  html += '<th style="border:1px solid #333; padding:2px 4px; background:#1a1a1a; color:#8BC34A; white-space:nowrap; width:60px; font-size:10px;">Piso</th>';
+  html += '<th style="border:1px solid #333; padding:3px 4px; background:#1a1a1a; color:#8BC34A; white-space:nowrap; min-width:120px; font-size:10px;">Piso</th>';
   ciclos.forEach(c => {
     html += '<th style="border:1px solid #333; padding:2px 4px; background:#1a1a1a; color:#8BC34A; text-align:center; white-space:nowrap; cursor:pointer; font-size:10px;" onclick="exportToggleCiclo(\'' + c + '\')" title="Seleccionar/deseleccionar columna ' + c + '">' + c + '</th>';
   });
@@ -1203,11 +1225,21 @@ function buildExportMatriz(items, proy) {
 
   pisos.forEach(piso => {
     const types = getTypesForPiso(piso);
-    // Compute piso-level selection state for the checkbox
+    // Compute piso-level totals (kg and barras) and per-section totals
     const pisoKeys = [];
+    let pisoTotalKg = 0, pisoTotalBar = 0;
+    const sectionTotals = {}; // { 'ELEV': {kg, bar}, 'LCIELO': {kg, bar}, ... }
     types.forEach(tipo => {
+      if (!sectionTotals[tipo]) sectionTotals[tipo] = { kg: 0, bar: 0 };
       ciclos.forEach(ciclo => {
-        if (lookup[tipo + '|' + piso + '|' + ciclo]) pisoKeys.push(tipo + '_' + piso + '_' + ciclo);
+        const d = lookup[tipo + '|' + piso + '|' + ciclo];
+        if (d) {
+          pisoKeys.push(tipo + '_' + piso + '_' + ciclo);
+          pisoTotalKg += d.kilos;
+          pisoTotalBar += d.barras;
+          sectionTotals[tipo].kg += d.kilos;
+          sectionTotals[tipo].bar += d.barras;
+        }
       });
     });
     const allPisoSelected = pisoKeys.length > 0 && pisoKeys.every(k => _exportSelected.has(k));
@@ -1216,16 +1248,28 @@ function buildExportMatriz(items, proy) {
     types.forEach((tipo, typeIdx) => {
       html += '<tr>';
       if (typeIdx === 0) {
-        // Compact piso cell with checkbox
-        html += '<td rowspan="' + types.length + '" style="border:1px solid #ccc; padding:2px 3px; font-weight:bold; background:#f8f8f8; color:#1a1a1a; vertical-align:middle; text-align:center; white-space:nowrap; min-width:55px;">';
-        html += '<div style="display:flex; align-items:center; justify-content:center; gap:3px; cursor:pointer;" onclick="exportTogglePiso(\'' + piso + '\')" title="Seleccionar/deseleccionar todo ' + piso + '">';
+        // Piso cell with checkbox + total + section breakdown
+        html += '<td rowspan="' + types.length + '" style="border:1px solid #ccc; padding:4px 5px; font-weight:bold; background:#f8f8f8; color:#1a1a1a; vertical-align:middle; white-space:nowrap; min-width:120px;">';
+        // Top: checkbox + piso name + total
+        html += '<div style="display:flex; align-items:center; gap:4px; cursor:pointer; margin-bottom:3px;" onclick="exportTogglePiso(\'' + piso + '\')" title="Seleccionar/deseleccionar todo ' + piso + '">';
         const cbStyle = allPisoSelected ? 'checked' : '';
         const indeterminate = (!allPisoSelected && somePisoSelected) ? 'style="opacity:0.5;"' : '';
         html += '<input type="checkbox" ' + cbStyle + ' ' + indeterminate + ' style="width:13px; height:13px; pointer-events:none; accent-color:#4285f4; margin:0; flex-shrink:0;" />';
-        html += '<span style="font-size:11px; font-weight:700; line-height:1;">' + piso + '</span>';
+        html += '<span style="font-size:11px; font-weight:700; line-height:1;">' + piso + ': ' + Math.round(pisoTotalKg).toLocaleString() + 'kg ' + pisoTotalBar + 'un</span>';
         html += '</div>';
+        // Bottom: section breakdown lines
+        if (types.length > 1 || types[0] !== 'ELEV') {
+          html += '<div style="padding-left:18px; font-size:9px; color:#555; line-height:1.4;">';
+          types.forEach(t => {
+            const st = sectionTotals[t];
+            const initial = TYPE_INITIALS[t] || t.charAt(0);
+            html += '<div>' + initial + ': ' + Math.round(st.kg).toLocaleString() + 'kg ' + st.bar + 'un</div>';
+          });
+          html += '</div>';
+        }
         html += '</td>';
       }
+      // Data cells for each ciclo
       ciclos.forEach(ciclo => {
         const lookupKey = tipo + '|' + piso + '|' + ciclo;
         const exportKey = tipo + '_' + piso + '_' + ciclo;
@@ -1236,8 +1280,8 @@ function buildExportMatriz(items, proy) {
           const isSelected = _exportSelected.has(exportKey);
           const bg = isDone ? '#e8f5e9' : (isSelected ? '#e3f0ff' : '#fff');
           const border = isSelected ? '2px solid #4285f4' : '1px solid #ccc';
-          const doneTitle = isDone ? ' | Exportado ' + hist.veces + 'x, último: ' + (hist.ultima_fecha || '').substring(0, 10) : '';
-          html += '<td style="border:' + border + '; padding:2px 3px; background:' + bg + '; text-align:center; cursor:pointer; position:relative; transition:all 0.12s; min-width:60px;" ';
+          const doneTitle = isDone ? ' | Exportado ' + hist.veces + 'x, \u00faltimo: ' + (hist.ultima_fecha || '').substring(0, 10) : '';
+          html += '<td style="border:' + border + '; padding:2px 4px; background:' + bg + '; text-align:center; cursor:pointer; position:relative; transition:all 0.12s; min-width:80px; white-space:nowrap;" ';
           html += 'onclick="exportToggleCell(\'' + exportKey + '\')" ';
           html += 'title="' + tipo + ' ' + piso + ' ' + ciclo + ': ' + d.barras + ' barras, ' + Math.round(d.kilos).toLocaleString() + ' kg' + doneTitle + '">';
           // Checkbox
@@ -1246,9 +1290,12 @@ function buildExportMatriz(items, proy) {
           if (isDone) {
             html += '<span style="position:absolute; top:0px; right:2px; font-size:9px; color:#558B2F;" title="Exportado ' + hist.veces + ' vez(es)">&#10004;</span>';
           }
-          html += '<div style="font-weight:600; font-size:8px; color:#666; line-height:1.1;">' + tipo + '</div>';
-          html += '<div style="font-size:10px; font-weight:bold; color:#1a1a1a; line-height:1.2;">' + Math.round(d.kilos).toLocaleString() + ' kg</div>';
-          html += '<div style="font-size:8px; color:#888; line-height:1.1;">' + d.barras + ' bar</div>';
+          // Compact single-line: TIPO  kg  un
+          html += '<div style="display:flex; align-items:baseline; justify-content:center; gap:4px;">';
+          html += '<span style="font-weight:600; font-size:9px; color:#666;">' + tipo + '</span>';
+          html += '<span style="font-size:10px; font-weight:bold; color:#1a1a1a;">' + Math.round(d.kilos).toLocaleString() + 'kg</span>';
+          html += '<span style="font-size:9px; color:#888;">' + d.barras + 'un</span>';
+          html += '</div>';
           html += '</td>';
         } else {
           html += '<td style="border:1px solid #eee; padding:2px; background:#fafafa;"></td>';
