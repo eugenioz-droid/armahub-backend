@@ -12,10 +12,13 @@ Incluye:
 """
 
 import os
+import time
 from fastapi import APIRouter
 from fastapi.responses import HTMLResponse
 from jinja2 import Environment, FileSystemLoader
 from .db import users_count
+
+_start_ts = str(int(time.time()))
 
 router = APIRouter()
 
@@ -41,7 +44,7 @@ def ui_bootstrap():
 @router.get("/ui", response_class=HTMLResponse)
 def ui_app():
     tmpl = _env.get_template("app.html")
-    html = tmpl.render()
+    html = tmpl.render(cache_bust=_start_ts)
     return HTMLResponse(
         content=html,
         headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0"}

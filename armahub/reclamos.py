@@ -355,9 +355,9 @@ def reclamos_dashboard(user=Depends(get_current_user)):
         with conn.cursor() as cur:
             # 1) Reclamos por mes (últimos 12 meses)
             cur.execute("""
-                SELECT TO_CHAR(fecha_creacion, 'YYYY-MM') AS mes, COUNT(*)
+                SELECT TO_CHAR(fecha_creacion::timestamp, 'YYYY-MM') AS mes, COUNT(*)
                 FROM reclamos
-                WHERE fecha_creacion >= NOW() - INTERVAL '12 months'
+                WHERE fecha_creacion::timestamp >= NOW() - INTERVAL '12 months'
                 GROUP BY mes ORDER BY mes
             """)
             por_mes = [{"mes": r[0], "count": int(r[1])} for r in cur.fetchall()]
@@ -403,11 +403,11 @@ def reclamos_dashboard(user=Depends(get_current_user)):
 
             # 7) Tiempo resolución por mes (últimos 12 meses)
             cur.execute("""
-                SELECT TO_CHAR(fecha_cierre, 'YYYY-MM') AS mes,
+                SELECT TO_CHAR(fecha_cierre::timestamp, 'YYYY-MM') AS mes,
                        AVG(EXTRACT(EPOCH FROM (fecha_cierre::timestamp - fecha_creacion::timestamp)) / 86400.0)
                 FROM reclamos
                 WHERE estado = 'cerrado' AND fecha_cierre IS NOT NULL
-                  AND fecha_cierre >= NOW() - INTERVAL '12 months'
+                  AND fecha_cierre::timestamp >= NOW() - INTERVAL '12 months'
                 GROUP BY mes ORDER BY mes
             """)
             resolucion_mes = [{"mes": r[0], "avg_dias": round(float(r[1]), 1)} for r in cur.fetchall()]
