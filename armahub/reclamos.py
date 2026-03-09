@@ -6,10 +6,12 @@ Incluye seguimientos (timeline), cambio de estado, y KPIs.
 Categorías Ishikawa provisorias — se ajustarán con input del usuario.
 """
 
+import base64
 from datetime import datetime, timezone
 from typing import Optional, List
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Form
+from fastapi.responses import Response
 from pydantic import BaseModel
 
 from .auth import get_current_user
@@ -17,11 +19,15 @@ from .db import get_conn, audit
 
 router = APIRouter()
 
+MAX_IMAGE_SIZE = 10 * 1024 * 1024  # 10 MB
+ALLOWED_IMAGE_TYPES = ("image/jpeg", "image/png", "image/gif", "image/webp", "image/bmp")
 
 # ========================= CONSTANTS =========================
 
 ESTADOS_RECLAMO = ("abierto", "en_analisis", "accion_correctiva", "cerrado", "rechazado")
 PRIORIDADES = ("baja", "media", "alta", "critica")
+APLICA_VALUES = ("si", "no", "pendiente")
+TIPOS_ACCION = ("inmediata", "correctiva", "preventiva")
 CATEGORIAS_ISHIKAWA = (
     "mano_de_obra",
     "metodo",
@@ -32,12 +38,58 @@ CATEGORIAS_ISHIKAWA = (
 )
 
 ISHIKAWA_LABELS = {
-    "mano_de_obra": "Mano de obra",
+    "mano_de_obra": "Personas (Mano de obra)",
     "metodo": "Método",
     "material": "Material",
     "maquina": "Máquina",
-    "medicion": "Medición",
-    "medio_ambiente": "Medio ambiente",
+    "medicion": "Medida",
+    "medio_ambiente": "Medio Ambiente (entorno)",
+}
+
+ISHIKAWA_SUBCAUSAS = {
+    "medio_ambiente": [
+        {"cod": "MA01", "texto": "Interrupciones constantes durante la jornada"},
+        {"cod": "MA02", "texto": "Ruido ambiental o distracciones"},
+        {"cod": "MA03", "texto": "Puesto de trabajo incómodo o con mala ergonomía"},
+        {"cod": "MA04", "texto": "Falta de iluminación adecuada"},
+        {"cod": "MA05", "texto": "Actividades no planificadas que interrumpen la cubicación"},
+    ],
+    "material": [
+        {"cod": "MT01", "texto": "Falta de programa de obra (debe solicitar por escrito)"},
+        {"cod": "MT02", "texto": "Falta de ciclos constructivos o modificación"},
+        {"cod": "MT03", "texto": "Planos complejos o indefinidos"},
+        {"cod": "MT04", "texto": "Plano de planta no muestra todos los elementos (como muros dilotados)"},
+        {"cod": "MT05", "texto": "Medidas contradictorias entre planta y elevación"},
+        {"cod": "MT06", "texto": "Formato de digitaciones poco legible"},
+    ],
+    "maquina": [
+        {"cod": "MQ01", "texto": "Internet lento o inestable"},
+        {"cod": "MQ02", "texto": "aSa Studio inestable genera recubicaciones"},
+        {"cod": "MQ03", "texto": "Error de parámetros en planilla de importación - Cubicad"},
+        {"cod": "MQ04", "texto": "Error al captar datos desde aSa Studio"},
+    ],
+    "medicion": [
+        {"cod": "ME01", "texto": "Error en la medición o lectura de cotas referencia incorrecta en el plano"},
+        {"cod": "ME02", "texto": "Diferencia entre cotas indicadas y cotas reales del in situ"},
+        {"cod": "ME03", "texto": "Inconsistencia entre planta y elevación no detectada al cubicar"},
+        {"cod": "ME04", "texto": "Inconsistencia no detectada entre Especificaciones técnicas y NCH 211"},
+        {"cod": "ME05", "texto": "Plano en formato no medible (PDF entrega medida equivocada)"},
+    ],
+    "metodo": [
+        {"cod": "MD01", "texto": "No se indica en procedimiento estandarizado"},
+        {"cod": "MD02", "texto": "Criterios de cubicación no estandarizados entre proyectos"},
+        {"cod": "MD03", "texto": "Falta información en protocolo (mejorar formulario)"},
+    ],
+    "mano_de_obra": [
+        {"cod": "MO01", "texto": "No sigue procedimiento establecido"},
+        {"cod": "MO02", "texto": "No revisa información ingresada post ticket de ingreso aSa"},
+        {"cod": "MO03", "texto": "No considera correo o acuerdos con cliente"},
+        {"cod": "MO04", "texto": "No aplica protocolo correctamente"},
+        {"cod": "MO05", "texto": "Error al digitar o transmitir datos"},
+        {"cod": "MO06", "texto": "No consulta antecedentes incompletos mediante Bshark o RDI"},
+        {"cod": "MO07", "texto": "Error de interpretación o criterio técnico"},
+        {"cod": "MO08", "texto": "Sobrecarga laboral o plazos ajustados que reducen tiempo de revisión"},
+    ],
 }
 
 ESTADO_LABELS = {
@@ -64,7 +116,11 @@ class ReclamoCreate(BaseModel):
     descripcion: Optional[str] = None
     prioridad: Optional[str] = "media"
     categoria_ishikawa: Optional[str] = None
+    sub_causa: Optional[str] = None
+    cod_causa: Optional[str] = None
     responsable: Optional[str] = None
+    detectado_por: Optional[str] = None
+    fecha_deteccion: Optional[str] = None
 
 
 class ReclamoUpdate(BaseModel):
@@ -73,15 +129,41 @@ class ReclamoUpdate(BaseModel):
     estado: Optional[str] = None
     prioridad: Optional[str] = None
     categoria_ishikawa: Optional[str] = None
+    sub_causa: Optional[str] = None
+    cod_causa: Optional[str] = None
     responsable: Optional[str] = None
+    aplica: Optional[str] = None
+    detectado_por: Optional[str] = None
+    fecha_deteccion: Optional[str] = None
+    fecha_analisis: Optional[str] = None
+    analista: Optional[str] = None
+    area_aplica: Optional[str] = None
+    explicacion_causa: Optional[str] = None
     accion_correctiva: Optional[str] = None
     accion_preventiva: Optional[str] = None
     resolucion: Optional[str] = None
+    observaciones: Optional[str] = None
 
 
 class SeguimientoCreate(BaseModel):
     comentario: str
     estado_nuevo: Optional[str] = None
+
+
+class AccionCreate(BaseModel):
+    tipo: str
+    descripcion: str
+    responsable: Optional[str] = None
+    fecha_prevista: Optional[str] = None
+
+
+class AccionUpdate(BaseModel):
+    tipo: Optional[str] = None
+    descripcion: Optional[str] = None
+    responsable: Optional[str] = None
+    fecha_prevista: Optional[str] = None
+    estado: Optional[str] = None
+    fecha_completada: Optional[str] = None
 
 
 # ========================= RECLAMOS CRUD =========================
@@ -92,6 +174,7 @@ def listar_reclamos(
     estado: Optional[str] = None,
     prioridad: Optional[str] = None,
     categoria: Optional[str] = None,
+    aplica: Optional[str] = None,
     user=Depends(get_current_user),
 ):
     """Lista reclamos con filtros opcionales."""
@@ -111,13 +194,18 @@ def listar_reclamos(
             if categoria:
                 where += " AND r.categoria_ishikawa = %s"
                 params.append(categoria)
+            if aplica:
+                where += " AND r.aplica = %s"
+                params.append(aplica)
 
             cur.execute(f"""
                 SELECT r.id, r.id_proyecto, r.titulo, r.descripcion, r.estado,
                        r.prioridad, r.categoria_ishikawa, r.responsable,
                        r.creado_por, r.fecha_creacion, r.fecha_actualizacion, r.fecha_cierre,
                        COALESCE(p.nombre_proyecto, r.id_proyecto) AS nombre_proyecto,
-                       (SELECT COUNT(*) FROM reclamo_seguimientos s WHERE s.reclamo_id = r.id) AS total_seguimientos
+                       (SELECT COUNT(*) FROM reclamo_seguimientos s WHERE s.reclamo_id = r.id) AS seg_count,
+                       r.aplica, r.sub_causa, r.cod_causa, r.correlativo_calidad,
+                       r.detectado_por, r.fecha_deteccion
                 FROM reclamos r
                 LEFT JOIN proyectos p ON r.id_proyecto = p.id_proyecto
                 {where}
@@ -142,20 +230,14 @@ def listar_reclamos(
     return {
         "reclamos": [
             {
-                "id": r[0],
-                "id_proyecto": r[1],
-                "titulo": r[2],
-                "descripcion": r[3],
-                "estado": r[4],
-                "prioridad": r[5],
-                "categoria_ishikawa": r[6],
-                "responsable": r[7],
-                "creado_por": r[8],
-                "fecha_creacion": r[9],
-                "fecha_actualizacion": r[10],
-                "fecha_cierre": r[11],
-                "nombre_proyecto": r[12],
-                "total_seguimientos": int(r[13]),
+                "id": r[0], "id_proyecto": r[1], "titulo": r[2], "descripcion": r[3],
+                "estado": r[4], "prioridad": r[5], "categoria_ishikawa": r[6],
+                "responsable": r[7], "creado_por": r[8], "fecha_creacion": r[9],
+                "fecha_actualizacion": r[10], "fecha_cierre": r[11],
+                "nombre_proyecto": r[12], "total_seguimientos": int(r[13]),
+                "aplica": r[14], "sub_causa": r[15], "cod_causa": r[16],
+                "correlativo_calidad": r[17], "detectado_por": r[18],
+                "fecha_deteccion": r[19],
             }
             for r in rows
         ]
@@ -182,12 +264,16 @@ def crear_reclamo(body: ReclamoCreate, user=Depends(get_current_user)):
 
             cur.execute("""
                 INSERT INTO reclamos (id_proyecto, titulo, descripcion, prioridad,
-                    categoria_ishikawa, responsable, creado_por, fecha_creacion)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                    categoria_ishikawa, sub_causa, cod_causa, responsable,
+                    detectado_por, fecha_deteccion, analista,
+                    creado_por, fecha_creacion)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING id
             """, (body.id_proyecto, body.titulo, body.descripcion,
                   body.prioridad or "media", body.categoria_ishikawa,
-                  body.responsable, email, now))
+                  body.sub_causa, body.cod_causa, body.responsable,
+                  body.detectado_por, body.fecha_deteccion, email,
+                  email, now))
             reclamo_id = cur.fetchone()[0]
 
             # Auto-create first seguimiento
@@ -202,41 +288,39 @@ def crear_reclamo(body: ReclamoCreate, user=Depends(get_current_user)):
 
 @router.get("/reclamos/kpis")
 def reclamos_kpis(user=Depends(get_current_user)):
-    """KPIs de reclamos: abiertos, por prioridad, por categoría, tiempo promedio resolución."""
+    """KPIs de reclamos: por estado, aplica/no aplica, categoría, sub-causas top, tiempo resolución."""
     with get_conn() as conn:
         with conn.cursor() as cur:
-            # Total by estado
-            cur.execute("""
-                SELECT estado, COUNT(*) FROM reclamos GROUP BY estado
-            """)
+            cur.execute("SELECT estado, COUNT(*) FROM reclamos GROUP BY estado")
             por_estado = {r[0]: int(r[1]) for r in cur.fetchall()}
 
-            # Total by prioridad (only open)
-            cur.execute("""
-                SELECT prioridad, COUNT(*) FROM reclamos
-                WHERE estado NOT IN ('cerrado', 'rechazado')
-                GROUP BY prioridad
-            """)
+            cur.execute("SELECT prioridad, COUNT(*) FROM reclamos WHERE estado NOT IN ('cerrado','rechazado') GROUP BY prioridad")
             por_prioridad = {r[0]: int(r[1]) for r in cur.fetchall()}
 
-            # Total by categoria ishikawa
-            cur.execute("""
-                SELECT COALESCE(categoria_ishikawa, 'sin_categoria'), COUNT(*)
-                FROM reclamos GROUP BY categoria_ishikawa
-            """)
+            cur.execute("SELECT COALESCE(categoria_ishikawa,'sin_categoria'), COUNT(*) FROM reclamos GROUP BY categoria_ishikawa")
             por_categoria = {r[0]: int(r[1]) for r in cur.fetchall()}
 
-            # Average resolution time (days) for closed reclamos
+            cur.execute("SELECT COALESCE(aplica,'pendiente'), COUNT(*) FROM reclamos GROUP BY aplica")
+            por_aplica = {r[0]: int(r[1]) for r in cur.fetchall()}
+
+            # Top 10 sub-causas más repetitivas
+            cur.execute("""
+                SELECT cod_causa, sub_causa, categoria_ishikawa, COUNT(*) as cnt
+                FROM reclamos
+                WHERE sub_causa IS NOT NULL AND sub_causa != ''
+                GROUP BY cod_causa, sub_causa, categoria_ishikawa
+                ORDER BY cnt DESC LIMIT 10
+            """)
+            top_causas = [{"cod": r[0], "sub_causa": r[1], "categoria": r[2], "count": int(r[3])} for r in cur.fetchall()]
+
             cur.execute("""
                 SELECT AVG(
                     EXTRACT(EPOCH FROM (fecha_cierre::timestamp - fecha_creacion::timestamp)) / 86400.0
-                ) FROM reclamos
-                WHERE estado = 'cerrado' AND fecha_cierre IS NOT NULL
+                ) FROM reclamos WHERE estado = 'cerrado' AND fecha_cierre IS NOT NULL
             """)
             avg_row = cur.fetchone()
             avg_dias_resolucion = round(float(avg_row[0]), 1) if avg_row and avg_row[0] else None
 
-            # Total
             cur.execute("SELECT COUNT(*) FROM reclamos")
             total = int(cur.fetchone()[0])
 
@@ -248,6 +332,8 @@ def reclamos_kpis(user=Depends(get_current_user)):
         "por_estado": por_estado,
         "por_prioridad": por_prioridad,
         "por_categoria": por_categoria,
+        "por_aplica": por_aplica,
+        "top_causas": top_causas,
         "avg_dias_resolucion": avg_dias_resolucion,
     }
 
@@ -259,12 +345,29 @@ def reclamos_options(user=Depends(get_current_user)):
         "estados": [{"value": k, "label": v} for k, v in ESTADO_LABELS.items()],
         "prioridades": [{"value": k, "label": v} for k, v in PRIORIDAD_LABELS.items()],
         "categorias_ishikawa": [{"value": k, "label": v} for k, v in ISHIKAWA_LABELS.items()],
+        "aplica_values": [{"value": "si", "label": "Sí aplica"}, {"value": "no", "label": "No aplica"}, {"value": "pendiente", "label": "Pendiente"}],
+        "tipos_accion": [{"value": "inmediata", "label": "Inmediata"}, {"value": "correctiva", "label": "Correctiva"}, {"value": "preventiva", "label": "Preventiva"}],
+    }
+
+
+@router.get("/reclamos/ishikawa")
+def get_ishikawa(user=Depends(get_current_user)):
+    """Devuelve el diagrama Ishikawa completo con categorías y sub-causas."""
+    return {
+        "categorias": [
+            {
+                "key": k,
+                "label": ISHIKAWA_LABELS[k],
+                "subcausas": ISHIKAWA_SUBCAUSAS[k],
+            }
+            for k in CATEGORIAS_ISHIKAWA
+        ]
     }
 
 
 @router.get("/reclamos/{reclamo_id}")
 def get_reclamo(reclamo_id: int, user=Depends(get_current_user)):
-    """Obtener detalle de un reclamo con su timeline de seguimientos."""
+    """Obtener detalle de un reclamo con timeline, acciones e imágenes."""
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("""
@@ -272,7 +375,10 @@ def get_reclamo(reclamo_id: int, user=Depends(get_current_user)):
                        r.prioridad, r.categoria_ishikawa, r.responsable,
                        r.accion_correctiva, r.accion_preventiva, r.resolucion,
                        r.creado_por, r.fecha_creacion, r.fecha_actualizacion, r.fecha_cierre,
-                       COALESCE(p.nombre_proyecto, r.id_proyecto) AS nombre_proyecto
+                       COALESCE(p.nombre_proyecto, r.id_proyecto) AS nombre_proyecto,
+                       r.aplica, r.sub_causa, r.cod_causa, r.correlativo_calidad,
+                       r.detectado_por, r.fecha_deteccion, r.fecha_analisis,
+                       r.analista, r.area_aplica, r.explicacion_causa, r.observaciones
                 FROM reclamos r
                 LEFT JOIN proyectos p ON r.id_proyecto = p.id_proyecto
                 WHERE r.id = %s
@@ -283,39 +389,52 @@ def get_reclamo(reclamo_id: int, user=Depends(get_current_user)):
 
             cur.execute("""
                 SELECT id, usuario, comentario, estado_anterior, estado_nuevo, fecha
-                FROM reclamo_seguimientos
-                WHERE reclamo_id = %s
+                FROM reclamo_seguimientos WHERE reclamo_id = %s
                 ORDER BY fecha ASC, id ASC
             """, (reclamo_id,))
             seguimientos = cur.fetchall()
 
+            cur.execute("""
+                SELECT id, tipo, descripcion, responsable, fecha_prevista,
+                       fecha_completada, estado, creado_por, fecha_creacion
+                FROM reclamo_acciones WHERE reclamo_id = %s
+                ORDER BY id ASC
+            """, (reclamo_id,))
+            acciones = cur.fetchall()
+
+            cur.execute("""
+                SELECT id, filename, content_type, descripcion, subido_por, fecha_subida
+                FROM reclamo_imagenes WHERE reclamo_id = %s
+                ORDER BY id ASC
+            """, (reclamo_id,))
+            imagenes = cur.fetchall()
+
     return {
-        "id": row[0],
-        "id_proyecto": row[1],
-        "titulo": row[2],
-        "descripcion": row[3],
-        "estado": row[4],
-        "prioridad": row[5],
-        "categoria_ishikawa": row[6],
-        "responsable": row[7],
-        "accion_correctiva": row[8],
-        "accion_preventiva": row[9],
-        "resolucion": row[10],
-        "creado_por": row[11],
-        "fecha_creacion": row[12],
-        "fecha_actualizacion": row[13],
-        "fecha_cierre": row[14],
-        "nombre_proyecto": row[15],
+        "id": row[0], "id_proyecto": row[1], "titulo": row[2], "descripcion": row[3],
+        "estado": row[4], "prioridad": row[5], "categoria_ishikawa": row[6],
+        "responsable": row[7], "accion_correctiva": row[8], "accion_preventiva": row[9],
+        "resolucion": row[10], "creado_por": row[11], "fecha_creacion": row[12],
+        "fecha_actualizacion": row[13], "fecha_cierre": row[14], "nombre_proyecto": row[15],
+        "aplica": row[16], "sub_causa": row[17], "cod_causa": row[18],
+        "correlativo_calidad": row[19], "detectado_por": row[20],
+        "fecha_deteccion": row[21], "fecha_analisis": row[22], "analista": row[23],
+        "area_aplica": row[24], "explicacion_causa": row[25], "observaciones": row[26],
         "seguimientos": [
-            {
-                "id": s[0],
-                "usuario": s[1],
-                "comentario": s[2],
-                "estado_anterior": s[3],
-                "estado_nuevo": s[4],
-                "fecha": s[5],
-            }
+            {"id": s[0], "usuario": s[1], "comentario": s[2],
+             "estado_anterior": s[3], "estado_nuevo": s[4], "fecha": s[5]}
             for s in seguimientos
+        ],
+        "acciones": [
+            {"id": a[0], "tipo": a[1], "descripcion": a[2], "responsable": a[3],
+             "fecha_prevista": a[4], "fecha_completada": a[5], "estado": a[6],
+             "creado_por": a[7], "fecha_creacion": a[8]}
+            for a in acciones
+        ],
+        "imagenes": [
+            {"id": img[0], "filename": img[1], "content_type": img[2],
+             "descripcion": img[3], "subido_por": img[4], "fecha_subida": img[5],
+             "url": f"/reclamos/{reclamo_id}/imagenes/{img[0]}"}
+            for img in imagenes
         ],
     }
 
@@ -344,8 +463,14 @@ def actualizar_reclamo(reclamo_id: int, body: ReclamoUpdate, user=Depends(get_cu
             sets = ["fecha_actualizacion = %s"]
             params = [now]
 
-            for field in ["titulo", "descripcion", "prioridad", "categoria_ishikawa",
-                          "responsable", "accion_correctiva", "accion_preventiva", "resolucion"]:
+            updatable = [
+                "titulo", "descripcion", "prioridad", "categoria_ishikawa",
+                "sub_causa", "cod_causa", "responsable", "aplica",
+                "detectado_por", "fecha_deteccion", "fecha_analisis",
+                "analista", "area_aplica", "explicacion_causa",
+                "accion_correctiva", "accion_preventiva", "resolucion", "observaciones",
+            ]
+            for field in updatable:
                 val = getattr(body, field)
                 if val is not None:
                     sets.append(f"{field} = %s")
@@ -383,7 +508,7 @@ def actualizar_reclamo(reclamo_id: int, body: ReclamoUpdate, user=Depends(get_cu
 
 @router.delete("/reclamos/{reclamo_id}")
 def eliminar_reclamo(reclamo_id: int, user=Depends(get_current_user)):
-    """Eliminar un reclamo y todos sus seguimientos."""
+    """Eliminar un reclamo y todos sus datos asociados."""
     email = user.get("email", "unknown")
     with get_conn() as conn:
         with conn.cursor() as cur:
@@ -392,12 +517,13 @@ def eliminar_reclamo(reclamo_id: int, user=Depends(get_current_user)):
             if not row:
                 raise HTTPException(status_code=404, detail="Reclamo no encontrado")
             titulo = row[1]
+            cur.execute("DELETE FROM reclamo_imagenes WHERE reclamo_id = %s", (reclamo_id,))
+            cur.execute("DELETE FROM reclamo_acciones WHERE reclamo_id = %s", (reclamo_id,))
             cur.execute("DELETE FROM reclamo_seguimientos WHERE reclamo_id = %s", (reclamo_id,))
-            seg_deleted = cur.rowcount
             cur.execute("DELETE FROM reclamos WHERE id = %s", (reclamo_id,))
 
-    audit(email, "eliminar_reclamo", f"{titulo} ({seg_deleted} seguimientos)", "reclamo", str(reclamo_id))
-    return {"ok": True, "id": reclamo_id, "seguimientos_eliminados": seg_deleted}
+    audit(email, "eliminar_reclamo", titulo, "reclamo", str(reclamo_id))
+    return {"ok": True, "id": reclamo_id}
 
 
 # ========================= SEGUIMIENTOS =========================
@@ -448,3 +574,149 @@ def crear_seguimiento(reclamo_id: int, body: SeguimientoCreate, user=Depends(get
 
     audit(email, "seguimiento_reclamo", body.comentario[:100] if body.comentario else "", "reclamo", str(reclamo_id))
     return {"ok": True, "id": seg_id}
+
+
+# ========================= ACCIONES =========================
+
+@router.post("/reclamos/{reclamo_id}/acciones")
+def crear_accion(reclamo_id: int, body: AccionCreate, user=Depends(get_current_user)):
+    """Agregar una acción (inmediata/correctiva/preventiva) a un reclamo."""
+    email = user.get("email", "unknown")
+    now = datetime.now(timezone.utc).isoformat()
+
+    if body.tipo not in TIPOS_ACCION:
+        raise HTTPException(status_code=400, detail=f"Tipo inválido. Válidos: {list(TIPOS_ACCION)}")
+
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT id FROM reclamos WHERE id = %s", (reclamo_id,))
+            if not cur.fetchone():
+                raise HTTPException(status_code=404, detail="Reclamo no encontrado")
+
+            cur.execute("""
+                INSERT INTO reclamo_acciones (reclamo_id, tipo, descripcion, responsable, fecha_prevista, creado_por, fecha_creacion)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                RETURNING id
+            """, (reclamo_id, body.tipo, body.descripcion, body.responsable, body.fecha_prevista, email, now))
+            accion_id = cur.fetchone()[0]
+
+            cur.execute("UPDATE reclamos SET fecha_actualizacion = %s WHERE id = %s", (now, reclamo_id))
+
+    audit(email, "crear_accion_reclamo", f"{body.tipo}: {body.descripcion[:80]}", "reclamo", str(reclamo_id))
+    return {"ok": True, "id": accion_id}
+
+
+@router.patch("/reclamos/{reclamo_id}/acciones/{accion_id}")
+def actualizar_accion(reclamo_id: int, accion_id: int, body: AccionUpdate, user=Depends(get_current_user)):
+    """Actualizar una acción de un reclamo."""
+    email = user.get("email", "unknown")
+    now = datetime.now(timezone.utc).isoformat()
+
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT id FROM reclamo_acciones WHERE id = %s AND reclamo_id = %s", (accion_id, reclamo_id))
+            if not cur.fetchone():
+                raise HTTPException(status_code=404, detail="Acción no encontrada")
+
+            sets = []
+            params = []
+            for field in ["tipo", "descripcion", "responsable", "fecha_prevista", "estado", "fecha_completada"]:
+                val = getattr(body, field)
+                if val is not None:
+                    sets.append(f"{field} = %s")
+                    params.append(val)
+
+            if not sets:
+                return {"ok": True, "id": accion_id}
+
+            params.append(accion_id)
+            cur.execute(f"UPDATE reclamo_acciones SET {', '.join(sets)} WHERE id = %s", params)
+            cur.execute("UPDATE reclamos SET fecha_actualizacion = %s WHERE id = %s", (now, reclamo_id))
+
+    return {"ok": True, "id": accion_id}
+
+
+@router.delete("/reclamos/{reclamo_id}/acciones/{accion_id}")
+def eliminar_accion(reclamo_id: int, accion_id: int, user=Depends(get_current_user)):
+    """Eliminar una acción de un reclamo."""
+    email = user.get("email", "unknown")
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM reclamo_acciones WHERE id = %s AND reclamo_id = %s", (accion_id, reclamo_id))
+            if cur.rowcount == 0:
+                raise HTTPException(status_code=404, detail="Acción no encontrada")
+    audit(email, "eliminar_accion_reclamo", str(accion_id), "reclamo", str(reclamo_id))
+    return {"ok": True}
+
+
+# ========================= IMAGENES =========================
+
+@router.post("/reclamos/{reclamo_id}/imagenes")
+async def subir_imagen(
+    reclamo_id: int,
+    file: UploadFile = File(...),
+    descripcion: Optional[str] = Form(None),
+    user=Depends(get_current_user),
+):
+    """Subir una imagen/evidencia a un reclamo. Se almacena en BD como BYTEA."""
+    email = user.get("email", "unknown")
+    now = datetime.now(timezone.utc).isoformat()
+
+    if file.content_type not in ALLOWED_IMAGE_TYPES:
+        raise HTTPException(status_code=400, detail=f"Tipo de archivo no permitido. Permitidos: {ALLOWED_IMAGE_TYPES}")
+
+    data = await file.read()
+    if len(data) > MAX_IMAGE_SIZE:
+        raise HTTPException(status_code=400, detail=f"Imagen demasiado grande. Máximo: {MAX_IMAGE_SIZE // (1024*1024)} MB")
+
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT id FROM reclamos WHERE id = %s", (reclamo_id,))
+            if not cur.fetchone():
+                raise HTTPException(status_code=404, detail="Reclamo no encontrado")
+
+            cur.execute("""
+                INSERT INTO reclamo_imagenes (reclamo_id, filename, content_type, data, descripcion, subido_por, fecha_subida)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                RETURNING id
+            """, (reclamo_id, file.filename, file.content_type, data, descripcion, email, now))
+            img_id = cur.fetchone()[0]
+
+            cur.execute("UPDATE reclamos SET fecha_actualizacion = %s WHERE id = %s", (now, reclamo_id))
+
+    audit(email, "subir_imagen_reclamo", file.filename, "reclamo", str(reclamo_id))
+    return {"ok": True, "id": img_id, "filename": file.filename}
+
+
+@router.get("/reclamos/{reclamo_id}/imagenes/{imagen_id}")
+def ver_imagen(reclamo_id: int, imagen_id: int):
+    """Servir una imagen directamente (inline) para verla en el navegador sin descargar."""
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT data, content_type, filename
+                FROM reclamo_imagenes
+                WHERE id = %s AND reclamo_id = %s
+            """, (imagen_id, reclamo_id))
+            row = cur.fetchone()
+            if not row:
+                raise HTTPException(status_code=404, detail="Imagen no encontrada")
+
+    return Response(
+        content=bytes(row[0]),
+        media_type=row[1],
+        headers={"Content-Disposition": f"inline; filename=\"{row[2]}\""}
+    )
+
+
+@router.delete("/reclamos/{reclamo_id}/imagenes/{imagen_id}")
+def eliminar_imagen(reclamo_id: int, imagen_id: int, user=Depends(get_current_user)):
+    """Eliminar una imagen de un reclamo."""
+    email = user.get("email", "unknown")
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM reclamo_imagenes WHERE id = %s AND reclamo_id = %s", (imagen_id, reclamo_id))
+            if cur.rowcount == 0:
+                raise HTTPException(status_code=404, detail="Imagen no encontrada")
+    audit(email, "eliminar_imagen_reclamo", str(imagen_id), "reclamo", str(reclamo_id))
+    return {"ok": True}

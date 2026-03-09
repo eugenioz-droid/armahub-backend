@@ -297,6 +297,46 @@ MIGRATIONS = [
         "CREATE INDEX IF NOT EXISTS idx_reclamos_prioridad ON reclamos(prioridad)",
         "CREATE INDEX IF NOT EXISTS idx_reclamo_seg_reclamo ON reclamo_seguimientos(reclamo_id)",
     ]),
+    (14, "reclamos: campos reales formulario + acciones + imagenes", [
+        # Nuevos campos en reclamos
+        "DO $$ BEGIN ALTER TABLE reclamos ADD COLUMN correlativo_calidad SERIAL; EXCEPTION WHEN duplicate_column THEN NULL; END $$;",
+        "DO $$ BEGIN ALTER TABLE reclamos ADD COLUMN aplica TEXT DEFAULT 'pendiente' CHECK (aplica IN ('si','no','pendiente')); EXCEPTION WHEN duplicate_column THEN NULL; END $$;",
+        "DO $$ BEGIN ALTER TABLE reclamos ADD COLUMN sub_causa TEXT; EXCEPTION WHEN duplicate_column THEN NULL; END $$;",
+        "DO $$ BEGIN ALTER TABLE reclamos ADD COLUMN cod_causa TEXT; EXCEPTION WHEN duplicate_column THEN NULL; END $$;",
+        "DO $$ BEGIN ALTER TABLE reclamos ADD COLUMN detectado_por TEXT; EXCEPTION WHEN duplicate_column THEN NULL; END $$;",
+        "DO $$ BEGIN ALTER TABLE reclamos ADD COLUMN fecha_deteccion TEXT; EXCEPTION WHEN duplicate_column THEN NULL; END $$;",
+        "DO $$ BEGIN ALTER TABLE reclamos ADD COLUMN fecha_analisis TEXT; EXCEPTION WHEN duplicate_column THEN NULL; END $$;",
+        "DO $$ BEGIN ALTER TABLE reclamos ADD COLUMN analista TEXT; EXCEPTION WHEN duplicate_column THEN NULL; END $$;",
+        "DO $$ BEGIN ALTER TABLE reclamos ADD COLUMN area_aplica TEXT; EXCEPTION WHEN duplicate_column THEN NULL; END $$;",
+        "DO $$ BEGIN ALTER TABLE reclamos ADD COLUMN explicacion_causa TEXT; EXCEPTION WHEN duplicate_column THEN NULL; END $$;",
+        "DO $$ BEGIN ALTER TABLE reclamos ADD COLUMN observaciones TEXT; EXCEPTION WHEN duplicate_column THEN NULL; END $$;",
+        # Tabla de acciones (inmediata, correctiva, preventiva)
+        """CREATE TABLE IF NOT EXISTS reclamo_acciones (
+            id BIGSERIAL PRIMARY KEY,
+            reclamo_id BIGINT NOT NULL REFERENCES reclamos(id) ON DELETE CASCADE,
+            tipo TEXT NOT NULL CHECK (tipo IN ('inmediata','correctiva','preventiva')),
+            descripcion TEXT NOT NULL,
+            responsable TEXT,
+            fecha_prevista TEXT,
+            fecha_completada TEXT,
+            estado TEXT NOT NULL DEFAULT 'pendiente' CHECK (estado IN ('pendiente','en_proceso','completada')),
+            creado_por TEXT NOT NULL,
+            fecha_creacion TEXT NOT NULL DEFAULT (NOW() AT TIME ZONE 'UTC')
+        )""",
+        "CREATE INDEX IF NOT EXISTS idx_reclamo_acc_reclamo ON reclamo_acciones(reclamo_id)",
+        # Tabla de imágenes/evidencia
+        """CREATE TABLE IF NOT EXISTS reclamo_imagenes (
+            id BIGSERIAL PRIMARY KEY,
+            reclamo_id BIGINT NOT NULL REFERENCES reclamos(id) ON DELETE CASCADE,
+            filename TEXT NOT NULL,
+            content_type TEXT NOT NULL,
+            data BYTEA NOT NULL,
+            descripcion TEXT,
+            subido_por TEXT NOT NULL,
+            fecha_subida TEXT NOT NULL DEFAULT (NOW() AT TIME ZONE 'UTC')
+        )""",
+        "CREATE INDEX IF NOT EXISTS idx_reclamo_img_reclamo ON reclamo_imagenes(reclamo_id)",
+    ]),
 ]
 
 
@@ -358,6 +398,8 @@ def reset_database(keep_users: bool = True) -> dict:
             # Tablas dependientes primero por FK
             cur.execute("DROP TABLE IF EXISTS schema_migrations")
             cur.execute("DROP TABLE IF EXISTS audit_log")
+            cur.execute("DROP TABLE IF EXISTS reclamo_imagenes")
+            cur.execute("DROP TABLE IF EXISTS reclamo_acciones")
             cur.execute("DROP TABLE IF EXISTS reclamo_seguimientos")
             cur.execute("DROP TABLE IF EXISTS reclamos")
             cur.execute("DROP TABLE IF EXISTS export_log")

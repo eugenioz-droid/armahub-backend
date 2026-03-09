@@ -682,33 +682,43 @@ errores y reclamos levantados por clientes. Incluye formulario tipo, análisis d
     - Índices en id_proyecto, estado, prioridad, reclamo_id - OK
     - Reset database actualizado con DROP reclamo_seguimientos + reclamos - OK
 
-30. Formulario de registro de reclamo - OK
-    - Campos: proyecto (select), título, descripción (textarea), prioridad, categoría Ishikawa, responsable - OK
-    - Clasificación Ishikawa provisoria: Mano de obra, Método, Material, Máquina, Medición, Medio ambiente - OK
+30. Formulario de registro de reclamo - OK (v2 ampliado)
+    - Campos reales: proyecto, título, descripción, prioridad, responsable, detectado_por, fecha_detección - OK
+    - Causa Ishikawa con modal interactivo: 6 categorías × sub-causas codificadas (ej. [P1] Falta capacitación) - OK
+    - Campos ocultos: categoria_ishikawa, sub_causa, cod_causa poblados desde modal - OK
     - Asignación de responsable (texto libre) - OK
-    - Adjuntar evidencia (futuro: archivos) - Pendiente
-    - Pendiente: campos definitivos del formulario + Ishikawa (input del usuario)
+    - Upload de imágenes (múltiples, BYTEA, inline view, delete) - OK
+    - Migración 14: nuevos campos reclamos + tabla reclamo_acciones + tabla reclamo_imagenes - OK
 
-31. Seguimiento y cierre de reclamos - OK
+31. Seguimiento y cierre de reclamos - OK (v2 ampliado)
     - Timeline ascendente con usuario, comentario, cambio de estado color-coded - OK
     - Cambio de estado con registro automático (quién, cuándo, anterior → nuevo) - OK
     - Seguimiento auto-creado al crear reclamo y al cambiar estado - OK
-    - Campos acción correctiva, acción preventiva editables en detalle - OK
+    - Aplica / No aplica / Pendiente — dropdown en detalle con update inmediato - OK
+    - Acciones (inmediata, correctiva, preventiva) — tabla CRUD con tipo, responsable, fecha prevista, estado - OK
+    - Sección RCA en detalle: causa Ishikawa (modal), área aplica, fecha análisis, explicación causa, observaciones - OK
     - Cierre con resumen de resolución + fecha_cierre automática - OK
     - POST /reclamos/{id}/seguimientos con cambio de estado opcional - OK
-    - Audit logging en crear, actualizar, eliminar reclamo y seguimiento - OK
+    - POST/DELETE /reclamos/{id}/acciones — CRUD acciones - OK
+    - POST/DELETE /reclamos/{id}/imagenes — upload y eliminación inline - OK
+    - GET /reclamos/ishikawa — categorías y sub-causas para modal - OK
+    - Audit logging en crear, actualizar, eliminar reclamo, seguimiento, acciones, imágenes - OK
 
-32. UI Tab Reclamos - OK
+32. UI Tab Reclamos - OK (v2 ampliado)
     - Tab "⚠️ Reclamos" visible para admin, coordinador, cubicador, operador - OK
-    - KPIs: abiertos, en análisis, acción correctiva, cerrados, días prom. resolución - OK
-    - Formulario nuevo reclamo inline collapsible - OK
-    - Lista con filtros (estado, prioridad, categoría Ishikawa) - OK
-    - Tabla color-coded: badges estado, prioridad, categoría, fecha, seguimientos - OK
-    - Vista detalle con info, acciones editables, timeline - OK
+    - KPIs: total, abiertos, aplica, no aplica, cerrados, días prom. resolución - OK
+    - Top causas repetitivas con código y badge de frecuencia - OK
+    - Formulario nuevo reclamo inline collapsible con todos los campos reales - OK
+    - Modal Ishikawa interactivo: grid 6 categorías color-coded con radio buttons por sub-causa - OK
+    - Lista con filtros (estado, prioridad, categoría, aplica) - OK
+    - Tabla color-coded: correlativo, badges estado, aplica, prioridad, cod_causa, fecha detección - OK
+    - Vista detalle: info completa, aplica dropdown, RCA con Ishikawa modal, acciones CRUD, imágenes, timeline - OK
     - Agregar seguimiento inline con cambio de estado opcional - OK
-    - Eliminar reclamo con confirmación - OK
+    - Upload múltiples imágenes con preview y eliminación inline - OK
+    - Eliminar reclamo con confirmación (cascade: acciones + imágenes + seguimientos) - OK
     - Selector proyecto poblado desde loadProyectos - OK
-    - Pendiente: filtro por proyecto del usuario, campos Ishikawa definitivos
+    - Fix: tab reclamos subrayaba admin en vez de reclamos - OK
+    - Pendiente: filtro por proyecto del usuario, integración USC
 
 33. Vista landing / hub de navegación - Pendiente
     - Pantalla inicial post-login que permita elegir módulo: Gestión de Obras vs Gestión de Reclamos
