@@ -262,6 +262,41 @@ MIGRATIONS = [
             AND p.calculista_id IS NULL;
         END $$;""",
     ]),
+    (13, "tablas reclamos y reclamo_seguimientos", [
+        """CREATE TABLE IF NOT EXISTS reclamos (
+            id BIGSERIAL PRIMARY KEY,
+            id_proyecto TEXT REFERENCES proyectos(id_proyecto) ON DELETE CASCADE,
+            titulo TEXT NOT NULL,
+            descripcion TEXT,
+            estado TEXT NOT NULL DEFAULT 'abierto'
+                CHECK (estado IN ('abierto','en_analisis','accion_correctiva','cerrado','rechazado')),
+            prioridad TEXT NOT NULL DEFAULT 'media'
+                CHECK (prioridad IN ('baja','media','alta','critica')),
+            categoria_ishikawa TEXT
+                CHECK (categoria_ishikawa IN ('mano_de_obra','metodo','material','maquina','medicion','medio_ambiente')),
+            responsable TEXT,
+            accion_correctiva TEXT,
+            accion_preventiva TEXT,
+            resolucion TEXT,
+            creado_por TEXT NOT NULL,
+            fecha_creacion TEXT NOT NULL DEFAULT (NOW() AT TIME ZONE 'UTC'),
+            fecha_actualizacion TEXT,
+            fecha_cierre TEXT
+        )""",
+        """CREATE TABLE IF NOT EXISTS reclamo_seguimientos (
+            id BIGSERIAL PRIMARY KEY,
+            reclamo_id BIGINT NOT NULL REFERENCES reclamos(id) ON DELETE CASCADE,
+            usuario TEXT NOT NULL,
+            comentario TEXT,
+            estado_anterior TEXT,
+            estado_nuevo TEXT,
+            fecha TEXT NOT NULL DEFAULT (NOW() AT TIME ZONE 'UTC')
+        )""",
+        "CREATE INDEX IF NOT EXISTS idx_reclamos_proyecto ON reclamos(id_proyecto)",
+        "CREATE INDEX IF NOT EXISTS idx_reclamos_estado ON reclamos(estado)",
+        "CREATE INDEX IF NOT EXISTS idx_reclamos_prioridad ON reclamos(prioridad)",
+        "CREATE INDEX IF NOT EXISTS idx_reclamo_seg_reclamo ON reclamo_seguimientos(reclamo_id)",
+    ]),
 ]
 
 
@@ -323,6 +358,8 @@ def reset_database(keep_users: bool = True) -> dict:
             # Tablas dependientes primero por FK
             cur.execute("DROP TABLE IF EXISTS schema_migrations")
             cur.execute("DROP TABLE IF EXISTS audit_log")
+            cur.execute("DROP TABLE IF EXISTS reclamo_seguimientos")
+            cur.execute("DROP TABLE IF EXISTS reclamos")
             cur.execute("DROP TABLE IF EXISTS export_log")
             cur.execute("DROP TABLE IF EXISTS pedido_items")
             cur.execute("DROP TABLE IF EXISTS pedidos")

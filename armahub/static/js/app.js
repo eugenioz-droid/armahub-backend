@@ -168,6 +168,7 @@ async function loadMe() {
     dashboards: ['admin','coordinador','cubicador','operador','cliente'],
     pedidos:    ['admin','coordinador','cubicador','operador','cliente'],
     export:     ['admin','coordinador','cubicador','operador'],
+    reclamos:   ['admin','coordinador','cubicador','operador'],
     admin:      ['admin']
   };
 
@@ -282,6 +283,15 @@ async function loadProyectos() {
   ppf.innerHTML = '<option value="">\u2014 Selecciona proyecto \u2014</option>' +
     data.proyectos.map(p => `<option value="${p.id_proyecto}">${p.nombre_proyecto}</option>`).join('');
   if (prevP) ppf.value = prevP;
+
+  // Populate reclamos project filter
+  const rpf = document.getElementById('recProyecto');
+  if (rpf) {
+    const prevR = rpf.value;
+    rpf.innerHTML = '<option value="">\u2014 Sin proyecto \u2014</option>' +
+      data.proyectos.map(p => `<option value="${p.id_proyecto}">${p.nombre_proyecto}</option>`).join('');
+    if (prevR) rpf.value = prevR;
+  }
 
   // Populate mover barras selectors & show card if >1 project
   const opts = data.proyectos.map(p => `<option value="${p.id_proyecto}">${p.nombre_proyecto}</option>`).join('');
@@ -2677,6 +2687,310 @@ async function loadAuditLog(offset) {
   pag.innerHTML = pagHtml;
 }
 
+// ========================= RECLAMOS =========================
+let _reclamoActual = null;
+
+const _recEstadoColors = {
+  abierto: '#e53935', en_analisis: '#ff9800', accion_correctiva: '#2196F3',
+  cerrado: '#4CAF50', rechazado: '#9E9E9E'
+};
+const _recEstadoLabels = {
+  abierto: 'Abierto', en_analisis: 'En análisis', accion_correctiva: 'Acción correctiva',
+  cerrado: 'Cerrado', rechazado: 'Rechazado'
+};
+const _recPrioridadColors = {
+  baja: '#9E9E9E', media: '#ff9800', alta: '#e53935', critica: '#b71c1c'
+};
+const _recPrioridadLabels = {
+  baja: 'Baja', media: 'Media', alta: 'Alta', critica: 'Crítica'
+};
+const _recIshikawaLabels = {
+  mano_de_obra: 'Mano de obra', metodo: 'Método', material: 'Material',
+  maquina: 'Máquina', medicion: 'Medición', medio_ambiente: 'Medio ambiente'
+};
+
+async function loadReclamosKpis() {
+  const data = await apiGet('/reclamos/kpis');
+  if (!data) return;
+  const pe = data.por_estado || {};
+  document.getElementById('recKpiAbiertos').textContent = pe.abierto || 0;
+  document.getElementById('recKpiEnAnalisis').textContent = pe.en_analisis || 0;
+  document.getElementById('recKpiAccion').textContent = pe.accion_correctiva || 0;
+  document.getElementById('recKpiCerrados').textContent = pe.cerrado || 0;
+  document.getElementById('recKpiAvgDias').textContent = data.avg_dias_resolucion !== null ? data.avg_dias_resolucion + 'd' : '—';
+}
+
+async function loadReclamos() {
+  const container = document.getElementById('reclamosList');
+  const estado = document.getElementById('recFiltroEstado').value;
+  const prioridad = document.getElementById('recFiltroPrioridad').value;
+  const categoria = document.getElementById('recFiltroCategoria').value;
+  let url = '/reclamos';
+  const params = [];
+  if (estado) params.push('estado=' + encodeURIComponent(estado));
+  if (prioridad) params.push('prioridad=' + encodeURIComponent(prioridad));
+  if (categoria) params.push('categoria=' + encodeURIComponent(categoria));
+  if (params.length) url += '?' + params.join('&');
+
+  const data = await apiGet(url);
+  if (!data) return;
+
+  if (!data.reclamos || data.reclamos.length === 0) {
+    container.innerHTML = '<div class="muted">No hay reclamos registrados</div>';
+    return;
+  }
+
+  container.innerHTML = '<table style="width:100%; font-size:12px; border-collapse:collapse;">' +
+    '<tr style="background:#f5f5f5; text-align:left;">' +
+    '<th style="padding:5px 6px;">ID</th>' +
+    '<th style="padding:5px 6px;">Título</th>' +
+    '<th style="padding:5px 6px;">Proyecto</th>' +
+    '<th style="padding:5px 6px;">Estado</th>' +
+    '<th style="padding:5px 6px;">Prioridad</th>' +
+    '<th style="padding:5px 6px;">Categoría</th>' +
+    '<th style="padding:5px 6px;">Creado</th>' +
+    '<th style="padding:5px 6px;">Seg.</th>' +
+    '<th style="padding:5px 4px;"></th>' +
+    '</tr>' +
+    data.reclamos.map(function(r) {
+      var eColor = _recEstadoColors[r.estado] || '#666';
+      var eLabel = _recEstadoLabels[r.estado] || r.estado;
+      var pColor = _recPrioridadColors[r.prioridad] || '#666';
+      var pLabel = _recPrioridadLabels[r.prioridad] || r.prioridad;
+      var catLabel = r.categoria_ishikawa ? (_recIshikawaLabels[r.categoria_ishikawa] || r.categoria_ishikawa) : '-';
+      var fecha = r.fecha_creacion ? r.fecha_creacion.replace('T', ' ').substring(0, 10) : '';
+      return '<tr style="border-bottom:1px solid #eee; cursor:pointer;" onclick="verReclamo(' + r.id + ')">' +
+        '<td style="padding:4px 6px; font-size:11px;" class="muted">#' + r.id + '</td>' +
+        '<td style="padding:4px 6px; font-weight:500;">' + r.titulo + '</td>' +
+        '<td style="padding:4px 6px; font-size:11px;">' + (r.nombre_proyecto || '-') + '</td>' +
+        '<td style="padding:4px 6px;"><span style="background:' + eColor + '; color:#fff; padding:1px 6px; border-radius:3px; font-size:10px;">' + eLabel + '</span></td>' +
+        '<td style="padding:4px 6px;"><span style="color:' + pColor + '; font-weight:600; font-size:11px;">' + pLabel + '</span></td>' +
+        '<td style="padding:4px 6px; font-size:11px;">' + catLabel + '</td>' +
+        '<td style="padding:4px 6px; font-size:11px;" class="muted">' + fecha + '</td>' +
+        '<td style="padding:4px 6px; text-align:center;"><span class="badge">' + r.total_seguimientos + '</span></td>' +
+        '<td style="padding:4px 4px;"><button class="secondary" style="font-size:10px; padding:2px 6px;" onclick="event.stopPropagation(); verReclamo(' + r.id + ')">Ver</button></td>' +
+        '</tr>';
+    }).join('') +
+    '</table>';
+}
+
+function toggleNuevoReclamo() {
+  var form = document.getElementById('nuevoReclamoForm');
+  form.style.display = form.style.display === 'none' ? '' : 'none';
+}
+
+async function crearReclamo() {
+  var titulo = document.getElementById('recTitulo').value.trim();
+  var msg = document.getElementById('crearReclamoMsg');
+  if (!titulo) { msg.textContent = 'El título es requerido'; msg.style.color = '#b42318'; return; }
+  msg.textContent = 'Registrando...'; msg.style.color = '#666';
+
+  var body = { titulo: titulo };
+  var proyecto = document.getElementById('recProyecto').value;
+  var prioridad = document.getElementById('recPrioridad').value;
+  var categoria = document.getElementById('recCategoria').value;
+  var responsable = document.getElementById('recResponsable').value.trim();
+  var descripcion = document.getElementById('recDescripcion').value.trim();
+  if (proyecto) body.id_proyecto = proyecto;
+  if (prioridad) body.prioridad = prioridad;
+  if (categoria) body.categoria_ishikawa = categoria;
+  if (responsable) body.responsable = responsable;
+  if (descripcion) body.descripcion = descripcion;
+
+  var res = await fetch('/reclamos', {
+    method: 'POST',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  if (res.status === 401) { logout(); return; }
+  var data = await res.json();
+  if (data.ok) {
+    msg.textContent = 'Reclamo #' + data.id + ' registrado'; msg.style.color = '#558B2F';
+    document.getElementById('recTitulo').value = '';
+    document.getElementById('recDescripcion').value = '';
+    document.getElementById('recResponsable').value = '';
+    document.getElementById('recProyecto').value = '';
+    document.getElementById('recPrioridad').value = 'media';
+    document.getElementById('recCategoria').value = '';
+    document.getElementById('nuevoReclamoForm').style.display = 'none';
+    await loadReclamos();
+    await loadReclamosKpis();
+  } else {
+    msg.textContent = 'Error: ' + (data.detail || 'desconocido'); msg.style.color = '#b42318';
+  }
+}
+
+async function verReclamo(id) {
+  var data = await apiGet('/reclamos/' + id);
+  if (!data) return;
+  _reclamoActual = data;
+
+  document.getElementById('reclamoDetailCard').style.display = '';
+  document.getElementById('recDetailTitle').textContent = '#' + data.id + ' — ' + data.titulo;
+
+  var metaParts = [];
+  if (data.nombre_proyecto) metaParts.push('Proyecto: ' + data.nombre_proyecto);
+  metaParts.push('Creado por: ' + data.creado_por);
+  if (data.fecha_creacion) metaParts.push(data.fecha_creacion.replace('T', ' ').substring(0, 19));
+  if (data.responsable) metaParts.push('Responsable: ' + data.responsable);
+  document.getElementById('recDetailMeta').textContent = metaParts.join(' · ');
+
+  document.getElementById('recDetailEstado').value = data.estado;
+
+  // Info fields
+  var info = document.getElementById('recDetailInfo');
+  var infoHtml = '<div class="row" style="gap:16px; flex-wrap:wrap;">';
+  infoHtml += '<div><strong>Prioridad:</strong> <span style="color:' + (_recPrioridadColors[data.prioridad] || '#666') + '; font-weight:600;">' + (_recPrioridadLabels[data.prioridad] || data.prioridad) + '</span></div>';
+  infoHtml += '<div><strong>Estado:</strong> <span style="color:' + (_recEstadoColors[data.estado] || '#666') + '; font-weight:600;">' + (_recEstadoLabels[data.estado] || data.estado) + '</span></div>';
+  if (data.categoria_ishikawa) infoHtml += '<div><strong>Ishikawa:</strong> ' + (_recIshikawaLabels[data.categoria_ishikawa] || data.categoria_ishikawa) + '</div>';
+  if (data.fecha_cierre) infoHtml += '<div><strong>Cerrado:</strong> ' + data.fecha_cierre.replace('T', ' ').substring(0, 19) + '</div>';
+  infoHtml += '</div>';
+  if (data.descripcion) infoHtml += '<div style="margin-top:6px; white-space:pre-wrap;">' + data.descripcion + '</div>';
+  info.innerHTML = infoHtml;
+
+  // Actions fields
+  document.getElementById('recAccionCorrectiva').value = data.accion_correctiva || '';
+  document.getElementById('recAccionPreventiva').value = data.accion_preventiva || '';
+  document.getElementById('recResolucion').value = data.resolucion || '';
+  document.getElementById('recAccionesMsg').textContent = '';
+
+  // Timeline
+  renderReclamoTimeline(data.seguimientos || []);
+
+  // Clear seguimiento inputs
+  document.getElementById('recSeguimientoComentario').value = '';
+  document.getElementById('recSeguimientoEstado').value = '';
+  document.getElementById('recSeguimientoMsg').textContent = '';
+
+  // Scroll to detail
+  document.getElementById('reclamoDetailCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function renderReclamoTimeline(seguimientos) {
+  var container = document.getElementById('recTimeline');
+  if (!seguimientos || seguimientos.length === 0) {
+    container.innerHTML = '<div class="muted">Sin seguimientos</div>';
+    return;
+  }
+  container.innerHTML = seguimientos.map(function(s) {
+    var fecha = s.fecha ? s.fecha.replace('T', ' ').substring(0, 19) : '';
+    var estadoChange = '';
+    if (s.estado_nuevo) {
+      var fromLabel = _recEstadoLabels[s.estado_anterior] || s.estado_anterior || '?';
+      var toLabel = _recEstadoLabels[s.estado_nuevo] || s.estado_nuevo;
+      var toColor = _recEstadoColors[s.estado_nuevo] || '#666';
+      estadoChange = ' <span style="background:' + toColor + '; color:#fff; padding:1px 6px; border-radius:3px; font-size:10px;">' + fromLabel + ' → ' + toLabel + '</span>';
+    }
+    return '<div style="padding:6px 0; border-bottom:1px solid #f0f0f0;">' +
+      '<div style="display:flex; justify-content:space-between; align-items:center;">' +
+      '<span style="font-weight:500;">' + s.usuario + '</span>' +
+      '<span class="muted" style="font-size:10px;">' + fecha + '</span>' +
+      '</div>' +
+      '<div style="margin-top:2px;">' + (s.comentario || '') + estadoChange + '</div>' +
+      '</div>';
+  }).join('');
+}
+
+async function cambiarEstadoReclamo() {
+  if (!_reclamoActual) return;
+  var nuevoEstado = document.getElementById('recDetailEstado').value;
+  if (nuevoEstado === _reclamoActual.estado) return;
+
+  var res = await fetch('/reclamos/' + _reclamoActual.id, {
+    method: 'PATCH',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ estado: nuevoEstado })
+  });
+  if (res.status === 401) { logout(); return; }
+  var data = await res.json();
+  if (data.ok) {
+    await verReclamo(_reclamoActual.id);
+    await loadReclamos();
+    await loadReclamosKpis();
+  } else {
+    alert('Error: ' + (data.detail || 'desconocido'));
+  }
+}
+
+async function guardarAccionesReclamo() {
+  if (!_reclamoActual) return;
+  var msg = document.getElementById('recAccionesMsg');
+  msg.textContent = 'Guardando...'; msg.style.color = '#666';
+
+  var body = {};
+  var ac = document.getElementById('recAccionCorrectiva').value.trim();
+  var ap = document.getElementById('recAccionPreventiva').value.trim();
+  var re = document.getElementById('recResolucion').value.trim();
+  body.accion_correctiva = ac;
+  body.accion_preventiva = ap;
+  body.resolucion = re;
+
+  var res = await fetch('/reclamos/' + _reclamoActual.id, {
+    method: 'PATCH',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  if (res.status === 401) { logout(); return; }
+  var data = await res.json();
+  if (data.ok) {
+    msg.textContent = 'Guardado'; msg.style.color = '#558B2F';
+    setTimeout(function() { msg.textContent = ''; }, 2000);
+  } else {
+    msg.textContent = 'Error: ' + (data.detail || 'desconocido'); msg.style.color = '#b42318';
+  }
+}
+
+async function agregarSeguimiento() {
+  if (!_reclamoActual) return;
+  var comentario = document.getElementById('recSeguimientoComentario').value.trim();
+  var estadoNuevo = document.getElementById('recSeguimientoEstado').value;
+  var msg = document.getElementById('recSeguimientoMsg');
+
+  if (!comentario) { msg.textContent = 'Ingresa un comentario'; msg.style.color = '#b42318'; return; }
+  msg.textContent = 'Agregando...'; msg.style.color = '#666';
+
+  var body = { comentario: comentario };
+  if (estadoNuevo) body.estado_nuevo = estadoNuevo;
+
+  var res = await fetch('/reclamos/' + _reclamoActual.id + '/seguimientos', {
+    method: 'POST',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  if (res.status === 401) { logout(); return; }
+  var data = await res.json();
+  if (data.ok) {
+    msg.textContent = ''; 
+    document.getElementById('recSeguimientoComentario').value = '';
+    document.getElementById('recSeguimientoEstado').value = '';
+    await verReclamo(_reclamoActual.id);
+    await loadReclamos();
+    await loadReclamosKpis();
+  } else {
+    msg.textContent = 'Error: ' + (data.detail || 'desconocido'); msg.style.color = '#b42318';
+  }
+}
+
+async function eliminarReclamo() {
+  if (!_reclamoActual) return;
+  if (!confirm('¿Eliminar reclamo #' + _reclamoActual.id + ' "' + _reclamoActual.titulo + '"? Esta acción no se puede deshacer.')) return;
+
+  var res = await fetch('/reclamos/' + _reclamoActual.id, {
+    method: 'DELETE',
+    headers: authHeaders()
+  });
+  if (res.status === 401) { logout(); return; }
+  var data = await res.json();
+  if (data.ok) {
+    _reclamoActual = null;
+    document.getElementById('reclamoDetailCard').style.display = 'none';
+    await loadReclamos();
+    await loadReclamosKpis();
+  } else {
+    alert('Error: ' + (data.detail || 'desconocido'));
+  }
+}
+
 // ========================= INIT =========================
 (async function init() {
   if (!token()) { window.location.href = '/ui/login'; return; }
@@ -2704,6 +3018,8 @@ async function loadAuditLog(offset) {
   await loadDashboard('sector');
   await loadSectores();
   await loadPedidos();
+  await loadReclamos();
+  await loadReclamosKpis();
   if (currentRole === 'admin') await loadAuditLog();
   await buscar(true);
 })();

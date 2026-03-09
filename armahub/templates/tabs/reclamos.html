@@ -1,0 +1,196 @@
+  <!-- TAB: RECLAMOS -->
+  <div id="tab-reclamos" class="tab-content">
+    <!-- KPIs -->
+    <div class="card" style="border-top: 3px solid #e53935;">
+      <h3 style="margin:0 0 10px 0;">Reclamos y Errores</h3>
+      <div class="kpi-row" style="margin-bottom:0;">
+        <div class="kpi-card" style="border-top:2px solid #e53935;">
+          <div class="kpi-label">Abiertos</div>
+          <div class="kpi-value" id="recKpiAbiertos" style="font-size:22px; color:#e53935;">—</div>
+        </div>
+        <div class="kpi-card" style="border-top:2px solid #ff9800;">
+          <div class="kpi-label">En análisis</div>
+          <div class="kpi-value" id="recKpiEnAnalisis" style="font-size:22px; color:#ff9800;">—</div>
+        </div>
+        <div class="kpi-card" style="border-top:2px solid #2196F3;">
+          <div class="kpi-label">Acción correctiva</div>
+          <div class="kpi-value" id="recKpiAccion" style="font-size:22px; color:#2196F3;">—</div>
+        </div>
+        <div class="kpi-card" style="border-top:2px solid #4CAF50;">
+          <div class="kpi-label">Cerrados</div>
+          <div class="kpi-value" id="recKpiCerrados" style="font-size:22px; color:#4CAF50;">—</div>
+        </div>
+        <div class="kpi-card" style="border-top:2px solid #9E9E9E;">
+          <div class="kpi-label">Días prom. resolución</div>
+          <div class="kpi-value" id="recKpiAvgDias" style="font-size:22px;">—</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Crear reclamo -->
+    <div class="card">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+        <h3 style="margin:0;">Nuevo reclamo</h3>
+        <button class="secondary" style="font-size:12px; padding:4px 12px;" onclick="toggleNuevoReclamo()">+ Registrar reclamo</button>
+      </div>
+      <div id="nuevoReclamoForm" style="display:none; padding:12px; background:#fff5f5; border:1px solid #ffcdd2; border-radius:8px;">
+        <div class="row" style="gap:8px; flex-wrap:wrap; align-items:flex-end;">
+          <div class="col" style="flex:2; min-width:200px;">
+            <label style="font-size:11px; color:#666;">Título *</label>
+            <input type="text" id="recTitulo" placeholder="Descripción breve del error o reclamo" style="width:100%;" />
+          </div>
+          <div class="col" style="min-width:160px;">
+            <label style="font-size:11px; color:#666;">Proyecto</label>
+            <select id="recProyecto" style="width:100%; font-size:12px;">
+              <option value="">— Sin proyecto —</option>
+            </select>
+          </div>
+        </div>
+        <div class="row" style="gap:8px; flex-wrap:wrap; align-items:flex-end; margin-top:8px;">
+          <div class="col" style="max-width:160px;">
+            <label style="font-size:11px; color:#666;">Prioridad</label>
+            <select id="recPrioridad" style="width:100%; font-size:12px;">
+              <option value="baja">Baja</option>
+              <option value="media" selected>Media</option>
+              <option value="alta">Alta</option>
+              <option value="critica">Crítica</option>
+            </select>
+          </div>
+          <div class="col" style="max-width:200px;">
+            <label style="font-size:11px; color:#666;">Categoría Ishikawa</label>
+            <select id="recCategoria" style="width:100%; font-size:12px;">
+              <option value="">— Sin categoría —</option>
+              <option value="mano_de_obra">Mano de obra</option>
+              <option value="metodo">Método</option>
+              <option value="material">Material</option>
+              <option value="maquina">Máquina</option>
+              <option value="medicion">Medición</option>
+              <option value="medio_ambiente">Medio ambiente</option>
+            </select>
+          </div>
+          <div class="col" style="max-width:180px;">
+            <label style="font-size:11px; color:#666;">Responsable</label>
+            <input type="text" id="recResponsable" placeholder="Nombre (opcional)" style="width:100%;" />
+          </div>
+        </div>
+        <div style="margin-top:8px;">
+          <label style="font-size:11px; color:#666;">Descripción detallada</label>
+          <textarea id="recDescripcion" rows="3" placeholder="Describe el problema, contexto, evidencia..." style="width:100%; font-size:12px; resize:vertical;"></textarea>
+        </div>
+        <div style="margin-top:8px; display:flex; gap:8px; align-items:center;">
+          <button style="font-size:12px; padding:6px 16px; background:#e53935; border-color:#e53935;" onclick="crearReclamo()">Registrar reclamo</button>
+          <span id="crearReclamoMsg" class="muted" style="font-size:12px;"></span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Lista de reclamos -->
+    <div class="card">
+      <div class="row" style="justify-content:space-between; align-items:center; margin-bottom:8px;">
+        <h3 style="margin:0;">Lista de reclamos</h3>
+        <div class="row" style="gap:6px; align-items:center; flex-wrap:wrap;">
+          <select id="recFiltroEstado" onchange="loadReclamos()" style="font-size:11px;">
+            <option value="">Todos los estados</option>
+            <option value="abierto">Abierto</option>
+            <option value="en_analisis">En análisis</option>
+            <option value="accion_correctiva">Acción correctiva</option>
+            <option value="cerrado">Cerrado</option>
+            <option value="rechazado">Rechazado</option>
+          </select>
+          <select id="recFiltroPrioridad" onchange="loadReclamos()" style="font-size:11px;">
+            <option value="">Todas las prioridades</option>
+            <option value="critica">Crítica</option>
+            <option value="alta">Alta</option>
+            <option value="media">Media</option>
+            <option value="baja">Baja</option>
+          </select>
+          <select id="recFiltroCategoria" onchange="loadReclamos()" style="font-size:11px;">
+            <option value="">Todas las categorías</option>
+            <option value="mano_de_obra">Mano de obra</option>
+            <option value="metodo">Método</option>
+            <option value="material">Material</option>
+            <option value="maquina">Máquina</option>
+            <option value="medicion">Medición</option>
+            <option value="medio_ambiente">Medio ambiente</option>
+          </select>
+        </div>
+      </div>
+      <div id="reclamosList">
+        <div class="muted">Cargando reclamos...</div>
+      </div>
+    </div>
+
+    <!-- Detalle del reclamo seleccionado -->
+    <div class="card" id="reclamoDetailCard" style="display:none;">
+      <div class="row" style="justify-content:space-between; align-items:flex-start; margin-bottom:8px; flex-wrap:wrap; gap:8px;">
+        <div style="flex:1;">
+          <h3 style="margin:0;" id="recDetailTitle">—</h3>
+          <div class="muted" style="font-size:11px; margin-top:4px;" id="recDetailMeta"></div>
+        </div>
+        <div class="row" style="gap:6px; align-items:center;">
+          <select id="recDetailEstado" onchange="cambiarEstadoReclamo()" style="font-size:11px;">
+            <option value="abierto">Abierto</option>
+            <option value="en_analisis">En análisis</option>
+            <option value="accion_correctiva">Acción correctiva</option>
+            <option value="cerrado">Cerrado</option>
+            <option value="rechazado">Rechazado</option>
+          </select>
+          <button onclick="eliminarReclamo()" class="secondary" style="font-size:11px; color:#b42318;">Eliminar</button>
+        </div>
+      </div>
+
+      <!-- Info fields -->
+      <div id="recDetailInfo" style="font-size:12px; margin-bottom:10px; padding:8px; background:#f9f9f9; border-radius:6px;">
+      </div>
+
+      <!-- Acciones correctiva/preventiva/resolución (editable) -->
+      <div id="recDetailActions" style="margin-bottom:10px;">
+        <div class="row" style="gap:8px; flex-wrap:wrap;">
+          <div class="col" style="flex:1; min-width:200px;">
+            <label style="font-size:11px; color:#666;">Acción correctiva</label>
+            <textarea id="recAccionCorrectiva" rows="2" style="width:100%; font-size:12px; resize:vertical;" placeholder="Qué se hizo para corregir..."></textarea>
+          </div>
+          <div class="col" style="flex:1; min-width:200px;">
+            <label style="font-size:11px; color:#666;">Acción preventiva</label>
+            <textarea id="recAccionPreventiva" rows="2" style="width:100%; font-size:12px; resize:vertical;" placeholder="Qué se hará para prevenir..."></textarea>
+          </div>
+        </div>
+        <div style="margin-top:6px;">
+          <label style="font-size:11px; color:#666;">Resolución / Cierre</label>
+          <textarea id="recResolucion" rows="2" style="width:100%; font-size:12px; resize:vertical;" placeholder="Resumen de resolución..."></textarea>
+        </div>
+        <div style="margin-top:6px;">
+          <button class="secondary" style="font-size:11px; padding:4px 12px;" onclick="guardarAccionesReclamo()">Guardar acciones</button>
+          <span id="recAccionesMsg" class="muted" style="font-size:11px; margin-left:8px;"></span>
+        </div>
+      </div>
+
+      <!-- Timeline -->
+      <div style="border-top:1px solid #eee; padding-top:10px;">
+        <h4 style="margin:0 0 8px 0; font-size:13px;">Timeline de seguimientos</h4>
+        <div id="recTimeline" style="font-size:12px;">
+          <div class="muted">Sin seguimientos</div>
+        </div>
+      </div>
+
+      <!-- Agregar seguimiento -->
+      <div style="margin-top:10px; padding:8px 10px; background:#f5f5f5; border-radius:6px;">
+        <label style="font-size:11px; color:#666;">Agregar seguimiento</label>
+        <div class="row" style="gap:6px; align-items:flex-end; margin-top:4px;">
+          <div style="flex:1;">
+            <input type="text" id="recSeguimientoComentario" placeholder="Comentario o actualización..." style="width:100%; font-size:12px;" />
+          </div>
+          <select id="recSeguimientoEstado" style="font-size:11px; max-width:150px;">
+            <option value="">Sin cambio de estado</option>
+            <option value="abierto">→ Abierto</option>
+            <option value="en_analisis">→ En análisis</option>
+            <option value="accion_correctiva">→ Acción correctiva</option>
+            <option value="cerrado">→ Cerrado</option>
+            <option value="rechazado">→ Rechazado</option>
+          </select>
+          <button onclick="agregarSeguimiento()" style="font-size:11px; white-space:nowrap;">+ Agregar</button>
+        </div>
+        <div id="recSeguimientoMsg" style="margin-top:4px; font-size:11px;"></div>
+      </div>
+    </div>
+  </div>

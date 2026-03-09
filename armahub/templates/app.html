@@ -31,6 +31,7 @@
     <button class="tab-btn" onclick="switchTab('dashboards')">📊 Dashboards</button>
     <button class="tab-btn" onclick="switchTab('pedidos')">📝 Pedidos</button>
     <button class="tab-btn" onclick="switchTab('export')">📥 Exportación</button>
+    <button class="tab-btn" onclick="switchTab('reclamos')">⚠️ Reclamos</button>
     <button class="tab-btn" id="adminTabBtn" onclick="switchTab('admin')" style="display:none;">⚙️ Admin</button>
   </div>
 
@@ -40,6 +41,7 @@
   {% include 'tabs/dashboards.html' %}
   {% include 'tabs/pedidos.html' %}
   {% include 'tabs/exportacion.html' %}
+  {% include 'tabs/reclamos.html' %}
   {% include 'tabs/admin.html' %}
 
   <!-- MODAL: Nuevo proyecto detectado al importar -->

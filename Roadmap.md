@@ -673,32 +673,42 @@ y sienta las bases para el crecimiento multi-cliente.
 errores y reclamos levantados por clientes. Incluye formulario tipo, análisis de causa raíz
 (Ishikawa) y trazabilidad completa. Visible para todos los roles excepto cliente.
 
-29. Modelo de datos de reclamos - Pendiente
-    - Tabla "reclamos" (id, id_proyecto, titulo, descripcion, estado, prioridad, creado_por, fecha_creacion, fecha_cierre) - Pendiente
-    - Tabla "reclamo_seguimientos" (id, reclamo_id, usuario, comentario, fecha, estado_nuevo) - Pendiente
-    - Estados: abierto → en_análisis → acción_correctiva → cerrado / rechazado - Pendiente
-    - Prioridades: baja, media, alta, crítica - Pendiente
-    - Migración DB para tablas y relaciones - Pendiente
+29. Modelo de datos de reclamos - OK
+    - Migración 13: tabla reclamos (id, id_proyecto, titulo, descripcion, estado, prioridad, categoria_ishikawa, responsable, accion_correctiva, accion_preventiva, resolucion, creado_por, fechas) - OK
+    - Tabla reclamo_seguimientos (id, reclamo_id, usuario, comentario, estado_anterior, estado_nuevo, fecha) - OK
+    - Estados: abierto/en_analisis/accion_correctiva/cerrado/rechazado con CHECK constraint - OK
+    - Prioridades: baja/media/alta/critica con CHECK constraint - OK
+    - Categorías Ishikawa: 6 categorías clásicas (provisorias, ajustar con usuario) - OK
+    - Índices en id_proyecto, estado, prioridad, reclamo_id - OK
+    - Reset database actualizado con DROP reclamo_seguimientos + reclamos - OK
 
-30. Formulario de registro de reclamo - Pendiente
-    - Campos: proyecto, título, descripción detallada, prioridad, categoría - Pendiente
-    - Clasificación Ishikawa: Mano de obra, Método, Material, Máquina, Medición, Medio ambiente - Pendiente
-    - Adjuntar evidencia (texto/referencia, futuro: archivos) - Pendiente
-    - Asignación de responsable - Pendiente
+30. Formulario de registro de reclamo - OK
+    - Campos: proyecto (select), título, descripción (textarea), prioridad, categoría Ishikawa, responsable - OK
+    - Clasificación Ishikawa provisoria: Mano de obra, Método, Material, Máquina, Medición, Medio ambiente - OK
+    - Asignación de responsable (texto libre) - OK
+    - Adjuntar evidencia (futuro: archivos) - Pendiente
+    - Pendiente: campos definitivos del formulario + Ishikawa (input del usuario)
 
-31. Seguimiento y cierre de reclamos - Pendiente
-    - Timeline de seguimientos por reclamo (comentarios, cambios de estado) - Pendiente
-    - Cambio de estado con registro automático de quién y cuándo - Pendiente
-    - Campo de acción correctiva y acción preventiva - Pendiente
-    - Cierre con resumen de resolución - Pendiente
+31. Seguimiento y cierre de reclamos - OK
+    - Timeline ascendente con usuario, comentario, cambio de estado color-coded - OK
+    - Cambio de estado con registro automático (quién, cuándo, anterior → nuevo) - OK
+    - Seguimiento auto-creado al crear reclamo y al cambiar estado - OK
+    - Campos acción correctiva, acción preventiva editables en detalle - OK
+    - Cierre con resumen de resolución + fecha_cierre automática - OK
+    - POST /reclamos/{id}/seguimientos con cambio de estado opcional - OK
+    - Audit logging en crear, actualizar, eliminar reclamo y seguimiento - OK
 
-32. UI Tab Reclamos - Pendiente
-    - Nueva pestaña "Reclamos" visible para admin, coordinador, cubicador, operador - Pendiente
-    - Lista de reclamos con filtros (estado, prioridad, proyecto) - Pendiente
-    - Vista detalle con timeline de seguimientos - Pendiente
-    - Formulario de nuevo reclamo y de nuevo seguimiento - Pendiente
-    - KPIs: reclamos abiertos, tiempo promedio de resolución, por categoría Ishikawa - Pendiente
-    - Definir si cada rol ve todos los reclamos o solo los de sus obras - Pendiente
+32. UI Tab Reclamos - OK
+    - Tab "⚠️ Reclamos" visible para admin, coordinador, cubicador, operador - OK
+    - KPIs: abiertos, en análisis, acción correctiva, cerrados, días prom. resolución - OK
+    - Formulario nuevo reclamo inline collapsible - OK
+    - Lista con filtros (estado, prioridad, categoría Ishikawa) - OK
+    - Tabla color-coded: badges estado, prioridad, categoría, fecha, seguimientos - OK
+    - Vista detalle con info, acciones editables, timeline - OK
+    - Agregar seguimiento inline con cambio de estado opcional - OK
+    - Eliminar reclamo con confirmación - OK
+    - Selector proyecto poblado desde loadProyectos - OK
+    - Pendiente: filtro por proyecto del usuario, campos Ishikawa definitivos
 
 ---
 ## FASE 7 — Preparación para Apps
