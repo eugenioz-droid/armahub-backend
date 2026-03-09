@@ -20,7 +20,7 @@ from openpyxl import Workbook
 from openpyxl.styles import Font, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 
-from .db import get_conn
+from .db import get_conn, audit
 from .auth import get_current_user
 
 router = APIRouter()
@@ -231,6 +231,8 @@ def exportar_proyecto(
                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """, (id_proyecto, sector, piso, ciclo, export_key, email, now_iso,
                       int(stats[0]) if stats else 0, round(float(stats[1]), 2) if stats else 0))
+
+            audit(email, "exportar_excel", f"{len(combos)} sectores, {nombre_proyecto}", "proyecto", id_proyecto)
 
             # Nombre del ZIP: nombre del proyecto (sanitizado)
             safe_name = "".join(c for c in nombre_proyecto if c.isalnum() or c in " -_").strip()

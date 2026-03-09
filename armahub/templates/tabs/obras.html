@@ -61,20 +61,92 @@
 
     <div class="card">
       <h3>Crear obra manualmente</h3>
-      <div class="row" style="gap: 8px; align-items: flex-end;">
+      <div class="row" style="gap: 8px; align-items: flex-end; flex-wrap:wrap;">
         <div class="col">
           <label style="font-size: 12px; color: #666;">Nombre de la obra</label>
           <input type="text" id="newObraName" placeholder="Ej: Edificio Central - Torre A" style="width: 100%;" />
         </div>
         <div class="col" style="max-width:220px;">
           <label style="font-size: 12px; color: #666;">Calculista (opcional)</label>
-          <input type="text" id="newObraCalculista" placeholder="Nombre calculista" style="width: 100%;" />
+          <select id="newObraCalculista" style="width: 100%;">
+            <option value="">-- Sin calculista --</option>
+          </select>
+        </div>
+        <div class="col" style="max-width:220px;">
+          <label style="font-size: 12px; color: #666;">Cliente (opcional)</label>
+          <select id="newObraCliente" style="width: 100%;">
+            <option value="">-- Sin cliente --</option>
+          </select>
         </div>
         <div>
           <button onclick="crearObra()">+ Crear obra</button>
         </div>
       </div>
       <div id="crearObraMsg" style="margin-top: 8px;"></div>
+    </div>
+
+    <div class="card">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+        <h3 style="margin:0;">Clientes</h3>
+        <button class="secondary" style="font-size:12px; padding:4px 12px;" onclick="toggleNuevoCliente()">+ Nuevo cliente</button>
+      </div>
+      <div id="nuevoClienteForm" style="display:none; margin-bottom:12px; padding:12px; background:#f9f9f9; border-radius:8px;">
+        <div class="row" style="gap:8px; flex-wrap:wrap; align-items:flex-end;">
+          <div class="col">
+            <label style="font-size:11px; color:#666;">Nombre *</label>
+            <input type="text" id="ncNombre" placeholder="Nombre empresa" style="width:100%;" />
+          </div>
+          <div class="col" style="max-width:140px;">
+            <label style="font-size:11px; color:#666;">RUT</label>
+            <input type="text" id="ncRut" placeholder="12.345.678-9" style="width:100%;" />
+          </div>
+          <div class="col" style="max-width:180px;">
+            <label style="font-size:11px; color:#666;">Contacto</label>
+            <input type="text" id="ncContacto" placeholder="Nombre contacto" style="width:100%;" />
+          </div>
+          <div class="col" style="max-width:200px;">
+            <label style="font-size:11px; color:#666;">Email</label>
+            <input type="text" id="ncEmail" placeholder="email@empresa.cl" style="width:100%;" />
+          </div>
+          <div class="col" style="max-width:140px;">
+            <label style="font-size:11px; color:#666;">Teléfono</label>
+            <input type="text" id="ncTelefono" placeholder="+56 9..." style="width:100%;" />
+          </div>
+        </div>
+        <div style="margin-top:8px; display:flex; gap:8px; align-items:center;">
+          <button style="font-size:12px; padding:6px 16px;" onclick="crearCliente()">Guardar cliente</button>
+          <span id="crearClienteMsg" class="muted" style="font-size:12px;"></span>
+        </div>
+      </div>
+      <div id="clientesContainer">
+        <div class="muted">Cargando...</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+        <h3 style="margin:0;">Calculistas</h3>
+        <button class="secondary" style="font-size:12px; padding:4px 12px;" onclick="toggleNuevoCalculista()">+ Nuevo calculista</button>
+      </div>
+      <div id="nuevoCalculistaForm" style="display:none; margin-bottom:12px; padding:12px; background:#f9f9f9; border-radius:8px;">
+        <div class="row" style="gap:8px; flex-wrap:wrap; align-items:flex-end;">
+          <div class="col">
+            <label style="font-size:11px; color:#666;">Nombre *</label>
+            <input type="text" id="nCalcNombre" placeholder="Nombre calculista" style="width:100%;" />
+          </div>
+          <div class="col" style="max-width:220px;">
+            <label style="font-size:11px; color:#666;">Email (opcional)</label>
+            <input type="text" id="nCalcEmail" placeholder="email@ejemplo.cl" style="width:100%;" />
+          </div>
+        </div>
+        <div style="margin-top:8px; display:flex; gap:8px; align-items:center;">
+          <button style="font-size:12px; padding:6px 16px;" onclick="crearCalculista()">Guardar calculista</button>
+          <span id="crearCalculistaMsg" class="muted" style="font-size:12px;"></span>
+        </div>
+      </div>
+      <div id="calculistasContainer">
+        <div class="muted">Cargando...</div>
+      </div>
     </div>
 
     <div class="card">

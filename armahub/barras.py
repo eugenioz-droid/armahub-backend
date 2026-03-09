@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from typing import Optional
-from .db import get_conn
+from .db import get_conn, audit
 from .auth import get_current_user
 
 router = APIRouter()
@@ -892,12 +892,19 @@ def get_proyectos(user=Depends(get_current_user)):
                     COALESCE(SUM(b.peso_total), 0) as total_kilos,
                     p.owner_id,
                     u.email as owner_email,
-                    p.calculista
+                    p.calculista,
+                    p.cliente_id,
+                    cl.nombre as cliente_nombre,
+                    p.calculista_id,
+                    ca.nombre as calculista_nombre
                 FROM proyectos p
                 LEFT JOIN barras b ON p.id_proyecto = b.id_proyecto
                 LEFT JOIN users u ON p.owner_id = u.id
+                LEFT JOIN clientes cl ON p.cliente_id = cl.id
+                LEFT JOIN calculistas ca ON p.calculista_id = ca.id
                 WHERE 1=1""" + pf_p + """
-                GROUP BY p.id_proyecto, p.nombre_proyecto, p.owner_id, u.email, p.calculista
+                GROUP BY p.id_proyecto, p.nombre_proyecto, p.owner_id, u.email, p.calculista,
+                         p.cliente_id, cl.nombre, p.calculista_id, ca.nombre
                 ORDER BY p.fecha_creacion DESC
             """, pf_pp)
             rows = cur.fetchall()
@@ -912,6 +919,10 @@ def get_proyectos(user=Depends(get_current_user)):
                 "owner_id": r[4],
                 "owner_email": r[5],
                 "calculista": r[6],
+                "cliente_id": r[7],
+                "cliente_nombre": r[8],
+                "calculista_id": r[9],
+                "calculista_nombre": r[10],
             }
             for r in rows
         ]
@@ -968,11 +979,15 @@ class ProyectoCreate(BaseModel):
     nombre_proyecto: str
     descripcion: Optional[str] = None
     calculista: Optional[str] = None
+    calculista_id: Optional[int] = None
+    cliente_id: Optional[int] = None
 
 class ProyectoUpdate(BaseModel):
     nombre_proyecto: Optional[str] = None
     descripcion: Optional[str] = None
     calculista: Optional[str] = None
+    calculista_id: Optional[int] = None
+    cliente_id: Optional[int] = None
 
 class AutorizarUsuarioRequest(BaseModel):
     user_id: int
@@ -998,9 +1013,10 @@ def crear_proyecto(body: ProyectoCreate, user=Depends(get_current_user)):
             owner_id = owner_row[0] if owner_row else None
 
             cur.execute("""
-                INSERT INTO proyectos (id_proyecto, nombre_proyecto, usuario_creador, owner_id, calculista)
-                VALUES (%s, %s, %s, %s, %s)
-            """, (id_proyecto, body.nombre_proyecto, user.get("email", "unknown"), owner_id, body.calculista))
+                INSERT INTO proyectos (id_proyecto, nombre_proyecto, usuario_creador, owner_id, calculista, calculista_id, cliente_id)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+            """, (id_proyecto, body.nombre_proyecto, user.get("email", "unknown"), owner_id, body.calculista, body.calculista_id, body.cliente_id))
+    audit(user.get("email", "?"), "crear_proyecto", body.nombre_proyecto, "proyecto", id_proyecto)
     return {
         "ok": True,
         "id_proyecto": id_proyecto,
@@ -1030,6 +1046,12 @@ def editar_proyecto(id_proyecto: str, body: ProyectoUpdate, user=Depends(get_cur
             if body.calculista is not None:
                 sets.append("calculista = %s")
                 params.append(body.calculista)
+            if body.calculista_id is not None:
+                sets.append("calculista_id = %s")
+                params.append(body.calculista_id if body.calculista_id != 0 else None)
+            if body.cliente_id is not None:
+                sets.append("cliente_id = %s")
+                params.append(body.cliente_id if body.cliente_id != 0 else None)
 
             if not sets:
                 return {"ok": True, "message": "Sin cambios"}
@@ -1043,7 +1065,7 @@ def editar_proyecto(id_proyecto: str, body: ProyectoUpdate, user=Depends(get_cur
                     "UPDATE barras SET nombre_proyecto = %s WHERE id_proyecto = %s",
                     (body.nombre_proyecto, id_proyecto)
                 )
-
+    audit(user.get("email", "?"), "editar_proyecto", f"campos: {', '.join(s.split(' =')[0] for s in sets)}", "proyecto", id_proyecto)
     return {"ok": True, "id_proyecto": id_proyecto, "nombre_proyecto": body.nombre_proyecto}
 
 
@@ -1067,7 +1089,7 @@ def eliminar_proyecto(id_proyecto: str, user=Depends(get_current_user)):
             cur.execute("DELETE FROM imports WHERE id_proyecto = %s", (id_proyecto,))
             cur.execute("DELETE FROM barras WHERE id_proyecto = %s", (id_proyecto,))
             cur.execute("DELETE FROM proyectos WHERE id_proyecto = %s", (id_proyecto,))
-
+    audit(user.get("email", "?"), "eliminar_proyecto", f"{nombre} ({barras_count} barras)", "proyecto", id_proyecto)
     return {
         "ok": True,
         "id_proyecto": id_proyecto,
@@ -1114,7 +1136,7 @@ def mover_barras(id_proyecto: str, body: MoverBarrasRequest, user=Depends(get_cu
                 f"UPDATE barras SET id_proyecto = %s, nombre_proyecto = %s {where}",
                 [body.destino_id, dest[0]] + params
             )
-
+    audit(user.get("email", "?"), "mover_barras", f"{count} barras {id_proyecto} → {body.destino_id}", "proyecto", id_proyecto)
     return {
         "ok": True,
         "movidas": count,

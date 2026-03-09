@@ -40,4 +40,33 @@
       </div>
       <div id="createUserMsg" class="muted" style="margin-top: 8px;"></div>
     </div>
+
+    <div class="card">
+      <h3>Auditoría de acciones</h3>
+      <div class="row" style="gap:8px; align-items:flex-end; flex-wrap:wrap; margin-bottom:10px;">
+        <div class="col" style="max-width:200px;">
+          <label style="font-size:11px; color:#666;">Usuario</label>
+          <input type="text" id="auditFiltroUsuario" placeholder="Buscar usuario..." style="width:100%; font-size:12px;" />
+        </div>
+        <div class="col" style="max-width:180px;">
+          <label style="font-size:11px; color:#666;">Acción</label>
+          <select id="auditFiltroAccion" style="width:100%; font-size:12px;">
+            <option value="">Todas</option>
+          </select>
+        </div>
+        <div class="col" style="max-width:180px;">
+          <label style="font-size:11px; color:#666;">Entidad</label>
+          <select id="auditFiltroEntidad" style="width:100%; font-size:12px;">
+            <option value="">Todas</option>
+          </select>
+        </div>
+        <div>
+          <button class="secondary" style="font-size:12px; padding:6px 14px;" onclick="loadAuditLog()">Filtrar</button>
+        </div>
+      </div>
+      <div id="auditLogContainer">
+        <div class="muted">Cargando...</div>
+      </div>
+      <div id="auditPagination" style="margin-top:8px; display:flex; gap:8px; align-items:center; justify-content:center;"></div>
+    </div>
   </div>

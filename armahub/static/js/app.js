@@ -209,7 +209,7 @@ async function loadProyectos() {
   
   container.innerHTML = data.proyectos.map(p => {
     const ownerText = p.owner_email ? p.owner_email : '(sin dueño)';
-    const calcText = p.calculista ? p.calculista : '';
+    const calcText = p.calculista_nombre || p.calculista || '';
     return `
     <div class="card" style="margin: 12px 0; padding: 16px; border-left: 4px solid #8BC34A;">
       <div style="display: flex; justify-content: space-between; align-items: start;">
@@ -223,6 +223,7 @@ async function loadProyectos() {
           <div style="font-size:11px; color:#666;">
             <span>👤 ${ownerText}</span>
             ${calcText ? '<span style="margin-left:10px;">📐 Calculista: ' + calcText + '</span>' : ''}
+            ${p.cliente_nombre ? '<span style="margin-left:10px;">🏢 ' + p.cliente_nombre + '</span>' : ''}
           </div>
         </div>
         <div style="display: flex; gap: 6px; align-items: center;">
@@ -292,12 +293,16 @@ async function loadProyectos() {
 // ========================= ADMIN OBRAS =========================
 async function crearObra() {
   const name = document.getElementById('newObraName').value.trim();
-  const calc = document.getElementById('newObraCalculista').value.trim();
+  const calcSel = document.getElementById('newObraCalculista');
+  const calcId = calcSel ? calcSel.value : '';
+  const clienteSel = document.getElementById('newObraCliente');
+  const clienteId = clienteSel ? clienteSel.value : '';
   const msg = document.getElementById('crearObraMsg');
   if (!name) { msg.innerHTML = '<span class="status-err">Ingresa un nombre para la obra</span>'; return; }
   msg.innerHTML = '<span class="muted">Creando...</span>';
   const body = { nombre_proyecto: name };
-  if (calc) body.calculista = calc;
+  if (calcId) body.calculista_id = parseInt(calcId);
+  if (clienteId) body.cliente_id = parseInt(clienteId);
   const res = await fetch('/proyectos', {
     method: 'POST',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
@@ -309,6 +314,7 @@ async function crearObra() {
     msg.innerHTML = '<span class="status-ok">Obra creada: ' + data.nombre_proyecto + ' (ID: ' + data.id_proyecto + ')</span>';
     document.getElementById('newObraName').value = '';
     document.getElementById('newObraCalculista').value = '';
+    if (clienteSel) clienteSel.value = '';
     await loadProyectos();
     await loadFilters();
     await loadInicio();
@@ -2118,6 +2124,217 @@ async function loadMiActividad() {
   });
 }
 
+// ========================= CLIENTES =========================
+let _clientesCache = [];
+
+async function loadClientes() {
+  const data = await apiGet('/clientes?activo=true');
+  if (!data) return;
+  _clientesCache = data.clientes || [];
+
+  // Populate client selector in crear obra
+  const sel = document.getElementById('newObraCliente');
+  if (sel) {
+    const prev = sel.value;
+    sel.innerHTML = '<option value="">-- Sin cliente --</option>' +
+      _clientesCache.map(c => `<option value="${c.id}">${c.nombre}</option>`).join('');
+    if (prev) sel.value = prev;
+  }
+
+  // Render client list
+  const container = document.getElementById('clientesContainer');
+  if (!container) return;
+  if (_clientesCache.length === 0) {
+    container.innerHTML = '<div class="muted">No hay clientes registrados</div>';
+    return;
+  }
+  container.innerHTML = '<table style="width:100%; font-size:12px; border-collapse:collapse;">' +
+    '<tr style="background:#f5f5f5; text-align:left;">' +
+    '<th style="padding:6px 8px;">Nombre</th>' +
+    '<th style="padding:6px 8px;">RUT</th>' +
+    '<th style="padding:6px 8px;">Contacto</th>' +
+    '<th style="padding:6px 8px;">Email</th>' +
+    '<th style="padding:6px 8px;">Tel</th>' +
+    '<th style="padding:6px 8px;">Proyectos</th>' +
+    '<th style="padding:6px 8px;">Kilos</th>' +
+    '<th style="padding:6px 4px;"></th>' +
+    '</tr>' +
+    _clientesCache.map(c => `<tr style="border-bottom:1px solid #eee;">
+      <td style="padding:5px 8px; font-weight:500;">${c.nombre}</td>
+      <td style="padding:5px 8px;" class="muted">${c.rut || '-'}</td>
+      <td style="padding:5px 8px;">${c.contacto || '-'}</td>
+      <td style="padding:5px 8px;">${c.email || '-'}</td>
+      <td style="padding:5px 8px;">${c.telefono || '-'}</td>
+      <td style="padding:5px 8px; text-align:center;"><span class="badge">${c.proyectos_count}</span></td>
+      <td style="padding:5px 8px; text-align:right;">${c.total_kilos.toFixed(0)} kg</td>
+      <td style="padding:5px 4px;">
+        <button class="secondary" style="font-size:10px; padding:2px 6px;" onclick="editarCliente(${c.id})">Editar</button>
+      </td>
+    </tr>`).join('') +
+    '</table>';
+}
+
+function toggleNuevoCliente() {
+  const form = document.getElementById('nuevoClienteForm');
+  form.style.display = form.style.display === 'none' ? '' : 'none';
+}
+
+async function crearCliente() {
+  const nombre = document.getElementById('ncNombre').value.trim();
+  const msg = document.getElementById('crearClienteMsg');
+  if (!nombre) { msg.textContent = 'El nombre es requerido'; msg.style.color = '#b42318'; return; }
+  msg.textContent = 'Guardando...'; msg.style.color = '#666';
+
+  const body = { nombre: nombre };
+  const rut = document.getElementById('ncRut').value.trim();
+  const contacto = document.getElementById('ncContacto').value.trim();
+  const email = document.getElementById('ncEmail').value.trim();
+  const telefono = document.getElementById('ncTelefono').value.trim();
+  if (rut) body.rut = rut;
+  if (contacto) body.contacto = contacto;
+  if (email) body.email = email;
+  if (telefono) body.telefono = telefono;
+
+  const res = await fetch('/clientes', {
+    method: 'POST',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  if (res.status === 401) { logout(); return; }
+  const data = await res.json();
+  if (data.ok) {
+    msg.textContent = 'Cliente creado'; msg.style.color = '#558B2F';
+    document.getElementById('ncNombre').value = '';
+    document.getElementById('ncRut').value = '';
+    document.getElementById('ncContacto').value = '';
+    document.getElementById('ncEmail').value = '';
+    document.getElementById('ncTelefono').value = '';
+    document.getElementById('nuevoClienteForm').style.display = 'none';
+    await loadClientes();
+  } else {
+    msg.textContent = 'Error: ' + (data.detail || 'desconocido'); msg.style.color = '#b42318';
+  }
+}
+
+async function editarCliente(clienteId) {
+  const c = _clientesCache.find(x => x.id === clienteId);
+  if (!c) return;
+  const nuevoNombre = prompt('Nombre del cliente:', c.nombre);
+  if (nuevoNombre === null || nuevoNombre.trim() === '') return;
+  const body = { nombre: nuevoNombre.trim() };
+  const res = await fetch('/clientes/' + clienteId, {
+    method: 'PATCH',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  if (res.status === 401) { logout(); return; }
+  const data = await res.json();
+  if (data.ok) {
+    await loadClientes();
+  } else {
+    alert('Error: ' + (data.detail || 'desconocido'));
+  }
+}
+
+// ========================= CALCULISTAS =========================
+let _calculistasCache = [];
+
+async function loadCalculistas() {
+  const data = await apiGet('/calculistas?activo=true');
+  if (!data) return;
+  _calculistasCache = data.calculistas || [];
+
+  // Populate calculista selector in crear obra
+  const sel = document.getElementById('newObraCalculista');
+  if (sel) {
+    const prev = sel.value;
+    sel.innerHTML = '<option value="">-- Sin calculista --</option>' +
+      _calculistasCache.map(c => '<option value="' + c.id + '">' + c.nombre + '</option>').join('');
+    if (prev) sel.value = prev;
+  }
+
+  // Render calculista list
+  const container = document.getElementById('calculistasContainer');
+  if (!container) return;
+  if (_calculistasCache.length === 0) {
+    container.innerHTML = '<div class="muted">No hay calculistas registrados</div>';
+    return;
+  }
+  container.innerHTML = '<table style="width:100%; font-size:12px; border-collapse:collapse;">' +
+    '<tr style="background:#f5f5f5; text-align:left;">' +
+    '<th style="padding:6px 8px;">Nombre</th>' +
+    '<th style="padding:6px 8px;">Email</th>' +
+    '<th style="padding:6px 8px;">Proyectos</th>' +
+    '<th style="padding:6px 8px;">Barras</th>' +
+    '<th style="padding:6px 8px;">Kilos</th>' +
+    '<th style="padding:6px 4px;"></th>' +
+    '</tr>' +
+    _calculistasCache.map(c => '<tr style="border-bottom:1px solid #eee;">' +
+      '<td style="padding:5px 8px; font-weight:500;">' + c.nombre + '</td>' +
+      '<td style="padding:5px 8px;" class="muted">' + (c.email || '-') + '</td>' +
+      '<td style="padding:5px 8px; text-align:center;"><span class="badge">' + c.proyectos_count + '</span></td>' +
+      '<td style="padding:5px 8px; text-align:right;">' + c.total_barras.toLocaleString() + '</td>' +
+      '<td style="padding:5px 8px; text-align:right;">' + c.total_kilos.toFixed(0) + ' kg</td>' +
+      '<td style="padding:5px 4px;">' +
+        '<button class="secondary" style="font-size:10px; padding:2px 6px;" onclick="editarCalculista(' + c.id + ')">Editar</button>' +
+      '</td>' +
+    '</tr>').join('') +
+    '</table>';
+}
+
+function toggleNuevoCalculista() {
+  const form = document.getElementById('nuevoCalculistaForm');
+  form.style.display = form.style.display === 'none' ? '' : 'none';
+}
+
+async function crearCalculista() {
+  const nombre = document.getElementById('nCalcNombre').value.trim();
+  const msg = document.getElementById('crearCalculistaMsg');
+  if (!nombre) { msg.textContent = 'El nombre es requerido'; msg.style.color = '#b42318'; return; }
+  msg.textContent = 'Guardando...'; msg.style.color = '#666';
+
+  const body = { nombre: nombre };
+  const email = document.getElementById('nCalcEmail').value.trim();
+  if (email) body.email = email;
+
+  const res = await fetch('/calculistas', {
+    method: 'POST',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  if (res.status === 401) { logout(); return; }
+  const data = await res.json();
+  if (data.ok) {
+    msg.textContent = 'Calculista creado'; msg.style.color = '#558B2F';
+    document.getElementById('nCalcNombre').value = '';
+    document.getElementById('nCalcEmail').value = '';
+    document.getElementById('nuevoCalculistaForm').style.display = 'none';
+    await loadCalculistas();
+  } else {
+    msg.textContent = 'Error: ' + (data.detail || 'desconocido'); msg.style.color = '#b42318';
+  }
+}
+
+async function editarCalculista(calcId) {
+  const c = _calculistasCache.find(x => x.id === calcId);
+  if (!c) return;
+  const nuevoNombre = prompt('Nombre del calculista:', c.nombre);
+  if (nuevoNombre === null || nuevoNombre.trim() === '') return;
+  const body = { nombre: nuevoNombre.trim() };
+  const res = await fetch('/calculistas/' + calcId, {
+    method: 'PATCH',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  if (res.status === 401) { logout(); return; }
+  const data = await res.json();
+  if (data.ok) {
+    await loadCalculistas();
+  } else {
+    alert('Error: ' + (data.detail || 'desconocido'));
+  }
+}
+
 // ========================= PEDIDOS =========================
 let _pedidoActual = null;
 
@@ -2371,6 +2588,95 @@ async function createUser() {
   document.getElementById('newUserPassword').value = '';
 }
 
+// ========================= AUDIT LOG =========================
+let _auditOffset = 0;
+const _auditLimit = 50;
+
+async function loadAuditLog(offset) {
+  if (offset !== undefined) _auditOffset = offset;
+  const usuario = document.getElementById('auditFiltroUsuario').value.trim();
+  const accion = document.getElementById('auditFiltroAccion').value;
+  const entidad = document.getElementById('auditFiltroEntidad').value;
+
+  const params = new URLSearchParams({ limit: _auditLimit, offset: _auditOffset });
+  if (usuario) params.append('usuario', usuario);
+  if (accion) params.append('accion', accion);
+  if (entidad) params.append('entidad', entidad);
+
+  const data = await apiGet('/admin/audit?' + params.toString());
+  if (!data) return;
+
+  // Populate filter dropdowns (only if empty)
+  const accSel = document.getElementById('auditFiltroAccion');
+  if (accSel.options.length <= 1 && data.acciones_disponibles) {
+    data.acciones_disponibles.forEach(a => {
+      const opt = document.createElement('option');
+      opt.value = a; opt.textContent = a;
+      accSel.appendChild(opt);
+    });
+  }
+  const entSel = document.getElementById('auditFiltroEntidad');
+  if (entSel.options.length <= 1 && data.entidades_disponibles) {
+    data.entidades_disponibles.forEach(e => {
+      const opt = document.createElement('option');
+      opt.value = e; opt.textContent = e;
+      entSel.appendChild(opt);
+    });
+  }
+
+  const container = document.getElementById('auditLogContainer');
+  if (!data.logs || data.logs.length === 0) {
+    container.innerHTML = '<div class="muted">No hay registros de auditor\u00eda</div>';
+    document.getElementById('auditPagination').innerHTML = '';
+    return;
+  }
+
+  const accionColors = {
+    login: '#2196F3', signup: '#2196F3', registrar_usuario: '#9C27B0',
+    importar_csv: '#8BC34A', exportar_excel: '#FF9800',
+    crear_proyecto: '#4CAF50', editar_proyecto: '#FFC107', eliminar_proyecto: '#F44336',
+    mover_barras: '#00BCD4', reset_db: '#F44336',
+    crear_cliente: '#4CAF50', editar_cliente: '#FFC107', desactivar_cliente: '#F44336',
+    asignar_cliente: '#9C27B0',
+  };
+
+  container.innerHTML = '<table style="width:100%; font-size:11px; border-collapse:collapse;">' +
+    '<tr style="background:#f5f5f5; text-align:left;">' +
+    '<th style="padding:5px 6px;">Fecha</th>' +
+    '<th style="padding:5px 6px;">Usuario</th>' +
+    '<th style="padding:5px 6px;">Acci\u00f3n</th>' +
+    '<th style="padding:5px 6px;">Detalle</th>' +
+    '<th style="padding:5px 6px;">Entidad</th>' +
+    '<th style="padding:5px 6px;">ID</th>' +
+    '</tr>' +
+    data.logs.map(l => {
+      const fecha = l.fecha ? l.fecha.replace('T', ' ').substring(0, 19) : '';
+      const color = accionColors[l.accion] || '#666';
+      return '<tr style="border-bottom:1px solid #f0f0f0;">' +
+        '<td style="padding:4px 6px; white-space:nowrap;" class="muted">' + fecha + '</td>' +
+        '<td style="padding:4px 6px;">' + l.usuario + '</td>' +
+        '<td style="padding:4px 6px;"><span style="background:' + color + '; color:#fff; padding:1px 6px; border-radius:3px; font-size:10px;">' + l.accion + '</span></td>' +
+        '<td style="padding:4px 6px; max-width:300px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="' + (l.detalle || '').replace(/"/g, '&quot;') + '">' + (l.detalle || '-') + '</td>' +
+        '<td style="padding:4px 6px;" class="muted">' + (l.entidad || '-') + '</td>' +
+        '<td style="padding:4px 6px; font-size:10px;" class="muted">' + (l.entidad_id || '-') + '</td>' +
+        '</tr>';
+    }).join('') +
+    '</table>';
+
+  // Pagination
+  const pag = document.getElementById('auditPagination');
+  const totalPages = Math.ceil(data.total / _auditLimit);
+  const currentPage = Math.floor(_auditOffset / _auditLimit) + 1;
+  let pagHtml = '<span class="muted" style="font-size:11px;">' + data.total + ' registros \u2014 P\u00e1gina ' + currentPage + ' de ' + totalPages + '</span>';
+  if (_auditOffset > 0) {
+    pagHtml += ' <button class="secondary" style="font-size:11px; padding:2px 8px;" onclick="loadAuditLog(' + (_auditOffset - _auditLimit) + ')">← Anterior</button>';
+  }
+  if (_auditOffset + _auditLimit < data.total) {
+    pagHtml += ' <button class="secondary" style="font-size:11px; padding:2px 8px;" onclick="loadAuditLog(' + (_auditOffset + _auditLimit) + ')">Siguiente →</button>';
+  }
+  pag.innerHTML = pagHtml;
+}
+
 // ========================= INIT =========================
 (async function init() {
   if (!token()) { window.location.href = '/ui/login'; return; }
@@ -2378,6 +2684,8 @@ async function createUser() {
   await loadInicio();
   await loadMiActividad();
   await loadProyectos();
+  await loadClientes();
+  await loadCalculistas();
 
   // Restore saved filters from localStorage
   const saved = restoreFiltersFromStorage();
@@ -2396,5 +2704,6 @@ async function createUser() {
   await loadDashboard('sector');
   await loadSectores();
   await loadPedidos();
+  if (currentRole === 'admin') await loadAuditLog();
   await buscar(true);
 })();

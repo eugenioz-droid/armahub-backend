@@ -612,22 +612,53 @@ y sienta las bases para el crecimiento multi-cliente.
     - Color-coded badges para estados (gris/azul/naranja/verde/rojo) - OK
     - Registrado en main.py, selects de proyecto poblados en loadProyectos + loadFilters - OK
 
-25. Modelo de datos clientes + permisos - Pendiente
-    - Tabla "clientes", relación con proyectos, permisos por rol - Pendiente
+25. Modelo de datos clientes + permisos - OK
+    - Migración 10: tabla clientes (id, nombre, rut, contacto, email, telefono, direccion, notas, activo) + cliente_id FK en proyectos - OK
+    - clientes.py: CRUD completo GET/POST/PATCH/DELETE /clientes + GET /clientes/{id} con proyectos asociados - OK
+    - POST /proyectos/{id}/asignar-cliente para asignar/desasignar cliente a proyecto - OK
+    - GET /proyectos incluye cliente_id y cliente_nombre - OK
+    - POST/PATCH /proyectos acepta cliente_id - OK
+    - UI: selector de cliente al crear obra, panel de clientes con tabla (nombre, rut, contacto, email, tel, proyectos, kilos) - OK
+    - UI: crear cliente inline, editar nombre, proyecto cards muestran cliente - OK
+    - Soft-delete clientes (activo=false), unique index en nombre - OK
 
-26. Auditoría y logs en panel Admin - Pendiente
-    - Registro de acciones, visualización en tab Admin - Pendiente
+25b. Rediseño de roles y permisos - Pendiente
+    Roles actuales: admin, coordinador, cubicador, operador, cliente.
+    Problemas detectados:
+    - "operador" es genérico y poco claro → redefinir o eliminar
+    - Se necesita un rol tipo "jefe/supervisor" con acceso visual a todo pero sin poder destructivo
+    - Solo el admin principal debería poder resetear BD, eliminar usuarios, etc.
 
-27. Gestión de calculistas y KPIs por calculista - Pendiente
-    - Tabla "calculistas" normalizada (id, nombre, fecha_creación) - Pendiente
-    - Relación proyectos → calculista (FK en tabla proyectos) - Pendiente
-    - Selector desplegable de calculistas en popup de nuevo proyecto y en crear obra manual - Pendiente
-    - Opción "Agregar nuevo calculista" dentro del selector si no existe - Pendiente
-    - El listado crece con el tiempo; evitar duplicados por typos (búsqueda fuzzy o autocompletado) - Pendiente
-    - Endpoint GET /calculistas (listar) y POST /calculistas (crear) - Pendiente
-    - KPIs por calculista: diámetro promedio ponderado, PPI, PPB, kilos totales, proyectos asociados - Pendiente
-    - Dashboard analítico de calculistas: comparar métricas entre calculistas - Pendiente
-    - Filtro por calculista en dashboards y exportaciones - Pendiente
+    Propuesta:
+    - Nuevo rol "jefe" o "supervisor": ve todos los proyectos, dashboards, reportes, exportaciones.
+      No importa CSVs, no elimina obras/BD, no gestiona usuarios. Ideal para gerencia.
+    - Aclarar "operador": definir si es un cubicador limitado o se reemplaza por otro nombre.
+    - Registro público (/auth/signup) asigna rol por defecto (actualmente "operador").
+    - El admin puede cambiar roles desde el panel Admin.
+    - Acciones destructivas (reset BD, eliminar usuarios) restringidas a admin exclusivamente.
+    - Pendiente: definir permisos exactos por rol con el usuario.
+
+26. Auditoría y logs en panel Admin - OK
+    - Migración 11: tabla audit_log (id, usuario, accion, detalle, entidad, entidad_id, fecha) con índices - OK
+    - Helper audit() en db.py: fire-and-forget, no falla si tabla no existe - OK
+    - GET /admin/audit: consulta con filtros (usuario, accion, entidad), paginación, dropdown values - OK
+    - Acciones instrumentadas: login, signup, registrar_usuario, importar_csv, exportar_excel,
+      crear/editar/eliminar_proyecto, mover_barras, crear/editar/desactivar_cliente, asignar_cliente, reset_db - OK
+    - UI: panel Auditoría en tab Admin con tabla color-coded, filtros por usuario/acción/entidad, paginación - OK
+
+27. Gestión de calculistas y KPIs por calculista - OK
+    - Migración 12: tabla calculistas (id, nombre, email, activo) + calculista_id FK en proyectos - OK
+    - Migración automática: datos existentes en campo texto migrados a tabla normalizada - OK
+    - Unique index en nombre (case-insensitive) para evitar duplicados - OK
+    - calculistas.py: CRUD completo GET/POST/PATCH/DELETE + GET /calculistas/{id} con proyectos - OK
+    - GET /calculistas/kpis: diam promedio ponderado, PPI (kg/proyecto), PPB (kg/barra), kilos, proyectos - OK
+    - GET /proyectos incluye calculista_id y calculista_nombre desde tabla normalizada - OK
+    - POST/PATCH /proyectos acepta calculista_id - OK
+    - UI: selector desplegable de calculistas en crear obra (reemplaza input texto) - OK
+    - UI: panel Calculistas con tabla (nombre, email, proyectos, barras, kilos) - OK
+    - UI: crear calculista inline, editar nombre con prompt - OK
+    - Soft-delete calculistas (activo=false) - OK
+    - Audit logging en crear/editar/desactivar calculista - OK
 
 28. Rediseño de dashboards y analítica avanzada - Pendiente
     - Definir qué dashboards se necesitan (KPIs clave, vistas por rol, comparativas) - Pendiente

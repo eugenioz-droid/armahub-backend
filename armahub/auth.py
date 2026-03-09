@@ -24,7 +24,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from passlib.context import CryptContext
 
-from .db import get_conn, users_count
+from .db import get_conn, users_count, audit
 
 router = APIRouter()
 
@@ -72,6 +72,7 @@ def login(email: str, password: str):
         raise HTTPException(status_code=401, detail="Credenciales inválidas")
 
     token = create_token(db_email, db_role)
+    audit(db_email, "login", None, "usuario", db_email)
     return {"access_token": token, "token_type": "bearer", "role": db_role}
 
 
@@ -96,9 +97,38 @@ def register(email: str, password: str, role: str = "operador", admin=Depends(re
                     "INSERT INTO users (email, password_hash, role) VALUES (%s,%s,%s)",
                     (email, password_hash, role),
                 )
+        audit(admin.get("email", "?"), "registrar_usuario", f"{email} como {role}", "usuario", email)
         return {"ok": True}
     except Exception:
         raise HTTPException(status_code=400, detail="Email ya existe")
+
+
+@router.post("/auth/signup")
+def signup(email: str, password: str, nombre: str = ""):
+    """
+    Registro público. Crea usuario con rol 'operador'.
+    El admin puede cambiar el rol después desde el panel.
+    """
+    email = email.strip().lower()
+    if not email or not password:
+        raise HTTPException(status_code=400, detail="Email y contraseña son requeridos")
+    if len(password) < 6:
+        raise HTTPException(status_code=400, detail="La contraseña debe tener al menos 6 caracteres")
+
+    password_hash = pwd_context.hash(password)
+
+    try:
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "INSERT INTO users (email, password_hash, role) VALUES (%s, %s, 'operador')",
+                    (email, password_hash),
+                )
+        audit(email, "signup", "auto-registro operador", "usuario", email)
+        token = create_token(email, "operador")
+        return {"ok": True, "access_token": token, "token_type": "bearer", "role": "operador"}
+    except Exception:
+        raise HTTPException(status_code=400, detail="Este email ya está registrado")
 
 
 @router.get("/me")

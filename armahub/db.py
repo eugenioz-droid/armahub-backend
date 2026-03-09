@@ -210,6 +210,58 @@ MIGRATIONS = [
             estado TEXT NOT NULL DEFAULT 'pendiente' CHECK (estado IN ('pendiente','en_proceso','completado'))
         )""",
     ]),
+    (10, "tabla clientes y FK en proyectos", [
+        """CREATE TABLE IF NOT EXISTS clientes (
+            id BIGSERIAL PRIMARY KEY,
+            nombre TEXT NOT NULL,
+            rut TEXT,
+            contacto TEXT,
+            email TEXT,
+            telefono TEXT,
+            direccion TEXT,
+            notas TEXT,
+            activo BOOLEAN NOT NULL DEFAULT TRUE,
+            fecha_creacion TEXT NOT NULL DEFAULT (NOW() AT TIME ZONE 'UTC')
+        )""",
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_clientes_nombre ON clientes(LOWER(nombre))",
+        "DO $$ BEGIN ALTER TABLE proyectos ADD COLUMN cliente_id BIGINT REFERENCES clientes(id) ON DELETE SET NULL; EXCEPTION WHEN duplicate_column THEN NULL; END $$;",
+    ]),
+    (11, "tabla audit_log para auditoría de acciones", [
+        """CREATE TABLE IF NOT EXISTS audit_log (
+            id BIGSERIAL PRIMARY KEY,
+            usuario TEXT NOT NULL,
+            accion TEXT NOT NULL,
+            detalle TEXT,
+            entidad TEXT,
+            entidad_id TEXT,
+            fecha TEXT NOT NULL DEFAULT (NOW() AT TIME ZONE 'UTC')
+        )""",
+        "CREATE INDEX IF NOT EXISTS idx_audit_log_fecha ON audit_log(fecha DESC)",
+        "CREATE INDEX IF NOT EXISTS idx_audit_log_usuario ON audit_log(usuario)",
+        "CREATE INDEX IF NOT EXISTS idx_audit_log_accion ON audit_log(accion)",
+    ]),
+    (12, "tabla calculistas normalizada + FK en proyectos", [
+        """CREATE TABLE IF NOT EXISTS calculistas (
+            id BIGSERIAL PRIMARY KEY,
+            nombre TEXT NOT NULL,
+            email TEXT,
+            activo BOOLEAN NOT NULL DEFAULT TRUE,
+            fecha_creacion TEXT NOT NULL DEFAULT (NOW() AT TIME ZONE 'UTC')
+        )""",
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_calculistas_nombre ON calculistas(LOWER(nombre))",
+        "DO $$ BEGIN ALTER TABLE proyectos ADD COLUMN calculista_id BIGINT REFERENCES calculistas(id) ON DELETE SET NULL; EXCEPTION WHEN duplicate_column THEN NULL; END $$;",
+        """DO $$
+        BEGIN
+            INSERT INTO calculistas (nombre)
+            SELECT DISTINCT calculista FROM proyectos
+            WHERE calculista IS NOT NULL AND calculista != ''
+            ON CONFLICT DO NOTHING;
+
+            UPDATE proyectos p SET calculista_id = c.id
+            FROM calculistas c WHERE LOWER(p.calculista) = LOWER(c.nombre)
+            AND p.calculista_id IS NULL;
+        END $$;""",
+    ]),
 ]
 
 
@@ -270,12 +322,15 @@ def reset_database(keep_users: bool = True) -> dict:
             summary["proyectos_eliminados"] = int(cur.fetchone()[0])
             # Tablas dependientes primero por FK
             cur.execute("DROP TABLE IF EXISTS schema_migrations")
+            cur.execute("DROP TABLE IF EXISTS audit_log")
             cur.execute("DROP TABLE IF EXISTS export_log")
             cur.execute("DROP TABLE IF EXISTS pedido_items")
             cur.execute("DROP TABLE IF EXISTS pedidos")
             cur.execute("DROP TABLE IF EXISTS proyecto_usuarios")
             cur.execute("DROP TABLE IF EXISTS imports")
             cur.execute("DROP TABLE IF EXISTS barras")
+            cur.execute("DROP TABLE IF EXISTS clientes")
+            cur.execute("DROP TABLE IF EXISTS calculistas")
             cur.execute("DROP TABLE IF EXISTS proyectos")
             if not keep_users:
                 cur.execute("SELECT COUNT(*) FROM users")
@@ -296,3 +351,16 @@ def users_count() -> int:
         with conn.cursor() as cur:
             cur.execute("SELECT COUNT(*) FROM users")
             return int(cur.fetchone()[0])
+
+
+def audit(usuario: str, accion: str, detalle: str = None, entidad: str = None, entidad_id: str = None):
+    """Registra una acción en el audit_log. Fire-and-forget, no falla si la tabla no existe."""
+    try:
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    INSERT INTO audit_log (usuario, accion, detalle, entidad, entidad_id)
+                    VALUES (%s, %s, %s, %s, %s)
+                """, (usuario, accion, detalle, entidad, entidad_id))
+    except Exception:
+        pass

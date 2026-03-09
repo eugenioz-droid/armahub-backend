@@ -25,15 +25,41 @@
     </div>
   </div>
 
-  <div class="card">
+  <!-- LOGIN -->
+  <div class="card" id="loginCard">
     <h3>Ingreso</h3>
     <input id="email" placeholder="Email" />
-    <input id="password" type="password" placeholder="Contraseña" />
+    <input id="password" type="password" placeholder="Contraseña" onkeydown="if(event.key==='Enter') doLogin()" />
     <button onclick="doLogin()">Entrar</button>
     <div id="msg" class="muted" style="margin-top:10px;"></div>
+    <div style="margin-top:14px; text-align:center; font-size:13px;">
+      <span class="muted">¿No tienes cuenta?</span>
+      <a href="#" onclick="toggleForm('signup'); return false;">Regístrate aquí</a>
+    </div>
+  </div>
+
+  <!-- REGISTRO -->
+  <div class="card" id="signupCard" style="display:none;">
+    <h3>Crear cuenta</h3>
+    <input id="regEmail" placeholder="Email" />
+    <input id="regPassword" type="password" placeholder="Contraseña (mín. 6 caracteres)" />
+    <input id="regPassword2" type="password" placeholder="Confirmar contraseña" onkeydown="if(event.key==='Enter') doSignup()" />
+    <button onclick="doSignup()">Registrarse</button>
+    <div id="regMsg" class="muted" style="margin-top:10px;"></div>
+    <div style="margin-top:14px; text-align:center; font-size:13px;">
+      <span class="muted">¿Ya tienes cuenta?</span>
+      <a href="#" onclick="toggleForm('login'); return false;">Inicia sesión</a>
+    </div>
   </div>
 
 <script>
+function toggleForm(which) {
+  document.getElementById('loginCard').style.display = which === 'login' ? '' : 'none';
+  document.getElementById('signupCard').style.display = which === 'signup' ? '' : 'none';
+  document.getElementById('msg').textContent = '';
+  document.getElementById('regMsg').textContent = '';
+}
+
 async function doLogin() {
   const email = document.getElementById('email').value.trim();
   const password = document.getElementById('password').value;
@@ -51,6 +77,35 @@ async function doLogin() {
 
   localStorage.setItem('armahub_token', data.access_token);
   window.location.href = '/ui';
+}
+
+async function doSignup() {
+  const email = document.getElementById('regEmail').value.trim();
+  const pass1 = document.getElementById('regPassword').value;
+  const pass2 = document.getElementById('regPassword2').value;
+  const msg = document.getElementById('regMsg');
+
+  if (!email) { msg.textContent = "Ingresa tu email"; return; }
+  if (pass1.length < 6) { msg.textContent = "La contraseña debe tener al menos 6 caracteres"; return; }
+  if (pass1 !== pass2) { msg.textContent = "Las contraseñas no coinciden"; return; }
+
+  msg.textContent = "Creando cuenta...";
+  msg.style.color = '#666';
+
+  const params = new URLSearchParams({ email, password: pass1 });
+  const res = await fetch('/auth/signup?' + params.toString(), { method: 'POST' });
+  const data = await res.json();
+
+  if (!res.ok) {
+    msg.textContent = "Error: " + (data.detail || JSON.stringify(data));
+    msg.style.color = '#b42318';
+    return;
+  }
+
+  msg.textContent = "Cuenta creada. Ingresando...";
+  msg.style.color = '#558B2F';
+  localStorage.setItem('armahub_token', data.access_token);
+  setTimeout(function() { window.location.href = '/ui'; }, 800);
 }
 
 (async function checkBootstrap() {

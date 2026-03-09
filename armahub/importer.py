@@ -19,7 +19,7 @@ from io import StringIO
 from datetime import datetime, timezone
 from typing import Optional
 
-from .db import get_conn
+from .db import get_conn, audit
 from .auth import get_current_user
 
 router = APIRouter()
@@ -367,23 +367,3 @@ async def import_armadetailer(
                 len(rows_to_upsert),
                 round(total_kilos, 2),
                 estado,
-                first_version,
-                first_plano,
-                errores_text,
-            ))
-
-    result = {
-        "ok": True,
-        "proyecto": proyecto_nombre,
-        "rows_upserted": len(rows_to_upsert),
-        "kilos": round(total_kilos, 2),
-        "total_filas_csv": len(df),
-        "filas_rechazadas": len(rejected_rows),
-        "advertencias": len(warnings),
-        "estado": estado,
-    }
-    if rejected_rows:
-        result["rejected"] = rejected_rows[:10]
-    if warnings:
-        result["warnings"] = warnings[:10]
-    return result
