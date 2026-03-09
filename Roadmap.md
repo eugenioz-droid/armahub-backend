@@ -710,11 +710,18 @@ errores y reclamos levantados por clientes. Incluye formulario tipo, análisis d
     - Selector proyecto poblado desde loadProyectos - OK
     - Pendiente: filtro por proyecto del usuario, campos Ishikawa definitivos
 
+33. Vista landing / hub de navegación - Pendiente
+    - Pantalla inicial post-login que permita elegir módulo: Gestión de Obras vs Gestión de Reclamos
+    - Cada módulo como card grande con icono, descripción y acceso directo
+    - Al elegir un módulo, se carga la vista correspondiente con sus tabs
+    - Posibilidad de volver al hub desde cualquier módulo
+    - Pendiente: definir si son módulos separados o tabs agrupados
+
 ---
 ## FASE 7 — Preparación para Apps
 
-33. API versionada (/api/v1) - Pendiente
-34. CORS para aplicaciones externas - Pendiente
-35. Observabilidad: /health, logs estructurados - Pendiente
-36. Performance: queries optimizadas, pool de conexiones - Pendiente
-37. Bootstrap profesional (solo dev) - Pendiente
+34. API versionada (/api/v1) - Pendiente
+35. CORS para aplicaciones externas - Pendiente
+36. Observabilidad: /health, logs estructurados - Pendiente
+37. Performance: queries optimizadas, pool de conexiones - Pendiente
+38. Bootstrap profesional (solo dev) - Pendiente

@@ -367,3 +367,22 @@ async def import_armadetailer(
                 len(rows_to_upsert),
                 round(total_kilos, 2),
                 estado,
+                first_version,
+                first_plano,
+                errores_text,
+            ))
+
+    audit(user.get("email","unknown"), "importar_csv", f"{file.filename} → {proyecto_nombre} ({len(rows_to_upsert)} barras, {round(total_kilos,1)} kg, estado={estado})", "proyecto", proyecto_id)
+
+    return {
+        "ok": True,
+        "proyecto": proyecto_nombre,
+        "id_proyecto": proyecto_id,
+        "barras": len(rows_to_upsert),
+        "kilos": round(total_kilos, 2),
+        "rechazadas": len(rejected_rows),
+        "warnings": warnings[:30],
+        "rejected": rejected_rows[:30],
+        "estado": estado,
+        "is_new_project": is_new_project,
+    }
