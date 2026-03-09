@@ -297,6 +297,39 @@ MIGRATIONS = [
         "CREATE INDEX IF NOT EXISTS idx_reclamos_prioridad ON reclamos(prioridad)",
         "CREATE INDEX IF NOT EXISTS idx_reclamo_seg_reclamo ON reclamo_seguimientos(reclamo_id)",
     ]),
+    (15, "barras: origen e import_id + reclamos: correlativo e id_calidad", [
+        # Barras: trazabilidad de origen
+        "DO $$ BEGIN ALTER TABLE barras ADD COLUMN origen TEXT DEFAULT 'csv'; EXCEPTION WHEN duplicate_column THEN NULL; END $$;",
+        "DO $$ BEGIN ALTER TABLE barras ADD COLUMN import_id BIGINT REFERENCES imports(id) ON DELETE SET NULL; EXCEPTION WHEN duplicate_column THEN NULL; END $$;",
+        "DO $$ BEGIN ALTER TABLE barras ADD COLUMN pedido_id BIGINT; EXCEPTION WHEN duplicate_column THEN NULL; END $$;",
+        "DO $$ BEGIN ALTER TABLE barras ADD COLUMN creado_por TEXT; EXCEPTION WHEN duplicate_column THEN NULL; END $$;",
+        "CREATE INDEX IF NOT EXISTS idx_barras_import_id ON barras(import_id)",
+        "CREATE INDEX IF NOT EXISTS idx_barras_origen ON barras(origen)",
+        # Backfill import_id para barras existentes (vincular por proyecto+fecha_carga)
+        """DO $$
+        BEGIN
+            UPDATE barras b SET import_id = i.id
+            FROM imports i
+            WHERE b.id_proyecto = i.id_proyecto
+              AND b.fecha_carga = i.fecha
+              AND b.import_id IS NULL;
+        END $$;""",
+        # Reclamos: correlativo e id_calidad
+        "DO $$ BEGIN ALTER TABLE reclamos ADD COLUMN correlativo TEXT; EXCEPTION WHEN duplicate_column THEN NULL; END $$;",
+        "DO $$ BEGIN ALTER TABLE reclamos ADD COLUMN id_calidad TEXT; EXCEPTION WHEN duplicate_column THEN NULL; END $$;",
+        "CREATE INDEX IF NOT EXISTS idx_reclamos_id_calidad ON reclamos(id_calidad)",
+        # Backfill correlativo para reclamos existentes
+        """DO $$
+        DECLARE
+            rec RECORD;
+            seq INTEGER := 0;
+        BEGIN
+            FOR rec IN SELECT id FROM reclamos ORDER BY id LOOP
+                seq := seq + 1;
+                UPDATE reclamos SET correlativo = 'REC-' || LPAD(seq::TEXT, 3, '0') WHERE id = rec.id AND correlativo IS NULL;
+            END LOOP;
+        END $$;""",
+    ]),
     (14, "reclamos: campos reales formulario + acciones + imagenes", [
         # Nuevos campos en reclamos
         "DO $$ BEGIN ALTER TABLE reclamos ADD COLUMN correlativo_calidad SERIAL; EXCEPTION WHEN duplicate_column THEN NULL; END $$;",

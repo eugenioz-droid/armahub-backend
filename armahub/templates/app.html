@@ -23,26 +23,66 @@
   <!-- Global Status -->
   <div id="globalStatus" class="muted"></div>
 
-  <!-- Tabs -->
-  <div class="tabs">
-    <button class="tab-btn active" onclick="switchTab('inicio')">🏠 Inicio</button>
-    <button class="tab-btn" onclick="switchTab('obras')">📦 Obras</button>
-    <button class="tab-btn" onclick="switchTab('buscar')">🔍 Bar Manager</button>
-    <button class="tab-btn" onclick="switchTab('dashboards')">📊 Dashboards</button>
-    <button class="tab-btn" onclick="switchTab('pedidos')">📝 Pedidos</button>
-    <button class="tab-btn" onclick="switchTab('export')">📥 Exportación</button>
-    <button class="tab-btn" onclick="switchTab('reclamos')">⚠️ Reclamos</button>
-    <button class="tab-btn" id="adminTabBtn" onclick="switchTab('admin')" style="display:none;">⚙️ Admin</button>
+  <!-- ==================== HUB SCREEN ==================== -->
+  <div id="hubScreen" style="display:none; max-width:900px; margin:60px auto; padding:0 20px;">
+    <div style="text-align:center; margin-bottom:40px;">
+      <h2 style="color:#1a1a1a; font-size:24px; font-weight:700; margin:0 0 8px 0;">Bienvenido a ArmaHub</h2>
+      <p style="color:#666; font-size:14px; margin:0;">Selecciona un módulo para comenzar</p>
+    </div>
+    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(240px, 1fr)); gap:20px;">
+      <!-- Card: Cubicación -->
+      <div onclick="switchModule('cubicacion')" style="cursor:pointer; background:#fff; border:2px solid #e0e0e0; border-radius:12px; padding:28px 24px; text-align:center; transition:all 0.2s; box-shadow:0 2px 8px rgba(0,0,0,0.06);" onmouseover="this.style.borderColor='#4285f4'; this.style.boxShadow='0 4px 16px rgba(66,133,244,0.2)'; this.style.transform='translateY(-2px)';" onmouseout="this.style.borderColor='#e0e0e0'; this.style.boxShadow='0 2px 8px rgba(0,0,0,0.06)'; this.style.transform='none';">
+        <div style="font-size:40px; margin-bottom:12px;">🏗️</div>
+        <h3 style="margin:0 0 8px 0; color:#1a1a1a; font-size:18px; font-weight:700;">Cubicación</h3>
+        <p style="margin:0; color:#666; font-size:13px; line-height:1.4;">Gestión de obras, barras, dashboards, exportación y pedidos</p>
+      </div>
+      <!-- Card: Reclamos -->
+      <div id="hubCardReclamos" onclick="switchModule('reclamos')" style="cursor:pointer; background:#fff; border:2px solid #e0e0e0; border-radius:12px; padding:28px 24px; text-align:center; transition:all 0.2s; box-shadow:0 2px 8px rgba(0,0,0,0.06);" onmouseover="this.style.borderColor='#f59e0b'; this.style.boxShadow='0 4px 16px rgba(245,158,11,0.2)'; this.style.transform='translateY(-2px)';" onmouseout="this.style.borderColor='#e0e0e0'; this.style.boxShadow='0 2px 8px rgba(0,0,0,0.06)'; this.style.transform='none';">
+        <div style="font-size:40px; margin-bottom:12px;">⚠️</div>
+        <h3 style="margin:0 0 8px 0; color:#1a1a1a; font-size:18px; font-weight:700;">Reclamos</h3>
+        <p style="margin:0; color:#666; font-size:13px; line-height:1.4;">Control de errores, análisis de causa raíz y seguimiento de calidad</p>
+      </div>
+      <!-- Card: Administración (solo admin) -->
+      <div id="hubCardAdmin" onclick="switchModule('admin')" style="display:none; cursor:pointer; background:#fff; border:2px solid #e0e0e0; border-radius:12px; padding:28px 24px; text-align:center; transition:all 0.2s; box-shadow:0 2px 8px rgba(0,0,0,0.06);" onmouseover="this.style.borderColor='#8b5cf6'; this.style.boxShadow='0 4px 16px rgba(139,92,246,0.2)'; this.style.transform='translateY(-2px)';" onmouseout="this.style.borderColor='#e0e0e0'; this.style.boxShadow='0 2px 8px rgba(0,0,0,0.06)'; this.style.transform='none';">
+        <div style="font-size:40px; margin-bottom:12px;">⚙️</div>
+        <h3 style="margin:0 0 8px 0; color:#1a1a1a; font-size:18px; font-weight:700;">Administración</h3>
+        <p style="margin:0; color:#666; font-size:13px; line-height:1.4;">Usuarios, clientes, calculistas, auditoría y gestión de datos</p>
+      </div>
+    </div>
   </div>
 
-  {% include 'tabs/inicio.html' %}
-  {% include 'tabs/obras.html' %}
-  {% include 'tabs/bar_manager.html' %}
-  {% include 'tabs/dashboards.html' %}
-  {% include 'tabs/pedidos.html' %}
-  {% include 'tabs/exportacion.html' %}
-  {% include 'tabs/reclamos.html' %}
-  {% include 'tabs/admin.html' %}
+  <!-- ==================== MODULE CONTAINER ==================== -->
+  <div id="moduleContainer" style="display:none;">
+    <!-- Back to Hub button -->
+    <div style="padding:4px 16px 0;">
+      <button onclick="switchModule('hub')" class="secondary" style="font-size:11px; padding:3px 10px; border-radius:4px;">← Hub</button>
+      <span id="moduleTitle" style="font-size:13px; font-weight:600; color:#555; margin-left:8px;"></span>
+    </div>
+
+    <!-- Tabs -->
+    <div class="tabs">
+      <!-- Cubicación tabs -->
+      <button class="tab-btn mod-cubicacion active" onclick="switchTab('inicio')">🏠 Inicio</button>
+      <button class="tab-btn mod-cubicacion" onclick="switchTab('obras')">📦 Obras</button>
+      <button class="tab-btn mod-cubicacion" onclick="switchTab('buscar')">🔍 Bar Manager</button>
+      <button class="tab-btn mod-cubicacion" onclick="switchTab('dashboards')">📊 Dashboards</button>
+      <button class="tab-btn mod-cubicacion" onclick="switchTab('pedidos')">📝 Pedidos</button>
+      <button class="tab-btn mod-cubicacion" onclick="switchTab('export')">📥 Exportación</button>
+      <!-- Reclamos tabs -->
+      <button class="tab-btn mod-reclamos" onclick="switchTab('reclamos')" style="display:none;">⚠️ Reclamos</button>
+      <!-- Admin tabs -->
+      <button class="tab-btn mod-admin" onclick="switchTab('admin')" style="display:none;">⚙️ Admin</button>
+    </div>
+
+    {% include 'tabs/inicio.html' %}
+    {% include 'tabs/obras.html' %}
+    {% include 'tabs/bar_manager.html' %}
+    {% include 'tabs/dashboards.html' %}
+    {% include 'tabs/pedidos.html' %}
+    {% include 'tabs/exportacion.html' %}
+    {% include 'tabs/reclamos.html' %}
+    {% include 'tabs/admin.html' %}
+  </div>
 
   <!-- MODAL: Nuevo proyecto detectado al importar -->
   <div id="newProjectModal" style="display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.5); z-index:9999; align-items:center; justify-content:center;">

@@ -149,6 +149,67 @@ function switchTab(tabName) {
   btns.forEach(b => { if (b.textContent.includes(label)) b.classList.add('active'); });
 }
 
+let currentModule = 'hub';
+
+function switchModule(mod) {
+  const hub = document.getElementById('hubScreen');
+  const container = document.getElementById('moduleContainer');
+  const title = document.getElementById('moduleTitle');
+
+  if (mod === 'hub') {
+    // Back to Hub
+    container.style.display = 'none';
+    hub.style.display = 'block';
+    currentModule = 'hub';
+    return;
+  }
+
+  // Show module container, hide hub
+  hub.style.display = 'none';
+  container.style.display = 'block';
+  currentModule = mod;
+
+  // Module config: which tab buttons to show, default tab, title
+  const modules = {
+    cubicacion: { css: 'mod-cubicacion', defaultTab: 'inicio', title: 'Cubicación' },
+    reclamos:   { css: 'mod-reclamos',   defaultTab: 'reclamos', title: 'Reclamos' },
+    admin:      { css: 'mod-admin',      defaultTab: 'admin', title: 'Administración' },
+  };
+  const cfg = modules[mod];
+  if (!cfg) return;
+
+  title.textContent = cfg.title;
+
+  // Show only tab buttons for this module
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    if (btn.classList.contains(cfg.css)) {
+      btn.style.display = '';
+    } else {
+      btn.style.display = 'none';
+    }
+  });
+
+  // Apply role-based visibility within the module
+  const tabAccess = {
+    buscar: ['admin','coordinador','cubicador','operador'],
+    export: ['admin','coordinador','cubicador','operador'],
+  };
+  if (mod === 'cubicacion') {
+    document.querySelectorAll('.tab-btn.mod-cubicacion').forEach(btn => {
+      const onclick = btn.getAttribute('onclick') || '';
+      const match = onclick.match(/switchTab\('(\w+)'\)/);
+      if (match) {
+        const tab = match[1];
+        const roles = tabAccess[tab];
+        if (roles && !roles.includes(currentRole)) btn.style.display = 'none';
+      }
+    });
+  }
+
+  // Switch to default tab
+  switchTab(cfg.defaultTab);
+}
+
 // ========================= INIT =========================
 let currentRole = 'operador';
 
@@ -160,30 +221,12 @@ async function loadMe() {
   localStorage.setItem('armahub_email', me.email);
   currentRole = me.role || 'operador';
 
-  // --- Role-based tab visibility ---
-  // Tab button mapping: { tabName: [roles that can see it] }
-  // admin sees everything, so no need to list explicitly
-  const tabAccess = {
-    inicio:     ['admin','coordinador','cubicador','operador','cliente'],
-    obras:      ['admin','coordinador','cubicador','operador','cliente'],
-    buscar:     ['admin','coordinador','cubicador','operador'],
-    dashboards: ['admin','coordinador','cubicador','operador','cliente'],
-    pedidos:    ['admin','coordinador','cubicador','operador','cliente'],
-    export:     ['admin','coordinador','cubicador','operador'],
-    reclamos:   ['admin','coordinador','cubicador','operador'],
-    admin:      ['admin']
-  };
-
-  // Show/hide tab buttons
-  document.querySelectorAll('.tab-btn').forEach(btn => {
-    const onclick = btn.getAttribute('onclick') || '';
-    const match = onclick.match(/switchTab\('(\w+)'\)/);
-    if (match) {
-      const tab = match[1];
-      const roles = tabAccess[tab] || [];
-      btn.style.display = roles.includes(currentRole) ? '' : 'none';
-    }
-  });
+  // --- Hub card visibility by role ---
+  const reclamosAccess = ['admin','coordinador','cubicador','operador'];
+  const hubReclamos = document.getElementById('hubCardReclamos');
+  const hubAdmin = document.getElementById('hubCardAdmin');
+  if (hubReclamos) hubReclamos.style.display = reclamosAccess.includes(currentRole) ? '' : 'none';
+  if (hubAdmin) hubAdmin.style.display = (currentRole === 'admin') ? '' : 'none';
 
   // Coordinador: hide import section in Obras (they manage, don't import)
   const dropZone = document.getElementById('dropZone');
@@ -194,6 +237,9 @@ async function loadMe() {
     if (csvFile) csvFile.style.display = 'none';
     if (importBtn) importBtn.parentElement.style.display = 'none';
   }
+
+  // Show Hub screen
+  document.getElementById('hubScreen').style.display = 'block';
 
   // Status message
   const roleLabels = {admin:'ADMIN', coordinador:'Coordinador', cubicador:'Cubicador', operador:'Operador', cliente:'Cliente'};
@@ -295,11 +341,6 @@ async function loadProyectos() {
     if (prevR) rpf.value = prevR;
   }
 
-  // Populate mover barras selectors & show card if >1 project
-  const opts = data.proyectos.map(p => `<option value="${p.id_proyecto}">${p.nombre_proyecto}</option>`).join('');
-  document.getElementById('moverOrigen').innerHTML = opts;
-  document.getElementById('moverDestino').innerHTML = opts;
-  document.getElementById('moverBarrasCard').style.display = data.proyectos.length > 1 ? '' : 'none';
 }
 
 // ========================= ADMIN OBRAS =========================
@@ -521,36 +562,7 @@ async function eliminarObra(id, nombre, barrasCount) {
 }
 
 async function moverBarras() {
-  const origen = document.getElementById('moverOrigen').value;
-  const destino = document.getElementById('moverDestino').value;
-  const msg = document.getElementById('moverBarrasMsg');
-  if (!origen || !destino) { msg.innerHTML = '<span class="status-err">Selecciona origen y destino</span>'; return; }
-  if (origen === destino) { msg.innerHTML = '<span class="status-err">Origen y destino deben ser diferentes</span>'; return; }
-  const body = { destino_id: destino };
-  const sector = document.getElementById('moverSector').value.trim();
-  const piso = document.getElementById('moverPiso').value.trim();
-  const ciclo = document.getElementById('moverCiclo').value.trim();
-  if (sector) body.sector = sector;
-  if (piso) body.piso = piso;
-  if (ciclo) body.ciclo = ciclo;
-  if (!confirm('Mover barras del proyecto seleccionado al destino. ¿Continuar?')) return;
-  msg.innerHTML = '<span class="muted">Moviendo...</span>';
-  const res = await fetch('/proyectos/' + encodeURIComponent(origen) + '/mover-barras', {
-    method: 'POST',
-    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
-    body: JSON.stringify(body)
-  });
-  if (res.status === 401) { logout(); return; }
-  const data = await res.json();
-  if (data.ok) {
-    msg.innerHTML = '<span class="status-ok">Movidas ' + data.movidas + ' barras</span>';
-    await loadProyectos();
-    await loadFilters();
-    await loadInicio();
-    await loadDashboard('sector');
-  } else {
-    msg.innerHTML = '<span class="status-err">Error: ' + (data.detail || data.message || 'desconocido') + '</span>';
-  }
+  alert('Mover barras entre proyectos ya no está disponible.');
 }
 
 // ========================= FILTROS DEPENDIENTES + PERSISTENCIA =========================
@@ -942,19 +954,7 @@ function clearSeleccion() {
 }
 
 async function accionMoverProyecto() {
-  if (selectedBarras.size === 0) return alert('Selecciona al menos una barra');
-  const dest = document.getElementById('accionDestProyecto').value;
-  if (!dest) return alert('Selecciona proyecto destino');
-  if (!confirm('Mover ' + selectedBarras.size + ' barra(s) al proyecto seleccionado?')) return;
-  const res = await apiPostJson('/barras/mover', { id_unicos: Array.from(selectedBarras), destino_id: dest });
-  if (res && res.ok) {
-    alert('Movidas: ' + res.movidas + ' barras');
-    clearSeleccion();
-    buscar(true);
-    loadProyectos();
-  } else {
-    alert('Error: ' + (res?.detail || 'desconocido'));
-  }
+  alert('Mover barras entre proyectos ya no está disponible. Usa "Duplicar" para crear una copia en otro proyecto.');
 }
 
 async function accionCambiarSector() {
@@ -962,9 +962,9 @@ async function accionCambiarSector() {
   const sec = document.getElementById('accionSector').value;
   if (!sec) return alert('Selecciona sector destino');
   if (!confirm('Cambiar sector de ' + selectedBarras.size + ' barra(s) a ' + sec + '?')) return;
-  const res = await apiPostJson('/barras/mover', { id_unicos: Array.from(selectedBarras), nuevo_sector: sec });
+  const res = await apiPostJson('/barras/cambiar-sector', { id_unicos: Array.from(selectedBarras), nuevo_sector: sec });
   if (res && res.ok) {
-    alert('Actualizadas: ' + res.movidas + ' barras');
+    alert('Actualizadas: ' + res.modificadas + ' barras');
     clearSeleccion();
     buscar(true);
   } else {
@@ -1009,21 +1009,6 @@ async function buscar(reset = false) {
 
   document.getElementById('count').textContent = lastTotal.toLocaleString() + ' barras en proyecto';
   document.getElementById('pageInfo').textContent = 'Pág ' + page + '/' + totalPages;
-
-  // Populate toolbar project selector
-  const destSel = document.getElementById('accionDestProyecto');
-  if (destSel.options.length <= 1) {
-    const fd = await apiGet('/filters');
-    if (fd && fd.proyectos) {
-      fd.proyectos.forEach(p => {
-        if (p !== proy) {
-          const o = document.createElement('option');
-          o.value = p; o.textContent = p;
-          destSel.appendChild(o);
-        }
-      });
-    }
-  }
 
   const table = document.getElementById('tabla');
   table.innerHTML = '';
@@ -1071,9 +1056,6 @@ function resetFiltros() {
   const si = document.getElementById('proyectoSearchInput');
   if (si) si.value = '';
   try { localStorage.removeItem(FILTER_STORAGE_KEY); } catch(e) {}
-  // Reset toolbar project selector
-  const destSel = document.getElementById('accionDestProyecto');
-  if (destSel) { destSel.innerHTML = '<option value="">Mover a proyecto...</option>'; }
   selectedBarras.clear();
   updateToolbar();
   loadFilters();
@@ -2549,6 +2531,46 @@ async function eliminarItemPedido(pedidoId, itemId) {
 }
 
 // ========================= ADMIN =========================
+const TABLE_LABELS = {
+  barras: 'Barras', imports: 'Importaciones', proyectos: 'Proyectos',
+  reclamos: 'Reclamos', calculistas: 'Calculistas', clientes: 'Clientes',
+  pedidos: 'Pedidos', audit_log: 'Auditoría', users: 'Usuarios',
+};
+const CLEARABLE_TABLES = ['barras','imports','proyectos','reclamos','calculistas','clientes','pedidos','audit_log'];
+
+async function loadTableCounts() {
+  const container = document.getElementById('tableCountsContainer');
+  if (!container) return;
+  const data = await apiGet('/admin/tables');
+  if (!data || !data.tables) { container.innerHTML = '<div class="muted">Error al cargar</div>'; return; }
+  let html = '<table style="width:100%; font-size:12px;"><thead><tr><th style="text-align:left;">Tabla</th><th style="text-align:right;">Registros</th><th></th></tr></thead><tbody>';
+  data.tables.forEach(t => {
+    const label = TABLE_LABELS[t.table] || t.table;
+    const canClear = CLEARABLE_TABLES.includes(t.table);
+    const clearBtn = canClear && t.count > 0
+      ? `<button class="secondary" style="font-size:10px; padding:2px 8px; color:#b42318;" onclick="clearTable('${t.table}')">Limpiar</button>`
+      : '';
+    html += `<tr><td>${label}</td><td style="text-align:right; font-weight:600;">${t.count.toLocaleString()}</td><td style="text-align:right;">${clearBtn}</td></tr>`;
+  });
+  html += '</tbody></table>';
+  container.innerHTML = html;
+}
+
+async function clearTable(tableName) {
+  const label = TABLE_LABELS[tableName] || tableName;
+  if (!window.confirm(`¿Limpiar TODOS los registros de "${label}"? Esta acción no se puede deshacer.`)) return;
+  const input = prompt(`Escribe CONFIRMAR para limpiar la tabla "${label}":`);
+  if (input !== 'CONFIRMAR') { alert('Operación cancelada.'); return; }
+  const res = await apiPost('/admin/tables/' + encodeURIComponent(tableName) + '/clear', { confirm: 'CONFIRMAR' });
+  if (res && res.ok) {
+    alert(`Tabla "${label}" limpiada correctamente.`);
+    loadTableCounts();
+    loadDbInfo();
+  } else {
+    alert('Error: ' + (res?.data?.detail || 'desconocido'));
+  }
+}
+
 async function loadDbInfo() {
   const data = await apiGet('/admin/db-info');
   if (!data) return;
@@ -2836,8 +2858,10 @@ async function loadReclamos() {
       var aplColor = _recAplicaColors[r.aplica] || '#ff9800';
       var causaText = r.cod_causa ? '[' + r.cod_causa + ']' : (r.categoria_ishikawa ? _recIshikawaLabels[r.categoria_ishikawa] : '-');
       var fecha = r.fecha_deteccion || (r.fecha_creacion ? r.fecha_creacion.substring(0, 10) : '');
+      var idLabel = r.id_calidad ? r.id_calidad : (r.correlativo || '#' + r.id);
+      var idSub = r.id_calidad && r.correlativo ? '<br><span class="muted" style="font-size:9px;">' + r.correlativo + '</span>' : '';
       return '<tr style="border-bottom:1px solid #eee; cursor:pointer;" onclick="verReclamo(' + r.id + ')">' +
-        '<td style="padding:4px 6px; font-size:11px; font-weight:600;">#' + (r.correlativo_calidad || r.id) + '</td>' +
+        '<td style="padding:4px 6px; font-size:11px; font-weight:600;">' + idLabel + idSub + '</td>' +
         '<td style="padding:4px 6px; font-weight:500;">' + r.titulo + '</td>' +
         '<td style="padding:4px 6px; font-size:11px;">' + (r.nombre_proyecto || '-') + '</td>' +
         '<td style="padding:4px 6px;"><span style="background:' + eColor + '; color:#fff; padding:1px 6px; border-radius:3px; font-size:10px;">' + eLabel + '</span></td>' +
@@ -2872,6 +2896,7 @@ async function crearReclamo() {
   var descripcion = document.getElementById('recDescripcion').value.trim();
   var detectadoPor = document.getElementById('recDetectadoPor').value.trim();
   var fechaDeteccion = document.getElementById('recFechaDeteccion').value;
+  var idCalidad = document.getElementById('recIdCalidad') ? document.getElementById('recIdCalidad').value.trim() : '';
   if (proyecto) body.id_proyecto = proyecto;
   if (prioridad) body.prioridad = prioridad;
   if (categoria) body.categoria_ishikawa = categoria;
@@ -2881,6 +2906,7 @@ async function crearReclamo() {
   if (descripcion) body.descripcion = descripcion;
   if (detectadoPor) body.detectado_por = detectadoPor;
   if (fechaDeteccion) body.fecha_deteccion = fechaDeteccion;
+  if (idCalidad) body.id_calidad = idCalidad;
 
   var res = await fetch('/reclamos', {
     method: 'POST',
@@ -2890,8 +2916,9 @@ async function crearReclamo() {
   if (res.status === 401) { logout(); return; }
   var data = await res.json();
   if (data.ok) {
-    msg.textContent = 'Reclamo #' + data.id + ' registrado'; msg.style.color = '#558B2F';
-    ['recTitulo','recDescripcion','recResponsable','recDetectadoPor','recFechaDeteccion','recCausaDisplay','recCategoria','recSubCausa','recCodCausa'].forEach(function(id) {
+    var label = data.correlativo || ('#' + data.id);
+    msg.textContent = label + ' registrado correctamente'; msg.style.color = '#558B2F';
+    ['recTitulo','recDescripcion','recResponsable','recDetectadoPor','recFechaDeteccion','recCausaDisplay','recCategoria','recSubCausa','recCodCausa','recIdCalidad'].forEach(function(id) {
       var el = document.getElementById(id); if (el) el.value = '';
     });
     document.getElementById('recProyecto').value = '';
@@ -2910,10 +2937,11 @@ async function verReclamo(id) {
   _reclamoActual = data;
 
   document.getElementById('reclamoDetailCard').style.display = '';
-  var corrLabel = data.correlativo_calidad ? 'Corr. #' + data.correlativo_calidad + ' — ' : '#' + data.id + ' — ';
-  document.getElementById('recDetailTitle').textContent = corrLabel + data.titulo;
+  var titlePrefix = data.id_calidad ? data.id_calidad + ' — ' : (data.correlativo ? data.correlativo + ' — ' : '#' + data.id + ' — ');
+  document.getElementById('recDetailTitle').textContent = titlePrefix + data.titulo;
 
   var metaParts = [];
+  if (data.correlativo && data.id_calidad) metaParts.push(data.correlativo);
   if (data.nombre_proyecto) metaParts.push('Proyecto: ' + data.nombre_proyecto);
   metaParts.push('Creado por: ' + data.creado_por);
   if (data.fecha_creacion) metaParts.push(data.fecha_creacion.replace('T', ' ').substring(0, 19));
@@ -2923,6 +2951,8 @@ async function verReclamo(id) {
 
   document.getElementById('recDetailEstado').value = data.estado;
   document.getElementById('recDetailAplica').value = data.aplica || 'pendiente';
+  var idCalField = document.getElementById('recDetailIdCalidad');
+  if (idCalField) idCalField.value = data.id_calidad || '';
 
   // Info fields
   var info = document.getElementById('recDetailInfo');
@@ -3052,6 +3082,21 @@ async function cambiarEstadoReclamo() {
   if (res.status === 401) { logout(); return; }
   var data = await res.json();
   if (data.ok) { await verReclamo(_reclamoActual.id); await loadReclamos(); await loadReclamosKpis(); }
+  else { alert('Error: ' + (data.detail || 'desconocido')); }
+}
+
+async function guardarIdCalidad() {
+  if (!_reclamoActual) return;
+  var val = (document.getElementById('recDetailIdCalidad').value || '').trim();
+  if (val === (_reclamoActual.id_calidad || '')) return;
+  var res = await fetch('/reclamos/' + _reclamoActual.id, {
+    method: 'PATCH',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id_calidad: val })
+  });
+  if (res.status === 401) { logout(); return; }
+  var data = await res.json();
+  if (data.ok) { await verReclamo(_reclamoActual.id); await loadReclamos(); }
   else { alert('Error: ' + (data.detail || 'desconocido')); }
 }
 
@@ -3281,34 +3326,56 @@ function cerrarIshikawaModal() {
 }
 
 // ========================= INIT =========================
+// Track which modules have been loaded to avoid redundant fetches
+const _modulesLoaded = {};
+
+async function loadModuleData(mod) {
+  if (_modulesLoaded[mod]) return;
+  _modulesLoaded[mod] = true;
+
+  if (mod === 'cubicacion') {
+    await loadInicio();
+    await loadMiActividad();
+    await loadProyectos();
+    await loadClientes();
+    await loadCalculistas();
+
+    const saved = restoreFiltersFromStorage();
+    const dep = {};
+    if (saved && saved.proyecto) dep.proyecto = saved.proyecto;
+    await loadFilters(Object.keys(dep).length ? dep : null);
+    if (saved) {
+      ['proyecto','plano','sector','piso','ciclo'].forEach(f => {
+        const el = document.getElementById(f);
+        if (el && saved[f]) el.value = saved[f];
+      });
+    }
+
+    await loadCargas();
+    await loadDashboard('sector');
+    await loadSectores();
+    await loadPedidos();
+    await buscar(true);
+  } else if (mod === 'reclamos') {
+    await loadReclamos();
+    await loadReclamosKpis();
+  } else if (mod === 'admin') {
+    await loadClientes();
+    await loadCalculistas();
+    await loadTableCounts();
+    await loadDbInfo();
+    await loadAuditLog();
+  }
+}
+
+// Override switchModule to also trigger lazy data loading
+const _origSwitchModule = switchModule;
+switchModule = function(mod) {
+  _origSwitchModule(mod);
+  if (mod !== 'hub') loadModuleData(mod);
+};
+
 (async function init() {
   if (!token()) { window.location.href = '/ui/login'; return; }
   await loadMe();
-  await loadInicio();
-  await loadMiActividad();
-  await loadProyectos();
-  await loadClientes();
-  await loadCalculistas();
-
-  // Restore saved filters from localStorage
-  const saved = restoreFiltersFromStorage();
-  const dep = {};
-  if (saved && saved.proyecto) dep.proyecto = saved.proyecto;
-  await loadFilters(Object.keys(dep).length ? dep : null);
-  // Now set saved select values after options are populated
-  if (saved) {
-    ['proyecto','plano','sector','piso','ciclo'].forEach(f => {
-      const el = document.getElementById(f);
-      if (el && saved[f]) el.value = saved[f];
-    });
-  }
-
-  await loadCargas();
-  await loadDashboard('sector');
-  await loadSectores();
-  await loadPedidos();
-  await loadReclamos();
-  await loadReclamosKpis();
-  if (currentRole === 'admin') await loadAuditLog();
-  await buscar(true);
 })();

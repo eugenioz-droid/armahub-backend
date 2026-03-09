@@ -720,18 +720,124 @@ errores y reclamos levantados por clientes. Incluye formulario tipo, análisis d
     - Fix: tab reclamos subrayaba admin en vez de reclamos - OK
     - Pendiente: filtro por proyecto del usuario, integración USC
 
-33. Vista landing / hub de navegación - Pendiente
-    - Pantalla inicial post-login que permita elegir módulo: Gestión de Obras vs Gestión de Reclamos
-    - Cada módulo como card grande con icono, descripción y acceso directo
-    - Al elegir un módulo, se carga la vista correspondiente con sus tabs
-    - Posibilidad de volver al hub desde cualquier módulo
-    - Pendiente: definir si son módulos separados o tabs agrupados
+33. Hub de navegación y módulos - ✅ Implementado 9-Mar-2026
+    **Diseño aprobado 9-Mar-2026**. Post-login el usuario ve una pantalla Hub con 3 módulos:
+
+    a) Módulo 🏗️ Cubicación (todos los roles) - ✅ Hecho
+       - Tabs internos: Inicio, Obras, Bar Manager, Dashboards, Exportación, Pedidos
+       - Acceso según rol (igual que hoy)
+       - Botón para volver al Hub siempre visible
+
+    b) Módulo ⚠️ Reclamos (todos excepto cliente) - ✅ Hecho
+       - Tabs internos: Dashboard Reclamos, Lista, Detalle
+       - id_calidad prominente como identificador principal del usuario
+       - Correlativo auto (REC-001) como referencia interna
+
+    c) Módulo ⚙️ Administración (solo admin) - ✅ Hecho
+       - Tabs internos: Usuarios, Clientes, Calculistas, Auditoría, Gestión de Datos
+       - Absorbe el tab Admin actual (que se elimina)
+       - Clientes y Calculistas migran de Obras a este módulo
+       - Panel "Gestión de Datos": limpieza por tabla (barras, imports, proyectos,
+         reclamos, calculistas, clientes, pedidos, audit_log) con contadores
+       - Admin = operaciones masivas por tabla, nunca eliminación parcial individual
+       - Reset completo de BD se mantiene con doble confirmación
+
+    d) Diseño visual del Hub - ✅ Hecho
+       - 3 cards grandes con ícono, título, descripción corta
+       - Card Admin solo visible para rol admin
+       - Header ArmaHub + info usuario siempre visible
+
+34. Integridad de datos de barras - ✅ Parcial 9-Mar-2026
+    **Diseño aprobado 9-Mar-2026**. Principio de inmutabilidad de la carga.
+
+    a) import_id en barras - ✅ Hecho (migración 15 + importer)
+       - Migración: agregar import_id (FK a imports) en tabla barras
+       - Importer asigna import_id al insertar barras
+       - Trazabilidad explícita carga↔barra
+
+    b) Eliminar carga por import_id - ✅ Hecho (con fallback legacy)
+       - DELETE FROM barras WHERE import_id = X (no por proyecto+fecha)
+       - Warning si barras fueron modificadas (cambio de sector)
+       - Sin huérfanos posibles
+
+    c) Eliminar "mover barras entre proyectos" - ✅ Hecho
+       - Quitar funcionalidad de POST /barras/mover (cambio de id_proyecto)
+       - Mantener cambio de sector dentro del mismo proyecto
+       - Reemplazar con crear/duplicar barra manual
+
+    d) Múltiples orígenes de barras - Pendiente
+       - Migración: agregar campos origen, import_id, pedido_id, creado_por en barras
+       - origen TEXT DEFAULT 'csv' — valores: 'csv' | 'manual' | 'pedido'
+       - import_id INTEGER — FK a imports (solo origen='csv')
+       - pedido_id INTEGER — FK a pedidos (solo origen='pedido')
+       - creado_por TEXT — usuario que creó (manual/pedido)
+       - Barras CSV: se eliminan con su carga (por import_id)
+       - Barras manuales: eliminación individual permitida
+       - Barras de pedido: eliminación desde el pedido
+
+35. Bar Manager rediseñado - ✅ Parcial 9-Mar-2026
+    a) Quitar "mover entre proyectos" - ✅ Hecho
+    b) Mantener "cambiar sector" (mismo proyecto) - ✅ Hecho (POST /barras/cambiar-sector)
+    c) Crear barra manual - Pendiente
+       - Formulario con todos los campos: proyecto, sector, piso, ciclo, eje,
+         diámetro, largo, cantidad, figura, marca, etc.
+       - origen='manual', creado_por=usuario actual
+       - Sigue lógica SECTOR/PISO/CICLO
+    d) Duplicar barra - Pendiente
+       - Click "Duplicar" en una barra existente → formulario pre-llenado
+       - Usuario modifica proyecto, sector, piso, ciclo según necesidad
+       - Se crea como barra manual (origen='manual')
+       - Original intacta en su carga
+    e) Eliminar barra individual - Pendiente
+       - Solo barras con origen='manual' o 'pedido'
+       - Barras CSV no se eliminan individualmente (se elimina la carga)
+    f) Filtrar por origen - Pendiente
+       - Nuevo filtro: csv / manual / pedido
+
+36. IDs de reclamos - ✅ Implementado 9-Mar-2026
+    a) correlativo auto-generado - ✅ Hecho
+       - Formato: REC-001, REC-002, REC-003...
+       - Secuencial, nunca resetea, inmutable
+       - Migración: campo correlativo en tabla reclamos
+       - Generado al crear reclamo (MAX(correlativo) + 1)
+       - Visible como referencia interna en tabla y detalle
+    b) id_calidad manual - ✅ Hecho
+       - Campo texto, ingresado por usuario (ej: NC-2026-014)
+       - El identificador principal para el usuario
+       - Nullable (puede asignarse después de crear)
+       - Editable en cualquier momento
+       - Buscable, filtrable, destacado en UI
+       - Migración: campo id_calidad en tabla reclamos
+
+37. Pedidos conectados con barras y exportación - Pendiente
+    a) Pedido genérico (sin sector) - Pendiente
+       - Items con: eje (texto libre, máx 14 chars, alfanumérico+espacios),
+         diámetro, largo, cantidad, nota
+       - Sin sector/piso/ciclo → se exportan con SECTOR=NA, PISO=NA, CICLO=NA
+       - EJE = texto del usuario (ej: "Trabas muro 1") → columna A en aSa Studio
+       - Exportación en formato aSa Studio (igual que cubicación)
+    b) Pedido específico (con sector) - Pendiente
+       - Items con: sector, piso, ciclo, eje, diámetro, largo, cantidad, nota
+       - Se integran a la cubicación del proyecto (origen='pedido')
+       - Aparecen en matriz de exportación y se exportan en formato aSa Studio
+    c) Validación columna EJE para aSa Studio - Pendiente
+       - Máximo 14 caracteres
+       - Solo caracteres alfanuméricos + espacios (sin tildes, ñ, símbolos)
+       - Validación en frontend (maxlength + regex) y backend
+       - aSa Studio agrupa barras por valor de columna A (EJE)
+
+38. Obra independiente de cubicación - Pendiente
+    - La obra es entidad de primer nivel, no depende de tener barras
+    - Reclamos se vinculan a obras que pueden no tener cubicación
+    - Pedidos se vinculan a obras que pueden no tener cubicación
+    - Crear obra manualmente ya existe, se refuerza como flujo principal
+    - Obras de cualquier tipo (no solo edificación) pueden existir en el sistema
 
 ---
 ## FASE 7 — Preparación para Apps
 
-34. API versionada (/api/v1) - Pendiente
-35. CORS para aplicaciones externas - Pendiente
-36. Observabilidad: /health, logs estructurados - Pendiente
-37. Performance: queries optimizadas, pool de conexiones - Pendiente
-38. Bootstrap profesional (solo dev) - Pendiente
+39. API versionada (/api/v1) - Pendiente
+40. CORS para aplicaciones externas - Pendiente
+41. Observabilidad: /health, logs estructurados - Pendiente
+42. Performance: queries optimizadas, pool de conexiones - Pendiente
+43. Bootstrap profesional (solo dev) - Pendiente

@@ -286,8 +286,10 @@ async def import_armadetailer(
     upsert_sql = """
     INSERT INTO barras
     (id_unico,id_proyecto,nombre_proyecto,plano_code,nombre_plano,sector,piso,ciclo,eje,diam,largo_total,mult,cant,cant_total,peso_unitario,peso_total,version_mod,version_exp,fecha_carga,
-     bar_id,estructura,tipo,marca,figura,esp,dim_a,dim_b,dim_c,dim_d,dim_e,dim_f,dim_g,dim_h,dim_i,ang1,ang2,ang3,radio,cod_proyecto,nombre_dwg)
-    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+     bar_id,estructura,tipo,marca,figura,esp,dim_a,dim_b,dim_c,dim_d,dim_e,dim_f,dim_g,dim_h,dim_i,ang1,ang2,ang3,radio,cod_proyecto,nombre_dwg,
+     origen,import_id)
+    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,
+            %s,%s)
     ON CONFLICT (id_unico) DO UPDATE SET
         id_proyecto=EXCLUDED.id_proyecto,
         nombre_proyecto=EXCLUDED.nombre_proyecto,
@@ -327,7 +329,9 @@ async def import_armadetailer(
         ang3=EXCLUDED.ang3,
         radio=EXCLUDED.radio,
         cod_proyecto=EXCLUDED.cod_proyecto,
-        nombre_dwg=EXCLUDED.nombre_dwg
+        nombre_dwg=EXCLUDED.nombre_dwg,
+        origen=EXCLUDED.origen,
+        import_id=EXCLUDED.import_id
     """
 
     total_kilos = sum(r[15] for r in rows_to_upsert if r[15] is not None)  # index 15 = peso_total
@@ -352,12 +356,11 @@ async def import_armadetailer(
 
     with get_conn() as conn:
         with conn.cursor() as cur:
-            if rows_to_upsert:
-                cur.executemany(upsert_sql, rows_to_upsert)
-            # Registrar en historial de importaciones
+            # Registrar import PRIMERO para obtener import_id
             cur.execute("""
                 INSERT INTO imports (id_proyecto, nombre_proyecto, usuario, archivo, fecha, barras_count, kilos, estado, version_archivo, plano_code, errores)
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                RETURNING id
             """, (
                 proyecto_id,
                 proyecto_nombre,
@@ -371,6 +374,12 @@ async def import_armadetailer(
                 first_plano,
                 errores_text,
             ))
+            import_id = cur.fetchone()[0]
+
+            # Agregar origen='csv' e import_id a cada fila antes del upsert
+            if rows_to_upsert:
+                rows_with_import = [row + ('csv', import_id) for row in rows_to_upsert]
+                cur.executemany(upsert_sql, rows_with_import)
 
     audit(user.get("email","unknown"), "importar_csv", f"{file.filename} → {proyecto_nombre} ({len(rows_to_upsert)} barras, {round(total_kilos,1)} kg, estado={estado})", "proyecto", proyecto_id)
 

@@ -121,6 +121,7 @@ class ReclamoCreate(BaseModel):
     responsable: Optional[str] = None
     detectado_por: Optional[str] = None
     fecha_deteccion: Optional[str] = None
+    id_calidad: Optional[str] = None
 
 
 class ReclamoUpdate(BaseModel):
@@ -143,6 +144,7 @@ class ReclamoUpdate(BaseModel):
     accion_preventiva: Optional[str] = None
     resolucion: Optional[str] = None
     observaciones: Optional[str] = None
+    id_calidad: Optional[str] = None
 
 
 class SeguimientoCreate(BaseModel):
@@ -205,7 +207,8 @@ def listar_reclamos(
                        COALESCE(p.nombre_proyecto, r.id_proyecto) AS nombre_proyecto,
                        (SELECT COUNT(*) FROM reclamo_seguimientos s WHERE s.reclamo_id = r.id) AS seg_count,
                        r.aplica, r.sub_causa, r.cod_causa, r.correlativo_calidad,
-                       r.detectado_por, r.fecha_deteccion
+                       r.detectado_por, r.fecha_deteccion,
+                       r.correlativo, r.id_calidad
                 FROM reclamos r
                 LEFT JOIN proyectos p ON r.id_proyecto = p.id_proyecto
                 {where}
@@ -238,6 +241,7 @@ def listar_reclamos(
                 "aplica": r[14], "sub_causa": r[15], "cod_causa": r[16],
                 "correlativo_calidad": r[17], "detectado_por": r[18],
                 "fecha_deteccion": r[19],
+                "correlativo": r[20], "id_calidad": r[21],
             }
             for r in rows
         ]
@@ -262,18 +266,24 @@ def crear_reclamo(body: ReclamoCreate, user=Depends(get_current_user)):
                 if not cur.fetchone():
                     raise HTTPException(status_code=404, detail="Proyecto no encontrado")
 
+            # Generar correlativo auto: REC-001, REC-002, ...
+            cur.execute("SELECT MAX(CAST(REPLACE(correlativo, 'REC-', '') AS INTEGER)) FROM reclamos WHERE correlativo IS NOT NULL AND correlativo LIKE 'REC-%%'")
+            max_seq = cur.fetchone()[0]
+            next_seq = (max_seq or 0) + 1
+            correlativo = f"REC-{next_seq:03d}"
+
             cur.execute("""
                 INSERT INTO reclamos (id_proyecto, titulo, descripcion, prioridad,
                     categoria_ishikawa, sub_causa, cod_causa, responsable,
                     detectado_por, fecha_deteccion, analista,
-                    creado_por, fecha_creacion)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    creado_por, fecha_creacion, correlativo, id_calidad)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING id
             """, (body.id_proyecto, body.titulo, body.descripcion,
                   body.prioridad or "media", body.categoria_ishikawa,
                   body.sub_causa, body.cod_causa, body.responsable,
                   body.detectado_por, body.fecha_deteccion, email,
-                  email, now))
+                  email, now, correlativo, body.id_calidad))
             reclamo_id = cur.fetchone()[0]
 
             # Auto-create first seguimiento
@@ -283,7 +293,7 @@ def crear_reclamo(body: ReclamoCreate, user=Depends(get_current_user)):
             """, (reclamo_id, email, "Reclamo creado", "abierto", now))
 
     audit(email, "crear_reclamo", body.titulo, "reclamo", str(reclamo_id))
-    return {"ok": True, "id": reclamo_id}
+    return {"ok": True, "id": reclamo_id, "correlativo": correlativo}
 
 
 @router.get("/reclamos/kpis")
@@ -378,7 +388,8 @@ def get_reclamo(reclamo_id: int, user=Depends(get_current_user)):
                        COALESCE(p.nombre_proyecto, r.id_proyecto) AS nombre_proyecto,
                        r.aplica, r.sub_causa, r.cod_causa, r.correlativo_calidad,
                        r.detectado_por, r.fecha_deteccion, r.fecha_analisis,
-                       r.analista, r.area_aplica, r.explicacion_causa, r.observaciones
+                       r.analista, r.area_aplica, r.explicacion_causa, r.observaciones,
+                       r.correlativo, r.id_calidad
                 FROM reclamos r
                 LEFT JOIN proyectos p ON r.id_proyecto = p.id_proyecto
                 WHERE r.id = %s
@@ -419,6 +430,7 @@ def get_reclamo(reclamo_id: int, user=Depends(get_current_user)):
         "correlativo_calidad": row[19], "detectado_por": row[20],
         "fecha_deteccion": row[21], "fecha_analisis": row[22], "analista": row[23],
         "area_aplica": row[24], "explicacion_causa": row[25], "observaciones": row[26],
+        "correlativo": row[27], "id_calidad": row[28],
         "seguimientos": [
             {"id": s[0], "usuario": s[1], "comentario": s[2],
              "estado_anterior": s[3], "estado_nuevo": s[4], "fecha": s[5]}
@@ -469,12 +481,18 @@ def actualizar_reclamo(reclamo_id: int, body: ReclamoUpdate, user=Depends(get_cu
                 "detectado_por", "fecha_deteccion", "fecha_analisis",
                 "analista", "area_aplica", "explicacion_causa",
                 "accion_correctiva", "accion_preventiva", "resolucion", "observaciones",
+                "id_calidad",
             ]
+            # Fields where empty string should be stored as NULL
+            nullable_fields = {"id_calidad", "sub_causa", "cod_causa", "responsable",
+                               "detectado_por", "fecha_deteccion", "fecha_analisis",
+                               "analista", "area_aplica", "explicacion_causa",
+                               "accion_correctiva", "accion_preventiva", "resolucion", "observaciones"}
             for field in updatable:
                 val = getattr(body, field)
                 if val is not None:
                     sets.append(f"{field} = %s")
-                    params.append(val)
+                    params.append(val if (val != "" or field not in nullable_fields) else None)
 
             estado_changed = False
             if body.estado and body.estado != estado_anterior:

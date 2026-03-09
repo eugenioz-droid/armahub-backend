@@ -59,6 +59,83 @@ def admin_reset_db(
     return {"ok": True, "reset": summary}
 
 
+@router.get("/admin/tables")
+def get_table_counts(admin=Depends(require_admin)):
+    """Conteo de registros por tabla para el panel de gestión de datos."""
+    tables = [
+        ("barras", "barras"),
+        ("imports", "imports"),
+        ("proyectos", "proyectos"),
+        ("reclamos", "reclamos"),
+        ("calculistas", "calculistas"),
+        ("clientes", "clientes"),
+        ("pedidos", "pedidos"),
+        ("audit_log", "audit_log"),
+        ("users", "users"),
+    ]
+    result = []
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            for label, table in tables:
+                try:
+                    cur.execute(f"SELECT COUNT(*) FROM {table}")
+                    count = int(cur.fetchone()[0])
+                except Exception:
+                    count = 0
+                result.append({"table": label, "count": count})
+    return {"tables": result}
+
+
+@router.post("/admin/tables/{table_name}/clear")
+def clear_table(
+    table_name: str,
+    confirm: str = Query(..., description="Debe ser 'CONFIRMAR'"),
+    admin=Depends(require_admin),
+):
+    """Limpiar todos los registros de una tabla específica. Requiere confirm='CONFIRMAR'."""
+    if confirm != "CONFIRMAR":
+        raise HTTPException(status_code=400, detail="Debes enviar confirm=CONFIRMAR")
+
+    # Tables allowed to be cleared and their cascade dependencies
+    CLEARABLE = {
+        "barras": ["DELETE FROM barras"],
+        "imports": ["DELETE FROM barras", "DELETE FROM imports"],
+        "proyectos": [
+            "DELETE FROM reclamo_imagenes", "DELETE FROM reclamo_acciones",
+            "DELETE FROM reclamo_seguimientos", "DELETE FROM reclamos",
+            "DELETE FROM export_log", "DELETE FROM pedido_items",
+            "DELETE FROM pedidos", "DELETE FROM proyecto_usuarios",
+            "DELETE FROM barras", "DELETE FROM imports", "DELETE FROM proyectos",
+        ],
+        "reclamos": [
+            "DELETE FROM reclamo_imagenes", "DELETE FROM reclamo_acciones",
+            "DELETE FROM reclamo_seguimientos", "DELETE FROM reclamos",
+        ],
+        "calculistas": [
+            "UPDATE proyectos SET calculista_id = NULL",
+            "DELETE FROM calculistas",
+        ],
+        "clientes": [
+            "UPDATE proyectos SET cliente_id = NULL",
+            "DELETE FROM clientes",
+        ],
+        "pedidos": ["DELETE FROM pedido_items", "DELETE FROM pedidos"],
+        "audit_log": ["DELETE FROM audit_log"],
+    }
+
+    if table_name not in CLEARABLE:
+        raise HTTPException(status_code=400, detail=f"Tabla no permitida: {table_name}")
+
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            for sql in CLEARABLE[table_name]:
+                cur.execute(sql)
+            deleted = cur.rowcount
+
+    audit(admin.get("email", "?"), "limpiar_tabla", f"tabla={table_name}", "sistema", table_name)
+    return {"ok": True, "table": table_name}
+
+
 @router.get("/admin/audit")
 def get_audit_log(
     usuario: Optional[str] = None,

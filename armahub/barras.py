@@ -603,7 +603,7 @@ def get_cargas_proyecto(
 
 @router.delete("/cargas/{carga_id}")
 def delete_carga(carga_id: int, user=Depends(get_current_user)):
-    """Eliminar una carga: borra las barras importadas en esa carga y el registro de import."""
+    """Eliminar una carga: borra las barras por import_id y el registro de import."""
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -615,16 +615,24 @@ def delete_carga(carga_id: int, user=Depends(get_current_user)):
                 raise HTTPException(status_code=404, detail="Carga no encontrada")
             id_proyecto = row[1]
             archivo = row[2]
-            fecha = row[3]
 
             if not _puede_editar_proyecto(cur, id_proyecto, user):
                 raise HTTPException(status_code=403, detail="No tienes permiso para eliminar cargas de este proyecto")
 
+            # Eliminar barras por import_id (principio de inmutabilidad de la carga)
             cur.execute(
-                "DELETE FROM barras WHERE id_proyecto = %s AND fecha_carga = %s",
-                (id_proyecto, fecha)
+                "DELETE FROM barras WHERE import_id = %s",
+                (carga_id,)
             )
             barras_eliminadas = cur.rowcount
+            # Fallback: si no hay barras con import_id (datos legacy), usar método antiguo
+            if barras_eliminadas == 0:
+                fecha = row[3]
+                cur.execute(
+                    "DELETE FROM barras WHERE id_proyecto = %s AND fecha_carga = %s",
+                    (id_proyecto, fecha)
+                )
+                barras_eliminadas = cur.rowcount
             cur.execute("DELETE FROM imports WHERE id = %s", (carga_id,))
 
     return {
@@ -635,58 +643,41 @@ def delete_carga(carga_id: int, user=Depends(get_current_user)):
     }
 
 
-class MoverBarrasIndividualRequest(BaseModel):
+class CambiarSectorRequest(BaseModel):
     id_unicos: list
-    destino_id: Optional[str] = None
-    nuevo_sector: Optional[str] = None
+    nuevo_sector: str
 
 
-@router.post("/barras/mover")
-def mover_barras_individual(body: MoverBarrasIndividualRequest, user=Depends(get_current_user)):
-    """Mover barras individuales (por lista de id_unico) a otro proyecto y/o cambiar sector."""
+@router.post("/barras/cambiar-sector")
+def cambiar_sector_barras(body: CambiarSectorRequest, user=Depends(get_current_user)):
+    """Cambiar sector de barras individuales (dentro del mismo proyecto)."""
     if not body.id_unicos:
         raise HTTPException(status_code=400, detail="Lista de barras vacía")
-    if not body.destino_id and not body.nuevo_sector:
-        raise HTTPException(status_code=400, detail="Debe indicar destino_id o nuevo_sector")
+    if not body.nuevo_sector:
+        raise HTTPException(status_code=400, detail="Debe indicar nuevo_sector")
 
     SECTORES_VALIDOS = {"FUND", "ELEV", "LCIELO", "VCIELO"}
-    if body.nuevo_sector and body.nuevo_sector.upper() not in SECTORES_VALIDOS:
+    if body.nuevo_sector.upper() not in SECTORES_VALIDOS:
         raise HTTPException(status_code=400, detail=f"Sector inválido. Válidos: {sorted(SECTORES_VALIDOS)}")
 
     with get_conn() as conn:
         with conn.cursor() as cur:
-            # Verificar permisos sobre el proyecto origen de la primera barra
             cur.execute("SELECT id_proyecto FROM barras WHERE id_unico = %s", (body.id_unicos[0],))
             brow = cur.fetchone()
             if not brow:
                 raise HTTPException(status_code=404, detail="Barra no encontrada")
             if not _puede_editar_proyecto(cur, brow[0], user):
-                raise HTTPException(status_code=403, detail="No tienes permiso para mover barras de este proyecto")
-
-            sets = []
-            params = []
-            if body.destino_id:
-                cur.execute("SELECT nombre_proyecto FROM proyectos WHERE id_proyecto = %s", (body.destino_id,))
-                dest = cur.fetchone()
-                if not dest:
-                    raise HTTPException(status_code=404, detail="Proyecto destino no encontrado")
-                sets.append("id_proyecto = %s")
-                params.append(body.destino_id)
-                sets.append("nombre_proyecto = %s")
-                params.append(dest[0])
-            if body.nuevo_sector:
-                sets.append("sector = %s")
-                params.append(body.nuevo_sector.upper())
+                raise HTTPException(status_code=403, detail="No tienes permiso para editar barras de este proyecto")
 
             placeholders = ",".join(["%s"] * len(body.id_unicos))
-            params.extend(body.id_unicos)
+            params = [body.nuevo_sector.upper()] + list(body.id_unicos)
             cur.execute(
-                f"UPDATE barras SET {', '.join(sets)} WHERE id_unico IN ({placeholders})",
+                f"UPDATE barras SET sector = %s WHERE id_unico IN ({placeholders})",
                 params
             )
             count = cur.rowcount
 
-    return {"ok": True, "movidas": count}
+    return {"ok": True, "modificadas": count}
 
 
 @router.get("/proyectos/{id_proyecto}/sectores-nav")
