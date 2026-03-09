@@ -765,7 +765,7 @@ errores y reclamos levantados por clientes. Incluye formulario tipo, análisis d
        - Card Admin solo visible para rol admin
        - Header ArmaHub + info usuario siempre visible
 
-34. Integridad de datos de barras - ✅ Parcial 9-Mar-2026
+34. Integridad de datos de barras - ✅ Implementado 9-Mar-2026
     **Diseño aprobado 9-Mar-2026**. Principio de inmutabilidad de la carga.
 
     a) import_id en barras - ✅ Hecho (migración 15 + importer)
@@ -783,40 +783,42 @@ errores y reclamos levantados por clientes. Incluye formulario tipo, análisis d
        - Mantener cambio de sector dentro del mismo proyecto
        - Reemplazar con crear/duplicar barra manual
 
-    d) Múltiples orígenes de barras - Pendiente
-       - Migración: agregar campos origen, import_id, pedido_id, creado_por en barras
+    d) Múltiples orígenes de barras - ✅ Hecho
+       - Campos origen, import_id, pedido_id, creado_por ya en barras
        - origen TEXT DEFAULT 'csv' — valores: 'csv' | 'manual' | 'pedido'
-       - import_id INTEGER — FK a imports (solo origen='csv')
-       - pedido_id INTEGER — FK a pedidos (solo origen='pedido')
+       - import_id BIGINT FK a imports (solo origen='csv')
+       - pedido_id BIGINT (solo origen='pedido')
        - creado_por TEXT — usuario que creó (manual/pedido)
-       - Barras CSV: se eliminan con su carga (por import_id)
+       - Barras CSV: protegidas, se eliminan con su carga (por import_id)
        - Barras manuales: eliminación individual permitida
        - Barras de pedido: eliminación desde el pedido
 
-35. Bar Manager rediseñado - ✅ Parcial 9-Mar-2026
+35. Bar Manager rediseñado - ✅ Implementado 9-Mar-2026
     a) Quitar "mover entre proyectos" - ✅ Hecho
     b) Mantener "cambiar sector" (mismo proyecto) - ✅ Hecho (POST /barras/cambiar-sector)
-    c) Crear barra manual - Pendiente
-       - Formulario con todos los campos: proyecto, sector, piso, ciclo, eje,
-         diámetro, largo, cantidad, figura, marca, etc.
-       - origen='manual', creado_por=usuario actual
-       - Sigue lógica SECTOR/PISO/CICLO
-    d) Duplicar barra - Pendiente
-       - Click "Duplicar" en una barra existente → formulario pre-llenado
-       - Usuario modifica proyecto, sector, piso, ciclo según necesidad
+    c) Crear barra manual - ✅ Hecho
+       - Formulario colapsable "Crear barra" en Bar Manager
+       - Campos: proyecto, sector, piso, ciclo, eje, φ, largo, cant, figura, marca
+       - POST /barras/crear → id_unico=MAN-{uuid}, origen='manual', creado_por=email
+       - Peso calculado con fórmula ArmaHub (7850 * π * (d/2000)² * largo/100)
+    d) Duplicar barra - ✅ Hecho
+       - Botón "Duplicar" por fila en la tabla de barras
+       - POST /barras/{id_unico}/duplicar → copia todos los campos, nuevo MAN-{uuid}
        - Se crea como barra manual (origen='manual')
-       - Original intacta en su carga
-    e) Eliminar barra individual - Pendiente
-       - Solo barras con origen='manual' o 'pedido'
-       - Barras CSV no se eliminan individualmente (se elimina la carga)
-    f) Filtrar por origen - Pendiente
-       - Nuevo filtro: csv / manual / pedido
+       - Original intacta
+    e) Eliminar barra individual - ✅ Hecho
+       - Botón "✕" por fila (solo visible en barras manual/pedido)
+       - DELETE /barras/{id_unico} — solo permite manual/pedido
+       - Barras CSV: protegidas, se eliminan solo con la carga completa
+       - Eliminación masiva desde toolbar (omite CSV automáticamente)
+    f) Filtrar por origen - ✅ Hecho
+       - Dropdown "Origen: Todos / CSV / Manual / Pedido" en barra de filtros
+       - Columna "Origen" con badge de color en la tabla de barras
 
 36. IDs de reclamos - ✅ Implementado 9-Mar-2026
     a) correlativo auto-generado - ✅ Hecho
        - Formato: REC-001, REC-002, REC-003...
        - Secuencial, nunca resetea, inmutable
-       - Migración: campo correlativo en tabla reclamos
        - Generado al crear reclamo (MAX(correlativo) + 1)
        - Visible como referencia interna en tabla y detalle
     b) id_calidad manual - ✅ Hecho

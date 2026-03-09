@@ -1,6 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, List
+from datetime import datetime, timezone
+import uuid
+import math
 from .db import get_conn, audit
 from .auth import get_current_user
 
@@ -58,7 +61,8 @@ def _puede_editar_proyecto(cur, id_proyecto: str, user: dict) -> bool:
 BARRAS_COLUMNS = [
     "id_unico","id_proyecto","nombre_proyecto","plano_code","nombre_plano","sector","piso","ciclo","eje",
     "diam","largo_total","mult","cant","cant_total",
-    "peso_unitario","peso_total","version_mod","version_exp","fecha_carga"
+    "peso_unitario","peso_total","version_mod","version_exp","fecha_carga",
+    "origen"
 ]
 
 ALLOWED_ORDER_BY = {
@@ -75,6 +79,7 @@ def get_barras(
     piso: str = None,
     ciclo: str = None,
     q: str = None,                      # búsqueda simple
+    origen: str = None,                 # csv / manual / pedido
     limit: int = 200,                   # paginación
     offset: int = 0,
     order_by: str = "fecha_carga",      # orden
@@ -110,6 +115,11 @@ def get_barras(
     if ciclo:
         base_where += " AND ciclo = %s"
         params.append(ciclo)
+
+    # filtro por origen
+    if origen:
+        base_where += " AND origen = %s"
+        params.append(origen)
 
     # búsqueda simple: id_unico, eje, plano_code
     if q and q.strip():
@@ -678,6 +688,137 @@ def cambiar_sector_barras(body: CambiarSectorRequest, user=Depends(get_current_u
             count = cur.rowcount
 
     return {"ok": True, "modificadas": count}
+
+
+def _calcular_peso(diam, largo):
+    """Fórmula ArmaHub: diam mm, largo cm => kg."""
+    if diam is None or largo is None:
+        return None, None
+    peso_unitario = 7850 * 3.1416 * (diam / 2000) ** 2 * (largo / 100)
+    return peso_unitario, peso_unitario
+
+
+class BarraManualCreate(BaseModel):
+    id_proyecto: str
+    sector: str
+    piso: str
+    ciclo: str
+    eje: str
+    diam: float
+    largo_total: float
+    cant: float = 1
+    figura: Optional[str] = None
+    marca: Optional[str] = None
+
+
+@router.post("/barras/crear")
+def crear_barra_manual(body: BarraManualCreate, user=Depends(get_current_user)):
+    """Crear una barra manual (origen='manual')."""
+    email = user.get("email", "unknown")
+    now = datetime.now(timezone.utc).isoformat()
+
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT id_proyecto, nombre_proyecto FROM proyectos WHERE id_proyecto = %s", (body.id_proyecto,))
+            prow = cur.fetchone()
+            if not prow:
+                raise HTTPException(status_code=404, detail="Proyecto no encontrado")
+            if not _puede_editar_proyecto(cur, body.id_proyecto, user):
+                raise HTTPException(status_code=403, detail="No tienes permiso para editar barras de este proyecto")
+
+            nombre_proyecto = prow[1]
+            id_unico = f"MAN-{uuid.uuid4().hex[:12].upper()}"
+            cant_total = body.cant
+            peso_unitario, _ = _calcular_peso(body.diam, body.largo_total)
+            peso_total = peso_unitario * cant_total if peso_unitario else None
+
+            cur.execute("""
+                INSERT INTO barras (id_unico, id_proyecto, nombre_proyecto, sector, piso, ciclo, eje,
+                    diam, largo_total, mult, cant, cant_total, peso_unitario, peso_total,
+                    fecha_carga, origen, creado_por, figura, marca)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """, (id_unico, body.id_proyecto, nombre_proyecto,
+                  body.sector.upper(), body.piso.upper(), body.ciclo.upper(), body.eje,
+                  body.diam, body.largo_total, 1, body.cant, cant_total,
+                  peso_unitario, peso_total, now, 'manual', email,
+                  body.figura, body.marca))
+
+    audit(email, "crear_barra_manual", f"Barra {id_unico} en {body.id_proyecto}", "barra", id_unico)
+    return {"ok": True, "id_unico": id_unico, "peso_total": round(peso_total, 3) if peso_total else None}
+
+
+@router.post("/barras/{id_unico}/duplicar")
+def duplicar_barra(id_unico: str, user=Depends(get_current_user)):
+    """Duplicar una barra existente como nueva barra manual."""
+    email = user.get("email", "unknown")
+    now = datetime.now(timezone.utc).isoformat()
+
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT id_unico, id_proyecto, nombre_proyecto, plano_code, nombre_plano,
+                       sector, piso, ciclo, eje, diam, largo_total, mult, cant, cant_total,
+                       peso_unitario, peso_total, figura, marca,
+                       bar_id, estructura, tipo, esp,
+                       dim_a, dim_b, dim_c, dim_d, dim_e, dim_f, dim_g, dim_h, dim_i,
+                       ang1, ang2, ang3, radio
+                FROM barras WHERE id_unico = %s
+            """, (id_unico,))
+            row = cur.fetchone()
+            if not row:
+                raise HTTPException(status_code=404, detail="Barra no encontrada")
+
+            src_proyecto = row[1]
+            if not _puede_editar_proyecto(cur, src_proyecto, user):
+                raise HTTPException(status_code=403, detail="No tienes permiso para duplicar barras de este proyecto")
+
+            new_id = f"MAN-{uuid.uuid4().hex[:12].upper()}"
+
+            cur.execute("""
+                INSERT INTO barras (id_unico, id_proyecto, nombre_proyecto, plano_code, nombre_plano,
+                    sector, piso, ciclo, eje, diam, largo_total, mult, cant, cant_total,
+                    peso_unitario, peso_total, figura, marca,
+                    bar_id, estructura, tipo, esp,
+                    dim_a, dim_b, dim_c, dim_d, dim_e, dim_f, dim_g, dim_h, dim_i,
+                    ang1, ang2, ang3, radio,
+                    fecha_carga, origen, creado_por)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                        %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                        %s, %s, %s)
+            """, (new_id, row[1], row[2], row[3], row[4],
+                  row[5], row[6], row[7], row[8], row[9], row[10], row[11], row[12], row[13],
+                  row[14], row[15], row[16], row[17],
+                  row[18], row[19], row[20], row[21],
+                  row[22], row[23], row[24], row[25], row[26], row[27], row[28], row[29], row[30],
+                  row[31], row[32], row[33], row[34],
+                  now, 'manual', email))
+
+    audit(email, "duplicar_barra", f"Duplicada {id_unico} → {new_id}", "barra", new_id)
+    return {"ok": True, "id_unico": new_id, "origen": id_unico}
+
+
+@router.delete("/barras/{id_unico}")
+def eliminar_barra(id_unico: str, user=Depends(get_current_user)):
+    """Eliminar una barra individual. Solo barras con origen='manual' o 'pedido'."""
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT id_unico, id_proyecto, origen FROM barras WHERE id_unico = %s", (id_unico,))
+            row = cur.fetchone()
+            if not row:
+                raise HTTPException(status_code=404, detail="Barra no encontrada")
+
+            if row[2] not in ('manual', 'pedido', None):
+                raise HTTPException(status_code=400,
+                    detail="Solo se pueden eliminar barras manuales o de pedido. Las barras CSV se eliminan borrando la carga completa.")
+
+            if not _puede_editar_proyecto(cur, row[1], user):
+                raise HTTPException(status_code=403, detail="No tienes permiso para eliminar barras de este proyecto")
+
+            cur.execute("DELETE FROM barras WHERE id_unico = %s", (id_unico,))
+
+    email = user.get("email", "unknown")
+    audit(email, "eliminar_barra", f"Barra {id_unico} eliminada", "barra", id_unico)
+    return {"ok": True, "id_unico": id_unico}
 
 
 @router.get("/proyectos/{id_proyecto}/sectores-nav")

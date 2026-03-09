@@ -904,6 +904,11 @@ const DISPLAY_COLS = [
   { key: 'largo_total', label: 'Largo', fmt: v => v != null ? Math.round(v) : '' },
   { key: 'peso_unitario', label: 'Peso U.', fmt: v => v != null ? v.toFixed(2) : '' },
   { key: 'peso_total', label: 'Peso Total', fmt: v => v != null ? v.toFixed(1) : '' },
+  { key: 'origen', label: 'Origen', fmt: v => {
+    if (v === 'manual') return '<span style="background:#1565C0;color:#fff;padding:1px 6px;border-radius:3px;font-size:10px;">manual</span>';
+    if (v === 'pedido') return '<span style="background:#FF9800;color:#fff;padding:1px 6px;border-radius:3px;font-size:10px;">pedido</span>';
+    return '<span style="background:#9E9E9E;color:#fff;padding:1px 6px;border-radius:3px;font-size:10px;">csv</span>';
+  }},
 ];
 
 function shortId(id) {
@@ -972,6 +977,110 @@ async function accionCambiarSector() {
   }
 }
 
+function toggleCrearBarraForm() {
+  var card = document.getElementById('crearBarraCard');
+  if (card.style.display === 'none') {
+    card.style.display = '';
+    // Populate project selector from the main project dropdown options
+    var src = document.getElementById('proyecto');
+    var dst = document.getElementById('crearBarraProy');
+    if (src && dst) {
+      dst.innerHTML = src.innerHTML;
+      if (src.value) dst.value = src.value;
+    }
+  } else {
+    card.style.display = 'none';
+  }
+}
+
+async function crearBarraManual() {
+  var msg = document.getElementById('crearBarraMsg');
+  var proy = document.getElementById('crearBarraProy').value;
+  var sector = document.getElementById('crearBarraSector').value;
+  var piso = (document.getElementById('crearBarraPiso').value || '').trim().toUpperCase();
+  var ciclo = (document.getElementById('crearBarraCiclo').value || '').trim().toUpperCase();
+  var eje = (document.getElementById('crearBarraEje').value || '').trim();
+  var diam = parseFloat(document.getElementById('crearBarraDiam').value);
+  var largo = parseFloat(document.getElementById('crearBarraLargo').value);
+  var cant = parseInt(document.getElementById('crearBarraCant').value) || 1;
+  var figura = (document.getElementById('crearBarraFigura').value || '').trim() || null;
+  var marca = (document.getElementById('crearBarraMarca').value || '').trim() || null;
+
+  if (!proy || !sector || !piso || !ciclo || !eje || isNaN(diam) || isNaN(largo)) {
+    msg.textContent = 'Completa los campos obligatorios (*)';
+    msg.style.color = '#e53935';
+    return;
+  }
+  msg.textContent = 'Creando...'; msg.style.color = '#666';
+
+  var body = { id_proyecto: proy, sector: sector, piso: piso, ciclo: ciclo, eje: eje, diam: diam, largo_total: largo, cant: cant };
+  if (figura) body.figura = figura;
+  if (marca) body.marca = marca;
+
+  var res = await apiPostJson('/barras/crear', body);
+  if (res && res.ok) {
+    msg.textContent = 'Barra creada: ' + res.id_unico + (res.peso_total ? ' (' + res.peso_total.toFixed(2) + ' kg)' : '');
+    msg.style.color = '#4CAF50';
+    ['crearBarraPiso','crearBarraCiclo','crearBarraEje','crearBarraDiam','crearBarraLargo','crearBarraFigura','crearBarraMarca'].forEach(function(id) {
+      var el = document.getElementById(id); if (el) el.value = '';
+    });
+    document.getElementById('crearBarraCant').value = '1';
+    buscar(true);
+  } else {
+    msg.textContent = 'Error: ' + (res?.detail || 'desconocido');
+    msg.style.color = '#e53935';
+  }
+}
+
+async function duplicarBarra(idUnico) {
+  if (!confirm('¿Duplicar barra ' + idUnico + '?')) return;
+  var res = await fetch('/barras/' + encodeURIComponent(idUnico) + '/duplicar', {
+    method: 'POST', headers: authHeaders()
+  });
+  if (res.status === 401) { logout(); return; }
+  var data = await res.json();
+  if (data.ok) {
+    alert('Barra duplicada: ' + data.id_unico);
+    buscar(false);
+  } else {
+    alert('Error: ' + (data.detail || 'desconocido'));
+  }
+}
+
+async function eliminarBarra(idUnico) {
+  if (!confirm('¿Eliminar barra ' + idUnico + '? Esta acción no se puede deshacer.')) return;
+  var res = await fetch('/barras/' + encodeURIComponent(idUnico), {
+    method: 'DELETE', headers: authHeaders()
+  });
+  if (res.status === 401) { logout(); return; }
+  var data = await res.json();
+  if (data.ok) {
+    selectedBarras.delete(idUnico);
+    updateToolbar();
+    buscar(false);
+  } else {
+    alert('Error: ' + (data.detail || 'desconocido'));
+  }
+}
+
+async function eliminarBarrasSeleccionadas() {
+  if (selectedBarras.size === 0) return alert('Selecciona al menos una barra');
+  if (!confirm('¿Eliminar ' + selectedBarras.size + ' barra(s)? Solo se eliminarán las manuales/pedido. Las CSV serán omitidas.')) return;
+  var ids = Array.from(selectedBarras);
+  var ok = 0, skip = 0;
+  for (var i = 0; i < ids.length; i++) {
+    var res = await fetch('/barras/' + encodeURIComponent(ids[i]), {
+      method: 'DELETE', headers: authHeaders()
+    });
+    if (res.status === 401) { logout(); return; }
+    var data = await res.json();
+    if (data.ok) { ok++; selectedBarras.delete(ids[i]); } else { skip++; }
+  }
+  alert('Eliminadas: ' + ok + (skip > 0 ? ' | Omitidas (CSV): ' + skip : ''));
+  updateToolbar();
+  buscar(true);
+}
+
 async function buscar(reset = false) {
   if (reset) { currentOffset = 0; selectedBarras.clear(); updateToolbar(); }
 
@@ -991,6 +1100,9 @@ async function buscar(reset = false) {
 
   const q = document.getElementById('q').value.trim();
   if (q) params.set('q', q);
+
+  const origenFilter = document.getElementById('filtroOrigen');
+  if (origenFilter && origenFilter.value) params.set('origen', origenFilter.value);
 
   params.set('limit', pageLimit);
   params.set('offset', currentOffset);
@@ -1026,6 +1138,7 @@ async function buscar(reset = false) {
     const arrow = c.key === ord ? (dir === 'asc' ? ' ▲' : ' ▼') : '';
     hdr += '<th style="cursor:pointer; padding:4px 6px;" onclick="document.getElementById(\'order_by\').value=\'' + c.key + '\'; buscar(true);">' + c.label + arrow + '</th>';
   });
+  hdr += '<th style="padding:4px 6px;">Acciones</th>';
   hdr += '</tr></thead>';
 
   // Body
@@ -1033,6 +1146,7 @@ async function buscar(reset = false) {
   data.data.forEach(row => {
     const id = row.id_unico;
     const sel = selectedBarras.has(id);
+    const safeId = id.replace(/"/g, '&quot;').replace(/'/g, "\\'");
     body += '<tr id="row_' + id.replace(/"/g, '') + '" style="' + (sel ? 'background:#f0f9e8;' : '') + '">';
     body += '<td style="width:28px;"><input type="checkbox" class="barra-cb" data-id="' + id + '" id="cb_' + id.replace(/"/g, '') + '" ' + (sel ? 'checked' : '') + ' onchange="toggleBarra(\'' + id.replace(/'/g, "\\'") + '\')" /></td>';
     DISPLAY_COLS.forEach(c => {
@@ -1041,6 +1155,11 @@ async function buscar(reset = false) {
       if (c.fmt) val = c.fmt(row[c.key]);
       body += '<td style="padding:3px 6px;">' + (val != null && val !== '' ? val : '') + '</td>';
     });
+    var canDelete = (row.origen === 'manual' || row.origen === 'pedido' || !row.origen);
+    body += '<td style="padding:3px 4px; white-space:nowrap;">';
+    body += '<button class="secondary" style="font-size:10px; padding:1px 6px; margin-right:3px;" onclick="duplicarBarra(\'' + safeId + '\')">Duplicar</button>';
+    if (canDelete) body += '<button class="secondary" style="font-size:10px; padding:1px 6px; color:#b42318;" onclick="eliminarBarra(\'' + safeId + '\')">✕</button>';
+    body += '</td>';
     body += '</tr>';
   });
   body += '</tbody>';
@@ -1053,6 +1172,8 @@ function resetFiltros() {
     document.getElementById(f).value = '';
   });
   document.getElementById('q').value = '';
+  var fo = document.getElementById('filtroOrigen');
+  if (fo) fo.value = '';
   const si = document.getElementById('proyectoSearchInput');
   if (si) si.value = '';
   try { localStorage.removeItem(FILTER_STORAGE_KEY); } catch(e) {}
