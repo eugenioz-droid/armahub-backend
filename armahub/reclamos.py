@@ -348,6 +348,104 @@ def reclamos_kpis(user=Depends(get_current_user)):
     }
 
 
+@router.get("/reclamos/dashboard")
+def reclamos_dashboard(user=Depends(get_current_user)):
+    """Datos agregados para el dashboard de reclamos: charts y matriz."""
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            # 1) Reclamos por mes (últimos 12 meses)
+            cur.execute("""
+                SELECT TO_CHAR(fecha_creacion, 'YYYY-MM') AS mes, COUNT(*)
+                FROM reclamos
+                WHERE fecha_creacion >= NOW() - INTERVAL '12 months'
+                GROUP BY mes ORDER BY mes
+            """)
+            por_mes = [{"mes": r[0], "count": int(r[1])} for r in cur.fetchall()]
+
+            # 2) Distribución por categoría Ishikawa
+            cur.execute("""
+                SELECT COALESCE(categoria_ishikawa, 'sin_categoria'), COUNT(*)
+                FROM reclamos GROUP BY 1 ORDER BY 2 DESC
+            """)
+            por_categoria = [{"categoria": r[0], "count": int(r[1])} for r in cur.fetchall()]
+
+            # 3) Top 10 obras con más reclamos
+            cur.execute("""
+                SELECT COALESCE(p.nombre_proyecto, r.id_proyecto, 'Sin obra') AS obra, COUNT(*)
+                FROM reclamos r
+                LEFT JOIN proyectos p ON p.id_proyecto = r.id_proyecto
+                GROUP BY obra ORDER BY 2 DESC LIMIT 10
+            """)
+            por_obra = [{"obra": r[0], "count": int(r[1])} for r in cur.fetchall()]
+
+            # 4) Por estado actual
+            cur.execute("SELECT estado, COUNT(*) FROM reclamos GROUP BY estado ORDER BY 2 DESC")
+            por_estado = [{"estado": r[0], "count": int(r[1])} for r in cur.fetchall()]
+
+            # 5) Por responsable (top 10)
+            cur.execute("""
+                SELECT COALESCE(NULLIF(responsable,''), 'Sin asignar'), COUNT(*)
+                FROM reclamos GROUP BY 1 ORDER BY 2 DESC LIMIT 10
+            """)
+            por_responsable = [{"responsable": r[0], "count": int(r[1])} for r in cur.fetchall()]
+
+            # 6) Matriz obra × categoría (top 8 obras)
+            cur.execute("""
+                SELECT COALESCE(p.nombre_proyecto, r.id_proyecto, 'Sin obra') AS obra,
+                       COALESCE(r.categoria_ishikawa, 'sin_categoria') AS cat,
+                       COUNT(*)
+                FROM reclamos r
+                LEFT JOIN proyectos p ON p.id_proyecto = r.id_proyecto
+                GROUP BY obra, cat
+                ORDER BY obra, cat
+            """)
+            matriz_raw = cur.fetchall()
+
+            # 7) Tiempo resolución por mes (últimos 12 meses)
+            cur.execute("""
+                SELECT TO_CHAR(fecha_cierre, 'YYYY-MM') AS mes,
+                       AVG(EXTRACT(EPOCH FROM (fecha_cierre::timestamp - fecha_creacion::timestamp)) / 86400.0)
+                FROM reclamos
+                WHERE estado = 'cerrado' AND fecha_cierre IS NOT NULL
+                  AND fecha_cierre >= NOW() - INTERVAL '12 months'
+                GROUP BY mes ORDER BY mes
+            """)
+            resolucion_mes = [{"mes": r[0], "avg_dias": round(float(r[1]), 1)} for r in cur.fetchall()]
+
+            # 8) Por creado_por (top 10)
+            cur.execute("""
+                SELECT COALESCE(creado_por, 'Desconocido'), COUNT(*)
+                FROM reclamos GROUP BY 1 ORDER BY 2 DESC LIMIT 10
+            """)
+            por_creador = [{"creador": r[0], "count": int(r[1])} for r in cur.fetchall()]
+
+    # Build matrix structure
+    obras_set = {}
+    cats_set = set()
+    for obra, cat, cnt in matriz_raw:
+        obras_set.setdefault(obra, {})[cat] = int(cnt)
+        cats_set.add(cat)
+    # Sort obras by total desc, take top 8
+    obras_sorted = sorted(obras_set.items(), key=lambda x: sum(x[1].values()), reverse=True)[:8]
+    cats_sorted = sorted(cats_set)
+    matriz = {
+        "obras": [o[0] for o in obras_sorted],
+        "categorias": cats_sorted,
+        "data": [[o[1].get(c, 0) for c in cats_sorted] for o in obras_sorted],
+    }
+
+    return {
+        "por_mes": por_mes,
+        "por_categoria": por_categoria,
+        "por_obra": por_obra,
+        "por_estado": por_estado,
+        "por_responsable": por_responsable,
+        "por_creador": por_creador,
+        "resolucion_mes": resolucion_mes,
+        "matriz": matriz,
+    }
+
+
 @router.get("/reclamos/options")
 def reclamos_options(user=Depends(get_current_user)):
     """Devuelve opciones para dropdowns del formulario."""

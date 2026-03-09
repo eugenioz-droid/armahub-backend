@@ -2561,13 +2561,15 @@ async function clearTable(tableName) {
   if (!window.confirm(`¿Limpiar TODOS los registros de "${label}"? Esta acción no se puede deshacer.`)) return;
   const input = prompt(`Escribe CONFIRMAR para limpiar la tabla "${label}":`);
   if (input !== 'CONFIRMAR') { alert('Operación cancelada.'); return; }
-  const res = await apiPost('/admin/tables/' + encodeURIComponent(tableName) + '/clear', { confirm: 'CONFIRMAR' });
+  const res = await fetch('/admin/tables/' + encodeURIComponent(tableName) + '/clear?confirm=CONFIRMAR', {
+    method: 'POST', headers: authHeaders()
+  }).then(r => r.json()).catch(() => null);
   if (res && res.ok) {
     alert(`Tabla "${label}" limpiada correctamente.`);
     loadTableCounts();
     loadDbInfo();
   } else {
-    alert('Error: ' + (res?.data?.detail || 'desconocido'));
+    alert('Error: ' + (res?.detail || 'desconocido'));
   }
 }
 
@@ -2813,6 +2815,160 @@ async function loadReclamosKpis() {
   } else {
     tc.innerHTML = '';
   }
+}
+
+// ---- RECLAMOS DASHBOARD ----
+let _recChartMes = null, _recChartResolucion = null, _recChartCategoria = null;
+let _recChartEstado = null, _recChartObra = null, _recChartResponsable = null;
+
+const _recCatColors = {
+  mano_de_obra: '#42A5F5', metodo: '#FFA726', material: '#66BB6A',
+  maquina: '#EF5350', medicion: '#AB47BC', medio_ambiente: '#26A69A',
+  sin_categoria: '#BDBDBD',
+};
+const _recCatLabels = {
+  mano_de_obra: 'Personas', metodo: 'Método', material: 'Material',
+  maquina: 'Máquina', medicion: 'Medida', medio_ambiente: 'Medio Amb.',
+  sin_categoria: 'Sin cat.',
+};
+const _recEstadoChartColors = {
+  abierto: '#e53935', en_analisis: '#FF9800', accion_correctiva: '#2196F3',
+  cerrado: '#4CAF50', rechazado: '#9E9E9E',
+};
+
+function toggleRecDashboard() {
+  var c = document.getElementById('recDashboardContent');
+  if (c.style.display === 'none') {
+    c.style.display = '';
+    loadReclamosDashboard();
+  } else {
+    c.style.display = 'none';
+  }
+}
+
+async function loadReclamosDashboard() {
+  var data = await apiGet('/reclamos/dashboard');
+  if (!data) return;
+
+  // 1) Reclamos por mes — bar chart
+  var mesLabels = (data.por_mes || []).map(function(d) { return d.mes; });
+  var mesValues = (data.por_mes || []).map(function(d) { return d.count; });
+  var ctx1 = document.getElementById('recChartMes').getContext('2d');
+  if (_recChartMes) _recChartMes.destroy();
+  _recChartMes = new Chart(ctx1, {
+    type: 'bar',
+    data: { labels: mesLabels, datasets: [{ label: 'Reclamos', data: mesValues, backgroundColor: '#e53935' }] },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } },
+      scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } } }
+  });
+
+  // 2) Tiempo resolución por mes — line chart
+  var resLabels = (data.resolucion_mes || []).map(function(d) { return d.mes; });
+  var resValues = (data.resolucion_mes || []).map(function(d) { return d.avg_dias; });
+  var ctx2 = document.getElementById('recChartResolucion').getContext('2d');
+  if (_recChartResolucion) _recChartResolucion.destroy();
+  _recChartResolucion = new Chart(ctx2, {
+    type: 'line',
+    data: { labels: resLabels, datasets: [{ label: 'Días prom.', data: resValues, borderColor: '#9C27B0', backgroundColor: 'rgba(156,39,176,0.1)', fill: true, tension: 0.3 }] },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } },
+      scales: { y: { beginAtZero: true } } }
+  });
+
+  // 3) Distribución por categoría Ishikawa — doughnut
+  var catLabels = (data.por_categoria || []).map(function(d) { return _recCatLabels[d.categoria] || d.categoria; });
+  var catValues = (data.por_categoria || []).map(function(d) { return d.count; });
+  var catColors = (data.por_categoria || []).map(function(d) { return _recCatColors[d.categoria] || '#BDBDBD'; });
+  var ctx3 = document.getElementById('recChartCategoria').getContext('2d');
+  if (_recChartCategoria) _recChartCategoria.destroy();
+  _recChartCategoria = new Chart(ctx3, {
+    type: 'doughnut',
+    data: { labels: catLabels, datasets: [{ data: catValues, backgroundColor: catColors }] },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right', labels: { font: { size: 10 } } } } }
+  });
+
+  // 4) Por estado — doughnut
+  var estLabels = (data.por_estado || []).map(function(d) { return _recEstadoLabels[d.estado] || d.estado; });
+  var estValues = (data.por_estado || []).map(function(d) { return d.count; });
+  var estColors = (data.por_estado || []).map(function(d) { return _recEstadoChartColors[d.estado] || '#BDBDBD'; });
+  var ctx4 = document.getElementById('recChartEstado').getContext('2d');
+  if (_recChartEstado) _recChartEstado.destroy();
+  _recChartEstado = new Chart(ctx4, {
+    type: 'doughnut',
+    data: { labels: estLabels, datasets: [{ data: estValues, backgroundColor: estColors }] },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right', labels: { font: { size: 10 } } } } }
+  });
+
+  // 5) Por obra — horizontal bar
+  var obraLabels = (data.por_obra || []).map(function(d) { return d.obra; });
+  var obraValues = (data.por_obra || []).map(function(d) { return d.count; });
+  var ctx5 = document.getElementById('recChartObra').getContext('2d');
+  if (_recChartObra) _recChartObra.destroy();
+  _recChartObra = new Chart(ctx5, {
+    type: 'bar',
+    data: { labels: obraLabels, datasets: [{ label: 'Reclamos', data: obraValues, backgroundColor: '#FF7043' }] },
+    options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y', plugins: { legend: { display: false } },
+      scales: { x: { beginAtZero: true, ticks: { stepSize: 1 } } } }
+  });
+
+  // 6) Por responsable — horizontal bar
+  var respLabels = (data.por_responsable || []).map(function(d) { return d.responsable; });
+  var respValues = (data.por_responsable || []).map(function(d) { return d.count; });
+  var ctx6 = document.getElementById('recChartResponsable').getContext('2d');
+  if (_recChartResponsable) _recChartResponsable.destroy();
+  _recChartResponsable = new Chart(ctx6, {
+    type: 'bar',
+    data: { labels: respLabels, datasets: [{ label: 'Reclamos', data: respValues, backgroundColor: '#5C6BC0' }] },
+    options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y', plugins: { legend: { display: false } },
+      scales: { x: { beginAtZero: true, ticks: { stepSize: 1 } } } }
+  });
+
+  // 7) Matriz Obra × Categoría — HTML heatmap
+  renderRecMatriz(data.matriz);
+}
+
+function renderRecMatriz(m) {
+  var container = document.getElementById('recMatrizContainer');
+  if (!m || !m.obras || m.obras.length === 0) {
+    container.innerHTML = '<div class="muted">Sin datos para la matriz</div>';
+    return;
+  }
+  var catHeaders = m.categorias.map(function(c) {
+    return '<th style="padding:4px 6px; font-size:10px; text-align:center; white-space:nowrap;">' + (_recCatLabels[c] || c) + '</th>';
+  }).join('');
+  var html = '<table style="width:100%; border-collapse:collapse; font-size:11px;">' +
+    '<thead><tr style="background:#f5f5f5;"><th style="padding:4px 6px; text-align:left;">Obra</th>' + catHeaders +
+    '<th style="padding:4px 6px; text-align:center; font-weight:700;">Total</th></tr></thead><tbody>';
+
+  // Find max value for color intensity
+  var maxVal = 0;
+  m.data.forEach(function(row) { row.forEach(function(v) { if (v > maxVal) maxVal = v; }); });
+
+  m.obras.forEach(function(obra, i) {
+    var rowTotal = 0;
+    var cells = m.data[i].map(function(v, j) {
+      rowTotal += v;
+      var intensity = maxVal > 0 ? Math.round((v / maxVal) * 200) : 0;
+      var bg = v > 0 ? 'rgba(229,57,53,' + (0.1 + (v / maxVal) * 0.7).toFixed(2) + ')' : 'transparent';
+      var fw = v > 0 ? '600' : '400';
+      return '<td style="padding:4px 6px; text-align:center; background:' + bg + '; font-weight:' + fw + ';">' + (v || '') + '</td>';
+    }).join('');
+    html += '<tr style="border-bottom:1px solid #eee;"><td style="padding:4px 6px; font-weight:500; max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="' + obra + '">' + obra + '</td>' +
+      cells + '<td style="padding:4px 6px; text-align:center; font-weight:700; background:#f5f5f5;">' + rowTotal + '</td></tr>';
+  });
+
+  // Totals row
+  var colTotals = m.categorias.map(function(_, j) {
+    var sum = 0;
+    m.data.forEach(function(row) { sum += row[j]; });
+    return '<td style="padding:4px 6px; text-align:center; font-weight:700; background:#f5f5f5;">' + sum + '</td>';
+  }).join('');
+  var grandTotal = 0;
+  m.data.forEach(function(row) { row.forEach(function(v) { grandTotal += v; }); });
+  html += '<tr style="background:#f5f5f5; border-top:2px solid #ccc;"><td style="padding:4px 6px; font-weight:700;">Total</td>' +
+    colTotals + '<td style="padding:4px 6px; text-align:center; font-weight:700; color:#e53935;">' + grandTotal + '</td></tr>';
+
+  html += '</tbody></table>';
+  container.innerHTML = html;
 }
 
 async function loadReclamos() {

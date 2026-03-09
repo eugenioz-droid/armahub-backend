@@ -718,7 +718,25 @@ errores y reclamos levantados por clientes. Incluye formulario tipo, análisis d
     - Eliminar reclamo con confirmación (cascade: acciones + imágenes + seguimientos) - OK
     - Selector proyecto poblado desde loadProyectos - OK
     - Fix: tab reclamos subrayaba admin en vez de reclamos - OK
+    - id_calidad editable en detalle + campo en formulario crear - OK
+    - correlativo (REC-001) + id_calidad prominentes en tabla y detalle - OK
     - Pendiente: filtro por proyecto del usuario, integración USC
+
+32b. Dashboard de Reclamos - ✅ Implementado 9-Mar-2026
+    - Sección colapsable debajo de KPIs, carga bajo demanda - OK
+    - GET /reclamos/dashboard: endpoint con 8 agregaciones SQL - OK
+    - Gráficos Chart.js:
+      a) Reclamos por mes (bar, últimos 12 meses) - OK
+      b) Tiempo promedio resolución por mes (line) - OK
+      c) Distribución por categoría Ishikawa (doughnut, 6M color-coded) - OK
+      d) Por estado actual (doughnut) - OK
+      e) Por obra Top 10 (horizontal bar) - OK
+      f) Por responsable Top 10 (horizontal bar) - OK
+    - Matriz Obra × Categoría Ishikawa:
+      - Tabla heatmap HTML con intensidad de color proporcional - OK
+      - Top 8 obras × todas las categorías con totales fila/columna - OK
+      - Grand total y color-coding rojo proporcional - OK
+    - Por creador (top 10) disponible en endpoint para futura UI - OK
 
 33. Hub de navegación y módulos - ✅ Implementado 9-Mar-2026
     **Diseño aprobado 9-Mar-2026**. Post-login el usuario ve una pantalla Hub con 3 módulos:
