@@ -125,6 +125,7 @@ class ReclamoCreate(BaseModel):
 
 
 class ReclamoUpdate(BaseModel):
+    id_proyecto: Optional[str] = None
     titulo: Optional[str] = None
     descripcion: Optional[str] = None
     estado: Optional[str] = None
@@ -574,7 +575,7 @@ def actualizar_reclamo(reclamo_id: int, body: ReclamoUpdate, user=Depends(get_cu
             params = [now]
 
             updatable = [
-                "titulo", "descripcion", "prioridad", "categoria_ishikawa",
+                "id_proyecto", "titulo", "descripcion", "prioridad", "categoria_ishikawa",
                 "sub_causa", "cod_causa", "responsable", "aplica",
                 "detectado_por", "fecha_deteccion", "fecha_analisis",
                 "analista", "area_aplica", "explicacion_causa",
@@ -582,7 +583,7 @@ def actualizar_reclamo(reclamo_id: int, body: ReclamoUpdate, user=Depends(get_cu
                 "id_calidad",
             ]
             # Fields where empty string should be stored as NULL
-            nullable_fields = {"id_calidad", "sub_causa", "cod_causa", "responsable",
+            nullable_fields = {"id_proyecto", "id_calidad", "sub_causa", "cod_causa", "responsable",
                                "detectado_por", "fecha_deteccion", "fecha_analisis",
                                "analista", "area_aplica", "explicacion_causa",
                                "accion_correctiva", "accion_preventiva", "resolucion", "observaciones"}

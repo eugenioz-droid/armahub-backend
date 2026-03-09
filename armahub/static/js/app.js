@@ -3110,6 +3110,14 @@ async function verReclamo(id) {
   var idCalField = document.getElementById('recDetailIdCalidad');
   if (idCalField) idCalField.value = data.id_calidad || '';
 
+  // Populate project dropdown from recProyecto options (already loaded)
+  var srcSel = document.getElementById('recProyecto');
+  var detSel = document.getElementById('recDetailProyecto');
+  if (srcSel && detSel) {
+    detSel.innerHTML = srcSel.innerHTML;
+    detSel.value = data.id_proyecto || '';
+  }
+
   // Info fields
   var info = document.getElementById('recDetailInfo');
   var infoHtml = '<div class="row" style="gap:16px; flex-wrap:wrap;">';
@@ -3249,6 +3257,21 @@ async function guardarIdCalidad() {
     method: 'PATCH',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
     body: JSON.stringify({ id_calidad: val })
+  });
+  if (res.status === 401) { logout(); return; }
+  var data = await res.json();
+  if (data.ok) { await verReclamo(_reclamoActual.id); await loadReclamos(); }
+  else { alert('Error: ' + (data.detail || 'desconocido')); }
+}
+
+async function cambiarProyectoReclamo() {
+  if (!_reclamoActual) return;
+  var val = document.getElementById('recDetailProyecto').value;
+  if (val === (_reclamoActual.id_proyecto || '')) return;
+  var res = await fetch('/reclamos/' + _reclamoActual.id, {
+    method: 'PATCH',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id_proyecto: val || '' })
   });
   if (res.status === 401) { logout(); return; }
   var data = await res.json();
@@ -3513,6 +3536,7 @@ async function loadModuleData(mod) {
     await loadPedidos();
     await buscar(true);
   } else if (mod === 'reclamos') {
+    await loadProyectos();
     await loadReclamos();
     await loadReclamosKpis();
   } else if (mod === 'admin') {
