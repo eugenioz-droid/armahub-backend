@@ -915,18 +915,41 @@ errores y reclamos levantados por clientes. Incluye formulario tipo, análisis d
 
     g) Pendiente futuro: notificaciones, permisos por rol, dashboard específico, auto-estado en validación
 
-38b. Gestión de usuarios desde Admin - Pendiente
-    a) Crear usuario sin registro público - Pendiente
+38b. Gestión de usuarios desde Admin - ✅ Implementado 10-Mar-2026
+    Migración 20: nombre, activo, fecha_creacion en tabla users
+
+    a) Panel de usuarios en Admin - OK
+       - Tabla con email, nombre, rol (dropdown editable), estado, fecha creación
+       - Formulario colapsable "+ Nuevo usuario" con email, nombre, contraseña, rol
+       - Total de usuarios visible
+       - GET /admin/users (solo admin)
+
+    b) Crear usuario sin registro público - OK
        - Admin crea usuario con email, nombre, rol, contraseña temporal
-       - Sin necesidad de que el usuario se registre por /auth/signup
-    b) Bloquear/desbloquear usuario - Pendiente
-       - Toggle activo/inactivo desde panel Admin
-       - Usuario bloqueado no puede hacer login
-    c) Modificar contraseña de usuario - Pendiente
-       - Admin puede resetear contraseña de cualquier usuario
-       - Genera contraseña temporal o permite establecer una nueva
-    d) Editar rol y datos del usuario - Pendiente
-       - Cambiar rol, nombre, email desde panel Admin
+       - POST /auth/register incluye nombre
+       - Lista se actualiza automáticamente tras crear
+
+    c) Bloquear/desbloquear usuario - OK
+       - Botón Activar/Desactivar por fila
+       - PATCH /admin/users/{id}/activo
+       - Login bloqueado para usuarios inactivos (403 "Usuario desactivado")
+       - No se puede desactivar a sí mismo
+
+    d) Cambiar rol - OK
+       - Dropdown inline por usuario (admin, coordinador, cubicador, operador, cliente)
+       - PATCH /admin/users/{id}/role
+       - No se puede quitar admin a sí mismo
+
+    e) Resetear contraseña - OK
+       - Botón "Cambiar clave" → prompt con nueva contraseña
+       - PATCH /admin/users/{id}/password (mín. 6 caracteres)
+
+    f) Eliminar usuario - OK
+       - Botón "Eliminar" con confirmación
+       - DELETE /admin/users/{id}
+       - No se puede eliminar a sí mismo
+
+    g) Nota: no se envían correos al crear usuarios (sin sistema de notificaciones aún)
 
 38c. Perfil de usuario (self-service) - Pendiente
     a) Cambiar contraseña propia - Pendiente

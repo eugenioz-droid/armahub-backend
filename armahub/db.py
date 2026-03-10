@@ -420,6 +420,11 @@ MIGRATIONS = [
                 CHECK (estado IN ('abierto','en_analisis','accion_correctiva','validacion','cerrado','rechazado'));
         END $$;""",
     ]),
+    (20, "users: nombre, activo, fecha_creacion", [
+        "DO $$ BEGIN ALTER TABLE users ADD COLUMN nombre TEXT; EXCEPTION WHEN duplicate_column THEN NULL; END $$;",
+        "DO $$ BEGIN ALTER TABLE users ADD COLUMN activo BOOLEAN NOT NULL DEFAULT TRUE; EXCEPTION WHEN duplicate_column THEN NULL; END $$;",
+        "DO $$ BEGIN ALTER TABLE users ADD COLUMN fecha_creacion TEXT NOT NULL DEFAULT (NOW() AT TIME ZONE 'UTC'); EXCEPTION WHEN duplicate_column THEN NULL; END $$;",
+    ]),
 ]
 
 

@@ -2920,35 +2920,108 @@ async function resetDatabase() {
   await loadDashboard('sector');
 }
 
+function toggleNuevoUsuario() {
+  var f = document.getElementById('nuevoUsuarioForm');
+  f.style.display = f.style.display === 'none' ? '' : 'none';
+}
+
 async function createUser() {
-  const email = document.getElementById('newUserEmail').value.trim();
-  const password = document.getElementById('newUserPassword').value;
-  const role = document.getElementById('newUserRole').value;
-  const msg = document.getElementById('createUserMsg');
-
-  if (!email || !password) {
-    msg.textContent = 'Email y contraseña son requeridos.';
-    msg.className = 'status-err';
-    return;
-  }
-
-  const params = new URLSearchParams({ email, password, role });
-  const res = await fetch('/auth/register?' + params.toString(), {
-    method: 'POST',
-    headers: authHeaders()
-  });
-  const data = await res.json();
-
-  if (!res.ok) {
-    msg.textContent = 'Error: ' + (data.detail || JSON.stringify(data));
-    msg.className = 'status-err';
-    return;
-  }
-
-  msg.textContent = `Usuario ${email} (${role}) creado exitosamente.`;
-  msg.className = 'status-ok';
+  var email = document.getElementById('newUserEmail').value.trim();
+  var nombre = document.getElementById('newUserNombre') ? document.getElementById('newUserNombre').value.trim() : '';
+  var password = document.getElementById('newUserPassword').value;
+  var role = document.getElementById('newUserRole').value;
+  var msg = document.getElementById('createUserMsg');
+  if (!email || !password) { msg.textContent = 'Email y contrasena son requeridos.'; msg.style.color = '#b42318'; return; }
+  var params = new URLSearchParams({ email: email, password: password, role: role, nombre: nombre });
+  var res = await fetch('/auth/register?' + params.toString(), { method: 'POST', headers: authHeaders() });
+  var data = await res.json();
+  if (!res.ok) { msg.textContent = 'Error: ' + (data.detail || JSON.stringify(data)); msg.style.color = '#b42318'; return; }
+  msg.textContent = 'Usuario ' + email + ' (' + role + ') creado.'; msg.style.color = '#558B2F';
   document.getElementById('newUserEmail').value = '';
+  if (document.getElementById('newUserNombre')) document.getElementById('newUserNombre').value = '';
   document.getElementById('newUserPassword').value = '';
+  await loadUsers();
+}
+
+var _roleColors = { admin: '#b42318', coordinador: '#1565C0', cubicador: '#2e7d32', operador: '#ff9800', cliente: '#7B1FA2' };
+var _roleLabels = { admin: 'Admin', coordinador: 'Coordinador', cubicador: 'Cubicador', operador: 'Operador', cliente: 'Cliente' };
+
+async function loadUsers() {
+  var container = document.getElementById('usersListContainer');
+  if (!container) return;
+  var res = await fetch('/admin/users', { headers: authHeaders() });
+  if (res.status === 401) { logout(); return; }
+  if (!res.ok) { container.innerHTML = '<div class="muted">Error cargando usuarios</div>'; return; }
+  var data = await res.json();
+  if (!data.users || data.users.length === 0) { container.innerHTML = '<div class="muted">No hay usuarios</div>'; return; }
+  var html = '<table style="width:100%; font-size:12px; border-collapse:collapse;">';
+  html += '<tr style="background:#f5f5f5; text-align:left;">';
+  html += '<th style="padding:5px 6px;">Email</th><th style="padding:5px 6px;">Nombre</th>';
+  html += '<th style="padding:5px 6px;">Rol</th><th style="padding:5px 6px;">Estado</th>';
+  html += '<th style="padding:5px 6px;">Creado</th><th style="padding:5px 6px;">Acciones</th></tr>';
+  data.users.forEach(function(u) {
+    var rColor = _roleColors[u.role] || '#666';
+    var activo = u.activo !== false;
+    var activoBadge = activo ? '<span style="color:#2e7d32; font-weight:600; font-size:10px;">Activo</span>' : '<span style="color:#b42318; font-weight:600; font-size:10px;">Inactivo</span>';
+    var fecha = u.fecha_creacion ? u.fecha_creacion.substring(0, 10) : '-';
+    var toggleLabel = activo ? 'Desactivar' : 'Activar';
+    var toggleColor = activo ? '#b42318' : '#2e7d32';
+    var rolOpts = ['admin','coordinador','cubicador','operador','cliente'].map(function(r) {
+      return '<option value="' + r + '"' + (r === u.role ? ' selected' : '') + '>' + (r.charAt(0).toUpperCase() + r.slice(1)) + '</option>';
+    }).join('');
+    var rowStyle = 'border-bottom:1px solid #eee;' + (!activo ? ' background:#fafafa; opacity:0.7;' : '');
+    html += '<tr style="' + rowStyle + '">';
+    html += '<td style="padding:4px 6px; font-weight:500;">' + u.email + '</td>';
+    html += '<td style="padding:4px 6px;">' + (u.nombre || '<span class="muted">-</span>') + '</td>';
+    html += '<td style="padding:4px 6px;"><select style="font-size:11px; color:' + rColor + '; font-weight:600; border:1px solid #ddd; border-radius:3px; padding:1px 4px;" onchange="cambiarRolUsuario(' + u.id + ', this.value)">' + rolOpts + '</select></td>';
+    html += '<td style="padding:4px 6px;">' + activoBadge + '</td>';
+    html += '<td style="padding:4px 6px; font-size:11px;" class="muted">' + fecha + '</td>';
+    html += '<td style="padding:4px 6px; white-space:nowrap;">';
+    html += '<button class="secondary" style="font-size:10px; padding:1px 6px; color:' + toggleColor + ';" onclick="toggleActivoUsuario(' + u.id + ', ' + !activo + ')">' + toggleLabel + '</button> ';
+    html += '<button class="secondary" style="font-size:10px; padding:1px 6px;" onclick="resetPasswordUsuario(' + u.id + ')">Cambiar clave</button> ';
+    html += '<button class="secondary" style="font-size:10px; padding:1px 6px; color:#b42318;" onclick="eliminarUsuarioAdmin(' + u.id + ')">Eliminar</button>';
+    html += '</td></tr>';
+  });
+  html += '</table>';
+  html += '<div class="muted" style="font-size:11px; margin-top:6px;">Total: ' + data.users.length + ' usuario(s)</div>';
+  container.innerHTML = html;
+}
+
+async function cambiarRolUsuario(userId, nuevoRol) {
+  var params = new URLSearchParams({ role: nuevoRol });
+  var res = await fetch('/admin/users/' + userId + '/role?' + params.toString(), { method: 'PATCH', headers: authHeaders() });
+  if (res.status === 401) { logout(); return; }
+  var data = await res.json();
+  if (!data.ok) { alert('Error: ' + (data.detail || 'desconocido')); }
+  await loadUsers();
+}
+
+async function toggleActivoUsuario(userId, nuevoEstado) {
+  var params = new URLSearchParams({ activo: nuevoEstado });
+  var res = await fetch('/admin/users/' + userId + '/activo?' + params.toString(), { method: 'PATCH', headers: authHeaders() });
+  if (res.status === 401) { logout(); return; }
+  var data = await res.json();
+  if (!data.ok) { alert('Error: ' + (data.detail || 'desconocido')); }
+  await loadUsers();
+}
+
+async function resetPasswordUsuario(userId) {
+  var newPass = prompt('Nueva contrasena (min. 6 caracteres):');
+  if (!newPass) return;
+  if (newPass.length < 6) { alert('La contrasena debe tener al menos 6 caracteres'); return; }
+  var params = new URLSearchParams({ password: newPass });
+  var res = await fetch('/admin/users/' + userId + '/password?' + params.toString(), { method: 'PATCH', headers: authHeaders() });
+  if (res.status === 401) { logout(); return; }
+  var data = await res.json();
+  if (data.ok) { alert('Contrasena actualizada'); } else { alert('Error: ' + (data.detail || 'desconocido')); }
+}
+
+async function eliminarUsuarioAdmin(userId) {
+  if (!confirm('Eliminar este usuario? Esta accion no se puede deshacer.')) return;
+  var res = await fetch('/admin/users/' + userId, { method: 'DELETE', headers: authHeaders() });
+  if (res.status === 401) { logout(); return; }
+  var data = await res.json();
+  if (data.ok) { await loadUsers(); } else { alert('Error: ' + (data.detail || 'desconocido')); }
 }
 
 // ========================= AUDIT LOG =========================
@@ -4005,6 +4078,7 @@ async function loadModuleData(mod) {
     await loadReclamosKpis();
     initRecImageDropZones();
   } else if (mod === 'admin') {
+    await loadUsers();
     await loadClientes();
     await loadCalculistas();
     await loadTableCounts();

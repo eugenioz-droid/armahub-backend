@@ -59,7 +59,7 @@ def login(email: str, password: str):
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT email, password_hash, role FROM users WHERE email = %s",
+                "SELECT email, password_hash, role, activo FROM users WHERE email = %s",
                 (email,),
             )
             row = cur.fetchone()
@@ -67,7 +67,9 @@ def login(email: str, password: str):
     if not row:
         raise HTTPException(status_code=401, detail="Credenciales inválidas")
 
-    db_email, db_hash, db_role = row
+    db_email, db_hash, db_role, db_activo = row
+    if not db_activo:
+        raise HTTPException(status_code=403, detail="Usuario desactivado. Contacta al administrador.")
     if not pwd_context.verify(password, db_hash):
         raise HTTPException(status_code=401, detail="Credenciales inválidas")
 
@@ -77,7 +79,7 @@ def login(email: str, password: str):
 
 
 @router.post("/auth/register")
-def register(email: str, password: str, role: str = "operador", admin=Depends(require_admin)):
+def register(email: str, password: str, nombre: str, role: str = "operador", admin=Depends(require_admin)):
     """
     Crea usuarios. Requiere admin.
 
@@ -94,8 +96,8 @@ def register(email: str, password: str, role: str = "operador", admin=Depends(re
         with get_conn() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    "INSERT INTO users (email, password_hash, role) VALUES (%s,%s,%s)",
-                    (email, password_hash, role),
+                    "INSERT INTO users (email, password_hash, role, nombre) VALUES (%s,%s,%s,%s)",
+                    (email, password_hash, role, nombre.strip() or None),
                 )
         audit(admin.get("email", "?"), "registrar_usuario", f"{email} como {role}", "usuario", email)
         return {"ok": True}
@@ -157,3 +159,113 @@ def bootstrap_create_admin(email: str, password: str):
                 (email, password_hash),
             )
     return {"ok": True, "created_role": "admin"}
+
+
+# ========================= ADMIN: USER MANAGEMENT =========================
+
+VALID_ROLES = ("admin", "coordinador", "cubicador", "operador", "cliente")
+
+
+@router.get("/admin/users")
+def admin_list_users(admin=Depends(require_admin)):
+    """Lista completa de usuarios con todos los campos. Solo admin."""
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT id, email, role, nombre, activo, fecha_creacion
+                FROM users ORDER BY id
+            """)
+            rows = cur.fetchall()
+    return {
+        "users": [
+            {"id": r[0], "email": r[1], "role": r[2], "nombre": r[3],
+             "activo": r[4] if r[4] is not None else True,
+             "fecha_creacion": r[5]}
+            for r in rows
+        ]
+    }
+
+
+@router.patch("/admin/users/{user_id}/role")
+def admin_change_role(user_id: int, role: str, admin=Depends(require_admin)):
+    """Cambiar rol de un usuario. Solo admin."""
+    if role not in VALID_ROLES:
+        raise HTTPException(status_code=400, detail=f"Rol inválido. Válidos: {', '.join(VALID_ROLES)}")
+    admin_email = admin.get("email", "?")
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT id, email FROM users WHERE id = %s", (user_id,))
+            row = cur.fetchone()
+            if not row:
+                raise HTTPException(status_code=404, detail="Usuario no encontrado")
+            if row[1] == admin_email and role != "admin":
+                raise HTTPException(status_code=400, detail="No puedes quitarte el rol admin a ti mismo")
+            cur.execute("UPDATE users SET role = %s WHERE id = %s", (role, user_id))
+    audit(admin_email, "cambiar_rol", f"{row[1]}: {role}", "usuario", str(user_id))
+    return {"ok": True, "id": user_id, "role": role}
+
+
+@router.patch("/admin/users/{user_id}/activo")
+def admin_toggle_activo(user_id: int, activo: bool, admin=Depends(require_admin)):
+    """Activar/desactivar un usuario. Solo admin."""
+    admin_email = admin.get("email", "?")
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT id, email FROM users WHERE id = %s", (user_id,))
+            row = cur.fetchone()
+            if not row:
+                raise HTTPException(status_code=404, detail="Usuario no encontrado")
+            if row[1] == admin_email and not activo:
+                raise HTTPException(status_code=400, detail="No puedes desactivarte a ti mismo")
+            cur.execute("UPDATE users SET activo = %s WHERE id = %s", (activo, user_id))
+    estado = "activado" if activo else "desactivado"
+    audit(admin_email, "toggle_usuario", f"{row[1]}: {estado}", "usuario", str(user_id))
+    return {"ok": True, "id": user_id, "activo": activo}
+
+
+@router.patch("/admin/users/{user_id}/password")
+def admin_reset_password(user_id: int, password: str, admin=Depends(require_admin)):
+    """Resetear contraseña de un usuario. Solo admin."""
+    if len(password) < 6:
+        raise HTTPException(status_code=400, detail="La contraseña debe tener al menos 6 caracteres")
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT id, email FROM users WHERE id = %s", (user_id,))
+            row = cur.fetchone()
+            if not row:
+                raise HTTPException(status_code=404, detail="Usuario no encontrado")
+            password_hash = pwd_context.hash(password)
+            cur.execute("UPDATE users SET password_hash = %s WHERE id = %s", (password_hash, user_id))
+    audit(admin.get("email", "?"), "reset_password", row[1], "usuario", str(user_id))
+    return {"ok": True, "id": user_id}
+
+
+@router.patch("/admin/users/{user_id}/nombre")
+def admin_change_nombre(user_id: int, nombre: str, admin=Depends(require_admin)):
+    """Cambiar nombre de un usuario. Solo admin."""
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT id, email FROM users WHERE id = %s", (user_id,))
+            row = cur.fetchone()
+            if not row:
+                raise HTTPException(status_code=404, detail="Usuario no encontrado")
+            cur.execute("UPDATE users SET nombre = %s WHERE id = %s", (nombre.strip() or None, user_id))
+    audit(admin.get("email", "?"), "cambiar_nombre", f"{row[1]}: {nombre}", "usuario", str(user_id))
+    return {"ok": True, "id": user_id}
+
+
+@router.delete("/admin/users/{user_id}")
+def admin_delete_user(user_id: int, admin=Depends(require_admin)):
+    """Eliminar un usuario. Solo admin. No puede eliminarse a sí mismo."""
+    admin_email = admin.get("email", "?")
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT id, email FROM users WHERE id = %s", (user_id,))
+            row = cur.fetchone()
+            if not row:
+                raise HTTPException(status_code=404, detail="Usuario no encontrado")
+            if row[1] == admin_email:
+                raise HTTPException(status_code=400, detail="No puedes eliminarte a ti mismo")
+            cur.execute("DELETE FROM users WHERE id = %s", (user_id,))
+    audit(admin_email, "eliminar_usuario", row[1], "usuario", str(user_id))
+    return {"ok": True, "id": user_id}
