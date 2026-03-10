@@ -122,7 +122,6 @@ class ReclamoCreate(BaseModel):
     detectado_por: Optional[str] = None
     fecha_deteccion: Optional[str] = None
     id_calidad: Optional[str] = None
-    cliente_id: Optional[int] = None
 
 
 class ReclamoUpdate(BaseModel):
@@ -147,7 +146,6 @@ class ReclamoUpdate(BaseModel):
     resolucion: Optional[str] = None
     observaciones: Optional[str] = None
     id_calidad: Optional[str] = None
-    cliente_id: Optional[int] = None
 
 
 class SeguimientoCreate(BaseModel):
@@ -211,11 +209,9 @@ def listar_reclamos(
                        (SELECT COUNT(*) FROM reclamo_seguimientos s WHERE s.reclamo_id = r.id) AS seg_count,
                        r.aplica, r.sub_causa, r.cod_causa, r.correlativo_calidad,
                        r.detectado_por, r.fecha_deteccion,
-                       r.correlativo, r.id_calidad,
-                       r.cliente_id, cl.nombre AS cliente_nombre
+                       r.correlativo, r.id_calidad
                 FROM reclamos r
                 LEFT JOIN proyectos p ON r.id_proyecto = p.id_proyecto
-                LEFT JOIN clientes cl ON r.cliente_id = cl.id
                 {where}
                 ORDER BY
                     CASE r.estado
@@ -247,7 +243,6 @@ def listar_reclamos(
                 "correlativo_calidad": r[17], "detectado_por": r[18],
                 "fecha_deteccion": r[19],
                 "correlativo": r[20], "id_calidad": r[21],
-                "cliente_id": r[22], "cliente_nombre": r[23],
             }
             for r in rows
         ]
@@ -282,14 +277,14 @@ def crear_reclamo(body: ReclamoCreate, user=Depends(get_current_user)):
                 INSERT INTO reclamos (id_proyecto, titulo, descripcion, prioridad,
                     categoria_ishikawa, sub_causa, cod_causa, responsable,
                     detectado_por, fecha_deteccion, analista,
-                    creado_por, fecha_creacion, correlativo, id_calidad, cliente_id)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    creado_por, fecha_creacion, correlativo, id_calidad)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING id
             """, (body.id_proyecto, body.titulo, body.descripcion,
                   body.prioridad or "media", body.categoria_ishikawa,
                   body.sub_causa, body.cod_causa, body.responsable,
                   body.detectado_por, body.fecha_deteccion, email,
-                  email, now, correlativo, body.id_calidad, body.cliente_id))
+                  email, now, correlativo, body.id_calidad))
             reclamo_id = cur.fetchone()[0]
 
             # Auto-create first seguimiento
@@ -493,11 +488,9 @@ def get_reclamo(reclamo_id: int, user=Depends(get_current_user)):
                        r.aplica, r.sub_causa, r.cod_causa, r.correlativo_calidad,
                        r.detectado_por, r.fecha_deteccion, r.fecha_analisis,
                        r.analista, r.area_aplica, r.explicacion_causa, r.observaciones,
-                       r.correlativo, r.id_calidad,
-                       r.cliente_id, cl.nombre AS cliente_nombre
+                       r.correlativo, r.id_calidad
                 FROM reclamos r
                 LEFT JOIN proyectos p ON r.id_proyecto = p.id_proyecto
-                LEFT JOIN clientes cl ON r.cliente_id = cl.id
                 WHERE r.id = %s
             """, (reclamo_id,))
             row = cur.fetchone()
@@ -537,7 +530,6 @@ def get_reclamo(reclamo_id: int, user=Depends(get_current_user)):
         "fecha_deteccion": row[21], "fecha_analisis": row[22], "analista": row[23],
         "area_aplica": row[24], "explicacion_causa": row[25], "observaciones": row[26],
         "correlativo": row[27], "id_calidad": row[28],
-        "cliente_id": row[29], "cliente_nombre": row[30],
         "seguimientos": [
             {"id": s[0], "usuario": s[1], "comentario": s[2],
              "estado_anterior": s[3], "estado_nuevo": s[4], "fecha": s[5]}
@@ -588,7 +580,7 @@ def actualizar_reclamo(reclamo_id: int, body: ReclamoUpdate, user=Depends(get_cu
                 "detectado_por", "fecha_deteccion", "fecha_analisis",
                 "analista", "area_aplica", "explicacion_causa",
                 "accion_correctiva", "accion_preventiva", "resolucion", "observaciones",
-                "id_calidad", "cliente_id",
+                "id_calidad",
             ]
             # Fields where empty string should be stored as NULL
             nullable_fields = {"id_proyecto", "id_calidad", "sub_causa", "cod_causa", "responsable",
@@ -599,10 +591,7 @@ def actualizar_reclamo(reclamo_id: int, body: ReclamoUpdate, user=Depends(get_cu
                 val = getattr(body, field)
                 if val is not None:
                     sets.append(f"{field} = %s")
-                    if field == "cliente_id" and val == 0:
-                        params.append(None)
-                    else:
-                        params.append(val if (val != "" or field not in nullable_fields) else None)
+                    params.append(val if (val != "" or field not in nullable_fields) else None)
 
             estado_changed = False
             if body.estado and body.estado != estado_anterior:

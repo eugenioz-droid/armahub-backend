@@ -716,13 +716,9 @@ errores y reclamos levantados por clientes. Incluye formulario tipo, análisis d
     - Agregar seguimiento inline con cambio de estado opcional - OK
     - Upload múltiples imágenes con preview y eliminación inline - OK
     - Eliminar reclamo con confirmación (cascade: acciones + imágenes + seguimientos) - OK
-    - Selector proyecto poblado desde loadProyectos - OK
-    - Fix: tab reclamos subrayaba admin en vez de reclamos - OK
-    - id_calidad editable en detalle + campo en formulario crear - OK
-    - correlativo (REC-001) + id_calidad prominentes en tabla y detalle - OK
-    - Cliente asociado al reclamo: migración 18 (cliente_id FK), dropdown en crear y detalle - OK
-    - Crear cliente inline desde formulario reclamo (+ Nuevo) - OK
-    - Cambiar cliente en detalle con PATCH inmediato - OK
+    - Crear obra inline desde formulario reclamo (+ Crear obra) → POST /proyectos - OK
+    - Obra se auto-selecciona en dropdown tras crearla - OK
+    - Nota: cliente_id en reclamos fue revertido (redundante — cliente se obtiene vía proyecto)
     - Pendiente: filtro por proyecto del usuario, integración USC
 
 32b. Dashboard de Reclamos - ✅ Implementado 9-Mar-2026

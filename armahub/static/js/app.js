@@ -2405,14 +2405,6 @@ async function loadClientes() {
     if (prev) sel.value = prev;
   }
 
-  // Populate client selectors in reclamos
-  var optionsHtml = '<option value="">— Sin cliente —</option>' +
-    _clientesCache.map(function(c) { return '<option value="' + c.id + '">' + c.nombre + '</option>'; }).join('');
-  var recSel = document.getElementById('recCliente');
-  if (recSel) { var pv = recSel.value; recSel.innerHTML = optionsHtml; if (pv) recSel.value = pv; }
-  var recDetSel = document.getElementById('recDetailCliente');
-  if (recDetSel) { var pv2 = recDetSel.value; recDetSel.innerHTML = optionsHtml; if (pv2) recDetSel.value = pv2; }
-
   // Render client list
   const container = document.getElementById('clientesContainer');
   if (!container) return;
@@ -3351,9 +3343,6 @@ async function crearReclamo() {
   if (detectadoPor) body.detectado_por = detectadoPor;
   if (fechaDeteccion) body.fecha_deteccion = fechaDeteccion;
   if (idCalidad) body.id_calidad = idCalidad;
-  var clienteId = document.getElementById('recCliente') ? document.getElementById('recCliente').value : '';
-  if (clienteId) body.cliente_id = parseInt(clienteId);
-
   var res = await fetch('/reclamos', {
     method: 'POST',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
@@ -3369,7 +3358,6 @@ async function crearReclamo() {
     });
     document.getElementById('recProyecto').value = '';
     document.getElementById('recPrioridad').value = 'media';
-    var recCl = document.getElementById('recCliente'); if (recCl) recCl.value = '';
     document.getElementById('nuevoReclamoForm').style.display = 'none';
     await loadReclamos();
     await loadReclamosKpis();
@@ -3378,24 +3366,20 @@ async function crearReclamo() {
   }
 }
 
-function toggleNuevoClienteRec() {
-  var form = document.getElementById('nuevoClienteRecForm');
+function toggleNuevoProyectoRec() {
+  var form = document.getElementById('nuevoProyectoRecForm');
   if (form) form.style.display = form.style.display === 'none' ? '' : 'none';
 }
 
-async function crearClienteDesdeReclamo() {
-  var nombre = document.getElementById('recNuevoClienteNombre').value.trim();
-  var msg = document.getElementById('recNuevoClienteMsg');
+async function crearProyectoDesdeReclamo() {
+  var nombre = document.getElementById('recNuevoProjNombre').value.trim();
+  var msg = document.getElementById('recNuevoProjMsg');
   if (!nombre) { msg.textContent = 'El nombre es requerido'; msg.style.color = '#b42318'; return; }
   msg.textContent = 'Creando...'; msg.style.color = '#666';
-  var body = { nombre: nombre };
-  var rut = document.getElementById('recNuevoClienteRut').value.trim();
-  var contacto = document.getElementById('recNuevoClienteContacto').value.trim();
-  var email = document.getElementById('recNuevoClienteEmail').value.trim();
-  if (rut) body.rut = rut;
-  if (contacto) body.contacto = contacto;
-  if (email) body.email = email;
-  var res = await fetch('/clientes', {
+  var body = { nombre_proyecto: nombre };
+  var calculista = document.getElementById('recNuevoProjCalculista').value.trim();
+  if (calculista) body.calculista = calculista;
+  var res = await fetch('/proyectos', {
     method: 'POST',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
     body: JSON.stringify(body)
@@ -3403,34 +3387,17 @@ async function crearClienteDesdeReclamo() {
   if (res.status === 401) { logout(); return; }
   var data = await res.json();
   if (data.ok) {
-    msg.textContent = 'Cliente creado'; msg.style.color = '#558B2F';
-    document.getElementById('recNuevoClienteNombre').value = '';
-    document.getElementById('recNuevoClienteRut').value = '';
-    document.getElementById('recNuevoClienteContacto').value = '';
-    document.getElementById('recNuevoClienteEmail').value = '';
-    await loadClientes();
-    var sel = document.getElementById('recCliente');
-    if (sel && data.id) sel.value = data.id;
-    toggleNuevoClienteRec();
+    msg.textContent = 'Obra creada'; msg.style.color = '#558B2F';
+    document.getElementById('recNuevoProjNombre').value = '';
+    document.getElementById('recNuevoProjCalculista').value = '';
+    await loadProyectos();
+    await loadFilters();
+    var sel = document.getElementById('recProyecto');
+    if (sel && data.id_proyecto) sel.value = data.id_proyecto;
+    toggleNuevoProyectoRec();
   } else {
-    msg.textContent = 'Error: ' + (data.detail || 'desconocido'); msg.style.color = '#b42318';
+    msg.textContent = 'Error: ' + (data.detail || data.error || 'desconocido'); msg.style.color = '#b42318';
   }
-}
-
-async function cambiarClienteReclamo() {
-  if (!_reclamoActual) return;
-  var val = document.getElementById('recDetailCliente').value;
-  var clienteId = val ? parseInt(val) : null;
-  if (clienteId === (_reclamoActual.cliente_id || null)) return;
-  var res = await fetch('/reclamos/' + _reclamoActual.id, {
-    method: 'PATCH',
-    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
-    body: JSON.stringify({ cliente_id: clienteId || 0 })
-  });
-  if (res.status === 401) { logout(); return; }
-  var data = await res.json();
-  if (data.ok) { await verReclamo(_reclamoActual.id); await loadReclamos(); }
-  else { alert('Error: ' + (data.detail || 'desconocido')); }
 }
 
 async function verReclamo(id) {
@@ -3462,14 +3429,6 @@ async function verReclamo(id) {
   if (srcSel && detSel) {
     detSel.innerHTML = srcSel.innerHTML;
     detSel.value = data.id_proyecto || '';
-  }
-
-  // Populate client dropdown from recCliente options (already loaded)
-  var srcClSel = document.getElementById('recCliente');
-  var detClSel = document.getElementById('recDetailCliente');
-  if (srcClSel && detClSel) {
-    detClSel.innerHTML = srcClSel.innerHTML;
-    detClSel.value = data.cliente_id || '';
   }
 
   // Info fields
