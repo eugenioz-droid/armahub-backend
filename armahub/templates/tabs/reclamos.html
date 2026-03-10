@@ -139,6 +139,13 @@
           <div id="recNuevoProjMsg" style="margin-top:4px; font-size:11px;"></div>
         </div>
         <div class="row" style="gap:8px; flex-wrap:wrap; align-items:flex-end; margin-top:8px;">
+          <div class="col" style="max-width:130px;">
+            <label style="font-size:11px; color:#666;">Categoría *</label>
+            <select id="recTipoReclamo" style="width:100%; font-size:12px;">
+              <option value="error">Error</option>
+              <option value="faltante">Faltante</option>
+            </select>
+          </div>
           <div class="col" style="max-width:150px;">
             <label style="font-size:11px; color:#666;">Fecha detección</label>
             <input type="date" id="recFechaDeteccion" style="width:100%; font-size:12px;" />
@@ -155,20 +162,6 @@
         <div style="margin-top:8px;">
           <label style="font-size:11px; color:#666;">Descripción del Problema</label>
           <textarea id="recDescripcion" rows="3" placeholder="Descripción detallada del error o reclamo..." style="width:100%; font-size:12px; resize:vertical;"></textarea>
-        </div>
-
-        <h4 style="margin:12px 0 6px 0; font-size:13px; color:#1565C0;">Análisis Causa Raíz (Ishikawa)</h4>
-        <div class="row" style="gap:8px; flex-wrap:wrap; align-items:flex-end;">
-          <div class="col" style="flex:1; min-width:250px;">
-            <label style="font-size:11px; color:#666;">Causa seleccionada</label>
-            <div class="row" style="gap:6px; align-items:center;">
-              <input type="text" id="recCausaDisplay" readonly placeholder="Haz click en 'Seleccionar causa' →" style="width:100%; font-size:12px; background:#f5f5f5; cursor:pointer;" onclick="abrirIshikawaModal()" />
-              <input type="hidden" id="recCategoria" />
-              <input type="hidden" id="recSubCausa" />
-              <input type="hidden" id="recCodCausa" />
-              <button type="button" class="secondary" style="font-size:11px; padding:4px 10px; white-space:nowrap;" onclick="abrirIshikawaModal()">🔍 Seleccionar causa</button>
-            </div>
-          </div>
         </div>
 
         <!-- Zona de imágenes al crear reclamo -->
@@ -225,6 +218,7 @@
 
     <!-- Detalle del reclamo seleccionado -->
     <div class="card" id="reclamoDetailCard" style="display:none;">
+      <!-- Header -->
       <div class="row" style="justify-content:space-between; align-items:flex-start; margin-bottom:8px; flex-wrap:wrap; gap:8px;">
         <div style="flex:1;">
           <h3 style="margin:0;" id="recDetailTitle">—</h3>
@@ -250,6 +244,7 @@
             <option value="abierto">Abierto</option>
             <option value="en_analisis">En análisis</option>
             <option value="accion_correctiva">Acción correctiva</option>
+            <option value="validacion">En validación</option>
             <option value="cerrado">Cerrado</option>
             <option value="rechazado">Rechazado</option>
           </select>
@@ -257,12 +252,33 @@
         </div>
       </div>
 
-      <!-- Info fields -->
-      <div id="recDetailInfo" style="font-size:12px; margin-bottom:10px; padding:8px; background:#f9f9f9; border-radius:6px;"></div>
+      <!-- ============ SECCIÓN 1: ANTECEDENTES (Creador) ============ -->
+      <div style="margin-bottom:10px; padding:10px; background:#fff5f5; border-radius:6px; border:1px solid #ffcdd2;">
+        <h4 style="margin:0 0 6px 0; font-size:13px; color:#b42318;">📋 Antecedentes del Reclamo</h4>
+        <div id="recDetailInfo" style="font-size:12px; margin-bottom:8px;"></div>
+        <!-- Imágenes de antecedentes -->
+        <div style="margin-top:6px;">
+          <label style="font-size:11px; color:#666; font-weight:600;">Imágenes de antecedentes</label>
+          <div id="recImagenesAntecedentes" style="font-size:12px; margin:4px 0 6px 0; display:flex; flex-wrap:wrap; gap:8px;">
+            <div class="muted">Sin imágenes</div>
+          </div>
+          <div id="recDetailDropZone" style="min-height:50px; border:2px dashed #ffcdd2; border-radius:8px; padding:8px; background:#fff9f9; cursor:pointer; text-align:center; transition:border-color 0.2s, background 0.2s;" onclick="document.getElementById('recDetailFileInput').click()">
+            <div id="recDetailDropMsg" style="color:#999; font-size:11px; padding:4px 0;">Arrastra imágenes, pega con Ctrl+V, o haz click</div>
+          </div>
+          <input type="file" id="recDetailFileInput" accept="image/*" multiple style="display:none;" />
+          <span id="recImagenMsg" class="muted" style="font-size:11px;"></span>
+        </div>
+      </div>
 
-      <!-- RCA section -->
-      <div id="recDetailRCA" style="margin-bottom:10px; padding:8px; background:#e3f2fd; border-radius:6px; border:1px solid #bbdefb;">
-        <h4 style="margin:0 0 6px 0; font-size:13px; color:#1565C0;">Análisis Causa Raíz (RCA)</h4>
+      <!-- ============ SECCIÓN 2: RESPUESTA DEL RESPONSABLE (Cubicador) ============ -->
+      <div style="margin-bottom:10px; padding:10px; background:#e3f2fd; border-radius:6px; border:1px solid #bbdefb;">
+        <h4 style="margin:0 0 6px 0; font-size:13px; color:#1565C0;">💬 Respuesta del Responsable</h4>
+        <div id="recRespuestaInfo" style="font-size:11px; color:#666; margin-bottom:6px;"></div>
+        <div style="margin-bottom:6px;">
+          <label style="font-size:11px; color:#666;">Explicación / Justificación</label>
+          <textarea id="recDetailRespuestaTexto" rows="3" style="width:100%; font-size:12px; resize:vertical;" placeholder="Explicación detallada del responsable..."></textarea>
+        </div>
+        <!-- Causa Ishikawa (cubicador clasifica) -->
         <div class="row" style="gap:8px; flex-wrap:wrap; align-items:flex-end;">
           <div class="col" style="flex:1; min-width:250px;">
             <label style="font-size:11px; color:#666;">Causa Ishikawa</label>
@@ -291,9 +307,44 @@
           <label style="font-size:11px; color:#666;">Observaciones adicionales</label>
           <textarea id="recDetailObservaciones" rows="2" style="width:100%; font-size:12px; resize:vertical;" placeholder="Observaciones adicionales..."></textarea>
         </div>
-        <div style="margin-top:6px;">
-          <button class="secondary" style="font-size:11px; padding:4px 12px;" onclick="guardarRCA()">Guardar RCA</button>
-          <span id="recRCAMsg" class="muted" style="font-size:11px; margin-left:8px;"></span>
+        <!-- Imágenes de respuesta -->
+        <div style="margin-top:8px;">
+          <label style="font-size:11px; color:#666; font-weight:600;">Imágenes de respuesta</label>
+          <div id="recImagenesRespuesta" style="font-size:12px; margin:4px 0 6px 0; display:flex; flex-wrap:wrap; gap:8px;">
+            <div class="muted">Sin imágenes</div>
+          </div>
+          <div id="recRespDropZone" style="min-height:50px; border:2px dashed #bbdefb; border-radius:8px; padding:8px; background:#f5f9ff; cursor:pointer; text-align:center; transition:border-color 0.2s, background 0.2s;" onclick="document.getElementById('recRespFileInput').click()">
+            <div id="recRespDropMsg" style="color:#999; font-size:11px; padding:4px 0;">Arrastra imágenes, pega con Ctrl+V, o haz click</div>
+          </div>
+          <input type="file" id="recRespFileInput" accept="image/*" multiple style="display:none;" />
+          <span id="recRespImagenMsg" class="muted" style="font-size:11px;"></span>
+        </div>
+        <div style="margin-top:8px;">
+          <button class="secondary" style="font-size:11px; padding:4px 12px;" onclick="guardarRespuesta()">Guardar respuesta</button>
+          <span id="recRespMsg" class="muted" style="font-size:11px; margin-left:8px;"></span>
+        </div>
+      </div>
+
+      <!-- ============ SECCIÓN 3: VALIDACIÓN ============ -->
+      <div style="margin-bottom:10px; padding:10px; background:#e8f5e9; border-radius:6px; border:1px solid #c8e6c9;">
+        <h4 style="margin:0 0 6px 0; font-size:13px; color:#2e7d32;">✅ Validación</h4>
+        <div id="recValidacionInfo" style="font-size:11px; color:#666; margin-bottom:6px;"></div>
+        <div class="row" style="gap:8px; flex-wrap:wrap; align-items:flex-end;">
+          <div class="col" style="max-width:180px;">
+            <label style="font-size:11px; color:#666;">Resultado</label>
+            <select id="recDetailValidacionResultado" style="width:100%; font-size:12px;">
+              <option value="">— Sin validar —</option>
+              <option value="aprobado">✅ Aprobado</option>
+              <option value="rechazado">❌ Rechazado</option>
+              <option value="corregido">✏️ Corregido</option>
+            </select>
+          </div>
+          <div class="col" style="flex:1; min-width:250px;">
+            <label style="font-size:11px; color:#666;">Observaciones de validación</label>
+            <input type="text" id="recDetailValidacionObs" placeholder="Comentarios del validador..." style="width:100%; font-size:12px;" />
+          </div>
+          <button class="secondary" style="font-size:11px; padding:4px 12px;" onclick="guardarValidacion()">Guardar validación</button>
+          <span id="recValidacionMsg" class="muted" style="font-size:11px;"></span>
         </div>
       </div>
 
@@ -330,19 +381,6 @@
         </div>
       </div>
 
-      <!-- Imágenes / Evidencia -->
-      <div style="margin-bottom:10px; padding:8px; background:#f3e5f5; border-radius:6px; border:1px solid #ce93d8;">
-        <h4 style="margin:0 0 6px 0; font-size:13px; color:#7b1fa2;">Evidencia (Imágenes)</h4>
-        <div id="recImagenesList" style="font-size:12px; margin-bottom:8px; display:flex; flex-wrap:wrap; gap:8px;">
-          <div class="muted">Sin imágenes</div>
-        </div>
-        <div id="recDetailDropZone" style="min-height:60px; border:2px dashed #ce93d8; border-radius:8px; padding:10px; background:#faf5fc; cursor:pointer; text-align:center; transition:border-color 0.2s, background 0.2s;" onclick="document.getElementById('recDetailFileInput').click()">
-          <div id="recDetailDropMsg" style="color:#999; font-size:11px; padding:6px 0;">Arrastra imágenes, pega con Ctrl+V, o haz click</div>
-        </div>
-        <input type="file" id="recDetailFileInput" accept="image/*" multiple style="display:none;" />
-        <span id="recImagenMsg" class="muted" style="font-size:11px;"></span>
-      </div>
-
       <!-- Timeline -->
       <div style="border-top:1px solid #eee; padding-top:10px;">
         <h4 style="margin:0 0 8px 0; font-size:13px;">Timeline de seguimientos</h4>
@@ -363,6 +401,7 @@
             <option value="abierto">→ Abierto</option>
             <option value="en_analisis">→ En análisis</option>
             <option value="accion_correctiva">→ Acción correctiva</option>
+            <option value="validacion">→ En validación</option>
             <option value="cerrado">→ Cerrado</option>
             <option value="rechazado">→ Rechazado</option>
           </select>
@@ -374,7 +413,7 @@
   </div>
 
   <!-- MODAL ISHIKAWA -->
-  <div id="ishikawaModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.6); z-index:9999; overflow-y:auto;">
+  <div id="ishikawaModal" onclick="if(event.target===this)cerrarIshikawaModal()" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.6); z-index:9999; overflow-y:auto;">
     <div style="margin:30px auto; max-width:900px; background:#fff; border-radius:12px; padding:20px; position:relative;">
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
         <h3 style="margin:0; color:#1565C0;">🔍 Seleccionar Causa Raíz (Ishikawa)</h3>
@@ -386,7 +425,10 @@
           <strong>Causa seleccionada:</strong>
           <span id="ishikawaSelectedDisplay" style="margin-left:8px; color:#666;">Ninguna</span>
         </div>
-        <button onclick="confirmarIshikawa()" style="font-size:13px; padding:6px 20px;">Confirmar</button>
+        <div style="display:flex; gap:8px;">
+          <button class="secondary" onclick="cerrarIshikawaModal()" style="font-size:13px; padding:6px 16px;">Cancelar</button>
+          <button onclick="confirmarIshikawa()" style="font-size:13px; padding:6px 20px;">Confirmar</button>
+        </div>
       </div>
     </div>
   </div>

@@ -24,7 +24,9 @@ ALLOWED_IMAGE_TYPES = ("image/jpeg", "image/png", "image/gif", "image/webp", "im
 
 # ========================= CONSTANTS =========================
 
-ESTADOS_RECLAMO = ("abierto", "en_analisis", "accion_correctiva", "cerrado", "rechazado")
+ESTADOS_RECLAMO = ("abierto", "en_analisis", "accion_correctiva", "validacion", "cerrado", "rechazado")
+TIPOS_RECLAMO = ("error", "faltante")
+VALIDACION_RESULTADOS = ("aprobado", "rechazado", "corregido")
 PRIORIDADES = ("baja", "media", "alta", "critica")
 APLICA_VALUES = ("si", "no", "pendiente")
 TIPOS_ACCION = ("inmediata", "correctiva", "preventiva")
@@ -96,6 +98,7 @@ ESTADO_LABELS = {
     "abierto": "Abierto",
     "en_analisis": "En análisis",
     "accion_correctiva": "Acción correctiva",
+    "validacion": "En validación",
     "cerrado": "Cerrado",
     "rechazado": "Rechazado",
 }
@@ -115,6 +118,7 @@ class ReclamoCreate(BaseModel):
     titulo: str
     descripcion: Optional[str] = None
     prioridad: Optional[str] = "alta"
+    tipo_reclamo: Optional[str] = "error"
     categoria_ishikawa: Optional[str] = None
     sub_causa: Optional[str] = None
     cod_causa: Optional[str] = None
@@ -130,6 +134,7 @@ class ReclamoUpdate(BaseModel):
     descripcion: Optional[str] = None
     estado: Optional[str] = None
     prioridad: Optional[str] = None
+    tipo_reclamo: Optional[str] = None
     categoria_ishikawa: Optional[str] = None
     sub_causa: Optional[str] = None
     cod_causa: Optional[str] = None
@@ -146,6 +151,9 @@ class ReclamoUpdate(BaseModel):
     resolucion: Optional[str] = None
     observaciones: Optional[str] = None
     id_calidad: Optional[str] = None
+    respuesta_texto: Optional[str] = None
+    validacion_resultado: Optional[str] = None
+    validacion_observaciones: Optional[str] = None
 
 
 class SeguimientoCreate(BaseModel):
@@ -209,7 +217,7 @@ def listar_reclamos(
                        (SELECT COUNT(*) FROM reclamo_seguimientos s WHERE s.reclamo_id = r.id) AS seg_count,
                        r.aplica, r.sub_causa, r.cod_causa, r.correlativo_calidad,
                        r.detectado_por, r.fecha_deteccion,
-                       r.correlativo, r.id_calidad
+                       r.correlativo, r.id_calidad, r.tipo_reclamo
                 FROM reclamos r
                 LEFT JOIN proyectos p ON r.id_proyecto = p.id_proyecto
                 {where}
@@ -218,8 +226,9 @@ def listar_reclamos(
                         WHEN 'abierto' THEN 1
                         WHEN 'en_analisis' THEN 2
                         WHEN 'accion_correctiva' THEN 3
-                        WHEN 'rechazado' THEN 4
-                        WHEN 'cerrado' THEN 5
+                        WHEN 'validacion' THEN 4
+                        WHEN 'rechazado' THEN 5
+                        WHEN 'cerrado' THEN 6
                     END,
                     CASE r.prioridad
                         WHEN 'critica' THEN 1
@@ -243,6 +252,7 @@ def listar_reclamos(
                 "correlativo_calidad": r[17], "detectado_por": r[18],
                 "fecha_deteccion": r[19],
                 "correlativo": r[20], "id_calidad": r[21],
+                "tipo_reclamo": r[22],
             }
             for r in rows
         ]
@@ -257,6 +267,8 @@ def crear_reclamo(body: ReclamoCreate, user=Depends(get_current_user)):
 
     if body.prioridad and body.prioridad not in PRIORIDADES:
         raise HTTPException(status_code=400, detail=f"Prioridad inválida. Válidas: {PRIORIDADES}")
+    if body.tipo_reclamo and body.tipo_reclamo not in TIPOS_RECLAMO:
+        raise HTTPException(status_code=400, detail=f"Tipo inválido. Válidos: {TIPOS_RECLAMO}")
     if body.categoria_ishikawa and body.categoria_ishikawa not in CATEGORIAS_ISHIKAWA:
         raise HTTPException(status_code=400, detail=f"Categoría inválida. Válidas: {CATEGORIAS_ISHIKAWA}")
 
@@ -274,14 +286,15 @@ def crear_reclamo(body: ReclamoCreate, user=Depends(get_current_user)):
             correlativo = f"REC-{next_seq:03d}"
 
             cur.execute("""
-                INSERT INTO reclamos (id_proyecto, titulo, descripcion, prioridad,
+                INSERT INTO reclamos (id_proyecto, titulo, descripcion, prioridad, tipo_reclamo,
                     categoria_ishikawa, sub_causa, cod_causa, responsable,
                     detectado_por, fecha_deteccion, analista,
                     creado_por, fecha_creacion, correlativo, id_calidad)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING id
             """, (body.id_proyecto, body.titulo, body.descripcion,
-                  body.prioridad or "media", body.categoria_ishikawa,
+                  body.prioridad or "alta", body.tipo_reclamo or "error",
+                  body.categoria_ishikawa,
                   body.sub_causa, body.cod_causa, body.responsable,
                   body.detectado_por, body.fecha_deteccion, email,
                   email, now, correlativo, body.id_calidad))
@@ -488,7 +501,10 @@ def get_reclamo(reclamo_id: int, user=Depends(get_current_user)):
                        r.aplica, r.sub_causa, r.cod_causa, r.correlativo_calidad,
                        r.detectado_por, r.fecha_deteccion, r.fecha_analisis,
                        r.analista, r.area_aplica, r.explicacion_causa, r.observaciones,
-                       r.correlativo, r.id_calidad
+                       r.correlativo, r.id_calidad,
+                       r.tipo_reclamo, r.respuesta_texto, r.respuesta_fecha,
+                       r.respuesta_por, r.validacion_resultado,
+                       r.validacion_observaciones, r.validacion_fecha, r.validacion_por
                 FROM reclamos r
                 LEFT JOIN proyectos p ON r.id_proyecto = p.id_proyecto
                 WHERE r.id = %s
@@ -513,7 +529,7 @@ def get_reclamo(reclamo_id: int, user=Depends(get_current_user)):
             acciones = cur.fetchall()
 
             cur.execute("""
-                SELECT id, filename, content_type, descripcion, subido_por, fecha_subida
+                SELECT id, filename, content_type, descripcion, subido_por, fecha_subida, tipo
                 FROM reclamo_imagenes WHERE reclamo_id = %s
                 ORDER BY id ASC
             """, (reclamo_id,))
@@ -530,6 +546,12 @@ def get_reclamo(reclamo_id: int, user=Depends(get_current_user)):
         "fecha_deteccion": row[21], "fecha_analisis": row[22], "analista": row[23],
         "area_aplica": row[24], "explicacion_causa": row[25], "observaciones": row[26],
         "correlativo": row[27], "id_calidad": row[28],
+        "tipo_reclamo": row[29], "respuesta_texto": row[30],
+        "respuesta_fecha": str(row[31]) if row[31] else None,
+        "respuesta_por": row[32], "validacion_resultado": row[33],
+        "validacion_observaciones": row[34],
+        "validacion_fecha": str(row[35]) if row[35] else None,
+        "validacion_por": row[36],
         "seguimientos": [
             {"id": s[0], "usuario": s[1], "comentario": s[2],
              "estado_anterior": s[3], "estado_nuevo": s[4], "fecha": s[5]}
@@ -544,6 +566,7 @@ def get_reclamo(reclamo_id: int, user=Depends(get_current_user)):
         "imagenes": [
             {"id": img[0], "filename": img[1], "content_type": img[2],
              "descripcion": img[3], "subido_por": img[4], "fecha_subida": img[5],
+             "tipo": img[6] if len(img) > 6 else "antecedente",
              "url": f"/reclamos/{reclamo_id}/imagenes/{img[0]}"}
             for img in imagenes
         ],
@@ -575,23 +598,40 @@ def actualizar_reclamo(reclamo_id: int, body: ReclamoUpdate, user=Depends(get_cu
             params = [now]
 
             updatable = [
-                "id_proyecto", "titulo", "descripcion", "prioridad", "categoria_ishikawa",
+                "id_proyecto", "titulo", "descripcion", "prioridad", "tipo_reclamo",
+                "categoria_ishikawa",
                 "sub_causa", "cod_causa", "responsable", "aplica",
                 "detectado_por", "fecha_deteccion", "fecha_analisis",
                 "analista", "area_aplica", "explicacion_causa",
                 "accion_correctiva", "accion_preventiva", "resolucion", "observaciones",
-                "id_calidad",
+                "id_calidad", "respuesta_texto", "validacion_resultado",
+                "validacion_observaciones",
             ]
             # Fields where empty string should be stored as NULL
             nullable_fields = {"id_proyecto", "id_calidad", "sub_causa", "cod_causa", "responsable",
                                "detectado_por", "fecha_deteccion", "fecha_analisis",
                                "analista", "area_aplica", "explicacion_causa",
-                               "accion_correctiva", "accion_preventiva", "resolucion", "observaciones"}
+                               "accion_correctiva", "accion_preventiva", "resolucion", "observaciones",
+                               "respuesta_texto", "validacion_observaciones"}
             for field in updatable:
                 val = getattr(body, field)
                 if val is not None:
                     sets.append(f"{field} = %s")
                     params.append(val if (val != "" or field not in nullable_fields) else None)
+
+            # Auto-set respuesta metadata when respuesta_texto is provided
+            if body.respuesta_texto and body.respuesta_texto.strip():
+                sets.append("respuesta_fecha = %s")
+                params.append(now)
+                sets.append("respuesta_por = %s")
+                params.append(email)
+
+            # Auto-set validacion metadata when validacion_resultado is provided
+            if body.validacion_resultado and body.validacion_resultado.strip():
+                sets.append("validacion_fecha = %s")
+                params.append(now)
+                sets.append("validacion_por = %s")
+                params.append(email)
 
             estado_changed = False
             if body.estado and body.estado != estado_anterior:
@@ -773,11 +813,13 @@ async def subir_imagen(
     reclamo_id: int,
     file: UploadFile = File(...),
     descripcion: Optional[str] = Form(None),
+    tipo: Optional[str] = Form("antecedente"),
     user=Depends(get_current_user),
 ):
-    """Subir una imagen/evidencia a un reclamo. Se almacena en BD como BYTEA."""
+    """Subir una imagen/evidencia a un reclamo. tipo: antecedente | respuesta."""
     email = user.get("email", "unknown")
     now = datetime.now(timezone.utc).isoformat()
+    img_tipo = tipo if tipo in ("antecedente", "respuesta") else "antecedente"
 
     if file.content_type not in ALLOWED_IMAGE_TYPES:
         raise HTTPException(status_code=400, detail=f"Tipo de archivo no permitido. Permitidos: {ALLOWED_IMAGE_TYPES}")
@@ -793,16 +835,16 @@ async def subir_imagen(
                 raise HTTPException(status_code=404, detail="Reclamo no encontrado")
 
             cur.execute("""
-                INSERT INTO reclamo_imagenes (reclamo_id, filename, content_type, data, descripcion, subido_por, fecha_subida)
-                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                INSERT INTO reclamo_imagenes (reclamo_id, filename, content_type, data, descripcion, subido_por, fecha_subida, tipo)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING id
-            """, (reclamo_id, file.filename, file.content_type, data, descripcion, email, now))
+            """, (reclamo_id, file.filename, file.content_type, data, descripcion, email, now, img_tipo))
             img_id = cur.fetchone()[0]
 
             cur.execute("UPDATE reclamos SET fecha_actualizacion = %s WHERE id = %s", (now, reclamo_id))
 
-    audit(email, "subir_imagen_reclamo", file.filename, "reclamo", str(reclamo_id))
-    return {"ok": True, "id": img_id, "filename": file.filename}
+    audit(email, "subir_imagen_reclamo", f"{file.filename} ({img_tipo})", "reclamo", str(reclamo_id))
+    return {"ok": True, "id": img_id, "filename": file.filename, "tipo": img_tipo}
 
 
 @router.get("/reclamos/{reclamo_id}/imagenes/{imagen_id}")

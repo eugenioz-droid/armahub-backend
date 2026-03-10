@@ -872,6 +872,49 @@ errores y reclamos levantados por clientes. Incluye formulario tipo, análisis d
     - Parámetros backend: reasignar_a, cliente_id, owner_id, proyecto_nombre_manual
     - Modal "Archivo sin proyecto" con 2 opciones: asignar a existente o crear nuevo
 
+32c. Flujo 3 etapas de reclamos - OK
+    Flujo: Creación (Usuario 1) → Respuesta (Cubicador) → Validación (Validador)
+
+    a) Etapa 1 — Creación del reclamo
+       - Categoría tipo_reclamo: Error / Faltante (selector al crear) - OK
+       - Imágenes de antecedentes (tipo='antecedente') con drag&drop + Ctrl+V - OK
+       - Prioridad eliminada de UI, default 'alta' en backend - OK
+       - Drop zone para imágenes al crear reclamo - OK
+       - Ishikawa removido del formulario de creación (se mueve a respuesta) - OK
+
+    b) Etapa 2 — Respuesta del responsable (cubicador)
+       - Sección "Respuesta del responsable" en detalle (fondo azul) - OK
+       - Campos: respuesta_texto, respuesta_fecha, respuesta_por (auto-set en backend) - OK
+       - Imágenes de respuesta (tipo='respuesta') con drag&drop + Ctrl+V - OK
+       - Cubicador clasifica causa Ishikawa desde sección respuesta - OK
+       - Botón "Guardar respuesta" guarda RCA + texto respuesta - OK
+
+    c) Etapa 3 — Validación
+       - Sección "Validación" en detalle (fondo verde) - OK
+       - Campos: validacion_resultado (aprobado/rechazado/corregido), validacion_observaciones - OK
+       - Campos: validacion_fecha, validacion_por (auto-set en backend) - OK
+       - Botón "Guardar validación" con resultado obligatorio - OK
+       - Pendiente futuro: auto-cambio de estado al rechazar/aprobar
+
+    d) Migración 19: nuevos campos en reclamos y reclamo_imagenes - OK
+       - reclamos: tipo_reclamo, respuesta_texto, respuesta_fecha, respuesta_por
+       - reclamos: validacion_resultado, validacion_observaciones, validacion_fecha, validacion_por
+       - reclamo_imagenes: tipo (antecedente/respuesta)
+       - Estado 'validacion' agregado al CHECK constraint
+
+    e) Estados actualizados - OK
+       - abierto → en_analisis → accion_correctiva → validacion → cerrado/rechazado
+       - Dropdowns de estado actualizados en detalle y seguimiento
+       - Color violeta (#7B1FA2) para estado 'En validación'
+
+    f) Fix modal Ishikawa - OK
+       - Botón Cancelar agregado junto a Confirmar
+       - ESC cierra el modal
+       - Click en backdrop (fuera del contenido) cierra el modal
+       - Botón ✕ ya existía
+
+    g) Pendiente futuro: notificaciones, permisos por rol, dashboard específico, auto-estado en validación
+
 38b. Gestión de usuarios desde Admin - Pendiente
     a) Crear usuario sin registro público - Pendiente
        - Admin crea usuario con email, nombre, rol, contraseña temporal

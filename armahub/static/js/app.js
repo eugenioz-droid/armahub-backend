@@ -3048,11 +3048,11 @@ let _ishikawaSelection = { categoria: '', sub_causa: '', cod_causa: '' };
 
 const _recEstadoColors = {
   abierto: '#e53935', en_analisis: '#ff9800', accion_correctiva: '#2196F3',
-  cerrado: '#4CAF50', rechazado: '#9E9E9E'
+  validacion: '#7B1FA2', cerrado: '#4CAF50', rechazado: '#9E9E9E'
 };
 const _recEstadoLabels = {
   abierto: 'Abierto', en_analisis: 'En análisis', accion_correctiva: 'Acción correctiva',
-  cerrado: 'Cerrado', rechazado: 'Rechazado'
+  validacion: 'En validación', cerrado: 'Cerrado', rechazado: 'Rechazado'
 };
 const _recPrioridadColors = {
   baja: '#9E9E9E', media: '#ff9800', alta: '#e53935', critica: '#b71c1c'
@@ -3275,6 +3275,7 @@ async function loadReclamos() {
     '<tr style="background:#f5f5f5; text-align:left;">' +
     '<th style="padding:5px 6px;">Corr.</th>' +
     '<th style="padding:5px 6px;">Título</th>' +
+    '<th style="padding:5px 6px;">Tipo</th>' +
     '<th style="padding:5px 6px;">Proyecto</th>' +
     '<th style="padding:5px 6px;">Estado</th>' +
     '<th style="padding:5px 6px;">Aplica</th>' +
@@ -3287,6 +3288,8 @@ async function loadReclamos() {
       var eLabel = _recEstadoLabels[r.estado] || r.estado;
       var aplLabel = _recAplicaLabels[r.aplica] || 'Pendiente';
       var aplColor = _recAplicaColors[r.aplica] || '#ff9800';
+      var tipoLabel = r.tipo_reclamo === 'faltante' ? 'Faltante' : 'Error';
+      var tipoColor = r.tipo_reclamo === 'faltante' ? '#ff9800' : '#e53935';
       var causaText = r.cod_causa ? '[' + r.cod_causa + ']' : (r.categoria_ishikawa ? _recIshikawaLabels[r.categoria_ishikawa] : '-');
       var fecha = r.fecha_deteccion || (r.fecha_creacion ? r.fecha_creacion.substring(0, 10) : '');
       var idLabel = r.id_calidad ? r.id_calidad : (r.correlativo || '#' + r.id);
@@ -3294,6 +3297,7 @@ async function loadReclamos() {
       return '<tr style="border-bottom:1px solid #eee; cursor:pointer;" onclick="verReclamo(' + r.id + ')">' +
         '<td style="padding:4px 6px; font-size:11px; font-weight:600;">' + idLabel + idSub + '</td>' +
         '<td style="padding:4px 6px; font-weight:500;">' + r.titulo + '</td>' +
+        '<td style="padding:4px 6px;"><span style="color:' + tipoColor + '; font-weight:600; font-size:10px;">' + tipoLabel + '</span></td>' +
         '<td style="padding:4px 6px; font-size:11px;">' + (r.nombre_proyecto || '-') + '</td>' +
         '<td style="padding:4px 6px;"><span style="background:' + eColor + '; color:#fff; padding:1px 6px; border-radius:3px; font-size:10px;">' + eLabel + '</span></td>' +
         '<td style="padding:4px 6px;"><span style="color:' + aplColor + '; font-weight:600; font-size:10px;">' + aplLabel + '</span></td>' +
@@ -3318,18 +3322,14 @@ async function crearReclamo() {
 
   var body = { titulo: titulo };
   var proyecto = document.getElementById('recProyecto').value;
-  var categoria = document.getElementById('recCategoria').value;
-  var subCausa = document.getElementById('recSubCausa').value;
-  var codCausa = document.getElementById('recCodCausa').value;
+  var tipoReclamo = document.getElementById('recTipoReclamo').value;
   var responsable = document.getElementById('recResponsable').value.trim();
   var descripcion = document.getElementById('recDescripcion').value.trim();
   var detectadoPor = document.getElementById('recDetectadoPor').value.trim();
   var fechaDeteccion = document.getElementById('recFechaDeteccion').value;
   var idCalidad = document.getElementById('recIdCalidad') ? document.getElementById('recIdCalidad').value.trim() : '';
   if (proyecto) body.id_proyecto = proyecto;
-  if (categoria) body.categoria_ishikawa = categoria;
-  if (subCausa) body.sub_causa = subCausa;
-  if (codCausa) body.cod_causa = codCausa;
+  if (tipoReclamo) body.tipo_reclamo = tipoReclamo;
   if (responsable) body.responsable = responsable;
   if (descripcion) body.descripcion = descripcion;
   if (detectadoPor) body.detectado_por = detectadoPor;
@@ -3351,12 +3351,13 @@ async function crearReclamo() {
       for (var i = 0; i < filesToUpload.length; i++) {
         var formData = new FormData();
         formData.append('file', filesToUpload[i]);
+        formData.append('tipo', 'antecedente');
         await fetch('/reclamos/' + data.id + '/imagenes', { method: 'POST', headers: authHeaders(), body: formData });
       }
     }
     _recCreateStagedFiles = [];
     msg.textContent = label + ' registrado correctamente'; msg.style.color = '#558B2F';
-    ['recTitulo','recDescripcion','recResponsable','recDetectadoPor','recFechaDeteccion','recCausaDisplay','recCategoria','recSubCausa','recCodCausa','recIdCalidad'].forEach(function(id) {
+    ['recTitulo','recDescripcion','recResponsable','recDetectadoPor','recFechaDeteccion','recIdCalidad'].forEach(function(id) {
       var el = document.getElementById(id); if (el) el.value = '';
     });
     document.getElementById('recProyecto').value = '';
@@ -3435,9 +3436,12 @@ async function verReclamo(id) {
     detSel.value = data.id_proyecto || '';
   }
 
-  // Info fields
+  // SECTION 1: Antecedentes info
   var info = document.getElementById('recDetailInfo');
+  var tipoLabel = data.tipo_reclamo === 'faltante' ? 'Faltante' : 'Error';
+  var tipoColor = data.tipo_reclamo === 'faltante' ? '#ff9800' : '#e53935';
   var infoHtml = '<div class="row" style="gap:16px; flex-wrap:wrap;">';
+  infoHtml += '<div><strong>Categoría:</strong> <span style="color:' + tipoColor + '; font-weight:600;">' + tipoLabel + '</span></div>';
   infoHtml += '<div><strong>Estado:</strong> <span style="color:' + (_recEstadoColors[data.estado] || '#666') + '; font-weight:600;">' + (_recEstadoLabels[data.estado] || data.estado) + '</span></div>';
   var aplColor = _recAplicaColors[data.aplica] || '#ff9800';
   infoHtml += '<div><strong>Aplica:</strong> <span style="color:' + aplColor + '; font-weight:600;">' + (_recAplicaLabels[data.aplica] || 'Pendiente') + '</span></div>';
@@ -3447,13 +3451,14 @@ async function verReclamo(id) {
   if (data.descripcion) infoHtml += '<div style="margin-top:6px; white-space:pre-wrap;">' + data.descripcion + '</div>';
   info.innerHTML = infoHtml;
 
-  // RCA fields
+  // SECTION 2: Respuesta del responsable
   var causaDisplay = '';
   if (data.cod_causa && data.sub_causa) {
     causaDisplay = '[' + data.cod_causa + '] ' + (_recIshikawaLabels[data.categoria_ishikawa] || '') + ' > ' + data.sub_causa;
   } else if (data.categoria_ishikawa) {
     causaDisplay = _recIshikawaLabels[data.categoria_ishikawa] || data.categoria_ishikawa;
   }
+  document.getElementById('recDetailRespuestaTexto').value = data.respuesta_texto || '';
   document.getElementById('recDetailCausaDisplay').value = causaDisplay;
   document.getElementById('recDetailCategoria').value = data.categoria_ishikawa || '';
   document.getElementById('recDetailSubCausa').value = data.sub_causa || '';
@@ -3462,13 +3467,37 @@ async function verReclamo(id) {
   document.getElementById('recDetailFechaAnalisis').value = data.fecha_analisis || '';
   document.getElementById('recDetailExplicacionCausa').value = data.explicacion_causa || '';
   document.getElementById('recDetailObservaciones').value = data.observaciones || '';
-  document.getElementById('recRCAMsg').textContent = '';
+  var respInfo = document.getElementById('recRespuestaInfo');
+  if (data.respuesta_por) {
+    respInfo.innerHTML = 'Respondido por: <strong>' + data.respuesta_por + '</strong>' +
+      (data.respuesta_fecha ? ' — ' + data.respuesta_fecha.replace('T', ' ').substring(0, 19) : '');
+  } else {
+    respInfo.textContent = 'Sin respuesta aún';
+  }
+  document.getElementById('recRespMsg').textContent = '';
+
+  // SECTION 3: Validación
+  document.getElementById('recDetailValidacionResultado').value = data.validacion_resultado || '';
+  document.getElementById('recDetailValidacionObs').value = data.validacion_observaciones || '';
+  var valInfo = document.getElementById('recValidacionInfo');
+  if (data.validacion_por) {
+    var valLabel = { aprobado: '✅ Aprobado', rechazado: '❌ Rechazado', corregido: '✏️ Corregido' }[data.validacion_resultado] || data.validacion_resultado;
+    valInfo.innerHTML = 'Validado por: <strong>' + data.validacion_por + '</strong>' +
+      (data.validacion_fecha ? ' — ' + data.validacion_fecha.replace('T', ' ').substring(0, 19) : '') +
+      ' — Resultado: <strong>' + valLabel + '</strong>';
+  } else {
+    valInfo.textContent = 'Sin validación aún';
+  }
+  document.getElementById('recValidacionMsg').textContent = '';
 
   // Acciones
   renderAcciones(data.acciones || []);
 
-  // Imagenes
-  renderImagenes(data.imagenes || []);
+  // Imagenes split by tipo
+  var imgAntecedentes = (data.imagenes || []).filter(function(i) { return i.tipo === 'antecedente' || !i.tipo; });
+  var imgRespuesta = (data.imagenes || []).filter(function(i) { return i.tipo === 'respuesta'; });
+  renderImagenesEnContainer('recImagenesAntecedentes', imgAntecedentes);
+  renderImagenesEnContainer('recImagenesRespuesta', imgRespuesta);
 
   // Timeline
   renderReclamoTimeline(data.seguimientos || []);
@@ -3507,14 +3536,15 @@ function renderAcciones(acciones) {
     '</table>';
 }
 
-function renderImagenes(imagenes) {
-  var container = document.getElementById('recImagenesList');
+function renderImagenesEnContainer(containerId, imagenes) {
+  var container = document.getElementById(containerId);
+  if (!container) return;
   if (!imagenes || imagenes.length === 0) {
     container.innerHTML = '<div class="muted">Sin imágenes</div>';
     return;
   }
   container.innerHTML = imagenes.map(function(img) {
-    return '<div style="position:relative; width:120px; border:1px solid #ce93d8; border-radius:6px; overflow:hidden; background:#f9f9f9;">' +
+    return '<div style="position:relative; width:120px; border:1px solid #ccc; border-radius:6px; overflow:hidden; background:#f9f9f9;">' +
       '<a href="' + img.url + '" target="_blank" title="' + img.filename + '">' +
       '<img src="' + img.url + '" style="width:120px; height:90px; object-fit:cover; display:block;" />' +
       '</a>' +
@@ -3610,12 +3640,13 @@ async function cambiarAplicaReclamo() {
   else { alert('Error: ' + (data.detail || 'desconocido')); }
 }
 
-// ---- RCA ----
-async function guardarRCA() {
+// ---- Respuesta del responsable (includes RCA) ----
+async function guardarRespuesta() {
   if (!_reclamoActual) return;
-  var msg = document.getElementById('recRCAMsg');
+  var msg = document.getElementById('recRespMsg');
   msg.textContent = 'Guardando...'; msg.style.color = '#666';
   var body = {
+    respuesta_texto: document.getElementById('recDetailRespuestaTexto').value.trim() || null,
     categoria_ishikawa: document.getElementById('recDetailCategoria').value || null,
     sub_causa: document.getElementById('recDetailSubCausa').value || null,
     cod_causa: document.getElementById('recDetailCodCausa').value || null,
@@ -3632,8 +3663,38 @@ async function guardarRCA() {
   if (res.status === 401) { logout(); return; }
   var data = await res.json();
   if (data.ok) {
-    msg.textContent = 'Guardado'; msg.style.color = '#558B2F';
+    msg.textContent = 'Respuesta guardada'; msg.style.color = '#558B2F';
     setTimeout(function() { msg.textContent = ''; }, 2000);
+    await verReclamo(_reclamoActual.id);
+    await loadReclamos(); await loadReclamosKpis();
+  } else {
+    msg.textContent = 'Error: ' + (data.detail || 'desconocido'); msg.style.color = '#b42318';
+  }
+}
+
+// ---- Validación ----
+async function guardarValidacion() {
+  if (!_reclamoActual) return;
+  var msg = document.getElementById('recValidacionMsg');
+  var resultado = document.getElementById('recDetailValidacionResultado').value;
+  var obs = document.getElementById('recDetailValidacionObs').value.trim();
+  if (!resultado) { msg.textContent = 'Selecciona un resultado'; msg.style.color = '#b42318'; return; }
+  msg.textContent = 'Guardando...'; msg.style.color = '#666';
+  var body = {
+    validacion_resultado: resultado,
+    validacion_observaciones: obs || null,
+  };
+  var res = await fetch('/reclamos/' + _reclamoActual.id, {
+    method: 'PATCH',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  if (res.status === 401) { logout(); return; }
+  var data = await res.json();
+  if (data.ok) {
+    msg.textContent = 'Validación guardada'; msg.style.color = '#558B2F';
+    setTimeout(function() { msg.textContent = ''; }, 2000);
+    await verReclamo(_reclamoActual.id);
     await loadReclamos(); await loadReclamosKpis();
   } else {
     msg.textContent = 'Error: ' + (data.detail || 'desconocido'); msg.style.color = '#b42318';
@@ -3759,13 +3820,14 @@ function _addCreatePreview(files) {
   dropMsg.style.display = 'none';
 }
 
-async function _uploadDetailFiles(files) {
+async function _uploadFilesWithTipo(files, tipo, msgElId) {
   if (!_reclamoActual) return;
-  var msg = document.getElementById('recImagenMsg');
+  var msg = document.getElementById(msgElId);
   if (msg) { msg.textContent = 'Subiendo ' + files.length + ' imagen(es)...'; msg.style.color = '#666'; }
   for (var i = 0; i < files.length; i++) {
     var formData = new FormData();
     formData.append('file', files[i]);
+    formData.append('tipo', tipo);
     var res = await fetch('/reclamos/' + _reclamoActual.id + '/imagenes', {
       method: 'POST', headers: authHeaders(), body: formData
     });
@@ -3779,9 +3841,11 @@ async function _uploadDetailFiles(files) {
 
 function initRecImageDropZones() {
   _initDropZone('recCreateDropZone', 'recCreateFileInput', _addCreatePreview);
-  _initDropZone('recDetailDropZone', 'recDetailFileInput', function(files) { _uploadDetailFiles(files); });
+  _initDropZone('recDetailDropZone', 'recDetailFileInput', function(files) { _uploadFilesWithTipo(files, 'antecedente', 'recImagenMsg'); });
+  _initDropZone('recRespDropZone', 'recRespFileInput', function(files) { _uploadFilesWithTipo(files, 'respuesta', 'recRespImagenMsg'); });
   _initPasteZone('nuevoReclamoForm', _addCreatePreview);
-  _initPasteZone('recDetailDropZone', function(files) { _uploadDetailFiles(files); });
+  _initPasteZone('recDetailDropZone', function(files) { _uploadFilesWithTipo(files, 'antecedente', 'recImagenMsg'); });
+  _initPasteZone('recRespDropZone', function(files) { _uploadFilesWithTipo(files, 'respuesta', 'recRespImagenMsg'); });
 }
 
 async function eliminarImagen(imgId) {
@@ -3883,24 +3947,26 @@ function seleccionarIshikawa(radio) {
 function confirmarIshikawa() {
   if (!_ishikawaSelection.categoria) { alert('Selecciona una causa primero'); return; }
   var displayText = '[' + _ishikawaSelection.cod_causa + '] ' + (_recIshikawaLabels[_ishikawaSelection.categoria] || '') + ' > ' + _ishikawaSelection.sub_causa;
-
-  if (_ishikawaTarget === 'detail') {
-    document.getElementById('recDetailCausaDisplay').value = displayText;
-    document.getElementById('recDetailCategoria').value = _ishikawaSelection.categoria;
-    document.getElementById('recDetailSubCausa').value = _ishikawaSelection.sub_causa;
-    document.getElementById('recDetailCodCausa').value = _ishikawaSelection.cod_causa;
-  } else {
-    document.getElementById('recCausaDisplay').value = displayText;
-    document.getElementById('recCategoria').value = _ishikawaSelection.categoria;
-    document.getElementById('recSubCausa').value = _ishikawaSelection.sub_causa;
-    document.getElementById('recCodCausa').value = _ishikawaSelection.cod_causa;
-  }
+  document.getElementById('recDetailCausaDisplay').value = displayText;
+  document.getElementById('recDetailCategoria').value = _ishikawaSelection.categoria;
+  document.getElementById('recDetailSubCausa').value = _ishikawaSelection.sub_causa;
+  document.getElementById('recDetailCodCausa').value = _ishikawaSelection.cod_causa;
   cerrarIshikawaModal();
 }
 
 function cerrarIshikawaModal() {
   document.getElementById('ishikawaModal').style.display = 'none';
 }
+
+// ESC to close Ishikawa modal
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') {
+    var modal = document.getElementById('ishikawaModal');
+    if (modal && modal.style.display !== 'none') {
+      cerrarIshikawaModal();
+    }
+  }
+});
 
 // ========================= INIT =========================
 // Track which modules have been loaded to avoid redundant fetches

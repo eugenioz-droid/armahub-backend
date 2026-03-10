@@ -399,6 +399,27 @@ MIGRATIONS = [
     (18, "reclamos: cliente_id", [
         "DO $$ BEGIN ALTER TABLE reclamos ADD COLUMN cliente_id INTEGER REFERENCES clientes(id) ON DELETE SET NULL; EXCEPTION WHEN duplicate_column THEN NULL; END $$;",
     ]),
+    (19, "reclamos: flujo 3 etapas (tipo_reclamo, respuesta, validacion, tipo imagen)", [
+        # tipo_reclamo: error / faltante
+        "DO $$ BEGIN ALTER TABLE reclamos ADD COLUMN tipo_reclamo TEXT DEFAULT 'error' CHECK (tipo_reclamo IN ('error','faltante')); EXCEPTION WHEN duplicate_column THEN NULL; END $$;",
+        # Respuesta del cubicador
+        "DO $$ BEGIN ALTER TABLE reclamos ADD COLUMN respuesta_texto TEXT; EXCEPTION WHEN duplicate_column THEN NULL; END $$;",
+        "DO $$ BEGIN ALTER TABLE reclamos ADD COLUMN respuesta_fecha TIMESTAMPTZ; EXCEPTION WHEN duplicate_column THEN NULL; END $$;",
+        "DO $$ BEGIN ALTER TABLE reclamos ADD COLUMN respuesta_por TEXT; EXCEPTION WHEN duplicate_column THEN NULL; END $$;",
+        # Validación
+        "DO $$ BEGIN ALTER TABLE reclamos ADD COLUMN validacion_resultado TEXT CHECK (validacion_resultado IN ('aprobado','rechazado','corregido')); EXCEPTION WHEN duplicate_column THEN NULL; END $$;",
+        "DO $$ BEGIN ALTER TABLE reclamos ADD COLUMN validacion_observaciones TEXT; EXCEPTION WHEN duplicate_column THEN NULL; END $$;",
+        "DO $$ BEGIN ALTER TABLE reclamos ADD COLUMN validacion_fecha TIMESTAMPTZ; EXCEPTION WHEN duplicate_column THEN NULL; END $$;",
+        "DO $$ BEGIN ALTER TABLE reclamos ADD COLUMN validacion_por TEXT; EXCEPTION WHEN duplicate_column THEN NULL; END $$;",
+        # Tipo de imagen: antecedente (creador) / respuesta (cubicador)
+        "DO $$ BEGIN ALTER TABLE reclamo_imagenes ADD COLUMN tipo TEXT NOT NULL DEFAULT 'antecedente' CHECK (tipo IN ('antecedente','respuesta')); EXCEPTION WHEN duplicate_column THEN NULL; END $$;",
+        # Agregar estado 'validacion' al CHECK constraint de reclamos
+        """DO $$ BEGIN
+            ALTER TABLE reclamos DROP CONSTRAINT IF EXISTS reclamos_estado_check;
+            ALTER TABLE reclamos ADD CONSTRAINT reclamos_estado_check
+                CHECK (estado IN ('abierto','en_analisis','accion_correctiva','validacion','cerrado','rechazado'));
+        END $$;""",
+    ]),
 ]
 
 
