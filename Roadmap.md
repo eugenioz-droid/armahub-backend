@@ -1008,12 +1008,27 @@ errores y reclamos levantados por clientes. Incluye formulario tipo, análisis d
        - GET /reclamos/{id} retorna kilos_mal_fabricados
        - PATCH /reclamos/{id} permite actualizar kilos_mal_fabricados
 
-38c. Perfil de usuario (self-service) - Pendiente
-    a) Cambiar contraseña propia - Pendiente
-       - Formulario: contraseña actual + nueva contraseña + confirmar
-       - Validación de contraseña actual antes de permitir cambio
-    b) Ver/editar datos básicos del perfil - Pendiente
-       - Nombre, email (solo lectura o editable según diseño)
+38c. Perfil de usuario y mejoras admin - ✅ Implementado 10-Mar-2026
+
+    a) Cambiar contraseña propia (self-service) - OK
+       - POST /me/password: valida contraseña actual, cambia a nueva (mín. 6 chars)
+       - Botón "🔑 Mi clave" en header, junto a "Salir"
+       - 3 prompts: contraseña actual → nueva → confirmar
+       - Auditoría: acción "cambiar_password_propia"
+
+    b) Editar nombre de usuarios (admin) - OK
+       - Botón "Nombre" en tabla de usuarios del panel admin
+       - Prompts para nombre y apellido, llama PATCH /admin/users/{id}/nombre
+       - Tabla se actualiza automáticamente tras editar
+
+    c) Header muestra nombre del usuario - OK
+       - GET /me retorna nombre y apellido desde DB
+       - Header muestra "Nombre Apellido" en vez de email (fallback a email si sin nombre)
+
+    d) Área responsable: dropdown fijo en reclamos - OK
+       - Opciones: USC, Logística, Producción, Cubicación
+       - Reemplaza input texto libre por <select> en sección Respuesta
+       - Valor se guarda con guardarRespuesta()
 
 ---
 ## FASE 7 — Preparación para Apps

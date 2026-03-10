@@ -12,6 +12,21 @@ function logout() {
   window.location.href = '/ui/login';
 }
 
+async function cambiarMiClave() {
+  var currentPass = prompt('Contraseña actual:');
+  if (!currentPass) return;
+  var newPass = prompt('Nueva contraseña (mín. 6 caracteres):');
+  if (!newPass) return;
+  if (newPass.length < 6) { alert('La contraseña debe tener al menos 6 caracteres'); return; }
+  var confirmPass = prompt('Confirmar nueva contraseña:');
+  if (confirmPass !== newPass) { alert('Las contraseñas no coinciden'); return; }
+  var params = new URLSearchParams({ current_password: currentPass, new_password: newPass });
+  var res = await fetch('/me/password?' + params.toString(), { method: 'POST', headers: authHeaders() });
+  if (res.status === 401) { alert('Contraseña actual incorrecta'); return; }
+  var data = await res.json();
+  if (data.ok) { alert('Contraseña actualizada correctamente'); } else { alert('Error: ' + (data.detail || 'desconocido')); }
+}
+
 async function apiGet(url) {
   const res = await fetch(url, { headers: authHeaders() });
   if (res.status === 401) { logout(); return null; }
@@ -290,7 +305,8 @@ let currentRole = 'operador';
 async function loadMe() {
   const me = await apiGet('/me');
   if (!me) return;
-  document.getElementById('whoEmail').textContent = me.email;
+  var displayName = ((me.nombre || '') + ' ' + (me.apellido || '')).trim();
+  document.getElementById('whoEmail').textContent = displayName || me.email;
   document.getElementById('whoRole').textContent = "Rol: " + me.role;
   localStorage.setItem('armahub_email', me.email);
   currentRole = me.role || 'operador';
@@ -2980,6 +2996,7 @@ async function loadUsers() {
     html += '<td style="padding:4px 6px;">' + activoBadge + '</td>';
     html += '<td style="padding:4px 6px; font-size:11px;" class="muted">' + fecha + '</td>';
     html += '<td style="padding:4px 6px; white-space:nowrap;">';
+    html += '<button class="secondary" style="font-size:10px; padding:1px 6px;" onclick="editarNombreUsuario(' + u.id + ', \'' + (u.nombre || '').replace(/'/g, "\\'") + '\', \'' + (u.apellido || '').replace(/'/g, "\\'") + '\')">Nombre</button> ';
     html += '<button class="secondary" style="font-size:10px; padding:1px 6px; color:' + toggleColor + ';" onclick="toggleActivoUsuario(' + u.id + ', ' + !activo + ')">' + toggleLabel + '</button> ';
     html += '<button class="secondary" style="font-size:10px; padding:1px 6px;" onclick="resetPasswordUsuario(' + u.id + ')">Cambiar clave</button> ';
     html += '<button class="secondary" style="font-size:10px; padding:1px 6px; color:#b42318;" onclick="eliminarUsuarioAdmin(' + u.id + ')">Eliminar</button>';
@@ -3022,6 +3039,18 @@ async function resetPasswordUsuario(userId) {
 async function eliminarUsuarioAdmin(userId) {
   if (!confirm('Eliminar este usuario? Esta accion no se puede deshacer.')) return;
   var res = await fetch('/admin/users/' + userId, { method: 'DELETE', headers: authHeaders() });
+  if (res.status === 401) { logout(); return; }
+  var data = await res.json();
+  if (data.ok) { await loadUsers(); } else { alert('Error: ' + (data.detail || 'desconocido')); }
+}
+
+async function editarNombreUsuario(userId, nombreActual, apellidoActual) {
+  var nombre = prompt('Nombre:', nombreActual || '');
+  if (nombre === null) return;
+  var apellido = prompt('Apellido:', apellidoActual || '');
+  if (apellido === null) return;
+  var params = new URLSearchParams({ nombre: nombre, apellido: apellido });
+  var res = await fetch('/admin/users/' + userId + '/nombre?' + params.toString(), { method: 'PATCH', headers: authHeaders() });
   if (res.status === 401) { logout(); return; }
   var data = await res.json();
   if (data.ok) { await loadUsers(); } else { alert('Error: ' + (data.detail || 'desconocido')); }

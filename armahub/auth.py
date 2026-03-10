@@ -135,7 +135,34 @@ def signup(email: str, password: str, nombre: str = ""):
 
 @router.get("/me")
 def me(user=Depends(get_current_user)):
-    return {"email": user.get("email"), "role": user.get("role")}
+    email = user.get("email")
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT nombre, apellido FROM users WHERE email = %s", (email,))
+            row = cur.fetchone()
+    nombre = row[0] if row else None
+    apellido = row[1] if row else None
+    return {"email": email, "role": user.get("role"), "nombre": nombre, "apellido": apellido}
+
+
+@router.post("/me/password")
+def change_my_password(current_password: str, new_password: str, user=Depends(get_current_user)):
+    """Cambiar contraseña propia. Requiere contraseña actual."""
+    email = user.get("email")
+    if len(new_password) < 6:
+        raise HTTPException(status_code=400, detail="La nueva contraseña debe tener al menos 6 caracteres")
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT password_hash FROM users WHERE email = %s", (email,))
+            row = cur.fetchone()
+            if not row:
+                raise HTTPException(status_code=404, detail="Usuario no encontrado")
+            if not pwd_context.verify(current_password, row[0]):
+                raise HTTPException(status_code=401, detail="Contraseña actual incorrecta")
+            new_hash = pwd_context.hash(new_password)
+            cur.execute("UPDATE users SET password_hash = %s WHERE email = %s", (new_hash, email))
+    audit(email, "cambiar_password_propia", None, "usuario", email)
+    return {"ok": True}
 
 
 @router.post("/bootstrap/create-admin")

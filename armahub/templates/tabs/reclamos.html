@@ -319,9 +319,15 @@
               <button type="button" class="secondary" style="font-size:11px; padding:4px 8px; white-space:nowrap;" onclick="abrirIshikawaModal('detail')">🔍</button>
             </div>
           </div>
-          <div class="col" style="max-width:120px;">
-            <label style="font-size:11px; color:#666;">Área aplica</label>
-            <input type="text" id="recDetailAreaAplica" style="width:100%; font-size:12px;" placeholder="Ej: Cubicación" />
+          <div class="col" style="max-width:140px;">
+            <label style="font-size:11px; color:#666;">Área responsable</label>
+            <select id="recDetailAreaAplica" style="width:100%; font-size:12px;">
+              <option value="">— Seleccionar —</option>
+              <option value="USC">USC</option>
+              <option value="Logística">Logística</option>
+              <option value="Producción">Producción</option>
+              <option value="Cubicación">Cubicación</option>
+            </select>
           </div>
           <div class="col" style="max-width:130px;">
             <label style="font-size:11px; color:#666;">Fecha análisis</label>
