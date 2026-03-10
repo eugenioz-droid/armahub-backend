@@ -3254,13 +3254,11 @@ function renderRecMatriz(m) {
 async function loadReclamos() {
   const container = document.getElementById('reclamosList');
   const estado = document.getElementById('recFiltroEstado').value;
-  const prioridad = document.getElementById('recFiltroPrioridad').value;
   const categoria = document.getElementById('recFiltroCategoria').value;
   const aplica = document.getElementById('recFiltroAplica').value;
   let url = '/reclamos';
   const params = [];
   if (estado) params.push('estado=' + encodeURIComponent(estado));
-  if (prioridad) params.push('prioridad=' + encodeURIComponent(prioridad));
   if (categoria) params.push('categoria=' + encodeURIComponent(categoria));
   if (aplica) params.push('aplica=' + encodeURIComponent(aplica));
   if (params.length) url += '?' + params.join('&');
@@ -3280,7 +3278,6 @@ async function loadReclamos() {
     '<th style="padding:5px 6px;">Proyecto</th>' +
     '<th style="padding:5px 6px;">Estado</th>' +
     '<th style="padding:5px 6px;">Aplica</th>' +
-    '<th style="padding:5px 6px;">Prioridad</th>' +
     '<th style="padding:5px 6px;">Causa</th>' +
     '<th style="padding:5px 6px;">Fecha</th>' +
     '<th style="padding:5px 4px;"></th>' +
@@ -3288,8 +3285,6 @@ async function loadReclamos() {
     data.reclamos.map(function(r) {
       var eColor = _recEstadoColors[r.estado] || '#666';
       var eLabel = _recEstadoLabels[r.estado] || r.estado;
-      var pColor = _recPrioridadColors[r.prioridad] || '#666';
-      var pLabel = _recPrioridadLabels[r.prioridad] || r.prioridad;
       var aplLabel = _recAplicaLabels[r.aplica] || 'Pendiente';
       var aplColor = _recAplicaColors[r.aplica] || '#ff9800';
       var causaText = r.cod_causa ? '[' + r.cod_causa + ']' : (r.categoria_ishikawa ? _recIshikawaLabels[r.categoria_ishikawa] : '-');
@@ -3302,7 +3297,6 @@ async function loadReclamos() {
         '<td style="padding:4px 6px; font-size:11px;">' + (r.nombre_proyecto || '-') + '</td>' +
         '<td style="padding:4px 6px;"><span style="background:' + eColor + '; color:#fff; padding:1px 6px; border-radius:3px; font-size:10px;">' + eLabel + '</span></td>' +
         '<td style="padding:4px 6px;"><span style="color:' + aplColor + '; font-weight:600; font-size:10px;">' + aplLabel + '</span></td>' +
-        '<td style="padding:4px 6px;"><span style="color:' + pColor + '; font-weight:600; font-size:11px;">' + pLabel + '</span></td>' +
         '<td style="padding:4px 6px; font-size:11px;" title="' + (r.sub_causa || '') + '">' + causaText + '</td>' +
         '<td style="padding:4px 6px; font-size:11px;" class="muted">' + fecha + '</td>' +
         '<td style="padding:4px 4px;"><button class="secondary" style="font-size:10px; padding:2px 6px;" onclick="event.stopPropagation(); verReclamo(' + r.id + ')">Ver</button></td>' +
@@ -3324,7 +3318,6 @@ async function crearReclamo() {
 
   var body = { titulo: titulo };
   var proyecto = document.getElementById('recProyecto').value;
-  var prioridad = document.getElementById('recPrioridad').value;
   var categoria = document.getElementById('recCategoria').value;
   var subCausa = document.getElementById('recSubCausa').value;
   var codCausa = document.getElementById('recCodCausa').value;
@@ -3334,7 +3327,6 @@ async function crearReclamo() {
   var fechaDeteccion = document.getElementById('recFechaDeteccion').value;
   var idCalidad = document.getElementById('recIdCalidad') ? document.getElementById('recIdCalidad').value.trim() : '';
   if (proyecto) body.id_proyecto = proyecto;
-  if (prioridad) body.prioridad = prioridad;
   if (categoria) body.categoria_ishikawa = categoria;
   if (subCausa) body.sub_causa = subCausa;
   if (codCausa) body.cod_causa = codCausa;
@@ -3352,12 +3344,24 @@ async function crearReclamo() {
   var data = await res.json();
   if (data.ok) {
     var label = data.correlativo || ('#' + data.id);
+    // Upload staged images (filter nulls from removed previews)
+    var filesToUpload = _recCreateStagedFiles.filter(function(f) { return f !== null; });
+    if (filesToUpload.length > 0) {
+      msg.textContent = label + ' creado. Subiendo ' + filesToUpload.length + ' imagen(es)...'; msg.style.color = '#666';
+      for (var i = 0; i < filesToUpload.length; i++) {
+        var formData = new FormData();
+        formData.append('file', filesToUpload[i]);
+        await fetch('/reclamos/' + data.id + '/imagenes', { method: 'POST', headers: authHeaders(), body: formData });
+      }
+    }
+    _recCreateStagedFiles = [];
     msg.textContent = label + ' registrado correctamente'; msg.style.color = '#558B2F';
     ['recTitulo','recDescripcion','recResponsable','recDetectadoPor','recFechaDeteccion','recCausaDisplay','recCategoria','recSubCausa','recCodCausa','recIdCalidad'].forEach(function(id) {
       var el = document.getElementById(id); if (el) el.value = '';
     });
     document.getElementById('recProyecto').value = '';
-    document.getElementById('recPrioridad').value = 'media';
+    document.getElementById('recCreatePreview').innerHTML = '';
+    document.getElementById('recCreateDropMsg').style.display = '';
     document.getElementById('nuevoReclamoForm').style.display = 'none';
     await loadReclamos();
     await loadReclamosKpis();
@@ -3434,7 +3438,6 @@ async function verReclamo(id) {
   // Info fields
   var info = document.getElementById('recDetailInfo');
   var infoHtml = '<div class="row" style="gap:16px; flex-wrap:wrap;">';
-  infoHtml += '<div><strong>Prioridad:</strong> <span style="color:' + (_recPrioridadColors[data.prioridad] || '#666') + '; font-weight:600;">' + (_recPrioridadLabels[data.prioridad] || data.prioridad) + '</span></div>';
   infoHtml += '<div><strong>Estado:</strong> <span style="color:' + (_recEstadoColors[data.estado] || '#666') + '; font-weight:600;">' + (_recEstadoLabels[data.estado] || data.estado) + '</span></div>';
   var aplColor = _recAplicaColors[data.aplica] || '#ff9800';
   infoHtml += '<div><strong>Aplica:</strong> <span style="color:' + aplColor + '; font-weight:600;">' + (_recAplicaLabels[data.aplica] || 'Pendiente') + '</span></div>';
@@ -3675,14 +3678,91 @@ async function eliminarAccion(accionId) {
   else { alert('Error: ' + (data.detail || 'desconocido')); }
 }
 
-// ---- Imágenes ----
-async function subirImagenes() {
+// ---- Imágenes: Drop Zone System ----
+var _recCreateStagedFiles = [];
+
+function _initDropZone(zoneId, fileInputId, onFiles) {
+  var zone = document.getElementById(zoneId);
+  var fileInput = document.getElementById(fileInputId);
+  if (!zone || !fileInput) return;
+
+  zone.addEventListener('dragover', function(e) {
+    e.preventDefault(); e.stopPropagation();
+    zone.style.borderColor = '#7b1fa2'; zone.style.background = '#f3e5f5';
+  });
+  zone.addEventListener('dragleave', function(e) {
+    e.preventDefault(); e.stopPropagation();
+    zone.style.borderColor = ''; zone.style.background = '';
+  });
+  zone.addEventListener('drop', function(e) {
+    e.preventDefault(); e.stopPropagation();
+    zone.style.borderColor = ''; zone.style.background = '';
+    var files = [];
+    for (var i = 0; i < e.dataTransfer.files.length; i++) {
+      if (e.dataTransfer.files[i].type.startsWith('image/')) files.push(e.dataTransfer.files[i]);
+    }
+    if (files.length) onFiles(files);
+  });
+  fileInput.addEventListener('change', function() {
+    var files = [];
+    for (var i = 0; i < fileInput.files.length; i++) files.push(fileInput.files[i]);
+    fileInput.value = '';
+    if (files.length) onFiles(files);
+  });
+}
+
+function _initPasteZone(targetElementId, onFiles) {
+  document.addEventListener('paste', function(e) {
+    var target = document.getElementById(targetElementId);
+    if (!target || target.offsetParent === null) return;
+    var files = [];
+    var items = e.clipboardData && e.clipboardData.items;
+    if (!items) return;
+    for (var i = 0; i < items.length; i++) {
+      if (items[i].type.startsWith('image/')) {
+        var f = items[i].getAsFile();
+        if (f) files.push(f);
+      }
+    }
+    if (files.length) { e.preventDefault(); onFiles(files); }
+  });
+}
+
+function _addCreatePreview(files) {
+  var preview = document.getElementById('recCreatePreview');
+  var dropMsg = document.getElementById('recCreateDropMsg');
+  if (!preview) return;
+  for (var i = 0; i < files.length; i++) {
+    _recCreateStagedFiles.push(files[i]);
+    var idx = _recCreateStagedFiles.length - 1;
+    var wrap = document.createElement('div');
+    wrap.style.cssText = 'position:relative; display:inline-block;';
+    wrap.setAttribute('data-idx', idx);
+    var img = document.createElement('img');
+    img.style.cssText = 'width:70px; height:70px; object-fit:cover; border-radius:6px; border:1px solid #ddd;';
+    img.src = URL.createObjectURL(files[i]);
+    var btn = document.createElement('button');
+    btn.textContent = '✕';
+    btn.style.cssText = 'position:absolute; top:-4px; right:-4px; background:#e53935; color:#fff; border:none; border-radius:50%; width:18px; height:18px; font-size:11px; cursor:pointer; line-height:18px; padding:0;';
+    btn.setAttribute('data-idx', idx);
+    btn.onclick = function(ev) {
+      ev.stopPropagation();
+      var rmIdx = parseInt(this.getAttribute('data-idx'));
+      _recCreateStagedFiles[rmIdx] = null;
+      this.parentElement.remove();
+      var anyLeft = _recCreateStagedFiles.some(function(f) { return f !== null; });
+      if (!anyLeft) dropMsg.style.display = '';
+    };
+    wrap.appendChild(img); wrap.appendChild(btn);
+    preview.appendChild(wrap);
+  }
+  dropMsg.style.display = 'none';
+}
+
+async function _uploadDetailFiles(files) {
   if (!_reclamoActual) return;
-  var fileInput = document.getElementById('recImagenFile');
   var msg = document.getElementById('recImagenMsg');
-  var files = fileInput.files;
-  if (!files || files.length === 0) { msg.textContent = 'Selecciona al menos una imagen'; msg.style.color = '#b42318'; return; }
-  msg.textContent = 'Subiendo ' + files.length + ' imagen(es)...'; msg.style.color = '#666';
+  if (msg) { msg.textContent = 'Subiendo ' + files.length + ' imagen(es)...'; msg.style.color = '#666'; }
   for (var i = 0; i < files.length; i++) {
     var formData = new FormData();
     formData.append('file', files[i]);
@@ -3691,12 +3771,17 @@ async function subirImagenes() {
     });
     if (res.status === 401) { logout(); return; }
     var data = await res.json();
-    if (!data.ok) { msg.textContent = 'Error: ' + (data.detail || 'desconocido'); msg.style.color = '#b42318'; return; }
+    if (!data.ok) { if (msg) { msg.textContent = 'Error: ' + (data.detail || 'desconocido'); msg.style.color = '#b42318'; } return; }
   }
-  msg.textContent = files.length + ' imagen(es) subida(s)'; msg.style.color = '#558B2F';
-  fileInput.value = '';
-  setTimeout(function() { msg.textContent = ''; }, 3000);
+  if (msg) { msg.textContent = files.length + ' imagen(es) subida(s)'; msg.style.color = '#558B2F'; setTimeout(function() { msg.textContent = ''; }, 3000); }
   await verReclamo(_reclamoActual.id);
+}
+
+function initRecImageDropZones() {
+  _initDropZone('recCreateDropZone', 'recCreateFileInput', _addCreatePreview);
+  _initDropZone('recDetailDropZone', 'recDetailFileInput', function(files) { _uploadDetailFiles(files); });
+  _initPasteZone('nuevoReclamoForm', _addCreatePreview);
+  _initPasteZone('recDetailDropZone', function(files) { _uploadDetailFiles(files); });
 }
 
 async function eliminarImagen(imgId) {
@@ -3852,6 +3937,7 @@ async function loadModuleData(mod) {
     await loadProyectos();
     await loadReclamos();
     await loadReclamosKpis();
+    initRecImageDropZones();
   } else if (mod === 'admin') {
     await loadClientes();
     await loadCalculistas();

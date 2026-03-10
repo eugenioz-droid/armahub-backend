@@ -114,7 +114,7 @@ class ReclamoCreate(BaseModel):
     id_proyecto: Optional[str] = None
     titulo: str
     descripcion: Optional[str] = None
-    prioridad: Optional[str] = "media"
+    prioridad: Optional[str] = "alta"
     categoria_ishikawa: Optional[str] = None
     sub_causa: Optional[str] = None
     cod_causa: Optional[str] = None
