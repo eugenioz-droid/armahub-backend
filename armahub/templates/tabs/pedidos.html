@@ -14,6 +14,13 @@
           <label class="muted" style="font-size:11px;">Título del pedido</label>
           <input type="text" id="pedidoTitulo" placeholder="Ej: Pedido enfierradura P1 C1" style="width:100%; font-size:12px;" />
         </div>
+        <div style="min-width:120px;">
+          <label class="muted" style="font-size:11px;">Tipo</label>
+          <select id="pedidoTipo" style="width:100%; font-size:12px;">
+            <option value="generico">Genérico (sin sector)</option>
+            <option value="especifico">Específico (con sector)</option>
+          </select>
+        </div>
         <button onclick="crearPedido()" style="font-size:12px; white-space:nowrap;">+ Crear pedido</button>
       </div>
       <div id="pedidoCreateMsg" style="margin-top:6px; font-size:12px;"></div>
@@ -54,6 +61,7 @@
             <option value="completado">Completado</option>
             <option value="cancelado">Cancelado</option>
           </select>
+          <button id="btnProcesarPedido" onclick="procesarPedido()" style="font-size:11px; background:#1565C0; border-color:#1565C0; display:none;">⚡ Procesar → Barras</button>
           <button onclick="eliminarPedido()" class="secondary" style="font-size:11px; color:#b42318;">Eliminar</button>
         </div>
       </div>
@@ -62,7 +70,11 @@
       <div style="background:#f9fff4; border:1px solid #e0e0e0; border-radius:6px; padding:8px 10px; margin-bottom:8px;">
         <div class="row" style="gap:6px; flex-wrap:wrap; align-items:flex-end;">
           <div>
-            <label class="muted" style="font-size:10px;">⌀ mm</label>
+            <label class="muted" style="font-size:10px;">Eje *</label>
+            <input type="text" id="itemEje" placeholder="Trabas muro" maxlength="14" pattern="[A-Za-z0-9 ]*" style="width:110px; font-size:12px;" />
+          </div>
+          <div>
+            <label class="muted" style="font-size:10px;">⌀ mm *</label>
             <input type="number" id="itemDiam" placeholder="12" style="width:60px; font-size:12px;" />
           </div>
           <div>
@@ -73,12 +85,20 @@
             <label class="muted" style="font-size:10px;">Cantidad</label>
             <input type="number" id="itemCant" value="1" min="1" style="width:55px; font-size:12px;" />
           </div>
-          <div>
+          <div id="itemSectorGroup">
             <label class="muted" style="font-size:10px;">Sector</label>
             <select id="itemSector" style="font-size:11px; width:80px;">
               <option value="">—</option>
               <option>FUND</option><option>ELEV</option><option>LCIELO</option><option>VCIELO</option>
             </select>
+          </div>
+          <div id="itemPisoGroup">
+            <label class="muted" style="font-size:10px;">Piso</label>
+            <input type="text" id="itemPiso" placeholder="P1" style="width:50px; font-size:12px;" />
+          </div>
+          <div id="itemCicloGroup">
+            <label class="muted" style="font-size:10px;">Ciclo</label>
+            <input type="text" id="itemCiclo" placeholder="C1" style="width:50px; font-size:12px;" />
           </div>
           <div>
             <label class="muted" style="font-size:10px;">Nota</label>
@@ -93,17 +113,20 @@
         <table style="width:100%; font-size:12px;">
           <thead>
             <tr>
+              <th>Eje</th>
               <th>⌀ mm</th>
               <th>Largo</th>
               <th>Cant</th>
               <th>Sector</th>
+              <th>Piso</th>
+              <th>Ciclo</th>
               <th>Nota</th>
               <th>Estado</th>
               <th style="width:40px;"></th>
             </tr>
           </thead>
           <tbody id="pedidoItemsBody">
-            <tr><td colspan="7" class="muted">Sin items</td></tr>
+            <tr><td colspan="10" class="muted">Sin items</td></tr>
           </tbody>
         </table>
       </div>

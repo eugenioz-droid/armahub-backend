@@ -720,6 +720,9 @@ errores y reclamos levantados por clientes. Incluye formulario tipo, análisis d
     - Fix: tab reclamos subrayaba admin en vez de reclamos - OK
     - id_calidad editable en detalle + campo en formulario crear - OK
     - correlativo (REC-001) + id_calidad prominentes en tabla y detalle - OK
+    - Cliente asociado al reclamo: migración 18 (cliente_id FK), dropdown en crear y detalle - OK
+    - Crear cliente inline desde formulario reclamo (+ Nuevo) - OK
+    - Cambiar cliente en detalle con PATCH inmediato - OK
     - Pendiente: filtro por proyecto del usuario, integración USC
 
 32b. Dashboard de Reclamos - ✅ Implementado 9-Mar-2026
@@ -829,29 +832,69 @@ errores y reclamos levantados por clientes. Incluye formulario tipo, análisis d
        - Buscable, filtrable, destacado en UI
        - Migración: campo id_calidad en tabla reclamos
 
-37. Pedidos conectados con barras y exportación - Pendiente
-    a) Pedido genérico (sin sector) - Pendiente
+37. Pedidos conectados con barras y exportación - ✅ Implementado 9-Mar-2026
+    a) Pedido genérico (sin sector) - ✅ Hecho
        - Items con: eje (texto libre, máx 14 chars, alfanumérico+espacios),
          diámetro, largo, cantidad, nota
        - Sin sector/piso/ciclo → se exportan con SECTOR=NA, PISO=NA, CICLO=NA
        - EJE = texto del usuario (ej: "Trabas muro 1") → columna A en aSa Studio
        - Exportación en formato aSa Studio (igual que cubicación)
-    b) Pedido específico (con sector) - Pendiente
+       - Tipo "genérico" en selector al crear pedido
+       - Campos sector/piso/ciclo ocultos en UI para pedidos genéricos
+    b) Pedido específico (con sector) - ✅ Hecho
        - Items con: sector, piso, ciclo, eje, diámetro, largo, cantidad, nota
        - Se integran a la cubicación del proyecto (origen='pedido')
        - Aparecen en matriz de exportación y se exportan en formato aSa Studio
-    c) Validación columna EJE para aSa Studio - Pendiente
+       - Tipo "específico" en selector al crear pedido
+       - Campos sector/piso/ciclo visibles en UI para pedidos específicos
+    c) Validación columna EJE para aSa Studio - ✅ Hecho
        - Máximo 14 caracteres
        - Solo caracteres alfanuméricos + espacios (sin tildes, ñ, símbolos)
-       - Validación en frontend (maxlength + regex) y backend
+       - Validación en frontend (maxlength + pattern) y backend (regex _EJE_RE)
        - aSa Studio agrupa barras por valor de columna A (EJE)
+    d) Procesar pedido → barras - ✅ Hecho
+       - POST /pedidos/{id}/procesar convierte items en barras
+       - Barras generadas con origen='pedido', pedido_id, pedido_item_id
+       - id_unico: PED-{uuid12} para identificar barras de pedido
+       - Peso calculado automáticamente (fórmula ArmaHub)
+       - Botón "⚡ Procesar → Barras" visible solo si pedido enviado/en_proceso y no procesado
+       - Una vez procesado, no se puede reprocesar (flag procesado=true)
+    e) Migración 17 - ✅ Hecho
+       - pedidos.tipo (generico/especifico)
+       - pedidos.procesado (boolean)
+       - pedido_items.eje (text)
+       - barras.pedido_item_id (bigint)
 
-38. Obra independiente de cubicación - Pendiente
+38. Obra independiente de cubicación - Implementado
     - La obra es entidad de primer nivel, no depende de tener barras
     - Reclamos se vinculan a obras que pueden no tener cubicación
     - Pedidos se vinculan a obras que pueden no tener cubicación
     - Crear obra manualmente ya existe, se refuerza como flujo principal
     - Obras de cualquier tipo (no solo edificación) pueden existir en el sistema
+    - CSV sin línea PROYECTO: ahora es válido: muestra modal para elegir proyecto existente o crear nuevo
+    - Al crear proyecto nuevo desde import se puede asignar cliente, dueño y calculista
+    - Parámetros backend: reasignar_a, cliente_id, owner_id, proyecto_nombre_manual
+    - Modal "Archivo sin proyecto" con 2 opciones: asignar a existente o crear nuevo
+
+38b. Gestión de usuarios desde Admin - Pendiente
+    a) Crear usuario sin registro público - Pendiente
+       - Admin crea usuario con email, nombre, rol, contraseña temporal
+       - Sin necesidad de que el usuario se registre por /auth/signup
+    b) Bloquear/desbloquear usuario - Pendiente
+       - Toggle activo/inactivo desde panel Admin
+       - Usuario bloqueado no puede hacer login
+    c) Modificar contraseña de usuario - Pendiente
+       - Admin puede resetear contraseña de cualquier usuario
+       - Genera contraseña temporal o permite establecer una nueva
+    d) Editar rol y datos del usuario - Pendiente
+       - Cambiar rol, nombre, email desde panel Admin
+
+38c. Perfil de usuario (self-service) - Pendiente
+    a) Cambiar contraseña propia - Pendiente
+       - Formulario: contraseña actual + nueva contraseña + confirmar
+       - Validación de contraseña actual antes de permitir cambio
+    b) Ver/editar datos básicos del perfil - Pendiente
+       - Nombre, email (solo lectura o editable según diseño)
 
 ---
 ## FASE 7 — Preparación para Apps

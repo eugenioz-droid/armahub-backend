@@ -88,6 +88,13 @@ async function openNewProjectModal(data) {
     ).join('');
   }
 
+  // Populate client selector
+  var clSel = document.getElementById('newProjCliente');
+  if (clSel) {
+    clSel.innerHTML = '<option value="">\u2014 Sin cliente \u2014</option>' +
+      _clientesCache.map(function(c) { return '<option value="' + c.id + '">' + c.nombre + '</option>'; }).join('');
+  }
+
   const modal = document.getElementById('newProjectModal');
   modal.style.display = 'flex';
 
@@ -101,12 +108,79 @@ function closeNewProjectModal(confirmed) {
       _newProjResolve({
         confirmed: true,
         calculista: document.getElementById('newProjCalculista').value.trim(),
+        owner_id: document.getElementById('newProjOwner').value || '',
+        cliente_id: document.getElementById('newProjCliente') ? document.getElementById('newProjCliente').value : '',
       });
     } else {
       _newProjResolve({ confirmed: false });
     }
     _newProjResolve = null;
   }
+}
+
+// ========================= MISSING PROJECT MODAL =========================
+let _missProjResolve = null;
+
+async function openMissingProjectModal(data) {
+  document.getElementById('missProjMsg').textContent = data.mensaje || '';
+  document.getElementById('missProjNombre').value = '';
+  document.getElementById('missProjCalculista').value = '';
+
+  // Populate existing projects dropdown (copy from any loaded project selector)
+  var projSel = document.getElementById('missProjExistente');
+  var srcProj = document.getElementById('pedidoProyecto') || document.getElementById('recProyecto');
+  if (projSel && srcProj) {
+    projSel.innerHTML = '<option value="">\u2014 Selecciona un proyecto \u2014</option>' + 
+      Array.from(srcProj.options).filter(function(o) { return o.value; }).map(function(o) {
+        return '<option value="' + o.value + '">' + o.textContent + '</option>';
+      }).join('');
+  }
+
+  // Load users for owner select
+  var owSel = document.getElementById('missProjOwner');
+  if (owSel) {
+    owSel.innerHTML = '<option value="">Cargando...</option>';
+    var usersData = await apiGet('/users/list');
+    if (usersData && usersData.users) {
+      var me = localStorage.getItem('armahub_email') || '';
+      owSel.innerHTML = usersData.users.map(function(u) {
+        return '<option value="' + u.id + '"' + (u.email === me ? ' selected' : '') + '>' + u.email + ' (' + u.role + ')</option>';
+      }).join('');
+    }
+  }
+
+  // Populate client selector
+  var clSel = document.getElementById('missProjCliente');
+  if (clSel) {
+    clSel.innerHTML = '<option value="">\u2014 Sin cliente \u2014</option>' +
+      _clientesCache.map(function(c) { return '<option value="' + c.id + '">' + c.nombre + '</option>'; }).join('');
+  }
+
+  document.getElementById('missingProjectModal').style.display = 'flex';
+  return new Promise(function(resolve) { _missProjResolve = resolve; });
+}
+
+function closeMissingProjectModal(action) {
+  document.getElementById('missingProjectModal').style.display = 'none';
+  if (!_missProjResolve) return;
+  if (action === 'existing') {
+    var projId = document.getElementById('missProjExistente').value;
+    if (!projId) { alert('Selecciona un proyecto'); document.getElementById('missingProjectModal').style.display = 'flex'; return; }
+    _missProjResolve({ action: 'existing', proyecto_id: projId });
+  } else if (action === 'new') {
+    var nombre = document.getElementById('missProjNombre').value.trim();
+    if (!nombre) { alert('Ingresa un nombre para el proyecto'); document.getElementById('missingProjectModal').style.display = 'flex'; return; }
+    _missProjResolve({
+      action: 'new',
+      nombre: nombre,
+      calculista: document.getElementById('missProjCalculista').value.trim(),
+      owner_id: document.getElementById('missProjOwner').value || '',
+      cliente_id: document.getElementById('missProjCliente').value || '',
+    });
+  } else {
+    _missProjResolve({ action: 'cancel' });
+  }
+  _missProjResolve = null;
 }
 
 // ========================= UI =========================
@@ -757,6 +831,34 @@ async function importAllFiles() {
       errorCount++;
       continue;
     }
+    if (data.ok === false && data.missing_project) {
+      // CSV sin línea PROYECTO: — mostrar modal para elegir proyecto
+      const missResult = await openMissingProjectModal(data);
+      if (missResult.action === 'cancel') {
+        results.innerHTML += `<div class="status-warn" style="padding:4px 0; font-size:13px;">⏭️ ${f.name}: importación cancelada</div>`;
+        errorCount++;
+        continue;
+      }
+      let retryUrl;
+      if (missResult.action === 'existing') {
+        retryUrl = '/import/armadetailer?reasignar_a=' + encodeURIComponent(missResult.proyecto_id);
+      } else {
+        retryUrl = '/import/armadetailer?confirmar_nuevo=true&proyecto_nombre_manual=' + encodeURIComponent(missResult.nombre);
+        if (missResult.calculista) retryUrl += '&calculista=' + encodeURIComponent(missResult.calculista);
+        if (missResult.owner_id) retryUrl += '&owner_id=' + encodeURIComponent(missResult.owner_id);
+        if (missResult.cliente_id) retryUrl += '&cliente_id=' + encodeURIComponent(missResult.cliente_id);
+      }
+      const data2 = await apiPostFile(retryUrl, f);
+      if (data2 && data2.ok) {
+        const kilosText2 = data2.kilos ? ` — ${Math.round(data2.kilos).toLocaleString()} kg` : '';
+        results.innerHTML += `<div class="status-ok" style="padding:4px 0; font-size:13px;">✅ ${f.name}: ${data2.rows_upserted} barras (${data2.proyecto})${kilosText2} ${missResult.action === 'existing' ? '(reasignado)' : '(nuevo proyecto)'}</div>`;
+        successCount++;
+      } else {
+        results.innerHTML += `<div class="status-err" style="padding:4px 0; font-size:13px;">❌ ${f.name}: ${data2?.error || data2?.mensaje || 'Error en importación'}</div>`;
+        errorCount++;
+      }
+      continue;
+    }
     if (data.ok === false && data.new_project) {
       // Proyecto nuevo detectado — mostrar popup para confirmar creación
       const modalResult = await openNewProjectModal(data);
@@ -766,9 +868,9 @@ async function importAllFiles() {
         continue;
       }
       let retryUrl = '/import/armadetailer?confirmar_nuevo=true';
-      if (modalResult.calculista) {
-        retryUrl += '&calculista=' + encodeURIComponent(modalResult.calculista);
-      }
+      if (modalResult.calculista) retryUrl += '&calculista=' + encodeURIComponent(modalResult.calculista);
+      if (modalResult.owner_id) retryUrl += '&owner_id=' + encodeURIComponent(modalResult.owner_id);
+      if (modalResult.cliente_id) retryUrl += '&cliente_id=' + encodeURIComponent(modalResult.cliente_id);
       const data2 = await apiPostFile(retryUrl, f);
       if (data2 && data2.ok) {
         const kilosText2 = data2.kilos ? ` — ${Math.round(data2.kilos).toLocaleString()} kg` : '';
@@ -2303,6 +2405,14 @@ async function loadClientes() {
     if (prev) sel.value = prev;
   }
 
+  // Populate client selectors in reclamos
+  var optionsHtml = '<option value="">— Sin cliente —</option>' +
+    _clientesCache.map(function(c) { return '<option value="' + c.id + '">' + c.nombre + '</option>'; }).join('');
+  var recSel = document.getElementById('recCliente');
+  if (recSel) { var pv = recSel.value; recSel.innerHTML = optionsHtml; if (pv) recSel.value = pv; }
+  var recDetSel = document.getElementById('recDetailCliente');
+  if (recDetSel) { var pv2 = recDetSel.value; recDetSel.innerHTML = optionsHtml; if (pv2) recDetSel.value = pv2; }
+
   // Render client list
   const container = document.getElementById('clientesContainer');
   if (!container) return;
@@ -2517,10 +2627,14 @@ async function loadPedidos() {
   container.innerHTML = data.pedidos.map(p => {
     const sc = estadoColors[p.estado] || '#666';
     const fecha = p.fecha_creacion ? p.fecha_creacion.substring(0, 10) : '';
+    var tipoBadge = p.tipo === 'especifico'
+      ? '<span style="font-size:9px; padding:1px 5px; border-radius:3px; background:#E3F2FD; color:#1565C0;">específico</span>'
+      : '<span style="font-size:9px; padding:1px 5px; border-radius:3px; background:#FFF3E0; color:#E65100;">genérico</span>';
+    var procBadge = p.procesado ? ' <span style="font-size:9px; padding:1px 5px; border-radius:3px; background:#E8F5E9; color:#2E7D32;">✓ procesado</span>' : '';
     return '<div style="display:flex; justify-content:space-between; align-items:center; padding:8px 10px; border-bottom:1px solid #f0f0f0; cursor:pointer;" onclick="openPedido(' + p.id + ')">' +
       '<div>' +
         '<span style="font-weight:600; font-size:13px;">' + (p.titulo || 'Sin título') + '</span>' +
-        ' <span class="muted" style="font-size:11px;">#' + p.id + '</span>' +
+        ' <span class="muted" style="font-size:11px;">#' + p.id + '</span> ' + tipoBadge + procBadge +
         '<div class="muted" style="font-size:11px;">' + (p.nombre_proyecto || p.id_proyecto) + ' · ' + p.total_items + ' items · ' + fecha + '</div>' +
       '</div>' +
       '<span style="font-size:11px; padding:2px 8px; border-radius:10px; background:' + sc + '22; color:' + sc + '; font-weight:500;">' + p.estado + '</span>' +
@@ -2535,9 +2649,10 @@ async function crearPedido() {
   if (!proy) { msg.innerHTML = '<span class="status-err">Selecciona un proyecto</span>'; return; }
   if (!titulo) { msg.innerHTML = '<span class="status-err">Ingresa un título</span>'; return; }
 
-  const res = await apiPostJson('/pedidos', { id_proyecto: proy, titulo: titulo });
+  var tipo = document.getElementById('pedidoTipo').value || 'generico';
+  const res = await apiPostJson('/pedidos', { id_proyecto: proy, titulo: titulo, tipo: tipo });
   if (res && res.ok) {
-    msg.innerHTML = '<span class="status-ok">Pedido #' + res.id + ' creado</span>';
+    msg.innerHTML = '<span class="status-ok">Pedido #' + res.id + ' creado (' + tipo + ')</span>';
     document.getElementById('pedidoTitulo').value = '';
     await loadPedidos();
     openPedido(res.id);
@@ -2555,23 +2670,46 @@ async function openPedido(id) {
   if (!data) { card.style.display = 'none'; return; }
 
   document.getElementById('pedidoDetailTitle').textContent = data.titulo || 'Sin título';
+  var tipoLabel = data.tipo === 'especifico' ? 'Específico' : 'Genérico';
   document.getElementById('pedidoDetailMeta').textContent =
-    (data.nombre_proyecto || data.id_proyecto) + ' · Creado por ' + (data.creado_por || '—') +
+    (data.nombre_proyecto || data.id_proyecto) + ' · ' + tipoLabel + ' · Creado por ' + (data.creado_por || '—') +
     ' · ' + (data.fecha_creacion || '').substring(0, 10);
   document.getElementById('pedidoDetailEstado').value = data.estado;
 
+  // Show/hide procesar button
+  var btnProc = document.getElementById('btnProcesarPedido');
+  if (btnProc) {
+    btnProc.style.display = (!data.procesado && (data.estado === 'enviado' || data.estado === 'en_proceso') && data.items && data.items.length > 0) ? '' : 'none';
+  }
+
+  // Show/hide sector/piso/ciclo fields based on tipo
+  var isEspecifico = data.tipo === 'especifico';
+  var sg = document.getElementById('itemSectorGroup');
+  var pg = document.getElementById('itemPisoGroup');
+  var cg = document.getElementById('itemCicloGroup');
+  if (sg) sg.style.display = isEspecifico ? '' : 'none';
+  if (pg) pg.style.display = isEspecifico ? '' : 'none';
+  if (cg) cg.style.display = isEspecifico ? '' : 'none';
+
+  // Store tipo on the detail card for use by agregarItemPedido
+  document.getElementById('pedidoDetailCard').dataset.tipo = data.tipo || 'generico';
+  document.getElementById('pedidoDetailCard').dataset.procesado = data.procesado ? '1' : '0';
+
   const tbody = document.getElementById('pedidoItemsBody');
   if (!data.items || data.items.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="7" class="muted">Sin items — agrega barras arriba</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="10" class="muted">Sin items — agrega barras arriba</td></tr>';
   } else {
     const estadoItemColors = { pendiente: '#9E9E9E', en_proceso: '#FF9800', completado: '#8BC34A' };
     tbody.innerHTML = data.items.map(i => {
       const ic = estadoItemColors[i.estado] || '#666';
       return '<tr>' +
+        '<td>' + (i.eje || '') + '</td>' +
         '<td style="font-weight:600;">' + i.diam + '</td>' +
         '<td>' + (i.largo || '—') + '</td>' +
         '<td>' + i.cantidad + '</td>' +
         '<td>' + (i.sector || '—') + '</td>' +
+        '<td>' + (i.piso || '—') + '</td>' +
+        '<td>' + (i.ciclo || '—') + '</td>' +
         '<td class="muted">' + (i.nota || '') + '</td>' +
         '<td><span style="font-size:10px; padding:1px 6px; border-radius:8px; background:' + ic + '22; color:' + ic + ';">' + i.estado + '</span></td>' +
         '<td><button onclick="eliminarItemPedido(' + id + ',' + i.id + ')" style="font-size:10px; padding:2px 6px; background:#fff; border:1px solid #ddd; color:#b42318; cursor:pointer;" title="Eliminar item">✕</button></td>' +
@@ -2614,23 +2752,33 @@ async function eliminarPedido() {
 
 async function agregarItemPedido() {
   if (!_pedidoActual) return;
+  var eje = (document.getElementById('itemEje').value || '').trim() || null;
   const diam = parseFloat(document.getElementById('itemDiam').value);
   const largo = parseFloat(document.getElementById('itemLargo').value) || null;
   const cantidad = parseInt(document.getElementById('itemCant').value) || 1;
   const sector = document.getElementById('itemSector').value || null;
+  var piso = (document.getElementById('itemPiso').value || '').trim().toUpperCase() || null;
+  var ciclo = (document.getElementById('itemCiclo').value || '').trim().toUpperCase() || null;
   const nota = document.getElementById('itemNota').value.trim() || null;
   const msg = document.getElementById('pedidoDetailMsg');
 
   if (!diam || isNaN(diam)) { msg.innerHTML = '<span class="status-err">Ingresa diámetro</span>'; return; }
 
-  const res = await apiPostJson('/pedidos/' + _pedidoActual + '/items', {
-    diam, largo, cantidad, sector, nota
-  });
+  var body = { diam: diam, largo: largo, cantidad: cantidad, nota: nota };
+  if (eje) body.eje = eje;
+  if (sector) body.sector = sector;
+  if (piso) body.piso = piso;
+  if (ciclo) body.ciclo = ciclo;
+
+  const res = await apiPostJson('/pedidos/' + _pedidoActual + '/items', body);
   if (res && res.ok) {
+    document.getElementById('itemEje').value = '';
     document.getElementById('itemDiam').value = '';
     document.getElementById('itemLargo').value = '';
     document.getElementById('itemCant').value = '1';
     document.getElementById('itemSector').value = '';
+    document.getElementById('itemPiso').value = '';
+    document.getElementById('itemCiclo').value = '';
     document.getElementById('itemNota').value = '';
     msg.innerHTML = '<span class="status-ok">Item agregado</span>';
     await openPedido(_pedidoActual);
@@ -2648,6 +2796,25 @@ async function eliminarItemPedido(pedidoId, itemId) {
     await loadPedidos();
   } else {
     alert('Error: ' + (res?.detail || 'desconocido'));
+  }
+}
+
+async function procesarPedido() {
+  if (!_pedidoActual) return;
+  if (!confirm('¿Procesar este pedido? Se generarán barras en la cubicación del proyecto. Esta acción no se puede deshacer.')) return;
+  var msg = document.getElementById('pedidoDetailMsg');
+  msg.innerHTML = '<span class="muted">Procesando...</span>';
+  var res = await fetch('/pedidos/' + _pedidoActual + '/procesar', {
+    method: 'POST', headers: authHeaders()
+  });
+  if (res.status === 401) { logout(); return; }
+  var data = await res.json();
+  if (data.ok) {
+    msg.innerHTML = '<span class="status-ok">Pedido procesado: ' + data.barras_creadas + ' barras generadas</span>';
+    await openPedido(_pedidoActual);
+    await loadPedidos();
+  } else {
+    msg.innerHTML = '<span class="status-err">Error: ' + (data.detail || 'desconocido') + '</span>';
   }
 }
 
@@ -3184,6 +3351,8 @@ async function crearReclamo() {
   if (detectadoPor) body.detectado_por = detectadoPor;
   if (fechaDeteccion) body.fecha_deteccion = fechaDeteccion;
   if (idCalidad) body.id_calidad = idCalidad;
+  var clienteId = document.getElementById('recCliente') ? document.getElementById('recCliente').value : '';
+  if (clienteId) body.cliente_id = parseInt(clienteId);
 
   var res = await fetch('/reclamos', {
     method: 'POST',
@@ -3200,12 +3369,68 @@ async function crearReclamo() {
     });
     document.getElementById('recProyecto').value = '';
     document.getElementById('recPrioridad').value = 'media';
+    var recCl = document.getElementById('recCliente'); if (recCl) recCl.value = '';
     document.getElementById('nuevoReclamoForm').style.display = 'none';
     await loadReclamos();
     await loadReclamosKpis();
   } else {
     msg.textContent = 'Error: ' + (data.detail || 'desconocido'); msg.style.color = '#b42318';
   }
+}
+
+function toggleNuevoClienteRec() {
+  var form = document.getElementById('nuevoClienteRecForm');
+  if (form) form.style.display = form.style.display === 'none' ? '' : 'none';
+}
+
+async function crearClienteDesdeReclamo() {
+  var nombre = document.getElementById('recNuevoClienteNombre').value.trim();
+  var msg = document.getElementById('recNuevoClienteMsg');
+  if (!nombre) { msg.textContent = 'El nombre es requerido'; msg.style.color = '#b42318'; return; }
+  msg.textContent = 'Creando...'; msg.style.color = '#666';
+  var body = { nombre: nombre };
+  var rut = document.getElementById('recNuevoClienteRut').value.trim();
+  var contacto = document.getElementById('recNuevoClienteContacto').value.trim();
+  var email = document.getElementById('recNuevoClienteEmail').value.trim();
+  if (rut) body.rut = rut;
+  if (contacto) body.contacto = contacto;
+  if (email) body.email = email;
+  var res = await fetch('/clientes', {
+    method: 'POST',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  if (res.status === 401) { logout(); return; }
+  var data = await res.json();
+  if (data.ok) {
+    msg.textContent = 'Cliente creado'; msg.style.color = '#558B2F';
+    document.getElementById('recNuevoClienteNombre').value = '';
+    document.getElementById('recNuevoClienteRut').value = '';
+    document.getElementById('recNuevoClienteContacto').value = '';
+    document.getElementById('recNuevoClienteEmail').value = '';
+    await loadClientes();
+    var sel = document.getElementById('recCliente');
+    if (sel && data.id) sel.value = data.id;
+    toggleNuevoClienteRec();
+  } else {
+    msg.textContent = 'Error: ' + (data.detail || 'desconocido'); msg.style.color = '#b42318';
+  }
+}
+
+async function cambiarClienteReclamo() {
+  if (!_reclamoActual) return;
+  var val = document.getElementById('recDetailCliente').value;
+  var clienteId = val ? parseInt(val) : null;
+  if (clienteId === (_reclamoActual.cliente_id || null)) return;
+  var res = await fetch('/reclamos/' + _reclamoActual.id, {
+    method: 'PATCH',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ cliente_id: clienteId || 0 })
+  });
+  if (res.status === 401) { logout(); return; }
+  var data = await res.json();
+  if (data.ok) { await verReclamo(_reclamoActual.id); await loadReclamos(); }
+  else { alert('Error: ' + (data.detail || 'desconocido')); }
 }
 
 async function verReclamo(id) {
@@ -3237,6 +3462,14 @@ async function verReclamo(id) {
   if (srcSel && detSel) {
     detSel.innerHTML = srcSel.innerHTML;
     detSel.value = data.id_proyecto || '';
+  }
+
+  // Populate client dropdown from recCliente options (already loaded)
+  var srcClSel = document.getElementById('recCliente');
+  var detClSel = document.getElementById('recDetailCliente');
+  if (srcClSel && detClSel) {
+    detClSel.innerHTML = srcClSel.innerHTML;
+    detClSel.value = data.cliente_id || '';
   }
 
   // Info fields

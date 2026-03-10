@@ -366,7 +366,7 @@ MIGRATIONS = [
             data BYTEA NOT NULL,
             descripcion TEXT,
             subido_por TEXT NOT NULL,
-            fecha_subida TEXT NOT NULL DEFAULT (NOW() AT TIME ZONE 'UTC')
+            fecha TEXT NOT NULL DEFAULT (NOW() AT TIME ZONE 'UTC')
         )""",
         "CREATE INDEX IF NOT EXISTS idx_reclamo_img_reclamo ON reclamo_imagenes(reclamo_id)",
     ]),
@@ -385,6 +385,19 @@ MIGRATIONS = [
             END IF;
         END $$;""",
         "ALTER TABLE reclamos ADD CONSTRAINT reclamos_id_proyecto_fkey FOREIGN KEY (id_proyecto) REFERENCES proyectos(id_proyecto) ON DELETE SET NULL",
+    ]),
+    (17, "pedidos: tipo pedido + eje en items + procesado flag", [
+        # Tipo de pedido: generico (sin sector) o especifico (con sector)
+        "DO $$ BEGIN ALTER TABLE pedidos ADD COLUMN tipo TEXT NOT NULL DEFAULT 'generico' CHECK (tipo IN ('generico','especifico')); EXCEPTION WHEN duplicate_column THEN NULL; END $$;",
+        # Eje en items: texto libre para aSa Studio (columna A), max 14 chars
+        "DO $$ BEGIN ALTER TABLE pedido_items ADD COLUMN eje TEXT; EXCEPTION WHEN duplicate_column THEN NULL; END $$;",
+        # Flag para saber si el pedido ya fue procesado (items → barras)
+        "DO $$ BEGIN ALTER TABLE pedidos ADD COLUMN procesado BOOLEAN NOT NULL DEFAULT FALSE; EXCEPTION WHEN duplicate_column THEN NULL; END $$;",
+        # Referencia al item de pedido en la barra generada
+        "DO $$ BEGIN ALTER TABLE barras ADD COLUMN pedido_item_id INTEGER; EXCEPTION WHEN duplicate_column THEN NULL; END $$;",
+    ]),
+    (18, "reclamos: cliente_id", [
+        "DO $$ BEGIN ALTER TABLE reclamos ADD COLUMN cliente_id INTEGER REFERENCES clientes(id) ON DELETE SET NULL; EXCEPTION WHEN duplicate_column THEN NULL; END $$;",
     ]),
 ]
 

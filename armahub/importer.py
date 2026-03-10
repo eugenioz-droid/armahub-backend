@@ -18,6 +18,7 @@ import pandas as pd
 from io import StringIO
 from datetime import datetime, timezone
 from typing import Optional
+import uuid
 
 from .db import get_conn, audit
 from .auth import get_current_user
@@ -33,6 +34,9 @@ async def import_armadetailer(
     forzar: bool = Query(False, description="Forzar importación ignorando duplicados de nombre"),
     calculista: Optional[str] = Query(None, description="Nombre del calculista (solo al crear proyecto nuevo)"),
     confirmar_nuevo: bool = Query(False, description="Confirmar creación de proyecto nuevo"),
+    cliente_id: Optional[int] = Query(None, description="ID de cliente a asignar al proyecto nuevo"),
+    owner_id: Optional[int] = Query(None, description="ID de usuario dueño del proyecto nuevo"),
+    proyecto_nombre_manual: Optional[str] = Query(None, description="Nombre de proyecto cuando CSV no trae PROYECTO:"),
 ):
     raw = (await file.read()).decode("utf-8", errors="replace")
     lines = raw.splitlines()
@@ -55,7 +59,28 @@ async def import_armadetailer(
                 plano_nombre = partes[1].strip()
 
     if not proyecto_id or not proyecto_nombre:
-        return {"ok": False, "error": "No se encontró PROYECTO en línea 2 del formato 'PROYECTO: ID|NOMBRE'."}
+        if reasignar_a:
+            # El usuario eligió un proyecto existente — usar ese
+            proyecto_id = reasignar_a
+            with get_conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("SELECT nombre_proyecto FROM proyectos WHERE id_proyecto = %s", (proyecto_id,))
+                    row = cur.fetchone()
+                    if not row:
+                        return {"ok": False, "error": f"Proyecto {proyecto_id} no existe."}
+                    proyecto_nombre = row[0]
+        elif confirmar_nuevo and proyecto_nombre_manual:
+            # El usuario quiere crear un proyecto nuevo sin PROYECTO: en CSV
+            proyecto_id = "MANUAL-" + str(uuid.uuid4().hex[:8].upper())
+            proyecto_nombre = proyecto_nombre_manual
+        else:
+            # CSV sin PROYECTO: — pedir al frontend que elija
+            return {
+                "ok": False,
+                "missing_project": True,
+                "mensaje": "El archivo no contiene línea PROYECTO:. Selecciona un proyecto existente o crea uno nuevo.",
+                "archivo": file.filename,
+            }
 
     # --- Detección de proyectos duplicados (mismo nombre, distinto ID) ---
     if reasignar_a:
@@ -152,13 +177,14 @@ async def import_armadetailer(
         with conn.cursor() as cur:
             if is_new_project:
                 # Nuevo: crear con owner_id y calculista
-                cur.execute("SELECT id FROM users WHERE email = %s", (user.get("email"),))
-                owner_row = cur.fetchone()
-                owner_id = owner_row[0] if owner_row else None
+                if not owner_id:
+                    cur.execute("SELECT id FROM users WHERE email = %s", (user.get("email"),))
+                    owner_row = cur.fetchone()
+                    owner_id = owner_row[0] if owner_row else None
                 cur.execute("""
-                    INSERT INTO proyectos (id_proyecto, nombre_proyecto, usuario_creador, owner_id, calculista)
-                    VALUES (%s, %s, %s, %s, %s)
-                """, (proyecto_id, proyecto_nombre, user.get("email", "unknown"), owner_id, calculista))
+                    INSERT INTO proyectos (id_proyecto, nombre_proyecto, usuario_creador, owner_id, calculista, cliente_id)
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                """, (proyecto_id, proyecto_nombre, user.get("email", "unknown"), owner_id, calculista, cliente_id))
             else:
                 # Existente: solo actualizar nombre
                 cur.execute("""

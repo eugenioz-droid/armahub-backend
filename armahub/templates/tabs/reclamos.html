@@ -114,10 +114,43 @@
               <option value="">— Sin proyecto —</option>
             </select>
           </div>
+          <div class="col" style="min-width:180px;">
+            <label style="font-size:11px; color:#666;">Cliente</label>
+            <div class="row" style="gap:4px; align-items:center;">
+              <select id="recCliente" style="flex:1; font-size:12px;">
+                <option value="">— Sin cliente —</option>
+              </select>
+              <button type="button" class="secondary" style="font-size:10px; padding:3px 8px; white-space:nowrap;" onclick="toggleNuevoClienteRec()">+ Nuevo</button>
+            </div>
+          </div>
           <div class="col" style="max-width:180px;">
             <label style="font-size:11px; color:#666;">ID Calidad (opcional)</label>
             <input type="text" id="recIdCalidad" placeholder="Ej: NC-2026-014" style="width:100%; font-size:12px;" />
           </div>
+        </div>
+        <!-- Inline nuevo cliente -->
+        <div id="nuevoClienteRecForm" style="display:none; margin-top:6px; padding:8px 10px; background:#fffde7; border:1px solid #ffe082; border-radius:6px;">
+          <div class="row" style="gap:6px; flex-wrap:wrap; align-items:flex-end;">
+            <div style="flex:1; min-width:150px;">
+              <label style="font-size:10px; color:#666;">Nombre cliente *</label>
+              <input type="text" id="recNuevoClienteNombre" placeholder="Nombre o razón social" style="width:100%; font-size:12px;" />
+            </div>
+            <div style="min-width:110px;">
+              <label style="font-size:10px; color:#666;">RUT</label>
+              <input type="text" id="recNuevoClienteRut" placeholder="12.345.678-9" style="width:100%; font-size:12px;" />
+            </div>
+            <div style="min-width:130px;">
+              <label style="font-size:10px; color:#666;">Contacto</label>
+              <input type="text" id="recNuevoClienteContacto" placeholder="Nombre contacto" style="width:100%; font-size:12px;" />
+            </div>
+            <div style="min-width:140px;">
+              <label style="font-size:10px; color:#666;">Email</label>
+              <input type="email" id="recNuevoClienteEmail" placeholder="email@ejemplo.com" style="width:100%; font-size:12px;" />
+            </div>
+            <button type="button" onclick="crearClienteDesdeReclamo()" style="font-size:11px; padding:4px 10px; white-space:nowrap;">Crear cliente</button>
+            <button type="button" class="secondary" onclick="toggleNuevoClienteRec()" style="font-size:11px; padding:4px 8px;">Cancelar</button>
+          </div>
+          <div id="recNuevoClienteMsg" style="margin-top:4px; font-size:11px;"></div>
         </div>
         <div class="row" style="gap:8px; flex-wrap:wrap; align-items:flex-end; margin-top:8px;">
           <div class="col" style="max-width:150px;">
@@ -226,6 +259,12 @@
             <label style="font-size:10px; color:#666; white-space:nowrap;">Obra:</label>
             <select id="recDetailProyecto" onchange="cambiarProyectoReclamo()" style="font-size:11px; max-width:180px;">
               <option value="">— Sin obra —</option>
+            </select>
+          </div>
+          <div style="display:flex; align-items:center; gap:4px;">
+            <label style="font-size:10px; color:#666; white-space:nowrap;">Cliente:</label>
+            <select id="recDetailCliente" onchange="cambiarClienteReclamo()" style="font-size:11px; max-width:180px;">
+              <option value="">— Sin cliente —</option>
             </select>
           </div>
           <select id="recDetailAplica" onchange="cambiarAplicaReclamo()" style="font-size:11px;">

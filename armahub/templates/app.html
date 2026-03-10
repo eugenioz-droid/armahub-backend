@@ -103,9 +103,58 @@
           <option value="">Cargando usuarios...</option>
         </select>
       </div>
+      <div style="margin-bottom:12px;">
+        <label style="font-size:12px; color:#666; display:block; margin-bottom:4px;">Cliente (opcional)</label>
+        <select id="newProjCliente" style="width:100%; font-size:13px;">
+          <option value="">— Sin cliente —</option>
+        </select>
+      </div>
       <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:16px;">
         <button class="secondary" onclick="closeNewProjectModal(false)" style="padding:8px 16px;">Cancelar</button>
         <button onclick="closeNewProjectModal(true)" style="padding:8px 16px;">Crear y continuar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: CSV sin PROYECTO — elegir proyecto existente o crear nuevo -->
+  <div id="missingProjectModal" style="display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.5); z-index:9999; align-items:center; justify-content:center;">
+    <div style="background:#fff; border-radius:12px; padding:24px; max-width:480px; width:90%; box-shadow:0 8px 32px rgba(0,0,0,0.3);">
+      <h3 style="margin:0 0 4px 0; color:#1a1a1a;">Archivo sin proyecto</h3>
+      <p id="missProjMsg" class="muted" style="margin:0 0 16px 0; font-size:13px;"></p>
+
+      <!-- Opción 1: Asignar a proyecto existente -->
+      <div style="margin-bottom:16px; padding:12px; background:#f8f9fa; border-radius:8px;">
+        <label style="font-size:13px; font-weight:600; display:block; margin-bottom:6px;">Asignar a proyecto existente</label>
+        <select id="missProjExistente" style="width:100%; font-size:13px;">
+          <option value="">— Selecciona un proyecto —</option>
+        </select>
+        <button onclick="closeMissingProjectModal('existing')" style="margin-top:8px; padding:6px 14px; font-size:13px;">Asignar y continuar</button>
+      </div>
+
+      <div style="text-align:center; color:#999; font-size:12px; margin-bottom:12px;">— o —</div>
+
+      <!-- Opción 2: Crear proyecto nuevo -->
+      <div style="padding:12px; background:#f8f9fa; border-radius:8px;">
+        <label style="font-size:13px; font-weight:600; display:block; margin-bottom:6px;">Crear proyecto nuevo</label>
+        <input type="text" id="missProjNombre" placeholder="Nombre del proyecto" style="width:100%; font-size:13px; margin-bottom:6px;" />
+        <input type="text" id="missProjCalculista" placeholder="Calculista (opcional)" style="width:100%; font-size:13px; margin-bottom:6px;" />
+        <div style="display:flex; gap:8px; margin-bottom:6px;">
+          <div style="flex:1;">
+            <select id="missProjOwner" style="width:100%; font-size:13px;">
+              <option value="">Dueño...</option>
+            </select>
+          </div>
+          <div style="flex:1;">
+            <select id="missProjCliente" style="width:100%; font-size:13px;">
+              <option value="">— Sin cliente —</option>
+            </select>
+          </div>
+        </div>
+        <button onclick="closeMissingProjectModal('new')" style="padding:6px 14px; font-size:13px;">Crear y continuar</button>
+      </div>
+
+      <div style="text-align:right; margin-top:12px;">
+        <button class="secondary" onclick="closeMissingProjectModal('cancel')" style="padding:6px 14px; font-size:12px;">Cancelar</button>
       </div>
     </div>
   </div>
