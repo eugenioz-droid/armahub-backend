@@ -986,7 +986,27 @@ errores y reclamos levantados por clientes. Incluye formulario tipo, análisis d
     e) Columnas adicionales en tabla reclamos - OK
        - Detectado por y Responsable ahora visibles en la tabla
 
-    f) Dashboard de reclamos: cubre 12 meses completos (año completo) - OK
+    f) Dashboard de reclamos: comparación multi-año - OK
+       - Gráfico de barras agrupadas por mes (Ene-Dic), una barra de color por año
+       - Backend retorna datos agrupados por año+mes para todos los años
+       - Leyenda automática cuando hay más de un año
+       - 8 colores distintos para hasta 8 años
+
+38e. Campo kilos mal fabricados - ✅ Implementado 10-Mar-2026
+    Migración 22: kilos_mal_fabricados (DOUBLE PRECISION) en tabla reclamos
+
+    a) Input numérico en Sección 2 (Respuesta del responsable) - OK
+       - Campo tipo number con step 0.01
+       - Guardado junto con la respuesta via guardarRespuesta()
+       - Editable por cubicador y admin
+
+    b) Visible en Sección 1 (Antecedentes) - OK
+       - Muestra "Kilos mal fabricados: X.XX kg" en rojo cuando tiene valor
+
+    c) Backend - OK
+       - ReclamoUpdate incluye kilos_mal_fabricados (Optional[float])
+       - GET /reclamos/{id} retorna kilos_mal_fabricados
+       - PATCH /reclamos/{id} permite actualizar kilos_mal_fabricados
 
 38c. Perfil de usuario (self-service) - Pendiente
     a) Cambiar contraseña propia - Pendiente

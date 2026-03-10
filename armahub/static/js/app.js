@@ -3206,15 +3206,25 @@ async function loadReclamosDashboard() {
   var data = await apiGet('/reclamos/dashboard');
   if (!data) return;
 
-  // 1) Reclamos por mes — bar chart
-  var mesLabels = (data.por_mes || []).map(function(d) { return d.mes; });
-  var mesValues = (data.por_mes || []).map(function(d) { return d.count; });
+  // 1) Reclamos por mes — multi-year grouped bar chart
+  var _mesNombres = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+  var _anioColores = ['#e53935','#1565C0','#2e7d32','#ff9800','#7B1FA2','#00897B','#F57C00','#5C6BC0'];
+  var anioMesData = data.por_anio_mes || [];
+  var aniosSet = {};
+  anioMesData.forEach(function(d) { aniosSet[d.anio] = true; });
+  var anios = Object.keys(aniosSet).map(Number).sort();
+  var datasets = anios.map(function(anio, idx) {
+    var counts = new Array(12).fill(0);
+    anioMesData.forEach(function(d) { if (d.anio === anio) counts[d.mes - 1] = d.count; });
+    return { label: '' + anio, data: counts, backgroundColor: _anioColores[idx % _anioColores.length] };
+  });
   var ctx1 = document.getElementById('recChartMes').getContext('2d');
   if (_recChartMes) _recChartMes.destroy();
   _recChartMes = new Chart(ctx1, {
     type: 'bar',
-    data: { labels: mesLabels, datasets: [{ label: 'Reclamos', data: mesValues, backgroundColor: '#e53935' }] },
-    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } },
+    data: { labels: _mesNombres, datasets: datasets },
+    options: { responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: anios.length > 1, labels: { font: { size: 10 } } } },
       scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } } }
   });
 
@@ -3588,6 +3598,7 @@ async function verReclamo(id) {
   infoHtml += '<div><strong>Aplica:</strong> <span style="color:' + aplColor + '; font-weight:600;">' + (_recAplicaLabels[data.aplica] || 'Pendiente') + '</span></div>';
   if (data.detectado_por) infoHtml += '<div><strong>Detectado por:</strong> ' + data.detectado_por + '</div>';
   if (data.responsable) infoHtml += '<div><strong>Responsable:</strong> ' + data.responsable + '</div>';
+  if (data.kilos_mal_fabricados != null) infoHtml += '<div><strong>Kilos mal fabricados:</strong> <span style="color:#b42318; font-weight:600;">' + data.kilos_mal_fabricados.toLocaleString('es-CL', {minimumFractionDigits: 2}) + ' kg</span></div>';
   if (data.fecha_deteccion) infoHtml += '<div><strong>F. Detección:</strong> ' + data.fecha_deteccion + '</div>';
   if (data.fecha_cierre) infoHtml += '<div><strong>Cerrado:</strong> ' + data.fecha_cierre.replace('T', ' ').substring(0, 19) + '</div>';
   infoHtml += '</div>';
@@ -3610,6 +3621,7 @@ async function verReclamo(id) {
   document.getElementById('recDetailFechaAnalisis').value = data.fecha_analisis || '';
   document.getElementById('recDetailExplicacionCausa').value = data.explicacion_causa || '';
   document.getElementById('recDetailObservaciones').value = data.observaciones || '';
+  document.getElementById('recDetailKilosMal').value = data.kilos_mal_fabricados != null ? data.kilos_mal_fabricados : '';
   var respInfo = document.getElementById('recRespuestaInfo');
   if (data.respuesta_por) {
     respInfo.innerHTML = 'Respondido por: <strong>' + data.respuesta_por + '</strong>' +
@@ -3798,6 +3810,8 @@ async function guardarRespuesta() {
     explicacion_causa: document.getElementById('recDetailExplicacionCausa').value.trim() || null,
     observaciones: document.getElementById('recDetailObservaciones').value.trim() || null,
   };
+  var kilosVal = document.getElementById('recDetailKilosMal').value;
+  if (kilosVal !== '') body.kilos_mal_fabricados = parseFloat(kilosVal);
   var res = await fetch('/reclamos/' + _reclamoActual.id, {
     method: 'PATCH',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },

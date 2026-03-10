@@ -154,6 +154,7 @@ class ReclamoUpdate(BaseModel):
     respuesta_texto: Optional[str] = None
     validacion_resultado: Optional[str] = None
     validacion_observaciones: Optional[str] = None
+    kilos_mal_fabricados: Optional[float] = None
 
 
 class SeguimientoCreate(BaseModel):
@@ -384,14 +385,15 @@ def reclamos_dashboard(user=Depends(get_current_user)):
     """Datos agregados para el dashboard de reclamos: charts y matriz."""
     with get_conn() as conn:
         with conn.cursor() as cur:
-            # 1) Reclamos por mes (últimos 12 meses)
+            # 1) Reclamos por año-mes (todos los años, para comparación multi-año)
             cur.execute("""
-                SELECT TO_CHAR(fecha_creacion::timestamp, 'YYYY-MM') AS mes, COUNT(*)
+                SELECT EXTRACT(YEAR FROM fecha_creacion::timestamp)::INTEGER AS anio,
+                       EXTRACT(MONTH FROM fecha_creacion::timestamp)::INTEGER AS mes,
+                       COUNT(*)
                 FROM reclamos
-                WHERE fecha_creacion::timestamp >= NOW() - INTERVAL '12 months'
-                GROUP BY mes ORDER BY mes
+                GROUP BY anio, mes ORDER BY anio, mes
             """)
-            por_mes = [{"mes": r[0], "count": int(r[1])} for r in cur.fetchall()]
+            por_anio_mes = [{"anio": r[0], "mes": r[1], "count": int(r[2])} for r in cur.fetchall()]
 
             # 2) Distribución por categoría Ishikawa
             cur.execute("""
@@ -466,7 +468,7 @@ def reclamos_dashboard(user=Depends(get_current_user)):
     }
 
     return {
-        "por_mes": por_mes,
+        "por_anio_mes": por_anio_mes,
         "por_categoria": por_categoria,
         "por_obra": por_obra,
         "por_estado": por_estado,
@@ -521,7 +523,8 @@ def get_reclamo(reclamo_id: int, user=Depends(get_current_user)):
                        r.correlativo, r.id_calidad,
                        r.tipo_reclamo, r.respuesta_texto, r.respuesta_fecha,
                        r.respuesta_por, r.validacion_resultado,
-                       r.validacion_observaciones, r.validacion_fecha, r.validacion_por
+                       r.validacion_observaciones, r.validacion_fecha, r.validacion_por,
+                       r.kilos_mal_fabricados
                 FROM reclamos r
                 LEFT JOIN proyectos p ON r.id_proyecto = p.id_proyecto
                 WHERE r.id = %s
@@ -569,6 +572,7 @@ def get_reclamo(reclamo_id: int, user=Depends(get_current_user)):
         "validacion_observaciones": row[34],
         "validacion_fecha": str(row[35]) if row[35] else None,
         "validacion_por": row[36],
+        "kilos_mal_fabricados": row[37],
         "seguimientos": [
             {"id": s[0], "usuario": s[1], "comentario": s[2],
              "estado_anterior": s[3], "estado_nuevo": s[4], "fecha": s[5]}
@@ -622,7 +626,7 @@ def actualizar_reclamo(reclamo_id: int, body: ReclamoUpdate, user=Depends(get_cu
                 "analista", "area_aplica", "explicacion_causa",
                 "accion_correctiva", "accion_preventiva", "resolucion", "observaciones",
                 "id_calidad", "respuesta_texto", "validacion_resultado",
-                "validacion_observaciones",
+                "validacion_observaciones", "kilos_mal_fabricados",
             ]
             # Fields where empty string should be stored as NULL
             nullable_fields = {"id_proyecto", "id_calidad", "sub_causa", "cod_causa", "responsable",

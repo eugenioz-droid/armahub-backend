@@ -428,6 +428,9 @@ MIGRATIONS = [
     (21, "users: apellido", [
         "DO $$ BEGIN ALTER TABLE users ADD COLUMN apellido TEXT; EXCEPTION WHEN duplicate_column THEN NULL; END $$;",
     ]),
+    (22, "reclamos: kilos_mal_fabricados", [
+        "DO $$ BEGIN ALTER TABLE reclamos ADD COLUMN kilos_mal_fabricados DOUBLE PRECISION; EXCEPTION WHEN duplicate_column THEN NULL; END $$;",
+    ]),
 ]
 
 
