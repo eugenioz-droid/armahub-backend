@@ -3916,6 +3916,7 @@ function toggleEditarReclamo() {
     document.getElementById('recEditTitulo').value = d.titulo || '';
     document.getElementById('recEditTipo').value = d.tipo_reclamo || 'error';
     document.getElementById('recEditFechaDeteccion').value = d.fecha_deteccion || '';
+    document.getElementById('recEditIdCalidad').value = d.id_calidad || '';
     document.getElementById('recEditDetectadoPor').value = d.detectado_por || '';
     document.getElementById('recEditDescripcion').value = d.descripcion || '';
     // Populate responsable dropdown from cache
@@ -3951,6 +3952,7 @@ async function guardarEdicionReclamo() {
     fecha_deteccion: document.getElementById('recEditFechaDeteccion').value || null,
     detectado_por: document.getElementById('recEditDetectadoPor').value || null,
     responsable: document.getElementById('recEditResponsable').value || null,
+    id_calidad: document.getElementById('recEditIdCalidad').value.trim() || null,
   };
   var res = await fetch('/reclamos/' + _reclamoActual.id, {
     method: 'PATCH',
