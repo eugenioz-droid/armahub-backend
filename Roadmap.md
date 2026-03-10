@@ -951,6 +951,43 @@ errores y reclamos levantados por clientes. Incluye formulario tipo, análisis d
 
     g) Nota: no se envían correos al crear usuarios (sin sistema de notificaciones aún)
 
+38d. Mejoras reclamos: filtros, dropdowns, apellido usuarios - ✅ Implementado 10-Mar-2026
+    Migración 21: apellido en tabla users
+
+    a) Filtros expandidos en lista de reclamos - OK
+       - Búsqueda por texto (título, descripción, correlativo, id_calidad)
+       - Filtro por tipo (Error/Faltante)
+       - Filtro por estado (incluye validación)
+       - Filtro por categoría Ishikawa
+       - Filtro por aplica (Sí/No/Pendiente)
+       - Filtro por detectado_por (Cliente/USC/Cubicador/Producción)
+       - Filtro por proyecto (dropdown con obras)
+       - Filtro por responsable (dropdown con usuarios)
+       - Botón "Limpiar" para resetear todos los filtros
+       - Backend: nuevos params tipo_reclamo, detectado_por, responsable, busqueda en GET /reclamos
+
+    b) Detectado por: dropdown fijo - OK
+       - Opciones: Cliente, USC, Cubicador, Producción
+       - En formulario de creación y filtro de lista
+
+    c) Responsable: dropdown de usuarios - OK
+       - GET /users/dropdown: devuelve id, email, nombre, apellido, display (nombre apellido)
+       - Dropdown muestra "Nombre Apellido (rol)" en creación
+       - Dropdown muestra "Nombre Apellido" en filtro
+       - Valor almacenado: nombre completo del usuario (no email)
+
+    d) Apellido en usuarios - OK
+       - Migración 21: campo apellido en tabla users
+       - Formulario crear usuario: campos Nombre y Apellido separados
+       - POST /auth/register acepta apellido
+       - GET /admin/users devuelve apellido
+       - Tabla admin muestra "Nombre Apellido" combinado
+
+    e) Columnas adicionales en tabla reclamos - OK
+       - Detectado por y Responsable ahora visibles en la tabla
+
+    f) Dashboard de reclamos: cubre 12 meses completos (año completo) - OK
+
 38c. Perfil de usuario (self-service) - Pendiente
     a) Cambiar contraseña propia - Pendiente
        - Formulario: contraseña actual + nueva contraseña + confirmar

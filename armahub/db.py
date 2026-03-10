@@ -425,6 +425,9 @@ MIGRATIONS = [
         "DO $$ BEGIN ALTER TABLE users ADD COLUMN activo BOOLEAN NOT NULL DEFAULT TRUE; EXCEPTION WHEN duplicate_column THEN NULL; END $$;",
         "DO $$ BEGIN ALTER TABLE users ADD COLUMN fecha_creacion TEXT NOT NULL DEFAULT (NOW() AT TIME ZONE 'UTC'); EXCEPTION WHEN duplicate_column THEN NULL; END $$;",
     ]),
+    (21, "users: apellido", [
+        "DO $$ BEGIN ALTER TABLE users ADD COLUMN apellido TEXT; EXCEPTION WHEN duplicate_column THEN NULL; END $$;",
+    ]),
 ]
 
 

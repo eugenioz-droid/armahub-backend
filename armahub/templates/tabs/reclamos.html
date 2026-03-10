@@ -152,11 +152,19 @@
           </div>
           <div class="col" style="max-width:180px;">
             <label style="font-size:11px; color:#666;">Detectado por</label>
-            <input type="text" id="recDetectadoPor" placeholder="Ej: Cliente, USC" style="width:100%;" />
+            <select id="recDetectadoPor" style="width:100%; font-size:12px;">
+              <option value="">— Seleccionar —</option>
+              <option value="Cliente">Cliente</option>
+              <option value="USC">USC</option>
+              <option value="Cubicador">Cubicador</option>
+              <option value="Producción">Producción</option>
+            </select>
           </div>
-          <div class="col" style="max-width:180px;">
+          <div class="col" style="max-width:200px;">
             <label style="font-size:11px; color:#666;">Responsable</label>
-            <input type="text" id="recResponsable" placeholder="Nombre (opcional)" style="width:100%;" />
+            <select id="recResponsable" style="width:100%; font-size:12px;">
+              <option value="">— Sin asignar —</option>
+            </select>
           </div>
         </div>
         <div style="margin-top:8px;">
@@ -183,33 +191,54 @@
 
     <!-- Lista de reclamos -->
     <div class="card">
-      <div class="row" style="justify-content:space-between; align-items:center; margin-bottom:8px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
         <h3 style="margin:0;">Lista de reclamos</h3>
-        <div class="row" style="gap:6px; align-items:center; flex-wrap:wrap;">
-          <select id="recFiltroEstado" onchange="loadReclamos()" style="font-size:11px;">
-            <option value="">Todos los estados</option>
-            <option value="abierto">Abierto</option>
-            <option value="en_analisis">En análisis</option>
-            <option value="accion_correctiva">Acción correctiva</option>
-            <option value="cerrado">Cerrado</option>
-            <option value="rechazado">Rechazado</option>
-          </select>
-          <select id="recFiltroCategoria" onchange="loadReclamos()" style="font-size:11px;">
-            <option value="">Todas las categorías</option>
-            <option value="mano_de_obra">Personas (Mano de obra)</option>
-            <option value="metodo">Método</option>
-            <option value="material">Material</option>
-            <option value="maquina">Máquina</option>
-            <option value="medicion">Medida</option>
-            <option value="medio_ambiente">Medio Ambiente</option>
-          </select>
-          <select id="recFiltroAplica" onchange="loadReclamos()" style="font-size:11px;">
-            <option value="">Aplica: Todos</option>
-            <option value="si">Sí aplica</option>
-            <option value="no">No aplica</option>
-            <option value="pendiente">Pendiente</option>
-          </select>
-        </div>
+      </div>
+      <div class="row" style="gap:6px; align-items:center; flex-wrap:wrap; margin-bottom:8px;">
+        <input type="text" id="recFiltroBusqueda" placeholder="Buscar..." onkeyup="if(event.key==='Enter')loadReclamos()" style="font-size:11px; max-width:160px; padding:3px 6px;" />
+        <select id="recFiltroTipo" onchange="loadReclamos()" style="font-size:11px;">
+          <option value="">Tipo: Todos</option>
+          <option value="error">Error</option>
+          <option value="faltante">Faltante</option>
+        </select>
+        <select id="recFiltroEstado" onchange="loadReclamos()" style="font-size:11px;">
+          <option value="">Estado: Todos</option>
+          <option value="abierto">Abierto</option>
+          <option value="en_analisis">En análisis</option>
+          <option value="accion_correctiva">Acción correctiva</option>
+          <option value="validacion">En validación</option>
+          <option value="cerrado">Cerrado</option>
+          <option value="rechazado">Rechazado</option>
+        </select>
+        <select id="recFiltroCategoria" onchange="loadReclamos()" style="font-size:11px;">
+          <option value="">Categoría: Todas</option>
+          <option value="mano_de_obra">Personas (Mano de obra)</option>
+          <option value="metodo">Método</option>
+          <option value="material">Material</option>
+          <option value="maquina">Máquina</option>
+          <option value="medicion">Medida</option>
+          <option value="medio_ambiente">Medio Ambiente</option>
+        </select>
+        <select id="recFiltroAplica" onchange="loadReclamos()" style="font-size:11px;">
+          <option value="">Aplica: Todos</option>
+          <option value="si">Sí aplica</option>
+          <option value="no">No aplica</option>
+          <option value="pendiente">Pendiente</option>
+        </select>
+        <select id="recFiltroDetectado" onchange="loadReclamos()" style="font-size:11px;">
+          <option value="">Detectado: Todos</option>
+          <option value="Cliente">Cliente</option>
+          <option value="USC">USC</option>
+          <option value="Cubicador">Cubicador</option>
+          <option value="Producción">Producción</option>
+        </select>
+        <select id="recFiltroProyecto" onchange="loadReclamos()" style="font-size:11px; max-width:180px;">
+          <option value="">Proyecto: Todos</option>
+        </select>
+        <select id="recFiltroResponsable" onchange="loadReclamos()" style="font-size:11px; max-width:160px;">
+          <option value="">Responsable: Todos</option>
+        </select>
+        <button class="secondary" style="font-size:10px; padding:2px 8px;" onclick="limpiarFiltrosReclamos()">Limpiar</button>
       </div>
       <div id="reclamosList">
         <div class="muted">Cargando reclamos...</div>

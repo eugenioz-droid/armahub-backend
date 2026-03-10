@@ -79,7 +79,7 @@ def login(email: str, password: str):
 
 
 @router.post("/auth/register")
-def register(email: str, password: str, nombre: str, role: str = "operador", admin=Depends(require_admin)):
+def register(email: str, password: str, nombre: str = "", apellido: str = "", role: str = "operador", admin=Depends(require_admin)):
     """
     Crea usuarios. Requiere admin.
 
@@ -96,8 +96,8 @@ def register(email: str, password: str, nombre: str, role: str = "operador", adm
         with get_conn() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    "INSERT INTO users (email, password_hash, role, nombre) VALUES (%s,%s,%s,%s)",
-                    (email, password_hash, role, nombre.strip() or None),
+                    "INSERT INTO users (email, password_hash, role, nombre, apellido) VALUES (%s,%s,%s,%s,%s)",
+                    (email, password_hash, role, nombre.strip() or None, apellido.strip() or None),
                 )
         audit(admin.get("email", "?"), "registrar_usuario", f"{email} como {role}", "usuario", email)
         return {"ok": True}
@@ -166,21 +166,40 @@ def bootstrap_create_admin(email: str, password: str):
 VALID_ROLES = ("admin", "coordinador", "cubicador", "operador", "cliente")
 
 
+@router.get("/users/dropdown")
+def users_dropdown(user=Depends(get_current_user)):
+    """Lista de usuarios activos para dropdowns (nombre apellido). Todos los autenticados."""
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT id, email, nombre, apellido, role
+                FROM users WHERE activo = TRUE ORDER BY nombre, apellido, email
+            """)
+            rows = cur.fetchall()
+    return {
+        "users": [
+            {"id": r[0], "email": r[1], "nombre": r[2], "apellido": r[3], "role": r[4],
+             "display": ((r[2] or '') + ' ' + (r[3] or '')).strip() or r[1]}
+            for r in rows
+        ]
+    }
+
+
 @router.get("/admin/users")
 def admin_list_users(admin=Depends(require_admin)):
     """Lista completa de usuarios con todos los campos. Solo admin."""
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("""
-                SELECT id, email, role, nombre, activo, fecha_creacion
+                SELECT id, email, role, nombre, apellido, activo, fecha_creacion
                 FROM users ORDER BY id
             """)
             rows = cur.fetchall()
     return {
         "users": [
-            {"id": r[0], "email": r[1], "role": r[2], "nombre": r[3],
-             "activo": r[4] if r[4] is not None else True,
-             "fecha_creacion": r[5]}
+            {"id": r[0], "email": r[1], "role": r[2], "nombre": r[3], "apellido": r[4],
+             "activo": r[5] if r[5] is not None else True,
+             "fecha_creacion": r[6]}
             for r in rows
         ]
     }
@@ -241,16 +260,17 @@ def admin_reset_password(user_id: int, password: str, admin=Depends(require_admi
 
 
 @router.patch("/admin/users/{user_id}/nombre")
-def admin_change_nombre(user_id: int, nombre: str, admin=Depends(require_admin)):
-    """Cambiar nombre de un usuario. Solo admin."""
+def admin_change_nombre(user_id: int, nombre: str = "", apellido: str = "", admin=Depends(require_admin)):
+    """Cambiar nombre y/o apellido de un usuario. Solo admin."""
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("SELECT id, email FROM users WHERE id = %s", (user_id,))
             row = cur.fetchone()
             if not row:
                 raise HTTPException(status_code=404, detail="Usuario no encontrado")
-            cur.execute("UPDATE users SET nombre = %s WHERE id = %s", (nombre.strip() or None, user_id))
-    audit(admin.get("email", "?"), "cambiar_nombre", f"{row[1]}: {nombre}", "usuario", str(user_id))
+            cur.execute("UPDATE users SET nombre = %s, apellido = %s WHERE id = %s",
+                        (nombre.strip() or None, apellido.strip() or None, user_id))
+    audit(admin.get("email", "?"), "cambiar_nombre", f"{row[1]}: {nombre} {apellido}", "usuario", str(user_id))
     return {"ok": True, "id": user_id}
 
 

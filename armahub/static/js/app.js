@@ -2928,17 +2928,19 @@ function toggleNuevoUsuario() {
 async function createUser() {
   var email = document.getElementById('newUserEmail').value.trim();
   var nombre = document.getElementById('newUserNombre') ? document.getElementById('newUserNombre').value.trim() : '';
+  var apellido = document.getElementById('newUserApellido') ? document.getElementById('newUserApellido').value.trim() : '';
   var password = document.getElementById('newUserPassword').value;
   var role = document.getElementById('newUserRole').value;
   var msg = document.getElementById('createUserMsg');
   if (!email || !password) { msg.textContent = 'Email y contrasena son requeridos.'; msg.style.color = '#b42318'; return; }
-  var params = new URLSearchParams({ email: email, password: password, role: role, nombre: nombre });
+  var params = new URLSearchParams({ email: email, password: password, role: role, nombre: nombre, apellido: apellido });
   var res = await fetch('/auth/register?' + params.toString(), { method: 'POST', headers: authHeaders() });
   var data = await res.json();
   if (!res.ok) { msg.textContent = 'Error: ' + (data.detail || JSON.stringify(data)); msg.style.color = '#b42318'; return; }
   msg.textContent = 'Usuario ' + email + ' (' + role + ') creado.'; msg.style.color = '#558B2F';
   document.getElementById('newUserEmail').value = '';
   if (document.getElementById('newUserNombre')) document.getElementById('newUserNombre').value = '';
+  if (document.getElementById('newUserApellido')) document.getElementById('newUserApellido').value = '';
   document.getElementById('newUserPassword').value = '';
   await loadUsers();
 }
@@ -2971,8 +2973,9 @@ async function loadUsers() {
     }).join('');
     var rowStyle = 'border-bottom:1px solid #eee;' + (!activo ? ' background:#fafafa; opacity:0.7;' : '');
     html += '<tr style="' + rowStyle + '">';
+    var displayName = ((u.nombre || '') + ' ' + (u.apellido || '')).trim();
     html += '<td style="padding:4px 6px; font-weight:500;">' + u.email + '</td>';
-    html += '<td style="padding:4px 6px;">' + (u.nombre || '<span class="muted">-</span>') + '</td>';
+    html += '<td style="padding:4px 6px;">' + (displayName || '<span class="muted">-</span>') + '</td>';
     html += '<td style="padding:4px 6px;"><select style="font-size:11px; color:' + rColor + '; font-weight:600; border:1px solid #ddd; border-radius:3px; padding:1px 4px;" onchange="cambiarRolUsuario(' + u.id + ', this.value)">' + rolOpts + '</select></td>';
     html += '<td style="padding:4px 6px;">' + activoBadge + '</td>';
     html += '<td style="padding:4px 6px; font-size:11px;" class="muted">' + fecha + '</td>';
@@ -3324,23 +3327,75 @@ function renderRecMatriz(m) {
   container.innerHTML = html;
 }
 
+var _recUsersCache = [];
+async function loadRecUsersDropdown() {
+  var res = await fetch('/users/dropdown', { headers: authHeaders() });
+  if (!res.ok) return;
+  var data = await res.json();
+  _recUsersCache = data.users || [];
+  // Populate create form responsable
+  var createSel = document.getElementById('recResponsable');
+  if (createSel) {
+    var val = createSel.value;
+    createSel.innerHTML = '<option value="">— Sin asignar —</option>';
+    _recUsersCache.forEach(function(u) {
+      createSel.innerHTML += '<option value="' + u.display + '">' + u.display + ' (' + u.role + ')' + '</option>';
+    });
+    createSel.value = val;
+  }
+  // Populate filter responsable
+  var filterSel = document.getElementById('recFiltroResponsable');
+  if (filterSel) {
+    var fval = filterSel.value;
+    filterSel.innerHTML = '<option value="">Responsable: Todos</option>';
+    _recUsersCache.forEach(function(u) {
+      filterSel.innerHTML += '<option value="' + u.display + '">' + u.display + '</option>';
+    });
+    filterSel.value = fval;
+  }
+}
+
+function populateRecFilterProyecto() {
+  var src = document.getElementById('recProyecto');
+  var dst = document.getElementById('recFiltroProyecto');
+  if (!src || !dst) return;
+  var fval = dst.value;
+  dst.innerHTML = '<option value="">Proyecto: Todos</option>';
+  for (var i = 0; i < src.options.length; i++) {
+    if (src.options[i].value) {
+      dst.innerHTML += '<option value="' + src.options[i].value + '">' + src.options[i].text + '</option>';
+    }
+  }
+  dst.value = fval;
+}
+
 async function loadReclamos() {
-  const container = document.getElementById('reclamosList');
-  const estado = document.getElementById('recFiltroEstado').value;
-  const categoria = document.getElementById('recFiltroCategoria').value;
-  const aplica = document.getElementById('recFiltroAplica').value;
-  let url = '/reclamos';
-  const params = [];
+  var container = document.getElementById('reclamosList');
+  var estado = document.getElementById('recFiltroEstado').value;
+  var categoria = document.getElementById('recFiltroCategoria').value;
+  var aplica = document.getElementById('recFiltroAplica').value;
+  var tipo = document.getElementById('recFiltroTipo') ? document.getElementById('recFiltroTipo').value : '';
+  var detectado = document.getElementById('recFiltroDetectado') ? document.getElementById('recFiltroDetectado').value : '';
+  var proyecto = document.getElementById('recFiltroProyecto') ? document.getElementById('recFiltroProyecto').value : '';
+  var responsable = document.getElementById('recFiltroResponsable') ? document.getElementById('recFiltroResponsable').value : '';
+  var busqueda = document.getElementById('recFiltroBusqueda') ? document.getElementById('recFiltroBusqueda').value.trim() : '';
+  var url = '/reclamos';
+  var params = [];
   if (estado) params.push('estado=' + encodeURIComponent(estado));
   if (categoria) params.push('categoria=' + encodeURIComponent(categoria));
   if (aplica) params.push('aplica=' + encodeURIComponent(aplica));
+  if (tipo) params.push('tipo_reclamo=' + encodeURIComponent(tipo));
+  if (detectado) params.push('detectado_por=' + encodeURIComponent(detectado));
+  if (proyecto) params.push('id_proyecto=' + encodeURIComponent(proyecto));
+  if (responsable) params.push('responsable=' + encodeURIComponent(responsable));
+  if (busqueda) params.push('busqueda=' + encodeURIComponent(busqueda));
   if (params.length) url += '?' + params.join('&');
 
-  const data = await apiGet(url);
+  var data = await apiGet(url);
   if (!data) return;
 
   if (!data.reclamos || data.reclamos.length === 0) {
-    container.innerHTML = '<div class="muted">No hay reclamos registrados</div>';
+    container.innerHTML = '<div class="muted">No hay reclamos con los filtros seleccionados</div>';
     return;
   }
 
@@ -3350,6 +3405,8 @@ async function loadReclamos() {
     '<th style="padding:5px 6px;">Título</th>' +
     '<th style="padding:5px 6px;">Tipo</th>' +
     '<th style="padding:5px 6px;">Proyecto</th>' +
+    '<th style="padding:5px 6px;">Detectado</th>' +
+    '<th style="padding:5px 6px;">Responsable</th>' +
     '<th style="padding:5px 6px;">Estado</th>' +
     '<th style="padding:5px 6px;">Aplica</th>' +
     '<th style="padding:5px 6px;">Causa</th>' +
@@ -3372,6 +3429,8 @@ async function loadReclamos() {
         '<td style="padding:4px 6px; font-weight:500;">' + r.titulo + '</td>' +
         '<td style="padding:4px 6px;"><span style="color:' + tipoColor + '; font-weight:600; font-size:10px;">' + tipoLabel + '</span></td>' +
         '<td style="padding:4px 6px; font-size:11px;">' + (r.nombre_proyecto || '-') + '</td>' +
+        '<td style="padding:4px 6px; font-size:11px;">' + (r.detectado_por || '-') + '</td>' +
+        '<td style="padding:4px 6px; font-size:11px;">' + (r.responsable || '-') + '</td>' +
         '<td style="padding:4px 6px;"><span style="background:' + eColor + '; color:#fff; padding:1px 6px; border-radius:3px; font-size:10px;">' + eLabel + '</span></td>' +
         '<td style="padding:4px 6px;"><span style="color:' + aplColor + '; font-weight:600; font-size:10px;">' + aplLabel + '</span></td>' +
         '<td style="padding:4px 6px; font-size:11px;" title="' + (r.sub_causa || '') + '">' + causaText + '</td>' +
@@ -3379,7 +3438,16 @@ async function loadReclamos() {
         '<td style="padding:4px 4px;"><button class="secondary" style="font-size:10px; padding:2px 6px;" onclick="event.stopPropagation(); verReclamo(' + r.id + ')">Ver</button></td>' +
         '</tr>';
     }).join('') +
-    '</table>';
+    '</table>' +
+    '<div class="muted" style="font-size:11px; margin-top:4px;">Mostrando ' + data.reclamos.length + ' reclamo(s)</div>';
+}
+
+function limpiarFiltrosReclamos() {
+  ['recFiltroBusqueda','recFiltroTipo','recFiltroEstado','recFiltroCategoria','recFiltroAplica','recFiltroDetectado','recFiltroProyecto','recFiltroResponsable'].forEach(function(id) {
+    var el = document.getElementById(id);
+    if (el) el.value = '';
+  });
+  loadReclamos();
 }
 
 function toggleNuevoReclamo() {
@@ -3396,9 +3464,9 @@ async function crearReclamo() {
   var body = { titulo: titulo };
   var proyecto = document.getElementById('recProyecto').value;
   var tipoReclamo = document.getElementById('recTipoReclamo').value;
-  var responsable = document.getElementById('recResponsable').value.trim();
+  var responsable = document.getElementById('recResponsable').value;
   var descripcion = document.getElementById('recDescripcion').value.trim();
-  var detectadoPor = document.getElementById('recDetectadoPor').value.trim();
+  var detectadoPor = document.getElementById('recDetectadoPor').value;
   var fechaDeteccion = document.getElementById('recFechaDeteccion').value;
   var idCalidad = document.getElementById('recIdCalidad') ? document.getElementById('recIdCalidad').value.trim() : '';
   if (proyecto) body.id_proyecto = proyecto;
@@ -3518,6 +3586,8 @@ async function verReclamo(id) {
   infoHtml += '<div><strong>Estado:</strong> <span style="color:' + (_recEstadoColors[data.estado] || '#666') + '; font-weight:600;">' + (_recEstadoLabels[data.estado] || data.estado) + '</span></div>';
   var aplColor = _recAplicaColors[data.aplica] || '#ff9800';
   infoHtml += '<div><strong>Aplica:</strong> <span style="color:' + aplColor + '; font-weight:600;">' + (_recAplicaLabels[data.aplica] || 'Pendiente') + '</span></div>';
+  if (data.detectado_por) infoHtml += '<div><strong>Detectado por:</strong> ' + data.detectado_por + '</div>';
+  if (data.responsable) infoHtml += '<div><strong>Responsable:</strong> ' + data.responsable + '</div>';
   if (data.fecha_deteccion) infoHtml += '<div><strong>F. Detección:</strong> ' + data.fecha_deteccion + '</div>';
   if (data.fecha_cierre) infoHtml += '<div><strong>Cerrado:</strong> ' + data.fecha_cierre.replace('T', ' ').substring(0, 19) + '</div>';
   infoHtml += '</div>';
@@ -4074,6 +4144,8 @@ async function loadModuleData(mod) {
     await buscar(true);
   } else if (mod === 'reclamos') {
     await loadProyectos();
+    await loadRecUsersDropdown();
+    populateRecFilterProyecto();
     await loadReclamos();
     await loadReclamosKpis();
     initRecImageDropZones();

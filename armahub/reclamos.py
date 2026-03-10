@@ -186,6 +186,10 @@ def listar_reclamos(
     prioridad: Optional[str] = None,
     categoria: Optional[str] = None,
     aplica: Optional[str] = None,
+    tipo_reclamo: Optional[str] = None,
+    detectado_por: Optional[str] = None,
+    responsable: Optional[str] = None,
+    busqueda: Optional[str] = None,
     user=Depends(get_current_user),
 ):
     """Lista reclamos con filtros opcionales."""
@@ -208,6 +212,19 @@ def listar_reclamos(
             if aplica:
                 where += " AND r.aplica = %s"
                 params.append(aplica)
+            if tipo_reclamo:
+                where += " AND r.tipo_reclamo = %s"
+                params.append(tipo_reclamo)
+            if detectado_por:
+                where += " AND r.detectado_por = %s"
+                params.append(detectado_por)
+            if responsable:
+                where += " AND r.responsable = %s"
+                params.append(responsable)
+            if busqueda:
+                where += " AND (r.titulo ILIKE %s OR r.descripcion ILIKE %s OR r.correlativo ILIKE %s OR r.id_calidad ILIKE %s)"
+                like = f"%{busqueda}%"
+                params.extend([like, like, like, like])
 
             cur.execute(f"""
                 SELECT r.id, r.id_proyecto, r.titulo, r.descripcion, r.estado,
