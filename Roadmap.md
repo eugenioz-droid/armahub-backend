@@ -1045,10 +1045,13 @@ errores y reclamos levantados por clientes. Incluye formulario tipo, análisis d
        - Validación: título obligatorio
        - Cierra formulario y refresca vista + lista tras guardar
 
-    d) Permisos (pendiente futuro) - Pendiente
-       - Solo admin y creador podrán editar (por ahora sin restricción)
+    d) Permisos - 
+       - Solo admin y creador del reclamo pueden ver el botón "" Editar"
+       - Verificación: currentRole === 'admin' || data.creado_por === currentUserEmail
+       - Doble guarda: botón oculto en UI + validación en guardarEdicionReclamo()
+       - currentUserEmail se carga desde GET /me al iniciar sesión
 
-38g. Gestión de proyectos desde Admin - ✅ Implementado 10-Mar-2026
+38g. Gestión de proyectos desde Admin - 
 
     a) Tabla de proyectos en panel admin - OK
        - Columnas: Nombre, ID, Calculista, Cliente, Barras, Kilos, Creador

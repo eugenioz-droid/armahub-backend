@@ -301,6 +301,7 @@ function switchModule(mod) {
 
 // ========================= INIT =========================
 let currentRole = 'operador';
+let currentUserEmail = '';
 
 async function loadMe() {
   const me = await apiGet('/me');
@@ -310,6 +311,7 @@ async function loadMe() {
   document.getElementById('whoRole').textContent = "Rol: " + me.role;
   localStorage.setItem('armahub_email', me.email);
   currentRole = me.role || 'operador';
+  currentUserEmail = me.email || '';
 
   // --- Hub card visibility by role ---
   const reclamosAccess = ['admin','coordinador','cubicador','operador'];
@@ -3713,6 +3715,9 @@ async function verReclamo(id) {
   document.getElementById('recEditForm').style.display = 'none';
   document.getElementById('recDetailInfo').style.display = '';
   document.getElementById('btnEditarReclamo').textContent = '✏️ Editar';
+  // Show edit button only for admin or the creator
+  var puedeEditar = (currentRole === 'admin') || (data.creado_por && data.creado_por === currentUserEmail);
+  document.getElementById('btnEditarReclamo').style.display = puedeEditar ? '' : 'none';
   var titlePrefix = data.id_calidad ? data.id_calidad + ' — ' : (data.correlativo ? data.correlativo + ' — ' : '#' + data.id + ' — ');
   document.getElementById('recDetailTitle').textContent = titlePrefix + data.titulo;
 
@@ -3933,6 +3938,8 @@ function toggleEditarReclamo() {
 
 async function guardarEdicionReclamo() {
   if (!_reclamoActual) return;
+  var puedeEditar = (currentRole === 'admin') || (_reclamoActual.creado_por && _reclamoActual.creado_por === currentUserEmail);
+  if (!puedeEditar) { alert('No tienes permiso para editar este reclamo.'); return; }
   var msg = document.getElementById('recEditMsg');
   var titulo = document.getElementById('recEditTitulo').value.trim();
   if (!titulo) { msg.textContent = 'El título es obligatorio'; msg.style.color = '#b42318'; return; }
