@@ -436,6 +436,11 @@ MIGRATIONS = [
         "ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check;",
         "ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('admin', 'coordinador', 'cubicador', 'usc', 'externo', 'cliente'));",
     ]),
+    (24, "reclamos: tracking creador y asignación", [
+        "DO $$ BEGIN ALTER TABLE reclamos ADD COLUMN creado_por TEXT; EXCEPTION WHEN duplicate_column THEN NULL; END $$;",
+        "DO $$ BEGIN ALTER TABLE reclamos ADD COLUMN asignado_a TEXT; EXCEPTION WHEN duplicate_column THEN NULL; END $$;",
+        "UPDATE reclamos SET creado_por = 'sistema' WHERE creado_por IS NULL;",
+    ]),
 ]
 
 

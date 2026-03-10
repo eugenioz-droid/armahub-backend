@@ -17,13 +17,14 @@ Actualmente el sistema ya cuenta con:
 
 - Backend desplegado en Render (auto-deploy desde GitHub)
 - Base de datos PostgreSQL persistente con migraciones automáticas
-- Sistema de autenticación con usuarios y roles (admin, operador)
+- Sistema de autenticación con usuarios y roles (admin, coordinador, cubicador, usc, externo, cliente)
+- RBAC completo: permisos por módulo, acción y sección (ver FASE 6.5)
 - Importación de CSV desde Arma Detailer con nombres legibles (proyectos + planos)
 - Cálculo automático de peso de acero
 - Dashboard con agrupaciones por múltiples dimensiones
 - Filtros de consulta con nombres legibles
-- Interfaz web con 7 tabs (5 operativas + 1 inicio + 1 admin)
-- Panel de administración (solo admin): reset BD, crear usuarios, info BD
+- Interfaz web modular: Hub + Cubicación + Reclamos + Administración
+- Panel de administración (admin completo, coordinador limitado)
 - Header con branding Armacero (logo banner, colores institucionales)
 
 ---
@@ -153,10 +154,13 @@ La interfaz debe ser intuitiva para **cubicadores** (usuarios principales) y **c
 4. **Gestión de datos**: Cargar CSV, editar cargas, ver versiones, eliminar proyectos (con permisos por rol)
 5. **Pedidos de material**: Formulario para ingresar barras manualmente y generar solicitudes
 6. **Exportación a producción**: Generar archivo Excel en formato aSa Studio
-7. **Permisos granulares**: 
-   - Admin: puede ver y editar todo + panel de administración (reset BD, gestión usuarios)
-   - Cubicador/Operador: administra sus obras (carga, edita, elimina)
-   - Cliente (futuro): solo ve su proyecto en modo lectura
+7. **Permisos granulares (RBAC)**: ver FASE 6.5 para matriz completa
+   - Admin: acceso total + panel administración completo
+   - Coordinador: reclamos + admin limitado (usuarios USC, clientes, proyectos)
+   - Cubicador: cubicación completa + responde reclamos
+   - USC: crea y documenta reclamos
+   - Externo: responde reclamos
+   - Cliente: vista limitada de sus proyectos
 
 ## PALETA DE COLORES
 
@@ -171,56 +175,27 @@ Basada en identidad visual ArmaCero:
 
 ## ESTRUCTURA DE NAVEGACIÓN Y SECCIONES
 
-El sistema tiene **pestañas horizontales** con acceso diferenciado por rol.
-**Principio**: mismos tabs, contenido adaptado por rol. No se duplican vistas.
+El sistema usa un Hub con 3 módulos: Cubicación, Reclamos, Administración.
+Cada módulo tiene tabs internos. La visibilidad del Hub y tabs depende del rol (ver FASE 6.5).
 
-### **TODOS LOS ROLES**
-- **Tab 1: 🏠 Inicio** (Landing / Home)
-  - KPI cards: proyectos activos, barras totales, kilos totales, última carga
-  - Actividad reciente: últimas 5-10 cargas (proyecto, usuario, fecha, barras)
-  - Resumen por proyecto: mini-cards con nombre + kilos
-  - Chart: Top 5 proyectos por kilos (gráfico horizontal)
-  - Datos filtrados por acceso del usuario
+### **Módulo Cubicación** (admin, cubicador, cliente)
+- **Inicio**: KPIs, resumen proyectos, chart top 5
+- **Obras**: Tarjetas de proyectos, carga CSV, historial
+- **Bar Manager**: Filtros, tabla barras, mover barras
+- **Dashboards**: Análisis por sector, piso, ciclo, matriz constructiva
+- **Pedidos**: Formulario manual de barras
+- **Exportación**: ZIP Excel formato aSa Studio
+- Cliente: solo ve Inicio + Dashboards (sus proyectos)
 
-- **Tab 2: 📦 Obras** (Gestión de proyectos)
-  - Tarjetas de proyectos con resumen kilos/barras
-  - Crear/editar/eliminar obras, gestionar usuarios autorizados
-  - Zona de carga CSV: solo visible para cubicador y admin
-  - Historial de cargas por proyecto
-  - Admin/coordinador: ven todos los proyectos
-  - Cubicador: ve solo proyectos asignados (owner o autorizado)
-  - Cliente (futuro): ve solo su proyecto, sin acciones de edición
+### **Módulo Reclamos** (admin, coordinador, cubicador, usc, externo)
+- Lista de reclamos con filtros y KPIs
+- Flujo 3 etapas: Creación → Respuesta → Validación
+- Permisos detallados por sección y acción (ver FASE 6.5)
 
-- **Tab 4: 📊 Dashboards** (Análisis)
-  - Selector de dimensión: sector, piso, ciclo, plano, proyecto, eje
-  - Sectores constructivos + Matriz constructiva
-  - Datos filtrados por acceso del usuario
-
-### **CUBICADOR, COORDINADOR, ADMIN**
-- **Tab 3: � Bar Manager** (Gestión de barras)
-  - Filtros (Proyecto, Plano, Sector, Piso, Ciclo) + búsqueda rápida
-  - Tabla compacta con checkboxes para selección
-  - Acciones: mover barras entre proyectos, cambiar sector
-  - Paginación y ordenamiento por columnas
-
-- **Tab 5: 📥 Exportación** (Producción)
-  - Selector de obra + vista previa sectores/pisos/ciclos + descarga ZIP Excel
-
-- **Tab 6: 📝 Pedidos** (Future MVP)
-  - Selector de obra + formulario manual + tabla de items
-
-### **SOLO ADMIN**
-- **Tab 7: ⚙️ Admin** (Panel sistema)
-  - Info de BD en tiempo real (conteos, kilos totales)
-  - Reset de base de datos (doble confirmación)
-  - Gestión de usuarios (crear operador/admin)
-  - Futuro: auditoría, logs, configuración del sistema
-
-### **ROL: CLIENTE** (Future)
-- Tab Inicio (read-only, solo su proyecto)
-- Tab Obras (read-only, sin acciones)
-- Tab Dashboards (read-only)
-- Tab Pedidos (crear pedido + ver estado)
+### **Módulo Administración** (admin, coordinador)
+- Gestión de usuarios (admin: completo, coordinador: limitado a crear USC)
+- Gestión de clientes y proyectos
+- Calculistas, limpieza datos, reset BD, auditoría (solo admin)
 
 ---
 
@@ -1132,11 +1107,35 @@ errores y reclamos levantados por clientes. Incluye formulario tipo, análisis d
        - switchModule admin: oculta secciones para coordinador
        - Dropdown de roles en crear usuario filtrado para coordinador
 
+40. Registro de creador USC en reclamos (asignado_a / "Subido por") - ✅ Implementado 10-Mar-2026
+    Migración 24: campo asignado_a (TEXT, nullable) en tabla reclamos
+
+    a) Lógica automática al crear reclamo:
+       - USC crea reclamo: se registra automáticamente como "Subido por"
+       - Admin/coordinador crea reclamo: puede elegir usuario USC del dropdown o dejar vacío
+       - Campo "Subido por" visible solo para admin/coordinador en formulario de creación
+
+    b) Dropdown "Subido por" en detalle del reclamo:
+       - Muestra usuarios USC activos (GET /reclamos/usuarios-usc)
+       - Solo admin/coordinador pueden cambiar el valor
+       - Otros roles ven el campo deshabilitado
+       - Cambio en tiempo real via PATCH /reclamos/{id}
+
+    c) Metadatos visibles:
+       - "Subido por: email" en la línea de meta del reclamo
+       - Disponible en lista de reclamos (asignado_a en respuesta GET /reclamos)
+
+    d) Backend:
+       - ReclamoCreate y ReclamoUpdate incluyen asignado_a
+       - GET /reclamos y GET /reclamos/{id} retornan asignado_a
+       - GET /reclamos/usuarios-usc: lista usuarios USC activos para dropdown
+       - Lógica de auto-asignación en crear_reclamo según rol del creador
+
 ---
 ## FASE 7 — Preparación para Apps
 
-40. API versionada (/api/v1) - Pendiente
-41. CORS para aplicaciones externas - Pendiente
-42. Observabilidad: /health, logs estructurados - Pendiente
-43. Performance: queries optimizadas, pool de conexiones - Pendiente
-44. Bootstrap profesional (solo dev) - Pendiente
+41. API versionada (/api/v1) - Pendiente
+42. CORS para aplicaciones externas - Pendiente
+43. Observabilidad: /health, logs estructurados - Pendiente
+44. Performance: queries optimizadas, pool de conexiones - Pendiente
+45. Bootstrap profesional (solo dev) - Pendiente

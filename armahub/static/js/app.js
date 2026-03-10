@@ -295,6 +295,11 @@ function switchModule(mod) {
     var puedeCrear = ['admin','coordinador','usc'].includes(currentRole);
     var crearCard = document.getElementById('crearReclamoCard');
     if (crearCard) crearCard.style.display = puedeCrear ? '' : 'none';
+    // USC: hide asignado_a dropdown (auto-assigned to self)
+    var asigCol = document.getElementById('recAsignadoA');
+    if (asigCol && asigCol.parentElement) {
+      asigCol.parentElement.style.display = (currentRole === 'admin' || currentRole === 'coordinador') ? '' : 'none';
+    }
   }
   if (mod === 'admin') {
     var esAdmin = (currentRole === 'admin');
@@ -3565,10 +3570,14 @@ async function loadReclamos() {
   if (proyecto) params.push('id_proyecto=' + encodeURIComponent(proyecto));
   if (responsable) params.push('responsable=' + encodeURIComponent(responsable));
   if (busqueda) params.push('busqueda=' + encodeURIComponent(busqueda));
-  if (params.length) url += '?' + params.join('&');
+  if (params.length > 0) url += '?' + params.join('&');
 
-  var data = await apiGet(url);
-  if (!data) return;
+  var res = await fetch(url, { headers: authHeaders() });
+  if (res.status === 401) { logout(); return; }
+  var data = await res.json();
+  
+  // Load USC users for assignment dropdowns
+  await loadUsuariosUsc();
 
   if (!data.reclamos || data.reclamos.length === 0) {
     container.innerHTML = '<div class="muted">No hay reclamos con los filtros seleccionados</div>';
@@ -3641,6 +3650,7 @@ async function crearReclamo() {
   var proyecto = document.getElementById('recProyecto').value;
   var tipoReclamo = document.getElementById('recTipoReclamo').value;
   var responsable = document.getElementById('recResponsable').value;
+  var asignadoA = document.getElementById('recAsignadoA').value;
   var descripcion = document.getElementById('recDescripcion').value.trim();
   var detectadoPor = document.getElementById('recDetectadoPor').value;
   var fechaDeteccion = document.getElementById('recFechaDeteccion').value;
@@ -3648,6 +3658,7 @@ async function crearReclamo() {
   if (proyecto) body.id_proyecto = proyecto;
   if (tipoReclamo) body.tipo_reclamo = tipoReclamo;
   if (responsable) body.responsable = responsable;
+  if (asignadoA) body.asignado_a = asignadoA;
   if (descripcion) body.descripcion = descripcion;
   if (detectadoPor) body.detectado_por = detectadoPor;
   if (fechaDeteccion) body.fecha_deteccion = fechaDeteccion;
@@ -3742,6 +3753,7 @@ async function verReclamo(id) {
   if (data.fecha_creacion) metaParts.push(data.fecha_creacion.replace('T', ' ').substring(0, 19));
   if (data.responsable) metaParts.push('Responsable: ' + data.responsable);
   if (data.detectado_por) metaParts.push('Detectado por: ' + data.detectado_por);
+  if (data.asignado_a) metaParts.push('Subido por: ' + data.asignado_a);
   document.getElementById('recDetailMeta').textContent = metaParts.join(' · ');
 
   document.getElementById('recDetailEstado').value = data.estado;
@@ -3756,6 +3768,10 @@ async function verReclamo(id) {
     detSel.innerHTML = srcSel.innerHTML;
     detSel.value = data.id_proyecto || '';
   }
+
+  // Set asignado_a dropdown value
+  var detAsignado = document.getElementById('recDetailAsignadoA');
+  if (detAsignado) detAsignado.value = data.asignado_a || '';
 
   // SECTION 1: Antecedentes info
   var info = document.getElementById('recDetailInfo');
@@ -3861,6 +3877,10 @@ async function verReclamo(id) {
   // Proyecto dropdown: admin/coordinador
   var detProySel = document.getElementById('recDetailProyecto');
   if (detProySel) detProySel.disabled = !(currentRole === 'admin' || currentRole === 'coordinador');
+
+  // Asignado a: admin/coordinador can change assignment
+  var detAsigSel = document.getElementById('recDetailAsignadoA');
+  if (detAsigSel) detAsigSel.disabled = !(currentRole === 'admin' || currentRole === 'coordinador');
 
   // Section 2 (Respuesta): admin/coordinador/cubicador/externo. NOT usc.
   var puedeResponder = ['admin','coordinador','cubicador','externo'].includes(currentRole);
@@ -4074,6 +4094,51 @@ async function cambiarProyectoReclamo() {
   var data = await res.json();
   if (data.ok) { await verReclamo(_reclamoActual.id); await loadReclamos(); }
   else { alert('Error: ' + (data.detail || 'desconocido')); }
+}
+
+async function cambiarAsignadoAReclamo() {
+  if (!_reclamoActual) return;
+  var val = document.getElementById('recDetailAsignadoA').value;
+  if (val === (_reclamoActual.asignado_a || '')) return;
+  var res = await fetch('/reclamos/' + _reclamoActual.id, {
+    method: 'PATCH',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ asignado_a: val || '' })
+  });
+  if (res.status === 401) { logout(); return; }
+  var data = await res.json();
+  if (data.ok) { await verReclamo(_reclamoActual.id); await loadReclamos(); }
+  else { alert('Error: ' + (data.detail || 'desconocido')); }
+}
+
+async function loadUsuariosUsc() {
+  var res = await fetch('/reclamos/usuarios-usc', { headers: authHeaders() });
+  if (res.status === 401) { logout(); return; }
+  var data = await res.json();
+  
+  // Update creation form dropdown
+  var createSelect = document.getElementById('recAsignadoA');
+  if (createSelect) {
+    createSelect.innerHTML = '<option value="">— Auto-asignar —</option>';
+    data.usuarios.forEach(function(u) {
+      var opt = document.createElement('option');
+      opt.value = u.email;
+      opt.textContent = u.display;
+      createSelect.appendChild(opt);
+    });
+  }
+  
+  // Update detail form dropdown
+  var detailSelect = document.getElementById('recDetailAsignadoA');
+  if (detailSelect) {
+    detailSelect.innerHTML = '<option value="">— Sin asignar —</option>';
+    data.usuarios.forEach(function(u) {
+      var opt = document.createElement('option');
+      opt.value = u.email;
+      opt.textContent = u.display;
+      detailSelect.appendChild(opt);
+    });
+  }
 }
 
 async function cambiarAplicaReclamo() {

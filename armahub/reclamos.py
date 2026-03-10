@@ -126,6 +126,7 @@ class ReclamoCreate(BaseModel):
     detectado_por: Optional[str] = None
     fecha_deteccion: Optional[str] = None
     id_calidad: Optional[str] = None
+    asignado_a: Optional[str] = None
 
 
 class ReclamoUpdate(BaseModel):
@@ -155,6 +156,7 @@ class ReclamoUpdate(BaseModel):
     validacion_resultado: Optional[str] = None
     validacion_observaciones: Optional[str] = None
     kilos_mal_fabricados: Optional[float] = None
+    asignado_a: Optional[str] = None
 
 
 class SeguimientoCreate(BaseModel):
@@ -235,7 +237,7 @@ def listar_reclamos(
                        (SELECT COUNT(*) FROM reclamo_seguimientos s WHERE s.reclamo_id = r.id) AS seg_count,
                        r.aplica, r.sub_causa, r.cod_causa, r.correlativo_calidad,
                        r.detectado_por, r.fecha_deteccion,
-                       r.correlativo, r.id_calidad, r.tipo_reclamo
+                       r.correlativo, r.id_calidad, r.tipo_reclamo, r.asignado_a
                 FROM reclamos r
                 LEFT JOIN proyectos p ON r.id_proyecto = p.id_proyecto
                 {where}
@@ -270,7 +272,7 @@ def listar_reclamos(
                 "correlativo_calidad": r[17], "detectado_por": r[18],
                 "fecha_deteccion": r[19],
                 "correlativo": r[20], "id_calidad": r[21],
-                "tipo_reclamo": r[22],
+                "tipo_reclamo": r[22], "asignado_a": r[23],
             }
             for r in rows
         ]
@@ -281,6 +283,7 @@ def listar_reclamos(
 def crear_reclamo(body: ReclamoCreate, user=Depends(get_current_user)):
     """Crear un nuevo reclamo."""
     email = user.get("email", "unknown")
+    role = user.get("role", "usc")
     now = datetime.now(timezone.utc).isoformat()
 
     if body.prioridad and body.prioridad not in PRIORIDADES:
@@ -289,6 +292,19 @@ def crear_reclamo(body: ReclamoCreate, user=Depends(get_current_user)):
         raise HTTPException(status_code=400, detail=f"Tipo inválido. Válidos: {TIPOS_RECLAMO}")
     if body.categoria_ishikawa and body.categoria_ishikawa not in CATEGORIAS_ISHIKAWA:
         raise HTTPException(status_code=400, detail=f"Categoría inválida. Válidas: {CATEGORIAS_ISHIKAWA}")
+
+    # Lógica de asignación automática
+    asignado_a = body.asignado_a
+    if not asignado_a:
+        if role == "usc":
+            # USC se auto-asigna
+            asignado_a = email
+        elif role in ("admin", "coordinador"):
+            # Admin/coordinador puede dejar vacío para asignar después
+            asignado_a = None
+        else:
+            # Otros roles no deberían crear reclamos (validado en frontend)
+            asignado_a = None
 
     with get_conn() as conn:
         with conn.cursor() as cur:
@@ -307,15 +323,15 @@ def crear_reclamo(body: ReclamoCreate, user=Depends(get_current_user)):
                 INSERT INTO reclamos (id_proyecto, titulo, descripcion, prioridad, tipo_reclamo,
                     categoria_ishikawa, sub_causa, cod_causa, responsable,
                     detectado_por, fecha_deteccion, analista,
-                    creado_por, fecha_creacion, correlativo, id_calidad)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    creado_por, fecha_creacion, correlativo, id_calidad, asignado_a)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING id
             """, (body.id_proyecto, body.titulo, body.descripcion,
                   body.prioridad or "alta", body.tipo_reclamo or "error",
                   body.categoria_ishikawa,
                   body.sub_causa, body.cod_causa, body.responsable,
                   body.detectado_por, body.fecha_deteccion, email,
-                  email, now, correlativo, body.id_calidad))
+                  email, now, correlativo, body.id_calidad, asignado_a))
             reclamo_id = cur.fetchone()[0]
 
             # Auto-create first seguimiento
@@ -506,6 +522,27 @@ def get_ishikawa(user=Depends(get_current_user)):
     }
 
 
+@router.get("/reclamos/usuarios-usc")
+def get_usuarios_usc(user=Depends(get_current_user)):
+    """Lista de usuarios con rol USC para dropdown de asignación."""
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT email, nombre, apellido 
+                FROM users 
+                WHERE role = 'usc' AND activo = TRUE 
+                ORDER BY nombre, apellido, email
+            """)
+            rows = cur.fetchall()
+    return {
+        "usuarios": [
+            {"email": r[0], "nombre": r[1], "apellido": r[2],
+             "display": ((r[1] or '') + ' ' + (r[2] or '')).strip() or r[0]}
+            for r in rows
+        ]
+    }
+
+
 @router.get("/reclamos/{reclamo_id}")
 def get_reclamo(reclamo_id: int, user=Depends(get_current_user)):
     """Obtener detalle de un reclamo con timeline, acciones e imágenes."""
@@ -524,7 +561,7 @@ def get_reclamo(reclamo_id: int, user=Depends(get_current_user)):
                        r.tipo_reclamo, r.respuesta_texto, r.respuesta_fecha,
                        r.respuesta_por, r.validacion_resultado,
                        r.validacion_observaciones, r.validacion_fecha, r.validacion_por,
-                       r.kilos_mal_fabricados
+                       r.kilos_mal_fabricados, r.asignado_a
                 FROM reclamos r
                 LEFT JOIN proyectos p ON r.id_proyecto = p.id_proyecto
                 WHERE r.id = %s
@@ -573,6 +610,7 @@ def get_reclamo(reclamo_id: int, user=Depends(get_current_user)):
         "validacion_fecha": str(row[35]) if row[35] else None,
         "validacion_por": row[36],
         "kilos_mal_fabricados": row[37],
+        "asignado_a": row[38],
         "seguimientos": [
             {"id": s[0], "usuario": s[1], "comentario": s[2],
              "estado_anterior": s[3], "estado_nuevo": s[4], "fecha": s[5]}
@@ -626,14 +664,14 @@ def actualizar_reclamo(reclamo_id: int, body: ReclamoUpdate, user=Depends(get_cu
                 "analista", "area_aplica", "explicacion_causa",
                 "accion_correctiva", "accion_preventiva", "resolucion", "observaciones",
                 "id_calidad", "respuesta_texto", "validacion_resultado",
-                "validacion_observaciones", "kilos_mal_fabricados",
+                "validacion_observaciones", "kilos_mal_fabricados", "asignado_a",
             ]
             # Fields where empty string should be stored as NULL
             nullable_fields = {"id_proyecto", "id_calidad", "sub_causa", "cod_causa", "responsable",
                                "detectado_por", "fecha_deteccion", "fecha_analisis",
                                "analista", "area_aplica", "explicacion_causa",
                                "accion_correctiva", "accion_preventiva", "resolucion", "observaciones",
-                               "respuesta_texto", "validacion_observaciones"}
+                               "respuesta_texto", "validacion_observaciones", "asignado_a"}
             for field in updatable:
                 val = getattr(body, field)
                 if val is not None:
