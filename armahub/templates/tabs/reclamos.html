@@ -283,8 +283,58 @@
 
       <!-- ============ SECCIÓN 1: ANTECEDENTES (Creador) ============ -->
       <div style="margin-bottom:10px; padding:10px; background:#fff5f5; border-radius:6px; border:1px solid #ffcdd2;">
-        <h4 style="margin:0 0 6px 0; font-size:13px; color:#b42318;">📋 Antecedentes del Reclamo</h4>
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+          <h4 style="margin:0; font-size:13px; color:#b42318;">📋 Antecedentes del Reclamo</h4>
+          <button id="btnEditarReclamo" class="secondary" style="font-size:10px; padding:2px 10px;" onclick="toggleEditarReclamo()">✏️ Editar</button>
+        </div>
         <div id="recDetailInfo" style="font-size:12px; margin-bottom:8px;"></div>
+        <!-- Formulario edición inline (oculto por defecto) -->
+        <div id="recEditForm" style="display:none; margin-bottom:10px; padding:10px; background:#fff; border:1px solid #ffcdd2; border-radius:6px;">
+          <div class="row" style="gap:8px; flex-wrap:wrap; align-items:flex-end;">
+            <div class="col" style="flex:2; min-width:200px;">
+              <label style="font-size:11px; color:#666;">Título *</label>
+              <input type="text" id="recEditTitulo" style="width:100%; font-size:12px;" />
+            </div>
+            <div class="col" style="max-width:130px;">
+              <label style="font-size:11px; color:#666;">Categoría</label>
+              <select id="recEditTipo" style="width:100%; font-size:12px;">
+                <option value="error">Error</option>
+                <option value="faltante">Faltante</option>
+              </select>
+            </div>
+            <div class="col" style="max-width:150px;">
+              <label style="font-size:11px; color:#666;">Fecha detección</label>
+              <input type="date" id="recEditFechaDeteccion" style="width:100%; font-size:12px;" />
+            </div>
+          </div>
+          <div class="row" style="gap:8px; flex-wrap:wrap; align-items:flex-end; margin-top:6px;">
+            <div class="col" style="max-width:180px;">
+              <label style="font-size:11px; color:#666;">Detectado por</label>
+              <select id="recEditDetectadoPor" style="width:100%; font-size:12px;">
+                <option value="">— Seleccionar —</option>
+                <option value="Cliente">Cliente</option>
+                <option value="USC">USC</option>
+                <option value="Cubicador">Cubicador</option>
+                <option value="Producción">Producción</option>
+              </select>
+            </div>
+            <div class="col" style="max-width:220px;">
+              <label style="font-size:11px; color:#666;">Responsable</label>
+              <select id="recEditResponsable" style="width:100%; font-size:12px;">
+                <option value="">— Sin asignar —</option>
+              </select>
+            </div>
+          </div>
+          <div style="margin-top:6px;">
+            <label style="font-size:11px; color:#666;">Descripción del Problema</label>
+            <textarea id="recEditDescripcion" rows="3" style="width:100%; font-size:12px; resize:vertical;"></textarea>
+          </div>
+          <div style="margin-top:8px; display:flex; gap:6px; align-items:center;">
+            <button onclick="guardarEdicionReclamo()" style="font-size:11px; padding:4px 14px;">💾 Guardar cambios</button>
+            <button class="secondary" onclick="toggleEditarReclamo()" style="font-size:11px; padding:4px 10px;">Cancelar</button>
+            <span id="recEditMsg" class="muted" style="font-size:11px;"></span>
+          </div>
+        </div>
         <!-- Imágenes de antecedentes -->
         <div style="margin-top:6px;">
           <label style="font-size:11px; color:#666; font-weight:600;">Imágenes de antecedentes</label>

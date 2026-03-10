@@ -1030,7 +1030,10 @@ def get_proyectos(user=Depends(get_current_user)):
                     p.cliente_id,
                     cl.nombre as cliente_nombre,
                     p.calculista_id,
-                    ca.nombre as calculista_nombre
+                    ca.nombre as calculista_nombre,
+                    p.descripcion,
+                    p.fecha_creacion,
+                    p.usuario_creador
                 FROM proyectos p
                 LEFT JOIN barras b ON p.id_proyecto = b.id_proyecto
                 LEFT JOIN users u ON p.owner_id = u.id
@@ -1038,7 +1041,8 @@ def get_proyectos(user=Depends(get_current_user)):
                 LEFT JOIN calculistas ca ON p.calculista_id = ca.id
                 WHERE 1=1""" + pf_p + """
                 GROUP BY p.id_proyecto, p.nombre_proyecto, p.owner_id, u.email, p.calculista,
-                         p.cliente_id, cl.nombre, p.calculista_id, ca.nombre
+                         p.cliente_id, cl.nombre, p.calculista_id, ca.nombre,
+                         p.descripcion, p.fecha_creacion, p.usuario_creador
                 ORDER BY p.fecha_creacion DESC
             """, pf_pp)
             rows = cur.fetchall()
@@ -1057,11 +1061,13 @@ def get_proyectos(user=Depends(get_current_user)):
                 "cliente_nombre": r[8],
                 "calculista_id": r[9],
                 "calculista_nombre": r[10],
+                "descripcion": r[11],
+                "fecha_creacion": r[12],
+                "usuario_creador": r[13],
             }
             for r in rows
         ]
     }
-
 
 @router.get("/proyectos/{id_proyecto}/sectores")
 def get_proyecto_sectores(

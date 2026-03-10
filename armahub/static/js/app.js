@@ -2615,6 +2615,124 @@ async function editarCalculista(calcId) {
   }
 }
 
+// ========================= ADMIN PROYECTOS =========================
+var _adminProyectosCache = [];
+
+async function loadAdminProyectos() {
+  var container = document.getElementById('adminProyectosContainer');
+  if (!container) return;
+  var data = await apiGet('/proyectos');
+  if (!data || !data.proyectos) { container.innerHTML = '<div class="muted">Error cargando proyectos</div>'; return; }
+  _adminProyectosCache = data.proyectos;
+  if (_adminProyectosCache.length === 0) { container.innerHTML = '<div class="muted">No hay proyectos</div>'; return; }
+
+  var html = '<table style="width:100%; font-size:11px; border-collapse:collapse;">';
+  html += '<tr style="background:#f5f5f5; text-align:left;">';
+  html += '<th style="padding:5px 6px;">Nombre</th>';
+  html += '<th style="padding:5px 6px;">ID</th>';
+  html += '<th style="padding:5px 6px;">Calculista</th>';
+  html += '<th style="padding:5px 6px;">Cliente</th>';
+  html += '<th style="padding:5px 6px;">Barras</th>';
+  html += '<th style="padding:5px 6px;">Kilos</th>';
+  html += '<th style="padding:5px 6px;">Creador</th>';
+  html += '<th style="padding:5px 6px;">Acciones</th></tr>';
+
+  _adminProyectosCache.forEach(function(p) {
+    var kilos = p.total_kilos ? Math.round(p.total_kilos).toLocaleString('es-CL') : '0';
+    var calc = p.calculista_nombre || p.calculista || '<span class="muted">-</span>';
+    var cliente = p.cliente_nombre || '<span class="muted">-</span>';
+    var creador = p.usuario_creador || '<span class="muted">-</span>';
+    html += '<tr style="border-bottom:1px solid #eee;">';
+    html += '<td style="padding:4px 6px; font-weight:500; max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">' + p.nombre_proyecto + '</td>';
+    html += '<td style="padding:4px 6px; font-size:10px;" class="muted">' + p.id_proyecto + '</td>';
+    html += '<td style="padding:4px 6px;">' + calc + '</td>';
+    html += '<td style="padding:4px 6px;">' + cliente + '</td>';
+    html += '<td style="padding:4px 6px; text-align:center;"><span class="badge">' + (p.total_barras || 0) + '</span></td>';
+    html += '<td style="padding:4px 6px; text-align:right; font-weight:500;">' + kilos + '</td>';
+    html += '<td style="padding:4px 6px; font-size:10px;" class="muted">' + creador + '</td>';
+    html += '<td style="padding:4px 6px; white-space:nowrap;">';
+    html += '<button class="secondary" style="font-size:10px; padding:1px 6px;" onclick="editarProyectoAdmin(\'' + p.id_proyecto + '\')">Editar</button>';
+    html += '</td></tr>';
+  });
+  html += '</table>';
+  html += '<div class="muted" style="font-size:11px; margin-top:6px;">Total: ' + _adminProyectosCache.length + ' proyecto(s)</div>';
+  container.innerHTML = html;
+}
+
+async function editarProyectoAdmin(idProyecto) {
+  var p = _adminProyectosCache.find(function(x) { return x.id_proyecto === idProyecto; });
+  if (!p) return;
+
+  // Build a simple modal-like edit form
+  var container = document.getElementById('adminProyectosContainer');
+  var calcOpts = '<option value="0">— Sin calculista —</option>' +
+    _calculistasCache.map(function(c) {
+      return '<option value="' + c.id + '"' + (c.id === p.calculista_id ? ' selected' : '') + '>' + c.nombre + '</option>';
+    }).join('');
+
+  var clienteData = [];
+  try {
+    var cdata = await apiGet('/clientes');
+    clienteData = (cdata && cdata.clientes) ? cdata.clientes : [];
+  } catch(e) {}
+  var clienteOpts = '<option value="0">— Sin cliente —</option>' +
+    clienteData.map(function(c) {
+      return '<option value="' + c.id + '"' + (c.id === p.cliente_id ? ' selected' : '') + '>' + c.nombre + '</option>';
+    }).join('');
+
+  var formHtml = '<div style="padding:12px; background:#e3f2fd; border:1px solid #90caf9; border-radius:8px; margin-bottom:10px;">';
+  formHtml += '<h4 style="margin:0 0 8px 0; color:#1565C0; font-size:13px;">Editando: ' + p.nombre_proyecto + '</h4>';
+  formHtml += '<div class="row" style="gap:8px; flex-wrap:wrap; align-items:flex-end;">';
+  formHtml += '<div class="col" style="flex:2; min-width:200px;"><label style="font-size:11px; color:#666;">Nombre del proyecto *</label>';
+  formHtml += '<input type="text" id="editProjNombre" value="' + (p.nombre_proyecto || '').replace(/"/g, '&quot;') + '" style="width:100%; font-size:12px;" /></div>';
+  formHtml += '<div class="col" style="max-width:200px;"><label style="font-size:11px; color:#666;">Calculista</label>';
+  formHtml += '<select id="editProjCalculista" style="width:100%; font-size:12px;">' + calcOpts + '</select></div>';
+  formHtml += '<div class="col" style="max-width:200px;"><label style="font-size:11px; color:#666;">Cliente</label>';
+  formHtml += '<select id="editProjCliente" style="width:100%; font-size:12px;">' + clienteOpts + '</select></div>';
+  formHtml += '</div>';
+  formHtml += '<div style="margin-top:6px;"><label style="font-size:11px; color:#666;">Descripción</label>';
+  formHtml += '<textarea id="editProjDescripcion" rows="2" style="width:100%; font-size:12px; resize:vertical;">' + (p.descripcion || '') + '</textarea></div>';
+  formHtml += '<div style="margin-top:8px; display:flex; gap:6px; align-items:center;">';
+  formHtml += '<button onclick="guardarProyectoAdmin(\'' + p.id_proyecto + '\')" style="font-size:11px; padding:4px 14px;">💾 Guardar</button>';
+  formHtml += '<button class="secondary" onclick="loadAdminProyectos()" style="font-size:11px; padding:4px 10px;">Cancelar</button>';
+  formHtml += '<span id="editProjMsg" class="muted" style="font-size:11px;"></span>';
+  formHtml += '</div></div>';
+
+  // Prepend form above the table
+  container.insertAdjacentHTML('afterbegin', formHtml);
+  document.getElementById('editProjNombre').focus();
+}
+
+async function guardarProyectoAdmin(idProyecto) {
+  var msg = document.getElementById('editProjMsg');
+  var nombre = document.getElementById('editProjNombre').value.trim();
+  if (!nombre) { msg.textContent = 'El nombre es obligatorio'; msg.style.color = '#b42318'; return; }
+  msg.textContent = 'Guardando...'; msg.style.color = '#666';
+
+  var body = {
+    nombre_proyecto: nombre,
+    descripcion: document.getElementById('editProjDescripcion').value.trim() || '',
+    calculista_id: parseInt(document.getElementById('editProjCalculista').value) || 0,
+    cliente_id: parseInt(document.getElementById('editProjCliente').value) || 0,
+  };
+
+  var res = await fetch('/proyectos/' + idProyecto, {
+    method: 'PATCH',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  if (res.status === 401) { logout(); return; }
+  var data = await res.json();
+  if (data.ok) {
+    msg.textContent = 'Guardado'; msg.style.color = '#558B2F';
+    await loadAdminProyectos();
+    // Also refresh project selectors elsewhere
+    await loadProyectos();
+  } else {
+    msg.textContent = 'Error: ' + (data.detail || 'desconocido'); msg.style.color = '#b42318';
+  }
+}
+
 // ========================= PEDIDOS =========================
 let _pedidoActual = null;
 
@@ -3591,6 +3709,10 @@ async function verReclamo(id) {
   _reclamoActual = data;
 
   document.getElementById('reclamoDetailCard').style.display = '';
+  // Reset edit form
+  document.getElementById('recEditForm').style.display = 'none';
+  document.getElementById('recDetailInfo').style.display = '';
+  document.getElementById('btnEditarReclamo').textContent = '✏️ Editar';
   var titlePrefix = data.id_calidad ? data.id_calidad + ' — ' : (data.correlativo ? data.correlativo + ' — ' : '#' + data.id + ' — ');
   document.getElementById('recDetailTitle').textContent = titlePrefix + data.titulo;
 
@@ -3777,6 +3899,70 @@ async function cambiarEstadoReclamo() {
   var data = await res.json();
   if (data.ok) { await verReclamo(_reclamoActual.id); await loadReclamos(); await loadReclamosKpis(); }
   else { alert('Error: ' + (data.detail || 'desconocido')); }
+}
+
+function toggleEditarReclamo() {
+  var form = document.getElementById('recEditForm');
+  var info = document.getElementById('recDetailInfo');
+  if (form.style.display === 'none') {
+    // Open edit mode — populate fields from current reclamo
+    var d = _reclamoActual;
+    if (!d) return;
+    document.getElementById('recEditTitulo').value = d.titulo || '';
+    document.getElementById('recEditTipo').value = d.tipo_reclamo || 'error';
+    document.getElementById('recEditFechaDeteccion').value = d.fecha_deteccion || '';
+    document.getElementById('recEditDetectadoPor').value = d.detectado_por || '';
+    document.getElementById('recEditDescripcion').value = d.descripcion || '';
+    // Populate responsable dropdown from cache
+    var sel = document.getElementById('recEditResponsable');
+    sel.innerHTML = '<option value="">— Sin asignar —</option>';
+    _recUsersCache.forEach(function(u) {
+      sel.innerHTML += '<option value="' + u.display + '">' + u.display + ' (' + u.role + ')' + '</option>';
+    });
+    sel.value = d.responsable || '';
+    document.getElementById('recEditMsg').textContent = '';
+    form.style.display = '';
+    info.style.display = 'none';
+    document.getElementById('btnEditarReclamo').textContent = '✕ Cancelar';
+  } else {
+    form.style.display = 'none';
+    info.style.display = '';
+    document.getElementById('btnEditarReclamo').textContent = '✏️ Editar';
+  }
+}
+
+async function guardarEdicionReclamo() {
+  if (!_reclamoActual) return;
+  var msg = document.getElementById('recEditMsg');
+  var titulo = document.getElementById('recEditTitulo').value.trim();
+  if (!titulo) { msg.textContent = 'El título es obligatorio'; msg.style.color = '#b42318'; return; }
+  msg.textContent = 'Guardando...'; msg.style.color = '#666';
+  var body = {
+    titulo: titulo,
+    descripcion: document.getElementById('recEditDescripcion').value.trim() || null,
+    tipo_reclamo: document.getElementById('recEditTipo').value,
+    fecha_deteccion: document.getElementById('recEditFechaDeteccion').value || null,
+    detectado_por: document.getElementById('recEditDetectadoPor').value || null,
+    responsable: document.getElementById('recEditResponsable').value || null,
+  };
+  var res = await fetch('/reclamos/' + _reclamoActual.id, {
+    method: 'PATCH',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  if (res.status === 401) { logout(); return; }
+  var data = await res.json();
+  if (data.ok) {
+    msg.textContent = 'Guardado'; msg.style.color = '#558B2F';
+    // Close edit form and refresh
+    document.getElementById('recEditForm').style.display = 'none';
+    document.getElementById('recDetailInfo').style.display = '';
+    document.getElementById('btnEditarReclamo').textContent = '✏️ Editar';
+    await verReclamo(_reclamoActual.id);
+    await loadReclamos();
+  } else {
+    msg.textContent = 'Error: ' + (data.detail || 'desconocido'); msg.style.color = '#b42318';
+  }
 }
 
 async function guardarIdCalidad() {
@@ -4196,6 +4382,7 @@ async function loadModuleData(mod) {
     await loadUsers();
     await loadClientes();
     await loadCalculistas();
+    await loadAdminProyectos();
     await loadTableCounts();
     await loadDbInfo();
     await loadAuditLog();

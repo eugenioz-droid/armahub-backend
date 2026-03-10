@@ -1030,6 +1030,42 @@ errores y reclamos levantados por clientes. Incluye formulario tipo, análisis d
        - Reemplaza input texto libre por <select> en sección Respuesta
        - Valor se guarda con guardarRespuesta()
 
+38f. Editar reclamo (antecedentes) - ✅ Implementado 10-Mar-2026
+    a) Botón "✏️ Editar" en Sección 1 (Antecedentes) - OK
+       - Toggle inline: muestra formulario de edición, oculta info read-only
+       - Botón cambia a "✕ Cancelar" cuando está abierto
+       - Se resetea al abrir otro reclamo
+
+    b) Campos editables - OK
+       - Título, Categoría (Error/Faltante), Fecha detección
+       - Detectado por (dropdown), Responsable (dropdown usuarios)
+       - Descripción del problema (textarea)
+
+    c) Guardar cambios via PATCH /reclamos/{id} - OK
+       - Validación: título obligatorio
+       - Cierra formulario y refresca vista + lista tras guardar
+
+    d) Permisos (pendiente futuro) - Pendiente
+       - Solo admin y creador podrán editar (por ahora sin restricción)
+
+38g. Gestión de proyectos desde Admin - ✅ Implementado 10-Mar-2026
+
+    a) Tabla de proyectos en panel admin - OK
+       - Columnas: Nombre, ID, Calculista, Cliente, Barras, Kilos, Creador
+       - Total de proyectos visible
+       - Botón "Actualizar" para refrescar
+
+    b) Editar proyecto inline - OK
+       - Botón "Editar" por fila → formulario inline sobre la tabla
+       - Campos editables: Nombre, Calculista (dropdown), Cliente (dropdown), Descripción
+       - Al renombrar proyecto, se actualiza nombre en barras (cascada backend)
+       - Guardar refresca tabla admin + dropdowns de proyecto en otras secciones
+
+    c) Backend ya existente reutilizado - OK
+       - GET /proyectos: ahora incluye descripcion, fecha_creacion, usuario_creador
+       - PATCH /proyectos/{id}: nombre, descripcion, calculista_id, cliente_id
+       - Cascada: UPDATE barras SET nombre_proyecto al renombrar
+
 ---
 ## FASE 7 — Preparación para Apps
 
