@@ -12,7 +12,7 @@ En Render, lo ideal es arrancar con:
     uvicorn armahub.main:app --host 0.0.0.0 --port 10000
 """
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Response
 from fastapi.staticfiles import StaticFiles
 import os
 
@@ -50,9 +50,13 @@ def create_app() -> FastAPI:
     if os.path.exists(static_path):
         app.mount("/static", StaticFiles(directory=static_path), name="static")
 
-    @app.get("/")
+    @app.api_route("/", methods=["GET", "HEAD"])
     def root():
         return {"ok": True, "service": "armahub-backend"}
+
+    @app.api_route("/health", methods=["GET", "HEAD"])
+    def health():
+        return {"status": "ok"}
 
     return app
 
