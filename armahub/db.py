@@ -431,6 +431,11 @@ MIGRATIONS = [
     (22, "reclamos: kilos_mal_fabricados", [
         "DO $$ BEGIN ALTER TABLE reclamos ADD COLUMN kilos_mal_fabricados DOUBLE PRECISION; EXCEPTION WHEN duplicate_column THEN NULL; END $$;",
     ]),
+    (23, "roles: reemplazar operador por usc y externo", [
+        "UPDATE users SET role = 'usc' WHERE role = 'operador';",
+        "ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check;",
+        "ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('admin', 'coordinador', 'cubicador', 'usc', 'externo', 'cliente'));",
+    ]),
 ]
 
 

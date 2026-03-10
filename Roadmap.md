@@ -957,7 +957,6 @@ errores y reclamos levantados por clientes. Incluye formulario tipo, análisis d
     a) Filtros expandidos en lista de reclamos - OK
        - Búsqueda por texto (título, descripción, correlativo, id_calidad)
        - Filtro por tipo (Error/Faltante)
-       - Filtro por estado (incluye validación)
        - Filtro por categoría Ishikawa
        - Filtro por aplica (Sí/No/Pendiente)
        - Filtro por detectado_por (Cliente/USC/Cubicador/Producción)
@@ -1051,7 +1050,7 @@ errores y reclamos levantados por clientes. Incluye formulario tipo, análisis d
        - Doble guarda: botón oculto en UI + validación en guardarEdicionReclamo()
        - currentUserEmail se carga desde GET /me al iniciar sesión
 
-38g. Gestión de proyectos desde Admin - 
+38g. Gestión de proyectos desde Admin - ✅ Implementado 10-Mar-2026
 
     a) Tabla de proyectos en panel admin - OK
        - Columnas: Nombre, ID, Calculista, Cliente, Barras, Kilos, Creador
@@ -1069,11 +1068,75 @@ errores y reclamos levantados por clientes. Incluye formulario tipo, análisis d
        - PATCH /proyectos/{id}: nombre, descripcion, calculista_id, cliente_id
        - Cascada: UPDATE barras SET nombre_proyecto al renombrar
 
+38h. Campo id_calidad editable - ✅ Implementado 10-Mar-2026
+    a) Input "Correlativo calidad" añadido al formulario de edición (fila 1)
+       - Se pre-llena con valor actual al abrir formulario
+       - Se incluye en PATCH /reclamos/{id} al guardar
+       - Backend ya lo soportaba (ReclamoUpdate.id_calidad)
+
+---
+## FASE 6.5 — Roles y Permisos (RBAC)
+
+39. Definición e implementación de roles - ✅ Implementado 10-Mar-2026
+
+    a) Roles del sistema:
+       - admin: Dueño del sistema, acceso total
+       - coordinador: Jefa USC, administra reclamos y calidad, admin limitado
+       - cubicador: Cubicador interno, cubicación + responde reclamos
+       - usc: Personal USC, crea y documenta reclamos
+       - externo: Cubicador externo, solo reclamos (responde)
+       - cliente: Cliente externo, vista limitada de sus proyectos
+       - Rol "operador" eliminado, migrado a "usc" (migración 23)
+
+    b) Hub (pantalla inicial):
+       - Cubicación: admin, cubicador, cliente
+       - Reclamos: admin, coordinador, cubicador, usc, externo
+       - Administración: admin, coordinador
+
+    c) Cubicación tabs:
+       - Cliente: solo Inicio + Dashboards (sus proyectos)
+       - Admin/cubicador: todos los tabs
+
+    d) Reclamos permisos por acción:
+       - Crear reclamo: admin, coordinador, usc
+       - Editar antecedentes (Sec 1): admin/coordinador cualquiera, usc propios
+       - Responder (Sec 2): admin, coordinador, cubicador, externo (NO usc)
+       - Validar (Sec 3): admin, coordinador
+       - Cambiar aplica: solo admin
+       - Cambiar estado: admin/coordinador siempre, cubicador solo propios
+       - Eliminar reclamo: admin, coordinador
+       - Agregar seguimiento: todos con acceso a reclamos
+       - Agregar acción correctiva: admin, coordinador, cubicador
+       - Imágenes antecedente: todos
+       - Imágenes respuesta: admin, coordinador, cubicador, externo (NO usc)
+
+    e) Bloqueo post-validación:
+       - Una vez validado (Sec 3), se bloquean Sec 1/2/3 para todos excepto admin
+
+    f) Admin permisos coordinador:
+       - SI: ver usuarios, crear usuarios (solo rol USC), editar nombre, bloquear, resetear clave, clientes, proyectos
+       - NO: cambiar roles, eliminar usuarios, calculistas, limpieza datos, reset BD
+
+    g) Cambios backend:
+       - Migración 23: UPDATE operador a usc, nuevo CHECK constraint
+       - VALID_ROLES actualizado en auth.py
+       - require_admin_or_coordinador para endpoints compartidos
+       - Coordinador solo puede crear usuarios USC (validación en register)
+       - _get_allowed_project_ids actualizado para nuevos roles
+
+    h) Cambios frontend:
+       - Hub cards con visibility por rol
+       - Tab access por módulo y rol
+       - verReclamo: bloque completo de permisos (botones, dropdowns, secciones)
+       - loadUsers: role dropdown/label según rol del viewer
+       - switchModule admin: oculta secciones para coordinador
+       - Dropdown de roles en crear usuario filtrado para coordinador
+
 ---
 ## FASE 7 — Preparación para Apps
 
-39. API versionada (/api/v1) - Pendiente
-40. CORS para aplicaciones externas - Pendiente
-41. Observabilidad: /health, logs estructurados - Pendiente
-42. Performance: queries optimizadas, pool de conexiones - Pendiente
-43. Bootstrap profesional (solo dev) - Pendiente
+40. API versionada (/api/v1) - Pendiente
+41. CORS para aplicaciones externas - Pendiente
+42. Observabilidad: /health, logs estructurados - Pendiente
+43. Performance: queries optimizadas, pool de conexiones - Pendiente
+44. Bootstrap profesional (solo dev) - Pendiente

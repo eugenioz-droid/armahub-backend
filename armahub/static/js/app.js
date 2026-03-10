@@ -279,20 +279,33 @@ function switchModule(mod) {
   });
 
   // Apply role-based visibility within the module
-  const tabAccess = {
-    buscar: ['admin','coordinador','cubicador','operador'],
-    export: ['admin','coordinador','cubicador','operador'],
-  };
   if (mod === 'cubicacion') {
-    document.querySelectorAll('.tab-btn.mod-cubicacion').forEach(btn => {
-      const onclick = btn.getAttribute('onclick') || '';
-      const match = onclick.match(/switchTab\('(\w+)'\)/);
-      if (match) {
-        const tab = match[1];
-        const roles = tabAccess[tab];
-        if (roles && !roles.includes(currentRole)) btn.style.display = 'none';
-      }
-    });
+    // Cliente: only inicio + dashboards
+    var clienteHideTabs = ['obras','buscar','pedidos','export'];
+    if (currentRole === 'cliente') {
+      document.querySelectorAll('.tab-btn.mod-cubicacion').forEach(btn => {
+        var onclick = btn.getAttribute('onclick') || '';
+        var match = onclick.match(/switchTab\('(\w+)'\)/);
+        if (match && clienteHideTabs.includes(match[1])) btn.style.display = 'none';
+      });
+    }
+  }
+  if (mod === 'reclamos') {
+    // Hide create card for roles that cannot create reclamos
+    var puedeCrear = ['admin','coordinador','usc'].includes(currentRole);
+    var crearCard = document.getElementById('crearReclamoCard');
+    if (crearCard) crearCard.style.display = puedeCrear ? '' : 'none';
+  }
+  if (mod === 'admin') {
+    var esAdmin = (currentRole === 'admin');
+    // Coordinador: hide calculistas, data cleanup, DB state, DB reset
+    var hideForCoord = ['adminCalculistasCard','adminGestionDatosCard','adminEstadoBdCard','adminResetBdCard'];
+    hideForCoord.forEach(function(id) { var el = document.getElementById(id); if (el) el.style.display = esAdmin ? '' : 'none'; });
+    // Coordinador: restrict role dropdown to USC only
+    var roleSel = document.getElementById('newUserRole');
+    if (roleSel && !esAdmin) {
+      roleSel.innerHTML = '<option value="usc">USC</option>';
+    }
   }
 
   // Switch to default tab
@@ -300,7 +313,7 @@ function switchModule(mod) {
 }
 
 // ========================= INIT =========================
-let currentRole = 'operador';
+let currentRole = 'usc';
 let currentUserEmail = '';
 
 async function loadMe() {
@@ -310,31 +323,25 @@ async function loadMe() {
   document.getElementById('whoEmail').textContent = displayName || me.email;
   document.getElementById('whoRole').textContent = "Rol: " + me.role;
   localStorage.setItem('armahub_email', me.email);
-  currentRole = me.role || 'operador';
+  currentRole = me.role || 'usc';
   currentUserEmail = me.email || '';
 
   // --- Hub card visibility by role ---
-  const reclamosAccess = ['admin','coordinador','cubicador','operador'];
+  const cubicacionAccess = ['admin','cubicador','cliente'];
+  const reclamosAccess = ['admin','coordinador','cubicador','usc','externo'];
+  const adminAccess = ['admin','coordinador'];
+  const hubCubicacion = document.getElementById('hubCardCubicacion');
   const hubReclamos = document.getElementById('hubCardReclamos');
   const hubAdmin = document.getElementById('hubCardAdmin');
+  if (hubCubicacion) hubCubicacion.style.display = cubicacionAccess.includes(currentRole) ? '' : 'none';
   if (hubReclamos) hubReclamos.style.display = reclamosAccess.includes(currentRole) ? '' : 'none';
-  if (hubAdmin) hubAdmin.style.display = (currentRole === 'admin') ? '' : 'none';
-
-  // Coordinador: hide import section in Obras (they manage, don't import)
-  const dropZone = document.getElementById('dropZone');
-  const csvFile = document.getElementById('csvFile');
-  const importBtn = document.getElementById('importBtn');
-  if (currentRole === 'coordinador') {
-    if (dropZone) dropZone.style.display = 'none';
-    if (csvFile) csvFile.style.display = 'none';
-    if (importBtn) importBtn.parentElement.style.display = 'none';
-  }
+  if (hubAdmin) hubAdmin.style.display = adminAccess.includes(currentRole) ? '' : 'none';
 
   // Show Hub screen
   document.getElementById('hubScreen').style.display = 'block';
 
   // Status message
-  const roleLabels = {admin:'ADMIN', coordinador:'Coordinador', cubicador:'Cubicador', operador:'Operador', cliente:'Cliente'};
+  const roleLabels = {admin:'ADMIN', coordinador:'Coordinador', cubicador:'Cubicador', usc:'USC', externo:'Externo', cliente:'Cliente'};
   await setGlobalStatus("Sesión como " + (roleLabels[currentRole] || currentRole), "ok");
 }
 
@@ -3081,8 +3088,8 @@ async function createUser() {
   await loadUsers();
 }
 
-var _roleColors = { admin: '#b42318', coordinador: '#1565C0', cubicador: '#2e7d32', operador: '#ff9800', cliente: '#7B1FA2' };
-var _roleLabels = { admin: 'Admin', coordinador: 'Coordinador', cubicador: 'Cubicador', operador: 'Operador', cliente: 'Cliente' };
+var _roleColors = { admin: '#b42318', coordinador: '#1565C0', cubicador: '#2e7d32', usc: '#ff9800', externo: '#795548', cliente: '#7B1FA2' };
+var _roleLabels = { admin: 'Admin', coordinador: 'Coordinador', cubicador: 'Cubicador', usc: 'USC', externo: 'Externo', cliente: 'Cliente' };
 
 async function loadUsers() {
   var container = document.getElementById('usersListContainer');
@@ -3104,22 +3111,32 @@ async function loadUsers() {
     var fecha = u.fecha_creacion ? u.fecha_creacion.substring(0, 10) : '-';
     var toggleLabel = activo ? 'Desactivar' : 'Activar';
     var toggleColor = activo ? '#b42318' : '#2e7d32';
-    var rolOpts = ['admin','coordinador','cubicador','operador','cliente'].map(function(r) {
-      return '<option value="' + r + '"' + (r === u.role ? ' selected' : '') + '>' + (r.charAt(0).toUpperCase() + r.slice(1)) + '</option>';
+    var _rolLabels = {admin:'Admin',coordinador:'Coordinador',cubicador:'Cubicador',usc:'USC',externo:'Externo',cliente:'Cliente'};
+    var allRoles = ['admin','coordinador','cubicador','usc','externo','cliente'];
+    var rolOpts = allRoles.map(function(r) {
+      return '<option value="' + r + '"' + (r === u.role ? ' selected' : '') + '>' + (_rolLabels[r] || r) + '</option>';
     }).join('');
     var rowStyle = 'border-bottom:1px solid #eee;' + (!activo ? ' background:#fafafa; opacity:0.7;' : '');
     html += '<tr style="' + rowStyle + '">';
     var displayName = ((u.nombre || '') + ' ' + (u.apellido || '')).trim();
     html += '<td style="padding:4px 6px; font-weight:500;">' + u.email + '</td>';
     html += '<td style="padding:4px 6px;">' + (displayName || '<span class="muted">-</span>') + '</td>';
-    html += '<td style="padding:4px 6px;"><select style="font-size:11px; color:' + rColor + '; font-weight:600; border:1px solid #ddd; border-radius:3px; padding:1px 4px;" onchange="cambiarRolUsuario(' + u.id + ', this.value)">' + rolOpts + '</select></td>';
+    // Role column: admin sees dropdown, coordinador sees label only
+    if (currentRole === 'admin') {
+      html += '<td style="padding:4px 6px;"><select style="font-size:11px; color:' + rColor + '; font-weight:600; border:1px solid #ddd; border-radius:3px; padding:1px 4px;" onchange="cambiarRolUsuario(' + u.id + ', this.value)">' + rolOpts + '</select></td>';
+    } else {
+      html += '<td style="padding:4px 6px;"><span style="font-size:11px; color:' + rColor + '; font-weight:600;">' + (_rolLabels[u.role] || u.role) + '</span></td>';
+    }
     html += '<td style="padding:4px 6px;">' + activoBadge + '</td>';
     html += '<td style="padding:4px 6px; font-size:11px;" class="muted">' + fecha + '</td>';
     html += '<td style="padding:4px 6px; white-space:nowrap;">';
     html += '<button class="secondary" style="font-size:10px; padding:1px 6px;" onclick="editarNombreUsuario(' + u.id + ', \'' + (u.nombre || '').replace(/'/g, "\\'") + '\', \'' + (u.apellido || '').replace(/'/g, "\\'") + '\')">Nombre</button> ';
     html += '<button class="secondary" style="font-size:10px; padding:1px 6px; color:' + toggleColor + ';" onclick="toggleActivoUsuario(' + u.id + ', ' + !activo + ')">' + toggleLabel + '</button> ';
     html += '<button class="secondary" style="font-size:10px; padding:1px 6px;" onclick="resetPasswordUsuario(' + u.id + ')">Cambiar clave</button> ';
-    html += '<button class="secondary" style="font-size:10px; padding:1px 6px; color:#b42318;" onclick="eliminarUsuarioAdmin(' + u.id + ')">Eliminar</button>';
+    // Delete: admin only
+    if (currentRole === 'admin') {
+      html += '<button class="secondary" style="font-size:10px; padding:1px 6px; color:#b42318;" onclick="eliminarUsuarioAdmin(' + u.id + ')">Eliminar</button>';
+    }
     html += '</td></tr>';
   });
   html += '</table>';
@@ -3715,9 +3732,6 @@ async function verReclamo(id) {
   document.getElementById('recEditForm').style.display = 'none';
   document.getElementById('recDetailInfo').style.display = '';
   document.getElementById('btnEditarReclamo').textContent = '✏️ Editar';
-  // Show edit button only for admin or the creator
-  var puedeEditar = (currentRole === 'admin') || (data.creado_por && data.creado_por === currentUserEmail);
-  document.getElementById('btnEditarReclamo').style.display = puedeEditar ? '' : 'none';
   var titlePrefix = data.id_calidad ? data.id_calidad + ' — ' : (data.correlativo ? data.correlativo + ' — ' : '#' + data.id + ' — ');
   document.getElementById('recDetailTitle').textContent = titlePrefix + data.titulo;
 
@@ -3817,6 +3831,62 @@ async function verReclamo(id) {
   document.getElementById('recSeguimientoComentario').value = '';
   document.getElementById('recSeguimientoEstado').value = '';
   document.getElementById('recSeguimientoMsg').textContent = '';
+
+  // ============ PERMISOS POR ROL ============
+  var esCreador = data.creado_por && data.creado_por === currentUserEmail;
+  var validado = !!data.validacion_resultado;
+
+  // Edit antecedentes (Sec 1): admin/coordinador=any, usc=own
+  var puedeEditarSec1 = (currentRole === 'admin' || currentRole === 'coordinador') || (currentRole === 'usc' && esCreador);
+  if (validado && currentRole !== 'admin') puedeEditarSec1 = false;
+  document.getElementById('btnEditarReclamo').style.display = puedeEditarSec1 ? '' : 'none';
+
+  // Aplica: solo admin
+  var selAplica = document.getElementById('recDetailAplica');
+  selAplica.disabled = (currentRole !== 'admin');
+
+  // Estado: admin/coordinador always, cubicador own only
+  var puedeEstado = (currentRole === 'admin' || currentRole === 'coordinador') || (currentRole === 'cubicador' && esCreador);
+  var selEstado = document.getElementById('recDetailEstado');
+  selEstado.disabled = !puedeEstado;
+
+  // Delete: admin/coordinador
+  var puedeEliminar = (currentRole === 'admin' || currentRole === 'coordinador');
+  document.getElementById('btnEliminarReclamo').style.display = puedeEliminar ? '' : 'none';
+
+  // ID Calidad inline edit: admin/coordinador/usc(own)
+  var idCalField = document.getElementById('recDetailIdCalidad');
+  if (idCalField) idCalField.disabled = !puedeEditarSec1;
+
+  // Proyecto dropdown: admin/coordinador
+  var detProySel = document.getElementById('recDetailProyecto');
+  if (detProySel) detProySel.disabled = !(currentRole === 'admin' || currentRole === 'coordinador');
+
+  // Section 2 (Respuesta): admin/coordinador/cubicador/externo. NOT usc.
+  var puedeResponder = ['admin','coordinador','cubicador','externo'].includes(currentRole);
+  if (validado && currentRole !== 'admin') puedeResponder = false;
+  var sec2Fields = ['recDetailRespuestaTexto','recDetailCausaDisplay','recDetailAreaAplica','recDetailFechaAnalisis','recDetailExplicacionCausa','recDetailObservaciones','recDetailKilosMal'];
+  sec2Fields.forEach(function(fid) { var el = document.getElementById(fid); if (el) el.disabled = !puedeResponder; });
+  var btnGuardarResp = document.getElementById('btnGuardarRespuesta');
+  if (btnGuardarResp) btnGuardarResp.style.display = puedeResponder ? '' : 'none';
+  // Respuesta image upload zone
+  var respDropZone = document.getElementById('recRespDropZone');
+  var respFileInput = document.getElementById('recRespFileInput');
+  if (respDropZone) respDropZone.style.display = puedeResponder ? '' : 'none';
+  if (respFileInput) respFileInput.disabled = !puedeResponder;
+
+  // Section 3 (Validación): admin/coordinador
+  var puedeValidar = (currentRole === 'admin' || currentRole === 'coordinador');
+  var sec3Fields = ['recDetailValidacionResultado','recDetailValidacionObs'];
+  sec3Fields.forEach(function(fid) { var el = document.getElementById(fid); if (el) el.disabled = !puedeValidar; });
+  var btnGuardarVal = document.getElementById('btnGuardarValidacion');
+  if (btnGuardarVal) btnGuardarVal.style.display = puedeValidar ? '' : 'none';
+
+  // Acciones form: admin/coordinador/cubicador
+  var puedeAccion = ['admin','coordinador','cubicador'].includes(currentRole);
+  if (validado && currentRole !== 'admin') puedeAccion = false;
+  var accionFields = ['recNuevaAccionTipo','recNuevaAccionDesc','recNuevaAccionResp','recNuevaAccionFecha'];
+  accionFields.forEach(function(fid) { var el = document.getElementById(fid); if (el) el.disabled = !puedeAccion; });
 
   document.getElementById('reclamoDetailCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
@@ -3939,7 +4009,9 @@ function toggleEditarReclamo() {
 
 async function guardarEdicionReclamo() {
   if (!_reclamoActual) return;
-  var puedeEditar = (currentRole === 'admin') || (_reclamoActual.creado_por && _reclamoActual.creado_por === currentUserEmail);
+  var esCreador = _reclamoActual.creado_por && _reclamoActual.creado_por === currentUserEmail;
+  var puedeEditar = (currentRole === 'admin' || currentRole === 'coordinador') || (currentRole === 'usc' && esCreador);
+  if (_reclamoActual.validacion_resultado && currentRole !== 'admin') puedeEditar = false;
   if (!puedeEditar) { alert('No tienes permiso para editar este reclamo.'); return; }
   var msg = document.getElementById('recEditMsg');
   var titulo = document.getElementById('recEditTitulo').value.trim();

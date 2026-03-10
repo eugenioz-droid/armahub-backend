@@ -54,6 +54,12 @@ def require_admin(user=Depends(get_current_user)):
     return user
 
 
+def require_admin_or_coordinador(user=Depends(get_current_user)):
+    if user.get("role") not in ("admin", "coordinador"):
+        raise HTTPException(status_code=403, detail="Solo admin o coordinador")
+    return user
+
+
 @router.post("/auth/login")
 def login(email: str, password: str):
     with get_conn() as conn:
@@ -79,16 +85,17 @@ def login(email: str, password: str):
 
 
 @router.post("/auth/register")
-def register(email: str, password: str, nombre: str = "", apellido: str = "", role: str = "operador", admin=Depends(require_admin)):
+def register(email: str, password: str, nombre: str = "", apellido: str = "", role: str = "usc", user=Depends(require_admin_or_coordinador)):
     """
-    Crea usuarios. Requiere admin.
-
-    Esto es tu “Paso A” (crear usuarios desde UI) pero el endpoint debe ser seguro.
-    La UI lo llama con token.
+    Crea usuarios. Requiere admin o coordinador.
+    Coordinador solo puede crear usuarios con rol 'usc'.
     """
-    VALID_ROLES = ("admin", "coordinador", "cubicador", "operador", "cliente")
+    VALID_ROLES = ("admin", "coordinador", "cubicador", "usc", "externo", "cliente")
     if role not in VALID_ROLES:
         raise HTTPException(status_code=400, detail=f"role debe ser uno de: {', '.join(VALID_ROLES)}")
+    # Coordinador solo puede crear usuarios USC
+    if user.get("role") == "coordinador" and role != "usc":
+        raise HTTPException(status_code=403, detail="Coordinador solo puede crear usuarios con rol USC")
 
     password_hash = pwd_context.hash(password)
 
@@ -99,7 +106,7 @@ def register(email: str, password: str, nombre: str = "", apellido: str = "", ro
                     "INSERT INTO users (email, password_hash, role, nombre, apellido) VALUES (%s,%s,%s,%s,%s)",
                     (email, password_hash, role, nombre.strip() or None, apellido.strip() or None),
                 )
-        audit(admin.get("email", "?"), "registrar_usuario", f"{email} como {role}", "usuario", email)
+        audit(user.get("email", "?"), "registrar_usuario", f"{email} como {role}", "usuario", email)
         return {"ok": True}
     except Exception:
         raise HTTPException(status_code=400, detail="Email ya existe")
@@ -108,7 +115,7 @@ def register(email: str, password: str, nombre: str = "", apellido: str = "", ro
 @router.post("/auth/signup")
 def signup(email: str, password: str, nombre: str = ""):
     """
-    Registro público. Crea usuario con rol 'operador'.
+    Registro público. Crea usuario con rol 'usc'.
     El admin puede cambiar el rol después desde el panel.
     """
     email = email.strip().lower()
@@ -123,12 +130,12 @@ def signup(email: str, password: str, nombre: str = ""):
         with get_conn() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    "INSERT INTO users (email, password_hash, role) VALUES (%s, %s, 'operador')",
+                    "INSERT INTO users (email, password_hash, role) VALUES (%s, %s, 'usc')",
                     (email, password_hash),
                 )
-        audit(email, "signup", "auto-registro operador", "usuario", email)
-        token = create_token(email, "operador")
-        return {"ok": True, "access_token": token, "token_type": "bearer", "role": "operador"}
+        audit(email, "signup", "auto-registro usc", "usuario", email)
+        token = create_token(email, "usc")
+        return {"ok": True, "access_token": token, "token_type": "bearer", "role": "usc"}
     except Exception:
         raise HTTPException(status_code=400, detail="Este email ya está registrado")
 
@@ -138,11 +145,11 @@ def me(user=Depends(get_current_user)):
     email = user.get("email")
     with get_conn() as conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT nombre, apellido FROM users WHERE email = %s", (email,))
+            cur.execute("SELECT role, nombre, apellido FROM users WHERE email = %s", (email,))
             row = cur.fetchone()
-    nombre = row[0] if row else None
-    apellido = row[1] if row else None
-    return {"email": email, "role": user.get("role"), "nombre": nombre, "apellido": apellido}
+    if not row:
+        return {"email": email, "role": user.get("role"), "nombre": None, "apellido": None}
+    return {"email": email, "role": row[0], "nombre": row[1], "apellido": row[2]}
 
 
 @router.post("/me/password")
@@ -190,7 +197,7 @@ def bootstrap_create_admin(email: str, password: str):
 
 # ========================= ADMIN: USER MANAGEMENT =========================
 
-VALID_ROLES = ("admin", "coordinador", "cubicador", "operador", "cliente")
+VALID_ROLES = ("admin", "coordinador", "cubicador", "usc", "externo", "cliente")
 
 
 @router.get("/users/dropdown")
@@ -213,8 +220,8 @@ def users_dropdown(user=Depends(get_current_user)):
 
 
 @router.get("/admin/users")
-def admin_list_users(admin=Depends(require_admin)):
-    """Lista completa de usuarios con todos los campos. Solo admin."""
+def admin_list_users(admin=Depends(require_admin_or_coordinador)):
+    """Lista completa de usuarios con todos los campos. Admin o coordinador."""
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("""
@@ -252,8 +259,8 @@ def admin_change_role(user_id: int, role: str, admin=Depends(require_admin)):
 
 
 @router.patch("/admin/users/{user_id}/activo")
-def admin_toggle_activo(user_id: int, activo: bool, admin=Depends(require_admin)):
-    """Activar/desactivar un usuario. Solo admin."""
+def admin_toggle_activo(user_id: int, activo: bool, admin=Depends(require_admin_or_coordinador)):
+    """Activar/desactivar un usuario. Admin o coordinador."""
     admin_email = admin.get("email", "?")
     with get_conn() as conn:
         with conn.cursor() as cur:
@@ -270,8 +277,8 @@ def admin_toggle_activo(user_id: int, activo: bool, admin=Depends(require_admin)
 
 
 @router.patch("/admin/users/{user_id}/password")
-def admin_reset_password(user_id: int, password: str, admin=Depends(require_admin)):
-    """Resetear contraseña de un usuario. Solo admin."""
+def admin_reset_password(user_id: int, password: str, admin=Depends(require_admin_or_coordinador)):
+    """Resetear contraseña de un usuario. Admin o coordinador."""
     if len(password) < 6:
         raise HTTPException(status_code=400, detail="La contraseña debe tener al menos 6 caracteres")
     with get_conn() as conn:
@@ -287,8 +294,8 @@ def admin_reset_password(user_id: int, password: str, admin=Depends(require_admi
 
 
 @router.patch("/admin/users/{user_id}/nombre")
-def admin_change_nombre(user_id: int, nombre: str = "", apellido: str = "", admin=Depends(require_admin)):
-    """Cambiar nombre y/o apellido de un usuario. Solo admin."""
+def admin_change_nombre(user_id: int, nombre: str = "", apellido: str = "", admin=Depends(require_admin_or_coordinador)):
+    """Cambiar nombre y/o apellido de un usuario. Admin o coordinador."""
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("SELECT id, email FROM users WHERE id = %s", (user_id,))

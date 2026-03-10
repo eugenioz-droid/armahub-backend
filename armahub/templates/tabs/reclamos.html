@@ -96,7 +96,7 @@
     </div>
 
     <!-- Crear reclamo -->
-    <div class="card">
+    <div class="card" id="crearReclamoCard">
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
         <h3 style="margin:0;">Nuevo reclamo</h3>
         <button class="secondary" style="font-size:12px; padding:4px 12px;" onclick="toggleNuevoReclamo()">+ Registrar reclamo</button>
@@ -277,7 +277,7 @@
             <option value="cerrado">Cerrado</option>
             <option value="rechazado">Rechazado</option>
           </select>
-          <button onclick="eliminarReclamo()" class="secondary" style="font-size:11px; color:#b42318;">Eliminar</button>
+          <button id="btnEliminarReclamo" onclick="eliminarReclamo()" class="secondary" style="font-size:11px; color:#b42318;">Eliminar</button>
         </div>
       </div>
 
@@ -447,7 +447,7 @@
           </div>
         </div>
         <div style="margin-top:8px;">
-          <button class="secondary" style="font-size:11px; padding:4px 12px;" onclick="guardarRespuesta()">Guardar respuesta</button>
+          <button id="btnGuardarRespuesta" class="secondary" style="font-size:11px; padding:4px 12px;" onclick="guardarRespuesta()">Guardar respuesta</button>
           <span id="recRespMsg" class="muted" style="font-size:11px; margin-left:8px;"></span>
         </div>
       </div>
@@ -470,7 +470,7 @@
             <label style="font-size:11px; color:#666;">Observaciones de validación</label>
             <input type="text" id="recDetailValidacionObs" placeholder="Comentarios del validador..." style="width:100%; font-size:12px;" />
           </div>
-          <button class="secondary" style="font-size:11px; padding:4px 12px;" onclick="guardarValidacion()">Guardar validación</button>
+          <button id="btnGuardarValidacion" class="secondary" style="font-size:11px; padding:4px 12px;" onclick="guardarValidacion()">Guardar validación</button>
           <span id="recValidacionMsg" class="muted" style="font-size:11px;"></span>
         </div>
       </div>

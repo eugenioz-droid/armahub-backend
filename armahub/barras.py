@@ -12,8 +12,8 @@ router = APIRouter()
 def _get_allowed_project_ids(cur, user: dict):
     """Returns list of project IDs the user can access, or None if unrestricted.
     admin/coordinador: None (see everything).
-    cubicador/operador/cliente: only owned + authorized projects."""
-    role = user.get("role", "operador")
+    cubicador/usc/externo/cliente: only owned + authorized projects."""
+    role = user.get("role", "usc")
     if role in ("admin", "coordinador"):
         return None
     cur.execute("SELECT id FROM users WHERE email = %s", (user.get("email"),))
