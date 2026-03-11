@@ -193,13 +193,23 @@ def listar_reclamos(
     detectado_por: Optional[str] = None,
     responsable: Optional[str] = None,
     busqueda: Optional[str] = None,
+    solo_mios: bool = False,
     user=Depends(get_current_user),
 ):
-    """Lista reclamos con filtros opcionales."""
+    """Lista reclamos con filtros opcionales. solo_mios filtra por rol."""
+    email = user.get("email", "")
+    role = user.get("role", "usc")
     with get_conn() as conn:
         with conn.cursor() as cur:
             where = "WHERE 1=1"
             params = []
+            if solo_mios:
+                if role == "usc":
+                    where += " AND (r.creado_por = %s OR r.asignado_a = %s)"
+                    params.extend([email, email])
+                elif role in ("cubicador", "externo"):
+                    where += " AND r.respuesta_por = %s"
+                    params.append(email)
             if id_proyecto:
                 where += " AND r.id_proyecto = %s"
                 params.append(id_proyecto)
@@ -299,8 +309,8 @@ def crear_reclamo(body: ReclamoCreate, user=Depends(get_current_user)):
         if role == "usc":
             # USC se auto-asigna
             asignado_a = email
-        elif role in ("admin", "coordinador"):
-            # Admin/coordinador puede dejar vacío para asignar después
+        elif role in ("admin", "admin2"):
+            # Admin/admin2 puede dejar vacío para asignar después
             asignado_a = None
         else:
             # Otros roles no deberían crear reclamos (validado en frontend)
@@ -342,6 +352,167 @@ def crear_reclamo(body: ReclamoCreate, user=Depends(get_current_user)):
 
     audit(email, "crear_reclamo", body.titulo, "reclamo", str(reclamo_id))
     return {"ok": True, "id": reclamo_id, "correlativo": correlativo}
+
+
+@router.get("/reclamos/mi-resumen")
+def reclamos_mi_resumen(user=Depends(get_current_user)):
+    """Landing page stats filtered by role.
+    USC: own reclamos (creado_por or asignado_a).
+    Cubicador/Externo: reclamos they responded to (respuesta_por).
+    Admin/Admin2: all reclamos."""
+    email = user.get("email", "")
+    role = user.get("role", "usc")
+
+    # Build role-based WHERE filter
+    if role == "usc":
+        role_filter = " AND (r.creado_por = %s OR r.asignado_a = %s)"
+        role_params = [email, email]
+    elif role in ("cubicador", "externo"):
+        role_filter = " AND r.respuesta_por = %s"
+        role_params = [email]
+    else:
+        role_filter = ""
+        role_params = []
+
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            # Total count
+            cur.execute(f"SELECT COUNT(*) FROM reclamos r WHERE 1=1{role_filter}", role_params)
+            total = int(cur.fetchone()[0])
+
+            # Abiertos (not cerrado/rechazado)
+            cur.execute(f"SELECT COUNT(*) FROM reclamos r WHERE r.estado NOT IN ('cerrado','rechazado'){role_filter}", role_params)
+            abiertos = int(cur.fetchone()[0])
+
+            # By tipo_reclamo (error/faltante)
+            cur.execute(f"""
+                SELECT COALESCE(r.tipo_reclamo, 'error'), COUNT(*)
+                FROM reclamos r WHERE 1=1{role_filter}
+                GROUP BY 1
+            """, role_params)
+            por_tipo = {r[0]: int(r[1]) for r in cur.fetchall()}
+
+            # By year-month (for historical chart)
+            cur.execute(f"""
+                SELECT EXTRACT(YEAR FROM r.fecha_creacion::timestamp)::INTEGER AS anio,
+                       EXTRACT(MONTH FROM r.fecha_creacion::timestamp)::INTEGER AS mes,
+                       COUNT(*)
+                FROM reclamos r WHERE 1=1{role_filter}
+                GROUP BY anio, mes ORDER BY anio, mes
+            """, role_params)
+            por_anio_mes = [{"anio": r[0], "mes": r[1], "count": int(r[2])} for r in cur.fetchall()]
+
+            # By year (for cubicador's 4th chart)
+            cur.execute(f"""
+                SELECT EXTRACT(YEAR FROM r.fecha_creacion::timestamp)::INTEGER AS anio, COUNT(*)
+                FROM reclamos r WHERE 1=1{role_filter}
+                GROUP BY anio ORDER BY anio
+            """, role_params)
+            por_anio = [{"anio": r[0], "count": int(r[1])} for r in cur.fetchall()]
+
+    return {
+        "total": total,
+        "abiertos": abiertos,
+        "por_tipo": por_tipo,
+        "por_anio_mes": por_anio_mes,
+        "por_anio": por_anio,
+    }
+
+
+@router.get("/reclamos/admin-dashboards")
+def reclamos_admin_dashboards(user=Depends(get_current_user)):
+    """Detailed analytics for admin Dashboards tab.
+    Returns per-USC and per-cubicador breakdowns."""
+    role = user.get("role", "usc")
+    if role not in ("admin", "admin2"):
+        raise HTTPException(status_code=403, detail="Solo admin")
+
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            # --- USC Column: per-USC breakdown ---
+            # Per USC user: total, errores, faltantes
+            cur.execute("""
+                SELECT COALESCE(r.asignado_a, r.creado_por, 'Desconocido') AS usc_user,
+                       COUNT(*) AS total,
+                       COUNT(*) FILTER (WHERE r.tipo_reclamo = 'error') AS errores,
+                       COUNT(*) FILTER (WHERE r.tipo_reclamo = 'faltante') AS faltantes
+                FROM reclamos r
+                JOIN users u ON u.email = COALESCE(r.asignado_a, r.creado_por)
+                WHERE u.role = 'usc'
+                GROUP BY usc_user ORDER BY total DESC
+            """)
+            por_usc = [{"email": r[0], "total": int(r[1]), "errores": int(r[2]), "faltantes": int(r[3])} for r in cur.fetchall()]
+
+            # Per USC year-month historical
+            cur.execute("""
+                SELECT COALESCE(r.asignado_a, r.creado_por) AS usc_user,
+                       EXTRACT(YEAR FROM r.fecha_creacion::timestamp)::INTEGER AS anio,
+                       EXTRACT(MONTH FROM r.fecha_creacion::timestamp)::INTEGER AS mes,
+                       COUNT(*)
+                FROM reclamos r
+                JOIN users u ON u.email = COALESCE(r.asignado_a, r.creado_por)
+                WHERE u.role = 'usc'
+                GROUP BY usc_user, anio, mes ORDER BY usc_user, anio, mes
+            """)
+            usc_hist = [{"email": r[0], "anio": r[1], "mes": r[2], "count": int(r[3])} for r in cur.fetchall()]
+
+            # --- Cubicador Column: Ishikawa + per-cubicador breakdown ---
+            # Ishikawa distribution for reclamos responded by cubicadores
+            cur.execute("""
+                SELECT COALESCE(r.categoria_ishikawa, 'sin_categoria'), COUNT(*)
+                FROM reclamos r
+                JOIN users u ON u.email = r.respuesta_por
+                WHERE u.role = 'cubicador'
+                GROUP BY 1 ORDER BY 2 DESC
+            """)
+            ishikawa_cubicador = [{"categoria": r[0], "count": int(r[1])} for r in cur.fetchall()]
+
+            # Per cubicador: total responded, by tipo
+            cur.execute("""
+                SELECT r.respuesta_por,
+                       COUNT(*) AS total,
+                       COUNT(*) FILTER (WHERE r.tipo_reclamo = 'error') AS errores,
+                       COUNT(*) FILTER (WHERE r.tipo_reclamo = 'faltante') AS faltantes
+                FROM reclamos r
+                JOIN users u ON u.email = r.respuesta_por
+                WHERE u.role = 'cubicador' AND r.respuesta_por IS NOT NULL
+                GROUP BY r.respuesta_por ORDER BY total DESC
+            """)
+            por_cubicador = [{"email": r[0], "total": int(r[1]), "errores": int(r[2]), "faltantes": int(r[3])} for r in cur.fetchall()]
+
+            # Per cubicador year-month historical
+            cur.execute("""
+                SELECT r.respuesta_por,
+                       EXTRACT(YEAR FROM r.fecha_creacion::timestamp)::INTEGER AS anio,
+                       EXTRACT(MONTH FROM r.fecha_creacion::timestamp)::INTEGER AS mes,
+                       COUNT(*)
+                FROM reclamos r
+                JOIN users u ON u.email = r.respuesta_por
+                WHERE u.role = 'cubicador' AND r.respuesta_por IS NOT NULL
+                GROUP BY r.respuesta_por, anio, mes ORDER BY r.respuesta_por, anio, mes
+            """)
+            cub_hist = [{"email": r[0], "anio": r[1], "mes": r[2], "count": int(r[3])} for r in cur.fetchall()]
+
+            # Ishikawa per cubicador
+            cur.execute("""
+                SELECT r.respuesta_por,
+                       COALESCE(r.categoria_ishikawa, 'sin_categoria'),
+                       COUNT(*)
+                FROM reclamos r
+                JOIN users u ON u.email = r.respuesta_por
+                WHERE u.role = 'cubicador' AND r.respuesta_por IS NOT NULL
+                GROUP BY r.respuesta_por, 2 ORDER BY r.respuesta_por, 3 DESC
+            """)
+            ishikawa_per_cub = [{"email": r[0], "categoria": r[1], "count": int(r[2])} for r in cur.fetchall()]
+
+    return {
+        "por_usc": por_usc,
+        "usc_hist": usc_hist,
+        "ishikawa_cubicador": ishikawa_cubicador,
+        "por_cubicador": por_cubicador,
+        "cub_hist": cub_hist,
+        "ishikawa_per_cub": ishikawa_per_cub,
+    }
 
 
 @router.get("/reclamos/kpis")

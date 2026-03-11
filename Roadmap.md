@@ -1060,7 +1060,7 @@ errores y reclamos levantados por clientes. Incluye formulario tipo, análisis d
        - cubicador: Cubicador interno, cubicación + responde reclamos
        - usc: Personal USC, crea y documenta reclamos
        - externo: Cubicador externo, solo reclamos (responde)
-       - cliente: Cliente externo, vista limitada de sus proyectos
+       - cliente: Cliente externo, acceso cubicación (ve todos los proyectos)
        - Rol "operador" eliminado, migrado a "usc" (migración 23)
 
     b) Hub (pantalla inicial):
@@ -1068,8 +1068,10 @@ errores y reclamos levantados por clientes. Incluye formulario tipo, análisis d
        - Reclamos: admin, coordinador, cubicador, usc, externo
        - Administración: admin, coordinador
 
-    c) Cubicación tabs:
-       - Cliente: solo Inicio + Dashboards (sus proyectos)
+    c) Cubicación datos:
+       - Todos los roles con acceso al módulo ven TODOS los proyectos y cubicaciones
+       - No hay filtrado por proyecto a nivel backend (acceso controlado en hub)
+       - Cliente: solo tabs Inicio + Dashboards
        - Admin/cubicador: todos los tabs
 
     d) Reclamos permisos por acción:
@@ -1134,8 +1136,57 @@ errores y reclamos levantados por clientes. Incluye formulario tipo, análisis d
 ---
 ## FASE 7 — Preparación para Apps
 
-41. API versionada (/api/v1) - Pendiente
-42. CORS para aplicaciones externas - Pendiente
-43. Observabilidad: /health, logs estructurados - Pendiente
-44. Performance: queries optimizadas, pool de conexiones - Pendiente
-45. Bootstrap profesional (solo dev) - Pendiente
+41. Landing page reclamos con KPI charts + Dashboards admin + Rename Constructoras - ✅ Implementado 11-Mar-2026
+
+    a) Landing page reclamos (todos los roles con acceso):
+       - 3 charts fijos: total reclamos, doughnut error/faltante, histórico mensual por año
+       - 4to chart (reclamos por año): visible solo para cubicador y admin
+       - Títulos adaptativos: "Mi Resumen" (USC/cubicador) vs "Resumen General" (admin)
+       - Backend: GET /reclamos/mi-resumen (filtrado por rol)
+
+    b) Filtrado de lista por rol:
+       - USC: solo propios (creado_por o asignado_a) via solo_mios=true
+       - Cubicador/Externo: solo respondidos (respuesta_por) via solo_mios=true
+       - Admin/Admin2: ven todos los reclamos
+
+    c) Tab Dashboards (solo admin/admin2):
+       - Columna USC: bar chart por usuario, stacked error/faltante, histórico mensual
+       - Columna Cubicador: doughnut Ishikawa global, bar por cubicador, stacked Ishikawa por cubicador
+       - Backend: GET /reclamos/admin-dashboards (solo admin)
+
+    d) Rename Clientes → Constructoras (UI only, DB unchanged):
+       - admin.html: título sección, botones crear/guardar
+       - app.html: modals nuevo proyecto, proyecto sin match
+       - obras.html: label y dropdown en crear obra
+       - app.js: dropdowns, mensajes éxito, prompts edición, TABLE_LABELS, lista vacía
+       - reclamos.html: "Detectado por" opciones (Cliente → Constructora)
+       - Nota: el rol de usuario "cliente" NO se renombra (es un rol, no la entidad)
+
+42. Validación de importación mejorada + resumen multi-planilla - ✅ Implementado 11-Mar-2026
+
+    a) Pre-validación all-or-nothing por archivo:
+       - Si CUALQUIER fila tiene error crítico, se rechaza el archivo COMPLETO
+       - Errores críticos: ID_UNICO vacío, inconsistencia de IDs
+       - Mensaje detallado: "X/Y barras inválidas" con detalle por fila (primeras 10)
+       - Archivos con warnings no-críticos (DIAM/LARGO faltante) se cargan normalmente
+
+    b) Verificación de consistencia de IDs:
+       - Compara ID_UNICO con sus componentes: ID_PROYECTO, PLANO_CODE, ID
+       - Detecta discrepancias causadas por versiones antiguas de ArmaDetailer
+       - Si algún componente no aparece en ID_UNICO → error crítico → archivo rechazado
+
+    c) Resumen consolidado multi-planilla (frontend):
+       - Al finalizar importación de múltiples archivos, muestra resumen:
+         "📊 Resumen: X/Y planillas cargadas — Z barras — W kg"
+       - Barra lateral coloreada: verde (todas OK), naranja (parcial), rojo (todas fallaron)
+       - Cada archivo individual sigue mostrando su resultado por separado
+
+    d) Bugfix: campo rows_upserted → barras en frontend
+       - Corregido en todos los paths de retry (missing_project, new_project, duplicate_warning)
+       - Agregados campos filas_rechazadas y advertencias al response del backend
+
+43. API versionada (/api/v1) - Pendiente
+44. CORS para aplicaciones externas - Pendiente
+45. Observabilidad: /health, logs estructurados - Pendiente
+46. Performance: queries optimizadas, pool de conexiones - Pendiente
+47. Bootstrap profesional (solo dev) - Pendiente

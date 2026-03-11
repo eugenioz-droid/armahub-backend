@@ -30,7 +30,7 @@
       <h2 style="color:#1a1a1a; font-size:24px; font-weight:700; margin:0 0 8px 0;">Bienvenido a ArmaHub</h2>
       <p style="color:#666; font-size:14px; margin:0;">Selecciona un módulo para comenzar</p>
     </div>
-    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(240px, 1fr)); gap:20px;">
+    <div style="display:grid; grid-template-columns:repeat(3, 240px); gap:20px; justify-content:center;">
       <!-- Card: Cubicación -->
       <div id="hubCardCubicacion" onclick="switchModule('cubicacion')" style="cursor:pointer; background:#fff; border:2px solid #e0e0e0; border-radius:12px; padding:28px 24px; text-align:center; transition:all 0.2s; box-shadow:0 2px 8px rgba(0,0,0,0.06);" onmouseover="this.style.borderColor='#4285f4'; this.style.boxShadow='0 4px 16px rgba(66,133,244,0.2)'; this.style.transform='translateY(-2px)';" onmouseout="this.style.borderColor='#e0e0e0'; this.style.boxShadow='0 2px 8px rgba(0,0,0,0.06)'; this.style.transform='none';">
         <div style="font-size:40px; margin-bottom:12px;">🏗️</div>
@@ -39,15 +39,15 @@
       </div>
       <!-- Card: Reclamos -->
       <div id="hubCardReclamos" onclick="switchModule('reclamos')" style="cursor:pointer; background:#fff; border:2px solid #e0e0e0; border-radius:12px; padding:28px 24px; text-align:center; transition:all 0.2s; box-shadow:0 2px 8px rgba(0,0,0,0.06);" onmouseover="this.style.borderColor='#f59e0b'; this.style.boxShadow='0 4px 16px rgba(245,158,11,0.2)'; this.style.transform='translateY(-2px)';" onmouseout="this.style.borderColor='#e0e0e0'; this.style.boxShadow='0 2px 8px rgba(0,0,0,0.06)'; this.style.transform='none';">
-        <div style="font-size:40px; margin-bottom:12px;">⚠️</div>
+        <div style="font-size:40px; margin-bottom:12px;">📋</div>
         <h3 style="margin:0 0 8px 0; color:#1a1a1a; font-size:18px; font-weight:700;">Reclamos</h3>
-        <p style="margin:0; color:#666; font-size:13px; line-height:1.4;">Control de errores, análisis de causa raíz y seguimiento de calidad</p>
+        <p style="margin:0; color:#666; font-size:13px; line-height:1.4;">Control de calidad, análisis de causa raíz y seguimiento</p>
       </div>
       <!-- Card: Administración (solo admin) -->
       <div id="hubCardAdmin" onclick="switchModule('admin')" style="display:none; cursor:pointer; background:#fff; border:2px solid #e0e0e0; border-radius:12px; padding:28px 24px; text-align:center; transition:all 0.2s; box-shadow:0 2px 8px rgba(0,0,0,0.06);" onmouseover="this.style.borderColor='#8b5cf6'; this.style.boxShadow='0 4px 16px rgba(139,92,246,0.2)'; this.style.transform='translateY(-2px)';" onmouseout="this.style.borderColor='#e0e0e0'; this.style.boxShadow='0 2px 8px rgba(0,0,0,0.06)'; this.style.transform='none';">
         <div style="font-size:40px; margin-bottom:12px;">⚙️</div>
         <h3 style="margin:0 0 8px 0; color:#1a1a1a; font-size:18px; font-weight:700;">Administración</h3>
-        <p style="margin:0; color:#666; font-size:13px; line-height:1.4;">Usuarios, clientes, calculistas, auditoría y gestión de datos</p>
+        <p style="margin:0; color:#666; font-size:13px; line-height:1.4;">Usuarios, constructoras, calculistas, auditoría y gestión de datos</p>
       </div>
     </div>
   </div>
@@ -105,9 +105,9 @@
         </select>
       </div>
       <div style="margin-bottom:12px;">
-        <label style="font-size:12px; color:#666; display:block; margin-bottom:4px;">Cliente (opcional)</label>
+        <label style="font-size:12px; color:#666; display:block; margin-bottom:4px;">Constructora (opcional)</label>
         <select id="newProjCliente" style="width:100%; font-size:13px;">
-          <option value="">— Sin cliente —</option>
+          <option value="">— Sin constructora —</option>
         </select>
       </div>
       <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:16px;">
@@ -147,7 +147,7 @@
           </div>
           <div style="flex:1;">
             <select id="missProjCliente" style="width:100%; font-size:13px;">
-              <option value="">— Sin cliente —</option>
+              <option value="">— Sin constructora —</option>
             </select>
           </div>
         </div>

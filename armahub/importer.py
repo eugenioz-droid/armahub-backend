@@ -154,6 +154,59 @@ async def import_armadetailer(
             "archivo": file.filename,
         }
 
+    # ── Pre-validation: check ALL rows before any DB operation ──
+    total_filas = len(df)
+    filas_invalidas = []
+
+    for idx, r in df.iterrows():
+        row_num = idx + 2  # +2: 1-indexed + header row
+        errores_fila = []
+
+        # 1. ID_UNICO obligatorio
+        id_unico_val = str(r["ID_UNICO"]).strip() if pd.notna(r["ID_UNICO"]) else ""
+        if not id_unico_val or id_unico_val.lower() == "nan":
+            errores_fila.append("ID_UNICO vacío")
+
+        # 2. ID consistency: ID_UNICO debe contener ID_PROYECTO + PLANO_CODE + ID
+        if id_unico_val and id_unico_val.lower() != "nan":
+            row_proyecto = str(r["ID_PROYECTO"]).strip() if pd.notna(r["ID_PROYECTO"]) else ""
+            row_plano = str(r["PLANO_CODE"]).strip() if pd.notna(r["PLANO_CODE"]) else ""
+            bar_id = ""
+            if "ID" in df.columns and pd.notna(r.get("ID")):
+                bar_id = str(r["ID"]).strip()
+                if bar_id.lower() == "nan":
+                    bar_id = ""
+
+            inconsistencias = []
+            if row_proyecto and row_proyecto.lower() != "nan" and row_proyecto not in id_unico_val:
+                inconsistencias.append(f"ID_PROYECTO '{row_proyecto}' no en ID_UNICO")
+            if row_plano and row_plano.lower() != "nan" and row_plano not in id_unico_val:
+                inconsistencias.append(f"PLANO_CODE '{row_plano}' no en ID_UNICO")
+            if bar_id and bar_id not in id_unico_val:
+                inconsistencias.append(f"ID '{bar_id}' no en ID_UNICO")
+            if inconsistencias:
+                errores_fila.append("ID inconsistente: " + "; ".join(inconsistencias))
+
+        if errores_fila:
+            filas_invalidas.append((row_num, errores_fila))
+
+    if filas_invalidas:
+        n_inv = len(filas_invalidas)
+        detalle_items = []
+        for rn, errs in filas_invalidas[:10]:
+            detalle_items.append(f"Fila {rn}: {', '.join(errs)}")
+        detalle = "; ".join(detalle_items)
+        if n_inv > 10:
+            detalle += f" ... y {n_inv - 10} más"
+        return {
+            "ok": False,
+            "validation_failed": True,
+            "mensaje": f"{n_inv}/{total_filas} barras inválidas. {detalle}",
+            "barras_invalidas": n_inv,
+            "total_filas": total_filas,
+            "archivo": file.filename,
+        }
+
     # Detectar si el proyecto es nuevo o existente
     is_new_project = False
     with get_conn() as conn:
@@ -414,9 +467,13 @@ async def import_armadetailer(
         "proyecto": proyecto_nombre,
         "id_proyecto": proyecto_id,
         "barras": len(rows_to_upsert),
+        "rows_upserted": len(rows_to_upsert),
         "kilos": round(total_kilos, 2),
+        "total_filas": len(df),
         "rechazadas": len(rejected_rows),
+        "filas_rechazadas": len(rejected_rows),
         "warnings": warnings[:30],
+        "advertencias": len(warnings),
         "rejected": rejected_rows[:30],
         "estado": estado,
         "is_new_project": is_new_project,

@@ -30,7 +30,7 @@
             <select id="newUserRole" style="width:100%; font-size:12px;">
               <option value="usc">USC</option>
               <option value="cubicador">Cubicador</option>
-              <option value="coordinador">Coordinador</option>
+              <option value="admin2">Admin2</option>
               <option value="externo">Externo</option>
               <option value="cliente">Cliente</option>
               <option value="admin">Admin</option>
@@ -45,11 +45,11 @@
       </div>
     </div>
 
-    <!-- Clientes (movido desde Obras) -->
+    <!-- Constructoras (antes Clientes) -->
     <div class="card">
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
-        <h3 style="margin:0;">Clientes</h3>
-        <button class="secondary" style="font-size:12px; padding:4px 12px;" onclick="toggleNuevoCliente()">+ Nuevo cliente</button>
+        <h3 style="margin:0;">Constructoras</h3>
+        <button class="secondary" style="font-size:12px; padding:4px 12px;" onclick="toggleNuevoCliente()">+ Nueva constructora</button>
       </div>
       <div id="nuevoClienteForm" style="display:none; margin-bottom:12px; padding:12px; background:#f9f9f9; border-radius:8px;">
         <div class="row" style="gap:8px; flex-wrap:wrap; align-items:flex-end;">
@@ -75,7 +75,7 @@
           </div>
         </div>
         <div style="margin-top:8px; display:flex; gap:8px; align-items:center;">
-          <button style="font-size:12px; padding:6px 16px;" onclick="crearCliente()">Guardar cliente</button>
+          <button style="font-size:12px; padding:6px 16px;" onclick="crearCliente()">Guardar constructora</button>
           <span id="crearClienteMsg" class="muted" style="font-size:12px;"></span>
         </div>
       </div>

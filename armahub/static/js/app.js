@@ -106,7 +106,7 @@ async function openNewProjectModal(data) {
   // Populate client selector
   var clSel = document.getElementById('newProjCliente');
   if (clSel) {
-    clSel.innerHTML = '<option value="">\u2014 Sin cliente \u2014</option>' +
+    clSel.innerHTML = '<option value="">\u2014 Sin constructora \u2014</option>' +
       _clientesCache.map(function(c) { return '<option value="' + c.id + '">' + c.nombre + '</option>'; }).join('');
   }
 
@@ -167,7 +167,7 @@ async function openMissingProjectModal(data) {
   // Populate client selector
   var clSel = document.getElementById('missProjCliente');
   if (clSel) {
-    clSel.innerHTML = '<option value="">\u2014 Sin cliente \u2014</option>' +
+    clSel.innerHTML = '<option value="">\u2014 Sin constructora \u2014</option>' +
       _clientesCache.map(function(c) { return '<option value="' + c.id + '">' + c.nombre + '</option>'; }).join('');
   }
 
@@ -292,13 +292,13 @@ function switchModule(mod) {
   }
   if (mod === 'reclamos') {
     // Hide create card for roles that cannot create reclamos
-    var puedeCrear = ['admin','coordinador','usc'].includes(currentRole);
+    var puedeCrear = ['admin','admin2','usc'].includes(currentRole);
     var crearCard = document.getElementById('crearReclamoCard');
     if (crearCard) crearCard.style.display = puedeCrear ? '' : 'none';
     // USC: hide asignado_a dropdown (auto-assigned to self)
     var asigCol = document.getElementById('recAsignadoA');
     if (asigCol && asigCol.parentElement) {
-      asigCol.parentElement.style.display = (currentRole === 'admin' || currentRole === 'coordinador') ? '' : 'none';
+      asigCol.parentElement.style.display = (currentRole === 'admin' || currentRole === 'admin2') ? '' : 'none';
     }
   }
   if (mod === 'admin') {
@@ -333,8 +333,8 @@ async function loadMe() {
 
   // --- Hub card visibility by role ---
   const cubicacionAccess = ['admin','cubicador','cliente'];
-  const reclamosAccess = ['admin','coordinador','cubicador','usc','externo'];
-  const adminAccess = ['admin','coordinador'];
+  const reclamosAccess = ['admin','admin2','cubicador','usc','externo'];
+  const adminAccess = ['admin','admin2'];
   const hubCubicacion = document.getElementById('hubCardCubicacion');
   const hubReclamos = document.getElementById('hubCardReclamos');
   const hubAdmin = document.getElementById('hubCardAdmin');
@@ -346,7 +346,7 @@ async function loadMe() {
   document.getElementById('hubScreen').style.display = 'block';
 
   // Status message
-  const roleLabels = {admin:'ADMIN', coordinador:'Coordinador', cubicador:'Cubicador', usc:'USC', externo:'Externo', cliente:'Cliente'};
+  const roleLabels = {admin:'ADMIN', admin2:'Admin2', cubicador:'Cubicador', usc:'USC', externo:'Externo', cliente:'Cliente'};
   await setGlobalStatus("Sesión como " + (roleLabels[currentRole] || currentRole), "ok");
 }
 
@@ -848,6 +848,8 @@ async function importAllFiles() {
   const total = pendingFiles.length;
   let successCount = 0;
   let errorCount = 0;
+  let totalBarrasImported = 0;
+  let totalKilosImported = 0;
 
   for (let i = 0; i < total; i++) {
     const f = pendingFiles[i];
@@ -881,7 +883,9 @@ async function importAllFiles() {
       const data2 = await apiPostFile(retryUrl, f);
       if (data2 && data2.ok) {
         const kilosText2 = data2.kilos ? ` — ${Math.round(data2.kilos).toLocaleString()} kg` : '';
-        results.innerHTML += `<div class="status-ok" style="padding:4px 0; font-size:13px;">✅ ${f.name}: ${data2.rows_upserted} barras (${data2.proyecto})${kilosText2} ${missResult.action === 'existing' ? '(reasignado)' : '(nuevo proyecto)'}</div>`;
+        totalBarrasImported += (data2.barras || 0);
+        totalKilosImported += (data2.kilos || 0);
+        results.innerHTML += `<div class="status-ok" style="padding:4px 0; font-size:13px;">✅ ${f.name}: ${data2.barras} barras (${data2.proyecto})${kilosText2} ${missResult.action === 'existing' ? '(reasignado)' : '(nuevo proyecto)'}</div>`;
         successCount++;
       } else {
         results.innerHTML += `<div class="status-err" style="padding:4px 0; font-size:13px;">❌ ${f.name}: ${data2?.error || data2?.mensaje || 'Error en importación'}</div>`;
@@ -904,7 +908,9 @@ async function importAllFiles() {
       const data2 = await apiPostFile(retryUrl, f);
       if (data2 && data2.ok) {
         const kilosText2 = data2.kilos ? ` — ${Math.round(data2.kilos).toLocaleString()} kg` : '';
-        results.innerHTML += `<div class="status-ok" style="padding:4px 0; font-size:13px;">✅ ${f.name}: ${data2.rows_upserted} barras (${data2.proyecto})${kilosText2} (nuevo proyecto)</div>`;
+        totalBarrasImported += (data2.barras || 0);
+        totalKilosImported += (data2.kilos || 0);
+        results.innerHTML += `<div class="status-ok" style="padding:4px 0; font-size:13px;">✅ ${f.name}: ${data2.barras} barras (${data2.proyecto})${kilosText2} (nuevo proyecto)</div>`;
         successCount++;
       } else {
         results.innerHTML += `<div class="status-err" style="padding:4px 0; font-size:13px;">❌ ${f.name}: ${data2?.error || data2?.mensaje || 'Error creando proyecto'}</div>`;
@@ -928,7 +934,9 @@ async function importAllFiles() {
       const data2 = await apiPostFile(retryUrl, f);
       if (data2 && data2.ok) {
         const kilosText2 = data2.kilos ? ` — ${Math.round(data2.kilos).toLocaleString()} kg` : '';
-        results.innerHTML += `<div class="status-ok" style="padding:4px 0; font-size:13px;">✅ ${f.name}: ${data2.rows_upserted} barras (${data2.proyecto})${kilosText2} ${choice ? '(reasignado)' : '(nuevo)'}</div>`;
+        totalBarrasImported += (data2.barras || 0);
+        totalKilosImported += (data2.kilos || 0);
+        results.innerHTML += `<div class="status-ok" style="padding:4px 0; font-size:13px;">✅ ${f.name}: ${data2.barras} barras (${data2.proyecto})${kilosText2} ${choice ? '(reasignado)' : '(nuevo)'}</div>`;
         successCount++;
       } else {
         results.innerHTML += `<div class="status-err" style="padding:4px 0; font-size:13px;">❌ ${f.name}: ${data2?.error || 'Error en reimportación'}</div>`;
@@ -937,6 +945,11 @@ async function importAllFiles() {
       continue;
     }
     if (data.ok === false && data.invalid_sectors) {
+      results.innerHTML += `<div class="status-err" style="padding:4px 0; font-size:13px;">🚫 ${f.name}: ${data.mensaje}</div>`;
+      errorCount++;
+      continue;
+    }
+    if (data.ok === false && data.validation_failed) {
       results.innerHTML += `<div class="status-err" style="padding:4px 0; font-size:13px;">🚫 ${f.name}: ${data.mensaje}</div>`;
       errorCount++;
       continue;
@@ -952,15 +965,23 @@ async function importAllFiles() {
     if (data.filas_rechazadas > 0) validInfo += ` ⚠️ ${data.filas_rechazadas} rechazadas`;
     if (data.advertencias > 0) validInfo += ` ℹ️ ${data.advertencias} advertencias`;
     const statusClass = data.estado === 'ok' ? 'status-ok' : 'status-warn';
-    results.innerHTML += `<div class="${statusClass}" style="padding:4px 0; font-size:13px;">✅ ${f.name}: ${data.rows_upserted} barras (${data.proyecto})${kilosText}${validInfo}</div>`;
+    totalBarrasImported += (data.barras || 0);
+    totalKilosImported += (data.kilos || 0);
+    results.innerHTML += `<div class="${statusClass}" style="padding:4px 0; font-size:13px;">✅ ${f.name}: ${data.barras} barras (${data.proyecto})${kilosText}${validInfo}</div>`;
     if (data.rejected && data.rejected.length > 0) {
       results.innerHTML += `<div class="muted" style="padding:2px 0 4px 20px; font-size:11px;">Rechazadas: ${data.rejected.slice(0,5).join(', ')}</div>`;
     }
     successCount++;
   }
 
-  progress.textContent = `Listo: ${successCount} exitosos, ${errorCount} con error`;
-  await setGlobalStatus(`Importación completa: ${successCount}/${total} archivos`, successCount === total ? 'ok' : 'warn');
+  // Consolidated summary
+  var summaryParts = [`${successCount}/${total} planillas cargadas`];
+  if (totalBarrasImported > 0) summaryParts.push(`${totalBarrasImported.toLocaleString()} barras`);
+  if (totalKilosImported > 0) summaryParts.push(`${Math.round(totalKilosImported).toLocaleString()} kg`);
+  var summaryColor = successCount === total ? '#2e7d32' : (successCount > 0 ? '#e65100' : '#b42318');
+  results.innerHTML += `<div style="margin-top:8px; padding:8px 12px; background:#f5f5f5; border-left:4px solid ${summaryColor}; border-radius:4px; font-size:13px; font-weight:600;">📊 Resumen: ${summaryParts.join(' — ')}</div>`;
+  progress.textContent = '';
+  await setGlobalStatus(`Importación completa: ${successCount}/${total} planillas`, successCount === total ? 'ok' : 'warn');
 
   pendingFiles = [];
   document.getElementById('csvFile').value = '';
@@ -2430,7 +2451,7 @@ async function loadClientes() {
   const sel = document.getElementById('newObraCliente');
   if (sel) {
     const prev = sel.value;
-    sel.innerHTML = '<option value="">-- Sin cliente --</option>' +
+    sel.innerHTML = '<option value="">-- Sin constructora --</option>' +
       _clientesCache.map(c => `<option value="${c.id}">${c.nombre}</option>`).join('');
     if (prev) sel.value = prev;
   }
@@ -2439,7 +2460,7 @@ async function loadClientes() {
   const container = document.getElementById('clientesContainer');
   if (!container) return;
   if (_clientesCache.length === 0) {
-    container.innerHTML = '<div class="muted">No hay clientes registrados</div>';
+    container.innerHTML = '<div class="muted">No hay constructoras registradas</div>';
     return;
   }
   container.innerHTML = '<table style="width:100%; font-size:12px; border-collapse:collapse;">' +
@@ -2497,7 +2518,7 @@ async function crearCliente() {
   if (res.status === 401) { logout(); return; }
   const data = await res.json();
   if (data.ok) {
-    msg.textContent = 'Cliente creado'; msg.style.color = '#558B2F';
+    msg.textContent = 'Constructora creada'; msg.style.color = '#558B2F';
     document.getElementById('ncNombre').value = '';
     document.getElementById('ncRut').value = '';
     document.getElementById('ncContacto').value = '';
@@ -2513,7 +2534,7 @@ async function crearCliente() {
 async function editarCliente(clienteId) {
   const c = _clientesCache.find(x => x.id === clienteId);
   if (!c) return;
-  const nuevoNombre = prompt('Nombre del cliente:', c.nombre);
+  const nuevoNombre = prompt('Nombre de la constructora:', c.nombre);
   if (nuevoNombre === null || nuevoNombre.trim() === '') return;
   const body = { nombre: nuevoNombre.trim() };
   const res = await fetch('/clientes/' + clienteId, {
@@ -2689,7 +2710,7 @@ async function editarProyectoAdmin(idProyecto) {
     var cdata = await apiGet('/clientes');
     clienteData = (cdata && cdata.clientes) ? cdata.clientes : [];
   } catch(e) {}
-  var clienteOpts = '<option value="0">— Sin cliente —</option>' +
+  var clienteOpts = '<option value="0">— Sin constructora —</option>' +
     clienteData.map(function(c) {
       return '<option value="' + c.id + '"' + (c.id === p.cliente_id ? ' selected' : '') + '>' + c.nombre + '</option>';
     }).join('');
@@ -2701,7 +2722,7 @@ async function editarProyectoAdmin(idProyecto) {
   formHtml += '<input type="text" id="editProjNombre" value="' + (p.nombre_proyecto || '').replace(/"/g, '&quot;') + '" style="width:100%; font-size:12px;" /></div>';
   formHtml += '<div class="col" style="max-width:200px;"><label style="font-size:11px; color:#666;">Calculista</label>';
   formHtml += '<select id="editProjCalculista" style="width:100%; font-size:12px;">' + calcOpts + '</select></div>';
-  formHtml += '<div class="col" style="max-width:200px;"><label style="font-size:11px; color:#666;">Cliente</label>';
+  formHtml += '<div class="col" style="max-width:200px;"><label style="font-size:11px; color:#666;">Constructora</label>';
   formHtml += '<select id="editProjCliente" style="width:100%; font-size:12px;">' + clienteOpts + '</select></div>';
   formHtml += '</div>';
   formHtml += '<div style="margin-top:6px;"><label style="font-size:11px; color:#666;">Descripción</label>';
@@ -2961,7 +2982,7 @@ async function procesarPedido() {
 // ========================= ADMIN =========================
 const TABLE_LABELS = {
   barras: 'Barras', imports: 'Importaciones', proyectos: 'Proyectos',
-  reclamos: 'Reclamos', calculistas: 'Calculistas', clientes: 'Clientes',
+  reclamos: 'Reclamos', calculistas: 'Calculistas', clientes: 'Constructoras',
   pedidos: 'Pedidos', audit_log: 'Auditoría', users: 'Usuarios',
 };
 const CLEARABLE_TABLES = ['barras','imports','proyectos','reclamos','calculistas','clientes','pedidos','audit_log'];
@@ -3093,8 +3114,8 @@ async function createUser() {
   await loadUsers();
 }
 
-var _roleColors = { admin: '#b42318', coordinador: '#1565C0', cubicador: '#2e7d32', usc: '#ff9800', externo: '#795548', cliente: '#7B1FA2' };
-var _roleLabels = { admin: 'Admin', coordinador: 'Coordinador', cubicador: 'Cubicador', usc: 'USC', externo: 'Externo', cliente: 'Cliente' };
+var _roleColors = { admin: '#b42318', admin2: '#1565C0', cubicador: '#2e7d32', usc: '#ff9800', externo: '#795548', cliente: '#7B1FA2' };
+var _roleLabels = { admin: 'Admin', admin2: 'Admin2', cubicador: 'Cubicador', usc: 'USC', externo: 'Externo', cliente: 'Cliente' };
 
 async function loadUsers() {
   var container = document.getElementById('usersListContainer');
@@ -3116,8 +3137,8 @@ async function loadUsers() {
     var fecha = u.fecha_creacion ? u.fecha_creacion.substring(0, 10) : '-';
     var toggleLabel = activo ? 'Desactivar' : 'Activar';
     var toggleColor = activo ? '#b42318' : '#2e7d32';
-    var _rolLabels = {admin:'Admin',coordinador:'Coordinador',cubicador:'Cubicador',usc:'USC',externo:'Externo',cliente:'Cliente'};
-    var allRoles = ['admin','coordinador','cubicador','usc','externo','cliente'];
+    var _rolLabels = {admin:'Admin',admin2:'Admin2',cubicador:'Cubicador',usc:'USC',externo:'Externo',cliente:'Cliente'};
+    var allRoles = ['admin','admin2','cubicador','usc','externo','cliente'];
     var rolOpts = allRoles.map(function(r) {
       return '<option value="' + r + '"' + (r === u.role ? ' selected' : '') + '>' + (_rolLabels[r] || r) + '</option>';
     }).join('');
@@ -3126,7 +3147,7 @@ async function loadUsers() {
     var displayName = ((u.nombre || '') + ' ' + (u.apellido || '')).trim();
     html += '<td style="padding:4px 6px; font-weight:500;">' + u.email + '</td>';
     html += '<td style="padding:4px 6px;">' + (displayName || '<span class="muted">-</span>') + '</td>';
-    // Role column: admin sees dropdown, coordinador sees label only
+    // Role column: admin sees dropdown, admin2 sees label only
     if (currentRole === 'admin') {
       html += '<td style="padding:4px 6px;"><select style="font-size:11px; color:' + rColor + '; font-weight:600; border:1px solid #ddd; border-radius:3px; padding:1px 4px;" onchange="cambiarRolUsuario(' + u.id + ', this.value)">' + rolOpts + '</select></td>';
     } else {
@@ -3319,35 +3340,8 @@ const _ishikawaCatColors = {
   medicion: '#AB47BC', metodo: '#FFA726', mano_de_obra: '#42A5F5'
 };
 
-async function loadReclamosKpis() {
-  const data = await apiGet('/reclamos/kpis');
-  if (!data) return;
-  const pe = data.por_estado || {};
-  const pa = data.por_aplica || {};
-  document.getElementById('recKpiTotal').textContent = data.total || 0;
-  document.getElementById('recKpiAbiertos').textContent = data.abiertos || 0;
-  document.getElementById('recKpiAplica').textContent = pa.si || 0;
-  document.getElementById('recKpiNoAplica').textContent = pa.no || 0;
-  document.getElementById('recKpiCerrados').textContent = pe.cerrado || 0;
-  document.getElementById('recKpiAvgDias').textContent = data.avg_dias_resolucion !== null ? data.avg_dias_resolucion + 'd' : '—';
-
-  // Top causas
-  var tc = document.getElementById('recKpiTopCausas');
-  if (data.top_causas && data.top_causas.length > 0) {
-    tc.innerHTML = '<strong>Causas más repetitivas:</strong> ' +
-      data.top_causas.slice(0, 5).map(function(c) {
-        return '<span style="display:inline-block; margin:2px 4px; padding:2px 8px; background:#fff3e0; border-radius:4px; font-size:11px;">' +
-          '<strong>[' + (c.cod || '?') + ']</strong> ' + (c.sub_causa || '?') + ' <span class="badge">' + c.count + '</span></span>';
-      }).join('');
-  } else {
-    tc.innerHTML = '';
-  }
-}
-
-// ---- RECLAMOS DASHBOARD ----
-let _recChartMes = null, _recChartResolucion = null, _recChartCategoria = null;
-let _recChartEstado = null, _recChartObra = null, _recChartResponsable = null;
-
+// ---- RECLAMOS LANDING CHARTS ----
+let _recLandChartTipo = null, _recLandChartHist = null, _recLandChartAnio = null;
 const _recCatColors = {
   mano_de_obra: '#42A5F5', metodo: '#FFA726', material: '#66BB6A',
   maquina: '#EF5350', medicion: '#AB47BC', medio_ambiente: '#26A69A',
@@ -3358,28 +3352,72 @@ const _recCatLabels = {
   maquina: 'Máquina', medicion: 'Medida', medio_ambiente: 'Medio Amb.',
   sin_categoria: 'Sin cat.',
 };
-const _recEstadoChartColors = {
-  abierto: '#e53935', en_analisis: '#FF9800', accion_correctiva: '#2196F3',
-  cerrado: '#4CAF50', rechazado: '#9E9E9E',
-};
 
-function toggleRecDashboard() {
-  var c = document.getElementById('recDashboardContent');
-  if (c.style.display === 'none') {
-    c.style.display = '';
-    loadReclamosDashboard();
+function switchRecTab(tab) {
+  var mainTab = document.getElementById('recTabMain');
+  var dashTab = document.getElementById('recTabDashboards');
+  var btnMain = document.getElementById('recTabBtnMain');
+  var btnDash = document.getElementById('recTabBtnDash');
+  if (tab === 'dashboards') {
+    mainTab.style.display = 'none';
+    dashTab.style.display = '';
+    btnMain.style.borderBottomColor = 'transparent'; btnMain.style.color = '#999';
+    btnDash.style.borderBottomColor = '#1565C0'; btnDash.style.color = '#1565C0';
+    loadRecAdminDashboards();
   } else {
-    c.style.display = 'none';
+    mainTab.style.display = '';
+    dashTab.style.display = 'none';
+    btnMain.style.borderBottomColor = '#e53935'; btnMain.style.color = '#e53935';
+    btnDash.style.borderBottomColor = 'transparent'; btnDash.style.color = '#999';
+    _adminDashLoaded = false;
   }
 }
 
-async function loadReclamosDashboard() {
-  var data = await apiGet('/reclamos/dashboard');
+async function loadRecLanding() {
+  var data = await apiGet('/reclamos/mi-resumen');
   if (!data) return;
 
-  // 1) Reclamos por mes — multi-year grouped bar chart
+  // Title: admin sees "Resumen General", others see "Mi Resumen"
+  var isAdmin = (currentRole === 'admin' || currentRole === 'admin2');
+  var titleEl = document.querySelector('#recLandingCharts').parentElement.querySelector('h3');
+  if (titleEl) titleEl.textContent = isAdmin ? 'Resumen General' : 'Mi Resumen';
+  var labelEl = document.getElementById('recLandTotal').parentElement.querySelector('div:first-child');
+  if (labelEl) labelEl.textContent = isAdmin ? 'Total Reclamos' : 'Mis Reclamos';
+
+  // Show dashboards tab button for admin
+  var dashBtn = document.getElementById('recTabBtnDash');
+  if (dashBtn) dashBtn.style.display = isAdmin ? '' : 'none';
+
+  // Show 4th chart for cubicador (and admin)
+  var chart4 = document.getElementById('recLandChart4Wrap');
+  var showChart4 = (currentRole === 'cubicador' || isAdmin);
+  if (chart4) chart4.style.display = showChart4 ? '' : 'none';
+  // Adjust grid: 4 columns if showing chart4, 3 otherwise
+  var grid = document.getElementById('recLandingCharts');
+  if (grid) grid.style.gridTemplateColumns = showChart4 ? 'repeat(4, 1fr)' : 'repeat(3, 1fr)';
+
+  // Chart 1: Total number
+  document.getElementById('recLandTotal').textContent = data.total || 0;
+  document.getElementById('recLandAbiertos').textContent = (data.abiertos || 0) + ' abiertos';
+
+  // Chart 2: Error vs Faltante — doughnut
+  var errCount = data.por_tipo.error || 0;
+  var falCount = data.por_tipo.faltante || 0;
+  var ctx1 = document.getElementById('recLandChartTipo').getContext('2d');
+  if (_recLandChartTipo) _recLandChartTipo.destroy();
+  _recLandChartTipo = new Chart(ctx1, {
+    type: 'doughnut',
+    data: {
+      labels: ['Error (' + errCount + ')', 'Faltante (' + falCount + ')'],
+      datasets: [{ data: [errCount, falCount], backgroundColor: ['#e53935', '#ff9800'] }]
+    },
+    options: { responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { position: 'bottom', labels: { font: { size: 10 }, padding: 8 } } } }
+  });
+
+  // Chart 3: Historical 12-month grouped bar by year
   var _mesNombres = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
-  var _anioColores = ['#e53935','#1565C0','#2e7d32','#ff9800','#7B1FA2','#00897B','#F57C00','#5C6BC0'];
+  var _anioColores = ['#e53935','#1565C0','#2e7d32','#ff9800','#7B1FA2','#00897B'];
   var anioMesData = data.por_anio_mes || [];
   var aniosSet = {};
   anioMesData.forEach(function(d) { aniosSet[d.anio] = true; });
@@ -3389,123 +3427,145 @@ async function loadReclamosDashboard() {
     anioMesData.forEach(function(d) { if (d.anio === anio) counts[d.mes - 1] = d.count; });
     return { label: '' + anio, data: counts, backgroundColor: _anioColores[idx % _anioColores.length] };
   });
-  var ctx1 = document.getElementById('recChartMes').getContext('2d');
-  if (_recChartMes) _recChartMes.destroy();
-  _recChartMes = new Chart(ctx1, {
+  var ctx2 = document.getElementById('recLandChartHist').getContext('2d');
+  if (_recLandChartHist) _recLandChartHist.destroy();
+  _recLandChartHist = new Chart(ctx2, {
     type: 'bar',
     data: { labels: _mesNombres, datasets: datasets },
     options: { responsive: true, maintainAspectRatio: false,
-      plugins: { legend: { display: anios.length > 1, labels: { font: { size: 10 } } } },
+      plugins: { legend: { display: anios.length > 1, labels: { font: { size: 9 } } } },
       scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } } }
   });
 
-  // 2) Tiempo resolución por mes — line chart
-  var resLabels = (data.resolucion_mes || []).map(function(d) { return d.mes; });
-  var resValues = (data.resolucion_mes || []).map(function(d) { return d.avg_dias; });
-  var ctx2 = document.getElementById('recChartResolucion').getContext('2d');
-  if (_recChartResolucion) _recChartResolucion.destroy();
-  _recChartResolucion = new Chart(ctx2, {
-    type: 'line',
-    data: { labels: resLabels, datasets: [{ label: 'Días prom.', data: resValues, borderColor: '#9C27B0', backgroundColor: 'rgba(156,39,176,0.1)', fill: true, tension: 0.3 }] },
-    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } },
-      scales: { y: { beginAtZero: true } } }
-  });
-
-  // 3) Distribución por categoría Ishikawa — doughnut
-  var catLabels = (data.por_categoria || []).map(function(d) { return _recCatLabels[d.categoria] || d.categoria; });
-  var catValues = (data.por_categoria || []).map(function(d) { return d.count; });
-  var catColors = (data.por_categoria || []).map(function(d) { return _recCatColors[d.categoria] || '#BDBDBD'; });
-  var ctx3 = document.getElementById('recChartCategoria').getContext('2d');
-  if (_recChartCategoria) _recChartCategoria.destroy();
-  _recChartCategoria = new Chart(ctx3, {
-    type: 'doughnut',
-    data: { labels: catLabels, datasets: [{ data: catValues, backgroundColor: catColors }] },
-    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right', labels: { font: { size: 10 } } } } }
-  });
-
-  // 4) Por estado — doughnut
-  var estLabels = (data.por_estado || []).map(function(d) { return _recEstadoLabels[d.estado] || d.estado; });
-  var estValues = (data.por_estado || []).map(function(d) { return d.count; });
-  var estColors = (data.por_estado || []).map(function(d) { return _recEstadoChartColors[d.estado] || '#BDBDBD'; });
-  var ctx4 = document.getElementById('recChartEstado').getContext('2d');
-  if (_recChartEstado) _recChartEstado.destroy();
-  _recChartEstado = new Chart(ctx4, {
-    type: 'doughnut',
-    data: { labels: estLabels, datasets: [{ data: estValues, backgroundColor: estColors }] },
-    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right', labels: { font: { size: 10 } } } } }
-  });
-
-  // 5) Por obra — horizontal bar
-  var obraLabels = (data.por_obra || []).map(function(d) { return d.obra; });
-  var obraValues = (data.por_obra || []).map(function(d) { return d.count; });
-  var ctx5 = document.getElementById('recChartObra').getContext('2d');
-  if (_recChartObra) _recChartObra.destroy();
-  _recChartObra = new Chart(ctx5, {
-    type: 'bar',
-    data: { labels: obraLabels, datasets: [{ label: 'Reclamos', data: obraValues, backgroundColor: '#FF7043' }] },
-    options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y', plugins: { legend: { display: false } },
-      scales: { x: { beginAtZero: true, ticks: { stepSize: 1 } } } }
-  });
-
-  // 6) Por responsable — horizontal bar
-  var respLabels = (data.por_responsable || []).map(function(d) { return d.responsable; });
-  var respValues = (data.por_responsable || []).map(function(d) { return d.count; });
-  var ctx6 = document.getElementById('recChartResponsable').getContext('2d');
-  if (_recChartResponsable) _recChartResponsable.destroy();
-  _recChartResponsable = new Chart(ctx6, {
-    type: 'bar',
-    data: { labels: respLabels, datasets: [{ label: 'Reclamos', data: respValues, backgroundColor: '#5C6BC0' }] },
-    options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y', plugins: { legend: { display: false } },
-      scales: { x: { beginAtZero: true, ticks: { stepSize: 1 } } } }
-  });
-
-  // 7) Matriz Obra × Categoría — HTML heatmap
-  renderRecMatriz(data.matriz);
+  // Chart 4: Reclamos por año (cubicador / admin)
+  if (showChart4 && data.por_anio && data.por_anio.length > 0) {
+    var anioLabels = data.por_anio.map(function(d) { return '' + d.anio; });
+    var anioCounts = data.por_anio.map(function(d) { return d.count; });
+    var ctx3 = document.getElementById('recLandChartAnio').getContext('2d');
+    if (_recLandChartAnio) _recLandChartAnio.destroy();
+    _recLandChartAnio = new Chart(ctx3, {
+      type: 'bar',
+      data: { labels: anioLabels, datasets: [{ label: 'Reclamos', data: anioCounts, backgroundColor: _anioColores.slice(0, anioCounts.length) }] },
+      options: { responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } } }
+    });
+  }
 }
 
-function renderRecMatriz(m) {
-  var container = document.getElementById('recMatrizContainer');
-  if (!m || !m.obras || m.obras.length === 0) {
-    container.innerHTML = '<div class="muted">Sin datos para la matriz</div>';
-    return;
-  }
-  var catHeaders = m.categorias.map(function(c) {
-    return '<th style="padding:4px 6px; font-size:10px; text-align:center; white-space:nowrap;">' + (_recCatLabels[c] || c) + '</th>';
-  }).join('');
-  var html = '<table style="width:100%; border-collapse:collapse; font-size:11px;">' +
-    '<thead><tr style="background:#f5f5f5;"><th style="padding:4px 6px; text-align:left;">Obra</th>' + catHeaders +
-    '<th style="padding:4px 6px; text-align:center; font-weight:700;">Total</th></tr></thead><tbody>';
+// ---- ADMIN DASHBOARDS TAB ----
+let _recDashUSC = null, _recDashUSCTipo = null, _recDashUSCHist = null;
+let _recDashIshikawa = null, _recDashCub = null, _recDashCubIshikawa = null;
+var _adminDashLoaded = false;
 
-  // Find max value for color intensity
-  var maxVal = 0;
-  m.data.forEach(function(row) { row.forEach(function(v) { if (v > maxVal) maxVal = v; }); });
+async function loadRecAdminDashboards() {
+  if (_adminDashLoaded) return;
+  var data = await apiGet('/reclamos/admin-dashboards');
+  if (!data) return;
+  _adminDashLoaded = true;
 
-  m.obras.forEach(function(obra, i) {
-    var rowTotal = 0;
-    var cells = m.data[i].map(function(v, j) {
-      rowTotal += v;
-      var intensity = maxVal > 0 ? Math.round((v / maxVal) * 200) : 0;
-      var bg = v > 0 ? 'rgba(229,57,53,' + (0.1 + (v / maxVal) * 0.7).toFixed(2) + ')' : 'transparent';
-      var fw = v > 0 ? '600' : '400';
-      return '<td style="padding:4px 6px; text-align:center; background:' + bg + '; font-weight:' + fw + ';">' + (v || '') + '</td>';
-    }).join('');
-    html += '<tr style="border-bottom:1px solid #eee;"><td style="padding:4px 6px; font-weight:500; max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="' + obra + '">' + obra + '</td>' +
-      cells + '<td style="padding:4px 6px; text-align:center; font-weight:700; background:#f5f5f5;">' + rowTotal + '</td></tr>';
+  var _anioColores = ['#e53935','#1565C0','#2e7d32','#ff9800','#7B1FA2','#00897B'];
+
+  // --- USC Column ---
+  // 1) Per-USC total bar chart
+  var uscLabels = (data.por_usc || []).map(function(d) { return d.email.split('@')[0]; });
+  var uscTotals = (data.por_usc || []).map(function(d) { return d.total; });
+  var ctx1 = document.getElementById('recDashChartUSC').getContext('2d');
+  if (_recDashUSC) _recDashUSC.destroy();
+  _recDashUSC = new Chart(ctx1, {
+    type: 'bar',
+    data: { labels: uscLabels, datasets: [{ label: 'Reclamos', data: uscTotals, backgroundColor: '#ff9800' }] },
+    options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y',
+      plugins: { legend: { display: false } },
+      scales: { x: { beginAtZero: true, ticks: { stepSize: 1 } } } }
   });
 
-  // Totals row
-  var colTotals = m.categorias.map(function(_, j) {
-    var sum = 0;
-    m.data.forEach(function(row) { sum += row[j]; });
-    return '<td style="padding:4px 6px; text-align:center; font-weight:700; background:#f5f5f5;">' + sum + '</td>';
-  }).join('');
-  var grandTotal = 0;
-  m.data.forEach(function(row) { row.forEach(function(v) { grandTotal += v; }); });
-  html += '<tr style="background:#f5f5f5; border-top:2px solid #ccc;"><td style="padding:4px 6px; font-weight:700;">Total</td>' +
-    colTotals + '<td style="padding:4px 6px; text-align:center; font-weight:700; color:#e53935;">' + grandTotal + '</td></tr>';
+  // 2) Per-USC error vs faltante stacked bar
+  var uscErrores = (data.por_usc || []).map(function(d) { return d.errores; });
+  var uscFaltantes = (data.por_usc || []).map(function(d) { return d.faltantes; });
+  var ctx2 = document.getElementById('recDashChartUSCTipo').getContext('2d');
+  if (_recDashUSCTipo) _recDashUSCTipo.destroy();
+  _recDashUSCTipo = new Chart(ctx2, {
+    type: 'bar',
+    data: { labels: uscLabels, datasets: [
+      { label: 'Error', data: uscErrores, backgroundColor: '#e53935' },
+      { label: 'Faltante', data: uscFaltantes, backgroundColor: '#ff9800' }
+    ]},
+    options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y',
+      plugins: { legend: { labels: { font: { size: 10 } } } },
+      scales: { x: { stacked: true, beginAtZero: true, ticks: { stepSize: 1 } }, y: { stacked: true } } }
+  });
 
-  html += '</tbody></table>';
-  container.innerHTML = html;
+  // 3) USC historical — aggregate all USCs by year
+  var uscHistData = data.usc_hist || [];
+  var uscAniosSet = {};
+  uscHistData.forEach(function(d) { uscAniosSet[d.anio] = true; });
+  var uscAnios = Object.keys(uscAniosSet).map(Number).sort();
+  var _mesNombres = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+  var uscHistDS = uscAnios.map(function(anio, idx) {
+    var counts = new Array(12).fill(0);
+    uscHistData.forEach(function(d) { if (d.anio === anio) counts[d.mes - 1] += d.count; });
+    return { label: '' + anio, data: counts, backgroundColor: _anioColores[idx % _anioColores.length] };
+  });
+  var ctx3 = document.getElementById('recDashChartUSCHist').getContext('2d');
+  if (_recDashUSCHist) _recDashUSCHist.destroy();
+  _recDashUSCHist = new Chart(ctx3, {
+    type: 'bar',
+    data: { labels: _mesNombres, datasets: uscHistDS },
+    options: { responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: uscAnios.length > 1, labels: { font: { size: 9 } } } },
+      scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } } }
+  });
+
+  // --- Cubicador Column ---
+  // 4) Ishikawa global doughnut
+  var ishLabels = (data.ishikawa_cubicador || []).map(function(d) { return _recCatLabels[d.categoria] || d.categoria; });
+  var ishValues = (data.ishikawa_cubicador || []).map(function(d) { return d.count; });
+  var ishColors = (data.ishikawa_cubicador || []).map(function(d) { return _recCatColors[d.categoria] || '#BDBDBD'; });
+  var ctx4 = document.getElementById('recDashChartIshikawa').getContext('2d');
+  if (_recDashIshikawa) _recDashIshikawa.destroy();
+  _recDashIshikawa = new Chart(ctx4, {
+    type: 'doughnut',
+    data: { labels: ishLabels, datasets: [{ data: ishValues, backgroundColor: ishColors }] },
+    options: { responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { position: 'right', labels: { font: { size: 10 } } } } }
+  });
+
+  // 5) Per-cubicador total bar
+  var cubLabels = (data.por_cubicador || []).map(function(d) { return d.email.split('@')[0]; });
+  var cubTotals = (data.por_cubicador || []).map(function(d) { return d.total; });
+  var ctx5 = document.getElementById('recDashChartCub').getContext('2d');
+  if (_recDashCub) _recDashCub.destroy();
+  _recDashCub = new Chart(ctx5, {
+    type: 'bar',
+    data: { labels: cubLabels, datasets: [{ label: 'Respondidos', data: cubTotals, backgroundColor: '#2e7d32' }] },
+    options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y',
+      plugins: { legend: { display: false } },
+      scales: { x: { beginAtZero: true, ticks: { stepSize: 1 } } } }
+  });
+
+  // 6) Per-cubicador Ishikawa stacked bar
+  var cubIshData = data.ishikawa_per_cub || [];
+  var cubEmails = []; var cubEmailSet = {};
+  cubIshData.forEach(function(d) { if (!cubEmailSet[d.email]) { cubEmails.push(d.email); cubEmailSet[d.email] = true; } });
+  var cubIshLabels = cubEmails.map(function(e) { return e.split('@')[0]; });
+  var catKeys = Object.keys(_recCatColors);
+  var cubIshDS = catKeys.map(function(cat) {
+    var cData = cubEmails.map(function(email) {
+      var found = cubIshData.find(function(d) { return d.email === email && d.categoria === cat; });
+      return found ? found.count : 0;
+    });
+    return { label: _recCatLabels[cat] || cat, data: cData, backgroundColor: _recCatColors[cat] || '#BDBDBD' };
+  }).filter(function(ds) { return ds.data.some(function(v) { return v > 0; }); });
+  var ctx6 = document.getElementById('recDashChartCubIshikawa').getContext('2d');
+  if (_recDashCubIshikawa) _recDashCubIshikawa.destroy();
+  _recDashCubIshikawa = new Chart(ctx6, {
+    type: 'bar',
+    data: { labels: cubIshLabels, datasets: cubIshDS },
+    options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y',
+      plugins: { legend: { labels: { font: { size: 9 } } } },
+      scales: { x: { stacked: true, beginAtZero: true, ticks: { stepSize: 1 } }, y: { stacked: true } } }
+  });
 }
 
 var _recUsersCache = [];
@@ -3570,6 +3630,10 @@ async function loadReclamos() {
   if (proyecto) params.push('id_proyecto=' + encodeURIComponent(proyecto));
   if (responsable) params.push('responsable=' + encodeURIComponent(responsable));
   if (busqueda) params.push('busqueda=' + encodeURIComponent(busqueda));
+  // USC/cubicador/externo only see their own reclamos
+  if (['usc','cubicador','externo'].includes(currentRole)) {
+    params.push('solo_mios=true');
+  }
   if (params.length > 0) url += '?' + params.join('&');
 
   var res = await fetch(url, { headers: authHeaders() });
@@ -3693,7 +3757,7 @@ async function crearReclamo() {
     document.getElementById('recCreateDropMsg').style.display = '';
     document.getElementById('nuevoReclamoForm').style.display = 'none';
     await loadReclamos();
-    await loadReclamosKpis();
+    await loadRecLanding();
   } else {
     msg.textContent = 'Error: ' + (data.detail || 'desconocido'); msg.style.color = '#b42318';
   }
@@ -3803,7 +3867,7 @@ async function verReclamo(id) {
   document.getElementById('recDetailCategoria').value = data.categoria_ishikawa || '';
   document.getElementById('recDetailSubCausa').value = data.sub_causa || '';
   document.getElementById('recDetailCodCausa').value = data.cod_causa || '';
-  document.getElementById('recDetailAreaAplica').value = data.area_aplica || '';
+  document.getElementById('recDetailAreaAplica').value = data.area_aplica || 'Cubicación';
   document.getElementById('recDetailFechaAnalisis').value = data.fecha_analisis || '';
   document.getElementById('recDetailExplicacionCausa').value = data.explicacion_causa || '';
   document.getElementById('recDetailObservaciones').value = data.observaciones || '';
@@ -3852,8 +3916,8 @@ async function verReclamo(id) {
   var esCreador = data.creado_por && data.creado_por === currentUserEmail;
   var validado = !!data.validacion_resultado;
 
-  // Edit antecedentes (Sec 1): admin/coordinador=any, usc=own
-  var puedeEditarSec1 = (currentRole === 'admin' || currentRole === 'coordinador') || (currentRole === 'usc' && esCreador);
+  // Edit antecedentes (Sec 1): admin/admin2=any, usc=own
+  var puedeEditarSec1 = (currentRole === 'admin' || currentRole === 'admin2') || (currentRole === 'usc' && esCreador);
   if (validado && currentRole !== 'admin') puedeEditarSec1 = false;
   document.getElementById('btnEditarReclamo').style.display = puedeEditarSec1 ? '' : 'none';
 
@@ -3861,29 +3925,29 @@ async function verReclamo(id) {
   var selAplica = document.getElementById('recDetailAplica');
   selAplica.disabled = (currentRole !== 'admin');
 
-  // Estado: admin/coordinador always, cubicador own only
-  var puedeEstado = (currentRole === 'admin' || currentRole === 'coordinador') || (currentRole === 'cubicador' && esCreador);
+  // Estado: admin/admin2 always, cubicador own only
+  var puedeEstado = (currentRole === 'admin' || currentRole === 'admin2') || (currentRole === 'cubicador' && esCreador);
   var selEstado = document.getElementById('recDetailEstado');
   selEstado.disabled = !puedeEstado;
 
-  // Delete: admin/coordinador
-  var puedeEliminar = (currentRole === 'admin' || currentRole === 'coordinador');
+  // Delete: admin/admin2, or usc own
+  var puedeEliminar = (currentRole === 'admin' || currentRole === 'admin2') || (currentRole === 'usc' && esCreador);
   document.getElementById('btnEliminarReclamo').style.display = puedeEliminar ? '' : 'none';
 
-  // ID Calidad inline edit: admin/coordinador/usc(own)
+  // ID Calidad inline edit: admin/admin2/usc(own)
   var idCalField = document.getElementById('recDetailIdCalidad');
   if (idCalField) idCalField.disabled = !puedeEditarSec1;
 
-  // Proyecto dropdown: admin/coordinador
+  // Proyecto dropdown: admin/admin2
   var detProySel = document.getElementById('recDetailProyecto');
-  if (detProySel) detProySel.disabled = !(currentRole === 'admin' || currentRole === 'coordinador');
+  if (detProySel) detProySel.disabled = !(currentRole === 'admin' || currentRole === 'admin2');
 
-  // Asignado a: admin/coordinador can change assignment
+  // Asignado a: admin/admin2 can change assignment
   var detAsigSel = document.getElementById('recDetailAsignadoA');
-  if (detAsigSel) detAsigSel.disabled = !(currentRole === 'admin' || currentRole === 'coordinador');
+  if (detAsigSel) detAsigSel.disabled = !(currentRole === 'admin' || currentRole === 'admin2');
 
-  // Section 2 (Respuesta): admin/coordinador/cubicador/externo. NOT usc.
-  var puedeResponder = ['admin','coordinador','cubicador','externo'].includes(currentRole);
+  // Section 2 (Respuesta): admin/admin2/cubicador/externo. NOT usc.
+  var puedeResponder = ['admin','admin2','cubicador','externo'].includes(currentRole);
   if (validado && currentRole !== 'admin') puedeResponder = false;
   var sec2Fields = ['recDetailRespuestaTexto','recDetailCausaDisplay','recDetailAreaAplica','recDetailFechaAnalisis','recDetailExplicacionCausa','recDetailObservaciones','recDetailKilosMal'];
   sec2Fields.forEach(function(fid) { var el = document.getElementById(fid); if (el) el.disabled = !puedeResponder; });
@@ -3895,15 +3959,15 @@ async function verReclamo(id) {
   if (respDropZone) respDropZone.style.display = puedeResponder ? '' : 'none';
   if (respFileInput) respFileInput.disabled = !puedeResponder;
 
-  // Section 3 (Validación): admin/coordinador
-  var puedeValidar = (currentRole === 'admin' || currentRole === 'coordinador');
+  // Section 3 (Validación): admin/admin2
+  var puedeValidar = (currentRole === 'admin' || currentRole === 'admin2');
   var sec3Fields = ['recDetailValidacionResultado','recDetailValidacionObs'];
   sec3Fields.forEach(function(fid) { var el = document.getElementById(fid); if (el) el.disabled = !puedeValidar; });
   var btnGuardarVal = document.getElementById('btnGuardarValidacion');
   if (btnGuardarVal) btnGuardarVal.style.display = puedeValidar ? '' : 'none';
 
-  // Acciones form: admin/coordinador/cubicador
-  var puedeAccion = ['admin','coordinador','cubicador'].includes(currentRole);
+  // Acciones form: admin/admin2/cubicador
+  var puedeAccion = ['admin','admin2','cubicador'].includes(currentRole);
   if (validado && currentRole !== 'admin') puedeAccion = false;
   var accionFields = ['recNuevaAccionTipo','recNuevaAccionDesc','recNuevaAccionResp','recNuevaAccionFecha'];
   accionFields.forEach(function(fid) { var el = document.getElementById(fid); if (el) el.disabled = !puedeAccion; });
@@ -3992,7 +4056,7 @@ async function cambiarEstadoReclamo() {
   });
   if (res.status === 401) { logout(); return; }
   var data = await res.json();
-  if (data.ok) { await verReclamo(_reclamoActual.id); await loadReclamos(); await loadReclamosKpis(); }
+  if (data.ok) { await verReclamo(_reclamoActual.id); await loadReclamos(); await loadRecLanding(); }
   else { alert('Error: ' + (data.detail || 'desconocido')); }
 }
 
@@ -4030,7 +4094,7 @@ function toggleEditarReclamo() {
 async function guardarEdicionReclamo() {
   if (!_reclamoActual) return;
   var esCreador = _reclamoActual.creado_por && _reclamoActual.creado_por === currentUserEmail;
-  var puedeEditar = (currentRole === 'admin' || currentRole === 'coordinador') || (currentRole === 'usc' && esCreador);
+  var puedeEditar = (currentRole === 'admin' || currentRole === 'admin2') || (currentRole === 'usc' && esCreador);
   if (_reclamoActual.validacion_resultado && currentRole !== 'admin') puedeEditar = false;
   if (!puedeEditar) { alert('No tienes permiso para editar este reclamo.'); return; }
   var msg = document.getElementById('recEditMsg');
@@ -4152,7 +4216,7 @@ async function cambiarAplicaReclamo() {
   });
   if (res.status === 401) { logout(); return; }
   var data = await res.json();
-  if (data.ok) { await verReclamo(_reclamoActual.id); await loadReclamos(); await loadReclamosKpis(); }
+  if (data.ok) { await verReclamo(_reclamoActual.id); await loadReclamos(); await loadRecLanding(); }
   else { alert('Error: ' + (data.detail || 'desconocido')); }
 }
 
@@ -4184,7 +4248,7 @@ async function guardarRespuesta() {
     msg.textContent = 'Respuesta guardada'; msg.style.color = '#558B2F';
     setTimeout(function() { msg.textContent = ''; }, 2000);
     await verReclamo(_reclamoActual.id);
-    await loadReclamos(); await loadReclamosKpis();
+    await loadReclamos(); await loadRecLanding();
   } else {
     msg.textContent = 'Error: ' + (data.detail || 'desconocido'); msg.style.color = '#b42318';
   }
@@ -4213,7 +4277,7 @@ async function guardarValidacion() {
     msg.textContent = 'Validación guardada'; msg.style.color = '#558B2F';
     setTimeout(function() { msg.textContent = ''; }, 2000);
     await verReclamo(_reclamoActual.id);
-    await loadReclamos(); await loadReclamosKpis();
+    await loadReclamos(); await loadRecLanding();
   } else {
     msg.textContent = 'Error: ' + (data.detail || 'desconocido'); msg.style.color = '#b42318';
   }
@@ -4401,7 +4465,7 @@ async function agregarSeguimiento() {
     document.getElementById('recSeguimientoEstado').value = '';
     await verReclamo(_reclamoActual.id);
     await loadReclamos();
-    await loadReclamosKpis();
+    await loadRecLanding();
   } else {
     msg.textContent = 'Error: ' + (data.detail || 'desconocido'); msg.style.color = '#b42318';
   }
@@ -4419,7 +4483,7 @@ async function eliminarReclamo() {
     _reclamoActual = null;
     document.getElementById('reclamoDetailCard').style.display = 'none';
     await loadReclamos();
-    await loadReclamosKpis();
+    await loadRecLanding();
   } else {
     alert('Error: ' + (data.detail || 'desconocido'));
   }
@@ -4522,7 +4586,7 @@ async function loadModuleData(mod) {
     await loadRecUsersDropdown();
     populateRecFilterProyecto();
     await loadReclamos();
-    await loadReclamosKpis();
+    await loadRecLanding();
     initRecImageDropZones();
   } else if (mod === 'admin') {
     await loadUsers();

@@ -10,23 +10,10 @@ from .auth import get_current_user
 router = APIRouter()
 
 def _get_allowed_project_ids(cur, user: dict):
-    """Returns list of project IDs the user can access, or None if unrestricted.
-    admin/coordinador: None (see everything).
-    cubicador/usc/externo/cliente: only owned + authorized projects."""
-    role = user.get("role", "usc")
-    if role in ("admin", "coordinador"):
-        return None
-    cur.execute("SELECT id FROM users WHERE email = %s", (user.get("email"),))
-    row = cur.fetchone()
-    if not row:
-        return []
-    uid = row[0]
-    cur.execute("SELECT id_proyecto FROM proyectos WHERE owner_id = %s", (uid,))
-    owned = {r[0] for r in cur.fetchall()}
-    cur.execute("SELECT id_proyecto FROM proyecto_usuarios WHERE user_id = %s", (uid,))
-    authorized = {r[0] for r in cur.fetchall()}
-    return list(owned | authorized)
-
+    """Returns None (unrestricted) for all roles.
+    All users with cubicación module access see all projects.
+    Module-level access is controlled at the hub/frontend layer."""
+    return None
 
 def _project_filter_sql(allowed_ids, table_alias="", col="id_proyecto"):
     """Build a WHERE/AND fragment + params for project filtering.
