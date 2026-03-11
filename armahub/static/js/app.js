@@ -572,7 +572,10 @@ async function loadCargasProyecto(idProyecto) {
           '<td>' + (c.version_archivo || '-') + '</td>' +
           '<td class="muted">' + c.usuario + '</td>' +
           '<td class="muted">' + fecha + '</td>' +
-          '<td><button class="secondary" style="padding:2px 6px; font-size:10px; color:#b42318;" onclick="deleteCarga(' + c.id + ',\'' + idProyecto.replace(/'/g, "&#39;") + '\')">Eliminar</button></td>' +
+          '<td style="white-space:nowrap;">' +
+            '<button class="secondary" style="padding:2px 6px; font-size:10px; margin-right:3px;" onclick="verBarrasCarga(' + c.id + ',\'' + idProyecto.replace(/'/g, "&#39;") + '\',\'' + (c.archivo || '').replace(/'/g, "&#39;") + '\')">Ver barras</button>' +
+            '<button class="secondary" style="padding:2px 6px; font-size:10px; color:#b42318;" onclick="deleteCarga(' + c.id + ',\'' + idProyecto.replace(/'/g, "&#39;") + '\')">Eliminar</button>' +
+          '</td>' +
         '</tr>';
       }).join('')}</tbody>
     </table>
@@ -1024,25 +1027,31 @@ async function importAllFiles() {
     successCount++;
   }
 
-  // Consolidated summary
-  var summaryParts = [`${successCount}/${total} planillas cargadas`];
-  if (totalBarrasImported > 0) summaryParts.push(`${totalBarrasImported.toLocaleString()} barras`);
-  if (totalKilosImported > 0) summaryParts.push(`${Math.round(totalKilosImported).toLocaleString()} kg`);
-  var summaryColor = successCount === total ? '#2e7d32' : (successCount > 0 ? '#e65100' : '#b42318');
-  results.innerHTML += `<div style="margin-top:8px; padding:8px 12px; background:#f5f5f5; border-left:4px solid ${summaryColor}; border-radius:4px; font-size:13px; font-weight:600;">📊 Resumen: ${summaryParts.join(' — ')}</div>`;
-  progress.textContent = '';
-  await setGlobalStatus(`Importación completa: ${successCount}/${total} planillas`, successCount === total ? 'ok' : 'warn');
+  // Consolidated summary — always show
+  try {
+    var summaryParts = [`${successCount}/${total} planillas cargadas`];
+    if (totalBarrasImported > 0) summaryParts.push(`${totalBarrasImported.toLocaleString()} barras`);
+    if (totalKilosImported > 0) summaryParts.push(`${Math.round(totalKilosImported).toLocaleString()} kg`);
+    if (errorCount > 0) summaryParts.push(`${errorCount} con error`);
+    var summaryColor = successCount === total ? '#2e7d32' : (successCount > 0 ? '#e65100' : '#b42318');
+    results.innerHTML += `<div style="margin-top:8px; padding:8px 12px; background:#f5f5f5; border-left:4px solid ${summaryColor}; border-radius:4px; font-size:13px; font-weight:600;">📊 Resumen: ${summaryParts.join(' — ')}</div>`;
+    progress.textContent = '';
+    await setGlobalStatus(`Importación completa: ${successCount}/${total} planillas`, successCount === total ? 'ok' : 'warn');
+  } catch(e) { console.error('Error mostrando resumen:', e); }
 
   pendingFiles = [];
   document.getElementById('csvFile').value = '';
+  btn.disabled = false; btn.style.opacity = '1';
   renderFileList();
 
-  await loadCargas();
-  await loadProyectos();
-  await loadFilters();
-  await loadInicio();
-  await loadMiActividad();
-  await loadDashboard('sector');
+  try {
+    await loadCargas();
+    await loadProyectos();
+    await loadFilters();
+    await loadInicio();
+    await loadMiActividad();
+    await loadDashboard('sector');
+  } catch(e) { console.error('Error refrescando datos post-import:', e); }
 }
 
 // ========================= CARGAS RECIENTES =========================
@@ -1268,18 +1277,23 @@ async function eliminarBarra(idUnico) {
 
 async function eliminarBarrasSeleccionadas() {
   if (selectedBarras.size === 0) return alert('Selecciona al menos una barra');
-  if (!confirm('¿Eliminar ' + selectedBarras.size + ' barra(s)? Solo se eliminarán las manuales/pedido. Las CSV serán omitidas.')) return;
+  var msg = (currentRole === 'admin' || currentRole === 'cubicador')
+    ? '¿Eliminar ' + selectedBarras.size + ' barra(s)? Esta acción no se puede deshacer.'
+    : '¿Eliminar ' + selectedBarras.size + ' barra(s)? Solo se eliminarán las manuales/pedido. Las CSV serán omitidas.';
+  if (!confirm(msg)) return;
   var ids = Array.from(selectedBarras);
-  var ok = 0, skip = 0;
+  var ok = 0, skip = 0, errors = [];
   for (var i = 0; i < ids.length; i++) {
     var res = await fetch('/barras/' + encodeURIComponent(ids[i]), {
       method: 'DELETE', headers: authHeaders()
     });
     if (res.status === 401) { logout(); return; }
     var data = await res.json();
-    if (data.ok) { ok++; selectedBarras.delete(ids[i]); } else { skip++; }
+    if (data.ok) { ok++; selectedBarras.delete(ids[i]); } else { skip++; if (data.detail) errors.push(data.detail); }
   }
-  alert('Eliminadas: ' + ok + (skip > 0 ? ' | Omitidas (CSV): ' + skip : ''));
+  var resultMsg = 'Eliminadas: ' + ok;
+  if (skip > 0) resultMsg += ' | No eliminadas: ' + skip;
+  alert(resultMsg);
   updateToolbar();
   buscar(true);
 }
@@ -1307,6 +1321,9 @@ async function buscar(reset = false) {
   const origenFilter = document.getElementById('filtroOrigen');
   if (origenFilter && origenFilter.value) params.set('origen', origenFilter.value);
 
+  const cargaFilter = document.getElementById('filtroCarga');
+  if (cargaFilter && cargaFilter.value) params.set('import_id', cargaFilter.value);
+
   params.set('limit', pageLimit);
   params.set('offset', currentOffset);
   const orderBy = document.getElementById('order_by').value || 'sector';
@@ -1322,7 +1339,8 @@ async function buscar(reset = false) {
   const page = Math.floor(currentOffset / pageLimit) + 1;
   const totalPages = Math.max(1, Math.ceil(lastTotal / pageLimit));
 
-  document.getElementById('count').textContent = lastTotal.toLocaleString() + ' barras en proyecto';
+  var cargaActive = document.getElementById('filtroCarga') && document.getElementById('filtroCarga').value;
+  document.getElementById('count').textContent = lastTotal.toLocaleString() + ' barras' + (cargaActive ? ' en esta carga' : ' en proyecto');
   document.getElementById('pageInfo').textContent = 'Pág ' + page + '/' + totalPages;
 
   const table = document.getElementById('tabla');
@@ -1358,7 +1376,7 @@ async function buscar(reset = false) {
       if (c.fmt) val = c.fmt(row[c.key]);
       body += '<td style="padding:3px 6px;">' + (val != null && val !== '' ? val : '') + '</td>';
     });
-    var canDelete = (row.origen === 'manual' || row.origen === 'pedido' || !row.origen);
+    var canDelete = (currentRole === 'admin' || currentRole === 'cubicador') || (row.origen === 'manual' || row.origen === 'pedido' || !row.origen);
     body += '<td style="padding:3px 4px; white-space:nowrap;">';
     body += '<button class="secondary" style="font-size:10px; padding:1px 6px; margin-right:3px;" onclick="duplicarBarra(\'' + safeId + '\')">Duplicar</button>';
     if (canDelete) body += '<button class="secondary" style="font-size:10px; padding:1px 6px; color:#b42318;" onclick="eliminarBarra(\'' + safeId + '\')">✕</button>';
@@ -1377,6 +1395,7 @@ function resetFiltros() {
   document.getElementById('q').value = '';
   var fo = document.getElementById('filtroOrigen');
   if (fo) fo.value = '';
+  clearCargaFilter(true);
   const si = document.getElementById('proyectoSearchInput');
   if (si) si.value = '';
   try { localStorage.removeItem(FILTER_STORAGE_KEY); } catch(e) {}
@@ -1384,6 +1403,30 @@ function resetFiltros() {
   updateToolbar();
   loadFilters();
   buscar(true);
+}
+
+function verBarrasCarga(importId, idProyecto, archivo) {
+  // Switch to Bar Manager tab
+  switchTab('buscar');
+
+  // Set project filter
+  var proySel = document.getElementById('proyecto');
+  if (proySel) proySel.value = idProyecto;
+
+  // Set carga filter
+  document.getElementById('filtroCarga').value = importId;
+  document.getElementById('cargaFilterBadge').style.display = '';
+  document.getElementById('cargaFilterLabel').textContent = archivo || ('Carga #' + importId);
+
+  buscar(true);
+}
+
+function clearCargaFilter(skipSearch) {
+  var fc = document.getElementById('filtroCarga');
+  if (fc) fc.value = '';
+  var badge = document.getElementById('cargaFilterBadge');
+  if (badge) badge.style.display = 'none';
+  if (!skipSearch) buscar(true);
 }
 
 function prevPage() {

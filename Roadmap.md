@@ -1200,6 +1200,41 @@ errores y reclamos levantados por clientes. Incluye formulario tipo, análisis d
        - Corregido en todos los paths de retry (missing_project, new_project, duplicate_warning)
        - Agregados campos filas_rechazadas y advertencias al response del backend
 
+48. Bar Manager mejorado + filtro por carga + fix eliminación - ✅ Implementado 11-Mar-2026
+
+    a) Filtro por carga (import_id) en Bar Manager:
+       - Backend: import_id agregado a BARRAS_COLUMNS y ALLOWED_ORDER_BY
+       - Backend: parámetro import_id en GET /barras para filtrar barras de una carga específica
+       - Frontend: hidden input filtroCarga + badge visual "Filtrando por carga: archivo.csv"
+       - Botón "✕ Quitar filtro" para desactivar filtro de carga
+       - Texto dinámico: "X barras en esta carga" vs "X barras en proyecto"
+
+    b) "Ver barras" desde Obras → Cargas:
+       - Botón "Ver barras" en cada fila del historial de cargas por proyecto
+       - Click navega a Bar Manager (switchTab) con proyecto + import_id pre-filtrados
+       - Resuelve discrepancia "35 cargadas vs 41 en Bar Manager" (antes mostraba todas las barras del proyecto)
+
+    c) Fix eliminación de barras para admin/cubicador:
+       - Backend: admin y cubicador pueden eliminar CUALQUIER barra (incluyendo CSV)
+       - Otros roles: mantienen restricción a manual/pedido solamente
+       - Frontend: botón ✕ visible para admin/cubicador en todas las barras (no solo manual/pedido)
+       - Bulk delete: mensaje de confirmación adaptado por rol
+       - Resultado: "Eliminadas: X | No eliminadas: Y" (antes decía "Omitidas CSV")
+
+    d) Fix resumen de importación:
+       - Summary envuelto en try/catch para garantizar que siempre se muestra
+       - Botón importar se re-habilita siempre (btn.disabled = false)
+       - Refreshes post-import envueltos en try/catch (no bloquean el summary)
+       - Resumen incluye conteo de errores: "X con error"
+
+    e) Auditoría de entidades (estado actual del modelo de datos):
+       - Entidades principales: proyectos, barras, users, clientes, calculistas, imports
+       - Relaciones: proyecto→barras (1:N), proyecto→imports (1:N), proyecto→owner (N:1 user),
+         proyecto→cliente (N:1), proyecto→calculista (N:1), proyecto→usuarios_autorizados (N:M via proyecto_usuarios)
+       - Barras: import_id (FK imports), origen (csv/manual/pedido), pedido_id, creado_por
+       - Reclamos: id_proyecto (FK), creado_por, asignado_a, respuesta_por, validacion_por
+       - Pedidos: id_proyecto (FK), creado_por, items con sector/piso/ciclo/eje/diam/largo
+
 43. API versionada (/api/v1) - Pendiente
 44. CORS para aplicaciones externas - Pendiente
 45. Observabilidad: /health, logs estructurados - Pendiente

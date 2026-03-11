@@ -49,13 +49,14 @@ BARRAS_COLUMNS = [
     "id_unico","id_proyecto","nombre_proyecto","plano_code","nombre_plano","sector","piso","ciclo","eje",
     "diam","largo_total","mult","cant","cant_total",
     "peso_unitario","peso_total","version_mod","version_exp","fecha_carga",
-    "origen"
+    "origen","import_id"
 ]
 
 ALLOWED_ORDER_BY = {
     "fecha_carga", "peso_total", "peso_unitario", "cant_total",
     "diam", "largo_total",
-    "id_proyecto", "plano_code", "sector", "piso", "ciclo", "eje", "id_unico", "nombre_proyecto"
+    "id_proyecto", "plano_code", "sector", "piso", "ciclo", "eje", "id_unico", "nombre_proyecto",
+    "import_id"
 }
 
 @router.get("/barras")
@@ -67,6 +68,7 @@ def get_barras(
     ciclo: str = None,
     q: str = None,                      # búsqueda simple
     origen: str = None,                 # csv / manual / pedido
+    import_id: int = None,              # filtrar por carga específica
     limit: int = 200,                   # paginación
     offset: int = 0,
     order_by: str = "fecha_carga",      # orden
@@ -107,6 +109,11 @@ def get_barras(
     if origen:
         base_where += " AND origen = %s"
         params.append(origen)
+
+    # filtro por carga (import_id)
+    if import_id is not None:
+        base_where += " AND import_id = %s"
+        params.append(import_id)
 
     # búsqueda simple: id_unico, eje, plano_code
     if q and q.strip():
@@ -786,7 +793,7 @@ def duplicar_barra(id_unico: str, user=Depends(get_current_user)):
 
 @router.delete("/barras/{id_unico}")
 def eliminar_barra(id_unico: str, user=Depends(get_current_user)):
-    """Eliminar una barra individual. Solo barras con origen='manual' o 'pedido'."""
+    """Eliminar una barra individual. Admin/cubicador pueden eliminar cualquier barra."""
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("SELECT id_unico, id_proyecto, origen FROM barras WHERE id_unico = %s", (id_unico,))
@@ -794,7 +801,8 @@ def eliminar_barra(id_unico: str, user=Depends(get_current_user)):
             if not row:
                 raise HTTPException(status_code=404, detail="Barra no encontrada")
 
-            if row[2] not in ('manual', 'pedido', None):
+            # Admin y cubicador pueden eliminar cualquier barra; otros roles solo manual/pedido
+            if user.get("role") not in ("admin", "cubicador") and row[2] not in ('manual', 'pedido', None):
                 raise HTTPException(status_code=400,
                     detail="Solo se pueden eliminar barras manuales o de pedido. Las barras CSV se eliminan borrando la carga completa.")
 
