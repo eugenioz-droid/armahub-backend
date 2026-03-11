@@ -1212,6 +1212,10 @@ def eliminar_proyecto(id_proyecto: str, user=Depends(get_current_user)):
             cur.execute("SELECT COUNT(*) FROM barras WHERE id_proyecto = %s", (id_proyecto,))
             barras_count = int(cur.fetchone()[0])
 
+            # Cubicador: solo puede eliminar obras vacías
+            if user.get("role") == "cubicador" and barras_count > 0:
+                raise HTTPException(status_code=403, detail=f"No puedes eliminar una obra con {barras_count} barras cargadas. Contacta al administrador.")
+
             cur.execute("DELETE FROM proyecto_usuarios WHERE id_proyecto = %s", (id_proyecto,))
             cur.execute("DELETE FROM imports WHERE id_proyecto = %s", (id_proyecto,))
             cur.execute("DELETE FROM barras WHERE id_proyecto = %s", (id_proyecto,))

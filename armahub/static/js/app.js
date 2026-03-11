@@ -84,12 +84,51 @@ async function apiDelete(url) {
   return await res.json();
 }
 
+// ========================= CALCULISTA SELECT HELPER =========================
+function populateCalcSelect(selId) {
+  var sel = document.getElementById(selId);
+  if (!sel) return;
+  sel.innerHTML = '<option value="">— Sin calculista —</option>' +
+    _calculistasCache.map(function(c) { return '<option value="' + c.nombre + '">' + c.nombre + '</option>'; }).join('') +
+    '<option value="__otro__">+ Otro (escribir)</option>';
+}
+
+function toggleCalcInput(prefix) {
+  var sel = document.getElementById(prefix + 'CalculistaSelect');
+  var inp = document.getElementById(prefix + 'CalculistaInput');
+  var hidden = document.getElementById(prefix + 'Calculista');
+  if (sel.value === '__otro__') {
+    inp.style.display = '';
+    inp.focus();
+    hidden.value = '';
+  } else {
+    inp.style.display = 'none';
+    inp.value = '';
+    hidden.value = sel.value;
+  }
+}
+
+function syncCalcHidden(prefix) {
+  var sel = document.getElementById(prefix + 'CalculistaSelect');
+  var inp = document.getElementById(prefix + 'CalculistaInput');
+  var hidden = document.getElementById(prefix + 'Calculista');
+  if (sel.value === '__otro__') {
+    hidden.value = inp.value.trim();
+  } else {
+    hidden.value = sel.value;
+  }
+}
+
 // ========================= NEW PROJECT MODAL =========================
 let _newProjResolve = null;
 
 async function openNewProjectModal(data) {
   document.getElementById('newProjMsg').textContent = data.mensaje || '';
   document.getElementById('newProjNombre').value = data.proyecto_nombre || '';
+  populateCalcSelect('newProjCalculistaSelect');
+  document.getElementById('newProjCalculistaSelect').value = '';
+  document.getElementById('newProjCalculistaInput').style.display = 'none';
+  document.getElementById('newProjCalculistaInput').value = '';
   document.getElementById('newProjCalculista').value = '';
 
   // Load users for owner select
@@ -120,6 +159,7 @@ function closeNewProjectModal(confirmed) {
   document.getElementById('newProjectModal').style.display = 'none';
   if (_newProjResolve) {
     if (confirmed) {
+      syncCalcHidden('newProj');
       _newProjResolve({
         confirmed: true,
         calculista: document.getElementById('newProjCalculista').value.trim(),
@@ -139,6 +179,10 @@ let _missProjResolve = null;
 async function openMissingProjectModal(data) {
   document.getElementById('missProjMsg').textContent = data.mensaje || '';
   document.getElementById('missProjNombre').value = '';
+  populateCalcSelect('missProjCalculistaSelect');
+  document.getElementById('missProjCalculistaSelect').value = '';
+  document.getElementById('missProjCalculistaInput').style.display = 'none';
+  document.getElementById('missProjCalculistaInput').value = '';
   document.getElementById('missProjCalculista').value = '';
 
   // Populate existing projects dropdown (copy from any loaded project selector)
@@ -185,6 +229,7 @@ function closeMissingProjectModal(action) {
   } else if (action === 'new') {
     var nombre = document.getElementById('missProjNombre').value.trim();
     if (!nombre) { alert('Ingresa un nombre para el proyecto'); document.getElementById('missingProjectModal').style.display = 'flex'; return; }
+    syncCalcHidden('missProj');
     _missProjResolve({
       action: 'new',
       nombre: nombre,
@@ -641,6 +686,11 @@ async function editarObra(id, nombreActual) {
 }
 
 async function eliminarObra(id, nombre, barrasCount) {
+  // Cubicador: solo puede eliminar obras vacías (sin barras)
+  if (currentRole === 'cubicador' && barrasCount > 0) {
+    alert('No puedes eliminar una obra con ' + barrasCount + ' barras cargadas. Contacta al administrador.');
+    return;
+  }
   const msg = barrasCount > 0
     ? 'Se eliminarán ' + barrasCount + ' barras asociadas a "' + nombre + '". Esta acción no se puede deshacer.'
     : 'Se eliminará la obra "' + nombre + '" (sin barras). Esta acción no se puede deshacer.';

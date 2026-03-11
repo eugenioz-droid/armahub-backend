@@ -157,6 +157,7 @@ async def import_armadetailer(
     # ── Pre-validation: check ALL rows before any DB operation ──
     total_filas = len(df)
     filas_invalidas = []
+    id_unico_all = []  # collect for duplicate detection
 
     for idx, r in df.iterrows():
         row_num = idx + 2  # +2: 1-indexed + header row
@@ -166,6 +167,8 @@ async def import_armadetailer(
         id_unico_val = str(r["ID_UNICO"]).strip() if pd.notna(r["ID_UNICO"]) else ""
         if not id_unico_val or id_unico_val.lower() == "nan":
             errores_fila.append("ID_UNICO vacío")
+        else:
+            id_unico_all.append(id_unico_val)
 
         # 2. ID consistency: ID_UNICO debe contener ID_PROYECTO + PLANO_CODE + ID
         if id_unico_val and id_unico_val.lower() != "nan":
@@ -190,6 +193,7 @@ async def import_armadetailer(
         if errores_fila:
             filas_invalidas.append((row_num, errores_fila))
 
+    # Check 1: per-row validation errors
     if filas_invalidas:
         n_inv = len(filas_invalidas)
         detalle_items = []
@@ -203,6 +207,27 @@ async def import_armadetailer(
             "validation_failed": True,
             "mensaje": f"{n_inv}/{total_filas} barras inválidas. {detalle}",
             "barras_invalidas": n_inv,
+            "total_filas": total_filas,
+            "archivo": file.filename,
+        }
+
+    # Check 2: duplicate ID_UNICO within the same file
+    id_unico_counts = {}
+    for v in id_unico_all:
+        id_unico_counts[v] = id_unico_counts.get(v, 0) + 1
+    duplicados = {k: c for k, c in id_unico_counts.items() if c > 1}
+    if duplicados:
+        n_dup_ids = len(duplicados)
+        n_dup_barras = sum(duplicados.values())
+        n_unicas = len(id_unico_counts) - n_dup_ids + n_dup_ids  # total unique keys
+        detalle = ", ".join(f"'{k}' (×{c})" for k, c in list(duplicados.items())[:5])
+        if n_dup_ids > 5:
+            detalle += f" ... y {n_dup_ids - 5} más"
+        return {
+            "ok": False,
+            "validation_failed": True,
+            "mensaje": f"Archivo tiene {total_filas} barras pero {n_dup_ids} ID_UNICO están duplicados ({n_dup_barras} filas afectadas). Solo se cargarían {len(id_unico_counts)} únicas. Duplicados: {detalle}",
+            "barras_invalidas": n_dup_barras,
             "total_filas": total_filas,
             "archivo": file.filename,
         }

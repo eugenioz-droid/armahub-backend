@@ -1181,7 +1181,22 @@ errores y reclamos levantados por clientes. Incluye formulario tipo, análisis d
        - Barra lateral coloreada: verde (todas OK), naranja (parcial), rojo (todas fallaron)
        - Cada archivo individual sigue mostrando su resultado por separado
 
-    d) Bugfix: campo rows_upserted → barras en frontend
+    d) Detección de ID_UNICO duplicados dentro del mismo archivo:
+       - Si un archivo tiene filas con el mismo ID_UNICO → rechazo completo
+       - Mensaje: "Archivo tiene X barras pero Y ID_UNICO duplicados (Z filas afectadas)"
+       - Previene pérdida silenciosa por ON CONFLICT (ej: 64 barras → 41 cargadas)
+
+    e) Calculista dropdown en modales de creación de proyecto:
+       - Dropdown con calculistas existentes + opción "Otro (escribir)" para texto libre
+       - Aplicado en modal "Nuevo proyecto detectado" y "Archivo sin proyecto"
+       - Usa _calculistasCache ya cargado por loadCalculistas()
+
+    f) Cubicador no puede eliminar obras con datos:
+       - Frontend: alerta y bloqueo si barrasCount > 0
+       - Backend: HTTP 403 si role=cubicador y barras > 0
+       - Obras vacías (sin barras) sí pueden ser eliminadas por cubicador
+
+    g) Bugfix: campo rows_upserted → barras en frontend
        - Corregido en todos los paths de retry (missing_project, new_project, duplicate_warning)
        - Agregados campos filas_rechazadas y advertencias al response del backend
 

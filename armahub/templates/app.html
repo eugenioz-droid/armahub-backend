@@ -96,7 +96,11 @@
       </div>
       <div style="margin-bottom:12px;">
         <label style="font-size:12px; color:#666; display:block; margin-bottom:4px;">Calculista</label>
-        <input type="text" id="newProjCalculista" placeholder="Nombre del calculista (opcional)" style="width:100%; font-size:13px;" />
+        <select id="newProjCalculistaSelect" onchange="toggleCalcInput('newProj')" style="width:100%; font-size:13px; margin-bottom:4px;">
+          <option value="">— Sin calculista —</option>
+        </select>
+        <input type="text" id="newProjCalculistaInput" placeholder="Nombre del nuevo calculista" style="width:100%; font-size:13px; display:none;" />
+        <input type="hidden" id="newProjCalculista" />
       </div>
       <div style="margin-bottom:12px;">
         <label style="font-size:12px; color:#666; display:block; margin-bottom:4px;">Dueño del proyecto</label>
@@ -138,7 +142,11 @@
       <div style="padding:12px; background:#f8f9fa; border-radius:8px;">
         <label style="font-size:13px; font-weight:600; display:block; margin-bottom:6px;">Crear proyecto nuevo</label>
         <input type="text" id="missProjNombre" placeholder="Nombre del proyecto" style="width:100%; font-size:13px; margin-bottom:6px;" />
-        <input type="text" id="missProjCalculista" placeholder="Calculista (opcional)" style="width:100%; font-size:13px; margin-bottom:6px;" />
+        <select id="missProjCalculistaSelect" onchange="toggleCalcInput('missProj')" style="width:100%; font-size:13px; margin-bottom:4px;">
+          <option value="">— Sin calculista —</option>
+        </select>
+        <input type="text" id="missProjCalculistaInput" placeholder="Nombre del nuevo calculista" style="width:100%; font-size:13px; margin-bottom:6px; display:none;" />
+        <input type="hidden" id="missProjCalculista" />
         <div style="display:flex; gap:8px; margin-bottom:6px;">
           <div style="flex:1;">
             <select id="missProjOwner" style="width:100%; font-size:13px;">
