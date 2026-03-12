@@ -446,6 +446,13 @@ MIGRATIONS = [
         "UPDATE users SET role = 'admin2' WHERE role = 'coordinador';",
         "ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('admin', 'admin2', 'cubicador', 'usc', 'externo', 'cliente'));",
     ]),
+    (26, "reclamos: cubicador_asignado para tracking de responsabilidad", [
+        "DO $$ BEGIN ALTER TABLE reclamos ADD COLUMN cubicador_asignado TEXT; EXCEPTION WHEN duplicate_column THEN NULL; END $$;",
+        "CREATE INDEX IF NOT EXISTS idx_reclamos_cubicador_asignado ON reclamos(cubicador_asignado)",
+    ]),
+    (27, "barras: agregar ang4 (ANG4 de ArmaDetailer, exporta como AngV3)", [
+        "DO $$ BEGIN ALTER TABLE barras ADD COLUMN ang4 DOUBLE PRECISION; EXCEPTION WHEN duplicate_column THEN NULL; END $$;",
+    ]),
 ]
 
 

@@ -1235,6 +1235,47 @@ errores y reclamos levantados por clientes. Incluye formulario tipo, análisis d
        - Reclamos: id_proyecto (FK), creado_por, asignado_a, respuesta_por, validacion_por
        - Pedidos: id_proyecto (FK), creado_por, items con sector/piso/ciclo/eje/diam/largo
 
+49. Reclamos: Asignación de Cubicador Responsable - ✅ Implementado 11-Mar-2026
+
+    a) Nuevo campo cubicador_asignado (migración 26):
+       - Campo TEXT en reclamos para almacenar email del cubicador responsable del error
+       - Índice para consultas rápidas por cubicador asignado
+
+    b) Endpoint GET /reclamos/cubicadores:
+       - Devuelve lista de usuarios con rol cubicador activos para dropdown filtrado
+       - Respuesta: email, nombre, apellido, display
+
+    c) Formulario de creación:
+       - Nuevo dropdown "Cubicador asignado" filtrado solo a cubicadores
+       - USC asigna al cubicador responsable al crear el reclamo
+       - crearReclamo() envía cubicador_asignado al backend
+
+    d) Detalle del reclamo (Sección 2):
+       - Dropdown "Cubicador asignado" en Sección 2 (Respuesta del Responsable)
+       - Admin/Admin2 pueden cambiar la asignación con botón "Guardar" independiente
+       - Función cambiarCubicadorAsignado() para guardar cambio sin tocar respuesta
+
+    e) Lógica de respuesta (admin responde en nombre del cubicador):
+       - Cuando admin/admin2 guarda respuesta, respuesta_por = cubicador_asignado (no admin email)
+       - Si no hay cubicador asignado, respuesta_por = admin email como fallback
+       - Backend: PATCH verifica body.cubicador_asignado o busca en DB si no viene en body
+
+    f) Landing cubicador mejorado:
+       - Filtro mi-resumen usa cubicador_asignado OR respuesta_por (ve asignados + respondidos)
+       - Nuevo Chart 5: Dona Ishikawa con distribución de causas del cubicador
+       - Badge "Pendientes": cuenta reclamos asignados sin respuesta
+       - Grid dinámico: ajusta columnas según charts visibles (3, 4 o 5)
+
+    g) Lista de reclamos:
+       - Nueva columna "Cubicador" en tabla de reclamos (muestra email truncado)
+       - solo_mios para cubicador usa cubicador_asignado OR respuesta_por
+       - cubicador_asignado y respuesta_por incluidos en response del GET /reclamos
+
+    h) Permisos:
+       - Creación: USC/Admin/Admin2 pueden asignar cubicador
+       - Cambio asignación: solo Admin/Admin2
+       - Respuesta: Admin/Admin2/Cubicador/Externo (sin cambio)
+
 43. API versionada (/api/v1) - Pendiente
 44. CORS para aplicaciones externas - Pendiente
 45. Observabilidad: /health, logs estructurados - Pendiente

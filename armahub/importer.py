@@ -118,16 +118,19 @@ async def import_armadetailer(
 
     data_text = "\n".join(lines[header_idx:])
     df = pd.read_csv(StringIO(data_text), sep="|")
+    # Strip whitespace from column names (handles trailing spaces/CR from Excel re-saves)
+    df.columns = df.columns.str.strip()
 
     required = [
         "ID_UNICO", "ID_PROYECTO", "PLANO_CODE",
         "SECTOR", "PISO", "CICLO", "EJE",
         "DIAM", "LARGO_TOTAL", "CANT",
-        "VERSION_MOD", "VERSION_EXP"
+        "VERSION_MOD"
     ]
     missing = [c for c in required if c not in df.columns]
     if missing:
-        return {"ok": False, "error": f"Faltan columnas requeridas: {missing}"}
+        found = list(df.columns)
+        return {"ok": False, "error": f"Faltan columnas requeridas: {missing}. Columnas encontradas en archivo: {found}"}
 
     # Validación de sectores: rechazar archivo si contiene sectores inválidos
     SECTORES_VALIDOS = {"FUND", "ELEV", "LCIELO", "VCIELO"}
@@ -361,7 +364,7 @@ async def import_armadetailer(
             peso_unitario,
             peso_total,
             _clean(r["VERSION_MOD"]),
-            _clean(r["VERSION_EXP"]),
+            _opt_text("VERSION_EXP"),
             now_iso,
             # Columnas adicionales ArmaDetailer
             _opt_text("ID"),
@@ -382,6 +385,7 @@ async def import_armadetailer(
             _opt_float("ANG1"),
             _opt_float("ANG2"),
             _opt_float("ANG3"),
+            _opt_float("ANG4"),
             _opt_float("R"),
             _opt_text("COD_PROD") or _opt_text("COD_PROYECTO"),
             _opt_text("NOMBRE_DWG"),
@@ -390,9 +394,9 @@ async def import_armadetailer(
     upsert_sql = """
     INSERT INTO barras
     (id_unico,id_proyecto,nombre_proyecto,plano_code,nombre_plano,sector,piso,ciclo,eje,diam,largo_total,mult,cant,cant_total,peso_unitario,peso_total,version_mod,version_exp,fecha_carga,
-     bar_id,estructura,tipo,marca,figura,esp,dim_a,dim_b,dim_c,dim_d,dim_e,dim_f,dim_g,dim_h,dim_i,ang1,ang2,ang3,radio,cod_proyecto,nombre_dwg,
+     bar_id,estructura,tipo,marca,figura,esp,dim_a,dim_b,dim_c,dim_d,dim_e,dim_f,dim_g,dim_h,dim_i,ang1,ang2,ang3,ang4,radio,cod_proyecto,nombre_dwg,
      origen,import_id)
-    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,
+    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,
             %s,%s)
     ON CONFLICT (id_unico) DO UPDATE SET
         id_proyecto=EXCLUDED.id_proyecto,
@@ -431,6 +435,7 @@ async def import_armadetailer(
         ang1=EXCLUDED.ang1,
         ang2=EXCLUDED.ang2,
         ang3=EXCLUDED.ang3,
+        ang4=EXCLUDED.ang4,
         radio=EXCLUDED.radio,
         cod_proyecto=EXCLUDED.cod_proyecto,
         nombre_dwg=EXCLUDED.nombre_dwg,
@@ -441,7 +446,7 @@ async def import_armadetailer(
     total_kilos = sum(r[15] for r in rows_to_upsert if r[15] is not None)  # index 15 = peso_total
 
     # Extraer version y plano del primer row para tracking
-    first_version = str(df.iloc[0]["VERSION_EXP"]) if len(df) > 0 and pd.notna(df.iloc[0]["VERSION_EXP"]) else None
+    first_version = (str(df.iloc[0]["VERSION_EXP"]).strip() if len(df) > 0 and "VERSION_EXP" in df.columns and pd.notna(df.iloc[0]["VERSION_EXP"]) else None) or None
     first_plano = str(df.iloc[0]["PLANO_CODE"]) if len(df) > 0 and pd.notna(df.iloc[0]["PLANO_CODE"]) else None
 
     # Determinar estado de la importación

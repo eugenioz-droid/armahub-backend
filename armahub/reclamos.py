@@ -127,6 +127,7 @@ class ReclamoCreate(BaseModel):
     fecha_deteccion: Optional[str] = None
     id_calidad: Optional[str] = None
     asignado_a: Optional[str] = None
+    cubicador_asignado: Optional[str] = None
 
 
 class ReclamoUpdate(BaseModel):
@@ -157,6 +158,7 @@ class ReclamoUpdate(BaseModel):
     validacion_observaciones: Optional[str] = None
     kilos_mal_fabricados: Optional[float] = None
     asignado_a: Optional[str] = None
+    cubicador_asignado: Optional[str] = None
 
 
 class SeguimientoCreate(BaseModel):
@@ -208,8 +210,8 @@ def listar_reclamos(
                     where += " AND (r.creado_por = %s OR r.asignado_a = %s)"
                     params.extend([email, email])
                 elif role in ("cubicador", "externo"):
-                    where += " AND r.respuesta_por = %s"
-                    params.append(email)
+                    where += " AND (r.cubicador_asignado = %s OR r.respuesta_por = %s)"
+                    params.extend([email, email])
             if id_proyecto:
                 where += " AND r.id_proyecto = %s"
                 params.append(id_proyecto)
@@ -247,7 +249,8 @@ def listar_reclamos(
                        (SELECT COUNT(*) FROM reclamo_seguimientos s WHERE s.reclamo_id = r.id) AS seg_count,
                        r.aplica, r.sub_causa, r.cod_causa, r.correlativo_calidad,
                        r.detectado_por, r.fecha_deteccion,
-                       r.correlativo, r.id_calidad, r.tipo_reclamo, r.asignado_a
+                       r.correlativo, r.id_calidad, r.tipo_reclamo, r.asignado_a,
+                       r.cubicador_asignado, r.respuesta_por
                 FROM reclamos r
                 LEFT JOIN proyectos p ON r.id_proyecto = p.id_proyecto
                 {where}
@@ -283,6 +286,7 @@ def listar_reclamos(
                 "fecha_deteccion": r[19],
                 "correlativo": r[20], "id_calidad": r[21],
                 "tipo_reclamo": r[22], "asignado_a": r[23],
+                "cubicador_asignado": r[24], "respuesta_por": r[25],
             }
             for r in rows
         ]
@@ -333,15 +337,17 @@ def crear_reclamo(body: ReclamoCreate, user=Depends(get_current_user)):
                 INSERT INTO reclamos (id_proyecto, titulo, descripcion, prioridad, tipo_reclamo,
                     categoria_ishikawa, sub_causa, cod_causa, responsable,
                     detectado_por, fecha_deteccion, analista,
-                    creado_por, fecha_creacion, correlativo, id_calidad, asignado_a)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    creado_por, fecha_creacion, correlativo, id_calidad, asignado_a,
+                    cubicador_asignado)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING id
             """, (body.id_proyecto, body.titulo, body.descripcion,
                   body.prioridad or "alta", body.tipo_reclamo or "error",
                   body.categoria_ishikawa,
                   body.sub_causa, body.cod_causa, body.responsable,
                   body.detectado_por, body.fecha_deteccion, email,
-                  email, now, correlativo, body.id_calidad, asignado_a))
+                  email, now, correlativo, body.id_calidad, asignado_a,
+                  body.cubicador_asignado))
             reclamo_id = cur.fetchone()[0]
 
             # Auto-create first seguimiento
@@ -358,7 +364,7 @@ def crear_reclamo(body: ReclamoCreate, user=Depends(get_current_user)):
 def reclamos_mi_resumen(user=Depends(get_current_user)):
     """Landing page stats filtered by role.
     USC: own reclamos (creado_por or asignado_a).
-    Cubicador/Externo: reclamos they responded to (respuesta_por).
+    Cubicador/Externo: reclamos assigned to them (cubicador_asignado) or responded (respuesta_por).
     Admin/Admin2: all reclamos."""
     email = user.get("email", "")
     role = user.get("role", "usc")
@@ -368,8 +374,8 @@ def reclamos_mi_resumen(user=Depends(get_current_user)):
         role_filter = " AND (r.creado_por = %s OR r.asignado_a = %s)"
         role_params = [email, email]
     elif role in ("cubicador", "externo"):
-        role_filter = " AND r.respuesta_por = %s"
-        role_params = [email]
+        role_filter = " AND (r.cubicador_asignado = %s OR r.respuesta_por = %s)"
+        role_params = [email, email]
     else:
         role_filter = ""
         role_params = []
@@ -383,6 +389,17 @@ def reclamos_mi_resumen(user=Depends(get_current_user)):
             # Abiertos (not cerrado/rechazado)
             cur.execute(f"SELECT COUNT(*) FROM reclamos r WHERE r.estado NOT IN ('cerrado','rechazado'){role_filter}", role_params)
             abiertos = int(cur.fetchone()[0])
+
+            # Pendientes: assigned to cubicador but not yet responded
+            pendientes = 0
+            if role in ("cubicador", "externo"):
+                cur.execute("""
+                    SELECT COUNT(*) FROM reclamos r
+                    WHERE r.cubicador_asignado = %s
+                      AND r.respuesta_texto IS NULL
+                      AND r.estado NOT IN ('cerrado','rechazado')
+                """, (email,))
+                pendientes = int(cur.fetchone()[0])
 
             # By tipo_reclamo (error/faltante)
             cur.execute(f"""
@@ -410,12 +427,24 @@ def reclamos_mi_resumen(user=Depends(get_current_user)):
             """, role_params)
             por_anio = [{"anio": r[0], "count": int(r[1])} for r in cur.fetchall()]
 
+            # Ishikawa breakdown (for cubicador landing doughnut)
+            por_ishikawa = {}
+            if role in ("cubicador", "externo", "admin", "admin2"):
+                cur.execute(f"""
+                    SELECT COALESCE(r.categoria_ishikawa, 'sin_categoria'), COUNT(*)
+                    FROM reclamos r WHERE r.categoria_ishikawa IS NOT NULL{role_filter}
+                    GROUP BY 1 ORDER BY 2 DESC
+                """, role_params)
+                por_ishikawa = {r[0]: int(r[1]) for r in cur.fetchall()}
+
     return {
         "total": total,
         "abiertos": abiertos,
+        "pendientes": pendientes,
         "por_tipo": por_tipo,
         "por_anio_mes": por_anio_mes,
         "por_anio": por_anio,
+        "por_ishikawa": por_ishikawa,
     }
 
 
@@ -693,6 +722,27 @@ def get_ishikawa(user=Depends(get_current_user)):
     }
 
 
+@router.get("/reclamos/cubicadores")
+def get_cubicadores(user=Depends(get_current_user)):
+    """Lista de usuarios con rol cubicador para dropdown de asignación de responsabilidad."""
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT email, nombre, apellido
+                FROM users
+                WHERE role = 'cubicador' AND activo = TRUE
+                ORDER BY nombre, apellido, email
+            """)
+            rows = cur.fetchall()
+    return {
+        "cubicadores": [
+            {"email": r[0], "nombre": r[1], "apellido": r[2],
+             "display": ((r[1] or '') + ' ' + (r[2] or '')).strip() or r[0]}
+            for r in rows
+        ]
+    }
+
+
 @router.get("/reclamos/usuarios-usc")
 def get_usuarios_usc(user=Depends(get_current_user)):
     """Lista de usuarios con rol USC para dropdown de asignación."""
@@ -732,7 +782,7 @@ def get_reclamo(reclamo_id: int, user=Depends(get_current_user)):
                        r.tipo_reclamo, r.respuesta_texto, r.respuesta_fecha,
                        r.respuesta_por, r.validacion_resultado,
                        r.validacion_observaciones, r.validacion_fecha, r.validacion_por,
-                       r.kilos_mal_fabricados, r.asignado_a
+                       r.kilos_mal_fabricados, r.asignado_a, r.cubicador_asignado
                 FROM reclamos r
                 LEFT JOIN proyectos p ON r.id_proyecto = p.id_proyecto
                 WHERE r.id = %s
@@ -782,6 +832,7 @@ def get_reclamo(reclamo_id: int, user=Depends(get_current_user)):
         "validacion_por": row[36],
         "kilos_mal_fabricados": row[37],
         "asignado_a": row[38],
+        "cubicador_asignado": row[39],
         "seguimientos": [
             {"id": s[0], "usuario": s[1], "comentario": s[2],
              "estado_anterior": s[3], "estado_nuevo": s[4], "fecha": s[5]}
@@ -836,13 +887,15 @@ def actualizar_reclamo(reclamo_id: int, body: ReclamoUpdate, user=Depends(get_cu
                 "accion_correctiva", "accion_preventiva", "resolucion", "observaciones",
                 "id_calidad", "respuesta_texto", "validacion_resultado",
                 "validacion_observaciones", "kilos_mal_fabricados", "asignado_a",
+                "cubicador_asignado",
             ]
             # Fields where empty string should be stored as NULL
             nullable_fields = {"id_proyecto", "id_calidad", "sub_causa", "cod_causa", "responsable",
                                "detectado_por", "fecha_deteccion", "fecha_analisis",
                                "analista", "area_aplica", "explicacion_causa",
                                "accion_correctiva", "accion_preventiva", "resolucion", "observaciones",
-                               "respuesta_texto", "validacion_observaciones", "asignado_a"}
+                               "respuesta_texto", "validacion_observaciones", "asignado_a",
+                               "cubicador_asignado"}
             for field in updatable:
                 val = getattr(body, field)
                 if val is not None:
@@ -853,8 +906,19 @@ def actualizar_reclamo(reclamo_id: int, body: ReclamoUpdate, user=Depends(get_cu
             if body.respuesta_texto and body.respuesta_texto.strip():
                 sets.append("respuesta_fecha = %s")
                 params.append(now)
-                sets.append("respuesta_por = %s")
-                params.append(email)
+                # Admin/admin2: attribute response to cubicador_asignado if set
+                if role in ("admin", "admin2"):
+                    # Use cubicador_asignado from body (if just assigned) or from existing reclamo
+                    cub_email = body.cubicador_asignado
+                    if not cub_email:
+                        cur.execute("SELECT cubicador_asignado FROM reclamos WHERE id = %s", (reclamo_id,))
+                        cub_row = cur.fetchone()
+                        cub_email = cub_row[0] if cub_row and cub_row[0] else None
+                    sets.append("respuesta_por = %s")
+                    params.append(cub_email or email)
+                else:
+                    sets.append("respuesta_por = %s")
+                    params.append(email)
 
             # Auto-set validacion metadata when validacion_resultado is provided
             if body.validacion_resultado and body.validacion_resultado.strip():

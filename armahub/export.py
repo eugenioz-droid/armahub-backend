@@ -47,9 +47,10 @@ EXPORT_COLUMNS = [
     ("H cm",      "dim_h",        "num"),
     ("I cm",      "dim_i",        "num"),
     ("J cm",      None,           "num"),   # No existe en CSV, siempre vacío
-    ("AngV1",     "ang1",         "num"),
-    ("AngV2",     "ang2",         "num"),
-    ("AngV3",     "ang3",         "num"),
+    ("AngV",      "ang1",         "num"),
+    ("AngV1",     "ang2",         "num"),
+    ("AngV2",     "ang3",         "num"),
+    ("AngV3",     "ang4",         "num"),
     ("R cm",      "radio",        "num"),
     ("PesoKg",    "peso_unitario","dec3"),
     ("PesoTotal", "peso_total",   "dec2"),
@@ -60,7 +61,7 @@ DB_FIELDS = [
     "eje", "sector", "piso", "ciclo", "cant_total", "diam", "figura",
     "largo_total", "marca", "cod_proyecto",
     "dim_a", "dim_b", "dim_c", "dim_d", "dim_e", "dim_f", "dim_g", "dim_h", "dim_i",
-    "ang1", "ang2", "ang3", "radio",
+    "ang1", "ang2", "ang3", "ang4", "radio",
     "peso_unitario", "peso_total",
 ]
 

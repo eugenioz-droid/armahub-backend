@@ -3434,7 +3434,7 @@ const _ishikawaCatColors = {
 };
 
 // ---- RECLAMOS LANDING CHARTS ----
-let _recLandChartTipo = null, _recLandChartHist = null, _recLandChartAnio = null;
+let _recLandChartTipo = null, _recLandChartHist = null, _recLandChartAnio = null, _recLandChartIshikawa = null;
 const _recCatColors = {
   mano_de_obra: '#42A5F5', metodo: '#FFA726', material: '#66BB6A',
   maquina: '#EF5350', medicion: '#AB47BC', medio_ambiente: '#26A69A',
@@ -3485,9 +3485,7 @@ async function loadRecLanding() {
   var chart4 = document.getElementById('recLandChart4Wrap');
   var showChart4 = (currentRole === 'cubicador' || isAdmin);
   if (chart4) chart4.style.display = showChart4 ? '' : 'none';
-  // Adjust grid: 4 columns if showing chart4, 3 otherwise
   var grid = document.getElementById('recLandingCharts');
-  if (grid) grid.style.gridTemplateColumns = showChart4 ? 'repeat(4, 1fr)' : 'repeat(3, 1fr)';
 
   // Chart 1: Total number
   document.getElementById('recLandTotal').textContent = data.total || 0;
@@ -3543,6 +3541,41 @@ async function loadRecLanding() {
         plugins: { legend: { display: false } },
         scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } } }
     });
+  }
+
+  // Chart 5: Ishikawa doughnut (cubicador / admin)
+  var showChart5 = (currentRole === 'cubicador' || isAdmin) && data.por_ishikawa && Object.keys(data.por_ishikawa).length > 0;
+  var chart5 = document.getElementById('recLandChart5Wrap');
+  if (chart5) chart5.style.display = showChart5 ? '' : 'none';
+  if (showChart5) {
+    var ishKeys = Object.keys(data.por_ishikawa);
+    var ishLabels = ishKeys.map(function(k) { return (_recCatLabels[k] || k) + ' (' + data.por_ishikawa[k] + ')'; });
+    var ishData = ishKeys.map(function(k) { return data.por_ishikawa[k]; });
+    var ishColors = ishKeys.map(function(k) { return _recCatColors[k] || '#BDBDBD'; });
+    var ctx5 = document.getElementById('recLandChartIshikawa').getContext('2d');
+    if (_recLandChartIshikawa) _recLandChartIshikawa.destroy();
+    _recLandChartIshikawa = new Chart(ctx5, {
+      type: 'doughnut',
+      data: { labels: ishLabels, datasets: [{ data: ishData, backgroundColor: ishColors }] },
+      options: { responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { position: 'bottom', labels: { font: { size: 9 }, padding: 6 } } } }
+    });
+  }
+
+  // Adjust grid columns: count visible charts (3 base + chart4 + chart5)
+  var visibleCharts = 3 + (showChart4 ? 1 : 0) + (showChart5 ? 1 : 0);
+  if (grid) grid.style.gridTemplateColumns = 'repeat(' + visibleCharts + ', 1fr)';
+
+  // Pending tasks badge (cubicador only)
+  var pendWrap = document.getElementById('recLandPendientesWrap');
+  var pendCount = data.pendientes || 0;
+  if (pendWrap) {
+    if (currentRole === 'cubicador' && pendCount > 0) {
+      pendWrap.style.display = '';
+      document.getElementById('recLandPendientes').textContent = pendCount;
+    } else {
+      pendWrap.style.display = 'none';
+    }
   }
 }
 
@@ -3662,6 +3695,7 @@ async function loadRecAdminDashboards() {
 }
 
 var _recUsersCache = [];
+var _recCubicadoresCache = [];
 async function loadRecUsersDropdown() {
   var res = await fetch('/users/dropdown', { headers: authHeaders() });
   if (!res.ok) return;
@@ -3687,6 +3721,25 @@ async function loadRecUsersDropdown() {
     });
     filterSel.value = fval;
   }
+}
+
+async function loadRecCubicadoresDropdown() {
+  var res = await fetch('/reclamos/cubicadores', { headers: authHeaders() });
+  if (!res.ok) return;
+  var data = await res.json();
+  _recCubicadoresCache = data.cubicadores || [];
+  // Populate create form cubicador
+  _populateCubicadorSelect('recCubicadorAsignado', '');
+}
+
+function _populateCubicadorSelect(elId, currentVal) {
+  var sel = document.getElementById(elId);
+  if (!sel) return;
+  sel.innerHTML = '<option value="">— Sin asignar —</option>';
+  _recCubicadoresCache.forEach(function(c) {
+    sel.innerHTML += '<option value="' + c.email + '">' + c.display + '</option>';
+  });
+  if (currentVal) sel.value = currentVal;
 }
 
 function populateRecFilterProyecto() {
@@ -3749,6 +3802,7 @@ async function loadReclamos() {
     '<th style="padding:5px 6px;">Proyecto</th>' +
     '<th style="padding:5px 6px;">Detectado</th>' +
     '<th style="padding:5px 6px;">Responsable</th>' +
+    '<th style="padding:5px 6px;">Cubicador</th>' +
     '<th style="padding:5px 6px;">Estado</th>' +
     '<th style="padding:5px 6px;">Aplica</th>' +
     '<th style="padding:5px 6px;">Causa</th>' +
@@ -3773,6 +3827,7 @@ async function loadReclamos() {
         '<td style="padding:4px 6px; font-size:11px;">' + (r.nombre_proyecto || '-') + '</td>' +
         '<td style="padding:4px 6px; font-size:11px;">' + (r.detectado_por || '-') + '</td>' +
         '<td style="padding:4px 6px; font-size:11px;">' + (r.responsable || '-') + '</td>' +
+        '<td style="padding:4px 6px; font-size:11px;">' + (r.cubicador_asignado ? r.cubicador_asignado.split('@')[0] : '-') + '</td>' +
         '<td style="padding:4px 6px;"><span style="background:' + eColor + '; color:#fff; padding:1px 6px; border-radius:3px; font-size:10px;">' + eLabel + '</span></td>' +
         '<td style="padding:4px 6px;"><span style="color:' + aplColor + '; font-weight:600; font-size:10px;">' + aplLabel + '</span></td>' +
         '<td style="padding:4px 6px; font-size:11px;" title="' + (r.sub_causa || '') + '">' + causaText + '</td>' +
@@ -3812,6 +3867,7 @@ async function crearReclamo() {
   var detectadoPor = document.getElementById('recDetectadoPor').value;
   var fechaDeteccion = document.getElementById('recFechaDeteccion').value;
   var idCalidad = document.getElementById('recIdCalidad') ? document.getElementById('recIdCalidad').value.trim() : '';
+  var cubicadorAsignado = document.getElementById('recCubicadorAsignado') ? document.getElementById('recCubicadorAsignado').value : '';
   if (proyecto) body.id_proyecto = proyecto;
   if (tipoReclamo) body.tipo_reclamo = tipoReclamo;
   if (responsable) body.responsable = responsable;
@@ -3820,6 +3876,7 @@ async function crearReclamo() {
   if (detectadoPor) body.detectado_por = detectadoPor;
   if (fechaDeteccion) body.fecha_deteccion = fechaDeteccion;
   if (idCalidad) body.id_calidad = idCalidad;
+  if (cubicadorAsignado) body.cubicador_asignado = cubicadorAsignado;
   var res = await fetch('/reclamos', {
     method: 'POST',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
@@ -3842,7 +3899,7 @@ async function crearReclamo() {
     }
     _recCreateStagedFiles = [];
     msg.textContent = label + ' registrado correctamente'; msg.style.color = '#558B2F';
-    ['recTitulo','recDescripcion','recResponsable','recDetectadoPor','recFechaDeteccion','recIdCalidad'].forEach(function(id) {
+    ['recTitulo','recDescripcion','recResponsable','recCubicadorAsignado','recAsignadoA','recDetectadoPor','recFechaDeteccion','recIdCalidad'].forEach(function(id) {
       var el = document.getElementById(id); if (el) el.value = '';
     });
     document.getElementById('recProyecto').value = '';
@@ -3911,6 +3968,7 @@ async function verReclamo(id) {
   if (data.responsable) metaParts.push('Responsable: ' + data.responsable);
   if (data.detectado_por) metaParts.push('Detectado por: ' + data.detectado_por);
   if (data.asignado_a) metaParts.push('Subido por: ' + data.asignado_a);
+  if (data.cubicador_asignado) metaParts.push('Cubicador: ' + data.cubicador_asignado);
   document.getElementById('recDetailMeta').textContent = metaParts.join(' · ');
 
   document.getElementById('recDetailEstado').value = data.estado;
@@ -3973,6 +4031,9 @@ async function verReclamo(id) {
     respInfo.textContent = 'Sin respuesta aún';
   }
   document.getElementById('recRespMsg').textContent = '';
+
+  // Cubicador asignado dropdown in Section 2
+  _populateCubicadorSelect('recDetailCubicadorAsignado', data.cubicador_asignado || '');
 
   // SECTION 3: Validación
   document.getElementById('recDetailValidacionResultado').value = data.validacion_resultado || '';
@@ -4038,6 +4099,13 @@ async function verReclamo(id) {
   // Asignado a: admin/admin2 can change assignment
   var detAsigSel = document.getElementById('recDetailAsignadoA');
   if (detAsigSel) detAsigSel.disabled = !(currentRole === 'admin' || currentRole === 'admin2');
+
+  // Cubicador asignado dropdown: admin/admin2 can change
+  var puedeCambiarCub = (currentRole === 'admin' || currentRole === 'admin2');
+  var detCubSel = document.getElementById('recDetailCubicadorAsignado');
+  if (detCubSel) detCubSel.disabled = !puedeCambiarCub;
+  var btnCambiarCub = document.getElementById('btnCambiarCubicador');
+  if (btnCambiarCub) btnCambiarCub.style.display = puedeCambiarCub ? '' : 'none';
 
   // Section 2 (Respuesta): admin/admin2/cubicador/externo. NOT usc.
   var puedeResponder = ['admin','admin2','cubicador','externo'].includes(currentRole);
@@ -4313,6 +4381,30 @@ async function cambiarAplicaReclamo() {
   else { alert('Error: ' + (data.detail || 'desconocido')); }
 }
 
+// ---- Cambiar cubicador asignado (admin/admin2) ----
+async function cambiarCubicadorAsignado() {
+  if (!_reclamoActual) return;
+  var msg = document.getElementById('recCubicadorMsg');
+  var cubVal = document.getElementById('recDetailCubicadorAsignado').value;
+  msg.textContent = 'Guardando...'; msg.style.color = '#666';
+  var body = { cubicador_asignado: cubVal || '' };
+  var res = await fetch('/reclamos/' + _reclamoActual.id, {
+    method: 'PATCH',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  if (res.status === 401) { logout(); return; }
+  var data = await res.json();
+  if (data.ok) {
+    msg.textContent = 'Cubicador actualizado'; msg.style.color = '#558B2F';
+    setTimeout(function() { msg.textContent = ''; }, 2000);
+    await verReclamo(_reclamoActual.id);
+    await loadReclamos();
+  } else {
+    msg.textContent = 'Error: ' + (data.detail || 'desconocido'); msg.style.color = '#b42318';
+  }
+}
+
 // ---- Respuesta del responsable (includes RCA) ----
 async function guardarRespuesta() {
   if (!_reclamoActual) return;
@@ -4330,6 +4422,11 @@ async function guardarRespuesta() {
   };
   var kilosVal = document.getElementById('recDetailKilosMal').value;
   if (kilosVal !== '') body.kilos_mal_fabricados = parseFloat(kilosVal);
+  // Admin/admin2: include cubicador_asignado so response is attributed correctly
+  if (currentRole === 'admin' || currentRole === 'admin2') {
+    var cubVal = document.getElementById('recDetailCubicadorAsignado');
+    if (cubVal && cubVal.value) body.cubicador_asignado = cubVal.value;
+  }
   var res = await fetch('/reclamos/' + _reclamoActual.id, {
     method: 'PATCH',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
@@ -4677,6 +4774,7 @@ async function loadModuleData(mod) {
   } else if (mod === 'reclamos') {
     await loadProyectos();
     await loadRecUsersDropdown();
+    await loadRecCubicadoresDropdown();
     populateRecFilterProyecto();
     await loadReclamos();
     await loadRecLanding();
