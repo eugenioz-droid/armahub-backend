@@ -181,6 +181,72 @@
     </div>
   </div>
 
+<!-- MODAL: Editar obra (nombre, calculista, constructora, descripcion, usuarios) -->
+<div id="editObraModal" style="display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.5); z-index:9999; align-items:flex-start; justify-content:center; padding:30px 0; overflow-y:auto;">
+  <div style="background:#fff; border-radius:12px; padding:24px; max-width:540px; width:92%; box-shadow:0 8px 32px rgba(0,0,0,0.3); margin:0 auto;">
+    <h3 style="margin:0 0 16px 0; color:#1a1a1a; font-size:15px;">Editar obra</h3>
+    <input type="hidden" id="editObraId" />
+    <div style="margin-bottom:10px;">
+      <label style="font-size:11px; color:#666; display:block; margin-bottom:3px;">Nombre *</label>
+      <input type="text" id="editObraNombre" style="width:100%; font-size:13px;" />
+    </div>
+    <div class="row" style="gap:8px; flex-wrap:wrap; margin-bottom:10px;">
+      <div class="col" style="flex:1; min-width:180px;">
+        <label style="font-size:11px; color:#666; display:block; margin-bottom:3px;">Calculista</label>
+        <div style="display:flex; gap:4px;">
+          <select id="editObraCalculista" style="flex:1; font-size:12px;"></select>
+          <button class="secondary" style="font-size:11px; padding:3px 8px; white-space:nowrap;" onclick="toggleEditObraNewCalc()">+ Nuevo</button>
+        </div>
+        <div id="editObraNewCalcForm" style="display:none; margin-top:4px; background:#f5f5f5; padding:5px; border-radius:4px;">
+          <div style="display:flex; gap:4px;">
+            <input type="text" id="editObraNewCalcNombre" placeholder="Nombre calculista" style="flex:1; font-size:11px;" />
+            <button onclick="crearCalcDesdeEditObra()" style="font-size:10px; padding:2px 8px;">Crear</button>
+          </div>
+          <span id="editObraNewCalcMsg" style="font-size:10px;"></span>
+        </div>
+      </div>
+      <div class="col" style="flex:1; min-width:180px;">
+        <label style="font-size:11px; color:#666; display:block; margin-bottom:3px;">Constructora</label>
+        <div style="display:flex; gap:4px;">
+          <select id="editObraConstructora" style="flex:1; font-size:12px;"></select>
+          <button class="secondary" style="font-size:11px; padding:3px 8px; white-space:nowrap;" onclick="toggleEditObraNewConst()">+ Nueva</button>
+        </div>
+        <div id="editObraNewConstForm" style="display:none; margin-top:4px; background:#f5f5f5; padding:5px; border-radius:4px;">
+          <div style="display:flex; gap:4px;">
+            <input type="text" id="editObraNewConstNombre" placeholder="Nombre constructora" style="flex:1; font-size:11px;" />
+            <button onclick="crearConstDesdeEditObra()" style="font-size:10px; padding:2px 8px;">Crear</button>
+          </div>
+          <span id="editObraNewConstMsg" style="font-size:10px;"></span>
+        </div>
+      </div>
+    </div>
+    <div style="margin-bottom:14px;">
+      <label style="font-size:11px; color:#666; display:block; margin-bottom:3px;">Descripción</label>
+      <textarea id="editObraDescripcion" rows="2" style="width:100%; font-size:12px; resize:vertical;"></textarea>
+    </div>
+    <div style="padding:10px; background:#f5f5f5; border-radius:6px; margin-bottom:14px;">
+      <div style="font-size:12px; font-weight:600; margin-bottom:6px;">Usuarios autorizados</div>
+      <div id="editObraAutorizadosList" class="muted" style="font-size:12px; min-height:20px; margin-bottom:8px;"></div>
+      <div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center;">
+        <select id="editObraUserSel" style="flex:2; min-width:140px; font-size:12px;"></select>
+        <select id="editObraUserRol" style="width:105px; font-size:12px;">
+          <option value="admin">Admin</option>
+          <option value="cubicador" selected>Cubicador</option>
+          <option value="usc">USC</option>
+          <option value="externo">Externo</option>
+          <option value="cliente">Cliente</option>
+        </select>
+        <button onclick="autorizarUsuarioEditObra()" style="font-size:11px; padding:4px 10px;">+ Agregar</button>
+      </div>
+    </div>
+    <div style="display:flex; gap:8px; align-items:center;">
+      <span id="editObraMsg" class="muted" style="font-size:11px; flex:1;"></span>
+      <button class="secondary" onclick="closeEditObraModal()">Cancelar</button>
+      <button onclick="guardarEditObra()">💾 Guardar</button>
+    </div>
+  </div>
+</div>
+
 <script src="/static/js/app.js?v={{ cache_bust }}"></script>
 </body>
 </html>

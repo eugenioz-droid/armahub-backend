@@ -447,7 +447,7 @@ async function loadProyectos() {
         <div style="display: flex; gap: 6px; align-items: center;">
           <button class="secondary" style="font-size:12px; padding:4px 10px;" onclick="toggleCargasProyecto('${p.id_proyecto}')">Cargas</button>
           <button class="secondary" style="font-size:12px; padding:4px 10px;" onclick="toggleAutorizados('${p.id_proyecto}')">Usuarios</button>
-          <button class="secondary" style="font-size:12px; padding:4px 10px;" onclick="editarObra('${p.id_proyecto}', '${p.nombre_proyecto.replace(/'/g, "\\'")}')">Renombrar</button>
+          <button class="secondary" style="font-size:12px; padding:4px 10px;" onclick="openEditObraModal('${p.id_proyecto}')">Editar</button>
           <button class="secondary" style="font-size:12px; padding:4px 10px; color:#b42318; border-color:#b42318;" onclick="eliminarObra('${p.id_proyecto}', '${p.nombre_proyecto.replace(/'/g, "\\'")}', ${p.total_barras})">Eliminar</button>
         </div>
       </div>
@@ -520,18 +520,22 @@ async function loadProyectos() {
 }
 
 // ========================= ADMIN OBRAS =========================
+var _editObraCurrentId = null;
+
 async function crearObra() {
   const name = document.getElementById('newObraName').value.trim();
   const calcSel = document.getElementById('newObraCalculista');
   const calcId = calcSel ? calcSel.value : '';
   const clienteSel = document.getElementById('newObraCliente');
   const clienteId = clienteSel ? clienteSel.value : '';
+  const descEl = document.getElementById('newObraDescripcion');
   const msg = document.getElementById('crearObraMsg');
   if (!name) { msg.innerHTML = '<span class="status-err">Ingresa un nombre para la obra</span>'; return; }
   msg.innerHTML = '<span class="muted">Creando...</span>';
   const body = { nombre_proyecto: name };
   if (calcId) body.calculista_id = parseInt(calcId);
   if (clienteId) body.constructora_id = parseInt(clienteId);
+  if (descEl && descEl.value.trim()) body.descripcion = descEl.value.trim();
   const res = await fetch('/proyectos', {
     method: 'POST',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
@@ -544,12 +548,69 @@ async function crearObra() {
     document.getElementById('newObraName').value = '';
     document.getElementById('newObraCalculista').value = '';
     if (clienteSel) clienteSel.value = '';
+    if (descEl) descEl.value = '';
     await loadProyectos();
     await loadFilters();
     await loadInicio();
     await loadMiActividad();
   } else {
     msg.innerHTML = '<span class="status-err">Error: ' + (data.detail || data.error || 'desconocido') + '</span>';
+  }
+}
+
+function toggleObraNewCalc() {
+  var f = document.getElementById('obraNewCalcForm');
+  f.style.display = f.style.display === 'none' ? '' : 'none';
+}
+
+async function crearCalcDesdeObraForm() {
+  var nombre = document.getElementById('obraNewCalcNombre').value.trim();
+  var msg = document.getElementById('obraNewCalcMsg');
+  if (!nombre) { msg.textContent = 'Ingresa un nombre'; msg.style.color = '#b42318'; return; }
+  msg.textContent = 'Creando...'; msg.style.color = '#666';
+  var res = await fetch('/calculistas', {
+    method: 'POST',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ nombre: nombre })
+  });
+  if (res.status === 401) { logout(); return; }
+  var data = await res.json();
+  if (data.ok) {
+    msg.textContent = 'Creado'; msg.style.color = '#558B2F';
+    document.getElementById('obraNewCalcNombre').value = '';
+    await loadCalculistas();
+    document.getElementById('newObraCalculista').value = data.id;
+    document.getElementById('obraNewCalcForm').style.display = 'none';
+  } else {
+    msg.textContent = 'Error: ' + (data.detail || 'desconocido'); msg.style.color = '#b42318';
+  }
+}
+
+function toggleObraNewConst() {
+  var f = document.getElementById('obraNewConstForm');
+  f.style.display = f.style.display === 'none' ? '' : 'none';
+}
+
+async function crearConstDesdeObraForm() {
+  var nombre = document.getElementById('obraNewConstNombre').value.trim();
+  var msg = document.getElementById('obraNewConstMsg');
+  if (!nombre) { msg.textContent = 'Ingresa un nombre'; msg.style.color = '#b42318'; return; }
+  msg.textContent = 'Creando...'; msg.style.color = '#666';
+  var res = await fetch('/constructoras', {
+    method: 'POST',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ nombre: nombre })
+  });
+  if (res.status === 401) { logout(); return; }
+  var data = await res.json();
+  if (data.ok) {
+    msg.textContent = 'Creada'; msg.style.color = '#558B2F';
+    document.getElementById('obraNewConstNombre').value = '';
+    await loadClientes();
+    document.getElementById('newObraCliente').value = data.id;
+    document.getElementById('obraNewConstForm').style.display = 'none';
+  } else {
+    msg.textContent = 'Error: ' + (data.detail || 'desconocido'); msg.style.color = '#b42318';
   }
 }
 
@@ -701,23 +762,195 @@ async function revocarUsuario(idProyecto, userId) {
   }
 }
 
-async function editarObra(id, nombreActual) {
-  const nuevo = prompt('Nuevo nombre para la obra:', nombreActual);
-  if (!nuevo || nuevo.trim() === '' || nuevo.trim() === nombreActual) return;
-  const res = await fetch('/proyectos/' + encodeURIComponent(id), {
+async function openEditObraModal(idProyecto) {
+  _editObraCurrentId = idProyecto;
+  document.getElementById('editObraId').value = idProyecto;
+  document.getElementById('editObraMsg').textContent = '';
+  document.getElementById('editObraNewCalcForm').style.display = 'none';
+  document.getElementById('editObraNewConstForm').style.display = 'none';
+  document.getElementById('editObraNewCalcMsg').textContent = '';
+  document.getElementById('editObraNewConstMsg').textContent = '';
+
+  var data = await apiGet('/proyectos');
+  var p = data && data.proyectos ? data.proyectos.find(function(x) { return x.id_proyecto === idProyecto; }) : null;
+
+  document.getElementById('editObraNombre').value = p ? (p.nombre_proyecto || '') : '';
+  document.getElementById('editObraDescripcion').value = p ? (p.descripcion || '') : '';
+
+  var calcSel = document.getElementById('editObraCalculista');
+  calcSel.innerHTML = '<option value="0">— Sin calculista —</option>' +
+    _calculistasCache.map(function(c) {
+      return '<option value="' + c.id + '"' + (p && c.id === p.calculista_id ? ' selected' : '') + '>' + c.nombre + '</option>';
+    }).join('');
+  if (p && p.calculista_id) calcSel.value = p.calculista_id;
+
+  var constSel = document.getElementById('editObraConstructora');
+  constSel.innerHTML = '<option value="0">— Sin constructora —</option>' +
+    _clientesCache.map(function(c) {
+      return '<option value="' + c.id + '"' + (p && c.id === p.constructora_id ? ' selected' : '') + '>' + c.nombre + '</option>';
+    }).join('');
+  if (p && p.constructora_id) constSel.value = p.constructora_id;
+
+  document.getElementById('editObraAutorizadosList').textContent = 'Cargando...';
+  var userSel = document.getElementById('editObraUserSel');
+  userSel.innerHTML = '<option>Cargando...</option>';
+  var usersData = await apiGet('/users/list');
+  if (usersData && usersData.users) {
+    userSel.innerHTML = usersData.users.map(function(u) {
+      var label = [u.nombre, u.apellido].filter(Boolean).join(' ');
+      return '<option value="' + u.id + '">' + (label ? label + ' (' + u.email + ')' : u.email) + '</option>';
+    }).join('');
+  }
+
+  await loadAutorizadosEditObra(idProyecto);
+  document.getElementById('editObraModal').style.display = 'flex';
+}
+
+function closeEditObraModal() {
+  document.getElementById('editObraModal').style.display = 'none';
+  _editObraCurrentId = null;
+}
+
+async function guardarEditObra() {
+  var id = _editObraCurrentId;
+  if (!id) return;
+  var msg = document.getElementById('editObraMsg');
+  var nombre = document.getElementById('editObraNombre').value.trim();
+  if (!nombre) { msg.textContent = 'El nombre es obligatorio'; msg.style.color = '#b42318'; return; }
+  msg.textContent = 'Guardando...'; msg.style.color = '#666';
+  var body = {
+    nombre_proyecto: nombre,
+    descripcion: document.getElementById('editObraDescripcion').value.trim(),
+    calculista_id: parseInt(document.getElementById('editObraCalculista').value) || 0,
+    constructora_id: parseInt(document.getElementById('editObraConstructora').value) || 0,
+  };
+  var res = await fetch('/proyectos/' + encodeURIComponent(id), {
     method: 'PATCH',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
-    body: JSON.stringify({ nombre_proyecto: nuevo.trim() })
+    body: JSON.stringify(body)
   });
   if (res.status === 401) { logout(); return; }
-  const data = await res.json();
+  var data = await res.json();
   if (data.ok) {
-    await setGlobalStatus('Obra renombrada: ' + nuevo.trim(), 'ok');
+    msg.textContent = 'Guardado'; msg.style.color = '#558B2F';
     await loadProyectos();
     await loadFilters();
     await loadInicio();
+    setTimeout(closeEditObraModal, 700);
   } else {
-    alert('Error: ' + (data.detail || 'desconocido'));
+    msg.textContent = 'Error: ' + (data.detail || 'desconocido'); msg.style.color = '#b42318';
+  }
+}
+
+async function loadAutorizadosEditObra(idProyecto) {
+  var list = document.getElementById('editObraAutorizadosList');
+  var data = await apiGet('/proyectos/' + encodeURIComponent(idProyecto) + '/autorizados');
+  if (!data || !data.autorizados) { list.innerHTML = '<span class="muted">Error cargando</span>'; return; }
+  if (data.autorizados.length === 0) { list.innerHTML = '<span class="muted">Sin usuarios autorizados</span>'; return; }
+  var rolColors = {admin:'#1565C0', usc:'#FF9800', cubicador:'#8BC34A', externo:'#9C27B0', cliente:'#607D8B'};
+  list.innerHTML = data.autorizados.map(function(a) {
+    var nombre = [a.nombre, a.apellido].filter(Boolean).join(' ');
+    var display = nombre ? nombre + ' (' + a.email + ')' : a.email;
+    var rc = rolColors[a.rol] || '#666';
+    return '<div style="display:flex; align-items:center; gap:6px; padding:2px 0;">' +
+      '<span style="font-size:10px; padding:1px 5px; border-radius:3px; background:' + rc + '22; color:' + rc + '; font-weight:600;">' + a.rol.toUpperCase() + '</span>' +
+      '<span style="font-size:12px;">' + display + '</span>' +
+      '<button class="secondary" style="font-size:10px; padding:1px 5px; color:#b42318; border-color:#b42318; margin-left:4px;" onclick="revocarUsuarioEditObra(' + a.user_id + ')">&#10005;</button>' +
+      '</div>';
+  }).join('');
+}
+
+async function autorizarUsuarioEditObra() {
+  var id = _editObraCurrentId;
+  if (!id) return;
+  var userId = parseInt(document.getElementById('editObraUserSel').value);
+  var rol = document.getElementById('editObraUserRol').value;
+  if (!userId) return;
+  var res = await fetch('/proyectos/' + encodeURIComponent(id) + '/autorizar', {
+    method: 'POST',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ user_id: userId, rol: rol })
+  });
+  if (res.status === 401) { logout(); return; }
+  var data = await res.json();
+  if (data.ok) {
+    await loadAutorizadosEditObra(id);
+  } else {
+    var msg = document.getElementById('editObraMsg');
+    msg.textContent = data.detail || 'Error autorizando'; msg.style.color = '#b42318';
+  }
+}
+
+async function revocarUsuarioEditObra(userId) {
+  var id = _editObraCurrentId;
+  if (!id || !confirm('\u00bfRevocar acceso de este usuario?')) return;
+  var res = await fetch('/proyectos/' + encodeURIComponent(id) + '/autorizar/' + userId, {
+    method: 'DELETE', headers: authHeaders()
+  });
+  if (res.status === 401) { logout(); return; }
+  var data = await res.json();
+  if (data.ok) await loadAutorizadosEditObra(id);
+}
+
+function toggleEditObraNewCalc() {
+  var f = document.getElementById('editObraNewCalcForm');
+  f.style.display = f.style.display === 'none' ? '' : 'none';
+}
+
+async function crearCalcDesdeEditObra() {
+  var nombre = document.getElementById('editObraNewCalcNombre').value.trim();
+  var msg = document.getElementById('editObraNewCalcMsg');
+  if (!nombre) { msg.textContent = 'Ingresa un nombre'; msg.style.color = '#b42318'; return; }
+  msg.textContent = 'Creando...'; msg.style.color = '#666';
+  var res = await fetch('/calculistas', {
+    method: 'POST',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ nombre: nombre })
+  });
+  if (res.status === 401) { logout(); return; }
+  var data = await res.json();
+  if (data.ok) {
+    msg.textContent = 'Creado'; msg.style.color = '#558B2F';
+    document.getElementById('editObraNewCalcNombre').value = '';
+    await loadCalculistas();
+    var sel = document.getElementById('editObraCalculista');
+    sel.innerHTML = '<option value="0">— Sin calculista —</option>' +
+      _calculistasCache.map(function(c) { return '<option value="' + c.id + '">' + c.nombre + '</option>'; }).join('');
+    sel.value = data.id;
+    document.getElementById('editObraNewCalcForm').style.display = 'none';
+  } else {
+    msg.textContent = 'Error: ' + (data.detail || 'desconocido'); msg.style.color = '#b42318';
+  }
+}
+
+function toggleEditObraNewConst() {
+  var f = document.getElementById('editObraNewConstForm');
+  f.style.display = f.style.display === 'none' ? '' : 'none';
+}
+
+async function crearConstDesdeEditObra() {
+  var nombre = document.getElementById('editObraNewConstNombre').value.trim();
+  var msg = document.getElementById('editObraNewConstMsg');
+  if (!nombre) { msg.textContent = 'Ingresa un nombre'; msg.style.color = '#b42318'; return; }
+  msg.textContent = 'Creando...'; msg.style.color = '#666';
+  var res = await fetch('/constructoras', {
+    method: 'POST',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ nombre: nombre })
+  });
+  if (res.status === 401) { logout(); return; }
+  var data = await res.json();
+  if (data.ok) {
+    msg.textContent = 'Creada'; msg.style.color = '#558B2F';
+    document.getElementById('editObraNewConstNombre').value = '';
+    await loadClientes();
+    var sel = document.getElementById('editObraConstructora');
+    sel.innerHTML = '<option value="0">— Sin constructora —</option>' +
+      _clientesCache.map(function(c) { return '<option value="' + c.id + '">' + c.nombre + '</option>'; }).join('');
+    sel.value = data.id;
+    document.getElementById('editObraNewConstForm').style.display = 'none';
+  } else {
+    msg.textContent = 'Error: ' + (data.detail || 'desconocido'); msg.style.color = '#b42318';
   }
 }
 
@@ -2629,6 +2862,15 @@ async function loadClientes() {
     if (prev) sel.value = prev;
   }
 
+  // Populate constructora selector in crear obra desde reclamo
+  const recSel = document.getElementById('recNuevoProjConstructora');
+  if (recSel) {
+    const prev = recSel.value;
+    recSel.innerHTML = '<option value="">— Sin constructora —</option>' +
+      _clientesCache.map(c => `<option value="${c.id}">${c.nombre}</option>`).join('');
+    if (prev) recSel.value = prev;
+  }
+
   // Render client list
   const container = document.getElementById('clientesContainer');
   if (!container) return;
@@ -2739,6 +2981,15 @@ async function loadCalculistas() {
     sel.innerHTML = '<option value="">-- Sin calculista --</option>' +
       _calculistasCache.map(c => '<option value="' + c.id + '">' + c.nombre + '</option>').join('');
     if (prev) sel.value = prev;
+  }
+
+  // Populate calculista selector in crear obra desde reclamo
+  const recSel = document.getElementById('recNuevoProjCalculista');
+  if (recSel) {
+    const prev = recSel.value;
+    recSel.innerHTML = '<option value="">— Sin calculista —</option>' +
+      _calculistasCache.map(c => '<option value="' + c.id + '">' + c.nombre + '</option>').join('');
+    if (prev) recSel.value = prev;
   }
 
   // Render calculista list
@@ -2889,18 +3140,41 @@ async function editarProyectoAdmin(idProyecto) {
     }).join('');
 
   var formHtml = '<div style="padding:12px; background:#e3f2fd; border:1px solid #90caf9; border-radius:8px; margin-bottom:10px;">';
-  formHtml += '<h4 style="margin:0 0 8px 0; color:#1565C0; font-size:13px;">Editando: ' + p.nombre_proyecto + '</h4>';
-  formHtml += '<div class="row" style="gap:8px; flex-wrap:wrap; align-items:flex-end;">';
+  formHtml += '<h4 style="margin:0 0 10px 0; color:#1565C0; font-size:13px;">Editando: ' + p.nombre_proyecto + '</h4>';
+  formHtml += '<div class="row" style="gap:8px; flex-wrap:wrap; align-items:flex-end; margin-bottom:6px;">';
   formHtml += '<div class="col" style="flex:2; min-width:200px;"><label style="font-size:11px; color:#666;">Nombre del proyecto *</label>';
   formHtml += '<input type="text" id="editProjNombre" value="' + (p.nombre_proyecto || '').replace(/"/g, '&quot;') + '" style="width:100%; font-size:12px;" /></div>';
-  formHtml += '<div class="col" style="max-width:200px;"><label style="font-size:11px; color:#666;">Calculista</label>';
-  formHtml += '<select id="editProjCalculista" style="width:100%; font-size:12px;">' + calcOpts + '</select></div>';
-  formHtml += '<div class="col" style="max-width:200px;"><label style="font-size:11px; color:#666;">Constructora</label>';
-  formHtml += '<select id="editProjCliente" style="width:100%; font-size:12px;">' + clienteOpts + '</select></div>';
   formHtml += '</div>';
-  formHtml += '<div style="margin-top:6px;"><label style="font-size:11px; color:#666;">Descripción</label>';
+  formHtml += '<div class="row" style="gap:8px; flex-wrap:wrap; align-items:flex-end; margin-bottom:6px;">';
+  formHtml += '<div class="col" style="flex:1; min-width:180px;"><label style="font-size:11px; color:#666;">Calculista</label>';
+  formHtml += '<div style="display:flex; gap:4px;"><select id="editProjCalculista" style="flex:1; font-size:12px;">' + calcOpts + '</select>';
+  formHtml += '<button class="secondary" style="font-size:11px; padding:2px 7px; white-space:nowrap;" onclick="toggleAdminProjNewCalc()">+ Nuevo</button></div>';
+  formHtml += '<div id="adminProjNewCalcForm" style="display:none; margin-top:3px; padding:5px; background:#fff; border-radius:4px;"><div style="display:flex; gap:3px;">';
+  formHtml += '<input type="text" id="adminProjNewCalcNombre" placeholder="Nombre calculista" style="flex:1; font-size:11px;" />';
+  formHtml += '<button onclick="crearCalcDesdeAdminProj()" style="font-size:10px; padding:2px 7px;">Crear</button></div>';
+  formHtml += '<span id="adminProjNewCalcMsg" style="font-size:10px;"></span></div></div>';
+  formHtml += '<div class="col" style="flex:1; min-width:180px;"><label style="font-size:11px; color:#666;">Constructora</label>';
+  formHtml += '<div style="display:flex; gap:4px;"><select id="editProjCliente" style="flex:1; font-size:12px;">' + clienteOpts + '</select>';
+  formHtml += '<button class="secondary" style="font-size:11px; padding:2px 7px; white-space:nowrap;" onclick="toggleAdminProjNewConst()">+ Nueva</button></div>';
+  formHtml += '<div id="adminProjNewConstForm" style="display:none; margin-top:3px; padding:5px; background:#fff; border-radius:4px;"><div style="display:flex; gap:3px;">';
+  formHtml += '<input type="text" id="adminProjNewConstNombre" placeholder="Nombre constructora" style="flex:1; font-size:11px;" />';
+  formHtml += '<button onclick="crearConstDesdeAdminProj()" style="font-size:10px; padding:2px 7px;">Crear</button></div>';
+  formHtml += '<span id="adminProjNewConstMsg" style="font-size:10px;"></span></div></div>';
+  formHtml += '</div>';
+  formHtml += '<div style="margin-bottom:8px;"><label style="font-size:11px; color:#666;">Descripción</label>';
   formHtml += '<textarea id="editProjDescripcion" rows="2" style="width:100%; font-size:12px; resize:vertical;">' + (p.descripcion || '') + '</textarea></div>';
-  formHtml += '<div style="margin-top:8px; display:flex; gap:6px; align-items:center;">';
+  // Usuarios autorizados section
+  formHtml += '<div style="padding:8px; background:#fff; border-radius:6px; margin-bottom:8px;">';
+  formHtml += '<div style="font-size:11px; font-weight:600; margin-bottom:5px;">Usuarios autorizados</div>';
+  formHtml += '<div id="adminProjAutorizadosList" class="muted" style="font-size:11px; min-height:16px; margin-bottom:6px;">Cargando...</div>';
+  formHtml += '<div style="display:flex; gap:4px; flex-wrap:wrap; align-items:center;">';
+  formHtml += '<select id="adminProjUserSel" style="flex:2; min-width:130px; font-size:11px;"><option>Cargando...</option></select>';
+  formHtml += '<select id="adminProjUserRol" style="width:100px; font-size:11px;">';
+  formHtml += '<option value="admin">Admin</option><option value="cubicador" selected>Cubicador</option>';
+  formHtml += '<option value="usc">USC</option><option value="externo">Externo</option><option value="cliente">Cliente</option></select>';
+  formHtml += '<button onclick="autorizarUsuarioAdminProj(\'' + p.id_proyecto + '\')" style="font-size:10px; padding:3px 8px;">+ Agregar</button>';
+  formHtml += '</div></div>';
+  formHtml += '<div style="display:flex; gap:6px; align-items:center;">';
   formHtml += '<button onclick="guardarProyectoAdmin(\'' + p.id_proyecto + '\')" style="font-size:11px; padding:4px 14px;">💾 Guardar</button>';
   formHtml += '<button class="secondary" onclick="loadAdminProyectos()" style="font-size:11px; padding:4px 10px;">Cancelar</button>';
   formHtml += '<span id="editProjMsg" class="muted" style="font-size:11px;"></span>';
@@ -2909,6 +3183,131 @@ async function editarProyectoAdmin(idProyecto) {
   // Prepend form above the table
   container.insertAdjacentHTML('afterbegin', formHtml);
   document.getElementById('editProjNombre').focus();
+
+  // Load users and autorizados
+  var userSel = document.getElementById('adminProjUserSel');
+  var usersData = await apiGet('/users/list');
+  if (usersData && usersData.users) {
+    userSel.innerHTML = usersData.users.map(function(u) {
+      var label = [u.nombre, u.apellido].filter(Boolean).join(' ');
+      return '<option value="' + u.id + '">' + (label ? label + ' (' + u.email + ')' : u.email) + '</option>';
+    }).join('');
+  }
+  await loadAutorizadosAdminProj(p.id_proyecto);
+}
+
+async function loadAutorizadosAdminProj(idProyecto) {
+  var list = document.getElementById('adminProjAutorizadosList');
+  if (!list) return;
+  var data = await apiGet('/proyectos/' + encodeURIComponent(idProyecto) + '/autorizados');
+  if (!data || !data.autorizados) { list.innerHTML = '<span class="muted">Error</span>'; return; }
+  if (data.autorizados.length === 0) { list.innerHTML = '<span class="muted">Sin usuarios autorizados</span>'; return; }
+  var rolColors = {admin:'#1565C0', usc:'#FF9800', cubicador:'#8BC34A', externo:'#9C27B0', cliente:'#607D8B'};
+  list.innerHTML = data.autorizados.map(function(a) {
+    var nombre = [a.nombre, a.apellido].filter(Boolean).join(' ');
+    var display = nombre ? nombre + ' (' + a.email + ')' : a.email;
+    var rc = rolColors[a.rol] || '#666';
+    return '<div style="display:inline-flex; align-items:center; gap:4px; margin:1px 4px 1px 0;">' +
+      '<span style="font-size:10px; padding:1px 5px; border-radius:3px; background:' + rc + '22; color:' + rc + '; font-weight:600;">' + a.rol.toUpperCase() + '</span>' +
+      '<span style="font-size:11px;">' + display + '</span>' +
+      '<button class="secondary" style="font-size:9px; padding:0px 4px; color:#b42318; border-color:#b42318;" onclick="revocarUsuarioAdminProj(\'' + idProyecto + '\',' + a.user_id + ')">&#10005;</button>' +
+      '</div>';
+  }).join('');
+}
+
+async function autorizarUsuarioAdminProj(idProyecto) {
+  var userId = parseInt(document.getElementById('adminProjUserSel').value);
+  var rol = document.getElementById('adminProjUserRol').value;
+  if (!userId) return;
+  var res = await fetch('/proyectos/' + encodeURIComponent(idProyecto) + '/autorizar', {
+    method: 'POST',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ user_id: userId, rol: rol })
+  });
+  if (res.status === 401) { logout(); return; }
+  var data = await res.json();
+  if (data.ok) {
+    await loadAutorizadosAdminProj(idProyecto);
+  } else {
+    var msg = document.getElementById('editProjMsg');
+    if (msg) { msg.textContent = data.detail || 'Error'; msg.style.color = '#b42318'; }
+  }
+}
+
+async function revocarUsuarioAdminProj(idProyecto, userId) {
+  if (!confirm('\u00bfRevocar acceso?')) return;
+  var res = await fetch('/proyectos/' + encodeURIComponent(idProyecto) + '/autorizar/' + userId, {
+    method: 'DELETE', headers: authHeaders()
+  });
+  if (res.status === 401) { logout(); return; }
+  var data = await res.json();
+  if (data.ok) await loadAutorizadosAdminProj(idProyecto);
+}
+
+function toggleAdminProjNewCalc() {
+  var f = document.getElementById('adminProjNewCalcForm');
+  if (f) f.style.display = f.style.display === 'none' ? '' : 'none';
+}
+
+async function crearCalcDesdeAdminProj() {
+  var nombre = document.getElementById('adminProjNewCalcNombre').value.trim();
+  var msg = document.getElementById('adminProjNewCalcMsg');
+  if (!nombre) { msg.textContent = 'Ingresa un nombre'; msg.style.color = '#b42318'; return; }
+  msg.textContent = 'Creando...'; msg.style.color = '#666';
+  var res = await fetch('/calculistas', {
+    method: 'POST',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ nombre: nombre })
+  });
+  if (res.status === 401) { logout(); return; }
+  var data = await res.json();
+  if (data.ok) {
+    msg.textContent = 'Creado'; msg.style.color = '#558B2F';
+    document.getElementById('adminProjNewCalcNombre').value = '';
+    await loadCalculistas();
+    var sel = document.getElementById('editProjCalculista');
+    if (sel) {
+      sel.innerHTML = '<option value="0">\u2014 Sin calculista \u2014</option>' +
+        _calculistasCache.map(function(c) { return '<option value="' + c.id + '">' + c.nombre + '</option>'; }).join('');
+      sel.value = data.id;
+    }
+    document.getElementById('adminProjNewCalcForm').style.display = 'none';
+  } else {
+    msg.textContent = 'Error: ' + (data.detail || 'desconocido'); msg.style.color = '#b42318';
+  }
+}
+
+function toggleAdminProjNewConst() {
+  var f = document.getElementById('adminProjNewConstForm');
+  if (f) f.style.display = f.style.display === 'none' ? '' : 'none';
+}
+
+async function crearConstDesdeAdminProj() {
+  var nombre = document.getElementById('adminProjNewConstNombre').value.trim();
+  var msg = document.getElementById('adminProjNewConstMsg');
+  if (!nombre) { msg.textContent = 'Ingresa un nombre'; msg.style.color = '#b42318'; return; }
+  msg.textContent = 'Creando...'; msg.style.color = '#666';
+  var res = await fetch('/constructoras', {
+    method: 'POST',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ nombre: nombre })
+  });
+  if (res.status === 401) { logout(); return; }
+  var data = await res.json();
+  if (data.ok) {
+    msg.textContent = 'Creada'; msg.style.color = '#558B2F';
+    document.getElementById('adminProjNewConstNombre').value = '';
+    await loadClientes();
+    var sel = document.getElementById('editProjCliente');
+    if (sel) {
+      sel.innerHTML = '<option value="0">\u2014 Sin constructora \u2014</option>' +
+        _clientesCache.map(function(c) { return '<option value="' + c.id + '">' + c.nombre + '</option>'; }).join('');
+      sel.value = data.id;
+    }
+    document.getElementById('adminProjNewConstForm').style.display = 'none';
+  } else {
+    msg.textContent = 'Error: ' + (data.detail || 'desconocido'); msg.style.color = '#b42318';
+  }
 }
 
 async function guardarProyectoAdmin(idProyecto) {
@@ -3514,7 +3913,7 @@ const _ishikawaCatColors = {
 };
 
 // ---- RECLAMOS LANDING CHARTS ----
-let _recLandChartTipo = null, _recLandChartHist = null, _recLandChartAnio = null, _recLandChartIshikawa = null;
+let _recLandChartHist = null;
 const _recCatColors = {
   mano_de_obra: '#42A5F5', metodo: '#FFA726', material: '#66BB6A',
   maquina: '#EF5350', medicion: '#AB47BC', medio_ambiente: '#26A69A',
@@ -3550,43 +3949,35 @@ async function loadRecLanding() {
   var data = await apiGet('/reclamos/mi-resumen');
   if (!data) return;
 
-  // Title: admin sees "Resumen General", others see "Mi Resumen"
-  var isAdmin = (currentRole === 'admin' || currentRole === 'admin2');
+  var isAdmin = (currentRole === 'admin' || currentRole === 'admin2' || currentRole === 'coordinador');
   var titleEl = document.querySelector('#recLandingCharts').parentElement.querySelector('h3');
   if (titleEl) titleEl.textContent = isAdmin ? 'Resumen General' : 'Mi Resumen';
-  var labelEl = document.getElementById('recLandTotal').parentElement.querySelector('div:first-child');
-  if (labelEl) labelEl.textContent = isAdmin ? 'Total Reclamos' : 'Mis Reclamos';
 
   // Show dashboards tab button for admin
   var dashBtn = document.getElementById('recTabBtnDash');
   if (dashBtn) dashBtn.style.display = isAdmin ? '' : 'none';
 
-  // Show 4th chart for cubicador (and admin)
-  var chart4 = document.getElementById('recLandChart4Wrap');
-  var showChart4 = (currentRole === 'cubicador' || isAdmin);
-  if (chart4) chart4.style.display = showChart4 ? '' : 'none';
-  var grid = document.getElementById('recLandingCharts');
-
-  // Chart 1: Total number
+  // Chart 1: KPI
   document.getElementById('recLandTotal').textContent = data.total || 0;
   document.getElementById('recLandAbiertos').textContent = (data.abiertos || 0) + ' abiertos';
 
-  // Chart 2: Error vs Faltante — doughnut
-  var errCount = data.por_tipo.error || 0;
-  var falCount = data.por_tipo.faltante || 0;
-  var ctx1 = document.getElementById('recLandChartTipo').getContext('2d');
-  if (_recLandChartTipo) _recLandChartTipo.destroy();
-  _recLandChartTipo = new Chart(ctx1, {
+  // Chart 2: Resueltos vs No Resueltos
+  var rr = data.resueltos_no_resueltos || {};
+  var resCount = rr.resuelto || 0;
+  var noResCount = rr.no_resuelto || 0;
+  var ctxRes = document.getElementById('recLandChartResueltos').getContext('2d');
+  if (_recLandChartResueltos) _recLandChartResueltos.destroy();
+  _recLandChartResueltos = new Chart(ctxRes, {
     type: 'doughnut',
     data: {
-      labels: ['Error (' + errCount + ')', 'Faltante (' + falCount + ')'],
-      datasets: [{ data: [errCount, falCount], backgroundColor: ['#e53935', '#ff9800'] }]
+      labels: ['Resueltos (' + resCount + ')', 'Pendientes (' + noResCount + ')'],
+      datasets: [{ data: [resCount, noResCount], backgroundColor: ['#2e7d32', '#e53935'] }]
     },
     options: { responsive: true, maintainAspectRatio: false,
       plugins: { legend: { position: 'bottom', labels: { font: { size: 10 }, padding: 8 } } } }
   });
 
-  // Chart 3: Historical 12-month grouped bar by year
+  // Chart 3: Historical monthly bar (grouped by year, using fecha_deteccion from backend)
   var _mesNombres = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
   var _anioColores = ['#e53935','#1565C0','#2e7d32','#ff9800','#7B1FA2','#00897B'];
   var anioMesData = data.por_anio_mes || [];
@@ -3596,55 +3987,18 @@ async function loadRecLanding() {
   var datasets = anios.map(function(anio, idx) {
     var counts = new Array(12).fill(0);
     anioMesData.forEach(function(d) { if (d.anio === anio) counts[d.mes - 1] = d.count; });
-    return { label: '' + anio, data: counts, backgroundColor: _anioColores[idx % _anioColores.length] };
+    return { label: '' + anio, data: counts, backgroundColor: _anioColores[idx % _anioColores.length], borderRadius: 2 };
   });
-  var ctx2 = document.getElementById('recLandChartHist').getContext('2d');
+  var ctxHist = document.getElementById('recLandChartHist').getContext('2d');
   if (_recLandChartHist) _recLandChartHist.destroy();
-  _recLandChartHist = new Chart(ctx2, {
+  _recLandChartHist = new Chart(ctxHist, {
     type: 'bar',
     data: { labels: _mesNombres, datasets: datasets },
     options: { responsive: true, maintainAspectRatio: false,
       plugins: { legend: { display: anios.length > 1, labels: { font: { size: 9 } } } },
-      scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } } }
+      scales: { y: { beginAtZero: true, ticks: { stepSize: 1, font: { size: 9 } } },
+                x: { ticks: { font: { size: 9 } } } } }
   });
-
-  // Chart 4: Reclamos por año (cubicador / admin)
-  if (showChart4 && data.por_anio && data.por_anio.length > 0) {
-    var anioLabels = data.por_anio.map(function(d) { return '' + d.anio; });
-    var anioCounts = data.por_anio.map(function(d) { return d.count; });
-    var ctx3 = document.getElementById('recLandChartAnio').getContext('2d');
-    if (_recLandChartAnio) _recLandChartAnio.destroy();
-    _recLandChartAnio = new Chart(ctx3, {
-      type: 'bar',
-      data: { labels: anioLabels, datasets: [{ label: 'Reclamos', data: anioCounts, backgroundColor: _anioColores.slice(0, anioCounts.length) }] },
-      options: { responsive: true, maintainAspectRatio: false,
-        plugins: { legend: { display: false } },
-        scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } } }
-    });
-  }
-
-  // Chart 5: Ishikawa doughnut (cubicador / admin)
-  var showChart5 = (currentRole === 'cubicador' || isAdmin) && data.por_ishikawa && Object.keys(data.por_ishikawa).length > 0;
-  var chart5 = document.getElementById('recLandChart5Wrap');
-  if (chart5) chart5.style.display = showChart5 ? '' : 'none';
-  if (showChart5) {
-    var ishKeys = Object.keys(data.por_ishikawa);
-    var ishLabels = ishKeys.map(function(k) { return (_recCatLabels[k] || k) + ' (' + data.por_ishikawa[k] + ')'; });
-    var ishData = ishKeys.map(function(k) { return data.por_ishikawa[k]; });
-    var ishColors = ishKeys.map(function(k) { return _recCatColors[k] || '#BDBDBD'; });
-    var ctx5 = document.getElementById('recLandChartIshikawa').getContext('2d');
-    if (_recLandChartIshikawa) _recLandChartIshikawa.destroy();
-    _recLandChartIshikawa = new Chart(ctx5, {
-      type: 'doughnut',
-      data: { labels: ishLabels, datasets: [{ data: ishData, backgroundColor: ishColors }] },
-      options: { responsive: true, maintainAspectRatio: false,
-        plugins: { legend: { position: 'bottom', labels: { font: { size: 9 }, padding: 6 } } } }
-    });
-  }
-
-  // Adjust grid columns: count visible charts (3 base + chart4 + chart5)
-  var visibleCharts = 3 + (showChart4 ? 1 : 0) + (showChart5 ? 1 : 0);
-  if (grid) grid.style.gridTemplateColumns = 'repeat(' + visibleCharts + ', 1fr)';
 
   // Pending tasks badge (cubicador only)
   var pendWrap = document.getElementById('recLandPendientesWrap');
@@ -3660,9 +4014,10 @@ async function loadRecLanding() {
 }
 
 // ---- ADMIN DASHBOARDS TAB ----
-let _recDashUSC = null, _recDashUSCTipo = null, _recDashUSCHist = null;
-let _recDashIshikawa = null, _recDashCub = null, _recDashCubIshikawa = null;
+let _recDashHist = null, _recDashResueltos = null, _recDashTipo = null;
+let _recDashUSC = null, _recDashCubAsig = null, _recDashIshikawa = null, _recDashKilos = null;
 var _adminDashLoaded = false;
+var _recLandChartResueltos = null; // also used in loadRecLanding
 
 async function loadRecAdminDashboards() {
   if (_adminDashLoaded) return;
@@ -3670,108 +4025,135 @@ async function loadRecAdminDashboards() {
   if (!data) return;
   _adminDashLoaded = true;
 
+  var _mesNombres = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
   var _anioColores = ['#e53935','#1565C0','#2e7d32','#ff9800','#7B1FA2','#00897B'];
 
-  // --- USC Column ---
-  // 1) Per-USC total bar chart
-  var uscLabels = (data.por_usc || []).map(function(d) { return d.email.split('@')[0]; });
-  var uscTotals = (data.por_usc || []).map(function(d) { return d.total; });
-  var ctx1 = document.getElementById('recDashChartUSC').getContext('2d');
-  if (_recDashUSC) _recDashUSC.destroy();
-  _recDashUSC = new Chart(ctx1, {
-    type: 'bar',
-    data: { labels: uscLabels, datasets: [{ label: 'Reclamos', data: uscTotals, backgroundColor: '#ff9800' }] },
-    options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y',
-      plugins: { legend: { display: false } },
-      scales: { x: { beginAtZero: true, ticks: { stepSize: 1 } } } }
-  });
+  // KPI
+  document.getElementById('recDashTotal').textContent = data.total || 0;
+  document.getElementById('recDashAbiertos').textContent = (data.abiertos || 0);
 
-  // 2) Per-USC error vs faltante stacked bar
-  var uscErrores = (data.por_usc || []).map(function(d) { return d.errores; });
-  var uscFaltantes = (data.por_usc || []).map(function(d) { return d.faltantes; });
-  var ctx2 = document.getElementById('recDashChartUSCTipo').getContext('2d');
-  if (_recDashUSCTipo) _recDashUSCTipo.destroy();
-  _recDashUSCTipo = new Chart(ctx2, {
-    type: 'bar',
-    data: { labels: uscLabels, datasets: [
-      { label: 'Error', data: uscErrores, backgroundColor: '#e53935' },
-      { label: 'Faltante', data: uscFaltantes, backgroundColor: '#ff9800' }
-    ]},
-    options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y',
-      plugins: { legend: { labels: { font: { size: 10 } } } },
-      scales: { x: { stacked: true, beginAtZero: true, ticks: { stepSize: 1 } }, y: { stacked: true } } }
-  });
-
-  // 3) USC historical — aggregate all USCs by year
-  var uscHistData = data.usc_hist || [];
-  var uscAniosSet = {};
-  uscHistData.forEach(function(d) { uscAniosSet[d.anio] = true; });
-  var uscAnios = Object.keys(uscAniosSet).map(Number).sort();
-  var _mesNombres = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
-  var uscHistDS = uscAnios.map(function(anio, idx) {
+  // Chart 1: Historico mensual (multi-year grouped bar)
+  var anioMesData = data.por_anio_mes || [];
+  var aniosSet = {};
+  anioMesData.forEach(function(d) { aniosSet[d.anio] = true; });
+  var anios = Object.keys(aniosSet).map(Number).sort();
+  var histDS = anios.map(function(anio, idx) {
     var counts = new Array(12).fill(0);
-    uscHistData.forEach(function(d) { if (d.anio === anio) counts[d.mes - 1] += d.count; });
-    return { label: '' + anio, data: counts, backgroundColor: _anioColores[idx % _anioColores.length] };
+    anioMesData.forEach(function(d) { if (d.anio === anio) counts[d.mes - 1] = d.count; });
+    return { label: '' + anio, data: counts, backgroundColor: _anioColores[idx % _anioColores.length], borderRadius: 2 };
   });
-  var ctx3 = document.getElementById('recDashChartUSCHist').getContext('2d');
-  if (_recDashUSCHist) _recDashUSCHist.destroy();
-  _recDashUSCHist = new Chart(ctx3, {
+  var ctxHist = document.getElementById('recDashChartHist').getContext('2d');
+  if (_recDashHist) _recDashHist.destroy();
+  _recDashHist = new Chart(ctxHist, {
     type: 'bar',
-    data: { labels: _mesNombres, datasets: uscHistDS },
+    data: { labels: _mesNombres, datasets: histDS },
     options: { responsive: true, maintainAspectRatio: false,
-      plugins: { legend: { display: uscAnios.length > 1, labels: { font: { size: 9 } } } },
-      scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } } }
+      plugins: { legend: { display: anios.length > 1, labels: { font: { size: 9 } } } },
+      scales: { y: { beginAtZero: true, ticks: { stepSize: 1, font: { size: 9 } } }, x: { ticks: { font: { size: 9 } } } } }
   });
 
-  // --- Cubicador Column ---
-  // 4) Ishikawa global doughnut
-  var ishLabels = (data.ishikawa_cubicador || []).map(function(d) { return _recCatLabels[d.categoria] || d.categoria; });
-  var ishValues = (data.ishikawa_cubicador || []).map(function(d) { return d.count; });
-  var ishColors = (data.ishikawa_cubicador || []).map(function(d) { return _recCatColors[d.categoria] || '#BDBDBD'; });
-  var ctx4 = document.getElementById('recDashChartIshikawa').getContext('2d');
-  if (_recDashIshikawa) _recDashIshikawa.destroy();
-  _recDashIshikawa = new Chart(ctx4, {
+  // Chart 2: Resueltos vs No Resueltos
+  var rr = data.resueltos_no_resueltos || {};
+  var resCount = rr.resuelto || 0; var noResCount = rr.no_resuelto || 0;
+  var ctxRes = document.getElementById('recDashChartResueltos').getContext('2d');
+  if (_recDashResueltos) _recDashResueltos.destroy();
+  _recDashResueltos = new Chart(ctxRes, {
     type: 'doughnut',
-    data: { labels: ishLabels, datasets: [{ data: ishValues, backgroundColor: ishColors }] },
+    data: { labels: ['Resueltos (' + resCount + ')', 'Pendientes (' + noResCount + ')'],
+            datasets: [{ data: [resCount, noResCount], backgroundColor: ['#2e7d32','#e53935'] }] },
     options: { responsive: true, maintainAspectRatio: false,
-      plugins: { legend: { position: 'right', labels: { font: { size: 10 } } } } }
+      plugins: { legend: { position: 'bottom', labels: { font: { size: 10 }, padding: 6 } } } }
   });
 
-  // 5) Per-cubicador total bar
-  var cubLabels = (data.por_cubicador || []).map(function(d) { return d.email.split('@')[0]; });
-  var cubTotals = (data.por_cubicador || []).map(function(d) { return d.total; });
-  var ctx5 = document.getElementById('recDashChartCub').getContext('2d');
-  if (_recDashCub) _recDashCub.destroy();
-  _recDashCub = new Chart(ctx5, {
-    type: 'bar',
-    data: { labels: cubLabels, datasets: [{ label: 'Respondidos', data: cubTotals, backgroundColor: '#2e7d32' }] },
-    options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y',
-      plugins: { legend: { display: false } },
-      scales: { x: { beginAtZero: true, ticks: { stepSize: 1 } } } }
+  // Chart 3: Tipo Error/Faltante/Atraso/Actualización Portal
+  var pt = data.por_tipo || {};
+  var errC = pt.error || 0; var falC = pt.faltante || 0; var atrC = pt.atraso || 0; var actC = pt.actualizacion_portal || 0;
+  var ctxTipo = document.getElementById('recDashChartTipo').getContext('2d');
+  if (_recDashTipo) _recDashTipo.destroy();
+  _recDashTipo = new Chart(ctxTipo, {
+    type: 'doughnut',
+    data: { labels: ['Error (' + errC + ')', 'Faltante (' + falC + ')', 'Atraso (' + atrC + ')', 'Actualización Portal (' + actC + ')'],
+            datasets: [{ data: [errC, falC, atrC, actC], backgroundColor: ['#e53935','#ff9800','#7B1FA2','#00897B'] }] },
+    options: { responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { position: 'bottom', labels: { font: { size: 10 }, padding: 6 } } } }
   });
 
-  // 6) Per-cubicador Ishikawa stacked bar
-  var cubIshData = data.ishikawa_per_cub || [];
-  var cubEmails = []; var cubEmailSet = {};
-  cubIshData.forEach(function(d) { if (!cubEmailSet[d.email]) { cubEmails.push(d.email); cubEmailSet[d.email] = true; } });
-  var cubIshLabels = cubEmails.map(function(e) { return e.split('@')[0]; });
-  var catKeys = Object.keys(_recCatColors);
-  var cubIshDS = catKeys.map(function(cat) {
-    var cData = cubEmails.map(function(email) {
-      var found = cubIshData.find(function(d) { return d.email === email && d.categoria === cat; });
-      return found ? found.count : 0;
+  // Chart 4: Detectados por USC (horizontal bar)
+  var uscData = data.por_usc || [];
+  var uscLabels = uscData.map(function(d) { return d.email.split('@')[0]; });
+  var uscTotals = uscData.map(function(d) { return d.total; });
+  var ctxUSC = document.getElementById('recDashChartUSC').getContext('2d');
+  if (_recDashUSC) _recDashUSC.destroy();
+  if (uscData.length > 0) {
+    _recDashUSC = new Chart(ctxUSC, {
+      type: 'bar',
+      data: { labels: uscLabels, datasets: [
+        { label: 'Error', data: uscData.map(function(d) { return d.errores; }), backgroundColor: '#e53935' },
+        { label: 'Faltante', data: uscData.map(function(d) { return d.faltantes; }), backgroundColor: '#ff9800' },
+        { label: 'Atraso', data: uscData.map(function(d) { return d.atrasos; }), backgroundColor: '#7B1FA2' },
+        { label: 'Actualización Portal', data: uscData.map(function(d) { return d.actualizaciones || 0; }), backgroundColor: '#00897B' }
+      ]},
+      options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y',
+        plugins: { legend: { labels: { font: { size: 9 } } } },
+        scales: { x: { stacked: true, beginAtZero: true, ticks: { stepSize: 1, font: { size: 9 } } }, y: { stacked: true, ticks: { font: { size: 9 } } } } }
     });
-    return { label: _recCatLabels[cat] || cat, data: cData, backgroundColor: _recCatColors[cat] || '#BDBDBD' };
-  }).filter(function(ds) { return ds.data.some(function(v) { return v > 0; }); });
-  var ctx6 = document.getElementById('recDashChartCubIshikawa').getContext('2d');
-  if (_recDashCubIshikawa) _recDashCubIshikawa.destroy();
-  _recDashCubIshikawa = new Chart(ctx6, {
-    type: 'bar',
-    data: { labels: cubIshLabels, datasets: cubIshDS },
-    options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y',
-      plugins: { legend: { labels: { font: { size: 9 } } } },
-      scales: { x: { stacked: true, beginAtZero: true, ticks: { stepSize: 1 } }, y: { stacked: true } } }
+  } else {
+    ctxUSC.canvas.parentElement.innerHTML = '<div class="muted" style="text-align:center; padding:40px 0; font-size:12px;">Sin datos USC aún</div>';
+  }
+
+  // Chart 5: Por cubicador asignado (donut)
+  var cubAsigData = data.por_cubicador_asignado || [];
+  var ctxCubAsig = document.getElementById('recDashChartCubAsig').getContext('2d');
+  if (_recDashCubAsig) _recDashCubAsig.destroy();
+  var cubAsigColors = ['#2e7d32','#1565C0','#ff9800','#e53935','#7B1FA2','#00897B','#795548','#607D8B'];
+  var cubAsigLabels = cubAsigData.map(function(d, i) {
+    var label = d.cubicador.includes('@') ? d.cubicador.split('@')[0] : d.cubicador;
+    return label + ' (' + d.count + ')';
   });
+  _recDashCubAsig = new Chart(ctxCubAsig, {
+    type: 'doughnut',
+    data: { labels: cubAsigLabels,
+            datasets: [{ data: cubAsigData.map(function(d) { return d.count; }),
+                         backgroundColor: cubAsigColors.slice(0, cubAsigData.length) }] },
+    options: { responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { position: 'bottom', labels: { font: { size: 9 }, padding: 5 } } } }
+  });
+
+  // Chart 6: Causas Ishikawa global (donut)
+  var ishData = data.ishikawa_global || [];
+  var ctxIsh = document.getElementById('recDashChartIshikawa').getContext('2d');
+  if (_recDashIshikawa) _recDashIshikawa.destroy();
+  if (ishData.length > 0) {
+    var ishLabels = ishData.map(function(d) { return (_recCatLabels[d.categoria] || d.categoria) + ' (' + d.count + ')'; });
+    var ishValues = ishData.map(function(d) { return d.count; });
+    var ishColors = ishData.map(function(d) { return _recCatColors[d.categoria] || '#BDBDBD'; });
+    _recDashIshikawa = new Chart(ctxIsh, {
+      type: 'doughnut',
+      data: { labels: ishLabels, datasets: [{ data: ishValues, backgroundColor: ishColors }] },
+      options: { responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { position: 'bottom', labels: { font: { size: 9 }, padding: 4 } } } }
+    });
+  } else {
+    ctxIsh.canvas.parentElement.innerHTML = '<div class="muted" style="text-align:center; padding:40px 0; font-size:12px;">Sin causas registradas</div>';
+  }
+
+  // Chart 7: Kilos mal fabricados por cubicador (horizontal bar)
+  var kilosData = data.kilos_por_cubicador || [];
+  var ctxKilos = document.getElementById('recDashChartKilos').getContext('2d');
+  if (_recDashKilos) _recDashKilos.destroy();
+  if (kilosData.length > 0) {
+    var kilosLabels = kilosData.map(function(d) { return d.cubicador.includes('@') ? d.cubicador.split('@')[0] : d.cubicador; });
+    var kilosVals = kilosData.map(function(d) { return d.kilos; });
+    _recDashKilos = new Chart(ctxKilos, {
+      type: 'bar',
+      data: { labels: kilosLabels, datasets: [{ label: 'Kilos', data: kilosVals, backgroundColor: '#e53935', borderRadius: 3 }] },
+      options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y',
+        plugins: { legend: { display: false } },
+        scales: { x: { beginAtZero: true, ticks: { font: { size: 9 } } }, y: { ticks: { font: { size: 9 } } } } }
+    });
+  } else {
+    ctxKilos.canvas.parentElement.innerHTML = '<div class="muted" style="text-align:center; padding:40px 0; font-size:12px;">Sin kilos registrados</div>';
+  }
 }
 
 var _recUsersCache = [];
@@ -4000,8 +4382,12 @@ async function crearProyectoDesdeReclamo() {
   if (!nombre) { msg.textContent = 'El nombre es requerido'; msg.style.color = '#b42318'; return; }
   msg.textContent = 'Creando...'; msg.style.color = '#666';
   var body = { nombre_proyecto: nombre };
-  var calculista = document.getElementById('recNuevoProjCalculista').value.trim();
-  if (calculista) body.calculista = calculista;
+  var calcId = document.getElementById('recNuevoProjCalculista').value;
+  if (calcId) body.calculista_id = parseInt(calcId);
+  var constId = document.getElementById('recNuevoProjConstructora').value;
+  if (constId) body.constructora_id = parseInt(constId);
+  var desc = document.getElementById('recNuevoProjDescripcion').value.trim();
+  if (desc) body.descripcion = desc;
   var res = await fetch('/proyectos', {
     method: 'POST',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
@@ -4013,6 +4399,8 @@ async function crearProyectoDesdeReclamo() {
     msg.textContent = 'Obra creada'; msg.style.color = '#558B2F';
     document.getElementById('recNuevoProjNombre').value = '';
     document.getElementById('recNuevoProjCalculista').value = '';
+    document.getElementById('recNuevoProjConstructora').value = '';
+    document.getElementById('recNuevoProjDescripcion').value = '';
     await loadProyectos();
     await loadFilters();
     var sel = document.getElementById('recProyecto');
@@ -4020,6 +4408,62 @@ async function crearProyectoDesdeReclamo() {
     toggleNuevoProyectoRec();
   } else {
     msg.textContent = 'Error: ' + (data.detail || data.error || 'desconocido'); msg.style.color = '#b42318';
+  }
+}
+
+function toggleRecNewCalc() {
+  var f = document.getElementById('recNewCalcForm');
+  f.style.display = f.style.display === 'none' ? '' : 'none';
+}
+
+async function crearCalcDesdeRecForm() {
+  var nombre = document.getElementById('recNewCalcNombre').value.trim();
+  var msg = document.getElementById('recNewCalcMsg');
+  if (!nombre) { msg.textContent = 'Ingresa un nombre'; msg.style.color = '#b42318'; return; }
+  msg.textContent = 'Creando...'; msg.style.color = '#666';
+  var res = await fetch('/calculistas', {
+    method: 'POST',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ nombre: nombre })
+  });
+  if (res.status === 401) { logout(); return; }
+  var data = await res.json();
+  if (data.ok) {
+    msg.textContent = 'Creado'; msg.style.color = '#558B2F';
+    document.getElementById('recNewCalcNombre').value = '';
+    await loadCalculistas();
+    document.getElementById('recNuevoProjCalculista').value = data.id;
+    document.getElementById('recNewCalcForm').style.display = 'none';
+  } else {
+    msg.textContent = 'Error: ' + (data.detail || 'desconocido'); msg.style.color = '#b42318';
+  }
+}
+
+function toggleRecNewConst() {
+  var f = document.getElementById('recNewConstForm');
+  f.style.display = f.style.display === 'none' ? '' : 'none';
+}
+
+async function crearConstDesdeRecForm() {
+  var nombre = document.getElementById('recNewConstNombre').value.trim();
+  var msg = document.getElementById('recNewConstMsg');
+  if (!nombre) { msg.textContent = 'Ingresa un nombre'; msg.style.color = '#b42318'; return; }
+  msg.textContent = 'Creando...'; msg.style.color = '#666';
+  var res = await fetch('/constructoras', {
+    method: 'POST',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ nombre: nombre })
+  });
+  if (res.status === 401) { logout(); return; }
+  var data = await res.json();
+  if (data.ok) {
+    msg.textContent = 'Creada'; msg.style.color = '#558B2F';
+    document.getElementById('recNewConstNombre').value = '';
+    await loadClientes();
+    document.getElementById('recNuevoProjConstructora').value = data.id;
+    document.getElementById('recNewConstForm').style.display = 'none';
+  } else {
+    msg.textContent = 'Error: ' + (data.detail || 'desconocido'); msg.style.color = '#b42318';
   }
 }
 

@@ -12,40 +12,26 @@
     <div class="card" style="border-top:3px solid #e53935;">
       <h3 style="margin:0 0 12px 0;">Mi Resumen</h3>
       <div id="recLandingCharts" style="display:grid; grid-template-columns:repeat(3, 1fr); gap:16px;">
-        <!-- Chart 1: Total reclamos -->
-        <div style="background:#fff; border:1px solid #eee; border-radius:8px; padding:16px; text-align:center;">
-          <div style="font-size:11px; color:#888; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:8px;">Mis Reclamos</div>
-          <div id="recLandTotal" style="font-size:36px; font-weight:700; color:#e53935;">0</div>
-          <div style="font-size:11px; color:#666; margin-top:4px;">
-            <span id="recLandAbiertos" style="color:#ff9800;">0 abiertos</span>
+        <!-- Chart 1: KPI Total -->
+        <div style="background:#fff; border:1px solid #eee; border-radius:8px; padding:16px; text-align:center; display:flex; flex-direction:column; justify-content:center;">
+          <div style="font-size:11px; color:#888; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:8px;">Total Reclamos</div>
+          <div id="recLandTotal" style="font-size:44px; font-weight:700; color:#e53935; line-height:1;">0</div>
+          <div style="font-size:12px; color:#666; margin-top:8px;">
+            <span id="recLandAbiertos" style="color:#ff9800; font-weight:600;">0 abiertos</span>
           </div>
         </div>
-        <!-- Chart 2: Error vs Faltante (doughnut) -->
+        <!-- Chart 2: Resueltos vs No Resueltos (doughnut) -->
         <div style="background:#fff; border:1px solid #eee; border-radius:8px; padding:12px;">
-          <div style="font-size:11px; color:#888; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:6px; text-align:center;">Error vs Faltante</div>
+          <div style="font-size:11px; color:#888; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:6px; text-align:center;">Resueltos vs Pendientes</div>
           <div style="position:relative; height:150px;">
-            <canvas id="recLandChartTipo"></canvas>
+            <canvas id="recLandChartResueltos"></canvas>
           </div>
         </div>
-        <!-- Chart 3: Histórico 12 meses por año -->
+        <!-- Chart 3: Histórico mensual por año -->
         <div style="background:#fff; border:1px solid #eee; border-radius:8px; padding:12px;">
-          <div style="font-size:11px; color:#888; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:6px; text-align:center;">Histórico Mensual</div>
+          <div style="font-size:11px; color:#888; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:6px; text-align:center;">Histórico por Detección</div>
           <div style="position:relative; height:150px;">
             <canvas id="recLandChartHist"></canvas>
-          </div>
-        </div>
-        <!-- Chart 4: Reclamos por año (cubicador only, hidden by default) -->
-        <div id="recLandChart4Wrap" style="background:#fff; border:1px solid #eee; border-radius:8px; padding:12px; display:none;">
-          <div style="font-size:11px; color:#888; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:6px; text-align:center;">Reclamos por Año</div>
-          <div style="position:relative; height:150px;">
-            <canvas id="recLandChartAnio"></canvas>
-          </div>
-        </div>
-        <!-- Chart 5: Ishikawa doughnut (cubicador only, hidden by default) -->
-        <div id="recLandChart5Wrap" style="background:#fff; border:1px solid #eee; border-radius:8px; padding:12px; display:none;">
-          <div style="font-size:11px; color:#888; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:6px; text-align:center;">Causas Ishikawa</div>
-          <div style="position:relative; height:150px;">
-            <canvas id="recLandChartIshikawa"></canvas>
           </div>
         </div>
       </div>
@@ -83,20 +69,56 @@
           </div>
         </div>
         <!-- Inline crear proyecto desde reclamo -->
-        <div id="nuevoProyectoRecForm" style="display:none; margin-top:6px; padding:8px 10px; background:#e3f2fd; border:1px solid #90caf9; border-radius:6px;">
-          <div class="row" style="gap:6px; flex-wrap:wrap; align-items:flex-end;">
-            <div style="flex:2; min-width:200px;">
+        <div id="nuevoProyectoRecForm" style="display:none; margin-top:6px; padding:10px 12px; background:#e3f2fd; border:1px solid #90caf9; border-radius:6px;">
+          <div class="row" style="gap:6px; flex-wrap:wrap; align-items:flex-end; margin-bottom:6px;">
+            <div style="flex:3; min-width:200px;">
               <label style="font-size:10px; color:#666;">Nombre proyecto / obra *</label>
               <input type="text" id="recNuevoProjNombre" placeholder="Ej: Ingevec - Edificio Franklin" style="width:100%; font-size:12px;" />
             </div>
-            <div style="flex:1; min-width:140px;">
-              <label style="font-size:10px; color:#666;">Calculista (opcional)</label>
-              <input type="text" id="recNuevoProjCalculista" placeholder="Nombre calculista" style="width:100%; font-size:12px;" />
+            <div style="flex:2; min-width:180px;">
+              <label style="font-size:10px; color:#666;">Descripción (opcional)</label>
+              <input type="text" id="recNuevoProjDescripcion" placeholder="Notas..." style="width:100%; font-size:11px;" />
             </div>
-            <button type="button" onclick="crearProyectoDesdeReclamo()" style="font-size:11px; padding:4px 10px; white-space:nowrap;">Crear obra</button>
-            <button type="button" class="secondary" onclick="toggleNuevoProyectoRec()" style="font-size:11px; padding:4px 8px;">Cancelar</button>
           </div>
-          <div id="recNuevoProjMsg" style="margin-top:4px; font-size:11px;"></div>
+          <div class="row" style="gap:6px; flex-wrap:wrap; align-items:flex-end; margin-bottom:6px;">
+            <div style="flex:1; min-width:150px;">
+              <label style="font-size:10px; color:#666;">Calculista</label>
+              <div style="display:flex; gap:3px; align-items:center;">
+                <select id="recNuevoProjCalculista" style="flex:1; font-size:11px;">
+                  <option value="">— Sin calculista —</option>
+                </select>
+                <button type="button" class="secondary" style="font-size:10px; padding:2px 6px;" onclick="toggleRecNewCalc()">+</button>
+              </div>
+              <div id="recNewCalcForm" style="display:none; margin-top:3px; padding:4px; background:#fff; border-radius:4px;">
+                <div style="display:flex; gap:3px;">
+                  <input type="text" id="recNewCalcNombre" placeholder="Nombre calculista" style="flex:1; font-size:10px;" />
+                  <button type="button" onclick="crearCalcDesdeRecForm()" style="font-size:10px; padding:2px 6px;">Crear</button>
+                </div>
+                <span id="recNewCalcMsg" style="font-size:10px;"></span>
+              </div>
+            </div>
+            <div style="flex:1; min-width:150px;">
+              <label style="font-size:10px; color:#666;">Constructora</label>
+              <div style="display:flex; gap:3px; align-items:center;">
+                <select id="recNuevoProjConstructora" style="flex:1; font-size:11px;">
+                  <option value="">— Sin constructora —</option>
+                </select>
+                <button type="button" class="secondary" style="font-size:10px; padding:2px 6px;" onclick="toggleRecNewConst()">+</button>
+              </div>
+              <div id="recNewConstForm" style="display:none; margin-top:3px; padding:4px; background:#fff; border-radius:4px;">
+                <div style="display:flex; gap:3px;">
+                  <input type="text" id="recNewConstNombre" placeholder="Nombre constructora" style="flex:1; font-size:10px;" />
+                  <button type="button" onclick="crearConstDesdeRecForm()" style="font-size:10px; padding:2px 6px;">Crear</button>
+                </div>
+                <span id="recNewConstMsg" style="font-size:10px;"></span>
+              </div>
+            </div>
+            <div style="display:flex; gap:4px; align-items:flex-end; padding-bottom:1px;">
+              <button type="button" onclick="crearProyectoDesdeReclamo()" style="font-size:11px; padding:4px 10px; white-space:nowrap;">Crear obra</button>
+              <button type="button" class="secondary" onclick="toggleNuevoProyectoRec()" style="font-size:11px; padding:4px 8px;">Cancelar</button>
+            </div>
+          </div>
+          <div id="recNuevoProjMsg" style="font-size:11px;"></div>
         </div>
         <div class="row" style="gap:8px; flex-wrap:wrap; align-items:flex-end; margin-top:8px;">
           <div class="col" style="max-width:130px;">
@@ -104,6 +126,8 @@
             <select id="recTipoReclamo" style="width:100%; font-size:12px;">
               <option value="error">Error</option>
               <option value="faltante">Faltante</option>
+              <option value="atraso">Atraso</option>
+              <option value="actualizacion_portal">Actualización Portal</option>
             </select>
           </div>
           <div class="col" style="max-width:150px;">
@@ -166,6 +190,8 @@
           <option value="">Tipo: Todos</option>
           <option value="error">Error</option>
           <option value="faltante">Faltante</option>
+          <option value="atraso">Atraso</option>
+          <option value="actualizacion_portal">Actualización Portal</option>
         </select>
         <select id="recFiltroEstado" onchange="loadReclamos()" style="font-size:11px;">
           <option value="">Estado: Todos</option>
@@ -272,6 +298,8 @@
               <select id="recEditTipo" style="width:100%; font-size:12px;">
                 <option value="error">Error</option>
                 <option value="faltante">Faltante</option>
+                <option value="atraso">Atraso</option>
+                <option value="actualizacion_portal">Actualización Portal</option>
               </select>
             </div>
             <div class="col" style="max-width:150px;">
@@ -491,59 +519,57 @@
     <!-- ==================== DASHBOARDS TAB (admin/admin2 only) ==================== -->
     <div id="recTabDashboards" style="display:none;">
       <div class="card" style="border-top:3px solid #1565C0;">
-        <h3 style="margin:0 0 12px 0; color:#1565C0;">📊 Dashboards de Reclamos</h3>
-        <div style="display:grid; grid-template-columns:1fr 1fr; gap:20px;">
-          <!-- Left column: USC breakdown -->
-          <div>
-            <h4 style="margin:0 0 10px 0; font-size:14px; color:#ff9800; border-bottom:2px solid #ff9800; padding-bottom:4px;">Por USC (Levantados)</h4>
-            <!-- Per-USC bar chart -->
-            <div style="background:#fff; border:1px solid #eee; border-radius:8px; padding:12px; margin-bottom:12px;">
-              <div style="font-size:11px; color:#888; margin-bottom:6px;">Reclamos por usuario USC</div>
-              <div style="position:relative; height:220px;">
-                <canvas id="recDashChartUSC"></canvas>
-              </div>
-            </div>
-            <!-- Per-USC error vs faltante -->
-            <div style="background:#fff; border:1px solid #eee; border-radius:8px; padding:12px; margin-bottom:12px;">
-              <div style="font-size:11px; color:#888; margin-bottom:6px;">Error vs Faltante por USC</div>
-              <div style="position:relative; height:220px;">
-                <canvas id="recDashChartUSCTipo"></canvas>
-              </div>
-            </div>
-            <!-- USC historical -->
-            <div style="background:#fff; border:1px solid #eee; border-radius:8px; padding:12px;">
-              <div style="font-size:11px; color:#888; margin-bottom:6px;">Histórico Mensual por USC</div>
-              <div style="position:relative; height:220px;">
-                <canvas id="recDashChartUSCHist"></canvas>
-              </div>
-            </div>
+        <h3 style="margin:0 0 16px 0; color:#1565C0;">📊 Dashboards de Reclamos</h3>
+
+        <!-- Row 1: KPIs y overview -->
+        <div style="display:grid; grid-template-columns:160px 1fr 1fr 1fr; gap:14px; margin-bottom:14px;">
+          <!-- KPI Card -->
+          <div style="background:#fff; border:1px solid #eee; border-radius:8px; padding:16px; text-align:center; display:flex; flex-direction:column; justify-content:center;">
+            <div style="font-size:10px; color:#888; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:6px;">Total</div>
+            <div id="recDashTotal" style="font-size:40px; font-weight:700; color:#e53935; line-height:1;">0</div>
+            <div style="font-size:11px; color:#ff9800; font-weight:600; margin-top:6px;"><span id="recDashAbiertos">0</span> abiertos</div>
           </div>
-          <!-- Right column: Cubicador breakdown + Ishikawa -->
-          <div>
-            <h4 style="margin:0 0 10px 0; font-size:14px; color:#2e7d32; border-bottom:2px solid #2e7d32; padding-bottom:4px;">Por Cubicador (Respondidos)</h4>
-            <!-- Ishikawa global for cubicadores -->
-            <div style="background:#fff; border:1px solid #eee; border-radius:8px; padding:12px; margin-bottom:12px;">
-              <div style="font-size:11px; color:#888; margin-bottom:6px;">Distribución Ishikawa (Cubicadores)</div>
-              <div style="position:relative; height:220px;">
-                <canvas id="recDashChartIshikawa"></canvas>
-              </div>
-            </div>
-            <!-- Per-cubicador bar chart -->
-            <div style="background:#fff; border:1px solid #eee; border-radius:8px; padding:12px; margin-bottom:12px;">
-              <div style="font-size:11px; color:#888; margin-bottom:6px;">Reclamos por Cubicador</div>
-              <div style="position:relative; height:220px;">
-                <canvas id="recDashChartCub"></canvas>
-              </div>
-            </div>
-            <!-- Per-cubicador Ishikawa stacked -->
-            <div style="background:#fff; border:1px solid #eee; border-radius:8px; padding:12px;">
-              <div style="font-size:11px; color:#888; margin-bottom:6px;">Ishikawa por Cubicador</div>
-              <div style="position:relative; height:220px;">
-                <canvas id="recDashChartCubIshikawa"></canvas>
-              </div>
-            </div>
+          <!-- Histórico mensual -->
+          <div style="background:#fff; border:1px solid #eee; border-radius:8px; padding:12px;">
+            <div style="font-size:11px; color:#888; margin-bottom:6px;">Histórico por Detección (mes/año)</div>
+            <div style="position:relative; height:160px;"><canvas id="recDashChartHist"></canvas></div>
+          </div>
+          <!-- Donut resueltos/no resueltos -->
+          <div style="background:#fff; border:1px solid #eee; border-radius:8px; padding:12px;">
+            <div style="font-size:11px; color:#888; margin-bottom:6px;">Resueltos vs Pendientes</div>
+            <div style="position:relative; height:160px;"><canvas id="recDashChartResueltos"></canvas></div>
+          </div>
+          <!-- Donut Error/Faltante/Atraso -->
+          <div style="background:#fff; border:1px solid #eee; border-radius:8px; padding:12px;">
+            <div style="font-size:11px; color:#888; margin-bottom:6px;">Tipo de Reclamo</div>
+            <div style="position:relative; height:160px;"><canvas id="recDashChartTipo"></canvas></div>
           </div>
         </div>
+
+        <!-- Row 2: Por USC y Cubicador -->
+        <div style="display:grid; grid-template-columns:1fr 1fr 1fr 1fr; gap:14px;">
+          <!-- Detectados por USC (bar) -->
+          <div style="background:#fff; border:1px solid #eee; border-radius:8px; padding:12px;">
+            <div style="font-size:11px; color:#888; margin-bottom:6px;">Detectados por USC</div>
+            <div style="position:relative; height:200px;"><canvas id="recDashChartUSC"></canvas></div>
+          </div>
+          <!-- Reclamos por cubicador asignado (donut) -->
+          <div style="background:#fff; border:1px solid #eee; border-radius:8px; padding:12px;">
+            <div style="font-size:11px; color:#888; margin-bottom:6px;">Por Cubicador Asignado</div>
+            <div style="position:relative; height:200px;"><canvas id="recDashChartCubAsig"></canvas></div>
+          </div>
+          <!-- Causas Ishikawa (donut) -->
+          <div style="background:#fff; border:1px solid #eee; border-radius:8px; padding:12px;">
+            <div style="font-size:11px; color:#888; margin-bottom:6px;">Causas Ishikawa</div>
+            <div style="position:relative; height:200px;"><canvas id="recDashChartIshikawa"></canvas></div>
+          </div>
+          <!-- Kilos mal fabricados por cubicador (bar) -->
+          <div style="background:#fff; border:1px solid #eee; border-radius:8px; padding:12px;">
+            <div style="font-size:11px; color:#888; margin-bottom:6px;">Kilos Mal Fabricados (Cubicador)</div>
+            <div style="position:relative; height:200px;"><canvas id="recDashChartKilos"></canvas></div>
+          </div>
+        </div>
+
       </div>
     </div><!-- /recTabDashboards -->
   </div>

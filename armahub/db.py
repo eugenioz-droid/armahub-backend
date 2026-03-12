@@ -473,10 +473,13 @@ MIGRATIONS = [
         """CREATE TABLE IF NOT EXISTS proyecto_aliases (
             alias TEXT PRIMARY KEY,
             id_proyecto TEXT NOT NULL REFERENCES proyectos(id_proyecto) ON DELETE CASCADE,
-            creado_por TEXT,
-            fecha_creacion TEXT NOT NULL DEFAULT (NOW() AT TIME ZONE 'UTC')
-        )""",
-        "CREATE INDEX IF NOT EXISTS idx_proyecto_aliases_proyecto ON proyecto_aliases(id_proyecto)",
+    (33, "reclamos: agregar tipo 'atraso' al CHECK de tipo_reclamo", [
+        "ALTER TABLE reclamos DROP CONSTRAINT IF EXISTS reclamos_tipo_reclamo_check;",
+        "ALTER TABLE reclamos ADD CONSTRAINT reclamos_tipo_reclamo_check CHECK (tipo_reclamo IN ('error','faltante','atraso'));",
+    ]),
+    (34, "reclamos: agregar tipo 'actualizacion_portal' al CHECK de tipo_reclamo", [
+        "ALTER TABLE reclamos DROP CONSTRAINT IF EXISTS reclamos_tipo_reclamo_check;",
+        "ALTER TABLE reclamos ADD CONSTRAINT reclamos_tipo_reclamo_check CHECK (tipo_reclamo IN ('error','faltante','atraso','actualizacion_portal'));",
     ]),
 ]
 
