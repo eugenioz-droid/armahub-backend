@@ -1414,8 +1414,8 @@ def landing_indicadores(user=Depends(get_current_user)):
                     cub_map[email_cub]["dias"][r[3] - 1] = round(float(r[4]), 1)
                 result["cubicado_semana"] = list(cub_map.values())
 
-            # --- Reclamos levantados semana (visible to admin, admin2, usc) ---
-            if role in ("admin", "admin2", "usc"):
+            # --- Reclamos levantados semana (visible to admin, admin2, usc, cubicador) ---
+            if role in ("admin", "admin2", "usc", "cubicador"):
                 cur.execute("""
                     SELECT r.creado_por,
                            COALESCE(u.nombre, '') AS nombre,

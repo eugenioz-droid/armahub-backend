@@ -5656,14 +5656,15 @@ async function loadLandingIndicadores() {
   var alertaWrap = document.getElementById('hubAlertaReclamos');
   var alertas = data.alertas || {};
   if (alertaWrap) {
-    if (alertas.total_abiertos > 0) {
+    // Always show for roles that have alerts (admin, admin2, usc, cubicador)
+    if (typeof alertas.total_abiertos !== 'undefined') {
       alertaWrap.style.display = '';
       document.getElementById('hubAlertaTexto').textContent = alertas.total_abiertos + ' reclamo(s) abiertos';
       var detParts = (alertas.por_estado || []).map(function(a) {
         var labels = {abierto:'Abiertos', en_analisis:'En análisis', accion_correctiva:'Acción correctiva', validacion:'En validación'};
         return (labels[a.estado] || a.estado) + ': ' + a.count;
       });
-      document.getElementById('hubAlertaDetalle').textContent = detParts.join(' · ');
+      document.getElementById('hubAlertaDetalle').textContent = detParts.join(' · ') || 'Sin reclamos';
     } else {
       alertaWrap.style.display = 'none';
     }
