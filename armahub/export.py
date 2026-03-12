@@ -47,10 +47,10 @@ EXPORT_COLUMNS = [
     ("H cm",      "dim_h",        "num"),
     ("I cm",      "dim_i",        "num"),
     ("J cm",      None,           "num"),   # No existe en CSV, siempre vacío
-    ("AngV",      "ang1",         "num"),
-    ("AngV1",     "ang2",         "num"),
-    ("AngV2",     "ang3",         "num"),
-    ("AngV3",     "ang4",         "num"),
+    ("AngV",      "ang1",         "ang"),
+    ("AngV1",     "ang2",         "ang"),
+    ("AngV2",     "ang3",         "ang"),
+    ("AngV3",     "ang4",         "ang"),
     ("R cm",      "radio",        "num"),
     ("PesoKg",    "peso_unitario","dec3"),
     ("PesoTotal", "peso_total",   "dec2"),
@@ -94,7 +94,7 @@ def _build_sheet(wb: Workbook, sheet_name: str, rows: list, sector: str, piso: s
                 val = row_data.get(db_col)
 
             if val is None:
-                ws.cell(row=row_idx, column=col_idx, value=0 if fmt in ("int", "num", "dec1", "dec2") else "")
+                ws.cell(row=row_idx, column=col_idx, value=0 if fmt in ("int", "num", "dec1", "dec2", "ang") else "")
                 continue
 
             if fmt == "int":
@@ -123,6 +123,12 @@ def _build_sheet(wb: Workbook, sheet_name: str, rows: list, sector: str, piso: s
             elif fmt == "num":
                 try:
                     ws.cell(row=row_idx, column=col_idx, value=float(val))
+                except (ValueError, TypeError):
+                    ws.cell(row=row_idx, column=col_idx, value=0)
+            elif fmt == "ang":
+                try:
+                    fval = float(val)
+                    ws.cell(row=row_idx, column=col_idx, value=f"<{int(fval)}" if fval != 0 else 0)
                 except (ValueError, TypeError):
                     ws.cell(row=row_idx, column=col_idx, value=0)
             else:
