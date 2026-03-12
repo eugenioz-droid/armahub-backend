@@ -453,6 +453,31 @@ MIGRATIONS = [
     (27, "barras: agregar ang4 (ANG4 de ArmaDetailer, exporta como AngV3)", [
         "DO $$ BEGIN ALTER TABLE barras ADD COLUMN ang4 DOUBLE PRECISION; EXCEPTION WHEN duplicate_column THEN NULL; END $$;",
     ]),
+    (28, "renombrar clientes → constructoras", [
+        "DO $$ BEGIN ALTER TABLE clientes RENAME TO constructoras; EXCEPTION WHEN undefined_table THEN NULL; END $$;",
+        "DO $$ BEGIN ALTER INDEX idx_clientes_nombre RENAME TO idx_constructoras_nombre; EXCEPTION WHEN OTHERS THEN NULL; END $$;",
+    ]),
+    (29, "proyectos: renombrar cliente_id → constructora_id", [
+        "DO $$ BEGIN ALTER TABLE proyectos RENAME COLUMN cliente_id TO constructora_id; EXCEPTION WHEN undefined_column THEN NULL; END $$;",
+    ]),
+    (30, "proyectos: eliminar owner_id y calculista (texto)", [
+        "DO $$ BEGIN ALTER TABLE proyectos DROP COLUMN owner_id; EXCEPTION WHEN undefined_column THEN NULL; END $$;",
+        "DO $$ BEGIN ALTER TABLE proyectos DROP COLUMN calculista; EXCEPTION WHEN undefined_column THEN NULL; END $$;",
+    ]),
+    (31, "proyecto_usuarios: roles usc/cubicador/externo/cliente/admin", [
+        "ALTER TABLE proyecto_usuarios DROP CONSTRAINT IF EXISTS proyecto_usuarios_rol_check;",
+        "UPDATE proyecto_usuarios SET rol = 'cubicador' WHERE rol NOT IN ('admin','usc','cubicador','externo','cliente');",
+        "ALTER TABLE proyecto_usuarios ADD CONSTRAINT proyecto_usuarios_rol_check CHECK (rol IN ('admin','usc','cubicador','externo','cliente'));",
+    ]),
+    (32, "proyecto_aliases: multiples IDs de proyecto por obra", [
+        """CREATE TABLE IF NOT EXISTS proyecto_aliases (
+            alias TEXT PRIMARY KEY,
+            id_proyecto TEXT NOT NULL REFERENCES proyectos(id_proyecto) ON DELETE CASCADE,
+            creado_por TEXT,
+            fecha_creacion TEXT NOT NULL DEFAULT (NOW() AT TIME ZONE 'UTC')
+        )""",
+        "CREATE INDEX IF NOT EXISTS idx_proyecto_aliases_proyecto ON proyecto_aliases(id_proyecto)",
+    ]),
 ]
 
 
@@ -524,7 +549,8 @@ def reset_database(keep_users: bool = True) -> dict:
             cur.execute("DROP TABLE IF EXISTS proyecto_usuarios")
             cur.execute("DROP TABLE IF EXISTS imports")
             cur.execute("DROP TABLE IF EXISTS barras")
-            cur.execute("DROP TABLE IF EXISTS clientes")
+            cur.execute("DROP TABLE IF EXISTS proyecto_aliases")
+            cur.execute("DROP TABLE IF EXISTS constructoras")
             cur.execute("DROP TABLE IF EXISTS calculistas")
             cur.execute("DROP TABLE IF EXISTS proyectos")
             if not keep_users:

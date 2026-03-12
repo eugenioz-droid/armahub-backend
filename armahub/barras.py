@@ -28,20 +28,14 @@ def _project_filter_sql(allowed_ids, table_alias="", col="id_proyecto"):
 
 
 def _puede_editar_proyecto(cur, id_proyecto: str, user: dict) -> bool:
-    """Retorna True si el usuario es admin, owner del proyecto, o está autorizado."""
-    if user.get("role") == "admin":
+    """Retorna True si el usuario es admin/admin2 o está en proyecto_usuarios."""
+    if user.get("role") in ("admin", "admin2"):
         return True
     cur.execute("SELECT id FROM users WHERE email = %s", (user.get("email"),))
     row = cur.fetchone()
     if not row:
         return False
     uid = row[0]
-    cur.execute("SELECT owner_id FROM proyectos WHERE id_proyecto = %s", (id_proyecto,))
-    prow = cur.fetchone()
-    if not prow:
-        return False
-    if prow[0] == uid:
-        return True
     cur.execute("SELECT 1 FROM proyecto_usuarios WHERE id_proyecto = %s AND user_id = %s", (id_proyecto, uid))
     return cur.fetchone() is not None
 
@@ -1007,7 +1001,7 @@ def dashboard_sectores(
 def get_proyectos(user=Depends(get_current_user)):
     """
     Devuelve lista de proyectos con resumen de kilos y barras.
-    Incluye owner y calculista. Filtered by user authorization.
+    Incluye constructora y calculista. Filtered by user authorization.
     """
     with get_conn() as conn:
         with conn.cursor() as cur:
@@ -1019,11 +1013,8 @@ def get_proyectos(user=Depends(get_current_user)):
                     p.nombre_proyecto,
                     COUNT(DISTINCT b.id_unico) as total_barras,
                     COALESCE(SUM(b.peso_total), 0) as total_kilos,
-                    p.owner_id,
-                    u.email as owner_email,
-                    p.calculista,
-                    p.cliente_id,
-                    cl.nombre as cliente_nombre,
+                    p.constructora_id,
+                    co.nombre as constructora_nombre,
                     p.calculista_id,
                     ca.nombre as calculista_nombre,
                     p.descripcion,
@@ -1031,16 +1022,24 @@ def get_proyectos(user=Depends(get_current_user)):
                     p.usuario_creador
                 FROM proyectos p
                 LEFT JOIN barras b ON p.id_proyecto = b.id_proyecto
-                LEFT JOIN users u ON p.owner_id = u.id
-                LEFT JOIN clientes cl ON p.cliente_id = cl.id
+                LEFT JOIN constructoras co ON p.constructora_id = co.id
                 LEFT JOIN calculistas ca ON p.calculista_id = ca.id
                 WHERE 1=1""" + pf_p + """
-                GROUP BY p.id_proyecto, p.nombre_proyecto, p.owner_id, u.email, p.calculista,
-                         p.cliente_id, cl.nombre, p.calculista_id, ca.nombre,
+                GROUP BY p.id_proyecto, p.nombre_proyecto,
+                         p.constructora_id, co.nombre, p.calculista_id, ca.nombre,
                          p.descripcion, p.fecha_creacion, p.usuario_creador
                 ORDER BY p.fecha_creacion DESC
             """, pf_pp)
             rows = cur.fetchall()
+
+            # Fetch aliases for all projects
+            alias_map = {}
+            try:
+                cur.execute("SELECT alias, id_proyecto FROM proyecto_aliases")
+                for a_row in cur.fetchall():
+                    alias_map.setdefault(a_row[1], []).append(a_row[0])
+            except Exception:
+                pass
 
     return {
         "proyectos": [
@@ -1049,20 +1048,19 @@ def get_proyectos(user=Depends(get_current_user)):
                 "nombre_proyecto": r[1],
                 "total_barras": int(r[2]) if r[2] else 0,
                 "total_kilos": float(r[3]) if r[3] else 0.0,
-                "owner_id": r[4],
-                "owner_email": r[5],
-                "calculista": r[6],
-                "cliente_id": r[7],
-                "cliente_nombre": r[8],
-                "calculista_id": r[9],
-                "calculista_nombre": r[10],
-                "descripcion": r[11],
-                "fecha_creacion": r[12],
-                "usuario_creador": r[13],
+                "constructora_id": r[4],
+                "constructora_nombre": r[5],
+                "calculista_id": r[6],
+                "calculista_nombre": r[7],
+                "descripcion": r[8],
+                "fecha_creacion": r[9],
+                "usuario_creador": r[10],
+                "aliases": alias_map.get(r[0], []),
             }
             for r in rows
         ]
     }
+
 
 @router.get("/proyectos/{id_proyecto}/sectores")
 def get_proyecto_sectores(
@@ -1113,20 +1111,18 @@ def get_proyecto_sectores(
 class ProyectoCreate(BaseModel):
     nombre_proyecto: str
     descripcion: Optional[str] = None
-    calculista: Optional[str] = None
     calculista_id: Optional[int] = None
-    cliente_id: Optional[int] = None
+    constructora_id: Optional[int] = None
 
 class ProyectoUpdate(BaseModel):
     nombre_proyecto: Optional[str] = None
     descripcion: Optional[str] = None
-    calculista: Optional[str] = None
     calculista_id: Optional[int] = None
-    cliente_id: Optional[int] = None
+    constructora_id: Optional[int] = None
 
 class AutorizarUsuarioRequest(BaseModel):
     user_id: int
-    rol: str = "editor"
+    rol: str = "cubicador"
 
 class MoverBarrasRequest(BaseModel):
     destino_id: str
@@ -1137,21 +1133,29 @@ class MoverBarrasRequest(BaseModel):
 
 @router.post("/proyectos")
 def crear_proyecto(body: ProyectoCreate, user=Depends(get_current_user)):
-    """Crear una obra vacía manualmente (sin CSV). Asigna owner automáticamente."""
+    """Crear una obra vacía manualmente (sin CSV)."""
     import uuid
     id_proyecto = "PROY-" + uuid.uuid4().hex[:8].upper()
+    email = user.get("email", "unknown")
     with get_conn() as conn:
         with conn.cursor() as cur:
-            # Resolve owner_id from current user email
-            cur.execute("SELECT id FROM users WHERE email = %s", (user.get("email"),))
-            owner_row = cur.fetchone()
-            owner_id = owner_row[0] if owner_row else None
-
             cur.execute("""
-                INSERT INTO proyectos (id_proyecto, nombre_proyecto, usuario_creador, owner_id, calculista, calculista_id, cliente_id)
-                VALUES (%s, %s, %s, %s, %s, %s, %s)
-            """, (id_proyecto, body.nombre_proyecto, user.get("email", "unknown"), owner_id, body.calculista, body.calculista_id, body.cliente_id))
-    audit(user.get("email", "?"), "crear_proyecto", body.nombre_proyecto, "proyecto", id_proyecto)
+                INSERT INTO proyectos (id_proyecto, nombre_proyecto, usuario_creador, calculista_id, constructora_id)
+                VALUES (%s, %s, %s, %s, %s)
+            """, (id_proyecto, body.nombre_proyecto, email, body.calculista_id, body.constructora_id))
+
+            # Auto-add creator to proyecto_usuarios
+            cur.execute("SELECT id FROM users WHERE email = %s", (email,))
+            user_row = cur.fetchone()
+            if user_row:
+                rol_map = {'admin': 'admin', 'admin2': 'admin', 'cubicador': 'cubicador', 'usc': 'usc', 'externo': 'externo', 'cliente': 'cliente'}
+                rol = rol_map.get(user.get('role', ''), 'cubicador')
+                cur.execute("""
+                    INSERT INTO proyecto_usuarios (id_proyecto, user_id, rol)
+                    VALUES (%s, %s, %s)
+                    ON CONFLICT (id_proyecto, user_id) DO NOTHING
+                """, (id_proyecto, user_row[0], rol))
+    audit(email, "crear_proyecto", body.nombre_proyecto, "proyecto", id_proyecto)
     return {
         "ok": True,
         "id_proyecto": id_proyecto,
@@ -1178,15 +1182,12 @@ def editar_proyecto(id_proyecto: str, body: ProyectoUpdate, user=Depends(get_cur
             if body.descripcion is not None:
                 sets.append("descripcion = %s")
                 params.append(body.descripcion)
-            if body.calculista is not None:
-                sets.append("calculista = %s")
-                params.append(body.calculista)
             if body.calculista_id is not None:
                 sets.append("calculista_id = %s")
                 params.append(body.calculista_id if body.calculista_id != 0 else None)
-            if body.cliente_id is not None:
-                sets.append("cliente_id = %s")
-                params.append(body.cliente_id if body.cliente_id != 0 else None)
+            if body.constructora_id is not None:
+                sets.append("constructora_id = %s")
+                params.append(body.constructora_id if body.constructora_id != 0 else None)
 
             if not sets:
                 return {"ok": True, "message": "Sin cambios"}
@@ -1344,16 +1345,16 @@ def get_autorizados(id_proyecto: str, user=Depends(get_current_user)):
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("""
-                SELECT pu.user_id, u.email, pu.rol
+                SELECT pu.user_id, u.email, pu.rol, u.nombre, u.apellido
                 FROM proyecto_usuarios pu
                 JOIN users u ON pu.user_id = u.id
                 WHERE pu.id_proyecto = %s
-                ORDER BY u.email
+                ORDER BY pu.rol, u.email
             """, (id_proyecto,))
             rows = cur.fetchall()
     return {
         "autorizados": [
-            {"user_id": r[0], "email": r[1], "rol": r[2]}
+            {"user_id": r[0], "email": r[1], "rol": r[2], "nombre": r[3], "apellido": r[4]}
             for r in rows
         ]
     }

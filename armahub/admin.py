@@ -68,7 +68,8 @@ def get_table_counts(admin=Depends(require_admin)):
         ("proyectos", "proyectos"),
         ("reclamos", "reclamos"),
         ("calculistas", "calculistas"),
-        ("clientes", "clientes"),
+        ("constructoras", "constructoras"),
+        ("proyecto_aliases", "proyecto_aliases"),
         ("pedidos", "pedidos"),
         ("audit_log", "audit_log"),
         ("users", "users"),
@@ -105,7 +106,8 @@ def clear_table(
             "DELETE FROM reclamo_seguimientos", "DELETE FROM reclamos",
             "DELETE FROM export_log", "DELETE FROM pedido_items",
             "DELETE FROM pedidos", "DELETE FROM proyecto_usuarios",
-            "DELETE FROM barras", "DELETE FROM imports", "DELETE FROM proyectos",
+            "DELETE FROM barras", "DELETE FROM imports",
+            "DELETE FROM proyecto_aliases", "DELETE FROM proyectos",
         ],
         "reclamos": [
             "DELETE FROM reclamo_imagenes", "DELETE FROM reclamo_acciones",
@@ -115,9 +117,9 @@ def clear_table(
             "UPDATE proyectos SET calculista_id = NULL",
             "DELETE FROM calculistas",
         ],
-        "clientes": [
-            "UPDATE proyectos SET cliente_id = NULL",
-            "DELETE FROM clientes",
+        "constructoras": [
+            "UPDATE proyectos SET constructora_id = NULL",
+            "DELETE FROM constructoras",
         ],
         "pedidos": ["DELETE FROM pedido_items", "DELETE FROM pedidos"],
         "audit_log": ["DELETE FROM audit_log"],

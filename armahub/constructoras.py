@@ -1,15 +1,15 @@
 """
-clientes.py
------------
-CRUD para gestión de clientes (mandantes/empresas).
+constructoras.py
+----------------
+CRUD para gestión de constructoras (antes clientes/mandantes/empresas).
 
 Endpoints:
-- GET    /clientes          — listar clientes (con stats de proyectos)
-- GET    /clientes/{id}     — detalle de un cliente
-- POST   /clientes          — crear cliente
-- PATCH  /clientes/{id}     — actualizar cliente
-- DELETE /clientes/{id}     — desactivar cliente (soft delete)
-- POST   /proyectos/{id_proyecto}/asignar-cliente — asignar cliente a proyecto
+- GET    /constructoras          — listar constructoras (con stats de proyectos)
+- GET    /constructoras/{id}     — detalle de una constructora
+- POST   /constructoras          — crear constructora
+- PATCH  /constructoras/{id}     — actualizar constructora
+- DELETE /constructoras/{id}     — desactivar constructora (soft delete)
+- POST   /proyectos/{id_proyecto}/asignar-constructora — asignar constructora a proyecto
 """
 
 from typing import Optional
@@ -23,7 +23,7 @@ from .db import get_conn, audit
 router = APIRouter()
 
 
-class ClienteCreate(BaseModel):
+class ConstructoraCreate(BaseModel):
     nombre: str
     rut: Optional[str] = None
     contacto: Optional[str] = None
@@ -33,7 +33,7 @@ class ClienteCreate(BaseModel):
     notas: Optional[str] = None
 
 
-class ClienteUpdate(BaseModel):
+class ConstructoraUpdate(BaseModel):
     nombre: Optional[str] = None
     rut: Optional[str] = None
     contacto: Optional[str] = None
@@ -44,9 +44,9 @@ class ClienteUpdate(BaseModel):
     activo: Optional[bool] = None
 
 
-@router.get("/clientes")
-def listar_clientes(activo: Optional[bool] = None, user=Depends(get_current_user)):
-    """Listar clientes con conteo de proyectos asociados."""
+@router.get("/constructoras")
+def listar_constructoras(activo: Optional[bool] = None, user=Depends(get_current_user)):
+    """Listar constructoras con conteo de proyectos asociados."""
     with get_conn() as conn:
         with conn.cursor() as cur:
             where = ""
@@ -61,8 +61,8 @@ def listar_clientes(activo: Optional[bool] = None, user=Depends(get_current_user
                        COUNT(p.id_proyecto) AS proyectos_count,
                        COALESCE(SUM(stats.barras), 0) AS total_barras,
                        COALESCE(SUM(stats.kilos), 0) AS total_kilos
-                FROM clientes c
-                LEFT JOIN proyectos p ON p.cliente_id = c.id
+                FROM constructoras c
+                LEFT JOIN proyectos p ON p.constructora_id = c.id
                 LEFT JOIN (
                     SELECT id_proyecto, COUNT(*) AS barras, COALESCE(SUM(peso_total), 0) AS kilos
                     FROM barras GROUP BY id_proyecto
@@ -75,7 +75,7 @@ def listar_clientes(activo: Optional[bool] = None, user=Depends(get_current_user
             rows = cur.fetchall()
 
     return {
-        "clientes": [
+        "constructoras": [
             {
                 "id": r[0], "nombre": r[1], "rut": r[2], "contacto": r[3],
                 "email": r[4], "telefono": r[5], "direccion": r[6], "notas": r[7],
@@ -89,21 +89,21 @@ def listar_clientes(activo: Optional[bool] = None, user=Depends(get_current_user
     }
 
 
-@router.get("/clientes/{cliente_id}")
-def detalle_cliente(cliente_id: int, user=Depends(get_current_user)):
-    """Detalle de un cliente con sus proyectos."""
+@router.get("/constructoras/{constructora_id}")
+def detalle_constructora(constructora_id: int, user=Depends(get_current_user)):
+    """Detalle de una constructora con sus proyectos."""
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("""
                 SELECT id, nombre, rut, contacto, email, telefono,
                        direccion, notas, activo, fecha_creacion
-                FROM clientes WHERE id = %s
-            """, (cliente_id,))
+                FROM constructoras WHERE id = %s
+            """, (constructora_id,))
             r = cur.fetchone()
             if not r:
-                raise HTTPException(status_code=404, detail="Cliente no encontrado")
+                raise HTTPException(status_code=404, detail="Constructora no encontrada")
 
-            cliente = {
+            constructora = {
                 "id": r[0], "nombre": r[1], "rut": r[2], "contacto": r[3],
                 "email": r[4], "telefono": r[5], "direccion": r[6], "notas": r[7],
                 "activo": r[8], "fecha_creacion": r[9],
@@ -115,10 +115,10 @@ def detalle_cliente(cliente_id: int, user=Depends(get_current_user)):
                        COALESCE(SUM(b.peso_total), 0) AS kilos
                 FROM proyectos p
                 LEFT JOIN barras b ON b.id_proyecto = p.id_proyecto
-                WHERE p.cliente_id = %s
+                WHERE p.constructora_id = %s
                 GROUP BY p.id_proyecto, p.nombre_proyecto
                 ORDER BY p.nombre_proyecto
-            """, (cliente_id,))
+            """, (constructora_id,))
             proyectos = [
                 {
                     "id_proyecto": pr[0], "nombre_proyecto": pr[1],
@@ -127,13 +127,13 @@ def detalle_cliente(cliente_id: int, user=Depends(get_current_user)):
                 for pr in cur.fetchall()
             ]
 
-    cliente["proyectos"] = proyectos
-    return cliente
+    constructora["proyectos"] = proyectos
+    return constructora
 
 
-@router.post("/clientes")
-def crear_cliente(body: ClienteCreate, user=Depends(get_current_user)):
-    """Crear un nuevo cliente."""
+@router.post("/constructoras")
+def crear_constructora(body: ConstructoraCreate, user=Depends(get_current_user)):
+    """Crear una nueva constructora."""
     nombre = body.nombre.strip()
     if not nombre:
         raise HTTPException(status_code=400, detail="El nombre es requerido")
@@ -142,27 +142,27 @@ def crear_cliente(body: ClienteCreate, user=Depends(get_current_user)):
         with get_conn() as conn:
             with conn.cursor() as cur:
                 cur.execute("""
-                    INSERT INTO clientes (nombre, rut, contacto, email, telefono, direccion, notas)
+                    INSERT INTO constructoras (nombre, rut, contacto, email, telefono, direccion, notas)
                     VALUES (%s, %s, %s, %s, %s, %s, %s)
                     RETURNING id
                 """, (nombre, body.rut, body.contacto, body.email, body.telefono, body.direccion, body.notas))
                 new_id = cur.fetchone()[0]
-        audit(user.get("email", "?"), "crear_cliente", nombre, "cliente", str(new_id))
+        audit(user.get("email", "?"), "crear_constructora", nombre, "constructora", str(new_id))
         return {"ok": True, "id": new_id, "nombre": nombre}
     except Exception as e:
-        if "idx_clientes_nombre" in str(e):
-            raise HTTPException(status_code=400, detail="Ya existe un cliente con ese nombre")
+        if "idx_constructoras_nombre" in str(e):
+            raise HTTPException(status_code=400, detail="Ya existe una constructora con ese nombre")
         raise HTTPException(status_code=400, detail=str(e))
 
 
-@router.patch("/clientes/{cliente_id}")
-def actualizar_cliente(cliente_id: int, body: ClienteUpdate, user=Depends(get_current_user)):
-    """Actualizar datos de un cliente."""
+@router.patch("/constructoras/{constructora_id}")
+def actualizar_constructora(constructora_id: int, body: ConstructoraUpdate, user=Depends(get_current_user)):
+    """Actualizar datos de una constructora."""
     with get_conn() as conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT id FROM clientes WHERE id = %s", (cliente_id,))
+            cur.execute("SELECT id FROM constructoras WHERE id = %s", (constructora_id,))
             if not cur.fetchone():
-                raise HTTPException(status_code=404, detail="Cliente no encontrado")
+                raise HTTPException(status_code=404, detail="Constructora no encontrada")
 
             sets = []
             params = []
@@ -178,45 +178,45 @@ def actualizar_cliente(cliente_id: int, body: ClienteUpdate, user=Depends(get_cu
             if not sets:
                 raise HTTPException(status_code=400, detail="Nada que actualizar")
 
-            params.append(cliente_id)
+            params.append(constructora_id)
             try:
-                cur.execute(f"UPDATE clientes SET {', '.join(sets)} WHERE id = %s", params)
+                cur.execute(f"UPDATE constructoras SET {', '.join(sets)} WHERE id = %s", params)
             except Exception as e:
-                if "idx_clientes_nombre" in str(e):
-                    raise HTTPException(status_code=400, detail="Ya existe un cliente con ese nombre")
+                if "idx_constructoras_nombre" in str(e):
+                    raise HTTPException(status_code=400, detail="Ya existe una constructora con ese nombre")
                 raise
 
-    audit(user.get("email", "?"), "editar_cliente", f"campos: {', '.join(s.split(' =')[0] for s in sets)}", "cliente", str(cliente_id))
-    return {"ok": True, "id": cliente_id}
+    audit(user.get("email", "?"), "editar_constructora", f"campos: {', '.join(s.split(' =')[0] for s in sets)}", "constructora", str(constructora_id))
+    return {"ok": True, "id": constructora_id}
 
 
-@router.delete("/clientes/{cliente_id}")
-def eliminar_cliente(cliente_id: int, user=Depends(get_current_user)):
-    """Soft-delete: desactiva el cliente. Los proyectos mantienen la referencia."""
+@router.delete("/constructoras/{constructora_id}")
+def eliminar_constructora(constructora_id: int, user=Depends(get_current_user)):
+    """Soft-delete: desactiva la constructora. Los proyectos mantienen la referencia."""
     with get_conn() as conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT id FROM clientes WHERE id = %s", (cliente_id,))
+            cur.execute("SELECT id FROM constructoras WHERE id = %s", (constructora_id,))
             if not cur.fetchone():
-                raise HTTPException(status_code=404, detail="Cliente no encontrado")
-            cur.execute("UPDATE clientes SET activo = FALSE WHERE id = %s", (cliente_id,))
-    audit(user.get("email", "?"), "desactivar_cliente", None, "cliente", str(cliente_id))
-    return {"ok": True, "id": cliente_id}
+                raise HTTPException(status_code=404, detail="Constructora no encontrada")
+            cur.execute("UPDATE constructoras SET activo = FALSE WHERE id = %s", (constructora_id,))
+    audit(user.get("email", "?"), "desactivar_constructora", None, "constructora", str(constructora_id))
+    return {"ok": True, "id": constructora_id}
 
 
-@router.post("/proyectos/{id_proyecto}/asignar-cliente")
-def asignar_cliente(id_proyecto: str, cliente_id: Optional[int] = None, user=Depends(get_current_user)):
-    """Asignar o desasignar un cliente a un proyecto. cliente_id=null para desasignar."""
+@router.post("/proyectos/{id_proyecto}/asignar-constructora")
+def asignar_constructora(id_proyecto: str, constructora_id: Optional[int] = None, user=Depends(get_current_user)):
+    """Asignar o desasignar una constructora a un proyecto. constructora_id=null para desasignar."""
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("SELECT id_proyecto FROM proyectos WHERE id_proyecto = %s", (id_proyecto,))
             if not cur.fetchone():
                 raise HTTPException(status_code=404, detail="Proyecto no encontrado")
 
-            if cliente_id is not None:
-                cur.execute("SELECT id FROM clientes WHERE id = %s", (cliente_id,))
+            if constructora_id is not None:
+                cur.execute("SELECT id FROM constructoras WHERE id = %s", (constructora_id,))
                 if not cur.fetchone():
-                    raise HTTPException(status_code=404, detail="Cliente no encontrado")
+                    raise HTTPException(status_code=404, detail="Constructora no encontrada")
 
-            cur.execute("UPDATE proyectos SET cliente_id = %s WHERE id_proyecto = %s", (cliente_id, id_proyecto))
-    audit(user.get("email", "?"), "asignar_cliente", f"cliente_id={cliente_id}", "proyecto", id_proyecto)
-    return {"ok": True, "id_proyecto": id_proyecto, "cliente_id": cliente_id}
+            cur.execute("UPDATE proyectos SET constructora_id = %s WHERE id_proyecto = %s", (constructora_id, id_proyecto))
+    audit(user.get("email", "?"), "asignar_constructora", f"constructora_id={constructora_id}", "proyecto", id_proyecto)
+    return {"ok": True, "id_proyecto": id_proyecto, "constructora_id": constructora_id}

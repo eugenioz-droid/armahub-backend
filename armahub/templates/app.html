@@ -89,34 +89,47 @@
   <div id="newProjectModal" style="display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.5); z-index:9999; align-items:center; justify-content:center;">
     <div style="background:#fff; border-radius:12px; padding:24px; max-width:420px; width:90%; box-shadow:0 8px 32px rgba(0,0,0,0.3);">
       <h3 style="margin:0 0 4px 0; color:#1a1a1a;">Nuevo proyecto detectado</h3>
-      <p id="newProjMsg" class="muted" style="margin:0 0 16px 0; font-size:13px;"></p>
-      <div style="margin-bottom:12px;">
-        <label style="font-size:12px; color:#666; display:block; margin-bottom:4px;">Nombre del proyecto</label>
-        <input type="text" id="newProjNombre" readonly style="width:100%; background:#f5f5f5; font-size:13px;" />
-      </div>
-      <div style="margin-bottom:12px;">
-        <label style="font-size:12px; color:#666; display:block; margin-bottom:4px;">Calculista</label>
-        <select id="newProjCalculistaSelect" onchange="toggleCalcInput('newProj')" style="width:100%; font-size:13px; margin-bottom:4px;">
-          <option value="">— Sin calculista —</option>
+      <p id="newProjMsg" class="muted" style="margin:0 0 12px 0; font-size:13px;"></p>
+      <p id="newProjIdInfo" class="muted" style="margin:0 0 16px 0; font-size:11px; color:#999;"></p>
+
+      <!-- Opción 1: Asignar a obra existente -->
+      <div style="margin-bottom:16px; padding:12px; background:#f8f9fa; border-radius:8px;">
+        <label style="font-size:13px; font-weight:600; display:block; margin-bottom:6px;">Asignar a obra existente</label>
+        <select id="newProjAsignarA" style="width:100%; font-size:13px;">
+          <option value="">— Selecciona una obra —</option>
         </select>
-        <input type="text" id="newProjCalculistaInput" placeholder="Nombre del nuevo calculista" style="width:100%; font-size:13px; display:none;" />
-        <input type="hidden" id="newProjCalculista" />
+        <button onclick="closeNewProjectModal('assign')" style="margin-top:8px; padding:6px 14px; font-size:13px;">Asignar y continuar</button>
       </div>
-      <div style="margin-bottom:12px;">
-        <label style="font-size:12px; color:#666; display:block; margin-bottom:4px;">Dueño del proyecto</label>
-        <select id="newProjOwner" style="width:100%; font-size:13px;">
-          <option value="">Cargando usuarios...</option>
-        </select>
+
+      <div style="text-align:center; color:#999; font-size:12px; margin-bottom:12px;">— o —</div>
+
+      <!-- Opción 2: Crear proyecto nuevo -->
+      <div style="padding:12px; background:#f8f9fa; border-radius:8px;">
+        <label style="font-size:13px; font-weight:600; display:block; margin-bottom:6px;">Crear proyecto nuevo</label>
+        <div style="margin-bottom:8px;">
+          <label style="font-size:11px; color:#666; display:block; margin-bottom:4px;">Nombre del proyecto</label>
+          <input type="text" id="newProjNombre" style="width:100%; font-size:13px;" />
+        </div>
+        <div style="margin-bottom:8px;">
+          <label style="font-size:11px; color:#666; display:block; margin-bottom:4px;">Calculista</label>
+          <select id="newProjCalculistaSelect" onchange="toggleCalcInput('newProj')" style="width:100%; font-size:13px; margin-bottom:4px;">
+            <option value="">— Sin calculista —</option>
+          </select>
+          <input type="text" id="newProjCalculistaInput" placeholder="Nombre del nuevo calculista" style="width:100%; font-size:13px; display:none;" />
+          <input type="hidden" id="newProjCalculista" />
+        </div>
+        <input type="hidden" id="newProjOwner" value="" />
+        <div style="margin-bottom:8px;">
+          <label style="font-size:11px; color:#666; display:block; margin-bottom:4px;">Constructora (opcional)</label>
+          <select id="newProjCliente" style="width:100%; font-size:13px;">
+            <option value="">— Sin constructora —</option>
+          </select>
+        </div>
+        <button onclick="closeNewProjectModal(true)" style="padding:6px 14px; font-size:13px;">Crear y continuar</button>
       </div>
-      <div style="margin-bottom:12px;">
-        <label style="font-size:12px; color:#666; display:block; margin-bottom:4px;">Constructora (opcional)</label>
-        <select id="newProjCliente" style="width:100%; font-size:13px;">
-          <option value="">— Sin constructora —</option>
-        </select>
-      </div>
-      <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:16px;">
-        <button class="secondary" onclick="closeNewProjectModal(false)" style="padding:8px 16px;">Cancelar</button>
-        <button onclick="closeNewProjectModal(true)" style="padding:8px 16px;">Crear y continuar</button>
+
+      <div style="text-align:right; margin-top:12px;">
+        <button class="secondary" onclick="closeNewProjectModal(false)" style="padding:6px 14px; font-size:12px;">Cancelar</button>
       </div>
     </div>
   </div>

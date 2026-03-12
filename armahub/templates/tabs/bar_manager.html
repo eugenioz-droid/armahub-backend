@@ -39,14 +39,15 @@
         </div>
       </div>
 
-      <!-- Active carga filter badge -->
-      <div id="cargaFilterBadge" style="display:none; margin-top:8px; padding:6px 12px; background:#e3f2fd; border:1px solid #90CAF9; border-radius:6px; font-size:12px;">
-        📦 Filtrando por carga: <strong id="cargaFilterLabel"></strong>
-        <button class="secondary" style="font-size:10px; padding:1px 8px; margin-left:8px;" onclick="clearCargaFilter()">✕ Quitar filtro</button>
-      </div>
-
+      <!-- Carga filter row -->
       <div class="row" style="gap:8px; margin-top:8px; align-items:flex-end;">
         <div class="col" style="flex:2;">
+          <label style="font-size:11px; color:#666;">Carga</label>
+          <select id="filtroCarga" onchange="onCargaFilterChange()" style="font-size:12px;">
+            <option value="">Todas las cargas</option>
+          </select>
+        </div>
+        <div class="col" style="flex:3;">
           <input id="q" placeholder="Buscar por ID, Eje..." onkeyup="if(event.key==='Enter') buscar(true)" style="font-size:13px;" />
         </div>
         <div class="col">
@@ -76,10 +77,14 @@
             <option value="pedido">Pedido</option>
           </select>
         </div>
-        <input type="hidden" id="filtroCarga" value="" />
         <button onclick="buscar(true)" style="font-size:12px; padding:6px 14px;">🔍 Buscar</button>
         <button class="secondary" onclick="resetFiltros()" style="font-size:12px; padding:6px 14px;">Limpiar</button>
         <button class="secondary" onclick="toggleCrearBarraForm()" style="font-size:12px; padding:6px 14px; background:#e3f2fd; border-color:#1565C0; color:#1565C0;">+ Crear barra</button>
+      </div>
+      <!-- Active carga filter badge (for navigation from Obras) -->
+      <div id="cargaFilterBadge" style="display:none; margin-top:8px; padding:6px 12px; background:#e3f2fd; border:1px solid #90CAF9; border-radius:6px; font-size:12px;">
+        📦 Filtrando por carga: <strong id="cargaFilterLabel"></strong>
+        <button class="secondary" style="font-size:10px; padding:1px 8px; margin-left:8px;" onclick="clearCargaFilter()">✕ Quitar filtro</button>
       </div>
     </div>
 

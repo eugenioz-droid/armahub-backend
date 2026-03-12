@@ -125,21 +125,26 @@ let _newProjResolve = null;
 async function openNewProjectModal(data) {
   document.getElementById('newProjMsg').textContent = data.mensaje || '';
   document.getElementById('newProjNombre').value = data.proyecto_nombre || '';
+  var idInfo = document.getElementById('newProjIdInfo');
+  if (idInfo) idInfo.textContent = 'C\u00f3digo del CSV: ' + (data.proyecto_id || '?');
+  // Store CSV project ID for assign flow
+  window._newProjCsvId = data.proyecto_id || '';
+
   populateCalcSelect('newProjCalculistaSelect');
   document.getElementById('newProjCalculistaSelect').value = '';
   document.getElementById('newProjCalculistaInput').style.display = 'none';
   document.getElementById('newProjCalculistaInput').value = '';
   document.getElementById('newProjCalculista').value = '';
 
-  // Load users for owner select
-  const sel = document.getElementById('newProjOwner');
-  sel.innerHTML = '<option value="">Cargando...</option>';
-  const usersData = await apiGet('/users/list');
-  if (usersData && usersData.users) {
-    const me = localStorage.getItem('armahub_email') || '';
-    sel.innerHTML = usersData.users.map(u =>
-      `<option value="${u.id}" ${u.email === me ? 'selected' : ''}>${u.email} (${u.role})</option>`
-    ).join('');
+  // Populate 'assign to existing obra' dropdown
+  var asigSel = document.getElementById('newProjAsignarA');
+  if (asigSel) {
+    asigSel.innerHTML = '<option value="">\u2014 Selecciona una obra \u2014</option>';
+    if (data.obras_existentes && data.obras_existentes.length > 0) {
+      data.obras_existentes.forEach(function(o) {
+        asigSel.innerHTML += '<option value="' + o.id_proyecto + '">' + o.nombre_proyecto + ' (' + o.id_proyecto + ')</option>';
+      });
+    }
   }
 
   // Populate client selector
@@ -155,20 +160,34 @@ async function openNewProjectModal(data) {
   return new Promise(resolve => { _newProjResolve = resolve; });
 }
 
-function closeNewProjectModal(confirmed) {
-  document.getElementById('newProjectModal').style.display = 'none';
-  if (_newProjResolve) {
-    if (confirmed) {
-      syncCalcHidden('newProj');
-      _newProjResolve({
-        confirmed: true,
-        calculista: document.getElementById('newProjCalculista').value.trim(),
-        owner_id: document.getElementById('newProjOwner').value || '',
-        cliente_id: document.getElementById('newProjCliente') ? document.getElementById('newProjCliente').value : '',
-      });
-    } else {
-      _newProjResolve({ confirmed: false });
-    }
+function closeNewProjectModal(action) {
+  if (!_newProjResolve) return;
+  if (action === 'assign') {
+    var asigVal = document.getElementById('newProjAsignarA').value;
+    if (!asigVal) { alert('Selecciona una obra para asignar'); return; }
+    document.getElementById('newProjectModal').style.display = 'none';
+    _newProjResolve({
+      confirmed: true,
+      assign_to: asigVal,
+      csv_proyecto_id: window._newProjCsvId || '',
+    });
+    _newProjResolve = null;
+  } else if (action === true) {
+    var nombre = document.getElementById('newProjNombre').value.trim();
+    if (!nombre) { alert('Ingresa un nombre para el proyecto'); return; }
+    syncCalcHidden('newProj');
+    document.getElementById('newProjectModal').style.display = 'none';
+    _newProjResolve({
+      confirmed: true,
+      calculista: document.getElementById('newProjCalculista').value.trim(),
+      owner_id: document.getElementById('newProjOwner').value || '',
+      constructora_id: document.getElementById('newProjCliente') ? document.getElementById('newProjCliente').value : '',
+      nombre_override: nombre,
+    });
+    _newProjResolve = null;
+  } else {
+    document.getElementById('newProjectModal').style.display = 'none';
+    _newProjResolve({ confirmed: false });
     _newProjResolve = null;
   }
 }
@@ -235,7 +254,7 @@ function closeMissingProjectModal(action) {
       nombre: nombre,
       calculista: document.getElementById('missProjCalculista').value.trim(),
       owner_id: document.getElementById('missProjOwner').value || '',
-      cliente_id: document.getElementById('missProjCliente').value || '',
+      constructora_id: document.getElementById('missProjCliente').value || '',
     });
   } else {
     _missProjResolve({ action: 'cancel' });
@@ -406,8 +425,8 @@ async function loadProyectos() {
   }
   
   container.innerHTML = data.proyectos.map(p => {
-    const ownerText = p.owner_email ? p.owner_email : '(sin dueño)';
-    const calcText = p.calculista_nombre || p.calculista || '';
+    const calcText = p.calculista_nombre || '';
+    const constText = p.constructora_nombre || '';
     return `
     <div class="card" style="margin: 12px 0; padding: 16px; border-left: 4px solid #8BC34A;">
       <div style="display: flex; justify-content: space-between; align-items: start;">
@@ -417,11 +436,12 @@ async function loadProyectos() {
             <span class="badge">${p.total_kilos.toFixed(0)} kg</span>
             <span class="badge">${p.total_barras} barras</span>
             <span class="muted" style="font-size:11px; margin-left:8px;">ID: ${p.id_proyecto}</span>
+            ${p.aliases && p.aliases.length ? '<span class="muted" style="font-size:10px; margin-left:6px;" title="Códigos ArmaDetailer asociados">🔗 ' + p.aliases.join(', ') + '</span>' : ''}
           </div>
           <div style="font-size:11px; color:#666;">
-            <span>👤 ${ownerText}</span>
+            ${constText ? '<span>🏢 ' + constText + '</span>' : ''}
             ${calcText ? '<span style="margin-left:10px;">📐 Calculista: ' + calcText + '</span>' : ''}
-            ${p.cliente_nombre ? '<span style="margin-left:10px;">🏢 ' + p.cliente_nombre + '</span>' : ''}
+            <span style="margin-left:10px;" class="muted">Creado por: ${p.usuario_creador || '-'}</span>
           </div>
         </div>
         <div style="display: flex; gap: 6px; align-items: center;">
@@ -438,9 +458,16 @@ async function loadProyectos() {
       <div id="autorizados-${p.id_proyecto}" style="display:none; margin-top:10px; padding-top:10px; border-top:1px solid #eee;">
         <div style="font-size:12px; font-weight:bold; margin-bottom:6px;">Usuarios autorizados</div>
         <div id="autorizados-list-${p.id_proyecto}" class="muted" style="font-size:12px;">Cargando...</div>
-        <div style="display:flex; gap:6px; align-items:center; margin-top:8px;">
-          <select id="autorizar-user-${p.id_proyecto}" style="font-size:12px; flex:1;"><option>Cargando...</option></select>
-          <button class="secondary" style="font-size:11px; padding:3px 8px;" onclick="autorizarUsuario('${p.id_proyecto}')">+ Autorizar</button>
+        <div style="display:flex; gap:6px; align-items:center; margin-top:8px; flex-wrap:wrap;">
+          <select id="autorizar-user-${p.id_proyecto}" style="font-size:12px; flex:2; min-width:150px;"><option>Cargando...</option></select>
+          <select id="autorizar-rol-${p.id_proyecto}" style="font-size:12px; max-width:110px;">
+            <option value="cubicador">Cubicador</option>
+            <option value="usc">USC</option>
+            <option value="externo">Externo</option>
+            <option value="cliente">Cliente</option>
+            <option value="admin">Admin</option>
+          </select>
+          <button class="secondary" style="font-size:11px; padding:3px 8px;" onclick="autorizarUsuario('${p.id_proyecto}')">+ Asignar</button>
         </div>
       </div>
     </div>
@@ -504,7 +531,7 @@ async function crearObra() {
   msg.innerHTML = '<span class="muted">Creando...</span>';
   const body = { nombre_proyecto: name };
   if (calcId) body.calculista_id = parseInt(calcId);
-  if (clienteId) body.cliente_id = parseInt(clienteId);
+  if (clienteId) body.constructora_id = parseInt(clienteId);
   const res = await fetch('/proyectos', {
     method: 'POST',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
@@ -617,13 +644,17 @@ async function loadAutorizados(idProyecto) {
     list.innerHTML = '<span class="muted">Sin usuarios adicionales autorizados</span>';
     return;
   }
-  list.innerHTML = data.autorizados.map(a => `
-    <div style="display:flex; align-items:center; gap:6px; padding:3px 0;">
-      <span>${a.email}</span>
-      <span class="badge" style="font-size:10px;">${a.rol}</span>
-      <button class="secondary" style="font-size:10px; padding:1px 6px; color:#b42318; border-color:#b42318;" onclick="revocarUsuario('${idProyecto}', ${a.user_id})">✕</button>
-    </div>
-  `).join('');
+  var rolColors = {admin:'#1565C0',usc:'#FF9800',cubicador:'#8BC34A',externo:'#9C27B0',cliente:'#607D8B'};
+  list.innerHTML = data.autorizados.map(a => {
+    var nombre = [a.nombre, a.apellido].filter(Boolean).join(' ');
+    var display = nombre ? nombre + ' (' + a.email + ')' : a.email;
+    var rc = rolColors[a.rol] || '#666';
+    return `<div style="display:flex; align-items:center; gap:6px; padding:3px 0;">
+      <span style="font-size:10px; padding:1px 6px; border-radius:3px; background:${rc}22; color:${rc}; font-weight:600;">${a.rol.toUpperCase()}</span>
+      <span>${display}</span>
+      <button class="secondary" style="font-size:10px; padding:1px 6px; color:#b42318; border-color:#b42318;" onclick="revocarUsuario('${idProyecto}', ${a.user_id})">&#10005;</button>
+    </div>`;
+  }).join('');
 }
 
 async function loadUserSelect(idProyecto) {
@@ -637,10 +668,12 @@ async function autorizarUsuario(idProyecto) {
   const sel = document.getElementById('autorizar-user-' + idProyecto);
   const userId = parseInt(sel.value);
   if (!userId) return;
+  var rolSel = document.getElementById('autorizar-rol-' + idProyecto);
+  var rol = rolSel ? rolSel.value : 'cubicador';
   const res = await fetch('/proyectos/' + encodeURIComponent(idProyecto) + '/autorizar', {
     method: 'POST',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
-    body: JSON.stringify({ user_id: userId, rol: 'editor' })
+    body: JSON.stringify({ user_id: userId, rol: rol })
   });
   if (res.status === 401) { logout(); return; }
   const data = await res.json();
@@ -727,7 +760,7 @@ const FILTER_STORAGE_KEY = 'armahub_filters';
 
 function saveFiltersToStorage() {
   const state = {};
-  ['proyecto','plano','sector','piso','ciclo','q','order_by','order_dir'].forEach(f => {
+  ['proyecto','plano','sector','piso','ciclo','q','order_by','order_dir','filtroCarga'].forEach(f => {
     const el = document.getElementById(f);
     if (el) state[f] = el.value;
   });
@@ -811,7 +844,41 @@ function onProyectoChange() {
   const proy = document.getElementById('proyecto').value;
   // Clear dependent selects (their current values may not exist in new project)
   ['plano','sector','piso','ciclo'].forEach(f => { document.getElementById(f).value = ''; });
+  clearCargaFilter(true);
   loadFilters(proy ? { proyecto: proy } : null);
+  loadCargasDropdown(proy);
+  saveFiltersToStorage();
+  buscar(true);
+}
+
+async function loadCargasDropdown(idProyecto) {
+  var sel = document.getElementById('filtroCarga');
+  if (!sel) return;
+  sel.innerHTML = '<option value="">Todas las cargas</option>';
+  if (!idProyecto) return;
+  var data = await apiGet('/proyectos/' + encodeURIComponent(idProyecto) + '/cargas?limit=100');
+  if (!data || !data.cargas || data.cargas.length === 0) return;
+  data.cargas.forEach(function(c) {
+    var label = (c.archivo || 'Carga #' + c.id) + ' (' + (c.barras_count || 0) + ' barras';
+    if (c.kilos) label += ', ' + Math.round(c.kilos).toLocaleString('es-CL') + ' kg';
+    label += ') - ' + (c.fecha ? c.fecha.substring(0, 10) : '?');
+    var opt = document.createElement('option');
+    opt.value = c.id;
+    opt.textContent = label;
+    sel.appendChild(opt);
+  });
+}
+
+function onCargaFilterChange() {
+  var sel = document.getElementById('filtroCarga');
+  var badge = document.getElementById('cargaFilterBadge');
+  if (sel && sel.value && badge) {
+    var txt = sel.options[sel.selectedIndex].textContent;
+    document.getElementById('cargaFilterLabel').textContent = txt;
+    badge.style.display = '';
+  } else if (badge) {
+    badge.style.display = 'none';
+  }
   saveFiltersToStorage();
   buscar(true);
 }
@@ -931,7 +998,7 @@ async function importAllFiles() {
         retryUrl = '/import/armadetailer?confirmar_nuevo=true&proyecto_nombre_manual=' + encodeURIComponent(missResult.nombre);
         if (missResult.calculista) retryUrl += '&calculista=' + encodeURIComponent(missResult.calculista);
         if (missResult.owner_id) retryUrl += '&owner_id=' + encodeURIComponent(missResult.owner_id);
-        if (missResult.cliente_id) retryUrl += '&cliente_id=' + encodeURIComponent(missResult.cliente_id);
+        if (missResult.constructora_id) retryUrl += '&constructora_id=' + encodeURIComponent(missResult.constructora_id);
       }
       const data2 = await apiPostFile(retryUrl, f);
       if (data2 && data2.ok) {
@@ -947,26 +1014,36 @@ async function importAllFiles() {
       continue;
     }
     if (data.ok === false && data.new_project) {
-      // Proyecto nuevo detectado — mostrar popup para confirmar creación
+      // Proyecto nuevo detectado — mostrar popup para confirmar creación o asignar a obra existente
       const modalResult = await openNewProjectModal(data);
       if (!modalResult.confirmed) {
         results.innerHTML += `<div class="status-warn" style="padding:4px 0; font-size:13px;">⏭️ ${f.name}: creación cancelada</div>`;
         errorCount++;
         continue;
       }
-      let retryUrl = '/import/armadetailer?confirmar_nuevo=true';
-      if (modalResult.calculista) retryUrl += '&calculista=' + encodeURIComponent(modalResult.calculista);
-      if (modalResult.owner_id) retryUrl += '&owner_id=' + encodeURIComponent(modalResult.owner_id);
-      if (modalResult.cliente_id) retryUrl += '&cliente_id=' + encodeURIComponent(modalResult.cliente_id);
+      let retryUrl;
+      let resultLabel;
+      if (modalResult.assign_to) {
+        // Asignar código CSV a obra existente (crear alias)
+        retryUrl = '/import/armadetailer?asignar_a=' + encodeURIComponent(modalResult.assign_to);
+        resultLabel = '(asignado a obra existente)';
+      } else {
+        // Crear proyecto nuevo
+        retryUrl = '/import/armadetailer?confirmar_nuevo=true';
+        if (modalResult.nombre_override) retryUrl += '&proyecto_nombre_override=' + encodeURIComponent(modalResult.nombre_override);
+        if (modalResult.calculista) retryUrl += '&calculista=' + encodeURIComponent(modalResult.calculista);
+        if (modalResult.constructora_id) retryUrl += '&constructora_id=' + encodeURIComponent(modalResult.constructora_id);
+        resultLabel = '(nuevo proyecto)';
+      }
       const data2 = await apiPostFile(retryUrl, f);
       if (data2 && data2.ok) {
         const kilosText2 = data2.kilos ? ` — ${Math.round(data2.kilos).toLocaleString()} kg` : '';
         totalBarrasImported += (data2.barras || 0);
         totalKilosImported += (data2.kilos || 0);
-        results.innerHTML += `<div class="status-ok" style="padding:4px 0; font-size:13px;">✅ ${f.name}: ${data2.barras} barras (${data2.proyecto})${kilosText2} (nuevo proyecto)</div>`;
+        results.innerHTML += `<div class="status-ok" style="padding:4px 0; font-size:13px;">✅ ${f.name}: ${data2.barras} barras (${data2.proyecto})${kilosText2} ${resultLabel}</div>`;
         successCount++;
       } else {
-        results.innerHTML += `<div class="status-err" style="padding:4px 0; font-size:13px;">❌ ${f.name}: ${data2?.error || data2?.mensaje || 'Error creando proyecto'}</div>`;
+        results.innerHTML += `<div class="status-err" style="padding:4px 0; font-size:13px;">❌ ${f.name}: ${data2?.error || data2?.mensaje || 'Error'}</div>`;
         errorCount++;
       }
       continue;
@@ -1396,6 +1473,7 @@ function resetFiltros() {
   var fo = document.getElementById('filtroOrigen');
   if (fo) fo.value = '';
   clearCargaFilter(true);
+  loadCargasDropdown('');
   const si = document.getElementById('proyectoSearchInput');
   if (si) si.value = '';
   try { localStorage.removeItem(FILTER_STORAGE_KEY); } catch(e) {}
@@ -1405,7 +1483,7 @@ function resetFiltros() {
   buscar(true);
 }
 
-function verBarrasCarga(importId, idProyecto, archivo) {
+async function verBarrasCarga(importId, idProyecto, archivo) {
   // Switch to Bar Manager tab
   switchTab('buscar');
 
@@ -1413,8 +1491,10 @@ function verBarrasCarga(importId, idProyecto, archivo) {
   var proySel = document.getElementById('proyecto');
   if (proySel) proySel.value = idProyecto;
 
-  // Set carga filter
-  document.getElementById('filtroCarga').value = importId;
+  // Load cargas dropdown so the option exists, then select it
+  await loadCargasDropdown(idProyecto);
+  var fc = document.getElementById('filtroCarga');
+  if (fc) fc.value = importId;
   document.getElementById('cargaFilterBadge').style.display = '';
   document.getElementById('cargaFilterLabel').textContent = archivo || ('Carga #' + importId);
 
@@ -2536,9 +2616,9 @@ async function loadMiActividad() {
 let _clientesCache = [];
 
 async function loadClientes() {
-  const data = await apiGet('/clientes?activo=true');
+  const data = await apiGet('/constructoras?activo=true');
   if (!data) return;
-  _clientesCache = data.clientes || [];
+  _clientesCache = data.constructoras || [];
 
   // Populate client selector in crear obra
   const sel = document.getElementById('newObraCliente');
@@ -2603,7 +2683,7 @@ async function crearCliente() {
   if (email) body.email = email;
   if (telefono) body.telefono = telefono;
 
-  const res = await fetch('/clientes', {
+  const res = await fetch('/constructoras', {
     method: 'POST',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
     body: JSON.stringify(body)
@@ -2630,7 +2710,7 @@ async function editarCliente(clienteId) {
   const nuevoNombre = prompt('Nombre de la constructora:', c.nombre);
   if (nuevoNombre === null || nuevoNombre.trim() === '') return;
   const body = { nombre: nuevoNombre.trim() };
-  const res = await fetch('/clientes/' + clienteId, {
+  const res = await fetch('/constructoras/' + clienteId, {
     method: 'PATCH',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
     body: JSON.stringify(body)
@@ -2759,7 +2839,7 @@ async function loadAdminProyectos() {
   html += '<th style="padding:5px 6px;">Nombre</th>';
   html += '<th style="padding:5px 6px;">ID</th>';
   html += '<th style="padding:5px 6px;">Calculista</th>';
-  html += '<th style="padding:5px 6px;">Cliente</th>';
+  html += '<th style="padding:5px 6px;">Constructora</th>';
   html += '<th style="padding:5px 6px;">Barras</th>';
   html += '<th style="padding:5px 6px;">Kilos</th>';
   html += '<th style="padding:5px 6px;">Creador</th>';
@@ -2767,8 +2847,8 @@ async function loadAdminProyectos() {
 
   _adminProyectosCache.forEach(function(p) {
     var kilos = p.total_kilos ? Math.round(p.total_kilos).toLocaleString('es-CL') : '0';
-    var calc = p.calculista_nombre || p.calculista || '<span class="muted">-</span>';
-    var cliente = p.cliente_nombre || '<span class="muted">-</span>';
+    var calc = p.calculista_nombre || '<span class="muted">-</span>';
+    var cliente = p.constructora_nombre || '<span class="muted">-</span>';
     var creador = p.usuario_creador || '<span class="muted">-</span>';
     html += '<tr style="border-bottom:1px solid #eee;">';
     html += '<td style="padding:4px 6px; font-weight:500; max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">' + p.nombre_proyecto + '</td>';
@@ -2800,12 +2880,12 @@ async function editarProyectoAdmin(idProyecto) {
 
   var clienteData = [];
   try {
-    var cdata = await apiGet('/clientes');
-    clienteData = (cdata && cdata.clientes) ? cdata.clientes : [];
+    var cdata = await apiGet('/constructoras');
+    clienteData = (cdata && cdata.constructoras) ? cdata.constructoras : [];
   } catch(e) {}
   var clienteOpts = '<option value="0">— Sin constructora —</option>' +
     clienteData.map(function(c) {
-      return '<option value="' + c.id + '"' + (c.id === p.cliente_id ? ' selected' : '') + '>' + c.nombre + '</option>';
+      return '<option value="' + c.id + '"' + (c.id === p.constructora_id ? ' selected' : '') + '>' + c.nombre + '</option>';
     }).join('');
 
   var formHtml = '<div style="padding:12px; background:#e3f2fd; border:1px solid #90caf9; border-radius:8px; margin-bottom:10px;">';
@@ -2841,7 +2921,7 @@ async function guardarProyectoAdmin(idProyecto) {
     nombre_proyecto: nombre,
     descripcion: document.getElementById('editProjDescripcion').value.trim() || '',
     calculista_id: parseInt(document.getElementById('editProjCalculista').value) || 0,
-    cliente_id: parseInt(document.getElementById('editProjCliente').value) || 0,
+    constructora_id: parseInt(document.getElementById('editProjCliente').value) || 0,
   };
 
   var res = await fetch('/proyectos/' + idProyecto, {
@@ -4760,6 +4840,11 @@ async function loadModuleData(mod) {
         const el = document.getElementById(f);
         if (el && saved[f]) el.value = saved[f];
       });
+      if (saved.proyecto) await loadCargasDropdown(saved.proyecto);
+      if (saved.filtroCarga) {
+        var fcEl = document.getElementById('filtroCarga');
+        if (fcEl) fcEl.value = saved.filtroCarga;
+      }
     }
 
     await loadCargas();
