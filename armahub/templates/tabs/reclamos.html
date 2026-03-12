@@ -4,6 +4,7 @@
     <div id="recTabNav" style="display:flex; gap:0; margin-bottom:12px; border-bottom:2px solid #e0e0e0;">
       <button id="recTabBtnMain" onclick="switchRecTab('main')" style="padding:8px 20px; font-size:13px; font-weight:600; border:none; border-bottom:3px solid #e53935; background:none; color:#e53935; cursor:pointer;">📋 Reclamos</button>
       <button id="recTabBtnDash" onclick="switchRecTab('dashboards')" style="padding:8px 20px; font-size:13px; font-weight:600; border:none; border-bottom:3px solid transparent; background:none; color:#999; cursor:pointer; display:none;">📊 Dashboards</button>
+      <button id="recTabBtnPres" onclick="switchRecTab('presentaciones')" style="padding:8px 20px; font-size:13px; font-weight:600; border:none; border-bottom:3px solid transparent; background:none; color:#999; cursor:pointer; display:none;">🎤 Presentaciones</button>
     </div>
 
     <!-- ==================== MAIN TAB ==================== -->
@@ -262,11 +263,6 @@
               <option value="">— Sin asignar —</option>
             </select>
           </div>
-          <select id="recDetailAplica" onchange="cambiarAplicaReclamo()" style="font-size:11px;">
-            <option value="pendiente">Pendiente</option>
-            <option value="si">Sí aplica</option>
-            <option value="no">No aplica</option>
-          </select>
           <select id="recDetailEstado" onchange="cambiarEstadoReclamo()" style="font-size:11px;">
             <option value="abierto">Abierto</option>
             <option value="en_analisis">En análisis</option>
@@ -355,18 +351,18 @@
 
       <!-- ============ SECCIÓN 2: RESPUESTA DEL RESPONSABLE (Cubicador) ============ -->
       <div style="margin-bottom:10px; padding:10px; background:#e3f2fd; border-radius:6px; border:1px solid #bbdefb;">
-        <h4 style="margin:0 0 6px 0; font-size:13px; color:#1565C0;">💬 Respuesta del Responsable</h4>
-        <div id="recRespuestaInfo" style="font-size:11px; color:#666; margin-bottom:6px;"></div>
-        <div class="row" style="gap:8px; margin-bottom:8px; align-items:flex-end;">
-          <div class="col" style="max-width:250px;">
-            <label style="font-size:11px; color:#666;">Cubicador asignado</label>
-            <select id="recDetailCubicadorAsignado" style="width:100%; font-size:12px;">
-              <option value="">— Sin asignar —</option>
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; flex-wrap:wrap; gap:8px;">
+          <h4 style="margin:0; font-size:13px; color:#1565C0;">💬 Respuesta del Responsable</h4>
+          <div style="display:flex; gap:12px; align-items:center;">
+            <div style="font-size:12px;">Cubicador: <strong id="recDetailCubicadorNombre" style="color:#1565C0;">Sin asignar</strong></div>
+            <select id="recDetailAplica" onchange="cambiarAplicaReclamo(); _updateAplicaBadge();" style="font-size:11px; font-weight:600; padding:3px 10px; border-radius:12px; border:2px solid #ccc; cursor:pointer;">
+              <option value="pendiente">⏳ Pendiente</option>
+              <option value="si">✅ Sí Aplica</option>
+              <option value="no">❌ No Aplica</option>
             </select>
           </div>
-          <button id="btnCambiarCubicador" class="secondary" style="font-size:10px; padding:3px 10px; display:none;" onclick="cambiarCubicadorAsignado()">Guardar</button>
-          <span id="recCubicadorMsg" class="muted" style="font-size:10px;"></span>
         </div>
+        <div id="recRespuestaInfo" style="font-size:11px; color:#666; margin-bottom:6px;"></div>
         <div style="margin-bottom:6px;">
           <label style="font-size:11px; color:#666;">Explicación / Justificación</label>
           <textarea id="recDetailRespuestaTexto" rows="3" style="width:100%; font-size:12px; resize:vertical;" placeholder="Explicación detallada del responsable..."></textarea>
@@ -397,14 +393,6 @@
             <label style="font-size:11px; color:#666;">Fecha análisis</label>
             <input type="date" id="recDetailFechaAnalisis" style="width:100%; font-size:12px;" />
           </div>
-        </div>
-        <div style="margin-top:6px;">
-          <label style="font-size:11px; color:#666;">Explicación de la causa</label>
-          <textarea id="recDetailExplicacionCausa" rows="2" style="width:100%; font-size:12px; resize:vertical;" placeholder="Explicación detallada de la causa raíz..."></textarea>
-        </div>
-        <div style="margin-top:6px;">
-          <label style="font-size:11px; color:#666;">Observaciones adicionales</label>
-          <textarea id="recDetailObservaciones" rows="2" style="width:100%; font-size:12px; resize:vertical;" placeholder="Observaciones adicionales..."></textarea>
         </div>
         <div class="row" style="gap:8px; margin-top:6px; align-items:flex-end;">
           <div class="col" style="max-width:160px;">
@@ -572,6 +560,123 @@
 
       </div>
     </div><!-- /recTabDashboards -->
+
+    <!-- ==================== PRESENTACIONES TAB ==================== -->
+    <div id="recTabPresentaciones" style="display:none;">
+      <div style="display:flex; gap:20px; align-items:flex-start;">
+
+        <!-- LEFT PANEL: Selector + Antecedentes -->
+        <div style="flex:1; min-width:0;">
+          <div class="card" style="border-top:3px solid #7B1FA2;">
+            <h3 style="margin:0 0 10px 0; color:#7B1FA2;">🎤 Presentaciones de Reclamos</h3>
+            <div style="margin-bottom:10px;">
+              <label style="font-size:11px; color:#666;">Seleccionar reclamo para presentar</label>
+              <select id="presReclamoSelect" onchange="seleccionarReclamoPres()" style="width:100%; font-size:12px;">
+                <option value="">— Seleccionar reclamo —</option>
+              </select>
+            </div>
+
+            <!-- Antecedentes viewer (hidden until selection) -->
+            <div id="presAntecedentes" style="display:none;">
+              <!-- Info header -->
+              <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:8px; font-size:11px; color:#666;">
+                <span><strong>Correlativo:</strong> <span id="presCorrelativo">—</span></span>
+                <span><strong>Obra:</strong> <span id="presProyecto">—</span></span>
+                <span><strong>Cubicador:</strong> <span id="presCubicador" style="color:#1565C0; font-weight:600;">—</span></span>
+                <span><strong>Estado:</strong> <span id="presEstado">—</span></span>
+                <span><strong>Aplica:</strong> <span id="presAplica">—</span></span>
+              </div>
+
+              <!-- Sección Roja: Antecedentes -->
+              <div style="padding:10px; background:#fff5f5; border-radius:6px; border:1px solid #ffcdd2; margin-bottom:8px;">
+                <h4 style="margin:0 0 6px 0; font-size:12px; color:#b42318;">📋 Antecedentes del Reclamo</h4>
+                <div style="font-size:12px;">
+                  <div><strong>Título:</strong> <span id="presTitulo">—</span></div>
+                  <div style="margin-top:4px;"><strong>Tipo:</strong> <span id="presTipo">—</span> · <strong>Detectado por:</strong> <span id="presDetectado">—</span> · <strong>Fecha:</strong> <span id="presFecha">—</span></div>
+                  <div style="margin-top:6px;"><strong>Descripción:</strong></div>
+                  <div id="presDescripcion" style="margin-top:2px; padding:6px; background:#fff; border-radius:4px; white-space:pre-wrap; font-size:11px; max-height:120px; overflow-y:auto;">—</div>
+                </div>
+              </div>
+
+              <!-- Sección Azul: Análisis -->
+              <div style="padding:10px; background:#e3f2fd; border-radius:6px; border:1px solid #bbdefb; margin-bottom:8px;">
+                <h4 style="margin:0 0 6px 0; font-size:12px; color:#1565C0;">💬 Análisis del Responsable</h4>
+                <div style="font-size:12px;">
+                  <div><strong>Causa Ishikawa:</strong> <span id="presIshikawa">—</span></div>
+                  <div style="margin-top:2px;"><strong>Área responsable:</strong> <span id="presArea">—</span></div>
+                  <div style="margin-top:6px;"><strong>Explicación / Justificación:</strong></div>
+                  <div id="presRespuesta" style="margin-top:2px; padding:6px; background:#fff; border-radius:4px; white-space:pre-wrap; font-size:11px; max-height:120px; overflow-y:auto;">—</div>
+                </div>
+                <div style="margin-top:4px; font-size:11px; color:#666;">
+                  <span id="presKilos" style="display:none;"><strong>Kilos mal fabricados:</strong> <span id="presKilosVal">0</span> kg</span>
+                </div>
+              </div>
+
+              <!-- Presentación status -->
+              <div id="presYaPresentado" style="display:none; padding:10px; background:#e8f5e9; border-radius:6px; border:1px solid #c8e6c9;">
+                <h4 style="margin:0 0 4px 0; font-size:12px; color:#2e7d32;">✅ Ya Presentado</h4>
+                <div style="font-size:11px; color:#666;">
+                  <div><strong>Fecha:</strong> <span id="presYaFecha">—</span></div>
+                  <div><strong>Presentado por:</strong> <span id="presYaPor">—</span></div>
+                  <div><strong>Asistentes:</strong> <span id="presYaAsistentes">—</span></div>
+                  <div style="margin-top:4px;"><strong>Comentarios:</strong></div>
+                  <div id="presYaComentarios" style="padding:4px; background:#fff; border-radius:4px; white-space:pre-wrap; font-size:11px;">—</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- RIGHT PANEL: Registration Form + Dashboards -->
+        <div style="width:380px; flex-shrink:0;">
+          <!-- Registration form -->
+          <div class="card" id="presRegistroCard" style="display:none; border-top:3px solid #7B1FA2;">
+            <h4 style="margin:0 0 8px 0; font-size:13px; color:#7B1FA2;">📝 Registrar Presentación</h4>
+            <div style="margin-bottom:8px;">
+              <label style="font-size:11px; color:#666; font-weight:600;">Asistentes (cubicadores) *</label>
+              <div id="presAsistentesCheckboxes" style="max-height:120px; overflow-y:auto; padding:6px; background:#f5f5f5; border-radius:4px; margin-top:4px;">
+              </div>
+            </div>
+            <div style="margin-bottom:8px;">
+              <label style="font-size:11px; color:#666; font-weight:600;">Comentarios de la presentación *</label>
+              <textarea id="presComentarios" rows="4" style="width:100%; font-size:12px; resize:vertical; margin-top:4px;" placeholder="Resumen de la presentación, acuerdos, observaciones..."></textarea>
+            </div>
+            <div style="display:flex; gap:8px; align-items:center;">
+              <button onclick="guardarPresentacion()" style="font-size:12px; padding:6px 16px; background:#7B1FA2; border-color:#7B1FA2; color:white;">✅ Marcar como Presentado</button>
+              <span id="presGuardarMsg" class="muted" style="font-size:11px;"></span>
+            </div>
+          </div>
+
+          <!-- Dashboards -->
+          <div class="card" style="border-top:3px solid #7B1FA2;">
+            <h4 style="margin:0 0 10px 0; font-size:13px; color:#7B1FA2;">📊 Estado de Presentaciones</h4>
+            <!-- Global KPIs -->
+            <div style="display:flex; gap:10px; margin-bottom:12px;">
+              <div style="flex:1; text-align:center; padding:10px; background:#e8f5e9; border-radius:8px;">
+                <div style="font-size:10px; color:#888; text-transform:uppercase;">Presentados</div>
+                <div id="presDashPresentados" style="font-size:28px; font-weight:700; color:#2e7d32;">0</div>
+              </div>
+              <div style="flex:1; text-align:center; padding:10px; background:#fff3e0; border-radius:8px;">
+                <div style="font-size:10px; color:#888; text-transform:uppercase;">Por Presentar</div>
+                <div id="presDashPorPresentar" style="font-size:28px; font-weight:700; color:#e65100;">0</div>
+              </div>
+            </div>
+            <!-- Chart: Por presentar por cubicador -->
+            <div style="margin-bottom:10px;">
+              <div style="font-size:11px; color:#888; margin-bottom:4px;">Por Presentar por Cubicador</div>
+              <div style="position:relative; height:160px;"><canvas id="presChartPorPresentar"></canvas></div>
+            </div>
+            <!-- Chart: Presentados por cubicador -->
+            <div>
+              <div style="font-size:11px; color:#888; margin-bottom:4px;">Presentados por Cubicador</div>
+              <div style="position:relative; height:160px;"><canvas id="presChartPresentados"></canvas></div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div><!-- /recTabPresentaciones -->
+
   </div>
 
   <!-- MODAL ISHIKAWA -->

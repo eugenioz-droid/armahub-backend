@@ -465,9 +465,9 @@ MIGRATIONS = [
         "DO $$ BEGIN ALTER TABLE proyectos DROP COLUMN calculista; EXCEPTION WHEN undefined_column THEN NULL; END $$;",
     ]),
     (31, "proyecto_usuarios: roles usc/cubicador/externo/cliente/admin", [
-        "ALTER TABLE proyecto_usuarios DROP CONSTRAINT IF EXISTS proyecto_usuarios_rol_check;",
-        "UPDATE proyecto_usuarios SET rol = 'cubicador' WHERE rol NOT IN ('admin','usc','cubicador','externo','cliente');",
-        "ALTER TABLE proyecto_usuarios ADD CONSTRAINT proyecto_usuarios_rol_check CHECK (rol IN ('admin','usc','cubicador','externo','cliente'));",
+        "ALTER TABLE proyecto_usuarios DROP CONSTRAINT IF EXISTS proyecto_usuarios_rol_check",
+        "UPDATE proyecto_usuarios SET rol = 'cubicador' WHERE rol NOT IN ('admin','usc','cubicador','externo','cliente')",
+        "ALTER TABLE proyecto_usuarios ADD CONSTRAINT proyecto_usuarios_rol_check CHECK (rol IN ('admin','usc','cubicador','externo','cliente'))",
     ]),
     (32, "proyecto_aliases: multiples IDs de proyecto por obra", [
         """CREATE TABLE IF NOT EXISTS proyecto_aliases (
@@ -479,12 +479,19 @@ MIGRATIONS = [
         "CREATE INDEX IF NOT EXISTS idx_proyecto_aliases_proyecto ON proyecto_aliases(id_proyecto)",
     ]),
     (33, "reclamos: agregar tipo 'atraso' al CHECK de tipo_reclamo", [
-        "ALTER TABLE reclamos DROP CONSTRAINT IF EXISTS reclamos_tipo_reclamo_check;",
-        "ALTER TABLE reclamos ADD CONSTRAINT reclamos_tipo_reclamo_check CHECK (tipo_reclamo IN ('error','faltante','atraso'));",
+        "ALTER TABLE reclamos DROP CONSTRAINT IF EXISTS reclamos_tipo_reclamo_check",
+        "ALTER TABLE reclamos ADD CONSTRAINT reclamos_tipo_reclamo_check CHECK (tipo_reclamo IN ('error','faltante','atraso'))",
     ]),
     (34, "reclamos: agregar tipo 'actualizacion_portal' al CHECK de tipo_reclamo", [
-        "ALTER TABLE reclamos DROP CONSTRAINT IF EXISTS reclamos_tipo_reclamo_check;",
-        "ALTER TABLE reclamos ADD CONSTRAINT reclamos_tipo_reclamo_check CHECK (tipo_reclamo IN ('error','faltante','atraso','actualizacion_portal'));",
+        "ALTER TABLE reclamos DROP CONSTRAINT IF EXISTS reclamos_tipo_reclamo_check",
+        "ALTER TABLE reclamos ADD CONSTRAINT reclamos_tipo_reclamo_check CHECK (tipo_reclamo IN ('error','faltante','atraso','actualizacion_portal'))",
+    ]),
+    (35, "reclamos: campos de presentación semanal", [
+        "ALTER TABLE reclamos ADD COLUMN IF NOT EXISTS presentacion_realizada BOOLEAN DEFAULT FALSE",
+        "ALTER TABLE reclamos ADD COLUMN IF NOT EXISTS presentacion_fecha TEXT",
+        "ALTER TABLE reclamos ADD COLUMN IF NOT EXISTS presentacion_por TEXT",
+        "ALTER TABLE reclamos ADD COLUMN IF NOT EXISTS presentacion_asistentes TEXT",
+        "ALTER TABLE reclamos ADD COLUMN IF NOT EXISTS presentacion_comentarios TEXT",
     ]),
 ]
 

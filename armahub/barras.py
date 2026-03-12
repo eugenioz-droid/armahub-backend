@@ -1221,6 +1221,13 @@ def eliminar_proyecto(id_proyecto: str, user=Depends(get_current_user)):
             cur.execute("SELECT COUNT(*) FROM barras WHERE id_proyecto = %s", (id_proyecto,))
             barras_count = int(cur.fetchone()[0])
 
+            cur.execute("SELECT COUNT(*) FROM reclamos WHERE id_proyecto = %s", (id_proyecto,))
+            reclamos_count = int(cur.fetchone()[0])
+
+            # Bloquear eliminación si hay reclamos asociados (cualquier rol)
+            if reclamos_count > 0:
+                raise HTTPException(status_code=403, detail=f"No puedes eliminar una obra con {reclamos_count} reclamos asociados. Contacta al administrador.")
+
             # Cubicador: solo puede eliminar obras vacías
             if user.get("role") == "cubicador" and barras_count > 0:
                 raise HTTPException(status_code=403, detail=f"No puedes eliminar una obra con {barras_count} barras cargadas. Contacta al administrador.")
@@ -1413,12 +1420,12 @@ def landing_indicadores(user=Depends(get_current_user)):
                     SELECT r.creado_por,
                            COALESCE(u.nombre, '') AS nombre,
                            COALESCE(u.apellido, '') AS apellido,
-                           EXTRACT(ISODOW FROM r.fecha_creacion::timestamp)::INTEGER AS dow,
+                           EXTRACT(ISODOW FROM COALESCE(r.fecha_deteccion, r.fecha_creacion)::timestamp)::INTEGER AS dow,
                            COUNT(*) AS cnt
                     FROM reclamos r
                     LEFT JOIN users u ON u.email = r.creado_por
-                    WHERE LEFT(r.fecha_creacion, 10) >= %s
-                      AND LEFT(r.fecha_creacion, 10) <= %s
+                    WHERE LEFT(COALESCE(r.fecha_deteccion, r.fecha_creacion), 10) >= %s
+                      AND LEFT(COALESCE(r.fecha_deteccion, r.fecha_creacion), 10) <= %s
                     GROUP BY r.creado_por, u.nombre, u.apellido, dow
                     ORDER BY r.creado_por, dow
                 """, (monday, sunday))

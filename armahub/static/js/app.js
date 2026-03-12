@@ -1380,6 +1380,7 @@ async function loadCargas() {
   container.innerHTML = `
     <table style="width:100%;">
       <thead><tr>
+        <th style="width:30px;"><input type="checkbox" id="selectAllCargas" onchange="toggleAllCargas()" style="cursor:pointer;"></th>
         <th>Proyecto</th><th>Archivo</th><th>Plano</th><th>Barras</th><th>Kilos</th><th>Versión</th><th>Usuario</th><th>Fecha</th>
       </tr></thead>
       <tbody>${data.cargas.map(c => {
@@ -1398,6 +1399,7 @@ async function loadCargas() {
           rowBg = ' style="background:#fff5f5;"';
         }
         return `<tr${rowBg}>
+          <td><input type="checkbox" class="carga-checkbox" data-id="${c.id}" onchange="updateCargasSelection()" style="cursor:pointer;"></td>
           <td>${estadoBadge}<strong>${c.nombre_proyecto || c.id_proyecto}</strong></td>
           <td class="muted" style="font-size:11px;">${c.archivo || '-'}</td>
           <td class="muted" style="font-size:11px;">${c.plano_code || '-'}</td>
@@ -1410,6 +1412,76 @@ async function loadCargas() {
       }).join('')}</tbody>
     </table>
   `;
+  updateCargasSelection();
+}
+
+// ========================= CARGAS BULK OPERATIONS =========================
+function toggleAllCargas() {
+  const selectAll = document.getElementById('selectAllCargas');
+  const checkboxes = document.querySelectorAll('.carga-checkbox');
+  checkboxes.forEach(cb => cb.checked = selectAll.checked);
+  updateCargasSelection();
+}
+
+function updateCargasSelection() {
+  const checkboxes = document.querySelectorAll('.carga-checkbox:checked');
+  const count = checkboxes.length;
+  const bulkActions = document.getElementById('cargasBulkActions');
+  const countSpan = document.getElementById('cargasSeleccionadasCount');
+  const selectAll = document.getElementById('selectAllCargas');
+  const allCheckboxes = document.querySelectorAll('.carga-checkbox');
+  
+  if (count > 0) {
+    bulkActions.style.display = '';
+  } else {
+    bulkActions.style.display = 'none';
+  }
+  
+  countSpan.textContent = count;
+  
+  // Update select all checkbox state
+  if (allCheckboxes.length > 0) {
+    selectAll.checked = allCheckboxes.length === count;
+    selectAll.indeterminate = count > 0 && count < allCheckboxes.length;
+  }
+}
+
+function deseleccionarTodasCargas() {
+  document.querySelectorAll('.carga-checkbox').forEach(cb => cb.checked = false);
+  document.getElementById('selectAllCargas').checked = false;
+  updateCargasSelection();
+}
+
+async function eliminarCargasSeleccionadas() {
+  const checkboxes = document.querySelectorAll('.carga-checkbox:checked');
+  if (checkboxes.length === 0) return;
+  
+  const ids = Array.from(checkboxes).map(cb => parseInt(cb.dataset.id));
+  const count = ids.length;
+  
+  if (!confirm(`¿Estás seguro de eliminar ${count} carga(s) seleccionada(s)?\n\nEsta acción eliminará las barras asociadas y no se puede deshacer.`)) {
+    return;
+  }
+  
+  const btn = document.getElementById('btnEliminarCargasSeleccionadas');
+  btn.disabled = true;
+  btn.textContent = 'Eliminando...';
+  
+  try {
+    const response = await apiPost('/cargas/bulk-delete', { ids: ids });
+    if (response && response.ok) {
+      await setGlobalStatus(`✅ ${count} carga(s) eliminada(s) con éxito`, "ok");
+      // Reload the cargas list
+      await loadCargas();
+    } else {
+      await setGlobalStatus('❌ Error al eliminar cargas', "error");
+    }
+  } catch (error) {
+    await setGlobalStatus('❌ Error de conexión al eliminar cargas', "error");
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '🗑️ Eliminar seleccionadas';
+  }
 }
 
 // ========================= BAR MANAGER =========================
@@ -3932,19 +4004,30 @@ const _recCatLabels = {
 function switchRecTab(tab) {
   var mainTab = document.getElementById('recTabMain');
   var dashTab = document.getElementById('recTabDashboards');
+  var presTab = document.getElementById('recTabPresentaciones');
   var btnMain = document.getElementById('recTabBtnMain');
   var btnDash = document.getElementById('recTabBtnDash');
+  var btnPres = document.getElementById('recTabBtnPres');
+
+  // Hide all tabs, reset all buttons
+  mainTab.style.display = 'none';
+  dashTab.style.display = 'none';
+  if (presTab) presTab.style.display = 'none';
+  btnMain.style.borderBottomColor = 'transparent'; btnMain.style.color = '#999';
+  btnDash.style.borderBottomColor = 'transparent'; btnDash.style.color = '#999';
+  if (btnPres) { btnPres.style.borderBottomColor = 'transparent'; btnPres.style.color = '#999'; }
+
   if (tab === 'dashboards') {
-    mainTab.style.display = 'none';
     dashTab.style.display = '';
-    btnMain.style.borderBottomColor = 'transparent'; btnMain.style.color = '#999';
     btnDash.style.borderBottomColor = '#1565C0'; btnDash.style.color = '#1565C0';
     loadRecAdminDashboards();
+  } else if (tab === 'presentaciones') {
+    if (presTab) presTab.style.display = '';
+    if (btnPres) { btnPres.style.borderBottomColor = '#7B1FA2'; btnPres.style.color = '#7B1FA2'; }
+    loadPresentaciones();
   } else {
     mainTab.style.display = '';
-    dashTab.style.display = 'none';
     btnMain.style.borderBottomColor = '#e53935'; btnMain.style.color = '#e53935';
-    btnDash.style.borderBottomColor = 'transparent'; btnDash.style.color = '#999';
     _adminDashLoaded = false;
   }
 }
@@ -3960,6 +4043,11 @@ async function loadRecLanding() {
   // Show dashboards tab button for admin
   var dashBtn = document.getElementById('recTabBtnDash');
   if (dashBtn) dashBtn.style.display = isAdmin ? '' : 'none';
+
+  // Show presentaciones tab button for admin/admin2/cubicador
+  var presBtn = document.getElementById('recTabBtnPres');
+  var presAccess = ['admin','admin2','cubicador'];
+  if (presBtn) presBtn.style.display = presAccess.includes(currentRole) ? '' : 'none';
 
   // Chart 1: KPI
   document.getElementById('recLandTotal').textContent = data.total || 0;
@@ -4544,8 +4632,6 @@ async function verReclamo(id) {
   document.getElementById('recDetailCodCausa').value = data.cod_causa || '';
   document.getElementById('recDetailAreaAplica').value = data.area_aplica || 'Cubicación';
   document.getElementById('recDetailFechaAnalisis').value = data.fecha_analisis || '';
-  document.getElementById('recDetailExplicacionCausa').value = data.explicacion_causa || '';
-  document.getElementById('recDetailObservaciones').value = data.observaciones || '';
   document.getElementById('recDetailKilosMal').value = data.kilos_mal_fabricados != null ? data.kilos_mal_fabricados : '';
   var respInfo = document.getElementById('recRespuestaInfo');
   if (data.respuesta_por) {
@@ -4556,8 +4642,18 @@ async function verReclamo(id) {
   }
   document.getElementById('recRespMsg').textContent = '';
 
-  // Cubicador asignado dropdown in Section 2
-  _populateCubicadorSelect('recDetailCubicadorAsignado', data.cubicador_asignado || '');
+  // Cubicador asignado name display in Section 2
+  var cubNombreEl = document.getElementById('recDetailCubicadorNombre');
+  if (cubNombreEl) {
+    var cubName = 'Sin asignar';
+    if (data.cubicador_asignado) {
+      var found = _recCubicadoresCache.find(function(c) { return c.email === data.cubicador_asignado; });
+      cubName = found ? found.display : data.cubicador_asignado;
+    }
+    cubNombreEl.textContent = cubName;
+    cubNombreEl.style.color = data.cubicador_asignado ? '#1565C0' : '#999';
+  }
+  _updateAplicaBadge();
 
   // SECTION 3: Validación
   document.getElementById('recDetailValidacionResultado').value = data.validacion_resultado || '';
@@ -4624,17 +4720,11 @@ async function verReclamo(id) {
   var detAsigSel = document.getElementById('recDetailAsignadoA');
   if (detAsigSel) detAsigSel.disabled = !(currentRole === 'admin' || currentRole === 'admin2');
 
-  // Cubicador asignado dropdown: admin/admin2 can change
-  var puedeCambiarCub = (currentRole === 'admin' || currentRole === 'admin2');
-  var detCubSel = document.getElementById('recDetailCubicadorAsignado');
-  if (detCubSel) detCubSel.disabled = !puedeCambiarCub;
-  var btnCambiarCub = document.getElementById('btnCambiarCubicador');
-  if (btnCambiarCub) btnCambiarCub.style.display = puedeCambiarCub ? '' : 'none';
 
   // Section 2 (Respuesta): admin/admin2/cubicador/externo. NOT usc.
   var puedeResponder = ['admin','admin2','cubicador','externo'].includes(currentRole);
   if (validado && currentRole !== 'admin') puedeResponder = false;
-  var sec2Fields = ['recDetailRespuestaTexto','recDetailCausaDisplay','recDetailAreaAplica','recDetailFechaAnalisis','recDetailExplicacionCausa','recDetailObservaciones','recDetailKilosMal'];
+  var sec2Fields = ['recDetailRespuestaTexto','recDetailCausaDisplay','recDetailAreaAplica','recDetailFechaAnalisis','recDetailKilosMal'];
   sec2Fields.forEach(function(fid) { var el = document.getElementById(fid); if (el) el.disabled = !puedeResponder; });
   var btnGuardarResp = document.getElementById('btnGuardarRespuesta');
   if (btnGuardarResp) btnGuardarResp.style.display = puedeResponder ? '' : 'none';
@@ -4890,6 +4980,19 @@ async function loadUsuariosUsc() {
   }
 }
 
+function _updateAplicaBadge() {
+  var sel = document.getElementById('recDetailAplica');
+  if (!sel) return;
+  var v = sel.value;
+  if (v === 'si') {
+    sel.style.background = '#e8f5e9'; sel.style.borderColor = '#4caf50'; sel.style.color = '#2e7d32';
+  } else if (v === 'no') {
+    sel.style.background = '#ffebee'; sel.style.borderColor = '#e53935'; sel.style.color = '#b42318';
+  } else {
+    sel.style.background = '#fff8e1'; sel.style.borderColor = '#ffa000'; sel.style.color = '#e65100';
+  }
+}
+
 async function cambiarAplicaReclamo() {
   if (!_reclamoActual) return;
   var val = document.getElementById('recDetailAplica').value;
@@ -4941,16 +5044,9 @@ async function guardarRespuesta() {
     cod_causa: document.getElementById('recDetailCodCausa').value || null,
     area_aplica: document.getElementById('recDetailAreaAplica').value.trim() || null,
     fecha_analisis: document.getElementById('recDetailFechaAnalisis').value || null,
-    explicacion_causa: document.getElementById('recDetailExplicacionCausa').value.trim() || null,
-    observaciones: document.getElementById('recDetailObservaciones').value.trim() || null,
   };
   var kilosVal = document.getElementById('recDetailKilosMal').value;
   if (kilosVal !== '') body.kilos_mal_fabricados = parseFloat(kilosVal);
-  // Admin/admin2: include cubicador_asignado so response is attributed correctly
-  if (currentRole === 'admin' || currentRole === 'admin2') {
-    var cubVal = document.getElementById('recDetailCubicadorAsignado');
-    if (cubVal && cubVal.value) body.cubicador_asignado = cubVal.value;
-  }
   var res = await fetch('/reclamos/' + _reclamoActual.id, {
     method: 'PATCH',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
@@ -5325,6 +5421,225 @@ switchModule = function(mod) {
   _origSwitchModule(mod);
   if (mod !== 'hub') loadModuleData(mod);
 };
+
+// ========================= PRESENTACIONES =========================
+var _presData = null;
+var _presChartPorPresentar = null;
+var _presChartPresentados = null;
+var _presColors = ['#7B1FA2','#1565C0','#e53935','#ff9800','#2e7d32','#00897B','#795548','#607D8B','#F44336','#009688'];
+
+async function loadPresentaciones() {
+  var data = await apiGet('/reclamos/para-presentar');
+  if (!data) return;
+  _presData = data;
+
+  // Populate selector
+  var sel = document.getElementById('presReclamoSelect');
+  sel.innerHTML = '<option value="">— Seleccionar reclamo —</option>';
+  (data.reclamos || []).forEach(function(r) {
+    var badge = r.presentacion_realizada ? '✅ ' : '⏳ ';
+    var opt = document.createElement('option');
+    opt.value = r.id;
+    opt.textContent = badge + (r.correlativo || '#' + r.id) + ' — ' + (r.titulo || '').substring(0, 50) + ' [' + r.cubicador_nombre + ']';
+    sel.appendChild(opt);
+  });
+
+  // Populate asistentes checkboxes
+  var checkDiv = document.getElementById('presAsistentesCheckboxes');
+  checkDiv.innerHTML = '';
+  (data.cubicadores || []).forEach(function(c) {
+    var label = document.createElement('label');
+    label.style.cssText = 'display:flex; align-items:center; gap:4px; font-size:12px; padding:2px 0; cursor:pointer;';
+    label.innerHTML = '<input type="checkbox" class="pres-asistente-cb" value="' + c.email + '" style="cursor:pointer;"> ' + c.nombre;
+    checkDiv.appendChild(label);
+  });
+
+  // Reset view
+  document.getElementById('presAntecedentes').style.display = 'none';
+  document.getElementById('presRegistroCard').style.display = 'none';
+
+  // Load stats
+  loadPresStats();
+}
+
+function seleccionarReclamoPres() {
+  var sel = document.getElementById('presReclamoSelect');
+  var id = parseInt(sel.value);
+  var antDiv = document.getElementById('presAntecedentes');
+  var regCard = document.getElementById('presRegistroCard');
+  var yaPres = document.getElementById('presYaPresentado');
+
+  if (!id || !_presData) {
+    antDiv.style.display = 'none';
+    regCard.style.display = 'none';
+    return;
+  }
+
+  var rec = _presData.reclamos.find(function(r) { return r.id === id; });
+  if (!rec) { antDiv.style.display = 'none'; regCard.style.display = 'none'; return; }
+
+  antDiv.style.display = '';
+
+  // Fill info header
+  document.getElementById('presCorrelativo').textContent = rec.correlativo || '#' + rec.id;
+  document.getElementById('presProyecto').textContent = rec.nombre_proyecto || '—';
+  document.getElementById('presCubicador').textContent = rec.cubicador_nombre || '—';
+  var estadoLabels = {abierto:'Abierto', en_analisis:'En análisis', accion_correctiva:'Acción correctiva', validacion:'Validación', cerrado:'Cerrado', rechazado:'Rechazado'};
+  document.getElementById('presEstado').textContent = estadoLabels[rec.estado] || rec.estado;
+  var aplicaLabels = {si:'Sí aplica', no:'No aplica', pendiente:'Pendiente'};
+  var aplicaEl = document.getElementById('presAplica');
+  aplicaEl.textContent = aplicaLabels[rec.aplica] || 'Pendiente';
+  aplicaEl.style.color = rec.aplica === 'si' ? '#2e7d32' : (rec.aplica === 'no' ? '#b42318' : '#e65100');
+
+  // Red section
+  document.getElementById('presTitulo').textContent = rec.titulo || '—';
+  var tipoLabels = {error:'Error', faltante:'Faltante', atraso:'Atraso', actualizacion_portal:'Act. Portal'};
+  document.getElementById('presTipo').textContent = tipoLabels[rec.tipo_reclamo] || rec.tipo_reclamo || '—';
+  document.getElementById('presDetectado').textContent = rec.detectado_por || '—';
+  document.getElementById('presFecha').textContent = rec.fecha_deteccion ? rec.fecha_deteccion.substring(0, 10) : '—';
+  document.getElementById('presDescripcion').textContent = rec.descripcion || '—';
+
+  // Blue section
+  var ishLabels = {mano_de_obra:'Personas', metodo:'Método', material:'Material', maquina:'Máquina', medicion:'Medida', medio_ambiente:'Medio Amb.'};
+  var ishText = '—';
+  if (rec.cod_causa) {
+    ishText = rec.cod_causa;
+    if (rec.sub_causa) ishText += ' — ' + rec.sub_causa;
+  } else if (rec.categoria_ishikawa) {
+    ishText = ishLabels[rec.categoria_ishikawa] || rec.categoria_ishikawa;
+  }
+  document.getElementById('presIshikawa').textContent = ishText;
+  document.getElementById('presArea').textContent = rec.area_aplica || '—';
+  document.getElementById('presRespuesta').textContent = rec.respuesta_texto || '—';
+
+  var kilosEl = document.getElementById('presKilos');
+  if (rec.kilos_mal_fabricados && rec.kilos_mal_fabricados > 0) {
+    kilosEl.style.display = '';
+    document.getElementById('presKilosVal').textContent = rec.kilos_mal_fabricados;
+  } else {
+    kilosEl.style.display = 'none';
+  }
+
+  // Already presented?
+  if (rec.presentacion_realizada) {
+    yaPres.style.display = '';
+    regCard.style.display = 'none';
+    document.getElementById('presYaFecha').textContent = rec.presentacion_fecha ? rec.presentacion_fecha.replace('T', ' ').substring(0, 19) : '—';
+    document.getElementById('presYaPor').textContent = rec.presentacion_por || '—';
+    // Resolve asistentes emails to names
+    var asistEmails = (rec.presentacion_asistentes || '').split(',').filter(Boolean);
+    var asistNames = asistEmails.map(function(e) {
+      var found = (_presData.cubicadores || []).find(function(c) { return c.email === e; });
+      return found ? found.nombre : e;
+    });
+    document.getElementById('presYaAsistentes').textContent = asistNames.join(', ') || '—';
+    document.getElementById('presYaComentarios').textContent = rec.presentacion_comentarios || '—';
+  } else {
+    yaPres.style.display = 'none';
+    regCard.style.display = '';
+    // Reset form
+    document.querySelectorAll('.pres-asistente-cb').forEach(function(cb) { cb.checked = false; });
+    document.getElementById('presComentarios').value = '';
+    document.getElementById('presGuardarMsg').textContent = '';
+  }
+}
+
+async function guardarPresentacion() {
+  var sel = document.getElementById('presReclamoSelect');
+  var id = parseInt(sel.value);
+  if (!id) return;
+
+  var msg = document.getElementById('presGuardarMsg');
+
+  // Collect checked asistentes
+  var asistentes = [];
+  document.querySelectorAll('.pres-asistente-cb:checked').forEach(function(cb) {
+    asistentes.push(cb.value);
+  });
+  var comentarios = document.getElementById('presComentarios').value.trim();
+
+  if (asistentes.length === 0) {
+    msg.textContent = 'Selecciona al menos un asistente'; msg.style.color = '#b42318';
+    return;
+  }
+  if (!comentarios) {
+    msg.textContent = 'Ingresa comentarios de la presentación'; msg.style.color = '#b42318';
+    return;
+  }
+
+  msg.textContent = 'Guardando...'; msg.style.color = '#666';
+
+  var res = await fetch('/reclamos/' + id + '/presentar', {
+    method: 'POST',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ asistentes: asistentes, comentarios: comentarios })
+  });
+  if (res.status === 401) { logout(); return; }
+  var data = await res.json();
+  if (data.ok) {
+    msg.textContent = '✅ Presentación registrada'; msg.style.color = '#2e7d32';
+    await loadPresentaciones();
+    // Re-select the same reclamo to show the "Ya presentado" view
+    sel.value = id;
+    seleccionarReclamoPres();
+  } else {
+    msg.textContent = 'Error: ' + (data.detail || 'desconocido'); msg.style.color = '#b42318';
+  }
+}
+
+async function loadPresStats() {
+  var data = await apiGet('/reclamos/presentaciones-stats');
+  if (!data) return;
+
+  document.getElementById('presDashPresentados').textContent = data.presentados || 0;
+  document.getElementById('presDashPorPresentar').textContent = data.por_presentar || 0;
+
+  // Chart: Por Presentar por Cubicador
+  var ppData = data.por_presentar_por_cubicador || [];
+  var ctxPP = document.getElementById('presChartPorPresentar');
+  if (ctxPP) {
+    if (_presChartPorPresentar) _presChartPorPresentar.destroy();
+    _presChartPorPresentar = new Chart(ctxPP.getContext('2d'), {
+      type: 'bar',
+      data: {
+        labels: ppData.map(function(d) { return d.nombre; }),
+        datasets: [{
+          data: ppData.map(function(d) { return d.total; }),
+          backgroundColor: ppData.map(function(d, i) { return _presColors[i % _presColors.length]; }),
+          borderRadius: 3
+        }]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false, indexAxis: 'y',
+        plugins: { legend: { display: false } },
+        scales: { x: { beginAtZero: true, ticks: { stepSize: 1, font: { size: 10 } } }, y: { ticks: { font: { size: 10 } } } }
+      }
+    });
+  }
+
+  // Chart: Presentados por Cubicador
+  var prData = data.presentados_por_cubicador || [];
+  var ctxPR = document.getElementById('presChartPresentados');
+  if (ctxPR) {
+    if (_presChartPresentados) _presChartPresentados.destroy();
+    _presChartPresentados = new Chart(ctxPR.getContext('2d'), {
+      type: 'bar',
+      data: {
+        labels: prData.map(function(d) { return d.nombre; }),
+        datasets: [{
+          data: prData.map(function(d) { return d.total; }),
+          backgroundColor: prData.map(function(d, i) { return _presColors[i % _presColors.length]; }),
+          borderRadius: 3
+        }]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false, indexAxis: 'y',
+        plugins: { legend: { display: false } },
+        scales: { x: { beginAtZero: true, ticks: { stepSize: 1, font: { size: 10 } } }, y: { ticks: { font: { size: 10 } } } }
+      }
+    });
+  }
+}
 
 // ========================= LANDING INDICADORES =========================
 var _hubChartCubicado = null;
