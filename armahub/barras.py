@@ -1358,3 +1358,111 @@ def get_autorizados(id_proyecto: str, user=Depends(get_current_user)):
             for r in rows
         ]
     }
+
+
+# ========================= LANDING INDICADORES =========================
+
+@router.get("/landing/indicadores")
+def landing_indicadores(user=Depends(get_current_user)):
+    """Flash indicators for the hub landing page, role-aware."""
+    from datetime import timedelta
+    email = user.get("email", "")
+    role = user.get("role", "usc")
+    now = datetime.now(timezone.utc)
+    # Monday of current week
+    monday = (now - timedelta(days=now.weekday())).strftime("%Y-%m-%d")
+    sunday = (now - timedelta(days=now.weekday()) + timedelta(days=6)).strftime("%Y-%m-%d")
+
+    result = {}
+
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            # --- Cubicado semana (visible to admin, admin2, cubicador) ---
+            if role in ("admin", "admin2", "cubicador"):
+                cur.execute("""
+                    SELECT i.usuario,
+                           COALESCE(u.nombre, '') AS nombre,
+                           COALESCE(u.apellido, '') AS apellido,
+                           EXTRACT(ISODOW FROM i.fecha::timestamp)::INTEGER AS dow,
+                           COALESCE(SUM(i.kilos), 0) AS kilos
+                    FROM imports i
+                    JOIN users u ON u.email = i.usuario
+                    WHERE u.role = 'cubicador'
+                      AND LEFT(i.fecha, 10) >= %s
+                      AND LEFT(i.fecha, 10) <= %s
+                    GROUP BY i.usuario, u.nombre, u.apellido, dow
+                    ORDER BY i.usuario, dow
+                """, (monday, sunday))
+                rows = cur.fetchall()
+                cub_map = {}
+                for r in rows:
+                    email_cub = r[0]
+                    if email_cub not in cub_map:
+                        nombre = ((r[1] or "") + " " + (r[2] or "")).strip()
+                        cub_map[email_cub] = {
+                            "email": email_cub,
+                            "nombre": nombre or email_cub.split("@")[0],
+                            "dias": [0, 0, 0, 0, 0, 0, 0],
+                        }
+                    cub_map[email_cub]["dias"][r[3] - 1] = round(float(r[4]), 1)
+                result["cubicado_semana"] = list(cub_map.values())
+
+            # --- Reclamos levantados semana (visible to admin, admin2, usc) ---
+            if role in ("admin", "admin2", "usc"):
+                cur.execute("""
+                    SELECT r.creado_por,
+                           COALESCE(u.nombre, '') AS nombre,
+                           COALESCE(u.apellido, '') AS apellido,
+                           EXTRACT(ISODOW FROM r.fecha_creacion::timestamp)::INTEGER AS dow,
+                           COUNT(*) AS cnt
+                    FROM reclamos r
+                    LEFT JOIN users u ON u.email = r.creado_por
+                    WHERE LEFT(r.fecha_creacion, 10) >= %s
+                      AND LEFT(r.fecha_creacion, 10) <= %s
+                    GROUP BY r.creado_por, u.nombre, u.apellido, dow
+                    ORDER BY r.creado_por, dow
+                """, (monday, sunday))
+                rows = cur.fetchall()
+                usc_map = {}
+                for r in rows:
+                    email_usc = r[0] or "desconocido"
+                    if email_usc not in usc_map:
+                        nombre = ((r[1] or "") + " " + (r[2] or "")).strip()
+                        usc_map[email_usc] = {
+                            "email": email_usc,
+                            "nombre": nombre or email_usc.split("@")[0],
+                            "dias": [0, 0, 0, 0, 0, 0, 0],
+                        }
+                    usc_map[email_usc]["dias"][r[3] - 1] = int(r[4])
+                result["reclamos_semana"] = list(usc_map.values())
+
+            # --- Alertas: reclamos abiertos ---
+            if role in ("admin", "admin2"):
+                cur.execute("""
+                    SELECT estado, COUNT(*) FROM reclamos
+                    WHERE estado NOT IN ('cerrado', 'rechazado')
+                    GROUP BY estado ORDER BY 2 DESC
+                """)
+            elif role == "cubicador":
+                cur.execute("""
+                    SELECT estado, COUNT(*) FROM reclamos
+                    WHERE (cubicador_asignado = %s OR respuesta_por = %s)
+                      AND estado NOT IN ('cerrado', 'rechazado')
+                    GROUP BY estado ORDER BY 2 DESC
+                """, (email, email))
+            elif role == "usc":
+                cur.execute("""
+                    SELECT estado, COUNT(*) FROM reclamos
+                    WHERE (creado_por = %s OR asignado_a = %s)
+                      AND estado NOT IN ('cerrado', 'rechazado')
+                    GROUP BY estado ORDER BY 2 DESC
+                """, (email, email))
+            else:
+                cur.execute("SELECT estado, 0 FROM reclamos WHERE FALSE")
+
+            alertas_rows = cur.fetchall()
+            alertas = [{"estado": r[0], "count": int(r[1])} for r in alertas_rows]
+            total_abiertos = sum(a["count"] for a in alertas)
+            result["alertas"] = {"total_abiertos": total_abiertos, "por_estado": alertas}
+
+    return result

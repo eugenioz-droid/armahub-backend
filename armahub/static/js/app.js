@@ -314,6 +314,7 @@ function switchModule(mod) {
     container.style.display = 'none';
     hub.style.display = 'block';
     currentModule = 'hub';
+    loadLandingIndicadores();
     return;
   }
 
@@ -412,6 +413,9 @@ async function loadMe() {
   // Status message
   const roleLabels = {admin:'ADMIN', admin2:'Admin2', cubicador:'Cubicador', usc:'USC', externo:'Externo', cliente:'Cliente'};
   await setGlobalStatus("Sesión como " + (roleLabels[currentRole] || currentRole), "ok");
+
+  // Load landing flash indicators
+  loadLandingIndicadores();
 }
 
 async function loadProyectos() {
@@ -5321,6 +5325,111 @@ switchModule = function(mod) {
   _origSwitchModule(mod);
   if (mod !== 'hub') loadModuleData(mod);
 };
+
+// ========================= LANDING INDICADORES =========================
+var _hubChartCubicado = null;
+var _hubChartReclamos = null;
+var _hubCubColors = ['#2e7d32','#1565C0','#ff9800','#e53935','#7B1FA2','#00897B','#795548','#607D8B','#F44336','#009688'];
+
+async function loadLandingIndicadores() {
+  var data = await apiGet('/landing/indicadores');
+  if (!data) return;
+
+  var diasLabels = ['Lun','Mar','Mie','Jue','Vie','Sab','Dom'];
+
+  // --- Alertas reclamos ---
+  var alertaWrap = document.getElementById('hubAlertaReclamos');
+  var alertas = data.alertas || {};
+  if (alertaWrap) {
+    if (alertas.total_abiertos > 0) {
+      alertaWrap.style.display = '';
+      document.getElementById('hubAlertaTexto').textContent = alertas.total_abiertos + ' reclamo(s) abiertos';
+      var detParts = (alertas.por_estado || []).map(function(a) {
+        var labels = {abierto:'Abiertos', en_analisis:'En análisis', accion_correctiva:'Acción correctiva', validacion:'En validación'};
+        return (labels[a.estado] || a.estado) + ': ' + a.count;
+      });
+      document.getElementById('hubAlertaDetalle').textContent = detParts.join(' · ');
+    } else {
+      alertaWrap.style.display = 'none';
+    }
+  }
+
+  // --- Cubicado semana (grouped bar by cubicador) ---
+  var cubWrap = document.getElementById('hubCubicadoWrap');
+  var cubData = data.cubicado_semana || [];
+  if (cubWrap) {
+    if (cubData.length > 0) {
+      cubWrap.style.display = '';
+      var cubDS = cubData.map(function(cub, idx) {
+        return {
+          label: cub.nombre,
+          data: cub.dias,
+          backgroundColor: _hubCubColors[idx % _hubCubColors.length],
+          borderRadius: 2
+        };
+      });
+      var totalKilos = cubData.reduce(function(sum, c) {
+        return sum + c.dias.reduce(function(s, v) { return s + v; }, 0);
+      }, 0);
+      document.getElementById('hubCubicadoTotal').textContent = 'Total semana: ' + totalKilos.toLocaleString('es-CL', {maximumFractionDigits: 1}) + ' kg';
+
+      var ctxCub = document.getElementById('hubChartCubicado').getContext('2d');
+      if (_hubChartCubicado) _hubChartCubicado.destroy();
+      _hubChartCubicado = new Chart(ctxCub, {
+        type: 'bar',
+        data: { labels: diasLabels, datasets: cubDS },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          plugins: { legend: { position: 'bottom', labels: { font: { size: 10 }, padding: 8, usePointStyle: true, pointStyle: 'rect' } } },
+          scales: {
+            y: { beginAtZero: true, ticks: { font: { size: 9 } } },
+            x: { ticks: { font: { size: 10 } } }
+          }
+        }
+      });
+    } else {
+      cubWrap.style.display = 'none';
+    }
+  }
+
+  // --- Reclamos levantados semana (grouped bar by USC) ---
+  var recWrap = document.getElementById('hubReclamosWrap');
+  var recData = data.reclamos_semana || [];
+  if (recWrap) {
+    if (recData.length > 0) {
+      recWrap.style.display = '';
+      var recDS = recData.map(function(usc, idx) {
+        return {
+          label: usc.nombre,
+          data: usc.dias,
+          backgroundColor: _hubCubColors[idx % _hubCubColors.length],
+          borderRadius: 2
+        };
+      });
+      var totalRec = recData.reduce(function(sum, u) {
+        return sum + u.dias.reduce(function(s, v) { return s + v; }, 0);
+      }, 0);
+      document.getElementById('hubReclamosTotal').textContent = 'Total semana: ' + totalRec + ' reclamos';
+
+      var ctxRec = document.getElementById('hubChartReclamos').getContext('2d');
+      if (_hubChartReclamos) _hubChartReclamos.destroy();
+      _hubChartReclamos = new Chart(ctxRec, {
+        type: 'bar',
+        data: { labels: diasLabels, datasets: recDS },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          plugins: { legend: { position: 'bottom', labels: { font: { size: 10 }, padding: 8, usePointStyle: true, pointStyle: 'rect' } } },
+          scales: {
+            y: { beginAtZero: true, ticks: { stepSize: 1, font: { size: 9 } } },
+            x: { ticks: { font: { size: 10 } } }
+          }
+        }
+      });
+    } else {
+      recWrap.style.display = 'none';
+    }
+  }
+}
 
 // Prevent browser from opening files dropped outside the drop zone
 document.addEventListener('dragover', function(e) { e.preventDefault(); });
