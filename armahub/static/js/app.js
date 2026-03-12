@@ -3728,8 +3728,6 @@ async function loadRecCubicadoresDropdown() {
   if (!res.ok) return;
   var data = await res.json();
   _recCubicadoresCache = data.cubicadores || [];
-  // Populate create form cubicador
-  _populateCubicadorSelect('recCubicadorAsignado', '');
 }
 
 function _populateCubicadorSelect(elId, currentVal) {
@@ -3867,7 +3865,6 @@ async function crearReclamo() {
   var detectadoPor = document.getElementById('recDetectadoPor').value;
   var fechaDeteccion = document.getElementById('recFechaDeteccion').value;
   var idCalidad = document.getElementById('recIdCalidad') ? document.getElementById('recIdCalidad').value.trim() : '';
-  var cubicadorAsignado = document.getElementById('recCubicadorAsignado') ? document.getElementById('recCubicadorAsignado').value : '';
   if (proyecto) body.id_proyecto = proyecto;
   if (tipoReclamo) body.tipo_reclamo = tipoReclamo;
   if (responsable) body.responsable = responsable;
@@ -3876,7 +3873,6 @@ async function crearReclamo() {
   if (detectadoPor) body.detectado_por = detectadoPor;
   if (fechaDeteccion) body.fecha_deteccion = fechaDeteccion;
   if (idCalidad) body.id_calidad = idCalidad;
-  if (cubicadorAsignado) body.cubicador_asignado = cubicadorAsignado;
   var res = await fetch('/reclamos', {
     method: 'POST',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
@@ -3899,7 +3895,7 @@ async function crearReclamo() {
     }
     _recCreateStagedFiles = [];
     msg.textContent = label + ' registrado correctamente'; msg.style.color = '#558B2F';
-    ['recTitulo','recDescripcion','recResponsable','recCubicadorAsignado','recAsignadoA','recDetectadoPor','recFechaDeteccion','recIdCalidad'].forEach(function(id) {
+    ['recTitulo','recDescripcion','recResponsable','recAsignadoA','recDetectadoPor','recFechaDeteccion','recIdCalidad'].forEach(function(id) {
       var el = document.getElementById(id); if (el) el.value = '';
     });
     document.getElementById('recProyecto').value = '';
