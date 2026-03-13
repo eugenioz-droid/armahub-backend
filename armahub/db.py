@@ -499,7 +499,7 @@ MIGRATIONS = [
     (37, "barras: índice para navegador de sectores", [
         "CREATE INDEX IF NOT EXISTS idx_barras_proyecto_sector_piso_ciclo ON barras (id_proyecto, sector, piso, ciclo)",
     ]),
-)
+]
 
 
 def _run_migrations(cur) -> int:
