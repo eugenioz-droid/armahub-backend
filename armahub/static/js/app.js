@@ -1001,7 +1001,11 @@ async function eliminarCargasSeleccionadas(idProyecto) {
   
   var res = await apiPost('/cargas/bulk-delete', { ids: ids });
   if (res && res.ok) {
-    alert('Eliminadas ' + res.cargas_eliminadas + ' carga(s) con ' + res.barras_eliminadas + ' barras');
+    var msg = 'Eliminadas ' + res.cargas_eliminadas + ' carga(s) con ' + res.barras_eliminadas + ' barras';
+    if (res.skipped_cargas > 0) {
+      msg += '\nOmitidas: ' + res.skipped_cargas + ' carga(s) (no encontradas o sin permiso)';
+    }
+    alert(msg);
     await loadCargasProyecto(idProyecto);
     await loadProyectos();
     await loadInicio();
@@ -4599,7 +4603,6 @@ async function loadRecAdminDashboards() {
 }
 
 var _recUsersCache = [];
-var _recCubicadoresCache = [];
 async function loadRecUsersDropdown() {
   var res = await fetch('/users/dropdown', { headers: authHeaders() });
   if (!res.ok) return;
@@ -4625,23 +4628,6 @@ async function loadRecUsersDropdown() {
     });
     filterSel.value = fval;
   }
-}
-
-async function loadRecCubicadoresDropdown() {
-  var res = await fetch('/reclamos/cubicadores', { headers: authHeaders() });
-  if (!res.ok) return;
-  var data = await res.json();
-  _recCubicadoresCache = data.cubicadores || [];
-}
-
-function _populateCubicadorSelect(elId, currentVal) {
-  var sel = document.getElementById(elId);
-  if (!sel) return;
-  sel.innerHTML = '<option value="">— Sin asignar —</option>';
-  _recCubicadoresCache.forEach(function(c) {
-    sel.innerHTML += '<option value="' + c.email + '">' + c.display + '</option>';
-  });
-  if (currentVal) sel.value = currentVal;
 }
 
 function populateRecFilterProyecto() {
@@ -5360,30 +5346,6 @@ async function cambiarAplicaReclamo() {
   else { alert('Error: ' + (data.detail || 'desconocido')); }
 }
 
-// ---- Cambiar cubicador asignado (admin/admin2) ----
-async function cambiarCubicadorAsignado() {
-  if (!_reclamoActual) return;
-  var msg = document.getElementById('recCubicadorMsg');
-  var cubVal = document.getElementById('recDetailCubicadorAsignado').value;
-  msg.textContent = 'Guardando...'; msg.style.color = '#666';
-  var body = { cubicador_asignado: cubVal || '' };
-  var res = await fetch('/reclamos/' + _reclamoActual.id, {
-    method: 'PATCH',
-    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
-    body: JSON.stringify(body)
-  });
-  if (res.status === 401) { logout(); return; }
-  var data = await res.json();
-  if (data.ok) {
-    msg.textContent = 'Cubicador actualizado'; msg.style.color = '#558B2F';
-    setTimeout(function() { msg.textContent = ''; }, 2000);
-    await verReclamo(_reclamoActual.id);
-    await loadReclamos();
-  } else {
-    msg.textContent = 'Error: ' + (data.detail || 'desconocido'); msg.style.color = '#b42318';
-  }
-}
-
 // ---- Respuesta del responsable (includes RCA) ----
 async function guardarRespuesta() {
   if (!_reclamoActual) return;
@@ -5751,7 +5713,6 @@ async function loadModuleData(mod) {
   } else if (mod === 'reclamos') {
     await loadProyectos();
     await loadRecUsersDropdown();
-    await loadRecCubicadoresDropdown();
     populateRecFilterProyecto();
     await loadReclamos();
     await loadRecLanding();

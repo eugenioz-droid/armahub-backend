@@ -656,47 +656,60 @@ def bulk_delete_cargas(body: BulkDeleteCargasRequest, user=Depends(get_current_u
     
     total_barras_eliminadas = 0
     cargas_eliminadas = 0
+    skipped_cargas = 0
     
-    with get_conn() as conn:
-        with conn.cursor() as cur:
-            for carga_id in body.ids:
-                cur.execute(
-                    "SELECT id, id_proyecto, archivo, fecha, barras_count, usuario FROM imports WHERE id = %s",
-                    (carga_id,)
-                )
-                row = cur.fetchone()
-                if not row:
-                    continue  # Skip non-existent cargas
-                
-                id_proyecto = row[1]
-                uploader = row[5]
-                
-                # Check permissions
-                if not _puede_editar_proyecto(cur, id_proyecto, user) and uploader != user.get("email"):
-                    continue  # Skip cargas without permission
-                
-                # Delete barras
-                cur.execute("DELETE FROM barras WHERE import_id = %s", (carga_id,))
-                barras_eliminadas = cur.rowcount
-                if barras_eliminadas == 0:
-                    fecha = row[3]
-                    cur.execute(
-                        "DELETE FROM barras WHERE id_proyecto = %s AND fecha_carga = %s",
-                        (id_proyecto, fecha)
-                    )
-                    barras_eliminadas = cur.rowcount
-                
-                total_barras_eliminadas += barras_eliminadas
-                
-                # Delete import record
-                cur.execute("DELETE FROM imports WHERE id = %s", (carga_id,))
-                cargas_eliminadas += 1
-    
-    return {
-        "ok": True,
-        "cargas_eliminadas": cargas_eliminadas,
-        "barras_eliminadas": total_barras_eliminadas,
-    }
+    try:
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                for carga_id in body.ids:
+                    try:
+                        cur.execute(
+                            "SELECT id, id_proyecto, archivo, fecha, barras_count, usuario FROM imports WHERE id = %s",
+                            (carga_id,)
+                        )
+                        row = cur.fetchone()
+                        if not row:
+                            skipped_cargas += 1
+                            continue  # Skip non-existent cargas
+                        
+                        id_proyecto = row[1]
+                        uploader = row[5]
+                        
+                        # Check permissions
+                        if not _puede_editar_proyecto(cur, id_proyecto, user) and uploader != user.get("email"):
+                            skipped_cargas += 1
+                            continue  # Skip cargas without permission
+                        
+                        # Delete barras
+                        cur.execute("DELETE FROM barras WHERE import_id = %s", (carga_id,))
+                        barras_eliminadas = cur.rowcount
+                        if barras_eliminadas == 0:
+                            fecha = row[3]
+                            cur.execute(
+                                "DELETE FROM barras WHERE id_proyecto = %s AND fecha_carga = %s",
+                                (id_proyecto, fecha)
+                            )
+                            barras_eliminadas = cur.rowcount
+                        
+                        total_barras_eliminadas += barras_eliminadas
+                        
+                        # Delete import record
+                        cur.execute("DELETE FROM imports WHERE id = %s", (carga_id,))
+                        cargas_eliminadas += 1
+                    except Exception as e:
+                        # Log error but continue with other cargas
+                        print(f"Error deleting carga {carga_id}: {e}")
+                        skipped_cargas += 1
+                        continue
+        
+        return {
+            "ok": True,
+            "cargas_eliminadas": cargas_eliminadas,
+            "barras_eliminadas": total_barras_eliminadas,
+            "skipped_cargas": skipped_cargas,
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error al eliminar cargas: {str(e)}")
 
 
 class CambiarSectorRequest(BaseModel):

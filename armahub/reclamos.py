@@ -6,7 +6,6 @@ Incluye seguimientos (timeline), cambio de estado, y KPIs.
 Categorías Ishikawa provisorias — se ajustarán con input del usuario.
 """
 
-import base64
 from datetime import datetime, timezone
 from typing import Optional, List
 
@@ -25,7 +24,7 @@ ALLOWED_IMAGE_TYPES = ("image/jpeg", "image/png", "image/gif", "image/webp", "im
 # ========================= CONSTANTS =========================
 
 ESTADOS_RECLAMO = ("abierto", "en_analisis", "accion_correctiva", "validacion", "cerrado", "rechazado")
-TIPOS_RECLAMO = ("error", "faltante")
+TIPOS_RECLAMO = ("error", "faltante", "atraso", "actualizacion_portal")
 VALIDACION_RESULTADOS = ("aprobado", "rechazado", "corregido")
 PRIORIDADES = ("baja", "media", "alta", "critica")
 APLICA_VALUES = ("si", "no", "pendiente")
@@ -108,6 +107,18 @@ PRIORIDAD_LABELS = {
     "media": "Media",
     "alta": "Alta",
     "critica": "Crítica",
+}
+
+APLICA_LABELS = {
+    "si": "Sí aplica",
+    "no": "No aplica",
+    "pendiente": "Pendiente",
+}
+
+TIPO_ACCION_LABELS = {
+    "inmediata": "Inmediata",
+    "correctiva": "Correctiva",
+    "preventiva": "Preventiva",
 }
 
 
@@ -575,18 +586,6 @@ def reclamos_admin_dashboards(user=Depends(get_current_user)):
             """)
             ishikawa_per_cub = [{"email": r[0], "categoria": r[1], "count": int(r[2])} for r in cur.fetchall()]
 
-            # Legacy: keep ishikawa_cubicador for backward compat
-            cur.execute("""
-                SELECT COALESCE(r.categoria_ishikawa, 'sin_categoria'), COUNT(*)
-                FROM reclamos r
-                JOIN users u ON u.email = r.respuesta_por
-                WHERE u.role = 'cubicador'
-                GROUP BY 1 ORDER BY 2 DESC
-            """)
-            ishikawa_cubicador = [{"categoria": r[0], "count": int(r[1])} for r in cur.fetchall()]
-
-            cub_hist = []  # no longer used in dashboard
-
     return {
         "total": total,
         "abiertos": abiertos,
@@ -596,12 +595,10 @@ def reclamos_admin_dashboards(user=Depends(get_current_user)):
         "por_usc": por_usc,
         "usc_hist": usc_hist,
         "ishikawa_global": ishikawa_global,
-        "ishikawa_cubicador": ishikawa_cubicador,
         "por_cubicador": por_cubicador,
         "por_cubicador_asignado": por_cubicador_asignado,
         "kilos_por_cubicador": kilos_por_cubicador,
         "ishikawa_per_cub": ishikawa_per_cub,
-        "cub_hist": cub_hist,
     }
 
 
@@ -763,8 +760,8 @@ def reclamos_options(user=Depends(get_current_user)):
         "estados": [{"value": k, "label": v} for k, v in ESTADO_LABELS.items()],
         "prioridades": [{"value": k, "label": v} for k, v in PRIORIDAD_LABELS.items()],
         "categorias_ishikawa": [{"value": k, "label": v} for k, v in ISHIKAWA_LABELS.items()],
-        "aplica_values": [{"value": "si", "label": "Sí aplica"}, {"value": "no", "label": "No aplica"}, {"value": "pendiente", "label": "Pendiente"}],
-        "tipos_accion": [{"value": "inmediata", "label": "Inmediata"}, {"value": "correctiva", "label": "Correctiva"}, {"value": "preventiva", "label": "Preventiva"}],
+        "aplica_values": [{"value": k, "label": v} for k, v in APLICA_LABELS.items()],
+        "tipos_accion": [{"value": k, "label": v} for k, v in TIPO_ACCION_LABELS.items()],
     }
 
 
@@ -919,6 +916,7 @@ def get_reclamo(reclamo_id: int, user=Depends(get_current_user)):
 def actualizar_reclamo(reclamo_id: int, body: ReclamoUpdate, user=Depends(get_current_user)):
     """Actualizar campos de un reclamo. Si cambia estado, crea seguimiento automático."""
     email = user.get("email", "unknown")
+    role = user.get("role", "usc")
     now = datetime.now(timezone.utc).isoformat()
 
     if body.estado and body.estado not in ESTADOS_RECLAMO:
@@ -927,6 +925,12 @@ def actualizar_reclamo(reclamo_id: int, body: ReclamoUpdate, user=Depends(get_cu
         raise HTTPException(status_code=400, detail=f"Prioridad inválida. Válidas: {list(PRIORIDADES)}")
     if body.categoria_ishikawa and body.categoria_ishikawa not in CATEGORIAS_ISHIKAWA:
         raise HTTPException(status_code=400, detail=f"Categoría inválida. Válidas: {list(CATEGORIAS_ISHIKAWA)}")
+    if body.tipo_reclamo and body.tipo_reclamo not in TIPOS_RECLAMO:
+        raise HTTPException(status_code=400, detail=f"Tipo inválido. Válidos: {list(TIPOS_RECLAMO)}")
+    if body.aplica and body.aplica not in APLICA_VALUES:
+        raise HTTPException(status_code=400, detail=f"Aplica inválido. Válidos: {list(APLICA_VALUES)}")
+    if body.validacion_resultado and body.validacion_resultado not in VALIDACION_RESULTADOS:
+        raise HTTPException(status_code=400, detail=f"Resultado validación inválido. Válidos: {list(VALIDACION_RESULTADOS)}")
 
     with get_conn() as conn:
         with conn.cursor() as cur:

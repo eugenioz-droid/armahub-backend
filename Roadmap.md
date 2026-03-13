@@ -1245,36 +1245,151 @@ errores y reclamos levantados por clientes. Incluye formulario tipo, análisis d
        - Devuelve lista de usuarios con rol cubicador activos para dropdown filtrado
        - Respuesta: email, nombre, apellido, display
 
-    c) Formulario de creación:
-       - Nuevo dropdown "Cubicador asignado" filtrado solo a cubicadores
-       - USC asigna al cubicador responsable al crear el reclamo
-       - crearReclamo() envía cubicador_asignado al backend
-
-    d) Detalle del reclamo (Sección 2):
-       - Dropdown "Cubicador asignado" en Sección 2 (Respuesta del Responsable)
-       - Admin/Admin2 pueden cambiar la asignación con botón "Guardar" independiente
-       - Función cambiarCubicadorAsignado() para guardar cambio sin tocar respuesta
-
-    e) Lógica de respuesta (admin responde en nombre del cubicador):
-       - Cuando admin/admin2 guarda respuesta, respuesta_por = cubicador_asignado (no admin email)
-       - Si no hay cubicador asignado, respuesta_por = admin email como fallback
-       - Backend: PATCH verifica body.cubicador_asignado o busca en DB si no viene en body
-
-    f) Landing cubicador mejorado:
+    c) Landing cubicador mejorado:
        - Filtro mi-resumen usa cubicador_asignado OR respuesta_por (ve asignados + respondidos)
        - Nuevo Chart 5: Dona Ishikawa con distribución de causas del cubicador
        - Badge "Pendientes": cuenta reclamos asignados sin respuesta
        - Grid dinámico: ajusta columnas según charts visibles (3, 4 o 5)
 
-    g) Lista de reclamos:
-       - Nueva columna "Cubicador" en tabla de reclamos (muestra email truncado)
+    d) Lista de reclamos:
+       - Nueva columna "Cubicador" en tabla de reclamos
        - solo_mios para cubicador usa cubicador_asignado OR respuesta_por
        - cubicador_asignado y respuesta_por incluidos en response del GET /reclamos
 
-    h) Permisos:
+    e) Lógica de respuesta (admin responde en nombre del cubicador):
+       - Cuando admin/admin2 guarda respuesta, respuesta_por = cubicador_asignado (no admin email)
+       - Si no hay cubicador asignado, respuesta_por = admin email como fallback
+
+    f) Permisos:
        - Creación: USC/Admin/Admin2 pueden asignar cubicador
        - Cambio asignación: solo Admin/Admin2
        - Respuesta: Admin/Admin2/Cubicador/Externo (sin cambio)
+
+49b. Fix: Cubicador no veía sus reclamos asignados - ✅ Implementado 13-Mar-2026
+
+    **Causa raíz**: El dropdown "Responsable" almacenaba el display name (ej: "Gerardo Mendoza")
+    en el campo `responsable`, pero el filtro de visibilidad verificaba `cubicador_asignado`
+    (email), que nunca se populaba desde el formulario.
+
+    a) Fix: Dropdown Responsable ahora envía AMBOS campos:
+       - `responsable` = display name (para mostrar en listas)
+       - `cubicador_asignado` = email (para filtros de visibilidad)
+       - Dropdown usa `u.email` como value, `data-display` attribute para el nombre
+       - Aplica tanto en crearReclamo() como en guardarEdicionReclamo()
+
+    b) Migración 38: Backfill de cubicador_asignado para reclamos existentes
+       - UPDATE reclamos SET cubicador_asignado = users.email WHERE responsable = "Nombre Apellido"
+       - Resuelve datos históricos que tenían cubicador_asignado vacío
+
+    c) Eliminado hack _resolve_email_from_display():
+       - Ya no es necesario resolver email desde display name en backend
+       - Frontend envía el dato correcto directamente
+
+    d) Fix bug crítico: variable `role` no definida en actualizar_reclamo():
+       - Agregado `role = user.get("role", "usc")` faltante
+       - Sin esto, guardar respuesta desde admin causaba NameError
+
+    e) Detalle UI: recDetailCubicadorNombre muestra data.responsable (nombre) en vez de email
+
+50. Fix: Jerarquía del árbol en Obras - ✅ Implementado 13-Mar-2026
+
+    **Cambio**: Árbol de sectores-nav reestructurado de Sector→Piso→Ciclo a **Piso→Ciclo→Sector**
+
+    a) Backend (barras.py):
+       - get_sectores_nav retorna {"pisos": [...]} en vez de {"sectores": [...]}
+       - Cada piso contiene ciclos, cada ciclo contiene sectores (hojas)
+       - ORDER BY piso, ciclo, sector
+
+    b) Frontend (app.js):
+       - renderProyectoTree recibe pisos[] como primer nivel
+       - Header "Piso / Ciclo / Sector"
+       - toggleSectorPisos/togglePisoCiclos reutilizados con IDs adaptados
+       - goToBarManager pasa sector, piso, ciclo correctamente
+
+51. Presentaciones semanales de reclamos - ✅ Implementado 12-Mar-2026
+
+    a) Backend (reclamos.py):
+       - GET /reclamos/para-presentar: lista reclamos con cubicador asignado para presentación
+       - POST /reclamos/{id}/presentar: registra presentación (asistentes, comentarios, fecha)
+       - GET /reclamos/presentaciones-stats: estadísticas de presentaciones
+       - Campos en reclamos: presentacion_realizada, presentacion_fecha, presentacion_por,
+         presentacion_asistentes, presentacion_comentarios (migración 35)
+
+    b) Frontend (app.js):
+       - Tab "Presentaciones" en módulo Reclamos (visible para admin, admin2, cubicador)
+       - Selector de reclamo con badge ⏳/✅ indicando estado de presentación
+       - Formulario: asistentes (checkboxes de cubicadores), comentarios
+       - Vista "Ya presentado" con fecha, responsable, asistentes, comentarios
+       - Charts: dona por presentar vs presentados, dona por cubicador
+       - Dashboard estadísticas con contadores
+
+    c) HTML (reclamos.html):
+       - Tab button "📊 Presentaciones" con color violeta (#7B1FA2)
+       - Panel completo con selector, detalle, formulario registro, dashboard stats
+
+---
+## FASE 7.5 — Optimización y Refactorización (pre-Apps)
+
+**Objetivo**: Limpiar código muerto, eliminar campos huérfanos, corregir inconsistencias en el modelo
+relacional y refactorizar para escalabilidad. NO se modifica funcionalidad existente de formularios.
+
+### A. Código muerto (JS) — app.js
+
+| # | Item | Estado |
+|---|------|--------|
+| O1 | `cambiarCubicadorAsignado()` — función completa (~20 líneas) que referencia `recDetailCubicadorAsignado` y `recCubicadorMsg`, elementos que no existen en el HTML. Nunca se invoca. | ✅ Eliminada |
+| O2 | `_populateCubicadorSelect()` — función helper definida pero nunca llamada desde ningún punto del código. | ✅ Eliminada |
+| O3 | `_recCubicadoresCache` + `loadRecCubicadoresDropdown()` — cache y loader dead (presentaciones usan su propia data). Eliminados + call en loadModuleData. | ✅ Eliminados |
+
+### B. Código muerto (Python) — reclamos.py
+
+| # | Item | Estado |
+|---|------|--------|
+| O4 | `cub_hist = []` en `reclamos_admin_dashboards()` — hardcoded empty list, retornado en response como `"cub_hist": []`. Eliminar del return. | ✅ Eliminado |
+| O5 | `ishikawa_cubicador` en `reclamos_admin_dashboards()` — query legacy. Confirmado: frontend no lo usa. | ✅ Eliminado |
+
+### C. Constantes desactualizadas — reclamos.py
+
+| # | Item | Estado |
+|---|------|--------|
+| O6 | `TIPOS_RECLAMO` actualizado a `("error", "faltante", "atraso", "actualizacion_portal")` para coincidir con DB CHECK (migraciones 33-34). | ✅ Corregido |
+| O7 | `VALIDACION_RESULTADOS` — ahora usada en validación del PATCH endpoint. | ✅ Conectada |
+| O8 | `APLICA_VALUES` — ahora usada en validación del PATCH endpoint. + `APLICA_LABELS` y `TIPO_ACCION_LABELS` creados. | ✅ Conectada |
+
+### D. Inconsistencias del modelo relacional
+
+| # | Item | Estado |
+|---|------|--------|
+| O9 | Campo `responsable` almacena display names, `cubicador_asignado` almacena emails. Ambos representan el mismo concepto. Evaluar si `responsable` puede deprecarse en favor de `cubicador_asignado` + lookup de nombre, o si se mantienen ambos con documentación clara. | Pendiente |
+| O10 | Filtro dropdown `recFiltroResponsable` envía display names al backend (param `responsable`), que filtra contra campo `r.responsable` (display names). Funciona pero es frágil: si un usuario cambia su nombre, los reclamos antiguos no matchean. Evaluar migrar a filtro por email. | Pendiente |
+| O11 | `correlativo_calidad` (SERIAL) — columna retornada en API pero nunca usada ni mostrada en frontend. ¿Eliminar o documentar propósito? | Pendiente |
+| O12 | Campo `cliente_id` en tabla reclamos (migración 18) — nunca se usa en ningún endpoint ni frontend. Fue revertido conceptualmente ("cliente se obtiene vía proyecto"). Evaluar DROP. | Pendiente |
+| O13 | Tabla `reclamo_acciones` — tiene CRUD completo pero evaluar si está activamente usada en la UI actual o si se deprecó. | Pendiente |
+
+### E. Dashboard queries por cubicador
+
+| # | Item | Estado |
+|---|------|--------|
+| O14 | `por_cubicador_asignado` en admin dashboards muestra emails crudos. Debería hacer JOIN con users para mostrar display names en los charts. | Pendiente |
+| O15 | `kilos_por_cubicador` usa COALESCE fallback entre respuesta_por y cubicador_asignado. Verificar si la lógica es correcta ahora que cubicador_asignado se popula siempre. | Pendiente |
+
+### F. Mejoras de robustez
+
+| # | Item | Estado |
+|---|------|--------|
+| O16 | Pool de conexiones: actualmente cada request abre una nueva conexión `psycopg.connect()`. Evaluar `psycopg_pool.ConnectionPool` para producción. | Pendiente |
+| O17 | Endpoint `/reclamos/options` ahora usa `APLICA_LABELS` y `TIPO_ACCION_LABELS` en vez de listas hardcoded. | ✅ Unificado |
+| O18 | `import base64` eliminado (no usado). `List` confirmado en uso (PresentarReclamoRequest). | ✅ Limpiado |
+
+### G. Limpieza frontend
+
+| # | Item | Estado |
+|---|------|--------|
+| O19 | `_recCubicadoresCache` eliminado (O3). Quedan `_recUsersCache` (dropdown general) y `_presData.cubicadores` (presentaciones) — son datos distintos, OK mantener separados. | ✅ Resuelto |
+| O20 | Reset de campos en `crearReclamo()`: verificado que `el.value = ''` en select resetea correctamente al primer option vacío. | ✅ Verificado OK |
+
+---
+## FASE 8 — Preparación para Apps
 
 43. API versionada (/api/v1) - Pendiente
 44. CORS para aplicaciones externas - Pendiente
