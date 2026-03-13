@@ -449,7 +449,7 @@ async function loadProyectos() {
           </div>
         </div>
         <div style="display: flex; gap: 6px; align-items: center;">
-          <button class="secondary" style="font-size:12px; padding:4px 10px;" onclick="toggleCargasProyecto('${p.id_proyecto}')">Cargas</button>
+          <button class="secondary" style="font-size:12px; padding:4px 10px;" onclick="toggleCargasProyecto('${p.id_proyecto}')">Historial Cargas</button>
           <button class="secondary" style="font-size:12px; padding:4px 10px;" onclick="toggleAutorizados('${p.id_proyecto}')">Usuarios</button>
           <button class="secondary" style="font-size:12px; padding:4px 10px;" onclick="openEditObraModal('${p.id_proyecto}')">Editar</button>
           <button class="secondary" style="font-size:12px; padding:4px 10px; color:#b42318; border-color:#b42318;" onclick="eliminarObra('${p.id_proyecto}', '${p.nombre_proyecto.replace(/'/g, "\\'")}', ${p.total_barras})">Eliminar</button>
@@ -637,10 +637,19 @@ async function loadCargasProyecto(idProyecto) {
     list.innerHTML = '<span class="muted">Sin cargas registradas para este proyecto</span>';
     return;
   }
+  var safeId = idProyecto.replace(/[^a-zA-Z0-9_-]/g, '_');
   list.innerHTML = `
+    <div id="bulk-actions-${safeId}" style="display:none; margin-bottom:8px; padding:6px 10px; background:#fff3cd; border-radius:4px; font-size:12px;">
+      <span id="bulk-count-${safeId}">0</span> carga(s) seleccionada(s)
+      <button style="margin-left:10px; background:#dc3545; color:white; border:none; padding:3px 10px; border-radius:3px; font-size:11px; cursor:pointer;" onclick="eliminarCargasSeleccionadas('${idProyecto.replace(/'/g, "\\'")}')">🗑️ Eliminar seleccionadas</button>
+      <button class="secondary" style="margin-left:6px; padding:2px 8px; font-size:10px;" onclick="deseleccionarCargasProyecto('${safeId}')">Deseleccionar</button>
+    </div>
     <div style="max-height:350px; overflow-y:auto; border:1px solid #eee; border-radius:4px;">
     <table style="width:100%; font-size:12px;">
-      <thead style="position:sticky; top:0; background:#f8f8f8; z-index:1;"><tr><th>Archivo</th><th>Plano</th><th>Barras</th><th>Kilos</th><th>Versión</th><th>Usuario</th><th>Fecha</th><th></th></tr></thead>
+      <thead style="position:sticky; top:0; background:#f8f8f8; z-index:1;"><tr>
+        <th style="width:28px;"><input type="checkbox" id="selectAll-${safeId}" onchange="toggleAllCargasProyecto('${safeId}')" style="cursor:pointer;" title="Seleccionar todas"></th>
+        <th>Archivo</th><th>Plano</th><th>Barras</th><th>Kilos</th><th>Versión</th><th>Usuario</th><th>Fecha</th><th></th>
+      </tr></thead>
       <tbody>${data.cargas.map(c => {
         let fecha = '';
         if (c.fecha) {
@@ -657,6 +666,7 @@ async function loadCargasProyecto(idProyecto) {
           rowBg = ' style="background:#fff5f5;"';
         }
         return '<tr' + rowBg + '>' +
+          '<td><input type="checkbox" class="carga-cb-' + safeId + '" data-id="' + c.id + '" onchange="updateCargasSelectionProyecto(\'' + safeId + '\')"></td>' +
           '<td>' + estadoBadge + (c.archivo || '-') + '</td>' +
           '<td>' + (c.plano_code || '-') + '</td>' +
           '<td>' + c.barras_count + '</td>' +
@@ -686,6 +696,63 @@ async function deleteCarga(cargaId, idProyecto) {
     await loadMiActividad();
   } else {
     alert('Error: ' + (res?.detail || 'desconocido'));
+  }
+}
+
+// ========================= BULK DELETE CARGAS POR PROYECTO =========================
+function toggleAllCargasProyecto(safeId) {
+  var selectAll = document.getElementById('selectAll-' + safeId);
+  var checkboxes = document.querySelectorAll('.carga-cb-' + safeId);
+  checkboxes.forEach(function(cb) { cb.checked = selectAll.checked; });
+  updateCargasSelectionProyecto(safeId);
+}
+
+function updateCargasSelectionProyecto(safeId) {
+  var checkboxes = document.querySelectorAll('.carga-cb-' + safeId + ':checked');
+  var count = checkboxes.length;
+  var bulkActions = document.getElementById('bulk-actions-' + safeId);
+  var countSpan = document.getElementById('bulk-count-' + safeId);
+  var selectAll = document.getElementById('selectAll-' + safeId);
+  var allCheckboxes = document.querySelectorAll('.carga-cb-' + safeId);
+  
+  if (bulkActions) bulkActions.style.display = count > 0 ? '' : 'none';
+  if (countSpan) countSpan.textContent = count;
+  
+  if (selectAll && allCheckboxes.length > 0) {
+    selectAll.checked = allCheckboxes.length === count;
+    selectAll.indeterminate = count > 0 && count < allCheckboxes.length;
+  }
+}
+
+function deseleccionarCargasProyecto(safeId) {
+  document.querySelectorAll('.carga-cb-' + safeId).forEach(function(cb) { cb.checked = false; });
+  var selectAll = document.getElementById('selectAll-' + safeId);
+  if (selectAll) selectAll.checked = false;
+  updateCargasSelectionProyecto(safeId);
+}
+
+async function eliminarCargasSeleccionadas(idProyecto) {
+  var safeId = idProyecto.replace(/[^a-zA-Z0-9_-]/g, '_');
+  var checkboxes = document.querySelectorAll('.carga-cb-' + safeId + ':checked');
+  if (checkboxes.length === 0) return;
+  
+  var ids = Array.from(checkboxes).map(function(cb) { return parseInt(cb.dataset.id); });
+  var count = ids.length;
+  
+  if (!confirm('¿Eliminar ' + count + ' carga(s) seleccionada(s)?\n\nEsta acción eliminará las barras asociadas y no se puede deshacer.')) {
+    return;
+  }
+  
+  var res = await apiPost('/cargas/bulk-delete', { ids: ids });
+  if (res && res.ok) {
+    alert('Eliminadas ' + res.cargas_eliminadas + ' carga(s) con ' + res.barras_eliminadas + ' barras');
+    await loadCargasProyecto(idProyecto);
+    await loadProyectos();
+    await loadInicio();
+    await loadMiActividad();
+    await loadCargas();
+  } else {
+    alert('Error: ' + (res?.detail || res?.error || 'desconocido'));
   }
 }
 
@@ -1408,7 +1475,6 @@ async function loadCargas() {
   container.innerHTML = `
     <table style="width:100%;">
       <thead><tr>
-        <th style="width:30px;"><input type="checkbox" id="selectAllCargas" onchange="toggleAllCargas()" style="cursor:pointer;"></th>
         <th>Proyecto</th><th>Archivo</th><th>Plano</th><th>Barras</th><th>Kilos</th><th>Versión</th><th>Usuario</th><th>Fecha</th>
       </tr></thead>
       <tbody>${data.cargas.map(c => {
@@ -1427,7 +1493,6 @@ async function loadCargas() {
           rowBg = ' style="background:#fff5f5;"';
         }
         return `<tr${rowBg}>
-          <td><input type="checkbox" class="carga-checkbox" data-id="${c.id}" onchange="updateCargasSelection()" style="cursor:pointer;"></td>
           <td>${estadoBadge}<strong>${c.nombre_proyecto || c.id_proyecto}</strong></td>
           <td class="muted" style="font-size:11px;">${c.archivo || '-'}</td>
           <td class="muted" style="font-size:11px;">${c.plano_code || '-'}</td>
@@ -1440,77 +1505,8 @@ async function loadCargas() {
       }).join('')}</tbody>
     </table>
   `;
-  updateCargasSelection();
 }
 
-// ========================= CARGAS BULK OPERATIONS =========================
-function toggleAllCargas() {
-  const selectAll = document.getElementById('selectAllCargas');
-  const checkboxes = document.querySelectorAll('.carga-checkbox');
-  checkboxes.forEach(cb => cb.checked = selectAll.checked);
-  updateCargasSelection();
-}
-
-function updateCargasSelection() {
-  const checkboxes = document.querySelectorAll('.carga-checkbox:checked');
-  const count = checkboxes.length;
-  const bulkActions = document.getElementById('cargasBulkActions');
-  const countSpan = document.getElementById('cargasSeleccionadasCount');
-  const selectAll = document.getElementById('selectAllCargas');
-  const allCheckboxes = document.querySelectorAll('.carga-checkbox');
-  
-  if (count > 0) {
-    bulkActions.style.display = '';
-  } else {
-    bulkActions.style.display = 'none';
-  }
-  
-  countSpan.textContent = count;
-  
-  // Update select all checkbox state
-  if (allCheckboxes.length > 0) {
-    selectAll.checked = allCheckboxes.length === count;
-    selectAll.indeterminate = count > 0 && count < allCheckboxes.length;
-  }
-}
-
-function deseleccionarTodasCargas() {
-  document.querySelectorAll('.carga-checkbox').forEach(cb => cb.checked = false);
-  document.getElementById('selectAllCargas').checked = false;
-  updateCargasSelection();
-}
-
-async function eliminarCargasSeleccionadas() {
-  const checkboxes = document.querySelectorAll('.carga-checkbox:checked');
-  if (checkboxes.length === 0) return;
-  
-  const ids = Array.from(checkboxes).map(cb => parseInt(cb.dataset.id));
-  const count = ids.length;
-  
-  if (!confirm(`¿Estás seguro de eliminar ${count} carga(s) seleccionada(s)?\n\nEsta acción eliminará las barras asociadas y no se puede deshacer.`)) {
-    return;
-  }
-  
-  const btn = document.getElementById('btnEliminarCargasSeleccionadas');
-  btn.disabled = true;
-  btn.textContent = 'Eliminando...';
-  
-  try {
-    const response = await apiPost('/cargas/bulk-delete', { ids: ids });
-    if (response && response.ok) {
-      await setGlobalStatus(`✅ ${count} carga(s) eliminada(s) con éxito`, "ok");
-      // Reload the cargas list
-      await loadCargas();
-    } else {
-      await setGlobalStatus('❌ Error al eliminar cargas', "error");
-    }
-  } catch (error) {
-    await setGlobalStatus('❌ Error de conexión al eliminar cargas', "error");
-  } finally {
-    btn.disabled = false;
-    btn.textContent = '🗑️ Eliminar seleccionadas';
-  }
-}
 
 // ========================= BAR MANAGER =========================
 let currentOffset = 0;
@@ -2044,17 +2040,38 @@ function buildExportMatriz(items, proy) {
           const hist = _exportHistory[exportKey];
           const isDone = !!hist;
           const isSelected = _exportSelected.has(exportKey);
-          const bg = isDone ? '#e8f5e9' : (isSelected ? '#e3f0ff' : '#fff');
+          // Check if sector was modified after last export
+          let isModified = false;
+          if (isDone && hist.ultima_modificacion && hist.ultima_fecha) {
+            isModified = hist.ultima_modificacion > hist.ultima_fecha;
+          }
+          // Background: rosado if modified, green if exported and not modified, blue if selected, white otherwise
+          let bg = '#fff';
+          if (isSelected) {
+            bg = '#e3f0ff';
+          } else if (isDone && isModified) {
+            bg = '#ffcdd2'; // rosado - modified after export
+          } else if (isDone) {
+            bg = '#e8f5e9'; // green - exported and unchanged
+          }
           const border = isSelected ? '2px solid #4285f4' : '1px solid #ccc';
-          const doneTitle = isDone ? ' | Exportado ' + hist.veces + 'x, \u00faltimo: ' + (hist.ultima_fecha || '').substring(0, 10) : '';
+          let doneTitle = '';
+          if (isDone) {
+            doneTitle = ' | Exportado ' + hist.veces + 'x, \u00faltimo: ' + (hist.ultima_fecha || '').substring(0, 10);
+            if (isModified) doneTitle += ' | ⚠️ MODIFICADO - requiere re-exportar';
+          }
           html += '<td style="border:' + border + '; padding:2px 4px; background:' + bg + '; text-align:center; cursor:pointer; position:relative; transition:all 0.12s; min-width:80px; white-space:nowrap;" ';
           html += 'onclick="exportToggleCell(\'' + exportKey + '\')" ';
           html += 'title="' + tipo + ' ' + piso + ' ' + ciclo + ': ' + d.barras + ' barras, ' + Math.round(d.kilos).toLocaleString() + ' kg' + doneTitle + '">';
           // Checkbox
           html += '<input type="checkbox" ' + (isSelected ? 'checked' : '') + ' style="position:absolute; top:1px; left:1px; width:11px; height:11px; pointer-events:none; accent-color:#4285f4;" />';
-          // Done badge
+          // Done badge - warning icon if modified, checkmark if not
           if (isDone) {
-            html += '<span style="position:absolute; top:0px; right:2px; font-size:9px; color:#558B2F;" title="Exportado ' + hist.veces + ' vez(es)">&#10004;</span>';
+            if (isModified) {
+              html += '<span style="position:absolute; top:0px; right:2px; font-size:9px; color:#c62828;" title="Modificado después de exportar - requiere re-exportar">&#9888;</span>';
+            } else {
+              html += '<span style="position:absolute; top:0px; right:2px; font-size:9px; color:#558B2F;" title="Exportado ' + hist.veces + ' vez(es)">&#10004;</span>';
+            }
           }
           // Compact single-line: TIPO  kg  un
           html += '<div style="display:flex; align-items:baseline; justify-content:center; gap:4px;">';
@@ -2077,6 +2094,7 @@ function buildExportMatriz(items, proy) {
   html += '<div style="margin-top:6px; display:flex; gap:10px; align-items:center; font-size:10px; flex-wrap:wrap;">';
   html += '<span><span style="display:inline-block; width:12px; height:10px; background:#e3f0ff; border:2px solid #4285f4; vertical-align:middle;"></span> Seleccionado</span>';
   html += '<span><span style="display:inline-block; width:12px; height:10px; background:#e8f5e9; border:1px solid #8BC34A; vertical-align:middle;"></span> <span style="color:#558B2F;">&#10004;</span> Ya exportado</span>';
+  html += '<span><span style="display:inline-block; width:12px; height:10px; background:#ffcdd2; border:1px solid #e57373; vertical-align:middle;"></span> <span style="color:#c62828;">&#9888;</span> Modificado (re-exportar)</span>';
   html += '<span><span style="display:inline-block; width:12px; height:10px; background:#fff; border:1px solid #ccc; vertical-align:middle;"></span> Pendiente</span>';
   html += '</div>';
 

@@ -258,13 +258,15 @@ def export_history(
     user=Depends(get_current_user),
 ):
     """Retorna historial de exportaciones por sector para un proyecto.
-    Para cada export_key, indica si fue exportado, cuántas veces y la última fecha."""
+    Para cada export_key, indica si fue exportado, cuántas veces y la última fecha.
+    También incluye ultima_modificacion para detectar sectores modificados post-exportación."""
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("SELECT 1 FROM proyectos WHERE id_proyecto = %s", (id_proyecto,))
             if not cur.fetchone():
                 raise HTTPException(status_code=404, detail="Proyecto no encontrado")
 
+            # Export log history
             cur.execute("""
                 SELECT export_key,
                        COUNT(*) AS veces,
@@ -278,19 +280,36 @@ def export_history(
                 ORDER BY export_key
             """, (id_proyecto,))
             rows = cur.fetchall()
+            
+            # Get last modification date per sector (max fecha_carga)
+            cur.execute("""
+                SELECT UPPER(sector) || '_' || piso || '_' || ciclo AS export_key,
+                       MAX(fecha_carga) AS ultima_modificacion,
+                       COUNT(*) AS barras_actuales
+                FROM barras
+                WHERE id_proyecto = %s AND sector IS NOT NULL AND sector != ''
+                GROUP BY UPPER(sector), piso, ciclo
+            """, (id_proyecto,))
+            mod_rows = cur.fetchall()
+            mod_map = {r[0]: {"ultima_modificacion": r[1], "barras_actuales": int(r[2])} for r in mod_rows}
 
+    history = {}
+    for r in rows:
+        key = r[0]
+        mod_info = mod_map.get(key, {})
+        history[key] = {
+            "veces": int(r[1]),
+            "ultima_fecha": r[2],
+            "ultimo_usuario": r[3],
+            "total_barras": int(r[4] or 0),
+            "total_kilos": round(float(r[5] or 0), 2),
+            "ultima_modificacion": mod_info.get("ultima_modificacion"),
+            "barras_actuales": mod_info.get("barras_actuales", 0),
+        }
+    
     return {
         "id_proyecto": id_proyecto,
-        "history": {
-            r[0]: {
-                "veces": int(r[1]),
-                "ultima_fecha": r[2],
-                "ultimo_usuario": r[3],
-                "total_barras": int(r[4] or 0),
-                "total_kilos": round(float(r[5] or 0), 2),
-            }
-            for r in rows
-        }
+        "history": history
     }
 
 
