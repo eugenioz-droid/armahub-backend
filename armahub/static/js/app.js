@@ -591,10 +591,10 @@ async function toggleProyectoTree(safeId) {
       content.innerHTML = '<div style="padding:10px;"><span class="muted">⏳ Cargando estructura...</span></div>';
       try {
         var data = await apiGet('/proyectos/' + encodeURIComponent(idProyecto) + '/sectores-nav');
-        if (data && data.sectores && data.sectores.length > 0) {
-          renderProyectoTree(content, data.sectores, idProyecto);
+        if (data && data.pisos && data.pisos.length > 0) {
+          renderProyectoTree(content, data.pisos, idProyecto);
         } else {
-          content.innerHTML = '<div style="padding:10px;"><span class="muted">Sin sectores cargados</span></div>';
+          content.innerHTML = '<div style="padding:10px;"><span class="muted">Sin datos cargados</span></div>';
         }
       } catch (e) {
         console.error('Error loading tree:', e);
@@ -607,51 +607,51 @@ async function toggleProyectoTree(safeId) {
   }
 }
 
-function renderProyectoTree(container, sectores, idProyecto) {
-  if (!sectores || sectores.length === 0) {
-    container.innerHTML = '<span class="muted">Sin sectores</span>';
+function renderProyectoTree(container, pisos, idProyecto) {
+  if (!pisos || pisos.length === 0) {
+    container.innerHTML = '<span class="muted">Sin datos</span>';
     return;
   }
   
   var html = '<table style="width:100%; border-collapse:collapse; font-size:11px;">';
   html += '<thead><tr style="background:#f0f0f0;">';
-  html += '<th style="padding:4px 6px; text-align:left;">Sector / Piso / Ciclo</th>';
+  html += '<th style="padding:4px 6px; text-align:left;">Piso / Ciclo / Sector</th>';
   html += '<th style="padding:4px 6px; text-align:right;">Kilos</th>';
   html += '<th style="padding:4px 6px; text-align:right;">Barras</th>';
   html += '<th style="padding:4px 6px; text-align:center;">Ver</th>';
   html += '</tr></thead><tbody>';
   
-  sectores.forEach(function(s) {
-    var sectorId = (idProyecto + '_' + s.sector).replace(/[^a-zA-Z0-9_-]/g, '_');
-    html += '<tr style="background:#e3f2fd; cursor:pointer;" onclick="toggleSectorPisos(\'' + sectorId + '\')">';
-    html += '<td style="padding:4px 6px; font-weight:bold;"><span id="sarrow-' + sectorId + '">▸</span> ' + (s.sector || '?') + '</td>';
-    html += '<td style="padding:4px 6px; text-align:right; font-weight:500;">' + Math.round(s.kilos).toLocaleString() + ' kg</td>';
-    html += '<td style="padding:4px 6px; text-align:right;">' + s.barras + '</td>';
-    html += '<td style="padding:4px 6px; text-align:center;"><button class="secondary" style="font-size:9px; padding:2px 5px;" onclick="event.stopPropagation(); goToBarManager(\'' + idProyecto.replace(/'/g, "\\'") + '\', \'' + (s.sector || '').replace(/'/g, "\\'") + '\', \'\', \'\')">🔍</button></td>';
+  pisos.forEach(function(p) {
+    var pisoId = (idProyecto + '_' + p.piso).replace(/[^a-zA-Z0-9_-]/g, '_');
+    html += '<tr style="background:#e3f2fd; cursor:pointer;" onclick="toggleSectorPisos(\'' + pisoId + '\')">'; 
+    html += '<td style="padding:4px 6px; font-weight:bold;"><span id="sarrow-' + pisoId + '">▸</span> ' + (p.piso || '?') + '</td>';
+    html += '<td style="padding:4px 6px; text-align:right; font-weight:500;">' + Math.round(p.kilos).toLocaleString() + ' kg</td>';
+    html += '<td style="padding:4px 6px; text-align:right;">' + p.barras + '</td>';
+    html += '<td style="padding:4px 6px; text-align:center;"><button class="secondary" style="font-size:9px; padding:2px 5px;" onclick="event.stopPropagation(); goToBarManager(\'' + idProyecto.replace(/'/g, "\\'") + '\', \'\', \'' + (p.piso || '').replace(/'/g, "\\'") + '\', \'\')">🔍</button></td>';
     html += '</tr>';
     
-    // Pisos (hidden by default)
-    html += '<tr id="pisos-' + sectorId + '" style="display:none;"><td colspan="4" style="padding:0;">';
+    // Ciclos (hidden by default)
+    html += '<tr id="pisos-' + pisoId + '" style="display:none;"><td colspan="4" style="padding:0;">';
     html += '<table style="width:100%; border-collapse:collapse;">';
     
-    (s.pisos || []).forEach(function(p) {
-      var pisoId = sectorId + '_' + (p.piso || '').replace(/[^a-zA-Z0-9_-]/g, '_');
-      html += '<tr style="background:#fff; cursor:pointer;" onclick="togglePisoCiclos(\'' + pisoId + '\')">';
-      html += '<td style="padding:3px 6px 3px 20px;"><span id="parrow-' + pisoId + '">▸</span> ' + (p.piso || '?') + '</td>';
-      html += '<td style="padding:3px 6px; text-align:right;">' + Math.round(p.kilos).toLocaleString() + ' kg</td>';
-      html += '<td style="padding:3px 6px; text-align:right;">' + p.barras + '</td>';
-      html += '<td style="padding:3px 6px; text-align:center;"><button class="secondary" style="font-size:9px; padding:2px 5px;" onclick="event.stopPropagation(); goToBarManager(\'' + idProyecto.replace(/'/g, "\\'") + '\', \'' + (s.sector || '').replace(/'/g, "\\'") + '\', \'' + (p.piso || '').replace(/'/g, "\\'") + '\', \'\')">🔍</button></td>';
+    (p.ciclos || []).forEach(function(c) {
+      var cicloId = pisoId + '_' + (c.ciclo || '').replace(/[^a-zA-Z0-9_-]/g, '_');
+      html += '<tr style="background:#fff; cursor:pointer;" onclick="togglePisoCiclos(\'' + cicloId + '\')">'; 
+      html += '<td style="padding:3px 6px 3px 20px;"><span id="parrow-' + cicloId + '">▸</span> ' + (c.ciclo || '?') + '</td>';
+      html += '<td style="padding:3px 6px; text-align:right;">' + Math.round(c.kilos).toLocaleString() + ' kg</td>';
+      html += '<td style="padding:3px 6px; text-align:right;">' + c.barras + '</td>';
+      html += '<td style="padding:3px 6px; text-align:center;"><button class="secondary" style="font-size:9px; padding:2px 5px;" onclick="event.stopPropagation(); goToBarManager(\'' + idProyecto.replace(/'/g, "\\'") + '\', \'\', \'' + (p.piso || '').replace(/'/g, "\\'") + '\', \'' + (c.ciclo || '').replace(/'/g, "\\'") + '\')">🔍</button></td>';
       html += '</tr>';
       
-      // Ciclos (hidden by default)
-      html += '<tr id="ciclos-' + pisoId + '" style="display:none;"><td colspan="4" style="padding:0;">';
+      // Sectores (hidden by default)
+      html += '<tr id="ciclos-' + cicloId + '" style="display:none;"><td colspan="4" style="padding:0;">';
       html += '<table style="width:100%; border-collapse:collapse;">';
       
-      (p.ciclos || []).forEach(function(c) {
+      (c.sectores || []).forEach(function(s) {
         html += '<tr style="background:#fafafa;">';
-        html += '<td style="padding:2px 6px 2px 40px; color:#666;">' + (c.ciclo || '?') + '</td>';
-        html += '<td style="padding:2px 6px; text-align:right; color:#666;">' + Math.round(c.kilos).toLocaleString() + ' kg</td>';
-        html += '<td style="padding:2px 6px; text-align:right; color:#666;">' + c.barras + '</td>';
+        html += '<td style="padding:2px 6px 2px 40px; color:#666;">' + (s.sector || '?') + '</td>';
+        html += '<td style="padding:2px 6px; text-align:right; color:#666;">' + Math.round(s.kilos).toLocaleString() + ' kg</td>';
+        html += '<td style="padding:2px 6px; text-align:right; color:#666;">' + s.barras + '</td>';
         html += '<td style="padding:2px 6px; text-align:center;"><button class="secondary" style="font-size:9px; padding:2px 5px;" onclick="goToBarManager(\'' + idProyecto.replace(/'/g, "\\'") + '\', \'' + (s.sector || '').replace(/'/g, "\\'") + '\', \'' + (p.piso || '').replace(/'/g, "\\'") + '\', \'' + (c.ciclo || '').replace(/'/g, "\\'") + '\')">🔍</button></td>';
         html += '</tr>';
       });
@@ -4992,12 +4992,12 @@ async function verReclamo(id) {
   }
   document.getElementById('recRespMsg').textContent = '';
 
-  // Cubicador asignado name display in Section 2 (responsable from red section = the cubicador assigned)
+  // Cubicador asignado name display in Section 2
   var cubNombreEl = document.getElementById('recDetailCubicadorNombre');
   if (cubNombreEl) {
-    var cubName = data.responsable || 'Sin asignar';
+    var cubName = data.cubicador_asignado || 'Sin asignar';
     cubNombreEl.textContent = cubName;
-    cubNombreEl.style.color = data.responsable ? '#1565C0' : '#999';
+    cubNombreEl.style.color = data.cubicador_asignado ? '#1565C0' : '#999';
   }
   _updateAplicaBadge();
 

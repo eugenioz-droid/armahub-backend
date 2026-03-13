@@ -111,6 +111,29 @@ PRIORIDAD_LABELS = {
 }
 
 
+# ========================= HELPERS =========================
+
+def _resolve_email_from_display(cur, display_name: str) -> str | None:
+    """Resolve a user email from their display name (nombre + apellido).
+    The dropdown stores display = (nombre + ' ' + apellido).strip() or email."""
+    if not display_name:
+        return None
+    # Try exact match on constructed display name
+    cur.execute("""
+        SELECT email FROM users
+        WHERE TRIM(COALESCE(nombre, '') || ' ' || COALESCE(apellido, '')) = %s
+          AND activo = TRUE
+        LIMIT 1
+    """, (display_name,))
+    row = cur.fetchone()
+    if row:
+        return row[0]
+    # Fallback: display_name might be the email itself
+    cur.execute("SELECT email FROM users WHERE email = %s AND activo = TRUE LIMIT 1", (display_name,))
+    row = cur.fetchone()
+    return row[0] if row else None
+
+
 # ========================= MODELS =========================
 
 class ReclamoCreate(BaseModel):
@@ -333,6 +356,11 @@ def crear_reclamo(body: ReclamoCreate, user=Depends(get_current_user)):
             next_seq = (max_seq or 0) + 1
             correlativo = f"REC-{next_seq:03d}"
 
+            # Auto-resolve cubicador_asignado (email) from responsable (display name)
+            cubicador_asignado = body.cubicador_asignado
+            if not cubicador_asignado and body.responsable:
+                cubicador_asignado = _resolve_email_from_display(cur, body.responsable)
+
             cur.execute("""
                 INSERT INTO reclamos (id_proyecto, titulo, descripcion, prioridad, tipo_reclamo,
                     categoria_ishikawa, sub_causa, cod_causa, responsable,
@@ -347,7 +375,7 @@ def crear_reclamo(body: ReclamoCreate, user=Depends(get_current_user)):
                   body.sub_causa, body.cod_causa, body.responsable,
                   body.detectado_por, body.fecha_deteccion, email,
                   email, now, correlativo, body.id_calidad, asignado_a,
-                  body.cubicador_asignado))
+                  cubicador_asignado))
             reclamo_id = cur.fetchone()[0]
 
             # Auto-create first seguimiento
@@ -962,6 +990,12 @@ def actualizar_reclamo(reclamo_id: int, body: ReclamoUpdate, user=Depends(get_cu
                 if val is not None:
                     sets.append(f"{field} = %s")
                     params.append(val if (val != "" or field not in nullable_fields) else None)
+
+            # Auto-resolve cubicador_asignado when responsable changes
+            if body.responsable is not None and body.cubicador_asignado is None:
+                resolved = _resolve_email_from_display(cur, body.responsable) if body.responsable else None
+                sets.append("cubicador_asignado = %s")
+                params.append(resolved)
 
             # Auto-set respuesta metadata when respuesta_texto is provided
             if body.respuesta_texto and body.respuesta_texto.strip():

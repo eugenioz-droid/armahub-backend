@@ -870,7 +870,7 @@ def eliminar_barra(id_unico: str, user=Depends(get_current_user)):
 
 @router.get("/proyectos/{id_proyecto}/sectores-nav")
 def get_sectores_nav(id_proyecto: str, user=Depends(get_current_user)):
-    """Navegador de sectores: árbol sector->piso->ciclo con stats por nodo."""
+    """Navegador jerárquico: Piso → Ciclo → Sector con stats por nodo."""
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("SELECT id_proyecto FROM proyectos WHERE id_proyecto = %s", (id_proyecto,))
@@ -889,51 +889,52 @@ def get_sectores_nav(id_proyecto: str, user=Depends(get_current_user)):
                 FROM barras
                 WHERE id_proyecto = %s
                 GROUP BY sector, piso, ciclo
-                ORDER BY sector, piso, ciclo
+                ORDER BY piso, ciclo, sector
             """, (id_proyecto,))
             rows = cur.fetchall()
 
+    # Build tree: Piso → Ciclo → Sector
     tree = {}
     for r in rows:
         sector, piso, ciclo = r[0] or '', r[1] or '', r[2] or ''
-        node = {"barras": int(r[3]), "kilos": round(float(r[4]), 2), "ejes": int(r[5]), "diam_prom": float(r[6])}
+        leaf = {"barras": int(r[3]), "kilos": round(float(r[4]), 2), "ejes": int(r[5]), "diam_prom": float(r[6])}
 
-        if sector not in tree:
-            tree[sector] = {"barras": 0, "kilos": 0.0, "pisos": {}}
-        tree[sector]["barras"] += node["barras"]
-        tree[sector]["kilos"] += node["kilos"]
+        if piso not in tree:
+            tree[piso] = {"barras": 0, "kilos": 0.0, "ciclos": {}}
+        tree[piso]["barras"] += leaf["barras"]
+        tree[piso]["kilos"] += leaf["kilos"]
 
-        if piso not in tree[sector]["pisos"]:
-            tree[sector]["pisos"][piso] = {"barras": 0, "kilos": 0.0, "ciclos": {}}
-        tree[sector]["pisos"][piso]["barras"] += node["barras"]
-        tree[sector]["pisos"][piso]["kilos"] += node["kilos"]
+        if ciclo not in tree[piso]["ciclos"]:
+            tree[piso]["ciclos"][ciclo] = {"barras": 0, "kilos": 0.0, "sectores": {}}
+        tree[piso]["ciclos"][ciclo]["barras"] += leaf["barras"]
+        tree[piso]["ciclos"][ciclo]["kilos"] += leaf["kilos"]
 
-        tree[sector]["pisos"][piso]["ciclos"][ciclo] = node
+        tree[piso]["ciclos"][ciclo]["sectores"][sector] = leaf
 
     result = []
-    for sector in sorted(tree.keys()):
-        s = tree[sector]
-        pisos_list = []
-        for piso in sorted(s["pisos"].keys()):
-            p = s["pisos"][piso]
-            ciclos_list = [
-                {"ciclo": c, **p["ciclos"][c]}
-                for c in sorted(p["ciclos"].keys())
+    for piso in sorted(tree.keys()):
+        p = tree[piso]
+        ciclos_list = []
+        for ciclo in sorted(p["ciclos"].keys()):
+            c = p["ciclos"][ciclo]
+            sectores_list = [
+                {"sector": s, **c["sectores"][s]}
+                for s in sorted(c["sectores"].keys())
             ]
-            pisos_list.append({
-                "piso": piso,
-                "barras": p["barras"],
-                "kilos": round(p["kilos"], 2),
-                "ciclos": ciclos_list,
+            ciclos_list.append({
+                "ciclo": ciclo,
+                "barras": c["barras"],
+                "kilos": round(c["kilos"], 2),
+                "sectores": sectores_list,
             })
         result.append({
-            "sector": sector,
-            "barras": s["barras"],
-            "kilos": round(s["kilos"], 2),
-            "pisos": pisos_list,
+            "piso": piso,
+            "barras": p["barras"],
+            "kilos": round(p["kilos"], 2),
+            "ciclos": ciclos_list,
         })
 
-    return {"id_proyecto": id_proyecto, "sectores": result}
+    return {"id_proyecto": id_proyecto, "pisos": result}
 
 
 @router.get("/dashboard")
