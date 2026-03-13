@@ -1058,8 +1058,8 @@ def dashboard_sectores(
 @router.get("/proyectos")
 def get_proyectos(user=Depends(get_current_user)):
     """
-    Devuelve lista de proyectos con resumen de kilos y barras.
-    Incluye constructora y calculista. Filtered by user authorization.
+    Devuelve lista de proyectos con resumen de kilos, barras, diam_prom, PPI, PPB.
+    Incluye constructora, calculista y cubicador asignado. Filtered by user authorization.
     """
     with get_conn() as conn:
         with conn.cursor() as cur:
@@ -1077,7 +1077,9 @@ def get_proyectos(user=Depends(get_current_user)):
                     ca.nombre as calculista_nombre,
                     p.descripcion,
                     p.fecha_creacion,
-                    p.usuario_creador
+                    p.usuario_creador,
+                    p.fecha_inicio,
+                    COALESCE(ROUND(CAST(SUM(b.diam * b.peso_total) / NULLIF(SUM(b.peso_total), 0) AS NUMERIC), 1), 0) as diam_prom
                 FROM proyectos p
                 LEFT JOIN barras b ON p.id_proyecto = b.id_proyecto
                 LEFT JOIN constructoras co ON p.constructora_id = co.id
@@ -1085,8 +1087,8 @@ def get_proyectos(user=Depends(get_current_user)):
                 WHERE 1=1""" + pf_p + """
                 GROUP BY p.id_proyecto, p.nombre_proyecto,
                          p.constructora_id, co.nombre, p.calculista_id, ca.nombre,
-                         p.descripcion, p.fecha_creacion, p.usuario_creador
-                ORDER BY p.fecha_creacion DESC
+                         p.descripcion, p.fecha_creacion, p.usuario_creador, p.fecha_inicio
+                ORDER BY COALESCE(p.fecha_inicio, p.fecha_creacion) ASC NULLS LAST, p.nombre_proyecto ASC
             """, pf_pp)
             rows = cur.fetchall()
 
@@ -1098,26 +1100,54 @@ def get_proyectos(user=Depends(get_current_user)):
                     alias_map.setdefault(a_row[1], []).append(a_row[0])
             except Exception:
                 pass
+            
+            # Fetch cubicador asignado for each project (first cubicador in proyecto_usuarios)
+            cubicador_map = {}
+            try:
+                cur.execute("""
+                    SELECT pu.id_proyecto, u.nombre, u.apellido, u.email
+                    FROM proyecto_usuarios pu
+                    JOIN users u ON pu.user_id = u.id
+                    WHERE pu.rol = 'cubicador'
+                """)
+                for c_row in cur.fetchall():
+                    if c_row[0] not in cubicador_map:
+                        nombre = (c_row[1] or '') + (' ' + c_row[2] if c_row[2] else '')
+                        cubicador_map[c_row[0]] = nombre.strip() or c_row[3]
+            except Exception:
+                pass
 
-    return {
-        "proyectos": [
-            {
-                "id_proyecto": r[0],
-                "nombre_proyecto": r[1],
-                "total_barras": int(r[2]) if r[2] else 0,
-                "total_kilos": float(r[3]) if r[3] else 0.0,
-                "constructora_id": r[4],
-                "constructora_nombre": r[5],
-                "calculista_id": r[6],
-                "calculista_nombre": r[7],
-                "descripcion": r[8],
-                "fecha_creacion": r[9],
-                "usuario_creador": r[10],
-                "aliases": alias_map.get(r[0], []),
-            }
-            for r in rows
-        ]
-    }
+    proyectos = []
+    for r in rows:
+        total_barras = int(r[2]) if r[2] else 0
+        total_kilos = float(r[3]) if r[3] else 0.0
+        diam_prom = float(r[12]) if r[12] else 0.0
+        # PPI = Peso Por Item (kg promedio por barra)
+        ppi = round(total_kilos / total_barras, 2) if total_barras > 0 else 0.0
+        # PPB = Peso Por Barra (same as PPI for now, can be refined)
+        ppb = ppi
+        
+        proyectos.append({
+            "id_proyecto": r[0],
+            "nombre_proyecto": r[1],
+            "total_barras": total_barras,
+            "total_kilos": total_kilos,
+            "constructora_id": r[4],
+            "constructora_nombre": r[5],
+            "calculista_id": r[6],
+            "calculista_nombre": r[7],
+            "descripcion": r[8],
+            "fecha_creacion": r[9],
+            "usuario_creador": r[10],
+            "fecha_inicio": r[11],
+            "diam_prom": diam_prom,
+            "ppi": ppi,
+            "ppb": ppb,
+            "cubicador": cubicador_map.get(r[0], ""),
+            "aliases": alias_map.get(r[0], []),
+        })
+    
+    return {"proyectos": proyectos}
 
 
 @router.get("/proyectos/{id_proyecto}/sectores")

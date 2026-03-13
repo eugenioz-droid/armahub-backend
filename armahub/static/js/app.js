@@ -418,64 +418,15 @@ async function loadMe() {
   loadLandingIndicadores();
 }
 
+// Store proyectos data globally for filtering
+var _proyectosData = [];
+
 async function loadProyectos() {
   const data = await apiGet('/proyectos');
   if (!data) return;
   
-  const container = document.getElementById('proyectosContainer');
-  if (!data.proyectos || data.proyectos.length === 0) {
-    container.innerHTML = '<div class="muted">No hay proyectos cargados</div>';
-    return;
-  }
-  
-  container.innerHTML = data.proyectos.map(p => {
-    const calcText = p.calculista_nombre || '';
-    const constText = p.constructora_nombre || '';
-    return `
-    <div class="card" style="margin: 12px 0; padding: 16px; border-left: 4px solid #8BC34A;">
-      <div style="display: flex; justify-content: space-between; align-items: start;">
-        <div>
-          <h4 style="margin: 0 0 6px 0;" id="pname-${p.id_proyecto}">${p.nombre_proyecto}</h4>
-          <div class="muted" style="margin-bottom:4px;">
-            <span class="badge">${p.total_kilos.toFixed(0)} kg</span>
-            <span class="badge">${p.total_barras} barras</span>
-            <span class="muted" style="font-size:11px; margin-left:8px;">ID: ${p.id_proyecto}</span>
-            ${p.aliases && p.aliases.length ? '<span class="muted" style="font-size:10px; margin-left:6px;" title="Códigos ArmaDetailer asociados">🔗 ' + p.aliases.join(', ') + '</span>' : ''}
-          </div>
-          <div style="font-size:11px; color:#666;">
-            ${constText ? '<span>🏢 ' + constText + '</span>' : ''}
-            ${calcText ? '<span style="margin-left:10px;">📐 Calculista: ' + calcText + '</span>' : ''}
-            <span style="margin-left:10px;" class="muted">Creado por: ${p.usuario_creador || '-'}</span>
-          </div>
-        </div>
-        <div style="display: flex; gap: 6px; align-items: center;">
-          <button class="secondary" style="font-size:12px; padding:4px 10px;" onclick="toggleCargasProyecto('${p.id_proyecto}')">Historial Cargas</button>
-          <button class="secondary" style="font-size:12px; padding:4px 10px;" onclick="toggleAutorizados('${p.id_proyecto}')">Usuarios</button>
-          <button class="secondary" style="font-size:12px; padding:4px 10px;" onclick="openEditObraModal('${p.id_proyecto}')">Editar</button>
-          <button class="secondary" style="font-size:12px; padding:4px 10px; color:#b42318; border-color:#b42318;" onclick="eliminarObra('${p.id_proyecto}', '${p.nombre_proyecto.replace(/'/g, "\\'")}', ${p.total_barras})">Eliminar</button>
-        </div>
-      </div>
-      <div id="cargas-${p.id_proyecto}" style="display:none; margin-top:10px; padding-top:10px; border-top:1px solid #eee;">
-        <div style="font-size:12px; font-weight:bold; margin-bottom:6px;">Historial de cargas</div>
-        <div id="cargas-list-${p.id_proyecto}" class="muted" style="font-size:12px;">Cargando...</div>
-      </div>
-      <div id="autorizados-${p.id_proyecto}" style="display:none; margin-top:10px; padding-top:10px; border-top:1px solid #eee;">
-        <div style="font-size:12px; font-weight:bold; margin-bottom:6px;">Usuarios autorizados</div>
-        <div id="autorizados-list-${p.id_proyecto}" class="muted" style="font-size:12px;">Cargando...</div>
-        <div style="display:flex; gap:6px; align-items:center; margin-top:8px; flex-wrap:wrap;">
-          <select id="autorizar-user-${p.id_proyecto}" style="font-size:12px; flex:2; min-width:150px;"><option>Cargando...</option></select>
-          <select id="autorizar-rol-${p.id_proyecto}" style="font-size:12px; max-width:110px;">
-            <option value="cubicador">Cubicador</option>
-            <option value="usc">USC</option>
-            <option value="externo">Externo</option>
-            <option value="cliente">Cliente</option>
-            <option value="admin">Admin</option>
-          </select>
-          <button class="secondary" style="font-size:11px; padding:3px 8px;" onclick="autorizarUsuario('${p.id_proyecto}')">+ Asignar</button>
-        </div>
-      </div>
-    </div>
-  `}).join('');
+  _proyectosData = data.proyectos || [];
+  renderProyectosTable(_proyectosData);
 
   // Populate export project filter
   const epf = document.getElementById('exportProyecto');
@@ -523,6 +474,298 @@ async function loadProyectos() {
 
 }
 
+function filterProyectos() {
+  var search = (document.getElementById('proyectoSearchInput').value || '').toLowerCase().trim();
+  if (!search) {
+    renderProyectosTable(_proyectosData);
+    return;
+  }
+  var filtered = _proyectosData.filter(function(p) {
+    return (p.nombre_proyecto || '').toLowerCase().includes(search) ||
+           (p.cubicador || '').toLowerCase().includes(search) ||
+           (p.id_proyecto || '').toLowerCase().includes(search);
+  });
+  renderProyectosTable(filtered);
+}
+
+function renderProyectosTable(proyectos) {
+  var container = document.getElementById('proyectosContainer');
+  if (!proyectos || proyectos.length === 0) {
+    container.innerHTML = '<div class="muted">No hay proyectos cargados</div>';
+    return;
+  }
+  
+  // Group by year (from fecha_inicio or fecha_creacion)
+  var byYear = {};
+  proyectos.forEach(function(p) {
+    var dateStr = p.fecha_inicio || p.fecha_creacion || '';
+    var year = dateStr ? dateStr.substring(0, 4) : 'Sin fecha';
+    if (!byYear[year]) byYear[year] = [];
+    byYear[year].push(p);
+  });
+  
+  // Sort years descending (newest first for year headers, but projects sorted oldest first within)
+  var years = Object.keys(byYear).sort().reverse();
+  
+  var html = '<div style="overflow-x:auto;">';
+  html += '<table style="width:100%; border-collapse:collapse; font-size:12px;">';
+  html += '<thead><tr style="background:#f5f5f5;">';
+  html += '<th style="padding:8px 6px; text-align:left; border-bottom:2px solid #ddd; width:30px;"></th>';
+  html += '<th style="padding:8px 6px; text-align:left; border-bottom:2px solid #ddd;">Proyecto</th>';
+  html += '<th style="padding:8px 6px; text-align:left; border-bottom:2px solid #ddd;">Cubicador</th>';
+  html += '<th style="padding:8px 6px; text-align:right; border-bottom:2px solid #ddd;">Kilos</th>';
+  html += '<th style="padding:8px 6px; text-align:right; border-bottom:2px solid #ddd;">Ø</th>';
+  html += '<th style="padding:8px 6px; text-align:right; border-bottom:2px solid #ddd;">PPI</th>';
+  html += '<th style="padding:8px 6px; text-align:center; border-bottom:2px solid #ddd;">Acciones</th>';
+  html += '</tr></thead><tbody>';
+  
+  years.forEach(function(year) {
+    // Year header row
+    html += '<tr style="background:#e8f5e9;">';
+    html += '<td colspan="7" style="padding:6px 8px; font-weight:bold; color:#2e7d32; font-size:13px;">📅 ' + year + '</td>';
+    html += '</tr>';
+    
+    byYear[year].forEach(function(p) {
+      var safeId = p.id_proyecto.replace(/[^a-zA-Z0-9_-]/g, '_');
+      var kilosStr = Math.round(p.total_kilos).toLocaleString();
+      var diamStr = p.diam_prom ? p.diam_prom.toFixed(1) : '-';
+      var ppiStr = p.ppi ? p.ppi.toFixed(1) : '-';
+      
+      html += '<tr class="proyecto-row" data-id="' + p.id_proyecto + '" style="border-bottom:1px solid #eee;">';
+      html += '<td style="padding:6px; text-align:center; cursor:pointer;" onclick="toggleProyectoTree(\'' + safeId + '\')"><span id="arrow-' + safeId + '">▸</span></td>';
+      html += '<td style="padding:6px;"><strong>' + (p.nombre_proyecto || p.id_proyecto) + '</strong></td>';
+      html += '<td style="padding:6px; color:#666;">' + (p.cubicador || '-') + '</td>';
+      html += '<td style="padding:6px; text-align:right; font-weight:500;">' + kilosStr + ' kg</td>';
+      html += '<td style="padding:6px; text-align:right; color:#666;">' + diamStr + '</td>';
+      html += '<td style="padding:6px; text-align:right; color:#666;">' + ppiStr + '</td>';
+      html += '<td style="padding:6px; text-align:center; white-space:nowrap;">';
+      html += '<button class="secondary" style="font-size:10px; padding:3px 6px; margin:0 2px;" onclick="toggleCargasProyecto(\'' + p.id_proyecto.replace(/'/g, "\\'") + '\')">Historial</button>';
+      html += '<button class="secondary" style="font-size:10px; padding:3px 6px; margin:0 2px;" onclick="openInfoProyectoModal(\'' + p.id_proyecto.replace(/'/g, "\\'") + '\')">Info</button>';
+      html += '<button class="secondary" style="font-size:10px; padding:3px 6px; margin:0 2px;" onclick="openEditObraModal(\'' + p.id_proyecto.replace(/'/g, "\\'") + '\')">Editar</button>';
+      html += '</td>';
+      html += '</tr>';
+      
+      // Expandable tree row (hidden by default)
+      html += '<tr id="tree-' + safeId + '" style="display:none;">';
+      html += '<td colspan="7" style="padding:0 0 0 20px; background:#fafafa;">';
+      html += '<div id="tree-content-' + safeId + '" class="muted" style="padding:10px; font-size:11px;">Cargando estructura...</div>';
+      html += '</td>';
+      html += '</tr>';
+      
+      // Cargas panel row (hidden by default)
+      html += '<tr id="cargas-row-' + safeId + '" style="display:none;">';
+      html += '<td colspan="7" style="padding:10px 20px; background:#fff8e1; border-left:3px solid #ffc107;">';
+      html += '<div style="font-size:12px; font-weight:bold; margin-bottom:6px;">Historial de cargas</div>';
+      html += '<div id="cargas-list-' + p.id_proyecto + '" class="muted" style="font-size:12px;">Cargando...</div>';
+      html += '</td>';
+      html += '</tr>';
+    });
+  });
+  
+  html += '</tbody></table></div>';
+  container.innerHTML = html;
+}
+
+async function toggleProyectoTree(safeId) {
+  var treeRow = document.getElementById('tree-' + safeId);
+  var arrow = document.getElementById('arrow-' + safeId);
+  var content = document.getElementById('tree-content-' + safeId);
+  
+  if (treeRow.style.display === 'none') {
+    treeRow.style.display = '';
+    arrow.textContent = '▾';
+    
+    // Find the proyecto
+    var idProyecto = null;
+    var rows = document.querySelectorAll('.proyecto-row');
+    for (var i = 0; i < rows.length; i++) {
+      if (rows[i].dataset.id && rows[i].dataset.id.replace(/[^a-zA-Z0-9_-]/g, '_') === safeId) {
+        idProyecto = rows[i].dataset.id;
+        break;
+      }
+    }
+    
+    if (idProyecto && content.innerHTML.includes('Cargando')) {
+      var data = await apiGet('/proyectos/' + encodeURIComponent(idProyecto) + '/sectores-nav');
+      if (data && data.sectores) {
+        renderProyectoTree(content, data.sectores, idProyecto);
+      } else {
+        content.innerHTML = '<span class="muted">Sin datos de sectores</span>';
+      }
+    }
+  } else {
+    treeRow.style.display = 'none';
+    arrow.textContent = '▸';
+  }
+}
+
+function renderProyectoTree(container, sectores, idProyecto) {
+  if (!sectores || sectores.length === 0) {
+    container.innerHTML = '<span class="muted">Sin sectores</span>';
+    return;
+  }
+  
+  var html = '<table style="width:100%; border-collapse:collapse; font-size:11px;">';
+  html += '<thead><tr style="background:#f0f0f0;">';
+  html += '<th style="padding:4px 6px; text-align:left;">Sector / Piso / Ciclo</th>';
+  html += '<th style="padding:4px 6px; text-align:right;">Kilos</th>';
+  html += '<th style="padding:4px 6px; text-align:right;">Barras</th>';
+  html += '<th style="padding:4px 6px; text-align:center;">Ver</th>';
+  html += '</tr></thead><tbody>';
+  
+  sectores.forEach(function(s) {
+    var sectorId = (idProyecto + '_' + s.sector).replace(/[^a-zA-Z0-9_-]/g, '_');
+    html += '<tr style="background:#e3f2fd; cursor:pointer;" onclick="toggleSectorPisos(\'' + sectorId + '\')">';
+    html += '<td style="padding:4px 6px; font-weight:bold;"><span id="sarrow-' + sectorId + '">▸</span> ' + (s.sector || '?') + '</td>';
+    html += '<td style="padding:4px 6px; text-align:right; font-weight:500;">' + Math.round(s.kilos).toLocaleString() + ' kg</td>';
+    html += '<td style="padding:4px 6px; text-align:right;">' + s.barras + '</td>';
+    html += '<td style="padding:4px 6px; text-align:center;"><button class="secondary" style="font-size:9px; padding:2px 5px;" onclick="event.stopPropagation(); goToBarManager(\'' + idProyecto.replace(/'/g, "\\'") + '\', \'' + (s.sector || '').replace(/'/g, "\\'") + '\', \'\', \'\')">🔍</button></td>';
+    html += '</tr>';
+    
+    // Pisos (hidden by default)
+    html += '<tr id="pisos-' + sectorId + '" style="display:none;"><td colspan="4" style="padding:0;">';
+    html += '<table style="width:100%; border-collapse:collapse;">';
+    
+    (s.pisos || []).forEach(function(p) {
+      var pisoId = sectorId + '_' + (p.piso || '').replace(/[^a-zA-Z0-9_-]/g, '_');
+      html += '<tr style="background:#fff; cursor:pointer;" onclick="togglePisoCiclos(\'' + pisoId + '\')">';
+      html += '<td style="padding:3px 6px 3px 20px;"><span id="parrow-' + pisoId + '">▸</span> ' + (p.piso || '?') + '</td>';
+      html += '<td style="padding:3px 6px; text-align:right;">' + Math.round(p.kilos).toLocaleString() + ' kg</td>';
+      html += '<td style="padding:3px 6px; text-align:right;">' + p.barras + '</td>';
+      html += '<td style="padding:3px 6px; text-align:center;"><button class="secondary" style="font-size:9px; padding:2px 5px;" onclick="event.stopPropagation(); goToBarManager(\'' + idProyecto.replace(/'/g, "\\'") + '\', \'' + (s.sector || '').replace(/'/g, "\\'") + '\', \'' + (p.piso || '').replace(/'/g, "\\'") + '\', \'\')">🔍</button></td>';
+      html += '</tr>';
+      
+      // Ciclos (hidden by default)
+      html += '<tr id="ciclos-' + pisoId + '" style="display:none;"><td colspan="4" style="padding:0;">';
+      html += '<table style="width:100%; border-collapse:collapse;">';
+      
+      (p.ciclos || []).forEach(function(c) {
+        html += '<tr style="background:#fafafa;">';
+        html += '<td style="padding:2px 6px 2px 40px; color:#666;">' + (c.ciclo || '?') + '</td>';
+        html += '<td style="padding:2px 6px; text-align:right; color:#666;">' + Math.round(c.kilos).toLocaleString() + ' kg</td>';
+        html += '<td style="padding:2px 6px; text-align:right; color:#666;">' + c.barras + '</td>';
+        html += '<td style="padding:2px 6px; text-align:center;"><button class="secondary" style="font-size:9px; padding:2px 5px;" onclick="goToBarManager(\'' + idProyecto.replace(/'/g, "\\'") + '\', \'' + (s.sector || '').replace(/'/g, "\\'") + '\', \'' + (p.piso || '').replace(/'/g, "\\'") + '\', \'' + (c.ciclo || '').replace(/'/g, "\\'") + '\')">🔍</button></td>';
+        html += '</tr>';
+      });
+      
+      html += '</table></td></tr>';
+    });
+    
+    html += '</table></td></tr>';
+  });
+  
+  html += '</tbody></table>';
+  container.innerHTML = html;
+}
+
+function toggleSectorPisos(sectorId) {
+  var row = document.getElementById('pisos-' + sectorId);
+  var arrow = document.getElementById('sarrow-' + sectorId);
+  if (row.style.display === 'none') {
+    row.style.display = '';
+    arrow.textContent = '▾';
+  } else {
+    row.style.display = 'none';
+    arrow.textContent = '▸';
+  }
+}
+
+function togglePisoCiclos(pisoId) {
+  var row = document.getElementById('ciclos-' + pisoId);
+  var arrow = document.getElementById('parrow-' + pisoId);
+  if (row.style.display === 'none') {
+    row.style.display = '';
+    arrow.textContent = '▾';
+  } else {
+    row.style.display = 'none';
+    arrow.textContent = '▸';
+  }
+}
+
+function goToBarManager(idProyecto, sector, piso, ciclo) {
+  // Switch to bar manager tab and apply filters
+  switchTab('bar-manager');
+  setTimeout(function() {
+    var projSel = document.getElementById('barProyectoFilter');
+    if (projSel) projSel.value = idProyecto;
+    var secSel = document.getElementById('barSectorFilter');
+    if (secSel) secSel.value = sector || '';
+    var pisoSel = document.getElementById('barPisoFilter');
+    if (pisoSel) pisoSel.value = piso || '';
+    var cicloSel = document.getElementById('barCicloFilter');
+    if (cicloSel) cicloSel.value = ciclo || '';
+    if (typeof loadBarras === 'function') loadBarras();
+  }, 100);
+}
+
+// Modal functions
+function openCrearObraModal() {
+  document.getElementById('crearObraModal').style.display = 'flex';
+  document.getElementById('newObraName').value = '';
+  document.getElementById('newObraDescripcion').value = '';
+  document.getElementById('crearObraMsg').innerHTML = '';
+  populateCalcSelect('newObraCalculista');
+  populateConstSelect('newObraCliente');
+}
+
+function closeCrearObraModal() {
+  document.getElementById('crearObraModal').style.display = 'none';
+}
+
+async function openInfoProyectoModal(idProyecto) {
+  document.getElementById('infoProyectoModal').style.display = 'flex';
+  var content = document.getElementById('infoProyectoContent');
+  content.innerHTML = '<div class="muted">Cargando...</div>';
+  
+  // Find proyecto in cached data
+  var p = _proyectosData.find(function(x) { return x.id_proyecto === idProyecto; });
+  if (!p) {
+    content.innerHTML = '<div class="muted">Proyecto no encontrado</div>';
+    return;
+  }
+  
+  document.getElementById('infoProyectoTitle').textContent = p.nombre_proyecto || idProyecto;
+  
+  // Get autorizados
+  var authData = await apiGet('/proyectos/' + encodeURIComponent(idProyecto) + '/autorizados');
+  var autorizados = authData && authData.autorizados ? authData.autorizados : [];
+  
+  var html = '<div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; font-size:13px;">';
+  html += '<div><strong>ID Proyecto:</strong> ' + p.id_proyecto + '</div>';
+  html += '<div><strong>Kilos totales:</strong> ' + Math.round(p.total_kilos).toLocaleString() + ' kg</div>';
+  html += '<div><strong>Barras totales:</strong> ' + p.total_barras.toLocaleString() + '</div>';
+  html += '<div><strong>Diámetro promedio:</strong> ' + (p.diam_prom || '-') + ' mm</div>';
+  html += '<div><strong>PPI:</strong> ' + (p.ppi ? p.ppi.toFixed(2) : '-') + ' kg/barra</div>';
+  html += '<div><strong>Fecha creación:</strong> ' + (p.fecha_creacion ? p.fecha_creacion.substring(0, 10) : '-') + '</div>';
+  html += '<div><strong>Fecha inicio:</strong> ' + (p.fecha_inicio ? p.fecha_inicio.substring(0, 10) : '-') + '</div>';
+  html += '<div><strong>Creado por:</strong> ' + (p.usuario_creador || '-') + '</div>';
+  html += '<div><strong>Calculista:</strong> ' + (p.calculista_nombre || '-') + '</div>';
+  html += '<div><strong>Constructora:</strong> ' + (p.constructora_nombre || '-') + '</div>';
+  html += '</div>';
+  
+  html += '<div style="margin-top:16px;"><strong>Usuarios asignados:</strong></div>';
+  if (autorizados.length === 0) {
+    html += '<div class="muted" style="margin-top:4px;">Sin usuarios adicionales</div>';
+  } else {
+    html += '<div style="margin-top:4px;">';
+    autorizados.forEach(function(u) {
+      html += '<span class="badge" style="margin:2px;">' + (u.nombre || u.email) + ' (' + u.rol + ')</span>';
+    });
+    html += '</div>';
+  }
+  
+  if (p.aliases && p.aliases.length > 0) {
+    html += '<div style="margin-top:12px;"><strong>Códigos ArmaDetailer asociados:</strong></div>';
+    html += '<div style="margin-top:4px;">' + p.aliases.map(function(a) { return '<span class="badge">' + a + '</span>'; }).join(' ') + '</div>';
+  }
+  
+  content.innerHTML = html;
+}
+
+function closeInfoProyectoModal() {
+  document.getElementById('infoProyectoModal').style.display = 'none';
+}
+
 // ========================= ADMIN OBRAS =========================
 var _editObraCurrentId = null;
 
@@ -548,11 +791,8 @@ async function crearObra() {
   if (res.status === 401) { logout(); return; }
   const data = await res.json();
   if (data.ok) {
-    msg.innerHTML = '<span class="status-ok">Obra creada: ' + data.nombre_proyecto + ' (ID: ' + data.id_proyecto + ')</span>';
-    document.getElementById('newObraName').value = '';
-    document.getElementById('newObraCalculista').value = '';
-    if (clienteSel) clienteSel.value = '';
-    if (descEl) descEl.value = '';
+    closeCrearObraModal();
+    await setGlobalStatus('✅ Obra creada: ' + data.nombre_proyecto, 'ok');
     await loadProyectos();
     await loadFilters();
     await loadInicio();
@@ -620,7 +860,15 @@ async function crearConstDesdeObraForm() {
 
 // ========================= CARGAS POR PROYECTO =========================
 async function toggleCargasProyecto(idProyecto) {
-  const panel = document.getElementById('cargas-' + idProyecto);
+  var safeId = idProyecto.replace(/[^a-zA-Z0-9_-]/g, '_');
+  // Try new table layout first
+  var panel = document.getElementById('cargas-row-' + safeId);
+  if (!panel) {
+    // Fallback to old layout
+    panel = document.getElementById('cargas-' + idProyecto);
+  }
+  if (!panel) return;
+  
   if (panel.style.display === 'none') {
     panel.style.display = '';
     await loadCargasProyecto(idProyecto);
@@ -2869,6 +3117,81 @@ async function loadCubicadores() {
 
 // ========================= MI ACTIVIDAD (Cubicador dashboard) =========================
 let miActividadChart = null;
+let _miActividadData = null;
+let _kpiPeriod = 'day';
+
+function toggleKpiPeriod(period) {
+  _kpiPeriod = period;
+  // Update button styles
+  document.querySelectorAll('.kpi-toggle').forEach(function(btn) {
+    if (btn.dataset.period === period) {
+      btn.style.background = '#8BC34A';
+      btn.style.color = 'white';
+    } else {
+      btn.style.background = '';
+      btn.style.color = '';
+    }
+  });
+  // Re-render KPIs with cached data
+  if (_miActividadData) renderKpis(_miActividadData);
+}
+
+function renderKpis(data) {
+  var el = function(id) { return document.getElementById(id); };
+  var barras = 0, kilos = 0, cargas = 0, compText = '', compLabel = 'vs anterior';
+  
+  if (_kpiPeriod === 'day') {
+    barras = data.hoy.barras;
+    kilos = data.hoy.kilos;
+    cargas = data.hoy.cargas;
+    compLabel = 'Hoy';
+    compText = data.hoy.fecha ? data.hoy.fecha.substring(5, 10).replace('-', '/') : '';
+  } else if (_kpiPeriod === 'week') {
+    barras = data.semana_actual.barras;
+    kilos = data.semana_actual.kilos;
+    cargas = data.semana_actual.cargas;
+    compLabel = 'vs sem. anterior';
+    var prev = data.semana_anterior.kilos;
+    var curr = data.semana_actual.kilos;
+    if (prev > 0) {
+      var pct = Math.round(((curr - prev) / prev) * 100);
+      if (pct >= 0) {
+        compText = '▲ ' + pct + '%';
+      } else {
+        compText = '▼ ' + Math.abs(pct) + '%';
+      }
+    } else {
+      compText = '-';
+    }
+  } else if (_kpiPeriod === 'month') {
+    // Sum all days in current month
+    var dias = data.dias || [];
+    var now = new Date();
+    var currentMonth = (now.getMonth() + 1).toString().padStart(2, '0');
+    var currentYear = now.getFullYear().toString();
+    dias.forEach(function(d) {
+      if (d.dia && d.dia.startsWith(currentYear + '-' + currentMonth)) {
+        barras += d.barras;
+        kilos += d.kilos;
+        cargas += d.cargas;
+      }
+    });
+    compLabel = 'Mes actual';
+    compText = currentMonth + '/' + currentYear;
+  }
+  
+  var barrasEl = el('maBarras');
+  var kilosEl = el('maKilos');
+  var cargasEl = el('maCargas');
+  var compEl = el('maComparacion');
+  var compLabelEl = el('maCompLabel');
+  
+  if (barrasEl) barrasEl.textContent = barras.toLocaleString();
+  if (kilosEl) kilosEl.textContent = Math.round(kilos).toLocaleString();
+  if (cargasEl) cargasEl.textContent = cargas;
+  if (compEl) compEl.textContent = compText;
+  if (compLabelEl) compLabelEl.textContent = compLabel;
+}
 
 async function loadMiActividad() {
   let data;
@@ -2876,30 +3199,9 @@ async function loadMiActividad() {
     data = await apiGet('/stats/mi-actividad');
   } catch(e) { console.error('loadMiActividad error:', e); return; }
   if (!data) return;
-
-  const el = id => document.getElementById(id);
-  el('miActividadEmail').textContent = data.email || '';
-  el('maHoyBarras').textContent = data.hoy.barras.toLocaleString();
-  el('maHoyKilos').textContent = Math.round(data.hoy.kilos).toLocaleString() + ' kg';
-  el('maHoyCargas').textContent = data.hoy.cargas;
-  el('maSemKilos').textContent = Math.round(data.semana_actual.kilos).toLocaleString() + ' kg';
-
-  // Week comparison
-  const comp = el('maSemComp');
-  const prev = data.semana_anterior.kilos;
-  const curr = data.semana_actual.kilos;
-  if (prev > 0) {
-    const pct = Math.round(((curr - prev) / prev) * 100);
-    if (pct >= 0) {
-      comp.innerHTML = '<span style="color:#558B2F;">&#9650; ' + pct + '% vs sem. anterior</span>';
-    } else {
-      comp.innerHTML = '<span style="color:#b42318;">&#9660; ' + Math.abs(pct) + '% vs sem. anterior</span>';
-    }
-  } else if (curr > 0) {
-    comp.innerHTML = '<span style="color:#558B2F;">Sin datos semana anterior</span>';
-  } else {
-    comp.textContent = '';
-  }
+  
+  _miActividadData = data;
+  renderKpis(data);
 
   // Mini-chart: last 14 days
   const dias = data.dias || [];

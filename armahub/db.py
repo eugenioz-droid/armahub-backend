@@ -493,6 +493,9 @@ MIGRATIONS = [
         "ALTER TABLE reclamos ADD COLUMN IF NOT EXISTS presentacion_asistentes TEXT",
         "ALTER TABLE reclamos ADD COLUMN IF NOT EXISTS presentacion_comentarios TEXT",
     ]),
+    (36, "proyectos: fecha_inicio para ordenar por antigüedad", [
+        "ALTER TABLE proyectos ADD COLUMN IF NOT EXISTS fecha_inicio TEXT",
+    ]),
 ]
 
 
