@@ -605,7 +605,7 @@ def delete_carga(carga_id: int, user=Depends(get_current_user)):
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT id, id_proyecto, archivo, fecha, barras_count FROM imports WHERE id = %s",
+                "SELECT id, id_proyecto, archivo, fecha, barras_count, usuario FROM imports WHERE id = %s",
                 (carga_id,)
             )
             row = cur.fetchone()
@@ -613,8 +613,9 @@ def delete_carga(carga_id: int, user=Depends(get_current_user)):
                 raise HTTPException(status_code=404, detail="Carga no encontrada")
             id_proyecto = row[1]
             archivo = row[2]
+            uploader = row[5]
 
-            if not _puede_editar_proyecto(cur, id_proyecto, user):
+            if not _puede_editar_proyecto(cur, id_proyecto, user) and uploader != user.get("email"):
                 raise HTTPException(status_code=403, detail="No tienes permiso para eliminar cargas de este proyecto")
 
             # Eliminar barras por import_id (principio de inmutabilidad de la carga)

@@ -1311,6 +1311,34 @@ async function importAllFiles() {
       }
       continue;
     }
+    if (data.ok === false && data.duplicate_file) {
+      const replace = confirm(`⚠️ ${data.mensaje}\n\n[Aceptar] = Reemplazar carga anterior\n[Cancelar] = Omitir este archivo`);
+      if (!replace) {
+        results.innerHTML += `<div class="status-warn" style="padding:4px 0; font-size:13px;">⏭️ ${f.name}: omitido (carga previa conservada)</div>`;
+        errorCount++;
+        continue;
+      }
+      // Delete old carga first
+      const delRes = await apiDelete('/cargas/' + data.carga_existente_id);
+      if (!delRes || !delRes.ok) {
+        results.innerHTML += `<div class="status-err" style="padding:4px 0; font-size:13px;">❌ ${f.name}: no se pudo eliminar la carga anterior (${delRes?.detail || 'error'})</div>`;
+        errorCount++;
+        continue;
+      }
+      // Re-upload with forzar=true to skip duplicate checks
+      const data2 = await apiPostFile('/import/armadetailer?forzar=true', f);
+      if (data2 && data2.ok) {
+        const kilosText2 = data2.kilos ? ` — ${Math.round(data2.kilos).toLocaleString()} kg` : '';
+        totalBarrasImported += (data2.barras || 0);
+        totalKilosImported += (data2.kilos || 0);
+        results.innerHTML += `<div class="status-ok" style="padding:4px 0; font-size:13px;">✅ ${f.name}: ${data2.barras} barras (${data2.proyecto})${kilosText2} (reemplazado)</div>`;
+        successCount++;
+      } else {
+        results.innerHTML += `<div class="status-err" style="padding:4px 0; font-size:13px;">❌ ${f.name}: ${data2?.error || data2?.mensaje || 'Error en reimportación'}</div>`;
+        errorCount++;
+      }
+      continue;
+    }
     if (data.ok === false && data.invalid_sectors) {
       results.innerHTML += `<div class="status-err" style="padding:4px 0; font-size:13px;">🚫 ${f.name}: ${data.mensaje}</div>`;
       errorCount++;
@@ -4642,16 +4670,12 @@ async function verReclamo(id) {
   }
   document.getElementById('recRespMsg').textContent = '';
 
-  // Cubicador asignado name display in Section 2
+  // Cubicador asignado name display in Section 2 (responsable from red section = the cubicador assigned)
   var cubNombreEl = document.getElementById('recDetailCubicadorNombre');
   if (cubNombreEl) {
-    var cubName = 'Sin asignar';
-    if (data.cubicador_asignado) {
-      var found = _recCubicadoresCache.find(function(c) { return c.email === data.cubicador_asignado; });
-      cubName = found ? found.display : data.cubicador_asignado;
-    }
+    var cubName = data.responsable || 'Sin asignar';
     cubNombreEl.textContent = cubName;
-    cubNombreEl.style.color = data.cubicador_asignado ? '#1565C0' : '#999';
+    cubNombreEl.style.color = data.responsable ? '#1565C0' : '#999';
   }
   _updateAplicaBadge();
 

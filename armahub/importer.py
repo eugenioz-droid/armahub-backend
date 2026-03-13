@@ -113,6 +113,25 @@ async def import_armadetailer(
                         "archivo": file.filename,
                     }
 
+    # --- Detección de archivo duplicado (mismo nombre, mismo proyecto) ---
+    if not forzar:
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT id, fecha FROM imports WHERE id_proyecto = %s AND archivo = %s ORDER BY id DESC LIMIT 1",
+                    (proyecto_id, file.filename)
+                )
+                dup_carga = cur.fetchone()
+                if dup_carga:
+                    return {
+                        "ok": False,
+                        "duplicate_file": True,
+                        "mensaje": f"El archivo '{file.filename}' ya fue cargado en este proyecto el {dup_carga[1][:10]}. ¿Deseas reemplazar esa carga?",
+                        "carga_existente_id": dup_carga[0],
+                        "archivo": file.filename,
+                        "id_proyecto": proyecto_id,
+                    }
+
     # Buscar cabecera "ID|ESTRUCTURA|" para ignorar metadata previa
     header_idx = None
     for i, line in enumerate(lines):
