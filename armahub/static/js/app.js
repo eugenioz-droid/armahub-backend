@@ -571,6 +571,8 @@ async function toggleProyectoTree(safeId) {
   var arrow = document.getElementById('arrow-' + safeId);
   var content = document.getElementById('tree-content-' + safeId);
   
+  if (!treeRow || !arrow || !content) return;
+  
   if (treeRow.style.display === 'none') {
     treeRow.style.display = '';
     arrow.textContent = '▾';
@@ -586,11 +588,17 @@ async function toggleProyectoTree(safeId) {
     }
     
     if (idProyecto && content.innerHTML.includes('Cargando')) {
-      var data = await apiGet('/proyectos/' + encodeURIComponent(idProyecto) + '/sectores-nav');
-      if (data && data.sectores) {
-        renderProyectoTree(content, data.sectores, idProyecto);
-      } else {
-        content.innerHTML = '<span class="muted">Sin datos de sectores</span>';
+      content.innerHTML = '<div style="padding:10px;"><span class="muted">⏳ Cargando estructura...</span></div>';
+      try {
+        var data = await apiGet('/proyectos/' + encodeURIComponent(idProyecto) + '/sectores-nav');
+        if (data && data.sectores && data.sectores.length > 0) {
+          renderProyectoTree(content, data.sectores, idProyecto);
+        } else {
+          content.innerHTML = '<div style="padding:10px;"><span class="muted">Sin sectores cargados</span></div>';
+        }
+      } catch (e) {
+        console.error('Error loading tree:', e);
+        content.innerHTML = '<div style="padding:10px;"><span style="color:#b42318;">Error cargando estructura</span></div>';
       }
     }
   } else {
@@ -1714,45 +1722,37 @@ async function importAllFiles() {
 // ========================= CARGAS RECIENTES =========================
 async function loadCargas() {
   const container = document.getElementById('cargasRecientes');
+  if (!container) return;
   const data = await apiGet('/cargas/recientes?limit=5');
   if (!data) { container.innerHTML = '<div class="muted">Error cargando historial</div>'; return; }
   if (!data.cargas || data.cargas.length === 0) {
     container.innerHTML = '<div class="muted">No hay cargas registradas</div>';
     return;
   }
-  container.innerHTML = `
-    <table style="width:100%;">
-      <thead><tr>
-        <th>Proyecto</th><th>Archivo</th><th>Plano</th><th>Barras</th><th>Kilos</th><th>Versión</th><th>Usuario</th><th>Fecha</th>
-      </tr></thead>
-      <tbody>${data.cargas.map(c => {
-        let fecha = '';
-        if (c.fecha) {
-          const d = new Date(c.fecha);
-          fecha = d.toLocaleDateString('es-CL') + ' ' + d.toLocaleTimeString('es-CL', {hour:'2-digit', minute:'2-digit'});
-        }
-        let estadoBadge = '';
-        let rowBg = '';
-        if (c.estado === 'parcial') {
-          estadoBadge = `<span style="background:#fff3cd; color:#856404; padding:1px 6px; border-radius:3px; font-size:10px; font-weight:600;" title="${(c.errores || 'Algunas filas rechazadas').replace(/"/g, '&quot;')}">&#9888; PARCIAL</span> `;
-          rowBg = ' style="background:#fffde7;"';
-        } else if (c.estado === 'error') {
-          estadoBadge = `<span style="background:#ffcdd2; color:#b42318; padding:1px 6px; border-radius:3px; font-size:10px; font-weight:600;" title="${(c.errores || 'Todas las filas rechazadas').replace(/"/g, '&quot;')}">&#10060; ERROR</span> `;
-          rowBg = ' style="background:#fff5f5;"';
-        }
-        return `<tr${rowBg}>
-          <td>${estadoBadge}<strong>${c.nombre_proyecto || c.id_proyecto}</strong></td>
-          <td class="muted" style="font-size:11px;">${c.archivo || '-'}</td>
-          <td class="muted" style="font-size:11px;">${c.plano_code || '-'}</td>
-          <td>${c.barras_count}</td>
-          <td>${Math.round(c.kilos || 0).toLocaleString()} kg</td>
-          <td class="muted" style="font-size:11px;">${c.version_archivo || '-'}</td>
-          <td class="muted">${c.usuario}</td>
-          <td class="muted" style="font-size:11px;">${fecha}</td>
-        </tr>`;
-      }).join('')}</tbody>
-    </table>
-  `;
+  // Compact card layout for right column
+  container.innerHTML = data.cargas.map(c => {
+    let fecha = '';
+    if (c.fecha) {
+      const d = new Date(c.fecha);
+      fecha = d.toLocaleDateString('es-CL') + ' ' + d.toLocaleTimeString('es-CL', {hour:'2-digit', minute:'2-digit'});
+    }
+    let estadoBadge = '';
+    let borderColor = '#e0e0e0';
+    if (c.estado === 'parcial') {
+      estadoBadge = '<span style="background:#fff3cd; color:#856404; padding:1px 4px; border-radius:2px; font-size:9px;">⚠</span> ';
+      borderColor = '#ffc107';
+    } else if (c.estado === 'error') {
+      estadoBadge = '<span style="background:#ffcdd2; color:#b42318; padding:1px 4px; border-radius:2px; font-size:9px;">✗</span> ';
+      borderColor = '#dc3545';
+    }
+    return `<div style="padding:6px 8px; border-left:3px solid ${borderColor}; margin-bottom:6px; background:#fafafa; border-radius:0 4px 4px 0;">
+      <div style="font-weight:500; font-size:11px;">${estadoBadge}${c.nombre_proyecto || c.id_proyecto}</div>
+      <div style="display:flex; justify-content:space-between; margin-top:2px;">
+        <span class="muted" style="font-size:10px;">${c.barras_count} barras · ${Math.round(c.kilos || 0).toLocaleString()} kg</span>
+        <span class="muted" style="font-size:10px;">${fecha}</span>
+      </div>
+    </div>`;
+  }).join('');
 }
 
 
@@ -3215,7 +3215,9 @@ async function loadMiActividad() {
   // Highlight today (last bar)
   const bgColors = dias.map((d, i) => i === dias.length - 1 ? '#558B2F' : '#8BC34A');
 
-  const ctx = el('miActividadChart').getContext('2d');
+  const chartEl = document.getElementById('miActividadChart');
+  if (!chartEl) return;
+  const ctx = chartEl.getContext('2d');
   if (miActividadChart) miActividadChart.destroy();
   miActividadChart = new Chart(ctx, {
     type: 'bar',
