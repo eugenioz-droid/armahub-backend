@@ -4611,7 +4611,7 @@ async function loadRecUsersDropdown() {
     var val = createSel.value;
     createSel.innerHTML = '<option value="">— Sin asignar —</option>';
     _recUsersCache.forEach(function(u) {
-      createSel.innerHTML += '<option value="' + u.display + '">' + u.display + ' (' + u.role + ')' + '</option>';
+      createSel.innerHTML += '<option value="' + u.email + '" data-display="' + u.display + '">' + u.display + ' (' + u.role + ')' + '</option>';
     });
     createSel.value = val;
   }
@@ -4763,7 +4763,9 @@ async function crearReclamo() {
   var body = { titulo: titulo };
   var proyecto = document.getElementById('recProyecto').value;
   var tipoReclamo = document.getElementById('recTipoReclamo').value;
-  var responsable = document.getElementById('recResponsable').value;
+  var respSel = document.getElementById('recResponsable');
+  var respEmail = respSel.value;
+  var respDisplay = respSel.options[respSel.selectedIndex] ? respSel.options[respSel.selectedIndex].getAttribute('data-display') : '';
   var asignadoA = document.getElementById('recAsignadoA').value;
   var descripcion = document.getElementById('recDescripcion').value.trim();
   var detectadoPor = document.getElementById('recDetectadoPor').value;
@@ -4771,7 +4773,7 @@ async function crearReclamo() {
   var idCalidad = document.getElementById('recIdCalidad') ? document.getElementById('recIdCalidad').value.trim() : '';
   if (proyecto) body.id_proyecto = proyecto;
   if (tipoReclamo) body.tipo_reclamo = tipoReclamo;
-  if (responsable) body.responsable = responsable;
+  if (respEmail) { body.cubicador_asignado = respEmail; body.responsable = respDisplay || respEmail; }
   if (asignadoA) body.asignado_a = asignadoA;
   if (descripcion) body.descripcion = descripcion;
   if (detectadoPor) body.detectado_por = detectadoPor;
@@ -4995,9 +4997,9 @@ async function verReclamo(id) {
   // Cubicador asignado name display in Section 2
   var cubNombreEl = document.getElementById('recDetailCubicadorNombre');
   if (cubNombreEl) {
-    var cubName = data.cubicador_asignado || 'Sin asignar';
+    var cubName = data.responsable || 'Sin asignar';
     cubNombreEl.textContent = cubName;
-    cubNombreEl.style.color = data.cubicador_asignado ? '#1565C0' : '#999';
+    cubNombreEl.style.color = data.responsable ? '#1565C0' : '#999';
   }
   _updateAplicaBadge();
 
@@ -5194,13 +5196,13 @@ function toggleEditarReclamo() {
     document.getElementById('recEditIdCalidad').value = d.id_calidad || '';
     document.getElementById('recEditDetectadoPor').value = d.detectado_por || '';
     document.getElementById('recEditDescripcion').value = d.descripcion || '';
-    // Populate responsable dropdown from cache
+    // Populate responsable dropdown from cache (value=email)
     var sel = document.getElementById('recEditResponsable');
     sel.innerHTML = '<option value="">— Sin asignar —</option>';
     _recUsersCache.forEach(function(u) {
-      sel.innerHTML += '<option value="' + u.display + '">' + u.display + ' (' + u.role + ')' + '</option>';
+      sel.innerHTML += '<option value="' + u.email + '" data-display="' + u.display + '">' + u.display + ' (' + u.role + ')' + '</option>';
     });
-    sel.value = d.responsable || '';
+    sel.value = d.cubicador_asignado || '';
     document.getElementById('recEditMsg').textContent = '';
     form.style.display = '';
     info.style.display = 'none';
@@ -5222,13 +5224,17 @@ async function guardarEdicionReclamo() {
   var titulo = document.getElementById('recEditTitulo').value.trim();
   if (!titulo) { msg.textContent = 'El título es obligatorio'; msg.style.color = '#b42318'; return; }
   msg.textContent = 'Guardando...'; msg.style.color = '#666';
+  var editRespSel = document.getElementById('recEditResponsable');
+  var editRespEmail = editRespSel.value || null;
+  var editRespDisplay = editRespSel.options[editRespSel.selectedIndex] ? editRespSel.options[editRespSel.selectedIndex].getAttribute('data-display') : null;
   var body = {
     titulo: titulo,
     descripcion: document.getElementById('recEditDescripcion').value.trim() || null,
     tipo_reclamo: document.getElementById('recEditTipo').value,
     fecha_deteccion: document.getElementById('recEditFechaDeteccion').value || null,
     detectado_por: document.getElementById('recEditDetectadoPor').value || null,
-    responsable: document.getElementById('recEditResponsable').value || null,
+    responsable: editRespDisplay || editRespEmail,
+    cubicador_asignado: editRespEmail || '',
     id_calidad: document.getElementById('recEditIdCalidad').value.trim() || null,
   };
   var res = await fetch('/reclamos/' + _reclamoActual.id, {
