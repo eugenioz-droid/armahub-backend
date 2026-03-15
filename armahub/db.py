@@ -18,6 +18,8 @@ from contextlib import contextmanager
 
 import psycopg
 
+_pool = None
+
 
 def get_database_url() -> str:
     db_url = os.getenv("DATABASE_URL")
@@ -29,25 +31,53 @@ def get_database_url() -> str:
     return db_url
 
 
+def _get_pool():
+    """Lazy-init del pool de conexiones. Min 2, max 10."""
+    global _pool
+    if _pool is None:
+        try:
+            from psycopg_pool import ConnectionPool
+            _pool = ConnectionPool(
+                conninfo=get_database_url(),
+                min_size=2,
+                max_size=10,
+                open=True,
+            )
+        except ImportError:
+            pass
+    return _pool
+
+
 @contextmanager
 def get_conn():
     """
     Context manager para obtener conexión a Postgres.
+    Usa pool si está disponible, sino abre conexión directa.
 
     Uso:
         with get_conn() as conn:
             with conn.cursor() as cur:
                 cur.execute(...)
     """
-    conn = psycopg.connect(get_database_url())
-    try:
-        yield conn
-        conn.commit()
-    except Exception:
-        conn.rollback()
-        raise
-    finally:
-        conn.close()
+    pool = _get_pool()
+    if pool is not None:
+        with pool.connection() as conn:
+            try:
+                yield conn
+                conn.commit()
+            except Exception:
+                conn.rollback()
+                raise
+    else:
+        conn = psycopg.connect(get_database_url())
+        try:
+            yield conn
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
 
 
 def _create_base_tables(cur) -> None:
@@ -507,6 +537,9 @@ MIGRATIONS = [
              AND r.responsable IS NOT NULL
              AND r.responsable != ''
              AND TRIM(COALESCE(u.nombre, '') || ' ' || COALESCE(u.apellido, '')) = r.responsable""",
+    ]),
+    (39, "reclamos: drop unused cliente_id column (never used in endpoints, FK broken after clientes→constructoras rename)", [
+        "DO $$ BEGIN ALTER TABLE reclamos DROP COLUMN cliente_id; EXCEPTION WHEN undefined_column THEN NULL; END $$;",
     ]),
 ]
 

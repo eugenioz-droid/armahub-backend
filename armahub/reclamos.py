@@ -245,7 +245,7 @@ def listar_reclamos(
                 where += " AND r.detectado_por = %s"
                 params.append(detectado_por)
             if responsable:
-                where += " AND r.responsable = %s"
+                where += " AND r.cubicador_asignado = %s"
                 params.append(responsable)
             if busqueda:
                 where += " AND (r.titulo ILIKE %s OR r.descripcion ILIKE %s OR r.correlativo ILIKE %s OR r.id_calidad ILIKE %s)"
@@ -541,17 +541,22 @@ def reclamos_admin_dashboards(user=Depends(get_current_user)):
             """)
             ishikawa_global = [{"categoria": r[0], "count": int(r[1])} for r in cur.fetchall()]
 
-            # Per cubicador asignado (donut)
+            # Per cubicador asignado (donut) — JOIN para mostrar nombres
             cur.execute("""
-                SELECT COALESCE(NULLIF(cubicador_asignado,''), 'Sin asignar') AS cub, COUNT(*)
-                FROM reclamos
+                SELECT COALESCE(
+                    TRIM(COALESCE(u.nombre,'') || ' ' || COALESCE(u.apellido,'')),
+                    r.cubicador_asignado,
+                    'Sin asignar'
+                ) AS cub, COUNT(*)
+                FROM reclamos r
+                LEFT JOIN users u ON u.email = r.cubicador_asignado
                 GROUP BY cub ORDER BY 2 DESC
             """)
             por_cubicador_asignado = [{"cubicador": r[0], "count": int(r[1])} for r in cur.fetchall()]
 
-            # Per cubicador respondido (bar)
+            # Per cubicador respondido (bar) — JOIN para mostrar nombres
             cur.execute("""
-                SELECT r.respuesta_por,
+                SELECT COALESCE(NULLIF(TRIM(COALESCE(u.nombre,'') || ' ' || COALESCE(u.apellido,'')), ''), r.respuesta_por) AS display,
                        COUNT(*) AS total,
                        COUNT(*) FILTER (WHERE r.tipo_reclamo = 'error') AS errores,
                        COUNT(*) FILTER (WHERE r.tipo_reclamo = 'faltante') AS faltantes,
@@ -560,29 +565,34 @@ def reclamos_admin_dashboards(user=Depends(get_current_user)):
                 FROM reclamos r
                 JOIN users u ON u.email = r.respuesta_por
                 WHERE u.role = 'cubicador' AND r.respuesta_por IS NOT NULL
-                GROUP BY r.respuesta_por ORDER BY total DESC
+                GROUP BY display ORDER BY total DESC
             """)
             por_cubicador = [{"email": r[0], "total": int(r[1]), "errores": int(r[2]), "faltantes": int(r[3]), "atrasos": int(r[4]), "actualizaciones": int(r[5])} for r in cur.fetchall()]
 
-            # Kilos mal fabricados por cubicador (respuesta_por)
+            # Kilos mal fabricados por cubicador — usa cubicador_asignado (siempre populated) + JOIN para nombre
             cur.execute("""
-                SELECT COALESCE(NULLIF(r.respuesta_por,''), COALESCE(NULLIF(r.cubicador_asignado,''), 'Sin asignar')) AS cub,
+                SELECT COALESCE(
+                    NULLIF(TRIM(COALESCE(u.nombre,'') || ' ' || COALESCE(u.apellido,'')), ''),
+                    r.cubicador_asignado,
+                    'Sin asignar'
+                ) AS cub,
                        COALESCE(SUM(r.kilos_mal_fabricados), 0) AS kilos
                 FROM reclamos r
+                LEFT JOIN users u ON u.email = r.cubicador_asignado
                 WHERE r.kilos_mal_fabricados IS NOT NULL AND r.kilos_mal_fabricados > 0
                 GROUP BY cub ORDER BY kilos DESC
             """)
             kilos_por_cubicador = [{"cubicador": r[0], "kilos": round(float(r[1]), 1)} for r in cur.fetchall()]
 
-            # Ishikawa per cubicador (stacked)
+            # Ishikawa per cubicador (stacked) — JOIN para mostrar nombres
             cur.execute("""
-                SELECT r.respuesta_por,
+                SELECT COALESCE(NULLIF(TRIM(COALESCE(u.nombre,'') || ' ' || COALESCE(u.apellido,'')), ''), r.respuesta_por) AS display,
                        COALESCE(r.categoria_ishikawa, 'sin_categoria'),
                        COUNT(*)
                 FROM reclamos r
                 JOIN users u ON u.email = r.respuesta_por
                 WHERE u.role = 'cubicador' AND r.respuesta_por IS NOT NULL
-                GROUP BY r.respuesta_por, 2 ORDER BY r.respuesta_por, 3 DESC
+                GROUP BY display, 2 ORDER BY display, 3 DESC
             """)
             ishikawa_per_cub = [{"email": r[0], "categoria": r[1], "count": int(r[2])} for r in cur.fetchall()]
 

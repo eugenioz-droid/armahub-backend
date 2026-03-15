@@ -1360,24 +1360,24 @@ relacional y refactorizar para escalabilidad. NO se modifica funcionalidad exist
 
 | # | Item | Estado |
 |---|------|--------|
-| O9 | Campo `responsable` almacena display names, `cubicador_asignado` almacena emails. Ambos representan el mismo concepto. Evaluar si `responsable` puede deprecarse en favor de `cubicador_asignado` + lookup de nombre, o si se mantienen ambos con documentación clara. | Pendiente |
-| O10 | Filtro dropdown `recFiltroResponsable` envía display names al backend (param `responsable`), que filtra contra campo `r.responsable` (display names). Funciona pero es frágil: si un usuario cambia su nombre, los reclamos antiguos no matchean. Evaluar migrar a filtro por email. | Pendiente |
-| O11 | `correlativo_calidad` (SERIAL) — columna retornada en API pero nunca usada ni mostrada en frontend. ¿Eliminar o documentar propósito? | Pendiente |
-| O12 | Campo `cliente_id` en tabla reclamos (migración 18) — nunca se usa en ningún endpoint ni frontend. Fue revertido conceptualmente ("cliente se obtiene vía proyecto"). Evaluar DROP. | Pendiente |
-| O13 | Tabla `reclamo_acciones` — tiene CRUD completo pero evaluar si está activamente usada en la UI actual o si se deprecó. | Pendiente |
+| O9 | `responsable` = display name (UI), `cubicador_asignado` = email (filtros/asignación). Se mantienen ambos: `responsable` es el nombre legible, `cubicador_asignado` es la clave estable. Siempre se setean juntos al crear/editar. | ✅ Documentado |
+| O10 | Filtro dropdown migrado: ahora envía email (value=`u.email`) → backend filtra por `r.cubicador_asignado` en vez de `r.responsable`. Robusto ante cambios de nombre. | ✅ Corregido |
+| O11 | `correlativo_calidad` (SERIAL) — retornada en API pero no usada en frontend. Reservada para futuro uso (ID calidad auto-incremental). Eliminar de SELECT requeriría renumerar índices en 2 endpoints — riesgo > beneficio. | ✅ Documentado |
+| O12 | `cliente_id` en reclamos — DROP via migración 39. Nunca usado en endpoints/frontend, FK rota tras rename clientes→constructoras (mig 28). | ✅ Eliminado (mig 39) |
+| O13 | `reclamo_acciones` — confirmado activo: `renderAcciones()`, `agregarAccion()`, `eliminarAccion()` en app.js. CRUD completo funcionando. | ✅ Confirmado activo |
 
 ### E. Dashboard queries por cubicador
 
 | # | Item | Estado |
 |---|------|--------|
-| O14 | `por_cubicador_asignado` en admin dashboards muestra emails crudos. Debería hacer JOIN con users para mostrar display names en los charts. | Pendiente |
-| O15 | `kilos_por_cubicador` usa COALESCE fallback entre respuesta_por y cubicador_asignado. Verificar si la lógica es correcta ahora que cubicador_asignado se popula siempre. | Pendiente |
+| O14 | Todas las queries de dashboard (`por_cubicador_asignado`, `por_cubicador`, `kilos_por_cubicador`, `ishikawa_per_cub`) ahora hacen LEFT JOIN/JOIN con `users` para mostrar display names en vez de emails crudos. | ✅ Corregido |
+| O15 | `kilos_por_cubicador` simplificado: ahora usa `cubicador_asignado` directamente (siempre populated) + LEFT JOIN users para nombre. Eliminado el doble COALESCE fallback `respuesta_por → cubicador_asignado`. | ✅ Simplificado |
 
 ### F. Mejoras de robustez
 
 | # | Item | Estado |
 |---|------|--------|
-| O16 | Pool de conexiones: actualmente cada request abre una nueva conexión `psycopg.connect()`. Evaluar `psycopg_pool.ConnectionPool` para producción. | Pendiente |
+| O16 | Pool de conexiones implementado: `psycopg_pool.ConnectionPool` (min=2, max=10, lazy-init). Fallback a `psycopg.connect()` si pool no disponible. Agregado `psycopg_pool` a requirements.txt. | ✅ Implementado |
 | O17 | Endpoint `/reclamos/options` ahora usa `APLICA_LABELS` y `TIPO_ACCION_LABELS` en vez de listas hardcoded. | ✅ Unificado |
 | O18 | `import base64` eliminado (no usado). `List` confirmado en uso (PresentarReclamoRequest). | ✅ Limpiado |
 

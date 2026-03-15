@@ -4624,7 +4624,7 @@ async function loadRecUsersDropdown() {
     var fval = filterSel.value;
     filterSel.innerHTML = '<option value="">Responsable: Todos</option>';
     _recUsersCache.forEach(function(u) {
-      filterSel.innerHTML += '<option value="' + u.display + '">' + u.display + '</option>';
+      filterSel.innerHTML += '<option value="' + u.email + '">' + u.display + '</option>';
     });
     filterSel.value = fval;
   }
@@ -4921,7 +4921,12 @@ async function verReclamo(id) {
   if (data.cubicador_asignado) metaParts.push('Cubicador: ' + data.cubicador_asignado);
   document.getElementById('recDetailMeta').textContent = metaParts.join(' · ');
 
-  document.getElementById('recDetailEstado').value = data.estado;
+  // Estado display
+  var estadoDisplay = document.getElementById('recDetailEstadoDisplay');
+  var estadoLabel = _recEstadoLabels[data.estado] || data.estado;
+  var estadoColor = _recEstadoColors[data.estado] || '#666';
+  estadoDisplay.innerHTML = '<span style="background:' + estadoColor + '; color:#fff; padding:2px 8px; border-radius:12px; font-size:10px; font-weight:600;">' + estadoLabel + '</span>';
+  
   document.getElementById('recDetailAplica').value = data.aplica || 'pendiente';
   var idCalField = document.getElementById('recDetailIdCalidad');
   if (idCalField) idCalField.value = data.id_calidad || '';
@@ -5033,14 +5038,16 @@ async function verReclamo(id) {
   var selAplica = document.getElementById('recDetailAplica');
   selAplica.disabled = (currentRole !== 'admin');
 
-  // Estado: admin/admin2 always, cubicador own only
-  var puedeEstado = (currentRole === 'admin' || currentRole === 'admin2') || (currentRole === 'cubicador' && esCreador);
-  var selEstado = document.getElementById('recDetailEstado');
-  selEstado.disabled = !puedeEstado;
+  // Estado: se maneja automáticamente al guardar respuesta o con botón cerrar
 
   // Delete: admin/admin2, or usc own
   var puedeEliminar = (currentRole === 'admin' || currentRole === 'admin2') || (currentRole === 'usc' && esCreador);
   document.getElementById('btnEliminarReclamo').style.display = puedeEliminar ? '' : 'none';
+
+  // Close: admin/admin2 siempre, cubicador solo si está asignado al reclamo
+  var esAsignado = (currentRole === 'cubicador' && _reclamoActual.cubicador_asignado === currentUserEmail);
+  var puedeCerrar = (currentRole === 'admin' || currentRole === 'admin2') || esAsignado;
+  document.getElementById('recCerrarContainer').style.display = puedeCerrar ? '' : 'none';
 
   // ID Calidad inline edit: admin/admin2/usc(own)
   var idCalField = document.getElementById('recDetailIdCalidad');
@@ -5154,19 +5161,29 @@ function renderReclamoTimeline(seguimientos) {
 }
 
 // ---- Estado & Aplica ----
-async function cambiarEstadoReclamo() {
+
+async function cerrarReclamo() {
   if (!_reclamoActual) return;
-  var nuevoEstado = document.getElementById('recDetailEstado').value;
-  if (nuevoEstado === _reclamoActual.estado) return;
+  
+  // Confirmación
+  if (!confirm('¿Está seguro que desea cerrar este reclamo?\n\nUna vez cerrado, solo un administrador podrá reabrirlo para validación.')) {
+    return;
+  }
+  
   var res = await fetch('/reclamos/' + _reclamoActual.id, {
     method: 'PATCH',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
-    body: JSON.stringify({ estado: nuevoEstado })
+    body: JSON.stringify({ estado: 'cerrado' })
   });
   if (res.status === 401) { logout(); return; }
   var data = await res.json();
-  if (data.ok) { await verReclamo(_reclamoActual.id); await loadReclamos(); await loadRecLanding(); }
-  else { alert('Error: ' + (data.detail || 'desconocido')); }
+  if (data.ok) {
+    await verReclamo(_reclamoActual.id);
+    await loadReclamos();
+    await loadRecLanding();
+  } else {
+    alert('Error: ' + (data.detail || 'desconocido'));
+  }
 }
 
 function toggleEditarReclamo() {
@@ -5361,6 +5378,11 @@ async function guardarRespuesta() {
   };
   var kilosVal = document.getElementById('recDetailKilosMal').value;
   if (kilosVal !== '') body.kilos_mal_fabricados = parseFloat(kilosVal);
+  
+  // Auto-change state to "en_analisis" if current state is "abierto"
+  if (_reclamoActual.estado === 'abierto') {
+    body.estado = 'en_analisis';
+  }
   var res = await fetch('/reclamos/' + _reclamoActual.id, {
     method: 'PATCH',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },

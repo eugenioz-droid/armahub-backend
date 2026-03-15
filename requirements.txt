@@ -3,6 +3,7 @@ uvicorn
 pandas
 python-multipart
 psycopg[binary]
+psycopg_pool
 PyJWT
 passlib
 jinja2
