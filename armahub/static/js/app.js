@@ -28,7 +28,7 @@ async function cambiarMiClave() {
 }
 
 async function apiGet(url) {
-  const res = await fetch(url, { headers: authHeaders() });
+  const res = await fetch(url, { headers: authHeaders(), cache: 'no-store' });
   if (res.status === 401) { logout(); return null; }
   
   let data = null;
@@ -5058,11 +5058,17 @@ async function verReclamo(id) {
   var btnElim = document.getElementById('btnEliminarReclamo');
   if (btnElim) btnElim.style.display = puedeEliminar ? '' : 'none';
 
-  // Close: admin/admin2 siempre, cubicador solo si está asignado al reclamo
+  // Close / Reopen: admin/admin2 siempre, cubicador solo si está asignado al reclamo
   var esAsignado = (currentRole === 'cubicador' && _reclamoActual.cubicador_asignado === currentUserEmail);
   var puedeCerrar = (currentRole === 'admin' || currentRole === 'admin2') || esAsignado;
   var cerrarCont = document.getElementById('recCerrarContainer');
   if (cerrarCont) cerrarCont.style.display = puedeCerrar ? '' : 'none';
+  var estaCerrado = (data.estado === 'cerrado' || data.estado === 'rechazado');
+  var puedeReabrir = estaCerrado && (currentRole === 'admin' || currentRole === 'admin2');
+  var btnCerrar = document.getElementById('btnCerrarReclamo');
+  var btnReabrir = document.getElementById('btnReabrirReclamo');
+  if (btnCerrar) btnCerrar.style.display = estaCerrado ? 'none' : '';
+  if (btnReabrir) btnReabrir.style.display = puedeReabrir ? '' : 'none';
 
   // ID Calidad inline edit: admin/admin2/usc(own)
   var idCalField = document.getElementById('recDetailIdCalidad');
@@ -5189,6 +5195,25 @@ async function cerrarReclamo() {
     method: 'PATCH',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
     body: JSON.stringify({ estado: 'cerrado' })
+  });
+  if (res.status === 401) { logout(); return; }
+  var data = await res.json();
+  if (data.ok) {
+    await verReclamo(_reclamoActual.id);
+    await loadReclamos();
+    await loadRecLanding();
+  } else {
+    alert('Error: ' + (data.detail || 'desconocido'));
+  }
+}
+
+async function reabrirReclamo() {
+  if (!_reclamoActual) return;
+  if (!confirm('¿Reabrir este reclamo?\n\nEl estado volverá a "En análisis" y se limpiará la validación.')) return;
+  var res = await fetch('/reclamos/' + _reclamoActual.id, {
+    method: 'PATCH',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ estado: 'en_analisis', validacion_resultado: '', validacion_observaciones: '' })
   });
   if (res.status === 401) { logout(); return; }
   var data = await res.json();
@@ -5383,35 +5408,43 @@ async function guardarRespuesta() {
   if (!_reclamoActual) return;
   var msg = document.getElementById('recRespMsg');
   msg.textContent = 'Guardando...'; msg.style.color = '#666';
-  var body = {
-    respuesta_texto: document.getElementById('recDetailRespuestaTexto').value.trim() || null,
-    categoria_ishikawa: document.getElementById('recDetailCategoria').value || null,
-    sub_causa: document.getElementById('recDetailSubCausa').value || null,
-    cod_causa: document.getElementById('recDetailCodCausa').value || null,
-    area_aplica: document.getElementById('recDetailAreaAplica').value.trim() || null,
-    fecha_analisis: document.getElementById('recDetailFechaAnalisis').value || null,
-  };
-  var kilosVal = document.getElementById('recDetailKilosMal').value;
-  if (kilosVal !== '') body.kilos_mal_fabricados = parseFloat(kilosVal);
-  
-  // Auto-change state to "en_analisis" if current state is "abierto"
-  if (_reclamoActual.estado === 'abierto') {
-    body.estado = 'en_analisis';
-  }
-  var res = await fetch('/reclamos/' + _reclamoActual.id, {
-    method: 'PATCH',
-    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
-    body: JSON.stringify(body)
-  });
-  if (res.status === 401) { logout(); return; }
-  var data = await res.json();
-  if (data.ok) {
-    msg.textContent = 'Respuesta guardada'; msg.style.color = '#558B2F';
-    setTimeout(function() { msg.textContent = ''; }, 2000);
-    await verReclamo(_reclamoActual.id);
-    await loadReclamos(); await loadRecLanding();
-  } else {
-    msg.textContent = 'Error: ' + (data.detail || 'desconocido'); msg.style.color = '#b42318';
+  try {
+    var body = {
+      respuesta_texto: document.getElementById('recDetailRespuestaTexto').value.trim() || null,
+      categoria_ishikawa: document.getElementById('recDetailCategoria').value || null,
+      sub_causa: document.getElementById('recDetailSubCausa').value || null,
+      cod_causa: document.getElementById('recDetailCodCausa').value || null,
+      area_aplica: document.getElementById('recDetailAreaAplica').value || null,
+      fecha_analisis: document.getElementById('recDetailFechaAnalisis').value || null,
+    };
+    var kilosVal = document.getElementById('recDetailKilosMal').value;
+    if (kilosVal !== '') body.kilos_mal_fabricados = parseFloat(kilosVal);
+
+    // Auto-change state to "en_analisis" if current state is "abierto"
+    if (_reclamoActual.estado === 'abierto') {
+      body.estado = 'en_analisis';
+    }
+    console.log('[guardarRespuesta] Enviando PATCH body:', JSON.stringify(body));
+    var res = await fetch('/reclamos/' + _reclamoActual.id, {
+      method: 'PATCH',
+      headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    console.log('[guardarRespuesta] Response status:', res.status);
+    if (res.status === 401) { logout(); return; }
+    var data = await res.json();
+    console.log('[guardarRespuesta] Response data:', JSON.stringify(data));
+    if (data.ok) {
+      msg.textContent = 'Respuesta guardada'; msg.style.color = '#558B2F';
+      setTimeout(function() { msg.textContent = ''; }, 2000);
+      await verReclamo(_reclamoActual.id);
+      await loadReclamos(); await loadRecLanding();
+    } else {
+      msg.textContent = 'Error: ' + (data.detail || 'desconocido'); msg.style.color = '#b42318';
+    }
+  } catch (err) {
+    console.error('[guardarRespuesta] Error:', err);
+    msg.textContent = 'Error JS: ' + err.message; msg.style.color = '#b42318';
   }
 }
 

@@ -954,6 +954,10 @@ def actualizar_reclamo(reclamo_id: int, body: ReclamoUpdate, user=Depends(get_cu
             sets = ["fecha_actualizacion = %s"]
             params = [now]
 
+            # Debug: log received fields
+            received = {f: getattr(body, f) for f in ["respuesta_texto", "categoria_ishikawa", "sub_causa", "cod_causa", "area_aplica", "fecha_analisis", "kilos_mal_fabricados"] if getattr(body, f) is not None}
+            print(f"[PATCH /reclamos/{reclamo_id}] role={role} received={received}")
+
             updatable = [
                 "id_proyecto", "titulo", "descripcion", "prioridad", "tipo_reclamo",
                 "categoria_ishikawa",
@@ -970,8 +974,8 @@ def actualizar_reclamo(reclamo_id: int, body: ReclamoUpdate, user=Depends(get_cu
                                "detectado_por", "fecha_deteccion", "fecha_analisis",
                                "analista", "area_aplica", "explicacion_causa",
                                "accion_correctiva", "accion_preventiva", "resolucion", "observaciones",
-                               "respuesta_texto", "validacion_observaciones", "asignado_a",
-                               "cubicador_asignado"}
+                               "respuesta_texto", "validacion_resultado", "validacion_observaciones",
+                               "asignado_a", "cubicador_asignado"}
             for field in updatable:
                 val = getattr(body, field)
                 if val is not None:
@@ -1013,9 +1017,11 @@ def actualizar_reclamo(reclamo_id: int, body: ReclamoUpdate, user=Depends(get_cu
                 if body.estado in ("cerrado", "rechazado"):
                     sets.append("fecha_cierre = %s")
                     params.append(now)
-                # If reopening, clear fecha_cierre
+                # If reopening, clear fecha_cierre and validacion metadata
                 elif estado_anterior in ("cerrado", "rechazado"):
                     sets.append("fecha_cierre = NULL")
+                    sets.append("validacion_fecha = NULL")
+                    sets.append("validacion_por = NULL")
 
             params.append(reclamo_id)
             cur.execute(f"UPDATE reclamos SET {', '.join(sets)} WHERE id = %s", params)
@@ -1269,6 +1275,8 @@ def reclamos_para_presentar(user=Depends(get_current_user)):
                 role_filter = "AND r.cubicador_asignado = %s"
                 params.append(email)
 
+            print(f"[para-presentar] email={email} role={role} role_filter='{role_filter}' params={params}")
+
             cur.execute(f"""
                 SELECT r.id, r.correlativo, r.titulo, r.descripcion, r.estado,
                        r.tipo_reclamo, r.aplica,
@@ -1294,6 +1302,7 @@ def reclamos_para_presentar(user=Depends(get_current_user)):
                 ORDER BY r.presentacion_realizada ASC NULLS FIRST, r.id DESC
             """, params)
             rows = cur.fetchall()
+            print(f"[para-presentar] found {len(rows)} reclamos")
 
             # Also fetch cubicadores list for the asistentes selector
             cur.execute("""
