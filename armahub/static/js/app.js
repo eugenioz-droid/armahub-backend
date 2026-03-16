@@ -4618,6 +4618,18 @@ async function loadRecUsersDropdown() {
     });
     createSel.value = val;
   }
+  // Populate acciones responsable (only USC users)
+  var accionRespSel = document.getElementById('recNuevaAccionResp');
+  if (accionRespSel) {
+    var aval = accionRespSel.value;
+    accionRespSel.innerHTML = '<option value="">— Seleccionar —</option>';
+    _recUsersCache.forEach(function(u) {
+      if (u.role === 'usc') {
+        accionRespSel.innerHTML += '<option value="' + u.display + '">' + u.display + '</option>';
+      }
+    });
+    accionRespSel.value = aval;
+  }
   // Populate filter responsable
   var filterSel = document.getElementById('recFiltroResponsable');
   if (filterSel) {
@@ -5032,22 +5044,25 @@ async function verReclamo(id) {
   // Edit antecedentes (Sec 1): admin/admin2=any, usc=own
   var puedeEditarSec1 = (currentRole === 'admin' || currentRole === 'admin2') || (currentRole === 'usc' && esCreador);
   if (validado && currentRole !== 'admin') puedeEditarSec1 = false;
-  document.getElementById('btnEditarReclamo').style.display = puedeEditarSec1 ? '' : 'none';
+  var btnEditar = document.getElementById('btnEditarReclamo');
+  if (btnEditar) btnEditar.style.display = puedeEditarSec1 ? '' : 'none';
 
   // Aplica: solo admin
   var selAplica = document.getElementById('recDetailAplica');
-  selAplica.disabled = (currentRole !== 'admin');
+  if (selAplica) selAplica.disabled = (currentRole !== 'admin');
 
   // Estado: se maneja automáticamente al guardar respuesta o con botón cerrar
 
   // Delete: admin/admin2, or usc own
   var puedeEliminar = (currentRole === 'admin' || currentRole === 'admin2') || (currentRole === 'usc' && esCreador);
-  document.getElementById('btnEliminarReclamo').style.display = puedeEliminar ? '' : 'none';
+  var btnElim = document.getElementById('btnEliminarReclamo');
+  if (btnElim) btnElim.style.display = puedeEliminar ? '' : 'none';
 
   // Close: admin/admin2 siempre, cubicador solo si está asignado al reclamo
   var esAsignado = (currentRole === 'cubicador' && _reclamoActual.cubicador_asignado === currentUserEmail);
   var puedeCerrar = (currentRole === 'admin' || currentRole === 'admin2') || esAsignado;
-  document.getElementById('recCerrarContainer').style.display = puedeCerrar ? '' : 'none';
+  var cerrarCont = document.getElementById('recCerrarContainer');
+  if (cerrarCont) cerrarCont.style.display = puedeCerrar ? '' : 'none';
 
   // ID Calidad inline edit: admin/admin2/usc(own)
   var idCalField = document.getElementById('recDetailIdCalidad');
@@ -5437,7 +5452,7 @@ async function agregarAccion() {
   var body = {
     tipo: document.getElementById('recNuevaAccionTipo').value,
     descripcion: desc,
-    responsable: document.getElementById('recNuevaAccionResp').value.trim() || null,
+    responsable: document.getElementById('recNuevaAccionResp').value || null,
     fecha_prevista: document.getElementById('recNuevaAccionFecha').value || null,
   };
   var res = await fetch('/reclamos/' + _reclamoActual.id + '/acciones', {

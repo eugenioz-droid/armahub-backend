@@ -86,10 +86,11 @@ ISHIKAWA_SUBCAUSAS = {
         {"cod": "MO02", "texto": "No revisa información ingresada post ticket de ingreso aSa"},
         {"cod": "MO03", "texto": "No considera correo o acuerdos con cliente"},
         {"cod": "MO04", "texto": "No aplica protocolo correctamente"},
-        {"cod": "MO05", "texto": "Error al digitar o transmitir datos"},
-        {"cod": "MO06", "texto": "No consulta antecedentes incompletos mediante Bshark o RDI"},
-        {"cod": "MO07", "texto": "Error de interpretación o criterio técnico"},
-        {"cod": "MO08", "texto": "Sobrecarga laboral o plazos ajustados que reducen tiempo de revisión"},
+        {"cod": "MO05", "texto": "Falta registro formal de información acordada"},
+        {"cod": "MO06", "texto": "Error al digitar o transcribir datos"},
+        {"cod": "MO07", "texto": "No consulta antecedentes incompletos mediante Bshark o RDI"},
+        {"cod": "MO08", "texto": "Error de interpretación o criterio técnico"},
+        {"cod": "MO09", "texto": "Sobrecarga laboral o plazos ajustados que reducen tiempo de revisión"},
     ],
 }
 
@@ -1255,11 +1256,20 @@ def eliminar_imagen(reclamo_id: int, imagen_id: int, user=Depends(get_current_us
 @router.get("/reclamos/para-presentar")
 def reclamos_para_presentar(user=Depends(get_current_user)):
     """Lista de reclamos elegibles para presentación.
-    Requisito: tener cubicador_asignado Y respuesta_texto (ya analizado).
+    Requisito: estado = 'cerrado'.
+    Cubicadores solo ven sus reclamos asignados; admin/admin2 ven todos.
     """
+    email = user.get("email", "")
+    role = user.get("role", "")
     with get_conn() as conn:
         with conn.cursor() as cur:
-            cur.execute("""
+            role_filter = ""
+            params = []
+            if role not in ("admin", "admin2"):
+                role_filter = "AND r.cubicador_asignado = %s"
+                params.append(email)
+
+            cur.execute(f"""
                 SELECT r.id, r.correlativo, r.titulo, r.descripcion, r.estado,
                        r.tipo_reclamo, r.aplica,
                        r.cubicador_asignado,
@@ -1279,11 +1289,10 @@ def reclamos_para_presentar(user=Depends(get_current_user)):
                 FROM reclamos r
                 LEFT JOIN users uc ON uc.email = r.cubicador_asignado
                 LEFT JOIN proyectos p ON p.id_proyecto = r.id_proyecto
-                WHERE r.cubicador_asignado IS NOT NULL
-                  AND r.respuesta_texto IS NOT NULL
-                  AND r.respuesta_texto != ''
+                WHERE r.estado = 'cerrado'
+                  {role_filter}
                 ORDER BY r.presentacion_realizada ASC NULLS FIRST, r.id DESC
-            """)
+            """, params)
             rows = cur.fetchall()
 
             # Also fetch cubicadores list for the asistentes selector
@@ -1364,15 +1373,22 @@ def presentar_reclamo(reclamo_id: int, body: PresentarReclamoRequest, user=Depen
 @router.get("/reclamos/presentaciones-stats")
 def presentaciones_stats(user=Depends(get_current_user)):
     """Stats para dashboards del tab de presentaciones."""
+    email = user.get("email", "")
+    role = user.get("role", "")
     with get_conn() as conn:
         with conn.cursor() as cur:
             # Only reclamos that are eligible (have cubicador + respuesta)
-            base = """
+            role_filter = ""
+            params = []
+            if role not in ("admin", "admin2"):
+                role_filter = "AND r.cubicador_asignado = %s"
+                params.append(email)
+
+            base = f"""
                 FROM reclamos r
                 LEFT JOIN users uc ON uc.email = r.cubicador_asignado
-                WHERE r.cubicador_asignado IS NOT NULL
-                  AND r.respuesta_texto IS NOT NULL
-                  AND r.respuesta_texto != ''
+                WHERE r.estado = 'cerrado'
+                  {role_filter}
             """
 
             # Presentados por cubicador
@@ -1384,7 +1400,7 @@ def presentaciones_stats(user=Depends(get_current_user)):
                   AND r.presentacion_realizada = TRUE
                 GROUP BY r.cubicador_asignado, uc.nombre, uc.apellido
                 ORDER BY total DESC
-            """)
+            """, params)
             presentados_por_cub = [
                 {"email": r[0], "nombre": r[1].strip() or r[0], "total": int(r[2])}
                 for r in cur.fetchall()
@@ -1399,7 +1415,7 @@ def presentaciones_stats(user=Depends(get_current_user)):
                   AND (r.presentacion_realizada = FALSE OR r.presentacion_realizada IS NULL)
                 GROUP BY r.cubicador_asignado, uc.nombre, uc.apellido
                 ORDER BY total DESC
-            """)
+            """, params)
             por_presentar_por_cub = [
                 {"email": r[0], "nombre": r[1].strip() or r[0], "total": int(r[2])}
                 for r in cur.fetchall()
@@ -1411,7 +1427,7 @@ def presentaciones_stats(user=Depends(get_current_user)):
                     COUNT(*) FILTER (WHERE r.presentacion_realizada = TRUE) AS presentados,
                     COUNT(*) FILTER (WHERE r.presentacion_realizada = FALSE OR r.presentacion_realizada IS NULL) AS por_presentar
                 {base}
-            """)
+            """, params)
             totals = cur.fetchone()
 
     return {
