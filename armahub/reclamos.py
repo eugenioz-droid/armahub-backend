@@ -833,6 +833,197 @@ def get_usuarios_usc(user=Depends(get_current_user)):
     }
 
 
+# ========================= PRESENTACIONES =========================
+# NOTE: These routes MUST be declared before /reclamos/{reclamo_id}
+# otherwise FastAPI matches "para-presentar" as {reclamo_id} → 422 error.
+
+@router.get("/reclamos/para-presentar")
+def reclamos_para_presentar(user=Depends(get_current_user)):
+    """Lista de reclamos elegibles para presentación.
+    Requisito: estado = 'cerrado'.
+    Cubicadores solo ven sus reclamos asignados; admin/admin2 ven todos.
+    """
+    email = user.get("email", "")
+    role = user.get("role", "")
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            role_filter = ""
+            params = []
+            if role not in ("admin", "admin2"):
+                role_filter = "AND r.cubicador_asignado = %s"
+                params.append(email)
+
+            cur.execute(f"""
+                SELECT r.id, r.correlativo, r.titulo, r.descripcion, r.estado,
+                       r.tipo_reclamo, r.aplica,
+                       r.cubicador_asignado,
+                       COALESCE(uc.nombre, '') AS cub_nombre,
+                       COALESCE(uc.apellido, '') AS cub_apellido,
+                       r.respuesta_texto,
+                       r.categoria_ishikawa, r.sub_causa, r.cod_causa,
+                       r.fecha_deteccion,
+                       COALESCE(p.nombre_proyecto, r.id_proyecto, '') AS nombre_proyecto,
+                       r.presentacion_realizada,
+                       r.presentacion_fecha,
+                       r.presentacion_por,
+                       r.presentacion_asistentes,
+                       r.presentacion_comentarios,
+                       r.detectado_por, r.area_aplica,
+                       r.kilos_mal_fabricados
+                FROM reclamos r
+                LEFT JOIN users uc ON uc.email = r.cubicador_asignado
+                LEFT JOIN proyectos p ON p.id_proyecto = r.id_proyecto
+                WHERE r.estado = 'cerrado'
+                  {role_filter}
+                ORDER BY r.presentacion_realizada ASC NULLS FIRST, r.id DESC
+            """, params)
+            rows = cur.fetchall()
+
+            # Also fetch cubicadores list for the asistentes selector
+            cur.execute("""
+                SELECT email, COALESCE(nombre, '') AS nombre, COALESCE(apellido, '') AS apellido
+                FROM users WHERE role = 'cubicador' AND activo = TRUE
+                ORDER BY nombre, apellido
+            """)
+            cubicadores = cur.fetchall()
+
+    return {
+        "reclamos": [
+            {
+                "id": r[0], "correlativo": r[1], "titulo": r[2], "descripcion": r[3],
+                "estado": r[4], "tipo_reclamo": r[5], "aplica": r[6],
+                "cubicador_asignado": r[7],
+                "cubicador_nombre": ((r[8] or "") + " " + (r[9] or "")).strip() or r[7],
+                "respuesta_texto": r[10],
+                "categoria_ishikawa": r[11], "sub_causa": r[12], "cod_causa": r[13],
+                "fecha_deteccion": r[14], "nombre_proyecto": r[15],
+                "presentacion_realizada": r[16] or False,
+                "presentacion_fecha": r[17], "presentacion_por": r[18],
+                "presentacion_asistentes": r[19], "presentacion_comentarios": r[20],
+                "detectado_por": r[21], "area_aplica": r[22],
+                "kilos_mal_fabricados": r[23],
+            }
+            for r in rows
+        ],
+        "cubicadores": [
+            {"email": c[0], "nombre": ((c[1] or "") + " " + (c[2] or "")).strip() or c[0]}
+            for c in cubicadores
+        ],
+    }
+
+
+@router.get("/reclamos/presentaciones-stats")
+def presentaciones_stats(user=Depends(get_current_user)):
+    """Stats para dashboards del tab de presentaciones."""
+    email = user.get("email", "")
+    role = user.get("role", "")
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            role_filter = ""
+            params = []
+            if role not in ("admin", "admin2"):
+                role_filter = "AND r.cubicador_asignado = %s"
+                params.append(email)
+
+            base = f"""
+                FROM reclamos r
+                LEFT JOIN users uc ON uc.email = r.cubicador_asignado
+                WHERE r.estado = 'cerrado'
+                  {role_filter}
+            """
+
+            # Presentados por cubicador
+            cur.execute(f"""
+                SELECT r.cubicador_asignado,
+                       COALESCE(uc.nombre, '') || ' ' || COALESCE(uc.apellido, '') AS nombre,
+                       COUNT(*) AS total
+                {base}
+                  AND r.presentacion_realizada = TRUE
+                GROUP BY r.cubicador_asignado, uc.nombre, uc.apellido
+                ORDER BY total DESC
+            """, params)
+            presentados_por_cub = [
+                {"email": r[0], "nombre": r[1].strip() or r[0], "total": int(r[2])}
+                for r in cur.fetchall()
+            ]
+
+            # Por presentar por cubicador
+            cur.execute(f"""
+                SELECT r.cubicador_asignado,
+                       COALESCE(uc.nombre, '') || ' ' || COALESCE(uc.apellido, '') AS nombre,
+                       COUNT(*) AS total
+                {base}
+                  AND (r.presentacion_realizada = FALSE OR r.presentacion_realizada IS NULL)
+                GROUP BY r.cubicador_asignado, uc.nombre, uc.apellido
+                ORDER BY total DESC
+            """, params)
+            por_presentar_por_cub = [
+                {"email": r[0], "nombre": r[1].strip() or r[0], "total": int(r[2])}
+                for r in cur.fetchall()
+            ]
+
+            # Totals
+            cur.execute(f"""
+                SELECT
+                    COUNT(*) FILTER (WHERE r.presentacion_realizada = TRUE) AS presentados,
+                    COUNT(*) FILTER (WHERE r.presentacion_realizada = FALSE OR r.presentacion_realizada IS NULL) AS por_presentar
+                {base}
+            """, params)
+            totals = cur.fetchone()
+
+    return {
+        "presentados": int(totals[0]),
+        "por_presentar": int(totals[1]),
+        "presentados_por_cubicador": presentados_por_cub,
+        "por_presentar_por_cubicador": por_presentar_por_cub,
+    }
+
+
+class PresentarReclamoRequest(BaseModel):
+    asistentes: List[str]
+    comentarios: str
+
+
+# ========================= RECLAMO DETAIL (parameterized routes below) =========================
+
+@router.post("/reclamos/{reclamo_id}/presentar")
+def presentar_reclamo(reclamo_id: int, body: PresentarReclamoRequest, user=Depends(get_current_user)):
+    """Marcar un reclamo como presentado."""
+    email = user.get("email", "unknown")
+    now = datetime.now(timezone.utc).isoformat()
+
+    if not body.asistentes:
+        raise HTTPException(status_code=400, detail="Debe seleccionar al menos un asistente")
+    if not body.comentarios or not body.comentarios.strip():
+        raise HTTPException(status_code=400, detail="Debe ingresar comentarios de la presentación")
+
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT id, cubicador_asignado, respuesta_texto, presentacion_realizada
+                FROM reclamos WHERE id = %s
+            """, (reclamo_id,))
+            row = cur.fetchone()
+            if not row:
+                raise HTTPException(status_code=404, detail="Reclamo no encontrado")
+            if not row[1] or not row[2]:
+                raise HTTPException(status_code=400, detail="El reclamo no tiene cubicador asignado o respuesta")
+
+            asistentes_str = ",".join(body.asistentes)
+            cur.execute("""
+                UPDATE reclamos SET
+                    presentacion_realizada = TRUE,
+                    presentacion_fecha = %s,
+                    presentacion_por = %s,
+                    presentacion_asistentes = %s,
+                    presentacion_comentarios = %s
+                WHERE id = %s
+            """, (now, email, asistentes_str, body.comentarios.strip(), reclamo_id))
+
+    audit(email, "presentar_reclamo", f"Reclamo #{reclamo_id} presentado", "reclamo", str(reclamo_id))
+    return {"ok": True, "reclamo_id": reclamo_id}
+
+
 @router.get("/reclamos/{reclamo_id}")
 def get_reclamo(reclamo_id: int, user=Depends(get_current_user)):
     """Obtener detalle de un reclamo con timeline, acciones e imágenes."""
@@ -1255,193 +1446,3 @@ def eliminar_imagen(reclamo_id: int, imagen_id: int, user=Depends(get_current_us
                 raise HTTPException(status_code=404, detail="Imagen no encontrada")
     audit(email, "eliminar_imagen_reclamo", str(imagen_id), "reclamo", str(reclamo_id))
     return {"ok": True}
-
-
-# ========================= PRESENTACIONES =========================
-
-@router.get("/reclamos/para-presentar")
-def reclamos_para_presentar(user=Depends(get_current_user)):
-    """Lista de reclamos elegibles para presentación.
-    Requisito: estado = 'cerrado'.
-    Cubicadores solo ven sus reclamos asignados; admin/admin2 ven todos.
-    """
-    email = user.get("email", "")
-    role = user.get("role", "")
-    with get_conn() as conn:
-        with conn.cursor() as cur:
-            role_filter = ""
-            params = []
-            if role not in ("admin", "admin2"):
-                role_filter = "AND r.cubicador_asignado = %s"
-                params.append(email)
-
-            print(f"[para-presentar] email={email} role={role} role_filter='{role_filter}' params={params}")
-
-            cur.execute(f"""
-                SELECT r.id, r.correlativo, r.titulo, r.descripcion, r.estado,
-                       r.tipo_reclamo, r.aplica,
-                       r.cubicador_asignado,
-                       COALESCE(uc.nombre, '') AS cub_nombre,
-                       COALESCE(uc.apellido, '') AS cub_apellido,
-                       r.respuesta_texto,
-                       r.categoria_ishikawa, r.sub_causa, r.cod_causa,
-                       r.fecha_deteccion,
-                       COALESCE(p.nombre_proyecto, r.id_proyecto, '') AS nombre_proyecto,
-                       r.presentacion_realizada,
-                       r.presentacion_fecha,
-                       r.presentacion_por,
-                       r.presentacion_asistentes,
-                       r.presentacion_comentarios,
-                       r.detectado_por, r.area_aplica,
-                       r.kilos_mal_fabricados
-                FROM reclamos r
-                LEFT JOIN users uc ON uc.email = r.cubicador_asignado
-                LEFT JOIN proyectos p ON p.id_proyecto = r.id_proyecto
-                WHERE r.estado = 'cerrado'
-                  {role_filter}
-                ORDER BY r.presentacion_realizada ASC NULLS FIRST, r.id DESC
-            """, params)
-            rows = cur.fetchall()
-            print(f"[para-presentar] found {len(rows)} reclamos")
-
-            # Also fetch cubicadores list for the asistentes selector
-            cur.execute("""
-                SELECT email, COALESCE(nombre, '') AS nombre, COALESCE(apellido, '') AS apellido
-                FROM users WHERE role = 'cubicador' AND activo = TRUE
-                ORDER BY nombre, apellido
-            """)
-            cubicadores = cur.fetchall()
-
-    return {
-        "reclamos": [
-            {
-                "id": r[0], "correlativo": r[1], "titulo": r[2], "descripcion": r[3],
-                "estado": r[4], "tipo_reclamo": r[5], "aplica": r[6],
-                "cubicador_asignado": r[7],
-                "cubicador_nombre": ((r[8] or "") + " " + (r[9] or "")).strip() or r[7],
-                "respuesta_texto": r[10],
-                "categoria_ishikawa": r[11], "sub_causa": r[12], "cod_causa": r[13],
-                "fecha_deteccion": r[14], "nombre_proyecto": r[15],
-                "presentacion_realizada": r[16] or False,
-                "presentacion_fecha": r[17], "presentacion_por": r[18],
-                "presentacion_asistentes": r[19], "presentacion_comentarios": r[20],
-                "detectado_por": r[21], "area_aplica": r[22],
-                "kilos_mal_fabricados": r[23],
-            }
-            for r in rows
-        ],
-        "cubicadores": [
-            {"email": c[0], "nombre": ((c[1] or "") + " " + (c[2] or "")).strip() or c[0]}
-            for c in cubicadores
-        ],
-    }
-
-
-class PresentarReclamoRequest(BaseModel):
-    asistentes: List[str]
-    comentarios: str
-
-@router.post("/reclamos/{reclamo_id}/presentar")
-def presentar_reclamo(reclamo_id: int, body: PresentarReclamoRequest, user=Depends(get_current_user)):
-    """Marcar un reclamo como presentado."""
-    email = user.get("email", "unknown")
-    now = datetime.now(timezone.utc).isoformat()
-
-    if not body.asistentes:
-        raise HTTPException(status_code=400, detail="Debe seleccionar al menos un asistente")
-    if not body.comentarios or not body.comentarios.strip():
-        raise HTTPException(status_code=400, detail="Debe ingresar comentarios de la presentación")
-
-    with get_conn() as conn:
-        with conn.cursor() as cur:
-            cur.execute("""
-                SELECT id, cubicador_asignado, respuesta_texto, presentacion_realizada
-                FROM reclamos WHERE id = %s
-            """, (reclamo_id,))
-            row = cur.fetchone()
-            if not row:
-                raise HTTPException(status_code=404, detail="Reclamo no encontrado")
-            if not row[1] or not row[2]:
-                raise HTTPException(status_code=400, detail="El reclamo no tiene cubicador asignado o respuesta")
-
-            asistentes_str = ",".join(body.asistentes)
-            cur.execute("""
-                UPDATE reclamos SET
-                    presentacion_realizada = TRUE,
-                    presentacion_fecha = %s,
-                    presentacion_por = %s,
-                    presentacion_asistentes = %s,
-                    presentacion_comentarios = %s
-                WHERE id = %s
-            """, (now, email, asistentes_str, body.comentarios.strip(), reclamo_id))
-
-    audit(email, "presentar_reclamo", f"Reclamo #{reclamo_id} presentado", "reclamo", str(reclamo_id))
-    return {"ok": True, "reclamo_id": reclamo_id}
-
-
-@router.get("/reclamos/presentaciones-stats")
-def presentaciones_stats(user=Depends(get_current_user)):
-    """Stats para dashboards del tab de presentaciones."""
-    email = user.get("email", "")
-    role = user.get("role", "")
-    with get_conn() as conn:
-        with conn.cursor() as cur:
-            # Only reclamos that are eligible (have cubicador + respuesta)
-            role_filter = ""
-            params = []
-            if role not in ("admin", "admin2"):
-                role_filter = "AND r.cubicador_asignado = %s"
-                params.append(email)
-
-            base = f"""
-                FROM reclamos r
-                LEFT JOIN users uc ON uc.email = r.cubicador_asignado
-                WHERE r.estado = 'cerrado'
-                  {role_filter}
-            """
-
-            # Presentados por cubicador
-            cur.execute(f"""
-                SELECT r.cubicador_asignado,
-                       COALESCE(uc.nombre, '') || ' ' || COALESCE(uc.apellido, '') AS nombre,
-                       COUNT(*) AS total
-                {base}
-                  AND r.presentacion_realizada = TRUE
-                GROUP BY r.cubicador_asignado, uc.nombre, uc.apellido
-                ORDER BY total DESC
-            """, params)
-            presentados_por_cub = [
-                {"email": r[0], "nombre": r[1].strip() or r[0], "total": int(r[2])}
-                for r in cur.fetchall()
-            ]
-
-            # Por presentar por cubicador
-            cur.execute(f"""
-                SELECT r.cubicador_asignado,
-                       COALESCE(uc.nombre, '') || ' ' || COALESCE(uc.apellido, '') AS nombre,
-                       COUNT(*) AS total
-                {base}
-                  AND (r.presentacion_realizada = FALSE OR r.presentacion_realizada IS NULL)
-                GROUP BY r.cubicador_asignado, uc.nombre, uc.apellido
-                ORDER BY total DESC
-            """, params)
-            por_presentar_por_cub = [
-                {"email": r[0], "nombre": r[1].strip() or r[0], "total": int(r[2])}
-                for r in cur.fetchall()
-            ]
-
-            # Totals
-            cur.execute(f"""
-                SELECT
-                    COUNT(*) FILTER (WHERE r.presentacion_realizada = TRUE) AS presentados,
-                    COUNT(*) FILTER (WHERE r.presentacion_realizada = FALSE OR r.presentacion_realizada IS NULL) AS por_presentar
-                {base}
-            """, params)
-            totals = cur.fetchone()
-
-    return {
-        "presentados": int(totals[0]),
-        "por_presentar": int(totals[1]),
-        "presentados_por_cubicador": presentados_por_cub,
-        "por_presentar_por_cubicador": por_presentar_por_cub,
-    }
