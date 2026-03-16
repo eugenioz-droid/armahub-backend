@@ -5406,12 +5406,13 @@ function toggleEditarReclamo() {
     document.getElementById('recEditIdCalidad').value = d.id_calidad || '';
     document.getElementById('recEditDetectadoPor').value = d.detectado_por || '';
     document.getElementById('recEditDescripcion').value = d.descripcion || '';
-    // Populate proyecto dropdown from cache
+    // Populate proyecto dropdown from recProyecto select (already loaded)
     var proySel = document.getElementById('recEditProyecto');
-    if (proySel) {
+    var srcProySel = document.getElementById('recProyecto');
+    if (proySel && srcProySel) {
       proySel.innerHTML = '<option value="">— Sin proyecto —</option>';
-      _proyectosCache.forEach(function(p) {
-        proySel.innerHTML += '<option value="' + p.id_proyecto + '">' + p.nombre_proyecto + '</option>';
+      Array.from(srcProySel.options).forEach(function(opt) {
+        if (opt.value) proySel.innerHTML += '<option value="' + opt.value + '">' + opt.textContent + '</option>';
       });
       proySel.value = d.id_proyecto || '';
     }
