@@ -602,9 +602,11 @@ def reclamos_admin_dashboards(user=Depends(get_current_user)):
             proyecto_por_mes = []
             try:
                 cur.execute("""
-                    SELECT COALESCE(r.id_proyecto, 'Sin proyecto') AS proy, COUNT(*) AS total
+                    SELECT COALESCE(p.nombre_proyecto, r.id_proyecto, 'Sin proyecto') AS proy,
+                           COUNT(*) AS total
                     FROM reclamos r
-                    GROUP BY proy ORDER BY total DESC
+                    LEFT JOIN proyectos p ON p.id_proyecto = r.id_proyecto
+                    GROUP BY 1 ORDER BY total DESC
                 """)
                 por_proyecto = [{"proyecto": str(r[0]), "count": int(r[1])} for r in cur.fetchall()]
             except Exception as e:
@@ -613,12 +615,13 @@ def reclamos_admin_dashboards(user=Depends(get_current_user)):
 
             try:
                 cur.execute("""
-                    SELECT COALESCE(r.id_proyecto, 'Sin proyecto') AS proy,
+                    SELECT COALESCE(p.nombre_proyecto, r.id_proyecto, 'Sin proyecto') AS proy,
                            TO_CHAR(COALESCE(r.fecha_deteccion, r.fecha_creacion, NOW()::TEXT)::timestamp, 'YYYY-MM') AS mes,
                            COUNT(*) AS total
                     FROM reclamos r
+                    LEFT JOIN proyectos p ON p.id_proyecto = r.id_proyecto
                     WHERE COALESCE(r.fecha_deteccion, r.fecha_creacion, NOW()::TEXT)::timestamp >= NOW() - INTERVAL '12 months'
-                    GROUP BY proy, mes ORDER BY proy, mes
+                    GROUP BY 1, 2 ORDER BY 1, 2
                 """)
                 proyecto_por_mes = [{"proyecto": str(r[0]), "mes": r[1], "count": int(r[2])} for r in cur.fetchall()]
             except Exception as e:

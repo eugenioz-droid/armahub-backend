@@ -1,6 +1,11 @@
 // ArmaHub — Main Application JavaScript
 // Extracted from ui.py for maintainability
 
+// Disable ChartDataLabels globally (enable per chart)
+if (typeof ChartDataLabels !== 'undefined') {
+  Chart.defaults.plugins.datalabels = { display: false };
+}
+
 // ========================= AUTH =========================
 function token() { return localStorage.getItem('armahub_token'); }
 function authHeaders() {
@@ -4497,8 +4502,10 @@ async function loadRecAdminDashboards() {
     type: 'bar',
     data: { labels: _mesNombres, datasets: histDS },
     options: { responsive: true, maintainAspectRatio: false,
-      plugins: { legend: { display: anios.length > 1, labels: { font: { size: 9 } } } },
-      scales: { y: { beginAtZero: true, ticks: { stepSize: 1, font: { size: 9 } } }, x: { ticks: { font: { size: 9 } } } } }
+      plugins: { legend: { display: anios.length > 1, labels: { font: { size: 9 } } },
+        datalabels: { display: function(ctx) { return ctx.dataset.data[ctx.dataIndex] > 0; }, anchor: 'end', align: 'end', color: '#333', font: { size: 8, weight: 'bold' } } },
+      scales: { y: { beginAtZero: true, ticks: { stepSize: 1, font: { size: 9 } } }, x: { ticks: { font: { size: 9 } } } } },
+    plugins: [ChartDataLabels]
   });
 
   // Chart 2: Resueltos vs No Resueltos
@@ -4511,7 +4518,9 @@ async function loadRecAdminDashboards() {
     data: { labels: ['Resueltos (' + resCount + ')', 'Pendientes (' + noResCount + ')'],
             datasets: [{ data: [resCount, noResCount], backgroundColor: ['#2e7d32','#e53935'] }] },
     options: { responsive: true, maintainAspectRatio: false,
-      plugins: { legend: { position: 'bottom', labels: { font: { size: 10 }, padding: 6 } } } }
+      plugins: { legend: { position: 'bottom', labels: { font: { size: 10 }, padding: 6 } },
+        datalabels: { display: function(ctx) { return ctx.dataset.data[ctx.dataIndex] > 0; }, color: '#fff', font: { size: 11, weight: 'bold' } } } },
+    plugins: [ChartDataLabels]
   });
 
   // Chart 3: Tipo Error/Faltante/Atraso/Actualización Portal
@@ -4524,7 +4533,9 @@ async function loadRecAdminDashboards() {
     data: { labels: ['Error (' + errC + ')', 'Faltante (' + falC + ')', 'Atraso (' + atrC + ')', 'Actualización Portal (' + actC + ')'],
             datasets: [{ data: [errC, falC, atrC, actC], backgroundColor: ['#e53935','#ff9800','#7B1FA2','#00897B'] }] },
     options: { responsive: true, maintainAspectRatio: false,
-      plugins: { legend: { position: 'bottom', labels: { font: { size: 10 }, padding: 6 } } } }
+      plugins: { legend: { position: 'bottom', labels: { font: { size: 10 }, padding: 6 } },
+        datalabels: { display: function(ctx) { return ctx.dataset.data[ctx.dataIndex] > 0; }, color: '#fff', font: { size: 11, weight: 'bold' } } } },
+    plugins: [ChartDataLabels]
   });
 
   // Chart 4: Detectados por USC (horizontal bar)
@@ -4543,8 +4554,10 @@ async function loadRecAdminDashboards() {
         { label: 'Actualización Portal', data: uscData.map(function(d) { return d.actualizaciones || 0; }), backgroundColor: '#00897B' }
       ]},
       options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y',
-        plugins: { legend: { labels: { font: { size: 9 } } } },
-        scales: { x: { stacked: true, beginAtZero: true, ticks: { stepSize: 1, font: { size: 9 } } }, y: { stacked: true, ticks: { font: { size: 9 } } } } }
+        plugins: { legend: { labels: { font: { size: 9 } } },
+          datalabels: { display: function(ctx) { return ctx.dataset.data[ctx.dataIndex] > 0; }, color: '#fff', font: { size: 8, weight: 'bold' } } },
+        scales: { x: { stacked: true, beginAtZero: true, ticks: { stepSize: 1, font: { size: 9 } } }, y: { stacked: true, ticks: { font: { size: 9 } } } } },
+      plugins: [ChartDataLabels]
     });
   } else {
     ctxUSC.canvas.parentElement.innerHTML = '<div class="muted" style="text-align:center; padding:40px 0; font-size:12px;">Sin datos USC aún</div>';
@@ -4565,7 +4578,9 @@ async function loadRecAdminDashboards() {
             datasets: [{ data: cubAsigData.map(function(d) { return d.count; }),
                          backgroundColor: cubAsigColors.slice(0, cubAsigData.length) }] },
     options: { responsive: true, maintainAspectRatio: false,
-      plugins: { legend: { position: 'bottom', labels: { font: { size: 9 }, padding: 5 } } } }
+      plugins: { legend: { position: 'bottom', labels: { font: { size: 9 }, padding: 5 } },
+        datalabels: { display: function(ctx) { return ctx.dataset.data[ctx.dataIndex] > 0; }, color: '#fff', font: { size: 10, weight: 'bold' } } } },
+    plugins: [ChartDataLabels]
   });
 
   // Chart 6: Causas Ishikawa global (donut)
@@ -4580,7 +4595,9 @@ async function loadRecAdminDashboards() {
       type: 'doughnut',
       data: { labels: ishLabels, datasets: [{ data: ishValues, backgroundColor: ishColors }] },
       options: { responsive: true, maintainAspectRatio: false,
-        plugins: { legend: { position: 'bottom', labels: { font: { size: 9 }, padding: 4 } } } }
+        plugins: { legend: { position: 'bottom', labels: { font: { size: 9 }, padding: 4 } },
+          datalabels: { display: function(ctx) { return ctx.dataset.data[ctx.dataIndex] > 0; }, color: '#fff', font: { size: 10, weight: 'bold' } } } },
+      plugins: [ChartDataLabels]
     });
   } else {
     ctxIsh.canvas.parentElement.innerHTML = '<div class="muted" style="text-align:center; padding:40px 0; font-size:12px;">Sin causas registradas</div>';
@@ -4597,8 +4614,10 @@ async function loadRecAdminDashboards() {
       type: 'bar',
       data: { labels: kilosLabels, datasets: [{ label: 'Kilos', data: kilosVals, backgroundColor: '#e53935', borderRadius: 3 }] },
       options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y',
-        plugins: { legend: { display: false } },
-        scales: { x: { beginAtZero: true, ticks: { font: { size: 9 } } }, y: { ticks: { font: { size: 9 } } } } }
+        plugins: { legend: { display: false },
+          datalabels: { anchor: 'end', align: 'end', color: '#333', font: { size: 9, weight: 'bold' } } },
+        scales: { x: { beginAtZero: true, ticks: { font: { size: 9 } } }, y: { ticks: { font: { size: 9 } } } } },
+      plugins: [ChartDataLabels]
     });
   } else {
     ctxKilos.canvas.parentElement.innerHTML = '<div class="muted" style="text-align:center; padding:40px 0; font-size:12px;">Sin kilos registrados</div>';
@@ -4735,13 +4754,15 @@ async function loadRecAdminDashboards() {
           maintainAspectRatio: false,
           plugins: { 
             legend: { display: true, position: 'right', labels: { font: { size: 9 }, boxWidth: 12, padding: 6 } },
-            tooltip: { mode: 'index', intersect: false }
+            tooltip: { mode: 'index', intersect: false },
+            datalabels: { display: function(ctx) { return ctx.dataset.data[ctx.dataIndex] > 0; }, color: '#fff', font: { size: 8, weight: 'bold' } }
           },
           scales: { 
             x: { stacked: true, ticks: { font: { size: 9 } } }, 
             y: { stacked: true, beginAtZero: true, ticks: { stepSize: 1, font: { size: 9 } } } 
           }
-        }
+        },
+        plugins: [ChartDataLabels]
       });
     } else {
       ctxStacked.parentElement.innerHTML = '<div class="muted" style="text-align:center; padding:40px 0; font-size:12px;">Sin datos</div>';
