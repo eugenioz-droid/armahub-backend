@@ -598,26 +598,32 @@ def reclamos_admin_dashboards(user=Depends(get_current_user)):
             ishikawa_per_cub = [{"email": r[0], "categoria": r[1], "count": int(r[2])} for r in cur.fetchall()]
 
             # --- Por Proyecto ---
-            cur.execute("""
-                SELECT COALESCE(p.nombre_proyecto, r.id_proyecto::TEXT, 'Sin proyecto') AS proyecto,
-                       COUNT(*) AS total
-                FROM reclamos r
-                LEFT JOIN proyectos p ON p.id_proyecto = r.id_proyecto
-                GROUP BY proyecto ORDER BY total DESC
-            """)
-            por_proyecto = [{"proyecto": r[0], "count": int(r[1])} for r in cur.fetchall()]
+            por_proyecto = []
+            proyecto_por_mes = []
+            try:
+                cur.execute("""
+                    SELECT COALESCE(r.id_proyecto, 'Sin proyecto') AS proy, COUNT(*) AS total
+                    FROM reclamos r
+                    GROUP BY proy ORDER BY total DESC
+                """)
+                por_proyecto = [{"proyecto": str(r[0]), "count": int(r[1])} for r in cur.fetchall()]
+            except Exception as e:
+                print(f"[DASH] por_proyecto error: {e}")
+                conn.rollback()
 
-            # Por Proyecto desglosado por Mes (últimos 12 meses)
-            cur.execute("""
-                SELECT COALESCE(p.nombre_proyecto, r.id_proyecto::TEXT, 'Sin proyecto') AS proyecto,
-                       TO_CHAR(COALESCE(r.fecha_deteccion, r.fecha_creacion)::timestamp, 'YYYY-MM') AS mes,
-                       COUNT(*) AS total
-                FROM reclamos r
-                LEFT JOIN proyectos p ON p.id_proyecto = r.id_proyecto
-                WHERE COALESCE(r.fecha_deteccion, r.fecha_creacion) >= NOW() - INTERVAL '12 months'
-                GROUP BY proyecto, mes ORDER BY proyecto, mes
-            """)
-            proyecto_por_mes = [{"proyecto": r[0], "mes": r[1], "count": int(r[2])} for r in cur.fetchall()]
+            try:
+                cur.execute("""
+                    SELECT COALESCE(r.id_proyecto, 'Sin proyecto') AS proy,
+                           TO_CHAR(COALESCE(r.fecha_deteccion, r.fecha_creacion, NOW()::TEXT)::timestamp, 'YYYY-MM') AS mes,
+                           COUNT(*) AS total
+                    FROM reclamos r
+                    WHERE COALESCE(r.fecha_deteccion, r.fecha_creacion, NOW()::TEXT)::timestamp >= NOW() - INTERVAL '12 months'
+                    GROUP BY proy, mes ORDER BY proy, mes
+                """)
+                proyecto_por_mes = [{"proyecto": str(r[0]), "mes": r[1], "count": int(r[2])} for r in cur.fetchall()]
+            except Exception as e:
+                print(f"[DASH] proyecto_por_mes error: {e}")
+                conn.rollback()
 
     return {
         "total": total,
