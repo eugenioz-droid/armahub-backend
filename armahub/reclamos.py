@@ -599,7 +599,7 @@ def reclamos_admin_dashboards(user=Depends(get_current_user)):
 
             # --- Por Proyecto ---
             cur.execute("""
-                SELECT COALESCE(p.nombre_proyecto, r.id_proyecto, 'Sin proyecto') AS proyecto,
+                SELECT COALESCE(p.nombre_proyecto, r.id_proyecto::TEXT, 'Sin proyecto') AS proyecto,
                        COUNT(*) AS total
                 FROM reclamos r
                 LEFT JOIN proyectos p ON p.id_proyecto = r.id_proyecto
@@ -609,7 +609,7 @@ def reclamos_admin_dashboards(user=Depends(get_current_user)):
 
             # Por Proyecto desglosado por Mes (últimos 12 meses)
             cur.execute("""
-                SELECT COALESCE(p.nombre_proyecto, r.id_proyecto, 'Sin proyecto') AS proyecto,
+                SELECT COALESCE(p.nombre_proyecto, r.id_proyecto::TEXT, 'Sin proyecto') AS proyecto,
                        TO_CHAR(COALESCE(r.fecha_deteccion, r.fecha_creacion)::timestamp, 'YYYY-MM') AS mes,
                        COUNT(*) AS total
                 FROM reclamos r
