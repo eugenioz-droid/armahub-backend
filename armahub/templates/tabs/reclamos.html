@@ -562,16 +562,18 @@
         <!-- LEFT PANEL: Selector + Antecedentes -->
         <div style="flex:1; min-width:0;">
           <div class="card" style="border-top:3px solid #7B1FA2;">
-            <h3 style="margin:0 0 10px 0; color:#7B1FA2;">🎤 Presentaciones de Reclamos</h3>
+            <div style="display:flex; align-items:center; justify-content:space-between; margin:0 0 10px 0;">
+              <h3 style="margin:0; color:#7B1FA2;">🎤 Presentaciones de Reclamos</h3>
+              <div style="display:flex; gap:2px;">
+                <button onclick="presNavPrev()" style="font-size:13px; padding:3px 8px; min-width:28px;" title="Anterior">◀</button>
+                <button onclick="presNavNext()" style="font-size:13px; padding:3px 8px; min-width:28px;" title="Siguiente">▶</button>
+              </div>
+            </div>
             <div style="margin-bottom:10px;">
               <label style="font-size:11px; color:#666;">Seleccionar reclamo para presentar</label>
-              <div style="display:flex; gap:4px; align-items:center;">
-                <button onclick="presNavPrev()" style="font-size:14px; padding:4px 8px; min-width:32px;" title="Anterior">◀</button>
-                <select id="presReclamoSelect" onchange="seleccionarReclamoPres()" style="flex:1; font-size:12px;">
-                  <option value="">— Seleccionar reclamo —</option>
-                </select>
-                <button onclick="presNavNext()" style="font-size:14px; padding:4px 8px; min-width:32px;" title="Siguiente">▶</button>
-              </div>
+              <select id="presReclamoSelect" onchange="seleccionarReclamoPres()" style="width:100%; font-size:12px;">
+                <option value="">— Seleccionar reclamo —</option>
+              </select>
             </div>
 
             <!-- Antecedentes viewer (hidden until selection) -->

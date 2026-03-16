@@ -385,6 +385,7 @@ function switchModule(mod) {
 // ========================= INIT =========================
 let currentRole = 'usc';
 let currentUserEmail = '';
+let currentUserName = '';
 
 async function loadMe() {
   const me = await apiGet('/me');
@@ -395,6 +396,7 @@ async function loadMe() {
   localStorage.setItem('armahub_email', me.email);
   currentRole = me.role || 'usc';
   currentUserEmail = me.email || '';
+  currentUserName = displayName || me.email;
 
   // --- Hub card visibility by role ---
   const cubicacionAccess = ['admin','cubicador','cliente'];
@@ -5827,10 +5829,22 @@ async function loadPresentaciones() {
     sel.appendChild(opt);
   });
 
-  // Populate asistentes checkboxes
+  // Populate asistentes checkboxes (include current user + cubicadores)
   var checkDiv = document.getElementById('presAsistentesCheckboxes');
   checkDiv.innerHTML = '';
+  var addedEmails = {};
+  // Add current user first if not already a cubicador
+  if (currentUserEmail) {
+    var meLabel = document.createElement('label');
+    meLabel.style.cssText = 'display:flex; align-items:center; gap:4px; font-size:12px; padding:2px 0; cursor:pointer;';
+    var meName = currentUserName || currentUserEmail;
+    meLabel.innerHTML = '<input type="checkbox" class="pres-asistente-cb" value="' + currentUserEmail + '" style="cursor:pointer;"> ' + meName + ' (yo)';
+    checkDiv.appendChild(meLabel);
+    addedEmails[currentUserEmail] = true;
+  }
   (data.cubicadores || []).forEach(function(c) {
+    if (addedEmails[c.email]) return;
+    addedEmails[c.email] = true;
     var label = document.createElement('label');
     label.style.cssText = 'display:flex; align-items:center; gap:4px; font-size:12px; padding:2px 0; cursor:pointer;';
     label.innerHTML = '<input type="checkbox" class="pres-asistente-cb" value="' + c.email + '" style="cursor:pointer;"> ' + c.nombre;
