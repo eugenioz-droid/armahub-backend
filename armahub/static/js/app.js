@@ -4469,7 +4469,7 @@ async function loadRecLanding() {
 // ---- ADMIN DASHBOARDS TAB ----
 let _recDashHist = null, _recDashResueltos = null, _recDashTipo = null;
 let _recDashUSC = null, _recDashCubAsig = null, _recDashIshikawa = null, _recDashKilos = null;
-let _recDashProyecto = null, _recDashProyectoMes = null, _recDashProyectoMesStacked = null;
+let _recDashProyecto = null, _recDashProyectoMes = null;
 var _adminDashLoaded = false;
 var _recLandChartResueltos = null; // also used in loadRecLanding
 
@@ -4674,7 +4674,7 @@ async function loadRecAdminDashboards() {
       proyMesData.forEach(function(d) { dataMap[d.proyecto + '|' + d.mes] = d.count; });
       
       // Generate heatmap table HTML
-      var html = '<div style="overflow-x:auto; max-height:300px; overflow-y:auto;">';
+      var html = '<div style="overflow-x:auto; max-height:390px; overflow-y:auto;">';
       html += '<table style="width:100%; border-collapse:collapse; font-size:10px;">';
       html += '<thead><tr style="position:sticky; top:0; background:#fff; z-index:1;"><th style="padding:3px 4px; text-align:left; border-bottom:1px solid #ddd; min-width:120px;">Proyecto</th>';
       meses.forEach(function(m) {
@@ -4714,60 +4714,6 @@ async function loadRecAdminDashboards() {
     }
   }
 
-  // Chart 10: Stacked Bar - Reclamos por Mes apilado por Proyecto
-  var ctxStacked = document.getElementById('recDashChartProyectoMesStacked');
-  if (ctxStacked) {
-    if (_recDashProyectoMesStacked) _recDashProyectoMesStacked.destroy();
-    if (proyMesData.length > 0) {
-      // Reuse mesesSet and proyectosSet from heatmap
-      var mesesSetS = {};
-      var proyectosSetS = {};
-      proyMesData.forEach(function(d) { mesesSetS[d.mes] = true; proyectosSetS[d.proyecto] = true; });
-      var mesesS = Object.keys(mesesSetS).sort();
-      var proyectosS = Object.keys(proyectosSetS);
-      
-      // Build lookup map
-      var dataMapS = {};
-      proyMesData.forEach(function(d) { dataMapS[d.proyecto + '|' + d.mes] = d.count; });
-      
-      // Colors for projects
-      var coloresS = ['#1565C0','#e53935','#43a047','#fb8c00','#8e24aa','#00acc1','#6d4c41','#546e7a','#d81b60','#fdd835','#5e35b1','#00897b','#f4511e','#3949ab','#c0ca33'];
-      
-      // Build datasets (one per project)
-      var datasetsS = proyectosS.map(function(proy, idx) {
-        var counts = mesesS.map(function(m) {
-          return dataMapS[proy + '|' + m] || 0;
-        });
-        return { 
-          label: proy.length > 18 ? proy.substring(0, 16) + '...' : proy, 
-          data: counts, 
-          backgroundColor: coloresS[idx % coloresS.length],
-          borderRadius: 2
-        };
-      });
-      
-      _recDashProyectoMesStacked = new Chart(ctxStacked.getContext('2d'), {
-        type: 'bar',
-        data: { labels: mesesS, datasets: datasetsS },
-        options: { 
-          responsive: true, 
-          maintainAspectRatio: false,
-          plugins: { 
-            legend: { display: true, position: 'right', labels: { font: { size: 9 }, boxWidth: 12, padding: 6 } },
-            tooltip: { mode: 'index', intersect: false },
-            datalabels: { display: function(ctx) { return ctx.dataset.data[ctx.dataIndex] > 0; }, color: '#fff', font: { size: 8, weight: 'bold' } }
-          },
-          scales: { 
-            x: { stacked: true, ticks: { font: { size: 9 } } }, 
-            y: { stacked: true, beginAtZero: true, ticks: { stepSize: 1, font: { size: 9 } } } 
-          }
-        },
-        plugins: [ChartDataLabels]
-      });
-    } else {
-      ctxStacked.parentElement.innerHTML = '<div class="muted" style="text-align:center; padding:40px 0; font-size:12px;">Sin datos</div>';
-    }
-  }
 }
 
 var _recUsersCache = [];
