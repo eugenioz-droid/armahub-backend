@@ -5845,7 +5845,22 @@ async function loadPresentaciones() {
   loadPresStats();
 }
 
-function seleccionarReclamoPres() {
+function togglePresSection(sectionId) {
+  var el = document.getElementById(sectionId);
+  if (el) el.style.display = el.style.display === 'none' ? '' : 'none';
+}
+
+function presNavPrev() {
+  var sel = document.getElementById('presReclamoSelect');
+  if (sel.selectedIndex > 1) { sel.selectedIndex--; seleccionarReclamoPres(); }
+}
+
+function presNavNext() {
+  var sel = document.getElementById('presReclamoSelect');
+  if (sel.selectedIndex < sel.options.length - 1) { sel.selectedIndex++; seleccionarReclamoPres(); }
+}
+
+async function seleccionarReclamoPres() {
   var sel = document.getElementById('presReclamoSelect');
   var id = parseInt(sel.value);
   var antDiv = document.getElementById('presAntecedentes');
@@ -5862,6 +5877,11 @@ function seleccionarReclamoPres() {
   if (!rec) { antDiv.style.display = 'none'; regCard.style.display = 'none'; return; }
 
   antDiv.style.display = '';
+  // Collapse expanded sections on reclamo change
+  var redExtra = document.getElementById('presRedExtra');
+  var blueExtra = document.getElementById('presBlueExtra');
+  if (redExtra) redExtra.style.display = 'none';
+  if (blueExtra) blueExtra.style.display = 'none';
 
   // Fill info header
   document.getElementById('presCorrelativo').textContent = rec.correlativo || '#' + rec.id;
@@ -5909,7 +5929,6 @@ function seleccionarReclamoPres() {
     regCard.style.display = 'none';
     document.getElementById('presYaFecha').textContent = rec.presentacion_fecha ? rec.presentacion_fecha.replace('T', ' ').substring(0, 19) : '—';
     document.getElementById('presYaPor').textContent = rec.presentacion_por || '—';
-    // Resolve asistentes emails to names
     var asistEmails = (rec.presentacion_asistentes || '').split(',').filter(Boolean);
     var asistNames = asistEmails.map(function(e) {
       var found = (_presData.cubicadores || []).find(function(c) { return c.email === e; });
@@ -5920,11 +5939,69 @@ function seleccionarReclamoPres() {
   } else {
     yaPres.style.display = 'none';
     regCard.style.display = '';
-    // Reset form
     document.querySelectorAll('.pres-asistente-cb').forEach(function(cb) { cb.checked = false; });
     document.getElementById('presComentarios').value = '';
     document.getElementById('presGuardarMsg').textContent = '';
   }
+
+  // Fetch full detail for images, acciones, and extra fields
+  var detail = await apiGet('/reclamos/' + id);
+  if (!detail) return;
+
+  // Red extra: responsable, prioridad, id_calidad, observaciones
+  var prioLabels = {baja:'Baja', media:'Media', alta:'Alta', critica:'Crítica'};
+  document.getElementById('presResponsable').textContent = detail.responsable || '—';
+  document.getElementById('presPrioridad').textContent = prioLabels[detail.prioridad] || detail.prioridad || '—';
+  document.getElementById('presIdCalidad').textContent = detail.id_calidad || '—';
+  document.getElementById('presObservaciones').textContent = detail.observaciones || '—';
+
+  // Blue extra: fecha_analisis, respuesta_por, respuesta_fecha
+  document.getElementById('presFechaAnalisis').textContent = detail.fecha_analisis ? detail.fecha_analisis.substring(0, 10) : '—';
+  document.getElementById('presRespondidoPor').textContent = detail.respuesta_por || '—';
+  document.getElementById('presFechaRespuesta').textContent = detail.respuesta_fecha ? detail.respuesta_fecha.substring(0, 19).replace('T', ' ') : '—';
+
+  // Acciones
+  var accDiv = document.getElementById('presAcciones');
+  accDiv.innerHTML = '';
+  var acciones = detail.acciones || [];
+  if (acciones.length === 0) {
+    accDiv.innerHTML = '<div style="color:#999;">Sin acciones registradas</div>';
+  } else {
+    var tipoAccLabels = {inmediata:'Inmediata', correctiva:'Correctiva', preventiva:'Preventiva'};
+    acciones.forEach(function(a) {
+      var row = document.createElement('div');
+      row.style.cssText = 'padding:4px 6px; background:#fff; border-radius:4px; margin-bottom:3px; display:flex; gap:6px; align-items:center;';
+      var badge = a.estado === 'completada' ? '✅' : '⏳';
+      row.innerHTML = badge + ' <strong>' + (tipoAccLabels[a.tipo] || a.tipo) + ':</strong> ' +
+        (a.descripcion || '') +
+        (a.responsable ? ' <span style="color:#666;">(' + a.responsable + ')</span>' : '');
+      accDiv.appendChild(row);
+    });
+  }
+
+  // Images
+  var imagenes = detail.imagenes || [];
+  var imgRecDiv = document.getElementById('presImagenesReclamo');
+  var imgRespDiv = document.getElementById('presImagenesRespuesta');
+  imgRecDiv.innerHTML = '';
+  imgRespDiv.innerHTML = '';
+
+  imagenes.forEach(function(img) {
+    var container = (img.tipo === 'respuesta') ? imgRespDiv : imgRecDiv;
+    var a = document.createElement('a');
+    a.href = img.url;
+    a.target = '_blank';
+    a.title = img.filename || '';
+    var imgEl = document.createElement('img');
+    imgEl.src = img.url;
+    imgEl.style.cssText = 'width:80px; height:80px; object-fit:cover; border-radius:4px; border:1px solid #ccc; cursor:pointer;';
+    imgEl.alt = img.filename || 'imagen';
+    a.appendChild(imgEl);
+    container.appendChild(a);
+  });
+
+  if (imgRecDiv.children.length === 0) imgRecDiv.innerHTML = '<span style="color:#999; font-size:11px;">Sin imágenes</span>';
+  if (imgRespDiv.children.length === 0) imgRespDiv.innerHTML = '<span style="color:#999; font-size:11px;">Sin imágenes</span>';
 }
 
 async function guardarPresentacion() {

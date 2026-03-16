@@ -565,9 +565,13 @@
             <h3 style="margin:0 0 10px 0; color:#7B1FA2;">🎤 Presentaciones de Reclamos</h3>
             <div style="margin-bottom:10px;">
               <label style="font-size:11px; color:#666;">Seleccionar reclamo para presentar</label>
-              <select id="presReclamoSelect" onchange="seleccionarReclamoPres()" style="width:100%; font-size:12px;">
-                <option value="">— Seleccionar reclamo —</option>
-              </select>
+              <div style="display:flex; gap:4px; align-items:center;">
+                <button onclick="presNavPrev()" style="font-size:14px; padding:4px 8px; min-width:32px;" title="Anterior">◀</button>
+                <select id="presReclamoSelect" onchange="seleccionarReclamoPres()" style="flex:1; font-size:12px;">
+                  <option value="">— Seleccionar reclamo —</option>
+                </select>
+                <button onclick="presNavNext()" style="font-size:14px; padding:4px 8px; min-width:32px;" title="Siguiente">▶</button>
+              </div>
             </div>
 
             <!-- Antecedentes viewer (hidden until selection) -->
@@ -583,18 +587,32 @@
 
               <!-- Sección Roja: Antecedentes -->
               <div style="padding:10px; background:#fff5f5; border-radius:6px; border:1px solid #ffcdd2; margin-bottom:8px;">
-                <h4 style="margin:0 0 6px 0; font-size:12px; color:#b42318;">📋 Antecedentes del Reclamo</h4>
+                <h4 onclick="togglePresSection('presRedExtra')" style="margin:0 0 6px 0; font-size:12px; color:#b42318; cursor:pointer; user-select:none;">📋 Antecedentes del Reclamo <span style="font-size:10px; color:#999;">▼ click para más detalles</span></h4>
                 <div style="font-size:12px;">
                   <div><strong>Título:</strong> <span id="presTitulo">—</span></div>
                   <div style="margin-top:4px;"><strong>Tipo:</strong> <span id="presTipo">—</span> · <strong>Detectado por:</strong> <span id="presDetectado">—</span> · <strong>Fecha:</strong> <span id="presFecha">—</span></div>
                   <div style="margin-top:6px;"><strong>Descripción:</strong></div>
                   <div id="presDescripcion" style="margin-top:2px; padding:6px; background:#fff; border-radius:4px; white-space:pre-wrap; font-size:11px; max-height:120px; overflow-y:auto;">—</div>
                 </div>
+                <!-- Extra details (hidden by default) -->
+                <div id="presRedExtra" style="display:none; margin-top:8px; border-top:1px solid #ffcdd2; padding-top:8px;">
+                  <div style="font-size:12px;">
+                    <div><strong>Responsable:</strong> <span id="presResponsable">—</span></div>
+                    <div style="margin-top:2px;"><strong>Prioridad:</strong> <span id="presPrioridad">—</span></div>
+                    <div style="margin-top:2px;"><strong>ID Calidad:</strong> <span id="presIdCalidad">—</span></div>
+                    <div style="margin-top:2px;"><strong>Observaciones:</strong></div>
+                    <div id="presObservaciones" style="margin-top:2px; padding:6px; background:#fff; border-radius:4px; white-space:pre-wrap; font-size:11px; max-height:80px; overflow-y:auto;">—</div>
+                  </div>
+                  <div style="margin-top:6px;">
+                    <div style="font-size:11px; font-weight:600; color:#b42318; margin-bottom:4px;">📷 Imágenes del Reclamo</div>
+                    <div id="presImagenesReclamo" style="display:flex; flex-wrap:wrap; gap:6px;"></div>
+                  </div>
+                </div>
               </div>
 
               <!-- Sección Azul: Análisis -->
               <div style="padding:10px; background:#e3f2fd; border-radius:6px; border:1px solid #bbdefb; margin-bottom:8px;">
-                <h4 style="margin:0 0 6px 0; font-size:12px; color:#1565C0;">💬 Análisis del Responsable</h4>
+                <h4 onclick="togglePresSection('presBlueExtra')" style="margin:0 0 6px 0; font-size:12px; color:#1565C0; cursor:pointer; user-select:none;">💬 Análisis del Responsable <span style="font-size:10px; color:#999;">▼ click para más detalles</span></h4>
                 <div style="font-size:12px;">
                   <div><strong>Causa Ishikawa:</strong> <span id="presIshikawa">—</span></div>
                   <div style="margin-top:2px;"><strong>Área responsable:</strong> <span id="presArea">—</span></div>
@@ -603,6 +621,21 @@
                 </div>
                 <div style="margin-top:4px; font-size:11px; color:#666;">
                   <span id="presKilos" style="display:none;"><strong>Kilos mal fabricados:</strong> <span id="presKilosVal">0</span> kg</span>
+                </div>
+                <!-- Extra details (hidden by default) -->
+                <div id="presBlueExtra" style="display:none; margin-top:8px; border-top:1px solid #bbdefb; padding-top:8px;">
+                  <div style="font-size:12px;">
+                    <div><strong>Fecha análisis:</strong> <span id="presFechaAnalisis">—</span></div>
+                    <div style="margin-top:2px;"><strong>Respondido por:</strong> <span id="presRespondidoPor">—</span> · <strong>Fecha respuesta:</strong> <span id="presFechaRespuesta">—</span></div>
+                  </div>
+                  <div style="margin-top:6px;">
+                    <div style="font-size:11px; font-weight:600; color:#1565C0; margin-bottom:4px;">📋 Acciones</div>
+                    <div id="presAcciones" style="font-size:11px;"></div>
+                  </div>
+                  <div style="margin-top:6px;">
+                    <div style="font-size:11px; font-weight:600; color:#1565C0; margin-bottom:4px;">📷 Imágenes de Respuesta</div>
+                    <div id="presImagenesRespuesta" style="display:flex; flex-wrap:wrap; gap:6px;"></div>
+                  </div>
                 </div>
               </div>
 
