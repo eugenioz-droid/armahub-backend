@@ -4464,6 +4464,7 @@ async function loadRecLanding() {
 // ---- ADMIN DASHBOARDS TAB ----
 let _recDashHist = null, _recDashResueltos = null, _recDashTipo = null;
 let _recDashUSC = null, _recDashCubAsig = null, _recDashIshikawa = null, _recDashKilos = null;
+let _recDashProyecto = null, _recDashProyectoMes = null, _recDashProyectoMesStacked = null;
 var _adminDashLoaded = false;
 var _recLandChartResueltos = null; // also used in loadRecLanding
 
@@ -4601,6 +4602,150 @@ async function loadRecAdminDashboards() {
     });
   } else {
     ctxKilos.canvas.parentElement.innerHTML = '<div class="muted" style="text-align:center; padding:40px 0; font-size:12px;">Sin kilos registrados</div>';
+  }
+
+  // Chart 8: Reclamos por Proyecto (horizontal bar) - ALL projects
+  var proyData = data.por_proyecto || [];
+  var ctxProy = document.getElementById('recDashChartProyecto');
+  if (ctxProy) {
+    if (_recDashProyecto) _recDashProyecto.destroy();
+    if (proyData.length > 0) {
+      // Dynamic height: 25px per project, min 200px
+      var chartHeight = Math.max(200, proyData.length * 25);
+      ctxProy.parentElement.style.height = chartHeight + 'px';
+      var proyLabels = proyData.map(function(d) { return d.proyecto.length > 25 ? d.proyecto.substring(0, 23) + '...' : d.proyecto; });
+      var proyVals = proyData.map(function(d) { return d.count; });
+      _recDashProyecto = new Chart(ctxProy.getContext('2d'), {
+        type: 'bar',
+        data: { labels: proyLabels, datasets: [{ label: 'Reclamos', data: proyVals, backgroundColor: '#1565C0', borderRadius: 3 }] },
+        options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y',
+          plugins: { legend: { display: false },
+            datalabels: { anchor: 'end', align: 'end', color: '#333', font: { size: 9, weight: 'bold' }, formatter: function(v) { return v; } } },
+          scales: { x: { beginAtZero: true, ticks: { stepSize: 1, font: { size: 9 } } }, y: { ticks: { font: { size: 9 } } } } },
+        plugins: [ChartDataLabels]
+      });
+    } else {
+      ctxProy.parentElement.innerHTML = '<div class="muted" style="text-align:center; padding:40px 0; font-size:12px;">Sin datos</div>';
+    }
+  }
+
+  // Chart 9: Reclamos por Proyecto/Mes - HEATMAP TABLE (scalable for all projects)
+  var proyMesData = data.proyecto_por_mes || [];
+  var ctxProyMes = document.getElementById('recDashChartProyectoMes');
+  if (ctxProyMes) {
+    // Destroy chart if exists (we're replacing with a table)
+    if (_recDashProyectoMes) { _recDashProyectoMes.destroy(); _recDashProyectoMes = null; }
+    var container = ctxProyMes.parentElement;
+    
+    if (proyMesData.length > 0) {
+      // Get unique months and projects
+      var mesesSet = {};
+      var proyectosSet = {};
+      var maxCount = 0;
+      proyMesData.forEach(function(d) { 
+        mesesSet[d.mes] = true; 
+        proyectosSet[d.proyecto] = true;
+        if (d.count > maxCount) maxCount = d.count;
+      });
+      var meses = Object.keys(mesesSet).sort();
+      var proyectos = Object.keys(proyectosSet).sort();
+      
+      // Build lookup map
+      var dataMap = {};
+      proyMesData.forEach(function(d) { dataMap[d.proyecto + '|' + d.mes] = d.count; });
+      
+      // Generate heatmap table HTML
+      var html = '<div style="overflow-x:auto; max-height:300px; overflow-y:auto;">';
+      html += '<table style="width:100%; border-collapse:collapse; font-size:10px;">';
+      html += '<thead><tr style="position:sticky; top:0; background:#fff; z-index:1;"><th style="padding:3px 4px; text-align:left; border-bottom:1px solid #ddd; min-width:120px;">Proyecto</th>';
+      meses.forEach(function(m) {
+        html += '<th style="padding:3px 4px; text-align:center; border-bottom:1px solid #ddd; min-width:45px;">' + m.substring(5) + '</th>';
+      });
+      html += '<th style="padding:3px 4px; text-align:center; border-bottom:1px solid #ddd; font-weight:700;">Total</th></tr></thead><tbody>';
+      
+      proyectos.forEach(function(proy) {
+        var rowTotal = 0;
+        html += '<tr><td style="padding:3px 4px; border-bottom:1px solid #eee; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:150px;" title="' + proy + '">' + (proy.length > 20 ? proy.substring(0, 18) + '...' : proy) + '</td>';
+        meses.forEach(function(m) {
+          var val = dataMap[proy + '|' + m] || 0;
+          rowTotal += val;
+          var intensity = maxCount > 0 ? Math.min(1, val / maxCount) : 0;
+          var bgColor = val === 0 ? '#f5f5f5' : 'rgba(21, 101, 192, ' + (0.15 + intensity * 0.7) + ')';
+          var textColor = intensity > 0.5 ? '#fff' : '#333';
+          html += '<td style="padding:3px 4px; text-align:center; border-bottom:1px solid #eee; background:' + bgColor + '; color:' + textColor + ';">' + (val || '') + '</td>';
+        });
+        html += '<td style="padding:3px 4px; text-align:center; border-bottom:1px solid #eee; font-weight:600; background:#e3f2fd;">' + rowTotal + '</td></tr>';
+      });
+      
+      // Totals row
+      html += '<tr style="font-weight:600; background:#f5f5f5;"><td style="padding:3px 4px;">Total</td>';
+      var grandTotal = 0;
+      meses.forEach(function(m) {
+        var colTotal = 0;
+        proyectos.forEach(function(proy) { colTotal += dataMap[proy + '|' + m] || 0; });
+        grandTotal += colTotal;
+        html += '<td style="padding:3px 4px; text-align:center;">' + colTotal + '</td>';
+      });
+      html += '<td style="padding:3px 4px; text-align:center; background:#1565C0; color:#fff;">' + grandTotal + '</td></tr>';
+      html += '</tbody></table></div>';
+      
+      container.innerHTML = html;
+    } else {
+      container.innerHTML = '<div class="muted" style="text-align:center; padding:40px 0; font-size:12px;">Sin datos</div>';
+    }
+  }
+
+  // Chart 10: Stacked Bar - Reclamos por Mes apilado por Proyecto
+  var ctxStacked = document.getElementById('recDashChartProyectoMesStacked');
+  if (ctxStacked) {
+    if (_recDashProyectoMesStacked) _recDashProyectoMesStacked.destroy();
+    if (proyMesData.length > 0) {
+      // Reuse mesesSet and proyectosSet from heatmap
+      var mesesSetS = {};
+      var proyectosSetS = {};
+      proyMesData.forEach(function(d) { mesesSetS[d.mes] = true; proyectosSetS[d.proyecto] = true; });
+      var mesesS = Object.keys(mesesSetS).sort();
+      var proyectosS = Object.keys(proyectosSetS);
+      
+      // Build lookup map
+      var dataMapS = {};
+      proyMesData.forEach(function(d) { dataMapS[d.proyecto + '|' + d.mes] = d.count; });
+      
+      // Colors for projects
+      var coloresS = ['#1565C0','#e53935','#43a047','#fb8c00','#8e24aa','#00acc1','#6d4c41','#546e7a','#d81b60','#fdd835','#5e35b1','#00897b','#f4511e','#3949ab','#c0ca33'];
+      
+      // Build datasets (one per project)
+      var datasetsS = proyectosS.map(function(proy, idx) {
+        var counts = mesesS.map(function(m) {
+          return dataMapS[proy + '|' + m] || 0;
+        });
+        return { 
+          label: proy.length > 18 ? proy.substring(0, 16) + '...' : proy, 
+          data: counts, 
+          backgroundColor: coloresS[idx % coloresS.length],
+          borderRadius: 2
+        };
+      });
+      
+      _recDashProyectoMesStacked = new Chart(ctxStacked.getContext('2d'), {
+        type: 'bar',
+        data: { labels: mesesS, datasets: datasetsS },
+        options: { 
+          responsive: true, 
+          maintainAspectRatio: false,
+          plugins: { 
+            legend: { display: true, position: 'right', labels: { font: { size: 9 }, boxWidth: 12, padding: 6 } },
+            tooltip: { mode: 'index', intersect: false }
+          },
+          scales: { 
+            x: { stacked: true, ticks: { font: { size: 9 } } }, 
+            y: { stacked: true, beginAtZero: true, ticks: { stepSize: 1, font: { size: 9 } } } 
+          }
+        }
+      });
+    } else {
+      ctxStacked.parentElement.innerHTML = '<div class="muted" style="text-align:center; padding:40px 0; font-size:12px;">Sin datos</div>';
+    }
   }
 }
 
@@ -4817,7 +4962,27 @@ async function crearReclamo() {
 
 function toggleNuevoProyectoRec() {
   var form = document.getElementById('nuevoProyectoRecForm');
-  if (form) form.style.display = form.style.display === 'none' ? '' : 'none';
+  if (form) {
+    var wasHidden = form.style.display === 'none';
+    form.style.display = wasHidden ? '' : 'none';
+    // Populate dropdowns when opening
+    if (wasHidden) {
+      var calcSel = document.getElementById('recNuevoProjCalculista');
+      if (calcSel) {
+        var calcVal = calcSel.value;
+        calcSel.innerHTML = '<option value="">— Sin calculista —</option>' +
+          _calculistasCache.map(function(c) { return '<option value="' + c.id + '">' + c.nombre + '</option>'; }).join('');
+        if (calcVal) calcSel.value = calcVal;
+      }
+      var constSel = document.getElementById('recNuevoProjConstructora');
+      if (constSel) {
+        var constVal = constSel.value;
+        constSel.innerHTML = '<option value="">— Sin constructora —</option>' +
+          _clientesCache.map(function(c) { return '<option value="' + c.id + '">' + c.nombre + '</option>'; }).join('');
+        if (constVal) constSel.value = constVal;
+      }
+    }
+  }
 }
 
 async function crearProyectoDesdeReclamo() {
@@ -5241,6 +5406,15 @@ function toggleEditarReclamo() {
     document.getElementById('recEditIdCalidad').value = d.id_calidad || '';
     document.getElementById('recEditDetectadoPor').value = d.detectado_por || '';
     document.getElementById('recEditDescripcion').value = d.descripcion || '';
+    // Populate proyecto dropdown from cache
+    var proySel = document.getElementById('recEditProyecto');
+    if (proySel) {
+      proySel.innerHTML = '<option value="">— Sin proyecto —</option>';
+      _proyectosCache.forEach(function(p) {
+        proySel.innerHTML += '<option value="' + p.id_proyecto + '">' + p.nombre_proyecto + '</option>';
+      });
+      proySel.value = d.id_proyecto || '';
+    }
     // Populate responsable dropdown from cache (value=email)
     var sel = document.getElementById('recEditResponsable');
     sel.innerHTML = '<option value="">— Sin asignar —</option>';
@@ -5272,6 +5446,8 @@ async function guardarEdicionReclamo() {
   var editRespSel = document.getElementById('recEditResponsable');
   var editRespEmail = editRespSel.value || null;
   var editRespDisplay = editRespSel.options[editRespSel.selectedIndex] ? editRespSel.options[editRespSel.selectedIndex].getAttribute('data-display') : null;
+  var editProySel = document.getElementById('recEditProyecto');
+  var editProyVal = editProySel ? editProySel.value : null;
   var body = {
     titulo: titulo,
     descripcion: document.getElementById('recEditDescripcion').value.trim() || null,
@@ -5281,6 +5457,7 @@ async function guardarEdicionReclamo() {
     responsable: editRespDisplay || editRespEmail,
     cubicador_asignado: editRespEmail || '',
     id_calidad: document.getElementById('recEditIdCalidad').value.trim() || null,
+    id_proyecto: editProyVal || null,
   };
   var res = await fetch('/reclamos/' + _reclamoActual.id, {
     method: 'PATCH',

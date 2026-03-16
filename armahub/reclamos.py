@@ -597,6 +597,28 @@ def reclamos_admin_dashboards(user=Depends(get_current_user)):
             """)
             ishikawa_per_cub = [{"email": r[0], "categoria": r[1], "count": int(r[2])} for r in cur.fetchall()]
 
+            # --- Por Proyecto ---
+            cur.execute("""
+                SELECT COALESCE(p.nombre_proyecto, r.id_proyecto, 'Sin proyecto') AS proyecto,
+                       COUNT(*) AS total
+                FROM reclamos r
+                LEFT JOIN proyectos p ON p.id_proyecto = r.id_proyecto
+                GROUP BY proyecto ORDER BY total DESC
+            """)
+            por_proyecto = [{"proyecto": r[0], "count": int(r[1])} for r in cur.fetchall()]
+
+            # Por Proyecto desglosado por Mes (últimos 12 meses)
+            cur.execute("""
+                SELECT COALESCE(p.nombre_proyecto, r.id_proyecto, 'Sin proyecto') AS proyecto,
+                       TO_CHAR(COALESCE(r.fecha_deteccion, r.fecha_creacion)::timestamp, 'YYYY-MM') AS mes,
+                       COUNT(*) AS total
+                FROM reclamos r
+                LEFT JOIN proyectos p ON p.id_proyecto = r.id_proyecto
+                WHERE COALESCE(r.fecha_deteccion, r.fecha_creacion) >= NOW() - INTERVAL '12 months'
+                GROUP BY proyecto, mes ORDER BY proyecto, mes
+            """)
+            proyecto_por_mes = [{"proyecto": r[0], "mes": r[1], "count": int(r[2])} for r in cur.fetchall()]
+
     return {
         "total": total,
         "abiertos": abiertos,
@@ -610,6 +632,8 @@ def reclamos_admin_dashboards(user=Depends(get_current_user)):
         "por_cubicador_asignado": por_cubicador_asignado,
         "kilos_por_cubicador": kilos_por_cubicador,
         "ishikawa_per_cub": ishikawa_per_cub,
+        "por_proyecto": por_proyecto,
+        "proyecto_por_mes": proyecto_por_mes,
     }
 
 
