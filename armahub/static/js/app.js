@@ -4732,15 +4732,13 @@ async function loadRecUsersDropdown() {
     });
     createSel.value = val;
   }
-  // Populate acciones responsable (only USC users)
+  // Populate acciones responsable (all users)
   var accionRespSel = document.getElementById('recNuevaAccionResp');
   if (accionRespSel) {
     var aval = accionRespSel.value;
     accionRespSel.innerHTML = '<option value="">— Seleccionar —</option>';
     _recUsersCache.forEach(function(u) {
-      if (u.role === 'usc') {
-        accionRespSel.innerHTML += '<option value="' + u.display + '">' + u.display + '</option>';
-      }
+      accionRespSel.innerHTML += '<option value="' + u.display + '">' + u.display + ' (' + u.role + ')</option>';
     });
     accionRespSel.value = aval;
   }
@@ -5685,8 +5683,10 @@ function _initDropZone(zoneId, fileInputId, onFiles) {
     e.preventDefault(); e.stopPropagation();
     zone.style.borderColor = ''; zone.style.background = '';
     var files = [];
-    for (var i = 0; i < e.dataTransfer.files.length; i++) {
-      if (e.dataTransfer.files[i].type.startsWith('image/')) files.push(e.dataTransfer.files[i]);
+    if (e.dataTransfer && e.dataTransfer.files) {
+      for (var i = 0; i < e.dataTransfer.files.length; i++) {
+        if (e.dataTransfer.files[i].type.startsWith('image/')) files.push(e.dataTransfer.files[i]);
+      }
     }
     if (files.length) onFiles(files);
   });
@@ -5699,9 +5699,14 @@ function _initDropZone(zoneId, fileInputId, onFiles) {
 }
 
 function _initPasteZone(targetElementId, onFiles) {
-  document.addEventListener('paste', function(e) {
-    var target = document.getElementById(targetElementId);
-    if (!target || target.offsetParent === null) return;
+  var target = document.getElementById(targetElementId);
+  if (!target) return;
+  
+  target.addEventListener('paste', function(e) {
+    // Only process if the target is visible and focused
+    if (target.offsetParent === null) return;
+    if (document.activeElement !== target && !target.contains(document.activeElement)) return;
+    
     var files = [];
     var items = e.clipboardData && e.clipboardData.items;
     if (!items) return;
@@ -5711,7 +5716,11 @@ function _initPasteZone(targetElementId, onFiles) {
         if (f) files.push(f);
       }
     }
-    if (files.length) { e.preventDefault(); onFiles(files); }
+    if (files.length) { 
+      e.preventDefault(); 
+      e.stopPropagation();
+      onFiles(files); 
+    }
   });
 }
 

@@ -29,15 +29,25 @@ def _project_filter_sql(allowed_ids, table_alias="", col="id_proyecto"):
 
 def _puede_editar_proyecto(cur, id_proyecto: str, user: dict) -> bool:
     """Retorna True si el usuario es admin/admin2 o está en proyecto_usuarios."""
-    if user.get("role") in ("admin", "admin2"):
+    email = user.get("email", "")
+    role = user.get("role", "")
+    print(f"[_puede_editar_proyecto] Checking: email={email}, role={role}, id_proyecto={id_proyecto}")
+    
+    if role in ("admin", "admin2"):
+        print(f"[_puede_editar_proyecto] Admin access granted for {email}")
         return True
-    cur.execute("SELECT id FROM users WHERE email = %s", (user.get("email"),))
+    
+    cur.execute("SELECT id FROM users WHERE email = %s", (email,))
     row = cur.fetchone()
     if not row:
+        print(f"[_puede_editar_proyecto] User {email} not found in users table")
         return False
     uid = row[0]
+    
     cur.execute("SELECT 1 FROM proyecto_usuarios WHERE id_proyecto = %s AND user_id = %s", (id_proyecto, uid))
-    return cur.fetchone() is not None
+    has_access = cur.fetchone() is not None
+    print(f"[_puede_editar_proyecto] User {email} (uid={uid}) access to {id_proyecto}: {has_access}")
+    return has_access
 
 BARRAS_COLUMNS = [
     "id_unico","id_proyecto","nombre_proyecto","plano_code","nombre_plano","sector","piso","ciclo","eje",
@@ -649,6 +659,9 @@ class BulkDeleteCargasRequest(BaseModel):
 @router.post("/cargas/bulk-delete")
 def bulk_delete_cargas(body: BulkDeleteCargasRequest, user=Depends(get_current_user)):
     """Eliminar múltiples cargas a la vez."""
+    print(f"[bulk-delete] User: {user}, Role: {user.get('role')}, Email: {user.get('email')}")
+    print(f"[bulk-delete] Requested IDs: {body.ids}")
+    
     if not body.ids:
         raise HTTPException(status_code=400, detail="No se proporcionaron IDs de cargas")
     if len(body.ids) > 100:
