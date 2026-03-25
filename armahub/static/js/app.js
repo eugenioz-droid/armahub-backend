@@ -5703,9 +5703,18 @@ function _initPasteZone(targetElementId, onFiles) {
   if (!target) return;
   
   target.addEventListener('paste', function(e) {
-    // Only process if the target is visible and focused
+    // Only process if the target is visible
     if (target.offsetParent === null) return;
-    if (document.activeElement !== target && !target.contains(document.activeElement)) return;
+    
+    // Check if the paste is happening within this target's bounds
+    var rect = target.getBoundingClientRect();
+    var isInBounds = e.clientX >= rect.left && e.clientX <= rect.right && 
+                     e.clientY >= rect.top && e.clientY <= rect.bottom;
+    
+    // Also check if active element is within this target
+    var activeInTarget = document.activeElement && target.contains(document.activeElement);
+    
+    if (!isInBounds && !activeInTarget) return;
     
     var files = [];
     var items = e.clipboardData && e.clipboardData.items;
@@ -5719,9 +5728,10 @@ function _initPasteZone(targetElementId, onFiles) {
     if (files.length) { 
       e.preventDefault(); 
       e.stopPropagation();
+      e.stopImmediatePropagation(); // Prevent other listeners
       onFiles(files); 
     }
-  });
+  }, true); // Use capture phase to handle it first
 }
 
 function _addCreatePreview(files) {
