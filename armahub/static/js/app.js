@@ -5556,17 +5556,20 @@ async function guardarRespuesta() {
   var msg = document.getElementById('recRespMsg');
   msg.textContent = 'Guardando...'; msg.style.color = '#666';
   try {
+    // Debug: Get all field values
+    var respuestaTexto = document.getElementById('recDetailRespuestaTexto').value.trim() || null;
+    console.log('[guardarRespuesta] respuestaTexto value:', respuestaTexto);
+    console.log('[guardarRespuesta] respuestaTexto length:', respuestaTexto ? respuestaTexto.length : 0);
+    
     var body = {
-      respuesta_texto: document.getElementById('recDetailRespuestaTexto').value.trim() || null,
+      respuesta_texto: respuestaTexto,
       categoria_ishikawa: document.getElementById('recDetailCategoria').value || null,
       sub_causa: document.getElementById('recDetailSubCausa').value || null,
       cod_causa: document.getElementById('recDetailCodCausa').value || null,
       area_aplica: document.getElementById('recDetailAreaAplica').value || null,
       fecha_analisis: document.getElementById('recDetailFechaAnalisis').value || null,
+      kilos_mal_fabricados: parseFloat(document.getElementById('recDetailKilosMal').value) || null
     };
-    var kilosVal = document.getElementById('recDetailKilosMal').value;
-    if (kilosVal !== '') body.kilos_mal_fabricados = parseFloat(kilosVal);
-
     // Auto-change state to "en_analisis" if current state is "abierto"
     if (_reclamoActual.estado === 'abierto') {
       body.estado = 'en_analisis';

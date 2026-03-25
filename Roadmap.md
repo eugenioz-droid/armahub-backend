@@ -37,6 +37,10 @@ Actualmente el sistema ya cuenta con:
 
 **Fase 1.1 — Hardening UI**: 
 - Autenticación JWT, badges de usuario/rol, manejo de errores
+- Módulo Reclamos con nomenclatura ISO 9001:
+  - Formulario de Registro (sección roja) - Detección y registro de no conformidad
+  - Formulario de Evaluación (sección azul) - Análisis de causa y plan de acción
+  - Formulario de Validación (admin) - Verificación de eficacia y cierre
 
 **Fase 1.2 — Tabla de barras**: 
 - Paginación, ordenamiento por columnas, búsqueda rápida
