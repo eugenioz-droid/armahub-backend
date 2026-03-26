@@ -165,9 +165,9 @@
 
         <!-- Zona de imágenes al crear reclamo -->
         <div style="margin-top:10px;">
-          <label style="font-size:11px; color:#666;">Evidencia (imágenes) — arrastra, pega con Ctrl+V, o haz click</label>
+          <label style="font-size:11px; color:#666;">Evidencia (imágenes) — arrastra o haz click para seleccionar</label>
           <div id="recCreateDropZone" style="margin-top:4px; min-height:80px; border:2px dashed #ccc; border-radius:8px; padding:12px; background:#fafafa; cursor:pointer; text-align:center; transition:border-color 0.2s, background 0.2s;" onclick="document.getElementById('recCreateFileInput').click()">
-            <div id="recCreateDropMsg" style="color:#999; font-size:12px; padding:10px 0;">Arrastra imágenes aquí, pega con Ctrl+V, o haz click para seleccionar</div>
+            <div id="recCreateDropMsg" style="color:#999; font-size:12px; padding:10px 0;">Arrastra imágenes aquí o haz click para seleccionar</div>
             <div id="recCreatePreview" style="display:flex; flex-wrap:wrap; gap:8px; justify-content:center;"></div>
           </div>
           <input type="file" id="recCreateFileInput" accept="image/*" multiple style="display:none;" />
@@ -334,7 +334,7 @@
             <div class="muted">Sin imágenes</div>
           </div>
           <div id="recDetailDropZone" style="min-height:50px; border:2px dashed #ffcdd2; border-radius:8px; padding:8px; background:#fff9f9; cursor:pointer; text-align:center; transition:border-color 0.2s, background 0.2s;" onclick="document.getElementById('recDetailFileInput').click()">
-            <div id="recDetailDropMsg" style="color:#999; font-size:11px; padding:4px 0;">Arrastra imágenes, pega con Ctrl+V, o haz click</div>
+            <div id="recDetailDropMsg" style="color:#999; font-size:11px; padding:4px 0;">Arrastra imágenes o haz click</div>
           </div>
           <input type="file" id="recDetailFileInput" accept="image/*" multiple style="display:none;" />
           <span id="recImagenMsg" class="muted" style="font-size:11px;"></span>
@@ -399,7 +399,7 @@
             <div class="muted">Sin imágenes</div>
           </div>
           <div id="recRespDropZone" style="min-height:50px; border:2px dashed #bbdefb; border-radius:8px; padding:8px; background:#f5f9ff; cursor:pointer; text-align:center; transition:border-color 0.2s, background 0.2s;" onclick="document.getElementById('recRespFileInput').click()">
-            <div id="recRespDropMsg" style="color:#999; font-size:11px; padding:4px 0;">Arrastra imágenes, pega con Ctrl+V, o haz click</div>
+            <div id="recRespDropMsg" style="color:#999; font-size:11px; padding:4px 0;">Arrastra imágenes o haz click</div>
           </div>
           <input type="file" id="recRespFileInput" accept="image/*" multiple style="display:none;" />
           <span id="recRespImagenMsg" class="muted" style="font-size:11px;"></span>

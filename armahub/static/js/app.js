@@ -5698,36 +5698,6 @@ function _initDropZone(zoneId, fileInputId, onFiles) {
   });
 }
 
-function _initPasteZone(targetElementId, onFiles) {
-  var target = document.getElementById(targetElementId);
-  if (!target) return;
-  
-  target.addEventListener('paste', function(e) {
-    // Only process if the target is visible
-    if (target.offsetParent === null) return;
-    
-    // Check if the active element is within this target
-    var activeElement = document.activeElement;
-    var activeInTarget = activeElement && target.contains(activeElement);
-    
-    if (!activeInTarget) return;
-    
-    var files = [];
-    var items = e.clipboardData && e.clipboardData.items;
-    if (!items) return;
-    for (var i = 0; i < items.length; i++) {
-      if (items[i].type.startsWith('image/')) {
-        var f = items[i].getAsFile();
-        if (f) files.push(f);
-      }
-    }
-    if (files.length) { 
-      e.preventDefault(); 
-      e.stopPropagation();
-      onFiles(files); 
-    }
-  }, true); // Use capture phase to handle it first
-}
 
 function _addCreatePreview(files) {
   var preview = document.getElementById('recCreatePreview');
@@ -5783,9 +5753,6 @@ function initRecImageDropZones() {
   _initDropZone('recCreateDropZone', 'recCreateFileInput', _addCreatePreview);
   _initDropZone('recDetailDropZone', 'recDetailFileInput', function(files) { _uploadFilesWithTipo(files, 'antecedente', 'recImagenMsg'); });
   _initDropZone('recRespDropZone', 'recRespFileInput', function(files) { _uploadFilesWithTipo(files, 'respuesta', 'recRespImagenMsg'); });
-  _initPasteZone('nuevoReclamoForm', _addCreatePreview);
-  _initPasteZone('recDetailDropZone', function(files) { _uploadFilesWithTipo(files, 'antecedente', 'recImagenMsg'); });
-  _initPasteZone('recRespDropZone', function(files) { _uploadFilesWithTipo(files, 'respuesta', 'recRespImagenMsg'); });
 }
 
 async function eliminarImagen(imgId) {
