@@ -5179,9 +5179,9 @@ async function verReclamo(id) {
   var btnEditar = document.getElementById('btnEditarReclamo');
   if (btnEditar) btnEditar.style.display = puedeEditarSec1 ? '' : 'none';
 
-  // Aplica: solo admin
+  // Aplica: admin y cubicador
   var selAplica = document.getElementById('recDetailAplica');
-  if (selAplica) selAplica.disabled = (currentRole !== 'admin');
+  if (selAplica) selAplica.disabled = !(['admin', 'admin2', 'cubicador'].includes(currentRole));
 
   // Estado: se maneja automáticamente al guardar respuesta o con botón cerrar
 
@@ -5317,6 +5317,15 @@ function renderReclamoTimeline(seguimientos) {
 
 async function cerrarReclamo() {
   if (!_reclamoActual) return;
+  
+  // Verificar que se haya seleccionado Aplica/No Aplica
+  var aplicaSelect = document.getElementById('recDetailAplica');
+  var aplicaValue = aplicaSelect ? aplicaSelect.value : _reclamoActual.aplica;
+  
+  if (!aplicaValue || aplicaValue === 'pendiente') {
+    alert('Para cerrar el reclamo, primero debe seleccionar "Sí aplica" o "No aplica" en el campo Aplica.');
+    return;
+  }
   
   // Confirmación
   if (!confirm('¿Está seguro que desea cerrar este reclamo?\n\nUna vez cerrado, solo un administrador podrá reabrirlo para validación.')) {
@@ -6353,6 +6362,22 @@ async function loadLandingIndicadores() {
 // Prevent browser from opening files dropped outside the drop zone
 document.addEventListener('dragover', function(e) { e.preventDefault(); });
 document.addEventListener('drop', function(e) { e.preventDefault(); });
+
+// Block all paste events to prevent image duplication
+document.addEventListener('paste', function(e) {
+  // Check if clipboard contains images
+  var items = e.clipboardData && e.clipboardData.items;
+  if (!items) return;
+  
+  for (var i = 0; i < items.length; i++) {
+    if (items[i].type.startsWith('image/')) {
+      e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation();
+      return; // Block image paste completely
+    }
+  }
+}, true);
 
 (async function init() {
   if (!token()) { window.location.href = '/ui/login'; return; }
