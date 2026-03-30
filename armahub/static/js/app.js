@@ -4414,20 +4414,59 @@ async function loadRecLanding() {
   document.getElementById('recLandTotal').textContent = data.total || 0;
   document.getElementById('recLandAbiertos').textContent = (data.abiertos || 0) + ' abiertos';
 
-  // Chart 2: Resueltos vs No Resueltos
-  var rr = data.resueltos_no_resueltos || {};
-  var resCount = rr.resuelto || 0;
-  var noResCount = rr.no_resuelto || 0;
+  // Chart 2: Estados (reemplaza Resueltos vs No Resueltos)
+  var porEstado = data.por_estado || {};
+  var estados = Object.keys(porEstado);
+  var valores = Object.values(porEstado);
+  
+  // Preparar datos para el gráfico de torta
+  var labels = estados.map(estado => {
+    var label = _recEstadoLabels[estado] || estado;
+    var count = porEstado[estado];
+    return `${label} (${count})`;
+  });
+  var colors = estados.map(estado => _recEstadoColors[estado] || '#999');
+  
   var ctxRes = document.getElementById('recLandChartResueltos').getContext('2d');
   if (_recLandChartResueltos) _recLandChartResueltos.destroy();
   _recLandChartResueltos = new Chart(ctxRes, {
     type: 'doughnut',
     data: {
-      labels: ['Resueltos (' + resCount + ')', 'Pendientes (' + noResCount + ')'],
-      datasets: [{ data: [resCount, noResCount], backgroundColor: ['#2e7d32', '#e53935'] }]
+      labels: labels,
+      datasets: [{ 
+        data: valores, 
+        backgroundColor: colors,
+        borderWidth: 2,
+        borderColor: '#fff'
+      }]
     },
-    options: { responsive: true, maintainAspectRatio: false,
-      plugins: { legend: { position: 'bottom', labels: { font: { size: 10 }, padding: 8 } } } }
+    options: { 
+      responsive: true, 
+      maintainAspectRatio: false,
+      plugins: { 
+        legend: { 
+          position: 'bottom', 
+          labels: { 
+            font: { size: 11 }, 
+            padding: 10,
+            usePointStyle: true,
+            pointStyle: 'circle'
+          } 
+        },
+        tooltip: {
+          callbacks: {
+            label: function(context) {
+              var estado = estados[context.dataIndex];
+              var label = _recEstadoLabels[estado] || estado;
+              var value = context.parsed;
+              var total = context.dataset.data.reduce((a, b) => a + b, 0);
+              var percentage = ((value / total) * 100).toFixed(1);
+              return `${label}: ${value} (${percentage}%)`;
+            }
+          }
+        }
+      }
+    }
   });
 
   // Chart 3: Historical monthly bar (grouped by year, using fecha_deteccion from backend)
@@ -4508,18 +4547,66 @@ async function loadRecAdminDashboards() {
     plugins: [ChartDataLabels]
   });
 
-  // Chart 2: Resueltos vs No Resueltos
-  var rr = data.resueltos_no_resueltos || {};
-  var resCount = rr.resuelto || 0; var noResCount = rr.no_resuelto || 0;
+  // Chart 2: Estados (reemplaza Resueltos vs No Resueltos)
+  var porEstado = data.por_estado || {};
+  var estados = por_estado.map(item => item.estado);
+  var valores = porEstado.map(item => item.count);
+  
+  // Preparar datos para el gráfico de torta
+  var labels = porEstado.map(item => {
+    var estado = item.estado;
+    var label = _recEstadoLabels[estado] || estado;
+    var count = item.count;
+    return `${label} (${count})`;
+  });
+  var colors = estados.map(estado => _recEstadoColors[estado] || '#999');
+  
   var ctxRes = document.getElementById('recDashChartResueltos').getContext('2d');
   if (_recDashResueltos) _recDashResueltos.destroy();
   _recDashResueltos = new Chart(ctxRes, {
     type: 'doughnut',
-    data: { labels: ['Resueltos (' + resCount + ')', 'Pendientes (' + noResCount + ')'],
-            datasets: [{ data: [resCount, noResCount], backgroundColor: ['#2e7d32','#e53935'] }] },
-    options: { responsive: true, maintainAspectRatio: false,
-      plugins: { legend: { position: 'bottom', labels: { font: { size: 10 }, padding: 6 } },
-        datalabels: { display: function(ctx) { return ctx.dataset.data[ctx.dataIndex] > 0; }, color: '#fff', font: { size: 11, weight: 'bold' } } } },
+    data: {
+      labels: labels,
+      datasets: [{ 
+        data: valores, 
+        backgroundColor: colors,
+        borderWidth: 2,
+        borderColor: '#fff'
+      }]
+    },
+    options: { 
+      responsive: true, 
+      maintainAspectRatio: false,
+      plugins: { 
+        legend: { 
+          position: 'bottom', 
+          labels: { 
+            font: { size: 10 }, 
+            padding: 6,
+            usePointStyle: true,
+            pointStyle: 'circle'
+          } 
+        },
+        tooltip: {
+          callbacks: {
+            label: function(context) {
+              var item = porEstado[context.dataIndex];
+              var estado = item.estado;
+              var label = _recEstadoLabels[estado] || estado;
+              var value = item.count;
+              var total = context.dataset.data.reduce((a, b) => a + b, 0);
+              var percentage = ((value / total) * 100).toFixed(1);
+              return `${label}: ${value} (${percentage}%)`;
+            }
+          }
+        },
+        datalabels: { 
+          display: function(ctx) { return ctx.dataset.data[ctx.dataIndex] > 0; }, 
+          color: '#fff', 
+          font: { size: 10, weight: 'bold' } 
+        }
+      }
+    },
     plugins: [ChartDataLabels]
   });
 
@@ -5120,6 +5207,11 @@ async function verReclamo(id) {
   document.getElementById('recDetailAreaAplica').value = data.area_aplica || 'Cubicación';
   document.getElementById('recDetailFechaAnalisis').value = data.fecha_analisis || '';
   document.getElementById('recDetailKilosMal').value = data.kilos_mal_fabricados != null ? data.kilos_mal_fabricados : '';
+  
+  // Cargar tiempo de respuesta en análisis
+  document.getElementById('recTiempoRespuestaAnalisis').value = data.tiempo_respuesta || '';
+  document.getElementById('recTiempoRespuestaUnidadAnalisis').value = data.tiempo_respuesta_unidad || 'horas';
+  
   var respInfo = document.getElementById('recRespuestaInfo');
   if (data.respuesta_por) {
     respInfo.innerHTML = 'Respondido por: <strong>' + data.respuesta_por + '</strong>' +
@@ -5232,7 +5324,7 @@ async function verReclamo(id) {
   // Section 2 (Respuesta): admin/admin2/cubicador/externo. NOT usc.
   var puedeResponder = ['admin','admin2','cubicador','externo'].includes(currentRole);
   if (validado && currentRole !== 'admin') puedeResponder = false;
-  var sec2Fields = ['recDetailRespuestaTexto','recDetailCausaDisplay','recDetailAreaAplica','recDetailFechaAnalisis','recDetailKilosMal'];
+  var sec2Fields = ['recDetailRespuestaTexto','recDetailCausaDisplay','recDetailAreaAplica','recDetailFechaAnalisis','recDetailKilosMal','recTiempoRespuestaAnalisis','recTiempoRespuestaUnidadAnalisis'];
   sec2Fields.forEach(function(fid) { var el = document.getElementById(fid); if (el) el.disabled = !puedeResponder; });
   var btnGuardarResp = document.getElementById('btnGuardarRespuesta');
   if (btnGuardarResp) btnGuardarResp.style.display = puedeResponder ? '' : 'none';
@@ -5589,7 +5681,9 @@ async function guardarRespuesta() {
       cod_causa: document.getElementById('recDetailCodCausa').value || null,
       area_aplica: document.getElementById('recDetailAreaAplica').value || null,
       fecha_analisis: document.getElementById('recDetailFechaAnalisis').value || null,
-      kilos_mal_fabricados: parseFloat(document.getElementById('recDetailKilosMal').value) || null
+      kilos_mal_fabricados: parseFloat(document.getElementById('recDetailKilosMal').value) || null,
+      tiempo_respuesta: parseInt(document.getElementById('recTiempoRespuestaAnalisis').value) || null,
+      tiempo_respuesta_unidad: document.getElementById('recTiempoRespuestaUnidadAnalisis').value || 'horas'
     };
     // Auto-change state to "en_analisis" if current state is "abierto"
     if (_reclamoActual.estado === 'abierto') {
@@ -6290,6 +6384,7 @@ async function seleccionarReclamoPres() {
 
   // Images - Enhanced with modal viewer
   var imagenes = detail.imagenes || [];
+  console.log('[seleccionarReclamoPres] Imágenes encontradas:', imagenes.length, imagenes);
   var imgRecDiv = document.getElementById('presImagenesReclamo');
   var imgRespDiv = document.getElementById('presImagenesRespuesta');
   imgRecDiv.innerHTML = '';
@@ -6297,6 +6392,7 @@ async function seleccionarReclamoPres() {
 
   var antecedentesImgs = imagenes.filter(img => img.tipo !== 'respuesta');
   var respuestaImgs = imagenes.filter(img => img.tipo === 'respuesta');
+  console.log('[seleccionarReclamoPres] Antecedentes:', antecedentesImgs.length, 'Respuesta:', respuestaImgs.length);
 
   // Render image bar
   renderImageBar(imgRecDiv, antecedentesImgs, 'antecedentes');
@@ -6308,6 +6404,7 @@ async function seleccionarReclamoPres() {
 
 // Render enhanced image bar with modal viewer
 function renderImageBar(container, images, type) {
+  console.log('[renderImageBar] Llamada con:', {images: images?.length || 0, type, container: container?.id});
   if (!images || images.length === 0) return;
 
   var maxShow = 5;

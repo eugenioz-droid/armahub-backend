@@ -391,6 +391,17 @@
             <label style="font-size:11px; color:#666;">Kilos mal fabricados</label>
             <input type="number" id="recDetailKilosMal" step="0.01" min="0" style="width:100%; font-size:12px;" placeholder="0.00" />
           </div>
+          <div class="col" style="max-width:140px;">
+            <label style="font-size:11px; color:#666;">Tiempo respuesta</label>
+            <div style="display:flex; gap:2px;">
+              <input type="number" id="recTiempoRespuestaAnalisis" min="0" style="width:60px; font-size:12px;" placeholder="0" />
+              <select id="recTiempoRespuestaUnidadAnalisis" style="width:55px; font-size:11px;">
+                <option value="minutos">min</option>
+                <option value="horas" selected>hrs</option>
+                <option value="dias">días</option>
+              </select>
+            </div>
+          </div>
         </div>
         <!-- Imágenes de respuesta -->
         <div style="margin-top:8px;">

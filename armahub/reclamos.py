@@ -628,6 +628,10 @@ def reclamos_admin_dashboards(user=Depends(get_current_user)):
                 print(f"[DASH] proyecto_por_mes error: {e}")
                 conn.rollback()
 
+            # --- Por Estado (para gráfico de torta) ---
+            cur.execute("SELECT estado, COUNT(*) FROM reclamos GROUP BY estado")
+            por_estado = {r[0]: int(r[1]) for r in cur.fetchall()}
+
     return {
         "total": total,
         "abiertos": abiertos,
@@ -643,6 +647,7 @@ def reclamos_admin_dashboards(user=Depends(get_current_user)):
         "ishikawa_per_cub": ishikawa_per_cub,
         "por_proyecto": por_proyecto,
         "proyecto_por_mes": proyecto_por_mes,
+        "por_estado": por_estado,
     }
 
 
