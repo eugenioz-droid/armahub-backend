@@ -5141,12 +5141,26 @@ async function verReclamo(id) {
   // SECTION 3: Validación
   document.getElementById('recDetailValidacionResultado').value = data.validacion_resultado || '';
   document.getElementById('recDetailValidacionObs').value = data.validacion_observaciones || '';
+  
+  // Cargar tiempo de respuesta
+  document.getElementById('recTiempoRespuesta').value = data.tiempo_respuesta || '';
+  document.getElementById('recTiempoRespuestaUnidad').value = data.tiempo_respuesta_unidad || 'horas';
+  
   var valInfo = document.getElementById('recValidacionInfo');
   if (data.validacion_por) {
     var valLabel = { aprobado: '✅ Aprobado', rechazado: '❌ Rechazado', corregido: '✏️ Corregido' }[data.validacion_resultado] || data.validacion_resultado;
+    var tiempoInfo = '';
+    if (data.tiempo_respuesta && data.tiempo_respuesta > 0) {
+      var unidadLabel = { minutos: 'min', horas: 'hrs', dias: 'días' }[data.tiempo_respuesta_unidad] || 'hrs';
+      tiempoInfo = ' — ⏱️ Tiempo respuesta: <strong>' + data.tiempo_respuesta + ' ' + unidadLabel + '</strong>';
+      if (data.tiempo_respuesta_actualizado_por) {
+        tiempoInfo += ' (por ' + data.tiempo_respuesta_actualizado_por + ')';
+      }
+    }
     valInfo.innerHTML = 'Validado por: <strong>' + data.validacion_por + '</strong>' +
       (data.validacion_fecha ? ' — ' + data.validacion_fecha.replace('T', ' ').substring(0, 19) : '') +
-      ' — Resultado: <strong>' + valLabel + '</strong>';
+      ' — Resultado: <strong>' + valLabel + '</strong>' +
+      tiempoInfo;
   } else {
     valInfo.textContent = 'Sin validación aún';
   }
@@ -5230,7 +5244,7 @@ async function verReclamo(id) {
 
   // Section 3 (Validación): admin/admin2
   var puedeValidar = (currentRole === 'admin' || currentRole === 'admin2');
-  var sec3Fields = ['recDetailValidacionResultado','recDetailValidacionObs'];
+  var sec3Fields = ['recDetailValidacionResultado','recDetailValidacionObs','recTiempoRespuesta','recTiempoRespuestaUnidad'];
   sec3Fields.forEach(function(fid) { var el = document.getElementById(fid); if (el) el.disabled = !puedeValidar; });
   var btnGuardarVal = document.getElementById('btnGuardarValidacion');
   if (btnGuardarVal) btnGuardarVal.style.display = puedeValidar ? '' : 'none';
@@ -5611,12 +5625,27 @@ async function guardarValidacion() {
   var msg = document.getElementById('recValidacionMsg');
   var resultado = document.getElementById('recDetailValidacionResultado').value;
   var obs = document.getElementById('recDetailValidacionObs').value.trim();
+  
+  // Capturar tiempo de respuesta
+  var tiempoRespuesta = document.getElementById('recTiempoRespuesta').value;
+  var tiempoRespuestaUnidad = document.getElementById('recTiempoRespuestaUnidad').value;
+  
   if (!resultado) { msg.textContent = 'Selecciona un resultado'; msg.style.color = '#b42318'; return; }
   msg.textContent = 'Guardando...'; msg.style.color = '#666';
+  
   var body = {
     validacion_resultado: resultado,
     validacion_observaciones: obs || null,
   };
+  
+  // Agregar tiempo de respuesta solo si tiene valor
+  if (tiempoRespuesta && tiempoRespuesta > 0) {
+    body.tiempo_respuesta = parseInt(tiempoRespuesta);
+    body.tiempo_respuesta_unidad = tiempoRespuestaUnidad;
+    body.tiempo_respuesta_actualizado_por = currentUserEmail;
+    body.tiempo_respuesta_fecha_actualizacion = new Date().toISOString();
+  }
+  
   var res = await fetch('/reclamos/' + _reclamoActual.id, {
     method: 'PATCH',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
@@ -5625,8 +5654,8 @@ async function guardarValidacion() {
   if (res.status === 401) { logout(); return; }
   var data = await res.json();
   if (data.ok) {
-    msg.textContent = 'Validación guardada'; msg.style.color = '#558B2F';
-    setTimeout(function() { msg.textContent = ''; }, 2000);
+    msg.textContent = '✅ Validación guardada'; msg.style.color = '#558B2F';
+    setTimeout(function() { msg.textContent = ''; }, 3000);
     await verReclamo(_reclamoActual.id);
     await loadReclamos(); await loadRecLanding();
   } else {
@@ -5638,13 +5667,45 @@ async function guardarValidacion() {
 async function agregarAccion() {
   if (!_reclamoActual) return;
   var desc = document.getElementById('recNuevaAccionDesc').value.trim();
-  if (!desc) { alert('Descripción es requerida'); return; }
-  var body = {
+  var responsable = document.getElementById('recNuevaAccionResp').value;
+  
+  // Validaciones requeridas
+  if (!desc) { 
+    alert('⚠️ La descripción es requerida'); 
+    document.getElementById('recNuevaAccionDesc').focus();
+    return; 
+  }
+  
+  if (!responsable || responsable.trim() === '') { 
+    alert('⚠️ Debes asignar un responsable para la acción'); 
+    var respField = document.getElementById('recNuevaAccionResp');
+    respField.style.borderColor = '#f44336';
+    respField.style.backgroundColor = '#ffebee';
+    respField.focus();
+    
+    // Restaurar estilo normal después de 2 segundos
+    setTimeout(function() {
+      respField.style.borderColor = '#e0e0e0';
+      respField.style.backgroundColor = '';
+    }, 2000);
+    
+    return; 
+  }
+  
+  // Guardar estado actual del formulario para preservar datos
+  var formState = {
     tipo: document.getElementById('recNuevaAccionTipo').value,
-    descripcion: desc,
-    responsable: document.getElementById('recNuevaAccionResp').value || null,
-    fecha_prevista: document.getElementById('recNuevaAccionFecha').value || null,
+    responsable: responsable,
+    fecha_prevista: document.getElementById('recNuevaAccionFecha').value
   };
+  
+  var body = {
+    tipo: formState.tipo,
+    descripcion: desc,
+    responsable: formState.responsable, // Ahora es requerido, no null
+    fecha_prevista: formState.fecha_prevista || null,
+  };
+  
   var res = await fetch('/reclamos/' + _reclamoActual.id + '/acciones', {
     method: 'POST',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
@@ -5653,11 +5714,51 @@ async function agregarAccion() {
   if (res.status === 401) { logout(); return; }
   var data = await res.json();
   if (data.ok) {
+    // Solo limpiar la descripción, preservar el resto del formulario
     document.getElementById('recNuevaAccionDesc').value = '';
-    document.getElementById('recNuevaAccionResp').value = '';
-    document.getElementById('recNuevaAccionFecha').value = '';
+    // Mantener responsable y otros campos para facilitar múltiples acciones similares
+    // document.getElementById('recNuevaAccionResp').value = '';  // NO limpiar
+    // document.getElementById('recNuevaAccionFecha').value = ''; // NO limpiar
+    // document.getElementById('recNuevaAccionTipo').value = 'inmediata'; // NO limpiar
+    
+    // Mostrar feedback temporal con responsable
+    var descField = document.getElementById('recNuevaAccionDesc');
+    var originalPlaceholder = descField.placeholder;
+    var responsableName = formState.responsable;
+    descField.placeholder = '✅ Acción asignada a ' + responsableName + '. Ingresa otra descripción...';
+    descField.style.background = '#e8f5e9';
+    
+    // Restaurar estado normal después de 2 segundos
+    setTimeout(function() {
+      descField.placeholder = originalPlaceholder;
+      descField.style.background = '';
+    }, 2000);
+    
+    // Recargar solo la lista de acciones, no todo el reclamo
+    await refreshAccionesList();
+    
+    // Poner foco en la descripción para facilitar agregar otra acción
+    descField.focus();
+    
+  } else { 
+    alert('Error: ' + (data.detail || 'desconocido')); 
+  }
+}
+
+// Función optimizada para recargar solo las acciones sin perder datos del formulario
+async function refreshAccionesList() {
+  if (!_reclamoActual) return;
+  
+  try {
+    var detail = await apiGet('/reclamos/' + _reclamoActual.id);
+    if (detail && detail.acciones) {
+      renderAcciones(detail.acciones);
+    }
+  } catch (error) {
+    console.error('Error al recargar acciones:', error);
+    // Fallback: recargar todo el reclamo si falla la carga parcial
     await verReclamo(_reclamoActual.id);
-  } else { alert('Error: ' + (data.detail || 'desconocido')); }
+  }
 }
 
 async function eliminarAccion(accionId) {
@@ -5668,8 +5769,32 @@ async function eliminarAccion(accionId) {
   });
   if (res.status === 401) { logout(); return; }
   var data = await res.json();
-  if (data.ok) { await verReclamo(_reclamoActual.id); }
+  if (data.ok) { 
+    // Recargar solo la lista de acciones, no todo el reclamo
+    await refreshAccionesList();
+  }
   else { alert('Error: ' + (data.detail || 'desconocido')); }
+}
+
+// Función para limpiar el formulario de acciones manualmente
+function limpiarFormularioAcciones() {
+  document.getElementById('recNuevaAccionDesc').value = '';
+  document.getElementById('recNuevaAccionResp').value = '';
+  document.getElementById('recNuevaAccionFecha').value = '';
+  document.getElementById('recNuevaAccionTipo').value = 'inmediata';
+  
+  // Mostrar feedback
+  var descField = document.getElementById('recNuevaAccionDesc');
+  var originalPlaceholder = descField.placeholder;
+  descField.placeholder = 'Formulario limpiado';
+  descField.style.background = '#fff3e0';
+  
+  setTimeout(function() {
+    descField.placeholder = originalPlaceholder;
+    descField.style.background = '';
+  }, 1000);
+  
+  descField.focus();
 }
 
 // ---- Imágenes: Drop Zone System ----
@@ -5826,8 +5951,20 @@ async function eliminarReclamo() {
 // ---- Ishikawa Modal ----
 async function abrirIshikawaModal(target) {
   _ishikawaTarget = target || 'create';
-  _ishikawaSelection = { categoria: '', sub_causa: '', cod_causa: '' };
-  document.getElementById('ishikawaSelectedDisplay').textContent = 'Ninguna';
+  
+  // Preserve existing selection if it exists
+  var existingCat = document.getElementById('recDetailCategoria').value;
+  var existingSub = document.getElementById('recDetailSubCausa').value;
+  var existingCod = document.getElementById('recDetailCodCausa').value;
+  
+  if (existingCat && existingSub && existingCod) {
+    _ishikawaSelection = { categoria: existingCat, sub_causa: existingSub, cod_causa: existingCod };
+    var catLabel = _recIshikawaLabels[existingCat] || existingCat;
+    document.getElementById('ishikawaSelectedDisplay').textContent = '[' + existingCod + '] ' + catLabel + ' > ' + existingSub;
+  } else {
+    _ishikawaSelection = { categoria: '', sub_causa: '', cod_causa: '' };
+    document.getElementById('ishikawaSelectedDisplay').textContent = 'Ninguna';
+  }
 
   if (!_ishikawaData) {
     _ishikawaData = await apiGet('/reclamos/ishikawa');
@@ -5841,8 +5978,10 @@ async function abrirIshikawaModal(target) {
       '<div style="background:' + color + '; color:#fff; padding:6px 10px; font-weight:600; font-size:13px;">' + cat.label + '</div>' +
       '<div style="padding:6px 8px; max-height:220px; overflow-y:auto;">' +
       cat.subcausas.map(function(sc) {
+        var value = cat.key + '|' + sc.cod + '|' + sc.texto;
+        var checked = (_ishikawaSelection.categoria === cat.key && _ishikawaSelection.cod_causa === sc.cod) ? 'checked' : '';
         return '<label style="display:block; padding:3px 0; font-size:11px; cursor:pointer; line-height:1.3;">' +
-          '<input type="radio" name="ishikawa_causa" value="' + cat.key + '|' + sc.cod + '|' + sc.texto + '" ' +
+          '<input type="radio" name="ishikawa_causa" value="' + value + '" ' + checked + ' ' +
           'onchange="seleccionarIshikawa(this)" style="margin-right:4px;" />' +
           '<strong>[' + sc.cod + ']</strong> ' + sc.texto +
           '</label>';
@@ -5854,19 +5993,37 @@ async function abrirIshikawaModal(target) {
 }
 
 function seleccionarIshikawa(radio) {
+  // Debug: Check current respuesta text when selecting
+  var respuestaText = document.getElementById('recDetailRespuestaTexto').value;
+  console.log('[seleccionarIshikawa] Respuesta text BEFORE:', respuestaText);
+  
   var parts = radio.value.split('|');
   _ishikawaSelection = { categoria: parts[0], cod_causa: parts[1], sub_causa: parts[2] };
   var catLabel = _recIshikawaLabels[parts[0]] || parts[0];
   document.getElementById('ishikawaSelectedDisplay').textContent = '[' + parts[1] + '] ' + catLabel + ' > ' + parts[2];
+  
+  // Debug: Check respuesta text after selection
+  var respuestaTextAfter = document.getElementById('recDetailRespuestaTexto').value;
+  console.log('[seleccionarIshikawa] Respuesta text AFTER:', respuestaTextAfter);
 }
 
 function confirmarIshikawa() {
   if (!_ishikawaSelection.categoria) { alert('Selecciona una causa primero'); return; }
+  
+  // Debug: Check current respuesta text before making changes
+  var respuestaText = document.getElementById('recDetailRespuestaTexto').value;
+  console.log('[confirmarIshikawa] Respuesta text BEFORE:', respuestaText);
+  
   var displayText = '[' + _ishikawaSelection.cod_causa + '] ' + (_recIshikawaLabels[_ishikawaSelection.categoria] || '') + ' > ' + _ishikawaSelection.sub_causa;
   document.getElementById('recDetailCausaDisplay').value = displayText;
   document.getElementById('recDetailCategoria').value = _ishikawaSelection.categoria;
   document.getElementById('recDetailSubCausa').value = _ishikawaSelection.sub_causa;
   document.getElementById('recDetailCodCausa').value = _ishikawaSelection.cod_causa;
+  
+  // Debug: Check respuesta text after changes
+  var respuestaTextAfter = document.getElementById('recDetailRespuestaTexto').value;
+  console.log('[confirmarIshikawa] Respuesta text AFTER:', respuestaTextAfter);
+  
   cerrarIshikawaModal();
 }
 
@@ -6131,29 +6288,123 @@ async function seleccionarReclamoPres() {
     });
   }
 
-  // Images
+  // Images - Enhanced with modal viewer
   var imagenes = detail.imagenes || [];
   var imgRecDiv = document.getElementById('presImagenesReclamo');
   var imgRespDiv = document.getElementById('presImagenesRespuesta');
   imgRecDiv.innerHTML = '';
   imgRespDiv.innerHTML = '';
 
-  imagenes.forEach(function(img) {
-    var container = (img.tipo === 'respuesta') ? imgRespDiv : imgRecDiv;
-    var a = document.createElement('a');
-    a.href = img.url;
-    a.target = '_blank';
-    a.title = img.filename || '';
-    var imgEl = document.createElement('img');
-    imgEl.src = img.url;
-    imgEl.style.cssText = 'width:80px; height:80px; object-fit:cover; border-radius:4px; border:1px solid #ccc; cursor:pointer;';
-    imgEl.alt = img.filename || 'imagen';
-    a.appendChild(imgEl);
-    container.appendChild(a);
+  var antecedentesImgs = imagenes.filter(img => img.tipo !== 'respuesta');
+  var respuestaImgs = imagenes.filter(img => img.tipo === 'respuesta');
+
+  // Render image bar
+  renderImageBar(imgRecDiv, antecedentesImgs, 'antecedentes');
+  renderImageBar(imgRespDiv, respuestaImgs, 'respuesta');
+
+  if (imgRecDiv.children.length === 0) imgRecDiv.innerHTML = '<span style="color:#999; font-size:11px;">Sin imágenes de registro</span>';
+  if (imgRespDiv.children.length === 0) imgRespDiv.innerHTML = '<span style="color:#999; font-size:11px;">Sin imágenes de análisis</span>';
+}
+
+// Render enhanced image bar with modal viewer
+function renderImageBar(container, images, type) {
+  if (!images || images.length === 0) return;
+
+  var maxShow = 5;
+  var showImages = images.slice(0, maxShow);
+  var extraCount = images.length - maxShow;
+
+  // Image bar container
+  var barDiv = document.createElement('div');
+  barDiv.style.cssText = 'display:flex; align-items:center; gap:8px; flex-wrap:wrap; padding:6px 0;';
+
+  showImages.forEach(function(img, index) {
+    var thumbContainer = document.createElement('div');
+    thumbContainer.style.cssText = 'position:relative; cursor:pointer; border-radius:6px; overflow:hidden; border:2px solid #e0e0e0; transition:all 0.2s;';
+    thumbContainer.onmouseover = function() { this.style.borderColor = '#1976d2'; this.style.transform = 'scale(1.05)'; };
+    thumbContainer.onmouseout = function() { this.style.borderColor = '#e0e0e0'; this.style.transform = 'scale(1)'; };
+
+    var thumb = document.createElement('div');
+    thumb.style.cssText = 'width:60px; height:60px; display:flex; align-items:center; justify-content:center; background:#f5f5f5; position:relative;';
+    
+    if (img.content_type && img.content_type.startsWith('image/')) {
+      var imgEl = document.createElement('img');
+      imgEl.src = img.url;
+      imgEl.style.cssText = 'width:100%; height:100%; object-fit:cover;';
+      thumb.appendChild(imgEl);
+    } else {
+      // File icon for non-images
+      var icon = document.createElement('div');
+      icon.style.cssText = 'font-size:24px; color:#666;';
+      icon.textContent = getFileIcon(img.filename);
+      thumb.appendChild(icon);
+    }
+
+    // File type badge
+    var badge = document.createElement('div');
+    badge.style.cssText = 'position:absolute; bottom:2px; right:2px; background:rgba(0,0,0,0.7); color:white; font-size:8px; padding:1px 3px; border-radius:2px;';
+    badge.textContent = getFileTypeBadge(img.content_type);
+    thumb.appendChild(badge);
+
+    thumbContainer.onclick = function() { openImageModal(images, index); };
+    thumbContainer.appendChild(thumb);
+    barDiv.appendChild(thumbContainer);
   });
 
-  if (imgRecDiv.children.length === 0) imgRecDiv.innerHTML = '<span style="color:#999; font-size:11px;">Sin imágenes</span>';
-  if (imgRespDiv.children.length === 0) imgRespDiv.innerHTML = '<span style="color:#999; font-size:11px;">Sin imágenes</span>';
+  // Extra count indicator
+  if (extraCount > 0) {
+    var moreDiv = document.createElement('div');
+    moreDiv.style.cssText = 'width:60px; height:60px; display:flex; align-items:center; justify-content:center; background:#e3f2fd; border-radius:6px; border:2px solid #1976d2; cursor:pointer; font-size:12px; font-weight:600; color:#1976d2;';
+    moreDiv.textContent = '+' + extraCount;
+    moreDiv.title = 'Ver ' + extraCount + ' archivos más';
+    moreDiv.onclick = function() { openImageModal(images, maxShow); };
+    barDiv.appendChild(moreDiv);
+  }
+
+  // Action buttons
+  var actionsDiv = document.createElement('div');
+  actionsDiv.style.cssText = 'display:flex; gap:4px; margin-left:8px;';
+  
+  var viewAllBtn = document.createElement('button');
+  viewAllBtn.innerHTML = '👁️';
+  viewAllBtn.style.cssText = 'padding:4px 8px; font-size:11px; background:#f5f5f5; border:1px solid #ddd; border-radius:4px; cursor:pointer;';
+  viewAllBtn.title = 'Ver todos los archivos';
+  viewAllBtn.onclick = function() { openImageModal(images, 0); };
+  actionsDiv.appendChild(viewAllBtn);
+
+  if (currentUserRole === 'admin' || currentUserRole === 'admin2') {
+    var addBtn = document.createElement('button');
+    addBtn.innerHTML = '📤';
+    addBtn.style.cssText = 'padding:4px 8px; font-size:11px; background:#e8f5e9; border:1px solid #4caf50; border-radius:4px; cursor:pointer;';
+    addBtn.title = 'Agregar archivos';
+    addBtn.onclick = function() { openAddImageModal(type); };
+    actionsDiv.appendChild(addBtn);
+  }
+
+  barDiv.appendChild(actionsDiv);
+  container.appendChild(barDiv);
+}
+
+// Get file icon based on extension
+function getFileIcon(filename) {
+  if (!filename) return '📄';
+  var ext = filename.split('.').pop().toLowerCase();
+  var iconMap = {
+    'pdf': '📄', 'doc': '📝', 'docx': '📝', 'xls': '📊', 'xlsx': '📊',
+    'jpg': '📷', 'jpeg': '📷', 'png': '📷', 'gif': '📷', 'svg': '🖼️',
+    'mp4': '🎥', 'avi': '🎥', 'mov': '🎥', 'zip': '📦', 'rar': '📦'
+  };
+  return iconMap[ext] || '📄';
+}
+
+// Get file type badge
+function getFileTypeBadge(contentType) {
+  if (!contentType) return 'FILE';
+  if (contentType.startsWith('image/')) return 'IMG';
+  if (contentType === 'application/pdf') return 'PDF';
+  if (contentType.includes('excel') || contentType.includes('spreadsheet')) return 'XLS';
+  if (contentType.includes('word') || contentType.includes('document')) return 'DOC';
+  return 'FILE';
 }
 
 async function guardarPresentacion() {
@@ -6378,6 +6629,321 @@ document.addEventListener('paste', function(e) {
     }
   }
 }, true);
+
+// ========================= IMAGE MODAL VIEWER =========================
+
+// Global modal state
+var _imageModalState = {
+  images: [],
+  currentIndex: 0,
+  isOpen: false
+};
+
+// Open image modal viewer
+function openImageModal(images, startIndex) {
+  _imageModalState.images = images || [];
+  _imageModalState.currentIndex = startIndex || 0;
+  _imageModalState.isOpen = true;
+
+  if (!_imageModalState.images || _imageModalState.images.length === 0) return;
+
+  var modal = createImageModal();
+  document.body.appendChild(modal);
+  renderCurrentImage();
+
+  // Close on ESC
+  document.addEventListener('keydown', handleImageModalKeydown);
+}
+
+// Create modal DOM
+function createImageModal() {
+  var modal = document.createElement('div');
+  modal.id = 'imageModalViewer';
+  modal.style.cssText = `
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    background: rgba(0,0,0,0.9); z-index: 10000;
+    display: flex; align-items: center; justify-content: center;
+    backdrop-filter: blur(5px);
+  `;
+
+  // Close overlay
+  modal.onclick = function(e) {
+    if (e.target === modal) closeImageModal();
+  };
+
+  // Main content container
+  var content = document.createElement('div');
+  content.style.cssText = `
+    position: relative; width: 90%; height: 90%; max-width: 1200px;
+    background: white; border-radius: 12px; overflow: hidden;
+    display: flex; flex-direction: column;
+  `;
+
+  // Header
+  var header = document.createElement('div');
+  header.style.cssText = `
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 16px 20px; background: #f5f5f5; border-bottom: 1px solid #e0e0e0;
+  `;
+  header.onclick = function(e) { e.stopPropagation(); };
+
+  var title = document.createElement('div');
+  title.style.cssText = 'font-size: 16px; font-weight: 600; color: #333;';
+  header.appendChild(title);
+
+  var closeBtn = document.createElement('button');
+  closeBtn.innerHTML = '✕';
+  closeBtn.style.cssText = `
+    width: 32px; height: 32px; border: none; background: #f44336; color: white;
+    border-radius: 50%; cursor: pointer; font-size: 18px; font-weight: bold;
+  `;
+  closeBtn.onclick = closeImageModal;
+  header.appendChild(closeBtn);
+
+  // Main content area
+  var mainArea = document.createElement('div');
+  mainArea.style.cssText = `
+    flex: 1; display: flex; position: relative; overflow: hidden;
+  `;
+  mainArea.onclick = function(e) { e.stopPropagation(); };
+
+  // Image viewer
+  var viewer = document.createElement('div');
+  viewer.id = 'imageViewerContent';
+  viewer.style.cssText = `
+    flex: 1; display: flex; align-items: center; justify-content: center;
+    background: #fafafa; position: relative;
+  `;
+
+  // Navigation buttons
+  var prevBtn = document.createElement('button');
+  prevBtn.innerHTML = '‹';
+  prevBtn.style.cssText = `
+    position: absolute; left: 20px; top: 50%; transform: translateY(-50%);
+    width: 48px; height: 48px; border: none; background: rgba(0,0,0,0.7);
+    color: white; font-size: 24px; border-radius: 50%; cursor: pointer;
+    z-index: 1001; transition: all 0.2s;
+  `;
+  prevBtn.onmouseover = function() { this.style.background = 'rgba(0,0,0,0.9)'; };
+  prevBtn.onmouseout = function() { this.style.background = 'rgba(0,0,0,0.7)'; };
+  prevBtn.onclick = navigatePrevious;
+
+  var nextBtn = document.createElement('button');
+  nextBtn.innerHTML = '›';
+  nextBtn.style.cssText = `
+    position: absolute; right: 20px; top: 50%; transform: translateY(-50%);
+    width: 48px; height: 48px; border: none; background: rgba(0,0,0,0.7);
+    color: white; font-size: 24px; border-radius: 50%; cursor: pointer;
+    z-index: 1001; transition: all 0.2s;
+  `;
+  nextBtn.onmouseover = function() { this.style.background = 'rgba(0,0,0,0.9)'; };
+  nextBtn.onmouseout = function() { this.style.background = 'rgba(0,0,0,0.7)'; };
+  nextBtn.onclick = navigateNext;
+
+  // Info sidebar
+  var sidebar = document.createElement('div');
+  sidebar.style.cssText = `
+    width: 300px; background: white; border-left: 1px solid #e0e0e0;
+    padding: 20px; overflow-y: auto;
+  `;
+
+  // Footer with navigation
+  var footer = document.createElement('div');
+  footer.style.cssText = `
+    display: flex; justify-content: center; align-items: center;
+    padding: 12px; background: #f5f5f5; border-top: 1px solid #e0e0e0;
+    gap: 8px;
+  `;
+
+  // Assemble modal
+  viewer.appendChild(prevBtn);
+  viewer.appendChild(nextBtn);
+  mainArea.appendChild(viewer);
+  mainArea.appendChild(sidebar);
+  content.appendChild(header);
+  content.appendChild(mainArea);
+  content.appendChild(footer);
+  modal.appendChild(content);
+
+  return modal;
+}
+
+// Render current image in modal
+function renderCurrentImage() {
+  var state = _imageModalState;
+  if (!state.images || state.currentIndex >= state.images.length) return;
+
+  var image = state.images[state.currentIndex];
+  var viewer = document.getElementById('imageViewerContent');
+  var sidebar = viewer.parentElement.querySelector('div[style*="width: 300px"]');
+  var title = document.getElementById('imageModalViewer').querySelector('div[style*="font-size: 16px"]');
+  var footer = document.getElementById('imageModalViewer').querySelector('div[style*="justify-content: center"]');
+
+  // Update title
+  title.textContent = `${state.currentIndex + 1} / ${state.images.length} - ${image.filename || 'Archivo'}`;
+
+  // Clear viewer
+  viewer.innerHTML = '';
+  
+  // Re-add navigation buttons
+  var prevBtn = document.createElement('button');
+  prevBtn.innerHTML = '‹';
+  prevBtn.style.cssText = `
+    position: absolute; left: 20px; top: 50%; transform: translateY(-50%);
+    width: 48px; height: 48px; border: none; background: rgba(0,0,0,0.7);
+    color: white; font-size: 24px; border-radius: 50%; cursor: pointer;
+    z-index: 1001; transition: all 0.2s;
+  `;
+  prevBtn.onmouseover = function() { this.style.background = 'rgba(0,0,0,0.9)'; };
+  prevBtn.onmouseout = function() { this.style.background = 'rgba(0,0,0,0.7)'; };
+  prevBtn.onclick = navigatePrevious;
+
+  var nextBtn = document.createElement('button');
+  nextBtn.innerHTML = '›';
+  nextBtn.style.cssText = `
+    position: absolute; right: 20px; top: 50%; transform: translateY(-50%);
+    width: 48px; height: 48px; border: none; background: rgba(0,0,0,0.7);
+    color: white; font-size: 24px; border-radius: 50%; cursor: pointer;
+    z-index: 1001; transition: all 0.2s;
+  `;
+  nextBtn.onmouseover = function() { this.style.background = 'rgba(0,0,0,0.9)'; };
+  nextBtn.onmouseout = function() { this.style.background = 'rgba(0,0,0,0.7)'; };
+  nextBtn.onclick = navigateNext;
+
+  viewer.appendChild(prevBtn);
+  viewer.appendChild(nextBtn);
+
+  // Render content based on file type
+  if (image.content_type && image.content_type.startsWith('image/')) {
+    var img = document.createElement('img');
+    img.src = image.url;
+    img.style.cssText = 'max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 8px;';
+    viewer.appendChild(img);
+  } else if (image.content_type === 'application/pdf') {
+    var iframe = document.createElement('iframe');
+    iframe.src = image.url;
+    iframe.style.cssText = 'width: 100%; height: 100%; border: none; border-radius: 8px;';
+    viewer.appendChild(iframe);
+  } else {
+    // Non-viewable file
+    var fileDiv = document.createElement('div');
+    fileDiv.style.cssText = 'text-align: center; padding: 40px;';
+    fileDiv.innerHTML = `
+      <div style="font-size: 64px; margin-bottom: 16px;">${getFileIcon(image.filename)}</div>
+      <div style="font-size: 18px; font-weight: 600; margin-bottom: 8px;">${image.filename || 'Archivo'}</div>
+      <div style="color: #666; margin-bottom: 20px;">Tipo: ${image.content_type || 'Desconocido'}</div>
+      <button onclick="window.open('${image.url}', '_blank')" style="
+        padding: 10px 20px; background: #1976d2; color: white; border: none;
+        border-radius: 6px; cursor: pointer; font-size: 14px;
+      ">Descargar archivo</button>
+    `;
+    viewer.appendChild(fileDiv);
+  }
+
+  // Update sidebar
+  sidebar.innerHTML = `
+    <h4 style="margin: 0 0 16px 0; color: #333;">Información del archivo</h4>
+    <div style="margin-bottom: 12px;">
+      <strong>Nombre:</strong><br>
+      <span style="color: #666; word-break: break-all;">${image.filename || '—'}</span>
+    </div>
+    <div style="margin-bottom: 12px;">
+      <strong>Tipo:</strong><br>
+      <span style="color: #666;">${image.content_type || '—'}</span>
+    </div>
+    <div style="margin-bottom: 12px;">
+      <strong>Subido por:</strong><br>
+      <span style="color: #666;">${image.subido_por || '—'}</span>
+    </div>
+    <div style="margin-bottom: 12px;">
+      <strong>Fecha:</strong><br>
+      <span style="color: #666;">${image.fecha_subida ? new Date(image.fecha_subida).toLocaleString() : '—'}</span>
+    </div>
+    ${image.descripcion ? `
+    <div style="margin-bottom: 12px;">
+      <strong>Descripción:</strong><br>
+      <span style="color: #666;">${image.descripcion}</span>
+    </div>
+    ` : ''}
+    ${image.tipo ? `
+    <div style="margin-bottom: 12px;">
+      <strong>Categoría:</strong><br>
+      <span style="color: #666; background: #e3f2fd; padding: 2px 8px; border-radius: 4px; font-size: 12px;">
+        ${image.tipo === 'antecedente' ? '📋 Registro' : '💬 Análisis'}
+      </span>
+    </div>
+    ` : ''}
+  `;
+
+  // Update footer navigation
+  footer.innerHTML = '';
+  for (var i = 0; i < state.images.length; i++) {
+    var dot = document.createElement('button');
+    dot.style.cssText = `
+      width: 8px; height: 8px; border: none; border-radius: 50%;
+      background: ${i === state.currentIndex ? '#1976d2' : '#ccc'};
+      cursor: pointer; margin: 0 2px; transition: all 0.2s;
+    `;
+    dot.onclick = function(index) { return function() { navigateToImage(index); }; }(i);
+    footer.appendChild(dot);
+  }
+
+  // Show/hide navigation buttons
+  prevBtn.style.display = state.currentIndex > 0 ? 'block' : 'none';
+  nextBtn.style.display = state.currentIndex < state.images.length - 1 ? 'block' : 'none';
+}
+
+// Navigation functions
+function navigatePrevious() {
+  if (_imageModalState.currentIndex > 0) {
+    _imageModalState.currentIndex--;
+    renderCurrentImage();
+  }
+}
+
+function navigateNext() {
+  if (_imageModalState.currentIndex < _imageModalState.images.length - 1) {
+    _imageModalState.currentIndex++;
+    renderCurrentImage();
+  }
+}
+
+function navigateToImage(index) {
+  _imageModalState.currentIndex = index;
+  renderCurrentImage();
+}
+
+// Close modal
+function closeImageModal() {
+  var modal = document.getElementById('imageModalViewer');
+  if (modal) {
+    modal.remove();
+  }
+  _imageModalState.isOpen = false;
+  document.removeEventListener('keydown', handleImageModalKeydown);
+}
+
+// Keyboard navigation
+function handleImageModalKeydown(e) {
+  if (!_imageModalState.isOpen) return;
+  
+  switch(e.key) {
+    case 'Escape':
+      closeImageModal();
+      break;
+    case 'ArrowLeft':
+      navigatePrevious();
+      break;
+    case 'ArrowRight':
+      navigateNext();
+      break;
+  }
+}
+
+// Open add image modal (placeholder for future implementation)
+function openAddImageModal(type) {
+  alert('Función para agregar archivos será implementada próximamente.\nTipo: ' + type);
+}
 
 (async function init() {
   if (!token()) { window.location.href = '/ui/login'; return; }

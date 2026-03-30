@@ -541,6 +541,12 @@ MIGRATIONS = [
     (39, "reclamos: drop unused cliente_id column (never used in endpoints, FK broken after clientes→constructoras rename)", [
         "DO $$ BEGIN ALTER TABLE reclamos DROP COLUMN cliente_id; EXCEPTION WHEN undefined_column THEN NULL; END $$;",
     ]),
+    (40, "reclamos: tiempo_respuesta for manual tracking", [
+        "DO $$ BEGIN ALTER TABLE reclamos ADD COLUMN tiempo_respuesta INTEGER; EXCEPTION WHEN duplicate_column THEN NULL; END $$;",
+        "DO $$ BEGIN ALTER TABLE reclamos ADD COLUMN tiempo_respuesta_unidad TEXT DEFAULT 'horas' CHECK (tiempo_respuesta_unidad IN ('minutos','horas','dias')); EXCEPTION WHEN duplicate_column THEN NULL; END $$;",
+        "DO $$ BEGIN ALTER TABLE reclamos ADD COLUMN tiempo_respuesta_actualizado_por TEXT; EXCEPTION WHEN duplicate_column THEN NULL; END $$;",
+        "DO $$ BEGIN ALTER TABLE reclamos ADD COLUMN tiempo_respuesta_fecha_actualizacion TIMESTAMPTZ; EXCEPTION WHEN duplicate_column THEN NULL; END $$;",
+    ]),
 ]
 
 
