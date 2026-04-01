@@ -4416,13 +4416,24 @@ async function loadRecLanding() {
 
   // Chart 2: Estados (reemplaza Resueltos vs No Resueltos)
   var porEstado = data.por_estado || {};
-  var estados = Object.keys(porEstado);
-  var valores = Object.values(porEstado);
+  console.log('[loadRecLanding] por_estado:', porEstado);
+  
+  // Convertir a array si viene como objeto (landing page)
+  if (!Array.isArray(porEstado)) {
+    porEstado = Object.keys(porEstado).map(estado => ({
+      estado: estado,
+      count: porEstado[estado]
+    }));
+  }
+  
+  var estados = porEstado.map(item => item.estado);
+  var valores = porEstado.map(item => item.count);
   
   // Preparar datos para el gráfico de torta
-  var labels = estados.map(estado => {
+  var labels = porEstado.map(item => {
+    var estado = item.estado;
     var label = _recEstadoLabels[estado] || estado;
-    var count = porEstado[estado];
+    var count = item.count;
     return `${label} (${count})`;
   });
   var colors = estados.map(estado => _recEstadoColors[estado] || '#999');
@@ -4456,9 +4467,10 @@ async function loadRecLanding() {
         tooltip: {
           callbacks: {
             label: function(context) {
-              var estado = estados[context.dataIndex];
+              var item = porEstado[context.dataIndex];
+              var estado = item.estado;
               var label = _recEstadoLabels[estado] || estado;
-              var value = context.parsed;
+              var value = item.count;
               var total = context.dataset.data.reduce((a, b) => a + b, 0);
               var percentage = ((value / total) * 100).toFixed(1);
               return `${label}: ${value} (${percentage}%)`;
@@ -6395,11 +6407,55 @@ async function seleccionarReclamoPres() {
   console.log('[seleccionarReclamoPres] Antecedentes:', antecedentesImgs.length, 'Respuesta:', respuestaImgs.length);
 
   // Render image bar
-  renderImageBar(imgRecDiv, antecedentesImgs, 'antecedentes');
-  renderImageBar(imgRespDiv, respuestaImgs, 'respuesta');
+  try {
+    console.log('[seleccionarReclamoPres] Intentando renderizar imágenes...');
+    renderImageBar(imgRecDiv, antecedentesImgs, 'antecedentes');
+    renderImageBar(imgRespDiv, respuestaImgs, 'respuesta');
+    console.log('[seleccionarReclamoPres] Imágenes renderizadas correctamente');
+  } catch (error) {
+    console.error('[seleccionarReclamoPres] Error renderizando imágenes:', error);
+    imgRecDiv.innerHTML = '<span style="color:#b42318; font-size:11px;">Error al cargar imágenes</span>';
+    imgRespDiv.innerHTML = '<span style="color:#b42318; font-size:11px;">Error al cargar imágenes</span>';
+  }
 
   if (imgRecDiv.children.length === 0) imgRecDiv.innerHTML = '<span style="color:#999; font-size:11px;">Sin imágenes de registro</span>';
   if (imgRespDiv.children.length === 0) imgRespDiv.innerHTML = '<span style="color:#999; font-size:11px;">Sin imágenes de análisis</span>';
+}
+
+// Helper functions for image viewer (defined before renderImageBar)
+function getFileIcon(filename) {
+  if (!filename) return '📄';
+  var ext = filename.split('.').pop().toLowerCase();
+  var iconMap = {
+    'pdf': '📄', 'doc': '📝', 'docx': '📝', 'xls': '📊', 'xlsx': '📊',
+    'jpg': '📷', 'jpeg': '📷', 'png': '📷', 'gif': '📷', 'svg': '🖼️',
+    'mp4': '🎥', 'avi': '🎥', 'mov': '🎥', 'zip': '📦', 'rar': '📦'
+  };
+  return iconMap[ext] || '📄';
+}
+
+function getFileTypeBadge(contentType) {
+  if (!contentType) return '';
+  if (contentType.startsWith('image/')) return '📷';
+  if (contentType === 'application/pdf') return '📄';
+  if (contentType.includes('video/')) return '🎥';
+  if (contentType.includes('zip') || contentType.includes('rar')) return '📦';
+  return '📄';
+}
+
+// Modal viewer state
+var _imageModalState = {
+  images: [],
+  currentIndex: 0,
+  isOpen: false
+};
+
+// Open image modal viewer
+function openImageModal(images, startIndex) {
+  _imageModalState.images = images || [];
+  _imageModalState.currentIndex = startIndex || 0;
+  _imageModalState.isOpen = true;
+  renderImageModal();
 }
 
 // Render enhanced image bar with modal viewer
@@ -6482,26 +6538,91 @@ function renderImageBar(container, images, type) {
   container.appendChild(barDiv);
 }
 
-// Get file icon based on extension
-function getFileIcon(filename) {
-  if (!filename) return '📄';
-  var ext = filename.split('.').pop().toLowerCase();
-  var iconMap = {
-    'pdf': '📄', 'doc': '📝', 'docx': '📝', 'xls': '📊', 'xlsx': '📊',
-    'jpg': '📷', 'jpeg': '📷', 'png': '📷', 'gif': '📷', 'svg': '🖼️',
-    'mp4': '🎥', 'avi': '🎥', 'mov': '🎥', 'zip': '📦', 'rar': '📦'
-  };
-  return iconMap[ext] || '📄';
+// Modal viewer implementation
+function renderImageModal() {
+  if (!_imageModalState.isOpen || !_imageModalState.images.length) return;
+
+  var modal = document.createElement('div');
+  modal.id = 'imageModal';
+  modal.style.cssText = 'position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.9); z-index:10000; display:flex; align-items:center; justify-content:center;';
+
+  var content = document.createElement('div');
+  content.style.cssText = 'position:relative; max-width:90%; max-height:90%; background:white; border-radius:8px; overflow:hidden;';
+
+  var closeBtn = document.createElement('button');
+  closeBtn.innerHTML = '✕';
+  closeBtn.style.cssText = 'position:absolute; top:10px; right:10px; background:rgba(0,0,0,0.5); color:white; border:none; border-radius:50%; width:30px; height:30px; cursor:pointer; font-size:16px; z-index:10001;';
+  closeBtn.onclick = function() { closeImageModal(); };
+
+  var prevBtn = document.createElement('button');
+  prevBtn.innerHTML = '‹';
+  prevBtn.style.cssText = 'position:absolute; left:10px; top:50%; transform:translateY(-50%); background:rgba(0,0,0,0.5); color:white; border:none; border-radius:50%; width:40px; height:40px; cursor:pointer; font-size:20px;';
+  prevBtn.onclick = function() { navigateModal(-1); };
+  if (_imageModalState.images.length <= 1) prevBtn.style.display = 'none';
+
+  var nextBtn = document.createElement('button');
+  nextBtn.innerHTML = '›';
+  nextBtn.style.cssText = 'position:absolute; right:10px; top:50%; transform:translateY(-50%); background:rgba(0,0,0,0.5); color:white; border:none; border-radius:50%; width:40px; height:40px; cursor:pointer; font-size:20px;';
+  nextBtn.onclick = function() { navigateModal(1); };
+  if (_imageModalState.images.length <= 1) nextBtn.style.display = 'none';
+
+  var fileContainer = document.createElement('div');
+  fileContainer.id = 'modalFileContainer';
+  fileContainer.style.cssText = 'width:100%; height:100%; display:flex; align-items:center; justify-content:center; min-height:400px;';
+
+  content.appendChild(closeBtn);
+  content.appendChild(prevBtn);
+  content.appendChild(nextBtn);
+  content.appendChild(fileContainer);
+  modal.appendChild(content);
+  document.body.appendChild(modal);
+
+  renderCurrentImage();
+
+  // Keyboard navigation
+  document.addEventListener('keydown', handleModalKeydown);
 }
 
-// Get file type badge
-function getFileTypeBadge(contentType) {
-  if (!contentType) return 'FILE';
-  if (contentType.startsWith('image/')) return 'IMG';
-  if (contentType === 'application/pdf') return 'PDF';
-  if (contentType.includes('excel') || contentType.includes('spreadsheet')) return 'XLS';
-  if (contentType.includes('word') || contentType.includes('document')) return 'DOC';
-  return 'FILE';
+function renderCurrentImage() {
+  var container = document.getElementById('modalFileContainer');
+  if (!container) return;
+
+  var img = _imageModalState.images[_imageModalState.currentIndex];
+  if (!img) return;
+
+  if (img.content_type && img.content_type.startsWith('image/')) {
+    container.innerHTML = '<img src="' + img.url + '" style="max-width:100%; max-height:100%; object-fit:contain;" />';
+  } else if (img.content_type === 'application/pdf') {
+    container.innerHTML = '<iframe src="' + img.url + '" style="width:100%; height:100%; border:none;"></iframe>';
+  } else {
+    container.innerHTML = '<div style="text-align:center; padding:20px;"><div style="font-size:48px; margin-bottom:10px;">' + getFileIcon(img.filename) + '</div><div>Archivo: ' + img.filename + '</div><a href="' + img.url + '" download style="display:inline-block; margin-top:10px; padding:8px 16px; background:#1976d2; color:white; text-decoration:none; border-radius:4px;">Descargar</a></div>';
+  }
+}
+
+function navigateModal(direction) {
+  _imageModalState.currentIndex += direction;
+  if (_imageModalState.currentIndex < 0) _imageModalState.currentIndex = _imageModalState.images.length - 1;
+  if (_imageModalState.currentIndex >= _imageModalState.images.length) _imageModalState.currentIndex = 0;
+  renderCurrentImage();
+}
+
+function closeImageModal() {
+  var modal = document.getElementById('imageModal');
+  if (modal) modal.remove();
+  _imageModalState.isOpen = false;
+  document.removeEventListener('keydown', handleModalKeydown);
+}
+
+function handleModalKeydown(e) {
+  if (!_imageModalState.isOpen) return;
+  if (e.key === 'Escape') closeImageModal();
+  if (e.key === 'ArrowLeft') navigateModal(-1);
+  if (e.key === 'ArrowRight') navigateModal(1);
+}
+
+function openAddImageModal(type) {
+  // Placeholder for add image functionality
+  alert('Funcionalidad para agregar imágenes en desarrollo');
 }
 
 async function guardarPresentacion() {
