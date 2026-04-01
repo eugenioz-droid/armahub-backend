@@ -6276,11 +6276,14 @@ function presNavNext() {
 }
 
 async function seleccionarReclamoPres() {
+  console.log('[seleccionarReclamoPres] Iniciando función...');
   var sel = document.getElementById('presReclamoSelect');
   var id = parseInt(sel.value);
   var antDiv = document.getElementById('presAntecedentes');
   var regCard = document.getElementById('presRegistroCard');
   var yaPres = document.getElementById('presYaPresentado');
+
+  console.log('[seleccionarReclamoPres] ID seleccionado:', id, 'Elementos:', {antDiv: !!antDiv, regCard: !!regCard, yaPres: !!yaPres});
 
   if (!id || !_presData) {
     antDiv.style.display = 'none';
@@ -6394,11 +6397,13 @@ async function seleccionarReclamoPres() {
     });
   }
 
-  // Images - Enhanced with modal viewer
+  // Images - Enhanced with modal viewer (siempre mostrar barras)
   var imagenes = detail.imagenes || [];
   console.log('[seleccionarReclamoPres] Imágenes encontradas:', imagenes.length, imagenes);
   var imgRecDiv = document.getElementById('presImagenesReclamo');
   var imgRespDiv = document.getElementById('presImagenesRespuesta');
+  
+  // Siempre limpiar y mostrar las barras
   imgRecDiv.innerHTML = '';
   imgRespDiv.innerHTML = '';
 
@@ -6406,7 +6411,7 @@ async function seleccionarReclamoPres() {
   var respuestaImgs = imagenes.filter(img => img.tipo === 'respuesta');
   console.log('[seleccionarReclamoPres] Antecedentes:', antecedentesImgs.length, 'Respuesta:', respuestaImgs.length);
 
-  // Render image bar
+  // Render image bar (siempre mostrar, incluso si está vacía)
   try {
     console.log('[seleccionarReclamoPres] Intentando renderizar imágenes...');
     renderImageBar(imgRecDiv, antecedentesImgs, 'antecedentes');
@@ -6418,8 +6423,18 @@ async function seleccionarReclamoPres() {
     imgRespDiv.innerHTML = '<span style="color:#b42318; font-size:11px;">Error al cargar imágenes</span>';
   }
 
-  if (imgRecDiv.children.length === 0) imgRecDiv.innerHTML = '<span style="color:#999; font-size:11px;">Sin imágenes de registro</span>';
-  if (imgRespDiv.children.length === 0) imgRespDiv.innerHTML = '<span style="color:#999; font-size:11px;">Sin imágenes de análisis</span>';
+  // Siempre mostrar mensaje si no hay imágenes en cada sección
+  if (antecedentesImgs.length === 0) {
+    if (imgRecDiv.children.length === 0) {
+      imgRecDiv.innerHTML = '<div style="padding:8px; border:1px dashed #ddd; border-radius:4px; text-align:center; background:#fafafa;"><span style="color:#999; font-size:11px; font-style:italic;">📷 Sin imágenes de registro</span></div>';
+    }
+  }
+  
+  if (respuestaImgs.length === 0) {
+    if (imgRespDiv.children.length === 0) {
+      imgRespDiv.innerHTML = '<div style="padding:8px; border:1px dashed #ddd; border-radius:4px; text-align:center; background:#fafafa;"><span style="color:#999; font-size:11px; font-style:italic;">📷 Sin imágenes de análisis</span></div>';
+    }
+  }
 }
 
 // Helper functions for image viewer (defined before renderImageBar)
@@ -6461,7 +6476,13 @@ function openImageModal(images, startIndex) {
 // Render enhanced image bar with modal viewer
 function renderImageBar(container, images, type) {
   console.log('[renderImageBar] Llamada con:', {images: images?.length || 0, type, container: container?.id});
-  if (!images || images.length === 0) return;
+  
+  // Siempre mostrar contenedor, incluso si no hay imágenes
+  if (!images || images.length === 0) {
+    console.log('[renderImageBar] No hay imágenes, mostrando mensaje vacío');
+    // No hacer nada aquí, el código que llama se encarga del mensaje
+    return;
+  }
 
   var maxShow = 5;
   var showImages = images.slice(0, maxShow);
