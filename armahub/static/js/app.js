@@ -6443,7 +6443,11 @@ async function seleccionarReclamoPres() {
       imgRecDivChildren: imgRecDiv ? imgRecDiv.children.length : 0,
       imgRespDivChildren: imgRespDiv ? imgRespDiv.children.length : 0,
       imgRecDivHTML: imgRecDiv ? imgRecDiv.innerHTML.substring(0, 100) : 'no existe',
-      imgRespDivHTML: imgRespDiv ? imgRespDiv.innerHTML.substring(0, 100) : 'no existe'
+      imgRespDivHTML: imgRespDiv ? imgRespDiv.innerHTML.substring(0, 100) : 'no existe',
+      imgRecDivVisible: imgRecDiv ? (imgRecDiv.offsetWidth > 0 && imgRecDiv.offsetHeight > 0) : false,
+      imgRespDivVisible: imgRespDiv ? (imgRespDiv.offsetWidth > 0 && imgRespDiv.offsetHeight > 0) : false,
+      imgRecDisplayStyle: imgRecDiv ? window.getComputedStyle(imgRecDiv).display : 'no existe',
+      imgRespDisplayStyle: imgRespDiv ? window.getComputedStyle(imgRespDiv).display : 'no existe'
     });
   } catch (error) {
     console.error('[seleccionarReclamoPres] Error renderizando imágenes:', error);
