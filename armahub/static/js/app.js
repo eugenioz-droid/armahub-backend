@@ -6578,7 +6578,7 @@ function renderImageBar(container, images, type) {
   viewAllBtn.onclick = function() { openImageModal(images, 0); };
   actionsDiv.appendChild(viewAllBtn);
 
-  if (currentUserRole === 'admin' || currentUserRole === 'admin2') {
+  if (currentRole === 'admin' || currentRole === 'admin2') {
     var addBtn = document.createElement('button');
     addBtn.innerHTML = '📤';
     addBtn.style.cssText = 'padding:4px 8px; font-size:11px; background:#e8f5e9; border:1px solid #4caf50; border-radius:4px; cursor:pointer;';
