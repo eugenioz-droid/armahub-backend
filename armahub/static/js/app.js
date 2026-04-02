@@ -6291,7 +6291,7 @@ async function seleccionarReclamoPres() {
 
   console.log('[seleccionarReclamoPres] Elementos encontrados:', {
     antDiv: !!antDiv,
-    regCard: !!regCard, 
+    regCard: !!regCard,
     yaPres: !!yaPres,
     imgRecDiv: !!imgRecDiv,
     imgRespDiv: !!imgRespDiv
@@ -6616,14 +6616,7 @@ function renderImageBar(container, images, type) {
   viewAllBtn.onclick = function() { openImageModal(images, 0); };
   actionsDiv.appendChild(viewAllBtn);
 
-  if (currentRole === 'admin' || currentRole === 'admin2') {
-    var addBtn = document.createElement('button');
-    addBtn.innerHTML = '📤';
-    addBtn.style.cssText = 'padding:4px 8px; font-size:11px; background:#e8f5e9; border:1px solid #4caf50; border-radius:4px; cursor:pointer;';
-    addBtn.title = 'Agregar archivos';
-    addBtn.onclick = function() { openAddImageModal(type); };
-    actionsDiv.appendChild(addBtn);
-  }
+  // No agregar botón de subir imágenes - solo vista
 
   barDiv.appendChild(actionsDiv);
   container.appendChild(barDiv);
@@ -6679,13 +6672,17 @@ function renderCurrentImage() {
   if (!container) return;
 
   var img = _imageModalState.images[_imageModalState.currentIndex];
+  console.log('[renderCurrentImage] Imagen actual:', img);
   if (!img) return;
 
   if (img.content_type && img.content_type.startsWith('image/')) {
+    console.log('[renderCurrentImage] Renderizando imagen:', img.url);
     container.innerHTML = '<img src="' + img.url + '" style="max-width:100%; max-height:100%; object-fit:contain;" />';
   } else if (img.content_type === 'application/pdf') {
+    console.log('[renderCurrentImage] Renderizando PDF:', img.url);
     container.innerHTML = '<iframe src="' + img.url + '" style="width:100%; height:100%; border:none;"></iframe>';
   } else {
+    console.log('[renderCurrentImage] Renderizando archivo:', img.filename);
     container.innerHTML = '<div style="text-align:center; padding:20px;"><div style="font-size:48px; margin-bottom:10px;">' + getFileIcon(img.filename) + '</div><div>Archivo: ' + img.filename + '</div><a href="' + img.url + '" download style="display:inline-block; margin-top:10px; padding:8px 16px; background:#1976d2; color:white; text-decoration:none; border-radius:4px;">Descargar</a></div>';
   }
 }
