@@ -6388,6 +6388,23 @@ async function seleccionarReclamoPres() {
     kilosEl.style.display = 'none';
   }
 
+  // IMPORTANT: Reload red section data from detail to ensure consistency
+  console.log('[seleccionarReclamoPres] Recargando datos del formulario rojo desde detail...');
+  document.getElementById('presTitulo').textContent = detail.titulo || rec.titulo || '—';
+  var tipoLabels = {error:'Error', faltante:'Faltante', atraso:'Atraso', actualizacion_portal:'Act. Portal'};
+  document.getElementById('presTipo').textContent = tipoLabels[detail.tipo_reclamo] || detail.tipo_reclamo || rec.tipo_reclamo || '—';
+  document.getElementById('presDetectado').textContent = detail.detectado_por || rec.detectado_por || '—';
+  document.getElementById('presFecha').textContent = detail.fecha_deteccion ? detail.fecha_deteccion.substring(0, 10) : (rec.fecha_deteccion ? rec.fecha_deteccion.substring(0, 10) : '—');
+  document.getElementById('presDescripcion').textContent = detail.descripcion || rec.descripcion || '—';
+  
+  console.log('[seleccionarReclamoPres] Datos recargados:', {
+    titulo: detail.titulo || rec.titulo,
+    tipo: detail.tipo_reclamo || rec.tipo_reclamo,
+    detectado: detail.detectado_por || rec.detectado_por,
+    fecha: detail.fecha_deteccion || rec.fecha_deteccion,
+    descripcion: detail.descripcion || rec.descripcion
+  });
+
   // Already presented?
   if (detail.presentacion_realizada) {
     yaPres.style.display = '';
