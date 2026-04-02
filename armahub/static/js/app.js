@@ -6331,18 +6331,19 @@ async function seleccionarReclamoPres() {
   document.getElementById('presCorrelativo').textContent = rec.correlativo || '#' + rec.id;
   document.getElementById('presProyecto').textContent = rec.nombre_proyecto || '—';
   document.getElementById('presCubicador').textContent = rec.cubicador_nombre || '—';
-  var estadoLabels = {abierto:'Abierto', en_analisis:'En análisis', accion_correctiva:'Acción correctiva', validacion:'Validación', cerrado:'Cerrado', rechazado:'Rechazado'};
+  var estadoLabels = {abierto:'Abierto', en_análisis:'En análisis', accion_correctiva:'Acción correctiva', validacion:'Validación', cerrado:'Cerrado', rechazado:'Rechazado'};
   document.getElementById('presEstado').textContent = estadoLabels[rec.estado] || rec.estado;
   var aplicaLabels = {si:'Sí aplica', no:'No aplica', pendiente:'Pendiente'};
   var aplicaEl = document.getElementById('presAplica');
   aplicaEl.textContent = aplicaLabels[rec.aplica] || 'Pendiente';
   aplicaEl.style.color = rec.aplica === 'si' ? '#2e7d32' : (rec.aplica === 'no' ? '#b42318' : '#e65100');
 
+  console.log('[seleccionarReclamoPres] Obteniendo detalles del reclamo...');
+  var detail = await apiGet('/reclamos/' + id + '/detalle');
+  if (!detail) return;
+  console.log('[seleccionarReclamoPres] Detalles obtenidos: true');
+
   // Red section
-  document.getElementById('presTitulo').textContent = rec.titulo || '—';
-  var tipoLabels = {error:'Error', faltante:'Faltante', atraso:'Atraso', actualizacion_portal:'Act. Portal'};
-  document.getElementById('presTipo').textContent = tipoLabels[rec.tipo_reclamo] || rec.tipo_reclamo || '—';
-  document.getElementById('presDetectado').textContent = rec.detectado_por || '—';
   document.getElementById('presTitulo').textContent = detail.titulo || rec.titulo || '—';
   document.getElementById('presTipo').textContent = detail.tipo_reclamo || rec.tipo_reclamo || '—';
   document.getElementById('presDetectado').textContent = detail.detectado_por || rec.detectado_por || '—';
