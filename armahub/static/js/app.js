@@ -6343,71 +6343,83 @@ async function seleccionarReclamoPres() {
   var tipoLabels = {error:'Error', faltante:'Faltante', atraso:'Atraso', actualizacion_portal:'Act. Portal'};
   document.getElementById('presTipo').textContent = tipoLabels[rec.tipo_reclamo] || rec.tipo_reclamo || '—';
   document.getElementById('presDetectado').textContent = rec.detectado_por || '—';
-  document.getElementById('presFecha').textContent = rec.fecha_deteccion ? rec.fecha_deteccion.substring(0, 10) : '—';
-  document.getElementById('presDescripcion').textContent = rec.descripcion || '—';
-
-  console.log('[seleccionarReclamoPres] Obteniendo detalles del reclamo...');
-  // Fetch full detail for images, acciones, and extra fields
-  var detail = await apiGet('/reclamos/' + id);
-  console.log('[seleccionarReclamoPres] Detalles obtenidos:', !!detail);
-  if (!detail) {
-    console.log('[seleccionarReclamoPres] No se obtuvieron detalles, saliendo...');
-    return;
-  }
-
-  console.log('[seleccionarReclamoPres] Detalles completos:', {
-    id: detail.id,
-    tiene_imagenes: !!(detail.imagenes && detail.imagenes.length > 0),
-    cantidad_imagenes: detail.imagenes ? detail.imagenes.length : 0,
-    imagenes: detail.imagenes
-  });
-
-  // Red extra: responsable, prioridad, id_calidad, observaciones
-  var prioLabels = {baja:'Baja', media:'Media', alta:'Alta', critica:'Crítica'};
-  document.getElementById('presResponsable').textContent = detail.responsable || '—';
-  document.getElementById('presPrioridad').textContent = prioLabels[detail.prioridad] || detail.prioridad || '—';
-  document.getElementById('presIdCalidad').textContent = detail.id_calidad || '—';
-  document.getElementById('presObservaciones').textContent = detail.observaciones || '—';
-
-  // Blue section
-  var ishLabels = {mano_de_obra:'Personas', metodo:'Método', material:'Material', maquina:'Máquina', medicion:'Medida', medio_ambiente:'Medio Amb.'};
-  var ishText = '—';
-  if (detail.cod_causa) {
-    ishText = detail.cod_causa;
-    if (detail.sub_causa) ishText += ' — ' + detail.sub_causa;
-  } else if (detail.categoria_ishikawa) {
-    ishText = ishLabels[detail.categoria_ishikawa] || detail.categoria_ishikawa;
-  }
-  document.getElementById('presIshikawa').textContent = ishText;
-  document.getElementById('presArea').textContent = detail.area_aplica || '—';
-  document.getElementById('presRespuesta').textContent = detail.respuesta_texto || '—';
-
-  var kilosEl = document.getElementById('presKilos');
-  if (detail.kilos_mal_fabricados && detail.kilos_mal_fabricados > 0) {
-    kilosEl.style.display = '';
-    document.getElementById('presKilosVal').textContent = detail.kilos_mal_fabricados;
-  } else {
-    kilosEl.style.display = 'none';
-  }
-
-  // IMPORTANT: Reload red section data from detail to ensure consistency
-  console.log('[seleccionarReclamoPres] Recargando datos del formulario rojo desde detail...');
   document.getElementById('presTitulo').textContent = detail.titulo || rec.titulo || '—';
-  var tipoLabels = {error:'Error', faltante:'Faltante', atraso:'Atraso', actualizacion_portal:'Act. Portal'};
-  document.getElementById('presTipo').textContent = tipoLabels[detail.tipo_reclamo] || detail.tipo_reclamo || rec.tipo_reclamo || '—';
+  document.getElementById('presTipo').textContent = detail.tipo_reclamo || rec.tipo_reclamo || '—';
   document.getElementById('presDetectado').textContent = detail.detectado_por || rec.detectado_por || '—';
-  document.getElementById('presFecha').textContent = detail.fecha_deteccion ? detail.fecha_deteccion.substring(0, 10) : (rec.fecha_deteccion ? rec.fecha_deteccion.substring(0, 10) : '—');
+  document.getElementById('presFecha').textContent = (detail.fecha_deteccion || rec.fecha_deteccion || '').replace('T', ' ').substring(0, 10);
   document.getElementById('presDescripcion').textContent = detail.descripcion || rec.descripcion || '—';
-  
-  console.log('[seleccionarReclamoPres] Datos recargados:', {
-    titulo: detail.titulo || rec.titulo,
-    tipo: detail.tipo_reclamo || rec.tipo_reclamo,
-    detectado: detail.detectado_por || rec.detectado_por,
-    fecha: detail.fecha_deteccion || rec.fecha_deteccion,
-    descripcion: detail.descripcion || rec.descripcion
+  document.getElementById('presResponsable').textContent = detail.responsable || rec.responsable || '—';
+  document.getElementById('presPrioridad').textContent = detail.prioridad || rec.prioridad || '—';
+  document.getElementById('presIdCalidad').textContent = detail.id_calidad || rec.id_calidad || '—';
+  document.getElementById('presObservaciones').textContent = detail.observaciones || rec.observaciones || '—';
+
+  // Blue form data
+  document.getElementById('presIshikawa').textContent = detail.causa_ishikawa || '—';
+  document.getElementById('presArea').textContent = detail.area_responsable || '—';
+  document.getElementById('presRespuesta').textContent = detail.respuesta || '—';
+  document.getElementById('presFechaAnalisis').textContent = (detail.fecha_analisis || '').replace('T', ' ').substring(0, 19);
+  document.getElementById('presRespondidoPor').textContent = detail.respondido_por || '—';
+  document.getElementById('presFechaRespuesta').textContent = (detail.fecha_respuesta || '').replace('T', ' ').substring(0, 19);
+
+  // Actions
+  var accDiv = document.getElementById('presAcciones');
+  accDiv.innerHTML = '';
+  if (detail.acciones && detail.acciones.length > 0) {
+    var tipoAccLabels = {inmediata:'Inmediata', correctiva:'Correctiva', preventiva:'Preventiva'};
+    detail.acciones.forEach(function(a) {
+      var row = document.createElement('div');
+      row.style.cssText = 'padding:4px 6px; background:#fff; border-radius:4px; margin-bottom:3px; display:flex; gap:6px; align-items:center;';
+      var badge = a.estado === 'completada' ? '✅' : '⏳';
+      row.innerHTML = badge + ' <strong>' + (tipoAccLabels[a.tipo] || a.tipo) + ':</strong> ' +
+        (a.descripcion || '') +
+        (a.responsable ? ' <span style="color:#666;">(' + a.responsable + ')</span>' : '');
+      accDiv.appendChild(row);
+    });
+  }
+
+  console.log('[seleccionarReclamoPres] === PROCESANDO IMÁGENES ===');
+  var imagenes = detail.imagenes || [];
+  console.log('[seleccionarReclamoPres] Imágenes encontradas:', imagenes.length);
+
+  // Filter images by type
+  var antecedentesImgs = imagenes.filter(img => img.tipo === 'antecedente');
+  var respuestaImgs = imagenes.filter(img => img.tipo === 'respuesta');
+  console.log('[seleccionarReclamoPres] Imágenes filtradas:', {
+    antecedentes: antecedentesImgs.length,
+    respuesta: respuestaImgs.length
   });
 
-  // Already presented?
+  // Clear containers
+  if (imgRecDiv) imgRecDiv.innerHTML = '';
+  if (imgRespDiv) imgRespDiv.innerHTML = '';
+
+  // Render images with delay to ensure DOM is ready
+  console.log('[seleccionarReclamoPres] Iniciando render con delay...');
+  setTimeout(function() {
+    console.log('[seleccionarReclamoPres] === EJECUTANDO RENDER DESPUÉS DE DELAY ===');
+    console.log('[seleccionarReclamoPres] presImagenesReclamo exists:', !!document.getElementById('presImagenesReclamo'));
+    console.log('[seleccionarReclamoPres] presImagenesRespuesta exists:', !!document.getElementById('presImagenesRespuesta'));
+    
+    if (antecedentesImgs.length > 0) {
+      console.log('[seleccionarReclamoPres] Renderizando', antecedentesImgs.length, 'imágenes de antecedentes');
+      renderImageBar('presImagenesReclamo', antecedentesImgs, 'reclamo');
+    } else {
+      console.log('[seleccionarReclamoPres] Sin imágenes de antecedentes');
+      if (imgRecDiv) imgRecDiv.innerHTML = '<div style="padding:8px; text-align:center; color:#999; font-style:italic;">📷 Sin imágenes de registro</div>';
+    }
+    
+    if (respuestaImgs.length > 0) {
+      console.log('[seleccionarReclamoPres] Renderizando', respuestaImgs.length, 'imágenes de respuesta');
+      renderImageBar('presImagenesRespuesta', respuestaImgs, 'respuesta');
+    } else {
+      console.log('[seleccionarReclamoPres] Sin imágenes de respuesta');
+      if (imgRespDiv) imgRespDiv.innerHTML = '<div style="padding:8px; text-align:center; color:#999; font-style:italic;">📷 Sin imágenes de respuesta</div>';
+    }
+    
+    console.log('[seleccionarReclamoPres] === RENDER COMPLETADO ===');
+  }, 200); // Increased delay to 200ms
+
+  // Show/hide registration form vs already presented
   if (detail.presentacion_realizada) {
     yaPres.style.display = '';
     regCard.style.display = 'none';
@@ -6426,84 +6438,6 @@ async function seleccionarReclamoPres() {
     document.querySelectorAll('.pres-asistente-cb').forEach(function(cb) { cb.checked = false; });
     document.getElementById('presComentarios').value = '';
     document.getElementById('presGuardarMsg').textContent = '';
-  }
-
-  console.log('[seleccionarReclamoPres] Procesando acciones...');
-  // Actions
-  var accDiv = document.getElementById('presAcciones');
-  accDiv.innerHTML = '';
-  if (detail.acciones && detail.acciones.length > 0) {
-    var tipoAccLabels = {inmediata:'Inmediata', correctiva:'Correctiva', preventiva:'Preventiva'};
-    detail.acciones.forEach(function(a) {
-      var row = document.createElement('div');
-      row.style.cssText = 'padding:4px 6px; background:#fff; border-radius:4px; margin-bottom:3px; display:flex; gap:6px; align-items:center;';
-      var badge = a.estado === 'completada' ? '✅' : '⏳';
-      row.innerHTML = badge + ' <strong>' + (tipoAccLabels[a.tipo] || a.tipo) + ':</strong> ' +
-        (a.descripcion || '') +
-        (a.responsable ? ' <span style="color:#666;">(' + a.responsable + ')</span>' : '');
-      accDiv.appendChild(row);
-    });
-  }
-
-  console.log('[seleccionarReclamoPres] === PROCESANDO IMÁGENES ===');
-  // Images - Enhanced with modal viewer (siempre mostrar barras)
-  var imagenes = detail.imagenes || [];
-  console.log('[seleccionarReclamoPres] Imágenes encontradas:', imagenes.length, imagenes);
-  console.log('[seleccionarReclamoPres] Contenedores de imágenes:', {
-    imgRecDiv: !!imgRecDiv,
-    imgRespDiv: !!imgRespDiv,
-    imgRecDivId: imgRecDiv ? imgRecDiv.id : 'no encontrado',
-    imgRespDivId: imgRespDiv ? imgRespDiv.id : 'no encontrado'
-  });
-  
-  // Siempre limpiar y mostrar las barras
-  imgRecDiv.innerHTML = '';
-  imgRespDiv.innerHTML = '';
-  console.log('[seleccionarReclamoPres] Contenedores limpiados');
-
-  var antecedentesImgs = imagenes.filter(img => img.tipo !== 'respuesta');
-  var respuestaImgs = imagenes.filter(img => img.tipo === 'respuesta');
-  console.log('[seleccionarReclamoPres] Imágenes filtradas:', {
-    antecedentes: antecedentesImgs.length,
-    respuesta: respuestaImgs.length,
-    tipos: imagenes.map(img => img.tipo)
-  });
-
-  // Render image bar (siempre mostrar, incluso si está vacía)
-  try {
-    console.log('[seleccionarReclamoPres] Intentando renderizar imágenes...');
-    renderImageBar(imgRecDiv, antecedentesImgs, 'antecedentes');
-    renderImageBar(imgRespDiv, respuestaImgs, 'respuesta');
-    console.log('[seleccionarReclamoPres] Imágenes renderizadas correctamente');
-    console.log('[seleccionarReclamoPres] Estado final de contenedores:', {
-      imgRecDivChildren: imgRecDiv ? imgRecDiv.children.length : 0,
-      imgRespDivChildren: imgRespDiv ? imgRespDiv.children.length : 0,
-      imgRecDivHTML: imgRecDiv ? imgRecDiv.innerHTML.substring(0, 100) : 'no existe',
-      imgRespDivHTML: imgRespDiv ? imgRespDiv.innerHTML.substring(0, 100) : 'no existe',
-      imgRecDivVisible: imgRecDiv ? (imgRecDiv.offsetWidth > 0 && imgRecDiv.offsetHeight > 0) : false,
-      imgRespDivVisible: imgRespDiv ? (imgRespDiv.offsetWidth > 0 && imgRespDiv.offsetHeight > 0) : false,
-      imgRecDisplayStyle: imgRecDiv ? window.getComputedStyle(imgRecDiv).display : 'no existe',
-      imgRespDisplayStyle: imgRespDiv ? window.getComputedStyle(imgRespDiv).display : 'no existe'
-    });
-  } catch (error) {
-    console.error('[seleccionarReclamoPres] Error renderizando imágenes:', error);
-    imgRecDiv.innerHTML = '<span style="color:#b42318; font-size:11px;">Error al cargar imágenes</span>';
-    imgRespDiv.innerHTML = '<span style="color:#b42318; font-size:11px;">Error al cargar imágenes</span>';
-  }
-
-  // Siempre mostrar mensaje si no hay imágenes en cada sección
-  if (antecedentesImgs.length === 0) {
-    if (imgRecDiv.children.length === 0) {
-      console.log('[seleccionarReclamoPres] Agregando mensaje vacío a antecedentes');
-      imgRecDiv.innerHTML = '<div style="padding:8px; border:1px dashed #ddd; border-radius:4px; text-align:center; background:#fafafa;"><span style="color:#999; font-size:11px; font-style:italic;">📷 Sin imágenes de registro</span></div>';
-    }
-  }
-  
-  if (respuestaImgs.length === 0) {
-    if (imgRespDiv.children.length === 0) {
-      console.log('[seleccionarReclamoPres] Agregando mensaje vacío a respuesta');
-      imgRespDiv.innerHTML = '<div style="padding:8px; border:1px dashed #ddd; border-radius:4px; text-align:center; background:#fafafa;"><span style="color:#999; font-size:11px; font-style:italic;">📷 Sin imágenes de análisis</span></div>';
-    }
   }
 
   console.log('[seleccionarReclamoPres] === FUNCIÓN COMPLETADA ===');
@@ -6547,29 +6481,22 @@ function openImageModal(images, startIndex) {
 
 // Render enhanced image bar with modal viewer
 function renderImageBar(containerId, images, type) {
-  console.log('[renderImageBar] Llamada con:', {
-    containerId: containerId,
-    images: images,
-    type: type,
-    imagesLength: images ? images.length : 0,
-    isArray: Array.isArray(images)
-  });
+  console.log('[renderImageBar] === INICIANDO ===');
+  console.log('[renderImageBar] containerId:', containerId);
+  console.log('[renderImageBar] imágenes:', images.length);
   
   var container = document.getElementById(containerId);
-  console.log('[renderImageBar] getElementById result:', container);
-  console.log('[renderImageBar] Container exists in DOM:', !!document.getElementById(containerId));
-  console.log('[renderImageBar] All elements with ID:', document.querySelectorAll('[id="' + containerId + '"]'));
+  console.log('[renderImageBar] container encontrado:', !!container);
   
   if (!container) {
-    console.log('[renderImageBar] Contenedor no encontrado:', containerId);
+    console.log('[renderImageBar] ❌ Contenedor no encontrado');
     return;
   }
 
-  // Always show the bar even if empty
   container.innerHTML = '';
 
   if (!images || images.length === 0) {
-    console.log('[renderImageBar] No hay imágenes, mostrando mensaje vacío');
+    console.log('[renderImageBar] Sin imágenes, mostrando placeholder');
     var msg = document.createElement('div');
     msg.style.cssText = 'color:#666; font-size:11px; font-style:italic; padding:8px; text-align:center;';
     msg.textContent = 'Sin imágenes';
@@ -6577,7 +6504,7 @@ function renderImageBar(containerId, images, type) {
     return;
   }
 
-  console.log('[renderImageBar] Procesando', images.length, 'imágenes');
+  console.log('[renderImageBar] ✅ Procesando', images.length, 'imágenes');
 
   // Image bar container
   var barDiv = document.createElement('div');
