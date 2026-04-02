@@ -6309,13 +6309,22 @@ async function seleccionarReclamoPres() {
   if (!rec) { antDiv.style.display = 'none'; regCard.style.display = 'none'; return; }
 
   antDiv.style.display = '';
-  // Collapse expanded sections on reclamo change
-  var redExtra = document.getElementById('presRedExtra');
-  var blueExtra = document.getElementById('presBlueExtra');
-  if (redExtra) redExtra.style.display = 'none';
-  if (blueExtra) blueExtra.style.display = 'none';
+  // No need to collapse sections anymore - always show all details
 
   console.log('[seleccionarReclamoPres] Llenando info básica...');
+  console.log('[seleccionarReclamoPres] Datos del reclamo:', {
+    correlativo: rec.correlativo,
+    proyecto: rec.nombre_proyecto,
+    cubicador: rec.cubicador_nombre,
+    estado: rec.estado,
+    aplica: rec.aplica,
+    titulo: rec.titulo,
+    tipo: rec.tipo_reclamo,
+    detectado: rec.detectado_por,
+    fecha: rec.fecha_deteccion,
+    descripcion: rec.descripcion
+  });
+  
   // Fill info header
   document.getElementById('presCorrelativo').textContent = rec.correlativo || '#' + rec.id;
   document.getElementById('presProyecto').textContent = rec.nombre_proyecto || '—';
@@ -6326,6 +6335,14 @@ async function seleccionarReclamoPres() {
   var aplicaEl = document.getElementById('presAplica');
   aplicaEl.textContent = aplicaLabels[rec.aplica] || 'Pendiente';
   aplicaEl.style.color = rec.aplica === 'si' ? '#2e7d32' : (rec.aplica === 'no' ? '#b42318' : '#e65100');
+
+  // Red section
+  document.getElementById('presTitulo').textContent = rec.titulo || '—';
+  var tipoLabels = {error:'Error', faltante:'Faltante', atraso:'Atraso', actualizacion_portal:'Act. Portal'};
+  document.getElementById('presTipo').textContent = tipoLabels[rec.tipo_reclamo] || rec.tipo_reclamo || '—';
+  document.getElementById('presDetectado').textContent = rec.detectado_por || '—';
+  document.getElementById('presFecha').textContent = rec.fecha_deteccion ? rec.fecha_deteccion.substring(0, 10) : '—';
+  document.getElementById('presDescripcion').textContent = rec.descripcion || '—';
 
   console.log('[seleccionarReclamoPres] Obteniendo detalles del reclamo...');
   // Fetch full detail for images, acciones, and extra fields
