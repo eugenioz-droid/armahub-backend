@@ -6675,9 +6675,17 @@ function renderCurrentImage() {
   console.log('[renderCurrentImage] Imagen actual:', img);
   if (!img) return;
 
+  console.log('[renderCurrentImage] Datos de la imagen:', {
+    url: img.url,
+    content_type: img.content_type,
+    filename: img.filename,
+    currentIndex: _imageModalState.currentIndex,
+    totalImages: _imageModalState.images.length
+  });
+
   if (img.content_type && img.content_type.startsWith('image/')) {
     console.log('[renderCurrentImage] Renderizando imagen:', img.url);
-    container.innerHTML = '<img src="' + img.url + '" style="max-width:100%; max-height:100%; object-fit:contain;" />';
+    container.innerHTML = '<img src="' + img.url + '" style="max-width:100%; max-height:100%; object-fit:contain;" onerror="console.error(\'Error cargando imagen:\', this.src);" />';
   } else if (img.content_type === 'application/pdf') {
     console.log('[renderCurrentImage] Renderizando PDF:', img.url);
     container.innerHTML = '<iframe src="' + img.url + '" style="width:100%; height:100%; border:none;"></iframe>';
@@ -7244,11 +7252,6 @@ function handleImageModalKeydown(e) {
       navigateNext();
       break;
   }
-}
-
-// Open add image modal (placeholder for future implementation)
-function openAddImageModal(type) {
-  alert('Función para agregar archivos será implementada próximamente.\nTipo: ' + type);
 }
 
 (async function init() {
