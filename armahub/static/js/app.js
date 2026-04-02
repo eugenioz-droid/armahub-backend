@@ -6556,6 +6556,10 @@ function renderImageBar(containerId, images, type) {
   });
   
   var container = document.getElementById(containerId);
+  console.log('[renderImageBar] getElementById result:', container);
+  console.log('[renderImageBar] Container exists in DOM:', !!document.getElementById(containerId));
+  console.log('[renderImageBar] All elements with ID:', document.querySelectorAll('[id="' + containerId + '"]'));
+  
   if (!container) {
     console.log('[renderImageBar] Contenedor no encontrado:', containerId);
     return;
