@@ -6512,46 +6512,66 @@ function renderImageBar(containerId, images, type) {
 
   console.log('[renderImageBar] ✅ Procesando', images.length, 'imágenes');
 
-  // Image bar container
-  var barDiv = document.createElement('div');
-  barDiv.style.cssText = 'display:flex; align-items:center; gap:8px; flex-wrap:wrap; padding:6px 0;';
+  try {
+    var maxShow = 5;
+    var showImages = images.slice(0, maxShow);
+    var extraCount = images.length - maxShow;
 
-  var maxShow = 5;
-  var showImages = images.slice(0, maxShow);
-  var extraCount = images.length - maxShow;
+    showImages.forEach(function(img, index) {
+      console.log('[renderImageBar] Procesando imagen', index, ':', img);
+      
+      var thumbContainer = document.createElement('div');
+      thumbContainer.style.cssText = 'position:relative; cursor:pointer; border-radius:6px; overflow:hidden; border:2px solid #e0e0e0; transition:all 0.2s;';
+      thumbContainer.onmouseover = function() { this.style.borderColor = '#1976d2'; this.style.transform = 'scale(1.05)'; };
+      thumbContainer.onmouseout = function() { this.style.borderColor = '#e0e0e0'; this.style.transform = 'scale(1)'; };
 
-  showImages.forEach(function(img, index) {
-    var thumbContainer = document.createElement('div');
-    thumbContainer.style.cssText = 'position:relative; cursor:pointer; border-radius:6px; overflow:hidden; border:2px solid #e0e0e0; transition:all 0.2s;';
-    thumbContainer.onmouseover = function() { this.style.borderColor = '#1976d2'; this.style.transform = 'scale(1.05)'; };
-    thumbContainer.onmouseout = function() { this.style.borderColor = '#e0e0e0'; this.style.transform = 'scale(1)'; };
+      var thumb = document.createElement('div');
+      thumb.style.cssText = 'width:60px; height:60px; display:flex; align-items:center; justify-content:center; background:#f5f5f5; position:relative;';
+      
+      if (img.content_type && img.content_type.startsWith('image/')) {
+        console.log('[renderImageBar] Creando miniatura para:', img.url);
+        var imgEl = document.createElement('img');
+        imgEl.style.cssText = 'width:100%; height:100%; object-fit:cover;';
+        
+        imgEl.onload = function() {
+          console.log('[renderImageBar] ✅ Miniatura cargada:', img.url);
+        };
+        
+        imgEl.onerror = function() {
+          console.error('[renderImageBar] ❌ Error cargando miniatura:', img.url);
+          // Mostrar icono de error
+          imgEl.style.display = 'none';
+          var errorIcon = document.createElement('div');
+          errorIcon.style.cssText = 'font-size:24px; color:#b42318;';
+          errorIcon.textContent = '❌';
+          thumb.appendChild(errorIcon);
+        };
+        
+        imgEl.src = img.url;
+        thumb.appendChild(imgEl);
+      } else {
+        // File icon for non-images
+        var icon = document.createElement('div');
+        icon.style.cssText = 'font-size:24px; color:#666;';
+        icon.textContent = getFileIcon(img.filename);
+        thumb.appendChild(icon);
+      }
 
-    var thumb = document.createElement('div');
-    thumb.style.cssText = 'width:60px; height:60px; display:flex; align-items:center; justify-content:center; background:#f5f5f5; position:relative;';
-    
-    if (img.content_type && img.content_type.startsWith('image/')) {
-      var imgEl = document.createElement('img');
-      imgEl.src = img.url;
-      imgEl.style.cssText = 'width:100%; height:100%; object-fit:cover;';
-      thumb.appendChild(imgEl);
-    } else {
-      // File icon for non-images
-      var icon = document.createElement('div');
-      icon.style.cssText = 'font-size:24px; color:#666;';
-      icon.textContent = getFileIcon(img.filename);
-      thumb.appendChild(icon);
-    }
+      // File type badge
+      var badge = document.createElement('div');
+      badge.style.cssText = 'position:absolute; bottom:2px; right:2px; background:rgba(0,0,0,0.7); color:white; font-size:8px; padding:1px 3px; border-radius:2px;';
+      badge.textContent = getFileTypeBadge(img.content_type);
+      thumb.appendChild(badge);
 
-    // File type badge
-    var badge = document.createElement('div');
-    badge.style.cssText = 'position:absolute; bottom:2px; right:2px; background:rgba(0,0,0,0.7); color:white; font-size:8px; padding:1px 3px; border-radius:2px;';
-    badge.textContent = getFileTypeBadge(img.content_type);
-    thumb.appendChild(badge);
+      // Click to open modal
+      thumbContainer.onclick = function() { openImageModal(images, index); };
 
-    thumbContainer.onclick = function() { openImageModal(images, index); };
-    thumbContainer.appendChild(thumb);
-    barDiv.appendChild(thumbContainer);
-  });
+      thumbContainer.appendChild(thumb);
+      barDiv.appendChild(thumbContainer);
+    });
+  } catch (e) {
+    console.error('[renderImageBar] ❌ Error en forEach:', e);
+  }
 
   // Extra count indicator
   if (extraCount > 0) {
