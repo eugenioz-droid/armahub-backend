@@ -4382,14 +4382,17 @@ function switchRecTab(tab) {
     dashTab.style.display = '';
     btnDash.style.borderBottomColor = '#1565C0'; btnDash.style.color = '#1565C0';
     loadRecAdminDashboards();
+    window.location.hash = 'dashboards';
   } else if (tab === 'presentaciones') {
     if (presTab) presTab.style.display = '';
     if (btnPres) { btnPres.style.borderBottomColor = '#7B1FA2'; btnPres.style.color = '#7B1FA2'; }
     loadPresentaciones();
+    window.location.hash = 'presentaciones';
   } else {
     mainTab.style.display = '';
     btnMain.style.borderBottomColor = '#e53935'; btnMain.style.color = '#e53935';
     _adminDashLoaded = false;
+    window.location.hash = '';
   }
 }
 
@@ -6701,9 +6704,29 @@ function renderCurrentImage() {
     totalImages: _imageModalState.images.length
   });
 
+  // Clear container with loading indicator
+  container.innerHTML = '<div style="display:flex; align-items:center; justify-content:center; height:100%; color:#666;">Cargando...</div>';
+
   if (img.content_type && img.content_type.startsWith('image/')) {
-    console.log('[renderCurrentImage] Renderizando imagen:', img.url);
-    container.innerHTML = '<img src="' + img.url + '" style="max-width:100%; max-height:100%; object-fit:contain;" onerror="console.error(\'Error cargando imagen:\', this.src);" />';
+    console.log('[renderCurrentImage] Renderizando imagen con preload:', img.url);
+    
+    // Create image element with preload
+    var imgEl = new Image();
+    imgEl.style.cssText = 'max-width:100%; max-height:100%; object-fit:contain;';
+    
+    imgEl.onload = function() {
+      console.log('[renderCurrentImage] ✅ Imagen cargada exitosamente:', img.url);
+      container.innerHTML = '';
+      container.appendChild(imgEl);
+    };
+    
+    imgEl.onerror = function() {
+      console.error('[renderCurrentImage] ❌ Error cargando imagen:', img.url);
+      container.innerHTML = '<div style="text-align:center; padding:20px;"><div style="color:#b42318; font-size:16px; margin-bottom:10px;">❌ Error al cargar imagen</div><div style="font-size:12px; color:#666;">URL: ' + img.url + '</div><div style="margin-top:10px;"><a href="' + img.url + '" target="_blank" style="padding:8px 16px; background:#1976d2; color:white; text-decoration:none; border-radius:4px;">Abrir en nueva pestaña</a></div></div>';
+    };
+    
+    imgEl.src = img.url;
+    
   } else if (img.content_type === 'application/pdf') {
     console.log('[renderCurrentImage] Renderizando PDF:', img.url);
     container.innerHTML = '<iframe src="' + img.url + '" style="width:100%; height:100%; border:none;"></iframe>';
@@ -7275,4 +7298,10 @@ function handleImageModalKeydown(e) {
 (async function init() {
   if (!token()) { window.location.href = '/ui/login'; return; }
   await loadMe();
+  
+  // Restore tab from hash
+  var hash = window.location.hash.substring(1); // Remove #
+  if (hash === 'dashboards' || hash === 'presentaciones') {
+    switchRecTab(hash);
+  }
 })();
