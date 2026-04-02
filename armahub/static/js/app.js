@@ -4561,14 +4561,13 @@ async function loadRecAdminDashboards() {
 
   // Chart 2: Estados (reemplaza Resueltos vs No Resueltos)
   var porEstado = data.por_estado || {};
-  var estados = por_estado.map(item => item.estado);
-  var valores = porEstado.map(item => item.count);
+  var estados = Object.keys(porEstado);
+  var valores = Object.values(porEstado);
   
   // Preparar datos para el gráfico de torta
-  var labels = porEstado.map(item => {
-    var estado = item.estado;
+  var labels = estados.map(estado => {
     var label = _recEstadoLabels[estado] || estado;
-    var count = item.count;
+    var count = porEstado[estado];
     return `${label} (${count})`;
   });
   var colors = estados.map(estado => _recEstadoColors[estado] || '#999');
@@ -6544,23 +6543,42 @@ function openImageModal(images, startIndex) {
 }
 
 // Render enhanced image bar with modal viewer
-function renderImageBar(container, images, type) {
-  console.log('[renderImageBar] Llamada con:', {images: images?.length || 0, type, container: container?.id});
+function renderImageBar(containerId, images, type) {
+  console.log('[renderImageBar] Llamada con:', {
+    containerId: containerId,
+    images: images,
+    type: type,
+    imagesLength: images ? images.length : 0,
+    isArray: Array.isArray(images)
+  });
   
-  // Siempre mostrar contenedor, incluso si no hay imágenes
-  if (!images || images.length === 0) {
-    console.log('[renderImageBar] No hay imágenes, mostrando mensaje vacío');
-    // No hacer nada aquí, el código que llama se encarga del mensaje
+  var container = document.getElementById(containerId);
+  if (!container) {
+    console.log('[renderImageBar] Contenedor no encontrado:', containerId);
     return;
   }
 
-  var maxShow = 5;
-  var showImages = images.slice(0, maxShow);
-  var extraCount = images.length - maxShow;
+  // Always show the bar even if empty
+  container.innerHTML = '';
+
+  if (!images || images.length === 0) {
+    console.log('[renderImageBar] No hay imágenes, mostrando mensaje vacío');
+    var msg = document.createElement('div');
+    msg.style.cssText = 'color:#666; font-size:11px; font-style:italic; padding:8px; text-align:center;';
+    msg.textContent = 'Sin imágenes';
+    container.appendChild(msg);
+    return;
+  }
+
+  console.log('[renderImageBar] Procesando', images.length, 'imágenes');
 
   // Image bar container
   var barDiv = document.createElement('div');
   barDiv.style.cssText = 'display:flex; align-items:center; gap:8px; flex-wrap:wrap; padding:6px 0;';
+
+  var maxShow = 5;
+  var showImages = images.slice(0, maxShow);
+  var extraCount = images.length - maxShow;
 
   showImages.forEach(function(img, index) {
     var thumbContainer = document.createElement('div');
