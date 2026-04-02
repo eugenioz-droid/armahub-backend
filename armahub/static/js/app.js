@@ -6626,12 +6626,19 @@ function renderImageModal() {
 }
 
 function renderCurrentImage() {
+  console.log('[renderCurrentImage] === MODAL VIEWER INICIANDO ===');
   var container = document.getElementById('modalFileContainer');
-  if (!container) return;
+  if (!container) {
+    console.log('[renderCurrentImage] ❌ Contenedor modal no encontrado');
+    return;
+  }
 
   var img = _imageModalState.images[_imageModalState.currentIndex];
   console.log('[renderCurrentImage] Imagen actual:', img);
-  if (!img) return;
+  if (!img) {
+    console.log('[renderCurrentImage] ❌ Sin imagen en modal state');
+    return;
+  }
 
   console.log('[renderCurrentImage] Datos de la imagen:', {
     url: img.url,
