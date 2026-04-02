@@ -6339,9 +6339,14 @@ async function seleccionarReclamoPres() {
   aplicaEl.style.color = rec.aplica === 'si' ? '#2e7d32' : (rec.aplica === 'no' ? '#b42318' : '#e65100');
 
   console.log('[seleccionarReclamoPres] Obteniendo detalles del reclamo...');
-  var detail = await apiGet('/reclamos/' + id + '/detalle');
-  if (!detail) return;
-  console.log('[seleccionarReclamoPres] Detalles obtenidos: true');
+  console.log('[seleccionarReclamoPres] URL: /reclamos/' + id);
+  var detail = await apiGet('/reclamos/' + id);
+  console.log('[seleccionarReclamoPres] Respuesta API:', detail);
+  if (!detail) {
+    console.log('[seleccionarReclamoPres] ❌ No se obtuvieron detalles, saliendo...');
+    return;
+  }
+  console.log('[seleccionarReclamoPres] ✅ Detalles obtenidos: true');
 
   // Red section
   document.getElementById('presTitulo').textContent = detail.titulo || rec.titulo || '—';
