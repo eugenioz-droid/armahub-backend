@@ -6378,13 +6378,13 @@ async function seleccionarReclamoPres() {
   // Render images with delay to ensure DOM is ready
   setTimeout(function() {
     if (imagenesRegistro.length > 0) {
-      renderImageBar('presImagenesReclamo', imagenesRegistro, 'reclamo');
+      imageRenderer.renderImageBar('presImagenesReclamo', imagenesRegistro, 'reclamo');
     } else {
       if (imgRecDiv) imgRecDiv.innerHTML = '<div style="padding:8px; text-align:center; color:#999; font-style:italic;">📷 Sin imágenes de registro</div>';
     }
     
     if (imagenesAnalisis.length > 0) {
-      renderImageBar('presImagenesRespuesta', imagenesAnalisis, 'respuesta');
+      imageRenderer.renderImageBar('presImagenesRespuesta', imagenesAnalisis, 'respuesta');
     } else {
       if (imgRespDiv) imgRespDiv.innerHTML = '<div style="padding:8px; text-align:center; color:#999; font-style:italic;">📷 Sin imágenes de análisis</div>';
     }
@@ -6433,100 +6433,162 @@ function getFileTypeBadge(contentType) {
   return '📄';
 }
 
-// Modal viewer state
-var _imageModalState = {
-  images: [],
-  currentIndex: 0,
-  isOpen: false
-};
+// ========================= MÓDULO DE IMÁGENES (FASE 8.1.2) =========================
 
-// Open image modal viewer
-function openImageModal(images, startIndex) {
-  _imageModalState.images = images || [];
-  _imageModalState.currentIndex = startIndex || 0;
-  _imageModalState.isOpen = true;
-  renderImageModal();
-}
-
-// Render enhanced image bar with modal viewer
-function renderImageBar(containerId, images, type) {
-  var container = document.getElementById(containerId);
-  if (!container) return;
-
-  container.innerHTML = '';
-
-  if (!images || images.length === 0) {
-    var msg = document.createElement('div');
-    msg.style.cssText = 'color:#666; font-size:11px; font-style:italic; padding:8px; text-align:center;';
-    msg.textContent = 'Sin imágenes';
-    container.appendChild(msg);
-    return;
+class ImageRenderer {
+  constructor() {
+    this.modalState = {
+      images: [],
+      currentIndex: 0,
+      isOpen: false
+    };
   }
 
-  // Image bar container
-  var barDiv = document.createElement('div');
-  barDiv.style.cssText = 'display:flex; align-items:center; gap:8px; flex-wrap:wrap; padding:6px 0;';
+  // Renderizar barra de imágenes
+  renderImageBar(containerId, images, type) {
+    var container = document.getElementById(containerId);
+    if (!container) return;
 
-  try {
-    var maxShow = 5;
-    var showImages = images.slice(0, maxShow);
-    var extraCount = images.length - maxShow;
+    container.innerHTML = '';
 
-    showImages.forEach(function(img, index) {
-      var thumbContainer = document.createElement('div');
-      thumbContainer.style.cssText = 'position:relative; cursor:pointer; border-radius:6px; overflow:hidden; border:2px solid #e0e0e0; transition:all 0.2s;';
-      thumbContainer.onmouseover = function() { this.style.borderColor = '#1976d2'; this.style.transform = 'scale(1.05)'; };
-      thumbContainer.onmouseout = function() { this.style.borderColor = '#e0e0e0'; this.style.transform = 'scale(1)'; };
-
-      var thumb = document.createElement('div');
-      thumb.style.cssText = 'width:60px; height:60px; display:flex; align-items:center; justify-content:center; background:#f5f5f5; position:relative;';
-      
-      if (img.content_type && img.content_type.startsWith('image/')) {
-        var imgEl = document.createElement('img');
-        imgEl.style.cssText = 'width:100%; height:100%; object-fit:cover;';
-        imgEl.src = img.url;
-        thumb.appendChild(imgEl);
-      } else {
-        // File icon for non-images
-        var icon = document.createElement('div');
-        icon.style.cssText = 'font-size:24px; color:#666;';
-        icon.textContent = getFileIcon(img.filename);
-        thumb.appendChild(icon);
-      }
-
-      // File type badge
-      var badge = document.createElement('div');
-      badge.style.cssText = 'position:absolute; bottom:2px; right:2px; background:rgba(0,0,0,0.7); color:white; font-size:8px; padding:1px 3px; border-radius:2px;';
-      badge.textContent = getFileTypeBadge(img.content_type);
-      thumb.appendChild(badge);
-
-      // Click to open in new tab (temporal solution)
-      thumbContainer.onclick = function() { 
-        window.open(img.url, '_blank'); 
-      };
-
-      thumbContainer.appendChild(thumb);
-      barDiv.appendChild(thumbContainer);
-    });
-
-    // Extra count indicator
-    if (extraCount > 0) {
-      var moreDiv = document.createElement('div');
-      moreDiv.style.cssText = 'width:60px; height:60px; display:flex; align-items:center; justify-content:center; background:#e3f2fd; border-radius:6px; border:2px solid #1976d2; cursor:pointer; font-size:12px; font-weight:600; color:#1976d2;';
-      moreDiv.textContent = '+' + extraCount;
-      moreDiv.title = 'Ver ' + extraCount + ' archivos más';
-      moreDiv.onclick = function() { openImageModal(images, maxShow); };
-      barDiv.appendChild(moreDiv);
+    if (!images || images.length === 0) {
+      var msg = document.createElement('div');
+      msg.style.cssText = 'color:#666; font-size:11px; font-style:italic; padding:8px; text-align:center;';
+      msg.textContent = 'Sin imágenes';
+      container.appendChild(msg);
+      return;
     }
 
-  } catch (e) {
-    console.error('[renderImageBar] Error:', e);
+    // Image bar container
+    var barDiv = document.createElement('div');
+    barDiv.style.cssText = 'display:flex; align-items:center; gap:8px; flex-wrap:wrap; padding:6px 0;';
+
+    try {
+      var maxShow = 5;
+      var showImages = images.slice(0, maxShow);
+      var extraCount = images.length - maxShow;
+
+      showImages.forEach(function(img, index) {
+        var thumbContainer = this._createThumbnail(img, index, type);
+        barDiv.appendChild(thumbContainer);
+      }.bind(this));
+
+      // Extra count indicator
+      if (extraCount > 0) {
+        var moreDiv = this._createMoreIndicator(extraCount, images, maxShow);
+        barDiv.appendChild(moreDiv);
+      }
+
+    } catch (e) {
+      console.error('[ImageRenderer] Error en renderImageBar:', e);
+    }
+
+    container.appendChild(barDiv);
   }
 
-  container.appendChild(barDiv);
+  // Crear thumbnail individual
+  _createThumbnail(img, index, type) {
+    var thumbContainer = document.createElement('div');
+    thumbContainer.style.cssText = 'position:relative; cursor:pointer; border-radius:6px; overflow:hidden; border:2px solid #e0e0e0; transition:all 0.2s;';
+    thumbContainer.onmouseover = function() { this.style.borderColor = '#1976d2'; this.style.transform = 'scale(1.05)'; };
+    thumbContainer.onmouseout = function() { this.style.borderColor = '#e0e0e0'; this.style.transform = 'scale(1)'; };
+
+    var thumb = document.createElement('div');
+    thumb.style.cssText = 'width:60px; height:60px; display:flex; align-items:center; justify-content:center; background:#f5f5f5; position:relative;';
+    
+    if (img.content_type && img.content_type.startsWith('image/')) {
+      var imgEl = document.createElement('img');
+      imgEl.style.cssText = 'width:100%; height:100%; object-fit:cover;';
+      imgEl.src = img.url;
+      thumb.appendChild(imgEl);
+    } else {
+      // File icon for non-images
+      var icon = document.createElement('div');
+      icon.style.cssText = 'font-size:24px; color:#666;';
+      icon.textContent = this._getFileIcon(img.filename);
+      thumb.appendChild(icon);
+    }
+
+    // File type badge
+    var badge = document.createElement('div');
+    badge.style.cssText = 'position:absolute; bottom:2px; right:2px; background:rgba(0,0,0,0.7); color:white; font-size:8px; padding:1px 3px; border-radius:2px;';
+    badge.textContent = this._getFileTypeBadge(img.content_type);
+    thumb.appendChild(badge);
+
+    // Click to open in new tab (temporal solution)
+    thumbContainer.onclick = function() { 
+      window.open(img.url, '_blank'); 
+    };
+
+    thumbContainer.appendChild(thumb);
+    return thumbContainer;
+  }
+
+  // Crear indicador "más imágenes"
+  _createMoreIndicator(extraCount, images, maxShow) {
+    var moreDiv = document.createElement('div');
+    moreDiv.style.cssText = 'width:60px; height:60px; display:flex; align-items:center; justify-content:center; background:#e3f2fd; border-radius:6px; border:2px solid #1976d2; cursor:pointer; font-size:12px; font-weight:600; color:#1976d2;';
+    moreDiv.textContent = '+' + extraCount;
+    moreDiv.title = 'Ver ' + extraCount + ' archivos más';
+    moreDiv.onclick = function() { this.openImageModal(images, maxShow); }.bind(this);
+    return moreDiv;
+  }
+
+  // Obtener ícono de archivo
+  _getFileIcon(filename) {
+    if (!filename) return '📄';
+    var ext = filename.split('.').pop().toLowerCase();
+    var icons = {
+      'pdf': '📄', 'doc': '📝', 'docx': '📝', 'xls': '📊', 'xlsx': '📊',
+      'png': '🖼️', 'jpg': '🖼️', 'jpeg': '🖼️', 'gif': '🖼️', 'svg': '🖼️',
+      'mp4': '🎥', 'avi': '🎥', 'mov': '🎥', 'zip': '📦', 'rar': '📦'
+    };
+    return icons[ext] || '📄';
+  }
+
+  // Obtener badge de tipo de archivo
+  _getFileTypeBadge(contentType) {
+    if (!contentType) return 'FILE';
+    if (contentType.startsWith('image/')) return 'IMG';
+    if (contentType === 'application/pdf') return 'PDF';
+    if (contentType.includes('video/')) return 'VID';
+    if (contentType.includes('zip') || contentType.includes('rar')) return 'ZIP';
+    return 'FILE';
+  }
+
+  // Abrir modal de imágenes (placeholder para futura implementación)
+  openImageModal(images, startIndex) {
+    this.modalState.images = images || [];
+    this.modalState.currentIndex = startIndex || 0;
+    this.modalState.isOpen = true;
+    console.log('[ImageRenderer] Modal abierto con', images.length, 'imágenes');
+    // TODO: Implementar modal mejorado
+  }
 }
 
-// Modal viewer implementation
+// Instancia global del renderizador de imágenes
+var imageRenderer = new ImageRenderer();
+
+// ========================= FUNCIONES LEGADO (Mantener compatibilidad) =========================
+
+// Funciones de compatibilidad para código existente
+function renderImageBar(containerId, images, type) {
+  return imageRenderer.renderImageBar(containerId, images, type);
+}
+
+function openImageModal(images, startIndex) {
+  return imageRenderer.openImageModal(images, startIndex);
+}
+
+function getFileIcon(filename) {
+  return imageRenderer._getFileIcon(filename);
+}
+
+function getFileTypeBadge(contentType) {
+  return imageRenderer._getFileTypeBadge(contentType);
+}
+
+// Modal viewer implementation (legacy - mantener para compatibilidad)
 function renderImageModal() {
   if (!_imageModalState.isOpen || !_imageModalState.images.length) return;
 
