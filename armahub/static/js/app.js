@@ -6576,7 +6576,7 @@ class ReclamoPresenter {
     var recId = document.getElementById('presReclamoSelect').value;
     if (!recId) return;
 
-    var rec = reclamos.find(function(r) { return r.id == recId; });
+    var rec = _presData.reclamos.find(function(r) { return r.id == recId; });
     if (!rec) return;
 
     var presContent = document.getElementById('presContent');
