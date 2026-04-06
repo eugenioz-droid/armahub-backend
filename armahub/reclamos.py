@@ -1496,6 +1496,17 @@ def migrar_imagenes_final():
                 cur.execute("SELECT tipo, COUNT(*) FROM reclamo_imagenes GROUP BY tipo")
                 estado_antes = cur.fetchall()
                 
+                # FORZAR: Eliminar constraint viejo y crear nuevo
+                try:
+                    cur.execute("ALTER TABLE reclamo_imagenes DROP CONSTRAINT IF EXISTS reclamo_imagenes_tipo_check")
+                except:
+                    pass  # Si no existe, no hay problema
+                
+                try:
+                    cur.execute("ALTER TABLE reclamo_imagenes ADD CONSTRAINT reclamo_imagenes_tipo_check CHECK (tipo IN ('ImagenesRegistro','ImagenesAnalisis'))")
+                except:
+                    pass  # Si ya existe, no hay problema
+                
                 # Migrar a nueva nomenclatura
                 cur.execute("UPDATE reclamo_imagenes SET tipo = 'ImagenesRegistro' WHERE tipo = 'antecedente'")
                 migradas_registro = cur.rowcount
