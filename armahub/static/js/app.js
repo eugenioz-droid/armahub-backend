@@ -6323,30 +6323,22 @@ async function seleccionarReclamoPres() {
   document.getElementById('presIdCalidad').textContent = detail.id_calidad || rec.id_calidad || '—';
   document.getElementById('presObservaciones').textContent = detail.observaciones || rec.observaciones || '—';
 
-  // Blue form data
-  console.log('[DEBUG] TODOS los campos del detail:', Object.keys(detail));
-  console.log('[DEBUG] Campos que podrían ser del análisis:', {
-    ishikawa: detail.ishikawa,
-    ishikawa_causa: detail.ishikawa_causa,
-    causa_ishikawa: detail.causa_ishikawa,
-    area: detail.area,
-    area_responsable: detail.area_responsable,
-    respuesta: detail.respuesta,
+  // Blue form data (usando nombres correctos del backend)
+  console.log('[DEBUG] Datos formulario azul CORREGIDOS:', {
+    explicacion_causa: detail.explicacion_causa,
+    area_aplica: detail.area_aplica,
     respuesta_texto: detail.respuesta_texto,
-    analisis: detail.analisis,
-    analisis_respuesta: detail.analisis_respuesta,
     fecha_analisis: detail.fecha_analisis,
-    respondido_por: detail.respondido_por,
     respuesta_por: detail.respuesta_por,
-    fecha_respuesta: detail.fecha_respuesta
+    respuesta_fecha: detail.respuesta_fecha
   });
   
-  document.getElementById('presIshikawa').textContent = detail.causa_ishikawa || '—';
-  document.getElementById('presArea').textContent = detail.area_responsable || '—';
-  document.getElementById('presRespuesta').textContent = detail.respuesta || '—';
+  document.getElementById('presIshikawa').textContent = detail.explicacion_causa || '—';
+  document.getElementById('presArea').textContent = detail.area_aplica || '—';
+  document.getElementById('presRespuesta').textContent = detail.respuesta_texto || '—';
   document.getElementById('presFechaAnalisis').textContent = (detail.fecha_analisis || '').replace('T', ' ').substring(0, 19);
-  document.getElementById('presRespondidoPor').textContent = detail.respondido_por || '—';
-  document.getElementById('presFechaRespuesta').textContent = (detail.fecha_respuesta || '').replace('T', ' ').substring(0, 19);
+  document.getElementById('presRespondidoPor').textContent = detail.respuesta_por || '—';
+  document.getElementById('presFechaRespuesta').textContent = (detail.respuesta_fecha || '').replace('T', ' ').substring(0, 19);
 
   // Actions
   var accDiv = document.getElementById('presAcciones');
