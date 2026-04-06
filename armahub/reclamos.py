@@ -1062,25 +1062,65 @@ def presentar_reclamo(reclamo_id: int, body: PresentarReclamoRequest, user=Depen
     return {"ok": True, "reclamo_id": reclamo_id}
 
 
+# ========================= CACHE EN MEMORIA (FASE 8.2.1) =========================
+
+# Cache simple en memoria para datos frecuentes
+_reclamos_cache = {}
+_cache_timeout = 300  # 5 minutos
+
+def _get_cache_key(reclamo_id: int, include_images: bool = True) -> str:
+    return f"reclamo_{reclamo_id}_imgs_{include_images}"
+
+def _is_cache_valid(cache_key: str) -> bool:
+    if cache_key not in _reclamos_cache:
+        return False
+    timestamp = _reclamos_cache[cache_key]["timestamp"]
+    return (datetime.now(timezone.utc).timestamp() - timestamp) < _cache_timeout
+
+def _get_from_cache(cache_key: str):
+    return _reclamos_cache[cache_key]["data"]
+
+def _set_cache(cache_key: str, data):
+    _reclamos_cache[cache_key] = {
+        "data": data,
+        "timestamp": datetime.now(timezone.utc).timestamp()
+    }
+
+# ========================= ENDPOINTS OPTIMIZADOS (FASE 8.2.1) =========================
+
 @router.get("/reclamos/{reclamo_id}")
-def get_reclamo(reclamo_id: int, user=Depends(get_current_user)):
-    """Obtener detalle de un reclamo con timeline, acciones e imágenes."""
+def get_reclamo_optimizado(
+    reclamo_id: int, 
+    user=Depends(get_current_user),
+    include_images: bool = Query(True, description="Incluir imágenes (payload grande)"),
+    include_seguimientos: bool = Query(True, description="Incluir seguimientos"),
+    include_acciones: bool = Query(True, description="Incluir acciones")
+):
+    """Obtener detalle de un reclamo optimizado con cache y queries eficientes."""
+    
+    cache_key = _get_cache_key(reclamo_id, include_images)
+    
+    # Verificar cache primero
+    if _is_cache_valid(cache_key):
+        return _get_from_cache(cache_key)
+    
     with get_conn() as conn:
         with conn.cursor() as cur:
+            # Query principal optimizado con LEFT JOINs
             cur.execute("""
-                SELECT r.id, r.id_proyecto, r.titulo, r.descripcion, r.estado,
-                       r.prioridad, r.categoria_ishikawa, r.responsable,
-                       r.accion_correctiva, r.accion_preventiva, r.resolucion,
-                       r.creado_por, r.fecha_creacion, r.fecha_actualizacion, r.fecha_cierre,
-                       COALESCE(p.nombre_proyecto, r.id_proyecto, 'Obra eliminada') AS nombre_proyecto,
-                       r.aplica, r.sub_causa, r.cod_causa, r.correlativo_calidad,
-                       r.detectado_por, r.fecha_deteccion, r.fecha_analisis,
-                       r.analista, r.area_aplica, r.explicacion_causa, r.observaciones,
-                       r.correlativo, r.id_calidad,
-                       r.tipo_reclamo, r.respuesta_texto, r.respuesta_fecha,
-                       r.respuesta_por, r.validacion_resultado,
-                       r.validacion_observaciones, r.validacion_fecha, r.validacion_por,
-                       r.kilos_mal_fabricados, r.asignado_a, r.cubicador_asignado
+                SELECT 
+                    r.id, r.id_proyecto, r.titulo, r.descripcion, r.estado,
+                    r.prioridad, r.categoria_ishikawa, r.responsable,
+                    r.creado_por, r.fecha_creacion, r.fecha_actualizacion, r.fecha_cierre,
+                    COALESCE(p.nombre_proyecto, r.id_proyecto, 'Obra eliminada') AS nombre_proyecto,
+                    r.aplica, r.sub_causa, r.explicacion_causa, r.observaciones,
+                    r.correlativo, r.id_calidad,
+                    r.tipo_reclamo, r.respuesta_texto, r.respuesta_fecha,
+                    r.respuesta_por, r.area_aplica, r.fecha_analisis,
+                    r.validacion_resultado, r.validacion_observaciones, r.validacion_fecha, r.validacion_por,
+                    r.kilos_mal_fabricados, r.asignado_a, r.cubicador_asignado,
+                    r.presentacion_realizada, r.presentacion_fecha, r.presentacion_por,
+                    r.presentacion_asistentes, r.presentacion_comentarios
                 FROM reclamos r
                 LEFT JOIN proyectos p ON r.id_proyecto = p.id_proyecto
                 WHERE r.id = %s
@@ -1089,67 +1129,101 @@ def get_reclamo(reclamo_id: int, user=Depends(get_current_user)):
             if not row:
                 raise HTTPException(status_code=404, detail="Reclamo no encontrado")
 
-            cur.execute("""
-                SELECT id, usuario, comentario, estado_anterior, estado_nuevo, fecha
-                FROM reclamo_seguimientos WHERE reclamo_id = %s
-                ORDER BY fecha ASC, id ASC
-            """, (reclamo_id,))
-            seguimientos = cur.fetchall()
+            # Construir respuesta base
+            response = {
+                "id": row[0], "id_proyecto": row[1], "titulo": row[2], "descripcion": row[3],
+                "estado": row[4], "prioridad": row[5], "categoria_ishikawa": row[6],
+                "responsable": row[7], "creado_por": row[8], "fecha_creacion": row[9],
+                "fecha_actualizacion": row[10], "fecha_cierre": row[11], "nombre_proyecto": row[12],
+                "aplica": row[13], "sub_causa": row[14], "explicacion_causa": row[15], "observaciones": row[16],
+                "correlativo": row[17], "id_calidad": row[18],
+                "tipo_reclamo": row[19], "respuesta_texto": row[20],
+                "respuesta_fecha": str(row[21]) if row[21] else None,
+                "respuesta_por": row[22], "area_aplica": row[23],
+                "fecha_analisis": str(row[24]) if row[24] else None,
+                "validacion_resultado": row[25], "validacion_observaciones": row[26],
+                "validacion_fecha": str(row[27]) if row[27] else None, "validacion_por": row[28],
+                "kilos_mal_fabricados": row[29], "asignado_a": row[30],
+                "cubicador_asignado": row[31], "presentacion_realizada": row[32],
+                "presentacion_fecha": str(row[33]) if row[33] else None, "presentacion_por": row[34],
+                "presentacion_asistentes": row[35], "presentacion_comentarios": row[36]
+            }
 
-            cur.execute("""
-                SELECT id, tipo, descripcion, responsable, fecha_prevista,
-                       fecha_completada, estado, creado_por, fecha_creacion
-                FROM reclamo_acciones WHERE reclamo_id = %s
-                ORDER BY id ASC
-            """, (reclamo_id,))
-            acciones = cur.fetchall()
+            # Agregar seguimientos si se solicitan
+            if include_seguimientos:
+                cur.execute("""
+                    SELECT id, usuario, comentario, estado_anterior, estado_nuevo, fecha
+                    FROM reclamo_seguimientos WHERE reclamo_id = %s
+                    ORDER BY fecha ASC, id ASC
+                """, (reclamo_id,))
+                seguimientos = cur.fetchall()
+                response["seguimientos"] = [
+                    {"id": s[0], "usuario": s[1], "comentario": s[2],
+                     "estado_anterior": s[3], "estado_nuevo": s[4], "fecha": s[5]}
+                    for s in seguimientos
+                ]
+            else:
+                response["seguimientos"] = []
 
-            cur.execute("""
-                SELECT id, filename, content_type, descripcion, subido_por, fecha_subida, tipo
-                FROM reclamo_imagenes WHERE reclamo_id = %s
-                ORDER BY id ASC
-            """, (reclamo_id,))
-            imagenes = cur.fetchall()
+            # Agregar acciones si se solicitan
+            if include_acciones:
+                cur.execute("""
+                    SELECT id, tipo, descripcion, responsable, fecha_prevista,
+                           fecha_completada, estado, creado_por, fecha_creacion
+                    FROM reclamo_acciones WHERE reclamo_id = %s
+                    ORDER BY id ASC
+                """, (reclamo_id,))
+                acciones = cur.fetchall()
+                response["acciones"] = [
+                    {"id": a[0], "tipo": a[1], "descripcion": a[2], "responsable": a[3],
+                     "fecha_prevista": a[4], "fecha_completada": a[5], "estado": a[6],
+                     "creado_por": a[7], "fecha_creacion": a[8]}
+                    for a in acciones
+                ]
+            else:
+                response["acciones"] = []
 
-    return {
-        "id": row[0], "id_proyecto": row[1], "titulo": row[2], "descripcion": row[3],
-        "estado": row[4], "prioridad": row[5], "categoria_ishikawa": row[6],
-        "responsable": row[7], "accion_correctiva": row[8], "accion_preventiva": row[9],
-        "resolucion": row[10], "creado_por": row[11], "fecha_creacion": row[12],
-        "fecha_actualizacion": row[13], "fecha_cierre": row[14], "nombre_proyecto": row[15],
-        "aplica": row[16], "sub_causa": row[17], "cod_causa": row[18],
-        "correlativo_calidad": row[19], "detectado_por": row[20],
-        "fecha_deteccion": row[21], "fecha_analisis": row[22], "analista": row[23],
-        "area_aplica": row[24], "explicacion_causa": row[25], "observaciones": row[26],
-        "correlativo": row[27], "id_calidad": row[28],
-        "tipo_reclamo": row[29], "respuesta_texto": row[30],
-        "respuesta_fecha": str(row[31]) if row[31] else None,
-        "respuesta_por": row[32], "validacion_resultado": row[33],
-        "validacion_observaciones": row[34],
-        "validacion_fecha": str(row[35]) if row[35] else None,
-        "validacion_por": row[36],
-        "kilos_mal_fabricados": row[37],
-        "asignado_a": row[38],
-        "cubicador_asignado": row[39],
-        "seguimientos": [
-            {"id": s[0], "usuario": s[1], "comentario": s[2],
-             "estado_anterior": s[3], "estado_nuevo": s[4], "fecha": s[5]}
-            for s in seguimientos
-        ],
-        "acciones": [
-            {"id": a[0], "tipo": a[1], "descripcion": a[2], "responsable": a[3],
-             "fecha_prevista": a[4], "fecha_completada": a[5], "estado": a[6],
-             "creado_por": a[7], "fecha_creacion": a[8]}
-            for a in acciones
-        ],
-        "imagenes": [
-            {"id": img[0], "filename": img[1], "content_type": img[2],
-             "descripcion": img[3], "subido_por": img[4], "fecha_subida": img[5],
-             "tipo": img[6] if len(img) > 6 else "antecedente",
-             "url": f"/reclamos/{reclamo_id}/imagenes/{img[0]}"}
-            for img in imagenes
-        ],
-    }
+            # Agregar imágenes si se solicitan (optimizado)
+            if include_images:
+                cur.execute("""
+                    SELECT id, filename, content_type, descripcion, subido_por, fecha, tipo
+                    FROM reclamo_imagenes WHERE reclamo_id = %s
+                    ORDER BY id ASC
+                """, (reclamo_id,))
+                imagenes = cur.fetchall()
+                response["imagenes"] = [
+                    {
+                        "id": img[0], 
+                        "filename": img[1], 
+                        "content_type": img[2],
+                        "descripcion": img[3], 
+                        "subido_por": img[4], 
+                        "fecha": img[5],
+                        "tipo": img[6] if len(img) > 6 else "ImagenesRegistro",
+                        "url": f"/reclamos/{reclamo_id}/imagenes/{img[0]}",
+                        "size_preview": "thumbnail"  # Indicador para frontend
+                    }
+                    for img in imagenes
+                ]
+            else:
+                response["imagenes"] = []
+
+    # Guardar en cache
+    _set_cache(cache_key, response)
+    
+    return response
+
+
+@router.get("/reclamos/{reclamo_id}/detail")
+def get_reclamo_detail_legacy(reclamo_id: int, user=Depends(get_current_user)):
+    """Endpoint legacy para compatibilidad - redirige al endpoint optimizado."""
+    return get_reclamo_optimizado(
+        reclamo_id=reclamo_id,
+        user=user,
+        include_images=True,
+        include_seguimientos=True,
+        include_acciones=True
+    )
 
 
 @router.patch("/reclamos/{reclamo_id}")

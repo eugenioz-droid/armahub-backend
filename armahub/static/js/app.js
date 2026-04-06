@@ -6433,6 +6433,238 @@ function getFileTypeBadge(contentType) {
   return '📄';
 }
 
+// ========================= MÓDULO DE FORMULARIOS (FASE 8.1.2) =========================
+
+class FormRenderer {
+  constructor() {
+    this.fieldMappings = {
+      // Formulario rojo (registro)
+      registro: {
+        descripcion: ['descripcion', 'rec.descripcion'],
+        responsable: ['responsable', 'rec.responsable'],
+        prioridad: ['prioridad', 'rec.prioridad'],
+        id_calidad: ['id_calidad', 'rec.id_calidad'],
+        observaciones: ['observaciones', 'rec.observaciones']
+      },
+      // Formulario azul (análisis)
+      analisis: {
+        explicacion_causa: ['explicacion_causa'],
+        area_aplica: ['area_aplica'],
+        respuesta_texto: ['respuesta_texto'],
+        fecha_analisis: ['fecha_analisis'],
+        respuesta_por: ['respuesta_por'],
+        respuesta_fecha: ['respuesta_fecha']
+      }
+    };
+  }
+
+  // Renderizar formulario de registro (rojo)
+  renderRegistroForm(detail, rec) {
+    const fields = this.fieldMappings.registro;
+    
+    document.getElementById('presDescripcion').textContent = this._getValue(detail, fields.descripcion) || '—';
+    document.getElementById('presResponsable').textContent = this._getValue(detail, fields.responsable) || '—';
+    document.getElementById('presPrioridad').textContent = this._getValue(detail, fields.prioridad) || '—';
+    document.getElementById('presIdCalidad').textContent = this._getValue(detail, fields.id_calidad) || '—';
+    document.getElementById('presObservaciones').textContent = this._getValue(detail, fields.observaciones) || '—';
+  }
+
+  // Renderizar formulario de análisis (azul)
+  renderAnalisisForm(detail) {
+    console.log('[DEBUG] Datos formulario azul CORREGIDOS:', {
+      explicacion_causa: detail.explicacion_causa,
+      area_aplica: detail.area_aplica,
+      respuesta_texto: detail.respuesta_texto,
+      fecha_analisis: detail.fecha_analisis,
+      respuesta_por: detail.respuesta_por,
+      respuesta_fecha: detail.respuesta_fecha
+    });
+    
+    document.getElementById('presIshikawa').textContent = detail.explicacion_causa || '—';
+    document.getElementById('presArea').textContent = detail.area_aplica || '—';
+    document.getElementById('presRespuesta').textContent = detail.respuesta_texto || '—';
+    document.getElementById('presFechaAnalisis').textContent = this._formatDateTime(detail.fecha_analisis);
+    document.getElementById('presRespondidoPor').textContent = detail.respuesta_por || '—';
+    document.getElementById('presFechaRespuesta').textContent = this._formatDateTime(detail.respuesta_fecha);
+  }
+
+  // Renderizar acciones
+  renderAcciones(acciones) {
+    var accDiv = document.getElementById('presAcciones');
+    accDiv.innerHTML = '';
+    
+    if (!acciones || acciones.length === 0) {
+      accDiv.innerHTML = '<div style="color:#666; font-style:italic;">Sin acciones registradas</div>';
+      return;
+    }
+
+    var tipoAccLabels = {inmediata:'Inmediata', correctiva:'Correctiva', preventiva:'Preventiva'};
+    
+    acciones.forEach(function(a) {
+      var row = document.createElement('div');
+      row.style.cssText = 'padding:4px 6px; background:#fff; border-radius:4px; margin-bottom:3px; display:flex; gap:6px; align-items:center;';
+      var badge = a.estado === 'completada' ? '✅' : '⏳';
+      row.innerHTML = badge + ' <strong>' + (tipoAccLabels[a.tipo] || a.tipo) + ':</strong> ' +
+        (a.descripcion || '') +
+        (a.responsable ? ' <span style="color:#666;">(' + a.responsable + ')</span>' : '');
+      accDiv.appendChild(row);
+    });
+  }
+
+  // Renderizar estado de presentación
+  renderPresentacionStatus(detail) {
+    var yaPres = document.getElementById('presYaPresentado');
+    var regCard = document.getElementById('presRegistroCard');
+    
+    if (detail.presentacion_realizada) {
+      yaPres.style.display = '';
+      regCard.style.display = 'none';
+      document.getElementById('presYaFecha').textContent = this._formatDateTime(detail.presentacion_fecha);
+      document.getElementById('presYaPor').textContent = detail.presentacion_por || '—';
+      
+      var asistEmails = (detail.presentacion_asistentes || '').split(',').filter(Boolean);
+      var asistNames = asistEmails.map(function(email) {
+        var user = users.find(function(u) { return u.email === email; });
+        return user ? (user.nombre || user.email) : email;
+      });
+      document.getElementById('presYaAsistentes').textContent = asistNames.join(', ') || '—';
+      document.getElementById('presYaComentarios').textContent = detail.presentacion_comentarios || '—';
+    } else {
+      yaPres.style.display = 'none';
+      regCard.style.display = '';
+    }
+  }
+
+  // Obtener valor con fallback
+  _getValue(detail, fieldPaths) {
+    if (!fieldPaths || !Array.isArray(fieldPaths)) return null;
+    
+    for (var path of fieldPaths) {
+      var value = this._getNestedValue(detail, path);
+      if (value !== null && value !== undefined) return value;
+    }
+    return null;
+  }
+
+  // Obtener valor anidado
+  _getNestedValue(obj, path) {
+    return path.split('.').reduce(function(current, key) {
+      return current && current[key] !== undefined ? current[key] : null;
+    }, obj);
+  }
+
+  // Formatear datetime
+  _formatDateTime(dateStr) {
+    if (!dateStr) return '—';
+    return dateStr.replace('T', ' ').substring(0, 19);
+  }
+}
+
+// Instancia global del renderizador de formularios
+var formRenderer = new FormRenderer();
+
+// ========================= MÓDULO DE RECLAMOS (FASE 8.1.2) =========================
+
+class ReclamoPresenter {
+  constructor() {
+    this.imageRenderer = imageRenderer;
+    this.formRenderer = formRenderer;
+  }
+
+  // Función principal refactorizada
+  seleccionarReclamoPres() {
+    var recId = document.getElementById('presReclamoSelect').value;
+    if (!recId) return;
+
+    var rec = reclamos.find(function(r) { return r.id == recId; });
+    if (!rec) return;
+
+    var presContent = document.getElementById('presContent');
+    presContent.style.display = 'none';
+
+    apiGet('/reclamos/' + recId + '/detail').then(function(detail) {
+      if (!detail) {
+        alert('Error cargando detalles del reclamo');
+        return;
+      }
+
+      // Renderizar formulario de registro
+      this.formRenderer.renderRegistroForm(detail, rec);
+
+      // Renderizar formulario de análisis
+      this.formRenderer.renderAnalisisForm(detail);
+
+      // Renderizar acciones
+      this.formRenderer.renderAcciones(detail.acciones);
+
+      // Renderizar imágenes
+      this._renderImages(detail);
+
+      // Renderizar estado de presentación
+      this.formRenderer.renderPresentacionStatus(detail);
+
+      presContent.style.display = 'block';
+
+    }.bind(this)).catch(function(err) {
+      console.error('Error:', err);
+      alert('Error al cargar el reclamo');
+    });
+  }
+
+  // Renderizar imágenes (usando el módulo de imágenes)
+  _renderImages(detail) {
+    var imgRecDiv = document.getElementById('presImagenesReclamo');
+    var imgRespDiv = document.getElementById('presImagenesRespuesta');
+
+    // Images - Usar nomenclatura actual de la base de datos
+    var imagenes = detail.imagenes || [];
+    console.log('[DEBUG] Imágenes encontradas:', imagenes.map(function(img) {
+      return {
+        id: img.id,
+        tipo: img.tipo,
+        filename: img.filename,
+        url: img.url
+      };
+    }));
+    
+    var imagenesRegistro = imagenes.filter(function(img) { return img.tipo === 'ImagenesRegistro'; });
+    var imagenesAnalisis = imagenes.filter(function(img) { return img.tipo === 'ImagenesAnalisis'; });
+    
+    console.log('[DEBUG] ImágenesRegistro (rojo):', imagenesRegistro.length);
+    console.log('[DEBUG] ImágenesAnalisis (azul):', imagenesAnalisis.length);
+
+    // Clear containers
+    if (imgRecDiv) imgRecDiv.innerHTML = '';
+    if (imgRespDiv) imgRespDiv.innerHTML = '';
+
+    // Render images with delay to ensure DOM is ready
+    var self = this;
+    setTimeout(function() {
+      if (imagenesRegistro.length > 0) {
+        self.imageRenderer.renderImageBar('presImagenesReclamo', imagenesRegistro, 'reclamo');
+      } else {
+        if (imgRecDiv) imgRecDiv.innerHTML = '<div style="padding:8px; text-align:center; color:#999; font-style:italic;">📷 Sin imágenes de registro</div>';
+      }
+      
+      if (imagenesAnalisis.length > 0) {
+        self.imageRenderer.renderImageBar('presImagenesRespuesta', imagenesAnalisis, 'respuesta');
+      } else {
+        if (imgRespDiv) imgRespDiv.innerHTML = '<div style="padding:8px; text-align:center; color:#999; font-style:italic;">📷 Sin imágenes de análisis</div>';
+      }
+    }, 200);
+  }
+}
+
+// Instancia global del presentador de reclamos
+var reclamoPresenter = new ReclamoPresenter();
+
+// ========================= FUNCIONES LEGADO ACTUALIZADAS (FASE 8.1.2) =========================
+
+// Función legado para mantener compatibilidad
+function seleccionarReclamoPres() {
+  return reclamoPresenter.seleccionarReclamoPres();
+}
+
 // ========================= MÓDULO DE IMÁGENES (FASE 8.1.2) =========================
 
 class ImageRenderer {
