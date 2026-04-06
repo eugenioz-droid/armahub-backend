@@ -1486,46 +1486,37 @@ def eliminar_imagen(reclamo_id: int, imagen_id: int, user=Depends(get_current_us
     return {"ok": True}
 
 
-# ENDPOINT TEMPORAL PARA MIGRACIÓN - ELIMINAR DESPUÉS DE USAR
-@router.post("/admin/migrar-imagenes")
-async def migrar_imagenes(current_user: dict = Depends(get_current_user)):
-    """
-    Endpoint temporal para migrar imágenes de 'antecedente' a 'ImagenesAnalisis'.
-    Eliminar después de usar.
-    """
+@router.get("/admin/migrar-imagenes")
+def migrar_imagenes(current_user: dict = Depends(get_current_user)):
+    """Migración simple y segura de imágenes."""
     if current_user.get("role") not in ["admin", "admin2"]:
-        raise HTTPException(status_code=403, detail="Solo admin puede ejecutar migración")
+        raise HTTPException(status_code=403, detail="Solo admin")
     
     try:
         with get_conn() as conn:
             with conn.cursor() as cur:
                 # Verificar estado actual
                 cur.execute("SELECT tipo, COUNT(*) FROM reclamo_imagenes GROUP BY tipo")
-                estado_actual = cur.fetchall()
-                print(f"Estado antes de migración: {estado_actual}")
+                estado_antes = cur.fetchall()
                 
                 # Migrar datos
-                cur.execute(
-                    "UPDATE reclamo_imagenes SET tipo = %s WHERE tipo = %s",
-                    ("ImagenesAnalisis", "antecedente")
-                )
-                filas_actualizadas = cur.rowcount
+                cur.execute("UPDATE reclamo_imagenes SET tipo = 'ImagenesAnalisis' WHERE tipo = 'antecedente'")
+                migradas = cur.rowcount
                 
                 # Verificar estado final
                 cur.execute("SELECT tipo, COUNT(*) FROM reclamo_imagenes GROUP BY tipo")
-                estado_final = cur.fetchall()
-                print(f"Estado después de migración: {estado_final}")
+                estado_despues = cur.fetchall()
                 
                 conn.commit()
                 
-        audit(current_user["email"], "migrar_imagenes", f"{filas_actualizadas} imágenes migradas", "sistema", "")
+        audit(current_user["email"], "migrar_imagenes", f"{migradas} imágenes migradas", "sistema", "")
         
         return {
             "ok": True,
-            "migradas": filas_actualizadas,
-            "estado_antes": estado_actual,
-            "estado_despues": estado_final,
-            "mensaje": "Migración completada exitosamente. Eliminar este endpoint."
+            "migradas": migradas,
+            "estado_antes": estado_antes,
+            "estado_despues": estado_despues,
+            "mensaje": "Migración completada"
         }
         
     except Exception as e:
