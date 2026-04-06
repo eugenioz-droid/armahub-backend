@@ -6324,6 +6324,15 @@ async function seleccionarReclamoPres() {
   document.getElementById('presObservaciones').textContent = detail.observaciones || rec.observaciones || '—';
 
   // Blue form data
+  console.log('[DEBUG] Datos formulario azul:', {
+    causa_ishikawa: detail.causa_ishikawa,
+    area_responsable: detail.area_responsable,
+    respuesta: detail.respuesta,
+    fecha_analisis: detail.fecha_analisis,
+    respondido_por: detail.respondido_por,
+    fecha_respuesta: detail.fecha_respuesta
+  });
+  
   document.getElementById('presIshikawa').textContent = detail.causa_ishikawa || '—';
   document.getElementById('presArea').textContent = detail.area_responsable || '—';
   document.getElementById('presRespuesta').textContent = detail.respuesta || '—';
