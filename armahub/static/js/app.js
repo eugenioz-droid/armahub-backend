@@ -6580,6 +6580,11 @@ class ReclamoPresenter {
     if (!rec) return;
 
     var presContent = document.getElementById('presContent');
+    if (!presContent) {
+      console.error('[ReclamoPresenter] Elemento presContent no encontrado');
+      return;
+    }
+    
     presContent.style.display = 'none';
 
     apiGet('/reclamos/' + recId + '/detail').then(function(detail) {
@@ -6655,13 +6660,25 @@ class ReclamoPresenter {
   }
 }
 
-// Instancia global del presentador de reclamos
-var reclamoPresenter = new ReclamoPresenter();
+// Instancia global del presentador de reclamos (deferida hasta que DOM esté listo)
+var reclamoPresenter = null;
+
+// Inicializar clases cuando DOM esté listo
+document.addEventListener('DOMContentLoaded', function() {
+  if (!reclamoPresenter) {
+    reclamoPresenter = new ReclamoPresenter();
+    console.log('[ReclamoPresenter] Instanciado correctamente');
+  }
+});
 
 // ========================= FUNCIONES LEGADO ACTUALIZADAS (FASE 8.1.2) =========================
 
 // Función legado para mantener compatibilidad
 function seleccionarReclamoPres() {
+  if (!reclamoPresenter) {
+    console.error('[seleccionarReclamoPres] ReclamoPresenter no está inicializado');
+    return;
+  }
   return reclamoPresenter.seleccionarReclamoPres();
 }
 
