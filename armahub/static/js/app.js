@@ -6365,8 +6365,8 @@ async function seleccionarReclamoPres() {
     url: img.url
   })));
   
-  var imagenesRegistro = imagenes.filter(img => img.tipo === 'antecedente');
-  var imagenesAnalisis = imagenes.filter(img => img.tipo === 'respuesta');
+  var imagenesRegistro = imagenes.filter(img => img.tipo === 'ImagenesRegistro');
+  var imagenesAnalisis = imagenes.filter(img => img.tipo === 'ImagenesAnalisis');
   
   console.log('[DEBUG] ImágenesRegistro (rojo):', imagenesRegistro.length);
   console.log('[DEBUG] ImágenesAnalisis (azul):', imagenesAnalisis.length);

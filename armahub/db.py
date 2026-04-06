@@ -441,8 +441,11 @@ MIGRATIONS = [
         "DO $$ BEGIN ALTER TABLE reclamos ADD COLUMN validacion_observaciones TEXT; EXCEPTION WHEN duplicate_column THEN NULL; END $$;",
         "DO $$ BEGIN ALTER TABLE reclamos ADD COLUMN validacion_fecha TIMESTAMPTZ; EXCEPTION WHEN duplicate_column THEN NULL; END $$;",
         "DO $$ BEGIN ALTER TABLE reclamos ADD COLUMN validacion_por TEXT; EXCEPTION WHEN duplicate_column THEN NULL; END $$;",
-        # Tipo de imagen: antecedente (creador) / respuesta (cubicador)
-        "DO $$ BEGIN ALTER TABLE reclamo_imagenes ADD COLUMN tipo TEXT NOT NULL DEFAULT 'antecedente' CHECK (tipo IN ('antecedente','respuesta')); EXCEPTION WHEN duplicate_column THEN NULL; END $$;",
+        # Tipo de imagen: ImagenesRegistro / ImagenesAnalisis (nueva nomenclatura)
+        "DO $$ BEGIN ALTER TABLE reclamo_imagenes ADD COLUMN tipo TEXT NOT NULL DEFAULT 'antecedente' CHECK (tipo IN ('ImagenesRegistro','ImagenesAnalisis')); EXCEPTION WHEN duplicate_column THEN NULL; END $$;",
+        # Actualizar constraint a nueva nomenclatura
+        "DO $$ BEGIN ALTER TABLE reclamo_imagenes DROP CONSTRAINT IF EXISTS reclamo_imagenes_tipo_check; END $$;",
+        "DO $$ BEGIN ALTER TABLE reclamo_imagenes ADD CONSTRAINT reclamo_imagenes_tipo_check CHECK (tipo IN ('ImagenesRegistro','ImagenesAnalisis')); END $$;",
         # Agregar estado 'validacion' al CHECK constraint de reclamos
         """DO $$ BEGIN
             ALTER TABLE reclamos DROP CONSTRAINT IF EXISTS reclamos_estado_check;
