@@ -6349,8 +6349,18 @@ async function seleccionarReclamoPres() {
 
   // Images
   var imagenes = detail.imagenes || [];
+  console.log('[DEBUG] Imágenes encontradas:', imagenes.map(img => ({
+    id: img.id,
+    tipo: img.tipo,
+    filename: img.filename,
+    url: img.url
+  })));
+  
   var antecedentesImgs = imagenes.filter(img => img.tipo === 'antecedente');
   var respuestaImgs = imagenes.filter(img => img.tipo === 'respuesta');
+  
+  console.log('[DEBUG] Antecedentes (rojo):', antecedentesImgs.length);
+  console.log('[DEBUG] Respuesta (azul):', respuestaImgs.length);
 
   // Clear containers
   if (imgRecDiv) imgRecDiv.innerHTML = '';
