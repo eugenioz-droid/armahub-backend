@@ -1492,32 +1492,38 @@ def migrar_imagenes_final():
     try:
         with get_conn() as conn:
             with conn.cursor() as cur:
-                # Verificar estado actual
+                # PASO 1: Verificar estado actual
                 cur.execute("SELECT tipo, COUNT(*) FROM reclamo_imagenes GROUP BY tipo")
                 estado_antes = cur.fetchall()
+                conn.commit()
                 
-                # FORZAR: Eliminar constraint viejo y crear nuevo
+                # PASO 2: Actualizar constraint (transacción separada)
                 try:
                     cur.execute("ALTER TABLE reclamo_imagenes DROP CONSTRAINT IF EXISTS reclamo_imagenes_tipo_check")
-                except:
-                    pass  # Si no existe, no hay problema
+                    conn.commit()
+                except Exception as e:
+                    conn.rollback()
+                    print(f"Error dropping constraint: {e}")
                 
                 try:
                     cur.execute("ALTER TABLE reclamo_imagenes ADD CONSTRAINT reclamo_imagenes_tipo_check CHECK (tipo IN ('ImagenesRegistro','ImagenesAnalisis'))")
-                except:
-                    pass  # Si ya existe, no hay problema
+                    conn.commit()
+                except Exception as e:
+                    conn.rollback()
+                    print(f"Error adding constraint: {e}")
                 
-                # Migrar a nueva nomenclatura
+                # PASO 3: Migrar datos (transacción separada)
                 cur.execute("UPDATE reclamo_imagenes SET tipo = 'ImagenesRegistro' WHERE tipo = 'antecedente'")
                 migradas_registro = cur.rowcount
                 
                 cur.execute("UPDATE reclamo_imagenes SET tipo = 'ImagenesAnalisis' WHERE tipo = 'respuesta'")
                 migradas_analisis = cur.rowcount
                 
-                # Verificar estado final
+                conn.commit()
+                
+                # PASO 4: Verificar estado final
                 cur.execute("SELECT tipo, COUNT(*) FROM reclamo_imagenes GROUP BY tipo")
                 estado_despues = cur.fetchall()
-                
                 conn.commit()
                 
         return {
