@@ -6324,12 +6324,20 @@ async function seleccionarReclamoPres() {
   document.getElementById('presObservaciones').textContent = detail.observaciones || rec.observaciones || '—';
 
   // Blue form data
-  console.log('[DEBUG] Datos formulario azul:', {
+  console.log('[DEBUG] TODOS los campos del detail:', Object.keys(detail));
+  console.log('[DEBUG] Campos que podrían ser del análisis:', {
+    ishikawa: detail.ishikawa,
+    ishikawa_causa: detail.ishikawa_causa,
     causa_ishikawa: detail.causa_ishikawa,
+    area: detail.area,
     area_responsable: detail.area_responsable,
     respuesta: detail.respuesta,
+    respuesta_texto: detail.respuesta_texto,
+    analisis: detail.analisis,
+    analisis_respuesta: detail.analisis_respuesta,
     fecha_analisis: detail.fecha_analisis,
     respondido_por: detail.respondido_por,
+    respuesta_por: detail.respuesta_por,
     fecha_respuesta: detail.fecha_respuesta
   });
   
