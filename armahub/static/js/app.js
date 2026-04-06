@@ -6356,7 +6356,7 @@ async function seleccionarReclamoPres() {
     });
   }
 
-  // Images - Nueva nomenclatura
+  // Images - Usar nomenclatura original de la base de datos
   var imagenes = detail.imagenes || [];
   console.log('[DEBUG] Imágenes encontradas:', imagenes.map(img => ({
     id: img.id,
@@ -6365,8 +6365,8 @@ async function seleccionarReclamoPres() {
     url: img.url
   })));
   
-  var imagenesRegistro = imagenes.filter(img => img.tipo === 'ImagenesRegistro');
-  var imagenesAnalisis = imagenes.filter(img => img.tipo === 'ImagenesAnalisis');
+  var imagenesRegistro = imagenes.filter(img => img.tipo === 'antecedente');
+  var imagenesAnalisis = imagenes.filter(img => img.tipo === 'respuesta');
   
   console.log('[DEBUG] ImágenesRegistro (rojo):', imagenesRegistro.length);
   console.log('[DEBUG] ImágenesAnalisis (azul):', imagenesAnalisis.length);
