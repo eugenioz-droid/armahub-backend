@@ -1496,8 +1496,8 @@ def migrar_imagenes():
                 cur.execute("SELECT tipo, COUNT(*) FROM reclamo_imagenes GROUP BY tipo")
                 estado_antes = cur.fetchall()
                 
-                # Migrar datos
-                cur.execute("UPDATE reclamo_imagenes SET tipo = 'ImagenesAnalisis' WHERE tipo = 'antecedente'")
+                # Migrar a 'respuesta' (valor existente en constraint)
+                cur.execute("UPDATE reclamo_imagenes SET tipo = 'respuesta' WHERE tipo = 'antecedente'")
                 migradas = cur.rowcount
                 
                 # Verificar estado final
@@ -1511,7 +1511,7 @@ def migrar_imagenes():
             "migradas": migradas,
             "estado_antes": estado_antes,
             "estado_despues": estado_despues,
-            "mensaje": "Migración completada"
+            "mensaje": "Migración completada a 'respuesta'"
         }
         
     except Exception as e:
