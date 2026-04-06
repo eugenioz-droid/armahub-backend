@@ -6356,7 +6356,7 @@ async function seleccionarReclamoPres() {
     });
   }
 
-  // Images
+  // Images - Nueva nomenclatura
   var imagenes = detail.imagenes || [];
   console.log('[DEBUG] Imágenes encontradas:', imagenes.map(img => ({
     id: img.id,
@@ -6365,11 +6365,11 @@ async function seleccionarReclamoPres() {
     url: img.url
   })));
   
-  var antecedentesImgs = imagenes.filter(img => img.tipo === 'antecedente');
-  var respuestaImgs = imagenes.filter(img => img.tipo === 'respuesta');
+  var imagenesRegistro = imagenes.filter(img => img.tipo === 'ImagenesRegistro');
+  var imagenesAnalisis = imagenes.filter(img => img.tipo === 'ImagenesAnalisis');
   
-  console.log('[DEBUG] Antecedentes (rojo):', antecedentesImgs.length);
-  console.log('[DEBUG] Respuesta (azul):', respuestaImgs.length);
+  console.log('[DEBUG] ImágenesRegistro (rojo):', imagenesRegistro.length);
+  console.log('[DEBUG] ImágenesAnalisis (azul):', imagenesAnalisis.length);
 
   // Clear containers
   if (imgRecDiv) imgRecDiv.innerHTML = '';
@@ -6377,16 +6377,16 @@ async function seleccionarReclamoPres() {
 
   // Render images with delay to ensure DOM is ready
   setTimeout(function() {
-    if (antecedentesImgs.length > 0) {
-      renderImageBar('presImagenesReclamo', antecedentesImgs, 'reclamo');
+    if (imagenesRegistro.length > 0) {
+      renderImageBar('presImagenesReclamo', imagenesRegistro, 'reclamo');
     } else {
       if (imgRecDiv) imgRecDiv.innerHTML = '<div style="padding:8px; text-align:center; color:#999; font-style:italic;">📷 Sin imágenes de registro</div>';
     }
     
-    if (respuestaImgs.length > 0) {
-      renderImageBar('presImagenesRespuesta', respuestaImgs, 'respuesta');
+    if (imagenesAnalisis.length > 0) {
+      renderImageBar('presImagenesRespuesta', imagenesAnalisis, 'respuesta');
     } else {
-      if (imgRespDiv) imgRespDiv.innerHTML = '<div style="padding:8px; text-align:center; color:#999; font-style:italic;">📷 Sin imágenes de respuesta</div>';
+      if (imgRespDiv) imgRespDiv.innerHTML = '<div style="padding:8px; text-align:center; color:#999; font-style:italic;">📷 Sin imágenes de análisis</div>';
     }
   }, 200);
 
