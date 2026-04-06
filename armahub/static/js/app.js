@@ -6444,6 +6444,10 @@ function renderImageBar(containerId, images, type) {
     return;
   }
 
+  // Image bar container
+  var barDiv = document.createElement('div');
+  barDiv.style.cssText = 'display:flex; align-items:center; gap:8px; flex-wrap:wrap; padding:6px 0;';
+
   try {
     var maxShow = 5;
     var showImages = images.slice(0, maxShow);
@@ -6485,34 +6489,21 @@ function renderImageBar(containerId, images, type) {
       thumbContainer.appendChild(thumb);
       barDiv.appendChild(thumbContainer);
     });
+
+    // Extra count indicator
+    if (extraCount > 0) {
+      var moreDiv = document.createElement('div');
+      moreDiv.style.cssText = 'width:60px; height:60px; display:flex; align-items:center; justify-content:center; background:#e3f2fd; border-radius:6px; border:2px solid #1976d2; cursor:pointer; font-size:12px; font-weight:600; color:#1976d2;';
+      moreDiv.textContent = '+' + extraCount;
+      moreDiv.title = 'Ver ' + extraCount + ' archivos más';
+      moreDiv.onclick = function() { openImageModal(images, maxShow); };
+      barDiv.appendChild(moreDiv);
+    }
+
   } catch (e) {
     console.error('[renderImageBar] Error:', e);
   }
 
-  // Extra count indicator
-  if (extraCount > 0) {
-    var moreDiv = document.createElement('div');
-    moreDiv.style.cssText = 'width:60px; height:60px; display:flex; align-items:center; justify-content:center; background:#e3f2fd; border-radius:6px; border:2px solid #1976d2; cursor:pointer; font-size:12px; font-weight:600; color:#1976d2;';
-    moreDiv.textContent = '+' + extraCount;
-    moreDiv.title = 'Ver ' + extraCount + ' archivos más';
-    moreDiv.onclick = function() { openImageModal(images, maxShow); };
-    barDiv.appendChild(moreDiv);
-  }
-
-  // Action buttons
-  var actionsDiv = document.createElement('div');
-  actionsDiv.style.cssText = 'display:flex; gap:4px; margin-left:8px;';
-  
-  var viewAllBtn = document.createElement('button');
-  viewAllBtn.innerHTML = '👁️';
-  viewAllBtn.style.cssText = 'padding:4px 8px; font-size:11px; background:#f5f5f5; border:1px solid #ddd; border-radius:4px; cursor:pointer;';
-  viewAllBtn.title = 'Ver todos los archivos';
-  viewAllBtn.onclick = function() { openImageModal(images, 0); };
-  actionsDiv.appendChild(viewAllBtn);
-
-  // No agregar botón de subir imágenes - solo vista
-
-  barDiv.appendChild(actionsDiv);
   container.appendChild(barDiv);
 }
 
