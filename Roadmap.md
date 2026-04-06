@@ -1400,3 +1400,40 @@ relacional y refactorizar para escalabilidad. NO se modifica funcionalidad exist
 45. Observabilidad: /health, logs estructurados - Pendiente
 46. Performance: queries optimizadas, pool de conexiones - Pendiente
 47. Bootstrap profesional (solo dev) - Pendiente
+
+---
+## FASE 8 — DEPURACIÓN Y OPTIMIZACIÓN DE CÓDIGO (5 Abril 2026)
+
+**Problema identificado**: Excesiva complejidad en funcionalidad básica de visor de imágenes (15+ commits para solución simple). Se requiere limpieza técnica y refactorización.
+
+### **8.1 — Limpieza Inmediata (Prioridad ALTA)**
+- **8.1.1**: Eliminar todo código de debug excesivo (console.log redundantes)
+- **8.1.2**: Remover código muerto y funciones duplicadas
+- **8.1.3**: Consolidar variables y estados globales innecesarios
+- **8.1.4**: Simplificar flujos de renderizado de imágenes
+
+### **8.2 — Modularidad y Separación de Responsabilidades**
+- **8.2.1**: Crear módulo `imageViewer.js` independiente
+- **8.2.2**: Separar lógica de presentaciones en `presentaciones.js`
+- **8.2.3**: Extraer utilidades comunes a `utils.js`
+- **8.2.4**: Definir interfaces claras entre módulos
+
+### **8.3 — Optimización de API y Endpoints**
+- **8.3.1**: Revisar y consolidar endpoints duplicados
+- **8.3.2**: Optimizar responses de imágenes (cacheo, compresión)
+- **8.3.3**: Estandarizar formatos de respuesta
+- **8.3.4**: Implementar manejo robusto de errores
+
+### **8.4 — Refactorización de Modal Viewer**
+- **8.4.1**: Implementar modal minimalista (sin estado global complejo)
+- **8.4.2**: Simplificar navegación y controles
+- **8.4.3**: Agregar fallback simple para errores
+- **8.4.4**: Eliminar dependencias circulares
+
+### **8.5 — Testing y Calidad**
+- **8.5.1**: Crear tests unitarios básicos para módulos críticos
+- **8.5.2**: Documentar flujos principales de usuario
+- **8.5.3**: Implementar validaciones automáticas
+- **8.5.4**: Crear guía de mantenimiento y troubleshooting
+
+**Estado**: En progreso - 8.1.1 (Solución temporal new tab implementada)

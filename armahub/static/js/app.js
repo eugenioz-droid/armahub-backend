@@ -6278,12 +6278,8 @@ function presNavNext() {
 }
 
 async function seleccionarReclamoPres() {
-  console.log('[seleccionarReclamoPres] === INICIANDO FUNCIÓN ===');
   var sel = document.getElementById('presReclamoSelect');
-  console.log('[seleccionarReclamoPres] Select element:', sel);
-  
   var id = parseInt(sel.value);
-  console.log('[seleccionarReclamoPres] ID seleccionado:', id);
   
   var antDiv = document.getElementById('presAntecedentes');
   var regCard = document.getElementById('presRegistroCard');
@@ -6291,42 +6287,17 @@ async function seleccionarReclamoPres() {
   var imgRecDiv = document.getElementById('presImagenesReclamo');
   var imgRespDiv = document.getElementById('presImagenesRespuesta');
 
-  console.log('[seleccionarReclamoPres] Elementos encontrados:', {
-    antDiv: !!antDiv,
-    regCard: !!regCard,
-    yaPres: !!yaPres,
-    imgRecDiv: !!imgRecDiv,
-    imgRespDiv: !!imgRespDiv
-  });
-
   if (!id || !_presData) {
-    console.log('[seleccionarReclamoPres] Sin ID o datos, saliendo...');
     antDiv.style.display = 'none';
     regCard.style.display = 'none';
     return;
   }
 
   var rec = _presData.reclamos.find(function(r) { return r.id === id; });
-  console.log('[seleccionarReclamoPres] Reclamo encontrado:', !!rec);
   if (!rec) { antDiv.style.display = 'none'; regCard.style.display = 'none'; return; }
 
   antDiv.style.display = '';
-  // No need to collapse sections anymore - always show all details
 
-  console.log('[seleccionarReclamoPres] Llenando info básica...');
-  console.log('[seleccionarReclamoPres] Datos del reclamo:', {
-    correlativo: rec.correlativo,
-    proyecto: rec.nombre_proyecto,
-    cubicador: rec.cubicador_nombre,
-    estado: rec.estado,
-    aplica: rec.aplica,
-    titulo: rec.titulo,
-    tipo: rec.tipo_reclamo,
-    detectado: rec.detectado_por,
-    fecha: rec.fecha_deteccion,
-    descripcion: rec.descripcion
-  });
-  
   // Fill info header
   document.getElementById('presCorrelativo').textContent = rec.correlativo || '#' + rec.id;
   document.getElementById('presProyecto').textContent = rec.nombre_proyecto || '—';
@@ -6338,15 +6309,8 @@ async function seleccionarReclamoPres() {
   aplicaEl.textContent = aplicaLabels[rec.aplica] || 'Pendiente';
   aplicaEl.style.color = rec.aplica === 'si' ? '#2e7d32' : (rec.aplica === 'no' ? '#b42318' : '#e65100');
 
-  console.log('[seleccionarReclamoPres] Obteniendo detalles del reclamo...');
-  console.log('[seleccionarReclamoPres] URL: /reclamos/' + id);
   var detail = await apiGet('/reclamos/' + id);
-  console.log('[seleccionarReclamoPres] Respuesta API:', detail);
-  if (!detail) {
-    console.log('[seleccionarReclamoPres] ❌ No se obtuvieron detalles, saliendo...');
-    return;
-  }
-  console.log('[seleccionarReclamoPres] ✅ Detalles obtenidos: true');
+  if (!detail) return;
 
   // Red section
   document.getElementById('presTitulo').textContent = detail.titulo || rec.titulo || '—';
@@ -6383,47 +6347,29 @@ async function seleccionarReclamoPres() {
     });
   }
 
-  console.log('[seleccionarReclamoPres] === PROCESANDO IMÁGENES ===');
+  // Images
   var imagenes = detail.imagenes || [];
-  console.log('[seleccionarReclamoPres] Imágenes encontradas:', imagenes.length);
-
-  // Filter images by type
   var antecedentesImgs = imagenes.filter(img => img.tipo === 'antecedente');
   var respuestaImgs = imagenes.filter(img => img.tipo === 'respuesta');
-  console.log('[seleccionarReclamoPres] Imágenes filtradas:', {
-    antecedentes: antecedentesImgs.length,
-    respuesta: respuestaImgs.length
-  });
 
   // Clear containers
   if (imgRecDiv) imgRecDiv.innerHTML = '';
   if (imgRespDiv) imgRespDiv.innerHTML = '';
 
   // Render images with delay to ensure DOM is ready
-  console.log('[seleccionarReclamoPres] Iniciando render con delay...');
   setTimeout(function() {
-    console.log('[seleccionarReclamoPres] === EJECUTANDO RENDER DESPUÉS DE DELAY ===');
-    console.log('[seleccionarReclamoPres] presImagenesReclamo exists:', !!document.getElementById('presImagenesReclamo'));
-    console.log('[seleccionarReclamoPres] presImagenesRespuesta exists:', !!document.getElementById('presImagenesRespuesta'));
-    
     if (antecedentesImgs.length > 0) {
-      console.log('[seleccionarReclamoPres] Renderizando', antecedentesImgs.length, 'imágenes de antecedentes');
       renderImageBar('presImagenesReclamo', antecedentesImgs, 'reclamo');
     } else {
-      console.log('[seleccionarReclamoPres] Sin imágenes de antecedentes');
       if (imgRecDiv) imgRecDiv.innerHTML = '<div style="padding:8px; text-align:center; color:#999; font-style:italic;">📷 Sin imágenes de registro</div>';
     }
     
     if (respuestaImgs.length > 0) {
-      console.log('[seleccionarReclamoPres] Renderizando', respuestaImgs.length, 'imágenes de respuesta');
       renderImageBar('presImagenesRespuesta', respuestaImgs, 'respuesta');
     } else {
-      console.log('[seleccionarReclamoPres] Sin imágenes de respuesta');
       if (imgRespDiv) imgRespDiv.innerHTML = '<div style="padding:8px; text-align:center; color:#999; font-style:italic;">📷 Sin imágenes de respuesta</div>';
     }
-    
-    console.log('[seleccionarReclamoPres] === RENDER COMPLETADO ===');
-  }, 200); // Increased delay to 200ms
+  }, 200);
 
   // Show/hide registration form vs already presented
   if (detail.presentacion_realizada) {
@@ -6445,8 +6391,6 @@ async function seleccionarReclamoPres() {
     document.getElementById('presComentarios').value = '';
     document.getElementById('presGuardarMsg').textContent = '';
   }
-
-  console.log('[seleccionarReclamoPres] === FUNCIÓN COMPLETADA ===');
 }
 
 // Helper functions for image viewer (defined before renderImageBar)
@@ -6487,22 +6431,12 @@ function openImageModal(images, startIndex) {
 
 // Render enhanced image bar with modal viewer
 function renderImageBar(containerId, images, type) {
-  console.log('[renderImageBar] === INICIANDO ===');
-  console.log('[renderImageBar] containerId:', containerId);
-  console.log('[renderImageBar] imágenes:', images.length);
-  
   var container = document.getElementById(containerId);
-  console.log('[renderImageBar] container encontrado:', !!container);
-  
-  if (!container) {
-    console.log('[renderImageBar] ❌ Contenedor no encontrado');
-    return;
-  }
+  if (!container) return;
 
   container.innerHTML = '';
 
   if (!images || images.length === 0) {
-    console.log('[renderImageBar] Sin imágenes, mostrando placeholder');
     var msg = document.createElement('div');
     msg.style.cssText = 'color:#666; font-size:11px; font-style:italic; padding:8px; text-align:center;';
     msg.textContent = 'Sin imágenes';
@@ -6510,16 +6444,12 @@ function renderImageBar(containerId, images, type) {
     return;
   }
 
-  console.log('[renderImageBar] ✅ Procesando', images.length, 'imágenes');
-
   try {
     var maxShow = 5;
     var showImages = images.slice(0, maxShow);
     var extraCount = images.length - maxShow;
 
     showImages.forEach(function(img, index) {
-      console.log('[renderImageBar] Procesando imagen', index, ':', img);
-      
       var thumbContainer = document.createElement('div');
       thumbContainer.style.cssText = 'position:relative; cursor:pointer; border-radius:6px; overflow:hidden; border:2px solid #e0e0e0; transition:all 0.2s;';
       thumbContainer.onmouseover = function() { this.style.borderColor = '#1976d2'; this.style.transform = 'scale(1.05)'; };
@@ -6529,24 +6459,8 @@ function renderImageBar(containerId, images, type) {
       thumb.style.cssText = 'width:60px; height:60px; display:flex; align-items:center; justify-content:center; background:#f5f5f5; position:relative;';
       
       if (img.content_type && img.content_type.startsWith('image/')) {
-        console.log('[renderImageBar] Creando miniatura para:', img.url);
         var imgEl = document.createElement('img');
         imgEl.style.cssText = 'width:100%; height:100%; object-fit:cover;';
-        
-        imgEl.onload = function() {
-          console.log('[renderImageBar] ✅ Miniatura cargada:', img.url);
-        };
-        
-        imgEl.onerror = function() {
-          console.error('[renderImageBar] ❌ Error cargando miniatura:', img.url);
-          // Mostrar icono de error
-          imgEl.style.display = 'none';
-          var errorIcon = document.createElement('div');
-          errorIcon.style.cssText = 'font-size:24px; color:#b42318;';
-          errorIcon.textContent = '❌';
-          thumb.appendChild(errorIcon);
-        };
-        
         imgEl.src = img.url;
         thumb.appendChild(imgEl);
       } else {
@@ -6563,14 +6477,16 @@ function renderImageBar(containerId, images, type) {
       badge.textContent = getFileTypeBadge(img.content_type);
       thumb.appendChild(badge);
 
-      // Click to open modal
-      thumbContainer.onclick = function() { openImageModal(images, index); };
+      // Click to open in new tab (temporal solution)
+      thumbContainer.onclick = function() { 
+        window.open(img.url, '_blank'); 
+      };
 
       thumbContainer.appendChild(thumb);
       barDiv.appendChild(thumbContainer);
     });
   } catch (e) {
-    console.error('[renderImageBar] ❌ Error en forEach:', e);
+    console.error('[renderImageBar] Error:', e);
   }
 
   // Extra count indicator
