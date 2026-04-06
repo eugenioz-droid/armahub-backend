@@ -1484,36 +1484,3 @@ def eliminar_imagen(reclamo_id: int, imagen_id: int, user=Depends(get_current_us
                 raise HTTPException(status_code=404, detail="Imagen no encontrada")
     audit(email, "eliminar_imagen_reclamo", str(imagen_id), "reclamo", str(reclamo_id))
     return {"ok": True}
-
-
-@router.get("/admin/migrar-imagenes")
-def migrar_imagenes():
-    """Migración simple y segura de imágenes - sin autenticación temporal."""
-    try:
-        with get_conn() as conn:
-            with conn.cursor() as cur:
-                # Verificar estado actual
-                cur.execute("SELECT tipo, COUNT(*) FROM reclamo_imagenes GROUP BY tipo")
-                estado_antes = cur.fetchall()
-                
-                # Migrar a 'respuesta' (valor existente en constraint)
-                cur.execute("UPDATE reclamo_imagenes SET tipo = 'respuesta' WHERE tipo = 'antecedente'")
-                migradas = cur.rowcount
-                
-                # Verificar estado final
-                cur.execute("SELECT tipo, COUNT(*) FROM reclamo_imagenes GROUP BY tipo")
-                estado_despues = cur.fetchall()
-                
-                conn.commit()
-                
-        return {
-            "ok": True,
-            "migradas": migradas,
-            "estado_antes": estado_antes,
-            "estado_despues": estado_despues,
-            "mensaje": "Migración completada a 'respuesta'"
-        }
-        
-    except Exception as e:
-        conn.rollback()
-        raise HTTPException(status_code=500, detail=f"Error en migración: {str(e)}")
