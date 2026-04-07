@@ -6587,30 +6587,33 @@ class ReclamoPresenter {
     
     presContent.style.display = 'none';
 
+    var self = this; // Guardar referencia a la instancia
     apiGet('/reclamos/' + recId + '/detail').then(function(detail) {
       if (!detail) {
         alert('Error cargando detalles del reclamo');
         return;
       }
 
+      console.log('[DEBUG] ReclamoPresenter: Datos recibidos', detail);
+
       // Renderizar formulario de registro
-      this.formRenderer.renderRegistroForm(detail, rec);
+      self.formRenderer.renderRegistroForm(detail, rec);
 
       // Renderizar formulario de análisis
-      this.formRenderer.renderAnalisisForm(detail);
+      self.formRenderer.renderAnalisisForm(detail);
 
       // Renderizar acciones
-      this.formRenderer.renderAcciones(detail.acciones);
+      self.formRenderer.renderAcciones(detail.acciones);
 
       // Renderizar imágenes
-      this._renderImages(detail);
+      self._renderImages(detail);
 
       // Renderizar estado de presentación
-      this.formRenderer.renderPresentacionStatus(detail);
+      self.formRenderer.renderPresentacionStatus(detail);
 
       presContent.style.display = 'block';
 
-    }.bind(this)).catch(function(err) {
+    }).catch(function(err) {
       console.error('Error:', err);
       alert('Error al cargar el reclamo');
     });
