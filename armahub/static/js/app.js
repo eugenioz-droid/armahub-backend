@@ -7203,35 +7203,72 @@ function renderCurrentImage() {
     totalImages: _imageModalState.images.length
   });
 
-  // Clear container with loading indicator
-  container.innerHTML = '<div style="display:flex; align-items:center; justify-content:center; height:100%; color:#666;">Cargando...</div>';
+  // Agregar indicador de progreso
+  var progress = (_imageModalState.currentIndex + 1) + '/' + _imageModalState.images.length;
+  var progressHtml = '<div style="position:absolute; top:10px; right:10px; background:rgba(0,0,0,0.7); color:white; padding:4px 8px; border-radius:4px; font-size:12px; z-index:1000;">' + progress + '</div>';
+
+  // Clear container con loading y progreso
+  container.innerHTML = '<div style="display:flex; align-items:center; justify-content:center; height:100%; color:#666;">Cargando...</div>' + progressHtml;
+
+  // Preload siguiente y anterior imagen
+  _preloadAdjacentImages();
 
   if (img.content_type && img.content_type.startsWith('image/')) {
     console.log('[renderCurrentImage] Renderizando imagen con preload:', img.url);
     
-    // Create image element with preload
+    // Create image element con mejoras
     var imgEl = new Image();
-    imgEl.style.cssText = 'max-width:100%; max-height:100%; object-fit:contain;';
+    imgEl.style.cssText = 'max-width:100%; max-height:100%; object-fit:contain; cursor:zoom-in;';
+    imgEl.title = 'Zoom con rueda del mouse - Navegación con flechas - ESC para cerrar';
+    
+    // Agregar zoom con rueda
+    imgEl.addEventListener('wheel', function(e) {
+      e.preventDefault();
+      var delta = e.deltaY > 0 ? 0.9 : 1.1;
+      var currentScale = parseFloat(imgEl.style.transform.replace('scale(', '').replace(')', '') || 1);
+      var newScale = Math.min(Math.max(currentScale * delta, 0.5), 3);
+      imgEl.style.transform = 'scale(' + newScale + ')';
+      imgEl.style.cursor = newScale > 1 ? 'zoom-out' : 'zoom-in';
+    });
     
     imgEl.onload = function() {
       console.log('[renderCurrentImage] ✅ Imagen cargada exitosamente:', img.url);
       container.innerHTML = '';
       container.appendChild(imgEl);
+      container.insertAdjacentHTML('beforeend', progressHtml);
     };
     
     imgEl.onerror = function() {
       console.error('[renderCurrentImage] ❌ Error cargando imagen:', img.url);
-      container.innerHTML = '<div style="text-align:center; padding:20px;"><div style="color:#b42318; font-size:16px; margin-bottom:10px;">❌ Error al cargar imagen</div><div style="font-size:12px; color:#666;">URL: ' + img.url + '</div><div style="margin-top:10px;"><a href="' + img.url + '" target="_blank" style="padding:8px 16px; background:#1976d2; color:white; text-decoration:none; border-radius:4px;">Abrir en nueva pestaña</a></div></div>';
+      container.innerHTML = '<div style="text-align:center; padding:20px;"><div style="color:#b42318; font-size:16px; margin-bottom:10px;">❌ Error al cargar imagen</div><div style="font-size:12px; color:#666;">URL: ' + img.url + '</div><div style="margin-top:10px;"><a href="' + img.url + '" target="_blank" style="padding:8px 16px; background:#1976d2; color:white; text-decoration:none; border-radius:4px;">Abrir en nueva pestaña</a></div></div>' + progressHtml;
     };
     
     imgEl.src = img.url;
     
   } else if (img.content_type === 'application/pdf') {
     console.log('[renderCurrentImage] Renderizando PDF:', img.url);
-    container.innerHTML = '<iframe src="' + img.url + '" style="width:100%; height:100%; border:none;"></iframe>';
+    container.innerHTML = '<iframe src="' + img.url + '" style="width:100%; height:100%; border:none;"></iframe>' + progressHtml;
   } else {
     console.log('[renderCurrentImage] Renderizando archivo:', img.filename);
-    container.innerHTML = '<div style="text-align:center; padding:20px;"><div style="font-size:48px; margin-bottom:10px;">' + getFileIcon(img.filename) + '</div><div>Archivo: ' + img.filename + '</div><a href="' + img.url + '" download style="display:inline-block; margin-top:10px; padding:8px 16px; background:#1976d2; color:white; text-decoration:none; border-radius:4px;">Descargar</a></div>';
+    container.innerHTML = '<div style="text-align:center; padding:20px;"><div style="font-size:48px; margin-bottom:10px;">' + getFileIcon(img.filename) + '</div><div>Archivo: ' + img.filename + '</div><a href="' + img.url + '" download style="display:inline-block; margin-top:10px; padding:8px 16px; background:#1976d2; color:white; text-decoration:none; border-radius:4px;">Descargar</a></div>' + progressHtml;
+  }
+}
+
+// Preload imágenes adyacentes para navegación fluida
+function _preloadAdjacentImages() {
+  var currentIndex = _imageModalState.currentIndex;
+  var images = _imageModalState.images;
+  
+  // Preload siguiente imagen
+  if (currentIndex < images.length - 1) {
+    var nextImg = new Image();
+    nextImg.src = images[currentIndex + 1].url;
+  }
+  
+  // Preload imagen anterior
+  if (currentIndex > 0) {
+    var prevImg = new Image();
+    prevImg.src = images[currentIndex - 1].url;
   }
 }
 
