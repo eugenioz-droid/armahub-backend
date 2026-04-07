@@ -6,6 +6,20 @@ if (typeof ChartDataLabels !== 'undefined') {
   Chart.defaults.plugins.datalabels = { display: false };
 }
 
+// ========================= ESTILOS PARA LAZY LOADING =========================
+// Inyectar CSS para animación de loading
+if (!document.getElementById('lazyLoadingStyles')) {
+  var style = document.createElement('style');
+  style.id = 'lazyLoadingStyles';
+  style.textContent = `
+    @keyframes loading {
+      0% { background-position: 200% 0; }
+      100% { background-position: -200% 0; }
+    }
+  `;
+  document.head.appendChild(style);
+}
+
 // ========================= AUTH =========================
 function token() { return localStorage.getItem('armahub_token'); }
 function authHeaders() {
@@ -6730,9 +6744,37 @@ class ImageRenderer {
       currentIndex: 0,
       isOpen: false
     };
+    
+    // Lazy loading setup
+    this.imageCache = new Map();
+    this.observer = null;
+    this._setupIntersectionObserver();
   }
 
-  // Renderizar barra de imágenes
+  // Configurar Intersection Observer para lazy loading
+  _setupIntersectionObserver() {
+    if ('IntersectionObserver' in window) {
+      this.observer = new IntersectionObserver(function(entries) {
+        entries.forEach(function(entry) {
+          if (entry.isIntersecting) {
+            var img = entry.target;
+            var src = img.dataset.src;
+            if (src && !img.src) {
+              img.src = src;
+              img.onload = function() {
+                img.style.opacity = '1';
+              };
+              this.observer.unobserve(img);
+            }
+          }
+        }.bind(this));
+      }.bind(this), {
+        rootMargin: '50px'
+      });
+    }
+  }
+
+  // Renderizar barra de imágenes con lazy loading
   renderImageBar(containerId, images, type) {
     var container = document.getElementById(containerId);
     if (!container) return;
@@ -6757,7 +6799,7 @@ class ImageRenderer {
       var extraCount = images.length - maxShow;
 
       showImages.forEach(function(img, index) {
-        var thumbContainer = this._createThumbnail(img, index, type);
+        var thumbContainer = this._createThumbnailLazy(img, index, type);
         barDiv.appendChild(thumbContainer);
       }.bind(this));
 
@@ -6774,8 +6816,8 @@ class ImageRenderer {
     container.appendChild(barDiv);
   }
 
-  // Crear thumbnail individual
-  _createThumbnail(img, index, type) {
+  // Crear thumbnail con lazy loading
+  _createThumbnailLazy(img, index, type) {
     var thumbContainer = document.createElement('div');
     thumbContainer.style.cssText = 'position:relative; cursor:pointer; border-radius:6px; overflow:hidden; border:2px solid #e0e0e0; transition:all 0.2s;';
     thumbContainer.onmouseover = function() { this.style.borderColor = '#1976d2'; this.style.transform = 'scale(1.05)'; };
@@ -6785,9 +6827,26 @@ class ImageRenderer {
     thumb.style.cssText = 'width:60px; height:60px; display:flex; align-items:center; justify-content:center; background:#f5f5f5; position:relative;';
     
     if (img.content_type && img.content_type.startsWith('image/')) {
+      // Placeholder con loading
+      var placeholder = document.createElement('div');
+      placeholder.style.cssText = 'position:absolute; inset:0; background:linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%); background-size:200% 100%; animation:loading 1.5s infinite;';
+      thumb.appendChild(placeholder);
+      
+      // Imagen con lazy loading
       var imgEl = document.createElement('img');
-      imgEl.style.cssText = 'width:100%; height:100%; object-fit:cover;';
-      imgEl.src = img.url;
+      imgEl.style.cssText = 'width:100%; height:100%; object-fit:cover; opacity:0; transition:opacity 0.3s;';
+      imgEl.dataset.src = img.url; // Para lazy loading
+      imgEl.alt = img.filename || 'Imagen';
+      
+      // Usar Intersection Observer
+      if (this.observer) {
+        this.observer.observe(imgEl);
+      } else {
+        // Fallback para browsers sin soporte
+        imgEl.src = img.url;
+        imgEl.onload = function() { imgEl.style.opacity = '1'; };
+      }
+      
       thumb.appendChild(imgEl);
     } else {
       // File icon for non-images
@@ -6796,20 +6855,32 @@ class ImageRenderer {
       icon.textContent = this._getFileIcon(img.filename);
       thumb.appendChild(icon);
     }
-
-    // File type badge
+    
     var badge = document.createElement('div');
     badge.style.cssText = 'position:absolute; bottom:2px; right:2px; background:rgba(0,0,0,0.7); color:white; font-size:8px; padding:1px 3px; border-radius:2px;';
     badge.textContent = this._getFileTypeBadge(img.content_type);
     thumb.appendChild(badge);
 
-    // Click to open in new tab (temporal solution)
+    // Click mejorado: abrir modal con preload
+    var self = this;
     thumbContainer.onclick = function() { 
-      window.open(img.url, '_blank'); 
+      self._openImageModalWithPreload(img, index, images);
     };
 
     thumbContainer.appendChild(thumb);
     return thumbContainer;
+  }
+
+  // Abrir modal con preload de imágenes
+  _openImageModalWithPreload(img, index, images) {
+    // Preload siguiente imagen si existe
+    if (index < images.length - 1) {
+      var nextImg = new Image();
+      nextImg.src = images[index + 1].url;
+    }
+    
+    // Abrir modal
+    this.openImageModal(images, index);
   }
 
   // Crear indicador "más imágenes"
