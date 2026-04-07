@@ -6583,11 +6583,12 @@ class ReclamoPresenter {
   constructor() {
     this.imageRenderer = imageRenderer;
     this.formRenderer = formRenderer;
+    this.dom = domHelper; // Usar DOM helper
   }
 
   // Función principal simplificada
   seleccionarReclamoPres() {
-    var recId = document.getElementById('presReclamoSelect').value;
+    var recId = this.dom.getValue('reclamoSelect');
     if (!recId) return;
 
     var rec = _presData.reclamos.find(function(r) { return r.id == recId; });
@@ -6616,19 +6617,15 @@ class ReclamoPresenter {
 
   // Mostrar estado de carga
   _showLoading() {
-    var antDiv = document.getElementById('presAntecedentes');
-    var regCard = document.getElementById('presRegistroCard');
-    var yaPres = document.getElementById('presYaPresentado');
-    
-    if (antDiv) antDiv.style.display = 'none';
-    if (regCard) regCard.style.display = 'none';
-    if (yaPres) yaPres.style.display = 'none';
+    this.dom.hide('antecedentes');
+    this.dom.hide('registroCard');
+    this.dom.hide('yaPresentado');
     
     // Mostrar indicador de carga
-    var sel = document.getElementById('presReclamoSelect');
-    if (sel) {
-      sel.disabled = true;
-      sel.style.opacity = '0.5';
+    var select = this.dom.get('reclamoSelect');
+    if (select) {
+      select.disabled = true;
+      select.style.opacity = '0.5';
     }
   }
 
@@ -6640,23 +6637,19 @@ class ReclamoPresenter {
 
   // Ocultar loading
   _hideLoading() {
-    var sel = document.getElementById('presReclamoSelect');
-    if (sel) {
-      sel.disabled = false;
-      sel.style.opacity = '1';
+    var select = this.dom.get('reclamoSelect');
+    if (select) {
+      select.disabled = false;
+      select.style.opacity = '1';
     }
   }
 
   // Renderizar reclamo completo (función principal de renderizado)
   _renderReclamoCompleto(detail, rec) {
     // Mostrar secciones principales
-    var antDiv = document.getElementById('presAntecedentes');
-    var regCard = document.getElementById('presRegistroCard');
-    var yaPres = document.getElementById('presYaPresentado');
-    
-    if (antDiv) antDiv.style.display = '';
-    if (regCard) regCard.style.display = 'none';
-    if (yaPres) yaPres.style.display = 'none';
+    this.dom.show('antecedentes');
+    this.dom.hide('registroCard');
+    this.dom.hide('yaPresentado');
 
     // Renderizar componentes
     this.formRenderer.renderRegistroForm(detail, rec);
@@ -6735,6 +6728,150 @@ function seleccionarReclamoPres() {
   return reclamoPresenter.seleccionarReclamoPres();
 }
 
+// ========================= MÓDULO DOM HELPER (FASE 8.1.2.3) =========================
+
+class DOMHelper {
+  constructor() {
+    this.cache = new Map(); // Cache de elementos
+  this.missingElements = new Set(); // Elementos que no existen
+  this.prefix = 'pres'; // Prefijo para elementos de presentaciones
+  this.elements = {
+      // Selectores principales
+      reclamoSelect: 'presReclamoSelect',
+      antecedentes: 'presAntecedentes',
+      registroCard: 'presRegistroCard',
+      yaPresentado: 'presYaPresentado',
+      
+      // Formulario de registro (rojo)
+      correlativo: 'presCorrelativo',
+      proyecto: 'presProyecto',
+      cubicador: 'presCubicador',
+      estado: 'presEstado',
+      aplica: 'presAplica',
+      titulo: 'presTitulo',
+      tipo: 'presTipo',
+      detectado: 'presDetectado',
+      fecha: 'presFecha',
+      descripcion: 'presDescripcion',
+      responsable: 'presResponsable',
+      prioridad: 'presPrioridad',
+      idCalidad: 'presIdCalidad',
+      observaciones: 'presObservaciones',
+      
+      // Formulario de análisis (azul)
+      ishikawa: 'presIshikawa',
+      area: 'presArea',
+      respuesta: 'presRespuesta',
+      fechaAnalisis: 'presFechaAnalisis',
+      respondidoPor: 'presRespondidoPor',
+      fechaRespuesta: 'presFechaRespuesta',
+      
+      // Imágenes
+      imagenesReclamo: 'presImagenesReclamo',
+      imagenesRespuesta: 'presImagenesRespuesta',
+      
+      // Estado de presentación
+      yaFecha: 'presYaFecha',
+      yaPor: 'presYaPor',
+      yaAsistentes: 'presYaAsistentes',
+      yaComentarios: 'presYaComentarios',
+      
+      // Formulario de presentación
+      asistentesCheckboxes: 'presAsistentesCheckboxes',
+      comentarios: 'presComentarios',
+      guardarBtn: 'presGuardarBtn',
+      guardarMsg: 'presGuardarMsg',
+      
+      // Acciones
+      acciones: 'presAcciones'
+  };
+  }
+
+  // Obtener elemento con cache y validación
+  get(elementKey) {
+    // Verificar si ya está en cache
+    if (this.cache.has(elementKey)) {
+      return this.cache.get(elementKey);
+    }
+
+    // Obtener ID del elemento
+    var elementId = this.elements[elementKey];
+    if (!elementId) {
+      console.warn('[DOMHelper] Elemento no definido:', elementKey);
+      return null;
+    }
+
+    // Obtener del DOM
+    var element = document.getElementById(elementId);
+    
+    // Validar y cache
+    if (element) {
+      this.cache.set(elementKey, element);
+      return element;
+    } else {
+      // Registrar elemento faltante solo una vez
+      if (!this.missingElements.has(elementKey)) {
+        console.warn('[DOMHelper] Elemento no encontrado en DOM:', elementId);
+        this.missingElements.add(elementKey);
+      }
+      return null;
+    }
+  }
+
+  // Mostrar/ocultar elemento
+  show(elementKey, display = 'block') {
+    var element = this.get(elementKey);
+    if (element) {
+      element.style.display = display;
+    }
+  }
+
+  hide(elementKey) {
+    var element = this.get(elementKey);
+    if (element) {
+      element.style.display = 'none';
+    }
+  }
+
+  // Establecer texto de elemento
+  setText(elementKey, text) {
+    var element = this.get(elementKey);
+    if (element) {
+      element.textContent = text;
+    }
+  }
+
+  // Establecer valor de input
+  setValue(elementKey, value) {
+    var element = this.get(elementKey);
+    if (element) {
+      element.value = value;
+    }
+  }
+
+  // Obtener valor de input
+  getValue(elementKey) {
+    var element = this.get(elementKey);
+    return element ? element.value : null;
+  }
+
+  // Limpiar cache (útil para debugging)
+  clearCache() {
+    this.cache.clear();
+    this.missingElements.clear();
+    console.log('[DOMHelper] Cache limpiado');
+  }
+
+  // Mostrar estado del cache (debugging)
+  debugCache() {
+    console.log('[DOMHelper] Cache:', Array.from(this.cache.keys()));
+    console.log('[DOMHelper] Elementos faltantes:', Array.from(this.missingElements));
+  }
+}
+
+// Instancia global del DOM helper
+var domHelper = new DOMHelper();
+
 // ========================= MÓDULO DE IMÁGENES (FASE 8.1.2) =========================
 
 class ImageRenderer {
@@ -6744,39 +6881,12 @@ class ImageRenderer {
       currentIndex: 0,
       isOpen: false
     };
-    
-    // Lazy loading setup
-    this.imageCache = new Map();
-    this.observer = null;
-    this._setupIntersectionObserver();
-  }
-
-  // Configurar Intersection Observer para lazy loading
-  _setupIntersectionObserver() {
-    if ('IntersectionObserver' in window) {
-      this.observer = new IntersectionObserver(function(entries) {
-        entries.forEach(function(entry) {
-          if (entry.isIntersecting) {
-            var img = entry.target;
-            var src = img.dataset.src;
-            if (src && !img.src) {
-              img.src = src;
-              img.onload = function() {
-                img.style.opacity = '1';
-              };
-              this.observer.unobserve(img);
-            }
-          }
-        }.bind(this));
-      }.bind(this), {
-        rootMargin: '50px'
-      });
-    }
+    this.dom = domHelper; // Usar DOM helper
   }
 
   // Renderizar barra de imágenes (simple pero con preload)
   renderImageBar(containerId, images, type) {
-    var container = document.getElementById(containerId);
+    var container = this.dom.get(containerId);
     if (!container) return;
 
     container.innerHTML = '';
