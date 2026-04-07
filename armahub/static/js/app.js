@@ -6886,7 +6886,7 @@ class ImageRenderer {
 
   // Renderizar barra de imágenes (simple pero con preload)
   renderImageBar(containerId, images, type) {
-    var container = this.dom.get(containerId);
+    var container = document.getElementById(containerId); // Usar getElementById directo
     if (!container) return;
 
     container.innerHTML = '';
