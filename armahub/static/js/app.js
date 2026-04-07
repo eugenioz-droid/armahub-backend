@@ -6774,7 +6774,7 @@ class ImageRenderer {
     }
   }
 
-  // Renderizar barra de imágenes con lazy loading
+  // Renderizar barra de imágenes (simple pero con preload)
   renderImageBar(containerId, images, type) {
     var container = document.getElementById(containerId);
     if (!container) return;
@@ -6799,7 +6799,7 @@ class ImageRenderer {
       var extraCount = images.length - maxShow;
 
       showImages.forEach(function(img, index) {
-        var thumbContainer = this._createThumbnailLazy(img, index, type);
+        var thumbContainer = this._createThumbnailSimple(img, index, images);
         barDiv.appendChild(thumbContainer);
       }.bind(this));
 
@@ -6816,8 +6816,8 @@ class ImageRenderer {
     container.appendChild(barDiv);
   }
 
-  // Crear thumbnail con lazy loading
-  _createThumbnailLazy(img, index, type) {
+  // Crear thumbnail simple (como antes pero con preload)
+  _createThumbnailSimple(img, index, images) {
     var thumbContainer = document.createElement('div');
     thumbContainer.style.cssText = 'position:relative; cursor:pointer; border-radius:6px; overflow:hidden; border:2px solid #e0e0e0; transition:all 0.2s;';
     thumbContainer.onmouseover = function() { this.style.borderColor = '#1976d2'; this.style.transform = 'scale(1.05)'; };
@@ -6827,60 +6827,45 @@ class ImageRenderer {
     thumb.style.cssText = 'width:60px; height:60px; display:flex; align-items:center; justify-content:center; background:#f5f5f5; position:relative;';
     
     if (img.content_type && img.content_type.startsWith('image/')) {
-      // Placeholder con loading
-      var placeholder = document.createElement('div');
-      placeholder.style.cssText = 'position:absolute; inset:0; background:linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%); background-size:200% 100%; animation:loading 1.5s infinite;';
-      thumb.appendChild(placeholder);
-      
-      // Imagen con lazy loading
       var imgEl = document.createElement('img');
-      imgEl.style.cssText = 'width:100%; height:100%; object-fit:cover; opacity:0; transition:opacity 0.3s;';
-      imgEl.dataset.src = img.url; // Para lazy loading
+      imgEl.style.cssText = 'width:100%; height:100%; object-fit:cover;';
+      imgEl.src = img.url; // Carga normal (sin lazy loading)
       imgEl.alt = img.filename || 'Imagen';
-      
-      // Usar Intersection Observer
-      if (this.observer) {
-        this.observer.observe(imgEl);
-      } else {
-        // Fallback para browsers sin soporte
-        imgEl.src = img.url;
-        imgEl.onload = function() { imgEl.style.opacity = '1'; };
-      }
-      
       thumb.appendChild(imgEl);
     } else {
-      // File icon for non-images
+      // File icon para no-imágenes (como antes)
       var icon = document.createElement('div');
       icon.style.cssText = 'font-size:24px; color:#666;';
       icon.textContent = this._getFileIcon(img.filename);
       thumb.appendChild(icon);
     }
-    
+
+    // File type badge
     var badge = document.createElement('div');
     badge.style.cssText = 'position:absolute; bottom:2px; right:2px; background:rgba(0,0,0,0.7); color:white; font-size:8px; padding:1px 3px; border-radius:2px;';
     badge.textContent = this._getFileTypeBadge(img.content_type);
     thumb.appendChild(badge);
 
-    // Click mejorado: abrir modal con preload
+    // Click: nueva pestaña con preload (mejorado)
     var self = this;
     thumbContainer.onclick = function() { 
-      self._openImageModalWithPreload(img, index, images);
+      self._openWithPreload(img, index, images);
     };
 
     thumbContainer.appendChild(thumb);
     return thumbContainer;
   }
 
-  // Abrir modal con preload de imágenes
-  _openImageModalWithPreload(img, index, images) {
+  // Abrir en nueva pestaña con preload inteligente
+  _openWithPreload(img, index, images) {
     // Preload siguiente imagen si existe
     if (index < images.length - 1) {
       var nextImg = new Image();
       nextImg.src = images[index + 1].url;
     }
     
-    // Abrir modal
-    this.openImageModal(images, index);
+    // Abrir en nueva pestaña (como antes)
+    window.open(img.url, '_blank');
   }
 
   // Crear indicador "más imágenes"
