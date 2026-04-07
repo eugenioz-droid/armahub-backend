@@ -29,6 +29,30 @@ Actualmente el sistema ya cuenta con:
 
 ---
 
+## LECCIONES APRENDIDAS (FASE 8.2.1)
+
+### **Lección #1: Refactorización segura**
+- **Nunca asumir estructura DOM sin verificar con grep**
+- **Mantener compatibilidad con endpoints existentes**
+- **Probar cambios incrementales, no masivos**
+
+### **Lección #2: Debugging proactivo**
+- **Verificar contexto `this` en callbacks JavaScript**
+- **Agregar logging en puntos críticos antes de refactorizar**
+- **Identificar si el problema es frontend o backend rápidamente**
+
+### **Lección #3: Optimización con precaución**
+- **Los endpoints optimizados pueden introducir bugs**
+- **Mantener endpoints legacy como fallback**
+- **Cache y queries complejas = más puntos de fallo**
+
+### **Lección #4: Estructura DOM real vs asumida**
+- **`presContent` no existe en el HTML del tab Presentaciones**
+- **El tab usa elementos individuales: `presAntecedentes`, `presRegistroCard`, `presYaPresentado`**
+- **Siempre verificar estructura real con grep antes de refactorizar**
+
+---
+
 ## ESTADO ACTUAL (6 Marzo 2026)
 
 **Fase 0 — Preparación de datos**: 

@@ -6571,7 +6571,7 @@ class ReclamoPresenter {
     this.formRenderer = formRenderer;
   }
 
-  // Función principal refactorizada
+  // Función principal simplificada
   seleccionarReclamoPres() {
     var recId = document.getElementById('presReclamoSelect').value;
     if (!recId) return;
@@ -6579,49 +6579,80 @@ class ReclamoPresenter {
     var rec = _presData.reclamos.find(function(r) { return r.id == recId; });
     if (!rec) return;
 
-    // No existe presContent - usar la lógica original
-    var antDiv = document.getElementById('presAntecedentes');
-    var regCard = document.getElementById('presRegistroCard');
-    var yaPres = document.getElementById('presYaPresentado');
-    
-    if (!antDiv || !regCard || !yaPres) {
-      console.error('[ReclamoPresenter] Elementos del DOM no encontrados');
-      return;
-    }
+    // Mostrar loading
+    this._showLoading();
 
-    var self = this; // Guardar referencia a la instancia
+    var self = this;
     apiGet('/reclamos/' + recId + '/detail').then(function(detail) {
       if (!detail) {
-        alert('Error cargando detalles del reclamo');
+        self._showError('Error cargando detalles del reclamo');
         return;
       }
 
       console.log('[DEBUG] ReclamoPresenter: Datos recibidos', detail);
-
-      // Usar la lógica original de mostrar/ocultar
-      antDiv.style.display = '';
-      regCard.style.display = 'none';
-      yaPres.style.display = 'none';
-
-      // Renderizar formulario de registro
-      self.formRenderer.renderRegistroForm(detail, rec);
-
-      // Renderizar formulario de análisis
-      self.formRenderer.renderAnalisisForm(detail);
-
-      // Renderizar acciones
-      self.formRenderer.renderAcciones(detail.acciones);
-
-      // Renderizar imágenes
-      self._renderImages(detail);
-
-      // Renderizar estado de presentación
-      self.formRenderer.renderPresentacionStatus(detail);
-
+      
+      // Renderizar todo
+      self._renderReclamoCompleto(detail, rec);
+      
     }).catch(function(err) {
       console.error('Error:', err);
-      alert('Error al cargar el reclamo');
+      self._showError('Error al cargar el reclamo');
     });
+  }
+
+  // Mostrar estado de carga
+  _showLoading() {
+    var antDiv = document.getElementById('presAntecedentes');
+    var regCard = document.getElementById('presRegistroCard');
+    var yaPres = document.getElementById('presYaPresentado');
+    
+    if (antDiv) antDiv.style.display = 'none';
+    if (regCard) regCard.style.display = 'none';
+    if (yaPres) yaPres.style.display = 'none';
+    
+    // Mostrar indicador de carga
+    var sel = document.getElementById('presReclamoSelect');
+    if (sel) {
+      sel.disabled = true;
+      sel.style.opacity = '0.5';
+    }
+  }
+
+  // Mostrar error
+  _showError(message) {
+    this._hideLoading();
+    alert(message);
+  }
+
+  // Ocultar loading
+  _hideLoading() {
+    var sel = document.getElementById('presReclamoSelect');
+    if (sel) {
+      sel.disabled = false;
+      sel.style.opacity = '1';
+    }
+  }
+
+  // Renderizar reclamo completo (función principal de renderizado)
+  _renderReclamoCompleto(detail, rec) {
+    // Mostrar secciones principales
+    var antDiv = document.getElementById('presAntecedentes');
+    var regCard = document.getElementById('presRegistroCard');
+    var yaPres = document.getElementById('presYaPresentado');
+    
+    if (antDiv) antDiv.style.display = '';
+    if (regCard) regCard.style.display = 'none';
+    if (yaPres) yaPres.style.display = 'none';
+
+    // Renderizar componentes
+    this.formRenderer.renderRegistroForm(detail, rec);
+    this.formRenderer.renderAnalisisForm(detail);
+    this.formRenderer.renderAcciones(detail.acciones);
+    this._renderImages(detail);
+    this.formRenderer.renderPresentacionStatus(detail);
+    
+    // Ocultar loading
+    this._hideLoading();
   }
 
   // Renderizar imágenes (usando el módulo de imágenes)
