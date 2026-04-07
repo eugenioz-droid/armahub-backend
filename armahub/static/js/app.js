@@ -6589,7 +6589,7 @@ class ReclamoPresenter {
   // Función principal simplificada
   seleccionarReclamoPres() {
     var recId = this.dom.getValue('reclamoSelect');
-    if (!recId) return;
+    if (!ReclamoUtils.isValidReclamoId(recId)) return;
 
     var rec = _presData.reclamos.find(function(r) { return r.id == recId; });
     if (!rec) return;
@@ -6604,7 +6604,7 @@ class ReclamoPresenter {
         return;
       }
 
-      console.log('[DEBUG] ReclamoPresenter: Datos recibidos', detail);
+      ReclamoUtils.log('Datos recibidos', detail);
       
       // Renderizar todo
       self._renderReclamoCompleto(detail, rec);
@@ -6664,33 +6664,24 @@ class ReclamoPresenter {
 
   // Renderizar imágenes (usando el módulo de imágenes)
   _renderImages(detail) {
-    var imgRecDiv = document.getElementById('presImagenesReclamo');
-    var imgRespDiv = document.getElementById('presImagenesRespuesta');
-
-    // Images - Usar nomenclatura actual de la base de datos
-    var imagenes = detail.imagenes || [];
-    console.log('[DEBUG] Imágenes encontradas:', imagenes.map(function(img) {
-      return {
-        id: img.id,
-        tipo: img.tipo,
-        filename: img.filename,
-        url: img.url
-      };
-    }));
-    
-    var imagenesRegistro = imagenes.filter(function(img) { return img.tipo === 'ImagenesRegistro'; });
-    var imagenesAnalisis = imagenes.filter(function(img) { return img.tipo === 'ImagenesAnalisis'; });
-    
-    console.log('[DEBUG] ImágenesRegistro (rojo):', imagenesRegistro.length);
-    console.log('[DEBUG] ImágenesAnalisis (azul):', imagenesAnalisis.length);
-
-    // Clear containers
-    if (imgRecDiv) imgRecDiv.innerHTML = '';
-    if (imgRespDiv) imgRespDiv.innerHTML = '';
-
-    // Render images with delay to ensure DOM is ready
     var self = this;
+    
     setTimeout(function() {
+      // Images - Usar nomenclatura actual de la base de datos
+      var imagenes = detail.imagenes || [];
+      ReclamoUtils.log('Imágenes encontradas', imagenes);
+      
+      // Filtrar por tipo usando ReclamoUtils
+      var imagenesRegistro = ReclamoUtils.filterImagesByType(imagenes, 'ImagenesRegistro');
+      var imagenesAnalisis = ReclamoUtils.filterImagesByType(imagenes, 'ImagenesAnalisis');
+      
+      ReclamoUtils.log('ImágenesRegistro (rojo)', imagenesRegistro.length);
+      ReclamoUtils.log('ImágenesAnalisis (azul)', imagenesAnalisis.length);
+      
+      // Renderizar usando ImageRenderer
+      var imgRecDiv = self.dom.get('imagenesReclamo');
+      var imgRespDiv = self.dom.get('imagenesRespuesta');
+      
       if (imagenesRegistro.length > 0) {
         self.imageRenderer.renderImageBar('presImagenesReclamo', imagenesRegistro, 'reclamo');
       } else {
@@ -6871,6 +6862,108 @@ class DOMHelper {
 
 // Instancia global del DOM helper
 var domHelper = new DOMHelper();
+
+// ========================= MÓDULO UTILIDADES (FASE 8.1.2.4) =========================
+
+class ReclamoUtils {
+  // Filtrar imágenes por tipo
+  static filterImagesByType(images, type) {
+    if (!images || !Array.isArray(images)) return [];
+    return images.filter(img => img.tipo === type);
+  }
+
+  // Formatear fecha corta (YYYY-MM-DD)
+  static formatDateShort(dateString) {
+    if (!dateString) return '';
+    return dateString.replace('T', ' ').substring(0, 10);
+  }
+
+  // Formatear fecha completa (YYYY-MM-DD HH:MM:SS)
+  static formatDateFull(dateString) {
+    if (!dateString) return '';
+    return dateString.replace('T', ' ').substring(0, 19);
+  }
+
+  // Validar si existe valor
+  static exists(value) {
+    return value !== null && value !== undefined && value !== '';
+  }
+
+  // Obtener valor con fallback
+  static getValue(obj, path, fallback = '—') {
+    if (!obj) return fallback;
+    
+    // Soporte para paths como 'detalle.titulo' o obj['titulo']
+    if (path.includes('.')) {
+      return path.split('.').reduce((current, key) => current?.[key], obj) || fallback;
+    }
+    
+    return obj[path] !== undefined ? obj[path] : fallback;
+  }
+
+  // Formatear texto para display
+  static formatText(value, fallback = '—') {
+    return this.exists(value) ? String(value) : fallback;
+  }
+
+  // Obtener label de estado
+  static getEstadoLabel(estado) {
+    const labels = {
+      abierto: 'Abierto',
+      en_análisis: 'En análisis',
+      accion_correctiva: 'Acción correctiva',
+      validacion: 'Validación',
+      cerrado: 'Cerrado',
+      rechazado: 'Rechazado'
+    };
+    return labels[estado] || estado;
+  }
+
+  // Obtener label de aplica
+  static getAplicaLabel(aplica) {
+    const labels = {
+      si: 'Sí aplica',
+      no: 'No aplica',
+      pendiente: 'Pendiente'
+    };
+    return labels[aplica] || aplica;
+  }
+
+  // Obtener color de aplica
+  static getAplicaColor(aplica) {
+    const colors = {
+      si: '#2e7d32',
+      no: '#b42318',
+      pendiente: '#e65100'
+    };
+    return colors[aplica] || '#666';
+  }
+
+  // Obtener label de tipo acción
+  static getAccionLabel(tipo) {
+    const labels = {
+      inmediata: 'Inmediata',
+      correctiva: 'Correctiva',
+      preventiva: 'Preventiva'
+    };
+    return labels[tipo] || tipo;
+  }
+
+  // Validar ID de reclamo
+  static isValidReclamoId(id) {
+    return this.exists(id) && !isNaN(parseInt(id)) && parseInt(id) > 0;
+  }
+
+  // Crear URL de imagen
+  static getImageUrl(reclamoId, imageId) {
+    return `/reclamos/${reclamoId}/imagenes/${imageId}`;
+  }
+
+  // Debugging helper
+  static log(prefix, data) {
+    console.log(`[ReclamoUtils] ${prefix}:`, data);
+  }
+}
 
 // ========================= MÓDULO DE IMÁGENES (FASE 8.1.2) =========================
 

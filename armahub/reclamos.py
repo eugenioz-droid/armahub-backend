@@ -1214,6 +1214,102 @@ def get_reclamo_optimizado(
     return response
 
 
+# ========================= ENDPOINTS DE TESTING (FASE 8.2.1.1) =========================
+
+@router.get("/reclamos/{reclamo_id}/detail-v2")
+def get_reclamo_detail_v2(reclamo_id: int, user=Depends(get_current_user)):
+    """Endpoint de testing seguro - queries optimizadas sin cache."""
+    
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            # Query principal optimizado (igual que el endpoint optimizado)
+            cur.execute("""
+                SELECT 
+                    r.id, r.id_proyecto, r.titulo, r.descripcion, r.estado,
+                    r.prioridad, r.categoria_ishikawa, r.responsable,
+                    r.accion_correctiva, r.accion_preventiva, r.resolucion,
+                    r.creado_por, r.fecha_creacion, r.fecha_actualizacion, r.fecha_cierre,
+                    COALESCE(p.nombre_proyecto, r.id_proyecto, 'Obra eliminada') AS nombre_proyecto,
+                    r.aplica, r.sub_causa, r.cod_causa, r.correlativo_calidad,
+                    r.detectado_por, r.fecha_deteccion, r.fecha_analisis,
+                    r.analista, r.area_aplica, r.explicacion_causa, r.observaciones,
+                    r.correlativo, r.id_calidad,
+                    r.tipo_reclamo, r.respuesta_texto, r.respuesta_fecha,
+                    r.respuesta_por, r.validacion_resultado,
+                    r.validacion_observaciones, r.validacion_fecha, r.validacion_por,
+                    r.kilos_mal_fabricados, r.asignado_a, r.cubicador_asignado
+                FROM reclamos r
+                LEFT JOIN proyectos p ON r.id_proyecto = p.id_proyecto
+                WHERE r.id = %s
+            """, (reclamo_id,))
+            row = cur.fetchone()
+            if not row:
+                raise HTTPException(status_code=404, detail="Reclamo no encontrado")
+
+            # Queries separadas para evitar complejidad
+            cur.execute("""
+                SELECT id, usuario, comentario, estado_anterior, estado_nuevo, fecha
+                FROM reclamo_seguimientos WHERE reclamo_id = %s
+                ORDER BY fecha ASC, id ASC
+            """, (reclamo_id,))
+            seguimientos = cur.fetchall()
+
+            cur.execute("""
+                SELECT id, tipo, descripcion, responsable, fecha_prevista,
+                       fecha_completada, estado, creado_por, fecha_creacion
+                FROM reclamo_acciones WHERE reclamo_id = %s
+                ORDER BY id ASC
+            """, (reclamo_id,))
+            acciones = cur.fetchall()
+
+            cur.execute("""
+                SELECT id, filename, content_type, descripcion, subido_por, fecha_subida, tipo
+                FROM reclamo_imagenes WHERE reclamo_id = %s
+                ORDER BY id ASC
+            """, (reclamo_id,))
+            imagenes = cur.fetchall()
+
+    # Construir respuesta (misma estructura que el frontend espera)
+    return {
+        "id": row[0], "id_proyecto": row[1], "titulo": row[2], "descripcion": row[3],
+        "estado": row[4], "prioridad": row[5], "categoria_ishikawa": row[6],
+        "responsable": row[7], "accion_correctiva": row[8], "accion_preventiva": row[9],
+        "resolucion": row[10], "creado_por": row[11], "fecha_creacion": row[12],
+        "fecha_actualizacion": row[13], "fecha_cierre": row[14], "nombre_proyecto": row[15],
+        "aplica": row[16], "sub_causa": row[17], "cod_causa": row[18],
+        "correlativo_calidad": row[19], "detectado_por": row[20],
+        "fecha_deteccion": row[21], "fecha_analisis": row[22], "analista": row[23],
+        "area_aplica": row[24], "explicacion_causa": row[25], "observaciones": row[26],
+        "correlativo": row[27], "id_calidad": row[28],
+        "tipo_reclamo": row[29], "respuesta_texto": row[30],
+        "respuesta_fecha": str(row[31]) if row[31] else None,
+        "respuesta_por": row[32], "validacion_resultado": row[33],
+        "validacion_observaciones": row[34],
+        "validacion_fecha": str(row[35]) if row[35] else None,
+        "validacion_por": row[36],
+        "kilos_mal_fabricados": row[37],
+        "asignado_a": row[38],
+        "cubicador_asignado": row[39],
+        "seguimientos": [
+            {"id": s[0], "usuario": s[1], "comentario": s[2],
+             "estado_anterior": s[3], "estado_nuevo": s[4], "fecha": s[5]}
+            for s in seguimientos
+        ],
+        "acciones": [
+            {"id": a[0], "tipo": a[1], "descripcion": a[2], "responsable": a[3],
+             "fecha_prevista": a[4], "fecha_completada": a[5], "estado": a[6],
+             "creado_por": a[7], "fecha_creacion": a[8]}
+            for a in acciones
+        ],
+        "imagenes": [
+            {"id": img[0], "filename": img[1], "content_type": img[2],
+             "descripcion": img[3], "subido_por": img[4], "fecha_subida": img[5],
+             "tipo": img[6] if len(img) > 6 else "ImagenesRegistro",
+             "url": f"/reclamos/{reclamo_id}/imagenes/{img[0]}"}
+            for img in imagenes
+        ],
+    }
+
 @router.get("/reclamos/{reclamo_id}/detail")
 def get_reclamo_detail_legacy(reclamo_id: int, user=Depends(get_current_user)):
     """Endpoint legacy simple - volver a código que funcionaba."""
