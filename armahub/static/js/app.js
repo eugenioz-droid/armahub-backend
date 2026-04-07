@@ -6579,13 +6579,15 @@ class ReclamoPresenter {
     var rec = _presData.reclamos.find(function(r) { return r.id == recId; });
     if (!rec) return;
 
-    var presContent = document.getElementById('presContent');
-    if (!presContent) {
-      console.error('[ReclamoPresenter] Elemento presContent no encontrado');
+    // No existe presContent - usar la lógica original
+    var antDiv = document.getElementById('presAntecedentes');
+    var regCard = document.getElementById('presRegistroCard');
+    var yaPres = document.getElementById('presYaPresentado');
+    
+    if (!antDiv || !regCard || !yaPres) {
+      console.error('[ReclamoPresenter] Elementos del DOM no encontrados');
       return;
     }
-    
-    presContent.style.display = 'none';
 
     var self = this; // Guardar referencia a la instancia
     apiGet('/reclamos/' + recId + '/detail').then(function(detail) {
@@ -6595,6 +6597,11 @@ class ReclamoPresenter {
       }
 
       console.log('[DEBUG] ReclamoPresenter: Datos recibidos', detail);
+
+      // Usar la lógica original de mostrar/ocultar
+      antDiv.style.display = '';
+      regCard.style.display = 'none';
+      yaPres.style.display = 'none';
 
       // Renderizar formulario de registro
       self.formRenderer.renderRegistroForm(detail, rec);
@@ -6610,8 +6617,6 @@ class ReclamoPresenter {
 
       // Renderizar estado de presentación
       self.formRenderer.renderPresentacionStatus(detail);
-
-      presContent.style.display = 'block';
 
     }).catch(function(err) {
       console.error('Error:', err);
