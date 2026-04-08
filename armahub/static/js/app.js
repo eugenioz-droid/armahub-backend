@@ -7049,10 +7049,10 @@ class ImageRenderer {
     badge.textContent = this._getFileTypeBadge(img.content_type);
     thumb.appendChild(badge);
 
-    // Click: nueva pestaña con preload (mejorado)
+    // Click: abrir modal mejorado (no nueva pestaña)
     var self = this;
     thumbContainer.onclick = function() { 
-      self._openWithPreload(img, index, images);
+      self._openImageModal(images, index);
     };
 
     thumbContainer.appendChild(thumb);
