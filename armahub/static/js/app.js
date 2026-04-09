@@ -4911,9 +4911,11 @@ async function loadReclamos() {
   }
   if (params.length > 0) url += '?' + params.join('&');
 
-  var res = await fetch(url, { headers: authHeaders() });
-  if (res.status === 401) { logout(); return; }
-  var data = await res.json();
+  var data = await apiGet(url);
+  if (!data) {
+    container.innerHTML = '<div class="muted">No fue posible cargar reclamos en este momento</div>';
+    return;
+  }
   
   // Load USC users for assignment dropdowns
   await loadUsuariosUsc();

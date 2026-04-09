@@ -223,7 +223,7 @@ def listar_reclamos(
     email = user.get("email", "")
     role = user.get("role", "usc")
     with get_conn() as conn:
-        with conn.cursor() as cur:
+        with conn.cursor(row_factory=dict_row) as cur:
             where = "WHERE 1=1"
             params = []
             if solo_mios:
@@ -263,12 +263,12 @@ def listar_reclamos(
                 params.extend([like, like, like, like])
 
             cur.execute(f"""
-                SELECT r.id, r.id_proyecto, r.titulo, r.descripcion, r.estado,
-                       r.prioridad, r.categoria_ishikawa, r.responsable,
-                       r.creado_por, r.fecha_creacion, r.fecha_actualizacion, r.fecha_cierre,
+                  SELECT r.id, r.id_proyecto, r.titulo, r.descripcion, r.estado,
+                      r.prioridad, r.categoria_ishikawa, r.responsable,
+                      r.creado_por, r.fecha_creacion, r.fecha_actualizacion, r.fecha_cierre,
                        COALESCE(p.nombre_proyecto, r.id_proyecto, 'Obra eliminada') AS nombre_proyecto,
                        (SELECT COUNT(*) FROM reclamo_seguimientos s WHERE s.reclamo_id = r.id) AS seg_count,
-                       r.aplica, r.sub_causa, r.cod_causa, r.correlativo_calidad,
+                      r.aplica, r.sub_causa, r.cod_causa,
                        r.detectado_por, r.fecha_deteccion,
                        r.correlativo, r.id_calidad, r.tipo_reclamo, r.asignado_a,
                        r.cubicador_asignado, r.respuesta_por
@@ -297,17 +297,17 @@ def listar_reclamos(
     return {
         "reclamos": [
             {
-                "id": r[0], "id_proyecto": r[1], "titulo": r[2], "descripcion": r[3],
-                "estado": r[4], "prioridad": r[5], "categoria_ishikawa": r[6],
-                "responsable": r[7], "creado_por": r[8], "fecha_creacion": r[9],
-                "fecha_actualizacion": r[10], "fecha_cierre": r[11],
-                "nombre_proyecto": r[12], "total_seguimientos": int(r[13]),
-                "aplica": r[14], "sub_causa": r[15], "cod_causa": r[16],
-                "correlativo_calidad": r[17], "detectado_por": r[18],
-                "fecha_deteccion": r[19],
-                "correlativo": r[20], "id_calidad": r[21],
-                "tipo_reclamo": r[22], "asignado_a": r[23],
-                "cubicador_asignado": r[24], "respuesta_por": r[25],
+                "id": r.get("id"), "id_proyecto": r.get("id_proyecto"), "titulo": r.get("titulo"), "descripcion": r.get("descripcion"),
+                "estado": r.get("estado"), "prioridad": r.get("prioridad"), "categoria_ishikawa": r.get("categoria_ishikawa"),
+                "responsable": r.get("responsable"), "creado_por": r.get("creado_por"), "fecha_creacion": _as_text(r.get("fecha_creacion")),
+                "fecha_actualizacion": _as_text(r.get("fecha_actualizacion")), "fecha_cierre": _as_text(r.get("fecha_cierre")),
+                "nombre_proyecto": r.get("nombre_proyecto"), "total_seguimientos": int(r.get("seg_count") or 0),
+                "aplica": r.get("aplica"), "sub_causa": r.get("sub_causa"), "cod_causa": r.get("cod_causa"),
+                "detectado_por": r.get("detectado_por"),
+                "fecha_deteccion": _as_text(r.get("fecha_deteccion")),
+                "correlativo": r.get("correlativo"), "id_calidad": r.get("id_calidad"),
+                "tipo_reclamo": r.get("tipo_reclamo"), "asignado_a": r.get("asignado_a"),
+                "cubicador_asignado": r.get("cubicador_asignado"), "respuesta_por": r.get("respuesta_por"),
             }
             for r in rows
         ]
