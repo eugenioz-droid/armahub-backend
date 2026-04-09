@@ -43,6 +43,7 @@ La prioridad no es rehacer el backend completo. La prioridad es estabilizar cont
 4. Los helpers compartidos viven en shared, no repartidos por modulos.
 5. La compatibilidad legacy debe ser transitoria y explicita.
 6. No hacer big bang refactor. Solo extraccion incremental con sistema funcionando.
+7. No mezclar repositorios de imagenes de registro y de analisis.
 
 ---
 
@@ -87,6 +88,32 @@ Todo lo transversal debe extraerse a una capa comun:
 ### 4. Contratos backend
 
 En backend, cada feature debe tener un contrato canonico. Los endpoints legacy, si existen, deben delegar al contrato vigente. No deben mantener SQL propio porque eso genera drift.
+
+### 5. Politica de imagenes de Reclamos
+
+Las imagenes de Reclamos deben seguir separadas por dominio funcional.
+
+- Repositorio rosado: imagenes de registro o antecedentes.
+- Repositorio celeste: imagenes de analisis o respuesta.
+
+La refactorizacion no debe fusionar esos repositorios. Lo que si debe hacer es unificar la forma de representarlos en contrato y frontend.
+
+Regla de arquitectura:
+
+- una sola coleccion en payload si conviene transportar juntas
+- pero siempre con tipo canonico explicito
+- y siempre renderizadas en contenedores separados por modulo
+
+Tipos canonicos vigentes:
+
+- ImagenesRegistro
+- ImagenesAnalisis
+
+Resultado esperado:
+
+- no se pierde la separacion visual ni funcional entre rosado y celeste
+- no se duplican handlers de upload
+- no se mezclan referencias legacy con nombres nuevos dentro del render
 
 ---
 
@@ -240,6 +267,25 @@ Esto permite que manana exista una caluga nueva como Indicadores Comerciales, Co
 - Normalizar nombres de tipos de imagen y campos de fecha.
 - Invalidar cache cuando un reclamo cambia.
 
+### Fase 0.5. Limpieza estructural minima antes de extraer
+
+Esta fase no busca modularizar aun. Busca sacar el desorden que hoy genera regresiones.
+
+Tareas exactas:
+
+1. Definir un normalizador unico para listado y detalle de Reclamos.
+2. Dejar una sola implementacion activa para Presentaciones.
+3. Dejar una sola implementacion activa para detalle principal de Reclamos.
+4. Mover compatibilidad legacy a funciones o adaptadores explicitos.
+5. Separar render de detalle, acciones e imagenes en bloques independientes dentro del mismo archivo.
+6. Confirmar smoke test minimo: listar, abrir, responder, validar, presentar, subir imagen rosada, subir imagen celeste.
+
+Resultado esperado:
+
+- deja de haber logica duplicada compitiendo dentro de app.js
+- las compatibilidades quedan localizadas y visibles
+- la extraccion posterior a modulos se hace sobre una base coherente
+
 ### Fase 1. Extraer shared/core
 
 - api.js
@@ -270,14 +316,23 @@ Resultado esperado:
 
 Orden recomendado:
 
-- landing.js
-- list.js
-- detail.js
-- ishikawa.js
-- images.js
-- presentaciones.js
+1. landing.js
+2. list.js
+3. detail.js
+4. ishikawa.js
+5. images.js
+6. presentaciones.js
 
 Reclamos va primero porque hoy es el area con mas deriva entre frontend, backend y estado real.
+
+Orden interno recomendado para Reclamos:
+
+1. mover cliente de datos y normalizadores
+2. mover render del listado
+3. mover render del detalle principal
+4. mover uploads y render de imagenes separadas por repositorio
+5. mover Presentaciones
+6. borrar wrappers transitorios que ya no se usen
 
 ### Fase 4. Extraer Cubicacion y Admin
 
@@ -317,8 +372,9 @@ El refactor se considera bien encaminado cuando:
 
 ## Prioridad Inmediata
 
-1. Estabilizar reclamos y presentaciones.
-2. Extraer shared/core.
-3. Disenar el registro de modulos del Hub.
-4. Sacar Reclamos completo de app.js.
-5. Luego extraer Cubicacion y Admin.
+1. Cerrar Fase 0 de estabilizacion de Reclamos.
+2. Ejecutar Fase 0.5 de limpieza estructural minima.
+3. Extraer shared/core.
+4. Disenar el registro de modulos del Hub.
+5. Sacar Reclamos completo de app.js.
+6. Luego extraer Cubicacion y Admin.

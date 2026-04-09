@@ -4378,6 +4378,119 @@ const _recCatLabels = {
   sin_categoria: 'Sin cat.',
 };
 
+function _normalizeReclamoDateInputValue(value) {
+  if (!value) return '';
+  return String(value).replace('T', ' ').substring(0, 10);
+}
+
+function _buildReclamoCausaDisplay(detail) {
+  var causaDisplay = '';
+  if (detail.cod_causa && detail.sub_causa) {
+    causaDisplay = '[' + detail.cod_causa + '] ' + (_recIshikawaLabels[detail.categoria_ishikawa] || '') + ' > ' + detail.sub_causa;
+  } else if (detail.categoria_ishikawa) {
+    causaDisplay = _recIshikawaLabels[detail.categoria_ishikawa] || detail.categoria_ishikawa;
+  }
+  if (causaDisplay && detail.explicacion_causa) {
+    causaDisplay += ' — ' + detail.explicacion_causa;
+  } else if (!causaDisplay && detail.explicacion_causa) {
+    causaDisplay = detail.explicacion_causa;
+  }
+  return causaDisplay;
+}
+
+function _adaptLegacyReclamoActionRows(detail) {
+  if (detail.acciones && detail.acciones.length > 0) return detail.acciones;
+  var legacyAcciones = [];
+  if (detail.accion_correctiva) {
+    legacyAcciones.push({
+      id: 'legacy-correctiva',
+      tipo: 'correctiva',
+      descripcion: detail.accion_correctiva,
+      responsable: detail.responsable || detail.cubicador_asignado || null,
+      fecha_prevista: detail.fecha_analisis || null,
+      estado: 'completada'
+    });
+  }
+  if (detail.accion_preventiva) {
+    legacyAcciones.push({
+      id: 'legacy-preventiva',
+      tipo: 'preventiva',
+      descripcion: detail.accion_preventiva,
+      responsable: detail.responsable || detail.cubicador_asignado || null,
+      fecha_prevista: detail.fecha_analisis || null,
+      estado: 'completada'
+    });
+  }
+  return legacyAcciones;
+}
+
+function _adaptLegacyReclamoImageType(tipo) {
+  if (tipo === 'antecedente' || !tipo) return 'ImagenesRegistro';
+  if (tipo === 'respuesta') return 'ImagenesAnalisis';
+  return tipo;
+}
+
+function _adaptLegacyReclamoImages(imagenes) {
+  var source = Array.isArray(imagenes) ? imagenes : [];
+  return source.map(function(img) {
+    var normalizedImage = Object.assign({}, img || {});
+    normalizedImage.tipo = _adaptLegacyReclamoImageType(normalizedImage.tipo);
+    return normalizedImage;
+  });
+}
+
+function _splitCanonicalReclamoImages(imagenes) {
+  var source = Array.isArray(imagenes) ? imagenes : [];
+  return {
+    antecedentes: source.filter(function(img) {
+      return img.tipo === 'ImagenesRegistro';
+    }),
+    respuesta: source.filter(function(img) {
+      return img.tipo === 'ImagenesAnalisis';
+    })
+  };
+}
+
+function _adaptLegacyReclamoDetail(detail) {
+  var adapted = Object.assign({}, detail || {});
+  adapted.imagenes = _adaptLegacyReclamoImages(adapted.imagenes || []);
+  adapted.acciones = _adaptLegacyReclamoActionRows(adapted);
+  adapted.respuesta_texto_display = adapted.respuesta_texto || adapted.explicacion_causa || '';
+  return adapted;
+}
+
+function _adaptLegacyPresentacionRecord(listItem, detail) {
+  var adapted = Object.assign({}, listItem || {}, detail || {});
+  adapted.correlativo = adapted.correlativo || (adapted.id ? '#' + adapted.id : '');
+  adapted.nombre_proyecto = adapted.nombre_proyecto || '';
+  adapted.cubicador_nombre = adapted.cubicador_nombre || '—';
+  adapted.aplica = adapted.aplica || 'pendiente';
+  adapted.fecha_deteccion_input = adapted.fecha_deteccion_input || _normalizeReclamoDateInputValue(adapted.fecha_deteccion);
+  return adapted;
+}
+
+function _normalizeReclamoListItem(reclamo) {
+  var normalized = Object.assign({}, reclamo || {});
+  normalized.tipo_reclamo = normalized.tipo_reclamo || 'error';
+  normalized.aplica = normalized.aplica || 'pendiente';
+  normalized.fecha_deteccion = normalized.fecha_deteccion || '';
+  normalized.nombre_proyecto = normalized.nombre_proyecto || '';
+  normalized.correlativo = normalized.correlativo || (normalized.id ? '#' + normalized.id : '');
+  return normalized;
+}
+
+function _normalizeReclamoDetail(detail) {
+  var normalized = _adaptLegacyReclamoDetail(detail);
+  normalized.causa_display = _buildReclamoCausaDisplay(normalized);
+  normalized.fecha_deteccion_input = _normalizeReclamoDateInputValue(normalized.fecha_deteccion);
+  normalized.fecha_analisis_input = _normalizeReclamoDateInputValue(normalized.fecha_analisis);
+  normalized.acciones_normalized = normalized.acciones || [];
+  var splitImages = _splitCanonicalReclamoImages(normalized.imagenes || []);
+  normalized.imagenes_antecedentes = splitImages.antecedentes;
+  normalized.imagenes_respuesta = splitImages.respuesta;
+  return normalized;
+}
+
 function switchRecTab(tab) {
   var mainTab = document.getElementById('recTabMain');
   var dashTab = document.getElementById('recTabDashboards');
@@ -4916,11 +5029,12 @@ async function loadReclamos() {
     container.innerHTML = '<div class="muted">No fue posible cargar reclamos en este momento</div>';
     return;
   }
+  var reclamos = (data.reclamos || []).map(_normalizeReclamoListItem);
   
   // Load USC users for assignment dropdowns
   await loadUsuariosUsc();
 
-  if (!data.reclamos || data.reclamos.length === 0) {
+  if (reclamos.length === 0) {
     container.innerHTML = '<div class="muted">No hay reclamos con los filtros seleccionados</div>';
     return;
   }
@@ -4940,7 +5054,7 @@ async function loadReclamos() {
     '<th style="padding:5px 6px;">Fecha</th>' +
     '<th style="padding:5px 4px;"></th>' +
     '</tr>' +
-    data.reclamos.map(function(r) {
+    reclamos.map(function(r) {
       var eColor = _recEstadoColors[r.estado] || '#666';
       var eLabel = _recEstadoLabels[r.estado] || r.estado;
       var aplLabel = _recAplicaLabels[r.aplica] || 'Pendiente';
@@ -4967,7 +5081,7 @@ async function loadReclamos() {
         '</tr>';
     }).join('') +
     '</table>' +
-    '<div class="muted" style="font-size:11px; margin-top:4px;">Mostrando ' + data.reclamos.length + ' reclamo(s)</div>';
+    '<div class="muted" style="font-size:11px; margin-top:4px;">Mostrando ' + reclamos.length + ' reclamo(s)</div>';
 }
 
 function limpiarFiltrosReclamos() {
@@ -5160,16 +5274,23 @@ async function crearConstDesdeRecForm() {
   }
 }
 
-async function verReclamo(id) {
-  var data = await apiGet('/reclamos/' + id);
-  if (!data) return;
-  _reclamoActual = data;
+function _populateReclamoDetailSelectors(data) {
+  document.getElementById('recDetailAplica').value = data.aplica || 'pendiente';
+  var idCalField = document.getElementById('recDetailIdCalidad');
+  if (idCalField) idCalField.value = data.id_calidad || '';
 
-  document.getElementById('reclamoDetailCard').style.display = '';
-  // Reset edit form
-  document.getElementById('recEditForm').style.display = 'none';
-  document.getElementById('recDetailInfo').style.display = '';
-  document.getElementById('btnEditarReclamo').textContent = '✏️ Editar';
+  var srcSel = document.getElementById('recProyecto');
+  var detSel = document.getElementById('recDetailProyecto');
+  if (srcSel && detSel) {
+    detSel.innerHTML = srcSel.innerHTML;
+    detSel.value = data.id_proyecto || '';
+  }
+
+  var detAsignado = document.getElementById('recDetailAsignadoA');
+  if (detAsignado) detAsignado.value = data.asignado_a || '';
+}
+
+function _renderReclamoHeader(data) {
   var titlePrefix = data.id_calidad ? data.id_calidad + ' — ' : (data.correlativo ? data.correlativo + ' — ' : '#' + data.id + ' — ');
   document.getElementById('recDetailTitle').textContent = titlePrefix + data.titulo;
 
@@ -5184,29 +5305,13 @@ async function verReclamo(id) {
   if (data.cubicador_asignado) metaParts.push('Cubicador: ' + data.cubicador_asignado);
   document.getElementById('recDetailMeta').textContent = metaParts.join(' · ');
 
-  // Estado display
   var estadoDisplay = document.getElementById('recDetailEstadoDisplay');
   var estadoLabel = _recEstadoLabels[data.estado] || data.estado;
   var estadoColor = _recEstadoColors[data.estado] || '#666';
   estadoDisplay.innerHTML = '<span style="background:' + estadoColor + '; color:#fff; padding:2px 8px; border-radius:12px; font-size:10px; font-weight:600;">' + estadoLabel + '</span>';
-  
-  document.getElementById('recDetailAplica').value = data.aplica || 'pendiente';
-  var idCalField = document.getElementById('recDetailIdCalidad');
-  if (idCalField) idCalField.value = data.id_calidad || '';
+}
 
-  // Populate project dropdown from recProyecto options (already loaded)
-  var srcSel = document.getElementById('recProyecto');
-  var detSel = document.getElementById('recDetailProyecto');
-  if (srcSel && detSel) {
-    detSel.innerHTML = srcSel.innerHTML;
-    detSel.value = data.id_proyecto || '';
-  }
-
-  // Set asignado_a dropdown value
-  var detAsignado = document.getElementById('recDetailAsignadoA');
-  if (detAsignado) detAsignado.value = data.asignado_a || '';
-
-  // SECTION 1: Antecedentes info
+function _renderReclamoAntecedentes(data) {
   var info = document.getElementById('recDetailInfo');
   var tipoLabel = data.tipo_reclamo === 'faltante' ? 'Faltante' : 'Error';
   var tipoColor = data.tipo_reclamo === 'faltante' ? '#ff9800' : '#e53935';
@@ -5223,27 +5328,20 @@ async function verReclamo(id) {
   infoHtml += '</div>';
   if (data.descripcion) infoHtml += '<div style="margin-top:6px; white-space:pre-wrap;">' + data.descripcion + '</div>';
   info.innerHTML = infoHtml;
+}
 
-  // SECTION 2: Respuesta del responsable
-  var causaDisplay = '';
-  if (data.cod_causa && data.sub_causa) {
-    causaDisplay = '[' + data.cod_causa + '] ' + (_recIshikawaLabels[data.categoria_ishikawa] || '') + ' > ' + data.sub_causa;
-  } else if (data.categoria_ishikawa) {
-    causaDisplay = _recIshikawaLabels[data.categoria_ishikawa] || data.categoria_ishikawa;
-  }
-  document.getElementById('recDetailRespuestaTexto').value = data.respuesta_texto || '';
-  document.getElementById('recDetailCausaDisplay').value = causaDisplay;
+function _renderReclamoRespuesta(data) {
+  document.getElementById('recDetailRespuestaTexto').value = data.respuesta_texto_display;
+  document.getElementById('recDetailCausaDisplay').value = data.causa_display;
   document.getElementById('recDetailCategoria').value = data.categoria_ishikawa || '';
   document.getElementById('recDetailSubCausa').value = data.sub_causa || '';
   document.getElementById('recDetailCodCausa').value = data.cod_causa || '';
   document.getElementById('recDetailAreaAplica').value = data.area_aplica || 'Cubicación';
-  document.getElementById('recDetailFechaAnalisis').value = data.fecha_analisis || '';
+  document.getElementById('recDetailFechaAnalisis').value = data.fecha_analisis_input;
   document.getElementById('recDetailKilosMal').value = data.kilos_mal_fabricados != null ? data.kilos_mal_fabricados : '';
-  
-  // Cargar tiempo de respuesta en análisis
   document.getElementById('recTiempoRespuestaAnalisis').value = data.tiempo_respuesta || '';
   document.getElementById('recTiempoRespuestaUnidadAnalisis').value = data.tiempo_respuesta_unidad || 'horas';
-  
+
   var respInfo = document.getElementById('recRespuestaInfo');
   if (data.respuesta_por) {
     respInfo.innerHTML = 'Respondido por: <strong>' + data.respuesta_por + '</strong>' +
@@ -5253,7 +5351,6 @@ async function verReclamo(id) {
   }
   document.getElementById('recRespMsg').textContent = '';
 
-  // Cubicador asignado name display in Section 2
   var cubNombreEl = document.getElementById('recDetailCubicadorNombre');
   if (cubNombreEl) {
     var cubName = data.responsable || 'Sin asignar';
@@ -5261,15 +5358,14 @@ async function verReclamo(id) {
     cubNombreEl.style.color = data.responsable ? '#1565C0' : '#999';
   }
   _updateAplicaBadge();
+}
 
-  // SECTION 3: Validación
+function _renderReclamoValidacion(data) {
   document.getElementById('recDetailValidacionResultado').value = data.validacion_resultado || '';
   document.getElementById('recDetailValidacionObs').value = data.validacion_observaciones || '';
-  
-  // Cargar tiempo de respuesta
   document.getElementById('recTiempoRespuesta').value = data.tiempo_respuesta || '';
   document.getElementById('recTiempoRespuestaUnidad').value = data.tiempo_respuesta_unidad || 'horas';
-  
+
   var valInfo = document.getElementById('recValidacionInfo');
   if (data.validacion_por) {
     var valLabel = { aprobado: '✅ Aprobado', rechazado: '❌ Rechazado', corregido: '✏️ Corregido' }[data.validacion_resultado] || data.validacion_resultado;
@@ -5289,51 +5385,60 @@ async function verReclamo(id) {
     valInfo.textContent = 'Sin validación aún';
   }
   document.getElementById('recValidacionMsg').textContent = '';
+}
 
-  // Acciones
-  renderAcciones(data.acciones || []);
+function _renderReclamoActionsSection(data) {
+  renderAcciones(data.acciones_normalized);
+}
 
-  // Imagenes split by tipo
-  var imgAntecedentes = (data.imagenes || []).filter(function(i) {
-    return i.tipo === 'antecedente' || i.tipo === 'ImagenesRegistro' || !i.tipo;
+function _renderReclamoImagesSection(data) {
+  console.log('[verReclamo] detalle normalizado:', {
+    respuesta_texto: data.respuesta_texto,
+    explicacion_causa: data.explicacion_causa,
+    fecha_analisis: data.fecha_analisis,
+    acciones: data.acciones_normalized.length,
+    imagenes_antecedentes: data.imagenes_antecedentes.length,
+    imagenes_respuesta: data.imagenes_respuesta.length
   });
-  var imgRespuesta = (data.imagenes || []).filter(function(i) {
-    return i.tipo === 'respuesta' || i.tipo === 'ImagenesAnalisis';
-  });
-  renderImagenesEnContainer('recImagenesAntecedentes', imgAntecedentes);
-  renderImagenesEnContainer('recImagenesRespuesta', imgRespuesta);
 
-  // Timeline
+  renderImagenesEnContainer('recImagenesAntecedentes', data.imagenes_antecedentes);
+  renderImagenesEnContainer('recImagenesRespuesta', data.imagenes_respuesta);
+}
+
+function _renderReclamoTimelineSection(data) {
   renderReclamoTimeline(data.seguimientos || []);
+}
 
-  // Clear seguimiento inputs
+function _resetReclamoSeguimientoForm() {
   document.getElementById('recSeguimientoComentario').value = '';
   document.getElementById('recSeguimientoEstado').value = '';
   document.getElementById('recSeguimientoMsg').textContent = '';
+}
 
-  // ============ PERMISOS POR ROL ============
+function _renderReclamoAssets(data) {
+  _renderReclamoActionsSection(data);
+  _renderReclamoImagesSection(data);
+  _renderReclamoTimelineSection(data);
+  _resetReclamoSeguimientoForm();
+}
+
+function _applyReclamoDetailPermissions(data) {
   var esCreador = data.creado_por && data.creado_por === currentUserEmail;
   var validado = !!data.validacion_resultado;
 
-  // Edit antecedentes (Sec 1): admin/admin2=any, usc=own
   var puedeEditarSec1 = (currentRole === 'admin' || currentRole === 'admin2') || (currentRole === 'usc' && esCreador);
   if (validado && currentRole !== 'admin') puedeEditarSec1 = false;
   var btnEditar = document.getElementById('btnEditarReclamo');
   if (btnEditar) btnEditar.style.display = puedeEditarSec1 ? '' : 'none';
 
-  // Aplica: admin y cubicador
   var selAplica = document.getElementById('recDetailAplica');
   if (selAplica) selAplica.disabled = !(['admin', 'admin2', 'cubicador'].includes(currentRole));
 
-  // Estado: se maneja automáticamente al guardar respuesta o con botón cerrar
-
-  // Delete: admin/admin2, or usc own
   var puedeEliminar = (currentRole === 'admin' || currentRole === 'admin2') || (currentRole === 'usc' && esCreador);
   var btnElim = document.getElementById('btnEliminarReclamo');
   if (btnElim) btnElim.style.display = puedeEliminar ? '' : 'none';
 
-  // Close / Reopen: admin/admin2 siempre, cubicador solo si está asignado al reclamo
-  var esAsignado = (currentRole === 'cubicador' && _reclamoActual.cubicador_asignado === currentUserEmail);
+  var esAsignado = (currentRole === 'cubicador' && data.cubicador_asignado === currentUserEmail);
   var puedeCerrar = (currentRole === 'admin' || currentRole === 'admin2') || esAsignado;
   var cerrarCont = document.getElementById('recCerrarContainer');
   if (cerrarCont) cerrarCont.style.display = puedeCerrar ? '' : 'none';
@@ -5344,46 +5449,59 @@ async function verReclamo(id) {
   if (btnCerrar) btnCerrar.style.display = estaCerrado ? 'none' : '';
   if (btnReabrir) btnReabrir.style.display = puedeReabrir ? '' : 'none';
 
-  // ID Calidad inline edit: admin/admin2/usc(own)
   var idCalField = document.getElementById('recDetailIdCalidad');
   if (idCalField) idCalField.disabled = !puedeEditarSec1;
 
-  // Proyecto dropdown: admin/admin2
   var detProySel = document.getElementById('recDetailProyecto');
   if (detProySel) detProySel.disabled = !(currentRole === 'admin' || currentRole === 'admin2');
 
-  // Asignado a: admin/admin2 can change assignment
   var detAsigSel = document.getElementById('recDetailAsignadoA');
   if (detAsigSel) detAsigSel.disabled = !(currentRole === 'admin' || currentRole === 'admin2');
 
-
-  // Section 2 (Respuesta): admin/admin2/cubicador/externo. NOT usc.
   var puedeResponder = ['admin','admin2','cubicador','externo'].includes(currentRole);
   if (validado && currentRole !== 'admin') puedeResponder = false;
   var sec2Fields = ['recDetailRespuestaTexto','recDetailCausaDisplay','recDetailAreaAplica','recDetailFechaAnalisis','recDetailKilosMal','recTiempoRespuestaAnalisis','recTiempoRespuestaUnidadAnalisis'];
   sec2Fields.forEach(function(fid) { var el = document.getElementById(fid); if (el) el.disabled = !puedeResponder; });
   var btnGuardarResp = document.getElementById('btnGuardarRespuesta');
   if (btnGuardarResp) btnGuardarResp.style.display = puedeResponder ? '' : 'none';
-  // Respuesta image upload zone
   var respDropZone = document.getElementById('recRespDropZone');
   var respFileInput = document.getElementById('recRespFileInput');
   if (respDropZone) respDropZone.style.display = puedeResponder ? '' : 'none';
   if (respFileInput) respFileInput.disabled = !puedeResponder;
 
-  // Section 3 (Validación): admin/admin2
   var puedeValidar = (currentRole === 'admin' || currentRole === 'admin2');
   var sec3Fields = ['recDetailValidacionResultado','recDetailValidacionObs','recTiempoRespuesta','recTiempoRespuestaUnidad'];
   sec3Fields.forEach(function(fid) { var el = document.getElementById(fid); if (el) el.disabled = !puedeValidar; });
   var btnGuardarVal = document.getElementById('btnGuardarValidacion');
   if (btnGuardarVal) btnGuardarVal.style.display = puedeValidar ? '' : 'none';
 
-  // Acciones form: admin/admin2/cubicador
   var puedeAccion = ['admin','admin2','cubicador'].includes(currentRole);
   if (validado && currentRole !== 'admin') puedeAccion = false;
   var accionFields = ['recNuevaAccionTipo','recNuevaAccionDesc','recNuevaAccionResp','recNuevaAccionFecha'];
   accionFields.forEach(function(fid) { var el = document.getElementById(fid); if (el) el.disabled = !puedeAccion; });
+}
 
+function _renderReclamoDetail(data) {
+  document.getElementById('reclamoDetailCard').style.display = '';
+  document.getElementById('recEditForm').style.display = 'none';
+  document.getElementById('recDetailInfo').style.display = '';
+  document.getElementById('btnEditarReclamo').textContent = '✏️ Editar';
+  _populateReclamoDetailSelectors(data);
+  _renderReclamoHeader(data);
+  _renderReclamoAntecedentes(data);
+  _renderReclamoRespuesta(data);
+  _renderReclamoValidacion(data);
+  _renderReclamoAssets(data);
+  _applyReclamoDetailPermissions(data);
   document.getElementById('reclamoDetailCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+async function verReclamo(id) {
+  var data = await apiGet('/reclamos/' + id);
+  if (!data) return;
+  data = _normalizeReclamoDetail(data);
+  _reclamoActual = data;
+  _renderReclamoDetail(data);
 }
 
 function renderAcciones(acciones) {
@@ -5400,13 +5518,14 @@ function renderAcciones(acciones) {
     acciones.map(function(a) {
       var tColor = _recAccionTipoColors[a.tipo] || '#666';
       var eLabel = a.estado === 'completada' ? '✅' : a.estado === 'en_proceso' ? '🔄' : '⏳';
+      var canDeleteAction = typeof a.id === 'number';
       return '<tr style="border-bottom:1px solid #ffe0b2;">' +
         '<td style="padding:3px 6px;"><span style="color:' + tColor + '; font-weight:600; text-transform:capitalize; font-size:11px;">' + a.tipo + '</span></td>' +
         '<td style="padding:3px 6px;">' + a.descripcion + '</td>' +
         '<td style="padding:3px 6px; font-size:11px;">' + (a.responsable || '-') + '</td>' +
         '<td style="padding:3px 6px; font-size:11px;">' + (a.fecha_prevista || '-') + '</td>' +
         '<td style="padding:3px 6px; font-size:11px;">' + eLabel + ' ' + a.estado + '</td>' +
-        '<td style="padding:3px 4px;"><button class="secondary" style="font-size:10px; padding:1px 5px; color:#b42318;" onclick="eliminarAccion(' + a.id + ')">✕</button></td>' +
+        '<td style="padding:3px 4px;">' + (canDeleteAction ? '<button class="secondary" style="font-size:10px; padding:1px 5px; color:#b42318;" onclick="eliminarAccion(' + a.id + ')">✕</button>' : '') + '</td>' +
         '</tr>';
     }).join('') +
     '</table>';
@@ -5881,8 +6000,8 @@ async function refreshAccionesList() {
   
   try {
     var detail = await apiGet('/reclamos/' + _reclamoActual.id);
-    if (detail && detail.acciones) {
-      renderAcciones(detail.acciones);
+    if (detail) {
+      renderAcciones(_normalizeReclamoDetail(detail).acciones_normalized);
     }
   } catch (error) {
     console.error('Error al recargar acciones:', error);
@@ -6241,12 +6360,14 @@ var _presColors = ['#7B1FA2','#1565C0','#e53935','#ff9800','#2e7d32','#00897B','
 async function loadPresentaciones() {
   var data = await apiGet('/reclamos/para-presentar');
   if (!data) return;
-  _presData = data;
+  _presData = Object.assign({}, data, {
+    reclamos: (data.reclamos || []).map(_normalizeReclamoListItem)
+  });
 
   // Populate selector
   var sel = document.getElementById('presReclamoSelect');
   sel.innerHTML = '<option value="">— Seleccionar reclamo —</option>';
-  (data.reclamos || []).forEach(function(r) {
+  (_presData.reclamos || []).forEach(function(r) {
     var badge = r.presentacion_realizada ? '✅ ' : '⏳ ';
     var opt = document.createElement('option');
     opt.value = r.id;
@@ -6299,53 +6420,31 @@ function presNavNext() {
   if (sel.selectedIndex < sel.options.length - 1) { sel.selectedIndex++; seleccionarReclamoPres(); }
 }
 
-async function seleccionarReclamoPresLegacyImpl() {
-  var sel = document.getElementById('presReclamoSelect');
-  var id = parseInt(sel.value);
-  
-  var antDiv = document.getElementById('presAntecedentes');
-  var regCard = document.getElementById('presRegistroCard');
-  var yaPres = document.getElementById('presYaPresentado');
-  var imgRecDiv = document.getElementById('presImagenesReclamo');
-  var imgRespDiv = document.getElementById('presImagenesRespuesta');
-
-  if (!id || !_presData) {
-    antDiv.style.display = 'none';
-    regCard.style.display = 'none';
-    return;
-  }
-
-  var rec = _presData.reclamos.find(function(r) { return r.id === id; });
-  if (!rec) { antDiv.style.display = 'none'; regCard.style.display = 'none'; return; }
-
-  antDiv.style.display = '';
-
-  // Fill info header
-  document.getElementById('presCorrelativo').textContent = rec.correlativo || '#' + rec.id;
-  document.getElementById('presProyecto').textContent = rec.nombre_proyecto || '—';
-  document.getElementById('presCubicador').textContent = rec.cubicador_nombre || '—';
+function _renderPresentacionHeader(detail) {
+  document.getElementById('presCorrelativo').textContent = detail.correlativo || '#' + detail.id;
+  document.getElementById('presProyecto').textContent = detail.nombre_proyecto || '—';
+  document.getElementById('presCubicador').textContent = detail.cubicador_nombre || '—';
   var estadoLabels = {abierto:'Abierto', en_análisis:'En análisis', accion_correctiva:'Acción correctiva', validacion:'Validación', cerrado:'Cerrado', rechazado:'Rechazado'};
-  document.getElementById('presEstado').textContent = estadoLabels[rec.estado] || rec.estado;
+  document.getElementById('presEstado').textContent = estadoLabels[detail.estado] || detail.estado;
   var aplicaLabels = {si:'Sí aplica', no:'No aplica', pendiente:'Pendiente'};
   var aplicaEl = document.getElementById('presAplica');
-  aplicaEl.textContent = aplicaLabels[rec.aplica] || 'Pendiente';
-  aplicaEl.style.color = rec.aplica === 'si' ? '#2e7d32' : (rec.aplica === 'no' ? '#b42318' : '#e65100');
+  aplicaEl.textContent = aplicaLabels[detail.aplica] || 'Pendiente';
+  aplicaEl.style.color = detail.aplica === 'si' ? '#2e7d32' : (detail.aplica === 'no' ? '#b42318' : '#e65100');
+}
 
-  var detail = await apiGet('/reclamos/' + id);
-  if (!detail) return;
+function _renderPresentacionRegistro(detail) {
+  document.getElementById('presTitulo').textContent = detail.titulo || '—';
+  document.getElementById('presTipo').textContent = detail.tipo_reclamo || '—';
+  document.getElementById('presDetectado').textContent = detail.detectado_por || '—';
+  document.getElementById('presFecha').textContent = detail.fecha_deteccion_input || '—';
+  document.getElementById('presDescripcion').textContent = detail.descripcion || '—';
+  document.getElementById('presResponsable').textContent = detail.responsable || '—';
+  document.getElementById('presPrioridad').textContent = detail.prioridad || '—';
+  document.getElementById('presIdCalidad').textContent = detail.id_calidad || '—';
+  document.getElementById('presObservaciones').textContent = detail.observaciones || '—';
+}
 
-  // Red section
-  document.getElementById('presTitulo').textContent = detail.titulo || rec.titulo || '—';
-  document.getElementById('presTipo').textContent = detail.tipo_reclamo || rec.tipo_reclamo || '—';
-  document.getElementById('presDetectado').textContent = detail.detectado_por || rec.detectado_por || '—';
-  document.getElementById('presFecha').textContent = (detail.fecha_deteccion || rec.fecha_deteccion || '').replace('T', ' ').substring(0, 10);
-  document.getElementById('presDescripcion').textContent = detail.descripcion || rec.descripcion || '—';
-  document.getElementById('presResponsable').textContent = detail.responsable || rec.responsable || '—';
-  document.getElementById('presPrioridad').textContent = detail.prioridad || rec.prioridad || '—';
-  document.getElementById('presIdCalidad').textContent = detail.id_calidad || rec.id_calidad || '—';
-  document.getElementById('presObservaciones').textContent = detail.observaciones || rec.observaciones || '—';
-
-  // Blue form data (usando nombres correctos del backend)
+function _renderPresentacionAnalisis(detail) {
   console.log('[DEBUG] Datos formulario azul CORREGIDOS:', {
     explicacion_causa: detail.explicacion_causa,
     area_aplica: detail.area_aplica,
@@ -6354,65 +6453,68 @@ async function seleccionarReclamoPresLegacyImpl() {
     respuesta_por: detail.respuesta_por,
     respuesta_fecha: detail.respuesta_fecha
   });
-  
-  document.getElementById('presIshikawa').textContent = detail.explicacion_causa || '—';
+
+  document.getElementById('presIshikawa').textContent = detail.causa_display || '—';
   document.getElementById('presArea').textContent = detail.area_aplica || '—';
-  document.getElementById('presRespuesta').textContent = detail.respuesta_texto || '—';
-  document.getElementById('presFechaAnalisis').textContent = (detail.fecha_analisis || '').replace('T', ' ').substring(0, 19);
+  document.getElementById('presRespuesta').textContent = detail.respuesta_texto_display || '—';
+  document.getElementById('presFechaAnalisis').textContent = detail.fecha_analisis ? String(detail.fecha_analisis).replace('T', ' ').substring(0, 19) : '—';
   document.getElementById('presRespondidoPor').textContent = detail.respuesta_por || '—';
   document.getElementById('presFechaRespuesta').textContent = (detail.respuesta_fecha || '').replace('T', ' ').substring(0, 19);
+}
 
-  // Actions
+function _renderPresentacionAcciones(detail) {
   var accDiv = document.getElementById('presAcciones');
   accDiv.innerHTML = '';
-  if (detail.acciones && detail.acciones.length > 0) {
-    var tipoAccLabels = {inmediata:'Inmediata', correctiva:'Correctiva', preventiva:'Preventiva'};
-    detail.acciones.forEach(function(a) {
-      var row = document.createElement('div');
-      row.style.cssText = 'padding:4px 6px; background:#fff; border-radius:4px; margin-bottom:3px; display:flex; gap:6px; align-items:center;';
-      var badge = a.estado === 'completada' ? '✅' : '⏳';
-      row.innerHTML = badge + ' <strong>' + (tipoAccLabels[a.tipo] || a.tipo) + ':</strong> ' +
-        (a.descripcion || '') +
-        (a.responsable ? ' <span style="color:#666;">(' + a.responsable + ')</span>' : '');
-      accDiv.appendChild(row);
-    });
+  if (!detail.acciones_normalized || detail.acciones_normalized.length === 0) {
+    return;
   }
 
-  // Images - Usar nomenclatura original de la base de datos
+  var tipoAccLabels = {inmediata:'Inmediata', correctiva:'Correctiva', preventiva:'Preventiva'};
+  detail.acciones_normalized.forEach(function(a) {
+    var row = document.createElement('div');
+    row.style.cssText = 'padding:4px 6px; background:#fff; border-radius:4px; margin-bottom:3px; display:flex; gap:6px; align-items:center;';
+    var badge = a.estado === 'completada' ? '✅' : '⏳';
+    row.innerHTML = badge + ' <strong>' + (tipoAccLabels[a.tipo] || a.tipo) + ':</strong> ' +
+      (a.descripcion || '') +
+      (a.responsable ? ' <span style="color:#666;">(' + a.responsable + ')</span>' : '');
+    accDiv.appendChild(row);
+  });
+}
+
+function _renderPresentacionImagenes(detail) {
+  var imgRecDiv = document.getElementById('presImagenesReclamo');
+  var imgRespDiv = document.getElementById('presImagenesRespuesta');
   var imagenes = detail.imagenes || [];
-  console.log('[DEBUG] Imágenes encontradas:', imagenes.map(img => ({
-    id: img.id,
-    tipo: img.tipo,
-    filename: img.filename,
-    url: img.url
-  })));
-  
-  var imagenesRegistro = imagenes.filter(img => img.tipo === 'ImagenesRegistro');
-  var imagenesAnalisis = imagenes.filter(img => img.tipo === 'ImagenesAnalisis');
-  
+  var imagenesRegistro = detail.imagenes_antecedentes || [];
+  var imagenesAnalisis = detail.imagenes_respuesta || [];
+
+  console.log('[DEBUG] Imágenes encontradas:', imagenes.map(function(img) {
+    return { id: img.id, tipo: img.tipo, filename: img.filename, url: img.url };
+  }));
   console.log('[DEBUG] ImágenesRegistro (rojo):', imagenesRegistro.length);
   console.log('[DEBUG] ImágenesAnalisis (azul):', imagenesAnalisis.length);
 
-  // Clear containers
   if (imgRecDiv) imgRecDiv.innerHTML = '';
   if (imgRespDiv) imgRespDiv.innerHTML = '';
 
-  // Render images with delay to ensure DOM is ready
   setTimeout(function() {
     if (imagenesRegistro.length > 0) {
       imageRenderer.renderImageBar('presImagenesReclamo', imagenesRegistro, 'reclamo');
-    } else {
-      if (imgRecDiv) imgRecDiv.innerHTML = '<div style="padding:8px; text-align:center; color:#999; font-style:italic;">📷 Sin imágenes de registro</div>';
+    } else if (imgRecDiv) {
+      imgRecDiv.innerHTML = '<div style="padding:8px; text-align:center; color:#999; font-style:italic;">📷 Sin imágenes de registro</div>';
     }
-    
+
     if (imagenesAnalisis.length > 0) {
       imageRenderer.renderImageBar('presImagenesRespuesta', imagenesAnalisis, 'respuesta');
-    } else {
-      if (imgRespDiv) imgRespDiv.innerHTML = '<div style="padding:8px; text-align:center; color:#999; font-style:italic;">📷 Sin imágenes de análisis</div>';
+    } else if (imgRespDiv) {
+      imgRespDiv.innerHTML = '<div style="padding:8px; text-align:center; color:#999; font-style:italic;">📷 Sin imágenes de análisis</div>';
     }
   }, 200);
+}
 
-  // Show/hide registration form vs already presented
+function _renderPresentacionEstado(detail) {
+  var regCard = document.getElementById('presRegistroCard');
+  var yaPres = document.getElementById('presYaPresentado');
   if (detail.presentacion_realizada) {
     yaPres.style.display = '';
     regCard.style.display = 'none';
@@ -6432,6 +6534,38 @@ async function seleccionarReclamoPresLegacyImpl() {
     document.getElementById('presComentarios').value = '';
     document.getElementById('presGuardarMsg').textContent = '';
   }
+}
+
+function _renderPresentacionDetail(detail) {
+  document.getElementById('presAntecedentes').style.display = '';
+  _renderPresentacionHeader(detail);
+  _renderPresentacionRegistro(detail);
+  _renderPresentacionAnalisis(detail);
+  _renderPresentacionAcciones(detail);
+  _renderPresentacionImagenes(detail);
+  _renderPresentacionEstado(detail);
+}
+
+async function seleccionarReclamoPres() {
+  var sel = document.getElementById('presReclamoSelect');
+  var id = parseInt(sel.value);
+  
+  var antDiv = document.getElementById('presAntecedentes');
+  var regCard = document.getElementById('presRegistroCard');
+
+  if (!id || !_presData) {
+    antDiv.style.display = 'none';
+    regCard.style.display = 'none';
+    return;
+  }
+
+  var rec = _presData.reclamos.find(function(r) { return r.id === id; });
+  if (!rec) { antDiv.style.display = 'none'; regCard.style.display = 'none'; return; }
+
+  var detail = await apiGet('/reclamos/' + id);
+  if (!detail) return;
+  detail = _adaptLegacyPresentacionRecord(rec, _normalizeReclamoDetail(detail));
+  _renderPresentacionDetail(detail);
 }
 
 // Helper functions for image viewer (defined before renderImageBar)
@@ -6706,23 +6840,10 @@ class ReclamoPresenter {
   }
 }
 
-// Instancia global del presentador de reclamos (deferida hasta que DOM esté listo)
-var reclamoPresenter = null;
-
-// Inicializar clases cuando DOM esté listo
-document.addEventListener('DOMContentLoaded', function() {
-  if (!reclamoPresenter) {
-    reclamoPresenter = new ReclamoPresenter();
-    console.log('[ReclamoPresenter] Instanciado correctamente');
-  }
-});
+// La implementación activa de Presentaciones es seleccionarReclamoPres().
+// El presenter basado en clases queda inactivo hasta su extracción formal.
 
 // ========================= FUNCIONES LEGADO ACTUALIZADAS (FASE 8.1.2) =========================
-
-// Función legado para mantener compatibilidad
-function seleccionarReclamoPres() {
-  return seleccionarReclamoPresLegacyImpl();
-}
 
 // ========================= MÓDULO DOM HELPER (FASE 8.1.2.3) =========================
 
