@@ -12,6 +12,7 @@ from typing import Optional, List
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Form
 from fastapi.responses import Response
 from pydantic import BaseModel
+from psycopg.rows import dict_row
 
 from .auth import get_current_user
 from .db import get_conn, audit
@@ -121,6 +122,10 @@ TIPO_ACCION_LABELS = {
     "correctiva": "Correctiva",
     "preventiva": "Preventiva",
 }
+
+
+def _as_text(value):
+    return str(value) if value is not None else None
 
 
 # ========================= MODELS =========================
@@ -1126,25 +1131,13 @@ def get_reclamo_optimizado(
         return _get_from_cache(cache_key)
     
     with get_conn() as conn:
-        with conn.cursor() as cur:
+        with conn.cursor(row_factory=dict_row) as cur:
             # Query principal optimizado con LEFT JOINs
             cur.execute("""
                 SELECT 
-                    r.id, r.id_proyecto, r.titulo, r.descripcion, r.estado,
-                    r.prioridad, r.categoria_ishikawa, r.responsable,
-                    r.creado_por, r.fecha_creacion, r.fecha_actualizacion, r.fecha_cierre,
+                    r.*, 
                     COALESCE(p.nombre_proyecto, r.id_proyecto, 'Obra eliminada') AS nombre_proyecto,
-                    r.aplica, r.sub_causa, r.cod_causa, r.detectado_por, r.fecha_deteccion,
-                    r.explicacion_causa, r.observaciones,
-                    r.correlativo, r.id_calidad,
-                    r.tipo_reclamo, r.respuesta_texto, r.respuesta_fecha,
-                    r.respuesta_por, r.area_aplica, r.fecha_analisis,
-                    r.validacion_resultado, r.validacion_observaciones, r.validacion_fecha, r.validacion_por,
-                    r.kilos_mal_fabricados, r.tiempo_respuesta, r.tiempo_respuesta_unidad,
-                    r.tiempo_respuesta_actualizado_por, r.tiempo_respuesta_fecha_actualizacion,
-                    r.asignado_a, r.cubicador_asignado,
-                    r.presentacion_realizada, r.presentacion_fecha, r.presentacion_por,
-                    r.presentacion_asistentes, r.presentacion_comentarios
+                    p.nombre_proyecto AS nombre_proyecto_lookup
                 FROM reclamos r
                 LEFT JOIN proyectos p ON r.id_proyecto = p.id_proyecto
                 WHERE r.id = %s
@@ -1155,28 +1148,50 @@ def get_reclamo_optimizado(
 
             # Construir respuesta base
             response = {
-                "id": row[0], "id_proyecto": row[1], "titulo": row[2], "descripcion": row[3],
-                "estado": row[4], "prioridad": row[5], "categoria_ishikawa": row[6],
-                "responsable": row[7], "creado_por": row[8], "fecha_creacion": row[9],
-                "fecha_actualizacion": row[10], "fecha_cierre": row[11], "nombre_proyecto": row[12],
-                "aplica": row[13], "sub_causa": row[14], "cod_causa": row[15],
-                "detectado_por": row[16], "fecha_deteccion": row[17],
-                "explicacion_causa": row[18], "observaciones": row[19],
-                "correlativo": row[20], "id_calidad": row[21],
-                "tipo_reclamo": row[22], "respuesta_texto": row[23],
-                "respuesta_fecha": str(row[24]) if row[24] else None,
-                "respuesta_por": row[25], "area_aplica": row[26],
-                "fecha_analisis": str(row[27]) if row[27] else None,
-                "validacion_resultado": row[28], "validacion_observaciones": row[29],
-                "validacion_fecha": str(row[30]) if row[30] else None, "validacion_por": row[31],
-                "kilos_mal_fabricados": row[32], "tiempo_respuesta": row[33],
-                "tiempo_respuesta_unidad": row[34],
-                "tiempo_respuesta_actualizado_por": row[35],
-                "tiempo_respuesta_fecha_actualizacion": str(row[36]) if row[36] else None,
-                "asignado_a": row[37], "cubicador_asignado": row[38],
-                "presentacion_realizada": row[39],
-                "presentacion_fecha": str(row[40]) if row[40] else None, "presentacion_por": row[41],
-                "presentacion_asistentes": row[42], "presentacion_comentarios": row[43]
+                "id": row.get("id"),
+                "id_proyecto": row.get("id_proyecto"),
+                "titulo": row.get("titulo"),
+                "descripcion": row.get("descripcion"),
+                "estado": row.get("estado"),
+                "prioridad": row.get("prioridad"),
+                "categoria_ishikawa": row.get("categoria_ishikawa"),
+                "responsable": row.get("responsable"),
+                "creado_por": row.get("creado_por"),
+                "fecha_creacion": _as_text(row.get("fecha_creacion")),
+                "fecha_actualizacion": _as_text(row.get("fecha_actualizacion")),
+                "fecha_cierre": _as_text(row.get("fecha_cierre")),
+                "nombre_proyecto": row.get("nombre_proyecto") or row.get("nombre_proyecto_lookup") or row.get("id_proyecto") or "Obra eliminada",
+                "aplica": row.get("aplica"),
+                "sub_causa": row.get("sub_causa"),
+                "cod_causa": row.get("cod_causa"),
+                "detectado_por": row.get("detectado_por"),
+                "fecha_deteccion": _as_text(row.get("fecha_deteccion")),
+                "explicacion_causa": row.get("explicacion_causa"),
+                "observaciones": row.get("observaciones"),
+                "correlativo": row.get("correlativo"),
+                "id_calidad": row.get("id_calidad"),
+                "tipo_reclamo": row.get("tipo_reclamo"),
+                "respuesta_texto": row.get("respuesta_texto"),
+                "respuesta_fecha": _as_text(row.get("respuesta_fecha")),
+                "respuesta_por": row.get("respuesta_por"),
+                "area_aplica": row.get("area_aplica"),
+                "fecha_analisis": _as_text(row.get("fecha_analisis")),
+                "validacion_resultado": row.get("validacion_resultado"),
+                "validacion_observaciones": row.get("validacion_observaciones"),
+                "validacion_fecha": _as_text(row.get("validacion_fecha")),
+                "validacion_por": row.get("validacion_por"),
+                "kilos_mal_fabricados": row.get("kilos_mal_fabricados"),
+                "tiempo_respuesta": row.get("tiempo_respuesta"),
+                "tiempo_respuesta_unidad": row.get("tiempo_respuesta_unidad"),
+                "tiempo_respuesta_actualizado_por": row.get("tiempo_respuesta_actualizado_por"),
+                "tiempo_respuesta_fecha_actualizacion": _as_text(row.get("tiempo_respuesta_fecha_actualizacion")),
+                "asignado_a": row.get("asignado_a"),
+                "cubicador_asignado": row.get("cubicador_asignado"),
+                "presentacion_realizada": row.get("presentacion_realizada"),
+                "presentacion_fecha": _as_text(row.get("presentacion_fecha")),
+                "presentacion_por": row.get("presentacion_por"),
+                "presentacion_asistentes": row.get("presentacion_asistentes"),
+                "presentacion_comentarios": row.get("presentacion_comentarios"),
             }
 
             # Agregar seguimientos si se solicitan
@@ -1188,8 +1203,14 @@ def get_reclamo_optimizado(
                 """, (reclamo_id,))
                 seguimientos = cur.fetchall()
                 response["seguimientos"] = [
-                    {"id": s[0], "usuario": s[1], "comentario": s[2],
-                     "estado_anterior": s[3], "estado_nuevo": s[4], "fecha": s[5]}
+                    {
+                        "id": s.get("id"),
+                        "usuario": s.get("usuario"),
+                        "comentario": s.get("comentario"),
+                        "estado_anterior": s.get("estado_anterior"),
+                        "estado_nuevo": s.get("estado_nuevo"),
+                        "fecha": _as_text(s.get("fecha")),
+                    }
                     for s in seguimientos
                 ]
             else:
@@ -1205,9 +1226,17 @@ def get_reclamo_optimizado(
                 """, (reclamo_id,))
                 acciones = cur.fetchall()
                 response["acciones"] = [
-                    {"id": a[0], "tipo": a[1], "descripcion": a[2], "responsable": a[3],
-                     "fecha_prevista": a[4], "fecha_completada": a[5], "estado": a[6],
-                     "creado_por": a[7], "fecha_creacion": a[8]}
+                    {
+                        "id": a.get("id"),
+                        "tipo": a.get("tipo"),
+                        "descripcion": a.get("descripcion"),
+                        "responsable": a.get("responsable"),
+                        "fecha_prevista": _as_text(a.get("fecha_prevista")),
+                        "fecha_completada": _as_text(a.get("fecha_completada")),
+                        "estado": a.get("estado"),
+                        "creado_por": a.get("creado_por"),
+                        "fecha_creacion": _as_text(a.get("fecha_creacion")),
+                    }
                     for a in acciones
                 ]
             else:
@@ -1223,15 +1252,15 @@ def get_reclamo_optimizado(
                 imagenes = cur.fetchall()
                 response["imagenes"] = [
                     {
-                        "id": img[0], 
-                        "filename": img[1], 
-                        "content_type": img[2],
-                        "descripcion": img[3], 
-                        "subido_por": img[4], 
-                        "fecha": img[5],
-                        "fecha_subida": img[5],
-                        "tipo": img[6] if len(img) > 6 else "ImagenesRegistro",
-                        "url": f"/reclamos/{reclamo_id}/imagenes/{img[0]}",
+                        "id": img.get("id"),
+                        "filename": img.get("filename"),
+                        "content_type": img.get("content_type"),
+                        "descripcion": img.get("descripcion"),
+                        "subido_por": img.get("subido_por"),
+                        "fecha": _as_text(img.get("fecha")),
+                        "fecha_subida": _as_text(img.get("fecha")),
+                        "tipo": img.get("tipo") or "ImagenesRegistro",
+                        "url": f"/reclamos/{reclamo_id}/imagenes/{img.get('id')}",
                         "size_preview": "thumbnail"  # Indicador para frontend
                     }
                     for img in imagenes

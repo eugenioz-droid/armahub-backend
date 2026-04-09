@@ -52,7 +52,9 @@ async function apiGet(url) {
   
   let data = null;
   try { data = await res.json(); } catch (e) {
-    console.error("JSON parse error:", e);
+    let rawText = '';
+    try { rawText = await res.text(); } catch (_) {}
+    console.error("JSON parse error:", e, "url:", url, "status:", res.status, "raw:", rawText ? rawText.slice(0, 300) : '(sin body)');
     await setGlobalStatus("Error: respuesta inválida", "err");
     return null;
   }
@@ -6295,7 +6297,7 @@ function presNavNext() {
   if (sel.selectedIndex < sel.options.length - 1) { sel.selectedIndex++; seleccionarReclamoPres(); }
 }
 
-async function seleccionarReclamoPres() {
+async function seleccionarReclamoPresLegacyImpl() {
   var sel = document.getElementById('presReclamoSelect');
   var id = parseInt(sel.value);
   
@@ -6541,8 +6543,9 @@ class FormRenderer {
       document.getElementById('presYaPor').textContent = detail.presentacion_por || '—';
       
       var asistEmails = (detail.presentacion_asistentes || '').split(',').filter(Boolean);
+      var usuariosPresentacion = (_presData && Array.isArray(_presData.cubicadores)) ? _presData.cubicadores : [];
       var asistNames = asistEmails.map(function(email) {
-        var user = users.find(function(u) { return u.email === email; });
+        var user = usuariosPresentacion.find(function(u) { return u.email === email; });
         return user ? (user.nombre || user.email) : email;
       });
       document.getElementById('presYaAsistentes').textContent = asistNames.join(', ') || '—';
@@ -6716,11 +6719,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
 // Función legado para mantener compatibilidad
 function seleccionarReclamoPres() {
-  if (!reclamoPresenter) {
-    console.error('[seleccionarReclamoPres] ReclamoPresenter no está inicializado');
-    return;
-  }
-  return reclamoPresenter.seleccionarReclamoPres();
+  return seleccionarReclamoPresLegacyImpl();
 }
 
 // ========================= MÓDULO DOM HELPER (FASE 8.1.2.3) =========================
