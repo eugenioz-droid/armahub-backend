@@ -1278,12 +1278,12 @@ def get_reclamo_detail_legacy(reclamo_id: int, user=Depends(get_current_user)):
         "respuesta_fecha": str(row[31]) if row[31] else None,
         "respuesta_por": row[32] if row[32] else None,
         "validacion_resultado": row[33] if row[33] else None,
-        "validacion_observaciones": row[34],
+        "validacion_observaciones": row[34] if row[34] else None,
         "validacion_fecha": str(row[35]) if row[35] else None,
-        "validacion_por": row[36],
-        "kilos_mal_fabricados": row[37],
-        "asignado_a": row[38],
-        "cubicador_asignado": row[39],
+        "validacion_por": row[36] if row[36] else None,
+        "kilos_mal_fabricados": row[37] if row[37] else None,
+        "asignado_a": row[38] if row[38] else None,
+        "cubicador_asignado": row[39] if row[39] else None,
         "seguimientos": [
             {"id": s[0], "usuario": s[1], "comentario": s[2],
              "estado_anterior": s[3], "estado_nuevo": s[4], "fecha": s[5]}
