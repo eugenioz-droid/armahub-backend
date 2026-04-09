@@ -1,112 +1,324 @@
-# Análisis de Refactorización - ArmaHub
+# Plan de Refactorizacion Valido - ArmaHub
 
-## Estado Actual del Código
+## Objetivo
 
-| Archivos | Cant. líneas | Calidad |
-|----------|-------------|----------|
-| **app.js** | ~7,800 líneas | **PEOR** - Monolítico, duplicado, confuso |
-| **reclamos.py** | ~1,600 líneas | **MAL** - Múltiples endpoints mezclados |
-| **main.py** | ~50 líneas | **BUENO** - Simple, limpio |
-| **auth.py** | ~200 líneas | **BUENO** - Funcional claro |
-| **barras.py** | ~800 líneas | **REGULAR** - Algo largo pero funcional |
-| **db.py** | ~400 líneas | **BUENO** - Estructura clara |
-| **admin.py** | ~300 líneas | **BUENO** - Funciones específicas |
-| **importer.py** | ~600 líneas | **REGULAR** - Lógica compleja |
-| **ui.py** | ~100 líneas | **BUENO** - Simple |
+ArmaHub ya no es solo una app de cubicacion. Hoy es un portal con Hub, modulos separados por negocio y una proyeccion clara a nuevas calugas y miniaplicaciones. El refactor debe preparar esa expansion sin reescribir todo ni romper la operacion diaria.
 
-## Diagnóstico General
+La meta correcta no es partir app.js porque si. La meta es dejar una arquitectura donde:
 
-### **Problemas Críticos:**
-- **app.js**: 7,800 líneas en un solo archivo monolítico
-- **Código duplicado** y funciones sin uso
-- **Refactorización incompleta** que empeoró el código
-- **Mezcla de responsabilidades** en archivos grandes
-
-### **Áreas de Mejora:**
-- Frontend necesita separación modular
-- Reclamos.py tiene endpoints legacy mezclados
-- Falta de testing y documentación
+- el Hub actue como shell del portal
+- cada modulo tenga fronteras claras
+- el frontend pueda crecer por features independientes
+- el backend tenga un solo contrato por caso de uso
+- las capas legacy se reduzcan de forma controlada
 
 ---
 
-## Análisis Detallado: app.js
+## Estado Verificado del Repositorio
 
-### **ESTRUCTURA ACTUAL (7,800 líneas)**
+### Lo que ya esta bien
 
-| Estructura Actual | Líneas | Problemas Identificados |
-|------------------|--------|------------------------|
-| **Variables globales** | ~100 | Muchas variables sin organización |
-| **Funciones de utilidad** | ~500 | Mezcladas con lógica de negocio |
-| **Dashboard functions** | ~800 | Lógica compleja, sin separar |
-| **Barras management** | ~600 | CRUD mezclado con UI |
-| **Proyectos functions** | ~400 | Funciones duplicadas |
-| **Importer functions** | ~300 | Lógica de importación confusa |
-| **Auth functions** | ~200 | Bien organizado |
-| **UI components** | ~1,200 | HTML inline, sin separar |
-| **Event handlers** | ~800 | Muchos listeners globales |
-| **Reclamos functions** | ~1,500 | La parte más problemática |
-| **Image handling** | ~400 | Funciones duplicadas |
-| **Form handling** | ~300 | Sin validación centralizada |
-| **Modal functions** | ~200 | Múltiples modales mezclados |
-| **CSS inline** | ~1,000 | Estilos sin organizar |
+- El backend ya esta razonablemente separado por dominio en archivos como auth.py, barras.py, reclamos.py, admin.py, export.py y pedidos.py.
+- La UI ya no vive inline en ui.py. Hoy existe una base correcta con templates Jinja en templates/ y assets estaticos en static/.
+- El Hub y los tabs ya expresan una separacion funcional util para seguir creciendo.
 
-### **PROBLEMAS CRÍTICOS IDENTIFICADOS:**
-- **15+ implementaciones diferentes de formateo de fechas** (formatDate no existe)
-- **Funciones duplicadas** de manejo de imágenes
-- **Múltiples modales** mezclados sin organización
-- **Event handlers globales** sin modularizar
-- **HTML inline** mezclado con JavaScript
-- **CSS sin organizar** por componentes
+### Lo que hoy esta mal
+
+- app.js sigue siendo el cuello de botella principal. El archivo concentra shell, auth, landing, cubicacion, admin, reclamos, presentaciones, imagenes y compatibilidad legacy.
+- Hay refactor parcial incrustado dentro del mismo app.js. Eso dejo duplicacion de flujos y contratos mezclados.
+- Reclamos tiene deriva de contrato: endpoint canonico, endpoint legacy y frontend con nomenclaturas mezcladas.
+- Parte de la documentacion quedo atrasada y describe un sistema que ya no coincide con el repo real.
+
+### Conclusion tecnica
+
+La prioridad no es rehacer el backend completo. La prioridad es estabilizar contratos y extraer el frontend a una estructura orientada a portal y features.
 
 ---
 
-## Estructura Objetivo (Refactorización)
+## Principios del Refactor
 
-### **ESTRUCTURA FINAL (6,000 líneas totales)**
-
-| Archivo | Estado Actual | Estado Final | Líneas que se mueven |
-|---------|--------------|--------------|---------------------|
-| **app.js** | 7,800 líneas | 1,000 líneas | **6,800 líneas salen** |
-| **reclamos.js** | 0 líneas | 2,000 líneas | **2,000 líneas entran** |
-| **cubicaciones.js** | 0 líneas | 1,500 líneas | **1,500 líneas entran** |
-| **admin.js** | 0 líneas | 1,000 líneas | **1,000 líneas entran** |
-| **utils.js** | 0 líneas | 500 líneas | **500 líneas entran** |
-| **TOTAL** | **7,800 líneas** | **6,000 líneas** | **Reducción de 1,800 líneas** |
-
-### **¿Qué queda en app.js? (1,000 líneas)**
-- Configuración global (~200 líneas)
-- Login y autenticación (~300 líneas)
-- Eventos principales (~200 líneas)
-- Utilidades básicas (~150 líneas)
-- Carga de módulos (~150 líneas)
-
-### **¿Qué se mueve a otros archivos?**
-- **reclamos.js (2,000 líneas):** Todo el módulo de reclamos completo
-- **cubicaciones.js (1,500 líneas):** Todo el módulo de cubicaciones completo
-- **admin.js (1,000 líneas):** Toda la administración (usuarios, accesos, etc.)
-- **utils.js (500 líneas):** Funciones genuinamente compartidas
+1. Un caso de uso, un contrato.
+2. Un modulo dueno de cada feature.
+3. El shell del portal no contiene logica de negocio.
+4. Los helpers compartidos viven en shared, no repartidos por modulos.
+5. La compatibilidad legacy debe ser transitoria y explicita.
+6. No hacer big bang refactor. Solo extraccion incremental con sistema funcionando.
 
 ---
 
-## Resumen de la Conversación
+## Arquitectura Objetivo
 
-### **Decisiones Clave:**
-1. **NO crear clase Dashboard** - Over-engineering, cada módulo maneja sus dashboards
-2. **NO separar por página** - Agrupar por funcionalidad (reclamos completo en un archivo)
-3. **SÍ crear utils.js** - Para centralizar las 15+ implementaciones duplicadas de formatDate
-4. **SÍ reducir app.js** - Objetivo: de 7,800 a 1,000 líneas
+### 1. Shell del portal
 
-### **Principios Aplicados:**
-- **Cohesión funcional** - Lo relacionado junto
-- **Tamaño razonable** - 500-2,000 líneas por archivo
-- **Bajo acoplamiento** - Mínimas dependencias cruzadas
-- **Mantenibilidad** - Fácil de entender y modificar
+El Hub debe pasar a ser el contenedor principal del sistema. Su responsabilidad es minima:
+
+- bootstrap de sesion
+- registro de modulos y calugas
+- navegacion entre modulos
+- permisos de alto nivel
+- estado global liviano
+
+El shell no debe conocer reglas especificas de reclamos, exportacion o pedidos.
+
+### 2. Modulos de negocio
+
+Cada modulo debe encapsular sus pantallas, eventos, llamadas API y estado local:
+
+- Cubicacion
+- Reclamos
+- Administracion
+- Portal
+
+Cuando aparezcan nuevas calugas no relacionadas al acero, deben entrar como nuevos modulos del portal, no como bloques pegados dentro de app.js.
+
+### 3. Shared/Core
+
+Todo lo transversal debe extraerse a una capa comun:
+
+- cliente HTTP
+- auth y sesion
+- permisos
+- helpers DOM
+- formateo
+- modales
+- upload de archivos
+- componentes reusables simples
+
+### 4. Contratos backend
+
+En backend, cada feature debe tener un contrato canonico. Los endpoints legacy, si existen, deben delegar al contrato vigente. No deben mantener SQL propio porque eso genera drift.
 
 ---
 
-## Próximos Pasos
+## Estructura Objetivo Recomendada
 
-1. **Análisis detallado de reclamos.py** - Endpoints y organización
-2. **Validación del plan** - Antes de implementar
-3. **Refactorización incremental** - Módulo por módulo
-4. **Testing gradual** - Sin romper funcionalidad
+### Backend
+
+```text
+armahub/
+  main.py
+  auth.py
+  db.py
+  ui.py
+  modules/
+    cubicacion/
+      router.py
+      services.py
+      queries.py
+      schemas.py
+    reclamos/
+      router.py
+      services.py
+      queries.py
+      schemas.py
+    admin/
+      router.py
+      services.py
+      schemas.py
+    portal/
+      router.py
+      cards.py
+  shared/
+    permissions.py
+    responses.py
+    dates.py
+```
+
+Nota: no es obligatorio mover todo de inmediato a modules/. Hoy el backend ya esta usable. Este paso debe hacerse solo cuando cada dominio lo justifique.
+
+### Frontend
+
+```text
+armahub/static/js/
+  app/
+    bootstrap.js
+    shell.js
+    registry.js
+    state.js
+  shared/
+    api.js
+    auth.js
+    dom.js
+    dates.js
+    forms.js
+    uploads.js
+    modal.js
+    charts.js
+  features/
+    portal/
+      landing.js
+      cards.js
+      registry.js
+    cubicacion/
+      inicio.js
+      obras.js
+      bar_manager.js
+      dashboards.js
+      exportacion.js
+      pedidos.js
+    reclamos/
+      landing.js
+      list.js
+      detail.js
+      presentaciones.js
+      ishikawa.js
+      images.js
+    admin/
+      users.js
+      proyectos.js
+      constructoras.js
+      calculistas.js
+      audit.js
+  legacy/
+    compat.js
+```
+
+### Templates
+
+```text
+armahub/templates/
+  app.html
+  login.html
+  bootstrap.html
+  tabs/
+    inicio.html
+    obras.html
+    bar_manager.html
+    dashboards.html
+    pedidos.html
+    exportacion.html
+    reclamos.html
+    admin.html
+  components/
+    hub_card.html
+    modal_base.html
+    table_toolbar.html
+```
+
+---
+
+## Diseno para el Hub y las Futuras Calugas
+
+La estructura futura debe soportar que el landing tenga apps internas no necesariamente relacionadas con cubicacion.
+
+Por eso la unidad de crecimiento no debe ser un tab nuevo en app.js, sino una entrada de registro de modulo.
+
+### Registro de modulos propuesto
+
+Cada modulo debe declararse con:
+
+- id
+- label
+- icono
+- permisos requeridos
+- loader
+- punto de entrada UI
+- hooks opcionales de init y teardown
+
+Ejemplo conceptual:
+
+```js
+registerModule({
+  id: 'reclamos',
+  label: 'Reclamos',
+  roles: ['admin', 'admin2', 'cubicador', 'usc', 'externo'],
+  mount: mountReclamos,
+  unmount: unmountReclamos,
+});
+```
+
+Esto permite que manana exista una caluga nueva como Indicadores Comerciales, Control de Entregas o Gestion Documental sin tocar el codigo interno de Cubicacion o Reclamos.
+
+---
+
+## Orden de Extraccion Recomendado
+
+### Fase 0. Estabilizacion de contratos
+
+- Unificar reclamos sobre un endpoint canonico por detalle.
+- Eliminar SQL duplicado en rutas legacy.
+- Normalizar nombres de tipos de imagen y campos de fecha.
+- Invalidar cache cuando un reclamo cambia.
+
+### Fase 1. Extraer shared/core
+
+- api.js
+- auth.js
+- dom.js
+- dates.js
+- modal.js
+- uploads.js
+
+Resultado esperado:
+
+- app.js baja de tamano sin cambiar funcionalidad
+- se elimina duplicacion de utilidades
+
+### Fase 2. Crear shell del portal
+
+- bootstrap.js
+- shell.js
+- registry.js
+- state.js
+- registro de modulos y calugas
+
+Resultado esperado:
+
+- el Hub pasa a ser una plataforma de modulos
+
+### Fase 3. Extraer Reclamos
+
+Orden recomendado:
+
+- landing.js
+- list.js
+- detail.js
+- ishikawa.js
+- images.js
+- presentaciones.js
+
+Reclamos va primero porque hoy es el area con mas deriva entre frontend, backend y estado real.
+
+### Fase 4. Extraer Cubicacion y Admin
+
+- Cubicacion por submodulo, no como bloque unico
+- Admin por feature operativa, no como archivo generico gigante
+
+### Fase 5. Limpieza final
+
+- mover wrappers temporales a legacy/compat.js
+- eliminar paths legacy ya sin uso
+- actualizar documentacion tecnica
+- definir smoke tests minimos por modulo
+
+---
+
+## Que NO hacer
+
+- No reescribir toda la app en un framework nuevo sin necesidad.
+- No mover backend y frontend al mismo tiempo por dominio si no hay cobertura minima.
+- No mantener dos contratos vivos por feature con logicas distintas.
+- No seguir agregando features grandes dentro de app.js.
+- No mezclar nombres legacy y nombres nuevos en imagenes, estados o payloads.
+
+---
+
+## Definicion de Exito
+
+El refactor se considera bien encaminado cuando:
+
+- app.js deja de ser el lugar donde se agregan nuevas features
+- cada modulo nuevo entra por registro en el shell del portal
+- Reclamos deja de depender de rutas legacy con SQL duplicado
+- shared contiene los helpers transversales reales
+- roadmap y documentacion describen el repo real y no uno historico
+
+---
+
+## Prioridad Inmediata
+
+1. Estabilizar reclamos y presentaciones.
+2. Extraer shared/core.
+3. Disenar el registro de modulos del Hub.
+4. Sacar Reclamos completo de app.js.
+5. Luego extraer Cubicacion y Admin.

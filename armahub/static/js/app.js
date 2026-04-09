@@ -5290,8 +5290,12 @@ async function verReclamo(id) {
   renderAcciones(data.acciones || []);
 
   // Imagenes split by tipo
-  var imgAntecedentes = (data.imagenes || []).filter(function(i) { return i.tipo === 'antecedente' || !i.tipo; });
-  var imgRespuesta = (data.imagenes || []).filter(function(i) { return i.tipo === 'respuesta'; });
+  var imgAntecedentes = (data.imagenes || []).filter(function(i) {
+    return i.tipo === 'antecedente' || i.tipo === 'ImagenesRegistro' || !i.tipo;
+  });
+  var imgRespuesta = (data.imagenes || []).filter(function(i) {
+    return i.tipo === 'respuesta' || i.tipo === 'ImagenesAnalisis';
+  });
   renderImagenesEnContainer('recImagenesAntecedentes', imgAntecedentes);
   renderImagenesEnContainer('recImagenesRespuesta', imgRespuesta);
 
@@ -6598,7 +6602,7 @@ class ReclamoPresenter {
     this._showLoading();
 
     var self = this;
-    apiGet('/reclamos/' + recId + '/detail').then(function(detail) {
+    apiGet('/reclamos/' + recId).then(function(detail) {
       if (!detail) {
         self._showError('Error cargando detalles del reclamo');
         return;
