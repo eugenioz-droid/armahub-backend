@@ -14,11 +14,14 @@ Nota:
 """
 
 import os
+import logging
+import time
 from contextlib import contextmanager
 
 import psycopg
 
 _pool = None
+logger = logging.getLogger(__name__)
 
 
 def get_database_url() -> str:
@@ -584,15 +587,47 @@ def _create_indexes(cur) -> None:
     cur.execute("CREATE INDEX IF NOT EXISTS idx_imports_proyecto ON imports (id_proyecto)")
 
 
-def init_db() -> None:
-    """
-    Crea tablas base, ejecuta migraciones versionadas y crea índices.
-    """
+def _init_db_once() -> None:
     with get_conn() as conn:
         with conn.cursor() as cur:
             _create_base_tables(cur)
             _run_migrations(cur)
             _create_indexes(cur)
+
+
+def init_db() -> None:
+    """
+    Crea tablas base, ejecuta migraciones versionadas y crea índices.
+    Reintenta ante fallos transitorios de DNS/conectividad en Render.
+    """
+    max_attempts = max(1, int(os.getenv("DB_INIT_MAX_ATTEMPTS", "6")))
+    retry_seconds = max(1, int(os.getenv("DB_INIT_RETRY_SECONDS", "5")))
+    last_error = None
+
+    for attempt in range(1, max_attempts + 1):
+        try:
+            _init_db_once()
+            if attempt > 1:
+                logger.warning(
+                    "DB init se recupero en el intento %s/%s",
+                    attempt,
+                    max_attempts,
+                )
+            return
+        except Exception as exc:
+            last_error = exc
+            if attempt == max_attempts:
+                break
+            logger.warning(
+                "DB init fallo en intento %s/%s: %s. Reintentando en %s s",
+                attempt,
+                max_attempts,
+                exc,
+                retry_seconds,
+            )
+            time.sleep(retry_seconds)
+
+    raise last_error
 
 
 def reset_database(keep_users: bool = True) -> dict:
