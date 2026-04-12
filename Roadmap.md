@@ -57,23 +57,23 @@ Objetivo: eliminar duplicaciones y compatibilidades ocultas antes de extraer mod
 
 Objetivo: sacar de app.js todo lo transversal antes de extraer modulos.
 
-- [ ] C.1 Extraer cliente HTTP compartido
-- [ ] C.2 Extraer auth y sesion
-- [ ] C.3 Extraer helpers DOM
-- [ ] C.4 Extraer formateadores de fecha y numeros
-- [ ] C.5 Extraer modales, uploads e infraestructura de Chart.js
-- [ ] C.6 Dejar app.js solo como bootstrap temporal
+- [x] C.1 Extraer cliente HTTP compartido
+- [x] C.2 Extraer auth y sesion
+- [x] C.3 Extraer helpers DOM
+- [x] C.4 Extraer formateadores de fecha y numeros
+- [x] C.5 Extraer modales, uploads e infraestructura de Chart.js
+- [x] C.6 Dejar app.js solo como bootstrap temporal
 
 ### Fase D - Shell del portal y registro de calugas
 
 Objetivo: preparar ArmaHub para crecer como portal.
 
-- [ ] D.1 Crear app/bootstrap.js
-- [ ] D.2 Crear app/shell.js
-- [ ] D.3 Crear app/registry.js
-- [ ] D.4 Definir contrato de registro para modulos y calugas
-- [ ] D.5 Mover el Hub a un modelo de modulos registrados por permisos
-- [ ] D.6 Permitir nuevas calugas sin tocar logica interna de Cubicacion o Reclamos
+- [x] D.1 Crear app/bootstrap.js
+- [x] D.2 Crear app/shell.js
+- [x] D.3 Crear app/registry.js
+- [x] D.4 Definir contrato de registro para modulos y calugas
+- [x] D.5 Mover el Hub a un modelo de modulos registrados por permisos
+- [x] D.6 Permitir nuevas calugas sin tocar logica interna de Cubicacion o Reclamos
 
 ### Fase E - Extraccion por modulos
 
@@ -106,6 +106,7 @@ Objetivo: consolidar contratos y reducir drift.
 - [ ] PA.2 Rediseno de dashboards por rol
 - [ ] PA.3 Formalizar permisos por rol con un perfil supervisor o jefe
 - [ ] PA.4 Smoke tests minimos por modulo critico
+- [ ] PA.5 Ajustar flujo de validacion de reclamos: al rechazar, reabrir y devolver al analista para nueva respuesta
 
 ### Prioridad Media
 

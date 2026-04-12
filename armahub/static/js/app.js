@@ -1,11 +1,6 @@
 // ArmaHub — Main Application JavaScript
 // Extracted from ui.py for maintainability
 
-// Disable ChartDataLabels globally (enable per chart)
-if (typeof ChartDataLabels !== 'undefined') {
-  Chart.defaults.plugins.datalabels = { display: false };
-}
-
 // ========================= ESTILOS PARA LAZY LOADING =========================
 // Inyectar CSS para animación de loading
 if (!document.getElementById('lazyLoadingStyles')) {
@@ -18,91 +13,6 @@ if (!document.getElementById('lazyLoadingStyles')) {
     }
   `;
   document.head.appendChild(style);
-}
-
-// ========================= AUTH =========================
-function token() { return localStorage.getItem('armahub_token'); }
-function authHeaders() {
-  const t = token();
-  return t ? { "Authorization": "Bearer " + t } : {};
-}
-function logout() {
-  localStorage.removeItem('armahub_token');
-  window.location.href = '/ui/login';
-}
-
-async function cambiarMiClave() {
-  var currentPass = prompt('Contraseña actual:');
-  if (!currentPass) return;
-  var newPass = prompt('Nueva contraseña (mín. 6 caracteres):');
-  if (!newPass) return;
-  if (newPass.length < 6) { alert('La contraseña debe tener al menos 6 caracteres'); return; }
-  var confirmPass = prompt('Confirmar nueva contraseña:');
-  if (confirmPass !== newPass) { alert('Las contraseñas no coinciden'); return; }
-  var params = new URLSearchParams({ current_password: currentPass, new_password: newPass });
-  var res = await fetch('/me/password?' + params.toString(), { method: 'POST', headers: authHeaders() });
-  if (res.status === 401) { alert('Contraseña actual incorrecta'); return; }
-  var data = await res.json();
-  if (data.ok) { alert('Contraseña actualizada correctamente'); } else { alert('Error: ' + (data.detail || 'desconocido')); }
-}
-
-async function apiGet(url) {
-  const res = await fetch(url, { headers: authHeaders(), cache: 'no-store' });
-  if (res.status === 401) { logout(); return null; }
-  
-  let data = null;
-  try { data = await res.json(); } catch (e) {
-    let rawText = '';
-    try { rawText = await res.text(); } catch (_) {}
-    console.error("JSON parse error:", e, "url:", url, "status:", res.status, "raw:", rawText ? rawText.slice(0, 300) : '(sin body)');
-    await setGlobalStatus("Error: respuesta inválida", "err");
-    return null;
-  }
-  
-  if (!res.ok) {
-    const msg = data?.detail || data?.error || ("HTTP " + res.status);
-    console.error("API Error:", msg, data);
-    await setGlobalStatus("Error: " + msg, "err");
-    return null;
-  }
-  
-  return data;
-}
-
-async function apiPost(url, params) {
-  const res = await fetch(url + "?" + new URLSearchParams(params).toString(), {
-    method: 'POST',
-    headers: authHeaders()
-  });
-  if (res.status === 401) { logout(); return null; }
-  return { ok: res.ok, data: await res.json() };
-}
-
-async function apiPostFile(url, file) {
-  const form = new FormData();
-  form.append('file', file);
-  const res = await fetch(url, { method: 'POST', headers: authHeaders(), body: form });
-  if (res.status === 401) { logout(); return null; }
-  try {
-    return await res.json();
-  } catch (e) {
-    console.error("apiPostFile JSON parse error:", e, "status:", res.status);
-    return { ok: false, error: "Error del servidor (HTTP " + res.status + ")" };
-  }
-}
-
-async function apiPostJson(url, body) {
-  const h = authHeaders();
-  h['Content-Type'] = 'application/json';
-  const res = await fetch(url, { method: 'POST', headers: h, body: JSON.stringify(body) });
-  if (res.status === 401) { logout(); return null; }
-  return await res.json();
-}
-
-async function apiDelete(url) {
-  const res = await fetch(url, { method: 'DELETE', headers: authHeaders() });
-  if (res.status === 401) { logout(); return null; }
-  return await res.json();
 }
 
 // ========================= CALCULISTA SELECT HELPER =========================
@@ -175,8 +85,7 @@ async function openNewProjectModal(data) {
       _clientesCache.map(function(c) { return '<option value="' + c.id + '">' + c.nombre + '</option>'; }).join('');
   }
 
-  const modal = document.getElementById('newProjectModal');
-  modal.style.display = 'flex';
+  showModal('newProjectModal');
 
   return new Promise(resolve => { _newProjResolve = resolve; });
 }
@@ -186,7 +95,7 @@ function closeNewProjectModal(action) {
   if (action === 'assign') {
     var asigVal = document.getElementById('newProjAsignarA').value;
     if (!asigVal) { alert('Selecciona una obra para asignar'); return; }
-    document.getElementById('newProjectModal').style.display = 'none';
+    hideModal('newProjectModal');
     _newProjResolve({
       confirmed: true,
       assign_to: asigVal,
@@ -197,7 +106,7 @@ function closeNewProjectModal(action) {
     var nombre = document.getElementById('newProjNombre').value.trim();
     if (!nombre) { alert('Ingresa un nombre para el proyecto'); return; }
     syncCalcHidden('newProj');
-    document.getElementById('newProjectModal').style.display = 'none';
+    hideModal('newProjectModal');
     _newProjResolve({
       confirmed: true,
       calculista: document.getElementById('newProjCalculista').value.trim(),
@@ -207,7 +116,7 @@ function closeNewProjectModal(action) {
     });
     _newProjResolve = null;
   } else {
-    document.getElementById('newProjectModal').style.display = 'none';
+    hideModal('newProjectModal');
     _newProjResolve({ confirmed: false });
     _newProjResolve = null;
   }
@@ -255,20 +164,20 @@ async function openMissingProjectModal(data) {
       _clientesCache.map(function(c) { return '<option value="' + c.id + '">' + c.nombre + '</option>'; }).join('');
   }
 
-  document.getElementById('missingProjectModal').style.display = 'flex';
+  showModal('missingProjectModal');
   return new Promise(function(resolve) { _missProjResolve = resolve; });
 }
 
 function closeMissingProjectModal(action) {
-  document.getElementById('missingProjectModal').style.display = 'none';
+  hideModal('missingProjectModal');
   if (!_missProjResolve) return;
   if (action === 'existing') {
     var projId = document.getElementById('missProjExistente').value;
-    if (!projId) { alert('Selecciona un proyecto'); document.getElementById('missingProjectModal').style.display = 'flex'; return; }
+    if (!projId) { alert('Selecciona un proyecto'); showModal('missingProjectModal'); return; }
     _missProjResolve({ action: 'existing', proyecto_id: projId });
   } else if (action === 'new') {
     var nombre = document.getElementById('missProjNombre').value.trim();
-    if (!nombre) { alert('Ingresa un nombre para el proyecto'); document.getElementById('missingProjectModal').style.display = 'flex'; return; }
+    if (!nombre) { alert('Ingresa un nombre para el proyecto'); showModal('missingProjectModal'); return; }
     syncCalcHidden('missProj');
     _missProjResolve({
       action: 'new',
@@ -281,13 +190,6 @@ function closeMissingProjectModal(action) {
     _missProjResolve({ action: 'cancel' });
   }
   _missProjResolve = null;
-}
-
-// ========================= UI =========================
-async function setGlobalStatus(text, kind = 'info') {
-  const el = document.getElementById('globalStatus');
-  el.className = kind === 'ok' ? 'status-ok' : kind === 'err' ? 'status-err' : kind === 'warn' ? 'status-warn' : 'muted';
-  el.textContent = text || '';
 }
 
 // Typeahead filter: filters <select> options by text typed in a search input
@@ -311,124 +213,13 @@ function filterProjectSelect(inputId, selectId) {
   }
 }
 
-function switchTab(tabName) {
-  document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
-  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-  
-  document.getElementById('tab-' + tabName).classList.add('active');
-  // Find the button that triggered the switch
-  const btns = document.querySelectorAll('.tab-btn');
-  const tabLabels = { inicio:'Inicio', obras:'Obras', buscar:'Bar Manager', dashboards:'Dashboards', pedidos:'Pedidos', export:'Exportación', reclamos:'Reclamos', admin:'Admin' };
-  const label = tabLabels[tabName] || tabName;
-  btns.forEach(b => { if (b.textContent.includes(label)) b.classList.add('active'); });
-}
-
-let currentModule = 'hub';
-
-function switchModule(mod) {
-  const hub = document.getElementById('hubScreen');
-  const container = document.getElementById('moduleContainer');
-  const title = document.getElementById('moduleTitle');
-
-  if (mod === 'hub') {
-    // Back to Hub
-    container.style.display = 'none';
-    hub.style.display = 'block';
-    currentModule = 'hub';
-    loadLandingIndicadores();
-    return;
-  }
-
-  // Show module container, hide hub
-  hub.style.display = 'none';
-  container.style.display = 'block';
-  currentModule = mod;
-
-  // Module config: which tab buttons to show, default tab, title
-  const modules = {
-    cubicacion: { css: 'mod-cubicacion', defaultTab: 'inicio', title: 'Cubicación' },
-    reclamos:   { css: 'mod-reclamos',   defaultTab: 'reclamos', title: 'Reclamos' },
-    admin:      { css: 'mod-admin',      defaultTab: 'admin', title: 'Administración' },
-  };
-  const cfg = modules[mod];
-  if (!cfg) return;
-
-  title.textContent = cfg.title;
-
-  // Show only tab buttons for this module
-  document.querySelectorAll('.tab-btn').forEach(btn => {
-    if (btn.classList.contains(cfg.css)) {
-      btn.style.display = '';
-    } else {
-      btn.style.display = 'none';
-    }
-  });
-
-  // Apply role-based visibility within the module
-  if (mod === 'cubicacion') {
-    // Cliente: only inicio + dashboards
-    var clienteHideTabs = ['obras','buscar','pedidos','export'];
-    if (currentRole === 'cliente') {
-      document.querySelectorAll('.tab-btn.mod-cubicacion').forEach(btn => {
-        var onclick = btn.getAttribute('onclick') || '';
-        var match = onclick.match(/switchTab\('(\w+)'\)/);
-        if (match && clienteHideTabs.includes(match[1])) btn.style.display = 'none';
-      });
-    }
-  }
-  if (mod === 'reclamos') {
-    // Hide create card for roles that cannot create reclamos
-    var puedeCrear = ['admin','admin2','usc'].includes(currentRole);
-    var crearCard = document.getElementById('crearReclamoCard');
-    if (crearCard) crearCard.style.display = puedeCrear ? '' : 'none';
-    // USC: hide asignado_a dropdown (auto-assigned to self)
-    var asigCol = document.getElementById('recAsignadoA');
-    if (asigCol && asigCol.parentElement) {
-      asigCol.parentElement.style.display = (currentRole === 'admin' || currentRole === 'admin2') ? '' : 'none';
-    }
-  }
-  if (mod === 'admin') {
-    var esAdmin = (currentRole === 'admin');
-    // Coordinador: hide calculistas, data cleanup, DB state, DB reset
-    var hideForCoord = ['adminCalculistasCard','adminGestionDatosCard','adminEstadoBdCard','adminResetBdCard'];
-    hideForCoord.forEach(function(id) { var el = document.getElementById(id); if (el) el.style.display = esAdmin ? '' : 'none'; });
-    // Coordinador: restrict role dropdown to USC only
-    var roleSel = document.getElementById('newUserRole');
-    if (roleSel && !esAdmin) {
-      roleSel.innerHTML = '<option value="usc">USC</option>';
-    }
-  }
-
-  // Switch to default tab
-  switchTab(cfg.defaultTab);
-}
-
-// ========================= INIT =========================
-let currentRole = 'usc';
-let currentUserEmail = '';
-let currentUserName = '';
-
 async function loadMe() {
-  const me = await apiGet('/me');
+  const me = await loadCurrentSession();
   if (!me) return;
-  var displayName = ((me.nombre || '') + ' ' + (me.apellido || '')).trim();
-  document.getElementById('whoEmail').textContent = displayName || me.email;
-  document.getElementById('whoRole').textContent = "Rol: " + me.role;
-  localStorage.setItem('armahub_email', me.email);
-  currentRole = me.role || 'usc';
-  currentUserEmail = me.email || '';
-  currentUserName = displayName || me.email;
 
-  // --- Hub card visibility by role ---
-  const cubicacionAccess = ['admin','cubicador','cliente'];
-  const reclamosAccess = ['admin','admin2','cubicador','usc','externo'];
-  const adminAccess = ['admin','admin2'];
-  const hubCubicacion = document.getElementById('hubCardCubicacion');
-  const hubReclamos = document.getElementById('hubCardReclamos');
-  const hubAdmin = document.getElementById('hubCardAdmin');
-  if (hubCubicacion) hubCubicacion.style.display = cubicacionAccess.includes(currentRole) ? '' : 'none';
-  if (hubReclamos) hubReclamos.style.display = reclamosAccess.includes(currentRole) ? '' : 'none';
-  if (hubAdmin) hubAdmin.style.display = adminAccess.includes(currentRole) ? '' : 'none';
+  if (typeof window.renderHubModules === 'function') {
+    window.renderHubModules();
+  }
 
   // Show Hub screen
   document.getElementById('hubScreen').style.display = 'block';
@@ -439,6 +230,64 @@ async function loadMe() {
 
   // Load landing flash indicators
   loadLandingIndicadores();
+}
+
+async function loadCubicacionModule() {
+  await loadInicio();
+  await loadMiActividad();
+  await loadProyectos();
+  await loadClientes();
+  await loadCalculistas();
+
+  var saved = typeof restoreFiltersFromStorage === 'function' ? restoreFiltersFromStorage() : null;
+  var dep = {};
+  if (saved && saved.proyecto) {
+    dep.proyecto = saved.proyecto;
+  }
+  await loadFilters(Object.keys(dep).length ? dep : null);
+
+  if (saved) {
+    ['proyecto', 'plano', 'sector', 'piso', 'ciclo'].forEach(function(field) {
+      var element = document.getElementById(field);
+      if (element && saved[field]) {
+        element.value = saved[field];
+      }
+    });
+    if (saved.proyecto) {
+      await loadCargasDropdown(saved.proyecto);
+    }
+    if (saved.filtroCarga) {
+      var filtroCarga = document.getElementById('filtroCarga');
+      if (filtroCarga) {
+        filtroCarga.value = saved.filtroCarga;
+      }
+    }
+  }
+
+  await loadCargas();
+  await loadDashboard('sector');
+  await loadSectores();
+  await loadPedidos();
+  await buscar(true);
+}
+
+async function loadReclamosModule() {
+  await loadProyectos();
+  await loadRecUsersDropdown();
+  populateRecFilterProyecto();
+  await loadReclamos();
+  await loadRecLanding();
+  initRecImageDropZones();
+}
+
+async function loadAdminModule() {
+  await loadUsers();
+  await loadClientes();
+  await loadCalculistas();
+  await loadAdminProyectos();
+  await loadTableCounts();
+  await loadDbInfo();
+  await loadAuditLog();
 }
 
 // Store proyectos data globally for filtering
@@ -550,9 +399,9 @@ function renderProyectosTable(proyectos) {
     
     byYear[year].forEach(function(p) {
       var safeId = p.id_proyecto.replace(/[^a-zA-Z0-9_-]/g, '_');
-      var kilosStr = Math.round(p.total_kilos).toLocaleString();
-      var diamStr = p.diam_prom ? p.diam_prom.toFixed(1) : '-';
-      var ppiStr = p.ppi ? p.ppi.toFixed(1) : '-';
+      var kilosStr = formatInteger(p.total_kilos, '0');
+      var diamStr = p.diam_prom ? formatDecimal(p.diam_prom, 1, '-') : '-';
+      var ppiStr = p.ppi ? formatDecimal(p.ppi, 1, '-') : '-';
       
       html += '<tr class="proyecto-row" data-id="' + p.id_proyecto + '" style="border-bottom:1px solid #eee;">';
       html += '<td style="padding:6px; text-align:center; cursor:pointer;" onclick="toggleProyectoTree(\'' + safeId + '\')"><span id="arrow-' + safeId + '">▸</span></td>';
@@ -731,7 +580,7 @@ function goToBarManager(idProyecto, sector, piso, ciclo) {
 
 // Modal functions
 function openCrearObraModal() {
-  document.getElementById('crearObraModal').style.display = 'flex';
+  showModal('crearObraModal');
   document.getElementById('newObraName').value = '';
   document.getElementById('newObraDescripcion').value = '';
   document.getElementById('crearObraMsg').innerHTML = '';
@@ -740,11 +589,11 @@ function openCrearObraModal() {
 }
 
 function closeCrearObraModal() {
-  document.getElementById('crearObraModal').style.display = 'none';
+  hideModal('crearObraModal');
 }
 
 async function openInfoProyectoModal(idProyecto) {
-  document.getElementById('infoProyectoModal').style.display = 'flex';
+  showModal('infoProyectoModal');
   var content = document.getElementById('infoProyectoContent');
   content.innerHTML = '<div class="muted">Cargando...</div>';
   
@@ -763,12 +612,12 @@ async function openInfoProyectoModal(idProyecto) {
   
   var html = '<div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; font-size:13px;">';
   html += '<div><strong>ID Proyecto:</strong> ' + p.id_proyecto + '</div>';
-  html += '<div><strong>Kilos totales:</strong> ' + Math.round(p.total_kilos).toLocaleString() + ' kg</div>';
+  html += '<div><strong>Kilos totales:</strong> ' + formatKilos(p.total_kilos, 0, '-') + '</div>';
   html += '<div><strong>Barras totales:</strong> ' + p.total_barras.toLocaleString() + '</div>';
   html += '<div><strong>Diámetro promedio:</strong> ' + (p.diam_prom || '-') + ' mm</div>';
-  html += '<div><strong>PPI:</strong> ' + (p.ppi ? p.ppi.toFixed(2) : '-') + ' kg/barra</div>';
-  html += '<div><strong>Fecha creación:</strong> ' + (p.fecha_creacion ? p.fecha_creacion.substring(0, 10) : '-') + '</div>';
-  html += '<div><strong>Fecha inicio:</strong> ' + (p.fecha_inicio ? p.fecha_inicio.substring(0, 10) : '-') + '</div>';
+  html += '<div><strong>PPI:</strong> ' + (p.ppi ? formatDecimal(p.ppi, 2, '-') : '-') + ' kg/barra</div>';
+  html += '<div><strong>Fecha creación:</strong> ' + formatDateShort(p.fecha_creacion, '-') + '</div>';
+  html += '<div><strong>Fecha inicio:</strong> ' + formatDateShort(p.fecha_inicio, '-') + '</div>';
   html += '<div><strong>Creado por:</strong> ' + (p.usuario_creador || '-') + '</div>';
   html += '<div><strong>Calculista:</strong> ' + (p.calculista_nombre || '-') + '</div>';
   html += '<div><strong>Constructora:</strong> ' + (p.constructora_nombre || '-') + '</div>';
@@ -794,7 +643,7 @@ async function openInfoProyectoModal(idProyecto) {
 }
 
 function closeInfoProyectoModal() {
-  document.getElementById('infoProyectoModal').style.display = 'none';
+  hideModal('infoProyectoModal');
 }
 
 // ========================= ADMIN OBRAS =========================
@@ -1157,11 +1006,11 @@ async function openEditObraModal(idProyecto) {
   }
 
   await loadAutorizadosEditObra(idProyecto);
-  document.getElementById('editObraModal').style.display = 'flex';
+  showModal('editObraModal');
 }
 
 function closeEditObraModal() {
-  document.getElementById('editObraModal').style.display = 'none';
+  hideModal('editObraModal');
   _editObraCurrentId = null;
 }
 
@@ -1526,7 +1375,7 @@ function renderFileList() {
   el.innerHTML = pendingFiles.map((f, i) => `
     <div style="display:flex; align-items:center; gap:8px; padding:4px 8px; background:#f5f5f5; border-radius:4px; margin:4px 0; font-size:13px;">
       <span>📄 ${f.name}</span>
-      <span class="muted">(${(f.size/1024).toFixed(1)} KB)</span>
+      <span class="muted">(${formatFileSizeKb(f.size, 1, '0 KB')})</span>
       <button class="secondary" style="padding:2px 8px; font-size:11px;" onclick="removeFile(${i})">✕</button>
     </div>
   `).join('');
@@ -2579,9 +2428,7 @@ function _triggerDownload(blob, res) {
 let chart = null;
 
 function renderChart(labels, values, title) {
-  const ctx = document.getElementById('dashChart').getContext('2d');
-  if (chart) chart.destroy();
-  chart = new Chart(ctx, {
+  chart = replaceChart(chart, document.getElementById('dashChart'), {
     type: 'bar',
     data: { labels, datasets: [{ label: title, data: values, backgroundColor: '#8BC34A' }] },
     options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y' }
@@ -2639,7 +2486,7 @@ async function loadSectores() {
   if (!data.items || data.items.length === 0) {
     tbody.innerHTML = '<tr><td colspan="3" class="muted">Sin datos de sectores</td></tr>';
     totals.textContent = '';
-    if (sectoresChart) { sectoresChart.destroy(); sectoresChart = null; }
+    sectoresChart = destroyChart(sectoresChart);
     return;
   }
 
@@ -2662,9 +2509,7 @@ async function loadSectores() {
   const labels = data.items.map(i => i.sector_constructivo);
   const kilosData = data.items.map(i => i.kilos);
   const barrasData = data.items.map(i => i.barras);
-  const ctx = document.getElementById('sectoresChart').getContext('2d');
-  if (sectoresChart) sectoresChart.destroy();
-  sectoresChart = new Chart(ctx, {
+  sectoresChart = replaceChart(sectoresChart, document.getElementById('sectoresChart'), {
     type: 'bar',
     data: {
       labels,
@@ -2678,7 +2523,7 @@ async function loadSectores() {
       maintainAspectRatio: false,
       plugins: { legend: { position: 'top' } },
       scales: {
-        y: { type: 'linear', position: 'left', title: { display: true, text: 'Kilos' }, ticks: { callback: v => v.toLocaleString() } },
+        y: { type: 'linear', position: 'left', title: { display: true, text: 'Kilos' }, ticks: { callback: chartTickNumber } },
         y1: { type: 'linear', position: 'right', title: { display: true, text: 'Barras' }, grid: { drawOnChartArea: false } }
       }
     }
@@ -3065,9 +2910,7 @@ async function loadTimeline() {
   const kilosData = items.map(i => i.kilos);
   const barrasData = items.map(i => i.barras);
 
-  const ctx = document.getElementById('timelineChart').getContext('2d');
-  if (timelineChart) timelineChart.destroy();
-  timelineChart = new Chart(ctx, {
+  timelineChart = replaceChart(timelineChart, document.getElementById('timelineChart'), {
     type: 'bar',
     data: {
       labels,
@@ -3102,14 +2945,14 @@ async function loadTimeline() {
           type: 'linear',
           position: 'left',
           title: { display: true, text: 'Kilos', font: { size: 11 } },
-          ticks: { callback: v => Math.round(v).toLocaleString() }
+          ticks: { callback: chartTickNumber }
         },
         y1: {
           type: 'linear',
           position: 'right',
           title: { display: true, text: 'Barras', font: { size: 11 } },
           grid: { drawOnChartArea: false },
-          ticks: { callback: v => Math.round(v).toLocaleString() }
+          ticks: { callback: chartTickNumber }
         },
         x: { ticks: { font: { size: 10 }, maxRotation: 45 } }
       }
@@ -3244,9 +3087,7 @@ async function loadMiActividad() {
 
   const chartEl = document.getElementById('miActividadChart');
   if (!chartEl) return;
-  const ctx = chartEl.getContext('2d');
-  if (miActividadChart) miActividadChart.destroy();
-  miActividadChart = new Chart(ctx, {
+  miActividadChart = replaceChart(miActividadChart, chartEl, {
     type: 'bar',
     data: {
       labels,
@@ -3283,14 +3124,14 @@ async function loadMiActividad() {
         y: {
           type: 'linear', position: 'left',
           title: { display: false },
-          ticks: { font: { size: 9 }, callback: v => Math.round(v).toLocaleString() },
+          ticks: { font: { size: 9 }, callback: chartTickNumber },
           grid: { color: '#f0f0f0' }
         },
         y1: {
           type: 'linear', position: 'right',
           title: { display: false },
           grid: { drawOnChartArea: false },
-          ticks: { font: { size: 9 }, callback: v => Math.round(v).toLocaleString() }
+          ticks: { font: { size: 9 }, callback: chartTickNumber }
         },
         x: { ticks: { font: { size: 9 }, maxRotation: 45 } }
       }
@@ -4379,8 +4220,7 @@ const _recCatLabels = {
 };
 
 function _normalizeReclamoDateInputValue(value) {
-  if (!value) return '';
-  return String(value).replace('T', ' ').substring(0, 10);
+  return formatDateInput(value);
 }
 
 function _buildReclamoCausaDisplay(detail) {
@@ -4570,9 +4410,7 @@ async function loadRecLanding() {
   });
   var colors = estados.map(estado => _recEstadoColors[estado] || '#999');
   
-  var ctxRes = document.getElementById('recLandChartResueltos').getContext('2d');
-  if (_recLandChartResueltos) _recLandChartResueltos.destroy();
-  _recLandChartResueltos = new Chart(ctxRes, {
+  _recLandChartResueltos = replaceChart(_recLandChartResueltos, document.getElementById('recLandChartResueltos'), {
     type: 'doughnut',
     data: {
       labels: labels,
@@ -4625,9 +4463,7 @@ async function loadRecLanding() {
     anioMesData.forEach(function(d) { if (d.anio === anio) counts[d.mes - 1] = d.count; });
     return { label: '' + anio, data: counts, backgroundColor: _anioColores[idx % _anioColores.length], borderRadius: 2 };
   });
-  var ctxHist = document.getElementById('recLandChartHist').getContext('2d');
-  if (_recLandChartHist) _recLandChartHist.destroy();
-  _recLandChartHist = new Chart(ctxHist, {
+  _recLandChartHist = replaceChart(_recLandChartHist, document.getElementById('recLandChartHist'), {
     type: 'bar',
     data: { labels: _mesNombres, datasets: datasets },
     options: { responsive: true, maintainAspectRatio: false,
@@ -4679,9 +4515,7 @@ async function loadRecAdminDashboards() {
     anioMesData.forEach(function(d) { if (d.anio === anio) counts[d.mes - 1] = d.count; });
     return { label: '' + anio, data: counts, backgroundColor: _anioColores[idx % _anioColores.length], borderRadius: 2 };
   });
-  var ctxHist = document.getElementById('recDashChartHist').getContext('2d');
-  if (_recDashHist) _recDashHist.destroy();
-  _recDashHist = new Chart(ctxHist, {
+  _recDashHist = replaceChart(_recDashHist, document.getElementById('recDashChartHist'), {
     type: 'bar',
     data: { labels: _mesNombres, datasets: histDS },
     options: { responsive: true, maintainAspectRatio: false,
@@ -4704,9 +4538,7 @@ async function loadRecAdminDashboards() {
   });
   var colors = estados.map(estado => _recEstadoColors[estado] || '#999');
   
-  var ctxRes = document.getElementById('recDashChartResueltos').getContext('2d');
-  if (_recDashResueltos) _recDashResueltos.destroy();
-  _recDashResueltos = new Chart(ctxRes, {
+  _recDashResueltos = replaceChart(_recDashResueltos, document.getElementById('recDashChartResueltos'), {
     type: 'doughnut',
     data: {
       labels: labels,
@@ -4756,9 +4588,7 @@ async function loadRecAdminDashboards() {
   // Chart 3: Tipo Error/Faltante/Atraso/Actualización Portal
   var pt = data.por_tipo || {};
   var errC = pt.error || 0; var falC = pt.faltante || 0; var atrC = pt.atraso || 0; var actC = pt.actualizacion_portal || 0;
-  var ctxTipo = document.getElementById('recDashChartTipo').getContext('2d');
-  if (_recDashTipo) _recDashTipo.destroy();
-  _recDashTipo = new Chart(ctxTipo, {
+  _recDashTipo = replaceChart(_recDashTipo, document.getElementById('recDashChartTipo'), {
     type: 'doughnut',
     data: { labels: ['Error (' + errC + ')', 'Faltante (' + falC + ')', 'Atraso (' + atrC + ')', 'Actualización Portal (' + actC + ')'],
             datasets: [{ data: [errC, falC, atrC, actC], backgroundColor: ['#e53935','#ff9800','#7B1FA2','#00897B'] }] },
@@ -4772,10 +4602,9 @@ async function loadRecAdminDashboards() {
   var uscData = data.por_usc || [];
   var uscLabels = uscData.map(function(d) { return d.email.split('@')[0]; });
   var uscTotals = uscData.map(function(d) { return d.total; });
-  var ctxUSC = document.getElementById('recDashChartUSC').getContext('2d');
-  if (_recDashUSC) _recDashUSC.destroy();
+  _recDashUSC = destroyChart(_recDashUSC);
   if (uscData.length > 0) {
-    _recDashUSC = new Chart(ctxUSC, {
+    _recDashUSC = replaceChart(_recDashUSC, document.getElementById('recDashChartUSC'), {
       type: 'bar',
       data: { labels: uscLabels, datasets: [
         { label: 'Error', data: uscData.map(function(d) { return d.errores; }), backgroundColor: '#e53935' },
@@ -4790,19 +4619,18 @@ async function loadRecAdminDashboards() {
       plugins: [ChartDataLabels]
     });
   } else {
-    ctxUSC.canvas.parentElement.innerHTML = '<div class="muted" style="text-align:center; padding:40px 0; font-size:12px;">Sin datos USC aún</div>';
+    document.getElementById('recDashChartUSC').parentElement.innerHTML = '<div class="muted" style="text-align:center; padding:40px 0; font-size:12px;">Sin datos USC aún</div>';
   }
 
   // Chart 5: Por cubicador asignado (donut)
   var cubAsigData = data.por_cubicador_asignado || [];
-  var ctxCubAsig = document.getElementById('recDashChartCubAsig').getContext('2d');
-  if (_recDashCubAsig) _recDashCubAsig.destroy();
+  _recDashCubAsig = destroyChart(_recDashCubAsig);
   var cubAsigColors = ['#2e7d32','#1565C0','#ff9800','#e53935','#7B1FA2','#00897B','#795548','#607D8B'];
   var cubAsigLabels = cubAsigData.map(function(d, i) {
     var label = d.cubicador.includes('@') ? d.cubicador.split('@')[0] : d.cubicador;
     return label + ' (' + d.count + ')';
   });
-  _recDashCubAsig = new Chart(ctxCubAsig, {
+  _recDashCubAsig = replaceChart(_recDashCubAsig, document.getElementById('recDashChartCubAsig'), {
     type: 'doughnut',
     data: { labels: cubAsigLabels,
             datasets: [{ data: cubAsigData.map(function(d) { return d.count; }),
@@ -4815,13 +4643,12 @@ async function loadRecAdminDashboards() {
 
   // Chart 6: Causas Ishikawa global (donut)
   var ishData = data.ishikawa_global || [];
-  var ctxIsh = document.getElementById('recDashChartIshikawa').getContext('2d');
-  if (_recDashIshikawa) _recDashIshikawa.destroy();
+  _recDashIshikawa = destroyChart(_recDashIshikawa);
   if (ishData.length > 0) {
     var ishLabels = ishData.map(function(d) { return (_recCatLabels[d.categoria] || d.categoria) + ' (' + d.count + ')'; });
     var ishValues = ishData.map(function(d) { return d.count; });
     var ishColors = ishData.map(function(d) { return _recCatColors[d.categoria] || '#BDBDBD'; });
-    _recDashIshikawa = new Chart(ctxIsh, {
+    _recDashIshikawa = replaceChart(_recDashIshikawa, document.getElementById('recDashChartIshikawa'), {
       type: 'doughnut',
       data: { labels: ishLabels, datasets: [{ data: ishValues, backgroundColor: ishColors }] },
       options: { responsive: true, maintainAspectRatio: false,
@@ -4830,17 +4657,16 @@ async function loadRecAdminDashboards() {
       plugins: [ChartDataLabels]
     });
   } else {
-    ctxIsh.canvas.parentElement.innerHTML = '<div class="muted" style="text-align:center; padding:40px 0; font-size:12px;">Sin causas registradas</div>';
+    document.getElementById('recDashChartIshikawa').parentElement.innerHTML = '<div class="muted" style="text-align:center; padding:40px 0; font-size:12px;">Sin causas registradas</div>';
   }
 
   // Chart 7: Kilos mal fabricados por cubicador (horizontal bar)
   var kilosData = data.kilos_por_cubicador || [];
-  var ctxKilos = document.getElementById('recDashChartKilos').getContext('2d');
-  if (_recDashKilos) _recDashKilos.destroy();
+  _recDashKilos = destroyChart(_recDashKilos);
   if (kilosData.length > 0) {
     var kilosLabels = kilosData.map(function(d) { return d.cubicador.includes('@') ? d.cubicador.split('@')[0] : d.cubicador; });
     var kilosVals = kilosData.map(function(d) { return d.kilos; });
-    _recDashKilos = new Chart(ctxKilos, {
+    _recDashKilos = replaceChart(_recDashKilos, document.getElementById('recDashChartKilos'), {
       type: 'bar',
       data: { labels: kilosLabels, datasets: [{ label: 'Kilos', data: kilosVals, backgroundColor: '#e53935', borderRadius: 3 }] },
       options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y',
@@ -4850,21 +4676,21 @@ async function loadRecAdminDashboards() {
       plugins: [ChartDataLabels]
     });
   } else {
-    ctxKilos.canvas.parentElement.innerHTML = '<div class="muted" style="text-align:center; padding:40px 0; font-size:12px;">Sin kilos registrados</div>';
+    document.getElementById('recDashChartKilos').parentElement.innerHTML = '<div class="muted" style="text-align:center; padding:40px 0; font-size:12px;">Sin kilos registrados</div>';
   }
 
   // Chart 8: Reclamos por Proyecto (horizontal bar) - ALL projects
   var proyData = data.por_proyecto || [];
   var ctxProy = document.getElementById('recDashChartProyecto');
   if (ctxProy) {
-    if (_recDashProyecto) _recDashProyecto.destroy();
+    _recDashProyecto = destroyChart(_recDashProyecto);
     if (proyData.length > 0) {
       // Dynamic height: 25px per project, min 200px
       var chartHeight = Math.max(200, proyData.length * 25);
       ctxProy.parentElement.style.height = chartHeight + 'px';
       var proyLabels = proyData.map(function(d) { return d.proyecto.length > 25 ? d.proyecto.substring(0, 23) + '...' : d.proyecto; });
       var proyVals = proyData.map(function(d) { return d.count; });
-      _recDashProyecto = new Chart(ctxProy.getContext('2d'), {
+      _recDashProyecto = replaceChart(_recDashProyecto, ctxProy, {
         type: 'bar',
         data: { labels: proyLabels, datasets: [{ label: 'Reclamos', data: proyVals, backgroundColor: '#1565C0', borderRadius: 3 }] },
         options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y',
@@ -5298,7 +5124,7 @@ function _renderReclamoHeader(data) {
   if (data.correlativo && data.id_calidad) metaParts.push(data.correlativo);
   if (data.nombre_proyecto) metaParts.push('Proyecto: ' + data.nombre_proyecto);
   metaParts.push('Creado por: ' + data.creado_por);
-  if (data.fecha_creacion) metaParts.push(data.fecha_creacion.replace('T', ' ').substring(0, 19));
+  if (data.fecha_creacion) metaParts.push(formatDateTime(data.fecha_creacion, ''));
   if (data.responsable) metaParts.push('Responsable: ' + data.responsable);
   if (data.detectado_por) metaParts.push('Detectado por: ' + data.detectado_por);
   if (data.asignado_a) metaParts.push('Subido por: ' + data.asignado_a);
@@ -5322,9 +5148,9 @@ function _renderReclamoAntecedentes(data) {
   infoHtml += '<div><strong>Aplica:</strong> <span style="color:' + aplColor + '; font-weight:600;">' + (_recAplicaLabels[data.aplica] || 'Pendiente') + '</span></div>';
   if (data.detectado_por) infoHtml += '<div><strong>Detectado por:</strong> ' + data.detectado_por + '</div>';
   if (data.responsable) infoHtml += '<div><strong>Responsable:</strong> ' + data.responsable + '</div>';
-  if (data.kilos_mal_fabricados != null) infoHtml += '<div><strong>Kilos mal fabricados:</strong> <span style="color:#b42318; font-weight:600;">' + data.kilos_mal_fabricados.toLocaleString('es-CL', {minimumFractionDigits: 2}) + ' kg</span></div>';
-  if (data.fecha_deteccion) infoHtml += '<div><strong>F. Detección:</strong> ' + data.fecha_deteccion + '</div>';
-  if (data.fecha_cierre) infoHtml += '<div><strong>Cerrado:</strong> ' + data.fecha_cierre.replace('T', ' ').substring(0, 19) + '</div>';
+  if (data.kilos_mal_fabricados != null) infoHtml += '<div><strong>Kilos mal fabricados:</strong> <span style="color:#b42318; font-weight:600;">' + formatKilos(data.kilos_mal_fabricados, 2, '0 kg') + '</span></div>';
+  if (data.fecha_deteccion) infoHtml += '<div><strong>F. Detección:</strong> ' + formatDateShort(data.fecha_deteccion, '') + '</div>';
+  if (data.fecha_cierre) infoHtml += '<div><strong>Cerrado:</strong> ' + formatDateTime(data.fecha_cierre, '') + '</div>';
   infoHtml += '</div>';
   if (data.descripcion) infoHtml += '<div style="margin-top:6px; white-space:pre-wrap;">' + data.descripcion + '</div>';
   info.innerHTML = infoHtml;
@@ -5345,7 +5171,7 @@ function _renderReclamoRespuesta(data) {
   var respInfo = document.getElementById('recRespuestaInfo');
   if (data.respuesta_por) {
     respInfo.innerHTML = 'Respondido por: <strong>' + data.respuesta_por + '</strong>' +
-      (data.respuesta_fecha ? ' — ' + data.respuesta_fecha.replace('T', ' ').substring(0, 19) : '');
+      (data.respuesta_fecha ? ' — ' + formatDateTime(data.respuesta_fecha, '') : '');
   } else {
     respInfo.textContent = 'Sin respuesta aún';
   }
@@ -5378,7 +5204,7 @@ function _renderReclamoValidacion(data) {
       }
     }
     valInfo.innerHTML = 'Validado por: <strong>' + data.validacion_por + '</strong>' +
-      (data.validacion_fecha ? ' — ' + data.validacion_fecha.replace('T', ' ').substring(0, 19) : '') +
+      (data.validacion_fecha ? ' — ' + formatDateTime(data.validacion_fecha, '') : '') +
       ' — Resultado: <strong>' + valLabel + '</strong>' +
       tiempoInfo;
   } else {
@@ -5556,7 +5382,7 @@ function renderReclamoTimeline(seguimientos) {
     return;
   }
   container.innerHTML = seguimientos.map(function(s) {
-    var fecha = s.fecha ? s.fecha.replace('T', ' ').substring(0, 19) : '';
+    var fecha = formatDateTime(s.fecha, '');
     var estadoChange = '';
     if (s.estado_nuevo) {
       var fromLabel = _recEstadoLabels[s.estado_anterior] || s.estado_anterior || '?';
@@ -6050,83 +5876,43 @@ function limpiarFormularioAcciones() {
 var _recCreateStagedFiles = [];
 
 function _initDropZone(zoneId, fileInputId, onFiles) {
-  var zone = document.getElementById(zoneId);
-  var fileInput = document.getElementById(fileInputId);
-  if (!zone || !fileInput) return;
-
-  zone.addEventListener('dragover', function(e) {
-    e.preventDefault(); e.stopPropagation();
-    zone.style.borderColor = '#7b1fa2'; zone.style.background = '#f3e5f5';
-  });
-  zone.addEventListener('dragleave', function(e) {
-    e.preventDefault(); e.stopPropagation();
-    zone.style.borderColor = ''; zone.style.background = '';
-  });
-  zone.addEventListener('drop', function(e) {
-    e.preventDefault(); e.stopPropagation();
-    zone.style.borderColor = ''; zone.style.background = '';
-    var files = [];
-    if (e.dataTransfer && e.dataTransfer.files) {
-      for (var i = 0; i < e.dataTransfer.files.length; i++) {
-        if (e.dataTransfer.files[i].type.startsWith('image/')) files.push(e.dataTransfer.files[i]);
-      }
+  return bindDropZone(zoneId, fileInputId, onFiles, {
+    fileFilter: function(file) {
+      return !!(file && file.type && file.type.startsWith('image/'));
     }
-    if (files.length) onFiles(files);
-  });
-  fileInput.addEventListener('change', function() {
-    var files = [];
-    for (var i = 0; i < fileInput.files.length; i++) files.push(fileInput.files[i]);
-    fileInput.value = '';
-    if (files.length) onFiles(files);
   });
 }
 
 
 function _addCreatePreview(files) {
-  var preview = document.getElementById('recCreatePreview');
-  var dropMsg = document.getElementById('recCreateDropMsg');
-  if (!preview) return;
-  for (var i = 0; i < files.length; i++) {
-    _recCreateStagedFiles.push(files[i]);
-    var idx = _recCreateStagedFiles.length - 1;
-    var wrap = document.createElement('div');
-    wrap.style.cssText = 'position:relative; display:inline-block;';
-    wrap.setAttribute('data-idx', idx);
-    var img = document.createElement('img');
-    img.style.cssText = 'width:70px; height:70px; object-fit:cover; border-radius:6px; border:1px solid #ddd;';
-    img.src = URL.createObjectURL(files[i]);
-    var btn = document.createElement('button');
-    btn.textContent = '✕';
-    btn.style.cssText = 'position:absolute; top:-4px; right:-4px; background:#e53935; color:#fff; border:none; border-radius:50%; width:18px; height:18px; font-size:11px; cursor:pointer; line-height:18px; padding:0;';
-    btn.setAttribute('data-idx', idx);
-    btn.onclick = function(ev) {
-      ev.stopPropagation();
-      var rmIdx = parseInt(this.getAttribute('data-idx'));
-      _recCreateStagedFiles[rmIdx] = null;
-      this.parentElement.remove();
-      var anyLeft = _recCreateStagedFiles.some(function(f) { return f !== null; });
-      if (!anyLeft) dropMsg.style.display = '';
-    };
-    wrap.appendChild(img); wrap.appendChild(btn);
-    preview.appendChild(wrap);
-  }
-  dropMsg.style.display = 'none';
+  appendImagePreviewItems(files, _recCreateStagedFiles, {
+    previewId: 'recCreatePreview',
+    emptyHintId: 'recCreateDropMsg'
+  });
 }
 
 async function _uploadFilesWithTipo(files, tipo, msgElId) {
   if (!_reclamoActual) return;
   var msg = document.getElementById(msgElId);
   if (msg) { msg.textContent = 'Subiendo ' + files.length + ' imagen(es)...'; msg.style.color = '#666'; }
-  for (var i = 0; i < files.length; i++) {
-    var formData = new FormData();
-    formData.append('file', files[i]);
-    formData.append('tipo', tipo);
-    var res = await fetch('/reclamos/' + _reclamoActual.id + '/imagenes', {
-      method: 'POST', headers: authHeaders(), body: formData
-    });
-    if (res.status === 401) { logout(); return; }
-    var data = await res.json();
-    if (!data.ok) { if (msg) { msg.textContent = 'Error: ' + (data.detail || 'desconocido'); msg.style.color = '#b42318'; } return; }
+  var result = await uploadFilesSequentially(files, {
+    buildRequest: function(file) {
+      var formData = new FormData();
+      formData.append('file', file);
+      formData.append('tipo', tipo);
+      return {
+        url: '/reclamos/' + _reclamoActual.id + '/imagenes',
+        fetchOptions: { method: 'POST', headers: authHeaders(), body: formData }
+      };
+    },
+    onUnauthorized: logout
+  });
+  if (!result.ok) {
+    if (msg && !result.unauthorized) {
+      msg.textContent = 'Error: ' + (result.detail || 'desconocido');
+      msg.style.color = '#b42318';
+    }
+    return;
   }
   if (msg) { msg.textContent = files.length + ' imagen(es) subida(s)'; msg.style.color = '#558B2F'; setTimeout(function() { msg.textContent = ''; }, 3000); }
   await verReclamo(_reclamoActual.id);
@@ -6238,7 +6024,7 @@ async function abrirIshikawaModal(target) {
       '</div></div>';
   }).join('');
 
-  document.getElementById('ishikawaModal').style.display = '';
+  showModal('ishikawaModal', '');
 }
 
 function seleccionarIshikawa(radio) {
@@ -6277,79 +6063,17 @@ function confirmarIshikawa() {
 }
 
 function cerrarIshikawaModal() {
-  document.getElementById('ishikawaModal').style.display = 'none';
+  hideModal('ishikawaModal');
 }
 
 // ESC to close Ishikawa modal
 document.addEventListener('keydown', function(e) {
   if (e.key === 'Escape') {
-    var modal = document.getElementById('ishikawaModal');
-    if (modal && modal.style.display !== 'none') {
+    if (isModalOpen('ishikawaModal')) {
       cerrarIshikawaModal();
     }
   }
 });
-
-// ========================= INIT =========================
-// Track which modules have been loaded to avoid redundant fetches
-const _modulesLoaded = {};
-
-async function loadModuleData(mod) {
-  if (_modulesLoaded[mod]) return;
-  _modulesLoaded[mod] = true;
-
-  if (mod === 'cubicacion') {
-    await loadInicio();
-    await loadMiActividad();
-    await loadProyectos();
-    await loadClientes();
-    await loadCalculistas();
-
-    const saved = restoreFiltersFromStorage();
-    const dep = {};
-    if (saved && saved.proyecto) dep.proyecto = saved.proyecto;
-    await loadFilters(Object.keys(dep).length ? dep : null);
-    if (saved) {
-      ['proyecto','plano','sector','piso','ciclo'].forEach(f => {
-        const el = document.getElementById(f);
-        if (el && saved[f]) el.value = saved[f];
-      });
-      if (saved.proyecto) await loadCargasDropdown(saved.proyecto);
-      if (saved.filtroCarga) {
-        var fcEl = document.getElementById('filtroCarga');
-        if (fcEl) fcEl.value = saved.filtroCarga;
-      }
-    }
-
-    await loadCargas();
-    await loadDashboard('sector');
-    await loadSectores();
-    await loadPedidos();
-    await buscar(true);
-  } else if (mod === 'reclamos') {
-    await loadProyectos();
-    await loadRecUsersDropdown();
-    populateRecFilterProyecto();
-    await loadReclamos();
-    await loadRecLanding();
-    initRecImageDropZones();
-  } else if (mod === 'admin') {
-    await loadUsers();
-    await loadClientes();
-    await loadCalculistas();
-    await loadAdminProyectos();
-    await loadTableCounts();
-    await loadDbInfo();
-    await loadAuditLog();
-  }
-}
-
-// Override switchModule to also trigger lazy data loading
-const _origSwitchModule = switchModule;
-switchModule = function(mod) {
-  _origSwitchModule(mod);
-  if (mod !== 'hub') loadModuleData(mod);
-};
 
 // ========================= PRESENTACIONES =========================
 var _presData = null;
@@ -6457,9 +6181,9 @@ function _renderPresentacionAnalisis(detail) {
   document.getElementById('presIshikawa').textContent = detail.causa_display || '—';
   document.getElementById('presArea').textContent = detail.area_aplica || '—';
   document.getElementById('presRespuesta').textContent = detail.respuesta_texto_display || '—';
-  document.getElementById('presFechaAnalisis').textContent = detail.fecha_analisis ? String(detail.fecha_analisis).replace('T', ' ').substring(0, 19) : '—';
+  document.getElementById('presFechaAnalisis').textContent = formatDateTime(detail.fecha_analisis, '—');
   document.getElementById('presRespondidoPor').textContent = detail.respuesta_por || '—';
-  document.getElementById('presFechaRespuesta').textContent = (detail.respuesta_fecha || '').replace('T', ' ').substring(0, 19);
+  document.getElementById('presFechaRespuesta').textContent = formatDateTime(detail.respuesta_fecha, '—');
 }
 
 function _renderPresentacionAcciones(detail) {
@@ -6518,7 +6242,7 @@ function _renderPresentacionEstado(detail) {
   if (detail.presentacion_realizada) {
     yaPres.style.display = '';
     regCard.style.display = 'none';
-    document.getElementById('presYaFecha').textContent = detail.presentacion_fecha ? detail.presentacion_fecha.replace('T', ' ').substring(0, 19) : '—';
+    document.getElementById('presYaFecha').textContent = formatDateTime(detail.presentacion_fecha, '—');
     document.getElementById('presYaPor').textContent = detail.presentacion_por || '—';
     var asistEmails = (detail.presentacion_asistentes || '').split(',').filter(Boolean);
     var asistNames = asistEmails.map(function(e) {
@@ -6712,8 +6436,7 @@ class FormRenderer {
 
   // Formatear datetime
   _formatDateTime(dateStr) {
-    if (!dateStr) return '—';
-    return dateStr.replace('T', ' ').substring(0, 19);
+    return formatDateTime(dateStr, '—');
   }
 }
 
@@ -6845,150 +6568,6 @@ class ReclamoPresenter {
 
 // ========================= FUNCIONES LEGADO ACTUALIZADAS (FASE 8.1.2) =========================
 
-// ========================= MÓDULO DOM HELPER (FASE 8.1.2.3) =========================
-
-class DOMHelper {
-  constructor() {
-    this.cache = new Map(); // Cache de elementos
-  this.missingElements = new Set(); // Elementos que no existen
-  this.prefix = 'pres'; // Prefijo para elementos de presentaciones
-  this.elements = {
-      // Selectores principales
-      reclamoSelect: 'presReclamoSelect',
-      antecedentes: 'presAntecedentes',
-      registroCard: 'presRegistroCard',
-      yaPresentado: 'presYaPresentado',
-      
-      // Formulario de registro (rojo)
-      correlativo: 'presCorrelativo',
-      proyecto: 'presProyecto',
-      cubicador: 'presCubicador',
-      estado: 'presEstado',
-      aplica: 'presAplica',
-      titulo: 'presTitulo',
-      tipo: 'presTipo',
-      detectado: 'presDetectado',
-      fecha: 'presFecha',
-      descripcion: 'presDescripcion',
-      responsable: 'presResponsable',
-      prioridad: 'presPrioridad',
-      idCalidad: 'presIdCalidad',
-      observaciones: 'presObservaciones',
-      
-      // Formulario de análisis (azul)
-      ishikawa: 'presIshikawa',
-      area: 'presArea',
-      respuesta: 'presRespuesta',
-      fechaAnalisis: 'presFechaAnalisis',
-      respondidoPor: 'presRespondidoPor',
-      fechaRespuesta: 'presFechaRespuesta',
-      
-      // Imágenes
-      imagenesReclamo: 'presImagenesReclamo',
-      imagenesRespuesta: 'presImagenesRespuesta',
-      
-      // Estado de presentación
-      yaFecha: 'presYaFecha',
-      yaPor: 'presYaPor',
-      yaAsistentes: 'presYaAsistentes',
-      yaComentarios: 'presYaComentarios',
-      
-      // Formulario de presentación
-      asistentesCheckboxes: 'presAsistentesCheckboxes',
-      comentarios: 'presComentarios',
-      guardarBtn: 'presGuardarBtn',
-      guardarMsg: 'presGuardarMsg',
-      
-      // Acciones
-      acciones: 'presAcciones'
-  };
-  }
-
-  // Obtener elemento con cache y validación
-  get(elementKey) {
-    // Verificar si ya está en cache
-    if (this.cache.has(elementKey)) {
-      return this.cache.get(elementKey);
-    }
-
-    // Obtener ID del elemento
-    var elementId = this.elements[elementKey];
-    if (!elementId) {
-      console.warn('[DOMHelper] Elemento no definido:', elementKey);
-      return null;
-    }
-
-    // Obtener del DOM
-    var element = document.getElementById(elementId);
-    
-    // Validar y cache
-    if (element) {
-      this.cache.set(elementKey, element);
-      return element;
-    } else {
-      // Registrar elemento faltante solo una vez
-      if (!this.missingElements.has(elementKey)) {
-        console.warn('[DOMHelper] Elemento no encontrado en DOM:', elementId);
-        this.missingElements.add(elementKey);
-      }
-      return null;
-    }
-  }
-
-  // Mostrar/ocultar elemento
-  show(elementKey, display = 'block') {
-    var element = this.get(elementKey);
-    if (element) {
-      element.style.display = display;
-    }
-  }
-
-  hide(elementKey) {
-    var element = this.get(elementKey);
-    if (element) {
-      element.style.display = 'none';
-    }
-  }
-
-  // Establecer texto de elemento
-  setText(elementKey, text) {
-    var element = this.get(elementKey);
-    if (element) {
-      element.textContent = text;
-    }
-  }
-
-  // Establecer valor de input
-  setValue(elementKey, value) {
-    var element = this.get(elementKey);
-    if (element) {
-      element.value = value;
-    }
-  }
-
-  // Obtener valor de input
-  getValue(elementKey) {
-    var element = this.get(elementKey);
-    return element ? element.value : null;
-  }
-
-  // Limpiar cache (útil para debugging)
-  clearCache() {
-    this.cache.clear();
-    this.missingElements.clear();
-    console.log('[DOMHelper] Cache limpiado');
-  }
-
-  // Mostrar estado del cache (debugging)
-  debugCache() {
-    console.log('[DOMHelper] Cache:', Array.from(this.cache.keys()));
-    console.log('[DOMHelper] Elementos faltantes:', Array.from(this.missingElements));
-  }
-}
-
-// Instancia global del DOM helper
-var domHelper = new DOMHelper();
-
 // ========================= MÓDULO UTILIDADES (FASE 8.1.2.4) =========================
 
 class ReclamoUtils {
@@ -7000,14 +6579,12 @@ class ReclamoUtils {
 
   // Formatear fecha corta (YYYY-MM-DD)
   static formatDateShort(dateString) {
-    if (!dateString) return '';
-    return dateString.replace('T', ' ').substring(0, 10);
+    return formatDateShort(dateString, '');
   }
 
   // Formatear fecha completa (YYYY-MM-DD HH:MM:SS)
   static formatDateFull(dateString) {
-    if (!dateString) return '';
-    return dateString.replace('T', ' ').substring(0, 19);
+    return formatDateTime(dateString, '');
   }
 
   // Validar si existe valor
@@ -7231,11 +6808,9 @@ class ImageRenderer {
 
   // Abrir modal de imágenes (placeholder para futura implementación)
   openImageModal(images, startIndex) {
-    this.modalState.images = images || [];
-    this.modalState.currentIndex = startIndex || 0;
-    this.modalState.isOpen = true;
-    console.log('[ImageRenderer] Modal abierto con', images.length, 'imágenes');
-    // TODO: Implementar modal mejorado
+    openImageViewer(images, startIndex, {
+      getFileIcon: this._getFileIcon.bind(this)
+    });
   }
 }
 
@@ -7259,164 +6834,6 @@ function getFileIcon(filename) {
 
 function getFileTypeBadge(contentType) {
   return imageRenderer._getFileTypeBadge(contentType);
-}
-
-// Modal viewer implementation (legacy - mantener para compatibilidad)
-function renderImageModal() {
-  if (!_imageModalState.isOpen || !_imageModalState.images.length) return;
-
-  var modal = document.createElement('div');
-  modal.id = 'imageModal';
-  modal.style.cssText = 'position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.9); z-index:10000; display:flex; align-items:center; justify-content:center;';
-
-  var content = document.createElement('div');
-  content.style.cssText = 'position:relative; max-width:90%; max-height:90%; background:white; border-radius:8px; overflow:hidden;';
-
-  var closeBtn = document.createElement('button');
-  closeBtn.innerHTML = '✕';
-  closeBtn.style.cssText = 'position:absolute; top:10px; right:10px; background:rgba(0,0,0,0.5); color:white; border:none; border-radius:50%; width:30px; height:30px; cursor:pointer; font-size:16px; z-index:10001;';
-  closeBtn.onclick = function() { closeImageModal(); };
-
-  var prevBtn = document.createElement('button');
-  prevBtn.innerHTML = '‹';
-  prevBtn.style.cssText = 'position:absolute; left:10px; top:50%; transform:translateY(-50%); background:rgba(0,0,0,0.5); color:white; border:none; border-radius:50%; width:40px; height:40px; cursor:pointer; font-size:20px;';
-  prevBtn.onclick = function() { navigateModal(-1); };
-  if (_imageModalState.images.length <= 1) prevBtn.style.display = 'none';
-
-  var nextBtn = document.createElement('button');
-  nextBtn.innerHTML = '›';
-  nextBtn.style.cssText = 'position:absolute; right:10px; top:50%; transform:translateY(-50%); background:rgba(0,0,0,0.5); color:white; border:none; border-radius:50%; width:40px; height:40px; cursor:pointer; font-size:20px;';
-  nextBtn.onclick = function() { navigateModal(1); };
-  if (_imageModalState.images.length <= 1) nextBtn.style.display = 'none';
-
-  var fileContainer = document.createElement('div');
-  fileContainer.id = 'modalFileContainer';
-  fileContainer.style.cssText = 'width:100%; height:100%; display:flex; align-items:center; justify-content:center; min-height:400px;';
-
-  content.appendChild(closeBtn);
-  content.appendChild(prevBtn);
-  content.appendChild(nextBtn);
-  content.appendChild(fileContainer);
-  modal.appendChild(content);
-  document.body.appendChild(modal);
-
-  renderCurrentImage();
-
-  // Keyboard navigation
-  document.addEventListener('keydown', handleModalKeydown);
-}
-
-function renderCurrentImage() {
-  console.log('[renderCurrentImage] === MODAL VIEWER INICIANDO ===');
-  var container = document.getElementById('modalFileContainer');
-  if (!container) {
-    console.log('[renderCurrentImage] ❌ Contenedor modal no encontrado');
-    return;
-  }
-
-  var img = _imageModalState.images[_imageModalState.currentIndex];
-  console.log('[renderCurrentImage] Imagen actual:', img);
-  if (!img) {
-    console.log('[renderCurrentImage] ❌ Sin imagen en modal state');
-    return;
-  }
-
-  console.log('[renderCurrentImage] Datos de la imagen:', {
-    url: img.url,
-    content_type: img.content_type,
-    filename: img.filename,
-    currentIndex: _imageModalState.currentIndex,
-    totalImages: _imageModalState.images.length
-  });
-
-  // Agregar indicador de progreso
-  var progress = (_imageModalState.currentIndex + 1) + '/' + _imageModalState.images.length;
-  var progressHtml = '<div style="position:absolute; top:10px; right:10px; background:rgba(0,0,0,0.7); color:white; padding:4px 8px; border-radius:4px; font-size:12px; z-index:1000;">' + progress + '</div>';
-
-  // Clear container con loading y progreso
-  container.innerHTML = '<div style="display:flex; align-items:center; justify-content:center; height:100%; color:#666;">Cargando...</div>' + progressHtml;
-
-  // Preload siguiente y anterior imagen
-  _preloadAdjacentImages();
-
-  if (img.content_type && img.content_type.startsWith('image/')) {
-    console.log('[renderCurrentImage] Renderizando imagen con preload:', img.url);
-    
-    // Create image element con mejoras
-    var imgEl = new Image();
-    imgEl.style.cssText = 'max-width:100%; max-height:100%; object-fit:contain; cursor:zoom-in;';
-    imgEl.title = 'Zoom con rueda del mouse - Navegación con flechas - ESC para cerrar';
-    
-    // Agregar zoom con rueda
-    imgEl.addEventListener('wheel', function(e) {
-      e.preventDefault();
-      var delta = e.deltaY > 0 ? 0.9 : 1.1;
-      var currentScale = parseFloat(imgEl.style.transform.replace('scale(', '').replace(')', '') || 1);
-      var newScale = Math.min(Math.max(currentScale * delta, 0.5), 3);
-      imgEl.style.transform = 'scale(' + newScale + ')';
-      imgEl.style.cursor = newScale > 1 ? 'zoom-out' : 'zoom-in';
-    });
-    
-    imgEl.onload = function() {
-      console.log('[renderCurrentImage] ✅ Imagen cargada exitosamente:', img.url);
-      container.innerHTML = '';
-      container.appendChild(imgEl);
-      container.insertAdjacentHTML('beforeend', progressHtml);
-    };
-    
-    imgEl.onerror = function() {
-      console.error('[renderCurrentImage] ❌ Error cargando imagen:', img.url);
-      container.innerHTML = '<div style="text-align:center; padding:20px;"><div style="color:#b42318; font-size:16px; margin-bottom:10px;">❌ Error al cargar imagen</div><div style="font-size:12px; color:#666;">URL: ' + img.url + '</div><div style="margin-top:10px;"><a href="' + img.url + '" target="_blank" style="padding:8px 16px; background:#1976d2; color:white; text-decoration:none; border-radius:4px;">Abrir en nueva pestaña</a></div></div>' + progressHtml;
-    };
-    
-    imgEl.src = img.url;
-    
-  } else if (img.content_type === 'application/pdf') {
-    console.log('[renderCurrentImage] Renderizando PDF:', img.url);
-    container.innerHTML = '<iframe src="' + img.url + '" style="width:100%; height:100%; border:none;"></iframe>' + progressHtml;
-  } else {
-    console.log('[renderCurrentImage] Renderizando archivo:', img.filename);
-    container.innerHTML = '<div style="text-align:center; padding:20px;"><div style="font-size:48px; margin-bottom:10px;">' + getFileIcon(img.filename) + '</div><div>Archivo: ' + img.filename + '</div><a href="' + img.url + '" download style="display:inline-block; margin-top:10px; padding:8px 16px; background:#1976d2; color:white; text-decoration:none; border-radius:4px;">Descargar</a></div>' + progressHtml;
-  }
-}
-
-// Preload imágenes adyacentes para navegación fluida
-function _preloadAdjacentImages() {
-  var currentIndex = _imageModalState.currentIndex;
-  var images = _imageModalState.images;
-  
-  // Preload siguiente imagen
-  if (currentIndex < images.length - 1) {
-    var nextImg = new Image();
-    nextImg.src = images[currentIndex + 1].url;
-  }
-  
-  // Preload imagen anterior
-  if (currentIndex > 0) {
-    var prevImg = new Image();
-    prevImg.src = images[currentIndex - 1].url;
-  }
-}
-
-function navigateModal(direction) {
-  _imageModalState.currentIndex += direction;
-  if (_imageModalState.currentIndex < 0) _imageModalState.currentIndex = _imageModalState.images.length - 1;
-  if (_imageModalState.currentIndex >= _imageModalState.images.length) _imageModalState.currentIndex = 0;
-  renderCurrentImage();
-}
-
-function closeImageModal() {
-  var modal = document.getElementById('imageModal');
-  if (modal) modal.remove();
-  _imageModalState.isOpen = false;
-  document.removeEventListener('keydown', handleModalKeydown);
-}
-
-function handleModalKeydown(e) {
-  if (!_imageModalState.isOpen) return;
-  if (e.key === 'Escape') closeImageModal();
-  if (e.key === 'ArrowLeft') navigateModal(-1);
-  if (e.key === 'ArrowRight') navigateModal(1);
 }
 
 function openAddImageModal(type) {
@@ -7478,8 +6895,7 @@ async function loadPresStats() {
   var ppData = data.por_presentar_por_cubicador || [];
   var ctxPP = document.getElementById('presChartPorPresentar');
   if (ctxPP) {
-    if (_presChartPorPresentar) _presChartPorPresentar.destroy();
-    _presChartPorPresentar = new Chart(ctxPP.getContext('2d'), {
+    _presChartPorPresentar = replaceChart(_presChartPorPresentar, ctxPP, {
       type: 'bar',
       data: {
         labels: ppData.map(function(d) { return d.nombre; }),
@@ -7501,8 +6917,7 @@ async function loadPresStats() {
   var prData = data.presentados_por_cubicador || [];
   var ctxPR = document.getElementById('presChartPresentados');
   if (ctxPR) {
-    if (_presChartPresentados) _presChartPresentados.destroy();
-    _presChartPresentados = new Chart(ctxPR.getContext('2d'), {
+    _presChartPresentados = replaceChart(_presChartPresentados, ctxPR, {
       type: 'bar',
       data: {
         labels: prData.map(function(d) { return d.nombre; }),
@@ -7569,9 +6984,7 @@ async function loadLandingIndicadores() {
       }, 0);
       document.getElementById('hubCubicadoTotal').textContent = 'Total semana: ' + totalKilos.toLocaleString('es-CL', {maximumFractionDigits: 1}) + ' kg';
 
-      var ctxCub = document.getElementById('hubChartCubicado').getContext('2d');
-      if (_hubChartCubicado) _hubChartCubicado.destroy();
-      _hubChartCubicado = new Chart(ctxCub, {
+      _hubChartCubicado = replaceChart(_hubChartCubicado, document.getElementById('hubChartCubicado'), {
         type: 'bar',
         data: { labels: diasLabels, datasets: cubDS },
         options: {
@@ -7607,9 +7020,7 @@ async function loadLandingIndicadores() {
       }, 0);
       document.getElementById('hubReclamosTotal').textContent = 'Total semana: ' + totalRec + ' reclamos';
 
-      var ctxRec = document.getElementById('hubChartReclamos').getContext('2d');
-      if (_hubChartReclamos) _hubChartReclamos.destroy();
-      _hubChartReclamos = new Chart(ctxRec, {
+      _hubChartReclamos = replaceChart(_hubChartReclamos, document.getElementById('hubChartReclamos'), {
         type: 'bar',
         data: { labels: diasLabels, datasets: recDS },
         options: {
@@ -7647,318 +7058,8 @@ document.addEventListener('paste', function(e) {
   }
 }, true);
 
-// ========================= IMAGE MODAL VIEWER =========================
-
-// Global modal state
-var _imageModalState = {
-  images: [],
-  currentIndex: 0,
-  isOpen: false
-};
-
-// Open image modal viewer
-function openImageModal(images, startIndex) {
-  _imageModalState.images = images || [];
-  _imageModalState.currentIndex = startIndex || 0;
-  _imageModalState.isOpen = true;
-
-  if (!_imageModalState.images || _imageModalState.images.length === 0) return;
-
-  var modal = createImageModal();
-  document.body.appendChild(modal);
-  renderCurrentImage();
-
-  // Close on ESC
-  document.addEventListener('keydown', handleImageModalKeydown);
-}
-
-// Create modal DOM
-function createImageModal() {
-  var modal = document.createElement('div');
-  modal.id = 'imageModalViewer';
-  modal.style.cssText = `
-    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-    background: rgba(0,0,0,0.9); z-index: 10000;
-    display: flex; align-items: center; justify-content: center;
-    backdrop-filter: blur(5px);
-  `;
-
-  // Close overlay
-  modal.onclick = function(e) {
-    if (e.target === modal) closeImageModal();
-  };
-
-  // Main content container
-  var content = document.createElement('div');
-  content.style.cssText = `
-    position: relative; width: 90%; height: 90%; max-width: 1200px;
-    background: white; border-radius: 12px; overflow: hidden;
-    display: flex; flex-direction: column;
-  `;
-
-  // Header
-  var header = document.createElement('div');
-  header.style.cssText = `
-    display: flex; justify-content: space-between; align-items: center;
-    padding: 16px 20px; background: #f5f5f5; border-bottom: 1px solid #e0e0e0;
-  `;
-  header.onclick = function(e) { e.stopPropagation(); };
-
-  var title = document.createElement('div');
-  title.style.cssText = 'font-size: 16px; font-weight: 600; color: #333;';
-  header.appendChild(title);
-
-  var closeBtn = document.createElement('button');
-  closeBtn.innerHTML = '✕';
-  closeBtn.style.cssText = `
-    width: 32px; height: 32px; border: none; background: #f44336; color: white;
-    border-radius: 50%; cursor: pointer; font-size: 18px; font-weight: bold;
-  `;
-  closeBtn.onclick = closeImageModal;
-  header.appendChild(closeBtn);
-
-  // Main content area
-  var mainArea = document.createElement('div');
-  mainArea.style.cssText = `
-    flex: 1; display: flex; position: relative; overflow: hidden;
-  `;
-  mainArea.onclick = function(e) { e.stopPropagation(); };
-
-  // Image viewer
-  var viewer = document.createElement('div');
-  viewer.id = 'imageViewerContent';
-  viewer.style.cssText = `
-    flex: 1; display: flex; align-items: center; justify-content: center;
-    background: #fafafa; position: relative;
-  `;
-
-  // Navigation buttons
-  var prevBtn = document.createElement('button');
-  prevBtn.innerHTML = '‹';
-  prevBtn.style.cssText = `
-    position: absolute; left: 20px; top: 50%; transform: translateY(-50%);
-    width: 48px; height: 48px; border: none; background: rgba(0,0,0,0.7);
-    color: white; font-size: 24px; border-radius: 50%; cursor: pointer;
-    z-index: 1001; transition: all 0.2s;
-  `;
-  prevBtn.onmouseover = function() { this.style.background = 'rgba(0,0,0,0.9)'; };
-  prevBtn.onmouseout = function() { this.style.background = 'rgba(0,0,0,0.7)'; };
-  prevBtn.onclick = navigatePrevious;
-
-  var nextBtn = document.createElement('button');
-  nextBtn.innerHTML = '›';
-  nextBtn.style.cssText = `
-    position: absolute; right: 20px; top: 50%; transform: translateY(-50%);
-    width: 48px; height: 48px; border: none; background: rgba(0,0,0,0.7);
-    color: white; font-size: 24px; border-radius: 50%; cursor: pointer;
-    z-index: 1001; transition: all 0.2s;
-  `;
-  nextBtn.onmouseover = function() { this.style.background = 'rgba(0,0,0,0.9)'; };
-  nextBtn.onmouseout = function() { this.style.background = 'rgba(0,0,0,0.7)'; };
-  nextBtn.onclick = navigateNext;
-
-  // Info sidebar
-  var sidebar = document.createElement('div');
-  sidebar.style.cssText = `
-    width: 300px; background: white; border-left: 1px solid #e0e0e0;
-    padding: 20px; overflow-y: auto;
-  `;
-
-  // Footer with navigation
-  var footer = document.createElement('div');
-  footer.style.cssText = `
-    display: flex; justify-content: center; align-items: center;
-    padding: 12px; background: #f5f5f5; border-top: 1px solid #e0e0e0;
-    gap: 8px;
-  `;
-
-  // Assemble modal
-  viewer.appendChild(prevBtn);
-  viewer.appendChild(nextBtn);
-  mainArea.appendChild(viewer);
-  mainArea.appendChild(sidebar);
-  content.appendChild(header);
-  content.appendChild(mainArea);
-  content.appendChild(footer);
-  modal.appendChild(content);
-
-  return modal;
-}
-
-// Render current image in modal
-function renderCurrentImage() {
-  var state = _imageModalState;
-  if (!state.images || state.currentIndex >= state.images.length) return;
-
-  var image = state.images[state.currentIndex];
-  var viewer = document.getElementById('imageViewerContent');
-  var sidebar = viewer.parentElement.querySelector('div[style*="width: 300px"]');
-  var title = document.getElementById('imageModalViewer').querySelector('div[style*="font-size: 16px"]');
-  var footer = document.getElementById('imageModalViewer').querySelector('div[style*="justify-content: center"]');
-
-  // Update title
-  title.textContent = `${state.currentIndex + 1} / ${state.images.length} - ${image.filename || 'Archivo'}`;
-
-  // Clear viewer
-  viewer.innerHTML = '';
-  
-  // Re-add navigation buttons
-  var prevBtn = document.createElement('button');
-  prevBtn.innerHTML = '‹';
-  prevBtn.style.cssText = `
-    position: absolute; left: 20px; top: 50%; transform: translateY(-50%);
-    width: 48px; height: 48px; border: none; background: rgba(0,0,0,0.7);
-    color: white; font-size: 24px; border-radius: 50%; cursor: pointer;
-    z-index: 1001; transition: all 0.2s;
-  `;
-  prevBtn.onmouseover = function() { this.style.background = 'rgba(0,0,0,0.9)'; };
-  prevBtn.onmouseout = function() { this.style.background = 'rgba(0,0,0,0.7)'; };
-  prevBtn.onclick = navigatePrevious;
-
-  var nextBtn = document.createElement('button');
-  nextBtn.innerHTML = '›';
-  nextBtn.style.cssText = `
-    position: absolute; right: 20px; top: 50%; transform: translateY(-50%);
-    width: 48px; height: 48px; border: none; background: rgba(0,0,0,0.7);
-    color: white; font-size: 24px; border-radius: 50%; cursor: pointer;
-    z-index: 1001; transition: all 0.2s;
-  `;
-  nextBtn.onmouseover = function() { this.style.background = 'rgba(0,0,0,0.9)'; };
-  nextBtn.onmouseout = function() { this.style.background = 'rgba(0,0,0,0.7)'; };
-  nextBtn.onclick = navigateNext;
-
-  viewer.appendChild(prevBtn);
-  viewer.appendChild(nextBtn);
-
-  // Render content based on file type
-  if (image.content_type && image.content_type.startsWith('image/')) {
-    var img = document.createElement('img');
-    img.src = image.url;
-    img.style.cssText = 'max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 8px;';
-    viewer.appendChild(img);
-  } else if (image.content_type === 'application/pdf') {
-    var iframe = document.createElement('iframe');
-    iframe.src = image.url;
-    iframe.style.cssText = 'width: 100%; height: 100%; border: none; border-radius: 8px;';
-    viewer.appendChild(iframe);
-  } else {
-    // Non-viewable file
-    var fileDiv = document.createElement('div');
-    fileDiv.style.cssText = 'text-align: center; padding: 40px;';
-    fileDiv.innerHTML = `
-      <div style="font-size: 64px; margin-bottom: 16px;">${getFileIcon(image.filename)}</div>
-      <div style="font-size: 18px; font-weight: 600; margin-bottom: 8px;">${image.filename || 'Archivo'}</div>
-      <div style="color: #666; margin-bottom: 20px;">Tipo: ${image.content_type || 'Desconocido'}</div>
-      <button onclick="window.open('${image.url}', '_blank')" style="
-        padding: 10px 20px; background: #1976d2; color: white; border: none;
-        border-radius: 6px; cursor: pointer; font-size: 14px;
-      ">Descargar archivo</button>
-    `;
-    viewer.appendChild(fileDiv);
-  }
-
-  // Update sidebar
-  sidebar.innerHTML = `
-    <h4 style="margin: 0 0 16px 0; color: #333;">Información del archivo</h4>
-    <div style="margin-bottom: 12px;">
-      <strong>Nombre:</strong><br>
-      <span style="color: #666; word-break: break-all;">${image.filename || '—'}</span>
-    </div>
-    <div style="margin-bottom: 12px;">
-      <strong>Tipo:</strong><br>
-      <span style="color: #666;">${image.content_type || '—'}</span>
-    </div>
-    <div style="margin-bottom: 12px;">
-      <strong>Subido por:</strong><br>
-      <span style="color: #666;">${image.subido_por || '—'}</span>
-    </div>
-    <div style="margin-bottom: 12px;">
-      <strong>Fecha:</strong><br>
-      <span style="color: #666;">${image.fecha_subida ? new Date(image.fecha_subida).toLocaleString() : '—'}</span>
-    </div>
-    ${image.descripcion ? `
-    <div style="margin-bottom: 12px;">
-      <strong>Descripción:</strong><br>
-      <span style="color: #666;">${image.descripcion}</span>
-    </div>
-    ` : ''}
-    ${image.tipo ? `
-    <div style="margin-bottom: 12px;">
-      <strong>Categoría:</strong><br>
-      <span style="color: #666; background: #e3f2fd; padding: 2px 8px; border-radius: 4px; font-size: 12px;">
-        ${image.tipo === 'antecedente' ? '📋 Registro' : '💬 Análisis'}
-      </span>
-    </div>
-    ` : ''}
-  `;
-
-  // Update footer navigation
-  footer.innerHTML = '';
-  for (var i = 0; i < state.images.length; i++) {
-    var dot = document.createElement('button');
-    dot.style.cssText = `
-      width: 8px; height: 8px; border: none; border-radius: 50%;
-      background: ${i === state.currentIndex ? '#1976d2' : '#ccc'};
-      cursor: pointer; margin: 0 2px; transition: all 0.2s;
-    `;
-    dot.onclick = function(index) { return function() { navigateToImage(index); }; }(i);
-    footer.appendChild(dot);
-  }
-
-  // Show/hide navigation buttons
-  prevBtn.style.display = state.currentIndex > 0 ? 'block' : 'none';
-  nextBtn.style.display = state.currentIndex < state.images.length - 1 ? 'block' : 'none';
-}
-
-// Navigation functions
-function navigatePrevious() {
-  if (_imageModalState.currentIndex > 0) {
-    _imageModalState.currentIndex--;
-    renderCurrentImage();
-  }
-}
-
-function navigateNext() {
-  if (_imageModalState.currentIndex < _imageModalState.images.length - 1) {
-    _imageModalState.currentIndex++;
-    renderCurrentImage();
-  }
-}
-
-function navigateToImage(index) {
-  _imageModalState.currentIndex = index;
-  renderCurrentImage();
-}
-
-// Close modal
-function closeImageModal() {
-  var modal = document.getElementById('imageModalViewer');
-  if (modal) {
-    modal.remove();
-  }
-  _imageModalState.isOpen = false;
-  document.removeEventListener('keydown', handleImageModalKeydown);
-}
-
-// Keyboard navigation
-function handleImageModalKeydown(e) {
-  if (!_imageModalState.isOpen) return;
-  
-  switch(e.key) {
-    case 'Escape':
-      closeImageModal();
-      break;
-    case 'ArrowLeft':
-      navigatePrevious();
-      break;
-    case 'ArrowRight':
-      navigateNext();
-      break;
-  }
-}
-
 (async function init() {
-  if (!token()) { window.location.href = '/ui/login'; return; }
+  if (!ensureAuthenticatedSession()) return;
   await loadMe();
   
   // Restore tab from hash
