@@ -162,7 +162,7 @@ async function loadPresentaciones() {
   var data = await apiGet('/reclamos/para-presentar');
   if (!data) return;
   _presData = Object.assign({}, data, {
-    reclamos: (data.data || []).map(_normalizeReclamoListItem)
+    reclamos: (data.data || data.reclamos || []).map(_normalizeReclamoListItem)
   });
 
   var sel = document.getElementById('presReclamoSelect');
@@ -1432,7 +1432,7 @@ async function loadReclamos() {
     container.innerHTML = '<div class="muted">No fue posible cargar reclamos en este momento</div>';
     return;
   }
-  var reclamos = (data.data || []).map(_normalizeReclamoListItem);
+  var reclamos = (data.data || data.reclamos || []).map(_normalizeReclamoListItem);
   
   // Load USC users for assignment dropdowns
   await loadUsuariosUsc();
@@ -2192,12 +2192,13 @@ async function loadUsuariosUsc() {
   var res = await fetch('/reclamos/usuarios-usc', { headers: authHeaders() });
   if (res.status === 401) { logout(); return; }
   var data = await res.json();
+  var usuarios = data.data || data.usuarios || [];
   
   // Update creation form dropdown
   var createSelect = document.getElementById('recAsignadoA');
   if (createSelect) {
     createSelect.innerHTML = '<option value="">— Auto-asignar —</option>';
-    data.data.forEach(function(u) {
+    usuarios.forEach(function(u) {
       var opt = document.createElement('option');
       opt.value = u.email;
       opt.textContent = u.display;
@@ -2209,7 +2210,7 @@ async function loadUsuariosUsc() {
   var detailSelect = document.getElementById('recDetailAsignadoA');
   if (detailSelect) {
     detailSelect.innerHTML = '<option value="">— Sin asignar —</option>';
-    data.data.forEach(function(u) {
+    usuarios.forEach(function(u) {
       var opt = document.createElement('option');
       opt.value = u.email;
       opt.textContent = u.display;
@@ -2606,10 +2607,11 @@ async function abrirIshikawaModal(target) {
   if (!_ishikawaData) {
     _ishikawaData = await apiGet('/reclamos/ishikawa');
   }
-  if (!_ishikawaData || !_ishikawaData.data) return;
+  if (!_ishikawaData || !(_ishikawaData.data || _ishikawaData.categorias)) return;
+  var ishikawaCats = _ishikawaData.data || _ishikawaData.categorias;
 
   var grid = document.getElementById('ishikawaGrid');
-  grid.innerHTML = _ishikawaData.data.map(function(cat) {
+  grid.innerHTML = ishikawaCats.map(function(cat) {
     var color = _ishikawaCatColors[cat.key] || '#666';
     return '<div style="border:2px solid ' + color + '; border-radius:8px; overflow:hidden;">' +
       '<div style="background:' + color + '; color:#fff; padding:6px 10px; font-weight:600; font-size:13px;">' + cat.label + '</div>' +
