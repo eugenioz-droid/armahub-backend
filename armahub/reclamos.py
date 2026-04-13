@@ -295,7 +295,7 @@ def listar_reclamos(
             rows = cur.fetchall()
 
     return {
-        "reclamos": [
+        "data": [
             {
                 "id": r.get("id"), "id_proyecto": r.get("id_proyecto"), "titulo": r.get("titulo"), "descripcion": r.get("descripcion"),
                 "estado": r.get("estado"), "prioridad": r.get("prioridad"), "categoria_ishikawa": r.get("categoria_ishikawa"),
@@ -638,8 +638,8 @@ def reclamos_admin_dashboards(user=Depends(get_current_user)):
                 conn.rollback()
 
             # --- Por Estado (para gráfico de torta) ---
-            cur.execute("SELECT estado, COUNT(*) FROM reclamos GROUP BY estado")
-            por_estado = {r[0]: int(r[1]) for r in cur.fetchall()}
+            cur.execute("SELECT estado, COUNT(*) FROM reclamos GROUP BY estado ORDER BY 2 DESC")
+            por_estado = [{"estado": r[0], "count": int(r[1])} for r in cur.fetchall()]
 
     return {
         "total": total,
@@ -665,17 +665,18 @@ def reclamos_kpis(user=Depends(get_current_user)):
     """KPIs de reclamos: por estado, aplica/no aplica, categoría, sub-causas top, tiempo resolución."""
     with get_conn() as conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT estado, COUNT(*) FROM reclamos GROUP BY estado")
-            por_estado = {r[0]: int(r[1]) for r in cur.fetchall()}
+            cur.execute("SELECT estado, COUNT(*) FROM reclamos GROUP BY estado ORDER BY 2 DESC")
+            por_estado_raw = {r[0]: int(r[1]) for r in cur.fetchall()}
+            por_estado = [{"estado": k, "count": v} for k, v in por_estado_raw.items()]
 
             cur.execute("SELECT prioridad, COUNT(*) FROM reclamos WHERE estado NOT IN ('cerrado','rechazado') GROUP BY prioridad")
-            por_prioridad = {r[0]: int(r[1]) for r in cur.fetchall()}
+            por_prioridad = [{"prioridad": r[0], "count": int(r[1])} for r in cur.fetchall()]
 
             cur.execute("SELECT COALESCE(categoria_ishikawa,'sin_categoria'), COUNT(*) FROM reclamos GROUP BY categoria_ishikawa")
-            por_categoria = {r[0]: int(r[1]) for r in cur.fetchall()}
+            por_categoria = [{"categoria": r[0], "count": int(r[1])} for r in cur.fetchall()]
 
             cur.execute("SELECT COALESCE(aplica,'pendiente'), COUNT(*) FROM reclamos GROUP BY aplica")
-            por_aplica = {r[0]: int(r[1]) for r in cur.fetchall()}
+            por_aplica = [{"aplica": r[0], "count": int(r[1])} for r in cur.fetchall()]
 
             # Top 10 sub-causas más repetitivas
             cur.execute("""
@@ -698,7 +699,7 @@ def reclamos_kpis(user=Depends(get_current_user)):
             cur.execute("SELECT COUNT(*) FROM reclamos")
             total = int(cur.fetchone()[0])
 
-            abiertos = por_estado.get("abierto", 0) + por_estado.get("en_analisis", 0) + por_estado.get("accion_correctiva", 0)
+            abiertos = por_estado_raw.get("abierto", 0) + por_estado_raw.get("en_analisis", 0) + por_estado_raw.get("accion_correctiva", 0)
 
     return {
         "total": total,
@@ -811,50 +812,17 @@ def reclamos_dashboard(user=Depends(get_current_user)):
     }
 
 
-@router.get("/reclamos/options")
-def reclamos_options(user=Depends(get_current_user)):
-    """Devuelve opciones para dropdowns del formulario."""
-    return {
-        "estados": [{"value": k, "label": v} for k, v in ESTADO_LABELS.items()],
-        "prioridades": [{"value": k, "label": v} for k, v in PRIORIDAD_LABELS.items()],
-        "categorias_ishikawa": [{"value": k, "label": v} for k, v in ISHIKAWA_LABELS.items()],
-        "aplica_values": [{"value": k, "label": v} for k, v in APLICA_LABELS.items()],
-        "tipos_accion": [{"value": k, "label": v} for k, v in TIPO_ACCION_LABELS.items()],
-    }
-
-
 @router.get("/reclamos/ishikawa")
 def get_ishikawa(user=Depends(get_current_user)):
     """Devuelve el diagrama Ishikawa completo con categorías y sub-causas."""
     return {
-        "categorias": [
+        "data": [
             {
                 "key": k,
                 "label": ISHIKAWA_LABELS[k],
                 "subcausas": ISHIKAWA_SUBCAUSAS[k],
             }
             for k in CATEGORIAS_ISHIKAWA
-        ]
-    }
-
-
-@router.get("/reclamos/cubicadores")
-def get_cubicadores(user=Depends(get_current_user)):
-    """Lista de usuarios con rol cubicador para dropdown de asignación de responsabilidad."""
-    with get_conn() as conn:
-        with conn.cursor() as cur:
-            cur.execute("""
-                SELECT email, nombre, apellido
-                FROM users
-                WHERE role = 'cubicador' AND activo = TRUE
-                ORDER BY nombre, apellido, email
-            """)
-            rows = cur.fetchall()
-    return {
-        "cubicadores": [
-            {"email": r[0], "nombre": r[1], "apellido": r[2],
-             "display": ((r[1] or '') + ' ' + (r[2] or '')).strip() or r[0]}
-            for r in rows
         ]
     }
 
@@ -872,7 +840,7 @@ def get_usuarios_usc(user=Depends(get_current_user)):
             """)
             rows = cur.fetchall()
     return {
-        "usuarios": [
+        "data": [
             {"email": r[0], "nombre": r[1], "apellido": r[2],
              "display": ((r[1] or '') + ' ' + (r[2] or '')).strip() or r[0]}
             for r in rows
@@ -935,7 +903,7 @@ def reclamos_para_presentar(user=Depends(get_current_user)):
             cubicadores = cur.fetchall()
 
     return {
-        "reclamos": [
+        "data": [
             {
                 "id": r[0], "correlativo": r[1], "titulo": r[2], "descripcion": r[3],
                 "estado": r[4], "tipo_reclamo": r[5], "aplica": r[6],
@@ -1069,7 +1037,7 @@ def presentar_reclamo(reclamo_id: int, body: PresentarReclamoRequest, user=Depen
 
     _invalidate_reclamo_cache(reclamo_id)
     audit(email, "presentar_reclamo", f"Reclamo #{reclamo_id} presentado", "reclamo", str(reclamo_id))
-    return {"ok": True, "reclamo_id": reclamo_id}
+    return {"ok": True, "id": reclamo_id}
 
 
 # ========================= CACHE EN MEMORIA (FASE 8.2.1) =========================
@@ -1324,18 +1292,6 @@ def get_reclamo_optimizado(
         raise
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Error cargando detalle del reclamo: {exc}")
-
-
-@router.get("/reclamos/{reclamo_id}/detail")
-def get_reclamo_detail_legacy(reclamo_id: int, user=Depends(get_current_user)):
-    """Endpoint legacy delega al contrato canónico para evitar drift."""
-    return get_reclamo_optimizado(
-        reclamo_id,
-        user,
-        include_images=True,
-        include_seguimientos=True,
-        include_acciones=True,
-    )
 
 
 @router.patch("/reclamos/{reclamo_id}")
@@ -1605,7 +1561,7 @@ def eliminar_accion(reclamo_id: int, accion_id: int, user=Depends(get_current_us
                 raise HTTPException(status_code=404, detail="Acción no encontrada")
     _invalidate_reclamo_cache(reclamo_id)
     audit(email, "eliminar_accion_reclamo", str(accion_id), "reclamo", str(reclamo_id))
-    return {"ok": True}
+    return {"ok": True, "id": accion_id}
 
 
 # ========================= IMAGENES =========================
@@ -1688,4 +1644,4 @@ def eliminar_imagen(reclamo_id: int, imagen_id: int, user=Depends(get_current_us
                 raise HTTPException(status_code=404, detail="Imagen no encontrada")
     _invalidate_reclamo_cache(reclamo_id)
     audit(email, "eliminar_imagen_reclamo", str(imagen_id), "reclamo", str(reclamo_id))
-    return {"ok": True}
+    return {"ok": True, "id": imagen_id}

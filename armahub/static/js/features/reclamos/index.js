@@ -162,7 +162,7 @@ async function loadPresentaciones() {
   var data = await apiGet('/reclamos/para-presentar');
   if (!data) return;
   _presData = Object.assign({}, data, {
-    reclamos: (data.reclamos || []).map(_normalizeReclamoListItem)
+    reclamos: (data.data || []).map(_normalizeReclamoListItem)
   });
 
   var sel = document.getElementById('presReclamoSelect');
@@ -1100,17 +1100,20 @@ async function loadRecAdminDashboards() {
   });
 
   // Chart 2: Estados (reemplaza Resueltos vs No Resueltos)
-  var porEstado = data.por_estado || {};
-  var estados = Object.keys(porEstado);
-  var valores = Object.values(porEstado);
+  var porEstado = data.por_estado || [];
+  // Normalizar: si viene como dict legacy, convertir a array
+  if (!Array.isArray(porEstado)) {
+    porEstado = Object.keys(porEstado).map(function(k) { return {estado: k, count: porEstado[k]}; });
+  }
+  var estados = porEstado.map(function(item) { return item.estado; });
+  var valores = porEstado.map(function(item) { return item.count; });
   
   // Preparar datos para el gráfico de torta
-  var labels = estados.map(estado => {
-    var label = _recEstadoLabels[estado] || estado;
-    var count = porEstado[estado];
-    return `${label} (${count})`;
+  var labels = porEstado.map(function(item) {
+    var label = _recEstadoLabels[item.estado] || item.estado;
+    return `${label} (${item.count})`;
   });
-  var colors = estados.map(estado => _recEstadoColors[estado] || '#999');
+  var colors = estados.map(function(estado) { return _recEstadoColors[estado] || '#999'; });
   
   _recDashResueltos = replaceChart(_recDashResueltos, document.getElementById('recDashChartResueltos'), {
     type: 'doughnut',
@@ -1429,7 +1432,7 @@ async function loadReclamos() {
     container.innerHTML = '<div class="muted">No fue posible cargar reclamos en este momento</div>';
     return;
   }
-  var reclamos = (data.reclamos || []).map(_normalizeReclamoListItem);
+  var reclamos = (data.data || []).map(_normalizeReclamoListItem);
   
   // Load USC users for assignment dropdowns
   await loadUsuariosUsc();
@@ -2194,7 +2197,7 @@ async function loadUsuariosUsc() {
   var createSelect = document.getElementById('recAsignadoA');
   if (createSelect) {
     createSelect.innerHTML = '<option value="">— Auto-asignar —</option>';
-    data.usuarios.forEach(function(u) {
+    data.data.forEach(function(u) {
       var opt = document.createElement('option');
       opt.value = u.email;
       opt.textContent = u.display;
@@ -2206,7 +2209,7 @@ async function loadUsuariosUsc() {
   var detailSelect = document.getElementById('recDetailAsignadoA');
   if (detailSelect) {
     detailSelect.innerHTML = '<option value="">— Sin asignar —</option>';
-    data.usuarios.forEach(function(u) {
+    data.data.forEach(function(u) {
       var opt = document.createElement('option');
       opt.value = u.email;
       opt.textContent = u.display;
@@ -2603,10 +2606,10 @@ async function abrirIshikawaModal(target) {
   if (!_ishikawaData) {
     _ishikawaData = await apiGet('/reclamos/ishikawa');
   }
-  if (!_ishikawaData || !_ishikawaData.categorias) return;
+  if (!_ishikawaData || !_ishikawaData.data) return;
 
   var grid = document.getElementById('ishikawaGrid');
-  grid.innerHTML = _ishikawaData.categorias.map(function(cat) {
+  grid.innerHTML = _ishikawaData.data.map(function(cat) {
     var color = _ishikawaCatColors[cat.key] || '#666';
     return '<div style="border:2px solid ' + color + '; border-radius:8px; overflow:hidden;">' +
       '<div style="background:' + color + '; color:#fff; padding:6px 10px; font-weight:600; font-size:13px;">' + cat.label + '</div>' +

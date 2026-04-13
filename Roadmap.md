@@ -113,7 +113,16 @@ Objetivo: separar negocio por features reales.
 
 Objetivo: consolidar contratos y reducir drift.
 
-- [ ] F.1 Unificar respuestas por dominio en reclamos
+- [x] F.1 Unificar respuestas por dominio en reclamos
+	- [x] F.1.1 Unificar mutaciones: todas devuelven `{"ok", "id"}` (presentar, eliminar_accion, eliminar_imagen)
+	- [x] F.1.2 Eliminar endpoint legacy `GET /reclamos/{id}/detail` (alias puro sin consumidores)
+	- [x] F.1.3 Normalizar analytics: `por_estado`, `por_categoria`, `por_prioridad`, `por_aplica` → array `[{key, count}]` en admin-dashboards y kpis
+	- [x] F.1.4 Estandarizar envelope de listados (`{"data":[...]}`)
+		- [x] F.1.4a `GET /reclamos` → `{"data":[...]}` + adaptar loadReclamos
+		- [x] F.1.4b `GET /reclamos/usuarios-usc` → `{"data":[...]}` + adaptar loadUsuariosUsc
+		- [x] F.1.4c `GET /reclamos/ishikawa` → `{"data":[...]}` + adaptar consumidores
+		- [x] F.1.4d `GET /reclamos/para-presentar` → `{"data":[...], "cubicadores":[...]}` + adaptar loadPresentaciones
+		- [x] F.1.4e Eliminar endpoints muertos sin consumidores (`/reclamos/cubicadores`, `/reclamos/options`)
 - [ ] F.2 Mover logica pesada a servicios y queries donde valga la pena
 - [ ] F.3 Reducir rutas legacy con SQL propio
 - [ ] F.4 Definir helpers compartidos de permisos y respuestas
