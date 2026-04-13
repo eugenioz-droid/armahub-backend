@@ -79,12 +79,29 @@ Objetivo: preparar ArmaHub para crecer como portal.
 
 Objetivo: separar negocio por features reales.
 
-- [ ] E.1 Extraer Reclamos a features/reclamos/
-- [ ] E.2 Mantener images.js con separacion explicita entre ImagenesRegistro y ImagenesAnalisis
-- [ ] E.3 Extraer Portal a features/portal/
+- [x] E.1 Extraer Reclamos a features/reclamos/
+	- [x] E.1.1 Crear features/reclamos/index.js como punto de entrada del feature
+	- [x] E.1.2 Cargar el feature desde app/bootstrap.js con sincronizacion de readiness
+	- [x] E.1.3 Delegar loadReclamosModule y tabs al feature con fallback temporal
+	- [x] E.1.4 Mover estado y helpers base de Reclamos fuera de app.js
+	- [x] E.1.5 Mover Presentaciones y utilidades ligadas al feature
+	- [x] E.1.6 Limpiar app.js, dejar wrappers minimos y cerrar E.1
+		- [x] E.1.6a Mover funciones core de Reclamos al feature
+		- [x] E.1.6b Eliminar bloque RECLAMOS de app.js
+		- [x] E.1.6c Actualizar IIFE wrapper y eliminar legacy bridging
+- [x] E.2 Mantener images.js con separacion explicita entre ImagenesRegistro y ImagenesAnalisis
+	- Nota: ya cubierto por shared/uploads.js + shared/modals.js + normalizers en features/reclamos/index.js. No requiere archivo adicional.
+- [x] E.3 Extraer Portal a features/portal/
+	- [x] E.3.1 Crear features/portal/index.js (Inicio + Mi Actividad + Landing Indicadores)
+	- [x] E.3.2 Cargar portal en paralelo con reclamos desde bootstrap.js
+	- [x] E.3.3 Eliminar bloques INICIO, MI ACTIVIDAD y LANDING INDICADORES de app.js
 - [ ] E.4 Extraer Cubicacion por submodulos: inicio, obras, bar manager, dashboards, exportacion, pedidos
 - [ ] E.5 Extraer Admin por features: usuarios, proyectos, constructoras, calculistas, auditoria
 - [ ] E.6 Dejar legacy/compat.js para wrappers temporales
+- [ ] E.7 Corregir bugs de imagenes en Reclamos
+	- [ ] E.7.1 Presentaciones: click en thumbnail no abre viewer (ImageRenderer._openImageModal → openImageModal)
+	- [ ] E.7.2 Formulario registro: diagnosticar y corregir imagenes no visibles (initRecImageDropZones / bindDropZone)
+	- [ ] E.7.3 Evaluar unificar renderImagenesEnContainer con ImageRenderer.renderImageBar
 
 ### Fase F - Limpieza backend por contratos
 
