@@ -95,9 +95,15 @@ Objetivo: separar negocio por features reales.
 	- [x] E.3.1 Crear features/portal/index.js (Inicio + Mi Actividad + Landing Indicadores)
 	- [x] E.3.2 Cargar portal en paralelo con reclamos desde bootstrap.js
 	- [x] E.3.3 Eliminar bloques INICIO, MI ACTIVIDAD y LANDING INDICADORES de app.js
-- [ ] E.4 Extraer Cubicacion por submodulos: inicio, obras, bar manager, dashboards, exportacion, pedidos
-- [ ] E.5 Extraer Admin por features: usuarios, proyectos, constructoras, calculistas, auditoria
-- [ ] E.6 Dejar legacy/compat.js para wrappers temporales
+- [x] E.4 Extraer Cubicacion por submodulos: index, helpers, obras, filtros, import, barmanager, exportacion, dashboards, pedidos → 9 archivos en features/cubicacion/
+- [x] E.5 Extraer Admin por features: usuarios, proyectos, constructoras, calculistas, auditoria
+	- [x] E.5.1 Crear features/admin/ (3 archivos: index, entidades, proyectos)
+	- [x] E.5.2 Actualizar bootstrap.js para cargar scripts admin
+	- [x] E.5.3 Eliminar código extraído de app.js + validar errores
+- [x] E.6 Dejar legacy/compat.js para wrappers temporales
+	- [x] E.6.1 Crear legacy/compat.js (bridges: waitForReclamosFeatureReady, loadReclamosModule)
+	- [x] E.6.2 Actualizar bootstrap.js: cargar compat.js → app.js → features
+	- [x] E.6.3 Limpiar app.js: eliminar bridges, _proyectosData muerto, 30 comentarios de delegación (~75 líneas finales)
 - [ ] E.7 Corregir bugs de imagenes en Reclamos
 	- [ ] E.7.1 Presentaciones: click en thumbnail no abre viewer (ImageRenderer._openImageModal → openImageModal)
 	- [ ] E.7.2 Formulario registro: diagnosticar y corregir imagenes no visibles (initRecImageDropZones / bindDropZone)

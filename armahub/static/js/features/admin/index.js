@@ -1,0 +1,342 @@
+// ========================= ADMIN — Panel principal (E.5) =========================
+// loadAdminModule + DB/Tables + Usuarios + Auditoría
+
+async function loadAdminModule() {
+  await loadUsers();
+  await loadClientes();
+  await loadCalculistas();
+  await loadAdminProyectos();
+  await loadTableCounts();
+  await loadDbInfo();
+  await loadAuditLog();
+}
+
+// ========================= ADMIN: TABLAS / DB =========================
+const TABLE_LABELS = {
+  barras: 'Barras', imports: 'Importaciones', proyectos: 'Proyectos',
+  reclamos: 'Reclamos', calculistas: 'Calculistas', clientes: 'Constructoras',
+  pedidos: 'Pedidos', audit_log: 'Auditoría', users: 'Usuarios',
+};
+const CLEARABLE_TABLES = ['barras','imports','proyectos','reclamos','calculistas','clientes','pedidos','audit_log'];
+
+async function loadTableCounts() {
+  const container = document.getElementById('tableCountsContainer');
+  if (!container) return;
+  const data = await apiGet('/admin/tables');
+  if (!data || !data.tables) { container.innerHTML = '<div class="muted">Error al cargar</div>'; return; }
+  let html = '<table style="width:100%; font-size:12px;"><thead><tr><th style="text-align:left;">Tabla</th><th style="text-align:right;">Registros</th><th></th></tr></thead><tbody>';
+  data.tables.forEach(t => {
+    const label = TABLE_LABELS[t.table] || t.table;
+    const canClear = CLEARABLE_TABLES.includes(t.table);
+    const clearBtn = canClear && t.count > 0
+      ? `<button class="secondary" style="font-size:10px; padding:2px 8px; color:#b42318;" onclick="clearTable('${t.table}')">Limpiar</button>`
+      : '';
+    html += `<tr><td>${label}</td><td style="text-align:right; font-weight:600;">${t.count.toLocaleString()}</td><td style="text-align:right;">${clearBtn}</td></tr>`;
+  });
+  html += '</tbody></table>';
+  container.innerHTML = html;
+}
+
+async function clearTable(tableName) {
+  const label = TABLE_LABELS[tableName] || tableName;
+  if (!window.confirm(`¿Limpiar TODOS los registros de "${label}"? Esta acción no se puede deshacer.`)) return;
+  const input = prompt(`Escribe CONFIRMAR para limpiar la tabla "${label}":`);
+  if (input !== 'CONFIRMAR') { alert('Operación cancelada.'); return; }
+  const res = await fetch('/admin/tables/' + encodeURIComponent(tableName) + '/clear?confirm=CONFIRMAR', {
+    method: 'POST', headers: authHeaders()
+  }).then(r => r.json()).catch(() => null);
+  if (res && res.ok) {
+    alert(`Tabla "${label}" limpiada correctamente.`);
+    loadTableCounts();
+    loadDbInfo();
+  } else {
+    alert('Error: ' + (res?.detail || 'desconocido'));
+  }
+}
+
+async function loadDbInfo() {
+  const data = await apiGet('/admin/db-info');
+  if (!data) return;
+  document.getElementById('dbInfoContainer').innerHTML = `
+    <div class="row">
+      <div class="card" style="flex:1; text-align:center; margin:4px;">
+        <div style="font-size:28px; font-weight:bold; color:#8BC34A;">${data.barras}</div>
+        <div class="muted">Barras</div>
+      </div>
+      <div class="card" style="flex:1; text-align:center; margin:4px;">
+        <div style="font-size:28px; font-weight:bold; color:#8BC34A;">${data.proyectos}</div>
+        <div class="muted">Proyectos</div>
+      </div>
+      <div class="card" style="flex:1; text-align:center; margin:4px;">
+        <div style="font-size:28px; font-weight:bold; color:#8BC34A;">${data.usuarios}</div>
+        <div class="muted">Usuarios</div>
+      </div>
+      <div class="card" style="flex:1; text-align:center; margin:4px;">
+        <div style="font-size:28px; font-weight:bold; color:#8BC34A;">${data.kilos_totales.toFixed(0)}</div>
+        <div class="muted">Kilos totales</div>
+      </div>
+    </div>
+  `;
+}
+
+async function resetDatabase() {
+  const confirm = document.getElementById('resetConfirm').value.trim();
+  const keepUsers = document.getElementById('resetKeepUsers').checked;
+  const msg = document.getElementById('resetMsg');
+
+  if (confirm !== 'CONFIRMAR') {
+    msg.textContent = 'Debes escribir CONFIRMAR para ejecutar el reset.';
+    msg.className = 'status-err';
+    return;
+  }
+
+  if (!window.confirm('¿Estás seguro? Esta acción eliminará TODOS los datos de barras y proyectos.')) {
+    return;
+  }
+
+  msg.textContent = 'Reseteando...';
+  msg.className = 'status-warn';
+
+  const params = new URLSearchParams({ confirm: 'CONFIRMAR', keep_users: keepUsers });
+  const res = await fetch('/admin/reset-db?' + params.toString(), {
+    method: 'POST',
+    headers: authHeaders()
+  });
+  const data = await res.json();
+
+  if (!res.ok) {
+    msg.textContent = 'Error: ' + (data.detail || JSON.stringify(data));
+    msg.className = 'status-err';
+    return;
+  }
+
+  const r = data.reset;
+  msg.textContent = `Reset completo. Eliminadas: ${r.barras_eliminadas} barras, ${r.proyectos_eliminados} proyectos.`;
+  msg.className = 'status-ok';
+  document.getElementById('resetConfirm').value = '';
+
+  await loadDbInfo();
+  await loadProyectos();
+  await loadFilters();
+  await loadDashboard('sector');
+}
+
+// ========================= USUARIOS =========================
+var _roleColors = { admin: '#b42318', admin2: '#1565C0', cubicador: '#2e7d32', usc: '#ff9800', externo: '#795548', cliente: '#7B1FA2' };
+var _roleLabels = { admin: 'Admin', admin2: 'Admin2', cubicador: 'Cubicador', usc: 'USC', externo: 'Externo', cliente: 'Cliente' };
+
+function toggleNuevoUsuario() {
+  var f = document.getElementById('nuevoUsuarioForm');
+  f.style.display = f.style.display === 'none' ? '' : 'none';
+}
+
+async function createUser() {
+  var email = document.getElementById('newUserEmail').value.trim();
+  var nombre = document.getElementById('newUserNombre') ? document.getElementById('newUserNombre').value.trim() : '';
+  var apellido = document.getElementById('newUserApellido') ? document.getElementById('newUserApellido').value.trim() : '';
+  var password = document.getElementById('newUserPassword').value;
+  var role = document.getElementById('newUserRole').value;
+  var msg = document.getElementById('createUserMsg');
+  if (!email || !password) { msg.textContent = 'Email y contrasena son requeridos.'; msg.style.color = '#b42318'; return; }
+  var params = new URLSearchParams({ email: email, password: password, role: role, nombre: nombre, apellido: apellido });
+  var res = await fetch('/auth/register?' + params.toString(), { method: 'POST', headers: authHeaders() });
+  var data = await res.json();
+  if (!res.ok) { msg.textContent = 'Error: ' + (data.detail || JSON.stringify(data)); msg.style.color = '#b42318'; return; }
+  msg.textContent = 'Usuario ' + email + ' (' + role + ') creado.'; msg.style.color = '#558B2F';
+  document.getElementById('newUserEmail').value = '';
+  if (document.getElementById('newUserNombre')) document.getElementById('newUserNombre').value = '';
+  if (document.getElementById('newUserApellido')) document.getElementById('newUserApellido').value = '';
+  document.getElementById('newUserPassword').value = '';
+  await loadUsers();
+}
+
+async function loadUsers() {
+  var container = document.getElementById('usersListContainer');
+  if (!container) return;
+  var res = await fetch('/admin/users', { headers: authHeaders() });
+  if (res.status === 401) { logout(); return; }
+  if (!res.ok) { container.innerHTML = '<div class="muted">Error cargando usuarios</div>'; return; }
+  var data = await res.json();
+  if (!data.users || data.users.length === 0) { container.innerHTML = '<div class="muted">No hay usuarios</div>'; return; }
+  var html = '<table style="width:100%; font-size:12px; border-collapse:collapse;">';
+  html += '<tr style="background:#f5f5f5; text-align:left;">';
+  html += '<th style="padding:5px 6px;">Email</th><th style="padding:5px 6px;">Nombre</th>';
+  html += '<th style="padding:5px 6px;">Rol</th><th style="padding:5px 6px;">Estado</th>';
+  html += '<th style="padding:5px 6px;">Creado</th><th style="padding:5px 6px;">Acciones</th></tr>';
+  data.users.forEach(function(u) {
+    var rColor = _roleColors[u.role] || '#666';
+    var activo = u.activo !== false;
+    var activoBadge = activo ? '<span style="color:#2e7d32; font-weight:600; font-size:10px;">Activo</span>' : '<span style="color:#b42318; font-weight:600; font-size:10px;">Inactivo</span>';
+    var fecha = u.fecha_creacion ? u.fecha_creacion.substring(0, 10) : '-';
+    var toggleLabel = activo ? 'Desactivar' : 'Activar';
+    var toggleColor = activo ? '#b42318' : '#2e7d32';
+    var _rolLabels = {admin:'Admin',admin2:'Admin2',cubicador:'Cubicador',usc:'USC',externo:'Externo',cliente:'Cliente'};
+    var allRoles = ['admin','admin2','cubicador','usc','externo','cliente'];
+    var rolOpts = allRoles.map(function(r) {
+      return '<option value="' + r + '"' + (r === u.role ? ' selected' : '') + '>' + (_rolLabels[r] || r) + '</option>';
+    }).join('');
+    var rowStyle = 'border-bottom:1px solid #eee;' + (!activo ? ' background:#fafafa; opacity:0.7;' : '');
+    html += '<tr style="' + rowStyle + '">';
+    var displayName = ((u.nombre || '') + ' ' + (u.apellido || '')).trim();
+    html += '<td style="padding:4px 6px; font-weight:500;">' + u.email + '</td>';
+    html += '<td style="padding:4px 6px;">' + (displayName || '<span class="muted">-</span>') + '</td>';
+    // Role column: admin sees dropdown, admin2 sees label only
+    if (currentRole === 'admin') {
+      html += '<td style="padding:4px 6px;"><select style="font-size:11px; color:' + rColor + '; font-weight:600; border:1px solid #ddd; border-radius:3px; padding:1px 4px;" onchange="cambiarRolUsuario(' + u.id + ', this.value)">' + rolOpts + '</select></td>';
+    } else {
+      html += '<td style="padding:4px 6px;"><span style="font-size:11px; color:' + rColor + '; font-weight:600;">' + (_rolLabels[u.role] || u.role) + '</span></td>';
+    }
+    html += '<td style="padding:4px 6px;">' + activoBadge + '</td>';
+    html += '<td style="padding:4px 6px; font-size:11px;" class="muted">' + fecha + '</td>';
+    html += '<td style="padding:4px 6px; white-space:nowrap;">';
+    html += '<button class="secondary" style="font-size:10px; padding:1px 6px;" onclick="editarNombreUsuario(' + u.id + ', \'' + (u.nombre || '').replace(/'/g, "\\'") + '\', \'' + (u.apellido || '').replace(/'/g, "\\'") + '\')">Nombre</button> ';
+    html += '<button class="secondary" style="font-size:10px; padding:1px 6px; color:' + toggleColor + ';" onclick="toggleActivoUsuario(' + u.id + ', ' + !activo + ')">' + toggleLabel + '</button> ';
+    html += '<button class="secondary" style="font-size:10px; padding:1px 6px;" onclick="resetPasswordUsuario(' + u.id + ')">Cambiar clave</button> ';
+    // Delete: admin only
+    if (currentRole === 'admin') {
+      html += '<button class="secondary" style="font-size:10px; padding:1px 6px; color:#b42318;" onclick="eliminarUsuarioAdmin(' + u.id + ')">Eliminar</button>';
+    }
+    html += '</td></tr>';
+  });
+  html += '</table>';
+  html += '<div class="muted" style="font-size:11px; margin-top:6px;">Total: ' + data.users.length + ' usuario(s)</div>';
+  container.innerHTML = html;
+}
+
+async function cambiarRolUsuario(userId, nuevoRol) {
+  var params = new URLSearchParams({ role: nuevoRol });
+  var res = await fetch('/admin/users/' + userId + '/role?' + params.toString(), { method: 'PATCH', headers: authHeaders() });
+  if (res.status === 401) { logout(); return; }
+  var data = await res.json();
+  if (!data.ok) { alert('Error: ' + (data.detail || 'desconocido')); }
+  await loadUsers();
+}
+
+async function toggleActivoUsuario(userId, nuevoEstado) {
+  var params = new URLSearchParams({ activo: nuevoEstado });
+  var res = await fetch('/admin/users/' + userId + '/activo?' + params.toString(), { method: 'PATCH', headers: authHeaders() });
+  if (res.status === 401) { logout(); return; }
+  var data = await res.json();
+  if (!data.ok) { alert('Error: ' + (data.detail || 'desconocido')); }
+  await loadUsers();
+}
+
+async function resetPasswordUsuario(userId) {
+  var newPass = prompt('Nueva contrasena (min. 6 caracteres):');
+  if (!newPass) return;
+  if (newPass.length < 6) { alert('La contrasena debe tener al menos 6 caracteres'); return; }
+  var params = new URLSearchParams({ password: newPass });
+  var res = await fetch('/admin/users/' + userId + '/password?' + params.toString(), { method: 'PATCH', headers: authHeaders() });
+  if (res.status === 401) { logout(); return; }
+  var data = await res.json();
+  if (data.ok) { alert('Contrasena actualizada'); } else { alert('Error: ' + (data.detail || 'desconocido')); }
+}
+
+async function eliminarUsuarioAdmin(userId) {
+  if (!confirm('Eliminar este usuario? Esta accion no se puede deshacer.')) return;
+  var res = await fetch('/admin/users/' + userId, { method: 'DELETE', headers: authHeaders() });
+  if (res.status === 401) { logout(); return; }
+  var data = await res.json();
+  if (data.ok) { await loadUsers(); } else { alert('Error: ' + (data.detail || 'desconocido')); }
+}
+
+async function editarNombreUsuario(userId, nombreActual, apellidoActual) {
+  var nombre = prompt('Nombre:', nombreActual || '');
+  if (nombre === null) return;
+  var apellido = prompt('Apellido:', apellidoActual || '');
+  if (apellido === null) return;
+  var params = new URLSearchParams({ nombre: nombre, apellido: apellido });
+  var res = await fetch('/admin/users/' + userId + '/nombre?' + params.toString(), { method: 'PATCH', headers: authHeaders() });
+  if (res.status === 401) { logout(); return; }
+  var data = await res.json();
+  if (data.ok) { await loadUsers(); } else { alert('Error: ' + (data.detail || 'desconocido')); }
+}
+
+// ========================= AUDIT LOG =========================
+let _auditOffset = 0;
+const _auditLimit = 50;
+
+async function loadAuditLog(offset) {
+  if (offset !== undefined) _auditOffset = offset;
+  const usuario = document.getElementById('auditFiltroUsuario').value.trim();
+  const accion = document.getElementById('auditFiltroAccion').value;
+  const entidad = document.getElementById('auditFiltroEntidad').value;
+
+  const params = new URLSearchParams({ limit: _auditLimit, offset: _auditOffset });
+  if (usuario) params.append('usuario', usuario);
+  if (accion) params.append('accion', accion);
+  if (entidad) params.append('entidad', entidad);
+
+  const data = await apiGet('/admin/audit?' + params.toString());
+  if (!data) return;
+
+  // Populate filter dropdowns (only if empty)
+  const accSel = document.getElementById('auditFiltroAccion');
+  if (accSel.options.length <= 1 && data.acciones_disponibles) {
+    data.acciones_disponibles.forEach(a => {
+      const opt = document.createElement('option');
+      opt.value = a; opt.textContent = a;
+      accSel.appendChild(opt);
+    });
+  }
+  const entSel = document.getElementById('auditFiltroEntidad');
+  if (entSel.options.length <= 1 && data.entidades_disponibles) {
+    data.entidades_disponibles.forEach(e => {
+      const opt = document.createElement('option');
+      opt.value = e; opt.textContent = e;
+      entSel.appendChild(opt);
+    });
+  }
+
+  const container = document.getElementById('auditLogContainer');
+  if (!data.logs || data.logs.length === 0) {
+    container.innerHTML = '<div class="muted">No hay registros de auditoría</div>';
+    document.getElementById('auditPagination').innerHTML = '';
+    return;
+  }
+
+  const accionColors = {
+    login: '#2196F3', signup: '#2196F3', registrar_usuario: '#9C27B0',
+    importar_csv: '#8BC34A', exportar_excel: '#FF9800',
+    crear_proyecto: '#4CAF50', editar_proyecto: '#FFC107', eliminar_proyecto: '#F44336',
+    mover_barras: '#00BCD4', reset_db: '#F44336',
+    crear_cliente: '#4CAF50', editar_cliente: '#FFC107', desactivar_cliente: '#F44336',
+    asignar_cliente: '#9C27B0',
+  };
+
+  container.innerHTML = '<table style="width:100%; font-size:11px; border-collapse:collapse;">' +
+    '<tr style="background:#f5f5f5; text-align:left;">' +
+    '<th style="padding:5px 6px;">Fecha</th>' +
+    '<th style="padding:5px 6px;">Usuario</th>' +
+    '<th style="padding:5px 6px;">Acción</th>' +
+    '<th style="padding:5px 6px;">Detalle</th>' +
+    '<th style="padding:5px 6px;">Entidad</th>' +
+    '<th style="padding:5px 6px;">ID</th>' +
+    '</tr>' +
+    data.logs.map(l => {
+      const fecha = l.fecha ? l.fecha.replace('T', ' ').substring(0, 19) : '';
+      const color = accionColors[l.accion] || '#666';
+      return '<tr style="border-bottom:1px solid #f0f0f0;">' +
+        '<td style="padding:4px 6px; white-space:nowrap;" class="muted">' + fecha + '</td>' +
+        '<td style="padding:4px 6px;">' + l.usuario + '</td>' +
+        '<td style="padding:4px 6px;"><span style="background:' + color + '; color:#fff; padding:1px 6px; border-radius:3px; font-size:10px;">' + l.accion + '</span></td>' +
+        '<td style="padding:4px 6px; max-width:300px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="' + (l.detalle || '').replace(/"/g, '&quot;') + '">' + (l.detalle || '-') + '</td>' +
+        '<td style="padding:4px 6px;" class="muted">' + (l.entidad || '-') + '</td>' +
+        '<td style="padding:4px 6px; font-size:10px;" class="muted">' + (l.entidad_id || '-') + '</td>' +
+        '</tr>';
+    }).join('') +
+    '</table>';
+
+  // Pagination
+  const pag = document.getElementById('auditPagination');
+  const totalPages = Math.ceil(data.total / _auditLimit);
+  const currentPage = Math.floor(_auditOffset / _auditLimit) + 1;
+  let pagHtml = '<span class="muted" style="font-size:11px;">' + data.total + ' registros — Página ' + currentPage + ' de ' + totalPages + '</span>';
+  if (_auditOffset > 0) {
+    pagHtml += ' <button class="secondary" style="font-size:11px; padding:2px 8px;" onclick="loadAuditLog(' + (_auditOffset - _auditLimit) + ')">← Anterior</button>';
+  }
+  if (_auditOffset + _auditLimit < data.total) {
+    pagHtml += ' <button class="secondary" style="font-size:11px; padding:2px 8px;" onclick="loadAuditLog(' + (_auditOffset + _auditLimit) + ')">Siguiente →</button>';
+  }
+  pag.innerHTML = pagHtml;
+}
