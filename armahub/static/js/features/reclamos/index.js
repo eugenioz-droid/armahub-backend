@@ -743,7 +743,7 @@ class ImageRenderer {
 
     var self = this;
     thumbContainer.onclick = function() {
-      self._openImageModal(images, index);
+      self.openImageModal(images, index);
     };
 
     thumbContainer.appendChild(thumb);
@@ -1938,15 +1938,36 @@ function renderImagenesEnContainer(containerId, imagenes) {
     container.innerHTML = '<div class="muted">Sin imágenes</div>';
     return;
   }
-  container.innerHTML = imagenes.map(function(img) {
-    return '<div style="position:relative; width:120px; border:1px solid #ccc; border-radius:6px; overflow:hidden; background:#f9f9f9;">' +
-      '<a href="' + img.url + '" target="_blank" title="' + img.filename + '">' +
-      '<img src="' + img.url + '" style="width:120px; height:90px; object-fit:cover; display:block;" />' +
-      '</a>' +
-      '<div style="padding:2px 4px; font-size:10px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">' + img.filename + '</div>' +
-      '<button class="secondary" style="position:absolute; top:2px; right:2px; font-size:10px; padding:0 4px; background:rgba(255,255,255,0.8); color:#b42318; border-radius:3px;" onclick="eliminarImagen(' + img.id + ')">✕</button>' +
-      '</div>';
-  }).join('');
+  container.innerHTML = '';
+  imagenes.forEach(function(img) {
+    var wrapper = document.createElement('div');
+    wrapper.style.cssText = 'position:relative; width:120px; border:1px solid #ccc; border-radius:6px; overflow:hidden; background:#f9f9f9;';
+
+    var link = document.createElement('a');
+    link.href = img.url;
+    link.target = '_blank';
+    link.title = img.filename;
+
+    var thumb = document.createElement('img');
+    thumb.src = img.url;
+    thumb.style.cssText = 'width:120px; height:90px; object-fit:cover; display:block;';
+    link.appendChild(thumb);
+    wrapper.appendChild(link);
+
+    var label = document.createElement('div');
+    label.style.cssText = 'padding:2px 4px; font-size:10px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;';
+    label.textContent = img.filename;
+    wrapper.appendChild(label);
+
+    var btn = document.createElement('button');
+    btn.className = 'secondary';
+    btn.style.cssText = 'position:absolute; top:2px; right:2px; font-size:10px; padding:0 4px; background:rgba(255,255,255,0.8); color:#b42318; border-radius:3px;';
+    btn.textContent = '✕';
+    btn.onclick = function() { eliminarImagen(img.id); };
+    wrapper.appendChild(btn);
+
+    container.appendChild(wrapper);
+  });
 }
 
 function renderReclamoTimeline(seguimientos) {
@@ -2685,8 +2706,11 @@ document.addEventListener('keydown', function(e) {
   // --- Drop zones initializer with dedup guard ---
   function _initRecImageDropZonesGuarded() {
     if (global.__armahubReclamosDropZonesInitialized) return;
-    global.__armahubReclamosDropZonesInitialized = true;
     initRecImageDropZones();
+    // Solo marcar como inicializado si la zona principal existe en el DOM
+    if (document.getElementById('recCreateDropZone')) {
+      global.__armahubReclamosDropZonesInitialized = true;
+    }
   }
 
   // --- Build API: all functions are file-scope, reference directly ---

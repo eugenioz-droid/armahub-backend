@@ -104,10 +104,10 @@ Objetivo: separar negocio por features reales.
 	- [x] E.6.1 Crear legacy/compat.js (bridges: waitForReclamosFeatureReady, loadReclamosModule)
 	- [x] E.6.2 Actualizar bootstrap.js: cargar compat.js → app.js → features
 	- [x] E.6.3 Limpiar app.js: eliminar bridges, _proyectosData muerto, 30 comentarios de delegación (~75 líneas finales)
-- [ ] E.7 Corregir bugs de imagenes en Reclamos
-	- [ ] E.7.1 Presentaciones: click en thumbnail no abre viewer (ImageRenderer._openImageModal → openImageModal)
-	- [ ] E.7.2 Formulario registro: diagnosticar y corregir imagenes no visibles (initRecImageDropZones / bindDropZone)
-	- [ ] E.7.3 Evaluar unificar renderImagenesEnContainer con ImageRenderer.renderImageBar
+- [x] E.7 Corregir bugs de imagenes en Reclamos
+	- [x] E.7.1 Presentaciones: click en thumbnail no abre viewer (self._openImageModal → self.openImageModal)
+	- [x] E.7.2 Formulario registro: drop zones no se enlazan si DOM no existe al init (guard condicional)
+	- [x] E.7.3 Corregir XSS en renderImagenesEnContainer (migrar de innerHTML string a DOM API)
 
 ### Fase F - Limpieza backend por contratos
 
