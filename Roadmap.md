@@ -123,10 +123,10 @@ Objetivo: consolidar contratos y reducir drift.
 		- [x] F.1.4c `GET /reclamos/ishikawa` → `{"data":[...]}` + adaptar consumidores
 		- [x] F.1.4d `GET /reclamos/para-presentar` → `{"data":[...], "cubicadores":[...]}` + adaptar loadPresentaciones
 		- [x] F.1.4e Eliminar endpoints muertos sin consumidores (`/reclamos/cubicadores`, `/reclamos/options`)
-- [ ] F.2 Mover logica pesada a servicios y queries donde valga la pena
-- [ ] F.3 Reducir rutas legacy con SQL propio
-- [ ] F.4 Definir helpers compartidos de permisos y respuestas
-- [ ] F.5 Preparar base para API versionada
+- [x] F.2 Mover logica pesada a servicios y queries donde valga la pena
+- [x] F.3 Reducir rutas legacy con SQL propio
+- [x] F.4 Definir helpers compartidos de permisos y respuestas
+- [x] F.5 Preparar base para API versionada
 
 ---
 

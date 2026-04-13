@@ -21,7 +21,7 @@ from typing import Optional
 import uuid
 
 from .db import get_conn, audit
-from .auth import get_current_user
+from .auth import get_current_user, ROL_MAP
 
 router = APIRouter()
 
@@ -342,8 +342,7 @@ async def import_armadetailer(
                 cur.execute("SELECT id FROM users WHERE email = %s", (user.get("email"),))
                 creator_row = cur.fetchone()
                 if creator_row:
-                    rol_map = {'admin': 'admin', 'admin2': 'admin', 'cubicador': 'cubicador', 'usc': 'usc', 'externo': 'externo', 'cliente': 'cliente'}
-                    rol = rol_map.get(user.get('role', ''), 'cubicador')
+                    rol = ROL_MAP.get(user.get('role', ''), 'cubicador')
                     cur.execute("""
                         INSERT INTO proyecto_usuarios (id_proyecto, user_id, rol)
                         VALUES (%s, %s, %s)

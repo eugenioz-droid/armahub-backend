@@ -60,6 +60,19 @@ def require_admin_or_admin2(user=Depends(get_current_user)):
     return user
 
 
+def require_role(*allowed_roles):
+    """Factory: returns a FastAPI dependency that restricts to the given roles."""
+    def _dep(user=Depends(get_current_user)):
+        if user.get("role") not in allowed_roles:
+            raise HTTPException(status_code=403, detail=f"Requiere rol: {', '.join(allowed_roles)}")
+        return user
+    return _dep
+
+
+# Shared role→project-role map (used by barras, importer, etc.)
+ROL_MAP = {"admin": "admin", "admin2": "admin", "cubicador": "cubicador", "usc": "usc", "externo": "externo", "cliente": "cliente"}
+
+
 @router.post("/auth/login")
 def login(email: str, password: str):
     with get_conn() as conn:

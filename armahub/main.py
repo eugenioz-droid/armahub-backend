@@ -34,6 +34,7 @@ def create_app() -> FastAPI:
 
     init_db()
 
+    # --- Current routes (no prefix, backward compatible) ---
     app.include_router(auth_router)
     app.include_router(importer_router)
     app.include_router(barras_router)
@@ -44,6 +45,15 @@ def create_app() -> FastAPI:
     app.include_router(constructoras_router)
     app.include_router(calculistas_router)
     app.include_router(reclamos_router)
+
+    # --- API v1 (same routers under /api/v1 prefix) ---
+    _api_routers = [
+        auth_router, importer_router, barras_router, admin_router,
+        export_router, pedidos_router, constructoras_router,
+        calculistas_router, reclamos_router,
+    ]
+    for r in _api_routers:
+        app.include_router(r, prefix="/api/v1")
     
     # Servir archivos estáticos (CSS, JS, imágenes)
     static_path = os.path.join(os.path.dirname(__file__), "static")

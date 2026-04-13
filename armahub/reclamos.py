@@ -14,8 +14,14 @@ from fastapi.responses import Response
 from pydantic import BaseModel
 from psycopg.rows import dict_row
 
-from .auth import get_current_user
+from .auth import get_current_user, require_admin_or_admin2
 from .db import get_conn, audit
+from .reclamos_queries import (
+    q_total, q_abiertos, q_por_estado, q_por_estado_dict, q_por_tipo,
+    q_por_anio_mes, q_resueltos_no_resueltos, q_por_categoria, q_por_proyecto,
+    q_avg_dias_resolucion, q_top_causas, q_resolucion_por_mes,
+    q_matriz_obra_categoria, build_role_filter,
+)
 
 router = APIRouter()
 
@@ -389,27 +395,15 @@ def reclamos_mi_resumen(user=Depends(get_current_user)):
     Admin/Admin2: all reclamos."""
     email = user.get("email", "")
     role = user.get("role", "usc")
-
-    # Build role-based WHERE filter
-    if role == "usc":
-        role_filter = " AND (r.creado_por = %s OR r.asignado_a = %s)"
-        role_params = [email, email]
-    elif role in ("cubicador", "externo"):
-        role_filter = " AND (r.cubicador_asignado = %s OR r.respuesta_por = %s)"
-        role_params = [email, email]
-    else:
-        role_filter = ""
-        role_params = []
+    role_filter, role_params = build_role_filter(user)
 
     with get_conn() as conn:
         with conn.cursor() as cur:
-            # Total count
-            cur.execute(f"SELECT COUNT(*) FROM reclamos r WHERE 1=1{role_filter}", role_params)
-            total = int(cur.fetchone()[0])
-
-            # Abiertos (not cerrado/rechazado)
-            cur.execute(f"SELECT COUNT(*) FROM reclamos r WHERE r.estado NOT IN ('cerrado','rechazado'){role_filter}", role_params)
-            abiertos = int(cur.fetchone()[0])
+            total = q_total(cur, role_filter, role_params)
+            abiertos = q_abiertos(cur, role_filter, role_params)
+            por_tipo = q_por_tipo(cur, role_filter, role_params)
+            por_anio_mes = q_por_anio_mes(cur, fecha_col="fecha_deteccion", where=role_filter, params=role_params)
+            resueltos_no_resueltos = q_resueltos_no_resueltos(cur, role_filter, role_params)
 
             # Pendientes: assigned to cubicador but not yet responded
             pendientes = 0
@@ -422,46 +416,11 @@ def reclamos_mi_resumen(user=Depends(get_current_user)):
                 """, (email,))
                 pendientes = int(cur.fetchone()[0])
 
-            # By tipo_reclamo (error/faltante)
-            cur.execute(f"""
-                SELECT COALESCE(r.tipo_reclamo, 'error'), COUNT(*)
-                FROM reclamos r WHERE 1=1{role_filter}
-                GROUP BY 1
-            """, role_params)
-            por_tipo = {r[0]: int(r[1]) for r in cur.fetchall()}
-
-            # By year-month (for historical chart) — use fecha_deteccion
-            cur.execute(f"""
-                SELECT EXTRACT(YEAR FROM COALESCE(r.fecha_deteccion, r.fecha_creacion)::timestamp)::INTEGER AS anio,
-                       EXTRACT(MONTH FROM COALESCE(r.fecha_deteccion, r.fecha_creacion)::timestamp)::INTEGER AS mes,
-                       COUNT(*)
-                FROM reclamos r WHERE 1=1{role_filter}
-                GROUP BY anio, mes ORDER BY anio, mes
-            """, role_params)
-            por_anio_mes = [{"anio": r[0], "mes": r[1], "count": int(r[2])} for r in cur.fetchall()]
-
-            # Resueltos vs no resueltos
-            cur.execute(f"""
-                SELECT CASE WHEN r.estado IN ('cerrado') THEN 'resuelto' ELSE 'no_resuelto' END AS grupo,
-                       COUNT(*)
-                FROM reclamos r WHERE 1=1{role_filter}
-                GROUP BY grupo
-            """, role_params)
-            resueltos_raw = {r[0]: int(r[1]) for r in cur.fetchall()}
-            resueltos_no_resueltos = {
-                "resuelto": resueltos_raw.get("resuelto", 0),
-                "no_resuelto": resueltos_raw.get("no_resuelto", 0),
-            }
-
             # Ishikawa breakdown (for cubicador landing doughnut)
             por_ishikawa = {}
             if role in ("cubicador", "externo", "admin", "admin2"):
-                cur.execute(f"""
-                    SELECT COALESCE(r.categoria_ishikawa, 'sin_categoria'), COUNT(*)
-                    FROM reclamos r WHERE r.categoria_ishikawa IS NOT NULL{role_filter}
-                    GROUP BY 1 ORDER BY 2 DESC
-                """, role_params)
-                por_ishikawa = {r[0]: int(r[1]) for r in cur.fetchall()}
+                por_ishikawa_list = q_por_categoria(cur, where=f" AND r.categoria_ishikawa IS NOT NULL{role_filter}", params=role_params)
+                por_ishikawa = {item["categoria"]: item["count"] for item in por_ishikawa_list}
 
     return {
         "total": total,
@@ -475,44 +434,19 @@ def reclamos_mi_resumen(user=Depends(get_current_user)):
 
 
 @router.get("/reclamos/admin-dashboards")
-def reclamos_admin_dashboards(user=Depends(get_current_user)):
+def reclamos_admin_dashboards(user=Depends(require_admin_or_admin2)):
     """Detailed analytics for admin Dashboards tab.
     Returns per-USC and per-cubicador breakdowns."""
-    role = user.get("role", "usc")
-    if role not in ("admin", "admin2"):
-        raise HTTPException(status_code=403, detail="Solo admin")
 
     with get_conn() as conn:
         with conn.cursor() as cur:
-            # --- Global aggregates ---
-            cur.execute("SELECT COUNT(*) FROM reclamos")
-            total = int(cur.fetchone()[0])
-
-            cur.execute("SELECT COUNT(*) FROM reclamos WHERE estado NOT IN ('cerrado','rechazado')")
-            abiertos = int(cur.fetchone()[0])
-
-            # por_tipo global
-            cur.execute("""
-                SELECT COALESCE(tipo_reclamo, 'error'), COUNT(*) FROM reclamos GROUP BY 1
-            """)
-            por_tipo = {r[0]: int(r[1]) for r in cur.fetchall()}
-
-            # resueltos vs no resueltos
-            cur.execute("""
-                SELECT CASE WHEN estado IN ('cerrado') THEN 'resuelto' ELSE 'no_resuelto' END, COUNT(*)
-                FROM reclamos GROUP BY 1
-            """)
-            rr = {r[0]: int(r[1]) for r in cur.fetchall()}
-            resueltos_no_resueltos = {"resuelto": rr.get("resuelto", 0), "no_resuelto": rr.get("no_resuelto", 0)}
-
-            # global por_anio_mes using fecha_deteccion
-            cur.execute("""
-                SELECT EXTRACT(YEAR FROM COALESCE(fecha_deteccion, fecha_creacion)::timestamp)::INTEGER AS anio,
-                       EXTRACT(MONTH FROM COALESCE(fecha_deteccion, fecha_creacion)::timestamp)::INTEGER AS mes,
-                       COUNT(*)
-                FROM reclamos GROUP BY anio, mes ORDER BY anio, mes
-            """)
-            por_anio_mes = [{"anio": r[0], "mes": r[1], "count": int(r[2])} for r in cur.fetchall()]
+            total = q_total(cur)
+            abiertos = q_abiertos(cur)
+            por_tipo = q_por_tipo(cur)
+            resueltos_no_resueltos = q_resueltos_no_resueltos(cur)
+            por_anio_mes = q_por_anio_mes(cur, fecha_col="fecha_deteccion")
+            ishikawa_global = q_por_categoria(cur, where=" AND r.categoria_ishikawa IS NOT NULL")
+            por_estado = q_por_estado(cur)
 
             # --- USC breakdown ---
             cur.execute("""
@@ -529,7 +463,6 @@ def reclamos_admin_dashboards(user=Depends(get_current_user)):
             """)
             por_usc = [{"email": r[0], "total": int(r[1]), "errores": int(r[2]), "faltantes": int(r[3]), "atrasos": int(r[4]), "actualizaciones": int(r[5])} for r in cur.fetchall()]
 
-            # USC hist using fecha_deteccion
             cur.execute("""
                 SELECT COALESCE(r.asignado_a, r.creado_por) AS usc_user,
                        EXTRACT(YEAR FROM COALESCE(r.fecha_deteccion, r.fecha_creacion)::timestamp)::INTEGER AS anio,
@@ -543,15 +476,6 @@ def reclamos_admin_dashboards(user=Depends(get_current_user)):
             usc_hist = [{"email": r[0], "anio": r[1], "mes": r[2], "count": int(r[3])} for r in cur.fetchall()]
 
             # --- Cubicador breakdown ---
-            # Ishikawa global (all reclamos with categoria)
-            cur.execute("""
-                SELECT COALESCE(categoria_ishikawa, 'sin_categoria'), COUNT(*)
-                FROM reclamos WHERE categoria_ishikawa IS NOT NULL
-                GROUP BY 1 ORDER BY 2 DESC
-            """)
-            ishikawa_global = [{"categoria": r[0], "count": int(r[1])} for r in cur.fetchall()]
-
-            # Per cubicador asignado (donut) — JOIN para mostrar nombres
             cur.execute("""
                 SELECT COALESCE(
                     TRIM(COALESCE(u.nombre,'') || ' ' || COALESCE(u.apellido,'')),
@@ -564,7 +488,6 @@ def reclamos_admin_dashboards(user=Depends(get_current_user)):
             """)
             por_cubicador_asignado = [{"cubicador": r[0], "count": int(r[1])} for r in cur.fetchall()]
 
-            # Per cubicador respondido (bar) — JOIN para mostrar nombres
             cur.execute("""
                 SELECT COALESCE(NULLIF(TRIM(COALESCE(u.nombre,'') || ' ' || COALESCE(u.apellido,'')), ''), r.respuesta_por) AS display,
                        COUNT(*) AS total,
@@ -579,7 +502,6 @@ def reclamos_admin_dashboards(user=Depends(get_current_user)):
             """)
             por_cubicador = [{"email": r[0], "total": int(r[1]), "errores": int(r[2]), "faltantes": int(r[3]), "atrasos": int(r[4]), "actualizaciones": int(r[5])} for r in cur.fetchall()]
 
-            # Kilos mal fabricados por cubicador — usa cubicador_asignado (siempre populated) + JOIN para nombre
             cur.execute("""
                 SELECT COALESCE(
                     NULLIF(TRIM(COALESCE(u.nombre,'') || ' ' || COALESCE(u.apellido,'')), ''),
@@ -594,7 +516,6 @@ def reclamos_admin_dashboards(user=Depends(get_current_user)):
             """)
             kilos_por_cubicador = [{"cubicador": r[0], "kilos": round(float(r[1]), 1)} for r in cur.fetchall()]
 
-            # Ishikawa per cubicador (stacked) — JOIN para mostrar nombres
             cur.execute("""
                 SELECT COALESCE(NULLIF(TRIM(COALESCE(u.nombre,'') || ' ' || COALESCE(u.apellido,'')), ''), r.respuesta_por) AS display,
                        COALESCE(r.categoria_ishikawa, 'sin_categoria'),
@@ -610,14 +531,7 @@ def reclamos_admin_dashboards(user=Depends(get_current_user)):
             por_proyecto = []
             proyecto_por_mes = []
             try:
-                cur.execute("""
-                    SELECT COALESCE(p.nombre_proyecto, r.id_proyecto, 'Sin proyecto') AS proy,
-                           COUNT(*) AS total
-                    FROM reclamos r
-                    LEFT JOIN proyectos p ON p.id_proyecto = r.id_proyecto
-                    GROUP BY 1 ORDER BY total DESC
-                """)
-                por_proyecto = [{"proyecto": str(r[0]), "count": int(r[1])} for r in cur.fetchall()]
+                por_proyecto = q_por_proyecto(cur)
             except Exception as e:
                 print(f"[DASH] por_proyecto error: {e}")
                 conn.rollback()
@@ -636,10 +550,6 @@ def reclamos_admin_dashboards(user=Depends(get_current_user)):
             except Exception as e:
                 print(f"[DASH] proyecto_por_mes error: {e}")
                 conn.rollback()
-
-            # --- Por Estado (para gráfico de torta) ---
-            cur.execute("SELECT estado, COUNT(*) FROM reclamos GROUP BY estado ORDER BY 2 DESC")
-            por_estado = [{"estado": r[0], "count": int(r[1])} for r in cur.fetchall()]
 
     return {
         "total": total,
@@ -665,40 +575,20 @@ def reclamos_kpis(user=Depends(get_current_user)):
     """KPIs de reclamos: por estado, aplica/no aplica, categoría, sub-causas top, tiempo resolución."""
     with get_conn() as conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT estado, COUNT(*) FROM reclamos GROUP BY estado ORDER BY 2 DESC")
-            por_estado_raw = {r[0]: int(r[1]) for r in cur.fetchall()}
+            por_estado_raw = q_por_estado_dict(cur)
             por_estado = [{"estado": k, "count": v} for k, v in por_estado_raw.items()]
 
             cur.execute("SELECT prioridad, COUNT(*) FROM reclamos WHERE estado NOT IN ('cerrado','rechazado') GROUP BY prioridad")
             por_prioridad = [{"prioridad": r[0], "count": int(r[1])} for r in cur.fetchall()]
 
-            cur.execute("SELECT COALESCE(categoria_ishikawa,'sin_categoria'), COUNT(*) FROM reclamos GROUP BY categoria_ishikawa")
-            por_categoria = [{"categoria": r[0], "count": int(r[1])} for r in cur.fetchall()]
+            por_categoria = q_por_categoria(cur)
 
             cur.execute("SELECT COALESCE(aplica,'pendiente'), COUNT(*) FROM reclamos GROUP BY aplica")
             por_aplica = [{"aplica": r[0], "count": int(r[1])} for r in cur.fetchall()]
 
-            # Top 10 sub-causas más repetitivas
-            cur.execute("""
-                SELECT cod_causa, sub_causa, categoria_ishikawa, COUNT(*) as cnt
-                FROM reclamos
-                WHERE sub_causa IS NOT NULL AND sub_causa != ''
-                GROUP BY cod_causa, sub_causa, categoria_ishikawa
-                ORDER BY cnt DESC LIMIT 10
-            """)
-            top_causas = [{"cod": r[0], "sub_causa": r[1], "categoria": r[2], "count": int(r[3])} for r in cur.fetchall()]
-
-            cur.execute("""
-                SELECT AVG(
-                    EXTRACT(EPOCH FROM (fecha_cierre::timestamp - fecha_creacion::timestamp)) / 86400.0
-                ) FROM reclamos WHERE estado = 'cerrado' AND fecha_cierre IS NOT NULL
-            """)
-            avg_row = cur.fetchone()
-            avg_dias_resolucion = round(float(avg_row[0]), 1) if avg_row and avg_row[0] else None
-
-            cur.execute("SELECT COUNT(*) FROM reclamos")
-            total = int(cur.fetchone()[0])
-
+            top_causas = q_top_causas(cur)
+            avg_dias_resolucion = q_avg_dias_resolucion(cur)
+            total = q_total(cur)
             abiertos = por_estado_raw.get("abierto", 0) + por_estado_raw.get("en_analisis", 0) + por_estado_raw.get("accion_correctiva", 0)
 
     return {
@@ -718,87 +608,27 @@ def reclamos_dashboard(user=Depends(get_current_user)):
     """Datos agregados para el dashboard de reclamos: charts y matriz."""
     with get_conn() as conn:
         with conn.cursor() as cur:
-            # 1) Reclamos por año-mes (todos los años, para comparación multi-año)
-            cur.execute("""
-                SELECT EXTRACT(YEAR FROM fecha_creacion::timestamp)::INTEGER AS anio,
-                       EXTRACT(MONTH FROM fecha_creacion::timestamp)::INTEGER AS mes,
-                       COUNT(*)
-                FROM reclamos
-                GROUP BY anio, mes ORDER BY anio, mes
-            """)
-            por_anio_mes = [{"anio": r[0], "mes": r[1], "count": int(r[2])} for r in cur.fetchall()]
+            por_anio_mes = q_por_anio_mes(cur, fecha_col="fecha_creacion")
+            por_categoria = q_por_categoria(cur)
+            por_estado = q_por_estado(cur)
+            resolucion_mes = q_resolucion_por_mes(cur)
+            matriz = q_matriz_obra_categoria(cur)
 
-            # 2) Distribución por categoría Ishikawa
-            cur.execute("""
-                SELECT COALESCE(categoria_ishikawa, 'sin_categoria'), COUNT(*)
-                FROM reclamos GROUP BY 1 ORDER BY 2 DESC
-            """)
-            por_categoria = [{"categoria": r[0], "count": int(r[1])} for r in cur.fetchall()]
+            por_obra = [{"obra": p["proyecto"], "count": p["count"]} for p in q_por_proyecto(cur, limit=10)]
 
-            # 3) Top 10 obras con más reclamos
-            cur.execute("""
-                SELECT COALESCE(p.nombre_proyecto, r.id_proyecto, 'Sin obra') AS obra, COUNT(*)
-                FROM reclamos r
-                LEFT JOIN proyectos p ON p.id_proyecto = r.id_proyecto
-                GROUP BY obra ORDER BY 2 DESC LIMIT 10
-            """)
-            por_obra = [{"obra": r[0], "count": int(r[1])} for r in cur.fetchall()]
-
-            # 4) Por estado actual
-            cur.execute("SELECT estado, COUNT(*) FROM reclamos GROUP BY estado ORDER BY 2 DESC")
-            por_estado = [{"estado": r[0], "count": int(r[1])} for r in cur.fetchall()]
-
-            # 5) Por responsable (top 10)
+            # Top 10 responsables
             cur.execute("""
                 SELECT COALESCE(NULLIF(responsable,''), 'Sin asignar'), COUNT(*)
                 FROM reclamos GROUP BY 1 ORDER BY 2 DESC LIMIT 10
             """)
             por_responsable = [{"responsable": r[0], "count": int(r[1])} for r in cur.fetchall()]
 
-            # 6) Matriz obra × categoría (top 8 obras)
-            cur.execute("""
-                SELECT COALESCE(p.nombre_proyecto, r.id_proyecto, 'Sin obra') AS obra,
-                       COALESCE(r.categoria_ishikawa, 'sin_categoria') AS cat,
-                       COUNT(*)
-                FROM reclamos r
-                LEFT JOIN proyectos p ON p.id_proyecto = r.id_proyecto
-                GROUP BY obra, cat
-                ORDER BY obra, cat
-            """)
-            matriz_raw = cur.fetchall()
-
-            # 7) Tiempo resolución por mes (últimos 12 meses)
-            cur.execute("""
-                SELECT TO_CHAR(fecha_cierre::timestamp, 'YYYY-MM') AS mes,
-                       AVG(EXTRACT(EPOCH FROM (fecha_cierre::timestamp - fecha_creacion::timestamp)) / 86400.0)
-                FROM reclamos
-                WHERE estado = 'cerrado' AND fecha_cierre IS NOT NULL
-                  AND fecha_cierre::timestamp >= NOW() - INTERVAL '12 months'
-                GROUP BY mes ORDER BY mes
-            """)
-            resolucion_mes = [{"mes": r[0], "avg_dias": round(float(r[1]), 1)} for r in cur.fetchall()]
-
-            # 8) Por creado_por (top 10)
+            # Top 10 creadores
             cur.execute("""
                 SELECT COALESCE(creado_por, 'Desconocido'), COUNT(*)
                 FROM reclamos GROUP BY 1 ORDER BY 2 DESC LIMIT 10
             """)
             por_creador = [{"creador": r[0], "count": int(r[1])} for r in cur.fetchall()]
-
-    # Build matrix structure
-    obras_set = {}
-    cats_set = set()
-    for obra, cat, cnt in matriz_raw:
-        obras_set.setdefault(obra, {})[cat] = int(cnt)
-        cats_set.add(cat)
-    # Sort obras by total desc, take top 8
-    obras_sorted = sorted(obras_set.items(), key=lambda x: sum(x[1].values()), reverse=True)[:8]
-    cats_sorted = sorted(cats_set)
-    matriz = {
-        "obras": [o[0] for o in obras_sorted],
-        "categorias": cats_sorted,
-        "data": [[o[1].get(c, 0) for c in cats_sorted] for o in obras_sorted],
-    }
 
     return {
         "por_anio_mes": por_anio_mes,
