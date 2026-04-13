@@ -3,7 +3,13 @@
     images: [],
     currentIndex: 0,
     isOpen: false,
-    options: {}
+    options: {},
+    zoom: 1,
+    panX: 0,
+    panY: 0,
+    isPanning: false,
+    panStartX: 0,
+    panStartY: 0
   };
 
   function resolveModal(target) {
@@ -51,66 +57,143 @@
     return String(value).replace('T', ' ').substring(0, 19);
   }
 
+  // ── Zoom helpers ──
+
+  function resetZoom() {
+    imageViewerState.zoom = 1;
+    imageViewerState.panX = 0;
+    imageViewerState.panY = 0;
+    applyTransform();
+    updateZoomLabel();
+  }
+
+  function setZoom(newZoom) {
+    imageViewerState.zoom = Math.min(Math.max(newZoom, 0.5), 5);
+    if (imageViewerState.zoom <= 1) {
+      imageViewerState.panX = 0;
+      imageViewerState.panY = 0;
+    }
+    applyTransform();
+    updateZoomLabel();
+  }
+
+  function applyTransform() {
+    var img = document.getElementById('imageViewerMainImg');
+    if (!img) return;
+    var s = imageViewerState;
+    img.style.transform = 'translate(' + s.panX + 'px, ' + s.panY + 'px) scale(' + s.zoom + ')';
+    img.style.cursor = s.zoom > 1 ? 'grab' : 'zoom-in';
+  }
+
+  function updateZoomLabel() {
+    var label = document.getElementById('imageViewerZoomLabel');
+    if (label) label.textContent = Math.round(imageViewerState.zoom * 100) + '%';
+  }
+
+  // ── Nav buttons ──
+
   function createNavButton(symbol, onClick) {
     var button = document.createElement('button');
-    button.innerHTML = symbol;
-    button.style.cssText = 'position:absolute; top:50%; transform:translateY(-50%); width:48px; height:48px; border:none; background:rgba(0,0,0,0.7); color:white; font-size:24px; border-radius:50%; cursor:pointer; z-index:1001; transition:all 0.2s;';
-    if (symbol === '‹') button.style.left = '20px';
-    if (symbol === '›') button.style.right = '20px';
-    button.onmouseover = function() { this.style.background = 'rgba(0,0,0,0.9)'; };
-    button.onmouseout = function() { this.style.background = 'rgba(0,0,0,0.7)'; };
-    button.onclick = onClick;
+    button.textContent = symbol;
+    button.style.cssText = 'position:absolute; top:50%; transform:translateY(-50%); width:44px; height:44px; border:none; background:rgba(0,0,0,0.5); color:white; font-size:22px; border-radius:50%; cursor:pointer; z-index:1001; transition:background 0.2s; line-height:44px; text-align:center;';
+    if (symbol === '‹') button.style.left = '12px';
+    if (symbol === '›') button.style.right = '12px';
+    button.onmouseover = function() { this.style.background = 'rgba(0,0,0,0.8)'; };
+    button.onmouseout = function() { this.style.background = 'rgba(0,0,0,0.5)'; };
+    button.onclick = function(e) { e.stopPropagation(); onClick(); };
     return button;
   }
+
+  // ── Viewer DOM ──
 
   function createImageViewer() {
     var modal = document.createElement('div');
     modal.id = 'imageModalViewer';
-    modal.style.cssText = 'position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.9); z-index:10000; display:flex; align-items:center; justify-content:center; backdrop-filter:blur(5px);';
-    modal.onclick = function(e) {
-      if (e.target === modal) closeImageViewer();
+    modal.style.cssText = 'position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.92); z-index:10000; display:flex; flex-direction:column; backdrop-filter:blur(4px);';
+    modal.onclick = function(e) { if (e.target === modal) closeImageViewer(); };
+
+    // ── Top bar ──
+    var topBar = document.createElement('div');
+    topBar.style.cssText = 'display:flex; justify-content:space-between; align-items:center; padding:10px 16px; color:#ddd; font-size:13px; flex-shrink:0; user-select:none;';
+    topBar.onclick = function(e) { e.stopPropagation(); };
+
+    var titleEl = document.createElement('div');
+    titleEl.id = 'imageModalViewerTitle';
+    titleEl.style.cssText = 'font-size:13px; color:#ccc; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:50%;';
+    topBar.appendChild(titleEl);
+
+    // Zoom controls
+    var zoomBar = document.createElement('div');
+    zoomBar.style.cssText = 'display:flex; align-items:center; gap:6px;';
+
+    var zoomOut = document.createElement('button');
+    zoomOut.textContent = '−';
+    zoomOut.title = 'Alejar';
+    zoomOut.style.cssText = 'width:28px; height:28px; border:1px solid #555; background:transparent; color:#ddd; border-radius:4px; cursor:pointer; font-size:16px; line-height:28px;';
+    zoomOut.onclick = function() { setZoom(imageViewerState.zoom - 0.25); };
+    zoomBar.appendChild(zoomOut);
+
+    var zoomLabel = document.createElement('span');
+    zoomLabel.id = 'imageViewerZoomLabel';
+    zoomLabel.style.cssText = 'color:#aaa; font-size:12px; min-width:40px; text-align:center;';
+    zoomLabel.textContent = '100%';
+    zoomBar.appendChild(zoomLabel);
+
+    var zoomIn = document.createElement('button');
+    zoomIn.textContent = '+';
+    zoomIn.title = 'Acercar';
+    zoomIn.style.cssText = 'width:28px; height:28px; border:1px solid #555; background:transparent; color:#ddd; border-radius:4px; cursor:pointer; font-size:16px; line-height:28px;';
+    zoomIn.onclick = function() { setZoom(imageViewerState.zoom + 0.25); };
+    zoomBar.appendChild(zoomIn);
+
+    var zoomReset = document.createElement('button');
+    zoomReset.textContent = '⟳';
+    zoomReset.title = 'Resetear zoom';
+    zoomReset.style.cssText = 'width:28px; height:28px; border:1px solid #555; background:transparent; color:#ddd; border-radius:4px; cursor:pointer; font-size:14px; line-height:28px;';
+    zoomReset.onclick = resetZoom;
+    zoomBar.appendChild(zoomReset);
+
+    var openTab = document.createElement('button');
+    openTab.textContent = '↗';
+    openTab.title = 'Abrir en nueva pestaña';
+    openTab.style.cssText = 'width:28px; height:28px; border:1px solid #555; background:transparent; color:#ddd; border-radius:4px; cursor:pointer; font-size:14px; line-height:28px; margin-left:8px;';
+    openTab.onclick = function() {
+      var img = imageViewerState.images[imageViewerState.currentIndex];
+      if (img && img.url) window.open(img.url, '_blank');
     };
-
-    var content = document.createElement('div');
-    content.style.cssText = 'position:relative; width:90%; height:90%; max-width:1200px; background:white; border-radius:12px; overflow:hidden; display:flex; flex-direction:column;';
-
-    var header = document.createElement('div');
-    header.style.cssText = 'display:flex; justify-content:space-between; align-items:center; padding:16px 20px; background:#f5f5f5; border-bottom:1px solid #e0e0e0;';
-    header.onclick = function(e) { e.stopPropagation(); };
-
-    var title = document.createElement('div');
-    title.id = 'imageModalViewerTitle';
-    title.style.cssText = 'font-size:16px; font-weight:600; color:#333;';
-    header.appendChild(title);
+    zoomBar.appendChild(openTab);
 
     var closeBtn = document.createElement('button');
-    closeBtn.innerHTML = '✕';
-    closeBtn.style.cssText = 'width:32px; height:32px; border:none; background:#f44336; color:white; border-radius:50%; cursor:pointer; font-size:18px; font-weight:bold;';
+    closeBtn.textContent = '✕';
+    closeBtn.title = 'Cerrar (Esc)';
+    closeBtn.style.cssText = 'width:28px; height:28px; border:none; background:transparent; color:#999; cursor:pointer; font-size:18px; line-height:28px; margin-left:12px;';
+    closeBtn.onmouseover = function() { this.style.color = '#fff'; };
+    closeBtn.onmouseout = function() { this.style.color = '#999'; };
     closeBtn.onclick = closeImageViewer;
-    header.appendChild(closeBtn);
+    zoomBar.appendChild(closeBtn);
 
+    topBar.appendChild(zoomBar);
+
+    // ── Main area ──
     var mainArea = document.createElement('div');
-    mainArea.style.cssText = 'flex:1; display:flex; position:relative; overflow:hidden;';
+    mainArea.style.cssText = 'flex:1; display:flex; position:relative; overflow:hidden; min-height:0;';
     mainArea.onclick = function(e) { e.stopPropagation(); };
 
     var viewer = document.createElement('div');
     viewer.id = 'imageViewerContent';
-    viewer.style.cssText = 'flex:1; display:flex; align-items:center; justify-content:center; background:#fafafa; position:relative;';
-
-    var sidebar = document.createElement('div');
-    sidebar.id = 'imageViewerSidebar';
-    sidebar.style.cssText = 'width:300px; background:white; border-left:1px solid #e0e0e0; padding:20px; overflow-y:auto;';
-
-    var footer = document.createElement('div');
-    footer.id = 'imageViewerFooter';
-    footer.style.cssText = 'display:flex; justify-content:center; align-items:center; padding:12px; background:#f5f5f5; border-top:1px solid #e0e0e0; gap:8px;';
+    viewer.style.cssText = 'flex:1; display:flex; align-items:center; justify-content:center; position:relative; overflow:hidden;';
 
     mainArea.appendChild(viewer);
-    mainArea.appendChild(sidebar);
-    content.appendChild(header);
-    content.appendChild(mainArea);
-    content.appendChild(footer);
-    modal.appendChild(content);
+
+    // ── Bottom bar (thumbnails) ──
+    var bottomBar = document.createElement('div');
+    bottomBar.id = 'imageViewerFooter';
+    bottomBar.style.cssText = 'display:flex; justify-content:center; align-items:center; padding:8px 16px; gap:4px; flex-shrink:0; overflow-x:auto;';
+    bottomBar.onclick = function(e) { e.stopPropagation(); };
+
+    modal.appendChild(topBar);
+    modal.appendChild(mainArea);
+    modal.appendChild(bottomBar);
     return modal;
   }
 
@@ -120,57 +203,123 @@
 
     var image = state.images[state.currentIndex];
     var viewer = document.getElementById('imageViewerContent');
-    var sidebar = document.getElementById('imageViewerSidebar');
     var title = document.getElementById('imageModalViewerTitle');
     var footer = document.getElementById('imageViewerFooter');
-    if (!viewer || !sidebar || !title || !footer) return;
+    if (!viewer || !title || !footer) return;
 
-    title.textContent = (state.currentIndex + 1) + ' / ' + state.images.length + ' - ' + (image.filename || 'Archivo');
+    // Reset zoom on image change
+    state.zoom = 1; state.panX = 0; state.panY = 0;
+    updateZoomLabel();
+
+    title.textContent = (state.currentIndex + 1) + ' / ' + state.images.length + '  ·  ' + (image.filename || 'Archivo');
     viewer.innerHTML = '';
 
-    var prevBtn = createNavButton('‹', navigatePrevious);
-    var nextBtn = createNavButton('›', navigateNext);
-    prevBtn.style.display = state.currentIndex > 0 ? 'block' : 'none';
-    nextBtn.style.display = state.currentIndex < state.images.length - 1 ? 'block' : 'none';
-    viewer.appendChild(prevBtn);
-    viewer.appendChild(nextBtn);
+    // Nav arrows
+    if (state.currentIndex > 0) viewer.appendChild(createNavButton('‹', navigatePrevious));
+    if (state.currentIndex < state.images.length - 1) viewer.appendChild(createNavButton('›', navigateNext));
 
     if (image.content_type && image.content_type.startsWith('image/')) {
       var img = document.createElement('img');
+      img.id = 'imageViewerMainImg';
       img.src = image.url;
-      img.style.cssText = 'max-width:100%; max-height:100%; object-fit:contain; border-radius:8px;';
+      img.draggable = false;
+      img.style.cssText = 'max-width:95%; max-height:95%; object-fit:contain; transition:transform 0.15s ease; transform-origin:center center; cursor:zoom-in; user-select:none;';
+
+      // Double-click toggle zoom
+      img.ondblclick = function(e) {
+        e.preventDefault();
+        if (state.zoom > 1) { resetZoom(); } else { setZoom(2); }
+      };
+
+      // Wheel zoom
+      img.onwheel = function(e) {
+        e.preventDefault();
+        var delta = e.deltaY < 0 ? 0.2 : -0.2;
+        setZoom(state.zoom + delta);
+      };
+
+      // Pan on drag when zoomed
+      img.onmousedown = function(e) {
+        if (state.zoom <= 1) return;
+        e.preventDefault();
+        state.isPanning = true;
+        state.panStartX = e.clientX - state.panX;
+        state.panStartY = e.clientY - state.panY;
+        img.style.cursor = 'grabbing';
+        img.style.transition = 'none';
+      };
+      document.addEventListener('mousemove', handlePanMove);
+      document.addEventListener('mouseup', handlePanEnd);
+
       viewer.appendChild(img);
     } else if (image.content_type === 'application/pdf') {
       var iframe = document.createElement('iframe');
       iframe.src = image.url;
-      iframe.style.cssText = 'width:100%; height:100%; border:none; border-radius:8px;';
+      iframe.style.cssText = 'width:90%; height:90%; border:none; border-radius:6px; background:white;';
       viewer.appendChild(iframe);
     } else {
       var fileDiv = document.createElement('div');
-      fileDiv.style.cssText = 'text-align:center; padding:40px;';
-      fileDiv.innerHTML = '<div style="font-size:64px; margin-bottom:16px;">' + getFileIcon(image.filename) + '</div>' +
-        '<div style="font-size:18px; font-weight:600; margin-bottom:8px;">' + (image.filename || 'Archivo') + '</div>' +
-        '<div style="color:#666; margin-bottom:20px;">Tipo: ' + (image.content_type || 'Desconocido') + '</div>' +
-        '<button onclick="window.open(\'' + image.url + '\', \"_blank\")" style="padding:10px 20px; background:#1976d2; color:white; border:none; border-radius:6px; cursor:pointer; font-size:14px;">Descargar archivo</button>';
+      fileDiv.style.cssText = 'text-align:center; padding:40px; color:#ccc;';
+      var iconSpan = document.createElement('div');
+      iconSpan.style.cssText = 'font-size:56px; margin-bottom:12px;';
+      iconSpan.textContent = getFileIcon(image.filename);
+      fileDiv.appendChild(iconSpan);
+
+      var nameSpan = document.createElement('div');
+      nameSpan.style.cssText = 'font-size:16px; font-weight:600; margin-bottom:6px; color:#eee;';
+      nameSpan.textContent = image.filename || 'Archivo';
+      fileDiv.appendChild(nameSpan);
+
+      var typeSpan = document.createElement('div');
+      typeSpan.style.cssText = 'color:#888; margin-bottom:16px; font-size:13px;';
+      typeSpan.textContent = image.content_type || 'Desconocido';
+      fileDiv.appendChild(typeSpan);
+
+      var dlBtn = document.createElement('button');
+      dlBtn.textContent = 'Abrir archivo';
+      dlBtn.style.cssText = 'padding:8px 18px; background:#1976d2; color:white; border:none; border-radius:6px; cursor:pointer; font-size:13px;';
+      dlBtn.onclick = function() { window.open(image.url, '_blank'); };
+      fileDiv.appendChild(dlBtn);
+
       viewer.appendChild(fileDiv);
     }
 
-    sidebar.innerHTML = '<h4 style="margin:0 0 16px 0; color:#333;">Información del archivo</h4>' +
-      '<div style="margin-bottom:12px;"><strong>Nombre:</strong><br><span style="color:#666; word-break:break-all;">' + (image.filename || '—') + '</span></div>' +
-      '<div style="margin-bottom:12px;"><strong>Tipo:</strong><br><span style="color:#666;">' + (image.content_type || '—') + '</span></div>' +
-      '<div style="margin-bottom:12px;"><strong>Subido por:</strong><br><span style="color:#666;">' + (image.subido_por || '—') + '</span></div>' +
-      '<div style="margin-bottom:12px;"><strong>Fecha:</strong><br><span style="color:#666;">' + formatViewerDate(image.fecha_subida) + '</span></div>' +
-      (image.descripcion ? '<div style="margin-bottom:12px;"><strong>Descripción:</strong><br><span style="color:#666;">' + image.descripcion + '</span></div>' : '') +
-      (image.tipo ? '<div style="margin-bottom:12px;"><strong>Categoría:</strong><br><span style="color:#666; background:#e3f2fd; padding:2px 8px; border-radius:4px; font-size:12px;">' + getCategoryLabel(image.tipo) + '</span></div>' : '');
-
+    // Thumbnail strip
     footer.innerHTML = '';
-    for (var i = 0; i < state.images.length; i++) {
-      var dot = document.createElement('button');
-      dot.style.cssText = 'width:8px; height:8px; border:none; border-radius:50%; background:' + (i === state.currentIndex ? '#1976d2' : '#ccc') + '; cursor:pointer; margin:0 2px; transition:all 0.2s;';
-      dot.onclick = (function(index) {
-        return function() { navigateToImage(index); };
-      })(i);
-      footer.appendChild(dot);
+    if (state.images.length > 1) {
+      for (var i = 0; i < state.images.length; i++) {
+        var thumbBtn = document.createElement('button');
+        thumbBtn.style.cssText = 'width:40px; height:40px; border:2px solid ' + (i === state.currentIndex ? '#1976d2' : 'transparent') + '; border-radius:4px; padding:0; cursor:pointer; overflow:hidden; background:#222; flex-shrink:0; transition:border-color 0.2s;';
+        if (state.images[i].content_type && state.images[i].content_type.startsWith('image/')) {
+          var thumbImg = document.createElement('img');
+          thumbImg.src = state.images[i].url;
+          thumbImg.style.cssText = 'width:100%; height:100%; object-fit:cover;';
+          thumbImg.draggable = false;
+          thumbBtn.appendChild(thumbImg);
+        } else {
+          thumbBtn.style.cssText += 'font-size:16px; display:flex; align-items:center; justify-content:center; color:#aaa;';
+          thumbBtn.textContent = '📄';
+        }
+        thumbBtn.onclick = (function(index) { return function() { navigateToImage(index); }; })(i);
+        footer.appendChild(thumbBtn);
+      }
+    }
+  }
+
+  function handlePanMove(e) {
+    if (!imageViewerState.isPanning) return;
+    imageViewerState.panX = e.clientX - imageViewerState.panStartX;
+    imageViewerState.panY = e.clientY - imageViewerState.panStartY;
+    applyTransform();
+  }
+
+  function handlePanEnd() {
+    if (!imageViewerState.isPanning) return;
+    imageViewerState.isPanning = false;
+    var img = document.getElementById('imageViewerMainImg');
+    if (img) {
+      img.style.cursor = imageViewerState.zoom > 1 ? 'grab' : 'zoom-in';
+      img.style.transition = 'transform 0.15s ease';
     }
   }
 
@@ -180,6 +329,9 @@
     imageViewerState.currentIndex = startIndex || 0;
     imageViewerState.isOpen = imageViewerState.images.length > 0;
     imageViewerState.options = options || {};
+    imageViewerState.zoom = 1;
+    imageViewerState.panX = 0;
+    imageViewerState.panY = 0;
     if (!imageViewerState.isOpen) return;
 
     document.body.appendChild(createImageViewer());
@@ -191,7 +343,10 @@
     var modal = document.getElementById('imageModalViewer');
     if (modal) modal.remove();
     imageViewerState.isOpen = false;
+    imageViewerState.isPanning = false;
     document.removeEventListener('keydown', handleImageViewerKeydown);
+    document.removeEventListener('mousemove', handlePanMove);
+    document.removeEventListener('mouseup', handlePanEnd);
   }
 
   function navigatePrevious() {
@@ -218,6 +373,9 @@
     if (e.key === 'Escape') closeImageViewer();
     if (e.key === 'ArrowLeft') navigatePrevious();
     if (e.key === 'ArrowRight') navigateNext();
+    if (e.key === '+' || e.key === '=') { e.preventDefault(); setZoom(imageViewerState.zoom + 0.25); }
+    if (e.key === '-') { e.preventDefault(); setZoom(imageViewerState.zoom - 0.25); }
+    if (e.key === '0') { e.preventDefault(); resetZoom(); }
   }
 
   global.showModal = showModal;

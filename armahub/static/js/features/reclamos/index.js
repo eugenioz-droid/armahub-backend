@@ -1939,20 +1939,24 @@ function renderImagenesEnContainer(containerId, imagenes) {
     return;
   }
   container.innerHTML = '';
-  imagenes.forEach(function(img) {
+  imagenes.forEach(function(img, idx) {
     var wrapper = document.createElement('div');
-    wrapper.style.cssText = 'position:relative; width:120px; border:1px solid #ccc; border-radius:6px; overflow:hidden; background:#f9f9f9;';
-
-    var link = document.createElement('a');
-    link.href = img.url;
-    link.target = '_blank';
-    link.title = img.filename;
+    wrapper.style.cssText = 'position:relative; width:120px; border:1px solid #ccc; border-radius:6px; overflow:hidden; background:#f9f9f9; cursor:pointer;';
 
     var thumb = document.createElement('img');
     thumb.src = img.url;
     thumb.style.cssText = 'width:120px; height:90px; object-fit:cover; display:block;';
-    link.appendChild(thumb);
-    wrapper.appendChild(link);
+    thumb.title = img.filename;
+    wrapper.appendChild(thumb);
+
+    // Click opens modal viewer (same as Presentaciones)
+    wrapper.onclick = function(e) {
+      // Don't open viewer if delete button was clicked
+      if (e.target.tagName === 'BUTTON') return;
+      if (typeof openImageViewer === 'function') {
+        openImageViewer(imagenes, idx);
+      }
+    };
 
     var label = document.createElement('div');
     label.style.cssText = 'padding:2px 4px; font-size:10px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;';
@@ -1963,7 +1967,7 @@ function renderImagenesEnContainer(containerId, imagenes) {
     btn.className = 'secondary';
     btn.style.cssText = 'position:absolute; top:2px; right:2px; font-size:10px; padding:0 4px; background:rgba(255,255,255,0.8); color:#b42318; border-radius:3px;';
     btn.textContent = '✕';
-    btn.onclick = function() { eliminarImagen(img.id); };
+    btn.onclick = function(e) { e.stopPropagation(); eliminarImagen(img.id); };
     wrapper.appendChild(btn);
 
     container.appendChild(wrapper);
