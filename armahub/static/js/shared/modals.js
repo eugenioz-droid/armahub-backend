@@ -124,39 +124,54 @@
 
     // Zoom controls
     var zoomBar = document.createElement('div');
-    zoomBar.style.cssText = 'display:flex; align-items:center; gap:6px;';
+    zoomBar.style.cssText = 'display:flex; align-items:center; gap:4px;';
+
+    var btnBase = 'display:inline-flex; align-items:center; justify-content:center; width:32px; height:32px; border:none; background:rgba(255,255,255,0.08); color:#ccc; border-radius:6px; cursor:pointer; font-family:system-ui,sans-serif; transition:background .15s,color .15s;';
+    var btnHover = function(btn) {
+      btn.onmouseover = function() { this.style.background = 'rgba(255,255,255,0.18)'; this.style.color = '#fff'; };
+      btn.onmouseout = function() { this.style.background = 'rgba(255,255,255,0.08)'; this.style.color = '#ccc'; };
+    };
 
     var zoomOut = document.createElement('button');
-    zoomOut.textContent = '−';
-    zoomOut.title = 'Alejar';
-    zoomOut.style.cssText = 'width:28px; height:28px; border:1px solid #555; background:transparent; color:#ddd; border-radius:4px; cursor:pointer; font-size:16px; line-height:28px;';
+    zoomOut.innerHTML = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><line x1="4" y1="8" x2="12" y2="8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>';
+    zoomOut.title = 'Alejar (-)';
+    zoomOut.style.cssText = btnBase;
+    btnHover(zoomOut);
     zoomOut.onclick = function() { setZoom(imageViewerState.zoom - 0.25); };
     zoomBar.appendChild(zoomOut);
 
     var zoomLabel = document.createElement('span');
     zoomLabel.id = 'imageViewerZoomLabel';
-    zoomLabel.style.cssText = 'color:#aaa; font-size:12px; min-width:40px; text-align:center;';
+    zoomLabel.style.cssText = 'color:#aaa; font-size:11px; min-width:42px; text-align:center; font-family:system-ui,sans-serif; font-variant-numeric:tabular-nums;';
     zoomLabel.textContent = '100%';
     zoomBar.appendChild(zoomLabel);
 
     var zoomIn = document.createElement('button');
-    zoomIn.textContent = '+';
-    zoomIn.title = 'Acercar';
-    zoomIn.style.cssText = 'width:28px; height:28px; border:1px solid #555; background:transparent; color:#ddd; border-radius:4px; cursor:pointer; font-size:16px; line-height:28px;';
+    zoomIn.innerHTML = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><line x1="8" y1="4" x2="8" y2="12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><line x1="4" y1="8" x2="12" y2="8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>';
+    zoomIn.title = 'Acercar (+)';
+    zoomIn.style.cssText = btnBase;
+    btnHover(zoomIn);
     zoomIn.onclick = function() { setZoom(imageViewerState.zoom + 0.25); };
     zoomBar.appendChild(zoomIn);
 
     var zoomReset = document.createElement('button');
-    zoomReset.textContent = '⟳';
-    zoomReset.title = 'Resetear zoom';
-    zoomReset.style.cssText = 'width:28px; height:28px; border:1px solid #555; background:transparent; color:#ddd; border-radius:4px; cursor:pointer; font-size:14px; line-height:28px;';
+    zoomReset.innerHTML = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3.5 4.5V7H6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M3.5 7C4.3 4.8 6 3.5 8 3.5c2.5 0 4.5 2 4.5 4.5s-2 4.5-4.5 4.5c-1.7 0-3.1-.9-3.9-2.3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>';
+    zoomReset.title = 'Resetear zoom (0)';
+    zoomReset.style.cssText = btnBase;
+    btnHover(zoomReset);
     zoomReset.onclick = resetZoom;
     zoomBar.appendChild(zoomReset);
 
+    // Separator
+    var sep = document.createElement('div');
+    sep.style.cssText = 'width:1px; height:18px; background:rgba(255,255,255,0.15); margin:0 4px;';
+    zoomBar.appendChild(sep);
+
     var openTab = document.createElement('button');
-    openTab.textContent = '↗';
+    openTab.innerHTML = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M9 3h4v4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M13 3L7.5 8.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M11 9v3.5a.5.5 0 01-.5.5h-7a.5.5 0 01-.5-.5v-7a.5.5 0 01.5-.5H7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
     openTab.title = 'Abrir en nueva pestaña';
-    openTab.style.cssText = 'width:28px; height:28px; border:1px solid #555; background:transparent; color:#ddd; border-radius:4px; cursor:pointer; font-size:14px; line-height:28px; margin-left:8px;';
+    openTab.style.cssText = btnBase;
+    btnHover(openTab);
     openTab.onclick = function() {
       var img = imageViewerState.images[imageViewerState.currentIndex];
       if (img && img.url) window.open(img.url, '_blank');
@@ -164,11 +179,11 @@
     zoomBar.appendChild(openTab);
 
     var closeBtn = document.createElement('button');
-    closeBtn.textContent = '✕';
+    closeBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><line x1="4" y1="4" x2="12" y2="12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><line x1="12" y1="4" x2="4" y2="12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>';
     closeBtn.title = 'Cerrar (Esc)';
-    closeBtn.style.cssText = 'width:28px; height:28px; border:none; background:transparent; color:#999; cursor:pointer; font-size:18px; line-height:28px; margin-left:12px;';
-    closeBtn.onmouseover = function() { this.style.color = '#fff'; };
-    closeBtn.onmouseout = function() { this.style.color = '#999'; };
+    closeBtn.style.cssText = 'display:inline-flex; align-items:center; justify-content:center; width:32px; height:32px; border:none; background:rgba(255,255,255,0.08); color:#888; border-radius:6px; cursor:pointer; margin-left:4px; transition:background .15s,color .15s;';
+    closeBtn.onmouseover = function() { this.style.background = 'rgba(220,50,50,0.25)'; this.style.color = '#ff6b6b'; };
+    closeBtn.onmouseout = function() { this.style.background = 'rgba(255,255,255,0.08)'; this.style.color = '#888'; };
     closeBtn.onclick = closeImageViewer;
     zoomBar.appendChild(closeBtn);
 
