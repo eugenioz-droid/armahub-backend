@@ -2347,7 +2347,14 @@ async function guardarValidacion() {
     body: JSON.stringify(body)
   });
   if (res.status === 401) { logout(); return; }
-  var data = await res.json();
+  var data;
+  try { data = await res.json(); } catch(e) {
+    var raw = '';
+    try { raw = await res.clone().text(); } catch(_) {}
+    console.error('[guardarValidacion] status=' + res.status, 'parse error', raw);
+    msg.textContent = 'Error ' + res.status + ' (ver consola)'; msg.style.color = '#b42318';
+    return;
+  }
   if (data.ok) {
     if (resultado === 'rechazado') {
       msg.textContent = '❌ Rechazado — devuelto al cubicador para corrección';

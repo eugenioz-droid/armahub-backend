@@ -1107,6 +1107,18 @@ def get_reclamo_optimizado(
 @router.patch("/reclamos/{reclamo_id}")
 def actualizar_reclamo(reclamo_id: int, body: ReclamoUpdate, user=Depends(get_current_user)):
     """Actualizar campos de un reclamo. Si cambia estado, crea seguimiento automático."""
+    import traceback as _tb
+    try:
+        return _actualizar_reclamo_impl(reclamo_id, body, user)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        detail = f"[PATCH /reclamos/{reclamo_id}] {type(exc).__name__}: {exc}\n{_tb.format_exc()}"
+        print(detail)
+        raise HTTPException(status_code=500, detail=detail)
+
+
+def _actualizar_reclamo_impl(reclamo_id: int, body: ReclamoUpdate, user: dict):
     email = user.get("email", "unknown")
     role = user.get("role", "usc")
     now = datetime.now(timezone.utc).isoformat()
