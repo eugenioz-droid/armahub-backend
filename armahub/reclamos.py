@@ -1255,15 +1255,23 @@ def _actualizar_reclamo_impl(reclamo_id: int, body: ReclamoUpdate, user: dict):
                 params.append(body.estado)
                 estado_changed = True
 
-                # If closing/validating, set fecha_cierre
+                # Helper: check if column already in sets to avoid duplicate assignment
+                def _col_in_sets(col):
+                    return any(s.startswith(col + " =") or s.startswith(col + " =") for s in sets)
+
+                # If closing/validating, set fecha_cierre (unless already set)
                 if body.estado in ("validado", "cerrado", "rechazado"):
-                    sets.append("fecha_cierre = %s")
-                    params.append(now)
+                    if not _col_in_sets("fecha_cierre"):
+                        sets.append("fecha_cierre = %s")
+                        params.append(now)
                 # If reopening, clear fecha_cierre and validacion metadata
                 elif estado_anterior in ("validado", "cerrado", "rechazado"):
-                    sets.append("fecha_cierre = NULL")
-                    sets.append("validacion_fecha = NULL")
-                    sets.append("validacion_por = NULL")
+                    if not _col_in_sets("fecha_cierre"):
+                        sets.append("fecha_cierre = NULL")
+                    if not _col_in_sets("validacion_fecha"):
+                        sets.append("validacion_fecha = NULL")
+                    if not _col_in_sets("validacion_por"):
+                        sets.append("validacion_por = NULL")
 
             params.append(reclamo_id)
             cur.execute(f"UPDATE reclamos SET {', '.join(sets)} WHERE id = %s", params)
