@@ -554,8 +554,39 @@ MIGRATIONS = [
         "DO $$ BEGIN ALTER TABLE reclamos ADD COLUMN tiempo_respuesta_fecha_actualizacion TIMESTAMPTZ; EXCEPTION WHEN duplicate_column THEN NULL; END $$;",
     ]),
     (41, "reclamos: agregar estado 'validado' al CHECK constraint", [
-        """DO $$ BEGIN
-            ALTER TABLE reclamos DROP CONSTRAINT IF EXISTS reclamos_estado_check;
+        # Drop ALL check constraints on reclamos.estado (handles auto-named + explicit)
+        """DO $$
+        DECLARE r RECORD;
+        BEGIN
+            FOR r IN (
+                SELECT con.conname
+                FROM pg_constraint con
+                JOIN pg_attribute att ON att.attnum = ANY(con.conkey) AND att.attrelid = con.conrelid
+                WHERE con.conrelid = 'reclamos'::regclass
+                  AND con.contype = 'c'
+                  AND att.attname = 'estado'
+            ) LOOP
+                EXECUTE 'ALTER TABLE reclamos DROP CONSTRAINT ' || r.conname;
+            END LOOP;
+            ALTER TABLE reclamos ADD CONSTRAINT reclamos_estado_check
+                CHECK (estado IN ('abierto','en_analisis','accion_correctiva','validacion','validado','cerrado','rechazado'));
+        END $$;""",
+    ]),
+    (42, "reclamos: fix CHECK constraint estado (force drop all + recreate)", [
+        # Retry: migration 41 may have run but failed to drop old auto-named constraint
+        """DO $$
+        DECLARE r RECORD;
+        BEGIN
+            FOR r IN (
+                SELECT con.conname
+                FROM pg_constraint con
+                JOIN pg_attribute att ON att.attnum = ANY(con.conkey) AND att.attrelid = con.conrelid
+                WHERE con.conrelid = 'reclamos'::regclass
+                  AND con.contype = 'c'
+                  AND att.attname = 'estado'
+            ) LOOP
+                EXECUTE 'ALTER TABLE reclamos DROP CONSTRAINT ' || r.conname;
+            END LOOP;
             ALTER TABLE reclamos ADD CONSTRAINT reclamos_estado_check
                 CHECK (estado IN ('abierto','en_analisis','accion_correctiva','validacion','validado','cerrado','rechazado'));
         END $$;""",
