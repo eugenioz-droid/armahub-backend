@@ -480,3 +480,11 @@ async function loadLandingIndicadores() {
     }
   }
 }
+
+// Auto-load indicators if hub is already visible when portal script loads
+(function() {
+  var hub = document.getElementById('hubScreen');
+  if (hub && hub.style.display !== 'none' && typeof window.currentRole !== 'undefined') {
+    loadLandingIndicadores();
+  }
+})();

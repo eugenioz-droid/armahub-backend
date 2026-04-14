@@ -33,7 +33,9 @@ async function loadMe() {
   await setGlobalStatus("Sesión como " + (roleLabels[currentRole] || currentRole), "ok");
 
   // Load landing flash indicators
-  loadLandingIndicadores();
+  if (typeof loadLandingIndicadores === 'function') {
+    loadLandingIndicadores();
+  }
 }
 
 // ========================= GLOBAL SAFETY =========================

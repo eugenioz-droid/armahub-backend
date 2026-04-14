@@ -2739,9 +2739,10 @@ document.addEventListener('keydown', function(e) {
   }
 
   // --- Drop zones initializer with dedup guard ---
+  var _origInitRecImageDropZones = global.initRecImageDropZones;
   function _initRecImageDropZonesGuarded() {
     if (global.__armahubReclamosDropZonesInitialized) return;
-    initRecImageDropZones();
+    _origInitRecImageDropZones();
     // Solo marcar como inicializado si la zona principal existe en el DOM
     if (document.getElementById('recCreateDropZone')) {
       global.__armahubReclamosDropZonesInitialized = true;
