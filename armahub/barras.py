@@ -771,26 +771,6 @@ def crear_barra_manual(body: BarraManualCreate, user=Depends(get_current_user)):
     """Crear una barra manual (origen='manual'). DESHABILITADO."""
     raise HTTPException(status_code=403, detail="Función deshabilitada — sistema cerrado")
 
-            nombre_proyecto = prow[1]
-            id_unico = f"MAN-{uuid.uuid4().hex[:12].upper()}"
-            cant_total = body.cant
-            peso_unitario, _ = _calcular_peso(body.diam, body.largo_total)
-            peso_total = peso_unitario * cant_total if peso_unitario else None
-
-            cur.execute("""
-                INSERT INTO barras (id_unico, id_proyecto, nombre_proyecto, sector, piso, ciclo, eje,
-                    diam, largo_total, mult, cant, cant_total, peso_unitario, peso_total,
-                    fecha_carga, origen, creado_por, figura, marca)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            """, (id_unico, body.id_proyecto, nombre_proyecto,
-                  body.sector.upper(), body.piso.upper(), body.ciclo.upper(), body.eje,
-                  body.diam, body.largo_total, 1, body.cant, cant_total,
-                  peso_unitario, peso_total, now, 'manual', email,
-                  body.figura, body.marca))
-
-    audit(email, "crear_barra_manual", f"Barra {id_unico} en {body.id_proyecto}", "barra", id_unico)
-    return {"ok": True, "id_unico": id_unico, "peso_total": round(peso_total, 3) if peso_total else None}
-
 
 @router.post("/barras/{id_unico}/duplicar")
 def duplicar_barra(id_unico: str, user=Depends(get_current_user)):
