@@ -5,11 +5,11 @@ var _ishikawaSelection = { categoria: '', sub_causa: '', cod_causa: '' };
 
 var _recEstadoColors = {
   abierto: '#e53935', en_analisis: '#ff9800', accion_correctiva: '#2196F3',
-  validacion: '#7B1FA2', cerrado: '#4CAF50', rechazado: '#9E9E9E'
+  validacion: '#7B1FA2', validado: '#4CAF50', cerrado: '#607D8B', rechazado: '#9E9E9E'
 };
 var _recEstadoLabels = {
   abierto: 'Abierto', en_analisis: 'En análisis', accion_correctiva: 'Acción correctiva',
-  validacion: 'En validación', cerrado: 'Cerrado', rechazado: 'Rechazado'
+  validacion: 'En validación', validado: 'Validado', cerrado: 'Cerrado', rechazado: 'Rechazado'
 };
 var _recPrioridadColors = {
   baja: '#9E9E9E', media: '#ff9800', alta: '#e53935', critica: '#b71c1c'
@@ -219,7 +219,7 @@ function _renderPresentacionHeader(detail) {
   document.getElementById('presCorrelativo').textContent = detail.correlativo || '#' + detail.id;
   document.getElementById('presProyecto').textContent = detail.nombre_proyecto || '—';
   document.getElementById('presCubicador').textContent = detail.cubicador_nombre || '—';
-  var estadoLabels = {abierto:'Abierto', en_análisis:'En análisis', accion_correctiva:'Acción correctiva', validacion:'Validación', cerrado:'Cerrado', rechazado:'Rechazado'};
+  var estadoLabels = {abierto:'Abierto', en_analisis:'En análisis', accion_correctiva:'Acción correctiva', validacion:'Validación', validado:'Validado', cerrado:'Cerrado', rechazado:'Rechazado'};
   document.getElementById('presEstado').textContent = estadoLabels[detail.estado] || detail.estado;
   var aplicaLabels = {si:'Sí aplica', no:'No aplica', pendiente:'Pendiente'};
   var aplicaEl = document.getElementById('presAplica');
@@ -630,9 +630,10 @@ class ReclamoUtils {
   static getEstadoLabel(estado) {
     var labels = {
       abierto: 'Abierto',
-      en_análisis: 'En análisis',
+      en_analisis: 'En análisis',
       accion_correctiva: 'Acción correctiva',
       validacion: 'Validación',
+      validado: 'Validado',
       cerrado: 'Cerrado',
       rechazado: 'Rechazado'
     };
@@ -834,7 +835,7 @@ async function guardarPresentacion() {
   msg.textContent = 'Guardando...';
   msg.style.color = '#666';
 
-  var res = await fetch('/reclamos/' + id + '/presentar', {
+  var res = await fetch(apiUrl('/reclamos/' + id + '/presentar'), {
     method: 'POST',
     headers: Object.assign({}, authHeaders(), { 'Content-Type': 'application/json' }),
     body: JSON.stringify({ asistentes: asistentes, comentarios: comentarios })
@@ -1351,7 +1352,7 @@ async function loadRecAdminDashboards() {
 
 var _recUsersCache = [];
 async function loadRecUsersDropdown() {
-  var res = await fetch('/users/dropdown', { headers: authHeaders() });
+  var res = await fetch(apiUrl('/users/dropdown'), { headers: authHeaders() });
   if (!res.ok) return;
   var data = await res.json();
   _recUsersCache = data.users || [];
@@ -1525,7 +1526,7 @@ async function crearReclamo() {
   if (detectadoPor) body.detectado_por = detectadoPor;
   if (fechaDeteccion) body.fecha_deteccion = fechaDeteccion;
   if (idCalidad) body.id_calidad = idCalidad;
-  var res = await fetch('/reclamos', {
+  var res = await fetch(apiUrl('/reclamos'), {
     method: 'POST',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
     body: JSON.stringify(body)
@@ -1542,7 +1543,7 @@ async function crearReclamo() {
         var formData = new FormData();
         formData.append('file', filesToUpload[i]);
         formData.append('tipo', 'antecedente');
-        await fetch('/reclamos/' + data.id + '/imagenes', { method: 'POST', headers: authHeaders(), body: formData });
+        await fetch(apiUrl('/reclamos/' + data.id + '/imagenes'), { method: 'POST', headers: authHeaders(), body: formData });
       }
     }
     _recCreateStagedFiles = [];
@@ -1598,7 +1599,7 @@ async function crearProyectoDesdeReclamo() {
   if (constId) body.constructora_id = parseInt(constId);
   var desc = document.getElementById('recNuevoProjDescripcion').value.trim();
   if (desc) body.descripcion = desc;
-  var res = await fetch('/proyectos', {
+  var res = await fetch(apiUrl('/proyectos'), {
     method: 'POST',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
     body: JSON.stringify(body)
@@ -1631,7 +1632,7 @@ async function crearCalcDesdeRecForm() {
   var msg = document.getElementById('recNewCalcMsg');
   if (!nombre) { msg.textContent = 'Ingresa un nombre'; msg.style.color = '#b42318'; return; }
   msg.textContent = 'Creando...'; msg.style.color = '#666';
-  var res = await fetch('/calculistas', {
+  var res = await fetch(apiUrl('/calculistas'), {
     method: 'POST',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
     body: JSON.stringify({ nombre: nombre })
@@ -1659,7 +1660,7 @@ async function crearConstDesdeRecForm() {
   var msg = document.getElementById('recNewConstMsg');
   if (!nombre) { msg.textContent = 'Ingresa un nombre'; msg.style.color = '#b42318'; return; }
   msg.textContent = 'Creando...'; msg.style.color = '#666';
-  var res = await fetch('/constructoras', {
+  var res = await fetch(apiUrl('/constructoras'), {
     method: 'POST',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
     body: JSON.stringify({ nombre: nombre })
@@ -1846,7 +1847,7 @@ function _applyReclamoDetailPermissions(data) {
   var puedeCerrar = (currentRole === 'admin' || currentRole === 'admin2') || esAsignado;
   var cerrarCont = document.getElementById('recCerrarContainer');
   if (cerrarCont) cerrarCont.style.display = puedeCerrar ? '' : 'none';
-  var estaCerrado = (data.estado === 'cerrado' || data.estado === 'rechazado');
+  var estaCerrado = (data.estado === 'validado' || data.estado === 'cerrado' || data.estado === 'rechazado');
   var puedeReabrir = estaCerrado && (currentRole === 'admin' || currentRole === 'admin2');
   var btnCerrar = document.getElementById('btnCerrarReclamo');
   var btnReabrir = document.getElementById('btnReabrirReclamo');
@@ -2030,7 +2031,7 @@ async function cerrarReclamo() {
     return;
   }
   
-  var res = await fetch('/reclamos/' + _reclamoActual.id, {
+  var res = await fetch(apiUrl('/reclamos/' + _reclamoActual.id), {
     method: 'PATCH',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
     body: JSON.stringify({ estado: 'cerrado' })
@@ -2049,7 +2050,7 @@ async function cerrarReclamo() {
 async function reabrirReclamo() {
   if (!_reclamoActual) return;
   if (!confirm('¿Reabrir este reclamo?\n\nEl estado volverá a "En análisis" y se limpiará la validación.')) return;
-  var res = await fetch('/reclamos/' + _reclamoActual.id, {
+  var res = await fetch(apiUrl('/reclamos/' + _reclamoActual.id), {
     method: 'PATCH',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
     body: JSON.stringify({ estado: 'en_analisis', validacion_resultado: '', validacion_observaciones: '' })
@@ -2132,7 +2133,7 @@ async function guardarEdicionReclamo() {
     id_calidad: document.getElementById('recEditIdCalidad').value.trim() || null,
     id_proyecto: editProyVal || null,
   };
-  var res = await fetch('/reclamos/' + _reclamoActual.id, {
+  var res = await fetch(apiUrl('/reclamos/' + _reclamoActual.id), {
     method: 'PATCH',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
     body: JSON.stringify(body)
@@ -2156,7 +2157,7 @@ async function guardarIdCalidad() {
   if (!_reclamoActual) return;
   var val = (document.getElementById('recDetailIdCalidad').value || '').trim();
   if (val === (_reclamoActual.id_calidad || '')) return;
-  var res = await fetch('/reclamos/' + _reclamoActual.id, {
+  var res = await fetch(apiUrl('/reclamos/' + _reclamoActual.id), {
     method: 'PATCH',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
     body: JSON.stringify({ id_calidad: val })
@@ -2171,7 +2172,7 @@ async function cambiarProyectoReclamo() {
   if (!_reclamoActual) return;
   var val = document.getElementById('recDetailProyecto').value;
   if (val === (_reclamoActual.id_proyecto || '')) return;
-  var res = await fetch('/reclamos/' + _reclamoActual.id, {
+  var res = await fetch(apiUrl('/reclamos/' + _reclamoActual.id), {
     method: 'PATCH',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
     body: JSON.stringify({ id_proyecto: val || '' })
@@ -2186,7 +2187,7 @@ async function cambiarAsignadoAReclamo() {
   if (!_reclamoActual) return;
   var val = document.getElementById('recDetailAsignadoA').value;
   if (val === (_reclamoActual.asignado_a || '')) return;
-  var res = await fetch('/reclamos/' + _reclamoActual.id, {
+  var res = await fetch(apiUrl('/reclamos/' + _reclamoActual.id), {
     method: 'PATCH',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
     body: JSON.stringify({ asignado_a: val || '' })
@@ -2198,7 +2199,7 @@ async function cambiarAsignadoAReclamo() {
 }
 
 async function loadUsuariosUsc() {
-  var res = await fetch('/reclamos/usuarios-usc', { headers: authHeaders() });
+  var res = await fetch(apiUrl('/reclamos/usuarios-usc'), { headers: authHeaders() });
   if (res.status === 401) { logout(); return; }
   var data = await res.json();
   var usuarios = data.data || data.usuarios || [];
@@ -2245,7 +2246,7 @@ async function cambiarAplicaReclamo() {
   if (!_reclamoActual) return;
   var val = document.getElementById('recDetailAplica').value;
   if (val === (_reclamoActual.aplica || 'pendiente')) return;
-  var res = await fetch('/reclamos/' + _reclamoActual.id, {
+  var res = await fetch(apiUrl('/reclamos/' + _reclamoActual.id), {
     method: 'PATCH',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
     body: JSON.stringify({ aplica: val })
@@ -2256,7 +2257,7 @@ async function cambiarAplicaReclamo() {
   else { alert('Error: ' + (data.detail || 'desconocido')); }
 }
 
-// ---- Respuesta del responsable (includes RCA) ----
+// ---- Análisis Causa Raíz (includes RCA) ----
 async function guardarRespuesta() {
   if (!_reclamoActual) return;
   var msg = document.getElementById('recRespMsg');
@@ -2283,7 +2284,7 @@ async function guardarRespuesta() {
       body.estado = 'en_analisis';
     }
     console.log('[guardarRespuesta] Enviando PATCH body:', JSON.stringify(body));
-    var res = await fetch('/reclamos/' + _reclamoActual.id, {
+    var res = await fetch(apiUrl('/reclamos/' + _reclamoActual.id), {
       method: 'PATCH',
       headers: { ...authHeaders(), 'Content-Type': 'application/json' },
       body: JSON.stringify(body)
@@ -2318,6 +2319,13 @@ async function guardarValidacion() {
   var tiempoRespuestaUnidad = document.getElementById('recTiempoRespuestaUnidad').value;
   
   if (!resultado) { msg.textContent = 'Selecciona un resultado'; msg.style.color = '#b42318'; return; }
+  
+  // Confirmación antes de rechazar — el backend reabrirá el reclamo automáticamente
+  if (resultado === 'rechazado') {
+    if (!obs) { msg.textContent = 'Ingresa observaciones para el rechazo'; msg.style.color = '#b42318'; return; }
+    if (!confirm('Se reabrirá el reclamo y será devuelto al cubicador para corrección.\n\nMotivo: ' + obs + '\n\n¿Continuar?')) return;
+  }
+  
   msg.textContent = 'Guardando...'; msg.style.color = '#666';
   
   var body = {
@@ -2333,7 +2341,7 @@ async function guardarValidacion() {
     body.tiempo_respuesta_fecha_actualizacion = new Date().toISOString();
   }
   
-  var res = await fetch('/reclamos/' + _reclamoActual.id, {
+  var res = await fetch(apiUrl('/reclamos/' + _reclamoActual.id), {
     method: 'PATCH',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
     body: JSON.stringify(body)
@@ -2398,7 +2406,7 @@ async function agregarAccion() {
     fecha_prevista: formState.fecha_prevista || null,
   };
   
-  var res = await fetch('/reclamos/' + _reclamoActual.id + '/acciones', {
+  var res = await fetch(apiUrl('/reclamos/' + _reclamoActual.id + '/acciones'), {
     method: 'POST',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
     body: JSON.stringify(body)
@@ -2456,7 +2464,7 @@ async function refreshAccionesList() {
 async function eliminarAccion(accionId) {
   if (!_reclamoActual) return;
   if (!confirm('¿Eliminar esta acción?')) return;
-  var res = await fetch('/reclamos/' + _reclamoActual.id + '/acciones/' + accionId, {
+  var res = await fetch(apiUrl('/reclamos/' + _reclamoActual.id + '/acciones/' + accionId), {
     method: 'DELETE', headers: authHeaders()
   });
   if (res.status === 401) { logout(); return; }
@@ -2544,7 +2552,7 @@ function initRecImageDropZones() {
 async function eliminarImagen(imgId) {
   if (!_reclamoActual) return;
   if (!confirm('¿Eliminar esta imagen?')) return;
-  var res = await fetch('/reclamos/' + _reclamoActual.id + '/imagenes/' + imgId, {
+  var res = await fetch(apiUrl('/reclamos/' + _reclamoActual.id + '/imagenes/' + imgId), {
     method: 'DELETE', headers: authHeaders()
   });
   if (res.status === 401) { logout(); return; }
@@ -2563,7 +2571,7 @@ async function agregarSeguimiento() {
   msg.textContent = 'Agregando...'; msg.style.color = '#666';
   var body = { comentario: comentario };
   if (estadoNuevo) body.estado_nuevo = estadoNuevo;
-  var res = await fetch('/reclamos/' + _reclamoActual.id + '/seguimientos', {
+  var res = await fetch(apiUrl('/reclamos/' + _reclamoActual.id + '/seguimientos'), {
     method: 'POST',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
     body: JSON.stringify(body)
@@ -2585,7 +2593,7 @@ async function agregarSeguimiento() {
 async function eliminarReclamo() {
   if (!_reclamoActual) return;
   if (!confirm('¿Eliminar reclamo #' + _reclamoActual.id + ' "' + _reclamoActual.titulo + '"? Esta acción no se puede deshacer.')) return;
-  var res = await fetch('/reclamos/' + _reclamoActual.id, {
+  var res = await fetch(apiUrl('/reclamos/' + _reclamoActual.id), {
     method: 'DELETE', headers: authHeaders()
   });
   if (res.status === 401) { logout(); return; }

@@ -66,7 +66,7 @@
       return;
     }
     var params = new URLSearchParams({ current_password: currentPass, new_password: newPass });
-    var res = await fetch('/me/password?' + params.toString(), { method: 'POST', headers: authHeaders() });
+    var res = await fetch(apiUrl('/me/password') + '?' + params.toString(), { method: 'POST', headers: authHeaders() });
     if (res.status === 401) {
       alert('Contraseña actual incorrecta');
       return;

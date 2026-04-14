@@ -585,6 +585,12 @@ def _create_indexes(cur) -> None:
     cur.execute("CREATE INDEX IF NOT EXISTS idx_barras_fecha ON barras (fecha_carga)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_imports_fecha ON imports (fecha)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_imports_proyecto ON imports (id_proyecto)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_imports_usuario ON imports (usuario)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_reclamos_creado_por ON reclamos (creado_por)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_reclamos_asignado_a ON reclamos (asignado_a)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_reclamos_respuesta_por ON reclamos (respuesta_por)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_reclamos_categoria_ishikawa ON reclamos (categoria_ishikawa)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_reclamos_fecha_deteccion ON reclamos (fecha_deteccion)")
 
 
 def _init_db_once() -> None:

@@ -51,7 +51,7 @@ async function clearTable(tableName) {
   if (!window.confirm(`¿Limpiar TODOS los registros de "${label}"? Esta acción no se puede deshacer.`)) return;
   const input = prompt(`Escribe CONFIRMAR para limpiar la tabla "${label}":`);
   if (input !== 'CONFIRMAR') { alert('Operación cancelada.'); return; }
-  const res = await fetch('/admin/tables/' + encodeURIComponent(tableName) + '/clear?confirm=CONFIRMAR', {
+  const res = await fetch(apiUrl('/admin/tables/' + encodeURIComponent(tableName) + '/clear?confirm=CONFIRMAR'), {
     method: 'POST', headers: authHeaders()
   }).then(r => r.json()).catch(() => null);
   if (res && res.ok) {
@@ -110,7 +110,7 @@ async function resetDatabase() {
   msg.className = 'status-warn';
 
   const params = new URLSearchParams({ confirm: 'CONFIRMAR', keep_users: keepUsers });
-  const res = await fetch('/admin/reset-db?' + params.toString(), {
+  const res = await fetch(apiUrl('/admin/reset-db?' + params.toString()), {
     method: 'POST',
     headers: authHeaders()
   });
@@ -151,7 +151,7 @@ async function createUser() {
   var msg = document.getElementById('createUserMsg');
   if (!email || !password) { msg.textContent = 'Email y contrasena son requeridos.'; msg.style.color = '#b42318'; return; }
   var params = new URLSearchParams({ email: email, password: password, role: role, nombre: nombre, apellido: apellido });
-  var res = await fetch('/auth/register?' + params.toString(), { method: 'POST', headers: authHeaders() });
+  var res = await fetch(apiUrl('/auth/register?' + params.toString()), { method: 'POST', headers: authHeaders() });
   var data = await res.json();
   if (!res.ok) { msg.textContent = 'Error: ' + (data.detail || JSON.stringify(data)); msg.style.color = '#b42318'; return; }
   msg.textContent = 'Usuario ' + email + ' (' + role + ') creado.'; msg.style.color = '#558B2F';
@@ -165,7 +165,7 @@ async function createUser() {
 async function loadUsers() {
   var container = document.getElementById('usersListContainer');
   if (!container) return;
-  var res = await fetch('/admin/users', { headers: authHeaders() });
+  var res = await fetch(apiUrl('/admin/users'), { headers: authHeaders() });
   if (res.status === 401) { logout(); return; }
   if (!res.ok) { container.innerHTML = '<div class="muted">Error cargando usuarios</div>'; return; }
   var data = await res.json();
@@ -225,7 +225,7 @@ async function loadUsers() {
 
 async function cambiarRolUsuario(userId, nuevoRol) {
   var params = new URLSearchParams({ role: nuevoRol });
-  var res = await fetch('/admin/users/' + userId + '/role?' + params.toString(), { method: 'PATCH', headers: authHeaders() });
+  var res = await fetch(apiUrl('/admin/users/' + userId + '/role?' + params.toString()), { method: 'PATCH', headers: authHeaders() });
   if (res.status === 401) { logout(); return; }
   var data = await res.json();
   if (!data.ok) { alert('Error: ' + (data.detail || 'desconocido')); }
@@ -234,7 +234,7 @@ async function cambiarRolUsuario(userId, nuevoRol) {
 
 async function toggleActivoUsuario(userId, nuevoEstado) {
   var params = new URLSearchParams({ activo: nuevoEstado });
-  var res = await fetch('/admin/users/' + userId + '/activo?' + params.toString(), { method: 'PATCH', headers: authHeaders() });
+  var res = await fetch(apiUrl('/admin/users/' + userId + '/activo?' + params.toString()), { method: 'PATCH', headers: authHeaders() });
   if (res.status === 401) { logout(); return; }
   var data = await res.json();
   if (!data.ok) { alert('Error: ' + (data.detail || 'desconocido')); }
@@ -246,7 +246,7 @@ async function resetPasswordUsuario(userId) {
   if (!newPass) return;
   if (newPass.length < 6) { alert('La contrasena debe tener al menos 6 caracteres'); return; }
   var params = new URLSearchParams({ password: newPass });
-  var res = await fetch('/admin/users/' + userId + '/password?' + params.toString(), { method: 'PATCH', headers: authHeaders() });
+  var res = await fetch(apiUrl('/admin/users/' + userId + '/password?' + params.toString()), { method: 'PATCH', headers: authHeaders() });
   if (res.status === 401) { logout(); return; }
   var data = await res.json();
   if (data.ok) { alert('Contrasena actualizada'); } else { alert('Error: ' + (data.detail || 'desconocido')); }
@@ -254,7 +254,7 @@ async function resetPasswordUsuario(userId) {
 
 async function eliminarUsuarioAdmin(userId) {
   if (!confirm('Eliminar este usuario? Esta accion no se puede deshacer.')) return;
-  var res = await fetch('/admin/users/' + userId, { method: 'DELETE', headers: authHeaders() });
+  var res = await fetch(apiUrl('/admin/users/' + userId), { method: 'DELETE', headers: authHeaders() });
   if (res.status === 401) { logout(); return; }
   var data = await res.json();
   if (data.ok) { await loadUsers(); } else { alert('Error: ' + (data.detail || 'desconocido')); }
@@ -266,7 +266,7 @@ async function editarNombreUsuario(userId, nombreActual, apellidoActual) {
   var apellido = prompt('Apellido:', apellidoActual || '');
   if (apellido === null) return;
   var params = new URLSearchParams({ nombre: nombre, apellido: apellido });
-  var res = await fetch('/admin/users/' + userId + '/nombre?' + params.toString(), { method: 'PATCH', headers: authHeaders() });
+  var res = await fetch(apiUrl('/admin/users/' + userId + '/nombre?' + params.toString()), { method: 'PATCH', headers: authHeaders() });
   if (res.status === 401) { logout(); return; }
   var data = await res.json();
   if (data.ok) { await loadUsers(); } else { alert('Error: ' + (data.detail || 'desconocido')); }

@@ -6,6 +6,7 @@ import uuid
 import math
 from .db import get_conn, audit
 from .auth import get_current_user, ROL_MAP
+from . import cache as _cache
 
 router = APIRouter()
 
@@ -244,6 +245,10 @@ def get_stats(
     user=Depends(get_current_user),
 ):
     """KPIs generales para Tab Inicio. Filtered by user authorization and optional date range."""
+    cache_key = f"stats:{user['id']}:{fecha_desde}:{fecha_hasta}"
+    cached = _cache.get(cache_key)
+    if cached:
+        return cached
     with get_conn() as conn:
         with conn.cursor() as cur:
             allowed = _get_allowed_project_ids(cur, user)
@@ -315,7 +320,7 @@ def get_stats(
         for r in proyectos_rows
     ]
 
-    return {
+    result = {
         "total_barras": total_barras,
         "total_proyectos": total_proyectos,
         "total_kilos": round(total_kilos, 2),
@@ -327,6 +332,8 @@ def get_stats(
         "top5": proyectos_all[:5],
         "proyectos": proyectos_all,
     }
+    _cache.put(cache_key, result, ttl=30)
+    return result
 
 
 @router.get("/stats/timeline")
@@ -644,6 +651,7 @@ def delete_carga(carga_id: int, user=Depends(get_current_user)):
                 barras_eliminadas = cur.rowcount
             cur.execute("DELETE FROM imports WHERE id = %s", (carga_id,))
 
+    _cache.invalidate("stats:", "landing:")
     return {
         "ok": True,
         "carga_id": carga_id,
@@ -715,6 +723,7 @@ def bulk_delete_cargas(body: BulkDeleteCargasRequest, user=Depends(get_current_u
                         skipped_cargas += 1
                         continue
         
+        _cache.invalidate("stats:", "landing:")
         return {
             "ok": True,
             "cargas_eliminadas": cargas_eliminadas,
@@ -1356,6 +1365,12 @@ def landing_indicadores(user=Depends(get_current_user)):
     from datetime import timedelta
     email = user.get("email", "")
     role = user.get("role", "usc")
+
+    cache_key = f"landing:{user['id']}:{role}"
+    cached = _cache.get(cache_key)
+    if cached:
+        return cached
+
     now = datetime.now(timezone.utc)
     # Monday of current week
     monday = (now - timedelta(days=now.weekday())).strftime("%Y-%m-%d")
@@ -1471,4 +1486,5 @@ def landing_indicadores(user=Depends(get_current_user)):
             total_abiertos = sum(a["count"] for a in alertas)
             result["alertas"] = {"total_abiertos": total_abiertos, "por_estado": alertas}
 
+    _cache.put(cache_key, result, ttl=60)
     return result

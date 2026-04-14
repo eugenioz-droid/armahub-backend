@@ -200,6 +200,7 @@
           <option value="en_analisis">En análisis</option>
           <option value="accion_correctiva">Acción correctiva</option>
           <option value="validacion">En validación</option>
+          <option value="validado">Validado</option>
           <option value="cerrado">Cerrado</option>
           <option value="rechazado">Rechazado</option>
         </select>
@@ -341,10 +342,10 @@
         </div>
       </div>
 
-      <!-- ============ SECCIÓN 2: RESPUESTA DEL RESPONSABLE (Cubicador) ============ -->
+      <!-- ============ SECCIÓN 2: ANÁLISIS CAUSA RAÍZ (Cubicador) ============ -->
       <div style="margin-bottom:10px; padding:10px; background:#e3f2fd; border-radius:6px; border:1px solid #bbdefb;">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; flex-wrap:wrap; gap:8px;">
-          <h4 style="margin:0; font-size:13px; color:#1565C0;">💬 Respuesta del Responsable</h4>
+          <h4 style="margin:0; font-size:13px; color:#1565C0;">💬 Análisis Causa Raíz</h4>
           <div style="display:flex; gap:12px; align-items:center;">
             <div style="font-size:12px;">Cubicador: <strong id="recDetailCubicadorNombre" style="color:#1565C0;">Sin asignar</strong></div>
             <select id="recDetailAplica" onchange="cambiarAplicaReclamo(); _updateAplicaBadge();" style="font-size:11px; font-weight:600; padding:3px 10px; border-radius:12px; border:2px solid #ccc; cursor:pointer;">
@@ -452,7 +453,7 @@
         </div>
         <div style="margin-top:8px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
           <div>
-            <button id="btnGuardarRespuesta" class="secondary" style="font-size:11px; padding:4px 12px;" onclick="guardarRespuesta()">Guardar respuesta</button>
+            <button id="btnGuardarRespuesta" class="secondary" style="font-size:11px; padding:4px 12px;" onclick="guardarRespuesta()">Guardar análisis</button>
             <span id="recRespMsg" class="muted" style="font-size:11px; margin-left:8px;"></span>
           </div>
           <div id="recCerrarContainer" style="display:none;">
@@ -517,6 +518,7 @@
             <option value="en_analisis">→ En análisis</option>
             <option value="accion_correctiva">→ Acción correctiva</option>
             <option value="validacion">→ En validación</option>
+            <option value="validado">→ Validado</option>
             <option value="cerrado">→ Cerrado</option>
             <option value="rechazado">→ Rechazado</option>
           </select>
@@ -662,7 +664,7 @@
 
               <!-- Sección Azul: Análisis -->
               <div style="padding:10px; background:#e3f2fd; border-radius:6px; border:1px solid #bbdefb; margin-bottom:8px;">
-                <h4 style="margin:0 0 6px 0; font-size:12px; color:#1565C0;">💬 Análisis del Responsable</h4>
+                <h4 style="margin:0 0 6px 0; font-size:12px; color:#1565C0;">💬 Análisis Causa Raíz</h4>
                 <div style="font-size:12px;">
                   <div><strong>Causa Ishikawa:</strong> <span id="presIshikawa">—</span></div>
                   <div style="margin-top:2px;"><strong>Área responsable:</strong> <span id="presArea">—</span></div>

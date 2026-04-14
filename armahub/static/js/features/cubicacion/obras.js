@@ -374,7 +374,7 @@ async function crearObra() {
   if (calcId) body.calculista_id = parseInt(calcId);
   if (clienteId) body.constructora_id = parseInt(clienteId);
   if (descEl && descEl.value.trim()) body.descripcion = descEl.value.trim();
-  const res = await fetch('/proyectos', {
+  const res = await fetch(apiUrl('/proyectos'), {
     method: 'POST',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
     body: JSON.stringify(body)
@@ -403,7 +403,7 @@ async function crearCalcDesdeObraForm() {
   var msg = document.getElementById('obraNewCalcMsg');
   if (!nombre) { msg.textContent = 'Ingresa un nombre'; msg.style.color = '#b42318'; return; }
   msg.textContent = 'Creando...'; msg.style.color = '#666';
-  var res = await fetch('/calculistas', {
+  var res = await fetch(apiUrl('/calculistas'), {
     method: 'POST',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
     body: JSON.stringify({ nombre: nombre })
@@ -431,7 +431,7 @@ async function crearConstDesdeObraForm() {
   var msg = document.getElementById('obraNewConstMsg');
   if (!nombre) { msg.textContent = 'Ingresa un nombre'; msg.style.color = '#b42318'; return; }
   msg.textContent = 'Creando...'; msg.style.color = '#666';
-  var res = await fetch('/constructoras', {
+  var res = await fetch(apiUrl('/constructoras'), {
     method: 'POST',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
     body: JSON.stringify({ nombre: nombre })
@@ -645,7 +645,7 @@ async function autorizarUsuario(idProyecto) {
   if (!userId) return;
   var rolSel = document.getElementById('autorizar-rol-' + idProyecto);
   var rol = rolSel ? rolSel.value : 'cubicador';
-  const res = await fetch('/proyectos/' + encodeURIComponent(idProyecto) + '/autorizar', {
+  const res = await fetch(apiUrl('/proyectos/' + encodeURIComponent(idProyecto) + '/autorizar'), {
     method: 'POST',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
     body: JSON.stringify({ user_id: userId, rol: rol })
@@ -662,7 +662,7 @@ async function autorizarUsuario(idProyecto) {
 
 async function revocarUsuario(idProyecto, userId) {
   if (!confirm('Revocar acceso de este usuario?')) return;
-  const res = await fetch('/proyectos/' + encodeURIComponent(idProyecto) + '/autorizar/' + userId, {
+  const res = await fetch(apiUrl('/proyectos/' + encodeURIComponent(idProyecto) + '/autorizar/' + userId), {
     method: 'DELETE',
     headers: authHeaders()
   });
@@ -738,7 +738,7 @@ async function guardarEditObra() {
     calculista_id: parseInt(document.getElementById('editObraCalculista').value) || 0,
     constructora_id: parseInt(document.getElementById('editObraConstructora').value) || 0,
   };
-  var res = await fetch('/proyectos/' + encodeURIComponent(id), {
+  var res = await fetch(apiUrl('/proyectos/' + encodeURIComponent(id)), {
     method: 'PATCH',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
     body: JSON.stringify(body)
@@ -780,7 +780,7 @@ async function autorizarUsuarioEditObra() {
   var userId = parseInt(document.getElementById('editObraUserSel').value);
   var rol = document.getElementById('editObraUserRol').value;
   if (!userId) return;
-  var res = await fetch('/proyectos/' + encodeURIComponent(id) + '/autorizar', {
+  var res = await fetch(apiUrl('/proyectos/' + encodeURIComponent(id) + '/autorizar'), {
     method: 'POST',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
     body: JSON.stringify({ user_id: userId, rol: rol })
@@ -798,7 +798,7 @@ async function autorizarUsuarioEditObra() {
 async function revocarUsuarioEditObra(userId) {
   var id = _editObraCurrentId;
   if (!id || !confirm('¿Revocar acceso de este usuario?')) return;
-  var res = await fetch('/proyectos/' + encodeURIComponent(id) + '/autorizar/' + userId, {
+  var res = await fetch(apiUrl('/proyectos/' + encodeURIComponent(id) + '/autorizar/' + userId), {
     method: 'DELETE', headers: authHeaders()
   });
   if (res.status === 401) { logout(); return; }
@@ -816,7 +816,7 @@ async function crearCalcDesdeEditObra() {
   var msg = document.getElementById('editObraNewCalcMsg');
   if (!nombre) { msg.textContent = 'Ingresa un nombre'; msg.style.color = '#b42318'; return; }
   msg.textContent = 'Creando...'; msg.style.color = '#666';
-  var res = await fetch('/calculistas', {
+  var res = await fetch(apiUrl('/calculistas'), {
     method: 'POST',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
     body: JSON.stringify({ nombre: nombre })
@@ -847,7 +847,7 @@ async function crearConstDesdeEditObra() {
   var msg = document.getElementById('editObraNewConstMsg');
   if (!nombre) { msg.textContent = 'Ingresa un nombre'; msg.style.color = '#b42318'; return; }
   msg.textContent = 'Creando...'; msg.style.color = '#666';
-  var res = await fetch('/constructoras', {
+  var res = await fetch(apiUrl('/constructoras'), {
     method: 'POST',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
     body: JSON.stringify({ nombre: nombre })
@@ -880,7 +880,7 @@ async function eliminarObra(id, nombre, barrasCount) {
   if (!confirm(msg)) return;
   const confirmText = prompt('Escribe ELIMINAR para confirmar:');
   if (confirmText !== 'ELIMINAR') { alert('Cancelado'); return; }
-  const res = await fetch('/proyectos/' + encodeURIComponent(id), {
+  const res = await fetch(apiUrl('/proyectos/' + encodeURIComponent(id)), {
     method: 'DELETE',
     headers: authHeaders()
   });

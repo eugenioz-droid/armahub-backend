@@ -12,11 +12,12 @@ En Render, lo ideal es arrancar con:
     uvicorn armahub.main:app --host 0.0.0.0 --port 10000
 """
 
-from fastapi import FastAPI, Response
+from fastapi import FastAPI, Response, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-import os
+import os, time, logging
 
-from .db import init_db
+from .db import init_db, get_conn
 from .auth import router as auth_router
 from .importer import router as importer_router
 from .barras import router as barras_router
@@ -31,6 +32,17 @@ from .reclamos import router as reclamos_router
 
 def create_app() -> FastAPI:
     app = FastAPI(title="ArmaHub Backend")
+
+    # --- CORS ---
+    allowed_origins = os.getenv("CORS_ORIGINS", "").split(",")
+    allowed_origins = [o.strip() for o in allowed_origins if o.strip()]
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=allowed_origins,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
     init_db()
 
@@ -66,7 +78,27 @@ def create_app() -> FastAPI:
 
     @app.api_route("/health", methods=["GET", "HEAD"])
     def health():
-        return {"status": "ok"}
+        result = {"status": "ok", "db": "ok"}
+        try:
+            with get_conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("SELECT 1")
+        except Exception as e:
+            result["db"] = "error"
+            result["detail"] = str(e)
+        return result
+
+    # --- Request logging middleware ---
+    logger = logging.getLogger("armahub.access")
+
+    @app.middleware("http")
+    async def log_requests(request: Request, call_next):
+        start = time.time()
+        response = await call_next(request)
+        ms = round((time.time() - start) * 1000)
+        if not request.url.path.startswith(("/static", "/health")):
+            logger.info("%s %s %s %dms", request.method, request.url.path, response.status_code, ms)
+        return response
 
     return app
 

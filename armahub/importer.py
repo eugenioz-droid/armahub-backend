@@ -22,6 +22,7 @@ import uuid
 
 from .db import get_conn, audit
 from .auth import get_current_user, ROL_MAP
+from . import cache as _cache
 
 router = APIRouter()
 
@@ -574,6 +575,8 @@ async def import_armadetailer(
                 cur.executemany(upsert_sql, rows_with_import)
 
     audit(user.get("email","unknown"), "importar_csv", f"{file.filename} → {proyecto_nombre} ({len(rows_to_upsert)} barras, {round(total_kilos,1)} kg, estado={estado})", "proyecto", proyecto_id)
+
+    _cache.invalidate("stats:", "landing:")
 
     return {
         "ok": True,

@@ -80,7 +80,7 @@ async function crearCliente() {
   if (email) body.email = email;
   if (telefono) body.telefono = telefono;
 
-  const res = await fetch('/constructoras', {
+  const res = await fetch(apiUrl('/constructoras'), {
     method: 'POST',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
     body: JSON.stringify(body)
@@ -107,7 +107,7 @@ async function editarCliente(clienteId) {
   const nuevoNombre = prompt('Nombre de la constructora:', c.nombre);
   if (nuevoNombre === null || nuevoNombre.trim() === '') return;
   const body = { nombre: nuevoNombre.trim() };
-  const res = await fetch('/constructoras/' + clienteId, {
+  const res = await fetch(apiUrl('/constructoras/' + clienteId), {
     method: 'PATCH',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
     body: JSON.stringify(body)
@@ -191,7 +191,7 @@ async function crearCalculista() {
   const email = document.getElementById('nCalcEmail').value.trim();
   if (email) body.email = email;
 
-  const res = await fetch('/calculistas', {
+  const res = await fetch(apiUrl('/calculistas'), {
     method: 'POST',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
     body: JSON.stringify(body)
@@ -215,7 +215,7 @@ async function editarCalculista(calcId) {
   const nuevoNombre = prompt('Nombre del calculista:', c.nombre);
   if (nuevoNombre === null || nuevoNombre.trim() === '') return;
   const body = { nombre: nuevoNombre.trim() };
-  const res = await fetch('/calculistas/' + calcId, {
+  const res = await fetch(apiUrl('/calculistas/' + calcId), {
     method: 'PATCH',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
     body: JSON.stringify(body)

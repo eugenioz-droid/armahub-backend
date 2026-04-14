@@ -146,7 +146,7 @@ async function crearBarraManual() {
 
 async function duplicarBarra(idUnico) {
   if (!confirm('¿Duplicar barra ' + idUnico + '?')) return;
-  var res = await fetch('/barras/' + encodeURIComponent(idUnico) + '/duplicar', {
+  var res = await fetch(apiUrl('/barras/' + encodeURIComponent(idUnico) + '/duplicar'), {
     method: 'POST', headers: authHeaders()
   });
   if (res.status === 401) { logout(); return; }
@@ -161,7 +161,7 @@ async function duplicarBarra(idUnico) {
 
 async function eliminarBarra(idUnico) {
   if (!confirm('¿Eliminar barra ' + idUnico + '? Esta acción no se puede deshacer.')) return;
-  var res = await fetch('/barras/' + encodeURIComponent(idUnico), {
+  var res = await fetch(apiUrl('/barras/' + encodeURIComponent(idUnico)), {
     method: 'DELETE', headers: authHeaders()
   });
   if (res.status === 401) { logout(); return; }
@@ -184,7 +184,7 @@ async function eliminarBarrasSeleccionadas() {
   var ids = Array.from(selectedBarras);
   var ok = 0, skip = 0, errors = [];
   for (var i = 0; i < ids.length; i++) {
-    var res = await fetch('/barras/' + encodeURIComponent(ids[i]), {
+    var res = await fetch(apiUrl('/barras/' + encodeURIComponent(ids[i])), {
       method: 'DELETE', headers: authHeaders()
     });
     if (res.status === 401) { logout(); return; }

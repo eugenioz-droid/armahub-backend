@@ -143,7 +143,7 @@ async function autorizarUsuarioAdminProj(idProyecto) {
   var userId = parseInt(document.getElementById('adminProjUserSel').value);
   var rol = document.getElementById('adminProjUserRol').value;
   if (!userId) return;
-  var res = await fetch('/proyectos/' + encodeURIComponent(idProyecto) + '/autorizar', {
+  var res = await fetch(apiUrl('/proyectos/' + encodeURIComponent(idProyecto) + '/autorizar'), {
     method: 'POST',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
     body: JSON.stringify({ user_id: userId, rol: rol })
@@ -160,7 +160,7 @@ async function autorizarUsuarioAdminProj(idProyecto) {
 
 async function revocarUsuarioAdminProj(idProyecto, userId) {
   if (!confirm('\u00bfRevocar acceso?')) return;
-  var res = await fetch('/proyectos/' + encodeURIComponent(idProyecto) + '/autorizar/' + userId, {
+  var res = await fetch(apiUrl('/proyectos/' + encodeURIComponent(idProyecto) + '/autorizar/' + userId), {
     method: 'DELETE', headers: authHeaders()
   });
   if (res.status === 401) { logout(); return; }
@@ -178,7 +178,7 @@ async function crearCalcDesdeAdminProj() {
   var msg = document.getElementById('adminProjNewCalcMsg');
   if (!nombre) { msg.textContent = 'Ingresa un nombre'; msg.style.color = '#b42318'; return; }
   msg.textContent = 'Creando...'; msg.style.color = '#666';
-  var res = await fetch('/calculistas', {
+  var res = await fetch(apiUrl('/calculistas'), {
     method: 'POST',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
     body: JSON.stringify({ nombre: nombre })
@@ -211,7 +211,7 @@ async function crearConstDesdeAdminProj() {
   var msg = document.getElementById('adminProjNewConstMsg');
   if (!nombre) { msg.textContent = 'Ingresa un nombre'; msg.style.color = '#b42318'; return; }
   msg.textContent = 'Creando...'; msg.style.color = '#666';
-  var res = await fetch('/constructoras', {
+  var res = await fetch(apiUrl('/constructoras'), {
     method: 'POST',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
     body: JSON.stringify({ nombre: nombre })
@@ -247,7 +247,7 @@ async function guardarProyectoAdmin(idProyecto) {
     constructora_id: parseInt(document.getElementById('editProjCliente').value) || 0,
   };
 
-  var res = await fetch('/proyectos/' + idProyecto, {
+  var res = await fetch(apiUrl('/proyectos/' + idProyecto), {
     method: 'PATCH',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
     body: JSON.stringify(body)

@@ -1,4 +1,6 @@
 (function(global) {
+  var API = '/api/v1';
+
   function token() {
     return localStorage.getItem('armahub_token');
   }
@@ -43,7 +45,7 @@
   }
 
   async function apiGet(url) {
-    var result = await requestJson(url, { headers: authHeaders(), cache: 'no-store' });
+    var result = await requestJson(API + url, { headers: authHeaders(), cache: 'no-store' });
     if (!result) return null;
     if (!result.response.ok) {
       var msg = result.data && (result.data.detail || result.data.error) ? (result.data.detail || result.data.error) : ('HTTP ' + result.response.status);
@@ -56,7 +58,7 @@
 
   async function apiPost(url, params) {
     var query = new URLSearchParams(params || {}).toString();
-    var result = await requestJson(url + '?' + query, {
+    var result = await requestJson(API + url + '?' + query, {
       method: 'POST',
       headers: authHeaders()
     });
@@ -67,7 +69,7 @@
   async function apiPostFile(url, file) {
     var form = new FormData();
     form.append('file', file);
-    var result = await requestJson(url, {
+    var result = await requestJson(API + url, {
       method: 'POST',
       headers: authHeaders(),
       body: form
@@ -79,7 +81,7 @@
   async function apiPostJson(url, body) {
     var headers = authHeaders();
     headers['Content-Type'] = 'application/json';
-    var result = await requestJson(url, {
+    var result = await requestJson(API + url, {
       method: 'POST',
       headers: headers,
       body: JSON.stringify(body)
@@ -89,12 +91,16 @@
   }
 
   async function apiDelete(url) {
-    var result = await requestJson(url, {
+    var result = await requestJson(API + url, {
       method: 'DELETE',
       headers: authHeaders()
     });
     if (!result) return null;
     return result.data;
+  }
+
+  function apiUrl(path) {
+    return API + path;
   }
 
   global.ArmaHubHttp = {
@@ -105,7 +111,8 @@
     apiPost: apiPost,
     apiPostFile: apiPostFile,
     apiPostJson: apiPostJson,
-    apiDelete: apiDelete
+    apiDelete: apiDelete,
+    apiUrl: apiUrl
   };
 
   global.token = token;
@@ -116,4 +123,5 @@
   global.apiPostFile = apiPostFile;
   global.apiPostJson = apiPostJson;
   global.apiDelete = apiDelete;
+  global.apiUrl = apiUrl;
 })(window);

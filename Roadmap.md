@@ -155,10 +155,10 @@ Objetivo: consolidar contratos y reducir drift.
 
 ### Prioridad Media
 
-- [ ] PM.1 API versionada bajo /api/v1
-- [ ] PM.2 CORS para integraciones externas futuras
-- [ ] PM.3 Observabilidad: logs estructurados y health util
-- [ ] PM.4 Mejoras de performance en queries sensibles y uso de cache
+- [x] PM.1 API versionada bajo /api/v1
+- [x] PM.2 CORS para integraciones externas futuras
+- [x] PM.3 Observabilidad: logs estructurados y health util
+- [x] PM.4 Mejoras de performance en queries sensibles y uso de cache
 
 ### Prioridad Condicionada a definicion
 

@@ -414,7 +414,7 @@ async function descargarExport() {
   status.textContent = 'Generando todos los archivos Excel...';
 
   try {
-    const res = await fetch('/proyectos/' + encodeURIComponent(proy) + '/exportar', { headers: authHeaders() });
+    const res = await fetch(apiUrl('/proyectos/' + encodeURIComponent(proy) + '/exportar'), { headers: authHeaders() });
     if (res.status === 401) { logout(); return; }
     if (!res.ok) {
       const err = await res.json();

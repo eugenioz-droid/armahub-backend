@@ -113,7 +113,7 @@ async function cambiarEstadoPedido() {
   if (!_pedidoActual) return;
   const estado = document.getElementById('pedidoDetailEstado').value;
   const msg = document.getElementById('pedidoDetailMsg');
-  const res = await fetch('/pedidos/' + _pedidoActual, {
+  const res = await fetch(apiUrl('/pedidos/' + _pedidoActual), {
     method: 'PATCH',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
     body: JSON.stringify({ estado: estado })
@@ -195,7 +195,7 @@ async function procesarPedido() {
   if (!confirm('¿Procesar este pedido? Se generarán barras en la cubicación del proyecto. Esta acción no se puede deshacer.')) return;
   var msg = document.getElementById('pedidoDetailMsg');
   msg.innerHTML = '<span class="muted">Procesando...</span>';
-  var res = await fetch('/pedidos/' + _pedidoActual + '/procesar', {
+  var res = await fetch(apiUrl('/pedidos/' + _pedidoActual + '/procesar'), {
     method: 'POST', headers: authHeaders()
   });
   if (res.status === 401) { logout(); return; }

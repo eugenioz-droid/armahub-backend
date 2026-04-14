@@ -16,6 +16,7 @@ from psycopg.rows import dict_row
 
 from .auth import get_current_user, require_admin_or_admin2
 from .db import get_conn, audit
+from . import cache as _cache
 from .reclamos_queries import (
     q_total, q_abiertos, q_por_estado, q_por_tipo,
     q_por_anio_mes, q_resueltos_no_resueltos, q_por_categoria, q_por_proyecto,
@@ -26,6 +27,9 @@ router = APIRouter()
 
 MAX_IMAGE_SIZE = 10 * 1024 * 1024  # 10 MB
 ALLOWED_IMAGE_TYPES = ("image/jpeg", "image/png", "image/gif", "image/webp", "image/bmp")
+
+def _invalidate_reclamos_cache():
+    _cache.invalidate("reclamos:", "landing:")
 
 # ========================= PERMISSION HELPERS =========================
 
@@ -53,7 +57,7 @@ def _es_propietario_cubicador(rec: dict, email: str) -> bool:
 
 # ========================= CONSTANTS =========================
 
-ESTADOS_RECLAMO = ("abierto", "en_analisis", "accion_correctiva", "validacion", "cerrado", "rechazado")
+ESTADOS_RECLAMO = ("abierto", "en_analisis", "accion_correctiva", "validacion", "validado", "cerrado", "rechazado")
 TIPOS_RECLAMO = ("error", "faltante", "atraso", "actualizacion_portal")
 VALIDACION_RESULTADOS = ("aprobado", "rechazado", "corregido")
 PRIORIDADES = ("baja", "media", "alta", "critica")
@@ -129,6 +133,7 @@ ESTADO_LABELS = {
     "en_analisis": "En análisis",
     "accion_correctiva": "Acción correctiva",
     "validacion": "En validación",
+    "validado": "Validado",
     "cerrado": "Cerrado",
     "rechazado": "Rechazado",
 }
@@ -411,6 +416,7 @@ def crear_reclamo(body: ReclamoCreate, user=Depends(get_current_user)):
             """, (reclamo_id, email, "Reclamo creado", "abierto", now))
 
     audit(email, "crear_reclamo", body.titulo, "reclamo", str(reclamo_id))
+    _invalidate_reclamos_cache()
     return {"ok": True, "id": reclamo_id, "correlativo": correlativo}
 
 
@@ -464,6 +470,10 @@ def reclamos_mi_resumen(user=Depends(get_current_user)):
 def reclamos_admin_dashboards(user=Depends(require_admin_or_admin2)):
     """Detailed analytics for admin Dashboards tab.
     Returns per-USC and per-cubicador breakdowns."""
+
+    cached = _cache.get("reclamos:admin-dash")
+    if cached:
+        return cached
 
     with get_conn() as conn:
         with conn.cursor() as cur:
@@ -578,7 +588,7 @@ def reclamos_admin_dashboards(user=Depends(require_admin_or_admin2)):
                 print(f"[DASH] proyecto_por_mes error: {e}")
                 conn.rollback()
 
-    return {
+    result = {
         "total": total,
         "abiertos": abiertos,
         "por_tipo": por_tipo,
@@ -595,6 +605,8 @@ def reclamos_admin_dashboards(user=Depends(require_admin_or_admin2)):
         "proyecto_por_mes": proyecto_por_mes,
         "por_estado": por_estado,
     }
+    _cache.put("reclamos:admin-dash", result, ttl=45)
+    return result
 
 
 # [ELIMINADOS] /reclamos/kpis y /reclamos/dashboard — endpoints huérfanos sin consumo frontend.
@@ -877,6 +889,7 @@ def _invalidate_reclamo_cache(reclamo_id: int):
     for key in list(_reclamos_cache.keys()):
         if key.startswith(prefix):
             _reclamos_cache.pop(key, None)
+    _invalidate_reclamos_cache()
 
 
 def _get_table_columns(cur, table_name: str):
@@ -1172,9 +1185,15 @@ def actualizar_reclamo(reclamo_id: int, body: ReclamoUpdate, user=Depends(get_cu
                                "respuesta_texto", "validacion_resultado", "validacion_observaciones",
                                "tiempo_respuesta_unidad", "tiempo_respuesta_actualizado_por",
                                "tiempo_respuesta_fecha_actualizacion", "asignado_a", "cubicador_asignado"}
+            # Detect rejection early so the updatable loop can skip validation fields
+            is_rejection = body.validacion_resultado == "rechazado"
+            skip_on_rejection = {"validacion_resultado", "validacion_observaciones"}
+
             for field in updatable:
                 val = getattr(body, field)
                 if val is not None:
+                    if is_rejection and field in skip_on_rejection:
+                        continue  # PA.5: these will be set to NULL below
                     sets.append(f"{field} = %s")
                     params.append(val if (val != "" or field not in nullable_fields) else None)
 
@@ -1197,16 +1216,21 @@ def actualizar_reclamo(reclamo_id: int, body: ReclamoUpdate, user=Depends(get_cu
                     params.append(email)
 
             # Auto-set validacion metadata when validacion_resultado is provided
-            if body.validacion_resultado and body.validacion_resultado.strip():
+            # (skip if rechazado — PA.5 will clear these fields below)
+            if body.validacion_resultado and body.validacion_resultado.strip() and not is_rejection:
                 sets.append("validacion_fecha = %s")
                 params.append(now)
                 sets.append("validacion_por = %s")
                 params.append(email)
+                # Auto-transition: validation approved/corrected → estado "validado"
+                if body.validacion_resultado in ("aprobado", "corregido") and estado_anterior != "validado":
+                    body.estado = "validado"
 
             # PA.5 — Auto-reopen on rejection: revert to en_analisis so cubicador can fix
-            if body.validacion_resultado == "rechazado" and estado_anterior != "en_analisis":
+            if is_rejection and estado_anterior != "en_analisis":
                 body.estado = "en_analisis"
-                # Clear validacion fields so cubicador starts fresh
+                # Override: store rejection info temporarily for the seguimiento,
+                # but clear the fields in DB so cubicador sees a clean slate
                 sets.append("validacion_resultado = NULL")
                 sets.append("validacion_observaciones = NULL")
                 sets.append("validacion_fecha = NULL")
@@ -1219,12 +1243,12 @@ def actualizar_reclamo(reclamo_id: int, body: ReclamoUpdate, user=Depends(get_cu
                 params.append(body.estado)
                 estado_changed = True
 
-                # If closing, set fecha_cierre
-                if body.estado in ("cerrado", "rechazado"):
+                # If closing/validating, set fecha_cierre
+                if body.estado in ("validado", "cerrado", "rechazado"):
                     sets.append("fecha_cierre = %s")
                     params.append(now)
                 # If reopening, clear fecha_cierre and validacion metadata
-                elif estado_anterior in ("cerrado", "rechazado"):
+                elif estado_anterior in ("validado", "cerrado", "rechazado"):
                     sets.append("fecha_cierre = NULL")
                     sets.append("validacion_fecha = NULL")
                     sets.append("validacion_por = NULL")
