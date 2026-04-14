@@ -2,6 +2,15 @@
 // loadAdminModule + DB/Tables + Usuarios + Auditoría
 
 async function loadAdminModule() {
+  // Filter role dropdown for admin2 (cannot create admin/admin2)
+  if (currentRole === 'admin2') {
+    var sel = document.getElementById('newUserRole');
+    if (sel) {
+      Array.from(sel.options).forEach(function(o) {
+        if (o.value === 'admin' || o.value === 'admin2') o.remove();
+      });
+    }
+  }
   await loadUsers();
   await loadClientes();
   await loadCalculistas();
@@ -27,7 +36,7 @@ async function loadTableCounts() {
   let html = '<table style="width:100%; font-size:12px;"><thead><tr><th style="text-align:left;">Tabla</th><th style="text-align:right;">Registros</th><th></th></tr></thead><tbody>';
   data.tables.forEach(t => {
     const label = TABLE_LABELS[t.table] || t.table;
-    const canClear = CLEARABLE_TABLES.includes(t.table);
+    const canClear = CLEARABLE_TABLES.includes(t.table) && currentRole === 'admin';
     const clearBtn = canClear && t.count > 0
       ? `<button class="secondary" style="font-size:10px; padding:2px 8px; color:#b42318;" onclick="clearTable('${t.table}')">Limpiar</button>`
       : '';
@@ -57,6 +66,9 @@ async function clearTable(tableName) {
 async function loadDbInfo() {
   const data = await apiGet('/admin/db-info');
   if (!data) return;
+  // Hide Reset DB section for admin2
+  var resetCard = document.getElementById('adminResetBdCard');
+  if (resetCard && currentRole !== 'admin') resetCard.style.display = 'none';
   document.getElementById('dbInfoContainer').innerHTML = `
     <div class="row">
       <div class="card" style="flex:1; text-align:center; margin:4px;">
@@ -180,9 +192,16 @@ async function loadUsers() {
     var displayName = ((u.nombre || '') + ' ' + (u.apellido || '')).trim();
     html += '<td style="padding:4px 6px; font-weight:500;">' + u.email + '</td>';
     html += '<td style="padding:4px 6px;">' + (displayName || '<span class="muted">-</span>') + '</td>';
-    // Role column: admin sees dropdown, admin2 sees label only
+    // Role column: admin/admin2 see dropdown (admin2 filtered), others see label
+    var isProtectedTarget = (u.role === 'admin' || u.role === 'admin2');
     if (currentRole === 'admin') {
       html += '<td style="padding:4px 6px;"><select style="font-size:11px; color:' + rColor + '; font-weight:600; border:1px solid #ddd; border-radius:3px; padding:1px 4px;" onchange="cambiarRolUsuario(' + u.id + ', this.value)">' + rolOpts + '</select></td>';
+    } else if (currentRole === 'admin2' && !isProtectedTarget) {
+      var a2Roles = ['cubicador','usc','externo','cliente'];
+      var a2Opts = a2Roles.map(function(r) {
+        return '<option value="' + r + '"' + (r === u.role ? ' selected' : '') + '>' + (_rolLabels[r] || r) + '</option>';
+      }).join('');
+      html += '<td style="padding:4px 6px;"><select style="font-size:11px; color:' + rColor + '; font-weight:600; border:1px solid #ddd; border-radius:3px; padding:1px 4px;" onchange="cambiarRolUsuario(' + u.id + ', this.value)">' + a2Opts + '</select></td>';
     } else {
       html += '<td style="padding:4px 6px;"><span style="font-size:11px; color:' + rColor + '; font-weight:600;">' + (_rolLabels[u.role] || u.role) + '</span></td>';
     }
@@ -190,10 +209,11 @@ async function loadUsers() {
     html += '<td style="padding:4px 6px; font-size:11px;" class="muted">' + fecha + '</td>';
     html += '<td style="padding:4px 6px; white-space:nowrap;">';
     html += '<button class="secondary" style="font-size:10px; padding:1px 6px;" onclick="editarNombreUsuario(' + u.id + ', \'' + (u.nombre || '').replace(/'/g, "\\'") + '\', \'' + (u.apellido || '').replace(/'/g, "\\'") + '\')">Nombre</button> ';
-    html += '<button class="secondary" style="font-size:10px; padding:1px 6px; color:' + toggleColor + ';" onclick="toggleActivoUsuario(' + u.id + ', ' + !activo + ')">' + toggleLabel + '</button> ';
-    html += '<button class="secondary" style="font-size:10px; padding:1px 6px;" onclick="resetPasswordUsuario(' + u.id + ')">Cambiar clave</button> ';
-    // Delete: admin only
-    if (currentRole === 'admin') {
+    // admin2 cannot operate on admin/admin2 targets
+    var canOperate = currentRole === 'admin' || (currentRole === 'admin2' && !isProtectedTarget);
+    if (canOperate) {
+      html += '<button class="secondary" style="font-size:10px; padding:1px 6px; color:' + toggleColor + ';" onclick="toggleActivoUsuario(' + u.id + ', ' + !activo + ')">' + toggleLabel + '</button> ';
+      html += '<button class="secondary" style="font-size:10px; padding:1px 6px;" onclick="resetPasswordUsuario(' + u.id + ')">Cambiar clave</button> ';
       html += '<button class="secondary" style="font-size:10px; padding:1px 6px; color:#b42318;" onclick="eliminarUsuarioAdmin(' + u.id + ')">Eliminar</button>';
     }
     html += '</td></tr>';

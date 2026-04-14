@@ -17,7 +17,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-from .auth import get_current_user
+from .auth import get_current_user, require_admin_or_admin2
 from .db import get_conn, audit
 
 router = APIRouter()
@@ -45,7 +45,7 @@ class ConstructoraUpdate(BaseModel):
 
 
 @router.get("/constructoras")
-def listar_constructoras(activo: Optional[bool] = None, user=Depends(get_current_user)):
+def listar_constructoras(activo: Optional[bool] = None, user=Depends(require_admin_or_admin2)):
     """Listar constructoras con conteo de proyectos asociados."""
     with get_conn() as conn:
         with conn.cursor() as cur:
@@ -90,7 +90,7 @@ def listar_constructoras(activo: Optional[bool] = None, user=Depends(get_current
 
 
 @router.get("/constructoras/{constructora_id}")
-def detalle_constructora(constructora_id: int, user=Depends(get_current_user)):
+def detalle_constructora(constructora_id: int, user=Depends(require_admin_or_admin2)):
     """Detalle de una constructora con sus proyectos."""
     with get_conn() as conn:
         with conn.cursor() as cur:
@@ -132,7 +132,7 @@ def detalle_constructora(constructora_id: int, user=Depends(get_current_user)):
 
 
 @router.post("/constructoras")
-def crear_constructora(body: ConstructoraCreate, user=Depends(get_current_user)):
+def crear_constructora(body: ConstructoraCreate, user=Depends(require_admin_or_admin2)):
     """Crear una nueva constructora."""
     nombre = body.nombre.strip()
     if not nombre:
@@ -156,7 +156,7 @@ def crear_constructora(body: ConstructoraCreate, user=Depends(get_current_user))
 
 
 @router.patch("/constructoras/{constructora_id}")
-def actualizar_constructora(constructora_id: int, body: ConstructoraUpdate, user=Depends(get_current_user)):
+def actualizar_constructora(constructora_id: int, body: ConstructoraUpdate, user=Depends(require_admin_or_admin2)):
     """Actualizar datos de una constructora."""
     with get_conn() as conn:
         with conn.cursor() as cur:
@@ -191,7 +191,7 @@ def actualizar_constructora(constructora_id: int, body: ConstructoraUpdate, user
 
 
 @router.delete("/constructoras/{constructora_id}")
-def eliminar_constructora(constructora_id: int, user=Depends(get_current_user)):
+def eliminar_constructora(constructora_id: int, user=Depends(require_admin_or_admin2)):
     """Soft-delete: desactiva la constructora. Los proyectos mantienen la referencia."""
     with get_conn() as conn:
         with conn.cursor() as cur:
@@ -204,7 +204,7 @@ def eliminar_constructora(constructora_id: int, user=Depends(get_current_user)):
 
 
 @router.post("/proyectos/{id_proyecto}/asignar-constructora")
-def asignar_constructora(id_proyecto: str, constructora_id: Optional[int] = None, user=Depends(get_current_user)):
+def asignar_constructora(id_proyecto: str, constructora_id: Optional[int] = None, user=Depends(require_admin_or_admin2)):
     """Asignar o desasignar una constructora a un proyecto. constructora_id=null para desasignar."""
     with get_conn() as conn:
         with conn.cursor() as cur:

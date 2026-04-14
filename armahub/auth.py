@@ -106,9 +106,9 @@ def register(email: str, password: str, nombre: str = "", apellido: str = "", ro
     VALID_ROLES = ("admin", "admin2", "cubicador", "usc", "externo", "cliente")
     if role not in VALID_ROLES:
         raise HTTPException(status_code=400, detail=f"role debe ser uno de: {', '.join(VALID_ROLES)}")
-    # Admin2 solo puede crear usuarios USC
-    if user.get("role") == "admin2" and role != "usc":
-        raise HTTPException(status_code=403, detail="Admin2 solo puede crear usuarios con rol USC")
+    # Admin2 no puede crear usuarios admin ni admin2
+    if user.get("role") == "admin2" and role in ("admin", "admin2"):
+        raise HTTPException(status_code=403, detail="Admin2 no puede crear usuarios con rol admin o admin2")
 
     password_hash = pwd_context.hash(password)
 
@@ -253,19 +253,24 @@ def admin_list_users(admin=Depends(require_admin_or_admin2)):
 
 
 @router.patch("/admin/users/{user_id}/role")
-def admin_change_role(user_id: int, role: str, admin=Depends(require_admin)):
-    """Cambiar rol de un usuario. Solo admin."""
+def admin_change_role(user_id: int, role: str, admin=Depends(require_admin_or_admin2)):
+    """Cambiar rol de un usuario. Admin o admin2 (parcial)."""
     if role not in VALID_ROLES:
         raise HTTPException(status_code=400, detail=f"Rol inválido. Válidos: {', '.join(VALID_ROLES)}")
     admin_email = admin.get("email", "?")
+    admin_role = admin.get("role", "")
     with get_conn() as conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT id, email FROM users WHERE id = %s", (user_id,))
+            cur.execute("SELECT id, email, role FROM users WHERE id = %s", (user_id,))
             row = cur.fetchone()
             if not row:
                 raise HTTPException(status_code=404, detail="Usuario no encontrado")
-            if row[1] == admin_email and role != "admin":
-                raise HTTPException(status_code=400, detail="No puedes quitarte el rol admin a ti mismo")
+            if row[1] == admin_email and role != admin_role:
+                raise HTTPException(status_code=400, detail="No puedes cambiarte el rol a ti mismo")
+            if admin_role != "admin" and row[2] in ("admin", "admin2"):
+                raise HTTPException(status_code=403, detail="Admin2 no puede modificar usuarios admin o admin2")
+            if admin_role != "admin" and role in ("admin", "admin2"):
+                raise HTTPException(status_code=403, detail="Admin2 no puede asignar rol admin o admin2")
             cur.execute("UPDATE users SET role = %s WHERE id = %s", (role, user_id))
     audit(admin_email, "cambiar_rol", f"{row[1]}: {role}", "usuario", str(user_id))
     return {"ok": True, "id": user_id, "role": role}
@@ -284,8 +289,8 @@ def admin_toggle_activo(user_id: int, activo: bool, admin=Depends(require_admin_
                 raise HTTPException(status_code=404, detail="Usuario no encontrado")
             if row[1] == admin_email and not activo:
                 raise HTTPException(status_code=400, detail="No puedes desactivarte a ti mismo")
-            if admin_role != "admin" and row[2] == "admin" and not activo:
-                raise HTTPException(status_code=403, detail="Solo un admin puede desactivar a otro admin")
+            if admin_role != "admin" and row[2] in ("admin", "admin2"):
+                raise HTTPException(status_code=403, detail="Admin2 no puede modificar usuarios admin o admin2")
             cur.execute("UPDATE users SET activo = %s WHERE id = %s", (activo, user_id))
     estado = "activado" if activo else "desactivado"
     audit(admin_email, "toggle_usuario", f"{row[1]}: {estado}", "usuario", str(user_id))
@@ -294,15 +299,17 @@ def admin_toggle_activo(user_id: int, activo: bool, admin=Depends(require_admin_
 
 @router.patch("/admin/users/{user_id}/password")
 def admin_reset_password(user_id: int, password: str, admin=Depends(require_admin_or_admin2)):
-    """Resetear contraseña de un usuario. Admin o admin2."""
+    """Resetear contraseña de un usuario. Admin o admin2 (parcial)."""
     if len(password) < 6:
         raise HTTPException(status_code=400, detail="La contraseña debe tener al menos 6 caracteres")
     with get_conn() as conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT id, email FROM users WHERE id = %s", (user_id,))
+            cur.execute("SELECT id, email, role FROM users WHERE id = %s", (user_id,))
             row = cur.fetchone()
             if not row:
                 raise HTTPException(status_code=404, detail="Usuario no encontrado")
+            if admin.get("role") != "admin" and row[2] in ("admin", "admin2"):
+                raise HTTPException(status_code=403, detail="Admin2 no puede resetear password de admin o admin2")
             password_hash = pwd_context.hash(password)
             cur.execute("UPDATE users SET password_hash = %s WHERE id = %s", (password_hash, user_id))
     audit(admin.get("email", "?"), "reset_password", row[1], "usuario", str(user_id))
@@ -325,17 +332,19 @@ def admin_change_nombre(user_id: int, nombre: str = "", apellido: str = "", admi
 
 
 @router.delete("/admin/users/{user_id}")
-def admin_delete_user(user_id: int, admin=Depends(require_admin)):
-    """Eliminar un usuario. Solo admin. No puede eliminarse a sí mismo."""
+def admin_delete_user(user_id: int, admin=Depends(require_admin_or_admin2)):
+    """Eliminar un usuario. Admin o admin2 (parcial). No puede eliminarse a sí mismo."""
     admin_email = admin.get("email", "?")
     with get_conn() as conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT id, email FROM users WHERE id = %s", (user_id,))
+            cur.execute("SELECT id, email, role FROM users WHERE id = %s", (user_id,))
             row = cur.fetchone()
             if not row:
                 raise HTTPException(status_code=404, detail="Usuario no encontrado")
             if row[1] == admin_email:
                 raise HTTPException(status_code=400, detail="No puedes eliminarte a ti mismo")
+            if admin.get("role") != "admin" and row[2] in ("admin", "admin2"):
+                raise HTTPException(status_code=403, detail="Admin2 no puede eliminar usuarios admin o admin2")
             cur.execute("DELETE FROM users WHERE id = %s", (user_id,))
     audit(admin_email, "eliminar_usuario", row[1], "usuario", str(user_id))
     return {"ok": True, "id": user_id}

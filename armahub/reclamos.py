@@ -17,16 +17,39 @@ from psycopg.rows import dict_row
 from .auth import get_current_user, require_admin_or_admin2
 from .db import get_conn, audit
 from .reclamos_queries import (
-    q_total, q_abiertos, q_por_estado, q_por_estado_dict, q_por_tipo,
+    q_total, q_abiertos, q_por_estado, q_por_tipo,
     q_por_anio_mes, q_resueltos_no_resueltos, q_por_categoria, q_por_proyecto,
-    q_avg_dias_resolucion, q_top_causas, q_resolucion_por_mes,
-    q_matriz_obra_categoria, build_role_filter,
+    build_role_filter,
 )
 
 router = APIRouter()
 
 MAX_IMAGE_SIZE = 10 * 1024 * 1024  # 10 MB
 ALLOWED_IMAGE_TYPES = ("image/jpeg", "image/png", "image/gif", "image/webp", "image/bmp")
+
+# ========================= PERMISSION HELPERS =========================
+
+REGISTRO_FIELDS = {
+    "titulo", "descripcion", "prioridad", "tipo_reclamo", "responsable",
+    "detectado_por", "fecha_deteccion", "observaciones", "id_calidad",
+    "id_proyecto", "cubicador_asignado", "asignado_a",
+}
+ANALISIS_FIELDS = {
+    "categoria_ishikawa", "sub_causa", "cod_causa", "explicacion_causa",
+    "respuesta_texto", "area_aplica", "fecha_analisis", "kilos_mal_fabricados",
+    "tiempo_respuesta", "tiempo_respuesta_unidad",
+    "tiempo_respuesta_actualizado_por", "tiempo_respuesta_fecha_actualizacion",
+}
+
+
+def _es_propietario_usc(rec: dict, email: str) -> bool:
+    """USC owns reclamo if creado_por or asignado_a."""
+    return rec.get("creado_por") == email or rec.get("asignado_a") == email
+
+
+def _es_propietario_cubicador(rec: dict, email: str) -> bool:
+    """Cubicador/externo owns reclamo if cubicador_asignado or respuesta_por."""
+    return rec.get("cubicador_asignado") == email or rec.get("respuesta_por") == email
 
 # ========================= CONSTANTS =========================
 
@@ -327,6 +350,10 @@ def crear_reclamo(body: ReclamoCreate, user=Depends(get_current_user)):
     role = user.get("role", "usc")
     now = datetime.now(timezone.utc).isoformat()
 
+    # Solo admin, admin2, usc, cubicador, externo pueden crear reclamos
+    if role == "cliente":
+        raise HTTPException(status_code=403, detail="No tiene permiso para crear reclamos")
+
     if body.prioridad and body.prioridad not in PRIORIDADES:
         raise HTTPException(status_code=400, detail=f"Prioridad inválida. Válidas: {PRIORIDADES}")
     if body.tipo_reclamo and body.tipo_reclamo not in TIPOS_RECLAMO:
@@ -570,76 +597,7 @@ def reclamos_admin_dashboards(user=Depends(require_admin_or_admin2)):
     }
 
 
-@router.get("/reclamos/kpis")
-def reclamos_kpis(user=Depends(get_current_user)):
-    """KPIs de reclamos: por estado, aplica/no aplica, categoría, sub-causas top, tiempo resolución."""
-    with get_conn() as conn:
-        with conn.cursor() as cur:
-            por_estado_raw = q_por_estado_dict(cur)
-            por_estado = [{"estado": k, "count": v} for k, v in por_estado_raw.items()]
-
-            cur.execute("SELECT prioridad, COUNT(*) FROM reclamos WHERE estado NOT IN ('cerrado','rechazado') GROUP BY prioridad")
-            por_prioridad = [{"prioridad": r[0], "count": int(r[1])} for r in cur.fetchall()]
-
-            por_categoria = q_por_categoria(cur)
-
-            cur.execute("SELECT COALESCE(aplica,'pendiente'), COUNT(*) FROM reclamos GROUP BY aplica")
-            por_aplica = [{"aplica": r[0], "count": int(r[1])} for r in cur.fetchall()]
-
-            top_causas = q_top_causas(cur)
-            avg_dias_resolucion = q_avg_dias_resolucion(cur)
-            total = q_total(cur)
-            abiertos = por_estado_raw.get("abierto", 0) + por_estado_raw.get("en_analisis", 0) + por_estado_raw.get("accion_correctiva", 0)
-
-    return {
-        "total": total,
-        "abiertos": abiertos,
-        "por_estado": por_estado,
-        "por_prioridad": por_prioridad,
-        "por_categoria": por_categoria,
-        "por_aplica": por_aplica,
-        "top_causas": top_causas,
-        "avg_dias_resolucion": avg_dias_resolucion,
-    }
-
-
-@router.get("/reclamos/dashboard")
-def reclamos_dashboard(user=Depends(get_current_user)):
-    """Datos agregados para el dashboard de reclamos: charts y matriz."""
-    with get_conn() as conn:
-        with conn.cursor() as cur:
-            por_anio_mes = q_por_anio_mes(cur, fecha_col="fecha_creacion")
-            por_categoria = q_por_categoria(cur)
-            por_estado = q_por_estado(cur)
-            resolucion_mes = q_resolucion_por_mes(cur)
-            matriz = q_matriz_obra_categoria(cur)
-
-            por_obra = [{"obra": p["proyecto"], "count": p["count"]} for p in q_por_proyecto(cur, limit=10)]
-
-            # Top 10 responsables
-            cur.execute("""
-                SELECT COALESCE(NULLIF(responsable,''), 'Sin asignar'), COUNT(*)
-                FROM reclamos GROUP BY 1 ORDER BY 2 DESC LIMIT 10
-            """)
-            por_responsable = [{"responsable": r[0], "count": int(r[1])} for r in cur.fetchall()]
-
-            # Top 10 creadores
-            cur.execute("""
-                SELECT COALESCE(creado_por, 'Desconocido'), COUNT(*)
-                FROM reclamos GROUP BY 1 ORDER BY 2 DESC LIMIT 10
-            """)
-            por_creador = [{"creador": r[0], "count": int(r[1])} for r in cur.fetchall()]
-
-    return {
-        "por_anio_mes": por_anio_mes,
-        "por_categoria": por_categoria,
-        "por_obra": por_obra,
-        "por_estado": por_estado,
-        "por_responsable": por_responsable,
-        "por_creador": por_creador,
-        "resolucion_mes": resolucion_mes,
-        "matriz": matriz,
-    }
+# [ELIMINADOS] /reclamos/kpis y /reclamos/dashboard — endpoints huérfanos sin consumo frontend.
 
 
 @router.get("/reclamos/ishikawa")
@@ -766,7 +724,7 @@ def presentaciones_stats(user=Depends(get_current_user)):
         with conn.cursor() as cur:
             role_filter = ""
             params = []
-            if role not in ("admin", "admin2"):
+            if role not in ("admin", "admin2", "cubicador"):
                 role_filter = "AND r.cubicador_asignado = %s"
                 params.append(email)
 
@@ -835,7 +793,11 @@ class PresentarReclamoRequest(BaseModel):
 def presentar_reclamo(reclamo_id: int, body: PresentarReclamoRequest, user=Depends(get_current_user)):
     """Marcar un reclamo como presentado."""
     email = user.get("email", "unknown")
+    role = user.get("role", "usc")
     now = datetime.now(timezone.utc).isoformat()
+
+    if role not in ("admin", "admin2", "cubicador", "externo"):
+        raise HTTPException(status_code=403, detail="No tiene permiso para presentar reclamos")
 
     if not body.asistentes:
         raise HTTPException(status_code=400, detail="Debe seleccionar al menos un asistente")
@@ -845,7 +807,7 @@ def presentar_reclamo(reclamo_id: int, body: PresentarReclamoRequest, user=Depen
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("""
-                SELECT id, cubicador_asignado, respuesta_texto, presentacion_realizada
+                SELECT id, cubicador_asignado, respuesta_texto, presentacion_realizada, respuesta_por
                 FROM reclamos WHERE id = %s
             """, (reclamo_id,))
             row = cur.fetchone()
@@ -853,6 +815,11 @@ def presentar_reclamo(reclamo_id: int, body: PresentarReclamoRequest, user=Depen
                 raise HTTPException(status_code=404, detail="Reclamo no encontrado")
             if not row[1] or not row[2]:
                 raise HTTPException(status_code=400, detail="El reclamo no tiene cubicador asignado o respuesta")
+
+            if role in ("cubicador", "externo"):
+                rec = {"cubicador_asignado": row[1], "respuesta_por": row[4]}
+                if not _es_propietario_cubicador(rec, email):
+                    raise HTTPException(status_code=403, detail="Solo puede presentar reclamos propios")
 
             asistentes_str = ",".join(body.asistentes)
             cur.execute("""
@@ -1131,6 +1098,9 @@ def actualizar_reclamo(reclamo_id: int, body: ReclamoUpdate, user=Depends(get_cu
     role = user.get("role", "usc")
     now = datetime.now(timezone.utc).isoformat()
 
+    if role == "cliente":
+        raise HTTPException(status_code=403, detail="No tiene permiso para editar reclamos")
+
     if body.estado and body.estado not in ESTADOS_RECLAMO:
         raise HTTPException(status_code=400, detail=f"Estado inválido. Válidos: {list(ESTADOS_RECLAMO)}")
     if body.prioridad and body.prioridad not in PRIORIDADES:
@@ -1148,11 +1118,31 @@ def actualizar_reclamo(reclamo_id: int, body: ReclamoUpdate, user=Depends(get_cu
 
     with get_conn() as conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT id, estado FROM reclamos WHERE id = %s", (reclamo_id,))
+            cur.execute("SELECT id, estado, creado_por, asignado_a, cubicador_asignado, respuesta_por FROM reclamos WHERE id = %s", (reclamo_id,))
             row = cur.fetchone()
             if not row:
                 raise HTTPException(status_code=404, detail="Reclamo no encontrado")
             estado_anterior = row[1]
+            rec = {"creado_por": row[2], "asignado_a": row[3], "cubicador_asignado": row[4], "respuesta_por": row[5]}
+
+            # Filtrar campos según rol
+            submitted_fields = {f for f in body.__fields_set__ if getattr(body, f) is not None}
+            if role in ("admin", "admin2"):
+                pass  # sin restricción
+            elif role == "usc":
+                if not _es_propietario_usc(rec, email):
+                    raise HTTPException(status_code=403, detail="Solo puede editar reclamos propios")
+                blocked = submitted_fields & ANALISIS_FIELDS
+                if blocked:
+                    raise HTTPException(status_code=403, detail=f"No tiene permiso para editar campos de análisis: {', '.join(blocked)}")
+            elif role in ("cubicador", "externo"):
+                if not _es_propietario_cubicador(rec, email):
+                    raise HTTPException(status_code=403, detail="Solo puede editar reclamos propios")
+                blocked = submitted_fields & REGISTRO_FIELDS
+                if blocked:
+                    raise HTTPException(status_code=403, detail=f"No tiene permiso para editar campos de registro: {', '.join(blocked)}")
+            else:
+                raise HTTPException(status_code=403, detail="No tiene permiso para editar reclamos")
 
             sets = ["fecha_actualizacion = %s"]
             params = [now]
@@ -1213,6 +1203,16 @@ def actualizar_reclamo(reclamo_id: int, body: ReclamoUpdate, user=Depends(get_cu
                 sets.append("validacion_por = %s")
                 params.append(email)
 
+            # PA.5 — Auto-reopen on rejection: revert to en_analisis so cubicador can fix
+            if body.validacion_resultado == "rechazado" and estado_anterior != "en_analisis":
+                body.estado = "en_analisis"
+                # Clear validacion fields so cubicador starts fresh
+                sets.append("validacion_resultado = NULL")
+                sets.append("validacion_observaciones = NULL")
+                sets.append("validacion_fecha = NULL")
+                sets.append("validacion_por = NULL")
+                sets.append("fecha_cierre = NULL")
+
             estado_changed = False
             if body.estado and body.estado != estado_anterior:
                 sets.append("estado = %s")
@@ -1235,6 +1235,9 @@ def actualizar_reclamo(reclamo_id: int, body: ReclamoUpdate, user=Depends(get_cu
             # Auto-create seguimiento for state change
             if estado_changed:
                 comment = f"Estado cambiado: {ESTADO_LABELS.get(estado_anterior, estado_anterior)} → {ESTADO_LABELS.get(body.estado, body.estado)}"
+                # Include rejection observations in timeline
+                if body.validacion_resultado == "rechazado" and body.validacion_observaciones:
+                    comment += f" — Motivo rechazo: {body.validacion_observaciones}"
                 cur.execute("""
                     INSERT INTO reclamo_seguimientos (reclamo_id, usuario, comentario, estado_anterior, estado_nuevo, fecha)
                     VALUES (%s, %s, %s, %s, %s, %s)
@@ -1250,13 +1253,24 @@ def actualizar_reclamo(reclamo_id: int, body: ReclamoUpdate, user=Depends(get_cu
 def eliminar_reclamo(reclamo_id: int, user=Depends(get_current_user)):
     """Eliminar un reclamo y todos sus datos asociados."""
     email = user.get("email", "unknown")
+    role = user.get("role", "usc")
+
+    if role not in ("admin", "admin2", "usc"):
+        raise HTTPException(status_code=403, detail="No tiene permiso para eliminar reclamos")
+
     with get_conn() as conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT id, titulo FROM reclamos WHERE id = %s", (reclamo_id,))
+            cur.execute("SELECT id, titulo, creado_por, asignado_a FROM reclamos WHERE id = %s", (reclamo_id,))
             row = cur.fetchone()
             if not row:
                 raise HTTPException(status_code=404, detail="Reclamo no encontrado")
             titulo = row[1]
+
+            if role == "usc":
+                rec = {"creado_por": row[2], "asignado_a": row[3]}
+                if not _es_propietario_usc(rec, email):
+                    raise HTTPException(status_code=403, detail="Solo puede eliminar reclamos propios")
+
             cur.execute("DELETE FROM reclamo_imagenes WHERE reclamo_id = %s", (reclamo_id,))
             cur.execute("DELETE FROM reclamo_acciones WHERE reclamo_id = %s", (reclamo_id,))
             cur.execute("DELETE FROM reclamo_seguimientos WHERE reclamo_id = %s", (reclamo_id,))
@@ -1273,7 +1287,11 @@ def eliminar_reclamo(reclamo_id: int, user=Depends(get_current_user)):
 def crear_seguimiento(reclamo_id: int, body: SeguimientoCreate, user=Depends(get_current_user)):
     """Agregar un seguimiento (comentario) a un reclamo. Opcionalmente cambia estado."""
     email = user.get("email", "unknown")
+    role = user.get("role", "usc")
     now = datetime.now(timezone.utc).isoformat()
+
+    if role == "cliente":
+        raise HTTPException(status_code=403, detail="No tiene permiso para agregar seguimientos")
 
     if body.estado_nuevo and body.estado_nuevo not in ESTADOS_RECLAMO:
         raise HTTPException(status_code=400, detail=f"Estado inválido. Válidos: {list(ESTADOS_RECLAMO)}")
@@ -1324,16 +1342,26 @@ def crear_seguimiento(reclamo_id: int, body: SeguimientoCreate, user=Depends(get
 def crear_accion(reclamo_id: int, body: AccionCreate, user=Depends(get_current_user)):
     """Agregar una acción (inmediata/correctiva/preventiva) a un reclamo."""
     email = user.get("email", "unknown")
+    role = user.get("role", "usc")
     now = datetime.now(timezone.utc).isoformat()
+
+    if role not in ("admin", "admin2", "cubicador", "externo"):
+        raise HTTPException(status_code=403, detail="No tiene permiso para agregar acciones")
 
     if body.tipo not in TIPOS_ACCION:
         raise HTTPException(status_code=400, detail=f"Tipo inválido. Válidos: {list(TIPOS_ACCION)}")
 
     with get_conn() as conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT id FROM reclamos WHERE id = %s", (reclamo_id,))
-            if not cur.fetchone():
+            cur.execute("SELECT id, cubicador_asignado, respuesta_por FROM reclamos WHERE id = %s", (reclamo_id,))
+            row = cur.fetchone()
+            if not row:
                 raise HTTPException(status_code=404, detail="Reclamo no encontrado")
+
+            if role in ("cubicador", "externo"):
+                rec = {"cubicador_asignado": row[1], "respuesta_por": row[2]}
+                if not _es_propietario_cubicador(rec, email):
+                    raise HTTPException(status_code=403, detail="Solo puede agregar acciones en reclamos propios")
 
             cur.execute("""
                 INSERT INTO reclamo_acciones (reclamo_id, tipo, descripcion, responsable, fecha_prevista, creado_por, fecha_creacion)
@@ -1406,6 +1434,7 @@ async def subir_imagen(
 ):
     """Subir una imagen/evidencia a un reclamo aceptando nomenclatura legacy y canónica."""
     email = user.get("email", "unknown")
+    role = user.get("role", "usc")
     now = datetime.now(timezone.utc).isoformat()
     tipo_map = {
         "antecedente": "ImagenesRegistro",
@@ -1414,6 +1443,14 @@ async def subir_imagen(
         "ImagenesAnalisis": "ImagenesAnalisis",
     }
     img_tipo = tipo_map.get(tipo or "antecedente", "ImagenesRegistro")
+
+    # Permisos por tipo de imagen
+    if role == "cliente":
+        raise HTTPException(status_code=403, detail="No tiene permiso para subir imágenes")
+    if img_tipo == "ImagenesRegistro" and role in ("cubicador", "externo"):
+        raise HTTPException(status_code=403, detail="Solo USC o admin pueden subir imágenes de registro")
+    if img_tipo == "ImagenesAnalisis" and role == "usc":
+        raise HTTPException(status_code=403, detail="Solo cubicador, externo o admin pueden subir imágenes de análisis")
 
     if file.content_type not in ALLOWED_IMAGE_TYPES:
         raise HTTPException(status_code=400, detail=f"Tipo de archivo no permitido. Permitidos: {ALLOWED_IMAGE_TYPES}")

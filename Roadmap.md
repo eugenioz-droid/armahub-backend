@@ -134,11 +134,24 @@ Objetivo: consolidar contratos y reducir drift.
 
 ### Prioridad Alta
 
-- [ ] PA.1 Landing extensible con nuevas calugas y microflujos
-- [ ] PA.2 Rediseno de dashboards por rol
-- [ ] PA.3 Formalizar permisos por rol con un perfil supervisor o jefe
-- [ ] PA.4 Smoke tests minimos por modulo critico
-- [ ] PA.5 Ajustar flujo de validacion de reclamos: al rechazar, reabrir y devolver al analista para nueva respuesta
+- [x] PA.1 Landing extensible con nuevas calugas y microflujos
+- [x] PA.2 Implementar accesos por rol según matriz ROLES_Y_PERMISOS.md
+	- [x] PA.2.1 Cuadro 1b: Acceso a tabs × rol
+		- [x] PA.2.1a admin2 → acceso a módulo Cubicación (registry.js)
+		- [x] PA.2.1b Reclamos tab Dashboards → solo admin/admin2
+		- [x] PA.2.1c Reclamos tab Presentación → excluir usc
+	- [x] PA.2.2 Cuadro 2: Dashboards/vistas × rol
+		- [x] PA.2.2a Landing indicators (externo → propios en reclamos/alertas)
+		- [x] PA.2.2b Reclamos vistas analíticas (build_role_filter, presentaciones)
+	- [x] PA.2.3 Cuadro 3: Permisos/acciones × rol
+		- [x] PA.2.3a Auth y usuarios (admin2 parcial)
+		- [x] PA.2.3b Admin técnico (admin2 → ver DB/tablas/audit)
+		- [x] PA.2.3c Proyectos y barras (5 endpoints deshabilitados, cliente sin acceso)
+		- [x] PA.2.3d Reclamos (registro vs análisis, propiedad, imágenes separadas)
+		- [x] PA.2.3e Pedidos/calculistas/constructoras (solo admin/admin2)
+- [x] PA.3 Formalizar permisos por rol — documento ROLES_Y_PERMISOS.md creado
+- [x] PA.4 Smoke tests minimos por modulo critico (22 tests, 20 pass, 2 pending deploy)
+- [x] PA.5 Flujo rechazo validación: auto-reabre a en_analisis, limpia campos validación, seguimiento con motivo
 
 ### Prioridad Media
 
@@ -153,6 +166,22 @@ Objetivo: consolidar contratos y reducir drift.
 - [ ] PC.2 Automatismos de cambio de estado en validacion
 - [ ] PC.3 Nuevas apps no relacionadas a cubicacion dentro del portal
 - [ ] PC.4 Repositorio de archivos e imagenes separado si el modulo de calidad sigue creciendo
+- [ ] PC.5 Solicitudes/pedidos específicos — paquetes de pedido independientes de la cubicación importada, con ubicación, aislables de la data principal. Usuarios y clientes podrán crearlos como solicitudes adicionales.
+- [ ] PC.6 Tab "Roles y Permisos" en módulo Admin — implementar tablas de ROLES_Y_PERMISOS.md como vista interactiva
+	- [ ] PC.6.1 Tabla 1a: Acceso a módulos (calugas del Hub)
+	- [ ] PC.6.2 Tabla 1b: Acceso a tabs dentro de cada módulo
+	- [ ] PC.6.3 Tabla 2a: Landing (Hub principal) — indicadores
+	- [ ] PC.6.4 Tabla 2b: Reclamos — Vistas analíticas
+	- [ ] PC.6.5 Tabla 2c: Cubicación — Vistas
+	- [ ] PC.6.6 Tabla 3a: Autenticación y usuarios
+	- [ ] PC.6.7 Tabla 3b: Admin técnico
+	- [ ] PC.6.8 Tabla 3c: Proyectos y barras (cubicación)
+	- [ ] PC.6.9 Tabla 3d: Reclamos
+	- [ ] PC.6.10 Tabla 3e: Pedidos, calculistas, constructoras
+- [ ] PC.7 Campo "USC responsable" en formulario de registro de reclamos — desplegable con usuarios USC; bloqueado para USC (auto-asigna), desbloqueado para admin/admin2. Revisar tablas 3d de ROLES_Y_PERMISOS.md.
+- [ ] PC.8 Migrar formularios de reclamos (registro, análisis, detalle) a modales — eliminar scroll, mejorar UX. Evaluar reutilizar FormRenderer y modals.js existentes.
+- [ ] PC.9 Revisar administración de proyectos/clientes/constructoras/calculistas — definir flujo correcto de gestión de entidades, permisos granulares por rol, y relación entre ellas. Actualizar tabla 3e de ROLES_Y_PERMISOS.md.
+- [ ] PC.10 Rediseñar flujo de carga de datos (importación Excel) — actualmente el sistema asume la obra destino y la crea automáticamente. Cambiar a: crear obra primero, luego el cubicador elige dónde cargar. Agregar warning por coincidencia de nombre para prevenir errores de carga.
 
 ---
 

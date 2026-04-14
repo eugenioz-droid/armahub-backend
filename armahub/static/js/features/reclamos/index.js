@@ -958,9 +958,9 @@ async function loadRecLanding() {
   var dashBtn = document.getElementById('recTabBtnDash');
   if (dashBtn) dashBtn.style.display = isAdmin ? '' : 'none';
 
-  // Show presentaciones tab button for admin/admin2/cubicador
+  // Show presentaciones tab button for admin/admin2/cubicador/externo
   var presBtn = document.getElementById('recTabBtnPres');
-  var presAccess = ['admin','admin2','cubicador'];
+  var presAccess = ['admin','admin2','cubicador','externo'];
   if (presBtn) presBtn.style.display = presAccess.includes(currentRole) ? '' : 'none';
 
   // Chart 1: KPI
@@ -1827,6 +1827,7 @@ function _renderReclamoAssets(data) {
 
 function _applyReclamoDetailPermissions(data) {
   var esCreador = data.creado_por && data.creado_por === currentUserEmail;
+  var esPropioCub = data.cubicador_asignado === currentUserEmail || data.respuesta_por === currentUserEmail;
   var validado = !!data.validacion_resultado;
 
   var puedeEditarSec1 = (currentRole === 'admin' || currentRole === 'admin2') || (currentRole === 'usc' && esCreador);
@@ -1878,10 +1879,18 @@ function _applyReclamoDetailPermissions(data) {
   var btnGuardarVal = document.getElementById('btnGuardarValidacion');
   if (btnGuardarVal) btnGuardarVal.style.display = puedeValidar ? '' : 'none';
 
-  var puedeAccion = ['admin','admin2','cubicador'].includes(currentRole);
+  var puedeAccion = ['admin','admin2','cubicador','externo'].includes(currentRole);
+  if ((['cubicador','externo'].includes(currentRole)) && !esPropioCub) puedeAccion = false;
   if (validado && currentRole !== 'admin') puedeAccion = false;
   var accionFields = ['recNuevaAccionTipo','recNuevaAccionDesc','recNuevaAccionResp','recNuevaAccionFecha'];
   accionFields.forEach(function(fid) { var el = document.getElementById(fid); if (el) el.disabled = !puedeAccion; });
+
+  // Imágenes de registro: solo admin/admin2/usc
+  var puedeImgRegistro = ['admin','admin2','usc'].includes(currentRole);
+  var detDropZone = document.getElementById('recDetailDropZone');
+  var detFileInput = document.getElementById('recDetailFileInput');
+  if (detDropZone) detDropZone.style.display = puedeImgRegistro ? '' : 'none';
+  if (detFileInput) detFileInput.disabled = !puedeImgRegistro;
 }
 
 function _renderReclamoDetail(data) {
@@ -2332,8 +2341,13 @@ async function guardarValidacion() {
   if (res.status === 401) { logout(); return; }
   var data = await res.json();
   if (data.ok) {
-    msg.textContent = '✅ Validación guardada'; msg.style.color = '#558B2F';
-    setTimeout(function() { msg.textContent = ''; }, 3000);
+    if (resultado === 'rechazado') {
+      msg.textContent = '❌ Rechazado — devuelto al cubicador para corrección';
+    } else {
+      msg.textContent = '✅ Validación guardada';
+    }
+    msg.style.color = resultado === 'rechazado' ? '#b42318' : '#558B2F';
+    setTimeout(function() { msg.textContent = ''; }, 4000);
     await verReclamo(_reclamoActual.id);
     await loadReclamos(); await loadRecLanding();
   } else {
@@ -2710,6 +2724,10 @@ document.addEventListener('keydown', function(e) {
     await Promise.resolve(loadReclamos());
     await Promise.resolve(loadRecLanding());
     _initRecImageDropZonesGuarded();
+
+    // Ocultar card de crear reclamo para cliente
+    var crearCard = document.getElementById('crearReclamoCard');
+    if (crearCard && currentRole === 'cliente') crearCard.style.display = 'none';
   }
 
   // --- Drop zones initializer with dedup guard ---

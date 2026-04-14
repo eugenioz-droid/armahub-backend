@@ -72,7 +72,7 @@
     title: 'Cubicacion',
     css: 'mod-cubicacion',
     defaultTab: 'inicio',
-    allowedRoles: ['admin', 'cubicador', 'cliente'],
+    allowedRoles: ['admin', 'admin2', 'cubicador', 'cliente'],
     loaderFunction: 'loadCubicacionModule',
     hubCardId: 'hubCardCubicacion',
     hubOrder: 10,

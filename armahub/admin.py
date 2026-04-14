@@ -12,13 +12,13 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from .db import get_conn, reset_database, audit
-from .auth import require_admin
+from .auth import require_admin, require_admin_or_admin2
 
 router = APIRouter()
 
 
 @router.get("/admin/db-info")
-def db_info(admin=Depends(require_admin)):
+def db_info(admin=Depends(require_admin_or_admin2)):
     """Info actual de la base de datos."""
     with get_conn() as conn:
         with conn.cursor() as cur:
@@ -60,7 +60,7 @@ def admin_reset_db(
 
 
 @router.get("/admin/tables")
-def get_table_counts(admin=Depends(require_admin)):
+def get_table_counts(admin=Depends(require_admin_or_admin2)):
     """Conteo de registros por tabla para el panel de gestión de datos."""
     tables = [
         ("barras", "barras"),
@@ -145,7 +145,7 @@ def get_audit_log(
     entidad: Optional[str] = None,
     limit: int = Query(100, ge=1, le=500),
     offset: int = Query(0, ge=0),
-    admin=Depends(require_admin),
+    admin=Depends(require_admin_or_admin2),
 ):
     """Consultar audit log con filtros opcionales."""
     with get_conn() as conn:

@@ -732,34 +732,8 @@ class CambiarSectorRequest(BaseModel):
 
 @router.post("/barras/cambiar-sector")
 def cambiar_sector_barras(body: CambiarSectorRequest, user=Depends(get_current_user)):
-    """Cambiar sector de barras individuales (dentro del mismo proyecto)."""
-    if not body.id_unicos:
-        raise HTTPException(status_code=400, detail="Lista de barras vacía")
-    if not body.nuevo_sector:
-        raise HTTPException(status_code=400, detail="Debe indicar nuevo_sector")
-
-    SECTORES_VALIDOS = {"FUND", "ELEV", "LCIELO", "VCIELO"}
-    if body.nuevo_sector.upper() not in SECTORES_VALIDOS:
-        raise HTTPException(status_code=400, detail=f"Sector inválido. Válidos: {sorted(SECTORES_VALIDOS)}")
-
-    with get_conn() as conn:
-        with conn.cursor() as cur:
-            cur.execute("SELECT id_proyecto FROM barras WHERE id_unico = %s", (body.id_unicos[0],))
-            brow = cur.fetchone()
-            if not brow:
-                raise HTTPException(status_code=404, detail="Barra no encontrada")
-            if not _puede_editar_proyecto(cur, brow[0], user):
-                raise HTTPException(status_code=403, detail="No tienes permiso para editar barras de este proyecto")
-
-            placeholders = ",".join(["%s"] * len(body.id_unicos))
-            params = [body.nuevo_sector.upper()] + list(body.id_unicos)
-            cur.execute(
-                f"UPDATE barras SET sector = %s WHERE id_unico IN ({placeholders})",
-                params
-            )
-            count = cur.rowcount
-
-    return {"ok": True, "modificadas": count}
+    """Cambiar sector de barras individuales (dentro del mismo proyecto). DESHABILITADO."""
+    raise HTTPException(status_code=403, detail="Función deshabilitada — sistema cerrado")
 
 
 def _calcular_peso(diam, largo):
@@ -785,18 +759,8 @@ class BarraManualCreate(BaseModel):
 
 @router.post("/barras/crear")
 def crear_barra_manual(body: BarraManualCreate, user=Depends(get_current_user)):
-    """Crear una barra manual (origen='manual')."""
-    email = user.get("email", "unknown")
-    now = datetime.now(timezone.utc).isoformat()
-
-    with get_conn() as conn:
-        with conn.cursor() as cur:
-            cur.execute("SELECT id_proyecto, nombre_proyecto FROM proyectos WHERE id_proyecto = %s", (body.id_proyecto,))
-            prow = cur.fetchone()
-            if not prow:
-                raise HTTPException(status_code=404, detail="Proyecto no encontrado")
-            if not _puede_editar_proyecto(cur, body.id_proyecto, user):
-                raise HTTPException(status_code=403, detail="No tienes permiso para editar barras de este proyecto")
+    """Crear una barra manual (origen='manual'). DESHABILITADO."""
+    raise HTTPException(status_code=403, detail="Función deshabilitada — sistema cerrado")
 
             nombre_proyecto = prow[1]
             id_unico = f"MAN-{uuid.uuid4().hex[:12].upper()}"
@@ -821,77 +785,14 @@ def crear_barra_manual(body: BarraManualCreate, user=Depends(get_current_user)):
 
 @router.post("/barras/{id_unico}/duplicar")
 def duplicar_barra(id_unico: str, user=Depends(get_current_user)):
-    """Duplicar una barra existente como nueva barra manual."""
-    email = user.get("email", "unknown")
-    now = datetime.now(timezone.utc).isoformat()
-
-    with get_conn() as conn:
-        with conn.cursor() as cur:
-            cur.execute("""
-                SELECT id_unico, id_proyecto, nombre_proyecto, plano_code, nombre_plano,
-                       sector, piso, ciclo, eje, diam, largo_total, mult, cant, cant_total,
-                       peso_unitario, peso_total, figura, marca,
-                       bar_id, estructura, tipo, esp,
-                       dim_a, dim_b, dim_c, dim_d, dim_e, dim_f, dim_g, dim_h, dim_i,
-                       ang1, ang2, ang3, ang4, radio
-                FROM barras WHERE id_unico = %s
-            """, (id_unico,))
-            row = cur.fetchone()
-            if not row:
-                raise HTTPException(status_code=404, detail="Barra no encontrada")
-
-            src_proyecto = row[1]
-            if not _puede_editar_proyecto(cur, src_proyecto, user):
-                raise HTTPException(status_code=403, detail="No tienes permiso para duplicar barras de este proyecto")
-
-            new_id = f"MAN-{uuid.uuid4().hex[:12].upper()}"
-
-            cur.execute("""
-                INSERT INTO barras (id_unico, id_proyecto, nombre_proyecto, plano_code, nombre_plano,
-                    sector, piso, ciclo, eje, diam, largo_total, mult, cant, cant_total,
-                    peso_unitario, peso_total, figura, marca,
-                    bar_id, estructura, tipo, esp,
-                    dim_a, dim_b, dim_c, dim_d, dim_e, dim_f, dim_g, dim_h, dim_i,
-                    ang1, ang2, ang3, ang4, radio,
-                    fecha_carga, origen, creado_por)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                        %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                        %s, %s, %s)
-            """, (new_id, row[1], row[2], row[3], row[4],
-                  row[5], row[6], row[7], row[8], row[9], row[10], row[11], row[12], row[13],
-                  row[14], row[15], row[16], row[17],
-                  row[18], row[19], row[20], row[21],
-                  row[22], row[23], row[24], row[25], row[26], row[27], row[28], row[29], row[30],
-                  row[31], row[32], row[33], row[34], row[35],
-                  now, 'manual', email))
-
-    audit(email, "duplicar_barra", f"Duplicada {id_unico} → {new_id}", "barra", new_id)
-    return {"ok": True, "id_unico": new_id, "origen": id_unico}
+    """Duplicar una barra existente como nueva barra manual. DESHABILITADO."""
+    raise HTTPException(status_code=403, detail="Función deshabilitada — sistema cerrado")
 
 
 @router.delete("/barras/{id_unico}")
 def eliminar_barra(id_unico: str, user=Depends(get_current_user)):
-    """Eliminar una barra individual. Admin/cubicador pueden eliminar cualquier barra."""
-    with get_conn() as conn:
-        with conn.cursor() as cur:
-            cur.execute("SELECT id_unico, id_proyecto, origen FROM barras WHERE id_unico = %s", (id_unico,))
-            row = cur.fetchone()
-            if not row:
-                raise HTTPException(status_code=404, detail="Barra no encontrada")
-
-            # Admin y cubicador pueden eliminar cualquier barra; otros roles solo manual/pedido
-            if user.get("role") not in ("admin", "cubicador") and row[2] not in ('manual', 'pedido', None):
-                raise HTTPException(status_code=400,
-                    detail="Solo se pueden eliminar barras manuales o de pedido. Las barras CSV se eliminan borrando la carga completa.")
-
-            if not _puede_editar_proyecto(cur, row[1], user):
-                raise HTTPException(status_code=403, detail="No tienes permiso para eliminar barras de este proyecto")
-
-            cur.execute("DELETE FROM barras WHERE id_unico = %s", (id_unico,))
-
-    email = user.get("email", "unknown")
-    audit(email, "eliminar_barra", f"Barra {id_unico} eliminada", "barra", id_unico)
-    return {"ok": True, "id_unico": id_unico}
+    """Eliminar una barra individual. DESHABILITADO."""
+    raise HTTPException(status_code=403, detail="Función deshabilitada — sistema cerrado")
 
 
 @router.get("/proyectos/{id_proyecto}/sectores-nav")
@@ -1361,42 +1262,8 @@ def eliminar_proyecto(id_proyecto: str, user=Depends(get_current_user)):
 
 @router.post("/proyectos/{id_proyecto}/mover-barras")
 def mover_barras(id_proyecto: str, body: MoverBarrasRequest, user=Depends(get_current_user)):
-    """Mover barras de un proyecto a otro, opcionalmente filtradas por sector/piso/ciclo."""
-    with get_conn() as conn:
-        with conn.cursor() as cur:
-            cur.execute("SELECT nombre_proyecto FROM proyectos WHERE id_proyecto = %s", (id_proyecto,))
-            if not cur.fetchone():
-                raise HTTPException(status_code=404, detail="Proyecto origen no encontrado")
-            if not _puede_editar_proyecto(cur, id_proyecto, user):
-                raise HTTPException(status_code=403, detail="No tienes permiso para mover barras de este proyecto")
-
-            cur.execute("SELECT nombre_proyecto FROM proyectos WHERE id_proyecto = %s", (body.destino_id,))
-            dest = cur.fetchone()
-            if not dest:
-                raise HTTPException(status_code=404, detail="Proyecto destino no encontrado")
-
-            where = "WHERE id_proyecto = %s"
-            params = [id_proyecto]
-            if body.sector:
-                where += " AND sector = %s"
-                params.append(body.sector)
-            if body.piso:
-                where += " AND piso = %s"
-                params.append(body.piso)
-            if body.ciclo:
-                where += " AND ciclo = %s"
-                params.append(body.ciclo)
-
-            cur.execute(f"SELECT COUNT(*) FROM barras {where}", params)
-            count = int(cur.fetchone()[0])
-
-            if count == 0:
-                return {"ok": True, "movidas": 0, "message": "No hay barras que coincidan con los filtros"}
-
-            cur.execute(
-                f"UPDATE barras SET id_proyecto = %s, nombre_proyecto = %s {where}",
-                [body.destino_id, dest[0]] + params
-            )
+    """Mover barras de un proyecto a otro. DESHABILITADO."""
+    raise HTTPException(status_code=403, detail="Función deshabilitada — sistema cerrado")
     audit(user.get("email", "?"), "mover_barras", f"{count} barras {id_proyecto} → {body.destino_id}", "proyecto", id_proyecto)
     return {
         "ok": True,
@@ -1528,9 +1395,19 @@ def landing_indicadores(user=Depends(get_current_user)):
                     cub_map[email_cub]["dias"][r[3] - 1] = round(float(r[4]), 1)
                 result["cubicado_semana"] = list(cub_map.values())
 
-            # --- Reclamos levantados semana (visible to admin, admin2, usc, cubicador) ---
-            if role in ("admin", "admin2", "usc", "cubicador"):
-                cur.execute("""
+            # --- Reclamos levantados semana (visible to admin, admin2, usc, cubicador, externo) ---
+            if role in ("admin", "admin2", "usc", "cubicador", "externo"):
+                # Filtro "propios" para cubicador/externo/usc
+                if role in ("cubicador", "externo"):
+                    prop_where = "AND (r.cubicador_asignado = %s OR r.respuesta_por = %s)"
+                    prop_params = (monday, sunday, email, email)
+                elif role == "usc":
+                    prop_where = "AND (r.creado_por = %s OR r.asignado_a = %s)"
+                    prop_params = (monday, sunday, email, email)
+                else:
+                    prop_where = ""
+                    prop_params = (monday, sunday)
+                cur.execute(f"""
                     SELECT r.creado_por,
                            COALESCE(u.nombre, '') AS nombre,
                            COALESCE(u.apellido, '') AS apellido,
@@ -1540,9 +1417,10 @@ def landing_indicadores(user=Depends(get_current_user)):
                     LEFT JOIN users u ON u.email = r.creado_por
                     WHERE LEFT(COALESCE(r.fecha_deteccion, r.fecha_creacion), 10) >= %s
                       AND LEFT(COALESCE(r.fecha_deteccion, r.fecha_creacion), 10) <= %s
+                    {prop_where}
                     GROUP BY r.creado_por, u.nombre, u.apellido, dow
                     ORDER BY r.creado_por, dow
-                """, (monday, sunday))
+                """, prop_params)
                 rows = cur.fetchall()
                 usc_map = {}
                 for r in rows:
@@ -1575,6 +1453,13 @@ def landing_indicadores(user=Depends(get_current_user)):
                 cur.execute("""
                     SELECT estado, COUNT(*) FROM reclamos
                     WHERE (creado_por = %s OR asignado_a = %s)
+                      AND estado NOT IN ('cerrado', 'rechazado')
+                    GROUP BY estado ORDER BY 2 DESC
+                """, (email, email))
+            elif role == "externo":
+                cur.execute("""
+                    SELECT estado, COUNT(*) FROM reclamos
+                    WHERE (cubicador_asignado = %s OR respuesta_por = %s)
                       AND estado NOT IN ('cerrado', 'rechazado')
                     GROUP BY estado ORDER BY 2 DESC
                 """, (email, email))
