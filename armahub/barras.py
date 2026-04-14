@@ -1434,28 +1434,28 @@ def landing_indicadores(user=Depends(get_current_user)):
             if role in ("admin", "admin2"):
                 cur.execute("""
                     SELECT estado, COUNT(*) FROM reclamos
-                    WHERE estado NOT IN ('cerrado', 'rechazado')
+                    WHERE estado NOT IN ('validado', 'cerrado', 'rechazado')
                     GROUP BY estado ORDER BY 2 DESC
                 """)
             elif role == "cubicador":
                 cur.execute("""
                     SELECT estado, COUNT(*) FROM reclamos
                     WHERE (cubicador_asignado = %s OR respuesta_por = %s)
-                      AND estado NOT IN ('cerrado', 'rechazado')
+                      AND estado NOT IN ('validado', 'cerrado', 'rechazado')
                     GROUP BY estado ORDER BY 2 DESC
                 """, (email, email))
             elif role == "usc":
                 cur.execute("""
                     SELECT estado, COUNT(*) FROM reclamos
                     WHERE (creado_por = %s OR asignado_a = %s)
-                      AND estado NOT IN ('cerrado', 'rechazado')
+                      AND estado NOT IN ('validado', 'cerrado', 'rechazado')
                     GROUP BY estado ORDER BY 2 DESC
                 """, (email, email))
             elif role == "externo":
                 cur.execute("""
                     SELECT estado, COUNT(*) FROM reclamos
                     WHERE (cubicador_asignado = %s OR respuesta_por = %s)
-                      AND estado NOT IN ('cerrado', 'rechazado')
+                      AND estado NOT IN ('validado', 'cerrado', 'rechazado')
                     GROUP BY estado ORDER BY 2 DESC
                 """, (email, email))
             else:

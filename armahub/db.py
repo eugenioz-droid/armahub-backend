@@ -553,6 +553,13 @@ MIGRATIONS = [
         "DO $$ BEGIN ALTER TABLE reclamos ADD COLUMN tiempo_respuesta_actualizado_por TEXT; EXCEPTION WHEN duplicate_column THEN NULL; END $$;",
         "DO $$ BEGIN ALTER TABLE reclamos ADD COLUMN tiempo_respuesta_fecha_actualizacion TIMESTAMPTZ; EXCEPTION WHEN duplicate_column THEN NULL; END $$;",
     ]),
+    (41, "reclamos: agregar estado 'validado' al CHECK constraint", [
+        """DO $$ BEGIN
+            ALTER TABLE reclamos DROP CONSTRAINT IF EXISTS reclamos_estado_check;
+            ALTER TABLE reclamos ADD CONSTRAINT reclamos_estado_check
+                CHECK (estado IN ('abierto','en_analisis','accion_correctiva','validacion','validado','cerrado','rechazado'));
+        END $$;""",
+    ]),
 ]
 
 
