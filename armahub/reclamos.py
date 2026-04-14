@@ -1107,18 +1107,6 @@ def get_reclamo_optimizado(
 @router.patch("/reclamos/{reclamo_id}")
 def actualizar_reclamo(reclamo_id: int, body: ReclamoUpdate, user=Depends(get_current_user)):
     """Actualizar campos de un reclamo. Si cambia estado, crea seguimiento automático."""
-    import traceback as _tb
-    try:
-        return _actualizar_reclamo_impl(reclamo_id, body, user)
-    except HTTPException:
-        raise
-    except Exception as exc:
-        detail = f"[PATCH /reclamos/{reclamo_id}] {type(exc).__name__}: {exc}\n{_tb.format_exc()}"
-        print(detail)
-        raise HTTPException(status_code=500, detail=detail)
-
-
-def _actualizar_reclamo_impl(reclamo_id: int, body: ReclamoUpdate, user: dict):
     email = user.get("email", "unknown")
     role = user.get("role", "usc")
     now = datetime.now(timezone.utc).isoformat()
@@ -1171,10 +1159,6 @@ def _actualizar_reclamo_impl(reclamo_id: int, body: ReclamoUpdate, user: dict):
 
             sets = ["fecha_actualizacion = %s"]
             params = [now]
-
-            # Debug: log received fields
-            received = {f: getattr(body, f) for f in ["respuesta_texto", "categoria_ishikawa", "sub_causa", "cod_causa", "area_aplica", "fecha_analisis", "kilos_mal_fabricados"] if getattr(body, f) is not None}
-            print(f"[PATCH /reclamos/{reclamo_id}] role={role} received={received}")
 
             updatable = [
                 "id_proyecto", "titulo", "descripcion", "prioridad", "tipo_reclamo",

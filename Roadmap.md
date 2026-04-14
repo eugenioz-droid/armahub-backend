@@ -163,7 +163,7 @@ Objetivo: consolidar contratos y reducir drift.
 ### Prioridad Condicionada a definicion
 
 - [ ] PC.1 Notificaciones de reclamos
-- [ ] PC.2 Automatismos de cambio de estado en validacion
+- [x] PC.2 Automatismos de cambio de estado en validacion
 - [ ] PC.3 Nuevas apps no relacionadas a cubicacion dentro del portal
 - [ ] PC.4 Repositorio de archivos e imagenes separado si el modulo de calidad sigue creciendo
 - [ ] PC.5 Solicitudes/pedidos específicos — paquetes de pedido independientes de la cubicación importada, con ubicación, aislables de la data principal. Usuarios y clientes podrán crearlos como solicitudes adicionales.
@@ -180,6 +180,12 @@ Objetivo: consolidar contratos y reducir drift.
 	- [ ] PC.6.10 Tabla 3e: Pedidos, calculistas, constructoras
 - [ ] PC.7 Campo "USC responsable" en formulario de registro de reclamos — desplegable con usuarios USC; bloqueado para USC (auto-asigna), desbloqueado para admin/admin2. Revisar tablas 3d de ROLES_Y_PERMISOS.md.
 - [ ] PC.8 Migrar formularios de reclamos (registro, análisis, detalle) a modales — eliminar scroll, mejorar UX. Evaluar reutilizar FormRenderer y modals.js existentes.
+	- [x] PC.8.1 CSS modal overlay (backdrop + `.rec-modal-open` + animación + responsive breakpoints)
+	- [x] PC.8.2 JS helpers `openReclamoModal()` / `closeReclamoModal()` con Escape y backdrop click
+	- [x] PC.8.3 Detalle de reclamo se abre como modal (5 secciones + timeline dentro)
+	- [x] PC.8.4 Formulario de registro se abre como modal
+	- [x] PC.8.5 Coordinar z-index: modal(950) < Ishikawa(9999) < ImageViewer(10000)
+	- [x] PC.8.6 Validar errores, permisos y flujo de cierre/eliminación
 - [ ] PC.9 Revisar administración de proyectos/clientes/constructoras/calculistas — definir flujo correcto de gestión de entidades, permisos granulares por rol, y relación entre ellas. Actualizar tabla 3e de ROLES_Y_PERMISOS.md.
 - [ ] PC.10 Rediseñar flujo de carga de datos (importación Excel) — actualmente el sistema asume la obra destino y la crea automáticamente. Cambiar a: crear obra primero, luego el cubicador elige dónde cargar. Agregar warning por coincidencia de nombre para prevenir errores de carga.
 

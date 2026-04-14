@@ -44,6 +44,7 @@
 
     <!-- Crear reclamo -->
     <div class="card" id="crearReclamoCard">
+      <button class="rec-modal-close" style="display:none;" onclick="closeReclamoModal()" title="Cerrar">✕</button>
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
         <h3 style="margin:0;">Nuevo reclamo</h3>
         <button class="secondary" style="font-size:12px; padding:4px 12px;" onclick="toggleNuevoReclamo()">+ Registrar reclamo</button>
@@ -241,6 +242,8 @@
 
     <!-- Detalle del reclamo seleccionado -->
     <div class="card" id="reclamoDetailCard" style="display:none;">
+      <!-- Modal close button (visible only when opened as modal) -->
+      <button id="recModalCloseBtn" class="rec-modal-close" style="display:none;" onclick="closeReclamoModal()" title="Cerrar">✕</button>
       <!-- Header -->
       <div class="row" style="justify-content:space-between; align-items:flex-start; margin-bottom:8px; flex-wrap:wrap; gap:8px;">
         <div style="flex:1;">
@@ -527,6 +530,8 @@
         <div id="recSeguimientoMsg" style="margin-top:4px; font-size:11px;"></div>
       </div>
     </div>
+    <!-- Modal backdrop for detail & create modals -->
+    <div id="recModalBackdrop" class="rec-modal-backdrop" onclick="closeReclamoModal()"></div>
     </div><!-- /recTabMain -->
 
     <!-- ==================== DASHBOARDS TAB (admin/admin2 only) ==================== -->

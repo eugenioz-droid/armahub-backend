@@ -1496,9 +1496,61 @@ function limpiarFiltrosReclamos() {
   loadReclamos();
 }
 
+// ---- Modal helpers (PC.8) ----
+var _recModalTarget = null; // current element elevated to modal
+
+function openReclamoModal(cardEl) {
+  if (_recModalTarget) closeReclamoModal();
+  var backdrop = document.getElementById('recModalBackdrop');
+  if (backdrop) backdrop.classList.add('active');
+  cardEl.classList.add('rec-modal-open');
+  cardEl.style.display = '';
+  var closeBtn = cardEl.querySelector('.rec-modal-close');
+  if (closeBtn) closeBtn.style.display = '';
+  _recModalTarget = cardEl;
+  document.body.style.overflow = 'hidden';
+  // Escape key to close
+  document.addEventListener('keydown', _recModalEscHandler);
+}
+
+function closeReclamoModal() {
+  if (!_recModalTarget) return;
+  var backdrop = document.getElementById('recModalBackdrop');
+  if (backdrop) backdrop.classList.remove('active');
+  _recModalTarget.classList.remove('rec-modal-open');
+  var closeBtn = _recModalTarget.querySelector('.rec-modal-close');
+  if (closeBtn) closeBtn.style.display = 'none';
+  // For detail card: hide it completely; for create form: hide the form
+  if (_recModalTarget.id === 'reclamoDetailCard') {
+    _recModalTarget.style.display = 'none';
+  } else if (_recModalTarget.id === 'crearReclamoCard') {
+    document.getElementById('nuevoReclamoForm').style.display = 'none';
+    _recModalTarget.style.display = '';
+    _recModalTarget.style.position = '';
+  }
+  _recModalTarget = null;
+  document.body.style.overflow = '';
+  document.removeEventListener('keydown', _recModalEscHandler);
+}
+
+function _recModalEscHandler(e) {
+  // Don't close if Ishikawa or image viewer is open
+  var ish = document.getElementById('ishikawaModal');
+  if (ish && ish.style.display !== 'none') return;
+  var iv = document.getElementById('imageModalViewer');
+  if (iv && iv.style.display !== 'none') return;
+  if (e.key === 'Escape') closeReclamoModal();
+}
+
 function toggleNuevoReclamo() {
+  var card = document.getElementById('crearReclamoCard');
   var form = document.getElementById('nuevoReclamoForm');
-  form.style.display = form.style.display === 'none' ? '' : 'none';
+  if (_recModalTarget === card) {
+    closeReclamoModal();
+    return;
+  }
+  form.style.display = '';
+  openReclamoModal(card);
 }
 
 async function crearReclamo() {
@@ -1554,7 +1606,7 @@ async function crearReclamo() {
     document.getElementById('recProyecto').value = '';
     document.getElementById('recCreatePreview').innerHTML = '';
     document.getElementById('recCreateDropMsg').style.display = '';
-    document.getElementById('nuevoReclamoForm').style.display = 'none';
+    closeReclamoModal();
     await loadReclamos();
     await loadRecLanding();
   } else {
@@ -1895,7 +1947,8 @@ function _applyReclamoDetailPermissions(data) {
 }
 
 function _renderReclamoDetail(data) {
-  document.getElementById('reclamoDetailCard').style.display = '';
+  var card = document.getElementById('reclamoDetailCard');
+  card.style.display = '';
   document.getElementById('recEditForm').style.display = 'none';
   document.getElementById('recDetailInfo').style.display = '';
   document.getElementById('btnEditarReclamo').textContent = '✏️ Editar';
@@ -1906,7 +1959,8 @@ function _renderReclamoDetail(data) {
   _renderReclamoValidacion(data);
   _renderReclamoAssets(data);
   _applyReclamoDetailPermissions(data);
-  document.getElementById('reclamoDetailCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  openReclamoModal(card);
+  card.scrollTop = 0;
 }
 
 async function verReclamo(id) {
@@ -2607,7 +2661,7 @@ async function eliminarReclamo() {
   var data = await res.json();
   if (data.ok) {
     _reclamoActual = null;
-    document.getElementById('reclamoDetailCard').style.display = 'none';
+    closeReclamoModal();
     await loadReclamos();
     await loadRecLanding();
   } else {
@@ -2798,6 +2852,8 @@ document.addEventListener('keydown', function(e) {
     'seleccionarIshikawa',
     'confirmarIshikawa',
     'cerrarIshikawaModal',
+    'openReclamoModal',
+    'closeReclamoModal',
     'loadPresentaciones',
     'togglePresSection',
     'presNavPrev',
