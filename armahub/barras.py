@@ -245,7 +245,7 @@ def get_stats(
     user=Depends(get_current_user),
 ):
     """KPIs generales para Tab Inicio. Filtered by user authorization and optional date range."""
-    cache_key = f"stats:{user['id']}:{fecha_desde}:{fecha_hasta}"
+    cache_key = f"stats:{user.get('email','')}:{fecha_desde}:{fecha_hasta}"
     cached = _cache.get(cache_key)
     if cached:
         return cached
@@ -1346,7 +1346,7 @@ def landing_indicadores(user=Depends(get_current_user)):
     email = user.get("email", "")
     role = user.get("role", "usc")
 
-    cache_key = f"landing:{user['id']}:{role}"
+    cache_key = f"landing:{email}:{role}"
     cached = _cache.get(cache_key)
     if cached:
         return cached
