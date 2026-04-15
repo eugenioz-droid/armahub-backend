@@ -1,6 +1,15 @@
   <!-- TAB: ADMIN MODULE -->
   <div id="tab-admin" class="tab-content">
 
+    <!-- Admin sub-tabs -->
+    <div id="adminSubTabs" style="display:flex; gap:4px; margin-bottom:16px; border-bottom:2px solid #e0e0e0; padding-bottom:0;">
+      <button class="secondary admin-subtab active" data-subtab="adminGeneral" onclick="switchAdminSubTab('adminGeneral')" style="font-size:12px; padding:6px 14px; border-radius:6px 6px 0 0; border-bottom:2px solid #1565C0; margin-bottom:-2px;">⚙️ General</button>
+      <button class="secondary admin-subtab" data-subtab="adminNotificaciones" onclick="switchAdminSubTab('adminNotificaciones')" style="font-size:12px; padding:6px 14px; border-radius:6px 6px 0 0; border-bottom:2px solid transparent; margin-bottom:-2px;">🔔 Notificaciones</button>
+    </div>
+
+    <!-- Sub-panel: General (existing admin content) -->
+    <div id="adminGeneral">
+
     <!-- Gestión de usuarios -->
     <div class="card">
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
@@ -188,4 +197,18 @@
       </div>
       <div id="auditPagination" style="margin-top:8px; display:flex; gap:8px; align-items:center; justify-content:center;"></div>
     </div>
+
+    </div><!-- /adminGeneral -->
+
+    <!-- Sub-panel: Notificaciones -->
+    <div id="adminNotificaciones" style="display:none;">
+      <div class="card" style="border-left:4px solid #1976d2;">
+        <h3 style="margin:0 0 12px 0; color:#1976d2;">🔔 Configuración de Notificaciones</h3>
+        <p class="muted" style="font-size:12px; margin:0 0 14px 0;">Controla qué roles reciben notificaciones para cada tipo de evento en reclamos.</p>
+        <div id="notifConfigContainer">
+          <div class="muted">Cargando configuración...</div>
+        </div>
+      </div>
+    </div>
+
   </div>

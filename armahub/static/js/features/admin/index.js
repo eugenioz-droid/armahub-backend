@@ -1,5 +1,29 @@
 // ========================= ADMIN — Panel principal (E.5) =========================
-// loadAdminModule + DB/Tables + Usuarios + Auditoría
+// loadAdminModule + DB/Tables + Usuarios + Auditoría + Sub-tabs
+
+function switchAdminSubTab(tabId) {
+  // Hide all sub-panels
+  var panels = ['adminGeneral', 'adminNotificaciones'];
+  panels.forEach(function(id) {
+    var el = document.getElementById(id);
+    if (el) el.style.display = (id === tabId) ? '' : 'none';
+  });
+  // Update active button
+  var btns = document.querySelectorAll('.admin-subtab');
+  btns.forEach(function(btn) {
+    if (btn.getAttribute('data-subtab') === tabId) {
+      btn.classList.add('active');
+      btn.style.borderBottomColor = '#1565C0';
+    } else {
+      btn.classList.remove('active');
+      btn.style.borderBottomColor = 'transparent';
+    }
+  });
+  // Load data for the tab
+  if (tabId === 'adminNotificaciones' && typeof loadNotifConfig === 'function') {
+    loadNotifConfig();
+  }
+}
 
 async function loadAdminModule() {
   // Filter role dropdown for admin2 (cannot create admin/admin2)

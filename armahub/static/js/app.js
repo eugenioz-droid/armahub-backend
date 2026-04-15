@@ -36,6 +36,11 @@ async function loadMe() {
   if (typeof loadLandingIndicadores === 'function') {
     loadLandingIndicadores();
   }
+
+  // Load notification count (bell badge + hub card)
+  if (typeof loadNotifCount === 'function') {
+    loadNotifCount();
+  }
 }
 
 // ========================= GLOBAL SAFETY =========================

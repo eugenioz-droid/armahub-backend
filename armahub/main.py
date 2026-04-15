@@ -28,6 +28,7 @@ from .pedidos import router as pedidos_router
 from .constructoras import router as constructoras_router
 from .calculistas import router as calculistas_router
 from .reclamos import router as reclamos_router
+from .notifications import router as notifications_router
 
 
 def create_app() -> FastAPI:
@@ -57,12 +58,13 @@ def create_app() -> FastAPI:
     app.include_router(constructoras_router)
     app.include_router(calculistas_router)
     app.include_router(reclamos_router)
+    app.include_router(notifications_router)
 
     # --- API v1 (same routers under /api/v1 prefix) ---
     _api_routers = [
         auth_router, importer_router, barras_router, admin_router,
         export_router, pedidos_router, constructoras_router,
-        calculistas_router, reclamos_router,
+        calculistas_router, reclamos_router, notifications_router,
     ]
     for r in _api_routers:
         app.include_router(r, prefix="/api/v1")

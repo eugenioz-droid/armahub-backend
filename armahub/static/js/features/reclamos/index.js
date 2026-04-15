@@ -1356,13 +1356,13 @@ async function loadRecUsersDropdown() {
   if (!res.ok) return;
   var data = await res.json();
   _recUsersCache = data.users || [];
-  // Populate create form responsable
+  // Populate create form "Cubicador Responsable" (only cubicador/externo)
   var createSel = document.getElementById('recResponsable');
   if (createSel) {
     var val = createSel.value;
     createSel.innerHTML = '<option value="">— Sin asignar —</option>';
-    _recUsersCache.forEach(function(u) {
-      createSel.innerHTML += '<option value="' + u.email + '" data-display="' + u.display + '">' + u.display + ' (' + u.role + ')' + '</option>';
+    _recUsersCache.filter(function(u) { return u.role === 'cubicador' || u.role === 'externo'; }).forEach(function(u) {
+      createSel.innerHTML += '<option value="' + u.email + '" data-display="' + u.display + '">' + u.display + '</option>';
     });
     createSel.value = val;
   }
@@ -1376,12 +1376,12 @@ async function loadRecUsersDropdown() {
     });
     accionRespSel.value = aval;
   }
-  // Populate filter responsable
+  // Populate filter "Cub. Responsable" (only cubicador/externo)
   var filterSel = document.getElementById('recFiltroResponsable');
   if (filterSel) {
     var fval = filterSel.value;
-    filterSel.innerHTML = '<option value="">Responsable: Todos</option>';
-    _recUsersCache.forEach(function(u) {
+    filterSel.innerHTML = '<option value="">Cub. Resp.: Todos</option>';
+    _recUsersCache.filter(function(u) { return u.role === 'cubicador' || u.role === 'externo'; }).forEach(function(u) {
       filterSel.innerHTML += '<option value="' + u.email + '">' + u.display + '</option>';
     });
     filterSel.value = fval;
@@ -2143,11 +2143,11 @@ function toggleEditarReclamo() {
       });
       proySel.value = d.id_proyecto || '';
     }
-    // Populate responsable dropdown from cache (value=email)
+    // Populate "Cubicador Responsable" dropdown (only cubicador/externo)
     var sel = document.getElementById('recEditResponsable');
     sel.innerHTML = '<option value="">— Sin asignar —</option>';
-    _recUsersCache.forEach(function(u) {
-      sel.innerHTML += '<option value="' + u.email + '" data-display="' + u.display + '">' + u.display + ' (' + u.role + ')' + '</option>';
+    _recUsersCache.filter(function(u) { return u.role === 'cubicador' || u.role === 'externo'; }).forEach(function(u) {
+      sel.innerHTML += '<option value="' + u.email + '" data-display="' + u.display + '">' + u.display + '</option>';
     });
     sel.value = d.cubicador_asignado || '';
     document.getElementById('recEditMsg').textContent = '';

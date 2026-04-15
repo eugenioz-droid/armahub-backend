@@ -591,6 +591,41 @@ MIGRATIONS = [
                 CHECK (estado IN ('abierto','en_analisis','accion_correctiva','validacion','validado','cerrado','rechazado'));
         END $$;""",
     ]),
+    (43, "notificaciones: tablas para centro de notificaciones", [
+        """CREATE TABLE IF NOT EXISTS notificaciones (
+            id BIGSERIAL PRIMARY KEY,
+            destinatario TEXT NOT NULL,
+            tipo_evento TEXT NOT NULL,
+            reclamo_id BIGINT REFERENCES reclamos(id) ON DELETE CASCADE,
+            mensaje TEXT NOT NULL,
+            leida BOOLEAN NOT NULL DEFAULT FALSE,
+            fecha TEXT NOT NULL
+        )""",
+        "CREATE INDEX IF NOT EXISTS idx_notif_destinatario ON notificaciones(destinatario, leida)",
+        "CREATE INDEX IF NOT EXISTS idx_notif_fecha ON notificaciones(fecha DESC)",
+        """CREATE TABLE IF NOT EXISTS notificacion_config (
+            id BIGSERIAL PRIMARY KEY,
+            tipo_evento TEXT NOT NULL,
+            rol TEXT NOT NULL,
+            activo BOOLEAN NOT NULL DEFAULT TRUE,
+            UNIQUE(tipo_evento, rol)
+        )""",
+        # Defaults: quién recibe cada tipo de evento
+        "INSERT INTO notificacion_config (tipo_evento, rol, activo) VALUES ('reclamo_creado', 'admin', TRUE) ON CONFLICT DO NOTHING",
+        "INSERT INTO notificacion_config (tipo_evento, rol, activo) VALUES ('reclamo_creado', 'admin2', TRUE) ON CONFLICT DO NOTHING",
+        "INSERT INTO notificacion_config (tipo_evento, rol, activo) VALUES ('reclamo_asignado', 'cubicador', TRUE) ON CONFLICT DO NOTHING",
+        "INSERT INTO notificacion_config (tipo_evento, rol, activo) VALUES ('reclamo_asignado', 'usc', TRUE) ON CONFLICT DO NOTHING",
+        "INSERT INTO notificacion_config (tipo_evento, rol, activo) VALUES ('analisis_completado', 'admin', TRUE) ON CONFLICT DO NOTHING",
+        "INSERT INTO notificacion_config (tipo_evento, rol, activo) VALUES ('analisis_completado', 'admin2', TRUE) ON CONFLICT DO NOTHING",
+        "INSERT INTO notificacion_config (tipo_evento, rol, activo) VALUES ('analisis_completado', 'usc', TRUE) ON CONFLICT DO NOTHING",
+        "INSERT INTO notificacion_config (tipo_evento, rol, activo) VALUES ('validacion_realizada', 'cubicador', TRUE) ON CONFLICT DO NOTHING",
+        "INSERT INTO notificacion_config (tipo_evento, rol, activo) VALUES ('validacion_realizada', 'usc', TRUE) ON CONFLICT DO NOTHING",
+        "INSERT INTO notificacion_config (tipo_evento, rol, activo) VALUES ('reclamo_cerrado', 'admin', TRUE) ON CONFLICT DO NOTHING",
+        "INSERT INTO notificacion_config (tipo_evento, rol, activo) VALUES ('reclamo_cerrado', 'usc', TRUE) ON CONFLICT DO NOTHING",
+        "INSERT INTO notificacion_config (tipo_evento, rol, activo) VALUES ('reclamo_reabierto', 'cubicador', TRUE) ON CONFLICT DO NOTHING",
+        "INSERT INTO notificacion_config (tipo_evento, rol, activo) VALUES ('cambio_estado', 'admin', TRUE) ON CONFLICT DO NOTHING",
+        "INSERT INTO notificacion_config (tipo_evento, rol, activo) VALUES ('cambio_estado', 'admin2', TRUE) ON CONFLICT DO NOTHING",
+    ]),
 ]
 
 

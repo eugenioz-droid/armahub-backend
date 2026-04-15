@@ -168,6 +168,13 @@
         'armahubFeature',
         'admin-index',
         '[ArmaHub] No se pudo cargar admin/index.js'
+      ),
+      loadScript(
+        'script[data-armahub-feature="notifications"]',
+        '/static/js/features/notifications/index.js' + suffix,
+        'armahubFeature',
+        'notifications',
+        '[ArmaHub] No se pudo cargar notifications/index.js'
       )
     ]);
   }).catch(function(error) {

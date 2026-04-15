@@ -163,6 +163,7 @@
       window.currentModule = 'hub';
       renderHubModules();
       callIfDefined('loadLandingIndicadores');
+      callIfDefined('loadNotifCount');
       return;
     }
 

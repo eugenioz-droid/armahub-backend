@@ -162,7 +162,18 @@ Objetivo: consolidar contratos y reducir drift.
 
 ### Prioridad Condicionada a definicion
 
-- [ ] PC.1 Notificaciones de reclamos
+- [x] PC.1 Centro de notificaciones y configuración Admin — notificaciones in-app para reclamos + reestructuración del módulo Admin en tabs
+	- [x] PC.1.1 Backend: tabla `notificaciones` (destinatario, tipo_evento, reclamo_id, mensaje, leida, fecha) + migración 43
+	- [x] PC.1.2 Backend: tabla `notificacion_config` (evento, rol, activo) con defaults por evento + endpoints CRUD
+	- [x] PC.1.3 Backend: generar notificaciones automáticas en crear_reclamo, PATCH estado, asignación
+	- [x] PC.1.4 Backend: endpoints GET /notificaciones (mis pendientes), PATCH /notificaciones/{id}/leer, GET /notificaciones/config (admin)
+	- [x] PC.1.5 Frontend: icono campana en header con badge contador + panel desplegable con lista
+	- [x] PC.1.6 Frontend: marcar como leída al click, link directo al reclamo
+	- [x] PC.1.7 Frontend: recarga contadores al navegar al hub (sin polling)
+	- [x] PC.1.8 Landing: sección "Notificaciones recientes" en el hub como indicador rápido
+	- [x] PC.1.9 Admin tab "Notificaciones": tabla de configuración evento × rol con checkboxes
+	- [x] PC.1.10 Admin: reestructurar módulo en sub-tabs (General + Notificaciones)
+	- [ ] PC.1.11 (Futuro) Notificaciones por email — integrar SMTP/servicio para enviar correo en eventos críticos
 - [x] PC.2 Automatismos de cambio de estado en validacion
 - [ ] PC.3 Nuevas apps no relacionadas a cubicacion dentro del portal
 - [ ] PC.4 Repositorio de archivos e imagenes separado si el modulo de calidad sigue creciendo
@@ -178,7 +189,7 @@ Objetivo: consolidar contratos y reducir drift.
 	- [ ] PC.6.8 Tabla 3c: Proyectos y barras (cubicación)
 	- [ ] PC.6.9 Tabla 3d: Reclamos
 	- [ ] PC.6.10 Tabla 3e: Pedidos, calculistas, constructoras
-- [ ] PC.7 Campo "USC responsable" en formulario de registro de reclamos — desplegable con usuarios USC; bloqueado para USC (auto-asigna), desbloqueado para admin/admin2. Revisar tablas 3d de ROLES_Y_PERMISOS.md.
+- [x] PC.7 Campo "USC responsable" en formulario de registro de reclamos — desplegable con usuarios USC; bloqueado para USC (auto-asigna), desbloqueado para admin/admin2. Revisar tablas 3d de ROLES_Y_PERMISOS.md.
 - [x] PC.8 Migrar formularios de reclamos (registro, análisis, detalle) a modales — eliminar scroll, mejorar UX. Evaluar reutilizar FormRenderer y modals.js existentes.
 	- [x] PC.8.1 CSS modal overlay (backdrop + `.rec-modal-open` + animación + responsive breakpoints)
 	- [x] PC.8.2 JS helpers `openReclamoModal()` / `closeReclamoModal()` con Escape y backdrop click

@@ -14,6 +14,8 @@ from fastapi.responses import Response
 from pydantic import BaseModel
 from psycopg.rows import dict_row
 
+from .notifications import crear_notificacion
+
 from .auth import get_current_user, require_admin_or_admin2
 from .db import get_conn, audit
 from . import cache as _cache
@@ -417,6 +419,20 @@ def crear_reclamo(body: ReclamoCreate, user=Depends(get_current_user)):
 
     audit(email, "crear_reclamo", body.titulo, "reclamo", str(reclamo_id))
     _invalidate_reclamos_cache()
+
+    # Notificaciones
+    try:
+        extras = []
+        if body.cubicador_asignado:
+            extras.append(body.cubicador_asignado)
+        crear_notificacion(
+            "reclamo_creado", reclamo_id,
+            f"{correlativo}: {body.titulo or 'Sin título'} — creado por {email}",
+            destinatarios_extra=extras
+        )
+    except Exception:
+        pass  # No bloquear creación por error en notificaciones
+
     return {"ok": True, "id": reclamo_id, "correlativo": correlativo}
 
 
@@ -1274,6 +1290,50 @@ def actualizar_reclamo(reclamo_id: int, body: ReclamoUpdate, user=Depends(get_cu
     _invalidate_reclamo_cache(reclamo_id)
     campos = [s.split(" =")[0] for s in sets if s != "fecha_actualizacion = %s"]
     audit(email, "actualizar_reclamo", f"campos: {', '.join(campos)}", "reclamo", str(reclamo_id))
+
+    # Notificaciones por cambio de estado
+    try:
+        if estado_changed:
+            # Obtener correlativo para el mensaje
+            with get_conn() as conn2:
+                with conn2.cursor() as cur2:
+                    cur2.execute("SELECT correlativo, titulo, creado_por, asignado_a, cubicador_asignado FROM reclamos WHERE id = %s", (reclamo_id,))
+                    rinfo = cur2.fetchone()
+            corr = rinfo[0] if rinfo else f"#{reclamo_id}"
+            titulo_rec = rinfo[1] if rinfo else ""
+            creado_por = rinfo[2] if rinfo else ""
+            asignado_a_rec = rinfo[3] if rinfo else ""
+            cub_asignado = rinfo[4] if rinfo else ""
+            extras = [e for e in [creado_por, asignado_a_rec, cub_asignado] if e and e != email]
+
+            estado_label = ESTADO_LABELS.get(body.estado, body.estado)
+            msg = f"{corr}: {titulo_rec} — estado → {estado_label}"
+
+            if body.estado == "cerrado":
+                crear_notificacion("reclamo_cerrado", reclamo_id, msg, destinatarios_extra=extras)
+            elif body.estado == "en_analisis" and is_rejection:
+                crear_notificacion("reclamo_reabierto", reclamo_id, msg + " (rechazado)", destinatarios_extra=extras)
+            elif body.estado == "validado":
+                crear_notificacion("validacion_realizada", reclamo_id, msg, destinatarios_extra=extras)
+            else:
+                crear_notificacion("cambio_estado", reclamo_id, msg, destinatarios_extra=extras)
+
+        # Notificación por asignación
+        if body.cubicador_asignado and body.cubicador_asignado != rec.get("cubicador_asignado"):
+            with get_conn() as conn3:
+                with conn3.cursor() as cur3:
+                    cur3.execute("SELECT correlativo, titulo FROM reclamos WHERE id = %s", (reclamo_id,))
+                    ri = cur3.fetchone()
+            corr2 = ri[0] if ri else f"#{reclamo_id}"
+            titulo2 = ri[1] if ri else ""
+            crear_notificacion(
+                "reclamo_asignado", reclamo_id,
+                f"{corr2}: {titulo2} — asignado a {body.cubicador_asignado}",
+                destinatarios_extra=[body.cubicador_asignado]
+            )
+    except Exception:
+        pass  # No bloquear actualización por error en notificaciones
+
     return {"ok": True, "id": reclamo_id}
 
 
