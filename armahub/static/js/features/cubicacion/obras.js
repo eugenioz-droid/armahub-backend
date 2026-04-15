@@ -634,7 +634,7 @@ async function eliminarCargasSeleccionadasModal(idProyecto) {
   if (checkboxes.length === 0) return;
   var ids = Array.from(checkboxes).map(function(cb) { return parseInt(cb.dataset.id); });
   if (!confirm('¿Eliminar ' + ids.length + ' carga(s) seleccionada(s)?\n\nEsta acción no se puede deshacer.')) return;
-  var res = await apiPost('/cargas/bulk-delete', { ids: ids });
+  var res = await apiPostJson('/cargas/bulk-delete', { ids: ids });
   if (res && res.ok) {
     showToast('Eliminadas ' + res.cargas_eliminadas + ' carga(s) con ' + res.barras_eliminadas + ' barras', 'success');
     closeObraDetailModal();
@@ -655,7 +655,7 @@ async function moverCargasSeleccionadasModal(idProyecto, safeId) {
   var destName = destSel.options[destSel.selectedIndex].text;
   var ids = Array.from(checkboxes).map(function(cb) { return parseInt(cb.dataset.id); });
   if (!confirm('¿Mover ' + ids.length + ' carga(s) a "' + destName + '"?\n\nLas barras asociadas también se moverán.')) return;
-  var res = await apiPost('/cargas/mover', { ids: ids, destino: destino });
+  var res = await apiPostJson('/cargas/mover', { ids: ids, destino: destino });
   if (res && res.ok) {
     showToast('Movidas ' + res.cargas_movidas + ' carga(s) con ' + res.barras_movidas + ' barras a ' + res.destino_nombre, 'success');
     closeObraDetailModal();

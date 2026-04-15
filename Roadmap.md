@@ -221,6 +221,7 @@ Objetivo: consolidar contratos y reducir drift.
 	- [x] PC.11.10 Frontend: lista y presentaciones muestran formato "YYYY-NNN" concatenado
 	- [x] PC.11.11 Display: _formatCorrelativoCalidad() formatea como "2026-003", fallback a id_calidad legacy
 - [ ] PC.12 Regularizar matriz de roles post-cambios — revisar ROLES_Y_PERMISOS.md para incorporar permisos nuevos (mover cargas, acciones de obra, editar anio_calidad solo admin, etc.) y actualizar el tab Roles y Permisos del panel Admin
+- [ ] PC.13 Revisar permisos y acceso a acciones de obra por rol — actualmente mover cargas falla para cubicadores autorizados por bug técnico (apiPost envía query string en vez de JSON body → 422) + revisar modelo de permisos unificado: quién puede mover cargas, eliminar cargas, editar obra, etc. Definir si el acceso se basa en proyecto_usuarios (autorizados), uploader de la carga, o rol global. Causa raíz del error reportado: `apiPost()` usa URLSearchParams, pero `POST /cargas/mover` espera JSON body (Pydantic model) → debe usarse `fetch` con JSON o `apiPostJson`.
 
 ---
 

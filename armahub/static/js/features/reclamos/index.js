@@ -1463,7 +1463,8 @@ async function loadReclamos() {
 
   container.innerHTML = '<table style="width:100%; font-size:12px; border-collapse:collapse;">' +
     '<tr style="background:#f5f5f5; text-align:left;">' +
-    '<th style="padding:5px 6px;">Corr.</th>' +
+    '<th style="padding:5px 6px;">Año</th>' +
+    '<th style="padding:5px 6px;">N°</th>' +
     '<th style="padding:5px 6px;">Título</th>' +
     '<th style="padding:5px 6px;">Tipo</th>' +
     '<th style="padding:5px 6px;">Proyecto</th>' +
@@ -1486,10 +1487,11 @@ async function loadReclamos() {
       var causaText = r.cod_causa ? '[' + r.cod_causa + ']' : (r.categoria_ishikawa ? _recIshikawaLabels[r.categoria_ishikawa] : '-');
       var fecha = r.fecha_deteccion || (r.fecha_creacion ? r.fecha_creacion.substring(0, 10) : '');
       var idLabel = _formatCorrelativoCalidad(r) || (r.correlativo || '#' + r.id);
-      var corrCal = _formatCorrelativoCalidad(r);
-      var idSub = corrCal && r.correlativo ? '<br><span class="muted" style="font-size:9px;">' + r.correlativo + '</span>' : '';
+      var anioCol = r.anio_calidad || '';
+      var numCol = r.numero_calidad ? String(r.numero_calidad).padStart(3, '0') : '';
       return '<tr style="border-bottom:1px solid #eee; cursor:pointer;" onclick="verReclamo(' + r.id + ')">' +
-        '<td style="padding:4px 6px; font-size:11px; font-weight:600;">' + idLabel + idSub + '</td>' +
+        '<td style="padding:4px 6px; font-size:11px;">' + anioCol + '</td>' +
+        '<td style="padding:4px 6px; font-size:11px; font-weight:600;">' + numCol + '</td>' +
         '<td style="padding:4px 6px; font-weight:500;">' + r.titulo + '</td>' +
         '<td style="padding:4px 6px;"><span style="color:' + tipoColor + '; font-weight:600; font-size:10px;">' + tipoLabel + '</span></td>' +
         '<td style="padding:4px 6px; font-size:11px;">' + (r.nombre_proyecto || '-') + '</td>' +
