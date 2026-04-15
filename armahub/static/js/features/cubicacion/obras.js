@@ -254,17 +254,21 @@ function togglePisoCiclos(pisoId) {
 
 function goToBarManager(idProyecto, sector, piso, ciclo) {
   // Switch to bar manager tab and apply filters
-  switchTab('bar-manager');
-  setTimeout(function() {
-    var projSel = document.getElementById('barProyectoFilter');
+  switchTab('buscar');
+  setTimeout(async function() {
+    var projSel = document.getElementById('proyecto');
     if (projSel) projSel.value = idProyecto;
-    var secSel = document.getElementById('barSectorFilter');
-    if (secSel) secSel.value = sector || '';
-    var pisoSel = document.getElementById('barPisoFilter');
-    if (pisoSel) pisoSel.value = piso || '';
-    var cicloSel = document.getElementById('barCicloFilter');
-    if (cicloSel) cicloSel.value = ciclo || '';
-    if (typeof loadBarras === 'function') loadBarras();
+    // Load dependent filters for the selected project, then set sub-filters
+    if (typeof loadFilters === 'function') {
+      await loadFilters({ proyecto: idProyecto });
+    }
+    var secSel = document.getElementById('sector');
+    if (secSel && sector) secSel.value = sector;
+    var pisoSel = document.getElementById('piso');
+    if (pisoSel && piso) pisoSel.value = piso;
+    var cicloSel = document.getElementById('ciclo');
+    if (cicloSel && ciclo) cicloSel.value = ciclo;
+    if (typeof buscar === 'function') buscar(true);
   }, 100);
 }
 

@@ -45,7 +45,7 @@ class ConstructoraUpdate(BaseModel):
 
 
 @router.get("/constructoras")
-def listar_constructoras(activo: Optional[bool] = None, user=Depends(require_admin_or_admin2)):
+def listar_constructoras(activo: Optional[bool] = None, user=Depends(get_current_user)):
     """Listar constructoras con conteo de proyectos asociados."""
     with get_conn() as conn:
         with conn.cursor() as cur:

@@ -749,64 +749,72 @@ def mover_cargas(body: MoverCargasRequest, user=Depends(get_current_user)):
     if len(body.ids) > 100:
         raise HTTPException(status_code=400, detail="No se pueden mover más de 100 cargas a la vez")
 
-    with get_conn() as conn:
-        with conn.cursor() as cur:
-            # Validar proyecto destino
-            cur.execute("SELECT id_proyecto, nombre_proyecto FROM proyectos WHERE id_proyecto = %s", (body.destino,))
-            dest = cur.fetchone()
-            if not dest:
-                raise HTTPException(status_code=404, detail="Proyecto destino no encontrado")
+    try:
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                # Validar proyecto destino
+                cur.execute("SELECT id_proyecto, nombre_proyecto FROM proyectos WHERE id_proyecto = %s", (body.destino,))
+                dest = cur.fetchone()
+                if not dest:
+                    raise HTTPException(status_code=404, detail="Proyecto destino no encontrado")
+                dest_id = dest[0]
+                dest_nombre = dest[1]
 
-            cargas_movidas = 0
-            total_barras = 0
-            skipped = 0
+                cargas_movidas = 0
+                total_barras = 0
+                skipped = 0
 
-            for carga_id in body.ids:
-                cur.execute(
-                    "SELECT id, id_proyecto, usuario FROM imports WHERE id = %s",
-                    (carga_id,)
-                )
-                row = cur.fetchone()
-                if not row:
-                    skipped += 1
-                    continue
+                for carga_id in body.ids:
+                    cur.execute(
+                        "SELECT id, id_proyecto, usuario FROM imports WHERE id = %s",
+                        (carga_id,)
+                    )
+                    row = cur.fetchone()
+                    if not row:
+                        skipped += 1
+                        continue
 
-                origen = row[1]
-                uploader = row[2]
+                    origen = row[1]
+                    uploader = row[2]
 
-                # Permisos: poder editar proyecto origen O ser el uploader
-                if not _puede_editar_proyecto(cur, origen, user) and uploader != user.get("email"):
-                    skipped += 1
-                    continue
+                    # Permisos: poder editar proyecto origen O ser el uploader
+                    if not _puede_editar_proyecto(cur, origen, user) and uploader != user.get("email"):
+                        skipped += 1
+                        continue
 
-                # Ya está en el destino
-                if origen == body.destino:
-                    skipped += 1
-                    continue
+                    # Ya está en el destino
+                    if origen == body.destino:
+                        skipped += 1
+                        continue
 
-                # Mover barras
-                cur.execute(
-                    "UPDATE barras SET id_proyecto = %s WHERE import_id = %s",
-                    (body.destino, carga_id)
-                )
-                total_barras += cur.rowcount
+                    # Mover barras
+                    cur.execute(
+                        "UPDATE barras SET id_proyecto = %s WHERE import_id = %s",
+                        (body.destino, carga_id)
+                    )
+                    total_barras += cur.rowcount
 
-                # Mover import
-                cur.execute(
-                    "UPDATE imports SET id_proyecto = %s WHERE id = %s",
-                    (body.destino, carga_id)
-                )
-                cargas_movidas += 1
+                    # Mover import
+                    cur.execute(
+                        "UPDATE imports SET id_proyecto = %s WHERE id = %s",
+                        (body.destino, carga_id)
+                    )
+                    cargas_movidas += 1
 
-    _cache.invalidate("stats:", "landing:")
-    return {
-        "ok": True,
-        "cargas_movidas": cargas_movidas,
-        "barras_movidas": total_barras,
-        "skipped": skipped,
-        "destino": body.destino,
-        "destino_nombre": dest[1],
-    }
+        _cache.invalidate("stats:", "landing:")
+        return {
+            "ok": True,
+            "cargas_movidas": cargas_movidas,
+            "barras_movidas": total_barras,
+            "skipped": skipped,
+            "destino": body.destino,
+            "destino_nombre": dest_nombre,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[mover_cargas] Error: {e}")
+        raise HTTPException(status_code=500, detail=f"Error al mover cargas: {str(e)}")
 
 
 class CambiarSectorRequest(BaseModel):

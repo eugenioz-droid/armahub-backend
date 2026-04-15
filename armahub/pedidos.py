@@ -76,7 +76,7 @@ class PedidoItemUpdate(BaseModel):
 def list_pedidos(
     id_proyecto: Optional[str] = None,
     estado: Optional[str] = None,
-    user=Depends(require_admin_or_admin2),
+    user=Depends(get_current_user),
 ):
     """Lista pedidos, opcionalmente filtrados por proyecto y/o estado."""
     with get_conn() as conn:

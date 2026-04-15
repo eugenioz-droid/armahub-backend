@@ -35,7 +35,7 @@ class CalculistaUpdate(BaseModel):
 
 
 @router.get("/calculistas")
-def listar_calculistas(activo: Optional[bool] = None, user=Depends(require_admin_or_admin2)):
+def listar_calculistas(activo: Optional[bool] = None, user=Depends(get_current_user)):
     """Listar calculistas con conteo de proyectos y stats."""
     with get_conn() as conn:
         with conn.cursor() as cur:
