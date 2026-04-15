@@ -294,6 +294,12 @@ async function openObraDetailModal(idProyecto) {
   document.getElementById('obraDetailTitle').textContent = '🏗️ ' + (p.nombre_proyecto || idProyecto);
   document.getElementById('obraDetailEditBtn').onclick = function() { closeObraDetailModal(); openEditObraModal(idProyecto); };
 
+  // Delete button: visible for admin/admin2, or cubicador with 0 barras
+  var delBtn = document.getElementById('obraDetailDeleteBtn');
+  var canDelete = currentRole === 'admin' || currentRole === 'admin2' || (currentRole === 'cubicador' && (p.total_barras || 0) === 0);
+  delBtn.style.display = canDelete ? '' : 'none';
+  delBtn.onclick = function() { eliminarObra(idProyecto, p.nombre_proyecto, p.total_barras || 0); };
+
   // Reset sections
   document.getElementById('obraDetailSidebar').innerHTML = '<div class="muted">Cargando...</div>';
   document.getElementById('obraDetailMatriz').innerHTML = '<div class="muted">Cargando matriz...</div>';
