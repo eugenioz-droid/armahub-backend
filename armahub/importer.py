@@ -31,6 +31,7 @@ router = APIRouter()
 async def import_armadetailer(
     file: UploadFile = File(...),
     user=Depends(get_current_user),
+    obra_destino: Optional[str] = Query(None, description="ID de obra destino (selector obligatorio en frontend)"),
     reasignar_a: Optional[str] = Query(None, description="ID de proyecto existente para reasignar barras"),
     forzar: bool = Query(False, description="Forzar importación ignorando duplicados de nombre"),
     calculista: Optional[str] = Query(None, description="Nombre del calculista (solo al crear proyecto nuevo)"),
@@ -44,13 +45,25 @@ async def import_armadetailer(
     raw = (await file.read()).decode("utf-8", errors="replace")
     lines = raw.splitlines()
 
-    # Extraer nombre del proyecto desde línea 2: "PROYECTO: PROY-XXXX|Nombre Proyecto"
-    proyecto_id = None
-    proyecto_nombre = None
-    plano_nombre = None  # Nombre del plano (si viene en metadatos)
+    # ── obra_destino: si viene, forzar todo al proyecto seleccionado ──
+    if obra_destino:
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT id_proyecto, nombre_proyecto FROM proyectos WHERE id_proyecto = %s", (obra_destino,))
+                dest_row = cur.fetchone()
+                if not dest_row:
+                    return {"ok": False, "error": f"Obra destino '{obra_destino}' no existe."}
+                proyecto_id = dest_row[0]
+                proyecto_nombre = dest_row[1]
+    else:
+        # Fallback: extraer del CSV (flujo legacy)
+        proyecto_id = None
+        proyecto_nombre = None
+
+    plano_nombre = None
     
     for line in lines[:10]:  # Buscar en metadatos (primeras 10 líneas)
-        if line.startswith("PROYECTO:"):
+        if not obra_destino and line.startswith("PROYECTO:"):
             partes = line.replace("PROYECTO:", "").strip().split("|")
             if len(partes) >= 2:
                 proyecto_id = partes[0].strip()
@@ -62,57 +75,60 @@ async def import_armadetailer(
                 plano_nombre = partes[1].strip()
 
     # Aplicar override de nombre si el usuario lo editó en el modal
-    if proyecto_nombre_override and proyecto_nombre_override.strip():
-        proyecto_nombre = proyecto_nombre_override.strip()
+    # ── Resolución de proyecto (solo si NO viene obra_destino) ──
+    if not obra_destino:
+        # Aplicar override de nombre si el usuario lo editó en el modal
+        if proyecto_nombre_override and proyecto_nombre_override.strip():
+            proyecto_nombre = proyecto_nombre_override.strip()
 
-    if not proyecto_id or not proyecto_nombre:
+        if not proyecto_id or not proyecto_nombre:
+            if reasignar_a:
+                # El usuario eligió un proyecto existente — usar ese
+                proyecto_id = reasignar_a
+                with get_conn() as conn:
+                    with conn.cursor() as cur:
+                        cur.execute("SELECT nombre_proyecto FROM proyectos WHERE id_proyecto = %s", (proyecto_id,))
+                        row = cur.fetchone()
+                        if not row:
+                            return {"ok": False, "error": f"Proyecto {proyecto_id} no existe."}
+                        proyecto_nombre = row[0]
+            elif confirmar_nuevo and proyecto_nombre_manual:
+                # El usuario quiere crear un proyecto nuevo sin PROYECTO: en CSV
+                proyecto_id = "MANUAL-" + str(uuid.uuid4().hex[:8].upper())
+                proyecto_nombre = proyecto_nombre_manual
+            else:
+                # CSV sin PROYECTO: — pedir al frontend que elija
+                return {
+                    "ok": False,
+                    "missing_project": True,
+                    "mensaje": "El archivo no contiene línea PROYECTO:. Selecciona un proyecto existente o crea uno nuevo.",
+                    "archivo": file.filename,
+                }
+
+        # --- Detección de proyectos duplicados (mismo nombre, distinto ID) ---
         if reasignar_a:
-            # El usuario eligió un proyecto existente — usar ese
+            # El usuario eligió reasignar a un proyecto existente
             proyecto_id = reasignar_a
+        elif not forzar:
             with get_conn() as conn:
                 with conn.cursor() as cur:
-                    cur.execute("SELECT nombre_proyecto FROM proyectos WHERE id_proyecto = %s", (proyecto_id,))
-                    row = cur.fetchone()
-                    if not row:
-                        return {"ok": False, "error": f"Proyecto {proyecto_id} no existe."}
-                    proyecto_nombre = row[0]
-        elif confirmar_nuevo and proyecto_nombre_manual:
-            # El usuario quiere crear un proyecto nuevo sin PROYECTO: en CSV
-            proyecto_id = "MANUAL-" + str(uuid.uuid4().hex[:8].upper())
-            proyecto_nombre = proyecto_nombre_manual
-        else:
-            # CSV sin PROYECTO: — pedir al frontend que elija
-            return {
-                "ok": False,
-                "missing_project": True,
-                "mensaje": "El archivo no contiene línea PROYECTO:. Selecciona un proyecto existente o crea uno nuevo.",
-                "archivo": file.filename,
-            }
-
-    # --- Detección de proyectos duplicados (mismo nombre, distinto ID) ---
-    if reasignar_a:
-        # El usuario eligió reasignar a un proyecto existente
-        proyecto_id = reasignar_a
-    elif not forzar:
-        with get_conn() as conn:
-            with conn.cursor() as cur:
-                cur.execute("""
-                    SELECT id_proyecto, nombre_proyecto
-                    FROM proyectos
-                    WHERE nombre_proyecto = %s AND id_proyecto != %s
-                """, (proyecto_nombre, proyecto_id))
-                duplicado = cur.fetchone()
-                if duplicado:
-                    return {
-                        "ok": False,
-                        "duplicate_warning": True,
-                        "mensaje": f"Ya existe el proyecto \"{duplicado[1]}\" con ID {duplicado[0]}. El archivo trae ID {proyecto_id}.",
-                        "proyecto_existente_id": duplicado[0],
-                        "proyecto_existente_nombre": duplicado[1],
-                        "proyecto_nuevo_id": proyecto_id,
-                        "proyecto_nuevo_nombre": proyecto_nombre,
-                        "archivo": file.filename,
-                    }
+                    cur.execute("""
+                        SELECT id_proyecto, nombre_proyecto
+                        FROM proyectos
+                        WHERE nombre_proyecto = %s AND id_proyecto != %s
+                    """, (proyecto_nombre, proyecto_id))
+                    duplicado = cur.fetchone()
+                    if duplicado:
+                        return {
+                            "ok": False,
+                            "duplicate_warning": True,
+                            "mensaje": f"Ya existe el proyecto \"{duplicado[1]}\" con ID {duplicado[0]}. El archivo trae ID {proyecto_id}.",
+                            "proyecto_existente_id": duplicado[0],
+                            "proyecto_existente_nombre": duplicado[1],
+                            "proyecto_nuevo_id": proyecto_id,
+                            "proyecto_nuevo_nombre": proyecto_nombre,
+                            "archivo": file.filename,
+                        }
 
     # --- Detección de archivo duplicado (mismo nombre, mismo proyecto) ---
     if not forzar:
@@ -262,99 +278,102 @@ async def import_armadetailer(
         }
 
     # Detectar si el proyecto es nuevo o existente (incluye aliases)
-    csv_proyecto_id = proyecto_id  # guardar el ID original del CSV
+    # (solo cuando NO viene obra_destino — en ese caso ya está resuelto)
     is_new_project = False
     resolved_via_alias = False
-    with get_conn() as conn:
-        with conn.cursor() as cur:
-            cur.execute("SELECT id_proyecto FROM proyectos WHERE id_proyecto = %s", (proyecto_id,))
-            row = cur.fetchone()
-            if not row:
-                # Buscar en aliases
-                cur.execute("SELECT id_proyecto FROM proyecto_aliases WHERE alias = %s", (proyecto_id,))
-                alias_row = cur.fetchone()
-                if alias_row:
-                    proyecto_id = alias_row[0]
+    csv_proyecto_id = proyecto_id  # guardar el ID original del CSV
+
+    if not obra_destino:
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT id_proyecto FROM proyectos WHERE id_proyecto = %s", (proyecto_id,))
+                row = cur.fetchone()
+                if not row:
+                    # Buscar en aliases
+                    cur.execute("SELECT id_proyecto FROM proyecto_aliases WHERE alias = %s", (proyecto_id,))
+                    alias_row = cur.fetchone()
+                    if alias_row:
+                        proyecto_id = alias_row[0]
+                        resolved_via_alias = True
+                        cur.execute("SELECT nombre_proyecto FROM proyectos WHERE id_proyecto = %s", (proyecto_id,))
+                        prow = cur.fetchone()
+                        if prow:
+                            proyecto_nombre = prow[0]
+                    else:
+                        is_new_project = True
+
+        # Si el usuario quiere asignar a una obra existente (crear alias)
+        if asignar_a and csv_proyecto_id:
+            with get_conn() as conn:
+                with conn.cursor() as cur:
+                    # Validar que el CSV project ID no esté ya asignado a OTRA obra
+                    cur.execute("SELECT id_proyecto FROM proyectos WHERE id_proyecto = %s", (csv_proyecto_id,))
+                    if cur.fetchone():
+                        return {"ok": False, "error": f"El código {csv_proyecto_id} ya existe como proyecto independiente y no puede reasignarse."}
+                    cur.execute("SELECT id_proyecto FROM proyecto_aliases WHERE alias = %s", (csv_proyecto_id,))
+                    existing_alias = cur.fetchone()
+                    if existing_alias and existing_alias[0] != asignar_a:
+                        return {"ok": False, "error": f"El código {csv_proyecto_id} ya está asignado a otra obra ({existing_alias[0]})."}
+                    # Verificar que la obra destino existe
+                    cur.execute("SELECT id_proyecto, nombre_proyecto FROM proyectos WHERE id_proyecto = %s", (asignar_a,))
+                    dest = cur.fetchone()
+                    if not dest:
+                        return {"ok": False, "error": f"Obra destino {asignar_a} no existe."}
+                    # Crear alias si no existe
+                    if not existing_alias:
+                        cur.execute("""
+                            INSERT INTO proyecto_aliases (alias, id_proyecto, creado_por)
+                            VALUES (%s, %s, %s)
+                            ON CONFLICT (alias) DO NOTHING
+                        """, (csv_proyecto_id, asignar_a, user.get("email", "unknown")))
+                    proyecto_id = asignar_a
+                    proyecto_nombre = dest[1]
+                    is_new_project = False
                     resolved_via_alias = True
-                    cur.execute("SELECT nombre_proyecto FROM proyectos WHERE id_proyecto = %s", (proyecto_id,))
-                    prow = cur.fetchone()
-                    if prow:
-                        proyecto_nombre = prow[0]
+
+        # Si es proyecto nuevo y no se confirmó → pedir confirmación via popup
+        if is_new_project and not confirmar_nuevo:
+            # Obtener lista de obras existentes para que el frontend ofrezca asignar
+            obras_sin_id = []
+            with get_conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("SELECT id_proyecto, nombre_proyecto FROM proyectos ORDER BY nombre_proyecto")
+                    obras_sin_id = [{"id_proyecto": r[0], "nombre_proyecto": r[1]} for r in cur.fetchall()]
+            return {
+                "ok": False,
+                "new_project": True,
+                "mensaje": f"Proyecto nuevo detectado: \"{proyecto_nombre}\" (ID: {csv_proyecto_id}). Puedes crear un proyecto nuevo o asignar a una obra existente.",
+                "proyecto_id": csv_proyecto_id,
+                "proyecto_nombre": proyecto_nombre,
+                "archivo": file.filename,
+                "obras_existentes": obras_sin_id,
+            }
+
+        # Guardar o actualizar proyecto en tabla proyectos
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                if is_new_project:
+                    # Nuevo: crear proyecto
+                    cur.execute("""
+                        INSERT INTO proyectos (id_proyecto, nombre_proyecto, usuario_creador, constructora_id)
+                        VALUES (%s, %s, %s, %s)
+                    """, (proyecto_id, proyecto_nombre, user.get("email", "unknown"), constructora_id))
+                    # Auto-add creator to proyecto_usuarios
+                    cur.execute("SELECT id FROM users WHERE email = %s", (user.get("email"),))
+                    creator_row = cur.fetchone()
+                    if creator_row:
+                        rol = ROL_MAP.get(user.get('role', ''), 'cubicador')
+                        cur.execute("""
+                            INSERT INTO proyecto_usuarios (id_proyecto, user_id, rol)
+                            VALUES (%s, %s, %s)
+                            ON CONFLICT (id_proyecto, user_id) DO NOTHING
+                        """, (proyecto_id, creator_row[0], rol))
                 else:
-                    is_new_project = True
-
-    # Si el usuario quiere asignar a una obra existente (crear alias)
-    if asignar_a and csv_proyecto_id:
-        with get_conn() as conn:
-            with conn.cursor() as cur:
-                # Validar que el CSV project ID no esté ya asignado a OTRA obra
-                cur.execute("SELECT id_proyecto FROM proyectos WHERE id_proyecto = %s", (csv_proyecto_id,))
-                if cur.fetchone():
-                    return {"ok": False, "error": f"El código {csv_proyecto_id} ya existe como proyecto independiente y no puede reasignarse."}
-                cur.execute("SELECT id_proyecto FROM proyecto_aliases WHERE alias = %s", (csv_proyecto_id,))
-                existing_alias = cur.fetchone()
-                if existing_alias and existing_alias[0] != asignar_a:
-                    return {"ok": False, "error": f"El código {csv_proyecto_id} ya está asignado a otra obra ({existing_alias[0]})."}
-                # Verificar que la obra destino existe
-                cur.execute("SELECT id_proyecto, nombre_proyecto FROM proyectos WHERE id_proyecto = %s", (asignar_a,))
-                dest = cur.fetchone()
-                if not dest:
-                    return {"ok": False, "error": f"Obra destino {asignar_a} no existe."}
-                # Crear alias si no existe
-                if not existing_alias:
-                    cur.execute("""
-                        INSERT INTO proyecto_aliases (alias, id_proyecto, creado_por)
-                        VALUES (%s, %s, %s)
-                        ON CONFLICT (alias) DO NOTHING
-                    """, (csv_proyecto_id, asignar_a, user.get("email", "unknown")))
-                proyecto_id = asignar_a
-                proyecto_nombre = dest[1]
-                is_new_project = False
-                resolved_via_alias = True
-
-    # Si es proyecto nuevo y no se confirmó → pedir confirmación via popup
-    if is_new_project and not confirmar_nuevo:
-        # Obtener lista de obras existentes para que el frontend ofrezca asignar
-        obras_sin_id = []
-        with get_conn() as conn:
-            with conn.cursor() as cur:
-                cur.execute("SELECT id_proyecto, nombre_proyecto FROM proyectos ORDER BY nombre_proyecto")
-                obras_sin_id = [{"id_proyecto": r[0], "nombre_proyecto": r[1]} for r in cur.fetchall()]
-        return {
-            "ok": False,
-            "new_project": True,
-            "mensaje": f"Proyecto nuevo detectado: \"{proyecto_nombre}\" (ID: {csv_proyecto_id}). Puedes crear un proyecto nuevo o asignar a una obra existente.",
-            "proyecto_id": csv_proyecto_id,
-            "proyecto_nombre": proyecto_nombre,
-            "archivo": file.filename,
-            "obras_existentes": obras_sin_id,
-        }
-
-    # Guardar o actualizar proyecto en tabla proyectos
-    with get_conn() as conn:
-        with conn.cursor() as cur:
-            if is_new_project:
-                # Nuevo: crear proyecto
-                cur.execute("""
-                    INSERT INTO proyectos (id_proyecto, nombre_proyecto, usuario_creador, constructora_id)
-                    VALUES (%s, %s, %s, %s)
-                """, (proyecto_id, proyecto_nombre, user.get("email", "unknown"), constructora_id))
-                # Auto-add creator to proyecto_usuarios
-                cur.execute("SELECT id FROM users WHERE email = %s", (user.get("email"),))
-                creator_row = cur.fetchone()
-                if creator_row:
-                    rol = ROL_MAP.get(user.get('role', ''), 'cubicador')
-                    cur.execute("""
-                        INSERT INTO proyecto_usuarios (id_proyecto, user_id, rol)
-                        VALUES (%s, %s, %s)
-                        ON CONFLICT (id_proyecto, user_id) DO NOTHING
-                    """, (proyecto_id, creator_row[0], rol))
-            else:
-                # Existente: solo actualizar nombre (si no vino de alias, mantener nombre de la obra)
-                if not resolved_via_alias:
-                    cur.execute("""
-                        UPDATE proyectos SET nombre_proyecto = %s WHERE id_proyecto = %s
-                    """, (proyecto_nombre, proyecto_id))
+                    # Existente: solo actualizar nombre (si no vino de alias, mantener nombre de la obra)
+                    if not resolved_via_alias:
+                        cur.execute("""
+                            UPDATE proyectos SET nombre_proyecto = %s WHERE id_proyecto = %s
+                        """, (proyecto_nombre, proyecto_id))
 
     now_iso = datetime.now(timezone.utc).isoformat()
     rows_to_upsert = []

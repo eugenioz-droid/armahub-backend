@@ -1,6 +1,61 @@
 // ========================= CUBICACIÓN — Multi-File Import + Cargas Recientes (E.4) =========================
 let pendingFiles = [];
 
+// ========================= SELECTOR DE OBRA DESTINO =========================
+
+function populateObraDestino() {
+  const sel = document.getElementById('obraDestinoSelect');
+  if (!sel) return;
+  const prev = sel.value;
+  const proyectos = window._proyectosData || [];
+  sel.innerHTML = '<option value="">— Selecciona la obra —</option>' +
+    proyectos.map(p => `<option value="${p.id_proyecto}">${p.nombre_proyecto}</option>`).join('');
+  if (prev) sel.value = prev;
+  onObraDestinoChange();
+}
+
+function onObraDestinoChange() {
+  const sel = document.getElementById('obraDestinoSelect');
+  const dropZone = document.getElementById('dropZone');
+  const info = document.getElementById('obraDestinoInfo');
+  if (!sel || !dropZone) return;
+  const selected = sel.value;
+  if (selected) {
+    // Habilitar drop zone
+    dropZone.style.border = '2px dashed #8BC34A';
+    dropZone.style.background = '#f9fff4';
+    dropZone.style.cursor = 'pointer';
+    dropZone.style.opacity = '1';
+    dropZone.style.pointerEvents = 'auto';
+    dropZone.ondragover = function(e) { e.preventDefault(); this.style.background='#e8f5e9'; this.style.borderColor='#558B2F'; };
+    dropZone.ondragleave = function() { this.style.background='#f9fff4'; this.style.borderColor='#8BC34A'; };
+    dropZone.ondrop = function(e) { handleDrop(e); };
+    dropZone.onclick = function() { document.getElementById('csvFile').click(); };
+    dropZone.querySelector('div:nth-child(2)').textContent = 'Arrastra archivos CSV aquí o haz clic para seleccionar';
+    dropZone.querySelector('div:nth-child(2)').style.color = '#2C2C2C';
+    if (info) {
+      const p = (window._proyectosData || []).find(p => p.id_proyecto === selected);
+      info.textContent = p ? `Todos los archivos se cargarán en: ${p.nombre_proyecto}` : '';
+    }
+  } else {
+    // Deshabilitar drop zone
+    dropZone.style.border = '2px dashed #ccc';
+    dropZone.style.background = '#f5f5f5';
+    dropZone.style.cursor = 'not-allowed';
+    dropZone.style.opacity = '0.5';
+    dropZone.style.pointerEvents = 'none';
+    dropZone.ondragover = null;
+    dropZone.ondragleave = null;
+    dropZone.ondrop = null;
+    dropZone.onclick = null;
+    dropZone.querySelector('div:nth-child(2)').textContent = 'Selecciona una obra para habilitar la carga';
+    dropZone.querySelector('div:nth-child(2)').style.color = '#999';
+    if (info) info.textContent = '';
+    // Limpiar archivos pendientes
+    if (pendingFiles.length > 0) clearFiles();
+  }
+}
+
 function handleDrop(e) {
   e.preventDefault();
   e.currentTarget.style.background = '#f9fff4';
@@ -59,6 +114,11 @@ function clearFiles() {
 
 async function importAllFiles() {
   if (pendingFiles.length === 0) return;
+  const obraDestino = document.getElementById('obraDestinoSelect')?.value;
+  if (!obraDestino) {
+    showToast('Selecciona una obra destino antes de importar', 'error');
+    return;
+  }
   const btn = document.getElementById('importBtn');
   const progress = document.getElementById('importProgress');
   const results = document.getElementById('importResults');
@@ -70,107 +130,18 @@ async function importAllFiles() {
   let totalBarrasImported = 0;
   let totalKilosImported = 0;
 
+  const baseUrl = '/import/armadetailer?obra_destino=' + encodeURIComponent(obraDestino);
+
   for (let i = 0; i < total; i++) {
     const f = pendingFiles[i];
     progress.textContent = `Importando ${i+1} de ${total}: ${f.name}...`;
     await setGlobalStatus(`Importando archivo ${i+1}/${total}...`, 'warn');
 
-    const data = await apiPostFile('/import/armadetailer', f);
+    const data = await apiPostFile(baseUrl, f);
 
     if (!data) {
       results.innerHTML += `<div class="status-err" style="padding:4px 0; font-size:13px;">❌ ${f.name}: sesión expirada</div>`;
       errorCount++;
-      continue;
-    }
-    if (data.ok === false && data.missing_project) {
-      // CSV sin línea PROYECTO: — mostrar modal para elegir proyecto
-      const missResult = await openMissingProjectModal(data);
-      if (missResult.action === 'cancel') {
-        results.innerHTML += `<div class="status-warn" style="padding:4px 0; font-size:13px;">⏭️ ${f.name}: importación cancelada</div>`;
-        errorCount++;
-        continue;
-      }
-      let retryUrl;
-      if (missResult.action === 'existing') {
-        retryUrl = '/import/armadetailer?reasignar_a=' + encodeURIComponent(missResult.proyecto_id);
-      } else {
-        retryUrl = '/import/armadetailer?confirmar_nuevo=true&proyecto_nombre_manual=' + encodeURIComponent(missResult.nombre);
-        if (missResult.calculista) retryUrl += '&calculista=' + encodeURIComponent(missResult.calculista);
-        if (missResult.owner_id) retryUrl += '&owner_id=' + encodeURIComponent(missResult.owner_id);
-        if (missResult.constructora_id) retryUrl += '&constructora_id=' + encodeURIComponent(missResult.constructora_id);
-      }
-      const data2 = await apiPostFile(retryUrl, f);
-      if (data2 && data2.ok) {
-        const kilosText2 = data2.kilos ? ` — ${Math.round(data2.kilos).toLocaleString()} kg` : '';
-        totalBarrasImported += (data2.barras || 0);
-        totalKilosImported += (data2.kilos || 0);
-        results.innerHTML += `<div class="status-ok" style="padding:4px 0; font-size:13px;">✅ ${f.name}: ${data2.barras} barras (${data2.proyecto})${kilosText2} ${missResult.action === 'existing' ? '(reasignado)' : '(nuevo proyecto)'}</div>`;
-        successCount++;
-      } else {
-        results.innerHTML += `<div class="status-err" style="padding:4px 0; font-size:13px;">❌ ${f.name}: ${data2?.error || data2?.mensaje || 'Error en importación'}</div>`;
-        errorCount++;
-      }
-      continue;
-    }
-    if (data.ok === false && data.new_project) {
-      // Proyecto nuevo detectado — mostrar popup para confirmar creación o asignar a obra existente
-      const modalResult = await openNewProjectModal(data);
-      if (!modalResult.confirmed) {
-        results.innerHTML += `<div class="status-warn" style="padding:4px 0; font-size:13px;">⏭️ ${f.name}: creación cancelada</div>`;
-        errorCount++;
-        continue;
-      }
-      let retryUrl;
-      let resultLabel;
-      if (modalResult.assign_to) {
-        // Asignar código CSV a obra existente (crear alias)
-        retryUrl = '/import/armadetailer?asignar_a=' + encodeURIComponent(modalResult.assign_to);
-        resultLabel = '(asignado a obra existente)';
-      } else {
-        // Crear proyecto nuevo
-        retryUrl = '/import/armadetailer?confirmar_nuevo=true';
-        if (modalResult.nombre_override) retryUrl += '&proyecto_nombre_override=' + encodeURIComponent(modalResult.nombre_override);
-        if (modalResult.calculista) retryUrl += '&calculista=' + encodeURIComponent(modalResult.calculista);
-        if (modalResult.constructora_id) retryUrl += '&constructora_id=' + encodeURIComponent(modalResult.constructora_id);
-        resultLabel = '(nuevo proyecto)';
-      }
-      const data2 = await apiPostFile(retryUrl, f);
-      if (data2 && data2.ok) {
-        const kilosText2 = data2.kilos ? ` — ${Math.round(data2.kilos).toLocaleString()} kg` : '';
-        totalBarrasImported += (data2.barras || 0);
-        totalKilosImported += (data2.kilos || 0);
-        results.innerHTML += `<div class="status-ok" style="padding:4px 0; font-size:13px;">✅ ${f.name}: ${data2.barras} barras (${data2.proyecto})${kilosText2} ${resultLabel}</div>`;
-        successCount++;
-      } else {
-        results.innerHTML += `<div class="status-err" style="padding:4px 0; font-size:13px;">❌ ${f.name}: ${data2?.error || data2?.mensaje || 'Error'}</div>`;
-        errorCount++;
-      }
-      continue;
-    }
-    if (data.ok === false && data.duplicate_warning) {
-      // Proyecto duplicado detectado — preguntar al usuario
-      const choice = confirm(
-        `⚠️ ${data.mensaje}\n\n` +
-        `¿Deseas reasignar las barras al proyecto existente (ID: ${data.proyecto_existente_id})?\n\n` +
-        `[Aceptar] = Reasignar al existente\n[Cancelar] = Crear proyecto nuevo con ID ${data.proyecto_nuevo_id}`
-      );
-      let retryUrl;
-      if (choice) {
-        retryUrl = '/import/armadetailer?reasignar_a=' + encodeURIComponent(data.proyecto_existente_id);
-      } else {
-        retryUrl = '/import/armadetailer?forzar=true';
-      }
-      const data2 = await apiPostFile(retryUrl, f);
-      if (data2 && data2.ok) {
-        const kilosText2 = data2.kilos ? ` — ${Math.round(data2.kilos).toLocaleString()} kg` : '';
-        totalBarrasImported += (data2.barras || 0);
-        totalKilosImported += (data2.kilos || 0);
-        results.innerHTML += `<div class="status-ok" style="padding:4px 0; font-size:13px;">✅ ${f.name}: ${data2.barras} barras (${data2.proyecto})${kilosText2} ${choice ? '(reasignado)' : '(nuevo)'}</div>`;
-        successCount++;
-      } else {
-        results.innerHTML += `<div class="status-err" style="padding:4px 0; font-size:13px;">❌ ${f.name}: ${data2?.error || 'Error en reimportación'}</div>`;
-        errorCount++;
-      }
       continue;
     }
     if (data.ok === false && data.duplicate_file) {
@@ -180,15 +151,13 @@ async function importAllFiles() {
         errorCount++;
         continue;
       }
-      // Delete old carga first
       const delRes = await apiDelete('/cargas/' + data.carga_existente_id);
       if (!delRes || !delRes.ok) {
         results.innerHTML += `<div class="status-err" style="padding:4px 0; font-size:13px;">❌ ${f.name}: no se pudo eliminar la carga anterior (${delRes?.detail || 'error'})</div>`;
         errorCount++;
         continue;
       }
-      // Re-upload with forzar=true to skip duplicate checks
-      const data2 = await apiPostFile('/import/armadetailer?forzar=true', f);
+      const data2 = await apiPostFile(baseUrl + '&forzar=true', f);
       if (data2 && data2.ok) {
         const kilosText2 = data2.kilos ? ` — ${Math.round(data2.kilos).toLocaleString()} kg` : '';
         totalBarrasImported += (data2.barras || 0);

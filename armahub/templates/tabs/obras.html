@@ -6,13 +6,23 @@
         <!-- Cargar datos -->
         <div class="card">
           <h3>📤 Cargar datos de obra</h3>
-          <div id="dropZone" style="border: 2px dashed #8BC34A; border-radius: 10px; padding: 20px; text-align: center; background: #f9fff4; cursor: pointer; transition: all 0.2s; margin-bottom: 10px;"
-               ondragover="event.preventDefault(); this.style.background='#e8f5e9'; this.style.borderColor='#558B2F';"
-               ondragleave="this.style.background='#f9fff4'; this.style.borderColor='#8BC34A';"
-               ondrop="handleDrop(event)"
-               onclick="document.getElementById('csvFile').click()">
+
+          <!-- Selector de obra destino (obligatorio) -->
+          <div style="margin-bottom: 12px;">
+            <label style="font-size: 12px; color: #666; display: block; margin-bottom: 4px; font-weight: 600;">Obra destino *</label>
+            <div style="display: flex; gap: 8px; align-items: center;">
+              <select id="obraDestinoSelect" onchange="onObraDestinoChange()" style="flex: 1; font-size: 13px; padding: 8px 10px;">
+                <option value="">— Selecciona la obra —</option>
+              </select>
+              <button onclick="openCrearObraModal()" style="font-size: 12px; padding: 6px 14px; white-space: nowrap;">+ Crear obra</button>
+            </div>
+            <div id="obraDestinoInfo" class="muted" style="font-size: 11px; margin-top: 4px;"></div>
+          </div>
+
+          <!-- Drop zone (deshabilitada hasta elegir obra) -->
+          <div id="dropZone" style="border: 2px dashed #ccc; border-radius: 10px; padding: 20px; text-align: center; background: #f5f5f5; cursor: not-allowed; transition: all 0.2s; margin-bottom: 10px; opacity: 0.5; pointer-events: none;">
             <div style="font-size: 28px; margin-bottom: 6px;">📂</div>
-            <div style="font-size: 14px; font-weight: 500; color: #2C2C2C;">Arrastra archivos CSV aquí o haz clic para seleccionar</div>
+            <div style="font-size: 14px; font-weight: 500; color: #999;">Selecciona una obra para habilitar la carga</div>
             <div class="muted" style="margin-top: 4px; font-size: 11px;">Múltiples archivos · Re-importar actualiza datos existentes</div>
           </div>
           <input type="file" id="csvFile" accept=".csv,.txt" multiple style="display: none;" onchange="handleFileSelect(this.files)" />
@@ -29,7 +39,6 @@
         <div class="card">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
             <h3 style="margin: 0;">📁 Mis proyectos</h3>
-            <button onclick="openCrearObraModal()" style="font-size: 12px; padding: 6px 14px;">+ Crear obra</button>
           </div>
           <div style="margin-bottom: 10px;">
             <input type="text" id="proyectoSearchInput" placeholder="🔍 Buscar proyecto..." oninput="filterProyectos()" style="width: 100%; font-size: 13px; padding: 8px 12px;" />

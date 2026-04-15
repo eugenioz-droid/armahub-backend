@@ -55,6 +55,9 @@ async function loadProyectos() {
     if (prevR) rpf.value = prevR;
   }
 
+  // Populate obra destino selector (import flow)
+  if (typeof populateObraDestino === 'function') populateObraDestino();
+
 }
 
 function filterProyectos() {
@@ -385,6 +388,9 @@ async function crearObra() {
     closeCrearObraModal();
     await setGlobalStatus('✅ Obra creada: ' + data.nombre_proyecto, 'ok');
     await loadProyectos();
+    // Auto-seleccionar la obra recién creada en el selector destino
+    var obraSel = document.getElementById('obraDestinoSelect');
+    if (obraSel && data.id_proyecto) { obraSel.value = data.id_proyecto; onObraDestinoChange(); }
     await loadFilters();
     await loadInicio();
     await loadMiActividad();
