@@ -189,6 +189,7 @@ Objetivo: consolidar contratos y reducir drift.
 	- [x] PC.6.8 Tabla 3c: Proyectos y barras (cubicación)
 	- [x] PC.6.9 Tabla 3d: Reclamos
 	- [x] PC.6.10 Tabla 3e: Pedidos, calculistas, constructoras
+	- [ ] PC.6.11 Ordenar tabs Admin — migrar de sub-tabs internos a tabs reales (como Reclamos/Cubicación), cada sección como tab independiente en la barra de tabs del módulo
 - [x] PC.7 Campo "USC responsable" en formulario de registro de reclamos — desplegable con usuarios USC; bloqueado para USC (auto-asigna), desbloqueado para admin/admin2. Revisar tablas 3d de ROLES_Y_PERMISOS.md.
 - [x] PC.8 Migrar formularios de reclamos (registro, análisis, detalle) a modales — eliminar scroll, mejorar UX. Evaluar reutilizar FormRenderer y modals.js existentes.
 	- [x] PC.8.1 CSS modal overlay (backdrop + `.rec-modal-open` + animación + responsive breakpoints)
@@ -198,8 +199,17 @@ Objetivo: consolidar contratos y reducir drift.
 	- [x] PC.8.5 Coordinar z-index: modal(950) < Ishikawa(9999) < ImageViewer(10000)
 	- [x] PC.8.6 Validar errores, permisos y flujo de cierre/eliminación
 - [ ] PC.9 Revisar administración de proyectos/clientes/constructoras/calculistas — definir flujo correcto de gestión de entidades, permisos granulares por rol, y relación entre ellas. Actualizar tabla 3e de ROLES_Y_PERMISOS.md.
-- [ ] PC.10 Rediseñar flujo de carga de datos (importación Excel) — actualmente el sistema asume la obra destino y la crea automáticamente. Cambiar a: crear obra primero, luego el cubicador elige dónde cargar. Agregar warning por coincidencia de nombre para prevenir errores de carga.
+- [x] PC.10 Rediseñar flujo de carga de datos (importación CSV) — selector obligatorio de obra destino antes de importar. Drop zone deshabilitada hasta seleccionar obra. Backend recibe `obra_destino` y salta toda resolución de proyecto del CSV. Botón "Crear obra" movido al selector.
+	- [x] PC.10.1 Frontend: selector `obraDestinoSelect` obligatorio con drop zone deshabilitada por defecto
+	- [x] PC.10.2 Frontend: `importAllFiles()` simplificado — envía `?obra_destino=X`, elimina flujos de missing/new/duplicate project
+	- [x] PC.10.3 Backend: param `obra_destino` en `/import/armadetailer` — resuelve directo, ignora `PROYECTO:` del CSV
+	- [x] PC.10.4 Frontend: auto-seleccionar obra recién creada en el selector
+	- [ ] PC.10.5 Permitir mover cargas entre obras — seleccionar cargas desde detalle de obra y transferirlas a otra obra destino (barras + import)
+	- [ ] PC.10.6 Modal de detalle de obra — reemplazar expandible inline por modal (patrón PC.8), layout configurable con cargas, KPIs, metadata y acciones
+	- [ ] PC.10.7 Revisar y mejorar KPIs del tab Inicio — validar métricas, completar indicadores faltantes, ajustar cálculos
+	- [ ] PC.10.8 Revisar TAB Dashboards — validar gráficos, filtros y coherencia de datos
 - [ ] PC.11 Simplificar correlativos de reclamos — separar año del correlativo (campo año independiente) para permitir ordenamiento por N° correlativo priorizando año. Necesario para carga retroactiva de reclamos de años anteriores.
+- [ ] PC.12 Regularizar matriz de roles post-cambios — revisar ROLES_Y_PERMISOS.md para incorporar permisos nuevos (mover cargas, acciones de obra, etc.) y actualizar el tab Roles y Permisos del panel Admin
 
 ---
 

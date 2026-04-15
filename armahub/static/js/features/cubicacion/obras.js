@@ -96,54 +96,30 @@ function renderProyectosTable(proyectos) {
   var html = '<div style="overflow-x:auto;">';
   html += '<table style="width:100%; border-collapse:collapse; font-size:12px;">';
   html += '<thead><tr style="background:#f5f5f5;">';
-  html += '<th style="padding:8px 6px; text-align:left; border-bottom:2px solid #ddd; width:30px;"></th>';
   html += '<th style="padding:8px 6px; text-align:left; border-bottom:2px solid #ddd;">Proyecto</th>';
   html += '<th style="padding:8px 6px; text-align:left; border-bottom:2px solid #ddd;">Cubicador</th>';
   html += '<th style="padding:8px 6px; text-align:right; border-bottom:2px solid #ddd;">Kilos</th>';
   html += '<th style="padding:8px 6px; text-align:right; border-bottom:2px solid #ddd;">Ø</th>';
   html += '<th style="padding:8px 6px; text-align:right; border-bottom:2px solid #ddd;">PPI</th>';
-  html += '<th style="padding:8px 6px; text-align:center; border-bottom:2px solid #ddd;">Acciones</th>';
   html += '</tr></thead><tbody>';
   
   years.forEach(function(year) {
     // Year header row
     html += '<tr style="background:#e8f5e9;">';
-    html += '<td colspan="7" style="padding:6px 8px; font-weight:bold; color:#2e7d32; font-size:13px;">📅 ' + year + '</td>';
+    html += '<td colspan="5" style="padding:6px 8px; font-weight:bold; color:#2e7d32; font-size:13px;">📅 ' + year + '</td>';
     html += '</tr>';
     
     byYear[year].forEach(function(p) {
-      var safeId = p.id_proyecto.replace(/[^a-zA-Z0-9_-]/g, '_');
       var kilosStr = formatInteger(p.total_kilos, '0');
       var diamStr = p.diam_prom ? formatDecimal(p.diam_prom, 1, '-') : '-';
       var ppiStr = p.ppi ? formatDecimal(p.ppi, 1, '-') : '-';
       
-      html += '<tr class="proyecto-row" data-id="' + p.id_proyecto + '" style="border-bottom:1px solid #eee;">';
-      html += '<td style="padding:6px; text-align:center; cursor:pointer;" onclick="toggleProyectoTree(\'' + safeId + '\')"><span id="arrow-' + safeId + '">▸</span></td>';
+      html += '<tr class="proyecto-row" data-id="' + p.id_proyecto + '" style="border-bottom:1px solid #eee; cursor:pointer;" onclick="openObraDetailModal(\'' + p.id_proyecto.replace(/'/g, "\\'") + '\')">';
       html += '<td style="padding:6px;"><strong>' + (p.nombre_proyecto || p.id_proyecto) + '</strong></td>';
       html += '<td style="padding:6px; color:#666;">' + (p.cubicador || '-') + '</td>';
       html += '<td style="padding:6px; text-align:right; font-weight:500;">' + kilosStr + ' kg</td>';
       html += '<td style="padding:6px; text-align:right; color:#666;">' + diamStr + '</td>';
       html += '<td style="padding:6px; text-align:right; color:#666;">' + ppiStr + '</td>';
-      html += '<td style="padding:6px; text-align:center; white-space:nowrap;">';
-      html += '<button class="secondary" style="font-size:10px; padding:3px 6px; margin:0 2px;" onclick="toggleCargasProyecto(\'' + p.id_proyecto.replace(/'/g, "\\'") + '\')">Historial</button>';
-      html += '<button class="secondary" style="font-size:10px; padding:3px 6px; margin:0 2px;" onclick="openInfoProyectoModal(\'' + p.id_proyecto.replace(/'/g, "\\'") + '\')">Info</button>';
-      html += '<button class="secondary" style="font-size:10px; padding:3px 6px; margin:0 2px;" onclick="openEditObraModal(\'' + p.id_proyecto.replace(/'/g, "\\'") + '\')">Editar</button>';
-      html += '</td>';
-      html += '</tr>';
-      
-      // Expandable tree row (hidden by default)
-      html += '<tr id="tree-' + safeId + '" style="display:none;">';
-      html += '<td colspan="7" style="padding:0 0 0 20px; background:#fafafa;">';
-      html += '<div id="tree-content-' + safeId + '" class="muted" style="padding:10px; font-size:11px;">Cargando estructura...</div>';
-      html += '</td>';
-      html += '</tr>';
-      
-      // Cargas panel row (hidden by default)
-      html += '<tr id="cargas-row-' + safeId + '" style="display:none;">';
-      html += '<td colspan="7" style="padding:10px 20px; background:#fff8e1; border-left:3px solid #ffc107;">';
-      html += '<div style="font-size:12px; font-weight:bold; margin-bottom:6px;">Historial de cargas</div>';
-      html += '<div id="cargas-list-' + p.id_proyecto + '" class="muted" style="font-size:12px;">Cargando...</div>';
-      html += '</td>';
       html += '</tr>';
     });
   });
@@ -306,58 +282,357 @@ function closeCrearObraModal() {
   hideModal('crearObraModal');
 }
 
-async function openInfoProyectoModal(idProyecto) {
-  showModal('infoProyectoModal');
-  var content = document.getElementById('infoProyectoContent');
-  content.innerHTML = '<div class="muted">Cargando...</div>';
-  
-  // Find proyecto in cached data
+async function openObraDetailModal(idProyecto) {
+  showModal('obraDetailModal');
   var p = _proyectosData.find(function(x) { return x.id_proyecto === idProyecto; });
-  if (!p) {
-    content.innerHTML = '<div class="muted">Proyecto no encontrado</div>';
-    return;
+  if (!p) { closeObraDetailModal(); showToast('Proyecto no encontrado', 'error'); return; }
+
+  document.getElementById('obraDetailTitle').textContent = '🏗️ ' + (p.nombre_proyecto || idProyecto);
+  document.getElementById('obraDetailEditBtn').onclick = function() { closeObraDetailModal(); openEditObraModal(idProyecto); };
+
+  // Reset sections
+  document.getElementById('obraDetailSidebar').innerHTML = '<div class="muted">Cargando...</div>';
+  document.getElementById('obraDetailMatriz').innerHTML = '<div class="muted">Cargando matriz...</div>';
+  document.getElementById('obraDetailTree').innerHTML = '<div class="muted">Cargando...</div>';
+  document.getElementById('obraDetailTree').style.display = 'none';
+  document.getElementById('obraDetailTreeArrow').textContent = '▸';
+  document.getElementById('obraDetailCargas').innerHTML = '<div class="muted">Cargando...</div>';
+
+  // Store current id for sub-actions
+  window._obraDetailCurrentId = idProyecto;
+
+  // Load sidebar immediately from cache
+  renderObraDetailSidebar(p);
+
+  // Load matrix, tree data, autorizados and cargas in parallel
+  var matrizPromise = apiGet('/dashboard/sectores?proyecto=' + encodeURIComponent(idProyecto));
+  var treePromise = apiGet('/proyectos/' + encodeURIComponent(idProyecto) + '/sectores-nav');
+  var authPromise = apiGet('/proyectos/' + encodeURIComponent(idProyecto) + '/autorizados');
+  var cargasPromise = apiGet('/proyectos/' + encodeURIComponent(idProyecto) + '/cargas?limit=500');
+
+  var results = await Promise.all([matrizPromise, treePromise, authPromise, cargasPromise]);
+  var matrizData = results[0];
+  var treeData = results[1];
+  var authData = results[2];
+  var cargasData = results[3];
+
+  // Update sidebar with autorizados
+  renderObraDetailSidebar(p, authData);
+
+  // Render matrix
+  if (matrizData && matrizData.items && matrizData.items.length > 0) {
+    buildObraDetailMatriz(matrizData.items, idProyecto);
+  } else {
+    document.getElementById('obraDetailMatriz').innerHTML = '<div class="muted">Sin datos para generar matriz</div>';
   }
-  
-  document.getElementById('infoProyectoTitle').textContent = p.nombre_proyecto || idProyecto;
-  
-  // Get autorizados
-  var authData = await apiGet('/proyectos/' + encodeURIComponent(idProyecto) + '/autorizados');
-  var autorizados = authData && authData.autorizados ? authData.autorizados : [];
-  
-  var html = '<div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; font-size:13px;">';
-  html += '<div><strong>ID Proyecto:</strong> ' + p.id_proyecto + '</div>';
-  html += '<div><strong>Kilos totales:</strong> ' + formatKilos(p.total_kilos, 0, '-') + '</div>';
-  html += '<div><strong>Barras totales:</strong> ' + p.total_barras.toLocaleString() + '</div>';
-  html += '<div><strong>Diámetro promedio:</strong> ' + (p.diam_prom || '-') + ' mm</div>';
-  html += '<div><strong>PPI:</strong> ' + (p.ppi ? formatDecimal(p.ppi, 2, '-') : '-') + ' kg/barra</div>';
-  html += '<div><strong>Fecha creación:</strong> ' + formatDateShort(p.fecha_creacion, '-') + '</div>';
-  html += '<div><strong>Fecha inicio:</strong> ' + formatDateShort(p.fecha_inicio, '-') + '</div>';
-  html += '<div><strong>Creado por:</strong> ' + (p.usuario_creador || '-') + '</div>';
+
+  // Prepare tree data (render on expand)
+  window._obraDetailTreeData = treeData;
+  if (treeData && treeData.pisos && treeData.pisos.length > 0) {
+    document.getElementById('obraDetailTree').innerHTML = '';
+    renderObraDetailTree(document.getElementById('obraDetailTree'), treeData.pisos, idProyecto);
+  } else {
+    document.getElementById('obraDetailTree').innerHTML = '<div class="muted">Sin estructura cargada</div>';
+  }
+
+  // Render cargas
+  renderObraDetailCargas(cargasData, idProyecto);
+}
+
+function closeObraDetailModal() {
+  hideModal('obraDetailModal');
+  window._obraDetailCurrentId = null;
+}
+
+function renderObraDetailSidebar(p, authData) {
+  var html = '';
+  // KPIs grid
+  html += '<div style="display:grid; grid-template-columns:1fr 1fr; gap:6px; margin-bottom:14px;">';
+  html += '<div style="background:#f8f9fa; padding:8px; border-radius:6px; text-align:center;">';
+  html += '<div style="font-size:18px; font-weight:bold; color:#8BC34A;">' + formatInteger(p.total_kilos, '0') + '</div>';
+  html += '<div style="font-size:10px; color:#666;">kg</div></div>';
+  html += '<div style="background:#f8f9fa; padding:8px; border-radius:6px; text-align:center;">';
+  html += '<div style="font-size:18px; font-weight:bold; color:#558B2F;">' + (p.total_barras || 0).toLocaleString() + '</div>';
+  html += '<div style="font-size:10px; color:#666;">barras</div></div>';
+  html += '<div style="background:#f8f9fa; padding:8px; border-radius:6px; text-align:center;">';
+  html += '<div style="font-size:14px; font-weight:bold; color:#666;">' + (p.diam_prom ? formatDecimal(p.diam_prom, 1, '-') : '-') + '</div>';
+  html += '<div style="font-size:10px; color:#666;">Ø mm</div></div>';
+  html += '<div style="background:#f8f9fa; padding:8px; border-radius:6px; text-align:center;">';
+  html += '<div style="font-size:14px; font-weight:bold; color:#666;">' + (p.ppi ? formatDecimal(p.ppi, 1, '-') : '-') + '</div>';
+  html += '<div style="font-size:10px; color:#666;">PPI</div></div>';
+  html += '</div>';
+
+  // Metadata
+  html += '<div style="font-size:12px; line-height:1.8; color:#444;">';
+  html += '<div><strong>ID:</strong> <span style="font-size:10px; color:#888;">' + p.id_proyecto + '</span></div>';
+  html += '<div><strong>Creado:</strong> ' + formatDateShort(p.fecha_creacion, '-') + '</div>';
+  html += '<div><strong>Inicio:</strong> ' + formatDateShort(p.fecha_inicio, '-') + '</div>';
+  html += '<div><strong>Creador:</strong> ' + (p.usuario_creador || '-') + '</div>';
   html += '<div><strong>Calculista:</strong> ' + (p.calculista_nombre || '-') + '</div>';
   html += '<div><strong>Constructora:</strong> ' + (p.constructora_nombre || '-') + '</div>';
   html += '</div>';
-  
-  html += '<div style="margin-top:16px;"><strong>Usuarios asignados:</strong></div>';
-  if (autorizados.length === 0) {
-    html += '<div class="muted" style="margin-top:4px;">Sin usuarios adicionales</div>';
-  } else {
-    html += '<div style="margin-top:4px;">';
-    autorizados.forEach(function(u) {
-      html += '<span class="badge" style="margin:2px;">' + (u.nombre || u.email) + ' (' + u.rol + ')</span>';
-    });
-    html += '</div>';
+
+  // Autorizados
+  if (authData && authData.autorizados) {
+    html += '<div style="margin-top:12px; font-size:12px;"><strong>👥 Autorizados</strong></div>';
+    if (authData.autorizados.length === 0) {
+      html += '<div class="muted" style="font-size:11px;">Sin usuarios adicionales</div>';
+    } else {
+      html += '<div style="margin-top:4px;">';
+      var rolColors = {admin:'#1565C0', usc:'#FF9800', cubicador:'#8BC34A', externo:'#9C27B0', cliente:'#607D8B'};
+      authData.autorizados.forEach(function(a) {
+        var rc = rolColors[a.rol] || '#666';
+        var display = a.nombre ? a.nombre : a.email;
+        html += '<div style="font-size:11px; padding:1px 0;"><span style="font-size:9px; padding:1px 4px; border-radius:2px; background:' + rc + '22; color:' + rc + '; font-weight:600;">' + a.rol.toUpperCase() + '</span> ' + display + '</div>';
+      });
+      html += '</div>';
+    }
   }
-  
+
+  // Aliases
   if (p.aliases && p.aliases.length > 0) {
-    html += '<div style="margin-top:12px;"><strong>Códigos ArmaDetailer asociados:</strong></div>';
-    html += '<div style="margin-top:4px;">' + p.aliases.map(function(a) { return '<span class="badge">' + a + '</span>'; }).join(' ') + '</div>';
+    html += '<div style="margin-top:12px; font-size:12px;"><strong>📎 Aliases</strong></div>';
+    html += '<div style="margin-top:2px;">' + p.aliases.map(function(a) { return '<span style="font-size:10px; background:#e8f5e9; padding:1px 6px; border-radius:3px; margin:1px;">' + a + '</span>'; }).join(' ') + '</div>';
   }
-  
-  content.innerHTML = html;
+
+  document.getElementById('obraDetailSidebar').innerHTML = html;
 }
 
-function closeInfoProyectoModal() {
-  hideModal('infoProyectoModal');
+function buildObraDetailMatriz(items, idProyecto) {
+  var container = document.getElementById('obraDetailMatriz');
+
+  // Build lookup
+  var lookup = {};
+  var maxKilos = 0;
+  items.forEach(function(i) {
+    var s = (i.sector || '?').toUpperCase().trim();
+    var p = (i.piso || '?').trim();
+    var c = (i.ciclo || '?').trim();
+    lookup[s + '|' + p + '|' + c] = { barras: i.barras, kilos: i.kilos };
+    if (i.kilos > maxKilos) maxKilos = i.kilos;
+  });
+
+  var pisosSet = new Set(), ciclosSet = new Set(), sectoresSet = new Set();
+  items.forEach(function(i) {
+    pisosSet.add((i.piso || '?').trim());
+    ciclosSet.add((i.ciclo || '?').trim());
+    sectoresSet.add((i.sector || '?').toUpperCase().trim());
+  });
+
+  var pisos = Array.from(pisosSet).sort(function(a, b) { return pisoOrder(a) - pisoOrder(b); });
+  pisos.reverse();
+
+  var ciclos = Array.from(ciclosSet).sort(function(a, b) {
+    var na = parseInt((a.match(/(\d+)/) || [0,0])[1]);
+    var nb = parseInt((b.match(/(\d+)/) || [0,0])[1]);
+    return na - nb;
+  });
+
+  var TYPE_ORDER = ['FUND', 'LCIELO', 'VCIELO', 'ELEV'];
+  var TYPE_INITIALS = { 'FUND': 'F', 'LCIELO': 'L', 'VCIELO': 'V', 'ELEV': 'E' };
+  var lowestPiso = pisos[pisos.length - 1];
+
+  function getTypesForPiso(piso) {
+    var types = [];
+    if (piso === lowestPiso) {
+      for (var ci = 0; ci < ciclos.length; ci++) { if (lookup['FUND|' + piso + '|' + ciclos[ci]]) { types.push('FUND'); break; } }
+    }
+    for (var ti = 0; ti < TYPE_ORDER.length; ti++) {
+      if (TYPE_ORDER[ti] === 'FUND') continue;
+      for (var ci2 = 0; ci2 < ciclos.length; ci2++) { if (lookup[TYPE_ORDER[ti] + '|' + piso + '|' + ciclos[ci2]]) { types.push(TYPE_ORDER[ti]); break; } }
+    }
+    sectoresSet.forEach(function(s) {
+      if (TYPE_ORDER.indexOf(s) >= 0) return;
+      for (var ci3 = 0; ci3 < ciclos.length; ci3++) { if (lookup[s + '|' + piso + '|' + ciclos[ci3]]) { types.push(s); break; } }
+    });
+    return types.length > 0 ? types : ['ELEV'];
+  }
+
+  // Build table — same format as export matrix but without checkboxes
+  var html = '<table style="width:100%; border-collapse:collapse; font-size:11px;">';
+  html += '<thead><tr>';
+  html += '<th style="border:1px solid #333; padding:3px 4px; background:#1a1a1a; color:#8BC34A; white-space:nowrap; min-width:120px; font-size:10px;">Piso</th>';
+  ciclos.forEach(function(c) {
+    html += '<th style="border:1px solid #333; padding:2px 4px; background:#1a1a1a; color:#8BC34A; text-align:center; white-space:nowrap; font-size:10px;">' + c + '</th>';
+  });
+  html += '</tr></thead><tbody>';
+
+  pisos.forEach(function(piso) {
+    var types = getTypesForPiso(piso);
+    var pisoTotalKg = 0, pisoTotalBar = 0;
+    var sectionTotals = {};
+    types.forEach(function(tipo) {
+      if (!sectionTotals[tipo]) sectionTotals[tipo] = { kg: 0, bar: 0 };
+      ciclos.forEach(function(ciclo) {
+        var d = lookup[tipo + '|' + piso + '|' + ciclo];
+        if (d) {
+          pisoTotalKg += d.kilos;
+          pisoTotalBar += d.barras;
+          sectionTotals[tipo].kg += d.kilos;
+          sectionTotals[tipo].bar += d.barras;
+        }
+      });
+    });
+
+    types.forEach(function(tipo, typeIdx) {
+      html += '<tr>';
+      if (typeIdx === 0) {
+        html += '<td rowspan="' + types.length + '" style="border:1px solid #ccc; padding:4px 5px; font-weight:bold; background:#f8f8f8; color:#1a1a1a; vertical-align:middle; white-space:nowrap; min-width:120px;">';
+        html += '<div style="margin-bottom:3px;"><span style="font-size:11px; font-weight:700; line-height:1;">' + piso + ': ' + Math.round(pisoTotalKg).toLocaleString() + 'kg ' + pisoTotalBar + 'un</span></div>';
+        if (types.length > 1 || types[0] !== 'ELEV') {
+          html += '<div style="font-size:9px; color:#555; line-height:1.4;">';
+          types.forEach(function(t) {
+            var st = sectionTotals[t];
+            var initial = TYPE_INITIALS[t] || t.charAt(0);
+            html += '<div>' + initial + ': ' + Math.round(st.kg).toLocaleString() + 'kg ' + st.bar + 'un</div>';
+          });
+          html += '</div>';
+        }
+        html += '</td>';
+      }
+      ciclos.forEach(function(ciclo) {
+        var lookupKey = tipo + '|' + piso + '|' + ciclo;
+        var d = lookup[lookupKey];
+        if (d) {
+          html += '<td style="border:1px solid #ccc; padding:2px 4px; background:#fff; text-align:center; cursor:pointer; min-width:80px; white-space:nowrap;" ';
+          html += 'onclick="closeObraDetailModal(); goToBarManager(\'' + idProyecto.replace(/'/g, "\\'") + '\', \'' + tipo.replace(/'/g, "\\'") + '\', \'' + (piso || '').replace(/'/g, "\\'") + '\', \'' + (ciclo || '').replace(/'/g, "\\'") + '\')" ';
+          html += 'title="' + tipo + ' ' + piso + ' ' + ciclo + ': ' + d.barras + ' barras, ' + Math.round(d.kilos).toLocaleString() + ' kg — click para ver barras">';
+          html += '<div style="display:flex; align-items:baseline; justify-content:center; gap:4px;">';
+          html += '<span style="font-weight:600; font-size:9px; color:#666;">' + tipo + '</span>';
+          html += '<span style="font-size:10px; font-weight:bold; color:#1a1a1a;">' + Math.round(d.kilos).toLocaleString() + 'kg</span>';
+          html += '<span style="font-size:9px; color:#888;">' + d.barras + 'un</span>';
+          html += '</div>';
+          html += '</td>';
+        } else {
+          html += '<td style="border:1px solid #eee; padding:2px; background:#fafafa;"></td>';
+        }
+      });
+      html += '</tr>';
+    });
+  });
+
+  html += '</tbody></table>';
+  container.innerHTML = html;
+}
+
+function toggleObraDetailTree() {
+  var tree = document.getElementById('obraDetailTree');
+  var arrow = document.getElementById('obraDetailTreeArrow');
+  if (tree.style.display === 'none') {
+    tree.style.display = '';
+    arrow.textContent = '▾';
+  } else {
+    tree.style.display = 'none';
+    arrow.textContent = '▸';
+  }
+}
+
+function renderObraDetailTree(container, pisos, idProyecto) {
+  if (!pisos || pisos.length === 0) { container.innerHTML = '<span class="muted">Sin datos</span>'; return; }
+  var html = '<table style="width:100%; border-collapse:collapse; font-size:11px;">';
+  html += '<thead><tr style="background:#f0f0f0;">';
+  html += '<th style="padding:4px 6px; text-align:left;">Piso / Ciclo / Sector</th>';
+  html += '<th style="padding:4px 6px; text-align:right;">Kilos</th>';
+  html += '<th style="padding:4px 6px; text-align:right;">Barras</th>';
+  html += '<th style="padding:4px 6px; text-align:center;">Ver</th>';
+  html += '</tr></thead><tbody>';
+  pisos.forEach(function(p) {
+    var pisoId = ('odt_' + idProyecto + '_' + p.piso).replace(/[^a-zA-Z0-9_-]/g, '_');
+    html += '<tr style="background:#e3f2fd; cursor:pointer;" onclick="toggleSectorPisos(\'' + pisoId + '\')">';
+    html += '<td style="padding:4px 6px; font-weight:bold;"><span id="sarrow-' + pisoId + '">▸</span> ' + (p.piso || '?') + '</td>';
+    html += '<td style="padding:4px 6px; text-align:right; font-weight:500;">' + Math.round(p.kilos).toLocaleString() + ' kg</td>';
+    html += '<td style="padding:4px 6px; text-align:right;">' + p.barras + '</td>';
+    html += '<td style="padding:4px 6px; text-align:center;"><button class="secondary" style="font-size:9px; padding:2px 5px;" onclick="event.stopPropagation(); closeObraDetailModal(); goToBarManager(\'' + idProyecto.replace(/'/g, "\\'") + '\', \'\', \'' + (p.piso || '').replace(/'/g, "\\'") + '\', \'\')">🔍</button></td>';
+    html += '</tr>';
+    html += '<tr id="pisos-' + pisoId + '" style="display:none;"><td colspan="4" style="padding:0;"><table style="width:100%; border-collapse:collapse;">';
+    (p.ciclos || []).forEach(function(c) {
+      var cicloId = pisoId + '_' + (c.ciclo || '').replace(/[^a-zA-Z0-9_-]/g, '_');
+      html += '<tr style="background:#fff; cursor:pointer;" onclick="togglePisoCiclos(\'' + cicloId + '\')">';
+      html += '<td style="padding:3px 6px 3px 20px;"><span id="parrow-' + cicloId + '">▸</span> ' + (c.ciclo || '?') + '</td>';
+      html += '<td style="padding:3px 6px; text-align:right;">' + Math.round(c.kilos).toLocaleString() + ' kg</td>';
+      html += '<td style="padding:3px 6px; text-align:right;">' + c.barras + '</td>';
+      html += '<td style="padding:3px 6px; text-align:center;"><button class="secondary" style="font-size:9px; padding:2px 5px;" onclick="event.stopPropagation(); closeObraDetailModal(); goToBarManager(\'' + idProyecto.replace(/'/g, "\\'") + '\', \'\', \'' + (p.piso || '').replace(/'/g, "\\'") + '\', \'' + (c.ciclo || '').replace(/'/g, "\\'") + '\')">🔍</button></td>';
+      html += '</tr>';
+      html += '<tr id="ciclos-' + cicloId + '" style="display:none;"><td colspan="4" style="padding:0;"><table style="width:100%; border-collapse:collapse;">';
+      (c.sectores || []).forEach(function(s) {
+        html += '<tr style="background:#fafafa;">';
+        html += '<td style="padding:2px 6px 2px 40px; color:#666;">' + (s.sector || '?') + '</td>';
+        html += '<td style="padding:2px 6px; text-align:right; color:#666;">' + Math.round(s.kilos).toLocaleString() + ' kg</td>';
+        html += '<td style="padding:2px 6px; text-align:right; color:#666;">' + s.barras + '</td>';
+        html += '<td style="padding:2px 6px; text-align:center;"><button class="secondary" style="font-size:9px; padding:2px 5px;" onclick="closeObraDetailModal(); goToBarManager(\'' + idProyecto.replace(/'/g, "\\'") + '\', \'' + (s.sector || '').replace(/'/g, "\\'") + '\', \'' + (p.piso || '').replace(/'/g, "\\'") + '\', \'' + (c.ciclo || '').replace(/'/g, "\\'") + '\')">🔍</button></td>';
+        html += '</tr>';
+      });
+      html += '</table></td></tr>';
+    });
+    html += '</table></td></tr>';
+  });
+  html += '</tbody></table>';
+  container.innerHTML = html;
+}
+
+function renderObraDetailCargas(data, idProyecto) {
+  var container = document.getElementById('obraDetailCargas');
+  if (!data || !data.cargas) { container.innerHTML = '<span class="muted">Error cargando cargas</span>'; return; }
+  if (data.cargas.length === 0) { container.innerHTML = '<span class="muted">Sin cargas registradas</span>'; return; }
+  var safeId = 'odm_' + idProyecto.replace(/[^a-zA-Z0-9_-]/g, '_');
+  var html = '';
+  html += '<div id="bulk-actions-' + safeId + '" style="display:none; margin-bottom:8px; padding:6px 10px; background:#fff3cd; border-radius:4px; font-size:12px;">';
+  html += '<span id="bulk-count-' + safeId + '">0</span> carga(s) seleccionada(s)';
+  html += '<button style="margin-left:10px; background:#dc3545; color:white; border:none; padding:3px 10px; border-radius:3px; font-size:11px; cursor:pointer;" onclick="eliminarCargasSeleccionadasModal(\'' + idProyecto.replace(/'/g, "\\'") + '\')">🗑️ Eliminar</button>';
+  html += '</div>';
+  html += '<div style="max-height:250px; overflow-y:auto; border:1px solid #eee; border-radius:4px;">';
+  html += '<table style="width:100%; font-size:11px; border-collapse:collapse;">';
+  html += '<thead style="position:sticky; top:0; background:#f8f8f8; z-index:1;"><tr>';
+  html += '<th style="width:28px; padding:4px;"><input type="checkbox" id="selectAll-' + safeId + '" onchange="toggleAllCargasProyecto(\'' + safeId + '\')" style="cursor:pointer;" title="Seleccionar todas"></th>';
+  html += '<th style="padding:4px;">Archivo</th><th style="padding:4px;">Plano</th><th style="padding:4px; text-align:right;">Barras</th><th style="padding:4px; text-align:right;">Kilos</th><th style="padding:4px;">Versión</th><th style="padding:4px;">Usuario</th><th style="padding:4px;">Fecha</th>';
+  html += '</tr></thead><tbody>';
+  data.cargas.forEach(function(c) {
+    var fecha = '';
+    if (c.fecha) {
+      var d = new Date(c.fecha);
+      fecha = d.toLocaleDateString('es-CL') + ' ' + d.toLocaleTimeString('es-CL', {hour:'2-digit', minute:'2-digit'});
+    }
+    var estadoBadge = '';
+    var rowBg = '';
+    if (c.estado === 'parcial') {
+      estadoBadge = '<span style="background:#fff3cd; color:#856404; padding:1px 5px; border-radius:3px; font-size:9px; font-weight:600;" title="' + (c.errores || '').replace(/"/g, '&quot;') + '">⚠ PARCIAL</span> ';
+      rowBg = ' style="background:#fffde7;"';
+    } else if (c.estado === 'error') {
+      estadoBadge = '<span style="background:#ffcdd2; color:#b42318; padding:1px 5px; border-radius:3px; font-size:9px; font-weight:600;">✕ ERROR</span> ';
+      rowBg = ' style="background:#fff5f5;"';
+    }
+    html += '<tr' + rowBg + '>';
+    html += '<td style="padding:3px;"><input type="checkbox" class="carga-cb-' + safeId + '" data-id="' + c.id + '" onchange="updateCargasSelectionProyecto(\'' + safeId + '\')"></td>';
+    html += '<td style="padding:3px;">' + estadoBadge + (c.archivo || '-') + '</td>';
+    html += '<td style="padding:3px;">' + (c.plano_code || '-') + '</td>';
+    html += '<td style="padding:3px; text-align:right;">' + c.barras_count + '</td>';
+    html += '<td style="padding:3px; text-align:right;">' + Math.round(c.kilos || 0).toLocaleString() + ' kg</td>';
+    html += '<td style="padding:3px;">' + (c.version_archivo || '-') + '</td>';
+    html += '<td style="padding:3px; color:#888;">' + (c.usuario || '-') + '</td>';
+    html += '<td style="padding:3px; color:#888;">' + fecha + '</td>';
+    html += '</tr>';
+  });
+  html += '</tbody></table></div>';
+  html += '<div class="muted" style="font-size:10px; margin-top:4px;">' + data.cargas.length + ' carga(s) en total</div>';
+  container.innerHTML = html;
+}
+
+async function eliminarCargasSeleccionadasModal(idProyecto) {
+  var safeId = 'odm_' + idProyecto.replace(/[^a-zA-Z0-9_-]/g, '_');
+  var checkboxes = document.querySelectorAll('.carga-cb-' + safeId + ':checked');
+  if (checkboxes.length === 0) return;
+  var ids = Array.from(checkboxes).map(function(cb) { return parseInt(cb.dataset.id); });
+  if (!confirm('¿Eliminar ' + ids.length + ' carga(s) seleccionada(s)?\n\nEsta acción no se puede deshacer.')) return;
+  var res = await apiPost('/cargas/bulk-delete', { ids: ids });
+  if (res && res.ok) {
+    showToast('Eliminadas ' + res.cargas_eliminadas + ' carga(s) con ' + res.barras_eliminadas + ' barras', 'success');
+    closeObraDetailModal();
+    await loadProyectos();
+    await loadInicio();
+    await loadMiActividad();
+  } else {
+    showToast('Error: ' + (res?.detail || 'desconocido'), 'error');
+  }
 }
 
 // ========================= ADMIN OBRAS =========================
