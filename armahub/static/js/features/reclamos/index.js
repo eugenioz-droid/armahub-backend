@@ -1450,8 +1450,8 @@ async function loadReclamos() {
     '<th style="padding:5px 6px;">Tipo</th>' +
     '<th style="padding:5px 6px;">Proyecto</th>' +
     '<th style="padding:5px 6px;">Detectado</th>' +
-    '<th style="padding:5px 6px;">Responsable</th>' +
-    '<th style="padding:5px 6px;">Cubicador</th>' +
+    '<th style="padding:5px 6px;">Cub. Resp.</th>' +
+    '<th style="padding:5px 6px;">USC Resp.</th>' +
     '<th style="padding:5px 6px;">Estado</th>' +
     '<th style="padding:5px 6px;">Aplica</th>' +
     '<th style="padding:5px 6px;">Causa</th>' +
@@ -1476,7 +1476,7 @@ async function loadReclamos() {
         '<td style="padding:4px 6px; font-size:11px;">' + (r.nombre_proyecto || '-') + '</td>' +
         '<td style="padding:4px 6px; font-size:11px;">' + (r.detectado_por || '-') + '</td>' +
         '<td style="padding:4px 6px; font-size:11px;">' + (r.responsable || '-') + '</td>' +
-        '<td style="padding:4px 6px; font-size:11px;">' + (r.cubicador_asignado ? r.cubicador_asignado.split('@')[0] : '-') + '</td>' +
+        '<td style="padding:4px 6px; font-size:11px;">' + (r.asignado_a ? r.asignado_a.split('@')[0] : '-') + '</td>' +
         '<td style="padding:4px 6px;"><span style="background:' + eColor + '; color:#fff; padding:1px 6px; border-radius:3px; font-size:10px;">' + eLabel + '</span></td>' +
         '<td style="padding:4px 6px;"><span style="color:' + aplColor + '; font-weight:600; font-size:10px;">' + aplLabel + '</span></td>' +
         '<td style="padding:4px 6px; font-size:11px;" title="' + (r.sub_causa || '') + '">' + causaText + '</td>' +
@@ -1755,10 +1755,10 @@ function _renderReclamoHeader(data) {
   if (data.nombre_proyecto) metaParts.push('Proyecto: ' + data.nombre_proyecto);
   metaParts.push('Creado por: ' + data.creado_por);
   if (data.fecha_creacion) metaParts.push(formatDateTime(data.fecha_creacion, ''));
-  if (data.responsable) metaParts.push('Responsable: ' + data.responsable);
+  if (data.responsable) metaParts.push('Cub. Responsable: ' + data.responsable);
   if (data.detectado_por) metaParts.push('Detectado por: ' + data.detectado_por);
-  if (data.asignado_a) metaParts.push('Subido por: ' + data.asignado_a);
-  if (data.cubicador_asignado) metaParts.push('Cubicador: ' + data.cubicador_asignado);
+  if (data.asignado_a) metaParts.push('USC Responsable: ' + data.asignado_a);
+  if (data.cubicador_asignado) metaParts.push('Cub. email: ' + data.cubicador_asignado);
   document.getElementById('recDetailMeta').textContent = metaParts.join(' · ');
 
   var estadoDisplay = document.getElementById('recDetailEstadoDisplay');
@@ -2794,9 +2794,9 @@ document.addEventListener('keydown', function(e) {
     await Promise.resolve(loadRecLanding());
     _initRecImageDropZonesGuarded();
 
-    // Ocultar card de crear reclamo para cliente
+    // Ocultar card de crear reclamo para cliente, cubicador y externo
     var crearCard = document.getElementById('crearReclamoCard');
-    if (crearCard && currentRole === 'cliente') crearCard.style.display = 'none';
+    if (crearCard && ['cliente','cubicador','externo'].includes(currentRole)) crearCard.style.display = 'none';
   }
 
   // --- Drop zones initializer with dedup guard ---

@@ -179,7 +179,7 @@ Objetivo: consolidar contratos y reducir drift.
 	- [ ] PC.6.9 Tabla 3d: Reclamos
 	- [ ] PC.6.10 Tabla 3e: Pedidos, calculistas, constructoras
 - [ ] PC.7 Campo "USC responsable" en formulario de registro de reclamos — desplegable con usuarios USC; bloqueado para USC (auto-asigna), desbloqueado para admin/admin2. Revisar tablas 3d de ROLES_Y_PERMISOS.md.
-- [ ] PC.8 Migrar formularios de reclamos (registro, análisis, detalle) a modales — eliminar scroll, mejorar UX. Evaluar reutilizar FormRenderer y modals.js existentes.
+- [x] PC.8 Migrar formularios de reclamos (registro, análisis, detalle) a modales — eliminar scroll, mejorar UX. Evaluar reutilizar FormRenderer y modals.js existentes.
 	- [x] PC.8.1 CSS modal overlay (backdrop + `.rec-modal-open` + animación + responsive breakpoints)
 	- [x] PC.8.2 JS helpers `openReclamoModal()` / `closeReclamoModal()` con Escape y backdrop click
 	- [x] PC.8.3 Detalle de reclamo se abre como modal (5 secciones + timeline dentro)
@@ -188,6 +188,7 @@ Objetivo: consolidar contratos y reducir drift.
 	- [x] PC.8.6 Validar errores, permisos y flujo de cierre/eliminación
 - [ ] PC.9 Revisar administración de proyectos/clientes/constructoras/calculistas — definir flujo correcto de gestión de entidades, permisos granulares por rol, y relación entre ellas. Actualizar tabla 3e de ROLES_Y_PERMISOS.md.
 - [ ] PC.10 Rediseñar flujo de carga de datos (importación Excel) — actualmente el sistema asume la obra destino y la crea automáticamente. Cambiar a: crear obra primero, luego el cubicador elige dónde cargar. Agregar warning por coincidencia de nombre para prevenir errores de carga.
+- [ ] PC.11 Simplificar correlativos de reclamos — separar año del correlativo (campo año independiente) para permitir ordenamiento por N° correlativo priorizando año. Necesario para carga retroactiva de reclamos de años anteriores.
 
 ---
 

@@ -124,7 +124,9 @@ Documento de referencia para visualizar qué ve y qué puede hacer cada rol.
 | Acción                              | admin      | admin2     | cubicador    | usc            | externo      | cliente |
 | ----------------------------------- |:----------:|:----------:|:------------:|:--------------:|:------------:|:-------:|
 | Ver listado reclamos                | ✅ todo    | ✅ todo    | ✅ todo      | ✅ propios     | ✅ propios   |    —    |
-| Crear reclamo                       |     ✅     |     ✅     |      ✅      | ✅ auto-asigna |      ✅      |    —    |
+| Crear reclamo                       |     ✅     |     ✅     |      —       | ✅ auto-asigna |      —       |    —    |
+| Asignar USC Responsable             | ✅ libre   | ✅ libre   |      —       | ✅ auto (bloq) |      —       |    —    |
+| Asignar Cubicador Responsable       | ✅ libre   | ✅ libre   |      —       |  ✅ libre      |      —       |    —    |
 | Editar registro (form básico)       |     ✅     |     ✅     |      —       | ✅ propios     |      —       |    —    |
 | Editar análisis (form cubicador)    |     ✅     |     ✅     | ✅ propios   |       —        | ✅ propios   |    —    |
 | Eliminar reclamo                    |     ✅     |     ✅     |      —       | ✅ propios     |      —       |    —    |
@@ -134,10 +136,13 @@ Documento de referencia para visualizar qué ve y qué puede hacer cada rol.
 | Subir imágenes análisis             |     ✅     |     ✅     |      ✅      |       —        |      ✅      |    —    |
 | Presentar reclamo                   |     ✅     |     ✅     | ✅ propios   |       —        | ✅ propios   |    —    |
 
-> "Registro" = formulario básico (descripción, responsable, prioridad, id_calidad, observaciones, proyecto, cubicador_asignado).
+> "Registro" = formulario básico (descripción, USC responsable, cubicador responsable, prioridad, id_calidad, observaciones, proyecto).
 > "Análisis" = formulario cubicador (categoría Ishikawa, sub-causa, respuesta, área aplica, fecha análisis, kilos mal fabricados).
 > "propios" para cubicador/externo = reclamos donde es `cubicador_asignado` o `respuesta_por`.
 > "propios" para USC = reclamos donde es `creado_por` o `asignado_a`.
+> "USC Responsable" = campo `asignado_a` — USC que levanta el reclamo. USC se auto-asigna (bloqueado); admin/admin2 pueden elegir cualquier usuario USC.
+> "Cubicador Responsable" = campo `cubicador_asignado` — cubicador que responde el análisis causa raíz. Asignable por admin/admin2/usc.
+> Cubicador y externo no pueden crear reclamos; solo pueden completar el análisis causa raíz de reclamos asignados.
 > Historial de modificaciones = timeline de comentarios/cambios de estado en el detalle de cada reclamo (automático al modificar, manual vía formulario).
 > Cliente no tiene acceso al módulo Reclamos.
 

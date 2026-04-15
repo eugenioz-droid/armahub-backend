@@ -355,8 +355,8 @@ def crear_reclamo(body: ReclamoCreate, user=Depends(get_current_user)):
     role = user.get("role", "usc")
     now = datetime.now(timezone.utc).isoformat()
 
-    # Solo admin, admin2, usc, cubicador, externo pueden crear reclamos
-    if role == "cliente":
+    # Solo admin, admin2, usc pueden crear reclamos
+    if role not in ("admin", "admin2", "usc"):
         raise HTTPException(status_code=403, detail="No tiene permiso para crear reclamos")
 
     if body.prioridad and body.prioridad not in PRIORIDADES:
