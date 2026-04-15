@@ -331,7 +331,7 @@ async function openObraDetailModal(idProyecto) {
 
   // Render matrix
   if (matrizData && matrizData.items && matrizData.items.length > 0) {
-    buildObraDetailMatriz(matrizData.items, idProyecto);
+    await buildObraDetailMatriz(matrizData.items, idProyecto);
   } else {
     document.getElementById('obraDetailMatriz').innerHTML = '<div class="muted">Sin datos para generar matriz</div>';
   }
@@ -408,18 +408,23 @@ function renderObraDetailSidebar(p, authData) {
   document.getElementById('obraDetailSidebar').innerHTML = html;
 }
 
-function buildObraDetailMatriz(items, idProyecto) {
+async function buildObraDetailMatriz(items, idProyecto) {
   var container = document.getElementById('obraDetailMatriz');
+
+  // Fetch export history for state colors
+  var exportHistory = {};
+  try {
+    var histData = await apiGet('/proyectos/' + encodeURIComponent(idProyecto) + '/export-history');
+    if (histData && histData.history) exportHistory = histData.history;
+  } catch(e) { /* ignore — just no colors */ }
 
   // Build lookup
   var lookup = {};
-  var maxKilos = 0;
   items.forEach(function(i) {
     var s = (i.sector || '?').toUpperCase().trim();
     var p = (i.piso || '?').trim();
     var c = (i.ciclo || '?').trim();
     lookup[s + '|' + p + '|' + c] = { barras: i.barras, kilos: i.kilos };
-    if (i.kilos > maxKilos) maxKilos = i.kilos;
   });
 
   var pisosSet = new Set(), ciclosSet = new Set(), sectoresSet = new Set();
@@ -502,19 +507,40 @@ function buildObraDetailMatriz(items, idProyecto) {
       }
       ciclos.forEach(function(ciclo) {
         var lookupKey = tipo + '|' + piso + '|' + ciclo;
+        var exportKey = tipo + '_' + piso + '_' + ciclo;
         var d = lookup[lookupKey];
         if (d) {
-          var ratio = maxKilos > 0 ? Math.min(d.kilos / maxKilos, 1) : 0;
-          var g = Math.round(232 - ratio * (232 - 180));
-          var r = Math.round(248 - ratio * (248 - 200));
-          var cellBg = ratio > 0 ? 'rgb(' + r + ',' + g + ',200)' : '#fff';
-          var textColor = ratio > 0.7 ? '#1b5e20' : '#1a1a1a';
-          html += '<td style="border:1px solid #ccc; padding:2px 4px; background:' + cellBg + '; text-align:center; cursor:pointer; min-width:80px; white-space:nowrap;" ';
+          // Export state colors (same as export matrix)
+          var hist = exportHistory[exportKey];
+          var isDone = !!hist;
+          var isModified = false;
+          if (isDone && hist.ultima_modificacion && hist.ultima_fecha) {
+            isModified = hist.ultima_modificacion > hist.ultima_fecha;
+          }
+          var cellBg = '#fff';
+          if (isDone && isModified) {
+            cellBg = '#ffcdd2'; // rosado — modified after export
+          } else if (isDone) {
+            cellBg = '#e8f5e9'; // verde — exported, unchanged
+          }
+          var doneTitle = '';
+          if (isDone) {
+            doneTitle = ' | Exportado ' + hist.veces + 'x, último: ' + (hist.ultima_fecha || '').substring(0, 10);
+            if (isModified) doneTitle += ' | ⚠️ MODIFICADO';
+          }
+          html += '<td style="border:1px solid #ccc; padding:2px 4px; background:' + cellBg + '; text-align:center; cursor:pointer; position:relative; min-width:80px; white-space:nowrap;" ';
           html += 'onclick="closeObraDetailModal(); goToBarManager(\'' + idProyecto.replace(/'/g, "\\'") + '\', \'' + tipo.replace(/'/g, "\\'") + '\', \'' + (piso || '').replace(/'/g, "\\'") + '\', \'' + (ciclo || '').replace(/'/g, "\\'") + '\')" ';
-          html += 'title="' + tipo + ' ' + piso + ' ' + ciclo + ': ' + d.barras + ' barras, ' + Math.round(d.kilos).toLocaleString() + ' kg — click para ver barras">';
+          html += 'title="' + tipo + ' ' + piso + ' ' + ciclo + ': ' + d.barras + ' barras, ' + Math.round(d.kilos).toLocaleString() + ' kg' + doneTitle + ' — click para ver barras">';
+          if (isDone) {
+            if (isModified) {
+              html += '<span style="position:absolute; top:0px; right:2px; font-size:9px; color:#c62828;" title="Modificado después de exportar">&#9888;</span>';
+            } else {
+              html += '<span style="position:absolute; top:0px; right:2px; font-size:9px; color:#558B2F;" title="Exportado ' + hist.veces + ' vez(es)">&#10004;</span>';
+            }
+          }
           html += '<div style="display:flex; align-items:baseline; justify-content:center; gap:4px;">';
           html += '<span style="font-weight:600; font-size:9px; color:#666;">' + tipo + '</span>';
-          html += '<span style="font-size:10px; font-weight:bold; color:' + textColor + ';">' + Math.round(d.kilos).toLocaleString() + 'kg</span>';
+          html += '<span style="font-size:10px; font-weight:bold; color:#1a1a1a;">' + Math.round(d.kilos).toLocaleString() + 'kg</span>';
           html += '<span style="font-size:9px; color:#888;">' + d.barras + 'un</span>';
           html += '</div>';
           html += '</td>';
@@ -527,6 +553,14 @@ function buildObraDetailMatriz(items, idProyecto) {
   });
 
   html += '</tbody></table>';
+
+  // Legend
+  html += '<div style="margin-top:6px; display:flex; gap:10px; align-items:center; font-size:10px; flex-wrap:wrap;">';
+  html += '<span><span style="display:inline-block; width:12px; height:10px; background:#e8f5e9; border:1px solid #8BC34A; vertical-align:middle;"></span> <span style="color:#558B2F;">&#10004;</span> Exportado</span>';
+  html += '<span><span style="display:inline-block; width:12px; height:10px; background:#ffcdd2; border:1px solid #e57373; vertical-align:middle;"></span> <span style="color:#c62828;">&#9888;</span> Modificado</span>';
+  html += '<span><span style="display:inline-block; width:12px; height:10px; background:#fff; border:1px solid #ccc; vertical-align:middle;"></span> Pendiente</span>';
+  html += '</div>';
+
   container.innerHTML = html;
 }
 
