@@ -632,6 +632,14 @@ MIGRATIONS = [
         "DO $$ BEGIN ALTER TABLE reclamos ADD COLUMN numero_calidad INTEGER; EXCEPTION WHEN duplicate_column THEN NULL; END $$;",
         "CREATE INDEX IF NOT EXISTS idx_reclamos_anio_numero ON reclamos(anio_calidad DESC, numero_calidad DESC);",
     ]),
+
+    (45, "reclamos: backfill anio_calidad/numero_calidad desde id_calidad", [
+        """UPDATE reclamos
+           SET anio_calidad = CAST(split_part(id_calidad, '-', 1) AS INTEGER),
+               numero_calidad = CAST(split_part(id_calidad, '-', 2) AS INTEGER)
+           WHERE id_calidad ~ '^[0-9]{4}-[0-9]+$'
+             AND anio_calidad IS NULL AND numero_calidad IS NULL;""",
+    ]),
 ]
 
 
