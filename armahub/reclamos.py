@@ -179,6 +179,8 @@ class ReclamoCreate(BaseModel):
     detectado_por: Optional[str] = None
     fecha_deteccion: Optional[str] = None
     id_calidad: Optional[str] = None
+    anio_calidad: Optional[int] = None
+    numero_calidad: Optional[int] = None
     asignado_a: Optional[str] = None
     cubicador_asignado: Optional[str] = None
 
@@ -206,6 +208,8 @@ class ReclamoUpdate(BaseModel):
     resolucion: Optional[str] = None
     observaciones: Optional[str] = None
     id_calidad: Optional[str] = None
+    anio_calidad: Optional[int] = None
+    numero_calidad: Optional[int] = None
     respuesta_texto: Optional[str] = None
     validacion_resultado: Optional[str] = None
     validacion_observaciones: Optional[str] = None
@@ -294,9 +298,9 @@ def listar_reclamos(
                 where += " AND r.cubicador_asignado = %s"
                 params.append(responsable)
             if busqueda:
-                where += " AND (r.titulo ILIKE %s OR r.descripcion ILIKE %s OR r.correlativo ILIKE %s OR r.id_calidad ILIKE %s)"
+                where += " AND (r.titulo ILIKE %s OR r.descripcion ILIKE %s OR r.correlativo ILIKE %s OR r.id_calidad ILIKE %s OR CAST(r.numero_calidad AS TEXT) ILIKE %s)"
                 like = f"%{busqueda}%"
-                params.extend([like, like, like, like])
+                params.extend([like, like, like, like, like])
 
             cur.execute(f"""
                   SELECT r.id, r.id_proyecto, r.titulo, r.descripcion, r.estado,
@@ -307,7 +311,8 @@ def listar_reclamos(
                       r.aplica, r.sub_causa, r.cod_causa,
                        r.detectado_por, r.fecha_deteccion,
                        r.correlativo, r.id_calidad, r.tipo_reclamo, r.asignado_a,
-                       r.cubicador_asignado, r.respuesta_por
+                       r.cubicador_asignado, r.respuesta_por,
+                       r.anio_calidad, r.numero_calidad
                 FROM reclamos r
                 LEFT JOIN proyectos p ON r.id_proyecto = p.id_proyecto
                 {where}
@@ -326,6 +331,8 @@ def listar_reclamos(
                         WHEN 'media' THEN 3
                         WHEN 'baja' THEN 4
                     END,
+                    r.anio_calidad DESC NULLS LAST,
+                    r.numero_calidad DESC NULLS LAST,
                     r.id DESC
             """, params)
             rows = cur.fetchall()
@@ -344,6 +351,7 @@ def listar_reclamos(
                 "correlativo": r.get("correlativo"), "id_calidad": r.get("id_calidad"),
                 "tipo_reclamo": r.get("tipo_reclamo"), "asignado_a": r.get("asignado_a"),
                 "cubicador_asignado": r.get("cubicador_asignado"), "respuesta_por": r.get("respuesta_por"),
+                "anio_calidad": r.get("anio_calidad"), "numero_calidad": r.get("numero_calidad"),
             }
             for r in rows
         ]
@@ -399,8 +407,8 @@ def crear_reclamo(body: ReclamoCreate, user=Depends(get_current_user)):
                     categoria_ishikawa, sub_causa, cod_causa, responsable,
                     detectado_por, fecha_deteccion, analista,
                     creado_por, fecha_creacion, correlativo, id_calidad, asignado_a,
-                    cubicador_asignado)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    cubicador_asignado, anio_calidad, numero_calidad)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING id
             """, (body.id_proyecto, body.titulo, body.descripcion,
                   body.prioridad or "alta", body.tipo_reclamo or "error",
@@ -408,7 +416,7 @@ def crear_reclamo(body: ReclamoCreate, user=Depends(get_current_user)):
                   body.sub_causa, body.cod_causa, body.responsable,
                   body.detectado_por, body.fecha_deteccion, email,
                   email, now, correlativo, body.id_calidad, asignado_a,
-                  body.cubicador_asignado))
+                  body.cubicador_asignado, body.anio_calidad, body.numero_calidad))
             reclamo_id = cur.fetchone()[0]
 
             # Auto-create first seguimiento
@@ -434,6 +442,19 @@ def crear_reclamo(body: ReclamoCreate, user=Depends(get_current_user)):
         pass  # No bloquear creación por error en notificaciones
 
     return {"ok": True, "id": reclamo_id, "correlativo": correlativo}
+
+
+@router.get("/reclamos/siguiente-numero-calidad")
+def siguiente_numero_calidad(anio: int, user=Depends(get_current_user)):
+    """Sugerir siguiente numero_calidad para un año dado."""
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT MAX(numero_calidad) FROM reclamos WHERE anio_calidad = %s",
+                (anio,)
+            )
+            max_num = cur.fetchone()[0]
+    return {"anio": anio, "siguiente": (max_num or 0) + 1}
 
 
 @router.get("/reclamos/mi-resumen")
@@ -987,6 +1008,8 @@ def get_reclamo_optimizado(
                     "observaciones": row.get("observaciones"),
                     "correlativo": row.get("correlativo"),
                     "id_calidad": row.get("id_calidad"),
+                    "anio_calidad": row.get("anio_calidad"),
+                    "numero_calidad": row.get("numero_calidad"),
                     "tipo_reclamo": row.get("tipo_reclamo"),
                     "respuesta_texto": row.get("respuesta_texto"),
                     "respuesta_fecha": _as_text(row.get("respuesta_fecha")),
@@ -1187,7 +1210,7 @@ def actualizar_reclamo(reclamo_id: int, body: ReclamoUpdate, user=Depends(get_cu
                 "validacion_observaciones", "kilos_mal_fabricados", "tiempo_respuesta",
                 "tiempo_respuesta_unidad", "tiempo_respuesta_actualizado_por",
                 "tiempo_respuesta_fecha_actualizacion", "asignado_a",
-                "cubicador_asignado",
+                "cubicador_asignado", "anio_calidad", "numero_calidad",
             ]
             # Fields where empty string should be stored as NULL
             nullable_fields = {"id_proyecto", "id_calidad", "sub_causa", "cod_causa", "responsable",
@@ -1206,6 +1229,9 @@ def actualizar_reclamo(reclamo_id: int, body: ReclamoUpdate, user=Depends(get_cu
                 if val is not None:
                     if is_rejection and field in skip_on_rejection:
                         continue  # PA.5: these will be set to NULL below
+                    # anio_calidad solo editable por admin/admin2
+                    if field == "anio_calidad" and role not in ("admin", "admin2"):
+                        continue
                     sets.append(f"{field} = %s")
                     params.append(val if (val != "" or field not in nullable_fields) else None)
 

@@ -65,9 +65,13 @@
           <div class="col" style="min-width:100px;">
             <button type="button" class="secondary" style="font-size:10px; padding:4px 10px; white-space:nowrap; margin-top:16px;" onclick="toggleNuevoProyectoRec()">+ Crear obra</button>
           </div>
-          <div class="col" style="max-width:180px;">
-            <label style="font-size:11px; color:#666;">ID Calidad (opcional)</label>
-            <input type="text" id="recIdCalidad" placeholder="Ej: NC-2026-014" style="width:100%; font-size:12px;" />
+          <div class="col" style="max-width:100px;">
+            <label style="font-size:11px; color:#666;">Año calidad</label>
+            <input type="number" id="recAnioCalidad" style="width:100%; font-size:12px;" />
+          </div>
+          <div class="col" style="max-width:100px;">
+            <label style="font-size:11px; color:#666;">N° calidad</label>
+            <input type="number" id="recNumeroCalidad" placeholder="Sugerido" style="width:100%; font-size:12px;" />
           </div>
         </div>
         <!-- Inline crear proyecto desde reclamo -->
@@ -253,8 +257,12 @@
         </div>
         <div class="row" style="gap:6px; align-items:center; flex-wrap:wrap;">
           <div style="display:flex; align-items:center; gap:4px;">
-            <label style="font-size:10px; color:#666; white-space:nowrap;">ID Calidad:</label>
-            <input type="text" id="recDetailIdCalidad" placeholder="NC-2026-..." style="font-size:11px; width:130px; padding:2px 6px;" onchange="guardarIdCalidad()" />
+            <label style="font-size:10px; color:#666; white-space:nowrap;">Año:</label>
+            <input type="number" id="recDetailAnioCalidad" style="font-size:11px; width:65px; padding:2px 4px;" onchange="guardarAnioNumeroCalidad()" />
+          </div>
+          <div style="display:flex; align-items:center; gap:4px;">
+            <label style="font-size:10px; color:#666; white-space:nowrap;">N°:</label>
+            <input type="number" id="recDetailNumeroCalidad" style="font-size:11px; width:55px; padding:2px 4px;" onchange="guardarAnioNumeroCalidad()" />
           </div>
           <div style="display:flex; align-items:center; gap:4px;">
             <label style="font-size:10px; color:#666; white-space:nowrap;">Obra:</label>
@@ -292,9 +300,13 @@
               <label style="font-size:11px; color:#666;">Fecha detección</label>
               <input type="date" id="recEditFechaDeteccion" style="width:100%; font-size:12px;" />
             </div>
-            <div class="col" style="max-width:140px;">
-              <label style="font-size:11px; color:#666;">Correlativo calidad</label>
-              <input type="text" id="recEditIdCalidad" placeholder="Ej: NC-001" style="width:100%; font-size:12px;" />
+            <div class="col" style="max-width:80px;">
+              <label style="font-size:11px; color:#666;">Año calidad</label>
+              <input type="number" id="recEditAnioCalidad" style="width:100%; font-size:12px;" />
+            </div>
+            <div class="col" style="max-width:80px;">
+              <label style="font-size:11px; color:#666;">N° calidad</label>
+              <input type="number" id="recEditNumeroCalidad" style="width:100%; font-size:12px;" />
             </div>
           </div>
           <div class="row" style="gap:8px; flex-wrap:wrap; align-items:flex-end; margin-top:6px;">
@@ -654,7 +666,7 @@
                   <div style="font-size:12px;">
                     <div><strong>Responsable:</strong> <span id="presResponsable">—</span></div>
                     <div style="margin-top:2px;"><strong>Prioridad:</strong> <span id="presPrioridad">—</span></div>
-                    <div style="margin-top:2px;"><strong>ID Calidad:</strong> <span id="presIdCalidad">—</span></div>
+                    <div style="margin-top:2px;"><strong>Correlativo calidad:</strong> <span id="presIdCalidad">—</span></div>
                     <div style="margin-top:2px;"><strong>Observaciones:</strong></div>
                     <div id="presObservaciones" style="margin-top:2px; padding:6px; background:#fff; border-radius:4px; white-space:pre-wrap; font-size:11px; max-height:80px; overflow-y:auto;">—</div>
                   </div>

@@ -626,6 +626,12 @@ MIGRATIONS = [
         "INSERT INTO notificacion_config (tipo_evento, rol, activo) VALUES ('cambio_estado', 'admin', TRUE) ON CONFLICT DO NOTHING",
         "INSERT INTO notificacion_config (tipo_evento, rol, activo) VALUES ('cambio_estado', 'admin2', TRUE) ON CONFLICT DO NOTHING",
     ]),
+
+    (44, "reclamos: separar id_calidad en anio_calidad + numero_calidad", [
+        "DO $$ BEGIN ALTER TABLE reclamos ADD COLUMN anio_calidad INTEGER; EXCEPTION WHEN duplicate_column THEN NULL; END $$;",
+        "DO $$ BEGIN ALTER TABLE reclamos ADD COLUMN numero_calidad INTEGER; EXCEPTION WHEN duplicate_column THEN NULL; END $$;",
+        "CREATE INDEX IF NOT EXISTS idx_reclamos_anio_numero ON reclamos(anio_calidad DESC, numero_calidad DESC);",
+    ]),
 ]
 
 

@@ -45,6 +45,24 @@ function _normalizeReclamoDateInputValue(value) {
   return formatDateInput(value);
 }
 
+function _formatCorrelativoCalidad(r) {
+  if (r.anio_calidad && r.numero_calidad) return r.anio_calidad + '-' + String(r.numero_calidad).padStart(3, '0');
+  if (r.numero_calidad) return String(r.numero_calidad).padStart(3, '0');
+  return r.id_calidad || '';
+}
+
+async function _sugerirNumeroCalidad(anio, targetId) {
+  if (!anio) return;
+  try {
+    var res = await fetch(apiUrl('/reclamos/siguiente-numero-calidad?anio=' + anio), { headers: authHeaders() });
+    if (res.ok) {
+      var data = await res.json();
+      var field = document.getElementById(targetId);
+      if (field && !field.value) field.value = data.siguiente;
+    }
+  } catch(e) {}
+}
+
 function _buildReclamoCausaDisplay(detail) {
   var causaDisplay = '';
   if (detail.cod_causa && detail.sub_causa) {
@@ -235,7 +253,7 @@ function _renderPresentacionRegistro(detail) {
   document.getElementById('presDescripcion').textContent = detail.descripcion || '—';
   document.getElementById('presResponsable').textContent = detail.responsable || '—';
   document.getElementById('presPrioridad').textContent = detail.prioridad || '—';
-  document.getElementById('presIdCalidad').textContent = detail.id_calidad || '—';
+  document.getElementById('presIdCalidad').textContent = _formatCorrelativoCalidad(detail) || detail.id_calidad || '—';
   document.getElementById('presObservaciones').textContent = detail.observaciones || '—';
 }
 
@@ -409,7 +427,7 @@ class FormRenderer {
     document.getElementById('presDescripcion').textContent = this._getValue(detail, fields.descripcion) || '—';
     document.getElementById('presResponsable').textContent = this._getValue(detail, fields.responsable) || '—';
     document.getElementById('presPrioridad').textContent = this._getValue(detail, fields.prioridad) || '—';
-    document.getElementById('presIdCalidad').textContent = this._getValue(detail, fields.id_calidad) || '—';
+    document.getElementById('presIdCalidad').textContent = _formatCorrelativoCalidad(detail) || this._getValue(detail, fields.id_calidad) || '—';
     document.getElementById('presObservaciones').textContent = this._getValue(detail, fields.observaciones) || '—';
   }
 
@@ -1467,8 +1485,9 @@ async function loadReclamos() {
       var tipoColor = r.tipo_reclamo === 'faltante' ? '#ff9800' : '#e53935';
       var causaText = r.cod_causa ? '[' + r.cod_causa + ']' : (r.categoria_ishikawa ? _recIshikawaLabels[r.categoria_ishikawa] : '-');
       var fecha = r.fecha_deteccion || (r.fecha_creacion ? r.fecha_creacion.substring(0, 10) : '');
-      var idLabel = r.id_calidad ? r.id_calidad : (r.correlativo || '#' + r.id);
-      var idSub = r.id_calidad && r.correlativo ? '<br><span class="muted" style="font-size:9px;">' + r.correlativo + '</span>' : '';
+      var idLabel = _formatCorrelativoCalidad(r) || (r.correlativo || '#' + r.id);
+      var corrCal = _formatCorrelativoCalidad(r);
+      var idSub = corrCal && r.correlativo ? '<br><span class="muted" style="font-size:9px;">' + r.correlativo + '</span>' : '';
       return '<tr style="border-bottom:1px solid #eee; cursor:pointer;" onclick="verReclamo(' + r.id + ')">' +
         '<td style="padding:4px 6px; font-size:11px; font-weight:600;">' + idLabel + idSub + '</td>' +
         '<td style="padding:4px 6px; font-weight:500;">' + r.titulo + '</td>' +
@@ -1551,6 +1570,15 @@ function toggleNuevoReclamo() {
   }
   form.style.display = '';
   openReclamoModal(card);
+  // Auto-suggest año y numero calidad
+  var anioField = document.getElementById('recAnioCalidad');
+  if (anioField && !anioField.value) {
+    var yr = new Date().getFullYear();
+    anioField.value = yr;
+    // anio_calidad: solo admin puede cambiar
+    anioField.disabled = !(currentRole === 'admin' || currentRole === 'admin2');
+    _sugerirNumeroCalidad(yr, 'recNumeroCalidad');
+  }
 }
 
 async function crearReclamo() {
@@ -1570,6 +1598,8 @@ async function crearReclamo() {
   var detectadoPor = document.getElementById('recDetectadoPor').value;
   var fechaDeteccion = document.getElementById('recFechaDeteccion').value;
   var idCalidad = document.getElementById('recIdCalidad') ? document.getElementById('recIdCalidad').value.trim() : '';
+  var anioCalidad = document.getElementById('recAnioCalidad') ? parseInt(document.getElementById('recAnioCalidad').value) : null;
+  var numeroCalidad = document.getElementById('recNumeroCalidad') ? parseInt(document.getElementById('recNumeroCalidad').value) : null;
   if (proyecto) body.id_proyecto = proyecto;
   if (tipoReclamo) body.tipo_reclamo = tipoReclamo;
   if (respEmail) { body.cubicador_asignado = respEmail; body.responsable = respDisplay || respEmail; }
@@ -1578,6 +1608,8 @@ async function crearReclamo() {
   if (detectadoPor) body.detectado_por = detectadoPor;
   if (fechaDeteccion) body.fecha_deteccion = fechaDeteccion;
   if (idCalidad) body.id_calidad = idCalidad;
+  if (anioCalidad) body.anio_calidad = anioCalidad;
+  if (numeroCalidad) body.numero_calidad = numeroCalidad;
   var res = await fetch(apiUrl('/reclamos'), {
     method: 'POST',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
@@ -1600,7 +1632,7 @@ async function crearReclamo() {
     }
     _recCreateStagedFiles = [];
     msg.textContent = label + ' registrado correctamente'; msg.style.color = '#558B2F';
-    ['recTitulo','recDescripcion','recResponsable','recAsignadoA','recDetectadoPor','recFechaDeteccion','recIdCalidad'].forEach(function(id) {
+    ['recTitulo','recDescripcion','recResponsable','recAsignadoA','recDetectadoPor','recFechaDeteccion','recIdCalidad','recAnioCalidad','recNumeroCalidad'].forEach(function(id) {
       var el = document.getElementById(id); if (el) el.value = '';
     });
     document.getElementById('recProyecto').value = '';
@@ -1732,8 +1764,10 @@ async function crearConstDesdeRecForm() {
 
 function _populateReclamoDetailSelectors(data) {
   document.getElementById('recDetailAplica').value = data.aplica || 'pendiente';
-  var idCalField = document.getElementById('recDetailIdCalidad');
-  if (idCalField) idCalField.value = data.id_calidad || '';
+  var anioField = document.getElementById('recDetailAnioCalidad');
+  if (anioField) anioField.value = data.anio_calidad || '';
+  var numField = document.getElementById('recDetailNumeroCalidad');
+  if (numField) numField.value = data.numero_calidad || '';
 
   var srcSel = document.getElementById('recProyecto');
   var detSel = document.getElementById('recDetailProyecto');
@@ -1747,11 +1781,12 @@ function _populateReclamoDetailSelectors(data) {
 }
 
 function _renderReclamoHeader(data) {
-  var titlePrefix = data.id_calidad ? data.id_calidad + ' — ' : (data.correlativo ? data.correlativo + ' — ' : '#' + data.id + ' — ');
+  var corrCal = _formatCorrelativoCalidad(data);
+  var titlePrefix = corrCal ? corrCal + ' — ' : (data.correlativo ? data.correlativo + ' — ' : '#' + data.id + ' — ');
   document.getElementById('recDetailTitle').textContent = titlePrefix + data.titulo;
 
   var metaParts = [];
-  if (data.correlativo && data.id_calidad) metaParts.push(data.correlativo);
+  if (data.correlativo && corrCal) metaParts.push(data.correlativo);
   if (data.nombre_proyecto) metaParts.push('Proyecto: ' + data.nombre_proyecto);
   metaParts.push('Creado por: ' + data.creado_por);
   if (data.fecha_creacion) metaParts.push(formatDateTime(data.fecha_creacion, ''));
@@ -1906,8 +1941,10 @@ function _applyReclamoDetailPermissions(data) {
   if (btnCerrar) btnCerrar.style.display = estaCerrado ? 'none' : '';
   if (btnReabrir) btnReabrir.style.display = puedeReabrir ? '' : 'none';
 
-  var idCalField = document.getElementById('recDetailIdCalidad');
-  if (idCalField) idCalField.disabled = !puedeEditarSec1;
+  var anioCalField = document.getElementById('recDetailAnioCalidad');
+  if (anioCalField) anioCalField.disabled = !(currentRole === 'admin' || currentRole === 'admin2');
+  var numCalField = document.getElementById('recDetailNumeroCalidad');
+  if (numCalField) numCalField.disabled = !puedeEditarSec1;
 
   var detProySel = document.getElementById('recDetailProyecto');
   if (detProySel) detProySel.disabled = !(currentRole === 'admin' || currentRole === 'admin2');
@@ -2130,7 +2167,10 @@ function toggleEditarReclamo() {
     document.getElementById('recEditTitulo').value = d.titulo || '';
     document.getElementById('recEditTipo').value = d.tipo_reclamo || 'error';
     document.getElementById('recEditFechaDeteccion').value = d.fecha_deteccion || '';
-    document.getElementById('recEditIdCalidad').value = d.id_calidad || '';
+    document.getElementById('recEditAnioCalidad').value = d.anio_calidad || '';
+    document.getElementById('recEditNumeroCalidad').value = d.numero_calidad || '';
+    // anio_calidad: only admin can edit
+    document.getElementById('recEditAnioCalidad').disabled = !(currentRole === 'admin' || currentRole === 'admin2');
     document.getElementById('recEditDetectadoPor').value = d.detectado_por || '';
     document.getElementById('recEditDescripcion').value = d.descripcion || '';
     // Populate proyecto dropdown from recProyecto select (already loaded)
@@ -2184,7 +2224,9 @@ async function guardarEdicionReclamo() {
     detectado_por: document.getElementById('recEditDetectadoPor').value || null,
     responsable: editRespDisplay || editRespEmail,
     cubicador_asignado: editRespEmail || '',
-    id_calidad: document.getElementById('recEditIdCalidad').value.trim() || null,
+    id_calidad: null,
+    anio_calidad: parseInt(document.getElementById('recEditAnioCalidad').value) || null,
+    numero_calidad: parseInt(document.getElementById('recEditNumeroCalidad').value) || null,
     id_proyecto: editProyVal || null,
   };
   var res = await fetch(apiUrl('/reclamos/' + _reclamoActual.id), {
@@ -2207,14 +2249,18 @@ async function guardarEdicionReclamo() {
   }
 }
 
-async function guardarIdCalidad() {
+async function guardarAnioNumeroCalidad() {
   if (!_reclamoActual) return;
-  var val = (document.getElementById('recDetailIdCalidad').value || '').trim();
-  if (val === (_reclamoActual.id_calidad || '')) return;
+  var anio = parseInt(document.getElementById('recDetailAnioCalidad').value) || null;
+  var num = parseInt(document.getElementById('recDetailNumeroCalidad').value) || null;
+  if (anio === (_reclamoActual.anio_calidad || null) && num === (_reclamoActual.numero_calidad || null)) return;
+  var body = {};
+  body.anio_calidad = anio;
+  body.numero_calidad = num;
   var res = await fetch(apiUrl('/reclamos/' + _reclamoActual.id), {
     method: 'PATCH',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
-    body: JSON.stringify({ id_calidad: val })
+    body: JSON.stringify(body)
   });
   if (res.status === 401) { logout(); return; }
   var data = await res.json();
@@ -2835,7 +2881,7 @@ document.addEventListener('keydown', function(e) {
     'reabrirReclamo',
     'toggleEditarReclamo',
     'guardarEdicionReclamo',
-    'guardarIdCalidad',
+    'guardarAnioNumeroCalidad',
     'cambiarProyectoReclamo',
     'cambiarAsignadoAReclamo',
     'loadUsuariosUsc',

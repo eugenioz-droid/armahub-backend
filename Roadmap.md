@@ -208,8 +208,19 @@ Objetivo: consolidar contratos y reducir drift.
 	- [x] PC.10.6 Modal de detalle de obra — reemplazar expandible inline por modal con sidebar (KPIs + metadata + autorizados), matriz constructiva estilo exportación (sin checkboxes, click→BarManager), árbol expandible de estructura, historial de cargas con bulk delete
 	- [ ] PC.10.7 Revisar y mejorar KPIs del tab Inicio — validar métricas, completar indicadores faltantes, ajustar cálculos
 	- [ ] PC.10.8 Revisar TAB Dashboards — validar gráficos, filtros y coherencia de datos
-- [ ] PC.11 Simplificar correlativos de reclamos — separar año del correlativo (campo año independiente) para permitir ordenamiento por N° correlativo priorizando año. Necesario para carga retroactiva de reclamos de años anteriores.
-- [ ] PC.12 Regularizar matriz de roles post-cambios — revisar ROLES_Y_PERMISOS.md para incorporar permisos nuevos (mover cargas, acciones de obra, etc.) y actualizar el tab Roles y Permisos del panel Admin
+- [x] PC.11 Simplificar correlativos de reclamos — separar id_calidad en anio_calidad (int) + numero_calidad (int) para ordenamiento y carga retroactiva
+	- [x] PC.11.1 Migración 44: columnas anio_calidad + numero_calidad en tabla reclamos + índice compuesto
+	- [x] PC.11.2 Backend: modelos ReclamoCreate/ReclamoUpdate con campos nuevos, INSERT actualizado
+	- [x] PC.11.3 Backend: endpoint GET /reclamos/siguiente-numero-calidad?anio=YYYY — sugiere MAX+1 del año
+	- [x] PC.11.4 Backend: listado ordena por anio_calidad DESC, numero_calidad DESC (después de estado/prioridad)
+	- [x] PC.11.5 Backend: detalle incluye anio_calidad + numero_calidad en response
+	- [x] PC.11.6 Backend: PATCH soporta ambos campos, anio_calidad solo editable por admin/admin2
+	- [x] PC.11.7 Frontend: formulario registro con campos Año calidad + N° calidad (auto-suggest al abrir)
+	- [x] PC.11.8 Frontend: detalle header con campos Año + N° (onchange guarda directo)
+	- [x] PC.11.9 Frontend: formulario edición con campos Año calidad + N° calidad
+	- [x] PC.11.10 Frontend: lista y presentaciones muestran formato "YYYY-NNN" concatenado
+	- [x] PC.11.11 Display: _formatCorrelativoCalidad() formatea como "2026-003", fallback a id_calidad legacy
+- [ ] PC.12 Regularizar matriz de roles post-cambios — revisar ROLES_Y_PERMISOS.md para incorporar permisos nuevos (mover cargas, acciones de obra, editar anio_calidad solo admin, etc.) y actualizar el tab Roles y Permisos del panel Admin
 
 ---
 
