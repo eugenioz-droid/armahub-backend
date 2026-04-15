@@ -504,12 +504,17 @@ function buildObraDetailMatriz(items, idProyecto) {
         var lookupKey = tipo + '|' + piso + '|' + ciclo;
         var d = lookup[lookupKey];
         if (d) {
-          html += '<td style="border:1px solid #ccc; padding:2px 4px; background:#fff; text-align:center; cursor:pointer; min-width:80px; white-space:nowrap;" ';
+          var ratio = maxKilos > 0 ? Math.min(d.kilos / maxKilos, 1) : 0;
+          var g = Math.round(232 - ratio * (232 - 180));
+          var r = Math.round(248 - ratio * (248 - 200));
+          var cellBg = ratio > 0 ? 'rgb(' + r + ',' + g + ',200)' : '#fff';
+          var textColor = ratio > 0.7 ? '#1b5e20' : '#1a1a1a';
+          html += '<td style="border:1px solid #ccc; padding:2px 4px; background:' + cellBg + '; text-align:center; cursor:pointer; min-width:80px; white-space:nowrap;" ';
           html += 'onclick="closeObraDetailModal(); goToBarManager(\'' + idProyecto.replace(/'/g, "\\'") + '\', \'' + tipo.replace(/'/g, "\\'") + '\', \'' + (piso || '').replace(/'/g, "\\'") + '\', \'' + (ciclo || '').replace(/'/g, "\\'") + '\')" ';
           html += 'title="' + tipo + ' ' + piso + ' ' + ciclo + ': ' + d.barras + ' barras, ' + Math.round(d.kilos).toLocaleString() + ' kg — click para ver barras">';
           html += '<div style="display:flex; align-items:baseline; justify-content:center; gap:4px;">';
           html += '<span style="font-weight:600; font-size:9px; color:#666;">' + tipo + '</span>';
-          html += '<span style="font-size:10px; font-weight:bold; color:#1a1a1a;">' + Math.round(d.kilos).toLocaleString() + 'kg</span>';
+          html += '<span style="font-size:10px; font-weight:bold; color:' + textColor + ';">' + Math.round(d.kilos).toLocaleString() + 'kg</span>';
           html += '<span style="font-size:9px; color:#888;">' + d.barras + 'un</span>';
           html += '</div>';
           html += '</td>';
@@ -1192,32 +1197,38 @@ async function crearConstDesdeEditObra() {
 }
 
 async function eliminarObra(id, nombre, barrasCount) {
-  // Cubicador: solo puede eliminar obras vacías (sin barras)
-  if (currentRole === 'cubicador' && barrasCount > 0) {
-    alert('No puedes eliminar una obra con ' + barrasCount + ' barras cargadas. Contacta al administrador.');
+  // Solo admin/admin2 pueden eliminar obras con data
+  if (currentRole !== 'admin' && currentRole !== 'admin2' && barrasCount > 0) {
+    showToast('No puedes eliminar una obra con ' + barrasCount + ' barras cargadas. Contacta al administrador.', 'error');
     return;
   }
-  const msg = barrasCount > 0
-    ? 'Se eliminarán ' + barrasCount + ' barras asociadas a "' + nombre + '". Esta acción no se puede deshacer.'
-    : 'Se eliminará la obra "' + nombre + '" (sin barras). Esta acción no se puede deshacer.';
+  var msg;
+  if (barrasCount > 0) {
+    msg = '⚠️ ATENCIÓN: Se eliminarán ' + barrasCount + ' barras asociadas a "' + nombre + '".\n\nEsta acción es IRREVERSIBLE y eliminará toda la data del proyecto.';
+  } else {
+    msg = 'Se eliminará la obra "' + nombre + '" (sin barras). Esta acción no se puede deshacer.';
+  }
   if (!confirm(msg)) return;
-  const confirmText = prompt('Escribe ELIMINAR para confirmar:');
-  if (confirmText !== 'ELIMINAR') { alert('Cancelado'); return; }
-  const res = await fetch(apiUrl('/proyectos/' + encodeURIComponent(id)), {
+  if (barrasCount > 0) {
+    var confirmText = prompt('Esta obra tiene ' + barrasCount + ' barras. Escribe ELIMINAR para confirmar:');
+    if (confirmText !== 'ELIMINAR') { showToast('Eliminación cancelada', 'warning'); return; }
+  }
+  closeObraDetailModal();
+  var res = await fetch(apiUrl('/proyectos/' + encodeURIComponent(id)), {
     method: 'DELETE',
     headers: authHeaders()
   });
   if (res.status === 401) { logout(); return; }
-  const data = await res.json();
+  var data = await res.json();
   if (data.ok) {
-    await setGlobalStatus('Obra eliminada: ' + nombre + ' (' + data.barras_eliminadas + ' barras)', 'ok');
+    showToast('Obra "' + nombre + '" eliminada correctamente' + (data.barras_eliminadas ? ' (' + data.barras_eliminadas + ' barras)' : ''), 'success');
     await loadProyectos();
     await loadFilters();
     await loadInicio();
     await loadDashboard('sector');
     await loadSectores();
   } else {
-    alert('Error: ' + (data.detail || 'desconocido'));
+    showToast('Error: ' + (data.detail || 'desconocido'), 'error');
   }
 }
 
