@@ -35,8 +35,6 @@ async function loadCubicacionModule() {
   }
 
   await loadCargas();
-  await loadDashboard('sector');
-  await loadSectores();
   await loadPedidos();
   await buscar(true);
 }

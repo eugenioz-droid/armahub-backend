@@ -30,7 +30,7 @@
       title: '1b. Acceso a tabs dentro de cada módulo',
       header: 'Módulo / Tab',
       notes: [
-        'El rol cliente dentro de Cubicación solo ve el tab Inicio (los demás se ocultan).',
+        'El rol cliente dentro de Cubicación solo ve los tabs Metrics (los demás se ocultan).',
         'En Reclamos, el tab Dashboards es solo para admin/admin2. Presentación excluye a usc.',
         'Los roles sin acceso al módulo (—) no ven ningún tab.'
       ],
@@ -38,7 +38,7 @@
         {action:'Cubicación / Inicio',      perms:{admin:'✅',admin2:'✅',cubicador:'✅',usc:'—',externo:'—',cliente:'✅'}},
         {action:'Cubicación / Obras',        perms:{admin:'✅',admin2:'✅',cubicador:'✅',usc:'—',externo:'—',cliente:'—'}},
         {action:'Cubicación / Bar Manager',  perms:{admin:'✅',admin2:'✅',cubicador:'✅',usc:'—',externo:'—',cliente:'—'}},
-        {action:'Cubicación / Dashboards',   perms:{admin:'✅',admin2:'✅',cubicador:'✅',usc:'—',externo:'—',cliente:'—'}},
+        {action:'Cubicación / Metrics',     perms:{admin:'✅',admin2:'✅',cubicador:'✅',usc:'—',externo:'—',cliente:'✅'}},
         {action:'Cubicación / Pedidos',      perms:{admin:'✅',admin2:'✅',cubicador:'✅',usc:'—',externo:'—',cliente:'—'}},
         {action:'Cubicación / Exportación',  perms:{admin:'✅',admin2:'✅',cubicador:'✅',usc:'—',externo:'—',cliente:'—'}},
         {action:'Reclamos / Reclamos',       perms:{admin:'✅',admin2:'✅',cubicador:'✅',usc:'✅',externo:'✅',cliente:'—'}},

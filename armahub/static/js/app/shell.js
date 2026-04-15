@@ -7,10 +7,9 @@
   var modulesLoaded = {};
   var registry = window.ArmaHubRegistry;
   var tabLabels = {
-    inicio: 'Inicio',
+    inicio: 'Metrics',
     obras: 'Obras',
     buscar: 'Bar Manager',
-    dashboards: 'Dashboards',
     pedidos: 'Pedidos',
     export: 'Exportacion',
     reclamos: 'Reclamos',

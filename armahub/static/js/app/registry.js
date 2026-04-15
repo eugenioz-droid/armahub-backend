@@ -71,12 +71,12 @@
     id: 'cubicacion',
     title: 'Cubicacion',
     css: 'mod-cubicacion',
-    defaultTab: 'inicio',
+    defaultTab: 'obras',
     allowedRoles: ['admin', 'admin2', 'cubicador', 'cliente'],
     loaderFunction: 'loadCubicacionModule',
     hubCardId: 'hubCardCubicacion',
     hubOrder: 10,
-    hubDescription: 'Metricas, obras, barras, dashboards, pedidos y exportacion.',
+    hubDescription: 'Obras, metricas, barras, pedidos y exportacion.',
     hubAccent: '#4285f4',
     hubIcon: '🏗️'
   });

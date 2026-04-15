@@ -126,13 +126,7 @@
         'cubicacion-exportacion',
         '[ArmaHub] No se pudo cargar cubicacion/exportacion.js'
       ),
-      loadScript(
-        'script[data-armahub-feature="cubicacion-dashboards"]',
-        '/static/js/features/cubicacion/dashboards.js' + suffix,
-        'armahubFeature',
-        'cubicacion-dashboards',
-        '[ArmaHub] No se pudo cargar cubicacion/dashboards.js'
-      ),
+
       loadScript(
         'script[data-armahub-feature="cubicacion-pedidos"]',
         '/static/js/features/cubicacion/pedidos.js' + suffix,

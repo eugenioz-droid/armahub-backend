@@ -71,7 +71,7 @@ document.addEventListener('paste', function(e) {
 
   // Restore tab from hash
   var hash = window.location.hash.substring(1);
-  if (hash === 'dashboards' || hash === 'presentaciones') {
+  if (hash === 'presentaciones') {
     await waitForReclamosFeatureReady();
     if (typeof window.switchRecTab === 'function') {
       window.switchRecTab(hash);
