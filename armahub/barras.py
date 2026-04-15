@@ -771,8 +771,8 @@ def mover_cargas(body: MoverCargasRequest, user=Depends(get_current_user)):
                     skipped += 1
                     continue
 
-                origen = row["id_proyecto"]
-                uploader = row["usuario"]
+                origen = row[1]
+                uploader = row[2]
 
                 # Permisos: poder editar proyecto origen O ser el uploader
                 if not _puede_editar_proyecto(cur, origen, user) and uploader != user.get("email"):
@@ -805,7 +805,7 @@ def mover_cargas(body: MoverCargasRequest, user=Depends(get_current_user)):
         "barras_movidas": total_barras,
         "skipped": skipped,
         "destino": body.destino,
-        "destino_nombre": dest["nombre_proyecto"],
+        "destino_nombre": dest[1],
     }
 
 
