@@ -734,6 +734,81 @@ def bulk_delete_cargas(body: BulkDeleteCargasRequest, user=Depends(get_current_u
         raise HTTPException(status_code=500, detail=f"Error al eliminar cargas: {str(e)}")
 
 
+class MoverCargasRequest(BaseModel):
+    ids: list
+    destino: str
+
+
+@router.post("/cargas/mover")
+def mover_cargas(body: MoverCargasRequest, user=Depends(get_current_user)):
+    """Mover cargas (imports + barras) de un proyecto a otro."""
+    if not body.ids:
+        raise HTTPException(status_code=400, detail="No se proporcionaron IDs de cargas")
+    if not body.destino:
+        raise HTTPException(status_code=400, detail="No se proporcionó proyecto destino")
+    if len(body.ids) > 100:
+        raise HTTPException(status_code=400, detail="No se pueden mover más de 100 cargas a la vez")
+
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            # Validar proyecto destino
+            cur.execute("SELECT id_proyecto, nombre_proyecto FROM proyectos WHERE id_proyecto = %s", (body.destino,))
+            dest = cur.fetchone()
+            if not dest:
+                raise HTTPException(status_code=404, detail="Proyecto destino no encontrado")
+
+            cargas_movidas = 0
+            total_barras = 0
+            skipped = 0
+
+            for carga_id in body.ids:
+                cur.execute(
+                    "SELECT id, id_proyecto, usuario FROM imports WHERE id = %s",
+                    (carga_id,)
+                )
+                row = cur.fetchone()
+                if not row:
+                    skipped += 1
+                    continue
+
+                origen = row["id_proyecto"]
+                uploader = row["usuario"]
+
+                # Permisos: poder editar proyecto origen O ser el uploader
+                if not _puede_editar_proyecto(cur, origen, user) and uploader != user.get("email"):
+                    skipped += 1
+                    continue
+
+                # Ya está en el destino
+                if origen == body.destino:
+                    skipped += 1
+                    continue
+
+                # Mover barras
+                cur.execute(
+                    "UPDATE barras SET id_proyecto = %s WHERE import_id = %s",
+                    (body.destino, carga_id)
+                )
+                total_barras += cur.rowcount
+
+                # Mover import
+                cur.execute(
+                    "UPDATE imports SET id_proyecto = %s WHERE id = %s",
+                    (body.destino, carga_id)
+                )
+                cargas_movidas += 1
+
+    _cache.invalidate("stats:", "landing:")
+    return {
+        "ok": True,
+        "cargas_movidas": cargas_movidas,
+        "barras_movidas": total_barras,
+        "skipped": skipped,
+        "destino": body.destino,
+        "destino_nombre": dest["nombre_proyecto"],
+    }
+
+
 class CambiarSectorRequest(BaseModel):
     id_unicos: list
     nuevo_sector: str
@@ -784,6 +859,30 @@ def eliminar_barra(id_unico: str, user=Depends(get_current_user)):
     raise HTTPException(status_code=403, detail="Función deshabilitada — sistema cerrado")
 
 
+import re as _re
+
+def _piso_order(p: str) -> int:
+    """Orden de pisos: subterráneos (S1,S2..) < P1,P2.. < SM/PM (techumbre) al final."""
+    up = (p or '').upper().strip()
+    if up in ('SM', 'PM', 'SALA DE MAQUINAS'):
+        return 9999
+    m = _re.match(r'^S(\d+)', up)
+    if m:
+        return -int(m.group(1))
+    m = _re.match(r'^P(\d+)', up)
+    if m:
+        return int(m.group(1))
+    m = _re.search(r'(\d+)', up)
+    if m:
+        return int(m.group(1))
+    return 0
+
+def _ciclo_order(c: str) -> int:
+    """Orden de ciclos: numérico por dígito encontrado."""
+    m = _re.search(r'(\d+)', c or '')
+    return int(m.group(1)) if m else 0
+
+
 @router.get("/proyectos/{id_proyecto}/sectores-nav")
 def get_sectores_nav(id_proyecto: str, user=Depends(get_current_user)):
     """Navegador jerárquico: Piso → Ciclo → Sector con stats por nodo."""
@@ -828,10 +927,10 @@ def get_sectores_nav(id_proyecto: str, user=Depends(get_current_user)):
         tree[piso]["ciclos"][ciclo]["sectores"][sector] = leaf
 
     result = []
-    for piso in sorted(tree.keys()):
+    for piso in sorted(tree.keys(), key=_piso_order):
         p = tree[piso]
         ciclos_list = []
-        for ciclo in sorted(p["ciclos"].keys()):
+        for ciclo in sorted(p["ciclos"].keys(), key=_ciclo_order):
             c = p["ciclos"][ciclo]
             sectores_list = [
                 {"sector": s, **c["sectores"][s]}

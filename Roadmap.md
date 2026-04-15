@@ -204,8 +204,8 @@ Objetivo: consolidar contratos y reducir drift.
 	- [x] PC.10.2 Frontend: `importAllFiles()` simplificado — envía `?obra_destino=X`, elimina flujos de missing/new/duplicate project
 	- [x] PC.10.3 Backend: param `obra_destino` en `/import/armadetailer` — resuelve directo, ignora `PROYECTO:` del CSV
 	- [x] PC.10.4 Frontend: auto-seleccionar obra recién creada en el selector
-	- [ ] PC.10.5 Permitir mover cargas entre obras — seleccionar cargas desde detalle de obra y transferirlas a otra obra destino (barras + import)
-	- [ ] PC.10.6 Modal de detalle de obra — reemplazar expandible inline por modal (patrón PC.8), layout configurable con cargas, KPIs, metadata y acciones
+	- [x] PC.10.5 Permitir mover cargas entre obras — seleccionar cargas desde modal detalle de obra, elegir obra destino, `POST /cargas/mover` mueve imports + barras
+	- [x] PC.10.6 Modal de detalle de obra — reemplazar expandible inline por modal con sidebar (KPIs + metadata + autorizados), matriz constructiva estilo exportación (sin checkboxes, click→BarManager), árbol expandible de estructura, historial de cargas con bulk delete
 	- [ ] PC.10.7 Revisar y mejorar KPIs del tab Inicio — validar métricas, completar indicadores faltantes, ajustar cálculos
 	- [ ] PC.10.8 Revisar TAB Dashboards — validar gráficos, filtros y coherencia de datos
 - [ ] PC.11 Simplificar correlativos de reclamos — separar año del correlativo (campo año independiente) para permitir ordenamiento por N° correlativo priorizando año. Necesario para carga retroactiva de reclamos de años anteriores.

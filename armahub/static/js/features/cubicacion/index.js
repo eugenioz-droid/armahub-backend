@@ -44,7 +44,7 @@ async function loadCubicacionModule() {
 // Reusable piso ordering function (building order: SM top, subterráneos bottom)
 function pisoOrder(p) {
   const up = (p || '').toUpperCase().trim();
-  if (up === 'SM' || up === 'SALA DE MAQUINAS') return 9999;
+  if (up === 'SM' || up === 'SALA DE MAQUINAS' || up === 'PM') return 9999;
   const m = up.match(/^S(\d+)/);
   if (m) return -parseInt(m[1]);
   const m2 = up.match(/^P(\d+)/);

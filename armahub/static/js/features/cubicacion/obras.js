@@ -576,10 +576,21 @@ function renderObraDetailCargas(data, idProyecto) {
   if (data.cargas.length === 0) { container.innerHTML = '<span class="muted">Sin cargas registradas</span>'; return; }
   var safeId = 'odm_' + idProyecto.replace(/[^a-zA-Z0-9_-]/g, '_');
   var html = '';
-  html += '<div id="bulk-actions-' + safeId + '" style="display:none; margin-bottom:8px; padding:6px 10px; background:#fff3cd; border-radius:4px; font-size:12px;">';
-  html += '<span id="bulk-count-' + safeId + '">0</span> carga(s) seleccionada(s)';
-  html += '<button style="margin-left:10px; background:#dc3545; color:white; border:none; padding:3px 10px; border-radius:3px; font-size:11px; cursor:pointer;" onclick="eliminarCargasSeleccionadasModal(\'' + idProyecto.replace(/'/g, "\\'") + '\')">🗑️ Eliminar</button>';
-  html += '</div>';
+  html += '<div id="bulk-actions-' + safeId + '" style="display:none; margin-bottom:8px; padding:8px 10px; background:#fff3cd; border-radius:4px; font-size:12px;">';
+  html += '<div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">';
+  html += '<span><strong id="bulk-count-' + safeId + '">0</strong> carga(s) seleccionada(s)</span>';
+  html += '<button style="background:#dc3545; color:white; border:none; padding:3px 10px; border-radius:3px; font-size:11px; cursor:pointer;" onclick="eliminarCargasSeleccionadasModal(\'' + idProyecto.replace(/'/g, "\\'") + '\')">🗑️ Eliminar</button>';
+  html += '<span style="color:#999;">|</span>';
+  html += '<select id="moverDestino-' + safeId + '" style="font-size:11px; padding:2px 6px;">';
+  html += '<option value="">Mover a...</option>';
+  _proyectosData.forEach(function(pr) {
+    if (pr.id_proyecto !== idProyecto) {
+      html += '<option value="' + pr.id_proyecto + '">' + (pr.nombre_proyecto || pr.id_proyecto) + '</option>';
+    }
+  });
+  html += '</select>';
+  html += '<button class="secondary" style="font-size:11px; padding:3px 10px;" onclick="moverCargasSeleccionadasModal(\'' + idProyecto.replace(/'/g, "\\'") + '\', \'' + safeId + '\')">📦 Mover</button>';
+  html += '</div></div>';
   html += '<div style="max-height:250px; overflow-y:auto; border:1px solid #eee; border-radius:4px;">';
   html += '<table style="width:100%; font-size:11px; border-collapse:collapse;">';
   html += '<thead style="position:sticky; top:0; background:#f8f8f8; z-index:1;"><tr>';
@@ -626,6 +637,27 @@ async function eliminarCargasSeleccionadasModal(idProyecto) {
   var res = await apiPost('/cargas/bulk-delete', { ids: ids });
   if (res && res.ok) {
     showToast('Eliminadas ' + res.cargas_eliminadas + ' carga(s) con ' + res.barras_eliminadas + ' barras', 'success');
+    closeObraDetailModal();
+    await loadProyectos();
+    await loadInicio();
+    await loadMiActividad();
+  } else {
+    showToast('Error: ' + (res?.detail || 'desconocido'), 'error');
+  }
+}
+
+async function moverCargasSeleccionadasModal(idProyecto, safeId) {
+  var checkboxes = document.querySelectorAll('.carga-cb-' + safeId + ':checked');
+  if (checkboxes.length === 0) { showToast('Selecciona al menos una carga', 'error'); return; }
+  var destSel = document.getElementById('moverDestino-' + safeId);
+  var destino = destSel ? destSel.value : '';
+  if (!destino) { showToast('Selecciona la obra destino', 'error'); return; }
+  var destName = destSel.options[destSel.selectedIndex].text;
+  var ids = Array.from(checkboxes).map(function(cb) { return parseInt(cb.dataset.id); });
+  if (!confirm('¿Mover ' + ids.length + ' carga(s) a "' + destName + '"?\n\nLas barras asociadas también se moverán.')) return;
+  var res = await apiPost('/cargas/mover', { ids: ids, destino: destino });
+  if (res && res.ok) {
+    showToast('Movidas ' + res.cargas_movidas + ' carga(s) con ' + res.barras_movidas + ' barras a ' + res.destino_nombre, 'success');
     closeObraDetailModal();
     await loadProyectos();
     await loadInicio();
