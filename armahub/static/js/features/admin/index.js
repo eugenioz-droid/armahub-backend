@@ -3,7 +3,7 @@
 
 function switchAdminSubTab(tabId) {
   // Hide all sub-panels
-  var panels = ['adminGeneral', 'adminNotificaciones'];
+  var panels = ['adminGeneral', 'adminNotificaciones', 'adminRolesPermisos'];
   panels.forEach(function(id) {
     var el = document.getElementById(id);
     if (el) el.style.display = (id === tabId) ? '' : 'none';
@@ -22,6 +22,9 @@ function switchAdminSubTab(tabId) {
   // Load data for the tab
   if (tabId === 'adminNotificaciones' && typeof loadNotifConfig === 'function') {
     loadNotifConfig();
+  }
+  if (tabId === 'adminRolesPermisos' && typeof loadRolesPermisos === 'function') {
+    loadRolesPermisos();
   }
 }
 

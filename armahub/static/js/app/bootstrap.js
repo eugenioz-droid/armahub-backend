@@ -163,6 +163,13 @@
         '[ArmaHub] No se pudo cargar admin/proyectos.js'
       ),
       loadScript(
+        'script[data-armahub-feature="admin-roles-permisos"]',
+        '/static/js/features/admin/roles_permisos.js' + suffix,
+        'armahubFeature',
+        'admin-roles-permisos',
+        '[ArmaHub] No se pudo cargar admin/roles_permisos.js'
+      ),
+      loadScript(
         'script[data-armahub-feature="admin-index"]',
         '/static/js/features/admin/index.js' + suffix,
         'armahubFeature',

@@ -178,17 +178,17 @@ Objetivo: consolidar contratos y reducir drift.
 - [ ] PC.3 Nuevas apps no relacionadas a cubicacion dentro del portal
 - [ ] PC.4 Repositorio de archivos e imagenes separado si el modulo de calidad sigue creciendo
 - [ ] PC.5 Solicitudes/pedidos específicos — paquetes de pedido independientes de la cubicación importada, con ubicación, aislables de la data principal. Usuarios y clientes podrán crearlos como solicitudes adicionales.
-- [ ] PC.6 Tab "Roles y Permisos" en módulo Admin — implementar tablas de ROLES_Y_PERMISOS.md como vista interactiva
-	- [ ] PC.6.1 Tabla 1a: Acceso a módulos (calugas del Hub)
-	- [ ] PC.6.2 Tabla 1b: Acceso a tabs dentro de cada módulo
-	- [ ] PC.6.3 Tabla 2a: Landing (Hub principal) — indicadores
-	- [ ] PC.6.4 Tabla 2b: Reclamos — Vistas analíticas
-	- [ ] PC.6.5 Tabla 2c: Cubicación — Vistas
-	- [ ] PC.6.6 Tabla 3a: Autenticación y usuarios
-	- [ ] PC.6.7 Tabla 3b: Admin técnico
-	- [ ] PC.6.8 Tabla 3c: Proyectos y barras (cubicación)
-	- [ ] PC.6.9 Tabla 3d: Reclamos
-	- [ ] PC.6.10 Tabla 3e: Pedidos, calculistas, constructoras
+- [x] PC.6 Tab "Roles y Permisos" en módulo Admin — implementar tablas de ROLES_Y_PERMISOS.md como vista interactiva
+	- [x] PC.6.1 Tabla 1a: Acceso a módulos (calugas del Hub)
+	- [x] PC.6.2 Tabla 1b: Acceso a tabs dentro de cada módulo
+	- [x] PC.6.3 Tabla 2a: Landing (Hub principal) — indicadores
+	- [x] PC.6.4 Tabla 2b: Reclamos — Vistas analíticas
+	- [x] PC.6.5 Tabla 2c: Cubicación — Vistas
+	- [x] PC.6.6 Tabla 3a: Autenticación y usuarios
+	- [x] PC.6.7 Tabla 3b: Admin técnico
+	- [x] PC.6.8 Tabla 3c: Proyectos y barras (cubicación)
+	- [x] PC.6.9 Tabla 3d: Reclamos
+	- [x] PC.6.10 Tabla 3e: Pedidos, calculistas, constructoras
 - [x] PC.7 Campo "USC responsable" en formulario de registro de reclamos — desplegable con usuarios USC; bloqueado para USC (auto-asigna), desbloqueado para admin/admin2. Revisar tablas 3d de ROLES_Y_PERMISOS.md.
 - [x] PC.8 Migrar formularios de reclamos (registro, análisis, detalle) a modales — eliminar scroll, mejorar UX. Evaluar reutilizar FormRenderer y modals.js existentes.
 	- [x] PC.8.1 CSS modal overlay (backdrop + `.rec-modal-open` + animación + responsive breakpoints)

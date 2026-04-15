@@ -5,6 +5,7 @@
     <div id="adminSubTabs" style="display:flex; gap:4px; margin-bottom:16px; border-bottom:2px solid #e0e0e0; padding-bottom:0;">
       <button class="secondary admin-subtab active" data-subtab="adminGeneral" onclick="switchAdminSubTab('adminGeneral')" style="font-size:12px; padding:6px 14px; border-radius:6px 6px 0 0; border-bottom:2px solid #1565C0; margin-bottom:-2px;">⚙️ General</button>
       <button class="secondary admin-subtab" data-subtab="adminNotificaciones" onclick="switchAdminSubTab('adminNotificaciones')" style="font-size:12px; padding:6px 14px; border-radius:6px 6px 0 0; border-bottom:2px solid transparent; margin-bottom:-2px;">🔔 Notificaciones</button>
+      <button class="secondary admin-subtab" data-subtab="adminRolesPermisos" onclick="switchAdminSubTab('adminRolesPermisos')" style="font-size:12px; padding:6px 14px; border-radius:6px 6px 0 0; border-bottom:2px solid transparent; margin-bottom:-2px;">🔐 Roles y Permisos</button>
     </div>
 
     <!-- Sub-panel: General (existing admin content) -->
@@ -207,6 +208,17 @@
         <p class="muted" style="font-size:12px; margin:0 0 14px 0;">Controla qué roles reciben notificaciones para cada tipo de evento en reclamos.</p>
         <div id="notifConfigContainer">
           <div class="muted">Cargando configuración...</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Sub-panel: Roles y Permisos -->
+    <div id="adminRolesPermisos" style="display:none;">
+      <div class="card" style="border-left:4px solid #7b1fa2;">
+        <h3 style="margin:0 0 4px 0; color:#7b1fa2;">🔐 Matriz de Roles y Permisos</h3>
+        <p class="muted" style="font-size:12px; margin:0 0 16px 0;">Referencia de lo que ve y puede hacer cada rol en ArmaHub. Solo lectura.</p>
+        <div id="rolesPermisosContainer">
+          <div class="muted">Cargando...</div>
         </div>
       </div>
     </div>
