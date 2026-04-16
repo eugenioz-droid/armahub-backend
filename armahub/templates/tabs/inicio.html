@@ -1,4 +1,4 @@
-  <!-- TAB 0: INICIO (Landing) -->
+  <!-- TAB: METRICS -->
   <div id="tab-inicio" class="tab-content active">
     <!-- Date range filter -->
     <div class="card" style="padding:10px 16px; margin-bottom:8px;">
@@ -16,96 +16,91 @@
       </div>
     </div>
 
-    <div class="kpi-row" id="kpiRow">
-      <div class="kpi-card">
-        <div class="kpi-label">Proyectos</div>
-        <div class="kpi-value" id="kpiProyectos">—</div>
+    <!-- SECTION 1: Cubicación mensual por cubicador (full width) -->
+    <div class="card" style="margin-bottom:8px;">
+      <div class="row" style="justify-content:space-between; align-items:center; margin-bottom:6px;">
+        <h3 style="margin:0; font-size:14px;">📊 Cubicación mensual por cubicador</h3>
+        <div class="row" style="gap:4px; align-items:center;">
+          <button class="secondary" onclick="cambiarAnioMensual(-1)" style="font-size:11px; padding:2px 8px;">◀</button>
+          <span id="mensualAnioLabel" style="font-size:12px; font-weight:600; min-width:40px; text-align:center;"></span>
+          <button class="secondary" onclick="cambiarAnioMensual(1)" style="font-size:11px; padding:2px 8px;">▶</button>
+        </div>
       </div>
-      <div class="kpi-card">
-        <div class="kpi-label">Barras totales</div>
-        <div class="kpi-value" id="kpiBarras">—</div>
-      </div>
-      <div class="kpi-card">
-        <div class="kpi-label">Kilos totales</div>
-        <div class="kpi-value" id="kpiKilos">—</div>
-      </div>
-      <div class="kpi-card">
-        <div class="kpi-label">Última carga</div>
-        <div class="kpi-value" id="kpiUltimaCarga" style="font-size:18px;">—</div>
-      </div>
-    </div>
-    <div class="kpi-row" style="margin-top: 8px;">
-      <div class="kpi-card" style="border-top: 3px solid #8BC34A;">
-        <div class="kpi-label">PPB (Peso Prom. Barra)</div>
-        <div class="kpi-value" id="kpiPPB" style="font-size:20px;">—</div>
-      </div>
-      <div class="kpi-card" style="border-top: 3px solid #558B2F;">
-        <div class="kpi-label">PPI (Peso Prom. Item)</div>
-        <div class="kpi-value" id="kpiPPI" style="font-size:20px;">—</div>
-      </div>
-      <div class="kpi-card" style="border-top: 3px solid #33691E;">
-        <div class="kpi-label">Diámetro Promedio</div>
-        <div class="kpi-value" id="kpiDiam" style="font-size:20px;">—</div>
-      </div>
-      <div class="kpi-card" style="border-top: 3px solid #9E9E9E;">
-        <div class="kpi-label">Items únicos</div>
-        <div class="kpi-value" id="kpiItems">—</div>
+      <div style="height:260px;">
+        <canvas id="mensualChart"></canvas>
       </div>
     </div>
 
-    <div class="inicio-grid">
-      <div>
-        <div class="card">
-          <h3>Top 5 proyectos por kilos</h3>
-          <div style="height: 280px;">
-            <canvas id="inicioChart"></canvas>
-          </div>
+    <!-- SECTION 2: Top 15 | Cubicadores | KPI Cards -->
+    <div style="display:flex; gap:8px; align-items:flex-start;">
+      <!-- Top 15 proyectos -->
+      <div class="card" style="flex:4; min-width:0;">
+        <h3 style="font-size:13px; margin-bottom:6px;">🏗️ Top 15 proyectos (Tn)</h3>
+        <div style="height:380px;">
+          <canvas id="top15Chart"></canvas>
+        </div>
+        <div id="top15Total" style="font-size:11px; color:#555; margin-top:4px; text-align:right;"></div>
+        <div style="display:flex; gap:12px; font-size:10px; color:#888; margin-top:2px;">
+          <span><span style="display:inline-block; width:10px; height:8px; background:#B0BEC5; border-radius:1px; vertical-align:middle;"></span> Cargado</span>
+          <span><span style="display:inline-block; width:10px; height:8px; background:#66BB6A; border-radius:1px; vertical-align:middle;"></span> Exportado</span>
         </div>
       </div>
-      <div>
-        <div class="card">
-          <h3>Resumen por proyecto</h3>
-          <div id="proyectosMiniList">
-            <div class="muted">Cargando...</div>
-          </div>
-        </div>
-      </div>
-    </div>
 
-    <!-- Cubicación timeline chart -->
-    <div class="card">
-      <div class="row" style="justify-content:space-between; align-items:center; margin-bottom:8px;">
-        <h3 style="margin:0;">Cubicación acumulada</h3>
-        <div class="row" style="gap:4px;">
-          <button class="secondary btn-agrupacion active" onclick="setAgrupacion('dia')" data-agrup="dia" style="font-size:11px; padding:3px 8px;">Día</button>
-          <button class="secondary btn-agrupacion" onclick="setAgrupacion('semana')" data-agrup="semana" style="font-size:11px; padding:3px 8px;">Semana</button>
-          <button class="secondary btn-agrupacion" onclick="setAgrupacion('mes')" data-agrup="mes" style="font-size:11px; padding:3px 8px;">Mes</button>
+      <!-- Cubicadores -->
+      <div class="card" style="flex:4; min-width:0;">
+        <h3 style="font-size:13px; margin-bottom:6px;">👷 Cubicadores (Tn)</h3>
+        <div style="height:380px;">
+          <canvas id="cubChart"></canvas>
+        </div>
+        <div id="cubTotal" style="font-size:11px; color:#555; margin-top:4px; text-align:right;"></div>
+        <div style="display:flex; gap:12px; font-size:10px; color:#888; margin-top:2px;">
+          <span><span style="display:inline-block; width:10px; height:8px; background:#B0BEC5; border-radius:1px; vertical-align:middle;"></span> Cargado</span>
+          <span><span style="display:inline-block; width:10px; height:8px; background:#66BB6A; border-radius:1px; vertical-align:middle;"></span> Exportado</span>
         </div>
       </div>
-      <div style="height: 280px;">
-        <canvas id="timelineChart"></canvas>
-      </div>
-    </div>
 
-    <!-- Cubicadores summary table -->
-    <div class="card">
-      <h3>Resumen por cubicador</h3>
-      <div style="overflow-x:auto;">
-        <table id="cubicadoresTable" style="width:100%; font-size:12px;">
-          <thead>
-            <tr>
-              <th style="text-align:left;">Cubicador</th>
-              <th style="text-align:right;">Barras</th>
-              <th style="text-align:right;">Kilos</th>
-              <th style="text-align:right;">Cargas</th>
-              <th style="text-align:right;">Proyectos</th>
-              <th style="text-align:right;">Última actividad</th>
-            </tr>
-          </thead>
-          <tbody id="cubicadoresBody">
-            <tr><td colspan="6" class="muted">Cargando...</td></tr>
-          </tbody>
-        </table>
+      <!-- KPI Cards 2x5 -->
+      <div style="flex:3; min-width:180px; display:grid; grid-template-columns:1fr 1fr; gap:6px;">
+        <div class="kpi-card" style="padding:10px 8px; text-align:center;">
+          <div class="kpi-label" style="font-size:10px;">Kilos Totales</div>
+          <div class="kpi-value" id="kpiKilos" style="font-size:16px;">—</div>
+        </div>
+        <div class="kpi-card" style="padding:10px 8px; text-align:center;">
+          <div class="kpi-label" style="font-size:10px;">Diám. Promedio</div>
+          <div class="kpi-value" id="kpiDiam" style="font-size:16px;">—</div>
+        </div>
+        <div class="kpi-card" style="padding:10px 8px; text-align:center;">
+          <div class="kpi-label" style="font-size:10px;">Barras Totales</div>
+          <div class="kpi-value" id="kpiBarras" style="font-size:16px;">—</div>
+        </div>
+        <div class="kpi-card" style="padding:10px 8px; text-align:center;">
+          <div class="kpi-label" style="font-size:10px;">Items Totales</div>
+          <div class="kpi-value" id="kpiItems" style="font-size:16px;">—</div>
+        </div>
+        <div class="kpi-card" style="padding:10px 8px; text-align:center;">
+          <div class="kpi-label" style="font-size:10px;">PPB</div>
+          <div class="kpi-value" id="kpiPPB" style="font-size:16px;">—</div>
+        </div>
+        <div class="kpi-card" style="padding:10px 8px; text-align:center;">
+          <div class="kpi-label" style="font-size:10px;">PPI</div>
+          <div class="kpi-value" id="kpiPPI" style="font-size:16px;">—</div>
+        </div>
+        <div class="kpi-card" style="padding:10px 8px; text-align:center;">
+          <div class="kpi-label" style="font-size:10px;">Cant. Cargas</div>
+          <div class="kpi-value" id="kpiCargas" style="font-size:16px;">—</div>
+        </div>
+        <div class="kpi-card" style="padding:10px 8px; text-align:center;">
+          <div class="kpi-label" style="font-size:10px;">Kg/Carga</div>
+          <div class="kpi-value" id="kpiKgCarga" style="font-size:16px;">—</div>
+        </div>
+        <div class="kpi-card" style="padding:10px 8px; text-align:center;">
+          <div class="kpi-label" style="font-size:10px;">Cant. Proyectos</div>
+          <div class="kpi-value" id="kpiProyectos" style="font-size:16px;">—</div>
+        </div>
+        <div class="kpi-card" style="padding:10px 8px; text-align:center;">
+          <div class="kpi-label" style="font-size:10px;">Última Carga</div>
+          <div class="kpi-value" id="kpiUltimaCarga" style="font-size:13px;">—</div>
+        </div>
       </div>
     </div>
   </div>

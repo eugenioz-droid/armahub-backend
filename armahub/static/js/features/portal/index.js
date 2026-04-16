@@ -1,15 +1,17 @@
 /**
- * ArmaHub — Portal Feature
- * Inicio (Landing), Mi Actividad (Cubicador dashboard), Landing Indicadores (Hub Screen).
- * Extracted from app.js in E.3.
+ * ArmaHub — Portal Feature (Metrics)
+ * Metrics tab, Mi Actividad (Cubicador dashboard), Landing Indicadores (Hub Screen).
  */
 
-// ========================= INICIO (Landing) =========================
-let inicioChart = null;
-let timelineChart = null;
+// ========================= METRICS =========================
+let _mensualChart = null;
+let _top15Chart = null;
+let _cubChart = null;
 let _inicioFechaDesde = '';
 let _inicioFechaHasta = '';
-let _inicioAgrupacion = 'dia';
+let _mensualAnio = new Date().getFullYear();
+
+var _metricsColors = ['#2e7d32','#1565C0','#ff9800','#e53935','#7B1FA2','#00897B','#795548','#607D8B','#F44336','#009688','#3F51B5','#CDDC39','#8D6E63','#00BCD4','#E91E63'];
 
 function _dateParams() {
   const params = new URLSearchParams();
@@ -45,16 +47,13 @@ function setDateRange(range) {
     _inicioFechaHasta = document.getElementById('fechaHasta').value || '';
   }
 
-  // Update date inputs
   document.getElementById('fechaDesde').value = _inicioFechaDesde;
   document.getElementById('fechaHasta').value = _inicioFechaHasta;
 
-  // Update active button
   document.querySelectorAll('.btn-periodo').forEach(b => b.classList.remove('active'));
   const activeBtn = document.querySelector('.btn-periodo[data-range="' + range + '"]');
   if (activeBtn) activeBtn.classList.add('active');
 
-  // Update label
   const label = document.getElementById('dateRangeLabel');
   if (_inicioFechaDesde || _inicioFechaHasta) {
     label.textContent = (_inicioFechaDesde || '...') + ' → ' + (_inicioFechaHasta || '...');
@@ -65,13 +64,11 @@ function setDateRange(range) {
   loadInicio();
 }
 
-function setAgrupacion(agrup) {
-  _inicioAgrupacion = agrup;
-  document.querySelectorAll('.btn-agrupacion').forEach(b => b.classList.remove('active'));
-  const activeBtn = document.querySelector('.btn-agrupacion[data-agrup="' + agrup + '"]');
-  if (activeBtn) activeBtn.classList.add('active');
-  loadTimeline();
-}
+window.cambiarAnioMensual = function(delta) {
+  _mensualAnio += delta;
+  document.getElementById('mensualAnioLabel').textContent = _mensualAnio;
+  loadMensualChart();
+};
 
 async function loadInicio() {
   const dp = _dateParams();
@@ -82,147 +79,151 @@ async function loadInicio() {
   } catch(e) { console.error('loadInicio error:', e); return; }
   if (!data) return;
 
-  document.getElementById('kpiProyectos').textContent = data.total_proyectos;
-  document.getElementById('kpiBarras').textContent = data.total_barras.toLocaleString();
-  document.getElementById('kpiKilos').textContent = Math.round(data.total_kilos).toLocaleString() + ' kg';
-
-  // KPIs avanzados
+  // KPI cards
+  var fmt = function(v) { return v ? v.toLocaleString('es-CL') : '—'; };
+  document.getElementById('kpiKilos').textContent = Math.round(data.total_kilos).toLocaleString('es-CL') + ' kg';
+  document.getElementById('kpiDiam').textContent = data.diam_promedio ? data.diam_promedio.toFixed(1) + ' mm' : '—';
+  document.getElementById('kpiBarras').textContent = fmt(data.total_barras);
+  document.getElementById('kpiItems').textContent = fmt(data.total_items);
   document.getElementById('kpiPPB').textContent = data.ppb ? data.ppb.toFixed(2) + ' kg' : '—';
   document.getElementById('kpiPPI').textContent = data.ppi ? data.ppi.toFixed(2) + ' kg' : '—';
-  document.getElementById('kpiDiam').textContent = data.diam_promedio ? data.diam_promedio.toFixed(1) + ' mm' : '—';
-  document.getElementById('kpiItems').textContent = data.total_items ? data.total_items.toLocaleString() : '—';
+  document.getElementById('kpiCargas').textContent = fmt(data.total_cargas);
+  document.getElementById('kpiKgCarga').textContent = data.kg_por_carga ? Math.round(data.kg_por_carga).toLocaleString('es-CL') : '—';
+  document.getElementById('kpiProyectos').textContent = fmt(data.total_proyectos);
 
   if (data.ultima_carga) {
-    const d = new Date(data.ultima_carga);
-    document.getElementById('kpiUltimaCarga').textContent = d.toLocaleDateString('es-CL') + ' ' + d.toLocaleTimeString('es-CL', {hour:'2-digit', minute:'2-digit'});
+    var d = new Date(data.ultima_carga);
+    document.getElementById('kpiUltimaCarga').textContent = d.toLocaleDateString('es-CL');
   } else {
-    document.getElementById('kpiUltimaCarga').textContent = 'Sin cargas';
+    document.getElementById('kpiUltimaCarga').textContent = '—';
   }
 
-  // Top 5 chart
-  const top5 = data.top5 || [];
-  const labels = top5.map(p => p.nombre);
-  const values = top5.map(p => p.kilos);
-  const ctx = document.getElementById('inicioChart').getContext('2d');
-  if (inicioChart) inicioChart.destroy();
-  inicioChart = new Chart(ctx, {
-    type: 'bar',
-    data: {
-      labels,
-      datasets: [{ label: 'Kilos', data: values, backgroundColor: '#8BC34A', borderRadius: 4 }]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      indexAxis: 'y',
-      plugins: { legend: { display: false } },
-      scales: { x: { ticks: { callback: v => v.toLocaleString() + ' kg' } } }
-    }
-  });
+  // Top 15 stacked horizontal bar
+  renderTop15Chart(data.proyectos || []);
 
-  // Project mini-cards
-  const list = document.getElementById('proyectosMiniList');
-  if (!data.proyectos || data.proyectos.length === 0) {
-    list.innerHTML = '<div class="muted" style="padding:12px;">No hay proyectos cargados</div>';
-  } else {
-    list.innerHTML = data.proyectos.map(p => `
-      <div class="proyecto-mini">
-        <span class="pm-name">${p.nombre}</span>
-        <span class="pm-kilos">${Math.round(p.kilos).toLocaleString()} kg</span>
-      </div>
-    `).join('');
-  }
+  // Load cubicadores chart
+  loadCubicadoresChart();
 
-  // Load timeline and cubicadores in parallel
-  loadTimeline();
-  loadCubicadores();
+  // Load monthly chart
+  document.getElementById('mensualAnioLabel').textContent = _mensualAnio;
+  loadMensualChart();
 }
 
-async function loadTimeline() {
-  const dp = _dateParams();
-  const params = new URLSearchParams(dp);
-  params.set('agrupacion', _inicioAgrupacion);
-  const data = await apiGet('/stats/timeline?' + params.toString());
-  if (!data || !data.timeline) return;
+function renderTop15Chart(proyectos) {
+  var top = proyectos.slice(0, 15);
+  var labels = top.map(function(p) {
+    var n = p.nombre || p.id_proyecto;
+    return n.length > 25 ? n.substring(0, 22) + '...' : n;
+  });
+  var cargado = top.map(function(p) { return Math.round(((p.kilos || 0) - (p.kilos_exportados || 0)) / 1000 * 100) / 100; });
+  var exportado = top.map(function(p) { return Math.round((p.kilos_exportados || 0) / 1000 * 100) / 100; });
+  var totales = top.map(function(p) { return (p.kilos / 1000).toFixed(2); });
+  var totalGeneral = proyectos.reduce(function(s, p) { return s + (p.kilos || 0); }, 0);
 
-  const items = data.timeline;
-  const labels = items.map(i => i.periodo);
-  const kilosData = items.map(i => i.kilos);
-  const barrasData = items.map(i => i.barras);
+  document.getElementById('top15Total').textContent = 'Total: ' + (totalGeneral / 1000).toFixed(1) + ' Tn (' + proyectos.length + ' proyectos)';
 
-  timelineChart = replaceChart(timelineChart, document.getElementById('timelineChart'), {
+  _top15Chart = replaceChart(_top15Chart, document.getElementById('top15Chart'), {
     type: 'bar',
     data: {
-      labels,
+      labels: labels,
       datasets: [
-        {
-          label: 'Kilos',
-          data: kilosData,
-          backgroundColor: '#8BC34A',
-          borderRadius: 3,
-          yAxisID: 'y'
-        },
-        {
-          label: 'Barras',
-          data: barrasData,
-          type: 'line',
-          borderColor: '#558B2F',
-          backgroundColor: 'rgba(85, 139, 47, 0.1)',
-          fill: true,
-          tension: 0.3,
-          pointRadius: 3,
-          yAxisID: 'y1'
-        }
+        { label: 'Exportado', data: exportado, backgroundColor: '#66BB6A', borderRadius: 2 },
+        { label: 'Cargado', data: cargado, backgroundColor: '#B0BEC5', borderRadius: 2 }
       ]
     },
     options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      interaction: { mode: 'index', intersect: false },
-      plugins: { legend: { position: 'top', labels: { font: { size: 11 } } } },
+      responsive: true, maintainAspectRatio: false,
+      indexAxis: 'y',
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            afterBody: function(ctx) {
+              var idx = ctx[0].dataIndex;
+              return 'Total: ' + totales[idx] + ' Tn';
+            }
+          }
+        }
+      },
       scales: {
-        y: {
-          type: 'linear',
-          position: 'left',
-          title: { display: true, text: 'Kilos', font: { size: 11 } },
-          ticks: { callback: chartTickNumber }
-        },
-        y1: {
-          type: 'linear',
-          position: 'right',
-          title: { display: true, text: 'Barras', font: { size: 11 } },
-          grid: { drawOnChartArea: false },
-          ticks: { callback: chartTickNumber }
-        },
-        x: { ticks: { font: { size: 10 }, maxRotation: 45 } }
+        x: { stacked: true, ticks: { font: { size: 9 }, callback: function(v) { return v + ' Tn'; } } },
+        y: { stacked: true, ticks: { font: { size: 10 } } }
       }
     }
   });
 }
 
-async function loadCubicadores() {
-  const dp = _dateParams();
-  const url = '/stats/cubicadores' + (dp ? '?' + dp : '');
-  const data = await apiGet(url);
+async function loadCubicadoresChart() {
+  var dp = _dateParams();
+  var url = '/stats/cubicadores' + (dp ? '?' + dp : '');
+  var data = await apiGet(url);
   if (!data || !data.cubicadores) return;
 
-  const tbody = document.getElementById('cubicadoresBody');
-  if (data.cubicadores.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="6" class="muted">Sin actividad en este período</td></tr>';
-    return;
-  }
+  var cubicadores = data.cubicadores;
+  var labels = cubicadores.map(function(c) {
+    var email = c.email || '—';
+    var at = email.indexOf('@');
+    return at > 0 ? email.substring(0, at) : email;
+  });
+  var cargado = cubicadores.map(function(c) { return Math.round(((c.kilos || 0) - (c.kilos_exportados || 0)) / 1000 * 100) / 100; });
+  var exportado = cubicadores.map(function(c) { return Math.round((c.kilos_exportados || 0) / 1000 * 100) / 100; });
+  var totalGeneral = cubicadores.reduce(function(s, c) { return s + (c.kilos || 0); }, 0);
 
-  tbody.innerHTML = data.cubicadores.map(c => {
-    const fecha = c.ultima_actividad ? new Date(c.ultima_actividad).toLocaleDateString('es-CL') : '—';
-    return '<tr>' +
-      '<td style="font-weight:500;">' + (c.email || '—') + '</td>' +
-      '<td style="text-align:right;">' + (c.barras || 0).toLocaleString() + '</td>' +
-      '<td style="text-align:right;">' + Math.round(c.kilos || 0).toLocaleString() + ' kg</td>' +
-      '<td style="text-align:right;">' + (c.cargas || 0) + '</td>' +
-      '<td style="text-align:right;">' + (c.proyectos || 0) + '</td>' +
-      '<td style="text-align:right; font-size:11px; color:#666;">' + fecha + '</td>' +
-      '</tr>';
-  }).join('');
+  document.getElementById('cubTotal').textContent = 'Total: ' + (totalGeneral / 1000).toFixed(1) + ' Tn (' + cubicadores.length + ' cubicadores)';
+
+  _cubChart = replaceChart(_cubChart, document.getElementById('cubChart'), {
+    type: 'bar',
+    data: {
+      labels: labels,
+      datasets: [
+        { label: 'Exportado', data: exportado, backgroundColor: '#66BB6A', borderRadius: 2 },
+        { label: 'Cargado', data: cargado, backgroundColor: '#B0BEC5', borderRadius: 2 }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      indexAxis: 'y',
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { stacked: true, ticks: { font: { size: 9 }, callback: function(v) { return v + ' Tn'; } } },
+        y: { stacked: true, ticks: { font: { size: 10 } } }
+      }
+    }
+  });
+}
+
+async function loadMensualChart() {
+  var data = await apiGet('/stats/cubicacion-mensual?anio=' + _mensualAnio);
+  if (!data) return;
+
+  var datasets = (data.cubicadores || []).map(function(c, idx) {
+    var at = c.nombre.indexOf('@');
+    var label = at > 0 ? c.nombre.substring(0, at) : c.nombre;
+    return {
+      label: label,
+      data: c.datos,
+      backgroundColor: _metricsColors[idx % _metricsColors.length],
+      borderRadius: 2
+    };
+  });
+
+  _mensualChart = replaceChart(_mensualChart, document.getElementById('mensualChart'), {
+    type: 'bar',
+    data: { labels: data.meses || [], datasets: datasets },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { position: 'bottom', labels: { font: { size: 10 }, padding: 8, usePointStyle: true, pointStyle: 'rect' } }
+      },
+      scales: {
+        x: { stacked: false, ticks: { font: { size: 10 } } },
+        y: {
+          beginAtZero: true,
+          ticks: { font: { size: 9 }, callback: function(v) { return v + ' Tn'; } }
+        }
+      }
+    }
+  });
 }
 
 // ========================= MI ACTIVIDAD (Cubicador dashboard) =========================

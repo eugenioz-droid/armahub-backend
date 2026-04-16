@@ -315,8 +315,25 @@ def get_stats(
             """, pf_bp)
             proyectos_rows = cur.fetchall()
 
+            # Exported kilos per project (from export_log)
+            pf_e, pf_ep = _project_filter_sql(allowed, "e")
+            cur.execute("""
+                SELECT e.id_proyecto, COALESCE(SUM(e.kilos), 0) AS kilos_exp
+                FROM export_log e
+                WHERE 1=1""" + pf_e + """
+                GROUP BY e.id_proyecto
+            """, pf_ep)
+            exp_map = {r[0]: round(float(r[1]), 2) for r in cur.fetchall()}
+
+            # Total cargas
+            pf_i, pf_ip = _project_filter_sql(allowed, "i")
+            cur.execute("SELECT COUNT(*) FROM imports i WHERE 1=1" + pf_i, pf_ip)
+            total_cargas = int(cur.fetchone()[0])
+
     proyectos_all = [
-        {"nombre": r[0], "id_proyecto": r[1], "barras": int(r[2]), "kilos": round(float(r[3]), 2)}
+        {"nombre": r[0], "id_proyecto": r[1], "barras": int(r[2]),
+         "kilos": round(float(r[3]), 2),
+         "kilos_exportados": exp_map.get(r[1], 0)}
         for r in proyectos_rows
     ]
 
@@ -329,6 +346,8 @@ def get_stats(
         "ppi": ppi,
         "diam_promedio": diam_prom,
         "total_items": total_items,
+        "total_cargas": total_cargas,
+        "kg_por_carga": round(total_kilos / total_cargas, 2) if total_cargas > 0 else 0,
         "top5": proyectos_all[:5],
         "proyectos": proyectos_all,
     }
@@ -424,18 +443,75 @@ def get_stats_cubicadores(
             """, wp)
             rows = cur.fetchall()
 
+            # Exported kilos per user (from export_log)
+            pf_el, pf_elp = _project_filter_sql(allowed, "el")
+            cur.execute("""
+                SELECT el.usuario, COALESCE(SUM(el.kilos), 0) AS kilos_exp
+                FROM export_log el
+                WHERE 1=1""" + pf_el + """
+                GROUP BY el.usuario
+            """, pf_elp)
+            exp_user_map = {r[0]: round(float(r[1]), 2) for r in cur.fetchall()}
+
     return {
         "cubicadores": [
             {
                 "email": r[0],
                 "barras": int(r[1] or 0),
                 "kilos": round(float(r[2] or 0), 2),
+                "kilos_exportados": exp_user_map.get(r[0], 0),
                 "cargas": int(r[3]),
                 "proyectos": int(r[4]),
                 "ultima_actividad": r[5],
             }
             for r in rows
         ]
+    }
+
+
+@router.get("/stats/cubicacion-mensual")
+def get_cubicacion_mensual(
+    anio: int = Query(..., description="Año a consultar (ej: 2026)"),
+    user=Depends(get_current_user),
+):
+    """Cubicación mensual desglosada por cubicador. Retorna 12 meses con tonelaje por usuario."""
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            allowed = _get_allowed_project_ids(cur, user)
+            pf_sql, pf_params = _project_filter_sql(allowed, "i")
+
+            cur.execute("""
+                SELECT EXTRACT(MONTH FROM CAST(LEFT(i.fecha, 10) AS DATE))::int AS mes,
+                       i.usuario,
+                       COALESCE(SUM(i.kilos), 0) AS kilos
+                FROM imports i
+                WHERE LEFT(i.fecha, 4) = %s""" + pf_sql + """
+                GROUP BY mes, i.usuario
+                ORDER BY mes, kilos DESC
+            """, [str(anio)] + pf_params)
+            rows = cur.fetchall()
+
+    # Build cubicador map: {usuario: [12 values]}
+    cub_map = {}
+    for r in rows:
+        mes_idx = int(r[0]) - 1
+        usuario = r[1] or "desconocido"
+        kilos = round(float(r[2]) / 1000, 3)  # convert to Tn
+        if usuario not in cub_map:
+            cub_map[usuario] = [0.0] * 12
+        cub_map[usuario][mes_idx] = kilos
+
+    # Sort by total desc
+    cubicadores = sorted(
+        [{"nombre": u, "datos": d} for u, d in cub_map.items()],
+        key=lambda x: sum(x["datos"]),
+        reverse=True
+    )
+
+    return {
+        "anio": anio,
+        "meses": ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"],
+        "cubicadores": cubicadores,
     }
 
 
