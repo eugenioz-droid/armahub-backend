@@ -206,8 +206,8 @@ Objetivo: consolidar contratos y reducir drift.
 	- [x] PC.10.4 Frontend: auto-seleccionar obra recién creada en el selector
 	- [x] PC.10.5 Permitir mover cargas entre obras — seleccionar cargas desde modal detalle de obra, elegir obra destino, `POST /cargas/mover` mueve imports + barras
 	- [x] PC.10.6 Modal de detalle de obra — reemplazar expandible inline por modal con sidebar (KPIs + metadata + autorizados), matriz constructiva estilo exportación (sin checkboxes, click→BarManager), árbol expandible de estructura, historial de cargas con bulk delete
-	- [ ] PC.10.7 Revisar y mejorar KPIs del tab Inicio — validar métricas, completar indicadores faltantes, ajustar cálculos
-	- [ ] PC.10.8 Revisar TAB Dashboards — validar gráficos, filtros y coherencia de datos
+	- [x] PC.10.7 Rediseño tab Inicio → Metrics — nuevo layout: cubicación mensual (chart full-width con nav ◀▶ por año), Top 15 proyectos (stacked bar Cargado/Exportado), Cubicadores (stacked bar), grilla 2×5 de KPIs (Kilos Tot, Diám Prom, Barras Tot, Items Tot, PPB, PPI, Cant Cargas, Kg/Carga, Cant Proyectos, Última Carga). Renombrado Inicio→Metrics en shell.js, default tab→Obras
+	- [x] PC.10.8 Eliminar tab Dashboards de Cubicación — contenido integrado en Metrics, tab removido de app.html y shell.js
 - [x] PC.11 Simplificar correlativos de reclamos — separar id_calidad en anio_calidad (int) + numero_calidad (int) para ordenamiento y carga retroactiva
 	- [x] PC.11.1 Migración 44: columnas anio_calidad + numero_calidad en tabla reclamos + índice compuesto
 	- [x] PC.11.2 Backend: modelos ReclamoCreate/ReclamoUpdate con campos nuevos, INSERT actualizado
@@ -220,7 +220,7 @@ Objetivo: consolidar contratos y reducir drift.
 	- [x] PC.11.9 Frontend: formulario edición con campos Año calidad + N° calidad
 	- [x] PC.11.10 Frontend: lista y presentaciones muestran formato "YYYY-NNN" concatenado
 	- [x] PC.11.11 Display: _formatCorrelativoCalidad() formatea como "2026-003", fallback a id_calidad legacy
-- [ ] PC.12 Regularizar matriz de roles post-cambios — revisar ROLES_Y_PERMISOS.md para incorporar permisos nuevos (mover cargas, acciones de obra, editar anio_calidad solo admin, etc.) y actualizar el tab Roles y Permisos del panel Admin
+- [x] PC.12 Regularizar matriz de roles post-cambios — actualizado ROLES_Y_PERMISOS.md con permisos nuevos (mover/bulk-delete cargas, reimportar CSV, notificaciones, año calidad, acciones correctivas CRUD, validación, etc.), renombrado secciones, eliminados tabs obsoletos (Dashboards, Presentación), agregado §3f Notificaciones y 6 observaciones de seguridad. Tab Roles y Permisos del panel Admin sincronizado (roles_permisos.js). Subtabs admin restyled a folder-tabs.
 - [ ] PC.13 Revisar permisos y acceso a acciones de obra por rol — actualmente mover cargas falla para cubicadores autorizados por bug técnico (apiPost envía query string en vez de JSON body → 422) + revisar modelo de permisos unificado: quién puede mover cargas, eliminar cargas, editar obra, etc. Definir si el acceso se basa en proyecto_usuarios (autorizados), uploader de la carga, o rol global. Causa raíz del error reportado: `apiPost()` usa URLSearchParams, pero `POST /cargas/mover` espera JSON body (Pydantic model) → debe usarse `fetch` con JSON o `apiPostJson`.
 - [x] PC.14 Reimportación CSV reemplaza carga completa por eje — antes del UPSERT se ejecuta `DELETE FROM barras WHERE id_proyecto AND plano_code IN (...)` para los plano_codes del CSV. Barras eliminadas del CSV desaparecen de la BD. Sin huérfanas ni tonelaje duplicado.
 

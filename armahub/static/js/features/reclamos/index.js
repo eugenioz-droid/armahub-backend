@@ -4,12 +4,12 @@ var _ishikawaTarget = 'create';
 var _ishikawaSelection = { categoria: '', sub_causa: '', cod_causa: '' };
 
 var _recEstadoColors = {
-  abierto: '#e53935', en_analisis: '#ff9800', accion_correctiva: '#2196F3',
-  validacion: '#7B1FA2', validado: '#4CAF50', cerrado: '#607D8B', rechazado: '#9E9E9E'
+  abierto: '#e53935', en_analisis: '#ff9800',
+  validacion: '#7B1FA2', cerrado: '#4CAF50', rechazado: '#9E9E9E'
 };
 var _recEstadoLabels = {
-  abierto: 'Abierto', en_analisis: 'En análisis', accion_correctiva: 'Acción correctiva',
-  validacion: 'En validación', validado: 'Validado', cerrado: 'Cerrado', rechazado: 'Rechazado'
+  abierto: 'Abierto', en_analisis: 'En análisis',
+  validacion: 'En validación', cerrado: 'Cerrado', rechazado: 'Rechazado'
 };
 var _recPrioridadColors = {
   baja: '#9E9E9E', media: '#ff9800', alta: '#e53935', critica: '#b71c1c'
@@ -237,7 +237,7 @@ function _renderPresentacionHeader(detail) {
   document.getElementById('presCorrelativo').textContent = detail.correlativo || '#' + detail.id;
   document.getElementById('presProyecto').textContent = detail.nombre_proyecto || '—';
   document.getElementById('presCubicador').textContent = detail.cubicador_nombre || '—';
-  var estadoLabels = {abierto:'Abierto', en_analisis:'En análisis', accion_correctiva:'Acción correctiva', validacion:'Validación', validado:'Validado', cerrado:'Cerrado', rechazado:'Rechazado'};
+  var estadoLabels = {abierto:'Abierto', en_analisis:'En análisis', validacion:'Validación', cerrado:'Cerrado', rechazado:'Rechazado'};
   document.getElementById('presEstado').textContent = estadoLabels[detail.estado] || detail.estado;
   var aplicaLabels = {si:'Sí aplica', no:'No aplica', pendiente:'Pendiente'};
   var aplicaEl = document.getElementById('presAplica');
@@ -651,7 +651,6 @@ class ReclamoUtils {
       en_analisis: 'En análisis',
       accion_correctiva: 'Acción correctiva',
       validacion: 'Validación',
-      validado: 'Validado',
       cerrado: 'Cerrado',
       rechazado: 'Rechazado'
     };
@@ -1936,7 +1935,7 @@ function _applyReclamoDetailPermissions(data) {
   var puedeCerrar = (currentRole === 'admin' || currentRole === 'admin2') || esAsignado;
   var cerrarCont = document.getElementById('recCerrarContainer');
   if (cerrarCont) cerrarCont.style.display = puedeCerrar ? '' : 'none';
-  var estaCerrado = (data.estado === 'validado' || data.estado === 'cerrado' || data.estado === 'rechazado');
+  var estaCerrado = (data.estado === 'cerrado' || data.estado === 'rechazado');
   var puedeReabrir = estaCerrado && (currentRole === 'admin' || currentRole === 'admin2');
   var btnCerrar = document.getElementById('btnCerrarReclamo');
   var btnReabrir = document.getElementById('btnReabrirReclamo');
@@ -2115,19 +2114,19 @@ async function cerrarReclamo() {
   var aplicaValue = aplicaSelect ? aplicaSelect.value : _reclamoActual.aplica;
   
   if (!aplicaValue || aplicaValue === 'pendiente') {
-    alert('Para cerrar el reclamo, primero debe seleccionar "Sí aplica" o "No aplica" en el campo Aplica.');
+    alert('Para enviar a validación, primero debe seleccionar "Sí aplica" o "No aplica" en el campo Aplica.');
     return;
   }
   
   // Confirmación
-  if (!confirm('¿Está seguro que desea cerrar este reclamo?\n\nUna vez cerrado, solo un administrador podrá reabrirlo para validación.')) {
+  if (!confirm('¿Está seguro que desea enviar este reclamo a validación?\n\nEl reclamo será revisado por USC antes de su cierre definitivo.')) {
     return;
   }
   
   var res = await fetch(apiUrl('/reclamos/' + _reclamoActual.id), {
     method: 'PATCH',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
-    body: JSON.stringify({ estado: 'cerrado' })
+    body: JSON.stringify({ estado: 'validacion' })
   });
   if (res.status === 401) { logout(); return; }
   var data = await res.json();

@@ -12,8 +12,8 @@ def q_total(cur, where="", params=None):
 
 
 def q_abiertos(cur, where="", params=None):
-    """Cuenta de reclamos no cerrados/validados/rechazados."""
-    cur.execute(f"SELECT COUNT(*) FROM reclamos r WHERE r.estado NOT IN ('validado','cerrado','rechazado'){where}", params or [])
+    """Cuenta de reclamos no cerrados/rechazados."""
+    cur.execute(f"SELECT COUNT(*) FROM reclamos r WHERE r.estado NOT IN ('cerrado','rechazado'){where}", params or [])
     return int(cur.fetchone()[0])
 
 
@@ -55,7 +55,7 @@ def q_por_anio_mes(cur, fecha_col="fecha_deteccion", where="", params=None):
 def q_resueltos_no_resueltos(cur, where="", params=None):
     """Conteo resueltos vs no resueltos → {resuelto: N, no_resuelto: N}."""
     cur.execute(f"""
-        SELECT CASE WHEN r.estado IN ('validado','cerrado') THEN 'resuelto' ELSE 'no_resuelto' END, COUNT(*)
+        SELECT CASE WHEN r.estado IN ('cerrado') THEN 'resuelto' ELSE 'no_resuelto' END, COUNT(*)
         FROM reclamos r WHERE 1=1{where} GROUP BY 1
     """, params or [])
     raw = {r[0]: int(r[1]) for r in cur.fetchall()}
@@ -84,11 +84,11 @@ def q_por_proyecto(cur, limit=None):
 
 
 def q_avg_dias_resolucion(cur):
-    """Promedio de días de resolución para reclamos cerrados/validados."""
+    """Promedio de días de resolución para reclamos cerrados."""
     cur.execute("""
         SELECT AVG(
             EXTRACT(EPOCH FROM (fecha_cierre::timestamp - fecha_creacion::timestamp)) / 86400.0
-        ) FROM reclamos WHERE estado IN ('validado','cerrado') AND fecha_cierre IS NOT NULL
+        ) FROM reclamos WHERE estado IN ('cerrado') AND fecha_cierre IS NOT NULL
     """)
     row = cur.fetchone()
     return round(float(row[0]), 1) if row and row[0] else None
@@ -112,7 +112,7 @@ def q_resolucion_por_mes(cur, meses=12):
         SELECT TO_CHAR(fecha_cierre::timestamp, 'YYYY-MM') AS mes,
                AVG(EXTRACT(EPOCH FROM (fecha_cierre::timestamp - fecha_creacion::timestamp)) / 86400.0)
         FROM reclamos
-        WHERE estado IN ('validado','cerrado') AND fecha_cierre IS NOT NULL
+        WHERE estado IN ('cerrado') AND fecha_cierre IS NOT NULL
           AND fecha_cierre::timestamp >= NOW() - INTERVAL '%s months'
         GROUP BY mes ORDER BY mes
     """, (meses,))

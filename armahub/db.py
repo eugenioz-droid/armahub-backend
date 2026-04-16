@@ -640,6 +640,49 @@ MIGRATIONS = [
            WHERE id_calidad ~ '^[0-9]{4}-[0-9]+$'
              AND anio_calidad IS NULL AND numero_calidad IS NULL;""",
     ]),
+
+    (46, "reclamos: eliminar estado accion_correctiva — migrar a cerrado + nuevo CHECK", [
+        # Migrar reclamos existentes con estado accion_correctiva → cerrado
+        "UPDATE reclamos SET estado = 'cerrado' WHERE estado = 'accion_correctiva';",
+        # Recrear CHECK constraint sin accion_correctiva
+        """DO $$
+        DECLARE r RECORD;
+        BEGIN
+            FOR r IN (
+                SELECT con.conname
+                FROM pg_constraint con
+                JOIN pg_attribute att ON att.attnum = ANY(con.conkey) AND att.attrelid = con.conrelid
+                WHERE con.conrelid = 'reclamos'::regclass
+                  AND con.contype = 'c'
+                  AND att.attname = 'estado'
+            ) LOOP
+                EXECUTE 'ALTER TABLE reclamos DROP CONSTRAINT ' || r.conname;
+            END LOOP;
+            ALTER TABLE reclamos ADD CONSTRAINT reclamos_estado_check
+                CHECK (estado IN ('abierto','en_analisis','validacion','validado','cerrado','rechazado'));
+        END $$;""",
+    ]),
+
+    # --- Migration 47: Remove estado 'validado' — merge into 'cerrado' ---
+    (47, "reclamos: eliminar estado 'validado', migrar a 'cerrado'", [
+        "UPDATE reclamos SET estado = 'cerrado' WHERE estado = 'validado';",
+        """DO $$
+        DECLARE r RECORD;
+        BEGIN
+            FOR r IN (
+                SELECT con.conname
+                FROM pg_constraint con
+                JOIN pg_attribute att ON att.attnum = ANY(con.conkey) AND att.attrelid = con.conrelid
+                WHERE con.conrelid = 'reclamos'::regclass
+                  AND con.contype = 'c'
+                  AND att.attname = 'estado'
+            ) LOOP
+                EXECUTE 'ALTER TABLE reclamos DROP CONSTRAINT ' || r.conname;
+            END LOOP;
+            ALTER TABLE reclamos ADD CONSTRAINT reclamos_estado_check
+                CHECK (estado IN ('abierto','en_analisis','validacion','cerrado','rechazado'));
+        END $$;""",
+    ]),
 ]
 
 

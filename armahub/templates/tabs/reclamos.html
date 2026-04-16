@@ -203,9 +203,7 @@
           <option value="">Estado: Todos</option>
           <option value="abierto">Abierto</option>
           <option value="en_analisis">En análisis</option>
-          <option value="accion_correctiva">Acción correctiva</option>
           <option value="validacion">En validación</option>
-          <option value="validado">Validado</option>
           <option value="cerrado">Cerrado</option>
           <option value="rechazado">Rechazado</option>
         </select>
@@ -472,7 +470,7 @@
             <span id="recRespMsg" class="muted" style="font-size:11px; margin-left:8px;"></span>
           </div>
           <div id="recCerrarContainer" style="display:none;">
-            <button id="btnCerrarReclamo" class="danger" style="font-size:11px; padding:4px 12px;" onclick="cerrarReclamo()">🔒 Cerrar reclamo</button>
+            <button id="btnCerrarReclamo" style="font-size:11px; padding:4px 12px; background:#7B1FA2; color:#fff; border:none; border-radius:4px; cursor:pointer;" onclick="cerrarReclamo()">📤 Enviar a validación</button>
             <button id="btnReabrirReclamo" class="secondary" style="font-size:11px; padding:4px 12px; margin-left:8px; display:none;" onclick="reabrirReclamo()">🔓 Reabrir reclamo</button>
           </div>
         </div>
@@ -531,9 +529,8 @@
             <option value="">Sin cambio de estado</option>
             <option value="abierto">→ Abierto</option>
             <option value="en_analisis">→ En análisis</option>
-            <option value="accion_correctiva">→ Acción correctiva</option>
             <option value="validacion">→ En validación</option>
-            <option value="validado">→ Validado</option>
+            <option value="cerrado">→ Cerrado</option>
             <option value="cerrado">→ Cerrado</option>
             <option value="rechazado">→ Rechazado</option>
           </select>

@@ -429,11 +429,22 @@ async function loadLandingIndicadores() {
     if (typeof alertas.total_abiertos !== 'undefined') {
       alertaWrap.style.display = '';
       document.getElementById('hubAlertaTexto').textContent = alertas.total_abiertos + ' reclamo(s) en total';
-      var detParts = (alertas.por_estado || []).map(function(a) {
-        var labels = {abierto:'Abiertos', en_analisis:'En análisis', accion_correctiva:'Acción correctiva', validacion:'En validación', validado:'Validados', cerrado:'Cerrados', rechazado:'Rechazados'};
-        return (labels[a.estado] || a.estado) + ': ' + a.count;
+      // Ordered badges by estado
+      var estadoOrder = ['abierto','en_analisis','validacion','cerrado','rechazado'];
+      var estadoLabels = {abierto:'Abiertos', en_analisis:'En análisis', validacion:'En validación', cerrado:'Cerrados', rechazado:'Rechazados'};
+      var estadoColors = {abierto:'#e53935', en_analisis:'#ff9800', validacion:'#7B1FA2', cerrado:'#4CAF50', rechazado:'#9E9E9E'};
+      var countMap = {};
+      (alertas.por_estado || []).forEach(function(a) { countMap[a.estado] = a.count; });
+      var badgeHtml = '';
+      estadoOrder.forEach(function(est) {
+        var c = countMap[est] || 0;
+        if (c === 0) return;
+        var color = estadoColors[est] || '#999';
+        var label = estadoLabels[est] || est;
+        badgeHtml += '<span style="display:inline-flex; align-items:center; gap:4px; padding:3px 10px; border-radius:12px; font-size:11px; font-weight:600; color:#fff; background:' + color + ';">'
+                   + label + ' <span style="background:rgba(255,255,255,0.3); padding:1px 5px; border-radius:8px; font-size:11px;">' + c + '</span></span>';
       });
-      document.getElementById('hubAlertaDetalle').textContent = detParts.join(' · ') || 'Sin reclamos';
+      document.getElementById('hubAlertaDetalle').innerHTML = badgeHtml || '<span style="font-size:11px; color:#999;">Sin reclamos</span>';
     } else {
       alertaWrap.style.display = 'none';
     }

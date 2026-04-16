@@ -59,7 +59,7 @@ def _es_propietario_cubicador(rec: dict, email: str) -> bool:
 
 # ========================= CONSTANTS =========================
 
-ESTADOS_RECLAMO = ("abierto", "en_analisis", "accion_correctiva", "validacion", "validado", "cerrado", "rechazado")
+ESTADOS_RECLAMO = ("abierto", "en_analisis", "validacion", "cerrado", "rechazado")
 TIPOS_RECLAMO = ("error", "faltante", "atraso", "actualizacion_portal")
 VALIDACION_RESULTADOS = ("aprobado", "rechazado", "corregido")
 PRIORIDADES = ("baja", "media", "alta", "critica")
@@ -133,9 +133,7 @@ ISHIKAWA_SUBCAUSAS = {
 ESTADO_LABELS = {
     "abierto": "Abierto",
     "en_analisis": "En análisis",
-    "accion_correctiva": "Acción correctiva",
     "validacion": "En validación",
-    "validado": "Validado",
     "cerrado": "Cerrado",
     "rechazado": "Rechazado",
 }
@@ -320,10 +318,9 @@ def listar_reclamos(
                     CASE r.estado
                         WHEN 'abierto' THEN 1
                         WHEN 'en_analisis' THEN 2
-                        WHEN 'accion_correctiva' THEN 3
-                        WHEN 'validacion' THEN 4
-                        WHEN 'rechazado' THEN 5
-                        WHEN 'cerrado' THEN 6
+                        WHEN 'validacion' THEN 3
+                        WHEN 'rechazado' THEN 4
+                        WHEN 'cerrado' THEN 5
                     END,
                     CASE r.prioridad
                         WHEN 'critica' THEN 1
@@ -1260,9 +1257,9 @@ def actualizar_reclamo(reclamo_id: int, body: ReclamoUpdate, user=Depends(get_cu
                 params.append(now)
                 sets.append("validacion_por = %s")
                 params.append(email)
-                # Auto-transition: validation approved/corrected → estado "validado"
-                if body.validacion_resultado in ("aprobado", "corregido") and estado_anterior != "validado":
-                    body.estado = "validado"
+                # Auto-transition: validation approved/corrected → estado "cerrado"
+                if body.validacion_resultado in ("aprobado", "corregido") and estado_anterior != "cerrado":
+                    body.estado = "cerrado"
 
             # PA.5 — Auto-reopen on rejection: revert to en_analisis so cubicador can fix
             if is_rejection and estado_anterior != "en_analisis":
@@ -1286,12 +1283,12 @@ def actualizar_reclamo(reclamo_id: int, body: ReclamoUpdate, user=Depends(get_cu
                     return any(s.startswith(col + " =") or s.startswith(col + " =") for s in sets)
 
                 # If closing/validating, set fecha_cierre (unless already set)
-                if body.estado in ("validado", "cerrado", "rechazado"):
+                if body.estado in ("cerrado", "rechazado"):
                     if not _col_in_sets("fecha_cierre"):
                         sets.append("fecha_cierre = %s")
                         params.append(now)
                 # If reopening, clear fecha_cierre and validacion metadata
-                elif estado_anterior in ("validado", "cerrado", "rechazado"):
+                elif estado_anterior in ("cerrado", "rechazado"):
                     if not _col_in_sets("fecha_cierre"):
                         sets.append("fecha_cierre = NULL")
                     if not _col_in_sets("validacion_fecha"):
@@ -1339,8 +1336,8 @@ def actualizar_reclamo(reclamo_id: int, body: ReclamoUpdate, user=Depends(get_cu
                 crear_notificacion("reclamo_cerrado", reclamo_id, msg, destinatarios_extra=extras)
             elif body.estado == "en_analisis" and is_rejection:
                 crear_notificacion("reclamo_reabierto", reclamo_id, msg + " (rechazado)", destinatarios_extra=extras)
-            elif body.estado == "validado":
-                crear_notificacion("validacion_realizada", reclamo_id, msg, destinatarios_extra=extras)
+            elif body.estado == "validacion":
+                crear_notificacion("enviado_a_validacion", reclamo_id, msg, destinatarios_extra=extras)
             else:
                 crear_notificacion("cambio_estado", reclamo_id, msg, destinatarios_extra=extras)
 
