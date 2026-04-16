@@ -223,6 +223,21 @@ Objetivo: consolidar contratos y reducir drift.
 - [x] PC.12 Regularizar matriz de roles post-cambios — actualizado ROLES_Y_PERMISOS.md con permisos nuevos (mover/bulk-delete cargas, reimportar CSV, notificaciones, año calidad, acciones correctivas CRUD, validación, etc.), renombrado secciones, eliminados tabs obsoletos (Dashboards, Presentación), agregado §3f Notificaciones y 6 observaciones de seguridad. Tab Roles y Permisos del panel Admin sincronizado (roles_permisos.js). Subtabs admin restyled a folder-tabs.
 - [x] PC.13 Revisar permisos y acceso a acciones de obra por rol — bug técnico corregido: `apiPostJson` reemplazó `apiPost` para `POST /cargas/mover`. Modelo de permisos granulares pendiente para fase futura (ver ROADMAP_RECLAMOS.md R8).
 - [x] PC.14 Reimportación CSV reemplaza carga completa por eje — antes del UPSERT se ejecuta `DELETE FROM barras WHERE id_proyecto AND plano_code IN (...)` para los plano_codes del CSV. Barras eliminadas del CSV desaparecen de la BD. Sin huérfanas ni tonelaje duplicado.
+- [ ] PC.15 Informe PDF de reclamo + envío por correo
+	- [ ] PC.15.1 Agregar `xhtml2pdf` a requirements.txt
+	- [ ] PC.15.2 Crear template Jinja2 `templates/pdf/reclamo_informe.html` — layout del informe: header (logo, correlativo, fecha, estado, prioridad), sección Registro (título, descripción, proyecto/cliente, categoría, detectado por, fecha detección), sección Análisis (respuesta, causa Ishikawa, área responsable, kilos, tiempo respuesta), sección Acciones correctivas/preventivas (tabla), sección Validación (resultado, observaciones, fecha, validado por), imágenes antecedentes + respuesta (thumbnails inline ~300px), timeline de seguimientos
+	- [ ] PC.15.3 CSS embebido para PDF — tipografía, márgenes, tablas, imágenes, saltos de página, colores por estado/prioridad
+	- [ ] PC.15.4 Backend: endpoint `GET /reclamos/{id}/pdf` — carga detalle completo + imágenes (base64 inline), renderiza template, devuelve `Response(application/pdf)`. Permisos: admin, admin2, cubicador (si es propio), usc
+	- [ ] PC.15.5 Frontend: botón "📄 PDF" en modal de detalle del reclamo — abre nueva pestaña con `apiUrl('/reclamos/' + id + '/pdf')`. Visible para roles con permiso
+	- [ ] PC.15.6 Revisar layout y validar que el PDF refleje correctamente todas las secciones del reclamo (QA visual: campos largos, imágenes grandes, sin acciones, sin validación, etc.)
+	- [ ] PC.15.7 Backend: configuración SMTP — env vars `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM`. Helper `send_email(to, subject, body_html, attachments)` reutilizable. Validar conexión en health check. (Cierra también PC.1.11)
+	- [ ] PC.15.8 Backend: tabla `reclamo_envios` (id, reclamo_id, destinatarios JSON, fecha, enviado_por, estado) — registro de envíos para trazabilidad. Migración correspondiente
+	- [ ] PC.15.9 Backend: endpoint `POST /reclamos/{id}/enviar-informe` — genera PDF, envía por correo a destinatarios seleccionados (cliente, USC, cubicador, emails adicionales). Registra en `reclamo_envios` + seguimiento automático ("Informe enviado a: X, Y"). Permisos: admin, admin2
+	- [ ] PC.15.10 Frontend: columna "Envío" en lista de reclamos — visible para admin/admin2. Reclamos cerrados sin enviar muestran botón "📧" (acción directa). Reclamos ya enviados muestran badge "✉️ Enviado" con tooltip (fecha + destinatarios). Reclamos no cerrados muestran "—"
+	- [ ] PC.15.11 Frontend: al click en "📧" abre mini-modal inline con checkboxes (USC asignado, cubicador asignado, emails adicionales) + campo texto para emails extra. Botón "Enviar" ejecuta POST. Feedback con toast
+	- [ ] PC.15.12 Backend: endpoint `GET /reclamos/{id}/envios` — historial de envíos de un reclamo (fecha, destinatarios, enviado_por). Consumido desde detalle del reclamo
+	- [ ] PC.15.13 Frontend: sección "Historial de envíos" en modal de detalle — tabla compacta con fecha, destinatarios, enviado por. Visible para admin/admin2
+	- [ ] PC.15.14 Dashboard: indicadores de envíos en tab Dashboards de Reclamos — total enviados/pendientes, % cobertura de reclamos cerrados, envíos por mes. Visible para admin/admin2
 
 ---
 

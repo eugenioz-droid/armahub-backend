@@ -2052,21 +2052,21 @@ function _updateRecNavButtons() {
   if (!btnPrev || !btnNext) return;
   var id = _reclamoActual ? _reclamoActual.id : null;
   var idx = _reclamosListaIds.indexOf(id);
-  btnPrev.disabled = (idx <= 0);
-  btnNext.disabled = (idx < 0 || idx >= _reclamosListaIds.length - 1);
+  btnPrev.disabled = (idx < 0 || idx >= _reclamosListaIds.length - 1);
+  btnNext.disabled = (idx <= 0);
   if (label) label.textContent = (idx >= 0) ? (_reclamosListaIds.length - idx) + '/' + _reclamosListaIds.length : '';
 }
 
 function recNavPrevReclamo() {
   if (!_reclamoActual) return;
   var idx = _reclamosListaIds.indexOf(_reclamoActual.id);
-  if (idx > 0) verReclamo(_reclamosListaIds[idx - 1]);
+  if (idx >= 0 && idx < _reclamosListaIds.length - 1) verReclamo(_reclamosListaIds[idx + 1]);
 }
 
 function recNavNextReclamo() {
   if (!_reclamoActual) return;
   var idx = _reclamosListaIds.indexOf(_reclamoActual.id);
-  if (idx >= 0 && idx < _reclamosListaIds.length - 1) verReclamo(_reclamosListaIds[idx + 1]);
+  if (idx > 0) verReclamo(_reclamosListaIds[idx - 1]);
 }
 
 function renderAcciones(acciones) {
