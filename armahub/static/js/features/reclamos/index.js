@@ -2,6 +2,36 @@ var _reclamoActual = null;
 var _ishikawaData = null;
 var _ishikawaTarget = 'create';
 var _ishikawaSelection = { categoria: '', sub_causa: '', cod_causa: '' };
+var _reclamosListaIds = [];
+
+var _FECHA_OPERATIVA = '2026-04-16';
+
+function _calcDiasReclamo(r) {
+  if (!r.fecha_creacion) return null;
+  var creacion = r.fecha_creacion.substring(0, 10);
+  if (creacion < _FECHA_OPERATIVA) return null;
+  var inicio = new Date(creacion);
+  var fin = r.fecha_cierre ? new Date(r.fecha_cierre.substring(0, 10)) : new Date();
+  var dias = Math.round((fin - inicio) / 86400000);
+  return dias < 0 ? 0 : dias;
+}
+
+function _diasHeatColor(dias) {
+  if (dias === null) return '';
+  if (dias <= 3) return '#4CAF50';
+  if (dias <= 7) return '#8BC34A';
+  if (dias <= 14) return '#FFC107';
+  if (dias <= 21) return '#FF9800';
+  if (dias <= 30) return '#FF5722';
+  return '#B71C1C';
+}
+
+function _diasBadgeHtml(r) {
+  var dias = _calcDiasReclamo(r);
+  if (dias === null) return '<span style="color:#ccc; font-size:10px;">—</span>';
+  var color = _diasHeatColor(dias);
+  return '<span title="' + dias + ' día(s) desde creación" style="display:inline-block; min-width:28px; text-align:center; padding:1px 5px; border-radius:3px; font-size:10px; font-weight:700; color:#fff; background:' + color + ';">' + dias + 'd</span>';
+}
 
 var _recEstadoColors = {
   abierto: '#e53935', en_analisis: '#ff9800',
@@ -1451,6 +1481,7 @@ async function loadReclamos() {
     return;
   }
   var reclamos = (data.data || data.reclamos || []).map(_normalizeReclamoListItem);
+  _reclamosListaIds = reclamos.map(function(r) { return r.id; });
   
   // Load USC users for assignment dropdowns
   await loadUsuariosUsc();
@@ -1474,6 +1505,7 @@ async function loadReclamos() {
     '<th style="padding:5px 6px;">Aplica</th>' +
     '<th style="padding:5px 6px;">Causa</th>' +
     '<th style="padding:5px 6px;">Fecha</th>' +
+    '<th style="padding:5px 4px; text-align:center;">Días</th>' +
     '<th style="padding:5px 4px;"></th>' +
     '</tr>' +
     reclamos.map(function(r) {
@@ -1501,6 +1533,7 @@ async function loadReclamos() {
         '<td style="padding:4px 6px;"><span style="color:' + aplColor + '; font-weight:600; font-size:10px;">' + aplLabel + '</span></td>' +
         '<td style="padding:4px 6px; font-size:11px;" title="' + (r.sub_causa || '') + '">' + causaText + '</td>' +
         '<td style="padding:4px 6px; font-size:11px;" class="muted">' + fecha + '</td>' +
+        '<td style="padding:4px 4px; text-align:center;">' + _diasBadgeHtml(r) + '</td>' +
         '<td style="padding:4px 4px;"><button class="secondary" style="font-size:10px; padding:2px 6px;" onclick="event.stopPropagation(); verReclamo(' + r.id + ')">Ver</button></td>' +
         '</tr>';
     }).join('') +
@@ -2007,6 +2040,31 @@ async function verReclamo(id) {
   data = _normalizeReclamoDetail(data);
   _reclamoActual = data;
   _renderReclamoDetail(data);
+  _updateRecNavButtons();
+}
+
+function _updateRecNavButtons() {
+  var btnPrev = document.getElementById('recNavPrev');
+  var btnNext = document.getElementById('recNavNext');
+  var label = document.getElementById('recNavLabel');
+  if (!btnPrev || !btnNext) return;
+  var id = _reclamoActual ? _reclamoActual.id : null;
+  var idx = _reclamosListaIds.indexOf(id);
+  btnPrev.disabled = (idx <= 0);
+  btnNext.disabled = (idx < 0 || idx >= _reclamosListaIds.length - 1);
+  if (label) label.textContent = (idx >= 0) ? (idx + 1) + '/' + _reclamosListaIds.length : '';
+}
+
+function recNavPrevReclamo() {
+  if (!_reclamoActual) return;
+  var idx = _reclamosListaIds.indexOf(_reclamoActual.id);
+  if (idx > 0) verReclamo(_reclamosListaIds[idx - 1]);
+}
+
+function recNavNextReclamo() {
+  if (!_reclamoActual) return;
+  var idx = _reclamosListaIds.indexOf(_reclamoActual.id);
+  if (idx >= 0 && idx < _reclamosListaIds.length - 1) verReclamo(_reclamosListaIds[idx + 1]);
 }
 
 function renderAcciones(acciones) {
@@ -2191,6 +2249,25 @@ function toggleEditarReclamo() {
       sel.innerHTML += '<option value="' + u.email + '" data-display="' + u.display + '">' + u.display + '</option>';
     });
     sel.value = d.cubicador_asignado || '';
+    // USC Responsable dropdown — only admin/admin2
+    var uscWrap = document.getElementById('recEditAsignadoAWrap');
+    var uscSel = document.getElementById('recEditAsignadoA');
+    if (uscWrap && uscSel) {
+      if (currentRole === 'admin' || currentRole === 'admin2') {
+        uscWrap.style.display = '';
+        // Populate from loadUsuariosUsc cache (recAsignadoA source)
+        var srcUsc = document.getElementById('recAsignadoA');
+        uscSel.innerHTML = '<option value="">— Sin asignar —</option>';
+        if (srcUsc) {
+          Array.from(srcUsc.options).forEach(function(opt) {
+            if (opt.value) uscSel.innerHTML += '<option value="' + opt.value + '">' + opt.textContent + '</option>';
+          });
+        }
+        uscSel.value = d.asignado_a || '';
+      } else {
+        uscWrap.style.display = 'none';
+      }
+    }
     document.getElementById('recEditMsg').textContent = '';
     form.style.display = '';
     info.style.display = 'none';
@@ -2230,6 +2307,11 @@ async function guardarEdicionReclamo() {
     numero_calidad: parseInt(document.getElementById('recEditNumeroCalidad').value) || null,
     id_proyecto: editProyVal || null,
   };
+  // USC Responsable — only send if admin/admin2
+  if (currentRole === 'admin' || currentRole === 'admin2') {
+    var editUscSel = document.getElementById('recEditAsignadoA');
+    if (editUscSel) body.asignado_a = editUscSel.value || null;
+  }
   var res = await fetch(apiUrl('/reclamos/' + _reclamoActual.id), {
     method: 'PATCH',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
@@ -2628,27 +2710,32 @@ async function _uploadFilesWithTipo(files, tipo, msgElId) {
   if (!_reclamoActual) return;
   var msg = document.getElementById(msgElId);
   if (msg) { msg.textContent = 'Subiendo ' + files.length + ' imagen(es)...'; msg.style.color = '#666'; }
-  var result = await uploadFilesSequentially(files, {
-    buildRequest: function(file) {
-      var formData = new FormData();
-      formData.append('file', file);
-      formData.append('tipo', tipo);
-      return {
-        url: '/reclamos/' + _reclamoActual.id + '/imagenes',
-        fetchOptions: { method: 'POST', headers: authHeaders(), body: formData }
-      };
-    },
-    onUnauthorized: logout
-  });
-  if (!result.ok) {
-    if (msg && !result.unauthorized) {
-      msg.textContent = 'Error: ' + (result.detail || 'desconocido');
-      msg.style.color = '#b42318';
+  try {
+    var result = await uploadFilesSequentially(files, {
+      buildRequest: function(file) {
+        var formData = new FormData();
+        formData.append('file', file);
+        formData.append('tipo', tipo);
+        return {
+          url: apiUrl('/reclamos/' + _reclamoActual.id + '/imagenes'),
+          fetchOptions: { method: 'POST', headers: authHeaders(), body: formData }
+        };
+      },
+      onUnauthorized: logout
+    });
+    if (!result.ok) {
+      if (msg && !result.unauthorized) {
+        msg.textContent = 'Error: ' + (result.detail || 'desconocido');
+        msg.style.color = '#b42318';
+      }
+      return;
     }
-    return;
+    if (msg) { msg.textContent = files.length + ' imagen(es) subida(s)'; msg.style.color = '#558B2F'; setTimeout(function() { msg.textContent = ''; }, 3000); }
+    await verReclamo(_reclamoActual.id);
+  } catch (err) {
+    console.error('[_uploadFilesWithTipo] Error:', err);
+    if (msg) { msg.textContent = 'Error de red al subir imagen'; msg.style.color = '#b42318'; }
   }
-  if (msg) { msg.textContent = files.length + ' imagen(es) subida(s)'; msg.style.color = '#558B2F'; setTimeout(function() { msg.textContent = ''; }, 3000); }
-  await verReclamo(_reclamoActual.id);
 }
 
 function initRecImageDropZones() {
@@ -2901,6 +2988,8 @@ document.addEventListener('keydown', function(e) {
     'cerrarIshikawaModal',
     'openReclamoModal',
     'closeReclamoModal',
+    'recNavPrevReclamo',
+    'recNavNextReclamo',
     'loadPresentaciones',
     'togglePresSection',
     'presNavPrev',

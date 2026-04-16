@@ -246,6 +246,12 @@
     <div class="card" id="reclamoDetailCard" style="display:none;">
       <!-- Modal close button (visible only when opened as modal) -->
       <button id="recModalCloseBtn" class="rec-modal-close" style="display:none;" onclick="closeReclamoModal()" title="Cerrar">✕</button>
+      <!-- Nav ◀▶ bar -->
+      <div id="recNavBar" style="display:flex; align-items:center; gap:6px; margin-bottom:6px;">
+        <button id="recNavPrev" onclick="recNavPrevReclamo()" style="background:none; border:1px solid #ccc; border-radius:4px; padding:2px 8px; cursor:pointer; font-size:14px; color:#555;" title="Reclamo anterior">◀</button>
+        <span id="recNavLabel" style="font-size:11px; color:#999; min-width:40px; text-align:center;"></span>
+        <button id="recNavNext" onclick="recNavNextReclamo()" style="background:none; border:1px solid #ccc; border-radius:4px; padding:2px 8px; cursor:pointer; font-size:14px; color:#555;" title="Reclamo siguiente">▶</button>
+      </div>
       <!-- Header -->
       <div class="row" style="justify-content:space-between; align-items:flex-start; margin-bottom:8px; flex-wrap:wrap; gap:8px;">
         <div style="flex:1;">
@@ -327,6 +333,12 @@
             <div class="col" style="max-width:220px;">
               <label style="font-size:11px; color:#666;">Responsable</label>
               <select id="recEditResponsable" style="width:100%; font-size:12px;">
+                <option value="">— Sin asignar —</option>
+              </select>
+            </div>
+            <div class="col" id="recEditAsignadoAWrap" style="max-width:200px; display:none;">
+              <label style="font-size:11px; color:#666;">USC Responsable</label>
+              <select id="recEditAsignadoA" style="width:100%; font-size:12px;">
                 <option value="">— Sin asignar —</option>
               </select>
             </div>
