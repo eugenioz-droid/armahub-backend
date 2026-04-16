@@ -2054,7 +2054,7 @@ function _updateRecNavButtons() {
   var idx = _reclamosListaIds.indexOf(id);
   btnPrev.disabled = (idx <= 0);
   btnNext.disabled = (idx < 0 || idx >= _reclamosListaIds.length - 1);
-  if (label) label.textContent = (idx >= 0) ? (idx + 1) + '/' + _reclamosListaIds.length : '';
+  if (label) label.textContent = (idx >= 0) ? (_reclamosListaIds.length - idx) + '/' + _reclamosListaIds.length : '';
 }
 
 function recNavPrevReclamo() {
