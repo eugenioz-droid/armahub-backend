@@ -27,23 +27,20 @@
     // ---------- 1b ----------
     {
       id: '1b', section: 1,
-      title: '1b. Acceso a tabs dentro de cada módulo',
+      title: '1b. Tabs por módulo',
       header: 'Módulo / Tab',
       notes: [
-        'El rol cliente dentro de Cubicación solo ve los tabs Metrics (los demás se ocultan).',
-        'En Reclamos, el tab Dashboards es solo para admin/admin2. Presentación excluye a usc.',
-        'Los roles sin acceso al módulo (—) no ven ningún tab.'
+        'El rol cliente dentro de Cubicación solo ve el tab Metrics (los demás se ocultan en frontend).',
+        'Tab Obras es el default al entrar a Cubicación.',
+        'Los roles sin acceso al módulo (—) no ven ningún tab de ese módulo.'
       ],
       rows: [
-        {action:'Cubicación / Inicio',      perms:{admin:'✅',admin2:'✅',cubicador:'✅',usc:'—',externo:'—',cliente:'✅'}},
         {action:'Cubicación / Obras',        perms:{admin:'✅',admin2:'✅',cubicador:'✅',usc:'—',externo:'—',cliente:'—'}},
+        {action:'Cubicación / Metrics',      perms:{admin:'✅',admin2:'✅',cubicador:'✅',usc:'—',externo:'—',cliente:'✅'}},
         {action:'Cubicación / Bar Manager',  perms:{admin:'✅',admin2:'✅',cubicador:'✅',usc:'—',externo:'—',cliente:'—'}},
-        {action:'Cubicación / Metrics',     perms:{admin:'✅',admin2:'✅',cubicador:'✅',usc:'—',externo:'—',cliente:'✅'}},
         {action:'Cubicación / Pedidos',      perms:{admin:'✅',admin2:'✅',cubicador:'✅',usc:'—',externo:'—',cliente:'—'}},
         {action:'Cubicación / Exportación',  perms:{admin:'✅',admin2:'✅',cubicador:'✅',usc:'—',externo:'—',cliente:'—'}},
         {action:'Reclamos / Reclamos',       perms:{admin:'✅',admin2:'✅',cubicador:'✅',usc:'✅',externo:'✅',cliente:'—'}},
-        {action:'Reclamos / Dashboards',     perms:{admin:'✅',admin2:'✅',cubicador:'—',usc:'—',externo:'—',cliente:'—'}},
-        {action:'Reclamos / Presentación',   perms:{admin:'✅',admin2:'✅',cubicador:'✅',usc:'—',externo:'✅',cliente:'—'}},
         {action:'Admin / Admin',             perms:{admin:'✅',admin2:'✅',cubicador:'—',usc:'—',externo:'—',cliente:'—'}},
       ]
     },
@@ -54,39 +51,38 @@
       header: 'Indicador',
       notes: [],
       rows: [
-        {action:'Cubicado semanal (chart)',  perms:{admin:'✅',admin2:'✅',cubicador:'✅',usc:'—',externo:'—',cliente:'—'}},
-        {action:'Reclamos semana (chart)',    perms:{admin:'✅',admin2:'✅',cubicador:'✅ propios',usc:'✅ propios',externo:'✅ propios',cliente:'—'}},
-        {action:'Alertas reclamos',          perms:{admin:'✅ todos',admin2:'✅ todos',cubicador:'✅ propios',usc:'✅ propios',externo:'✅ propios',cliente:'—'}},
+        {action:'Cubicado semanal (chart)',     perms:{admin:'✅',admin2:'✅',cubicador:'✅',usc:'—',externo:'—',cliente:'—'}},
+        {action:'Reclamos semana (chart)',       perms:{admin:'✅',admin2:'✅',cubicador:'✅ propios',usc:'✅ propios',externo:'✅ propios',cliente:'—'}},
+        {action:'Alertas reclamos',             perms:{admin:'✅ todos',admin2:'✅ todos',cubicador:'✅ propios',usc:'✅ propios',externo:'✅ propios',cliente:'—'}},
+        {action:'Resumen reclamos (mi-resumen)',perms:{admin:'✅',admin2:'✅',cubicador:'✅ propios',usc:'✅ propios',externo:'✅ propios',cliente:'—'}},
       ]
     },
     // ---------- 2b ----------
     {
       id: '2b', section: 2,
-      title: '2b. Reclamos — Vistas analíticas',
+      title: '2b. Metrics (tab Cubicación)',
       header: 'Vista',
-      notes: [
-        '✖ = prohibido (403 en backend o sin acceso al módulo).',
-        'cliente no tiene acceso al módulo Reclamos.',
-        '"propios": externo ve reclamos donde es cubicador_asignado o respuesta_por; usc ve donde es creado_por o asignado_a.'
-      ],
+      notes: ['* Acceso API disponible pero sin card en el Hub.'],
       rows: [
-        {action:'Resumen General',      perms:{admin:'✅ global',admin2:'✅ global',cubicador:'✅ global',usc:'✅ propios',externo:'✅ propios',cliente:'✖'}},
-        {action:'Tab Dashboards',        perms:{admin:'✅',admin2:'✅',cubicador:'✖',usc:'✖',externo:'✖',cliente:'✖'}},
-        {action:'Presentaciones stats',  perms:{admin:'✅ todos',admin2:'✅ todos',cubicador:'✅ todos',usc:'✖',externo:'✅ propios',cliente:'✖'}},
+        {action:'KPIs generales',            perms:{admin:'✅',admin2:'✅*',cubicador:'✅',usc:'✅*',externo:'✅*',cliente:'✅'}},
+        {action:'Top 15 proyectos (chart)',   perms:{admin:'✅',admin2:'✅*',cubicador:'✅',usc:'✅*',externo:'✅*',cliente:'✅'}},
+        {action:'Cubicadores (chart)',        perms:{admin:'✅',admin2:'✅*',cubicador:'✅',usc:'✅*',externo:'✅*',cliente:'✅'}},
+        {action:'Cubicación mensual (chart)', perms:{admin:'✅',admin2:'✅*',cubicador:'✅',usc:'✅*',externo:'✅*',cliente:'✅'}},
       ]
     },
     // ---------- 2c ----------
     {
       id: '2c', section: 2,
-      title: '2c. Cubicación — Vistas',
+      title: '2c. Reclamos — Vistas analíticas',
       header: 'Vista',
-      notes: ['* Acceso API disponible pero sin card en el Hub.'],
+      notes: [
+        '✖ = prohibido (403 en backend o sin acceso al módulo).',
+        '"propios": externo ve reclamos donde es cubicador_asignado o respuesta_por; usc ve donde es creado_por o asignado_a. Admin, admin2 y cubicador ven todo (global).'
+      ],
       rows: [
-        {action:'Stats generales',       perms:{admin:'✅',admin2:'✅*',cubicador:'✅',usc:'✅*',externo:'✅*',cliente:'✅'}},
-        {action:'Timeline',              perms:{admin:'✅',admin2:'✅*',cubicador:'✅',usc:'✅*',externo:'✅*',cliente:'✅'}},
-        {action:'Cubicadores',           perms:{admin:'✅',admin2:'✅*',cubicador:'✅',usc:'✅*',externo:'✅*',cliente:'✅'}},
-        {action:'Mi Actividad',          perms:{admin:'✅',admin2:'✅*',cubicador:'✅',usc:'✅*',externo:'✅*',cliente:'✅'}},
-        {action:'Dashboard cubicación',  perms:{admin:'✅',admin2:'✅*',cubicador:'✅',usc:'✅*',externo:'✅*',cliente:'✅'}},
+        {action:'Resumen General',      perms:{admin:'✅ global',admin2:'✅ global',cubicador:'✅ global',usc:'✅ propios',externo:'✅ propios',cliente:'✖'}},
+        {action:'Dashboards admin',     perms:{admin:'✅',admin2:'✅',cubicador:'✖',usc:'✖',externo:'✖',cliente:'✖'}},
+        {action:'Presentaciones stats', perms:{admin:'✅ todos',admin2:'✅ todos',cubicador:'✅ todos',usc:'✖',externo:'✅ propios',cliente:'✖'}},
       ]
     },
     // ---------- 3a ----------
@@ -122,25 +118,27 @@
     // ---------- 3c ----------
     {
       id: '3c', section: 3,
-      title: '3c. Proyectos y barras (cubicación)',
+      title: '3c. Proyectos y cargas (cubicación)',
       header: 'Acción',
       notes: [
         '† Requiere estar autorizado en proyecto_usuarios. Admin/admin2 siempre tienen acceso.',
-        'USC, externo y cliente no tienen acceso al módulo Cubicación (excepto cliente en modo lectura).'
+        'Reimportar CSV: ejecuta DELETE de barras del mismo plano_code antes del UPSERT, eliminando barras huérfanas.',
+        'USC, externo no tienen acceso al módulo Cubicación. Cliente solo lectura (Metrics + ver proyectos filtrados).'
       ],
       rows: [
-        {action:'Ver proyectos / barras',        perms:{admin:'✅',admin2:'✅',cubicador:'✅',usc:'—',externo:'—',cliente:'—'}},
+        {action:'Ver proyectos / barras',        perms:{admin:'✅',admin2:'✅',cubicador:'✅',usc:'—',externo:'—',cliente:'✅†'}},
         {action:'Crear proyecto',                perms:{admin:'✅',admin2:'✅',cubicador:'✅',usc:'—',externo:'—',cliente:'—'}},
         {action:'Editar proyecto',               perms:{admin:'✅',admin2:'✅',cubicador:'✅†',usc:'—',externo:'—',cliente:'—'}},
-        {action:'Eliminar proyecto',             perms:{admin:'✅',admin2:'✅',cubicador:'✅† vacío',usc:'—',externo:'—',cliente:'—'}},
-        {action:'Crear / duplicar barras',       perms:{admin:'—',admin2:'—',cubicador:'—',usc:'—',externo:'—',cliente:'—'}},
-        {action:'Eliminar barras',               perms:{admin:'—',admin2:'—',cubicador:'—',usc:'—',externo:'—',cliente:'—'}},
-        {action:'Cambiar sector',                perms:{admin:'—',admin2:'—',cubicador:'—',usc:'—',externo:'—',cliente:'—'}},
-        {action:'Mover barras entre sectores',   perms:{admin:'—',admin2:'—',cubicador:'—',usc:'—',externo:'—',cliente:'—'}},
-        {action:'Importar Excel',                perms:{admin:'✅',admin2:'✅',cubicador:'✅',usc:'—',externo:'—',cliente:'—'}},
+        {action:'Eliminar proyecto (vacío)',      perms:{admin:'✅',admin2:'✅',cubicador:'✅†',usc:'—',externo:'—',cliente:'—'}},
+        {action:'Importar CSV',                  perms:{admin:'✅',admin2:'✅',cubicador:'✅',usc:'—',externo:'—',cliente:'—'}},
+        {action:'Reimportar CSV (reemplaza carga)',perms:{admin:'✅',admin2:'✅',cubicador:'✅',usc:'—',externo:'—',cliente:'—'}},
         {action:'Exportar proyecto',             perms:{admin:'✅',admin2:'✅',cubicador:'✅',usc:'—',externo:'—',cliente:'—'}},
         {action:'Eliminar carga',                perms:{admin:'✅',admin2:'✅',cubicador:'✅† o propio',usc:'—',externo:'—',cliente:'—'}},
+        {action:'Eliminar cargas (bulk)',         perms:{admin:'✅',admin2:'✅',cubicador:'✅† o propio',usc:'—',externo:'—',cliente:'—'}},
+        {action:'Mover cargas entre proyectos',  perms:{admin:'✅',admin2:'✅',cubicador:'✅† o propio',usc:'—',externo:'—',cliente:'—'}},
         {action:'Autorizar usuario en proyecto', perms:{admin:'✅',admin2:'✅',cubicador:'✅†',usc:'—',externo:'—',cliente:'—'}},
+        {action:'Ver cargas recientes',          perms:{admin:'✅',admin2:'✅',cubicador:'✅',usc:'—',externo:'—',cliente:'✅'}},
+        {action:'Navegación sectores/pisos',     perms:{admin:'✅',admin2:'✅',cubicador:'✅',usc:'—',externo:'—',cliente:'✅'}},
       ]
     },
     // ---------- 3d ----------
@@ -153,10 +151,8 @@
         '"Análisis" = formulario cubicador (categoría Ishikawa, sub-causa, respuesta, área aplica, fecha análisis, kilos mal fabricados).',
         '"propios" para cubicador/externo = reclamos donde es cubicador_asignado o respuesta_por.',
         '"propios" para USC = reclamos donde es creado_por o asignado_a.',
-        '"USC Responsable" = campo asignado_a. USC se auto-asigna (bloqueado); admin/admin2 eligen cualquier USC.',
-        '"Cubicador Responsable" = campo cubicador_asignado. Asignable por admin/admin2/usc.',
-        'Cubicador y externo no pueden crear reclamos; solo completan análisis causa raíz.',
-        'Cliente no tiene acceso al módulo Reclamos.'
+        'Año calidad (anio_calidad) solo editable por admin/admin2 (bloqueado inline en PATCH).',
+        'Editar/Eliminar acción correctiva e imágenes — actualmente sin validación de propiedad en backend.'
       ],
       rows: [
         {action:'Ver listado reclamos',               perms:{admin:'✅ todo',admin2:'✅ todo',cubicador:'✅ todo',usc:'✅ propios',externo:'✅ propios',cliente:'—'}},
@@ -165,12 +161,20 @@
         {action:'Asignar Cubicador Responsable',      perms:{admin:'✅ libre',admin2:'✅ libre',cubicador:'—',usc:'✅ libre',externo:'—',cliente:'—'}},
         {action:'Editar registro (form básico)',       perms:{admin:'✅',admin2:'✅',cubicador:'—',usc:'✅ propios',externo:'—',cliente:'—'}},
         {action:'Editar análisis (form cubicador)',    perms:{admin:'✅',admin2:'✅',cubicador:'✅ propios',usc:'—',externo:'✅ propios',cliente:'—'}},
+        {action:'Editar año calidad',                 perms:{admin:'✅',admin2:'✅',cubicador:'—',usc:'—',externo:'—',cliente:'—'}},
+        {action:'Editar número calidad',              perms:{admin:'✅',admin2:'✅',cubicador:'✅',usc:'✅',externo:'✅',cliente:'—'}},
+        {action:'Validación resultado/observaciones', perms:{admin:'✅',admin2:'✅',cubicador:'✅',usc:'✅',externo:'✅',cliente:'—'}},
+        {action:'Campos tiempo respuesta',            perms:{admin:'✅',admin2:'✅',cubicador:'✅ propios',usc:'—',externo:'✅ propios',cliente:'—'}},
         {action:'Eliminar reclamo',                   perms:{admin:'✅',admin2:'✅',cubicador:'—',usc:'✅ propios',externo:'—',cliente:'—'}},
         {action:'Agregar historial de modificaciones', perms:{admin:'✅',admin2:'✅',cubicador:'✅',usc:'✅',externo:'✅',cliente:'—'}},
         {action:'Agregar acción correctiva',           perms:{admin:'✅',admin2:'✅',cubicador:'✅ propios',usc:'—',externo:'✅ propios',cliente:'—'}},
+        {action:'Editar acción correctiva',            perms:{admin:'✅',admin2:'✅',cubicador:'✅',usc:'✅',externo:'✅',cliente:'—'}},
+        {action:'Eliminar acción correctiva',          perms:{admin:'✅',admin2:'✅',cubicador:'✅',usc:'✅',externo:'✅',cliente:'—'}},
         {action:'Subir imágenes registro',             perms:{admin:'✅',admin2:'✅',cubicador:'—',usc:'✅',externo:'—',cliente:'—'}},
         {action:'Subir imágenes análisis',             perms:{admin:'✅',admin2:'✅',cubicador:'✅',usc:'—',externo:'✅',cliente:'—'}},
+        {action:'Eliminar imágenes',                   perms:{admin:'✅',admin2:'✅',cubicador:'✅',usc:'✅',externo:'✅',cliente:'—'}},
         {action:'Presentar reclamo',                   perms:{admin:'✅',admin2:'✅',cubicador:'✅ propios',usc:'—',externo:'✅ propios',cliente:'—'}},
+        {action:'Siguiente número calidad',            perms:{admin:'✅',admin2:'✅',cubicador:'✅',usc:'✅',externo:'✅',cliente:'—'}},
       ]
     },
     // ---------- 3e ----------
@@ -185,6 +189,20 @@
         {action:'CRUD constructoras',  perms:{admin:'✅',admin2:'✅',cubicador:'—',usc:'—',externo:'—',cliente:'—'}},
       ]
     },
+    // ---------- 3f ----------
+    {
+      id: '3f', section: 3,
+      title: '3f. Notificaciones',
+      header: 'Acción',
+      notes: [],
+      rows: [
+        {action:'Ver notificaciones propias',   perms:{admin:'✅',admin2:'✅',cubicador:'✅',usc:'✅',externo:'✅',cliente:'✅'}},
+        {action:'Contar no leídas',             perms:{admin:'✅',admin2:'✅',cubicador:'✅',usc:'✅',externo:'✅',cliente:'✅'}},
+        {action:'Marcar leída / todas leídas',  perms:{admin:'✅',admin2:'✅',cubicador:'✅',usc:'✅',externo:'✅',cliente:'✅'}},
+        {action:'Ver config notificaciones',    perms:{admin:'✅',admin2:'✅',cubicador:'—',usc:'—',externo:'—',cliente:'—'}},
+        {action:'Editar config notificaciones', perms:{admin:'✅',admin2:'✅',cubicador:'—',usc:'—',externo:'—',cliente:'—'}},
+      ]
+    },
   ];
 
   var SECURITY_NOTES = [
@@ -192,12 +210,13 @@
     'GET /reclamos/{id}/imagenes/{iid} no tiene auth — públicamente accesible con la URL.',
     'Pedidos, calculistas, constructoras — restringidos a admin/admin2 en backend.',
     'admin2 vs admin: admin2 no puede crear usuarios admin/admin2, no puede operar sobre usuarios admin/admin2, no puede reset DB ni limpiar tablas.',
-    'Barras/cubicación — crear/duplicar/eliminar barras, cambiar sector y mover barras deshabilitados para todos (sistema cerrado).'
+    'Acciones correctivas e imágenes — PATCH/DELETE /reclamos/{id}/acciones/{aid} y DELETE /reclamos/{id}/imagenes/{iid} no validan propiedad. Cualquier usuario autenticado puede operar sobre cualquier reclamo. Pendiente de hardening.',
+    'numero_calidad — no está restringido a REGISTRO_FIELDS ni ANALISIS_FIELDS, lo que permite su edición por cualquier rol autenticado (excepto cliente). Evaluar si debería restringirse.'
   ];
 
   var SECTION_TITLES = {
-    1: '1. Módulos y Tabs × Rol',
-    2: '2. Dashboards / Vistas × Rol',
+    1: '1. Acceso a Módulos y Tabs',
+    2: '2. Indicadores y Vistas Analíticas',
     3: '3. Permisos (Acciones) × Rol'
   };
 

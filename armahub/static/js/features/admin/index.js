@@ -14,9 +14,11 @@ function switchAdminSubTab(tabId) {
     if (btn.getAttribute('data-subtab') === tabId) {
       btn.classList.add('active');
       btn.style.borderBottomColor = '#1565C0';
+      btn.style.color = '#1565C0';
     } else {
       btn.classList.remove('active');
       btn.style.borderBottomColor = 'transparent';
+      btn.style.color = '#999';
     }
   });
   // Load data for the tab

@@ -1,12 +1,13 @@
-# ArmaHub — Matriz de Roles, Dashboards y Permisos
+# ArmaHub — Matriz de Roles y Permisos
 
 Documento de referencia para visualizar qué ve y qué puede hacer cada rol.
+Actualizado: 2025-07.
 
 ---
 
-## 1. Módulos y Tabs × Rol
+## 1. Acceso a Módulos y Tabs
 
-### 1a. Acceso a módulos (calugas del Hub)
+### 1a. Módulos (calugas del Hub)
 
 | Módulo (caluga)              | admin | admin2 | cubicador | usc   | externo | cliente |
 | ---------------------------- |:-----:|:------:|:---------:|:-----:|:-------:|:-------:|
@@ -16,28 +17,25 @@ Documento de referencia para visualizar qué ve y qué puede hacer cada rol.
 
 > Definido en `registry.js` → `allowedRoles`.
 
-### 1b. Acceso a tabs dentro de cada módulo
+### 1b. Tabs por módulo
 
 | Módulo         | Tab              | admin | admin2 | cubicador | usc   | externo | cliente |
 | -------------- | ---------------- |:-----:|:------:|:---------:|:-----:|:-------:|:-------:|
-| **Cubicación** | Inicio           |  ✅   |   ✅   |    ✅     |   —   |    —    |   ✅    |
 | **Cubicación** | Obras            |  ✅   |   ✅   |    ✅     |   —   |    —    |    —    |
+| **Cubicación** | Metrics          |  ✅   |   ✅   |    ✅     |   —   |    —    |   ✅    |
 | **Cubicación** | Bar Manager      |  ✅   |   ✅   |    ✅     |   —   |    —    |    —    |
-| **Cubicación** | Dashboards       |  ✅   |   ✅   |    ✅     |   —   |    —    |    —    |
 | **Cubicación** | Pedidos          |  ✅   |   ✅   |    ✅     |   —   |    —    |    —    |
 | **Cubicación** | Exportación      |  ✅   |   ✅   |    ✅     |   —   |    —    |    —    |
 | **Reclamos**   | Reclamos         |  ✅   |   ✅   |    ✅     |  ✅   |   ✅    |    —    |
-| **Reclamos**   | Dashboards       |  ✅   |   ✅   |     —     |   —   |    —    |    —    |
-| **Reclamos**   | Presentación     |  ✅   |   ✅   |    ✅     |   —   |   ✅    |    —    |
 | **Admin**      | Admin            |  ✅   |   ✅   |     —     |   —   |    —    |    —    |
 
-> El rol `cliente` dentro de Cubicación solo ve el tab **Inicio** (los demás se ocultan en frontend).
-> En Reclamos, el tab **Dashboards** es solo para admin/admin2. El tab **Presentación** excluye a usc.
+> El rol `cliente` dentro de Cubicación solo ve el tab **Metrics** (los demás se ocultan en frontend).
+> Tab **Obras** es el default al entrar a Cubicación.
 > Los roles sin acceso al módulo (—) no ven ningún tab de ese módulo.
 
 ---
 
-## 2. Dashboards / Vistas × Rol
+## 2. Indicadores y Vistas Analíticas
 
 ### 2a. Landing (Hub principal)
 
@@ -46,30 +44,29 @@ Documento de referencia para visualizar qué ve y qué puede hacer cada rol.
 | Cubicado semanal (chart)     |    ✅    |    ✅    |      ✅        |      —       |      —       |    —    |
 | Reclamos semana (chart)      |    ✅    |    ✅    |   ✅ propios   |  ✅ propios  |  ✅ propios  |    —    |
 | Alertas reclamos             | ✅ todos | ✅ todos |   ✅ propios   |  ✅ propios  |  ✅ propios  |    —    |
+| Resumen reclamos (mi-resumen)|    ✅    |    ✅    |   ✅ propios   |  ✅ propios  |  ✅ propios  |    —    |
 
-### 2b. Reclamos — Vistas analíticas
-
-| Vista                        | admin      | admin2     | cubicador  | usc        | externo    | cliente |
-| ---------------------------- |:----------:|:----------:|:--------- :|:----------:|:----------:|:-------:|
-| Resumen General              | ✅ global  | ✅ global | ✅ global | ✅ propios | ✅ propios |    ✖    |
-| Tab Dashboards               |      ✅    |      ✅   |      ✖    |      ✖     |      ✖     |    ✖    |
-| Presentaciones stats         | ✅ todos   | ✅ todos  | ✅ todos  |      ✖     | ✅ propios |    ✖    |
-
-> `✖` = prohibido (403 en backend o sin acceso al módulo).
-> `cliente` no tiene acceso al módulo Reclamos actualmente.
-> **"propios"** = filtrado por `build_role_filter()`: externo ve reclamos donde es `cubicador_asignado` o `respuesta_por`; usc ve donde es `creado_por` o `asignado_a`. Admin, admin2 y cubicador ven todo (global).
-
-### 2c. Cubicación — Vistas
+### 2b. Metrics (tab Cubicación)
 
 | Vista                        | admin | admin2 | cubicador | usc   | externo | cliente |
 | ---------------------------- |:-----:|:------:|:---------:|:-----:|:-------:|:-------:|
-| Stats generales              |  ✅   |  ✅\*  |    ✅     | ✅\*  |  ✅\*   |   ✅    |
-| Timeline                     |  ✅   |  ✅\*  |    ✅     | ✅\*  |  ✅\*   |   ✅    |
-| Cubicadores                  |  ✅   |  ✅\*  |    ✅     | ✅\*  |  ✅\*   |   ✅    |
-| Mi Actividad                 |  ✅   |  ✅\*  |    ✅     | ✅\*  |  ✅\*   |   ✅    |
-| Dashboard cubicación         |  ✅   |  ✅\*  |    ✅     | ✅\*  |  ✅\*   |   ✅    |
+| KPIs generales               |  ✅   |  ✅\*  |    ✅     | ✅\*  |  ✅\*   |   ✅    |
+| Top 15 proyectos (chart)     |  ✅   |  ✅\*  |    ✅     | ✅\*  |  ✅\*   |   ✅    |
+| Cubicadores (chart)          |  ✅   |  ✅\*  |    ✅     | ✅\*  |  ✅\*   |   ✅    |
+| Cubicación mensual (chart)   |  ✅   |  ✅\*  |    ✅     | ✅\*  |  ✅\*   |   ✅    |
 
 > \*Acceso API disponible pero sin card en el Hub.
+
+### 2c. Reclamos — Vistas analíticas
+
+| Vista                        | admin      | admin2     | cubicador  | usc        | externo    | cliente |
+| ---------------------------- |:----------:|:----------:|:----------:|:----------:|:----------:|:-------:|
+| Resumen General              | ✅ global  | ✅ global  | ✅ global  | ✅ propios | ✅ propios |    ✖    |
+| Dashboards admin             |      ✅    |      ✅    |      ✖     |      ✖     |      ✖     |    ✖    |
+| Presentaciones stats         | ✅ todos   | ✅ todos   | ✅ todos   |      ✖     | ✅ propios |    ✖    |
+
+> `✖` = prohibido (403 en backend o sin acceso al módulo).
+> **"propios"**: externo ve reclamos donde es `cubicador_asignado` o `respuesta_por`; usc ve donde es `creado_por` o `asignado_a`. Admin, admin2 y cubicador ven todo (global).
 
 ---
 
@@ -99,25 +96,27 @@ Documento de referencia para visualizar qué ve y qué puede hacer cada rol.
 | Limpiar tabla                       |  ✅   |   —    |     —     |   —   |    —    |    —    |
 | Ver auditoría                       |  ✅   |   ✅   |     —     |   —   |    —    |    —    |
 
-### 3c. Proyectos y barras (cubicación)
+### 3c. Proyectos y cargas (cubicación)
 
 | Acción                              | admin  | admin2 | cubicador      | usc | externo | cliente |
 | ----------------------------------- |:------:|:------:|:--------------:|:---:|:-------:|:-------:|
-| Ver proyectos / barras              |   ✅   |   ✅   |      ✅        |  —  |    —    |    —    |
+| Ver proyectos / barras              |   ✅   |   ✅   |      ✅        |  —  |    —    |   ✅†   |
 | Crear proyecto                      |   ✅   |   ✅   |      ✅        |  —  |    —    |    —    |
 | Editar proyecto                     |   ✅   |   ✅   |     ✅†        |  —  |    —    |    —    |
-| Eliminar proyecto                   |   ✅   |   ✅   |   ✅† vacío    |  —  |    —    |    —    |
-| Crear / duplicar barras             |   —    |   —    |      —         |  —  |    —    |    —    |
-| Eliminar barras                     |   —    |   —    |      —         |  —  |    —    |    —    |
-| Cambiar sector                      |   —    |   —    |      —         |  —  |    —    |    —    |
-| Mover barras entre sectores         |   —    |   —    |      —         |  —  |    —    |    —    |
-| Importar Excel                      |   ✅   |   ✅   |      ✅        |  —  |    —    |    —    |
+| Eliminar proyecto (vacío)           |   ✅   |   ✅   |     ✅†        |  —  |    —    |    —    |
+| Importar CSV                        |   ✅   |   ✅   |      ✅        |  —  |    —    |    —    |
+| Reimportar CSV (reemplaza carga)    |   ✅   |   ✅   |      ✅        |  —  |    —    |    —    |
 | Exportar proyecto                   |   ✅   |   ✅   |      ✅        |  —  |    —    |    —    |
 | Eliminar carga                      |   ✅   |   ✅   |  ✅† o propio  |  —  |    —    |    —    |
+| Eliminar cargas (bulk)              |   ✅   |   ✅   |  ✅† o propio  |  —  |    —    |    —    |
+| Mover cargas entre proyectos        |   ✅   |   ✅   |  ✅† o propio  |  —  |    —    |    —    |
 | Autorizar usuario en proyecto       |   ✅   |   ✅   |     ✅†        |  —  |    —    |    —    |
+| Ver cargas recientes                |   ✅   |   ✅   |      ✅        |  —  |    —    |   ✅    |
+| Navegación sectores/pisos           |   ✅   |   ✅   |      ✅        |  —  |    —    |   ✅    |
 
 > † Requiere estar autorizado en `proyecto_usuarios`. Admin/admin2 siempre tienen acceso.
-> USC, externo y cliente no tienen acceso al módulo Cubicación (excepto cliente en modo lectura).
+> Reimportar CSV: ejecuta DELETE de barras del mismo `plano_code` antes del UPSERT, eliminando barras huérfanas.
+> USC, externo no tienen acceso al módulo Cubicación. Cliente solo lectura (Metrics + ver proyectos filtrados).
 
 ### 3d. Reclamos
 
@@ -129,22 +128,27 @@ Documento de referencia para visualizar qué ve y qué puede hacer cada rol.
 | Asignar Cubicador Responsable       | ✅ libre   | ✅ libre   |      —       |  ✅ libre      |      —       |    —    |
 | Editar registro (form básico)       |     ✅     |     ✅     |      —       | ✅ propios     |      —       |    —    |
 | Editar análisis (form cubicador)    |     ✅     |     ✅     | ✅ propios   |       —        | ✅ propios   |    —    |
+| Editar año calidad                  |     ✅     |     ✅     |      —       |       —        |      —       |    —    |
+| Editar número calidad               |     ✅     |     ✅     |      ✅      |       ✅       |      ✅      |    —    |
+| Validación resultado/observaciones  |     ✅     |     ✅     |      ✅      |       ✅       |      ✅      |    —    |
+| Campos tiempo respuesta             |     ✅     |     ✅     | ✅ propios   |       —        | ✅ propios   |    —    |
 | Eliminar reclamo                    |     ✅     |     ✅     |      —       | ✅ propios     |      —       |    —    |
 | Agregar historial de modificaciones |     ✅     |     ✅     |      ✅      |       ✅       |      ✅      |    —    |
 | Agregar acción correctiva           |     ✅     |     ✅     | ✅ propios   |       —        | ✅ propios   |    —    |
+| Editar acción correctiva            |     ✅     |     ✅     |      ✅      |       ✅       |      ✅      |    —    |
+| Eliminar acción correctiva          |     ✅     |     ✅     |      ✅      |       ✅       |      ✅      |    —    |
 | Subir imágenes registro             |     ✅     |     ✅     |      —       |       ✅       |      —       |    —    |
 | Subir imágenes análisis             |     ✅     |     ✅     |      ✅      |       —        |      ✅      |    —    |
+| Eliminar imágenes                   |     ✅     |     ✅     |      ✅      |       ✅       |      ✅      |    —    |
 | Presentar reclamo                   |     ✅     |     ✅     | ✅ propios   |       —        | ✅ propios   |    —    |
+| Siguiente número calidad            |     ✅     |     ✅     |      ✅      |       ✅       |      ✅      |    —    |
 
 > "Registro" = formulario básico (descripción, USC responsable, cubicador responsable, prioridad, id_calidad, observaciones, proyecto).
 > "Análisis" = formulario cubicador (categoría Ishikawa, sub-causa, respuesta, área aplica, fecha análisis, kilos mal fabricados).
 > "propios" para cubicador/externo = reclamos donde es `cubicador_asignado` o `respuesta_por`.
 > "propios" para USC = reclamos donde es `creado_por` o `asignado_a`.
-> "USC Responsable" = campo `asignado_a` — USC que levanta el reclamo. USC se auto-asigna (bloqueado); admin/admin2 pueden elegir cualquier usuario USC.
-> "Cubicador Responsable" = campo `cubicador_asignado` — cubicador que responde el análisis causa raíz. Asignable por admin/admin2/usc.
-> Cubicador y externo no pueden crear reclamos; solo pueden completar el análisis causa raíz de reclamos asignados.
-> Historial de modificaciones = timeline de comentarios/cambios de estado en el detalle de cada reclamo (automático al modificar, manual vía formulario).
-> Cliente no tiene acceso al módulo Reclamos.
+> **Año calidad** (`anio_calidad`) solo editable por admin/admin2 (bloqueado inline en PATCH).
+> **Editar/Eliminar acción correctiva e imágenes** — actualmente sin validación de propiedad en backend (cualquier usuario autenticado puede operar).
 
 ### 3e. Pedidos, calculistas, constructoras
 
@@ -154,6 +158,16 @@ Documento de referencia para visualizar qué ve y qué puede hacer cada rol.
 | CRUD calculistas                    |  ✅   |   ✅   |    —      |   —   |    —    |    —    |
 | CRUD constructoras                  |  ✅   |   ✅   |    —      |   —   |    —    |    —    |
 
+### 3f. Notificaciones
+
+| Acción                              | admin | admin2 | cubicador | usc   | externo | cliente |
+| ----------------------------------- |:-----:|:------:|:---------:|:-----:|:-------:|:-------:|
+| Ver notificaciones propias          |  ✅   |   ✅   |    ✅     |  ✅   |   ✅    |   ✅    |
+| Contar no leídas                    |  ✅   |   ✅   |    ✅     |  ✅   |   ✅    |   ✅    |
+| Marcar leída / todas leídas         |  ✅   |   ✅   |    ✅     |  ✅   |   ✅    |   ✅    |
+| Ver config notificaciones           |  ✅   |   ✅   |    —      |   —   |    —    |    —    |
+| Editar config notificaciones        |  ✅   |   ✅   |    —      |   —   |    —    |    —    |
+
 ---
 
 ## 4. Observaciones de seguridad
@@ -162,4 +176,5 @@ Documento de referencia para visualizar qué ve y qué puede hacer cada rol.
 2. **`GET /reclamos/{id}/imagenes/{iid}` no tiene auth** — públicamente accesible con la URL.
 3. **Pedidos, calculistas, constructoras** — restringidos a admin/admin2 en backend.
 4. **admin2** vs **admin**: admin2 no puede crear usuarios admin/admin2, no puede operar sobre usuarios admin/admin2, no puede reset DB ni limpiar tablas.
-5. **Barras/cubicación** — crear/duplicar/eliminar barras, cambiar sector y mover barras deshabilitados para todos (sistema cerrado).
+5. **Acciones correctivas e imágenes** — `PATCH/DELETE /reclamos/{id}/acciones/{aid}` y `DELETE /reclamos/{id}/imagenes/{iid}` no validan propiedad. Cualquier usuario autenticado puede operar sobre cualquier reclamo. **Pendiente de hardening.**
+6. **`numero_calidad`** — no está restringido a REGISTRO_FIELDS ni ANALISIS_FIELDS, lo que permite su edición por cualquier rol autenticado (excepto cliente). Evaluar si debería restringirse.

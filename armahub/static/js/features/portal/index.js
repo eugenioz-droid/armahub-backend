@@ -132,8 +132,8 @@ function renderTop15Chart(proyectos) {
     data: {
       labels: labels,
       datasets: [
-        { label: 'Exportado', data: exportado, backgroundColor: '#66BB6A', borderRadius: 2 },
-        { label: 'Cargado', data: cargado, backgroundColor: '#B0BEC5', borderRadius: 2 }
+        { label: 'Cargado', data: cargado, backgroundColor: '#B0BEC5', borderRadius: 2 },
+        { label: 'Exportado', data: exportado, backgroundColor: '#66BB6A', borderRadius: 2 }
       ]
     },
     options: {
@@ -148,13 +148,22 @@ function renderTop15Chart(proyectos) {
               return 'Total: ' + totales[idx] + ' Tn';
             }
           }
+        },
+        datalabels: {
+          display: function(ctx) { return ctx.dataset.data[ctx.dataIndex] > 0; },
+          color: '#fff',
+          font: { size: 9, weight: 'bold' },
+          anchor: 'center',
+          align: 'center',
+          formatter: function(v) { return v.toFixed(1); }
         }
       },
       scales: {
         x: { stacked: true, ticks: { font: { size: 9 }, callback: function(v) { return v + ' Tn'; } } },
         y: { stacked: true, ticks: { font: { size: 10 } } }
       }
-    }
+    },
+    plugins: [ChartDataLabels]
   });
 }
 
@@ -186,19 +195,30 @@ async function loadCubicadoresChart() {
     data: {
       labels: labels,
       datasets: [
-        { label: 'Exportado', data: exportado, backgroundColor: '#66BB6A', borderRadius: 2 },
-        { label: 'Cargado', data: cargado, backgroundColor: '#B0BEC5', borderRadius: 2 }
+        { label: 'Cargado', data: cargado, backgroundColor: '#B0BEC5', borderRadius: 2 },
+        { label: 'Exportado', data: exportado, backgroundColor: '#66BB6A', borderRadius: 2 }
       ]
     },
     options: {
       responsive: true, maintainAspectRatio: false,
       indexAxis: 'y',
-      plugins: { legend: { display: false } },
+      plugins: {
+        legend: { display: false },
+        datalabels: {
+          display: function(ctx) { return ctx.dataset.data[ctx.dataIndex] > 0; },
+          color: '#fff',
+          font: { size: 9, weight: 'bold' },
+          anchor: 'center',
+          align: 'center',
+          formatter: function(v) { return v.toFixed(1); }
+        }
+      },
       scales: {
         x: { stacked: true, ticks: { font: { size: 9 }, callback: function(v) { return v + ' Tn'; } } },
         y: { stacked: true, ticks: { font: { size: 10 } } }
       }
-    }
+    },
+    plugins: [ChartDataLabels]
   });
 }
 
