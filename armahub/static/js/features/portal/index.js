@@ -115,8 +115,13 @@ function renderTop15Chart(proyectos) {
     var n = p.nombre || p.id_proyecto;
     return n.length > 25 ? n.substring(0, 22) + '...' : n;
   });
-  var cargado = top.map(function(p) { return Math.round(((p.kilos || 0) - (p.kilos_exportados || 0)) / 1000 * 100) / 100; });
-  var exportado = top.map(function(p) { return Math.round((p.kilos_exportados || 0) / 1000 * 100) / 100; });
+  var cargado = top.map(function(p) {
+    var exp = Math.min(p.kilos_exportados || 0, p.kilos || 0);
+    return Math.round((p.kilos - exp) / 1000 * 100) / 100;
+  });
+  var exportado = top.map(function(p) {
+    return Math.round(Math.min(p.kilos_exportados || 0, p.kilos || 0) / 1000 * 100) / 100;
+  });
   var totales = top.map(function(p) { return (p.kilos / 1000).toFixed(2); });
   var totalGeneral = proyectos.reduce(function(s, p) { return s + (p.kilos || 0); }, 0);
 
@@ -165,8 +170,13 @@ async function loadCubicadoresChart() {
     var at = email.indexOf('@');
     return at > 0 ? email.substring(0, at) : email;
   });
-  var cargado = cubicadores.map(function(c) { return Math.round(((c.kilos || 0) - (c.kilos_exportados || 0)) / 1000 * 100) / 100; });
-  var exportado = cubicadores.map(function(c) { return Math.round((c.kilos_exportados || 0) / 1000 * 100) / 100; });
+  var cargado = cubicadores.map(function(c) {
+    var exp = Math.min(c.kilos_exportados || 0, c.kilos || 0);
+    return Math.round((c.kilos - exp) / 1000 * 100) / 100;
+  });
+  var exportado = cubicadores.map(function(c) {
+    return Math.round(Math.min(c.kilos_exportados || 0, c.kilos || 0) / 1000 * 100) / 100;
+  });
   var totalGeneral = cubicadores.reduce(function(s, c) { return s + (c.kilos || 0); }, 0);
 
   document.getElementById('cubTotal').textContent = 'Total: ' + (totalGeneral / 1000).toFixed(1) + ' Tn (' + cubicadores.length + ' cubicadores)';
