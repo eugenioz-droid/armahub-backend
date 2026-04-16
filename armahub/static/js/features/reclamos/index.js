@@ -9,10 +9,12 @@ var _FECHA_OPERATIVA = '2026-04-16';
 function _calcDiasReclamo(r) {
   if (!r.fecha_creacion) return null;
   var creacion = r.fecha_creacion.substring(0, 10);
-  if (creacion < _FECHA_OPERATIVA) return null;
-  var inicio = new Date(creacion);
+  // Reclamos anteriores al corte: contar desde fecha operativa
+  var inicio = creacion < _FECHA_OPERATIVA ? new Date(_FECHA_OPERATIVA) : new Date(creacion);
   var fin = r.fecha_cierre ? new Date(r.fecha_cierre.substring(0, 10)) : new Date();
-  var dias = Math.round((fin - inicio) / 86400000);
+  // Truncar fin a medianoche para evitar redondeo por hora actual
+  fin.setHours(0, 0, 0, 0);
+  var dias = Math.floor((fin - inicio) / 86400000);
   return dias < 0 ? 0 : dias;
 }
 

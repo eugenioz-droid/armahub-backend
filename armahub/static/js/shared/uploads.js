@@ -98,7 +98,12 @@
         if (settings.onUnauthorized) settings.onUnauthorized();
         return { ok: false, unauthorized: true };
       }
-      var data = await response.json();
+      var data;
+      try {
+        data = await response.json();
+      } catch (e) {
+        return { ok: false, detail: 'Error del servidor (' + response.status + ')', index: i, file: items[i] };
+      }
       if (!data.ok) {
         return { ok: false, detail: data.detail || 'desconocido', data: data, index: i, file: items[i] };
       }

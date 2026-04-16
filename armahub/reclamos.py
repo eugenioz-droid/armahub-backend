@@ -1570,24 +1570,31 @@ async def subir_imagen(
     if len(data) > MAX_IMAGE_SIZE:
         raise HTTPException(status_code=400, detail=f"Imagen demasiado grande. Máximo: {MAX_IMAGE_SIZE // (1024*1024)} MB")
 
-    with get_conn() as conn:
-        with conn.cursor() as cur:
-            cur.execute("SELECT id FROM reclamos WHERE id = %s", (reclamo_id,))
-            if not cur.fetchone():
-                raise HTTPException(status_code=404, detail="Reclamo no encontrado")
+    try:
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT id FROM reclamos WHERE id = %s", (reclamo_id,))
+                if not cur.fetchone():
+                    raise HTTPException(status_code=404, detail="Reclamo no encontrado")
 
-            cur.execute("""
-                INSERT INTO reclamo_imagenes (reclamo_id, filename, content_type, data, descripcion, subido_por, fecha, tipo)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                RETURNING id
-            """, (reclamo_id, file.filename, file.content_type, data, descripcion, email, now, img_tipo))
-            img_id = cur.fetchone()[0]
+                cur.execute("""
+                    INSERT INTO reclamo_imagenes (reclamo_id, filename, content_type, data, descripcion, subido_por, fecha, tipo)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                    RETURNING id
+                """, (reclamo_id, file.filename, file.content_type, data, descripcion, email, now, img_tipo))
+                img_id = cur.fetchone()[0]
 
-            cur.execute("UPDATE reclamos SET fecha_actualizacion = %s WHERE id = %s", (now, reclamo_id))
+                cur.execute("UPDATE reclamos SET fecha_actualizacion = %s WHERE id = %s", (now, reclamo_id))
 
-            _invalidate_reclamo_cache(reclamo_id)
-    audit(email, "subir_imagen_reclamo", f"{file.filename} ({img_tipo})", "reclamo", str(reclamo_id))
-    return {"ok": True, "id": img_id, "filename": file.filename, "tipo": img_tipo}
+                _invalidate_reclamo_cache(reclamo_id)
+        audit(email, "subir_imagen_reclamo", f"{file.filename} ({img_tipo})", "reclamo", str(reclamo_id))
+        return {"ok": True, "id": img_id, "filename": file.filename, "tipo": img_tipo}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Error al guardar imagen: {exc}")
 
 
 @router.get("/reclamos/{reclamo_id}/imagenes/{imagen_id}")
