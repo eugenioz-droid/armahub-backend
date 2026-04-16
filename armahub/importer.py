@@ -588,20 +588,12 @@ async def import_armadetailer(
             ))
             import_id = cur.fetchone()[0]
 
-            # ── Reemplazo completo por eje ──
-            # Eliminar barras existentes del mismo proyecto + plano_code(s)
-            # para evitar huérfanas cuando el CSV nuevo tiene menos barras.
+            # ── UPSERT barras ──
+            # El ON CONFLICT (id_unico) DO UPDATE maneja reimportaciones.
+            # La limpieza de cargas antiguas se hace via DELETE /cargas/{id}
+            # (que borra por import_id), NO por plano_code — evita borrar
+            # data de otros archivos que comparten plano_code.
             if rows_to_upsert:
-                plano_codes_csv = list(set(
-                    r[3] for r in rows_to_upsert if r[3]
-                ))
-                if plano_codes_csv:
-                    placeholders = ",".join(["%s"] * len(plano_codes_csv))
-                    cur.execute(
-                        f"DELETE FROM barras WHERE id_proyecto = %s AND plano_code IN ({placeholders})",
-                        [proyecto_id] + plano_codes_csv
-                    )
-
                 rows_with_import = [row + ('csv', import_id) for row in rows_to_upsert]
                 cur.executemany(upsert_sql, rows_with_import)
 
