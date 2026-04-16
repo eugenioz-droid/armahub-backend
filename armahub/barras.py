@@ -315,12 +315,18 @@ def get_stats(
             """, pf_bp)
             proyectos_rows = cur.fetchall()
 
-            # Exported kilos per project (from export_log)
+            # Exported kilos per project (from export_log, deduplicated)
+            # Only take the latest export per (proyecto, sector, piso, ciclo)
             pf_e, pf_ep = _project_filter_sql(allowed, "e")
             cur.execute("""
                 SELECT e.id_proyecto, COALESCE(SUM(e.kilos), 0) AS kilos_exp
-                FROM export_log e
-                WHERE 1=1""" + pf_e + """
+                FROM (
+                    SELECT DISTINCT ON (id_proyecto, sector, piso, ciclo)
+                           id_proyecto, kilos
+                    FROM export_log
+                    WHERE 1=1""" + pf_e + """
+                    ORDER BY id_proyecto, sector, piso, ciclo, fecha DESC
+                ) e
                 GROUP BY e.id_proyecto
             """, pf_ep)
             exp_map = {r[0]: round(float(r[1]), 2) for r in cur.fetchall()}
@@ -443,12 +449,17 @@ def get_stats_cubicadores(
             """, wp)
             rows = cur.fetchall()
 
-            # Exported kilos per user (from export_log)
+            # Exported kilos per user (from export_log, deduplicated)
             pf_el, pf_elp = _project_filter_sql(allowed, "el")
             cur.execute("""
                 SELECT el.usuario, COALESCE(SUM(el.kilos), 0) AS kilos_exp
-                FROM export_log el
-                WHERE 1=1""" + pf_el + """
+                FROM (
+                    SELECT DISTINCT ON (id_proyecto, sector, piso, ciclo)
+                           usuario, kilos
+                    FROM export_log
+                    WHERE 1=1""" + pf_el + """
+                    ORDER BY id_proyecto, sector, piso, ciclo, fecha DESC
+                ) el
                 GROUP BY el.usuario
             """, pf_elp)
             exp_user_map = {r[0]: round(float(r[1]), 2) for r in cur.fetchall()}
