@@ -13,38 +13,48 @@ async function loadProyectos() {
 
   // Populate export project filter
   const epf = document.getElementById('exportProyecto');
-  const prevE = epf.value;
-  epf.innerHTML = '<option value="">-- Selecciona proyecto --</option>' +
-    data.proyectos.map(p => `<option value="${p.id_proyecto}">${p.nombre_proyecto}</option>`).join('');
-  if (prevE) epf.value = prevE;
+  if (epf) {
+    const prevE = epf.value;
+    epf.innerHTML = '<option value="">-- Selecciona proyecto --</option>' +
+      data.proyectos.map(p => `<option value="${p.id_proyecto}">${p.nombre_proyecto}</option>`).join('');
+    if (prevE) epf.value = prevE;
+  }
 
   // Populate sector constructivo project filter
   const spf = document.getElementById('sectorProyectoFilter');
-  const prev = spf.value;
-  spf.innerHTML = '<option value="">Todos los proyectos</option>' +
-    data.proyectos.map(p => `<option value="${p.id_proyecto}">${p.nombre_proyecto}</option>`).join('');
-  if (prev) spf.value = prev;
+  if (spf) {
+    const prev = spf.value;
+    spf.innerHTML = '<option value="">Todos los proyectos</option>' +
+      data.proyectos.map(p => `<option value="${p.id_proyecto}">${p.nombre_proyecto}</option>`).join('');
+    if (prev) spf.value = prev;
+  }
 
   // Populate matriz constructiva project filter
   const mpf = document.getElementById('matrizProyectoFilter');
-  const prevM = mpf.value;
-  mpf.innerHTML = '<option value="">— Selecciona un proyecto —</option>' +
-    data.proyectos.map(p => `<option value="${p.id_proyecto}">${p.nombre_proyecto}</option>`).join('');
-  if (prevM) mpf.value = prevM;
+  if (mpf) {
+    const prevM = mpf.value;
+    mpf.innerHTML = '<option value="">— Selecciona un proyecto —</option>' +
+      data.proyectos.map(p => `<option value="${p.id_proyecto}">${p.nombre_proyecto}</option>`).join('');
+    if (prevM) mpf.value = prevM;
+  }
 
   // Populate navegador sectores project filter
   const npf = document.getElementById('navProyectoFilter');
-  const prevN = npf.value;
-  npf.innerHTML = '<option value="">— Selecciona proyecto —</option>' +
-    data.proyectos.map(p => `<option value="${p.id_proyecto}">${p.nombre_proyecto}</option>`).join('');
-  if (prevN) npf.value = prevN;
+  if (npf) {
+    const prevN = npf.value;
+    npf.innerHTML = '<option value="">— Selecciona proyecto —</option>' +
+      data.proyectos.map(p => `<option value="${p.id_proyecto}">${p.nombre_proyecto}</option>`).join('');
+    if (prevN) npf.value = prevN;
+  }
 
   // Populate pedidos project filter
   const ppf = document.getElementById('pedidoProyecto');
-  const prevP = ppf.value;
-  ppf.innerHTML = '<option value="">— Selecciona proyecto —</option>' +
-    data.proyectos.map(p => `<option value="${p.id_proyecto}">${p.nombre_proyecto}</option>`).join('');
-  if (prevP) ppf.value = prevP;
+  if (ppf) {
+    const prevP = ppf.value;
+    ppf.innerHTML = '<option value="">— Selecciona proyecto —</option>' +
+      data.proyectos.map(p => `<option value="${p.id_proyecto}">${p.nombre_proyecto}</option>`).join('');
+    if (prevP) ppf.value = prevP;
+  }
 
   // Populate reclamos project filter
   const rpf = document.getElementById('recProyecto');
