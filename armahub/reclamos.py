@@ -1577,8 +1577,12 @@ async def subir_imagen(
                 if not cur.fetchone():
                     raise HTTPException(status_code=404, detail="Reclamo no encontrado")
 
-                cur.execute("""
-                    INSERT INTO reclamo_imagenes (reclamo_id, filename, content_type, data, descripcion, subido_por, fecha, tipo)
+                # Detectar nombre de columna fecha (fecha vs fecha_subida)
+                img_columns = _get_table_columns(cur, "reclamo_imagenes")
+                fecha_col = "fecha" if "fecha" in img_columns else "fecha_subida"
+
+                cur.execute(f"""
+                    INSERT INTO reclamo_imagenes (reclamo_id, filename, content_type, data, descripcion, subido_por, {fecha_col}, tipo)
                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                     RETURNING id
                 """, (reclamo_id, file.filename, file.content_type, data, descripcion, email, now, img_tipo))
