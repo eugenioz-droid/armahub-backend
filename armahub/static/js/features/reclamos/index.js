@@ -1452,38 +1452,47 @@ function populateRecFilterProyecto() {
 }
 
   // Scope toggle: cubicador/externo/usc can switch between own and all reclamos
+  // _recScopeAll=false → showing MY reclamos → button says "Todos" (click to see all)
+  // _recScopeAll=true  → showing ALL reclamos → button says "Mis Reclamos" (click to filter)
   var _recScopeAll = false;
+  var _recScopeInitialized = false;
 
   function _initScopeToggle() {
     var scopeBtn = document.getElementById('recFiltroScope');
     if (!scopeBtn) return;
-    if (['usc','cubicador','externo'].includes(currentRole)) {
-      scopeBtn.style.display = '';
-      scopeBtn.textContent = 'Mis Reclamos';
-      scopeBtn.style.background = '#e53935';
-      scopeBtn.style.borderColor = '#e53935';
-      scopeBtn.style.color = '#fff';
-    } else {
+    if (!['usc','cubicador','externo'].includes(currentRole)) {
       scopeBtn.style.display = 'none';
+      return;
+    }
+    scopeBtn.style.display = '';
+    if (!_recScopeInitialized) {
+      _recScopeInitialized = true;
+      _recScopeAll = false;
+      _updateScopeBtnLabel(scopeBtn);
+    }
+  }
+
+  function _updateScopeBtnLabel(btn) {
+    if (!btn) btn = document.getElementById('recFiltroScope');
+    if (!btn) return;
+    if (_recScopeAll) {
+      // Showing ALL → button offers to filter to mine
+      btn.textContent = 'Mis Reclamos';
+      btn.style.background = '#fff';
+      btn.style.borderColor = '#e53935';
+      btn.style.color = '#e53935';
+    } else {
+      // Showing MINE → button offers to see all
+      btn.textContent = 'Todos';
+      btn.style.background = '#fff';
+      btn.style.borderColor = '#1976d2';
+      btn.style.color = '#1976d2';
     }
   }
 
   window.toggleRecScope = function() {
     _recScopeAll = !_recScopeAll;
-    var btn = document.getElementById('recFiltroScope');
-    if (btn) {
-      if (_recScopeAll) {
-        btn.textContent = 'Todos';
-        btn.style.background = '#fff';
-        btn.style.borderColor = '#e53935';
-        btn.style.color = '#e53935';
-      } else {
-        btn.textContent = 'Mis Reclamos';
-        btn.style.background = '#e53935';
-        btn.style.borderColor = '#e53935';
-        btn.style.color = '#fff';
-      }
-    }
+    _updateScopeBtnLabel();
     loadReclamos();
   };
 
