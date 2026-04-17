@@ -1460,7 +1460,7 @@ function populateRecFilterProyecto() {
   function _initScopeToggle() {
     var scopeBtn = document.getElementById('recFiltroScope');
     if (!scopeBtn) return;
-    if (!['usc','cubicador','externo'].includes(currentRole)) {
+    if (!['usc','cubicador'].includes(currentRole)) {
       scopeBtn.style.display = 'none';
       return;
     }
@@ -1517,8 +1517,10 @@ async function loadReclamos() {
   if (proyecto) params.push('id_proyecto=' + encodeURIComponent(proyecto));
   if (responsable) params.push('responsable=' + encodeURIComponent(responsable));
   if (busqueda) params.push('busqueda=' + encodeURIComponent(busqueda));
-  // USC/cubicador/externo: default to own reclamos, toggle allows seeing all
-  if (['usc','cubicador','externo'].includes(currentRole) && !_recScopeAll) {
+  // USC/cubicador/externo: default to own reclamos; toggle allows usc/cubicador to see all
+  if (['usc','cubicador'].includes(currentRole) && !_recScopeAll) {
+    params.push('solo_mios=true');
+  } else if (currentRole === 'externo') {
     params.push('solo_mios=true');
   }
   if (params.length > 0) url += '?' + params.join('&');
