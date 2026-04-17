@@ -62,14 +62,15 @@ function populateRecFilterProyecto() {
   function _initScopeToggle() {
     var scopeBtn = document.getElementById('recFiltroScope');
     if (!scopeBtn) return;
-    if (!['usc','cubicador'].includes(currentRole)) {
+    if (['externo','cliente'].includes(currentRole)) {
       scopeBtn.style.display = 'none';
       return;
     }
     scopeBtn.style.display = '';
     if (!_recScopeInitialized) {
       _recScopeInitialized = true;
-      _recScopeAll = false;
+      // Admin/admin2 start seeing ALL; usc/cubicador start seeing MINE
+      _recScopeAll = ['admin','admin2'].includes(currentRole);
       _updateScopeBtnLabel(scopeBtn);
     }
   }
@@ -119,10 +120,10 @@ async function loadReclamos() {
   if (proyecto) params.push('id_proyecto=' + encodeURIComponent(proyecto));
   if (responsable) params.push('responsable=' + encodeURIComponent(responsable));
   if (busqueda) params.push('busqueda=' + encodeURIComponent(busqueda));
-  // USC/cubicador/externo: default to own reclamos; toggle allows usc/cubicador to see all
-  if (['usc','cubicador'].includes(currentRole) && !_recScopeAll) {
+  // Scope: externo always solo_mios; others depend on toggle
+  if (currentRole === 'externo') {
     params.push('solo_mios=true');
-  } else if (currentRole === 'externo') {
+  } else if (!_recScopeAll) {
     params.push('solo_mios=true');
   }
   if (params.length > 0) url += '?' + params.join('&');

@@ -126,7 +126,7 @@
     var zoomBar = document.createElement('div');
     zoomBar.style.cssText = 'display:flex; align-items:center; gap:4px;';
 
-    var btnBase = 'display:inline-flex; align-items:center; justify-content:center; width:32px; height:32px; border:none; background:rgba(255,255,255,0.08); color:#ccc; border-radius:6px; cursor:pointer; font-family:system-ui,sans-serif; transition:background .15s,color .15s;';
+    var btnBase = 'display:inline-flex; align-items:center; justify-content:center; width:32px; height:32px; padding:0; border:none; background:rgba(255,255,255,0.08); color:#ccc; border-radius:6px; cursor:pointer; font-family:system-ui,sans-serif; font-size:0; line-height:0; transition:background .15s,color .15s;';
     var btnHover = function(btn) {
       btn.onmouseover = function() { this.style.background = 'rgba(255,255,255,0.18)'; this.style.color = '#fff'; };
       btn.onmouseout = function() { this.style.background = 'rgba(255,255,255,0.08)'; this.style.color = '#ccc'; };
@@ -181,7 +181,7 @@
     var closeBtn = document.createElement('button');
     closeBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><line x1="4" y1="4" x2="12" y2="12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><line x1="12" y1="4" x2="4" y2="12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>';
     closeBtn.title = 'Cerrar (Esc)';
-    closeBtn.style.cssText = 'display:inline-flex; align-items:center; justify-content:center; width:32px; height:32px; border:none; background:rgba(255,255,255,0.08); color:#888; border-radius:6px; cursor:pointer; margin-left:4px; transition:background .15s,color .15s;';
+    closeBtn.style.cssText = 'display:inline-flex; align-items:center; justify-content:center; width:32px; height:32px; padding:0; border:none; background:rgba(255,255,255,0.08); color:#888; border-radius:6px; cursor:pointer; margin-left:4px; font-size:0; line-height:0; transition:background .15s,color .15s;';
     closeBtn.onmouseover = function() { this.style.background = 'rgba(220,50,50,0.25)'; this.style.color = '#ff6b6b'; };
     closeBtn.onmouseout = function() { this.style.background = 'rgba(255,255,255,0.08)'; this.style.color = '#888'; };
     closeBtn.onclick = closeImageViewer;
