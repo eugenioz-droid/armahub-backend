@@ -239,6 +239,20 @@ Objetivo: consolidar contratos y reducir drift.
 	- [ ] PC.15.12 Backend: endpoint `GET /reclamos/{id}/envios` — historial de envíos de un reclamo (fecha, destinatarios, enviado_por). Consumido desde detalle del reclamo
 	- [ ] PC.15.13 Frontend: sección "Historial de envíos" en modal de detalle — tabla compacta con fecha, destinatarios, enviado por. Visible para admin/admin2
 	- [ ] PC.15.14 Dashboard: indicadores de envíos en tab Dashboards de Reclamos — total enviados/pendientes, % cobertura de reclamos cerrados, envíos por mes. Visible para admin/admin2
+- [ ] PC.17 Split `features/reclamos/index.js` (3,067 líneas → 8 archivos) — extraer dominios a archivos independientes, eliminar clases legacy muertas, actualizar bootstrap.js
+	- [ ] PC.17.1 Extraer `constants.js` — dicts de colores/labels, estado global (`_reclamoActual`, `_FECHA_OPERATIVA`, etc.)
+	- [ ] PC.17.2 Extraer `helpers.js` — normalizers, adapters legacy, `_calcDiasReclamo`, `_diasBadgeHtml`, `_formatCorrelativoCalidad`
+	- [ ] PC.17.3 Extraer `dashboards.js` — `switchRecTab`, `loadRecLanding`, `loadRecAdminDashboards` (9 charts)
+	- [ ] PC.17.4 Extraer `presentaciones.js` — `loadPresentaciones`, render, nav, `guardarPresentacion`, `loadPresStats`
+	- [ ] PC.17.5 Extraer `list.js` — `loadReclamos`, filtros, scope toggle, `loadRecUsersDropdown`
+	- [ ] PC.17.6 Extraer `form.js` — modal helpers (PC.8), `crearReclamo`, crear proyecto/calc/const inline
+	- [ ] PC.17.7 Extraer `detail.js` — detalle completo: render, permisos, edición, estado, análisis, validación, acciones CRUD, imágenes/drop zones, seguimientos, ishikawa
+	- [ ] PC.17.8 Limpiar `index.js` — dejar solo IIFE registration + `_loadReclamosModule` + exports
+	- [ ] PC.17.9 Actualizar `bootstrap.js` — cargar 8 scripts en orden correcto de dependencias
+	- [ ] PC.17.10 Eliminar clases muertas — `FormRenderer`, `ReclamoPresenter`, `ReclamoUtils`, `ImageRenderer` (~410 líneas)
+	- [ ] PC.17.11 Smoke test: listado + filtros + scope toggle
+	- [ ] PC.17.12 Smoke test: detalle + edición + acciones + imágenes + ishikawa + seguimientos
+	- [ ] PC.17.13 Smoke test: presentaciones + dashboards + landing
 
 ---
 

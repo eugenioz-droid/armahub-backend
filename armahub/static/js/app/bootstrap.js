@@ -69,13 +69,68 @@
     );
   }).then(function() {
     return Promise.all([
+      // Reclamos submodules (PC.17) — constants & helpers first, then parallel, then orchestrator
       loadScript(
-        'script[data-armahub-feature="reclamos"]',
-        '/static/js/features/reclamos/index.js' + suffix,
+        'script[data-armahub-feature="reclamos-constants"]',
+        '/static/js/features/reclamos/constants.js' + suffix,
         'armahubFeature',
-        'reclamos',
-        '[ArmaHub] No se pudo cargar el feature activo de Reclamos'
-      ),
+        'reclamos-constants',
+        '[ArmaHub] No se pudo cargar reclamos/constants.js'
+      ).then(function() {
+        return loadScript(
+          'script[data-armahub-feature="reclamos-helpers"]',
+          '/static/js/features/reclamos/helpers.js' + suffix,
+          'armahubFeature',
+          'reclamos-helpers',
+          '[ArmaHub] No se pudo cargar reclamos/helpers.js'
+        );
+      }).then(function() {
+        return Promise.all([
+          loadScript(
+            'script[data-armahub-feature="reclamos-presentaciones"]',
+            '/static/js/features/reclamos/presentaciones.js' + suffix,
+            'armahubFeature',
+            'reclamos-presentaciones',
+            '[ArmaHub] No se pudo cargar reclamos/presentaciones.js'
+          ),
+          loadScript(
+            'script[data-armahub-feature="reclamos-dashboards"]',
+            '/static/js/features/reclamos/dashboards.js' + suffix,
+            'armahubFeature',
+            'reclamos-dashboards',
+            '[ArmaHub] No se pudo cargar reclamos/dashboards.js'
+          ),
+          loadScript(
+            'script[data-armahub-feature="reclamos-list"]',
+            '/static/js/features/reclamos/list.js' + suffix,
+            'armahubFeature',
+            'reclamos-list',
+            '[ArmaHub] No se pudo cargar reclamos/list.js'
+          ),
+          loadScript(
+            'script[data-armahub-feature="reclamos-form"]',
+            '/static/js/features/reclamos/form.js' + suffix,
+            'armahubFeature',
+            'reclamos-form',
+            '[ArmaHub] No se pudo cargar reclamos/form.js'
+          ),
+          loadScript(
+            'script[data-armahub-feature="reclamos-detail"]',
+            '/static/js/features/reclamos/detail.js' + suffix,
+            'armahubFeature',
+            'reclamos-detail',
+            '[ArmaHub] No se pudo cargar reclamos/detail.js'
+          )
+        ]);
+      }).then(function() {
+        return loadScript(
+          'script[data-armahub-feature="reclamos"]',
+          '/static/js/features/reclamos/index.js' + suffix,
+          'armahubFeature',
+          'reclamos',
+          '[ArmaHub] No se pudo cargar reclamos/index.js'
+        );
+      }),
       loadScript(
         'script[data-armahub-feature="portal"]',
         '/static/js/features/portal/index.js' + suffix,

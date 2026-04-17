@@ -1,0 +1,446 @@
+// ArmaHub Reclamos — Dashboards
+// Split from index.js (PC.17.3)
+
+var _recLandChartHist = null;
+let _recDashHist = null, _recDashResueltos = null, _recDashTipo = null;
+let _recDashUSC = null, _recDashCubAsig = null, _recDashIshikawa = null, _recDashKilos = null;
+let _recDashProyecto = null, _recDashProyectoMes = null;
+var _adminDashLoaded = false;
+var _recLandChartResueltos = null;
+
+function switchRecTab(tab) {
+  var mainTab = document.getElementById('recTabMain');
+  var dashTab = document.getElementById('recTabDashboards');
+  var presTab = document.getElementById('recTabPresentaciones');
+  var btnMain = document.getElementById('recTabBtnMain');
+  var btnDash = document.getElementById('recTabBtnDash');
+  var btnPres = document.getElementById('recTabBtnPres');
+
+  // Hide all tabs, reset all buttons
+  mainTab.style.display = 'none';
+  dashTab.style.display = 'none';
+  if (presTab) presTab.style.display = 'none';
+  btnMain.style.borderBottomColor = 'transparent'; btnMain.style.color = '#999';
+  btnDash.style.borderBottomColor = 'transparent'; btnDash.style.color = '#999';
+  if (btnPres) { btnPres.style.borderBottomColor = 'transparent'; btnPres.style.color = '#999'; }
+
+  if (tab === 'dashboards') {
+    dashTab.style.display = '';
+    btnDash.style.borderBottomColor = '#1565C0'; btnDash.style.color = '#1565C0';
+    loadRecAdminDashboards();
+    window.location.hash = 'dashboards';
+  } else if (tab === 'presentaciones') {
+    if (presTab) presTab.style.display = '';
+    if (btnPres) { btnPres.style.borderBottomColor = '#7B1FA2'; btnPres.style.color = '#7B1FA2'; }
+    loadPresentaciones();
+    window.location.hash = 'presentaciones';
+  } else {
+    mainTab.style.display = '';
+    btnMain.style.borderBottomColor = '#e53935'; btnMain.style.color = '#e53935';
+    _adminDashLoaded = false;
+    window.location.hash = '';
+  }
+}
+
+async function loadRecLanding() {
+  var data = await apiGet('/reclamos/mi-resumen');
+  if (!data) return;
+
+  var isAdmin = (currentRole === 'admin' || currentRole === 'admin2' || currentRole === 'coordinador');
+  var titleEl = document.querySelector('#recLandingCharts').parentElement.querySelector('h3');
+  if (titleEl) titleEl.textContent = isAdmin ? 'Resumen General' : 'Mi Resumen';
+
+  // Show dashboards tab button for admin
+  var dashBtn = document.getElementById('recTabBtnDash');
+  if (dashBtn) dashBtn.style.display = isAdmin ? '' : 'none';
+
+  // Show presentaciones tab button for admin/admin2/cubicador/externo
+  var presBtn = document.getElementById('recTabBtnPres');
+  var presAccess = ['admin','admin2','cubicador','externo'];
+  if (presBtn) presBtn.style.display = presAccess.includes(currentRole) ? '' : 'none';
+
+  // Chart 1: KPI
+  document.getElementById('recLandTotal').textContent = data.total || 0;
+  document.getElementById('recLandAbiertos').textContent = (data.abiertos || 0) + ' abiertos';
+
+  // Chart 2: Estados (reemplaza Resueltos vs No Resueltos)
+  var porEstado = data.por_estado || {};
+  console.log('[loadRecLanding] por_estado:', porEstado);
+  
+  // Convertir a array si viene como objeto (landing page)
+  if (!Array.isArray(porEstado)) {
+    porEstado = Object.keys(porEstado).map(estado => ({
+      estado: estado,
+      count: porEstado[estado]
+    }));
+  }
+  
+  var estados = porEstado.map(item => item.estado);
+  var valores = porEstado.map(item => item.count);
+  
+  // Preparar datos para el gráfico de torta
+  var labels = porEstado.map(item => {
+    var estado = item.estado;
+    var label = _recEstadoLabels[estado] || estado;
+    var count = item.count;
+    return `${label} (${count})`;
+  });
+  var colors = estados.map(estado => _recEstadoColors[estado] || '#999');
+  
+  _recLandChartResueltos = replaceChart(_recLandChartResueltos, document.getElementById('recLandChartResueltos'), {
+    type: 'doughnut',
+    data: {
+      labels: labels,
+      datasets: [{ 
+        data: valores, 
+        backgroundColor: colors,
+        borderWidth: 2,
+        borderColor: '#fff'
+      }]
+    },
+    options: { 
+      responsive: true, 
+      maintainAspectRatio: false,
+      plugins: { 
+        legend: { 
+          position: 'bottom', 
+          labels: { 
+            font: { size: 11 }, 
+            padding: 10,
+            usePointStyle: true,
+            pointStyle: 'circle'
+          } 
+        },
+        tooltip: {
+          callbacks: {
+            label: function(context) {
+              var item = porEstado[context.dataIndex];
+              var estado = item.estado;
+              var label = _recEstadoLabels[estado] || estado;
+              var value = item.count;
+              var total = context.dataset.data.reduce((a, b) => a + b, 0);
+              var percentage = ((value / total) * 100).toFixed(1);
+              return `${label}: ${value} (${percentage}%)`;
+            }
+          }
+        }
+      }
+    }
+  });
+
+  // Chart 3: Historical monthly bar (grouped by year, using fecha_deteccion from backend)
+  var _mesNombres = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+  var _anioColores = ['#e53935','#1565C0','#2e7d32','#ff9800','#7B1FA2','#00897B'];
+  var anioMesData = data.por_anio_mes || [];
+  var aniosSet = {};
+  anioMesData.forEach(function(d) { aniosSet[d.anio] = true; });
+  var anios = Object.keys(aniosSet).map(Number).sort();
+  var datasets = anios.map(function(anio, idx) {
+    var counts = new Array(12).fill(0);
+    anioMesData.forEach(function(d) { if (d.anio === anio) counts[d.mes - 1] = d.count; });
+    return { label: '' + anio, data: counts, backgroundColor: _anioColores[idx % _anioColores.length], borderRadius: 2 };
+  });
+  _recLandChartHist = replaceChart(_recLandChartHist, document.getElementById('recLandChartHist'), {
+    type: 'bar',
+    data: { labels: _mesNombres, datasets: datasets },
+    options: { responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: anios.length > 1, labels: { font: { size: 9 } } } },
+      scales: { y: { beginAtZero: true, ticks: { stepSize: 1, font: { size: 9 } } },
+                x: { ticks: { font: { size: 9 } } } } }
+  });
+
+  // Pending tasks badge (cubicador only)
+  var pendWrap = document.getElementById('recLandPendientesWrap');
+  var pendCount = data.pendientes || 0;
+  if (pendWrap) {
+    if (currentRole === 'cubicador' && pendCount > 0) {
+      pendWrap.style.display = '';
+      document.getElementById('recLandPendientes').textContent = pendCount;
+    } else {
+      pendWrap.style.display = 'none';
+    }
+  }
+}
+
+async function loadRecAdminDashboards() {
+  if (_adminDashLoaded) return;
+  var data = await apiGet('/reclamos/admin-dashboards');
+  if (!data) return;
+  _adminDashLoaded = true;
+
+  var _mesNombres = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+  var _anioColores = ['#e53935','#1565C0','#2e7d32','#ff9800','#7B1FA2','#00897B'];
+
+  // KPI
+  document.getElementById('recDashTotal').textContent = data.total || 0;
+  document.getElementById('recDashAbiertos').textContent = (data.abiertos || 0);
+
+  // Chart 1: Historico mensual (multi-year grouped bar)
+  var anioMesData = data.por_anio_mes || [];
+  var aniosSet = {};
+  anioMesData.forEach(function(d) { aniosSet[d.anio] = true; });
+  var anios = Object.keys(aniosSet).map(Number).sort();
+  var histDS = anios.map(function(anio, idx) {
+    var counts = new Array(12).fill(0);
+    anioMesData.forEach(function(d) { if (d.anio === anio) counts[d.mes - 1] = d.count; });
+    return { label: '' + anio, data: counts, backgroundColor: _anioColores[idx % _anioColores.length], borderRadius: 2 };
+  });
+  _recDashHist = replaceChart(_recDashHist, document.getElementById('recDashChartHist'), {
+    type: 'bar',
+    data: { labels: _mesNombres, datasets: histDS },
+    options: { responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: anios.length > 1, labels: { font: { size: 9 } } },
+        datalabels: { display: function(ctx) { return ctx.dataset.data[ctx.dataIndex] > 0; }, anchor: 'end', align: 'end', color: '#333', font: { size: 8, weight: 'bold' } } },
+      scales: { y: { beginAtZero: true, ticks: { stepSize: 1, font: { size: 9 } } }, x: { ticks: { font: { size: 9 } } } } },
+    plugins: [ChartDataLabels]
+  });
+
+  // Chart 2: Estados (reemplaza Resueltos vs No Resueltos)
+  var porEstado = data.por_estado || [];
+  // Normalizar: si viene como dict legacy, convertir a array
+  if (!Array.isArray(porEstado)) {
+    porEstado = Object.keys(porEstado).map(function(k) { return {estado: k, count: porEstado[k]}; });
+  }
+  var estados = porEstado.map(function(item) { return item.estado; });
+  var valores = porEstado.map(function(item) { return item.count; });
+  
+  // Preparar datos para el gráfico de torta
+  var labels = porEstado.map(function(item) {
+    var label = _recEstadoLabels[item.estado] || item.estado;
+    return `${label} (${item.count})`;
+  });
+  var colors = estados.map(function(estado) { return _recEstadoColors[estado] || '#999'; });
+  
+  _recDashResueltos = replaceChart(_recDashResueltos, document.getElementById('recDashChartResueltos'), {
+    type: 'doughnut',
+    data: {
+      labels: labels,
+      datasets: [{ 
+        data: valores, 
+        backgroundColor: colors,
+        borderWidth: 2,
+        borderColor: '#fff'
+      }]
+    },
+    options: { 
+      responsive: true, 
+      maintainAspectRatio: false,
+      plugins: { 
+        legend: { 
+          position: 'bottom', 
+          labels: { 
+            font: { size: 10 }, 
+            padding: 6,
+            usePointStyle: true,
+            pointStyle: 'circle'
+          } 
+        },
+        tooltip: {
+          callbacks: {
+            label: function(context) {
+              var item = porEstado[context.dataIndex];
+              var estado = item.estado;
+              var label = _recEstadoLabels[estado] || estado;
+              var value = item.count;
+              var total = context.dataset.data.reduce((a, b) => a + b, 0);
+              var percentage = ((value / total) * 100).toFixed(1);
+              return `${label}: ${value} (${percentage}%)`;
+            }
+          }
+        },
+        datalabels: { 
+          display: function(ctx) { return ctx.dataset.data[ctx.dataIndex] > 0; }, 
+          color: '#fff', 
+          font: { size: 10, weight: 'bold' } 
+        }
+      }
+    },
+    plugins: [ChartDataLabels]
+  });
+
+  // Chart 3: Tipo Error/Faltante/Atraso/Actualización Portal
+  var pt = data.por_tipo || {};
+  var errC = pt.error || 0; var falC = pt.faltante || 0; var atrC = pt.atraso || 0; var actC = pt.actualizacion_portal || 0;
+  _recDashTipo = replaceChart(_recDashTipo, document.getElementById('recDashChartTipo'), {
+    type: 'doughnut',
+    data: { labels: ['Error (' + errC + ')', 'Faltante (' + falC + ')', 'Atraso (' + atrC + ')', 'Actualización Portal (' + actC + ')'],
+            datasets: [{ data: [errC, falC, atrC, actC], backgroundColor: ['#e53935','#ff9800','#7B1FA2','#00897B'] }] },
+    options: { responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { position: 'bottom', labels: { font: { size: 10 }, padding: 6 } },
+        datalabels: { display: function(ctx) { return ctx.dataset.data[ctx.dataIndex] > 0; }, color: '#fff', font: { size: 11, weight: 'bold' } } } },
+    plugins: [ChartDataLabels]
+  });
+
+  // Chart 4: Detectados por USC (horizontal bar)
+  var uscData = data.por_usc || [];
+  var uscLabels = uscData.map(function(d) { return d.email.split('@')[0]; });
+  var uscTotals = uscData.map(function(d) { return d.total; });
+  _recDashUSC = destroyChart(_recDashUSC);
+  if (uscData.length > 0) {
+    _recDashUSC = replaceChart(_recDashUSC, document.getElementById('recDashChartUSC'), {
+      type: 'bar',
+      data: { labels: uscLabels, datasets: [
+        { label: 'Error', data: uscData.map(function(d) { return d.errores; }), backgroundColor: '#e53935' },
+        { label: 'Faltante', data: uscData.map(function(d) { return d.faltantes; }), backgroundColor: '#ff9800' },
+        { label: 'Atraso', data: uscData.map(function(d) { return d.atrasos; }), backgroundColor: '#7B1FA2' },
+        { label: 'Actualización Portal', data: uscData.map(function(d) { return d.actualizaciones || 0; }), backgroundColor: '#00897B' }
+      ]},
+      options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y',
+        plugins: { legend: { labels: { font: { size: 9 } } },
+          datalabels: { display: function(ctx) { return ctx.dataset.data[ctx.dataIndex] > 0; }, color: '#fff', font: { size: 8, weight: 'bold' } } },
+        scales: { x: { stacked: true, beginAtZero: true, ticks: { stepSize: 1, font: { size: 9 } } }, y: { stacked: true, ticks: { font: { size: 9 } } } } },
+      plugins: [ChartDataLabels]
+    });
+  } else {
+    document.getElementById('recDashChartUSC').parentElement.innerHTML = '<div class="muted" style="text-align:center; padding:40px 0; font-size:12px;">Sin datos USC aún</div>';
+  }
+
+  // Chart 5: Por cubicador asignado (donut)
+  var cubAsigData = data.por_cubicador_asignado || [];
+  _recDashCubAsig = destroyChart(_recDashCubAsig);
+  var cubAsigColors = ['#2e7d32','#1565C0','#ff9800','#e53935','#7B1FA2','#00897B','#795548','#607D8B'];
+  var cubAsigLabels = cubAsigData.map(function(d, i) {
+    var label = d.cubicador.includes('@') ? d.cubicador.split('@')[0] : d.cubicador;
+    return label + ' (' + d.count + ')';
+  });
+  _recDashCubAsig = replaceChart(_recDashCubAsig, document.getElementById('recDashChartCubAsig'), {
+    type: 'doughnut',
+    data: { labels: cubAsigLabels,
+            datasets: [{ data: cubAsigData.map(function(d) { return d.count; }),
+                         backgroundColor: cubAsigColors.slice(0, cubAsigData.length) }] },
+    options: { responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { position: 'bottom', labels: { font: { size: 9 }, padding: 5 } },
+        datalabels: { display: function(ctx) { return ctx.dataset.data[ctx.dataIndex] > 0; }, color: '#fff', font: { size: 10, weight: 'bold' } } } },
+    plugins: [ChartDataLabels]
+  });
+
+  // Chart 6: Causas Ishikawa global (donut)
+  var ishData = data.ishikawa_global || [];
+  _recDashIshikawa = destroyChart(_recDashIshikawa);
+  if (ishData.length > 0) {
+    var ishLabels = ishData.map(function(d) { return (_recCatLabels[d.categoria] || d.categoria) + ' (' + d.count + ')'; });
+    var ishValues = ishData.map(function(d) { return d.count; });
+    var ishColors = ishData.map(function(d) { return _recCatColors[d.categoria] || '#BDBDBD'; });
+    _recDashIshikawa = replaceChart(_recDashIshikawa, document.getElementById('recDashChartIshikawa'), {
+      type: 'doughnut',
+      data: { labels: ishLabels, datasets: [{ data: ishValues, backgroundColor: ishColors }] },
+      options: { responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { position: 'bottom', labels: { font: { size: 9 }, padding: 4 } },
+          datalabels: { display: function(ctx) { return ctx.dataset.data[ctx.dataIndex] > 0; }, color: '#fff', font: { size: 10, weight: 'bold' } } } },
+      plugins: [ChartDataLabels]
+    });
+  } else {
+    document.getElementById('recDashChartIshikawa').parentElement.innerHTML = '<div class="muted" style="text-align:center; padding:40px 0; font-size:12px;">Sin causas registradas</div>';
+  }
+
+  // Chart 7: Kilos mal fabricados por cubicador (horizontal bar)
+  var kilosData = data.kilos_por_cubicador || [];
+  _recDashKilos = destroyChart(_recDashKilos);
+  if (kilosData.length > 0) {
+    var kilosLabels = kilosData.map(function(d) { return d.cubicador.includes('@') ? d.cubicador.split('@')[0] : d.cubicador; });
+    var kilosVals = kilosData.map(function(d) { return d.kilos; });
+    _recDashKilos = replaceChart(_recDashKilos, document.getElementById('recDashChartKilos'), {
+      type: 'bar',
+      data: { labels: kilosLabels, datasets: [{ label: 'Kilos', data: kilosVals, backgroundColor: '#e53935', borderRadius: 3 }] },
+      options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y',
+        plugins: { legend: { display: false },
+          datalabels: { anchor: 'end', align: 'end', color: '#333', font: { size: 9, weight: 'bold' } } },
+        scales: { x: { beginAtZero: true, ticks: { font: { size: 9 } } }, y: { ticks: { font: { size: 9 } } } } },
+      plugins: [ChartDataLabels]
+    });
+  } else {
+    document.getElementById('recDashChartKilos').parentElement.innerHTML = '<div class="muted" style="text-align:center; padding:40px 0; font-size:12px;">Sin kilos registrados</div>';
+  }
+
+  // Chart 8: Reclamos por Proyecto (horizontal bar) - ALL projects
+  var proyData = data.por_proyecto || [];
+  var ctxProy = document.getElementById('recDashChartProyecto');
+  if (ctxProy) {
+    _recDashProyecto = destroyChart(_recDashProyecto);
+    if (proyData.length > 0) {
+      // Dynamic height: 25px per project, min 200px
+      var chartHeight = Math.max(200, proyData.length * 25);
+      ctxProy.parentElement.style.height = chartHeight + 'px';
+      var proyLabels = proyData.map(function(d) { return d.proyecto.length > 25 ? d.proyecto.substring(0, 23) + '...' : d.proyecto; });
+      var proyVals = proyData.map(function(d) { return d.count; });
+      _recDashProyecto = replaceChart(_recDashProyecto, ctxProy, {
+        type: 'bar',
+        data: { labels: proyLabels, datasets: [{ label: 'Reclamos', data: proyVals, backgroundColor: '#1565C0', borderRadius: 3 }] },
+        options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y',
+          plugins: { legend: { display: false },
+            datalabels: { anchor: 'end', align: 'end', color: '#333', font: { size: 9, weight: 'bold' }, formatter: function(v) { return v; } } },
+          scales: { x: { beginAtZero: true, ticks: { stepSize: 1, font: { size: 9 } } }, y: { ticks: { font: { size: 9 } } } } },
+        plugins: [ChartDataLabels]
+      });
+    } else {
+      ctxProy.parentElement.innerHTML = '<div class="muted" style="text-align:center; padding:40px 0; font-size:12px;">Sin datos</div>';
+    }
+  }
+
+  // Chart 9: Reclamos por Proyecto/Mes - HEATMAP TABLE (scalable for all projects)
+  var proyMesData = data.proyecto_por_mes || [];
+  var ctxProyMes = document.getElementById('recDashChartProyectoMes');
+  if (ctxProyMes) {
+    // Destroy chart if exists (we're replacing with a table)
+    if (_recDashProyectoMes) { _recDashProyectoMes.destroy(); _recDashProyectoMes = null; }
+    var container = ctxProyMes.parentElement;
+    
+    if (proyMesData.length > 0) {
+      // Get unique months and projects
+      var mesesSet = {};
+      var proyectosSet = {};
+      var maxCount = 0;
+      proyMesData.forEach(function(d) { 
+        mesesSet[d.mes] = true; 
+        proyectosSet[d.proyecto] = true;
+        if (d.count > maxCount) maxCount = d.count;
+      });
+      var meses = Object.keys(mesesSet).sort();
+      var proyectos = Object.keys(proyectosSet).sort();
+      
+      // Build lookup map
+      var dataMap = {};
+      proyMesData.forEach(function(d) { dataMap[d.proyecto + '|' + d.mes] = d.count; });
+      
+      // Generate heatmap table HTML
+      var html = '<div style="overflow-x:auto; max-height:390px; overflow-y:auto;">';
+      html += '<table style="width:100%; border-collapse:collapse; font-size:10px;">';
+      html += '<thead><tr style="position:sticky; top:0; background:#fff; z-index:1;"><th style="padding:3px 4px; text-align:left; border-bottom:1px solid #ddd; min-width:120px;">Proyecto</th>';
+      meses.forEach(function(m) {
+        html += '<th style="padding:3px 4px; text-align:center; border-bottom:1px solid #ddd; min-width:45px;">' + m.substring(5) + '</th>';
+      });
+      html += '<th style="padding:3px 4px; text-align:center; border-bottom:1px solid #ddd; font-weight:700;">Total</th></tr></thead><tbody>';
+      
+      proyectos.forEach(function(proy) {
+        var rowTotal = 0;
+        html += '<tr><td style="padding:3px 4px; border-bottom:1px solid #eee; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:150px;" title="' + proy + '">' + (proy.length > 20 ? proy.substring(0, 18) + '...' : proy) + '</td>';
+        meses.forEach(function(m) {
+          var val = dataMap[proy + '|' + m] || 0;
+          rowTotal += val;
+          var intensity = maxCount > 0 ? Math.min(1, val / maxCount) : 0;
+          var bgColor = val === 0 ? '#f5f5f5' : 'rgba(21, 101, 192, ' + (0.15 + intensity * 0.7) + ')';
+          var textColor = intensity > 0.5 ? '#fff' : '#333';
+          html += '<td style="padding:3px 4px; text-align:center; border-bottom:1px solid #eee; background:' + bgColor + '; color:' + textColor + ';">' + (val || '') + '</td>';
+        });
+        html += '<td style="padding:3px 4px; text-align:center; border-bottom:1px solid #eee; font-weight:600; background:#e3f2fd;">' + rowTotal + '</td></tr>';
+      });
+      
+      // Totals row
+      html += '<tr style="font-weight:600; background:#f5f5f5;"><td style="padding:3px 4px;">Total</td>';
+      var grandTotal = 0;
+      meses.forEach(function(m) {
+        var colTotal = 0;
+        proyectos.forEach(function(proy) { colTotal += dataMap[proy + '|' + m] || 0; });
+        grandTotal += colTotal;
+        html += '<td style="padding:3px 4px; text-align:center;">' + colTotal + '</td>';
+      });
+      html += '<td style="padding:3px 4px; text-align:center; background:#1565C0; color:#fff;">' + grandTotal + '</td></tr>';
+      html += '</tbody></table></div>';
+      
+      container.innerHTML = html;
+    } else {
+      container.innerHTML = '<div class="muted" style="text-align:center; padding:40px 0; font-size:12px;">Sin datos</div>';
+    }
+  }
+
+}
