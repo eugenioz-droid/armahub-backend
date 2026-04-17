@@ -77,10 +77,11 @@
       header: 'Vista',
       notes: [
         '✖ = prohibido (403 en backend o sin acceso al módulo).',
-        '"propios": externo ve reclamos donde es cubicador_asignado o respuesta_por; usc ve donde es creado_por o asignado_a. Admin, admin2 y cubicador ven todo (global).'
+        '"propios": externo ve reclamos donde es cubicador_asignado o respuesta_por; usc ve donde es creado_por o asignado_a. Admin y admin2 ven todo (global).',
+        '*cubicador/externo/usc: por defecto ven propios; toggle "Todos" permite ver listado completo (read-only sobre ajenos).'
       ],
       rows: [
-        {action:'Resumen General',      perms:{admin:'✅ global',admin2:'✅ global',cubicador:'✅ global',usc:'✅ propios',externo:'✅ propios',cliente:'✖'}},
+        {action:'Resumen General',      perms:{admin:'✅ global',admin2:'✅ global',cubicador:'✅ propios*',usc:'✅ propios',externo:'✅ propios',cliente:'✖'}},
         {action:'Dashboards admin',     perms:{admin:'✅',admin2:'✅',cubicador:'✖',usc:'✖',externo:'✖',cliente:'✖'}},
         {action:'Presentaciones stats', perms:{admin:'✅ todos',admin2:'✅ todos',cubicador:'✅ todos',usc:'✖',externo:'✅ propios',cliente:'✖'}},
       ]
@@ -151,11 +152,12 @@
         '"Análisis" = formulario cubicador (categoría Ishikawa, sub-causa, respuesta, área aplica, fecha análisis, kilos mal fabricados).',
         '"propios" para cubicador/externo = reclamos donde es cubicador_asignado o respuesta_por.',
         '"propios" para USC = reclamos donde es creado_por o asignado_a.',
+        '*cubicador/externo/usc: por defecto ven propios; toggle "Todos" permite ver listado completo (read-only, sin permisos de edición sobre ajenos).',
         'Año calidad (anio_calidad) solo editable por admin/admin2 (bloqueado inline en PATCH).',
         'Editar/Eliminar acción correctiva e imágenes — actualmente sin validación de propiedad en backend.'
       ],
       rows: [
-        {action:'Ver listado reclamos',               perms:{admin:'✅ todo',admin2:'✅ todo',cubicador:'✅ todo',usc:'✅ propios',externo:'✅ propios',cliente:'—'}},
+        {action:'Ver listado reclamos',               perms:{admin:'✅ todo',admin2:'✅ todo',cubicador:'✅ propios*',usc:'✅ propios',externo:'✅ propios',cliente:'—'}},
         {action:'Crear reclamo',                      perms:{admin:'✅',admin2:'✅',cubicador:'—',usc:'✅ auto-asigna',externo:'—',cliente:'—'}},
         {action:'Asignar USC Responsable',            perms:{admin:'✅ libre',admin2:'✅ libre',cubicador:'—',usc:'✅ auto (bloq)',externo:'—',cliente:'—'}},
         {action:'Asignar Cubicador Responsable',      perms:{admin:'✅ libre',admin2:'✅ libre',cubicador:'—',usc:'✅ libre',externo:'—',cliente:'—'}},

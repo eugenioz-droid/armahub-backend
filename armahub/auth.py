@@ -43,9 +43,18 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(auth_sc
     token = credentials.credentials
     try:
         payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALG])
-        return payload  # {email, role}
     except Exception:
         raise HTTPException(status_code=401, detail="Token inválido")
+    # Always read fresh role from DB to avoid JWT/BD desync
+    email = payload.get("email")
+    if email:
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT role FROM users WHERE email = %s", (email,))
+                row = cur.fetchone()
+                if row:
+                    payload["role"] = row[0]
+    return payload
 
 
 def require_admin(user=Depends(get_current_user)):

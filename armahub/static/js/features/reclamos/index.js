@@ -1451,7 +1451,44 @@ function populateRecFilterProyecto() {
   dst.value = fval;
 }
 
+  // Scope toggle: cubicador/externo/usc can switch between own and all reclamos
+  var _recScopeAll = false;
+
+  function _initScopeToggle() {
+    var scopeBtn = document.getElementById('recFiltroScope');
+    if (!scopeBtn) return;
+    if (['usc','cubicador','externo'].includes(currentRole)) {
+      scopeBtn.style.display = '';
+      scopeBtn.textContent = 'Mis Reclamos';
+      scopeBtn.style.background = '#e53935';
+      scopeBtn.style.borderColor = '#e53935';
+      scopeBtn.style.color = '#fff';
+    } else {
+      scopeBtn.style.display = 'none';
+    }
+  }
+
+  window.toggleRecScope = function() {
+    _recScopeAll = !_recScopeAll;
+    var btn = document.getElementById('recFiltroScope');
+    if (btn) {
+      if (_recScopeAll) {
+        btn.textContent = 'Todos';
+        btn.style.background = '#fff';
+        btn.style.borderColor = '#e53935';
+        btn.style.color = '#e53935';
+      } else {
+        btn.textContent = 'Mis Reclamos';
+        btn.style.background = '#e53935';
+        btn.style.borderColor = '#e53935';
+        btn.style.color = '#fff';
+      }
+    }
+    loadReclamos();
+  };
+
 async function loadReclamos() {
+  _initScopeToggle();
   var container = document.getElementById('reclamosList');
   var estado = document.getElementById('recFiltroEstado').value;
   var categoria = document.getElementById('recFiltroCategoria').value;
@@ -1471,8 +1508,8 @@ async function loadReclamos() {
   if (proyecto) params.push('id_proyecto=' + encodeURIComponent(proyecto));
   if (responsable) params.push('responsable=' + encodeURIComponent(responsable));
   if (busqueda) params.push('busqueda=' + encodeURIComponent(busqueda));
-  // USC/cubicador/externo only see their own reclamos
-  if (['usc','cubicador','externo'].includes(currentRole)) {
+  // USC/cubicador/externo: default to own reclamos, toggle allows seeing all
+  if (['usc','cubicador','externo'].includes(currentRole) && !_recScopeAll) {
     params.push('solo_mios=true');
   }
   if (params.length > 0) url += '?' + params.join('&');
@@ -1989,6 +2026,7 @@ function _applyReclamoDetailPermissions(data) {
   if (detAsigSel) detAsigSel.disabled = !(currentRole === 'admin' || currentRole === 'admin2');
 
   var puedeResponder = ['admin','admin2','cubicador','externo'].includes(currentRole);
+  if ((['cubicador','externo'].includes(currentRole)) && !esPropioCub) puedeResponder = false;
   if (validado && currentRole !== 'admin') puedeResponder = false;
   var sec2Fields = ['recDetailRespuestaTexto','recDetailCausaDisplay','recDetailAreaAplica','recDetailFechaAnalisis','recDetailKilosMal','recTiempoRespuestaAnalisis','recTiempoRespuestaUnidadAnalisis'];
   sec2Fields.forEach(function(fid) { var el = document.getElementById(fid); if (el) el.disabled = !puedeResponder; });

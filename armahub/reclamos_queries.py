@@ -145,11 +145,11 @@ def q_matriz_obra_categoria(cur, top_obras=8):
 
 def build_role_filter(user):
     """Construye filtro WHERE según rol → (where_clause, params).
-    USC: propio. Externo: asignado/respondido. Admin/Cubicador: todo."""
+    USC: propio. Cubicador/Externo: asignado/respondido. Admin: todo."""
     email = user.get("email", "")
     role = user.get("role", "usc")
     if role == "usc":
         return " AND (r.creado_por = %s OR r.asignado_a = %s)", [email, email]
-    elif role == "externo":
+    elif role in ("cubicador", "externo"):
         return " AND (r.cubicador_asignado = %s OR r.respuesta_por = %s)", [email, email]
     return "", []

@@ -271,6 +271,10 @@ def listar_reclamos(
                 elif role in ("cubicador", "externo"):
                     where += " AND (r.cubicador_asignado = %s OR r.respuesta_por = %s)"
                     params.extend([email, email])
+                else:
+                    # Safety: unknown role with solo_mios should still filter
+                    where += " AND (r.creado_por = %s OR r.cubicador_asignado = %s)"
+                    params.extend([email, email])
             if id_proyecto:
                 where += " AND r.id_proyecto = %s"
                 params.append(id_proyecto)

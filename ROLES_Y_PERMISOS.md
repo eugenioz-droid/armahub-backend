@@ -122,7 +122,7 @@ Actualizado: 2025-07.
 
 | Acción                              | admin      | admin2     | cubicador    | usc            | externo      | cliente |
 | ----------------------------------- |:----------:|:----------:|:------------:|:--------------:|:------------:|:-------:|
-| Ver listado reclamos                | ✅ todo    | ✅ todo    | ✅ todo      | ✅ propios     | ✅ propios   |    —    |
+| Ver listado reclamos                | ✅ todo    | ✅ todo    | ✅ propios*  | ✅ propios     | ✅ propios   |    —    |
 | Crear reclamo                       |     ✅     |     ✅     |      —       | ✅ auto-asigna |      —       |    —    |
 | Asignar USC Responsable             | ✅ libre   | ✅ libre   |      —       | ✅ auto (bloq) |      —       |    —    |
 | Asignar Cubicador Responsable       | ✅ libre   | ✅ libre   |      —       |  ✅ libre      |      —       |    —    |
@@ -147,6 +147,7 @@ Actualizado: 2025-07.
 > "Análisis" = formulario cubicador (categoría Ishikawa, sub-causa, respuesta, área aplica, fecha análisis, kilos mal fabricados).
 > "propios" para cubicador/externo = reclamos donde es `cubicador_asignado` o `respuesta_por`.
 > "propios" para USC = reclamos donde es `creado_por` o `asignado_a`.
+> *cubicador/externo/usc: por defecto ven solo propios; toggle "Todos" permite ver el listado completo (read-only, sin permisos de edición sobre reclamos ajenos).
 > **Año calidad** (`anio_calidad`) solo editable por admin/admin2 (bloqueado inline en PATCH).
 > **Editar/Eliminar acción correctiva e imágenes** — actualmente sin validación de propiedad en backend (cualquier usuario autenticado puede operar).
 
