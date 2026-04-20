@@ -1675,6 +1675,23 @@ class _ReclamoPDF:
             corr_cal = f"{rec['anio_calidad']}-{str(rec['numero_calidad']).zfill(3)}"
         self.correlativo = corr_cal or rec.get("id_calidad") or rec.get("correlativo") or f"#{rec['id']}"
 
+    @staticmethod
+    def _s(text):
+        """Sanitize text for Latin-1 PDF output (built-in fonts)."""
+        if text is None:
+            return ""
+        text = str(text)
+        text = text.replace("\u2192", "->")   # →
+        text = text.replace("\u2190", "<-")   # ←
+        text = text.replace("\u2014", "-")    # —
+        text = text.replace("\u2013", "-")    # –
+        text = text.replace("\u2018", "'")    # '
+        text = text.replace("\u2019", "'")    # '
+        text = text.replace("\u201c", '"')    # "
+        text = text.replace("\u201d", '"')    # "
+        text = text.replace("\u2026", "...")  # …
+        return text.encode("latin-1", "replace").decode("latin-1")
+
     def build(self) -> bytes:
         import io
         self._header_section()
@@ -1700,22 +1717,22 @@ class _ReclamoPDF:
 
         pdf.set_font("Helvetica", "B", 16)
         pdf.set_text_color(26, 35, 126)
-        pdf.cell(0, 8, f"Informe de Reclamo {self.correlativo}", new_x="LMARGIN", new_y="NEXT")
+        pdf.cell(0, 8, self._s(f"Informe de Reclamo {self.correlativo}"), new_x="LMARGIN", new_y="NEXT")
 
         pdf.set_font("Helvetica", "", 10)
         pdf.set_text_color(100, 100, 100)
-        pdf.cell(0, 5, rec.get("titulo") or "", new_x="LMARGIN", new_y="NEXT")
+        pdf.cell(0, 5, self._s(rec.get("titulo") or ""), new_x="LMARGIN", new_y="NEXT")
 
         # Estado badge + fecha informe
         pdf.ln(2)
         pdf.set_font("Helvetica", "B", 9)
         pdf.set_fill_color(*rgb)
         pdf.set_text_color(255, 255, 255)
-        estado_label = ESTADO_LABELS.get(estado, estado)
+        estado_label = self._s(ESTADO_LABELS.get(estado, estado))
         pdf.cell(pdf.get_string_width(estado_label) + 8, 6, estado_label, fill=True, new_x="END")
         pdf.set_text_color(100, 100, 100)
         pdf.set_font("Helvetica", "", 8)
-        aplica_label = APLICA_LABELS.get(rec.get("aplica"), "")
+        aplica_label = self._s(APLICA_LABELS.get(rec.get("aplica"), ""))
         extra = f"   Aplica: {aplica_label}" if aplica_label else ""
         fecha_informe = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
         pdf.cell(0, 6, f"{extra}      Generado: {fecha_informe}", new_x="LMARGIN", new_y="NEXT")
@@ -1733,7 +1750,7 @@ class _ReclamoPDF:
         pdf.set_font("Helvetica", "B", 11)
         pdf.set_fill_color(*bg_rgb)
         pdf.set_text_color(*text_rgb)
-        pdf.cell(0, 7, f"  {title}", fill=True, new_x="LMARGIN", new_y="NEXT")
+        pdf.cell(0, 7, self._s(f"  {title}"), fill=True, new_x="LMARGIN", new_y="NEXT")
         pdf.set_text_color(34, 34, 34)
         pdf.ln(2)
 
@@ -1744,10 +1761,10 @@ class _ReclamoPDF:
         pdf = self.pdf
         pdf.set_font("Helvetica", "B", 9)
         pdf.set_text_color(85, 85, 85)
-        pdf.cell(45, 5, label, new_x="END")
+        pdf.cell(45, 5, self._s(label), new_x="END")
         pdf.set_font("Helvetica", "B" if bold_value else "", 9)
         pdf.set_text_color(34, 34, 34)
-        pdf.multi_cell(self._w_usable - 45, 5, str(value), new_x="LMARGIN", new_y="NEXT")
+        pdf.multi_cell(self._w_usable - 45, 5, self._s(value), new_x="LMARGIN", new_y="NEXT")
 
     # ── Antecedentes ──
     def _antecedentes_section(self):
@@ -1755,7 +1772,7 @@ class _ReclamoPDF:
         self._section_title("Antecedentes del Reclamo", (198, 40, 40))
 
         tipo_label = {"error": "Error", "faltante": "Faltante", "atraso": "Atraso"}.get(
-            rec.get("tipo_reclamo"), rec.get("tipo_reclamo") or "—"
+            rec.get("tipo_reclamo"), rec.get("tipo_reclamo") or "-"
         )
         self._field_row("Título:", rec.get("titulo"))
         self._field_row("Tipo:", tipo_label)
@@ -1773,10 +1790,10 @@ class _ReclamoPDF:
             self.pdf.ln(2)
             self.pdf.set_font("Helvetica", "B", 9)
             self.pdf.set_text_color(85, 85, 85)
-            self.pdf.cell(0, 5, "Descripción:", new_x="LMARGIN", new_y="NEXT")
+            self.pdf.cell(0, 5, "Descripcion:", new_x="LMARGIN", new_y="NEXT")
             self.pdf.set_font("Helvetica", "", 9)
             self.pdf.set_text_color(34, 34, 34)
-            self.pdf.multi_cell(self._w_usable, 4.5, rec["descripcion"], new_x="LMARGIN", new_y="NEXT")
+            self.pdf.multi_cell(self._w_usable, 4.5, self._s(rec["descripcion"]), new_x="LMARGIN", new_y="NEXT")
 
         self.pdf.ln(4)
 
@@ -1788,7 +1805,7 @@ class _ReclamoPDF:
         pdf = self.pdf
         pdf.set_font("Helvetica", "B", 9)
         pdf.set_text_color(85, 85, 85)
-        pdf.cell(0, 5, title, new_x="LMARGIN", new_y="NEXT")
+        pdf.cell(0, 5, self._s(title), new_x="LMARGIN", new_y="NEXT")
         pdf.ln(1)
 
         for img_data in imagenes:
@@ -1808,7 +1825,7 @@ class _ReclamoPDF:
                 pdf.ln(55)
             except Exception:
                 pdf.set_font("Helvetica", "I", 8)
-                pdf.cell(0, 4, f"[No se pudo incluir: {fname}]", new_x="LMARGIN", new_y="NEXT")
+                pdf.cell(0, 4, self._s(f"[No se pudo incluir: {fname}]"), new_x="LMARGIN", new_y="NEXT")
 
         pdf.ln(2)
 
@@ -1835,7 +1852,7 @@ class _ReclamoPDF:
             self.pdf.cell(0, 5, "Respuesta del cubicador:", new_x="LMARGIN", new_y="NEXT")
             self.pdf.set_font("Helvetica", "", 9)
             self.pdf.set_text_color(34, 34, 34)
-            self.pdf.multi_cell(self._w_usable, 4.5, rec["respuesta_texto"], new_x="LMARGIN", new_y="NEXT")
+            self.pdf.multi_cell(self._w_usable, 4.5, self._s(rec["respuesta_texto"]), new_x="LMARGIN", new_y="NEXT")
 
         self.pdf.ln(4)
 
@@ -1861,12 +1878,12 @@ class _ReclamoPDF:
         pdf.set_font("Helvetica", "", 7)
         for a in self.acciones:
             vals = [
-                a.get("tipo_label") or "—",
-                (a.get("descripcion") or "—")[:80],
-                (a.get("responsable") or "—")[:25],
-                a.get("fecha_prevista") or "—",
-                a.get("fecha_completada") or "—",
-                a.get("estado_label") or "—",
+                self._s(a.get("tipo_label") or "-"),
+                self._s((a.get("descripcion") or "-")[:80]),
+                self._s((a.get("responsable") or "-")[:25]),
+                self._s(a.get("fecha_prevista") or "-"),
+                self._s(a.get("fecha_completada") or "-"),
+                self._s(a.get("estado_label") or "-"),
             ]
             max_h = 5
             for i, v in enumerate(vals):
@@ -1891,7 +1908,7 @@ class _ReclamoPDF:
         else:
             self.pdf.set_font("Helvetica", "I", 9)
             self.pdf.set_text_color(150, 150, 150)
-            self.pdf.cell(0, 5, "Pendiente de validación", new_x="LMARGIN", new_y="NEXT")
+            self.pdf.cell(0, 5, "Pendiente de validacion", new_x="LMARGIN", new_y="NEXT")
             self.pdf.set_text_color(34, 34, 34)
 
         self.pdf.ln(4)
@@ -1904,11 +1921,11 @@ class _ReclamoPDF:
 
         pdf = self.pdf
         for s in self.seguimientos:
-            fecha = s.get("fecha") or "—"
-            usuario = s.get("usuario") or "Sistema"
+            fecha = self._s(s.get("fecha") or "-")
+            usuario = self._s(s.get("usuario") or "Sistema")
             estado_change = ""
             if s.get("estado_anterior") and s.get("estado_nuevo"):
-                estado_change = f" cambió estado: {s['estado_anterior']} → {s['estado_nuevo']}"
+                estado_change = self._s(f" cambio estado: {s['estado_anterior']} -> {s['estado_nuevo']}")
 
             pdf.set_font("Helvetica", "", 7)
             pdf.set_text_color(136, 136, 136)
@@ -1926,7 +1943,7 @@ class _ReclamoPDF:
             if s.get("comentario"):
                 pdf.set_font("Helvetica", "", 7)
                 pdf.set_text_color(34, 34, 34)
-                pdf.multi_cell(self._w_usable, 3.5, s["comentario"], new_x="LMARGIN", new_y="NEXT")
+                pdf.multi_cell(self._w_usable, 3.5, self._s(s["comentario"]), new_x="LMARGIN", new_y="NEXT")
 
             pdf.set_draw_color(224, 224, 224)
             pdf.line(15, pdf.get_y(), 195, pdf.get_y())
@@ -1942,7 +1959,7 @@ class _ReclamoPDF:
         pdf.set_font("Helvetica", "I", 7)
         pdf.set_text_color(150, 150, 150)
         fecha = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
-        pdf.cell(0, 4, f"ArmaHub — Informe generado el {fecha} · {self.correlativo}", align="C")
+        pdf.cell(0, 4, self._s(f"ArmaHub - Informe generado el {fecha} - {self.correlativo}"), align="C")
 
 
 @router.get("/reclamos/{reclamo_id}/pdf")
