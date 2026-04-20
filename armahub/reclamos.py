@@ -1725,17 +1725,21 @@ class _ReclamoPDF:
 
         # Estado badge + fecha informe
         pdf.ln(2)
+        y_badge = pdf.get_y()
+        # Badge
         pdf.set_font("Helvetica", "B", 9)
         pdf.set_fill_color(*rgb)
         pdf.set_text_color(255, 255, 255)
         estado_label = self._s(ESTADO_LABELS.get(estado, estado))
         badge_w = pdf.get_string_width(estado_label) + 8
-        pdf.cell(badge_w, 6, estado_label, fill=True, new_x="END")
-        pdf.set_fill_color(255, 255, 255)
-        pdf.set_text_color(100, 100, 100)
+        pdf.cell(badge_w, 6, estado_label, fill=True)
+        # Text after badge — position explicitly past the badge
+        text_x = 15 + badge_w + 6
+        pdf.set_xy(text_x, y_badge)
         pdf.set_font("Helvetica", "", 8)
+        pdf.set_text_color(100, 100, 100)
         aplica_label = self._s(APLICA_LABELS.get(rec.get("aplica"), ""))
-        aplica_part = f"   {aplica_label}      " if aplica_label else "   "
+        aplica_part = f"{aplica_label}      " if aplica_label else ""
         fecha_informe = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
         pdf.cell(0, 6, f"{aplica_part}Generado: {fecha_informe}", new_x="LMARGIN", new_y="NEXT")
 
