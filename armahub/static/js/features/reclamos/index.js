@@ -102,7 +102,8 @@
     'presNavNext',
     'seleccionarReclamoPres',
     'guardarPresentacion',
-    'loadPresStats'
+    'loadPresStats',
+    'descargarPdfReclamo'
   ];
 
   allExports.forEach(function(name) {

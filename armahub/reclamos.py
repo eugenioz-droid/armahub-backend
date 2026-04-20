@@ -1638,3 +1638,153 @@ def eliminar_imagen(reclamo_id: int, imagen_id: int, user=Depends(get_current_us
     _invalidate_reclamo_cache(reclamo_id)
     audit(email, "eliminar_imagen_reclamo", str(imagen_id), "reclamo", str(reclamo_id))
     return {"ok": True, "id": imagen_id}
+
+
+# ========================= PDF EXPORT =========================
+
+@router.get("/reclamos/{reclamo_id}/pdf")
+def exportar_reclamo_pdf(reclamo_id: int, user=Depends(get_current_user)):
+    """Generar PDF del informe de reclamo."""
+    import base64, io, os
+    from xhtml2pdf import pisa
+    from jinja2 import Environment, FileSystemLoader
+
+    role = user.get("role")
+    email = user.get("email", "")
+    if role not in ("admin", "admin2", "cubicador", "usc"):
+        raise HTTPException(status_code=403, detail="Sin permisos para generar PDF")
+
+    # Fetch reclamo detail
+    with get_conn() as conn:
+        with conn.cursor(row_factory=dict_row) as cur:
+            cur.execute("""
+                SELECT r.*, COALESCE(p.nombre_proyecto, r.id_proyecto, 'Obra eliminada') AS nombre_proyecto
+                FROM reclamos r
+                LEFT JOIN proyectos p ON r.id_proyecto = p.id_proyecto
+                WHERE r.id = %s
+            """, (reclamo_id,))
+            rec = cur.fetchone()
+            if not rec:
+                raise HTTPException(status_code=404, detail="Reclamo no encontrado")
+
+            # Ownership check for cubicador/usc
+            if role == "cubicador" and not _es_propietario_cubicador(rec, email):
+                raise HTTPException(status_code=403, detail="Solo puedes exportar tus propios reclamos")
+            if role == "usc" and not _es_propietario_usc(rec, email):
+                raise HTTPException(status_code=403, detail="Solo puedes exportar tus propios reclamos")
+
+            # Seguimientos
+            cur.execute("""
+                SELECT id, usuario, comentario, estado_anterior, estado_nuevo, fecha
+                FROM reclamo_seguimientos WHERE reclamo_id = %s ORDER BY fecha ASC, id ASC
+            """, (reclamo_id,))
+            seguimientos = [
+                {**s, "fecha": _as_text(s.get("fecha"))}
+                for s in cur.fetchall()
+            ]
+
+            # Acciones
+            cur.execute("""
+                SELECT id, tipo, descripcion, responsable, fecha_prevista, fecha_completada, estado, creado_por
+                FROM reclamo_acciones WHERE reclamo_id = %s ORDER BY id ASC
+            """, (reclamo_id,))
+            acciones_raw = cur.fetchall()
+            acciones = []
+            for a in acciones_raw:
+                acciones.append({
+                    "tipo_label": TIPO_ACCION_LABELS.get(a.get("tipo"), a.get("tipo") or "—"),
+                    "descripcion": a.get("descripcion"),
+                    "responsable": a.get("responsable"),
+                    "fecha_prevista": _as_text(a.get("fecha_prevista")),
+                    "fecha_completada": _as_text(a.get("fecha_completada")),
+                    "estado_label": "Completada" if a.get("estado") == "completada" else "En proceso" if a.get("estado") == "en_proceso" else "—",
+                })
+
+            # Imágenes → base64 data URIs (solo imágenes, no PDFs/docs)
+            cur.execute("""
+                SELECT id, filename, content_type, data, tipo
+                FROM reclamo_imagenes WHERE reclamo_id = %s ORDER BY id ASC
+            """, (reclamo_id,))
+            imgs_raw = cur.fetchall()
+            imagenes_registro = []
+            imagenes_analisis = []
+            for img in imgs_raw:
+                ct = img.get("content_type") or ""
+                if not ct.startswith("image/"):
+                    continue
+                b64 = base64.b64encode(bytes(img["data"])).decode("ascii")
+                entry = {"data_uri": f"data:{ct};base64,{b64}", "filename": img.get("filename")}
+                tipo = img.get("tipo") or "ImagenesRegistro"
+                if tipo == "ImagenesAnalisis":
+                    imagenes_analisis.append(entry)
+                else:
+                    imagenes_registro.append(entry)
+
+    # Build correlativo display
+    corr_cal = ""
+    if rec.get("anio_calidad") and rec.get("numero_calidad"):
+        corr_cal = f"{rec['anio_calidad']}-{str(rec['numero_calidad']).zfill(3)}"
+    correlativo = corr_cal or rec.get("id_calidad") or rec.get("correlativo") or f"#{rec['id']}"
+
+    tipo_label = {"error": "Error", "faltante": "Faltante", "atraso": "Atraso"}.get(
+        rec.get("tipo_reclamo"), rec.get("tipo_reclamo") or "—"
+    )
+
+    # Render template
+    tpl_dir = os.path.join(os.path.dirname(__file__), "templates", "pdf")
+    env = Environment(loader=FileSystemLoader(tpl_dir))
+    template = env.get_template("reclamo_informe.html")
+
+    html = template.render(
+        correlativo=correlativo,
+        titulo=rec.get("titulo") or "—",
+        estado=rec.get("estado") or "abierto",
+        estado_label=ESTADO_LABELS.get(rec.get("estado"), rec.get("estado") or "—"),
+        aplica_label=APLICA_LABELS.get(rec.get("aplica"), ""),
+        tipo_label=tipo_label,
+        nombre_proyecto=rec.get("nombre_proyecto"),
+        detectado_por=rec.get("detectado_por"),
+        fecha_deteccion=_as_text(rec.get("fecha_deteccion")),
+        creado_por=rec.get("creado_por"),
+        fecha_creacion=_as_text(rec.get("fecha_creacion")),
+        responsable=rec.get("responsable"),
+        asignado_a=rec.get("asignado_a"),
+        kilos_mal_fabricados=rec.get("kilos_mal_fabricados"),
+        descripcion=rec.get("descripcion"),
+        categoria_ishikawa_label=ISHIKAWA_LABELS.get(rec.get("categoria_ishikawa"), rec.get("categoria_ishikawa")),
+        sub_causa=rec.get("sub_causa"),
+        cod_causa=rec.get("cod_causa"),
+        area_aplica=rec.get("area_aplica"),
+        respuesta_texto=rec.get("respuesta_texto"),
+        respuesta_por=rec.get("respuesta_por"),
+        respuesta_fecha=_as_text(rec.get("respuesta_fecha")),
+        tiempo_respuesta=rec.get("tiempo_respuesta"),
+        tiempo_respuesta_unidad=rec.get("tiempo_respuesta_unidad"),
+        validacion_resultado=rec.get("validacion_resultado"),
+        validacion_label={"aprobado": "Aprobado", "rechazado": "Rechazado", "corregido": "Corregido"}.get(
+            rec.get("validacion_resultado"), rec.get("validacion_resultado") or ""
+        ),
+        validacion_por=rec.get("validacion_por"),
+        validacion_fecha=_as_text(rec.get("validacion_fecha")),
+        validacion_observaciones=rec.get("validacion_observaciones"),
+        acciones=acciones,
+        seguimientos=seguimientos,
+        imagenes_registro=imagenes_registro,
+        imagenes_analisis=imagenes_analisis,
+        fecha_informe=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
+    )
+
+    # Generate PDF
+    buf = io.BytesIO()
+    pisa_status = pisa.CreatePDF(html, dest=buf, encoding="utf-8")
+    if pisa_status.err:
+        raise HTTPException(status_code=500, detail="Error al generar PDF")
+
+    buf.seek(0)
+    filename = f"Reclamo_{correlativo.replace('#', '').replace('/', '-')}.pdf"
+    audit(email, "exportar_pdf_reclamo", str(reclamo_id), "reclamo", str(reclamo_id))
+    return Response(
+        content=buf.read(),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'inline; filename="{filename}"'},
+    )

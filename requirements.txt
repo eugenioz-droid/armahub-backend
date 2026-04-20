@@ -8,3 +8,4 @@ PyJWT
 passlib
 jinja2
 openpyxl
+xhtml2pdf

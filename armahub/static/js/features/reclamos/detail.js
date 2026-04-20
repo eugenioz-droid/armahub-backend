@@ -1,6 +1,23 @@
 // ArmaHub Reclamos — Detail View
 // Split from index.js (PC.17.7)
 
+function descargarPdfReclamo() {
+  if (!_reclamoActual) return;
+  var url = apiUrl('/reclamos/' + _reclamoActual.id + '/pdf');
+  fetch(url, { headers: authHeaders() })
+    .then(function(res) {
+      if (!res.ok) throw new Error('Error al generar PDF');
+      return res.blob();
+    })
+    .then(function(blob) {
+      var blobUrl = URL.createObjectURL(blob);
+      window.open(blobUrl, '_blank');
+    })
+    .catch(function(err) {
+      showToast(err.message || 'Error al generar PDF', 'error');
+    });
+}
+
 function _populateReclamoDetailSelectors(data) {
   document.getElementById('recDetailAplica').value = data.aplica || 'pendiente';
   var anioField = document.getElementById('recDetailAnioCalidad');
@@ -221,6 +238,15 @@ function _applyReclamoDetailPermissions(data) {
   var detFileInput = document.getElementById('recDetailFileInput');
   if (detDropZone) detDropZone.style.display = puedeImgRegistro ? '' : 'none';
   if (detFileInput) detFileInput.disabled = !puedeImgRegistro;
+
+  // PDF export: admin, admin2, cubicador (propios), usc
+  var puedePdf = ['admin','admin2'].includes(currentRole) || (currentRole === 'usc') || (currentRole === 'cubicador' && esPropioCub);
+  var btnPdf = document.getElementById('btnPdfReclamo');
+  if (btnPdf) btnPdf.style.display = puedePdf ? '' : 'none';
+
+  // Email placeholder: admin, admin2 only
+  var btnEnviar = document.getElementById('btnEnviarReclamo');
+  if (btnEnviar) btnEnviar.style.display = ['admin','admin2'].includes(currentRole) ? '' : 'none';
 }
 
 function _renderReclamoDetail(data) {
