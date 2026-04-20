@@ -1729,13 +1729,15 @@ class _ReclamoPDF:
         pdf.set_fill_color(*rgb)
         pdf.set_text_color(255, 255, 255)
         estado_label = self._s(ESTADO_LABELS.get(estado, estado))
-        pdf.cell(pdf.get_string_width(estado_label) + 8, 6, estado_label, fill=True, new_x="END")
+        badge_w = pdf.get_string_width(estado_label) + 8
+        pdf.cell(badge_w, 6, estado_label, fill=True, new_x="END")
+        pdf.cell(4, 6, "", new_x="END")  # spacer
         pdf.set_text_color(100, 100, 100)
         pdf.set_font("Helvetica", "", 8)
         aplica_label = self._s(APLICA_LABELS.get(rec.get("aplica"), ""))
-        extra = f"   Aplica: {aplica_label}" if aplica_label else ""
+        aplica_part = f"{aplica_label}      " if aplica_label else ""
         fecha_informe = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
-        pdf.cell(0, 6, f"{extra}      Generado: {fecha_informe}", new_x="LMARGIN", new_y="NEXT")
+        pdf.cell(0, 6, f"{aplica_part}Generado: {fecha_informe}", new_x="LMARGIN", new_y="NEXT")
 
         # Separator line
         pdf.ln(2)
