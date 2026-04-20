@@ -142,6 +142,8 @@ Actualizado: 2025-07.
 | Eliminar imágenes                   |     ✅     |     ✅     |      ✅      |       ✅       |      ✅      |    —    |
 | Presentar reclamo                   |     ✅     |     ✅     | ✅ propios   |       —        | ✅ propios   |    —    |
 | Siguiente número calidad            |     ✅     |     ✅     |      ✅      |       ✅       |      ✅      |    —    |
+| Exportar PDF                        |     ✅     |     ✅     | ✅ propios   |  ✅ propios    |      —       |    —    |
+| Enviar informe por correo           |     ✅     |     ✅     |      —       |  ✅ propios    |      —       |    —    |
 
 > "Registro" = formulario básico (descripción, USC responsable, cubicador responsable, prioridad, id_calidad, observaciones, proyecto).
 > "Análisis" = formulario cubicador (categoría Ishikawa, sub-causa, respuesta, área aplica, fecha análisis, kilos mal fabricados).
@@ -150,6 +152,7 @@ Actualizado: 2025-07.
 > *cubicador y usc: por defecto ven solo propios; toggle "Todos" permite ver el listado completo (read-only, sin permisos de edición sobre reclamos ajenos). Externo siempre ve solo propios, sin toggle.
 > **Año calidad** (`anio_calidad`) solo editable por admin/admin2 (bloqueado inline en PATCH).
 > **Editar/Eliminar acción correctiva e imágenes** — actualmente sin validación de propiedad en backend (cualquier usuario autenticado puede operar).
+> **Enviar informe por correo**: al enviar se registra un seguimiento automático indicando quién envió el PDF y a qué destinatario(s). Solo admin, admin2, o el USC propietario (creado_por o asignado_a) pueden enviar.
 
 ### 3e. Pedidos, calculistas, constructoras
 
@@ -179,3 +182,4 @@ Actualizado: 2025-07.
 4. **admin2** vs **admin**: admin2 no puede crear usuarios admin/admin2, no puede operar sobre usuarios admin/admin2, no puede reset DB ni limpiar tablas.
 5. **Acciones correctivas e imágenes** — `PATCH/DELETE /reclamos/{id}/acciones/{aid}` y `DELETE /reclamos/{id}/imagenes/{iid}` no validan propiedad. Cualquier usuario autenticado puede operar sobre cualquier reclamo. **Pendiente de hardening.**
 6. **`numero_calidad`** — no está restringido a REGISTRO_FIELDS ni ANALISIS_FIELDS, lo que permite su edición por cualquier rol autenticado (excepto cliente). Evaluar si debería restringirse.
+7. **Enviar informe por correo** genera un seguimiento automático con el texto `Informe PDF enviado por correo a {destinatarios}` bajo el usuario que ejecuta la acción. Esto queda registrado en `reclamo_seguimientos` y es visible en el historial del reclamo y en el PDF.

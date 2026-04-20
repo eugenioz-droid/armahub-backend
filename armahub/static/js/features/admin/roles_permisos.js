@@ -154,7 +154,8 @@
         '"propios" para USC = reclamos donde es creado_por o asignado_a.',
         '*cubicador y usc: por defecto ven propios; toggle "Todos" permite ver listado completo (read-only, sin permisos de edición sobre ajenos). Externo siempre ve solo propios, sin toggle.',
         'Año calidad (anio_calidad) solo editable por admin/admin2 (bloqueado inline en PATCH).',
-        'Editar/Eliminar acción correctiva e imágenes — actualmente sin validación de propiedad en backend.'
+        'Editar/Eliminar acción correctiva e imágenes — actualmente sin validación de propiedad en backend.',
+        'Enviar informe por correo: al enviar se registra un seguimiento automático indicando quién envió el PDF y a qué destinatario(s). Solo admin, admin2, o el USC propietario pueden enviar.'
       ],
       rows: [
         {action:'Ver listado reclamos',               perms:{admin:'✅ todo',admin2:'✅ todo',cubicador:'✅ propios*',usc:'✅ propios*',externo:'✅ propios',cliente:'—'}},
@@ -177,6 +178,8 @@
         {action:'Eliminar imágenes',                   perms:{admin:'✅',admin2:'✅',cubicador:'✅',usc:'✅',externo:'✅',cliente:'—'}},
         {action:'Presentar reclamo',                   perms:{admin:'✅',admin2:'✅',cubicador:'✅ propios',usc:'—',externo:'✅ propios',cliente:'—'}},
         {action:'Siguiente número calidad',            perms:{admin:'✅',admin2:'✅',cubicador:'✅',usc:'✅',externo:'✅',cliente:'—'}},
+        {action:'Exportar PDF',                          perms:{admin:'✅',admin2:'✅',cubicador:'✅ propios',usc:'✅ propios',externo:'—',cliente:'—'}},
+        {action:'Enviar informe por correo',             perms:{admin:'✅',admin2:'✅',cubicador:'—',usc:'✅ propios',externo:'—',cliente:'—'}},
       ]
     },
     // ---------- 3e ----------
@@ -213,7 +216,8 @@
     'Pedidos, calculistas, constructoras — restringidos a admin/admin2 en backend.',
     'admin2 vs admin: admin2 no puede crear usuarios admin/admin2, no puede operar sobre usuarios admin/admin2, no puede reset DB ni limpiar tablas.',
     'Acciones correctivas e imágenes — PATCH/DELETE /reclamos/{id}/acciones/{aid} y DELETE /reclamos/{id}/imagenes/{iid} no validan propiedad. Cualquier usuario autenticado puede operar sobre cualquier reclamo. Pendiente de hardening.',
-    'numero_calidad — no está restringido a REGISTRO_FIELDS ni ANALISIS_FIELDS, lo que permite su edición por cualquier rol autenticado (excepto cliente). Evaluar si debería restringirse.'
+    'numero_calidad — no está restringido a REGISTRO_FIELDS ni ANALISIS_FIELDS, lo que permite su edición por cualquier rol autenticado (excepto cliente). Evaluar si debería restringirse.',
+    'Enviar informe por correo genera un seguimiento automático con el texto "Informe PDF enviado por correo a {destinatarios}" bajo el usuario que ejecuta la acción.'
   ];
 
   var SECTION_TITLES = {

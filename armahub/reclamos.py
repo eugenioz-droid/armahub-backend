@@ -1797,7 +1797,7 @@ class _ReclamoPDF:
 
         self.pdf.ln(4)
 
-    # ── Imagenes helper ──
+    # ── Imagenes helper (2 per row grid) ──
     def _imagenes_section(self, title, imagenes, bg_rgb):
         if not imagenes:
             return
@@ -1808,24 +1808,43 @@ class _ReclamoPDF:
         pdf.cell(0, 5, self._s(title), new_x="LMARGIN", new_y="NEXT")
         pdf.ln(1)
 
+        img_w = 85       # width per image (2 fit in 180mm usable)
+        img_max_h = 65   # max height per image slot
+        gap = 10         # horizontal gap between columns
+        col = 0          # current column (0 or 1)
+        row_y = pdf.get_y()
+
         for img_data in imagenes:
             raw = img_data.get("raw_bytes")
             fname = img_data.get("filename", "imagen")
             if not raw:
                 continue
+
+            # New page check: if not enough space for an image row
+            if row_y + img_max_h > 270:
+                pdf.add_page()
+                row_y = pdf.get_y()
+                col = 0
+
+            x = 15 + col * (img_w + gap)
             try:
                 img_buf = io.BytesIO(raw)
-                x = pdf.get_x()
-                y = pdf.get_y()
-                # Check if we need a new page
-                if y > 230:
-                    pdf.add_page()
-                    y = pdf.get_y()
-                pdf.image(img_buf, x=x, y=y, w=70)
-                pdf.ln(55)
+                pdf.image(img_buf, x=x, y=row_y, w=img_w)
             except Exception:
+                pdf.set_xy(x, row_y)
                 pdf.set_font("Helvetica", "I", 8)
-                pdf.cell(0, 4, self._s(f"[No se pudo incluir: {fname}]"), new_x="LMARGIN", new_y="NEXT")
+                pdf.cell(img_w, 4, self._s(f"[No se pudo incluir: {fname}]"))
+
+            col += 1
+            if col >= 2:
+                col = 0
+                row_y += img_max_h + 4
+                pdf.set_y(row_y)
+
+        # If we ended on col 1, advance past the row
+        if col > 0:
+            row_y += img_max_h + 4
+            pdf.set_y(row_y)
 
         pdf.ln(2)
 
