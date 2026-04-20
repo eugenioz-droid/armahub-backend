@@ -1766,6 +1766,32 @@ class _ReclamoPDF:
         pdf.set_text_color(34, 34, 34)
         pdf.multi_cell(self._w_usable - 45, 5, self._s(value), new_x="LMARGIN", new_y="NEXT")
 
+    # ── Colored text box helper (description / respuesta) ──
+    def _text_box(self, label, text, fill_rgb, border_rgb):
+        pdf = self.pdf
+        pdf.ln(3)
+        pdf.set_font("Helvetica", "B", 9)
+        pdf.set_text_color(85, 85, 85)
+        pdf.cell(0, 5, self._s(label), new_x="LMARGIN", new_y="NEXT")
+        pdf.ln(1)
+        # Draw filled rounded rect with border
+        x = pdf.get_x()
+        y = pdf.get_y()
+        pdf.set_fill_color(*fill_rgb)
+        pdf.set_draw_color(*border_rgb)
+        pdf.set_line_width(0.3)
+        # Calculate text height first
+        pdf.set_font("Helvetica", "", 9)
+        pdf.set_text_color(34, 34, 34)
+        inner_w = self._w_usable - 12  # padding 6mm each side
+        # Measure height with a dry run
+        n_lines = pdf.multi_cell(inner_w, 4.5, self._s(text), dry_run=True, output="LINES")
+        text_h = len(n_lines) * 4.5 + 8  # 4mm padding top + 4mm bottom
+        pdf.rect(x, y, self._w_usable, text_h, style="DF")
+        pdf.set_xy(x + 6, y + 4)
+        pdf.multi_cell(inner_w, 4.5, self._s(text), new_x="LMARGIN", new_y="NEXT")
+        pdf.set_y(y + text_h + 1)
+
     # ── Antecedentes ──
     def _antecedentes_section(self):
         rec = self.rec
@@ -1774,9 +1800,9 @@ class _ReclamoPDF:
         tipo_label = {"error": "Error", "faltante": "Faltante", "atraso": "Atraso"}.get(
             rec.get("tipo_reclamo"), rec.get("tipo_reclamo") or "-"
         )
+        self._field_row("Proyecto / Obra:", rec.get("nombre_proyecto"))
         self._field_row("Título:", rec.get("titulo"))
         self._field_row("Tipo:", tipo_label)
-        self._field_row("Proyecto / Obra:", rec.get("nombre_proyecto"))
         self._field_row("Detectado por:", rec.get("detectado_por"))
         self._field_row("Fecha detección:", _as_text(rec.get("fecha_deteccion")))
         self._field_row("Creado por:", rec.get("creado_por"))
@@ -1787,13 +1813,7 @@ class _ReclamoPDF:
             self._field_row("Kilos mal fabricados:", f"{rec['kilos_mal_fabricados']} kg", bold_value=True)
 
         if rec.get("descripcion"):
-            self.pdf.ln(2)
-            self.pdf.set_font("Helvetica", "B", 9)
-            self.pdf.set_text_color(85, 85, 85)
-            self.pdf.cell(0, 5, "Descripcion:", new_x="LMARGIN", new_y="NEXT")
-            self.pdf.set_font("Helvetica", "", 9)
-            self.pdf.set_text_color(34, 34, 34)
-            self.pdf.multi_cell(self._w_usable, 4.5, self._s(rec["descripcion"]), new_x="LMARGIN", new_y="NEXT")
+            self._text_box("Descripcion:", rec["descripcion"], (255, 235, 238), (255, 205, 210))
 
         self.pdf.ln(4)
 
@@ -1860,18 +1880,9 @@ class _ReclamoPDF:
         self._field_row("Área que aplica:", rec.get("area_aplica"))
         self._field_row("Respondido por:", rec.get("respuesta_por"))
         self._field_row("Fecha respuesta:", _as_text(rec.get("respuesta_fecha")))
-        if rec.get("tiempo_respuesta"):
-            unidad = rec.get("tiempo_respuesta_unidad") or "horas"
-            self._field_row("Tiempo respuesta:", f"{rec['tiempo_respuesta']} {unidad}")
 
         if rec.get("respuesta_texto"):
-            self.pdf.ln(2)
-            self.pdf.set_font("Helvetica", "B", 9)
-            self.pdf.set_text_color(85, 85, 85)
-            self.pdf.cell(0, 5, "Respuesta del cubicador:", new_x="LMARGIN", new_y="NEXT")
-            self.pdf.set_font("Helvetica", "", 9)
-            self.pdf.set_text_color(34, 34, 34)
-            self.pdf.multi_cell(self._w_usable, 4.5, self._s(rec["respuesta_texto"]), new_x="LMARGIN", new_y="NEXT")
+            self._text_box("Respuesta del cubicador:", rec["respuesta_texto"], (227, 242, 253), (187, 222, 251))
 
         self.pdf.ln(4)
 
