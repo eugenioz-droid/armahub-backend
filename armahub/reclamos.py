@@ -1731,11 +1731,11 @@ class _ReclamoPDF:
         estado_label = self._s(ESTADO_LABELS.get(estado, estado))
         badge_w = pdf.get_string_width(estado_label) + 8
         pdf.cell(badge_w, 6, estado_label, fill=True, new_x="END")
-        pdf.cell(4, 6, "", new_x="END")  # spacer
+        pdf.set_fill_color(255, 255, 255)
         pdf.set_text_color(100, 100, 100)
         pdf.set_font("Helvetica", "", 8)
         aplica_label = self._s(APLICA_LABELS.get(rec.get("aplica"), ""))
-        aplica_part = f"{aplica_label}      " if aplica_label else ""
+        aplica_part = f"   {aplica_label}      " if aplica_label else "   "
         fecha_informe = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
         pdf.cell(0, 6, f"{aplica_part}Generado: {fecha_informe}", new_x="LMARGIN", new_y="NEXT")
 
