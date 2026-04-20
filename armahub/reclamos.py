@@ -1642,19 +1642,319 @@ def eliminar_imagen(reclamo_id: int, imagen_id: int, user=Depends(get_current_us
 
 # ========================= PDF EXPORT =========================
 
+ESTADO_COLORS_RGB = {
+    "abierto": (255, 152, 0),
+    "en_analisis": (25, 118, 210),
+    "validacion": (123, 31, 162),
+    "cerrado": (56, 142, 60),
+    "rechazado": (198, 40, 40),
+}
+
+class _ReclamoPDF:
+    """Genera un PDF profesional de informe de reclamo usando fpdf2."""
+
+    def __init__(self, rec, acciones, seguimientos, imagenes_registro, imagenes_analisis):
+        import io
+        from fpdf import FPDF
+
+        self.rec = rec
+        self.acciones = acciones
+        self.seguimientos = seguimientos
+        self.imagenes_registro = imagenes_registro
+        self.imagenes_analisis = imagenes_analisis
+
+        self.pdf = FPDF(orientation="P", unit="mm", format="A4")
+        self.pdf.set_auto_page_break(auto=True, margin=20)
+        self.pdf.add_page()
+        self.pdf.set_margins(15, 15, 15)
+        self._w_usable = 180  # 210 - 15 - 15
+
+        # Build correlativo
+        corr_cal = ""
+        if rec.get("anio_calidad") and rec.get("numero_calidad"):
+            corr_cal = f"{rec['anio_calidad']}-{str(rec['numero_calidad']).zfill(3)}"
+        self.correlativo = corr_cal or rec.get("id_calidad") or rec.get("correlativo") or f"#{rec['id']}"
+
+    def build(self) -> bytes:
+        import io
+        self._header_section()
+        self._antecedentes_section()
+        self._imagenes_section("Imágenes de Antecedentes", self.imagenes_registro, (255, 235, 238))
+        self._analisis_section()
+        self._imagenes_section("Imágenes de Análisis", self.imagenes_analisis, (227, 242, 253))
+        self._acciones_section()
+        self._validacion_section()
+        self._seguimientos_section()
+        self._footer()
+        buf = io.BytesIO()
+        self.pdf.output(buf)
+        buf.seek(0)
+        return buf.read()
+
+    # ── Header ──
+    def _header_section(self):
+        pdf = self.pdf
+        rec = self.rec
+        estado = rec.get("estado") or "abierto"
+        rgb = ESTADO_COLORS_RGB.get(estado, (100, 100, 100))
+
+        pdf.set_font("Helvetica", "B", 16)
+        pdf.set_text_color(26, 35, 126)
+        pdf.cell(0, 8, f"Informe de Reclamo {self.correlativo}", new_x="LMARGIN", new_y="NEXT")
+
+        pdf.set_font("Helvetica", "", 10)
+        pdf.set_text_color(100, 100, 100)
+        pdf.cell(0, 5, rec.get("titulo") or "", new_x="LMARGIN", new_y="NEXT")
+
+        # Estado badge + fecha informe
+        pdf.ln(2)
+        pdf.set_font("Helvetica", "B", 9)
+        pdf.set_fill_color(*rgb)
+        pdf.set_text_color(255, 255, 255)
+        estado_label = ESTADO_LABELS.get(estado, estado)
+        pdf.cell(pdf.get_string_width(estado_label) + 8, 6, estado_label, fill=True, new_x="END")
+        pdf.set_text_color(100, 100, 100)
+        pdf.set_font("Helvetica", "", 8)
+        aplica_label = APLICA_LABELS.get(rec.get("aplica"), "")
+        extra = f"   Aplica: {aplica_label}" if aplica_label else ""
+        fecha_informe = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+        pdf.cell(0, 6, f"{extra}      Generado: {fecha_informe}", new_x="LMARGIN", new_y="NEXT")
+
+        # Separator line
+        pdf.ln(2)
+        pdf.set_draw_color(26, 35, 126)
+        pdf.set_line_width(0.5)
+        pdf.line(15, pdf.get_y(), 195, pdf.get_y())
+        pdf.ln(4)
+
+    # ── Section title helper ──
+    def _section_title(self, title, bg_rgb, text_rgb=(255, 255, 255)):
+        pdf = self.pdf
+        pdf.set_font("Helvetica", "B", 11)
+        pdf.set_fill_color(*bg_rgb)
+        pdf.set_text_color(*text_rgb)
+        pdf.cell(0, 7, f"  {title}", fill=True, new_x="LMARGIN", new_y="NEXT")
+        pdf.set_text_color(34, 34, 34)
+        pdf.ln(2)
+
+    # ── Field-value row helper ──
+    def _field_row(self, label, value, bold_value=False):
+        if not value:
+            return
+        pdf = self.pdf
+        pdf.set_font("Helvetica", "B", 9)
+        pdf.set_text_color(85, 85, 85)
+        pdf.cell(45, 5, label, new_x="END")
+        pdf.set_font("Helvetica", "B" if bold_value else "", 9)
+        pdf.set_text_color(34, 34, 34)
+        pdf.multi_cell(self._w_usable - 45, 5, str(value), new_x="LMARGIN", new_y="NEXT")
+
+    # ── Antecedentes ──
+    def _antecedentes_section(self):
+        rec = self.rec
+        self._section_title("Antecedentes del Reclamo", (198, 40, 40))
+
+        tipo_label = {"error": "Error", "faltante": "Faltante", "atraso": "Atraso"}.get(
+            rec.get("tipo_reclamo"), rec.get("tipo_reclamo") or "—"
+        )
+        self._field_row("Título:", rec.get("titulo"))
+        self._field_row("Tipo:", tipo_label)
+        self._field_row("Proyecto / Obra:", rec.get("nombre_proyecto"))
+        self._field_row("Detectado por:", rec.get("detectado_por"))
+        self._field_row("Fecha detección:", _as_text(rec.get("fecha_deteccion")))
+        self._field_row("Creado por:", rec.get("creado_por"))
+        self._field_row("Fecha creación:", _as_text(rec.get("fecha_creacion")))
+        self._field_row("Cub. Responsable:", rec.get("responsable"))
+        self._field_row("USC Responsable:", rec.get("asignado_a"))
+        if rec.get("kilos_mal_fabricados") is not None:
+            self._field_row("Kilos mal fabricados:", f"{rec['kilos_mal_fabricados']} kg", bold_value=True)
+
+        if rec.get("descripcion"):
+            self.pdf.ln(2)
+            self.pdf.set_font("Helvetica", "B", 9)
+            self.pdf.set_text_color(85, 85, 85)
+            self.pdf.cell(0, 5, "Descripción:", new_x="LMARGIN", new_y="NEXT")
+            self.pdf.set_font("Helvetica", "", 9)
+            self.pdf.set_text_color(34, 34, 34)
+            self.pdf.multi_cell(self._w_usable, 4.5, rec["descripcion"], new_x="LMARGIN", new_y="NEXT")
+
+        self.pdf.ln(4)
+
+    # ── Imagenes helper ──
+    def _imagenes_section(self, title, imagenes, bg_rgb):
+        if not imagenes:
+            return
+        import io
+        pdf = self.pdf
+        pdf.set_font("Helvetica", "B", 9)
+        pdf.set_text_color(85, 85, 85)
+        pdf.cell(0, 5, title, new_x="LMARGIN", new_y="NEXT")
+        pdf.ln(1)
+
+        for img_data in imagenes:
+            raw = img_data.get("raw_bytes")
+            fname = img_data.get("filename", "imagen")
+            if not raw:
+                continue
+            try:
+                img_buf = io.BytesIO(raw)
+                x = pdf.get_x()
+                y = pdf.get_y()
+                # Check if we need a new page
+                if y > 230:
+                    pdf.add_page()
+                    y = pdf.get_y()
+                pdf.image(img_buf, x=x, y=y, w=70)
+                pdf.ln(55)
+            except Exception:
+                pdf.set_font("Helvetica", "I", 8)
+                pdf.cell(0, 4, f"[No se pudo incluir: {fname}]", new_x="LMARGIN", new_y="NEXT")
+
+        pdf.ln(2)
+
+    # ── Análisis ──
+    def _analisis_section(self):
+        rec = self.rec
+        self._section_title("Análisis y Respuesta", (21, 101, 192))
+
+        cat_label = ISHIKAWA_LABELS.get(rec.get("categoria_ishikawa"), rec.get("categoria_ishikawa"))
+        self._field_row("Causa Ishikawa:", cat_label)
+        self._field_row("Sub-causa:", rec.get("sub_causa"))
+        self._field_row("Código causa:", rec.get("cod_causa"))
+        self._field_row("Área que aplica:", rec.get("area_aplica"))
+        self._field_row("Respondido por:", rec.get("respuesta_por"))
+        self._field_row("Fecha respuesta:", _as_text(rec.get("respuesta_fecha")))
+        if rec.get("tiempo_respuesta"):
+            unidad = rec.get("tiempo_respuesta_unidad") or "horas"
+            self._field_row("Tiempo respuesta:", f"{rec['tiempo_respuesta']} {unidad}")
+
+        if rec.get("respuesta_texto"):
+            self.pdf.ln(2)
+            self.pdf.set_font("Helvetica", "B", 9)
+            self.pdf.set_text_color(85, 85, 85)
+            self.pdf.cell(0, 5, "Respuesta del cubicador:", new_x="LMARGIN", new_y="NEXT")
+            self.pdf.set_font("Helvetica", "", 9)
+            self.pdf.set_text_color(34, 34, 34)
+            self.pdf.multi_cell(self._w_usable, 4.5, rec["respuesta_texto"], new_x="LMARGIN", new_y="NEXT")
+
+        self.pdf.ln(4)
+
+    # ── Acciones ──
+    def _acciones_section(self):
+        if not self.acciones:
+            return
+        self._section_title("Acciones Correctivas / Preventivas", (230, 81, 0))
+
+        pdf = self.pdf
+        col_widths = [25, 65, 30, 22, 22, 16]
+        headers = ["Tipo", "Descripción", "Responsable", "F.Prevista", "F.Complet.", "Estado"]
+
+        # Header row
+        pdf.set_font("Helvetica", "B", 7)
+        pdf.set_fill_color(245, 245, 245)
+        pdf.set_text_color(34, 34, 34)
+        for i, h in enumerate(headers):
+            pdf.cell(col_widths[i], 5, h, border=1, fill=True, new_x="END")
+        pdf.ln()
+
+        # Data rows
+        pdf.set_font("Helvetica", "", 7)
+        for a in self.acciones:
+            vals = [
+                a.get("tipo_label") or "—",
+                (a.get("descripcion") or "—")[:80],
+                (a.get("responsable") or "—")[:25],
+                a.get("fecha_prevista") or "—",
+                a.get("fecha_completada") or "—",
+                a.get("estado_label") or "—",
+            ]
+            max_h = 5
+            for i, v in enumerate(vals):
+                pdf.cell(col_widths[i], max_h, v, border=1, new_x="END")
+            pdf.ln()
+
+        pdf.ln(4)
+
+    # ── Validación ──
+    def _validacion_section(self):
+        rec = self.rec
+        self._section_title("Validación", (46, 125, 50))
+
+        if rec.get("validacion_resultado"):
+            val_label = {"aprobado": "Aprobado", "rechazado": "Rechazado", "corregido": "Corregido"}.get(
+                rec["validacion_resultado"], rec["validacion_resultado"]
+            )
+            self._field_row("Resultado:", val_label, bold_value=True)
+            self._field_row("Validado por:", rec.get("validacion_por"))
+            self._field_row("Fecha validación:", _as_text(rec.get("validacion_fecha")))
+            self._field_row("Observaciones:", rec.get("validacion_observaciones"))
+        else:
+            self.pdf.set_font("Helvetica", "I", 9)
+            self.pdf.set_text_color(150, 150, 150)
+            self.pdf.cell(0, 5, "Pendiente de validación", new_x="LMARGIN", new_y="NEXT")
+            self.pdf.set_text_color(34, 34, 34)
+
+        self.pdf.ln(4)
+
+    # ── Seguimientos ──
+    def _seguimientos_section(self):
+        if not self.seguimientos:
+            return
+        self._section_title("Seguimientos", (66, 66, 66))
+
+        pdf = self.pdf
+        for s in self.seguimientos:
+            fecha = s.get("fecha") or "—"
+            usuario = s.get("usuario") or "Sistema"
+            estado_change = ""
+            if s.get("estado_anterior") and s.get("estado_nuevo"):
+                estado_change = f" cambió estado: {s['estado_anterior']} → {s['estado_nuevo']}"
+
+            pdf.set_font("Helvetica", "", 7)
+            pdf.set_text_color(136, 136, 136)
+            pdf.cell(30, 4, fecha, new_x="END")
+            pdf.set_font("Helvetica", "B", 7)
+            pdf.set_text_color(51, 51, 51)
+            pdf.cell(35, 4, usuario, new_x="END")
+            if estado_change:
+                pdf.set_font("Helvetica", "I", 7)
+                pdf.set_text_color(136, 136, 136)
+                pdf.cell(0, 4, estado_change, new_x="LMARGIN", new_y="NEXT")
+            else:
+                pdf.ln()
+
+            if s.get("comentario"):
+                pdf.set_font("Helvetica", "", 7)
+                pdf.set_text_color(34, 34, 34)
+                pdf.multi_cell(self._w_usable, 3.5, s["comentario"], new_x="LMARGIN", new_y="NEXT")
+
+            pdf.set_draw_color(224, 224, 224)
+            pdf.line(15, pdf.get_y(), 195, pdf.get_y())
+            pdf.ln(1)
+
+    # ── Footer ──
+    def _footer(self):
+        pdf = self.pdf
+        pdf.ln(6)
+        pdf.set_draw_color(200, 200, 200)
+        pdf.line(15, pdf.get_y(), 195, pdf.get_y())
+        pdf.ln(2)
+        pdf.set_font("Helvetica", "I", 7)
+        pdf.set_text_color(150, 150, 150)
+        fecha = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+        pdf.cell(0, 4, f"ArmaHub — Informe generado el {fecha} · {self.correlativo}", align="C")
+
+
 @router.get("/reclamos/{reclamo_id}/pdf")
 def exportar_reclamo_pdf(reclamo_id: int, user=Depends(get_current_user)):
     """Generar PDF del informe de reclamo."""
-    import base64, io, os
-    from xhtml2pdf import pisa
-    from jinja2 import Environment, FileSystemLoader
+    import io
 
     role = user.get("role")
     email = user.get("email", "")
     if role not in ("admin", "admin2", "cubicador", "usc"):
         raise HTTPException(status_code=403, detail="Sin permisos para generar PDF")
 
-    # Fetch reclamo detail
     with get_conn() as conn:
         with conn.cursor(row_factory=dict_row) as cur:
             cur.execute("""
@@ -1667,7 +1967,6 @@ def exportar_reclamo_pdf(reclamo_id: int, user=Depends(get_current_user)):
             if not rec:
                 raise HTTPException(status_code=404, detail="Reclamo no encontrado")
 
-            # Ownership check for cubicador/usc
             if role == "cubicador" and not _es_propietario_cubicador(rec, email):
                 raise HTTPException(status_code=403, detail="Solo puedes exportar tus propios reclamos")
             if role == "usc" and not _es_propietario_usc(rec, email):
@@ -1685,106 +1984,52 @@ def exportar_reclamo_pdf(reclamo_id: int, user=Depends(get_current_user)):
 
             # Acciones
             cur.execute("""
-                SELECT id, tipo, descripcion, responsable, fecha_prevista, fecha_completada, estado, creado_por
+                SELECT id, tipo, descripcion, responsable, fecha_prevista, fecha_completada, estado
                 FROM reclamo_acciones WHERE reclamo_id = %s ORDER BY id ASC
             """, (reclamo_id,))
-            acciones_raw = cur.fetchall()
-            acciones = []
-            for a in acciones_raw:
-                acciones.append({
+            acciones = [
+                {
                     "tipo_label": TIPO_ACCION_LABELS.get(a.get("tipo"), a.get("tipo") or "—"),
                     "descripcion": a.get("descripcion"),
                     "responsable": a.get("responsable"),
                     "fecha_prevista": _as_text(a.get("fecha_prevista")),
                     "fecha_completada": _as_text(a.get("fecha_completada")),
                     "estado_label": "Completada" if a.get("estado") == "completada" else "En proceso" if a.get("estado") == "en_proceso" else "—",
-                })
+                }
+                for a in cur.fetchall()
+            ]
 
-            # Imágenes → base64 data URIs (solo imágenes, no PDFs/docs)
+            # Imágenes → raw bytes para fpdf2
             cur.execute("""
                 SELECT id, filename, content_type, data, tipo
                 FROM reclamo_imagenes WHERE reclamo_id = %s ORDER BY id ASC
             """, (reclamo_id,))
-            imgs_raw = cur.fetchall()
             imagenes_registro = []
             imagenes_analisis = []
-            for img in imgs_raw:
+            for img in cur.fetchall():
                 ct = img.get("content_type") or ""
                 if not ct.startswith("image/"):
                     continue
-                b64 = base64.b64encode(bytes(img["data"])).decode("ascii")
-                entry = {"data_uri": f"data:{ct};base64,{b64}", "filename": img.get("filename")}
+                entry = {"raw_bytes": bytes(img["data"]), "filename": img.get("filename")}
                 tipo = img.get("tipo") or "ImagenesRegistro"
                 if tipo == "ImagenesAnalisis":
                     imagenes_analisis.append(entry)
                 else:
                     imagenes_registro.append(entry)
 
-    # Build correlativo display
+    # Generate PDF
+    gen = _ReclamoPDF(rec, acciones, seguimientos, imagenes_registro, imagenes_analisis)
+    pdf_bytes = gen.build()
+
     corr_cal = ""
     if rec.get("anio_calidad") and rec.get("numero_calidad"):
         corr_cal = f"{rec['anio_calidad']}-{str(rec['numero_calidad']).zfill(3)}"
     correlativo = corr_cal or rec.get("id_calidad") or rec.get("correlativo") or f"#{rec['id']}"
-
-    tipo_label = {"error": "Error", "faltante": "Faltante", "atraso": "Atraso"}.get(
-        rec.get("tipo_reclamo"), rec.get("tipo_reclamo") or "—"
-    )
-
-    # Render template
-    tpl_dir = os.path.join(os.path.dirname(__file__), "templates", "pdf")
-    env = Environment(loader=FileSystemLoader(tpl_dir))
-    template = env.get_template("reclamo_informe.html")
-
-    html = template.render(
-        correlativo=correlativo,
-        titulo=rec.get("titulo") or "—",
-        estado=rec.get("estado") or "abierto",
-        estado_label=ESTADO_LABELS.get(rec.get("estado"), rec.get("estado") or "—"),
-        aplica_label=APLICA_LABELS.get(rec.get("aplica"), ""),
-        tipo_label=tipo_label,
-        nombre_proyecto=rec.get("nombre_proyecto"),
-        detectado_por=rec.get("detectado_por"),
-        fecha_deteccion=_as_text(rec.get("fecha_deteccion")),
-        creado_por=rec.get("creado_por"),
-        fecha_creacion=_as_text(rec.get("fecha_creacion")),
-        responsable=rec.get("responsable"),
-        asignado_a=rec.get("asignado_a"),
-        kilos_mal_fabricados=rec.get("kilos_mal_fabricados"),
-        descripcion=rec.get("descripcion"),
-        categoria_ishikawa_label=ISHIKAWA_LABELS.get(rec.get("categoria_ishikawa"), rec.get("categoria_ishikawa")),
-        sub_causa=rec.get("sub_causa"),
-        cod_causa=rec.get("cod_causa"),
-        area_aplica=rec.get("area_aplica"),
-        respuesta_texto=rec.get("respuesta_texto"),
-        respuesta_por=rec.get("respuesta_por"),
-        respuesta_fecha=_as_text(rec.get("respuesta_fecha")),
-        tiempo_respuesta=rec.get("tiempo_respuesta"),
-        tiempo_respuesta_unidad=rec.get("tiempo_respuesta_unidad"),
-        validacion_resultado=rec.get("validacion_resultado"),
-        validacion_label={"aprobado": "Aprobado", "rechazado": "Rechazado", "corregido": "Corregido"}.get(
-            rec.get("validacion_resultado"), rec.get("validacion_resultado") or ""
-        ),
-        validacion_por=rec.get("validacion_por"),
-        validacion_fecha=_as_text(rec.get("validacion_fecha")),
-        validacion_observaciones=rec.get("validacion_observaciones"),
-        acciones=acciones,
-        seguimientos=seguimientos,
-        imagenes_registro=imagenes_registro,
-        imagenes_analisis=imagenes_analisis,
-        fecha_informe=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
-    )
-
-    # Generate PDF
-    buf = io.BytesIO()
-    pisa_status = pisa.CreatePDF(html, dest=buf, encoding="utf-8")
-    if pisa_status.err:
-        raise HTTPException(status_code=500, detail="Error al generar PDF")
-
-    buf.seek(0)
     filename = f"Reclamo_{correlativo.replace('#', '').replace('/', '-')}.pdf"
+
     audit(email, "exportar_pdf_reclamo", str(reclamo_id), "reclamo", str(reclamo_id))
     return Response(
-        content=buf.read(),
+        content=pdf_bytes,
         media_type="application/pdf",
         headers={"Content-Disposition": f'inline; filename="{filename}"'},
     )
