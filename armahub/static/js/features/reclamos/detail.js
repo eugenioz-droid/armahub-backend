@@ -266,12 +266,46 @@ function _renderReclamoDetail(data) {
   card.scrollTop = 0;
 }
 
-async function verReclamo(id) {
+function _captureReclamoAnalysisDraft() {
+  var fieldIds = [
+    'recDetailRespuestaTexto',
+    'recDetailCategoria',
+    'recDetailSubCausa',
+    'recDetailCodCausa',
+    'recDetailAreaAplica',
+    'recDetailFechaAnalisis',
+    'recDetailKilosMal',
+    'recTiempoRespuestaAnalisis',
+    'recTiempoRespuestaUnidadAnalisis'
+  ];
+  var draft = {};
+  var hasValue = false;
+  fieldIds.forEach(function(id) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    draft[id] = el.value;
+    if (el.value !== '') hasValue = true;
+  });
+  return hasValue ? draft : null;
+}
+
+function _restoreReclamoAnalysisDraft(draft) {
+  if (!draft) return;
+  Object.keys(draft).forEach(function(id) {
+    var el = document.getElementById(id);
+    if (el) el.value = draft[id];
+  });
+}
+
+async function verReclamo(id, options) {
+  options = options || {};
+  var analysisDraft = options.preserveAnalysisDraft ? _captureReclamoAnalysisDraft() : null;
   var data = await apiGet('/reclamos/' + id);
   if (!data) return;
   data = _normalizeReclamoDetail(data);
   _reclamoActual = data;
   _renderReclamoDetail(data);
+  if (analysisDraft) _restoreReclamoAnalysisDraft(analysisDraft);
   _updateRecNavButtons();
 }
 
@@ -961,7 +995,7 @@ async function _uploadFilesWithTipo(files, tipo, msgElId) {
       return;
     }
     if (msg) { msg.textContent = files.length + ' imagen(es) subida(s)'; msg.style.color = '#558B2F'; setTimeout(function() { msg.textContent = ''; }, 3000); }
-    await verReclamo(_reclamoActual.id);
+    await verReclamo(_reclamoActual.id, { preserveAnalysisDraft: true });
   } catch (err) {
     console.error('[_uploadFilesWithTipo] Error:', err);
     if (msg) { msg.textContent = 'Error de red al subir imagen'; msg.style.color = '#b42318'; }
@@ -982,7 +1016,7 @@ async function eliminarImagen(imgId) {
   });
   if (res.status === 401) { logout(); return; }
   var data = await res.json();
-  if (data.ok) { await verReclamo(_reclamoActual.id); }
+  if (data.ok) { await verReclamo(_reclamoActual.id, { preserveAnalysisDraft: true }); }
   else { alert('Error: ' + (data.detail || 'desconocido')); }
 }
 

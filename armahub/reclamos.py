@@ -702,9 +702,11 @@ def reclamos_para_presentar(user=Depends(get_current_user)):
         with conn.cursor() as cur:
             role_filter = ""
             params = []
-            if role not in ("admin", "admin2"):
-                role_filter = "AND r.cubicador_asignado = %s"
-                params.append(email)
+            if role in ("cubicador", "externo"):
+                role_filter = "AND (r.cubicador_asignado = %s OR r.respuesta_por = %s)"
+                params.extend([email, email])
+            elif role not in ("admin", "admin2"):
+                role_filter, params = build_role_filter(user)
 
             cur.execute(f"""
                 SELECT r.id, r.correlativo, r.titulo, r.descripcion, r.estado,
@@ -774,9 +776,11 @@ def presentaciones_stats(user=Depends(get_current_user)):
         with conn.cursor() as cur:
             role_filter = ""
             params = []
-            if role not in ("admin", "admin2", "cubicador"):
-                role_filter = "AND r.cubicador_asignado = %s"
-                params.append(email)
+            if role in ("cubicador", "externo"):
+                role_filter = "AND (r.cubicador_asignado = %s OR r.respuesta_por = %s)"
+                params.extend([email, email])
+            elif role not in ("admin", "admin2"):
+                role_filter, params = build_role_filter(user)
 
             base = f"""
                 FROM reclamos r
