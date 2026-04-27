@@ -40,8 +40,9 @@
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
             <h3 style="margin: 0;">📁 Mis proyectos</h3>
           </div>
-          <div style="margin-bottom: 10px;">
+          <div style="display:flex; gap:8px; align-items:center; margin-bottom: 10px;">
             <input type="text" id="proyectoSearchInput" placeholder="🔍 Buscar proyecto..." oninput="filterProyectos()" style="width: 100%; font-size: 13px; padding: 8px 12px;" />
+            <button id="proyectosConDatosToggle" onclick="toggleProyectosConDatos()" style="font-size:11px; padding:3px 10px; border:1px solid #2e7d32; background:#fff; color:#2e7d32; border-radius:4px; cursor:pointer; white-space:nowrap;">Todos</button>
           </div>
           <div id="proyectosContainer" style="min-height: 150px;">
             <div class="muted">Cargando...</div>

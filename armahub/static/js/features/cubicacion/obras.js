@@ -3,13 +3,39 @@
 
 // Store proyectos data globally for filtering
 var _proyectosData = [];
+var _proyectosSoloConDatos = false;
+
+function _toNumber(v) {
+  var n = Number(v);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function _proyectoTieneDatos(p) {
+  if (!p) return false;
+  return _toNumber(p.total_kilos) > 0 ||
+         _toNumber(p.total_barras) > 0 ||
+         _toNumber(p.diam_prom) > 0 ||
+         _toNumber(p.ppi) > 0;
+}
+
+function _applyProyectoFilters() {
+  var search = (document.getElementById('proyectoSearchInput')?.value || '').toLowerCase().trim();
+  var filtered = (_proyectosData || []).filter(function(p) {
+    if (_proyectosSoloConDatos && !_proyectoTieneDatos(p)) return false;
+    if (!search) return true;
+    return (p.nombre_proyecto || '').toLowerCase().includes(search) ||
+           (p.cubicador || '').toLowerCase().includes(search) ||
+           String(p.id_proyecto || '').toLowerCase().includes(search);
+  });
+  renderProyectosTable(filtered);
+}
 
 async function loadProyectos() {
   const data = await apiGet('/proyectos');
   if (!data) return;
   
   _proyectosData = data.proyectos || [];
-  renderProyectosTable(_proyectosData);
+  _applyProyectoFilters();
 
   // Populate export project filter
   const epf = document.getElementById('exportProyecto');
@@ -71,17 +97,26 @@ async function loadProyectos() {
 }
 
 function filterProyectos() {
-  var search = (document.getElementById('proyectoSearchInput').value || '').toLowerCase().trim();
-  if (!search) {
-    renderProyectosTable(_proyectosData);
-    return;
+  _applyProyectoFilters();
+}
+
+function toggleProyectosConDatos() {
+  _proyectosSoloConDatos = !_proyectosSoloConDatos;
+  var btn = document.getElementById('proyectosConDatosToggle');
+  if (btn) {
+    if (_proyectosSoloConDatos) {
+      btn.textContent = 'Con datos';
+      btn.style.background = '#2e7d32';
+      btn.style.color = '#fff';
+      btn.style.borderColor = '#2e7d32';
+    } else {
+      btn.textContent = 'Todos';
+      btn.style.background = '#fff';
+      btn.style.color = '#2e7d32';
+      btn.style.borderColor = '#2e7d32';
+    }
   }
-  var filtered = _proyectosData.filter(function(p) {
-    return (p.nombre_proyecto || '').toLowerCase().includes(search) ||
-           (p.cubicador || '').toLowerCase().includes(search) ||
-           (p.id_proyecto || '').toLowerCase().includes(search);
-  });
-  renderProyectosTable(filtered);
+  _applyProyectoFilters();
 }
 
 function renderProyectosTable(proyectos) {
