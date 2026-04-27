@@ -171,6 +171,68 @@
           <div style="font-size:13px; font-weight:600; margin-bottom:6px;">📋 Historial de cargas</div>
           <div id="obraDetailCargas"><div class="muted">Cargando...</div></div>
         </div>
+
+        <!-- Ejes / Elevaciones -->
+        <div style="margin-top:20px;">
+          <div id="obraEjesHeader" style="font-size:13px; font-weight:600; margin-bottom:6px; cursor:pointer; display:flex; align-items:center; gap:6px; background:#fff3e0; padding:6px 10px; border-radius:5px; color:#e65100;" onclick="toggleObraEjes()">
+            <span id="obraEjesArrow">▸</span> 📐 Ejes de elevaciones
+            <span id="obraEjesBadge" style="margin-left:auto; font-size:11px; background:#e65100; color:#fff; padding:1px 7px; border-radius:10px; display:none;"></span>
+          </div>
+          <div id="obraEjesSection" style="display:none; padding:10px 12px; background:#fffde7; border:1px solid #ffe0b2; border-radius:0 0 6px 6px;">
+            <div id="obraEjesList"><div class="muted" style="font-size:12px;">Cargando...</div></div>
+            <div id="obraEjesForm" style="margin-top:10px; display:none;">
+              <div style="display:flex; gap:6px; flex-wrap:wrap; align-items:flex-end;">
+                <div>
+                  <label style="font-size:10px; color:#666; display:block; margin-bottom:2px;">Nombre eje *</label>
+                  <input type="text" id="obraEjeNombre" placeholder="Ej: EJE A, EJE 1-1" style="width:160px; font-size:12px;" maxlength="60" />
+                </div>
+                <div>
+                  <label style="font-size:10px; color:#666; display:block; margin-bottom:2px;">Descripción (opcional)</label>
+                  <input type="text" id="obraEjeDesc" placeholder="Notas..." style="width:200px; font-size:12px;" maxlength="200" />
+                </div>
+                <button onclick="agregarEje()" style="font-size:11px; padding:5px 14px; background:#e65100; border-color:#e65100;">+ Agregar</button>
+                <button class="secondary" onclick="cancelarAgregarEje()" style="font-size:11px; padding:5px 10px;">Cancelar</button>
+              </div>
+              <div id="obraEjeMsg" style="font-size:11px; margin-top:4px;"></div>
+            </div>
+            <div id="obraEjesAddBtn" style="margin-top:8px; display:none;">
+              <button class="secondary" onclick="mostrarFormEje()" style="font-size:11px; padding:3px 10px;">+ Nuevo eje</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Losas -->
+        <div style="margin-top:14px; margin-bottom:8px;">
+          <div id="obraLosasHeader" style="font-size:13px; font-weight:600; margin-bottom:6px; cursor:pointer; display:flex; align-items:center; gap:6px; background:#e8f5e9; padding:6px 10px; border-radius:5px; color:#2e7d32;" onclick="toggleObraLosas()">
+            <span id="obraLosasArrow">▸</span> 🏛️ Registro de losas
+            <span id="obraLosasBadge" style="margin-left:auto; font-size:11px; background:#2e7d32; color:#fff; padding:1px 7px; border-radius:10px; display:none;"></span>
+          </div>
+          <div id="obraLosasSection" style="display:none; padding:10px 12px; background:#f1f8e9; border:1px solid #c8e6c9; border-radius:0 0 6px 6px;">
+            <div id="obraLosasList"><div class="muted" style="font-size:12px;">Cargando...</div></div>
+            <div id="obraLosasForm" style="margin-top:10px; display:none;">
+              <div style="display:flex; gap:6px; flex-wrap:wrap; align-items:flex-end;">
+                <div>
+                  <label style="font-size:10px; color:#666; display:block; margin-bottom:2px;">Nombre losa *</label>
+                  <input type="text" id="obraLosaNombre" placeholder="Ej: LOSA PISO 3" style="width:160px; font-size:12px;" maxlength="60" />
+                </div>
+                <div>
+                  <label style="font-size:10px; color:#666; display:block; margin-bottom:2px;">Piso ref.</label>
+                  <input type="text" id="obraLosaPiso" placeholder="Ej: P3, D1, T" style="width:80px; font-size:12px;" maxlength="20" />
+                </div>
+                <div>
+                  <label style="font-size:10px; color:#666; display:block; margin-bottom:2px;">Descripción (opcional)</label>
+                  <input type="text" id="obraLosaDesc" placeholder="Notas..." style="width:180px; font-size:12px;" maxlength="200" />
+                </div>
+                <button onclick="agregarLosa()" style="font-size:11px; padding:5px 14px; background:#2e7d32; border-color:#2e7d32;">+ Agregar</button>
+                <button class="secondary" onclick="cancelarAgregarLosa()" style="font-size:11px; padding:5px 10px;">Cancelar</button>
+              </div>
+              <div id="obraLosaMsg" style="font-size:11px; margin-top:4px;"></div>
+            </div>
+            <div id="obraLosasAddBtn" style="margin-top:8px; display:none;">
+              <button class="secondary" onclick="mostrarFormLosa()" style="font-size:11px; padding:3px 10px;">+ Nueva losa</button>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   </div>

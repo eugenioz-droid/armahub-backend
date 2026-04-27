@@ -683,6 +683,31 @@ MIGRATIONS = [
                 CHECK (estado IN ('abierto','en_analisis','validacion','cerrado','rechazado'));
         END $$;""",
     ]),
+
+    # --- Migration 48: Ejes y Losas por proyecto ---
+    (48, "proyectos: tablas obra_ejes y obra_losas", [
+        """CREATE TABLE IF NOT EXISTS obra_ejes (
+            id BIGSERIAL PRIMARY KEY,
+            id_proyecto TEXT NOT NULL REFERENCES proyectos(id_proyecto) ON DELETE CASCADE,
+            nombre TEXT NOT NULL,
+            descripcion TEXT,
+            orden INTEGER DEFAULT 0,
+            created_at TIMESTAMPTZ DEFAULT NOW(),
+            UNIQUE(id_proyecto, nombre)
+        )""",
+        "CREATE INDEX IF NOT EXISTS idx_obra_ejes_proyecto ON obra_ejes(id_proyecto)",
+        """CREATE TABLE IF NOT EXISTS obra_losas (
+            id BIGSERIAL PRIMARY KEY,
+            id_proyecto TEXT NOT NULL REFERENCES proyectos(id_proyecto) ON DELETE CASCADE,
+            nombre TEXT NOT NULL,
+            piso TEXT,
+            descripcion TEXT,
+            orden INTEGER DEFAULT 0,
+            created_at TIMESTAMPTZ DEFAULT NOW(),
+            UNIQUE(id_proyecto, nombre)
+        )""",
+        "CREATE INDEX IF NOT EXISTS idx_obra_losas_proyecto ON obra_losas(id_proyecto)",
+    ]),
 ]
 
 
