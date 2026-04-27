@@ -353,21 +353,14 @@ async function openObraDetailModal(idProyecto) {
   document.getElementById('obraDetailTreeArrow').textContent = '▸';
   document.getElementById('obraDetailCargas').innerHTML = '<div class="muted">Cargando...</div>';
 
-  // Reset ejes/losas state
-  _obraEjesCargados = false;
-  _obraLosasCargadas = false;
-  document.getElementById('obraEjesSection').style.display = 'none';
-  document.getElementById('obraEjesArrow').textContent = '▸';
-  document.getElementById('obraEjesList').innerHTML = '<div class="muted" style="font-size:12px;">Cargando...</div>';
-  document.getElementById('obraEjesForm').style.display = 'none';
-  document.getElementById('obraEjesAddBtn').style.display = 'none';
-  document.getElementById('obraEjesBadge').style.display = 'none';
-  document.getElementById('obraLosasSection').style.display = 'none';
-  document.getElementById('obraLosasArrow').textContent = '▸';
-  document.getElementById('obraLosasList').innerHTML = '<div class="muted" style="font-size:12px;">Cargando...</div>';
-  document.getElementById('obraLosasForm').style.display = 'none';
-  document.getElementById('obraLosasAddBtn').style.display = 'none';
-  document.getElementById('obraLosasBadge').style.display = 'none';
+  // Reset cobertura state
+  _obraCoberturaCargada = false;
+  var _coberturaSec = document.getElementById('obraCoberturaSection');
+  if (_coberturaSec) {
+    _coberturaSec.style.display = 'none';
+    document.getElementById('obraCoberturaArrow').textContent = '▸';
+    document.getElementById('obraCoberturaMatrix').innerHTML = '<div class="muted" style="font-size:12px;">Cargando...</div>';
+  }
 
   // Store current id for sub-actions
   window._obraDetailCurrentId = idProyecto;
@@ -1331,19 +1324,27 @@ async function moverBarras() {
   alert('Mover barras entre proyectos ya no está disponible.');
 }
 
-// ========================= EJES DE ELEVACIONES =========================
+// ========================= MATRIZ DE COBERTURA POR CICLO =========================
 
-var _obraEjesCargados = false;
+var _obraCoberturaCargada = false;
 
-function toggleObraEjes() {
-  var sec = document.getElementById('obraEjesSection');
-  var arrow = document.getElementById('obraEjesArrow');
+var _SECTOR_LABELS = {
+  LCIELO: { label: 'LCIELO', desc: 'Losa cielo', color: '#1976d2', unit: 'losas' },
+  VCIELO: { label: 'VCIELO', desc: 'Viga cielo', color: '#7b1fa2', unit: 'ejes' },
+  ELEV:   { label: 'ELEV',   desc: 'Elevación', color: '#e65100', unit: 'ejes' },
+  FUND:   { label: 'FUND',   desc: 'Fundación', color: '#2e7d32', unit: 'ejes' }
+};
+
+function toggleObraCobertura() {
+  var sec = document.getElementById('obraCoberturaSection');
+  var arrow = document.getElementById('obraCoberturaArrow');
+  if (!sec) return;
   if (sec.style.display === 'none') {
     sec.style.display = '';
     arrow.textContent = '▾';
-    if (!_obraEjesCargados) {
-      _obraEjesCargados = true;
-      loadObraEjes(window._obraDetailCurrentId);
+    if (!_obraCoberturaCargada) {
+      _obraCoberturaCargada = true;
+      loadObraCobertura(window._obraDetailCurrentId);
     }
   } else {
     sec.style.display = 'none';
@@ -1351,188 +1352,61 @@ function toggleObraEjes() {
   }
 }
 
-async function loadObraEjes(idProyecto) {
-  var container = document.getElementById('obraEjesList');
-  var addBtn = document.getElementById('obraEjesAddBtn');
-  var badge = document.getElementById('obraEjesBadge');
-  if (!idProyecto) return;
-  var data = await apiGet('/proyectos/' + encodeURIComponent(idProyecto) + '/ejes');
-  if (!data) { container.innerHTML = '<span class="muted" style="font-size:12px;">Error cargando</span>'; return; }
-  var items = data.data || [];
-  var canEdit = ['admin', 'admin2', 'cubicador'].includes(currentRole);
-  badge.textContent = items.length;
-  badge.style.display = items.length > 0 ? '' : 'none';
-  if (items.length === 0) {
-    container.innerHTML = '<span class="muted" style="font-size:12px;">Sin ejes registrados.</span>';
-  } else {
-    container.innerHTML = '<div style="display:flex; flex-wrap:wrap; gap:6px; align-items:center;">' +
-      items.map(function(e) {
-        var pill = '<span style="display:inline-flex; align-items:center; gap:4px; padding:4px 10px; background:#fff; border:1px solid #e65100; border-radius:20px; font-size:12px; font-weight:600; color:#e65100;">';
-        pill += '📐 ' + e.nombre;
-        if (e.descripcion) pill += ' <span style="font-size:10px; color:#888; font-weight:400;">· ' + e.descripcion + '</span>';
-        if (canEdit) pill += ' <span onclick="eliminarEje(' + e.id + ')" style="cursor:pointer; color:#ccc; font-size:14px; margin-left:2px;" title="Eliminar">×</span>';
-        pill += '</span>';
-        return pill;
-      }).join('') + '</div>';
+function _escapeHtml(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+async function loadObraCobertura(idProyecto) {
+  var container = document.getElementById('obraCoberturaMatrix');
+  if (!container || !idProyecto) return;
+  var data = await apiGet('/proyectos/' + encodeURIComponent(idProyecto) + '/cobertura-ciclos');
+  if (!data) {
+    container.innerHTML = '<span class="muted" style="font-size:12px;">Error cargando matriz.</span>';
+    return;
   }
-  if (addBtn) addBtn.style.display = canEdit ? '' : 'none';
-}
-
-function mostrarFormEje() {
-  document.getElementById('obraEjesForm').style.display = '';
-  document.getElementById('obraEjesAddBtn').style.display = 'none';
-  document.getElementById('obraEjeNombre').value = '';
-  document.getElementById('obraEjeDesc').value = '';
-  document.getElementById('obraEjeMsg').textContent = '';
-  document.getElementById('obraEjeNombre').focus();
-}
-
-function cancelarAgregarEje() {
-  document.getElementById('obraEjesForm').style.display = 'none';
-  document.getElementById('obraEjesAddBtn').style.display = '';
-  document.getElementById('obraEjeMsg').textContent = '';
-}
-
-async function agregarEje() {
-  var nombre = document.getElementById('obraEjeNombre').value.trim();
-  var desc = document.getElementById('obraEjeDesc').value.trim();
-  var msg = document.getElementById('obraEjeMsg');
-  if (!nombre) { msg.textContent = 'El nombre es requerido'; msg.style.color = '#b42318'; return; }
-  msg.textContent = 'Guardando...'; msg.style.color = '#666';
-  var id = window._obraDetailCurrentId;
-  var res = await fetch(apiUrl('/proyectos/' + encodeURIComponent(id) + '/ejes'), {
-    method: 'POST',
-    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
-    body: JSON.stringify({ nombre: nombre, descripcion: desc || null })
-  });
-  if (res.status === 401) { logout(); return; }
-  var data = await res.json();
-  if (data.ok) {
-    cancelarAgregarEje();
-    await loadObraEjes(id);
-  } else {
-    msg.textContent = data.detail || 'Error al agregar'; msg.style.color = '#b42318';
+  var ciclos = data.ciclos || [];
+  var sectores = data.sectores || ['LCIELO', 'VCIELO', 'ELEV', 'FUND'];
+  if (ciclos.length === 0) {
+    container.innerHTML = '<span class="muted" style="font-size:12px;">Sin datos de cobertura.</span>';
+    return;
   }
-}
 
-async function eliminarEje(ejeId) {
-  if (!confirm('¿Eliminar este eje?')) return;
-  var id = window._obraDetailCurrentId;
-  var res = await fetch(apiUrl('/proyectos/' + encodeURIComponent(id) + '/ejes/' + ejeId), {
-    method: 'DELETE', headers: authHeaders()
-  });
-  if (res.status === 401) { logout(); return; }
-  var data = await res.json();
-  if (data.ok) { await loadObraEjes(id); }
-  else { showToast(data.detail || 'Error al eliminar', 'error'); }
-}
+  var html = '<table style="width:100%; border-collapse:collapse; font-size:12px; background:#fff;">';
+  html += '<thead><tr style="background:#ffe0b2; color:#5d4037;">';
+  html += '<th style="padding:6px 8px; text-align:left; width:90px; border:1px solid #ffcc80;">Ciclo</th>';
+  html += '<th style="padding:6px 8px; text-align:left; width:90px; border:1px solid #ffcc80;">Sector</th>';
+  html += '<th style="padding:6px 8px; text-align:left; border:1px solid #ffcc80;">Ejes</th>';
+  html += '<th style="padding:6px 8px; text-align:right; width:80px; border:1px solid #ffcc80;">Total</th>';
+  html += '</tr></thead><tbody>';
 
-// ========================= LOSAS =========================
-
-var _obraLosasCargadas = false;
-
-function toggleObraLosas() {
-  var sec = document.getElementById('obraLosasSection');
-  var arrow = document.getElementById('obraLosasArrow');
-  if (sec.style.display === 'none') {
-    sec.style.display = '';
-    arrow.textContent = '▾';
-    if (!_obraLosasCargadas) {
-      _obraLosasCargadas = true;
-      loadObraLosas(window._obraDetailCurrentId);
-    }
-  } else {
-    sec.style.display = 'none';
-    arrow.textContent = '▸';
-  }
-}
-
-async function loadObraLosas(idProyecto) {
-  var container = document.getElementById('obraLosasList');
-  var addBtn = document.getElementById('obraLosasAddBtn');
-  var badge = document.getElementById('obraLosasBadge');
-  if (!idProyecto) return;
-  var data = await apiGet('/proyectos/' + encodeURIComponent(idProyecto) + '/losas');
-  if (!data) { container.innerHTML = '<span class="muted" style="font-size:12px;">Error cargando</span>'; return; }
-  var items = data.data || [];
-  var canEdit = ['admin', 'admin2', 'cubicador'].includes(currentRole);
-  badge.textContent = items.length;
-  badge.style.display = items.length > 0 ? '' : 'none';
-  if (items.length === 0) {
-    container.innerHTML = '<span class="muted" style="font-size:12px;">Sin losas registradas.</span>';
-  } else {
-    var html = '<table style="width:100%; border-collapse:collapse; font-size:12px;">';
-    html += '<thead><tr style="background:#c8e6c9;">';
-    html += '<th style="padding:5px 8px; text-align:left; font-weight:600;">Nombre</th>';
-    html += '<th style="padding:5px 8px; text-align:left; font-weight:600;">Piso ref.</th>';
-    html += '<th style="padding:5px 8px; text-align:left; font-weight:600;">Descripción</th>';
-    if (canEdit) html += '<th style="padding:5px 8px; width:30px;"></th>';
-    html += '</tr></thead><tbody>';
-    items.forEach(function(l, idx) {
-      var bg = idx % 2 === 0 ? '#fff' : '#f1f8e9';
-      html += '<tr style="border-bottom:1px solid #e8f5e9; background:' + bg + ';">';
-      html += '<td style="padding:5px 8px; font-weight:600; color:#2e7d32;">🏛️ ' + l.nombre + '</td>';
-      html += '<td style="padding:5px 8px; color:#555;">' + (l.piso || '—') + '</td>';
-      html += '<td style="padding:5px 8px; color:#777; font-size:11px;">' + (l.descripcion || '') + '</td>';
-      if (canEdit) {
-        html += '<td style="padding:5px 4px; text-align:center;"><span onclick="eliminarLosa(' + l.id + ')" style="cursor:pointer; color:#ccc; font-size:16px;" title="Eliminar">×</span></td>';
+  ciclos.forEach(function(c, ci) {
+    var ciclo = c.ciclo;
+    var sectoresData = c.sectores || {};
+    sectores.forEach(function(s, si) {
+      var meta = _SECTOR_LABELS[s] || { label: s, desc: '', color: '#555', unit: '' };
+      var info = sectoresData[s] || { ejes: [], count: 0 };
+      var ejesStr = (info.ejes && info.ejes.length)
+        ? info.ejes.map(_escapeHtml).join(', ')
+        : '<span style="color:#bbb;">—</span>';
+      html += '<tr style="border-bottom:1px solid #f5f5f5;">';
+      if (si === 0) {
+        html += '<td rowspan="' + sectores.length + '" style="padding:6px 8px; vertical-align:top; font-weight:700; color:#e65100; background:#fff8e1; border:1px solid #ffe0b2;">' + _escapeHtml(ciclo) + '</td>';
       }
+      html += '<td style="padding:5px 8px; border:1px solid #f5f5f5;">';
+      html += '<span style="display:inline-block; padding:2px 8px; background:' + meta.color + '; color:#fff; border-radius:10px; font-size:11px; font-weight:600;" title="' + _escapeHtml(meta.desc) + '">' + _escapeHtml(meta.label) + '</span>';
+      html += '</td>';
+      html += '<td style="padding:5px 8px; color:#444; border:1px solid #f5f5f5;">' + ejesStr + '</td>';
+      var totalTxt = info.count > 0
+        ? ('<strong>' + info.count + '</strong> <span style="color:#888; font-size:11px;">' + meta.unit + '</span>')
+        : '<span style="color:#bbb;">0</span>';
+      html += '<td style="padding:5px 8px; text-align:right; border:1px solid #f5f5f5;">' + totalTxt + '</td>';
       html += '</tr>';
     });
-    html += '</tbody></table>';
-    container.innerHTML = html;
-  }
-  if (addBtn) addBtn.style.display = canEdit ? '' : 'none';
-}
-
-function mostrarFormLosa() {
-  document.getElementById('obraLosasForm').style.display = '';
-  document.getElementById('obraLosasAddBtn').style.display = 'none';
-  document.getElementById('obraLosaNombre').value = '';
-  document.getElementById('obraLosaPiso').value = '';
-  document.getElementById('obraLosaDesc').value = '';
-  document.getElementById('obraLosaMsg').textContent = '';
-  document.getElementById('obraLosaNombre').focus();
-}
-
-function cancelarAgregarLosa() {
-  document.getElementById('obraLosasForm').style.display = 'none';
-  document.getElementById('obraLosasAddBtn').style.display = '';
-  document.getElementById('obraLosaMsg').textContent = '';
-}
-
-async function agregarLosa() {
-  var nombre = document.getElementById('obraLosaNombre').value.trim();
-  var piso = document.getElementById('obraLosaPiso').value.trim();
-  var desc = document.getElementById('obraLosaDesc').value.trim();
-  var msg = document.getElementById('obraLosaMsg');
-  if (!nombre) { msg.textContent = 'El nombre es requerido'; msg.style.color = '#b42318'; return; }
-  msg.textContent = 'Guardando...'; msg.style.color = '#666';
-  var id = window._obraDetailCurrentId;
-  var res = await fetch(apiUrl('/proyectos/' + encodeURIComponent(id) + '/losas'), {
-    method: 'POST',
-    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
-    body: JSON.stringify({ nombre: nombre, piso: piso || null, descripcion: desc || null })
   });
-  if (res.status === 401) { logout(); return; }
-  var data = await res.json();
-  if (data.ok) {
-    cancelarAgregarLosa();
-    await loadObraLosas(id);
-  } else {
-    msg.textContent = data.detail || 'Error al agregar'; msg.style.color = '#b42318';
-  }
-}
 
-async function eliminarLosa(losaId) {
-  if (!confirm('¿Eliminar esta losa?')) return;
-  var id = window._obraDetailCurrentId;
-  var res = await fetch(apiUrl('/proyectos/' + encodeURIComponent(id) + '/losas/' + losaId), {
-    method: 'DELETE', headers: authHeaders()
-  });
-  if (res.status === 401) { logout(); return; }
-  var data = await res.json();
-  if (data.ok) { await loadObraLosas(id); }
-  else { showToast(data.detail || 'Error al eliminar', 'error'); }
+  html += '</tbody></table>';
+  container.innerHTML = html;
 }
 

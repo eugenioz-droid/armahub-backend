@@ -1462,109 +1462,53 @@ def get_autorizados(id_proyecto: str, user=Depends(get_current_user)):
     }
 
 
-# ========================= EJES Y LOSAS =========================
+# ========================= COBERTURA POR CICLO =========================
 
-class EjeCreate(BaseModel):
-    nombre: str
-    descripcion: Optional[str] = None
-    orden: Optional[int] = 0
-
-
-class LosaCreate(BaseModel):
-    nombre: str
-    piso: Optional[str] = None
-    descripcion: Optional[str] = None
-    orden: Optional[int] = 0
-
-
-@router.get("/proyectos/{id_proyecto}/ejes")
-def get_ejes(id_proyecto: str, user=Depends(get_current_user)):
-    with get_conn() as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                "SELECT id, nombre, descripcion, orden FROM obra_ejes WHERE id_proyecto = %s ORDER BY orden, nombre",
-                (id_proyecto,)
-            )
-            rows = cur.fetchall()
-    return {"data": [{"id": r[0], "nombre": r[1], "descripcion": r[2], "orden": r[3]} for r in rows]}
-
-
-@router.post("/proyectos/{id_proyecto}/ejes")
-def crear_eje(id_proyecto: str, body: EjeCreate, user=Depends(get_current_user)):
-    nombre = (body.nombre or "").strip()
-    if not nombre:
-        raise HTTPException(status_code=400, detail="El nombre del eje es requerido")
+@router.get("/proyectos/{id_proyecto}/cobertura-ciclos")
+def get_cobertura_ciclos(id_proyecto: str, user=Depends(get_current_user)):
+    """Matriz de cobertura derivada de barras: por cada ciclo, lista de ejes
+    distintos agrupados por sector (FUND, ELEV, LCIELO, VCIELO).
+    """
+    SECTORES = ["LCIELO", "VCIELO", "ELEV", "FUND"]
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("SELECT id_proyecto FROM proyectos WHERE id_proyecto = %s", (id_proyecto,))
             if not cur.fetchone():
                 raise HTTPException(status_code=404, detail="Proyecto no encontrado")
-            if not _puede_editar_proyecto(cur, id_proyecto, user):
-                raise HTTPException(status_code=403, detail="Sin permiso para editar este proyecto")
-            try:
-                cur.execute(
-                    "INSERT INTO obra_ejes (id_proyecto, nombre, descripcion, orden) VALUES (%s, %s, %s, %s) RETURNING id",
-                    (id_proyecto, nombre, body.descripcion or None, body.orden or 0)
-                )
-                new_id = cur.fetchone()[0]
-            except Exception:
-                raise HTTPException(status_code=409, detail="Ya existe un eje con ese nombre en esta obra")
-    return {"ok": True, "id": new_id}
-
-
-@router.delete("/proyectos/{id_proyecto}/ejes/{eje_id}")
-def eliminar_eje(id_proyecto: str, eje_id: int, user=Depends(get_current_user)):
-    with get_conn() as conn:
-        with conn.cursor() as cur:
-            if not _puede_editar_proyecto(cur, id_proyecto, user):
-                raise HTTPException(status_code=403, detail="Sin permiso para editar este proyecto")
-            cur.execute("DELETE FROM obra_ejes WHERE id = %s AND id_proyecto = %s", (eje_id, id_proyecto))
-    return {"ok": True}
-
-
-@router.get("/proyectos/{id_proyecto}/losas")
-def get_losas(id_proyecto: str, user=Depends(get_current_user)):
-    with get_conn() as conn:
-        with conn.cursor() as cur:
+            allowed_ids = _get_allowed_project_ids(cur, user)
+            if allowed_ids is not None and id_proyecto not in allowed_ids:
+                raise HTTPException(status_code=403, detail="Sin acceso a este proyecto")
             cur.execute(
-                "SELECT id, nombre, piso, descripcion, orden FROM obra_losas WHERE id_proyecto = %s ORDER BY orden, nombre",
-                (id_proyecto,)
+                """
+                SELECT COALESCE(ciclo, '') AS ciclo,
+                       COALESCE(sector, '') AS sector,
+                       array_agg(DISTINCT eje ORDER BY eje) AS ejes
+                FROM barras
+                WHERE id_proyecto = %s
+                  AND eje IS NOT NULL AND eje <> ''
+                GROUP BY COALESCE(ciclo, ''), COALESCE(sector, '')
+                """,
+                (id_proyecto,),
             )
             rows = cur.fetchall()
-    return {"data": [{"id": r[0], "nombre": r[1], "piso": r[2], "descripcion": r[3], "orden": r[4]} for r in rows]}
 
+    ciclos_map: dict = {}
+    for ciclo, sector, ejes in rows:
+        if sector not in SECTORES:
+            continue
+        if ciclo not in ciclos_map:
+            ciclos_map[ciclo] = {s: [] for s in SECTORES}
+        ciclos_map[ciclo][sector] = list(ejes or [])
 
-@router.post("/proyectos/{id_proyecto}/losas")
-def crear_losa(id_proyecto: str, body: LosaCreate, user=Depends(get_current_user)):
-    nombre = (body.nombre or "").strip()
-    if not nombre:
-        raise HTTPException(status_code=400, detail="El nombre de la losa es requerido")
-    with get_conn() as conn:
-        with conn.cursor() as cur:
-            cur.execute("SELECT id_proyecto FROM proyectos WHERE id_proyecto = %s", (id_proyecto,))
-            if not cur.fetchone():
-                raise HTTPException(status_code=404, detail="Proyecto no encontrado")
-            if not _puede_editar_proyecto(cur, id_proyecto, user):
-                raise HTTPException(status_code=403, detail="Sin permiso para editar este proyecto")
-            try:
-                cur.execute(
-                    "INSERT INTO obra_losas (id_proyecto, nombre, piso, descripcion, orden) VALUES (%s, %s, %s, %s, %s) RETURNING id",
-                    (id_proyecto, nombre, body.piso or None, body.descripcion or None, body.orden or 0)
-                )
-                new_id = cur.fetchone()[0]
-            except Exception:
-                raise HTTPException(status_code=409, detail="Ya existe una losa con ese nombre en esta obra")
-    return {"ok": True, "id": new_id}
+    ciclos = []
+    for ciclo in sorted(ciclos_map.keys(), key=_ciclo_order):
+        sectores_payload = {}
+        for s in SECTORES:
+            ejes = ciclos_map[ciclo].get(s, [])
+            sectores_payload[s] = {"ejes": ejes, "count": len(ejes)}
+        ciclos.append({"ciclo": ciclo or "(sin ciclo)", "sectores": sectores_payload})
 
-
-@router.delete("/proyectos/{id_proyecto}/losas/{losa_id}")
-def eliminar_losa(id_proyecto: str, losa_id: int, user=Depends(get_current_user)):
-    with get_conn() as conn:
-        with conn.cursor() as cur:
-            if not _puede_editar_proyecto(cur, id_proyecto, user):
-                raise HTTPException(status_code=403, detail="Sin permiso para editar este proyecto")
-            cur.execute("DELETE FROM obra_losas WHERE id = %s AND id_proyecto = %s", (losa_id, id_proyecto))
-    return {"ok": True}
+    return {"sectores": SECTORES, "ciclos": ciclos}
 
 
 # ========================= LANDING INDICADORES =========================
