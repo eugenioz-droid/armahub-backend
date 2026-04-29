@@ -140,11 +140,29 @@ async function importAllFiles() {
     const f = pendingFiles[i];
     progress.textContent = `Analizando ${i+1} de ${total}: ${f.name}...`;
     const prev = await fetchImportPreview(obraDestino, f);
+    if (!prev || !prev.ok) {
+      console.warn('[import] preview falló para', f.name, prev);
+    }
     previews.push({ file: f, preview: prev });
   }
 
-  // ── FASE 2: Modal único si hay reemplazos en alguna planilla ──
+  // Si TODOS los preview fallaron, abortar con mensaje claro
+  // (el endpoint puede no estar deployado, o el CSV no es válido)
   const previewsValidos = previews.filter(p => p.preview && p.preview.ok);
+  if (previewsValidos.length === 0) {
+    const motivos = previews.map(p => `• ${p.file.name}: ${p.preview?.error || 'sin respuesta del servidor'}`).join('\n');
+    results.innerHTML = `<div class="status-err" style="padding:8px 0; font-size:13px; white-space:pre-wrap;">❌ No se pudo analizar ninguna planilla. La importación se canceló para evitar reemplazos accidentales.\n\n${motivos}\n\nVerifica que el servidor esté actualizado y vuelve a intentar.</div>`;
+    btn.disabled = false; btn.style.opacity = '1';
+    progress.textContent = '';
+    await setGlobalStatus('Análisis falló — importación cancelada', 'err');
+    return;
+  }
+  if (previewsValidos.length < total) {
+    const fallidas = previews.filter(p => !p.preview || !p.preview.ok).map(p => p.file.name).join(', ');
+    showToast('No se pudo analizar: ' + fallidas + '. Esas planillas se omitirán.', 'error');
+  }
+
+  // ── FASE 2: Modal único si hay reemplazos en alguna planilla ──
   const hayReemplazos = previewsValidos.some(p =>
     (p.preview.ejes || []).some(e => e.action === 'replace')
   );
@@ -167,19 +185,25 @@ async function importAllFiles() {
   for (let i = 0; i < total; i++) {
     const f = pendingFiles[i];
     const prev = previews[i].preview;
+
+    // Si el preview de ESTA planilla falló, omitirla (no caer al popup legacy)
+    if (!prev || !prev.ok) {
+      results.innerHTML += `<div class="status-err" style="padding:4px 0; font-size:13px;">⚠️ ${f.name}: omitida (preview falló: ${prev?.error || 'sin respuesta'})</div>`;
+      errorCount++;
+      continue;
+    }
+
     progress.textContent = `Importando ${i+1} de ${total}: ${f.name}...`;
     await setGlobalStatus(`Importando archivo ${i+1}/${total}...`, 'warn');
 
     let extraParams = '';
-    if (prev && prev.ok) {
-      if (decisionGlobal.mode === 'full') {
-        if (prev.full_planos) extraParams += '&replace_full_planos=' + encodeURIComponent(prev.full_planos);
-      } else {
-        if (prev.replace_keys) extraParams += '&replace_keys=' + encodeURIComponent(prev.replace_keys);
-      }
-      // El usuario ya confirmó en el modal → saltar la detección de duplicate_file
-      extraParams += '&forzar=true';
+    if (decisionGlobal.mode === 'full') {
+      if (prev.full_planos) extraParams += '&replace_full_planos=' + encodeURIComponent(prev.full_planos);
+    } else {
+      if (prev.replace_keys) extraParams += '&replace_keys=' + encodeURIComponent(prev.replace_keys);
     }
+    // El usuario ya confirmó en el modal → saltar la detección de duplicate_file
+    extraParams += '&forzar=true';
 
     const data = await apiPostFile(baseUrl + extraParams, f);
 
@@ -189,23 +213,9 @@ async function importAllFiles() {
       continue;
     }
     if (data.ok === false && data.duplicate_file) {
-      // Caso edge (preview falló): fallback legacy
-      const replace = confirm(`⚠️ ${data.mensaje}\n\n[Aceptar] = Reemplazar carga anterior\n[Cancelar] = Omitir este archivo`);
-      if (!replace) {
-        results.innerHTML += `<div class="status-warn" style="padding:4px 0; font-size:13px;">⏭️ ${f.name}: omitido</div>`;
-        errorCount++;
-        continue;
-      }
-      const data2 = await apiPostFile(baseUrl + extraParams + '&forzar=true', f);
-      if (data2 && data2.ok) {
-        totalBarrasImported += (data2.barras || 0);
-        totalKilosImported += (data2.kilos || 0);
-        results.innerHTML += `<div class="status-ok" style="padding:4px 0; font-size:13px;">✅ ${f.name}: ${data2.barras} barras (reemplazado)</div>`;
-        successCount++;
-      } else {
-        results.innerHTML += `<div class="status-err" style="padding:4px 0; font-size:13px;">❌ ${f.name}: ${data2?.error || 'error'}</div>`;
-        errorCount++;
-      }
+      // No debería pasar (ya enviamos forzar=true), pero por si acaso
+      results.innerHTML += `<div class="status-err" style="padding:4px 0; font-size:13px;">❌ ${f.name}: detección de duplicado inesperada — recarga la página</div>`;
+      errorCount++;
       continue;
     }
     if (data.ok === false && data.invalid_sectors) {
