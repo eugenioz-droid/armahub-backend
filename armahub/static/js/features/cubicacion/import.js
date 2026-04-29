@@ -132,36 +132,53 @@ async function importAllFiles() {
 
   const baseUrl = '/import/armadetailer?obra_destino=' + encodeURIComponent(obraDestino);
 
+  // ── FASE 1: Preview de todas las planillas (no toca BD) ──
+  progress.textContent = `Analizando ${total} planilla${total>1?'s':''}...`;
+  await setGlobalStatus(`Analizando ${total} planilla${total>1?'s':''}...`, 'warn');
+  const previews = [];
   for (let i = 0; i < total; i++) {
     const f = pendingFiles[i];
+    progress.textContent = `Analizando ${i+1} de ${total}: ${f.name}...`;
+    const prev = await fetchImportPreview(obraDestino, f);
+    previews.push({ file: f, preview: prev });
+  }
+
+  // ── FASE 2: Modal único si hay reemplazos en alguna planilla ──
+  const previewsValidos = previews.filter(p => p.preview && p.preview.ok);
+  const hayReemplazos = previewsValidos.some(p =>
+    (p.preview.ejes || []).some(e => e.action === 'replace')
+  );
+
+  let decisionGlobal = { mode: 'rule' }; // por defecto: aplicar regla
+  if (hayReemplazos) {
+    progress.textContent = '';
+    decisionGlobal = await showImportPreviewModalMulti(previewsValidos);
+    if (!decisionGlobal) {
+      // Cancelado
+      results.innerHTML = `<div class="status-warn" style="padding:6px 0; font-size:13px;">⏭️ Importación cancelada por el usuario.</div>`;
+      btn.disabled = false; btn.style.opacity = '1';
+      progress.textContent = '';
+      await setGlobalStatus('Importación cancelada', 'warn');
+      return;
+    }
+  }
+
+  // ── FASE 3: Importar cada planilla con la decisión correspondiente ──
+  for (let i = 0; i < total; i++) {
+    const f = pendingFiles[i];
+    const prev = previews[i].preview;
     progress.textContent = `Importando ${i+1} de ${total}: ${f.name}...`;
     await setGlobalStatus(`Importando archivo ${i+1}/${total}...`, 'warn');
 
-    // ── 1) Preview (no toca BD) — para decidir reemplazo selectivo ──
     let extraParams = '';
-    let previewSkippedReason = null;
-    try {
-      const prev = await fetchImportPreview(obraDestino, f);
-      if (prev && prev.ok) {
-        const hasReplaces = (prev.matrix || []).some(m => m.action_default === 'replace');
-        if (hasReplaces) {
-          // Mostrar modal y obtener decisión del usuario
-          const decision = await showImportPreviewModal(prev);
-          if (!decision) {
-            // Cancelado
-            results.innerHTML += `<div class="status-warn" style="padding:4px 0; font-size:13px;">⏭️ ${f.name}: cancelado por el usuario</div>`;
-            errorCount++;
-            continue;
-          }
-          if (decision.replace_keys) extraParams += '&replace_keys=' + encodeURIComponent(decision.replace_keys);
-          if (decision.replace_full_planos) extraParams += '&replace_full_planos=' + encodeURIComponent(decision.replace_full_planos);
-        }
-        // Si no hay reemplazos: importar directo (todo es ADD)
-      } else if (prev && prev.error) {
-        previewSkippedReason = prev.error;
+    if (prev && prev.ok) {
+      if (decisionGlobal.mode === 'full') {
+        if (prev.full_planos) extraParams += '&replace_full_planos=' + encodeURIComponent(prev.full_planos);
+      } else {
+        if (prev.replace_keys) extraParams += '&replace_keys=' + encodeURIComponent(prev.replace_keys);
       }
-    } catch (e) {
-      previewSkippedReason = String(e);
+      // El usuario ya confirmó en el modal → saltar la detección de duplicate_file
+      extraParams += '&forzar=true';
     }
 
     const data = await apiPostFile(baseUrl + extraParams, f);
@@ -172,28 +189,21 @@ async function importAllFiles() {
       continue;
     }
     if (data.ok === false && data.duplicate_file) {
-      // Fallback legacy — mantenido por compatibilidad
+      // Caso edge (preview falló): fallback legacy
       const replace = confirm(`⚠️ ${data.mensaje}\n\n[Aceptar] = Reemplazar carga anterior\n[Cancelar] = Omitir este archivo`);
       if (!replace) {
-        results.innerHTML += `<div class="status-warn" style="padding:4px 0; font-size:13px;">⏭️ ${f.name}: omitido (carga previa conservada)</div>`;
-        errorCount++;
-        continue;
-      }
-      const delRes = await apiDelete('/cargas/' + data.carga_existente_id);
-      if (!delRes || !delRes.ok) {
-        results.innerHTML += `<div class="status-err" style="padding:4px 0; font-size:13px;">❌ ${f.name}: no se pudo eliminar la carga anterior (${delRes?.detail || 'error'})</div>`;
+        results.innerHTML += `<div class="status-warn" style="padding:4px 0; font-size:13px;">⏭️ ${f.name}: omitido</div>`;
         errorCount++;
         continue;
       }
       const data2 = await apiPostFile(baseUrl + extraParams + '&forzar=true', f);
       if (data2 && data2.ok) {
-        const kilosText2 = data2.kilos ? ` — ${Math.round(data2.kilos).toLocaleString()} kg` : '';
         totalBarrasImported += (data2.barras || 0);
         totalKilosImported += (data2.kilos || 0);
-        results.innerHTML += `<div class="status-ok" style="padding:4px 0; font-size:13px;">✅ ${f.name}: ${data2.barras} barras (${data2.proyecto})${kilosText2} (reemplazado)</div>`;
+        results.innerHTML += `<div class="status-ok" style="padding:4px 0; font-size:13px;">✅ ${f.name}: ${data2.barras} barras (reemplazado)</div>`;
         successCount++;
       } else {
-        results.innerHTML += `<div class="status-err" style="padding:4px 0; font-size:13px;">❌ ${f.name}: ${data2?.error || data2?.mensaje || 'Error en reimportación'}</div>`;
+        results.innerHTML += `<div class="status-err" style="padding:4px 0; font-size:13px;">❌ ${f.name}: ${data2?.error || 'error'}</div>`;
         errorCount++;
       }
       continue;
@@ -218,6 +228,7 @@ async function importAllFiles() {
     let validInfo = '';
     if (data.filas_rechazadas > 0) validInfo += ` ⚠️ ${data.filas_rechazadas} rechazadas`;
     if (data.advertencias > 0) validInfo += ` ℹ️ ${data.advertencias} advertencias`;
+    if (data.barras_eliminadas_previo) validInfo += ` ↻ ${data.barras_eliminadas_previo} reemplazadas`;
     const statusClass = data.estado === 'ok' ? 'status-ok' : 'status-warn';
     totalBarrasImported += (data.barras || 0);
     totalKilosImported += (data.kilos || 0);
@@ -272,82 +283,125 @@ function _esc(s) {
   return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 
-function showImportPreviewModal(preview) {
+// Modal único acumulador para todas las planillas a importar.
+// Muestra cada planilla con su lista de ejes y pide UNA sola decisión global.
+function showImportPreviewModalMulti(previews) {
   return new Promise(resolve => {
-    const planosTxt = (preview.planos || []).join(', ') || '(sin plano detectado)';
-    const m = preview.matrix || [];
-    const s = preview.summary || {};
-
-    const overlay = document.createElement('div');
-    overlay.style.cssText = 'position:fixed; inset:0; background:rgba(0,0,0,0.55); z-index:9999; display:flex; align-items:center; justify-content:center;';
-
-    let rowsHtml = '';
-    m.forEach(r => {
-      let bg = '#f5f5f5', label = 'Sin tocar', icon = '·';
-      if (r.action_default === 'add')      { bg = '#e8f5e9'; label = 'Agregar';   icon = '＋'; }
-      if (r.action_default === 'replace')  { bg = '#fff3cd'; label = 'Reemplazar';icon = '↻'; }
-      if (r.action_default === 'keep')     { bg = '#fafafa'; label = 'Sin tocar'; icon = '·'; }
-      rowsHtml += `<tr style="background:${bg};">`
-        + `<td style="padding:4px 8px;">${_esc(r.plano_code) || '-'}</td>`
-        + `<td style="padding:4px 8px;">${_esc(r.piso) || '-'}</td>`
-        + `<td style="padding:4px 8px;">${_esc(r.ciclo) || '-'}</td>`
-        + `<td style="padding:4px 8px; text-align:right;">${r.barras_db}</td>`
-        + `<td style="padding:4px 8px; text-align:right;">${r.barras_csv}</td>`
-        + `<td style="padding:4px 8px; font-weight:600;">${icon} ${label}</td>`
-        + `</tr>`;
+    // Totales globales
+    let gTotalCsv = 0, gTotalReplace = 0, gTotalSinTocar = 0;
+    let gEjesReplace = 0, gEjesAdd = 0;
+    const planosGlobales = new Set();
+    previews.forEach(item => {
+      const s = item.preview.summary || {};
+      gTotalCsv      += s.total_csv || 0;
+      gTotalReplace  += s.total_db_a_reemplazar || 0;
+      gTotalSinTocar += s.total_db_sin_tocar || 0;
+      gEjesReplace   += s.ejes_a_reemplazar || 0;
+      gEjesAdd       += s.ejes_a_agregar || 0;
+      (item.preview.planos || []).forEach(p => planosGlobales.add(p));
     });
-    if (!rowsHtml) {
-      rowsHtml = '<tr><td colspan="6" style="padding:8px; text-align:center; color:#888;">Sin combinaciones para mostrar.</td></tr>';
-    }
 
-    overlay.innerHTML = `
-      <div style="background:#fff; width:min(900px, 95vw); max-height:90vh; overflow:auto; border-radius:8px; box-shadow:0 8px 32px rgba(0,0,0,0.3);">
-        <div style="padding:14px 20px; border-bottom:1px solid #e0e0e0; background:#f8f9fa;">
-          <h3 style="margin:0 0 6px 0; font-size:16px;">Confirmar importación — ${_esc(preview.archivo)}</h3>
-          <div style="font-size:12px; color:#555;">
-            <b>Obra:</b> ${_esc(preview.obra_nombre)} ·
-            <b>Plano(s):</b> ${_esc(planosTxt)}
-          </div>
-          <div style="font-size:12px; color:#555; margin-top:4px;">
-            CSV: <b>${s.total_csv || 0}</b> barras ·
-            BD (en estos planos): <b>${s.total_db_en_planos || 0}</b> ·
-            A reemplazar: <b style="color:#b45309;">${s.total_db_a_reemplazar || 0}</b>
-          </div>
-        </div>
+    // HTML de cada planilla
+    let blocks = '';
+    previews.forEach((item, idx) => {
+      const p = item.preview;
+      const s = p.summary || {};
+      const planosTxt = (p.planos || []).join(', ') || '(sin plano)';
 
-        <div style="padding:12px 20px;">
-          <div style="font-size:12px; color:#666; margin-bottom:6px;">
-            <b>Regla:</b> se reemplazan los <b>(plano, piso, ciclo)</b> presentes en el archivo.
-            Los pisos/ciclos no incluidos en el archivo <b>no se tocan</b>.
+      // Filtrar a ejes con acción ≠ keep + ordenar (replace primero, luego add, luego por eje)
+      const ejes = (p.ejes || []).filter(e => e.action === 'replace' || e.action === 'add' || e.sin_tocar > 0);
+      ejes.sort((a, b) => {
+        const order = { replace: 0, add: 1, keep: 2 };
+        if (order[a.action] !== order[b.action]) return order[a.action] - order[b.action];
+        if (a.plano_code !== b.plano_code) return a.plano_code.localeCompare(b.plano_code);
+        return (a.eje || '').localeCompare(b.eje || '');
+      });
+
+      let rowsHtml = '';
+      ejes.forEach(e => {
+        let bg, label, icon;
+        if (e.action === 'replace') { bg = '#fff3cd'; label = 'Reemplazar'; icon = '↻'; }
+        else if (e.action === 'add') { bg = '#e8f5e9'; label = 'Agregar';    icon = '＋'; }
+        else { bg = '#fafafa'; label = 'Sin tocar'; icon = '·'; }
+        rowsHtml += `<tr style="background:${bg};">`
+          + `<td style="padding:3px 8px;">${_esc(e.plano_code) || '-'}</td>`
+          + `<td style="padding:3px 8px; font-weight:600;">${_esc(e.eje) || '-'}</td>`
+          + `<td style="padding:3px 8px; text-align:right;">${e.existian_zona_replace || 0}</td>`
+          + `<td style="padding:3px 8px; text-align:right; font-weight:600;">${e.nuevo_csv || 0}</td>`
+          + `<td style="padding:3px 8px; text-align:right; color:#666;">${e.sin_tocar || 0}</td>`
+          + `<td style="padding:3px 8px; font-size:11px;">${icon} ${label}</td>`
+          + `</tr>`;
+      });
+      if (!rowsHtml) {
+        rowsHtml = '<tr><td colspan="6" style="padding:8px; text-align:center; color:#888;">Sin ejes con cambios — el archivo solo agrega data nueva.</td></tr>';
+      }
+
+      blocks += `
+        <div style="margin-bottom:14px; border:1px solid #e0e0e0; border-radius:6px; overflow:hidden;">
+          <div style="padding:8px 12px; background:#eef5ff; border-bottom:1px solid #d0d7de;">
+            <div style="font-weight:700; font-size:13px;">📄 ${_esc(item.file.name)}</div>
+            <div style="font-size:11px; color:#555; margin-top:2px;">
+              Plano(s): <b>${_esc(planosTxt)}</b> ·
+              CSV: <b>${s.total_csv || 0}</b> barras ·
+              A reemplazar en BD: <b style="color:#92400e;">${s.total_db_a_reemplazar || 0}</b> ·
+              Sin tocar (BD): <b style="color:#374151;">${s.total_db_sin_tocar || 0}</b>
+            </div>
           </div>
-          <div style="overflow:auto; max-height:50vh; border:1px solid #e0e0e0; border-radius:4px;">
+          <div style="overflow:auto; max-height:340px;">
             <table style="width:100%; border-collapse:collapse; font-size:12px;">
-              <thead style="position:sticky; top:0; background:#f8f9fa; z-index:1;">
+              <thead style="position:sticky; top:0; background:#f8f9fa; z-index:1; border-bottom:1px solid #e0e0e0;">
                 <tr>
-                  <th style="padding:6px 8px; text-align:left;">Plano</th>
-                  <th style="padding:6px 8px; text-align:left;">Piso</th>
-                  <th style="padding:6px 8px; text-align:left;">Ciclo</th>
-                  <th style="padding:6px 8px; text-align:right;">Barras BD</th>
-                  <th style="padding:6px 8px; text-align:right;">Barras CSV</th>
-                  <th style="padding:6px 8px; text-align:left;">Acción</th>
+                  <th style="padding:5px 8px; text-align:left;">Plano</th>
+                  <th style="padding:5px 8px; text-align:left;">Eje</th>
+                  <th style="padding:5px 8px; text-align:right;" title="Barras que ya existen en BD para este eje en los pisos/ciclos que vienen en el CSV (serán reemplazadas)">Existían (a reemplazar)</th>
+                  <th style="padding:5px 8px; text-align:right;" title="Barras que aporta este archivo CSV para este eje">Nuevas (CSV)</th>
+                  <th style="padding:5px 8px; text-align:right;" title="Barras de este eje en otros pisos/ciclos no incluidos en el CSV — se conservan">Sin tocar</th>
+                  <th style="padding:5px 8px; text-align:left;">Acción</th>
                 </tr>
               </thead>
               <tbody>${rowsHtml}</tbody>
             </table>
           </div>
+        </div>
+      `;
+    });
 
-          <div style="margin-top:10px; font-size:11px; color:#666;">
-            <span style="display:inline-block; width:10px; height:10px; background:#e8f5e9; border:1px solid #c8e6c9; vertical-align:middle;"></span> Agregar &nbsp;
-            <span style="display:inline-block; width:10px; height:10px; background:#fff3cd; border:1px solid #ffe082; vertical-align:middle;"></span> Reemplazar &nbsp;
-            <span style="display:inline-block; width:10px; height:10px; background:#fafafa; border:1px solid #e0e0e0; vertical-align:middle;"></span> Sin tocar
+    const planosListaTxt = Array.from(planosGlobales).join(', ') || '(sin plano)';
+    const cantArchivos = previews.length;
+
+    const overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed; inset:0; background:rgba(0,0,0,0.55); z-index:9999; display:flex; align-items:center; justify-content:center;';
+    overlay.innerHTML = `
+      <div style="background:#fff; width:min(1100px, 96vw); max-height:92vh; display:flex; flex-direction:column; border-radius:8px; box-shadow:0 8px 32px rgba(0,0,0,0.3);">
+
+        <div style="padding:14px 20px; border-bottom:1px solid #e0e0e0; background:#f8f9fa;">
+          <h3 style="margin:0 0 6px 0; font-size:16px;">Confirmar importación — ${cantArchivos} planilla${cantArchivos>1?'s':''}</h3>
+          <div style="font-size:12px; color:#444;">
+            Plano(s) afectado(s): <b>${_esc(planosListaTxt)}</b>
+          </div>
+          <div style="font-size:12px; color:#444; margin-top:3px;">
+            Total CSV: <b>${gTotalCsv}</b> barras ·
+            A reemplazar en BD: <b style="color:#92400e;">${gTotalReplace}</b> ·
+            Se conservan: <b>${gTotalSinTocar}</b> ·
+            Ejes: <b>${gEjesReplace}</b> reemplazar · <b>${gEjesAdd}</b> agregar
           </div>
         </div>
 
-        <div style="padding:12px 20px; border-top:1px solid #e0e0e0; background:#f8f9fa; display:flex; gap:8px; justify-content:flex-end; flex-wrap:wrap;">
-          <button id="impPrevCancel" class="secondary" style="padding:6px 14px;">Cancelar</button>
-          <button id="impPrevFull" style="padding:6px 14px; background:#fff3cd; color:#92400e; border:1px solid #f59e0b;" title="Borra TODAS las barras de los planos del archivo y carga sólo lo del CSV">⚠ Cargar todo el plano</button>
-          <button id="impPrevConfirm" class="primary" style="padding:6px 14px; background:#1976d2; color:#fff; border:none;">✓ Confirmar (regla)</button>
+        <div style="padding:12px 20px; overflow:auto; flex:1;">
+          <div style="font-size:12px; color:#444; margin-bottom:10px; padding:8px 12px; background:#f0f7ff; border-left:3px solid #1976d2; border-radius:4px;">
+            <b>¿Cómo se aplicará?</b><br>
+            <b>Reemplazo selectivo</b> (recomendado): borra solo las barras de los <i>(piso, ciclo)</i> que vienen en cada archivo y carga las nuevas. Las barras en otros pisos/ciclos (columna <i>Sin tocar</i>) se conservan.<br>
+            <b>Reemplazo total del plano</b>: borra TODAS las barras del plano (incluidas las "Sin tocar") y carga sólo lo que viene en los archivos.
+          </div>
+          ${blocks}
         </div>
+
+        <div style="padding:12px 20px; border-top:1px solid #e0e0e0; background:#f8f9fa; display:flex; gap:8px; justify-content:flex-end; flex-wrap:wrap;">
+          <button id="impPrevCancel" class="secondary" style="padding:8px 14px;">Cancelar</button>
+          <button id="impPrevFull" style="padding:8px 14px; background:#fff3cd; color:#92400e; border:1px solid #f59e0b; cursor:pointer;" title="Borra TODAS las barras de los planos afectados, incluso las que están sin tocar">⚠ Reemplazar plano completo</button>
+          <button id="impPrevConfirm" class="primary" style="padding:8px 14px; background:#1976d2; color:#fff; border:none; cursor:pointer;">✓ Reemplazar solo lo que viene en los archivos</button>
+        </div>
+
       </div>
     `;
     document.body.appendChild(overlay);
@@ -360,31 +414,20 @@ function showImportPreviewModal(preview) {
     overlay.querySelector('#impPrevCancel').onclick = () => close(null);
 
     overlay.querySelector('#impPrevConfirm').onclick = () => {
-      const keys = m.filter(r => r.action_default === 'replace').map(r => r.key);
-      close({
-        action: 'rule',
-        replace_keys: keys.join(';'),
-        replace_full_planos: '',
-      });
+      close({ mode: 'rule' });
     };
 
     overlay.querySelector('#impPrevFull').onclick = () => {
-      const planos = preview.planos || [];
-      const totalDel = s.total_db_en_planos || 0;
       const ok = confirm(
-        '⚠ ATENCIÓN — Cargar todo el plano\n\n'
-        + 'Esta opción ELIMINA todas las barras existentes en BD para el/los plano(s):\n'
-        + '   ' + (planos.join(', ') || '(sin plano)') + '\n\n'
-        + 'Se borrarán ' + totalDel + ' barras existentes y se cargará solo el contenido del CSV.\n\n'
-        + 'Pisos/ciclos cargados anteriormente que no estén en el CSV se PERDERÁN.\n\n'
+        '⚠ ATENCIÓN — Reemplazar plano completo\n\n'
+        + 'Esta opción eliminará TODAS las barras existentes en BD para el/los plano(s):\n'
+        + '   ' + planosListaTxt + '\n\n'
+        + 'Se borrarán ' + (gTotalReplace + gTotalSinTocar) + ' barras existentes (incluidas las "Sin tocar")\n'
+        + 'y se cargará sólo el contenido de las planillas seleccionadas.\n\n'
         + '¿Confirmar?'
       );
       if (!ok) return;
-      close({
-        action: 'full',
-        replace_keys: '',
-        replace_full_planos: planos.join(';'),
-      });
+      close({ mode: 'full' });
     };
   });
 }
