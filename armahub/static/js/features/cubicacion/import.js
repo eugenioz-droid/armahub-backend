@@ -277,12 +277,12 @@ async function importAllFiles() {
   renderFileList();
 
   try {
-    await loadCargas();
-    await loadProyectos();
-    await loadFilters();
-    await loadInicio();
-    await loadMiActividad();
-    await loadDashboard('sector');
+    if (typeof loadCargas === 'function') await loadCargas();
+    if (typeof loadProyectos === 'function') await loadProyectos();
+    if (typeof loadFilters === 'function') await loadFilters();
+    if (typeof loadInicio === 'function') await loadInicio();
+    if (typeof loadMiActividad === 'function') await loadMiActividad();
+    if (typeof loadDashboard === 'function') await loadDashboard('sector');
   } catch(e) { console.error('Error refrescando datos post-import:', e); }
 }
 
@@ -520,7 +520,7 @@ function showImportPreviewModalMulti(previews) {
           pairsMap.get(sig).push(c.key);
         });
         let html = '⚠ <b>Solapamiento detectado entre planillas seleccionadas para importar.</b>'
-          + ' Hay claves <i>(plano · piso · ciclo)</i> que aparecen en más de un CSV — sólo prevalecerá la última en cargarse y la otra se perderá silenciosamente. Revisa antes de confirmar.';
+          + ' Hay claves <i>(eje · piso · ciclo)</i> que aparecen en más de un CSV — sólo prevalecerá la última en cargarse y la otra se perderá silenciosamente. Revisa antes de confirmar.';
         html += '<ul style="margin:6px 0 0 0; padding-left:18px;">';
         pairsMap.forEach((keys, sig) => {
           const sample = keys.slice(0, 4).map(k => k.replace(/\|/g, ' · ')).join(', ');
