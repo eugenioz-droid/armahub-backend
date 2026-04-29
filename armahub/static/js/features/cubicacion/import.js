@@ -304,7 +304,8 @@ function _esc(s) {
 }
 
 // Modal único acumulador para todas las planillas a importar.
-// 1 fila por (plano, piso). Solo pisos del CSV. Checkbox de aprobación por planilla.
+// 1 fila por piso (colapsando multi-plano dentro del mismo CSV).
+// Por planilla: radios "Importar" / "Omitir" — el usuario debe elegir uno.
 function showImportPreviewModalMulti(previews) {
   return new Promise(resolve => {
     // Totales globales
@@ -326,6 +327,7 @@ function showImportPreviewModalMulti(previews) {
       const p = item.preview;
       const s = p.summary || {};
       const planosTxt = (p.planos || []).join(', ') || '(sin plano)';
+      const ejesTxt   = (p.ejes   || []).join(', ') || '(sin eje)';
       const pisos = p.pisos || [];
 
       let rowsHtml = '';
@@ -334,7 +336,7 @@ function showImportPreviewModalMulti(previews) {
         if (r.action === 'replace') { bg = '#fff3cd'; label = 'Reemplazar';   icon = '↻'; }
         else                        { bg = '#e8f5e9'; label = 'Sumar';        icon = '＋'; }
         rowsHtml += `<tr style="background:${bg};">`
-          + `<td style="padding:3px 8px;">${_esc(r.plano_code) || '-'}</td>`
+          + `<td style="padding:3px 8px;">${_esc(r.eje) || '-'}</td>`
           + `<td style="padding:3px 8px; font-weight:600;">${_esc(r.piso) || '-'}</td>`
           + `<td style="padding:3px 8px; text-align:right;">${r.existentes_bd || 0}</td>`
           + `<td style="padding:3px 8px; text-align:right; font-weight:600;">${r.nuevas_csv || 0}</td>`
@@ -346,28 +348,56 @@ function showImportPreviewModalMulti(previews) {
         rowsHtml = '<tr><td colspan="6" style="padding:8px; text-align:center; color:#888;">El archivo no tiene pisos detectables.</td></tr>';
       }
 
+      // Warning si hay multi-plano
+      let multiWarning = '';
+      if (p.multi_plano_warning) {
+        const detalle = (p.ejes_multi_plano || [])
+          .map(e => `${_esc(e.eje)}: ${e.planos.map(_esc).join(' / ')}`)
+          .join(' · ');
+        multiWarning = `
+          <div style="margin-top:4px; font-size:11px; color:#b91c1c; font-weight:600;">
+            ⚠ Detectado más de un código de plano en este CSV (bug Detailer).
+            Las filas se agrupan por piso para evitar duplicación visual.
+            ${detalle ? `<br><span style="font-weight:400;">Detalle: ${detalle}</span>` : ''}
+          </div>
+        `;
+      }
+
       blocks += `
         <div data-block="${idx}" style="margin-bottom:14px; border:1px solid #e0e0e0; border-radius:6px; overflow:hidden;">
-          <div style="padding:10px 12px; background:#eef5ff; border-bottom:1px solid #d0d7de; display:flex; align-items:center; gap:10px;">
-            <input type="checkbox" id="impPrevChk-${idx}" data-idx="${idx}" class="imp-prev-chk" style="width:18px; height:18px; cursor:pointer; flex-shrink:0;">
-            <label for="impPrevChk-${idx}" style="cursor:pointer; flex:1;">
+          <div style="padding:10px 12px; background:#eef5ff; border-bottom:1px solid #d0d7de; display:flex; align-items:flex-start; gap:12px;">
+            <div style="flex:1; min-width:0;">
               <div style="font-weight:700; font-size:13px;">📄 ${_esc(item.file.name)}</div>
               <div style="font-size:11px; color:#555; margin-top:2px;">
-                Plano(s): <b>${_esc(planosTxt)}</b> ·
+                Eje(s): <b>${_esc(ejesTxt)}</b> ·
+                Plano(s): <b>${_esc(planosTxt)}</b>
+              </div>
+              <div style="font-size:11px; color:#555; margin-top:2px;">
                 CSV: <b>${s.total_csv || 0}</b> barras ·
                 A reemplazar: <b style="color:#92400e;">${s.total_db_a_reemplazar || 0}</b> ·
                 Pisos: <b>${s.pisos_a_reemplazar || 0}</b> reemplazar / <b>${s.pisos_a_sumar || 0}</b> sumar
               </div>
-            </label>
+              ${multiWarning}
+            </div>
+            <div style="display:flex; flex-direction:column; gap:6px; flex-shrink:0; min-width:130px; padding:4px 10px; background:#fff; border:1px solid #d0d7de; border-radius:6px;">
+              <label style="display:flex; align-items:center; gap:6px; cursor:pointer; font-size:12px; font-weight:600; color:#15803d;">
+                <input type="radio" name="impPrevAction-${idx}" value="import" data-idx="${idx}" class="imp-prev-radio" style="cursor:pointer;">
+                ✓ Importar
+              </label>
+              <label style="display:flex; align-items:center; gap:6px; cursor:pointer; font-size:12px; font-weight:600; color:#9a3412;">
+                <input type="radio" name="impPrevAction-${idx}" value="skip" data-idx="${idx}" class="imp-prev-radio" style="cursor:pointer;">
+                ⊘ Omitir
+              </label>
+            </div>
           </div>
           <div style="overflow:auto; max-height:340px;">
             <table style="width:100%; border-collapse:collapse; font-size:12px;">
               <thead style="position:sticky; top:0; background:#f8f9fa; z-index:1; border-bottom:1px solid #e0e0e0;">
                 <tr>
-                  <th style="padding:5px 8px; text-align:left;">Plano</th>
+                  <th style="padding:5px 8px; text-align:left;">Eje</th>
                   <th style="padding:5px 8px; text-align:left;">Piso</th>
-                  <th style="padding:5px 8px; text-align:right;" title="Barras que ya existen en BD para ese (plano, piso) — todos los ciclos">Existentes</th>
-                  <th style="padding:5px 8px; text-align:right;" title="Barras que aporta este CSV para ese (plano, piso)">Nueva carga (CSV)</th>
+                  <th style="padding:5px 8px; text-align:right;" title="Barras que ya existen en BD para ese piso (todos los ciclos)">Existentes</th>
+                  <th style="padding:5px 8px; text-align:right;" title="Barras que aporta este CSV en ese piso">Nueva carga (CSV)</th>
                   <th style="padding:5px 8px; text-align:right;" title="Total que quedará tras importar = (existentes en ciclos no incluidos) + (nuevas del CSV)">Final</th>
                   <th style="padding:5px 8px; text-align:left;">Acción</th>
                 </tr>
@@ -381,6 +411,12 @@ function showImportPreviewModalMulti(previews) {
 
     const planosListaTxt = Array.from(planosGlobales).join(', ') || '(sin plano)';
     const cantArchivos = previews.length;
+
+    // Pre-parsear replace_keys de cada CSV en arrays de claves (plano|piso|ciclo)
+    const previewKeys = previews.map(item => {
+      const raw = item.preview && item.preview.replace_keys ? String(item.preview.replace_keys) : '';
+      return raw ? raw.split(';').filter(Boolean) : [];
+    });
 
     const overlay = document.createElement('div');
     overlay.style.cssText = 'position:fixed; inset:0; background:rgba(0,0,0,0.55); z-index:9999; display:flex; align-items:center; justify-content:center;';
@@ -397,25 +433,28 @@ function showImportPreviewModalMulti(previews) {
             A reemplazar en BD: <b style="color:#92400e;">${gTotalReplace}</b> ·
             Pisos: <b>${gPisosReplace}</b> reemplazar · <b>${gPisosAdd}</b> sumar
           </div>
+          <div id="impPrevOverlapWarn" style="display:none; margin-top:8px; padding:8px 12px; background:#fee2e2; border-left:3px solid #b91c1c; border-radius:4px; font-size:12px; color:#991b1b;"></div>
         </div>
 
         <div style="padding:12px 20px; overflow:auto; flex:1;">
           <div style="font-size:12px; color:#444; margin-bottom:10px; padding:8px 12px; background:#f0f7ff; border-left:3px solid #1976d2; border-radius:4px;">
             <b>Cómo se aplica:</b>
-            por cada <i>(plano, piso, ciclo)</i> presente en el archivo se borran las barras existentes y se cargan las nuevas.
+            por cada <i>(piso, ciclo)</i> presente en el archivo se borran las barras existentes y se cargan las nuevas.
             Los pisos/ciclos no incluidos en el archivo <b>no se tocan</b> (su data se ve reflejada en la columna <i>Final</i>).
-            <br><b>Importante:</b> revisa cada planilla y marca su casilla para habilitar la confirmación.
+            <br><b>Importante:</b> elige <b>Importar</b> u <b>Omitir</b> para cada planilla. La confirmación se habilita cuando todas tienen acción definida.
           </div>
           ${blocks}
         </div>
 
         <div style="padding:12px 20px; border-top:1px solid #e0e0e0; background:#f8f9fa; display:flex; gap:8px; justify-content:space-between; align-items:center; flex-wrap:wrap;">
           <div style="font-size:12px; color:#555;">
-            <span id="impPrevApproved">0</span> / ${cantArchivos} planilla${cantArchivos>1?'s':''} aprobada${cantArchivos>1?'s':''}
+            <span id="impPrevDecided">0</span> / ${cantArchivos} con decisión ·
+            <span id="impPrevImport">0</span> a importar ·
+            <span id="impPrevSkip">0</span> a omitir
           </div>
           <div style="display:flex; gap:8px;">
             <button id="impPrevCancel" class="secondary" style="padding:8px 14px;">Cancelar</button>
-            <button id="impPrevConfirm" class="primary" disabled style="padding:8px 14px; background:#bbb; color:#fff; border:none; cursor:not-allowed;">✓ Confirmar importación</button>
+            <button id="impPrevConfirm" class="primary" disabled style="padding:8px 14px; background:#bbb; color:#fff; border:none; cursor:not-allowed;">✓ Confirmar</button>
           </div>
         </div>
 
@@ -423,24 +462,97 @@ function showImportPreviewModalMulti(previews) {
     `;
     document.body.appendChild(overlay);
 
-    const checks = overlay.querySelectorAll('.imp-prev-chk');
+    const radios = overlay.querySelectorAll('.imp-prev-radio');
     const btnConfirm = overlay.querySelector('#impPrevConfirm');
-    const counter = overlay.querySelector('#impPrevApproved');
+    const cDecided = overlay.querySelector('#impPrevDecided');
+    const cImport  = overlay.querySelector('#impPrevImport');
+    const cSkip    = overlay.querySelector('#impPrevSkip');
+    const warnBox  = overlay.querySelector('#impPrevOverlapWarn');
+
+    function getDecisions() {
+      const decisions = {}; // idx → 'import' | 'skip'
+      radios.forEach(r => {
+        if (r.checked) decisions[r.dataset.idx] = r.value;
+      });
+      return decisions;
+    }
+
+    // Detecta solapamiento de claves (plano|piso|ciclo) entre los CSVs marcados como 'import'.
+    // Devuelve [{key, files:[name,...]}, ...] sólo para claves repetidas.
+    function detectOverlaps(approvedIdxList) {
+      const map = new Map(); // key → [idx, idx, ...]
+      approvedIdxList.forEach(i => {
+        (previewKeys[i] || []).forEach(k => {
+          if (!map.has(k)) map.set(k, []);
+          map.get(k).push(i);
+        });
+      });
+      const conflicts = [];
+      map.forEach((idxs, key) => {
+        if (idxs.length > 1) {
+          conflicts.push({
+            key,
+            files: idxs.map(i => previews[i].file.name),
+          });
+        }
+      });
+      return conflicts;
+    }
 
     function refreshState() {
-      const approved = Array.from(checks).filter(c => c.checked).map(c => parseInt(c.dataset.idx, 10));
-      counter.textContent = approved.length;
-      const allOk = approved.length === checks.length && checks.length > 0;
+      const d = getDecisions();
+      const decided = Object.keys(d).length;
+      const approvedIdxList = Object.keys(d).filter(k => d[k] === 'import').map(k => parseInt(k, 10));
+      const importCount = approvedIdxList.length;
+      const skipCount   = Object.values(d).filter(v => v === 'skip').length;
+      cDecided.textContent = decided;
+      cImport.textContent  = importCount;
+      cSkip.textContent    = skipCount;
+
+      // Overlap entre CSVs aprobados
+      const conflicts = detectOverlaps(approvedIdxList);
+      if (conflicts.length > 0) {
+        // Agrupar conflictos por par de archivos para el mensaje
+        const pairsMap = new Map();
+        conflicts.forEach(c => {
+          const sig = c.files.slice().sort().join(' ↔ ');
+          if (!pairsMap.has(sig)) pairsMap.set(sig, []);
+          pairsMap.get(sig).push(c.key);
+        });
+        let html = '⚠ <b>Solapamiento detectado entre planillas seleccionadas para importar.</b>'
+          + ' Hay claves <i>(plano · piso · ciclo)</i> que aparecen en más de un CSV — sólo prevalecerá la última en cargarse y la otra se perderá silenciosamente. Revisa antes de confirmar.';
+        html += '<ul style="margin:6px 0 0 0; padding-left:18px;">';
+        pairsMap.forEach((keys, sig) => {
+          const sample = keys.slice(0, 4).map(k => k.replace(/\|/g, ' · ')).join(', ');
+          const more = keys.length > 4 ? ` y ${keys.length - 4} más` : '';
+          html += `<li><b>${_esc(sig)}</b> — ${keys.length} clave(s) en conflicto: ${_esc(sample)}${_esc(more)}</li>`;
+        });
+        html += '</ul>';
+        warnBox.innerHTML = html;
+        warnBox.style.display = '';
+      } else {
+        warnBox.innerHTML = '';
+        warnBox.style.display = 'none';
+      }
+
+      const allOk = decided === cantArchivos;
       btnConfirm.disabled = !allOk;
       if (allOk) {
-        btnConfirm.style.background = '#1976d2';
+        if (conflicts.length > 0) {
+          btnConfirm.style.background = '#b91c1c';
+          btnConfirm.textContent = '⚠ Confirmar con solapamientos';
+        } else {
+          btnConfirm.style.background = '#1976d2';
+          btnConfirm.textContent = '✓ Confirmar';
+        }
         btnConfirm.style.cursor = 'pointer';
       } else {
         btnConfirm.style.background = '#bbb';
         btnConfirm.style.cursor = 'not-allowed';
+        btnConfirm.textContent = '✓ Confirmar';
       }
     }
-    checks.forEach(c => c.addEventListener('change', refreshState));
+    radios.forEach(r => r.addEventListener('change', refreshState));
     refreshState();
 
     function close(v) {
@@ -452,8 +564,9 @@ function showImportPreviewModalMulti(previews) {
 
     btnConfirm.onclick = () => {
       if (btnConfirm.disabled) return;
-      const approved = Array.from(checks).filter(c => c.checked).map(c => parseInt(c.dataset.idx, 10));
-      close({ mode: 'rule', approvedIdx: approved });
+      const d = getDecisions();
+      const approvedIdx = Object.keys(d).filter(k => d[k] === 'import').map(k => parseInt(k, 10));
+      close({ mode: 'rule', approvedIdx });
     };
   });
 }

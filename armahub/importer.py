@@ -663,9 +663,10 @@ async def import_armadetailer(
 
 def _parse_csv_preview_groups(raw: str):
     """Lee el CSV, ubica la cabecera 'ID|ESTRUCTURA|' y devuelve:
-      - groups_pc: dict {(plano, piso, ciclo): count}     — claves de reemplazo
-      - groups_pp: dict {(plano, piso): count}            — totales por piso
-      - planos: set de plano_codes detectados
+      - groups_pc: dict {(plano, piso, ciclo): count}   — claves de reemplazo
+      - groups_piso: dict {piso: {"count": int, "ejes": set, "planos": set}}
+      - planos: set de plano_codes detectados (a nivel CSV)
+      - ejes_planos: dict {eje: set(planos)} — para detectar multi-plano por eje
     Para el preview no calcula peso.
     """
     lines = raw.splitlines()
@@ -675,19 +676,21 @@ def _parse_csv_preview_groups(raw: str):
             header_idx = i
             break
     if header_idx is None:
-        return None, None, None
+        return None, None, None, None
     data_text = "\n".join(lines[header_idx:])
     try:
         df = pd.read_csv(StringIO(data_text), sep="|")
     except Exception:
-        return None, None, None
+        return None, None, None, None
     df.columns = df.columns.str.strip()
     needed = {"PLANO_CODE", "PISO", "CICLO"}
     if not needed.issubset(set(df.columns)):
-        return None, None, None
+        return None, None, None, None
+    has_eje = "EJE" in df.columns
     groups_pc: dict = {}
-    groups_pp: dict = {}
+    groups_piso: dict = {}
     planos: set = set()
+    ejes_planos: dict = {}
     for _, r in df.iterrows():
         def _v(col):
             v = r.get(col)
@@ -703,13 +706,22 @@ def _parse_csv_preview_groups(raw: str):
         plano = _v("PLANO_CODE")
         piso  = _v("PISO")
         ciclo = _v("CICLO")
+        eje   = _v("EJE") if has_eje else ""
         if plano:
             planos.add(plano)
+        if eje:
+            ejes_planos.setdefault(eje, set())
+            if plano:
+                ejes_planos[eje].add(plano)
         k_pc = (plano, piso, ciclo)
         groups_pc[k_pc] = groups_pc.get(k_pc, 0) + 1
-        k_pp = (plano, piso)
-        groups_pp[k_pp] = groups_pp.get(k_pp, 0) + 1
-    return groups_pc, groups_pp, planos
+        slot = groups_piso.setdefault(piso, {"count": 0, "ejes": set(), "planos": set()})
+        slot["count"] += 1
+        if eje:
+            slot["ejes"].add(eje)
+        if plano:
+            slot["planos"].add(plano)
+    return groups_pc, groups_piso, planos, ejes_planos
 
 
 @router.post("/import/armadetailer/preview")
@@ -718,15 +730,19 @@ async def import_armadetailer_preview(
     user=Depends(get_current_user),
     obra_destino: str = Query(..., description="ID de obra destino (obligatorio)"),
 ):
-    """Devuelve un preview del impacto del CSV agrupado por (plano, piso),
+    """Devuelve un preview del impacto del CSV agrupado por piso (1 fila por piso),
     restringido a los pisos que vienen en el CSV. NO toca la BD.
 
-    Para cada (plano, piso) presente en el CSV devuelve:
-      - existentes_bd: barras totales en BD (todos los ciclos) para ese (plano, piso)
-      - existentes_replace: barras BD en los ciclos que vienen en el CSV (serán reemplazadas)
+    Cada CSV idealmente representa 1 eje (1 DWG) con 1 plano_code, pero por bugs
+    de Detailer puede haber >1 plano_code para el mismo eje. En ese caso, el
+    response trae 'multi_plano_warning' = true y la lista de planos.
+
+    Para cada piso presente en el CSV devuelve:
+      - existentes_bd: barras totales en BD (todos los ciclos, todos los planos del CSV) para ese piso
+      - existentes_replace: barras BD en (plano, piso, ciclo) que vienen en el CSV (serán reemplazadas)
       - existentes_keep: barras BD en ciclos NO incluidos en el CSV (se conservan)
-      - nuevas_csv: barras que aporta el CSV
-      - final: existentes_keep + nuevas_csv (lo que quedará tras importar)
+      - nuevas_csv: barras que aporta el CSV en ese piso
+      - final: existentes_keep + nuevas_csv
       - action: 'replace' si existentes_replace > 0, sino 'add'
     """
     raw = (await file.read()).decode("utf-8", errors="replace")
@@ -739,48 +755,49 @@ async def import_armadetailer_preview(
                 return {"ok": False, "error": f"Obra destino '{obra_destino}' no existe."}
             proyecto_nombre = row[1]
 
-            groups_pc, groups_pp, planos_csv = _parse_csv_preview_groups(raw)
+            groups_pc, groups_piso, planos_csv, ejes_planos = _parse_csv_preview_groups(raw)
             if groups_pc is None:
                 return {"ok": False, "error": "No se pudo leer el CSV (cabecera ID|ESTRUCTURA| no encontrada o columnas requeridas faltantes)."}
 
-            # Pisos por plano que vienen en el CSV
-            pisos_por_plano: dict = {}
-            for (p, pi) in groups_pp.keys():
-                pisos_por_plano.setdefault(p, set()).add(pi)
+            pisos_csv = list(groups_piso.keys())
+            planos_list = sorted(planos_csv) if planos_csv else []
 
-            # Conteos en BD para SOLO los (plano, piso) del CSV, agrupados por (plano, piso, ciclo)
-            db_pc: dict = {}
-            if pisos_por_plano:
-                for plano, pisos in pisos_por_plano.items():
-                    cur.execute(
-                        """
-                        SELECT COALESCE(piso, '')  AS piso,
-                               COALESCE(ciclo, '') AS ciclo,
-                               COUNT(*)            AS n
-                        FROM barras
-                        WHERE id_proyecto = %s
-                          AND plano_code = %s
-                          AND COALESCE(piso, '') = ANY(%s)
-                        GROUP BY 1, 2
-                        """,
-                        (obra_destino, plano, list(pisos)),
-                    )
-                    for piso, ciclo, n in cur.fetchall():
-                        db_pc[(plano, piso, ciclo)] = int(n)
+            # BD: contar barras existentes para los planos del CSV restringido a los pisos del CSV
+            #     agrupado por (plano, piso, ciclo) para clasificar replace vs keep.
+            db_pc: dict = {}  # {(plano, piso, ciclo): count}
+            if planos_list and pisos_csv:
+                cur.execute(
+                    """
+                    SELECT plano_code,
+                           COALESCE(piso, '')  AS piso,
+                           COALESCE(ciclo, '') AS ciclo,
+                           COUNT(*)            AS n
+                    FROM barras
+                    WHERE id_proyecto = %s
+                      AND plano_code = ANY(%s)
+                      AND COALESCE(piso, '') = ANY(%s)
+                    GROUP BY 1, 2, 3
+                    """,
+                    (obra_destino, planos_list, pisos_csv),
+                )
+                for plano, piso, ciclo, n in cur.fetchall():
+                    db_pc[(plano, piso, ciclo)] = int(n)
 
     # Set de claves (plano, piso, ciclo) presentes en CSV → ciclos que serán reemplazados
     replace_pc_keys = set(groups_pc.keys())
 
-    # Filas por (plano, piso) — solo las del CSV
+    # Filas por piso (colapsando multi-plano dentro del mismo CSV)
     pisos_rows = []
-    for (plano, piso) in sorted(groups_pp.keys(), key=lambda k: (k[0], _piso_sort_key(k[1]))):
-        nuevas_csv = groups_pp[(plano, piso)]
+    for piso in sorted(groups_piso.keys(), key=_piso_sort_key):
+        info = groups_piso[piso]
+        nuevas_csv = info["count"]
+        ejes_str = ", ".join(sorted(info["ejes"])) if info["ejes"] else ""
+        planos_str = ", ".join(sorted(info["planos"])) if info["planos"] else ""
 
-        # Sumar BD por ciclos que sí vienen en CSV (replace) vs los que no (keep)
         existentes_replace = 0
         existentes_keep = 0
         for (p, pi, ci), n in db_pc.items():
-            if p != plano or pi != piso:
+            if pi != piso:
                 continue
             if (p, pi, ci) in replace_pc_keys:
                 existentes_replace += n
@@ -791,8 +808,9 @@ async def import_armadetailer_preview(
         action = "replace" if existentes_replace > 0 else "add"
 
         pisos_rows.append({
-            "plano_code": plano,
             "piso": piso,
+            "eje": ejes_str,
+            "plano_code": planos_str,
             "existentes_bd": existentes_bd,
             "existentes_replace": existentes_replace,
             "existentes_keep": existentes_keep,
@@ -804,19 +822,33 @@ async def import_armadetailer_preview(
     # Server-side: armar replace_keys para reusar en el import real
     replace_keys_str = ";".join(f"{p}|{pi}|{ci}" for (p, pi, ci) in sorted(replace_pc_keys))
 
-    total_csv         = sum(groups_pp.values())
+    total_csv         = sum(info["count"] for info in groups_piso.values())
     total_replace     = sum(r["existentes_replace"] for r in pisos_rows)
     pisos_a_reemplazar = sum(1 for r in pisos_rows if r["action"] == "replace")
     pisos_a_sumar      = sum(1 for r in pisos_rows if r["action"] == "add")
+
+    # Detección de multi-plano por eje (bug Detailer)
+    multi_plano_warning = False
+    ejes_con_multi_plano = []
+    for eje, planos_set in (ejes_planos or {}).items():
+        if len(planos_set) > 1:
+            multi_plano_warning = True
+            ejes_con_multi_plano.append({"eje": eje, "planos": sorted(planos_set)})
+    # También flag si el CSV tiene >1 plano_code en total (caso edge sin EJE)
+    if len(planos_list) > 1:
+        multi_plano_warning = True
 
     return {
         "ok": True,
         "obra_id": obra_destino,
         "obra_nombre": proyecto_nombre,
         "archivo": file.filename,
-        "planos": sorted(planos_csv) if planos_csv else [],
+        "planos": planos_list,
+        "ejes": sorted(set().union(*[info["ejes"] for info in groups_piso.values()])) if groups_piso else [],
         "pisos": pisos_rows,
         "replace_keys": replace_keys_str,
+        "multi_plano_warning": multi_plano_warning,
+        "ejes_multi_plano": ejes_con_multi_plano,
         "summary": {
             "total_csv": total_csv,
             "total_db_a_reemplazar": total_replace,
