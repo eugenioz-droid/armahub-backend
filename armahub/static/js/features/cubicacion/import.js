@@ -164,10 +164,10 @@ async function importAllFiles() {
 
   // ── FASE 2: Modal único si hay reemplazos en alguna planilla ──
   const hayReemplazos = previewsValidos.some(p =>
-    (p.preview.ejes || []).some(e => e.action === 'replace')
+    (p.preview.pisos || []).some(e => e.action === 'replace')
   );
 
-  let decisionGlobal = { mode: 'rule' }; // por defecto: aplicar regla
+  let decisionGlobal = { mode: 'rule', approvedIdx: null }; // por defecto: aplicar regla a todas
   if (hayReemplazos) {
     progress.textContent = '';
     decisionGlobal = await showImportPreviewModalMulti(previewsValidos);
@@ -181,14 +181,28 @@ async function importAllFiles() {
     }
   }
 
+  // Set de índices aprobados (referenciados al array previewsValidos)
+  // Si no hubo modal, todas las planillas con preview ok están aprobadas implícitamente
+  let approvedFiles = null;
+  if (decisionGlobal.approvedIdx) {
+    approvedFiles = new Set(decisionGlobal.approvedIdx.map(i => previewsValidos[i].file));
+  }
+
   // ── FASE 3: Importar cada planilla con la decisión correspondiente ──
   for (let i = 0; i < total; i++) {
     const f = pendingFiles[i];
     const prev = previews[i].preview;
 
-    // Si el preview de ESTA planilla falló, omitirla (no caer al popup legacy)
+    // Si el preview de ESTA planilla falló, omitirla
     if (!prev || !prev.ok) {
       results.innerHTML += `<div class="status-err" style="padding:4px 0; font-size:13px;">⚠️ ${f.name}: omitida (preview falló: ${prev?.error || 'sin respuesta'})</div>`;
+      errorCount++;
+      continue;
+    }
+
+    // Si el modal se mostró y esta planilla NO fue marcada, omitirla
+    if (approvedFiles && !approvedFiles.has(f)) {
+      results.innerHTML += `<div class="status-warn" style="padding:4px 0; font-size:13px;">⏭️ ${f.name}: no aprobada en el modal — omitida</div>`;
       errorCount++;
       continue;
     }
@@ -197,11 +211,7 @@ async function importAllFiles() {
     await setGlobalStatus(`Importando archivo ${i+1}/${total}...`, 'warn');
 
     let extraParams = '';
-    if (decisionGlobal.mode === 'full') {
-      if (prev.full_planos) extraParams += '&replace_full_planos=' + encodeURIComponent(prev.full_planos);
-    } else {
-      if (prev.replace_keys) extraParams += '&replace_keys=' + encodeURIComponent(prev.replace_keys);
-    }
+    if (prev.replace_keys) extraParams += '&replace_keys=' + encodeURIComponent(prev.replace_keys);
     // El usuario ya confirmó en el modal → saltar la detección de duplicate_file
     extraParams += '&forzar=true';
 
@@ -294,20 +304,19 @@ function _esc(s) {
 }
 
 // Modal único acumulador para todas las planillas a importar.
-// Muestra cada planilla con su lista de ejes y pide UNA sola decisión global.
+// 1 fila por (plano, piso). Solo pisos del CSV. Checkbox de aprobación por planilla.
 function showImportPreviewModalMulti(previews) {
   return new Promise(resolve => {
     // Totales globales
-    let gTotalCsv = 0, gTotalReplace = 0, gTotalSinTocar = 0;
-    let gEjesReplace = 0, gEjesAdd = 0;
+    let gTotalCsv = 0, gTotalReplace = 0;
+    let gPisosReplace = 0, gPisosAdd = 0;
     const planosGlobales = new Set();
     previews.forEach(item => {
       const s = item.preview.summary || {};
       gTotalCsv      += s.total_csv || 0;
       gTotalReplace  += s.total_db_a_reemplazar || 0;
-      gTotalSinTocar += s.total_db_sin_tocar || 0;
-      gEjesReplace   += s.ejes_a_reemplazar || 0;
-      gEjesAdd       += s.ejes_a_agregar || 0;
+      gPisosReplace  += s.pisos_a_reemplazar || 0;
+      gPisosAdd      += s.pisos_a_sumar || 0;
       (item.preview.planos || []).forEach(p => planosGlobales.add(p));
     });
 
@@ -317,55 +326,49 @@ function showImportPreviewModalMulti(previews) {
       const p = item.preview;
       const s = p.summary || {};
       const planosTxt = (p.planos || []).join(', ') || '(sin plano)';
-
-      // Filtrar a ejes con acción ≠ keep + ordenar (replace primero, luego add, luego por eje)
-      const ejes = (p.ejes || []).filter(e => e.action === 'replace' || e.action === 'add' || e.sin_tocar > 0);
-      ejes.sort((a, b) => {
-        const order = { replace: 0, add: 1, keep: 2 };
-        if (order[a.action] !== order[b.action]) return order[a.action] - order[b.action];
-        if (a.plano_code !== b.plano_code) return a.plano_code.localeCompare(b.plano_code);
-        return (a.eje || '').localeCompare(b.eje || '');
-      });
+      const pisos = p.pisos || [];
 
       let rowsHtml = '';
-      ejes.forEach(e => {
+      pisos.forEach(r => {
         let bg, label, icon;
-        if (e.action === 'replace') { bg = '#fff3cd'; label = 'Reemplazar'; icon = '↻'; }
-        else if (e.action === 'add') { bg = '#e8f5e9'; label = 'Agregar';    icon = '＋'; }
-        else { bg = '#fafafa'; label = 'Sin tocar'; icon = '·'; }
+        if (r.action === 'replace') { bg = '#fff3cd'; label = 'Reemplazar';   icon = '↻'; }
+        else                        { bg = '#e8f5e9'; label = 'Sumar';        icon = '＋'; }
         rowsHtml += `<tr style="background:${bg};">`
-          + `<td style="padding:3px 8px;">${_esc(e.plano_code) || '-'}</td>`
-          + `<td style="padding:3px 8px; font-weight:600;">${_esc(e.eje) || '-'}</td>`
-          + `<td style="padding:3px 8px; text-align:right;">${e.existian_zona_replace || 0}</td>`
-          + `<td style="padding:3px 8px; text-align:right; font-weight:600;">${e.nuevo_csv || 0}</td>`
-          + `<td style="padding:3px 8px; text-align:right; color:#666;">${e.sin_tocar || 0}</td>`
+          + `<td style="padding:3px 8px;">${_esc(r.plano_code) || '-'}</td>`
+          + `<td style="padding:3px 8px; font-weight:600;">${_esc(r.piso) || '-'}</td>`
+          + `<td style="padding:3px 8px; text-align:right;">${r.existentes_bd || 0}</td>`
+          + `<td style="padding:3px 8px; text-align:right; font-weight:600;">${r.nuevas_csv || 0}</td>`
+          + `<td style="padding:3px 8px; text-align:right; color:#1565C0; font-weight:600;">${r.final || 0}</td>`
           + `<td style="padding:3px 8px; font-size:11px;">${icon} ${label}</td>`
           + `</tr>`;
       });
       if (!rowsHtml) {
-        rowsHtml = '<tr><td colspan="6" style="padding:8px; text-align:center; color:#888;">Sin ejes con cambios — el archivo solo agrega data nueva.</td></tr>';
+        rowsHtml = '<tr><td colspan="6" style="padding:8px; text-align:center; color:#888;">El archivo no tiene pisos detectables.</td></tr>';
       }
 
       blocks += `
-        <div style="margin-bottom:14px; border:1px solid #e0e0e0; border-radius:6px; overflow:hidden;">
-          <div style="padding:8px 12px; background:#eef5ff; border-bottom:1px solid #d0d7de;">
-            <div style="font-weight:700; font-size:13px;">📄 ${_esc(item.file.name)}</div>
-            <div style="font-size:11px; color:#555; margin-top:2px;">
-              Plano(s): <b>${_esc(planosTxt)}</b> ·
-              CSV: <b>${s.total_csv || 0}</b> barras ·
-              A reemplazar en BD: <b style="color:#92400e;">${s.total_db_a_reemplazar || 0}</b> ·
-              Sin tocar (BD): <b style="color:#374151;">${s.total_db_sin_tocar || 0}</b>
-            </div>
+        <div data-block="${idx}" style="margin-bottom:14px; border:1px solid #e0e0e0; border-radius:6px; overflow:hidden;">
+          <div style="padding:10px 12px; background:#eef5ff; border-bottom:1px solid #d0d7de; display:flex; align-items:center; gap:10px;">
+            <input type="checkbox" id="impPrevChk-${idx}" data-idx="${idx}" class="imp-prev-chk" style="width:18px; height:18px; cursor:pointer; flex-shrink:0;">
+            <label for="impPrevChk-${idx}" style="cursor:pointer; flex:1;">
+              <div style="font-weight:700; font-size:13px;">📄 ${_esc(item.file.name)}</div>
+              <div style="font-size:11px; color:#555; margin-top:2px;">
+                Plano(s): <b>${_esc(planosTxt)}</b> ·
+                CSV: <b>${s.total_csv || 0}</b> barras ·
+                A reemplazar: <b style="color:#92400e;">${s.total_db_a_reemplazar || 0}</b> ·
+                Pisos: <b>${s.pisos_a_reemplazar || 0}</b> reemplazar / <b>${s.pisos_a_sumar || 0}</b> sumar
+              </div>
+            </label>
           </div>
           <div style="overflow:auto; max-height:340px;">
             <table style="width:100%; border-collapse:collapse; font-size:12px;">
               <thead style="position:sticky; top:0; background:#f8f9fa; z-index:1; border-bottom:1px solid #e0e0e0;">
                 <tr>
                   <th style="padding:5px 8px; text-align:left;">Plano</th>
-                  <th style="padding:5px 8px; text-align:left;">Eje</th>
-                  <th style="padding:5px 8px; text-align:right;" title="Barras que ya existen en BD para este eje en los pisos/ciclos que vienen en el CSV (serán reemplazadas)">Existían (a reemplazar)</th>
-                  <th style="padding:5px 8px; text-align:right;" title="Barras que aporta este archivo CSV para este eje">Nuevas (CSV)</th>
-                  <th style="padding:5px 8px; text-align:right;" title="Barras de este eje en otros pisos/ciclos no incluidos en el CSV — se conservan">Sin tocar</th>
+                  <th style="padding:5px 8px; text-align:left;">Piso</th>
+                  <th style="padding:5px 8px; text-align:right;" title="Barras que ya existen en BD para ese (plano, piso) — todos los ciclos">Existentes</th>
+                  <th style="padding:5px 8px; text-align:right;" title="Barras que aporta este CSV para ese (plano, piso)">Nueva carga (CSV)</th>
+                  <th style="padding:5px 8px; text-align:right;" title="Total que quedará tras importar = (existentes en ciclos no incluidos) + (nuevas del CSV)">Final</th>
                   <th style="padding:5px 8px; text-align:left;">Acción</th>
                 </tr>
               </thead>
@@ -392,29 +395,53 @@ function showImportPreviewModalMulti(previews) {
           <div style="font-size:12px; color:#444; margin-top:3px;">
             Total CSV: <b>${gTotalCsv}</b> barras ·
             A reemplazar en BD: <b style="color:#92400e;">${gTotalReplace}</b> ·
-            Se conservan: <b>${gTotalSinTocar}</b> ·
-            Ejes: <b>${gEjesReplace}</b> reemplazar · <b>${gEjesAdd}</b> agregar
+            Pisos: <b>${gPisosReplace}</b> reemplazar · <b>${gPisosAdd}</b> sumar
           </div>
         </div>
 
         <div style="padding:12px 20px; overflow:auto; flex:1;">
           <div style="font-size:12px; color:#444; margin-bottom:10px; padding:8px 12px; background:#f0f7ff; border-left:3px solid #1976d2; border-radius:4px;">
-            <b>¿Cómo se aplicará?</b><br>
-            <b>Reemplazo selectivo</b> (recomendado): borra solo las barras de los <i>(piso, ciclo)</i> que vienen en cada archivo y carga las nuevas. Las barras en otros pisos/ciclos (columna <i>Sin tocar</i>) se conservan.<br>
-            <b>Reemplazo total del plano</b>: borra TODAS las barras del plano (incluidas las "Sin tocar") y carga sólo lo que viene en los archivos.
+            <b>Cómo se aplica:</b>
+            por cada <i>(plano, piso, ciclo)</i> presente en el archivo se borran las barras existentes y se cargan las nuevas.
+            Los pisos/ciclos no incluidos en el archivo <b>no se tocan</b> (su data se ve reflejada en la columna <i>Final</i>).
+            <br><b>Importante:</b> revisa cada planilla y marca su casilla para habilitar la confirmación.
           </div>
           ${blocks}
         </div>
 
-        <div style="padding:12px 20px; border-top:1px solid #e0e0e0; background:#f8f9fa; display:flex; gap:8px; justify-content:flex-end; flex-wrap:wrap;">
-          <button id="impPrevCancel" class="secondary" style="padding:8px 14px;">Cancelar</button>
-          <button id="impPrevFull" style="padding:8px 14px; background:#fff3cd; color:#92400e; border:1px solid #f59e0b; cursor:pointer;" title="Borra TODAS las barras de los planos afectados, incluso las que están sin tocar">⚠ Reemplazar plano completo</button>
-          <button id="impPrevConfirm" class="primary" style="padding:8px 14px; background:#1976d2; color:#fff; border:none; cursor:pointer;">✓ Reemplazar solo lo que viene en los archivos</button>
+        <div style="padding:12px 20px; border-top:1px solid #e0e0e0; background:#f8f9fa; display:flex; gap:8px; justify-content:space-between; align-items:center; flex-wrap:wrap;">
+          <div style="font-size:12px; color:#555;">
+            <span id="impPrevApproved">0</span> / ${cantArchivos} planilla${cantArchivos>1?'s':''} aprobada${cantArchivos>1?'s':''}
+          </div>
+          <div style="display:flex; gap:8px;">
+            <button id="impPrevCancel" class="secondary" style="padding:8px 14px;">Cancelar</button>
+            <button id="impPrevConfirm" class="primary" disabled style="padding:8px 14px; background:#bbb; color:#fff; border:none; cursor:not-allowed;">✓ Confirmar importación</button>
+          </div>
         </div>
 
       </div>
     `;
     document.body.appendChild(overlay);
+
+    const checks = overlay.querySelectorAll('.imp-prev-chk');
+    const btnConfirm = overlay.querySelector('#impPrevConfirm');
+    const counter = overlay.querySelector('#impPrevApproved');
+
+    function refreshState() {
+      const approved = Array.from(checks).filter(c => c.checked).map(c => parseInt(c.dataset.idx, 10));
+      counter.textContent = approved.length;
+      const allOk = approved.length === checks.length && checks.length > 0;
+      btnConfirm.disabled = !allOk;
+      if (allOk) {
+        btnConfirm.style.background = '#1976d2';
+        btnConfirm.style.cursor = 'pointer';
+      } else {
+        btnConfirm.style.background = '#bbb';
+        btnConfirm.style.cursor = 'not-allowed';
+      }
+    }
+    checks.forEach(c => c.addEventListener('change', refreshState));
+    refreshState();
 
     function close(v) {
       if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
@@ -423,21 +450,10 @@ function showImportPreviewModalMulti(previews) {
 
     overlay.querySelector('#impPrevCancel').onclick = () => close(null);
 
-    overlay.querySelector('#impPrevConfirm').onclick = () => {
-      close({ mode: 'rule' });
-    };
-
-    overlay.querySelector('#impPrevFull').onclick = () => {
-      const ok = confirm(
-        '⚠ ATENCIÓN — Reemplazar plano completo\n\n'
-        + 'Esta opción eliminará TODAS las barras existentes en BD para el/los plano(s):\n'
-        + '   ' + planosListaTxt + '\n\n'
-        + 'Se borrarán ' + (gTotalReplace + gTotalSinTocar) + ' barras existentes (incluidas las "Sin tocar")\n'
-        + 'y se cargará sólo el contenido de las planillas seleccionadas.\n\n'
-        + '¿Confirmar?'
-      );
-      if (!ok) return;
-      close({ mode: 'full' });
+    btnConfirm.onclick = () => {
+      if (btnConfirm.disabled) return;
+      const approved = Array.from(checks).filter(c => c.checked).map(c => parseInt(c.dataset.idx, 10));
+      close({ mode: 'rule', approvedIdx: approved });
     };
   });
 }
