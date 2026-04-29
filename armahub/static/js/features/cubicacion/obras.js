@@ -698,7 +698,7 @@ function renderObraDetailCargas(data, idProyecto) {
   html += '<table style="width:100%; font-size:11px; border-collapse:collapse;">';
   html += '<thead style="position:sticky; top:0; background:#f8f8f8; z-index:1;"><tr>';
   html += '<th style="width:28px; padding:4px;"><input type="checkbox" id="selectAll-' + safeId + '" onchange="toggleAllCargasProyecto(\'' + safeId + '\')" style="cursor:pointer;" title="Seleccionar todas"></th>';
-  html += '<th style="padding:4px;">Archivo</th><th style="padding:4px;">Plano</th><th style="padding:4px; text-align:right;">Barras</th><th style="padding:4px; text-align:right;">Kilos</th><th style="padding:4px;">Versión</th><th style="padding:4px;">Usuario</th><th style="padding:4px;">Fecha</th>';
+  html += '<th style="padding:4px;">Archivo</th><th style="padding:4px;">Plano</th><th style="padding:4px; text-align:right;">Barras</th><th style="padding:4px; text-align:right;">Kilos</th><th style="padding:4px;">Versión</th><th style="padding:4px;">Usuario</th><th style="padding:4px;">Fecha</th><th style="width:34px; padding:4px;"></th>';
   html += '</tr></thead><tbody>';
   data.cargas.forEach(function(c) {
     var fecha = '';
@@ -715,6 +715,7 @@ function renderObraDetailCargas(data, idProyecto) {
       estadoBadge = '<span style="background:#ffcdd2; color:#b42318; padding:1px 5px; border-radius:3px; font-size:9px; font-weight:600;">✕ ERROR</span> ';
       rowBg = ' style="background:#fff5f5;"';
     }
+    var archivoSafe = (c.archivo || '').replace(/'/g, "\\'").replace(/"/g, '&quot;');
     html += '<tr' + rowBg + '>';
     html += '<td style="padding:3px;"><input type="checkbox" class="carga-cb-' + safeId + '" data-id="' + c.id + '" onchange="updateCargasSelectionProyecto(\'' + safeId + '\')"></td>';
     html += '<td style="padding:3px;">' + estadoBadge + (c.archivo || '-') + '</td>';
@@ -724,6 +725,7 @@ function renderObraDetailCargas(data, idProyecto) {
     html += '<td style="padding:3px;">' + (c.version_archivo || '-') + '</td>';
     html += '<td style="padding:3px; color:#888;">' + (c.usuario || '-') + '</td>';
     html += '<td style="padding:3px; color:#888;">' + fecha + '</td>';
+    html += '<td style="padding:3px; text-align:center;"><button class="secondary" style="padding:2px 6px; font-size:11px; cursor:pointer;" title="Ver barras de esta carga en Bar Manager" onclick="verCargaDesdeModal(' + c.id + ', \'' + idProyecto.replace(/'/g, "\\'") + '\', \'' + archivoSafe + '\')">🔍</button></td>';
     html += '</tr>';
   });
   html += '</tbody></table></div>';
@@ -767,6 +769,13 @@ async function moverCargasSeleccionadasModal(idProyecto, safeId) {
     await loadMiActividad();
   } else {
     showToast('Error: ' + (res?.detail || 'desconocido'), 'error');
+  }
+}
+
+async function verCargaDesdeModal(importId, idProyecto, archivo) {
+  closeObraDetailModal();
+  if (typeof verBarrasCarga === 'function') {
+    await verBarrasCarga(importId, idProyecto, archivo);
   }
 }
 
@@ -1327,6 +1336,8 @@ async function moverBarras() {
 // ========================= MATRIZ DE COBERTURA POR CICLO =========================
 
 var _obraCoberturaCargada = false;
+var _obraCoberturaData = null;
+var _obraCoberturaPisoSel = '__ALL__';
 
 var _SECTOR_LABELS = {
   LCIELO: { label: 'LCIELO', desc: 'Losa cielo', color: '#1976d2', unit: 'losas' },
@@ -1366,14 +1377,58 @@ async function loadObraCobertura(idProyecto) {
     container.innerHTML = '<span class="muted" style="font-size:12px;">Error cargando matriz.</span>';
     return;
   }
+  _obraCoberturaData = data;
+  _obraCoberturaPisoSel = '__ALL__';
+  _renderObraCobertura();
+}
+
+function setObraCoberturaPiso(piso) {
+  _obraCoberturaPisoSel = piso;
+  _renderObraCobertura();
+}
+
+function _renderObraCobertura() {
+  var container = document.getElementById('obraCoberturaMatrix');
+  if (!container || !_obraCoberturaData) return;
+  var data = _obraCoberturaData;
   var ciclos = data.ciclos || [];
   var sectores = data.sectores || ['LCIELO', 'VCIELO', 'ELEV', 'FUND'];
+  var pisos = data.pisos || [];
+
   if (ciclos.length === 0) {
     container.innerHTML = '<span class="muted" style="font-size:12px;">Sin datos de cobertura.</span>';
     return;
   }
 
-  var html = '<table style="width:100%; border-collapse:collapse; font-size:12px; background:#fff;">';
+  var sel = _obraCoberturaPisoSel;
+  // Toolbar de pisos
+  var toolbar = '';
+  if (pisos.length > 0) {
+    toolbar += '<div style="display:flex; flex-wrap:wrap; gap:6px; align-items:center; margin-bottom:8px;">';
+    toolbar += '<span style="font-size:11px; color:#666; margin-right:4px;">Filtrar por piso:</span>';
+    var btns = [{ k: '__ALL__', label: 'Todos' }].concat(pisos.map(function(p) { return { k: p, label: p }; }));
+    btns.forEach(function(b) {
+      var active = (sel === b.k);
+      var bg = active ? '#e65100' : '#fff';
+      var fg = active ? '#fff' : '#e65100';
+      var bd = active ? '#e65100' : '#ffcc80';
+      toolbar += '<button type="button" onclick="setObraCoberturaPiso(\'' + _escapeHtml(b.k).replace(/'/g, "\\'") + '\')" '
+        + 'style="font-size:11px; padding:3px 10px; background:' + bg + '; color:' + fg + '; border:1px solid ' + bd + '; border-radius:14px; cursor:pointer; font-weight:600;">'
+        + _escapeHtml(b.label) + '</button>';
+    });
+    toolbar += '</div>';
+  }
+
+  // Función para extraer ejes según filtro de piso
+  function getCellEjes(cell) {
+    if (!cell) return [];
+    if (sel === '__ALL__') return cell.ejes || [];
+    var byPiso = cell.byPiso || {};
+    return byPiso[sel] || [];
+  }
+
+  var html = toolbar;
+  html += '<table style="width:100%; border-collapse:collapse; font-size:12px; background:#fff;">';
   html += '<thead><tr style="background:#ffe0b2; color:#5d4037;">';
   html += '<th style="padding:6px 8px; text-align:left; width:90px; border:1px solid #ffcc80;">Ciclo</th>';
   html += '<th style="padding:6px 8px; text-align:left; width:90px; border:1px solid #ffcc80;">Sector</th>';
@@ -1381,14 +1436,15 @@ async function loadObraCobertura(idProyecto) {
   html += '<th style="padding:6px 8px; text-align:right; width:80px; border:1px solid #ffcc80;">Total</th>';
   html += '</tr></thead><tbody>';
 
-  ciclos.forEach(function(c, ci) {
+  ciclos.forEach(function(c) {
     var ciclo = c.ciclo;
     var sectoresData = c.sectores || {};
     sectores.forEach(function(s, si) {
       var meta = _SECTOR_LABELS[s] || { label: s, desc: '', color: '#555', unit: '' };
-      var info = sectoresData[s] || { ejes: [], count: 0 };
-      var ejesStr = (info.ejes && info.ejes.length)
-        ? info.ejes.map(_escapeHtml).join(', ')
+      var cell = sectoresData[s] || { ejes: [], count: 0, byPiso: {} };
+      var ejes = getCellEjes(cell);
+      var ejesStr = (ejes && ejes.length)
+        ? ejes.map(_escapeHtml).join(', ')
         : '<span style="color:#bbb;">—</span>';
       html += '<tr style="border-bottom:1px solid #f5f5f5;">';
       if (si === 0) {
@@ -1398,8 +1454,9 @@ async function loadObraCobertura(idProyecto) {
       html += '<span style="display:inline-block; padding:2px 8px; background:' + meta.color + '; color:#fff; border-radius:10px; font-size:11px; font-weight:600;" title="' + _escapeHtml(meta.desc) + '">' + _escapeHtml(meta.label) + '</span>';
       html += '</td>';
       html += '<td style="padding:5px 8px; color:#444; border:1px solid #f5f5f5;">' + ejesStr + '</td>';
-      var totalTxt = info.count > 0
-        ? ('<strong>' + info.count + '</strong> <span style="color:#888; font-size:11px;">' + meta.unit + '</span>')
+      var n = ejes.length;
+      var totalTxt = n > 0
+        ? ('<strong>' + n + '</strong> <span style="color:#888; font-size:11px;">' + meta.unit + '</span>')
         : '<span style="color:#bbb;">0</span>';
       html += '<td style="padding:5px 8px; text-align:right; border:1px solid #f5f5f5;">' + totalTxt + '</td>';
       html += '</tr>';

@@ -1468,6 +1468,8 @@ def get_autorizados(id_proyecto: str, user=Depends(get_current_user)):
 def get_cobertura_ciclos(id_proyecto: str, user=Depends(get_current_user)):
     """Matriz de cobertura derivada de barras: por cada ciclo, lista de ejes
     distintos agrupados por sector (FUND, ELEV, LCIELO, VCIELO).
+    Cada celda incluye además el desglose por piso (byPiso) para permitir
+    filtrado en cliente sin re-consulta.
     """
     SECTORES = ["LCIELO", "VCIELO", "ELEV", "FUND"]
     with get_conn() as conn:
@@ -1480,35 +1482,48 @@ def get_cobertura_ciclos(id_proyecto: str, user=Depends(get_current_user)):
                 raise HTTPException(status_code=403, detail="Sin acceso a este proyecto")
             cur.execute(
                 """
-                SELECT COALESCE(ciclo, '') AS ciclo,
+                SELECT COALESCE(ciclo, '')  AS ciclo,
                        COALESCE(sector, '') AS sector,
+                       COALESCE(piso, '')   AS piso,
                        array_agg(DISTINCT eje ORDER BY eje) AS ejes
                 FROM barras
                 WHERE id_proyecto = %s
                   AND eje IS NOT NULL AND eje <> ''
-                GROUP BY COALESCE(ciclo, ''), COALESCE(sector, '')
+                GROUP BY COALESCE(ciclo, ''), COALESCE(sector, ''), COALESCE(piso, '')
                 """,
                 (id_proyecto,),
             )
             rows = cur.fetchall()
 
+    pisos_set: set = set()
     ciclos_map: dict = {}
-    for ciclo, sector, ejes in rows:
+    for ciclo, sector, piso, ejes in rows:
         if sector not in SECTORES:
             continue
+        if piso:
+            pisos_set.add(piso)
         if ciclo not in ciclos_map:
-            ciclos_map[ciclo] = {s: [] for s in SECTORES}
-        ciclos_map[ciclo][sector] = list(ejes or [])
+            ciclos_map[ciclo] = {s: {"byPiso": {}, "_ejes_set": set()} for s in SECTORES}
+        cell = ciclos_map[ciclo][sector]
+        cell["byPiso"][piso or ""] = list(ejes or [])
+        for e in (ejes or []):
+            cell["_ejes_set"].add(e)
 
     ciclos = []
     for ciclo in sorted(ciclos_map.keys(), key=_ciclo_order):
         sectores_payload = {}
         for s in SECTORES:
-            ejes = ciclos_map[ciclo].get(s, [])
-            sectores_payload[s] = {"ejes": ejes, "count": len(ejes)}
+            cell = ciclos_map[ciclo][s]
+            ejes_union = sorted(cell["_ejes_set"])
+            sectores_payload[s] = {
+                "ejes": ejes_union,
+                "count": len(ejes_union),
+                "byPiso": cell["byPiso"],
+            }
         ciclos.append({"ciclo": ciclo or "(sin ciclo)", "sectores": sectores_payload})
 
-    return {"sectores": SECTORES, "ciclos": ciclos}
+    pisos = sorted(pisos_set, key=_piso_order)
+    return {"sectores": SECTORES, "pisos": pisos, "ciclos": ciclos}
 
 
 # ========================= LANDING INDICADORES =========================

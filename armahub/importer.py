@@ -41,6 +41,8 @@ async def import_armadetailer(
     owner_id: Optional[int] = Query(None, description="(deprecado, ignorado)"),
     proyecto_nombre_manual: Optional[str] = Query(None, description="Nombre de proyecto cuando CSV no trae PROYECTO:"),
     proyecto_nombre_override: Optional[str] = Query(None, description="Nombre override para el proyecto (usuario editó el nombre)"),
+    replace_keys: Optional[str] = Query(None, description="Lista de claves 'plano|piso|ciclo' separadas por ';' a reemplazar antes del UPSERT"),
+    replace_full_planos: Optional[str] = Query(None, description="Lista de plano_code separados por ';' a reemplazar completos antes del UPSERT"),
 ):
     raw = (await file.read()).decode("utf-8", errors="replace")
     lines = raw.splitlines()
@@ -588,6 +590,43 @@ async def import_armadetailer(
             ))
             import_id = cur.fetchone()[0]
 
+            # ── DELETE selectivo previo (decidido por el usuario en preview) ──
+            barras_eliminadas_previo = 0
+            try:
+                if replace_full_planos:
+                    planos = [p.strip() for p in replace_full_planos.split(';') if p.strip()]
+                    if planos:
+                        cur.execute(
+                            "DELETE FROM barras WHERE id_proyecto = %s AND plano_code = ANY(%s)",
+                            (proyecto_id, planos),
+                        )
+                        barras_eliminadas_previo += cur.rowcount or 0
+                if replace_keys:
+                    triples = []
+                    for token in replace_keys.split(';'):
+                        token = token.strip()
+                        if not token:
+                            continue
+                        parts = token.split('|')
+                        if len(parts) != 3:
+                            continue
+                        triples.append((parts[0].strip(), parts[1].strip(), parts[2].strip()))
+                    for plano, piso, ciclo in triples:
+                        cur.execute(
+                            """
+                            DELETE FROM barras
+                            WHERE id_proyecto = %s
+                              AND COALESCE(plano_code, '') = %s
+                              AND COALESCE(piso, '')       = %s
+                              AND COALESCE(ciclo, '')      = %s
+                            """,
+                            (proyecto_id, plano, piso, ciclo),
+                        )
+                        barras_eliminadas_previo += cur.rowcount or 0
+            except Exception as _e:
+                # Si falla el DELETE selectivo, abortar la importación
+                raise
+
             # ── UPSERT barras ──
             # El ON CONFLICT (id_unico) DO UPDATE maneja reimportaciones.
             # La limpieza de cargas antiguas se hace via DELETE /cargas/{id}
@@ -616,4 +655,158 @@ async def import_armadetailer(
         "rejected": rejected_rows[:30],
         "estado": estado,
         "is_new_project": is_new_project,
+        "barras_eliminadas_previo": barras_eliminadas_previo,
+    }
+
+
+# ========================= PREVIEW DE IMPORTACIÓN =========================
+
+def _parse_csv_preview_groups(raw: str):
+    """Lee el CSV, ubica la cabecera 'ID|ESTRUCTURA|' y agrupa por
+    (plano_code, piso, ciclo) devolviendo (count, kilos_aprox=None) por grupo.
+    Para el preview no calcula peso (suficiente con count). Devuelve también
+    el set de plano_codes detectados.
+    """
+    lines = raw.splitlines()
+    header_idx = None
+    for i, line in enumerate(lines):
+        if line.startswith("ID|ESTRUCTURA|"):
+            header_idx = i
+            break
+    if header_idx is None:
+        return None, None
+    data_text = "\n".join(lines[header_idx:])
+    try:
+        df = pd.read_csv(StringIO(data_text), sep="|")
+    except Exception:
+        return None, None
+    df.columns = df.columns.str.strip()
+    needed = {"PLANO_CODE", "PISO", "CICLO"}
+    if not needed.issubset(set(df.columns)):
+        return None, None
+    groups: dict = {}
+    planos: set = set()
+    for _, r in df.iterrows():
+        plano = str(r.get("PLANO_CODE", "")).strip() if pd.notna(r.get("PLANO_CODE")) else ""
+        piso = str(r.get("PISO", "")).strip() if pd.notna(r.get("PISO")) else ""
+        ciclo = str(r.get("CICLO", "")).strip() if pd.notna(r.get("CICLO")) else ""
+        if plano.lower() == "nan":
+            plano = ""
+        if piso.lower() == "nan":
+            piso = ""
+        if ciclo.lower() == "nan":
+            ciclo = ""
+        if plano:
+            planos.add(plano)
+        key = (plano, piso, ciclo)
+        groups[key] = groups.get(key, 0) + 1
+    return groups, planos
+
+
+@router.post("/import/armadetailer/preview")
+async def import_armadetailer_preview(
+    file: UploadFile = File(...),
+    user=Depends(get_current_user),
+    obra_destino: str = Query(..., description="ID de obra destino (obligatorio)"),
+):
+    """Devuelve un preview del impacto del CSV antes de importarlo:
+    matriz por (plano_code, piso, ciclo) con conteos en BD vs CSV
+    para que el frontend muestre la confirmación.
+    NO toca la BD.
+    """
+    raw = (await file.read()).decode("utf-8", errors="replace")
+
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT id_proyecto, nombre_proyecto FROM proyectos WHERE id_proyecto = %s", (obra_destino,))
+            row = cur.fetchone()
+            if not row:
+                return {"ok": False, "error": f"Obra destino '{obra_destino}' no existe."}
+            proyecto_nombre = row[1]
+
+            groups_csv, planos_csv = _parse_csv_preview_groups(raw)
+            if groups_csv is None:
+                return {"ok": False, "error": "No se pudo leer el CSV (cabecera ID|ESTRUCTURA| no encontrada o formato inválido)."}
+
+            # Conteos en BD por (plano, piso, ciclo) restringido a los planos del CSV
+            db_groups: dict = {}
+            if planos_csv:
+                cur.execute(
+                    """
+                    SELECT COALESCE(plano_code, '') AS plano,
+                           COALESCE(piso, '')       AS piso,
+                           COALESCE(ciclo, '')      AS ciclo,
+                           COUNT(*)                 AS n
+                    FROM barras
+                    WHERE id_proyecto = %s
+                      AND plano_code = ANY(%s)
+                    GROUP BY 1, 2, 3
+                    """,
+                    (obra_destino, list(planos_csv)),
+                )
+                for plano, piso, ciclo, n in cur.fetchall():
+                    db_groups[(plano, piso, ciclo)] = int(n)
+
+            # Total de barras en BD por plano (para opción "reemplazar plano completo")
+            planos_totals = {}
+            if planos_csv:
+                cur.execute(
+                    """
+                    SELECT plano_code, COUNT(*) AS n
+                    FROM barras
+                    WHERE id_proyecto = %s
+                      AND plano_code = ANY(%s)
+                    GROUP BY plano_code
+                    """,
+                    (obra_destino, list(planos_csv)),
+                )
+                for p, n in cur.fetchall():
+                    planos_totals[p] = int(n)
+
+    # Construir matriz unificada (todas las claves que aparezcan en CSV o en BD)
+    all_keys = set(groups_csv.keys()) | set(db_groups.keys())
+    matrix = []
+    for key in sorted(all_keys, key=lambda k: (k[0], k[1], k[2])):
+        plano, piso, ciclo = key
+        in_db = db_groups.get(key, 0)
+        in_csv = groups_csv.get(key, 0)
+        if in_db == 0 and in_csv > 0:
+            action = "add"           # piso/ciclo nuevo
+        elif in_db > 0 and in_csv > 0:
+            action = "replace"       # piso/ciclo con data → se reemplaza
+        elif in_db > 0 and in_csv == 0:
+            action = "keep"          # piso/ciclo no viene en archivo, no se toca
+        else:
+            action = "keep"
+        matrix.append({
+            "plano_code": plano,
+            "piso": piso,
+            "ciclo": ciclo,
+            "barras_db": in_db,
+            "barras_csv": in_csv,
+            "action_default": action,
+            "key": f"{plano}|{piso}|{ciclo}",
+        })
+
+    total_csv = sum(groups_csv.values())
+    total_db_en_planos = sum(planos_totals.values())
+    total_db_a_reemplazar = sum(
+        m["barras_db"] for m in matrix if m["action_default"] == "replace"
+    )
+
+    return {
+        "ok": True,
+        "obra_id": obra_destino,
+        "obra_nombre": proyecto_nombre,
+        "archivo": file.filename,
+        "planos": sorted(planos_csv) if planos_csv else [],
+        "matrix": matrix,
+        "summary": {
+            "total_csv": total_csv,
+            "total_db_en_planos": total_db_en_planos,
+            "total_db_a_reemplazar": total_db_a_reemplazar,
+            "pisos_a_sumar": sum(1 for m in matrix if m["action_default"] == "add"),
+            "pisos_a_reemplazar": sum(1 for m in matrix if m["action_default"] == "replace"),
+            "pisos_sin_tocar": sum(1 for m in matrix if m["action_default"] == "keep"),
+        },
     }
