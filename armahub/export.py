@@ -272,8 +272,10 @@ def export_history(
                        COUNT(*) AS veces,
                        MAX(fecha) AS ultima_fecha,
                        (array_agg(usuario ORDER BY fecha DESC))[1] AS ultimo_usuario,
+                       (array_agg(barras  ORDER BY fecha DESC))[1] AS barras_ultima_exp,
+                       (array_agg(kilos   ORDER BY fecha DESC))[1] AS kilos_ultima_exp,
                        SUM(barras) AS total_barras,
-                       SUM(kilos) AS total_kilos
+                       SUM(kilos)  AS total_kilos
                 FROM export_log
                 WHERE id_proyecto = %s
                 GROUP BY export_key
@@ -301,8 +303,10 @@ def export_history(
             "veces": int(r[1]),
             "ultima_fecha": r[2],
             "ultimo_usuario": r[3],
-            "total_barras": int(r[4] or 0),
-            "total_kilos": round(float(r[5] or 0), 2),
+            "barras_ultima_exp": int(r[4] or 0),
+            "kilos_ultima_exp": round(float(r[5] or 0), 2),
+            "total_barras": int(r[6] or 0),
+            "total_kilos": round(float(r[7] or 0), 2),
             "ultima_modificacion": mod_info.get("ultima_modificacion"),
             "barras_actuales": mod_info.get("barras_actuales", 0),
         }

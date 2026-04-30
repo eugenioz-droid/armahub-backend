@@ -185,10 +185,14 @@ function buildExportMatriz(items, proy) {
           const hist = _exportHistory[exportKey];
           const isDone = !!hist;
           const isSelected = _exportSelected.has(exportKey);
-          // Check if sector was modified after last export
+          // "Modificado" = el conteo actual difiere del último exportado.
+          // Comparar timestamps no sirve: cualquier reimportación cambia fecha_carga
+          // aunque el contenido sea idéntico → falsos positivos.
           let isModified = false;
-          if (isDone && hist.ultima_modificacion && hist.ultima_fecha) {
-            isModified = hist.ultima_modificacion > hist.ultima_fecha;
+          if (isDone) {
+            const cur = (typeof hist.barras_actuales === 'number') ? hist.barras_actuales : 0;
+            const last = (typeof hist.barras_ultima_exp === 'number') ? hist.barras_ultima_exp : 0;
+            isModified = cur !== last;
           }
           // Background: rosado if modified, green if exported and not modified, blue if selected, white otherwise
           let bg = '#fff';
