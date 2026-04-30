@@ -567,12 +567,10 @@ async function buildObraDetailMatriz(items, idProyecto) {
           // Export state colors (same as export matrix)
           var hist = exportHistory[exportKey];
           var isDone = !!hist;
-          // "Modificado" = conteo actual ≠ conteo de la última exportación.
+          // "Modificado" = hubo reimport/cambio posterior a la última exportación.
           var isModified = false;
-          if (isDone) {
-            var cur = (typeof hist.barras_actuales === 'number') ? hist.barras_actuales : 0;
-            var last = (typeof hist.barras_ultima_exp === 'number') ? hist.barras_ultima_exp : 0;
-            isModified = cur !== last;
+          if (isDone && hist.ultima_modificacion && hist.ultima_fecha) {
+            isModified = hist.ultima_modificacion > hist.ultima_fecha;
           }
           var cellBg = '#fff';
           if (isDone && isModified) {
