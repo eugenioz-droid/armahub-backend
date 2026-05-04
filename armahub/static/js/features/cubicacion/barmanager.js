@@ -421,109 +421,159 @@ function _renderCobertura(cont, data, info) {
     return;
   }
 
-  // Orden: pisos descendente (techo arriba), ciclos numérico
-  const pisos = data.pisos.slice().sort((a, b) => _pisoSortKey(b) - _pisoSortKey(a));
+  // Sectores estructurales (orden vertical fijo en cada piso).
+  const SECT_NORMALES = ['LCIELO', 'VCIELO', 'ELEV'];
+  const SECT_FUND = 'FUND';
+
+  // ── Reagrupar: cualquier barra con sector=FUND se "atribuye" al piso PF
+  // (las fundaciones viven en el nivel base). Si su piso original no era PF,
+  // se acumula igual y se registra advertencia para el usuario.
+  const fundMisPlaced = {}; // { pisoOriginal: { ciclo: {barras, kg} } }
+  const cellsRegrouped = []; // [{piso, ciclo, sector, barras, kg}]
+  const pfAcc = {};          // { ciclo: {barras, kg} }
+
+  data.cells.forEach(c => {
+    if ((c.sector || '').toUpperCase() === SECT_FUND) {
+      const pisoUp = (c.piso || '').toUpperCase().trim();
+      if (pisoUp !== 'PF') {
+        if (!fundMisPlaced[c.piso]) fundMisPlaced[c.piso] = {};
+        const slot = fundMisPlaced[c.piso][c.ciclo] || { barras: 0, kg: 0 };
+        slot.barras += c.barras; slot.kg += c.kg;
+        fundMisPlaced[c.piso][c.ciclo] = slot;
+      }
+      // Acumular bajo PF (sumando todos los orígenes).
+      const acc = pfAcc[c.ciclo] || { barras: 0, kg: 0 };
+      acc.barras += c.barras; acc.kg += c.kg;
+      pfAcc[c.ciclo] = acc;
+    } else {
+      cellsRegrouped.push(c);
+    }
+  });
+  Object.keys(pfAcc).forEach(ciclo => {
+    cellsRegrouped.push({
+      piso: 'PF', ciclo: ciclo, sector: SECT_FUND,
+      barras: pfAcc[ciclo].barras, kg: pfAcc[ciclo].kg,
+    });
+  });
+
+  // Pisos efectivos: los originales no-PF + PF (si hay datos FUND).
+  const pisosSet = new Set();
+  cellsRegrouped.forEach(c => { if (c.piso) pisosSet.add(c.piso); });
+  const pisos = Array.from(pisosSet).sort((a, b) => _pisoSortKey(b) - _pisoSortKey(a));
+
+  // Ciclos: orden numérico.
   const ciclos = data.ciclos.slice().sort((a, b) => {
     const na = parseInt((a.match(/\d+/) || [0])[0], 10);
     const nb = parseInt((b.match(/\d+/) || [0])[0], 10);
     return na - nb || a.localeCompare(b);
   });
 
-  // Indexar celdas por (piso, ciclo, sector).
+  // Indexar (piso → ciclo → sector → cell)
   const idx = {};
-  data.cells.forEach(c => {
+  cellsRegrouped.forEach(c => {
     if (!idx[c.piso]) idx[c.piso] = {};
     if (!idx[c.piso][c.ciclo]) idx[c.piso][c.ciclo] = {};
     idx[c.piso][c.ciclo][c.sector || ''] = c;
   });
 
-  // Sectores en el mismo orden vertical que matriz constructiva.
-  const SECTORES = [
-    { code: 'LCIELO', color: '#03A9F4' },
-    { code: 'VCIELO', color: '#FF9800' },
-    { code: 'ELEV',   color: '#8BC34A' },
-    { code: 'FUND',   color: '#795548' },
-  ];
+  // Re-calcular max_kg sobre datos reagrupados (PF combinado).
+  let maxKg = 0;
+  cellsRegrouped.forEach(c => { if (c.kg > maxKg) maxKg = c.kg; });
 
-  // Estadística de cobertura: cuenta de cruces piso×ciclo con al menos 1 barra.
+  // Estadística de cobertura: cruces piso × ciclo con al menos 1 barra.
   const totalCruces = pisos.length * ciclos.length;
   const cruceSet = new Set();
-  data.cells.forEach(c => { if (c.barras > 0) cruceSet.add(c.piso + '||' + c.ciclo); });
+  cellsRegrouped.forEach(c => { if (c.barras > 0) cruceSet.add(c.piso + '||' + c.ciclo); });
   const cobPct = totalCruces ? Math.round(cruceSet.size * 100 / totalCruces) : 0;
   if (info) info.textContent = cruceSet.size + ' / ' + totalCruces + ' cruces (' + cobPct + '%)';
 
   const fmtKg = (n) => Math.round(n).toLocaleString('es-CL');
+  const COLOR = '#1565C0';
+  const COLOR_RGB = '21,101,192';
 
-  // Anchos: ciclo y sector con mismo ancho.
-  const COL_W = 56;
+  // ── Warning de FUND mal catalogadas ────────────────────────────────
+  let warnHtml = '';
+  const misKeys = Object.keys(fundMisPlaced);
+  if (misKeys.length) {
+    const lista = misKeys.map(p => {
+      const total = Object.values(fundMisPlaced[p]).reduce((s, x) => s + x.kg, 0);
+      return p + ' (' + fmtKg(total) + ' kg)';
+    }).join(', ');
+    warnHtml = '<div style="background:#fff3cd; border:1px solid #ffc107; color:#856404; ' +
+      'padding:8px 12px; border-radius:6px; margin-bottom:10px; font-size:12px;">' +
+      '⚠️ <strong>Fundaciones mal catalogadas:</strong> hay barras con sector ' +
+      '<code>FUND</code> asignadas a pisos distintos de <code>PF</code>: ' + lista + '. ' +
+      'Se muestran agregadas en la fila <code>PF</code>. ' +
+      'Corrige el piso en la carga para reflejar correctamente el nivel base.' +
+      '</div>';
+  }
 
-  let html = '<table style="border-collapse:separate; border-spacing:2px; font-size:10px; table-layout:fixed;">';
-  // Header: piso | sector | ciclos
+  // ── Tabla ───────────────────────────────────────────────────────────
+  const W_PISO = 90;
+  const W_SECT = 110;
+  const W_CIC = 78;
+
+  let html = warnHtml;
+  html += '<table style="border-collapse:collapse; font-size:11px; table-layout:fixed;">';
   html += '<colgroup>';
-  html += '<col style="width:50px;">';        // piso
-  html += '<col style="width:' + COL_W + 'px;">'; // sector
-  ciclos.forEach(() => { html += '<col style="width:' + COL_W + 'px;">'; });
+  html += '<col style="width:' + W_PISO + 'px;">';
+  html += '<col style="width:' + W_SECT + 'px;">';
+  ciclos.forEach(() => { html += '<col style="width:' + W_CIC + 'px;">'; });
   html += '</colgroup>';
 
+  // Header
   html += '<thead><tr>';
-  html += '<th style="position:sticky; left:0; background:#fff; padding:2px 6px;"></th>';
-  html += '<th style="padding:2px 4px;"></th>';
+  html += '<th style="position:sticky; left:0; background:#fff; padding:4px 6px;"></th>';
+  html += '<th style="background:#fff; padding:4px 6px;"></th>';
   ciclos.forEach(c => {
     const col = _cicloColor(c);
-    html += '<th style="padding:3px 4px; text-align:center; color:#fff; background:' + col +
-      '; border-radius:4px; font-size:10px;">' + c + '</th>';
+    html += '<th style="padding:4px 6px; text-align:center; color:#fff; background:' + col +
+      '; border-radius:4px; font-size:11px;">' + c + '</th>';
   });
   html += '</tr></thead><tbody>';
 
   pisos.forEach(p => {
-    // Filtrar sectores que tengan al menos 1 ciclo con datos en este piso.
-    const sectoresVisibles = SECTORES.filter(s => {
-      const ciclosSect = idx[p] || {};
-      return ciclos.some(c => {
-        const cell = (ciclosSect[c] || {})[s.code];
-        return cell && cell.barras > 0;
-      });
-    });
-    if (!sectoresVisibles.length) return; // piso completamente vacío
+    const pisoUp = (p || '').toUpperCase().trim();
+    const isPF = pisoUp === 'PF' || pisoUp === 'FUND' || pisoUp === 'FUNDACION';
+    const sectoresPiso = isPF ? [SECT_FUND] : SECT_NORMALES;
 
-    sectoresVisibles.forEach((s, si) => {
-      html += '<tr>';
-      // Piso (rowspan en la primera fila del grupo)
+    sectoresPiso.forEach((s, si) => {
+      const isLast = si === sectoresPiso.length - 1;
+      const trBorder = isLast ? 'border-bottom:2px solid #e0e0e0;' : 'border-bottom:1px solid #f5f5f5;';
+      html += '<tr style="' + trBorder + '">';
+
       if (si === 0) {
-        html += '<th rowspan="' + sectoresVisibles.length + '" ' +
-          'style="position:sticky; left:0; background:#fff; padding:3px 8px; ' +
-          'text-align:right; vertical-align:middle; font-weight:700; font-size:12px; ' +
-          'border-right:2px solid #eee;">' + p + '</th>';
+        html += '<th rowspan="' + sectoresPiso.length + '" ' +
+          'style="position:sticky; left:0; background:#fafafa; padding:4px 8px; ' +
+          'text-align:center; vertical-align:middle; font-weight:700; font-size:12px; ' +
+          'border-right:2px solid #e0e0e0;">' + p + '</th>';
       }
-      // Caluga sector con texto y mismo ancho que ciclo
-      html += '<td style="padding:0;">' +
-        '<div style="background:' + s.color + '; color:#fff; font-weight:700; ' +
-        'font-size:10px; padding:4px 0; text-align:center; border-radius:4px; ' +
-        'letter-spacing:0.5px;">' + s.code + '</div></td>';
 
-      // Celdas por ciclo
+      html += '<td style="padding:4px 10px; text-align:left; color:#444; ' +
+        'font-size:11px; font-weight:600; background:#fafafa; ' +
+        'border-right:1px solid #eee;">' + s + '</td>';
+
       ciclos.forEach(c => {
-        const cell = ((idx[p] || {})[c] || {})[s.code];
+        const cell = ((idx[p] || {})[c] || {})[s];
         const kg = cell ? cell.kg : 0;
         const barras = cell ? cell.barras : 0;
         const pe = p.replace(/'/g, "\\'");
         const ce = c.replace(/'/g, "\\'");
-        const se = s.code;
+        const se = s;
         if (barras > 0) {
-          const ratio = data.max_kg > 0 ? Math.min(1, kg / data.max_kg) : 0.5;
-          const alpha = (0.45 + ratio * 0.55).toFixed(2);
-          const r = parseInt(s.color.slice(1, 3), 16);
-          const g = parseInt(s.color.slice(3, 5), 16);
-          const b = parseInt(s.color.slice(5, 7), 16);
-          const bg = 'rgba(' + r + ',' + g + ',' + b + ',' + alpha + ')';
-          const tooltip = p + ' · ' + c + ' · ' + s.code + ' — ' + barras + ' barras · ' + fmtKg(kg) + ' kg';
-          html += '<td onclick="filtrarPorCobertura(\'' + pe + '\',\'' + ce + '\',\'' + se + '\')" ' +
-            'title="' + tooltip + '" ' +
+          const ratio = maxKg > 0 ? Math.min(1, kg / maxKg) : 0.5;
+          const alpha = (0.35 + ratio * 0.65).toFixed(2);
+          const bg = 'rgba(' + COLOR_RGB + ',' + alpha + ')';
+          const tooltip = p + ' · ' + c + ' · ' + s + ' — ' + barras + ' barras · ' + fmtKg(kg) + ' kg';
+          // PF agrega múltiples pisos: el filtro click no setea piso (solo ciclo+sector).
+          const onclick = isPF
+            ? "filtrarPorCobertura('','" + ce + "','" + se + "')"
+            : "filtrarPorCobertura('" + pe + "','" + ce + "','" + se + "')";
+          html += '<td onclick="' + onclick + '" title="' + tooltip + '" ' +
             'style="cursor:pointer; background:' + bg + '; color:#fff; font-weight:700; ' +
-            'font-size:10px; padding:4px 0; text-align:center; border-radius:3px;">' +
+            'font-size:10px; padding:5px 4px; text-align:center;">' +
             fmtKg(kg) + ' kg</td>';
         } else {
-          // No existe → no se muestra (transparente, sin borde).
           html += '<td style="background:transparent;"></td>';
         }
       });
@@ -532,13 +582,15 @@ function _renderCobertura(cont, data, info) {
   });
   html += '</tbody></table>';
 
-  // Leyenda de sectores
-  html += '<div style="display:flex; gap:14px; flex-wrap:wrap; margin-top:10px; font-size:11px; color:#555;">';
-  SECTORES.forEach(s => {
-    html += '<span style="display:inline-flex; align-items:center; gap:5px;">' +
-      '<span style="display:inline-block; width:12px; height:12px; background:' + s.color + '; border-radius:2px;"></span>' +
-      s.code + '</span>';
-  });
+  // Leyenda simplificada (un solo color, intensidad ∝ kg).
+  html += '<div style="display:flex; gap:14px; flex-wrap:wrap; margin-top:10px; font-size:11px; color:#666;">';
+  html += '<span style="display:inline-flex; align-items:center; gap:5px;">' +
+    '<span style="display:inline-block; width:14px; height:14px; background:rgba(' + COLOR_RGB + ',0.95); border-radius:3px;"></span>' +
+    'mayor concentración de kg</span>';
+  html += '<span style="display:inline-flex; align-items:center; gap:5px;">' +
+    '<span style="display:inline-block; width:14px; height:14px; background:rgba(' + COLOR_RGB + ',0.4); border-radius:3px;"></span>' +
+    'menor concentración</span>';
+  html += '<span style="color:#999;">· celda en blanco = sin cubicación</span>';
   html += '</div>';
 
   cont.innerHTML = html;
@@ -549,11 +601,15 @@ function filtrarPorCobertura(piso, ciclo, sector) {
   const cSel = document.getElementById('ciclo');
   const sSel = document.getElementById('sector');
   if (pSel) {
-    if (!Array.from(pSel.options).some(o => o.value === piso)) {
-      const o = document.createElement('option'); o.value = piso; o.textContent = piso;
-      pSel.appendChild(o);
+    if (piso) {
+      if (!Array.from(pSel.options).some(o => o.value === piso)) {
+        const o = document.createElement('option'); o.value = piso; o.textContent = piso;
+        pSel.appendChild(o);
+      }
+      pSel.value = piso;
+    } else {
+      pSel.value = '';
     }
-    pSel.value = piso;
   }
   if (cSel) {
     if (!Array.from(cSel.options).some(o => o.value === ciclo)) {
