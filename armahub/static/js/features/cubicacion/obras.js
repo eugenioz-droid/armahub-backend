@@ -3,7 +3,8 @@
 
 // Store proyectos data globally for filtering
 var _proyectosData = [];
-var _proyectosSoloConDatos = false;
+// Por defecto mostramos solo obras con datos cargados (kg, barras o ppi > 0).
+var _proyectosSoloConDatos = true;
 
 function _toNumber(v) {
   var n = Number(v);

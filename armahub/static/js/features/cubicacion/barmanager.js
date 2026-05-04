@@ -429,60 +429,103 @@ function _renderCobertura(cont, data, info) {
     return na - nb || a.localeCompare(b);
   });
 
-  // Indexar celdas
+  // Indexar celdas por (piso, ciclo, sector). Cada cell del backend ya viene desagregada.
   const idx = {};
-  data.cells.forEach(c => { idx[c.piso + '||' + c.ciclo] = c; });
+  data.cells.forEach(c => {
+    const k = c.piso + '||' + c.ciclo;
+    if (!idx[k]) idx[k] = {};
+    idx[k][c.sector || ''] = c;
+  });
+
+  // Layout 2×2 fijo: arriba LCIELO/VCIELO, abajo ELEV/FUND
+  // (mismo orden visual que la matriz constructiva del módulo Obras).
+  const SECTORES = [
+    { code: 'LCIELO', color: '#03A9F4', q: 0 }, // top-left
+    { code: 'VCIELO', color: '#FF9800', q: 1 }, // top-right
+    { code: 'ELEV',   color: '#8BC34A', q: 2 }, // bottom-left
+    { code: 'FUND',   color: '#795548', q: 3 }, // bottom-right
+  ];
 
   const totalCruces = pisos.length * ciclos.length;
-  const conData = data.cells.filter(c => c.barras > 0).length;
+  const conData = (() => {
+    const set = new Set();
+    data.cells.forEach(c => { if (c.barras > 0) set.add(c.piso + '||' + c.ciclo); });
+    return set.size;
+  })();
   const cobPct = totalCruces ? Math.round(conData * 100 / totalCruces) : 0;
   if (info) info.textContent = conData + ' / ' + totalCruces + ' cruces (' + cobPct + '%)';
 
-  let html = '<table style="border-collapse:separate; border-spacing:3px; font-size:11px;">';
-  html += '<thead><tr><th style="position:sticky; left:0; background:#fff; padding:4px 8px;"></th>';
+  const fmtKg = (n) => Math.round(n).toLocaleString('es-CL');
+
+  let html = '<table style="border-collapse:separate; border-spacing:2px; font-size:10px;">';
+  // Header: ciclo names más compactos
+  html += '<thead><tr><th style="position:sticky; left:0; background:#fff; padding:2px 6px; min-width:48px;"></th>';
   ciclos.forEach(c => {
     const col = _cicloColor(c);
-    html += '<th style="padding:4px 6px; text-align:center; color:#fff; background:' + col +
-      '; border-radius:6px; font-size:10px;">' + c + '</th>';
+    html += '<th style="padding:3px 4px; text-align:center; color:#fff; background:' + col +
+      '; border-radius:4px; font-size:10px; min-width:64px;">' + c + '</th>';
   });
   html += '</tr></thead><tbody>';
 
   pisos.forEach(p => {
-    html += '<tr><th style="position:sticky; left:0; background:#fff; padding:4px 10px; text-align:right; font-weight:600; font-size:11px;">' + p + '</th>';
+    html += '<tr><th style="position:sticky; left:0; background:#fff; padding:3px 8px; text-align:right; font-weight:600; font-size:11px;">' + p + '</th>';
     ciclos.forEach(c => {
-      const cell = idx[p + '||' + c];
-      const kg = cell ? cell.kg : 0;
-      const barras = cell ? cell.barras : 0;
+      const sectMap = idx[p + '||' + c] || {};
       const pe = p.replace(/'/g, "\\'");
       const ce = c.replace(/'/g, "\\'");
-      if (barras > 0) {
-        const ratio = data.max_kg > 0 ? Math.min(1, kg / data.max_kg) : 0.5;
-        const alpha = 0.35 + ratio * 0.65;
-        const tooltip = p + ' · ' + c + ' — ' + barras + ' barras · ' + Math.round(kg).toLocaleString('es-CL') + ' kg';
-        html += '<td onclick="filtrarPorCobertura(\'' + pe + '\',\'' + ce + '\')" ' +
-          'title="' + tooltip + '" ' +
-          'style="cursor:pointer; min-width:42px; height:28px; text-align:center; ' +
-          'background:rgba(21,101,192,' + alpha.toFixed(2) + '); color:#fff; ' +
-          'border-radius:4px; font-weight:600; font-size:10px;">' +
-          (kg >= 1000 ? Math.round(kg / 1000) + 'k' : Math.round(kg)) +
-          '</td>';
-      } else {
-        html += '<td onclick="filtrarPorCobertura(\'' + pe + '\',\'' + ce + '\')" ' +
-          'title="' + p + ' · ' + c + ' — sin cubicación" ' +
-          'style="cursor:pointer; min-width:42px; height:28px; text-align:center; ' +
-          'background:#fff5f5; border:1px dashed #e57373; border-radius:4px; ' +
-          'color:#bbb; font-size:11px;">·</td>';
-      }
+
+      // Construir 2×2 grid de cuadrantes por sector
+      let inner = '<div style="display:grid; grid-template-columns:1fr 1fr; grid-template-rows:1fr 1fr; gap:1px; width:64px; height:34px;">';
+      SECTORES.forEach(s => {
+        const sCell = sectMap[s.code];
+        const kg = sCell ? sCell.kg : 0;
+        const barras = sCell ? sCell.barras : 0;
+        const se = s.code;
+        if (barras > 0) {
+          const ratio = data.max_kg > 0 ? Math.min(1, kg / data.max_kg) : 0.5;
+          const alpha = (0.45 + ratio * 0.55).toFixed(2);
+          const tooltip = p + ' · ' + c + ' · ' + s.code + ' — ' + barras + ' barras · ' + fmtKg(kg) + ' kg';
+          // hex → rgba con alpha aplicado
+          const r = parseInt(s.color.slice(1, 3), 16);
+          const g = parseInt(s.color.slice(3, 5), 16);
+          const b = parseInt(s.color.slice(5, 7), 16);
+          const bg = 'rgba(' + r + ',' + g + ',' + b + ',' + alpha + ')';
+          inner += '<div onclick="filtrarPorCobertura(\'' + pe + '\',\'' + ce + '\',\'' + se + '\')" ' +
+            'title="' + tooltip + '" ' +
+            'style="cursor:pointer; background:' + bg + '; color:#fff; font-weight:700; ' +
+            'font-size:9px; line-height:1; display:flex; align-items:center; justify-content:center; ' +
+            'border-radius:2px;">' + fmtKg(kg) + '</div>';
+        } else {
+          inner += '<div onclick="filtrarPorCobertura(\'' + pe + '\',\'' + ce + '\',\'' + se + '\')" ' +
+            'title="' + p + ' · ' + c + ' · ' + s.code + ' — sin cubicación" ' +
+            'style="cursor:pointer; background:#fafafa; border:1px dashed #e0e0e0; border-radius:2px;"></div>';
+        }
+      });
+      inner += '</div>';
+
+      html += '<td style="padding:1px;">' + inner + '</td>';
     });
     html += '</tr>';
   });
   html += '</tbody></table>';
+
+  // Leyenda de sectores
+  html += '<div style="display:flex; gap:14px; flex-wrap:wrap; margin-top:10px; font-size:11px; color:#555;">';
+  SECTORES.forEach(s => {
+    html += '<span style="display:inline-flex; align-items:center; gap:5px;">' +
+      '<span style="display:inline-block; width:12px; height:12px; background:' + s.color + '; border-radius:2px;"></span>' +
+      s.code + '</span>';
+  });
+  html += '<span style="color:#999;">· Cuadrantes: ↖ LCIELO  ↗ VCIELO  ↙ ELEV  ↘ FUND</span>';
+  html += '</div>';
+
   cont.innerHTML = html;
 }
 
-function filtrarPorCobertura(piso, ciclo) {
+function filtrarPorCobertura(piso, ciclo, sector) {
   const pSel = document.getElementById('piso');
   const cSel = document.getElementById('ciclo');
+  const sSel = document.getElementById('sector');
   if (pSel) {
     if (!Array.from(pSel.options).some(o => o.value === piso)) {
       const o = document.createElement('option'); o.value = piso; o.textContent = piso;
@@ -496,6 +539,13 @@ function filtrarPorCobertura(piso, ciclo) {
       cSel.appendChild(o);
     }
     cSel.value = ciclo;
+  }
+  if (sSel && sector) {
+    if (!Array.from(sSel.options).some(o => o.value === sector)) {
+      const o = document.createElement('option'); o.value = sector; o.textContent = sector;
+      sSel.appendChild(o);
+    }
+    sSel.value = sector;
   }
   const eSel = document.getElementById('eje'); if (eSel) eSel.value = '';
   if (typeof onFilterChange === 'function') onFilterChange();
@@ -514,8 +564,32 @@ function resetFiltros() {
   if (typeof loadCargasDropdown === 'function') loadCargasDropdown('');
   const si = document.getElementById('proyectoSearchInput'); if (si) si.value = '';
   try { localStorage.removeItem(FILTER_STORAGE_KEY); } catch (e) {}
+
+  // Estado interno: limpiar resultados previos para evitar que queden barras
+  // de la búsqueda anterior en pantalla cuando no hay proyecto seleccionado.
   expanded.clear();
   detailCache.clear();
+  lastElementos = [];
+  lastTotal = 0;
+  currentOffset = 0;
+
+  // UI: borrar tabla, KPIs y contadores explícitamente.
+  const tbl = document.getElementById('tabla'); if (tbl) tbl.innerHTML = '';
+  const kpis = document.getElementById('bmKpis'); if (kpis) kpis.innerHTML = '<span class="muted">Selecciona un proyecto…</span>';
+  const cnt = document.getElementById('count'); if (cnt) cnt.textContent = '';
+  const pi = document.getElementById('pageInfo'); if (pi) pi.textContent = '';
+
+  // Cobertura: ocultarla y resetear estado.
+  const cobCard = document.getElementById('bmCoberturaCard');
+  const cobBtn = document.getElementById('btnCobertura');
+  const cobCont = document.getElementById('bmCoberturaContent');
+  const cobInfo = document.getElementById('bmCoberturaInfo');
+  if (cobCard) cobCard.style.display = 'none';
+  if (cobBtn) cobBtn.textContent = '📊 Mostrar cobertura';
+  if (cobCont) cobCont.innerHTML = '';
+  if (cobInfo) cobInfo.textContent = '';
+  _coberturaVisible = false;
+
   if (typeof loadFilters === 'function') loadFilters();
   buscar(true);
 }

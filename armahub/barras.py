@@ -384,13 +384,14 @@ def get_barras_cobertura(
             full_params = params + pf_params
 
             sql = f"""
-                SELECT COALESCE(piso, '')  AS piso,
-                       COALESCE(ciclo, '') AS ciclo,
-                       COUNT(*)            AS barras,
+                SELECT COALESCE(piso, '')   AS piso,
+                       COALESCE(ciclo, '')  AS ciclo,
+                       COALESCE(sector, '') AS sector,
+                       COUNT(*)             AS barras,
                        COALESCE(SUM(peso_total), 0) AS kg
                 FROM barras
                 {full_where}
-                GROUP BY COALESCE(piso, ''), COALESCE(ciclo, '')
+                GROUP BY COALESCE(piso, ''), COALESCE(ciclo, ''), COALESCE(sector, '')
             """
             cur.execute(sql, full_params)
             rows = cur.fetchall()
@@ -399,13 +400,16 @@ def get_barras_cobertura(
         {
             "piso": r[0] or "",
             "ciclo": r[1] or "",
-            "barras": int(r[2] or 0),
-            "kg": round(float(r[3] or 0), 2),
+            "sector": r[2] or "",
+            "barras": int(r[3] or 0),
+            "kg": round(float(r[4] or 0), 2),
         }
         for r in rows
     ]
     pisos = sorted({c["piso"] for c in cells if c["piso"]})
     ciclos = sorted({c["ciclo"] for c in cells if c["ciclo"]})
+    # max_kg se calcula sobre cuadrantes individuales (piso×ciclo×sector), que es la
+    # unidad visual del heatmap (cada cuadrante se colorea por su propia intensidad).
     max_kg = max((c["kg"] for c in cells), default=0)
 
     return {
