@@ -255,6 +255,11 @@ Objetivo: consolidar contratos y reducir drift.
 	- [x] PC.17.12 Smoke test: detalle + edición + acciones + imágenes + ishikawa + seguimientos
 	- [x] PC.17.13 Smoke test: presentaciones + dashboards + landing
 
+- [x] PC.18 Bar Manager — vista por elementos (piso × sector × eje) con expandable a detalle por ciclo + barras individuales. Endpoint `/barras/elementos` agrega y entrega KPIs (elementos/barras/kg/pisos/sectores/ejes). Eliminada la edición/creación manual desde Bar Manager (la fuente de verdad es CSV/pedidos)
+- [ ] PC.19 Bar Manager — Indicadores de salud por elemento (futuro): badges de "ciclos faltantes", "diámetros mixtos", "sin pedido", "modificado tras export"
+- [ ] PC.20 Bar Manager — Mapa de cobertura Piso × Ciclo (futuro): heatmap visual que muestre, por proyecto, qué combinaciones piso×ciclo tienen barras cubicadas y cuáles están vacías
+- [ ] PC.21 Bar Manager — Toggle "Detalle plano" (futuro): vista alternativa que detalla por (plano_code, piso, ciclo) en lugar de por elemento, útil para auditar duplicidad de planos sobre un mismo eje
+
 ---
 
 ## Orden Recomendado de Ejecucion

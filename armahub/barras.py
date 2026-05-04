@@ -71,6 +71,7 @@ def get_barras(
     sector: str = None,
     piso: str = None,
     ciclo: str = None,
+    eje: str = None,
     q: str = None,                      # búsqueda simple
     origen: str = None,                 # csv / manual / pedido
     import_id: int = None,              # filtrar por carga específica
@@ -109,6 +110,10 @@ def get_barras(
     if ciclo:
         base_where += " AND ciclo = %s"
         params.append(ciclo)
+
+    if eje:
+        base_where += " AND eje = %s"
+        params.append(eje)
 
     # filtro por origen
     if origen:
@@ -162,6 +167,183 @@ def get_barras(
         "order_dir": order_dir,
         "q": q or "",
         "data": data
+    }
+
+
+# ========================= VISTA AGRUPADA POR ELEMENTO =========================
+# Un "elemento" es la unidad lógica de cubicación: (piso, sector, eje).
+# Dentro de un elemento hay barras distribuidas en múltiples ciclos.
+# Esta vista permite navegar la cubicación con la granularidad real del cubicador.
+
+@router.get("/barras/elementos")
+def get_barras_elementos(
+    proyecto: str = None,
+    plano_code: str = None,
+    sector: str = None,
+    piso: str = None,
+    ciclo: str = None,
+    q: str = None,
+    origen: str = None,
+    import_id: int = None,
+    limit: int = 50,
+    offset: int = 0,
+    user=Depends(get_current_user),
+):
+    """Retorna barras agrupadas por (piso, sector, eje).
+
+    Cada fila ('elemento') agrega:
+      - items: número de filas/barras lógicas en BD
+      - sum_cant_total, sum_largo_total, sum_kg: sumas reales
+      - diam_min, diam_max: rango de diámetros
+      - ciclos: lista ordenada de ciclos cubiertos
+      - origenes: lista de origenes presentes (csv/manual/pedido)
+
+    Paginación por elemento. Orden fijo: piso (natural) → sector → eje.
+
+    Devuelve también KPIs globales del filtro: elementos_total, barras_total,
+    kg_total, pisos_count, sectores_count, ejes_count.
+    """
+    if limit < 1: limit = 1
+    if limit > 500: limit = 500
+    if offset < 0: offset = 0
+
+    base_where = " WHERE 1=1 "
+    params = []
+    if proyecto:
+        base_where += " AND id_proyecto = %s"; params.append(proyecto)
+    if plano_code:
+        base_where += " AND plano_code = %s"; params.append(plano_code)
+    if sector:
+        base_where += " AND sector = %s"; params.append(sector)
+    if piso:
+        base_where += " AND piso = %s"; params.append(piso)
+    if ciclo:
+        base_where += " AND ciclo = %s"; params.append(ciclo)
+    if origen:
+        base_where += " AND origen = %s"; params.append(origen)
+    if import_id is not None:
+        base_where += " AND import_id = %s"; params.append(import_id)
+    if q and q.strip():
+        qq = f"%{q.strip()}%"
+        base_where += " AND (id_unico ILIKE %s OR eje ILIKE %s OR plano_code ILIKE %s)"
+        params.extend([qq, qq, qq])
+
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            allowed = _get_allowed_project_ids(cur, user)
+            pf_sql, pf_params = _project_filter_sql(allowed)
+            full_where = base_where + pf_sql
+            full_params = params + pf_params
+
+            # Agregación por (piso, sector, eje)
+            agg_select = """
+                SELECT COALESCE(piso, '')   AS piso,
+                       COALESCE(sector, '') AS sector,
+                       COALESCE(eje, '')    AS eje,
+                       COUNT(*)                                       AS items,
+                       COALESCE(SUM(cant_total), 0)                   AS sum_cant_total,
+                       COALESCE(SUM(largo_total), 0)                  AS sum_largo_total,
+                       COALESCE(SUM(peso_total), 0)                   AS sum_kg,
+                       MIN(diam)                                      AS diam_min,
+                       MAX(diam)                                      AS diam_max,
+                       array_agg(DISTINCT COALESCE(ciclo, ''))        AS ciclos,
+                       array_agg(DISTINCT COALESCE(origen, 'csv'))    AS origenes
+                FROM barras
+                """
+            # COUNT total de elementos para paginación
+            count_sql = f"""
+                SELECT COUNT(*) FROM (
+                    SELECT 1 FROM barras
+                    {full_where}
+                    GROUP BY COALESCE(piso, ''), COALESCE(sector, ''), COALESCE(eje, '')
+                ) t
+            """
+            cur.execute(count_sql, full_params)
+            elementos_total = int(cur.fetchone()[0])
+
+            # KPIs globales del filtro
+            kpi_sql = f"""
+                SELECT COUNT(*)                                             AS barras_total,
+                       COALESCE(SUM(peso_total), 0)                         AS kg_total,
+                       COALESCE(SUM(cant_total), 0)                         AS cant_total_sum,
+                       COUNT(DISTINCT COALESCE(piso, ''))                   AS pisos_count,
+                       COUNT(DISTINCT COALESCE(sector, ''))                 AS sectores_count,
+                       COUNT(DISTINCT COALESCE(eje, ''))                    AS ejes_count
+                FROM barras
+                {full_where}
+            """
+            cur.execute(kpi_sql, full_params)
+            kpi_row = cur.fetchone() or (0, 0, 0, 0, 0, 0)
+
+            # Datos agrupados con orden natural por piso usando regex para extraer número
+            # Ej: P1, P2, P10 ordenan correctamente; resto al final.
+            # Orden: Piso (natural) → Sector (ELEV/LCIELO/VCIELO/FUND) → Eje
+            order_clause = """
+                ORDER BY
+                  CASE WHEN COALESCE(piso, '') = '' THEN 1 ELSE 0 END,
+                  COALESCE(NULLIF(regexp_replace(COALESCE(piso, ''), '\\D', '', 'g'), '')::int, 0),
+                  COALESCE(piso, ''),
+                  CASE COALESCE(sector, '')
+                    WHEN 'ELEV'   THEN 1
+                    WHEN 'LCIELO' THEN 2
+                    WHEN 'VCIELO' THEN 3
+                    WHEN 'FUND'   THEN 4
+                    ELSE 9
+                  END,
+                  COALESCE(sector, ''),
+                  COALESCE(eje, '')
+            """
+            data_sql = f"""
+                {agg_select}
+                {full_where}
+                GROUP BY COALESCE(piso, ''), COALESCE(sector, ''), COALESCE(eje, '')
+                {order_clause}
+                LIMIT %s OFFSET %s
+            """
+            cur.execute(data_sql, full_params + [limit, offset])
+            rows = cur.fetchall()
+
+    elementos = []
+    for r in rows:
+        ciclos_arr = list(r[9]) if r[9] else []
+        ciclos_arr = [c for c in ciclos_arr if c]
+        try:
+            ciclos_arr.sort(key=lambda c: (
+                ''.join([ch for ch in c if not ch.isdigit()]),
+                int(''.join([ch for ch in c if ch.isdigit()]) or 0),
+                c
+            ))
+        except Exception:
+            ciclos_arr.sort()
+        origenes_arr = sorted(set([o for o in (list(r[10]) if r[10] else []) if o]))
+        elementos.append({
+            "piso": r[0] or "",
+            "sector": r[1] or "",
+            "eje": r[2] or "",
+            "items": int(r[3]),
+            "sum_cant_total": float(r[4] or 0),
+            "sum_largo_total": float(r[5] or 0),
+            "sum_kg": round(float(r[6] or 0), 2),
+            "diam_min": int(r[7]) if r[7] is not None else None,
+            "diam_max": int(r[8]) if r[8] is not None else None,
+            "ciclos": ciclos_arr,
+            "origenes": origenes_arr,
+        })
+
+    return {
+        "data": elementos,
+        "total": elementos_total,
+        "limit": limit,
+        "offset": offset,
+        "summary": {
+            "elementos_total": elementos_total,
+            "barras_total": int(kpi_row[0] or 0),
+            "kg_total": round(float(kpi_row[1] or 0), 2),
+            "cant_total_sum": float(kpi_row[2] or 0),
+            "pisos_count": int(kpi_row[3] or 0),
+            "sectores_count": int(kpi_row[4] or 0),
+            "ejes_count": int(kpi_row[5] or 0),
+        }
     }
 
 
