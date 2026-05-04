@@ -429,83 +429,106 @@ function _renderCobertura(cont, data, info) {
     return na - nb || a.localeCompare(b);
   });
 
-  // Indexar celdas por (piso, ciclo, sector). Cada cell del backend ya viene desagregada.
+  // Indexar celdas por (piso, ciclo, sector).
   const idx = {};
   data.cells.forEach(c => {
-    const k = c.piso + '||' + c.ciclo;
-    if (!idx[k]) idx[k] = {};
-    idx[k][c.sector || ''] = c;
+    if (!idx[c.piso]) idx[c.piso] = {};
+    if (!idx[c.piso][c.ciclo]) idx[c.piso][c.ciclo] = {};
+    idx[c.piso][c.ciclo][c.sector || ''] = c;
   });
 
-  // Layout 2×2 fijo: arriba LCIELO/VCIELO, abajo ELEV/FUND
-  // (mismo orden visual que la matriz constructiva del módulo Obras).
+  // Sectores en el mismo orden vertical que matriz constructiva.
   const SECTORES = [
-    { code: 'LCIELO', color: '#03A9F4', q: 0 }, // top-left
-    { code: 'VCIELO', color: '#FF9800', q: 1 }, // top-right
-    { code: 'ELEV',   color: '#8BC34A', q: 2 }, // bottom-left
-    { code: 'FUND',   color: '#795548', q: 3 }, // bottom-right
+    { code: 'LCIELO', color: '#03A9F4' },
+    { code: 'VCIELO', color: '#FF9800' },
+    { code: 'ELEV',   color: '#8BC34A' },
+    { code: 'FUND',   color: '#795548' },
   ];
 
+  // Estadística de cobertura: cuenta de cruces piso×ciclo con al menos 1 barra.
   const totalCruces = pisos.length * ciclos.length;
-  const conData = (() => {
-    const set = new Set();
-    data.cells.forEach(c => { if (c.barras > 0) set.add(c.piso + '||' + c.ciclo); });
-    return set.size;
-  })();
-  const cobPct = totalCruces ? Math.round(conData * 100 / totalCruces) : 0;
-  if (info) info.textContent = conData + ' / ' + totalCruces + ' cruces (' + cobPct + '%)';
+  const cruceSet = new Set();
+  data.cells.forEach(c => { if (c.barras > 0) cruceSet.add(c.piso + '||' + c.ciclo); });
+  const cobPct = totalCruces ? Math.round(cruceSet.size * 100 / totalCruces) : 0;
+  if (info) info.textContent = cruceSet.size + ' / ' + totalCruces + ' cruces (' + cobPct + '%)';
 
   const fmtKg = (n) => Math.round(n).toLocaleString('es-CL');
 
-  let html = '<table style="border-collapse:separate; border-spacing:2px; font-size:10px;">';
-  // Header: ciclo names más compactos
-  html += '<thead><tr><th style="position:sticky; left:0; background:#fff; padding:2px 6px; min-width:48px;"></th>';
+  // Anchos: ciclo y sector con mismo ancho.
+  const COL_W = 56;
+
+  let html = '<table style="border-collapse:separate; border-spacing:2px; font-size:10px; table-layout:fixed;">';
+  // Header: piso | sector | ciclos
+  html += '<colgroup>';
+  html += '<col style="width:50px;">';        // piso
+  html += '<col style="width:' + COL_W + 'px;">'; // sector
+  ciclos.forEach(() => { html += '<col style="width:' + COL_W + 'px;">'; });
+  html += '</colgroup>';
+
+  html += '<thead><tr>';
+  html += '<th style="position:sticky; left:0; background:#fff; padding:2px 6px;"></th>';
+  html += '<th style="padding:2px 4px;"></th>';
   ciclos.forEach(c => {
     const col = _cicloColor(c);
     html += '<th style="padding:3px 4px; text-align:center; color:#fff; background:' + col +
-      '; border-radius:4px; font-size:10px; min-width:64px;">' + c + '</th>';
+      '; border-radius:4px; font-size:10px;">' + c + '</th>';
   });
   html += '</tr></thead><tbody>';
 
   pisos.forEach(p => {
-    html += '<tr><th style="position:sticky; left:0; background:#fff; padding:3px 8px; text-align:right; font-weight:600; font-size:11px;">' + p + '</th>';
-    ciclos.forEach(c => {
-      const sectMap = idx[p + '||' + c] || {};
-      const pe = p.replace(/'/g, "\\'");
-      const ce = c.replace(/'/g, "\\'");
+    // Filtrar sectores que tengan al menos 1 ciclo con datos en este piso.
+    const sectoresVisibles = SECTORES.filter(s => {
+      const ciclosSect = idx[p] || {};
+      return ciclos.some(c => {
+        const cell = (ciclosSect[c] || {})[s.code];
+        return cell && cell.barras > 0;
+      });
+    });
+    if (!sectoresVisibles.length) return; // piso completamente vacío
 
-      // Construir 2×2 grid de cuadrantes por sector
-      let inner = '<div style="display:grid; grid-template-columns:1fr 1fr; grid-template-rows:1fr 1fr; gap:1px; width:64px; height:34px;">';
-      SECTORES.forEach(s => {
-        const sCell = sectMap[s.code];
-        const kg = sCell ? sCell.kg : 0;
-        const barras = sCell ? sCell.barras : 0;
+    sectoresVisibles.forEach((s, si) => {
+      html += '<tr>';
+      // Piso (rowspan en la primera fila del grupo)
+      if (si === 0) {
+        html += '<th rowspan="' + sectoresVisibles.length + '" ' +
+          'style="position:sticky; left:0; background:#fff; padding:3px 8px; ' +
+          'text-align:right; vertical-align:middle; font-weight:700; font-size:12px; ' +
+          'border-right:2px solid #eee;">' + p + '</th>';
+      }
+      // Caluga sector con texto y mismo ancho que ciclo
+      html += '<td style="padding:0;">' +
+        '<div style="background:' + s.color + '; color:#fff; font-weight:700; ' +
+        'font-size:10px; padding:4px 0; text-align:center; border-radius:4px; ' +
+        'letter-spacing:0.5px;">' + s.code + '</div></td>';
+
+      // Celdas por ciclo
+      ciclos.forEach(c => {
+        const cell = ((idx[p] || {})[c] || {})[s.code];
+        const kg = cell ? cell.kg : 0;
+        const barras = cell ? cell.barras : 0;
+        const pe = p.replace(/'/g, "\\'");
+        const ce = c.replace(/'/g, "\\'");
         const se = s.code;
         if (barras > 0) {
           const ratio = data.max_kg > 0 ? Math.min(1, kg / data.max_kg) : 0.5;
           const alpha = (0.45 + ratio * 0.55).toFixed(2);
-          const tooltip = p + ' · ' + c + ' · ' + s.code + ' — ' + barras + ' barras · ' + fmtKg(kg) + ' kg';
-          // hex → rgba con alpha aplicado
           const r = parseInt(s.color.slice(1, 3), 16);
           const g = parseInt(s.color.slice(3, 5), 16);
           const b = parseInt(s.color.slice(5, 7), 16);
           const bg = 'rgba(' + r + ',' + g + ',' + b + ',' + alpha + ')';
-          inner += '<div onclick="filtrarPorCobertura(\'' + pe + '\',\'' + ce + '\',\'' + se + '\')" ' +
+          const tooltip = p + ' · ' + c + ' · ' + s.code + ' — ' + barras + ' barras · ' + fmtKg(kg) + ' kg';
+          html += '<td onclick="filtrarPorCobertura(\'' + pe + '\',\'' + ce + '\',\'' + se + '\')" ' +
             'title="' + tooltip + '" ' +
             'style="cursor:pointer; background:' + bg + '; color:#fff; font-weight:700; ' +
-            'font-size:9px; line-height:1; display:flex; align-items:center; justify-content:center; ' +
-            'border-radius:2px;">' + fmtKg(kg) + '</div>';
+            'font-size:10px; padding:4px 0; text-align:center; border-radius:3px;">' +
+            fmtKg(kg) + ' kg</td>';
         } else {
-          inner += '<div onclick="filtrarPorCobertura(\'' + pe + '\',\'' + ce + '\',\'' + se + '\')" ' +
-            'title="' + p + ' · ' + c + ' · ' + s.code + ' — sin cubicación" ' +
-            'style="cursor:pointer; background:#fafafa; border:1px dashed #e0e0e0; border-radius:2px;"></div>';
+          // No existe → no se muestra (transparente, sin borde).
+          html += '<td style="background:transparent;"></td>';
         }
       });
-      inner += '</div>';
-
-      html += '<td style="padding:1px;">' + inner + '</td>';
+      html += '</tr>';
     });
-    html += '</tr>';
   });
   html += '</tbody></table>';
 
@@ -516,7 +539,6 @@ function _renderCobertura(cont, data, info) {
       '<span style="display:inline-block; width:12px; height:12px; background:' + s.color + '; border-radius:2px;"></span>' +
       s.code + '</span>';
   });
-  html += '<span style="color:#999;">· Cuadrantes: ↖ LCIELO  ↗ VCIELO  ↙ ELEV  ↘ FUND</span>';
   html += '</div>';
 
   cont.innerHTML = html;

@@ -9,34 +9,11 @@ async function loadCubicacionModule() {
   await loadClientes();
   await loadCalculistas();
 
-  var saved = typeof restoreFiltersFromStorage === 'function' ? restoreFiltersFromStorage() : null;
-  var dep = {};
-  if (saved && saved.proyecto) {
-    dep.proyecto = saved.proyecto;
-  }
-  await loadFilters(Object.keys(dep).length ? dep : null);
-
-  if (saved) {
-    ['proyecto', 'plano', 'sector', 'piso', 'ciclo', 'eje'].forEach(function(field) {
-      var element = document.getElementById(field);
-      if (element && saved[field]) {
-        element.value = saved[field];
-      }
-    });
-    if (saved.proyecto) {
-      await loadCargasDropdown(saved.proyecto);
-    }
-    if (saved.filtroCarga) {
-      var filtroCarga = document.getElementById('filtroCarga');
-      if (filtroCarga) {
-        filtroCarga.value = saved.filtroCarga;
-      }
-    }
-    if (saved.filtroOrigen) {
-      var fo = document.getElementById('filtroOrigen');
-      if (fo) fo.value = saved.filtroOrigen;
-    }
-  }
+  // Filtros del Bar Manager: NO restauramos selección previa al re-entrar.
+  // Al volver al tab queremos vista limpia (sin proyecto seleccionado),
+  // tal como pidió el usuario para evitar resultados “fantasma”.
+  try { localStorage.removeItem(FILTER_STORAGE_KEY); } catch (e) {}
+  await loadFilters(null);
 
   await loadCargas();
   await loadPedidos();
