@@ -509,22 +509,22 @@ function _renderCobertura(cont, data, info) {
   }
 
   // ── Tabla ───────────────────────────────────────────────────────────
-  const W_PISO = 90;
-  const W_SECT = 110;
+  // Piso/Sector: shrink-to-fit (ancho mínimo dado por el contenido, sin tabla
+  // fija que las estire). Ciclos: ancho fijo para mantener alineación.
   const W_CIC = 78;
 
   let html = warnHtml;
-  html += '<table style="border-collapse:collapse; font-size:11px; table-layout:fixed;">';
+  html += '<table style="border-collapse:collapse; font-size:11px;">';
   html += '<colgroup>';
-  html += '<col style="width:' + W_PISO + 'px;">';
-  html += '<col style="width:' + W_SECT + 'px;">';
+  html += '<col style="width:1px;">';   // piso (auto-shrink por white-space:nowrap)
+  html += '<col style="width:1px;">';   // sector (auto-shrink)
   ciclos.forEach(() => { html += '<col style="width:' + W_CIC + 'px;">'; });
   html += '</colgroup>';
 
   // Header
   html += '<thead><tr>';
-  html += '<th style="position:sticky; left:0; background:#fff; padding:4px 6px;"></th>';
-  html += '<th style="background:#fff; padding:4px 6px;"></th>';
+  html += '<th style="position:sticky; left:0; background:#fff; padding:2px 6px;"></th>';
+  html += '<th style="background:#fff; padding:2px 6px;"></th>';
   ciclos.forEach(c => {
     const col = _cicloColor(c);
     html += '<th style="padding:4px 6px; text-align:center; color:#fff; background:' + col +
@@ -532,26 +532,36 @@ function _renderCobertura(cont, data, info) {
   });
   html += '</tr></thead><tbody>';
 
-  pisos.forEach(p => {
+  pisos.forEach((p, pi) => {
     const pisoUp = (p || '').toUpperCase().trim();
     const isPF = pisoUp === 'PF' || pisoUp === 'FUND' || pisoUp === 'FUNDACION';
     const sectoresPiso = isPF ? [SECT_FUND] : SECT_NORMALES;
+    const isFirstPiso = pi === 0;
 
     sectoresPiso.forEach((s, si) => {
-      const isLast = si === sectoresPiso.length - 1;
-      const trBorder = isLast ? 'border-bottom:2px solid #e0e0e0;' : 'border-bottom:1px solid #f5f5f5;';
-      html += '<tr style="' + trBorder + '">';
+      const isFirstSector = si === 0;
+      const isLastSector = si === sectoresPiso.length - 1;
+      // Línea negra gruesa: arriba del 1er sector y abajo del último (separa pisos).
+      const borderTop = isFirstSector ? 'border-top:2px solid #222;' : 'border-top:1px solid #f0f0f0;';
+      const borderBottom = isLastSector ? 'border-bottom:2px solid #222;' : '';
+      html += '<tr style="' + borderTop + borderBottom + '">';
 
-      if (si === 0) {
+      if (isFirstSector) {
         html += '<th rowspan="' + sectoresPiso.length + '" ' +
           'style="position:sticky; left:0; background:#fafafa; padding:4px 8px; ' +
           'text-align:center; vertical-align:middle; font-weight:700; font-size:12px; ' +
-          'border-right:2px solid #e0e0e0;">' + p + '</th>';
+          'white-space:nowrap; border-right:2px solid #222;' +
+          (isFirstPiso ? ' border-top:2px solid #222;' : '') +
+          ' border-bottom:2px solid #222;' +
+          '">' + p + '</th>';
       }
 
-      html += '<td style="padding:4px 10px; text-align:left; color:#444; ' +
-        'font-size:11px; font-weight:600; background:#fafafa; ' +
-        'border-right:1px solid #eee;">' + s + '</td>';
+      html += '<td style="padding:4px 8px; text-align:left; color:#444; ' +
+        'font-size:11px; font-weight:600; background:#fafafa; white-space:nowrap; ' +
+        'border-right:1px solid #ddd;' +
+        (isFirstSector ? ' border-top:2px solid #222;' : '') +
+        (isLastSector ? ' border-bottom:2px solid #222;' : '') +
+        '">' + s + '</td>';
 
       ciclos.forEach(c => {
         const cell = ((idx[p] || {})[c] || {})[s];
@@ -560,6 +570,9 @@ function _renderCobertura(cont, data, info) {
         const pe = p.replace(/'/g, "\\'");
         const ce = c.replace(/'/g, "\\'");
         const se = s;
+        const tdBorders =
+          (isFirstSector ? 'border-top:2px solid #222;' : '') +
+          (isLastSector ? 'border-bottom:2px solid #222;' : '');
         if (barras > 0) {
           const ratio = maxKg > 0 ? Math.min(1, kg / maxKg) : 0.5;
           const alpha = (0.35 + ratio * 0.65).toFixed(2);
@@ -571,10 +584,10 @@ function _renderCobertura(cont, data, info) {
             : "filtrarPorCobertura('" + pe + "','" + ce + "','" + se + "')";
           html += '<td onclick="' + onclick + '" title="' + tooltip + '" ' +
             'style="cursor:pointer; background:' + bg + '; color:#fff; font-weight:700; ' +
-            'font-size:10px; padding:5px 4px; text-align:center;">' +
+            'font-size:10px; padding:5px 4px; text-align:center;' + tdBorders + '">' +
             fmtKg(kg) + ' kg</td>';
         } else {
-          html += '<td style="background:transparent;"></td>';
+          html += '<td style="background:transparent;' + tdBorders + '"></td>';
         }
       });
       html += '</tr>';
