@@ -17,7 +17,7 @@ async function loadCubicacionModule() {
   await loadFilters(Object.keys(dep).length ? dep : null);
 
   if (saved) {
-    ['proyecto', 'plano', 'sector', 'piso', 'ciclo'].forEach(function(field) {
+    ['proyecto', 'plano', 'sector', 'piso', 'ciclo', 'eje'].forEach(function(field) {
       var element = document.getElementById(field);
       if (element && saved[field]) {
         element.value = saved[field];
@@ -31,6 +31,10 @@ async function loadCubicacionModule() {
       if (filtroCarga) {
         filtroCarga.value = saved.filtroCarga;
       }
+    }
+    if (saved.filtroOrigen) {
+      var fo = document.getElementById('filtroOrigen');
+      if (fo) fo.value = saved.filtroOrigen;
     }
   }
 

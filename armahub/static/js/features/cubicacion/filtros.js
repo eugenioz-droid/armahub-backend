@@ -1,9 +1,11 @@
 // ========================= CUBICACIÓN — Filtros Dependientes + Persistencia (E.4) =========================
 const FILTER_STORAGE_KEY = 'armahub_filters';
 
+// NOTA: NO persistimos `q` (búsqueda libre por ID/eje) — es input transitorio.
+// Persistimos solo los selects de cascada + filtros de carga/origen.
 function saveFiltersToStorage() {
   const state = {};
-  ['proyecto','plano','sector','piso','ciclo','q','order_by','order_dir','filtroCarga'].forEach(f => {
+  ['proyecto','plano','sector','piso','ciclo','eje','filtroCarga','filtroOrigen'].forEach(f => {
     const el = document.getElementById(f);
     if (el) state[f] = el.value;
   });
@@ -15,12 +17,8 @@ function restoreFiltersFromStorage() {
     const raw = localStorage.getItem(FILTER_STORAGE_KEY);
     if (!raw) return;
     const state = JSON.parse(raw);
-    // Restore order fields first (they don't depend on data)
-    ['order_by','order_dir','q'].forEach(f => {
-      const el = document.getElementById(f);
-      if (el && state[f] !== undefined) el.value = state[f];
-    });
-    // Return filter state for loadFilters to use after populating selects
+    // Restaurar valores que no dependen de selects pobladas (ninguno hoy);
+    // los selects se restauran tras `loadFilters` desde el state retornado.
     return state;
   } catch(e) { return null; }
 }
@@ -33,6 +31,7 @@ async function loadFilters(depParams) {
     if (depParams.plano) qp.set('plano_code', depParams.plano);
     if (depParams.sector) qp.set('sector', depParams.sector);
     if (depParams.piso) qp.set('piso', depParams.piso);
+    if (depParams.ciclo) qp.set('ciclo', depParams.ciclo);
   }
   const qs = qp.toString();
   const data = await apiGet('/filters' + (qs ? '?' + qs : ''));
@@ -79,6 +78,7 @@ async function loadFilters(depParams) {
   fillSelect('sector', data.sectores);
   fillSelect('piso', data.pisos);
   fillSelect('ciclo', data.ciclos);
+  fillSelect('eje', data.ejes);
 
 }
 
@@ -86,7 +86,7 @@ function onProyectoChange() {
   // When project changes, reload dependent filters for that project
   const proy = document.getElementById('proyecto').value;
   // Clear dependent selects (their current values may not exist in new project)
-  ['plano','sector','piso','ciclo'].forEach(f => { document.getElementById(f).value = ''; });
+  ['plano','sector','piso','ciclo','eje'].forEach(f => { const el=document.getElementById(f); if(el) el.value = ''; });
   clearCargaFilter(true);
   loadFilters(proy ? { proyecto: proy } : null);
   loadCargasDropdown(proy);
@@ -132,11 +132,13 @@ function onFilterChange() {
   const plano = document.getElementById('plano').value;
   const sector = document.getElementById('sector').value;
   const piso = document.getElementById('piso').value;
+  const ciclo = document.getElementById('ciclo') ? document.getElementById('ciclo').value : '';
   const dep = {};
   if (proy) dep.proyecto = proy;
   if (plano) dep.plano = plano;
   if (sector) dep.sector = sector;
   if (piso) dep.piso = piso;
+  if (ciclo) dep.ciclo = ciclo;
   loadFilters(Object.keys(dep).length ? dep : null);
   saveFiltersToStorage();
   buscar(true);

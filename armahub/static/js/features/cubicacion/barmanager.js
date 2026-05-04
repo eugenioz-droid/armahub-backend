@@ -39,6 +39,33 @@ function _sectorBadge(s) {
   return '<span style="background:' + col + ';color:#fff;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600;">' + lbl + '</span>';
 }
 
+// Paleta estable para ciclos: hash → color suave consistente.
+// 20 colores; se reciclan automáticamente si hay más ciclos (módulo).
+const CICLO_PALETTE = [
+  '#1565C0', '#7B1FA2', '#00897B', '#6D4C41',
+  '#C62828', '#2E7D32', '#EF6C00', '#283593',
+  '#AD1457', '#5D4037', '#0277BD', '#558B2F',
+  '#D81B60', '#00695C', '#F4511E', '#3949AB',
+  '#8E24AA', '#43A047', '#FB8C00', '#3F51B5'
+];
+function _cicloColor(c) {
+  if (!c) return '#999';
+  let h = 0;
+  for (let i = 0; i < c.length; i++) h = (h * 31 + c.charCodeAt(i)) >>> 0;
+  return CICLO_PALETTE[h % CICLO_PALETTE.length];
+}
+function _cicloBadge(c) {
+  if (!c) return '<span class="muted">—</span>';
+  const col = _cicloColor(c);
+  return '<span style="background:' + col + ';color:#fff;padding:2px 7px;border-radius:9px;font-size:10px;font-weight:600;">' + c + '</span>';
+}
+function _ciclosCell(arr) {
+  if (!arr || !arr.length) return '<span class="muted">—</span>';
+  if (arr.length <= 4) return arr.map(_cicloBadge).join(' ');
+  return arr.slice(0, 3).map(_cicloBadge).join(' ') +
+    ' <span class="muted" style="font-size:10px;">+' + (arr.length - 3) + '</span>';
+}
+
 function _phiText(emin, emax) {
   if (emin == null && emax == null) return '—';
   if (emin === emax || emax == null) return 'φ' + emin;
@@ -57,8 +84,8 @@ function _buildFilterParams() {
   const proy = document.getElementById('proyecto').value;
   if (!proy) return null;
   params.set('proyecto', proy);
-  ['plano', 'sector', 'piso', 'ciclo'].forEach(f => {
-    const v = document.getElementById(f).value;
+  ['plano', 'sector', 'piso', 'ciclo', 'eje'].forEach(f => {
+    const v = document.getElementById(f) && document.getElementById(f).value;
     if (v) params.set(f === 'plano' ? 'plano_code' : f, v);
   });
   const q = (document.getElementById('q').value || '').trim();
@@ -141,8 +168,8 @@ function _renderElementos() {
     '<th style="width:24px;"></th>' +
     '<th style="padding:6px 8px; text-align:left;">Piso</th>' +
     '<th style="padding:6px 8px; text-align:left;">Sector</th>' +
+    '<th style="padding:6px 8px; text-align:left;">Ciclos</th>' +
     '<th style="padding:6px 8px; text-align:left;">Eje</th>' +
-    '<th style="padding:6px 8px; text-align:right;">Ciclos</th>' +
     '<th style="padding:6px 8px; text-align:right;">Items</th>' +
     '<th style="padding:6px 8px; text-align:right;">Σ Cant</th>' +
     '<th style="padding:6px 8px; text-align:right;">Σ Largo (cm)</th>' +
@@ -156,9 +183,6 @@ function _renderElementos() {
     const arrow = isOpen ? '▾' : '▸';
     const safeKey = key.replace(/'/g, "\\'");
 
-    const ciclosLabel = (e.ciclos && e.ciclos.length)
-      ? (e.ciclos.length <= 4 ? e.ciclos.join(', ') : e.ciclos.length + ' ciclos')
-      : '—';
     const origenes = (e.origenes || []).map(_origenBadge).join(' ');
 
     html += '<tr class="bm-elem-row" style="cursor:pointer; border-top:1px solid #eee;" ' +
@@ -166,8 +190,8 @@ function _renderElementos() {
       '<td style="padding:6px 4px; text-align:center; color:#1565C0; font-weight:700;">' + arrow + '</td>' +
       '<td style="padding:6px 8px; font-weight:600;">' + (e.piso || '—') + '</td>' +
       '<td style="padding:6px 8px;">' + _sectorBadge(e.sector) + '</td>' +
+      '<td style="padding:6px 8px;">' + _ciclosCell(e.ciclos) + '</td>' +
       '<td style="padding:6px 8px; font-family:monospace; font-weight:600;">' + (e.eje || '—') + '</td>' +
-      '<td style="padding:6px 8px; text-align:right; font-size:11px; color:#666;">' + ciclosLabel + '</td>' +
       '<td style="padding:6px 8px; text-align:right;">' + _fmt(e.items) + '</td>' +
       '<td style="padding:6px 8px; text-align:right;">' + _fmt(e.sum_cant_total) + '</td>' +
       '<td style="padding:6px 8px; text-align:right;">' + _fmt(e.sum_largo_total) + '</td>' +
@@ -254,46 +278,68 @@ function _renderDetail(cont, elem, barras) {
     return na - nb || a.localeCompare(b);
   });
 
+  const dimKeys = ['dim_a','dim_b','dim_c','dim_d','dim_e','dim_f','dim_g','dim_h','dim_i'];
+  const dimLabels = ['A','B','C','D','E','F','G','H','I'];
+  const angKeys = ['ang1','ang2','ang3','ang4'];
+  const angLabels = ['α1','α2','α3','α4'];
+
+  function _num(v, d = 0) {
+    if (v == null || v === '' || isNaN(v)) return '';
+    return d ? Number(v).toFixed(d) : Math.round(Number(v));
+  }
+
   let html = '';
   ciclos.forEach(c => {
     const grp = byCiclo[c];
     const sumKg = grp.reduce((s, b) => s + (Number(b.peso_total) || 0), 0);
     const sumCant = grp.reduce((s, b) => s + (Number(b.cant_total) || 0), 0);
-    html += '<div style="margin:6px 0; border-left:3px solid #1565C0; padding:4px 10px; background:#fff; border-radius:0 4px 4px 0;">' +
-      '<div style="font-size:11px; color:#1565C0; font-weight:700; margin-bottom:4px;">' +
+    html += '<div style="margin:6px 0; border-left:3px solid ' + _cicloColor(c) + '; padding:4px 10px; background:#fff; border-radius:0 4px 4px 0;">' +
+      '<div style="font-size:11px; color:' + _cicloColor(c) + '; font-weight:700; margin-bottom:4px;">' +
       'Ciclo ' + c + ' · ' + grp.length + ' barras · ' + _fmt(sumCant) + ' uds · ' + _fmt(sumKg, 1) + ' kg' +
       '</div>' +
-      '<table style="width:100%; font-size:11px; border-collapse:collapse;">' +
-      '<thead><tr style="color:#666;">' +
-      '<th style="text-align:left; padding:2px 6px;">ID</th>' +
+      '<div style="overflow-x:auto;">' +
+      '<table style="width:100%; min-width:1100px; font-size:11px; border-collapse:collapse;">' +
+      '<thead><tr style="color:#666; background:#fafafa;">' +
+      '<th style="text-align:left; padding:2px 6px; position:sticky; left:0; background:#fafafa;">ID</th>' +
+      '<th style="text-align:left; padding:2px 6px;">Tipología</th>' +
       '<th style="text-align:right; padding:2px 6px;">φ</th>' +
       '<th style="text-align:right; padding:2px 6px;">Cant</th>' +
       '<th style="text-align:right; padding:2px 6px;">Largo</th>' +
       '<th style="text-align:right; padding:2px 6px;">Peso U.</th>' +
-      '<th style="text-align:right; padding:2px 6px;">Peso Total</th>' +
+      '<th style="text-align:right; padding:2px 6px;">Peso Tot</th>' +
       '<th style="text-align:left; padding:2px 6px;">Origen</th>' +
       '<th style="text-align:left; padding:2px 6px;">Plano</th>' +
+      '<th style="text-align:left; padding:2px 6px;">Figura</th>' +
+      dimLabels.map(L => '<th style="text-align:right; padding:2px 6px;">' + L + '</th>').join('') +
+      angLabels.map(L => '<th style="text-align:right; padding:2px 6px;">' + L + '</th>').join('') +
+      '<th style="text-align:right; padding:2px 6px;">R</th>' +
       '</tr></thead><tbody>';
     grp.forEach(b => {
       const idShort = (b.id_unico || '').split('-').slice(-1)[0];
+      const dims = dimKeys.map(k => '<td style="padding:2px 6px; text-align:right; color:#444;">' + _num(b[k]) + '</td>').join('');
+      const angs = angKeys.map(k => '<td style="padding:2px 6px; text-align:right; color:#444;">' + _num(b[k], 1) + '</td>').join('');
       html += '<tr style="border-top:1px solid #f0f0f0;">' +
-        '<td style="padding:2px 6px; font-family:monospace; font-size:10px;" title="' + (b.id_unico || '') + '">' + idShort + '</td>' +
-        '<td style="padding:2px 6px; text-align:right;">' + (b.diam != null ? Math.round(b.diam) : '') + '</td>' +
-        '<td style="padding:2px 6px; text-align:right;">' + (b.cant_total != null ? Math.round(b.cant_total) : '') + '</td>' +
-        '<td style="padding:2px 6px; text-align:right;">' + (b.largo_total != null ? Math.round(b.largo_total) : '') + '</td>' +
-        '<td style="padding:2px 6px; text-align:right;">' + (b.peso_unitario != null ? Number(b.peso_unitario).toFixed(2) : '') + '</td>' +
-        '<td style="padding:2px 6px; text-align:right;">' + (b.peso_total != null ? Number(b.peso_total).toFixed(1) : '') + '</td>' +
+        '<td style="padding:2px 6px; font-family:monospace; font-size:10px; position:sticky; left:0; background:#fff;" title="' + (b.id_unico || '') + '">' + idShort + '</td>' +
+        '<td style="padding:2px 6px; font-weight:600;">' + (b.marca || '—') + '</td>' +
+        '<td style="padding:2px 6px; text-align:right;">' + _num(b.diam) + '</td>' +
+        '<td style="padding:2px 6px; text-align:right;">' + _num(b.cant_total) + '</td>' +
+        '<td style="padding:2px 6px; text-align:right;">' + _num(b.largo_total) + '</td>' +
+        '<td style="padding:2px 6px; text-align:right;">' + _num(b.peso_unitario, 2) + '</td>' +
+        '<td style="padding:2px 6px; text-align:right;">' + _num(b.peso_total, 1) + '</td>' +
         '<td style="padding:2px 6px;">' + _origenBadge(b.origen) + '</td>' +
         '<td style="padding:2px 6px; color:#666;">' + (b.plano_code || '—') + '</td>' +
+        '<td style="padding:2px 6px; color:#666;">' + (b.figura || '—') + '</td>' +
+        dims +
+        angs +
+        '<td style="padding:2px 6px; text-align:right; color:#444;">' + _num(b.radio, 1) + '</td>' +
         '</tr>';
     });
-    html += '</tbody></table></div>';
+    html += '</tbody></table></div></div>';
   });
   cont.innerHTML = html;
 }
 
 // ========================= EXPANDIR / COLAPSAR TODOS =========================
-
 async function expandAll() {
   if (!lastElementos.length) return;
   for (let i = 0; i < lastElementos.length; i++) {
@@ -308,10 +354,158 @@ function collapseAll() {
   _renderElementos();
 }
 
+// ========================= MAPA DE COBERTURA PISO × CICLO =========================
+let _coberturaVisible = false;
+
+function toggleCobertura() {
+  _coberturaVisible = !_coberturaVisible;
+  const card = document.getElementById('bmCoberturaCard');
+  const btn = document.getElementById('btnCobertura');
+  if (_coberturaVisible) {
+    card.style.display = '';
+    if (btn) btn.textContent = '📊 Ocultar cobertura';
+    loadCobertura();
+  } else {
+    card.style.display = 'none';
+    if (btn) btn.textContent = '📊 Mostrar cobertura';
+  }
+}
+
+async function loadCobertura() {
+  const cont = document.getElementById('bmCoberturaContent');
+  const info = document.getElementById('bmCoberturaInfo');
+  const proy = document.getElementById('proyecto').value;
+  if (!proy) {
+    cont.innerHTML = '<div class="muted" style="padding:12px;">Selecciona un proyecto.</div>';
+    if (info) info.textContent = '';
+    return;
+  }
+  cont.innerHTML = '<div class="muted" style="padding:12px;">Cargando…</div>';
+
+  // Reusa los filtros de proyecto/plano/sector/origen/carga (ignora piso/ciclo/eje
+  // porque la matriz se construye sobre TODOS los pisos y ciclos del scope).
+  const params = new URLSearchParams();
+  params.set('proyecto', proy);
+  ['plano', 'sector'].forEach(f => {
+    const v = document.getElementById(f) && document.getElementById(f).value;
+    if (v) params.set(f === 'plano' ? 'plano_code' : f, v);
+  });
+  const fo = document.getElementById('filtroOrigen');
+  if (fo && fo.value) params.set('origen', fo.value);
+  const fc = document.getElementById('filtroCarga');
+  if (fc && fc.value) params.set('import_id', fc.value);
+
+  const data = await apiGet('/barras/cobertura?' + params.toString());
+  if (!data) { cont.innerHTML = '<div class="muted">Sin datos.</div>'; return; }
+
+  _renderCobertura(cont, data, info);
+}
+
+function _pisoSortKey(p) {
+  // Orden constructivo: SM/PM arriba, P1..P99 al medio, S1..S9 abajo (subterráneos al final)
+  const up = (p || '').toUpperCase().trim();
+  if (up === 'SM' || up === 'PM' || up === 'SALA DE MAQUINAS') return 100000;
+  let m = up.match(/^P(\d+)/);
+  if (m) return parseInt(m[1], 10);
+  m = up.match(/^S(\d+)/);
+  if (m) return -parseInt(m[1], 10);
+  m = up.match(/(\d+)/);
+  if (m) return parseInt(m[1], 10);
+  return 0;
+}
+
+function _renderCobertura(cont, data, info) {
+  if (!data.pisos.length || !data.ciclos.length) {
+    cont.innerHTML = '<div class="muted" style="padding:12px;">No hay datos para los filtros actuales.</div>';
+    if (info) info.textContent = '';
+    return;
+  }
+
+  // Orden: pisos descendente (techo arriba), ciclos numérico
+  const pisos = data.pisos.slice().sort((a, b) => _pisoSortKey(b) - _pisoSortKey(a));
+  const ciclos = data.ciclos.slice().sort((a, b) => {
+    const na = parseInt((a.match(/\d+/) || [0])[0], 10);
+    const nb = parseInt((b.match(/\d+/) || [0])[0], 10);
+    return na - nb || a.localeCompare(b);
+  });
+
+  // Indexar celdas
+  const idx = {};
+  data.cells.forEach(c => { idx[c.piso + '||' + c.ciclo] = c; });
+
+  const totalCruces = pisos.length * ciclos.length;
+  const conData = data.cells.filter(c => c.barras > 0).length;
+  const cobPct = totalCruces ? Math.round(conData * 100 / totalCruces) : 0;
+  if (info) info.textContent = conData + ' / ' + totalCruces + ' cruces (' + cobPct + '%)';
+
+  let html = '<table style="border-collapse:separate; border-spacing:3px; font-size:11px;">';
+  html += '<thead><tr><th style="position:sticky; left:0; background:#fff; padding:4px 8px;"></th>';
+  ciclos.forEach(c => {
+    const col = _cicloColor(c);
+    html += '<th style="padding:4px 6px; text-align:center; color:#fff; background:' + col +
+      '; border-radius:6px; font-size:10px;">' + c + '</th>';
+  });
+  html += '</tr></thead><tbody>';
+
+  pisos.forEach(p => {
+    html += '<tr><th style="position:sticky; left:0; background:#fff; padding:4px 10px; text-align:right; font-weight:600; font-size:11px;">' + p + '</th>';
+    ciclos.forEach(c => {
+      const cell = idx[p + '||' + c];
+      const kg = cell ? cell.kg : 0;
+      const barras = cell ? cell.barras : 0;
+      const pe = p.replace(/'/g, "\\'");
+      const ce = c.replace(/'/g, "\\'");
+      if (barras > 0) {
+        const ratio = data.max_kg > 0 ? Math.min(1, kg / data.max_kg) : 0.5;
+        const alpha = 0.35 + ratio * 0.65;
+        const tooltip = p + ' · ' + c + ' — ' + barras + ' barras · ' + Math.round(kg).toLocaleString('es-CL') + ' kg';
+        html += '<td onclick="filtrarPorCobertura(\'' + pe + '\',\'' + ce + '\')" ' +
+          'title="' + tooltip + '" ' +
+          'style="cursor:pointer; min-width:42px; height:28px; text-align:center; ' +
+          'background:rgba(21,101,192,' + alpha.toFixed(2) + '); color:#fff; ' +
+          'border-radius:4px; font-weight:600; font-size:10px;">' +
+          (kg >= 1000 ? Math.round(kg / 1000) + 'k' : Math.round(kg)) +
+          '</td>';
+      } else {
+        html += '<td onclick="filtrarPorCobertura(\'' + pe + '\',\'' + ce + '\')" ' +
+          'title="' + p + ' · ' + c + ' — sin cubicación" ' +
+          'style="cursor:pointer; min-width:42px; height:28px; text-align:center; ' +
+          'background:#fff5f5; border:1px dashed #e57373; border-radius:4px; ' +
+          'color:#bbb; font-size:11px;">·</td>';
+      }
+    });
+    html += '</tr>';
+  });
+  html += '</tbody></table>';
+  cont.innerHTML = html;
+}
+
+function filtrarPorCobertura(piso, ciclo) {
+  const pSel = document.getElementById('piso');
+  const cSel = document.getElementById('ciclo');
+  if (pSel) {
+    if (!Array.from(pSel.options).some(o => o.value === piso)) {
+      const o = document.createElement('option'); o.value = piso; o.textContent = piso;
+      pSel.appendChild(o);
+    }
+    pSel.value = piso;
+  }
+  if (cSel) {
+    if (!Array.from(cSel.options).some(o => o.value === ciclo)) {
+      const o = document.createElement('option'); o.value = ciclo; o.textContent = ciclo;
+      cSel.appendChild(o);
+    }
+    cSel.value = ciclo;
+  }
+  const eSel = document.getElementById('eje'); if (eSel) eSel.value = '';
+  if (typeof onFilterChange === 'function') onFilterChange();
+  else buscar(true);
+}
+
 // ========================= RESET / CARGA / PAGINACIÓN =========================
 
 function resetFiltros() {
-  ['proyecto', 'plano', 'sector', 'piso', 'ciclo'].forEach(f => {
+  ['proyecto', 'plano', 'sector', 'piso', 'ciclo', 'eje'].forEach(f => {
     const el = document.getElementById(f); if (el) el.value = '';
   });
   const qel = document.getElementById('q'); if (qel) qel.value = '';

@@ -54,7 +54,10 @@ BARRAS_COLUMNS = [
     "id_unico","id_proyecto","nombre_proyecto","plano_code","nombre_plano","sector","piso","ciclo","eje",
     "diam","largo_total","mult","cant","cant_total",
     "peso_unitario","peso_total","version_mod","version_exp","fecha_carga",
-    "origen","import_id"
+    "origen","import_id",
+    "marca","figura",
+    "dim_a","dim_b","dim_c","dim_d","dim_e","dim_f","dim_g","dim_h","dim_i",
+    "ang1","ang2","ang3","ang4","radio"
 ]
 
 ALLOWED_ORDER_BY = {
@@ -347,15 +350,82 @@ def get_barras_elementos(
     }
 
 
+# ========================= MAPA DE COBERTURA PISO × CICLO =========================
+
+@router.get("/barras/cobertura")
+def get_barras_cobertura(
+    proyecto: str = None,
+    plano_code: str = None,
+    sector: str = None,
+    origen: str = None,
+    import_id: int = None,
+    user=Depends(get_current_user),
+):
+    """Heatmap Piso × Ciclo. Para cada cruce devuelve barras y kg.
+    Útil para detectar pisos/ciclos no cubicados ('huecos')."""
+    base_where = " WHERE 1=1 "
+    params = []
+    if proyecto:
+        base_where += " AND id_proyecto = %s"; params.append(proyecto)
+    if plano_code:
+        base_where += " AND plano_code = %s"; params.append(plano_code)
+    if sector:
+        base_where += " AND sector = %s"; params.append(sector)
+    if origen:
+        base_where += " AND origen = %s"; params.append(origen)
+    if import_id is not None:
+        base_where += " AND import_id = %s"; params.append(import_id)
+
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            allowed = _get_allowed_project_ids(cur, user)
+            pf_sql, pf_params = _project_filter_sql(allowed)
+            full_where = base_where + pf_sql
+            full_params = params + pf_params
+
+            sql = f"""
+                SELECT COALESCE(piso, '')  AS piso,
+                       COALESCE(ciclo, '') AS ciclo,
+                       COUNT(*)            AS barras,
+                       COALESCE(SUM(peso_total), 0) AS kg
+                FROM barras
+                {full_where}
+                GROUP BY COALESCE(piso, ''), COALESCE(ciclo, '')
+            """
+            cur.execute(sql, full_params)
+            rows = cur.fetchall()
+
+    cells = [
+        {
+            "piso": r[0] or "",
+            "ciclo": r[1] or "",
+            "barras": int(r[2] or 0),
+            "kg": round(float(r[3] or 0), 2),
+        }
+        for r in rows
+    ]
+    pisos = sorted({c["piso"] for c in cells if c["piso"]})
+    ciclos = sorted({c["ciclo"] for c in cells if c["ciclo"]})
+    max_kg = max((c["kg"] for c in cells), default=0)
+
+    return {
+        "pisos": pisos,
+        "ciclos": ciclos,
+        "cells": cells,
+        "max_kg": round(float(max_kg), 2),
+    }
+
+
 @router.get("/filters")
 def filters(
     proyecto: Optional[str] = None,
     plano_code: Optional[str] = None,
     sector: Optional[str] = None,
     piso: Optional[str] = None,
+    ciclo: Optional[str] = None,
     user=Depends(get_current_user),
 ):
-    """Filtros dependientes en cascada: proyecto → plano → sector → piso → ciclo.
+    """Filtros dependientes en cascada: proyecto → plano → sector → piso → ciclo → eje.
     Cada select se filtra solo por sus padres upstream, nunca por sí mismo."""
 
     def _where(parts, vals):
@@ -411,10 +481,18 @@ def filters(
             cur.execute(f"SELECT DISTINCT ciclo FROM barras{wsql} ORDER BY ciclo", w_vals)
             ciclos = [r[0] for r in cur.fetchall() if r[0] is not None]
 
+            # Ejes: filtrado por proyecto + plano + sector + piso + ciclo (+ auth)
+            if ciclo:
+                w_parts.append("ciclo = %s"); w_vals.append(ciclo)
+            wsql = " WHERE " + " AND ".join(w_parts)
+            cur.execute(f"SELECT DISTINCT eje FROM barras{wsql} AND eje IS NOT NULL ORDER BY eje", w_vals)
+            ejes = [r[0] for r in cur.fetchall() if r[0] is not None]
+
     return {
         "sectores": sectores,
         "pisos": pisos,
         "ciclos": ciclos,
+        "ejes": ejes,
         "planos": planos,
         "proyectos": proyectos,
     }

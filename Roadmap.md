@@ -257,7 +257,7 @@ Objetivo: consolidar contratos y reducir drift.
 
 - [x] PC.18 Bar Manager — vista por elementos (piso × sector × eje) con expandable a detalle por ciclo + barras individuales. Endpoint `/barras/elementos` agrega y entrega KPIs (elementos/barras/kg/pisos/sectores/ejes). Eliminada la edición/creación manual desde Bar Manager (la fuente de verdad es CSV/pedidos)
 - [ ] PC.19 Bar Manager — Indicadores de salud por elemento (futuro): badges de "ciclos faltantes", "diámetros mixtos", "sin pedido", "modificado tras export"
-- [ ] PC.20 Bar Manager — Mapa de cobertura Piso × Ciclo (futuro): heatmap visual que muestre, por proyecto, qué combinaciones piso×ciclo tienen barras cubicadas y cuáles están vacías
+- [x] PC.20 Bar Manager — Mapa de cobertura Piso × Ciclo: heatmap colapsable bajo la tabla agrupada. Endpoint `/barras/cobertura` agrega por (piso, ciclo) entregando barras, kg y máximo. Click en celda filtra el listado por ese cruce. Pisos sin cubicación se marcan con celda punteada
 - [ ] PC.21 Bar Manager — Toggle "Detalle plano" (futuro): vista alternativa que detalla por (plano_code, piso, ciclo) en lugar de por elemento, útil para auditar duplicidad de planos sobre un mismo eje
 
 ---

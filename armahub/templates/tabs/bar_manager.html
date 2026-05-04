@@ -37,22 +37,26 @@
             <option value="">Todos</option>
           </select>
         </div>
+        <div class="col">
+          <label style="font-size:11px; color:#666;">Eje</label>
+          <select id="eje" onchange="onFilterChange()">
+            <option value="">Todos</option>
+          </select>
+        </div>
       </div>
 
       <!-- Carga filter row -->
       <div class="row" style="gap:8px; margin-top:8px; align-items:flex-end;">
-        <div class="col" style="flex:2;">
+        <div class="col" style="flex:3;">
           <label style="font-size:11px; color:#666;">Carga</label>
           <select id="filtroCarga" onchange="onCargaFilterChange()" style="font-size:12px;">
             <option value="">Todas las cargas</option>
           </select>
         </div>
-        <div class="col" style="flex:3;">
-          <input id="q" placeholder="Buscar por ID, Eje..." onkeyup="if(event.key==='Enter') buscar(true)" style="font-size:13px;" />
-        </div>
         <div class="col" style="flex:0;">
+          <label style="font-size:11px; color:#666;">Origen</label>
           <select id="filtroOrigen" onchange="buscar(true)" style="font-size:12px;">
-            <option value="">Origen: Todos</option>
+            <option value="">Todos</option>
             <option value="csv">CSV</option>
             <option value="manual">Manual</option>
             <option value="pedido">Pedido</option>
@@ -61,6 +65,15 @@
         <button onclick="buscar(true)" style="font-size:12px; padding:6px 14px;">🔍 Buscar</button>
         <button class="secondary" onclick="resetFiltros()" style="font-size:12px; padding:6px 14px;">Limpiar</button>
       </div>
+
+      <!-- Búsqueda libre (independiente de la cascada) -->
+      <div class="row" style="gap:8px; margin-top:8px; align-items:center; padding-top:8px; border-top:1px dashed #ddd;">
+        <label style="font-size:11px; color:#666; white-space:nowrap;">🔎 Búsqueda libre</label>
+        <input id="q" placeholder="Buscar por id_único, eje o plano…" onkeyup="if(event.key==='Enter') buscar(true)" style="font-size:13px; flex:1;" />
+        <button class="secondary" onclick="buscar(true)" style="font-size:11px; padding:4px 10px;">Aplicar</button>
+        <button class="secondary" onclick="document.getElementById('q').value=''; buscar(true);" style="font-size:11px; padding:4px 10px;">Limpiar</button>
+      </div>
+
       <!-- Active carga filter badge (for navigation from Obras) -->
       <div id="cargaFilterBadge" style="display:none; margin-top:8px; padding:6px 12px; background:#e3f2fd; border:1px solid #90CAF9; border-radius:6px; font-size:12px;">
         📦 Filtrando por carga: <strong id="cargaFilterLabel"></strong>
@@ -76,7 +89,23 @@
       <div class="row" style="gap:8px; margin-top:8px; align-items:center;">
         <button class="secondary" onclick="expandAll()" style="font-size:11px; padding:3px 10px;">▾ Expandir todo</button>
         <button class="secondary" onclick="collapseAll()" style="font-size:11px; padding:3px 10px;">▸ Colapsar todo</button>
+        <button class="secondary" id="btnCobertura" onclick="toggleCobertura()" style="font-size:11px; padding:3px 10px;">📊 Mostrar cobertura</button>
         <span class="muted" id="count" style="margin-left:auto; font-size:11px;"></span>
+      </div>
+    </div>
+
+    <!-- Mapa de cobertura Piso × Ciclo -->
+    <div id="bmCoberturaCard" class="card" style="display:none; padding:10px 16px;">
+      <div class="row" style="align-items:center; gap:10px; margin-bottom:8px;">
+        <strong style="font-size:13px;">📊 Cobertura Piso × Ciclo</strong>
+        <span class="muted" style="font-size:11px;">Click en una celda para filtrar el listado por ese cruce.</span>
+        <span id="bmCoberturaInfo" class="muted" style="font-size:11px; margin-left:auto;"></span>
+      </div>
+      <div id="bmCoberturaContent" style="overflow-x:auto;"></div>
+      <div class="muted" style="font-size:10px; margin-top:6px;">
+        <span style="display:inline-block; width:14px; height:14px; background:#1565C0; vertical-align:middle; border-radius:2px;"></span> con cubicación &nbsp;·&nbsp;
+        <span style="display:inline-block; width:14px; height:14px; background:#fff5f5; border:1px dashed #e57373; vertical-align:middle; border-radius:2px;"></span> sin cubicación &nbsp;·&nbsp;
+        intensidad ∝ kilos del cruce.
       </div>
     </div>
 
