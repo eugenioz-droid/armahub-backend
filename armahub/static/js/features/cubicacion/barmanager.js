@@ -511,7 +511,7 @@ function _renderCobertura(cont, data, info) {
   // ── Tabla ───────────────────────────────────────────────────────────
   // Anchos compactos. Tabla envuelta en wrapper con scroll horizontal y
   // alineada a la izquierda para que con 1 ciclo no se vea estirada.
-  const W_CIC = 56;
+  const W_CIC = 112;
 
   let html = warnHtml;
   html += '<div style="overflow-x:auto; max-width:100%;">';
@@ -524,12 +524,12 @@ function _renderCobertura(cont, data, info) {
 
   // Header
   html += '<thead><tr>';
-  html += '<th style="position:sticky; left:0; background:#fff; padding:1px 3px;"></th>';
-  html += '<th style="background:#fff; padding:1px 3px;"></th>';
+  html += '<th style="position:sticky; left:0; background:#fff; padding:2px 6px;"></th>';
+  html += '<th style="background:#fff; padding:2px 6px;"></th>';
   ciclos.forEach(c => {
     const col = _cicloColor(c);
-    html += '<th style="padding:3px 4px; text-align:center; color:#fff; background:' + col +
-      '; border-radius:3px; font-size:10px;">' + c + '</th>';
+    html += '<th style="padding:4px 8px; text-align:center; color:#fff; background:' + col +
+      '; border-radius:3px; font-size:11px;">' + c + '</th>';
   });
   html += '</tr></thead><tbody>';
 
@@ -548,16 +548,16 @@ function _renderCobertura(cont, data, info) {
 
       if (isFirstSector) {
         html += '<th rowspan="' + sectoresPiso.length + '" ' +
-          'style="position:sticky; left:0; background:#fafafa; padding:2px 4px; ' +
-          'text-align:center; vertical-align:middle; font-weight:700; font-size:11px; ' +
+          'style="position:sticky; left:0; background:#fafafa; padding:4px 8px; ' +
+          'text-align:center; vertical-align:middle; font-weight:700; font-size:12px; ' +
           'white-space:nowrap; border-right:2px solid #222;' +
           (isFirstPiso ? ' border-top:2px solid #222;' : '') +
           ' border-bottom:2px solid #222;' +
           '">' + p + '</th>';
       }
 
-      html += '<td style="padding:2px 4px; text-align:left; color:#444; ' +
-        'font-size:10px; font-weight:600; background:#fafafa; white-space:nowrap; ' +
+      html += '<td style="padding:4px 8px; text-align:left; color:#444; ' +
+        'font-size:11px; font-weight:600; background:#fafafa; white-space:nowrap; ' +
         'border-right:1px solid #ddd;' +
         (isFirstSector ? ' border-top:2px solid #222;' : '') +
         (isLastSector ? ' border-bottom:2px solid #222;' : '') +
@@ -583,7 +583,7 @@ function _renderCobertura(cont, data, info) {
             : "filtrarPorCobertura('" + pe + "','" + ce + "','" + se + "')";
           html += '<td onclick="' + onclick + '" title="' + tooltip + '" ' +
             'style="cursor:pointer; background:' + bg + '; color:#fff; font-weight:700; ' +
-            'font-size:10px; padding:4px 3px; text-align:center;' + tdBorders + '">' +
+            'font-size:11px; padding:6px 6px; text-align:center;' + tdBorders + '">' +
             fmtKg(kg) + ' kg</td>';
         } else {
           html += '<td style="background:transparent;' + tdBorders + '"></td>';
