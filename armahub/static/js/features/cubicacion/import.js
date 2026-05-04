@@ -256,6 +256,19 @@ async function importAllFiles() {
     if (data.rejected && data.rejected.length > 0) {
       results.innerHTML += `<div class="muted" style="padding:2px 0 4px 20px; font-size:11px;">Rechazadas: ${data.rejected.slice(0,5).join(', ')}</div>`;
     }
+    // Aviso de fundaciones mal catalogadas (sector=FUND en piso != PF).
+    if (data.fund_misplaced && data.fund_misplaced.length > 0) {
+      const detalle = data.fund_misplaced
+        .map(x => `${x.piso}: ${x.barras} barras · ${Math.round(x.kg).toLocaleString('es-CL')} kg`)
+        .join(' · ');
+      results.innerHTML +=
+        `<div style="margin:4px 0 6px 20px; padding:8px 12px; background:#fff3cd; ` +
+        `border:1px solid #ffc107; color:#856404; border-radius:4px; font-size:12px;">` +
+        `⚠️ <strong>Fundaciones mal catalogadas:</strong> hay barras con sector ` +
+        `<code>FUND</code> asignadas a pisos distintos de <code>PF</code> → ${detalle}. ` +
+        `Corrige el piso en la cubicación de origen para reflejar correctamente el nivel base.` +
+        `</div>`;
+    }
     successCount++;
   }
 

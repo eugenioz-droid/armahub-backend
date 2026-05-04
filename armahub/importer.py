@@ -640,6 +640,25 @@ async def import_armadetailer(
 
     _cache.invalidate("stats:", "landing:")
 
+    # ── Auditoría de fundaciones mal catalogadas ──
+    # Convención ArmaHub: las barras con sector=FUND deben estar asignadas al
+    # piso "PF" (nivel base). Si vienen con piso distinto (P1, S1, etc.) se
+    # avisa al usuario para que corrija la cubicación en origen.
+    fund_misplaced = {}  # { piso: {"barras": int, "kg": float} }
+    for row in rows_to_upsert:
+        sector_val = (row[5] or "").upper()
+        piso_val = (row[6] or "").strip()
+        if sector_val == "FUND":
+            piso_up = piso_val.upper()
+            if piso_up not in ("PF", "FUND", "FUNDACION", "FUNDACIÓN"):
+                slot = fund_misplaced.setdefault(piso_val or "(sin piso)", {"barras": 0, "kg": 0.0})
+                slot["barras"] += 1
+                slot["kg"] += float(row[15] or 0)  # peso_total
+    fund_misplaced_list = [
+        {"piso": p, "barras": v["barras"], "kg": round(v["kg"], 2)}
+        for p, v in sorted(fund_misplaced.items())
+    ]
+
     return {
         "ok": True,
         "proyecto": proyecto_nombre,
@@ -656,6 +675,7 @@ async def import_armadetailer(
         "estado": estado,
         "is_new_project": is_new_project,
         "barras_eliminadas_previo": barras_eliminadas_previo,
+        "fund_misplaced": fund_misplaced_list,
     }
 
 
