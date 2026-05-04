@@ -509,26 +509,27 @@ function _renderCobertura(cont, data, info) {
   }
 
   // ── Tabla ───────────────────────────────────────────────────────────
-  // Piso/Sector: shrink-to-fit (ancho mínimo dado por el contenido, sin tabla
-  // fija que las estire). Ciclos: ancho fijo para mantener alineación.
-  const W_CIC = 78;
+  // Anchos compactos. Tabla envuelta en wrapper con scroll horizontal y
+  // alineada a la izquierda para que con 1 ciclo no se vea estirada.
+  const W_CIC = 56;
 
   let html = warnHtml;
-  html += '<table style="border-collapse:collapse; font-size:11px;">';
+  html += '<div style="overflow-x:auto; max-width:100%;">';
+  html += '<table style="border-collapse:collapse; font-size:11px; width:auto; margin:0;">';
   html += '<colgroup>';
-  html += '<col style="width:1px;">';   // piso (auto-shrink por white-space:nowrap)
+  html += '<col style="width:1px;">';   // piso (auto-shrink)
   html += '<col style="width:1px;">';   // sector (auto-shrink)
   ciclos.forEach(() => { html += '<col style="width:' + W_CIC + 'px;">'; });
   html += '</colgroup>';
 
   // Header
   html += '<thead><tr>';
-  html += '<th style="position:sticky; left:0; background:#fff; padding:2px 6px;"></th>';
-  html += '<th style="background:#fff; padding:2px 6px;"></th>';
+  html += '<th style="position:sticky; left:0; background:#fff; padding:1px 3px;"></th>';
+  html += '<th style="background:#fff; padding:1px 3px;"></th>';
   ciclos.forEach(c => {
     const col = _cicloColor(c);
-    html += '<th style="padding:4px 6px; text-align:center; color:#fff; background:' + col +
-      '; border-radius:4px; font-size:11px;">' + c + '</th>';
+    html += '<th style="padding:3px 4px; text-align:center; color:#fff; background:' + col +
+      '; border-radius:3px; font-size:10px;">' + c + '</th>';
   });
   html += '</tr></thead><tbody>';
 
@@ -541,23 +542,22 @@ function _renderCobertura(cont, data, info) {
     sectoresPiso.forEach((s, si) => {
       const isFirstSector = si === 0;
       const isLastSector = si === sectoresPiso.length - 1;
-      // Línea negra gruesa: arriba del 1er sector y abajo del último (separa pisos).
       const borderTop = isFirstSector ? 'border-top:2px solid #222;' : 'border-top:1px solid #f0f0f0;';
       const borderBottom = isLastSector ? 'border-bottom:2px solid #222;' : '';
       html += '<tr style="' + borderTop + borderBottom + '">';
 
       if (isFirstSector) {
         html += '<th rowspan="' + sectoresPiso.length + '" ' +
-          'style="position:sticky; left:0; background:#fafafa; padding:4px 8px; ' +
-          'text-align:center; vertical-align:middle; font-weight:700; font-size:12px; ' +
+          'style="position:sticky; left:0; background:#fafafa; padding:2px 4px; ' +
+          'text-align:center; vertical-align:middle; font-weight:700; font-size:11px; ' +
           'white-space:nowrap; border-right:2px solid #222;' +
           (isFirstPiso ? ' border-top:2px solid #222;' : '') +
           ' border-bottom:2px solid #222;' +
           '">' + p + '</th>';
       }
 
-      html += '<td style="padding:4px 8px; text-align:left; color:#444; ' +
-        'font-size:11px; font-weight:600; background:#fafafa; white-space:nowrap; ' +
+      html += '<td style="padding:2px 4px; text-align:left; color:#444; ' +
+        'font-size:10px; font-weight:600; background:#fafafa; white-space:nowrap; ' +
         'border-right:1px solid #ddd;' +
         (isFirstSector ? ' border-top:2px solid #222;' : '') +
         (isLastSector ? ' border-bottom:2px solid #222;' : '') +
@@ -578,13 +578,12 @@ function _renderCobertura(cont, data, info) {
           const alpha = (0.35 + ratio * 0.65).toFixed(2);
           const bg = 'rgba(' + COLOR_RGB + ',' + alpha + ')';
           const tooltip = p + ' · ' + c + ' · ' + s + ' — ' + barras + ' barras · ' + fmtKg(kg) + ' kg';
-          // PF agrega múltiples pisos: el filtro click no setea piso (solo ciclo+sector).
           const onclick = isPF
             ? "filtrarPorCobertura('','" + ce + "','" + se + "')"
             : "filtrarPorCobertura('" + pe + "','" + ce + "','" + se + "')";
           html += '<td onclick="' + onclick + '" title="' + tooltip + '" ' +
             'style="cursor:pointer; background:' + bg + '; color:#fff; font-weight:700; ' +
-            'font-size:10px; padding:5px 4px; text-align:center;' + tdBorders + '">' +
+            'font-size:10px; padding:4px 3px; text-align:center;' + tdBorders + '">' +
             fmtKg(kg) + ' kg</td>';
         } else {
           html += '<td style="background:transparent;' + tdBorders + '"></td>';
@@ -594,6 +593,7 @@ function _renderCobertura(cont, data, info) {
     });
   });
   html += '</tbody></table>';
+  html += '</div>';
 
   // Leyenda simplificada (un solo color, intensidad ∝ kg).
   html += '<div style="display:flex; gap:14px; flex-wrap:wrap; margin-top:10px; font-size:11px; color:#666;">';
