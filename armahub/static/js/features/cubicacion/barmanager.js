@@ -115,6 +115,7 @@ async function buscar(reset = false) {
     countEl.textContent = '';
     tbl.innerHTML = '';
     pageInfo.textContent = '';
+    if (_coberturaVisible) loadCobertura();
     return;
   }
 
@@ -153,6 +154,11 @@ async function buscar(reset = false) {
   pageInfo.textContent = 'Pág ' + page + '/' + totalPages;
 
   _renderElementos();
+
+  // Si la matriz de cobertura está visible, mantenerla sincronizada con los filtros.
+  if (_coberturaVisible) {
+    loadCobertura();
+  }
 }
 
 function _renderElementos() {
