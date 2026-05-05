@@ -689,6 +689,13 @@ MIGRATIONS = [
         "DROP TABLE IF EXISTS obra_ejes CASCADE",
         "DROP TABLE IF EXISTS obra_losas CASCADE",
     ]),
+
+    # --- Migration 50: trazabilidad de reemplazos en importaciones ---
+    (50, "imports: modo_reemplazo, scope_reemplazo, barras_eliminadas_previo", [
+        "DO $$ BEGIN ALTER TABLE imports ADD COLUMN modo_reemplazo TEXT DEFAULT 'ninguno'; EXCEPTION WHEN duplicate_column THEN NULL; END $$;",
+        "DO $$ BEGIN ALTER TABLE imports ADD COLUMN scope_reemplazo TEXT; EXCEPTION WHEN duplicate_column THEN NULL; END $$;",
+        "DO $$ BEGIN ALTER TABLE imports ADD COLUMN barras_eliminadas_previo INTEGER DEFAULT 0; EXCEPTION WHEN duplicate_column THEN NULL; END $$;",
+    ]),
 ]
 
 

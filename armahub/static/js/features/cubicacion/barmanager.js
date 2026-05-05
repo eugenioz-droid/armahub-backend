@@ -695,6 +695,11 @@ async function verBarrasCarga(importId, idProyecto, archivo) {
   switchTab('buscar');
   const proySel = document.getElementById('proyecto');
   if (proySel) proySel.value = idProyecto;
+  // Limpiar subfiltros para evitar que filtros de navegación anterior contaminen la búsqueda
+  ['plano', 'sector', 'piso', 'ciclo', 'eje'].forEach(function(f) {
+    var el = document.getElementById(f); if (el) el.value = '';
+  });
+  var qel = document.getElementById('q'); if (qel) qel.value = '';
   await loadCargasDropdown(idProyecto);
   const fc = document.getElementById('filtroCarga');
   if (fc) fc.value = importId;

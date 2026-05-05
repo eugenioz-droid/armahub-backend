@@ -391,18 +391,18 @@ async def import_armadetailer(
             rejected_rows.append(f"Fila {row_num}: ID_UNICO vacío")
             continue
 
-        # Parseo numérico con validación
+        # Parseo numérico — valores no numéricos en campos estructurales son rechazo duro
         try:
             diam = float(r["DIAM"]) if pd.notna(r["DIAM"]) else None
         except (ValueError, TypeError):
-            warnings.append(f"Fila {row_num}: DIAM inválido '{r['DIAM']}', se ignora")
-            diam = None
+            rejected_rows.append(f"Fila {row_num}: DIAM inválido '{r['DIAM']}'")
+            continue
 
         try:
             largo = float(r["LARGO_TOTAL"]) if pd.notna(r["LARGO_TOTAL"]) else None
         except (ValueError, TypeError):
-            warnings.append(f"Fila {row_num}: LARGO_TOTAL inválido '{r['LARGO_TOTAL']}', se ignora")
-            largo = None
+            rejected_rows.append(f"Fila {row_num}: LARGO_TOTAL inválido '{r['LARGO_TOTAL']}'")
+            continue
 
         try:
             mult = float(r["MULT"]) if ("MULT" in df.columns and pd.notna(r["MULT"])) else None
@@ -412,8 +412,8 @@ async def import_armadetailer(
         try:
             cant_total = float(r["CANT"]) if pd.notna(r["CANT"]) else None
         except (ValueError, TypeError):
-            warnings.append(f"Fila {row_num}: CANT inválido '{r['CANT']}', se ignora")
-            cant_total = None
+            rejected_rows.append(f"Fila {row_num}: CANT inválido '{r['CANT']}'")
+            continue
 
         if cant_total is not None and mult is not None and mult > 0:
             cant = cant_total / mult
@@ -568,12 +568,26 @@ async def import_armadetailer(
     if all_issues:
         errores_text = "; ".join(all_issues)[:500]
 
+    # Determinar modo y alcance del reemplazo (trazabilidad)
+    if replace_full_planos and replace_keys:
+        modo_reemplazo = 'mixto'
+        scope_reemplazo = f"planos: {replace_full_planos}; ejes: {replace_keys}"[:500]
+    elif replace_full_planos:
+        modo_reemplazo = 'por_planos'
+        scope_reemplazo = replace_full_planos[:500]
+    elif replace_keys:
+        modo_reemplazo = 'por_ejes'
+        scope_reemplazo = replace_keys[:500]
+    else:
+        modo_reemplazo = 'ninguno'
+        scope_reemplazo = None
+
     with get_conn() as conn:
         with conn.cursor() as cur:
             # Registrar import PRIMERO para obtener import_id
             cur.execute("""
-                INSERT INTO imports (id_proyecto, nombre_proyecto, usuario, archivo, fecha, barras_count, kilos, estado, version_archivo, plano_code, errores)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                INSERT INTO imports (id_proyecto, nombre_proyecto, usuario, archivo, fecha, barras_count, kilos, estado, version_archivo, plano_code, errores, modo_reemplazo, scope_reemplazo, barras_eliminadas_previo)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING id
             """, (
                 proyecto_id,
@@ -587,6 +601,9 @@ async def import_armadetailer(
                 first_version,
                 first_plano,
                 errores_text,
+                modo_reemplazo,
+                scope_reemplazo,
+                0,  # se actualiza después del DELETE selectivo
             ))
             import_id = cur.fetchone()[0]
 
@@ -627,6 +644,13 @@ async def import_armadetailer(
                 # Si falla el DELETE selectivo, abortar la importación
                 raise
 
+            # Persistir barras eliminadas en el registro de import
+            if barras_eliminadas_previo > 0:
+                cur.execute(
+                    "UPDATE imports SET barras_eliminadas_previo = %s WHERE id = %s",
+                    (barras_eliminadas_previo, import_id),
+                )
+
             # ── UPSERT barras ──
             # El ON CONFLICT (id_unico) DO UPDATE maneja reimportaciones.
             # La limpieza de cargas antiguas se hace via DELETE /cargas/{id}
@@ -635,6 +659,15 @@ async def import_armadetailer(
             if rows_to_upsert:
                 rows_with_import = [row + ('csv', import_id) for row in rows_to_upsert]
                 cur.executemany(upsert_sql, rows_with_import)
+                # Verificar integridad post-upsert: las barras realmente deben haber
+                # quedado en la BD con el import_id correcto.
+                cur.execute("SELECT COUNT(*) FROM barras WHERE import_id = %s", (import_id,))
+                actual_en_db = cur.fetchone()[0]
+                if actual_en_db != len(rows_to_upsert):
+                    raise RuntimeError(
+                        f"Integridad post-carga fallida: se esperaban {len(rows_to_upsert)} barras "
+                        f"pero quedaron {actual_en_db} en la BD. Se revirtio la importacion."
+                    )
 
     audit(user.get("email","unknown"), "importar_csv", f"{file.filename} → {proyecto_nombre} ({len(rows_to_upsert)} barras, {round(total_kilos,1)} kg, estado={estado})", "proyecto", proyecto_id)
 
