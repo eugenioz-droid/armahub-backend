@@ -57,6 +57,10 @@ def _es_propietario_cubicador(rec: dict, email: str) -> bool:
     """Cubicador/externo owns reclamo if cubicador_asignado or respuesta_por."""
     return rec.get("cubicador_asignado") == email or rec.get("respuesta_por") == email
 
+
+def _estado_bloquea_edicion_analisis(estado: str) -> bool:
+    return estado in ("validacion", "cerrado", "rechazado")
+
 # ========================= CONSTANTS =========================
 
 ESTADOS_RECLAMO = ("abierto", "en_analisis", "validacion", "cerrado", "rechazado")
@@ -1175,12 +1179,20 @@ def actualizar_reclamo(reclamo_id: int, body: ReclamoUpdate, user=Depends(get_cu
 
     with get_conn() as conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT id, estado, creado_por, asignado_a, cubicador_asignado, respuesta_por FROM reclamos WHERE id = %s", (reclamo_id,))
+            cur.execute(
+                """
+                SELECT id, estado, creado_por, asignado_a, cubicador_asignado, respuesta_por, aplica, respuesta_texto
+                FROM reclamos WHERE id = %s
+                """,
+                (reclamo_id,),
+            )
             row = cur.fetchone()
             if not row:
                 raise HTTPException(status_code=404, detail="Reclamo no encontrado")
             estado_anterior = row[1]
             rec = {"creado_por": row[2], "asignado_a": row[3], "cubicador_asignado": row[4], "respuesta_por": row[5]}
+            aplica_actual = row[6]
+            respuesta_actual = row[7]
 
             # Filtrar campos según rol
             submitted_fields = {f for f in body.__fields_set__ if getattr(body, f) is not None}
@@ -1189,20 +1201,41 @@ def actualizar_reclamo(reclamo_id: int, body: ReclamoUpdate, user=Depends(get_cu
             elif role == "usc":
                 if not _es_propietario_usc(rec, email):
                     raise HTTPException(status_code=403, detail="Solo puede editar reclamos propios")
+                if submitted_fields and estado_anterior != "abierto":
+                    raise HTTPException(status_code=403, detail="No puede editar el reclamo cuando ya está en análisis o etapas posteriores")
                 blocked = submitted_fields & ANALISIS_FIELDS
                 if blocked:
                     raise HTTPException(status_code=403, detail=f"No tiene permiso para editar campos de análisis: {', '.join(blocked)}")
             elif role in ("cubicador", "externo"):
                 if not _es_propietario_cubicador(rec, email):
                     raise HTTPException(status_code=403, detail="Solo puede editar reclamos propios")
+                if submitted_fields and _estado_bloquea_edicion_analisis(estado_anterior):
+                    raise HTTPException(status_code=403, detail="No puede editar el reclamo luego de enviar a validación")
                 blocked = submitted_fields & REGISTRO_FIELDS
                 if blocked:
                     raise HTTPException(status_code=403, detail=f"No tiene permiso para editar campos de registro: {', '.join(blocked)}")
             else:
                 raise HTTPException(status_code=403, detail="No tiene permiso para editar reclamos")
 
+            if body.estado == "validacion":
+                aplica_efectiva = body.aplica if body.aplica is not None else aplica_actual
+                if aplica_efectiva not in ("si", "no"):
+                    raise HTTPException(status_code=400, detail="Debe marcar si el reclamo aplica o no aplica antes de enviar a validación")
+
+                respuesta_efectiva = body.respuesta_texto if body.respuesta_texto is not None else respuesta_actual
+                if not (respuesta_efectiva and str(respuesta_efectiva).strip()):
+                    raise HTTPException(status_code=400, detail="Debe ingresar la explicación/justificación antes de enviar a validación")
+
+                cur.execute("SELECT COUNT(*) FROM reclamo_acciones WHERE reclamo_id = %s", (reclamo_id,))
+                acciones_count = int(cur.fetchone()[0] or 0)
+                if acciones_count <= 0:
+                    raise HTTPException(status_code=400, detail="Debe registrar al menos una acción antes de enviar a validación")
+
             sets = ["fecha_actualizacion = %s"]
             params = [now]
+
+            def _col_in_sets(col: str) -> bool:
+                return any(s.startswith(f"{col} =") or s == f"{col} = NULL" for s in sets)
 
             updatable = [
                 "id_proyecto", "titulo", "descripcion", "prioridad", "tipo_reclamo",
@@ -1225,6 +1258,7 @@ def actualizar_reclamo(reclamo_id: int, body: ReclamoUpdate, user=Depends(get_cu
                                "respuesta_texto", "validacion_resultado", "validacion_observaciones",
                                "tiempo_respuesta_unidad", "tiempo_respuesta_actualizado_por",
                                "tiempo_respuesta_fecha_actualizacion", "asignado_a", "cubicador_asignado"}
+            ishikawa_fields = {"categoria_ishikawa", "sub_causa", "cod_causa", "explicacion_causa"}
             # Detect rejection early so the updatable loop can skip validation fields
             is_rejection = body.validacion_resultado == "rechazado"
             skip_on_rejection = {"validacion_resultado", "validacion_observaciones"}
@@ -1234,11 +1268,18 @@ def actualizar_reclamo(reclamo_id: int, body: ReclamoUpdate, user=Depends(get_cu
                 if val is not None:
                     if is_rejection and field in skip_on_rejection:
                         continue  # PA.5: these will be set to NULL below
+                    if body.aplica == "no" and field in ishikawa_fields:
+                        continue
                     # anio_calidad solo editable por admin/admin2
                     if field == "anio_calidad" and role not in ("admin", "admin2"):
                         continue
                     sets.append(f"{field} = %s")
                     params.append(val if (val != "" or field not in nullable_fields) else None)
+
+            if body.aplica == "no":
+                for ishikawa_field in ishikawa_fields:
+                    if not _col_in_sets(ishikawa_field):
+                        sets.append(f"{ishikawa_field} = NULL")
 
             # Auto-set respuesta metadata when respuesta_texto is provided
             if body.respuesta_texto and body.respuesta_texto.strip():
@@ -1285,10 +1326,6 @@ def actualizar_reclamo(reclamo_id: int, body: ReclamoUpdate, user=Depends(get_cu
                 sets.append("estado = %s")
                 params.append(body.estado)
                 estado_changed = True
-
-                # Helper: check if column already in sets to avoid duplicate assignment
-                def _col_in_sets(col):
-                    return any(s.startswith(col + " =") or s.startswith(col + " =") for s in sets)
 
                 # If closing/validating, set fecha_cierre (unless already set)
                 if body.estado in ("cerrado", "rechazado"):
@@ -1472,13 +1509,17 @@ def crear_accion(reclamo_id: int, body: AccionCreate, user=Depends(get_current_u
 
     with get_conn() as conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT id, cubicador_asignado, respuesta_por FROM reclamos WHERE id = %s", (reclamo_id,))
+            cur.execute("SELECT id, estado, cubicador_asignado, respuesta_por FROM reclamos WHERE id = %s", (reclamo_id,))
             row = cur.fetchone()
             if not row:
                 raise HTTPException(status_code=404, detail="Reclamo no encontrado")
 
+            estado_reclamo = row[1]
+            if role not in ("admin", "admin2") and _estado_bloquea_edicion_analisis(estado_reclamo):
+                raise HTTPException(status_code=403, detail="No se pueden editar acciones luego de enviar a validación")
+
             if role in ("cubicador", "externo"):
-                rec = {"cubicador_asignado": row[1], "respuesta_por": row[2]}
+                rec = {"cubicador_asignado": row[2], "respuesta_por": row[3]}
                 if not _es_propietario_cubicador(rec, email):
                     raise HTTPException(status_code=403, detail="Solo puede agregar acciones en reclamos propios")
 
@@ -1531,8 +1572,26 @@ def actualizar_accion(reclamo_id: int, accion_id: int, body: AccionUpdate, user=
 def eliminar_accion(reclamo_id: int, accion_id: int, user=Depends(get_current_user)):
     """Eliminar una acción de un reclamo."""
     email = user.get("email", "unknown")
+    role = user.get("role", "usc")
+
+    if role not in ("admin", "admin2", "cubicador", "externo"):
+        raise HTTPException(status_code=403, detail="No tiene permiso para eliminar acciones")
+
     with get_conn() as conn:
         with conn.cursor() as cur:
+            cur.execute("SELECT estado, cubicador_asignado, respuesta_por FROM reclamos WHERE id = %s", (reclamo_id,))
+            rec_row = cur.fetchone()
+            if not rec_row:
+                raise HTTPException(status_code=404, detail="Reclamo no encontrado")
+
+            if role not in ("admin", "admin2") and _estado_bloquea_edicion_analisis(rec_row[0]):
+                raise HTTPException(status_code=403, detail="No se pueden editar acciones luego de enviar a validación")
+
+            if role in ("cubicador", "externo"):
+                rec = {"cubicador_asignado": rec_row[1], "respuesta_por": rec_row[2]}
+                if not _es_propietario_cubicador(rec, email):
+                    raise HTTPException(status_code=403, detail="Solo puede eliminar acciones en reclamos propios")
+
             cur.execute("DELETE FROM reclamo_acciones WHERE id = %s AND reclamo_id = %s", (accion_id, reclamo_id))
             if cur.rowcount == 0:
                 raise HTTPException(status_code=404, detail="Acción no encontrada")

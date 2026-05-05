@@ -173,14 +173,18 @@ function _applyReclamoDetailPermissions(data) {
   var esCreador = data.creado_por && data.creado_por === currentUserEmail;
   var esPropioCub = data.cubicador_asignado === currentUserEmail || data.respuesta_por === currentUserEmail;
   var validado = !!data.validacion_resultado;
+  var estadoPermiteAnalisis = data.estado === 'abierto' || data.estado === 'en_analisis';
 
-  var puedeEditarSec1 = (currentRole === 'admin' || currentRole === 'admin2') || (currentRole === 'usc' && esCreador);
+  var puedeEditarSec1 = (currentRole === 'admin' || currentRole === 'admin2') || (currentRole === 'usc' && esCreador && data.estado === 'abierto');
   if (validado && currentRole !== 'admin') puedeEditarSec1 = false;
   var btnEditar = document.getElementById('btnEditarReclamo');
   if (btnEditar) btnEditar.style.display = puedeEditarSec1 ? '' : 'none';
 
   var selAplica = document.getElementById('recDetailAplica');
-  if (selAplica) selAplica.disabled = !(['admin', 'admin2', 'cubicador'].includes(currentRole));
+  var puedeCambiarAplica =
+    (currentRole === 'admin' || currentRole === 'admin2') ||
+    ((currentRole === 'cubicador' || currentRole === 'externo') && esPropioCub && estadoPermiteAnalisis);
+  if (selAplica) selAplica.disabled = !puedeCambiarAplica;
 
   var puedeEliminar = (currentRole === 'admin' || currentRole === 'admin2') || (currentRole === 'usc' && esCreador);
   var btnElim = document.getElementById('btnEliminarReclamo');
@@ -210,11 +214,14 @@ function _applyReclamoDetailPermissions(data) {
 
   var puedeResponder = ['admin','admin2','cubicador','externo'].includes(currentRole);
   if ((['cubicador','externo'].includes(currentRole)) && !esPropioCub) puedeResponder = false;
+  if (!estadoPermiteAnalisis && !['admin','admin2'].includes(currentRole)) puedeResponder = false;
   if (validado && currentRole !== 'admin') puedeResponder = false;
   var sec2Fields = ['recDetailRespuestaTexto','recDetailCausaDisplay','recDetailAreaAplica','recDetailFechaAnalisis','recDetailKilosMal','recTiempoRespuestaAnalisis','recTiempoRespuestaUnidadAnalisis'];
   sec2Fields.forEach(function(fid) { var el = document.getElementById(fid); if (el) el.disabled = !puedeResponder; });
   var btnGuardarResp = document.getElementById('btnGuardarRespuesta');
   if (btnGuardarResp) btnGuardarResp.style.display = puedeResponder ? '' : 'none';
+  var btnClearCausa = document.getElementById('recBtnClearCausa');
+  if (btnClearCausa) btnClearCausa.style.display = puedeResponder ? '' : 'none';
   var respDropZone = document.getElementById('recRespDropZone');
   var respFileInput = document.getElementById('recRespFileInput');
   if (respDropZone) respDropZone.style.display = puedeResponder ? '' : 'none';
@@ -228,6 +235,7 @@ function _applyReclamoDetailPermissions(data) {
 
   var puedeAccion = ['admin','admin2','cubicador','externo'].includes(currentRole);
   if ((['cubicador','externo'].includes(currentRole)) && !esPropioCub) puedeAccion = false;
+  if (!estadoPermiteAnalisis && !['admin','admin2'].includes(currentRole)) puedeAccion = false;
   if (validado && currentRole !== 'admin') puedeAccion = false;
   var accionFields = ['recNuevaAccionTipo','recNuevaAccionDesc','recNuevaAccionResp','recNuevaAccionFecha'];
   accionFields.forEach(function(fid) { var el = document.getElementById(fid); if (el) el.disabled = !puedeAccion; });
@@ -441,6 +449,21 @@ async function cerrarReclamo() {
   
   if (!aplicaValue || aplicaValue === 'pendiente') {
     alert('Para enviar a validación, primero debe seleccionar "Sí aplica" o "No aplica" en el campo Aplica.');
+    return;
+  }
+
+  var justificacion = (document.getElementById('recDetailRespuestaTexto').value || '').trim();
+  if (!justificacion) {
+    alert('Para enviar a validación, debe ingresar la explicación/justificación del análisis.');
+    document.getElementById('recDetailRespuestaTexto').focus();
+    return;
+  }
+
+  var detail = await apiGet('/reclamos/' + _reclamoActual.id + '?include_images=false');
+  if (!detail) return;
+  var accionesCount = ((detail.acciones || []).length || 0);
+  if (accionesCount <= 0) {
+    alert('Para enviar a validación, debe registrar al menos una acción.');
     return;
   }
   
@@ -693,6 +716,17 @@ function _updateAplicaBadge() {
   }
 }
 
+function _clearReclamoCausaFields() {
+  document.getElementById('recDetailCausaDisplay').value = '';
+  document.getElementById('recDetailCategoria').value = '';
+  document.getElementById('recDetailSubCausa').value = '';
+  document.getElementById('recDetailCodCausa').value = '';
+}
+
+function clearReclamoCausa() {
+  _clearReclamoCausaFields();
+}
+
 async function cambiarAplicaReclamo() {
   if (!_reclamoActual) return;
   var val = document.getElementById('recDetailAplica').value;
@@ -704,7 +738,14 @@ async function cambiarAplicaReclamo() {
   });
   if (res.status === 401) { logout(); return; }
   var data = await res.json();
-  if (data.ok) { await verReclamo(_reclamoActual.id); await loadReclamos(); await loadRecLanding(); }
+  if (data.ok) {
+    if (val === 'no') {
+      _clearReclamoCausaFields();
+    }
+    await verReclamo(_reclamoActual.id);
+    await loadReclamos();
+    await loadRecLanding();
+  }
   else { alert('Error: ' + (data.detail || 'desconocido')); }
 }
 
