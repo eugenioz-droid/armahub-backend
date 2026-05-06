@@ -546,7 +546,37 @@ async def import_armadetailer(
         nombre_dwg=EXCLUDED.nombre_dwg,
         origen=EXCLUDED.origen,
         import_id=EXCLUDED.import_id
+    WHERE barras.id_proyecto = EXCLUDED.id_proyecto
     """
+
+    # ── Protección obra: excluir barras que ya pertenecen a OTRA obra ──────────────
+    # El UPSERT usa ON CONFLICT(id_unico). Sin esta verificación, cargar una planilla
+    # en obra B podría sobrescribir barras de obra A si comparten id_unico.
+    # Se bloquean esas filas: no se escriben, se informa en el resultado.
+    barras_otra_obra = 0
+    obras_conflicto: dict = {}  # {id_proyecto_origen: count}
+    if rows_to_upsert:
+        id_unicos_csv = [row[0] for row in rows_to_upsert]
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT id_unico, id_proyecto FROM barras WHERE id_unico = ANY(%s) AND id_proyecto != %s",
+                    (id_unicos_csv, proyecto_id)
+                )
+                conflictos = {r[0]: r[1] for r in cur.fetchall()}
+        if conflictos:
+            conflicto_ids = set(conflictos.keys())
+            barras_otra_obra = len(conflicto_ids)
+            for obra_origen in conflictos.values():
+                obras_conflicto[obra_origen] = obras_conflicto.get(obra_origen, 0) + 1
+            rows_to_upsert = [row for row in rows_to_upsert if row[0] not in conflicto_ids]
+            ejemplos = ", ".join(f"'{k}' (obra {v})" for k, v in list(conflictos.items())[:3])
+            if barras_otra_obra > 3:
+                ejemplos += f" ... y {barras_otra_obra - 3} más"
+            warnings.append(
+                f"{barras_otra_obra} barras existen en otra obra y no se sobreescribieron: {ejemplos}"
+            )
+    # ─────────────────────────────────────────────────────────────────────────────────
 
     total_kilos = sum(r[15] for r in rows_to_upsert if r[15] is not None)  # index 15 = peso_total
 
@@ -555,9 +585,9 @@ async def import_armadetailer(
     first_plano = str(df.iloc[0]["PLANO_CODE"]) if len(df) > 0 and pd.notna(df.iloc[0]["PLANO_CODE"]) else None
 
     # Determinar estado de la importación
-    if len(rows_to_upsert) == 0 and len(rejected_rows) > 0:
+    if len(rows_to_upsert) == 0 and (len(rejected_rows) > 0 or barras_otra_obra > 0):
         estado = "error"
-    elif len(rejected_rows) > 0:
+    elif len(rejected_rows) > 0 or barras_otra_obra > 0:
         estado = "parcial"
     else:
         estado = "ok"
@@ -708,6 +738,8 @@ async def import_armadetailer(
         "estado": estado,
         "is_new_project": is_new_project,
         "barras_eliminadas_previo": barras_eliminadas_previo,
+        "barras_otra_obra": barras_otra_obra,
+        "obras_conflicto": obras_conflicto,
         "fund_misplaced": fund_misplaced_list,
     }
 
