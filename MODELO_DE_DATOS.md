@@ -4,6 +4,13 @@
 Este documento describe todas las tablas, campos y relaciones del sistema ArmaHub.
 Objetivo: tener una visión clara del modelo relacional actual para planificar mejoras.
 
+> **⚠️ ESTADO (actualizado 2026-06-08, tarea 1.6):** El detalle de tablas más abajo fue escrito
+> cuando el esquema iba por la migración 32. **Hoy el código va por la migración 52** (ver
+> `armahub/db.py`, lista `MIGRATIONS`). Las secciones de tablas individuales pueden no reflejar
+> columnas agregadas después de la 32. La fuente de verdad del esquema es `armahub/db.py`.
+> El detalle completo tabla por tabla se actualizará en la Fase 4 del programa (modelo objetivo).
+> Abajo, en "Migraciones 33–52", el resumen de lo que cambió desde entonces.
+
 ---
 
 ## 📁 ENTIDADES PRINCIPALES
@@ -400,6 +407,38 @@ Campos:
 3. **Migración 30:** Columnas `proyectos.owner_id` y `proyectos.calculista` (texto) eliminadas
 4. **Migración 31:** Roles en `proyecto_usuarios` actualizados a: admin, usc, cubicador, externo, cliente
 5. **Migración 32:** Tabla `proyecto_aliases` creada para asociar múltiples códigos ArmaDetailer a una obra
+
+## ✅ MIGRACIONES 33–52 (resumen — fuente: `armahub/db.py`)
+
+Estas migraciones se aplicaron después de que se escribió el detalle de tablas de arriba.
+Resumen de cambios relevantes para el modelo:
+
+| # | Cambio |
+|---|--------|
+| 33–34 | reclamos: tipos `atraso` y `actualizacion_portal` en CHECK de `tipo_reclamo` |
+| 35 | reclamos: campos de presentación semanal |
+| 36 | proyectos: `fecha_inicio` |
+| 37 | barras: índice para navegador de sectores |
+| 38 | reclamos: backfill `cubicador_asignado` desde display names |
+| 39 | reclamos: drop de `cliente_id` (columna sin uso tras rename clientes→constructoras) |
+| 40 | reclamos: `tiempo_respuesta` (tracking manual) |
+| 41–42 | reclamos: estado `validado` en CHECK + fix del CHECK constraint |
+| 43 | **notificaciones**: tablas del centro de notificaciones (`notificaciones`, `notificacion_config`) |
+| 44 | reclamos: separar `id_calidad` en `anio_calidad` (int) + `numero_calidad` (int) + índice compuesto |
+| 45 | reclamos: backfill `anio_calidad`/`numero_calidad` desde `id_calidad` |
+| 46 | reclamos: eliminar estado `accion_correctiva` → migrar a `cerrado` + nuevo CHECK |
+| 47 | reclamos: eliminar estado `validado` → migrar a `cerrado` |
+| 49 | limpieza: drop de tablas `obra_ejes` y `obra_losas` (enfoque revertido a vista derivada de barras) |
+| 50 | imports: `modo_reemplazo`, `scope_reemplazo`, `barras_eliminadas_previo` |
+| 51 | barras: `id` BIGSERIAL PK + UNIQUE(`id_unico`, `id_proyecto`) — id_unico ya no es global |
+| 52 | imports: `supersedida_por` (FK a imports.id) — historial de cargas supersedidas |
+
+> Nota: la migración 48 no existe en la secuencia (salto, normal). Estados de reclamo vigentes tras
+> 46–47: `abierto`, `en_analisis`, `validacion`, `cerrado`, `rechazado` (ya NO existen `accion_correctiva` ni `validado`).
+>
+> **Tablas nuevas desde la 32 no detalladas arriba:** `notificaciones`, `notificacion_config` (migración 43).
+> Estas se documentarán en detalle en la Fase 4. La estructura de estados de reclamos en la sección 9
+> de este documento está desactualizada (muestra estados ya eliminados): la lista vigente es la de esta nota.
 
 ## 🔍 DUDAS PENDIENTES
 

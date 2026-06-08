@@ -1,5 +1,16 @@
 # Plan de Refactorizacion Valido - ArmaHub
 
+> **DECISIÓN CERRADA (2026-06-08, tarea 1.4 del programa vigente):**
+> - El refactor **frontend** propuesto aquí (extraer app.js a app/shared/features/legacy) **YA SE EJECUTÓ
+>   completo**: app.js pasó de monolito a ~80 líneas. Esta parte del documento es histórica.
+> - La estructura **backend** `modules/{dominio}/router,services,queries,schemas` propuesta aquí **NO se
+>   adopta por ahora**. El backend se mantiene en archivos por dominio (`reclamos.py`, `barras.py`, etc.),
+>   que sigue siendo legible. Solo se separará un dominio puntual si su tamaño lo exige (ver decisión 0.4
+>   del programa vigente). Esto cierra la ambigüedad: NO hay migración pendiente a `modules/`.
+>
+> Documento conservado como fuente arquitectónica. Programa vigente: `docs/programa-versiones/programa_v1.00.md`.
+
+
 ## Objetivo
 
 ArmaHub ya no es solo una app de cubicacion. Hoy es un portal con Hub, modulos separados por negocio y una proyeccion clara a nuevas calugas y miniaplicaciones. El refactor debe preparar esa expansion sin reescribir todo ni romper la operacion diaria.

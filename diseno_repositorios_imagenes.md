@@ -1,5 +1,17 @@
 # Diseño de Repositorios de Imágenes Separados para Registro y Análisis
 
+> **DECISIÓN CERRADA (2026-06-08, tarea 1.5 del programa vigente):**
+> - Se **mantiene** el principio de separar imágenes de **registro** (evidencia inicial) y **análisis**
+>   (respuesta) — esto es correcto y sigue vigente.
+> - **NO se adopta** el almacenamiento en **filesystem local** (`/uploads/registro/`, `/uploads/analisis/`)
+>   que propone este documento. Razón: el sistema migra a Cloudflare Container (disco efímero) — un archivo
+>   en disco local se perdería al reiniciar. El storage va a **Cloudflare R2** (un solo bucket con carpetas:
+>   `reclamos/registro/`, `reclamos/analisis/`, etc.). Ver decisión 0.3 del programa vigente.
+> - La separación registro/análisis se implementa como **carpetas dentro de R2**, no como dos repositorios físicos.
+>
+> Documento conservado como fuente técnica del diseño funcional. Programa vigente: `docs/programa-versiones/programa_v1.00.md`.
+
+
 ## Diagrama de Arquitectura Propuesta
 
 ```

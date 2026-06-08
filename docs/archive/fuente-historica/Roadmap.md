@@ -1,4 +1,10 @@
-# Roadmap Operativo - Abril 2026
+# Roadmap Operativo - Abril 2026 [FUENTE HISTÓRICA - OBSOLETO]
+
+> **FUENTE HISTÓRICA (archivado 2026-06-08):** Este roadmap está obsoleto. Sus pendientes
+> vigentes ya fueron barridos al programa oficial `docs/programa-versiones/programa_v1.00.md`.
+> Se conserva por trazabilidad de decisiones del refactor frontend (Fases A–F, ya completadas
+> en el código). NO usar como programa activo.
+
 
 Este roadmap reemplaza el documento historico anterior y parte desde el estado real verificado del repositorio. La intencion es ordenar el trabajo en dos lineas simultaneas:
 

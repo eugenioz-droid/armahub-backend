@@ -1,4 +1,11 @@
-# Roadmap Reclamos — Escalamiento a Sistema de Calidad Multi-Origen
+# Roadmap Reclamos — Escalamiento a Sistema de Calidad Multi-Origen [FUENTE HISTÓRICA - OBSOLETO]
+
+> **FUENTE HISTÓRICA (archivado 2026-06-08):** Obsoleto. Sus pendientes vigentes (multi-origen
+> R1–R4, migración imágenes a R2 R5, envío de informe PC.15) ya fueron barridos al programa
+> oficial `docs/programa-versiones/programa_v1.00.md` (Fases 6B/6C y 3A). Se conserva por
+> trazabilidad de las decisiones arquitectónicas (1 DB, 1 backend, storage externo). NO usar
+> como programa activo.
+
 
 ## Visión
 
