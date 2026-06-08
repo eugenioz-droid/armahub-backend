@@ -1138,6 +1138,23 @@ def mover_cargas(body: MoverCargasRequest, user=Depends(get_current_user)):
                         skipped += 1
                         continue
 
+                    # Verificar conflictos en destino: barras con mismo id_unico ya presentes
+                    cur.execute("""
+                        SELECT COUNT(*) FROM barras b_origen
+                        WHERE b_origen.import_id = %s
+                          AND EXISTS (
+                              SELECT 1 FROM barras b_dest
+                              WHERE b_dest.id_proyecto = %s
+                                AND b_dest.id_unico = b_origen.id_unico
+                          )
+                    """, (carga_id, body.destino))
+                    conflictos_count = cur.fetchone()[0]
+                    if conflictos_count > 0:
+                        raise HTTPException(
+                            status_code=409,
+                            detail=f"La carga {carga_id} tiene {conflictos_count} barras con id_unico ya existentes en la obra destino. Elimina esas barras primero o usa reemplazo selectivo."
+                        )
+
                     # Mover barras
                     cur.execute(
                         "UPDATE barras SET id_proyecto = %s WHERE import_id = %s",

@@ -696,6 +696,26 @@ MIGRATIONS = [
         "DO $$ BEGIN ALTER TABLE imports ADD COLUMN scope_reemplazo TEXT; EXCEPTION WHEN duplicate_column THEN NULL; END $$;",
         "DO $$ BEGIN ALTER TABLE imports ADD COLUMN barras_eliminadas_previo INTEGER DEFAULT 0; EXCEPTION WHEN duplicate_column THEN NULL; END $$;",
     ]),
+
+    # --- Migration 51: id_unico único por obra (no global) ---
+    # Antes: id_unico TEXT PRIMARY KEY (global en todo el sistema)
+    # Ahora: id BIGSERIAL PRIMARY KEY + UNIQUE(id_unico, id_proyecto)
+    # Esto permite cargar el mismo archivo en distintas obras sin conflicto.
+    (51, "barras: id BIGSERIAL PK + UNIQUE(id_unico, id_proyecto)", [
+        # 1. Agregar columna id serial (si no existe)
+        "DO $$ BEGIN ALTER TABLE barras ADD COLUMN id BIGSERIAL; EXCEPTION WHEN duplicate_column THEN NULL; END $$;",
+        # 2. Crear la nueva restricción única compuesta
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_barras_unico_obra ON barras (id_unico, id_proyecto);",
+        # 3. Quitar la PK actual de id_unico
+        "DO $$ BEGIN ALTER TABLE barras DROP CONSTRAINT IF EXISTS barras_pkey; EXCEPTION WHEN undefined_object THEN NULL; END $$;",
+        # 4. Establecer id como nueva PK
+        "DO $$ BEGIN ALTER TABLE barras ADD PRIMARY KEY (id); EXCEPTION WHEN invalid_table_definition THEN NULL; END $$;",
+    ]),
+
+    # --- Migration 52: historial de cargas supersedidas ---
+    (52, "imports: supersedida_por (FK a imports.id)", [
+        "DO $$ BEGIN ALTER TABLE imports ADD COLUMN supersedida_por INTEGER REFERENCES imports(id); EXCEPTION WHEN duplicate_column THEN NULL; END $$;",
+    ]),
 ]
 
 
