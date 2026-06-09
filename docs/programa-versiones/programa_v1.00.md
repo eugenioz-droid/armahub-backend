@@ -124,7 +124,7 @@ Objetivo: dejar un único programa oficial partiendo del estado real, no de los 
 | 1.4 | Cerrar decisión de `refactor-analysis.md`: backend se mantiene por dominio, NO migra a `modules/` | ☑ | YO |
 | 1.5 | Cerrar decisión de `diseno_repositorios_imagenes.md`: storage va a R2, NO a filesystem local | ☑ | YO |
 | 1.6 | Actualizar `MODELO_DE_DATOS.md` al estado real (migraciones hasta ~52, tablas vigentes) | ☑ | YO |
-| 1.7 | Confirmar push de los 231 commits locales a origin/main (decisión de rama) | ☐ | TÚ+YO |
+| 1.7 | Confirmar push de los 231 commits locales a origin/main (decisión de rama) | ☑ | TÚ+YO |
 
 ---
 
@@ -134,14 +134,24 @@ Objetivo: saber qué se puede mover sin romper. No refactorizar todo; identifica
 
 | N° | Descripción | Realizado | Quién |
 |----|-------------|-----------|-------|
-| 2.1 | Revisar seguridad backend: auth, roles, ownership, campos editables, endpoints públicos | ☐ | YO |
-| 2.2 | Revisar consistencia `ROLES_Y_PERMISOS.md` ↔ frontend ↔ backend | ☐ | YO |
-| 2.3 | Detectar dependencias incompatibles con el container (rutas de archivo, /uploads local, etc.) | ☐ | YO |
-| 2.4 | Inventariar todo acceso a archivos/imágenes que hoy use BYTEA o disco local | ☐ | YO |
-| 2.5 | Smoke test funcional Reclamos (baseline pre-migración) | ☐ | TÚ+YO |
-| 2.6 | Smoke test funcional Cubicación (baseline pre-migración) | ☐ | TÚ+YO |
-| 2.7 | Smoke test funcional Admin (baseline pre-migración) | ☐ | TÚ+YO |
-| 2.8 | Crear lista de riesgos bloqueantes antes de la migración | ☐ | YO |
+| 2.1 | Revisar seguridad backend: auth, roles, ownership, campos editables, endpoints públicos | ☑ | YO |
+| 2.2 | Revisar consistencia `ROLES_Y_PERMISOS.md` ↔ frontend ↔ backend | ☑ | YO |
+| 2.3 | Detectar dependencias incompatibles con el container (rutas de archivo, /uploads local, etc.) | ☑ | YO |
+| 2.4 | Inventariar todo acceso a archivos/imágenes que hoy use BYTEA o disco local | ☑ | YO |
+| 2.5 | Smoke test funcional Reclamos (baseline pre-migración) | ⏭ diferido a Fase 3 | TÚ+YO |
+| 2.6 | Smoke test funcional Cubicación (baseline pre-migración) | ⏭ diferido a Fase 3 | TÚ+YO |
+| 2.7 | Smoke test funcional Admin (baseline pre-migración) | ⏭ diferido a Fase 3 | TÚ+YO |
+
+> **Decisión (2026-06-09):** smoke tests baseline diferidos. No aportan valor corriendo aún en Render;
+> se cubren con los smoke tests de la propia migración (3.8, 3.19). Render se mantiene en paralelo como
+> respaldo y NO se apaga hasta que Cloudflare pase los smoke tests (cutover 3.20).
+| 2.8 | Crear lista de riesgos bloqueantes antes de la migración → `docs/auditoria_fase2_riesgos.md` | ☑ | YO |
+
+> **Resultado Fase 2 (ver `docs/auditoria_fase2_riesgos.md`):** migración de baja fricción (código ya
+> trabaja en memoria, no escribe a disco). 3 hallazgos de seguridad: **H1** imágenes accesibles sin auth
+> (ALTO, `reclamos.py:1671`), **H2** detalle de reclamo sin ownership/IDOR (MEDIO, `reclamos.py:960`),
+> **H3** eliminar imagen sin ownership (MEDIO, ya en 6.1). Incorporados al programa abajo. Pendientes 2.2
+> y smoke tests 2.5–2.7 requieren coordinación contigo (TÚ+YO).
 
 ---
 
@@ -157,7 +167,7 @@ Objetivo: dejar el sistema actual corriendo sobre la infraestructura final antes
 | 3.2 | Crear `armahub/storage.py` — abstracción R2 (upload, get_url, delete, presigned) | ☐ | YO |
 | 3.3 | Configurar env vars R2 (account, keys, bucket) | ☐ | TÚ+YO |
 | 3.4 | Refactor subida de imágenes de reclamos: guardar en R2, en BD solo `storage_key` | ☐ | YO |
-| 3.5 | Refactor lectura de imágenes: servir desde R2 (proxy o presigned URL) | ☐ | YO |
+| 3.5 | Refactor lectura de imágenes: servir desde R2 (proxy o presigned URL). **Cierra H1**: hoy `GET /reclamos/{id}/imagenes/{img}` (`reclamos.py:1671`) NO tiene auth — exigir autenticación + permiso sobre el reclamo, usar presigned URL para `<img>` | ☐ | YO |
 | 3.6 | Migración one-shot: BYTEA existentes → R2 → actualizar storage_key | ☐ | YO |
 | 3.7 | Eliminar columna `imagen`/`data` (BYTEA) post-migración validada | ☐ | YO |
 | 3.8 | Validar upload/ver/eliminar imágenes contra R2 (registro y análisis separados) | ☐ | TÚ+YO |
@@ -177,7 +187,7 @@ Objetivo: dejar el sistema actual corriendo sobre la infraestructura final antes
 |----|-------------|-----------|-------|
 | 3.13 | Crear `Dockerfile` + `.dockerignore` para FastAPI | ☐ | YO |
 | 3.14 | Crear Worker proxy + `wrangler.toml` para Containers | ☐ | YO |
-| 3.15 | Configurar secrets/env en Cloudflare (DATABASE_URL Supabase, JWT, R2, CORS) | ☐ | TÚ+YO |
+| 3.15 | Configurar secrets/env en Cloudflare (DATABASE_URL Supabase, JWT, R2, CORS). **CRÍTICO (R-INFRA1):** `JWT_SECRET` hoy tiene default `dev-secret-change-me`; sin un secreto real las sesiones son falsificables. **R-INFRA2:** `CORS_ORIGINS` debe listar el dominio de Cloudflare | ☐ | TÚ+YO |
 | 3.16 | Validar build local del container | ☐ | YO |
 | 3.17 | Desplegar en URL paralela de Cloudflare | ☐ | TÚ+YO |
 | 3.18 | Medir cold start, latencia y logs; verificar dependencias pesadas | ☐ | YO |
@@ -233,12 +243,13 @@ Objetivo: endurecer Reclamos y cerrar los pendientes reales arrastrados, antes d
 
 | N° | Descripción | Realizado | Quién |
 |----|-------------|-----------|-------|
-| 6.1 | Validar ownership en acciones correctivas y al eliminar imágenes | ☐ | YO |
-| 6.2 | Revisar acceso a imágenes (ahora en R2) y documentar política | ☐ | TÚ+YO |
-| 6.3 | QA visual del PDF de reclamo (campos largos, sin acciones, sin validación) | ☐ | YO |
-| 6.4 | FIX: cubicador externo no tiene botón "enviar a validar" reclamo; los otros cubicadores sí. Revisar y corregir permiso | ☐ | YO |
-| 6.5 | Optimizar query del listado de reclamos: reemplazar subconsulta correlacionada de seguimientos (COUNT por fila) por LEFT JOIN + GROUP BY; agregar índices para ORDER BY estado/prioridad/año/número. (No requiere worker; 72 registros es trivial. La lentitud actual es mayormente cold start de Render → se resuelve al migrar en Fase 3) | ☐ | YO |
-| 6.6 | Evaluar tamaño de `reclamos.py` y separar solo si la legibilidad lo exige | ☐ | YO |
+| 6.1 | Validar ownership en acciones correctivas y al eliminar imágenes (**H3** de auditoría Fase 2: `DELETE /reclamos/{id}/imagenes/{img}` no valida ownership) | ☐ | YO |
+| 6.2 | **H2** de auditoría Fase 2: aplicar filtro ownership/rol al detalle `GET /reclamos/{id}` (`reclamos.py:960`) — hoy cualquier autenticado lee cualquier reclamo por ID (IDOR) | ☐ | YO |
+| 6.3 | Revisar acceso a imágenes (ahora en R2) y documentar política | ☐ | TÚ+YO |
+| 6.4 | QA visual del PDF de reclamo (campos largos, sin acciones, sin validación) | ☐ | YO |
+| 6.5 | FIX: cubicador externo no tiene botón "enviar a validar" reclamo; los otros cubicadores sí. Revisar y corregir permiso | ☐ | YO |
+| 6.6 | Optimizar query del listado de reclamos: reemplazar subconsulta correlacionada de seguimientos (COUNT por fila) por LEFT JOIN + GROUP BY; agregar índices para ORDER BY estado/prioridad/año/número. (No requiere worker; 72 registros es trivial. La lentitud actual es mayormente cold start de Render → se resuelve al migrar en Fase 3) | ☐ | YO |
+| 6.7 | Evaluar tamaño de `reclamos.py` y separar solo si la legibilidad lo exige | ☐ | YO |
 
 ### 6B. Envío de informe por correo (arrastrado de PC.15)
 
