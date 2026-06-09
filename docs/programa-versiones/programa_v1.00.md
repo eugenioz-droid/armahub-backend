@@ -159,40 +159,48 @@ Objetivo: saber qué se puede mover sin romper. No refactorizar todo; identifica
 
 Objetivo: dejar el sistema actual corriendo sobre la infraestructura final antes de construir calugas nuevas. Migrar ahora es más barato que tarde.
 
-### 3A. Archivos a R2 (lo más urgente — saca BYTEA de la BD)
+> **Orden (reordenado 2026-06-09, decisión del usuario):** primero montar el programa + BD en Cloudflare
+> para tener una URL funcionando y probar que TODO migró bien; luego conectar R2 (storage); por último
+> migrar las imágenes viejas y hacer cutover. NO se configura nada en Render (se sale de él, no se invierte
+> en él). Render se mantiene encendido como respaldo y se apaga solo al final.
+>
+> Estado adelantado: bucket R2 `armahub` creado, API token generado (guardado por el usuario),
+> `storage.py` y `boto3` ya implementados y subidos. Esas credenciales se cargan en Cloudflare en 3B.
+
+### 3A. Montar programa + base de datos en Cloudflare (llegar a una URL que funcione)
 
 | N° | Descripción | Realizado | Quién |
 |----|-------------|-----------|-------|
-| 3.1 | Confirmar/crear cuenta Cloudflare + bucket R2 + API token | ☐ | TÚ |
-| 3.2 | Crear `armahub/storage.py` — abstracción R2 (upload, get_url, delete, presigned) | ☐ | YO |
-| 3.3 | Configurar env vars R2 (account, keys, bucket) | ☐ | TÚ+YO |
-| 3.4 | Refactor subida de imágenes de reclamos: guardar en R2, en BD solo `storage_key` | ☐ | YO |
-| 3.5 | Refactor lectura de imágenes: servir desde R2 (proxy o presigned URL). **Cierra H1**: hoy `GET /reclamos/{id}/imagenes/{img}` (`reclamos.py:1671`) NO tiene auth — exigir autenticación + permiso sobre el reclamo, usar presigned URL para `<img>` | ☐ | YO |
-| 3.6 | Migración one-shot: BYTEA existentes → R2 → actualizar storage_key | ☐ | YO |
-| 3.7 | Eliminar columna `imagen`/`data` (BYTEA) post-migración validada | ☐ | YO |
-| 3.8 | Validar upload/ver/eliminar imágenes contra R2 (registro y análisis separados) | ☐ | TÚ+YO |
+| 3.1 | Verificar que la cuenta Cloudflare tenga **Containers** habilitado (ArmaHub es Python/FastAPI, no corre como Worker JS). Si no, evaluar plan B (Fly.io/Railway) | ☐ | YO |
+| 3.2 | Crear proyecto Supabase para ArmaHub (cuenta existente de EZ Trader) | ☐ | TÚ |
+| 3.3 | Migrar esquema + datos actuales de Render a Supabase (pg_dump / pg_restore) | ☐ | YO |
+| 3.4 | Crear `Dockerfile` + `.dockerignore` para empaquetar FastAPI | ☐ | YO |
+| 3.5 | Crear Worker proxy + `wrangler.toml` para Cloudflare Containers | ☐ | YO |
+| 3.6 | Validar build local del container | ☐ | YO |
+| 3.7 | Configurar secrets/env en Cloudflare: `DATABASE_URL` (Supabase), `JWT_SECRET`, `CORS_ORIGINS`. **CRÍTICO (R-INFRA1):** `JWT_SECRET` hoy default `dev-secret-change-me` — poner secreto real o las sesiones son falsificables | ☐ | TÚ+YO |
+| 3.8 | Desplegar en URL paralela de Cloudflare (Render sigue activo) | ☐ | TÚ+YO |
+| 3.9 | Medir cold start, latencia y logs; verificar dependencias pesadas (pandas, openpyxl, fpdf2) | ☐ | YO |
+| 3.10 | Smoke test en Cloudflare SIN R2 todavía (login, static, navegación, CSV, reclamos, PDF — imágenes siguen en BYTEA por ahora) | ☐ | TÚ+YO |
 
-### 3B. Base de datos a Supabase
+**Hito 3A:** ArmaHub corre en Cloudflare + Supabase con una URL accesible, en paralelo a Render. Confirmado que migró bien.
 
-| N° | Descripción | Realizado | Quién |
-|----|-------------|-----------|-------|
-| 3.9 | Crear proyecto Supabase y confirmar plan/límites | ☐ | TÚ |
-| 3.10 | Migrar esquema + datos (pg_dump / pg_restore) a Supabase | ☐ | YO |
-| 3.11 | Ajustar `DATABASE_URL` y validar conexión/pool | ☐ | YO |
-| 3.12 | Verificar migraciones aplicadas y consistencia post-restore | ☐ | YO |
-
-### 3C. Programa a Cloudflare (container)
+### 3B. Conectar storage R2
 
 | N° | Descripción | Realizado | Quién |
 |----|-------------|-----------|-------|
-| 3.13 | Crear `Dockerfile` + `.dockerignore` para FastAPI | ☐ | YO |
-| 3.14 | Crear Worker proxy + `wrangler.toml` para Containers | ☐ | YO |
-| 3.15 | Configurar secrets/env en Cloudflare (DATABASE_URL Supabase, JWT, R2, CORS). **CRÍTICO (R-INFRA1):** `JWT_SECRET` hoy tiene default `dev-secret-change-me`; sin un secreto real las sesiones son falsificables. **R-INFRA2:** `CORS_ORIGINS` debe listar el dominio de Cloudflare | ☐ | TÚ+YO |
-| 3.16 | Validar build local del container | ☐ | YO |
-| 3.17 | Desplegar en URL paralela de Cloudflare | ☐ | TÚ+YO |
-| 3.18 | Medir cold start, latencia y logs; verificar dependencias pesadas | ☐ | YO |
-| 3.19 | Smoke test completo en Cloudflare (login, static, CSV, reclamos, PDF, imágenes R2) | ☐ | TÚ+YO |
-| 3.20 | Cutover: dejar Cloudflare como producción (URL de Cloudflare) y apagar Render. El dominio propio se apunta después en Fase 15 | ☐ | TÚ+YO |
+| 3.11 | Cargar credenciales R2 en Cloudflare: `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET`, `R2_PUBLIC_BASE_URL` | ☐ | TÚ+YO |
+| 3.12 | Refactor subida de imágenes de reclamos: guardar en R2, en BD solo `storage_key` (migración: columna nullable) | ☐ | YO |
+| 3.13 | Refactor lectura de imágenes: servir desde R2 (presigned URL). **Cierra H1**: hoy `GET /reclamos/{id}/imagenes/{img}` (`reclamos.py:1671`) NO tiene auth — exigir autenticación + permiso, usar presigned URL para `<img>` | ☐ | YO |
+| 3.14 | Validar upload/ver/eliminar imágenes NUEVAS contra R2 (registro y análisis separados) | ☐ | TÚ+YO |
+
+### 3C. Migrar imágenes existentes y cutover
+
+| N° | Descripción | Realizado | Quién |
+|----|-------------|-----------|-------|
+| 3.15 | Migración one-shot: BYTEA existentes → R2 → actualizar `storage_key` | ☐ | YO |
+| 3.16 | Eliminar columna `data` (BYTEA) de `reclamo_imagenes` post-migración validada | ☐ | YO |
+| 3.17 | Smoke test completo final en Cloudflare (todo, incluidas imágenes desde R2) | ☐ | TÚ+YO |
+| 3.18 | Cutover: dejar Cloudflare como producción y apagar Render. El dominio propio se apunta después en Fase 15 | ☐ | TÚ+YO |
 
 **Criterio de salida Fase 3:** ArmaHub corre en Cloudflare + Supabase + R2, Render apagado, smoke tests verdes.
 
