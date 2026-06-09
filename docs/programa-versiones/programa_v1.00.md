@@ -155,63 +155,71 @@ Objetivo: saber qué se puede mover sin romper. No refactorizar todo; identifica
 
 ---
 
-## FASE 3 — Infraestructura: salir de Render (Cloudflare + Supabase + R2)
+## FASE 3 — Infraestructura: incorporar R2 (sin gasto, sin migrar hosting)
 
-Objetivo: dejar el sistema actual corriendo sobre la infraestructura final antes de construir calugas nuevas. Migrar ahora es más barato que tarde.
+Objetivo: sacar las imágenes de la base de datos (hoy en BYTEA) y llevarlas a Cloudflare R2, manteniendo el programa donde ya corre. Lo urgente y de valor real es R2; el hosting se queda como está para no gastar.
 
-> **Orden (reordenado 2026-06-09, decisión del usuario):** primero montar el programa + BD en Cloudflare
-> para tener una URL funcionando y probar que TODO migró bien; luego conectar R2 (storage); por último
-> migrar las imágenes viejas y hacer cutover. NO se configura nada en Render (se sale de él, no se invierte
-> en él). Render se mantiene encendido como respaldo y se apaga solo al final.
+> **Decisión de infraestructura (2026-06-09, FINAL):** se evaluó mover el programa a Cloudflare
+> Containers y se DESCARTÓ por costo: Containers exige el plan Workers Paid ($5/mes) y, sobre la cuota
+> gratuita, puede cobrar por uso — sin garantía de tope. Como ArmaHub es una iniciativa personal sin
+> presupuesto hasta estar operativo, **el programa Python/FastAPI se mantiene en Render** (gratis). NO se
+> reescribe a JS (sería rehacer meses de trabajo sin ganar calidad).
 >
-> Estado adelantado: bucket R2 `armahub` creado, API token generado (guardado por el usuario),
-> `storage.py` y `boto3` ya implementados y subidos. Esas credenciales se cargan en Cloudflare en 3B.
+> **Arquitectura final v1.00 (TODA gratis, $0):**
+> - Programa (FastAPI) → **Render** (donde ya corre; plan free).
+> - Base de datos (PostgreSQL) → **Supabase** (plan free 500 MB, real y permanente; sin las imágenes
+>   —que van a R2— entra cómodo). Migrar de Render a Supabase SÍ es parte del plan.
+> - Archivos/imágenes → **Cloudflare R2** (plan free 10 GB; saca BYTEA de la BD).
 >
-> **Decisión de hosting (2026-06-09):** se mantiene Python/FastAPI (NO se reescribe a JS — sería rehacer
-> 52 migraciones, importador CSV, cálculos de acero, PDF/Excel con librerías solo-Python; meses de trabajo
-> y riesgo, sin ganar calidad: FastAPI es robusto). El programa correrá en **Cloudflare Containers** (beta
-> de Cloudflare, estable; cold start 2-3s vs 30s de Render; incluido en el Workers Paid que ya se paga por
-> EZ Trader). Containers NO altera la lógica/rendimiento/diseño del código — solo es dónde corre (Dockerfile
-> + Worker proxy como envoltorio). Disco efímero ya resuelto con R2. Render se mantiene de respaldo hasta
-> validar. **Restricción de costo del usuario:** no incurrir en gasto hasta tener todo operativo; avisar
-> antes de cualquier paso con posible cobro (R2 y Containers tienen capa gratuita; volúmenes iniciales ~$0).
+> **Garantía de no-sorpresa (acordada con el usuario):** ninguna de estas 3 piezas arrastra otro servicio
+> pagado ni se obligan entre sí. Supabase free no exige pagar Workers ni nada; R2 funciona desde Render.
+> Si alguna pieza creciera más allá del free tier (improbable a escala inicial), se avisa ANTES con datos.
+>
+> Descartados los artefactos de Containers (Dockerfile, worker/, wrangler.toml, package.json) — se eliminan
+> o quedan archivados, no se usan en esta arquitectura. `storage.py` y `boto3` SÍ se usan (son para R2).
+> El cold start de Render se acepta por ahora; revisar plan de Render solo si molesta en producción.
+>
+> Estado adelantado: bucket R2 `armahub` creado; `storage.py` y `boto3` implementados y subidos.
+> El usuario regenerará el API token R2 cuando toque (tarea 3.2).
 
-### 3A. Montar programa + base de datos en Cloudflare (llegar a una URL que funcione)
-
-| N° | Descripción | Realizado | Quién |
-|----|-------------|-----------|-------|
-| 3.1 | Verificar que la cuenta Cloudflare tenga **Containers** habilitado (ArmaHub es Python/FastAPI, no corre como Worker JS). Si no, evaluar plan B (Fly.io/Railway) | ☐ | YO |
-| 3.2 | Crear proyecto Supabase para ArmaHub (cuenta existente de EZ Trader) | ☐ | TÚ |
-| 3.3 | Migrar esquema + datos actuales de Render a Supabase (pg_dump / pg_restore) | ☐ | YO |
-| 3.4 | Crear `Dockerfile` + `.dockerignore` para empaquetar FastAPI | ☐ | YO |
-| 3.5 | Crear Worker proxy + `wrangler.toml` para Cloudflare Containers | ☐ | YO |
-| 3.6 | Validar build local del container | ☐ | YO |
-| 3.7 | Configurar secrets/env en Cloudflare: `DATABASE_URL` (Supabase), `JWT_SECRET`, `CORS_ORIGINS`. **CRÍTICO (R-INFRA1):** `JWT_SECRET` hoy default `dev-secret-change-me` — poner secreto real o las sesiones son falsificables | ☐ | TÚ+YO |
-| 3.8 | Desplegar en URL paralela de Cloudflare (Render sigue activo) | ☐ | TÚ+YO |
-| 3.9 | Medir cold start, latencia y logs; verificar dependencias pesadas (pandas, openpyxl, fpdf2) | ☐ | YO |
-| 3.10 | Smoke test en Cloudflare SIN R2 todavía (login, static, navegación, CSV, reclamos, PDF — imágenes siguen en BYTEA por ahora) | ☐ | TÚ+YO |
-
-**Hito 3A:** ArmaHub corre en Cloudflare + Supabase con una URL accesible, en paralelo a Render. Confirmado que migró bien.
-
-### 3B. Conectar storage R2
+### 3A. Conectar R2 al sistema actual (en Render)
 
 | N° | Descripción | Realizado | Quién |
 |----|-------------|-----------|-------|
-| 3.11 | Cargar credenciales R2 en Cloudflare: `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET`, `R2_PUBLIC_BASE_URL` | ☐ | TÚ+YO |
-| 3.12 | Refactor subida de imágenes de reclamos: guardar en R2, en BD solo `storage_key` (migración: columna nullable) | ☐ | YO |
-| 3.13 | Refactor lectura de imágenes: servir desde R2 (presigned URL). **Cierra H1**: hoy `GET /reclamos/{id}/imagenes/{img}` (`reclamos.py:1671`) NO tiene auth — exigir autenticación + permiso, usar presigned URL para `<img>` | ☐ | YO |
-| 3.14 | Validar upload/ver/eliminar imágenes NUEVAS contra R2 (registro y análisis separados) | ☐ | TÚ+YO |
+| 3.1 | Eliminar artefactos de Containers no usados (Dockerfile, worker/, wrangler.toml, package.json) | ☐ | YO |
+| 3.2 | Regenerar API token R2 (Object Read & Write, bucket `armahub`) y guardarlo seguro | ☐ | TÚ |
+| 3.3 | Configurar env vars R2 en Render: `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET`, `R2_PUBLIC_BASE_URL` | ☐ | TÚ+YO |
+| 3.4 | Refactor subida de imágenes de reclamos: guardar en R2, en BD solo `storage_key` (migración: columna nullable) | ☐ | YO |
+| 3.5 | Refactor lectura de imágenes: servir desde R2 (presigned URL). **Cierra H1**: hoy `GET /reclamos/{id}/imagenes/{img}` (`reclamos.py:1671`) NO tiene auth — exigir autenticación + permiso, usar presigned URL para `<img>` | ☐ | YO |
+| 3.6 | Validar upload/ver/eliminar imágenes NUEVAS contra R2 (registro y análisis separados) | ☐ | TÚ+YO |
 
-### 3C. Migrar imágenes existentes y cutover
+### 3B. Migrar imágenes existentes a R2
 
 | N° | Descripción | Realizado | Quién |
 |----|-------------|-----------|-------|
-| 3.15 | Migración one-shot: BYTEA existentes → R2 → actualizar `storage_key` | ☐ | YO |
-| 3.16 | Eliminar columna `data` (BYTEA) de `reclamo_imagenes` post-migración validada | ☐ | YO |
-| 3.17 | Smoke test completo final en Cloudflare (todo, incluidas imágenes desde R2) | ☐ | TÚ+YO |
-| 3.18 | Cutover: dejar Cloudflare como producción y apagar Render. El dominio propio se apunta después en Fase 15 | ☐ | TÚ+YO |
+| 3.7 | Migración one-shot: BYTEA existentes → R2 → actualizar `storage_key` | ☐ | YO |
+| 3.8 | Validar que todas las imágenes viejas se ven correctamente desde R2 | ☐ | TÚ+YO |
+| 3.9 | Eliminar columna `data` (BYTEA) de `reclamo_imagenes` post-migración validada | ☐ | YO |
 
-**Criterio de salida Fase 3:** ArmaHub corre en Cloudflare + Supabase + R2, Render apagado, smoke tests verdes.
+### 3C. Migrar base de datos a Supabase
+
+| N° | Descripción | Realizado | Quién |
+|----|-------------|-----------|-------|
+| 3.10 | Crear proyecto Supabase para ArmaHub (cuenta existente, plan free) | ☐ | TÚ |
+| 3.11 | Migrar esquema + datos de Render a Supabase (pg_dump / pg_restore) | ☐ | YO |
+| 3.12 | Cambiar `DATABASE_URL` en Render apuntando a Supabase + validar conexión/pool | ☐ | TÚ+YO |
+| 3.13 | Verificar migraciones aplicadas y consistencia post-restore; smoke test | ☐ | TÚ+YO |
+
+> **Orden sugerido:** hacer 3C (BD a Supabase) puede ir antes o después de 3A/3B (R2); son independientes.
+> Conviene migrar la BD a Supabase ANTES de meter las imágenes a R2 NO es necesario — de hecho conviene
+> sacar primero las imágenes pesadas (BYTEA→R2) para que el `pg_dump` a Supabase sea liviano. Sugerencia:
+> 3A+3B (R2) primero, luego 3C (BD liviana a Supabase).
+
+**Criterio de salida Fase 3:** imágenes en R2 (no BYTEA), BD en Supabase, programa en Render. Todo gratis. H1 cerrado.
+
+> **Nota costo:** arquitectura $0 — Render free + Supabase free (500 MB) + R2 free (10 GB). Ninguna pieza
+> arrastra otra pagada. Si algo creciera más allá del free tier, se avisa antes con datos. El dominio
+> propio (Fase 15) es independiente. Salir de Render por el cold start = futuro, solo con presupuesto.
 
 ---
 
