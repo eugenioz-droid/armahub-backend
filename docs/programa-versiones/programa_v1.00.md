@@ -166,6 +166,15 @@ Objetivo: dejar el sistema actual corriendo sobre la infraestructura final antes
 >
 > Estado adelantado: bucket R2 `armahub` creado, API token generado (guardado por el usuario),
 > `storage.py` y `boto3` ya implementados y subidos. Esas credenciales se cargan en Cloudflare en 3B.
+>
+> **Decisión de hosting (2026-06-09):** se mantiene Python/FastAPI (NO se reescribe a JS — sería rehacer
+> 52 migraciones, importador CSV, cálculos de acero, PDF/Excel con librerías solo-Python; meses de trabajo
+> y riesgo, sin ganar calidad: FastAPI es robusto). El programa correrá en **Cloudflare Containers** (beta
+> de Cloudflare, estable; cold start 2-3s vs 30s de Render; incluido en el Workers Paid que ya se paga por
+> EZ Trader). Containers NO altera la lógica/rendimiento/diseño del código — solo es dónde corre (Dockerfile
+> + Worker proxy como envoltorio). Disco efímero ya resuelto con R2. Render se mantiene de respaldo hasta
+> validar. **Restricción de costo del usuario:** no incurrir en gasto hasta tener todo operativo; avisar
+> antes de cualquier paso con posible cobro (R2 y Containers tienen capa gratuita; volúmenes iniciales ~$0).
 
 ### 3A. Montar programa + base de datos en Cloudflare (llegar a una URL que funcione)
 
