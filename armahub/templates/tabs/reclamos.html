@@ -1,14 +1,26 @@
-  <!-- TAB: RECLAMOS -->
+  <!-- TAB: CALIDAD / RECLAMOS -->
   <div id="tab-reclamos" class="tab-content">
-    <!-- Tab navigation (Dashboards tab visible only for admin/admin2) -->
+    <!-- Línea 1: tabs principales -->
     <div id="recTabNav" style="display:flex; gap:0; margin-bottom:12px; border-bottom:2px solid #e0e0e0;">
       <button id="recTabBtnMain" onclick="switchRecTab('main')" style="padding:8px 20px; font-size:13px; font-weight:600; border:none; border-bottom:3px solid #e53935; background:none; color:#e53935; cursor:pointer;">📋 Reclamos</button>
       <button id="recTabBtnDash" onclick="switchRecTab('dashboards')" style="padding:8px 20px; font-size:13px; font-weight:600; border:none; border-bottom:3px solid transparent; background:none; color:#999; cursor:pointer; display:none;">📊 Dashboards</button>
+      <button id="recTabBtnProc" onclick="switchRecTab('procedimientos')" style="padding:8px 20px; font-size:13px; font-weight:600; border:none; border-bottom:3px solid transparent; background:none; color:#999; cursor:pointer; display:none;">📄 Procedimientos</button>
       <button id="recTabBtnPres" onclick="switchRecTab('presentaciones')" style="padding:8px 20px; font-size:13px; font-weight:600; border:none; border-bottom:3px solid transparent; background:none; color:#999; cursor:pointer; display:none;">🎤 Presentaciones</button>
     </div>
 
     <!-- ==================== MAIN TAB ==================== -->
     <div id="recTabMain">
+
+    <!-- Línea 2: sub-tabs dentro de Reclamos -->
+    <div id="recSubTabNav" style="display:flex; gap:0; margin-bottom:16px; border-bottom:1px solid #eee;">
+      <button id="recSubBtnClientes" onclick="switchRecSubTab('clientes')" style="padding:6px 16px; font-size:12px; font-weight:600; border:none; border-bottom:2px solid #e53935; background:none; color:#e53935; cursor:pointer;">Reclamos Clientes</button>
+      <button id="recSubBtnInternos" onclick="switchRecSubTab('internos')" style="padding:6px 16px; font-size:12px; font-weight:600; border:none; border-bottom:2px solid transparent; background:none; color:#999; cursor:pointer;">Reclamos Internos</button>
+      <button id="recSubBtnRCA" onclick="switchRecSubTab('rca')" style="padding:6px 16px; font-size:12px; font-weight:600; border:none; border-bottom:2px solid transparent; background:none; color:#999; cursor:pointer; display:none;">Matriz RCA</button>
+      <button id="recSubBtnPres" onclick="switchRecSubTab('presentaciones')" style="padding:6px 16px; font-size:12px; font-weight:600; border:none; border-bottom:2px solid transparent; background:none; color:#999; cursor:pointer; display:none;">Presentaciones</button>
+    </div>
+
+    <!-- Sub-panel: Reclamos Clientes (contenido actual) -->
+    <div id="recSubClientes">
     <!-- Landing Charts (fixed, role-aware) -->
     <div class="card" style="border-top:3px solid #e53935;">
       <h3 style="margin:0 0 12px 0;">Mi Resumen</h3>
@@ -557,6 +569,43 @@
     </div>
     <!-- Modal backdrop for detail & create modals -->
     <div id="recModalBackdrop" class="rec-modal-backdrop" onclick="closeReclamoModal()"></div>
+    </div><!-- /recSubClientes -->
+
+    <!-- Sub-panel: Reclamos Internos -->
+    <div id="recSubInternos" style="display:none;">
+      <div class="card" style="border-left:4px solid #1565C0;">
+        <h3 style="margin:0 0 8px 0; color:#1565C0;">Reclamos Internos</h3>
+        <p class="muted" style="font-size:13px; margin:0;">Próximamente — gestión de reclamos internos entre áreas.</p>
+      </div>
+    </div>
+
+    <!-- Sub-panel: Matriz RCA -->
+    <div id="recSubRCA" style="display:none;">
+      <div class="card" style="border-left:4px solid #e65100;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+          <h3 style="margin:0; color:#e65100;">📋 Matrices RCA por Área</h3>
+          <button id="rcaRecVolverBtn" class="secondary" style="display:none; font-size:12px; padding:4px 12px;" onclick="rcaRecVolverAreas()">← Volver a áreas</button>
+        </div>
+        <p class="muted" style="font-size:12px; margin:0 0 16px 0;">Selecciona un área para ver y editar su matriz de causas raíz Ishikawa.</p>
+        <div id="rcaRecAreasLista"><div class="muted">Cargando áreas...</div></div>
+        <div id="rcaRecEditor" style="display:none;">
+          <div style="margin-bottom:16px; padding-bottom:10px; border-bottom:1px solid #eee;">
+            <h4 id="rcaRecEditorNombre" style="margin:0 0 4px 0;"></h4>
+            <p class="muted" style="font-size:12px; margin:0;">Agrega, edita o desactiva sub-causas en cada categoría Ishikawa.</p>
+          </div>
+          <div id="rcaRecCategoriasContainer"></div>
+          <div style="margin-top:16px; display:flex; gap:8px; align-items:center;">
+            <button onclick="rcaRecGuardar()" style="font-size:13px; padding:6px 20px; background:#e65100; color:white; border:none; border-radius:6px; cursor:pointer;">Guardar cambios</button>
+            <span id="rcaRecGuardarMsg" class="muted" style="font-size:12px;"></span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Sub-panel: Presentaciones (movido desde línea 1, solo cubicadores/admin) -->
+    <div id="recSubPresentaciones" style="display:none;">
+    </div><!-- contenido inyectado desde recTabPresentaciones al activar -->
+
     </div><!-- /recTabMain -->
 
     <!-- ==================== DASHBOARDS TAB (admin/admin2 only) ==================== -->
@@ -630,6 +679,14 @@
 
       </div>
     </div><!-- /recTabDashboards -->
+
+    <!-- ==================== PROCEDIMIENTOS TAB (admin/admin2) ==================== -->
+    <div id="recTabProcedimientos" style="display:none;">
+      <div class="card" style="border-top:3px solid #2e7d32;">
+        <h3 style="margin:0 0 8px 0; color:#2e7d32;">📄 Procedimientos</h3>
+        <p class="muted" style="font-size:13px; margin:0;">Próximamente — repositorio de procedimientos y documentos del área de Calidad.</p>
+      </div>
+    </div><!-- /recTabProcedimientos -->
 
     <!-- ==================== PRESENTACIONES TAB ==================== -->
     <div id="recTabPresentaciones" style="display:none;">

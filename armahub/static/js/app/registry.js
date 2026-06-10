@@ -83,16 +83,16 @@
 
   registerModule({
     id: 'reclamos',
-    title: 'Reclamos',
+    title: 'Calidad / Reclamos',
     css: 'mod-reclamos',
     defaultTab: 'reclamos',
     allowedRoles: ['admin', 'admin2', 'cubicador', 'usc', 'externo'],
     loaderFunction: 'loadReclamosModule',
     hubCardId: 'hubCardReclamos',
     hubOrder: 20,
-    hubDescription: 'Registro, analisis, validacion y presentaciones de reclamos.',
-    hubAccent: '#f59e0b',
-    hubIcon: '📋'
+    hubDescription: 'Reclamos de clientes, reclamos internos, matrices RCA y procedimientos de calidad.',
+    hubAccent: '#e53935',
+    hubIcon: '🎯'
   });
 
   registerModule({

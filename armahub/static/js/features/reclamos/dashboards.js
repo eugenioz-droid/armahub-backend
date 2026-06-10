@@ -9,37 +9,196 @@ var _adminDashLoaded = false;
 var _recLandChartResueltos = null;
 
 function switchRecTab(tab) {
-  var mainTab = document.getElementById('recTabMain');
-  var dashTab = document.getElementById('recTabDashboards');
-  var presTab = document.getElementById('recTabPresentaciones');
-  var btnMain = document.getElementById('recTabBtnMain');
-  var btnDash = document.getElementById('recTabBtnDash');
-  var btnPres = document.getElementById('recTabBtnPres');
+  var ids = ['recTabMain', 'recTabDashboards', 'recTabProcedimientos', 'recTabPresentaciones'];
+  ids.forEach(function(id) { var el = document.getElementById(id); if (el) el.style.display = 'none'; });
 
-  // Hide all tabs, reset all buttons
-  mainTab.style.display = 'none';
-  dashTab.style.display = 'none';
-  if (presTab) presTab.style.display = 'none';
-  btnMain.style.borderBottomColor = 'transparent'; btnMain.style.color = '#999';
-  btnDash.style.borderBottomColor = 'transparent'; btnDash.style.color = '#999';
-  if (btnPres) { btnPres.style.borderBottomColor = 'transparent'; btnPres.style.color = '#999'; }
+  var btnMain = document.getElementById('recTabBtnMain');
+  var btnDash  = document.getElementById('recTabBtnDash');
+  var btnProc  = document.getElementById('recTabBtnProc');
+  var btnPres  = document.getElementById('recTabBtnPres');
+  [btnMain, btnDash, btnProc, btnPres].forEach(function(b) {
+    if (b) { b.style.borderBottomColor = 'transparent'; b.style.color = '#999'; }
+  });
 
   if (tab === 'dashboards') {
-    dashTab.style.display = '';
-    btnDash.style.borderBottomColor = '#1565C0'; btnDash.style.color = '#1565C0';
+    document.getElementById('recTabDashboards').style.display = '';
+    if (btnDash) { btnDash.style.borderBottomColor = '#1565C0'; btnDash.style.color = '#1565C0'; }
     loadRecAdminDashboards();
     window.location.hash = 'dashboards';
+  } else if (tab === 'procedimientos') {
+    document.getElementById('recTabProcedimientos').style.display = '';
+    if (btnProc) { btnProc.style.borderBottomColor = '#2e7d32'; btnProc.style.color = '#2e7d32'; }
+    window.location.hash = 'procedimientos';
   } else if (tab === 'presentaciones') {
-    if (presTab) presTab.style.display = '';
+    document.getElementById('recTabPresentaciones').style.display = '';
     if (btnPres) { btnPres.style.borderBottomColor = '#7B1FA2'; btnPres.style.color = '#7B1FA2'; }
     loadPresentaciones();
     window.location.hash = 'presentaciones';
   } else {
-    mainTab.style.display = '';
-    btnMain.style.borderBottomColor = '#e53935'; btnMain.style.color = '#e53935';
+    document.getElementById('recTabMain').style.display = '';
+    if (btnMain) { btnMain.style.borderBottomColor = '#e53935'; btnMain.style.color = '#e53935'; }
     _adminDashLoaded = false;
     window.location.hash = '';
   }
+}
+
+// ── Sub-tabs línea 2 (dentro de recTabMain) ──
+var _rcaRecAreaId = null;
+var _rcaRecData = null;
+
+function switchRecSubTab(sub) {
+  var panels = { clientes: 'recSubClientes', internos: 'recSubInternos', rca: 'recSubRCA', presentaciones: 'recSubPresentaciones' };
+  var colors  = { clientes: '#e53935', internos: '#1565C0', rca: '#e65100', presentaciones: '#7B1FA2' };
+  var btnIds  = { clientes: 'recSubBtnClientes', internos: 'recSubBtnInternos', rca: 'recSubBtnRCA', presentaciones: 'recSubBtnPres' };
+
+  Object.keys(panels).forEach(function(key) {
+    var el = document.getElementById(panels[key]);
+    if (el) el.style.display = (key === sub) ? '' : 'none';
+    var btn = document.getElementById(btnIds[key]);
+    if (btn) {
+      btn.style.borderBottomColor = (key === sub) ? colors[key] : 'transparent';
+      btn.style.color = (key === sub) ? colors[key] : '#999';
+    }
+  });
+
+  if (sub === 'rca') { rcaRecIniciar(); }
+  if (sub === 'presentaciones') {
+    // Reutilizar contenido del panel presentaciones existente moviéndolo al sub-panel
+    var src = document.getElementById('recTabPresentaciones');
+    var dst = document.getElementById('recSubPresentaciones');
+    if (src && dst && dst.children.length === 0) {
+      while (src.firstChild) dst.appendChild(src.firstChild);
+    }
+    loadPresentaciones();
+  }
+}
+
+// ── RCA dentro de Calidad/Reclamos ──
+function rcaRecIniciar() {
+  var lista = document.getElementById('rcaRecAreasLista');
+  var editor = document.getElementById('rcaRecEditor');
+  var volverBtn = document.getElementById('rcaRecVolverBtn');
+  if (!lista) return;
+  lista.innerHTML = '<div class="muted">Cargando áreas...</div>';
+  editor.style.display = 'none';
+  volverBtn.style.display = 'none';
+  lista.style.display = '';
+
+  fetch(apiUrl('/admin/areas'), { headers: authHeaders() })
+    .then(function(r) { return r.json(); })
+    .then(function(areas) { rcaRecRenderAreas(areas); })
+    .catch(function() { lista.innerHTML = '<div class="muted">Error cargando áreas.</div>'; });
+}
+
+var CAT_COLORS_REC = {
+  mano_de_obra:   { bg:'#fff8e1', border:'#f9a825', badge:'#f9a825' },
+  metodo:         { bg:'#e8f5e9', border:'#388e3c', badge:'#388e3c' },
+  material:       { bg:'#e3f2fd', border:'#1565c0', badge:'#1565c0' },
+  maquina:        { bg:'#fce4ec', border:'#c62828', badge:'#c62828' },
+  medicion:       { bg:'#f3e5f5', border:'#6a1b9a', badge:'#6a1b9a' },
+  medio_ambiente: { bg:'#e0f2f1', border:'#00695c', badge:'#00695c' },
+};
+
+function rcaRecRenderAreas(areas) {
+  var html = '<div style="display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:12px;">';
+  areas.forEach(function(a) {
+    var badge = a.tiene_rca
+      ? '<span style="font-size:10px; background:#e8f5e9; color:#2e7d32; padding:2px 8px; border-radius:10px; font-weight:600;">✓ ' + a.total_subcausas + ' sub-causas</span>'
+      : '<span style="font-size:10px; background:#fff3e0; color:#e65100; padding:2px 8px; border-radius:10px; font-weight:600;">Sin matriz</span>';
+    html += '<div onclick="rcaRecAbrirArea(' + a.id + ',\'' + a.nombre.replace(/'/g,"\\'") + '\')" '
+      + 'style="padding:14px 16px; border:1px solid #e0e0e0; border-radius:8px; cursor:pointer; background:white; transition:box-shadow .15s;" '
+      + 'onmouseover="this.style.boxShadow=\'0 2px 8px rgba(0,0,0,.12)\'" onmouseout="this.style.boxShadow=\'none\'">'
+      + '<div style="font-weight:600; font-size:13px; margin-bottom:6px;">' + a.nombre + '</div>' + badge + '</div>';
+  });
+  html += '</div>';
+  document.getElementById('rcaRecAreasLista').innerHTML = html;
+}
+
+function rcaRecAbrirArea(areaId, areaNombre) {
+  _rcaRecAreaId = areaId;
+  document.getElementById('rcaRecAreasLista').style.display = 'none';
+  document.getElementById('rcaRecEditor').style.display = '';
+  document.getElementById('rcaRecVolverBtn').style.display = '';
+  document.getElementById('rcaRecEditorNombre').textContent = areaNombre;
+  document.getElementById('rcaRecCategoriasContainer').innerHTML = '<div class="muted">Cargando matriz...</div>';
+  document.getElementById('rcaRecGuardarMsg').textContent = '';
+
+  fetch(apiUrl('/admin/areas/' + areaId + '/rca'), { headers: authHeaders() })
+    .then(function(r) { return r.json(); })
+    .then(function(data) { _rcaRecData = data; rcaRecRenderEditor(data.categorias); })
+    .catch(function() { document.getElementById('rcaRecCategoriasContainer').innerHTML = '<div class="muted">Error cargando matriz.</div>'; });
+}
+
+function rcaRecRenderEditor(categorias) {
+  var SLUGS = ['mano_de_obra','metodo','material','maquina','medicion','medio_ambiente'];
+  var html = '';
+  categorias.forEach(function(cat, ci) {
+    var col = CAT_COLORS_REC[cat.slug] || { bg:'#f5f5f5', border:'#bbb', badge:'#888' };
+    html += '<div style="margin-bottom:14px; border:1px solid ' + col.border + '; border-radius:8px; overflow:hidden;">';
+    html += '<div style="background:' + col.bg + '; padding:8px 14px; display:flex; justify-content:space-between; align-items:center;">';
+    html += '<span style="font-weight:700; font-size:13px; color:' + col.badge + ';">' + cat.nombre + '</span>';
+    html += '<button onclick="rcaRecAgregarSub(' + ci + ')" style="font-size:11px; padding:3px 10px; background:' + col.badge + '; color:white; border:none; border-radius:4px; cursor:pointer;">+ Agregar</button>';
+    html += '</div><div style="padding:8px 12px;">';
+    if (!cat.subcausas || cat.subcausas.length === 0) {
+      html += '<div class="muted" style="font-size:12px; padding:4px 0;">Sin sub-causas.</div>';
+    }
+    (cat.subcausas || []).forEach(function(sub, si) { html += rcaRecSubRow(ci, si, sub); });
+    html += '</div></div>';
+  });
+  document.getElementById('rcaRecCategoriasContainer').innerHTML = html;
+}
+
+function rcaRecSubRow(ci, si, sub) {
+  var op = sub.activo ? '1' : '0.45';
+  return '<div id="rcaRecRow_' + ci + '_' + si + '" style="display:flex; gap:8px; align-items:center; margin-bottom:6px; opacity:' + op + ';">'
+    + '<input type="text" value="' + _rcaEsc(sub.codigo) + '" placeholder="Cód." style="width:64px; font-size:11px; font-family:monospace; padding:4px 6px; border:1px solid #ccc; border-radius:4px;" oninput="rcaRecUpd(' + ci + ',' + si + ',\'codigo\',this.value)" />'
+    + '<input type="text" value="' + _rcaEsc(sub.descripcion) + '" placeholder="Descripción" style="flex:1; font-size:12px; padding:4px 8px; border:1px solid #ccc; border-radius:4px;" oninput="rcaRecUpd(' + ci + ',' + si + ',\'descripcion\',this.value)" />'
+    + '<button onclick="rcaRecToggle(' + ci + ',' + si + ')" style="font-size:11px; padding:3px 8px; border:1px solid #ccc; border-radius:4px; cursor:pointer; background:' + (sub.activo ? '#fff' : '#eee') + ';">' + (sub.activo ? '✓' : '✗') + '</button>'
+    + '<button onclick="rcaRecEliminar(' + ci + ',' + si + ')" style="font-size:11px; padding:3px 8px; border:none; border-radius:4px; cursor:pointer; background:#ffebee; color:#c62828;">✕</button>'
+    + '</div>';
+}
+
+function _rcaEsc(s) { return (s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;'); }
+function rcaRecUpd(ci, si, campo, val) { if (_rcaRecData) _rcaRecData.categorias[ci].subcausas[si][campo] = val; }
+function rcaRecToggle(ci, si) {
+  if (!_rcaRecData) return;
+  var sub = _rcaRecData.categorias[ci].subcausas[si];
+  sub.activo = !sub.activo;
+  var row = document.getElementById('rcaRecRow_' + ci + '_' + si);
+  if (row) row.outerHTML = rcaRecSubRow(ci, si, sub);
+}
+function rcaRecEliminar(ci, si) {
+  if (!_rcaRecData) return;
+  _rcaRecData.categorias[ci].subcausas.splice(si, 1);
+  rcaRecRenderEditor(_rcaRecData.categorias);
+}
+function rcaRecAgregarSub(ci) {
+  if (!_rcaRecData) return;
+  var cat = _rcaRecData.categorias[ci];
+  var pfx = { mano_de_obra:'MO', metodo:'MD', material:'MT', maquina:'MQ', medicion:'ME', medio_ambiente:'MA' }[cat.slug] || 'XX';
+  var n = (cat.subcausas ? cat.subcausas.length : 0) + 1;
+  cat.subcausas = cat.subcausas || [];
+  cat.subcausas.push({ id: null, codigo: pfx + String(n).padStart(2,'0'), descripcion: '', activo: true, orden: n });
+  rcaRecRenderEditor(_rcaRecData.categorias);
+}
+function rcaRecGuardar() {
+  if (!_rcaRecData || !_rcaRecAreaId) return;
+  var msg = document.getElementById('rcaRecGuardarMsg');
+  msg.textContent = 'Guardando...';
+  fetch(apiUrl('/admin/areas/' + _rcaRecAreaId + '/rca'), {
+    method: 'PUT',
+    headers: Object.assign({}, authHeaders(), { 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ categorias: _rcaRecData.categorias })
+  }).then(function(r) { return r.json(); })
+    .then(function() { msg.textContent = '✓ Guardado'; setTimeout(function() { msg.textContent=''; }, 3000); })
+    .catch(function(e) { msg.textContent = 'Error: ' + (e.message || e); });
+}
+function rcaRecVolverAreas() {
+  _rcaRecAreaId = null; _rcaRecData = null;
+  document.getElementById('rcaRecEditor').style.display = 'none';
+  document.getElementById('rcaRecVolverBtn').style.display = 'none';
+  document.getElementById('rcaRecAreasLista').style.display = '';
+  rcaRecIniciar();
 }
 
 async function loadRecLanding() {
@@ -54,10 +213,21 @@ async function loadRecLanding() {
   var dashBtn = document.getElementById('recTabBtnDash');
   if (dashBtn) dashBtn.style.display = isAdmin ? '' : 'none';
 
-  // Show presentaciones tab button for admin/admin2/cubicador/externo
+  // Procedimientos: solo admin/admin2
+  var procBtn = document.getElementById('recTabBtnProc');
+  if (procBtn) procBtn.style.display = isAdmin ? '' : 'none';
+
+  // Presentaciones (línea 1): oculto — ahora vive en sub-tab línea 2
   var presBtn = document.getElementById('recTabBtnPres');
+  if (presBtn) presBtn.style.display = 'none';
+
+  // Sub-tabs línea 2: RCA y Presentaciones según rol
+  var rcaAccess = ['admin','admin2'];
+  var subRCA = document.getElementById('recSubBtnRCA');
+  if (subRCA) subRCA.style.display = rcaAccess.includes(currentRole) ? '' : 'none';
+  var subPres = document.getElementById('recSubBtnPres');
   var presAccess = ['admin','admin2','cubicador','externo'];
-  if (presBtn) presBtn.style.display = presAccess.includes(currentRole) ? '' : 'none';
+  if (subPres) subPres.style.display = presAccess.includes(currentRole) ? '' : 'none';
 
   // Chart 1: KPI
   document.getElementById('recLandTotal').textContent = data.total || 0;
