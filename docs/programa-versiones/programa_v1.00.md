@@ -270,8 +270,8 @@ Objetivo: endurecer Reclamos y cerrar los pendientes reales arrastrados.
 
 | N° | Descripción | Realizado | Quién |
 |----|-------------|-----------|-------|
-| 5.1 | Validar ownership en acciones correctivas y al eliminar imágenes (**H3**: `DELETE /reclamos/{id}/imagenes/{img}` no valida ownership) | ☐ | YO |
-| 5.2 | **H2** IDOR: aplicar filtro ownership/rol al detalle `GET /reclamos/{id}` — hoy cualquier autenticado lee cualquier reclamo por ID | ☐ | YO |
+| 5.1 | Validar ownership en acciones correctivas y al eliminar imágenes (**H3**: `DELETE /reclamos/{id}/imagenes/{img}` no valida ownership) | ☑ | YO |
+| 5.2 | **H2** IDOR: aplicar filtro ownership/rol al detalle `GET /reclamos/{id}` — hoy cualquier autenticado lee cualquier reclamo por ID | ☑ | YO |
 | 5.3 | Revisar política de acceso a imágenes en R2 y documentar | ☐ | TÚ+YO |
 | 5.4 | QA visual del PDF de reclamo (campos largos, sin acciones, sin validación) | ☐ | YO |
 | 5.5 | FIX: cubicador externo no tiene botón "enviar a validar"; los otros cubicadores sí | ☐ | YO |

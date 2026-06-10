@@ -986,19 +986,22 @@ def get_reclamo_optimizado(
 ):
     """Obtener detalle de un reclamo optimizado con cache y queries eficientes."""
     
+    role = user.get("role", "")
+
+    # Cache solo para roles globales (admin/admin2/cubicador ven todo).
+    # usc/externo tienen scope restringido — no cachear para evitar que lean reclamos ajenos.
+    use_cache = role in ("admin", "admin2", "cubicador")
     cache_key = _get_cache_key(reclamo_id, include_images, include_seguimientos, include_acciones)
-    
-    # Verificar cache primero
-    if _is_cache_valid(cache_key):
+
+    if use_cache and _is_cache_valid(cache_key):
         return _get_from_cache(cache_key)
-    
+
     try:
         with get_conn() as conn:
             with conn.cursor(row_factory=dict_row) as cur:
-                # Query principal optimizado con LEFT JOINs
                 cur.execute("""
-                    SELECT 
-                        r.*, 
+                    SELECT
+                        r.*,
                         COALESCE(p.nombre_proyecto, r.id_proyecto, 'Obra eliminada') AS nombre_proyecto,
                         p.nombre_proyecto AS nombre_proyecto_lookup
                     FROM reclamos r
@@ -1008,6 +1011,10 @@ def get_reclamo_optimizado(
                 row = cur.fetchone()
                 if not row:
                     raise HTTPException(status_code=404, detail="Reclamo no encontrado")
+
+                # H2: validar ownership para roles con scope restringido (cierra IDOR)
+                if not _puede_ver_reclamo(row, user):
+                    raise HTTPException(status_code=403, detail="No tiene permiso para ver este reclamo")
 
                 response = {
                     "id": row.get("id"),
@@ -1181,7 +1188,8 @@ def get_reclamo_optimizado(
                             for img in imagenes
                         ]
 
-        _set_cache(cache_key, response)
+        if use_cache:
+            _set_cache(cache_key, response)
         return response
     except HTTPException:
         raise
@@ -1611,12 +1619,15 @@ def eliminar_accion(reclamo_id: int, accion_id: int, user=Depends(get_current_us
     email = user.get("email", "unknown")
     role = user.get("role", "usc")
 
-    if role not in ("admin", "admin2", "cubicador", "externo"):
+    if role not in ("admin", "admin2", "cubicador", "externo", "usc"):
         raise HTTPException(status_code=403, detail="No tiene permiso para eliminar acciones")
 
     with get_conn() as conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT estado, cubicador_asignado, respuesta_por FROM reclamos WHERE id = %s", (reclamo_id,))
+            cur.execute(
+                "SELECT estado, cubicador_asignado, respuesta_por, creado_por, asignado_a FROM reclamos WHERE id = %s",
+                (reclamo_id,),
+            )
             rec_row = cur.fetchone()
             if not rec_row:
                 raise HTTPException(status_code=404, detail="Reclamo no encontrado")
@@ -1624,10 +1635,16 @@ def eliminar_accion(reclamo_id: int, accion_id: int, user=Depends(get_current_us
             if role not in ("admin", "admin2") and _estado_bloquea_edicion_analisis(rec_row[0]):
                 raise HTTPException(status_code=403, detail="No se pueden editar acciones luego de enviar a validación")
 
-            if role in ("cubicador", "externo"):
-                rec = {"cubicador_asignado": rec_row[1], "respuesta_por": rec_row[2]}
-                if not _es_propietario_cubicador(rec, email):
-                    raise HTTPException(status_code=403, detail="Solo puede eliminar acciones en reclamos propios")
+            rec = {
+                "cubicador_asignado": rec_row[1],
+                "respuesta_por": rec_row[2],
+                "creado_por": rec_row[3],
+                "asignado_a": rec_row[4],
+            }
+            if role in ("cubicador", "externo") and not _es_propietario_cubicador(rec, email):
+                raise HTTPException(status_code=403, detail="Solo puede eliminar acciones en reclamos propios")
+            if role == "usc" and not _es_propietario_usc(rec, email):
+                raise HTTPException(status_code=403, detail="Solo puede eliminar acciones en reclamos propios")
 
             cur.execute("DELETE FROM reclamo_acciones WHERE id = %s AND reclamo_id = %s", (accion_id, reclamo_id))
             if cur.rowcount == 0:
@@ -1757,24 +1774,47 @@ def ver_imagen(reclamo_id: int, imagen_id: int, user=Depends(get_current_user)):
 
 @router.delete("/reclamos/{reclamo_id}/imagenes/{imagen_id}")
 def eliminar_imagen(reclamo_id: int, imagen_id: int, user=Depends(get_current_user)):
-    """Eliminar una imagen de un reclamo (también del storage R2 si aplica)."""
+    """Eliminar una imagen de un reclamo (también del storage R2). Valida ownership (cierra H3)."""
     email = user.get("email", "unknown")
+    role = user.get("role", "")
+
+    if role == "cliente":
+        raise HTTPException(status_code=403, detail="No tiene permiso para eliminar imágenes")
+
     storage_key = None
     with get_conn() as conn:
         with conn.cursor() as cur:
-            img_columns = _get_table_columns(cur, "reclamo_imagenes")
-            if "storage_key" in img_columns:
+            # Validar ownership del reclamo para cubicador/externo/usc
+            if role not in ("admin", "admin2"):
                 cur.execute(
-                    "SELECT storage_key FROM reclamo_imagenes WHERE id = %s AND reclamo_id = %s",
-                    (imagen_id, reclamo_id),
+                    "SELECT cubicador_asignado, respuesta_por, creado_por, asignado_a FROM reclamos WHERE id = %s",
+                    (reclamo_id,),
                 )
-                r = cur.fetchone()
-                if r:
-                    storage_key = r[0]
-            cur.execute("DELETE FROM reclamo_imagenes WHERE id = %s AND reclamo_id = %s", (imagen_id, reclamo_id))
-            if cur.rowcount == 0:
+                rec_row = cur.fetchone()
+                if not rec_row:
+                    raise HTTPException(status_code=404, detail="Reclamo no encontrado")
+                rec = {
+                    "cubicador_asignado": rec_row[0],
+                    "respuesta_por": rec_row[1],
+                    "creado_por": rec_row[2],
+                    "asignado_a": rec_row[3],
+                }
+                if role in ("cubicador", "externo") and not _es_propietario_cubicador(rec, email):
+                    raise HTTPException(status_code=403, detail="Solo puede eliminar imágenes en reclamos propios")
+                if role == "usc" and not _es_propietario_usc(rec, email):
+                    raise HTTPException(status_code=403, detail="Solo puede eliminar imágenes en reclamos propios")
+
+            cur.execute(
+                "SELECT storage_key FROM reclamo_imagenes WHERE id = %s AND reclamo_id = %s",
+                (imagen_id, reclamo_id),
+            )
+            r = cur.fetchone()
+            if not r:
                 raise HTTPException(status_code=404, detail="Imagen no encontrada")
-    # Borrar de R2 después de confirmar el borrado en BD (idempotente, no falla si no existe)
+            storage_key = r[0]
+
+            cur.execute("DELETE FROM reclamo_imagenes WHERE id = %s AND reclamo_id = %s", (imagen_id, reclamo_id))
+
     if storage_key and storage.is_configured():
         try:
             storage.delete_file(storage_key)
