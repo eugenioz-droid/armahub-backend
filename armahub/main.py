@@ -160,17 +160,16 @@ def create_app() -> FastAPI:
                 _create_indexes(dcur)
             dst.commit()
 
-            # 2b) Copiar datos tabla por tabla (con FK diferidas)
+            # 2b) Vaciar TODAS las tablas en UNA sola sentencia atómica.
+            # TRUNCATE de todas juntas evita que el CASCADE de una borre otra ya
+            # copiada, y al ser una sola sentencia no deja transaccion a medias.
             with dst.cursor() as dcur:
-                dcur.execute("SET session_replication_role = replica;")  # desactiva FK durante copia
-                # Vaciar TODAS las tablas primero, en orden inverso, SIN cascade.
-                # (Antes el TRUNCATE CASCADE de una tabla hija borraba la tabla
-                #  padre proyectos que ya se habia copiado → quedaba en 0.)
-                for t in reversed(TABLAS):
-                    try:
-                        dcur.execute(f"TRUNCATE {t};")
-                    except Exception:
-                        pass
+                dcur.execute("SET session_replication_role = replica;")  # desactiva FK
+                lista = ", ".join(TABLAS)
+                try:
+                    dcur.execute(f"TRUNCATE {lista} CASCADE;")
+                except Exception:
+                    pass
             dst.commit()
             for t in TABLAS:
                 if not conteos.get(t):
@@ -203,9 +202,11 @@ def create_app() -> FastAPI:
                     collist = ", ".join(cols_comunes)
                     placeholders = ", ".join(["%s"] * len(cols_comunes))
                     with dst.cursor() as dcur:
-                        # Ya se truncó todo al inicio; aquí solo insertar.
+                        # Ya se truncó todo al inicio. ON CONFLICT DO NOTHING como
+                        # doble seguro (idempotente: re-ejecutar no falla por duplicados).
                         dcur.executemany(
-                            f"INSERT INTO {t} ({collist}) VALUES ({placeholders})", rows_filtradas
+                            f"INSERT INTO {t} ({collist}) VALUES ({placeholders}) ON CONFLICT DO NOTHING",
+                            rows_filtradas
                         )
                     dst.commit()
                     copiadas[t] = len(rows)
