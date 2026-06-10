@@ -732,6 +732,182 @@ MIGRATIONS = [
     (54, "reclamo_imagenes: drop columna data (BYTEA eliminado, todo en R2)", [
         "DO $$ BEGIN ALTER TABLE reclamo_imagenes DROP COLUMN data; EXCEPTION WHEN undefined_column THEN NULL; END $$;",
     ]),
+
+    # --- Migration 55: tabla areas ---
+    (55, "areas: tabla de áreas de la empresa", [
+        """
+        CREATE TABLE IF NOT EXISTS areas (
+            id      BIGSERIAL PRIMARY KEY,
+            nombre  TEXT NOT NULL,
+            slug    TEXT UNIQUE NOT NULL,
+            activo  BOOLEAN DEFAULT TRUE,
+            fecha_creacion TEXT NOT NULL DEFAULT to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"')
+        )
+        """,
+    ]),
+
+    # --- Migration 56: tabla area_usuarios (M:N usuarios-areas) ---
+    (56, "area_usuarios: rol de cada usuario en cada área", [
+        """
+        CREATE TABLE IF NOT EXISTS area_usuarios (
+            id        BIGSERIAL PRIMARY KEY,
+            area_id   BIGINT NOT NULL REFERENCES areas(id) ON DELETE CASCADE,
+            user_id   BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            rol_area  TEXT NOT NULL DEFAULT 'miembro',
+            UNIQUE(area_id, user_id)
+        )
+        """,
+    ]),
+
+    # --- Migration 57: tablas RCA por área ---
+    (57, "area_rca: categorías y sub-causas Ishikawa por área", [
+        """
+        CREATE TABLE IF NOT EXISTS area_rca_categorias (
+            id       BIGSERIAL PRIMARY KEY,
+            area_id  BIGINT NOT NULL REFERENCES areas(id) ON DELETE CASCADE,
+            slug     TEXT NOT NULL,
+            nombre   TEXT NOT NULL,
+            orden    INTEGER DEFAULT 0,
+            UNIQUE(area_id, slug)
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS area_rca_subcausas (
+            id           BIGSERIAL PRIMARY KEY,
+            categoria_id BIGINT NOT NULL REFERENCES area_rca_categorias(id) ON DELETE CASCADE,
+            codigo       TEXT NOT NULL,
+            descripcion  TEXT NOT NULL,
+            activo       BOOLEAN DEFAULT TRUE,
+            orden        INTEGER DEFAULT 0
+        )
+        """,
+    ]),
+
+    # --- Migration 58: seed áreas + seed matriz RCA de Cubicaciones ---
+    (58, "seed: 11 áreas de la empresa + matriz RCA Cubicaciones", [
+        """
+        INSERT INTO areas (nombre, slug) VALUES
+            ('USC C&D',              'usc_cd'),
+            ('USC MPEC',             'usc_mpec'),
+            ('Producción C&D',       'produccion_cd'),
+            ('Producción MPEC',      'produccion_mpec'),
+            ('Producción Prearmado', 'produccion_prearmado'),
+            ('Cubicaciones',         'cubicaciones'),
+            ('Logística',            'logistica'),
+            ('Ventas C&D',           'ventas_cd'),
+            ('Ventas MPEC',          'ventas_mpec'),
+            ('Calidad',              'calidad'),
+            ('Planificación',        'planificacion')
+        ON CONFLICT (slug) DO NOTHING
+        """,
+        # Categorías Ishikawa para Cubicaciones
+        """
+        INSERT INTO area_rca_categorias (area_id, slug, nombre, orden)
+        SELECT a.id, cat.slug, cat.nombre, cat.orden
+        FROM areas a, (VALUES
+            ('medio_ambiente', 'Medio Ambiente', 1),
+            ('material',       'Material',       2),
+            ('maquina',        'Máquina',        3),
+            ('medicion',       'Medición',       4),
+            ('metodo',         'Método',         5),
+            ('mano_de_obra',   'Mano de Obra',   6)
+        ) AS cat(slug, nombre, orden)
+        WHERE a.slug = 'cubicaciones'
+        ON CONFLICT (area_id, slug) DO NOTHING
+        """,
+        # Sub-causas Medio Ambiente — Cubicaciones
+        """
+        INSERT INTO area_rca_subcausas (categoria_id, codigo, descripcion, orden)
+        SELECT c.id, sub.codigo, sub.descripcion, sub.orden
+        FROM area_rca_categorias c
+        JOIN areas a ON a.id = c.area_id
+        CROSS JOIN (VALUES
+            ('MA01', 'Interrupciones constantes durante la jornada', 1),
+            ('MA02', 'Ruido ambiental o distracciones', 2),
+            ('MA03', 'Puesto de trabajo incómodo o con mala ergonomía', 3),
+            ('MA04', 'Falta de iluminación adecuada', 4),
+            ('MA05', 'Actividades no planificadas que interrumpen la cubicación', 5)
+        ) AS sub(codigo, descripcion, orden)
+        WHERE a.slug = 'cubicaciones' AND c.slug = 'medio_ambiente'
+        """,
+        # Sub-causas Material — Cubicaciones
+        """
+        INSERT INTO area_rca_subcausas (categoria_id, codigo, descripcion, orden)
+        SELECT c.id, sub.codigo, sub.descripcion, sub.orden
+        FROM area_rca_categorias c
+        JOIN areas a ON a.id = c.area_id
+        CROSS JOIN (VALUES
+            ('MT01', 'Falta de programa de obra (debe solicitar por escrito)', 1),
+            ('MT02', 'Falta de ciclos constructivos o modificación', 2),
+            ('MT03', 'Planos complejos o indefinidos', 3),
+            ('MT04', 'Plano de planta no muestra todos los elementos (como muros dilotados)', 4),
+            ('MT05', 'Medidas contradictorias entre planta y elevación', 5),
+            ('MT06', 'Formato de digitaciones poco legible', 6)
+        ) AS sub(codigo, descripcion, orden)
+        WHERE a.slug = 'cubicaciones' AND c.slug = 'material'
+        """,
+        # Sub-causas Máquina — Cubicaciones
+        """
+        INSERT INTO area_rca_subcausas (categoria_id, codigo, descripcion, orden)
+        SELECT c.id, sub.codigo, sub.descripcion, sub.orden
+        FROM area_rca_categorias c
+        JOIN areas a ON a.id = c.area_id
+        CROSS JOIN (VALUES
+            ('MQ01', 'Internet lento o inestable', 1),
+            ('MQ02', 'aSa Studio inestable genera recubicaciones', 2),
+            ('MQ03', 'Error de parámetros en planilla de importación - Cubicad', 3),
+            ('MQ04', 'Error al captar datos desde aSa Studio', 4)
+        ) AS sub(codigo, descripcion, orden)
+        WHERE a.slug = 'cubicaciones' AND c.slug = 'maquina'
+        """,
+        # Sub-causas Medición — Cubicaciones
+        """
+        INSERT INTO area_rca_subcausas (categoria_id, codigo, descripcion, orden)
+        SELECT c.id, sub.codigo, sub.descripcion, sub.orden
+        FROM area_rca_categorias c
+        JOIN areas a ON a.id = c.area_id
+        CROSS JOIN (VALUES
+            ('ME01', 'Error en la medición o lectura de cotas referencia incorrecta en el plano', 1),
+            ('ME02', 'Diferencia entre cotas indicadas y cotas reales del in situ', 2),
+            ('ME03', 'Inconsistencia entre planta y elevación no detectada al cubicar', 3),
+            ('ME04', 'Inconsistencia no detectada entre Especificaciones técnicas y NCH 211', 4),
+            ('ME05', 'Plano en formato no medible (PDF entrega medida equivocada)', 5)
+        ) AS sub(codigo, descripcion, orden)
+        WHERE a.slug = 'cubicaciones' AND c.slug = 'medicion'
+        """,
+        # Sub-causas Método — Cubicaciones
+        """
+        INSERT INTO area_rca_subcausas (categoria_id, codigo, descripcion, orden)
+        SELECT c.id, sub.codigo, sub.descripcion, sub.orden
+        FROM area_rca_categorias c
+        JOIN areas a ON a.id = c.area_id
+        CROSS JOIN (VALUES
+            ('MD01', 'No se indica en procedimiento estandarizado', 1),
+            ('MD02', 'Criterios de cubicación no estandarizados entre proyectos', 2),
+            ('MD03', 'Falta información en protocolo (mejorar formulario)', 3)
+        ) AS sub(codigo, descripcion, orden)
+        WHERE a.slug = 'cubicaciones' AND c.slug = 'metodo'
+        """,
+        # Sub-causas Mano de Obra — Cubicaciones
+        """
+        INSERT INTO area_rca_subcausas (categoria_id, codigo, descripcion, orden)
+        SELECT c.id, sub.codigo, sub.descripcion, sub.orden
+        FROM area_rca_categorias c
+        JOIN areas a ON a.id = c.area_id
+        CROSS JOIN (VALUES
+            ('MO01', 'No sigue procedimiento establecido', 1),
+            ('MO02', 'No revisa información ingresada post ticket de ingreso aSa', 2),
+            ('MO03', 'No considera correo o acuerdos con cliente', 3),
+            ('MO04', 'No aplica protocolo correctamente', 4),
+            ('MO05', 'Falta registro formal de información acordada', 5),
+            ('MO06', 'Error al digitar o transcribir datos', 6),
+            ('MO07', 'No consulta antecedentes incompletos mediante Bshark o RDI', 7),
+            ('MO08', 'Error de interpretación o criterio técnico', 8),
+            ('MO09', 'Sobrecarga laboral o plazos ajustados que reducen tiempo de revisión', 9)
+        ) AS sub(codigo, descripcion, orden)
+        WHERE a.slug = 'cubicaciones' AND c.slug = 'mano_de_obra'
+        """,
+    ]),
 ]
 
 

@@ -6,6 +6,7 @@
       <button class="admin-subtab active" data-subtab="adminGeneral" onclick="switchAdminSubTab('adminGeneral')" style="padding:8px 20px; font-size:13px; font-weight:600; border:none; border-bottom:3px solid #1565C0; background:none; color:#1565C0; cursor:pointer;">⚙️ General</button>
       <button class="admin-subtab" data-subtab="adminNotificaciones" onclick="switchAdminSubTab('adminNotificaciones')" style="padding:8px 20px; font-size:13px; font-weight:600; border:none; border-bottom:3px solid transparent; background:none; color:#999; cursor:pointer;">🔔 Notificaciones</button>
       <button class="admin-subtab" data-subtab="adminRolesPermisos" onclick="switchAdminSubTab('adminRolesPermisos')" style="padding:8px 20px; font-size:13px; font-weight:600; border:none; border-bottom:3px solid transparent; background:none; color:#999; cursor:pointer;">🔐 Roles y Permisos</button>
+      <button class="admin-subtab" data-subtab="adminMatricesRCA" onclick="switchAdminSubTab('adminMatricesRCA')" style="padding:8px 20px; font-size:13px; font-weight:600; border:none; border-bottom:3px solid transparent; background:none; color:#999; cursor:pointer;">📋 Matrices RCA</button>
     </div>
 
     <!-- Sub-panel: General (existing admin content) -->
@@ -219,6 +220,35 @@
         <p class="muted" style="font-size:12px; margin:0 0 16px 0;">Referencia de lo que ve y puede hacer cada rol en ArmaHub. Solo lectura.</p>
         <div id="rolesPermisosContainer">
           <div class="muted">Cargando...</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Sub-panel: Matrices RCA -->
+    <div id="adminMatricesRCA" style="display:none;">
+      <div class="card" style="border-left:4px solid #e65100;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+          <h3 style="margin:0; color:#e65100;">📋 Matrices RCA por Área</h3>
+          <button id="rcaVolverBtn" class="secondary" style="display:none; font-size:12px; padding:4px 12px;" onclick="rcaVolverAreas()">← Volver a áreas</button>
+        </div>
+        <p class="muted" style="font-size:12px; margin:0 0 16px 0;">Selecciona un área para ver y editar su matriz de causas raíz Ishikawa.</p>
+
+        <!-- Vista lista de áreas -->
+        <div id="rcaAreasLista">
+          <div class="muted">Cargando áreas...</div>
+        </div>
+
+        <!-- Vista editor de una área -->
+        <div id="rcaEditor" style="display:none;">
+          <div id="rcaEditorHeader" style="margin-bottom:16px; padding-bottom:10px; border-bottom:1px solid #eee;">
+            <h4 id="rcaEditorAreaNombre" style="margin:0 0 4px 0;"></h4>
+            <p class="muted" style="font-size:12px; margin:0;">Agrega, edita o desactiva sub-causas en cada categoría Ishikawa.</p>
+          </div>
+          <div id="rcaCategoriasContainer"></div>
+          <div style="margin-top:16px; display:flex; gap:8px; align-items:center;">
+            <button onclick="rcaGuardar()" style="font-size:13px; padding:6px 20px; background:#e65100; color:white; border:none; border-radius:6px; cursor:pointer;">Guardar cambios</button>
+            <span id="rcaGuardarMsg" class="muted" style="font-size:12px;"></span>
+          </div>
         </div>
       </div>
     </div>
