@@ -201,14 +201,22 @@ Objetivo: sacar las imágenes de la base de datos (hoy en BYTEA) y llevarlas a C
 | 3.8 | Validar imágenes viejas desde R2 — confirmado (vistas en R2 y en los reclamos) | ☑ | TÚ+YO |
 | 3.9 | Eliminar columna `data` (BYTEA) post-validación — PENDIENTE (BYTEA se conserva como respaldo hasta decidir) | ☐ | YO |
 
-### 3C. Migrar base de datos a Supabase
+### 3C. Migrar base de datos a Supabase ✅ COMPLETADA
 
 | N° | Descripción | Realizado | Quién |
 |----|-------------|-----------|-------|
-| 3.10 | Crear proyecto Supabase para ArmaHub (cuenta existente, plan free) | ☐ | TÚ |
-| 3.11 | Migrar esquema + datos de Render a Supabase (pg_dump / pg_restore) | ☐ | YO |
-| 3.12 | Cambiar `DATABASE_URL` en Render apuntando a Supabase + validar conexión/pool | ☐ | TÚ+YO |
-| 3.13 | Verificar migraciones aplicadas y consistencia post-restore; smoke test | ☐ | TÚ+YO |
+| 3.10 | Crear proyecto Supabase para ArmaHub (plan free, Session pooler) | ☑ | TÚ |
+| 3.11 | Migrar datos de Render a Supabase (endpoint temporal con autodetección de tablas + verificación origen=destino; todas cuadran, 0 errores) | ☑ | YO |
+| 3.12 | Cambiar `DATABASE_URL` en Render → Supabase (`?sslmode=require`) + validar | ☑ | TÚ+YO |
+| 3.13 | Smoke test post-migración: login, proyectos, reclamos, crear reclamo de prueba — OK | ☑ | TÚ+YO |
+
+> **Notas de la migración (2026-06-10):** se hizo vía endpoint temporal (ya retirado), no pg_dump (no
+> había tools locales). Bugs depurados en el camino: auth pooler (usuario `postgres.{ref}` + contraseña sin
+> símbolos), COUNT por tabla aislado, copiar solo columnas comunes (desfase `fecha_subida`/`fecha` en
+> `reclamo_imagenes` y `proyecto_aliases` — esas columnas quedaron vacías en destino, dato secundario),
+> TRUNCATE atómico (el CASCADE borraba `proyectos` ya copiada), INSERT ON CONFLICT DO NOTHING (idempotente).
+> Render-Postgres se conserva como respaldo (no se apagó). BYTEA de imágenes también sigue como respaldo
+> (tarea 3.9). Pendiente seguridad: rotar contraseña de BD (quedó visible en chat) y revocar token R2 viejo.
 
 > **Orden sugerido:** hacer 3C (BD a Supabase) puede ir antes o después de 3A/3B (R2); son independientes.
 > Conviene migrar la BD a Supabase ANTES de meter las imágenes a R2 NO es necesario — de hecho conviene
