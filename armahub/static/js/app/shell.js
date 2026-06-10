@@ -13,6 +13,8 @@
     pedidos: 'Pedidos',
     export: 'Exportacion',
     reclamos: 'Reclamos',
+    rec_dashboards: 'Dashboards',
+    rec_procedimientos: 'Procedimientos',
     admin: 'Admin'
   };
 
@@ -114,6 +116,12 @@
       if (asignadoA && asignadoA.parentElement) {
         asignadoA.parentElement.style.display = (window.currentRole === 'admin' || window.currentRole === 'admin2') ? '' : 'none';
       }
+      // Dashboards y Procedimientos: solo admin/admin2
+      var esAdmin = (window.currentRole === 'admin' || window.currentRole === 'admin2');
+      var dashBtn = document.getElementById('recShellBtnDash');
+      if (dashBtn) dashBtn.style.display = esAdmin ? '' : 'none';
+      var procBtn = document.getElementById('recShellBtnProc');
+      if (procBtn) procBtn.style.display = esAdmin ? '' : 'none';
     }
 
     if (mod === 'admin') {

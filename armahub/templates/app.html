@@ -106,8 +106,10 @@
       <button class="tab-btn mod-cubicacion" onclick="switchTab('buscar')">🔍 Bar Manager</button>
       <button class="tab-btn mod-cubicacion" onclick="switchTab('pedidos')">📝 Pedidos</button>
       <button class="tab-btn mod-cubicacion" onclick="switchTab('export')">📥 Exportación</button>
-      <!-- Reclamos tabs -->
-      <button class="tab-btn mod-reclamos" onclick="switchTab('reclamos')" style="display:none;">⚠️ Reclamos</button>
+      <!-- Reclamos tabs (Nivel 1 — patrón shell estándar) -->
+      <button class="tab-btn mod-reclamos" onclick="switchTab('reclamos')" style="display:none;">📋 Reclamos</button>
+      <button id="recShellBtnDash" class="tab-btn mod-reclamos" onclick="switchTab('rec_dashboards'); if(typeof loadRecAdminDashboards==='function') loadRecAdminDashboards();" style="display:none;">📊 Dashboards</button>
+      <button id="recShellBtnProc" class="tab-btn mod-reclamos" onclick="switchTab('rec_procedimientos')" style="display:none;">📄 Procedimientos</button>
       <!-- Admin tabs -->
       <button class="tab-btn mod-admin" onclick="switchTab('admin')" style="display:none;">⚙️ Admin</button>
     </div>
@@ -118,6 +120,8 @@
     {% include 'tabs/pedidos.html' %}
     {% include 'tabs/exportacion.html' %}
     {% include 'tabs/reclamos.html' %}
+    {% include 'tabs/rec_dashboards.html' %}
+    {% include 'tabs/rec_procedimientos.html' %}
     {% include 'tabs/admin.html' %}
   </div>
 

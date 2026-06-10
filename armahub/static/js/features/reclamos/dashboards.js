@@ -8,41 +8,7 @@ let _recDashProyecto = null, _recDashProyectoMes = null;
 var _adminDashLoaded = false;
 var _recLandChartResueltos = null;
 
-function switchRecTab(tab) {
-  var ids = ['recTabMain', 'recTabDashboards', 'recTabProcedimientos', 'recTabPresentaciones'];
-  ids.forEach(function(id) { var el = document.getElementById(id); if (el) el.style.display = 'none'; });
-
-  var btnMain = document.getElementById('recTabBtnMain');
-  var btnDash  = document.getElementById('recTabBtnDash');
-  var btnProc  = document.getElementById('recTabBtnProc');
-  var btnPres  = document.getElementById('recTabBtnPres');
-  [btnMain, btnDash, btnProc, btnPres].forEach(function(b) {
-    if (b) { b.style.borderBottomColor = 'transparent'; b.style.color = '#999'; }
-  });
-
-  if (tab === 'dashboards') {
-    document.getElementById('recTabDashboards').style.display = '';
-    if (btnDash) { btnDash.style.borderBottomColor = '#1565C0'; btnDash.style.color = '#1565C0'; }
-    loadRecAdminDashboards();
-    window.location.hash = 'dashboards';
-  } else if (tab === 'procedimientos') {
-    document.getElementById('recTabProcedimientos').style.display = '';
-    if (btnProc) { btnProc.style.borderBottomColor = '#2e7d32'; btnProc.style.color = '#2e7d32'; }
-    window.location.hash = 'procedimientos';
-  } else if (tab === 'presentaciones') {
-    document.getElementById('recTabPresentaciones').style.display = '';
-    if (btnPres) { btnPres.style.borderBottomColor = '#7B1FA2'; btnPres.style.color = '#7B1FA2'; }
-    loadPresentaciones();
-    window.location.hash = 'presentaciones';
-  } else {
-    document.getElementById('recTabMain').style.display = '';
-    if (btnMain) { btnMain.style.borderBottomColor = '#e53935'; btnMain.style.color = '#e53935'; }
-    _adminDashLoaded = false;
-    window.location.hash = '';
-  }
-}
-
-// ── Sub-tabs línea 2 (dentro de recTabMain) ──
+// ── Sub-tabs Nivel 2 (dentro de tab-reclamos) ──
 var _rcaRecAreaId = null;
 var _rcaRecData = null;
 
@@ -209,19 +175,7 @@ async function loadRecLanding() {
   var titleEl = document.querySelector('#recLandingCharts').parentElement.querySelector('h3');
   if (titleEl) titleEl.textContent = isAdmin ? 'Resumen General' : 'Mi Resumen';
 
-  // Show dashboards tab button for admin
-  var dashBtn = document.getElementById('recTabBtnDash');
-  if (dashBtn) dashBtn.style.display = isAdmin ? '' : 'none';
-
-  // Procedimientos: solo admin/admin2
-  var procBtn = document.getElementById('recTabBtnProc');
-  if (procBtn) procBtn.style.display = isAdmin ? '' : 'none';
-
-  // Presentaciones (línea 1): oculto — ahora vive en sub-tab línea 2
-  var presBtn = document.getElementById('recTabBtnPres');
-  if (presBtn) presBtn.style.display = 'none';
-
-  // Sub-tabs línea 2: RCA y Presentaciones según rol
+  // Sub-tabs Nivel 2: RCA y Presentaciones según rol
   var rcaAccess = ['admin','admin2'];
   var subRCA = document.getElementById('recSubBtnRCA');
   if (subRCA) subRCA.style.display = rcaAccess.includes(currentRole) ? '' : 'none';

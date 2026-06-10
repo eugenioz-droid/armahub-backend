@@ -52,7 +52,7 @@
 
   // --- Build API: all functions are file-scope, reference directly ---
   var allExports = [
-    'switchRecTab',
+    'switchRecSubTab',
     'loadRecLanding',
     'loadRecAdminDashboards',
     'loadRecUsersDropdown',

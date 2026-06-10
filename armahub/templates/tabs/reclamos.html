@@ -1,22 +1,14 @@
   <!-- TAB: CALIDAD / RECLAMOS -->
   <div id="tab-reclamos" class="tab-content">
-    <!-- Línea 1: tabs principales -->
-    <div id="recTabNav" style="display:flex; gap:0; margin-bottom:12px; border-bottom:2px solid #e0e0e0;">
-      <button id="recTabBtnMain" onclick="switchRecTab('main')" style="padding:8px 20px; font-size:13px; font-weight:600; border:none; border-bottom:3px solid #e53935; background:none; color:#e53935; cursor:pointer;">📋 Reclamos</button>
-      <button id="recTabBtnDash" onclick="switchRecTab('dashboards')" style="padding:8px 20px; font-size:13px; font-weight:600; border:none; border-bottom:3px solid transparent; background:none; color:#999; cursor:pointer; display:none;">📊 Dashboards</button>
-      <button id="recTabBtnProc" onclick="switchRecTab('procedimientos')" style="padding:8px 20px; font-size:13px; font-weight:600; border:none; border-bottom:3px solid transparent; background:none; color:#999; cursor:pointer; display:none;">📄 Procedimientos</button>
-      <button id="recTabBtnPres" onclick="switchRecTab('presentaciones')" style="padding:8px 20px; font-size:13px; font-weight:600; border:none; border-bottom:3px solid transparent; background:none; color:#999; cursor:pointer; display:none;">🎤 Presentaciones</button>
-    </div>
-
     <!-- ==================== MAIN TAB ==================== -->
     <div id="recTabMain">
 
-    <!-- Línea 2: sub-tabs dentro de Reclamos -->
-    <div id="recSubTabNav" style="display:flex; gap:0; margin-bottom:16px; border-bottom:1px solid #eee;">
-      <button id="recSubBtnClientes" onclick="switchRecSubTab('clientes')" style="padding:6px 16px; font-size:12px; font-weight:600; border:none; border-bottom:2px solid #e53935; background:none; color:#e53935; cursor:pointer;">Reclamos Clientes</button>
-      <button id="recSubBtnInternos" onclick="switchRecSubTab('internos')" style="padding:6px 16px; font-size:12px; font-weight:600; border:none; border-bottom:2px solid transparent; background:none; color:#999; cursor:pointer;">Reclamos Internos</button>
-      <button id="recSubBtnRCA" onclick="switchRecSubTab('rca')" style="padding:6px 16px; font-size:12px; font-weight:600; border:none; border-bottom:2px solid transparent; background:none; color:#999; cursor:pointer; display:none;">Matriz RCA</button>
-      <button id="recSubBtnPres" onclick="switchRecSubTab('presentaciones')" style="padding:6px 16px; font-size:12px; font-weight:600; border:none; border-bottom:2px solid transparent; background:none; color:#999; cursor:pointer; display:none;">Presentaciones</button>
+    <!-- Nivel 2: sub-tabs dentro de Reclamos -->
+    <div id="recSubTabNav" style="display:flex; gap:0; margin-bottom:16px; padding-top:4px; border-bottom:1px solid #f0f0f0; background:#fafafa;">
+      <button id="recSubBtnClientes" onclick="switchRecSubTab('clientes')" style="padding:5px 16px; font-size:12px; font-weight:600; border:none; border-bottom:2px solid #e53935; background:none; color:#e53935; cursor:pointer;">Reclamos Clientes</button>
+      <button id="recSubBtnInternos" onclick="switchRecSubTab('internos')" style="padding:5px 16px; font-size:12px; font-weight:600; border:none; border-bottom:2px solid transparent; background:none; color:#aaa; cursor:pointer;">Reclamos Internos</button>
+      <button id="recSubBtnRCA" onclick="switchRecSubTab('rca')" style="padding:5px 16px; font-size:12px; font-weight:600; border:none; border-bottom:2px solid transparent; background:none; color:#aaa; cursor:pointer; display:none;">Matriz RCA</button>
+      <button id="recSubBtnPres" onclick="switchRecSubTab('presentaciones')" style="padding:5px 16px; font-size:12px; font-weight:600; border:none; border-bottom:2px solid transparent; background:none; color:#aaa; cursor:pointer; display:none;">Presentaciones</button>
     </div>
 
     <!-- Sub-panel: Reclamos Clientes (contenido actual) -->
@@ -607,86 +599,6 @@
     </div><!-- contenido inyectado desde recTabPresentaciones al activar -->
 
     </div><!-- /recTabMain -->
-
-    <!-- ==================== DASHBOARDS TAB (admin/admin2 only) ==================== -->
-    <div id="recTabDashboards" style="display:none;">
-      <div class="card" style="border-top:3px solid #1565C0;">
-        <h3 style="margin:0 0 16px 0; color:#1565C0;">📊 Dashboards de Reclamos</h3>
-
-        <!-- Row 1: KPIs y overview -->
-        <div style="display:grid; grid-template-columns:160px 1fr 1fr 1fr; gap:14px; margin-bottom:14px;">
-          <!-- KPI Card -->
-          <div style="background:#fff; border:1px solid #eee; border-radius:8px; padding:16px; text-align:center; display:flex; flex-direction:column; justify-content:center;">
-            <div style="font-size:10px; color:#888; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:6px;">Total</div>
-            <div id="recDashTotal" style="font-size:40px; font-weight:700; color:#e53935; line-height:1;">0</div>
-            <div style="font-size:11px; color:#ff9800; font-weight:600; margin-top:6px;"><span id="recDashAbiertos">0</span> abiertos</div>
-          </div>
-          <!-- Histórico mensual -->
-          <div style="background:#fff; border:1px solid #eee; border-radius:8px; padding:12px;">
-            <div style="font-size:11px; color:#888; margin-bottom:6px;">Histórico por Detección (mes/año)</div>
-            <div style="position:relative; height:160px;"><canvas id="recDashChartHist"></canvas></div>
-          </div>
-          <!-- Donut resueltos/no resueltos -->
-          <div style="background:#fff; border:1px solid #eee; border-radius:8px; padding:12px;">
-            <div style="font-size:11px; color:#888; margin-bottom:6px;">Resueltos vs Pendientes</div>
-            <div style="position:relative; height:160px;"><canvas id="recDashChartResueltos"></canvas></div>
-          </div>
-          <!-- Donut Error/Faltante/Atraso -->
-          <div style="background:#fff; border:1px solid #eee; border-radius:8px; padding:12px;">
-            <div style="font-size:11px; color:#888; margin-bottom:6px;">Tipo de Reclamo</div>
-            <div style="position:relative; height:160px;"><canvas id="recDashChartTipo"></canvas></div>
-          </div>
-        </div>
-
-        <!-- Row 2: Por USC y Cubicador -->
-        <div style="display:grid; grid-template-columns:1fr 1fr 1fr 1fr; gap:14px;">
-          <!-- Detectados por USC (bar) -->
-          <div style="background:#fff; border:1px solid #eee; border-radius:8px; padding:12px;">
-            <div style="font-size:11px; color:#888; margin-bottom:6px;">Detectados por USC</div>
-            <div style="position:relative; height:200px;"><canvas id="recDashChartUSC"></canvas></div>
-          </div>
-          <!-- Reclamos por cubicador asignado (donut) -->
-          <div style="background:#fff; border:1px solid #eee; border-radius:8px; padding:12px;">
-            <div style="font-size:11px; color:#888; margin-bottom:6px;">Por Cubicador Asignado</div>
-            <div style="position:relative; height:200px;"><canvas id="recDashChartCubAsig"></canvas></div>
-          </div>
-          <!-- Causas Ishikawa (donut) -->
-          <div style="background:#fff; border:1px solid #eee; border-radius:8px; padding:12px;">
-            <div style="font-size:11px; color:#888; margin-bottom:6px;">Causas Ishikawa</div>
-            <div style="position:relative; height:200px;"><canvas id="recDashChartIshikawa"></canvas></div>
-          </div>
-          <!-- Kilos mal fabricados por cubicador (bar) -->
-          <div style="background:#fff; border:1px solid #eee; border-radius:8px; padding:12px;">
-            <div style="font-size:11px; color:#888; margin-bottom:6px;">Kilos Mal Fabricados (Cubicador)</div>
-            <div style="position:relative; height:200px;"><canvas id="recDashChartKilos"></canvas></div>
-          </div>
-        </div>
-
-        <!-- Row 3: Por Proyecto -->
-        <div style="display:grid; grid-template-columns:1fr 2fr; gap:14px; margin-top:14px;">
-          <!-- Reclamos por Proyecto (compact bar) -->
-          <div style="background:#fff; border:1px solid #eee; border-radius:8px; padding:12px;">
-            <div style="font-size:11px; color:#888; margin-bottom:6px;">Reclamos por Proyecto</div>
-            <div style="position:relative; height:200px;"><canvas id="recDashChartProyecto"></canvas></div>
-          </div>
-          <!-- Reclamos por Proyecto desglosado por Mes - Heatmap -->
-          <div style="background:#fff; border:1px solid #eee; border-radius:8px; padding:12px;">
-            <div style="font-size:11px; color:#888; margin-bottom:6px;">Reclamos por Proyecto / Mes - Heatmap (últimos 12 meses)</div>
-            <div id="recDashHeatmapProyectoMes" style="position:relative; height:400px;"><canvas id="recDashChartProyectoMes"></canvas></div>
-          </div>
-        </div>
-
-
-      </div>
-    </div><!-- /recTabDashboards -->
-
-    <!-- ==================== PROCEDIMIENTOS TAB (admin/admin2) ==================== -->
-    <div id="recTabProcedimientos" style="display:none;">
-      <div class="card" style="border-top:3px solid #2e7d32;">
-        <h3 style="margin:0 0 8px 0; color:#2e7d32;">📄 Procedimientos</h3>
-        <p class="muted" style="font-size:13px; margin:0;">Próximamente — repositorio de procedimientos y documentos del área de Calidad.</p>
-      </div>
-    </div><!-- /recTabProcedimientos -->
 
     <!-- ==================== PRESENTACIONES TAB ==================== -->
     <div id="recTabPresentaciones" style="display:none;">

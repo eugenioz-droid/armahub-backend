@@ -73,8 +73,8 @@ document.addEventListener('paste', function(e) {
   var hash = window.location.hash.substring(1);
   if (hash === 'presentaciones') {
     await waitForReclamosFeatureReady();
-    if (typeof window.switchRecTab === 'function') {
-      window.switchRecTab(hash);
+    if (typeof window.switchRecSubTab === 'function') {
+      window.switchRecSubTab('presentaciones');
     }
   }
 })();
