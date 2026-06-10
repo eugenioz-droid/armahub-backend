@@ -279,6 +279,27 @@ Objetivo: endurecer Reclamos y cerrar los pendientes reales arrastrados.
 | 5.7 | Evaluar tamaño de `reclamos.py` y separar solo si la legibilidad lo exige | ⏭ diferido a F9 | YO |
 | 5.18 | Refactorizar navegación de Calidad/Reclamos: convertir Dashboards y Procedimientos a tabs reales del shell (patrón Cubicación) — extrae HTML a `tabs/rec_dashboards.html` y `tabs/rec_procedimientos.html`, registra en `shell.js`, elimina `switchRecTab` para esos paneles | ☑ | YO |
 
+### 5D. Módulo Matrices RCA + rediseño caluga (implementado en esta sesión)
+
+| N° | Descripción | Realizado | Quién |
+|----|-------------|-----------|-------|
+| 5.19 | Renombrar caluga "Reclamos" → "Calidad / Reclamos" en registry | ☑ | YO |
+| 5.20 | Separar áreas: Ventas C&D y Ventas MPEC (antes una sola "Ventas") — 11 áreas totales | ☑ | TÚ+YO |
+| 5.21 | Migraciones 55–58: tablas `areas`, `area_usuarios`, `area_rca_categorias`, `area_rca_subcausas` + seed 11 áreas + matriz Ishikawa de Cubicaciones | ☑ | YO |
+| 5.22 | Backend: endpoints `GET/PUT /admin/areas` y `GET/PUT /admin/areas/{id}/rca` | ☑ | YO |
+| 5.23 | Editor Matrices RCA en tab Admin (por área, edición por categoría Ishikawa, colores por categoría) | ☑ | YO |
+| 5.24 | Definir estructura de tabs: Nivel 1 (shell) = Reclamos / Dashboards / Procedimientos; Nivel 2 (sub-tabs internos) = Reclamos Clientes / Reclamos Internos / Matriz RCA / Presentaciones | ☑ | TÚ+YO |
+| 5.25 | Editor Matrices RCA en Nivel 2 de Calidad/Reclamos (Jefes de Servicio editan su matriz) | ☑ | YO |
+| 5.26 | Smoke test visual: tabs Nivel 1 y Nivel 2, editor RCA por área, dashboards | ☐ | TÚ |
+
+### 5E. Pendientes Nivel 2 (sub-tabs internos)
+
+| N° | Descripción | Realizado | Quién |
+|----|-------------|-----------|-------|
+| 5.27 | Implementar Reclamos Internos (hoy placeholder) — discovery: flujo y diferencias con Reclamos Clientes | ☐ | TÚ+YO |
+| 5.28 | Implementar 5 Por Qué como método RCA alternativo a Ishikawa (por reclamo, excluyente) | ☐ | YO |
+| 5.29 | Rol Jefe de Servicio: activar en flujos de RCA y área (tablas existen en BD, rol sin usar aún) | ☐ | TÚ+YO |
+
 ### 5B. Envío de informe por correo (arrastrado de PC.15)
 
 | N° | Descripción | Realizado | Quién |
@@ -299,7 +320,7 @@ Objetivo: endurecer Reclamos y cerrar los pendientes reales arrastrados.
 | 5.16 | UI: selector de origen; listado/detalle/dashboards segmentables por origen | ☐ | YO |
 | 5.17 | Smoke test: reclamo → análisis → acciones → validación → PDF → envío | ☐ | TÚ+YO |
 
-**Criterio de salida:** hardening cerrado, correo de informe operativo, multi-origen definido.
+**Criterio de salida:** hardening cerrado, matrices RCA operativas, smoke test visual aprobado, correo de informe operativo, multi-origen definido, sub-tabs internos completos.
 
 ---
 
