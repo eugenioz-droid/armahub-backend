@@ -168,23 +168,40 @@ def create_app() -> FastAPI:
                     copiadas[t] = 0
                     continue
                 try:
+                    # Columnas que existen en el DESTINO (estructura recreada)
+                    with dst.cursor() as dcur:
+                        dcur.execute(
+                            "SELECT column_name FROM information_schema.columns "
+                            "WHERE table_schema='public' AND table_name=%s", (t,)
+                        )
+                        cols_dst = {r[0] for r in dcur.fetchall()}
+
                     with get_conn() as sconn:
                         with sconn.cursor() as scur:
                             scur.execute(f"SELECT * FROM {t}")
-                            cols = [d[0] for d in scur.description]
+                            cols_src = [d[0] for d in scur.description]
                             rows = scur.fetchall()
                     if not rows:
                         copiadas[t] = 0
                         continue
-                    collist = ", ".join(cols)
-                    placeholders = ", ".join(["%s"] * len(cols))
+
+                    # Copiar SOLO columnas presentes en ambos lados (evita desfases de nombres)
+                    idx_comunes = [i for i, c in enumerate(cols_src) if c in cols_dst]
+                    cols_comunes = [cols_src[i] for i in idx_comunes]
+                    omitidas = [c for c in cols_src if c not in cols_dst]
+                    rows_filtradas = [tuple(row[i] for i in idx_comunes) for row in rows]
+
+                    collist = ", ".join(cols_comunes)
+                    placeholders = ", ".join(["%s"] * len(cols_comunes))
                     with dst.cursor() as dcur:
                         dcur.execute(f"TRUNCATE {t} CASCADE;")
                         dcur.executemany(
-                            f"INSERT INTO {t} ({collist}) VALUES ({placeholders})", rows
+                            f"INSERT INTO {t} ({collist}) VALUES ({placeholders})", rows_filtradas
                         )
                     dst.commit()
                     copiadas[t] = len(rows)
+                    if omitidas:
+                        copiadas[t] = f"{len(rows)} (columnas omitidas por desfase: {omitidas})"
                 except Exception as exc:
                     dst.rollback()
                     errores.append({"tabla": t, "error": str(exc)})
