@@ -12,13 +12,13 @@ En Render, lo ideal es arrancar con:
     uvicorn armahub.main:app --host 0.0.0.0 --port 10000
 """
 
-from fastapi import FastAPI, Response, Request, Depends, HTTPException
+from fastapi import FastAPI, Response, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 import os, time, logging
 
 from .db import init_db, get_conn
-from .auth import router as auth_router, require_admin
+from .auth import router as auth_router
 from .importer import router as importer_router
 from .barras import router as barras_router
 from .ui import router as ui_router
@@ -89,164 +89,6 @@ def create_app() -> FastAPI:
             result["db"] = "error"
             result["detail"] = str(e)
         return result
-
-    @app.post("/admin/migrar-bd-supabase")
-    def migrar_bd_supabase(payload: dict, admin=Depends(require_admin)):
-        """
-        TEMPORAL — copia los datos de la BD actual (Render) a otra BD (Supabase).
-        Solo admin. NO destructivo: solo LEE de Render, escribe en el destino.
-        Body JSON: {"destino_url": "postgresql://...", "dry_run": true/false}
-
-        Orden de tablas respeta foreign keys. En el destino primero corre las
-        migraciones (crea estructura), luego copia datos tabla por tabla.
-        Se elimina tras validar.
-        """
-        import psycopg
-        destino_url = (payload or {}).get("destino_url", "").strip()
-        dry_run = bool((payload or {}).get("dry_run", True))
-        if not destino_url:
-            raise HTTPException(status_code=400, detail="Falta destino_url")
-        if destino_url.startswith("postgres://"):
-            destino_url = "postgresql://" + destino_url[len("postgres://"):]
-
-        # Orden conocido por dependencias FK (padres antes que hijos)
-        ORDEN_FK = [
-            "schema_migrations", "users", "proyectos", "constructoras", "calculistas",
-            "proyecto_usuarios", "proyecto_aliases", "imports", "barras",
-            "pedidos", "pedido_items", "export_log", "audit_log",
-            "reclamos", "reclamo_seguimientos", "reclamo_acciones", "reclamo_imagenes",
-            "notificaciones", "notificacion_config",
-        ]
-
-        # Detectar TODAS las tablas reales del schema public (no depender de lista fija).
-        # Garantiza que no quede ninguna tabla afuera.
-        with get_conn() as conn:
-            with conn.cursor() as cur:
-                cur.execute("""
-                    SELECT tablename FROM pg_tables WHERE schemaname = 'public'
-                """)
-                tablas_reales = {r[0] for r in cur.fetchall()}
-
-        # Ordenar: primero las conocidas en orden FK, luego cualquier extra al final
-        TABLAS = [t for t in ORDEN_FK if t in tablas_reales]
-        TABLAS += sorted(tablas_reales - set(ORDEN_FK))
-
-        # 1) Conteo en origen (Render). CADA tabla en su propia conexión: si una
-        # falla (p.ej. tabla inexistente), no aborta la transacción de las demás.
-        conteos = {}
-        for t in TABLAS:
-            try:
-                with get_conn() as conn:
-                    with conn.cursor() as cur:
-                        cur.execute(f"SELECT COUNT(*) FROM {t}")
-                        conteos[t] = cur.fetchone()[0]
-            except Exception:
-                conteos[t] = None  # tabla no existe en origen
-
-        if dry_run:
-            return {"dry_run": True, "conteos_origen": conteos,
-                    "mensaje": "Filas a copiar por tabla. Nada copiado. Pasar dry_run=false para migrar."}
-
-        # 2) En destino: crear estructura (correr migraciones via init) y copiar datos
-        copiadas = {}
-        errores = []
-        dst = psycopg.connect(destino_url)
-        try:
-            # 2a) Crear tablas + migraciones en el destino
-            from .db import _create_base_tables, _run_migrations, _create_indexes
-            with dst.cursor() as dcur:
-                _create_base_tables(dcur)
-                _run_migrations(dcur)
-                _create_indexes(dcur)
-            dst.commit()
-
-            # 2b) Vaciar TODAS las tablas en UNA sola sentencia atómica.
-            # TRUNCATE de todas juntas evita que el CASCADE de una borre otra ya
-            # copiada, y al ser una sola sentencia no deja transaccion a medias.
-            with dst.cursor() as dcur:
-                dcur.execute("SET session_replication_role = replica;")  # desactiva FK
-                lista = ", ".join(TABLAS)
-                try:
-                    dcur.execute(f"TRUNCATE {lista} CASCADE;")
-                except Exception:
-                    pass
-            dst.commit()
-            for t in TABLAS:
-                if not conteos.get(t):
-                    copiadas[t] = 0
-                    continue
-                try:
-                    # Columnas que existen en el DESTINO (estructura recreada)
-                    with dst.cursor() as dcur:
-                        dcur.execute(
-                            "SELECT column_name FROM information_schema.columns "
-                            "WHERE table_schema='public' AND table_name=%s", (t,)
-                        )
-                        cols_dst = {r[0] for r in dcur.fetchall()}
-
-                    with get_conn() as sconn:
-                        with sconn.cursor() as scur:
-                            scur.execute(f"SELECT * FROM {t}")
-                            cols_src = [d[0] for d in scur.description]
-                            rows = scur.fetchall()
-                    if not rows:
-                        copiadas[t] = 0
-                        continue
-
-                    # Copiar SOLO columnas presentes en ambos lados (evita desfases de nombres)
-                    idx_comunes = [i for i, c in enumerate(cols_src) if c in cols_dst]
-                    cols_comunes = [cols_src[i] for i in idx_comunes]
-                    omitidas = [c for c in cols_src if c not in cols_dst]
-                    rows_filtradas = [tuple(row[i] for i in idx_comunes) for row in rows]
-
-                    collist = ", ".join(cols_comunes)
-                    placeholders = ", ".join(["%s"] * len(cols_comunes))
-                    with dst.cursor() as dcur:
-                        # Ya se truncó todo al inicio. ON CONFLICT DO NOTHING como
-                        # doble seguro (idempotente: re-ejecutar no falla por duplicados).
-                        dcur.executemany(
-                            f"INSERT INTO {t} ({collist}) VALUES ({placeholders}) ON CONFLICT DO NOTHING",
-                            rows_filtradas
-                        )
-                    dst.commit()
-                    copiadas[t] = len(rows)
-                    if omitidas:
-                        copiadas[t] = f"{len(rows)} (columnas omitidas por desfase: {omitidas})"
-                except Exception as exc:
-                    dst.rollback()
-                    errores.append({"tabla": t, "error": str(exc)})
-            with dst.cursor() as dcur:
-                dcur.execute("SET session_replication_role = DEFAULT;")
-            dst.commit()
-
-            # 3) VERIFICACIÓN: contar filas en destino y comparar con origen
-            verificacion = {}
-            descuadres = []
-            with dst.cursor() as dcur:
-                for t in TABLAS:
-                    try:
-                        dcur.execute(f"SELECT COUNT(*) FROM {t}")
-                        n_dst = dcur.fetchone()[0]
-                    except Exception:
-                        n_dst = None
-                    n_src = conteos.get(t)
-                    verificacion[t] = {"origen": n_src, "destino": n_dst}
-                    if (n_src or 0) != (n_dst or 0):
-                        descuadres.append(t)
-        finally:
-            dst.close()
-
-        return {
-            "dry_run": False,
-            "copiadas": copiadas,
-            "errores": errores,
-            "verificacion": verificacion,
-            "descuadres": descuadres,
-            "resultado": "OK — todas las tablas cuadran" if not descuadres and not errores
-                         else f"REVISAR — descuadres en: {descuadres}",
-            "nota": "Render NO modificado. Validar antes de cambiar DATABASE_URL.",
-        }
-
     # --- Request logging middleware ---
     logger = logging.getLogger("armahub.access")
 
