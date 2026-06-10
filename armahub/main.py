@@ -118,16 +118,17 @@ def create_app() -> FastAPI:
             "notificaciones", "notificacion_config",
         ]
 
-        # 1) Conteo en origen (Render)
+        # 1) Conteo en origen (Render). CADA tabla en su propia conexión: si una
+        # falla (p.ej. tabla inexistente), no aborta la transacción de las demás.
         conteos = {}
-        with get_conn() as conn:
-            with conn.cursor() as cur:
-                for t in TABLAS:
-                    try:
+        for t in TABLAS:
+            try:
+                with get_conn() as conn:
+                    with conn.cursor() as cur:
                         cur.execute(f"SELECT COUNT(*) FROM {t}")
                         conteos[t] = cur.fetchone()[0]
-                    except Exception:
-                        conteos[t] = None  # tabla no existe en origen
+            except Exception:
+                conteos[t] = None  # tabla no existe en origen
 
         if dry_run:
             return {"dry_run": True, "conteos_origen": conteos,
