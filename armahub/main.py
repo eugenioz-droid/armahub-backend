@@ -109,14 +109,27 @@ def create_app() -> FastAPI:
         if destino_url.startswith("postgres://"):
             destino_url = "postgresql://" + destino_url[len("postgres://"):]
 
-        # Orden por dependencias FK (padres antes que hijos)
-        TABLAS = [
+        # Orden conocido por dependencias FK (padres antes que hijos)
+        ORDEN_FK = [
             "schema_migrations", "users", "proyectos", "constructoras", "calculistas",
-            "clientes", "proyecto_usuarios", "proyecto_aliases", "imports", "barras",
+            "proyecto_usuarios", "proyecto_aliases", "imports", "barras",
             "pedidos", "pedido_items", "export_log", "audit_log",
             "reclamos", "reclamo_seguimientos", "reclamo_acciones", "reclamo_imagenes",
             "notificaciones", "notificacion_config",
         ]
+
+        # Detectar TODAS las tablas reales del schema public (no depender de lista fija).
+        # Garantiza que no quede ninguna tabla afuera.
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    SELECT tablename FROM pg_tables WHERE schemaname = 'public'
+                """)
+                tablas_reales = {r[0] for r in cur.fetchall()}
+
+        # Ordenar: primero las conocidas en orden FK, luego cualquier extra al final
+        TABLAS = [t for t in ORDEN_FK if t in tablas_reales]
+        TABLAS += sorted(tablas_reales - set(ORDEN_FK))
 
         # 1) Conteo en origen (Render). CADA tabla en su propia conexión: si una
         # falla (p.ej. tabla inexistente), no aborta la transacción de las demás.
@@ -178,11 +191,34 @@ def create_app() -> FastAPI:
             with dst.cursor() as dcur:
                 dcur.execute("SET session_replication_role = DEFAULT;")
             dst.commit()
+
+            # 3) VERIFICACIÓN: contar filas en destino y comparar con origen
+            verificacion = {}
+            descuadres = []
+            with dst.cursor() as dcur:
+                for t in TABLAS:
+                    try:
+                        dcur.execute(f"SELECT COUNT(*) FROM {t}")
+                        n_dst = dcur.fetchone()[0]
+                    except Exception:
+                        n_dst = None
+                    n_src = conteos.get(t)
+                    verificacion[t] = {"origen": n_src, "destino": n_dst}
+                    if (n_src or 0) != (n_dst or 0):
+                        descuadres.append(t)
         finally:
             dst.close()
 
-        return {"dry_run": False, "copiadas": copiadas, "errores": errores,
-                "nota": "Render NO modificado. Validar datos en Supabase antes de cambiar DATABASE_URL."}
+        return {
+            "dry_run": False,
+            "copiadas": copiadas,
+            "errores": errores,
+            "verificacion": verificacion,
+            "descuadres": descuadres,
+            "resultado": "OK — todas las tablas cuadran" if not descuadres and not errores
+                         else f"REVISAR — descuadres en: {descuadres}",
+            "nota": "Render NO modificado. Validar antes de cambiar DATABASE_URL.",
+        }
 
     # --- Request logging middleware ---
     logger = logging.getLogger("armahub.access")
