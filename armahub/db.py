@@ -725,6 +725,13 @@ MIGRATIONS = [
         "DO $$ BEGIN ALTER TABLE reclamo_imagenes ADD COLUMN storage_key TEXT; EXCEPTION WHEN duplicate_column THEN NULL; END $$;",
         "DO $$ BEGIN ALTER TABLE reclamo_imagenes ALTER COLUMN data DROP NOT NULL; EXCEPTION WHEN others THEN NULL; END $$;",
     ]),
+
+    # --- Migration 54: eliminar columna data (BYTEA) de reclamo_imagenes ---
+    # Todas las imágenes ya migradas a R2 (28/28 OK, validado 2026-06-09).
+    # El backend ya no lee ni escribe data; todo pasa por storage_key.
+    (54, "reclamo_imagenes: drop columna data (BYTEA eliminado, todo en R2)", [
+        "DO $$ BEGIN ALTER TABLE reclamo_imagenes DROP COLUMN data; EXCEPTION WHEN undefined_column THEN NULL; END $$;",
+    ]),
 ]
 
 

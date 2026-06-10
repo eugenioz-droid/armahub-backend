@@ -199,7 +199,7 @@ Objetivo: sacar las imágenes de la base de datos (hoy en BYTEA) y llevarlas a C
 |----|-------------|-----------|-------|
 | 3.7 | Migración one-shot: 28 imágenes BYTEA → R2 (endpoint temporal, no-destructivo, 28/28 OK) | ☑ | YO |
 | 3.8 | Validar imágenes viejas desde R2 — confirmado (vistas en R2 y en los reclamos) | ☑ | TÚ+YO |
-| 3.9 | Eliminar columna `data` (BYTEA) post-validación — PENDIENTE (BYTEA se conserva como respaldo hasta decidir) | ☐ | YO |
+| 3.9 | Eliminar columna `data` (BYTEA) post-validación — migración 54 + código limpiado (2026-06-10) | ☑ | YO |
 
 ### 3C. Migrar base de datos a Supabase ✅ COMPLETADA
 

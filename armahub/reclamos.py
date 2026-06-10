@@ -1684,32 +1684,20 @@ async def subir_imagen(
                 # Detectar nombre de columna fecha (fecha vs fecha_subida)
                 img_columns = _get_table_columns(cur, "reclamo_imagenes")
                 fecha_col = "fecha" if "fecha" in img_columns else "fecha_subida"
-                has_storage = "storage_key" in img_columns
 
-                # Almacenamiento dual: R2 si está configurado, BYTEA como fallback.
-                # carpeta por tipo: reclamos/registro/ o reclamos/analisis/
-                storage_key = None
-                db_data = data
-                if has_storage and storage.is_configured():
-                    subcarpeta = "analisis" if img_tipo == "ImagenesAnalisis" else "registro"
-                    storage_key = storage.build_key(
-                        "reclamos", subcarpeta, str(reclamo_id), filename=file.filename
-                    )
-                    storage.upload_file(storage_key, data, file.content_type or "application/octet-stream")
-                    db_data = None  # no duplicar el binario en la BD
+                if not storage.is_configured():
+                    raise HTTPException(status_code=503, detail="Storage R2 no configurado")
+                subcarpeta = "analisis" if img_tipo == "ImagenesAnalisis" else "registro"
+                storage_key = storage.build_key(
+                    "reclamos", subcarpeta, str(reclamo_id), filename=file.filename
+                )
+                storage.upload_file(storage_key, data, file.content_type or "application/octet-stream")
 
-                if has_storage:
-                    cur.execute(f"""
-                        INSERT INTO reclamo_imagenes (reclamo_id, filename, content_type, data, storage_key, descripcion, subido_por, {fecha_col}, tipo)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-                        RETURNING id
-                    """, (reclamo_id, file.filename, file.content_type, db_data, storage_key, descripcion, email, now, img_tipo))
-                else:
-                    cur.execute(f"""
-                        INSERT INTO reclamo_imagenes (reclamo_id, filename, content_type, data, descripcion, subido_por, {fecha_col}, tipo)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                        RETURNING id
-                    """, (reclamo_id, file.filename, file.content_type, data, descripcion, email, now, img_tipo))
+                cur.execute(f"""
+                    INSERT INTO reclamo_imagenes (reclamo_id, filename, content_type, storage_key, descripcion, subido_por, {fecha_col}, tipo)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                    RETURNING id
+                """, (reclamo_id, file.filename, file.content_type, storage_key, descripcion, email, now, img_tipo))
                 img_id = cur.fetchone()[0]
 
                 cur.execute("UPDATE reclamos SET fecha_actualizacion = %s WHERE id = %s", (now, reclamo_id))
@@ -1747,10 +1735,8 @@ def ver_imagen(reclamo_id: int, imagen_id: int, user=Depends(get_current_user)):
                 raise HTTPException(status_code=403, detail="No tiene permiso para ver esta imagen")
 
             # 2) Cargar metadata de la imagen
-            img_columns = _get_table_columns(cur, "reclamo_imagenes")
-            sk_expr = "storage_key" if "storage_key" in img_columns else "NULL AS storage_key"
-            cur.execute(f"""
-                SELECT data, content_type, filename, {sk_expr}
+            cur.execute("""
+                SELECT content_type, filename, storage_key
                 FROM reclamo_imagenes
                 WHERE id = %s AND reclamo_id = %s
             """, (imagen_id, reclamo_id))
@@ -1762,20 +1748,11 @@ def ver_imagen(reclamo_id: int, imagen_id: int, user=Depends(get_current_user)):
     filename = row.get("filename") or "imagen"
     storage_key = row.get("storage_key")
 
-    # 3a) Imagen en R2 → redirigir a presigned URL (no pasa bytes por el backend)
-    if storage_key and storage.is_configured():
-        url = storage.generate_presigned_url(storage_key, expires=3600, content_type=content_type)
-        return RedirectResponse(url, status_code=307)
+    if not storage_key or not storage.is_configured():
+        raise HTTPException(status_code=404, detail="Imagen sin contenido")
 
-    # 3b) Imagen aún en BYTEA → servir inline como antes
-    if row.get("data") is not None:
-        return Response(
-            content=bytes(row["data"]),
-            media_type=content_type,
-            headers={"Content-Disposition": f"inline; filename=\"{filename}\""}
-        )
-
-    raise HTTPException(status_code=404, detail="Imagen sin contenido")
+    url = storage.generate_presigned_url(storage_key, expires=3600, content_type=content_type)
+    return RedirectResponse(url, status_code=307)
 
 
 @router.delete("/reclamos/{reclamo_id}/imagenes/{imagen_id}")
@@ -2220,11 +2197,9 @@ def exportar_reclamo_pdf(reclamo_id: int, user=Depends(get_current_user)):
                 for a in cur.fetchall()
             ]
 
-            # Imágenes → raw bytes para fpdf2 (desde R2 o BYTEA)
-            _img_cols = _get_table_columns(cur, "reclamo_imagenes")
-            _sk_expr = "storage_key" if "storage_key" in _img_cols else "NULL AS storage_key"
-            cur.execute(f"""
-                SELECT id, filename, content_type, data, tipo, {_sk_expr}
+            # Imágenes → raw bytes para fpdf2 (desde R2)
+            cur.execute("""
+                SELECT id, filename, content_type, storage_key, tipo
                 FROM reclamo_imagenes WHERE reclamo_id = %s ORDER BY id ASC
             """, (reclamo_id,))
             imagenes_registro = []
@@ -2233,18 +2208,15 @@ def exportar_reclamo_pdf(reclamo_id: int, user=Depends(get_current_user)):
                 ct = img.get("content_type") or ""
                 if not ct.startswith("image/"):
                     continue
-                # Obtener los bytes: R2 si tiene storage_key, si no BYTEA
-                raw = None
                 sk = img.get("storage_key")
+                raw = None
                 if sk and storage.is_configured():
                     try:
                         raw = storage.download_file(sk)
                     except Exception:
                         raw = None
-                if raw is None and img.get("data") is not None:
-                    raw = bytes(img["data"])
                 if raw is None:
-                    continue  # imagen sin contenido recuperable, se omite del PDF
+                    continue  # imagen sin storage_key o error al descargar, se omite del PDF
                 entry = {"raw_bytes": raw, "filename": img.get("filename")}
                 tipo = img.get("tipo") or "ImagenesRegistro"
                 if tipo == "ImagenesAnalisis":
