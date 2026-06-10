@@ -109,6 +109,12 @@ No hay otros usos de BYTEA fuera de `reclamo_imagenes`. El alcance está conteni
 | Eliminar imagen/acción sin ownership (obs. 5) | Confirmado = H3 | ✅ (es el bug) |
 | `numero_calidad` editable por cualquier rol salvo cliente (obs. 6) | No está en REGISTRO/ANALISIS_FIELDS | ✅ (decisión abierta, tarea 6.x del programa) |
 
+**Consistencia frontend (registry.js) ↔ doc tabla 1a — verificado 2026-06-10:**
+- Cubicación: código `admin, admin2, cubicador, cliente` = doc ✅
+- Reclamos: código `admin, admin2, cubicador, usc, externo` = doc ✅
+- Admin: código `admin, admin2` = doc ✅
+- Las tres capas (doc ↔ backend ↔ frontend) son consistentes. Tarea 2.2 cerrada completa.
+
 **Observaciones positivas:**
 - El documento es **honesto sobre sus propias debilidades**: ya lista H1 (obs. 2) y H3 (obs. 5) como pendientes
   conocidos. Esto valida los hallazgos de la auditoría: no son sorpresas, son deuda reconocida sin cerrar.
