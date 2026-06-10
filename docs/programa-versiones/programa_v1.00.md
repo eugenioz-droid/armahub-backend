@@ -273,10 +273,11 @@ Objetivo: endurecer Reclamos y cerrar los pendientes reales arrastrados.
 | 5.1 | Validar ownership en acciones correctivas y al eliminar imágenes (**H3**: `DELETE /reclamos/{id}/imagenes/{img}` no valida ownership) | ☑ | YO |
 | 5.2 | **H2** IDOR: aplicar filtro ownership/rol al detalle `GET /reclamos/{id}` — hoy cualquier autenticado lee cualquier reclamo por ID | ☑ | YO |
 | 5.3 | Revisar política de acceso a imágenes en R2 y documentar — presigned URL 1h aceptado uso interno | ☑ | TÚ+YO |
-| 5.4 | QA visual del PDF de reclamo (campos largos, sin acciones, sin validación) | ☐ | YO |
+| 5.4 | QA visual del PDF de reclamo (campos largos, sin acciones, sin validación) | ☑ | YO |
 | 5.5 | FIX: cubicador externo sin botón "enviar a validar" + ocultar sección validación a no-admin | ☑ | YO |
-| 5.6 | Optimizar query listado reclamos: LEFT JOIN + GROUP BY + índices para ORDER BY | ☐ | YO |
-| 5.7 | Evaluar tamaño de `reclamos.py` y separar solo si la legibilidad lo exige | ☐ | YO |
+| 5.6 | Optimizar query listado reclamos: LEFT JOIN + GROUP BY + índices para ORDER BY | ☑ | YO |
+| 5.7 | Evaluar tamaño de `reclamos.py` y separar solo si la legibilidad lo exige | ⏭ diferido a F9 | YO |
+| 5.18 | Refactorizar navegación de Calidad/Reclamos: convertir Dashboards y Procedimientos a tabs reales del shell (patrón Cubicación) — extrae HTML a `tabs/rec_dashboards.html` y `tabs/rec_procedimientos.html`, registra en `shell.js`, elimina `switchRecTab` para esos paneles | ☑ | YO |
 
 ### 5B. Envío de informe por correo (arrastrado de PC.15)
 
