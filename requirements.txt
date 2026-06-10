@@ -10,3 +10,4 @@ jinja2
 openpyxl
 fpdf2
 boto3
+resend

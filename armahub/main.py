@@ -18,6 +18,7 @@ from fastapi.staticfiles import StaticFiles
 import os, time, logging
 
 from .db import init_db, get_conn
+from . import mailer, storage
 from .auth import router as auth_router
 from .importer import router as importer_router
 from .barras import router as barras_router
@@ -88,6 +89,8 @@ def create_app() -> FastAPI:
         except Exception as e:
             result["db"] = "error"
             result["detail"] = str(e)
+        result.update(storage.health())
+        result.update(mailer.health())
         return result
     # --- Request logging middleware ---
     logger = logging.getLogger("armahub.access")

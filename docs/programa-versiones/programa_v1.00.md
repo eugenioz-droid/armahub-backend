@@ -233,20 +233,25 @@ Objetivo: sacar las imágenes de la base de datos (hoy en BYTEA) y llevarlas a C
 
 ## FASE 4 — Arquitectura base de plataforma
 
-Objetivo: definir dónde viven datos, archivos, permisos, auditoría y correo antes de crear calugas grandes.
+> **Decisión (2026-06-10):** las tareas de diseño transversal (estados, permisos, modelo de documentos,
+> convención frontend) se disuelven como bloque previo. El diseño se hace caluga por caluga — cada fase
+> define sus propios flujos y estados. La armonización transversal queda como tarea explícita al final
+> (ver tarea 4.X abajo), una vez que haya calugas concretas que armonizar.
+> Solo se ejecutan ahora las piezas que desbloquean trabajo inmediato: correo (4.5+4.6) y docs (4.8).
 
 | N° | Descripción | Realizado | Quién |
 |----|-------------|-----------|-------|
-| 4.1 | Definir modelo común de documentos/adjuntos versionados (sobre R2 + metadata) | ☐ | YO |
-| 4.2 | Definir contrato común de auditoría: usuario, fecha, entidad, acción, estado ant/nuevo | ☐ | YO |
-| 4.3 | Definir convención de estados por entidad: obra, documento, plano, RDI, certificado | ☐ | TÚ+YO |
-| 4.4 | Definir criterio de permisos por rol, cliente, obra y acción | ☐ | TÚ+YO |
-| 4.5 | Implementar helper único de correo (SMTP/servicio) reutilizable por todas las calugas | ☐ | YO |
-| 4.6 | Configurar SMTP/servicio de correo + validación en health check | ☐ | TÚ+YO |
-| 4.7 | Definir convención frontend para nuevas calugas, tabs y subfeatures | ☐ | YO |
-| 4.8 | Actualizar `armahub-protocolo.md` y `MODELO_DE_DATOS.md` con decisiones de arquitectura | ☐ | YO |
+| 4.1 | Definir modelo común de documentos/adjuntos versionados | ⏭ disuelto → se define en F9 (Mis Proyectos) | — |
+| 4.2 | Definir contrato común de auditoría | ⏭ disuelto → se ajusta caluga a caluga | — |
+| 4.3 | Definir convención de estados por entidad | ⏭ disuelto → cada caluga define sus estados | — |
+| 4.4 | Definir criterio de permisos por rol, cliente, obra | ⏭ disuelto → se define en F7/F9 | — |
+| 4.5 | Implementar helper único de correo (Resend API, mailer.py) reutilizable | ☑ | YO |
+| 4.6 | Configurar RESEND_API_KEY en Render + health check /health → mail:ok | ☐ | TÚ+YO |
+| 4.7 | Definir convención frontend para nuevas calugas | ⏭ disuelto → se define al arrancar F6 | — |
+| 4.8 | Actualizar `armahub-protocolo.md` y `MODELO_DE_DATOS.md` | ☐ | YO |
+| 4.X | **Armonización transversal:** revisar estados, permisos, modelo de docs y convención frontend una vez que F6+F7+F9 estén construidas — ajustar inconsistencias entre calugas | ☐ | TÚ+YO |
 
-**Criterio de salida:** existe contrato de documentos, auditoría, permisos y correo reutilizable.
+**Criterio de salida:** correo operativo y docs actualizados. Armonización (4.X) se ejecuta post-F9.
 
 ---
 
