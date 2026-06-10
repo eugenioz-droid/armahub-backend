@@ -163,6 +163,15 @@ def create_app() -> FastAPI:
             # 2b) Copiar datos tabla por tabla (con FK diferidas)
             with dst.cursor() as dcur:
                 dcur.execute("SET session_replication_role = replica;")  # desactiva FK durante copia
+                # Vaciar TODAS las tablas primero, en orden inverso, SIN cascade.
+                # (Antes el TRUNCATE CASCADE de una tabla hija borraba la tabla
+                #  padre proyectos que ya se habia copiado → quedaba en 0.)
+                for t in reversed(TABLAS):
+                    try:
+                        dcur.execute(f"TRUNCATE {t};")
+                    except Exception:
+                        pass
+            dst.commit()
             for t in TABLAS:
                 if not conteos.get(t):
                     copiadas[t] = 0
@@ -194,7 +203,7 @@ def create_app() -> FastAPI:
                     collist = ", ".join(cols_comunes)
                     placeholders = ", ".join(["%s"] * len(cols_comunes))
                     with dst.cursor() as dcur:
-                        dcur.execute(f"TRUNCATE {t} CASCADE;")
+                        # Ya se truncó todo al inicio; aquí solo insertar.
                         dcur.executemany(
                             f"INSERT INTO {t} ({collist}) VALUES ({placeholders})", rows_filtradas
                         )
