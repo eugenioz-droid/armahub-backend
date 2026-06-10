@@ -90,15 +90,6 @@ def create_app() -> FastAPI:
             result["detail"] = str(e)
         return result
 
-    @app.get("/health/r2")
-    def health_r2():
-        """
-        TEMPORAL — verifica conexión a Cloudflare R2 sin tocar imágenes.
-        Se elimina una vez validada la migración (no es endpoint de producción).
-        """
-        from .storage import health as r2_health
-        return r2_health()
-
     # --- Request logging middleware ---
     logger = logging.getLogger("armahub.access")
 
