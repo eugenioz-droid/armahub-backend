@@ -186,20 +186,20 @@ Objetivo: sacar las imágenes de la base de datos (hoy en BYTEA) y llevarlas a C
 
 | N° | Descripción | Realizado | Quién |
 |----|-------------|-----------|-------|
-| 3.1 | Eliminar artefactos de Containers no usados (Dockerfile, worker/, wrangler.toml, package.json) | ☐ | YO |
-| 3.2 | Regenerar API token R2 (Object Read & Write, bucket `armahub`) y guardarlo seguro | ☐ | TÚ |
-| 3.3 | Configurar env vars R2 en Render: `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET`, `R2_PUBLIC_BASE_URL` | ☐ | TÚ+YO |
-| 3.4 | Refactor subida de imágenes de reclamos: guardar en R2, en BD solo `storage_key` (migración: columna nullable) | ☐ | YO |
-| 3.5 | Refactor lectura de imágenes: servir desde R2 (presigned URL). **Cierra H1**: hoy `GET /reclamos/{id}/imagenes/{img}` (`reclamos.py:1671`) NO tiene auth — exigir autenticación + permiso, usar presigned URL para `<img>` | ☐ | YO |
-| 3.6 | Validar upload/ver/eliminar imágenes NUEVAS contra R2 (registro y análisis separados) | ☐ | TÚ+YO |
+| 3.1 | Eliminar artefactos de Containers no usados (Dockerfile, etc.) | ☑ | YO |
+| 3.2 | Regenerar API token R2 (Object Read & Write, bucket `armahub`) y guardarlo seguro | ☑ | TÚ |
+| 3.3 | Configurar env vars R2 en Render (validado con `/health/r2` → `storage:ok`) | ☑ | TÚ+YO |
+| 3.4 | Refactor subida de imágenes de reclamos: guardar en R2, en BD solo `storage_key` (migración 53) | ☑ | YO |
+| 3.5 | Refactor lectura de imágenes: servir desde R2 (presigned URL). **H1 CERRADO**: `ver_imagen` ahora exige auth + ownership | ☑ | YO |
+| 3.6 | Validar upload/ver imágenes contra R2 — confirmado en producción (imágenes se ven) | ☑ | TÚ+YO |
 
 ### 3B. Migrar imágenes existentes a R2
 
 | N° | Descripción | Realizado | Quién |
 |----|-------------|-----------|-------|
-| 3.7 | Migración one-shot: BYTEA existentes → R2 → actualizar `storage_key` | ☐ | YO |
-| 3.8 | Validar que todas las imágenes viejas se ven correctamente desde R2 | ☐ | TÚ+YO |
-| 3.9 | Eliminar columna `data` (BYTEA) de `reclamo_imagenes` post-migración validada | ☐ | YO |
+| 3.7 | Migración one-shot: 28 imágenes BYTEA → R2 (endpoint temporal, no-destructivo, 28/28 OK) | ☑ | YO |
+| 3.8 | Validar imágenes viejas desde R2 — confirmado (vistas en R2 y en los reclamos) | ☑ | TÚ+YO |
+| 3.9 | Eliminar columna `data` (BYTEA) post-validación — PENDIENTE (BYTEA se conserva como respaldo hasta decidir) | ☐ | YO |
 
 ### 3C. Migrar base de datos a Supabase
 
