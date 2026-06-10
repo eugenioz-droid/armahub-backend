@@ -1,451 +1,335 @@
-📋 MODELO DE DATOS ARMAHUB
-========================
+# MODELO DE DATOS ARMAHUB
 
-Este documento describe todas las tablas, campos y relaciones del sistema ArmaHub.
-Objetivo: tener una visión clara del modelo relacional actual para planificar mejoras.
-
-> **⚠️ ESTADO (actualizado 2026-06-08, tarea 1.6):** El detalle de tablas más abajo fue escrito
-> cuando el esquema iba por la migración 32. **Hoy el código va por la migración 52** (ver
-> `armahub/db.py`, lista `MIGRATIONS`). Las secciones de tablas individuales pueden no reflejar
-> columnas agregadas después de la 32. La fuente de verdad del esquema es `armahub/db.py`.
-> El detalle completo tabla por tabla se actualizará en la Fase 4 del programa (modelo objetivo).
-> Abajo, en "Migraciones 33–52", el resumen de lo que cambió desde entonces.
+> **Estado (actualizado 2026-06-10, tarea 4.8):** Refleja el esquema real tras la migración 54.
+> Fuente de verdad del esquema: `armahub/db.py`. Infraestructura vigente: Render (FastAPI) +
+> Supabase (PostgreSQL) + Cloudflare R2 (archivos). Sin BYTEA — todo archivo va a R2.
 
 ---
 
-## 📁 ENTIDADES PRINCIPALES
+## ENTIDADES PRINCIPALES
 
-### 1. Proyectos (Obra)
-Tabla: proyectos
-PK: id_proyecto (TEXT)
-Campos:
-  - nombre_proyecto (TEXT NOT NULL)
-  - descripcion (TEXT)
-  - calculista_id → calculistas.id (BIGINT) — calculista asignado
-  - constructora_id → constructoras.id (BIGINT) — constructora
-  - fecha_creacion (TEXT)
-  - usuario_creador (TEXT)
+### 1. proyectos (Obra)
+PK: `id_proyecto` (TEXT)
 
-Relaciones:
-  - 1:N → barras (muchas barras por proyecto)
-  - 1:N → imports (muchas importaciones)
-  - 1:N → pedidos (muchos pedidos)
-  - 1:N → export_log (historial de exportaciones)
-  - 1:N → reclamos (muchos reclamos)
-  - M:N → proyecto_usuarios (usuarios asignados con rol)
-  - 1:N → proyecto_aliases (múltiples códigos ArmaDetailer por obra)
+| Campo | Tipo | Notas |
+|-------|------|-------|
+| nombre_proyecto | TEXT NOT NULL | |
+| descripcion | TEXT | |
+| calculista_id | BIGINT FK→calculistas | |
+| constructora_id | BIGINT FK→constructoras | |
+| fecha_creacion | TEXT | |
+| usuario_creador | TEXT | |
+| fecha_inicio | TEXT | migración 36 |
 
-### 1b. Proyecto Aliases (Códigos ArmaDetailer)
-Tabla: proyecto_aliases (migración 32)
-PK: alias (TEXT) — código de proyecto del CSV ArmaDetailer
-FK: id_proyecto → proyectos.id_proyecto (ON DELETE CASCADE)
-Campos:
-  - creado_por (TEXT) — email del usuario que creó el alias
-  - fecha_creacion (TEXT NOT NULL)
-
-Propósito: Permite que una obra tenga múltiples códigos de proyecto ArmaDetailer.
-Cuando un cubicador importa un CSV con un código nuevo, puede asignarlo a una obra
-existente en vez de crear un proyecto nuevo. Esto crea un alias que se resuelve
-automáticamente en futuras importaciones.
-
-Restricciones:
-  - Un alias no puede pertenecer a más de una obra
-  - Un código que ya existe como id_proyecto en proyectos no puede ser alias
+Relaciones: 1:N barras, imports, pedidos, export_log, reclamos · M:N proyecto_usuarios · 1:N proyecto_aliases
 
 ---
 
-### 2. Users (Personas)
-Tabla: users
-PK: id (BIGSERIAL)
-Campos:
-  - email (TEXT UNIQUE NOT NULL) — login
-  - password_hash (TEXT NOT NULL)
-  - role (TEXT) CHECK IN ('admin', 'admin2', 'cubicador', 'usc', 'externo', 'cliente')
-  - nombre (TEXT)
-  - apellido (TEXT)
-  - activo (BOOLEAN NOT NULL DEFAULT TRUE)
-  - fecha_creacion (TEXT NOT NULL)
+### 2. users
+PK: `id` (BIGSERIAL)
 
-Relaciones:
-  - M:N → proyecto_usuarios (con rol por proyecto)
-  - Referenciado en auditoría, reclamos, pedidos
+| Campo | Tipo | Notas |
+|-------|------|-------|
+| email | TEXT UNIQUE NOT NULL | login |
+| password_hash | TEXT NOT NULL | |
+| role | TEXT | admin · admin2 · cubicador · usc · externo · cliente |
+| nombre | TEXT | |
+| apellido | TEXT | |
+| activo | BOOLEAN DEFAULT TRUE | |
+| fecha_creacion | TEXT NOT NULL | |
 
 ---
 
-### 3. Constructoras
-Tabla: constructoras (renombrada desde clientes en migración 28)
-PK: id (BIGSERIAL)
-Campos:
-  - nombre (TEXT NOT NULL)
-  - rut (TEXT)
-  - contacto (TEXT)
-  - email (TEXT)
-  - telefono (TEXT)
-  - direccion (TEXT)
-  - notas (TEXT)
-  - activo (BOOLEAN NOT NULL DEFAULT TRUE)
-  - fecha_creacion (TEXT NOT NULL)
+### 3. constructoras
+PK: `id` (BIGSERIAL) — renombrada desde `clientes` (migración 28)
 
-Relaciones:
-  - 1:N → proyectos.constructora_id
-  - 1:N → reclamos.cliente_id (FK legacy, apunta a constructoras.id)
+| Campo | Tipo |
+|-------|------|
+| nombre | TEXT NOT NULL |
+| rut | TEXT |
+| contacto | TEXT |
+| email | TEXT |
+| telefono | TEXT |
+| direccion | TEXT |
+| notas | TEXT |
+| activo | BOOLEAN DEFAULT TRUE |
+| fecha_creacion | TEXT NOT NULL |
 
 ---
 
-### 4. Calculistas
-Tabla: calculistas
-PK: id (BIGSERIAL)
-Campos:
-  - nombre (TEXT NOT NULL)
-  - email (TEXT)
-  - activo (BOOLEAN NOT NULL DEFAULT TRUE)
-  - fecha_creacion (TEXT NOT NULL)
+### 4. calculistas
+PK: `id` (BIGSERIAL)
 
-Relaciones:
-  - 1:N → proyectos.calculista_id
+| Campo | Tipo |
+|-------|------|
+| nombre | TEXT NOT NULL |
+| email | TEXT |
+| activo | BOOLEAN DEFAULT TRUE |
+| fecha_creacion | TEXT NOT NULL |
 
 ---
 
-## 🏗️ ENTIDADES OPERATIVAS
+## ENTIDADES OPERATIVAS — CUBICACIÓN
 
-### 5. Barras (Cubicación)
-Tabla: barras
-PK: id_unico (TEXT)
-FK: id_proyecto → proyectos
-Campos:
-  - nombre_proyecto (TEXT)
-  - plano_code (TEXT)
-  - nombre_plano (TEXT)
-  - sector (TEXT)
-  - piso (TEXT)
-  - ciclo (TEXT)
-  - eje (TEXT)
-  - diam (DOUBLE PRECISION)
-  - largo_total (DOUBLE PRECISION)
-  - mult (DOUBLE PRECISION)
-  - cant (DOUBLE PRECISION)
-  - cant_total (DOUBLE PRECISION)
-  - peso_unitario (DOUBLE PRECISION)
-  - peso_total (DOUBLE PRECISION)
-  - version_mod (TEXT)
-  - version_exp (TEXT)
-  - fecha_carga (TEXT)
-  - origen (TEXT DEFAULT 'csv')
-  - import_id → imports.id (BIGINT)
-  - pedido_id → pedidos.id (BIGINT)
-  - creado_por (TEXT)
-  - pedido_item_id (INTEGER)
-  - ang1 (DOUBLE PRECISION)
-  - ang2 (DOUBLE PRECISION)
-  - ang3 (DOUBLE PRECISION)
-  - ang4 (DOUBLE PRECISION)
-  - radio (DOUBLE PRECISION)
-  - dim_a, dim_b, dim_c, dim_d, dim_e, dim_f, dim_g, dim_h, dim_i (DOUBLE PRECISION)
-  - marca (TEXT)
-  - cod_proyecto (TEXT)
-  - figura (TEXT)
+### 5. barras
+PK: `id` (BIGSERIAL) · UNIQUE(`id_unico`, `id_proyecto`) — migración 51
 
-Relaciones:
-  - N:1 → proyectos
-  - N:1 → imports (via import_id)
-  - N:1 → pedidos (via pedido_id)
+| Campo | Tipo | Notas |
+|-------|------|-------|
+| id_unico | TEXT | único por obra (no global) |
+| id_proyecto | TEXT FK→proyectos | |
+| import_id | BIGINT FK→imports | |
+| pedido_id | BIGINT FK→pedidos | |
+| pedido_item_id | INTEGER | |
+| origen | TEXT DEFAULT 'csv' | csv · pedido |
+| creado_por | TEXT | |
+| plano_code | TEXT | |
+| nombre_plano | TEXT | |
+| sector / piso / ciclo / eje | TEXT | |
+| diam | DOUBLE PRECISION | |
+| largo_total | DOUBLE PRECISION | |
+| mult / cant / cant_total | DOUBLE PRECISION | |
+| peso_unitario / peso_total | DOUBLE PRECISION | |
+| version_mod / version_exp | TEXT | |
+| fecha_carga | TEXT | |
+| figura / marca / tipo / estructura | TEXT | |
+| bar_id / cod_proyecto / nombre_dwg | TEXT | |
+| dim_a … dim_i | DOUBLE PRECISION | |
+| ang1 … ang4 | DOUBLE PRECISION | |
+| radio / esp | DOUBLE PRECISION | |
 
 ---
 
-### 6. Imports (Cargas CSV)
-Tabla: imports
-PK: id (BIGSERIAL)
-FK: id_proyecto → proyectos
-Campos:
-  - nombre_proyecto (TEXT)
-  - usuario (TEXT)
-  - archivo (TEXT)
-  - fecha (TEXT)
-  - barras_count (INTEGER DEFAULT 0)
-  - kilos (DOUBLE PRECISION DEFAULT 0)
-  - estado (TEXT DEFAULT 'ok')
-  - version_archivo (TEXT)
-  - plano_code (TEXT)
-  - errores (TEXT)
+### 6. imports (Cargas CSV)
+PK: `id` (BIGSERIAL)
 
-Relaciones:
-  - 1:N → barras (via import_id)
-
----
-
-### 7. Pedidos
-Tabla: pedidos
-PK: id (BIGSERIAL)
-FK: id_proyecto → proyectos
-Campos:
-  - titulo (TEXT NOT NULL)
-  - descripcion (TEXT)
-  - estado (TEXT NOT NULL DEFAULT 'borrador')
-    CHECK IN ('borrador','enviado','en_proceso','completado','cancelado')
-  - creado_por (TEXT NOT NULL)
-  - fecha_creacion (TEXT NOT NULL)
-  - fecha_actualizacion (TEXT)
-  - tipo (TEXT NOT NULL DEFAULT 'generico')
-    CHECK IN ('generico','especifico')
-  - procesado (BOOLEAN NOT NULL DEFAULT FALSE)
-
-Relaciones:
-  - 1:N → pedido_items
-  - 1:N → barras (via pedido_id)
+| Campo | Tipo | Notas |
+|-------|------|-------|
+| id_proyecto | TEXT FK→proyectos | |
+| nombre_proyecto | TEXT | |
+| usuario | TEXT | |
+| archivo | TEXT | |
+| fecha | TEXT | |
+| barras_count | INTEGER DEFAULT 0 | |
+| kilos | DOUBLE PRECISION DEFAULT 0 | |
+| estado | TEXT DEFAULT 'ok' | |
+| version_archivo | TEXT | |
+| plano_code | TEXT | |
+| errores | TEXT | |
+| modo_reemplazo | TEXT DEFAULT 'ninguno' | migración 50 |
+| scope_reemplazo | TEXT | migración 50 |
+| barras_eliminadas_previo | INTEGER DEFAULT 0 | migración 50 |
+| supersedida_por | INTEGER FK→imports | migración 52 |
 
 ---
 
-### 8. Pedido_items
-Tabla: pedido_items
-PK: id (BIGSERIAL)
-FK: pedido_id → pedidos
-Campos:
-  - diam (DOUBLE PRECISION NOT NULL)
-  - largo (DOUBLE PRECISION)
-  - cantidad (INTEGER NOT NULL DEFAULT 1)
-  - sector (TEXT)
-  - piso (TEXT)
-  - ciclo (TEXT)
-  - eje (TEXT)
-  - nota (TEXT)
-  - estado (TEXT NOT NULL DEFAULT 'pendiente')
-    CHECK IN ('pendiente','en_proceso','completado')
+### 7. pedidos
+PK: `id` (BIGSERIAL)
 
-Relaciones:
-  - 1:1 → barras.pedido_item_id
+| Campo | Tipo | Notas |
+|-------|------|-------|
+| id_proyecto | TEXT FK→proyectos | |
+| titulo | TEXT NOT NULL | |
+| descripcion | TEXT | |
+| estado | TEXT DEFAULT 'borrador' | borrador · enviado · en_proceso · completado · cancelado |
+| tipo | TEXT DEFAULT 'generico' | generico · especifico |
+| procesado | BOOLEAN DEFAULT FALSE | |
+| creado_por | TEXT NOT NULL | |
+| fecha_creacion / fecha_actualizacion | TEXT | |
 
 ---
 
-## 🔍 ENTIDADES DE CALIDAD (RECLAMOS)
+### 8. pedido_items
+PK: `id` (BIGSERIAL) · FK: `pedido_id`→pedidos
 
-### 9. Reclamos
-Tabla: reclamos
-PK: id (BIGSERIAL)
-FK: id_proyecto → proyectos (ON DELETE SET NULL)
-FK: cliente_id → constructoras (ON DELETE SET NULL) — FK legacy
-Campos:
-  - titulo (TEXT NOT NULL)
-  - descripcion (TEXT)
-  - estado (TEXT NOT NULL DEFAULT 'abierto')
-    CHECK IN ('abierto','en_analisis','accion_correctiva','validacion','cerrado','rechazado')
-  - prioridad (TEXT NOT NULL DEFAULT 'media')
-    CHECK IN ('baja','media','alta','critica')
-  - categoria_ishikawa (TEXT)
-    CHECK IN ('mano_de_obra','metodo','material','maquina','medicion','medio_ambiente')
-  - responsable (TEXT)
-  - accion_correctiva (TEXT)
-  - accion_preventiva (TEXT)
-  - resolucion (TEXT)
-  - creado_por (TEXT NOT NULL)
-  - fecha_creacion (TEXT NOT NULL)
-  - fecha_actualizacion (TEXT)
-  - fecha_cierre (TEXT)
-  - correlativo (TEXT) — ej: REC-001
-  - id_calidad (TEXT)
-  - aplica (TEXT DEFAULT 'pendiente')
-    CHECK IN ('si','no','pendiente')
-  - sub_causa (TEXT)
-  - cod_causa (TEXT)
-  - detectado_por (TEXT)
-  - fecha_deteccion (TEXT)
-  - fecha_analisis (TEXT)
-  - analista (TEXT)
-  - area_aplica (TEXT)
-  - explicacion_causa (TEXT)
-  - observaciones (TEXT)
-  - kilos_mal_fabricados (DOUBLE PRECISION)
-  - asignado_a (TEXT) — responsable inicial (USC se auto-asigna)
-  - cubicador_asignado (TEXT) — cubicador que responde (específico del reclamo)
-  - tipo_reclamo (TEXT DEFAULT 'error')
-    CHECK IN ('error','faltante')
-  - respuesta_texto (TEXT)
-  - respuesta_fecha (TIMESTAMPTZ)
-  - respuesta_por (TEXT)
-  - validacion_resultado (TEXT)
-    CHECK IN ('aprobado','rechazado','corregido')
-  - validacion_observaciones (TEXT)
-  - validacion_fecha (TIMESTAMPTZ)
-  - validacion_por (TEXT)
-
-Relaciones:
-  - 1:N → reclamo_seguimientos
-  - 1:N → reclamo_acciones
-  - 1:N → reclamo_imagenes
+| Campo | Tipo | Notas |
+|-------|------|-------|
+| diam | DOUBLE PRECISION NOT NULL | |
+| largo | DOUBLE PRECISION | |
+| cantidad | INTEGER DEFAULT 1 | |
+| sector / piso / ciclo / eje | TEXT | |
+| nota | TEXT | |
+| estado | TEXT DEFAULT 'pendiente' | pendiente · en_proceso · completado |
 
 ---
 
-### 10. Reclamo_seguimientos
-Tabla: reclamo_seguimientos
-PK: id (BIGSERIAL)
-FK: reclamo_id → reclamos (ON DELETE CASCADE)
-Campos:
-  - usuario (TEXT NOT NULL)
-  - comentario (TEXT)
-  - estado_anterior (TEXT)
-  - estado_nuevo (TEXT)
-  - fecha (TEXT NOT NULL)
+## ENTIDADES DE CALIDAD — RECLAMOS
+
+### 9. reclamos
+PK: `id` (BIGSERIAL) · FK: `id_proyecto`→proyectos ON DELETE SET NULL
+
+Estados vigentes: `abierto` → `en_analisis` → `validacion` → `cerrado` / `rechazado`
+
+| Campo | Tipo | Notas |
+|-------|------|-------|
+| titulo | TEXT NOT NULL | |
+| descripcion | TEXT | |
+| estado | TEXT DEFAULT 'abierto' | ver estados vigentes arriba |
+| prioridad | TEXT DEFAULT 'media' | baja · media · alta · critica |
+| tipo_reclamo | TEXT DEFAULT 'error' | error · faltante · atraso · actualizacion_portal |
+| categoria_ishikawa | TEXT | mano_de_obra · metodo · material · maquina · medicion · medio_ambiente |
+| anio_calidad | INTEGER | correlativo año (migración 44) |
+| numero_calidad | INTEGER | correlativo número (migración 44) |
+| aplica | TEXT DEFAULT 'pendiente' | si · no · pendiente |
+| creado_por | TEXT NOT NULL | |
+| asignado_a | TEXT | responsable inicial |
+| cubicador_asignado | TEXT | cubicador que responde |
+| detectado_por / fecha_deteccion | TEXT | |
+| analista / fecha_analisis | TEXT | |
+| sub_causa / cod_causa / explicacion_causa | TEXT | |
+| area_aplica | TEXT | |
+| observaciones | TEXT | |
+| accion_correctiva / accion_preventiva / resolucion | TEXT | |
+| kilos_mal_fabricados | DOUBLE PRECISION | |
+| tiempo_respuesta | INTEGER | en unidad indicada abajo |
+| tiempo_respuesta_unidad | TEXT DEFAULT 'horas' | minutos · horas · dias |
+| respuesta_texto / respuesta_por | TEXT | |
+| respuesta_fecha | TIMESTAMPTZ | |
+| validacion_resultado | TEXT | aprobado · rechazado · corregido |
+| validacion_observaciones / validacion_por | TEXT | |
+| validacion_fecha | TIMESTAMPTZ | |
+| presentacion_realizada | BOOLEAN DEFAULT FALSE | |
+| presentacion_fecha / presentacion_por / presentacion_asistentes / presentacion_comentarios | TEXT | |
+| fecha_creacion / fecha_actualizacion / fecha_cierre | TEXT | |
 
 ---
 
-### 11. Reclamo_acciones
-Tabla: reclamo_acciones
-PK: id (BIGSERIAL)
-FK: reclamo_id → reclamos (ON DELETE CASCADE)
-Campos:
-  - tipo (TEXT NOT NULL)
-    CHECK IN ('inmediata','correctiva','preventiva')
-  - descripcion (TEXT NOT NULL)
-  - responsable (TEXT)
-  - fecha_prevista (TEXT)
-  - fecha_completada (TEXT)
-  - estado (TEXT NOT NULL DEFAULT 'pendiente')
-    CHECK IN ('pendiente','en_proceso','completada')
-  - creado_por (TEXT NOT NULL)
-  - fecha_creacion (TEXT NOT NULL)
+### 10. reclamo_seguimientos
+PK: `id` (BIGSERIAL) · FK: `reclamo_id`→reclamos CASCADE
+
+| Campo | Tipo |
+|-------|------|
+| usuario | TEXT NOT NULL |
+| comentario | TEXT |
+| estado_anterior / estado_nuevo | TEXT |
+| fecha | TEXT NOT NULL |
 
 ---
 
-### 12. Reclamo_imagenes
-Tabla: reclamo_imagenes
-PK: id (BIGSERIAL)
-FK: reclamo_id → reclamos (ON DELETE CASCADE)
-Campos:
-  - filename (TEXT NOT NULL)
-  - content_type (TEXT NOT NULL)
-  - data (BYTEA NOT NULL)
-  - descripcion (TEXT)
-  - subido_por (TEXT NOT NULL)
-  - fecha (TEXT NOT NULL)
-  - tipo (TEXT NOT NULL DEFAULT 'antecedente')
-    CHECK IN ('antecedente','respuesta')
+### 11. reclamo_acciones
+PK: `id` (BIGSERIAL) · FK: `reclamo_id`→reclamos CASCADE
+
+| Campo | Tipo | Notas |
+|-------|------|-------|
+| tipo | TEXT NOT NULL | inmediata · correctiva · preventiva |
+| descripcion | TEXT NOT NULL | |
+| responsable | TEXT | |
+| fecha_prevista / fecha_completada | TEXT | |
+| estado | TEXT DEFAULT 'pendiente' | pendiente · en_proceso · completada |
+| creado_por | TEXT NOT NULL | |
+| fecha_creacion | TEXT NOT NULL | |
 
 ---
 
-## 🛠️ ENTIDADES DE SOPORTE
+### 12. reclamo_imagenes
+PK: `id` (BIGSERIAL) · FK: `reclamo_id`→reclamos CASCADE
 
-### 13. Proyecto_usuarios (M:N)
-Tabla: proyecto_usuarios
-PK: id (BIGSERIAL)
-FKs:
-  - id_proyecto → proyectos (ON DELETE CASCADE)
-  - user_id → users (ON DELETE CASCADE)
-Campos:
-  - rol (TEXT NOT NULL DEFAULT 'cubicador')
-    CHECK IN ('admin','usc','cubicador','externo','cliente')
-Unique: (id_proyecto, user_id)
+| Campo | Tipo | Notas |
+|-------|------|-------|
+| filename | TEXT NOT NULL | |
+| content_type | TEXT NOT NULL | |
+| storage_key | TEXT | clave en R2 (reclamos/registro/ o reclamos/analisis/) |
+| tipo | TEXT DEFAULT 'ImagenesRegistro' | ImagenesRegistro · ImagenesAnalisis |
+| descripcion | TEXT | |
+| subido_por | TEXT NOT NULL | |
+| fecha | TEXT NOT NULL | |
 
-Nota: Al crear un proyecto, el creador se auto-agrega con un rol
-mapeado desde su rol de sistema (admin/admin2→admin, cubicador→cubicador, etc.)
-
----
-
-### 14. Export_log
-Tabla: export_log
-PK: id (BIGSERIAL)
-FK: id_proyecto → proyectos (ON DELETE CASCADE)
-Campos:
-  - sector (TEXT NOT NULL)
-  - piso (TEXT NOT NULL)
-  - ciclo (TEXT NOT NULL)
-  - export_key (TEXT NOT NULL)
-  - usuario (TEXT NOT NULL)
-  - fecha (TEXT NOT NULL)
-  - archivo (TEXT)
+> Sin columna `data` (BYTEA eliminado en migración 54). Todo archivo en R2.
 
 ---
 
-### 15. Audit_log
-Tabla: audit_log
-PK: id (BIGSERIAL)
-Campos:
-  - usuario (TEXT NOT NULL)
-  - accion (TEXT NOT NULL)
-  - detalle (TEXT)
-  - entidad (TEXT)
-  - entidad_id (TEXT)
-  - fecha (TEXT NOT NULL)
+## ENTIDADES DE SOPORTE
+
+### 13. proyecto_usuarios (M:N obras-usuarios)
+PK: `id` · FKs: `id_proyecto`→proyectos CASCADE, `user_id`→users CASCADE
+UNIQUE: (`id_proyecto`, `user_id`)
+
+Roles por obra: admin · usc · cubicador · externo · cliente
 
 ---
 
-### 16. Schema_migrations
-Tabla: schema_migrations
-PK: version (INTEGER)
-Campos:
-  - description (TEXT NOT NULL)
-  - applied_at (TEXT NOT NULL)
+### 14. proyecto_aliases
+PK: `alias` (TEXT) · FK: `id_proyecto`→proyectos CASCADE
+
+Permite que una obra tenga múltiples códigos ArmaDetailer. Un CSV con código nuevo
+puede asignarse a una obra existente creando un alias.
 
 ---
 
-## 🎯 CAMPOS FUTUROS SUGERIDOS
+### 15. export_log
+PK: `id` · FK: `id_proyecto`→proyectos CASCADE
 
-### En proyectos (obra):
-- fecha_inicio (TEXT)
-- fecha_termino (TEXT)
-- direccion_obra (TEXT)
-- estado_obra (TEXT) CHECK IN ('activa','pausada','terminada')
-
----
-
-## 📝 NOTAS IMPORTANTES
-
-1. **Roles actuales:** admin, admin2, cubicador, usc, externo, cliente
-2. **Flujo de reclamos:** 3 etapas (Creación → Respuesta → Validación)
-3. **Asignación en reclamos:**
-   - creado_por: quien crea el reclamo
-   - asignado_a: responsable inicial (USC se auto-asigna)
-   - cubicador_asignado: cubicador que responde (específico del reclamo)
-4. **Origen de barras:** csv (importación) o pedido (generación)
-5. **Pedidos:** tipo generic (sin sector) o especifico (con sector)
-6. **Exportación:** por sector+piso+ciclo, genera archivos Excel aSa Studio
+| Campo | Tipo |
+|-------|------|
+| sector / piso / ciclo | TEXT NOT NULL |
+| export_key | TEXT NOT NULL |
+| usuario | TEXT NOT NULL |
+| fecha | TEXT NOT NULL |
+| barras / kilos | INTEGER / DOUBLE PRECISION |
 
 ---
 
-## ✅ CAMBIOS IMPLEMENTADOS (Migraciones 28–32)
+### 16. audit_log
+PK: `id` (BIGSERIAL)
 
-1. **Migración 28:** Tabla `clientes` renombrada a `constructoras`
-2. **Migración 29:** Columna `proyectos.cliente_id` renombrada a `constructora_id`
-3. **Migración 30:** Columnas `proyectos.owner_id` y `proyectos.calculista` (texto) eliminadas
-4. **Migración 31:** Roles en `proyecto_usuarios` actualizados a: admin, usc, cubicador, externo, cliente
-5. **Migración 32:** Tabla `proyecto_aliases` creada para asociar múltiples códigos ArmaDetailer a una obra
-
-## ✅ MIGRACIONES 33–52 (resumen — fuente: `armahub/db.py`)
-
-Estas migraciones se aplicaron después de que se escribió el detalle de tablas de arriba.
-Resumen de cambios relevantes para el modelo:
-
-| # | Cambio |
-|---|--------|
-| 33–34 | reclamos: tipos `atraso` y `actualizacion_portal` en CHECK de `tipo_reclamo` |
-| 35 | reclamos: campos de presentación semanal |
-| 36 | proyectos: `fecha_inicio` |
-| 37 | barras: índice para navegador de sectores |
-| 38 | reclamos: backfill `cubicador_asignado` desde display names |
-| 39 | reclamos: drop de `cliente_id` (columna sin uso tras rename clientes→constructoras) |
-| 40 | reclamos: `tiempo_respuesta` (tracking manual) |
-| 41–42 | reclamos: estado `validado` en CHECK + fix del CHECK constraint |
-| 43 | **notificaciones**: tablas del centro de notificaciones (`notificaciones`, `notificacion_config`) |
-| 44 | reclamos: separar `id_calidad` en `anio_calidad` (int) + `numero_calidad` (int) + índice compuesto |
-| 45 | reclamos: backfill `anio_calidad`/`numero_calidad` desde `id_calidad` |
-| 46 | reclamos: eliminar estado `accion_correctiva` → migrar a `cerrado` + nuevo CHECK |
-| 47 | reclamos: eliminar estado `validado` → migrar a `cerrado` |
-| 49 | limpieza: drop de tablas `obra_ejes` y `obra_losas` (enfoque revertido a vista derivada de barras) |
-| 50 | imports: `modo_reemplazo`, `scope_reemplazo`, `barras_eliminadas_previo` |
-| 51 | barras: `id` BIGSERIAL PK + UNIQUE(`id_unico`, `id_proyecto`) — id_unico ya no es global |
-| 52 | imports: `supersedida_por` (FK a imports.id) — historial de cargas supersedidas |
-
-> Nota: la migración 48 no existe en la secuencia (salto, normal). Estados de reclamo vigentes tras
-> 46–47: `abierto`, `en_analisis`, `validacion`, `cerrado`, `rechazado` (ya NO existen `accion_correctiva` ni `validado`).
->
-> **Tablas nuevas desde la 32 no detalladas arriba:** `notificaciones`, `notificacion_config` (migración 43).
-> Estas se documentarán en detalle en la Fase 4. La estructura de estados de reclamos en la sección 9
-> de este documento está desactualizada (muestra estados ya eliminados): la lista vigente es la de esta nota.
-
-## 🔍 DUDAS PENDIENTES
-
-1. ¿Necesitamos más estados para proyectos (obra)?
-2. ¿Deberíamos normalizar `barras.figura` en una tabla aparte?
-3. ¿El campo `barras.cod_proyecto` debería ser FK a proyectos o es código externo?
+| Campo | Tipo |
+|-------|------|
+| usuario | TEXT NOT NULL |
+| accion | TEXT NOT NULL |
+| detalle / entidad / entidad_id | TEXT |
+| fecha | TEXT NOT NULL |
 
 ---
 
-Fin del documento.
+### 17. notificaciones
+PK: `id` (BIGSERIAL) · FK: `reclamo_id`→reclamos CASCADE (migración 43)
+
+| Campo | Tipo |
+|-------|------|
+| destinatario | TEXT NOT NULL |
+| tipo_evento | TEXT NOT NULL |
+| reclamo_id | BIGINT FK nullable |
+| mensaje | TEXT NOT NULL |
+| leida | BOOLEAN DEFAULT FALSE |
+| fecha | TEXT NOT NULL |
+
+---
+
+### 18. notificacion_config
+PK: `id` (BIGSERIAL) · UNIQUE(`tipo_evento`, `rol`) (migración 43)
+
+| Campo | Tipo |
+|-------|------|
+| tipo_evento | TEXT NOT NULL |
+| rol | TEXT NOT NULL |
+| activo | BOOLEAN DEFAULT TRUE |
+
+Eventos configurados: reclamo_creado · reclamo_asignado · analisis_completado ·
+validacion_realizada · reclamo_cerrado · reclamo_reabierto · cambio_estado
+
+---
+
+### 19. schema_migrations
+PK: `version` (INTEGER)
+
+| Campo | Tipo |
+|-------|------|
+| description | TEXT NOT NULL |
+| applied_at | TEXT NOT NULL |
+
+Última migración aplicada: **54** (drop columna `data` BYTEA de reclamo_imagenes).
+
+---
+
+## NOTAS DEL MODELO
+
+- **Roles globales:** admin · admin2 · cubicador · usc · externo · cliente
+- **Roles por obra** (proyecto_usuarios): admin · usc · cubicador · externo · cliente
+- **Infraestructura:** datos en Supabase, archivos en R2, sin BYTEA
+- **Correlativos de reclamo:** `anio_calidad` + `numero_calidad` (enteros); `id_calidad` (texto legacy, se mantiene por compatibilidad)
+- **Barras:** `id_unico` único por obra (no global desde migración 51); PK es `id` BIGSERIAL
+- **Pedidos:** generico (sin sector) o especifico (con sector); `procesado=true` cuando los items se convirtieron en barras
+
+---
+
+*Fin del documento. Próxima actualización: al iniciar F7 (discovery de obra) cuando se definan tablas nuevas.*

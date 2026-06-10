@@ -246,146 +246,168 @@ Objetivo: sacar las imágenes de la base de datos (hoy en BYTEA) y llevarlas a C
 | 4.3 | Definir convención de estados por entidad | ⏭ disuelto → cada caluga define sus estados | — |
 | 4.4 | Definir criterio de permisos por rol, cliente, obra | ⏭ disuelto → se define en F7/F9 | — |
 | 4.5 | Implementar helper único de correo (Resend API, mailer.py) reutilizable | ☑ | YO |
-| 4.6 | Configurar RESEND_API_KEY en Render + health check /health → mail:ok | ☐ | TÚ+YO |
+| 4.6 | Configurar RESEND_API_KEY en Render + health check /health → mail:ok | ☑ | TÚ+YO |
 | 4.7 | Definir convención frontend para nuevas calugas | ⏭ disuelto → se define al arrancar F6 | — |
-| 4.8 | Actualizar `armahub-protocolo.md` y `MODELO_DE_DATOS.md` | ☐ | YO |
+| 4.8 | Actualizar `armahub-protocolo.md` y `MODELO_DE_DATOS.md` | ☑ | YO |
 | 4.X | **Armonización transversal:** revisar estados, permisos, modelo de docs y convención frontend una vez que F6+F7+F9 estén construidas — ajustar inconsistencias entre calugas | ☐ | TÚ+YO |
 
 **Criterio de salida:** correo operativo y docs actualizados. Armonización (4.X) se ejecuta post-F9.
 
 ---
 
-## FASE 5 — Administración del Sistema
+## FASE 5 — Calidad / Reclamos (hardening + cierre de pendientes)
 
-Objetivo: reforzar la base administrativa antes de abrir calugas de obra/cliente.
+> **Reordenamiento (2026-06-10):** Admin se movió después de Programa de Obra (nueva F10) porque
+> el pool de requisitos de Admin se aclara recién cuando las calugas de obra estén construidas.
+> CRM y Procedimientos se mueven al final. El orden de calugas queda:
+> F5 Reclamos → F6 Discovery Obra → F7 Mis Proyectos → F8 Programa de Obra →
+> F9 Cubicación integrada → F10 Admin → F11 CRM → F12 Procedimientos → F13 Terreno →
+> F14 Automatizaciones → F15 Cierre.
+
+Objetivo: endurecer Reclamos y cerrar los pendientes reales arrastrados.
+
+### 5A. Hardening
 
 | N° | Descripción | Realizado | Quién |
 |----|-------------|-----------|-------|
-| 5.1 | Consolidar gestión de usuarios y roles (incluye roles nuevos de obra/cliente) | ☐ | YO |
-| 5.2 | Definir permisos por caluga, tab, obra y acción (matriz objetivo) | ☐ | TÚ+YO |
-| 5.3 | Implementar vista de matriz de permisos objetivo | ☐ | YO |
-| 5.4 | Ajustar auditoría global de acciones críticas al contrato común | ☐ | YO |
-| 5.5 | Crear gestión de parámetros del sistema | ☐ | YO |
-| 5.6 | Crear base de plantillas: certificados, correos, reportes | ☐ | YO |
-| 5.7 | Implementar editor central de obras/clientes/constructoras/calculistas (entidades) con flujo hermético — gestión única, no creación dispersa (depende de decisión 7.9) | ☐ | YO |
-| 5.8 | Cerrar la creación "al vuelo" de obras desde reclamos/import CSV: redirigir a selección de obra existente o flujo controlado de alta | ☐ | YO |
-| 5.9 | Health/admin técnico: DB (Supabase), storage (R2), correo | ☐ | YO |
+| 5.1 | Validar ownership en acciones correctivas y al eliminar imágenes (**H3**: `DELETE /reclamos/{id}/imagenes/{img}` no valida ownership) | ☐ | YO |
+| 5.2 | **H2** IDOR: aplicar filtro ownership/rol al detalle `GET /reclamos/{id}` — hoy cualquier autenticado lee cualquier reclamo por ID | ☐ | YO |
+| 5.3 | Revisar política de acceso a imágenes en R2 y documentar | ☐ | TÚ+YO |
+| 5.4 | QA visual del PDF de reclamo (campos largos, sin acciones, sin validación) | ☐ | YO |
+| 5.5 | FIX: cubicador externo no tiene botón "enviar a validar"; los otros cubicadores sí | ☐ | YO |
+| 5.6 | Optimizar query listado reclamos: LEFT JOIN + GROUP BY + índices para ORDER BY | ☐ | YO |
+| 5.7 | Evaluar tamaño de `reclamos.py` y separar solo si la legibilidad lo exige | ☐ | YO |
+
+### 5B. Envío de informe por correo (arrastrado de PC.15)
+
+| N° | Descripción | Realizado | Quién |
+|----|-------------|-----------|-------|
+| 5.8 | Crear tabla `reclamo_envios` (trazabilidad de envíos) | ☐ | YO |
+| 5.9 | Endpoint `POST /reclamos/{id}/enviar-informe` usando helper mailer (4.5) | ☐ | YO |
+| 5.10 | UI: columna/acción de envío en lista + mini-modal de destinatarios | ☐ | YO |
+| 5.11 | Historial de envíos en detalle de reclamo | ☐ | YO |
+| 5.12 | Indicadores de envío en dashboard de Calidad | ☐ | YO |
+
+### 5C. Calidad multi-origen
+
+| N° | Descripción | Realizado | Quién |
+|----|-------------|-----------|-------|
+| 5.13 | Definir tipos (reclamo, no conformidad, observación, preventiva) y orígenes (cubicación, retail, planta) | ☐ | TÚ+YO |
+| 5.14 | Agregar `origen` y `area` en reclamos | ☐ | YO |
+| 5.15 | Evaluar rol `admin_reclamos` | ☐ | TÚ+YO |
+| 5.16 | UI: selector de origen; listado/detalle/dashboards segmentables por origen | ☐ | YO |
+| 5.17 | Smoke test: reclamo → análisis → acciones → validación → PDF → envío | ☐ | TÚ+YO |
+
+**Criterio de salida:** hardening cerrado, correo de informe operativo, multi-origen definido.
 
 ---
 
-## FASE 6 — Calidad / Reclamos (hardening + cierre de pendientes)
+## FASE 6 — Discovery del dominio Obra (modelo común)
 
-Objetivo: endurecer Reclamos y cerrar los pendientes reales arrastrados, antes de multi-origen.
-
-### 6A. Hardening
-
-| N° | Descripción | Realizado | Quién |
-|----|-------------|-----------|-------|
-| 6.1 | Validar ownership en acciones correctivas y al eliminar imágenes (**H3** de auditoría Fase 2: `DELETE /reclamos/{id}/imagenes/{img}` no valida ownership) | ☐ | YO |
-| 6.2 | **H2** de auditoría Fase 2: aplicar filtro ownership/rol al detalle `GET /reclamos/{id}` (`reclamos.py:960`) — hoy cualquier autenticado lee cualquier reclamo por ID (IDOR) | ☐ | YO |
-| 6.3 | Revisar acceso a imágenes (ahora en R2) y documentar política | ☐ | TÚ+YO |
-| 6.4 | QA visual del PDF de reclamo (campos largos, sin acciones, sin validación) | ☐ | YO |
-| 6.5 | FIX: cubicador externo no tiene botón "enviar a validar" reclamo; los otros cubicadores sí. Revisar y corregir permiso | ☐ | YO |
-| 6.6 | Optimizar query del listado de reclamos: reemplazar subconsulta correlacionada de seguimientos (COUNT por fila) por LEFT JOIN + GROUP BY; agregar índices para ORDER BY estado/prioridad/año/número. (No requiere worker; 72 registros es trivial. La lentitud actual es mayormente cold start de Render → se resuelve al migrar en Fase 3) | ☐ | YO |
-| 6.7 | Evaluar tamaño de `reclamos.py` y separar solo si la legibilidad lo exige | ☐ | YO |
-
-### 6B. Envío de informe por correo (arrastrado de PC.15)
+Objetivo: definir el modelo de obra/expediente ANTES de construir Mis Proyectos y Programa de Obra.
+Sin este discovery, ambas calugas se construyen sobre supuestos que luego hay que rehacer.
 
 | N° | Descripción | Realizado | Quién |
 |----|-------------|-----------|-------|
-| 6.5 | Crear tabla `reclamo_envios` (trazabilidad de envíos) | ☐ | YO |
-| 6.6 | Endpoint `POST /reclamos/{id}/enviar-informe` usando el helper de correo de 4.5 | ☐ | YO |
-| 6.7 | UI: columna/acción de envío en lista + mini-modal de destinatarios | ☐ | YO |
-| 6.8 | Historial de envíos en detalle de reclamo | ☐ | YO |
-| 6.9 | Indicadores de envío en dashboard de Calidad | ☐ | YO |
+| 6.1 | Definir ficha de obra: cliente, constructora, responsables, estados, fechas, metadata | ☐ | TÚ+YO |
+| 6.2 | Definir estados de obra y semáforos | ☐ | TÚ+YO |
+| 6.3 | Definir estructura documental por obra: planos (vigente/obsoleto, por entrega), RDI, certificados, antecedentes | ☐ | TÚ+YO |
+| 6.4 | Definir nomenclatura de planos, versiones por entrega y aprobaciones | ☐ | TÚ+YO |
+| 6.5 | Definir RDI: campos, estados, adjuntos, responsables, flujo de respuesta del cliente | ☐ | TÚ+YO |
+| 6.6 | Definir qué ve/edita el cliente vs el interno en el expediente | ☐ | TÚ+YO |
+| 6.7 | Definir flujo hermético de alta de obra/cliente/constructora (hoy se crean dispersamente) | ☐ | TÚ+YO |
+| 6.8 | Definir modelo de programa de obra: hitos, tareas, fechas, responsables, cumplimiento auto vs manual | ☐ | TÚ+YO |
 
-### 6C. Calidad multi-origen (arrastrado de ROADMAP_RECLAMOS R1–R4)
-
-| N° | Descripción | Realizado | Quién |
-|----|-------------|-----------|-------|
-| 6.10 | Definir tipos (reclamo, no conformidad, observación, preventiva) y orígenes (cubicación, retail, planta) | ☐ | TÚ+YO |
-| 6.11 | Crear tabla `clientes` (casos no ligados a obra) + CRUD | ☐ | YO |
-| 6.12 | Agregar `id_cliente`, `origen`, `area` en reclamos | ☐ | YO |
-| 6.13 | Evaluar rol `admin_reclamos` | ☐ | TÚ+YO |
-| 6.14 | UI: selector de origen y obra/cliente según corresponda | ☐ | YO |
-| 6.15 | Listado, detalle y dashboards segmentables por origen | ☐ | YO |
-| 6.16 | Smoke test: reclamo obra → análisis → acciones → validación → PDF → envío → certificado | ☐ | TÚ+YO |
+**Criterio de salida:** modelo de datos de obra acordado → permite construir F7 y F8 sin retrabajo.
 
 ---
 
-## FASE 7 — Discovery del dominio Obra (modelo común)
+## FASE 7 — Caluga Mis Proyectos (expediente, cliente + interno)
 
-Objetivo: definir el modelo de obra/programa/expediente ANTES de construir las calugas que lo usan. Esto evita el retrabajo que tendría hacer Cubicación-integración u Obra a ciegas.
+Objetivo: expediente de obra donde cliente y armacero ven y editan según permisos.
 
 | N° | Descripción | Realizado | Quién |
 |----|-------------|-----------|-------|
-| 7.1 | Definir ficha de obra objetivo: cliente, constructora, responsables, estados, fechas, metadata | ☐ | TÚ+YO |
-| 7.2 | Definir estados de obra y semáforos | ☐ | TÚ+YO |
-| 7.3 | Definir modelo de programa de obra: hitos, tareas, fechas, responsables | ☐ | TÚ+YO |
-| 7.4 | Definir regla de cumplimiento: auto (cruce con carga Detailer ligada a tarea) vs manual + validación | ☐ | TÚ+YO |
-| 7.5 | Definir estructura documental por obra (planos, RDI, certificados, antecedentes) | ☐ | TÚ+YO |
-| 7.6 | Definir nomenclatura de planos, versiones, aprobaciones y obsoletos | ☐ | TÚ+YO |
-| 7.7 | Definir RDI: campos, estados, adjuntos, responsables, flujo de respuesta del cliente | ☐ | TÚ+YO |
-| 7.8 | Definir qué ve/edita el cliente vs el interno en el expediente (permisos por obra) | ☐ | TÚ+YO |
-| 7.9 | Definir flujo hermético de alta de obra/cliente/constructora: quién puede crear, dónde, y relación entre entidades. Hoy se crean dispersamente (reclamos, import CSV) sin dueño claro → riesgo de cubicaciones en obras mal relacionadas. Define el editor central de 5.7 | ☐ | TÚ+YO |
+| 7.1 | Crear tablas: documentos de obra versionados por entrega, planos, RDI (modelo de F6) | ☐ | YO |
+| 7.2 | Backend: CRUD documentos/planos/RDI sobre R2 + metadata | ☐ | YO |
+| 7.3 | Backend: preview PDF; DWG solo almacenar + descargar | ☐ | YO |
+| 7.4 | Backend: flujo RDI con respuesta del cliente | ☐ | YO |
+| 7.5 | Backend: mailing a involucrados ante RDI/eventos (usa mailer 4.5) | ☐ | YO |
+| 7.6 | Crear caluga Mis Proyectos en registry | ☐ | YO |
+| 7.7 | UI: ficha de obra + resumen | ☐ | YO |
+| 7.8 | UI: documentos, planos por entrega (vigente/obsoleto), RDI con respuesta | ☐ | YO |
+| 7.9 | UI: cliente aporta antecedentes y responde RDI | ☐ | YO |
+| 7.10 | Permisos: cliente solo sus obras y docs autorizados | ☐ | TÚ+YO |
+| 7.11 | Mostrar certificados de Calidad cuando existan | ☐ | YO |
+| 7.12 | **Mini-revisión de seguridad** antes de abrir acceso a clientes externos (ownership por obra, aislamiento) | ☐ | TÚ+YO |
+| 7.13 | Smoke test: interno crea obra → sube doc → versiona plano → crea RDI → cliente responde → recibe correo | ☐ | TÚ+YO |
+
+> **Nota:** Mis Proyectos es la primera caluga con acceso a clientes externos. La tarea 7.12 es
+> una mini-revisión acotada de seguridad justo antes del primer cliente real — no esperar a F15.
+
+**Criterio de salida:** cliente puede ver su expediente de obra, responder RDIs y recibir correos.
 
 ---
 
 ## FASE 8 — Caluga Programa de Obra (interna)
 
-Objetivo: que USC programe la obra y los cubicadores den cumplimiento.
+Objetivo: USC programa la obra; cubicadores dan cumplimiento (auto o manual + validación).
 
 | N° | Descripción | Realizado | Quién |
 |----|-------------|-----------|-------|
-| 8.1 | Crear tablas: programa/hitos/tareas de obra + estados de cumplimiento | ☐ | YO |
+| 8.1 | Crear tablas: programa/hitos/tareas + estados de cumplimiento (modelo de F6) | ☐ | YO |
 | 8.2 | Backend: CRUD de programa y tareas | ☐ | YO |
-| 8.3 | Backend: cumplimiento automático — detectar carga Detailer ligada a una tarea y marcar avance | ☐ | YO |
-| 8.4 | Backend: cumplimiento manual — cubicador completa tarea sin Detailer → estado pendiente de validación | ☐ | YO |
+| 8.3 | Backend: cumplimiento automático — carga Detailer ligada a tarea marca avance | ☐ | YO |
+| 8.4 | Backend: cumplimiento manual → estado pendiente de validación | ☐ | YO |
 | 8.5 | Backend: validación de cumplimiento manual por USC/jefatura | ☐ | YO |
-| 8.6 | Crear caluga Programa de Obra en registry (visible a roles internos) | ☐ | YO |
+| 8.6 | Crear caluga Programa de Obra en registry (roles internos) | ☐ | YO |
 | 8.7 | UI: vista de programa (hitos/tareas/semana), edición por USC | ☐ | YO |
 | 8.8 | UI: marca de cumplimiento del cubicador + indicador auto/manual/validado | ☐ | YO |
-| 8.9 | Permisos: USC edita programa, cubicador da cumplimiento, jefatura valida | ☐ | TÚ+YO |
-| 8.10 | Smoke test: USC programa → cubicador cumple (auto y manual) → jefatura valida | ☐ | TÚ+YO |
+| 8.9 | Permisos: USC edita, cubicador cumple, jefatura valida | ☐ | TÚ+YO |
+| 8.10 | Conectar avance del programa a la vista de obra en Mis Proyectos (F7.7) | ☐ | YO |
+| 8.11 | Smoke test: USC programa → cubicador cumple (auto y manual) → jefatura valida | ☐ | TÚ+YO |
+
+**Criterio de salida:** USC puede programar una obra y ver su avance real.
 
 ---
 
-## FASE 9 — Caluga Mis Proyectos (expediente, cliente + interno)
+## FASE 9 — Cubicación: consolidar y conectar con Obra
 
-Objetivo: expediente de obra donde cliente y armacero ven y editan según permisos. Visualiza avance (de Fase 8) y cubicación.
+Objetivo: conectar Cubicación (ya funcional) al programa y expediente de obra.
 
 | N° | Descripción | Realizado | Quién |
 |----|-------------|-----------|-------|
-| 9.1 | Crear tablas: documentos de obra versionados, planos/versiones, RDI | ☐ | YO |
-| 9.2 | Backend: CRUD documentos/planos/RDI sobre R2 + metadata | ☐ | YO |
-| 9.3 | Backend: preview PDF; DWG solo almacenar + descargar | ☐ | YO |
-| 9.4 | Backend: flujo RDI con respuesta del cliente | ☐ | YO |
-| 9.5 | Backend: mailing a involucrados (usa helper de correo 4.5) ante RDI/eventos | ☐ | YO |
-| 9.6 | Crear caluga Mis Proyectos en registry (cliente ve sus obras; interno las que correspondan) | ☐ | YO |
-| 9.7 | UI: resumen de obra + avance (lee programa de Fase 8) | ☐ | YO |
-| 9.8 | UI: documentos, planos/versiones, RDI con respuesta | ☐ | YO |
-| 9.9 | UI: cliente aporta antecedentes y responde RDI | ☐ | YO |
-| 9.10 | Permisos cliente: solo sus obras y documentos autorizados; gerente puede ver varias | ☐ | TÚ+YO |
-| 9.11 | Mostrar certificados controlados por Calidad cuando existan | ☐ | YO |
-| 9.12 | **Mini-revisión de seguridad antes de abrir acceso a clientes externos** (ver nota) | ☐ | TÚ+YO |
-| 9.13 | Smoke test: interno crea obra → sube doc → versiona plano → crea RDI → cliente responde → recibe correo | ☐ | TÚ+YO |
+| 9.1 | Confirmar selector de obra como fuente única de destino (ya implementado, validar) | ☐ | YO |
+| 9.2 | Conectar carga Detailer con tarea de programa de obra (cumplimiento auto F8) | ☐ | YO |
+| 9.3 | Trazabilidad entre carga, plano, pedido, reclamo y exportación | ☐ | YO |
+| 9.4 | Bar Manager con trazabilidad de plano/versión (de F7) | ☐ | YO |
+| 9.5 | Revisar permisos cubicador/cliente/admin por obra | ☐ | YO |
+| 9.6 | Smoke test: obra → carga CSV → cumplimiento auto en programa → Bar Manager → pedido → exportación | ☐ | TÚ+YO |
 
-> **Nota de seguridad (importante):** Mis Proyectos es la primera caluga que da acceso a **clientes externos**. El momento crítico de seguridad no es el final del desarrollo, sino **justo antes de que entre el primer cliente externo**. La tarea 9.12 adelanta una revisión acotada (ownership por obra, que un cliente no vea obras ajenas, endpoints expuestos, validación de uploads) sin esperar a la auditoría formal de Fase 15.
+**Criterio de salida:** una carga CSV actualiza automáticamente el avance en el Programa de Obra.
 
 ---
 
-## FASE 10 — Cubicación: consolidar y conectar con Obra
+## FASE 10 — Administración del Sistema
 
-Objetivo: mantener Cubicación estable y conectarla al programa/expediente de obra.
+> Movida post-F8 (2026-06-10): el pool de requisitos de Admin se aclara una vez que las calugas
+> de obra están construidas. Aquí se consolida, no se diseña en el aire.
+
+Objetivo: consolidar la base administrativa con el conocimiento real de las calugas ya construidas.
 
 | N° | Descripción | Realizado | Quién |
 |----|-------------|-----------|-------|
-| 10.1 | Confirmar selector de obra como fuente única de destino (ya implementado, validar) | ☐ | YO |
-| 10.2 | Conectar carga Detailer con tarea de programa de obra (para cumplimiento auto de Fase 8) | ☐ | YO |
-| 10.3 | Trazabilidad entre carga, plano, pedido, reclamo y exportación | ☐ | YO |
-| 10.4 | Bar Manager con trazabilidad de plano/versión (de Fase 9) | ☐ | YO |
-| 10.5 | Revisar permisos cubicador/cliente/admin por obra | ☐ | YO |
-| 10.6 | Smoke test: obra → carga CSV → cumplimiento auto en programa → Bar Manager → pedido → exportación | ☐ | TÚ+YO |
+| 10.1 | Consolidar gestión de usuarios y roles (incluye roles nuevos surgidos de F6–F9) | ☐ | YO |
+| 10.2 | Implementar editor central de obras/clientes/constructoras con flujo hermético (definido en F6.7) | ☐ | YO |
+| 10.3 | Cerrar creación "al vuelo" de obras desde reclamos/import CSV | ☐ | YO |
+| 10.4 | Actualizar matriz de permisos completa (post-F9, cuando todas las calugas existen) | ☐ | TÚ+YO |
+| 10.5 | Implementar vista de matriz de permisos en Admin | ☐ | YO |
+| 10.6 | Auditoría global: ajustar contrato de audit_log a todas las calugas | ☐ | YO |
+| 10.7 | Gestión de parámetros del sistema y plantillas (correos, certificados) | ☐ | YO |
+| 10.8 | Armonización transversal (4.X): estados, permisos, modelo de docs entre calugas | ☐ | TÚ+YO |
+| 10.9 | Smoke test Admin: crear usuario → asignar obra → verificar permisos por caluga | ☐ | TÚ+YO |
+
+**Criterio de salida:** Admin refleja el estado real del sistema completo.
 
 ---
 
@@ -393,7 +415,7 @@ Objetivo: mantener Cubicación estable y conectarla al programa/expediente de ob
 
 | N° | Descripción | Realizado | Quién |
 |----|-------------|-----------|-------|
-| 11.1 | Definir diferencia entre cliente, constructora, contacto, empresa y obra | ☐ | TÚ+YO |
+| 11.1 | Definir diferencia entre cliente, constructora, contacto, empresa y obra (post-F9, con contexto real) | ☐ | TÚ+YO |
 | 11.2 | Revisar tabla `constructoras` y decidir migración a modelo CRM | ☐ | YO |
 | 11.3 | Crear modelo cuentas/clientes, contactos, leads/oportunidades, seguimientos | ☐ | YO |
 | 11.4 | Crear caluga CRM en registry con tabs | ☐ | YO |
@@ -450,12 +472,10 @@ Objetivo: mantener Cubicación estable y conectarla al programa/expediente de ob
 | 15.3 | Revisar ownership y aislamiento por obra/cliente en todas las calugas | ☐ | YO |
 | 15.4 | Performance de queries sensibles + índices | ☐ | YO |
 | 15.5 | Backup/restore documentado de Supabase y R2 | ☐ | YO |
-| 15.6 | Configurar dominio propio apuntando a Cloudflare (DNS) — no mueve nada, solo referencia | ☐ | TÚ+YO |
+| 15.6 | Configurar dominio propio (DNS) | ☐ | TÚ+YO |
 | 15.7 | Checklist de release por caluga | ☐ | YO |
 | 15.8 | Actualizar docs finales (protocolo, modelo, permisos, arquitectura) | ☐ | YO |
 | 15.9 | Congelar `programa_v1.00.md` y crear siguiente versión | ☐ | TÚ+YO |
-
-> **Nota dominio:** el dominio propio (ej. `armahub.cl`) no requiere mover ni reconstruir nada — solo se apunta (DNS) a donde ya corre el sistema en Cloudflare. Puede hacerse en cualquier momento (15.6 lo ubica antes del cierre por prolijidad, pero técnicamente es independiente). Cloudflare lo facilita por tener hosting y DNS en el mismo lugar.
 
 ---
 
@@ -476,10 +496,15 @@ Objetivo: mantener Cubicación estable y conectarla al programa/expediente de ob
 
 ## Resumen del reordenamiento (vs programa CODEX)
 
-| Cambio | Antes (CODEX) | Ahora |
-|--------|---------------|-------|
+| Cambio | Antes (CODEX) | Ahora (2026-06-10) |
+|--------|---------------|---------------------|
 | Estado de partida | Casi todo en ☐, ignora trabajo hecho | Estado real reconciliado con el código |
-| Infraestructura | Fase 3, container completo, bloqueante | Fase 3 con R2 primero, orden R2→Supabase→container, validación antes de cutover |
+| Infraestructura | Fase 3, container completo, bloqueante | F3 R2→Supabase→Render; todo gratis $0 |
+| Orden de calugas | Admin antes de obra | F5 Reclamos → F6 Discovery → F7 Mis Proyectos → F8 Prog. Obra → F9 Cubicación → F10 Admin |
+| Admin | Fase 5, antes de todo | F10, post-F8: se consolida con contexto real de calugas |
+| CRM y Procedimientos | Intercalados | Al final (F11–F12): no bloquean nada operativo |
+| Discovery de obra | Mezclado con implementación | F6 explícito antes de F7/F8: evita retrabajo |
+| Diseño transversal | Bloques previos abstractos | Caluga a caluga; armonización en F10.8 cuando hay algo concreto |
 | Calugas de obra | "Administrador de Obra" única, Cubicación antes que Obra | Programa de Obra (interno) + Mis Proyectos (cliente+interno) + Cubicación; discovery de obra (F7) antes de construir |
 | Cumplimiento programa | No contemplado | Auto (Detailer) + manual con validación (F8) |
 | Correo | Disperso (Reclamos + futuro) | Helper único transversal (F4.5), consumido por Reclamos y Mis Proyectos |
