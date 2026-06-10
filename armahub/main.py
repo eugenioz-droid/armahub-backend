@@ -12,13 +12,13 @@ En Render, lo ideal es arrancar con:
     uvicorn armahub.main:app --host 0.0.0.0 --port 10000
 """
 
-from fastapi import FastAPI, Response, Request
+from fastapi import FastAPI, Response, Request, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 import os, time, logging
 
 from .db import init_db, get_conn
-from .auth import router as auth_router
+from .auth import router as auth_router, require_admin
 from .importer import router as importer_router
 from .barras import router as barras_router
 from .ui import router as ui_router
@@ -89,6 +89,99 @@ def create_app() -> FastAPI:
             result["db"] = "error"
             result["detail"] = str(e)
         return result
+
+    @app.post("/admin/migrar-bd-supabase")
+    def migrar_bd_supabase(payload: dict, admin=Depends(require_admin)):
+        """
+        TEMPORAL — copia los datos de la BD actual (Render) a otra BD (Supabase).
+        Solo admin. NO destructivo: solo LEE de Render, escribe en el destino.
+        Body JSON: {"destino_url": "postgresql://...", "dry_run": true/false}
+
+        Orden de tablas respeta foreign keys. En el destino primero corre las
+        migraciones (crea estructura), luego copia datos tabla por tabla.
+        Se elimina tras validar.
+        """
+        import psycopg
+        destino_url = (payload or {}).get("destino_url", "").strip()
+        dry_run = bool((payload or {}).get("dry_run", True))
+        if not destino_url:
+            raise HTTPException(status_code=400, detail="Falta destino_url")
+        if destino_url.startswith("postgres://"):
+            destino_url = "postgresql://" + destino_url[len("postgres://"):]
+
+        # Orden por dependencias FK (padres antes que hijos)
+        TABLAS = [
+            "schema_migrations", "users", "proyectos", "constructoras", "calculistas",
+            "clientes", "proyecto_usuarios", "proyecto_aliases", "imports", "barras",
+            "pedidos", "pedido_items", "export_log", "audit_log",
+            "reclamos", "reclamo_seguimientos", "reclamo_acciones", "reclamo_imagenes",
+            "notificaciones", "notificacion_config",
+        ]
+
+        # 1) Conteo en origen (Render)
+        conteos = {}
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                for t in TABLAS:
+                    try:
+                        cur.execute(f"SELECT COUNT(*) FROM {t}")
+                        conteos[t] = cur.fetchone()[0]
+                    except Exception:
+                        conteos[t] = None  # tabla no existe en origen
+
+        if dry_run:
+            return {"dry_run": True, "conteos_origen": conteos,
+                    "mensaje": "Filas a copiar por tabla. Nada copiado. Pasar dry_run=false para migrar."}
+
+        # 2) En destino: crear estructura (correr migraciones via init) y copiar datos
+        copiadas = {}
+        errores = []
+        dst = psycopg.connect(destino_url)
+        try:
+            # 2a) Crear tablas + migraciones en el destino
+            from .db import _create_base_tables, _run_migrations, _create_indexes
+            with dst.cursor() as dcur:
+                _create_base_tables(dcur)
+                _run_migrations(dcur)
+                _create_indexes(dcur)
+            dst.commit()
+
+            # 2b) Copiar datos tabla por tabla (con FK diferidas)
+            with dst.cursor() as dcur:
+                dcur.execute("SET session_replication_role = replica;")  # desactiva FK durante copia
+            for t in TABLAS:
+                if not conteos.get(t):
+                    copiadas[t] = 0
+                    continue
+                try:
+                    with get_conn() as sconn:
+                        with sconn.cursor() as scur:
+                            scur.execute(f"SELECT * FROM {t}")
+                            cols = [d[0] for d in scur.description]
+                            rows = scur.fetchall()
+                    if not rows:
+                        copiadas[t] = 0
+                        continue
+                    collist = ", ".join(cols)
+                    placeholders = ", ".join(["%s"] * len(cols))
+                    with dst.cursor() as dcur:
+                        dcur.execute(f"TRUNCATE {t} CASCADE;")
+                        dcur.executemany(
+                            f"INSERT INTO {t} ({collist}) VALUES ({placeholders})", rows
+                        )
+                    dst.commit()
+                    copiadas[t] = len(rows)
+                except Exception as exc:
+                    dst.rollback()
+                    errores.append({"tabla": t, "error": str(exc)})
+            with dst.cursor() as dcur:
+                dcur.execute("SET session_replication_role = DEFAULT;")
+            dst.commit()
+        finally:
+            dst.close()
+
+        return {"dry_run": False, "copiadas": copiadas, "errores": errores,
+                "nota": "Render NO modificado. Validar datos en Supabase antes de cambiar DATABASE_URL."}
 
     # --- Request logging middleware ---
     logger = logging.getLogger("armahub.access")
