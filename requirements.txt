@@ -9,5 +9,6 @@ passlib
 jinja2
 openpyxl
 fpdf2
+Pillow
 boto3
 resend
