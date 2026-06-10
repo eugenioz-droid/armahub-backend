@@ -340,9 +340,9 @@ async function openObraDetailModal(idProyecto) {
   document.getElementById('obraDetailTitle').textContent = '🏗️ ' + (p.nombre_proyecto || idProyecto);
   document.getElementById('obraDetailEditBtn').onclick = function() { closeObraDetailModal(); openEditObraModal(idProyecto); };
 
-  // Delete button: visible for admin/admin2, or cubicador with 0 barras
+  // Delete button: visible for admin/admin_calidad, or cubicador with 0 barras
   var delBtn = document.getElementById('obraDetailDeleteBtn');
-  var canDelete = currentRole === 'admin' || currentRole === 'admin2' || (currentRole === 'cubicador' && (p.total_barras || 0) === 0);
+  var canDelete = currentRole === 'admin' || currentRole === 'admin_calidad' || (currentRole === 'cubicador' && (p.total_barras || 0) === 0);
   delBtn.style.display = canDelete ? '' : 'none';
   delBtn.onclick = function() { eliminarObra(idProyecto, p.nombre_proyecto, p.total_barras || 0); };
 
@@ -1296,8 +1296,8 @@ async function crearConstDesdeEditObra() {
 }
 
 async function eliminarObra(id, nombre, barrasCount) {
-  // Solo admin/admin2 pueden eliminar obras con data
-  if (currentRole !== 'admin' && currentRole !== 'admin2' && barrasCount > 0) {
+  // Solo admin/admin_calidad pueden eliminar obras con data
+  if (currentRole !== 'admin' && currentRole !== 'admin_calidad' && barrasCount > 0) {
     showToast('No puedes eliminar una obra con ' + barrasCount + ' barras cargadas. Contacta al administrador.', 'error');
     return;
   }

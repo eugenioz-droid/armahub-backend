@@ -171,16 +171,16 @@ async function loadRecLanding() {
   var data = await apiGet('/reclamos/mi-resumen');
   if (!data) return;
 
-  var isAdmin = (currentRole === 'admin' || currentRole === 'admin2' || currentRole === 'coordinador');
+  var isAdmin = (currentRole === 'admin' || currentRole === 'admin_calidad' || currentRole === 'coordinador');
   var titleEl = document.querySelector('#recLandingCharts').parentElement.querySelector('h3');
   if (titleEl) titleEl.textContent = isAdmin ? 'Resumen General' : 'Mi Resumen';
 
   // Sub-tabs Nivel 2: RCA y Presentaciones según rol
-  var rcaAccess = ['admin','admin2'];
+  var rcaAccess = ['admin','admin_calidad'];
   var subRCA = document.getElementById('recSubBtnRCA');
   if (subRCA) subRCA.style.display = rcaAccess.includes(currentRole) ? '' : 'none';
   var subPres = document.getElementById('recSubBtnPres');
-  var presAccess = ['admin','admin2','cubicador','externo'];
+  var presAccess = ['admin','admin_calidad','cubicador','externo'];
   if (subPres) subPres.style.display = presAccess.includes(currentRole) ? '' : 'none';
 
   // Chart 1: KPI

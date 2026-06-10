@@ -21,7 +21,7 @@ from typing import Optional, List
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
-from .auth import get_current_user, require_admin_or_admin2
+from .auth import get_current_user, require_admin_or_admin_calidad
 from .db import get_conn
 
 router = APIRouter()
@@ -188,7 +188,7 @@ def marcar_todas_leidas(user=Depends(get_current_user)):
 
 
 @router.get("/notificaciones/config")
-def get_config(admin=Depends(require_admin_or_admin2)):
+def get_config(admin=Depends(require_admin_or_admin_calidad)):
     """Obtener configuración de notificaciones (evento × rol)."""
     with get_conn() as conn:
         with conn.cursor() as cur:
@@ -213,7 +213,7 @@ class ConfigUpdate(BaseModel):
 
 
 @router.patch("/notificaciones/config")
-def update_config(body: ConfigUpdate, admin=Depends(require_admin_or_admin2)):
+def update_config(body: ConfigUpdate, admin=Depends(require_admin_or_admin_calidad)):
     """Activar/desactivar una notificación para un evento × rol."""
     if body.tipo_evento not in TIPOS_EVENTO:
         raise HTTPException(status_code=400, detail=f"Tipo inválido: {body.tipo_evento}")

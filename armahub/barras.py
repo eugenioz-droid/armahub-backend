@@ -29,12 +29,12 @@ def _project_filter_sql(allowed_ids, table_alias="", col="id_proyecto"):
 
 
 def _puede_editar_proyecto(cur, id_proyecto: str, user: dict) -> bool:
-    """Retorna True si el usuario es admin/admin2 o está en proyecto_usuarios."""
+    """Retorna True si el usuario es admin/admin_calidad o está en proyecto_usuarios."""
     email = user.get("email", "")
     role = user.get("role", "")
     print(f"[_puede_editar_proyecto] Checking: email={email}, role={role}, id_proyecto={id_proyecto}")
     
-    if role in ("admin", "admin2"):
+    if role in ("admin", "admin_calidad"):
         print(f"[_puede_editar_proyecto] Admin access granted for {email}")
         return True
     
@@ -1830,8 +1830,8 @@ def landing_indicadores(user=Depends(get_current_user)):
 
     with get_conn() as conn:
         with conn.cursor() as cur:
-            # --- Cubicado semana (visible to admin, admin2, cubicador) ---
-            if role in ("admin", "admin2", "cubicador"):
+            # --- Cubicado semana (visible to admin, admin_calidad, cubicador) ---
+            if role in ("admin", "admin_calidad", "cubicador"):
                 cur.execute("""
                     SELECT i.usuario,
                            COALESCE(u.nombre, '') AS nombre,
@@ -1860,8 +1860,8 @@ def landing_indicadores(user=Depends(get_current_user)):
                     cub_map[email_cub]["dias"][r[3] - 1] = round(float(r[4]), 1)
                 result["cubicado_semana"] = list(cub_map.values())
 
-            # --- Reclamos levantados semana (visible to admin, admin2, usc, cubicador, externo) ---
-            if role in ("admin", "admin2", "usc", "cubicador", "externo"):
+            # --- Reclamos levantados semana (visible to admin, admin_calidad, usc, cubicador, externo) ---
+            if role in ("admin", "admin_calidad", "usc", "cubicador", "externo"):
                 # Filtro "propios" para cubicador/externo/usc
                 if role in ("cubicador", "externo"):
                     prop_where = "AND (r.cubicador_asignado = %s OR r.respuesta_por = %s)"
@@ -1901,7 +1901,7 @@ def landing_indicadores(user=Depends(get_current_user)):
                 result["reclamos_semana"] = list(usc_map.values())
 
             # --- Alertas: reclamos por estado ---
-            if role in ("admin", "admin2"):
+            if role in ("admin", "admin_calidad"):
                 cur.execute("""
                     SELECT estado, COUNT(*) FROM reclamos
                     GROUP BY estado ORDER BY 2 DESC

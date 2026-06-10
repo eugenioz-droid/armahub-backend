@@ -175,51 +175,51 @@ function _applyReclamoDetailPermissions(data) {
   var validado = !!data.validacion_resultado;
   var estadoPermiteAnalisis = data.estado === 'abierto' || data.estado === 'en_analisis';
 
-  var puedeEditarSec1 = (currentRole === 'admin' || currentRole === 'admin2') || (currentRole === 'usc' && esCreador && data.estado === 'abierto');
+  var puedeEditarSec1 = (currentRole === 'admin' || currentRole === 'admin_calidad') || (currentRole === 'usc' && esCreador && data.estado === 'abierto');
   if (validado && currentRole !== 'admin') puedeEditarSec1 = false;
   var btnEditar = document.getElementById('btnEditarReclamo');
   if (btnEditar) btnEditar.style.display = puedeEditarSec1 ? '' : 'none';
 
   var selAplica = document.getElementById('recDetailAplica');
   var puedeCambiarAplica =
-    (currentRole === 'admin' || currentRole === 'admin2') ||
+    (currentRole === 'admin' || currentRole === 'admin_calidad') ||
     ((currentRole === 'cubicador' || currentRole === 'externo') && esPropioCub && estadoPermiteAnalisis);
   if (selAplica) selAplica.disabled = !puedeCambiarAplica;
 
-  var puedeEliminar = (currentRole === 'admin' || currentRole === 'admin2') || (currentRole === 'usc' && esCreador);
+  var puedeEliminar = (currentRole === 'admin' || currentRole === 'admin_calidad') || (currentRole === 'usc' && esCreador);
   var btnElim = document.getElementById('btnEliminarReclamo');
   if (btnElim) btnElim.style.display = puedeEliminar ? '' : 'none';
 
-  // Botón morado "Enviar a validación": cubicador Y externo propios, más admin/admin2
+  // Botón morado "Enviar a validación": cubicador Y externo propios, más admin/admin_calidad
   var esAsignado = (['cubicador','externo'].includes(currentRole) && esPropioCub);
-  var puedeCerrar = (currentRole === 'admin' || currentRole === 'admin2') || esAsignado;
+  var puedeCerrar = (currentRole === 'admin' || currentRole === 'admin_calidad') || esAsignado;
   var cerrarCont = document.getElementById('recCerrarContainer');
   if (cerrarCont) cerrarCont.style.display = puedeCerrar ? '' : 'none';
   var estaCerrado = (data.estado === 'cerrado' || data.estado === 'rechazado');
-  var puedeReabrir = estaCerrado && (currentRole === 'admin' || currentRole === 'admin2');
+  var puedeReabrir = estaCerrado && (currentRole === 'admin' || currentRole === 'admin_calidad');
   var btnCerrar = document.getElementById('btnCerrarReclamo');
   var btnReabrir = document.getElementById('btnReabrirReclamo');
   if (btnCerrar) btnCerrar.style.display = estaCerrado ? 'none' : '';
   if (btnReabrir) btnReabrir.style.display = puedeReabrir ? '' : 'none';
 
-  // Sección 3 Validación (rectángulo verde): solo visible para admin/admin2
+  // Sección 3 Validación (rectángulo verde): solo visible para admin/admin_calidad
   var secValidacion = document.getElementById('recSeccionValidacion');
   if (secValidacion) secValidacion.style.display = puedeValidar ? '' : 'none';
 
   var anioCalField = document.getElementById('recDetailAnioCalidad');
-  if (anioCalField) anioCalField.disabled = !(currentRole === 'admin' || currentRole === 'admin2');
+  if (anioCalField) anioCalField.disabled = !(currentRole === 'admin' || currentRole === 'admin_calidad');
   var numCalField = document.getElementById('recDetailNumeroCalidad');
   if (numCalField) numCalField.disabled = !puedeEditarSec1;
 
   var detProySel = document.getElementById('recDetailProyecto');
-  if (detProySel) detProySel.disabled = !(currentRole === 'admin' || currentRole === 'admin2');
+  if (detProySel) detProySel.disabled = !(currentRole === 'admin' || currentRole === 'admin_calidad');
 
   var detAsigSel = document.getElementById('recDetailAsignadoA');
-  if (detAsigSel) detAsigSel.disabled = !(currentRole === 'admin' || currentRole === 'admin2');
+  if (detAsigSel) detAsigSel.disabled = !(currentRole === 'admin' || currentRole === 'admin_calidad');
 
-  var puedeResponder = ['admin','admin2','cubicador','externo'].includes(currentRole);
+  var puedeResponder = ['admin','admin_calidad','cubicador','externo'].includes(currentRole);
   if ((['cubicador','externo'].includes(currentRole)) && !esPropioCub) puedeResponder = false;
-  if (!estadoPermiteAnalisis && !['admin','admin2'].includes(currentRole)) puedeResponder = false;
+  if (!estadoPermiteAnalisis && !['admin','admin_calidad'].includes(currentRole)) puedeResponder = false;
   if (validado && currentRole !== 'admin') puedeResponder = false;
   var sec2Fields = ['recDetailRespuestaTexto','recDetailCausaDisplay','recDetailAreaAplica','recDetailFechaAnalisis','recDetailKilosMal','recTiempoRespuestaAnalisis','recTiempoRespuestaUnidadAnalisis'];
   sec2Fields.forEach(function(fid) { var el = document.getElementById(fid); if (el) el.disabled = !puedeResponder; });
@@ -232,34 +232,34 @@ function _applyReclamoDetailPermissions(data) {
   if (respDropZone) respDropZone.style.display = puedeResponder ? '' : 'none';
   if (respFileInput) respFileInput.disabled = !puedeResponder;
 
-  var puedeValidar = (currentRole === 'admin' || currentRole === 'admin2');
+  var puedeValidar = (currentRole === 'admin' || currentRole === 'admin_calidad');
   var sec3Fields = ['recDetailValidacionResultado','recDetailValidacionObs','recTiempoRespuesta','recTiempoRespuestaUnidad'];
   sec3Fields.forEach(function(fid) { var el = document.getElementById(fid); if (el) el.disabled = !puedeValidar; });
   var btnGuardarVal = document.getElementById('btnGuardarValidacion');
   if (btnGuardarVal) btnGuardarVal.style.display = puedeValidar ? '' : 'none';
 
-  var puedeAccion = ['admin','admin2','cubicador','externo'].includes(currentRole);
+  var puedeAccion = ['admin','admin_calidad','cubicador','externo'].includes(currentRole);
   if ((['cubicador','externo'].includes(currentRole)) && !esPropioCub) puedeAccion = false;
-  if (!estadoPermiteAnalisis && !['admin','admin2'].includes(currentRole)) puedeAccion = false;
+  if (!estadoPermiteAnalisis && !['admin','admin_calidad'].includes(currentRole)) puedeAccion = false;
   if (validado && currentRole !== 'admin') puedeAccion = false;
   var accionFields = ['recNuevaAccionTipo','recNuevaAccionDesc','recNuevaAccionResp','recNuevaAccionFecha'];
   accionFields.forEach(function(fid) { var el = document.getElementById(fid); if (el) el.disabled = !puedeAccion; });
 
-  // Imágenes de registro: solo admin/admin2/usc
-  var puedeImgRegistro = ['admin','admin2','usc'].includes(currentRole);
+  // Imágenes de registro: solo admin/admin_calidad/usc
+  var puedeImgRegistro = ['admin','admin_calidad','usc'].includes(currentRole);
   var detDropZone = document.getElementById('recDetailDropZone');
   var detFileInput = document.getElementById('recDetailFileInput');
   if (detDropZone) detDropZone.style.display = puedeImgRegistro ? '' : 'none';
   if (detFileInput) detFileInput.disabled = !puedeImgRegistro;
 
-  // PDF export: admin, admin2, cubicador (propios), usc
-  var puedePdf = ['admin','admin2'].includes(currentRole) || (currentRole === 'usc') || (currentRole === 'cubicador' && esPropioCub);
+  // PDF export: admin, admin_calidad, cubicador (propios), usc
+  var puedePdf = ['admin','admin_calidad'].includes(currentRole) || (currentRole === 'usc') || (currentRole === 'cubicador' && esPropioCub);
   var btnPdf = document.getElementById('btnPdfReclamo');
   if (btnPdf) btnPdf.style.display = puedePdf ? '' : 'none';
 
-  // Email placeholder: admin, admin2 only
+  // Email placeholder: admin, admin_calidad only
   var btnEnviar = document.getElementById('btnEnviarReclamo');
-  if (btnEnviar) btnEnviar.style.display = ['admin','admin2'].includes(currentRole) ? '' : 'none';
+  if (btnEnviar) btnEnviar.style.display = ['admin','admin_calidad'].includes(currentRole) ? '' : 'none';
 }
 
 function _renderReclamoDetail(data) {
@@ -525,7 +525,7 @@ function toggleEditarReclamo() {
     document.getElementById('recEditAnioCalidad').value = d.anio_calidad || '';
     document.getElementById('recEditNumeroCalidad').value = d.numero_calidad || '';
     // anio_calidad: only admin can edit
-    document.getElementById('recEditAnioCalidad').disabled = !(currentRole === 'admin' || currentRole === 'admin2');
+    document.getElementById('recEditAnioCalidad').disabled = !(currentRole === 'admin' || currentRole === 'admin_calidad');
     document.getElementById('recEditDetectadoPor').value = d.detectado_por || '';
     document.getElementById('recEditDescripcion').value = d.descripcion || '';
     // Populate proyecto dropdown from recProyecto select (already loaded)
@@ -545,11 +545,11 @@ function toggleEditarReclamo() {
       sel.innerHTML += '<option value="' + u.email + '" data-display="' + u.display + '">' + u.display + '</option>';
     });
     sel.value = d.cubicador_asignado || '';
-    // USC Responsable dropdown — only admin/admin2
+    // USC Responsable dropdown — only admin/admin_calidad
     var uscWrap = document.getElementById('recEditAsignadoAWrap');
     var uscSel = document.getElementById('recEditAsignadoA');
     if (uscWrap && uscSel) {
-      if (currentRole === 'admin' || currentRole === 'admin2') {
+      if (currentRole === 'admin' || currentRole === 'admin_calidad') {
         uscWrap.style.display = '';
         // Populate from loadUsuariosUsc cache (recAsignadoA source)
         var srcUsc = document.getElementById('recAsignadoA');
@@ -578,7 +578,7 @@ function toggleEditarReclamo() {
 async function guardarEdicionReclamo() {
   if (!_reclamoActual) return;
   var esCreador = _reclamoActual.creado_por && _reclamoActual.creado_por === currentUserEmail;
-  var puedeEditar = (currentRole === 'admin' || currentRole === 'admin2') || (currentRole === 'usc' && esCreador);
+  var puedeEditar = (currentRole === 'admin' || currentRole === 'admin_calidad') || (currentRole === 'usc' && esCreador);
   if (_reclamoActual.validacion_resultado && currentRole !== 'admin') puedeEditar = false;
   if (!puedeEditar) { alert('No tienes permiso para editar este reclamo.'); return; }
   var msg = document.getElementById('recEditMsg');
@@ -603,8 +603,8 @@ async function guardarEdicionReclamo() {
     numero_calidad: parseInt(document.getElementById('recEditNumeroCalidad').value) || null,
     id_proyecto: editProyVal || null,
   };
-  // USC Responsable — only send if admin/admin2
-  if (currentRole === 'admin' || currentRole === 'admin2') {
+  // USC Responsable — only send if admin/admin_calidad
+  if (currentRole === 'admin' || currentRole === 'admin_calidad') {
     var editUscSel = document.getElementById('recEditAsignadoA');
     if (editUscSel) body.asignado_a = editUscSel.value || null;
   }

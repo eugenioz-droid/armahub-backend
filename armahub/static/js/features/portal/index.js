@@ -425,7 +425,7 @@ async function loadLandingIndicadores() {
   var alertaWrap = document.getElementById('hubAlertaReclamos');
   var alertas = data.alertas || {};
   if (alertaWrap) {
-    // Always show for roles that have alerts (admin, admin2, usc, cubicador)
+    // Always show for roles that have alerts (admin, admin_calidad, usc, cubicador)
     if (typeof alertas.total_abiertos !== 'undefined') {
       alertaWrap.style.display = '';
       document.getElementById('hubAlertaTexto').textContent = alertas.total_abiertos + ' reclamo(s) en total';

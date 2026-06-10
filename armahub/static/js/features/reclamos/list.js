@@ -69,8 +69,8 @@ function populateRecFilterProyecto() {
     scopeBtn.style.display = '';
     if (!_recScopeInitialized) {
       _recScopeInitialized = true;
-      // Admin/admin2 start seeing ALL; usc/cubicador start seeing MINE
-      _recScopeAll = ['admin','admin2'].includes(currentRole);
+      // Admin/admin_calidad start seeing ALL; usc/cubicador start seeing MINE
+      _recScopeAll = ['admin','admin_calidad'].includes(currentRole);
       _updateScopeBtnLabel(scopeBtn);
     }
   }

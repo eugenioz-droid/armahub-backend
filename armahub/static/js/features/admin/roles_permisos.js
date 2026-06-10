@@ -4,8 +4,8 @@
 (function(global) {
   'use strict';
 
-  var ROLES = ['admin', 'admin2', 'cubicador', 'usc', 'externo', 'cliente'];
-  var ROLE_LABELS = {admin:'Admin', admin2:'Admin2', cubicador:'Cubicador', usc:'USC', externo:'Externo', cliente:'Cliente'};
+  var ROLES = ['admin', 'admin_calidad', 'cubicador', 'usc', 'externo', 'cliente'];
+  var ROLE_LABELS = {admin:'Admin', admin_calidad:'Admin2', cubicador:'Cubicador', usc:'USC', externo:'Externo', cliente:'Cliente'};
 
   // ========================= DATA =========================
   // Cada tabla: { title, notes[], rows: [{action, perms:{role: symbol}}] }
@@ -19,9 +19,9 @@
       header: 'Módulo (caluga)',
       notes: ['Definido en registry.js → allowedRoles.'],
       rows: [
-        {action:'Cubicación',      perms:{admin:'✅',admin2:'✅',cubicador:'✅',usc:'—',externo:'—',cliente:'✅'}},
-        {action:'Reclamos',        perms:{admin:'✅',admin2:'✅',cubicador:'✅',usc:'✅',externo:'✅',cliente:'—'}},
-        {action:'Administración',  perms:{admin:'✅',admin2:'✅',cubicador:'—',usc:'—',externo:'—',cliente:'—'}},
+        {action:'Cubicación',      perms:{admin:'✅',admin_calidad:'✅',cubicador:'✅',usc:'—',externo:'—',cliente:'✅'}},
+        {action:'Reclamos',        perms:{admin:'✅',admin_calidad:'✅',cubicador:'✅',usc:'✅',externo:'✅',cliente:'—'}},
+        {action:'Administración',  perms:{admin:'✅',admin_calidad:'✅',cubicador:'—',usc:'—',externo:'—',cliente:'—'}},
       ]
     },
     // ---------- 1b ----------
@@ -35,13 +35,13 @@
         'Los roles sin acceso al módulo (—) no ven ningún tab de ese módulo.'
       ],
       rows: [
-        {action:'Cubicación / Obras',        perms:{admin:'✅',admin2:'✅',cubicador:'✅',usc:'—',externo:'—',cliente:'—'}},
-        {action:'Cubicación / Metrics',      perms:{admin:'✅',admin2:'✅',cubicador:'✅',usc:'—',externo:'—',cliente:'✅'}},
-        {action:'Cubicación / Bar Manager',  perms:{admin:'✅',admin2:'✅',cubicador:'✅',usc:'—',externo:'—',cliente:'—'}},
-        {action:'Cubicación / Pedidos',      perms:{admin:'✅',admin2:'✅',cubicador:'✅',usc:'—',externo:'—',cliente:'—'}},
-        {action:'Cubicación / Exportación',  perms:{admin:'✅',admin2:'✅',cubicador:'✅',usc:'—',externo:'—',cliente:'—'}},
-        {action:'Reclamos / Reclamos',       perms:{admin:'✅',admin2:'✅',cubicador:'✅',usc:'✅',externo:'✅',cliente:'—'}},
-        {action:'Admin / Admin',             perms:{admin:'✅',admin2:'✅',cubicador:'—',usc:'—',externo:'—',cliente:'—'}},
+        {action:'Cubicación / Obras',        perms:{admin:'✅',admin_calidad:'✅',cubicador:'✅',usc:'—',externo:'—',cliente:'—'}},
+        {action:'Cubicación / Metrics',      perms:{admin:'✅',admin_calidad:'✅',cubicador:'✅',usc:'—',externo:'—',cliente:'✅'}},
+        {action:'Cubicación / Bar Manager',  perms:{admin:'✅',admin_calidad:'✅',cubicador:'✅',usc:'—',externo:'—',cliente:'—'}},
+        {action:'Cubicación / Pedidos',      perms:{admin:'✅',admin_calidad:'✅',cubicador:'✅',usc:'—',externo:'—',cliente:'—'}},
+        {action:'Cubicación / Exportación',  perms:{admin:'✅',admin_calidad:'✅',cubicador:'✅',usc:'—',externo:'—',cliente:'—'}},
+        {action:'Reclamos / Reclamos',       perms:{admin:'✅',admin_calidad:'✅',cubicador:'✅',usc:'✅',externo:'✅',cliente:'—'}},
+        {action:'Admin / Admin',             perms:{admin:'✅',admin_calidad:'✅',cubicador:'—',usc:'—',externo:'—',cliente:'—'}},
       ]
     },
     // ---------- 2a ----------
@@ -51,10 +51,10 @@
       header: 'Indicador',
       notes: [],
       rows: [
-        {action:'Cubicado semanal (chart)',     perms:{admin:'✅',admin2:'✅',cubicador:'✅',usc:'—',externo:'—',cliente:'—'}},
-        {action:'Reclamos semana (chart)',       perms:{admin:'✅',admin2:'✅',cubicador:'✅ propios',usc:'✅ propios',externo:'✅ propios',cliente:'—'}},
-        {action:'Alertas reclamos',             perms:{admin:'✅ todos',admin2:'✅ todos',cubicador:'✅ propios',usc:'✅ propios',externo:'✅ propios',cliente:'—'}},
-        {action:'Resumen reclamos (mi-resumen)',perms:{admin:'✅',admin2:'✅',cubicador:'✅ propios',usc:'✅ propios',externo:'✅ propios',cliente:'—'}},
+        {action:'Cubicado semanal (chart)',     perms:{admin:'✅',admin_calidad:'✅',cubicador:'✅',usc:'—',externo:'—',cliente:'—'}},
+        {action:'Reclamos semana (chart)',       perms:{admin:'✅',admin_calidad:'✅',cubicador:'✅ propios',usc:'✅ propios',externo:'✅ propios',cliente:'—'}},
+        {action:'Alertas reclamos',             perms:{admin:'✅ todos',admin_calidad:'✅ todos',cubicador:'✅ propios',usc:'✅ propios',externo:'✅ propios',cliente:'—'}},
+        {action:'Resumen reclamos (mi-resumen)',perms:{admin:'✅',admin_calidad:'✅',cubicador:'✅ propios',usc:'✅ propios',externo:'✅ propios',cliente:'—'}},
       ]
     },
     // ---------- 2b ----------
@@ -64,10 +64,10 @@
       header: 'Vista',
       notes: ['* Acceso API disponible pero sin card en el Hub.'],
       rows: [
-        {action:'KPIs generales',            perms:{admin:'✅',admin2:'✅*',cubicador:'✅',usc:'✅*',externo:'✅*',cliente:'✅'}},
-        {action:'Top 15 proyectos (chart)',   perms:{admin:'✅',admin2:'✅*',cubicador:'✅',usc:'✅*',externo:'✅*',cliente:'✅'}},
-        {action:'Cubicadores (chart)',        perms:{admin:'✅',admin2:'✅*',cubicador:'✅',usc:'✅*',externo:'✅*',cliente:'✅'}},
-        {action:'Cubicación mensual (chart)', perms:{admin:'✅',admin2:'✅*',cubicador:'✅',usc:'✅*',externo:'✅*',cliente:'✅'}},
+        {action:'KPIs generales',            perms:{admin:'✅',admin_calidad:'✅*',cubicador:'✅',usc:'✅*',externo:'✅*',cliente:'✅'}},
+        {action:'Top 15 proyectos (chart)',   perms:{admin:'✅',admin_calidad:'✅*',cubicador:'✅',usc:'✅*',externo:'✅*',cliente:'✅'}},
+        {action:'Cubicadores (chart)',        perms:{admin:'✅',admin_calidad:'✅*',cubicador:'✅',usc:'✅*',externo:'✅*',cliente:'✅'}},
+        {action:'Cubicación mensual (chart)', perms:{admin:'✅',admin_calidad:'✅*',cubicador:'✅',usc:'✅*',externo:'✅*',cliente:'✅'}},
       ]
     },
     // ---------- 2c ----------
@@ -77,13 +77,13 @@
       header: 'Vista',
       notes: [
         '✖ = prohibido (403 en backend o sin acceso al módulo).',
-        '"propios": externo ve reclamos donde es cubicador_asignado o respuesta_por; usc ve donde es creado_por o asignado_a. Admin y admin2 ven todo (global).',
+        '"propios": externo ve reclamos donde es cubicador_asignado o respuesta_por; usc ve donde es creado_por o asignado_a. Admin y admin_calidad ven todo (global).',
         '*cubicador y usc: por defecto ven propios; toggle "Todos" permite ver listado completo (read-only sobre ajenos). Externo siempre ve solo propios, sin toggle.'
       ],
       rows: [
-        {action:'Resumen General',      perms:{admin:'✅ global',admin2:'✅ global',cubicador:'✅ propios*',usc:'✅ propios*',externo:'✅ propios',cliente:'✖'}},
-        {action:'Dashboards admin',     perms:{admin:'✅',admin2:'✅',cubicador:'✖',usc:'✖',externo:'✖',cliente:'✖'}},
-        {action:'Presentaciones stats', perms:{admin:'✅ todos',admin2:'✅ todos',cubicador:'✅ todos',usc:'✖',externo:'✅ propios',cliente:'✖'}},
+        {action:'Resumen General',      perms:{admin:'✅ global',admin_calidad:'✅ global',cubicador:'✅ propios*',usc:'✅ propios*',externo:'✅ propios',cliente:'✖'}},
+        {action:'Dashboards admin',     perms:{admin:'✅',admin_calidad:'✅',cubicador:'✖',usc:'✖',externo:'✖',cliente:'✖'}},
+        {action:'Presentaciones stats', perms:{admin:'✅ todos',admin_calidad:'✅ todos',cubicador:'✅ todos',usc:'✖',externo:'✅ propios',cliente:'✖'}},
       ]
     },
     // ---------- 3a ----------
@@ -91,15 +91,15 @@
       id: '3a', section: 3,
       title: '3a. Autenticación y usuarios',
       header: 'Acción',
-      notes: ['¹ admin2 no puede operar sobre usuarios con rol admin ni admin2.'],
+      notes: ['¹ admin_calidad no puede operar sobre usuarios con rol admin ni admin_calidad.'],
       rows: [
-        {action:'Login / cambiar password',    perms:{admin:'✅',admin2:'✅',cubicador:'✅',usc:'✅',externo:'✅',cliente:'✅'}},
-        {action:'Registrar usuario',           perms:{admin:'✅ cualquier rol',admin2:'✅ parcial¹',cubicador:'—',usc:'—',externo:'—',cliente:'—'}},
-        {action:'Listar usuarios (admin)',     perms:{admin:'✅',admin2:'✅',cubicador:'—',usc:'—',externo:'—',cliente:'—'}},
-        {action:'Cambiar rol de usuario',      perms:{admin:'✅',admin2:'✅ parcial¹',cubicador:'—',usc:'—',externo:'—',cliente:'—'}},
-        {action:'Activar/desactivar usuario',  perms:{admin:'✅',admin2:'✅ parcial¹',cubicador:'—',usc:'—',externo:'—',cliente:'—'}},
-        {action:'Resetear password de otro',   perms:{admin:'✅',admin2:'✅ parcial¹',cubicador:'—',usc:'—',externo:'—',cliente:'—'}},
-        {action:'Eliminar usuario',            perms:{admin:'✅',admin2:'✅ parcial¹',cubicador:'—',usc:'—',externo:'—',cliente:'—'}},
+        {action:'Login / cambiar password',    perms:{admin:'✅',admin_calidad:'✅',cubicador:'✅',usc:'✅',externo:'✅',cliente:'✅'}},
+        {action:'Registrar usuario',           perms:{admin:'✅ cualquier rol',admin_calidad:'✅ parcial¹',cubicador:'—',usc:'—',externo:'—',cliente:'—'}},
+        {action:'Listar usuarios (admin)',     perms:{admin:'✅',admin_calidad:'✅',cubicador:'—',usc:'—',externo:'—',cliente:'—'}},
+        {action:'Cambiar rol de usuario',      perms:{admin:'✅',admin_calidad:'✅ parcial¹',cubicador:'—',usc:'—',externo:'—',cliente:'—'}},
+        {action:'Activar/desactivar usuario',  perms:{admin:'✅',admin_calidad:'✅ parcial¹',cubicador:'—',usc:'—',externo:'—',cliente:'—'}},
+        {action:'Resetear password de otro',   perms:{admin:'✅',admin_calidad:'✅ parcial¹',cubicador:'—',usc:'—',externo:'—',cliente:'—'}},
+        {action:'Eliminar usuario',            perms:{admin:'✅',admin_calidad:'✅ parcial¹',cubicador:'—',usc:'—',externo:'—',cliente:'—'}},
       ]
     },
     // ---------- 3b ----------
@@ -109,11 +109,11 @@
       header: 'Acción',
       notes: [],
       rows: [
-        {action:'Ver info DB',     perms:{admin:'✅',admin2:'✅',cubicador:'—',usc:'—',externo:'—',cliente:'—'}},
-        {action:'Reset DB',        perms:{admin:'✅',admin2:'—',cubicador:'—',usc:'—',externo:'—',cliente:'—'}},
-        {action:'Ver tablas',      perms:{admin:'✅',admin2:'✅',cubicador:'—',usc:'—',externo:'—',cliente:'—'}},
-        {action:'Limpiar tabla',   perms:{admin:'✅',admin2:'—',cubicador:'—',usc:'—',externo:'—',cliente:'—'}},
-        {action:'Ver auditoría',   perms:{admin:'✅',admin2:'✅',cubicador:'—',usc:'—',externo:'—',cliente:'—'}},
+        {action:'Ver info DB',     perms:{admin:'✅',admin_calidad:'✅',cubicador:'—',usc:'—',externo:'—',cliente:'—'}},
+        {action:'Reset DB',        perms:{admin:'✅',admin_calidad:'—',cubicador:'—',usc:'—',externo:'—',cliente:'—'}},
+        {action:'Ver tablas',      perms:{admin:'✅',admin_calidad:'✅',cubicador:'—',usc:'—',externo:'—',cliente:'—'}},
+        {action:'Limpiar tabla',   perms:{admin:'✅',admin_calidad:'—',cubicador:'—',usc:'—',externo:'—',cliente:'—'}},
+        {action:'Ver auditoría',   perms:{admin:'✅',admin_calidad:'✅',cubicador:'—',usc:'—',externo:'—',cliente:'—'}},
       ]
     },
     // ---------- 3c ----------
@@ -122,24 +122,24 @@
       title: '3c. Proyectos y cargas (cubicación)',
       header: 'Acción',
       notes: [
-        '† Requiere estar autorizado en proyecto_usuarios. Admin/admin2 siempre tienen acceso.',
+        '† Requiere estar autorizado en proyecto_usuarios. Admin/admin_calidad siempre tienen acceso.',
         'Reimportar CSV: ejecuta DELETE de barras del mismo plano_code antes del UPSERT, eliminando barras huérfanas.',
         'USC, externo no tienen acceso al módulo Cubicación. Cliente solo lectura (Metrics + ver proyectos filtrados).'
       ],
       rows: [
-        {action:'Ver proyectos / barras',        perms:{admin:'✅',admin2:'✅',cubicador:'✅',usc:'—',externo:'—',cliente:'✅†'}},
-        {action:'Crear proyecto',                perms:{admin:'✅',admin2:'✅',cubicador:'✅',usc:'—',externo:'—',cliente:'—'}},
-        {action:'Editar proyecto',               perms:{admin:'✅',admin2:'✅',cubicador:'✅†',usc:'—',externo:'—',cliente:'—'}},
-        {action:'Eliminar proyecto (vacío)',      perms:{admin:'✅',admin2:'✅',cubicador:'✅†',usc:'—',externo:'—',cliente:'—'}},
-        {action:'Importar CSV',                  perms:{admin:'✅',admin2:'✅',cubicador:'✅',usc:'—',externo:'—',cliente:'—'}},
-        {action:'Reimportar CSV (reemplaza carga)',perms:{admin:'✅',admin2:'✅',cubicador:'✅',usc:'—',externo:'—',cliente:'—'}},
-        {action:'Exportar proyecto',             perms:{admin:'✅',admin2:'✅',cubicador:'✅',usc:'—',externo:'—',cliente:'—'}},
-        {action:'Eliminar carga',                perms:{admin:'✅',admin2:'✅',cubicador:'✅† o propio',usc:'—',externo:'—',cliente:'—'}},
-        {action:'Eliminar cargas (bulk)',         perms:{admin:'✅',admin2:'✅',cubicador:'✅† o propio',usc:'—',externo:'—',cliente:'—'}},
-        {action:'Mover cargas entre proyectos',  perms:{admin:'✅',admin2:'✅',cubicador:'✅† o propio',usc:'—',externo:'—',cliente:'—'}},
-        {action:'Autorizar usuario en proyecto', perms:{admin:'✅',admin2:'✅',cubicador:'✅†',usc:'—',externo:'—',cliente:'—'}},
-        {action:'Ver cargas recientes',          perms:{admin:'✅',admin2:'✅',cubicador:'✅',usc:'—',externo:'—',cliente:'✅'}},
-        {action:'Navegación sectores/pisos',     perms:{admin:'✅',admin2:'✅',cubicador:'✅',usc:'—',externo:'—',cliente:'✅'}},
+        {action:'Ver proyectos / barras',        perms:{admin:'✅',admin_calidad:'✅',cubicador:'✅',usc:'—',externo:'—',cliente:'✅†'}},
+        {action:'Crear proyecto',                perms:{admin:'✅',admin_calidad:'✅',cubicador:'✅',usc:'—',externo:'—',cliente:'—'}},
+        {action:'Editar proyecto',               perms:{admin:'✅',admin_calidad:'✅',cubicador:'✅†',usc:'—',externo:'—',cliente:'—'}},
+        {action:'Eliminar proyecto (vacío)',      perms:{admin:'✅',admin_calidad:'✅',cubicador:'✅†',usc:'—',externo:'—',cliente:'—'}},
+        {action:'Importar CSV',                  perms:{admin:'✅',admin_calidad:'✅',cubicador:'✅',usc:'—',externo:'—',cliente:'—'}},
+        {action:'Reimportar CSV (reemplaza carga)',perms:{admin:'✅',admin_calidad:'✅',cubicador:'✅',usc:'—',externo:'—',cliente:'—'}},
+        {action:'Exportar proyecto',             perms:{admin:'✅',admin_calidad:'✅',cubicador:'✅',usc:'—',externo:'—',cliente:'—'}},
+        {action:'Eliminar carga',                perms:{admin:'✅',admin_calidad:'✅',cubicador:'✅† o propio',usc:'—',externo:'—',cliente:'—'}},
+        {action:'Eliminar cargas (bulk)',         perms:{admin:'✅',admin_calidad:'✅',cubicador:'✅† o propio',usc:'—',externo:'—',cliente:'—'}},
+        {action:'Mover cargas entre proyectos',  perms:{admin:'✅',admin_calidad:'✅',cubicador:'✅† o propio',usc:'—',externo:'—',cliente:'—'}},
+        {action:'Autorizar usuario en proyecto', perms:{admin:'✅',admin_calidad:'✅',cubicador:'✅†',usc:'—',externo:'—',cliente:'—'}},
+        {action:'Ver cargas recientes',          perms:{admin:'✅',admin_calidad:'✅',cubicador:'✅',usc:'—',externo:'—',cliente:'✅'}},
+        {action:'Navegación sectores/pisos',     perms:{admin:'✅',admin_calidad:'✅',cubicador:'✅',usc:'—',externo:'—',cliente:'✅'}},
       ]
     },
     // ---------- 3d ----------
@@ -153,33 +153,33 @@
         '"propios" para cubicador/externo = reclamos donde es cubicador_asignado o respuesta_por.',
         '"propios" para USC = reclamos donde es creado_por o asignado_a.',
         '*cubicador y usc: por defecto ven propios; toggle "Todos" permite ver listado completo (read-only, sin permisos de edición sobre ajenos). Externo siempre ve solo propios, sin toggle.',
-        'Año calidad (anio_calidad) solo editable por admin/admin2 (bloqueado inline en PATCH).',
+        'Año calidad (anio_calidad) solo editable por admin/admin_calidad (bloqueado inline en PATCH).',
         'Editar/Eliminar acción correctiva e imágenes — actualmente sin validación de propiedad en backend.',
-        'Enviar informe por correo: al enviar se registra un seguimiento automático indicando quién envió el PDF y a qué destinatario(s). Solo admin, admin2, o el USC propietario pueden enviar.'
+        'Enviar informe por correo: al enviar se registra un seguimiento automático indicando quién envió el PDF y a qué destinatario(s). Solo admin, admin_calidad, o el USC propietario pueden enviar.'
       ],
       rows: [
-        {action:'Ver listado reclamos',               perms:{admin:'✅ todo',admin2:'✅ todo',cubicador:'✅ propios*',usc:'✅ propios*',externo:'✅ propios',cliente:'—'}},
-        {action:'Crear reclamo',                      perms:{admin:'✅',admin2:'✅',cubicador:'—',usc:'✅ auto-asigna',externo:'—',cliente:'—'}},
-        {action:'Asignar USC Responsable',            perms:{admin:'✅ libre',admin2:'✅ libre',cubicador:'—',usc:'✅ auto (bloq)',externo:'—',cliente:'—'}},
-        {action:'Asignar Cubicador Responsable',      perms:{admin:'✅ libre',admin2:'✅ libre',cubicador:'—',usc:'✅ libre',externo:'—',cliente:'—'}},
-        {action:'Editar registro (form básico)',       perms:{admin:'✅',admin2:'✅',cubicador:'—',usc:'✅ propios',externo:'—',cliente:'—'}},
-        {action:'Editar análisis (form cubicador)',    perms:{admin:'✅',admin2:'✅',cubicador:'✅ propios',usc:'—',externo:'✅ propios',cliente:'—'}},
-        {action:'Editar año calidad',                 perms:{admin:'✅',admin2:'✅',cubicador:'—',usc:'—',externo:'—',cliente:'—'}},
-        {action:'Editar número calidad',              perms:{admin:'✅',admin2:'✅',cubicador:'✅',usc:'✅',externo:'✅',cliente:'—'}},
-        {action:'Validación resultado/observaciones', perms:{admin:'✅',admin2:'✅',cubicador:'✅',usc:'✅',externo:'✅',cliente:'—'}},
-        {action:'Campos tiempo respuesta',            perms:{admin:'✅',admin2:'✅',cubicador:'✅ propios',usc:'—',externo:'✅ propios',cliente:'—'}},
-        {action:'Eliminar reclamo',                   perms:{admin:'✅',admin2:'✅',cubicador:'—',usc:'✅ propios',externo:'—',cliente:'—'}},
-        {action:'Agregar historial de modificaciones', perms:{admin:'✅',admin2:'✅',cubicador:'✅',usc:'✅',externo:'✅',cliente:'—'}},
-        {action:'Agregar acción correctiva',           perms:{admin:'✅',admin2:'✅',cubicador:'✅ propios',usc:'—',externo:'✅ propios',cliente:'—'}},
-        {action:'Editar acción correctiva',            perms:{admin:'✅',admin2:'✅',cubicador:'✅',usc:'✅',externo:'✅',cliente:'—'}},
-        {action:'Eliminar acción correctiva',          perms:{admin:'✅',admin2:'✅',cubicador:'✅',usc:'✅',externo:'✅',cliente:'—'}},
-        {action:'Subir imágenes registro',             perms:{admin:'✅',admin2:'✅',cubicador:'—',usc:'✅',externo:'—',cliente:'—'}},
-        {action:'Subir imágenes análisis',             perms:{admin:'✅',admin2:'✅',cubicador:'✅',usc:'—',externo:'✅',cliente:'—'}},
-        {action:'Eliminar imágenes',                   perms:{admin:'✅',admin2:'✅',cubicador:'✅',usc:'✅',externo:'✅',cliente:'—'}},
-        {action:'Presentar reclamo',                   perms:{admin:'✅',admin2:'✅',cubicador:'✅ propios',usc:'—',externo:'✅ propios',cliente:'—'}},
-        {action:'Siguiente número calidad',            perms:{admin:'✅',admin2:'✅',cubicador:'✅',usc:'✅',externo:'✅',cliente:'—'}},
-        {action:'Exportar PDF',                          perms:{admin:'✅',admin2:'✅',cubicador:'✅ propios',usc:'✅ propios',externo:'—',cliente:'—'}},
-        {action:'Enviar informe por correo',             perms:{admin:'✅',admin2:'✅',cubicador:'—',usc:'✅ propios',externo:'—',cliente:'—'}},
+        {action:'Ver listado reclamos',               perms:{admin:'✅ todo',admin_calidad:'✅ todo',cubicador:'✅ propios*',usc:'✅ propios*',externo:'✅ propios',cliente:'—'}},
+        {action:'Crear reclamo',                      perms:{admin:'✅',admin_calidad:'✅',cubicador:'—',usc:'✅ auto-asigna',externo:'—',cliente:'—'}},
+        {action:'Asignar USC Responsable',            perms:{admin:'✅ libre',admin_calidad:'✅ libre',cubicador:'—',usc:'✅ auto (bloq)',externo:'—',cliente:'—'}},
+        {action:'Asignar Cubicador Responsable',      perms:{admin:'✅ libre',admin_calidad:'✅ libre',cubicador:'—',usc:'✅ libre',externo:'—',cliente:'—'}},
+        {action:'Editar registro (form básico)',       perms:{admin:'✅',admin_calidad:'✅',cubicador:'—',usc:'✅ propios',externo:'—',cliente:'—'}},
+        {action:'Editar análisis (form cubicador)',    perms:{admin:'✅',admin_calidad:'✅',cubicador:'✅ propios',usc:'—',externo:'✅ propios',cliente:'—'}},
+        {action:'Editar año calidad',                 perms:{admin:'✅',admin_calidad:'✅',cubicador:'—',usc:'—',externo:'—',cliente:'—'}},
+        {action:'Editar número calidad',              perms:{admin:'✅',admin_calidad:'✅',cubicador:'✅',usc:'✅',externo:'✅',cliente:'—'}},
+        {action:'Validación resultado/observaciones', perms:{admin:'✅',admin_calidad:'✅',cubicador:'✅',usc:'✅',externo:'✅',cliente:'—'}},
+        {action:'Campos tiempo respuesta',            perms:{admin:'✅',admin_calidad:'✅',cubicador:'✅ propios',usc:'—',externo:'✅ propios',cliente:'—'}},
+        {action:'Eliminar reclamo',                   perms:{admin:'✅',admin_calidad:'✅',cubicador:'—',usc:'✅ propios',externo:'—',cliente:'—'}},
+        {action:'Agregar historial de modificaciones', perms:{admin:'✅',admin_calidad:'✅',cubicador:'✅',usc:'✅',externo:'✅',cliente:'—'}},
+        {action:'Agregar acción correctiva',           perms:{admin:'✅',admin_calidad:'✅',cubicador:'✅ propios',usc:'—',externo:'✅ propios',cliente:'—'}},
+        {action:'Editar acción correctiva',            perms:{admin:'✅',admin_calidad:'✅',cubicador:'✅',usc:'✅',externo:'✅',cliente:'—'}},
+        {action:'Eliminar acción correctiva',          perms:{admin:'✅',admin_calidad:'✅',cubicador:'✅',usc:'✅',externo:'✅',cliente:'—'}},
+        {action:'Subir imágenes registro',             perms:{admin:'✅',admin_calidad:'✅',cubicador:'—',usc:'✅',externo:'—',cliente:'—'}},
+        {action:'Subir imágenes análisis',             perms:{admin:'✅',admin_calidad:'✅',cubicador:'✅',usc:'—',externo:'✅',cliente:'—'}},
+        {action:'Eliminar imágenes',                   perms:{admin:'✅',admin_calidad:'✅',cubicador:'✅',usc:'✅',externo:'✅',cliente:'—'}},
+        {action:'Presentar reclamo',                   perms:{admin:'✅',admin_calidad:'✅',cubicador:'✅ propios',usc:'—',externo:'✅ propios',cliente:'—'}},
+        {action:'Siguiente número calidad',            perms:{admin:'✅',admin_calidad:'✅',cubicador:'✅',usc:'✅',externo:'✅',cliente:'—'}},
+        {action:'Exportar PDF',                          perms:{admin:'✅',admin_calidad:'✅',cubicador:'✅ propios',usc:'✅ propios',externo:'—',cliente:'—'}},
+        {action:'Enviar informe por correo',             perms:{admin:'✅',admin_calidad:'✅',cubicador:'—',usc:'✅ propios',externo:'—',cliente:'—'}},
       ]
     },
     // ---------- 3e ----------
@@ -189,9 +189,9 @@
       header: 'Acción',
       notes: [],
       rows: [
-        {action:'CRUD pedidos',        perms:{admin:'✅',admin2:'✅',cubicador:'—',usc:'—',externo:'—',cliente:'—'}},
-        {action:'CRUD calculistas',    perms:{admin:'✅',admin2:'✅',cubicador:'—',usc:'—',externo:'—',cliente:'—'}},
-        {action:'CRUD constructoras',  perms:{admin:'✅',admin2:'✅',cubicador:'—',usc:'—',externo:'—',cliente:'—'}},
+        {action:'CRUD pedidos',        perms:{admin:'✅',admin_calidad:'✅',cubicador:'—',usc:'—',externo:'—',cliente:'—'}},
+        {action:'CRUD calculistas',    perms:{admin:'✅',admin_calidad:'✅',cubicador:'—',usc:'—',externo:'—',cliente:'—'}},
+        {action:'CRUD constructoras',  perms:{admin:'✅',admin_calidad:'✅',cubicador:'—',usc:'—',externo:'—',cliente:'—'}},
       ]
     },
     // ---------- 3f ----------
@@ -201,11 +201,11 @@
       header: 'Acción',
       notes: [],
       rows: [
-        {action:'Ver notificaciones propias',   perms:{admin:'✅',admin2:'✅',cubicador:'✅',usc:'✅',externo:'✅',cliente:'✅'}},
-        {action:'Contar no leídas',             perms:{admin:'✅',admin2:'✅',cubicador:'✅',usc:'✅',externo:'✅',cliente:'✅'}},
-        {action:'Marcar leída / todas leídas',  perms:{admin:'✅',admin2:'✅',cubicador:'✅',usc:'✅',externo:'✅',cliente:'✅'}},
-        {action:'Ver config notificaciones',    perms:{admin:'✅',admin2:'✅',cubicador:'—',usc:'—',externo:'—',cliente:'—'}},
-        {action:'Editar config notificaciones', perms:{admin:'✅',admin2:'✅',cubicador:'—',usc:'—',externo:'—',cliente:'—'}},
+        {action:'Ver notificaciones propias',   perms:{admin:'✅',admin_calidad:'✅',cubicador:'✅',usc:'✅',externo:'✅',cliente:'✅'}},
+        {action:'Contar no leídas',             perms:{admin:'✅',admin_calidad:'✅',cubicador:'✅',usc:'✅',externo:'✅',cliente:'✅'}},
+        {action:'Marcar leída / todas leídas',  perms:{admin:'✅',admin_calidad:'✅',cubicador:'✅',usc:'✅',externo:'✅',cliente:'✅'}},
+        {action:'Ver config notificaciones',    perms:{admin:'✅',admin_calidad:'✅',cubicador:'—',usc:'—',externo:'—',cliente:'—'}},
+        {action:'Editar config notificaciones', perms:{admin:'✅',admin_calidad:'✅',cubicador:'—',usc:'—',externo:'—',cliente:'—'}},
       ]
     },
   ];
@@ -213,8 +213,8 @@
   var SECURITY_NOTES = [
     'Reclamos protegidos en backend — los endpoints de mutación (PATCH, DELETE, POST acciones/imágenes/presentar) validan rol + propiedad. Los campos de registro y análisis están separados por rol.',
     'GET /reclamos/{id}/imagenes/{iid} no tiene auth — públicamente accesible con la URL.',
-    'Pedidos, calculistas, constructoras — restringidos a admin/admin2 en backend.',
-    'admin2 vs admin: admin2 no puede crear usuarios admin/admin2, no puede operar sobre usuarios admin/admin2, no puede reset DB ni limpiar tablas.',
+    'Pedidos, calculistas, constructoras — restringidos a admin/admin_calidad en backend.',
+    'admin_calidad vs admin: admin_calidad no puede crear usuarios admin/admin_calidad, no puede operar sobre usuarios admin/admin_calidad, no puede reset DB ni limpiar tablas.',
     'Acciones correctivas e imágenes — PATCH/DELETE /reclamos/{id}/acciones/{aid} y DELETE /reclamos/{id}/imagenes/{iid} no validan propiedad. Cualquier usuario autenticado puede operar sobre cualquier reclamo. Pendiente de hardening.',
     'numero_calidad — no está restringido a REGISTRO_FIELDS ni ANALISIS_FIELDS, lo que permite su edición por cualquier rol autenticado (excepto cliente). Evaluar si debería restringirse.',
     'Enviar informe por correo genera un seguimiento automático con el texto "Informe PDF enviado por correo a {destinatarios}" bajo el usuario que ejecuta la acción.'

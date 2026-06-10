@@ -167,7 +167,7 @@
       }
       var tipos = data.tipos_evento || [];
       var labels = data.labels || {};
-      var roles = ['admin', 'admin2', 'usc', 'cubicador', 'externo'];
+      var roles = ['admin', 'admin_calidad', 'usc', 'cubicador', 'externo'];
       var configMap = {};
       data.data.forEach(function(c) {
         configMap[c.tipo_evento + '|' + c.rol] = c.activo;

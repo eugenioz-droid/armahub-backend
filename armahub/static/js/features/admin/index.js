@@ -34,12 +34,12 @@ function switchAdminSubTab(tabId) {
 }
 
 async function loadAdminModule() {
-  // Filter role dropdown for admin2 (cannot create admin/admin2)
-  if (currentRole === 'admin2') {
+  // Filter role dropdown for admin_calidad (cannot create admin/admin_calidad)
+  if (currentRole === 'admin_calidad') {
     var sel = document.getElementById('newUserRole');
     if (sel) {
       Array.from(sel.options).forEach(function(o) {
-        if (o.value === 'admin' || o.value === 'admin2') o.remove();
+        if (o.value === 'admin' || o.value === 'admin_calidad') o.remove();
       });
     }
   }
@@ -98,7 +98,7 @@ async function clearTable(tableName) {
 async function loadDbInfo() {
   const data = await apiGet('/admin/db-info');
   if (!data) return;
-  // Hide Reset DB section for admin2
+  // Hide Reset DB section for admin_calidad
   var resetCard = document.getElementById('adminResetBdCard');
   if (resetCard && currentRole !== 'admin') resetCard.style.display = 'none';
   document.getElementById('dbInfoContainer').innerHTML = `
@@ -166,8 +166,8 @@ async function resetDatabase() {
 }
 
 // ========================= USUARIOS =========================
-var _roleColors = { admin: '#b42318', admin2: '#1565C0', cubicador: '#2e7d32', usc: '#ff9800', externo: '#795548', cliente: '#7B1FA2' };
-var _roleLabels = { admin: 'Admin', admin2: 'Admin2', cubicador: 'Cubicador', usc: 'USC', externo: 'Externo', cliente: 'Cliente' };
+var _roleColors = { admin: '#b42318', admin_calidad: '#1565C0', cubicador: '#2e7d32', usc: '#ff9800', externo: '#795548', cliente: '#7B1FA2' };
+var _roleLabels = { admin: 'Admin', admin_calidad: 'Admin2', cubicador: 'Cubicador', usc: 'USC', externo: 'Externo', cliente: 'Cliente' };
 
 function toggleNuevoUsuario() {
   var f = document.getElementById('nuevoUsuarioForm');
@@ -214,8 +214,8 @@ async function loadUsers() {
     var fecha = u.fecha_creacion ? u.fecha_creacion.substring(0, 10) : '-';
     var toggleLabel = activo ? 'Desactivar' : 'Activar';
     var toggleColor = activo ? '#b42318' : '#2e7d32';
-    var _rolLabels = {admin:'Admin',admin2:'Admin2',cubicador:'Cubicador',usc:'USC',externo:'Externo',cliente:'Cliente'};
-    var allRoles = ['admin','admin2','cubicador','usc','externo','cliente'];
+    var _rolLabels = {admin:'Admin',admin_calidad:'Admin2',cubicador:'Cubicador',usc:'USC',externo:'Externo',cliente:'Cliente'};
+    var allRoles = ['admin','admin_calidad','cubicador','usc','externo','cliente'];
     var rolOpts = allRoles.map(function(r) {
       return '<option value="' + r + '"' + (r === u.role ? ' selected' : '') + '>' + (_rolLabels[r] || r) + '</option>';
     }).join('');
@@ -224,11 +224,11 @@ async function loadUsers() {
     var displayName = ((u.nombre || '') + ' ' + (u.apellido || '')).trim();
     html += '<td style="padding:4px 6px; font-weight:500;">' + u.email + '</td>';
     html += '<td style="padding:4px 6px;">' + (displayName || '<span class="muted">-</span>') + '</td>';
-    // Role column: admin/admin2 see dropdown (admin2 filtered), others see label
-    var isProtectedTarget = (u.role === 'admin' || u.role === 'admin2');
+    // Role column: admin/admin_calidad see dropdown (admin_calidad filtered), others see label
+    var isProtectedTarget = (u.role === 'admin' || u.role === 'admin_calidad');
     if (currentRole === 'admin') {
       html += '<td style="padding:4px 6px;"><select style="font-size:11px; color:' + rColor + '; font-weight:600; border:1px solid #ddd; border-radius:3px; padding:1px 4px;" onchange="cambiarRolUsuario(' + u.id + ', this.value)">' + rolOpts + '</select></td>';
-    } else if (currentRole === 'admin2' && !isProtectedTarget) {
+    } else if (currentRole === 'admin_calidad' && !isProtectedTarget) {
       var a2Roles = ['cubicador','usc','externo','cliente'];
       var a2Opts = a2Roles.map(function(r) {
         return '<option value="' + r + '"' + (r === u.role ? ' selected' : '') + '>' + (_rolLabels[r] || r) + '</option>';
@@ -241,8 +241,8 @@ async function loadUsers() {
     html += '<td style="padding:4px 6px; font-size:11px;" class="muted">' + fecha + '</td>';
     html += '<td style="padding:4px 6px; white-space:nowrap;">';
     html += '<button class="secondary" style="font-size:10px; padding:1px 6px;" onclick="editarNombreUsuario(' + u.id + ', \'' + (u.nombre || '').replace(/'/g, "\\'") + '\', \'' + (u.apellido || '').replace(/'/g, "\\'") + '\')">Nombre</button> ';
-    // admin2 cannot operate on admin/admin2 targets
-    var canOperate = currentRole === 'admin' || (currentRole === 'admin2' && !isProtectedTarget);
+    // admin_calidad cannot operate on admin/admin_calidad targets
+    var canOperate = currentRole === 'admin' || (currentRole === 'admin_calidad' && !isProtectedTarget);
     if (canOperate) {
       html += '<button class="secondary" style="font-size:10px; padding:1px 6px; color:' + toggleColor + ';" onclick="toggleActivoUsuario(' + u.id + ', ' + !activo + ')">' + toggleLabel + '</button> ';
       html += '<button class="secondary" style="font-size:10px; padding:1px 6px;" onclick="resetPasswordUsuario(' + u.id + ')">Cambiar clave</button> ';

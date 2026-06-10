@@ -477,10 +477,10 @@ MIGRATIONS = [
         "DO $$ BEGIN ALTER TABLE reclamos ADD COLUMN asignado_a TEXT; EXCEPTION WHEN duplicate_column THEN NULL; END $$;",
         "UPDATE reclamos SET creado_por = 'sistema' WHERE creado_por IS NULL;",
     ]),
-    (25, "renombrar coordinador a admin2", [
+    (25, "renombrar coordinador a admin_calidad", [
         "ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check;",
-        "UPDATE users SET role = 'admin2' WHERE role = 'coordinador';",
-        "ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('admin', 'admin2', 'cubicador', 'usc', 'externo', 'cliente'));",
+        "UPDATE users SET role = 'admin_calidad' WHERE role = 'coordinador';",
+        "ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('admin', 'admin_calidad', 'cubicador', 'usc', 'externo', 'cliente'));",
     ]),
     (26, "reclamos: cubicador_asignado para tracking de responsabilidad", [
         "DO $$ BEGIN ALTER TABLE reclamos ADD COLUMN cubicador_asignado TEXT; EXCEPTION WHEN duplicate_column THEN NULL; END $$;",
@@ -612,11 +612,11 @@ MIGRATIONS = [
         )""",
         # Defaults: quién recibe cada tipo de evento
         "INSERT INTO notificacion_config (tipo_evento, rol, activo) VALUES ('reclamo_creado', 'admin', TRUE) ON CONFLICT DO NOTHING",
-        "INSERT INTO notificacion_config (tipo_evento, rol, activo) VALUES ('reclamo_creado', 'admin2', TRUE) ON CONFLICT DO NOTHING",
+        "INSERT INTO notificacion_config (tipo_evento, rol, activo) VALUES ('reclamo_creado', 'admin_calidad', TRUE) ON CONFLICT DO NOTHING",
         "INSERT INTO notificacion_config (tipo_evento, rol, activo) VALUES ('reclamo_asignado', 'cubicador', TRUE) ON CONFLICT DO NOTHING",
         "INSERT INTO notificacion_config (tipo_evento, rol, activo) VALUES ('reclamo_asignado', 'usc', TRUE) ON CONFLICT DO NOTHING",
         "INSERT INTO notificacion_config (tipo_evento, rol, activo) VALUES ('analisis_completado', 'admin', TRUE) ON CONFLICT DO NOTHING",
-        "INSERT INTO notificacion_config (tipo_evento, rol, activo) VALUES ('analisis_completado', 'admin2', TRUE) ON CONFLICT DO NOTHING",
+        "INSERT INTO notificacion_config (tipo_evento, rol, activo) VALUES ('analisis_completado', 'admin_calidad', TRUE) ON CONFLICT DO NOTHING",
         "INSERT INTO notificacion_config (tipo_evento, rol, activo) VALUES ('analisis_completado', 'usc', TRUE) ON CONFLICT DO NOTHING",
         "INSERT INTO notificacion_config (tipo_evento, rol, activo) VALUES ('validacion_realizada', 'cubicador', TRUE) ON CONFLICT DO NOTHING",
         "INSERT INTO notificacion_config (tipo_evento, rol, activo) VALUES ('validacion_realizada', 'usc', TRUE) ON CONFLICT DO NOTHING",
@@ -624,7 +624,7 @@ MIGRATIONS = [
         "INSERT INTO notificacion_config (tipo_evento, rol, activo) VALUES ('reclamo_cerrado', 'usc', TRUE) ON CONFLICT DO NOTHING",
         "INSERT INTO notificacion_config (tipo_evento, rol, activo) VALUES ('reclamo_reabierto', 'cubicador', TRUE) ON CONFLICT DO NOTHING",
         "INSERT INTO notificacion_config (tipo_evento, rol, activo) VALUES ('cambio_estado', 'admin', TRUE) ON CONFLICT DO NOTHING",
-        "INSERT INTO notificacion_config (tipo_evento, rol, activo) VALUES ('cambio_estado', 'admin2', TRUE) ON CONFLICT DO NOTHING",
+        "INSERT INTO notificacion_config (tipo_evento, rol, activo) VALUES ('cambio_estado', 'admin_calidad', TRUE) ON CONFLICT DO NOTHING",
     ]),
 
     (44, "reclamos: separar id_calidad en anio_calidad + numero_calidad", [
@@ -907,6 +907,10 @@ MIGRATIONS = [
         ) AS sub(codigo, descripcion, orden)
         WHERE a.slug = 'cubicaciones' AND c.slug = 'mano_de_obra'
         """,
+    ]),
+    ("59", "Renombrar rol admin2 → admin_calidad en usuarios y configuraciones", [
+        "UPDATE usuarios SET rol = 'admin_calidad' WHERE rol = 'admin2'",
+        "UPDATE notificacion_config SET rol = 'admin_calidad' WHERE rol = 'admin2'",
     ]),
 ]
 

@@ -16,7 +16,7 @@ from psycopg.rows import dict_row
 
 from .notifications import crear_notificacion
 
-from .auth import get_current_user, require_admin_or_admin2
+from .auth import get_current_user, require_admin_or_admin_calidad
 from .db import get_conn, audit
 from . import cache as _cache
 from . import storage
@@ -62,13 +62,13 @@ def _es_propietario_cubicador(rec: dict, email: str) -> bool:
 def _puede_ver_reclamo(rec: dict, user: dict) -> bool:
     """
     True si el usuario puede ver este reclamo.
-    admin/admin2/cubicador → todo (global). usc/externo → solo propios.
+    admin/admin_calidad/cubicador → todo (global). usc/externo → solo propios.
     cliente → no tiene acceso a reclamos.
     Espejo de build_role_filter, para validar acceso a un reclamo puntual (cierra IDOR).
     """
     role = user.get("role", "")
     email = user.get("email", "")
-    if role in ("admin", "admin2", "cubicador"):
+    if role in ("admin", "admin_calidad", "cubicador"):
         return True
     if role == "usc":
         return _es_propietario_usc(rec, email)
@@ -394,8 +394,8 @@ def crear_reclamo(body: ReclamoCreate, user=Depends(get_current_user)):
     role = user.get("role", "usc")
     now = datetime.now(timezone.utc).isoformat()
 
-    # Solo admin, admin2, usc pueden crear reclamos
-    if role not in ("admin", "admin2", "usc"):
+    # Solo admin, admin_calidad, usc pueden crear reclamos
+    if role not in ("admin", "admin_calidad", "usc"):
         raise HTTPException(status_code=403, detail="No tiene permiso para crear reclamos")
 
     if body.prioridad and body.prioridad not in PRIORIDADES:
@@ -411,8 +411,8 @@ def crear_reclamo(body: ReclamoCreate, user=Depends(get_current_user)):
         if role == "usc":
             # USC se auto-asigna
             asignado_a = email
-        elif role in ("admin", "admin2"):
-            # Admin/admin2 puede dejar vacío para asignar después
+        elif role in ("admin", "admin_calidad"):
+            # Admin/admin_calidad puede dejar vacío para asignar después
             asignado_a = None
         else:
             # Otros roles no deberían crear reclamos (validado en frontend)
@@ -517,7 +517,7 @@ def reclamos_mi_resumen(user=Depends(get_current_user)):
 
             # Ishikawa breakdown (for cubicador landing doughnut)
             por_ishikawa = {}
-            if role in ("cubicador", "externo", "admin", "admin2"):
+            if role in ("cubicador", "externo", "admin", "admin_calidad"):
                 por_ishikawa_list = q_por_categoria(cur, where=f" AND r.categoria_ishikawa IS NOT NULL{role_filter}", params=role_params)
                 por_ishikawa = {item["categoria"]: item["count"] for item in por_ishikawa_list}
 
@@ -533,7 +533,7 @@ def reclamos_mi_resumen(user=Depends(get_current_user)):
 
 
 @router.get("/reclamos/admin-dashboards")
-def reclamos_admin_dashboards(user=Depends(require_admin_or_admin2)):
+def reclamos_admin_dashboards(user=Depends(require_admin_or_admin_calidad)):
     """Detailed analytics for admin Dashboards tab.
     Returns per-USC and per-cubicador breakdowns."""
 
@@ -722,7 +722,7 @@ def get_usuarios_usc(user=Depends(get_current_user)):
 def reclamos_para_presentar(user=Depends(get_current_user)):
     """Lista de reclamos elegibles para presentación.
     Requisito: estado = 'cerrado'.
-    Cubicadores solo ven sus reclamos asignados; admin/admin2 ven todos.
+    Cubicadores solo ven sus reclamos asignados; admin/admin_calidad ven todos.
     """
     email = user.get("email", "")
     role = user.get("role", "")
@@ -733,7 +733,7 @@ def reclamos_para_presentar(user=Depends(get_current_user)):
             if role in ("cubicador", "externo"):
                 role_filter = "AND (r.cubicador_asignado = %s OR r.respuesta_por = %s)"
                 params.extend([email, email])
-            elif role not in ("admin", "admin2"):
+            elif role not in ("admin", "admin_calidad"):
                 role_filter, params = build_role_filter(user)
 
             cur.execute(f"""
@@ -807,7 +807,7 @@ def presentaciones_stats(user=Depends(get_current_user)):
             if role in ("cubicador", "externo"):
                 role_filter = "AND (r.cubicador_asignado = %s OR r.respuesta_por = %s)"
                 params.extend([email, email])
-            elif role not in ("admin", "admin2"):
+            elif role not in ("admin", "admin_calidad"):
                 role_filter, params = build_role_filter(user)
 
             base = f"""
@@ -878,7 +878,7 @@ def presentar_reclamo(reclamo_id: int, body: PresentarReclamoRequest, user=Depen
     role = user.get("role", "usc")
     now = datetime.now(timezone.utc).isoformat()
 
-    if role not in ("admin", "admin2", "cubicador", "externo"):
+    if role not in ("admin", "admin_calidad", "cubicador", "externo"):
         raise HTTPException(status_code=403, detail="No tiene permiso para presentar reclamos")
 
     if not body.asistentes:
@@ -993,9 +993,9 @@ def get_reclamo_optimizado(
     
     role = user.get("role", "")
 
-    # Cache solo para roles globales (admin/admin2/cubicador ven todo).
+    # Cache solo para roles globales (admin/admin_calidad/cubicador ven todo).
     # usc/externo tienen scope restringido — no cachear para evitar que lean reclamos ajenos.
-    use_cache = role in ("admin", "admin2", "cubicador")
+    use_cache = role in ("admin", "admin_calidad", "cubicador")
     cache_key = _get_cache_key(reclamo_id, include_images, include_seguimientos, include_acciones)
 
     if use_cache and _is_cache_valid(cache_key):
@@ -1246,7 +1246,7 @@ def actualizar_reclamo(reclamo_id: int, body: ReclamoUpdate, user=Depends(get_cu
 
             # Filtrar campos según rol
             submitted_fields = {f for f in body.__fields_set__ if getattr(body, f) is not None}
-            if role in ("admin", "admin2"):
+            if role in ("admin", "admin_calidad"):
                 pass  # sin restricción
             elif role == "usc":
                 if not _es_propietario_usc(rec, email):
@@ -1320,8 +1320,8 @@ def actualizar_reclamo(reclamo_id: int, body: ReclamoUpdate, user=Depends(get_cu
                         continue  # PA.5: these will be set to NULL below
                     if body.aplica == "no" and field in ishikawa_fields:
                         continue
-                    # anio_calidad solo editable por admin/admin2
-                    if field == "anio_calidad" and role not in ("admin", "admin2"):
+                    # anio_calidad solo editable por admin/admin_calidad
+                    if field == "anio_calidad" and role not in ("admin", "admin_calidad"):
                         continue
                     sets.append(f"{field} = %s")
                     params.append(val if (val != "" or field not in nullable_fields) else None)
@@ -1335,8 +1335,8 @@ def actualizar_reclamo(reclamo_id: int, body: ReclamoUpdate, user=Depends(get_cu
             if body.respuesta_texto and body.respuesta_texto.strip():
                 sets.append("respuesta_fecha = %s")
                 params.append(now)
-                # Admin/admin2: attribute response to cubicador_asignado if set
-                if role in ("admin", "admin2"):
+                # Admin/admin_calidad: attribute response to cubicador_asignado if set
+                if role in ("admin", "admin_calidad"):
                     # Use cubicador_asignado from body (if just assigned) or from existing reclamo
                     cub_email = body.cubicador_asignado
                     if not cub_email:
@@ -1461,7 +1461,7 @@ def eliminar_reclamo(reclamo_id: int, user=Depends(get_current_user)):
     email = user.get("email", "unknown")
     role = user.get("role", "usc")
 
-    if role not in ("admin", "admin2", "usc"):
+    if role not in ("admin", "admin_calidad", "usc"):
         raise HTTPException(status_code=403, detail="No tiene permiso para eliminar reclamos")
 
     with get_conn() as conn:
@@ -1551,7 +1551,7 @@ def crear_accion(reclamo_id: int, body: AccionCreate, user=Depends(get_current_u
     role = user.get("role", "usc")
     now = datetime.now(timezone.utc).isoformat()
 
-    if role not in ("admin", "admin2", "cubicador", "externo"):
+    if role not in ("admin", "admin_calidad", "cubicador", "externo"):
         raise HTTPException(status_code=403, detail="No tiene permiso para agregar acciones")
 
     if body.tipo not in TIPOS_ACCION:
@@ -1565,7 +1565,7 @@ def crear_accion(reclamo_id: int, body: AccionCreate, user=Depends(get_current_u
                 raise HTTPException(status_code=404, detail="Reclamo no encontrado")
 
             estado_reclamo = row[1]
-            if role not in ("admin", "admin2") and _estado_bloquea_edicion_analisis(estado_reclamo):
+            if role not in ("admin", "admin_calidad") and _estado_bloquea_edicion_analisis(estado_reclamo):
                 raise HTTPException(status_code=403, detail="No se pueden editar acciones luego de enviar a validación")
 
             if role in ("cubicador", "externo"):
@@ -1624,7 +1624,7 @@ def eliminar_accion(reclamo_id: int, accion_id: int, user=Depends(get_current_us
     email = user.get("email", "unknown")
     role = user.get("role", "usc")
 
-    if role not in ("admin", "admin2", "cubicador", "externo", "usc"):
+    if role not in ("admin", "admin_calidad", "cubicador", "externo", "usc"):
         raise HTTPException(status_code=403, detail="No tiene permiso para eliminar acciones")
 
     with get_conn() as conn:
@@ -1637,7 +1637,7 @@ def eliminar_accion(reclamo_id: int, accion_id: int, user=Depends(get_current_us
             if not rec_row:
                 raise HTTPException(status_code=404, detail="Reclamo no encontrado")
 
-            if role not in ("admin", "admin2") and _estado_bloquea_edicion_analisis(rec_row[0]):
+            if role not in ("admin", "admin_calidad") and _estado_bloquea_edicion_analisis(rec_row[0]):
                 raise HTTPException(status_code=403, detail="No se pueden editar acciones luego de enviar a validación")
 
             rec = {
@@ -1790,7 +1790,7 @@ def eliminar_imagen(reclamo_id: int, imagen_id: int, user=Depends(get_current_us
     with get_conn() as conn:
         with conn.cursor() as cur:
             # Validar ownership del reclamo para cubicador/externo/usc
-            if role not in ("admin", "admin2"):
+            if role not in ("admin", "admin_calidad"):
                 cur.execute(
                     "SELECT cubicador_asignado, respuesta_por, creado_por, asignado_a FROM reclamos WHERE id = %s",
                     (reclamo_id,),
@@ -2242,7 +2242,7 @@ def exportar_reclamo_pdf(reclamo_id: int, user=Depends(get_current_user)):
 
     role = user.get("role")
     email = user.get("email", "")
-    if role not in ("admin", "admin2", "cubicador", "usc"):
+    if role not in ("admin", "admin_calidad", "cubicador", "usc"):
         raise HTTPException(status_code=403, detail="Sin permisos para generar PDF")
 
     with get_conn() as conn:

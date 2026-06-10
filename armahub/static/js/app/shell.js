@@ -107,17 +107,17 @@
     }
 
     if (mod === 'reclamos') {
-      var puedeCrear = ['admin', 'admin2', 'usc'].indexOf(window.currentRole) !== -1;
+      var puedeCrear = ['admin', 'admin_calidad', 'usc'].indexOf(window.currentRole) !== -1;
       var crearCard = document.getElementById('crearReclamoCard');
       if (crearCard) {
         crearCard.style.display = puedeCrear ? '' : 'none';
       }
       var asignadoA = document.getElementById('recAsignadoA');
       if (asignadoA && asignadoA.parentElement) {
-        asignadoA.parentElement.style.display = (window.currentRole === 'admin' || window.currentRole === 'admin2') ? '' : 'none';
+        asignadoA.parentElement.style.display = (window.currentRole === 'admin' || window.currentRole === 'admin_calidad') ? '' : 'none';
       }
-      // Dashboards y Procedimientos: solo admin/admin2
-      var esAdmin = (window.currentRole === 'admin' || window.currentRole === 'admin2');
+      // Dashboards y Procedimientos: solo admin/admin_calidad
+      var esAdmin = (window.currentRole === 'admin' || window.currentRole === 'admin_calidad');
       var dashBtn = document.getElementById('recShellBtnDash');
       if (dashBtn) dashBtn.style.display = esAdmin ? '' : 'none';
       var procBtn = document.getElementById('recShellBtnProc');

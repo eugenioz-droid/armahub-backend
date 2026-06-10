@@ -17,7 +17,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-from .auth import get_current_user, require_admin_or_admin2
+from .auth import get_current_user, require_admin_or_admin_calidad
 from .db import get_conn, audit
 
 router = APIRouter()
@@ -77,7 +77,7 @@ def listar_calculistas(activo: Optional[bool] = None, user=Depends(get_current_u
 
 
 @router.get("/calculistas/kpis")
-def kpis_calculistas(user=Depends(require_admin_or_admin2)):
+def kpis_calculistas(user=Depends(require_admin_or_admin_calidad)):
     """KPIs comparativos por calculista: diam promedio ponderado, PPI, PPB, kilos, proyectos."""
     with get_conn() as conn:
         with conn.cursor() as cur:
@@ -127,7 +127,7 @@ def kpis_calculistas(user=Depends(require_admin_or_admin2)):
 
 
 @router.get("/calculistas/{calculista_id}")
-def detalle_calculista(calculista_id: int, user=Depends(require_admin_or_admin2)):
+def detalle_calculista(calculista_id: int, user=Depends(require_admin_or_admin_calidad)):
     """Detalle de un calculista con sus proyectos."""
     with get_conn() as conn:
         with conn.cursor() as cur:
@@ -167,7 +167,7 @@ def detalle_calculista(calculista_id: int, user=Depends(require_admin_or_admin2)
 
 
 @router.post("/calculistas")
-def crear_calculista(body: CalculistaCreate, user=Depends(require_admin_or_admin2)):
+def crear_calculista(body: CalculistaCreate, user=Depends(require_admin_or_admin_calidad)):
     """Crear un nuevo calculista."""
     nombre = body.nombre.strip()
     if not nombre:
@@ -191,7 +191,7 @@ def crear_calculista(body: CalculistaCreate, user=Depends(require_admin_or_admin
 
 
 @router.patch("/calculistas/{calculista_id}")
-def actualizar_calculista(calculista_id: int, body: CalculistaUpdate, user=Depends(require_admin_or_admin2)):
+def actualizar_calculista(calculista_id: int, body: CalculistaUpdate, user=Depends(require_admin_or_admin_calidad)):
     """Actualizar datos de un calculista."""
     with get_conn() as conn:
         with conn.cursor() as cur:
@@ -226,7 +226,7 @@ def actualizar_calculista(calculista_id: int, body: CalculistaUpdate, user=Depen
 
 
 @router.delete("/calculistas/{calculista_id}")
-def eliminar_calculista(calculista_id: int, user=Depends(require_admin_or_admin2)):
+def eliminar_calculista(calculista_id: int, user=Depends(require_admin_or_admin_calidad)):
     """Soft-delete: desactiva el calculista."""
     with get_conn() as conn:
         with conn.cursor() as cur:

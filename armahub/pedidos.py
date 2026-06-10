@@ -12,7 +12,7 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
-from .auth import get_current_user, require_admin_or_admin2
+from .auth import get_current_user, require_admin_or_admin_calidad
 from .db import get_conn, audit
 
 router = APIRouter()
@@ -125,7 +125,7 @@ def list_pedidos(
 
 
 @router.post("/pedidos")
-def crear_pedido(body: PedidoCreate, user=Depends(require_admin_or_admin2)):
+def crear_pedido(body: PedidoCreate, user=Depends(require_admin_or_admin_calidad)):
     """Crear un pedido con items opcionales."""
     email = user.get("email", "unknown")
     now = datetime.now(timezone.utc).isoformat()
@@ -163,7 +163,7 @@ def crear_pedido(body: PedidoCreate, user=Depends(require_admin_or_admin2)):
 
 
 @router.get("/pedidos/{pedido_id}")
-def get_pedido(pedido_id: int, user=Depends(require_admin_or_admin2)):
+def get_pedido(pedido_id: int, user=Depends(require_admin_or_admin_calidad)):
     """Obtener un pedido con todos sus items."""
     with get_conn() as conn:
         with conn.cursor() as cur:
@@ -219,7 +219,7 @@ def get_pedido(pedido_id: int, user=Depends(require_admin_or_admin2)):
 
 
 @router.patch("/pedidos/{pedido_id}")
-def update_pedido(pedido_id: int, body: PedidoUpdate, user=Depends(require_admin_or_admin2)):
+def update_pedido(pedido_id: int, body: PedidoUpdate, user=Depends(require_admin_or_admin_calidad)):
     """Actualizar título, descripción o estado de un pedido."""
     ESTADOS_VALIDOS = {"borrador", "enviado", "en_proceso", "completado", "cancelado"}
     if body.estado and body.estado not in ESTADOS_VALIDOS:
@@ -251,7 +251,7 @@ def update_pedido(pedido_id: int, body: PedidoUpdate, user=Depends(require_admin
 
 
 @router.delete("/pedidos/{pedido_id}")
-def delete_pedido(pedido_id: int, user=Depends(require_admin_or_admin2)):
+def delete_pedido(pedido_id: int, user=Depends(require_admin_or_admin_calidad)):
     """Eliminar un pedido y todos sus items."""
     with get_conn() as conn:
         with conn.cursor() as cur:
@@ -268,7 +268,7 @@ def delete_pedido(pedido_id: int, user=Depends(require_admin_or_admin2)):
 # ========================= PEDIDO ITEMS =========================
 
 @router.post("/pedidos/{pedido_id}/items")
-def add_pedido_item(pedido_id: int, body: PedidoItemCreate, user=Depends(require_admin_or_admin2)):
+def add_pedido_item(pedido_id: int, body: PedidoItemCreate, user=Depends(require_admin_or_admin_calidad)):
     """Agregar un item a un pedido existente."""
     with get_conn() as conn:
         with conn.cursor() as cur:
@@ -295,7 +295,7 @@ def add_pedido_item(pedido_id: int, body: PedidoItemCreate, user=Depends(require
 
 
 @router.patch("/pedidos/{pedido_id}/items/{item_id}")
-def update_pedido_item(pedido_id: int, item_id: int, body: PedidoItemUpdate, user=Depends(require_admin_or_admin2)):
+def update_pedido_item(pedido_id: int, item_id: int, body: PedidoItemUpdate, user=Depends(require_admin_or_admin_calidad)):
     """Actualizar un item de pedido."""
     ESTADOS_ITEM = {"pendiente", "en_proceso", "completado"}
     if body.estado and body.estado not in ESTADOS_ITEM:
@@ -331,7 +331,7 @@ def update_pedido_item(pedido_id: int, item_id: int, body: PedidoItemUpdate, use
 
 
 @router.delete("/pedidos/{pedido_id}/items/{item_id}")
-def delete_pedido_item(pedido_id: int, item_id: int, user=Depends(require_admin_or_admin2)):
+def delete_pedido_item(pedido_id: int, item_id: int, user=Depends(require_admin_or_admin_calidad)):
     """Eliminar un item de un pedido."""
     with get_conn() as conn:
         with conn.cursor() as cur:
@@ -356,7 +356,7 @@ def _calcular_peso(diam, largo):
 
 
 @router.post("/pedidos/{pedido_id}/procesar")
-def procesar_pedido(pedido_id: int, user=Depends(require_admin_or_admin2)):
+def procesar_pedido(pedido_id: int, user=Depends(require_admin_or_admin_calidad)):
     """Convierte los items de un pedido en barras con origen='pedido'.
 
     - Pedido genérico: sector=NA, piso=NA, ciclo=NA

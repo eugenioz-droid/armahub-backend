@@ -13,13 +13,13 @@ from typing import Optional, List
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from .db import get_conn, reset_database, audit
-from .auth import require_admin, require_admin_or_admin2, get_current_user
+from .auth import require_admin, require_admin_or_admin_calidad, get_current_user
 
 router = APIRouter()
 
 
 @router.get("/admin/db-info")
-def db_info(admin=Depends(require_admin_or_admin2)):
+def db_info(admin=Depends(require_admin_or_admin_calidad)):
     """Info actual de la base de datos."""
     with get_conn() as conn:
         with conn.cursor() as cur:
@@ -61,7 +61,7 @@ def admin_reset_db(
 
 
 @router.get("/admin/tables")
-def get_table_counts(admin=Depends(require_admin_or_admin2)):
+def get_table_counts(admin=Depends(require_admin_or_admin_calidad)):
     """Conteo de registros por tabla para el panel de gestión de datos."""
     tables = [
         ("barras", "barras"),
@@ -146,7 +146,7 @@ def get_audit_log(
     entidad: Optional[str] = None,
     limit: int = Query(100, ge=1, le=500),
     offset: int = Query(0, ge=0),
-    admin=Depends(require_admin_or_admin2),
+    admin=Depends(require_admin_or_admin_calidad),
 ):
     """Consultar audit log con filtros opcionales."""
     with get_conn() as conn:
@@ -229,7 +229,7 @@ class MatrizRCAIn(BaseModel):
 
 
 @router.get("/admin/areas")
-def listar_areas(user=Depends(require_admin_or_admin2)):
+def listar_areas(user=Depends(require_admin_or_admin_calidad)):
     """Lista todas las áreas con conteo de subcausas RCA."""
     with get_conn() as conn:
         with conn.cursor() as cur:
@@ -255,7 +255,7 @@ def listar_areas(user=Depends(require_admin_or_admin2)):
 
 
 @router.get("/admin/areas/{area_id}/rca")
-def get_rca_area(area_id: int, user=Depends(require_admin_or_admin2)):
+def get_rca_area(area_id: int, user=Depends(require_admin_or_admin_calidad)):
     """Devuelve la matriz RCA completa de un área (6 categorías + subcausas)."""
     with get_conn() as conn:
         with conn.cursor() as cur:
@@ -304,7 +304,7 @@ def get_rca_area(area_id: int, user=Depends(require_admin_or_admin2)):
 
 
 @router.put("/admin/areas/{area_id}/rca")
-def guardar_rca_area(area_id: int, body: MatrizRCAIn, user=Depends(require_admin_or_admin2)):
+def guardar_rca_area(area_id: int, body: MatrizRCAIn, user=Depends(require_admin_or_admin_calidad)):
     """Guarda (upsert) la matriz RCA de un área. Crea categorías si no existen."""
     email = user.get("email", "")
     with get_conn() as conn:

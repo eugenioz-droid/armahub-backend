@@ -62,7 +62,7 @@ function toggleNuevoReclamo() {
     var yr = new Date().getFullYear();
     anioField.value = yr;
     // anio_calidad: solo admin puede cambiar
-    anioField.disabled = !(currentRole === 'admin' || currentRole === 'admin2');
+    anioField.disabled = !(currentRole === 'admin' || currentRole === 'admin_calidad');
     _sugerirNumeroCalidad(yr, 'recNumeroCalidad');
   }
 }
