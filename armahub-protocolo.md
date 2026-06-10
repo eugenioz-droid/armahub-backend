@@ -160,6 +160,42 @@ Reglas:
 - Permisos y ownership deben validarse en backend, no solo en frontend.
 - Cambios de schema deben quedar versionados por migracion.
 
+## Documento de especificaciones funcionales (SPECS_ARMAHUB)
+
+### Proposito
+
+`docs/SPECS_ARMAHUB.md` es el mapa funcional vivo de ArmaHub. Documenta flujos, permisos y
+decisiones de diseno por caluga. No es un roadmap — para eso esta `docs/programa-versiones/`.
+
+### Metodologia de trabajo
+
+1. **Una seccion por caluga.** Cada caluga tiene su propia seccion en SPECS_ARMAHUB.
+2. **Se actualiza al cerrar cada caluga.** Cuando una caluga queda funcionando, se documenta su
+   flujo completo, permisos por rol y decisiones de diseno.
+3. **Tambien se actualiza cuando cambia un flujo.** Si un flujo, permiso o comportamiento cambia
+   durante la implementacion, SPECS_ARMAHUB se actualiza en el mismo commit de codigo.
+4. **Nunca se crea un specs por caluga separado.** Todo va al mismo documento general.
+5. **Armonizacion visual post-F9.** El diseno visual se define caluga por caluga. La revision
+   transversal de coherencia se hace al cierre de F9.
+6. **Secciones futuras en borrador.** Las calugas no implementadas tienen una seccion minima con
+   proposito y pendientes, para que el documento sirva de mapa completo.
+
+### Que documenta
+
+- Flujo de estados (diagramas ASCII).
+- Permisos por rol y por seccion.
+- Reglas de ownership.
+- Decisiones de diseno que no son obvias desde el codigo.
+- Pendientes funcionales activos de cada caluga.
+
+### Que no documenta
+
+- Esquema de base de datos (eso esta en `MODELO_DE_DATOS.md`).
+- Roadmap o tareas pendientes (eso esta en `docs/programa-versiones/`).
+- Codigo — solo comportamiento observable.
+
+---
+
 ## Reclamos y calidad
 
 Reclamos es un modulo critico:
