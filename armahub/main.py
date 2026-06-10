@@ -12,13 +12,14 @@ En Render, lo ideal es arrancar con:
     uvicorn armahub.main:app --host 0.0.0.0 --port 10000
 """
 
-from fastapi import FastAPI, Response, Request
+from fastapi import FastAPI, Response, Request, Depends, Query, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 import os, time, logging
 
 from .db import init_db, get_conn
-from .auth import router as auth_router
+from .auth import router as auth_router, require_admin
+from . import storage
 from .importer import router as importer_router
 from .barras import router as barras_router
 from .ui import router as ui_router
@@ -89,6 +90,82 @@ def create_app() -> FastAPI:
             result["db"] = "error"
             result["detail"] = str(e)
         return result
+
+    @app.post("/admin/migrar-imagenes-r2")
+    def migrar_imagenes_r2(
+        dry_run: bool = Query(True, description="true=simular sin subir; false=migrar real"),
+        admin=Depends(require_admin),
+    ):
+        """
+        TEMPORAL — migra imágenes de reclamos desde BYTEA a R2.
+        Solo admin. NO destructivo (no borra el BYTEA original).
+        Idempotente (omite las que ya tienen storage_key).
+        Se elimina tras validar la migración.
+        """
+        if not storage.is_configured():
+            raise HTTPException(status_code=400, detail="R2 no configurado")
+
+        # Asegurar columna storage_key (idempotente, por si la migración 53 aún no corrió)
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "DO $$ BEGIN ALTER TABLE reclamo_imagenes ADD COLUMN storage_key TEXT; "
+                    "EXCEPTION WHEN duplicate_column THEN NULL; END $$;"
+                )
+
+        # Inventario de pendientes
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    SELECT id, reclamo_id, filename, content_type, tipo,
+                           octet_length(data) AS bytes
+                    FROM reclamo_imagenes
+                    WHERE data IS NOT NULL
+                      AND (storage_key IS NULL OR storage_key = '')
+                    ORDER BY id ASC
+                """)
+                pendientes = cur.fetchall()
+
+        total = len(pendientes)
+        total_mb = round(sum((r[5] or 0) for r in pendientes) / (1024 * 1024), 2)
+
+        if dry_run:
+            return {
+                "dry_run": True,
+                "pendientes": total,
+                "tamaño_mb": total_mb,
+                "mensaje": f"{total} imágenes se migrarían ({total_mb} MB). Nada subido. "
+                           f"Llamar con ?dry_run=false para migrar de verdad.",
+            }
+
+        ok, fallidas = 0, []
+        for img_id, reclamo_id, filename, ct, tipo, _ in pendientes:
+            try:
+                with get_conn() as conn:
+                    with conn.cursor() as cur:
+                        cur.execute("SELECT data FROM reclamo_imagenes WHERE id = %s", (img_id,))
+                        row = cur.fetchone()
+                        if not row or row[0] is None:
+                            fallidas.append({"id": img_id, "error": "sin data"})
+                            continue
+                        data = bytes(row[0])
+                sub = "analisis" if (tipo or "") == "ImagenesAnalisis" else "registro"
+                key = storage.build_key("reclamos", sub, str(reclamo_id), filename=filename or f"img_{img_id}")
+                storage.upload_file(key, data, ct or "application/octet-stream")
+                with get_conn() as conn:
+                    with conn.cursor() as cur:
+                        cur.execute("UPDATE reclamo_imagenes SET storage_key = %s WHERE id = %s", (key, img_id))
+                ok += 1
+            except Exception as exc:
+                fallidas.append({"id": img_id, "error": str(exc)})
+
+        return {
+            "dry_run": False,
+            "migradas_ok": ok,
+            "total": total,
+            "fallidas": fallidas,
+            "nota": "BYTEA original NO borrado. Validar imágenes antes de limpiar.",
+        }
 
     # --- Request logging middleware ---
     logger = logging.getLogger("armahub.access")
