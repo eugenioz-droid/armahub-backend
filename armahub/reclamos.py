@@ -2024,6 +2024,7 @@ class _ReclamoPDF:
         gap = 10         # horizontal gap between columns
         col = 0          # current column (0 or 1)
         row_y = pdf.get_y()
+        row_actual_h = 0  # tracks real rendered height for current row
 
         for img_data in imagenes:
             raw = img_data.get("raw_bytes")
@@ -2036,25 +2037,30 @@ class _ReclamoPDF:
                 pdf.add_page()
                 row_y = pdf.get_y()
                 col = 0
+                row_actual_h = 0
 
             x = 15 + col * (img_w + gap)
             try:
                 img_buf = io.BytesIO(raw)
-                pdf.image(img_buf, x=x, y=row_y, w=img_w)
+                pdf.image(img_buf, x=x, y=row_y, w=img_w, keep_aspect_ratio=True)
+                rendered_h = pdf.get_y() - row_y
+                row_actual_h = max(row_actual_h, rendered_h)
             except Exception:
                 pdf.set_xy(x, row_y)
                 pdf.set_font("Helvetica", "I", 8)
                 pdf.cell(img_w, 4, self._s(f"[No se pudo incluir: {fname}]"))
+                row_actual_h = max(row_actual_h, 4)
 
             col += 1
             if col >= 2:
                 col = 0
-                row_y += img_max_h + 4
+                row_y += row_actual_h + 4
+                row_actual_h = 0
                 pdf.set_y(row_y)
 
         # If we ended on col 1, advance past the row
         if col > 0:
-            row_y += img_max_h + 4
+            row_y += row_actual_h + 4
             pdf.set_y(row_y)
 
         pdf.ln(2)
@@ -2065,15 +2071,26 @@ class _ReclamoPDF:
         self._section_title("Análisis y Respuesta", (21, 101, 192))
 
         cat_label = ISHIKAWA_LABELS.get(rec.get("categoria_ishikawa"), rec.get("categoria_ishikawa"))
-        self._field_row("Causa Ishikawa:", cat_label)
-        self._field_row("Sub-causa:", rec.get("sub_causa"))
-        self._field_row("Código causa:", rec.get("cod_causa"))
-        self._field_row("Área que aplica:", rec.get("area_aplica"))
-        self._field_row("Respondido por:", rec.get("respuesta_por"))
-        self._field_row("Fecha respuesta:", _as_text(rec.get("respuesta_fecha")))
+        tiene_analisis = any([
+            cat_label, rec.get("sub_causa"), rec.get("cod_causa"),
+            rec.get("area_aplica"), rec.get("respuesta_por"), rec.get("respuesta_texto"),
+        ])
 
-        if rec.get("respuesta_texto"):
-            self._text_box("Respuesta del cubicador:", rec["respuesta_texto"], (227, 242, 253), (187, 222, 251))
+        if not tiene_analisis:
+            self.pdf.set_font("Helvetica", "I", 9)
+            self.pdf.set_text_color(150, 150, 150)
+            self.pdf.cell(0, 5, "Sin analisis registrado", new_x="LMARGIN", new_y="NEXT")
+            self.pdf.set_text_color(34, 34, 34)
+        else:
+            self._field_row("Causa Ishikawa:", cat_label)
+            self._field_row("Sub-causa:", rec.get("sub_causa"))
+            self._field_row("Código causa:", rec.get("cod_causa"))
+            self._field_row("Área que aplica:", rec.get("area_aplica"))
+            self._field_row("Respondido por:", rec.get("respuesta_por"))
+            self._field_row("Fecha respuesta:", _as_text(rec.get("respuesta_fecha")))
+
+            if rec.get("respuesta_texto"):
+                self._text_box("Respuesta del cubicador:", rec["respuesta_texto"], (227, 242, 253), (187, 222, 251))
 
         self.pdf.ln(4)
 
@@ -2086,6 +2103,7 @@ class _ReclamoPDF:
         pdf = self.pdf
         col_widths = [25, 65, 30, 22, 22, 16]
         headers = ["Tipo", "Descripción", "Responsable", "F.Prevista", "F.Complet.", "Estado"]
+        row_h = 4.5
 
         # Header row
         pdf.set_font("Helvetica", "B", 7)
@@ -2095,21 +2113,35 @@ class _ReclamoPDF:
             pdf.cell(col_widths[i], 5, h, border=1, fill=True, new_x="END")
         pdf.ln()
 
-        # Data rows
+        # Data rows — height expands to fit wrapped text
         pdf.set_font("Helvetica", "", 7)
+        pdf.set_text_color(34, 34, 34)
         for a in self.acciones:
             vals = [
                 self._s(a.get("tipo_label") or "-"),
-                self._s((a.get("descripcion") or "-")[:80]),
-                self._s((a.get("responsable") or "-")[:25]),
+                self._s(a.get("descripcion") or "-"),
+                self._s(a.get("responsable") or "-"),
                 self._s(a.get("fecha_prevista") or "-"),
                 self._s(a.get("fecha_completada") or "-"),
                 self._s(a.get("estado_label") or "-"),
             ]
-            max_h = 5
+            # Measure max height across all cells
+            cell_h = row_h
             for i, v in enumerate(vals):
-                pdf.cell(col_widths[i], max_h, v, border=1, new_x="END")
-            pdf.ln()
+                lines = pdf.multi_cell(col_widths[i], row_h, v, dry_run=True, output="LINES")
+                cell_h = max(cell_h, len(lines) * row_h)
+
+            # Salto de página si no cabe la fila completa
+            if pdf.get_y() + cell_h > 272:
+                pdf.add_page()
+
+            x0 = pdf.get_x()
+            y0 = pdf.get_y()
+            for i, v in enumerate(vals):
+                pdf.set_xy(x0, y0)
+                pdf.multi_cell(col_widths[i], cell_h, v, border=1, new_x="END", new_y="TOP", max_line_height=row_h)
+                x0 += col_widths[i]
+            pdf.set_xy(15, y0 + cell_h)
 
         pdf.ln(4)
 
