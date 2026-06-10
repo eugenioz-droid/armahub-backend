@@ -5,6 +5,8 @@
 > un roadmap — para eso está `docs/programa-versiones/`.
 >
 > Última actualización: 2026-06-10 · Infraestructura: Render (FastAPI) + Supabase (PostgreSQL) + Cloudflare R2
+>
+> **Discovery Reclamos v2 (2026-06-10):** diseño de áreas, flujos multi-área y RCA documentado. Pendiente de implementación.
 
 ---
 
@@ -25,29 +27,62 @@
 
 ## 1. ROLES Y PERMISOS GLOBALES
 
-### 1.1 Roles disponibles
+### 1.1 Roles globales del sistema
 
 | Rol | Descripción |
 |-----|-------------|
-| `admin` | Acceso total al sistema |
-| `admin2` | Mismo acceso que admin (sin distinción operativa actual) |
-| `cubicador` | Profesional interno que analiza y responde reclamos |
-| `usc` | Usuario de supervisión de calidad — crea reclamos, supervisa |
-| `externo` | Cubicador externo — mismas funciones que cubicador en sus reclamos |
-| `cliente` | Acceso de solo lectura; sin acceso a reclamos |
+| `admin` | Acceso total. Jefe de Servicio de Cubicaciones. Cierre final de reclamos. |
+| `admin2` | Jefa de Calidad. Validación final en todos los flujos. Puede saltarse jerarquía si jefe no disponible. |
+| `cubicador` | Analista de Cubicaciones — responde reclamos asignados a él. |
+| `externo` | Cubicador externo — mismas funciones que cubicador en sus reclamos. |
+| `usc` | Operador USC — levanta reclamos externos, no analiza ni valida. |
+| `miembro` | Usuario de cualquier área — puede levantar reclamos internos. |
+| `cliente` | Acceso de solo lectura; sin acceso a reclamos. |
 
-### 1.2 Roles por obra (proyecto_usuarios)
+> Los roles `cubicador` y `externo` son legacy del módulo original. En el modelo de áreas,
+> el poder de análisis y validación viene de `area_usuarios.rol_area`, no del rol global.
+> Se mantienen por compatibilidad durante la transición.
+
+### 1.2 Áreas de la empresa
+
+Las áreas son entidades en la BD. Un usuario puede pertenecer a múltiples áreas con distinto rol por área.
+
+| Área | Slug |
+|------|------|
+| USC C&D | `usc_cd` |
+| USC MPEC | `usc_mpec` |
+| Producción C&D | `produccion_cd` |
+| Producción MPEC | `produccion_mpec` |
+| Producción Prearmado | `produccion_prearmado` |
+| Cubicaciones | `cubicaciones` |
+| Logística | `logistica` |
+| Ventas | `ventas` |
+| Calidad | `calidad` |
+| Planificación | `planificacion` |
+
+### 1.3 Roles por área (area_usuarios)
+
+| Rol área | Descripción |
+|----------|-------------|
+| `miembro` | Pertenece al área, puede levantar y analizar reclamos internos según flujo |
+| `jefe_servicio` | Valida reclamos donde su área es responsable (o analiza, según flujo del área) |
+
+Un jefe puede serlo de más de un área. La tabla es M:N: `area_usuarios(area_id, user_id, rol_area)`.
+
+### 1.4 Roles por obra (proyecto_usuarios)
 
 Un usuario puede tener un rol distinto por obra: `admin · usc · cubicador · externo · cliente`.
-Este rol complementa el rol global en los contextos donde aplica (ej: quién es USC de un reclamo específico).
+Aplica al módulo de Cubicación — complementario al modelo de áreas.
 
-### 1.3 Reglas generales de ownership
+### 1.5 Reglas generales de ownership
 
 - **admin / admin2:** acceso total a todo el sistema.
-- **cubicador / externo:** solo ven y editan sus propios registros (donde son `cubicador_asignado`).
-- **usc:** solo ve y edita donde es `creado_por` o `asignado_a`.
-- **cliente:** solo lectura, sin acceso a módulos sensibles.
-- El ownership se valida **en backend**, no solo en frontend (IDOR protegido en todos los endpoints).
+- **admin2 (Jefa de Calidad):** validación final en todos los flujos; puede actuar como fallback de cualquier jefe de servicio.
+- **jefe_servicio:** valida (o analiza, según área) los reclamos donde su área es responsable.
+- **cubicador / externo:** solo ven y editan sus propios reclamos asignados.
+- **usc / miembro:** solo ven y editan donde son `creado_por` o `asignado_a`.
+- **cliente:** solo lectura, sin acceso a reclamos.
+- El ownership se valida **en backend**, no solo en frontend.
 
 ---
 
@@ -92,32 +127,141 @@ Usuario autenticado → GET /reclamos/{id}/imagenes/{img_id}
 
 ### 3.1 Propósito
 
-Gestión del ciclo de vida de reclamos de calidad: desde el registro inicial hasta el cierre con
-PDF e informe enviado por correo. Incluye análisis de causa, acciones correctivas y validación.
+Ticketera de calidad de Armacero. Gestiona dos tipos de reclamos:
 
-**Usuarios principales:** USC (crea y supervisa) · Cubicador/Externo (analiza y responde) · Admin (gestión total).
+- **Externos:** levantados por USC cuando un cliente reporta un problema. El área responsable analiza y responde.
+- **Internos:** levantados por cualquier área contra otra área. El cliente no se entera — es gestión interna de calidad.
 
-### 3.2 Flujo de estados
+Incluye análisis de causa raíz (Ishikawa o 5 Por Qué), acciones correctivas, validación por jerarquía y cierre con PDF.
+
+### 3.2 Tipos de reclamo
+
+| Tipo | Quién levanta | Asociado a |
+|------|--------------|------------|
+| `externo` | USC | Cliente / Proyecto |
+| `interno` | Cualquier área | Cliente (referencial, no se notifica) |
+
+### 3.3 Flujos de estados
+
+#### Flujo A — Cubicaciones (doble validación interna)
 
 ```
-                    ┌─────────────────────────────────────┐
-                    │                                     │
-  ABIERTO ──────► EN_ANALISIS ──────► VALIDACION ──────► CERRADO
-                                          │
-                                          ▼
-                                      RECHAZADO ──────► EN_ANALISIS
-                                      (reabre automático)
+  ABIERTO ──► EN_ANALISIS ──► VALIDACION_JEFE ──► VALIDACION_CALIDAD ──► CERRADO
+                  ▲                  │                      │
+                  │                  ▼                      ▼
+                  └────────── RECHAZADO ◄─────────── RECHAZADO
 ```
 
-| Estado | Significado | Quién avanza |
-|--------|-------------|--------------|
-| `abierto` | Recién creado, esperando respuesta | USC crea; cubicador/externo responden |
-| `en_analisis` | Cubicador trabajando el análisis | — (transición automática al editar análisis) |
-| `validacion` | Enviado para que USC valide | Cubicador/Externo (propios) + admin/admin2 |
-| `cerrado` | USC validó y aprobó | Admin/admin2 |
-| `rechazado` | Rechazado definitivamente | Admin/admin2 |
+| Estado | Quién actúa |
+|--------|-------------|
+| `abierto` | Reclamo creado, esperando análisis |
+| `en_analisis` | Cubicador asignado trabaja el análisis |
+| `validacion_jefe` | Jefe de Servicio de Cubicaciones (Admin) revisa |
+| `validacion_calidad` | Jefa de Calidad (Admin2) revisa y cierra |
+| `cerrado` | Admin cierra formalmente |
+| `rechazado` | Cualquier validador rechaza → vuelve a `en_analisis` automáticamente |
 
-### 3.3 Permisos por sección
+#### Flujo B — Resto de áreas (validación directa a Calidad)
+
+```
+  ABIERTO ──► EN_ANALISIS ──► VALIDACION_CALIDAD ──► CERRADO
+                  ▲                    │
+                  │                    ▼
+                  └────────── RECHAZADO
+```
+
+| Estado | Quién actúa |
+|--------|-------------|
+| `abierto` | Reclamo creado, esperando análisis |
+| `en_analisis` | Jefe de Servicio del área responsable analiza |
+| `validacion_calidad` | Jefa de Calidad (Admin2) revisa y cierra |
+| `cerrado` | Admin cierra formalmente |
+| `rechazado` | Admin2 rechaza → vuelve a `en_analisis` automáticamente |
+
+> **¿Qué determina el flujo?** El área asignada al reclamo. Si `area_id` corresponde a `cubicaciones`, aplica Flujo A. Para cualquier otra área, aplica Flujo B.
+
+> **Reasignación:** si un reclamo fue asignado al área equivocada, quien lo creó puede reasignarlo mientras está en `abierto` o `en_analisis`. Si ya pasó a validación, solo admin/admin2 pueden reasignar.
+
+### 3.4 Análisis de causa raíz (RCA)
+
+El método RCA se elige al crear o iniciar el análisis del reclamo. No pueden coexistir ambos en el mismo reclamo.
+
+| Método | Cuándo usar | Campos |
+|--------|-------------|--------|
+| **Ishikawa** | Si el área tiene su matriz RCA cargada | Categoría + sub-causa + código causa |
+| **5 Por Qué** | Si no hay matriz Ishikawa disponible o se prefiere | Por qué 1→5, causa raíz identificada |
+
+- Si el área tiene matriz Ishikawa → se muestra Ishikawa por defecto.
+- Si no → se muestra 5 Por Qué por defecto.
+- El usuario puede cambiar el método antes de guardar el análisis.
+
+#### Matrices RCA por área
+
+Cada área puede cargar y editar su propia matriz RCA desde el sistema (categorías y sub-causas Ishikawa). Esto reemplaza el hardcoding actual de causas en el código.
+
+> Pendiente de implementación: módulo de gestión de matrices RCA por área (Admin/Jefe de Servicio edita la matriz de su área).
+
+### 3.5 Áreas de la empresa en reclamos
+
+| Área | Flujo | Quién analiza | Quién valida (paso 1) | Quién cierra |
+|------|-------|--------------|----------------------|--------------|
+| Cubicaciones | A | Cubicador asignado | Jefe Servicio (Admin) | Admin2 → Admin |
+| USC C&D | B | Jefe de Servicio | Admin2 | Admin |
+| USC MPEC | B | Jefe de Servicio | Admin2 | Admin |
+| Producción C&D | B | Jefe de Servicio | Admin2 | Admin |
+| Producción MPEC | B | Jefe de Servicio | Admin2 | Admin |
+| Producción Prearmado | B | Jefe de Servicio | Admin2 | Admin |
+| Logística | B | Jefe de Servicio | Admin2 | Admin |
+| Ventas | B | Jefe de Servicio | Admin2 | Admin |
+| Calidad | B | Jefe de Servicio | Admin2 | Admin |
+| Planificación | B | Jefe de Servicio | Admin2 | Admin |
+
+> Un jefe puede ser Jefe de Servicio de más de un área (M:N en `area_usuarios`).
+
+### 3.6 Modelo de datos nuevo (pendiente de implementación)
+
+Tablas nuevas requeridas:
+
+```sql
+areas
+  id          BIGSERIAL PK
+  nombre      TEXT NOT NULL
+  slug        TEXT UNIQUE NOT NULL   -- 'cubicaciones', 'usc_cd', etc.
+  activo      BOOLEAN DEFAULT TRUE
+
+area_usuarios
+  id          BIGSERIAL PK
+  area_id     BIGINT FK→areas
+  user_id     BIGINT FK→users
+  rol_area    TEXT  -- 'miembro' | 'jefe_servicio'
+  UNIQUE(area_id, user_id)
+
+area_rca_categorias          -- Matriz Ishikawa por área
+  id          BIGSERIAL PK
+  area_id     BIGINT FK→areas
+  nombre      TEXT NOT NULL  -- ej: 'Mano de obra'
+  orden       INTEGER
+
+area_rca_subcausas
+  id          BIGSERIAL PK
+  categoria_id BIGINT FK→area_rca_categorias
+  codigo      TEXT           -- ej: 'MO01'
+  descripcion TEXT NOT NULL
+  activo      BOOLEAN DEFAULT TRUE
+```
+
+Columnas nuevas en `reclamos`:
+
+```sql
+ALTER TABLE reclamos ADD COLUMN tipo_origen TEXT DEFAULT 'externo';  -- 'externo' | 'interno'
+ALTER TABLE reclamos ADD COLUMN area_responsable_id BIGINT REFERENCES areas(id);
+ALTER TABLE reclamos ADD COLUMN metodo_rca TEXT;  -- 'ishikawa' | '5_por_que'
+ALTER TABLE reclamos ADD COLUMN cinco_por_que JSONB;  -- [{n:1, pregunta, respuesta}, ...]
+```
+
+### 3.7 Permisos por sección (estado actual — v1)
+
+> Esta sección refleja el estado implementado hoy. Se actualizará al implementar v2 con áreas.
 
 #### Ver listado
 
@@ -126,7 +270,7 @@ PDF e informe enviado por correo. Incluye análisis de causa, acciones correctiv
 | admin / admin2 / cubicador | Todos los reclamos (toggle Todos/Mis reclamos) |
 | usc | Propios por defecto (toggle para ver todos en lectura) |
 | externo | Solo propios, sin toggle |
-| cliente | Sin acceso a la caluga |
+| cliente | Sin acceso |
 
 #### Ver detalle
 
@@ -137,50 +281,34 @@ PDF e informe enviado por correo. Incluye análisis de causa, acciones correctiv
 | externo | Solo donde es `cubicador_asignado` o `respuesta_por` |
 | cliente | Sin acceso |
 
-#### Crear reclamo
-
-- Permitido: USC, admin, admin2.
-- No permitido: cubicador, externo, cliente.
-
-#### Sección 1 — Registro (datos básicos)
-
-Campos: título, descripción, proyecto, USC responsable, cubicador responsable, prioridad, id_calidad, observaciones.
+#### Sección 1 — Registro
 
 | Acción | admin/admin2 | usc (propio) | cubicador | externo | cliente |
 |--------|:---:|:---:|:---:|:---:|:---:|
 | Ver | ✅ | ✅ | ✅ | ✅ | — |
 | Editar | ✅ | ✅ (estado=abierto) | — | — | — |
 
-#### Sección 2 — Análisis (respuesta cubicador)
-
-Campos: categoría Ishikawa, sub-causa, respuesta, área aplica, fecha análisis, kilos mal fabricados, imágenes análisis, acciones correctivas.
+#### Sección 2 — Análisis
 
 | Acción | admin/admin2 | usc | cubicador (propio) | externo (propio) | cliente |
 |--------|:---:|:---:|:---:|:---:|:---:|
 | Ver | ✅ | ✅ | ✅ | ✅ | — |
 | Editar | ✅ | — | ✅ | ✅ | — |
-| Botón "Enviar a validación" (morado) | ✅ | — | ✅ | ✅ | — |
+| Enviar a validación (morado) | ✅ | — | ✅ | ✅ | — |
 
-#### Sección 3 — Validación (rectángulo verde)
+#### Sección 3 — Validación
 
-Campos: resultado (aprobado/rechazado/corregido), observaciones, tiempo de respuesta.
-
-| Acción | admin/admin2 | usc | cubicador | externo | cliente |
-|--------|:---:|:---:|:---:|:---:|:---:|
-| Ver sección completa | ✅ | — | — | — | — |
-| Editar y guardar | ✅ | — | — | — | — |
-
-> El contenedor verde completo es invisible para todos excepto admin/admin2.
+| Acción | admin/admin2 | resto |
+|--------|:---:|:---:|
+| Ver sección | ✅ | — |
+| Editar | ✅ | — |
 
 #### Imágenes
 
 | Tipo | Sube | Elimina |
 |------|------|---------|
-| ImagenesRegistro (evidencia USC) | admin/admin2/usc | admin/admin2 + usc (propios) |
-| ImagenesAnalisis (evidencia cubicador) | admin/admin2/cubicador/externo | admin/admin2 + cubicador/externo (propios) |
-
-- cliente: sin permiso de subir ni eliminar.
-- Todas las imágenes viven en R2 bajo `reclamos/registro/` y `reclamos/analisis/`.
+| ImagenesRegistro | admin/admin2/usc | admin/admin2 + usc (propios) |
+| ImagenesAnalisis | admin/admin2/cubicador/externo | admin/admin2 + cubicador/externo (propios) |
 
 #### Acciones correctivas
 
@@ -195,50 +323,31 @@ Campos: resultado (aprobado/rechazado/corregido), observaciones, tiempo de respu
 | Acción | admin/admin2 | usc (propio) | cubicador (propio) | externo |
 |--------|:---:|:---:|:---:|:---:|
 | Exportar PDF | ✅ | ✅ | ✅ | — |
-| Enviar informe por correo | ✅ | ✅ | — | — |
+| Enviar por correo | ✅ | ✅ | — | — |
 
-El PDF incluye: header, sección registro, análisis, acciones, validación, imágenes (descargadas de R2), timeline de seguimientos.
-
-### 3.4 Flujo completo — Reclamo típico USC→Cubicador
-
-```
-USC crea reclamo
-       │
-       ▼
-  [abierto]
-       │ Cubicador asignado inicia análisis
-       ▼
-  [en_analisis]
-       │ Cubicador completa y presiona "Enviar a validación" (morado)
-       ▼
-  [validacion]
-       │ Admin/admin2 revisa y valida
-       ├──────────► [cerrado] — fin. Admin genera PDF y envía por correo.
-       │
-       └──────────► [rechazado] → automático vuelve a [en_analisis]
-                         Cubicador corrige y re-envía
-```
-
-### 3.5 Pendientes funcionales (F5)
+### 3.8 Pendientes funcionales
 
 | # | Descripción | Estado |
 |---|-------------|--------|
-| 5.3 | Política acceso imágenes R2 — presigned URL, decisión tiempo expiración | ☐ pendiente decisión |
-| 5.4 | QA visual PDF: campos largos, sin acciones, sin validación | ☐ |
-| 5.6 | Optimizar query listado: LEFT JOIN + GROUP BY + índices | ☐ |
-| 5.7 | Evaluar split de reclamos.py | ☐ |
-| 5.8–5.12 | Envío de informe por correo (tabla reclamo_envios, endpoint, UI, historial) | ☐ |
-| 5.13–5.17 | Multi-origen: tipos de origen, UI segmentable | ☐ |
+| 5.3 | Política presigned URL — 1 hora, aceptado | ☑ |
+| 5.4 | QA visual PDF | ☑ 2026-06-10 |
+| 5.6 | Optimizar query listado | ☑ 2026-06-10 |
+| 5.7 | Evaluar split reclamos.py | ☑ Posponer a cierre F9 |
+| 5.8–5.12 | Envío de informe por correo | ☐ |
+| 5.13–5.17 | Multi-origen / multi-área (v2) | ☐ Discovery completado 2026-06-10 |
 
-### 3.6 Decisiones de diseño
+### 3.9 Decisiones de diseño
 
 - **Un solo helper de correo** (`mailer.py`) reutilizado por todas las calugas.
-- **No hay estado `accion_correctiva`** — eliminado (migración 46).
-- **No hay estado `validado`** — eliminado (migración 47), merged a `cerrado`.
-- **Correlativo de calidad:** `anio_calidad` (int) + `numero_calidad` (int), display como "2026-003".
-- **Multi-origen:** pendiente de discovery antes de implementar (F5C).
 - **Sin BYTEA:** toda imagen en R2 desde migración 54.
-- **Cache:** deshabilitado para usc/externo (scope restringido) — activo solo para admin/admin2/cubicador.
+- **Cache:** deshabilitado para usc/externo — activo solo para admin/admin2/cubicador.
+- **Correlativo de calidad:** `anio_calidad` + `numero_calidad`, display "2026-003".
+- **RCA:** Ishikawa o 5 Por Qué por reclamo — excluyentes. Método elegido al iniciar análisis.
+- **Matrices RCA:** gestionadas por área desde el sistema — no hardcodeadas en el código.
+- **Flujo por área:** determinado por `area_responsable_id` del reclamo. Cubicaciones = Flujo A, resto = Flujo B.
+- **Ventas:** un solo pool por ahora (constructoras + retail). Se evalúa separar en v3.
+- **Cliente/Proyecto:** un proyecto = un cliente. Sin abrir más por ahora. Retail sin proyecto → asociado a cliente directo.
+- **Reasignación:** permitida por quien creó el reclamo mientras esté en `abierto`/`en_analisis`. Después solo admin/admin2.
 
 ---
 
