@@ -328,18 +328,23 @@ def listar_reclamos(
                 params.extend([like, like, like, like, like])
 
             cur.execute(f"""
-                  SELECT r.id, r.id_proyecto, r.titulo, r.descripcion, r.estado,
-                      r.prioridad, r.categoria_ishikawa, r.responsable,
-                      r.creado_por, r.fecha_creacion, r.fecha_actualizacion, r.fecha_cierre,
+                SELECT r.id, r.id_proyecto, r.titulo, r.descripcion, r.estado,
+                       r.prioridad, r.categoria_ishikawa, r.responsable,
+                       r.creado_por, r.fecha_creacion, r.fecha_actualizacion, r.fecha_cierre,
                        COALESCE(p.nombre_proyecto, r.id_proyecto, 'Obra eliminada') AS nombre_proyecto,
-                       (SELECT COUNT(*) FROM reclamo_seguimientos s WHERE s.reclamo_id = r.id) AS seg_count,
-                      r.aplica, r.sub_causa, r.cod_causa,
+                       COALESCE(seg.seg_count, 0) AS seg_count,
+                       r.aplica, r.sub_causa, r.cod_causa,
                        r.detectado_por, r.fecha_deteccion,
                        r.correlativo, r.id_calidad, r.tipo_reclamo, r.asignado_a,
                        r.cubicador_asignado, r.respuesta_por,
                        r.anio_calidad, r.numero_calidad
                 FROM reclamos r
                 LEFT JOIN proyectos p ON r.id_proyecto = p.id_proyecto
+                LEFT JOIN (
+                    SELECT reclamo_id, COUNT(*) AS seg_count
+                    FROM reclamo_seguimientos
+                    GROUP BY reclamo_id
+                ) seg ON seg.reclamo_id = r.id
                 {where}
                 ORDER BY
                     CASE r.estado
