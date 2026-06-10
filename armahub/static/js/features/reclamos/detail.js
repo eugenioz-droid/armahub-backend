@@ -190,7 +190,8 @@ function _applyReclamoDetailPermissions(data) {
   var btnElim = document.getElementById('btnEliminarReclamo');
   if (btnElim) btnElim.style.display = puedeEliminar ? '' : 'none';
 
-  var esAsignado = (currentRole === 'cubicador' && data.cubicador_asignado === currentUserEmail);
+  // Botón morado "Enviar a validación": cubicador Y externo propios, más admin/admin2
+  var esAsignado = (['cubicador','externo'].includes(currentRole) && esPropioCub);
   var puedeCerrar = (currentRole === 'admin' || currentRole === 'admin2') || esAsignado;
   var cerrarCont = document.getElementById('recCerrarContainer');
   if (cerrarCont) cerrarCont.style.display = puedeCerrar ? '' : 'none';
@@ -200,6 +201,10 @@ function _applyReclamoDetailPermissions(data) {
   var btnReabrir = document.getElementById('btnReabrirReclamo');
   if (btnCerrar) btnCerrar.style.display = estaCerrado ? 'none' : '';
   if (btnReabrir) btnReabrir.style.display = puedeReabrir ? '' : 'none';
+
+  // Sección 3 Validación (rectángulo verde): solo visible para admin/admin2
+  var secValidacion = document.getElementById('recSeccionValidacion');
+  if (secValidacion) secValidacion.style.display = puedeValidar ? '' : 'none';
 
   var anioCalField = document.getElementById('recDetailAnioCalidad');
   if (anioCalField) anioCalField.disabled = !(currentRole === 'admin' || currentRole === 'admin2');
