@@ -716,6 +716,15 @@ MIGRATIONS = [
     (52, "imports: supersedida_por (FK a imports.id)", [
         "DO $$ BEGIN ALTER TABLE imports ADD COLUMN supersedida_por INTEGER REFERENCES imports(id); EXCEPTION WHEN duplicate_column THEN NULL; END $$;",
     ]),
+
+    # --- Migration 53: storage_key para migrar imágenes de BYTEA a R2 ---
+    # Compatibilidad dual: durante la migración conviven imágenes en R2 (storage_key)
+    # y viejas en BYTEA (data). Se hace `data` nullable; la columna se elimina recién
+    # cuando todas las imágenes estén migradas a R2 (tarea 3.9 del programa).
+    (53, "reclamo_imagenes: storage_key (R2) + data nullable", [
+        "DO $$ BEGIN ALTER TABLE reclamo_imagenes ADD COLUMN storage_key TEXT; EXCEPTION WHEN duplicate_column THEN NULL; END $$;",
+        "DO $$ BEGIN ALTER TABLE reclamo_imagenes ALTER COLUMN data DROP NOT NULL; EXCEPTION WHEN others THEN NULL; END $$;",
+    ]),
 ]
 
 

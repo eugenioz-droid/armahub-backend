@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 from typing import Optional, List
 
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Form
-from fastapi.responses import Response
+from fastapi.responses import Response, RedirectResponse
 from pydantic import BaseModel
 from psycopg.rows import dict_row
 
@@ -19,6 +19,7 @@ from .notifications import crear_notificacion
 from .auth import get_current_user, require_admin_or_admin2
 from .db import get_conn, audit
 from . import cache as _cache
+from . import storage
 from .reclamos_queries import (
     q_total, q_abiertos, q_por_estado, q_por_tipo,
     q_por_anio_mes, q_resueltos_no_resueltos, q_por_categoria, q_por_proyecto,
@@ -56,6 +57,24 @@ def _es_propietario_usc(rec: dict, email: str) -> bool:
 def _es_propietario_cubicador(rec: dict, email: str) -> bool:
     """Cubicador/externo owns reclamo if cubicador_asignado or respuesta_por."""
     return rec.get("cubicador_asignado") == email or rec.get("respuesta_por") == email
+
+
+def _puede_ver_reclamo(rec: dict, user: dict) -> bool:
+    """
+    True si el usuario puede ver este reclamo.
+    admin/admin2/cubicador → todo (global). usc/externo → solo propios.
+    cliente → no tiene acceso a reclamos.
+    Espejo de build_role_filter, para validar acceso a un reclamo puntual (cierra IDOR).
+    """
+    role = user.get("role", "")
+    email = user.get("email", "")
+    if role in ("admin", "admin2", "cubicador"):
+        return True
+    if role == "usc":
+        return _es_propietario_usc(rec, email)
+    if role == "externo":
+        return _es_propietario_cubicador(rec, email)
+    return False
 
 
 def _estado_bloquea_edicion_analisis(estado: str) -> bool:
@@ -1120,14 +1139,32 @@ def get_reclamo_optimizado(
                             "fecha_subida" if "fecha_subida" in imagenes_columns else "NULL"
                         )
                         tipo_expr = "tipo" if "tipo" in imagenes_columns else "NULL"
+                        sk_expr = "storage_key" if "storage_key" in imagenes_columns else "NULL"
                         cur.execute(f"""
                             SELECT id, filename, content_type, descripcion, subido_por,
                                    {fecha_expr} AS fecha_ref,
-                                   {tipo_expr} AS tipo_ref
+                                   {tipo_expr} AS tipo_ref,
+                                   {sk_expr} AS storage_key
                             FROM reclamo_imagenes WHERE reclamo_id = %s
                             ORDER BY id ASC
                         """, (reclamo_id,))
                         imagenes = cur.fetchall()
+
+                        def _img_url(img):
+                            # Si está en R2: presigned URL temporal (carga directo en <img>,
+                            # ya autorizada; este detalle ya validó acceso al reclamo).
+                            sk = img.get("storage_key")
+                            if sk and storage.is_configured():
+                                try:
+                                    return storage.generate_presigned_url(
+                                        sk, expires=3600,
+                                        content_type=img.get("content_type")
+                                    )
+                                except Exception:
+                                    pass
+                            # Fallback (BYTEA o R2 no disponible): endpoint protegido.
+                            return f"/reclamos/{reclamo_id}/imagenes/{img.get('id')}"
+
                         response["imagenes"] = [
                             {
                                 "id": img.get("id"),
@@ -1138,7 +1175,7 @@ def get_reclamo_optimizado(
                                 "fecha": _as_text(img.get("fecha_ref")),
                                 "fecha_subida": _as_text(img.get("fecha_ref")),
                                 "tipo": img.get("tipo_ref") or "ImagenesRegistro",
-                                "url": f"/reclamos/{reclamo_id}/imagenes/{img.get('id')}",
+                                "url": _img_url(img),
                                 "size_preview": "thumbnail"
                             }
                             for img in imagenes
@@ -1647,12 +1684,32 @@ async def subir_imagen(
                 # Detectar nombre de columna fecha (fecha vs fecha_subida)
                 img_columns = _get_table_columns(cur, "reclamo_imagenes")
                 fecha_col = "fecha" if "fecha" in img_columns else "fecha_subida"
+                has_storage = "storage_key" in img_columns
 
-                cur.execute(f"""
-                    INSERT INTO reclamo_imagenes (reclamo_id, filename, content_type, data, descripcion, subido_por, {fecha_col}, tipo)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                    RETURNING id
-                """, (reclamo_id, file.filename, file.content_type, data, descripcion, email, now, img_tipo))
+                # Almacenamiento dual: R2 si está configurado, BYTEA como fallback.
+                # carpeta por tipo: reclamos/registro/ o reclamos/analisis/
+                storage_key = None
+                db_data = data
+                if has_storage and storage.is_configured():
+                    subcarpeta = "analisis" if img_tipo == "ImagenesAnalisis" else "registro"
+                    storage_key = storage.build_key(
+                        "reclamos", subcarpeta, str(reclamo_id), filename=file.filename
+                    )
+                    storage.upload_file(storage_key, data, file.content_type or "application/octet-stream")
+                    db_data = None  # no duplicar el binario en la BD
+
+                if has_storage:
+                    cur.execute(f"""
+                        INSERT INTO reclamo_imagenes (reclamo_id, filename, content_type, data, storage_key, descripcion, subido_por, {fecha_col}, tipo)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        RETURNING id
+                    """, (reclamo_id, file.filename, file.content_type, db_data, storage_key, descripcion, email, now, img_tipo))
+                else:
+                    cur.execute(f"""
+                        INSERT INTO reclamo_imagenes (reclamo_id, filename, content_type, data, descripcion, subido_por, {fecha_col}, tipo)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                        RETURNING id
+                    """, (reclamo_id, file.filename, file.content_type, data, descripcion, email, now, img_tipo))
                 img_id = cur.fetchone()[0]
 
                 cur.execute("UPDATE reclamos SET fecha_actualizacion = %s WHERE id = %s", (now, reclamo_id))
@@ -1669,12 +1726,31 @@ async def subir_imagen(
 
 
 @router.get("/reclamos/{reclamo_id}/imagenes/{imagen_id}")
-def ver_imagen(reclamo_id: int, imagen_id: int):
-    """Servir una imagen directamente (inline) para verla en el navegador sin descargar."""
+def ver_imagen(reclamo_id: int, imagen_id: int, user=Depends(get_current_user)):
+    """
+    Servir una imagen inline. Requiere autenticación y permiso sobre el reclamo
+    (cierra H1: antes era público; cierra IDOR: valida ownership).
+    Sirve desde R2 (storage_key) si existe, o desde BYTEA (data) para imágenes
+    aún no migradas.
+    """
     with get_conn() as conn:
-        with conn.cursor() as cur:
+        with conn.cursor(row_factory=dict_row) as cur:
+            # 1) Validar permiso de ver ESTE reclamo
             cur.execute("""
-                SELECT data, content_type, filename
+                SELECT creado_por, asignado_a, cubicador_asignado, respuesta_por
+                FROM reclamos WHERE id = %s
+            """, (reclamo_id,))
+            rec = cur.fetchone()
+            if not rec:
+                raise HTTPException(status_code=404, detail="Reclamo no encontrado")
+            if not _puede_ver_reclamo(rec, user):
+                raise HTTPException(status_code=403, detail="No tiene permiso para ver esta imagen")
+
+            # 2) Cargar metadata de la imagen
+            img_columns = _get_table_columns(cur, "reclamo_imagenes")
+            sk_expr = "storage_key" if "storage_key" in img_columns else "NULL AS storage_key"
+            cur.execute(f"""
+                SELECT data, content_type, filename, {sk_expr}
                 FROM reclamo_imagenes
                 WHERE id = %s AND reclamo_id = %s
             """, (imagen_id, reclamo_id))
@@ -1682,22 +1758,51 @@ def ver_imagen(reclamo_id: int, imagen_id: int):
             if not row:
                 raise HTTPException(status_code=404, detail="Imagen no encontrada")
 
-    return Response(
-        content=bytes(row[0]),
-        media_type=row[1],
-        headers={"Content-Disposition": f"inline; filename=\"{row[2]}\""}
-    )
+    content_type = row.get("content_type") or "application/octet-stream"
+    filename = row.get("filename") or "imagen"
+    storage_key = row.get("storage_key")
+
+    # 3a) Imagen en R2 → redirigir a presigned URL (no pasa bytes por el backend)
+    if storage_key and storage.is_configured():
+        url = storage.generate_presigned_url(storage_key, expires=3600, content_type=content_type)
+        return RedirectResponse(url, status_code=307)
+
+    # 3b) Imagen aún en BYTEA → servir inline como antes
+    if row.get("data") is not None:
+        return Response(
+            content=bytes(row["data"]),
+            media_type=content_type,
+            headers={"Content-Disposition": f"inline; filename=\"{filename}\""}
+        )
+
+    raise HTTPException(status_code=404, detail="Imagen sin contenido")
 
 
 @router.delete("/reclamos/{reclamo_id}/imagenes/{imagen_id}")
 def eliminar_imagen(reclamo_id: int, imagen_id: int, user=Depends(get_current_user)):
-    """Eliminar una imagen de un reclamo."""
+    """Eliminar una imagen de un reclamo (también del storage R2 si aplica)."""
     email = user.get("email", "unknown")
+    storage_key = None
     with get_conn() as conn:
         with conn.cursor() as cur:
+            img_columns = _get_table_columns(cur, "reclamo_imagenes")
+            if "storage_key" in img_columns:
+                cur.execute(
+                    "SELECT storage_key FROM reclamo_imagenes WHERE id = %s AND reclamo_id = %s",
+                    (imagen_id, reclamo_id),
+                )
+                r = cur.fetchone()
+                if r:
+                    storage_key = r[0]
             cur.execute("DELETE FROM reclamo_imagenes WHERE id = %s AND reclamo_id = %s", (imagen_id, reclamo_id))
             if cur.rowcount == 0:
                 raise HTTPException(status_code=404, detail="Imagen no encontrada")
+    # Borrar de R2 después de confirmar el borrado en BD (idempotente, no falla si no existe)
+    if storage_key and storage.is_configured():
+        try:
+            storage.delete_file(storage_key)
+        except Exception:
+            pass
     _invalidate_reclamo_cache(reclamo_id)
     audit(email, "eliminar_imagen_reclamo", str(imagen_id), "reclamo", str(reclamo_id))
     return {"ok": True, "id": imagen_id}
@@ -2115,9 +2220,11 @@ def exportar_reclamo_pdf(reclamo_id: int, user=Depends(get_current_user)):
                 for a in cur.fetchall()
             ]
 
-            # Imágenes → raw bytes para fpdf2
-            cur.execute("""
-                SELECT id, filename, content_type, data, tipo
+            # Imágenes → raw bytes para fpdf2 (desde R2 o BYTEA)
+            _img_cols = _get_table_columns(cur, "reclamo_imagenes")
+            _sk_expr = "storage_key" if "storage_key" in _img_cols else "NULL AS storage_key"
+            cur.execute(f"""
+                SELECT id, filename, content_type, data, tipo, {_sk_expr}
                 FROM reclamo_imagenes WHERE reclamo_id = %s ORDER BY id ASC
             """, (reclamo_id,))
             imagenes_registro = []
@@ -2126,7 +2233,19 @@ def exportar_reclamo_pdf(reclamo_id: int, user=Depends(get_current_user)):
                 ct = img.get("content_type") or ""
                 if not ct.startswith("image/"):
                     continue
-                entry = {"raw_bytes": bytes(img["data"]), "filename": img.get("filename")}
+                # Obtener los bytes: R2 si tiene storage_key, si no BYTEA
+                raw = None
+                sk = img.get("storage_key")
+                if sk and storage.is_configured():
+                    try:
+                        raw = storage.download_file(sk)
+                    except Exception:
+                        raw = None
+                if raw is None and img.get("data") is not None:
+                    raw = bytes(img["data"])
+                if raw is None:
+                    continue  # imagen sin contenido recuperable, se omite del PDF
+                entry = {"raw_bytes": raw, "filename": img.get("filename")}
                 tipo = img.get("tipo") or "ImagenesRegistro"
                 if tipo == "ImagenesAnalisis":
                     imagenes_analisis.append(entry)
