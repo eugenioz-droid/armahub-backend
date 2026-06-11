@@ -195,29 +195,28 @@ function _applyReclamoDetailPermissions(data) {
   var btnElim = document.getElementById('btnEliminarReclamo');
   if (btnElim) btnElim.style.display = puedeEliminar ? '' : 'none';
 
-  // Botones de flujo: "Enviar a revisión" (cubicador), "Aprobar para validación" (admin)
+  // Botones de flujo: "Enviar a revisión" (cubicador), "Enviar a validación" (admin), "Aprobar para validación" (admin)
   var esAsignado = (['cubicador','externo'].includes(currentRole) && esPropioCub);
-  var estadoEnAnalisis = (data.estado === 'en_analisis');
+  // Estados donde el responsable todavía está trabajando el reclamo (puede enviarlo adelante)
+  var estadoEnTrabajo = (data.estado === 'abierto' || data.estado === 'en_analisis');
   var estadoEnRevision = (data.estado === 'en_revision');
   var estaCerrado = (data.estado === 'cerrado' || data.estado === 'rechazado');
   var puedeReabrir = estaCerrado && (currentRole === 'admin' || currentRole === 'admin_calidad');
 
-  // Cubicador/externo: ve "Enviar a revisión" solo si el reclamo está en análisis
-  var puedeEnviarARevision = esAsignado && estadoEnAnalisis;
-  // Admin: ve "Aprobar para validación" cuando el reclamo está en revisión
-  var puedeAprobarParaVal = (currentRole === 'admin') && estadoEnRevision;
-  // Admin/admin_calidad: acceso total al container también si aun en análisis
   var puedeAdmin = (currentRole === 'admin' || currentRole === 'admin_calidad');
+  // Cubicador/externo: "Enviar a revisión" mientras el reclamo está en trabajo
+  var puedeEnviarARevision = esAsignado && estadoEnTrabajo;
+  // Admin: "Aprobar para validación" cuando el reclamo está en revisión
+  var puedeAprobarParaVal = (currentRole === 'admin') && estadoEnRevision;
 
   var cerrarCont = document.getElementById('recCerrarContainer');
-  if (cerrarCont) cerrarCont.style.display = (puedeEnviarARevision || puedeAprobarParaVal || (puedeAdmin && !estaCerrado)) ? '' : 'none';
+  if (cerrarCont) cerrarCont.style.display = (puedeEnviarARevision || puedeAprobarParaVal || (puedeAdmin && estadoEnTrabajo) || puedeReabrir) ? '' : 'none';
 
   var btnCerrar = document.getElementById('btnCerrarReclamo');
   var btnAprobar = document.getElementById('btnAprobarParaValidacion');
   var btnReabrir = document.getElementById('btnReabrirReclamo');
-  // "Enviar a revisión": cubicador en estado en_analisis; admin en estado en_analisis (envía directo a validacion)
   if (btnCerrar) {
-    if (puedeAdmin && estadoEnAnalisis) {
+    if (puedeAdmin && estadoEnTrabajo) {
       btnCerrar.style.display = '';
       btnCerrar.textContent = '📤 Enviar a validación';
     } else if (puedeEnviarARevision) {
