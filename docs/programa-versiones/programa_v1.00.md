@@ -309,11 +309,12 @@ Objetivo: endurecer Reclamos y cerrar los pendientes reales arrastrados.
 | 5.32 | Agregar estado `en_revision` al flujo de reclamos (migración 60 + constantes + labels + colores) | ☑ | YO |
 | 5.33 | Botón dinámico: cubicador "Enviar a revisión", admin "Enviar a validación", admin "Aprobar para validación" cuando está en revisión | ☑ | YO |
 | 5.34 | Mover sección Validación fuera del detalle de reclamo → sub-tab Validaciones | ☑ | YO |
-| 5.35 | Sub-tab Validaciones: sección "Mi revisión" (admin — cola de reclamos en análisis, botón Aprobar) | ☑ | YO |
-| 5.36 | Sub-tab Validaciones: sección "Validación Calidad" (admin_calidad — externos/internos separados, KPIs, panel de acción) | ☑ | YO |
-| 5.37 | Lógica de devolución: Jefa de Calidad puede devolver reclamo a etapa anterior con explicación | ◐ | YO |
+| 5.35 | Sub-tab Validaciones: "Mi revisión" (Jefe Servicio — cola en_revision, botones Aprobar/Devolver con motivo) | ☑ | YO |
+| 5.36 | Sub-tab Validaciones: "Validación Calidad" (admin_calidad — listas, panel de acción con datos reales, KPIs) | ☑ | YO |
+| 5.37 | Devolución: Jefe Servicio devuelve en_revision → en_analisis con motivo (timeline); Calidad rechaza vía PA.5 | ☑ | YO |
 | 5.38 | Smoke test flujo completo: cubicador → en revisión → aprobado → en validación → cerrado/devuelto | ☐ | TÚ+YO |
-| 5.39 | KPIs reales de "Validación Calidad" (aprobados/mes, devueltos/mes, tiempo prom.) — hoy solo "Pendientes" es real, el resto placeholder. Requiere endpoint de historial | ☐ | YO |
+| 5.39 | KPIs "Validación Calidad": Abiertos/Cerrados reales ahora. Devueltos y Tiempo prom. → diferidos a sección de reportes (5.40) | ◐ | YO |
+| 5.40 | Sección de Reportes/Consultas de reclamos (devueltos por período, tiempos de respuesta, etc.) — diseño + implementación | ☐ | TÚ+YO |
 
 **Nota 5.37:** El backend ya devuelve a `en_analisis` con motivo al rechazar (lógica PA.5 existente). Falta definir si en Flujo A debe devolver a `en_revision` (al Jefe de Servicio) en vez de directo al cubicador. Pendiente de decisión junto con [DECISIÓN PENDIENTE: modelo de acceso por área].
 
