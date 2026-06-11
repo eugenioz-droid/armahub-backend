@@ -1433,6 +1433,8 @@ def actualizar_reclamo(reclamo_id: int, body: ReclamoUpdate, user=Depends(get_cu
                 crear_notificacion("reclamo_cerrado", reclamo_id, msg, destinatarios_extra=extras)
             elif body.estado == "en_analisis" and is_rejection:
                 crear_notificacion("reclamo_reabierto", reclamo_id, msg + " (rechazado)", destinatarios_extra=extras)
+            elif body.estado == "en_revision":
+                crear_notificacion("enviado_a_revision", reclamo_id, msg, destinatarios_extra=extras)
             elif body.estado == "validacion":
                 crear_notificacion("enviado_a_validacion", reclamo_id, msg, destinatarios_extra=extras)
             else:

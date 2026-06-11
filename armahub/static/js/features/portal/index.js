@@ -430,9 +430,9 @@ async function loadLandingIndicadores() {
       alertaWrap.style.display = '';
       document.getElementById('hubAlertaTexto').textContent = alertas.total_abiertos + ' reclamo(s) en total';
       // Ordered badges by estado
-      var estadoOrder = ['abierto','en_analisis','validacion','cerrado','rechazado'];
-      var estadoLabels = {abierto:'Abiertos', en_analisis:'En análisis', validacion:'En validación', cerrado:'Cerrados', rechazado:'Rechazados'};
-      var estadoColors = {abierto:'#e53935', en_analisis:'#ff9800', validacion:'#7B1FA2', cerrado:'#4CAF50', rechazado:'#9E9E9E'};
+      var estadoOrder = ['abierto','en_analisis','en_revision','validacion','cerrado','rechazado'];
+      var estadoLabels = {abierto:'Abiertos', en_analisis:'En análisis', en_revision:'En revisión', validacion:'En validación', cerrado:'Cerrados', rechazado:'Rechazados'};
+      var estadoColors = {abierto:'#e53935', en_analisis:'#ff9800', en_revision:'#1976d2', validacion:'#7B1FA2', cerrado:'#4CAF50', rechazado:'#9E9E9E'};
       var countMap = {};
       (alertas.por_estado || []).forEach(function(a) { countMap[a.estado] = a.count; });
       var badgeHtml = '';

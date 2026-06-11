@@ -931,6 +931,14 @@ MIGRATIONS = [
                 CHECK (estado IN ('abierto','en_analisis','en_revision','accion_correctiva','validacion','validado','cerrado','rechazado'));
         END $$;""",
     ]),
+
+    ("61", "notificaciones: defaults para eventos enviado_a_revision y enviado_a_validacion", [
+        # Jefe de Servicio (admin) recibe avisos de reclamos enviados a revisión
+        "INSERT INTO notificacion_config (tipo_evento, rol, activo) VALUES ('enviado_a_revision', 'admin', TRUE) ON CONFLICT DO NOTHING",
+        # Jefa de Calidad (admin_calidad) recibe avisos de reclamos enviados a validación
+        "INSERT INTO notificacion_config (tipo_evento, rol, activo) VALUES ('enviado_a_validacion', 'admin_calidad', TRUE) ON CONFLICT DO NOTHING",
+        "INSERT INTO notificacion_config (tipo_evento, rol, activo) VALUES ('enviado_a_validacion', 'admin', TRUE) ON CONFLICT DO NOTHING",
+    ]),
 ]
 
 
