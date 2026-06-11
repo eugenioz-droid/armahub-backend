@@ -300,6 +300,20 @@ Objetivo: endurecer Reclamos y cerrar los pendientes reales arrastrados.
 | 5.28 | Implementar 5 Por Qué como método RCA alternativo a Ishikawa (por reclamo, excluyente) | ☐ | YO |
 | 5.29 | Rol Jefe de Servicio: activar en flujos de RCA y área (tablas existen en BD, rol sin usar aún) | ☐ | TÚ+YO |
 
+### 5F. Refactor roles + flujo de validación (iniciado sesión 2026-06-11)
+
+| N° | Descripción | Realizado | Quién |
+|----|-------------|-----------|-------|
+| 5.30 | Renombrar rol `admin2` → `admin_calidad` en todo el sistema (código + migración 59 + docs) | ☑ | YO |
+| 5.31 | Reemplazar filtros desplegables de Aplica por botón toggle único en listado reclamos | ☐ | YO |
+| 5.32 | Agregar estado `en_revision` al flujo de reclamos (entre "En análisis" y "En validación") | ☐ | YO |
+| 5.33 | Botón "Enviar a revisión" para cubicador; botón "Aprobar para validación" para Jefe de Servicio | ☐ | YO |
+| 5.34 | Mover sección Validación fuera del detalle de reclamo → sub-tab Validaciones | ☐ | YO |
+| 5.35 | Sub-tab Validaciones: sección "Mi revisión" (Jefe de Servicio — cola de reclamos en análisis) | ☐ | YO |
+| 5.36 | Sub-tab Validaciones: sección "Validación Calidad" (admin_calidad — externos e internos separados, KPIs) | ☐ | YO |
+| 5.37 | Lógica de devolución: Jefa de Calidad puede devolver reclamo a `en_revision` con explicación | ☐ | YO |
+| 5.38 | Smoke test flujo completo: cubicador → en revisión → aprobado → en validación → cerrado/devuelto | ☐ | TÚ+YO |
+
 ### 5B. Envío de informe por correo (arrastrado de PC.15)
 
 | N° | Descripción | Realizado | Quién |
