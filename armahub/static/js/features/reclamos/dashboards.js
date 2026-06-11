@@ -599,7 +599,7 @@ async function _loadRevisionQueue() {
   // Cola del Jefe de Servicio: reclamos que el cubicador ya envió a revisión
   var data = await apiGet('/reclamos?estado=en_revision&limit=200');
   if (!data) { listaEl.innerHTML = '<div class="muted">Error al cargar.</div>'; return; }
-  var items = data.reclamos || [];
+  var items = data.data || [];
   if (badge) badge.textContent = items.length;
   if (items.length === 0) { listaEl.innerHTML = '<div class="muted" style="padding:12px 0;">Sin reclamos pendientes de revisión.</div>'; return; }
 
@@ -608,7 +608,7 @@ async function _loadRevisionQueue() {
       '<div style="flex:1; cursor:pointer;" onclick="verReclamo(' + r.id + ')" title="Ver ficha completa">' +
         '<span style="font-weight:600; color:#1565C0; font-size:12px;">' + (r.correlativo || '#' + r.id) + '</span>' +
         ' <span style="font-size:12px;">' + (r.titulo || '') + '</span>' +
-        '<div style="font-size:11px; color:#888; margin-top:2px;">' + (r.cubicador_display || r.cubicador_asignado || 'Sin asignar') + ' · ' + (r.proyecto_nombre || '—') + '</div>' +
+        '<div style="font-size:11px; color:#888; margin-top:2px;">' + (r.cubicador_asignado || 'Sin asignar') + ' · ' + (r.nombre_proyecto || '—') + '</div>' +
       '</div>' +
       '<div style="display:flex; gap:6px; white-space:nowrap;">' +
         '<button style="font-size:11px; padding:3px 10px; background:#1976d2; color:#fff; border:none; border-radius:4px; cursor:pointer;" ' +
@@ -663,7 +663,7 @@ async function _loadValidacionCalidad() {
     listaInt.innerHTML = '<div class="muted">Error.</div>';
     return;
   }
-  var items = data.reclamos || [];
+  var items = data.data || [];
   if (badge) badge.textContent = items.length;
 
   // Separar Clientes vs Internos. Hoy "Reclamos Internos" es placeholder (tarea 5.27),
@@ -677,7 +677,7 @@ async function _loadValidacionCalidad() {
       '<div style="flex:1; cursor:pointer;" onclick="verReclamo(' + r.id + ')" title="Ver ficha completa">' +
         '<div style="font-weight:600; color:#7B1FA2; font-size:12px;">' + (r.correlativo || '#' + r.id) + '</div>' +
         '<div style="font-size:11px; color:#666;">' + (r.titulo || '') + '</div>' +
-        '<div style="font-size:11px; color:#888;">' + (r.proyecto_nombre || '—') + '</div>' +
+        '<div style="font-size:11px; color:#888;">' + (r.nombre_proyecto || '—') + '</div>' +
       '</div>' +
       '<button style="font-size:11px; padding:3px 10px; background:#7B1FA2; color:#fff; border:none; border-radius:4px; cursor:pointer; white-space:nowrap;" ' +
         'onclick="_seleccionarParaValidar(' + r.id + ', this.parentElement)">Validar</button>' +
