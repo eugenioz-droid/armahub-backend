@@ -302,6 +302,7 @@ function _renderReclamoDetail(data) {
 function _captureReclamoAnalysisDraft() {
   var fieldIds = [
     'recDetailRespuestaTexto',
+    'recDetailCausaDisplay',
     'recDetailCategoria',
     'recDetailSubCausa',
     'recDetailCodCausa',
@@ -332,7 +333,13 @@ function _restoreReclamoAnalysisDraft(draft) {
 
 async function verReclamo(id, options) {
   options = options || {};
-  var analysisDraft = options.preserveAnalysisDraft ? _captureReclamoAnalysisDraft() : null;
+  // Preservar el borrador de análisis SIEMPRE que recarguemos el mismo reclamo
+  // que ya está abierto (cambio de estado, agregar acción, cambiar aplica, etc.).
+  // Así no se pierde lo que el usuario está escribiendo. Solo se descarta al
+  // navegar a OTRO reclamo (id distinto) o si se pide explícitamente lo contrario.
+  var esMismoReclamo = _reclamoActual && String(_reclamoActual.id) === String(id);
+  var preservar = options.preserveAnalysisDraft !== false && (options.preserveAnalysisDraft === true || esMismoReclamo);
+  var analysisDraft = preservar ? _captureReclamoAnalysisDraft() : null;
   var data = await apiGet('/reclamos/' + id);
   if (!data) return;
   data = _normalizeReclamoDetail(data);
