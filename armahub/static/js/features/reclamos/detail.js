@@ -478,8 +478,12 @@ async function cerrarReclamo() {
   var aplicaSelect = document.getElementById('recDetailAplica');
   var aplicaValue = aplicaSelect ? aplicaSelect.value : _reclamoActual.aplica;
   var esAdmin = (currentRole === 'admin' || currentRole === 'admin_calidad');
-  // Destino: admin envía a validacion, cubicador/externo envía a en_revision (Flujo A) o validacion (Flujo B)
-  var esCubicacion = (_reclamoActual.area_aplica === 'Cubicaciones' || _reclamoActual.cubicador_asignado);
+  // Dos flujos:
+  //   A) Cubicación: cubicador/externo → en_revision (lo revisa el jefe de servicio)
+  //   B) Otra área:  responsable → validacion directo (el jefe del área responde por su análisis)
+  // Heurística "es Cubicación": área aplica empieza con "Cubicac" (tolera singular/plural) o hay cubicador asignado.
+  var area = (_reclamoActual.area_aplica || '').toLowerCase();
+  var esCubicacion = (area.indexOf('cubicac') === 0) || !!_reclamoActual.cubicador_asignado;
   var estadoDestino = esAdmin ? 'validacion' : (esCubicacion ? 'en_revision' : 'validacion');
 
   if (!aplicaValue || aplicaValue === 'pendiente') {
