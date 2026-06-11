@@ -909,8 +909,28 @@ MIGRATIONS = [
         """,
     ]),
     ("59", "Renombrar rol admin2 → admin_calidad en usuarios y configuraciones", [
-        "UPDATE users SET role = 'admin_calidad' WHERE role = 'admin2'",
-        "UPDATE notificacion_config SET rol = 'admin_calidad' WHERE rol = 'admin2'",
+        # 1) Quitar TODO check constraint sobre users.role (auto-nombrado o explícito)
+        #    para poder normalizar los valores sin que el constraint viejo bloquee.
+        """DO $$
+        DECLARE r RECORD;
+        BEGIN
+            FOR r IN (
+                SELECT con.conname
+                FROM pg_constraint con
+                JOIN pg_attribute att ON att.attnum = ANY(con.conkey) AND att.attrelid = con.conrelid
+                WHERE con.conrelid = 'users'::regclass
+                  AND con.contype = 'c'
+                  AND att.attname = 'role'
+            ) LOOP
+                EXECUTE 'ALTER TABLE users DROP CONSTRAINT ' || r.conname;
+            END LOOP;
+        END $$;""",
+        # 2) Normalizar valores legados a la lista vigente
+        "UPDATE users SET role = 'admin_calidad' WHERE role IN ('admin2', 'coordinador')",
+        "UPDATE notificacion_config SET rol = 'admin_calidad' WHERE rol IN ('admin2', 'coordinador')",
+        # 3) Recrear el constraint con la lista correcta de roles
+        """ALTER TABLE users ADD CONSTRAINT users_role_check
+            CHECK (role IN ('admin', 'admin_calidad', 'cubicador', 'usc', 'externo', 'cliente'))""",
     ]),
 
     ("60", "reclamos: agregar estado en_revision al CHECK constraint", [
