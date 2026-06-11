@@ -4,9 +4,10 @@
 > diseño por caluga. Se actualiza cada vez que cambia un flujo, rol o comportamiento. No es
 > un roadmap — para eso está `docs/programa-versiones/`.
 >
-> Última actualización: 2026-06-10 · Infraestructura: Render (FastAPI) + Supabase (PostgreSQL) + Cloudflare R2
+> Última actualización: 2026-06-11 · Infraestructura: Render (FastAPI) + Supabase (PostgreSQL) + Cloudflare R2
 >
 > **Discovery Reclamos v2 (2026-06-10):** diseño de áreas, flujos multi-área y RCA documentado. Pendiente de implementación.
+> **Validaciones (2026-06-11):** flujo `en_revision` + sub-tab Validaciones implementados (estados reales: `en_revision`/`validacion`). Rol `admin2` renombrado a `admin_calidad`. Filtro por área del Jefe de Servicio pendiente (Plan 2).
 
 ---
 
@@ -32,7 +33,7 @@
 | Rol | Descripción |
 |-----|-------------|
 | `admin` | Acceso total. Jefe de Servicio de Cubicaciones. Cierre final de reclamos. |
-| `admin2` | Jefa de Calidad. Validación final en todos los flujos. Puede saltarse jerarquía si jefe no disponible. |
+| `admin_calidad` | Jefa de Calidad. Validación final en todos los flujos. Puede saltarse jerarquía si jefe no disponible. (Antes `admin2`.) |
 | `cubicador` | Analista de Cubicaciones — responde reclamos asignados a él. |
 | `externo` | Cubicador externo — mismas funciones que cubicador en sus reclamos. |
 | `usc` | Operador USC — levanta reclamos externos, no analiza ni valida. |
@@ -76,8 +77,8 @@ Aplica al módulo de Cubicación — complementario al modelo de áreas.
 
 ### 1.5 Reglas generales de ownership
 
-- **admin / admin2:** acceso total a todo el sistema.
-- **admin2 (Jefa de Calidad):** validación final en todos los flujos; puede actuar como fallback de cualquier jefe de servicio.
+- **admin / admin_calidad:** acceso total a todo el sistema.
+- **admin_calidad (Jefa de Calidad):** validación final en todos los flujos; puede actuar como fallback de cualquier jefe de servicio.
 - **jefe_servicio:** valida (o analiza, según área) los reclamos donde su área es responsable.
 - **cubicador / externo:** solo ven y editan sus propios reclamos asignados.
 - **usc / miembro:** solo ven y editan donde son `creado_por` o `asignado_a`.
@@ -143,44 +144,48 @@ Incluye análisis de causa raíz (Ishikawa o 5 Por Qué), acciones correctivas, 
 
 ### 3.3 Flujos de estados
 
+> **Estados reales en BD** (constraint `reclamos_estado_check`): `abierto`, `en_analisis`, `en_revision`, `validacion`, `cerrado`, `rechazado`. (Migración 60 agregó `en_revision`.)
+
 #### Flujo A — Cubicaciones (doble validación interna)
 
 ```
-  ABIERTO ──► EN_ANALISIS ──► VALIDACION_JEFE ──► VALIDACION_CALIDAD ──► CERRADO
-                  ▲                  │                      │
-                  │                  ▼                      ▼
-                  └────────── RECHAZADO ◄─────────── RECHAZADO
+  ABIERTO ──► EN_ANALISIS ──► EN_REVISION ──► VALIDACION ──► CERRADO
+                  ▲                │               │
+                  │                ▼               ▼
+                  └──── (devolver con motivo) ◄────┘
 ```
 
 | Estado | Quién actúa |
 |--------|-------------|
 | `abierto` | Reclamo creado, esperando análisis |
-| `en_analisis` | Cubicador asignado trabaja el análisis |
-| `validacion_jefe` | Jefe de Servicio de Cubicaciones (Admin) revisa |
-| `validacion_calidad` | Jefa de Calidad (Admin2) revisa y cierra |
-| `cerrado` | Admin cierra formalmente |
-| `rechazado` | Cualquier validador rechaza → vuelve a `en_analisis` automáticamente |
+| `en_analisis` | Cubicador asignado trabaja el análisis. Botón "Enviar a revisión" → `en_revision` |
+| `en_revision` | Jefe de Servicio de Cubicaciones (admin) revisa. Aparece en sub-tab Validaciones → "En revisión". Aprobar → `validacion`; Devolver → `en_analisis` con motivo |
+| `validacion` | Jefa de Calidad (`admin_calidad`) valida. Aparece en "Validación Calidad". Aprobar → `cerrado`; Devolver → `en_analisis` |
+| `cerrado` | Cierre formal |
+| `rechazado` | Rechazo definitivo |
 
 #### Flujo B — Resto de áreas (validación directa a Calidad)
 
 ```
-  ABIERTO ──► EN_ANALISIS ──► VALIDACION_CALIDAD ──► CERRADO
-                  ▲                    │
-                  │                    ▼
-                  └────────── RECHAZADO
+  ABIERTO ──► EN_ANALISIS ──► VALIDACION ──► CERRADO
+                  ▲               │
+                  │               ▼
+                  └──── (devolver con motivo)
 ```
 
 | Estado | Quién actúa |
 |--------|-------------|
 | `abierto` | Reclamo creado, esperando análisis |
-| `en_analisis` | Jefe de Servicio del área responsable analiza |
-| `validacion_calidad` | Jefa de Calidad (Admin2) revisa y cierra |
-| `cerrado` | Admin cierra formalmente |
-| `rechazado` | Admin2 rechaza → vuelve a `en_analisis` automáticamente |
+| `en_analisis` | Jefe de Servicio del área responsable analiza. "Enviar a validación" → `validacion` (NO pasa por `en_revision`) |
+| `validacion` | Jefa de Calidad (`admin_calidad`) valida y cierra |
+| `cerrado` | Cierre formal |
+| `rechazado` | Rechazo definitivo |
 
-> **¿Qué determina el flujo?** El área asignada al reclamo. Si `area_id` corresponde a `cubicaciones`, aplica Flujo A. Para cualquier otra área, aplica Flujo B.
+> **¿Qué determina el flujo?** El área del reclamo. Hoy se decide por heurística sobre `area_aplica` (texto "Cubicación…") o `cubicador_asignado`. **Pendiente (Plan 2):** reemplazar por FK `area_id` real y modelo `jefe_servicio` + `area_usuarios` para filtrar la cola "En revisión" por el área de cada Jefe de Servicio.
 
-> **Reasignación:** si un reclamo fue asignado al área equivocada, quien lo creó puede reasignarlo mientras está en `abierto` o `en_analisis`. Si ya pasó a validación, solo admin/admin2 pueden reasignar.
+> **Sub-tab Validaciones:** vista de trabajo (como Presentaciones). Trae reclamos por estado, muestra la ficha completa reutilizando el **modal de detalle** (`verReclamo`), y desde ahí solo cambia el estado. El listado oficial (tab Reclamos Clientes) muestra TODOS los reclamos siempre; ningún estado los oculta. Acceso actual: `admin` ve ambas secciones; `admin_calidad` solo "Validación Calidad".
+
+> **Reasignación:** si un reclamo fue asignado al área equivocada, quien lo creó puede reasignarlo mientras está en `abierto` o `en_analisis`. Si ya pasó a validación, solo admin/admin_calidad pueden reasignar.
 
 ### 3.4 Análisis de causa raíz (RCA)
 
@@ -267,7 +272,7 @@ ALTER TABLE reclamos ADD COLUMN cinco_por_que JSONB;  -- [{n:1, pregunta, respue
 
 | Rol | Qué ve |
 |-----|--------|
-| admin / admin2 / cubicador | Todos los reclamos (toggle Todos/Mis reclamos) |
+| admin / admin_calidad / cubicador | Todos los reclamos (toggle Todos/Mis reclamos) |
 | usc | Propios por defecto (toggle para ver todos en lectura) |
 | externo | Solo propios, sin toggle |
 | cliente | Sin acceso |
@@ -276,21 +281,21 @@ ALTER TABLE reclamos ADD COLUMN cinco_por_que JSONB;  -- [{n:1, pregunta, respue
 
 | Rol | Acceso |
 |-----|--------|
-| admin / admin2 / cubicador | Cualquier reclamo |
+| admin / admin_calidad / cubicador | Cualquier reclamo |
 | usc | Solo donde es `creado_por` o `asignado_a` |
 | externo | Solo donde es `cubicador_asignado` o `respuesta_por` |
 | cliente | Sin acceso |
 
 #### Sección 1 — Registro
 
-| Acción | admin/admin2 | usc (propio) | cubicador | externo | cliente |
+| Acción | admin/admin_calidad | usc (propio) | cubicador | externo | cliente |
 |--------|:---:|:---:|:---:|:---:|:---:|
 | Ver | ✅ | ✅ | ✅ | ✅ | — |
 | Editar | ✅ | ✅ (estado=abierto) | — | — | — |
 
 #### Sección 2 — Análisis
 
-| Acción | admin/admin2 | usc | cubicador (propio) | externo (propio) | cliente |
+| Acción | admin/admin_calidad | usc | cubicador (propio) | externo (propio) | cliente |
 |--------|:---:|:---:|:---:|:---:|:---:|
 | Ver | ✅ | ✅ | ✅ | ✅ | — |
 | Editar | ✅ | — | ✅ | ✅ | — |
@@ -298,7 +303,7 @@ ALTER TABLE reclamos ADD COLUMN cinco_por_que JSONB;  -- [{n:1, pregunta, respue
 
 #### Sección 3 — Validación
 
-| Acción | admin/admin2 | resto |
+| Acción | admin/admin_calidad | resto |
 |--------|:---:|:---:|
 | Ver sección | ✅ | — |
 | Editar | ✅ | — |
@@ -307,12 +312,12 @@ ALTER TABLE reclamos ADD COLUMN cinco_por_que JSONB;  -- [{n:1, pregunta, respue
 
 | Tipo | Sube | Elimina |
 |------|------|---------|
-| ImagenesRegistro | admin/admin2/usc | admin/admin2 + usc (propios) |
-| ImagenesAnalisis | admin/admin2/cubicador/externo | admin/admin2 + cubicador/externo (propios) |
+| ImagenesRegistro | admin/admin_calidad/usc | admin/admin_calidad + usc (propios) |
+| ImagenesAnalisis | admin/admin_calidad/cubicador/externo | admin/admin_calidad + cubicador/externo (propios) |
 
 #### Acciones correctivas
 
-| Acción | admin/admin2 | usc (propio) | cubicador (propio) | externo (propio) |
+| Acción | admin/admin_calidad | usc (propio) | cubicador (propio) | externo (propio) |
 |--------|:---:|:---:|:---:|:---:|
 | Agregar | ✅ | — | ✅ | ✅ |
 | Editar | ✅ | ✅ | ✅ | ✅ |
@@ -320,7 +325,7 @@ ALTER TABLE reclamos ADD COLUMN cinco_por_que JSONB;  -- [{n:1, pregunta, respue
 
 #### PDF e informe por correo
 
-| Acción | admin/admin2 | usc (propio) | cubicador (propio) | externo |
+| Acción | admin/admin_calidad | usc (propio) | cubicador (propio) | externo |
 |--------|:---:|:---:|:---:|:---:|
 | Exportar PDF | ✅ | ✅ | ✅ | — |
 | Enviar por correo | ✅ | ✅ | — | — |
@@ -340,14 +345,14 @@ ALTER TABLE reclamos ADD COLUMN cinco_por_que JSONB;  -- [{n:1, pregunta, respue
 
 - **Un solo helper de correo** (`mailer.py`) reutilizado por todas las calugas.
 - **Sin BYTEA:** toda imagen en R2 desde migración 54.
-- **Cache:** deshabilitado para usc/externo — activo solo para admin/admin2/cubicador.
+- **Cache:** deshabilitado para usc/externo — activo solo para admin/admin_calidad/cubicador.
 - **Correlativo de calidad:** `anio_calidad` + `numero_calidad`, display "2026-003".
 - **RCA:** Ishikawa o 5 Por Qué por reclamo — excluyentes. Método elegido al iniciar análisis.
 - **Matrices RCA:** gestionadas por área desde el sistema — no hardcodeadas en el código.
 - **Flujo por área:** determinado por `area_responsable_id` del reclamo. Cubicaciones = Flujo A, resto = Flujo B.
 - **Ventas:** un solo pool por ahora (constructoras + retail). Se evalúa separar en v3.
 - **Cliente/Proyecto:** un proyecto = un cliente. Sin abrir más por ahora. Retail sin proyecto → asociado a cliente directo.
-- **Reasignación:** permitida por quien creó el reclamo mientras esté en `abierto`/`en_analisis`. Después solo admin/admin2.
+- **Reasignación:** permitida por quien creó el reclamo mientras esté en `abierto`/`en_analisis`. Después solo admin/admin_calidad.
 
 ---
 
@@ -402,7 +407,7 @@ Cubicador selecciona barras
 
 ### 4.4 Permisos
 
-| Acción | admin/admin2 | cubicador | usc | externo | cliente |
+| Acción | admin/admin_calidad | cubicador | usc | externo | cliente |
 |--------|:---:|:---:|:---:|:---:|:---:|
 | Ver obra completa | ✅ | ✅ | ✅ | ✅ | ✅ (lectura) |
 | Importar CSV | ✅ | ✅ | — | — | — |
@@ -524,7 +529,7 @@ Gestión de relación con clientes: contactos, seguimientos, oportunidades.
 | Un solo helper de storage | `storage.py` — no duplicar. |
 | Sin BYTEA | Todo archivo en R2 desde migración 54. |
 | Permisos en backend | Ownership validado en FastAPI, no solo en frontend. |
-| Cache condicional por rol | Cache activo para admin/admin2/cubicador. Deshabilitado para usc/externo. |
+| Cache condicional por rol | Cache activo para admin/admin_calidad/cubicador. Deshabilitado para usc/externo. |
 | Diseño caluga por caluga | El diseño visual y funcional se define caluga por caluga. Armonización global post-F9. |
 | No hay estado `validado` | Eliminado migración 47 — flujo termina en `cerrado`. |
 | No hay estado `accion_correctiva` | Eliminado migración 46. |
