@@ -489,6 +489,7 @@
           <div id="recCerrarContainer" style="display:none;">
             <button id="btnCerrarReclamo" style="font-size:11px; padding:4px 12px; background:#7B1FA2; color:#fff; border:none; border-radius:4px; cursor:pointer;" onclick="cerrarReclamo()">📤 Enviar a revisión</button>
             <button id="btnAprobarParaValidacion" style="font-size:11px; padding:4px 12px; background:#1976d2; color:#fff; border:none; border-radius:4px; cursor:pointer; display:none; margin-left:8px;" onclick="aprobarParaValidacion()">✅ Aprobar para validación</button>
+            <button id="btnDevolverRevision" style="font-size:11px; padding:4px 12px; background:#fff; color:#e65100; border:1px solid #e65100; border-radius:4px; cursor:pointer; display:none; margin-left:8px;" onclick="devolverRevisionDesdeModal()">↩️ Devolver</button>
             <button id="btnReabrirReclamo" class="secondary" style="font-size:11px; padding:4px 12px; margin-left:8px; display:none;" onclick="reabrirReclamo()">🔓 Reabrir reclamo</button>
           </div>
         </div>
@@ -567,13 +568,30 @@
     <!-- Sub-panel: Validaciones -->
     <div id="recSubValidaciones" style="display:none;">
 
-      <!-- Sección A: Mi revisión (admin = Jefe de Servicio) -->
+      <!-- Sección A: En revisión (Jefe de Servicio) -->
       <div id="recValSeccionRevision" class="card" style="border-left:4px solid #1976d2; margin-bottom:16px;">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
           <h3 style="margin:0; color:#1976d2;">🔍 En revisión</h3>
           <span id="recRevBadge" style="background:#1976d2; color:#fff; font-size:11px; font-weight:700; padding:2px 10px; border-radius:12px;">0</span>
         </div>
-        <p style="font-size:12px; color:#666; margin:0 0 10px 0;">Reclamos de cubicadores que requieren tu revisión antes de pasar a validación de Calidad.</p>
+        <p style="font-size:12px; color:#666; margin:0 0 10px 0;">Reclamos de cubicadores que requieren tu revisión antes de pasar a validación de Calidad. Haz clic en un reclamo para ver su ficha completa.</p>
+
+        <!-- KPI cards -->
+        <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:10px; margin-bottom:14px;">
+          <div style="background:#e3f2fd; border-radius:8px; padding:12px; text-align:center;">
+            <div style="font-size:11px; color:#1565C0; text-transform:uppercase; margin-bottom:4px;">En revisión</div>
+            <div id="recRevKpiPend" style="font-size:28px; font-weight:700; color:#1565C0;">0</div>
+          </div>
+          <div style="background:#fff3e0; border-radius:8px; padding:12px; text-align:center;">
+            <div style="font-size:11px; color:#e65100; text-transform:uppercase; margin-bottom:4px;">Abiertos (total)</div>
+            <div id="recRevKpiAbiertos" style="font-size:28px; font-weight:700; color:#e65100;">0</div>
+          </div>
+          <div style="background:#e8f5e9; border-radius:8px; padding:12px; text-align:center;">
+            <div style="font-size:11px; color:#388e3c; text-transform:uppercase; margin-bottom:4px;">Cerrados (total)</div>
+            <div id="recRevKpiCerrados" style="font-size:28px; font-weight:700; color:#388e3c;">0</div>
+          </div>
+        </div>
+
         <div id="recRevLista" style="font-size:12px; color:#aaa;">Cargando...</div>
       </div>
 

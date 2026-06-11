@@ -73,6 +73,7 @@
     'renderReclamoTimeline',
     'cerrarReclamo',
     'aprobarParaValidacion',
+    'devolverRevisionDesdeModal',
     'reabrirReclamo',
     'loadRecValidaciones',
     'toggleRecAplica',

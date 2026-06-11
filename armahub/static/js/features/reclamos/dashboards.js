@@ -587,6 +587,7 @@ async function loadRecValidaciones() {
 
   if (verRevision) { await _loadRevisionQueue(); }
   if (verCalidad) { await _loadValidacionCalidad(); }
+  await _updateValidacionesKpis();
 }
 
 async function _loadRevisionQueue() {
@@ -604,8 +605,8 @@ async function _loadRevisionQueue() {
 
   listaEl.innerHTML = items.map(function(r) {
     return '<div style="padding:7px 10px; border-bottom:1px solid #f0f0f0; display:flex; justify-content:space-between; align-items:center; gap:8px;">' +
-      '<div style="flex:1;">' +
-        '<span style="font-weight:600; color:#1565C0; cursor:pointer; font-size:12px;" onclick="verReclamo(' + r.id + ')">' + (r.correlativo || '#' + r.id) + '</span>' +
+      '<div style="flex:1; cursor:pointer;" onclick="verReclamo(' + r.id + ')" title="Ver ficha completa">' +
+        '<span style="font-weight:600; color:#1565C0; font-size:12px;">' + (r.correlativo || '#' + r.id) + '</span>' +
         ' <span style="font-size:12px;">' + (r.titulo || '') + '</span>' +
         '<div style="font-size:11px; color:#888; margin-top:2px;">' + (r.cubicador_display || r.cubicador_asignado || 'Sin asignar') + ' · ' + (r.proyecto_nombre || '—') + '</div>' +
       '</div>' +
@@ -670,14 +671,16 @@ async function _loadValidacionCalidad() {
   var externos = items.filter(function(r) { return !r.es_interno; });
   var internos = items.filter(function(r) { return r.es_interno; });
 
-  // KPI: cargar valores reales (abiertos/cerrados)
-  _updateValCalKpis();
 
   function renderItem(r) {
-    return '<div style="padding:6px 8px; border-bottom:1px solid #f3e5f5; cursor:pointer;" onclick="_seleccionarParaValidar(' + r.id + ', this)">' +
-      '<div style="font-weight:600; color:#7B1FA2; font-size:12px;">' + (r.correlativo || '#' + r.id) + '</div>' +
-      '<div style="font-size:11px; color:#666;">' + (r.titulo || '') + '</div>' +
-      '<div style="font-size:11px; color:#888;">' + (r.proyecto_nombre || '—') + '</div>' +
+    return '<div style="padding:6px 8px; border-bottom:1px solid #f3e5f5; display:flex; justify-content:space-between; align-items:center; gap:6px;">' +
+      '<div style="flex:1; cursor:pointer;" onclick="verReclamo(' + r.id + ')" title="Ver ficha completa">' +
+        '<div style="font-weight:600; color:#7B1FA2; font-size:12px;">' + (r.correlativo || '#' + r.id) + '</div>' +
+        '<div style="font-size:11px; color:#666;">' + (r.titulo || '') + '</div>' +
+        '<div style="font-size:11px; color:#888;">' + (r.proyecto_nombre || '—') + '</div>' +
+      '</div>' +
+      '<button style="font-size:11px; padding:3px 10px; background:#7B1FA2; color:#fff; border:none; border-radius:4px; cursor:pointer; white-space:nowrap;" ' +
+        'onclick="_seleccionarParaValidar(' + r.id + ', this.parentElement)">Validar</button>' +
     '</div>';
   }
 
@@ -693,6 +696,9 @@ async function _seleccionarParaValidar(id, el) {
     d.style.background = '';
   });
   if (el) el.style.background = '#f3e5f5';
+  // Llevar el foco al panel de acción (está más abajo)
+  var ap = document.getElementById('recCalAccionPanel');
+  if (ap && ap.scrollIntoView) setTimeout(function(){ ap.scrollIntoView({behavior:'smooth', block:'nearest'}); }, 50);
 
   var panel = document.getElementById('recCalAccionPanel');
   var titulo = document.getElementById('recCalAccionTitulo');
@@ -715,13 +721,18 @@ async function _seleccionarParaValidar(id, el) {
   var msg = document.getElementById('recValidacionMsg'); if (msg) msg.textContent = '';
 }
 
-async function _updateValCalKpis() {
-  // KPIs reales: abiertos / cerrados del módulo de reclamos
+async function _updateValidacionesKpis() {
+  // KPIs reales de ambas secciones, una sola llamada
   var data = await apiGet('/reclamos/validacion-kpis');
   if (!data) return;
   var setKpi = function(elId, val) { var e = document.getElementById(elId); if (e) e.textContent = (val != null ? val : '—'); };
+  // Sección En revisión
+  setKpi('recRevKpiPend', data.en_revision);
+  setKpi('recRevKpiAbiertos', data.abiertos);
+  setKpi('recRevKpiCerrados', data.cerrados);
+  // Sección Validación Calidad
   setKpi('recCalKpiPend', data.pendientes);
-  setKpi('recCalKpiAprobados', data.cerrados);   // "Cerrados" reutiliza la card de Aprobados
-  setKpi('recCalKpiDevueltos', data.abiertos);   // "Abiertos" reutiliza la card de Devueltos
-  setKpi('recCalKpiTiempo', '—');                // Tiempo prom → sección de reportes (5.40)
+  setKpi('recCalKpiAprobados', data.cerrados);   // card "Cerrados"
+  setKpi('recCalKpiDevueltos', data.abiertos);   // card "Abiertos"
+  setKpi('recCalKpiTiempo', '—');                // Tiempo prom → reportes (5.40)
 }

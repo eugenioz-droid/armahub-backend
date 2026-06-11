@@ -722,7 +722,8 @@ def get_usuarios_usc(user=Depends(get_current_user)):
 
 @router.get("/reclamos/validacion-kpis")
 def reclamos_validacion_kpis(user=Depends(get_current_user)):
-    """KPIs para el sub-tab Validaciones (Calidad).
+    """KPIs para el sub-tab Validaciones.
+    - en_revision: reclamos esperando revisión del Jefe de Servicio
     - pendientes: reclamos en estado 'validacion' (esperando a Calidad)
     - abiertos: reclamos no cerrados ni rechazados
     - cerrados: reclamos cerrados
@@ -730,13 +731,15 @@ def reclamos_validacion_kpis(user=Depends(get_current_user)):
     """
     with get_conn() as conn:
         with conn.cursor() as cur:
+            cur.execute("SELECT COUNT(*) FROM reclamos WHERE estado = 'en_revision'")
+            en_revision = int(cur.fetchone()[0])
             cur.execute("SELECT COUNT(*) FROM reclamos WHERE estado = 'validacion'")
             pendientes = int(cur.fetchone()[0])
             cur.execute("SELECT COUNT(*) FROM reclamos WHERE estado NOT IN ('cerrado','rechazado')")
             abiertos = int(cur.fetchone()[0])
             cur.execute("SELECT COUNT(*) FROM reclamos WHERE estado = 'cerrado'")
             cerrados = int(cur.fetchone()[0])
-    return {"pendientes": pendientes, "abiertos": abiertos, "cerrados": cerrados}
+    return {"en_revision": en_revision, "pendientes": pendientes, "abiertos": abiertos, "cerrados": cerrados}
 
 
 # ========================= PRESENTACIONES =========================

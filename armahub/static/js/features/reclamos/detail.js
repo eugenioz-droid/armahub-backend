@@ -227,6 +227,9 @@ function _applyReclamoDetailPermissions(data) {
     }
   }
   if (btnAprobar) btnAprobar.style.display = puedeAprobarParaVal ? '' : 'none';
+  // "Devolver" desde el modal: admin con reclamo en revisión (mismo criterio que Aprobar)
+  var btnDevolver = document.getElementById('btnDevolverRevision');
+  if (btnDevolver) btnDevolver.style.display = puedeAprobarParaVal ? '' : 'none';
   if (btnReabrir) btnReabrir.style.display = puedeReabrir ? '' : 'none';
 
   var anioCalField = document.getElementById('recDetailAnioCalidad');
@@ -526,6 +529,22 @@ async function cerrarReclamo() {
   }
 }
 
+// Refresca el contexto tras una acción de flujo desde el modal.
+// Si venimos del sub-tab Validaciones, cierra el modal y refresca la cola;
+// si no, recarga el detalle.
+async function _refrescarTrasAccionFlujo() {
+  var enSubValidaciones = document.getElementById('recSubValidaciones') &&
+                          document.getElementById('recSubValidaciones').style.display !== 'none';
+  if (enSubValidaciones) {
+    if (typeof closeReclamoModal === 'function') closeReclamoModal();
+    if (typeof loadRecValidaciones === 'function') await loadRecValidaciones();
+  } else {
+    await verReclamo(_reclamoActual.id);
+  }
+  await loadReclamos();
+  await loadRecLanding();
+}
+
 async function aprobarParaValidacion() {
   if (!_reclamoActual) return;
   if (!confirm('¿Aprobar este reclamo para validación de Calidad?')) return;
@@ -536,13 +555,25 @@ async function aprobarParaValidacion() {
   });
   if (res.status === 401) { logout(); return; }
   var data = await res.json();
-  if (data.ok) {
-    await verReclamo(_reclamoActual.id);
-    await loadReclamos();
-    await loadRecLanding();
-  } else {
-    alert('Error: ' + (data.detail || 'desconocido'));
-  }
+  if (data.ok) { await _refrescarTrasAccionFlujo(); }
+  else { alert('Error: ' + (data.detail || 'desconocido')); }
+}
+
+async function devolverRevisionDesdeModal() {
+  if (!_reclamoActual) return;
+  var motivo = prompt('Motivo de la devolución (el reclamo vuelve a "En análisis" para corregir):');
+  if (motivo === null) return;
+  motivo = motivo.trim();
+  if (!motivo) { alert('Debe indicar un motivo para devolver.'); return; }
+  var res = await fetch(apiUrl('/reclamos/' + _reclamoActual.id), {
+    method: 'PATCH',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ estado: 'en_analisis', revision_observaciones: motivo })
+  });
+  if (res.status === 401) { logout(); return; }
+  var data = await res.json();
+  if (data.ok) { await _refrescarTrasAccionFlujo(); }
+  else { alert('Error: ' + (data.detail || 'desconocido')); }
 }
 
 async function reabrirReclamo() {
