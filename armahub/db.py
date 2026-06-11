@@ -908,7 +908,7 @@ MIGRATIONS = [
         WHERE a.slug = 'cubicaciones' AND c.slug = 'mano_de_obra'
         """,
     ]),
-    ("59", "Renombrar rol admin2 → admin_calidad en usuarios y configuraciones", [
+    (59, "Renombrar rol admin2 → admin_calidad en usuarios y configuraciones", [
         # 1) Quitar TODO check constraint sobre users.role (auto-nombrado o explícito)
         #    para poder normalizar los valores sin que el constraint viejo bloquee.
         """DO $$
@@ -933,7 +933,7 @@ MIGRATIONS = [
             CHECK (role IN ('admin', 'admin_calidad', 'cubicador', 'usc', 'externo', 'cliente'))""",
     ]),
 
-    ("60", "reclamos: agregar estado en_revision al CHECK constraint", [
+    (60, "reclamos: agregar estado en_revision al CHECK constraint", [
         """DO $$
         DECLARE r RECORD;
         BEGIN
@@ -952,7 +952,7 @@ MIGRATIONS = [
         END $$;""",
     ]),
 
-    ("61", "notificaciones: defaults para eventos enviado_a_revision y enviado_a_validacion", [
+    (61, "notificaciones: defaults para eventos enviado_a_revision y enviado_a_validacion", [
         # Jefe de Servicio (admin) recibe avisos de reclamos enviados a revisión
         "INSERT INTO notificacion_config (tipo_evento, rol, activo) VALUES ('enviado_a_revision', 'admin', TRUE) ON CONFLICT DO NOTHING",
         # Jefa de Calidad (admin_calidad) recibe avisos de reclamos enviados a validación
