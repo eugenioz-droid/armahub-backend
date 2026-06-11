@@ -298,21 +298,37 @@ Objetivo: endurecer Reclamos y cerrar los pendientes reales arrastrados.
 |----|-------------|-----------|-------|
 | 5.27 | Implementar Reclamos Internos (hoy placeholder) — discovery: flujo y diferencias con Reclamos Clientes | ☐ | TÚ+YO |
 | 5.28 | Implementar 5 Por Qué como método RCA alternativo a Ishikawa (por reclamo, excluyente) | ☐ | YO |
-| 5.29 | Rol Jefe de Servicio: activar en flujos de RCA y área (tablas existen en BD, rol sin usar aún) | ☐ | TÚ+YO |
+| 5.29 | Rol Jefe de Servicio: activar en flujos de RCA y área (ver ⚠️ DECISIÓN PENDIENTE en 5F — modelo de acceso por área) | ☐ | TÚ+YO |
 
 ### 5F. Refactor roles + flujo de validación (iniciado sesión 2026-06-11)
 
 | N° | Descripción | Realizado | Quién |
 |----|-------------|-----------|-------|
-| 5.30 | Renombrar rol `admin2` → `admin_calidad` en todo el sistema (código + migración 59 + docs) | ☑ | YO |
-| 5.31 | Reemplazar filtros desplegables de Aplica por botón toggle único en listado reclamos | ☐ | YO |
-| 5.32 | Agregar estado `en_revision` al flujo de reclamos (entre "En análisis" y "En validación") | ☐ | YO |
-| 5.33 | Botón "Enviar a revisión" para cubicador; botón "Aprobar para validación" para Jefe de Servicio | ☐ | YO |
-| 5.34 | Mover sección Validación fuera del detalle de reclamo → sub-tab Validaciones | ☐ | YO |
-| 5.35 | Sub-tab Validaciones: sección "Mi revisión" (Jefe de Servicio — cola de reclamos en análisis) | ☐ | YO |
-| 5.36 | Sub-tab Validaciones: sección "Validación Calidad" (admin_calidad — externos e internos separados, KPIs) | ☐ | YO |
-| 5.37 | Lógica de devolución: Jefa de Calidad puede devolver reclamo a `en_revision` con explicación | ☐ | YO |
+| 5.30 | Renombrar rol `admin2` → `admin_calidad` en todo el sistema (código + migración 59 + docs + labels UI) | ☑ | YO |
+| 5.31 | Reemplazar filtros desplegables de Aplica por botón toggle único en listado reclamos | ☑ | YO |
+| 5.32 | Agregar estado `en_revision` al flujo de reclamos (migración 60 + constantes + labels + colores) | ☑ | YO |
+| 5.33 | Botón dinámico: cubicador "Enviar a revisión", admin "Enviar a validación", admin "Aprobar para validación" cuando está en revisión | ☑ | YO |
+| 5.34 | Mover sección Validación fuera del detalle de reclamo → sub-tab Validaciones | ☑ | YO |
+| 5.35 | Sub-tab Validaciones: sección "Mi revisión" (admin — cola de reclamos en análisis, botón Aprobar) | ☑ | YO |
+| 5.36 | Sub-tab Validaciones: sección "Validación Calidad" (admin_calidad — externos/internos separados, KPIs, panel de acción) | ☑ | YO |
+| 5.37 | Lógica de devolución: Jefa de Calidad puede devolver reclamo a etapa anterior con explicación | ◐ | YO |
 | 5.38 | Smoke test flujo completo: cubicador → en revisión → aprobado → en validación → cerrado/devuelto | ☐ | TÚ+YO |
+| 5.39 | KPIs reales de "Validación Calidad" (aprobados/mes, devueltos/mes, tiempo prom.) — hoy solo "Pendientes" es real, el resto placeholder. Requiere endpoint de historial | ☐ | YO |
+
+**Nota 5.37:** El backend ya devuelve a `en_analisis` con motivo al rechazar (lógica PA.5 existente). Falta definir si en Flujo A debe devolver a `en_revision` (al Jefe de Servicio) en vez de directo al cubicador. Pendiente de decisión junto con [DECISIÓN PENDIENTE: modelo de acceso por área].
+
+### ⚠️ DECISIÓN PENDIENTE — Modelo de acceso por área (bloquea 5.27, 5.29, 5.37 multi-área)
+
+**Problema:** Hoy el flujo de revisión asume "admin = Jefe de Servicio". Cuando otra área tenga su propio flujo (supuesto futuro), el Jefe de ESA área debe revisar SUS reclamos, no todos. ¿Cómo se modela el acceso por área sin explotar en cantidad de roles?
+
+**Opciones en evaluación (NO decidir aún, solo registradas):**
+- **A) Rol genérico `jefe_servicio` + columna/tabla área:** un solo rol, y la tabla `area_usuarios` (ya existe, migración 56) define a qué área pertenece cada Jefe. El acceso se filtra por área, no por rol. → Escala sin crear roles nuevos. Aprovecha infraestructura ya construida.
+- **B) Rol por área (`jefe_usc`, `jefe_produccion`, etc.):** explícito pero se multiplican los roles. Eugenio ya marcó esto como "no tan sensato".
+- **C) Reusar `admin_calidad` con scope de área:** no aplica, ese rol es transversal (co-administra).
+
+**Inclinación preliminar (Eugenio + Claude):** opción A — rol único `jefe_servicio` con asignación de área vía `area_usuarios`. La tabla ya existe. Falta: agregar columna/UI de área en Gestión de Usuarios y filtrar las colas de revisión por área del usuario.
+
+**Acción cuando se retome:** decidir A/B/C → si A, diseñar la asignación área↔usuario en la UI de Gestión de Usuarios (la "columna de área" que mencionó Eugenio) y conectar el filtro de la cola "Mi revisión" por área.
 
 ### 5B. Envío de informe por correo (arrastrado de PC.15)
 
