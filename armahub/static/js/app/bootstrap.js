@@ -219,13 +219,6 @@
         '[ArmaHub] No se pudo cargar admin/roles_permisos.js'
       ),
       loadScript(
-        'script[data-armahub-feature="admin-rca"]',
-        '/static/js/features/admin/rca.js' + suffix,
-        'armahubFeature',
-        'admin-rca',
-        '[ArmaHub] No se pudo cargar admin/rca.js'
-      ),
-      loadScript(
         'script[data-armahub-feature="admin-index"]',
         '/static/js/features/admin/index.js' + suffix,
         'armahubFeature',
