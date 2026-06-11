@@ -908,7 +908,16 @@ async function guardarValidacion() {
     }
     msg.style.color = resultado === 'rechazado' ? '#b42318' : '#558B2F';
     setTimeout(function() { msg.textContent = ''; }, 4000);
-    await verReclamo(_reclamoActual.id);
+    // Si estamos en el sub-tab Validaciones, refrescar su cola; si no, el detalle
+    var enSubValidaciones = document.getElementById('recSubValidaciones') &&
+                            document.getElementById('recSubValidaciones').style.display !== 'none';
+    if (enSubValidaciones && typeof loadRecValidaciones === 'function') {
+      var panel = document.getElementById('recCalAccionPanel');
+      if (panel) panel.style.display = 'none';
+      await loadRecValidaciones();
+    } else {
+      await verReclamo(_reclamoActual.id);
+    }
     await loadReclamos(); await loadRecLanding();
   } else {
     msg.textContent = 'Error: ' + (data.detail || 'desconocido'); msg.style.color = '#b42318';

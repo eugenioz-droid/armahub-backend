@@ -593,7 +593,8 @@ async function _loadRevisionQueue() {
   if (!listaEl) return;
   listaEl.innerHTML = '<div class="muted">Cargando...</div>';
 
-  var data = await apiGet('/reclamos?estado=en_analisis&limit=200');
+  // Cola del Jefe de Servicio: reclamos que el cubicador ya envió a revisión
+  var data = await apiGet('/reclamos?estado=en_revision&limit=200');
   if (!data) { listaEl.innerHTML = '<div class="muted">Error al cargar.</div>'; return; }
   var items = data.reclamos || [];
   if (badge) badge.textContent = items.length;
@@ -606,8 +607,12 @@ async function _loadRevisionQueue() {
         ' <span style="font-size:12px;">' + (r.titulo || '') + '</span>' +
         '<div style="font-size:11px; color:#888; margin-top:2px;">' + (r.cubicador_display || r.cubicador_asignado || 'Sin asignar') + ' · ' + (r.proyecto_nombre || '—') + '</div>' +
       '</div>' +
-      '<button style="font-size:11px; padding:3px 10px; background:#1976d2; color:#fff; border:none; border-radius:4px; cursor:pointer; white-space:nowrap;" ' +
-        'onclick="_aprobarRevisionReclamo(' + r.id + ')">✅ Aprobar</button>' +
+      '<div style="display:flex; gap:6px; white-space:nowrap;">' +
+        '<button style="font-size:11px; padding:3px 10px; background:#1976d2; color:#fff; border:none; border-radius:4px; cursor:pointer;" ' +
+          'onclick="_aprobarRevisionReclamo(' + r.id + ')">✅ Aprobar</button>' +
+        '<button style="font-size:11px; padding:3px 10px; background:#fff; color:#e65100; border:1px solid #e65100; border-radius:4px; cursor:pointer;" ' +
+          'onclick="_devolverRevisionReclamo(' + r.id + ')">↩️ Devolver</button>' +
+      '</div>' +
     '</div>';
   }).join('');
 }
@@ -618,6 +623,22 @@ async function _aprobarRevisionReclamo(id) {
     method: 'PATCH',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
     body: JSON.stringify({ estado: 'validacion' })
+  });
+  if (res.status === 401) { logout(); return; }
+  var data = await res.json();
+  if (data.ok) { await _loadRevisionQueue(); }
+  else { alert('Error: ' + (data.detail || 'desconocido')); }
+}
+
+async function _devolverRevisionReclamo(id) {
+  var motivo = prompt('Motivo de la devolución (el reclamo vuelve a "En análisis" para corregir):');
+  if (motivo === null) return; // canceló
+  motivo = motivo.trim();
+  if (!motivo) { alert('Debe indicar un motivo para devolver.'); return; }
+  var res = await fetch(apiUrl('/reclamos/' + id), {
+    method: 'PATCH',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ estado: 'en_analisis', revision_observaciones: motivo })
   });
   if (res.status === 401) { logout(); return; }
   var data = await res.json();
@@ -642,12 +663,13 @@ async function _loadValidacionCalidad() {
   var items = data.reclamos || [];
   if (badge) badge.textContent = items.length;
 
-  // Separar externos e internos (internos = sin cubicador_asignado ni tipo_externo, por ahora = area_aplica)
-  var externos = items.filter(function(r) { return r.cubicador_asignado || r.tipo_reclamo !== 'interno'; });
-  var internos = items.filter(function(r) { return !r.cubicador_asignado && r.tipo_reclamo === 'interno'; });
+  // Separar Clientes vs Internos. Hoy "Reclamos Internos" es placeholder (tarea 5.27),
+  // así que todos caen en Clientes. Cuando exista el flag/área de internos, refinar aquí.
+  var externos = items.filter(function(r) { return !r.es_interno; });
+  var internos = items.filter(function(r) { return r.es_interno; });
 
-  // KPI: cargar aprobados y devueltos del mes
-  _updateValCalKpis(items);
+  // KPI: cargar valores reales (abiertos/cerrados)
+  _updateValCalKpis();
 
   function renderItem(r) {
     return '<div style="padding:6px 8px; border-bottom:1px solid #f3e5f5; cursor:pointer;" onclick="_seleccionarParaValidar(' + r.id + ', this)">' +
@@ -662,7 +684,7 @@ async function _loadValidacionCalidad() {
 }
 
 var _recValSelId = null;
-function _seleccionarParaValidar(id, el) {
+async function _seleccionarParaValidar(id, el) {
   _recValSelId = id;
   // Highlight selección
   document.querySelectorAll('#recCalListaExt > div, #recCalListaInt > div').forEach(function(d) {
@@ -670,21 +692,34 @@ function _seleccionarParaValidar(id, el) {
   });
   if (el) el.style.background = '#f3e5f5';
 
-  // Buscar el reclamo en el DOM o hacer fetch
-  _reclamoActual = { id: id };
   var panel = document.getElementById('recCalAccionPanel');
   var titulo = document.getElementById('recCalAccionTitulo');
   if (panel) panel.style.display = '';
-  if (titulo) titulo.textContent = 'Reclamo #' + id;
-  // Resetear campos
+  if (titulo) titulo.textContent = 'Cargando...';
+
+  // Traer el reclamo real para que guardarValidacion tenga el contexto correcto
+  var data = await apiGet('/reclamos/' + id + '?include_images=false');
+  if (!data) { if (titulo) titulo.textContent = 'Error al cargar reclamo #' + id; return; }
+  _reclamoActual = data;
+
+  if (titulo) {
+    var corr = data.correlativo || ('#' + id);
+    titulo.textContent = corr + ' — ' + (data.titulo || '');
+  }
+  // Resetear campos de validación
   ['recDetailValidacionResultado','recDetailValidacionObs'].forEach(function(fid) {
     var el2 = document.getElementById(fid); if (el2) el2.value = '';
   });
   var msg = document.getElementById('recValidacionMsg'); if (msg) msg.textContent = '';
 }
 
-function _updateValCalKpis(pendientes) {
-  var kpiPend = document.getElementById('recCalKpiPend');
-  if (kpiPend) kpiPend.textContent = pendientes.length;
-  // Los otros KPIs requieren endpoint de historial; placeholder por ahora
+async function _updateValCalKpis() {
+  // KPIs reales: abiertos / cerrados del módulo de reclamos
+  var data = await apiGet('/reclamos/validacion-kpis');
+  if (!data) return;
+  var setKpi = function(elId, val) { var e = document.getElementById(elId); if (e) e.textContent = (val != null ? val : '—'); };
+  setKpi('recCalKpiPend', data.pendientes);
+  setKpi('recCalKpiAprobados', data.cerrados);   // "Cerrados" reutiliza la card de Aprobados
+  setKpi('recCalKpiDevueltos', data.abiertos);   // "Abiertos" reutiliza la card de Devueltos
+  setKpi('recCalKpiTiempo', '—');                // Tiempo prom → sección de reportes (5.40)
 }

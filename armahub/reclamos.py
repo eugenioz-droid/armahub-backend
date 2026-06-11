@@ -235,6 +235,7 @@ class ReclamoUpdate(BaseModel):
     respuesta_texto: Optional[str] = None
     validacion_resultado: Optional[str] = None
     validacion_observaciones: Optional[str] = None
+    revision_observaciones: Optional[str] = None  # motivo al devolver desde revisión (solo para timeline)
     kilos_mal_fabricados: Optional[float] = None
     tiempo_respuesta: Optional[int] = None
     tiempo_respuesta_unidad: Optional[str] = None
@@ -714,6 +715,28 @@ def get_usuarios_usc(user=Depends(get_current_user)):
             for r in rows
         ]
     }
+
+
+# ========================= VALIDACIÓN — KPIs =========================
+# NOTE: debe declararse antes de /reclamos/{reclamo_id}
+
+@router.get("/reclamos/validacion-kpis")
+def reclamos_validacion_kpis(user=Depends(get_current_user)):
+    """KPIs para el sub-tab Validaciones (Calidad).
+    - pendientes: reclamos en estado 'validacion' (esperando a Calidad)
+    - abiertos: reclamos no cerrados ni rechazados
+    - cerrados: reclamos cerrados
+    Devueltos y tiempo promedio quedan para la sección de reportes (5.40).
+    """
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT COUNT(*) FROM reclamos WHERE estado = 'validacion'")
+            pendientes = int(cur.fetchone()[0])
+            cur.execute("SELECT COUNT(*) FROM reclamos WHERE estado NOT IN ('cerrado','rechazado')")
+            abiertos = int(cur.fetchone()[0])
+            cur.execute("SELECT COUNT(*) FROM reclamos WHERE estado = 'cerrado'")
+            cerrados = int(cur.fetchone()[0])
+    return {"pendientes": pendientes, "abiertos": abiertos, "cerrados": cerrados}
 
 
 # ========================= PRESENTACIONES =========================
@@ -1402,6 +1425,9 @@ def actualizar_reclamo(reclamo_id: int, body: ReclamoUpdate, user=Depends(get_cu
                 # Include rejection observations in timeline
                 if body.validacion_resultado == "rechazado" and body.validacion_observaciones:
                     comment += f" — Motivo rechazo: {body.validacion_observaciones}"
+                # Devolución desde revisión (Jefe de Servicio → cubicador)
+                if estado_anterior == "en_revision" and body.estado == "en_analisis" and body.revision_observaciones:
+                    comment += f" — Devuelto por revisión: {body.revision_observaciones}"
                 cur.execute("""
                     INSERT INTO reclamo_seguimientos (reclamo_id, usuario, comentario, estado_anterior, estado_nuevo, fecha)
                     VALUES (%s, %s, %s, %s, %s, %s)
