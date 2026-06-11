@@ -575,16 +575,18 @@ async function loadRecAdminDashboards() {
 // ── Sub-tab Validaciones ──
 
 async function loadRecValidaciones() {
-  var esAdmin = (currentRole === 'admin');
-  var esCalidad = (currentRole === 'admin_calidad');
+  // admin = jefe de servicio + co-administra calidad → ve ambas secciones
+  // admin_calidad = solo validación de Calidad
+  var verRevision = (currentRole === 'admin');
+  var verCalidad = (currentRole === 'admin' || currentRole === 'admin_calidad');
 
   var secRev = document.getElementById('recValSeccionRevision');
   var secCal = document.getElementById('recValSeccionCalidad');
-  if (secRev) secRev.style.display = esAdmin ? '' : 'none';
-  if (secCal) secCal.style.display = esCalidad ? '' : 'none';
+  if (secRev) secRev.style.display = verRevision ? '' : 'none';
+  if (secCal) secCal.style.display = verCalidad ? '' : 'none';
 
-  if (esAdmin) { await _loadRevisionQueue(); }
-  if (esCalidad) { await _loadValidacionCalidad(); }
+  if (verRevision) { await _loadRevisionQueue(); }
+  if (verCalidad) { await _loadValidacionCalidad(); }
 }
 
 async function _loadRevisionQueue() {
