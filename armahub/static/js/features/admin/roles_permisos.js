@@ -5,7 +5,7 @@
   'use strict';
 
   var ROLES = ['admin', 'admin_calidad', 'cubicador', 'usc', 'externo', 'cliente'];
-  var ROLE_LABELS = {admin:'Admin', admin_calidad:'Admin2', cubicador:'Cubicador', usc:'USC', externo:'Externo', cliente:'Cliente'};
+  var ROLE_LABELS = {admin:'Admin', admin_calidad:'Admin Calidad', cubicador:'Cubicador', usc:'USC', externo:'Externo', cliente:'Cliente'};
 
   // ========================= DATA =========================
   // Cada tabla: { title, notes[], rows: [{action, perms:{role: symbol}}] }

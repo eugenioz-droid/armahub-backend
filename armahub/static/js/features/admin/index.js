@@ -167,7 +167,7 @@ async function resetDatabase() {
 
 // ========================= USUARIOS =========================
 var _roleColors = { admin: '#b42318', admin_calidad: '#1565C0', cubicador: '#2e7d32', usc: '#ff9800', externo: '#795548', cliente: '#7B1FA2' };
-var _roleLabels = { admin: 'Admin', admin_calidad: 'Admin2', cubicador: 'Cubicador', usc: 'USC', externo: 'Externo', cliente: 'Cliente' };
+var _roleLabels = { admin: 'Admin', admin_calidad: 'Admin Calidad', cubicador: 'Cubicador', usc: 'USC', externo: 'Externo', cliente: 'Cliente' };
 
 function toggleNuevoUsuario() {
   var f = document.getElementById('nuevoUsuarioForm');
@@ -214,7 +214,7 @@ async function loadUsers() {
     var fecha = u.fecha_creacion ? u.fecha_creacion.substring(0, 10) : '-';
     var toggleLabel = activo ? 'Desactivar' : 'Activar';
     var toggleColor = activo ? '#b42318' : '#2e7d32';
-    var _rolLabels = {admin:'Admin',admin_calidad:'Admin2',cubicador:'Cubicador',usc:'USC',externo:'Externo',cliente:'Cliente'};
+    var _rolLabels = {admin:'Admin',admin_calidad:'Admin Calidad',cubicador:'Cubicador',usc:'USC',externo:'Externo',cliente:'Cliente'};
     var allRoles = ['admin','admin_calidad','cubicador','usc','externo','cliente'];
     var rolOpts = allRoles.map(function(r) {
       return '<option value="' + r + '"' + (r === u.role ? ' selected' : '') + '>' + (_rolLabels[r] || r) + '</option>';

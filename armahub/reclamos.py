@@ -493,7 +493,7 @@ def reclamos_mi_resumen(user=Depends(get_current_user)):
     """Landing page stats filtered by role.
     USC: own reclamos (creado_por or asignado_a).
     Cubicador/Externo: reclamos assigned to them (cubicador_asignado) or responded (respuesta_por).
-    Admin/Admin2: all reclamos."""
+    Admin/Admin Calidad: all reclamos."""
     email = user.get("email", "")
     role = user.get("role", "usc")
     role_filter, role_params = build_role_filter(user)

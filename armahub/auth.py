@@ -110,7 +110,7 @@ def login(email: str, password: str):
 def register(email: str, password: str, nombre: str = "", apellido: str = "", role: str = "usc", user=Depends(require_admin_or_admin_calidad)):
     """
     Crea usuarios. Requiere admin o admin_calidad.
-    Admin2 solo puede crear usuarios con rol 'usc'.
+    Admin Calidad solo puede crear usuarios con rol 'usc'.
     """
     VALID_ROLES = ("admin", "admin_calidad", "cubicador", "usc", "externo", "cliente")
     if role not in VALID_ROLES:
