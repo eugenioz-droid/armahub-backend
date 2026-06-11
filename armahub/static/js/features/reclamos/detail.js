@@ -108,10 +108,15 @@ function _renderReclamoRespuesta(data) {
 }
 
 function _renderReclamoValidacion(data) {
-  document.getElementById('recDetailValidacionResultado').value = data.validacion_resultado || '';
-  document.getElementById('recDetailValidacionObs').value = data.validacion_observaciones || '';
-  document.getElementById('recTiempoRespuesta').value = data.tiempo_respuesta || '';
-  document.getElementById('recTiempoRespuestaUnidad').value = data.tiempo_respuesta_unidad || 'horas';
+  // Estos campos viven en el sub-tab Validaciones; solo rellenar si están en DOM
+  var valRes = document.getElementById('recDetailValidacionResultado');
+  var valObs = document.getElementById('recDetailValidacionObs');
+  var valTime = document.getElementById('recTiempoRespuesta');
+  var valTimeU = document.getElementById('recTiempoRespuestaUnidad');
+  if (valRes) valRes.value = data.validacion_resultado || '';
+  if (valObs) valObs.value = data.validacion_observaciones || '';
+  if (valTime) valTime.value = data.tiempo_respuesta || '';
+  if (valTimeU) valTimeU.value = data.tiempo_respuesta_unidad || 'horas';
 
   var valInfo = document.getElementById('recValidacionInfo');
   if (data.validacion_por) {
@@ -190,21 +195,40 @@ function _applyReclamoDetailPermissions(data) {
   var btnElim = document.getElementById('btnEliminarReclamo');
   if (btnElim) btnElim.style.display = puedeEliminar ? '' : 'none';
 
-  // Botón morado "Enviar a validación": cubicador Y externo propios, más admin/admin_calidad
+  // Botones de flujo: "Enviar a revisión" (cubicador), "Aprobar para validación" (admin)
   var esAsignado = (['cubicador','externo'].includes(currentRole) && esPropioCub);
-  var puedeCerrar = (currentRole === 'admin' || currentRole === 'admin_calidad') || esAsignado;
-  var cerrarCont = document.getElementById('recCerrarContainer');
-  if (cerrarCont) cerrarCont.style.display = puedeCerrar ? '' : 'none';
+  var estadoEnAnalisis = (data.estado === 'en_analisis');
+  var estadoEnRevision = (data.estado === 'en_revision');
   var estaCerrado = (data.estado === 'cerrado' || data.estado === 'rechazado');
   var puedeReabrir = estaCerrado && (currentRole === 'admin' || currentRole === 'admin_calidad');
-  var btnCerrar = document.getElementById('btnCerrarReclamo');
-  var btnReabrir = document.getElementById('btnReabrirReclamo');
-  if (btnCerrar) btnCerrar.style.display = estaCerrado ? 'none' : '';
-  if (btnReabrir) btnReabrir.style.display = puedeReabrir ? '' : 'none';
 
-  // Sección 3 Validación (rectángulo verde): solo visible para admin/admin_calidad
-  var secValidacion = document.getElementById('recSeccionValidacion');
-  if (secValidacion) secValidacion.style.display = puedeValidar ? '' : 'none';
+  // Cubicador/externo: ve "Enviar a revisión" solo si el reclamo está en análisis
+  var puedeEnviarARevision = esAsignado && estadoEnAnalisis;
+  // Admin: ve "Aprobar para validación" cuando el reclamo está en revisión
+  var puedeAprobarParaVal = (currentRole === 'admin') && estadoEnRevision;
+  // Admin/admin_calidad: acceso total al container también si aun en análisis
+  var puedeAdmin = (currentRole === 'admin' || currentRole === 'admin_calidad');
+
+  var cerrarCont = document.getElementById('recCerrarContainer');
+  if (cerrarCont) cerrarCont.style.display = (puedeEnviarARevision || puedeAprobarParaVal || (puedeAdmin && !estaCerrado)) ? '' : 'none';
+
+  var btnCerrar = document.getElementById('btnCerrarReclamo');
+  var btnAprobar = document.getElementById('btnAprobarParaValidacion');
+  var btnReabrir = document.getElementById('btnReabrirReclamo');
+  // "Enviar a revisión": cubicador en estado en_analisis; admin en estado en_analisis (envía directo a validacion)
+  if (btnCerrar) {
+    if (puedeAdmin && estadoEnAnalisis) {
+      btnCerrar.style.display = '';
+      btnCerrar.textContent = '📤 Enviar a validación';
+    } else if (puedeEnviarARevision) {
+      btnCerrar.style.display = '';
+      btnCerrar.textContent = '📤 Enviar a revisión';
+    } else {
+      btnCerrar.style.display = 'none';
+    }
+  }
+  if (btnAprobar) btnAprobar.style.display = puedeAprobarParaVal ? '' : 'none';
+  if (btnReabrir) btnReabrir.style.display = puedeReabrir ? '' : 'none';
 
   var anioCalField = document.getElementById('recDetailAnioCalidad');
   if (anioCalField) anioCalField.disabled = !(currentRole === 'admin' || currentRole === 'admin_calidad');
@@ -232,11 +256,8 @@ function _applyReclamoDetailPermissions(data) {
   if (respDropZone) respDropZone.style.display = puedeResponder ? '' : 'none';
   if (respFileInput) respFileInput.disabled = !puedeResponder;
 
-  var puedeValidar = (currentRole === 'admin' || currentRole === 'admin_calidad');
-  var sec3Fields = ['recDetailValidacionResultado','recDetailValidacionObs','recTiempoRespuesta','recTiempoRespuestaUnidad'];
-  sec3Fields.forEach(function(fid) { var el = document.getElementById(fid); if (el) el.disabled = !puedeValidar; });
-  var btnGuardarVal = document.getElementById('btnGuardarValidacion');
-  if (btnGuardarVal) btnGuardarVal.style.display = puedeValidar ? '' : 'none';
+  var puedeValidar = (currentRole === 'admin_calidad');
+  // Los campos de validación viven ahora en el sub-tab Validaciones; nada que ocultar aquí.
 
   var puedeAccion = ['admin','admin_calidad','cubicador','externo'].includes(currentRole);
   if ((['cubicador','externo'].includes(currentRole)) && !esPropioCub) puedeAccion = false;
@@ -447,36 +468,57 @@ function renderReclamoTimeline(seguimientos) {
 
 async function cerrarReclamo() {
   if (!_reclamoActual) return;
-  
-  // Verificar que se haya seleccionado Aplica/No Aplica
+
   var aplicaSelect = document.getElementById('recDetailAplica');
   var aplicaValue = aplicaSelect ? aplicaSelect.value : _reclamoActual.aplica;
-  
+  var esAdmin = (currentRole === 'admin' || currentRole === 'admin_calidad');
+  // Destino: admin envía a validacion, cubicador/externo envía a en_revision (Flujo A) o validacion (Flujo B)
+  var esCubicacion = (_reclamoActual.area_aplica === 'Cubicaciones' || _reclamoActual.cubicador_asignado);
+  var estadoDestino = esAdmin ? 'validacion' : (esCubicacion ? 'en_revision' : 'validacion');
+
   if (!aplicaValue || aplicaValue === 'pendiente') {
-    alert('Para enviar a validación, primero debe seleccionar "Sí aplica" o "No aplica" en el campo Aplica.');
+    alert('Primero debe seleccionar "Sí aplica" o "No aplica".');
     return;
   }
 
   var justificacion = (document.getElementById('recDetailRespuestaTexto').value || '').trim();
   if (!justificacion) {
-    alert('Para enviar a validación, debe ingresar la explicación/justificación del análisis.');
+    alert('Debe ingresar la explicación/justificación del análisis.');
     document.getElementById('recDetailRespuestaTexto').focus();
     return;
   }
 
   var detail = await apiGet('/reclamos/' + _reclamoActual.id + '?include_images=false');
   if (!detail) return;
-  var accionesCount = ((detail.acciones || []).length || 0);
-  if (accionesCount <= 0) {
-    alert('Para enviar a validación, debe registrar al menos una acción.');
+  if ((detail.acciones || []).length === 0) {
+    alert('Debe registrar al menos una acción antes de continuar.');
     return;
   }
-  
-  // Confirmación
-  if (!confirm('¿Está seguro que desea enviar este reclamo a validación?\n\nEl reclamo será revisado por USC antes de su cierre definitivo.')) {
-    return;
+
+  var msg = estadoDestino === 'en_revision'
+    ? '¿Enviar este reclamo a revisión?\n\nEl Jefe de Servicio lo revisará antes de pasar a Calidad.'
+    : '¿Enviar este reclamo a validación?';
+  if (!confirm(msg)) return;
+
+  var res = await fetch(apiUrl('/reclamos/' + _reclamoActual.id), {
+    method: 'PATCH',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ estado: estadoDestino })
+  });
+  if (res.status === 401) { logout(); return; }
+  var data = await res.json();
+  if (data.ok) {
+    await verReclamo(_reclamoActual.id);
+    await loadReclamos();
+    await loadRecLanding();
+  } else {
+    alert('Error: ' + (data.detail || 'desconocido'));
   }
-  
+}
+
+async function aprobarParaValidacion() {
+  if (!_reclamoActual) return;
+  if (!confirm('¿Aprobar este reclamo para validación de Calidad?')) return;
   var res = await fetch(apiUrl('/reclamos/' + _reclamoActual.id), {
     method: 'PATCH',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },

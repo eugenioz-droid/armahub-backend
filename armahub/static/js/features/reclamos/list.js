@@ -99,12 +99,34 @@ function populateRecFilterProyecto() {
     loadReclamos();
   };
 
+  // Aplica toggle: cicla '' → 'pendiente' → 'si' → 'no' → ''
+  var _recAplicaFilter = '';
+  var _APLICA_CYCLE = ['', 'pendiente', 'si', 'no'];
+  var _APLICA_LABELS = { '': 'Aplica: Todos', 'pendiente': 'Pendiente', 'si': 'Sí Aplica', 'no': 'No Aplica' };
+  var _APLICA_COLORS = { '': '#1976d2', 'pendiente': '#f57c00', 'si': '#388e3c', 'no': '#e53935' };
+
+  function _updateAplicaBtnLabel() {
+    var btn = document.getElementById('recFiltroAplicaBtn');
+    if (!btn) return;
+    btn.textContent = _APLICA_LABELS[_recAplicaFilter];
+    btn.style.borderColor = _APLICA_COLORS[_recAplicaFilter];
+    btn.style.color = _APLICA_COLORS[_recAplicaFilter];
+    btn.style.background = _recAplicaFilter ? _APLICA_COLORS[_recAplicaFilter] + '15' : '#fff';
+  }
+
+  window.toggleRecAplica = function() {
+    var idx = _APLICA_CYCLE.indexOf(_recAplicaFilter);
+    _recAplicaFilter = _APLICA_CYCLE[(idx + 1) % _APLICA_CYCLE.length];
+    _updateAplicaBtnLabel();
+    loadReclamos();
+  };
+
 async function loadReclamos() {
   _initScopeToggle();
   var container = document.getElementById('reclamosList');
   var estado = document.getElementById('recFiltroEstado').value;
   var categoria = document.getElementById('recFiltroCategoria').value;
-  var aplica = document.getElementById('recFiltroAplica').value;
+  var aplica = _recAplicaFilter;
   var tipo = document.getElementById('recFiltroTipo') ? document.getElementById('recFiltroTipo').value : '';
   var detectado = document.getElementById('recFiltroDetectado') ? document.getElementById('recFiltroDetectado').value : '';
   var proyecto = document.getElementById('recFiltroProyecto') ? document.getElementById('recFiltroProyecto').value : '';
@@ -195,9 +217,11 @@ async function loadReclamos() {
 }
 
 function limpiarFiltrosReclamos() {
-  ['recFiltroBusqueda','recFiltroTipo','recFiltroEstado','recFiltroCategoria','recFiltroAplica','recFiltroDetectado','recFiltroProyecto','recFiltroResponsable'].forEach(function(id) {
+  ['recFiltroBusqueda','recFiltroTipo','recFiltroEstado','recFiltroCategoria','recFiltroDetectado','recFiltroProyecto','recFiltroResponsable'].forEach(function(id) {
     var el = document.getElementById(id);
     if (el) el.value = '';
   });
+  _recAplicaFilter = '';
+  _updateAplicaBtnLabel();
   loadReclamos();
 }

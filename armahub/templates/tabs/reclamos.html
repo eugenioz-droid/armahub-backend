@@ -9,6 +9,7 @@
       <button id="recSubBtnInternos" onclick="switchRecSubTab('internos')" style="padding:5px 16px; font-size:12px; font-weight:600; border:none; border-bottom:2px solid transparent; background:none; color:#aaa; cursor:pointer;">Reclamos Internos</button>
       <button id="recSubBtnRCA" onclick="switchRecSubTab('rca')" style="padding:5px 16px; font-size:12px; font-weight:600; border:none; border-bottom:2px solid transparent; background:none; color:#aaa; cursor:pointer; display:none;">Matriz RCA</button>
       <button id="recSubBtnPres" onclick="switchRecSubTab('presentaciones')" style="padding:5px 16px; font-size:12px; font-weight:600; border:none; border-bottom:2px solid transparent; background:none; color:#aaa; cursor:pointer; display:none;">Presentaciones</button>
+      <button id="recSubBtnVal" onclick="switchRecSubTab('validaciones')" style="padding:5px 16px; font-size:12px; font-weight:600; border:none; border-bottom:2px solid transparent; background:none; color:#aaa; cursor:pointer; display:none;">Validaciones</button>
     </div>
 
     <!-- Sub-panel: Reclamos Clientes (contenido actual) -->
@@ -208,6 +209,7 @@
           <option value="">Estado: Todos</option>
           <option value="abierto">Abierto</option>
           <option value="en_analisis">En análisis</option>
+          <option value="en_revision">En revisión</option>
           <option value="validacion">En validación</option>
           <option value="cerrado">Cerrado</option>
           <option value="rechazado">Rechazado</option>
@@ -221,12 +223,7 @@
           <option value="medicion">Medida</option>
           <option value="medio_ambiente">Medio Ambiente</option>
         </select>
-        <select id="recFiltroAplica" onchange="loadReclamos()" style="font-size:11px;">
-          <option value="">Aplica: Todos</option>
-          <option value="si">Sí aplica</option>
-          <option value="no">No aplica</option>
-          <option value="pendiente">Pendiente</option>
-        </select>
+        <button id="recFiltroAplicaBtn" onclick="toggleRecAplica()" style="font-size:11px; padding:3px 10px; border:1px solid #1976d2; background:#fff; color:#1976d2; border-radius:4px; cursor:pointer; white-space:nowrap;">Aplica: Todos</button>
         <select id="recFiltroDetectado" onchange="loadReclamos()" style="font-size:11px;">
           <option value="">Detectado: Todos</option>
           <option value="Constructora">Constructora</option>
@@ -490,45 +487,14 @@
             <span id="recRespMsg" class="muted" style="font-size:11px; margin-left:8px;"></span>
           </div>
           <div id="recCerrarContainer" style="display:none;">
-            <button id="btnCerrarReclamo" style="font-size:11px; padding:4px 12px; background:#7B1FA2; color:#fff; border:none; border-radius:4px; cursor:pointer;" onclick="cerrarReclamo()">📤 Enviar a validación</button>
+            <button id="btnCerrarReclamo" style="font-size:11px; padding:4px 12px; background:#7B1FA2; color:#fff; border:none; border-radius:4px; cursor:pointer;" onclick="cerrarReclamo()">📤 Enviar a revisión</button>
+            <button id="btnAprobarParaValidacion" style="font-size:11px; padding:4px 12px; background:#1976d2; color:#fff; border:none; border-radius:4px; cursor:pointer; display:none; margin-left:8px;" onclick="aprobarParaValidacion()">✅ Aprobar para validación</button>
             <button id="btnReabrirReclamo" class="secondary" style="font-size:11px; padding:4px 12px; margin-left:8px; display:none;" onclick="reabrirReclamo()">🔓 Reabrir reclamo</button>
           </div>
         </div>
       </div>
 
-      <!-- ============ SECCIÓN 3: VALIDACIÓN ============ -->
-      <div id="recSeccionValidacion" style="margin-bottom:10px; padding:10px; background:#e8f5e9; border-radius:6px; border:1px solid #c8e6c9;">
-        <h4 style="margin:0 0 6px 0; font-size:13px; color:#2e7d32;">✅ Validación</h4>
-        <div id="recValidacionInfo" style="font-size:11px; color:#666; margin-bottom:6px;"></div>
-        <div class="row" style="gap:8px; flex-wrap:wrap; align-items:flex-end;">
-          <div class="col" style="max-width:180px;">
-            <label style="font-size:11px; color:#666;">Resultado</label>
-            <select id="recDetailValidacionResultado" style="width:100%; font-size:12px;">
-              <option value="">— Seleccionar —</option>
-              <option value="aprobado">✅ Aprobado</option>
-              <option value="rechazado">❌ Rechazado</option>
-              <option value="corregido">🔄 Corregido</option>
-            </select>
-          </div>
-          <div class="col" style="max-width:120px;">
-            <label style="font-size:11px; color:#666;">Tiempo respuesta</label>
-            <div style="display:flex; gap:2px;">
-              <input type="number" id="recTiempoRespuesta" min="0" style="width:60px; font-size:12px;" placeholder="0" />
-              <select id="recTiempoRespuestaUnidad" style="width:55px; font-size:11px;">
-                <option value="minutos">min</option>
-                <option value="horas" selected>hrs</option>
-                <option value="dias">días</option>
-              </select>
-            </div>
-          </div>
-          <div class="col" style="flex:1; min-width:250px;">
-            <label style="font-size:11px; color:#666;">Observaciones de validación</label>
-            <input type="text" id="recDetailValidacionObs" placeholder="Comentarios del validador..." style="width:100%; font-size:12px;" />
-          </div>
-          <button id="btnGuardarValidacion" class="secondary" style="font-size:11px; padding:4px 12px;" onclick="guardarValidacion()">Guardar validación</button>
-          <span id="recValidacionMsg" class="muted" style="font-size:11px;"></span>
-        </div>
-      </div>
+      <!-- SECCIÓN 3: VALIDACIÓN → movida al sub-tab Validaciones -->
 
       <!-- Timeline -->
       <div style="border-top:1px solid #eee; padding-top:10px;">
@@ -597,6 +563,96 @@
     <!-- Sub-panel: Presentaciones (movido desde línea 1, solo cubicadores/admin) -->
     <div id="recSubPresentaciones" style="display:none;">
     </div><!-- contenido inyectado desde recTabPresentaciones al activar -->
+
+    <!-- Sub-panel: Validaciones -->
+    <div id="recSubValidaciones" style="display:none;">
+
+      <!-- Sección A: Mi revisión (admin = Jefe de Servicio) -->
+      <div id="recValSeccionRevision" class="card" style="border-left:4px solid #1976d2; margin-bottom:16px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+          <h3 style="margin:0; color:#1976d2;">🔍 Mi revisión — En análisis</h3>
+          <span id="recRevBadge" style="background:#1976d2; color:#fff; font-size:11px; font-weight:700; padding:2px 10px; border-radius:12px;">0</span>
+        </div>
+        <p style="font-size:12px; color:#666; margin:0 0 10px 0;">Reclamos de cubicadores que requieren tu revisión antes de pasar a validación de Calidad.</p>
+        <div id="recRevLista" style="font-size:12px; color:#aaa;">Cargando...</div>
+      </div>
+
+      <!-- Sección B: Validación Calidad (admin_calidad) -->
+      <div id="recValSeccionCalidad" class="card" style="border-left:4px solid #7B1FA2; margin-bottom:16px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+          <h3 style="margin:0; color:#7B1FA2;">✅ Validación Calidad</h3>
+          <span id="recCalBadge" style="background:#7B1FA2; color:#fff; font-size:11px; font-weight:700; padding:2px 10px; border-radius:12px;">0</span>
+        </div>
+
+        <!-- KPI cards -->
+        <div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:10px; margin-bottom:14px;">
+          <div style="background:#f3e5f5; border-radius:8px; padding:12px; text-align:center;">
+            <div style="font-size:11px; color:#7B1FA2; text-transform:uppercase; margin-bottom:4px;">Pendientes</div>
+            <div id="recCalKpiPend" style="font-size:28px; font-weight:700; color:#7B1FA2;">0</div>
+          </div>
+          <div style="background:#e8f5e9; border-radius:8px; padding:12px; text-align:center;">
+            <div style="font-size:11px; color:#388e3c; text-transform:uppercase; margin-bottom:4px;">Aprobados (mes)</div>
+            <div id="recCalKpiAprobados" style="font-size:28px; font-weight:700; color:#388e3c;">0</div>
+          </div>
+          <div style="background:#fff3e0; border-radius:8px; padding:12px; text-align:center;">
+            <div style="font-size:11px; color:#e65100; text-transform:uppercase; margin-bottom:4px;">Devueltos (mes)</div>
+            <div id="recCalKpiDevueltos" style="font-size:28px; font-weight:700; color:#e65100;">0</div>
+          </div>
+          <div style="background:#e3f2fd; border-radius:8px; padding:12px; text-align:center;">
+            <div style="font-size:11px; color:#1565C0; text-transform:uppercase; margin-bottom:4px;">Tiempo prom.</div>
+            <div id="recCalKpiTiempo" style="font-size:28px; font-weight:700; color:#1565C0;">—</div>
+            <div style="font-size:10px; color:#666;">días</div>
+          </div>
+        </div>
+
+        <!-- Cola de validación: externos + internos separados -->
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px;">
+          <div>
+            <div style="font-size:11px; font-weight:700; color:#7B1FA2; margin-bottom:6px; padding-bottom:4px; border-bottom:1px solid #e1bee7;">Clientes</div>
+            <div id="recCalListaExt" style="font-size:12px; color:#aaa;">Cargando...</div>
+          </div>
+          <div>
+            <div style="font-size:11px; font-weight:700; color:#7B1FA2; margin-bottom:6px; padding-bottom:4px; border-bottom:1px solid #e1bee7;">Internos</div>
+            <div id="recCalListaInt" style="font-size:12px; color:#aaa;">Cargando...</div>
+          </div>
+        </div>
+
+        <!-- Panel de acción (se muestra al seleccionar un reclamo) -->
+        <div id="recCalAccionPanel" style="display:none; margin-top:14px; padding:12px; background:#f3e5f5; border-radius:8px; border:1px solid #ce93d8;">
+          <h4 style="margin:0 0 8px 0; font-size:13px; color:#7B1FA2;" id="recCalAccionTitulo">Reclamo seleccionado</h4>
+          <div class="row" style="gap:8px; flex-wrap:wrap; align-items:flex-end;">
+            <div class="col" style="max-width:180px;">
+              <label style="font-size:11px; color:#666;">Resultado</label>
+              <select id="recDetailValidacionResultado" style="width:100%; font-size:12px;">
+                <option value="">— Seleccionar —</option>
+                <option value="aprobado">✅ Aprobado</option>
+                <option value="rechazado">❌ Rechazado / Devolver</option>
+                <option value="corregido">🔄 Corregido</option>
+              </select>
+            </div>
+            <div class="col" style="max-width:120px;">
+              <label style="font-size:11px; color:#666;">Tiempo respuesta</label>
+              <div style="display:flex; gap:2px;">
+                <input type="number" id="recTiempoRespuesta" min="0" style="width:60px; font-size:12px;" placeholder="0" />
+                <select id="recTiempoRespuestaUnidad" style="width:55px; font-size:11px;">
+                  <option value="minutos">min</option>
+                  <option value="horas" selected>hrs</option>
+                  <option value="dias">días</option>
+                </select>
+              </div>
+            </div>
+            <div class="col" style="flex:1; min-width:250px;">
+              <label style="font-size:11px; color:#666;">Observaciones</label>
+              <input type="text" id="recDetailValidacionObs" placeholder="Motivo si devuelve / comentarios..." style="width:100%; font-size:12px;" />
+            </div>
+            <button id="btnGuardarValidacion" class="secondary" style="font-size:11px; padding:4px 12px;" onclick="guardarValidacion()">Guardar validación</button>
+            <span id="recValidacionMsg" class="muted" style="font-size:11px;"></span>
+          </div>
+          <div id="recValidacionInfo" style="font-size:11px; color:#666; margin-top:6px;"></div>
+        </div>
+      </div>
+
+    </div><!-- /recSubValidaciones -->
 
     </div><!-- /recTabMain -->
 

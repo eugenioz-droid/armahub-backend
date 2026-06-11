@@ -78,11 +78,11 @@ def _puede_ver_reclamo(rec: dict, user: dict) -> bool:
 
 
 def _estado_bloquea_edicion_analisis(estado: str) -> bool:
-    return estado in ("validacion", "cerrado", "rechazado")
+    return estado in ("en_revision", "validacion", "cerrado", "rechazado")
 
 # ========================= CONSTANTS =========================
 
-ESTADOS_RECLAMO = ("abierto", "en_analisis", "validacion", "cerrado", "rechazado")
+ESTADOS_RECLAMO = ("abierto", "en_analisis", "en_revision", "validacion", "cerrado", "rechazado")
 TIPOS_RECLAMO = ("error", "faltante", "atraso", "actualizacion_portal")
 VALIDACION_RESULTADOS = ("aprobado", "rechazado", "corregido")
 PRIORIDADES = ("baja", "media", "alta", "critica")
@@ -156,6 +156,7 @@ ISHIKAWA_SUBCAUSAS = {
 ESTADO_LABELS = {
     "abierto": "Abierto",
     "en_analisis": "En análisis",
+    "en_revision": "En revisión",
     "validacion": "En validación",
     "cerrado": "Cerrado",
     "rechazado": "Rechazado",
@@ -350,9 +351,10 @@ def listar_reclamos(
                     CASE r.estado
                         WHEN 'abierto' THEN 1
                         WHEN 'en_analisis' THEN 2
-                        WHEN 'validacion' THEN 3
-                        WHEN 'rechazado' THEN 4
-                        WHEN 'cerrado' THEN 5
+                        WHEN 'en_revision' THEN 3
+                        WHEN 'validacion' THEN 4
+                        WHEN 'rechazado' THEN 5
+                        WHEN 'cerrado' THEN 6
                     END,
                     CASE r.prioridad
                         WHEN 'critica' THEN 1
@@ -1835,6 +1837,7 @@ def eliminar_imagen(reclamo_id: int, imagen_id: int, user=Depends(get_current_us
 ESTADO_COLORS_RGB = {
     "abierto": (255, 152, 0),
     "en_analisis": (25, 118, 210),
+    "en_revision": (2, 136, 209),
     "validacion": (123, 31, 162),
     "cerrado": (56, 142, 60),
     "rechazado": (198, 40, 40),

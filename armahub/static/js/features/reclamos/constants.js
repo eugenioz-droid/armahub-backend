@@ -10,11 +10,11 @@ var _reclamosListaIds = [];
 var _FECHA_OPERATIVA = '2026-04-16';
 
 var _recEstadoColors = {
-  abierto: '#e53935', en_analisis: '#ff9800',
+  abierto: '#e53935', en_analisis: '#ff9800', en_revision: '#1976d2',
   validacion: '#7B1FA2', cerrado: '#4CAF50', rechazado: '#9E9E9E'
 };
 var _recEstadoLabels = {
-  abierto: 'Abierto', en_analisis: 'En análisis',
+  abierto: 'Abierto', en_analisis: 'En análisis', en_revision: 'En revisión',
   validacion: 'En validación', cerrado: 'Cerrado', rechazado: 'Rechazado'
 };
 var _recPrioridadColors = {

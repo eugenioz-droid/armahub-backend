@@ -13,9 +13,9 @@ var _rcaRecAreaId = null;
 var _rcaRecData = null;
 
 function switchRecSubTab(sub) {
-  var panels = { clientes: 'recSubClientes', internos: 'recSubInternos', rca: 'recSubRCA', presentaciones: 'recSubPresentaciones' };
-  var colors  = { clientes: '#e53935', internos: '#1565C0', rca: '#e65100', presentaciones: '#7B1FA2' };
-  var btnIds  = { clientes: 'recSubBtnClientes', internos: 'recSubBtnInternos', rca: 'recSubBtnRCA', presentaciones: 'recSubBtnPres' };
+  var panels = { clientes: 'recSubClientes', internos: 'recSubInternos', rca: 'recSubRCA', presentaciones: 'recSubPresentaciones', validaciones: 'recSubValidaciones' };
+  var colors  = { clientes: '#e53935', internos: '#1565C0', rca: '#e65100', presentaciones: '#7B1FA2', validaciones: '#7B1FA2' };
+  var btnIds  = { clientes: 'recSubBtnClientes', internos: 'recSubBtnInternos', rca: 'recSubBtnRCA', presentaciones: 'recSubBtnPres', validaciones: 'recSubBtnVal' };
 
   Object.keys(panels).forEach(function(key) {
     var el = document.getElementById(panels[key]);
@@ -29,7 +29,6 @@ function switchRecSubTab(sub) {
 
   if (sub === 'rca') { rcaRecIniciar(); }
   if (sub === 'presentaciones') {
-    // Reutilizar contenido del panel presentaciones existente moviéndolo al sub-panel
     var src = document.getElementById('recTabPresentaciones');
     var dst = document.getElementById('recSubPresentaciones');
     if (src && dst && dst.children.length === 0) {
@@ -37,6 +36,7 @@ function switchRecSubTab(sub) {
     }
     loadPresentaciones();
   }
+  if (sub === 'validaciones') { loadRecValidaciones(); }
 }
 
 // ── RCA dentro de Calidad/Reclamos ──
@@ -175,13 +175,16 @@ async function loadRecLanding() {
   var titleEl = document.querySelector('#recLandingCharts').parentElement.querySelector('h3');
   if (titleEl) titleEl.textContent = isAdmin ? 'Resumen General' : 'Mi Resumen';
 
-  // Sub-tabs Nivel 2: RCA y Presentaciones según rol
+  // Sub-tabs Nivel 2: RCA, Presentaciones y Validaciones según rol
   var rcaAccess = ['admin','admin_calidad'];
   var subRCA = document.getElementById('recSubBtnRCA');
   if (subRCA) subRCA.style.display = rcaAccess.includes(currentRole) ? '' : 'none';
   var subPres = document.getElementById('recSubBtnPres');
   var presAccess = ['admin','admin_calidad','cubicador','externo'];
   if (subPres) subPres.style.display = presAccess.includes(currentRole) ? '' : 'none';
+  var subVal = document.getElementById('recSubBtnVal');
+  var valAccess = ['admin','admin_calidad'];
+  if (subVal) subVal.style.display = valAccess.includes(currentRole) ? '' : 'none';
 
   // Chart 1: KPI
   document.getElementById('recLandTotal').textContent = data.total || 0;
@@ -567,4 +570,121 @@ async function loadRecAdminDashboards() {
     }
   }
 
+}
+
+// ── Sub-tab Validaciones ──
+
+async function loadRecValidaciones() {
+  var esAdmin = (currentRole === 'admin');
+  var esCalidad = (currentRole === 'admin_calidad');
+
+  var secRev = document.getElementById('recValSeccionRevision');
+  var secCal = document.getElementById('recValSeccionCalidad');
+  if (secRev) secRev.style.display = esAdmin ? '' : 'none';
+  if (secCal) secCal.style.display = esCalidad ? '' : 'none';
+
+  if (esAdmin) { await _loadRevisionQueue(); }
+  if (esCalidad) { await _loadValidacionCalidad(); }
+}
+
+async function _loadRevisionQueue() {
+  var listaEl = document.getElementById('recRevLista');
+  var badge = document.getElementById('recRevBadge');
+  if (!listaEl) return;
+  listaEl.innerHTML = '<div class="muted">Cargando...</div>';
+
+  var data = await apiGet('/reclamos?estado=en_analisis&limit=200');
+  if (!data) { listaEl.innerHTML = '<div class="muted">Error al cargar.</div>'; return; }
+  var items = data.reclamos || [];
+  if (badge) badge.textContent = items.length;
+  if (items.length === 0) { listaEl.innerHTML = '<div class="muted" style="padding:12px 0;">Sin reclamos pendientes de revisión.</div>'; return; }
+
+  listaEl.innerHTML = items.map(function(r) {
+    return '<div style="padding:7px 10px; border-bottom:1px solid #f0f0f0; display:flex; justify-content:space-between; align-items:center; gap:8px;">' +
+      '<div style="flex:1;">' +
+        '<span style="font-weight:600; color:#1565C0; cursor:pointer; font-size:12px;" onclick="verReclamo(' + r.id + ')">' + (r.correlativo || '#' + r.id) + '</span>' +
+        ' <span style="font-size:12px;">' + (r.titulo || '') + '</span>' +
+        '<div style="font-size:11px; color:#888; margin-top:2px;">' + (r.cubicador_display || r.cubicador_asignado || 'Sin asignar') + ' · ' + (r.proyecto_nombre || '—') + '</div>' +
+      '</div>' +
+      '<button style="font-size:11px; padding:3px 10px; background:#1976d2; color:#fff; border:none; border-radius:4px; cursor:pointer; white-space:nowrap;" ' +
+        'onclick="_aprobarRevisionReclamo(' + r.id + ')">✅ Aprobar</button>' +
+    '</div>';
+  }).join('');
+}
+
+async function _aprobarRevisionReclamo(id) {
+  if (!confirm('¿Aprobar este reclamo para validación de Calidad?')) return;
+  var res = await fetch(apiUrl('/reclamos/' + id), {
+    method: 'PATCH',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ estado: 'validacion' })
+  });
+  if (res.status === 401) { logout(); return; }
+  var data = await res.json();
+  if (data.ok) { await _loadRevisionQueue(); }
+  else { alert('Error: ' + (data.detail || 'desconocido')); }
+}
+
+async function _loadValidacionCalidad() {
+  var listaExt = document.getElementById('recCalListaExt');
+  var listaInt = document.getElementById('recCalListaInt');
+  var badge = document.getElementById('recCalBadge');
+  if (!listaExt || !listaInt) return;
+  listaExt.innerHTML = '<div class="muted">Cargando...</div>';
+  listaInt.innerHTML = '<div class="muted">Cargando...</div>';
+
+  var data = await apiGet('/reclamos?estado=validacion&limit=200');
+  if (!data) {
+    listaExt.innerHTML = '<div class="muted">Error.</div>';
+    listaInt.innerHTML = '<div class="muted">Error.</div>';
+    return;
+  }
+  var items = data.reclamos || [];
+  if (badge) badge.textContent = items.length;
+
+  // Separar externos e internos (internos = sin cubicador_asignado ni tipo_externo, por ahora = area_aplica)
+  var externos = items.filter(function(r) { return r.cubicador_asignado || r.tipo_reclamo !== 'interno'; });
+  var internos = items.filter(function(r) { return !r.cubicador_asignado && r.tipo_reclamo === 'interno'; });
+
+  // KPI: cargar aprobados y devueltos del mes
+  _updateValCalKpis(items);
+
+  function renderItem(r) {
+    return '<div style="padding:6px 8px; border-bottom:1px solid #f3e5f5; cursor:pointer;" onclick="_seleccionarParaValidar(' + r.id + ', this)">' +
+      '<div style="font-weight:600; color:#7B1FA2; font-size:12px;">' + (r.correlativo || '#' + r.id) + '</div>' +
+      '<div style="font-size:11px; color:#666;">' + (r.titulo || '') + '</div>' +
+      '<div style="font-size:11px; color:#888;">' + (r.proyecto_nombre || '—') + '</div>' +
+    '</div>';
+  }
+
+  listaExt.innerHTML = externos.length ? externos.map(renderItem).join('') : '<div class="muted" style="padding:8px 0; font-size:12px;">Sin pendientes.</div>';
+  listaInt.innerHTML = internos.length ? internos.map(renderItem).join('') : '<div class="muted" style="padding:8px 0; font-size:12px;">Sin pendientes.</div>';
+}
+
+var _recValSelId = null;
+function _seleccionarParaValidar(id, el) {
+  _recValSelId = id;
+  // Highlight selección
+  document.querySelectorAll('#recCalListaExt > div, #recCalListaInt > div').forEach(function(d) {
+    d.style.background = '';
+  });
+  if (el) el.style.background = '#f3e5f5';
+
+  // Buscar el reclamo en el DOM o hacer fetch
+  _reclamoActual = { id: id };
+  var panel = document.getElementById('recCalAccionPanel');
+  var titulo = document.getElementById('recCalAccionTitulo');
+  if (panel) panel.style.display = '';
+  if (titulo) titulo.textContent = 'Reclamo #' + id;
+  // Resetear campos
+  ['recDetailValidacionResultado','recDetailValidacionObs'].forEach(function(fid) {
+    var el2 = document.getElementById(fid); if (el2) el2.value = '';
+  });
+  var msg = document.getElementById('recValidacionMsg'); if (msg) msg.textContent = '';
+}
+
+function _updateValCalKpis(pendientes) {
+  var kpiPend = document.getElementById('recCalKpiPend');
+  if (kpiPend) kpiPend.textContent = pendientes.length;
+  // Los otros KPIs requieren endpoint de historial; placeholder por ahora
 }

@@ -909,8 +909,27 @@ MIGRATIONS = [
         """,
     ]),
     ("59", "Renombrar rol admin2 → admin_calidad en usuarios y configuraciones", [
-        "UPDATE usuarios SET rol = 'admin_calidad' WHERE rol = 'admin2'",
+        "UPDATE users SET role = 'admin_calidad' WHERE role = 'admin2'",
         "UPDATE notificacion_config SET rol = 'admin_calidad' WHERE rol = 'admin2'",
+    ]),
+
+    ("60", "reclamos: agregar estado en_revision al CHECK constraint", [
+        """DO $$
+        DECLARE r RECORD;
+        BEGIN
+            FOR r IN (
+                SELECT con.conname
+                FROM pg_constraint con
+                JOIN pg_attribute att ON att.attnum = ANY(con.conkey) AND att.attrelid = con.conrelid
+                WHERE con.conrelid = 'reclamos'::regclass
+                  AND con.contype = 'c'
+                  AND att.attname = 'estado'
+            ) LOOP
+                EXECUTE 'ALTER TABLE reclamos DROP CONSTRAINT ' || r.conname;
+            END LOOP;
+            ALTER TABLE reclamos ADD CONSTRAINT reclamos_estado_check
+                CHECK (estado IN ('abierto','en_analisis','en_revision','accion_correctiva','validacion','validado','cerrado','rechazado'));
+        END $$;""",
     ]),
 ]
 
