@@ -1295,19 +1295,28 @@ def actualizar_reclamo(reclamo_id: int, body: ReclamoUpdate, user=Depends(get_cu
             else:
                 raise HTTPException(status_code=403, detail="No tiene permiso para editar reclamos")
 
-            if body.estado == "validacion":
+            # Validaciones de completitud del análisis: aplican al PRIMER envío hacia
+            # adelante (desde abierto/en_analisis), sea a en_revision (Flujo A) o a
+            # validacion (Flujo B). Cuando un reclamo en revisión es APROBADO por el Jefe
+            # de Servicio (en_revision → validacion), NO se re-exige: ya se validó al enviar.
+            _primer_envio = (
+                estado_anterior in ("abierto", "en_analisis")
+                and body.estado in ("en_revision", "validacion")
+            )
+            if _primer_envio:
+                _destino_label = "revisión" if body.estado == "en_revision" else "validación"
                 aplica_efectiva = body.aplica if body.aplica is not None else aplica_actual
                 if aplica_efectiva not in ("si", "no"):
-                    raise HTTPException(status_code=400, detail="Debe marcar si el reclamo aplica o no aplica antes de enviar a validación")
+                    raise HTTPException(status_code=400, detail=f"Debe marcar si el reclamo aplica o no aplica antes de enviar a {_destino_label}")
 
                 respuesta_efectiva = body.respuesta_texto if body.respuesta_texto is not None else respuesta_actual
                 if not (respuesta_efectiva and str(respuesta_efectiva).strip()):
-                    raise HTTPException(status_code=400, detail="Debe ingresar la explicación/justificación antes de enviar a validación")
+                    raise HTTPException(status_code=400, detail=f"Debe ingresar la explicación/justificación antes de enviar a {_destino_label}")
 
                 cur.execute("SELECT COUNT(*) FROM reclamo_acciones WHERE reclamo_id = %s", (reclamo_id,))
                 acciones_count = int(cur.fetchone()[0] or 0)
                 if acciones_count <= 0:
-                    raise HTTPException(status_code=400, detail="Debe registrar al menos una acción antes de enviar a validación")
+                    raise HTTPException(status_code=400, detail=f"Debe registrar al menos una acción antes de enviar a {_destino_label}")
 
             sets = ["fecha_actualizacion = %s"]
             params = [now]
@@ -1431,6 +1440,9 @@ def actualizar_reclamo(reclamo_id: int, body: ReclamoUpdate, user=Depends(get_cu
                 # Devolución desde revisión (Jefe de Servicio → cubicador)
                 if estado_anterior == "en_revision" and body.estado == "en_analisis" and body.revision_observaciones:
                     comment += f" — Devuelto por revisión: {body.revision_observaciones}"
+                # Aprobación desde revisión con comentario opcional del Jefe de Servicio
+                if estado_anterior == "en_revision" and body.estado == "validacion" and body.revision_observaciones:
+                    comment += f" — Revisión aprobada: {body.revision_observaciones}"
                 cur.execute("""
                     INSERT INTO reclamo_seguimientos (reclamo_id, usuario, comentario, estado_anterior, estado_nuevo, fecha)
                     VALUES (%s, %s, %s, %s, %s, %s)

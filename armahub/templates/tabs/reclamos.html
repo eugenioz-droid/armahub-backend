@@ -497,9 +497,13 @@
       <div id="recSeccionRevision" style="display:none; margin-bottom:10px; padding:12px; background:#FFF8E1; border-radius:8px; border:1px solid #FFE082;">
         <h4 style="margin:0 0 8px 0; font-size:13px; color:#FF8F00;">🔍 Revisión — Jefe de Servicio</h4>
         <p style="font-size:11px; color:#666; margin:0 0 8px 0;">Revisa el análisis del cubicador. Aprueba para que pase a validación de Calidad, o devuelve para corrección.</p>
-        <div style="display:flex; gap:8px; flex-wrap:wrap;">
-          <button id="btnAprobarParaValidacion" style="font-size:12px; padding:5px 16px; background:#FF8F00; color:#fff; border:none; border-radius:4px; cursor:pointer; font-weight:600;" onclick="aprobarParaValidacion()">✅ Aprobar</button>
+        <div style="margin-bottom:8px;">
+          <label style="font-size:11px; color:#666;">Comentario de revisión (opcional)</label>
+          <input type="text" id="recRevisionComentario" placeholder="Observación del Jefe de Servicio — opcional, queda en el seguimiento" style="width:100%; font-size:12px;" />
+        </div>
+        <div style="display:flex; gap:6px; flex-wrap:wrap; justify-content:flex-end;">
           <button id="btnDevolverRevision" style="font-size:12px; padding:5px 16px; background:#fff; color:#e65100; border:1px solid #e65100; border-radius:4px; cursor:pointer;" onclick="devolverRevisionDesdeModal()">↩️ Devolver</button>
+          <button id="btnAprobarParaValidacion" style="font-size:12px; padding:5px 16px; background:#FF8F00; color:#fff; border:none; border-radius:4px; cursor:pointer; font-weight:600;" onclick="aprobarParaValidacion()">✅ Aprobar</button>
         </div>
       </div>
 

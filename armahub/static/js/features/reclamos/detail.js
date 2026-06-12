@@ -546,14 +546,18 @@ async function _refrescarTrasAccionFlujo() {
 async function aprobarParaValidacion() {
   if (!_reclamoActual) return;
   if (!confirm('¿Aprobar este reclamo para validación de Calidad?')) return;
+  var comentEl = document.getElementById('recRevisionComentario');
+  var comentario = comentEl ? (comentEl.value || '').trim() : '';
+  var body = { estado: 'validacion' };
+  if (comentario) body.revision_observaciones = comentario;
   var res = await fetch(apiUrl('/reclamos/' + _reclamoActual.id), {
     method: 'PATCH',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
-    body: JSON.stringify({ estado: 'validacion' })
+    body: JSON.stringify(body)
   });
   if (res.status === 401) { logout(); return; }
   var data = await res.json();
-  if (data.ok) { await _refrescarTrasAccionFlujo(); }
+  if (data.ok) { if (comentEl) comentEl.value = ''; await _refrescarTrasAccionFlujo(); }
   else { alert('Error: ' + (data.detail || 'desconocido')); }
 }
 
