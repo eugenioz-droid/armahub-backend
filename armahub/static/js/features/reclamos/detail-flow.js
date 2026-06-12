@@ -98,7 +98,7 @@ async function cerrarReclamo() {
   _setIf('categoria_ishikawa', document.getElementById('recDetailCategoria').value);
   _setIf('sub_causa', document.getElementById('recDetailSubCausa').value);
   _setIf('cod_causa', document.getElementById('recDetailCodCausa').value);
-  _setIf('area_aplica', document.getElementById('recDetailAreaAplica').value);
+  // area_aplica ya no se envía: el área real vive en area_id (inferida del responsable).
   _setIf('fecha_analisis', document.getElementById('recDetailFechaAnalisis').value);
   _setIf('kilos_mal_fabricados', parseFloat(document.getElementById('recDetailKilosMal').value));
   _setIf('tiempo_respuesta', parseInt(document.getElementById('recTiempoRespuestaAnalisis').value));

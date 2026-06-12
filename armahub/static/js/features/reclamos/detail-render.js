@@ -73,7 +73,9 @@ function _renderReclamoRespuesta(data) {
   document.getElementById('recDetailCategoria').value = data.categoria_ishikawa || '';
   document.getElementById('recDetailSubCausa').value = data.sub_causa || '';
   document.getElementById('recDetailCodCausa').value = data.cod_causa || '';
-  document.getElementById('recDetailAreaAplica').value = data.area_aplica || 'Cubicación';
+  // Área responsable: se muestra el área REAL inferida (area_nombre); si el
+  // reclamo aún no tiene área (sin responsable de área), cae al texto histórico.
+  document.getElementById('recDetailAreaAplica').value = data.area_nombre || data.area_aplica || '';
   document.getElementById('recDetailFechaAnalisis').value = data.fecha_analisis_input;
   document.getElementById('recDetailKilosMal').value = data.kilos_mal_fabricados != null ? data.kilos_mal_fabricados : '';
   document.getElementById('recTiempoRespuestaAnalisis').value = data.tiempo_respuesta || '';

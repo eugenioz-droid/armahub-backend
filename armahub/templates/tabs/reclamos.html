@@ -405,15 +405,13 @@
               <button id="recBtnClearCausa" type="button" class="secondary" style="font-size:11px; padding:4px 8px; white-space:nowrap; color:#b42318;" onclick="clearReclamoCausa()" title="Eliminar causa Ishikawa">✕</button>
             </div>
           </div>
-          <div class="col" style="max-width:140px;">
+          <div class="col" style="max-width:160px;">
             <label style="font-size:11px; color:#666;">Área responsable</label>
-            <select id="recDetailAreaAplica" style="width:100%; font-size:12px;">
-              <option value="">— Seleccionar —</option>
-              <option value="USC">USC</option>
-              <option value="Logística">Logística</option>
-              <option value="Producción">Producción</option>
-              <option value="Cubicación">Cubicación</option>
-            </select>
+            <!-- Se INFIERE del responsable asignado; no se elige (evita incoherencias).
+                 Solo lectura: muestra el área real del reclamo (area_nombre). -->
+            <input type="text" id="recDetailAreaAplica" readonly title="El área se determina por el responsable asignado"
+                   style="width:100%; font-size:12px; background:#f5f5f5; color:#555; cursor:not-allowed;"
+                   placeholder="— Según responsable —" />
           </div>
           <div class="col" style="max-width:130px;">
             <label style="font-size:11px; color:#666;">Fecha análisis</label>
