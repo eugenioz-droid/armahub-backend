@@ -202,9 +202,14 @@ function _applyReclamoDetailPermissions(data) {
   if (btnReabrir) btnReabrir.style.display = puedeReabrir ? '' : 'none';
 
   // Las secciones de acción de flujo (ámbar/verde) SOLO se muestran cuando el modal
-  // se abrió desde el sub-tab Validaciones. Desde el listado oficial (Reclamos
-  // Clientes) el modal es solo lectura/registro: nunca cambia el estado ahí.
-  var enContextoValidaciones = (_recModalOrigen === 'validaciones');
+  // se abrió estando en el sub-tab Validaciones. En Reclamos Clientes (listado
+  // oficial) NUNCA aparecen, en ningún estado: es solo lectura/registro.
+  //
+  // El contexto se deriva del DOM real (¿está visible el sub-tab Validaciones?),
+  // NO de una variable de estado que se pueda quedar pegada entre aperturas. Si
+  // recSubValidaciones está oculto, estás en otro sub-tab → sin secciones de flujo.
+  var subVal = document.getElementById('recSubValidaciones');
+  var enContextoValidaciones = !!(subVal && subVal.style.display !== 'none');
 
   // 2) Sección ÁMBAR (revisión): Jefe de Servicio (admin) con reclamo en en_revision
   var puedeRevisar = enContextoValidaciones && (currentRole === 'admin') && estadoEnRevision;
