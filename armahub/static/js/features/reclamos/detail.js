@@ -223,13 +223,18 @@ function _applyReclamoDetailPermissions(data) {
   var btnReabrir = document.getElementById('btnReabrirReclamo');
   if (btnReabrir) btnReabrir.style.display = puedeReabrir ? '' : 'none';
 
+  // Las secciones de acción de flujo (ámbar/verde) SOLO se muestran cuando el modal
+  // se abrió desde el sub-tab Validaciones. Desde el listado oficial (Reclamos
+  // Clientes) el modal es solo lectura/registro: nunca cambia el estado ahí.
+  var enContextoValidaciones = (_recModalOrigen === 'validaciones');
+
   // 2) Sección ÁMBAR (revisión): Jefe de Servicio (admin) con reclamo en en_revision
-  var puedeRevisar = (currentRole === 'admin') && estadoEnRevision;
+  var puedeRevisar = enContextoValidaciones && (currentRole === 'admin') && estadoEnRevision;
   var secRevision = document.getElementById('recSeccionRevision');
   if (secRevision) secRevision.style.display = puedeRevisar ? '' : 'none';
 
   // 3) Sección VERDE (validación): Calidad (admin/admin_calidad) con reclamo en validacion
-  var puedeValidarCalidad = puedeAdmin && estadoEnValidacion;
+  var puedeValidarCalidad = enContextoValidaciones && puedeAdmin && estadoEnValidacion;
   var secValidacion = document.getElementById('recSeccionValidacion');
   if (secValidacion) secValidacion.style.display = puedeValidarCalidad ? '' : 'none';
 
@@ -332,6 +337,13 @@ function _restoreReclamoAnalysisDraft(draft) {
   });
 }
 
+// Origen desde el que se abrió el modal de detalle:
+//  'validaciones' → abierto desde las colas del sub-tab Validaciones; muestra las
+//                   secciones de acción (revisión ámbar / validación verde).
+//  'lista' (o vacío) → abierto desde el listado oficial (Reclamos Clientes); el
+//                   modal es solo lectura/registro, SIN secciones de acción de flujo.
+var _recModalOrigen = 'lista';
+
 async function verReclamo(id, options) {
   options = options || {};
   // Preservar el borrador de análisis SIEMPRE que recarguemos el mismo reclamo
@@ -339,6 +351,12 @@ async function verReclamo(id, options) {
   // Así no se pierde lo que el usuario está escribiendo. Solo se descarta al
   // navegar a OTRO reclamo (id distinto) o si se pide explícitamente lo contrario.
   var esMismoReclamo = _reclamoActual && String(_reclamoActual.id) === String(id);
+  // El origen se fija al abrir un reclamo nuevo; se conserva al recargar el mismo.
+  if (options.origen) {
+    _recModalOrigen = options.origen;
+  } else if (!esMismoReclamo) {
+    _recModalOrigen = 'lista';
+  }
   var preservar = options.preserveAnalysisDraft !== false && (options.preserveAnalysisDraft === true || esMismoReclamo);
   var analysisDraft = preservar ? _captureReclamoAnalysisDraft() : null;
   var data = await apiGet('/reclamos/' + id);

@@ -668,7 +668,7 @@ function _renderColaReclamos(reclamos) {
     var aplColor = _recAplicaColors[r.aplica] || '#ff9800';
     var titulo = r.titulo || '';
     if (titulo.length > 55) titulo = titulo.substring(0, 55) + '…';
-    return '<tr style="border-bottom:1px solid #eee; cursor:pointer;" onclick="verReclamo(' + r.id + ')" title="Ver ficha completa">' +
+    return '<tr style="border-bottom:1px solid #eee; cursor:pointer;" onclick="verReclamo(' + r.id + ', {origen:\'validaciones\'})" title="Ver ficha completa">' +
       '<td style="padding:4px 6px; font-weight:600; white-space:nowrap;">' + idLabel + '</td>' +
       '<td style="padding:4px 6px;">' + titulo + '</td>' +
       '<td style="padding:4px 6px; color:#666;">' + (r.nombre_proyecto || '—') + '</td>' +
