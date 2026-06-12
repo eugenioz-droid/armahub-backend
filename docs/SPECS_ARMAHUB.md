@@ -159,8 +159,8 @@ Incluye análisis de causa raíz (Ishikawa o 5 Por Qué), acciones correctivas, 
 |--------|-------------|
 | `abierto` | Reclamo creado, esperando análisis |
 | `en_analisis` | Cubicador asignado trabaja el análisis. Botón "Enviar a revisión" → `en_revision` |
-| `en_revision` | Jefe de Servicio de Cubicaciones (admin) revisa. Aparece en sub-tab Validaciones → "En revisión". Aprobar → `validacion`; Devolver → `en_analisis` con motivo |
-| `validacion` | Jefa de Calidad (`admin_calidad`) valida. Aparece en "Validación Calidad". Aprobar → `cerrado`; Devolver → `en_analisis` |
+| `en_revision` | Jefe de Servicio (admin) revisa la respuesta del intermediario. Solo existe en áreas con etapa de revisión activada (ver nota de flujo). Aparece en sub-tab Validaciones → "En revisión". Aprobar → `validacion`; Devolver → `en_analisis`, explicación obligatoria |
+| `validacion` | Jefa de Calidad (`admin_calidad`) valida. Aparece en "Validación Calidad". Aprobar → `cerrado`; Devolver → `en_revision` (rebota al Jefe de Servicio que aprobó) |
 | `cerrado` | Cierre formal |
 | `rechazado` | Rechazo definitivo |
 
@@ -181,7 +181,11 @@ Incluye análisis de causa raíz (Ishikawa o 5 Por Qué), acciones correctivas, 
 | `cerrado` | Cierre formal |
 | `rechazado` | Rechazo definitivo |
 
-> **¿Qué determina el flujo?** El área del reclamo. Hoy se decide por heurística sobre `area_aplica` (texto "Cubicación…") o `cubicador_asignado`. **Pendiente (Plan 2):** reemplazar por FK `area_id` real y modelo `jefe_servicio` + `area_usuarios` para filtrar la cola "En revisión" por el área de cada Jefe de Servicio.
+> **¿Qué determina el flujo?** Que el área tenga o no **etapa de revisión**. Por diseño, el flujo correcto es: **por defecto todas las áreas van directo a validación** (Flujo B) — el Jefe de Servicio responde y pasa a Calidad, asumiendo que tiene criterio suficiente y que no hay un rol previo. La **etapa de revisión** (Flujo A) es la **excepción configurable**: solo se activa en áreas donde el Jefe de Servicio antepone un intermediario que responde el reclamo (ej. Producción con un cubicador/analista previo).
+>
+> **Estado actual (heurística temporal):** hoy se decide por texto sobre `area_aplica` ("Cubicación…") o por `cubicador_asignado`. Esto es un hardcode a reemplazar.
+>
+> **Plan 2 — flag de revisión por área (modular):** un flag `tiene_revision` (bool) **por área**, no por usuario (la pregunta "¿este servicio revisa?" es del servicio). Tabla/columna propia (`areas_config` o similar), un endpoint GET/PATCH, y un panel de checkboxes. **Ubicación inicial:** Admin → Gestión. **Migrable a Calidad/Reclamos** después para que lo administre la Jefa de Calidad (al estar aislado en su propio panel/endpoint, mover dónde se renderiza es trivial). El flujo entonces se decide por `area.tiene_revision`, no por el nombre del área. Incluye también el modelo `area_id` real + `area_usuarios` para filtrar la cola "En revisión" por el área de cada Jefe de Servicio.
 
 > **Reasignación:** si un reclamo fue asignado al área equivocada, quien lo creó puede reasignarlo mientras está en `abierto` o `en_analisis`. Si ya pasó a validación, solo admin/admin_calidad pueden reasignar.
 
@@ -200,12 +204,15 @@ El sub-tab **Validaciones** (dentro de Calidad/Reclamos) es una **vista de traba
 
 4. **El modal de detalle se reutiliza** (no se recrea). Vive en el DOM dentro de `recSubClientes`, que se oculta al cambiar de sub-tab; por eso al entrar a Validaciones se **reparenta** a `tab-reclamos` con `_ensureModalFueraDeSubpaneles()` (dashboards.js), para que flote sobre cualquier sub-tab.
 
-5. **Las acciones de flujo viven DENTRO del modal**, en secciones de color según estado, y **solo se muestran si el modal se abrió desde Validaciones** (variable `_recModalOrigen === 'validaciones'` en detail.js):
-   - Estado `en_revision` → sección **ámbar** con "Aprobar" (→ validacion) y "Devolver" (→ en_analisis, motivo obligatorio). Comentario de revisión opcional.
-   - Estado `validacion` → sección **verde** con "Validar" (resultado + obs + tiempo) y devolución vía resultado "rechazado" (PA.5 reabre a en_analisis).
-   - **Desde el listado oficial (Reclamos Clientes) estas secciones NUNCA aparecen.** El modal ahí es solo lectura/registro + el botón "Enviar a revisión/validación" (que es parte del análisis del responsable, no de la validación).
+5. **Las acciones de flujo viven DENTRO del modal**, en secciones de color según estado, y **solo se muestran si el modal se abrió desde Validaciones** (variable `_recModalOrigen === 'validaciones'` en detail.js). Ambas secciones tienen **la misma gráfica y disposición**: un campo de explicación + dos acciones (Devolver / Aprobar). Sin desplegables ni campos extra.
+   - Estado `en_revision` → sección **ámbar**: "Aprobar" (→ validacion) o "Devolver" (→ en_analisis). Explicación **obligatoria** para ambas (`recRevisionComentario`).
+   - Estado `validacion` → sección **verde**: "Aprobar" (→ cerrado, vía `validacion_resultado='aprobado'`) o "Devolver" (→ en_revision, rebota al Jefe de Servicio). Explicación **obligatoria** para ambas (`recValidacionComentario`).
+   - **Sin `prompt()`:** el motivo es el campo en pantalla. Si está vacío, warning bloqueante (no deja avanzar). No se pide la explicación por segunda vía.
+   - **Desde el listado oficial (Reclamos Clientes) estas secciones NUNCA aparecen.** El modal ahí es solo lectura/registro.
 
-6. **El botón "Enviar a revisión/validación"** (sección 1 del modal, `recCerrarContainer`) SÍ aparece desde cualquier tab cuando el reclamo está en `abierto`/`en_analisis` y el usuario es el responsable o admin. Es el cierre del análisis, no una acción de validación. Al enviar, persiste TODO el análisis del form junto con el cambio de estado (no exige "Guardar análisis" previo).
+6. **El botón "Enviar a revisión/validación"** (sección 1 del modal, `recCerrarContainer`) aparece cuando el reclamo está en `abierto`/`en_analisis` y el usuario es el responsable o admin. Es el cierre del análisis, no una acción de validación. Al enviar, persiste TODO el análisis del form junto con el cambio de estado (no exige "Guardar análisis" previo).
+
+7. **El formulario de datos queda READ-ONLY fuera de la etapa de análisis.** Mientras el reclamo está en `abierto`/`en_analisis` es editable (por el responsable/admin); una vez en `en_revision`/`validacion`/`cerrado`/`rechazado` **se bloquea para TODOS los roles, admin incluido** — está en otra etapa. Aplica a: edición de datos (sección 1), selector Aplica, respuesta/análisis (sección 2) y acciones. Para volver a editar hay que **Reabrir** (admin), que devuelve el reclamo a `en_analisis`. Las únicas acciones disponibles fuera de análisis son las de flujo (Aprobar/Devolver, regla 5).
 
 ### 3.3.2 Integridad de datos — PATCH no destructivo (REGLA CRÍTICA)
 
@@ -220,7 +227,7 @@ El endpoint `PATCH /reclamos/{id}` (`actualizar_reclamo` en reclamos.py) **solo 
 
 Al **enviar** un reclamo hacia adelante por primera vez (`abierto`/`en_analisis` → `en_revision` o `validacion`), el backend exige: Aplica marcado (sí/no, no "pendiente"), explicación/justificación (`respuesta_texto`) no vacía, y al menos 1 acción. Estas son obligatorias (filtro de calidad del análisis).
 
-Al **aprobar** la revisión (`en_revision` → `validacion`) o **validar** (`validacion` → `cerrado`), NO se re-exige nada: ya se validó al enviar. El comentario del revisor/validador es **opcional**, no bloqueante.
+Al **aprobar** o **devolver** en revisión o validación, NO se re-exige el análisis completo (ya se validó al enviar), pero **SÍ es obligatoria una explicación** del revisor/validador: tanto para aprobar como para devolver, en ambas secciones (ámbar y verde). Es la justificación de la decisión y queda en el timeline de seguimiento. Si el campo está vacío, warning bloqueante en el front.
 
 ### 3.4 Análisis de causa raíz (RCA)
 
