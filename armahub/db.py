@@ -962,8 +962,11 @@ MIGRATIONS = [
 
     (62, "resincronizar secuencias id (corrige UniqueViolation tras importación de datos)", [
         # Tras restaurar/importar filas con id explícito, las secuencias quedan atrás
-        # y el próximo INSERT choca con un id ya existente. Esto recorre cada columna
-        # 'id' serial y reposiciona su secuencia a MAX(id). Idempotente.
+        # y el próximo INSERT choca con un id ya existente. Esto recorre cada TABLA BASE
+        # del esquema public con columna 'id' serial y reposiciona su secuencia a MAX(id).
+        # Usa pg_tables (no information_schema.columns directo) para excluir vistas y
+        # tablas de extensiones (ej. pg_stat_statements_info) que no tienen secuencia.
+        # Idempotente.
         """DO $$
         DECLARE
             r RECORD;
@@ -971,14 +974,16 @@ MIGRATIONS = [
             maxid BIGINT;
         BEGIN
             FOR r IN (
-                SELECT c.table_name
-                FROM information_schema.columns c
-                WHERE c.column_name = 'id'
-                  AND c.table_schema = 'public'
-                  AND pg_get_serial_sequence(quote_ident(c.table_name), 'id') IS NOT NULL
+                SELECT t.tablename
+                FROM pg_tables t
+                JOIN information_schema.columns c
+                  ON c.table_schema = t.schemaname AND c.table_name = t.tablename
+                WHERE t.schemaname = 'public'
+                  AND c.column_name = 'id'
+                  AND pg_get_serial_sequence(quote_ident(t.tablename), 'id') IS NOT NULL
             ) LOOP
-                seq := pg_get_serial_sequence(quote_ident(r.table_name), 'id');
-                EXECUTE format('SELECT COALESCE(MAX(id), 0) FROM %I', r.table_name) INTO maxid;
+                seq := pg_get_serial_sequence(quote_ident(r.tablename), 'id');
+                EXECUTE format('SELECT COALESCE(MAX(id), 0) FROM %I', r.tablename) INTO maxid;
                 IF maxid > 0 THEN
                     PERFORM setval(seq, maxid);
                 END IF;
