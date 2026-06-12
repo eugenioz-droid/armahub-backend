@@ -498,8 +498,8 @@
         <h4 style="margin:0 0 8px 0; font-size:13px; color:#FF8F00;">🔍 Revisión — Jefe de Servicio</h4>
         <p style="font-size:11px; color:#666; margin:0 0 8px 0;">Revisa el análisis del cubicador. Aprueba para que pase a validación de Calidad, o devuelve para corrección.</p>
         <div style="margin-bottom:8px;">
-          <label style="font-size:11px; color:#666;">Comentario de revisión (opcional)</label>
-          <input type="text" id="recRevisionComentario" placeholder="Observación del Jefe de Servicio — opcional, queda en el seguimiento" style="width:100%; font-size:12px;" />
+          <label style="font-size:11px; color:#666;">Explicación (requerida para aprobar o devolver)</label>
+          <input type="text" id="recRevisionComentario" placeholder="Motivo de la aprobación o devolución — queda en el seguimiento" style="width:100%; font-size:12px;" />
         </div>
         <div style="display:flex; gap:6px; flex-wrap:wrap; justify-content:flex-end;">
           <button id="btnDevolverRevision" style="font-size:12px; padding:5px 16px; background:#fff; color:#e65100; border:1px solid #e65100; border-radius:4px; cursor:pointer;" onclick="devolverRevisionDesdeModal()">↩️ Devolver</button>
@@ -509,13 +509,13 @@
 
       <!-- ====== SECCIÓN VERDE: VALIDACIÓN CALIDAD (estado validacion) ====== -->
       <!-- Misma gráfica y disposición que la sección ámbar de revisión:
-           comentario opcional + dos acciones (Devolver / Aprobar). -->
+           explicación requerida + dos acciones (Devolver / Aprobar). -->
       <div id="recSeccionValidacion" style="display:none; margin-bottom:10px; padding:12px; background:#E8F5E9; border-radius:8px; border:1px solid #A5D6A7;">
         <h4 style="margin:0 0 8px 0; font-size:13px; color:#2E7D32;">✅ Validación — Calidad</h4>
         <p style="font-size:11px; color:#666; margin:0 0 8px 0;">Valida el reclamo para cerrarlo, o devuélvelo a revisión del Jefe de Servicio para corrección.</p>
         <div style="margin-bottom:8px;">
-          <label style="font-size:11px; color:#666;">Comentario de validación (opcional)</label>
-          <input type="text" id="recValidacionComentario" placeholder="Observación de Calidad — opcional, queda en el seguimiento" style="width:100%; font-size:12px;" />
+          <label style="font-size:11px; color:#666;">Explicación (requerida para aprobar o devolver)</label>
+          <input type="text" id="recValidacionComentario" placeholder="Motivo de la aprobación o devolución — queda en el seguimiento" style="width:100%; font-size:12px;" />
         </div>
         <div style="display:flex; gap:6px; flex-wrap:wrap; justify-content:flex-end;">
           <button id="btnDevolverValidacion" style="font-size:12px; padding:5px 16px; background:#fff; color:#1b5e20; border:1px solid #1b5e20; border-radius:4px; cursor:pointer;" onclick="devolverValidacionDesdeModal()">↩️ Devolver</button>

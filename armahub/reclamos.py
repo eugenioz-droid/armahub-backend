@@ -1455,9 +1455,15 @@ def actualizar_reclamo(reclamo_id: int, body: ReclamoUpdate, user=Depends(get_cu
                 # Devolución desde revisión (Jefe de Servicio → cubicador)
                 if estado_anterior == "en_revision" and body.estado == "en_analisis" and body.revision_observaciones:
                     comment += f" — Devuelto por revisión: {body.revision_observaciones}"
-                # Aprobación desde revisión con comentario opcional del Jefe de Servicio
+                # Aprobación desde revisión con explicación del Jefe de Servicio
                 if estado_anterior == "en_revision" and body.estado == "validacion" and body.revision_observaciones:
                     comment += f" — Revisión aprobada: {body.revision_observaciones}"
+                # Devolución desde validación (Calidad → revisión del Jefe de Servicio)
+                if estado_anterior == "validacion" and body.estado == "en_revision" and body.revision_observaciones:
+                    comment += f" — Devuelto por Calidad: {body.revision_observaciones}"
+                # Aprobación en validación con explicación de Calidad (cierra el reclamo)
+                if estado_anterior == "validacion" and body.estado == "cerrado" and body.validacion_observaciones:
+                    comment += f" — Validación aprobada: {body.validacion_observaciones}"
                 cur.execute("""
                     INSERT INTO reclamo_seguimientos (reclamo_id, usuario, comentario, estado_anterior, estado_nuevo, fecha)
                     VALUES (%s, %s, %s, %s, %s, %s)

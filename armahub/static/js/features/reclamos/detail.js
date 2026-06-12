@@ -157,15 +157,16 @@ function _applyReclamoDetailPermissions(data) {
   var validado = !!data.validacion_resultado;
   var estadoPermiteAnalisis = data.estado === 'abierto' || data.estado === 'en_analisis';
 
-  var puedeEditarSec1 = (currentRole === 'admin' || currentRole === 'admin_calidad') || (currentRole === 'usc' && esCreador && data.estado === 'abierto');
-  if (validado && currentRole !== 'admin') puedeEditarSec1 = false;
+  // Edición de datos del reclamo (sección 1: título, proyecto, etc.) solo en
+  // análisis. Fuera de esa etapa, read-only para todos (hay que Reabrir).
+  var puedeEditarSec1 = ((currentRole === 'admin' || currentRole === 'admin_calidad') || (currentRole === 'usc' && esCreador && data.estado === 'abierto')) && estadoPermiteAnalisis;
   var btnEditar = document.getElementById('btnEditarReclamo');
   if (btnEditar) btnEditar.style.display = puedeEditarSec1 ? '' : 'none';
 
   var selAplica = document.getElementById('recDetailAplica');
   var puedeCambiarAplica =
-    (currentRole === 'admin' || currentRole === 'admin_calidad') ||
-    ((currentRole === 'cubicador' || currentRole === 'externo') && esPropioCub && estadoPermiteAnalisis);
+    (((currentRole === 'admin' || currentRole === 'admin_calidad') ||
+    ((currentRole === 'cubicador' || currentRole === 'externo') && esPropioCub))) && estadoPermiteAnalisis;
   if (selAplica) selAplica.disabled = !puedeCambiarAplica;
 
   var puedeEliminar = (currentRole === 'admin' || currentRole === 'admin_calidad') || (currentRole === 'usc' && esCreador);
@@ -226,10 +227,13 @@ function _applyReclamoDetailPermissions(data) {
   var detAsigSel = document.getElementById('recDetailAsignadoA');
   if (detAsigSel) detAsigSel.disabled = !(currentRole === 'admin' || currentRole === 'admin_calidad');
 
+  // El formulario de datos (análisis/respuesta) solo es editable mientras el
+  // reclamo está EN ANÁLISIS (abierto/en_analisis). Una vez enviado a revisión
+  // o validación, queda READ-ONLY PARA TODOS los roles, admin incluido: está en
+  // otra etapa. Para volver a editar hay que Reabrir (vuelve a en_analisis).
   var puedeResponder = ['admin','admin_calidad','cubicador','externo'].includes(currentRole);
   if ((['cubicador','externo'].includes(currentRole)) && !esPropioCub) puedeResponder = false;
-  if (!estadoPermiteAnalisis && !['admin','admin_calidad'].includes(currentRole)) puedeResponder = false;
-  if (validado && currentRole !== 'admin') puedeResponder = false;
+  if (!estadoPermiteAnalisis) puedeResponder = false;
   var sec2Fields = ['recDetailRespuestaTexto','recDetailCausaDisplay','recDetailAreaAplica','recDetailFechaAnalisis','recDetailKilosMal','recTiempoRespuestaAnalisis','recTiempoRespuestaUnidadAnalisis'];
   sec2Fields.forEach(function(fid) { var el = document.getElementById(fid); if (el) el.disabled = !puedeResponder; });
   var btnGuardarResp = document.getElementById('btnGuardarRespuesta');
@@ -241,10 +245,11 @@ function _applyReclamoDetailPermissions(data) {
   if (respDropZone) respDropZone.style.display = puedeResponder ? '' : 'none';
   if (respFileInput) respFileInput.disabled = !puedeResponder;
 
+  // Acciones (medidas correctivas): mismo criterio que el formulario de datos —
+  // solo editables en análisis. Fuera de esa etapa quedan read-only para todos.
   var puedeAccion = ['admin','admin_calidad','cubicador','externo'].includes(currentRole);
   if ((['cubicador','externo'].includes(currentRole)) && !esPropioCub) puedeAccion = false;
-  if (!estadoPermiteAnalisis && !['admin','admin_calidad'].includes(currentRole)) puedeAccion = false;
-  if (validado && currentRole !== 'admin') puedeAccion = false;
+  if (!estadoPermiteAnalisis) puedeAccion = false;
   var accionFields = ['recNuevaAccionTipo','recNuevaAccionDesc','recNuevaAccionResp','recNuevaAccionFecha'];
   accionFields.forEach(function(fid) { var el = document.getElementById(fid); if (el) el.disabled = !puedeAccion; });
 
@@ -556,13 +561,16 @@ async function _refrescarTrasAccionFlujo() {
   await loadRecLanding();
 }
 
+// Sección ÁMBAR (revisión, Jefe de Servicio). Un solo campo de explicación en
+// pantalla (recRevisionComentario), obligatorio tanto al aprobar como al devolver.
+// Sin prompt(): el motivo es el comentario que ya está a la vista.
 async function aprobarParaValidacion() {
   if (!_reclamoActual) return;
-  if (!confirm('¿Aprobar este reclamo para validación de Calidad?')) return;
   var comentEl = document.getElementById('recRevisionComentario');
   var comentario = comentEl ? (comentEl.value || '').trim() : '';
-  var body = { estado: 'validacion' };
-  if (comentario) body.revision_observaciones = comentario;
+  if (!comentario) { alert('Indica la explicación de la aprobación en el campo de comentario.'); if (comentEl) comentEl.focus(); return; }
+  if (!confirm('¿Aprobar este reclamo para validación de Calidad?')) return;
+  var body = { estado: 'validacion', revision_observaciones: comentario };
   var res = await fetch(apiUrl('/reclamos/' + _reclamoActual.id), {
     method: 'PATCH',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
@@ -576,10 +584,10 @@ async function aprobarParaValidacion() {
 
 async function devolverRevisionDesdeModal() {
   if (!_reclamoActual) return;
-  var motivo = prompt('Motivo de la devolución (el reclamo vuelve a "En análisis" para corregir):');
-  if (motivo === null) return;
-  motivo = motivo.trim();
-  if (!motivo) { alert('Debe indicar un motivo para devolver.'); return; }
+  var comentEl = document.getElementById('recRevisionComentario');
+  var motivo = comentEl ? (comentEl.value || '').trim() : '';
+  if (!motivo) { alert('Indica el motivo de la devolución en el campo de comentario.'); if (comentEl) comentEl.focus(); return; }
+  if (!confirm('¿Devolver el reclamo? Vuelve a "En análisis" para corregir.')) return;
   var res = await fetch(apiUrl('/reclamos/' + _reclamoActual.id), {
     method: 'PATCH',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
@@ -587,7 +595,7 @@ async function devolverRevisionDesdeModal() {
   });
   if (res.status === 401) { logout(); return; }
   var data = await res.json();
-  if (data.ok) { await _refrescarTrasAccionFlujo(); }
+  if (data.ok) { if (comentEl) comentEl.value = ''; await _refrescarTrasAccionFlujo(); }
   else { alert('Error: ' + (data.detail || 'desconocido')); }
 }
 
@@ -906,14 +914,14 @@ async function guardarRespuesta() {
 // de Servicio). El comentario es opcional y queda en el seguimiento.
 async function aprobarValidacionDesdeModal() {
   if (!_reclamoActual) return;
-  if (!confirm('¿Aprobar la validación? El reclamo quedará cerrado.')) return;
   var msg = document.getElementById('recValidacionMsg');
   var comentEl = document.getElementById('recValidacionComentario');
   var comentario = comentEl ? (comentEl.value || '').trim() : '';
+  if (!comentario) { alert('Indica la explicación de la aprobación en el campo de comentario.'); if (comentEl) comentEl.focus(); return; }
+  if (!confirm('¿Aprobar la validación? El reclamo quedará cerrado.')) return;
   if (msg) { msg.textContent = 'Guardando...'; msg.style.color = '#666'; }
   // validacion_resultado 'aprobado' dispara el cierre automático en el backend.
-  var body = { validacion_resultado: 'aprobado' };
-  if (comentario) body.validacion_observaciones = comentario;
+  var body = { validacion_resultado: 'aprobado', validacion_observaciones: comentario };
   var res = await fetch(apiUrl('/reclamos/' + _reclamoActual.id), {
     method: 'PATCH',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
@@ -931,10 +939,10 @@ async function aprobarValidacionDesdeModal() {
 
 async function devolverValidacionDesdeModal() {
   if (!_reclamoActual) return;
-  var motivo = prompt('Motivo de la devolución (el reclamo vuelve a "En revisión" del Jefe de Servicio):');
-  if (motivo === null) return;
-  motivo = motivo.trim();
-  if (!motivo) { alert('Debe indicar un motivo para devolver.'); return; }
+  var comentEl = document.getElementById('recValidacionComentario');
+  var motivo = comentEl ? (comentEl.value || '').trim() : '';
+  if (!motivo) { alert('Indica el motivo de la devolución en el campo de comentario.'); if (comentEl) comentEl.focus(); return; }
+  if (!confirm('¿Devolver el reclamo? Vuelve a "En revisión" del Jefe de Servicio.')) return;
   var res = await fetch(apiUrl('/reclamos/' + _reclamoActual.id), {
     method: 'PATCH',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
@@ -942,7 +950,7 @@ async function devolverValidacionDesdeModal() {
   });
   if (res.status === 401) { logout(); return; }
   var data = await res.json();
-  if (data.ok) { await _refrescarTrasAccionFlujo(); }
+  if (data.ok) { if (comentEl) comentEl.value = ''; await _refrescarTrasAccionFlujo(); }
   else { alert('Error: ' + (data.detail || 'desconocido')); }
 }
 
