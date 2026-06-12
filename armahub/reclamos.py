@@ -279,6 +279,7 @@ def listar_reclamos(
     detectado_por: Optional[str] = None,
     responsable: Optional[str] = None,
     busqueda: Optional[str] = None,
+    abierto_cerrado: Optional[str] = None,  # 'abiertos' | 'cerrados' (filtro macro)
     solo_mios: bool = False,
     user=Depends(get_current_user),
 ):
@@ -306,6 +307,12 @@ def listar_reclamos(
             if estado:
                 where += " AND r.estado = %s"
                 params.append(estado)
+            # Filtro macro Abiertos/Cerrados: "abiertos" = todo lo que no está
+            # cerrado ni rechazado; "cerrados" = cerrado o rechazado.
+            if abierto_cerrado == "abiertos":
+                where += " AND r.estado NOT IN ('cerrado','rechazado')"
+            elif abierto_cerrado == "cerrados":
+                where += " AND r.estado IN ('cerrado','rechazado')"
             if prioridad:
                 where += " AND r.prioridad = %s"
                 params.append(prioridad)
@@ -349,20 +356,9 @@ def listar_reclamos(
                 ) seg ON seg.reclamo_id = r.id
                 {where}
                 ORDER BY
-                    CASE r.estado
-                        WHEN 'abierto' THEN 1
-                        WHEN 'en_analisis' THEN 2
-                        WHEN 'en_revision' THEN 3
-                        WHEN 'validacion' THEN 4
-                        WHEN 'rechazado' THEN 5
-                        WHEN 'cerrado' THEN 6
-                    END,
-                    CASE r.prioridad
-                        WHEN 'critica' THEN 1
-                        WHEN 'alta' THEN 2
-                        WHEN 'media' THEN 3
-                        WHEN 'baja' THEN 4
-                    END,
+                    -- El reclamo más nuevo siempre arriba, sin importar el estado.
+                    -- Se ordena por correlativo de calidad (año/número) descendente
+                    -- y, como desempate/fallback, por id de creación descendente.
                     r.anio_calidad DESC NULLS LAST,
                     r.numero_calidad DESC NULLS LAST,
                     r.id DESC

@@ -78,6 +78,7 @@
     'loadRecValidaciones',
     'verReclamo',
     'toggleRecAplica',
+    'toggleRecAbierto',
     'toggleEditarReclamo',
     'guardarEdicionReclamo',
     'guardarAnioNumeroCalidad',

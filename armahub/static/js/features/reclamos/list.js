@@ -121,6 +121,28 @@ function populateRecFilterProyecto() {
     loadReclamos();
   };
 
+  // Abiertos/Cerrados toggle: cicla '' (todos) → 'abiertos' → 'cerrados' → ''
+  var _recAbiertoFilter = '';
+  var _ABIERTO_CYCLE = ['', 'abiertos', 'cerrados'];
+  var _ABIERTO_LABELS = { '': 'Abiertos/Cerrados', 'abiertos': 'Solo Abiertos', 'cerrados': 'Solo Cerrados' };
+  var _ABIERTO_COLORS = { '': '#1976d2', 'abiertos': '#e65100', 'cerrados': '#388e3c' };
+
+  function _updateAbiertoBtnLabel() {
+    var btn = document.getElementById('recFiltroAbiertoBtn');
+    if (!btn) return;
+    btn.textContent = _ABIERTO_LABELS[_recAbiertoFilter];
+    btn.style.borderColor = _ABIERTO_COLORS[_recAbiertoFilter];
+    btn.style.color = _ABIERTO_COLORS[_recAbiertoFilter];
+    btn.style.background = _recAbiertoFilter ? _ABIERTO_COLORS[_recAbiertoFilter] + '15' : '#fff';
+  }
+
+  window.toggleRecAbierto = function() {
+    var idx = _ABIERTO_CYCLE.indexOf(_recAbiertoFilter);
+    _recAbiertoFilter = _ABIERTO_CYCLE[(idx + 1) % _ABIERTO_CYCLE.length];
+    _updateAbiertoBtnLabel();
+    loadReclamos();
+  };
+
 async function loadReclamos() {
   _initScopeToggle();
   var container = document.getElementById('reclamosList');
@@ -142,6 +164,7 @@ async function loadReclamos() {
   if (proyecto) params.push('id_proyecto=' + encodeURIComponent(proyecto));
   if (responsable) params.push('responsable=' + encodeURIComponent(responsable));
   if (busqueda) params.push('busqueda=' + encodeURIComponent(busqueda));
+  if (_recAbiertoFilter) params.push('abierto_cerrado=' + encodeURIComponent(_recAbiertoFilter));
   // Scope: externo always solo_mios; others depend on toggle
   if (currentRole === 'externo') {
     params.push('solo_mios=true');
@@ -223,5 +246,7 @@ function limpiarFiltrosReclamos() {
   });
   _recAplicaFilter = '';
   _updateAplicaBtnLabel();
+  _recAbiertoFilter = '';
+  _updateAbiertoBtnLabel();
   loadReclamos();
 }
