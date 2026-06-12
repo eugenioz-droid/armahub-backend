@@ -1,5 +1,10 @@
-// ArmaHub Reclamos — Detail View
-// Split from index.js (PC.17.7)
+// ArmaHub Reclamos — Detail View: Edición / interacción (Fase 4 del refactor)
+// Edición de datos del reclamo, respuesta/análisis, aplica, acciones (medidas),
+// uploads de imágenes, seguimientos, ishikawa, eliminar y PDF. Es la parte de
+// ESCRITURA del modal (el render vive en detail-render.js, el flujo en
+// detail-flow.js, los permisos en detail-permissions.js).
+//
+// Genérico: reutilizable por cualquier listado (Clientes, Internos).
 
 function descargarPdfReclamo() {
   if (!_reclamoActual) return;
@@ -17,119 +22,6 @@ function descargarPdfReclamo() {
       showToast(err.message || 'Error al generar PDF', 'error');
     });
 }
-
-// NOTA (refactor):
-//  - Fase 1: render de ficha + borrador → detail-render.js
-//  - Fase 2: _applyReclamoDetailPermissions (permisos/visibilidad) → detail-permissions.js
-// Aquí permanecen, por ahora: flujo/navegación (Fase 3), edición/respuesta/
-// acciones/uploads/ishikawa/varios (Fase 4).
-
-// verReclamo, _updateRecNavButtons, recNavPrevReclamo, recNavNextReclamo
-// (navegación del modal) se movieron a detail-flow.js (refactor Fase 3).
-// Nota: la antigua variable _recModalOrigen se eliminó por código muerto — el
-// contexto Validaciones se deriva del DOM en detail-permissions.js.
-
-// ---- Render Helpers ----
-
-function renderAcciones(acciones) {
-  var container = document.getElementById('recAccionesList');
-  if (!acciones || acciones.length === 0) {
-    container.innerHTML = '<div class="muted">Sin acciones registradas</div>';
-    return;
-  }
-  container.innerHTML = '<table style="width:100%; border-collapse:collapse;">' +
-    '<tr style="background:#fff8e1; text-align:left;">' +
-    '<th style="padding:4px 6px;">Tipo</th><th style="padding:4px 6px;">Descripción</th>' +
-    '<th style="padding:4px 6px;">Responsable</th><th style="padding:4px 6px;">F. Prevista</th>' +
-    '<th style="padding:4px 6px;">Estado</th><th style="padding:4px 4px;"></th></tr>' +
-    acciones.map(function(a) {
-      var tColor = _recAccionTipoColors[a.tipo] || '#666';
-      var eLabel = a.estado === 'completada' ? '✅' : a.estado === 'en_proceso' ? '🔄' : '⏳';
-      var canDeleteAction = typeof a.id === 'number';
-      return '<tr style="border-bottom:1px solid #ffe0b2;">' +
-        '<td style="padding:3px 6px;"><span style="color:' + tColor + '; font-weight:600; text-transform:capitalize; font-size:11px;">' + a.tipo + '</span></td>' +
-        '<td style="padding:3px 6px;">' + a.descripcion + '</td>' +
-        '<td style="padding:3px 6px; font-size:11px;">' + (a.responsable || '-') + '</td>' +
-        '<td style="padding:3px 6px; font-size:11px;">' + (a.fecha_prevista || '-') + '</td>' +
-        '<td style="padding:3px 6px; font-size:11px;">' + eLabel + ' ' + a.estado + '</td>' +
-        '<td style="padding:3px 4px;">' + (canDeleteAction ? '<button class="secondary" style="font-size:10px; padding:1px 5px; color:#b42318;" onclick="eliminarAccion(' + a.id + ')">✕</button>' : '') + '</td>' +
-        '</tr>';
-    }).join('') +
-    '</table>';
-}
-
-function renderImagenesEnContainer(containerId, imagenes) {
-  var container = document.getElementById(containerId);
-  if (!container) return;
-  if (!imagenes || imagenes.length === 0) {
-    container.innerHTML = '<div class="muted">Sin imágenes</div>';
-    return;
-  }
-  container.innerHTML = '';
-  imagenes.forEach(function(img, idx) {
-    var wrapper = document.createElement('div');
-    wrapper.style.cssText = 'position:relative; width:120px; border:1px solid #ccc; border-radius:6px; overflow:hidden; background:#f9f9f9; cursor:pointer;';
-
-    var thumb = document.createElement('img');
-    thumb.src = img.url;
-    thumb.style.cssText = 'width:120px; height:90px; object-fit:cover; display:block;';
-    thumb.title = img.filename;
-    wrapper.appendChild(thumb);
-
-    // Click opens modal viewer (same as Presentaciones)
-    wrapper.onclick = function(e) {
-      // Don't open viewer if delete button was clicked
-      if (e.target.tagName === 'BUTTON') return;
-      if (typeof openImageViewer === 'function') {
-        openImageViewer(imagenes, idx);
-      }
-    };
-
-    var label = document.createElement('div');
-    label.style.cssText = 'padding:2px 4px; font-size:10px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;';
-    label.textContent = img.filename;
-    wrapper.appendChild(label);
-
-    var btn = document.createElement('button');
-    btn.className = 'secondary';
-    btn.style.cssText = 'position:absolute; top:2px; right:2px; font-size:10px; padding:0 4px; background:rgba(255,255,255,0.8); color:#b42318; border-radius:3px;';
-    btn.textContent = '✕';
-    btn.onclick = function(e) { e.stopPropagation(); eliminarImagen(img.id); };
-    wrapper.appendChild(btn);
-
-    container.appendChild(wrapper);
-  });
-}
-
-function renderReclamoTimeline(seguimientos) {
-  var container = document.getElementById('recTimeline');
-  if (!seguimientos || seguimientos.length === 0) {
-    container.innerHTML = '<div class="muted">Sin seguimientos</div>';
-    return;
-  }
-  container.innerHTML = seguimientos.map(function(s) {
-    var fecha = formatDateTime(s.fecha, '');
-    var estadoChange = '';
-    if (s.estado_nuevo) {
-      var fromLabel = _recEstadoLabels[s.estado_anterior] || s.estado_anterior || '?';
-      var toLabel = _recEstadoLabels[s.estado_nuevo] || s.estado_nuevo;
-      var toColor = _recEstadoColors[s.estado_nuevo] || '#666';
-      estadoChange = ' <span style="background:' + toColor + '; color:#fff; padding:1px 6px; border-radius:3px; font-size:10px;">' + fromLabel + ' → ' + toLabel + '</span>';
-    }
-    return '<div style="padding:6px 0; border-bottom:1px solid #f0f0f0;">' +
-      '<div style="display:flex; justify-content:space-between; align-items:center;">' +
-      '<span style="font-weight:500;">' + s.usuario + '</span>' +
-      '<span class="muted" style="font-size:10px;">' + fecha + '</span>' +
-      '</div>' +
-      '<div style="margin-top:2px;">' + (s.comentario || '') + estadoChange + '</div>' +
-      '</div>';
-  }).join('');
-}
-
-// cerrarReclamo, _refrescarTrasAccionFlujo, aprobarParaValidacion,
-// devolverRevisionDesdeModal y reabrirReclamo se movieron a detail-flow.js
-// (refactor Fase 3). Las acciones de la sección verde (aprobar/devolver
-// validación) también.
 
 function toggleEditarReclamo() {
   var form = document.getElementById('recEditForm');
@@ -421,14 +313,7 @@ async function guardarRespuesta() {
   }
 }
 
-// ---- Validación ----
-// Sección VERDE (Validación Calidad). Misma lógica que la ámbar: dos acciones
-// limpias — Aprobar (cierra el reclamo) o Devolver (vuelve a revisión del Jefe
-// de Servicio). El comentario es opcional y queda en el seguimiento.
-// aprobarValidacionDesdeModal y devolverValidacionDesdeModal (sección verde)
-// se movieron a detail-flow.js (refactor Fase 3).
-
-// ---- Acciones ----
+// ---- Acciones (medidas correctivas/preventivas) ----
 async function agregarAccion() {
   if (!_reclamoActual) return;
   var desc = document.getElementById('recNuevaAccionDesc').value.trim();

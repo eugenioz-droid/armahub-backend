@@ -115,11 +115,11 @@
             '[ArmaHub] No se pudo cargar reclamos/form.js'
           ),
           loadScript(
-            'script[data-armahub-feature="reclamos-detail"]',
-            '/static/js/features/reclamos/detail.js' + suffix,
+            'script[data-armahub-feature="reclamos-detail-edit"]',
+            '/static/js/features/reclamos/detail-edit.js' + suffix,
             'armahubFeature',
-            'reclamos-detail',
-            '[ArmaHub] No se pudo cargar reclamos/detail.js'
+            'reclamos-detail-edit',
+            '[ArmaHub] No se pudo cargar reclamos/detail-edit.js'
           ),
           loadScript(
             'script[data-armahub-feature="reclamos-detail-render"]',
