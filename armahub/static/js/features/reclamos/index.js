@@ -76,6 +76,7 @@
     'devolverRevisionDesdeModal',
     'reabrirReclamo',
     'loadRecValidaciones',
+    'verReclamo',
     'toggleRecAplica',
     'toggleEditarReclamo',
     'guardarEdicionReclamo',

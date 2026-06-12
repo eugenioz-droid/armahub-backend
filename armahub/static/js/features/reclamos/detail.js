@@ -195,26 +195,20 @@ function _applyReclamoDetailPermissions(data) {
   var btnElim = document.getElementById('btnEliminarReclamo');
   if (btnElim) btnElim.style.display = puedeEliminar ? '' : 'none';
 
-  // Botones de flujo: "Enviar a revisión" (cubicador), "Enviar a validación" (admin), "Aprobar para validación" (admin)
+  // --- Botones de flujo en el modal ---
   var esAsignado = (['cubicador','externo'].includes(currentRole) && esPropioCub);
-  // Estados donde el responsable todavía está trabajando el reclamo (puede enviarlo adelante)
   var estadoEnTrabajo = (data.estado === 'abierto' || data.estado === 'en_analisis');
   var estadoEnRevision = (data.estado === 'en_revision');
+  var estadoEnValidacion = (data.estado === 'validacion');
   var estaCerrado = (data.estado === 'cerrado' || data.estado === 'rechazado');
-  var puedeReabrir = estaCerrado && (currentRole === 'admin' || currentRole === 'admin_calidad');
-
   var puedeAdmin = (currentRole === 'admin' || currentRole === 'admin_calidad');
-  // Cubicador/externo: "Enviar a revisión" mientras el reclamo está en trabajo
+  var puedeReabrir = estaCerrado && puedeAdmin;
+
+  // 1) "Enviar a revisión/validación": responsable trabajando el reclamo
   var puedeEnviarARevision = esAsignado && estadoEnTrabajo;
-  // Admin: "Aprobar para validación" cuando el reclamo está en revisión
-  var puedeAprobarParaVal = (currentRole === 'admin') && estadoEnRevision;
-
   var cerrarCont = document.getElementById('recCerrarContainer');
-  if (cerrarCont) cerrarCont.style.display = (puedeEnviarARevision || puedeAprobarParaVal || (puedeAdmin && estadoEnTrabajo) || puedeReabrir) ? '' : 'none';
-
+  if (cerrarCont) cerrarCont.style.display = (puedeEnviarARevision || (puedeAdmin && estadoEnTrabajo) || puedeReabrir) ? '' : 'none';
   var btnCerrar = document.getElementById('btnCerrarReclamo');
-  var btnAprobar = document.getElementById('btnAprobarParaValidacion');
-  var btnReabrir = document.getElementById('btnReabrirReclamo');
   if (btnCerrar) {
     if (puedeAdmin && estadoEnTrabajo) {
       btnCerrar.style.display = '';
@@ -226,11 +220,18 @@ function _applyReclamoDetailPermissions(data) {
       btnCerrar.style.display = 'none';
     }
   }
-  if (btnAprobar) btnAprobar.style.display = puedeAprobarParaVal ? '' : 'none';
-  // "Devolver" desde el modal: admin con reclamo en revisión (mismo criterio que Aprobar)
-  var btnDevolver = document.getElementById('btnDevolverRevision');
-  if (btnDevolver) btnDevolver.style.display = puedeAprobarParaVal ? '' : 'none';
+  var btnReabrir = document.getElementById('btnReabrirReclamo');
   if (btnReabrir) btnReabrir.style.display = puedeReabrir ? '' : 'none';
+
+  // 2) Sección ÁMBAR (revisión): Jefe de Servicio (admin) con reclamo en en_revision
+  var puedeRevisar = (currentRole === 'admin') && estadoEnRevision;
+  var secRevision = document.getElementById('recSeccionRevision');
+  if (secRevision) secRevision.style.display = puedeRevisar ? '' : 'none';
+
+  // 3) Sección VERDE (validación): Calidad (admin/admin_calidad) con reclamo en validacion
+  var puedeValidarCalidad = puedeAdmin && estadoEnValidacion;
+  var secValidacion = document.getElementById('recSeccionValidacion');
+  if (secValidacion) secValidacion.style.display = puedeValidarCalidad ? '' : 'none';
 
   var anioCalField = document.getElementById('recDetailAnioCalidad');
   if (anioCalField) anioCalField.disabled = !(currentRole === 'admin' || currentRole === 'admin_calidad');
@@ -257,9 +258,6 @@ function _applyReclamoDetailPermissions(data) {
   var respFileInput = document.getElementById('recRespFileInput');
   if (respDropZone) respDropZone.style.display = puedeResponder ? '' : 'none';
   if (respFileInput) respFileInput.disabled = !puedeResponder;
-
-  var puedeValidar = (currentRole === 'admin_calidad');
-  // Los campos de validación viven ahora en el sub-tab Validaciones; nada que ocultar aquí.
 
   var puedeAccion = ['admin','admin_calidad','cubicador','externo'].includes(currentRole);
   if ((['cubicador','externo'].includes(currentRole)) && !esPropioCub) puedeAccion = false;
@@ -942,18 +940,9 @@ async function guardarValidacion() {
       msg.textContent = '✅ Validación guardada';
     }
     msg.style.color = resultado === 'rechazado' ? '#b42318' : '#558B2F';
-    setTimeout(function() { msg.textContent = ''; }, 4000);
-    // Si estamos en el sub-tab Validaciones, refrescar su cola; si no, el detalle
-    var enSubValidaciones = document.getElementById('recSubValidaciones') &&
-                            document.getElementById('recSubValidaciones').style.display !== 'none';
-    if (enSubValidaciones && typeof loadRecValidaciones === 'function') {
-      var panel = document.getElementById('recCalAccionPanel');
-      if (panel) panel.style.display = 'none';
-      await loadRecValidaciones();
-    } else {
-      await verReclamo(_reclamoActual.id);
-    }
-    await loadReclamos(); await loadRecLanding();
+    setTimeout(function() { msg.textContent = ''; }, 1500);
+    // La validación se hace en el modal; cerrar y refrescar la cola si venimos de Validaciones
+    await _refrescarTrasAccionFlujo();
   } else {
     msg.textContent = 'Error: ' + (data.detail || 'desconocido'); msg.style.color = '#b42318';
   }

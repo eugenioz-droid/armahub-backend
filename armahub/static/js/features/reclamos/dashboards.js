@@ -36,7 +36,23 @@ function switchRecSubTab(sub) {
     }
     loadPresentaciones();
   }
-  if (sub === 'validaciones') { loadRecValidaciones(); }
+  if (sub === 'validaciones') { _ensureModalFueraDeSubpaneles(); loadRecValidaciones(); }
+}
+
+// El modal de detalle (reclamoDetailCard) y su backdrop viven dentro de
+// recSubClientes, que se oculta al cambiar de sub-tab. Para que el modal se pueda
+// abrir desde cualquier sub-tab (ej. Validaciones), lo movemos una vez al
+// contenedor raíz del tab (tab-reclamos), que siempre está visible.
+var _modalReparented = false;
+function _ensureModalFueraDeSubpaneles() {
+  if (_modalReparented) return;
+  var root = document.getElementById('tab-reclamos');
+  var card = document.getElementById('reclamoDetailCard');
+  var backdrop = document.getElementById('recModalBackdrop');
+  if (!root || !card) return;
+  root.appendChild(card);
+  if (backdrop) root.appendChild(backdrop);
+  _modalReparented = true;
 }
 
 // ── RCA dentro de Calidad/Reclamos ──
@@ -601,52 +617,8 @@ async function _loadRevisionQueue() {
   if (!data) { listaEl.innerHTML = '<div class="muted">Error al cargar.</div>'; return; }
   var items = data.data || [];
   if (badge) badge.textContent = items.length;
-  if (items.length === 0) { listaEl.innerHTML = '<div class="muted" style="padding:12px 0;">Sin reclamos pendientes de revisión.</div>'; return; }
-
-  listaEl.innerHTML = items.map(function(r) {
-    return '<div style="padding:7px 10px; border-bottom:1px solid #f0f0f0; display:flex; justify-content:space-between; align-items:center; gap:8px;">' +
-      '<div style="flex:1; cursor:pointer;" onclick="verReclamo(' + r.id + ')" title="Ver ficha completa">' +
-        '<span style="font-weight:600; color:#1565C0; font-size:12px;">' + (r.correlativo || '#' + r.id) + '</span>' +
-        ' <span style="font-size:12px;">' + (r.titulo || '') + '</span>' +
-        '<div style="font-size:11px; color:#888; margin-top:2px;">' + (r.cubicador_asignado || 'Sin asignar') + ' · ' + (r.nombre_proyecto || '—') + '</div>' +
-      '</div>' +
-      '<div style="display:flex; gap:6px; white-space:nowrap;">' +
-        '<button style="font-size:11px; padding:3px 10px; background:#1976d2; color:#fff; border:none; border-radius:4px; cursor:pointer;" ' +
-          'onclick="_aprobarRevisionReclamo(' + r.id + ')">✅ Aprobar</button>' +
-        '<button style="font-size:11px; padding:3px 10px; background:#fff; color:#e65100; border:1px solid #e65100; border-radius:4px; cursor:pointer;" ' +
-          'onclick="_devolverRevisionReclamo(' + r.id + ')">↩️ Devolver</button>' +
-      '</div>' +
-    '</div>';
-  }).join('');
-}
-
-async function _aprobarRevisionReclamo(id) {
-  if (!confirm('¿Aprobar este reclamo para validación de Calidad?')) return;
-  var res = await fetch(apiUrl('/reclamos/' + id), {
-    method: 'PATCH',
-    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
-    body: JSON.stringify({ estado: 'validacion' })
-  });
-  if (res.status === 401) { logout(); return; }
-  var data = await res.json();
-  if (data.ok) { await _loadRevisionQueue(); }
-  else { alert('Error: ' + (data.detail || 'desconocido')); }
-}
-
-async function _devolverRevisionReclamo(id) {
-  var motivo = prompt('Motivo de la devolución (el reclamo vuelve a "En análisis" para corregir):');
-  if (motivo === null) return; // canceló
-  motivo = motivo.trim();
-  if (!motivo) { alert('Debe indicar un motivo para devolver.'); return; }
-  var res = await fetch(apiUrl('/reclamos/' + id), {
-    method: 'PATCH',
-    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
-    body: JSON.stringify({ estado: 'en_analisis', revision_observaciones: motivo })
-  });
-  if (res.status === 401) { logout(); return; }
-  var data = await res.json();
-  if (data.ok) { await _loadRevisionQueue(); }
-  else { alert('Error: ' + (data.detail || 'desconocido')); }
+  // Mismo render compacto que Validación Calidad; las acciones van en el modal.
+  listaEl.innerHTML = _renderColaReclamos(items);
 }
 
 async function _loadValidacionCalidad() {
@@ -671,54 +643,39 @@ async function _loadValidacionCalidad() {
   var externos = items.filter(function(r) { return !r.es_interno; });
   var internos = items.filter(function(r) { return r.es_interno; });
 
-
-  function renderItem(r) {
-    return '<div style="padding:6px 8px; border-bottom:1px solid #f3e5f5; display:flex; justify-content:space-between; align-items:center; gap:6px;">' +
-      '<div style="flex:1; cursor:pointer;" onclick="verReclamo(' + r.id + ')" title="Ver ficha completa">' +
-        '<div style="font-weight:600; color:#7B1FA2; font-size:12px;">' + (r.correlativo || '#' + r.id) + '</div>' +
-        '<div style="font-size:11px; color:#666;">' + (r.titulo || '') + '</div>' +
-        '<div style="font-size:11px; color:#888;">' + (r.nombre_proyecto || '—') + '</div>' +
-      '</div>' +
-      '<button style="font-size:11px; padding:3px 10px; background:#7B1FA2; color:#fff; border:none; border-radius:4px; cursor:pointer; white-space:nowrap;" ' +
-        'onclick="_seleccionarParaValidar(' + r.id + ', this.parentElement)">Validar</button>' +
-    '</div>';
-  }
-
-  listaExt.innerHTML = externos.length ? externos.map(renderItem).join('') : '<div class="muted" style="padding:8px 0; font-size:12px;">Sin pendientes.</div>';
-  listaInt.innerHTML = internos.length ? internos.map(renderItem).join('') : '<div class="muted" style="padding:8px 0; font-size:12px;">Sin pendientes.</div>';
+  listaExt.innerHTML = _renderColaReclamos(externos);
+  listaInt.innerHTML = _renderColaReclamos(internos);
 }
 
-var _recValSelId = null;
-async function _seleccionarParaValidar(id, el) {
-  _recValSelId = id;
-  // Highlight selección
-  document.querySelectorAll('#recCalListaExt > div, #recCalListaInt > div').forEach(function(d) {
-    d.style.background = '';
-  });
-  if (el) el.style.background = '#f3e5f5';
-  // Llevar el foco al panel de acción (está más abajo)
-  var ap = document.getElementById('recCalAccionPanel');
-  if (ap && ap.scrollIntoView) setTimeout(function(){ ap.scrollIntoView({behavior:'smooth', block:'nearest'}); }, 50);
-
-  var panel = document.getElementById('recCalAccionPanel');
-  var titulo = document.getElementById('recCalAccionTitulo');
-  if (panel) panel.style.display = '';
-  if (titulo) titulo.textContent = 'Cargando...';
-
-  // Traer el reclamo real para que guardarValidacion tenga el contexto correcto
-  var data = await apiGet('/reclamos/' + id + '?include_images=false');
-  if (!data) { if (titulo) titulo.textContent = 'Error al cargar reclamo #' + id; return; }
-  _reclamoActual = data;
-
-  if (titulo) {
-    var corr = data.correlativo || ('#' + id);
-    titulo.textContent = corr + ' — ' + (data.titulo || '');
+// Render compacto reutilizando el formato de la lista oficial de reclamos,
+// recortado a lo esencial (N° · Título · Proyecto · Aplica). Clic en la fila
+// abre el modal completo (verReclamo). Sin botones en la fila: las acciones
+// (Aprobar/Validar/Devolver) viven dentro del modal.
+function _renderColaReclamos(reclamos) {
+  if (!reclamos || reclamos.length === 0) {
+    return '<div class="muted" style="padding:8px 0; font-size:12px;">Sin pendientes.</div>';
   }
-  // Resetear campos de validación
-  ['recDetailValidacionResultado','recDetailValidacionObs'].forEach(function(fid) {
-    var el2 = document.getElementById(fid); if (el2) el2.value = '';
-  });
-  var msg = document.getElementById('recValidacionMsg'); if (msg) msg.textContent = '';
+  var head = '<table style="width:100%; border-collapse:collapse; font-size:12px;">' +
+    '<tr style="background:#f5f5f5; text-align:left;">' +
+    '<th style="padding:4px 6px;">N°</th>' +
+    '<th style="padding:4px 6px;">Título</th>' +
+    '<th style="padding:4px 6px;">Proyecto</th>' +
+    '<th style="padding:4px 6px;">Aplica</th>' +
+    '</tr>';
+  var rows = reclamos.map(function(r) {
+    var idLabel = (typeof _formatCorrelativoCalidad === 'function' && _formatCorrelativoCalidad(r)) || (r.correlativo || '#' + r.id);
+    var aplLabel = _recAplicaLabels[r.aplica] || 'Pendiente';
+    var aplColor = _recAplicaColors[r.aplica] || '#ff9800';
+    var titulo = r.titulo || '';
+    if (titulo.length > 55) titulo = titulo.substring(0, 55) + '…';
+    return '<tr style="border-bottom:1px solid #eee; cursor:pointer;" onclick="verReclamo(' + r.id + ')" title="Ver ficha completa">' +
+      '<td style="padding:4px 6px; font-weight:600; white-space:nowrap;">' + idLabel + '</td>' +
+      '<td style="padding:4px 6px;">' + titulo + '</td>' +
+      '<td style="padding:4px 6px; color:#666;">' + (r.nombre_proyecto || '—') + '</td>' +
+      '<td style="padding:4px 6px;"><span style="color:' + aplColor + '; font-weight:600; font-size:10px;">' + aplLabel + '</span></td>' +
+      '</tr>';
+  }).join('');
+  return head + rows + '</table>';
 }
 
 async function _updateValidacionesKpis() {
