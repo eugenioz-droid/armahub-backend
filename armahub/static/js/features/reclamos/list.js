@@ -195,7 +195,7 @@ async function loadReclamos() {
       var idLabel = _formatCorrelativoCalidad(r) || (r.correlativo || '#' + r.id);
       var anioCol = r.anio_calidad || '';
       var numCol = r.numero_calidad ? String(r.numero_calidad).padStart(3, '0') : '';
-      return '<tr style="border-bottom:1px solid #eee; cursor:pointer;" onclick="verReclamo(' + r.id + ')">' +
+      return '<tr style="border-bottom:1px solid #eee; cursor:pointer;" onclick="verReclamo(' + r.id + ', {origen:\'lista\'})">' +
         '<td style="padding:4px 6px; font-size:11px;">' + anioCol + '</td>' +
         '<td style="padding:4px 6px; font-size:11px; font-weight:600;">' + numCol + '</td>' +
         '<td style="padding:4px 6px; font-weight:500;">' + r.titulo + '</td>' +
@@ -209,7 +209,7 @@ async function loadReclamos() {
         '<td style="padding:4px 6px; font-size:11px;" title="' + (r.sub_causa || '') + '">' + causaText + '</td>' +
         '<td style="padding:4px 6px; font-size:11px;" class="muted">' + fecha + '</td>' +
         '<td style="padding:4px 4px; text-align:center;">' + _diasBadgeHtml(r) + '</td>' +
-        '<td style="padding:4px 4px;"><button class="secondary" style="font-size:10px; padding:2px 6px;" onclick="event.stopPropagation(); verReclamo(' + r.id + ')">Ver</button></td>' +
+        '<td style="padding:4px 4px;"><button class="secondary" style="font-size:10px; padding:2px 6px;" onclick="event.stopPropagation(); verReclamo(' + r.id + ', {origen:\'lista\'})">Ver</button></td>' +
         '</tr>';
     }).join('') +
     '</table>' +

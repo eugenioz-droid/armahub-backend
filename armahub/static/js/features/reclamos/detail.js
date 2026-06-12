@@ -333,7 +333,12 @@ async function verReclamo(id, options) {
   // Así no se pierde lo que el usuario está escribiendo. Solo se descarta al
   // navegar a OTRO reclamo (id distinto) o si se pide explícitamente lo contrario.
   var esMismoReclamo = _reclamoActual && String(_reclamoActual.id) === String(id);
-  // El origen se fija al abrir un reclamo nuevo; se conserva al recargar el mismo.
+  // Origen del modal (controla si se muestran las secciones de flujo ámbar/verde):
+  //  - Toda apertura externa pasa origen explícito: la lista oficial manda
+  //    {origen:'lista'}, las colas de Validaciones {origen:'validaciones'}.
+  //  - Las recargas internas tras una acción (verReclamo sin origen, mismo id)
+  //    CONSERVAN el origen vigente, para no perder el contexto del modal abierto.
+  //  - Cualquier otra apertura sin origen defaultea a 'lista' (lo seguro).
   if (options.origen) {
     _recModalOrigen = options.origen;
   } else if (!esMismoReclamo) {
