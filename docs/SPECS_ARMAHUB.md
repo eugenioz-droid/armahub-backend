@@ -85,6 +85,27 @@ Aplica al módulo de Cubicación — complementario al modelo de áreas.
 - **cliente:** solo lectura, sin acceso a reclamos.
 - El ownership se valida **en backend**, no solo en frontend.
 
+### 1.6 Matriz de acceso — quién entra a dónde (TABLA VIVA)
+
+> Fuente de verdad de permisos por rol × tab. Editar aquí cuando cambie un acceso.
+> `✓` = acceso completo · `propio` = solo sus reclamos · `RO` = solo lectura · `—` = sin acceso.
+
+| Tab / Módulo | admin | admin_calidad | jefe_servicio | miembro / usc | cubicador | externo | cliente |
+|---|---|---|---|---|---|---|---|
+| Reclamos (listado Clientes) | ✓ | ✓ | área | propio | propio | propio | — |
+| Reclamos — Validaciones | ✓ | ✓ | su área | — | — | — | — |
+| Reclamos Internos *(futuro)* | ✓ | ✓ | su área | área | — | — | — |
+| Matrices RCA | ✓ | ✓ | su área | — | — | — | — |
+| Cubicación | ✓ | — | — | por obra | por obra | propio | RO |
+| Admin / Gestión | ✓ | — | — | — | — | — | — |
+| Dashboards | ✓ | ✓ | RO | RO | — | — | — |
+
+Notas:
+- **jefe_servicio** y **miembro** son roles **por área** (`area_usuarios.rol_area`), no globales. "su área" = las áreas donde el usuario tiene ese rol.
+- **cubicador externo:** es un miembro del área Cubicaciones con acceso restringido — solo el tab Reclamos y solo sus propios reclamos. No tiene otro acceso.
+- **admin_calidad (Jefa de Calidad):** validación final en todas las áreas; fallback de cualquier jefe.
+- Cambios de acceso futuros (ej. mover el panel del flag de revisión a Calidad) se reflejan primero acá.
+
 ---
 
 ## 2. INFRAESTRUCTURA Y ALMACENAMIENTO
@@ -204,7 +225,7 @@ El sub-tab **Validaciones** (dentro de Calidad/Reclamos) es una **vista de traba
 
 4. **El modal de detalle se reutiliza** (no se recrea). Vive en el DOM dentro de `recSubClientes`, que se oculta al cambiar de sub-tab; por eso al entrar a Validaciones se **reparenta** a `tab-reclamos` con `_ensureModalFueraDeSubpaneles()` (dashboards.js), para que flote sobre cualquier sub-tab.
 
-5. **Las acciones de flujo viven DENTRO del modal**, en secciones de color según estado, y **solo se muestran si el modal se abrió desde Validaciones** (variable `_recModalOrigen === 'validaciones'` en detail.js). Ambas secciones tienen **la misma gráfica y disposición**: un campo de explicación + dos acciones (Devolver / Aprobar). Sin desplegables ni campos extra.
+5. **Las acciones de flujo viven DENTRO del modal**, en secciones de color según estado, y **solo se muestran si el sub-tab Validaciones está visible** (se deriva del DOM: `recSubValidaciones` con `display !== 'none'`, en `detail-permissions.js`). NO se usa una variable de estado (la antigua `_recModalOrigen` se eliminó por frágil: se quedaba pegada entre aperturas). Ambas secciones tienen **la misma gráfica y disposición**: un campo de explicación + dos acciones (Devolver / Aprobar). Sin desplegables ni campos extra.
    - Estado `en_revision` → sección **ámbar**: "Aprobar" (→ validacion) o "Devolver" (→ en_analisis). Explicación **obligatoria** para ambas (`recRevisionComentario`).
    - Estado `validacion` → sección **verde**: "Aprobar" (→ cerrado, vía `validacion_resultado='aprobado'`) o "Devolver" (→ en_revision, rebota al Jefe de Servicio). Explicación **obligatoria** para ambas (`recValidacionComentario`).
    - **Sin `prompt()`:** el motivo es el campo en pantalla. Si está vacío, warning bloqueante (no deja avanzar). No se pide la explicación por segunda vía.
@@ -213,6 +234,19 @@ El sub-tab **Validaciones** (dentro de Calidad/Reclamos) es una **vista de traba
 6. **El botón "Enviar a revisión/validación"** (sección 1 del modal, `recCerrarContainer`) aparece cuando el reclamo está en `abierto`/`en_analisis` y el usuario es el responsable o admin. Es el cierre del análisis, no una acción de validación. Al enviar, persiste TODO el análisis del form junto con el cambio de estado (no exige "Guardar análisis" previo).
 
 7. **El formulario de datos queda READ-ONLY fuera de la etapa de análisis.** Mientras el reclamo está en `abierto`/`en_analisis` es editable (por el responsable/admin); una vez en `en_revision`/`validacion`/`cerrado`/`rechazado` **se bloquea para TODOS los roles, admin incluido** — está en otra etapa. Aplica a: edición de datos (sección 1), selector Aplica, respuesta/análisis (sección 2) y acciones. Para volver a editar hay que **Reabrir** (admin), que devuelve el reclamo a `en_analisis`. Las únicas acciones disponibles fuera de análisis son las de flujo (Aprobar/Devolver, regla 5).
+
+#### Estructura de archivos JS del modal (refactor 2026-06-12)
+
+El antiguo `detail.js` (1.290 líneas) se dividió en 4 archivos por responsabilidad. Todos son file-scope global (window), cargados en paralelo por `bootstrap.js` y reutilizables por cualquier listado (Clientes, Internos):
+
+| Archivo | Responsabilidad |
+|---|---|
+| `detail-render.js` | Render de la ficha (header, antecedentes, respuesta, assets) + helpers (acciones/imágenes/timeline) + captura/restauración del borrador de análisis |
+| `detail-permissions.js` | Visibilidad y read-only del modal según rol, estado y contexto (deriva el contexto Validaciones del DOM) |
+| `detail-flow.js` | Navegación del modal (verReclamo, prev/next) + acciones de flujo (enviar, aprobar/devolver en revisión y validación, reabrir) |
+| `detail-edit.js` | Edición de datos, respuesta/análisis, aplica, acciones (medidas), uploads, seguimientos, ishikawa, eliminar, PDF |
+
+Los datos compartidos (`_reclamoActual`, `_reclamosListaIds`, `_ishikawaSelection`) viven en `constants.js` (carga primero). Las funciones se exponen vía el orquestador `index.js`.
 
 ### 3.3.2 Integridad de datos — PATCH no destructivo (REGLA CRÍTICA)
 
@@ -250,52 +284,65 @@ Cada área puede cargar y editar su propia matriz RCA desde el sistema (categor�
 
 ### 3.5 Áreas de la empresa en reclamos
 
-| Área | Flujo | Quién analiza | Quién valida (paso 1) | Quién cierra |
-|------|-------|--------------|----------------------|--------------|
-| Cubicaciones | A | Cubicador asignado | Jefe Servicio (Admin) | Admin2 → Admin |
-| USC C&D | B | Jefe de Servicio | Admin2 | Admin |
-| USC MPEC | B | Jefe de Servicio | Admin2 | Admin |
-| Producción C&D | B | Jefe de Servicio | Admin2 | Admin |
-| Producción MPEC | B | Jefe de Servicio | Admin2 | Admin |
-| Producción Prearmado | B | Jefe de Servicio | Admin2 | Admin |
-| Logística | B | Jefe de Servicio | Admin2 | Admin |
-| Ventas | B | Jefe de Servicio | Admin2 | Admin |
-| Calidad | B | Jefe de Servicio | Admin2 | Admin |
-| Planificación | B | Jefe de Servicio | Admin2 | Admin |
+El flujo de cada área NO se decide por su nombre, sino por el flag `areas.tiene_revision`:
+- `tiene_revision = TRUE` → el área tiene **etapa de revisión** (análisis → revisión → validación).
+- `tiene_revision = FALSE` → directo (análisis → validación). Es el nivel base.
 
+| Área | tiene_revision | Quién analiza | Revisa | Valida final |
+|------|----------------|--------------|--------|--------------|
+| Cubicaciones | **TRUE** | Miembro del área (cubicador) | Jefe de Servicio del área | admin_calidad (Calidad) |
+| USC C&D / MPEC | FALSE | Jefe de Servicio | — | admin_calidad |
+| Producción C&D / MPEC / Prearmado | FALSE | Jefe de Servicio | — | admin_calidad |
+| Logística | FALSE | Jefe de Servicio | — | admin_calidad |
+| Ventas C&D / MPEC | FALSE | Jefe de Servicio | — | admin_calidad |
+| Calidad | FALSE | Jefe de Servicio | — | admin_calidad |
+| Planificación | FALSE | Jefe de Servicio | — | admin_calidad |
+
+> Hoy solo Cubicaciones está en TRUE. El flag se administra desde Admin (ver [PLAN_MODELO_AREAS.md](PLAN_MODELO_AREAS.md)).
 > Un jefe puede ser Jefe de Servicio de más de un área (M:N en `area_usuarios`).
+> `admin` es fallback total; puede actuar en cualquier paso de cualquier área.
 
-### 3.6 Modelo de datos nuevo (pendiente de implementación)
+### 3.6 Modelo de datos de áreas
 
-Tablas nuevas requeridas:
+**YA IMPLEMENTADO** (migraciones 55-58): tablas `areas` (11 áreas sembradas),
+`area_usuarios` (M:N usuario↔área), `area_rca_categorias`/`area_rca_subcausas`
+(matriz Ishikawa por área).
 
 ```sql
-areas
+areas                          -- ✅ implementada (mig. 55, seed 58)
   id          BIGSERIAL PK
   nombre      TEXT NOT NULL
   slug        TEXT UNIQUE NOT NULL   -- 'cubicaciones', 'usc_cd', etc.
   activo      BOOLEAN DEFAULT TRUE
+  tiene_revision BOOLEAN DEFAULT FALSE   -- ⬜ pendiente (PLAN_MODELO_AREAS Fase A)
 
-area_usuarios
+area_usuarios                  -- ✅ implementada (mig. 56)
   id          BIGSERIAL PK
   area_id     BIGINT FK→areas
   user_id     BIGINT FK→users
   rol_area    TEXT  -- 'miembro' | 'jefe_servicio'
   UNIQUE(area_id, user_id)
 
-area_rca_categorias          -- Matriz Ishikawa por área
+area_rca_categorias            -- ✅ implementada (mig. 57)
   id          BIGSERIAL PK
   area_id     BIGINT FK→areas
+  slug        TEXT
   nombre      TEXT NOT NULL  -- ej: 'Mano de obra'
   orden       INTEGER
+  UNIQUE(area_id, slug)
 
-area_rca_subcausas
-  id          BIGSERIAL PK
+area_rca_subcausas             -- ✅ implementada (mig. 57)
+  id           BIGSERIAL PK
   categoria_id BIGINT FK→area_rca_categorias
-  codigo      TEXT           -- ej: 'MO01'
-  descripcion TEXT NOT NULL
-  activo      BOOLEAN DEFAULT TRUE
+  codigo       TEXT          -- ej: 'MO01'
+  descripcion  TEXT NOT NULL
+  activo       BOOLEAN DEFAULT TRUE
+  orden        INTEGER
 ```
+
+**Pendiente** (ver [PLAN_MODELO_AREAS.md](PLAN_MODELO_AREAS.md)): columna `tiene_revision`
+en `areas`, y conectar el reclamo a su área real (`area_id`, inferido del usuario)
+para reemplazar la heurística de texto sobre `area_aplica`.
 
 Columnas nuevas en `reclamos`:
 
