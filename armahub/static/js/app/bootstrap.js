@@ -127,6 +127,13 @@
             'armahubFeature',
             'reclamos-detail-render',
             '[ArmaHub] No se pudo cargar reclamos/detail-render.js'
+          ),
+          loadScript(
+            'script[data-armahub-feature="reclamos-detail-permissions"]',
+            '/static/js/features/reclamos/detail-permissions.js' + suffix,
+            'armahubFeature',
+            'reclamos-detail-permissions',
+            '[ArmaHub] No se pudo cargar reclamos/detail-permissions.js'
           )
         ]);
       }).then(function() {

@@ -6,7 +6,7 @@
 //   _reclamoActual, _recEstadoLabels/_recEstadoColors, _recAplicaLabels/_recAplicaColors,
 //   _recIshikawaLabels, _formatCorrelativoCalidad, _updateAplicaBadge,
 //   renderAcciones, renderImagenesEnContainer, renderReclamoTimeline,
-//   _applyReclamoDetailPermissions (detail.js), openReclamoModal (detail.js).
+//   _applyReclamoDetailPermissions (detail-permissions.js), openReclamoModal (detail.js).
 
 function _populateReclamoDetailSelectors(data) {
   document.getElementById('recDetailAplica').value = data.aplica || 'pendiente';
