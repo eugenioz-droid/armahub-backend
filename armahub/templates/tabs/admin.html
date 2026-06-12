@@ -6,6 +6,7 @@
       <button class="admin-subtab active" data-subtab="adminGeneral" onclick="switchAdminSubTab('adminGeneral')" style="padding:8px 20px; font-size:13px; font-weight:600; border:none; border-bottom:3px solid #1565C0; background:none; color:#1565C0; cursor:pointer;">⚙️ General</button>
       <button class="admin-subtab" data-subtab="adminNotificaciones" onclick="switchAdminSubTab('adminNotificaciones')" style="padding:8px 20px; font-size:13px; font-weight:600; border:none; border-bottom:3px solid transparent; background:none; color:#999; cursor:pointer;">🔔 Notificaciones</button>
       <button class="admin-subtab" data-subtab="adminRolesPermisos" onclick="switchAdminSubTab('adminRolesPermisos')" style="padding:8px 20px; font-size:13px; font-weight:600; border:none; border-bottom:3px solid transparent; background:none; color:#999; cursor:pointer;">🔐 Roles y Permisos</button>
+      <button class="admin-subtab" data-subtab="adminAreas" onclick="switchAdminSubTab('adminAreas')" style="padding:8px 20px; font-size:13px; font-weight:600; border:none; border-bottom:3px solid transparent; background:none; color:#999; cursor:pointer;">🏢 Áreas</button>
     </div>
 
     <!-- Sub-panel: General (existing admin content) -->
@@ -224,5 +225,54 @@
     </div>
 
     <!-- Sub-panel Matrices RCA eliminado: ahora vive solo en Calidad / Reclamos → Matriz RCA -->
+
+    <!-- ====== Sub-panel: Áreas (gestión de áreas del CRM) ====== -->
+    <div id="adminAreas" style="display:none;">
+      <div class="card" style="border-left:4px solid #00897b;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+          <h3 style="margin:0; color:#00897b;">🏢 Gestión de Áreas</h3>
+          <button onclick="abrirNuevaArea()" style="font-size:12px; padding:5px 14px; background:#00897b; color:#fff; border:none; border-radius:4px; cursor:pointer; font-weight:600;">+ Nueva área</button>
+        </div>
+        <p class="muted" style="font-size:12px; margin:0 0 14px 0;">Cada área puede tener etapa de revisión (un paso previo a Calidad) y usuarios asignados con su rol. El flujo de los reclamos del área se decide por el flag "Revisión".</p>
+
+        <!-- Form crear/editar área (oculto por defecto) -->
+        <div id="areaFormWrap" style="display:none; margin-bottom:14px; padding:12px; background:#e0f2f1; border-radius:8px; border:1px solid #80cbc4;">
+          <input type="hidden" id="areaEditId" value="" />
+          <label style="font-size:11px; color:#00695c;">Nombre del área</label>
+          <div style="display:flex; gap:6px; align-items:center;">
+            <input type="text" id="areaNombreInput" placeholder="Ej. Producción C&D" style="flex:1; font-size:13px; padding:5px 8px;" />
+            <button onclick="guardarArea()" style="font-size:12px; padding:6px 16px; background:#00897b; color:#fff; border:none; border-radius:4px; cursor:pointer; font-weight:600;">Guardar</button>
+            <button onclick="cancelarArea()" class="secondary" style="font-size:12px; padding:6px 12px;">Cancelar</button>
+          </div>
+          <span id="areaFormMsg" class="muted" style="font-size:11px;"></span>
+        </div>
+
+        <div id="areasLista"><div class="muted">Cargando áreas...</div></div>
+      </div>
+
+      <!-- Panel de usuarios de un área (se abre al elegir un área) -->
+      <div id="areaUsuariosCard" class="card" style="display:none; border-left:4px solid #5e35b1;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+          <h3 style="margin:0; color:#5e35b1;">👥 Usuarios de <span id="areaUsuariosNombre"></span></h3>
+          <button onclick="cerrarUsuariosArea()" class="secondary" style="font-size:12px; padding:4px 12px;">← Volver</button>
+        </div>
+        <div style="display:flex; gap:6px; align-items:flex-end; margin-bottom:12px; flex-wrap:wrap;">
+          <div>
+            <label style="font-size:11px; color:#666;">Usuario</label><br>
+            <select id="areaUserSelect" style="font-size:12px; min-width:200px;"></select>
+          </div>
+          <div>
+            <label style="font-size:11px; color:#666;">Rol en el área</label><br>
+            <select id="areaUserRol" style="font-size:12px;">
+              <option value="miembro">Miembro</option>
+              <option value="jefe_servicio">Jefe de Servicio</option>
+            </select>
+          </div>
+          <button onclick="agregarUsuarioArea()" style="font-size:12px; padding:6px 14px; background:#5e35b1; color:#fff; border:none; border-radius:4px; cursor:pointer; font-weight:600;">Agregar</button>
+          <span id="areaUserMsg" class="muted" style="font-size:11px;"></span>
+        </div>
+        <div id="areaUsuariosLista"><div class="muted">Cargando...</div></div>
+      </div>
+    </div>
 
   </div>

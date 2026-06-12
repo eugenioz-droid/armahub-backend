@@ -240,6 +240,13 @@
         '[ArmaHub] No se pudo cargar admin/roles_permisos.js'
       ),
       loadScript(
+        'script[data-armahub-feature="admin-areas"]',
+        '/static/js/features/admin/areas.js' + suffix,
+        'armahubFeature',
+        'admin-areas',
+        '[ArmaHub] No se pudo cargar admin/areas.js'
+      ),
+      loadScript(
         'script[data-armahub-feature="admin-index"]',
         '/static/js/features/admin/index.js' + suffix,
         'armahubFeature',

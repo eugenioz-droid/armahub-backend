@@ -230,28 +230,205 @@ class MatrizRCAIn(BaseModel):
 
 @router.get("/admin/areas")
 def listar_areas(user=Depends(require_admin_or_admin_calidad)):
-    """Lista todas las áreas con conteo de subcausas RCA."""
+    """Lista todas las áreas con conteo de subcausas RCA, flag de revisión y nº de usuarios."""
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("""
-                SELECT a.id, a.nombre, a.slug, a.activo,
+                SELECT a.id, a.nombre, a.slug, a.activo, a.tiene_revision,
                        COUNT(DISTINCT arc.id) AS cat_count,
-                       COUNT(DISTINCT ars.id) AS sub_count
+                       COUNT(DISTINCT ars.id) AS sub_count,
+                       COUNT(DISTINCT au.id)  AS user_count
                 FROM areas a
                 LEFT JOIN area_rca_categorias arc ON arc.area_id = a.id
                 LEFT JOIN area_rca_subcausas ars ON ars.categoria_id = arc.id AND ars.activo = TRUE
-                GROUP BY a.id, a.nombre, a.slug, a.activo
+                LEFT JOIN area_usuarios au ON au.area_id = a.id
+                GROUP BY a.id, a.nombre, a.slug, a.activo, a.tiene_revision
                 ORDER BY a.id
             """)
             rows = cur.fetchall()
     return [
         {
             "id": r[0], "nombre": r[1], "slug": r[2], "activo": r[3],
-            "tiene_rca": int(r[4] or 0) > 0,
-            "total_subcausas": int(r[5] or 0),
+            "tiene_revision": bool(r[4]),
+            "tiene_rca": int(r[5] or 0) > 0,
+            "total_subcausas": int(r[6] or 0),
+            "total_usuarios": int(r[7] or 0),
         }
         for r in rows
     ]
+
+
+# ---- Gestión de áreas (panel Admin · base del CRM configurable) ----
+
+class AreaIn(BaseModel):
+    nombre: str
+    slug: Optional[str] = None
+
+
+class AreaRevisionIn(BaseModel):
+    tiene_revision: bool
+
+
+class AreaUsuarioIn(BaseModel):
+    user_id: int
+    rol_area: str = "miembro"  # 'miembro' | 'jefe_servicio'
+
+
+def _slugify_area(texto: str) -> str:
+    base = (texto or "").strip().lower()
+    out = []
+    for ch in base:
+        if ch.isalnum():
+            out.append(ch)
+        elif ch in (" ", "-", "_", "/"):
+            out.append("_")
+        # acentos comunes
+    s = "".join(out)
+    for a, b in (("á", "a"), ("é", "e"), ("í", "i"), ("ó", "o"), ("ú", "u"), ("ñ", "n")):
+        s = s.replace(a, b)
+    while "__" in s:
+        s = s.replace("__", "_")
+    return s.strip("_") or "area"
+
+
+@router.post("/admin/areas")
+def crear_area(body: AreaIn, user=Depends(require_admin)):
+    """Crea una nueva área. El slug se deriva del nombre si no se da."""
+    email = user.get("email", "")
+    nombre = (body.nombre or "").strip()
+    if not nombre:
+        raise HTTPException(status_code=400, detail="El nombre del área es obligatorio")
+    slug = (body.slug or _slugify_area(nombre)).strip()
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT id FROM areas WHERE slug = %s", (slug,))
+            if cur.fetchone():
+                raise HTTPException(status_code=409, detail=f"Ya existe un área con slug '{slug}'")
+            cur.execute(
+                "INSERT INTO areas (nombre, slug) VALUES (%s, %s) RETURNING id",
+                (nombre, slug),
+            )
+            new_id = cur.fetchone()[0]
+        conn.commit()
+    audit(email, "crear_area", f"{nombre} ({slug})", "area", str(new_id))
+    return {"ok": True, "id": new_id, "slug": slug}
+
+
+@router.patch("/admin/areas/{area_id}")
+def editar_area(area_id: int, body: AreaIn, user=Depends(require_admin)):
+    """Edita el nombre de un área (el slug no se cambia para no romper referencias)."""
+    email = user.get("email", "")
+    nombre = (body.nombre or "").strip()
+    if not nombre:
+        raise HTTPException(status_code=400, detail="El nombre del área es obligatorio")
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT id FROM areas WHERE id = %s", (area_id,))
+            if not cur.fetchone():
+                raise HTTPException(status_code=404, detail="Área no encontrada")
+            cur.execute("UPDATE areas SET nombre = %s WHERE id = %s", (nombre, area_id))
+        conn.commit()
+    audit(email, "editar_area", nombre, "area", str(area_id))
+    return {"ok": True}
+
+
+@router.patch("/admin/areas/{area_id}/activo")
+def toggle_area_activo(area_id: int, user=Depends(require_admin)):
+    """Activa/desactiva un área (soft-delete): invierte el estado activo actual."""
+    email = user.get("email", "")
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT activo FROM areas WHERE id = %s", (area_id,))
+            row = cur.fetchone()
+            if not row:
+                raise HTTPException(status_code=404, detail="Área no encontrada")
+            nuevo = not bool(row[0])
+            cur.execute("UPDATE areas SET activo = %s WHERE id = %s", (nuevo, area_id))
+        conn.commit()
+    audit(email, "toggle_area_activo", f"activo={nuevo}", "area", str(area_id))
+    return {"ok": True, "activo": nuevo}
+
+
+@router.patch("/admin/areas/{area_id}/revision")
+def set_area_revision(area_id: int, body: AreaRevisionIn, user=Depends(require_admin)):
+    """Activa/desactiva la etapa de revisión del área (flag tiene_revision)."""
+    email = user.get("email", "")
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT id FROM areas WHERE id = %s", (area_id,))
+            if not cur.fetchone():
+                raise HTTPException(status_code=404, detail="Área no encontrada")
+            cur.execute(
+                "UPDATE areas SET tiene_revision = %s WHERE id = %s",
+                (body.tiene_revision, area_id),
+            )
+        conn.commit()
+    audit(email, "set_area_revision", f"tiene_revision={body.tiene_revision}", "area", str(area_id))
+    return {"ok": True, "tiene_revision": body.tiene_revision}
+
+
+@router.get("/admin/areas/{area_id}/usuarios")
+def listar_usuarios_area(area_id: int, user=Depends(require_admin_or_admin_calidad)):
+    """Usuarios asignados a un área, con su rol de área."""
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT id FROM areas WHERE id = %s", (area_id,))
+            if not cur.fetchone():
+                raise HTTPException(status_code=404, detail="Área no encontrada")
+            cur.execute("""
+                SELECT au.id, u.id, u.email,
+                       NULLIF(TRIM(COALESCE(u.nombre,'') || ' ' || COALESCE(u.apellido,'')), '') AS display,
+                       au.rol_area
+                FROM area_usuarios au
+                JOIN users u ON u.id = au.user_id
+                WHERE au.area_id = %s
+                ORDER BY au.rol_area DESC, display
+            """, (area_id,))
+            rows = cur.fetchall()
+    return [
+        {"asignacion_id": r[0], "user_id": r[1], "email": r[2],
+         "nombre": r[3] or r[2], "rol_area": r[4]}
+        for r in rows
+    ]
+
+
+@router.post("/admin/areas/{area_id}/usuarios")
+def asignar_usuario_area(area_id: int, body: AreaUsuarioIn, user=Depends(require_admin)):
+    """Asigna (o actualiza el rol de) un usuario en un área."""
+    email = user.get("email", "")
+    if body.rol_area not in ("miembro", "jefe_servicio"):
+        raise HTTPException(status_code=400, detail="rol_area inválido")
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT id FROM areas WHERE id = %s", (area_id,))
+            if not cur.fetchone():
+                raise HTTPException(status_code=404, detail="Área no encontrada")
+            cur.execute("SELECT id FROM users WHERE id = %s", (body.user_id,))
+            if not cur.fetchone():
+                raise HTTPException(status_code=404, detail="Usuario no encontrado")
+            cur.execute("""
+                INSERT INTO area_usuarios (area_id, user_id, rol_area)
+                VALUES (%s, %s, %s)
+                ON CONFLICT (area_id, user_id) DO UPDATE SET rol_area = EXCLUDED.rol_area
+            """, (area_id, body.user_id, body.rol_area))
+        conn.commit()
+    audit(email, "asignar_usuario_area", f"user={body.user_id} rol={body.rol_area}", "area", str(area_id))
+    return {"ok": True}
+
+
+@router.delete("/admin/areas/{area_id}/usuarios/{user_id}")
+def quitar_usuario_area(area_id: int, user_id: int, user=Depends(require_admin)):
+    """Quita un usuario de un área."""
+    email = user.get("email", "")
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "DELETE FROM area_usuarios WHERE area_id = %s AND user_id = %s",
+                (area_id, user_id),
+            )
+        conn.commit()
+    audit(email, "quitar_usuario_area", f"user={user_id}", "area", str(area_id))
+    return {"ok": True}
 
 
 @router.get("/admin/areas/{area_id}/rca")

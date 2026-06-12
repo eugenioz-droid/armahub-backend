@@ -990,6 +990,13 @@ MIGRATIONS = [
             END LOOP;
         END $$;""",
     ]),
+
+    # --- Migration 63: flag tiene_revision por área (etapa de revisión opcional) ---
+    (63, "areas: columna tiene_revision (Flujo con revisión opcional por área)", [
+        "DO $$ BEGIN ALTER TABLE areas ADD COLUMN tiene_revision BOOLEAN DEFAULT FALSE; EXCEPTION WHEN duplicate_column THEN NULL; END $$;",
+        # Hoy solo Cubicaciones usa etapa de revisión.
+        "UPDATE areas SET tiene_revision = TRUE WHERE slug = 'cubicaciones'",
+    ]),
 ]
 
 
