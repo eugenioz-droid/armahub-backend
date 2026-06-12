@@ -508,37 +508,20 @@
       </div>
 
       <!-- ====== SECCIÓN VERDE: VALIDACIÓN CALIDAD (estado validacion) ====== -->
+      <!-- Misma gráfica y disposición que la sección ámbar de revisión:
+           comentario opcional + dos acciones (Devolver / Aprobar). -->
       <div id="recSeccionValidacion" style="display:none; margin-bottom:10px; padding:12px; background:#E8F5E9; border-radius:8px; border:1px solid #A5D6A7;">
         <h4 style="margin:0 0 8px 0; font-size:13px; color:#2E7D32;">✅ Validación — Calidad</h4>
-        <div class="row" style="gap:8px; flex-wrap:wrap; align-items:flex-end;">
-          <div class="col" style="max-width:180px;">
-            <label style="font-size:11px; color:#666;">Resultado</label>
-            <select id="recDetailValidacionResultado" style="width:100%; font-size:12px;">
-              <option value="">— Seleccionar —</option>
-              <option value="aprobado">✅ Aprobado</option>
-              <option value="rechazado">❌ Rechazado / Devolver</option>
-              <option value="corregido">🔄 Corregido</option>
-            </select>
-          </div>
-          <div class="col" style="max-width:120px;">
-            <label style="font-size:11px; color:#666;">Tiempo respuesta</label>
-            <div style="display:flex; gap:2px;">
-              <input type="number" id="recTiempoRespuesta" min="0" style="width:60px; font-size:12px;" placeholder="0" />
-              <select id="recTiempoRespuestaUnidad" style="width:55px; font-size:11px;">
-                <option value="minutos">min</option>
-                <option value="horas" selected>hrs</option>
-                <option value="dias">días</option>
-              </select>
-            </div>
-          </div>
-          <div class="col" style="flex:1; min-width:250px;">
-            <label style="font-size:11px; color:#666;">Observaciones</label>
-            <input type="text" id="recDetailValidacionObs" placeholder="Motivo si devuelve / comentarios..." style="width:100%; font-size:12px;" />
-          </div>
-          <button id="btnGuardarValidacion" style="font-size:12px; padding:5px 16px; background:#2E7D32; color:#fff; border:none; border-radius:4px; cursor:pointer; font-weight:600;" onclick="guardarValidacion()">Validar</button>
-          <span id="recValidacionMsg" class="muted" style="font-size:11px;"></span>
+        <p style="font-size:11px; color:#666; margin:0 0 8px 0;">Valida el reclamo para cerrarlo, o devuélvelo a revisión del Jefe de Servicio para corrección.</p>
+        <div style="margin-bottom:8px;">
+          <label style="font-size:11px; color:#666;">Comentario de validación (opcional)</label>
+          <input type="text" id="recValidacionComentario" placeholder="Observación de Calidad — opcional, queda en el seguimiento" style="width:100%; font-size:12px;" />
         </div>
-        <div id="recValidacionInfo" style="font-size:11px; color:#666; margin-top:6px;"></div>
+        <div style="display:flex; gap:6px; flex-wrap:wrap; justify-content:flex-end;">
+          <button id="btnDevolverValidacion" style="font-size:12px; padding:5px 16px; background:#fff; color:#1b5e20; border:1px solid #1b5e20; border-radius:4px; cursor:pointer;" onclick="devolverValidacionDesdeModal()">↩️ Devolver</button>
+          <button id="btnAprobarValidacion" style="font-size:12px; padding:5px 16px; background:#2E7D32; color:#fff; border:none; border-radius:4px; cursor:pointer; font-weight:600;" onclick="aprobarValidacionDesdeModal()">✅ Aprobar</button>
+        </div>
+        <span id="recValidacionMsg" class="muted" style="font-size:11px;"></span>
       </div>
 
       <!-- SECCIÓN 3: VALIDACIÓN → movida al sub-tab Validaciones -->

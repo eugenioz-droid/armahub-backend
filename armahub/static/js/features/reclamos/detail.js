@@ -108,35 +108,12 @@ function _renderReclamoRespuesta(data) {
 }
 
 function _renderReclamoValidacion(data) {
-  // Estos campos viven en el sub-tab Validaciones; solo rellenar si están en DOM
-  var valRes = document.getElementById('recDetailValidacionResultado');
-  var valObs = document.getElementById('recDetailValidacionObs');
-  var valTime = document.getElementById('recTiempoRespuesta');
-  var valTimeU = document.getElementById('recTiempoRespuestaUnidad');
-  if (valRes) valRes.value = data.validacion_resultado || '';
-  if (valObs) valObs.value = data.validacion_observaciones || '';
-  if (valTime) valTime.value = data.tiempo_respuesta || '';
-  if (valTimeU) valTimeU.value = data.tiempo_respuesta_unidad || 'horas';
-
-  var valInfo = document.getElementById('recValidacionInfo');
-  if (data.validacion_por) {
-    var valLabel = { aprobado: '✅ Aprobado', rechazado: '❌ Rechazado', corregido: '✏️ Corregido' }[data.validacion_resultado] || data.validacion_resultado;
-    var tiempoInfo = '';
-    if (data.tiempo_respuesta && data.tiempo_respuesta > 0) {
-      var unidadLabel = { minutos: 'min', horas: 'hrs', dias: 'días' }[data.tiempo_respuesta_unidad] || 'hrs';
-      tiempoInfo = ' — ⏱️ Tiempo respuesta: <strong>' + data.tiempo_respuesta + ' ' + unidadLabel + '</strong>';
-      if (data.tiempo_respuesta_actualizado_por) {
-        tiempoInfo += ' (por ' + data.tiempo_respuesta_actualizado_por + ')';
-      }
-    }
-    valInfo.innerHTML = 'Validado por: <strong>' + data.validacion_por + '</strong>' +
-      (data.validacion_fecha ? ' — ' + formatDateTime(data.validacion_fecha, '') : '') +
-      ' — Resultado: <strong>' + valLabel + '</strong>' +
-      tiempoInfo;
-  } else {
-    valInfo.textContent = 'Sin validación aún';
-  }
-  document.getElementById('recValidacionMsg').textContent = '';
+  // La sección verde tiene solo un comentario opcional (parte en blanco) y
+  // dos acciones. El mensaje de estado se limpia al reabrir el modal.
+  var msg = document.getElementById('recValidacionMsg');
+  if (msg) msg.textContent = '';
+  var coment = document.getElementById('recValidacionComentario');
+  if (coment) coment.value = '';
 }
 
 function _renderReclamoActionsSection(data) {
@@ -924,66 +901,49 @@ async function guardarRespuesta() {
 }
 
 // ---- Validación ----
-async function guardarValidacion() {
+// Sección VERDE (Validación Calidad). Misma lógica que la ámbar: dos acciones
+// limpias — Aprobar (cierra el reclamo) o Devolver (vuelve a revisión del Jefe
+// de Servicio). El comentario es opcional y queda en el seguimiento.
+async function aprobarValidacionDesdeModal() {
   if (!_reclamoActual) return;
+  if (!confirm('¿Aprobar la validación? El reclamo quedará cerrado.')) return;
   var msg = document.getElementById('recValidacionMsg');
-  var resultado = document.getElementById('recDetailValidacionResultado').value;
-  var obs = document.getElementById('recDetailValidacionObs').value.trim();
-  
-  // Capturar tiempo de respuesta
-  var tiempoRespuesta = document.getElementById('recTiempoRespuesta').value;
-  var tiempoRespuestaUnidad = document.getElementById('recTiempoRespuestaUnidad').value;
-  
-  if (!resultado) { msg.textContent = 'Selecciona un resultado'; msg.style.color = '#b42318'; return; }
-  
-  // Confirmación antes de rechazar — el backend reabrirá el reclamo automáticamente
-  if (resultado === 'rechazado') {
-    if (!obs) { msg.textContent = 'Ingresa observaciones para el rechazo'; msg.style.color = '#b42318'; return; }
-    if (!confirm('Se reabrirá el reclamo y será devuelto al cubicador para corrección.\n\nMotivo: ' + obs + '\n\n¿Continuar?')) return;
-  }
-  
-  msg.textContent = 'Guardando...'; msg.style.color = '#666';
-  
-  var body = {
-    validacion_resultado: resultado,
-    validacion_observaciones: obs || null,
-  };
-  
-  // Agregar tiempo de respuesta solo si tiene valor
-  if (tiempoRespuesta && tiempoRespuesta > 0) {
-    body.tiempo_respuesta = parseInt(tiempoRespuesta);
-    body.tiempo_respuesta_unidad = tiempoRespuestaUnidad;
-    body.tiempo_respuesta_actualizado_por = currentUserEmail;
-    body.tiempo_respuesta_fecha_actualizacion = new Date().toISOString();
-  }
-  
+  var comentEl = document.getElementById('recValidacionComentario');
+  var comentario = comentEl ? (comentEl.value || '').trim() : '';
+  if (msg) { msg.textContent = 'Guardando...'; msg.style.color = '#666'; }
+  // validacion_resultado 'aprobado' dispara el cierre automático en el backend.
+  var body = { validacion_resultado: 'aprobado' };
+  if (comentario) body.validacion_observaciones = comentario;
   var res = await fetch(apiUrl('/reclamos/' + _reclamoActual.id), {
     method: 'PATCH',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
     body: JSON.stringify(body)
   });
   if (res.status === 401) { logout(); return; }
-  var data;
-  try { data = await res.json(); } catch(e) {
-    var raw = '';
-    try { raw = await res.clone().text(); } catch(_) {}
-    console.error('[guardarValidacion] status=' + res.status, 'parse error', raw);
-    msg.textContent = 'Error ' + res.status + ' (ver consola)'; msg.style.color = '#b42318';
-    return;
-  }
+  var data = await res.json();
   if (data.ok) {
-    if (resultado === 'rechazado') {
-      msg.textContent = '❌ Rechazado — devuelto al cubicador para corrección';
-    } else {
-      msg.textContent = '✅ Validación guardada';
-    }
-    msg.style.color = resultado === 'rechazado' ? '#b42318' : '#558B2F';
-    setTimeout(function() { msg.textContent = ''; }, 1500);
-    // La validación se hace en el modal; cerrar y refrescar la cola si venimos de Validaciones
+    if (comentEl) comentEl.value = '';
     await _refrescarTrasAccionFlujo();
-  } else {
+  } else if (msg) {
     msg.textContent = 'Error: ' + (data.detail || 'desconocido'); msg.style.color = '#b42318';
   }
+}
+
+async function devolverValidacionDesdeModal() {
+  if (!_reclamoActual) return;
+  var motivo = prompt('Motivo de la devolución (el reclamo vuelve a "En revisión" del Jefe de Servicio):');
+  if (motivo === null) return;
+  motivo = motivo.trim();
+  if (!motivo) { alert('Debe indicar un motivo para devolver.'); return; }
+  var res = await fetch(apiUrl('/reclamos/' + _reclamoActual.id), {
+    method: 'PATCH',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ estado: 'en_revision', revision_observaciones: motivo })
+  });
+  if (res.status === 401) { logout(); return; }
+  var data = await res.json();
+  if (data.ok) { await _refrescarTrasAccionFlujo(); }
+  else { alert('Error: ' + (data.detail || 'desconocido')); }
 }
 
 // ---- Acciones ----
