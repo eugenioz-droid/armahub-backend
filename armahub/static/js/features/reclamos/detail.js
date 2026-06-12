@@ -511,10 +511,28 @@ async function cerrarReclamo() {
     : '¿Enviar este reclamo a validación?';
   if (!confirm(msg)) return;
 
+  // Enviar el análisis del formulario JUNTO con el cambio de estado, para que el
+  // backend valide y persista lo que el usuario ve en pantalla (sin exigir un
+  // "Guardar análisis" previo). PATCH no destructivo: solo campos con valor.
+  var body = { estado: estadoDestino };
+  var _setIf = function(k, v) { if (v !== '' && v != null && !(typeof v === 'number' && isNaN(v))) body[k] = v; };
+  _setIf('aplica', aplicaValue);
+  _setIf('respuesta_texto', justificacion);
+  _setIf('categoria_ishikawa', document.getElementById('recDetailCategoria').value);
+  _setIf('sub_causa', document.getElementById('recDetailSubCausa').value);
+  _setIf('cod_causa', document.getElementById('recDetailCodCausa').value);
+  _setIf('area_aplica', document.getElementById('recDetailAreaAplica').value);
+  _setIf('fecha_analisis', document.getElementById('recDetailFechaAnalisis').value);
+  _setIf('kilos_mal_fabricados', parseFloat(document.getElementById('recDetailKilosMal').value));
+  _setIf('tiempo_respuesta', parseInt(document.getElementById('recTiempoRespuestaAnalisis').value));
+  if (body.tiempo_respuesta != null) {
+    body.tiempo_respuesta_unidad = document.getElementById('recTiempoRespuestaUnidadAnalisis').value || 'horas';
+  }
+
   var res = await fetch(apiUrl('/reclamos/' + _reclamoActual.id), {
     method: 'PATCH',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
-    body: JSON.stringify({ estado: estadoDestino })
+    body: JSON.stringify(body)
   });
   if (res.status === 401) { logout(); return; }
   var data = await res.json();
