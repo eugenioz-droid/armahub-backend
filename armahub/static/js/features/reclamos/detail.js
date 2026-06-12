@@ -121,15 +121,6 @@ function _renderReclamoActionsSection(data) {
 }
 
 function _renderReclamoImagesSection(data) {
-  console.log('[verReclamo] detalle normalizado:', {
-    respuesta_texto: data.respuesta_texto,
-    explicacion_causa: data.explicacion_causa,
-    fecha_analisis: data.fecha_analisis,
-    acciones: data.acciones_normalized.length,
-    imagenes_antecedentes: data.imagenes_antecedentes.length,
-    imagenes_respuesta: data.imagenes_respuesta.length
-  });
-
   renderImagenesEnContainer('recImagenesAntecedentes', data.imagenes_antecedentes);
   renderImagenesEnContainer('recImagenesRespuesta', data.imagenes_respuesta);
 }
@@ -1256,37 +1247,19 @@ async function abrirIshikawaModal(target) {
 }
 
 function seleccionarIshikawa(radio) {
-  // Debug: Check current respuesta text when selecting
-  var respuestaText = document.getElementById('recDetailRespuestaTexto').value;
-  console.log('[seleccionarIshikawa] Respuesta text BEFORE:', respuestaText);
-  
   var parts = radio.value.split('|');
   _ishikawaSelection = { categoria: parts[0], cod_causa: parts[1], sub_causa: parts[2] };
   var catLabel = _recIshikawaLabels[parts[0]] || parts[0];
   document.getElementById('ishikawaSelectedDisplay').textContent = '[' + parts[1] + '] ' + catLabel + ' > ' + parts[2];
-  
-  // Debug: Check respuesta text after selection
-  var respuestaTextAfter = document.getElementById('recDetailRespuestaTexto').value;
-  console.log('[seleccionarIshikawa] Respuesta text AFTER:', respuestaTextAfter);
 }
 
 function confirmarIshikawa() {
   if (!_ishikawaSelection.categoria) { alert('Selecciona una causa primero'); return; }
-  
-  // Debug: Check current respuesta text before making changes
-  var respuestaText = document.getElementById('recDetailRespuestaTexto').value;
-  console.log('[confirmarIshikawa] Respuesta text BEFORE:', respuestaText);
-  
   var displayText = '[' + _ishikawaSelection.cod_causa + '] ' + (_recIshikawaLabels[_ishikawaSelection.categoria] || '') + ' > ' + _ishikawaSelection.sub_causa;
   document.getElementById('recDetailCausaDisplay').value = displayText;
   document.getElementById('recDetailCategoria').value = _ishikawaSelection.categoria;
   document.getElementById('recDetailSubCausa').value = _ishikawaSelection.sub_causa;
   document.getElementById('recDetailCodCausa').value = _ishikawaSelection.cod_causa;
-  
-  // Debug: Check respuesta text after changes
-  var respuestaTextAfter = document.getElementById('recDetailRespuestaTexto').value;
-  console.log('[confirmarIshikawa] Respuesta text AFTER:', respuestaTextAfter);
-  
   cerrarIshikawaModal();
 }
 

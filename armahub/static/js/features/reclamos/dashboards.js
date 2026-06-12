@@ -208,8 +208,7 @@ async function loadRecLanding() {
 
   // Chart 2: Estados (reemplaza Resueltos vs No Resueltos)
   var porEstado = data.por_estado || {};
-  console.log('[loadRecLanding] por_estado:', porEstado);
-  
+
   // Convertir a array si viene como objeto (landing page)
   if (!Array.isArray(porEstado)) {
     porEstado = Object.keys(porEstado).map(estado => ({
