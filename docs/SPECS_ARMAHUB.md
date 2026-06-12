@@ -7,7 +7,7 @@
 > Última actualización: 2026-06-11 · Infraestructura: Render (FastAPI) + Supabase (PostgreSQL) + Cloudflare R2
 >
 > **Discovery Reclamos v2 (2026-06-10):** diseño de áreas, flujos multi-área y RCA documentado. Pendiente de implementación.
-> **Validaciones (2026-06-11):** flujo `en_revision` + sub-tab Validaciones implementados (estados reales: `en_revision`/`validacion`). Rol `admin2` renombrado a `admin_calidad`. Filtro por área del Jefe de Servicio pendiente (Plan 2).
+> **Validaciones (2026-06-11):** flujo `en_revision` + sub-tab Validaciones implementados (estados reales: `en_revision`/`validacion`). Rol `admin2` renombrado a `admin_calidad`. Modal reutilizado por contexto (`_recModalOrigen`); acciones de flujo solo desde Validaciones. PATCH no destructivo (respeta `__fields_set__`). Ver 3.3.1–3.3.3. Filtro por área del Jefe de Servicio pendiente (Plan 2).
 
 ---
 
@@ -183,9 +183,44 @@ Incluye análisis de causa raíz (Ishikawa o 5 Por Qué), acciones correctivas, 
 
 > **¿Qué determina el flujo?** El área del reclamo. Hoy se decide por heurística sobre `area_aplica` (texto "Cubicación…") o `cubicador_asignado`. **Pendiente (Plan 2):** reemplazar por FK `area_id` real y modelo `jefe_servicio` + `area_usuarios` para filtrar la cola "En revisión" por el área de cada Jefe de Servicio.
 
-> **Sub-tab Validaciones:** vista de trabajo (como Presentaciones). Trae reclamos por estado, muestra la ficha completa reutilizando el **modal de detalle** (`verReclamo`), y desde ahí solo cambia el estado. El listado oficial (tab Reclamos Clientes) muestra TODOS los reclamos siempre; ningún estado los oculta. Acceso actual: `admin` ve ambas secciones; `admin_calidad` solo "Validación Calidad".
-
 > **Reasignación:** si un reclamo fue asignado al área equivocada, quien lo creó puede reasignarlo mientras está en `abierto` o `en_analisis`. Si ya pasó a validación, solo admin/admin_calidad pueden reasignar.
+
+### 3.3.1 Sub-tab Validaciones — arquitectura (IMPORTANTE)
+
+El sub-tab **Validaciones** (dentro de Calidad/Reclamos) es una **vista de trabajo**, igual que Presentaciones: trae reclamos por estado y permite avanzarlos, pero **no es el listado oficial**. Reglas de diseño que NO se deben romper:
+
+1. **El listado oficial es "Reclamos Clientes".** Muestra TODOS los reclamos en cualquier estado, siempre. Ningún estado los oculta. Es la fuente de verdad.
+
+2. **El sub-tab Validaciones tiene dos secciones:**
+   - **🔍 En revisión** (sección ámbar): cola de reclamos en estado `en_revision`. Visible solo para `admin` (Jefe de Servicio). KPIs: En revisión / Abiertos / Cerrados.
+   - **✅ Validación Calidad** (sección verde): cola de reclamos en estado `validacion`. Visible para `admin` y `admin_calidad`. KPIs: Pendientes / Abiertos / Cerrados / Tiempo (este último pendiente, tarea 5.40). Dos listas: Clientes / Internos (Internos hoy placeholder).
+   - Acceso: `admin` ve ambas; `admin_calidad` solo Validación Calidad.
+
+3. **Las filas de ambas colas** usan el formato compacto de la lista oficial (`_renderColaReclamos` en dashboards.js): N° · Título · Proyecto · Aplica. Clic en la fila → abre el **modal de detalle** (`verReclamo(id, {origen:'validaciones'})`). Sin botones en la fila.
+
+4. **El modal de detalle se reutiliza** (no se recrea). Vive en el DOM dentro de `recSubClientes`, que se oculta al cambiar de sub-tab; por eso al entrar a Validaciones se **reparenta** a `tab-reclamos` con `_ensureModalFueraDeSubpaneles()` (dashboards.js), para que flote sobre cualquier sub-tab.
+
+5. **Las acciones de flujo viven DENTRO del modal**, en secciones de color según estado, y **solo se muestran si el modal se abrió desde Validaciones** (variable `_recModalOrigen === 'validaciones'` en detail.js):
+   - Estado `en_revision` → sección **ámbar** con "Aprobar" (→ validacion) y "Devolver" (→ en_analisis, motivo obligatorio). Comentario de revisión opcional.
+   - Estado `validacion` → sección **verde** con "Validar" (resultado + obs + tiempo) y devolución vía resultado "rechazado" (PA.5 reabre a en_analisis).
+   - **Desde el listado oficial (Reclamos Clientes) estas secciones NUNCA aparecen.** El modal ahí es solo lectura/registro + el botón "Enviar a revisión/validación" (que es parte del análisis del responsable, no de la validación).
+
+6. **El botón "Enviar a revisión/validación"** (sección 1 del modal, `recCerrarContainer`) SÍ aparece desde cualquier tab cuando el reclamo está en `abierto`/`en_analisis` y el usuario es el responsable o admin. Es el cierre del análisis, no una acción de validación. Al enviar, persiste TODO el análisis del form junto con el cambio de estado (no exige "Guardar análisis" previo).
+
+### 3.3.2 Integridad de datos — PATCH no destructivo (REGLA CRÍTICA)
+
+El endpoint `PATCH /reclamos/{id}` (`actualizar_reclamo` en reclamos.py) **solo escribe los campos que vinieron en el JSON** (`body.__fields_set__`). Un campo ausente del request NUNCA se toca. Esto evita que el formulario, al reenviar campos vacíos, borre datos que el usuario no editó (bug histórico de meses, resuelto 2026-06-11).
+
+- `"" → NULL` solo para campos `nullable_fields` **enviados explícitamente vacíos** (borrado intencional).
+- La regla `aplica="no"` que borra Ishikawa **solo corre en la transición explícita** (aplica vino en el JSON, valor "no", y antes no era "no").
+- El frontend (`guardarRespuesta`, `cerrarReclamo`) construye el body **omitiendo campos vacíos** (helper `_setIf`).
+- **Para cualquier endpoint PATCH nuevo: seguir este patrón.** Nunca mandar el form completo en cada guardado; nunca escribir campos no enviados.
+
+### 3.3.3 Validaciones de completitud al enviar
+
+Al **enviar** un reclamo hacia adelante por primera vez (`abierto`/`en_analisis` → `en_revision` o `validacion`), el backend exige: Aplica marcado (sí/no, no "pendiente"), explicación/justificación (`respuesta_texto`) no vacía, y al menos 1 acción. Estas son obligatorias (filtro de calidad del análisis).
+
+Al **aprobar** la revisión (`en_revision` → `validacion`) o **validar** (`validacion` → `cerrado`), NO se re-exige nada: ya se validó al enviar. El comentario del revisor/validador es **opcional**, no bloqueante.
 
 ### 3.4 Análisis de causa raíz (RCA)
 
