@@ -60,14 +60,11 @@ async function cerrarReclamo() {
 
   var aplicaSelect = document.getElementById('recDetailAplica');
   var aplicaValue = aplicaSelect ? aplicaSelect.value : _reclamoActual.aplica;
-  var esAdmin = (currentRole === 'admin' || currentRole === 'admin_calidad');
-  // Dos flujos:
-  //   A) Cubicación: cubicador/externo → en_revision (lo revisa el jefe de servicio)
-  //   B) Otra área:  responsable → validacion directo (el jefe del área responde por su análisis)
-  // Heurística "es Cubicación": área aplica empieza con "Cubicac" (tolera singular/plural) o hay cubicador asignado.
-  var area = (_reclamoActual.area_aplica || '').toLowerCase();
-  var esCubicacion = (area.indexOf('cubicac') === 0) || !!_reclamoActual.cubicador_asignado;
-  var estadoDestino = esAdmin ? 'validacion' : (esCubicacion ? 'en_revision' : 'validacion');
+  // FASE C: el destino (en_revision vs validacion) lo decide el BACKEND según el
+  // flag tiene_revision del área del reclamo. El front solo pide "enviar adelante"
+  // mandando estado='validacion'; si el área tiene revisión, el backend lo
+  // reescribe a 'en_revision'. Sin heurística de texto en el cliente.
+  var estadoDestino = 'validacion';
 
   if (!aplicaValue || aplicaValue === 'pendiente') {
     alert('Primero debe seleccionar "Sí aplica" o "No aplica".');
@@ -88,10 +85,8 @@ async function cerrarReclamo() {
     return;
   }
 
-  var msg = estadoDestino === 'en_revision'
-    ? '¿Enviar este reclamo a revisión?\n\nEl Jefe de Servicio lo revisará antes de pasar a Calidad.'
-    : '¿Enviar este reclamo a validación?';
-  if (!confirm(msg)) return;
+  // El área del reclamo puede tener etapa de revisión; el backend lo resuelve.
+  if (!confirm('¿Enviar este reclamo para su validación?\n\nSi el área tiene etapa de revisión, primero pasará por el Jefe de Servicio.')) return;
 
   // Enviar el análisis del formulario JUNTO con el cambio de estado, para que el
   // backend valide y persista lo que el usuario ve en pantalla (sin exigir un

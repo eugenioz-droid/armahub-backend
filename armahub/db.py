@@ -997,6 +997,22 @@ MIGRATIONS = [
         # Hoy solo Cubicaciones usa etapa de revisión.
         "UPDATE areas SET tiene_revision = TRUE WHERE slug = 'cubicaciones'",
     ]),
+
+    # --- Migration 64: reclamos.area_id (FK al área real, inferida del responsable) ---
+    (64, "reclamos: columna area_id (FK a areas)", [
+        "DO $$ BEGIN ALTER TABLE reclamos ADD COLUMN area_id BIGINT REFERENCES areas(id); EXCEPTION WHEN duplicate_column THEN NULL; END $$;",
+        # Backfill best-effort: los reclamos viejos de Cubicación (texto area_aplica o con
+        # cubicador asignado) apuntan al área Cubicaciones. El resto queda NULL y se
+        # completará al (re)asignar responsable. area_aplica se conserva como histórico.
+        """
+        UPDATE reclamos r SET area_id = a.id
+        FROM areas a
+        WHERE r.area_id IS NULL
+          AND a.slug = 'cubicaciones'
+          AND (lower(COALESCE(r.area_aplica, '')) LIKE 'cubicac%'
+               OR r.cubicador_asignado IS NOT NULL)
+        """,
+    ]),
 ]
 
 

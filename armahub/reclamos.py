@@ -34,6 +34,33 @@ ALLOWED_IMAGE_TYPES = ("image/jpeg", "image/png", "image/gif", "image/webp", "im
 def _invalidate_reclamos_cache():
     _cache.invalidate("reclamos:", "landing:")
 
+
+def _area_id_de_usuario(cur, email):
+    """Infiere el area_id de un usuario por su email, vía area_usuarios.
+    Si el usuario pertenece a varias áreas, prioriza donde es jefe_servicio;
+    en empate, la primera por id. Devuelve None si no tiene área o no hay email."""
+    if not email:
+        return None
+    cur.execute("""
+        SELECT au.area_id
+        FROM area_usuarios au
+        JOIN users u ON u.id = au.user_id
+        WHERE u.email = %s
+        ORDER BY (au.rol_area = 'jefe_servicio') DESC, au.area_id
+        LIMIT 1
+    """, (email,))
+    row = cur.fetchone()
+    return row[0] if row else None
+
+
+def _area_tiene_revision(cur, area_id):
+    """True si el área del reclamo usa etapa de revisión. False si no, o si no hay área."""
+    if not area_id:
+        return False
+    cur.execute("SELECT tiene_revision FROM areas WHERE id = %s", (area_id,))
+    row = cur.fetchone()
+    return bool(row[0]) if row else False
+
 # ========================= PERMISSION HELPERS =========================
 
 REGISTRO_FIELDS = {
@@ -430,13 +457,19 @@ def crear_reclamo(body: ReclamoCreate, user=Depends(get_current_user)):
             next_seq = (max_seq or 0) + 1
             correlativo = f"REC-{next_seq:03d}"
 
+            # El área se INFIERE del responsable que va a analizar (cubicador
+            # asignado, o quien lo tenga asignado). Nunca se elige el área aparte:
+            # eso evita la incoherencia "cubicador de un área con área distinta".
+            area_id = _area_id_de_usuario(cur, body.cubicador_asignado) \
+                or _area_id_de_usuario(cur, asignado_a)
+
             cur.execute("""
                 INSERT INTO reclamos (id_proyecto, titulo, descripcion, prioridad, tipo_reclamo,
                     categoria_ishikawa, sub_causa, cod_causa, responsable,
                     detectado_por, fecha_deteccion, analista,
                     creado_por, fecha_creacion, correlativo, id_calidad, asignado_a,
-                    cubicador_asignado, anio_calidad, numero_calidad)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    cubicador_asignado, anio_calidad, numero_calidad, area_id)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING id
             """, (body.id_proyecto, body.titulo, body.descripcion,
                   body.prioridad or "alta", body.tipo_reclamo or "error",
@@ -444,7 +477,7 @@ def crear_reclamo(body: ReclamoCreate, user=Depends(get_current_user)):
                   body.sub_causa, body.cod_causa, body.responsable,
                   body.detectado_por, body.fecha_deteccion, email,
                   email, now, correlativo, body.id_calidad, asignado_a,
-                  body.cubicador_asignado, body.anio_calidad, body.numero_calidad))
+                  body.cubicador_asignado, body.anio_calidad, body.numero_calidad, area_id))
             reclamo_id = cur.fetchone()[0]
 
             # Auto-create first seguimiento
@@ -1032,9 +1065,12 @@ def get_reclamo_optimizado(
                     SELECT
                         r.*,
                         COALESCE(p.nombre_proyecto, r.id_proyecto, 'Obra eliminada') AS nombre_proyecto,
-                        p.nombre_proyecto AS nombre_proyecto_lookup
+                        p.nombre_proyecto AS nombre_proyecto_lookup,
+                        ar.nombre AS area_nombre,
+                        ar.tiene_revision AS area_tiene_revision
                     FROM reclamos r
                     LEFT JOIN proyectos p ON r.id_proyecto = p.id_proyecto
+                    LEFT JOIN areas ar ON ar.id = r.area_id
                     WHERE r.id = %s
                 """, (reclamo_id,))
                 row = cur.fetchone()
@@ -1079,6 +1115,9 @@ def get_reclamo_optimizado(
                     "respuesta_fecha": _as_text(row.get("respuesta_fecha")),
                     "respuesta_por": row.get("respuesta_por"),
                     "area_aplica": row.get("area_aplica"),
+                    "area_id": row.get("area_id"),
+                    "area_nombre": row.get("area_nombre"),
+                    "area_tiene_revision": row.get("area_tiene_revision"),
                     "fecha_analisis": _as_text(row.get("fecha_analisis")),
                     "validacion_resultado": row.get("validacion_resultado"),
                     "validacion_observaciones": row.get("validacion_observaciones"),
@@ -1300,6 +1339,16 @@ def actualizar_reclamo(reclamo_id: int, body: ReclamoUpdate, user=Depends(get_cu
                 and body.estado in ("en_revision", "validacion")
             )
             if _primer_envio:
+                # FASE C — el destino del primer envío lo decide el BACKEND según el
+                # flag tiene_revision del área del reclamo, NO la heurística del front:
+                #  - área con revisión  → en_revision (paso previo del Jefe de Servicio)
+                #  - área sin revisión  → validacion (directo a Calidad)
+                # Esto reemplaza el "es Cubicación por el texto" y no se puede falsear
+                # desde el cliente.
+                cur.execute("SELECT area_id FROM reclamos WHERE id = %s", (reclamo_id,))
+                _arow = cur.fetchone()
+                _area_id_rec = _arow[0] if _arow else None
+                body.estado = "en_revision" if _area_tiene_revision(cur, _area_id_rec) else "validacion"
                 _destino_label = "revisión" if body.estado == "en_revision" else "validación"
                 aplica_efectiva = body.aplica if body.aplica is not None else aplica_actual
                 if aplica_efectiva not in ("si", "no"):
@@ -1378,6 +1427,19 @@ def actualizar_reclamo(reclamo_id: int, body: ReclamoUpdate, user=Depends(get_cu
                 for ishikawa_field in ishikawa_fields:
                     if not _col_in_sets(ishikawa_field):
                         sets.append(f"{ishikawa_field} = NULL")
+
+            # Si en esta petición cambió el responsable, recalcular el area_id
+            # (el área SIEMPRE se infiere del responsable, nunca se elige aparte).
+            if "cubicador_asignado" in body.__fields_set__ or "asignado_a" in body.__fields_set__:
+                _nuevo_resp = None
+                if "cubicador_asignado" in body.__fields_set__ and body.cubicador_asignado:
+                    _nuevo_resp = body.cubicador_asignado
+                elif "asignado_a" in body.__fields_set__ and body.asignado_a:
+                    _nuevo_resp = body.asignado_a
+                _nuevo_area = _area_id_de_usuario(cur, _nuevo_resp) if _nuevo_resp else None
+                if _nuevo_area is not None and not _col_in_sets("area_id"):
+                    sets.append("area_id = %s")
+                    params.append(_nuevo_area)
 
             # Auto-set respuesta metadata when respuesta_texto is provided
             if body.respuesta_texto and body.respuesta_texto.strip():
