@@ -959,6 +959,32 @@ MIGRATIONS = [
         "INSERT INTO notificacion_config (tipo_evento, rol, activo) VALUES ('enviado_a_validacion', 'admin_calidad', TRUE) ON CONFLICT DO NOTHING",
         "INSERT INTO notificacion_config (tipo_evento, rol, activo) VALUES ('enviado_a_validacion', 'admin', TRUE) ON CONFLICT DO NOTHING",
     ]),
+
+    (62, "resincronizar secuencias id (corrige UniqueViolation tras importación de datos)", [
+        # Tras restaurar/importar filas con id explícito, las secuencias quedan atrás
+        # y el próximo INSERT choca con un id ya existente. Esto recorre cada columna
+        # 'id' serial y reposiciona su secuencia a MAX(id). Idempotente.
+        """DO $$
+        DECLARE
+            r RECORD;
+            seq TEXT;
+            maxid BIGINT;
+        BEGIN
+            FOR r IN (
+                SELECT c.table_name
+                FROM information_schema.columns c
+                WHERE c.column_name = 'id'
+                  AND c.table_schema = 'public'
+                  AND pg_get_serial_sequence(quote_ident(c.table_name), 'id') IS NOT NULL
+            ) LOOP
+                seq := pg_get_serial_sequence(quote_ident(r.table_name), 'id');
+                EXECUTE format('SELECT COALESCE(MAX(id), 0) FROM %I', r.table_name) INTO maxid;
+                IF maxid > 0 THEN
+                    PERFORM setval(seq, maxid);
+                END IF;
+            END LOOP;
+        END $$;""",
+    ]),
 ]
 
 
