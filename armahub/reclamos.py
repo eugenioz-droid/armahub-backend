@@ -1350,20 +1350,35 @@ def actualizar_reclamo(reclamo_id: int, body: ReclamoUpdate, user=Depends(get_cu
             is_rejection = body.validacion_resultado == "rechazado"
             skip_on_rejection = {"validacion_resultado", "validacion_observaciones"}
 
-            for field in updatable:
-                val = getattr(body, field)
-                if val is not None:
-                    if is_rejection and field in skip_on_rejection:
-                        continue  # PA.5: these will be set to NULL below
-                    if body.aplica == "no" and field in ishikawa_fields:
-                        continue
-                    # anio_calidad solo editable por admin/admin_calidad
-                    if field == "anio_calidad" and role not in ("admin", "admin_calidad"):
-                        continue
-                    sets.append(f"{field} = %s")
-                    params.append(val if (val != "" or field not in nullable_fields) else None)
+            # ¿El usuario está cambiando 'aplica' a "no" en ESTA petición?
+            # Solo en ese caso se borra el Ishikawa (acción explícita). Si 'aplica' no
+            # vino en el JSON, no se evalúa: nunca se borra como efecto colateral.
+            cambia_aplica_a_no = (
+                "aplica" in body.__fields_set__
+                and body.aplica == "no"
+                and aplica_actual != "no"
+            )
 
-            if body.aplica == "no":
+            # PATCH NO DESTRUCTIVO: solo se escriben los campos que vinieron en el JSON
+            # (body.__fields_set__). Un campo ausente NUNCA se toca. Esto evita que el
+            # formulario, al reenviar campos vacíos, borre datos que el usuario no editó.
+            for field in updatable:
+                if field not in body.__fields_set__:
+                    continue  # no vino en la petición → no se toca
+                val = getattr(body, field)
+                if is_rejection and field in skip_on_rejection:
+                    continue  # PA.5: estos se ponen a NULL abajo
+                if cambia_aplica_a_no and field in ishikawa_fields:
+                    continue  # se nulificarán abajo por la transición a "no aplica"
+                # anio_calidad solo editable por admin/admin_calidad
+                if field == "anio_calidad" and role not in ("admin", "admin_calidad"):
+                    continue
+                sets.append(f"{field} = %s")
+                # "" → NULL solo para campos nullable enviados explícitamente vacíos
+                params.append(val if (val != "" or field not in nullable_fields) else None)
+
+            # Borrado de Ishikawa solo en la transición explícita a "no aplica"
+            if cambia_aplica_a_no:
                 for ishikawa_field in ishikawa_fields:
                     if not _col_in_sets(ishikawa_field):
                         sets.append(f"{ishikawa_field} = NULL")

@@ -845,36 +845,34 @@ async function guardarRespuesta() {
   var msg = document.getElementById('recRespMsg');
   msg.textContent = 'Guardando...'; msg.style.color = '#666';
   try {
-    // Debug: Get all field values
-    var respuestaTexto = document.getElementById('recDetailRespuestaTexto').value.trim() || null;
-    console.log('[guardarRespuesta] respuestaTexto value:', respuestaTexto);
-    console.log('[guardarRespuesta] respuestaTexto length:', respuestaTexto ? respuestaTexto.length : 0);
-    
-    var body = {
-      respuesta_texto: respuestaTexto,
-      categoria_ishikawa: document.getElementById('recDetailCategoria').value || null,
-      sub_causa: document.getElementById('recDetailSubCausa').value || null,
-      cod_causa: document.getElementById('recDetailCodCausa').value || null,
-      area_aplica: document.getElementById('recDetailAreaAplica').value || null,
-      fecha_analisis: document.getElementById('recDetailFechaAnalisis').value || null,
-      kilos_mal_fabricados: parseFloat(document.getElementById('recDetailKilosMal').value) || null,
-      tiempo_respuesta: parseInt(document.getElementById('recTiempoRespuestaAnalisis').value) || null,
-      tiempo_respuesta_unidad: document.getElementById('recTiempoRespuestaUnidadAnalisis').value || 'horas'
-    };
+    // PATCH no destructivo: el body incluye SOLO los campos con valor real.
+    // Un campo vacío no se envía → el backend no lo toca (no borra datos en BD).
+    var body = {};
+    var _setIf = function(key, val) { if (val !== '' && val != null && !(typeof val === 'number' && isNaN(val))) body[key] = val; };
+
+    _setIf('respuesta_texto', document.getElementById('recDetailRespuestaTexto').value.trim());
+    _setIf('categoria_ishikawa', document.getElementById('recDetailCategoria').value);
+    _setIf('sub_causa', document.getElementById('recDetailSubCausa').value);
+    _setIf('cod_causa', document.getElementById('recDetailCodCausa').value);
+    _setIf('area_aplica', document.getElementById('recDetailAreaAplica').value);
+    _setIf('fecha_analisis', document.getElementById('recDetailFechaAnalisis').value);
+    _setIf('kilos_mal_fabricados', parseFloat(document.getElementById('recDetailKilosMal').value));
+    _setIf('tiempo_respuesta', parseInt(document.getElementById('recTiempoRespuestaAnalisis').value));
+    // unidad solo si hay un tiempo asociado
+    if (body.tiempo_respuesta != null) {
+      body.tiempo_respuesta_unidad = document.getElementById('recTiempoRespuestaUnidadAnalisis').value || 'horas';
+    }
     // Auto-change state to "en_analisis" if current state is "abierto"
     if (_reclamoActual.estado === 'abierto') {
       body.estado = 'en_analisis';
     }
-    console.log('[guardarRespuesta] Enviando PATCH body:', JSON.stringify(body));
     var res = await fetch(apiUrl('/reclamos/' + _reclamoActual.id), {
       method: 'PATCH',
       headers: { ...authHeaders(), 'Content-Type': 'application/json' },
       body: JSON.stringify(body)
     });
-    console.log('[guardarRespuesta] Response status:', res.status);
     if (res.status === 401) { logout(); return; }
     var data = await res.json();
-    console.log('[guardarRespuesta] Response data:', JSON.stringify(data));
     if (data.ok) {
       msg.textContent = 'Respuesta guardada'; msg.style.color = '#558B2F';
       setTimeout(function() { msg.textContent = ''; }, 2000);
