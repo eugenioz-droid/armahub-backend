@@ -260,6 +260,20 @@ El antiguo `detail.js` (1.290 líneas) se dividió en 4 archivos por responsabil
 
 Los datos compartidos (`_reclamoActual`, `_reclamosListaIds`, `_ishikawaSelection`) viven en `constants.js` (carga primero). Las funciones se exponen vía el orquestador `index.js`.
 
+#### Reclamos Internos (sub-tab Internos, implementado 2026-06-13)
+
+Reclamo **área → área** (gestión interna de calidad / oportunidades de mejora). Reusa el modal, los helpers y el flujo de los externos. Archivo: `internos.js`.
+
+Diferencias con externos:
+- **Tipo:** `reclamos.tipo_origen = 'interno'` (vs `'externo'`). Separa las dos listas; el endpoint `/reclamos` filtra por `tipo_origen`.
+- **Se elige el ÁREA DESTINO** (responsable), no un usuario. El responsable se asigna automáticamente al **Jefe de Servicio de esa área** (`_jefe_servicio_de_area`). Si el área no tiene jefe, queda sin responsable hasta asignarlo.
+- **Cliente opcional:** todo reclamo necesita proyecto, así que los internos sin cliente real usan el proyecto sembrado **`ARMACERO-INT` ("Armacero (Interno)")**. Si afecta a un cliente real, se elige ese proyecto.
+- **Flujo:** idéntico, gobernado por el mismo flag `areas.tiene_revision` del área destino. Con revisión → pasa por revisión; sin revisión → directo a validación. Se valida desde el sub-tab Validaciones igual que los externos.
+- **Quién levanta:** configurable (`reclamo_crear_config` acción `interno`); por defecto todos menos `externo`.
+- El "área origen" (quién reclama) NO es un campo: se obtiene de `creado_por` → su área, para estadísticas.
+
+El sub-tab Internos tiene su propio form de creación y listado (`loadReclamosInternos`), pero abre el MISMO modal de ficha (`verReclamo(id, {origen:'internos'})`).
+
 ### 3.3.2 Integridad de datos — PATCH no destructivo (REGLA CRÍTICA)
 
 El endpoint `PATCH /reclamos/{id}` (`actualizar_reclamo` en reclamos.py) **solo escribe los campos que vinieron en el JSON** (`body.__fields_set__`). Un campo ausente del request NUNCA se toca. Esto evita que el formulario, al reenviar campos vacíos, borre datos que el usuario no editó (bug histórico de meses, resuelto 2026-06-11).

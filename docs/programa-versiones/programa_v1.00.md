@@ -296,9 +296,9 @@ Objetivo: endurecer Reclamos y cerrar los pendientes reales arrastrados.
 
 | N° | Descripción | Realizado | Quién |
 |----|-------------|-----------|-------|
-| 5.27 | Implementar Reclamos Internos (hoy placeholder) — discovery: flujo y diferencias con Reclamos Clientes | ☐ | TÚ+YO |
+| 5.27 | Implementar Reclamos Internos (área→área; tipo_origen, área destino, cliente opcional Armacero, responsable=jefe de área, flujo por flag) — sesión 2026-06-13. **Pendiente probar.** | ☑ | YO |
 | 5.28 | Implementar 5 Por Qué como método RCA alternativo a Ishikawa (por reclamo, excluyente) | ☐ | YO |
-| 5.29 | Rol Jefe de Servicio: activar en flujos de RCA y área (ver ⚠️ DECISIÓN PENDIENTE en 5F — modelo de acceso por área) | ☐ | TÚ+YO |
+| 5.29 | Rol Jefe de Servicio: activar en flujos de RCA y área — RESUELTO opción A (jefe_servicio + area_usuarios). Implementado en 5G. | ☑ | TÚ+YO |
 
 ### 5F. Refactor roles + flujo de validación (iniciado sesión 2026-06-11)
 
@@ -312,24 +312,33 @@ Objetivo: endurecer Reclamos y cerrar los pendientes reales arrastrados.
 | 5.35 | Sub-tab Validaciones: "Mi revisión" (Jefe Servicio — cola en_revision, botones Aprobar/Devolver con motivo) | ☑ | YO |
 | 5.36 | Sub-tab Validaciones: "Validación Calidad" (admin_calidad — listas, panel de acción con datos reales, KPIs) | ☑ | YO |
 | 5.37 | Devolución: Jefe Servicio devuelve en_revision → en_analisis con motivo (timeline); Calidad rechaza vía PA.5 | ☑ | YO |
-| 5.38 | Smoke test flujo completo: cubicador → en revisión → aprobado → en validación → cerrado/devuelto | ☐ | TÚ+YO |
+| 5.38 | Smoke test flujo completo: cubicador → en revisión → aprobado → en validación → cerrado/devuelto | ☐ | TÚ |
 | 5.39 | KPIs "Validación Calidad": Abiertos/Cerrados reales ahora. Devueltos y Tiempo prom. → diferidos a sección de reportes (5.40) | ◐ | YO |
 | 5.40 | Sección de Reportes/Consultas de reclamos (devueltos por período, tiempos de respuesta, etc.) — diseño + implementación | ☐ | TÚ+YO |
 
-**Nota 5.37:** El backend ya devuelve a `en_analisis` con motivo al rechazar (lógica PA.5 existente). Falta definir si en Flujo A debe devolver a `en_revision` (al Jefe de Servicio) en vez de directo al cubicador. Pendiente de decisión junto con [DECISIÓN PENDIENTE: modelo de acceso por área].
+**✅ DECISIÓN RESUELTA (2026-06-12) — Modelo de acceso por área:** opción **A** (rol único `jefe_servicio` + `area_usuarios`). Implementado en 5G. Flujo = uno con etapa de revisión OPCIONAL por área (flag `areas.tiene_revision`). Devolución desde validación rebota a `en_revision`. Detalle en `docs/PLAN_MODELO_AREAS.md` y memoria.
 
-### ⚠️ DECISIÓN PENDIENTE — Modelo de acceso por área (bloquea 5.27, 5.29, 5.37 multi-área)
+### 5G. Modelo de áreas + refactor detail.js + configurabilidad (sesiones 2026-06-12/13)
 
-**Problema:** Hoy el flujo de revisión asume "admin = Jefe de Servicio". Cuando otra área tenga su propio flujo (supuesto futuro), el Jefe de ESA área debe revisar SUS reclamos, no todos. ¿Cómo se modela el acceso por área sin explotar en cantidad de roles?
+| N° | Descripción | Realizado | Quién |
+|----|-------------|-----------|-------|
+| 5.41 | Sección verde Validación = misma gráfica que ámbar (Devolver/Aprobar, explicación obligatoria, sin desplegable/tiempo) | ☑ | YO |
+| 5.42 | Bloqueo read-only del formulario fuera de análisis (todos los roles); explicación obligatoria al aprobar/devolver | ☑ | YO |
+| 5.43 | Modal context-aware robusto: secciones de flujo solo si sub-tab Validaciones visible (DOM, no variable pegada) | ☑ | YO |
+| 5.44 | Listado ordenado por más nuevo arriba; botones de filtro reordenados; filtro Abiertos/Cerrados; limpieza console.log | ☑ | YO |
+| 5.45 | **Refactor detail.js (1.290 líneas) → 4 archivos** (detail-render/permissions/flow/edit). Reutilizable para Internos | ☑ | YO |
+| 5.46 | **Panel de gestión de Áreas en Admin** (CRUD áreas, flag tiene_revision, asignar usuarios por área con rol) — migración 63 | ☑ | YO |
+| 5.47 | reclamos.area_id (FK) inferido del responsable; flujo decidido por flag tiene_revision (no heurística de texto) — migración 64 | ☑ | YO |
+| 5.48 | "Área responsable" del modal pasa a solo-lectura (se infiere, no se elige) | ☑ | YO |
+| 5.49 | Quién levanta reclamos CONFIGURABLE por rol (externo/interno) — tabla reclamo_crear_config + panel Admin — migración 65 | ☑ | YO |
+| 5.50 | Visibilidad del formulario de creación según config (GET /reclamos/puedo-crear), no hardcode | ☑ | YO |
+| 5.51 | Smoke test del flujo configurable (área con/sin revisión, flag manda, quién levanta) | ☐ | TÚ |
 
-**Opciones en evaluación (NO decidir aún, solo registradas):**
-- **A) Rol genérico `jefe_servicio` + columna/tabla área:** un solo rol, y la tabla `area_usuarios` (ya existe, migración 56) define a qué área pertenece cada Jefe. El acceso se filtra por área, no por rol. → Escala sin crear roles nuevos. Aprovecha infraestructura ya construida.
-- **B) Rol por área (`jefe_usc`, `jefe_produccion`, etc.):** explícito pero se multiplican los roles. Eugenio ya marcó esto como "no tan sensato".
-- **C) Reusar `admin_calidad` con scope de área:** no aplica, ese rol es transversal (co-administra).
-
-**Inclinación preliminar (Eugenio + Claude):** opción A — rol único `jefe_servicio` con asignación de área vía `area_usuarios`. La tabla ya existe. Falta: agregar columna/UI de área en Gestión de Usuarios y filtrar las colas de revisión por área del usuario.
-
-**Acción cuando se retome:** decidir A/B/C → si A, diseñar la asignación área↔usuario en la UI de Gestión de Usuarios (la "columna de área" que mencionó Eugenio) y conectar el filtro de la cola "Mi revisión" por área.
+### Decisiones de arquitectura registradas (pre-producción, NO implementar ahora)
+- **Producto vendible = SOLO módulo Reclamos/Calidad** (no todo ArmaHub). Configurabilidad = núcleo solo de ese módulo. (memoria: producto-vendible)
+- **Rediseño de admin god-mode:** "configurar sistema" debe ser un rol (`config_sistema`), no un comodín con overrides `=== 'admin'`. NO selector de roles ni 2 logins. (memoria: rediseno-admin)
+- **Identidad de usuario:** email = llave hoy; NO varios usuarios por correo; truco `+alias` ahora, login por username pre-producción. (memoria: identidad-usuario)
+- **Combobox buscable:** mejora transversal documentada en `docs/TAREA_COMBOBOX_BUSCABLE.md` (levantamiento de dónde aplica). Sin impacto de rendimiento.
 
 ### 5B. Envío de informe por correo (arrastrado de PC.15)
 
@@ -346,7 +355,7 @@ Objetivo: endurecer Reclamos y cerrar los pendientes reales arrastrados.
 | N° | Descripción | Realizado | Quién |
 |----|-------------|-----------|-------|
 | 5.13 | Definir tipos (reclamo, no conformidad, observación, preventiva) y orígenes (cubicación, retail, planta) | ☐ | TÚ+YO |
-| 5.14 | Agregar `origen` y `area` en reclamos | ☐ | YO |
+| 5.14 | Agregar `origen` y `area` en reclamos — hecho vía `tipo_origen` (externo/interno) + `area_id` (5G) | ☑ | YO |
 | 5.15 | Evaluar rol `admin_reclamos` | ☐ | TÚ+YO |
 | 5.16 | UI: selector de origen; listado/detalle/dashboards segmentables por origen | ☐ | YO |
 | 5.17 | Smoke test: reclamo → análisis → acciones → validación → PDF → envío | ☐ | TÚ+YO |
