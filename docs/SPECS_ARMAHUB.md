@@ -260,19 +260,25 @@ El antiguo `detail.js` (1.290 líneas) se dividió en 4 archivos por responsabil
 
 Los datos compartidos (`_reclamoActual`, `_reclamosListaIds`, `_ishikawaSelection`) viven en `constants.js` (carga primero). Las funciones se exponen vía el orquestador `index.js`.
 
-#### Reclamos Internos (sub-tab Internos, implementado 2026-06-13)
+#### Reclamos Internos (sub-tab Internos)
 
-Reclamo **área → área** (gestión interna de calidad / oportunidades de mejora). Reusa el modal, los helpers y el flujo de los externos. Archivo: `internos.js`.
+Reclamo **área → área** (gestión interna de calidad / oportunidades de mejora). **Recicla EXACTAMENTE el diseño de Reclamos Clientes**: mismas 3 secciones (Mi Resumen / Nuevo reclamo / Lista+filtros), mismos colores, mismos botones, mismo modal de creación elevado (`openReclamoModal` sobre la card, NO un form embebido aparte) y el mismo modal de ficha. Solo cambian las diferencias funcionales de abajo.
 
-Diferencias con externos:
-- **Tipo:** `reclamos.tipo_origen = 'interno'` (vs `'externo'`). Separa las dos listas; el endpoint `/reclamos` filtra por `tipo_origen`.
-- **Se elige el ÁREA DESTINO** (responsable), no un usuario. El responsable se asigna automáticamente al **Jefe de Servicio de esa área** (`_jefe_servicio_de_area`). Si el área no tiene jefe, queda sin responsable hasta asignarlo.
-- **Cliente opcional:** todo reclamo necesita proyecto, así que los internos sin cliente real usan el proyecto sembrado **`ARMACERO-INT` ("Armacero (Interno)")**. Si afecta a un cliente real, se elige ese proyecto.
-- **Flujo:** idéntico, gobernado por el mismo flag `areas.tiene_revision` del área destino. Con revisión → pasa por revisión; sin revisión → directo a validación. Se valida desde el sub-tab Validaciones igual que los externos.
-- **Quién levanta:** configurable (`reclamo_crear_config` acción `interno`); por defecto todos menos `externo`.
-- El "área origen" (quién reclama) NO es un campo: se obtiene de `creado_por` → su área, para estadísticas.
+**Estructura visual (idéntica a Clientes):**
+1. **Mi Resumen** — 3 charts mismo formato (datos filtrados a internos).
+2. **Nuevo reclamo** — card con botón "+ Registrar reclamo" que **eleva la card a modal** (igual que externos), con el mismo form y colores. Botón rojo "Registrar reclamo".
+3. **Lista + filtros** — mismos botones (Mis Reclamos / Aplica / Abiertos-Cerrados / búsqueda) y tabla.
 
-El sub-tab Internos tiene su propio form de creación y listado (`loadReclamosInternos`), pero abre el MISMO modal de ficha (`verReclamo(id, {origen:'internos'})`).
+**Diferencias funcionales (lo ÚNICO que cambia):**
+- **Tipo:** `reclamos.tipo_origen = 'interno'`. Separa las dos listas; `/reclamos` filtra por `tipo_origen`.
+- **Área destino en vez de Cubicador Responsable:** se elige el ÁREA responsable; el responsable se asigna automáticamente al **Jefe de Servicio de esa área** (`_jefe_servicio_de_area`). Sin selección manual de usuario.
+- **Cliente/Proyecto opcional:** puede no tener cliente. Los clientes se gestionan con la **lógica central de clientes/obras** (NO hay cliente "Armacero" hardcodeado/sembrado; si se quiere un cliente interno, se crea con el método normal de clientes).
+- **Año/N° calidad:** se mantienen igual que externos (el correlativo de calidad aplica a ambos).
+- **Flujo:** idéntico, gobernado por el flag `areas.tiene_revision` del área destino. Se valida desde el sub-tab Validaciones igual que los externos.
+- **Quién levanta:** configurable (`reclamo_crear_config` acción `interno`).
+- El "área origen" (quién reclama) NO es campo: se obtiene de `creado_por` → su área, para estadísticas.
+
+**Implementación correcta:** reusar `toggleNuevoReclamo`/`crearReclamo`/`openReclamoModal` parametrizados por tipo, NO funciones separadas. El modal de ficha se abre con `verReclamo(id, {origen:'internos'})`.
 
 ### 3.3.2 Integridad de datos — PATCH no destructivo (REGLA CRÍTICA)
 
