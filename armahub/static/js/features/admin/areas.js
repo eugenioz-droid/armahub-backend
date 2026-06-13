@@ -21,6 +21,7 @@
     var cont = document.getElementById('areasLista');
     if (!cont) return;
     cont.innerHTML = '<div class="muted">Cargando áreas...</div>';
+    loadCrearReclamoConfig();
     var data = await apiGet('/admin/areas');
     if (!data) { cont.innerHTML = '<div class="muted">No se pudieron cargar las áreas.</div>'; return; }
     _areasCache = Array.isArray(data) ? data : [];
@@ -226,8 +227,64 @@
     await loadAreas();
   }
 
+  // ---- Config: quién puede levantar reclamos ----
+  var _ROLES_CREAR = [
+    { key: 'admin', label: 'Admin' },
+    { key: 'admin_calidad', label: 'Admin Calidad' },
+    { key: 'usc', label: 'USC' },
+    { key: 'cubicador', label: 'Cubicador' },
+    { key: 'externo', label: 'Externo' },
+    { key: 'miembro', label: 'Miembro' }
+  ];
+  var _ACCIONES_CREAR = [
+    { key: 'externo', label: 'Reclamo externo (cliente)' },
+    { key: 'interno', label: 'Reclamo interno (entre áreas)' }
+  ];
+
+  async function loadCrearReclamoConfig() {
+    var cont = document.getElementById('crearReclamoConfig');
+    if (!cont) return;
+    var data = await apiGet('/admin/reclamo-crear-config');
+    if (!data) { cont.innerHTML = '<div class="muted">No se pudo cargar la configuración.</div>'; return; }
+    // Mapa accion|rol → activo
+    var map = {};
+    data.forEach(function(r) { map[r.accion + '|' + r.rol] = r.activo; });
+
+    var html = '<table style="width:100%; font-size:13px; border-collapse:collapse;">';
+    html += '<tr style="background:#f5f5f5; text-align:left;"><th style="padding:6px 8px;">Tipo de reclamo</th>';
+    _ROLES_CREAR.forEach(function(rol) {
+      html += '<th style="padding:6px 8px; text-align:center; font-size:11px;">' + _esc(rol.label) + '</th>';
+    });
+    html += '</tr>';
+    _ACCIONES_CREAR.forEach(function(acc) {
+      html += '<tr style="border-bottom:1px solid #eee;"><td style="padding:6px 8px; font-weight:500;">' + _esc(acc.label) + '</td>';
+      _ROLES_CREAR.forEach(function(rol) {
+        var activo = !!map[acc.key + '|' + rol.key];
+        var bloqueado = (rol.key === 'admin' || rol.key === 'admin_calidad');
+        html += '<td style="padding:6px 8px; text-align:center;">' +
+          '<input type="checkbox" ' + (activo ? 'checked' : '') + (bloqueado ? ' disabled title="Siempre activo"' : '') +
+          ' onchange="toggleCrearReclamoConfig(\'' + acc.key + '\',\'' + rol.key + '\', this.checked)" /></td>';
+      });
+      html += '</tr>';
+    });
+    html += '</table>';
+    cont.innerHTML = html;
+  }
+
+  async function toggleCrearReclamoConfig(accion, rol, activo) {
+    var res = await fetch(apiUrl('/admin/reclamo-crear-config'), {
+      method: 'PATCH',
+      headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ accion: accion, rol: rol, activo: !!activo })
+    });
+    if (res.status === 401) { logout(); return; }
+    if (!res.ok) { alert('No se pudo actualizar el permiso.'); await loadCrearReclamoConfig(); }
+  }
+
   // ========================= EXPORTS =========================
   global.loadAreas = loadAreas;
+  global.loadCrearReclamoConfig = loadCrearReclamoConfig;
+  global.toggleCrearReclamoConfig = toggleCrearReclamoConfig;
   global.toggleAreaRevision = toggleAreaRevision;
   global.abrirNuevaArea = abrirNuevaArea;
   global.editarArea = editarArea;

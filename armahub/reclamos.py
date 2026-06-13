@@ -61,6 +61,23 @@ def _area_tiene_revision(cur, area_id):
     row = cur.fetchone()
     return bool(row[0]) if row else False
 
+
+def _rol_puede_crear(cur, accion, rol):
+    """Configurable: ¿el rol puede levantar reclamos de este tipo ('externo'|'interno')?
+    Si no hay fila de config, se cae a un default seguro (admin/admin_calidad/usc para
+    externo). El admin SIEMPRE puede (no se puede dejar al sistema sin quién cree)."""
+    if rol in ("admin", "admin_calidad"):
+        return True
+    cur.execute(
+        "SELECT activo FROM reclamo_crear_config WHERE accion = %s AND rol = %s",
+        (accion, rol),
+    )
+    row = cur.fetchone()
+    if row is not None:
+        return bool(row[0])
+    # Sin config explícita: default conservador para externos.
+    return accion == "externo" and rol == "usc"
+
 # ========================= PERMISSION HELPERS =========================
 
 REGISTRO_FIELDS = {
@@ -420,9 +437,13 @@ def crear_reclamo(body: ReclamoCreate, user=Depends(get_current_user)):
     role = user.get("role", "usc")
     now = datetime.now(timezone.utc).isoformat()
 
-    # Solo admin, admin_calidad, usc pueden crear reclamos
-    if role not in ("admin", "admin_calidad", "usc"):
-        raise HTTPException(status_code=403, detail="No tiene permiso para crear reclamos")
+    # Quién puede levantar reclamos es CONFIGURABLE por rol (tabla reclamo_crear_config).
+    # Hoy todos los reclamos son externos (clientes); 'interno' se usará al construir
+    # ese formulario. admin/admin_calidad siempre pueden.
+    with get_conn() as _c0:
+        with _c0.cursor() as _cur0:
+            if not _rol_puede_crear(_cur0, "externo", role):
+                raise HTTPException(status_code=403, detail="No tiene permiso para crear reclamos")
 
     if body.prioridad and body.prioridad not in PRIORIDADES:
         raise HTTPException(status_code=400, detail=f"Prioridad inválida. Válidas: {PRIORIDADES}")

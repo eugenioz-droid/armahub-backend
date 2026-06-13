@@ -1013,6 +1013,31 @@ MIGRATIONS = [
                OR r.cubicador_asignado IS NOT NULL)
         """,
     ]),
+
+    # --- Migration 65: configurar qué roles pueden levantar reclamos (externo/interno) ---
+    (65, "reclamo_crear_config: qué roles levantan reclamos externos/internos", [
+        """CREATE TABLE IF NOT EXISTS reclamo_crear_config (
+            id     BIGSERIAL PRIMARY KEY,
+            accion TEXT NOT NULL,   -- 'externo' | 'interno'
+            rol    TEXT NOT NULL,
+            activo BOOLEAN DEFAULT TRUE,
+            UNIQUE(accion, rol)
+        )""",
+        # Externos: hoy los levanta USC (+ admin/admin_calidad). Replica el estado actual.
+        "INSERT INTO reclamo_crear_config (accion, rol, activo) VALUES ('externo', 'admin', TRUE) ON CONFLICT DO NOTHING",
+        "INSERT INTO reclamo_crear_config (accion, rol, activo) VALUES ('externo', 'admin_calidad', TRUE) ON CONFLICT DO NOTHING",
+        "INSERT INTO reclamo_crear_config (accion, rol, activo) VALUES ('externo', 'usc', TRUE) ON CONFLICT DO NOTHING",
+        "INSERT INTO reclamo_crear_config (accion, rol, activo) VALUES ('externo', 'cubicador', FALSE) ON CONFLICT DO NOTHING",
+        "INSERT INTO reclamo_crear_config (accion, rol, activo) VALUES ('externo', 'externo', FALSE) ON CONFLICT DO NOTHING",
+        "INSERT INTO reclamo_crear_config (accion, rol, activo) VALUES ('externo', 'miembro', FALSE) ON CONFLICT DO NOTHING",
+        # Internos: cualquier área puede levantar. Se siembran todos en TRUE.
+        "INSERT INTO reclamo_crear_config (accion, rol, activo) VALUES ('interno', 'admin', TRUE) ON CONFLICT DO NOTHING",
+        "INSERT INTO reclamo_crear_config (accion, rol, activo) VALUES ('interno', 'admin_calidad', TRUE) ON CONFLICT DO NOTHING",
+        "INSERT INTO reclamo_crear_config (accion, rol, activo) VALUES ('interno', 'usc', TRUE) ON CONFLICT DO NOTHING",
+        "INSERT INTO reclamo_crear_config (accion, rol, activo) VALUES ('interno', 'cubicador', TRUE) ON CONFLICT DO NOTHING",
+        "INSERT INTO reclamo_crear_config (accion, rol, activo) VALUES ('interno', 'externo', FALSE) ON CONFLICT DO NOTHING",
+        "INSERT INTO reclamo_crear_config (accion, rol, activo) VALUES ('interno', 'miembro', TRUE) ON CONFLICT DO NOTHING",
+    ]),
 ]
 
 

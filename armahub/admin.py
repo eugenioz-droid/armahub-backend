@@ -431,6 +431,45 @@ def quitar_usuario_area(area_id: int, user_id: int, user=Depends(require_admin))
     return {"ok": True}
 
 
+# ---- Configuración: quién puede levantar reclamos (externo/interno) ----
+
+class CrearReclamoConfigIn(BaseModel):
+    accion: str  # 'externo' | 'interno'
+    rol: str
+    activo: bool
+
+
+@router.get("/admin/reclamo-crear-config")
+def get_crear_reclamo_config(user=Depends(require_admin_or_admin_calidad)):
+    """Matriz de quién puede levantar reclamos: filas (accion, rol, activo)."""
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT accion, rol, activo FROM reclamo_crear_config ORDER BY accion, rol")
+            rows = cur.fetchall()
+    return [{"accion": r[0], "rol": r[1], "activo": bool(r[2])} for r in rows]
+
+
+@router.patch("/admin/reclamo-crear-config")
+def set_crear_reclamo_config(body: CrearReclamoConfigIn, user=Depends(require_admin)):
+    """Activa/desactiva un (accion, rol). admin/admin_calidad no se pueden desactivar
+    (el sistema siempre debe tener quién cree reclamos)."""
+    email = user.get("email", "")
+    if body.accion not in ("externo", "interno"):
+        raise HTTPException(status_code=400, detail="accion inválida")
+    if body.rol in ("admin", "admin_calidad") and not body.activo:
+        raise HTTPException(status_code=400, detail="admin y admin_calidad no se pueden desactivar")
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO reclamo_crear_config (accion, rol, activo)
+                VALUES (%s, %s, %s)
+                ON CONFLICT (accion, rol) DO UPDATE SET activo = EXCLUDED.activo
+            """, (body.accion, body.rol, body.activo))
+        conn.commit()
+    audit(email, "set_crear_reclamo_config", f"{body.accion}/{body.rol}={body.activo}", "config", body.accion)
+    return {"ok": True}
+
+
 @router.get("/admin/areas/{area_id}/rca")
 def get_rca_area(area_id: int, user=Depends(require_admin_or_admin_calidad)):
     """Devuelve la matriz RCA completa de un área (6 categorías + subcausas)."""
