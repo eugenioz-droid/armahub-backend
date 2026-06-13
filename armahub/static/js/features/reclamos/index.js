@@ -34,9 +34,19 @@
     await Promise.resolve(loadRecLanding());
     _initRecImageDropZonesGuarded();
 
-    // Ocultar card de crear reclamo para cliente, cubicador y externo
+    // Mostrar/ocultar el formulario de crear reclamo según la config configurable
+    // (reclamo_crear_config), no por rol hardcodeado. El backend es la fuente de
+    // verdad; aquí solo decidimos la visibilidad del formulario.
     var crearCard = document.getElementById('crearReclamoCard');
-    if (crearCard && ['cliente','cubicador','externo'].includes(currentRole)) crearCard.style.display = 'none';
+    if (crearCard) {
+      try {
+        var perm = await Promise.resolve(apiGet('/reclamos/puedo-crear?tipo=externo'));
+        crearCard.style.display = (perm && perm.puede) ? '' : 'none';
+      } catch (e) {
+        // Fallback conservador si falla la consulta: ocultar para roles no-staff.
+        if (['cliente','cubicador','externo'].includes(currentRole)) crearCard.style.display = 'none';
+      }
+    }
   }
 
   // --- Drop zones initializer with dedup guard ---

@@ -430,6 +430,18 @@ def listar_reclamos(
     }
 
 
+@router.get("/reclamos/puedo-crear")
+def puedo_crear_reclamo(tipo: str = "externo", user=Depends(get_current_user)):
+    """¿El usuario actual puede levantar reclamos de este tipo? Para el frontend
+    (mostrar/ocultar el formulario de creación). Refleja la config configurable."""
+    role = user.get("role", "usc")
+    accion = tipo if tipo in ("externo", "interno") else "externo"
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            puede = _rol_puede_crear(cur, accion, role)
+    return {"puede": bool(puede)}
+
+
 @router.post("/reclamos")
 def crear_reclamo(body: ReclamoCreate, user=Depends(get_current_user)):
     """Crear un nuevo reclamo."""
