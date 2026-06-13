@@ -562,9 +562,52 @@
 
     <!-- Sub-panel: Reclamos Internos -->
     <div id="recSubInternos" style="display:none;">
+      <!-- Crear reclamo interno -->
+      <div class="card" id="crearReclamoInternoCard" style="border-left:4px solid #1565C0; margin-bottom:14px; display:none;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+          <h3 style="margin:0; color:#1565C0;">Nuevo reclamo interno</h3>
+          <button class="secondary" style="font-size:12px; padding:4px 12px;" onclick="toggleNuevoInterno()">+ Nuevo</button>
+        </div>
+        <div id="crearInternoForm" style="display:none;">
+          <p class="muted" style="font-size:12px; margin:0 0 10px 0;">Un área reclama a otra. El responsable será el Jefe de Servicio del área destino. El cliente es opcional (usa "Armacero (Interno)" para mejoras internas).</p>
+          <div class="row" style="gap:8px; flex-wrap:wrap;">
+            <div class="col" style="flex:1; min-width:220px;">
+              <label style="font-size:11px; color:#666;">Título *</label>
+              <input type="text" id="recIntTitulo" style="width:100%; font-size:12px;" />
+            </div>
+            <div class="col" style="max-width:220px;">
+              <label style="font-size:11px; color:#666;">Área responsable (destino) *</label>
+              <select id="recIntAreaDestino" style="width:100%; font-size:12px;"><option value="">— Seleccionar —</option></select>
+            </div>
+            <div class="col" style="max-width:220px;">
+              <label style="font-size:11px; color:#666;">Cliente / Proyecto</label>
+              <select id="recIntProyecto" style="width:100%; font-size:12px;"><option value="">Armacero (Interno)</option></select>
+            </div>
+          </div>
+          <div class="row" style="gap:8px; margin-top:6px;">
+            <div class="col" style="flex:1;">
+              <label style="font-size:11px; color:#666;">Descripción</label>
+              <textarea id="recIntDescripcion" rows="2" style="width:100%; font-size:12px;"></textarea>
+            </div>
+          </div>
+          <div style="margin-top:8px; display:flex; gap:8px; align-items:center;">
+            <button onclick="crearReclamoInterno()" style="font-size:12px; padding:6px 18px; background:#1565C0; color:#fff; border:none; border-radius:4px; cursor:pointer; font-weight:600;">Registrar</button>
+            <span id="crearInternoMsg" class="muted" style="font-size:11px;"></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Listado de reclamos internos -->
       <div class="card" style="border-left:4px solid #1565C0;">
-        <h3 style="margin:0 0 8px 0; color:#1565C0;">Reclamos Internos</h3>
-        <p class="muted" style="font-size:13px; margin:0;">Próximamente — gestión de reclamos internos entre áreas.</p>
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+          <h3 style="margin:0; color:#1565C0;">Reclamos Internos</h3>
+        </div>
+        <div class="row" style="gap:6px; align-items:center; flex-wrap:wrap; margin-bottom:8px;">
+          <input type="text" id="recIntFiltroBusqueda" placeholder="Buscar..." onkeyup="if(event.key==='Enter')loadReclamosInternos()" style="font-size:11px; max-width:160px; padding:3px 6px;" />
+          <button id="recIntFiltroAbiertoBtn" onclick="toggleIntAbierto()" style="font-size:11px; padding:3px 10px; border:1px solid #1976d2; background:#fff; color:#1976d2; border-radius:4px; cursor:pointer; white-space:nowrap;">Abiertos/Cerrados</button>
+          <button class="secondary" style="font-size:10px; padding:2px 8px;" onclick="limpiarFiltrosInternos()">Limpiar</button>
+        </div>
+        <div id="reclamosInternosList"><div class="muted">Cargando reclamos internos...</div></div>
       </div>
     </div>
 

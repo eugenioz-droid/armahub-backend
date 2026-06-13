@@ -165,6 +165,8 @@ async function loadReclamos() {
   if (responsable) params.push('responsable=' + encodeURIComponent(responsable));
   if (busqueda) params.push('busqueda=' + encodeURIComponent(busqueda));
   if (_recAbiertoFilter) params.push('abierto_cerrado=' + encodeURIComponent(_recAbiertoFilter));
+  // Reclamos Clientes = solo externos (Internos viven en su propio sub-tab).
+  params.push('tipo_origen=externo');
   // Scope: externo always solo_mios; others depend on toggle
   if (currentRole === 'externo') {
     params.push('solo_mios=true');

@@ -62,6 +62,23 @@ def _area_tiene_revision(cur, area_id):
     return bool(row[0]) if row else False
 
 
+def _jefe_servicio_de_area(cur, area_id):
+    """Email del Jefe de Servicio de un área (para asignar como responsable en
+    reclamos internos). Si hay varios, el primero por id. None si no hay."""
+    if not area_id:
+        return None
+    cur.execute("""
+        SELECT u.email
+        FROM area_usuarios au
+        JOIN users u ON u.id = au.user_id
+        WHERE au.area_id = %s AND au.rol_area = 'jefe_servicio'
+        ORDER BY au.id
+        LIMIT 1
+    """, (area_id,))
+    row = cur.fetchone()
+    return row[0] if row else None
+
+
 def _rol_puede_crear(cur, accion, rol):
     """Configurable: ¿el rol puede levantar reclamos de este tipo ('externo'|'interno')?
     Si no hay fila de config, se cae a un default seguro (admin/admin_calidad/usc para
@@ -249,6 +266,8 @@ class ReclamoCreate(BaseModel):
     numero_calidad: Optional[int] = None
     asignado_a: Optional[str] = None
     cubicador_asignado: Optional[str] = None
+    tipo_origen: Optional[str] = "externo"   # 'externo' | 'interno'
+    area_id: Optional[int] = None            # interno: área destino (responsable)
 
 
 class ReclamoUpdate(BaseModel):
@@ -324,6 +343,7 @@ def listar_reclamos(
     responsable: Optional[str] = None,
     busqueda: Optional[str] = None,
     abierto_cerrado: Optional[str] = None,  # 'abiertos' | 'cerrados' (filtro macro)
+    tipo_origen: Optional[str] = None,      # 'externo' | 'interno' (separa las dos listas)
     solo_mios: bool = False,
     user=Depends(get_current_user),
 ):
@@ -348,6 +368,11 @@ def listar_reclamos(
             if id_proyecto:
                 where += " AND r.id_proyecto = %s"
                 params.append(id_proyecto)
+            # Separa las dos listas: Reclamos Clientes (externo) vs Internos.
+            # Si no se especifica, no filtra (compatibilidad: trae todo).
+            if tipo_origen in ("externo", "interno"):
+                where += " AND COALESCE(r.tipo_origen, 'externo') = %s"
+                params.append(tipo_origen)
             if estado:
                 where += " AND r.estado = %s"
                 params.append(estado)
@@ -390,9 +415,11 @@ def listar_reclamos(
                        r.detectado_por, r.fecha_deteccion,
                        r.correlativo, r.id_calidad, r.tipo_reclamo, r.asignado_a,
                        r.cubicador_asignado, r.respuesta_por,
-                       r.anio_calidad, r.numero_calidad
+                       r.anio_calidad, r.numero_calidad,
+                       r.tipo_origen, r.area_id, ar.nombre AS area_nombre
                 FROM reclamos r
                 LEFT JOIN proyectos p ON r.id_proyecto = p.id_proyecto
+                LEFT JOIN areas ar ON ar.id = r.area_id
                 LEFT JOIN (
                     SELECT reclamo_id, COUNT(*) AS seg_count
                     FROM reclamo_seguimientos
@@ -424,6 +451,8 @@ def listar_reclamos(
                 "tipo_reclamo": r.get("tipo_reclamo"), "asignado_a": r.get("asignado_a"),
                 "cubicador_asignado": r.get("cubicador_asignado"), "respuesta_por": r.get("respuesta_por"),
                 "anio_calidad": r.get("anio_calidad"), "numero_calidad": r.get("numero_calidad"),
+                "tipo_origen": r.get("tipo_origen") or "externo",
+                "area_id": r.get("area_id"), "area_nombre": r.get("area_nombre"),
             }
             for r in rows
         ]
@@ -449,12 +478,14 @@ def crear_reclamo(body: ReclamoCreate, user=Depends(get_current_user)):
     role = user.get("role", "usc")
     now = datetime.now(timezone.utc).isoformat()
 
-    # Quién puede levantar reclamos es CONFIGURABLE por rol (tabla reclamo_crear_config).
-    # Hoy todos los reclamos son externos (clientes); 'interno' se usará al construir
-    # ese formulario. admin/admin_calidad siempre pueden.
+    # Tipo de reclamo: externo (cliente) o interno (área→área).
+    tipo_origen = body.tipo_origen if body.tipo_origen in ("externo", "interno") else "externo"
+
+    # Quién puede levantar reclamos es CONFIGURABLE por rol (tabla reclamo_crear_config),
+    # separado por externo/interno. admin/admin_calidad siempre pueden.
     with get_conn() as _c0:
         with _c0.cursor() as _cur0:
-            if not _rol_puede_crear(_cur0, "externo", role):
+            if not _rol_puede_crear(_cur0, tipo_origen, role):
                 raise HTTPException(status_code=403, detail="No tiene permiso para crear reclamos")
 
     if body.prioridad and body.prioridad not in PRIORIDADES:
@@ -490,27 +521,41 @@ def crear_reclamo(body: ReclamoCreate, user=Depends(get_current_user)):
             next_seq = (max_seq or 0) + 1
             correlativo = f"REC-{next_seq:03d}"
 
-            # El área se INFIERE del responsable que va a analizar (cubicador
-            # asignado, o quien lo tenga asignado). Nunca se elige el área aparte:
-            # eso evita la incoherencia "cubicador de un área con área distinta".
-            area_id = _area_id_de_usuario(cur, body.cubicador_asignado) \
-                or _area_id_de_usuario(cur, asignado_a)
+            # Área y responsable según el tipo:
+            #  - EXTERNO: el área se INFIERE del responsable (cubicador/asignado).
+            #    Nunca se elige aparte (evita la incoherencia "cubicador de un área
+            #    con área distinta").
+            #  - INTERNO: se elige el ÁREA DESTINO (body.area_id) y el responsable es
+            #    su Jefe de Servicio (no se elige usuario).
+            cub_asignado = body.cubicador_asignado
+            responsable_label = body.responsable
+            if tipo_origen == "interno":
+                area_id = body.area_id
+                if not area_id:
+                    raise HTTPException(status_code=400, detail="Debe indicar el área responsable del reclamo interno")
+                jefe = _jefe_servicio_de_area(cur, area_id)
+                # El responsable es el Jefe de Servicio del área destino (si existe).
+                cub_asignado = jefe
+                responsable_label = jefe
+            else:
+                area_id = _area_id_de_usuario(cur, body.cubicador_asignado) \
+                    or _area_id_de_usuario(cur, asignado_a)
 
             cur.execute("""
                 INSERT INTO reclamos (id_proyecto, titulo, descripcion, prioridad, tipo_reclamo,
                     categoria_ishikawa, sub_causa, cod_causa, responsable,
                     detectado_por, fecha_deteccion, analista,
                     creado_por, fecha_creacion, correlativo, id_calidad, asignado_a,
-                    cubicador_asignado, anio_calidad, numero_calidad, area_id)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    cubicador_asignado, anio_calidad, numero_calidad, area_id, tipo_origen)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING id
             """, (body.id_proyecto, body.titulo, body.descripcion,
                   body.prioridad or "alta", body.tipo_reclamo or "error",
                   body.categoria_ishikawa,
-                  body.sub_causa, body.cod_causa, body.responsable,
+                  body.sub_causa, body.cod_causa, responsable_label,
                   body.detectado_por, body.fecha_deteccion, email,
                   email, now, correlativo, body.id_calidad, asignado_a,
-                  body.cubicador_asignado, body.anio_calidad, body.numero_calidad, area_id))
+                  cub_asignado, body.anio_calidad, body.numero_calidad, area_id, tipo_origen))
             reclamo_id = cur.fetchone()[0]
 
             # Auto-create first seguimiento

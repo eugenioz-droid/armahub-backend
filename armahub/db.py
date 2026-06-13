@@ -1038,6 +1038,20 @@ MIGRATIONS = [
         "INSERT INTO reclamo_crear_config (accion, rol, activo) VALUES ('interno', 'externo', FALSE) ON CONFLICT DO NOTHING",
         "INSERT INTO reclamo_crear_config (accion, rol, activo) VALUES ('interno', 'miembro', TRUE) ON CONFLICT DO NOTHING",
     ]),
+
+    # --- Migration 66: reclamos internos (tipo_origen + proyecto/cliente interno Armacero) ---
+    (66, "reclamos: tipo_origen (externo|interno) + proyecto interno Armacero", [
+        # Distingue las dos listas (Clientes vs Internos). Default externo: todos los
+        # reclamos actuales son externos.
+        "DO $$ BEGIN ALTER TABLE reclamos ADD COLUMN tipo_origen TEXT DEFAULT 'externo'; EXCEPTION WHEN duplicate_column THEN NULL; END $$;",
+        "UPDATE reclamos SET tipo_origen = 'externo' WHERE tipo_origen IS NULL",
+        # Cliente interno: un proyecto sembrado que representa "Armacero (interno)".
+        # Reusa toda la maquinaria de proyecto; los internos sin cliente real lo usan.
+        """INSERT INTO proyectos (id_proyecto, nombre_proyecto, fecha_creacion, usuario_creador)
+           VALUES ('ARMACERO-INT', 'Armacero (Interno)',
+                   to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'), 'sistema')
+           ON CONFLICT (id_proyecto) DO NOTHING""",
+    ]),
 ]
 
 

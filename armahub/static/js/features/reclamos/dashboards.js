@@ -37,6 +37,7 @@ function switchRecSubTab(sub) {
     loadPresentaciones();
   }
   if (sub === 'validaciones') { _ensureModalFueraDeSubpaneles(); loadRecValidaciones(); }
+  if (sub === 'internos') { _ensureModalFueraDeSubpaneles(); if (typeof loadReclamosInternos === 'function') loadReclamosInternos(); if (typeof initInternosForm === 'function') initInternosForm(); }
 }
 
 // El modal de detalle (reclamoDetailCard) y su backdrop viven dentro de
