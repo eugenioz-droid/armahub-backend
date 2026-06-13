@@ -160,8 +160,20 @@ Incluye análisis de causa raíz (Ishikawa o 5 Por Qué), acciones correctivas, 
 
 | Tipo | Quién levanta | Asociado a |
 |------|--------------|------------|
-| `externo` | USC | Cliente / Proyecto |
-| `interno` | Cualquier área | Cliente (referencial, no se notifica) |
+| `externo` | Roles configurables (hoy: admin/admin_calidad/usc) | Cliente / Proyecto |
+| `interno` | Roles configurables (hoy: todos menos externo) | Cliente OPCIONAL (puede no tener cliente) |
+
+**Quién levanta reclamos es CONFIGURABLE** (tabla `reclamo_crear_config(accion, rol, activo)`,
+panel en Admin → Áreas). Se separa por `externo`/`interno`: se tilda qué roles pueden
+crear cada tipo. `admin`/`admin_calidad` siempre pueden (no se desmarcan). El backend
+valida contra esta config (`_rol_puede_crear`), no por rol hardcodeado. Mismo mecanismo
+servirá al formulario de internos tildando los roles que correspondan.
+
+**Diferencias internos vs externos (a resolver al construir la sección):**
+- Internos pueden NO estar asociados a un cliente (externos sí lo están).
+- Flujo interno hoy: el área responsable analiza y va a validación (igual que externo).
+  Si se quiere, se puede reusar el flag `tiene_revision` por área. Cambios de UI
+  pendientes; singularidades se resuelven al construir Internos.
 
 ### 3.3 Flujos de estados
 
