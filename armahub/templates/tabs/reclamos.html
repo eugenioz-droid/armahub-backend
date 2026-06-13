@@ -560,51 +560,119 @@
     <div id="recModalBackdrop" class="rec-modal-backdrop" onclick="closeReclamoModal()"></div>
     </div><!-- /recSubClientes -->
 
-    <!-- Sub-panel: Reclamos Internos -->
+    <!-- Sub-panel: Reclamos Internos (recicla el diseño de Reclamos Clientes) -->
     <div id="recSubInternos" style="display:none;">
-      <!-- Crear reclamo interno -->
-      <div class="card" id="crearReclamoInternoCard" style="border-left:4px solid #1565C0; margin-bottom:14px; display:none;">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-          <h3 style="margin:0; color:#1565C0;">Nuevo reclamo interno</h3>
-          <button class="secondary" style="font-size:12px; padding:4px 12px;" onclick="toggleNuevoInterno()">+ Nuevo</button>
-        </div>
-        <div id="crearInternoForm" style="display:none;">
-          <p class="muted" style="font-size:12px; margin:0 0 10px 0;">Un área reclama a otra. El responsable será el Jefe de Servicio del área destino. El cliente es opcional (usa "Armacero (Interno)" para mejoras internas).</p>
-          <div class="row" style="gap:8px; flex-wrap:wrap;">
-            <div class="col" style="flex:1; min-width:220px;">
-              <label style="font-size:11px; color:#666;">Título *</label>
-              <input type="text" id="recIntTitulo" style="width:100%; font-size:12px;" />
-            </div>
-            <div class="col" style="max-width:220px;">
-              <label style="font-size:11px; color:#666;">Área responsable (destino) *</label>
-              <select id="recIntAreaDestino" style="width:100%; font-size:12px;"><option value="">— Seleccionar —</option></select>
-            </div>
-            <div class="col" style="max-width:220px;">
-              <label style="font-size:11px; color:#666;">Cliente / Proyecto</label>
-              <select id="recIntProyecto" style="width:100%; font-size:12px;"><option value="">Armacero (Interno)</option></select>
-            </div>
+
+      <!-- Mi Resumen (mismo formato que Clientes) -->
+      <div class="card" style="border-top:3px solid #1565C0;">
+        <h3 style="margin:0 0 12px 0;">Mi Resumen — Internos</h3>
+        <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:16px;">
+          <div style="background:#fff; border:1px solid #eee; border-radius:8px; padding:16px; text-align:center; display:flex; flex-direction:column; justify-content:center;">
+            <div style="font-size:11px; color:#888; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:8px;">Total Internos</div>
+            <div id="recIntLandTotal" style="font-size:44px; font-weight:700; color:#1565C0; line-height:1;">0</div>
+            <div style="font-size:12px; color:#666; margin-top:8px;"><span id="recIntLandAbiertos" style="color:#ff9800; font-weight:600;">0 abiertos</span></div>
           </div>
-          <div class="row" style="gap:8px; margin-top:6px;">
-            <div class="col" style="flex:1;">
-              <label style="font-size:11px; color:#666;">Descripción</label>
-              <textarea id="recIntDescripcion" rows="2" style="width:100%; font-size:12px;"></textarea>
-            </div>
+          <div style="background:#fff; border:1px solid #eee; border-radius:8px; padding:12px;">
+            <div style="font-size:11px; color:#888; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:6px; text-align:center;">Resueltos vs Pendientes</div>
+            <div style="position:relative; height:150px;"><canvas id="recIntLandChartResueltos"></canvas></div>
           </div>
-          <div style="margin-top:8px; display:flex; gap:8px; align-items:center;">
-            <button onclick="crearReclamoInterno()" style="font-size:12px; padding:6px 18px; background:#1565C0; color:#fff; border:none; border-radius:4px; cursor:pointer; font-weight:600;">Registrar</button>
-            <span id="crearInternoMsg" class="muted" style="font-size:11px;"></span>
+          <div style="background:#fff; border:1px solid #eee; border-radius:8px; padding:12px;">
+            <div style="font-size:11px; color:#888; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:6px; text-align:center;">Por Área Responsable</div>
+            <div style="position:relative; height:150px;"><canvas id="recIntLandChartArea"></canvas></div>
           </div>
         </div>
       </div>
 
-      <!-- Listado de reclamos internos -->
-      <div class="card" style="border-left:4px solid #1565C0;">
+      <!-- Nuevo reclamo interno (card elevable a modal, igual que Clientes) -->
+      <div class="card" id="crearReclamoInternoCard">
+        <button class="rec-modal-close" style="display:none;" onclick="closeReclamoModal()" title="Cerrar">✕</button>
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+          <h3 style="margin:0;">Nuevo reclamo interno</h3>
+          <button class="secondary" style="font-size:12px; padding:4px 12px;" onclick="toggleNuevoInterno()">+ Registrar reclamo</button>
+        </div>
+        <div id="nuevoReclamoInternoForm" style="display:none; padding:12px; background:#e3f2fd; border:1px solid #90caf9; border-radius:8px;">
+          <h4 style="margin:0 0 8px 0; font-size:13px; color:#1565C0;">Datos Generales</h4>
+          <div class="row" style="gap:8px; flex-wrap:wrap; align-items:flex-end;">
+            <div class="col" style="flex:2; min-width:200px;">
+              <label style="font-size:11px; color:#666;">Título / Descripción breve *</label>
+              <input type="text" id="recIntTitulo" placeholder="Ej: Demora en entrega de cubicación a Producción" style="width:100%;" />
+            </div>
+            <div class="col" style="min-width:240px;">
+              <label style="font-size:11px; color:#666;">Cliente / Obra (opcional)</label>
+              <select id="recIntProyecto" style="width:100%; font-size:12px;">
+                <option value="">— Sin cliente (interno) —</option>
+              </select>
+            </div>
+            <div class="col" style="max-width:100px;">
+              <label style="font-size:11px; color:#666;">Año calidad</label>
+              <input type="number" id="recIntAnioCalidad" style="width:100%; font-size:12px;" />
+            </div>
+            <div class="col" style="max-width:100px;">
+              <label style="font-size:11px; color:#666;">N° calidad</label>
+              <input type="number" id="recIntNumeroCalidad" placeholder="Sugerido" style="width:100%; font-size:12px;" />
+            </div>
+          </div>
+          <div class="row" style="gap:8px; flex-wrap:wrap; align-items:flex-end; margin-top:8px;">
+            <div class="col" style="max-width:130px;">
+              <label style="font-size:11px; color:#666;">Categoría *</label>
+              <select id="recIntTipoReclamo" style="width:100%; font-size:12px;">
+                <option value="error">Error</option>
+                <option value="faltante">Faltante</option>
+                <option value="atraso">Atraso</option>
+                <option value="actualizacion_portal">Actualización Portal</option>
+              </select>
+            </div>
+            <div class="col" style="max-width:150px;">
+              <label style="font-size:11px; color:#666;">Fecha detección</label>
+              <input type="date" id="recIntFechaDeteccion" style="width:100%; font-size:12px;" />
+            </div>
+            <div class="col" style="max-width:180px;">
+              <label style="font-size:11px; color:#666;">Detectado por</label>
+              <select id="recIntDetectadoPor" style="width:100%; font-size:12px;">
+                <option value="">— Seleccionar —</option>
+                <option value="Constructora">Constructora</option>
+                <option value="USC">USC</option>
+                <option value="Cubicador">Cubicador</option>
+                <option value="Producción">Producción</option>
+              </select>
+            </div>
+            <div class="col" style="max-width:220px;">
+              <label style="font-size:11px; color:#666;">Área responsable (destino) *</label>
+              <select id="recIntAreaDestino" style="width:100%; font-size:12px;">
+                <option value="">— Seleccionar —</option>
+              </select>
+            </div>
+          </div>
+          <div style="margin-top:8px;">
+            <label style="font-size:11px; color:#666;">Descripción del Problema</label>
+            <textarea id="recIntDescripcion" rows="3" placeholder="Descripción detallada del reclamo interno..." style="width:100%; font-size:12px; resize:vertical;"></textarea>
+          </div>
+
+          <!-- Zona de imágenes al crear (misma que Clientes) -->
+          <div style="margin-top:10px;">
+            <label style="font-size:11px; color:#666;">Evidencia (imágenes) — arrastra o haz click para seleccionar</label>
+            <div id="recIntCreateDropZone" style="margin-top:4px; min-height:80px; border:2px dashed #ccc; border-radius:8px; padding:12px; background:#fafafa; cursor:pointer; text-align:center;" onclick="document.getElementById('recIntCreateFileInput').click()">
+              <div id="recIntCreateDropMsg" style="color:#999; font-size:12px; padding:10px 0;">Arrastra imágenes aquí o haz click para seleccionar</div>
+              <div id="recIntCreatePreview" style="display:flex; flex-wrap:wrap; gap:8px; justify-content:center;"></div>
+            </div>
+            <input type="file" id="recIntCreateFileInput" accept="image/*" multiple style="display:none;" />
+          </div>
+
+          <div style="margin-top:10px; display:flex; gap:8px; align-items:center;">
+            <button style="font-size:12px; padding:6px 16px; background:#1565C0; border-color:#1565C0;" onclick="crearReclamoInterno()">Registrar reclamo</button>
+            <span id="crearReclamoInternoMsg" class="muted" style="font-size:12px;"></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Lista de reclamos internos (mismos filtros que Clientes) -->
+      <div class="card">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
-          <h3 style="margin:0; color:#1565C0;">Reclamos Internos</h3>
+          <h3 style="margin:0;">Lista de reclamos internos</h3>
         </div>
         <div class="row" style="gap:6px; align-items:center; flex-wrap:wrap; margin-bottom:8px;">
-          <input type="text" id="recIntFiltroBusqueda" placeholder="Buscar..." onkeyup="if(event.key==='Enter')loadReclamosInternos()" style="font-size:11px; max-width:160px; padding:3px 6px;" />
           <button id="recIntFiltroAbiertoBtn" onclick="toggleIntAbierto()" style="font-size:11px; padding:3px 10px; border:1px solid #1976d2; background:#fff; color:#1976d2; border-radius:4px; cursor:pointer; white-space:nowrap;">Abiertos/Cerrados</button>
+          <input type="text" id="recIntFiltroBusqueda" placeholder="Buscar..." onkeyup="if(event.key==='Enter')loadReclamosInternos()" style="font-size:11px; max-width:160px; padding:3px 6px;" />
           <button class="secondary" style="font-size:10px; padding:2px 8px;" onclick="limpiarFiltrosInternos()">Limpiar</button>
         </div>
         <div id="reclamosInternosList"><div class="muted">Cargando reclamos internos...</div></div>

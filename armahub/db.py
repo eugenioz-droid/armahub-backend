@@ -1039,18 +1039,19 @@ MIGRATIONS = [
         "INSERT INTO reclamo_crear_config (accion, rol, activo) VALUES ('interno', 'miembro', TRUE) ON CONFLICT DO NOTHING",
     ]),
 
-    # --- Migration 66: reclamos internos (tipo_origen + proyecto/cliente interno Armacero) ---
-    (66, "reclamos: tipo_origen (externo|interno) + proyecto interno Armacero", [
+    # --- Migration 66: reclamos internos (tipo_origen) ---
+    (66, "reclamos: tipo_origen (externo|interno)", [
         # Distingue las dos listas (Clientes vs Internos). Default externo: todos los
-        # reclamos actuales son externos.
+        # reclamos actuales son externos. El cliente de un interno es OPCIONAL y se
+        # gestiona con la lógica central de clientes/obras (sin hardcode).
         "DO $$ BEGIN ALTER TABLE reclamos ADD COLUMN tipo_origen TEXT DEFAULT 'externo'; EXCEPTION WHEN duplicate_column THEN NULL; END $$;",
         "UPDATE reclamos SET tipo_origen = 'externo' WHERE tipo_origen IS NULL",
-        # Cliente interno: un proyecto sembrado que representa "Armacero (interno)".
-        # Reusa toda la maquinaria de proyecto; los internos sin cliente real lo usan.
-        """INSERT INTO proyectos (id_proyecto, nombre_proyecto, fecha_creacion, usuario_creador)
-           VALUES ('ARMACERO-INT', 'Armacero (Interno)',
-                   to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'), 'sistema')
-           ON CONFLICT (id_proyecto) DO NOTHING""",
+    ]),
+
+    # --- Migration 67: limpiar el seed erróneo de "Armacero (Interno)" (era hardcode) ---
+    (67, "limpiar proyecto sembrado ARMACERO-INT (los clientes se gestionan central)", [
+        # Solo borra el proyecto sembrado si NO tiene reclamos asociados (seguro).
+        "DELETE FROM proyectos WHERE id_proyecto = 'ARMACERO-INT' AND NOT EXISTS (SELECT 1 FROM reclamos WHERE id_proyecto = 'ARMACERO-INT')",
     ]),
 ]
 

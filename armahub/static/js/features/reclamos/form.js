@@ -32,6 +32,11 @@ function closeReclamoModal() {
     document.getElementById('nuevoReclamoForm').style.display = 'none';
     _recModalTarget.style.display = '';
     _recModalTarget.style.position = '';
+  } else if (_recModalTarget.id === 'crearReclamoInternoCard') {
+    var intForm = document.getElementById('nuevoReclamoInternoForm');
+    if (intForm) intForm.style.display = 'none';
+    _recModalTarget.style.display = '';
+    _recModalTarget.style.position = '';
   }
   _recModalTarget = null;
   document.body.style.overflow = '';
