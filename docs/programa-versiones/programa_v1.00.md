@@ -296,7 +296,8 @@ Objetivo: endurecer Reclamos y cerrar los pendientes reales arrastrados.
 
 | N° | Descripción | Realizado | Quién |
 |----|-------------|-----------|-------|
-| 5.27 | Implementar Reclamos Internos (área→área; tipo_origen, área destino, cliente opcional Armacero, responsable=jefe de área, flujo por flag) — sesión 2026-06-13. **Pendiente probar.** | ☑ | YO |
+| 5.27 | Implementar Reclamos Internos (área→área; tipo_origen, área destino, cliente opcional Armacero, responsable=jefe de área, flujo por flag) — probado 2026-06-13. | ☑ | YO |
+| 5.52 | Ajustes post-prueba Internos: eliminar "Detectado por" (se infiere de creado_por), N° calidad serie independiente por tipo_origen, Cliente/Obra pasa a combobox buscable con "Armacero" por defecto, fecha detección prellenada con hoy (Externos e Internos) | ☑ | YO |
 | 5.28 | Implementar 5 Por Qué como método RCA alternativo a Ishikawa (por reclamo, excluyente) | ☐ | YO |
 | 5.29 | Rol Jefe de Servicio: activar en flujos de RCA y área — RESUELTO opción A (jefe_servicio + area_usuarios). Implementado en 5G. | ☑ | TÚ+YO |
 
