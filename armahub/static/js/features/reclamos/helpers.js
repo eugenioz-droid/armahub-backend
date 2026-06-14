@@ -54,6 +54,11 @@ async function _sugerirNumeroCalidad(anio, targetId, tipoOrigen) {
 }
 
 function _buildReclamoCausaDisplay(detail) {
+  if (detail.metodo_rca === '5_por_que') {
+    var items = detail.cinco_por_que || [];
+    if (items.length === 0) return '5 Por Qué (sin datos)';
+    return '5 Por Qué: ' + items.map(function(p) { return p.n + '. ' + p.texto; }).join(' → ');
+  }
   var causaDisplay = '';
   if (detail.cod_causa && detail.sub_causa) {
     causaDisplay = '[' + detail.cod_causa + '] ' + (_recIshikawaLabels[detail.categoria_ishikawa] || '') + ' > ' + detail.sub_causa;

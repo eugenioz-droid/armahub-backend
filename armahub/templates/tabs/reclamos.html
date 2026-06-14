@@ -392,8 +392,20 @@
           <label style="font-size:11px; color:#666;">Explicación / Justificación</label>
           <textarea id="recDetailRespuestaTexto" rows="3" style="width:100%; font-size:12px; resize:vertical;" placeholder="Explicación detallada del responsable..."></textarea>
         </div>
-        <!-- Causa Ishikawa (cubicador clasifica) -->
-        <div class="row" style="gap:8px; flex-wrap:wrap; align-items:flex-start;">
+        <!-- Selector de método RCA + bloques Ishikawa / 5 Por Qué -->
+        <div style="margin-bottom:6px;">
+          <label style="font-size:11px; color:#666; font-weight:600;">Método de análisis causa raíz</label>
+          <div style="display:flex; gap:12px; margin-top:4px;">
+            <label style="font-size:12px; cursor:pointer; display:flex; align-items:center; gap:4px;">
+              <input type="radio" name="recMetodoRca" value="ishikawa" id="recRcaRadioIshikawa" onchange="_onRcaMetodoChange()" checked /> Diagrama Ishikawa
+            </label>
+            <label style="font-size:12px; cursor:pointer; display:flex; align-items:center; gap:4px;">
+              <input type="radio" name="recMetodoRca" value="5_por_que" id="recRcaRadio5PQ" onchange="_onRcaMetodoChange()" /> 5 Por Qué
+            </label>
+          </div>
+        </div>
+        <!-- Bloque Ishikawa -->
+        <div id="recBloqueIshikawa" class="row" style="gap:8px; flex-wrap:wrap; align-items:flex-start;">
           <div class="col" style="flex:1; min-width:250px;">
             <label style="font-size:11px; color:#666;">Causa Ishikawa</label>
             <div class="row" style="gap:6px; align-items:center; margin:0;">
@@ -418,6 +430,15 @@
             <input type="date" id="recDetailFechaAnalisis" style="width:100%; font-size:12px;" />
           </div>
         </div>
+        </div><!-- /recBloqueIshikawa -->
+
+        <!-- Bloque 5 Por Qué -->
+        <div id="recBloque5PQ" style="display:none;">
+          <div style="font-size:11px; color:#666; margin-bottom:6px;">Ingresa al menos un "¿Por qué?" — hasta 5. El sistema te guía hasta llegar a la causa raíz.</div>
+          <div id="rec5PQItems" style="display:flex; flex-direction:column; gap:6px;"></div>
+          <button type="button" class="secondary" id="rec5PQAgregarBtn" style="font-size:11px; padding:4px 10px; margin-top:6px;" onclick="_agregar5PQ()">+ Agregar siguiente</button>
+        </div>
+
         <div class="row" style="gap:8px; margin-top:6px; align-items:flex-end;">
           <div class="col" style="max-width:160px;">
             <label style="font-size:11px; color:#666;">Kilos mal fabricados</label>
@@ -838,7 +859,7 @@
               <div style="padding:10px; background:#e3f2fd; border-radius:6px; border:1px solid #bbdefb; margin-bottom:8px;">
                 <h4 style="margin:0 0 6px 0; font-size:12px; color:#1565C0;">💬 Análisis Causa Raíz</h4>
                 <div style="font-size:12px;">
-                  <div><strong>Causa Ishikawa:</strong> <span id="presIshikawa">—</span></div>
+                  <div><strong>Análisis causa raíz:</strong> <span id="presIshikawa">—</span></div>
                   <div style="margin-top:2px;"><strong>Área responsable:</strong> <span id="presArea">—</span></div>
                   <div style="margin-top:6px;"><strong>Explicación / Justificación:</strong></div>
                   <div id="presRespuesta" style="margin-top:2px; padding:6px; background:#fff; border-radius:4px; white-space:pre-wrap; font-size:11px; max-height:120px; overflow-y:auto;">—</div>

@@ -277,9 +277,21 @@ async function guardarRespuesta() {
     var _setIf = function(key, val) { if (val !== '' && val != null && !(typeof val === 'number' && isNaN(val))) body[key] = val; };
 
     _setIf('respuesta_texto', document.getElementById('recDetailRespuestaTexto').value.trim());
-    _setIf('categoria_ishikawa', document.getElementById('recDetailCategoria').value);
-    _setIf('sub_causa', document.getElementById('recDetailSubCausa').value);
-    _setIf('cod_causa', document.getElementById('recDetailCodCausa').value);
+    // Método RCA y datos correspondientes
+    var metodoRca = (document.querySelector('input[name="recMetodoRca"]:checked') || {}).value || 'ishikawa';
+    body.metodo_rca = metodoRca;
+    if (metodoRca === 'ishikawa') {
+      _setIf('categoria_ishikawa', document.getElementById('recDetailCategoria').value);
+      _setIf('sub_causa', document.getElementById('recDetailSubCausa').value);
+      _setIf('cod_causa', document.getElementById('recDetailCodCausa').value);
+      body.cinco_por_que = null; // limpiar si cambia de método
+    } else {
+      var pqs = _get5PQData();
+      body.cinco_por_que = pqs.length > 0 ? pqs : null;
+      body.categoria_ishikawa = null; // limpiar si cambia de método
+      body.sub_causa = null;
+      body.cod_causa = null;
+    }
     // area_aplica ya no se envía: el área real vive en area_id (inferida del responsable).
     _setIf('fecha_analisis', document.getElementById('recDetailFechaAnalisis').value);
     _setIf('kilos_mal_fabricados', parseFloat(document.getElementById('recDetailKilosMal').value));
@@ -559,10 +571,110 @@ async function eliminarReclamo() {
   }
 }
 
+// ---- Selector método RCA (Ishikawa / 5 Por Qué) ----
+
+function _onRcaMetodoChange() {
+  var metodo = document.querySelector('input[name="recMetodoRca"]:checked');
+  if (!metodo) return;
+  var isIsh = metodo.value === 'ishikawa';
+  var bloqueIsh = document.getElementById('recBloqueIshikawa');
+  var bloque5PQ = document.getElementById('recBloque5PQ');
+  if (bloqueIsh) bloqueIsh.style.display = isIsh ? '' : 'none';
+  if (bloque5PQ) bloque5PQ.style.display = isIsh ? 'none' : '';
+  if (!isIsh && document.getElementById('rec5PQItems').children.length === 0) {
+    _agregar5PQ(); // arranca con el primer campo vacío
+  }
+}
+
+function _setRcaMetodo(metodo) {
+  var radio = document.getElementById(metodo === '5_por_que' ? 'recRcaRadio5PQ' : 'recRcaRadioIshikawa');
+  if (radio) { radio.checked = true; _onRcaMetodoChange(); }
+}
+
+// ---- 5 Por Qué ----
+
+var _5PQ_MAX = 5;
+var _5PQ_LABELS = ['¿Por qué ocurrió?', '¿Por qué?', '¿Por qué?', '¿Por qué?', '¿Y por qué?'];
+
+function _agregar5PQ() {
+  var cont = document.getElementById('rec5PQItems');
+  if (!cont) return;
+  var n = cont.children.length;
+  if (n >= _5PQ_MAX) return;
+  var label = (n === 0) ? '¿Por qué ocurrió?' : (n === _5PQ_MAX - 1) ? '¿Y por qué? (causa raíz)' : '¿Por qué?';
+  var num = n + 1;
+  var row = document.createElement('div');
+  row.style.cssText = 'display:flex; align-items:flex-start; gap:6px;';
+  row.innerHTML =
+    '<div style="min-width:20px; padding-top:7px; font-size:11px; color:#888; font-weight:600;">' + num + '.</div>' +
+    '<div style="flex:1;">' +
+      '<label style="font-size:10px; color:#888; text-transform:uppercase; letter-spacing:0.4px;">' + label + '</label>' +
+      '<textarea id="rec5PQ_' + n + '" rows="2" style="width:100%; font-size:12px; resize:vertical;" placeholder="Respuesta ' + num + '..."></textarea>' +
+    '</div>' +
+    (n > 0 ? '<button type="button" onclick="_eliminar5PQ(this)" title="Quitar" style="margin-top:18px; background:none; border:none; color:#b42318; font-size:14px; cursor:pointer; padding:0 4px;">✕</button>' : '');
+  cont.appendChild(row);
+  var btn = document.getElementById('rec5PQAgregarBtn');
+  if (btn) btn.style.display = (cont.children.length >= _5PQ_MAX) ? 'none' : '';
+}
+
+function _eliminar5PQ(btn) {
+  var cont = document.getElementById('rec5PQItems');
+  if (!cont) return;
+  btn.parentElement.remove();
+  // Renumerar
+  Array.from(cont.children).forEach(function(row, i) {
+    var num = i + 1;
+    var numEl = row.querySelector('div');
+    if (numEl) numEl.textContent = num + '.';
+    var ta = row.querySelector('textarea');
+    if (ta) { ta.id = 'rec5PQ_' + i; ta.placeholder = 'Respuesta ' + num + '...'; }
+  });
+  var btn2 = document.getElementById('rec5PQAgregarBtn');
+  if (btn2) btn2.style.display = (cont.children.length >= _5PQ_MAX) ? 'none' : '';
+}
+
+function _get5PQData() {
+  var cont = document.getElementById('rec5PQItems');
+  if (!cont) return [];
+  var result = [];
+  Array.from(cont.children).forEach(function(row, i) {
+    var ta = document.getElementById('rec5PQ_' + i);
+    var txt = ta ? ta.value.trim() : '';
+    if (txt) result.push({ n: i + 1, texto: txt });
+  });
+  return result;
+}
+
+function _render5PQData(items) {
+  var cont = document.getElementById('rec5PQItems');
+  if (!cont) return;
+  cont.innerHTML = '';
+  var btn = document.getElementById('rec5PQAgregarBtn');
+  if (!items || items.length === 0) {
+    _agregar5PQ();
+    return;
+  }
+  items.forEach(function(item) {
+    var n = cont.children.length;
+    var label = (n === 0) ? '¿Por qué ocurrió?' : (n === _5PQ_MAX - 1) ? '¿Y por qué? (causa raíz)' : '¿Por qué?';
+    var row = document.createElement('div');
+    row.style.cssText = 'display:flex; align-items:flex-start; gap:6px;';
+    row.innerHTML =
+      '<div style="min-width:20px; padding-top:7px; font-size:11px; color:#888; font-weight:600;">' + (n + 1) + '.</div>' +
+      '<div style="flex:1;">' +
+        '<label style="font-size:10px; color:#888; text-transform:uppercase; letter-spacing:0.4px;">' + label + '</label>' +
+        '<textarea id="rec5PQ_' + n + '" rows="2" style="width:100%; font-size:12px; resize:vertical;" placeholder="Respuesta ' + (n+1) + '...">' + (item.texto || '') + '</textarea>' +
+      '</div>' +
+      (n > 0 ? '<button type="button" onclick="_eliminar5PQ(this)" title="Quitar" style="margin-top:18px; background:none; border:none; color:#b42318; font-size:14px; cursor:pointer; padding:0 4px;">✕</button>' : '');
+    cont.appendChild(row);
+  });
+  if (btn) btn.style.display = (cont.children.length >= _5PQ_MAX) ? 'none' : '';
+}
+
 // ---- Ishikawa Modal ----
 async function abrirIshikawaModal(target) {
   _ishikawaTarget = target || 'create';
-  
+
   // Preserve existing selection if it exists
   var existingCat = document.getElementById('recDetailCategoria').value;
   var existingSub = document.getElementById('recDetailSubCausa').value;
@@ -577,8 +689,19 @@ async function abrirIshikawaModal(target) {
     document.getElementById('ishikawaSelectedDisplay').textContent = 'Ninguna';
   }
 
-  if (!_ishikawaData) {
-    _ishikawaData = await apiGet('/reclamos/ishikawa');
+  // Cargar matriz del área actual del reclamo (invalida cache si cambió el área)
+  var areaId = _reclamoActual && _reclamoActual.area_id;
+  var cacheKey = 'ish_' + (areaId || 'global');
+  if (!_ishikawaData || _ishikawaData._cacheKey !== cacheKey) {
+    var url = '/reclamos/ishikawa' + (areaId ? '?area_id=' + areaId : '');
+    _ishikawaData = await apiGet(url);
+    if (_ishikawaData) _ishikawaData._cacheKey = cacheKey;
+  }
+  // Si el área no tiene matriz Ishikawa, sugerir 5 Por Qué y cerrar
+  if (!_ishikawaData || !(_ishikawaData.data || _ishikawaData.categorias) || (_ishikawaData.data || []).length === 0) {
+    alert('Esta área no tiene una matriz Ishikawa configurada. Usa el método "5 Por Qué".');
+    _setRcaMetodo('5_por_que');
+    return;
   }
   if (!_ishikawaData || !(_ishikawaData.data || _ishikawaData.categorias)) return;
   var ishikawaCats = _ishikawaData.data || _ishikawaData.categorias;

@@ -1050,8 +1050,13 @@ MIGRATIONS = [
 
     # --- Migration 67: limpiar el seed erróneo de "Armacero (Interno)" (era hardcode) ---
     (67, "limpiar proyecto sembrado ARMACERO-INT (los clientes se gestionan central)", [
-        # Solo borra el proyecto sembrado si NO tiene reclamos asociados (seguro).
         "DELETE FROM proyectos WHERE id_proyecto = 'ARMACERO-INT' AND NOT EXISTS (SELECT 1 FROM reclamos WHERE id_proyecto = 'ARMACERO-INT')",
+    ]),
+
+    # --- Migration 68: RCA flexible — método Ishikawa o 5 Por Qué por reclamo ---
+    (68, "reclamos: metodo_rca y cinco_por_que (RCA flexible)", [
+        "DO $$ BEGIN ALTER TABLE reclamos ADD COLUMN metodo_rca TEXT DEFAULT 'ishikawa'; EXCEPTION WHEN duplicate_column THEN NULL; END $$;",
+        "DO $$ BEGIN ALTER TABLE reclamos ADD COLUMN cinco_por_que JSONB; EXCEPTION WHEN duplicate_column THEN NULL; END $$;",
     ]),
 ]
 

@@ -6,6 +6,7 @@ Incluye seguimientos (timeline), cambio de estado, y KPIs.
 Categorías Ishikawa provisorias — se ajustarán con input del usuario.
 """
 
+import json
 from datetime import datetime, timezone
 from typing import Optional, List
 
@@ -306,6 +307,8 @@ class ReclamoUpdate(BaseModel):
     tiempo_respuesta_fecha_actualizacion: Optional[str] = None
     asignado_a: Optional[str] = None
     cubicador_asignado: Optional[str] = None
+    metodo_rca: Optional[str] = None        # 'ishikawa' | '5_por_que'
+    cinco_por_que: Optional[list] = None    # [{n:1, texto:"..."}, ...]
 
 
 class SeguimientoCreate(BaseModel):
@@ -789,15 +792,42 @@ def reclamos_admin_dashboards(user=Depends(require_admin_or_admin_calidad)):
 
 
 @router.get("/reclamos/ishikawa")
-def get_ishikawa(user=Depends(get_current_user)):
-    """Devuelve el diagrama Ishikawa completo con categorías y sub-causas."""
+def get_ishikawa(area_id: Optional[int] = None, user=Depends(get_current_user)):
+    """Devuelve la matriz Ishikawa del área indicada (desde BD).
+    Si el área no tiene matriz propia, devuelve lista vacía para que el front ofrezca 5 Por Qué."""
+    if area_id:
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    SELECT arc.id, arc.slug, arc.nombre, arc.orden
+                    FROM area_rca_categorias arc
+                    WHERE arc.area_id = %s
+                    ORDER BY arc.orden, arc.id
+                """, (area_id,))
+                cats = cur.fetchall()
+                if cats:
+                    cat_ids = [c[0] for c in cats]
+                    cur.execute("""
+                        SELECT categoria_id, codigo, descripcion
+                        FROM area_rca_subcausas
+                        WHERE categoria_id = ANY(%s) AND activo = TRUE
+                        ORDER BY orden, id
+                    """, (cat_ids,))
+                    subs_by_cat = {}
+                    for row in cur.fetchall():
+                        subs_by_cat.setdefault(row[0], []).append({"cod": row[1], "texto": row[2]})
+                    return {
+                        "data": [
+                            {"key": c[1], "label": c[2], "subcausas": subs_by_cat.get(c[0], [])}
+                            for c in cats
+                        ]
+                    }
+        # Área sin matriz → devuelve vacío (el front activa 5 Por Qué por defecto)
+        return {"data": []}
+    # Sin area_id: fallback al dict hardcodeado (compatibilidad con reclamos sin área)
     return {
         "data": [
-            {
-                "key": k,
-                "label": ISHIKAWA_LABELS[k],
-                "subcausas": ISHIKAWA_SUBCAUSAS[k],
-            }
+            {"key": k, "label": ISHIKAWA_LABELS[k], "subcausas": ISHIKAWA_SUBCAUSAS[k]}
             for k in CATEGORIAS_ISHIKAWA
         ]
     }
@@ -1213,6 +1243,8 @@ def get_reclamo_optimizado(
                     "presentacion_por": row.get("presentacion_por"),
                     "presentacion_asistentes": row.get("presentacion_asistentes"),
                     "presentacion_comentarios": row.get("presentacion_comentarios"),
+                    "metodo_rca": row.get("metodo_rca") or "ishikawa",
+                    "cinco_por_que": row.get("cinco_por_que") or [],
                 }
 
                 response["seguimientos"] = []
@@ -1459,6 +1491,7 @@ def actualizar_reclamo(reclamo_id: int, body: ReclamoUpdate, user=Depends(get_cu
                 "tiempo_respuesta_unidad", "tiempo_respuesta_actualizado_por",
                 "tiempo_respuesta_fecha_actualizacion", "asignado_a",
                 "cubicador_asignado", "anio_calidad", "numero_calidad",
+                "metodo_rca", "cinco_por_que",
             ]
             # Fields where empty string should be stored as NULL
             nullable_fields = {"id_proyecto", "id_calidad", "sub_causa", "cod_causa", "responsable",
@@ -1495,6 +1528,11 @@ def actualizar_reclamo(reclamo_id: int, body: ReclamoUpdate, user=Depends(get_cu
                     continue  # se nulificarán abajo por la transición a "no aplica"
                 # anio_calidad solo editable por admin/admin_calidad
                 if field == "anio_calidad" and role not in ("admin", "admin_calidad"):
+                    continue
+                # cinco_por_que es JSONB: serializar lista → string JSON para psycopg
+                if field == "cinco_por_que":
+                    sets.append(f"{field} = %s::jsonb")
+                    params.append(json.dumps(val) if val is not None else None)
                     continue
                 sets.append(f"{field} = %s")
                 # "" → NULL solo para campos nullable enviados explícitamente vacíos
