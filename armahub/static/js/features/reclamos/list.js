@@ -17,15 +17,13 @@ async function loadRecUsersDropdown() {
     });
     createSel.value = val;
   }
-  // Populate acciones responsable (all users)
-  var accionRespSel = document.getElementById('recNuevaAccionResp');
-  if (accionRespSel) {
-    var aval = accionRespSel.value;
-    accionRespSel.innerHTML = '<option value="">— Seleccionar —</option>';
+  // Populate acciones responsable datalist (all users)
+  var accionRespList = document.getElementById('recAccionRespList');
+  if (accionRespList) {
+    accionRespList.innerHTML = '';
     _recUsersCache.forEach(function(u) {
-      accionRespSel.innerHTML += '<option value="' + u.display + '">' + u.display + ' (' + u.role + ')</option>';
+      accionRespList.innerHTML += '<option value="' + u.display + '">' + u.display + ' (' + u.role + ')</option>';
     });
-    accionRespSel.value = aval;
   }
   // Populate filter "Cub. Responsable" (only cubicador/externo)
   var filterSel = document.getElementById('recFiltroResponsable');

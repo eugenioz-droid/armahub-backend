@@ -255,11 +255,17 @@ async function cambiarAplicaReclamo() {
   if (res.status === 401) { logout(); return; }
   var data = await res.json();
   if (data.ok) {
-    if (val === 'no') {
-      _clearReclamoCausaFields();
+    // Actualizar estado en memoria sin recargar el modal (evita pisar el formulario en edición).
+    _reclamoActual.aplica = val;
+    if (val === 'no') _clearReclamoCausaFields();
+    _updateAplicaBadge();
+    if (typeof _applyReclamoDetailPermissions === 'function') _applyReclamoDetailPermissions(_reclamoActual);
+    var esInterno = _reclamoActual.tipo_origen === 'interno';
+    if (esInterno) {
+      if (typeof loadReclamosInternos === 'function') await loadReclamosInternos();
+    } else {
+      await loadReclamos();
     }
-    await verReclamo(_reclamoActual.id);
-    await loadReclamos();
     await loadRecLanding();
   }
   else { alert('Error: ' + (data.detail || 'desconocido')); }
@@ -338,20 +344,17 @@ async function agregarAccion() {
     return; 
   }
   
-  if (!responsable || responsable.trim() === '') { 
-    alert('⚠️ Debes asignar un responsable para la acción'); 
-    var respField = document.getElementById('recNuevaAccionResp');
+  if (!responsable || responsable.trim() === '') {
+    alert('⚠️ Debes asignar un responsable para la acción');
+    var respField = document.getElementById('recNuevaAccionRespSearch') || document.getElementById('recNuevaAccionResp');
     respField.style.borderColor = '#f44336';
     respField.style.backgroundColor = '#ffebee';
     respField.focus();
-    
-    // Restaurar estilo normal después de 2 segundos
     setTimeout(function() {
       respField.style.borderColor = '#e0e0e0';
       respField.style.backgroundColor = '';
     }, 2000);
-    
-    return; 
+    return;
   }
   
   // Guardar estado actual del formulario para preservar datos
@@ -434,10 +437,18 @@ async function eliminarAccion(accionId) {
   else { alert('Error: ' + (data.detail || 'desconocido')); }
 }
 
+// Combobox de responsable en acciones: sincroniza texto→hidden para validación
+function _onAccionRespInput(texto) {
+  var hidden = document.getElementById('recNuevaAccionResp');
+  if (hidden) hidden.value = texto.trim();
+}
+
 // Función para limpiar el formulario de acciones manualmente
 function limpiarFormularioAcciones() {
   document.getElementById('recNuevaAccionDesc').value = '';
   document.getElementById('recNuevaAccionResp').value = '';
+  var searchField = document.getElementById('recNuevaAccionRespSearch');
+  if (searchField) searchField.value = '';
   document.getElementById('recNuevaAccionFecha').value = '';
   document.getElementById('recNuevaAccionTipo').value = 'inmediata';
   
@@ -562,9 +573,14 @@ async function eliminarReclamo() {
   if (res.status === 401) { logout(); return; }
   var data = await res.json();
   if (data.ok) {
+    var esInterno = _reclamoActual && _reclamoActual.tipo_origen === 'interno';
     _reclamoActual = null;
     closeReclamoModal();
-    await loadReclamos();
+    if (esInterno) {
+      if (typeof loadReclamosInternos === 'function') await loadReclamosInternos();
+    } else {
+      await loadReclamos();
+    }
     await loadRecLanding();
   } else {
     alert('Error: ' + (data.detail || 'desconocido'));

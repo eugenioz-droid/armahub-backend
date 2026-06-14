@@ -1172,7 +1172,11 @@ def get_reclamo_optimizado(
                 cur.execute("""
                     SELECT
                         r.*,
-                        COALESCE(p.nombre_proyecto, r.id_proyecto, 'Obra eliminada') AS nombre_proyecto,
+                        CASE
+                            WHEN r.id_proyecto IS NULL AND r.tipo_origen = 'interno' THEN 'Armacero'
+                            WHEN r.id_proyecto IS NULL THEN 'Obra eliminada'
+                            ELSE COALESCE(p.nombre_proyecto, 'Obra eliminada')
+                        END AS nombre_proyecto,
                         p.nombre_proyecto AS nombre_proyecto_lookup,
                         ar.nombre AS area_nombre,
                         ar.tiene_revision AS area_tiene_revision
@@ -1202,7 +1206,8 @@ def get_reclamo_optimizado(
                     "fecha_creacion": _as_text(row.get("fecha_creacion")),
                     "fecha_actualizacion": _as_text(row.get("fecha_actualizacion")),
                     "fecha_cierre": _as_text(row.get("fecha_cierre")),
-                    "nombre_proyecto": row.get("nombre_proyecto") or row.get("nombre_proyecto_lookup") or row.get("id_proyecto") or "Obra eliminada",
+                    "nombre_proyecto": row.get("nombre_proyecto") or "",
+                    "tipo_origen": row.get("tipo_origen") or "externo",
                     "aplica": row.get("aplica"),
                     "sub_causa": row.get("sub_causa"),
                     "cod_causa": row.get("cod_causa"),

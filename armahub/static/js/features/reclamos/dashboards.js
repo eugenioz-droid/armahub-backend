@@ -638,10 +638,8 @@ async function _loadValidacionCalidad() {
   var items = data.data || [];
   if (badge) badge.textContent = items.length;
 
-  // Separar Clientes vs Internos. Hoy "Reclamos Internos" es placeholder (tarea 5.27),
-  // así que todos caen en Clientes. Cuando exista el flag/área de internos, refinar aquí.
-  var externos = items.filter(function(r) { return !r.es_interno; });
-  var internos = items.filter(function(r) { return r.es_interno; });
+  var externos = items.filter(function(r) { return (r.tipo_origen || 'externo') !== 'interno'; });
+  var internos = items.filter(function(r) { return r.tipo_origen === 'interno'; });
 
   listaExt.innerHTML = _renderColaReclamos(externos);
   listaInt.innerHTML = _renderColaReclamos(internos);

@@ -88,7 +88,7 @@ function _applyReclamoDetailPermissions(data) {
   if (numCalField) numCalField.disabled = !puedeEditarSec1;
 
   var detProySel = document.getElementById('recDetailProyecto');
-  if (detProySel) detProySel.disabled = !(currentRole === 'admin' || currentRole === 'admin_calidad');
+  if (detProySel) detProySel.disabled = !puedeEditarSec1;
 
   var detAsigSel = document.getElementById('recDetailAsignadoA');
   if (detAsigSel) detAsigSel.disabled = !(currentRole === 'admin' || currentRole === 'admin_calidad');
@@ -116,7 +116,7 @@ function _applyReclamoDetailPermissions(data) {
   var puedeAccion = ['admin','admin_calidad','cubicador','externo'].includes(currentRole);
   if ((['cubicador','externo'].includes(currentRole)) && !esPropioCub) puedeAccion = false;
   if (!estadoPermiteAnalisis) puedeAccion = false;
-  var accionFields = ['recNuevaAccionTipo','recNuevaAccionDesc','recNuevaAccionResp','recNuevaAccionFecha'];
+  var accionFields = ['recNuevaAccionTipo','recNuevaAccionDesc','recNuevaAccionRespSearch','recNuevaAccionFecha'];
   accionFields.forEach(function(fid) { var el = document.getElementById(fid); if (el) el.disabled = !puedeAccion; });
 
   // Imágenes de registro: solo admin/admin_calidad/usc

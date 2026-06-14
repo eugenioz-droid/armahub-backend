@@ -86,7 +86,7 @@ function _renderReclamoRespuesta(data) {
   // Área responsable: se muestra el área REAL inferida (area_nombre); si el
   // reclamo aún no tiene área (sin responsable de área), cae al texto histórico.
   document.getElementById('recDetailAreaAplica').value = data.area_nombre || data.area_aplica || '';
-  document.getElementById('recDetailFechaAnalisis').value = data.fecha_analisis_input;
+  document.getElementById('recDetailFechaAnalisis').value = data.fecha_analisis_input || new Date().toISOString().substring(0, 10);
   document.getElementById('recDetailKilosMal').value = data.kilos_mal_fabricados != null ? data.kilos_mal_fabricados : '';
   document.getElementById('recTiempoRespuestaAnalisis').value = data.tiempo_respuesta || '';
   document.getElementById('recTiempoRespuestaUnidadAnalisis').value = data.tiempo_respuesta_unidad || 'horas';

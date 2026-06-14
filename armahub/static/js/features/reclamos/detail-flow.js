@@ -126,6 +126,7 @@ async function cerrarReclamo() {
 // Si venimos del sub-tab Validaciones, cierra el modal y refresca la cola;
 // si no, recarga el detalle.
 async function _refrescarTrasAccionFlujo() {
+  var esInterno = _reclamoActual && _reclamoActual.tipo_origen === 'interno';
   var enSubValidaciones = document.getElementById('recSubValidaciones') &&
                           document.getElementById('recSubValidaciones').style.display !== 'none';
   if (enSubValidaciones) {
@@ -134,7 +135,11 @@ async function _refrescarTrasAccionFlujo() {
   } else {
     await verReclamo(_reclamoActual.id);
   }
-  await loadReclamos();
+  if (esInterno) {
+    if (typeof loadReclamosInternos === 'function') await loadReclamosInternos();
+  } else {
+    await loadReclamos();
+  }
   await loadRecLanding();
 }
 
@@ -208,11 +213,18 @@ async function devolverValidacionDesdeModal() {
   var comentEl = document.getElementById('recValidacionComentario');
   var motivo = comentEl ? (comentEl.value || '').trim() : '';
   if (!motivo) { alert('Indica el motivo de la devolución en el campo de comentario.'); if (comentEl) comentEl.focus(); return; }
-  if (!confirm('¿Devolver el reclamo? Vuelve a "En revisión" del Jefe de Servicio.')) return;
+  // Si el área tiene etapa de revisión: devuelve a en_revision (Jefe revisa).
+  // Si no tiene revisión: devuelve directo a en_analisis.
+  var tieneRevision = _reclamoActual.area_tiene_revision;
+  var estadoDestino = tieneRevision ? 'en_revision' : 'en_analisis';
+  var confirmMsg = tieneRevision
+    ? '¿Devolver el reclamo? Vuelve a "En revisión" del Jefe de Servicio.'
+    : '¿Devolver el reclamo? Vuelve a "En análisis" (el área no tiene etapa de revisión).';
+  if (!confirm(confirmMsg)) return;
   var res = await fetch(apiUrl('/reclamos/' + _reclamoActual.id), {
     method: 'PATCH',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
-    body: JSON.stringify({ estado: 'en_revision', revision_observaciones: motivo })
+    body: JSON.stringify({ estado: estadoDestino, revision_observaciones: motivo })
   });
   if (res.status === 401) { logout(); return; }
   var data = await res.json();
