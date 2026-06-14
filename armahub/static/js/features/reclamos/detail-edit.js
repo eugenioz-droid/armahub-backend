@@ -573,6 +573,22 @@ async function eliminarReclamo() {
 
 // ---- Selector método RCA (Ishikawa / 5 Por Qué) ----
 
+function _toggle5PQDetalle() {
+  var detalle = document.getElementById('rec5PQDetalle');
+  var icon = document.getElementById('rec5PQToggleIcon');
+  if (!detalle) return;
+  var abierto = detalle.style.display !== 'none';
+  detalle.style.display = abierto ? 'none' : '';
+  if (icon) icon.textContent = abierto ? '▶ mostrar' : '▼ ocultar';
+}
+
+function _open5PQDetalle() {
+  var detalle = document.getElementById('rec5PQDetalle');
+  var icon = document.getElementById('rec5PQToggleIcon');
+  if (detalle) detalle.style.display = '';
+  if (icon) icon.textContent = '▼ ocultar';
+}
+
 function _onRcaMetodoChange() {
   var metodo = document.querySelector('input[name="recMetodoRca"]:checked');
   if (!metodo) return;
@@ -581,8 +597,9 @@ function _onRcaMetodoChange() {
   var bloque5PQ = document.getElementById('recBloque5PQ');
   if (bloqueIsh) bloqueIsh.style.display = isIsh ? '' : 'none';
   if (bloque5PQ) bloque5PQ.style.display = isIsh ? 'none' : '';
-  if (!isIsh && document.getElementById('rec5PQItems').children.length === 0) {
-    _agregar5PQ(); // arranca con el primer campo vacío
+  if (!isIsh) {
+    _open5PQDetalle();
+    if (document.getElementById('rec5PQItems').children.length === 0) _agregar5PQ();
   }
 }
 
@@ -649,11 +666,16 @@ function _render5PQData(items) {
   var cont = document.getElementById('rec5PQItems');
   if (!cont) return;
   cont.innerHTML = '';
-  var btn = document.getElementById('rec5PQAgregarBtn');
   if (!items || items.length === 0) {
+    _open5PQDetalle();
     _agregar5PQ();
     return;
   }
+  // Hay datos: arrancar plegado, el usuario abre si quiere editar
+  var detalle = document.getElementById('rec5PQDetalle');
+  var icon = document.getElementById('rec5PQToggleIcon');
+  if (detalle) detalle.style.display = 'none';
+  if (icon) icon.textContent = '▶ mostrar';
   items.forEach(function(item) {
     var n = cont.children.length;
     var label = (n === 0) ? '¿Por qué ocurrió?' : (n === _5PQ_MAX - 1) ? '¿Y por qué? (causa raíz)' : '¿Por qué?';
