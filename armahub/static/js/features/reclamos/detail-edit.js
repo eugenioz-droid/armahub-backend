@@ -320,8 +320,14 @@ async function guardarRespuesta() {
     if (data.ok) {
       msg.textContent = 'Respuesta guardada'; msg.style.color = '#558B2F';
       setTimeout(function() { msg.textContent = ''; }, 2000);
+      var esInterno = _reclamoActual && _reclamoActual.tipo_origen === 'interno';
       await verReclamo(_reclamoActual.id);
-      await loadReclamos(); await loadRecLanding();
+      if (esInterno) {
+        if (typeof loadReclamosInternos === 'function') await loadReclamosInternos();
+      } else {
+        await loadReclamos();
+      }
+      await loadRecLanding();
     } else {
       msg.textContent = 'Error: ' + (data.detail || 'desconocido'); msg.style.color = '#b42318';
     }

@@ -106,6 +106,22 @@ async function cerrarReclamo() {
     body.tiempo_respuesta_unidad = document.getElementById('recTiempoRespuestaUnidadAnalisis').value || 'horas';
   }
 
+  // Incluir método RCA y datos para no perder el análisis al cambiar estado
+  var metodoRca = (document.querySelector('input[name="recMetodoRca"]:checked') || {}).value || 'ishikawa';
+  body.metodo_rca = metodoRca;
+  if (metodoRca === 'ishikawa') {
+    _setIf('categoria_ishikawa', document.getElementById('recDetailCategoria').value);
+    _setIf('sub_causa', document.getElementById('recDetailSubCausa').value);
+    _setIf('cod_causa', document.getElementById('recDetailCodCausa').value);
+    body.cinco_por_que = null;
+  } else {
+    var pqs = typeof _get5PQData === 'function' ? _get5PQData() : [];
+    body.cinco_por_que = pqs.length > 0 ? pqs : null;
+    body.categoria_ishikawa = null;
+    body.sub_causa = null;
+    body.cod_causa = null;
+  }
+
   var res = await fetch(apiUrl('/reclamos/' + _reclamoActual.id), {
     method: 'PATCH',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
@@ -114,8 +130,13 @@ async function cerrarReclamo() {
   if (res.status === 401) { logout(); return; }
   var data = await res.json();
   if (data.ok) {
+    var esInterno = _reclamoActual.tipo_origen === 'interno';
     await verReclamo(_reclamoActual.id);
-    await loadReclamos();
+    if (esInterno) {
+      if (typeof loadReclamosInternos === 'function') await loadReclamosInternos();
+    } else {
+      await loadReclamos();
+    }
     await loadRecLanding();
   } else {
     alert('Error: ' + (data.detail || 'desconocido'));
