@@ -68,7 +68,12 @@ function toggleNuevoReclamo() {
     anioField.value = yr;
     // anio_calidad: solo admin puede cambiar
     anioField.disabled = !(currentRole === 'admin' || currentRole === 'admin_calidad');
-    _sugerirNumeroCalidad(yr, 'recNumeroCalidad');
+    _sugerirNumeroCalidad(yr, 'recNumeroCalidad', 'externo');
+  }
+  // Prellenar fecha de detección con hoy si está vacía
+  var fechaExt = document.getElementById('recFechaDeteccion');
+  if (fechaExt && !fechaExt.value) {
+    fechaExt.value = new Date().toISOString().substring(0, 10);
   }
 }
 

@@ -40,10 +40,11 @@ function _formatCorrelativoCalidad(r) {
   return r.id_calidad || '';
 }
 
-async function _sugerirNumeroCalidad(anio, targetId) {
+async function _sugerirNumeroCalidad(anio, targetId, tipoOrigen) {
   if (!anio) return;
   try {
-    var res = await fetch(apiUrl('/reclamos/siguiente-numero-calidad?anio=' + anio), { headers: authHeaders() });
+    var tipo = tipoOrigen || 'externo';
+    var res = await fetch(apiUrl('/reclamos/siguiente-numero-calidad?anio=' + anio + '&tipo_origen=' + tipo), { headers: authHeaders() });
     if (res.ok) {
       var data = await res.json();
       var field = document.getElementById(targetId);

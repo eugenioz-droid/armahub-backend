@@ -28,16 +28,26 @@ async function initInternosForm() {
         .join('');
     selArea.value = prev;
   }
-  // Cliente/proyecto: reusa el dropdown ya poblado del form de externos.
-  var selProy = document.getElementById('recIntProyecto');
+  // Cliente/proyecto: pobla el datalist del combobox con los proyectos del form externo.
+  var dl = document.getElementById('recIntProyectoList');
   var srcProy = document.getElementById('recProyecto');
-  if (selProy && srcProy) {
-    var prevP = selProy.value;
-    selProy.innerHTML = '<option value="">— Sin cliente (interno) —</option>';
+  if (dl && srcProy) {
+    dl.innerHTML = '';
     Array.from(srcProy.options).forEach(function(opt) {
-      if (opt.value) selProy.innerHTML += '<option value="' + opt.value + '">' + opt.textContent + '</option>';
+      if (opt.value) {
+        var o = document.createElement('option');
+        o.value = opt.textContent.trim();
+        o.dataset.id = opt.value;
+        dl.appendChild(o);
+      }
     });
-    selProy.value = prevP;
+  }
+  // Guardar mapa nombre→id para resolver la selección del combobox
+  window._intProyectoMap = {};
+  if (srcProy) {
+    Array.from(srcProy.options).forEach(function(opt) {
+      if (opt.value) window._intProyectoMap[opt.textContent.trim()] = opt.value;
+    });
   }
   if (!_intFormInit) {
     _intFormInit = true;
@@ -61,7 +71,12 @@ function toggleNuevoInterno() {
     var yr = new Date().getFullYear();
     anioField.value = yr;
     anioField.disabled = !(currentRole === 'admin' || currentRole === 'admin_calidad');
-    if (typeof _sugerirNumeroCalidad === 'function') _sugerirNumeroCalidad(yr, 'recIntNumeroCalidad');
+    if (typeof _sugerirNumeroCalidad === 'function') _sugerirNumeroCalidad(yr, 'recIntNumeroCalidad', 'interno');
+  }
+  // Prellenar fecha de detección con hoy si está vacía
+  var fechaField = document.getElementById('recIntFechaDeteccion');
+  if (fechaField && !fechaField.value) {
+    fechaField.value = new Date().toISOString().substring(0, 10);
   }
 }
 
@@ -96,14 +111,14 @@ async function crearReclamoInterno() {
   msg.textContent = 'Registrando...'; msg.style.color = '#666';
 
   var body = { titulo: titulo, tipo_origen: 'interno', area_id: parseInt(areaId) };
+  // Cliente/Obra: si no se elige obra específica, queda sin id_proyecto (se muestra "Armacero" en listado)
   var proy = document.getElementById('recIntProyecto').value;
-  if (proy) body.id_proyecto = proy;   // sin proyecto = reclamo interno sin cliente
+  if (proy) body.id_proyecto = proy;
   var tipo = document.getElementById('recIntTipoReclamo').value;
   if (tipo) body.tipo_reclamo = tipo;
   var fecha = document.getElementById('recIntFechaDeteccion').value;
   if (fecha) body.fecha_deteccion = fecha;
-  var detectado = document.getElementById('recIntDetectadoPor').value;
-  if (detectado) body.detectado_por = detectado;
+  // detectado_por se infiere del creado_por en backend
   var desc = document.getElementById('recIntDescripcion').value.trim();
   if (desc) body.descripcion = desc;
   var anio = parseInt(document.getElementById('recIntAnioCalidad').value);
@@ -132,9 +147,12 @@ async function crearReclamoInterno() {
     }
     _intCreateStagedFiles = [];
     msg.textContent = label + ' registrado correctamente'; msg.style.color = '#558B2F';
-    ['recIntTitulo','recIntDescripcion','recIntAreaDestino','recIntProyecto','recIntFechaDeteccion','recIntDetectadoPor','recIntAnioCalidad','recIntNumeroCalidad'].forEach(function(id) {
+    ['recIntTitulo','recIntDescripcion','recIntAreaDestino','recIntFechaDeteccion','recIntAnioCalidad','recIntNumeroCalidad'].forEach(function(id) {
       var el = document.getElementById(id); if (el) el.value = '';
     });
+    // Reset combobox cliente
+    var ps = document.getElementById('recIntProyectoSearch'); if (ps) ps.value = '';
+    var ph = document.getElementById('recIntProyecto'); if (ph) ph.value = '';
     var prev = document.getElementById('recIntCreatePreview'); if (prev) prev.innerHTML = '';
     var dmsg = document.getElementById('recIntCreateDropMsg'); if (dmsg) dmsg.style.display = '';
     closeReclamoModal();
@@ -206,7 +224,7 @@ async function loadReclamosInternos() {
       var anioCol = r.anio_calidad || '';
       var numCol = r.numero_calidad ? String(r.numero_calidad).padStart(3, '0') : '';
       var fecha = r.fecha_deteccion || (r.fecha_creacion ? r.fecha_creacion.substring(0, 10) : '');
-      var cliente = (r.nombre_proyecto && r.nombre_proyecto !== 'Obra eliminada') ? r.nombre_proyecto : '—';
+      var cliente = (r.nombre_proyecto && r.nombre_proyecto !== 'Obra eliminada') ? r.nombre_proyecto : 'Armacero';
       return '<tr style="border-bottom:1px solid #eee; cursor:pointer;" onclick="verReclamo(' + r.id + ', {origen:\'internos\'})">' +
         '<td style="padding:4px 6px; font-size:11px;">' + anioCol + '</td>' +
         '<td style="padding:4px 6px; font-size:11px; font-weight:600;">' + numCol + '</td>' +
@@ -221,4 +239,13 @@ async function loadReclamosInternos() {
     }).join('') +
     '</table>' +
     '<div class="muted" style="font-size:11px; margin-top:4px;">Mostrando ' + items.length + ' reclamo(s) interno(s)</div>';
+}
+
+// Resuelve el id del proyecto cuando el usuario escribe o selecciona en el combobox.
+function _onIntProyectoInput(texto) {
+  var mapa = window._intProyectoMap || {};
+  var hidden = document.getElementById('recIntProyecto');
+  if (!hidden) return;
+  // Si el texto coincide exactamente con un nombre conocido, guarda su id; si no, vacío.
+  hidden.value = mapa[texto.trim()] || '';
 }

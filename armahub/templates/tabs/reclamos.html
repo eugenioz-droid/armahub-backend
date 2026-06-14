@@ -598,10 +598,10 @@
               <input type="text" id="recIntTitulo" placeholder="Ej: Demora en entrega de cubicación a Producción" style="width:100%;" />
             </div>
             <div class="col" style="min-width:240px;">
-              <label style="font-size:11px; color:#666;">Cliente / Obra (opcional)</label>
-              <select id="recIntProyecto" style="width:100%; font-size:12px;">
-                <option value="">— Sin cliente (interno) —</option>
-              </select>
+              <label style="font-size:11px; color:#666;">Cliente / Obra</label>
+              <input type="text" id="recIntProyectoSearch" list="recIntProyectoList" placeholder="Armacero" autocomplete="off" style="width:100%; font-size:12px;" oninput="_onIntProyectoInput(this.value)" />
+              <datalist id="recIntProyectoList"></datalist>
+              <input type="hidden" id="recIntProyecto" value="" />
             </div>
             <div class="col" style="max-width:100px;">
               <label style="font-size:11px; color:#666;">Año calidad</label>
@@ -625,16 +625,6 @@
             <div class="col" style="max-width:150px;">
               <label style="font-size:11px; color:#666;">Fecha detección</label>
               <input type="date" id="recIntFechaDeteccion" style="width:100%; font-size:12px;" />
-            </div>
-            <div class="col" style="max-width:180px;">
-              <label style="font-size:11px; color:#666;">Detectado por</label>
-              <select id="recIntDetectadoPor" style="width:100%; font-size:12px;">
-                <option value="">— Seleccionar —</option>
-                <option value="Constructora">Constructora</option>
-                <option value="USC">USC</option>
-                <option value="Cubicador">Cubicador</option>
-                <option value="Producción">Producción</option>
-              </select>
             </div>
             <div class="col" style="max-width:220px;">
               <label style="font-size:11px; color:#666;">Área responsable (destino) *</label>

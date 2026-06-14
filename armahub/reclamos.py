@@ -584,13 +584,13 @@ def crear_reclamo(body: ReclamoCreate, user=Depends(get_current_user)):
 
 
 @router.get("/reclamos/siguiente-numero-calidad")
-def siguiente_numero_calidad(anio: int, user=Depends(get_current_user)):
-    """Sugerir siguiente numero_calidad para un año dado."""
+def siguiente_numero_calidad(anio: int, tipo_origen: str = "externo", user=Depends(get_current_user)):
+    """Sugerir siguiente numero_calidad para un año y tipo dado (externo/interno son series separadas)."""
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT MAX(numero_calidad) FROM reclamos WHERE anio_calidad = %s",
-                (anio,)
+                "SELECT MAX(numero_calidad) FROM reclamos WHERE anio_calidad = %s AND tipo_origen = %s",
+                (anio, tipo_origen)
             )
             max_num = cur.fetchone()[0]
     return {"anio": anio, "siguiente": (max_num or 0) + 1}
