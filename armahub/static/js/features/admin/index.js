@@ -26,6 +26,7 @@ function switchAdminSubTab(tabId) {
     if (typeof loadCrearReclamoConfig === 'function') loadCrearReclamoConfig();
     if (typeof loadNotifConfig === 'function') loadNotifConfig();
     if (typeof loadRolesPermisos === 'function') loadRolesPermisos();
+    if (typeof loadAreaRolPermisos === 'function') loadAreaRolPermisos();
   }
   if (tabId === 'adminSistema') {
     if (typeof loadTableCounts === 'function') loadTableCounts();

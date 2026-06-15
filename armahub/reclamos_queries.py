@@ -143,13 +143,31 @@ def q_matriz_obra_categoria(cur, top_obras=8):
     }
 
 
-def build_role_filter(user):
+def build_role_filter(user, cur=None):
     """Construye filtro WHERE según rol → (where_clause, params).
-    USC: propio. Cubicador/Externo: asignado/respondido. Admin: todo."""
+    - admin/admin_calidad: todo
+    - usc: reclamos que creó o le asignaron
+    - cubicador/externo: reclamos donde está asignado como responsable
+    - miembro: todos los reclamos de las áreas a las que pertenece (lee area_usuarios)
+    """
     email = user.get("email", "")
     role = user.get("role", "usc")
     if role == "usc":
         return " AND (r.creado_por = %s OR r.asignado_a = %s)", [email, email]
-    elif role in ("cubicador", "externo", "miembro"):
+    elif role in ("cubicador", "externo"):
         return " AND (r.cubicador_asignado = %s OR r.respuesta_por = %s)", [email, email]
+    elif role == "miembro":
+        if cur is None:
+            # Sin cursor no podemos consultar áreas — fallback restrictivo
+            return " AND (r.cubicador_asignado = %s OR r.respuesta_por = %s)", [email, email]
+        cur.execute("""
+            SELECT au.area_id FROM area_usuarios au
+            JOIN users u ON u.id = au.user_id
+            WHERE u.email = %s
+        """, (email,))
+        area_ids = [r[0] for r in cur.fetchall()]
+        if not area_ids:
+            return " AND FALSE", []
+        placeholders = ",".join(["%s"] * len(area_ids))
+        return f" AND r.area_id IN ({placeholders})", area_ids
     return "", []

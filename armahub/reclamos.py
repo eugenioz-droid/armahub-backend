@@ -149,21 +149,32 @@ def _es_propietario_cubicador(rec: dict, email: str) -> bool:
     return rec.get("cubicador_asignado") == email or rec.get("respuesta_por") == email
 
 
-def _puede_ver_reclamo(rec: dict, user: dict) -> bool:
+def _puede_ver_reclamo(rec: dict, user: dict, cur=None) -> bool:
     """
     True si el usuario puede ver este reclamo.
-    admin/admin_calidad/cubicador/miembro → todo (global). usc/externo → solo propios.
-    cliente → no tiene acceso a reclamos.
-    Espejo de build_role_filter, para validar acceso a un reclamo puntual (cierra IDOR).
+    admin/admin_calidad/cubicador → todo. usc/externo → solo propios.
+    miembro → reclamos del área a la que pertenece (requiere cur).
+    cliente → sin acceso.
     """
     role = user.get("role", "")
     email = user.get("email", "")
-    if role in ("admin", "admin_calidad", "cubicador", "miembro"):
+    if role in ("admin", "admin_calidad", "cubicador"):
         return True
     if role == "usc":
         return _es_propietario_usc(rec, email)
     if role == "externo":
         return _es_propietario_cubicador(rec, email)
+    if role == "miembro":
+        reclamo_area = rec.get("area_id")
+        if not reclamo_area or cur is None:
+            return False
+        cur.execute("""
+            SELECT 1 FROM area_usuarios au
+            JOIN users u ON u.id = au.user_id
+            WHERE u.email = %s AND au.area_id = %s
+            LIMIT 1
+        """, (email, reclamo_area))
+        return cur.fetchone() is not None
     return False
 
 
@@ -635,10 +646,10 @@ def reclamos_mi_resumen(user=Depends(get_current_user)):
     Admin/Admin Calidad: all reclamos."""
     email = user.get("email", "")
     role = user.get("role", "usc")
-    role_filter, role_params = build_role_filter(user)
 
     with get_conn() as conn:
         with conn.cursor() as cur:
+            role_filter, role_params = build_role_filter(user, cur)
             total = q_total(cur, role_filter, role_params)
             abiertos = q_abiertos(cur, role_filter, role_params)
             por_tipo = q_por_tipo(cur, role_filter, role_params)
@@ -927,7 +938,7 @@ def reclamos_para_presentar(user=Depends(get_current_user)):
                 role_filter = "AND (r.cubicador_asignado = %s OR r.respuesta_por = %s)"
                 params.extend([email, email])
             elif role not in ("admin", "admin_calidad"):
-                role_filter, params = build_role_filter(user)
+                role_filter, params = build_role_filter(user, cur)
 
             cur.execute(f"""
                 SELECT r.id, r.correlativo, r.titulo, r.descripcion, r.estado,
@@ -1001,7 +1012,7 @@ def presentaciones_stats(user=Depends(get_current_user)):
                 role_filter = "AND (r.cubicador_asignado = %s OR r.respuesta_por = %s)"
                 params.extend([email, email])
             elif role not in ("admin", "admin_calidad"):
-                role_filter, params = build_role_filter(user)
+                role_filter, params = build_role_filter(user, cur)
 
             base = f"""
                 FROM reclamos r
@@ -1219,7 +1230,7 @@ def get_reclamo_optimizado(
                     raise HTTPException(status_code=404, detail="Reclamo no encontrado")
 
                 # H2: validar ownership para roles con scope restringido (cierra IDOR)
-                if not _puede_ver_reclamo(row, user):
+                if not _puede_ver_reclamo(row, user, cur):
                     raise HTTPException(status_code=403, detail="No tiene permiso para ver este reclamo")
 
                 response = {
@@ -2029,7 +2040,7 @@ def ver_imagen(reclamo_id: int, imagen_id: int, user=Depends(get_current_user)):
             rec = cur.fetchone()
             if not rec:
                 raise HTTPException(status_code=404, detail="Reclamo no encontrado")
-            if not _puede_ver_reclamo(rec, user):
+            if not _puede_ver_reclamo(rec, user, cur):
                 raise HTTPException(status_code=403, detail="No tiene permiso para ver esta imagen")
 
             # 2) Cargar metadata de la imagen

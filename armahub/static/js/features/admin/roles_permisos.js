@@ -316,3 +316,65 @@
   global.loadRolesPermisos = loadRolesPermisos;
 
 })(window);
+
+// ========================= Permisos configurables por rol_area =========================
+
+var _AREA_ROL_ACCION_LABELS = {
+  levantar_externo:  'Levantar reclamos de clientes',
+  levantar_interno:  'Levantar reclamos internos',
+  responder_externo: 'Responder/analizar reclamos de clientes',
+  responder_interno: 'Responder/analizar reclamos internos',
+  aprobar_revision:  'Aprobar/devolver en etapa de revisión'
+};
+var _AREA_ROL_LABELS = { miembro: 'Miembro', jefe_servicio: 'Jefe de Servicio' };
+var _AREA_ROLES = ['miembro', 'jefe_servicio'];
+var _AREA_ACCIONES = Object.keys(_AREA_ROL_ACCION_LABELS);
+
+async function loadAreaRolPermisos() {
+  var container = document.getElementById('areaRolPermisosConfig');
+  if (!container) return;
+  var data = await apiGet('/admin/area-rol-permisos');
+  if (!data) { container.innerHTML = '<div class="muted">Error al cargar.</div>'; return; }
+
+  // Construir mapa {rol_area: {accion: activo}}
+  var mapa = {};
+  _AREA_ROLES.forEach(function(r) { mapa[r] = {}; });
+  data.forEach(function(row) {
+    if (mapa[row.rol_area]) mapa[row.rol_area][row.accion] = row.activo;
+  });
+
+  var html = '<table style="width:100%; font-size:12px; border-collapse:collapse;">';
+  html += '<tr style="background:#f5f5f5; text-align:left;">';
+  html += '<th style="padding:6px 8px;">Permiso</th>';
+  _AREA_ROLES.forEach(function(r) {
+    html += '<th style="padding:6px 8px; text-align:center;">' + (_AREA_ROL_LABELS[r] || r) + '</th>';
+  });
+  html += '</tr>';
+
+  _AREA_ACCIONES.forEach(function(accion) {
+    html += '<tr style="border-bottom:1px solid #eee;">';
+    html += '<td style="padding:6px 8px;">' + (_AREA_ROL_ACCION_LABELS[accion] || accion) + '</td>';
+    _AREA_ROLES.forEach(function(rol) {
+      var activo = !!(mapa[rol] && mapa[rol][accion]);
+      html += '<td style="padding:6px 8px; text-align:center;">' +
+        '<input type="checkbox"' + (activo ? ' checked' : '') +
+        ' onchange="toggleAreaRolPermiso(\'' + rol + '\',\'' + accion + '\',this.checked)"' +
+        (currentRole !== 'admin' ? ' disabled' : '') + ' /></td>';
+    });
+    html += '</tr>';
+  });
+  html += '</table>';
+  html += '<div class="muted" style="font-size:11px; margin-top:6px;">Solo Admin puede modificar esta matriz.</div>';
+  container.innerHTML = html;
+}
+
+async function toggleAreaRolPermiso(rolArea, accion, activo) {
+  var res = await fetch(apiUrl('/admin/area-rol-permisos'), {
+    method: 'PATCH',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ rol_area: rolArea, accion: accion, activo: activo })
+  });
+  if (res.status === 401) { logout(); return; }
+  var data = await res.json();
+  if (!data.ok) { alert('Error: ' + (data.detail || 'desconocido')); await loadAreaRolPermisos(); }
+}

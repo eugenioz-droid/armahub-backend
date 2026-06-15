@@ -478,6 +478,43 @@ def set_crear_reclamo_config(body: CrearReclamoConfigIn, user=Depends(require_ad
     return {"ok": True}
 
 
+@router.get("/admin/area-rol-permisos")
+def get_area_rol_permisos(user=Depends(require_admin_or_admin_calidad)):
+    """Matriz de permisos por rol_area: qué puede hacer cada rol dentro de un área."""
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT rol_area, accion, activo FROM area_rol_permisos ORDER BY rol_area, accion")
+            rows = cur.fetchall()
+    return [{"rol_area": r[0], "accion": r[1], "activo": bool(r[2])} for r in rows]
+
+
+class AreaRolPermisoIn(BaseModel):
+    rol_area: str
+    accion: str
+    activo: bool
+
+
+@router.patch("/admin/area-rol-permisos")
+def set_area_rol_permiso(body: AreaRolPermisoIn, user=Depends(require_admin)):
+    """Activa/desactiva un permiso (rol_area, accion)."""
+    email = user.get("email", "")
+    VALID_ROLES_AREA = ("miembro", "jefe_servicio")
+    VALID_ACCIONES = ("levantar_externo", "levantar_interno", "responder_externo", "responder_interno", "aprobar_revision")
+    if body.rol_area not in VALID_ROLES_AREA:
+        raise HTTPException(status_code=400, detail=f"rol_area inválido. Válidos: {', '.join(VALID_ROLES_AREA)}")
+    if body.accion not in VALID_ACCIONES:
+        raise HTTPException(status_code=400, detail=f"accion inválida. Válidas: {', '.join(VALID_ACCIONES)}")
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO area_rol_permisos (rol_area, accion, activo)
+                VALUES (%s, %s, %s)
+                ON CONFLICT (rol_area, accion) DO UPDATE SET activo = EXCLUDED.activo
+            """, (body.rol_area, body.accion, body.activo))
+    audit(email, "set_area_rol_permiso", f"{body.rol_area}/{body.accion}={body.activo}", "config", body.rol_area)
+    return {"ok": True}
+
+
 @router.get("/admin/areas/{area_id}/rca")
 def get_rca_area(area_id: int, user=Depends(require_admin_or_admin_calidad)):
     """Devuelve la matriz RCA completa de un área (6 categorías + subcausas)."""
