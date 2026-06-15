@@ -351,8 +351,11 @@ async function confirmarAsignarAreaUsuario() {
   var rolArea = document.getElementById('asignarRolArea').value;
   var msg = document.getElementById('asignarAreaMsg');
   if (!areaId) { if (msg) msg.textContent = 'Selecciona un área.'; return; }
-  var params = new URLSearchParams({ user_id: _asignarAreaUsuarioId, rol_area: rolArea });
-  var res = await fetch(apiUrl('/admin/areas/' + areaId + '/usuarios?' + params.toString()), { method: 'POST', headers: authHeaders() });
+  var res = await fetch(apiUrl('/admin/areas/' + areaId + '/usuarios'), {
+    method: 'POST',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ user_id: _asignarAreaUsuarioId, rol_area: rolArea })
+  });
   if (res.status === 401) { logout(); return; }
   var data = await res.json();
   if (data.ok) {
