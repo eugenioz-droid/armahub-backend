@@ -29,7 +29,7 @@ async function loadMe() {
   document.getElementById('hubScreen').style.display = 'block';
 
   // Status message
-  const roleLabels = {admin:'ADMIN', admin_calidad:'Admin Calidad', cubicador:'Cubicador', usc:'USC', externo:'Externo', cliente:'Cliente', miembro:'Miembro'};
+  const roleLabels = {admin:'ADMIN', admin_calidad:'Admin Calidad', jefe_servicio:'Jefe de Servicio', miembro:'Miembro', cliente:'Cliente', cubicador:'Cubicador', usc:'USC', externo:'Externo'};
   await setGlobalStatus("Sesión como " + (roleLabels[currentRole] || currentRole), "ok");
 
   // Load landing flash indicators

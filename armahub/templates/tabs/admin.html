@@ -35,29 +35,25 @@
               <label style="font-size:11px; color:#666;">Contraseña *</label>
               <input type="password" id="newUserPassword" placeholder="Mín. 6 caracteres" style="width:100%; font-size:12px;" />
             </div>
-            <div class="col" style="max-width:140px;">
+            <div class="col" style="max-width:160px;">
               <label style="font-size:11px; color:#666;">Rol</label>
               <select id="newUserRole" style="width:100%; font-size:12px;">
                 <option value="miembro">Miembro</option>
-                <option value="usc">USC (legacy)</option>
-                <option value="cubicador">Cubicador (legacy)</option>
+                <option value="jefe_servicio">Jefe de Servicio</option>
                 <option value="admin_calidad">Admin Calidad</option>
-                <option value="externo">Externo (legacy)</option>
                 <option value="cliente">Cliente</option>
                 <option value="admin">Admin</option>
+                <optgroup label="Legacy">
+                  <option value="cubicador">Cubicador</option>
+                  <option value="usc">USC</option>
+                  <option value="externo">Externo</option>
+                </optgroup>
               </select>
             </div>
             <div class="col" style="max-width:180px;">
               <label style="font-size:11px; color:#666;">Área (opcional)</label>
               <select id="newUserAreaId" style="width:100%; font-size:12px;">
                 <option value="">— Sin área —</option>
-              </select>
-            </div>
-            <div class="col" style="max-width:150px;">
-              <label style="font-size:11px; color:#666;">Rol en el área</label>
-              <select id="newUserRolArea" style="width:100%; font-size:12px;">
-                <option value="miembro">Miembro</option>
-                <option value="jefe_servicio">Jefe de Servicio</option>
               </select>
             </div>
             <button onclick="createUser()" style="font-size:12px; padding:6px 16px;">Crear usuario</button>
@@ -102,13 +98,6 @@
           <div>
             <label style="font-size:11px; color:#666;">Usuario</label><br>
             <select id="areaUserSelect" style="font-size:12px; min-width:200px;"></select>
-          </div>
-          <div>
-            <label style="font-size:11px; color:#666;">Rol en el área</label><br>
-            <select id="areaUserRol" style="font-size:12px;">
-              <option value="miembro">Miembro</option>
-              <option value="jefe_servicio">Jefe de Servicio</option>
-            </select>
           </div>
           <button onclick="agregarUsuarioArea()" style="font-size:12px; padding:6px 14px; background:#5e35b1; color:#fff; border:none; border-radius:4px; cursor:pointer; font-weight:600;">Agregar</button>
           <span id="areaUserMsg" class="muted" style="font-size:11px;"></span>

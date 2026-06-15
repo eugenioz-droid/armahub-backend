@@ -148,7 +148,7 @@ def build_role_filter(user, cur=None):
     - admin/admin_calidad: todo
     - usc: reclamos que creó o le asignaron
     - cubicador/externo: reclamos donde está asignado como responsable
-    - miembro: todos los reclamos de las áreas a las que pertenece (lee area_usuarios)
+    - jefe_servicio/miembro: todos los reclamos de las áreas a las que pertenecen
     """
     email = user.get("email", "")
     role = user.get("role", "usc")
@@ -156,10 +156,9 @@ def build_role_filter(user, cur=None):
         return " AND (r.creado_por = %s OR r.asignado_a = %s)", [email, email]
     elif role in ("cubicador", "externo"):
         return " AND (r.cubicador_asignado = %s OR r.respuesta_por = %s)", [email, email]
-    elif role == "miembro":
+    elif role in ("jefe_servicio", "miembro"):
         if cur is None:
-            # Sin cursor no podemos consultar áreas — fallback restrictivo
-            return " AND (r.cubicador_asignado = %s OR r.respuesta_por = %s)", [email, email]
+            return " AND FALSE", []
         cur.execute("""
             SELECT au.area_id FROM area_usuarios au
             JOIN users u ON u.id = au.user_id

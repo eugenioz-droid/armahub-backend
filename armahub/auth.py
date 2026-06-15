@@ -79,7 +79,7 @@ def require_role(*allowed_roles):
 
 
 # Shared role→project-role map (used by barras, importer, etc.)
-ROL_MAP = {"admin": "admin", "admin_calidad": "admin", "cubicador": "cubicador", "usc": "usc", "externo": "externo", "cliente": "cliente", "miembro": "miembro"}
+ROL_MAP = {"admin": "admin", "admin_calidad": "admin", "jefe_servicio": "jefe_servicio", "miembro": "miembro", "cliente": "cliente", "cubicador": "cubicador", "usc": "usc", "externo": "externo"}
 
 
 @router.post("/auth/login")
@@ -116,7 +116,7 @@ def register(
     Crea usuarios. Requiere admin o admin_calidad.
     Si se pasa area_id, inserta en area_usuarios con rol_area dado.
     """
-    VALID_ROLES = ("admin", "admin_calidad", "cubicador", "usc", "externo", "cliente", "miembro")
+    VALID_ROLES = ("admin", "admin_calidad", "jefe_servicio", "miembro", "cliente", "cubicador", "usc", "externo")
     if role not in VALID_ROLES:
         raise HTTPException(status_code=400, detail=f"role debe ser uno de: {', '.join(VALID_ROLES)}")
     if user.get("role") == "admin_calidad" and role in ("admin", "admin_calidad"):
@@ -184,14 +184,14 @@ def me(user=Depends(get_current_user)):
                 return {"email": email, "role": user.get("role"), "nombre": None, "apellido": None, "areas": []}
             user_id = row[0]
             cur.execute("""
-                SELECT au.area_id, a.nombre, a.slug, au.rol_area
+                SELECT au.area_id, a.nombre, a.slug
                 FROM area_usuarios au
                 JOIN areas a ON a.id = au.area_id
                 WHERE au.user_id = %s AND a.activo = TRUE
                 ORDER BY a.nombre
             """, (user_id,))
             areas_rows = cur.fetchall()
-    areas = [{"area_id": r[0], "area_nombre": r[1], "area_slug": r[2], "rol_area": r[3]} for r in areas_rows]
+    areas = [{"area_id": r[0], "area_nombre": r[1], "area_slug": r[2]} for r in areas_rows]
     return {"email": email, "role": row[1], "nombre": row[2], "apellido": row[3], "areas": areas}
 
 
@@ -240,7 +240,7 @@ def bootstrap_create_admin(email: str, password: str):
 
 # ========================= ADMIN: USER MANAGEMENT =========================
 
-VALID_ROLES = ("admin", "admin_calidad", "cubicador", "usc", "externo", "cliente", "miembro")
+VALID_ROLES = ("admin", "admin_calidad", "jefe_servicio", "miembro", "cliente", "cubicador", "usc", "externo")
 
 
 @router.get("/users/dropdown")
@@ -274,7 +274,7 @@ def admin_list_users(admin=Depends(require_admin_or_admin_calidad)):
             rows = cur.fetchall()
             # Áreas por usuario en una sola query
             cur.execute("""
-                SELECT au.user_id, a.id, a.nombre, au.rol_area
+                SELECT au.user_id, a.id, a.nombre
                 FROM area_usuarios au
                 JOIN areas a ON a.id = au.area_id
                 WHERE a.activo = TRUE
@@ -285,7 +285,7 @@ def admin_list_users(admin=Depends(require_admin_or_admin_calidad)):
     areas_por_usuario = {}
     for ar in area_rows:
         areas_por_usuario.setdefault(ar[0], []).append(
-            {"area_id": ar[1], "area_nombre": ar[2], "rol_area": ar[3]}
+            {"area_id": ar[1], "area_nombre": ar[2]}
         )
 
     return {

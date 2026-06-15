@@ -86,7 +86,7 @@
     title: 'Calidad / Reclamos',
     css: 'mod-reclamos',
     defaultTab: 'reclamos',
-    allowedRoles: ['admin', 'admin_calidad', 'cubicador', 'usc', 'externo', 'miembro'],
+    allowedRoles: ['admin', 'admin_calidad', 'jefe_servicio', 'miembro', 'cubicador', 'usc', 'externo'],
     loaderFunction: 'loadReclamosModule',
     hubCardId: 'hubCardReclamos',
     hubOrder: 20,

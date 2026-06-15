@@ -274,7 +274,6 @@ class AreaRevisionIn(BaseModel):
 
 class AreaUsuarioIn(BaseModel):
     user_id: int
-    rol_area: str = "miembro"  # 'miembro' | 'jefe_servicio'
 
 
 def _slugify_area(texto: str) -> str:
@@ -377,7 +376,7 @@ def set_area_revision(area_id: int, body: AreaRevisionIn, user=Depends(require_a
 
 @router.get("/admin/areas/{area_id}/usuarios")
 def listar_usuarios_area(area_id: int, user=Depends(require_admin_or_admin_calidad)):
-    """Usuarios asignados a un área, con su rol de área."""
+    """Usuarios asignados a un área, con su rol global."""
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("SELECT id FROM areas WHERE id = %s", (area_id,))
@@ -386,26 +385,24 @@ def listar_usuarios_area(area_id: int, user=Depends(require_admin_or_admin_calid
             cur.execute("""
                 SELECT au.id, u.id, u.email,
                        NULLIF(TRIM(COALESCE(u.nombre,'') || ' ' || COALESCE(u.apellido,'')), '') AS display,
-                       au.rol_area
+                       u.role
                 FROM area_usuarios au
                 JOIN users u ON u.id = au.user_id
                 WHERE au.area_id = %s
-                ORDER BY au.rol_area DESC, display
+                ORDER BY u.role, display
             """, (area_id,))
             rows = cur.fetchall()
     return [
         {"asignacion_id": r[0], "user_id": r[1], "email": r[2],
-         "nombre": r[3] or r[2], "rol_area": r[4]}
+         "nombre": r[3] or r[2], "role": r[4]}
         for r in rows
     ]
 
 
 @router.post("/admin/areas/{area_id}/usuarios")
 def asignar_usuario_area(area_id: int, body: AreaUsuarioIn, user=Depends(require_admin)):
-    """Asigna (o actualiza el rol de) un usuario en un área."""
+    """Asigna un usuario a un área. El rol del usuario es su rol global."""
     email = user.get("email", "")
-    if body.rol_area not in ("miembro", "jefe_servicio"):
-        raise HTTPException(status_code=400, detail="rol_area inválido")
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("SELECT id FROM areas WHERE id = %s", (area_id,))
@@ -415,12 +412,12 @@ def asignar_usuario_area(area_id: int, body: AreaUsuarioIn, user=Depends(require
             if not cur.fetchone():
                 raise HTTPException(status_code=404, detail="Usuario no encontrado")
             cur.execute("""
-                INSERT INTO area_usuarios (area_id, user_id, rol_area)
-                VALUES (%s, %s, %s)
-                ON CONFLICT (area_id, user_id) DO UPDATE SET rol_area = EXCLUDED.rol_area
-            """, (area_id, body.user_id, body.rol_area))
+                INSERT INTO area_usuarios (area_id, user_id)
+                VALUES (%s, %s)
+                ON CONFLICT (area_id, user_id) DO NOTHING
+            """, (area_id, body.user_id))
         conn.commit()
-    audit(email, "asignar_usuario_area", f"user={body.user_id} rol={body.rol_area}", "area", str(area_id))
+    audit(email, "asignar_usuario_area", f"user={body.user_id}", "area", str(area_id))
     return {"ok": True}
 
 
@@ -478,40 +475,41 @@ def set_crear_reclamo_config(body: CrearReclamoConfigIn, user=Depends(require_ad
     return {"ok": True}
 
 
-@router.get("/admin/area-rol-permisos")
-def get_area_rol_permisos(user=Depends(require_admin_or_admin_calidad)):
-    """Matriz de permisos por rol_area: qué puede hacer cada rol dentro de un área."""
+@router.get("/admin/role-permisos")
+def get_role_permisos(user=Depends(require_admin_or_admin_calidad)):
+    """Matriz de permisos por rol global: qué puede hacer cada rol."""
     with get_conn() as conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT rol_area, accion, activo FROM area_rol_permisos ORDER BY rol_area, accion")
+            cur.execute("SELECT role, accion, activo FROM role_permisos ORDER BY role, accion")
             rows = cur.fetchall()
-    return [{"rol_area": r[0], "accion": r[1], "activo": bool(r[2])} for r in rows]
+    return [{"role": r[0], "accion": r[1], "activo": bool(r[2])} for r in rows]
 
 
-class AreaRolPermisoIn(BaseModel):
-    rol_area: str
+class RolePermisoIn(BaseModel):
+    role: str
     accion: str
     activo: bool
 
 
-@router.patch("/admin/area-rol-permisos")
-def set_area_rol_permiso(body: AreaRolPermisoIn, user=Depends(require_admin)):
-    """Activa/desactiva un permiso (rol_area, accion)."""
+@router.patch("/admin/role-permisos")
+def set_role_permiso(body: RolePermisoIn, user=Depends(require_admin)):
+    """Activa/desactiva un permiso (role, accion)."""
     email = user.get("email", "")
-    VALID_ROLES_AREA = ("miembro", "jefe_servicio")
+    VALID_ROLES_CONFIG = ("jefe_servicio", "miembro", "cubicador", "usc", "externo", "cliente")
     VALID_ACCIONES = ("levantar_externo", "levantar_interno", "responder_externo", "responder_interno", "aprobar_revision")
-    if body.rol_area not in VALID_ROLES_AREA:
-        raise HTTPException(status_code=400, detail=f"rol_area inválido. Válidos: {', '.join(VALID_ROLES_AREA)}")
+    if body.role not in VALID_ROLES_CONFIG:
+        raise HTTPException(status_code=400, detail=f"role inválido. Válidos: {', '.join(VALID_ROLES_CONFIG)}")
     if body.accion not in VALID_ACCIONES:
         raise HTTPException(status_code=400, detail=f"accion inválida. Válidas: {', '.join(VALID_ACCIONES)}")
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("""
-                INSERT INTO area_rol_permisos (rol_area, accion, activo)
+                INSERT INTO role_permisos (role, accion, activo)
                 VALUES (%s, %s, %s)
-                ON CONFLICT (rol_area, accion) DO UPDATE SET activo = EXCLUDED.activo
-            """, (body.rol_area, body.accion, body.activo))
-    audit(email, "set_area_rol_permiso", f"{body.rol_area}/{body.accion}={body.activo}", "config", body.rol_area)
+                ON CONFLICT (role, accion) DO UPDATE SET activo = EXCLUDED.activo
+            """, (body.role, body.accion, body.activo))
+        conn.commit()
+    audit(email, "set_role_permiso", f"{body.role}/{body.accion}={body.activo}", "config", body.role)
     return {"ok": True}
 
 

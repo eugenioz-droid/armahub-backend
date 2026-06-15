@@ -1146,6 +1146,53 @@ MIGRATIONS = [
         WHERE u.role = 'externo' AND u.activo = TRUE
         ON CONFLICT (area_id, user_id) DO NOTHING""",
     ]),
+
+    # --- Migration 73: rol global jefe_servicio + simplificar area_usuarios ---
+    # 1. Agrega 'jefe_servicio' al CHECK de users.role (es un rol global, no de área)
+    # 2. Hace rol_area nullable en area_usuarios (ya no se usa para definir permisos)
+    # 3. Crea tabla role_permisos (rol global → acción → activo), reemplaza area_rol_permisos
+    # 4. Backfill: copia permisos desde area_rol_permisos mapeando rol_area→role
+    (73, "roles: jefe_servicio global + role_permisos + area_usuarios sin rol_area", [
+        # 1. Ampliar CHECK de users.role para incluir jefe_servicio
+        """DO $$
+        DECLARE r RECORD;
+        BEGIN
+            FOR r IN (
+                SELECT con.conname
+                FROM pg_constraint con
+                JOIN pg_attribute att ON att.attnum = ANY(con.conkey) AND att.attrelid = con.conrelid
+                WHERE con.conrelid = 'users'::regclass
+                  AND con.contype = 'c'
+                  AND att.attname = 'role'
+            ) LOOP
+                EXECUTE 'ALTER TABLE users DROP CONSTRAINT ' || r.conname;
+            END LOOP;
+            ALTER TABLE users ADD CONSTRAINT users_role_check
+                CHECK (role IN ('admin','admin_calidad','jefe_servicio','miembro','cliente','cubicador','usc','externo'));
+        END $$;""",
+        # 2. Hacer rol_area nullable en area_usuarios (ya no requerido)
+        "ALTER TABLE area_usuarios ALTER COLUMN rol_area DROP NOT NULL",
+        # 3. Crear tabla role_permisos (permisos por rol global)
+        """CREATE TABLE IF NOT EXISTS role_permisos (
+            id      BIGSERIAL PRIMARY KEY,
+            role    TEXT NOT NULL,
+            accion  TEXT NOT NULL,
+            activo  BOOLEAN DEFAULT TRUE,
+            UNIQUE(role, accion)
+        )""",
+        # 4. Poblar role_permisos — jefe_servicio hereda permisos del ex jefe_servicio de área
+        "INSERT INTO role_permisos (role, accion, activo) VALUES ('jefe_servicio','levantar_externo',TRUE) ON CONFLICT DO NOTHING",
+        "INSERT INTO role_permisos (role, accion, activo) VALUES ('jefe_servicio','levantar_interno',TRUE) ON CONFLICT DO NOTHING",
+        "INSERT INTO role_permisos (role, accion, activo) VALUES ('jefe_servicio','responder_externo',TRUE) ON CONFLICT DO NOTHING",
+        "INSERT INTO role_permisos (role, accion, activo) VALUES ('jefe_servicio','responder_interno',TRUE) ON CONFLICT DO NOTHING",
+        "INSERT INTO role_permisos (role, accion, activo) VALUES ('jefe_servicio','aprobar_revision',TRUE) ON CONFLICT DO NOTHING",
+        # miembro: puede responder pero no aprobar revisión ni levantar externos
+        "INSERT INTO role_permisos (role, accion, activo) VALUES ('miembro','levantar_externo',FALSE) ON CONFLICT DO NOTHING",
+        "INSERT INTO role_permisos (role, accion, activo) VALUES ('miembro','levantar_interno',TRUE) ON CONFLICT DO NOTHING",
+        "INSERT INTO role_permisos (role, accion, activo) VALUES ('miembro','responder_externo',TRUE) ON CONFLICT DO NOTHING",
+        "INSERT INTO role_permisos (role, accion, activo) VALUES ('miembro','responder_interno',TRUE) ON CONFLICT DO NOTHING",
+        "INSERT INTO role_permisos (role, accion, activo) VALUES ('miembro','aprobar_revision',FALSE) ON CONFLICT DO NOTHING",
+    ]),
 ]
 
 

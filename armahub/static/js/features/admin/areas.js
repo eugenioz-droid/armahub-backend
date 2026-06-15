@@ -192,17 +192,17 @@
       cont.innerHTML = '<div class="muted">Sin usuarios asignados a esta área.</div>';
       return;
     }
-    var rolLabels = { miembro: 'Miembro', jefe_servicio: 'Jefe de Servicio' };
+    var rolLabels = { admin:'Admin', admin_calidad:'Admin Calidad', jefe_servicio:'Jefe de Servicio', miembro:'Miembro', cliente:'Cliente', cubicador:'Cubicador', usc:'USC', externo:'Externo' };
+    var rolColors = { admin:'#b42318', admin_calidad:'#1565C0', jefe_servicio:'#5e35b1', miembro:'#00897b', cliente:'#7B1FA2', cubicador:'#2e7d32', usc:'#ff9800', externo:'#795548' };
     cont.innerHTML =
       '<table style="width:100%; font-size:13px; border-collapse:collapse;">' +
       '<tr style="background:#f5f5f5; text-align:left;">' +
-        '<th style="padding:5px 8px;">Usuario</th><th style="padding:5px 8px;">Rol en el área</th><th style="padding:5px 8px;"></th></tr>' +
+        '<th style="padding:5px 8px;">Usuario</th><th style="padding:5px 8px;">Rol</th><th style="padding:5px 8px;"></th></tr>' +
       data.map(function(u) {
-        var esJefe = u.rol_area === 'jefe_servicio';
         return '<tr style="border-bottom:1px solid #eee;">' +
           '<td style="padding:5px 8px;">' + _esc(u.nombre) + ' <span class="muted" style="font-size:10px;">' + _esc(u.email) + '</span></td>' +
-          '<td style="padding:5px 8px;"><span style="font-size:11px; font-weight:600; color:' + (esJefe ? '#5e35b1' : '#666') + ';">' +
-            (rolLabels[u.rol_area] || u.rol_area) + '</span></td>' +
+          '<td style="padding:5px 8px;"><span style="font-size:11px; font-weight:600; color:' + (rolColors[u.role] || '#666') + ';">' +
+            (rolLabels[u.role] || u.role) + '</span></td>' +
           '<td style="padding:5px 8px;"><button class="secondary" style="font-size:11px; padding:2px 8px; color:#b42318;" ' +
             'onclick="quitarUsuarioArea(' + u.user_id + ')">Quitar</button></td>' +
         '</tr>';
@@ -213,21 +213,20 @@
   async function agregarUsuarioArea() {
     if (!_areaUsuariosActual) return;
     var userId = document.getElementById('areaUserSelect').value;
-    var rol = document.getElementById('areaUserRol').value;
     var msg = document.getElementById('areaUserMsg');
     if (!userId) { msg.textContent = 'Selecciona un usuario'; msg.style.color = '#b42318'; return; }
     msg.textContent = 'Agregando...'; msg.style.color = '#666';
     var res = await fetch(apiUrl('/admin/areas/' + _areaUsuariosActual + '/usuarios'), {
       method: 'POST',
       headers: { ...authHeaders(), 'Content-Type': 'application/json' },
-      body: JSON.stringify({ user_id: parseInt(userId), rol_area: rol })
+      body: JSON.stringify({ user_id: parseInt(userId) })
     });
     if (res.status === 401) { logout(); return; }
     var data = await res.json();
     if (res.ok && data.ok) {
       msg.textContent = '';
       await _loadUsuariosArea(_areaUsuariosActual);
-      await loadAreas();  // refresca el conteo de usuarios en la tabla
+      await loadAreas();
     } else {
       msg.textContent = 'Error: ' + (data.detail || 'desconocido'); msg.style.color = '#b42318';
     }
