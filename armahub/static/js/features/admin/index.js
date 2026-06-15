@@ -259,26 +259,24 @@ async function loadUsers() {
       html += '<td style="padding:4px 6px;"><span style="font-size:11px; color:' + rColor + '; font-weight:600;">' + (_rolLabels[u.role] || u.role) + '</span></td>';
     }
 
-    // Áreas asignadas — máximo 1 área por usuario
+    // Áreas asignadas — select siempre visible, área actual pre-seleccionada
     var areas = u.areas || [];
     var primerArea = areas[0];
-    html += '<td style="padding:4px 6px; min-width:160px;">';
-    if (primerArea) {
-      html += '<span style="display:inline-flex; align-items:center; gap:2px; background:#e3f2fd; border-radius:10px; padding:2px 10px; font-size:11px; font-weight:600; color:#1565C0;">' +
-        primerArea.area_nombre +
-        (canOperate ? '<button onclick="quitarUsuarioDeArea(' + u.id + ',' + primerArea.area_id + ')" style="background:none;border:none;color:#b42318;cursor:pointer;font-size:11px;padding:0 2px;line-height:1;" title="Quitar">✕</button>' : '') +
-        '</span>';
-    } else if (canOperate) {
-      var areaOpts = (typeof _areasCache !== 'undefined' ? _areasCache : [])
-        .filter(function(a) { return a.activo; })
-        .map(function(a) { return '<option value="' + a.id + '">' + a.nombre + '</option>'; }).join('');
+    var areaOpts = (typeof _areasCache !== 'undefined' ? _areasCache : [])
+      .filter(function(a) { return a.activo; })
+      .map(function(a) {
+        var sel = (primerArea && primerArea.area_id === a.id) ? ' selected' : '';
+        return '<option value="' + a.id + '"' + sel + '>' + a.nombre + '</option>';
+      }).join('');
+    html += '<td style="padding:4px 6px;">';
+    if (canOperate) {
       html += '<div style="display:inline-flex; align-items:center; gap:4px;">' +
-        '<select id="selArea_' + u.id + '" style="font-size:11px; padding:2px 4px; border-radius:3px; border:1px solid #ccc; color:#555;">' +
+        '<select id="selArea_' + u.id + '" data-current="' + (primerArea ? primerArea.area_id : '') + '" style="font-size:11px; padding:2px 4px; border-radius:3px; border:1px solid #ddd; font-weight:' + (primerArea ? '600' : 'normal') + '; color:' + (primerArea ? '#1565C0' : '#555') + ';">' +
         '<option value="">— Sin área —</option>' + areaOpts + '</select>' +
         '<button onclick="asignarAreaInline(' + u.id + ')" style="font-size:11px; padding:2px 8px; background:#1565C0; color:#fff; border:none; border-radius:3px; cursor:pointer;">Guardar</button>' +
         '</div>';
     } else {
-      html += '<span class="muted" style="font-size:11px;">Sin área</span>';
+      html += '<span style="font-size:11px; color:#1565C0; font-weight:600;">' + (primerArea ? primerArea.area_nombre : '<span class="muted">Sin área</span>') + '</span>';
     }
     html += '</td>';
 
@@ -306,7 +304,21 @@ async function asignarAreaInline(userId) {
   var selArea = document.getElementById('selArea_' + userId);
   if (!selArea) return;
   var areaId = selArea.value;
-  if (!areaId) return;
+  // Buscar si ya tiene un área asignada (data-current guardado en el select)
+  var areaActual = selArea.getAttribute('data-current');
+  // Si eligió "Sin área" y tenía una, quitar
+  if (!areaId) {
+    if (areaActual) {
+      var r = await fetch(apiUrl('/admin/areas/' + areaActual + '/usuarios/' + userId), { method: 'DELETE', headers: authHeaders() });
+      if (r.status === 401) { logout(); return; }
+      await loadUsers();
+    }
+    return;
+  }
+  // Si cambia de área, quitar la anterior primero
+  if (areaActual && areaActual !== areaId) {
+    await fetch(apiUrl('/admin/areas/' + areaActual + '/usuarios/' + userId), { method: 'DELETE', headers: authHeaders() });
+  }
   var res = await fetch(apiUrl('/admin/areas/' + areaId + '/usuarios'), {
     method: 'POST',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
