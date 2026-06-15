@@ -150,6 +150,6 @@ def build_role_filter(user):
     role = user.get("role", "usc")
     if role == "usc":
         return " AND (r.creado_por = %s OR r.asignado_a = %s)", [email, email]
-    elif role in ("cubicador", "externo"):
+    elif role in ("cubicador", "externo", "miembro"):
         return " AND (r.cubicador_asignado = %s OR r.respuesta_por = %s)", [email, email]
     return "", []

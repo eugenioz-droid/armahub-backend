@@ -2,13 +2,11 @@
 // loadAdminModule + DB/Tables + Usuarios + Auditoría + Sub-tabs
 
 function switchAdminSubTab(tabId) {
-  // Hide all sub-panels
-  var panels = ['adminGeneral', 'adminNotificaciones', 'adminRolesPermisos', 'adminAreas'];
+  var panels = ['adminOrganizacion', 'adminConfiguracion', 'adminSistema'];
   panels.forEach(function(id) {
     var el = document.getElementById(id);
     if (el) el.style.display = (id === tabId) ? '' : 'none';
   });
-  // Update active button
   var btns = document.querySelectorAll('.admin-subtab');
   btns.forEach(function(btn) {
     if (btn.getAttribute('data-subtab') === tabId) {
@@ -21,20 +19,27 @@ function switchAdminSubTab(tabId) {
       btn.style.color = '#999';
     }
   });
-  // Load data for the tab
-  if (tabId === 'adminNotificaciones' && typeof loadNotifConfig === 'function') {
-    loadNotifConfig();
-  }
-  if (tabId === 'adminRolesPermisos' && typeof loadRolesPermisos === 'function') {
-    loadRolesPermisos();
-  }
-  if (tabId === 'adminAreas' && typeof loadAreas === 'function') {
+  if (tabId === 'adminOrganizacion' && typeof loadAreas === 'function') {
     loadAreas();
+  }
+  if (tabId === 'adminConfiguracion') {
+    if (typeof loadCrearReclamoConfig === 'function') loadCrearReclamoConfig();
+    if (typeof loadNotifConfig === 'function') loadNotifConfig();
+    if (typeof loadRolesPermisos === 'function') loadRolesPermisos();
+  }
+  if (tabId === 'adminSistema') {
+    if (typeof loadTableCounts === 'function') loadTableCounts();
+    if (typeof loadDbInfo === 'function') loadDbInfo();
+    if (typeof loadAuditLog === 'function') loadAuditLog();
+    if (currentRole !== 'admin') {
+      var resetCard = document.getElementById('adminResetBdCard');
+      if (resetCard) resetCard.style.display = 'none';
+    }
   }
 }
 
 async function loadAdminModule() {
-  // Filter role dropdown for admin_calidad (cannot create admin/admin_calidad)
+  // Filter role dropdown for admin_calidad
   if (currentRole === 'admin_calidad') {
     var sel = document.getElementById('newUserRole');
     if (sel) {
@@ -43,13 +48,9 @@ async function loadAdminModule() {
       });
     }
   }
+  // Tab Organización (default)
   await loadUsers();
-  await loadClientes();
-  await loadCalculistas();
-  await loadAdminProyectos();
-  await loadTableCounts();
-  await loadDbInfo();
-  await loadAuditLog();
+  await loadAreas();
 }
 
 // ========================= ADMIN: TABLAS / DB =========================
@@ -166,8 +167,8 @@ async function resetDatabase() {
 }
 
 // ========================= USUARIOS =========================
-var _roleColors = { admin: '#b42318', admin_calidad: '#1565C0', cubicador: '#2e7d32', usc: '#ff9800', externo: '#795548', cliente: '#7B1FA2' };
-var _roleLabels = { admin: 'Admin', admin_calidad: 'Admin Calidad', cubicador: 'Cubicador', usc: 'USC', externo: 'Externo', cliente: 'Cliente' };
+var _roleColors = { admin: '#b42318', admin_calidad: '#1565C0', cubicador: '#2e7d32', usc: '#ff9800', externo: '#795548', cliente: '#7B1FA2', miembro: '#00897b' };
+var _roleLabels = { admin: 'Admin', admin_calidad: 'Admin Calidad', cubicador: 'Cubicador (legacy)', usc: 'USC (legacy)', externo: 'Externo (legacy)', cliente: 'Cliente', miembro: 'Miembro' };
 
 function toggleNuevoUsuario() {
   var f = document.getElementById('nuevoUsuarioForm');
@@ -214,8 +215,8 @@ async function loadUsers() {
     var fecha = u.fecha_creacion ? u.fecha_creacion.substring(0, 10) : '-';
     var toggleLabel = activo ? 'Desactivar' : 'Activar';
     var toggleColor = activo ? '#b42318' : '#2e7d32';
-    var _rolLabels = {admin:'Admin',admin_calidad:'Admin Calidad',cubicador:'Cubicador',usc:'USC',externo:'Externo',cliente:'Cliente'};
-    var allRoles = ['admin','admin_calidad','cubicador','usc','externo','cliente'];
+    var _rolLabels = {admin:'Admin',admin_calidad:'Admin Calidad',cubicador:'Cubicador (legacy)',usc:'USC (legacy)',externo:'Externo (legacy)',cliente:'Cliente',miembro:'Miembro'};
+    var allRoles = ['admin','admin_calidad','miembro','usc','cubicador','externo','cliente'];
     var rolOpts = allRoles.map(function(r) {
       return '<option value="' + r + '"' + (r === u.role ? ' selected' : '') + '>' + (_rolLabels[r] || r) + '</option>';
     }).join('');

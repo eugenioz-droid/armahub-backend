@@ -81,6 +81,33 @@ def _jefe_servicio_de_area(cur, area_id):
     return row[0] if row else None
 
 
+def _get_rol_area(cur, email, area_id):
+    """Devuelve el rol_area del usuario en el área dada, o None si no pertenece."""
+    if not email or not area_id:
+        return None
+    cur.execute("""
+        SELECT au.rol_area FROM area_usuarios au
+        JOIN users u ON u.id = au.user_id
+        WHERE u.email = %s AND au.area_id = %s
+        LIMIT 1
+    """, (email, area_id))
+    row = cur.fetchone()
+    return row[0] if row else None
+
+
+def _rol_area_puede(cur, rol_area, accion):
+    """Configurable: ¿el rol_area tiene permiso para la acción dada?
+    Si no hay fila de config, devuelve False (default denegado)."""
+    if not rol_area:
+        return False
+    cur.execute(
+        "SELECT activo FROM area_rol_permisos WHERE rol_area = %s AND accion = %s",
+        (rol_area, accion),
+    )
+    row = cur.fetchone()
+    return bool(row[0]) if row else False
+
+
 def _rol_puede_crear(cur, accion, rol):
     """Configurable: ¿el rol puede levantar reclamos de este tipo ('externo'|'interno')?
     Si no hay fila de config, se cae a un default seguro (admin/admin_calidad/usc para
@@ -125,13 +152,13 @@ def _es_propietario_cubicador(rec: dict, email: str) -> bool:
 def _puede_ver_reclamo(rec: dict, user: dict) -> bool:
     """
     True si el usuario puede ver este reclamo.
-    admin/admin_calidad/cubicador → todo (global). usc/externo → solo propios.
+    admin/admin_calidad/cubicador/miembro → todo (global). usc/externo → solo propios.
     cliente → no tiene acceso a reclamos.
     Espejo de build_role_filter, para validar acceso a un reclamo puntual (cierra IDOR).
     """
     role = user.get("role", "")
     email = user.get("email", "")
-    if role in ("admin", "admin_calidad", "cubicador"):
+    if role in ("admin", "admin_calidad", "cubicador", "miembro"):
         return True
     if role == "usc":
         return _es_propietario_usc(rec, email)
@@ -362,7 +389,7 @@ def listar_reclamos(
                 if role == "usc":
                     where += " AND (r.creado_por = %s OR r.asignado_a = %s)"
                     params.extend([email, email])
-                elif role in ("cubicador", "externo"):
+                elif role in ("cubicador", "externo", "miembro"):
                     where += " AND (r.cubicador_asignado = %s OR r.respuesta_por = %s)"
                     params.extend([email, email])
                 else:
@@ -620,7 +647,7 @@ def reclamos_mi_resumen(user=Depends(get_current_user)):
 
             # Pendientes: assigned to cubicador but not yet responded
             pendientes = 0
-            if role in ("cubicador", "externo"):
+            if role in ("cubicador", "externo", "miembro"):
                 cur.execute("""
                     SELECT COUNT(*) FROM reclamos r
                     WHERE r.cubicador_asignado = %s
@@ -896,7 +923,7 @@ def reclamos_para_presentar(user=Depends(get_current_user)):
         with conn.cursor() as cur:
             role_filter = ""
             params = []
-            if role in ("cubicador", "externo"):
+            if role in ("cubicador", "externo", "miembro"):
                 role_filter = "AND (r.cubicador_asignado = %s OR r.respuesta_por = %s)"
                 params.extend([email, email])
             elif role not in ("admin", "admin_calidad"):
@@ -970,7 +997,7 @@ def presentaciones_stats(user=Depends(get_current_user)):
         with conn.cursor() as cur:
             role_filter = ""
             params = []
-            if role in ("cubicador", "externo"):
+            if role in ("cubicador", "externo", "miembro"):
                 role_filter = "AND (r.cubicador_asignado = %s OR r.respuesta_por = %s)"
                 params.extend([email, email])
             elif role not in ("admin", "admin_calidad"):
@@ -1044,7 +1071,7 @@ def presentar_reclamo(reclamo_id: int, body: PresentarReclamoRequest, user=Depen
     role = user.get("role", "usc")
     now = datetime.now(timezone.utc).isoformat()
 
-    if role not in ("admin", "admin_calidad", "cubicador", "externo"):
+    if role not in ("admin", "admin_calidad", "cubicador", "externo", "miembro"):
         raise HTTPException(status_code=403, detail="No tiene permiso para presentar reclamos")
 
     if not body.asistentes:
@@ -1064,7 +1091,7 @@ def presentar_reclamo(reclamo_id: int, body: PresentarReclamoRequest, user=Depen
             if not row[1] or not row[2]:
                 raise HTTPException(status_code=400, detail="El reclamo no tiene cubicador asignado o respuesta")
 
-            if role in ("cubicador", "externo"):
+            if role in ("cubicador", "externo", "miembro"):
                 rec = {"cubicador_asignado": row[1], "respuesta_por": row[4]}
                 if not _es_propietario_cubicador(rec, email):
                     raise HTTPException(status_code=403, detail="Solo puede presentar reclamos propios")
@@ -1437,7 +1464,7 @@ def actualizar_reclamo(reclamo_id: int, body: ReclamoUpdate, user=Depends(get_cu
                 blocked = submitted_fields & ANALISIS_FIELDS
                 if blocked:
                     raise HTTPException(status_code=403, detail=f"No tiene permiso para editar campos de análisis: {', '.join(blocked)}")
-            elif role in ("cubicador", "externo"):
+            elif role in ("cubicador", "externo", "miembro"):
                 if not _es_propietario_cubicador(rec, email):
                     raise HTTPException(status_code=403, detail="Solo puede editar reclamos propios")
                 if submitted_fields and _estado_bloquea_edicion_analisis(estado_anterior):
@@ -1800,7 +1827,7 @@ def crear_accion(reclamo_id: int, body: AccionCreate, user=Depends(get_current_u
     role = user.get("role", "usc")
     now = datetime.now(timezone.utc).isoformat()
 
-    if role not in ("admin", "admin_calidad", "cubicador", "externo"):
+    if role not in ("admin", "admin_calidad", "cubicador", "externo", "miembro"):
         raise HTTPException(status_code=403, detail="No tiene permiso para agregar acciones")
 
     if body.tipo not in TIPOS_ACCION:
@@ -1817,7 +1844,7 @@ def crear_accion(reclamo_id: int, body: AccionCreate, user=Depends(get_current_u
             if role not in ("admin", "admin_calidad") and _estado_bloquea_edicion_analisis(estado_reclamo):
                 raise HTTPException(status_code=403, detail="No se pueden editar acciones luego de enviar a validación")
 
-            if role in ("cubicador", "externo"):
+            if role in ("cubicador", "externo", "miembro"):
                 rec = {"cubicador_asignado": row[2], "respuesta_por": row[3]}
                 if not _es_propietario_cubicador(rec, email):
                     raise HTTPException(status_code=403, detail="Solo puede agregar acciones en reclamos propios")
@@ -1873,7 +1900,7 @@ def eliminar_accion(reclamo_id: int, accion_id: int, user=Depends(get_current_us
     email = user.get("email", "unknown")
     role = user.get("role", "usc")
 
-    if role not in ("admin", "admin_calidad", "cubicador", "externo", "usc"):
+    if role not in ("admin", "admin_calidad", "cubicador", "externo", "usc", "miembro"):
         raise HTTPException(status_code=403, detail="No tiene permiso para eliminar acciones")
 
     with get_conn() as conn:
@@ -1895,7 +1922,7 @@ def eliminar_accion(reclamo_id: int, accion_id: int, user=Depends(get_current_us
                 "creado_por": rec_row[3],
                 "asignado_a": rec_row[4],
             }
-            if role in ("cubicador", "externo") and not _es_propietario_cubicador(rec, email):
+            if role in ("cubicador", "externo", "miembro") and not _es_propietario_cubicador(rec, email):
                 raise HTTPException(status_code=403, detail="Solo puede eliminar acciones en reclamos propios")
             if role == "usc" and not _es_propietario_usc(rec, email):
                 raise HTTPException(status_code=403, detail="Solo puede eliminar acciones en reclamos propios")
@@ -1933,10 +1960,10 @@ async def subir_imagen(
     # Permisos por tipo de imagen
     if role == "cliente":
         raise HTTPException(status_code=403, detail="No tiene permiso para subir imágenes")
-    if img_tipo == "ImagenesRegistro" and role in ("cubicador", "externo"):
+    if img_tipo == "ImagenesRegistro" and role in ("cubicador", "externo", "miembro"):
         raise HTTPException(status_code=403, detail="Solo USC o admin pueden subir imágenes de registro")
     if img_tipo == "ImagenesAnalisis" and role == "usc":
-        raise HTTPException(status_code=403, detail="Solo cubicador, externo o admin pueden subir imágenes de análisis")
+        raise HTTPException(status_code=403, detail="Solo cubicador, externo, miembro o admin pueden subir imágenes de análisis")
 
     if file.content_type not in ALLOWED_IMAGE_TYPES:
         raise HTTPException(status_code=400, detail=f"Tipo de archivo no permitido. Permitidos: {ALLOWED_IMAGE_TYPES}")
@@ -2053,7 +2080,7 @@ def eliminar_imagen(reclamo_id: int, imagen_id: int, user=Depends(get_current_us
                     "creado_por": rec_row[2],
                     "asignado_a": rec_row[3],
                 }
-                if role in ("cubicador", "externo") and not _es_propietario_cubicador(rec, email):
+                if role in ("cubicador", "externo", "miembro") and not _es_propietario_cubicador(rec, email):
                     raise HTTPException(status_code=403, detail="Solo puede eliminar imágenes en reclamos propios")
                 if role == "usc" and not _es_propietario_usc(rec, email):
                     raise HTTPException(status_code=403, detail="Solo puede eliminar imágenes en reclamos propios")
@@ -2492,7 +2519,7 @@ def exportar_reclamo_pdf(reclamo_id: int, user=Depends(get_current_user)):
 
     role = user.get("role")
     email = user.get("email", "")
-    if role not in ("admin", "admin_calidad", "cubicador", "usc"):
+    if role not in ("admin", "admin_calidad", "cubicador", "usc", "miembro"):
         raise HTTPException(status_code=403, detail="Sin permisos para generar PDF")
 
     with get_conn() as conn:

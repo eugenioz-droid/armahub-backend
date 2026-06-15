@@ -301,6 +301,18 @@ Objetivo: endurecer Reclamos y cerrar los pendientes reales arrastrados.
 | 5.28 | Implementar 5 Por Qué como método RCA alternativo a Ishikawa (por reclamo, excluyente) — migración 68, selector radio, campos dinámicos hasta 5, guardar/cargar, visualización en Presentaciones | ☑ | YO |
 | 5.53 | FIX: endpoint /reclamos/ishikawa lee desde BD por area_id (ya no devuelve hardcode de Cubicaciones a todas las áreas) | ☑ | YO |
 | 5.29 | Rol Jefe de Servicio: activar en flujos de RCA y área — RESUELTO opción A (jefe_servicio + area_usuarios). Implementado en 5G. | ☑ | TÚ+YO |
+| 5.54 | FIX flujo devolución desde Calidad: `devolverValidacionDesdeModal` usaba `en_revision` hardcodeado — ahora lee `area_tiene_revision` (ext) o `area_tiene_revision_interno` (int) para decidir destino | ☑ | YO |
+| 5.55 | FIX refresh post-acción: `_refrescarTrasAccionFlujo`, `cerrarReclamo`, `guardarRespuesta`, `eliminarReclamo` ahora llaman `loadReclamosInternos()` para internos y `loadReclamos()` para externos | ☑ | YO |
+| 5.56 | FIX cambiar "Aplica" ya no recarga el modal completo (no borra formulario RCA) — actualiza memoria + badge sin `verReclamo` | ☑ | YO |
+| 5.57 | FIX `cerrarReclamo` incluye metodo_rca y cinco_por_que en el PATCH para no perder análisis RCA al cambiar estado | ☑ | YO |
+| 5.58 | FIX listado Validación Calidad: filtro usaba `es_interno` (inexistente) → corregido a `tipo_origen === 'interno'` | ☑ | YO |
+| 5.59 | FIX Proyecto editable en estado validación/revisión — `recDetailProyecto` ahora usa `puedeEditarSec1` | ☑ | YO |
+| 5.60 | FIX nombre proyecto interno sin obra muestra "Armacero" (antes "Obra eliminada") — CASE en SQL por tipo_origen | ☑ | YO |
+| 5.61 | Panel Áreas: columna "Flujo Revisión" con dos checkboxes Ext/Int independientes — migración 69 `tiene_revision_interno` | ☑ | YO |
+| 5.62 | Label dinámico "Cubicador/Responsable área" en modal de reclamo según tipo_origen | ☑ | YO |
+| 5.63 | Responsable en acciones: combobox (input+datalist) en vez de select fijo | ☑ | YO |
+| 5.64 | Área responsable + Fecha análisis movidos fuera del bloque Ishikawa (visibles siempre independiente del método RCA) | ☑ | YO |
+| 5.65 | Fecha análisis prefillada con hoy si está vacía al abrir el modal | ☑ | YO |
 
 ### 5F. Refactor roles + flujo de validación (iniciado sesión 2026-06-11)
 
@@ -335,6 +347,49 @@ Objetivo: endurecer Reclamos y cerrar los pendientes reales arrastrados.
 | 5.49 | Quién levanta reclamos CONFIGURABLE por rol (externo/interno) — tabla reclamo_crear_config + panel Admin — migración 65 | ☑ | YO |
 | 5.50 | Visibilidad del formulario de creación según config (GET /reclamos/puedo-crear), no hardcode | ☑ | YO |
 | 5.51 | Smoke test del flujo configurable (área con/sin revisión, flag manda, quién levanta) | ☐ | TÚ |
+
+### 5H. Refactor de modelo de roles y panel Admin (sesión 2026-06-15)
+
+> **Decisión de arquitectura (2026-06-15, APROBADA):** separar nivel de acceso (rol global) de pertenencia a área (rol_area). Roles globales quedan en 4: `admin`, `admin_calidad`, `miembro`, `cliente`. Los roles `cubicador`, `usc`, `externo` se deprecan como roles globales — pasan a ser `miembro` de un área con `rol_area` correspondiente. Permisos por rol de área serán configurables via tabla `area_rol_permisos` (mismo patrón que `reclamo_crear_config`). Ver análisis completo en conversación 2026-06-15.
+
+#### Fase A — BD: compatibilidad hacia adelante
+
+| N° | Descripción | Realizado | Quién |
+|----|-------------|-----------|-------|
+| 5H.1 | Migración 70: quitar CHECK hardcodeado de `users.role` (permite agregar roles sin DDL futuro) | ☐ | YO |
+| 5H.2 | Migración 71: poblar `area_usuarios` para usuarios existentes según rol actual (cubicador→miembro Cubicaciones, usc→jefe_servicio USC, externo→miembro área Externa) | ☐ | YO |
+| 5H.3 | Agregar `miembro` a VALID_ROLES en `auth.py`; formulario de creación de usuario ofrece los 4 roles objetivo | ☐ | YO |
+
+#### Fase B — Backend: lógica de permisos lee area_usuarios
+
+| N° | Descripción | Realizado | Quién |
+|----|-------------|-----------|-------|
+| 5H.4 | Crear helper `_get_rol_area(cur, email, area_id)` en `reclamos.py` | ☐ | YO |
+| 5H.5 | Tabla `area_rol_permisos` — migración 72: permisos configurables por rol_area (responder_externo, levantar_interno, levantar_externo, aprobar_revision) | ☐ | YO |
+| 5H.6 | Reemplazar checks `role == "usc"` y `role in ("cubicador","externo")` por consulta a `area_usuarios` + `area_rol_permisos` | ☐ | YO |
+| 5H.7 | `/me` agrega `areas` al response: lista de `{area_id, area_nombre, rol_area}` del usuario autenticado | ☐ | YO |
+| 5H.8 | Smoke test backend: crear reclamo externo como jefe_servicio, responder como miembro, validar como admin_calidad | ☐ | TÚ+YO |
+
+#### Fase C — Panel Admin: reorganización en 3 sub-tabs
+
+| N° | Descripción | Realizado | Quién |
+|----|-------------|-----------|-------|
+| 5H.9 | Sub-tab "Organización": tabla Áreas (izq) + panel usuarios del área (der) + tabla global usuarios abajo. Crear usuario incluye campo Área + rol_area en un paso | ☐ | YO |
+| 5H.10 | Sub-tab "Configuración": quién levanta reclamos, matrices RCA, permisos por rol_area, calculistas, constructoras, proyectos | ☐ | YO |
+| 5H.11 | Sub-tab "Sistema" (solo admin): estado BD, gestión datos, reset, audit log | ☐ | YO |
+| 5H.12 | Smoke test panel Admin reorganizado | ☐ | TÚ |
+
+#### Fase D — Frontend: permisos basados en area_usuarios
+
+| N° | Descripción | Realizado | Quién |
+|----|-------------|-----------|-------|
+| 5H.13 | Shell expone `currentAreas` (lista de áreas del usuario con rol_area) vía `/me` | ☐ | YO |
+| 5H.14 | `detail-permissions.js`: reemplaza `currentRole === 'cubicador'` por `currentAreaRol === 'miembro'` | ☐ | YO |
+| 5H.15 | Smoke test frontend: permisos correctos para miembro, jefe_servicio, admin_calidad, admin | ☐ | TÚ |
+
+> **Nota:** Fases A→B→C→D en ese orden. C (panel) puede hacerse en paralelo con A sin romper nada.
+> El trabajo de Admin a gran escala queda en Fase 10 del programa; estas tareas son las que
+> desbloquean el flujo correcto de reclamos y se ejecutan acá (F5) por esa razón.
 
 ### Decisiones de arquitectura registradas (pre-producción, NO implementar ahora)
 - **Producto vendible = SOLO módulo Reclamos/Calidad** (no todo ArmaHub). Configurabilidad = núcleo solo de ese módulo. (memoria: producto-vendible)

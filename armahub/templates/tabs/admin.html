@@ -3,237 +3,66 @@
 
     <!-- Admin sub-tabs -->
     <div id="adminSubTabs" style="display:flex; gap:0; margin-bottom:16px; border-bottom:2px solid #e0e0e0;">
-      <button class="admin-subtab active" data-subtab="adminGeneral" onclick="switchAdminSubTab('adminGeneral')" style="padding:8px 20px; font-size:13px; font-weight:600; border:none; border-bottom:3px solid #1565C0; background:none; color:#1565C0; cursor:pointer;">⚙️ General</button>
-      <button class="admin-subtab" data-subtab="adminNotificaciones" onclick="switchAdminSubTab('adminNotificaciones')" style="padding:8px 20px; font-size:13px; font-weight:600; border:none; border-bottom:3px solid transparent; background:none; color:#999; cursor:pointer;">🔔 Notificaciones</button>
-      <button class="admin-subtab" data-subtab="adminRolesPermisos" onclick="switchAdminSubTab('adminRolesPermisos')" style="padding:8px 20px; font-size:13px; font-weight:600; border:none; border-bottom:3px solid transparent; background:none; color:#999; cursor:pointer;">🔐 Roles y Permisos</button>
-      <button class="admin-subtab" data-subtab="adminAreas" onclick="switchAdminSubTab('adminAreas')" style="padding:8px 20px; font-size:13px; font-weight:600; border:none; border-bottom:3px solid transparent; background:none; color:#999; cursor:pointer;">🏢 Áreas</button>
+      <button class="admin-subtab active" data-subtab="adminOrganizacion" onclick="switchAdminSubTab('adminOrganizacion')" style="padding:8px 20px; font-size:13px; font-weight:600; border:none; border-bottom:3px solid #1565C0; background:none; color:#1565C0; cursor:pointer;">🏢 Organización</button>
+      <button class="admin-subtab" data-subtab="adminConfiguracion" onclick="switchAdminSubTab('adminConfiguracion')" style="padding:8px 20px; font-size:13px; font-weight:600; border:none; border-bottom:3px solid transparent; background:none; color:#999; cursor:pointer;">⚙️ Configuración</button>
+      <button class="admin-subtab" data-subtab="adminSistema" onclick="switchAdminSubTab('adminSistema')" style="padding:8px 20px; font-size:13px; font-weight:600; border:none; border-bottom:3px solid transparent; background:none; color:#999; cursor:pointer;">🗄️ Sistema</button>
     </div>
 
-    <!-- Sub-panel: General (existing admin content) -->
-    <div id="adminGeneral">
+    <!-- ====== Sub-panel: Organización (usuarios + áreas unificados) ====== -->
+    <div id="adminOrganizacion">
 
-    <!-- Gestión de usuarios -->
-    <div class="card">
-      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
-        <h3 style="margin:0;">Gestión de usuarios</h3>
-        <button class="secondary" style="font-size:12px; padding:4px 12px;" onclick="toggleNuevoUsuario()">+ Nuevo usuario</button>
-      </div>
-      <div id="nuevoUsuarioForm" style="display:none; margin-bottom:12px; padding:12px; background:#f9f9f9; border-radius:8px;">
-        <div class="row" style="gap:8px; flex-wrap:wrap; align-items:flex-end;">
-          <div class="col" style="min-width:200px;">
-            <label style="font-size:11px; color:#666;">Email *</label>
-            <input type="text" id="newUserEmail" placeholder="usuario@email.cl" style="width:100%; font-size:12px;" />
-          </div>
-          <div class="col" style="min-width:130px;">
-            <label style="font-size:11px; color:#666;">Nombre</label>
-            <input type="text" id="newUserNombre" placeholder="Nombre" style="width:100%; font-size:12px;" />
-          </div>
-          <div class="col" style="min-width:130px;">
-            <label style="font-size:11px; color:#666;">Apellido</label>
-            <input type="text" id="newUserApellido" placeholder="Apellido" style="width:100%; font-size:12px;" />
-          </div>
-          <div class="col" style="max-width:160px;">
-            <label style="font-size:11px; color:#666;">Contraseña *</label>
-            <input type="password" id="newUserPassword" placeholder="Mín. 6 caracteres" style="width:100%; font-size:12px;" />
-          </div>
-          <div class="col" style="max-width:140px;">
-            <label style="font-size:11px; color:#666;">Rol</label>
-            <select id="newUserRole" style="width:100%; font-size:12px;">
-              <option value="usc">USC</option>
-              <option value="cubicador">Cubicador</option>
-              <option value="admin_calidad">Admin Calidad</option>
-              <option value="externo">Externo</option>
-              <option value="cliente">Cliente</option>
-              <option value="admin">Admin</option>
-            </select>
-          </div>
-          <button onclick="createUser()" style="font-size:12px; padding:6px 16px;">Crear usuario</button>
+      <!-- Gestión de usuarios -->
+      <div class="card">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+          <h3 style="margin:0;">Gestión de usuarios</h3>
+          <button class="secondary" style="font-size:12px; padding:4px 12px;" onclick="toggleNuevoUsuario()">+ Nuevo usuario</button>
         </div>
-        <div id="createUserMsg" class="muted" style="margin-top:8px; font-size:12px;"></div>
-      </div>
-      <div id="usersListContainer">
-        <div class="muted">Cargando usuarios...</div>
-      </div>
-    </div>
-
-    <!-- Constructoras (antes Clientes) -->
-    <div class="card">
-      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
-        <h3 style="margin:0;">Constructoras</h3>
-        <button class="secondary" style="font-size:12px; padding:4px 12px;" onclick="toggleNuevoCliente()">+ Nueva constructora</button>
-      </div>
-      <div id="nuevoClienteForm" style="display:none; margin-bottom:12px; padding:12px; background:#f9f9f9; border-radius:8px;">
-        <div class="row" style="gap:8px; flex-wrap:wrap; align-items:flex-end;">
-          <div class="col">
-            <label style="font-size:11px; color:#666;">Nombre *</label>
-            <input type="text" id="ncNombre" placeholder="Nombre empresa" style="width:100%;" />
+        <div id="nuevoUsuarioForm" style="display:none; margin-bottom:12px; padding:12px; background:#f9f9f9; border-radius:8px;">
+          <div class="row" style="gap:8px; flex-wrap:wrap; align-items:flex-end;">
+            <div class="col" style="min-width:200px;">
+              <label style="font-size:11px; color:#666;">Email *</label>
+              <input type="text" id="newUserEmail" placeholder="usuario@email.cl" style="width:100%; font-size:12px;" />
+            </div>
+            <div class="col" style="min-width:130px;">
+              <label style="font-size:11px; color:#666;">Nombre</label>
+              <input type="text" id="newUserNombre" placeholder="Nombre" style="width:100%; font-size:12px;" />
+            </div>
+            <div class="col" style="min-width:130px;">
+              <label style="font-size:11px; color:#666;">Apellido</label>
+              <input type="text" id="newUserApellido" placeholder="Apellido" style="width:100%; font-size:12px;" />
+            </div>
+            <div class="col" style="max-width:160px;">
+              <label style="font-size:11px; color:#666;">Contraseña *</label>
+              <input type="password" id="newUserPassword" placeholder="Mín. 6 caracteres" style="width:100%; font-size:12px;" />
+            </div>
+            <div class="col" style="max-width:140px;">
+              <label style="font-size:11px; color:#666;">Rol</label>
+              <select id="newUserRole" style="width:100%; font-size:12px;">
+                <option value="miembro">Miembro</option>
+                <option value="usc">USC (legacy)</option>
+                <option value="cubicador">Cubicador (legacy)</option>
+                <option value="admin_calidad">Admin Calidad</option>
+                <option value="externo">Externo (legacy)</option>
+                <option value="cliente">Cliente</option>
+                <option value="admin">Admin</option>
+              </select>
+            </div>
+            <button onclick="createUser()" style="font-size:12px; padding:6px 16px;">Crear usuario</button>
           </div>
-          <div class="col" style="max-width:140px;">
-            <label style="font-size:11px; color:#666;">RUT</label>
-            <input type="text" id="ncRut" placeholder="12.345.678-9" style="width:100%;" />
-          </div>
-          <div class="col" style="max-width:180px;">
-            <label style="font-size:11px; color:#666;">Contacto</label>
-            <input type="text" id="ncContacto" placeholder="Nombre contacto" style="width:100%;" />
-          </div>
-          <div class="col" style="max-width:200px;">
-            <label style="font-size:11px; color:#666;">Email</label>
-            <input type="text" id="ncEmail" placeholder="email@empresa.cl" style="width:100%;" />
-          </div>
-          <div class="col" style="max-width:140px;">
-            <label style="font-size:11px; color:#666;">Teléfono</label>
-            <input type="text" id="ncTelefono" placeholder="+56 9..." style="width:100%;" />
-          </div>
+          <div id="createUserMsg" class="muted" style="margin-top:8px; font-size:12px;"></div>
         </div>
-        <div style="margin-top:8px; display:flex; gap:8px; align-items:center;">
-          <button style="font-size:12px; padding:6px 16px;" onclick="crearCliente()">Guardar constructora</button>
-          <span id="crearClienteMsg" class="muted" style="font-size:12px;"></span>
+        <div id="usersListContainer">
+          <div class="muted">Cargando usuarios...</div>
         </div>
       </div>
-      <div id="clientesContainer">
-        <div class="muted">Cargando...</div>
-      </div>
-    </div>
 
-    <!-- Calculistas (movido desde Obras) -->
-    <div class="card" id="adminCalculistasCard">
-      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
-        <h3 style="margin:0;">Calculistas</h3>
-        <button class="secondary" style="font-size:12px; padding:4px 12px;" onclick="toggleNuevoCalculista()">+ Nuevo calculista</button>
-      </div>
-      <div id="nuevoCalculistaForm" style="display:none; margin-bottom:12px; padding:12px; background:#f9f9f9; border-radius:8px;">
-        <div class="row" style="gap:8px; flex-wrap:wrap; align-items:flex-end;">
-          <div class="col">
-            <label style="font-size:11px; color:#666;">Nombre *</label>
-            <input type="text" id="nCalcNombre" placeholder="Nombre calculista" style="width:100%;" />
-          </div>
-          <div class="col" style="max-width:220px;">
-            <label style="font-size:11px; color:#666;">Email (opcional)</label>
-            <input type="text" id="nCalcEmail" placeholder="email@ejemplo.cl" style="width:100%;" />
-          </div>
-        </div>
-        <div style="margin-top:8px; display:flex; gap:8px; align-items:center;">
-          <button style="font-size:12px; padding:6px 16px;" onclick="crearCalculista()">Guardar calculista</button>
-          <span id="crearCalculistaMsg" class="muted" style="font-size:12px;"></span>
-        </div>
-      </div>
-      <div id="calculistasContainer">
-        <div class="muted">Cargando...</div>
-      </div>
-    </div>
-
-    <!-- Gestión de Proyectos -->
-    <div class="card" style="border-top:3px solid #1565C0;">
-      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
-        <h3 style="margin:0; color:#1565C0;">Gestión de Proyectos / Obras</h3>
-        <button class="secondary" style="font-size:11px; padding:3px 10px;" onclick="loadAdminProyectos()">Actualizar</button>
-      </div>
-      <div id="adminProyectosContainer">
-        <div class="muted">Cargando...</div>
-      </div>
-    </div>
-
-    <!-- Gestión de datos (limpieza por tabla) -->
-    <div class="card" id="adminGestionDatosCard" style="border-left: 4px solid #8b5cf6;">
-      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
-        <h3 style="margin:0; color:#8b5cf6;">Gestión de datos</h3>
-        <button class="secondary" style="font-size:11px; padding:3px 10px;" onclick="loadTableCounts()">Actualizar</button>
-      </div>
-      <p class="muted" style="font-size:12px; margin:0 0 10px 0;">Estado de las tablas del sistema. Puedes limpiar registros por tabla individual.</p>
-      <div id="tableCountsContainer">
-        <div class="muted">Cargando...</div>
-      </div>
-    </div>
-
-    <!-- Estado BD y reset -->
-    <div class="card" id="adminEstadoBdCard">
-      <h3>Estado de la base de datos</h3>
-      <div id="dbInfoContainer">
-        <div class="muted">Cargando...</div>
-      </div>
-      <button onclick="loadDbInfo()" class="secondary" style="margin-top: 12px;">Actualizar info</button>
-    </div>
-
-    <div class="card" id="adminResetBdCard" style="border-left: 4px solid #b42318;">
-      <h3 style="color: #b42318;">Resetear base de datos</h3>
-      <p class="muted">Elimina todas las barras y proyectos. Los usuarios se mantienen.</p>
-      <div class="row">
-        <label style="display: flex; align-items: center; gap: 8px;">
-          <input type="checkbox" id="resetKeepUsers" checked>
-          Mantener usuarios
-        </label>
-      </div>
-      <div class="row">
-        <input id="resetConfirm" placeholder="Escribe CONFIRMAR para habilitar" style="max-width: 300px;" />
-        <button class="danger" onclick="resetDatabase()">Resetear BD</button>
-      </div>
-      <div id="resetMsg" class="muted" style="margin-top: 8px;"></div>
-    </div>
-
-    <!-- Auditoría -->
-    <div class="card">
-      <h3>Auditoría de acciones</h3>
-      <div class="row" style="gap:8px; align-items:flex-end; flex-wrap:wrap; margin-bottom:10px;">
-        <div class="col" style="max-width:200px;">
-          <label style="font-size:11px; color:#666;">Usuario</label>
-          <input type="text" id="auditFiltroUsuario" placeholder="Buscar usuario..." style="width:100%; font-size:12px;" />
-        </div>
-        <div class="col" style="max-width:180px;">
-          <label style="font-size:11px; color:#666;">Acción</label>
-          <select id="auditFiltroAccion" style="width:100%; font-size:12px;">
-            <option value="">Todas</option>
-          </select>
-        </div>
-        <div class="col" style="max-width:180px;">
-          <label style="font-size:11px; color:#666;">Entidad</label>
-          <select id="auditFiltroEntidad" style="width:100%; font-size:12px;">
-            <option value="">Todas</option>
-          </select>
-        </div>
-        <div>
-          <button class="secondary" style="font-size:12px; padding:6px 14px;" onclick="loadAuditLog()">Filtrar</button>
-        </div>
-      </div>
-      <div id="auditLogContainer">
-        <div class="muted">Cargando...</div>
-      </div>
-      <div id="auditPagination" style="margin-top:8px; display:flex; gap:8px; align-items:center; justify-content:center;"></div>
-    </div>
-
-    </div><!-- /adminGeneral -->
-
-    <!-- Sub-panel: Notificaciones -->
-    <div id="adminNotificaciones" style="display:none;">
-      <div class="card" style="border-left:4px solid #1976d2;">
-        <h3 style="margin:0 0 12px 0; color:#1976d2;">🔔 Configuración de Notificaciones</h3>
-        <p class="muted" style="font-size:12px; margin:0 0 14px 0;">Controla qué roles reciben notificaciones para cada tipo de evento en reclamos.</p>
-        <div id="notifConfigContainer">
-          <div class="muted">Cargando configuración...</div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Sub-panel: Roles y Permisos -->
-    <div id="adminRolesPermisos" style="display:none;">
-      <div class="card" style="border-left:4px solid #7b1fa2;">
-        <h3 style="margin:0 0 4px 0; color:#7b1fa2;">🔐 Matriz de Roles y Permisos</h3>
-        <p class="muted" style="font-size:12px; margin:0 0 16px 0;">Referencia de lo que ve y puede hacer cada rol en ArmaHub. Solo lectura.</p>
-        <div id="rolesPermisosContainer">
-          <div class="muted">Cargando...</div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Sub-panel Matrices RCA eliminado: ahora vive solo en Calidad / Reclamos → Matriz RCA -->
-
-    <!-- ====== Sub-panel: Áreas (gestión de áreas del CRM) ====== -->
-    <div id="adminAreas" style="display:none;">
+      <!-- Áreas de la empresa -->
       <div class="card" style="border-left:4px solid #00897b;">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
-          <h3 style="margin:0; color:#00897b;">🏢 Gestión de Áreas</h3>
+          <h3 style="margin:0; color:#00897b;">🏢 Áreas de la empresa</h3>
           <button onclick="abrirNuevaArea()" style="font-size:12px; padding:5px 14px; background:#00897b; color:#fff; border:none; border-radius:4px; cursor:pointer; font-weight:600;">+ Nueva área</button>
         </div>
-        <p class="muted" style="font-size:12px; margin:0 0 14px 0;">Cada área puede tener etapa de revisión (un paso previo a Calidad) y usuarios asignados con su rol. El flujo de los reclamos del área se decide por el flag "Revisión".</p>
+        <p class="muted" style="font-size:12px; margin:0 0 14px 0;">Cada área puede tener etapa de revisión y usuarios asignados con su rol. El flujo de los reclamos del área se decide por el flag "Revisión".</p>
 
         <!-- Form crear/editar área (oculto por defecto) -->
         <div id="areaFormWrap" style="display:none; margin-bottom:14px; padding:12px; background:#e0f2f1; border-radius:8px; border:1px solid #80cbc4;">
@@ -274,12 +103,186 @@
         <div id="areaUsuariosLista"><div class="muted">Cargando...</div></div>
       </div>
 
+    </div><!-- /adminOrganizacion -->
+
+    <!-- ====== Sub-panel: Configuración ====== -->
+    <div id="adminConfiguracion" style="display:none;">
+
       <!-- Config: quién puede levantar reclamos -->
       <div class="card" style="border-left:4px solid #00897b;">
         <h3 style="margin:0 0 4px 0; color:#00897b;">📝 Quién puede levantar reclamos</h3>
         <p class="muted" style="font-size:12px; margin:0 0 12px 0;">Marca qué roles pueden crear reclamos de cada tipo. Admin y Admin Calidad siempre pueden (no se pueden desmarcar).</p>
         <div id="crearReclamoConfig"><div class="muted">Cargando...</div></div>
       </div>
-    </div>
+
+      <!-- Notificaciones -->
+      <div class="card" style="border-left:4px solid #1976d2;">
+        <h3 style="margin:0 0 12px 0; color:#1976d2;">🔔 Configuración de Notificaciones</h3>
+        <p class="muted" style="font-size:12px; margin:0 0 14px 0;">Controla qué roles reciben notificaciones para cada tipo de evento en reclamos.</p>
+        <div id="notifConfigContainer">
+          <div class="muted">Cargando configuración...</div>
+        </div>
+      </div>
+
+      <!-- Roles y Permisos -->
+      <div class="card" style="border-left:4px solid #7b1fa2;">
+        <h3 style="margin:0 0 4px 0; color:#7b1fa2;">🔐 Matriz de Roles y Permisos</h3>
+        <p class="muted" style="font-size:12px; margin:0 0 16px 0;">Referencia de lo que ve y puede hacer cada rol en ArmaHub. Solo lectura.</p>
+        <div id="rolesPermisosContainer">
+          <div class="muted">Cargando...</div>
+        </div>
+      </div>
+
+      <!-- Constructoras -->
+      <div class="card">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+          <h3 style="margin:0;">Constructoras</h3>
+          <button class="secondary" style="font-size:12px; padding:4px 12px;" onclick="toggleNuevoCliente()">+ Nueva constructora</button>
+        </div>
+        <div id="nuevoClienteForm" style="display:none; margin-bottom:12px; padding:12px; background:#f9f9f9; border-radius:8px;">
+          <div class="row" style="gap:8px; flex-wrap:wrap; align-items:flex-end;">
+            <div class="col">
+              <label style="font-size:11px; color:#666;">Nombre *</label>
+              <input type="text" id="ncNombre" placeholder="Nombre empresa" style="width:100%;" />
+            </div>
+            <div class="col" style="max-width:140px;">
+              <label style="font-size:11px; color:#666;">RUT</label>
+              <input type="text" id="ncRut" placeholder="12.345.678-9" style="width:100%;" />
+            </div>
+            <div class="col" style="max-width:180px;">
+              <label style="font-size:11px; color:#666;">Contacto</label>
+              <input type="text" id="ncContacto" placeholder="Nombre contacto" style="width:100%;" />
+            </div>
+            <div class="col" style="max-width:200px;">
+              <label style="font-size:11px; color:#666;">Email</label>
+              <input type="text" id="ncEmail" placeholder="email@empresa.cl" style="width:100%;" />
+            </div>
+            <div class="col" style="max-width:140px;">
+              <label style="font-size:11px; color:#666;">Teléfono</label>
+              <input type="text" id="ncTelefono" placeholder="+56 9..." style="width:100%;" />
+            </div>
+          </div>
+          <div style="margin-top:8px; display:flex; gap:8px; align-items:center;">
+            <button style="font-size:12px; padding:6px 16px;" onclick="crearCliente()">Guardar constructora</button>
+            <span id="crearClienteMsg" class="muted" style="font-size:12px;"></span>
+          </div>
+        </div>
+        <div id="clientesContainer">
+          <div class="muted">Cargando...</div>
+        </div>
+      </div>
+
+      <!-- Calculistas -->
+      <div class="card" id="adminCalculistasCard">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+          <h3 style="margin:0;">Calculistas</h3>
+          <button class="secondary" style="font-size:12px; padding:4px 12px;" onclick="toggleNuevoCalculista()">+ Nuevo calculista</button>
+        </div>
+        <div id="nuevoCalculistaForm" style="display:none; margin-bottom:12px; padding:12px; background:#f9f9f9; border-radius:8px;">
+          <div class="row" style="gap:8px; flex-wrap:wrap; align-items:flex-end;">
+            <div class="col">
+              <label style="font-size:11px; color:#666;">Nombre *</label>
+              <input type="text" id="nCalcNombre" placeholder="Nombre calculista" style="width:100%;" />
+            </div>
+            <div class="col" style="max-width:220px;">
+              <label style="font-size:11px; color:#666;">Email (opcional)</label>
+              <input type="text" id="nCalcEmail" placeholder="email@ejemplo.cl" style="width:100%;" />
+            </div>
+          </div>
+          <div style="margin-top:8px; display:flex; gap:8px; align-items:center;">
+            <button style="font-size:12px; padding:6px 16px;" onclick="crearCalculista()">Guardar calculista</button>
+            <span id="crearCalculistaMsg" class="muted" style="font-size:12px;"></span>
+          </div>
+        </div>
+        <div id="calculistasContainer">
+          <div class="muted">Cargando...</div>
+        </div>
+      </div>
+
+      <!-- Gestión de Proyectos -->
+      <div class="card" style="border-top:3px solid #1565C0;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+          <h3 style="margin:0; color:#1565C0;">Gestión de Proyectos / Obras</h3>
+          <button class="secondary" style="font-size:11px; padding:3px 10px;" onclick="loadAdminProyectos()">Actualizar</button>
+        </div>
+        <div id="adminProyectosContainer">
+          <div class="muted">Cargando...</div>
+        </div>
+      </div>
+
+    </div><!-- /adminConfiguracion -->
+
+    <!-- ====== Sub-panel: Sistema (solo admin) ====== -->
+    <div id="adminSistema" style="display:none;">
+
+      <!-- Gestión de datos (limpieza por tabla) -->
+      <div class="card" id="adminGestionDatosCard" style="border-left: 4px solid #8b5cf6;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+          <h3 style="margin:0; color:#8b5cf6;">Gestión de datos</h3>
+          <button class="secondary" style="font-size:11px; padding:3px 10px;" onclick="loadTableCounts()">Actualizar</button>
+        </div>
+        <p class="muted" style="font-size:12px; margin:0 0 10px 0;">Estado de las tablas del sistema. Puedes limpiar registros por tabla individual.</p>
+        <div id="tableCountsContainer">
+          <div class="muted">Cargando...</div>
+        </div>
+      </div>
+
+      <!-- Estado BD -->
+      <div class="card" id="adminEstadoBdCard">
+        <h3>Estado de la base de datos</h3>
+        <div id="dbInfoContainer">
+          <div class="muted">Cargando...</div>
+        </div>
+        <button onclick="loadDbInfo()" class="secondary" style="margin-top: 12px;">Actualizar info</button>
+      </div>
+
+      <!-- Reset BD -->
+      <div class="card" id="adminResetBdCard" style="border-left: 4px solid #b42318;">
+        <h3 style="color: #b42318;">Resetear base de datos</h3>
+        <p class="muted">Elimina todas las barras y proyectos. Los usuarios se mantienen.</p>
+        <div class="row">
+          <label style="display: flex; align-items: center; gap: 8px;">
+            <input type="checkbox" id="resetKeepUsers" checked>
+            Mantener usuarios
+          </label>
+        </div>
+        <div class="row">
+          <input id="resetConfirm" placeholder="Escribe CONFIRMAR para habilitar" style="max-width: 300px;" />
+          <button class="danger" onclick="resetDatabase()">Resetear BD</button>
+        </div>
+        <div id="resetMsg" class="muted" style="margin-top: 8px;"></div>
+      </div>
+
+      <!-- Auditoría -->
+      <div class="card">
+        <h3>Auditoría de acciones</h3>
+        <div class="row" style="gap:8px; align-items:flex-end; flex-wrap:wrap; margin-bottom:10px;">
+          <div class="col" style="max-width:200px;">
+            <label style="font-size:11px; color:#666;">Usuario</label>
+            <input type="text" id="auditFiltroUsuario" placeholder="Buscar usuario..." style="width:100%; font-size:12px;" />
+          </div>
+          <div class="col" style="max-width:180px;">
+            <label style="font-size:11px; color:#666;">Acción</label>
+            <select id="auditFiltroAccion" style="width:100%; font-size:12px;">
+              <option value="">Todas</option>
+            </select>
+          </div>
+          <div class="col" style="max-width:180px;">
+            <label style="font-size:11px; color:#666;">Entidad</label>
+            <select id="auditFiltroEntidad" style="width:100%; font-size:12px;">
+              <option value="">Todas</option>
+            </select>
+          </div>
+          <div>
+            <button class="secondary" style="font-size:12px; padding:6px 14px;" onclick="loadAuditLog()">Filtrar</button>
+          </div>
+        </div>
+        <div id="auditLogContainer">
+          <div class="muted">Cargando...</div>
+        </div>
+        <div id="auditPagination" style="margin-top:8px; display:flex; gap:8px; align-items:center; justify-content:center;"></div>
+      </div>
+
+    </div><!-- /adminSistema -->
 
   </div>

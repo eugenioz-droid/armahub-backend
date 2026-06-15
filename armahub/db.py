@@ -1063,6 +1063,89 @@ MIGRATIONS = [
     (69, "areas: tiene_revision_interno (revisión opcional independiente para internos)", [
         "DO $$ BEGIN ALTER TABLE areas ADD COLUMN tiene_revision_interno BOOLEAN DEFAULT FALSE; EXCEPTION WHEN duplicate_column THEN NULL; END $$;",
     ]),
+
+    # --- Migration 70: quitar CHECK hardcodeado de users.role ---
+    # Los roles objetivo son: admin, admin_calidad, miembro, cliente.
+    # Los roles legacy (cubicador, usc, externo) coexisten durante la transición;
+    # el CHECK se amplía para aceptarlos a todos hasta que el backfill esté completo.
+    (70, "users: ampliar CHECK role para incluir 'miembro' (roles objetivo + legacy)", [
+        """DO $$
+        DECLARE r RECORD;
+        BEGIN
+            FOR r IN (
+                SELECT con.conname
+                FROM pg_constraint con
+                JOIN pg_attribute att ON att.attnum = ANY(con.conkey) AND att.attrelid = con.conrelid
+                WHERE con.conrelid = 'users'::regclass
+                  AND con.contype = 'c'
+                  AND att.attname = 'role'
+            ) LOOP
+                EXECUTE 'ALTER TABLE users DROP CONSTRAINT ' || r.conname;
+            END LOOP;
+            ALTER TABLE users ADD CONSTRAINT users_role_check
+                CHECK (role IN ('admin', 'admin_calidad', 'cubicador', 'usc', 'externo', 'cliente', 'miembro'));
+        END $$;""",
+    ]),
+
+    # --- Migration 72: tabla area_rol_permisos (permisos por rol_area, configurable) ---
+    # Mismo patrón que reclamo_crear_config: permite configurar qué puede hacer cada
+    # rol_area sin hardcodear la lógica. Las acciones disponibles son:
+    #   levantar_externo   — puede crear reclamos externos (tipo_origen='externo')
+    #   levantar_interno   — puede crear reclamos internos (tipo_origen='interno')
+    #   responder_externo  — puede responder/analizar reclamos externos del área
+    #   responder_interno  — puede responder/analizar reclamos internos del área
+    #   aprobar_revision   — puede aprobar/devolver reclamos en etapa de revisión
+    (72, "area_rol_permisos: permisos configurables por rol_area", [
+        """CREATE TABLE IF NOT EXISTS area_rol_permisos (
+            id      BIGSERIAL PRIMARY KEY,
+            rol_area TEXT NOT NULL,
+            accion   TEXT NOT NULL,
+            activo   BOOLEAN DEFAULT TRUE,
+            UNIQUE(rol_area, accion)
+        )""",
+        # jefe_servicio: todo
+        "INSERT INTO area_rol_permisos (rol_area, accion, activo) VALUES ('jefe_servicio', 'levantar_externo', TRUE) ON CONFLICT DO NOTHING",
+        "INSERT INTO area_rol_permisos (rol_area, accion, activo) VALUES ('jefe_servicio', 'levantar_interno', TRUE) ON CONFLICT DO NOTHING",
+        "INSERT INTO area_rol_permisos (rol_area, accion, activo) VALUES ('jefe_servicio', 'responder_externo', TRUE) ON CONFLICT DO NOTHING",
+        "INSERT INTO area_rol_permisos (rol_area, accion, activo) VALUES ('jefe_servicio', 'responder_interno', TRUE) ON CONFLICT DO NOTHING",
+        "INSERT INTO area_rol_permisos (rol_area, accion, activo) VALUES ('jefe_servicio', 'aprobar_revision', TRUE) ON CONFLICT DO NOTHING",
+        # miembro: puede responder e interno, NO levantar externos (lo decide USC)
+        "INSERT INTO area_rol_permisos (rol_area, accion, activo) VALUES ('miembro', 'levantar_externo', FALSE) ON CONFLICT DO NOTHING",
+        "INSERT INTO area_rol_permisos (rol_area, accion, activo) VALUES ('miembro', 'levantar_interno', TRUE) ON CONFLICT DO NOTHING",
+        "INSERT INTO area_rol_permisos (rol_area, accion, activo) VALUES ('miembro', 'responder_externo', TRUE) ON CONFLICT DO NOTHING",
+        "INSERT INTO area_rol_permisos (rol_area, accion, activo) VALUES ('miembro', 'responder_interno', TRUE) ON CONFLICT DO NOTHING",
+        "INSERT INTO area_rol_permisos (rol_area, accion, activo) VALUES ('miembro', 'aprobar_revision', FALSE) ON CONFLICT DO NOTHING",
+    ]),
+
+    # --- Migration 71: poblar area_usuarios desde roles legacy ---
+    # Regla de mapeo:
+    #   cubicador  → area 'cubicaciones',  rol_area 'miembro'
+    #   usc        → area 'usc_cd',        rol_area 'jefe_servicio'  (jefe del área USC)
+    #   externo    → area 'usc_cd',        rol_area 'miembro'        (operativo externo)
+    # Solo inserta si el usuario NO tiene ya una entrada en area_usuarios para esa área.
+    (71, "area_usuarios: backfill roles legacy (cubicador/usc/externo → área+rol_area)", [
+        # Cubicadores → miembro de Cubicaciones
+        """INSERT INTO area_usuarios (area_id, user_id, rol_area)
+        SELECT a.id, u.id, 'miembro'
+        FROM users u
+        JOIN areas a ON a.slug = 'cubicaciones'
+        WHERE u.role = 'cubicador' AND u.activo = TRUE
+        ON CONFLICT (area_id, user_id) DO NOTHING""",
+        # USC → jefe_servicio de usc_cd
+        """INSERT INTO area_usuarios (area_id, user_id, rol_area)
+        SELECT a.id, u.id, 'jefe_servicio'
+        FROM users u
+        JOIN areas a ON a.slug = 'usc_cd'
+        WHERE u.role = 'usc' AND u.activo = TRUE
+        ON CONFLICT (area_id, user_id) DO NOTHING""",
+        # Externos → miembro de usc_cd
+        """INSERT INTO area_usuarios (area_id, user_id, rol_area)
+        SELECT a.id, u.id, 'miembro'
+        FROM users u
+        JOIN areas a ON a.slug = 'usc_cd'
+        WHERE u.role = 'externo' AND u.activo = TRUE
+        ON CONFLICT (area_id, user_id) DO NOTHING""",
+    ]),
 ]
 
 

@@ -2,20 +2,24 @@
   var currentRole = 'usc';
   var currentUserEmail = '';
   var currentUserName = '';
+  var currentAreas = [];
 
   function syncSessionState(me) {
     var displayName = ((me.nombre || '') + ' ' + (me.apellido || '')).trim();
     currentRole = me.role || 'usc';
     currentUserEmail = me.email || '';
     currentUserName = displayName || me.email || '';
+    currentAreas = Array.isArray(me.areas) ? me.areas : [];
     localStorage.setItem('armahub_email', currentUserEmail);
     global.currentRole = currentRole;
     global.currentUserEmail = currentUserEmail;
     global.currentUserName = currentUserName;
+    global.currentAreas = currentAreas;
     return {
       role: currentRole,
       email: currentUserEmail,
       displayName: currentUserName,
+      areas: currentAreas,
       raw: me
     };
   }
@@ -82,6 +86,7 @@
   global.currentRole = currentRole;
   global.currentUserEmail = currentUserEmail;
   global.currentUserName = currentUserName;
+  global.currentAreas = currentAreas;
   global.loadCurrentSession = loadCurrentSession;
   global.ensureAuthenticatedSession = ensureAuthenticatedSession;
   global.getSessionState = getSessionState;
