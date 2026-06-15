@@ -63,7 +63,9 @@
           </div>
           <div class="col" style="min-width:280px;">
             <label style="font-size:11px; color:#666;">Proyecto / Obra</label>
-            <select id="recProyecto" style="width:100%; font-size:12px;">
+            <input type="text" id="recProyectoSearch" list="recProyectoList" placeholder="Buscar obra..." autocomplete="off" style="width:100%; font-size:12px;" oninput="_onExtProyectoInput(this.value)" />
+            <datalist id="recProyectoList"></datalist>
+            <select id="recProyecto" style="display:none;">
               <option value="">— Sin proyecto —</option>
             </select>
           </div>
@@ -157,7 +159,9 @@
           </div>
           <div class="col" style="max-width:200px;">
             <label style="font-size:11px; color:#666;">Cubicador Responsable</label>
-            <select id="recResponsable" style="width:100%; font-size:12px;">
+            <input type="text" id="recResponsableSearch" list="recResponsableList" placeholder="Buscar cubicador..." autocomplete="off" style="width:100%; font-size:12px;" oninput="_onExtResponsableInput(this.value)" />
+            <datalist id="recResponsableList"></datalist>
+            <select id="recResponsable" style="display:none;">
               <option value="">— Sin asignar —</option>
             </select>
           </div>
@@ -658,9 +662,17 @@
             </div>
             <div class="col" style="max-width:220px;">
               <label style="font-size:11px; color:#666;">Área responsable (destino) *</label>
-              <select id="recIntAreaDestino" style="width:100%; font-size:12px;">
+              <input type="text" id="recIntAreaSearch" list="recIntAreaList" placeholder="Buscar área..." autocomplete="off" style="width:100%; font-size:12px;" oninput="_onIntAreaInput(this.value)" />
+              <datalist id="recIntAreaList"></datalist>
+              <select id="recIntAreaDestino" style="display:none;">
                 <option value="">— Seleccionar —</option>
               </select>
+            </div>
+            <div class="col" style="max-width:220px;">
+              <label style="font-size:11px; color:#666;">Responsable asignado</label>
+              <input type="text" id="recIntResponsableSearch" list="recIntResponsableList" placeholder="Buscar responsable..." autocomplete="off" style="width:100%; font-size:12px;" oninput="_onIntResponsableInput(this.value)" />
+              <datalist id="recIntResponsableList"></datalist>
+              <input type="hidden" id="recIntResponsable" value="" />
             </div>
           </div>
           <div style="margin-top:8px;">
@@ -753,7 +765,17 @@
           </div>
         </div>
 
-        <div id="recRevLista" style="font-size:12px; color:#aaa;">Cargando...</div>
+        <!-- Cola de revisión: externos + internos separados -->
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px;">
+          <div>
+            <div style="font-size:11px; font-weight:700; color:#1565C0; text-transform:uppercase; margin-bottom:6px; padding-bottom:4px; border-bottom:2px solid #bbdefb;">Reclamos Clientes</div>
+            <div id="recRevListaExt" style="font-size:12px; color:#aaa;">Cargando...</div>
+          </div>
+          <div>
+            <div style="font-size:11px; font-weight:700; color:#1976d2; text-transform:uppercase; margin-bottom:6px; padding-bottom:4px; border-bottom:2px solid #90caf9;">Reclamos Internos</div>
+            <div id="recRevListaInt" style="font-size:12px; color:#aaa;">Cargando...</div>
+          </div>
+        </div>
       </div>
 
       <!-- Sección B: Validación Calidad (admin_calidad) -->

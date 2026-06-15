@@ -102,6 +102,14 @@ function _applyReclamoDetailPermissions(data) {
   if (!estadoPermiteAnalisis) puedeResponder = false;
   var sec2Fields = ['recDetailRespuestaTexto','recDetailCausaDisplay','recDetailAreaAplica','recDetailFechaAnalisis','recDetailKilosMal','recTiempoRespuestaAnalisis','recTiempoRespuestaUnidadAnalisis'];
   sec2Fields.forEach(function(fid) { var el = document.getElementById(fid); if (el) el.disabled = !puedeResponder; });
+  // Bloquear selector de método RCA (Ishikawa / 5 por qué) y botón buscar Ishikawa
+  document.querySelectorAll('input[name="recMetodoRca"]').forEach(function(el) { el.disabled = !puedeResponder; });
+  var btnIshikawa = document.getElementById('btnAbrirIshikawa');
+  if (btnIshikawa) btnIshikawa.disabled = !puedeResponder;
+  // Bloquear controles de 5 por qué
+  var btn5PQ = document.getElementById('rec5PQAgregarBtn');
+  if (btn5PQ) btn5PQ.disabled = !puedeResponder;
+  document.querySelectorAll('#rec5PQItems input, #rec5PQItems textarea').forEach(function(el) { el.disabled = !puedeResponder; });
   var btnGuardarResp = document.getElementById('btnGuardarRespuesta');
   if (btnGuardarResp) btnGuardarResp.style.display = puedeResponder ? '' : 'none';
   var btnClearCausa = document.getElementById('recBtnClearCausa');

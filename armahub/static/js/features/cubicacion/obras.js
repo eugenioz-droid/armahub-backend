@@ -90,6 +90,8 @@ async function loadProyectos() {
     rpf.innerHTML = '<option value="">— Sin proyecto —</option>' +
       data.proyectos.map(p => `<option value="${p.id_proyecto}">${p.nombre_proyecto}</option>`).join('');
     if (prevR) rpf.value = prevR;
+    if (typeof _syncExtProyectoDatalist === 'function') _syncExtProyectoDatalist();
+    if (typeof populateRecFilterProyecto === 'function') populateRecFilterProyecto();
   }
 
   // Populate obra destino selector (import flow)

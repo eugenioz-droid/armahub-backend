@@ -5,6 +5,7 @@
     <div id="adminSubTabs" style="display:flex; gap:0; margin-bottom:16px; border-bottom:2px solid #e0e0e0;">
       <button class="admin-subtab active" data-subtab="adminOrganizacion" onclick="switchAdminSubTab('adminOrganizacion')" style="padding:8px 20px; font-size:13px; font-weight:600; border:none; border-bottom:3px solid #1565C0; background:none; color:#1565C0; cursor:pointer;">🏢 Organización</button>
       <button class="admin-subtab" data-subtab="adminConfiguracion" onclick="switchAdminSubTab('adminConfiguracion')" style="padding:8px 20px; font-size:13px; font-weight:600; border:none; border-bottom:3px solid transparent; background:none; color:#999; cursor:pointer;">⚙️ Configuración</button>
+      <button class="admin-subtab" data-subtab="adminDatosMaestros" onclick="switchAdminSubTab('adminDatosMaestros')" style="padding:8px 20px; font-size:13px; font-weight:600; border:none; border-bottom:3px solid transparent; background:none; color:#999; cursor:pointer;">📋 Datos maestros</button>
       <button class="admin-subtab" data-subtab="adminSistema" onclick="switchAdminSubTab('adminSistema')" style="padding:8px 20px; font-size:13px; font-weight:600; border:none; border-bottom:3px solid transparent; background:none; color:#999; cursor:pointer;">🗄️ Sistema</button>
     </div>
 
@@ -142,6 +143,11 @@
         </div>
       </div>
 
+    </div><!-- /adminConfiguracion -->
+
+    <!-- ====== Sub-panel: Datos maestros ====== -->
+    <div id="adminDatosMaestros" style="display:none;">
+
       <!-- Constructoras -->
       <div class="card">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
@@ -219,7 +225,7 @@
         </div>
       </div>
 
-    </div><!-- /adminConfiguracion -->
+    </div><!-- /adminDatosMaestros -->
 
     <!-- ====== Sub-panel: Sistema (solo admin) ====== -->
     <div id="adminSistema" style="display:none;">

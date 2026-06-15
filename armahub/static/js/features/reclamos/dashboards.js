@@ -607,18 +607,27 @@ async function loadRecValidaciones() {
 }
 
 async function _loadRevisionQueue() {
-  var listaEl = document.getElementById('recRevLista');
+  var listaExt = document.getElementById('recRevListaExt');
+  var listaInt = document.getElementById('recRevListaInt');
   var badge = document.getElementById('recRevBadge');
-  if (!listaEl) return;
-  listaEl.innerHTML = '<div class="muted">Cargando...</div>';
+  if (!listaExt || !listaInt) return;
+  listaExt.innerHTML = '<div class="muted">Cargando...</div>';
+  listaInt.innerHTML = '<div class="muted">Cargando...</div>';
 
-  // Cola del Jefe de Servicio: reclamos que el cubicador ya envió a revisión
   var data = await apiGet('/reclamos?estado=en_revision&limit=200');
-  if (!data) { listaEl.innerHTML = '<div class="muted">Error al cargar.</div>'; return; }
+  if (!data) {
+    listaExt.innerHTML = '<div class="muted">Error al cargar.</div>';
+    listaInt.innerHTML = '<div class="muted">Error al cargar.</div>';
+    return;
+  }
   var items = data.data || [];
   if (badge) badge.textContent = items.length;
-  // Mismo render compacto que Validación Calidad; las acciones van en el modal.
-  listaEl.innerHTML = _renderColaReclamos(items);
+
+  var externos = items.filter(function(r) { return (r.tipo_origen || 'externo') !== 'interno'; });
+  var internos = items.filter(function(r) { return r.tipo_origen === 'interno'; });
+
+  listaExt.innerHTML = _renderColaReclamos(externos);
+  listaInt.innerHTML = _renderColaReclamos(internos);
 }
 
 async function _loadValidacionCalidad() {

@@ -2,7 +2,7 @@
 // loadAdminModule + DB/Tables + Usuarios + Auditoría + Sub-tabs
 
 function switchAdminSubTab(tabId) {
-  var panels = ['adminOrganizacion', 'adminConfiguracion', 'adminSistema'];
+  var panels = ['adminOrganizacion', 'adminConfiguracion', 'adminDatosMaestros', 'adminSistema'];
   panels.forEach(function(id) {
     var el = document.getElementById(id);
     if (el) el.style.display = (id === tabId) ? '' : 'none';
@@ -27,6 +27,11 @@ function switchAdminSubTab(tabId) {
     if (typeof loadNotifConfig === 'function') loadNotifConfig();
     if (typeof loadRolesPermisos === 'function') loadRolesPermisos();
     if (typeof loadAreaRolPermisos === 'function') loadAreaRolPermisos();
+  }
+  if (tabId === 'adminDatosMaestros') {
+    if (typeof loadClientes === 'function') loadClientes();
+    if (typeof loadCalculistas === 'function') loadCalculistas();
+    if (typeof loadAdminProyectos === 'function') loadAdminProyectos();
   }
   if (tabId === 'adminSistema') {
     if (typeof loadTableCounts === 'function') loadTableCounts();
@@ -169,7 +174,7 @@ async function resetDatabase() {
 
 // ========================= USUARIOS =========================
 var _roleColors = { admin: '#b42318', admin_calidad: '#1565C0', jefe_servicio: '#5e35b1', miembro: '#00897b', cliente: '#7B1FA2', cubicador: '#2e7d32', usc: '#ff9800', externo: '#795548' };
-var _roleLabels = { admin: 'Admin', admin_calidad: 'Admin Calidad', cubicador: 'Cubicador (legacy)', usc: 'USC (legacy)', externo: 'Externo (legacy)', cliente: 'Cliente', miembro: 'Miembro' };
+var _roleLabels = { admin: 'Admin', admin_calidad: 'Admin Calidad', cubicador: 'Cubicador (legacy)', usc: 'USC (legacy)', externo: 'Externo', cliente: 'Cliente', miembro: 'Miembro' };
 
 function toggleNuevoUsuario() {
   var f = document.getElementById('nuevoUsuarioForm');
@@ -214,7 +219,7 @@ async function loadUsers() {
   if (!res.ok) { container.innerHTML = '<div class="muted">Error cargando usuarios</div>'; return; }
   var data = await res.json();
   if (!data.users || data.users.length === 0) { container.innerHTML = '<div class="muted">No hay usuarios</div>'; return; }
-  var _rolLabels = {admin:'Admin',admin_calidad:'Admin Calidad',jefe_servicio:'Jefe de Servicio',miembro:'Miembro',cliente:'Cliente',cubicador:'Cubicador (legacy)',usc:'USC (legacy)',externo:'Externo (legacy)'};
+  var _rolLabels = {admin:'Admin',admin_calidad:'Admin Calidad',jefe_servicio:'Jefe de Servicio',miembro:'Miembro',cliente:'Cliente',cubicador:'Cubicador (legacy)',usc:'USC (legacy)',externo:'Externo'};
   var allRoles = ['admin','admin_calidad','jefe_servicio','miembro','cliente','cubicador','usc','externo'];
 
   var html = '<table style="width:100%; font-size:12px; border-collapse:collapse;">';

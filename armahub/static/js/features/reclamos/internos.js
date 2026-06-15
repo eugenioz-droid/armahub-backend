@@ -28,6 +28,18 @@ async function initInternosForm() {
         .join('');
     selArea.value = prev;
   }
+  // Poblar datalist del combobox de área
+  window._intAreaMap = {};
+  var dlArea = document.getElementById('recIntAreaList');
+  if (dlArea && Array.isArray(areas)) {
+    dlArea.innerHTML = '';
+    areas.filter(function(a) { return a.activo; }).forEach(function(a) {
+      window._intAreaMap[a.nombre] = a.id;
+      var o = document.createElement('option');
+      o.value = a.nombre;
+      dlArea.appendChild(o);
+    });
+  }
   // Cliente/proyecto: pobla el datalist del combobox con los proyectos del form externo.
   var dl = document.getElementById('recIntProyectoList');
   var srcProy = document.getElementById('recProyecto');
@@ -56,13 +68,15 @@ async function initInternosForm() {
 }
 
 // Abre la card de creación como modal (mismo mecanismo que toggleNuevoReclamo).
-function toggleNuevoInterno() {
+async function toggleNuevoInterno() {
   var card = document.getElementById('crearReclamoInternoCard');
   var form = document.getElementById('nuevoReclamoInternoForm');
   if (typeof _recModalTarget !== 'undefined' && _recModalTarget === card) {
     closeReclamoModal();
     return;
   }
+  // Garantizar que los dropdowns estén poblados antes de abrir el modal.
+  await initInternosForm();
   form.style.display = '';
   openReclamoModal(card);
   // Auto-sugerir año y número de calidad, igual que externos.
@@ -111,6 +125,8 @@ async function crearReclamoInterno() {
   msg.textContent = 'Registrando...'; msg.style.color = '#666';
 
   var body = { titulo: titulo, tipo_origen: 'interno', area_id: parseInt(areaId) };
+  var respEmail = document.getElementById('recIntResponsable') ? document.getElementById('recIntResponsable').value : '';
+  if (respEmail) body.cubicador_asignado = respEmail;
   // Cliente/Obra: si no se elige obra específica, queda sin id_proyecto (se muestra "Armacero" en listado)
   var proy = document.getElementById('recIntProyecto').value;
   if (proy) body.id_proyecto = proy;
@@ -150,9 +166,13 @@ async function crearReclamoInterno() {
     ['recIntTitulo','recIntDescripcion','recIntAreaDestino','recIntFechaDeteccion','recIntAnioCalidad','recIntNumeroCalidad'].forEach(function(id) {
       var el = document.getElementById(id); if (el) el.value = '';
     });
-    // Reset combobox cliente
+    // Reset comboboxes
     var ps = document.getElementById('recIntProyectoSearch'); if (ps) ps.value = '';
     var ph = document.getElementById('recIntProyecto'); if (ph) ph.value = '';
+    var as = document.getElementById('recIntAreaSearch'); if (as) as.value = '';
+    var rs = document.getElementById('recIntResponsableSearch'); if (rs) rs.value = '';
+    var rh = document.getElementById('recIntResponsable'); if (rh) rh.value = '';
+    var dlR = document.getElementById('recIntResponsableList'); if (dlR) dlR.innerHTML = '';
     var prev = document.getElementById('recIntCreatePreview'); if (prev) prev.innerHTML = '';
     var dmsg = document.getElementById('recIntCreateDropMsg'); if (dmsg) dmsg.style.display = '';
     closeReclamoModal();
@@ -246,6 +266,35 @@ function _onIntProyectoInput(texto) {
   var mapa = window._intProyectoMap || {};
   var hidden = document.getElementById('recIntProyecto');
   if (!hidden) return;
-  // Si el texto coincide exactamente con un nombre conocido, guarda su id; si no, vacío.
   hidden.value = mapa[texto.trim()] || '';
+}
+
+// Resuelve el id del área cuando el usuario escribe o selecciona en el combobox.
+async function _onIntAreaInput(texto) {
+  var id = (window._intAreaMap || {})[texto.trim()] || '';
+  var selArea = document.getElementById('recIntAreaDestino');
+  if (selArea) selArea.value = id;
+  // Cargar usuarios de esa área para el datalist de responsable
+  var dl = document.getElementById('recIntResponsableList');
+  var hiddenResp = document.getElementById('recIntResponsable');
+  if (!dl) return;
+  dl.innerHTML = '';
+  if (hiddenResp) hiddenResp.value = '';
+  window._intResponsableMap = {};
+  if (!id) return;
+  var usuarios = await apiGet('/admin/areas/' + id + '/usuarios');
+  if (!Array.isArray(usuarios)) return;
+  usuarios.forEach(function(u) {
+    window._intResponsableMap[u.display || u.email] = u.email;
+    var o = document.createElement('option');
+    o.value = u.display || u.email;
+    dl.appendChild(o);
+  });
+}
+
+// Resuelve el email del responsable cuando el usuario escribe en el combobox.
+function _onIntResponsableInput(texto) {
+  var hidden = document.getElementById('recIntResponsable');
+  if (!hidden) return;
+  hidden.value = (window._intResponsableMap || {})[texto.trim()] || '';
 }

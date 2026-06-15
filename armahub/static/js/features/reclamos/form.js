@@ -131,6 +131,8 @@ async function crearReclamo() {
     ['recTitulo','recDescripcion','recResponsable','recAsignadoA','recDetectadoPor','recFechaDeteccion','recIdCalidad','recAnioCalidad','recNumeroCalidad'].forEach(function(id) {
       var el = document.getElementById(id); if (el) el.value = '';
     });
+    var pSearch = document.getElementById('recProyectoSearch'); if (pSearch) pSearch.value = '';
+    var rSearch = document.getElementById('recResponsableSearch'); if (rSearch) rSearch.value = '';
     document.getElementById('recProyecto').value = '';
     document.getElementById('recCreatePreview').innerHTML = '';
     document.getElementById('recCreateDropMsg').style.display = '';
@@ -256,4 +258,51 @@ async function crearConstDesdeRecForm() {
   } else {
     msg.textContent = 'Error: ' + (data.detail || 'desconocido'); msg.style.color = '#b42318';
   }
+}
+
+// Combobox helpers for the externo crear form
+window._extProyectoMap = {};
+function _syncExtProyectoDatalist() {
+  var sel = document.getElementById('recProyecto');
+  var dl = document.getElementById('recProyectoList');
+  if (!sel || !dl) return;
+  dl.innerHTML = '';
+  window._extProyectoMap = {};
+  Array.from(sel.options).forEach(function(opt) {
+    if (!opt.value) return;
+    var name = opt.textContent.trim();
+    window._extProyectoMap[name] = opt.value;
+    var o = document.createElement('option');
+    o.value = name;
+    dl.appendChild(o);
+  });
+}
+function _onExtProyectoInput(texto) {
+  var sel = document.getElementById('recProyecto');
+  if (!sel) return;
+  var id = (window._extProyectoMap || {})[texto.trim()] || '';
+  sel.value = id;
+}
+
+window._extResponsableMap = {};
+function _syncExtResponsableDatalist() {
+  var sel = document.getElementById('recResponsable');
+  var dl = document.getElementById('recResponsableList');
+  if (!sel || !dl) return;
+  dl.innerHTML = '';
+  window._extResponsableMap = {};
+  Array.from(sel.options).forEach(function(opt) {
+    if (!opt.value) return;
+    var display = opt.getAttribute('data-display') || opt.textContent.trim();
+    window._extResponsableMap[display] = opt.value;
+    var o = document.createElement('option');
+    o.value = display;
+    dl.appendChild(o);
+  });
+}
+function _onExtResponsableInput(texto) {
+  var sel = document.getElementById('recResponsable');
+  if (!sel) return;
+  var email = (window._extResponsableMap || {})[texto.trim()] || '';
+  sel.value = email;
 }

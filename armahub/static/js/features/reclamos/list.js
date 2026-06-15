@@ -16,6 +16,7 @@ async function loadRecUsersDropdown() {
       createSel.innerHTML += '<option value="' + u.email + '" data-display="' + u.display + '">' + u.display + '</option>';
     });
     createSel.value = val;
+    if (typeof _syncExtResponsableDatalist === 'function') _syncExtResponsableDatalist();
   }
   // Populate acciones responsable datalist (all users)
   var accionRespList = document.getElementById('recAccionRespList');
