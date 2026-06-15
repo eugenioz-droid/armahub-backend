@@ -68,6 +68,16 @@
         '</tr>';
       }).join('') +
       '</table>';
+
+    // Poblar selector de áreas en el form de nuevo usuario
+    var areaSel = document.getElementById('newUserAreaId');
+    if (areaSel) {
+      var current = areaSel.value;
+      areaSel.innerHTML = '<option value="">— Sin área —</option>' +
+        _areasCache.filter(function(a) { return a.activo; }).map(function(a) {
+          return '<option value="' + a.id + '"' + (String(a.id) === current ? ' selected' : '') + '>' + _esc(a.nombre) + '</option>';
+        }).join('');
+    }
   }
 
   // ---- Flag tiene_revision (ext) / tiene_revision_interno (int) ----

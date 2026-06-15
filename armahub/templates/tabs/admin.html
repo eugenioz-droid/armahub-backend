@@ -47,6 +47,19 @@
                 <option value="admin">Admin</option>
               </select>
             </div>
+            <div class="col" style="max-width:180px;">
+              <label style="font-size:11px; color:#666;">Área (opcional)</label>
+              <select id="newUserAreaId" style="width:100%; font-size:12px;">
+                <option value="">— Sin área —</option>
+              </select>
+            </div>
+            <div class="col" style="max-width:150px;">
+              <label style="font-size:11px; color:#666;">Rol en el área</label>
+              <select id="newUserRolArea" style="width:100%; font-size:12px;">
+                <option value="miembro">Miembro</option>
+                <option value="jefe_servicio">Jefe de Servicio</option>
+              </select>
+            </div>
             <button onclick="createUser()" style="font-size:12px; padding:6px 16px;">Crear usuario</button>
           </div>
           <div id="createUserMsg" class="muted" style="margin-top:8px; font-size:12px;"></div>

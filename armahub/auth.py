@@ -107,17 +107,22 @@ def login(email: str, password: str):
 
 
 @router.post("/auth/register")
-def register(email: str, password: str, nombre: str = "", apellido: str = "", role: str = "usc", user=Depends(require_admin_or_admin_calidad)):
+def register(
+    email: str, password: str, nombre: str = "", apellido: str = "",
+    role: str = "miembro", area_id: int = None, rol_area: str = "miembro",
+    user=Depends(require_admin_or_admin_calidad)
+):
     """
     Crea usuarios. Requiere admin o admin_calidad.
-    Admin Calidad solo puede crear usuarios con rol 'usc'.
+    Si se pasa area_id, inserta en area_usuarios con rol_area dado.
     """
     VALID_ROLES = ("admin", "admin_calidad", "cubicador", "usc", "externo", "cliente", "miembro")
     if role not in VALID_ROLES:
         raise HTTPException(status_code=400, detail=f"role debe ser uno de: {', '.join(VALID_ROLES)}")
-    # Admin Calidad no puede crear usuarios admin ni admin_calidad
     if user.get("role") == "admin_calidad" and role in ("admin", "admin_calidad"):
         raise HTTPException(status_code=403, detail="Admin Calidad no puede crear usuarios con rol admin o admin_calidad")
+    if rol_area not in ("miembro", "jefe_servicio"):
+        rol_area = "miembro"
 
     password_hash = pwd_context.hash(password)
 
@@ -125,9 +130,15 @@ def register(email: str, password: str, nombre: str = "", apellido: str = "", ro
         with get_conn() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    "INSERT INTO users (email, password_hash, role, nombre, apellido) VALUES (%s,%s,%s,%s,%s)",
+                    "INSERT INTO users (email, password_hash, role, nombre, apellido) VALUES (%s,%s,%s,%s,%s) RETURNING id",
                     (email, password_hash, role, nombre.strip() or None, apellido.strip() or None),
                 )
+                new_user_id = cur.fetchone()[0]
+                if area_id:
+                    cur.execute(
+                        "INSERT INTO area_usuarios (area_id, user_id, rol_area) VALUES (%s,%s,%s) ON CONFLICT (area_id, user_id) DO NOTHING",
+                        (area_id, new_user_id, rol_area),
+                    )
         audit(user.get("email", "?"), "registrar_usuario", f"{email} como {role}", "usuario", email)
         return {"ok": True}
     except Exception:

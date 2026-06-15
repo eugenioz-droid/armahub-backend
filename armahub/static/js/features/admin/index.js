@@ -181,17 +181,27 @@ async function createUser() {
   var apellido = document.getElementById('newUserApellido') ? document.getElementById('newUserApellido').value.trim() : '';
   var password = document.getElementById('newUserPassword').value;
   var role = document.getElementById('newUserRole').value;
+  var areaId = document.getElementById('newUserAreaId') ? document.getElementById('newUserAreaId').value : '';
+  var rolArea = document.getElementById('newUserRolArea') ? document.getElementById('newUserRolArea').value : 'miembro';
   var msg = document.getElementById('createUserMsg');
   if (!email || !password) { msg.textContent = 'Email y contrasena son requeridos.'; msg.style.color = '#b42318'; return; }
   var params = new URLSearchParams({ email: email, password: password, role: role, nombre: nombre, apellido: apellido });
+  if (areaId) { params.append('area_id', areaId); params.append('rol_area', rolArea); }
   var res = await fetch(apiUrl('/auth/register?' + params.toString()), { method: 'POST', headers: authHeaders() });
   var data = await res.json();
   if (!res.ok) { msg.textContent = 'Error: ' + (data.detail || JSON.stringify(data)); msg.style.color = '#b42318'; return; }
-  msg.textContent = 'Usuario ' + email + ' (' + role + ') creado.'; msg.style.color = '#558B2F';
+  var areaLabel = '';
+  if (areaId) {
+    var sel = document.getElementById('newUserAreaId');
+    var opt = sel ? sel.options[sel.selectedIndex] : null;
+    areaLabel = opt ? ' → ' + opt.text + ' (' + rolArea + ')' : '';
+  }
+  msg.textContent = 'Usuario ' + email + ' (' + role + ')' + areaLabel + ' creado.'; msg.style.color = '#558B2F';
   document.getElementById('newUserEmail').value = '';
   if (document.getElementById('newUserNombre')) document.getElementById('newUserNombre').value = '';
   if (document.getElementById('newUserApellido')) document.getElementById('newUserApellido').value = '';
   document.getElementById('newUserPassword').value = '';
+  if (document.getElementById('newUserAreaId')) document.getElementById('newUserAreaId').value = '';
   await loadUsers();
 }
 
