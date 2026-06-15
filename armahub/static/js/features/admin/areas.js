@@ -33,7 +33,7 @@
       '<table style="width:100%; font-size:13px; border-collapse:collapse;">' +
       '<tr style="background:#f5f5f5; text-align:left;">' +
         '<th style="padding:6px 8px;">Área</th>' +
-        '<th style="padding:6px 8px; text-align:center;">Revisión<br><span style="font-size:10px; font-weight:400; color:#666;">Ext / Int</span></th>' +
+        '<th style="padding:6px 8px; text-align:center;">Flujo Revisión<br><span style="font-size:10px; font-weight:400; color:#666;">Ext / Int</span></th>' +
         '<th style="padding:6px 8px; text-align:center;">RCA</th>' +
         '<th style="padding:6px 8px; text-align:center;">Usuarios</th>' +
         '<th style="padding:6px 8px;">Estado</th>' +
