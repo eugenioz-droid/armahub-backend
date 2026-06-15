@@ -264,19 +264,36 @@ def users_dropdown(user=Depends(get_current_user)):
 
 @router.get("/admin/users")
 def admin_list_users(admin=Depends(require_admin_or_admin_calidad)):
-    """Lista completa de usuarios con todos los campos. Admin o admin_calidad."""
+    """Lista completa de usuarios con todos los campos + áreas asignadas."""
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("""
                 SELECT id, email, role, nombre, apellido, activo, fecha_creacion
-                FROM users ORDER BY id
+                FROM users ORDER BY nombre, apellido, email
             """)
             rows = cur.fetchall()
+            # Áreas por usuario en una sola query
+            cur.execute("""
+                SELECT au.user_id, a.id, a.nombre, au.rol_area
+                FROM area_usuarios au
+                JOIN areas a ON a.id = au.area_id
+                WHERE a.activo = TRUE
+                ORDER BY a.nombre
+            """)
+            area_rows = cur.fetchall()
+
+    areas_por_usuario = {}
+    for ar in area_rows:
+        areas_por_usuario.setdefault(ar[0], []).append(
+            {"area_id": ar[1], "area_nombre": ar[2], "rol_area": ar[3]}
+        )
+
     return {
         "users": [
             {"id": r[0], "email": r[1], "role": r[2], "nombre": r[3], "apellido": r[4],
              "activo": r[5] if r[5] is not None else True,
-             "fecha_creacion": r[6]}
+             "fecha_creacion": r[6],
+             "areas": areas_por_usuario.get(r[0], [])}
             for r in rows
         ]
     }

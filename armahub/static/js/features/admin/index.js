@@ -213,34 +213,48 @@ async function loadUsers() {
   if (!res.ok) { container.innerHTML = '<div class="muted">Error cargando usuarios</div>'; return; }
   var data = await res.json();
   if (!data.users || data.users.length === 0) { container.innerHTML = '<div class="muted">No hay usuarios</div>'; return; }
+  var _rolLabels = {admin:'Admin',admin_calidad:'Admin Calidad',cubicador:'Cubicador (legacy)',usc:'USC (legacy)',externo:'Externo (legacy)',cliente:'Cliente',miembro:'Miembro'};
+  var allRoles = ['admin','admin_calidad','miembro','usc','cubicador','externo','cliente'];
+  var _rolAreaColors = { miembro: '#00897b', jefe_servicio: '#5e35b1' };
+  var _rolAreaLabels = { miembro: 'Miembro', jefe_servicio: 'Jefe' };
+
   var html = '<table style="width:100%; font-size:12px; border-collapse:collapse;">';
   html += '<tr style="background:#f5f5f5; text-align:left;">';
-  html += '<th style="padding:5px 6px;">Email</th><th style="padding:5px 6px;">Nombre</th>';
-  html += '<th style="padding:5px 6px;">Rol</th><th style="padding:5px 6px;">Estado</th>';
-  html += '<th style="padding:5px 6px;">Creado</th><th style="padding:5px 6px;">Acciones</th></tr>';
+  html += '<th style="padding:5px 6px;">Email / Nombre</th>';
+  html += '<th style="padding:5px 6px;">Rol global</th>';
+  html += '<th style="padding:5px 6px;">Áreas asignadas</th>';
+  html += '<th style="padding:5px 6px;">Estado</th>';
+  html += '<th style="padding:5px 6px;">Acciones</th></tr>';
+
   data.users.forEach(function(u) {
     var rColor = _roleColors[u.role] || '#666';
     var activo = u.activo !== false;
-    var activoBadge = activo ? '<span style="color:#2e7d32; font-weight:600; font-size:10px;">Activo</span>' : '<span style="color:#b42318; font-weight:600; font-size:10px;">Inactivo</span>';
-    var fecha = u.fecha_creacion ? u.fecha_creacion.substring(0, 10) : '-';
+    var activoBadge = activo
+      ? '<span style="color:#2e7d32; font-weight:600; font-size:10px;">Activo</span>'
+      : '<span style="color:#b42318; font-weight:600; font-size:10px;">Inactivo</span>';
     var toggleLabel = activo ? 'Desactivar' : 'Activar';
     var toggleColor = activo ? '#b42318' : '#2e7d32';
-    var _rolLabels = {admin:'Admin',admin_calidad:'Admin Calidad',cubicador:'Cubicador (legacy)',usc:'USC (legacy)',externo:'Externo (legacy)',cliente:'Cliente',miembro:'Miembro'};
-    var allRoles = ['admin','admin_calidad','miembro','usc','cubicador','externo','cliente'];
     var rolOpts = allRoles.map(function(r) {
       return '<option value="' + r + '"' + (r === u.role ? ' selected' : '') + '>' + (_rolLabels[r] || r) + '</option>';
     }).join('');
-    var rowStyle = 'border-bottom:1px solid #eee;' + (!activo ? ' background:#fafafa; opacity:0.7;' : '');
-    html += '<tr style="' + rowStyle + '">';
+    var rowStyle = 'border-bottom:1px solid #eee; vertical-align:top;' + (!activo ? ' background:#fafafa; opacity:0.7;' : '');
     var displayName = ((u.nombre || '') + ' ' + (u.apellido || '')).trim();
-    html += '<td style="padding:4px 6px; font-weight:500;">' + u.email + '</td>';
-    html += '<td style="padding:4px 6px;">' + (displayName || '<span class="muted">-</span>') + '</td>';
-    // Role column: admin/admin_calidad see dropdown (admin_calidad filtered), others see label
     var isProtectedTarget = (u.role === 'admin' || u.role === 'admin_calidad');
+    var canOperate = currentRole === 'admin' || (currentRole === 'admin_calidad' && !isProtectedTarget);
+
+    html += '<tr style="' + rowStyle + '">';
+
+    // Email + nombre
+    html += '<td style="padding:4px 6px;">';
+    html += '<div style="font-weight:500;">' + u.email + '</div>';
+    if (displayName) html += '<div class="muted" style="font-size:10px;">' + displayName + '</div>';
+    html += '</td>';
+
+    // Rol global
     if (currentRole === 'admin') {
       html += '<td style="padding:4px 6px;"><select style="font-size:11px; color:' + rColor + '; font-weight:600; border:1px solid #ddd; border-radius:3px; padding:1px 4px;" onchange="cambiarRolUsuario(' + u.id + ', this.value)">' + rolOpts + '</select></td>';
     } else if (currentRole === 'admin_calidad' && !isProtectedTarget) {
-      var a2Roles = ['cubicador','usc','externo','cliente'];
+      var a2Roles = ['miembro','cubicador','usc','externo','cliente'];
       var a2Opts = a2Roles.map(function(r) {
         return '<option value="' + r + '"' + (r === u.role ? ' selected' : '') + '>' + (_rolLabels[r] || r) + '</option>';
       }).join('');
@@ -248,22 +262,113 @@ async function loadUsers() {
     } else {
       html += '<td style="padding:4px 6px;"><span style="font-size:11px; color:' + rColor + '; font-weight:600;">' + (_rolLabels[u.role] || u.role) + '</span></td>';
     }
+
+    // Áreas asignadas
+    html += '<td style="padding:4px 6px;">';
+    var areas = u.areas || [];
+    if (areas.length > 0) {
+      html += areas.map(function(a) {
+        var aColor = _rolAreaColors[a.rol_area] || '#666';
+        var aLabel = _rolAreaLabels[a.rol_area] || a.rol_area;
+        return '<span style="display:inline-flex; align-items:center; gap:3px; background:#f0f0f0; border-radius:10px; padding:1px 6px; margin:1px 2px 1px 0; font-size:10px;">' +
+          '<span style="color:' + aColor + '; font-weight:600;">' + a.area_nombre + '</span>' +
+          '<span class="muted">·' + aLabel + '</span>' +
+          (canOperate ? '<button onclick="quitarUsuarioDeArea(' + u.id + ',' + a.area_id + ')" style="background:none;border:none;color:#b42318;cursor:pointer;font-size:10px;padding:0 1px;line-height:1;" title="Quitar del área">✕</button>' : '') +
+          '</span>';
+      }).join('');
+    } else {
+      html += '<span class="muted" style="font-size:10px;">Sin área</span>';
+    }
+    if (canOperate) {
+      html += ' <button class="secondary" style="font-size:10px; padding:1px 6px;" onclick="abrirAsignarAreaUsuario(' + u.id + ')">+ Área</button>';
+    }
+    html += '</td>';
+
+    // Estado
     html += '<td style="padding:4px 6px;">' + activoBadge + '</td>';
-    html += '<td style="padding:4px 6px; font-size:11px;" class="muted">' + fecha + '</td>';
+
+    // Acciones
     html += '<td style="padding:4px 6px; white-space:nowrap;">';
     html += '<button class="secondary" style="font-size:10px; padding:1px 6px;" onclick="editarNombreUsuario(' + u.id + ', \'' + (u.nombre || '').replace(/'/g, "\\'") + '\', \'' + (u.apellido || '').replace(/'/g, "\\'") + '\')">Nombre</button> ';
-    // admin_calidad cannot operate on admin/admin_calidad targets
-    var canOperate = currentRole === 'admin' || (currentRole === 'admin_calidad' && !isProtectedTarget);
     if (canOperate) {
       html += '<button class="secondary" style="font-size:10px; padding:1px 6px; color:' + toggleColor + ';" onclick="toggleActivoUsuario(' + u.id + ', ' + !activo + ')">' + toggleLabel + '</button> ';
-      html += '<button class="secondary" style="font-size:10px; padding:1px 6px;" onclick="resetPasswordUsuario(' + u.id + ')">Cambiar clave</button> ';
+      html += '<button class="secondary" style="font-size:10px; padding:1px 6px;" onclick="resetPasswordUsuario(' + u.id + ')">Clave</button> ';
       html += '<button class="secondary" style="font-size:10px; padding:1px 6px; color:#b42318;" onclick="eliminarUsuarioAdmin(' + u.id + ')">Eliminar</button>';
     }
     html += '</td></tr>';
   });
+
   html += '</table>';
   html += '<div class="muted" style="font-size:11px; margin-top:6px;">Total: ' + data.users.length + ' usuario(s)</div>';
+
+  // Mini-form inline para asignar área (oculto, se muestra al hacer click en "+ Área")
+  html += '<div id="asignarAreaUsuarioForm" style="display:none; margin-top:10px; padding:10px; background:#f9f9f9; border-radius:8px; border:1px solid #ddd;">';
+  html += '<strong style="font-size:12px;">Asignar área a usuario</strong><br><br>';
+  html += '<div style="display:flex; gap:8px; align-items:flex-end; flex-wrap:wrap;">';
+  html += '<div><label style="font-size:11px; color:#666;">Área</label><br><select id="asignarAreaId" style="font-size:12px; min-width:180px;"><option value="">— Selecciona —</option></select></div>';
+  html += '<div><label style="font-size:11px; color:#666;">Rol en el área</label><br><select id="asignarRolArea" style="font-size:12px;"><option value="miembro">Miembro</option><option value="jefe_servicio">Jefe de Servicio</option></select></div>';
+  html += '<button style="font-size:12px; padding:5px 14px;" onclick="confirmarAsignarAreaUsuario()">Asignar</button>';
+  html += '<button class="secondary" style="font-size:12px; padding:5px 10px;" onclick="cerrarAsignarAreaUsuario()">Cancelar</button>';
+  html += '<span id="asignarAreaMsg" class="muted" style="font-size:11px;"></span>';
+  html += '</div></div>';
+
   container.innerHTML = html;
+
+  // Poblar select de áreas del mini-form con el cache actual
+  _poblarSelectAreasAsignar();
+}
+
+var _asignarAreaUsuarioId = null;
+
+function _poblarSelectAreasAsignar() {
+  var sel = document.getElementById('asignarAreaId');
+  if (!sel) return;
+  // Usa el cache de areas.js si está disponible
+  var areas = (typeof _areasCache !== 'undefined' ? _areasCache : []).filter(function(a) { return a.activo; });
+  sel.innerHTML = '<option value="">— Selecciona —</option>' +
+    areas.map(function(a) { return '<option value="' + a.id + '">' + a.nombre + '</option>'; }).join('');
+}
+
+function abrirAsignarAreaUsuario(userId) {
+  _asignarAreaUsuarioId = userId;
+  _poblarSelectAreasAsignar();
+  var form = document.getElementById('asignarAreaUsuarioForm');
+  if (form) { form.style.display = ''; form.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }
+  var msg = document.getElementById('asignarAreaMsg');
+  if (msg) msg.textContent = '';
+}
+
+function cerrarAsignarAreaUsuario() {
+  _asignarAreaUsuarioId = null;
+  var form = document.getElementById('asignarAreaUsuarioForm');
+  if (form) form.style.display = 'none';
+}
+
+async function confirmarAsignarAreaUsuario() {
+  if (!_asignarAreaUsuarioId) return;
+  var areaId = document.getElementById('asignarAreaId').value;
+  var rolArea = document.getElementById('asignarRolArea').value;
+  var msg = document.getElementById('asignarAreaMsg');
+  if (!areaId) { if (msg) msg.textContent = 'Selecciona un área.'; return; }
+  var params = new URLSearchParams({ user_id: _asignarAreaUsuarioId, rol_area: rolArea });
+  var res = await fetch(apiUrl('/admin/areas/' + areaId + '/usuarios?' + params.toString()), { method: 'POST', headers: authHeaders() });
+  if (res.status === 401) { logout(); return; }
+  var data = await res.json();
+  if (data.ok) {
+    cerrarAsignarAreaUsuario();
+    await loadUsers();
+  } else {
+    if (msg) msg.textContent = 'Error: ' + (data.detail || 'desconocido');
+  }
+}
+
+async function quitarUsuarioDeArea(userId, areaId) {
+  if (!confirm('¿Quitar al usuario de esta área?')) return;
+  var res = await fetch(apiUrl('/admin/areas/' + areaId + '/usuarios/' + userId), { method: 'DELETE', headers: authHeaders() });
+  if (res.status === 401) { logout(); return; }
+  var data = await res.json();
+  if (data.ok) { await loadUsers(); }
+  else { alert('Error: ' + (data.detail || 'desconocido')); }
 }
 
 async function cambiarRolUsuario(userId, nuevoRol) {
