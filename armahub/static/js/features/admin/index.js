@@ -49,9 +49,9 @@ async function loadAdminModule() {
       });
     }
   }
-  // Tab Organización (default)
-  await loadUsers();
+  // Cargar áreas primero para que _areasCache esté disponible al renderizar usuarios
   await loadAreas();
+  await loadUsers();
 }
 
 // ========================= ADMIN: TABLAS / DB =========================
@@ -249,36 +249,33 @@ async function loadUsers() {
     if (displayName) html += '<div class="muted" style="font-size:10px;">' + displayName + '</div>';
     html += '</td>';
 
-    // Rol global
-    if (currentRole === 'admin') {
-      html += '<td style="padding:4px 6px;"><select style="font-size:11px; color:' + rColor + '; font-weight:600; border:1px solid #ddd; border-radius:3px; padding:1px 4px;" onchange="cambiarRolUsuario(' + u.id + ', this.value)">' + rolOpts + '</select></td>';
-    } else if (currentRole === 'admin_calidad' && !isProtectedTarget) {
-      var a2Roles = ['miembro','cubicador','usc','externo','cliente'];
-      var a2Opts = a2Roles.map(function(r) {
-        return '<option value="' + r + '"' + (r === u.role ? ' selected' : '') + '>' + (_rolLabels[r] || r) + '</option>';
-      }).join('');
-      html += '<td style="padding:4px 6px;"><select style="font-size:11px; color:' + rColor + '; font-weight:600; border:1px solid #ddd; border-radius:3px; padding:1px 4px;" onchange="cambiarRolUsuario(' + u.id + ', this.value)">' + a2Opts + '</select></td>';
+    // Rol global — select + botón guardar explícito
+    if (canOperate) {
+      html += '<td style="padding:4px 6px; white-space:nowrap;">' +
+        '<select id="selRolU_' + u.id + '" style="font-size:11px; color:' + rColor + '; font-weight:600; border:1px solid #ddd; border-radius:3px; padding:1px 4px;">' + rolOpts + '</select>' +
+        ' <button onclick="guardarRolUsuario(' + u.id + ')" style="font-size:10px; padding:2px 8px; background:#1565C0; color:#fff; border:none; border-radius:3px; cursor:pointer;">Guardar</button>' +
+        '</td>';
     } else {
       html += '<td style="padding:4px 6px;"><span style="font-size:11px; color:' + rColor + '; font-weight:600;">' + (_rolLabels[u.role] || u.role) + '</span></td>';
     }
 
     // Áreas asignadas
+    var areaOpts = (typeof _areasCache !== 'undefined' ? _areasCache : [])
+      .filter(function(a) { return a.activo; })
+      .map(function(a) { return '<option value="' + a.id + '">' + a.nombre + '</option>'; }).join('');
     html += '<td style="padding:4px 6px; min-width:180px;">';
     var areas = u.areas || [];
     html += areas.map(function(a) {
-      return '<span style="display:inline-flex; align-items:center; gap:3px; background:#f0f0f0; border-radius:10px; padding:1px 8px; margin:1px 2px 1px 0; font-size:10px; font-weight:600; color:#1565C0;">' +
+      return '<span style="display:inline-flex; align-items:center; gap:2px; background:#e3f2fd; border-radius:10px; padding:1px 8px; margin:1px 2px 1px 0; font-size:10px; font-weight:600; color:#1565C0;">' +
         a.area_nombre +
         (canOperate ? '<button onclick="quitarUsuarioDeArea(' + u.id + ',' + a.area_id + ')" style="background:none;border:none;color:#b42318;cursor:pointer;font-size:10px;padding:0 2px;line-height:1;" title="Quitar">✕</button>' : '') +
         '</span>';
     }).join('');
     if (canOperate) {
-      var areaOpts = (typeof _areasCache !== 'undefined' ? _areasCache : [])
-        .filter(function(a) { return a.activo; })
-        .map(function(a) { return '<option value="' + a.id + '">' + a.nombre + '</option>'; }).join('');
       html += '<div style="display:inline-flex; align-items:center; gap:4px; margin-top:3px;">' +
-        '<select id="selArea_' + u.id + '" style="font-size:10px; padding:1px 3px; border-radius:3px; border:1px solid #ccc;">' +
+        '<select id="selArea_' + u.id + '" style="font-size:10px; padding:2px 4px; border-radius:3px; border:1px solid #ccc; color:#555;">' +
         '<option value="">+ área</option>' + areaOpts + '</select>' +
-        '<button onclick="asignarAreaInline(' + u.id + ')" style="font-size:10px; padding:1px 6px; background:#1565C0; color:#fff; border:none; border-radius:3px; cursor:pointer;">✓</button>' +
+        '<button onclick="asignarAreaInline(' + u.id + ')" style="font-size:10px; padding:2px 8px; background:#00897b; color:#fff; border:none; border-radius:3px; cursor:pointer;">Asignar</button>' +
         '</div>';
     }
     html += '</td>';
@@ -328,13 +325,16 @@ async function quitarUsuarioDeArea(userId, areaId) {
   else { alert('Error: ' + (data.detail || 'desconocido')); }
 }
 
-async function cambiarRolUsuario(userId, nuevoRol) {
+async function guardarRolUsuario(userId) {
+  var sel = document.getElementById('selRolU_' + userId);
+  if (!sel) return;
+  var nuevoRol = sel.value;
   var params = new URLSearchParams({ role: nuevoRol });
   var res = await fetch(apiUrl('/admin/users/' + userId + '/role?' + params.toString()), { method: 'PATCH', headers: authHeaders() });
   if (res.status === 401) { logout(); return; }
   var data = await res.json();
-  if (!data.ok) { alert('Error: ' + (data.detail || 'desconocido')); }
-  await loadUsers();
+  if (data.ok) { await loadUsers(); }
+  else { alert('Error: ' + (data.detail || 'desconocido')); }
 }
 
 async function toggleActivoUsuario(userId, nuevoEstado) {
