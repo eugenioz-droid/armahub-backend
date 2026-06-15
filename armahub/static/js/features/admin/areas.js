@@ -314,4 +314,10 @@
   global.agregarUsuarioArea = agregarUsuarioArea;
   global.quitarUsuarioArea = quitarUsuarioArea;
 
+  // Exponer cache para que otros módulos puedan leerlo después de loadAreas()
+  Object.defineProperty(global, '_areasCache', {
+    get: function() { return _areasCache; },
+    configurable: true
+  });
+
 })(window);

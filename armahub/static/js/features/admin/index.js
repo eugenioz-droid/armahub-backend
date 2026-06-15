@@ -275,7 +275,7 @@ async function loadUsers() {
       html += '<div style="display:inline-flex; align-items:center; gap:4px; margin-top:3px;">' +
         '<select id="selArea_' + u.id + '" style="font-size:10px; padding:2px 4px; border-radius:3px; border:1px solid #ccc; color:#555;">' +
         '<option value="">+ área</option>' + areaOpts + '</select>' +
-        '<button onclick="asignarAreaInline(' + u.id + ')" style="font-size:10px; padding:2px 8px; background:#00897b; color:#fff; border:none; border-radius:3px; cursor:pointer;">Asignar</button>' +
+        '<button onclick="asignarAreaInline(' + u.id + ')" style="font-size:10px; padding:2px 8px; background:#1565C0; color:#fff; border:none; border-radius:3px; cursor:pointer;">Guardar</button>' +
         '</div>';
     }
     html += '</td>';
