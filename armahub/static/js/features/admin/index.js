@@ -265,23 +265,28 @@ async function loadUsers() {
     }
 
     // Áreas asignadas
-    html += '<td style="padding:4px 6px;">';
+    html += '<td style="padding:4px 6px; min-width:200px;">';
     var areas = u.areas || [];
-    if (areas.length > 0) {
-      html += areas.map(function(a) {
-        var aColor = _rolAreaColors[a.rol_area] || '#666';
-        var aLabel = _rolAreaLabels[a.rol_area] || a.rol_area;
-        return '<span style="display:inline-flex; align-items:center; gap:3px; background:#f0f0f0; border-radius:10px; padding:1px 6px; margin:1px 2px 1px 0; font-size:10px;">' +
-          '<span style="color:' + aColor + '; font-weight:600;">' + a.area_nombre + '</span>' +
-          '<span class="muted">·' + aLabel + '</span>' +
-          (canOperate ? '<button onclick="quitarUsuarioDeArea(' + u.id + ',' + a.area_id + ')" style="background:none;border:none;color:#b42318;cursor:pointer;font-size:10px;padding:0 1px;line-height:1;" title="Quitar del área">✕</button>' : '') +
-          '</span>';
-      }).join('');
-    } else {
-      html += '<span class="muted" style="font-size:10px;">Sin área</span>';
-    }
+    html += areas.map(function(a) {
+      var aColor = _rolAreaColors[a.rol_area] || '#666';
+      var aLabel = _rolAreaLabels[a.rol_area] || a.rol_area;
+      return '<span style="display:inline-flex; align-items:center; gap:3px; background:#f0f0f0; border-radius:10px; padding:1px 6px; margin:1px 2px 1px 0; font-size:10px;">' +
+        '<span style="color:' + aColor + '; font-weight:600;">' + a.area_nombre + '</span>' +
+        '<span class="muted"> · ' + aLabel + '</span>' +
+        (canOperate ? '<button onclick="quitarUsuarioDeArea(' + u.id + ',' + a.area_id + ')" style="background:none;border:none;color:#b42318;cursor:pointer;font-size:10px;padding:0 2px;line-height:1;" title="Quitar">✕</button>' : '') +
+        '</span>';
+    }).join('');
     if (canOperate) {
-      html += ' <button class="secondary" style="font-size:10px; padding:1px 6px;" onclick="abrirAsignarAreaUsuario(' + u.id + ')">+ Área</button>';
+      var areaOpts = (typeof _areasCache !== 'undefined' ? _areasCache : [])
+        .filter(function(a) { return a.activo; })
+        .map(function(a) { return '<option value="' + a.id + '">' + a.nombre + '</option>'; }).join('');
+      html += '<div style="display:inline-flex; align-items:center; gap:4px; margin-top:3px; flex-wrap:wrap;">' +
+        '<select id="selArea_' + u.id + '" style="font-size:10px; padding:1px 3px; border-radius:3px; border:1px solid #ccc;">' +
+        '<option value="">+ área</option>' + areaOpts + '</select>' +
+        '<select id="selRol_' + u.id + '" style="font-size:10px; padding:1px 3px; border-radius:3px; border:1px solid #ccc;">' +
+        '<option value="miembro">Miembro</option><option value="jefe_servicio">Jefe</option></select>' +
+        '<button onclick="asignarAreaInline(' + u.id + ')" style="font-size:10px; padding:1px 6px; background:#1565C0; color:#fff; border:none; border-radius:3px; cursor:pointer;">✓</button>' +
+        '</div>';
     }
     html += '</td>';
 
@@ -302,68 +307,25 @@ async function loadUsers() {
   html += '</table>';
   html += '<div class="muted" style="font-size:11px; margin-top:6px;">Total: ' + data.users.length + ' usuario(s)</div>';
 
-  // Mini-form inline para asignar área (oculto, se muestra al hacer click en "+ Área")
-  html += '<div id="asignarAreaUsuarioForm" style="display:none; margin-top:10px; padding:10px; background:#f9f9f9; border-radius:8px; border:1px solid #ddd;">';
-  html += '<strong style="font-size:12px;">Asignar área a usuario</strong><br><br>';
-  html += '<div style="display:flex; gap:8px; align-items:flex-end; flex-wrap:wrap;">';
-  html += '<div><label style="font-size:11px; color:#666;">Área</label><br><select id="asignarAreaId" style="font-size:12px; min-width:180px;"><option value="">— Selecciona —</option></select></div>';
-  html += '<div><label style="font-size:11px; color:#666;">Rol en el área</label><br><select id="asignarRolArea" style="font-size:12px;"><option value="miembro">Miembro</option><option value="jefe_servicio">Jefe de Servicio</option></select></div>';
-  html += '<button style="font-size:12px; padding:5px 14px;" onclick="confirmarAsignarAreaUsuario()">Asignar</button>';
-  html += '<button class="secondary" style="font-size:12px; padding:5px 10px;" onclick="cerrarAsignarAreaUsuario()">Cancelar</button>';
-  html += '<span id="asignarAreaMsg" class="muted" style="font-size:11px;"></span>';
-  html += '</div></div>';
-
   container.innerHTML = html;
-
-  // Poblar select de áreas del mini-form con el cache actual
-  _poblarSelectAreasAsignar();
 }
 
-var _asignarAreaUsuarioId = null;
-
-function _poblarSelectAreasAsignar() {
-  var sel = document.getElementById('asignarAreaId');
-  if (!sel) return;
-  // Usa el cache de areas.js si está disponible
-  var areas = (typeof _areasCache !== 'undefined' ? _areasCache : []).filter(function(a) { return a.activo; });
-  sel.innerHTML = '<option value="">— Selecciona —</option>' +
-    areas.map(function(a) { return '<option value="' + a.id + '">' + a.nombre + '</option>'; }).join('');
-}
-
-function abrirAsignarAreaUsuario(userId) {
-  _asignarAreaUsuarioId = userId;
-  _poblarSelectAreasAsignar();
-  var form = document.getElementById('asignarAreaUsuarioForm');
-  if (form) { form.style.display = ''; form.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }
-  var msg = document.getElementById('asignarAreaMsg');
-  if (msg) msg.textContent = '';
-}
-
-function cerrarAsignarAreaUsuario() {
-  _asignarAreaUsuarioId = null;
-  var form = document.getElementById('asignarAreaUsuarioForm');
-  if (form) form.style.display = 'none';
-}
-
-async function confirmarAsignarAreaUsuario() {
-  if (!_asignarAreaUsuarioId) return;
-  var areaId = document.getElementById('asignarAreaId').value;
-  var rolArea = document.getElementById('asignarRolArea').value;
-  var msg = document.getElementById('asignarAreaMsg');
-  if (!areaId) { if (msg) msg.textContent = 'Selecciona un área.'; return; }
+async function asignarAreaInline(userId) {
+  var selArea = document.getElementById('selArea_' + userId);
+  var selRol  = document.getElementById('selRol_' + userId);
+  if (!selArea || !selRol) return;
+  var areaId = selArea.value;
+  var rolArea = selRol.value;
+  if (!areaId) return;
   var res = await fetch(apiUrl('/admin/areas/' + areaId + '/usuarios'), {
     method: 'POST',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
-    body: JSON.stringify({ user_id: _asignarAreaUsuarioId, rol_area: rolArea })
+    body: JSON.stringify({ user_id: userId, rol_area: rolArea })
   });
   if (res.status === 401) { logout(); return; }
   var data = await res.json();
-  if (data.ok) {
-    cerrarAsignarAreaUsuario();
-    await loadUsers();
-  } else {
-    if (msg) msg.textContent = 'Error: ' + (data.detail || 'desconocido');
-  }
+  if (data.ok) { await loadUsers(); }
+  else { alert('Error: ' + (data.detail || 'desconocido')); }
 }
 
 async function quitarUsuarioDeArea(userId, areaId) {
