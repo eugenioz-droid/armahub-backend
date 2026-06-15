@@ -234,9 +234,10 @@ async function devolverValidacionDesdeModal() {
   var comentEl = document.getElementById('recValidacionComentario');
   var motivo = comentEl ? (comentEl.value || '').trim() : '';
   if (!motivo) { alert('Indica el motivo de la devolución en el campo de comentario.'); if (comentEl) comentEl.focus(); return; }
-  // Si el área tiene etapa de revisión: devuelve a en_revision (Jefe revisa).
-  // Si no tiene revisión: devuelve directo a en_analisis.
-  var tieneRevision = _reclamoActual.area_tiene_revision;
+  // Usa el flag del tipo correcto: externos → tiene_revision, internos → tiene_revision_interno
+  var tieneRevision = _reclamoActual.tipo_origen === 'interno'
+    ? _reclamoActual.area_tiene_revision_interno
+    : _reclamoActual.area_tiene_revision;
   var estadoDestino = tieneRevision ? 'en_revision' : 'en_analisis';
   var confirmMsg = tieneRevision
     ? '¿Devolver el reclamo? Vuelve a "En revisión" del Jefe de Servicio.'

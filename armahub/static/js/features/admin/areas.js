@@ -33,14 +33,15 @@
       '<table style="width:100%; font-size:13px; border-collapse:collapse;">' +
       '<tr style="background:#f5f5f5; text-align:left;">' +
         '<th style="padding:6px 8px;">Área</th>' +
-        '<th style="padding:6px 8px; text-align:center;">Revisión</th>' +
+        '<th style="padding:6px 8px; text-align:center;">Revisión<br><span style="font-size:10px; font-weight:400; color:#666;">Ext / Int</span></th>' +
         '<th style="padding:6px 8px; text-align:center;">RCA</th>' +
         '<th style="padding:6px 8px; text-align:center;">Usuarios</th>' +
         '<th style="padding:6px 8px;">Estado</th>' +
         '<th style="padding:6px 8px;"></th>' +
       '</tr>' +
       _areasCache.map(function(a) {
-        var revChecked = a.tiene_revision ? 'checked' : '';
+        var revExtChecked = a.tiene_revision ? 'checked' : '';
+        var revIntChecked = a.tiene_revision_interno ? 'checked' : '';
         var estado = a.activo
           ? '<span style="color:#2e7d32; font-weight:600; font-size:11px;">Activa</span>'
           : '<span style="color:#999; font-size:11px;">Inactiva</span>';
@@ -48,8 +49,11 @@
           '<td style="padding:6px 8px; font-weight:500;">' + _esc(a.nombre) +
             ' <span class="muted" style="font-size:10px;">(' + _esc(a.slug) + ')</span></td>' +
           '<td style="padding:6px 8px; text-align:center;">' +
-            '<input type="checkbox" ' + revChecked +
-            ' onchange="toggleAreaRevision(' + a.id + ', this.checked)" title="Etapa de revisión previa a Calidad" /></td>' +
+            '<label style="font-size:11px; color:#666; margin-right:6px;" title="Revisión para reclamos de Clientes">Ext <input type="checkbox" ' + revExtChecked +
+            ' onchange="toggleAreaRevision(' + a.id + ', \'externo\', this.checked)" /></label>' +
+            '<label style="font-size:11px; color:#666;" title="Revisión para reclamos Internos">Int <input type="checkbox" ' + revIntChecked +
+            ' onchange="toggleAreaRevision(' + a.id + ', \'interno\', this.checked)" /></label>' +
+          '</td>' +
           '<td style="padding:6px 8px; text-align:center; font-size:11px;">' +
             (a.tiene_rca ? (a.total_subcausas + ' sub') : '<span class="muted">—</span>') + '</td>' +
           '<td style="padding:6px 8px; text-align:center;">' +
@@ -66,18 +70,23 @@
       '</table>';
   }
 
-  // ---- Flag tiene_revision ----
-  async function toggleAreaRevision(areaId, value) {
+  // ---- Flag tiene_revision (ext) / tiene_revision_interno (int) ----
+  async function toggleAreaRevision(areaId, tipo, value) {
+    var body = tipo === 'interno'
+      ? { tiene_revision_interno: !!value }
+      : { tiene_revision: !!value };
     var res = await fetch(apiUrl('/admin/areas/' + areaId + '/revision'), {
       method: 'PATCH',
       headers: { ...authHeaders(), 'Content-Type': 'application/json' },
-      body: JSON.stringify({ tiene_revision: !!value })
+      body: JSON.stringify(body)
     });
     if (res.status === 401) { logout(); return; }
     if (!res.ok) { alert('No se pudo actualizar el flag de revisión.'); await loadAreas(); return; }
-    // Refrescar cache sin recargar toda la tabla (la casilla ya quedó marcada)
     var a = _areasCache.filter(function(x) { return x.id === areaId; })[0];
-    if (a) a.tiene_revision = !!value;
+    if (a) {
+      if (tipo === 'interno') a.tiene_revision_interno = !!value;
+      else a.tiene_revision = !!value;
+    }
   }
 
   // ---- Crear / editar área ----

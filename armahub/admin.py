@@ -237,12 +237,13 @@ def listar_areas(user=Depends(require_admin_or_admin_calidad)):
                 SELECT a.id, a.nombre, a.slug, a.activo, a.tiene_revision,
                        COUNT(DISTINCT arc.id) AS cat_count,
                        COUNT(DISTINCT ars.id) AS sub_count,
-                       COUNT(DISTINCT au.id)  AS user_count
+                       COUNT(DISTINCT au.id)  AS user_count,
+                       a.tiene_revision_interno
                 FROM areas a
                 LEFT JOIN area_rca_categorias arc ON arc.area_id = a.id
                 LEFT JOIN area_rca_subcausas ars ON ars.categoria_id = arc.id AND ars.activo = TRUE
                 LEFT JOIN area_usuarios au ON au.area_id = a.id
-                GROUP BY a.id, a.nombre, a.slug, a.activo, a.tiene_revision
+                GROUP BY a.id, a.nombre, a.slug, a.activo, a.tiene_revision, a.tiene_revision_interno
                 ORDER BY a.id
             """)
             rows = cur.fetchall()
@@ -253,6 +254,7 @@ def listar_areas(user=Depends(require_admin_or_admin_calidad)):
             "tiene_rca": int(r[5] or 0) > 0,
             "total_subcausas": int(r[6] or 0),
             "total_usuarios": int(r[7] or 0),
+            "tiene_revision_interno": bool(r[8]) if r[8] is not None else False,
         }
         for r in rows
     ]
@@ -266,7 +268,8 @@ class AreaIn(BaseModel):
 
 
 class AreaRevisionIn(BaseModel):
-    tiene_revision: bool
+    tiene_revision: Optional[bool] = None
+    tiene_revision_interno: Optional[bool] = None
 
 
 class AreaUsuarioIn(BaseModel):
@@ -351,20 +354,25 @@ def toggle_area_activo(area_id: int, user=Depends(require_admin)):
 
 @router.patch("/admin/areas/{area_id}/revision")
 def set_area_revision(area_id: int, body: AreaRevisionIn, user=Depends(require_admin)):
-    """Activa/desactiva la etapa de revisión del área (flag tiene_revision)."""
+    """Activa/desactiva la etapa de revisión del área (externos y/o internos)."""
     email = user.get("email", "")
+    if body.tiene_revision is None and body.tiene_revision_interno is None:
+        raise HTTPException(status_code=400, detail="Se requiere al menos un flag")
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("SELECT id FROM areas WHERE id = %s", (area_id,))
             if not cur.fetchone():
                 raise HTTPException(status_code=404, detail="Área no encontrada")
-            cur.execute(
-                "UPDATE areas SET tiene_revision = %s WHERE id = %s",
-                (body.tiene_revision, area_id),
-            )
+            sets, vals = [], []
+            if body.tiene_revision is not None:
+                sets.append("tiene_revision = %s"); vals.append(body.tiene_revision)
+            if body.tiene_revision_interno is not None:
+                sets.append("tiene_revision_interno = %s"); vals.append(body.tiene_revision_interno)
+            vals.append(area_id)
+            cur.execute(f"UPDATE areas SET {', '.join(sets)} WHERE id = %s", vals)
         conn.commit()
-    audit(email, "set_area_revision", f"tiene_revision={body.tiene_revision}", "area", str(area_id))
-    return {"ok": True, "tiene_revision": body.tiene_revision}
+    audit(email, "set_area_revision", f"ext={body.tiene_revision} int={body.tiene_revision_interno}", "area", str(area_id))
+    return {"ok": True, "tiene_revision": body.tiene_revision, "tiene_revision_interno": body.tiene_revision_interno}
 
 
 @router.get("/admin/areas/{area_id}/usuarios")

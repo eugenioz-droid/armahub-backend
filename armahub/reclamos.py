@@ -54,11 +54,12 @@ def _area_id_de_usuario(cur, email):
     return row[0] if row else None
 
 
-def _area_tiene_revision(cur, area_id):
-    """True si el área del reclamo usa etapa de revisión. False si no, o si no hay área."""
+def _area_tiene_revision(cur, area_id, tipo_origen="externo"):
+    """True si el área usa etapa de revisión para este tipo de reclamo."""
     if not area_id:
         return False
-    cur.execute("SELECT tiene_revision FROM areas WHERE id = %s", (area_id,))
+    col = "tiene_revision_interno" if tipo_origen == "interno" else "tiene_revision"
+    cur.execute(f"SELECT {col} FROM areas WHERE id = %s", (area_id,))
     row = cur.fetchone()
     return bool(row[0]) if row else False
 
@@ -1179,7 +1180,8 @@ def get_reclamo_optimizado(
                         END AS nombre_proyecto,
                         p.nombre_proyecto AS nombre_proyecto_lookup,
                         ar.nombre AS area_nombre,
-                        ar.tiene_revision AS area_tiene_revision
+                        ar.tiene_revision AS area_tiene_revision,
+                        ar.tiene_revision_interno AS area_tiene_revision_interno
                     FROM reclamos r
                     LEFT JOIN proyectos p ON r.id_proyecto = p.id_proyecto
                     LEFT JOIN areas ar ON ar.id = r.area_id
@@ -1231,6 +1233,7 @@ def get_reclamo_optimizado(
                     "area_id": row.get("area_id"),
                     "area_nombre": row.get("area_nombre"),
                     "area_tiene_revision": row.get("area_tiene_revision"),
+                    "area_tiene_revision_interno": row.get("area_tiene_revision_interno"),
                     "fecha_analisis": _as_text(row.get("fecha_analisis")),
                     "validacion_resultado": row.get("validacion_resultado"),
                     "validacion_observaciones": row.get("validacion_observaciones"),
@@ -1460,10 +1463,11 @@ def actualizar_reclamo(reclamo_id: int, body: ReclamoUpdate, user=Depends(get_cu
                 #  - área sin revisión  → validacion (directo a Calidad)
                 # Esto reemplaza el "es Cubicación por el texto" y no se puede falsear
                 # desde el cliente.
-                cur.execute("SELECT area_id FROM reclamos WHERE id = %s", (reclamo_id,))
+                cur.execute("SELECT area_id, tipo_origen FROM reclamos WHERE id = %s", (reclamo_id,))
                 _arow = cur.fetchone()
                 _area_id_rec = _arow[0] if _arow else None
-                body.estado = "en_revision" if _area_tiene_revision(cur, _area_id_rec) else "validacion"
+                _tipo_origen_rec = (_arow[1] if _arow else None) or "externo"
+                body.estado = "en_revision" if _area_tiene_revision(cur, _area_id_rec, _tipo_origen_rec) else "validacion"
                 _destino_label = "revisión" if body.estado == "en_revision" else "validación"
                 aplica_efectiva = body.aplica if body.aplica is not None else aplica_actual
                 if aplica_efectiva not in ("si", "no"):

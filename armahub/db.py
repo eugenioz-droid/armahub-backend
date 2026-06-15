@@ -1058,6 +1058,11 @@ MIGRATIONS = [
         "DO $$ BEGIN ALTER TABLE reclamos ADD COLUMN metodo_rca TEXT DEFAULT 'ishikawa'; EXCEPTION WHEN duplicate_column THEN NULL; END $$;",
         "DO $$ BEGIN ALTER TABLE reclamos ADD COLUMN cinco_por_que JSONB; EXCEPTION WHEN duplicate_column THEN NULL; END $$;",
     ]),
+
+    # --- Migration 69: revisión separada por tipo de reclamo (externo/interno) ---
+    (69, "areas: tiene_revision_interno (revisión opcional independiente para internos)", [
+        "DO $$ BEGIN ALTER TABLE areas ADD COLUMN tiene_revision_interno BOOLEAN DEFAULT FALSE; EXCEPTION WHEN duplicate_column THEN NULL; END $$;",
+    ]),
 ]
 
 

@@ -101,7 +101,10 @@ function _renderReclamoRespuesta(data) {
   document.getElementById('recRespMsg').textContent = '';
 
   var cubNombreEl = document.getElementById('recDetailCubicadorNombre');
+  var cubLabelEl = document.getElementById('recDetailCubicadorLabel');
   if (cubNombreEl) {
+    var esInterno = data.tipo_origen === 'interno';
+    if (cubLabelEl) cubLabelEl.textContent = esInterno ? 'Responsable área' : 'Cubicador';
     var cubName = data.responsable || 'Sin asignar';
     cubNombreEl.textContent = cubName;
     cubNombreEl.style.color = data.responsable ? '#1565C0' : '#999';
