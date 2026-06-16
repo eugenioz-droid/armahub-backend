@@ -5,7 +5,13 @@
 // de Servicio de esa área); cliente/proyecto opcional; listado filtrado a internos.
 
 var _intAbiertoFilter = '';
+var _intAplicaFilter = '';
+var _intScopeAll = false;
 var _intFormInit = false;
+
+var _INT_APLICA_CYCLE = ['', 'pendiente', 'si', 'no'];
+var _INT_APLICA_LABELS = { '': 'Aplica: Todos', 'pendiente': 'Pendiente', 'si': 'Sí Aplica', 'no': 'No Aplica' };
+var _INT_APLICA_COLORS = { '': '#7b1fa2', 'pendiente': '#f57c00', 'si': '#388e3c', 'no': '#e53935' };
 var _intCreateStagedFiles = [];
 
 // Inicializa el form: visibilidad por config + poblar dropdowns de área y cliente.
@@ -170,9 +176,7 @@ async function crearReclamoInterno() {
     var ps = document.getElementById('recIntProyectoSearch'); if (ps) ps.value = '';
     var ph = document.getElementById('recIntProyecto'); if (ph) ph.value = '';
     var as = document.getElementById('recIntAreaSearch'); if (as) as.value = '';
-    var rs = document.getElementById('recIntResponsableSearch'); if (rs) rs.value = '';
     var rh = document.getElementById('recIntResponsable'); if (rh) rh.value = '';
-    var dlR = document.getElementById('recIntResponsableList'); if (dlR) dlR.innerHTML = '';
     var prev = document.getElementById('recIntCreatePreview'); if (prev) prev.innerHTML = '';
     var dmsg = document.getElementById('recIntCreateDropMsg'); if (dmsg) dmsg.style.display = '';
     closeReclamoModal();
@@ -181,6 +185,36 @@ async function crearReclamoInterno() {
   } else {
     msg.textContent = 'Error: ' + (data.detail || 'desconocido'); msg.style.color = '#b42318';
   }
+}
+
+// Toggle Mis Reclamos / Todos
+function toggleIntScope() {
+  _intScopeAll = !_intScopeAll;
+  var btn = document.getElementById('recIntFiltroScope');
+  if (btn) {
+    if (_intScopeAll) {
+      btn.textContent = 'Mis Reclamos';
+      btn.style.borderColor = '#7b1fa2'; btn.style.color = '#7b1fa2'; btn.style.background = '#fff';
+    } else {
+      btn.textContent = 'Todos';
+      btn.style.borderColor = '#7b1fa2'; btn.style.color = '#fff'; btn.style.background = '#7b1fa2';
+    }
+  }
+  loadReclamosInternos();
+}
+
+// Toggle Aplica
+function toggleIntAplica() {
+  var idx = _INT_APLICA_CYCLE.indexOf(_intAplicaFilter);
+  _intAplicaFilter = _INT_APLICA_CYCLE[(idx + 1) % _INT_APLICA_CYCLE.length];
+  var btn = document.getElementById('recIntFiltroAplicaBtn');
+  if (btn) {
+    btn.textContent = _INT_APLICA_LABELS[_intAplicaFilter];
+    btn.style.borderColor = _INT_APLICA_COLORS[_intAplicaFilter];
+    btn.style.color = _INT_APLICA_COLORS[_intAplicaFilter];
+    btn.style.background = _intAplicaFilter ? _INT_APLICA_COLORS[_intAplicaFilter] + '15' : '#fff';
+  }
+  loadReclamosInternos();
 }
 
 // Toggle Abiertos/Cerrados
@@ -203,9 +237,13 @@ function toggleIntAbierto() {
 function limpiarFiltrosInternos() {
   var b = document.getElementById('recIntFiltroBusqueda');
   if (b) b.value = '';
-  _intAbiertoFilter = '';
-  var btn = document.getElementById('recIntFiltroAbiertoBtn');
-  if (btn) { btn.textContent = 'Abiertos/Cerrados'; btn.style.borderColor = '#1976d2'; btn.style.color = '#1976d2'; btn.style.background = '#fff'; }
+  _intAbiertoFilter = ''; _intAplicaFilter = ''; _intScopeAll = false;
+  var btnA = document.getElementById('recIntFiltroAbiertoBtn');
+  if (btnA) { btnA.textContent = 'Abiertos/Cerrados'; btnA.style.borderColor = '#7b1fa2'; btnA.style.color = '#7b1fa2'; btnA.style.background = '#fff'; }
+  var btnAp = document.getElementById('recIntFiltroAplicaBtn');
+  if (btnAp) { btnAp.textContent = 'Aplica: Todos'; btnAp.style.borderColor = '#7b1fa2'; btnAp.style.color = '#7b1fa2'; btnAp.style.background = '#fff'; }
+  var btnSc = document.getElementById('recIntFiltroScope');
+  if (btnSc) { btnSc.textContent = 'Mis Reclamos'; btnSc.style.borderColor = '#7b1fa2'; btnSc.style.color = '#7b1fa2'; btnSc.style.background = '#fff'; }
   loadReclamosInternos();
 }
 
@@ -217,6 +255,8 @@ async function loadReclamosInternos() {
   var params = ['tipo_origen=interno'];
   if (busqueda && busqueda.value.trim()) params.push('busqueda=' + encodeURIComponent(busqueda.value.trim()));
   if (_intAbiertoFilter) params.push('abierto_cerrado=' + encodeURIComponent(_intAbiertoFilter));
+  if (_intAplicaFilter) params.push('aplica=' + encodeURIComponent(_intAplicaFilter));
+  if (!_intScopeAll && !['admin','admin_calidad'].includes(currentRole)) params.push('scope=mine');
 
   var data = await apiGet('/reclamos?' + params.join('&'));
   if (!data) { cont.innerHTML = '<div class="muted">No fue posible cargar.</div>'; return; }
@@ -270,31 +310,8 @@ function _onIntProyectoInput(texto) {
 }
 
 // Resuelve el id del área cuando el usuario escribe o selecciona en el combobox.
-async function _onIntAreaInput(texto) {
+function _onIntAreaInput(texto) {
   var id = (window._intAreaMap || {})[texto.trim()] || '';
   var selArea = document.getElementById('recIntAreaDestino');
   if (selArea) selArea.value = id;
-  // Cargar usuarios de esa área para el datalist de responsable
-  var dl = document.getElementById('recIntResponsableList');
-  var hiddenResp = document.getElementById('recIntResponsable');
-  if (!dl) return;
-  dl.innerHTML = '';
-  if (hiddenResp) hiddenResp.value = '';
-  window._intResponsableMap = {};
-  if (!id) return;
-  var usuarios = await apiGet('/admin/areas/' + id + '/usuarios');
-  if (!Array.isArray(usuarios)) return;
-  usuarios.forEach(function(u) {
-    window._intResponsableMap[u.display || u.email] = u.email;
-    var o = document.createElement('option');
-    o.value = u.display || u.email;
-    dl.appendChild(o);
-  });
-}
-
-// Resuelve el email del responsable cuando el usuario escribe en el combobox.
-function _onIntResponsableInput(texto) {
-  var hidden = document.getElementById('recIntResponsable');
-  if (!hidden) return;
-  hidden.value = (window._intResponsableMap || {})[texto.trim()] || '';
 }

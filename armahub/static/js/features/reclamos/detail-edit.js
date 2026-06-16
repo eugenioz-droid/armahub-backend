@@ -173,6 +173,8 @@ async function cambiarProyectoReclamo() {
   else { alert('Error: ' + (data.detail || 'desconocido')); }
 }
 
+var reasignarUscReclamo = async function() { return cambiarAsignadoAReclamo(); };
+
 async function cambiarAsignadoAReclamo() {
   if (!_reclamoActual) return;
   var val = document.getElementById('recDetailAsignadoA').value;

@@ -76,6 +76,8 @@
     'toggleNuevoInterno',
     'crearReclamoInterno',
     'toggleIntAbierto',
+    'toggleIntScope',
+    'toggleIntAplica',
     'limpiarFiltrosInternos',
     'toggleNuevoProyectoRec',
     'crearProyectoDesdeReclamo',

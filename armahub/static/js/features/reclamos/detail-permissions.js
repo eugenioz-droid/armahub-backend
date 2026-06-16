@@ -90,8 +90,12 @@ function _applyReclamoDetailPermissions(data) {
   var detProySel = document.getElementById('recDetailProyecto');
   if (detProySel) detProySel.disabled = !puedeEditarSec1;
 
+  // USC Responsable: visible y editable solo para admin/admin_calidad (reasignación)
+  var puedeReasignarUsc = (currentRole === 'admin' || currentRole === 'admin_calidad');
+  var detAsigWrap = document.getElementById('recDetailAsignadoAWrap');
+  if (detAsigWrap) detAsigWrap.style.display = puedeReasignarUsc ? 'flex' : 'none';
   var detAsigSel = document.getElementById('recDetailAsignadoA');
-  if (detAsigSel) detAsigSel.disabled = !(currentRole === 'admin' || currentRole === 'admin_calidad');
+  if (detAsigSel) detAsigSel.disabled = !puedeReasignarUsc;
 
   // El formulario de datos (análisis/respuesta) solo es editable mientras el
   // reclamo está EN ANÁLISIS (abierto/en_analisis). Una vez enviado a revisión
