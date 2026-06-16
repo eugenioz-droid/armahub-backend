@@ -765,8 +765,16 @@ async function _initRcaMetodoParaReclamo(data) {
   // sin depender del orden async/sync entre render y permisos.
   window._areaSinMatrizIshikawa = !hayMatriz;
 
+  // Si el área NO tiene matriz Ishikawa, no se puede usar ese método: forzar
+  // 5 Por Qué aunque el reclamo tenga metodo_rca='ishikawa' guardado de antes
+  // (p.ej. la matriz se vació o el método quedó mal seteado). Solo se respeta
+  // lo guardado cuando efectivamente hay matriz disponible.
   var metodo = data.metodo_rca;
-  if (!metodo) metodo = hayMatriz ? 'ishikawa' : '5_por_que';
+  if (!hayMatriz) {
+    metodo = '5_por_que';
+  } else if (!metodo) {
+    metodo = 'ishikawa';
+  }
 
   // Atenuar visualmente la opción Ishikawa cuando no hay matriz.
   var radioIsh = document.getElementById('recRcaRadioIshikawa');

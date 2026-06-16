@@ -708,15 +708,17 @@
         <p class="muted" style="font-size:12px; margin:0 0 16px 0;">Selecciona un área para ver y editar su matriz de causas raíz Ishikawa.</p>
         <div id="rcaRecAreasLista"><div class="muted">Cargando áreas...</div></div>
         <div id="rcaRecEditor" style="display:none;">
-          <div style="margin-bottom:16px; padding-bottom:10px; border-bottom:1px solid #eee;">
-            <h4 id="rcaRecEditorNombre" style="margin:0 0 4px 0;"></h4>
-            <p class="muted" style="font-size:12px; margin:0;">Agrega, edita o desactiva sub-causas en cada categoría Ishikawa.</p>
+          <div style="margin-bottom:16px; padding-bottom:10px; border-bottom:1px solid #eee; display:flex; justify-content:space-between; align-items:flex-start; gap:16px;">
+            <div>
+              <h4 id="rcaRecEditorNombre" style="margin:0 0 4px 0;"></h4>
+              <p class="muted" style="font-size:12px; margin:0;">Agrega, edita o desactiva sub-causas en cada categoría Ishikawa.</p>
+            </div>
+            <div style="display:flex; gap:8px; align-items:center; flex-shrink:0;">
+              <span id="rcaRecGuardarMsg" class="muted" style="font-size:12px;"></span>
+              <button onclick="rcaRecGuardar()" style="font-size:13px; padding:6px 20px; background:#e65100; color:white; border:none; border-radius:6px; cursor:pointer; white-space:nowrap;">Guardar cambios</button>
+            </div>
           </div>
           <div id="rcaRecCategoriasContainer"></div>
-          <div style="margin-top:16px; display:flex; gap:8px; align-items:center;">
-            <button onclick="rcaRecGuardar()" style="font-size:13px; padding:6px 20px; background:#e65100; color:white; border:none; border-radius:6px; cursor:pointer;">Guardar cambios</button>
-            <span id="rcaRecGuardarMsg" class="muted" style="font-size:12px;"></span>
-          </div>
         </div>
       </div>
     </div>

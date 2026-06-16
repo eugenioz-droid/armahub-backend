@@ -82,13 +82,20 @@ document.addEventListener('paste', function(e) {
 
   if (params.mod && typeof window.switchModule === 'function') {
     await window.switchModule(params.mod);
-    if (params.tab && typeof window.switchTab === 'function') {
+    // Solo forzar el tab si difiere del defaultTab que switchModule ya activó
+    // (evita reescribir el hash y borrar 'sub' temporalmente sin necesidad).
+    var cfg = window.ArmaHubRegistry && window.ArmaHubRegistry.getModule
+      ? window.ArmaHubRegistry.getModule(params.mod) : null;
+    if (params.tab && typeof window.switchTab === 'function' && (!cfg || cfg.defaultTab !== params.tab)) {
       window.switchTab(params.tab);
     }
     if (params.sub) {
       await waitForReclamosFeatureReady();
       if (typeof window.switchRecSubTab === 'function') {
-        window.switchRecSubTab(params.sub);
+        // En un frame posterior para ganar sobre cualquier render async que
+        // loadReclamosModule aún tenga en vuelo (que dejaría visible el primer
+        // sub-tab por defecto del HTML).
+        requestAnimationFrame(function() { window.switchRecSubTab(params.sub); });
       }
     }
   }
