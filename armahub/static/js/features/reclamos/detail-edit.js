@@ -628,8 +628,20 @@ function _onRcaMetodoChange() {
 }
 
 function _setRcaMetodo(metodo) {
-  var radio = document.getElementById(metodo === '5_por_que' ? 'recRcaRadio5PQ' : 'recRcaRadioIshikawa');
-  if (radio) { radio.checked = true; _onRcaMetodoChange(); }
+  var isIsh = metodo !== '5_por_que';
+  var radioTarget = document.getElementById(isIsh ? 'recRcaRadioIshikawa' : 'recRcaRadio5PQ');
+  var radioOther  = document.getElementById(isIsh ? 'recRcaRadio5PQ' : 'recRcaRadioIshikawa');
+  if (radioTarget) radioTarget.checked = true;
+  if (radioOther)  radioOther.checked  = false;
+  // Forzar bloque directamente para evitar problemas cuando el radio está disabled
+  var bloqueIsh = document.getElementById('recBloqueIshikawa');
+  var bloque5PQ = document.getElementById('recBloque5PQ');
+  if (bloqueIsh) bloqueIsh.style.display = isIsh ? '' : 'none';
+  if (bloque5PQ) bloque5PQ.style.display = isIsh ? 'none' : '';
+  if (!isIsh) {
+    _open5PQDetalle();
+    if (document.getElementById('rec5PQItems').children.length === 0) _agregar5PQ();
+  }
 }
 
 // ---- 5 Por Qué ----
