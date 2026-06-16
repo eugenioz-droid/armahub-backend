@@ -69,12 +69,27 @@ document.addEventListener('paste', function(e) {
   if (!ensureAuthenticatedSession()) return;
   await loadMe();
 
-  // Restore tab from hash
+  // Restaurar posición exacta (módulo + tab + sub-tab) desde el hash de la
+  // URL. Así F5 no devuelve siempre al hub: switchModule/switchTab/
+  // switchRecSubTab escriben este mismo formato en cada navegación.
   var hash = window.location.hash.substring(1);
-  if (hash === 'presentaciones') {
-    await waitForReclamosFeatureReady();
-    if (typeof window.switchRecSubTab === 'function') {
-      window.switchRecSubTab('presentaciones');
+  var params = {};
+  hash.split('&').forEach(function(part) {
+    var eq = part.indexOf('=');
+    if (eq === -1) return;
+    params[part.substring(0, eq)] = part.substring(eq + 1);
+  });
+
+  if (params.mod && typeof window.switchModule === 'function') {
+    await window.switchModule(params.mod);
+    if (params.tab && typeof window.switchTab === 'function') {
+      window.switchTab(params.tab);
+    }
+    if (params.sub) {
+      await waitForReclamosFeatureReady();
+      if (typeof window.switchRecSubTab === 'function') {
+        window.switchRecSubTab(params.sub);
+      }
     }
   }
 })();

@@ -25,6 +25,11 @@
 
   // --- Module entry point ---
   async function _loadReclamosModule() {
+    // Decisión síncrona por rol — debe correr antes de cualquier await para
+    // que los títulos de los sub-tabs Nivel 2 aparezcan de inmediato, sin
+    // esperar a loadRecLanding() (que depende de un fetch de KPIs no
+    // relacionado con qué botones se muestran).
+    if (typeof _applyRecSubTabsVisibility === 'function') _applyRecSubTabsVisibility();
     if (typeof global.loadProyectos === 'function') {
       await Promise.resolve(global.loadProyectos());
     }

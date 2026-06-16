@@ -38,6 +38,10 @@ function switchRecSubTab(sub) {
   }
   if (sub === 'validaciones') { _ensureModalFueraDeSubpaneles(); loadRecValidaciones(); }
   if (sub === 'internos') { _ensureModalFueraDeSubpaneles(); if (typeof loadReclamosInternos === 'function') loadReclamosInternos(); if (typeof initInternosForm === 'function') initInternosForm(); }
+
+  if (typeof window.__armahubUpdateNavHash === 'function') {
+    window.__armahubUpdateNavHash(window.currentModule, 'reclamos', sub);
+  }
 }
 
 // El modal de detalle (reclamoDetailCard) y su backdrop viven dentro de
@@ -136,7 +140,7 @@ function rcaRecSubRow(ci, si, sub) {
   return '<div id="rcaRecRow_' + ci + '_' + si + '" style="display:flex; gap:8px; align-items:center; margin-bottom:6px; opacity:' + op + ';">'
     + '<input type="text" value="' + _rcaEsc(sub.codigo) + '" placeholder="Cód." style="width:64px; font-size:11px; font-family:monospace; padding:4px 6px; border:1px solid #ccc; border-radius:4px;" oninput="rcaRecUpd(' + ci + ',' + si + ',\'codigo\',this.value)" />'
     + '<input type="text" value="' + _rcaEsc(sub.descripcion) + '" placeholder="Descripción" style="flex:1; font-size:12px; padding:4px 8px; border:1px solid #ccc; border-radius:4px;" oninput="rcaRecUpd(' + ci + ',' + si + ',\'descripcion\',this.value)" />'
-    + '<button onclick="rcaRecToggle(' + ci + ',' + si + ')" style="font-size:11px; padding:3px 8px; border:1px solid #ccc; border-radius:4px; cursor:pointer; background:' + (sub.activo ? '#fff' : '#eee') + ';">' + (sub.activo ? '✓' : '✗') + '</button>'
+    + '<button onclick="rcaRecToggle(' + ci + ',' + si + ')" title="' + (sub.activo ? 'Activa — clic para desactivar' : 'Inactiva — clic para activar') + '" style="font-size:13px; font-weight:700; padding:3px 9px; border:1px solid ' + (sub.activo ? '#2e7d32' : '#ccc') + '; border-radius:4px; cursor:pointer; background:' + (sub.activo ? '#e8f5e9' : '#eee') + '; color:' + (sub.activo ? '#2e7d32' : '#999') + ';">✔</button>'
     + '<button onclick="rcaRecEliminar(' + ci + ',' + si + ')" style="font-size:11px; padding:3px 8px; border:none; border-radius:4px; cursor:pointer; background:#ffebee; color:#c62828;">✕</button>'
     + '</div>';
 }
@@ -173,7 +177,14 @@ function rcaRecGuardar() {
     headers: Object.assign({}, authHeaders(), { 'Content-Type': 'application/json' }),
     body: JSON.stringify({ categorias: _rcaRecData.categorias })
   }).then(function(r) { return r.json(); })
-    .then(function() { msg.textContent = '✓ Guardado'; setTimeout(function() { msg.textContent=''; }, 3000); })
+    .then(function() {
+      msg.textContent = '✓ Guardado';
+      // Invalidar el cache de Ishikawa: la matriz recién guardada debe
+      // reflejarse sin F5 en el selector de método RCA de los reclamos de
+      // esta área, en vez de quedarse con la versión leída antes de guardar.
+      if (typeof _ishikawaData !== 'undefined') _ishikawaData = null;
+      setTimeout(function() { msg.textContent=''; }, 3000);
+    })
     .catch(function(e) { msg.textContent = 'Error: ' + (e.message || e); });
 }
 function rcaRecVolverAreas() {
@@ -184,15 +195,12 @@ function rcaRecVolverAreas() {
   rcaRecIniciar();
 }
 
-async function loadRecLanding() {
-  var data = await apiGet('/reclamos/mi-resumen');
-  if (!data) return;
-
-  var isAdmin = (currentRole === 'admin' || currentRole === 'admin_calidad' || currentRole === 'coordinador');
-  var titleEl = document.querySelector('#recLandingCharts').parentElement.querySelector('h3');
-  if (titleEl) titleEl.textContent = isAdmin ? 'Resumen General' : 'Mi Resumen';
-
-  // Sub-tabs Nivel 2: RCA, Presentaciones y Validaciones según rol
+// Visibilidad de los botones de sub-tab Nivel 2 (RCA, Presentaciones,
+// Validaciones). Depende solo de currentRole, disponible de forma sincrónica
+// apenas se monta el módulo — por eso vive aparte de loadRecLanding(), que
+// espera un await apiGet no relacionado y retrasaba la aparición de los
+// títulos. Debe llamarse ANTES de cualquier await en _loadReclamosModule.
+function _applyRecSubTabsVisibility() {
   var rcaAccess = ['admin','admin_calidad'];
   var subRCA = document.getElementById('recSubBtnRCA');
   if (subRCA) subRCA.style.display = rcaAccess.includes(currentRole) ? '' : 'none';
@@ -202,6 +210,15 @@ async function loadRecLanding() {
   var subVal = document.getElementById('recSubBtnVal');
   var valAccess = ['admin','admin_calidad'];
   if (subVal) subVal.style.display = valAccess.includes(currentRole) ? '' : 'none';
+}
+
+async function loadRecLanding() {
+  var data = await apiGet('/reclamos/mi-resumen');
+  if (!data) return;
+
+  var isAdmin = (currentRole === 'admin' || currentRole === 'admin_calidad' || currentRole === 'coordinador');
+  var titleEl = document.querySelector('#recLandingCharts').parentElement.querySelector('h3');
+  if (titleEl) titleEl.textContent = isAdmin ? 'Resumen General' : 'Mi Resumen';
 
   // Chart 1: KPI
   document.getElementById('recLandTotal').textContent = data.total || 0;

@@ -20,6 +20,22 @@
 
   window.currentModule = 'hub';
 
+  // Persistencia de navegación en el hash de la URL, para que F5 mantenga
+  // la posición exacta (módulo + tab + sub-tab) en vez de volver siempre al
+  // hub. Solo escribe el hash; quien restaura el estado al cargar la página
+  // es app.js (init), que lee este mismo formato.
+  function updateNavHash(mod, tab, sub) {
+    var parts = [];
+    if (mod && mod !== 'hub') parts.push('mod=' + mod);
+    if (tab) parts.push('tab=' + tab);
+    if (sub) parts.push('sub=' + sub);
+    var newHash = parts.length ? '#' + parts.join('&') : '#';
+    if (window.location.hash !== newHash) {
+      history.replaceState(null, '', newHash);
+    }
+  }
+  window.__armahubUpdateNavHash = updateNavHash;
+
   function callIfDefined(functionName) {
     if (typeof window[functionName] === 'function') {
       return window[functionName].apply(window, Array.prototype.slice.call(arguments, 1));
@@ -88,6 +104,8 @@
         button.classList.add('active');
       }
     });
+
+    updateNavHash(window.currentModule, tabName, null);
   };
 
   function applyModuleVisibility(mod, cfg) {
@@ -168,6 +186,7 @@
         hub.style.display = 'block';
       }
       window.currentModule = 'hub';
+      updateNavHash('hub', null, null);
       renderHubModules();
       callIfDefined('loadLandingIndicadores');
       callIfDefined('loadNotifCount');
