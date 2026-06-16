@@ -81,22 +81,17 @@ document.addEventListener('paste', function(e) {
   });
 
   if (params.mod && typeof window.switchModule === 'function') {
+    // Guardar el sub-tab Nivel 2 deseado ANTES de navegar: switchModule llama
+    // a switchTab, que reescribe el hash y borraría 'sub'. _loadReclamosModule
+    // lee esta variable para abrir directo en el sub-tab correcto, sin pasar
+    // por 'clientes' primero (sin parpadeo). Se consume una sola vez.
+    if (params.sub) window.__armahubRecSubTabPendiente = params.sub;
     await window.switchModule(params.mod);
-    // Solo forzar el tab si difiere del defaultTab que switchModule ya activó
-    // (evita reescribir el hash y borrar 'sub' temporalmente sin necesidad).
+    // Solo forzar el tab si difiere del defaultTab que switchModule ya activó.
     var cfg = window.ArmaHubRegistry && window.ArmaHubRegistry.getModule
       ? window.ArmaHubRegistry.getModule(params.mod) : null;
     if (params.tab && typeof window.switchTab === 'function' && (!cfg || cfg.defaultTab !== params.tab)) {
       window.switchTab(params.tab);
-    }
-    if (params.sub) {
-      await waitForReclamosFeatureReady();
-      if (typeof window.switchRecSubTab === 'function') {
-        // En un frame posterior para ganar sobre cualquier render async que
-        // loadReclamosModule aún tenga en vuelo (que dejaría visible el primer
-        // sub-tab por defecto del HTML).
-        requestAnimationFrame(function() { window.switchRecSubTab(params.sub); });
-      }
     }
   }
 })();

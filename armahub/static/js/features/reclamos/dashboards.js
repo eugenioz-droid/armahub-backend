@@ -12,18 +12,53 @@ var _recLandChartResueltos = null;
 var _rcaRecAreaId = null;
 var _rcaRecData = null;
 
-function switchRecSubTab(sub) {
-  var panels = { clientes: 'recSubClientes', internos: 'recSubInternos', rca: 'recSubRCA', presentaciones: 'recSubPresentaciones', validaciones: 'recSubValidaciones' };
-  var colors  = { clientes: '#e53935', internos: '#1565C0', rca: '#e65100', presentaciones: '#7B1FA2', validaciones: '#7B1FA2' };
-  var btnIds  = { clientes: 'recSubBtnClientes', internos: 'recSubBtnInternos', rca: 'recSubBtnRCA', presentaciones: 'recSubBtnPres', validaciones: 'recSubBtnVal' };
+// Sub-tab Nivel 2 actualmente activo. Fuente de verdad para restaurar la
+// posición tras F5 sin parpadeo. Default 'clientes' (primer sub-tab).
+var _recSubTabActual = 'clientes';
 
-  Object.keys(panels).forEach(function(key) {
-    var el = document.getElementById(panels[key]);
+// Metadatos de los 5 sub-tabs en un solo lugar: panel, color, botón y qué
+// roles pueden verlo. Clientes/Internos: todos los roles del módulo. Matriz
+// RCA / Presentaciones / Validaciones: restringidos. Único flujo para los 5.
+var REC_SUBTABS = {
+  clientes:      { panel: 'recSubClientes',       btn: 'recSubBtnClientes', color: '#e53935', roles: null },
+  internos:      { panel: 'recSubInternos',       btn: 'recSubBtnInternos', color: '#1565C0', roles: null },
+  rca:           { panel: 'recSubRCA',            btn: 'recSubBtnRCA',      color: '#e65100', roles: ['admin','admin_calidad'] },
+  presentaciones:{ panel: 'recSubPresentaciones', btn: 'recSubBtnPres',     color: '#7B1FA2', roles: ['admin','admin_calidad','cubicador','externo'] },
+  validaciones:  { panel: 'recSubValidaciones',   btn: 'recSubBtnVal',      color: '#7B1FA2', roles: ['admin','admin_calidad'] }
+};
+
+// ¿El rol actual puede ver este sub-tab? roles=null → visible para todos.
+function _recSubTabVisible(key) {
+  var cfg = REC_SUBTABS[key];
+  if (!cfg) return false;
+  if (!cfg.roles) return true;
+  return cfg.roles.indexOf(currentRole) !== -1;
+}
+
+// Muestra/oculta los BOTONES de los 5 sub-tabs según rol. Síncrono (solo
+// depende de currentRole y del DOM estático), se llama al montar el módulo
+// antes de cualquier carga async para que los títulos aparezcan de inmediato.
+function _applyRecSubTabsVisibility() {
+  Object.keys(REC_SUBTABS).forEach(function(key) {
+    var btn = document.getElementById(REC_SUBTABS[key].btn);
+    if (btn) btn.style.display = _recSubTabVisible(key) ? '' : 'none';
+  });
+}
+
+function switchRecSubTab(sub) {
+  // Guardia: si el sub-tab pedido no es visible para el rol, caer a 'clientes'
+  // (siempre disponible). Evita restaurar desde hash a un tab prohibido.
+  if (!_recSubTabVisible(sub)) sub = 'clientes';
+  _recSubTabActual = sub;
+
+  Object.keys(REC_SUBTABS).forEach(function(key) {
+    var cfg = REC_SUBTABS[key];
+    var el = document.getElementById(cfg.panel);
     if (el) el.style.display = (key === sub) ? '' : 'none';
-    var btn = document.getElementById(btnIds[key]);
+    var btn = document.getElementById(cfg.btn);
     if (btn) {
-      btn.style.borderBottomColor = (key === sub) ? colors[key] : 'transparent';
-      btn.style.color = (key === sub) ? colors[key] : '#999';
+      btn.style.borderBottomColor = (key === sub) ? cfg.color : 'transparent';
+      btn.style.color = (key === sub) ? cfg.color : '#999';
     }
   });
 
@@ -193,23 +228,6 @@ function rcaRecVolverAreas() {
   document.getElementById('rcaRecVolverBtn').style.display = 'none';
   document.getElementById('rcaRecAreasLista').style.display = '';
   rcaRecIniciar();
-}
-
-// Visibilidad de los botones de sub-tab Nivel 2 (RCA, Presentaciones,
-// Validaciones). Depende solo de currentRole, disponible de forma sincrónica
-// apenas se monta el módulo — por eso vive aparte de loadRecLanding(), que
-// espera un await apiGet no relacionado y retrasaba la aparición de los
-// títulos. Debe llamarse ANTES de cualquier await en _loadReclamosModule.
-function _applyRecSubTabsVisibility() {
-  var rcaAccess = ['admin','admin_calidad'];
-  var subRCA = document.getElementById('recSubBtnRCA');
-  if (subRCA) subRCA.style.display = rcaAccess.includes(currentRole) ? '' : 'none';
-  var subPres = document.getElementById('recSubBtnPres');
-  var presAccess = ['admin','admin_calidad','cubicador','externo'];
-  if (subPres) subPres.style.display = presAccess.includes(currentRole) ? '' : 'none';
-  var subVal = document.getElementById('recSubBtnVal');
-  var valAccess = ['admin','admin_calidad'];
-  if (subVal) subVal.style.display = valAccess.includes(currentRole) ? '' : 'none';
 }
 
 async function loadRecLanding() {

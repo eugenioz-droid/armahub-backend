@@ -23,13 +23,36 @@
     }
   }
 
+  // Lee el sub-tab guardado en el hash (#mod=reclamos&...&sub=xxx). Devuelve
+  // null si no hay. Lo usa el montaje del módulo para abrir directo en el
+  // sub-tab correcto tras F5, sin pasar por 'clientes' primero.
+  function _leerSubTabDelHash() {
+    var hash = (window.location.hash || '').substring(1);
+    var sub = null;
+    hash.split('&').forEach(function(part) {
+      var eq = part.indexOf('=');
+      if (eq !== -1 && part.substring(0, eq) === 'sub') sub = part.substring(eq + 1);
+    });
+    return sub;
+  }
+
   // --- Module entry point ---
   async function _loadReclamosModule() {
-    // Decisión síncrona por rol — debe correr antes de cualquier await para
-    // que los títulos de los sub-tabs Nivel 2 aparezcan de inmediato, sin
-    // esperar a loadRecLanding() (que depende de un fetch de KPIs no
-    // relacionado con qué botones se muestran).
+    // 1) Visibilidad de los 5 botones de sub-tab según rol — síncrono, antes
+    //    de cualquier await, para que los títulos aparezcan de inmediato.
     if (typeof _applyRecSubTabsVisibility === 'function') _applyRecSubTabsVisibility();
+
+    // 2) Activar de una vez el sub-tab destino ANTES de cargar datos, para que
+    //    no se vea 'clientes' y luego un salto al sub-tab real (sin parpadeo).
+    //    Prioridad: variable pendiente que dejó app.js en F5 (el hash ya pudo
+    //    ser reescrito por switchTab), luego el hash, luego 'clientes'. switch
+    //    cae a 'clientes' solo si el destino no es visible para el rol.
+    if (typeof global.switchRecSubTab === 'function') {
+      var subDestino = global.__armahubRecSubTabPendiente || _leerSubTabDelHash() || 'clientes';
+      global.__armahubRecSubTabPendiente = null;
+      global.switchRecSubTab(subDestino);
+    }
+
     if (typeof global.loadProyectos === 'function') {
       await Promise.resolve(global.loadProyectos());
     }
