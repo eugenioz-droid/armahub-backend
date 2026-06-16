@@ -332,6 +332,7 @@ class ReclamoUpdate(BaseModel):
     tiempo_respuesta_fecha_actualizacion: Optional[str] = None
     asignado_a: Optional[str] = None
     cubicador_asignado: Optional[str] = None
+    area_id: Optional[int] = None           # interno: reasignar área destino (recalcula jefe de servicio)
     metodo_rca: Optional[str] = None        # 'ishikawa' | '5_por_que'
     cinco_por_que: Optional[list] = None    # [{n:1, texto:"..."}, ...]
 
