@@ -222,6 +222,18 @@ servirá al formulario de internos tildando los roles que correspondan.
 
 > **Reasignación:** si un reclamo fue asignado al área equivocada, quien lo creó puede reasignarlo mientras está en `abierto` o `en_analisis`. Si ya pasó a validación, solo admin/admin_calidad pueden reasignar.
 
+### 3.3.0 Asignación del responsable (IMPORTANTE)
+
+Quién "trabaja" un reclamo se define distinto según el tipo:
+
+- **Externos (Reclamos Clientes):** el **Responsable** lo elige USC (o quien crea el reclamo) y puede ser **CUALQUIER usuario** del sistema — normalmente un **miembro** o **jefe de servicio** de un área, pero no se restringe por rol. Se guarda en `cubicador_asignado` (email) + `responsable` (nombre). El `area_id` del reclamo se infiere del área de ese responsable.
+  - **Implicancia técnica:** los `<select>` de Responsable (form de creación y de edición) y el filtro "Cub. Resp." se pueblan con **todos** los usuarios activos (`/users/dropdown`), **sin filtrar por rol**. Filtrar por `cubicador`/`externo` es un error: deja fuera responsables con otros roles (p.ej. tras migrar un usuario de `cubicador` a `miembro`) y el select aparece vacío aunque el responsable exista.
+  - **Reasignación:** solo `admin`/`admin_calidad` (o el USC propietario mientras está `abierto`), entrando a **Editar**. No hay selector de reasignación en el header del detalle.
+
+- **Internos (Reclamos Internos):** NO se elige usuario. Se elige el **ÁREA destino**; el responsable se asigna automáticamente al **Jefe de Servicio de esa área** (`_jefe_servicio_de_area`). Reasignar = cambiar el área (vía Editar), lo que recalcula el jefe de servicio.
+
+> **Nota de roles:** los roles legacy con oficio (`cubicador`, `externo`) están siendo reemplazados por roles con nivel que pertenecen a áreas (`miembro`, `jefe_servicio`). Por eso ninguna lógica de asignación de responsable debe asumir un rol concreto. Reclamos creados antes de una migración de rol pueden tener un responsable cuyo rol ya cambió: sigue siendo válido (la identidad es el email, no el rol).
+
 ### 3.3.1 Sub-tab Validaciones — arquitectura (IMPORTANTE)
 
 El sub-tab **Validaciones** (dentro de Calidad/Reclamos) es una **vista de trabajo**, igual que Presentaciones: trae reclamos por estado y permite avanzarlos, pero **no es el listado oficial**. Reglas de diseño que NO se deben romper:

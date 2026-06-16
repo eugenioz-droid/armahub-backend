@@ -49,21 +49,16 @@ function toggleEditarReclamo() {
       });
       proySel.value = d.id_proyecto || '';
     }
-    // Populate "Cubicador Responsable" dropdown (only cubicador/externo)
+    // Responsable: puede ser CUALQUIER usuario (lo define USC/quien crea el
+    // reclamo; suele ser un miembro o jefe de servicio de un área). Por eso NO
+    // se filtra por rol — antes se limitaba a cubicador/externo y dejaba fuera a
+    // responsables con otros roles (p.ej. tras migrar de 'cubicador' a 'miembro'),
+    // haciendo que el select quedara vacío aunque el responsable existiera.
     var sel = document.getElementById('recEditResponsable');
     sel.innerHTML = '<option value="">— Sin asignar —</option>';
-    var _respYaEnLista = false;
-    _recUsersCache.filter(function(u) { return u.role === 'cubicador' || u.role === 'externo'; }).forEach(function(u) {
+    _recUsersCache.forEach(function(u) {
       sel.innerHTML += '<option value="' + u.email + '" data-display="' + u.display + '">' + u.display + '</option>';
-      if (u.email === d.cubicador_asignado) _respYaEnLista = true;
     });
-    // Si el responsable actual no está en el cache (rol distinto o usuario no
-    // listado), agregarlo igual para que el select no quede vacío mostrando
-    // "Sin asignar" cuando sí hay responsable. Usa el nombre (responsable) como
-    // etiqueta y el email como valor.
-    if (d.cubicador_asignado && !_respYaEnLista) {
-      sel.innerHTML += '<option value="' + d.cubicador_asignado + '" data-display="' + (d.responsable || d.cubicador_asignado) + '">' + (d.responsable || d.cubicador_asignado) + '</option>';
-    }
     sel.value = d.cubicador_asignado || '';
     // Asignación — solo admin/admin_calidad pueden reasignar.
     //  - EXTERNO: dropdown de USC Responsable (usuario).

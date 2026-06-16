@@ -7,12 +7,13 @@ async function loadRecUsersDropdown() {
   if (!res.ok) return;
   var data = await res.json();
   _recUsersCache = data.users || [];
-  // Populate create form "Cubicador Responsable" (only cubicador/externo)
+  // Populate create form "Responsable" — CUALQUIER usuario (lo define USC/quien
+  // crea; suele ser miembro o jefe de servicio de un área). No se filtra por rol.
   var createSel = document.getElementById('recResponsable');
   if (createSel) {
     var val = createSel.value;
     createSel.innerHTML = '<option value="">— Sin asignar —</option>';
-    _recUsersCache.filter(function(u) { return u.role === 'cubicador' || u.role === 'externo'; }).forEach(function(u) {
+    _recUsersCache.forEach(function(u) {
       createSel.innerHTML += '<option value="' + u.email + '" data-display="' + u.display + '">' + u.display + '</option>';
     });
     createSel.value = val;
@@ -26,12 +27,13 @@ async function loadRecUsersDropdown() {
       accionRespList.innerHTML += '<option value="' + u.display + '">' + u.display + ' (' + u.role + ')</option>';
     });
   }
-  // Populate filter "Cub. Responsable" (only cubicador/externo)
+  // Populate filter "Responsable" — cualquier usuario (coherente con que el
+  // responsable de un reclamo puede tener cualquier rol).
   var filterSel = document.getElementById('recFiltroResponsable');
   if (filterSel) {
     var fval = filterSel.value;
     filterSel.innerHTML = '<option value="">Cub. Resp.: Todos</option>';
-    _recUsersCache.filter(function(u) { return u.role === 'cubicador' || u.role === 'externo'; }).forEach(function(u) {
+    _recUsersCache.forEach(function(u) {
       filterSel.innerHTML += '<option value="' + u.email + '">' + u.display + '</option>';
     });
     filterSel.value = fval;
