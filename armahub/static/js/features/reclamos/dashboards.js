@@ -124,7 +124,10 @@ var CAT_COLORS_REC = {
 function rcaRecRenderAreas(areas) {
   var html = '<div style="display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:12px;">';
   areas.forEach(function(a) {
-    var badge = a.tiene_rca
+    // Verde (matriz usable) SOLO si hay al menos una sub-causa activa. Tener
+    // categorías vacías no cuenta como matriz: igualaría a "Sin matriz" para
+    // efectos del formulario RCA (el modal Ishikawa saldría vacío).
+    var badge = (a.total_subcausas > 0)
       ? '<span style="font-size:10px; background:#e8f5e9; color:#2e7d32; padding:2px 8px; border-radius:10px; font-weight:600;">✓ ' + a.total_subcausas + ' sub-causas</span>'
       : '<span style="font-size:10px; background:#fff3e0; color:#e65100; padding:2px 8px; border-radius:10px; font-weight:600;">Sin matriz</span>';
     html += '<div onclick="rcaRecAbrirArea(' + a.id + ',\'' + a.nombre.replace(/'/g,"\\'") + '\')" '
@@ -171,24 +174,19 @@ function rcaRecRenderEditor(categorias) {
 }
 
 function rcaRecSubRow(ci, si, sub) {
-  var op = sub.activo ? '1' : '0.45';
-  return '<div id="rcaRecRow_' + ci + '_' + si + '" style="display:flex; gap:8px; align-items:center; margin-bottom:6px; opacity:' + op + ';">'
+  // Sin toggle activo/inactivo: toda sub-causa creada está activa y usable.
+  // Para descartar una causa se usa el botón eliminar (✕). El concepto de
+  // "inactiva" generaba matrices que se veían con causas pero llegaban vacías
+  // al formulario RCA (el modal y el contador solo cuentan activas).
+  return '<div id="rcaRecRow_' + ci + '_' + si + '" style="display:flex; gap:8px; align-items:center; margin-bottom:6px;">'
     + '<input type="text" value="' + _rcaEsc(sub.codigo) + '" placeholder="Cód." style="width:64px; font-size:11px; font-family:monospace; padding:4px 6px; border:1px solid #ccc; border-radius:4px;" oninput="rcaRecUpd(' + ci + ',' + si + ',\'codigo\',this.value)" />'
     + '<input type="text" value="' + _rcaEsc(sub.descripcion) + '" placeholder="Descripción" style="flex:1; font-size:12px; padding:4px 8px; border:1px solid #ccc; border-radius:4px;" oninput="rcaRecUpd(' + ci + ',' + si + ',\'descripcion\',this.value)" />'
-    + '<button onclick="rcaRecToggle(' + ci + ',' + si + ')" title="' + (sub.activo ? 'Activa — clic para desactivar' : 'Inactiva — clic para activar') + '" style="font-size:13px; font-weight:700; padding:3px 9px; border:1px solid ' + (sub.activo ? '#2e7d32' : '#ccc') + '; border-radius:4px; cursor:pointer; background:' + (sub.activo ? '#e8f5e9' : '#eee') + '; color:' + (sub.activo ? '#2e7d32' : '#999') + ';">✔</button>'
-    + '<button onclick="rcaRecEliminar(' + ci + ',' + si + ')" style="font-size:11px; padding:3px 8px; border:none; border-radius:4px; cursor:pointer; background:#ffebee; color:#c62828;">✕</button>'
+    + '<button onclick="rcaRecEliminar(' + ci + ',' + si + ')" title="Eliminar causa" style="font-size:11px; padding:3px 8px; border:none; border-radius:4px; cursor:pointer; background:#ffebee; color:#c62828;">✕</button>'
     + '</div>';
 }
 
 function _rcaEsc(s) { return (s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;'); }
 function rcaRecUpd(ci, si, campo, val) { if (_rcaRecData) _rcaRecData.categorias[ci].subcausas[si][campo] = val; }
-function rcaRecToggle(ci, si) {
-  if (!_rcaRecData) return;
-  var sub = _rcaRecData.categorias[ci].subcausas[si];
-  sub.activo = !sub.activo;
-  var row = document.getElementById('rcaRecRow_' + ci + '_' + si);
-  if (row) row.outerHTML = rcaRecSubRow(ci, si, sub);
-}
 function rcaRecEliminar(ci, si) {
   if (!_rcaRecData) return;
   _rcaRecData.categorias[ci].subcausas.splice(si, 1);
@@ -207,6 +205,11 @@ function rcaRecGuardar() {
   if (!_rcaRecData || !_rcaRecAreaId) return;
   var msg = document.getElementById('rcaRecGuardarMsg');
   msg.textContent = 'Guardando...';
+  // Forzar activo:true en todas las sub-causas. Ya no existe el estado
+  // "inactiva"; esto además repara las que hubieran quedado inactivas antes.
+  _rcaRecData.categorias.forEach(function(cat) {
+    (cat.subcausas || []).forEach(function(sub) { sub.activo = true; });
+  });
   fetch(apiUrl('/admin/areas/' + _rcaRecAreaId + '/rca'), {
     method: 'PUT',
     headers: Object.assign({}, authHeaders(), { 'Content-Type': 'application/json' }),

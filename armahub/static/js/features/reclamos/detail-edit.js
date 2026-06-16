@@ -745,11 +745,17 @@ async function _cargarMatrizIshikawa(areaId) {
   return _ishikawaData;
 }
 
-// True si la matriz cargada tiene al menos una categoría.
+// True si la matriz cargada es USABLE: tiene al menos una sub-causa (activa).
+// No basta con que existan categorías vacías — una matriz con categorías pero
+// sin causas se mostraría como Ishikawa con un modal vacío, rompiendo el flujo.
 function _ishikawaTieneCategorias() {
   if (!_ishikawaData) return false;
   var cats = _ishikawaData.data || _ishikawaData.categorias;
-  return !!(cats && cats.length > 0);
+  if (!cats || !cats.length) return false;
+  return cats.some(function(c) {
+    var subs = c.subcausas || c.sub_causas || [];
+    return subs.length > 0;
+  });
 }
 
 // Decide el método RCA al abrir un reclamo:
