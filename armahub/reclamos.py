@@ -144,7 +144,7 @@ def _puede_ver_reclamo(rec: dict, user: dict, cur=None) -> bool:
     """
     role = user.get("role", "")
     email = user.get("email", "")
-    if role in ("admin", "admin_calidad", "cubicador"):
+    if role in ("admin", "admin_calidad"):
         return True
     if role == "usc":
         return _es_propietario_usc(rec, email)
@@ -739,7 +739,7 @@ def reclamos_admin_dashboards(user=Depends(require_admin_or_admin_calidad)):
                        COUNT(*) FILTER (WHERE r.tipo_reclamo = 'actualizacion_portal') AS actualizaciones
                 FROM reclamos r
                 JOIN users u ON u.email = r.respuesta_por
-                WHERE u.role = 'cubicador' AND r.respuesta_por IS NOT NULL
+                WHERE r.respuesta_por IS NOT NULL
                 GROUP BY display ORDER BY total DESC
             """)
             por_cubicador = [{"email": r[0], "total": int(r[1]), "errores": int(r[2]), "faltantes": int(r[3]), "atrasos": int(r[4]), "actualizaciones": int(r[5])} for r in cur.fetchall()]
@@ -764,7 +764,7 @@ def reclamos_admin_dashboards(user=Depends(require_admin_or_admin_calidad)):
                        COUNT(*)
                 FROM reclamos r
                 JOIN users u ON u.email = r.respuesta_por
-                WHERE u.role = 'cubicador' AND r.respuesta_por IS NOT NULL
+                WHERE r.respuesta_por IS NOT NULL
                 GROUP BY display, 2 ORDER BY display, 3 DESC
             """)
             ishikawa_per_cub = [{"email": r[0], "categoria": r[1], "count": int(r[2])} for r in cur.fetchall()]
@@ -953,10 +953,17 @@ def reclamos_para_presentar(user=Depends(get_current_user)):
             """, params)
             rows = cur.fetchall()
 
-            # Also fetch cubicadores list for the asistentes selector
+            # Lista para el selector de asistentes: miembros del área Cubicaciones
+            # (antes filtraba role='cubicador', rol ya migrado a miembro → quedaba
+            # vacío). Se identifican por pertenencia al área cuyo slug/nombre es
+            # Cubicaciones, vía area_usuarios.
             cur.execute("""
-                SELECT email, COALESCE(nombre, '') AS nombre, COALESCE(apellido, '') AS apellido
-                FROM users WHERE role = 'cubicador' AND activo = TRUE
+                SELECT u.email, COALESCE(u.nombre, '') AS nombre, COALESCE(u.apellido, '') AS apellido
+                FROM users u
+                JOIN area_usuarios au ON au.user_id = u.id
+                JOIN areas a ON a.id = au.area_id
+                WHERE u.activo = TRUE
+                  AND (a.slug ILIKE 'cubica%' OR a.nombre ILIKE 'cubica%')
                 ORDER BY nombre, apellido
             """)
             cubicadores = cur.fetchall()
@@ -1184,9 +1191,10 @@ def get_reclamo_optimizado(
     
     role = user.get("role", "")
 
-    # Cache solo para roles globales (admin/admin_calidad/cubicador ven todo).
-    # usc/externo tienen scope restringido — no cachear para evitar que lean reclamos ajenos.
-    use_cache = role in ("admin", "admin_calidad", "cubicador")
+    # Cache solo para roles globales (admin/admin_calidad ven todo sin restricción).
+    # Los demás (usc/externo/miembro/jefe_servicio) tienen scope restringido por
+    # propiedad o por área — no cachear para evitar que lean reclamos ajenos.
+    use_cache = role in ("admin", "admin_calidad")
     cache_key = _get_cache_key(reclamo_id, include_images, include_seguimientos, include_acciones)
 
     if use_cache and _is_cache_valid(cache_key):
