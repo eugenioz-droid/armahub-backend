@@ -93,17 +93,13 @@ function _applyReclamoDetailPermissions(data) {
   if (detProySel) detProySel.style.display = puedeEditarSec1 ? '' : 'none';
   if (detProyDisplay) detProyDisplay.style.display = puedeEditarSec1 ? 'none' : '';
 
-  // Asignación en el header del detalle:
-  //  - EXTERNO: selector USC Responsable, reasignable por admin/admin_calidad.
-  //  - INTERNO: NO hay selector de usuario. Se muestra el ÁREA como texto (a
-  //    todos); reasignar el área se hace entrando a Editar.
+  // Header del detalle — la reasignación (USC en externos, Área en internos) se
+  // hace SIEMPRE entrando a Editar, no desde el header. Por eso el selector USC
+  // del header se oculta. En internos se muestra el ÁREA como texto informativo.
   var esInternoDet = data.tipo_origen === 'interno';
-  var puedeReasignarUsc = (currentRole === 'admin' || currentRole === 'admin_calidad');
   var detAsigWrap = document.getElementById('recDetailAsignadoAWrap');
-  var detAsigSel = document.getElementById('recDetailAsignadoA');
+  if (detAsigWrap) detAsigWrap.style.display = 'none';
   var detAreaWrapDisp = document.getElementById('recDetailAreaWrapDisplay');
-  if (detAsigWrap) detAsigWrap.style.display = (puedeReasignarUsc && !esInternoDet) ? 'flex' : 'none';
-  if (detAsigSel) detAsigSel.disabled = !puedeReasignarUsc;
   if (detAreaWrapDisp) detAreaWrapDisp.style.display = esInternoDet ? 'flex' : 'none';
 
   // El formulario de datos (análisis/respuesta) solo es editable mientras el

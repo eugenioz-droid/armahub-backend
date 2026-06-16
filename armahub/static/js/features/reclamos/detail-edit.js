@@ -52,9 +52,18 @@ function toggleEditarReclamo() {
     // Populate "Cubicador Responsable" dropdown (only cubicador/externo)
     var sel = document.getElementById('recEditResponsable');
     sel.innerHTML = '<option value="">— Sin asignar —</option>';
+    var _respYaEnLista = false;
     _recUsersCache.filter(function(u) { return u.role === 'cubicador' || u.role === 'externo'; }).forEach(function(u) {
       sel.innerHTML += '<option value="' + u.email + '" data-display="' + u.display + '">' + u.display + '</option>';
+      if (u.email === d.cubicador_asignado) _respYaEnLista = true;
     });
+    // Si el responsable actual no está en el cache (rol distinto o usuario no
+    // listado), agregarlo igual para que el select no quede vacío mostrando
+    // "Sin asignar" cuando sí hay responsable. Usa el nombre (responsable) como
+    // etiqueta y el email como valor.
+    if (d.cubicador_asignado && !_respYaEnLista) {
+      sel.innerHTML += '<option value="' + d.cubicador_asignado + '" data-display="' + (d.responsable || d.cubicador_asignado) + '">' + (d.responsable || d.cubicador_asignado) + '</option>';
+    }
     sel.value = d.cubicador_asignado || '';
     // Asignación — solo admin/admin_calidad pueden reasignar.
     //  - EXTERNO: dropdown de USC Responsable (usuario).
@@ -62,6 +71,13 @@ function toggleEditarReclamo() {
     //    Jefe de Servicio del área; reasignar el área cambia el responsable.
     var esInterno = d.tipo_origen === 'interno';
     var puedeReasignar = (currentRole === 'admin' || currentRole === 'admin_calidad');
+
+    // En INTERNOS no aplican "Detectado por" ni "Responsable" (usuario): el form
+    // de edición debe reflejar los mismos campos que el de creación de internos.
+    var detPorWrap = document.getElementById('recEditDetectadoPorWrap');
+    if (detPorWrap) detPorWrap.style.display = esInterno ? 'none' : '';
+    var respWrap = document.getElementById('recEditResponsableWrap');
+    if (respWrap) respWrap.style.display = esInterno ? 'none' : '';
     var uscWrap = document.getElementById('recEditAsignadoAWrap');
     var uscSel = document.getElementById('recEditAsignadoA');
     var areaWrap = document.getElementById('recEditAreaWrap');
