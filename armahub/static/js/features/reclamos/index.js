@@ -72,7 +72,7 @@
         crearCard.style.display = (perm && perm.puede) ? '' : 'none';
       } catch (e) {
         // Fallback conservador si falla la consulta: ocultar para roles no-staff.
-        if (['cliente','cubicador','externo'].includes(currentRole)) crearCard.style.display = 'none';
+        if (['cliente','externo'].includes(currentRole)) crearCard.style.display = 'none';
       }
     }
   }

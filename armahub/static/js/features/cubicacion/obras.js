@@ -342,9 +342,10 @@ async function openObraDetailModal(idProyecto) {
   document.getElementById('obraDetailTitle').textContent = '🏗️ ' + (p.nombre_proyecto || idProyecto);
   document.getElementById('obraDetailEditBtn').onclick = function() { closeObraDetailModal(); openEditObraModal(idProyecto); };
 
-  // Delete button: visible for admin/admin_calidad, or cubicador with 0 barras
+  // Delete button: visible for admin/admin_calidad, o miembro (de Cubicaciones) con 0 barras
+  // (antes 'cubicador', rol migrado a miembro). El backend valida el permiso real.
   var delBtn = document.getElementById('obraDetailDeleteBtn');
-  var canDelete = currentRole === 'admin' || currentRole === 'admin_calidad' || (currentRole === 'cubicador' && (p.total_barras || 0) === 0);
+  var canDelete = currentRole === 'admin' || currentRole === 'admin_calidad' || (currentRole === 'miembro' && (p.total_barras || 0) === 0);
   delBtn.style.display = canDelete ? '' : 'none';
   delBtn.onclick = function() { eliminarObra(idProyecto, p.nombre_proyecto, p.total_barras || 0); };
 

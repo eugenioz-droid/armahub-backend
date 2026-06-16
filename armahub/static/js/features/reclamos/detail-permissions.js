@@ -27,7 +27,7 @@ function _applyReclamoDetailPermissions(data) {
   var selAplica = document.getElementById('recDetailAplica');
   var puedeCambiarAplica =
     (((currentRole === 'admin' || currentRole === 'admin_calidad') ||
-    ((['cubicador','externo','miembro','jefe_servicio'].includes(currentRole)) && esPropioCub))) && estadoPermiteAnalisis;
+    ((['externo','miembro','jefe_servicio'].includes(currentRole)) && esPropioCub))) && estadoPermiteAnalisis;
   if (selAplica) selAplica.disabled = !puedeCambiarAplica;
 
   var puedeEliminar = (currentRole === 'admin' || currentRole === 'admin_calidad') || (currentRole === 'usc' && esCreador);
@@ -35,7 +35,7 @@ function _applyReclamoDetailPermissions(data) {
   if (btnElim) btnElim.style.display = puedeEliminar ? '' : 'none';
 
   // --- Botones de flujo en el modal ---
-  var esAsignado = (['cubicador','externo','miembro','jefe_servicio'].includes(currentRole) && esPropioCub);
+  var esAsignado = (['externo','miembro','jefe_servicio'].includes(currentRole) && esPropioCub);
   var estadoEnTrabajo = (data.estado === 'abierto' || data.estado === 'en_analisis');
   var estadoEnRevision = (data.estado === 'en_revision');
   var estadoEnValidacion = (data.estado === 'validacion');
@@ -107,8 +107,8 @@ function _applyReclamoDetailPermissions(data) {
   // reclamo está EN ANÁLISIS (abierto/en_analisis). Una vez enviado a revisión
   // o validación, queda READ-ONLY PARA TODOS los roles, admin incluido: está en
   // otra etapa. Para volver a editar hay que Reabrir (vuelve a en_analisis).
-  var puedeResponder = ['admin','admin_calidad','cubicador','externo','miembro','jefe_servicio'].includes(currentRole);
-  if ((['cubicador','externo','miembro','jefe_servicio'].includes(currentRole)) && !esPropioCub) puedeResponder = false;
+  var puedeResponder = ['admin','admin_calidad','externo','miembro','jefe_servicio'].includes(currentRole);
+  if ((['externo','miembro','jefe_servicio'].includes(currentRole)) && !esPropioCub) puedeResponder = false;
   if (!estadoPermiteAnalisis) puedeResponder = false;
   var sec2Fields = ['recDetailRespuestaTexto','recDetailCausaDisplay','recDetailAreaAplica','recDetailFechaAnalisis','recDetailKilosMal','recTiempoRespuestaAnalisis','recTiempoRespuestaUnidadAnalisis'];
   sec2Fields.forEach(function(fid) { var el = document.getElementById(fid); if (el) el.disabled = !puedeResponder; });
@@ -137,8 +137,8 @@ function _applyReclamoDetailPermissions(data) {
 
   // Acciones (medidas correctivas): mismo criterio que el formulario de datos —
   // solo editables en análisis. Fuera de esa etapa quedan read-only para todos.
-  var puedeAccion = ['admin','admin_calidad','cubicador','externo','miembro','jefe_servicio'].includes(currentRole);
-  if ((['cubicador','externo','miembro','jefe_servicio'].includes(currentRole)) && !esPropioCub) puedeAccion = false;
+  var puedeAccion = ['admin','admin_calidad','externo','miembro','jefe_servicio'].includes(currentRole);
+  if ((['externo','miembro','jefe_servicio'].includes(currentRole)) && !esPropioCub) puedeAccion = false;
   if (!estadoPermiteAnalisis) puedeAccion = false;
   var accionFields = ['recNuevaAccionTipo','recNuevaAccionDesc','recNuevaAccionRespSearch','recNuevaAccionFecha'];
   accionFields.forEach(function(fid) { var el = document.getElementById(fid); if (el) el.disabled = !puedeAccion; });
@@ -150,8 +150,8 @@ function _applyReclamoDetailPermissions(data) {
   if (detDropZone) detDropZone.style.display = puedeImgRegistro ? '' : 'none';
   if (detFileInput) detFileInput.disabled = !puedeImgRegistro;
 
-  // PDF export: admin, admin_calidad, cubicador (propios), usc
-  var puedePdf = ['admin','admin_calidad'].includes(currentRole) || (currentRole === 'usc') || (['cubicador','miembro'].includes(currentRole) && esPropioCub);
+  // PDF export: admin, admin_calidad, usc, y miembro (en reclamos propios)
+  var puedePdf = ['admin','admin_calidad'].includes(currentRole) || (currentRole === 'usc') || (currentRole === 'miembro' && esPropioCub);
   var btnPdf = document.getElementById('btnPdfReclamo');
   if (btnPdf) btnPdf.style.display = puedePdf ? '' : 'none';
 

@@ -23,7 +23,7 @@ var REC_SUBTABS = {
   clientes:      { panel: 'recSubClientes',       btn: 'recSubBtnClientes', color: '#e53935', roles: null },
   internos:      { panel: 'recSubInternos',       btn: 'recSubBtnInternos', color: '#1565C0', roles: null },
   rca:           { panel: 'recSubRCA',            btn: 'recSubBtnRCA',      color: '#e65100', roles: ['admin','admin_calidad'] },
-  presentaciones:{ panel: 'recSubPresentaciones', btn: 'recSubBtnPres',     color: '#7B1FA2', roles: ['admin','admin_calidad','cubicador','externo'] },
+  presentaciones:{ panel: 'recSubPresentaciones', btn: 'recSubBtnPres',     color: '#7B1FA2', roles: ['admin','admin_calidad','miembro','externo'] },
   validaciones:  { panel: 'recSubValidaciones',   btn: 'recSubBtnVal',      color: '#7B1FA2', roles: ['admin','admin_calidad'] }
 };
 
@@ -330,11 +330,11 @@ async function loadRecLanding() {
                 x: { ticks: { font: { size: 9 } } } } }
   });
 
-  // Pending tasks badge (cubicador only)
+  // Badge de tareas pendientes (responsable de reclamos: miembro/externo)
   var pendWrap = document.getElementById('recLandPendientesWrap');
   var pendCount = data.pendientes || 0;
   if (pendWrap) {
-    if (currentRole === 'cubicador' && pendCount > 0) {
+    if ((currentRole === 'miembro' || currentRole === 'externo') && pendCount > 0) {
       pendWrap.style.display = '';
       document.getElementById('recLandPendientes').textContent = pendCount;
     } else {

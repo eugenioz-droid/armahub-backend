@@ -147,14 +147,14 @@ def build_role_filter(user, cur=None):
     """Construye filtro WHERE según rol → (where_clause, params).
     - admin/admin_calidad: todo
     - usc: reclamos que creó o le asignaron
-    - cubicador/externo: reclamos donde está asignado como responsable
+    - externo: reclamos donde está asignado como responsable
     - jefe_servicio/miembro: todos los reclamos de las áreas a las que pertenecen
     """
     email = user.get("email", "")
     role = user.get("role", "usc")
     if role == "usc":
         return " AND (r.creado_por = %s OR r.asignado_a = %s)", [email, email]
-    elif role in ("cubicador", "externo"):
+    elif role == "externo":
         return " AND (r.cubicador_asignado = %s OR r.respuesta_por = %s)", [email, email]
     elif role in ("jefe_servicio", "miembro"):
         if cur is None:
