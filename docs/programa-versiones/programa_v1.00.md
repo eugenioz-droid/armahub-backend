@@ -391,6 +391,26 @@ Objetivo: endurecer Reclamos y cerrar los pendientes reales arrastrados.
 > El trabajo de Admin a gran escala queda en Fase 10 del programa; estas tareas son las que
 > desbloquean el flujo correcto de reclamos y se ejecutan acá (F5) por esa razón.
 
+### 5I. Mejoras UX formularios y listados reclamos (sesiones 2026-06-13/15)
+
+| N° | Descripción | Realizado | Quién |
+|----|-------------|-----------|-------|
+| 5I.1 | Sub-tab "Datos maestros" en Admin (Constructoras, Calculistas, Gestión de Proyectos separados de Configuración) | ☑ | YO |
+| 5I.2 | Label rol Externo: eliminar "(legacy)" en panel Admin | ☑ | YO |
+| 5I.3 | Revisiones (sub-tab Validaciones): dos listas separadas Clientes / Internos, misma columna que Validaciones | ☑ | YO |
+| 5I.4 | Modal externo: Proyecto/Obra y Cubicador Responsable como combobox buscable (input+datalist) | ☑ | YO |
+| 5I.5 | Modal interno: Área responsable como combobox buscable; Responsable asignado eliminado (lo asigna el backend) | ☑ | YO |
+| 5I.6 | FIX A1: `toggleNuevoInterno()` pasa a async, espera `initInternosForm()` antes de abrir modal | ☑ | YO |
+| 5I.7 | FIX crítico: `var btn` no declarado en `_render5PQData` crasheaba todo reclamo con método 5 Por Qué | ☑ | YO |
+| 5I.8 | Preselección método RCA: si área sin matriz → 5 Por Qué preseleccionado, Ishikawa deshabilitado | ☑ | YO |
+| 5I.9 | Filtros "Mis Reclamos" y "Aplica" en listado internos (botones morados, ciclo de estados) | ☑ | YO |
+| 5I.10 | Campo "Tiempo respuesta" eliminado de formulario análisis (queda hidden) | ☑ | YO |
+| 5I.11 | USC Responsable: eliminado del formulario de creación externo (auto-asigna backend); reasignación solo desde header del detalle (admin/admin_calidad) | ☑ | YO |
+| 5I.12 | Banner encabezado diferenciado: verde (#43a047) clientes, morado (#9c27b0) internos; texto blanco 15px | ☑ | YO |
+| 5I.13 | Header detalle: Año y N° calidad convertidos a hidden (no editables desde ahí, se editan via form "Editar") | ☑ | YO |
+| 5I.14 | FIX `_setRcaMetodo`: fuerza display de bloques directamente sin depender del :checked (evita bug con radio disabled) | ☑ | YO |
+| 5I.15 | SVG Renderizador 2D (deseable futura versión): catálogo de figuras base de barras, renderizado escalado por dimensiones, exportación a imagen/PDF | ☐ | TÚ+YO |
+
 ### Decisiones de arquitectura registradas (pre-producción, NO implementar ahora)
 - **Producto vendible = SOLO módulo Reclamos/Calidad** (no todo ArmaHub). Configurabilidad = núcleo solo de ese módulo. (memoria: producto-vendible)
 - **Rediseño de admin god-mode:** "configurar sistema" debe ser un rol (`config_sistema`), no un comodín con overrides `=== 'admin'`. NO selector de roles ni 2 logins. (memoria: rediseno-admin)
