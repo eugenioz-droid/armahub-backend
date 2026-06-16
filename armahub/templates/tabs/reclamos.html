@@ -158,8 +158,8 @@
             </select>
           </div>
           <div class="col" style="max-width:200px;">
-            <label style="font-size:11px; color:#666;">Cubicador Responsable</label>
-            <input type="text" id="recResponsableSearch" list="recResponsableList" placeholder="Buscar cubicador..." autocomplete="off" style="width:100%; font-size:12px;" oninput="_onExtResponsableInput(this.value)" />
+            <label style="font-size:11px; color:#666;">Responsable</label>
+            <input type="text" id="recResponsableSearch" list="recResponsableList" placeholder="Buscar responsable..." autocomplete="off" style="width:100%; font-size:12px;" oninput="_onExtResponsableInput(this.value)" />
             <datalist id="recResponsableList"></datalist>
             <select id="recResponsable" style="display:none;">
               <option value="">— Sin asignar —</option>
@@ -439,7 +439,7 @@
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; flex-wrap:wrap; gap:8px;">
           <h4 style="margin:0; font-size:13px; color:#1565C0;">💬 Análisis Causa Raíz</h4>
           <div style="display:flex; gap:12px; align-items:center;">
-            <div style="font-size:12px;"><span id="recDetailCubicadorLabel">Cubicador</span>: <strong id="recDetailCubicadorNombre" style="color:#1565C0;">Sin asignar</strong></div>
+            <div style="font-size:12px;"><span id="recDetailCubicadorLabel">Responsable</span>: <strong id="recDetailCubicadorNombre" style="color:#1565C0;">Sin asignar</strong></div>
             <select id="recDetailAplica" onchange="cambiarAplicaReclamo(); _updateAplicaBadge();" style="font-size:11px; font-weight:600; padding:3px 10px; border-radius:12px; border:2px solid #ccc; cursor:pointer;">
               <option value="pendiente">⏳ Pendiente</option>
               <option value="si">✅ Sí Aplica</option>

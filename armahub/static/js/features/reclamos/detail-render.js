@@ -115,11 +115,14 @@ function _renderReclamoRespuesta(data) {
   }
   document.getElementById('recRespMsg').textContent = '';
 
+  // Label del responsable: en internos es el Jefe de Servicio del área destino
+  // ("Responsable área"); en externos es cualquier usuario/miembro ("Responsable").
+  // NO se usa "Cubicador": ese rol-con-oficio ya no existe (hoy son miembros por área).
   var cubNombreEl = document.getElementById('recDetailCubicadorNombre');
   var cubLabelEl = document.getElementById('recDetailCubicadorLabel');
   if (cubNombreEl) {
     var esInterno = data.tipo_origen === 'interno';
-    if (cubLabelEl) cubLabelEl.textContent = esInterno ? 'Responsable área' : 'Cubicador';
+    if (cubLabelEl) cubLabelEl.textContent = esInterno ? 'Responsable área' : 'Responsable';
     var cubName = data.responsable || 'Sin asignar';
     cubNombreEl.textContent = cubName;
     cubNombreEl.style.color = data.responsable ? '#1565C0' : '#999';
