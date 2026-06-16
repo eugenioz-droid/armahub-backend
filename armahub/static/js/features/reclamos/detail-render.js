@@ -166,6 +166,8 @@ function _renderReclamoDetail(data) {
   var card = document.getElementById('reclamoDetailCard');
   card.style.display = '';
   document.getElementById('recEditForm').style.display = 'none';
+  var editFormInt = document.getElementById('recEditFormInterno');
+  if (editFormInt) editFormInt.style.display = 'none';
   document.getElementById('recDetailInfo').style.display = '';
   document.getElementById('btnEditarReclamo').textContent = '✏️ Editar';
   _populateReclamoDetailSelectors(data);

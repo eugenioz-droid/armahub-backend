@@ -127,6 +127,8 @@
     'toggleRecAbierto',
     'toggleEditarReclamo',
     'guardarEdicionReclamo',
+    'toggleEditarReclamoInterno',
+    'guardarEdicionReclamoInterno',
     'guardarAnioNumeroCalidad',
     'cambiarProyectoReclamo',
     'cambiarAsignadoAReclamo',

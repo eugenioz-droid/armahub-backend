@@ -23,11 +23,20 @@ function descargarPdfReclamo() {
     });
 }
 
+// Editar reclamo — enruta al form correcto según tipo_origen. Internos y
+// externos tienen formularios SEPARADOS (5I.19.2): no comparten campos ni lógica.
 function toggleEditarReclamo() {
+  if (_reclamoActual && _reclamoActual.tipo_origen === 'interno') {
+    return toggleEditarReclamoInterno();
+  }
+  return _toggleEditarReclamoExterno();
+}
+
+// --- EDITAR EXTERNO ---
+function _toggleEditarReclamoExterno() {
   var form = document.getElementById('recEditForm');
   var info = document.getElementById('recDetailInfo');
   if (form.style.display === 'none') {
-    // Open edit mode — populate fields from current reclamo
     var d = _reclamoActual;
     if (!d) return;
     document.getElementById('recEditTitulo').value = d.titulo || '';
@@ -39,7 +48,7 @@ function toggleEditarReclamo() {
     document.getElementById('recEditAnioCalidad').disabled = !(currentRole === 'admin' || currentRole === 'admin_calidad');
     document.getElementById('recEditDetectadoPor').value = d.detectado_por || '';
     document.getElementById('recEditDescripcion').value = d.descripcion || '';
-    // Populate proyecto dropdown from recProyecto select (already loaded)
+    // Proyecto dropdown desde recProyecto (ya cargado)
     var proySel = document.getElementById('recEditProyecto');
     var srcProySel = document.getElementById('recProyecto');
     if (proySel && srcProySel) {
@@ -49,55 +58,71 @@ function toggleEditarReclamo() {
       });
       proySel.value = d.id_proyecto || '';
     }
-    // Responsable: puede ser CUALQUIER usuario (lo define USC/quien crea el
-    // reclamo; suele ser un miembro o jefe de servicio de un área). Por eso NO
-    // se filtra por rol — antes se limitaba a cubicador/externo y dejaba fuera a
-    // responsables con otros roles (p.ej. tras migrar de 'cubicador' a 'miembro'),
-    // haciendo que el select quedara vacío aunque el responsable existiera.
+    // Responsable: CUALQUIER usuario (sin filtro de rol; ver inventario 5I.19.1).
     var sel = document.getElementById('recEditResponsable');
     sel.innerHTML = '<option value="">— Sin asignar —</option>';
     _recUsersCache.forEach(function(u) {
       sel.innerHTML += '<option value="' + u.email + '" data-display="' + u.display + '">' + u.display + '</option>';
     });
     sel.value = d.cubicador_asignado || '';
-    // Asignación — solo admin/admin_calidad pueden reasignar.
-    //  - EXTERNO: dropdown de USC Responsable (usuario).
-    //  - INTERNO: dropdown de ÁREA destino (no usuario). El reclamo lo toma el
-    //    Jefe de Servicio del área; reasignar el área cambia el responsable.
-    var esInterno = d.tipo_origen === 'interno';
+    // USC Responsable: reasignable solo por admin/admin_calidad.
     var puedeReasignar = (currentRole === 'admin' || currentRole === 'admin_calidad');
-
-    // En INTERNOS no aplican "Detectado por" ni "Responsable" (usuario): el form
-    // de edición debe reflejar los mismos campos que el de creación de internos.
-    var detPorWrap = document.getElementById('recEditDetectadoPorWrap');
-    if (detPorWrap) detPorWrap.style.display = esInterno ? 'none' : '';
-    var respWrap = document.getElementById('recEditResponsableWrap');
-    if (respWrap) respWrap.style.display = esInterno ? 'none' : '';
     var uscWrap = document.getElementById('recEditAsignadoAWrap');
     var uscSel = document.getElementById('recEditAsignadoA');
-    var areaWrap = document.getElementById('recEditAreaWrap');
-    var areaSel = document.getElementById('recEditArea');
-    // USC dropdown: solo externos, y solo admin.
     if (uscWrap && uscSel) {
-      if (puedeReasignar && !esInterno) {
+      if (puedeReasignar) {
         uscWrap.style.display = '';
         uscSel.innerHTML = '<option value="">— Sin asignar —</option>';
-        // Poblar desde _recUsersCache (usuarios USC). recAsignadoA es un input
-        // hidden sin .options — no sirve como fuente.
-        if (typeof _recUsersCache !== 'undefined') {
-          _recUsersCache.filter(function(u) { return u.role === 'usc'; }).forEach(function(u) {
-            uscSel.innerHTML += '<option value="' + u.email + '">' + u.display + '</option>';
-          });
-        }
+        _recUsersCache.filter(function(u) { return u.role === 'usc'; }).forEach(function(u) {
+          uscSel.innerHTML += '<option value="' + u.email + '">' + u.display + '</option>';
+        });
         uscSel.value = d.asignado_a || '';
       } else {
         uscWrap.style.display = 'none';
       }
     }
-    // Área dropdown: solo internos, y solo admin. Reusa los <option> del select
-    // de área del form de creación de internos (ya poblado con áreas activas).
+    document.getElementById('recEditMsg').textContent = '';
+    form.style.display = '';
+    info.style.display = 'none';
+    document.getElementById('btnEditarReclamo').textContent = '✕ Cancelar';
+  } else {
+    form.style.display = 'none';
+    info.style.display = '';
+    document.getElementById('btnEditarReclamo').textContent = '✏️ Editar';
+  }
+}
+
+// --- EDITAR INTERNO (form separado: sin Detectado por / Responsable usuario / USC) ---
+function toggleEditarReclamoInterno() {
+  var form = document.getElementById('recEditFormInterno');
+  var info = document.getElementById('recDetailInfo');
+  if (form.style.display === 'none') {
+    var d = _reclamoActual;
+    if (!d) return;
+    document.getElementById('recEditIntTitulo').value = d.titulo || '';
+    document.getElementById('recEditIntTipo').value = d.tipo_reclamo || 'error';
+    document.getElementById('recEditIntFechaDeteccion').value = d.fecha_deteccion || '';
+    document.getElementById('recEditIntAnioCalidad').value = d.anio_calidad || '';
+    document.getElementById('recEditIntAnioCalidad').disabled = !(currentRole === 'admin' || currentRole === 'admin_calidad');
+    document.getElementById('recEditIntNumeroCalidad').value = d.numero_calidad || '';
+    document.getElementById('recEditIntDescripcion').value = d.descripcion || '';
+    // Cliente/Obra dropdown desde recProyecto (ya cargado)
+    var proySel = document.getElementById('recEditIntProyecto');
+    var srcProySel = document.getElementById('recProyecto');
+    if (proySel && srcProySel) {
+      proySel.innerHTML = '<option value="">— Sin proyecto —</option>';
+      Array.from(srcProySel.options).forEach(function(opt) {
+        if (opt.value) proySel.innerHTML += '<option value="' + opt.value + '">' + opt.textContent + '</option>';
+      });
+      proySel.value = d.id_proyecto || '';
+    }
+    // Área responsable: reasignable solo por admin/admin_calidad. Reusa los
+    // <option> del select de área del form de creación de internos.
+    var puedeReasignar = (currentRole === 'admin' || currentRole === 'admin_calidad');
+    var areaWrap = document.getElementById('recEditIntAreaWrap');
+    var areaSel = document.getElementById('recEditIntArea');
     if (areaWrap && areaSel) {
-      if (puedeReasignar && esInterno) {
+      if (puedeReasignar) {
         areaWrap.style.display = '';
         var srcArea = document.getElementById('recIntAreaDestino');
         areaSel.innerHTML = (srcArea && srcArea.innerHTML)
@@ -108,7 +133,7 @@ function toggleEditarReclamo() {
         areaWrap.style.display = 'none';
       }
     }
-    document.getElementById('recEditMsg').textContent = '';
+    document.getElementById('recEditIntMsg').textContent = '';
     form.style.display = '';
     info.style.display = 'none';
     document.getElementById('btnEditarReclamo').textContent = '✕ Cancelar';
@@ -147,19 +172,10 @@ async function guardarEdicionReclamo() {
     numero_calidad: parseInt(document.getElementById('recEditNumeroCalidad').value) || null,
     id_proyecto: editProyVal || null,
   };
-  // Reasignación — solo admin/admin_calidad.
-  //  - EXTERNO: envía asignado_a (USC Responsable).
-  //  - INTERNO: envía area_id (área destino); el backend recalcula el Jefe de
-  //    Servicio responsable. No se asigna a un usuario en internos.
+  // USC Responsable — reasignable solo por admin/admin_calidad (externos).
   if (currentRole === 'admin' || currentRole === 'admin_calidad') {
-    var esInternoEdit = _reclamoActual.tipo_origen === 'interno';
-    if (esInternoEdit) {
-      var editAreaSel = document.getElementById('recEditArea');
-      if (editAreaSel && editAreaSel.value) body.area_id = parseInt(editAreaSel.value) || null;
-    } else {
-      var editUscSel = document.getElementById('recEditAsignadoA');
-      if (editUscSel) body.asignado_a = editUscSel.value || null;
-    }
+    var editUscSel = document.getElementById('recEditAsignadoA');
+    if (editUscSel) body.asignado_a = editUscSel.value || null;
   }
   var res = await fetch(apiUrl('/reclamos/' + _reclamoActual.id), {
     method: 'PATCH',
@@ -176,6 +192,52 @@ async function guardarEdicionReclamo() {
     document.getElementById('btnEditarReclamo').textContent = '✏️ Editar';
     await verReclamo(_reclamoActual.id);
     await loadReclamos();
+  } else {
+    msg.textContent = 'Error: ' + (data.detail || 'desconocido'); msg.style.color = '#b42318';
+  }
+}
+
+// --- GUARDAR EDICIÓN INTERNO (form separado) ---
+async function guardarEdicionReclamoInterno() {
+  if (!_reclamoActual) return;
+  var esCreador = _reclamoActual.creado_por && _reclamoActual.creado_por === currentUserEmail;
+  var puedeEditar = (currentRole === 'admin' || currentRole === 'admin_calidad') || (currentRole === 'usc' && esCreador);
+  if (_reclamoActual.validacion_resultado && currentRole !== 'admin') puedeEditar = false;
+  if (!puedeEditar) { alert('No tienes permiso para editar este reclamo.'); return; }
+  var msg = document.getElementById('recEditIntMsg');
+  var titulo = document.getElementById('recEditIntTitulo').value.trim();
+  if (!titulo) { msg.textContent = 'El título es obligatorio'; msg.style.color = '#b42318'; return; }
+  msg.textContent = 'Guardando...'; msg.style.color = '#666';
+  var editProySel = document.getElementById('recEditIntProyecto');
+  var body = {
+    titulo: titulo,
+    descripcion: document.getElementById('recEditIntDescripcion').value.trim() || null,
+    tipo_reclamo: document.getElementById('recEditIntTipo').value,
+    fecha_deteccion: document.getElementById('recEditIntFechaDeteccion').value || null,
+    anio_calidad: parseInt(document.getElementById('recEditIntAnioCalidad').value) || null,
+    numero_calidad: parseInt(document.getElementById('recEditIntNumeroCalidad').value) || null,
+    id_proyecto: (editProySel ? editProySel.value : '') || null,
+  };
+  // Reasignar ÁREA — solo admin/admin_calidad. El backend recalcula el Jefe de
+  // Servicio responsable. No se asigna usuario en internos.
+  if (currentRole === 'admin' || currentRole === 'admin_calidad') {
+    var editAreaSel = document.getElementById('recEditIntArea');
+    if (editAreaSel && editAreaSel.value) body.area_id = parseInt(editAreaSel.value) || null;
+  }
+  var res = await fetch(apiUrl('/reclamos/' + _reclamoActual.id), {
+    method: 'PATCH',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  if (res.status === 401) { logout(); return; }
+  var data = await res.json();
+  if (data.ok) {
+    msg.textContent = 'Guardado'; msg.style.color = '#558B2F';
+    document.getElementById('recEditFormInterno').style.display = 'none';
+    document.getElementById('recDetailInfo').style.display = '';
+    document.getElementById('btnEditarReclamo').textContent = '✏️ Editar';
+    await verReclamo(_reclamoActual.id);
+    if (typeof loadReclamosInternos === 'function') await loadReclamosInternos();
   } else {
     msg.textContent = 'Error: ' + (data.detail || 'desconocido'); msg.style.color = '#b42318';
   }
