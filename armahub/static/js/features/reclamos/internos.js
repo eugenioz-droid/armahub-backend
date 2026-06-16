@@ -23,8 +23,10 @@ async function initInternosForm() {
       card.style.display = (perm && perm.puede) ? '' : 'none';
     } catch (e) { /* si falla, dejar visible y que el backend valide */ }
   }
-  // Áreas destino (siempre refresca, baratas)
-  var areas = await apiGet('/admin/areas');
+  // Áreas destino para el selector. Usa el endpoint ligero accesible a cualquier
+  // usuario (/reclamos/areas), NO /admin/areas (admin-only → daba 403 a miembros
+  // y mostraba "Solo admin o admin_calidad" al entrar a sub-tabs de reclamos).
+  var areas = await apiGet('/reclamos/areas');
   var selArea = document.getElementById('recIntAreaDestino');
   if (selArea && Array.isArray(areas)) {
     var prev = selArea.value;

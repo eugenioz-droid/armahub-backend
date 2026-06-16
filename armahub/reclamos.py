@@ -859,6 +859,23 @@ def get_ishikawa(area_id: Optional[int] = None, user=Depends(get_current_user)):
     }
 
 
+@router.get("/reclamos/areas")
+def get_areas_para_selector(user=Depends(get_current_user)):
+    """Lista ligera de áreas activas (id + nombre) para poblar selectores.
+    Accesible a cualquier usuario autenticado: un miembro necesita las áreas
+    para crear un reclamo interno (elegir área destino), sin requerir el panel
+    admin de áreas (/admin/areas, que trae conteos/usuarios/config y es admin-only)."""
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT id, nombre FROM areas
+                WHERE activo = TRUE
+                ORDER BY nombre
+            """)
+            rows = cur.fetchall()
+    return [{"id": r[0], "nombre": r[1], "activo": True} for r in rows]
+
+
 @router.get("/reclamos/usuarios-usc")
 def get_usuarios_usc(user=Depends(get_current_user)):
     """Lista de usuarios con rol USC para dropdown de asignación."""
