@@ -410,6 +410,24 @@ Objetivo: endurecer Reclamos y cerrar los pendientes reales arrastrados.
 | 5I.13 | Header detalle: Año y N° calidad convertidos a hidden (no editables desde ahí, se editan via form "Editar") | ☑ | YO |
 | 5I.14 | FIX `_setRcaMetodo`: fuerza display de bloques directamente sin depender del :checked (evita bug con radio disabled) | ☑ | YO |
 | 5I.15 | SVG Renderizador 2D (deseable futura versión): catálogo de figuras base de barras, renderizado escalado por dimensiones, exportación a imagen/PDF | ☐ | TÚ+YO |
+| 5I.16 | FIX sesión 2026-06-16: matriz RCA — quitado toggle activo/inactivo de sub-causas (causaba matriz "verde con 0 causas" y modal Ishikawa vacío); causas siempre activas; matriz usable solo si tiene ≥1 sub-causa en alguna de las 6 M; badge verde solo con sub-causas reales; botón "Guardar cambios" movido arriba del editor | ☑ | YO |
+| 5I.17 | FIX sesión 2026-06-16: sub-tabs Nivel 2 visibles de inmediato (flujo uniforme `REC_SUBTABS` para los 5); F5 mantiene posición exacta (hash `#mod&tab&sub`, restauración sin parpadeo); 3 sub-tabs restringidos nacen visibles en HTML (no-cacheable) y JS solo oculta por rol | ☑ | YO |
+| 5I.18 | FIX sesión 2026-06-16: editar reclamo interno (TypeError `srcUsc.options` — `recAsignadoA` es input hidden, no select); reasignación interna por ÁREA (no usuario), recalcula Jefe de Servicio; editar internos sin campos de externo (Detectado por / Responsable ocultos); responsable externo = cualquier usuario (no filtrar por rol cubicador/externo); Obra en header siempre texto; selector reasignación quitado del header (solo vía Editar) | ☑ | YO |
+
+#### 5I.19 — Separar la vista de Reclamos Internos de la de Externos (refactor anti-fragilidad) — PLANIFICADO, no ejecutar aún
+
+**Motivación:** hoy el modal de reclamos (modo lectura = render del detalle, y modo edición = formulario) está compartido entre externos e internos vía `if (tipo_origen === 'interno')`. Esa bifurcación es el origen comprobado de la mayoría de los bugs de las sesiones 13-16 jun (USC en internos, campos de más al editar, obra como desplegable, responsable vacío, TypeError de Editar). Separar las vistas elimina esa clase de bug de raíz. **NO se toca la tabla BD** (single-table con discriminador `tipo_origen` + columnas nullable es un patrón válido; las inconsistencias venían de la UI, no de la BD — confirmado). No es framework genérico ni rediseño: es separar componentes manteniendo formatos, flujos y funcionamiento idénticos.
+
+**Momento óptimo:** ahora internos tiene 0 reclamos válidos (solo pruebas). Cuanto más data, más caro separar.
+
+| N° | Descripción | Realizado | Quién |
+|----|-------------|-----------|-------|
+| 5I.19.1 | **Inventario congelado (red anti-regresión).** Documentar, campo por campo, el estado ACTUAL correcto de los 4 formularios (crear externo, editar externo, crear interno, editar interno): campos presentes, editables/ocultos por rol y estado, qué se envía al backend, y los cruces con Ishikawa/5PQ/acciones/validaciones/PDF. Es el checklist contra el que se valida el "después". | ☐ | TÚ+YO |
+| 5I.19.2 | Separar el **formulario de edición** de internos: `recEditFormInterno` propio (HTML + función), en vez de reusar `recEditForm` con `if`s. Mismos campos visibles que hoy (Título, Categoría, Fecha, Año/N° calidad, Obra, Área, Descripción). | ☐ | YO |
+| 5I.19.3 | Separar el **render del detalle (modo lectura)** de internos: header/antecedentes propios, sin `if (esInterno)` compartidos. Conserva: Área como texto, sin selector USC, obra como texto. | ☐ | YO |
+| 5I.19.4 | Validar contra el inventario 5I.19.1: smoke test de los 4 formularios (crear/editar × externo/interno) + cruces RCA/5PQ/acciones/validaciones. Cero cambios de formato/flujo respecto al "antes". | ☐ | TÚ |
+
+> **Reglas del refactor (no romper):** no cambia formatos, ni flujos, ni funcionamiento; solo mueve la lógica bifurcada a componentes separados. Cuidado con los cruces: matrices Ishikawa, método RCA (Ishikawa/5PQ), acciones correctivas, validaciones y PDF se comparten y NO deben alterarse. La tabla BD NO se separa.
 
 ### Decisiones de arquitectura registradas (pre-producción, NO implementar ahora)
 - **Producto vendible = SOLO módulo Reclamos/Calidad** (no todo ArmaHub). Configurabilidad = núcleo solo de ese módulo. (memoria: producto-vendible)
