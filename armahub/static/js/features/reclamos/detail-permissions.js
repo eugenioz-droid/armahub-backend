@@ -93,12 +93,18 @@ function _applyReclamoDetailPermissions(data) {
   if (detProySel) detProySel.style.display = puedeEditarSec1 ? '' : 'none';
   if (detProyDisplay) detProyDisplay.style.display = puedeEditarSec1 ? 'none' : '';
 
-  // USC Responsable: visible y editable para admin/admin_calidad en cualquier reclamo
+  // Asignación en el header del detalle:
+  //  - EXTERNO: selector USC Responsable, reasignable por admin/admin_calidad.
+  //  - INTERNO: NO hay selector de usuario. Se muestra el ÁREA como texto (a
+  //    todos); reasignar el área se hace entrando a Editar.
+  var esInternoDet = data.tipo_origen === 'interno';
   var puedeReasignarUsc = (currentRole === 'admin' || currentRole === 'admin_calidad');
   var detAsigWrap = document.getElementById('recDetailAsignadoAWrap');
-  if (detAsigWrap) detAsigWrap.style.display = puedeReasignarUsc ? 'flex' : 'none';
   var detAsigSel = document.getElementById('recDetailAsignadoA');
+  var detAreaWrapDisp = document.getElementById('recDetailAreaWrapDisplay');
+  if (detAsigWrap) detAsigWrap.style.display = (puedeReasignarUsc && !esInternoDet) ? 'flex' : 'none';
   if (detAsigSel) detAsigSel.disabled = !puedeReasignarUsc;
+  if (detAreaWrapDisp) detAreaWrapDisp.style.display = esInternoDet ? 'flex' : 'none';
 
   // El formulario de datos (análisis/respuesta) solo es editable mientras el
   // reclamo está EN ANÁLISIS (abierto/en_analisis). Una vez enviado a revisión

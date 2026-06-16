@@ -56,23 +56,45 @@ function toggleEditarReclamo() {
       sel.innerHTML += '<option value="' + u.email + '" data-display="' + u.display + '">' + u.display + '</option>';
     });
     sel.value = d.cubicador_asignado || '';
-    // USC Responsable dropdown — only admin/admin_calidad
+    // Asignación — solo admin/admin_calidad pueden reasignar.
+    //  - EXTERNO: dropdown de USC Responsable (usuario).
+    //  - INTERNO: dropdown de ÁREA destino (no usuario). El reclamo lo toma el
+    //    Jefe de Servicio del área; reasignar el área cambia el responsable.
+    var esInterno = d.tipo_origen === 'interno';
+    var puedeReasignar = (currentRole === 'admin' || currentRole === 'admin_calidad');
     var uscWrap = document.getElementById('recEditAsignadoAWrap');
     var uscSel = document.getElementById('recEditAsignadoA');
+    var areaWrap = document.getElementById('recEditAreaWrap');
+    var areaSel = document.getElementById('recEditArea');
+    // USC dropdown: solo externos, y solo admin.
     if (uscWrap && uscSel) {
-      if (currentRole === 'admin' || currentRole === 'admin_calidad') {
+      if (puedeReasignar && !esInterno) {
         uscWrap.style.display = '';
-        // Populate from loadUsuariosUsc cache (recAsignadoA source)
-        var srcUsc = document.getElementById('recAsignadoA');
         uscSel.innerHTML = '<option value="">— Sin asignar —</option>';
-        if (srcUsc) {
-          Array.from(srcUsc.options).forEach(function(opt) {
-            if (opt.value) uscSel.innerHTML += '<option value="' + opt.value + '">' + opt.textContent + '</option>';
+        // Poblar desde _recUsersCache (usuarios USC). recAsignadoA es un input
+        // hidden sin .options — no sirve como fuente.
+        if (typeof _recUsersCache !== 'undefined') {
+          _recUsersCache.filter(function(u) { return u.role === 'usc'; }).forEach(function(u) {
+            uscSel.innerHTML += '<option value="' + u.email + '">' + u.display + '</option>';
           });
         }
         uscSel.value = d.asignado_a || '';
       } else {
         uscWrap.style.display = 'none';
+      }
+    }
+    // Área dropdown: solo internos, y solo admin. Reusa los <option> del select
+    // de área del form de creación de internos (ya poblado con áreas activas).
+    if (areaWrap && areaSel) {
+      if (puedeReasignar && esInterno) {
+        areaWrap.style.display = '';
+        var srcArea = document.getElementById('recIntAreaDestino');
+        areaSel.innerHTML = (srcArea && srcArea.innerHTML)
+          ? srcArea.innerHTML
+          : '<option value="">— Seleccionar —</option>';
+        areaSel.value = d.area_id || '';
+      } else {
+        areaWrap.style.display = 'none';
       }
     }
     document.getElementById('recEditMsg').textContent = '';
@@ -114,10 +136,19 @@ async function guardarEdicionReclamo() {
     numero_calidad: parseInt(document.getElementById('recEditNumeroCalidad').value) || null,
     id_proyecto: editProyVal || null,
   };
-  // USC Responsable — only send if admin/admin_calidad
+  // Reasignación — solo admin/admin_calidad.
+  //  - EXTERNO: envía asignado_a (USC Responsable).
+  //  - INTERNO: envía area_id (área destino); el backend recalcula el Jefe de
+  //    Servicio responsable. No se asigna a un usuario en internos.
   if (currentRole === 'admin' || currentRole === 'admin_calidad') {
-    var editUscSel = document.getElementById('recEditAsignadoA');
-    if (editUscSel) body.asignado_a = editUscSel.value || null;
+    var esInternoEdit = _reclamoActual.tipo_origen === 'interno';
+    if (esInternoEdit) {
+      var editAreaSel = document.getElementById('recEditArea');
+      if (editAreaSel && editAreaSel.value) body.area_id = parseInt(editAreaSel.value) || null;
+    } else {
+      var editUscSel = document.getElementById('recEditAsignadoA');
+      if (editUscSel) body.asignado_a = editUscSel.value || null;
+    }
   }
   var res = await fetch(apiUrl('/reclamos/' + _reclamoActual.id), {
     method: 'PATCH',

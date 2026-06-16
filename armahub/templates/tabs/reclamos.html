@@ -288,6 +288,10 @@
               <label id="recDetailAsignadoALabel" style="font-size:10px; color:#666; white-space:nowrap;">USC:</label>
               <select id="recDetailAsignadoA" onchange="reasignarUscReclamo()" style="font-size:11px; max-width:160px; padding:2px 4px;"></select>
             </div>
+            <div id="recDetailAreaWrapDisplay" style="display:none; align-items:center; gap:4px;">
+              <label style="font-size:10px; color:#666; white-space:nowrap;">Área:</label>
+              <strong id="recDetailAreaDisplay" style="font-size:11px; color:#6a1b9a;">—</strong>
+            </div>
             <button id="btnEditarReclamo" class="secondary" style="font-size:10px; padding:2px 10px;" onclick="toggleEditarReclamo()">✏️ Editar</button>
           </div>
         </div>
@@ -348,6 +352,12 @@
               <label style="font-size:11px; color:#666;">USC Responsable</label>
               <select id="recEditAsignadoA" style="width:100%; font-size:12px;">
                 <option value="">— Sin asignar —</option>
+              </select>
+            </div>
+            <div class="col" id="recEditAreaWrap" style="max-width:220px; display:none;">
+              <label style="font-size:11px; color:#666;">Área responsable</label>
+              <select id="recEditArea" style="width:100%; font-size:12px;">
+                <option value="">— Seleccionar —</option>
               </select>
             </div>
           </div>

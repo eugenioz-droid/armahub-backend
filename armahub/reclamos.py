@@ -1436,7 +1436,7 @@ def actualizar_reclamo(reclamo_id: int, body: ReclamoUpdate, user=Depends(get_cu
         with conn.cursor() as cur:
             cur.execute(
                 """
-                SELECT id, estado, creado_por, asignado_a, cubicador_asignado, respuesta_por, aplica, respuesta_texto
+                SELECT id, estado, creado_por, asignado_a, cubicador_asignado, respuesta_por, aplica, respuesta_texto, tipo_origen
                 FROM reclamos WHERE id = %s
                 """,
                 (reclamo_id,),
@@ -1445,7 +1445,7 @@ def actualizar_reclamo(reclamo_id: int, body: ReclamoUpdate, user=Depends(get_cu
             if not row:
                 raise HTTPException(status_code=404, detail="Reclamo no encontrado")
             estado_anterior = row[1]
-            rec = {"creado_por": row[2], "asignado_a": row[3], "cubicador_asignado": row[4], "respuesta_por": row[5]}
+            rec = {"creado_por": row[2], "asignado_a": row[3], "cubicador_asignado": row[4], "respuesta_por": row[5], "tipo_origen": row[8]}
             aplica_actual = row[6]
             respuesta_actual = row[7]
 
@@ -1589,6 +1589,25 @@ def actualizar_reclamo(reclamo_id: int, body: ReclamoUpdate, user=Depends(get_cu
                 if _nuevo_area is not None and not _col_in_sets("area_id"):
                     sets.append("area_id = %s")
                     params.append(_nuevo_area)
+
+            # INTERNO: el admin reasigna por ÁREA (no por usuario). Si vino area_id
+            # y el reclamo es interno, se actualiza el área y se recalcula el Jefe
+            # de Servicio responsable (cubicador_asignado + responsable). area_id no
+            # está en 'updatable' a propósito: solo se toca por esta vía controlada.
+            if "area_id" in body.__fields_set__ and body.area_id and rec.get("tipo_origen") == "interno":
+                if role not in ("admin", "admin_calidad"):
+                    raise HTTPException(status_code=403, detail="Solo Calidad puede reasignar el área de un reclamo interno")
+                _nueva_area = body.area_id
+                _jefe = _jefe_servicio_de_area(cur, _nueva_area)
+                if not _col_in_sets("area_id"):
+                    sets.append("area_id = %s")
+                    params.append(_nueva_area)
+                if not _col_in_sets("cubicador_asignado"):
+                    sets.append("cubicador_asignado = %s")
+                    params.append(_jefe)
+                if not _col_in_sets("responsable"):
+                    sets.append("responsable = %s")
+                    params.append(_jefe)
 
             # Auto-set respuesta metadata when respuesta_texto is provided
             if body.respuesta_texto and body.respuesta_texto.strip():

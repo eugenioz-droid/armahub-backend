@@ -27,22 +27,21 @@ function _populateReclamoDetailSelectors(data) {
     detDisplay.textContent = (selOpt && selOpt.value) ? selOpt.textContent : '— Sin obra —';
   }
 
-  // Asignado: para internos = cualquier usuario; para externos = solo USC
+  // Asignación en el detalle:
+  //  - EXTERNO: selector de USC Responsable (usuario), reasignable por admin.
+  //  - INTERNO: NO se asigna por usuario. Se muestra el ÁREA destino como texto;
+  //    para reasignar el área hay que entrar a Editar. La visibilidad de cada
+  //    bloque la decide _applyReclamoDetailPermissions.
+  var esInterno = data.tipo_origen === 'interno';
   var detAsignado = document.getElementById('recDetailAsignadoA');
   var detAsigLabel = document.getElementById('recDetailAsignadoALabel');
-  if (detAsignado) {
-    var esInterno = data.tipo_origen === 'interno';
-    if (detAsigLabel) detAsigLabel.textContent = esInterno ? 'Asignado:' : 'USC:';
-    if (esInterno && typeof _recUsersCache !== 'undefined' && _recUsersCache.length > 0) {
-      detAsignado.innerHTML = '<option value="">— Sin asignar —</option>';
-      _recUsersCache.forEach(function(u) {
-        var opt = document.createElement('option');
-        opt.value = u.email;
-        opt.textContent = u.display;
-        detAsignado.appendChild(opt);
-      });
-    }
+  if (detAsignado && !esInterno) {
+    if (detAsigLabel) detAsigLabel.textContent = 'USC:';
     detAsignado.value = data.asignado_a || '';
+  }
+  var detAreaDisplay = document.getElementById('recDetailAreaDisplay');
+  if (detAreaDisplay) {
+    detAreaDisplay.textContent = data.area_nombre || '— Sin área —';
   }
 }
 
