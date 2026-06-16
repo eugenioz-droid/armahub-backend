@@ -445,9 +445,9 @@ Objetivo: endurecer Reclamos y cerrar los pendientes reales arrastrados.
 
 | N° | Descripción | Realizado | Quién |
 |----|-------------|-----------|-------|
-| 5J.1 | **Inventario de residuales legacy** (como 5I.19.1): listar las 374 ocurrencias por archivo, clasificadas en Grupo A/B/C, marcando qué se limpia, qué se arregla y qué NO se toca (columnas BD). Red anti-regresión. | ☐ | YO |
-| 5J.2 | **FIX bug activo (Grupo B):** dashboards/KPIs y caché "ve todo" deben usar miembro/área Cubicaciones en vez de `role='cubicador'`. Restaura KPIs rotos. Verificar cada query con datos reales. | ☐ | YO |
-| 5J.3 | **Limpieza Grupo A:** quitar `'cubicador'` de los checks de permisos donde ya está `miembro` (backend + frontend). Sin cambio funcional. Validar permisos por rol tras cada tanda. | ☐ | YO |
+| 5J.1 | **Inventario de residuales legacy** → `docs/programa-versiones/inventario_legacy_cubicador.md` (3 grupos, ubicaciones, orden, checklist). | ☑ | YO |
+| 5J.2 | **FIX bug activo (Grupo B):** KPIs/listas que filtraban `role='cubicador'` (vacíos) → por respuesta_por sin filtro de rol; asistentes = miembros del área Cubicaciones; caché/acceso "ve todo" solo admin (no miembro). | ☑ | YO |
+| 5J.3 | **Limpieza Grupo A + B.3:** quitado `'cubicador'` muerto de permisos (backend+frontend); acceso a Cubicación/Presentaciones/notif/borrar-obra dado a `miembro`; visibilidad reclamos (externo=propios, miembro=por área). **Pendiente validar:** error rojo "Solo admin o admin_calidad" al entrar a Presentaciones como miembro — endpoint culpable por identificar (Network 403). | ◧ | YO+TÚ |
 | 5J.4 | **Labels visibles restantes:** "Cubicador"→"Responsable"/"Miembro" donde aplique en UI (opciones "Detectado por" se evalúan aparte: son taxonomía, no rol). NO tocar columnas BD ni claves API. | ☐ | YO |
 | 5J.5 | **Decisión rol `cubicador` en VALID_ROLES / ROL_MAP / registry:** definir si se retira el rol del catálogo (auth.py, admin.py, registry.js) o se deja como alias. Solo tras 5J.2–5J.4. | ☐ | TÚ+YO |
 | 5J.6 | Validación final: smoke test de permisos por cada rol vivo (admin, admin_calidad, cliente, miembro, externo) + dashboards con datos. Cero regresión. | ☐ | TÚ |
