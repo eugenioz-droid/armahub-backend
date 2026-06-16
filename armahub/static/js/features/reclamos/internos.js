@@ -258,6 +258,9 @@ async function loadReclamosInternos() {
   if (_intAplicaFilter) params.push('aplica=' + encodeURIComponent(_intAplicaFilter));
   if (!_intScopeAll && !['admin','admin_calidad'].includes(currentRole)) params.push('scope=mine');
 
+  if (typeof loadUsuariosUsc === 'function' && typeof _recUsersCache !== 'undefined' && _recUsersCache.length === 0) {
+    await loadUsuariosUsc();
+  }
   var data = await apiGet('/reclamos?' + params.join('&'));
   if (!data) { cont.innerHTML = '<div class="muted">No fue posible cargar.</div>'; return; }
   var items = (data.data || []).map(_normalizeReclamoListItem);

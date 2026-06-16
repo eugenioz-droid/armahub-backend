@@ -17,13 +17,33 @@ function _populateReclamoDetailSelectors(data) {
 
   var srcSel = document.getElementById('recProyecto');
   var detSel = document.getElementById('recDetailProyecto');
+  var detDisplay = document.getElementById('recDetailProyectoDisplay');
   if (srcSel && detSel) {
     detSel.innerHTML = srcSel.innerHTML;
     detSel.value = data.id_proyecto || '';
   }
+  if (detDisplay) {
+    var selOpt = detSel && detSel.options[detSel.selectedIndex];
+    detDisplay.textContent = (selOpt && selOpt.value) ? selOpt.textContent : '— Sin obra —';
+  }
 
+  // Asignado: para internos = cualquier usuario; para externos = solo USC
   var detAsignado = document.getElementById('recDetailAsignadoA');
-  if (detAsignado) detAsignado.value = data.asignado_a || '';
+  var detAsigLabel = document.getElementById('recDetailAsignadoALabel');
+  if (detAsignado) {
+    var esInterno = data.tipo_origen === 'interno';
+    if (detAsigLabel) detAsigLabel.textContent = esInterno ? 'Asignado:' : 'USC:';
+    if (esInterno && typeof _recUsersCache !== 'undefined' && _recUsersCache.length > 0) {
+      detAsignado.innerHTML = '<option value="">— Sin asignar —</option>';
+      _recUsersCache.forEach(function(u) {
+        var opt = document.createElement('option');
+        opt.value = u.email;
+        opt.textContent = u.display;
+        detAsignado.appendChild(opt);
+      });
+    }
+    detAsignado.value = data.asignado_a || '';
+  }
 }
 
 function _renderReclamoHeader(data) {

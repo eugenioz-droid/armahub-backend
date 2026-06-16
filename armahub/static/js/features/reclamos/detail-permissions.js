@@ -87,10 +87,13 @@ function _applyReclamoDetailPermissions(data) {
   var numCalField = document.getElementById('recDetailNumeroCalidad');
   if (numCalField) numCalField.disabled = !puedeEditarSec1;
 
+  // Obra: select editable solo si puede editar sec1, si no mostrar como texto
   var detProySel = document.getElementById('recDetailProyecto');
-  if (detProySel) detProySel.disabled = !puedeEditarSec1;
+  var detProyDisplay = document.getElementById('recDetailProyectoDisplay');
+  if (detProySel) detProySel.style.display = puedeEditarSec1 ? '' : 'none';
+  if (detProyDisplay) detProyDisplay.style.display = puedeEditarSec1 ? 'none' : '';
 
-  // USC Responsable: visible y editable solo para admin/admin_calidad (reasignación)
+  // USC Responsable: visible y editable para admin/admin_calidad en cualquier reclamo
   var puedeReasignarUsc = (currentRole === 'admin' || currentRole === 'admin_calidad');
   var detAsigWrap = document.getElementById('recDetailAsignadoAWrap');
   if (detAsigWrap) detAsigWrap.style.display = puedeReasignarUsc ? 'flex' : 'none';
