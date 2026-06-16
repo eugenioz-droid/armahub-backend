@@ -712,6 +712,7 @@ function _render5PQData(items) {
       (n > 0 ? '<button type="button" onclick="_eliminar5PQ(this)" title="Quitar" style="margin-top:18px; background:none; border:none; color:#b42318; font-size:14px; cursor:pointer; padding:0 4px;">✕</button>' : '');
     cont.appendChild(row);
   });
+  var btn = document.getElementById('rec5PQAgregarBtn');
   if (btn) btn.style.display = (cont.children.length >= _5PQ_MAX) ? 'none' : '';
 }
 
