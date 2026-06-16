@@ -716,6 +716,68 @@ function _render5PQData(items) {
   if (btn) btn.style.display = (cont.children.length >= _5PQ_MAX) ? 'none' : '';
 }
 
+// ---- Matriz Ishikawa: carga + disponibilidad ----
+
+// Carga la matriz Ishikawa del área en _ishikawaData, con cache por área.
+// Fuente única de verdad usada tanto por el modal como por la preselección
+// del método RCA. Sin area_id, el backend devuelve la matriz global.
+async function _cargarMatrizIshikawa(areaId) {
+  var cacheKey = 'ish_' + (areaId || 'global');
+  if (!_ishikawaData || _ishikawaData._cacheKey !== cacheKey) {
+    var url = '/reclamos/ishikawa' + (areaId ? '?area_id=' + areaId : '');
+    _ishikawaData = await apiGet(url);
+    if (_ishikawaData) _ishikawaData._cacheKey = cacheKey;
+  }
+  return _ishikawaData;
+}
+
+// True si la matriz cargada tiene al menos una categoría.
+function _ishikawaTieneCategorias() {
+  if (!_ishikawaData) return false;
+  var cats = _ishikawaData.data || _ishikawaData.categorias;
+  return !!(cats && cats.length > 0);
+}
+
+// Decide el método RCA al abrir un reclamo:
+//  - Si el reclamo ya tiene metodo_rca guardado, se respeta.
+//  - Si NO tiene método y el área no tiene matriz Ishikawa → 5 Por Qué.
+//  - Si el área no tiene matriz, Ishikawa queda deshabilitado (no seleccionable).
+async function _initRcaMetodoParaReclamo(data) {
+  var areaId = data && data.area_id;
+  await _cargarMatrizIshikawa(areaId);
+  var hayMatriz = _ishikawaTieneCategorias();
+
+  // Flag global: fuente de verdad para que detail-permissions deshabilite Ishikawa
+  // sin depender del orden async/sync entre render y permisos.
+  window._areaSinMatrizIshikawa = !hayMatriz;
+
+  var metodo = data.metodo_rca;
+  if (!metodo) metodo = hayMatriz ? 'ishikawa' : '5_por_que';
+
+  // Atenuar visualmente la opción Ishikawa cuando no hay matriz.
+  var radioIsh = document.getElementById('recRcaRadioIshikawa');
+  var labelIsh = radioIsh ? radioIsh.closest('label') : null;
+  if (labelIsh) {
+    labelIsh.style.opacity = hayMatriz ? '' : '0.45';
+    labelIsh.title = hayMatriz ? '' : 'Esta área no tiene matriz Ishikawa configurada';
+    labelIsh.style.cursor = hayMatriz ? 'pointer' : 'not-allowed';
+  }
+
+  _setRcaMetodo(metodo);
+  if (metodo === '5_por_que') {
+    _render5PQData(data.cinco_por_que || []);
+  } else {
+    var cont = document.getElementById('rec5PQItems');
+    if (cont) cont.innerHTML = '';
+  }
+
+  // Re-aplicar permisos para que el bloqueo del radio Ishikawa quede consistente
+  // (esta función es async; los permisos ya corrieron de forma síncrona antes).
+  if (typeof _applyReclamoDetailPermissions === 'function' && _reclamoActual) {
+    _applyReclamoDetailPermissions(_reclamoActual);
+  }
+}
+
 // ---- Ishikawa Modal ----
 async function abrirIshikawaModal(target) {
   _ishikawaTarget = target || 'create';
@@ -734,21 +796,15 @@ async function abrirIshikawaModal(target) {
     document.getElementById('ishikawaSelectedDisplay').textContent = 'Ninguna';
   }
 
-  // Cargar matriz del área actual del reclamo (invalida cache si cambió el área)
+  // Cargar matriz del área actual del reclamo (con cache por área)
   var areaId = _reclamoActual && _reclamoActual.area_id;
-  var cacheKey = 'ish_' + (areaId || 'global');
-  if (!_ishikawaData || _ishikawaData._cacheKey !== cacheKey) {
-    var url = '/reclamos/ishikawa' + (areaId ? '?area_id=' + areaId : '');
-    _ishikawaData = await apiGet(url);
-    if (_ishikawaData) _ishikawaData._cacheKey = cacheKey;
-  }
+  await _cargarMatrizIshikawa(areaId);
   // Si el área no tiene matriz Ishikawa, sugerir 5 Por Qué y cerrar
-  if (!_ishikawaData || !(_ishikawaData.data || _ishikawaData.categorias) || (_ishikawaData.data || []).length === 0) {
+  if (!_ishikawaTieneCategorias()) {
     alert('Esta área no tiene una matriz Ishikawa configurada. Usa el método "5 Por Qué".');
     _setRcaMetodo('5_por_que');
     return;
   }
-  if (!_ishikawaData || !(_ishikawaData.data || _ishikawaData.categorias)) return;
   var ishikawaCats = _ishikawaData.data || _ishikawaData.categorias;
 
   var grid = document.getElementById('ishikawaGrid');

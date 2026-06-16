@@ -24,6 +24,9 @@ async function verReclamo(id, options) {
   if (!data) return;
   data = _normalizeReclamoDetail(data);
   _reclamoActual = data;
+  // Reset del estado "área sin matriz Ishikawa": lo recalcula el render del
+  // reclamo actual (no arrastrar el del reclamo abierto previamente).
+  window._areaSinMatrizIshikawa = false;
   _renderReclamoDetail(data);
   if (analysisDraft) _restoreReclamoAnalysisDraft(analysisDraft);
   _updateRecNavButtons();

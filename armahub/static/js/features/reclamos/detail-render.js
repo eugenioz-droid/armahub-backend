@@ -73,15 +73,11 @@ function _renderReclamoRespuesta(data) {
   document.getElementById('recDetailCategoria').value = data.categoria_ishikawa || '';
   document.getElementById('recDetailSubCausa').value = data.sub_causa || '';
   document.getElementById('recDetailCodCausa').value = data.cod_causa || '';
-  // Inicializar método RCA y datos correspondientes
-  var metodo = data.metodo_rca || 'ishikawa';
-  if (typeof _setRcaMetodo === 'function') _setRcaMetodo(metodo);
-  if (metodo === '5_por_que' && typeof _render5PQData === 'function') {
-    _render5PQData(data.cinco_por_que || []);
-  } else if (typeof _render5PQData === 'function') {
-    // Limpiar bloque 5PQ al mostrar Ishikawa
-    var cont = document.getElementById('rec5PQItems');
-    if (cont) cont.innerHTML = '';
+  // Inicializar método RCA (Ishikawa vs 5 Por Qué). Se delega a una función
+  // dedicada (detail-edit.js) que decide el método por defecto según si el área
+  // del reclamo tiene matriz Ishikawa configurada, y bloquea Ishikawa si no.
+  if (typeof _initRcaMetodoParaReclamo === 'function') {
+    _initRcaMetodoParaReclamo(data);
   }
   // Área responsable: se muestra el área REAL inferida (area_nombre); si el
   // reclamo aún no tiene área (sin responsable de área), cae al texto histórico.
