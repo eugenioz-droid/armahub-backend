@@ -87,11 +87,12 @@ function _applyReclamoDetailPermissions(data) {
   var numCalField = document.getElementById('recDetailNumeroCalidad');
   if (numCalField) numCalField.disabled = !puedeEditarSec1;
 
-  // Obra: select editable solo si puede editar sec1, si no mostrar como texto
+  // Obra en el header: SIEMPRE texto plano (nunca desplegable), igual que el
+  // resto del header. Cambiar la obra se hace entrando a Editar, no desde aquí.
   var detProySel = document.getElementById('recDetailProyecto');
   var detProyDisplay = document.getElementById('recDetailProyectoDisplay');
-  if (detProySel) detProySel.style.display = puedeEditarSec1 ? '' : 'none';
-  if (detProyDisplay) detProyDisplay.style.display = puedeEditarSec1 ? 'none' : '';
+  if (detProySel) detProySel.style.display = 'none';
+  if (detProyDisplay) detProyDisplay.style.display = '';
 
   // Header del detalle — la reasignación (USC en externos, Área en internos) se
   // hace SIEMPRE entrando a Editar, no desde el header. Por eso el selector USC
