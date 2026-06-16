@@ -38,17 +38,9 @@
 
   // --- Module entry point ---
   async function _loadReclamosModule() {
-    // Marcador de versión: confirma en consola (F12) que el navegador está
-    // ejecutando este build y no una versión cacheada/vieja del deploy.
-    console.log('[ArmaHub] Reclamos build sub-tabs v3 — rol:', currentRole);
-
     // 1) Visibilidad de los 5 botones de sub-tab según rol — síncrono, antes
     //    de cualquier await, para que los títulos aparezcan de inmediato.
-    if (typeof _applyRecSubTabsVisibility === 'function') {
-      _applyRecSubTabsVisibility();
-    } else {
-      console.warn('[ArmaHub] _applyRecSubTabsVisibility no está definida — dashboards.js no cargó o cargó viejo');
-    }
+    if (typeof _applyRecSubTabsVisibility === 'function') _applyRecSubTabsVisibility();
 
     // 2) Activar de una vez el sub-tab destino ANTES de cargar datos, para que
     //    no se vea 'clientes' y luego un salto al sub-tab real (sin parpadeo).
