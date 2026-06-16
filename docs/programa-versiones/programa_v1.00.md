@@ -429,6 +429,31 @@ Objetivo: endurecer Reclamos y cerrar los pendientes reales arrastrados.
 
 > **Reglas del refactor (no romper):** no cambia formatos, ni flujos, ni funcionamiento; solo mueve la lógica bifurcada a componentes separados. Cuidado con los cruces: matrices Ishikawa, método RCA (Ishikawa/5PQ), acciones correctivas, validaciones y PDF se comparten y NO deben alterarse. La tabla BD NO se separa.
 
+### 5J. Depuración legacy del sistema (roles sin oficio) — PLANIFICADO
+
+**Contexto:** la migración de roles-con-oficio (`cubicador`) a roles-con-nivel-por-área (`miembro`/`jefe_servicio`) está hecha a nivel de USUARIOS (verificado 2026-06-16: 0 usuarios con rol `cubicador`; roles vivos = admin, admin_calidad, cliente, miembro, externo). Pero el CÓDIGO arrastra **374 ocurrencias de "cubicador" en 33 archivos**. Hay que depurarlas de forma ordenada. Aprovechar para revisar/limpiar código en el camino.
+
+**Análisis de riesgo (3 grupos, hecho 2026-06-16):**
+
+| Grupo | Qué es | Riesgo | Acción |
+|---|---|---|---|
+| **A** | `cubicador` JUNTO a `miembro` en checks de permisos (ej. `("cubicador","externo","miembro","jefe_servicio")`) | Ninguno (los usuarios ya entran por `miembro`). Código muerto inofensivo. | Quitar `cubicador` (cosmético/limpieza). |
+| **B** | `cubicador` SOLO, sin `miembro` | **BUG ACTIVO** — devuelve vacío hoy | Arreglar (ver 5J.2). |
+| **C** | Nombres internos BD/API (`cubicador_asignado`, columnas) | Romper BD/contrato si se tocan | **NO tocar columnas.** Solo labels visibles. |
+
+**Bug activo identificado (Grupo B):** queries de dashboards/KPIs filtran `WHERE role = 'cubicador'` y devuelven VACÍO desde la migración (KPIs por cubicador rotos). Ubicaciones: `reclamos.py:147,742,767,959,1189` (caché "ve todo" + queries de KPI). El fix correcto: contar a los **miembros del área Cubicaciones**, no el rol muerto.
+
+| N° | Descripción | Realizado | Quién |
+|----|-------------|-----------|-------|
+| 5J.1 | **Inventario de residuales legacy** (como 5I.19.1): listar las 374 ocurrencias por archivo, clasificadas en Grupo A/B/C, marcando qué se limpia, qué se arregla y qué NO se toca (columnas BD). Red anti-regresión. | ☐ | YO |
+| 5J.2 | **FIX bug activo (Grupo B):** dashboards/KPIs y caché "ve todo" deben usar miembro/área Cubicaciones en vez de `role='cubicador'`. Restaura KPIs rotos. Verificar cada query con datos reales. | ☐ | YO |
+| 5J.3 | **Limpieza Grupo A:** quitar `'cubicador'` de los checks de permisos donde ya está `miembro` (backend + frontend). Sin cambio funcional. Validar permisos por rol tras cada tanda. | ☐ | YO |
+| 5J.4 | **Labels visibles restantes:** "Cubicador"→"Responsable"/"Miembro" donde aplique en UI (opciones "Detectado por" se evalúan aparte: son taxonomía, no rol). NO tocar columnas BD ni claves API. | ☐ | YO |
+| 5J.5 | **Decisión rol `cubicador` en VALID_ROLES / ROL_MAP / registry:** definir si se retira el rol del catálogo (auth.py, admin.py, registry.js) o se deja como alias. Solo tras 5J.2–5J.4. | ☐ | TÚ+YO |
+| 5J.6 | Validación final: smoke test de permisos por cada rol vivo (admin, admin_calidad, cliente, miembro, externo) + dashboards con datos. Cero regresión. | ☐ | TÚ |
+
+> **Regla:** la columna BD `cubicador_asignado` y claves API equivalentes se MANTIENEN (renombrarlas es migración aparte, fuera de alcance). Esta depuración es de rol-muerto y labels, no de esquema. Ver memoria [[project-armahub-roles-sin-oficio]].
+
 ### Decisiones de arquitectura registradas (pre-producción, NO implementar ahora)
 - **Producto vendible = SOLO módulo Reclamos/Calidad** (no todo ArmaHub). Configurabilidad = núcleo solo de ese módulo. (memoria: producto-vendible)
 - **Rediseño de admin god-mode:** "configurar sistema" debe ser un rol (`config_sistema`), no un comodín con overrides `=== 'admin'`. NO selector de roles ni 2 logins. (memoria: rediseno-admin)
