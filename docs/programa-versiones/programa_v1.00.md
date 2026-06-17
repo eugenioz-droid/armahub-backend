@@ -352,44 +352,53 @@ Objetivo: endurecer Reclamos y cerrar los pendientes reales arrastrados.
 
 > **Decisión de arquitectura (2026-06-15, APROBADA):** separar nivel de acceso (rol global) de pertenencia a área (rol_area). Roles globales quedan en 4: `admin`, `admin_calidad`, `miembro`, `cliente`. Los roles `cubicador`, `usc`, `externo` se deprecan como roles globales — pasan a ser `miembro` de un área con `rol_area` correspondiente. Permisos por rol de área serán configurables via tabla `area_rol_permisos` (mismo patrón que `reclamo_crear_config`). Ver análisis completo en conversación 2026-06-15.
 
+> **RECONCILIACIÓN 2026-06-17 (auditoría código vs programa):** este bloque figuraba
+> como 0% pero en realidad está **~85% hecho** — se implementó en sesiones de junio sin
+> marcar. Estado real verificado leyendo el código abajo. Lo que queda es menor (5H.4
+> helper nombrado, 5H.14 frontend por área, y smoke tests que validas con usuarios reales).
+
 #### Fase A — BD: compatibilidad hacia adelante
 
 | N° | Descripción | Realizado | Quién |
 |----|-------------|-----------|-------|
-| 5H.1 | Migración 70: quitar CHECK hardcodeado de `users.role` (permite agregar roles sin DDL futuro) | ☐ | YO |
-| 5H.2 | Migración 71: poblar `area_usuarios` para usuarios existentes según rol actual (cubicador→miembro Cubicaciones, usc→jefe_servicio USC, externo→miembro área Externa) | ☐ | YO |
-| 5H.3 | Agregar `miembro` a VALID_ROLES en `auth.py`; formulario de creación de usuario ofrece los 4 roles objetivo | ☐ | YO |
+| 5H.1 | Migración 70: quitar CHECK hardcodeado de `users.role` | ☑ | YO |
+| 5H.2 | Migración 71: poblar `area_usuarios` (backfill roles legacy → área+rol_area) | ☑ | YO |
+| 5H.3 | `miembro` en VALID_ROLES (`auth.py`) + formulario crea con 4 roles objetivo | ☑ | YO |
 
 #### Fase B — Backend: lógica de permisos lee area_usuarios
 
 | N° | Descripción | Realizado | Quién |
 |----|-------------|-----------|-------|
-| 5H.4 | Crear helper `_get_rol_area(cur, email, area_id)` en `reclamos.py` | ☐ | YO |
-| 5H.5 | Tabla `area_rol_permisos` — migración 72: permisos configurables por rol_area (responder_externo, levantar_interno, levantar_externo, aprobar_revision) | ☐ | YO |
-| 5H.6 | Reemplazar checks `role == "usc"` y `role in ("cubicador","externo")` por consulta a `area_usuarios` + `area_rol_permisos` | ☐ | YO |
-| 5H.7 | `/me` agrega `areas` al response: lista de `{area_id, area_nombre, rol_area}` del usuario autenticado | ☐ | YO |
-| 5H.8 | Smoke test backend: crear reclamo externo como jefe_servicio, responder como miembro, validar como admin_calidad | ☐ | TÚ+YO |
+| 5H.4 | Helper de rol por área en `reclamos.py` | ◧ | YO |
+| 5H.5 | Tabla permisos configurables — migración 72 `area_rol_permisos`, luego migración 73 `role_permisos` (permisos por rol global) | ☑ | YO |
+| 5H.6 | Checks de permiso leen `role_permisos` (`_rol_puede_crear`) + `area_usuarios` | ☑ | YO |
+| 5H.7 | `/me` devuelve `areas` (`{area_id, area_nombre, area_slug}`) | ☑ | YO |
+| 5H.8 | Smoke test backend (crear/responder/validar por rol) | ☐ | TÚ+YO (con usuarios reales) |
 
 #### Fase C — Panel Admin: reorganización en 3 sub-tabs
 
 | N° | Descripción | Realizado | Quién |
 |----|-------------|-----------|-------|
-| 5H.9 | Sub-tab "Organización": tabla Áreas (izq) + panel usuarios del área (der) + tabla global usuarios abajo. Crear usuario incluye campo Área + rol_area en un paso | ☐ | YO |
-| 5H.10 | Sub-tab "Configuración": quién levanta reclamos, matrices RCA, permisos por rol_area, calculistas, constructoras, proyectos | ☐ | YO |
-| 5H.11 | Sub-tab "Sistema" (solo admin): estado BD, gestión datos, reset, audit log | ☐ | YO |
-| 5H.12 | Smoke test panel Admin reorganizado | ☐ | TÚ |
+| 5H.9 | Sub-tab "Organización" (áreas + usuarios) | ☑ | YO |
+| 5H.10 | Sub-tab "Configuración" (quién levanta, permisos por rol, notificaciones, matriz roles) | ☑ | YO |
+| 5H.11 | Sub-tab "Sistema" (estado BD, datos, reset) | ☑ | YO |
+| 5H.12 | Smoke test panel Admin | ☐ | TÚ |
+
+> **Decisión 2026-06-17 — dónde vive la configuración:** la config de **Calidad/Reclamos
+> y avisos** se centraliza en el engranaje **Calidad → ⚙️ Configuración** (NO en Admin).
+> Lógica: a futuro se habilitará a ciertos usuarios el acceso a esa zona SIN darles el
+> panel de Administración completo. Admin queda para lo transversal (usuarios, áreas,
+> sistema). Esto implica MOVER/replicar desde Admin→Configuración hacia Calidad→Config:
+> quién levanta reclamos, permisos por rol, notificaciones de reclamos, plantillas de
+> correo (ya está). Tarea: **5K** (abajo).
 
 #### Fase D — Frontend: permisos basados en area_usuarios
 
 | N° | Descripción | Realizado | Quién |
 |----|-------------|-----------|-------|
-| 5H.13 | Shell expone `currentAreas` (lista de áreas del usuario con rol_area) vía `/me` | ☐ | YO |
-| 5H.14 | `detail-permissions.js`: reemplaza `currentRole === 'cubicador'` por `currentAreaRol === 'miembro'` | ☐ | YO |
-| 5H.15 | Smoke test frontend: permisos correctos para miembro, jefe_servicio, admin_calidad, admin | ☐ | TÚ |
-
-> **Nota:** Fases A→B→C→D en ese orden. C (panel) puede hacerse en paralelo con A sin romper nada.
-> El trabajo de Admin a gran escala queda en Fase 10 del programa; estas tareas son las que
-> desbloquean el flujo correcto de reclamos y se ejecutan acá (F5) por esa razón.
+| 5H.13 | Shell expone `currentAreas` vía `/me` | ☑ | YO |
+| 5H.14 | `detail-permissions.js` por rol de área (`currentAreaRol`) en vez de rol global legacy | ☐ | YO |
+| 5H.15 | Smoke test frontend permisos por rol | ☐ | TÚ |
 
 ### 5I. Mejoras UX formularios y listados reclamos (sesiones 2026-06-13/15)
 
@@ -500,7 +509,24 @@ Objetivo: endurecer Reclamos y cerrar los pendientes reales arrastrados.
 | 5.16 | UI: selector de origen; listado/detalle/dashboards segmentables por origen | ☐ | YO |
 | 5.17 | Smoke test: reclamo → análisis → acciones → validación → PDF → envío | ☐ | TÚ+YO |
 
-**Criterio de salida:** hardening cerrado, matrices RCA operativas, smoke test visual aprobado, correo de informe operativo, multi-origen definido, sub-tabs internos completos.
+### 5K. Centralizar configuración de Calidad en su engranaje (decisión 2026-06-17)
+
+> Mover/replicar la configuración de Calidad/Reclamos desde Admin→Configuración hacia
+> **Calidad → ⚙️ Configuración**. Lógica: habilitar a futuro a ciertos usuarios el
+> acceso a esta zona SIN darles el panel Admin completo. Admin queda para transversal
+> (usuarios, áreas, sistema). Tab Configuración de Calidad ya existe (5B); falta llevar
+> los paneles de reclamos.
+
+| N° | Descripción | Realizado | Quién |
+|----|-------------|-----------|-------|
+| 5K.1 | Tab Calidad/Configuración creado (engranaje nivel 1, solo admin/admin_calidad) + plantillas de correo | ☑ | YO |
+| 5K.2 | Mover a Calidad/Config: "Quién levanta reclamos" (`crearReclamoConfig`) | ☐ | YO |
+| 5K.3 | Mover a Calidad/Config: notificaciones de reclamos (`notifConfigContainer`) | ☐ | YO |
+| 5K.4 | Mover a Calidad/Config: permisos por rol relevantes a reclamos | ☐ | YO |
+| 5K.5 | Definir control de acceso fino a Calidad/Config (qué usuarios no-admin entran) | ☐ | TÚ+YO |
+| 5K.6 | Quitar de Admin lo que ya vive en Calidad/Config (evitar duplicación) | ☐ | YO |
+
+**Criterio de salida:** hardening cerrado, matrices RCA operativas, smoke test visual aprobado, correo de informe operativo, multi-origen definido, sub-tabs internos completos, configuración de Calidad centralizada en su engranaje.
 
 ---
 

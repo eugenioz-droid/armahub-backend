@@ -86,6 +86,15 @@
 
   window.renderHubModules = renderHubModules;
 
+  // Loader de datos por tab: función que se llama al ACTIVAR el tab (no en cada
+  // onclick). Centraliza la carga aquí para que activar un tab — por clic O por
+  // restauración tras F5 — siempre cargue sus datos. Mecanismo global; los tabs
+  // sin datos propios simplemente no aparecen aquí.
+  var tabLoaders = {
+    rec_dashboards: 'loadRecAdminDashboards',
+    rec_settings: 'loadRecSettings'
+  };
+
   window.switchTab = function switchTab(tabName) {
     document.querySelectorAll('.tab-content').forEach(function(tabContent) {
       tabContent.classList.remove('active');
@@ -107,6 +116,11 @@
     });
 
     updateNavHash(window.currentModule, tabName, null);
+
+    // Cargar datos del tab si tiene loader registrado (clic o restauración F5).
+    if (tabLoaders[tabName]) {
+      callIfDefined(tabLoaders[tabName]);
+    }
   };
 
   function applyModuleVisibility(mod, cfg) {
@@ -176,7 +190,12 @@
 
   window.loadModuleData = loadModuleData;
 
-  window.switchModule = async function switchModule(mod) {
+  // switchModule(mod[, tabDestino])
+  // tabDestino opcional: si se pasa (p.ej. al restaurar la posición tras F5),
+  // se abre directo ese tab en vez del defaultTab — sin pasar primero por el
+  // default y "saltar" después. Mecanismo GLOBAL: sirve a cualquier módulo/tab,
+  // no hay lógica especial por panel.
+  window.switchModule = async function switchModule(mod, tabDestino) {
     var hub = document.getElementById('hubScreen');
     var container = document.getElementById('moduleContainer');
     var title = document.getElementById('moduleTitle');
@@ -216,7 +235,8 @@
     window.currentModule = mod;
 
     applyModuleVisibility(mod, cfg);
-    window.switchTab(cfg.defaultTab);
+    // Tab destino: el pedido (restauración) si es válido, si no el default.
+    window.switchTab(tabDestino || cfg.defaultTab);
     await loadModuleData(mod);
   };
 })();

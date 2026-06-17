@@ -81,17 +81,11 @@ document.addEventListener('paste', function(e) {
   });
 
   if (params.mod && typeof window.switchModule === 'function') {
-    // Guardar el sub-tab Nivel 2 deseado ANTES de navegar: switchModule llama
-    // a switchTab, que reescribe el hash y borraría 'sub'. _loadReclamosModule
-    // lee esta variable para abrir directo en el sub-tab correcto, sin pasar
-    // por 'clientes' primero (sin parpadeo). Se consume una sola vez.
+    // Restaurar posición tras F5: switchModule abre DIRECTO el tab guardado
+    // (segundo parámetro), sin pasar por el defaultTab y saltar después.
+    // El sub-tab Nivel 2 (params.sub) lo restaura el propio módulo leyendo esta
+    // variable, para abrir en el sub-tab correcto sin parpadeo. Se consume una vez.
     if (params.sub) window.__armahubRecSubTabPendiente = params.sub;
-    await window.switchModule(params.mod);
-    // Solo forzar el tab si difiere del defaultTab que switchModule ya activó.
-    var cfg = window.ArmaHubRegistry && window.ArmaHubRegistry.getModule
-      ? window.ArmaHubRegistry.getModule(params.mod) : null;
-    if (params.tab && typeof window.switchTab === 'function' && (!cfg || cfg.defaultTab !== params.tab)) {
-      window.switchTab(params.tab);
-    }
+    await window.switchModule(params.mod, params.tab || null);
   }
 })();

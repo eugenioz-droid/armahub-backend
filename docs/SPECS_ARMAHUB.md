@@ -166,6 +166,27 @@ Reglas de prolijidad gráfica que aplican a TODA caluga, para mantener consisten
 - **Referencia canónica:** `templates/tabs/reclamos.html` (sub-tabs `recSubTabNav` +
   cards con título dentro). Replicar ese patrón al crear cualquier tab nuevo.
 
+#### Carga de datos por tab y navegación (estándar — NO romper)
+
+Reglas para que la navegación sea uniforme y la restauración tras F5 funcione sola:
+
+- **La carga de datos de un tab vive en un loader centralizado, NO en el `onclick`.**
+  `shell.js` tiene un mapa `tabLoaders = { tab: 'nombreFuncionGlobal' }`; `switchTab`
+  invoca ese loader al activar el tab. Los botones solo llaman `switchTab('x')` — sin
+  `; loadXxx()` pegado. Así, activar un tab por clic O por restauración carga sus datos
+  igual. Antipatrón: poner la carga en el `onclick` (queda fuera del flujo de F5).
+- **Los loaders deben ser idempotentes** o tener guard (ej. `if (_loaded) return;`) para
+  no recargar de más cuando se invocan varias veces.
+- **Navegación = una sola fuente de verdad en el hash** (`#mod=...&tab=...&sub=...`).
+  `switchModule`/`switchTab`/`switchRecSubTab` escriben el hash; el init de `app.js` lo
+  lee tras `loadMe()` y restaura la posición.
+- **Restaurar abre DIRECTO el destino, sin pasar por el default.** `switchModule(mod, tab)`
+  acepta el tab destino como 2º parámetro y lo activa en vez del `defaultTab` — evita el
+  "carga el default y luego salta" (parpadeo). Mecanismo global: vale para cualquier
+  módulo/tab, sin condiciones especiales por panel.
+- **Referencia:** `shell.js` (`switchModule`, `switchTab`, `tabLoaders`, `updateNavHash`)
+  + `app.js` (init que restaura desde el hash).
+
 ---
 
 ## 3. CALUGA: RECLAMOS
