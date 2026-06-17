@@ -166,6 +166,13 @@
         'portal',
         '[ArmaHub] No se pudo cargar el feature Portal'
       ),
+      loadScript(
+        'script[data-armahub-feature="reclamos-settings"]',
+        '/static/js/features/reclamos/settings.js' + suffix,
+        'armahubFeature',
+        'reclamos-settings',
+        '[ArmaHub] No se pudo cargar reclamos/settings.js'
+      ),
       // Cubicación submodules (E.4) — all loaded in parallel, globals available before module activation
       loadScript(
         'script[data-armahub-feature="cubicacion-helpers"]',

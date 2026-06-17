@@ -1193,6 +1193,43 @@ MIGRATIONS = [
         "INSERT INTO role_permisos (role, accion, activo) VALUES ('miembro','responder_interno',TRUE) ON CONFLICT DO NOTHING",
         "INSERT INTO role_permisos (role, accion, activo) VALUES ('miembro','aprobar_revision',FALSE) ON CONFLICT DO NOTHING",
     ]),
+
+    # --- Migration 74: estructura de correo (tarea 5B) ---
+    # correo_templates: plantillas reutilizables (asunto + cuerpo HTML con variables)
+    #   por caso de uso (clave). Transversal, pero hoy administradas desde Calidad.
+    # reclamo_envios: trazabilidad de cada envío de informe (a quién, cuándo, por
+    #   quién, estado). Permite el marcador "informe enviado" + historial.
+    (74, "correo: plantillas (correo_templates) + trazabilidad de envíos (reclamo_envios)", [
+        """CREATE TABLE IF NOT EXISTS correo_templates (
+            id       BIGSERIAL PRIMARY KEY,
+            clave    TEXT NOT NULL UNIQUE,
+            nombre   TEXT NOT NULL DEFAULT '',
+            asunto   TEXT NOT NULL DEFAULT '',
+            cuerpo   TEXT NOT NULL DEFAULT '',
+            activo   BOOLEAN DEFAULT TRUE,
+            fecha_creacion       TIMESTAMPTZ DEFAULT now(),
+            fecha_actualizacion  TIMESTAMPTZ DEFAULT now()
+        )""",
+        """CREATE TABLE IF NOT EXISTS reclamo_envios (
+            id            BIGSERIAL PRIMARY KEY,
+            reclamo_id    BIGINT NOT NULL REFERENCES reclamos(id) ON DELETE CASCADE,
+            enviado_por   TEXT NOT NULL,
+            destinatarios TEXT NOT NULL,
+            asunto        TEXT DEFAULT '',
+            estado        TEXT NOT NULL DEFAULT 'enviado',
+            message_id    TEXT,
+            error         TEXT,
+            fecha         TIMESTAMPTZ DEFAULT now()
+        )""",
+        "CREATE INDEX IF NOT EXISTS idx_reclamo_envios_reclamo ON reclamo_envios(reclamo_id)",
+        # Plantilla semilla para el caso principal (informe validado). Editable luego.
+        """INSERT INTO correo_templates (clave, nombre, asunto, cuerpo) VALUES (
+            'informe_validado',
+            'Informe de reclamo validado',
+            'Informe de reclamo {{correlativo}} - {{proyecto}}',
+            '<p>Estimado/a,</p><p>Adjuntamos el informe del reclamo <strong>{{correlativo}}</strong> correspondiente a la obra <strong>{{proyecto}}</strong>.</p><p>Saludos,<br>Equipo de Calidad - Armacero</p>'
+        ) ON CONFLICT (clave) DO NOTHING""",
+    ]),
 ]
 
 

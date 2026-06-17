@@ -15,6 +15,7 @@
     reclamos: 'Reclamos',
     rec_dashboards: 'Dashboards',
     rec_procedimientos: 'Procedimientos',
+    rec_settings: 'Configuración',
     admin: 'Admin'
   };
 
@@ -134,12 +135,14 @@
       if (asignadoA && asignadoA.parentElement) {
         asignadoA.parentElement.style.display = (window.currentRole === 'admin' || window.currentRole === 'admin_calidad') ? '' : 'none';
       }
-      // Dashboards y Procedimientos: solo admin/admin_calidad
+      // Dashboards, Procedimientos y Configuración: solo admin/admin_calidad
       var esAdmin = (window.currentRole === 'admin' || window.currentRole === 'admin_calidad');
       var dashBtn = document.getElementById('recShellBtnDash');
       if (dashBtn) dashBtn.style.display = esAdmin ? '' : 'none';
       var procBtn = document.getElementById('recShellBtnProc');
       if (procBtn) procBtn.style.display = esAdmin ? '' : 'none';
+      var setBtn = document.getElementById('recShellBtnSettings');
+      if (setBtn) setBtn.style.display = esAdmin ? '' : 'none';
     }
 
     if (mod === 'admin') {

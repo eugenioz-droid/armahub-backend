@@ -617,3 +617,85 @@ def guardar_rca_area(area_id: int, body: MatrizRCAIn, user=Depends(require_admin
 
     audit(email, "guardar_rca_area", str(area_id), "area", str(area_id))
     return {"ok": True}
+
+
+# ========================= PLANTILLAS DE CORREO (5B) =========================
+# CRUD de plantillas reutilizables (asunto + cuerpo HTML con variables).
+# Administradas hoy desde Calidad → Configuración. El envío real de correo se
+# implementa aparte (endpoint de envío de informe). Estos endpoints solo
+# gestionan las plantillas; no envían nada.
+
+class CorreoTemplateIn(BaseModel):
+    clave: str
+    nombre: Optional[str] = ""
+    asunto: Optional[str] = ""
+    cuerpo: Optional[str] = ""
+    activo: Optional[bool] = True
+
+
+@router.get("/admin/correo-templates")
+def listar_correo_templates(user=Depends(require_admin_or_admin_calidad)):
+    """Lista todas las plantillas de correo."""
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT id, clave, nombre, asunto, cuerpo, activo
+                FROM correo_templates ORDER BY nombre, clave
+            """)
+            rows = cur.fetchall()
+    return [
+        {"id": r[0], "clave": r[1], "nombre": r[2], "asunto": r[3], "cuerpo": r[4], "activo": r[5]}
+        for r in rows
+    ]
+
+
+@router.post("/admin/correo-templates")
+def crear_correo_template(body: CorreoTemplateIn, user=Depends(require_admin_or_admin_calidad)):
+    """Crea una plantilla de correo (clave única)."""
+    clave = (body.clave or "").strip()
+    if not clave:
+        raise HTTPException(status_code=400, detail="La clave es obligatoria")
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT 1 FROM correo_templates WHERE clave = %s", (clave,))
+            if cur.fetchone():
+                raise HTTPException(status_code=409, detail="Ya existe una plantilla con esa clave")
+            cur.execute("""
+                INSERT INTO correo_templates (clave, nombre, asunto, cuerpo, activo)
+                VALUES (%s, %s, %s, %s, %s) RETURNING id
+            """, (clave, body.nombre or "", body.asunto or "", body.cuerpo or "", body.activo if body.activo is not None else True))
+            new_id = cur.fetchone()[0]
+        conn.commit()
+    audit(user.get("email", ""), "crear_correo_template", str(new_id), "correo_template", clave)
+    return {"ok": True, "id": new_id}
+
+
+@router.put("/admin/correo-templates/{template_id}")
+def actualizar_correo_template(template_id: int, body: CorreoTemplateIn, user=Depends(require_admin_or_admin_calidad)):
+    """Actualiza una plantilla existente."""
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT 1 FROM correo_templates WHERE id = %s", (template_id,))
+            if not cur.fetchone():
+                raise HTTPException(status_code=404, detail="Plantilla no encontrada")
+            cur.execute("""
+                UPDATE correo_templates
+                SET clave = %s, nombre = %s, asunto = %s, cuerpo = %s, activo = %s,
+                    fecha_actualizacion = now()
+                WHERE id = %s
+            """, ((body.clave or "").strip(), body.nombre or "", body.asunto or "",
+                  body.cuerpo or "", body.activo if body.activo is not None else True, template_id))
+        conn.commit()
+    audit(user.get("email", ""), "actualizar_correo_template", str(template_id), "correo_template", body.clave or "")
+    return {"ok": True}
+
+
+@router.delete("/admin/correo-templates/{template_id}")
+def eliminar_correo_template(template_id: int, user=Depends(require_admin_or_admin_calidad)):
+    """Elimina una plantilla."""
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM correo_templates WHERE id = %s", (template_id,))
+        conn.commit()
+    audit(user.get("email", ""), "eliminar_correo_template", str(template_id), "correo_template", "")
+    return {"ok": True}

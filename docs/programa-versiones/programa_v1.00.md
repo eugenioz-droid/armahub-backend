@@ -464,12 +464,30 @@ Objetivo: endurecer Reclamos y cerrar los pendientes reales arrastrados.
 
 ### 5B. Envío de informe por correo (arrastrado de PC.15)
 
+> **Diseño acordado 2026-06-16** → ver `docs/programa-versiones/propuesta_correo_5B.md`.
+> Envío MANUAL del informe validado: admin de calidad, reclamo en `cerrado`, PDF
+> adjunto, destinatarios pre-cargados desde involucrados del proyecto (todos tildados,
+> se pueden destildar) + correos manuales, cuerpo editable desde plantillas, marcador
+> "enviado" + historial. Correos automáticos = caluga futura (panel en Calidad/Configuración).
+>
+> **Preparado por adelantado 2026-06-16 (no rompe nada, aditivo):**
+> - Tab **Calidad → ⚙️ Configuración** (nivel 1, junto a Procedimientos; solo admin). `rec_settings.html` + `settings.js` registrados.
+> - Migración **74**: tablas `correo_templates` (plantillas) + `reclamo_envios` (trazabilidad) + plantilla semilla `informe_validado`.
+> - CRUD de plantillas: endpoints `/admin/correo-templates` (GET/POST/PUT/DELETE) + UI funcional en Configuración → Plantillas de correo.
+>
+> **Prerrequisito externo (TÚ):** verificar dominio en Resend (DNS de `armacero.cl` vía TI) o definir `MAIL_FROM` alternativo. Sin dominio verificado, Resend no envía a externos. NO bloquea construir; bloquea el envío real a clientes.
+
 | N° | Descripción | Realizado | Quién |
 |----|-------------|-----------|-------|
-| 5.8 | Crear tabla `reclamo_envios` (trazabilidad de envíos) | ☐ | YO |
-| 5.9 | Endpoint `POST /reclamos/{id}/enviar-informe` usando helper mailer (4.5) | ☐ | YO |
-| 5.10 | UI: columna/acción de envío en lista + mini-modal de destinatarios | ☐ | YO |
-| 5.11 | Historial de envíos en detalle de reclamo | ☐ | YO |
+| 5.7a | Tab Calidad/Configuración + estructura plantillas (esqueleto) | ☑ | YO |
+| 5.7b | Migración 74: `correo_templates` + `reclamo_envios` + CRUD plantillas | ☑ | YO |
+| 5.7c | Verificar dominio Resend / definir MAIL_FROM (prerrequisito envío externo) | ☐ | TÚ |
+| 5.8 | `mailer.py`: soporte de **adjuntos** (Resend `attachments` base64) | ☐ | YO |
+| 5.8b | Extraer generación de PDF (`_ReclamoPDF`) a helper reutilizable | ☐ | YO |
+| 5.9 | Endpoint `POST /reclamos/{id}/enviar-informe` (valida cerrado+admin, genera PDF, adjunta, envía, registra en `reclamo_envios`) | ☐ | YO |
+| 5.9b | Endpoint `GET /reclamos/{id}/involucrados` (correos sugeridos desde `proyecto_usuarios`) | ☐ | YO |
+| 5.10 | UI: botón "📧 Enviar informe" (solo `cerrado`) + mini-modal destinatarios (involucrados tildados + manual + cuerpo desde plantilla editable) | ☐ | YO |
+| 5.11 | Marcador "informe enviado" + historial de envíos en detalle | ☐ | YO |
 | 5.12 | Indicadores de envío en dashboard de Calidad | ☐ | YO |
 
 ### 5C. Calidad multi-origen
