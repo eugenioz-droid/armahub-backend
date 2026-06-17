@@ -8,7 +8,7 @@
          la barra va primero; cada panel lleva su propio título en su card) -->
     <div id="recSettingsNav" style="display:flex; gap:0; margin-bottom:16px; padding-top:4px; border-bottom:1px solid #f0f0f0; background:#fafafa;">
       <button id="recSetBtnTemplates" onclick="switchRecSettingsTab('templates')" style="padding:5px 16px; font-size:12px; font-weight:600; border:none; border-bottom:2px solid #607D8B; background:none; color:#607D8B; cursor:pointer;">Plantillas de correo</button>
-      <button id="recSetBtnTraza" onclick="switchRecSettingsTab('traza')" style="padding:5px 16px; font-size:12px; font-weight:600; border:none; border-bottom:2px solid transparent; background:none; color:#999; cursor:pointer;">Trazabilidad de envíos</button>
+      <button id="recSetBtnCierre" onclick="switchRecSettingsTab('cierre')" style="padding:5px 16px; font-size:12px; font-weight:600; border:none; border-bottom:2px solid transparent; background:none; color:#999; cursor:pointer;">Cierre Reclamos</button>
       <button id="recSetBtnReglas" onclick="switchRecSettingsTab('reglas')" style="padding:5px 16px; font-size:12px; font-weight:600; border:none; border-bottom:2px solid transparent; background:none; color:#999; cursor:pointer;">Envío automático</button>
     </div>
 
@@ -56,17 +56,21 @@
         </div>
       </div>
 
-      <!-- Panel: Trazabilidad de envíos -->
-      <div id="recSetPanelTraza" style="display:none;">
+      <!-- Panel: Cierre Reclamos (envío del informe de reclamos cerrados) -->
+      <div id="recSetPanelCierre" style="display:none;">
         <div class="card" style="border-left:4px solid #2e7d32;">
-          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; gap:12px; flex-wrap:wrap;">
             <div>
-              <h4 style="margin:0 0 2px 0;">📧 Trazabilidad de envíos</h4>
-              <p class="muted" style="font-size:12px; margin:0;">Historial de informes enviados por correo (últimos 200). Quién envió, a quién, cuándo y estado.</p>
+              <h4 style="margin:0 0 2px 0;">✅ Cierre de Reclamos — envío de informe</h4>
+              <p class="muted" style="font-size:12px; margin:0;">Reclamos cerrados. Envía el informe (PDF) a los involucrados. Si ya fue enviado, requiere confirmación para reenviar.</p>
             </div>
-            <button class="secondary" style="font-size:12px; padding:5px 14px;" onclick="loadRecEnviosTraza()">↻ Actualizar</button>
+            <div style="display:flex; gap:8px; align-items:center;">
+              <label style="font-size:12px; color:#666;">Año:</label>
+              <select id="recCierreAnio" onchange="loadRecCierreReclamos()" style="font-size:12px; padding:3px 8px;"></select>
+              <button class="secondary" style="font-size:12px; padding:5px 12px;" onclick="loadRecCierreReclamos()">↻</button>
+            </div>
           </div>
-          <div id="recSetTrazaLista"><div class="muted" style="font-size:12px;">Cargando…</div></div>
+          <div id="recCierreLista"><div class="muted" style="font-size:12px;">Cargando…</div></div>
         </div>
       </div>
 

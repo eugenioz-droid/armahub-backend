@@ -509,18 +509,21 @@ Objetivo: endurecer Reclamos y cerrar los pendientes reales arrastrados.
 | 5.16 | UI: selector de origen; listado/detalle/dashboards segmentables por origen | ☐ | YO |
 | 5.17 | Smoke test: reclamo → análisis → acciones → validación → PDF → envío | ☐ | TÚ+YO |
 
-### 5K. Configuración de Calidad = solo mailing (decisión 2026-06-17)
+### 5K. Tab "Mailing" en Calidad (decisión 2026-06-17)
 
-> **Alcance acotado por el usuario:** el engranaje **Calidad → ⚙️ Configuración** sirve
-> SOLO para administrar el mailing (plantillas + reglas de envío). NO se mueven aquí los
-> paneles de Admin (quién levanta reclamos, notificaciones in-app, permisos por rol) —
-> esos se quedan en Admin. Acceso: solo admin/admin_calidad (ya implementado).
+> El engranaje **Calidad → ⚙️ Mailing** (renombrado de "Configuración") centraliza el
+> correo. Solo admin/admin_calidad. NO se mueven aquí los paneles de Admin (quién levanta,
+> notificaciones in-app, permisos) — esos quedan en Admin. **Dos tipos de correo, separados:**
+> (1) **informe de reclamo cerrado** = manual, con PDF, en sub-tab "Cierre Reclamos";
+> (2) **avisos automáticos** = disparados por eventos, en sub-tab "Envío automático" (futuro).
+> Tres sub-tabs: **Plantillas de correo** · **Cierre Reclamos** · **Envío automático**.
 
 | N° | Descripción | Realizado | Quién |
 |----|-------------|-----------|-------|
-| 5K.1 | Tab Calidad/Configuración (engranaje nivel 1, solo admin/admin_calidad) | ☑ | YO |
-| 5K.2 | Sub-tab "Plantillas de correo": CRUD de plantillas (clave/nombre/asunto/cuerpo) | ☑ | YO |
-| 5K.3 | Sub-tab "Envío automático": placeholder (caluga futura) | ☑ | YO |
+| 5K.1 | Tab Calidad/Mailing (engranaje nivel 1, solo admin/admin_calidad) | ☑ | YO |
+| 5K.2 | Sub-tab "Plantillas de correo": CRUD (clave/nombre/asunto/cuerpo). Editor avanzado (campos seleccionables, destinatarios por tipo) = ampliación futura | ☑ | YO |
+| 5K.3 | Sub-tab "Cierre Reclamos": lista de cerrados (filtro por año) + estado de envío + botón Enviar/Reenviar; anti-reenvío con confirmación "CONFIRMAR". Envío centralizado AQUÍ (se quitó el botón del detalle del reclamo) | ☑ | YO |
+| 5K.4 | Sub-tab "Envío automático": placeholder (caluga futura — avisos por evento sobre matriz notificaciones) | ☑ | YO |
 
 **Criterio de salida:** hardening cerrado, matrices RCA operativas, smoke test visual aprobado, correo de informe operativo, multi-origen definido, sub-tabs internos completos.
 

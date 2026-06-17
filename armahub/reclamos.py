@@ -1194,6 +1194,41 @@ def _get_table_columns(cur, table_name: str):
     _schema_columns_cache[cache_key] = columns
     return columns
 
+# Lista de reclamos CERRADOS con estado de envío (Mailing → Cierre Reclamos).
+# DEBE ir antes de /reclamos/{reclamo_id} para que FastAPI no matchee
+# "cerrados-envio" como un id (mismo motivo que /reclamos/para-presentar).
+@router.get("/reclamos/cerrados-envio")
+def reclamos_cerrados_envio(user=Depends(get_current_user)):
+    """Reclamos cerrados + su estado de envío de informe. Solo admin/admin_calidad."""
+    if user.get("role") not in ("admin", "admin_calidad"):
+        raise HTTPException(status_code=403, detail="Solo Calidad puede ver esta lista")
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT r.id,
+                       COALESCE(r.correlativo, '#' || r.id) AS correlativo,
+                       r.titulo,
+                       COALESCE(p.nombre_proyecto, r.id_proyecto, '') AS proyecto,
+                       COALESCE(r.anio_calidad, EXTRACT(YEAR FROM r.fecha_creacion)::int) AS anio,
+                       r.tipo_origen,
+                       (SELECT COUNT(*) FROM reclamo_envios e
+                        WHERE e.reclamo_id = r.id AND e.estado = 'enviado') AS envios_ok,
+                       (SELECT MAX(e.fecha) FROM reclamo_envios e
+                        WHERE e.reclamo_id = r.id AND e.estado = 'enviado') AS ultimo_envio
+                FROM reclamos r
+                LEFT JOIN proyectos p ON p.id_proyecto = r.id_proyecto
+                WHERE r.estado = 'cerrado'
+                ORDER BY anio DESC, r.id DESC
+            """)
+            rows = cur.fetchall()
+    return [
+        {"id": r[0], "correlativo": r[1], "titulo": r[2], "proyecto": r[3],
+         "anio": int(r[4]) if r[4] else None, "tipo_origen": r[5],
+         "envios_ok": int(r[6] or 0), "ultimo_envio": _as_text(r[7])}
+        for r in rows
+    ]
+
+
 # ========================= ENDPOINTS OPTIMIZADOS (FASE 8.2.1) =========================
 
 @router.get("/reclamos/{reclamo_id}")

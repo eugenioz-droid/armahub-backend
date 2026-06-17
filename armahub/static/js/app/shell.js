@@ -15,7 +15,7 @@
     reclamos: 'Reclamos',
     rec_dashboards: 'Dashboards',
     rec_procedimientos: 'Procedimientos',
-    rec_settings: 'Configuración',
+    rec_settings: 'Mailing',
     admin: 'Admin'
   };
 

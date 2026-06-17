@@ -5,10 +5,10 @@
 
 var _recSettingsTemplates = [];
 
-// Sub-navegación dentro de Configuración (Plantillas / Trazabilidad / Envío automático).
+// Sub-navegación dentro de Mailing (Plantillas / Cierre Reclamos / Envío automático).
 function switchRecSettingsTab(sub) {
-  var panels = { templates: 'recSetPanelTemplates', traza: 'recSetPanelTraza', reglas: 'recSetPanelReglas' };
-  var btns = { templates: 'recSetBtnTemplates', traza: 'recSetBtnTraza', reglas: 'recSetBtnReglas' };
+  var panels = { templates: 'recSetPanelTemplates', cierre: 'recSetPanelCierre', reglas: 'recSetPanelReglas' };
+  var btns = { templates: 'recSetBtnTemplates', cierre: 'recSetBtnCierre', reglas: 'recSetBtnReglas' };
   Object.keys(panels).forEach(function(key) {
     var p = document.getElementById(panels[key]);
     if (p) p.style.display = (key === sub) ? '' : 'none';
@@ -18,36 +18,63 @@ function switchRecSettingsTab(sub) {
       b.style.color = (key === sub) ? '#607D8B' : '#999';
     }
   });
-  if (sub === 'traza') loadRecEnviosTraza();
+  if (sub === 'cierre') initRecCierre();
 }
 
-// Trazabilidad: historial global de envíos de informe por correo.
-async function loadRecEnviosTraza() {
-  var cont = document.getElementById('recSetTrazaLista');
+// ===== Cierre Reclamos: lista de cerrados + envío de informe =====
+var _recCierreData = [];
+
+async function initRecCierre() {
+  // Cargar todos los cerrados una vez, poblar el filtro de años y mostrar.
+  var data = await apiGet('/reclamos/cerrados-envio');
+  _recCierreData = Array.isArray(data) ? data : [];
+  var anios = {};
+  _recCierreData.forEach(function(r) { if (r.anio) anios[r.anio] = true; });
+  var sel = document.getElementById('recCierreAnio');
+  var aniosOrden = Object.keys(anios).map(Number).sort(function(a, b) { return b - a; });
+  sel.innerHTML = '<option value="">Todos</option>' + aniosOrden.map(function(a) {
+    return '<option value="' + a + '">' + a + '</option>';
+  }).join('');
+  // Por defecto el año más reciente (evita que colapse con muchos)
+  if (aniosOrden.length > 0) sel.value = String(aniosOrden[0]);
+  renderRecCierreLista();
+}
+
+// Recarga desde backend (botón ↻) — reusa initRecCierre conservando el año si existe.
+async function loadRecCierreReclamos() {
+  var prev = document.getElementById('recCierreAnio').value;
+  await initRecCierre();
+  var sel = document.getElementById('recCierreAnio');
+  if (prev && Array.prototype.some.call(sel.options, function(o) { return o.value === prev; })) {
+    sel.value = prev;
+  }
+  renderRecCierreLista();
+}
+
+function renderRecCierreLista() {
+  var cont = document.getElementById('recCierreLista');
   if (!cont) return;
-  cont.innerHTML = '<div class="muted" style="font-size:12px;">Cargando…</div>';
-  var data = await apiGet('/admin/correo-envios');
-  var lista = Array.isArray(data) ? data : [];
+  var anio = document.getElementById('recCierreAnio').value;
+  var lista = _recCierreData.filter(function(r) { return !anio || String(r.anio) === anio; });
   if (lista.length === 0) {
-    cont.innerHTML = '<div class="muted" style="font-size:12px;">Aún no se ha enviado ningún informe por correo.</div>';
+    cont.innerHTML = '<div class="muted" style="font-size:12px;">No hay reclamos cerrados' + (anio ? ' en ' + anio : '') + '.</div>';
     return;
   }
   var html = '<table style="width:100%; font-size:12px; border-collapse:collapse;">'
     + '<thead><tr style="text-align:left; color:#888; border-bottom:1px solid #eee;">'
-    + '<th style="padding:6px 8px;">Estado</th><th style="padding:6px 8px;">Reclamo</th>'
-    + '<th style="padding:6px 8px;">Destinatarios</th><th style="padding:6px 8px;">Enviado por</th>'
-    + '<th style="padding:6px 8px;">Fecha</th></tr></thead><tbody>';
-  lista.forEach(function(e) {
-    var ok = e.estado === 'enviado';
-    var badge = ok
-      ? '<span style="color:#2e7d32; font-weight:600;">✓ Enviado</span>'
-      : '<span style="color:#c62828; font-weight:600;" title="' + _recSetEsc(e.error || '') + '">✕ Falló</span>';
+    + '<th style="padding:6px 8px;">Reclamo</th><th style="padding:6px 8px;">Obra</th>'
+    + '<th style="padding:6px 8px;">Envío</th><th style="padding:6px 8px;"></th></tr></thead><tbody>';
+  lista.forEach(function(r) {
+    var enviado = r.envios_ok > 0;
+    var estado = enviado
+      ? '<span style="color:#2e7d32; font-weight:600;">✓ Enviado</span> <span class="muted">(' + (r.ultimo_envio || '').substring(0, 10) + ')</span>'
+      : '<span style="color:#e65100; font-weight:600;">Pendiente</span>';
+    var btn = '<button style="font-size:11px; padding:3px 12px; background:#2e7d32; color:#fff; border:none; border-radius:4px; cursor:pointer;" onclick="abrirEnviarInformeModal(' + r.id + ', ' + (enviado ? 'true' : 'false') + ')">' + (enviado ? 'Reenviar' : 'Enviar') + '</button>';
     html += '<tr style="border-bottom:1px solid #f5f5f5;">'
-      + '<td style="padding:6px 8px;">' + badge + '</td>'
-      + '<td style="padding:6px 8px;">' + _recSetEsc(e.correlativo || ('#' + e.reclamo_id)) + '</td>'
-      + '<td style="padding:6px 8px;">' + _recSetEsc(e.destinatarios || '') + '</td>'
-      + '<td style="padding:6px 8px;">' + _recSetEsc(e.enviado_por || '') + '</td>'
-      + '<td style="padding:6px 8px; white-space:nowrap;">' + _recSetEsc((e.fecha || '').substring(0, 16).replace('T', ' ')) + '</td>'
+      + '<td style="padding:6px 8px;"><strong>' + _recSetEsc(r.correlativo) + '</strong> ' + _recSetEsc((r.titulo || '').substring(0, 40)) + '</td>'
+      + '<td style="padding:6px 8px;">' + _recSetEsc(r.proyecto || '—') + '</td>'
+      + '<td style="padding:6px 8px;">' + estado + '</td>'
+      + '<td style="padding:6px 8px; text-align:right;">' + btn + '</td>'
       + '</tr>';
   });
   html += '</tbody></table>';

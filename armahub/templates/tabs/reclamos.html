@@ -638,11 +638,6 @@
         <div id="recSeguimientoMsg" style="margin-top:4px; font-size:11px;"></div>
       </div>
 
-      <!-- Historial de envíos del informe por correo (solo admin/admin_calidad) -->
-      <div id="recEnviosSection" style="display:none; margin-top:10px; padding:8px 10px; background:#e8f5e9; border:1px solid #c8e6c9; border-radius:6px;">
-        <label style="font-size:11px; color:#2e7d32; font-weight:600;">📧 Envíos del informe</label>
-        <div id="recEnviosLista" style="font-size:11px; margin-top:4px;"></div>
-      </div>
     </div>
     <!-- Modal backdrop for detail & create modals -->
     <div id="recModalBackdrop" class="rec-modal-backdrop" onclick="closeReclamoModal()"></div>
@@ -1060,6 +1055,12 @@
 
       <label style="font-size:12px; font-weight:600; color:#444;">Mensaje</label>
       <textarea id="enviarInformeCuerpo" rows="6" style="width:100%; font-size:12px; resize:vertical; margin:4px 0 12px 0; font-family:inherit;"></textarea>
+
+      <!-- Confirmación anti-reenvío (visible solo si el informe ya fue enviado antes) -->
+      <div id="enviarInformeConfirmWrap" style="display:none; margin:0 0 12px 0; padding:8px 10px; background:#fff3e0; border:1px solid #ffe0b2; border-radius:6px;">
+        <label style="font-size:12px; color:#e65100; font-weight:600;">⚠️ Este informe ya fue enviado. Para reenviarlo, escribe CONFIRMAR:</label>
+        <input type="text" id="enviarInformeConfirm" placeholder="CONFIRMAR" style="width:100%; font-size:12px; margin-top:4px;" />
+      </div>
 
       <div style="display:flex; gap:8px; align-items:center;">
         <button onclick="confirmarEnviarInforme()" style="font-size:13px; padding:7px 18px; background:#2e7d32; color:#fff; border:none; border-radius:6px; cursor:pointer;">Enviar</button>

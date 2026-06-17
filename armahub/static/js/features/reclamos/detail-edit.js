@@ -24,13 +24,23 @@ function descargarPdfReclamo() {
 }
 
 // ===== Envío de informe por correo (5B) =====
+// Se invoca desde el tab Mailing → Cierre Reclamos: abrirEnviarInformeModal(id, yaEnviado).
+var _enviarInformeReclamoId = null;
 
-async function abrirEnviarInformeModal() {
-  if (!_reclamoActual) return;
-  var id = _reclamoActual.id;
+async function abrirEnviarInformeModal(reclamoId, yaEnviado) {
+  var id = reclamoId || (_reclamoActual && _reclamoActual.id);
+  if (!id) return;
+  _enviarInformeReclamoId = id;
   var msg = document.getElementById('enviarInformeMsg');
   msg.textContent = '';
   document.getElementById('enviarInformeManual').value = '';
+
+  // Anti-reenvío: si ya se envió, exigir confirmación escrita antes de reenviar.
+  var confWrap = document.getElementById('enviarInformeConfirmWrap');
+  var confInput = document.getElementById('enviarInformeConfirm');
+  if (confInput) confInput.value = '';
+  if (confWrap) confWrap.style.display = yaEnviado ? '' : 'none';
+  window._enviarInformeYaEnviado = !!yaEnviado;
 
   // Pre-cargar asunto/cuerpo desde la plantilla 'informe_validado' (si existe).
   var asuntoDefault = 'Informe de Reclamo';
@@ -69,13 +79,23 @@ function cerrarEnviarInformeModal() {
 }
 
 async function confirmarEnviarInforme() {
-  if (!_reclamoActual) return;
+  var id = _enviarInformeReclamoId;
+  if (!id) return;
   var msg = document.getElementById('enviarInformeMsg');
+
+  // Anti-reenvío: si ya fue enviado, exigir que escriban "CONFIRMAR".
+  if (window._enviarInformeYaEnviado) {
+    var conf = (document.getElementById('enviarInformeConfirm').value || '').trim().toUpperCase();
+    if (conf !== 'CONFIRMAR') {
+      msg.textContent = 'Este informe ya fue enviado. Escribe CONFIRMAR para reenviar.'; msg.style.color = '#b42318';
+      return;
+    }
+  }
+
   var dests = [];
   document.querySelectorAll('.enviar-informe-dest:checked').forEach(function(cb) { dests.push(cb.value); });
   var manual = document.getElementById('enviarInformeManual').value.split(',');
   manual.forEach(function(m) { var e = m.trim(); if (e) dests.push(e); });
-  // Únicos
   dests = dests.filter(function(v, i) { return dests.indexOf(v) === i; });
   if (dests.length === 0) { msg.textContent = 'Selecciona o agrega al menos un destinatario'; msg.style.color = '#b42318'; return; }
 
@@ -86,7 +106,7 @@ async function confirmarEnviarInforme() {
     cuerpo: document.getElementById('enviarInformeCuerpo').value.replace(/\n/g, '<br>'),
     template_clave: 'informe_validado'
   };
-  var res = await fetch(apiUrl('/reclamos/' + _reclamoActual.id + '/enviar-informe'), {
+  var res = await fetch(apiUrl('/reclamos/' + id + '/enviar-informe'), {
     method: 'POST',
     headers: Object.assign({}, authHeaders(), { 'Content-Type': 'application/json' }),
     body: JSON.stringify(body)
@@ -95,30 +115,14 @@ async function confirmarEnviarInforme() {
   var data = await res.json();
   if (res.ok && data.ok) {
     msg.textContent = '✓ Enviado a ' + data.destinatarios.length + ' destinatario(s)'; msg.style.color = '#2e7d32';
-    setTimeout(cerrarEnviarInformeModal, 1500);
-    if (typeof _cargarEnviosReclamo === 'function') _cargarEnviosReclamo(_reclamoActual.id);
+    setTimeout(function() {
+      cerrarEnviarInformeModal();
+      // Refrescar la lista de Cierre Reclamos para reflejar el nuevo estado.
+      if (typeof loadRecCierreReclamos === 'function') loadRecCierreReclamos();
+    }, 1200);
   } else {
     msg.textContent = 'Error: ' + (data.detail || 'no se pudo enviar'); msg.style.color = '#b42318';
   }
-}
-
-// Historial de envíos en el detalle (solo admin/admin_calidad).
-async function _cargarEnviosReclamo(id) {
-  var section = document.getElementById('recEnviosSection');
-  var cont = document.getElementById('recEnviosLista');
-  if (!section || !cont) return;
-  if (currentRole !== 'admin' && currentRole !== 'admin_calidad') { section.style.display = 'none'; return; }
-  try {
-    var data = await apiGet('/reclamos/' + id + '/envios');
-    var lista = (data && data.data) || [];
-    if (lista.length === 0) { section.style.display = 'none'; return; }
-    section.style.display = '';
-    cont.innerHTML = lista.map(function(e) {
-      var estado = e.estado === 'enviado' ? '✓' : '✕';
-      return '<div style="padding:2px 0;">' + estado + ' ' + (e.fecha || '') + ' — ' + (e.destinatarios || '')
-        + ' <span class="muted">(' + (e.enviado_por || '') + ')</span></div>';
-    }).join('');
-  } catch (e) { section.style.display = 'none'; }
 }
 
 // Editar reclamo — enruta al form correcto según tipo_origen. Internos y

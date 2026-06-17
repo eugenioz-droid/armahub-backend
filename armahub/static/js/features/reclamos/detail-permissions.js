@@ -155,11 +155,8 @@ function _applyReclamoDetailPermissions(data) {
   var btnPdf = document.getElementById('btnPdfReclamo');
   if (btnPdf) btnPdf.style.display = puedePdf ? '' : 'none';
 
-  // Enviar informe por correo: admin/admin_calidad, SOLO en reclamo cerrado
-  // (el informe ya está validado). El backend valida lo mismo.
+  // Enviar informe por correo: el envío se CENTRALIZA en Calidad → Mailing →
+  // "Cierre Reclamos" (decisión 2026-06-17). El botón del detalle queda oculto.
   var btnEnviar = document.getElementById('btnEnviarReclamo');
-  if (btnEnviar) {
-    var puedeEnviarInforme = ['admin','admin_calidad'].includes(currentRole) && data.estado === 'cerrado';
-    btnEnviar.style.display = puedeEnviarInforme ? '' : 'none';
-  }
+  if (btnEnviar) btnEnviar.style.display = 'none';
 }
