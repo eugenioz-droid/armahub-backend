@@ -142,6 +142,29 @@ Usuario autenticado → GET /reclamos/{id}/imagenes/{img_id}
 - Helper único: `send_email(to, subject, html, reply_to=None)`.
 - Biblioteca: `resend` — configurada con `RESEND_API_KEY` + `MAIL_FROM`.
 - Reutilizable desde cualquier módulo. No duplicar helpers de correo.
+- **`MAIL_FROM` (remitente) es configurable por env var** → cambiar el dominio NO
+  toca código. Para enviar a destinatarios externos, el dominio de `MAIL_FROM` debe
+  estar **verificado en Resend** (registros DNS DKIM/SPF en el DNS del dominio).
+  Sin dominio propio verificado, Resend solo entrega de forma fiable a la cuenta
+  dueña de la API key (modo prueba). Plan: usar un dominio ya disponible para
+  pruebas y cambiar `MAIL_FROM` al definitivo (`armacero.cl`) cuando esté verificado.
+
+### 2.4 Convenciones de UI (transversal — NO romper)
+
+Reglas de prolijidad gráfica que aplican a TODA caluga, para mantener consistencia:
+
+- **Estructura de tabs de dos niveles** (patrón shell estándar, ej. Calidad/Reclamos):
+  1. **Nivel 1** = botones de tab en la barra superior (`switchTab`).
+  2. **Nivel 2** = sub-tabs DENTRO del tab. La **barra de sub-tabs va PRIMERO**,
+     inmediatamente bajo los tabs de nivel 1. Estilo estándar: contenedor
+     `display:flex; padding-top:4px; border-bottom:1px solid #f0f0f0; background:#fafafa;`
+     y botones `padding:5px 16px; font-size:12px; font-weight:600; border-bottom:2px`
+     (color de marca si activo, `transparent`/gris si no).
+  3. **El título de cada sección va DENTRO de su panel**, como `<h3>`/`<h4>` de una
+     `card` (con `border-top`/`border-left` de color). **NUNCA** un rectángulo de
+     título suelto entre los tabs de nivel 1 y la barra de nivel 2 — rompe la línea.
+- **Referencia canónica:** `templates/tabs/reclamos.html` (sub-tabs `recSubTabNav` +
+  cards con título dentro). Replicar ese patrón al crear cualquier tab nuevo.
 
 ---
 
