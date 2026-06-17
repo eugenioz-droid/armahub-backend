@@ -80,18 +80,18 @@ function switchRecSubTab(sub) {
 }
 
 // El modal de detalle (reclamoDetailCard) y su backdrop viven dentro de
-// recSubClientes, que se oculta al cambiar de sub-tab. Para que el modal se pueda
-// abrir desde cualquier sub-tab (ej. Validaciones), lo movemos una vez al
-// contenedor raíz del tab (tab-reclamos), que siempre está visible.
+// recSubClientes, que se oculta al cambiar de sub-tab/tab. Para que se pueda abrir
+// desde CUALQUIER lugar (sub-tab Validaciones, tab Mailing→Cierre Reclamos, etc.)
+// lo movemos una vez a document.body. Al ser position:fixed con backdrop full-screen,
+// flota sobre todo el viewport sin depender de qué contenedor esté visible.
 var _modalReparented = false;
 function _ensureModalFueraDeSubpaneles() {
   if (_modalReparented) return;
-  var root = document.getElementById('tab-reclamos');
   var card = document.getElementById('reclamoDetailCard');
   var backdrop = document.getElementById('recModalBackdrop');
-  if (!root || !card) return;
-  root.appendChild(card);
-  if (backdrop) root.appendChild(backdrop);
+  if (!card) return;
+  document.body.appendChild(card);
+  if (backdrop) document.body.appendChild(backdrop);
   _modalReparented = true;
 }
 

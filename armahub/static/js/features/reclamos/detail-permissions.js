@@ -155,8 +155,16 @@ function _applyReclamoDetailPermissions(data) {
   var btnPdf = document.getElementById('btnPdfReclamo');
   if (btnPdf) btnPdf.style.display = puedePdf ? '' : 'none';
 
-  // Enviar informe por correo: el envío se CENTRALIZA en Calidad → Mailing →
-  // "Cierre Reclamos" (decisión 2026-06-17). El botón del detalle queda oculto.
+  // Enviar informe por correo: el modal se abre desde Mailing → Cierre Reclamos
+  // (contexto 'cierre'). El botón aparece SOLO en ese contexto, para externos
+  // cerrados. En el listado oficial / Validaciones no aparece.
   var btnEnviar = document.getElementById('btnEnviarReclamo');
-  if (btnEnviar) btnEnviar.style.display = 'none';
+  if (btnEnviar) {
+    var enContextoCierre = (window._recDetalleOrigen === 'cierre');
+    var puedeEnviarInforme = enContextoCierre
+      && ['admin','admin_calidad'].includes(currentRole)
+      && data.estado === 'cerrado'
+      && data.tipo_origen !== 'interno';
+    btnEnviar.style.display = puedeEnviarInforme ? '' : 'none';
+  }
 }

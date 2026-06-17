@@ -27,6 +27,18 @@ function descargarPdfReclamo() {
 // Se invoca desde el tab Mailing → Cierre Reclamos: abrirEnviarInformeModal(id, yaEnviado).
 var _enviarInformeReclamoId = null;
 
+// Botón "Enviar informe" del modal de detalle (contexto Cierre Reclamos):
+// detecta si ya hubo envíos para activar el anti-reenvío.
+async function enviarInformeDesdeDetalle() {
+  if (!_reclamoActual) return;
+  var yaEnviado = false;
+  try {
+    var data = await apiGet('/reclamos/' + _reclamoActual.id + '/envios');
+    yaEnviado = !!(data && data.data && data.data.some(function(e) { return e.estado === 'enviado'; }));
+  } catch (e) { /* si falla, asumir no enviado */ }
+  abrirEnviarInformeModal(_reclamoActual.id, yaEnviado);
+}
+
 async function abrirEnviarInformeModal(reclamoId, yaEnviado) {
   var id = reclamoId || (_reclamoActual && _reclamoActual.id);
   if (!id) return;

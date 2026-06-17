@@ -24,6 +24,9 @@ async function verReclamo(id, options) {
   if (!data) return;
   data = _normalizeReclamoDetail(data);
   _reclamoActual = data;
+  // Contexto de apertura del modal (p.ej. 'cierre' desde Mailing → Cierre Reclamos),
+  // para que detail-permissions muestre el botón de enviar informe solo ahí.
+  window._recDetalleOrigen = options.origen || null;
   // Reset del estado "área sin matriz Ishikawa" y del cache de la matriz: lo
   // recalcula el render del reclamo actual (no arrastrar el del reclamo
   // abierto previamente, ni una matriz vieja si se editó entre aperturas).

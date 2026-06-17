@@ -161,7 +161,8 @@
     'descargarPdfReclamo',
     'abrirEnviarInformeModal',
     'cerrarEnviarInformeModal',
-    'confirmarEnviarInforme'
+    'confirmarEnviarInforme',
+    'enviarInformeDesdeDetalle'
   ];
 
   allExports.forEach(function(name) {

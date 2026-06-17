@@ -1199,7 +1199,9 @@ def _get_table_columns(cur, table_name: str):
 # "cerrados-envio" como un id (mismo motivo que /reclamos/para-presentar).
 @router.get("/reclamos/cerrados-envio")
 def reclamos_cerrados_envio(user=Depends(get_current_user)):
-    """Reclamos cerrados + su estado de envío de informe. Solo admin/admin_calidad."""
+    """Reclamos EXTERNOS cerrados + su estado de envío de informe. Solo admin/admin_calidad.
+    Internos no se incluyen: esos usuarios ya tienen acceso al sistema y no requieren
+    el envío del informe por correo (decisión 2026-06-17)."""
     if user.get("role") not in ("admin", "admin_calidad"):
         raise HTTPException(status_code=403, detail="Solo Calidad puede ver esta lista")
     with get_conn() as conn:
@@ -1218,6 +1220,7 @@ def reclamos_cerrados_envio(user=Depends(get_current_user)):
                 FROM reclamos r
                 LEFT JOIN proyectos p ON p.id_proyecto = r.id_proyecto
                 WHERE r.estado = 'cerrado'
+                  AND COALESCE(r.tipo_origen, 'externo') = 'externo'
                 ORDER BY anio DESC, r.id DESC
             """)
             rows = cur.fetchall()
