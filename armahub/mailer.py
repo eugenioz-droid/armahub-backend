@@ -41,9 +41,15 @@ def send_email(
     subject: str,
     html: str,
     reply_to: Optional[str] = None,
+    attachments: Optional[list] = None,
 ) -> dict:
     """
     Envía un correo vía Resend API.
+
+    Args:
+        attachments: lista opcional de adjuntos. Cada uno: dict con
+            {"filename": str, "content": bytes}. El contenido (bytes) se
+            codifica a base64 como espera Resend. Ej: el PDF de un informe.
 
     Retorna el dict de respuesta de Resend con el campo `id` del mensaje.
     Lanza RuntimeError si Resend no está configurado o si el envío falla.
@@ -70,6 +76,16 @@ def send_email(
     }
     if reply_to:
         params["reply_to"] = reply_to
+
+    if attachments:
+        import base64
+        params["attachments"] = [
+            {
+                "filename": att["filename"],
+                "content": base64.b64encode(att["content"]).decode("ascii"),
+            }
+            for att in attachments
+        ]
 
     try:
         email = _resend.Emails.send(params)

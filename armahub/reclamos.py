@@ -2554,16 +2554,11 @@ class _ReclamoPDF:
         pdf.cell(0, 4, self._s(f"ArmaHub - Informe generado el {fecha} - {self.correlativo}"), align="C")
 
 
-@router.get("/reclamos/{reclamo_id}/pdf")
-def exportar_reclamo_pdf(reclamo_id: int, user=Depends(get_current_user)):
-    """Generar PDF del informe de reclamo."""
-    import io
-
-    role = user.get("role")
-    email = user.get("email", "")
-    if role not in ("admin", "admin_calidad", "usc", "miembro", "jefe_servicio"):
-        raise HTTPException(status_code=403, detail="Sin permisos para generar PDF")
-
+def _generar_pdf_reclamo(reclamo_id: int):
+    """Genera el PDF del informe de un reclamo. Reutilizable por el endpoint de
+    descarga y por el envío de informe por correo (5B). Devuelve
+    (pdf_bytes, filename, rec). Lanza HTTPException 404 si el reclamo no existe.
+    NO valida permisos: el caller (endpoint) es responsable de eso."""
     with get_conn() as conn:
         with conn.cursor(row_factory=dict_row) as cur:
             cur.execute("""
@@ -2575,11 +2570,6 @@ def exportar_reclamo_pdf(reclamo_id: int, user=Depends(get_current_user)):
             rec = cur.fetchone()
             if not rec:
                 raise HTTPException(status_code=404, detail="Reclamo no encontrado")
-
-            if role == "cubicador" and not _es_propietario_cubicador(rec, email):
-                raise HTTPException(status_code=403, detail="Solo puedes exportar tus propios reclamos")
-            if role == "usc" and not _es_propietario_usc(rec, email):
-                raise HTTPException(status_code=403, detail="Solo puedes exportar tus propios reclamos")
 
             # Seguimientos
             cur.execute("""
@@ -2645,9 +2635,175 @@ def exportar_reclamo_pdf(reclamo_id: int, user=Depends(get_current_user)):
     correlativo = corr_cal or rec.get("id_calidad") or rec.get("correlativo") or f"#{rec['id']}"
     filename = f"Reclamo_{correlativo.replace('#', '').replace('/', '-')}.pdf"
 
+    return pdf_bytes, filename, rec
+
+
+@router.get("/reclamos/{reclamo_id}/pdf")
+def exportar_reclamo_pdf(reclamo_id: int, user=Depends(get_current_user)):
+    """Generar PDF del informe de reclamo (descarga inline)."""
+    role = user.get("role")
+    email = user.get("email", "")
+    if role not in ("admin", "admin_calidad", "usc", "miembro", "jefe_servicio"):
+        raise HTTPException(status_code=403, detail="Sin permisos para generar PDF")
+
+    pdf_bytes, filename, rec = _generar_pdf_reclamo(reclamo_id)
+
+    # Ownership para roles de scope restringido
+    if role in ("externo", "miembro", "jefe_servicio") and not _es_propietario_cubicador(rec, email):
+        raise HTTPException(status_code=403, detail="Solo puedes exportar tus propios reclamos")
+    if role == "usc" and not _es_propietario_usc(rec, email):
+        raise HTTPException(status_code=403, detail="Solo puedes exportar tus propios reclamos")
+
     audit(email, "exportar_pdf_reclamo", str(reclamo_id), "reclamo", str(reclamo_id))
     return Response(
         content=pdf_bytes,
         media_type="application/pdf",
         headers={"Content-Disposition": f'inline; filename="{filename}"'},
     )
+
+
+# ========================= ENVÍO DE INFORME POR CORREO (5B) =========================
+
+def _render_template_vars(texto: str, rec: dict) -> str:
+    """Reemplaza variables {{clave}} en asunto/cuerpo de plantilla con datos del reclamo."""
+    if not texto:
+        return ""
+    corr_cal = ""
+    if rec.get("anio_calidad") and rec.get("numero_calidad"):
+        corr_cal = f"{rec['anio_calidad']}-{str(rec['numero_calidad']).zfill(3)}"
+    correlativo = corr_cal or rec.get("id_calidad") or rec.get("correlativo") or f"#{rec.get('id')}"
+    valores = {
+        "correlativo": correlativo,
+        "titulo": rec.get("titulo") or "",
+        "proyecto": rec.get("nombre_proyecto") or "",
+        "cliente": rec.get("nombre_proyecto") or "",
+        "estado": rec.get("estado") or "",
+        "responsable": rec.get("responsable") or rec.get("cubicador_asignado") or "",
+        "fecha_cierre": _as_text(rec.get("fecha_actualizacion")) or "",
+    }
+    out = texto
+    for k, v in valores.items():
+        out = out.replace("{{" + k + "}}", str(v))
+    return out
+
+
+class EnviarInformeIn(BaseModel):
+    destinatarios: List[str]
+    asunto: Optional[str] = None
+    cuerpo: Optional[str] = None
+    template_clave: Optional[str] = "informe_validado"
+
+
+@router.get("/reclamos/{reclamo_id}/involucrados")
+def get_involucrados_reclamo(reclamo_id: int, user=Depends(get_current_user)):
+    """Correos sugeridos para enviar el informe: usuarios del proyecto del reclamo
+    (proyecto_usuarios). Para pre-cargar el modal de envío (todos tildados)."""
+    if user.get("role") not in ("admin", "admin_calidad"):
+        raise HTTPException(status_code=403, detail="Solo Calidad puede consultar involucrados")
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT id_proyecto FROM reclamos WHERE id = %s", (reclamo_id,))
+            row = cur.fetchone()
+            if not row:
+                raise HTTPException(status_code=404, detail="Reclamo no encontrado")
+            id_proyecto = row[0]
+            if not id_proyecto:
+                return {"data": []}
+            cur.execute("""
+                SELECT u.email,
+                       COALESCE(NULLIF(TRIM(COALESCE(u.nombre,'') || ' ' || COALESCE(u.apellido,'')), ''), u.email) AS display,
+                       pu.rol
+                FROM proyecto_usuarios pu
+                JOIN users u ON u.id = pu.user_id
+                WHERE pu.id_proyecto = %s AND u.activo = TRUE
+                ORDER BY display
+            """, (id_proyecto,))
+            rows = cur.fetchall()
+    return {"data": [{"email": r[0], "display": r[1], "rol": r[2]} for r in rows]}
+
+
+@router.get("/reclamos/{reclamo_id}/envios")
+def get_envios_reclamo(reclamo_id: int, user=Depends(get_current_user)):
+    """Historial de envíos de informe de un reclamo (trazabilidad)."""
+    if user.get("role") not in ("admin", "admin_calidad"):
+        raise HTTPException(status_code=403, detail="Solo Calidad puede ver el historial de envíos")
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT id, enviado_por, destinatarios, asunto, estado, error, fecha
+                FROM reclamo_envios WHERE reclamo_id = %s ORDER BY fecha DESC, id DESC
+            """, (reclamo_id,))
+            rows = cur.fetchall()
+    return {"data": [
+        {"id": r[0], "enviado_por": r[1], "destinatarios": r[2], "asunto": r[3],
+         "estado": r[4], "error": r[5], "fecha": _as_text(r[6])}
+        for r in rows
+    ]}
+
+
+@router.post("/reclamos/{reclamo_id}/enviar-informe")
+def enviar_informe_reclamo(reclamo_id: int, body: EnviarInformeIn, user=Depends(get_current_user)):
+    """Envía el informe del reclamo (PDF adjunto) por correo a los destinatarios.
+    Solo admin/admin_calidad, y solo reclamos en estado 'cerrado'. Registra el
+    envío en reclamo_envios (trazabilidad)."""
+    role = user.get("role")
+    email = user.get("email", "")
+    if role not in ("admin", "admin_calidad"):
+        raise HTTPException(status_code=403, detail="Solo Calidad puede enviar el informe")
+
+    destinatarios = [d.strip() for d in (body.destinatarios or []) if d and d.strip()]
+    if not destinatarios:
+        raise HTTPException(status_code=400, detail="Debe indicar al menos un destinatario")
+
+    # Generar PDF + obtener datos del reclamo (valida existencia)
+    pdf_bytes, filename, rec = _generar_pdf_reclamo(reclamo_id)
+
+    if rec.get("estado") != "cerrado":
+        raise HTTPException(status_code=400, detail="Solo se puede enviar el informe de reclamos cerrados")
+
+    # Asunto/cuerpo: usa lo que mande el front (cuerpo editado) o la plantilla por clave
+    asunto = body.asunto
+    cuerpo = body.cuerpo
+    if not asunto or not cuerpo:
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT asunto, cuerpo FROM correo_templates WHERE clave = %s",
+                            (body.template_clave or "informe_validado",))
+                trow = cur.fetchone()
+        if trow:
+            asunto = asunto or trow[0]
+            cuerpo = cuerpo or trow[1]
+    asunto = _render_template_vars(asunto or "Informe de reclamo", rec)
+    cuerpo = _render_template_vars(cuerpo or "<p>Adjuntamos el informe del reclamo.</p>", rec)
+
+    estado_envio = "enviado"
+    error_txt = None
+    message_id = None
+    try:
+        from .mailer import send_email
+        resp = send_email(
+            to=destinatarios,
+            subject=asunto,
+            html=cuerpo,
+            reply_to=email,
+            attachments=[{"filename": filename, "content": pdf_bytes}],
+        )
+        message_id = resp.get("id") if isinstance(resp, dict) else None
+    except Exception as exc:
+        estado_envio = "fallido"
+        error_txt = str(exc)
+
+    # Registrar trazabilidad (siempre, éxito o fallo)
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO reclamo_envios (reclamo_id, enviado_por, destinatarios, asunto, estado, message_id, error)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+            """, (reclamo_id, email, ", ".join(destinatarios), asunto, estado_envio, message_id, error_txt))
+        conn.commit()
+
+    audit(email, "enviar_informe_reclamo", str(reclamo_id), "reclamo", ", ".join(destinatarios))
+
+    if estado_envio == "fallido":
+        raise HTTPException(status_code=502, detail=f"No se pudo enviar el correo: {error_txt}")
+    return {"ok": True, "message_id": message_id, "destinatarios": destinatarios}
