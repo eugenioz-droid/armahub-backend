@@ -509,24 +509,20 @@ Objetivo: endurecer Reclamos y cerrar los pendientes reales arrastrados.
 | 5.16 | UI: selector de origen; listado/detalle/dashboards segmentables por origen | ☐ | YO |
 | 5.17 | Smoke test: reclamo → análisis → acciones → validación → PDF → envío | ☐ | TÚ+YO |
 
-### 5K. Centralizar configuración de Calidad en su engranaje (decisión 2026-06-17)
+### 5K. Configuración de Calidad = solo mailing (decisión 2026-06-17)
 
-> Mover/replicar la configuración de Calidad/Reclamos desde Admin→Configuración hacia
-> **Calidad → ⚙️ Configuración**. Lógica: habilitar a futuro a ciertos usuarios el
-> acceso a esta zona SIN darles el panel Admin completo. Admin queda para transversal
-> (usuarios, áreas, sistema). Tab Configuración de Calidad ya existe (5B); falta llevar
-> los paneles de reclamos.
+> **Alcance acotado por el usuario:** el engranaje **Calidad → ⚙️ Configuración** sirve
+> SOLO para administrar el mailing (plantillas + reglas de envío). NO se mueven aquí los
+> paneles de Admin (quién levanta reclamos, notificaciones in-app, permisos por rol) —
+> esos se quedan en Admin. Acceso: solo admin/admin_calidad (ya implementado).
 
 | N° | Descripción | Realizado | Quién |
 |----|-------------|-----------|-------|
-| 5K.1 | Tab Calidad/Configuración creado (engranaje nivel 1, solo admin/admin_calidad) + plantillas de correo | ☑ | YO |
-| 5K.2 | Mover a Calidad/Config: "Quién levanta reclamos" (`crearReclamoConfig`) | ☐ | YO |
-| 5K.3 | Mover a Calidad/Config: notificaciones de reclamos (`notifConfigContainer`) | ☐ | YO |
-| 5K.4 | Mover a Calidad/Config: permisos por rol relevantes a reclamos | ☐ | YO |
-| 5K.5 | Definir control de acceso fino a Calidad/Config (qué usuarios no-admin entran) | ☐ | TÚ+YO |
-| 5K.6 | Quitar de Admin lo que ya vive en Calidad/Config (evitar duplicación) | ☐ | YO |
+| 5K.1 | Tab Calidad/Configuración (engranaje nivel 1, solo admin/admin_calidad) | ☑ | YO |
+| 5K.2 | Sub-tab "Plantillas de correo": CRUD de plantillas (clave/nombre/asunto/cuerpo) | ☑ | YO |
+| 5K.3 | Sub-tab "Envío automático": placeholder (caluga futura) | ☑ | YO |
 
-**Criterio de salida:** hardening cerrado, matrices RCA operativas, smoke test visual aprobado, correo de informe operativo, multi-origen definido, sub-tabs internos completos, configuración de Calidad centralizada en su engranaje.
+**Criterio de salida:** hardening cerrado, matrices RCA operativas, smoke test visual aprobado, correo de informe operativo, multi-origen definido, sub-tabs internos completos.
 
 ---
 
