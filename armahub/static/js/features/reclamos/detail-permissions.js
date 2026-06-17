@@ -155,7 +155,11 @@ function _applyReclamoDetailPermissions(data) {
   var btnPdf = document.getElementById('btnPdfReclamo');
   if (btnPdf) btnPdf.style.display = puedePdf ? '' : 'none';
 
-  // Email placeholder: admin, admin_calidad only
+  // Enviar informe por correo: admin/admin_calidad, SOLO en reclamo cerrado
+  // (el informe ya está validado). El backend valida lo mismo.
   var btnEnviar = document.getElementById('btnEnviarReclamo');
-  if (btnEnviar) btnEnviar.style.display = ['admin','admin_calidad'].includes(currentRole) ? '' : 'none';
+  if (btnEnviar) {
+    var puedeEnviarInforme = ['admin','admin_calidad'].includes(currentRole) && data.estado === 'cerrado';
+    btnEnviar.style.display = puedeEnviarInforme ? '' : 'none';
+  }
 }

@@ -5,10 +5,10 @@
 
 var _recSettingsTemplates = [];
 
-// Sub-navegación dentro de Configuración (Plantillas / Envío automático).
+// Sub-navegación dentro de Configuración (Plantillas / Trazabilidad / Envío automático).
 function switchRecSettingsTab(sub) {
-  var panels = { templates: 'recSetPanelTemplates', reglas: 'recSetPanelReglas' };
-  var btns = { templates: 'recSetBtnTemplates', reglas: 'recSetBtnReglas' };
+  var panels = { templates: 'recSetPanelTemplates', traza: 'recSetPanelTraza', reglas: 'recSetPanelReglas' };
+  var btns = { templates: 'recSetBtnTemplates', traza: 'recSetBtnTraza', reglas: 'recSetBtnReglas' };
   Object.keys(panels).forEach(function(key) {
     var p = document.getElementById(panels[key]);
     if (p) p.style.display = (key === sub) ? '' : 'none';
@@ -18,6 +18,40 @@ function switchRecSettingsTab(sub) {
       b.style.color = (key === sub) ? '#607D8B' : '#999';
     }
   });
+  if (sub === 'traza') loadRecEnviosTraza();
+}
+
+// Trazabilidad: historial global de envíos de informe por correo.
+async function loadRecEnviosTraza() {
+  var cont = document.getElementById('recSetTrazaLista');
+  if (!cont) return;
+  cont.innerHTML = '<div class="muted" style="font-size:12px;">Cargando…</div>';
+  var data = await apiGet('/admin/correo-envios');
+  var lista = Array.isArray(data) ? data : [];
+  if (lista.length === 0) {
+    cont.innerHTML = '<div class="muted" style="font-size:12px;">Aún no se ha enviado ningún informe por correo.</div>';
+    return;
+  }
+  var html = '<table style="width:100%; font-size:12px; border-collapse:collapse;">'
+    + '<thead><tr style="text-align:left; color:#888; border-bottom:1px solid #eee;">'
+    + '<th style="padding:6px 8px;">Estado</th><th style="padding:6px 8px;">Reclamo</th>'
+    + '<th style="padding:6px 8px;">Destinatarios</th><th style="padding:6px 8px;">Enviado por</th>'
+    + '<th style="padding:6px 8px;">Fecha</th></tr></thead><tbody>';
+  lista.forEach(function(e) {
+    var ok = e.estado === 'enviado';
+    var badge = ok
+      ? '<span style="color:#2e7d32; font-weight:600;">✓ Enviado</span>'
+      : '<span style="color:#c62828; font-weight:600;" title="' + _recSetEsc(e.error || '') + '">✕ Falló</span>';
+    html += '<tr style="border-bottom:1px solid #f5f5f5;">'
+      + '<td style="padding:6px 8px;">' + badge + '</td>'
+      + '<td style="padding:6px 8px;">' + _recSetEsc(e.correlativo || ('#' + e.reclamo_id)) + '</td>'
+      + '<td style="padding:6px 8px;">' + _recSetEsc(e.destinatarios || '') + '</td>'
+      + '<td style="padding:6px 8px;">' + _recSetEsc(e.enviado_por || '') + '</td>'
+      + '<td style="padding:6px 8px; white-space:nowrap;">' + _recSetEsc((e.fecha || '').substring(0, 16).replace('T', ' ')) + '</td>'
+      + '</tr>';
+  });
+  html += '</tbody></table>';
+  cont.innerHTML = html;
 }
 
 // Entry point del tab (llamado desde el botón de nivel 1).

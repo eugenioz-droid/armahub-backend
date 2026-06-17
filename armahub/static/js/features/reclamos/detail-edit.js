@@ -23,6 +23,104 @@ function descargarPdfReclamo() {
     });
 }
 
+// ===== Envío de informe por correo (5B) =====
+
+async function abrirEnviarInformeModal() {
+  if (!_reclamoActual) return;
+  var id = _reclamoActual.id;
+  var msg = document.getElementById('enviarInformeMsg');
+  msg.textContent = '';
+  document.getElementById('enviarInformeManual').value = '';
+
+  // Pre-cargar asunto/cuerpo desde la plantilla 'informe_validado' (si existe).
+  var asuntoDefault = 'Informe de Reclamo';
+  var cuerpoDefault = 'Estimado/a,\n\nAdjuntamos el informe del reclamo correspondiente.\n\nSaludos,\nEquipo de Calidad — Armacero';
+  try {
+    var tpls = await apiGet('/admin/correo-templates');
+    var tpl = (tpls || []).filter(function(t) { return t.clave === 'informe_validado'; })[0];
+    if (tpl) { asuntoDefault = tpl.asunto || asuntoDefault; cuerpoDefault = tpl.cuerpo || cuerpoDefault; }
+  } catch (e) { /* si falla, usa los defaults */ }
+  document.getElementById('enviarInformeAsunto').value = asuntoDefault;
+  document.getElementById('enviarInformeCuerpo').value = cuerpoDefault;
+
+  // Cargar involucrados del proyecto (todos tildados por defecto).
+  var cont = document.getElementById('enviarInformeInvolucrados');
+  cont.innerHTML = '<div class="muted" style="font-size:12px;">Cargando…</div>';
+  document.getElementById('enviarInformeModal').style.display = 'block';
+  try {
+    var data = await apiGet('/reclamos/' + id + '/involucrados');
+    var lista = (data && data.data) || [];
+    if (lista.length === 0) {
+      cont.innerHTML = '<div class="muted" style="font-size:12px;">El proyecto no tiene involucrados cargados. Usa el campo de correos manuales.</div>';
+    } else {
+      cont.innerHTML = lista.map(function(u) {
+        return '<label style="display:block; font-size:12px; padding:2px 0; cursor:pointer;">'
+          + '<input type="checkbox" class="enviar-informe-dest" value="' + u.email + '" checked style="margin-right:6px;" />'
+          + u.display + ' <span class="muted">(' + u.email + (u.rol ? ' · ' + u.rol : '') + ')</span></label>';
+      }).join('');
+    }
+  } catch (e) {
+    cont.innerHTML = '<div class="muted" style="font-size:12px; color:#b42318;">No se pudieron cargar los involucrados.</div>';
+  }
+}
+
+function cerrarEnviarInformeModal() {
+  document.getElementById('enviarInformeModal').style.display = 'none';
+}
+
+async function confirmarEnviarInforme() {
+  if (!_reclamoActual) return;
+  var msg = document.getElementById('enviarInformeMsg');
+  var dests = [];
+  document.querySelectorAll('.enviar-informe-dest:checked').forEach(function(cb) { dests.push(cb.value); });
+  var manual = document.getElementById('enviarInformeManual').value.split(',');
+  manual.forEach(function(m) { var e = m.trim(); if (e) dests.push(e); });
+  // Únicos
+  dests = dests.filter(function(v, i) { return dests.indexOf(v) === i; });
+  if (dests.length === 0) { msg.textContent = 'Selecciona o agrega al menos un destinatario'; msg.style.color = '#b42318'; return; }
+
+  msg.textContent = 'Enviando...'; msg.style.color = '#666';
+  var body = {
+    destinatarios: dests,
+    asunto: document.getElementById('enviarInformeAsunto').value,
+    cuerpo: document.getElementById('enviarInformeCuerpo').value.replace(/\n/g, '<br>'),
+    template_clave: 'informe_validado'
+  };
+  var res = await fetch(apiUrl('/reclamos/' + _reclamoActual.id + '/enviar-informe'), {
+    method: 'POST',
+    headers: Object.assign({}, authHeaders(), { 'Content-Type': 'application/json' }),
+    body: JSON.stringify(body)
+  });
+  if (res.status === 401) { logout(); return; }
+  var data = await res.json();
+  if (res.ok && data.ok) {
+    msg.textContent = '✓ Enviado a ' + data.destinatarios.length + ' destinatario(s)'; msg.style.color = '#2e7d32';
+    setTimeout(cerrarEnviarInformeModal, 1500);
+    if (typeof _cargarEnviosReclamo === 'function') _cargarEnviosReclamo(_reclamoActual.id);
+  } else {
+    msg.textContent = 'Error: ' + (data.detail || 'no se pudo enviar'); msg.style.color = '#b42318';
+  }
+}
+
+// Historial de envíos en el detalle (solo admin/admin_calidad).
+async function _cargarEnviosReclamo(id) {
+  var section = document.getElementById('recEnviosSection');
+  var cont = document.getElementById('recEnviosLista');
+  if (!section || !cont) return;
+  if (currentRole !== 'admin' && currentRole !== 'admin_calidad') { section.style.display = 'none'; return; }
+  try {
+    var data = await apiGet('/reclamos/' + id + '/envios');
+    var lista = (data && data.data) || [];
+    if (lista.length === 0) { section.style.display = 'none'; return; }
+    section.style.display = '';
+    cont.innerHTML = lista.map(function(e) {
+      var estado = e.estado === 'enviado' ? '✓' : '✕';
+      return '<div style="padding:2px 0;">' + estado + ' ' + (e.fecha || '') + ' — ' + (e.destinatarios || '')
+        + ' <span class="muted">(' + (e.enviado_por || '') + ')</span></div>';
+    }).join('');
+  } catch (e) { section.style.display = 'none'; }
+}
+
 // Editar reclamo — enruta al form correcto según tipo_origen. Internos y
 // externos tienen formularios SEPARADOS (5I.19.2): no comparten campos ni lógica.
 function toggleEditarReclamo() {

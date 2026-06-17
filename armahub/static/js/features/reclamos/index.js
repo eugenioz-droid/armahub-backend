@@ -158,7 +158,10 @@
     'seleccionarReclamoPres',
     'guardarPresentacion',
     'loadPresStats',
-    'descargarPdfReclamo'
+    'descargarPdfReclamo',
+    'abrirEnviarInformeModal',
+    'cerrarEnviarInformeModal',
+    'confirmarEnviarInforme'
   ];
 
   allExports.forEach(function(name) {

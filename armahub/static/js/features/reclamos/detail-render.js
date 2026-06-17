@@ -180,6 +180,8 @@ function _renderReclamoDetail(data) {
   _renderReclamoValidacion(data);
   _renderReclamoAssets(data);
   _applyReclamoDetailPermissions(data);
+  // Historial de envíos del informe (solo admin/admin_calidad; la función decide).
+  if (typeof _cargarEnviosReclamo === 'function') _cargarEnviosReclamo(data.id);
   openReclamoModal(card);
   card.scrollTop = 0;
 }

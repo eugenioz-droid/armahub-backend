@@ -276,7 +276,7 @@
           </div>
           <button id="btnEliminarReclamo" class="danger" style="font-size:10px; padding:2px 10px; display:none;" onclick="eliminarReclamo()">🗑️ Eliminar</button>
           <button id="btnPdfReclamo" style="font-size:10px; padding:2px 10px; background:#1565c0; color:#fff; border:none; border-radius:4px; cursor:pointer; display:none;" onclick="descargarPdfReclamo()" title="Descargar informe PDF">📄 PDF</button>
-          <button id="btnEnviarReclamo" style="font-size:10px; padding:2px 10px; background:#e0e0e0; color:#999; border:none; border-radius:4px; cursor:default; display:none;" title="Enviar por correo (próximamente)">📧 Enviar</button>
+          <button id="btnEnviarReclamo" style="font-size:10px; padding:2px 10px; background:#2e7d32; color:#fff; border:none; border-radius:4px; cursor:pointer; display:none;" onclick="abrirEnviarInformeModal()" title="Enviar informe por correo">📧 Enviar</button>
         </div>
       </div>
       <!-- ============ SECCIÓN 1: ANTECEDENTES ============ -->
@@ -636,6 +636,12 @@
           <button onclick="agregarSeguimiento()" style="font-size:11px; white-space:nowrap;">+ Agregar</button>
         </div>
         <div id="recSeguimientoMsg" style="margin-top:4px; font-size:11px;"></div>
+      </div>
+
+      <!-- Historial de envíos del informe por correo (solo admin/admin_calidad) -->
+      <div id="recEnviosSection" style="display:none; margin-top:10px; padding:8px 10px; background:#e8f5e9; border:1px solid #c8e6c9; border-radius:6px;">
+        <label style="font-size:11px; color:#2e7d32; font-weight:600;">📧 Envíos del informe</label>
+        <div id="recEnviosLista" style="font-size:11px; margin-top:4px;"></div>
       </div>
     </div>
     <!-- Modal backdrop for detail & create modals -->
@@ -1030,6 +1036,37 @@
       </div>
     </div><!-- /recTabPresentaciones -->
 
+  </div>
+
+  <!-- MODAL ENVIAR INFORME POR CORREO (5B) -->
+  <div id="enviarInformeModal" onclick="if(event.target===this)cerrarEnviarInformeModal()" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.6); z-index:9999; overflow-y:auto;">
+    <div style="margin:30px auto; max-width:640px; background:#fff; border-radius:12px; padding:20px; position:relative;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
+        <h3 style="margin:0; color:#2e7d32;">📧 Enviar informe por correo</h3>
+        <button onclick="cerrarEnviarInformeModal()" style="background:none; border:none; font-size:20px; cursor:pointer; padding:4px 8px;">✕</button>
+      </div>
+      <p class="muted" style="font-size:12px; margin:0 0 12px 0;">Se adjunta el PDF del informe del reclamo. Marca los destinatarios y revisa el mensaje antes de enviar.</p>
+
+      <label style="font-size:12px; font-weight:600; color:#444;">Destinatarios (involucrados del proyecto)</label>
+      <div id="enviarInformeInvolucrados" style="margin:6px 0 8px 0; max-height:160px; overflow-y:auto; border:1px solid #eee; border-radius:6px; padding:8px;">
+        <div class="muted" style="font-size:12px;">Cargando…</div>
+      </div>
+
+      <label style="font-size:12px; font-weight:600; color:#444;">Agregar correos manualmente</label>
+      <input type="text" id="enviarInformeManual" placeholder="correo1@ejemplo.com, correo2@ejemplo.com" style="width:100%; font-size:12px; margin:4px 0 10px 0;" />
+
+      <label style="font-size:12px; font-weight:600; color:#444;">Asunto</label>
+      <input type="text" id="enviarInformeAsunto" style="width:100%; font-size:12px; margin:4px 0 10px 0;" />
+
+      <label style="font-size:12px; font-weight:600; color:#444;">Mensaje</label>
+      <textarea id="enviarInformeCuerpo" rows="6" style="width:100%; font-size:12px; resize:vertical; margin:4px 0 12px 0; font-family:inherit;"></textarea>
+
+      <div style="display:flex; gap:8px; align-items:center;">
+        <button onclick="confirmarEnviarInforme()" style="font-size:13px; padding:7px 18px; background:#2e7d32; color:#fff; border:none; border-radius:6px; cursor:pointer;">Enviar</button>
+        <button class="secondary" onclick="cerrarEnviarInformeModal()" style="font-size:13px; padding:7px 14px;">Cancelar</button>
+        <span id="enviarInformeMsg" class="muted" style="font-size:12px;"></span>
+      </div>
+    </div>
   </div>
 
   <!-- MODAL ISHIKAWA -->

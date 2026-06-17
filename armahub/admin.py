@@ -699,3 +699,27 @@ def eliminar_correo_template(template_id: int, user=Depends(require_admin_or_adm
         conn.commit()
     audit(user.get("email", ""), "eliminar_correo_template", str(template_id), "correo_template", "")
     return {"ok": True}
+
+
+@router.get("/admin/correo-envios")
+def listar_correo_envios(user=Depends(require_admin_or_admin_calidad)):
+    """Historial global de envíos de informe por correo (trazabilidad para el panel
+    de Configuración de Calidad). Incluye el correlativo del reclamo asociado."""
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT e.id, e.reclamo_id, e.enviado_por, e.destinatarios, e.asunto,
+                       e.estado, e.error, e.fecha,
+                       COALESCE(r.correlativo, '#' || e.reclamo_id) AS correlativo
+                FROM reclamo_envios e
+                LEFT JOIN reclamos r ON r.id = e.reclamo_id
+                ORDER BY e.fecha DESC, e.id DESC
+                LIMIT 200
+            """)
+            rows = cur.fetchall()
+    return [
+        {"id": r[0], "reclamo_id": r[1], "enviado_por": r[2], "destinatarios": r[3],
+         "asunto": r[4], "estado": r[5], "error": r[6],
+         "fecha": str(r[7]) if r[7] else None, "correlativo": r[8]}
+        for r in rows
+    ]
