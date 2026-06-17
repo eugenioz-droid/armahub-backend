@@ -35,8 +35,9 @@ async function initRecCierre() {
   sel.innerHTML = '<option value="">Todos</option>' + aniosOrden.map(function(a) {
     return '<option value="' + a + '">' + a + '</option>';
   }).join('');
-  // Por defecto el año más reciente (evita que colapse con muchos)
-  if (aniosOrden.length > 0) sel.value = String(aniosOrden[0]);
+  // Default "Todos": así se ven todos los cerrados de entrada (incluidos legacy
+  // sin año). El admin filtra por año si la lista crece mucho.
+  sel.value = '';
   renderRecCierreLista();
 }
 
