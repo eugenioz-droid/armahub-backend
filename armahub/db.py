@@ -1230,6 +1230,25 @@ MIGRATIONS = [
             '<p>Estimado/a,</p><p>Adjuntamos el informe del reclamo <strong>{{correlativo}}</strong> correspondiente a la obra <strong>{{proyecto}}</strong>.</p><p>Saludos,<br>Equipo de Calidad - Armacero</p>'
         ) ON CONFLICT (clave) DO NOTHING""",
     ]),
+
+    # --- Migration 75: avisos automáticos (motor, parte 1) ---
+    # Columna 'evento' en reclamo_envios para distinguir manual vs automático en la
+    # trazabilidad + plantillas semilla de los 2 eventos automáticos iniciales.
+    (75, "correo: columna evento en reclamo_envios + plantillas aviso externo/interno", [
+        "DO $$ BEGIN ALTER TABLE reclamo_envios ADD COLUMN evento TEXT DEFAULT 'informe_manual'; EXCEPTION WHEN duplicate_column THEN NULL; END $$;",
+        """INSERT INTO correo_templates (clave, nombre, asunto, cuerpo) VALUES (
+            'aviso_reclamo_externo',
+            'Aviso: reclamo externo creado',
+            'Nuevo reclamo {{correlativo}} - {{proyecto}}',
+            '<p>Estimado/a,</p><p>Se ha registrado el reclamo <strong>{{correlativo}}</strong> de la obra <strong>{{proyecto}}</strong>: {{titulo}}.</p><p>Ingresa a la plataforma ArmaHub para gestionarlo.</p><p>Saludos,<br>Equipo de Calidad - Armacero</p>'
+        ) ON CONFLICT (clave) DO NOTHING""",
+        """INSERT INTO correo_templates (clave, nombre, asunto, cuerpo) VALUES (
+            'aviso_reclamo_interno',
+            'Aviso: reclamo interno creado',
+            'Nuevo reclamo interno {{correlativo}}',
+            '<p>Estimado/a,</p><p>Se ha registrado un reclamo interno <strong>{{correlativo}}</strong> dirigido a tu área: {{titulo}}.</p><p>Ingresa a la plataforma ArmaHub para gestionarlo.</p><p>Saludos,<br>Equipo de Calidad - Armacero</p>'
+        ) ON CONFLICT (clave) DO NOTHING""",
+    ]),
 ]
 
 

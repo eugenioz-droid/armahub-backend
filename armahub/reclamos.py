@@ -2853,3 +2853,107 @@ def enviar_informe_reclamo(reclamo_id: int, body: EnviarInformeIn, user=Depends(
     if estado_envio == "fallido":
         raise HTTPException(status_code=502, detail=f"No se pudo enviar el correo: {error_txt}")
     return {"ok": True, "message_id": message_id, "destinatarios": destinatarios}
+
+
+# ===== Motor de avisos automáticos (Parte 1, sin disparo aún) =====
+
+def _emails_jefa_calidad(cur) -> list:
+    """Correos de usuarios con rol admin_calidad (la 'Jefa de Calidad')."""
+    cur.execute("SELECT email FROM users WHERE role = 'admin_calidad' AND activo = TRUE")
+    return [r[0] for r in cur.fetchall() if r[0]]
+
+
+def _destinatarios_aviso_reclamo(cur, rec: dict) -> dict:
+    """Calcula los destinatarios del aviso automático de un reclamo según su tipo.
+    Devuelve {'asignado':..., 'creador':..., 'jefa_calidad':[...]} con emails (o None).
+    - EXTERNO: responsable asignado (cubicador_asignado) + jefa calidad + USC creador.
+    - INTERNO: jefe del área destino + jefa calidad + creador.
+    Roles relativos al reclamo, no genéricos."""
+    es_interno = (rec.get("tipo_origen") == "interno")
+    if es_interno:
+        asignado = _jefe_servicio_de_area(cur, rec.get("area_id"))
+    else:
+        asignado = rec.get("cubicador_asignado")
+    return {
+        "asignado": asignado,
+        "creador": rec.get("creado_por"),
+        "jefa_calidad": _emails_jefa_calidad(cur),
+    }
+
+
+def _enviar_aviso_reclamo(reclamo_id: int, enviado_por: str = "sistema",
+                          incluir: dict = None) -> dict:
+    """Envía el aviso automático de un reclamo (sin PDF). Calcula destinatarios por
+    tipo, usa la plantilla del evento y registra en trazabilidad con el evento.
+    `incluir` permite (Parte 2) destildar roles: {'asignado':bool,'creador':bool,
+    'jefa_calidad':bool}; por defecto todos True. Devuelve {ok, destinatarios}.
+    NO se dispara solo todavía — lo llamará la Parte 3 (creación + warning)."""
+    incluir = incluir or {"asignado": True, "creador": True, "jefa_calidad": True}
+    with get_conn() as conn:
+        with conn.cursor(row_factory=dict_row) as cur:
+            cur.execute("""
+                SELECT r.*, COALESCE(p.nombre_proyecto, r.id_proyecto, '') AS nombre_proyecto
+                FROM reclamos r LEFT JOIN proyectos p ON p.id_proyecto = r.id_proyecto
+                WHERE r.id = %s
+            """, (reclamo_id,))
+            rec = cur.fetchone()
+            if not rec:
+                raise HTTPException(status_code=404, detail="Reclamo no encontrado")
+
+            es_interno = (rec.get("tipo_origen") == "interno")
+            evento = "aviso_reclamo_interno" if es_interno else "aviso_reclamo_externo"
+
+            dest_map = _destinatarios_aviso_reclamo(cur, rec)
+            destinatarios = []
+            if incluir.get("asignado") and dest_map["asignado"]:
+                destinatarios.append(dest_map["asignado"])
+            if incluir.get("creador") and dest_map["creador"]:
+                destinatarios.append(dest_map["creador"])
+            if incluir.get("jefa_calidad"):
+                destinatarios.extend(dest_map["jefa_calidad"])
+            # Únicos, sin vacíos
+            destinatarios = [d for i, d in enumerate(destinatarios) if d and d not in destinatarios[:i]]
+
+            # Plantilla del evento
+            cur.execute("SELECT asunto, cuerpo FROM correo_templates WHERE clave = %s", (evento,))
+            trow = cur.fetchone()
+            asunto = _render_template_vars((trow["asunto"] if trow else "Aviso de reclamo {{correlativo}}"), rec)
+            cuerpo = _render_template_vars((trow["cuerpo"] if trow else "<p>Se registró un reclamo.</p>"), rec)
+
+    if not destinatarios:
+        # Sin destinatarios válidos: no se envía (decisión de fallback pendiente).
+        return {"ok": False, "destinatarios": [], "motivo": "sin_destinatarios"}
+
+    estado_envio = "enviado"
+    error_txt = None
+    message_id = None
+    try:
+        from .mailer import send_email
+        resp = send_email(to=destinatarios, subject=asunto, html=cuerpo)
+        message_id = resp.get("id") if isinstance(resp, dict) else None
+    except Exception as exc:
+        estado_envio = "fallido"
+        error_txt = str(exc)
+
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO reclamo_envios (reclamo_id, enviado_por, destinatarios, asunto, estado, message_id, error, evento)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            """, (reclamo_id, enviado_por, ", ".join(destinatarios), asunto, estado_envio, message_id, error_txt, evento))
+        conn.commit()
+
+    return {"ok": estado_envio == "enviado", "destinatarios": destinatarios,
+            "estado": estado_envio, "error": error_txt}
+
+
+@router.post("/reclamos/{reclamo_id}/aviso-automatico")
+def disparar_aviso_reclamo(reclamo_id: int, user=Depends(get_current_user)):
+    """Dispara MANUALMENTE el aviso automático de un reclamo (para probar el motor
+    mientras no esté el disparo en la creación, Parte 3). Solo admin/admin_calidad."""
+    if user.get("role") not in ("admin", "admin_calidad"):
+        raise HTTPException(status_code=403, detail="Solo Calidad puede disparar avisos")
+    res = _enviar_aviso_reclamo(reclamo_id, enviado_por=user.get("email", "sistema"))
+    audit(user.get("email", ""), "aviso_automatico_reclamo", str(reclamo_id), "reclamo",
+          ", ".join(res.get("destinatarios", [])))
+    return res

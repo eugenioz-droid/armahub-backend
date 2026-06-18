@@ -7,6 +7,49 @@ con control claro para el admin de calidad. NO empezar a codear el motor sin aco
 
 ---
 
+## 0. AVISOS AUTOMÁTICOS — definición acordada (2026-06-17)
+
+**Canal correo = independiente de la campanita in-app** (esta última aporta poco; no se
+toca ni se depende de ella). El correo es su propio canal para avisar a la gente que
+entre a la plataforma a tratar sus reclamos.
+
+**Dos eventos automáticos iniciales (la lista crecerá):**
+
+| Evento | Destinatarios (derivados del reclamo) |
+|---|---|
+| **Reclamo EXTERNO creado** | Responsable asignado · Jefa de Calidad (`admin_calidad`) · USC creador |
+| **Reclamo INTERNO creado** | Jefe del área destino · Jefa de Calidad · Creador |
+
+Los destinatarios son **roles relativos al reclamo** (el asignado de ESE reclamo, el
+creador de ESE reclamo), no roles genéricos. Cada uno será destildable por evento en el
+tab "Envío automático" (2ª parte).
+
+**Disparo:** al CREAR el reclamo, con **warning de confirmación** en pantalla (muestra a
+quién se enviará). El envío NO es silencioso: el USC confirma.
+
+**Tres conceptos separados (NO mezclar):**
+- **Plantilla** = el contenido (qué dice). Una por evento. → tab Plantillas.
+- **Regla** = cuándo y a quién (evento → destinatarios destildables). → tab Envío automático.
+- **Cierre Reclamos** = envío manual del informe (ya implementado). → tab Cierre Reclamos.
+→ Esto justifica el 3er tab: "qué dice" (plantilla) y "a quién/cuándo" (regla) son distintos.
+
+**DECISIONES ABIERTAS (no implementar hasta resolver — el usuario quiere darles una vuelta):**
+1. Qué pasa si el USC NO confirma el envío: idea = no se crea el reclamo PERO no perder lo
+   ingresado en el formulario; quizás un estado "no enviado" o dejar la línea pendiente.
+   UX por madurar.
+2. Destinatario faltante (área sin jefe / usuario sin correo): "no debería ocurrir";
+   idea = caer a Jefa de Calidad. Revisar bien después.
+
+**Plan por partes (acordado):**
+- **Parte 1 (MOTOR, ahora):** helper que dado un reclamo calcula destinatarios por tipo y
+  envía con su plantilla + registra en trazabilidad. Plantillas semilla de los 2 eventos.
+  Destinatarios FIJOS por tipo (aún sin destildar). NO incluye el warning ni el disparo
+  automático en la creación (eso depende de la decisión abierta #1).
+- **Parte 2:** tab "Envío automático" para destildar roles por evento (configurable).
+- **Parte 3:** enganchar el disparo en la creación + warning, una vez resuelta la UX (#1).
+
+---
+
 ## 1. Hallazgo: ya existe una arquitectura de eventos
 
 El sistema YA tiene la base correcta, hoy usada solo para avisos in-app:
