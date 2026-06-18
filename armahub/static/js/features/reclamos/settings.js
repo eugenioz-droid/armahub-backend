@@ -64,18 +64,23 @@ function renderRecCierreLista() {
   var html = '<table style="width:100%; font-size:12px; border-collapse:collapse;">'
     + '<thead><tr style="text-align:left; color:#888; border-bottom:1px solid #eee;">'
     + '<th style="padding:6px 8px;">Reclamo</th><th style="padding:6px 8px;">Obra</th>'
-    + '<th style="padding:6px 8px;">Envío</th></tr></thead><tbody>';
+    + '<th style="padding:6px 8px;">Envío</th><th style="padding:6px 8px; text-align:right;"></th></tr></thead><tbody>';
   lista.forEach(function(r) {
     var enviado = r.envios_ok > 0;
     var estado = enviado
       ? '<span style="color:#2e7d32; font-weight:600;">✓ Enviado</span> <span class="muted">(' + (r.ultimo_envio || '').substring(0, 10) + ')</span>'
       : '<span style="color:#e65100; font-weight:600;">Pendiente</span>';
-    // La fila abre el MODAL DE DETALLE (revisar antes de enviar), igual que
-    // Validaciones. El botón de enviar vive dentro del modal, en contexto 'cierre'.
-    html += '<tr style="border-bottom:1px solid #f5f5f5; cursor:pointer;" onclick="_abrirReclamoDesdeCierre(' + r.id + ')" title="Ver ficha y enviar informe">'
+    // Clic en la fila → abre el modal de DETALLE (revisar). Botón al final →
+    // abre directo el modal de ENVÍO (sin pasar por el detalle). stopPropagation
+    // para que el botón no dispare también la apertura del detalle.
+    var btn = '<button style="font-size:11px; padding:3px 12px; background:#2e7d32; color:#fff; border:none; border-radius:4px; cursor:pointer;" '
+      + 'onclick="event.stopPropagation(); abrirEnviarInformeModal(' + r.id + ', ' + (enviado ? 'true' : 'false') + ')">'
+      + (enviado ? 'Reenviar' : 'Enviar') + '</button>';
+    html += '<tr style="border-bottom:1px solid #f5f5f5; cursor:pointer;" onclick="_abrirReclamoDesdeCierre(' + r.id + ')" title="Ver ficha del reclamo">'
       + '<td style="padding:6px 8px;"><strong>' + _recSetEsc(r.correlativo) + '</strong> ' + _recSetEsc((r.titulo || '').substring(0, 40)) + '</td>'
       + '<td style="padding:6px 8px;">' + _recSetEsc(r.proyecto || '—') + '</td>'
       + '<td style="padding:6px 8px;">' + estado + '</td>'
+      + '<td style="padding:6px 8px; text-align:right;">' + btn + '</td>'
       + '</tr>';
   });
   html += '</tbody></table>';

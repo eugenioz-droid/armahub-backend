@@ -39,10 +39,17 @@ async function enviarInformeDesdeDetalle() {
   abrirEnviarInformeModal(_reclamoActual.id, yaEnviado);
 }
 
+var _enviarInformeReparented = false;
 async function abrirEnviarInformeModal(reclamoId, yaEnviado) {
   var id = reclamoId || (_reclamoActual && _reclamoActual.id);
   if (!id) return;
   _enviarInformeReclamoId = id;
+  // El modal vive dentro de tab-reclamos; al abrirse desde el tab Mailing ese
+  // contenedor está oculto. Lo movemos a body una vez para que flote globalmente.
+  if (!_enviarInformeReparented) {
+    var m = document.getElementById('enviarInformeModal');
+    if (m) { document.body.appendChild(m); _enviarInformeReparented = true; }
+  }
   var msg = document.getElementById('enviarInformeMsg');
   msg.textContent = '';
   document.getElementById('enviarInformeManual').value = '';
