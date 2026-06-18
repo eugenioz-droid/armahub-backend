@@ -1211,11 +1211,15 @@ def reclamos_cerrados_envio(user=Depends(get_current_user)):
                        COALESCE(r.correlativo, '#' || r.id) AS correlativo,
                        r.titulo,
                        COALESCE(p.nombre_proyecto, r.id_proyecto, '') AS proyecto,
-                       -- Año: usa anio_calidad; si no, extrae de fecha_creacion.
-                       -- fecha_creacion es TEXT ISO → castear ::timestamp ANTES de
-                       -- EXTRACT (mismo patrón que las demás queries; sin el cast la
-                       -- query fallaba y la lista salía vacía con reclamos viejos).
-                       COALESCE(r.anio_calidad, EXTRACT(YEAR FROM r.fecha_creacion::timestamp)::int) AS anio,
+                       -- Año: usa anio_calidad; si no, los 4 primeros chars de
+                       -- fecha_creacion (TEXT ISO 'YYYY-...'), solo si son 4 dígitos.
+                       -- Inmune al formato: nada de ::timestamp ni ::int sobre texto
+                       -- arbitrario (eso tumbaba la query con reclamos legacy → lista vacía).
+                       COALESCE(
+                           r.anio_calidad,
+                           CASE WHEN LEFT(COALESCE(r.fecha_creacion,''), 4) ~ '^[0-9]{4}$'
+                                THEN LEFT(r.fecha_creacion, 4)::int END
+                       ) AS anio,
                        r.tipo_origen,
                        (SELECT COUNT(*) FROM reclamo_envios e
                         WHERE e.reclamo_id = r.id AND e.estado = 'enviado') AS envios_ok,
