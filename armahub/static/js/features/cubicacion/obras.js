@@ -801,14 +801,22 @@ async function crearObra() {
   if (calcId) body.calculista_id = parseInt(calcId);
   if (clienteId) body.constructora_id = parseInt(clienteId);
   if (descEl && descEl.value.trim()) body.descripcion = descEl.value.trim();
-  const res = await fetch(apiUrl('/proyectos'), {
-    method: 'POST',
-    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
-    body: JSON.stringify(body)
-  });
+  let res, data;
+  try {
+    res = await fetch(apiUrl('/proyectos'), {
+      method: 'POST',
+      headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+  } catch (e) {
+    msg.innerHTML = '<span class="status-err">Error de conexión al crear la obra</span>';
+    return;
+  }
   if (res.status === 401) { logout(); return; }
-  const data = await res.json();
-  if (data.ok) {
+  // Blindaje: ante error (403/500) el body puede no ser JSON válido → no dejar
+  // el modal colgado en "Creando..."; mostrar el detalle del error.
+  try { data = await res.json(); } catch (e) { data = null; }
+  if (res.ok && data && data.ok) {
     closeCrearObraModal();
     await setGlobalStatus('✅ Obra creada: ' + data.nombre_proyecto, 'ok');
     await loadProyectos();
@@ -819,7 +827,8 @@ async function crearObra() {
     await loadInicio();
     await loadMiActividad();
   } else {
-    msg.innerHTML = '<span class="status-err">Error: ' + (data.detail || data.error || 'desconocido') + '</span>';
+    var detalle = (data && (data.detail || data.error)) || ('Error ' + res.status);
+    msg.innerHTML = '<span class="status-err">Error: ' + detalle + '</span>';
   }
 }
 

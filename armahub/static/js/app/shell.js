@@ -139,6 +139,14 @@
       });
     }
 
+    if (mod === 'cubicacion') {
+      // Crear obra solo admin/admin_calidad (decisión 2026-06-18). El backend
+      // valida igual; aquí solo se muestra/oculta el botón.
+      var puedeCrearObra = ['admin', 'admin_calidad'].indexOf(window.currentRole) !== -1;
+      var btnCrearObra = document.getElementById('btnCrearObra');
+      if (btnCrearObra) btnCrearObra.style.display = puedeCrearObra ? '' : 'none';
+    }
+
     if (mod === 'reclamos') {
       var puedeCrear = ['admin', 'admin_calidad', 'usc'].indexOf(window.currentRole) !== -1;
       var crearCard = document.getElementById('crearReclamoCard');

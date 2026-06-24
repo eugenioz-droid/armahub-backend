@@ -81,6 +81,14 @@ def require_role(*allowed_roles):
 # Shared role→project-role map (used by barras, importer, etc.)
 ROL_MAP = {"admin": "admin", "admin_calidad": "admin", "jefe_servicio": "jefe_servicio", "miembro": "miembro", "cliente": "cliente", "cubicador": "cubicador", "usc": "usc", "externo": "externo"}
 
+# Roles válidos en proyecto_usuarios.rol (CHECK legacy migración 31). Los roles
+# nuevos (miembro/jefe_servicio) no existen ahí → se mapean a 'cubicador' para no
+# violar el constraint. Usar SOLO al escribir en proyecto_usuarios.
+_PROYECTO_USUARIOS_ROLES = ("admin", "usc", "cubicador", "externo", "cliente")
+def _rol_proyecto_usuarios(role: str) -> str:
+    mapped = ROL_MAP.get(role or "", "cubicador")
+    return mapped if mapped in _PROYECTO_USUARIOS_ROLES else "cubicador"
+
 
 @router.post("/auth/login")
 def login(email: str, password: str):

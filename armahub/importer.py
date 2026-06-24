@@ -21,7 +21,7 @@ from typing import Optional
 import uuid
 
 from .db import get_conn, audit
-from .auth import get_current_user, ROL_MAP
+from .auth import get_current_user, ROL_MAP, _rol_proyecto_usuarios
 from . import cache as _cache
 
 router = APIRouter()
@@ -360,11 +360,14 @@ async def import_armadetailer(
                         INSERT INTO proyectos (id_proyecto, nombre_proyecto, usuario_creador, constructora_id)
                         VALUES (%s, %s, %s, %s)
                     """, (proyecto_id, proyecto_nombre, user.get("email", "unknown"), constructora_id))
-                    # Auto-add creator to proyecto_usuarios
+                    # Auto-add creator to proyecto_usuarios. proyecto_usuarios.rol
+                    # tiene un CHECK legacy que NO acepta 'miembro'/'jefe_servicio';
+                    # se mapean a 'cubicador' (rol equivalente en cubicación) para no
+                    # violar el constraint y colgar la importación.
                     cur.execute("SELECT id FROM users WHERE email = %s", (user.get("email"),))
                     creator_row = cur.fetchone()
                     if creator_row:
-                        rol = ROL_MAP.get(user.get('role', ''), 'cubicador')
+                        rol = _rol_proyecto_usuarios(user.get('role', ''))
                         cur.execute("""
                             INSERT INTO proyecto_usuarios (id_proyecto, user_id, rol)
                             VALUES (%s, %s, %s)

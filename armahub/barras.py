@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 import uuid
 import math
 from .db import get_conn, audit
-from .auth import get_current_user, ROL_MAP
+from .auth import get_current_user, ROL_MAP, _rol_proyecto_usuarios, _PROYECTO_USUARIOS_ROLES
 from . import cache as _cache
 
 router = APIRouter()
@@ -1544,7 +1544,13 @@ class MoverBarrasRequest(BaseModel):
 
 @router.post("/proyectos")
 def crear_proyecto(body: ProyectoCreate, user=Depends(get_current_user)):
-    """Crear una obra vacía manualmente (sin CSV)."""
+    """Crear una obra vacía manualmente (sin CSV).
+    Solo admin/admin_calidad: la creación de obras se centraliza en administración
+    (decisión 2026-06-18). Evita el cruce con proyecto_usuarios cuyo CHECK legacy no
+    acepta el rol 'miembro'. A futuro habrá un panel de administración de obras."""
+    role = user.get("role", "")
+    if role not in ("admin", "admin_calidad"):
+        raise HTTPException(status_code=403, detail="Solo administración puede crear obras. Contacta a un administrador.")
     import uuid
     id_proyecto = "PROY-" + uuid.uuid4().hex[:8].upper()
     email = user.get("email", "unknown")
@@ -1559,7 +1565,7 @@ def crear_proyecto(body: ProyectoCreate, user=Depends(get_current_user)):
             cur.execute("SELECT id FROM users WHERE email = %s", (email,))
             user_row = cur.fetchone()
             if user_row:
-                rol = ROL_MAP.get(user.get('role', ''), 'cubicador')
+                rol = _rol_proyecto_usuarios(user.get('role', ''))
                 cur.execute("""
                     INSERT INTO proyecto_usuarios (id_proyecto, user_id, rol)
                     VALUES (%s, %s, %s)
@@ -1700,12 +1706,14 @@ def autorizar_usuario(id_proyecto: str, body: AutorizarUsuarioRequest, user=Depe
             cur.execute("SELECT id FROM users WHERE id = %s", (body.user_id,))
             if not cur.fetchone():
                 raise HTTPException(status_code=404, detail="Usuario no encontrado")
+            # Asegurar que el rol pase el CHECK legacy de proyecto_usuarios.
+            rol_seguro = body.rol if body.rol in _PROYECTO_USUARIOS_ROLES else _rol_proyecto_usuarios(body.rol)
             cur.execute("""
                 INSERT INTO proyecto_usuarios (id_proyecto, user_id, rol)
                 VALUES (%s, %s, %s)
                 ON CONFLICT (id_proyecto, user_id) DO UPDATE SET rol = EXCLUDED.rol
-            """, (id_proyecto, body.user_id, body.rol))
-    return {"ok": True, "id_proyecto": id_proyecto, "user_id": body.user_id, "rol": body.rol}
+            """, (id_proyecto, body.user_id, rol_seguro))
+    return {"ok": True, "id_proyecto": id_proyecto, "user_id": body.user_id, "rol": rol_seguro}
 
 
 @router.delete("/proyectos/{id_proyecto}/autorizar/{user_id}")
