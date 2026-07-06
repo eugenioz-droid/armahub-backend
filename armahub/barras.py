@@ -32,23 +32,15 @@ def _puede_editar_proyecto(cur, id_proyecto: str, user: dict) -> bool:
     """Retorna True si el usuario es admin/admin_calidad o está en proyecto_usuarios."""
     email = user.get("email", "")
     role = user.get("role", "")
-    print(f"[_puede_editar_proyecto] Checking: email={email}, role={role}, id_proyecto={id_proyecto}")
-    
     if role in ("admin", "admin_calidad"):
-        print(f"[_puede_editar_proyecto] Admin access granted for {email}")
         return True
-    
     cur.execute("SELECT id FROM users WHERE email = %s", (email,))
     row = cur.fetchone()
     if not row:
-        print(f"[_puede_editar_proyecto] User {email} not found in users table")
         return False
     uid = row[0]
-    
     cur.execute("SELECT 1 FROM proyecto_usuarios WHERE id_proyecto = %s AND user_id = %s", (id_proyecto, uid))
-    has_access = cur.fetchone() is not None
-    print(f"[_puede_editar_proyecto] User {email} (uid={uid}) access to {id_proyecto}: {has_access}")
-    return has_access
+    return cur.fetchone() is not None
 
 BARRAS_COLUMNS = [
     "id_unico","id_proyecto","nombre_proyecto","plano_code","nombre_plano","sector","piso","ciclo","eje",
@@ -983,8 +975,14 @@ def delete_carga(carga_id: int, user=Depends(get_current_user)):
             archivo = row[2]
             uploader = row[5]
 
-            if not _puede_editar_proyecto(cur, id_proyecto, user) and uploader != user.get("email"):
-                raise HTTPException(status_code=403, detail="No tienes permiso para eliminar cargas de este proyecto")
+            # Borrar carga: solo quien la subió (o admin/admin_calidad). Por ahora
+            # NO se permite borrar cargas ajenas (decisión 2026-06-18; se flexibiliza
+            # más adelante). Antes bastaba con estar autorizado en la obra.
+            role = user.get("role", "")
+            es_admin = role in ("admin", "admin_calidad")
+            es_uploader = (uploader == user.get("email"))
+            if not es_admin and not es_uploader:
+                raise HTTPException(status_code=403, detail="Solo puedes eliminar cargas que tú subiste. Esta carga la realizó otro usuario.")
 
             # Eliminar barras por import_id (principio de inmutabilidad de la carga)
             cur.execute(
@@ -1017,69 +1015,65 @@ class BulkDeleteCargasRequest(BaseModel):
 
 @router.post("/cargas/bulk-delete")
 def bulk_delete_cargas(body: BulkDeleteCargasRequest, user=Depends(get_current_user)):
-    """Eliminar múltiples cargas a la vez."""
-    print(f"[bulk-delete] User: {user}, Role: {user.get('role')}, Email: {user.get('email')}")
-    print(f"[bulk-delete] Requested IDs: {body.ids}")
-    
+    """Eliminar múltiples cargas a la vez. Solo el uploader (o admin) puede borrar
+    cada carga; las que no correspondan se informan como 'sin permiso' para que el
+    front avise (antes se omitían en silencio y parecía que se borraban)."""
     if not body.ids:
         raise HTTPException(status_code=400, detail="No se proporcionaron IDs de cargas")
     if len(body.ids) > 100:
         raise HTTPException(status_code=400, detail="No se pueden eliminar más de 100 cargas a la vez")
-    
+
+    role = user.get("role", "")
+    es_admin = role in ("admin", "admin_calidad")
+    email = user.get("email")
+
     total_barras_eliminadas = 0
     cargas_eliminadas = 0
-    skipped_cargas = 0
-    
+    sin_permiso = 0
+    no_encontradas = 0
+
     try:
         with get_conn() as conn:
             with conn.cursor() as cur:
                 for carga_id in body.ids:
-                    try:
-                        cur.execute(
-                            "SELECT id, id_proyecto, archivo, fecha, barras_count, usuario FROM imports WHERE id = %s",
-                            (carga_id,)
-                        )
-                        row = cur.fetchone()
-                        if not row:
-                            skipped_cargas += 1
-                            continue  # Skip non-existent cargas
-                        
-                        id_proyecto = row[1]
-                        uploader = row[5]
-                        
-                        # Check permissions
-                        if not _puede_editar_proyecto(cur, id_proyecto, user) and uploader != user.get("email"):
-                            skipped_cargas += 1
-                            continue  # Skip cargas without permission
-                        
-                        # Delete barras
-                        cur.execute("DELETE FROM barras WHERE import_id = %s", (carga_id,))
-                        barras_eliminadas = cur.rowcount
-                        if barras_eliminadas == 0:
-                            fecha = row[3]
-                            cur.execute(
-                                "DELETE FROM barras WHERE id_proyecto = %s AND fecha_carga = %s",
-                                (id_proyecto, fecha)
-                            )
-                            barras_eliminadas = cur.rowcount
-                        
-                        total_barras_eliminadas += barras_eliminadas
-                        
-                        # Delete import record
-                        cur.execute("DELETE FROM imports WHERE id = %s", (carga_id,))
-                        cargas_eliminadas += 1
-                    except Exception as e:
-                        # Log error but continue with other cargas
-                        print(f"Error deleting carga {carga_id}: {e}")
-                        skipped_cargas += 1
+                    cur.execute(
+                        "SELECT id, id_proyecto, archivo, fecha, barras_count, usuario FROM imports WHERE id = %s",
+                        (carga_id,)
+                    )
+                    row = cur.fetchone()
+                    if not row:
+                        no_encontradas += 1
                         continue
-        
+
+                    id_proyecto = row[1]
+                    uploader = row[5]
+
+                    # Solo el uploader o admin (decisión 2026-06-18).
+                    if not es_admin and uploader != email:
+                        sin_permiso += 1
+                        continue
+
+                    cur.execute("DELETE FROM barras WHERE import_id = %s", (carga_id,))
+                    barras_eliminadas = cur.rowcount
+                    if barras_eliminadas == 0:
+                        fecha = row[3]
+                        cur.execute(
+                            "DELETE FROM barras WHERE id_proyecto = %s AND fecha_carga = %s",
+                            (id_proyecto, fecha)
+                        )
+                        barras_eliminadas = cur.rowcount
+
+                    total_barras_eliminadas += barras_eliminadas
+                    cur.execute("DELETE FROM imports WHERE id = %s", (carga_id,))
+                    cargas_eliminadas += 1
+
         _cache.invalidate("stats:", "landing:")
         return {
             "ok": True,
             "cargas_eliminadas": cargas_eliminadas,
             "barras_eliminadas": total_barras_eliminadas,
-            "skipped_cargas": skipped_cargas,
+            "sin_permiso": sin_permiso,
+            "no_encontradas": no_encontradas,
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error al eliminar cargas: {str(e)}")
@@ -1424,14 +1418,15 @@ def get_proyectos(user=Depends(get_current_user)):
             except Exception:
                 pass
             
-            # Fetch cubicador asignado for each project (first cubicador in proyecto_usuarios)
+            # Responsable de cubicación de cada proyecto (primer miembro/cubicador en
+            # proyecto_usuarios). Incluye 'miembro' además de 'cubicador' legacy.
             cubicador_map = {}
             try:
                 cur.execute("""
                     SELECT pu.id_proyecto, u.nombre, u.apellido, u.email
                     FROM proyecto_usuarios pu
                     JOIN users u ON pu.user_id = u.id
-                    WHERE pu.rol = 'cubicador'
+                    WHERE pu.rol IN ('cubicador', 'miembro')
                 """)
                 for c_row in cur.fetchall():
                     if c_row[0] not in cubicador_map:
@@ -1644,9 +1639,12 @@ def eliminar_proyecto(id_proyecto: str, user=Depends(get_current_user)):
             if reclamos_count > 0:
                 raise HTTPException(status_code=403, detail=f"No puedes eliminar una obra con {reclamos_count} reclamos asociados. Contacta al administrador.")
 
-            # Cubicador: solo puede eliminar obras vacías
-            if user.get("role") == "cubicador" and barras_count > 0:
-                raise HTTPException(status_code=403, detail=f"No puedes eliminar una obra con {barras_count} barras cargadas. Contacta al administrador.")
+            # Obra CON barras: solo admin/admin_calidad puede eliminarla (protección
+            # contra borrado indebido). Antes el check era `role == 'cubicador'`, que
+            # con el rol migrado a 'miembro' quedó inactivo → cualquier miembro con
+            # acceso podía borrar una obra llena. Decisión 2026-06-18.
+            if barras_count > 0 and user.get("role") not in ("admin", "admin_calidad"):
+                raise HTTPException(status_code=403, detail=f"No puedes eliminar una obra con {barras_count} barras cargadas. Solo un administrador puede hacerlo.")
 
             cur.execute("DELETE FROM proyecto_usuarios WHERE id_proyecto = %s", (id_proyecto,))
             cur.execute("DELETE FROM imports WHERE id_proyecto = %s", (id_proyecto,))
@@ -1838,8 +1836,10 @@ def landing_indicadores(user=Depends(get_current_user)):
 
     with get_conn() as conn:
         with conn.cursor() as cur:
-            # --- Cubicado semana (visible to admin, admin_calidad, cubicador) ---
-            if role in ("admin", "admin_calidad", "cubicador"):
+            # --- Cubicado semana (visible a admin, admin_calidad, miembro) ---
+            # Cuenta a QUIEN hizo cargas esta semana, sin filtrar por rol (antes
+            # filtraba u.role='cubicador' → vacío tras migrar a 'miembro').
+            if role in ("admin", "admin_calidad", "miembro"):
                 cur.execute("""
                     SELECT i.usuario,
                            COALESCE(u.nombre, '') AS nombre,
@@ -1848,8 +1848,7 @@ def landing_indicadores(user=Depends(get_current_user)):
                            COALESCE(SUM(i.kilos), 0) AS kilos
                     FROM imports i
                     JOIN users u ON u.email = i.usuario
-                    WHERE u.role = 'cubicador'
-                      AND LEFT(i.fecha, 10) >= %s
+                    WHERE LEFT(i.fecha, 10) >= %s
                       AND LEFT(i.fecha, 10) <= %s
                     GROUP BY i.usuario, u.nombre, u.apellido, dow
                     ORDER BY i.usuario, dow
@@ -1868,10 +1867,10 @@ def landing_indicadores(user=Depends(get_current_user)):
                     cub_map[email_cub]["dias"][r[3] - 1] = round(float(r[4]), 1)
                 result["cubicado_semana"] = list(cub_map.values())
 
-            # --- Reclamos levantados semana (visible to admin, admin_calidad, usc, cubicador, externo) ---
-            if role in ("admin", "admin_calidad", "usc", "cubicador", "externo"):
-                # Filtro "propios" para cubicador/externo/usc
-                if role in ("cubicador", "externo"):
+            # --- Reclamos levantados semana (visible a admin, admin_calidad, usc, miembro, externo) ---
+            if role in ("admin", "admin_calidad", "usc", "miembro", "externo"):
+                # Filtro "propios" para miembro/externo/usc
+                if role in ("miembro", "externo"):
                     prop_where = "AND (r.cubicador_asignado = %s OR r.respuesta_por = %s)"
                     prop_params = (monday, sunday, email, email)
                 elif role == "usc":
@@ -1914,7 +1913,7 @@ def landing_indicadores(user=Depends(get_current_user)):
                     SELECT estado, COUNT(*) FROM reclamos
                     GROUP BY estado ORDER BY 2 DESC
                 """)
-            elif role == "cubicador":
+            elif role in ("miembro", "externo"):
                 cur.execute("""
                     SELECT estado, COUNT(*) FROM reclamos
                     WHERE (cubicador_asignado = %s OR respuesta_por = %s)

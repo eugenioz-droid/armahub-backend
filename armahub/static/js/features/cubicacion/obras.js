@@ -746,7 +746,16 @@ async function eliminarCargasSeleccionadasModal(idProyecto) {
   if (!confirm('¿Eliminar ' + ids.length + ' carga(s) seleccionada(s)?\n\nEsta acción no se puede deshacer.')) return;
   var res = await apiPostJson('/cargas/bulk-delete', { ids: ids });
   if (res && res.ok) {
-    showToast('Eliminadas ' + res.cargas_eliminadas + ' carga(s) con ' + res.barras_eliminadas + ' barras', 'success');
+    if (res.cargas_eliminadas > 0) {
+      showToast('Eliminadas ' + res.cargas_eliminadas + ' carga(s) con ' + res.barras_eliminadas + ' barras', 'success');
+    }
+    // Avisar si hubo cargas que no se pudieron borrar por permiso (las subió otro).
+    if (res.sin_permiso > 0) {
+      showToast('⚠️ ' + res.sin_permiso + ' carga(s) no se eliminaron: solo puedes borrar las que tú subiste.', 'error');
+    }
+    if (res.cargas_eliminadas === 0 && res.sin_permiso === 0) {
+      showToast('No se eliminó ninguna carga.', 'error');
+    }
     closeObraDetailModal();
     await loadProyectos();
     await loadInicio();
