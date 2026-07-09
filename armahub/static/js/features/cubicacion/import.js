@@ -162,13 +162,16 @@ async function importAllFiles() {
     showToast('No se pudo analizar: ' + fallidas + '. Esas planillas se omitirán.', 'error');
   }
 
-  // ── FASE 2: Modal único si hay reemplazos en alguna planilla ──
+  // ── FASE 2: Modal único si hay reemplazos o códigos desfasados en alguna planilla ──
   const hayReemplazos = previewsValidos.some(p =>
     (p.preview.pisos || []).some(e => e.action === 'replace')
   );
+  const hayDesfasados = previewsValidos.some(p =>
+    (p.preview.cod_prod_desfasados || []).length > 0
+  );
 
   let decisionGlobal = { mode: 'rule', approvedIdx: null }; // por defecto: aplicar regla a todas
-  if (hayReemplazos) {
+  if (hayReemplazos || hayDesfasados) {
     progress.textContent = '';
     decisionGlobal = await showImportPreviewModalMulti(previewsValidos);
     if (!decisionGlobal) {
@@ -249,6 +252,7 @@ async function importAllFiles() {
     if (data.filas_rechazadas > 0) validInfo += ` ⚠️ ${data.filas_rechazadas} rechazadas`;
     if (data.advertencias > 0) validInfo += ` ℹ️ ${data.advertencias} advertencias`;
     if (data.barras_eliminadas_previo) validInfo += ` ↻ ${data.barras_eliminadas_previo} reemplazadas`;
+    if (data.cod_prod_corregidos > 0) validInfo += ` 🔧 ${data.cod_prod_corregidos} código${data.cod_prod_corregidos > 1 ? 's' : ''} corregido${data.cod_prod_corregidos > 1 ? 's' : ''}`;
     const statusClass = data.estado === 'ok' ? 'status-ok' : 'status-warn';
     totalBarrasImported += (data.barras || 0);
     totalKilosImported += (data.kilos || 0);
@@ -376,6 +380,23 @@ function showImportPreviewModalMulti(previews) {
         `;
       }
 
+      // Warning de códigos de producto desfasados respecto al diámetro
+      let codProdWarning = '';
+      const desfasados = p.cod_prod_desfasados || [];
+      if (desfasados.length > 0) {
+        const ejemplos = desfasados.slice(0, 5).map(d =>
+          `Fila ${d.fila}: Ø${d.diam}mm → código actual <b>${_esc(d.cod_actual)}</b>, se corregirá a <b>${_esc(d.cod_esperado)}</b>`
+        ).join('<br>');
+        const resto = desfasados.length > 5 ? `<br><span style="color:#92400e;">...y ${desfasados.length - 5} más</span>` : '';
+        codProdWarning = `
+          <div style="margin-top:6px; padding:8px 10px; background:#fff3cd; border:1px solid #ffc107; border-radius:4px; font-size:11px; color:#856404;">
+            ⚠ <b>${desfasados.length} barra${desfasados.length > 1 ? 's tienen' : ' tiene'} código de producto desfasado.</b>
+            Al importar, ArmaHub corregirá automáticamente el código según el diámetro:<br>
+            <span style="display:inline-block; margin-top:4px;">${ejemplos}${resto}</span>
+          </div>
+        `;
+      }
+
       blocks += `
         <div data-block="${idx}" style="margin-bottom:14px; border:1px solid #e0e0e0; border-radius:6px; overflow:hidden;">
           <div style="padding:10px 12px; background:#eef5ff; border-bottom:1px solid #d0d7de; display:flex; align-items:flex-start; gap:12px;">
@@ -391,6 +412,7 @@ function showImportPreviewModalMulti(previews) {
                 Pisos: <b>${s.pisos_a_reemplazar || 0}</b> reemplazar / <b>${s.pisos_a_sumar || 0}</b> sumar
               </div>
               ${multiWarning}
+              ${codProdWarning}
             </div>
             <div style="display:flex; flex-direction:column; gap:6px; flex-shrink:0; min-width:130px; padding:4px 10px; background:#fff; border:1px solid #d0d7de; border-radius:6px;">
               <label style="display:flex; align-items:center; gap:6px; cursor:pointer; font-size:12px; font-weight:600; color:#15803d;">

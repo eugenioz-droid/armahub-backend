@@ -384,6 +384,7 @@ async def import_armadetailer(
     rows_to_upsert = []
     rejected_rows = []
     warnings = []
+    cod_prod_corregidos = 0
 
     for idx, r in df.iterrows():
         row_num = idx + 2  # +2: 1-indexed + header row
@@ -422,6 +423,18 @@ async def import_armadetailer(
             cant = cant_total / mult
         else:
             cant = cant_total
+
+        # Corrección automática de COD_PROD desfasado respecto al DIAM
+        if diam is not None:
+            _cod_esperado = _DIAM_COD_MAP.get(diam)
+            if _cod_esperado is not None:
+                _col_cod = "COD_PROD" if "COD_PROD" in df.columns else ("COD_PROYECTO" if "COD_PROYECTO" in df.columns else None)
+                if _col_cod is not None:
+                    _cod_actual = str(r[_col_cod]).strip() if pd.notna(r[_col_cod]) else ""
+                    if _cod_actual and _cod_actual.lower() != "nan" and _cod_actual != _cod_esperado:
+                        df.at[idx, _col_cod] = _cod_esperado
+                        r = df.loc[idx]  # refrescar la fila para que _opt_text lo tome
+                        cod_prod_corregidos += 1
 
         # Advertencia: datos incompletos para calcular peso
         if diam is None or largo is None:
@@ -735,7 +748,73 @@ async def import_armadetailer(
         "barras_otra_obra": barras_otra_obra,
         "obras_conflicto": obras_conflicto,
         "fund_misplaced": fund_misplaced_list,
+        "cod_prod_corregidos": cod_prod_corregidos,
     }
+
+
+# ========================= MAPEO DIÁMETRO → CÓDIGO PRODUCTO =========================
+
+# Códigos de producto oficiales Armacero por diámetro (mm)
+_DIAM_COD_MAP: dict[float, str] = {
+    8.0:  "110002788",
+    10.0: "110002774",
+    12.0: "110002710",
+    16.0: "110002776",
+    18.0: "110002718",
+    22.0: "110002790",
+    25.0: "110002717",
+    28.0: "110002777",
+    32.0: "110002778",
+    36.0: "110002779",
+}
+
+
+def _detectar_cod_prod_desfasados(raw: str) -> list[dict]:
+    """Parsea el CSV y retorna filas donde COD_PROD no coincide con el código
+    esperado para su DIAM. Cada entry: {fila, diam, cod_actual, cod_esperado}.
+    Solo evalúa filas con DIAM conocido y COD_PROD no vacío.
+    """
+    lines = raw.splitlines()
+    header_idx = None
+    for i, line in enumerate(lines):
+        if line.startswith("ID|ESTRUCTURA|"):
+            header_idx = i
+            break
+    if header_idx is None:
+        return []
+    try:
+        df = pd.read_csv(StringIO("\n".join(lines[header_idx:])), sep="|")
+    except Exception:
+        return []
+    df.columns = df.columns.str.strip()
+    if "DIAM" not in df.columns:
+        return []
+    col_cod = "COD_PROD" if "COD_PROD" in df.columns else ("COD_PROYECTO" if "COD_PROYECTO" in df.columns else None)
+    if col_cod is None:
+        return []
+
+    desfasados = []
+    for idx, r in df.iterrows():
+        try:
+            diam = float(r["DIAM"]) if pd.notna(r["DIAM"]) else None
+        except (ValueError, TypeError):
+            continue
+        if diam is None:
+            continue
+        cod_esperado = _DIAM_COD_MAP.get(diam)
+        if cod_esperado is None:
+            continue  # diámetro no está en el mapa (diámetro no estándar)
+        cod_actual = str(r[col_cod]).strip() if pd.notna(r[col_cod]) else ""
+        if not cod_actual or cod_actual.lower() == "nan":
+            continue  # sin código en CSV — no hay desfase detectable
+        if cod_actual != cod_esperado:
+            desfasados.append({
+                "fila": int(idx) + 2,
+                "diam": diam,
+                "cod_actual": cod_actual,
+                "cod_esperado": cod_esperado,
+            })
+    return desfasados
 
 
 # ========================= PREVIEW DE IMPORTACIÓN =========================
@@ -918,6 +997,8 @@ async def import_armadetailer_preview(
     if len(planos_list) > 1:
         multi_plano_warning = True
 
+    cod_prod_desfasados = _detectar_cod_prod_desfasados(raw)
+
     return {
         "ok": True,
         "obra_id": obra_destino,
@@ -929,11 +1010,13 @@ async def import_armadetailer_preview(
         "replace_keys": replace_keys_str,
         "multi_plano_warning": multi_plano_warning,
         "ejes_multi_plano": ejes_con_multi_plano,
+        "cod_prod_desfasados": cod_prod_desfasados,
         "summary": {
             "total_csv": total_csv,
             "total_db_a_reemplazar": total_replace,
             "pisos_a_reemplazar": pisos_a_reemplazar,
             "pisos_a_sumar": pisos_a_sumar,
+            "cod_prod_a_corregir": len(cod_prod_desfasados),
         },
     }
 
