@@ -491,12 +491,12 @@ Objetivo: endurecer Reclamos y cerrar los pendientes reales arrastrados.
 | 5.7a | Tab Calidad/Configuración + estructura plantillas (esqueleto) | ☑ | YO |
 | 5.7b | Migración 74: `correo_templates` + `reclamo_envios` + CRUD plantillas | ☑ | YO |
 | 5.7c | Verificar dominio Resend / definir MAIL_FROM (prerrequisito envío externo) | ☐ | TÚ |
-| 5.8 | `mailer.py`: soporte de **adjuntos** (Resend `attachments` base64) | ☐ | YO |
-| 5.8b | Extraer generación de PDF (`_ReclamoPDF`) a helper reutilizable | ☐ | YO |
-| 5.9 | Endpoint `POST /reclamos/{id}/enviar-informe` (valida cerrado+admin, genera PDF, adjunta, envía, registra en `reclamo_envios`) | ☐ | YO |
-| 5.9b | Endpoint `GET /reclamos/{id}/involucrados` (correos sugeridos desde `proyecto_usuarios`) | ☐ | YO |
-| 5.10 | UI: botón "📧 Enviar informe" (solo `cerrado`) + mini-modal destinatarios (involucrados tildados + manual + cuerpo desde plantilla editable) | ☐ | YO |
-| 5.11 | Marcador "informe enviado" + historial de envíos en detalle | ☐ | YO |
+| 5.8 | `mailer.py`: soporte de **adjuntos** (Resend `attachments` base64) | ☑ | YO |
+| 5.8b | Extraer generación de PDF (`_ReclamoPDF`) a helper reutilizable (`_generar_pdf_reclamo`) | ☑ | YO |
+| 5.9 | Endpoint `POST /reclamos/{id}/enviar-informe` (valida cerrado+admin, genera PDF, adjunta, envía, registra en `reclamo_envios`) | ☑ | YO |
+| 5.9b | Endpoint `GET /reclamos/{id}/involucrados` (correos sugeridos desde `proyecto_usuarios`) | ☑ | YO |
+| 5.10 | UI: envío de informe (mini-modal destinatarios + cuerpo desde plantilla, anti-reenvío "CONFIRMAR"). Vive en sub-tab "Cierre Reclamos" (5K.3), no en el detalle | ☑ | YO |
+| 5.11 | Marcador "informe enviado" + historial de envíos (estado en lista de Cierre Reclamos + `reclamo_envios`) | ☑ | YO |
 | 5.12 | Indicadores de envío en dashboard de Calidad | ☐ | YO |
 
 ### 5C. Calidad multi-origen
@@ -526,6 +526,59 @@ Objetivo: endurecer Reclamos y cerrar los pendientes reales arrastrados.
 | 5K.4 | Sub-tab "Envío automático": placeholder (caluga futura — avisos por evento sobre matriz notificaciones) | ☑ | YO |
 
 **Criterio de salida:** hardening cerrado, matrices RCA operativas, smoke test visual aprobado, correo de informe operativo, multi-origen definido, sub-tabs internos completos.
+
+### 5L. Feedback de reclamos (sesión 2026-07) — auditado contra código
+
+> Origen: feedback del usuario sobre el módulo de Reclamos. Cada tarea fue verificada
+> contra el código real antes de listarla. Decisiones ya tomadas marcadas en la tarea.
+
+| N° | Descripción | Realizado | Quién |
+|----|-------------|-----------|-------|
+| 5L.1 | FIX: quitar `<option>` "Cerrado" duplicado en desplegable de seguimiento — resuelto al eliminar el bloque completo (ver 5L.5) | ☑ | YO |
+| 5L.2 | FIX zona horaria: convertir UTC→Chile (`America/Santiago`) en `shared/formatters.js` (formatDateTime/Short/Input) vía `Intl`, maneja los 3 formatos ISO + no toca fechas puras. Listados de reclamos migrados a `formatDateShort`. DECIDIDO: display-only | ☑ | YO |
+| 5L.3 | Implementar edición de acciones en la UI (el endpoint `PATCH /reclamos/{id}/acciones/{id}` ya existe, falta botón/form). Permiso: creador de la acción o admin | ☐ | YO |
+| 5L.4 | FIX Ishikawa se borra al cambiar responsable (la matriz es por área y el cambio re-infiere área). Definir con TÚ si la causa raíz sigue al reclamo o se re-evalúa; luego corregir | ☐ | TÚ+YO |
+| 5L.5 | Eliminar input de "Agregar seguimiento" MANUAL del modal; mantener el timeline/historial automático de estados. Se limpió HTML + `agregarSeguimiento()` + registro + reset. DECIDIDO | ☑ | YO |
+| 5L.6 | Ampliar categorías de error (externos + internos): agregar Documentación, Stock, Programación, Diferencia de Kilogramos. Tocar 2 create-forms + 2 edit-forms + `TIPOS_RECLAMO` + CHECK BD (migración) + dashboards. Definir con TÚ si conviven o reemplazan las actuales | ☐ | TÚ+YO |
+| 5L.7 | Agregar campo `fecha_fin` de análisis (diferenciar de fecha de análisis): migración + Pydantic + input + `_setIf` | ☐ | YO |
+| 5L.8 | Agregar columna "días para resolver" en listados Clientes e Internos (junto a la de días actual). Solo aparece con reclamo cerrado; cálculo `fecha_cierre - fecha_creacion`; automática | ☐ | YO |
+| 5L.9 | Verificar que en externos el área se reconozca correctamente según el responsable (ya se infiere en backend; validar tras migración de roles) | ☐ | TÚ+YO |
+| 5L.10 | Mostrar el área al lado del responsable en el form de registro externo (hoy no se muestra; requiere exponer área del usuario al frontend) | ☐ | YO |
+| 5L.11 | Centralizar creación de clientes/constructoras en el frontend: unificar las 5 funciones JS casi idénticas en un helper único (backend ya es único, `POST /constructoras`). Definir con TÚ si los forms cortos capturan más campos | ☐ | TÚ+YO |
+
+#### 5L.12 — Control de plazos / SLA de reclamos (requiere diseño, NO implementar aún)
+
+> Plazos aún no definidos por el usuario. Preparar estructura para verificar cumplimiento
+> de días para resolver/analizar. Depende de 5L.7 (fecha fin) y 5L.8 (días).
+
+| N° | Descripción | Realizado | Quién |
+|----|-------------|-----------|-------|
+| 5L.12.1 | Definir plazos: global / por categoría / por área (decisión de negocio) | ☐ | TÚ |
+| 5L.12.2 | Diseñar modelo de datos de SLA + indicador visual (en plazo / vencido) en listados | ☐ | YO |
+| 5L.12.3 | Implementar cálculo y semáforo de cumplimiento | ☐ | YO |
+
+#### 5L.13 — Tab de seguimiento/gestión de Acciones (requiere diseño, NO implementar aún)
+
+> Hoy se ingresan acciones pero no hay seguimiento. Crear un tab para gestionarlas.
+> La tabla `reclamo_acciones` ya tiene estado/responsable/fechas. Absorbe 5L.3.
+
+| N° | Descripción | Realizado | Quién |
+|----|-------------|-----------|-------|
+| 5L.13.1 | Definir diseño y estructura del tab (vista global de acciones, filtros, por responsable, vencimientos) | ☐ | TÚ+YO |
+| 5L.13.2 | Implementar tab de seguimiento de acciones (incluye edición — absorbe 5L.3) | ☐ | YO |
+
+#### 5L.14 — [DIFERIDO a sesión dedicada] Rol admin_calidad como jefe de servicio de su área
+
+> Problema: cada usuario tiene UN rol global. "Jefe de servicio de área" = `role='jefe_servicio'`.
+> Una `admin_calidad` no puede ser además jefa formal del área Calidad/USC → al crear reclamo
+> interno hacia esa área no encuentra jefe y no autoasigna responsable.
+> Opciones: (A) reactivar `rol_area` en `area_usuarios` (desacopla rol de área — limpia);
+> (B) fallback a Jefa de Calidad si el área no tiene jefe. El usuario decidió decidir después.
+> Conecta con el "fallback destinatario faltante" del plan de mailing (5B).
+
+| N° | Descripción | Realizado | Quién |
+|----|-------------|-----------|-------|
+| 5L.14.1 | Decidir modelo (A rol_area / B fallback) en sesión dedicada | ☐ | TÚ+YO |
 
 ---
 
