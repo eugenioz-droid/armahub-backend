@@ -161,7 +161,18 @@ async def import_armadetailer(
         return {"ok": False, "error": "No se encontró cabecera ID|ESTRUCTURA| en el CSV."}
 
     data_text = "\n".join(lines[header_idx:])
-    df = pd.read_csv(StringIO(data_text), sep="|")
+    try:
+        df = pd.read_csv(StringIO(data_text), sep="|")
+    except Exception as e:
+        # Un CSV mal formado (nº de columnas inconsistente por pipes/comillas en
+        # valores de texto, etc.) hacía crashear pandas → HTTP 500 sin body →
+        # el frontend mostraba "sesión expirada" engañosamente.
+        return {
+            "ok": False,
+            "error": f"No se pudo leer el CSV '{file.filename}'. Formato inválido: {str(e)[:200]}",
+            "csv_parse_error": True,
+            "archivo": file.filename,
+        }
     # Strip whitespace from column names (handles trailing spaces/CR from Excel re-saves)
     df.columns = df.columns.str.strip()
 
@@ -424,16 +435,19 @@ async def import_armadetailer(
         else:
             cant = cant_total
 
-        # Corrección automática de COD_PROD desfasado respecto al DIAM
+        # Corrección automática de COD_PROD desfasado respecto al DIAM.
+        # No se muta el DataFrame (evita crashes/upcast al asignar string a una
+        # columna que pandas infirió como numérica). El valor corregido se guarda
+        # aparte y se usa directo en el upsert más abajo.
+        cod_prod_corregido = None
         if diam is not None:
             _cod_esperado = _DIAM_COD_MAP.get(diam)
             if _cod_esperado is not None:
                 _col_cod = "COD_PROD" if "COD_PROD" in df.columns else ("COD_PROYECTO" if "COD_PROYECTO" in df.columns else None)
                 if _col_cod is not None:
-                    _cod_actual = str(r[_col_cod]).strip() if pd.notna(r[_col_cod]) else ""
-                    if _cod_actual and _cod_actual.lower() != "nan" and _cod_actual != _cod_esperado:
-                        df.at[idx, _col_cod] = _cod_esperado
-                        r = df.loc[idx]  # refrescar la fila para que _opt_text lo tome
+                    _cod_actual = _normalizar_cod_prod(r[_col_cod])
+                    if _cod_actual and _cod_actual != _cod_esperado:
+                        cod_prod_corregido = _cod_esperado
                         cod_prod_corregidos += 1
 
         # Advertencia: datos incompletos para calcular peso
@@ -508,7 +522,7 @@ async def import_armadetailer(
             _opt_float("ANG3"),
             _opt_float("ANG4"),
             _opt_float("R"),
-            _opt_text("COD_PROD") or _opt_text("COD_PROYECTO"),
+            cod_prod_corregido or _normalizar_cod_prod(r["COD_PROD"] if "COD_PROD" in df.columns else (r["COD_PROYECTO"] if "COD_PROYECTO" in df.columns else None)) or None,
             _opt_text("NOMBRE_DWG"),
         ))
 
@@ -769,6 +783,36 @@ _DIAM_COD_MAP: dict[float, str] = {
 }
 
 
+def _normalizar_cod_prod(val) -> str:
+    """Convierte un valor de COD_PROD a string limpio. Si pandas infirió la
+    columna como numérica (todos los códigos son números), el valor llega como
+    float y str() daría '110002788.0'. Aquí se recorta el '.0' para comparar y
+    guardar el código como texto entero, sin decimal espurio. Devuelve '' si es
+    nulo/vacío/nan.
+    """
+    if val is None:
+        return ""
+    try:
+        if pd.isna(val):
+            return ""
+    except (ValueError, TypeError):
+        pass
+    # Números (float/int) → entero sin decimal
+    if isinstance(val, float):
+        if val.is_integer():
+            return str(int(val))
+        return str(val)
+    if isinstance(val, int):
+        return str(val)
+    s = str(val).strip()
+    if s.lower() == "nan" or not s:
+        return ""
+    # String que en realidad es un float entero ('110002788.0')
+    if s.endswith(".0") and s[:-2].isdigit():
+        return s[:-2]
+    return s
+
+
 def _detectar_cod_prod_desfasados(raw: str) -> list[dict]:
     """Parsea el CSV y retorna filas donde COD_PROD no coincide con el código
     esperado para su DIAM. Cada entry: {fila, diam, cod_actual, cod_esperado}.
@@ -804,8 +848,8 @@ def _detectar_cod_prod_desfasados(raw: str) -> list[dict]:
         cod_esperado = _DIAM_COD_MAP.get(diam)
         if cod_esperado is None:
             continue  # diámetro no está en el mapa (diámetro no estándar)
-        cod_actual = str(r[col_cod]).strip() if pd.notna(r[col_cod]) else ""
-        if not cod_actual or cod_actual.lower() == "nan":
+        cod_actual = _normalizar_cod_prod(r[col_cod])
+        if not cod_actual:
             continue  # sin código en CSV — no hay desfase detectable
         if cod_actual != cod_esperado:
             desfasados.append({

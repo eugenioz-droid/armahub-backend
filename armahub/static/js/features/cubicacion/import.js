@@ -221,7 +221,15 @@ async function importAllFiles() {
     const data = await apiPostFile(baseUrl + extraParams, f);
 
     if (!data) {
-      results.innerHTML += `<div class="status-err" style="padding:4px 0; font-size:13px;">❌ ${f.name}: sesión expirada</div>`;
+      // requestJson devuelve null en dos casos: 401 (sesión) o respuesta no-JSON
+      // (error 500 sin body, timeout). Si la sesión sigue viva, fue lo segundo.
+      var motivo = (typeof token === 'function' && token()) ? 'el servidor no pudo procesar el archivo (respuesta inválida). Reintenta o reporta el archivo.' : 'sesión expirada';
+      results.innerHTML += `<div class="status-err" style="padding:4px 0; font-size:13px;">❌ ${f.name}: ${motivo}</div>`;
+      errorCount++;
+      continue;
+    }
+    if (data.ok === false && data.csv_parse_error) {
+      results.innerHTML += `<div class="status-err" style="padding:4px 0; font-size:13px;">🚫 ${f.name}: ${data.error}</div>`;
       errorCount++;
       continue;
     }
