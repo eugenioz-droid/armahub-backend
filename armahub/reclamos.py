@@ -311,6 +311,7 @@ class ReclamoUpdate(BaseModel):
     detectado_por: Optional[str] = None
     fecha_deteccion: Optional[str] = None
     fecha_analisis: Optional[str] = None
+    fecha_fin_analisis: Optional[str] = None
     analista: Optional[str] = None
     area_aplica: Optional[str] = None
     explicacion_causa: Optional[str] = None
@@ -1331,6 +1332,7 @@ def get_reclamo_optimizado(
                     "area_tiene_revision": row.get("area_tiene_revision"),
                     "area_tiene_revision_interno": row.get("area_tiene_revision_interno"),
                     "fecha_analisis": _as_text(row.get("fecha_analisis")),
+                    "fecha_fin_analisis": _as_text(row.get("fecha_fin_analisis")),
                     "validacion_resultado": row.get("validacion_resultado"),
                     "validacion_observaciones": row.get("validacion_observaciones"),
                     "validacion_fecha": _as_text(row.get("validacion_fecha")),
@@ -1590,7 +1592,7 @@ def actualizar_reclamo(reclamo_id: int, body: ReclamoUpdate, user=Depends(get_cu
                 "id_proyecto", "titulo", "descripcion", "prioridad", "tipo_reclamo",
                 "categoria_ishikawa",
                 "sub_causa", "cod_causa", "responsable", "aplica",
-                "detectado_por", "fecha_deteccion", "fecha_analisis",
+                "detectado_por", "fecha_deteccion", "fecha_analisis", "fecha_fin_analisis",
                 "analista", "area_aplica", "explicacion_causa",
                 "accion_correctiva", "accion_preventiva", "resolucion", "observaciones",
                 "id_calidad", "respuesta_texto", "validacion_resultado",
@@ -1602,7 +1604,7 @@ def actualizar_reclamo(reclamo_id: int, body: ReclamoUpdate, user=Depends(get_cu
             ]
             # Fields where empty string should be stored as NULL
             nullable_fields = {"id_proyecto", "id_calidad", "sub_causa", "cod_causa", "responsable",
-                               "detectado_por", "fecha_deteccion", "fecha_analisis",
+                               "detectado_por", "fecha_deteccion", "fecha_analisis", "fecha_fin_analisis",
                                "analista", "area_aplica", "explicacion_causa",
                                "accion_correctiva", "accion_preventiva", "resolucion", "observaciones",
                                "respuesta_texto", "validacion_resultado", "validacion_observaciones",
@@ -1969,15 +1971,21 @@ def crear_accion(reclamo_id: int, body: AccionCreate, user=Depends(get_current_u
 
 @router.patch("/reclamos/{reclamo_id}/acciones/{accion_id}")
 def actualizar_accion(reclamo_id: int, accion_id: int, body: AccionUpdate, user=Depends(get_current_user)):
-    """Actualizar una acción de un reclamo."""
+    """Actualizar una acción de un reclamo. 5L.3: solo el creador de la acción o
+    admin/admin_calidad pueden editarla."""
     email = user.get("email", "unknown")
+    role = user.get("role", "usc")
     now = datetime.now(timezone.utc).isoformat()
 
     with get_conn() as conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT id FROM reclamo_acciones WHERE id = %s AND reclamo_id = %s", (accion_id, reclamo_id))
-            if not cur.fetchone():
+            cur.execute("SELECT id, creado_por FROM reclamo_acciones WHERE id = %s AND reclamo_id = %s", (accion_id, reclamo_id))
+            _accion_row = cur.fetchone()
+            if not _accion_row:
                 raise HTTPException(status_code=404, detail="Acción no encontrada")
+            _creador_accion = _accion_row[1]
+            if role not in ("admin", "admin_calidad") and _creador_accion and _creador_accion != email:
+                raise HTTPException(status_code=403, detail="Solo puedes editar acciones que tú creaste.")
 
             sets = []
             params = []

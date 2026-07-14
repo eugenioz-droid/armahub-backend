@@ -133,6 +133,7 @@ async function crearReclamo() {
     });
     var pSearch = document.getElementById('recProyectoSearch'); if (pSearch) pSearch.value = '';
     var rSearch = document.getElementById('recResponsableSearch'); if (rSearch) rSearch.value = '';
+    var rArea = document.getElementById('recResponsableArea'); if (rArea) rArea.value = '';
     document.getElementById('recProyecto').value = '';
     document.getElementById('recCreatePreview').innerHTML = '';
     document.getElementById('recCreateDropMsg').style.display = '';
@@ -305,4 +306,16 @@ function _onExtResponsableInput(texto) {
   if (!sel) return;
   var email = (window._extResponsableMap || {})[texto.trim()] || '';
   sel.value = email;
+  _actualizarAreaResponsableExt(email);
+}
+
+// 5L.10: muestra el área del responsable seleccionado (el backend infiere el área
+// del reclamo externo a partir de este usuario). Read-only, solo informativo.
+function _actualizarAreaResponsableExt(email) {
+  var areaEl = document.getElementById('recResponsableArea');
+  if (!areaEl) return;
+  if (!email) { areaEl.value = ''; return; }
+  var users = (typeof _recUsersCache !== 'undefined') ? _recUsersCache : [];
+  var u = users.filter(function(x) { return x.email === email; })[0];
+  areaEl.value = (u && u.area_nombre) ? u.area_nombre : '— Sin área —';
 }

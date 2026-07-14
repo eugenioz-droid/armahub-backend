@@ -138,6 +138,8 @@
     'aprobarValidacionDesdeModal',
     'devolverValidacionDesdeModal',
     'agregarAccion',
+    'editarAccion',
+    'cancelarEdicionAccion',
     'limpiarFormularioAcciones',
     'eliminarAccion',
     'eliminarImagen',

@@ -535,6 +535,8 @@ async function guardarRespuesta() {
     }
     // area_aplica ya no se envía: el área real vive en area_id (inferida del responsable).
     _setIf('fecha_analisis', document.getElementById('recDetailFechaAnalisis').value);
+    var _finAnalisisEl = document.getElementById('recDetailFechaFinAnalisis');
+    if (_finAnalisisEl) _setIf('fecha_fin_analisis', _finAnalisisEl.value);
     _setIf('kilos_mal_fabricados', parseFloat(document.getElementById('recDetailKilosMal').value));
     _setIf('tiempo_respuesta', parseInt(document.getElementById('recTiempoRespuestaAnalisis').value));
     // unidad solo si hay un tiempo asociado
@@ -573,18 +575,22 @@ async function guardarRespuesta() {
 }
 
 // ---- Acciones (medidas correctivas/preventivas) ----
+var _accionEnEdicion = null; // id de la acción en edición, o null si es alta
+
+// Router del botón: crea (POST) o actualiza (PATCH) según el modo.
 async function agregarAccion() {
+  if (_accionEnEdicion !== null) return _guardarEdicionAccion();
   if (!_reclamoActual) return;
   var desc = document.getElementById('recNuevaAccionDesc').value.trim();
   var responsable = document.getElementById('recNuevaAccionResp').value;
-  
+
   // Validaciones requeridas
-  if (!desc) { 
-    alert('⚠️ La descripción es requerida'); 
+  if (!desc) {
+    alert('⚠️ La descripción es requerida');
     document.getElementById('recNuevaAccionDesc').focus();
-    return; 
+    return;
   }
-  
+
   if (!responsable || responsable.trim() === '') {
     alert('⚠️ Debes asignar un responsable para la acción');
     var respField = document.getElementById('recNuevaAccionRespSearch') || document.getElementById('recNuevaAccionResp');
@@ -597,21 +603,21 @@ async function agregarAccion() {
     }, 2000);
     return;
   }
-  
+
   // Guardar estado actual del formulario para preservar datos
   var formState = {
     tipo: document.getElementById('recNuevaAccionTipo').value,
     responsable: responsable,
     fecha_prevista: document.getElementById('recNuevaAccionFecha').value
   };
-  
+
   var body = {
     tipo: formState.tipo,
     descripcion: desc,
     responsable: formState.responsable,
     fecha_prevista: formState.fecha_prevista || null,
   };
-  
+
   var res = await fetch(apiUrl('/reclamos/' + _reclamoActual.id + '/acciones'), {
     method: 'POST',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
@@ -622,28 +628,86 @@ async function agregarAccion() {
   if (data.ok) {
     // Solo limpiar la descripción, preservar el resto del formulario
     document.getElementById('recNuevaAccionDesc').value = '';
-    
+
     // Mostrar feedback temporal con responsable
     var descField = document.getElementById('recNuevaAccionDesc');
     var originalPlaceholder = descField.placeholder;
     var responsableName = formState.responsable;
     descField.placeholder = '✅ Acción asignada a ' + responsableName + '. Ingresa otra descripción...';
     descField.style.background = '#e8f5e9';
-    
+
     // Restaurar estado normal después de 2 segundos
     setTimeout(function() {
       descField.placeholder = originalPlaceholder;
       descField.style.background = '';
     }, 2000);
-    
+
     // Recargar solo la lista de acciones, no todo el reclamo
     await refreshAccionesList();
-    
+
     // Poner foco en la descripción para facilitar agregar otra acción
     descField.focus();
-    
-  } else { 
-    alert('Error: ' + (data.detail || 'desconocido')); 
+
+  } else {
+    alert('Error: ' + (data.detail || 'desconocido'));
+  }
+}
+
+// 5L.3: entra en modo edición cargando los valores de la acción en el formulario.
+function editarAccion(accionId) {
+  var acciones = window._recAccionesCache || [];
+  var a = acciones.filter(function(x) { return x.id === accionId; })[0];
+  if (!a) return;
+  _accionEnEdicion = accionId;
+  document.getElementById('recNuevaAccionTipo').value = a.tipo || 'inmediata';
+  document.getElementById('recNuevaAccionDesc').value = a.descripcion || '';
+  document.getElementById('recNuevaAccionResp').value = a.responsable || '';
+  var searchField = document.getElementById('recNuevaAccionRespSearch');
+  if (searchField) searchField.value = a.responsable || '';
+  document.getElementById('recNuevaAccionFecha').value = a.fecha_prevista || '';
+  var estadoSel = document.getElementById('recNuevaAccionEstado');
+  if (estadoSel) estadoSel.value = a.estado || 'pendiente';
+  // Mostrar campo estado + botones de edición
+  document.getElementById('recAccionEstadoWrap').style.display = '';
+  document.getElementById('btnAccionCancelEdit').style.display = '';
+  var submitBtn = document.getElementById('btnAccionSubmit');
+  submitBtn.textContent = '💾 Actualizar';
+  document.getElementById('recNuevaAccionDesc').focus();
+}
+
+function cancelarEdicionAccion() {
+  _accionEnEdicion = null;
+  document.getElementById('recAccionEstadoWrap').style.display = 'none';
+  document.getElementById('btnAccionCancelEdit').style.display = 'none';
+  document.getElementById('btnAccionSubmit').textContent = '+ Agregar';
+  limpiarFormularioAcciones();
+}
+
+async function _guardarEdicionAccion() {
+  if (!_reclamoActual || _accionEnEdicion === null) return;
+  var desc = document.getElementById('recNuevaAccionDesc').value.trim();
+  var responsable = document.getElementById('recNuevaAccionResp').value;
+  if (!desc) { alert('⚠️ La descripción es requerida'); return; }
+  if (!responsable || responsable.trim() === '') { alert('⚠️ Debes asignar un responsable'); return; }
+  var body = {
+    tipo: document.getElementById('recNuevaAccionTipo').value,
+    descripcion: desc,
+    responsable: responsable,
+    fecha_prevista: document.getElementById('recNuevaAccionFecha').value || null,
+    estado: document.getElementById('recNuevaAccionEstado').value,
+  };
+  var res = await fetch(apiUrl('/reclamos/' + _reclamoActual.id + '/acciones/' + _accionEnEdicion), {
+    method: 'PATCH',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  if (res.status === 401) { logout(); return; }
+  var data = await res.json();
+  if (data.ok) {
+    cancelarEdicionAccion();
+    await refreshAccionesList();
+  } else {
+    alert('Error: ' + (data.detail || 'desconocido'));
   }
 }
 

@@ -253,7 +253,10 @@ VALID_ROLES = ("admin", "admin_calidad", "jefe_servicio", "miembro", "cliente", 
 
 @router.get("/users/dropdown")
 def users_dropdown(user=Depends(get_current_user)):
-    """Lista de usuarios activos para dropdowns (nombre apellido). Todos los autenticados."""
+    """Lista de usuarios activos para dropdowns (nombre apellido). Todos los autenticados.
+    Incluye el área de cada usuario (5L.10): mismo criterio que _area_id_de_usuario —
+    prioriza el área donde es jefe_servicio, si no la primera. Sirve para mostrar el
+    área junto al responsable al crear un reclamo externo (el área se infiere de él)."""
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("""
@@ -261,10 +264,24 @@ def users_dropdown(user=Depends(get_current_user)):
                 FROM users WHERE activo = TRUE ORDER BY nombre, apellido, email
             """)
             rows = cur.fetchall()
+            # Área por usuario: una fila por usuario, priorizando donde es jefe_servicio.
+            cur.execute("""
+                SELECT DISTINCT ON (au.user_id) au.user_id, a.id, a.nombre
+                FROM area_usuarios au
+                JOIN areas a ON a.id = au.area_id
+                JOIN users u ON u.id = au.user_id
+                WHERE a.activo = TRUE
+                ORDER BY au.user_id,
+                         CASE WHEN u.role = 'jefe_servicio' THEN 0 ELSE 1 END,
+                         au.id
+            """)
+            area_por_user = {r[0]: {"area_id": r[1], "area_nombre": r[2]} for r in cur.fetchall()}
     return {
         "users": [
             {"id": r[0], "email": r[1], "nombre": r[2], "apellido": r[3], "role": r[4],
-             "display": ((r[2] or '') + ' ' + (r[3] or '')).strip() or r[1]}
+             "display": ((r[2] or '') + ' ' + (r[3] or '')).strip() or r[1],
+             "area_id": (area_por_user.get(r[0]) or {}).get("area_id"),
+             "area_nombre": (area_por_user.get(r[0]) or {}).get("area_nombre")}
             for r in rows
         ]
     }

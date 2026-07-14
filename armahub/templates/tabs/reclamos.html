@@ -165,6 +165,12 @@
               <option value="">— Sin asignar —</option>
             </select>
           </div>
+          <div class="col" style="max-width:150px;">
+            <label style="font-size:11px; color:#666;">Área</label>
+            <input type="text" id="recResponsableArea" readonly title="El área se determina automáticamente según el responsable"
+                   style="width:100%; font-size:12px; background:#f5f5f5; color:#555; cursor:not-allowed;"
+                   placeholder="— Según responsable —" />
+          </div>
           <!-- USC Responsable: se auto-asigna al creador en el backend; admin puede reasignar desde el detalle -->
           <input type="hidden" id="recAsignadoA" value="" />
         </div>
@@ -462,7 +468,11 @@
           </div>
           <div class="col" style="max-width:130px;">
             <label style="font-size:11px; color:#666;">Fecha análisis</label>
-            <input type="date" id="recDetailFechaAnalisis" style="width:100%; font-size:12px;" />
+            <input type="date" id="recDetailFechaAnalisis" style="width:100%; font-size:12px;" title="Inicio del análisis" />
+          </div>
+          <div class="col" style="max-width:130px;">
+            <label style="font-size:11px; color:#666;">Fecha fin análisis</label>
+            <input type="date" id="recDetailFechaFinAnalisis" style="width:100%; font-size:12px;" title="Término del análisis" />
           </div>
         </div>
         <!-- Selector de método RCA + bloques Ishikawa / 5 Por Qué -->
@@ -559,7 +569,17 @@
                 <label style="font-size:11px; color:#666;">Fecha prevista</label>
                 <input type="date" id="recNuevaAccionFecha" style="width:100%; font-size:12px;" />
               </div>
-              <button onclick="agregarAccion()" style="font-size:11px; white-space:nowrap;">+ Agregar</button>
+              <!-- Estado: visible solo al editar una acción existente (5L.3) -->
+              <div class="col" id="recAccionEstadoWrap" style="max-width:130px; display:none;">
+                <label style="font-size:11px; color:#666;">Estado</label>
+                <select id="recNuevaAccionEstado" style="width:100%; font-size:11px;">
+                  <option value="pendiente">⏳ Pendiente</option>
+                  <option value="en_proceso">🔄 En proceso</option>
+                  <option value="completada">✅ Completada</option>
+                </select>
+              </div>
+              <button id="btnAccionSubmit" onclick="agregarAccion()" style="font-size:11px; white-space:nowrap;">+ Agregar</button>
+              <button id="btnAccionCancelEdit" onclick="cancelarEdicionAccion()" style="font-size:10px; white-space:nowrap; background:#f5f5f5; color:#666; display:none;" title="Cancelar edición">Cancelar</button>
               <button onclick="limpiarFormularioAcciones()" style="font-size:10px; white-space:nowrap; background:#f5f5f5; color:#666;" title="Limpiar formulario">🗑️</button>
             </div>
           </div>

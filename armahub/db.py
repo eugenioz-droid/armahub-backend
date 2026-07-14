@@ -1249,6 +1249,13 @@ MIGRATIONS = [
             '<p>Estimado/a,</p><p>Se ha registrado un reclamo interno <strong>{{correlativo}}</strong> dirigido a tu área: {{titulo}}.</p><p>Ingresa a la plataforma ArmaHub para gestionarlo.</p><p>Saludos,<br>Equipo de Calidad - Armacero</p>'
         ) ON CONFLICT (clave) DO NOTHING""",
     ]),
+
+    # --- Migration 76: fecha fin de análisis (5L.7) ---
+    # Complementa fecha_analisis (inicio) con una fecha de fin, para diferenciar
+    # el rango del análisis. Campo TEXT (fecha ISO 'YYYY-MM-DD'), como fecha_analisis.
+    (76, "reclamos: columna fecha_fin_analisis", [
+        "DO $$ BEGIN ALTER TABLE reclamos ADD COLUMN fecha_fin_analisis TEXT; EXCEPTION WHEN duplicate_column THEN NULL; END $$;",
+    ]),
 ]
 
 

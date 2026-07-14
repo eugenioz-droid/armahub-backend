@@ -102,6 +102,9 @@ function _renderReclamoRespuesta(data) {
   // reclamo aún no tiene área (sin responsable de área), cae al texto histórico.
   document.getElementById('recDetailAreaAplica').value = data.area_nombre || data.area_aplica || '';
   document.getElementById('recDetailFechaAnalisis').value = data.fecha_analisis_input || new Date().toISOString().substring(0, 10);
+  // Fecha fin: NO se auto-rellena con hoy (se completa cuando el análisis termina)
+  var _finEl = document.getElementById('recDetailFechaFinAnalisis');
+  if (_finEl) _finEl.value = formatDateInput(data.fecha_fin_analisis) || '';
   document.getElementById('recDetailKilosMal').value = data.kilos_mal_fabricados != null ? data.kilos_mal_fabricados : '';
   document.getElementById('recTiempoRespuestaAnalisis').value = data.tiempo_respuesta || '';
   document.getElementById('recTiempoRespuestaUnidadAnalisis').value = data.tiempo_respuesta_unidad || 'horas';
@@ -215,6 +218,8 @@ function _restoreReclamoAnalysisDraft(draft) {
 
 function renderAcciones(acciones) {
   var container = document.getElementById('recAccionesList');
+  // Cache para edición (5L.3): permite recuperar los valores de una acción por id.
+  window._recAccionesCache = acciones || [];
   if (!acciones || acciones.length === 0) {
     container.innerHTML = '<div class="muted">Sin acciones registradas</div>';
     return;
@@ -227,14 +232,20 @@ function renderAcciones(acciones) {
     acciones.map(function(a) {
       var tColor = _recAccionTipoColors[a.tipo] || '#666';
       var eLabel = a.estado === 'completada' ? '✅' : a.estado === 'en_proceso' ? '🔄' : '⏳';
-      var canDeleteAction = typeof a.id === 'number';
+      // Solo las acciones con id numérico (persistidas) se pueden editar/eliminar.
+      // Las legacy (id 'legacy-...') vienen de campos antiguos y no tienen fila propia.
+      var accionEditable = typeof a.id === 'number';
+      var acciones = accionEditable
+        ? '<button class="secondary" style="font-size:10px; padding:1px 5px; color:#1565C0; margin-right:3px;" title="Editar acción" onclick="editarAccion(' + a.id + ')">✏️</button>' +
+          '<button class="secondary" style="font-size:10px; padding:1px 5px; color:#b42318;" title="Eliminar acción" onclick="eliminarAccion(' + a.id + ')">✕</button>'
+        : '';
       return '<tr style="border-bottom:1px solid #ffe0b2;">' +
         '<td style="padding:3px 6px;"><span style="color:' + tColor + '; font-weight:600; text-transform:capitalize; font-size:11px;">' + a.tipo + '</span></td>' +
         '<td style="padding:3px 6px;">' + a.descripcion + '</td>' +
         '<td style="padding:3px 6px; font-size:11px;">' + (a.responsable || '-') + '</td>' +
         '<td style="padding:3px 6px; font-size:11px;">' + (a.fecha_prevista || '-') + '</td>' +
         '<td style="padding:3px 6px; font-size:11px;">' + eLabel + ' ' + a.estado + '</td>' +
-        '<td style="padding:3px 4px;">' + (canDeleteAction ? '<button class="secondary" style="font-size:10px; padding:1px 5px; color:#b42318;" onclick="eliminarAccion(' + a.id + ')">✕</button>' : '') + '</td>' +
+        '<td style="padding:3px 4px; white-space:nowrap;">' + acciones + '</td>' +
         '</tr>';
     }).join('') +
     '</table>';
