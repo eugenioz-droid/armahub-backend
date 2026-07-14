@@ -541,7 +541,7 @@ Objetivo: endurecer Reclamos y cerrar los pendientes reales arrastrados.
 | 5L.5 | Eliminar input de "Agregar seguimiento" MANUAL del modal; mantener el timeline/historial automático de estados. Se limpió HTML + `agregarSeguimiento()` + registro + reset. DECIDIDO | ☑ | YO |
 | 5L.6 | Ampliar categorías de error (externos + internos): agregar Documentación, Stock, Programación, Diferencia de Kilogramos. Tocar 2 create-forms + 2 edit-forms + `TIPOS_RECLAMO` + CHECK BD (migración) + dashboards. Definir con TÚ si conviven o reemplazan las actuales | ☐ | TÚ+YO |
 | 5L.7 | Agregar campo `fecha_fin` de análisis (diferenciar de fecha de análisis): migración + Pydantic + input + `_setIf` | ☐ | YO |
-| 5L.8 | Agregar columna "días para resolver" en listados Clientes e Internos (junto a la de días actual). Solo aparece con reclamo cerrado; cálculo `fecha_cierre - fecha_creacion`; automática | ☐ | YO |
+| 5L.8 | Agregar columna "Resuelto" (días que tomó resolver) en listados Clientes e Internos, junto a "Días". Helper `_calcDiasResolucion`/`_diasResolucionBadgeHtml`; solo con reclamo cerrado (`fecha_cierre - fecha_creacion`); automática | ☑ | YO |
 | 5L.9 | Verificar que en externos el área se reconozca correctamente según el responsable (ya se infiere en backend; validar tras migración de roles) | ☐ | TÚ+YO |
 | 5L.10 | Mostrar el área al lado del responsable en el form de registro externo (hoy no se muestra; requiere exponer área del usuario al frontend) | ☐ | YO |
 | 5L.11 | Centralizar creación de clientes/constructoras en el frontend: unificar las 5 funciones JS casi idénticas en un helper único (backend ya es único, `POST /constructoras`). Definir con TÚ si los forms cortos capturan más campos | ☐ | TÚ+YO |
