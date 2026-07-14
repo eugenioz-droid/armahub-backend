@@ -769,33 +769,8 @@ async function eliminarImagen(imgId) {
 }
 
 // ---- Seguimientos ----
-async function agregarSeguimiento() {
-  if (!_reclamoActual) return;
-  var comentario = document.getElementById('recSeguimientoComentario').value.trim();
-  var estadoNuevo = document.getElementById('recSeguimientoEstado').value;
-  var msg = document.getElementById('recSeguimientoMsg');
-  if (!comentario) { msg.textContent = 'Ingresa un comentario'; msg.style.color = '#b42318'; return; }
-  msg.textContent = 'Agregando...'; msg.style.color = '#666';
-  var body = { comentario: comentario };
-  if (estadoNuevo) body.estado_nuevo = estadoNuevo;
-  var res = await fetch(apiUrl('/reclamos/' + _reclamoActual.id + '/seguimientos'), {
-    method: 'POST',
-    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
-    body: JSON.stringify(body)
-  });
-  if (res.status === 401) { logout(); return; }
-  var data = await res.json();
-  if (data.ok) {
-    msg.textContent = '';
-    document.getElementById('recSeguimientoComentario').value = '';
-    document.getElementById('recSeguimientoEstado').value = '';
-    await verReclamo(_reclamoActual.id);
-    await loadReclamos();
-    await loadRecLanding();
-  } else {
-    msg.textContent = 'Error: ' + (data.detail || 'desconocido'); msg.style.color = '#b42318';
-  }
-}
+// El seguimiento MANUAL se eliminó (5L.5): el timeline se alimenta solo de los
+// cambios de estado del flujo (auto). No hay función agregarSeguimiento.
 
 async function eliminarReclamo() {
   if (!_reclamoActual) return;

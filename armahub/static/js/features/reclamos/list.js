@@ -217,7 +217,7 @@ async function loadReclamos() {
       var tipoLabel = r.tipo_reclamo === 'faltante' ? 'Faltante' : 'Error';
       var tipoColor = r.tipo_reclamo === 'faltante' ? '#ff9800' : '#e53935';
       var causaText = r.cod_causa ? '[' + r.cod_causa + ']' : (r.categoria_ishikawa ? _recIshikawaLabels[r.categoria_ishikawa] : '-');
-      var fecha = r.fecha_deteccion || (r.fecha_creacion ? r.fecha_creacion.substring(0, 10) : '');
+      var fecha = r.fecha_deteccion || (r.fecha_creacion ? formatDateShort(r.fecha_creacion) : '');
       var idLabel = _formatCorrelativoCalidad(r) || (r.correlativo || '#' + r.id);
       var anioCol = r.anio_calidad || '';
       var numCol = r.numero_calidad ? String(r.numero_calidad).padStart(3, '0') : '';

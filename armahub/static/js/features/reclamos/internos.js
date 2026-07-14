@@ -288,7 +288,7 @@ async function loadReclamosInternos() {
       var aplColor = _recAplicaColors[r.aplica] || '#ff9800';
       var anioCol = r.anio_calidad || '';
       var numCol = r.numero_calidad ? String(r.numero_calidad).padStart(3, '0') : '';
-      var fecha = r.fecha_deteccion || (r.fecha_creacion ? r.fecha_creacion.substring(0, 10) : '');
+      var fecha = r.fecha_deteccion || (r.fecha_creacion ? formatDateShort(r.fecha_creacion) : '');
       var cliente = (r.nombre_proyecto && r.nombre_proyecto !== 'Obra eliminada') ? r.nombre_proyecto : 'Armacero';
       return '<tr style="border-bottom:1px solid #eee; cursor:pointer;" onclick="verReclamo(' + r.id + ', {origen:\'internos\'})">' +
         '<td style="padding:4px 6px; font-size:11px;">' + anioCol + '</td>' +

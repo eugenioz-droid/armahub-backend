@@ -141,7 +141,6 @@
     'limpiarFormularioAcciones',
     'eliminarAccion',
     'eliminarImagen',
-    'agregarSeguimiento',
     'eliminarReclamo',
     'abrirIshikawaModal',
     'seleccionarIshikawa',

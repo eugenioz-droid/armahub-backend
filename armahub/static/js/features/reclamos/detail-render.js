@@ -152,17 +152,10 @@ function _renderReclamoTimelineSection(data) {
   renderReclamoTimeline(data.seguimientos || []);
 }
 
-function _resetReclamoSeguimientoForm() {
-  document.getElementById('recSeguimientoComentario').value = '';
-  document.getElementById('recSeguimientoEstado').value = '';
-  document.getElementById('recSeguimientoMsg').textContent = '';
-}
-
 function _renderReclamoAssets(data) {
   _renderReclamoActionsSection(data);
   _renderReclamoImagesSection(data);
   _renderReclamoTimelineSection(data);
-  _resetReclamoSeguimientoForm();
 }
 
 function _renderReclamoDetail(data) {
