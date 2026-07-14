@@ -30,6 +30,25 @@ function _diasBadgeHtml(r) {
   return '<span title="' + dias + ' día(s) desde creación" style="display:inline-block; min-width:28px; text-align:center; padding:1px 5px; border-radius:3px; font-size:10px; font-weight:700; color:#fff; background:' + color + ';">' + dias + 'd</span>';
 }
 
+// Días que TOMÓ resolver el reclamo (creación → cierre). Solo disponible cuando el
+// reclamo está cerrado; antes no hay dato (retorna null). 5L.8.
+function _calcDiasResolucion(r) {
+  if (r.estado !== 'cerrado' || !r.fecha_creacion || !r.fecha_cierre) return null;
+  var creacion = r.fecha_creacion.substring(0, 10);
+  var inicio = creacion < _FECHA_OPERATIVA ? new Date(_FECHA_OPERATIVA) : new Date(creacion);
+  var fin = new Date(r.fecha_cierre.substring(0, 10));
+  fin.setHours(0, 0, 0, 0);
+  var dias = Math.floor((fin - inicio) / 86400000);
+  return dias < 0 ? 0 : dias;
+}
+
+function _diasResolucionBadgeHtml(r) {
+  var dias = _calcDiasResolucion(r);
+  if (dias === null) return '<span style="color:#ccc; font-size:10px;">—</span>';
+  var color = _diasHeatColor(dias);
+  return '<span title="Resuelto en ' + dias + ' día(s)" style="display:inline-block; min-width:28px; text-align:center; padding:1px 5px; border-radius:3px; font-size:10px; font-weight:700; color:#fff; background:' + color + ';">' + dias + 'd</span>';
+}
+
 function _normalizeReclamoDateInputValue(value) {
   return formatDateInput(value);
 }

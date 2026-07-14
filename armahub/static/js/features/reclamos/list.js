@@ -206,7 +206,8 @@ async function loadReclamos() {
     '<th style="padding:5px 6px;">Aplica</th>' +
     '<th style="padding:5px 6px;">Causa</th>' +
     '<th style="padding:5px 6px;">Fecha</th>' +
-    '<th style="padding:5px 4px; text-align:center;">Días</th>' +
+    '<th style="padding:5px 4px; text-align:center;" title="Días transcurridos (abiertos) o hasta cierre">Días</th>' +
+    '<th style="padding:5px 4px; text-align:center;" title="Días que tomó resolver (solo cerrados)">Resuelto</th>' +
     '<th style="padding:5px 4px;"></th>' +
     '</tr>' +
     reclamos.map(function(r) {
@@ -235,6 +236,7 @@ async function loadReclamos() {
         '<td style="padding:4px 6px; font-size:11px;" title="' + (r.sub_causa || '') + '">' + causaText + '</td>' +
         '<td style="padding:4px 6px; font-size:11px;" class="muted">' + fecha + '</td>' +
         '<td style="padding:4px 4px; text-align:center;">' + _diasBadgeHtml(r) + '</td>' +
+        '<td style="padding:4px 4px; text-align:center;">' + _diasResolucionBadgeHtml(r) + '</td>' +
         '<td style="padding:4px 4px;"><button class="secondary" style="font-size:10px; padding:2px 6px;" onclick="event.stopPropagation(); verReclamo(' + r.id + ', {origen:\'lista\'})">Ver</button></td>' +
         '</tr>';
     }).join('') +

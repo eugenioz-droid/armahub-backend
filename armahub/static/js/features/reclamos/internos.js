@@ -279,7 +279,8 @@ async function loadReclamosInternos() {
       '<th style="padding:5px 6px;">Título</th><th style="padding:5px 6px;">Área responsable</th>' +
       '<th style="padding:5px 6px;">Cliente</th><th style="padding:5px 6px;">Estado</th>' +
       '<th style="padding:5px 6px;">Aplica</th><th style="padding:5px 6px;">Fecha</th>' +
-      '<th style="padding:5px 4px; text-align:center;">Días</th>' +
+      '<th style="padding:5px 4px; text-align:center;" title="Días transcurridos (abiertos) o hasta cierre">Días</th>' +
+      '<th style="padding:5px 4px; text-align:center;" title="Días que tomó resolver (solo cerrados)">Resuelto</th>' +
     '</tr>' +
     items.map(function(r) {
       var eColor = _recEstadoColors[r.estado] || '#666';
@@ -300,6 +301,7 @@ async function loadReclamosInternos() {
         '<td style="padding:4px 6px;"><span style="color:' + aplColor + '; font-weight:600; font-size:10px;">' + aplLabel + '</span></td>' +
         '<td style="padding:4px 6px; font-size:11px;" class="muted">' + fecha + '</td>' +
         '<td style="padding:4px 4px; text-align:center;">' + (typeof _diasBadgeHtml === 'function' ? _diasBadgeHtml(r) : '') + '</td>' +
+        '<td style="padding:4px 4px; text-align:center;">' + (typeof _diasResolucionBadgeHtml === 'function' ? _diasResolucionBadgeHtml(r) : '') + '</td>' +
         '</tr>';
     }).join('') +
     '</table>' +
