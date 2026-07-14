@@ -307,6 +307,10 @@ async function guardarEdicionReclamo() {
   var data = await res.json();
   if (data.ok) {
     msg.textContent = 'Guardado'; msg.style.color = '#558B2F';
+    // 5L.4: avisar si al cambiar el responsable cambió el área y se reinició la causa raíz
+    if (data.ishikawa_limpiado_por_area && typeof showToast === 'function') {
+      showToast('Cambió el área del reclamo: se reinició la causa raíz (Ishikawa). Vuelve a definirla si corresponde.', 'warning');
+    }
     // Close edit form and refresh
     document.getElementById('recEditForm').style.display = 'none';
     document.getElementById('recDetailInfo').style.display = '';
@@ -354,6 +358,10 @@ async function guardarEdicionReclamoInterno() {
   var data = await res.json();
   if (data.ok) {
     msg.textContent = 'Guardado'; msg.style.color = '#558B2F';
+    // 5L.4: avisar si al reasignar el área se reinició la causa raíz
+    if (data.ishikawa_limpiado_por_area && typeof showToast === 'function') {
+      showToast('Cambió el área del reclamo: se reinició la causa raíz (Ishikawa). Vuelve a definirla si corresponde.', 'warning');
+    }
     document.getElementById('recEditFormInterno').style.display = 'none';
     document.getElementById('recDetailInfo').style.display = '';
     document.getElementById('btnEditarReclamo').textContent = '✏️ Editar';

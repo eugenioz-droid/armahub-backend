@@ -1504,11 +1504,13 @@ def actualizar_reclamo(reclamo_id: int, body: ReclamoUpdate, user=Depends(get_cu
     if body.tiempo_respuesta_unidad and body.tiempo_respuesta_unidad not in ("minutos", "horas", "dias"):
         raise HTTPException(status_code=400, detail="Unidad de tiempo inválida. Válidas: ['minutos', 'horas', 'dias']")
 
+    _area_cambio_por_responsable = False  # 5L.4: se activa si el cambio de responsable movió el área
+
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 """
-                SELECT id, estado, creado_por, asignado_a, cubicador_asignado, respuesta_por, aplica, respuesta_texto, tipo_origen
+                SELECT id, estado, creado_por, asignado_a, cubicador_asignado, respuesta_por, aplica, respuesta_texto, tipo_origen, area_id
                 FROM reclamos WHERE id = %s
                 """,
                 (reclamo_id,),
@@ -1517,7 +1519,7 @@ def actualizar_reclamo(reclamo_id: int, body: ReclamoUpdate, user=Depends(get_cu
             if not row:
                 raise HTTPException(status_code=404, detail="Reclamo no encontrado")
             estado_anterior = row[1]
-            rec = {"creado_por": row[2], "asignado_a": row[3], "cubicador_asignado": row[4], "respuesta_por": row[5], "tipo_origen": row[8]}
+            rec = {"creado_por": row[2], "asignado_a": row[3], "cubicador_asignado": row[4], "respuesta_por": row[5], "tipo_origen": row[8], "area_id": row[9]}
             aplica_actual = row[6]
             respuesta_actual = row[7]
 
@@ -1651,6 +1653,9 @@ def actualizar_reclamo(reclamo_id: int, body: ReclamoUpdate, user=Depends(get_cu
 
             # Si en esta petición cambió el responsable, recalcular el area_id
             # (el área SIEMPRE se infiere del responsable, nunca se elige aparte).
+            # 5L.4: el Ishikawa responde al ÁREA. Si el área CAMBIA de valor, la causa
+            # raíz elegida ya no pertenece a la matriz vigente → se limpia (y se avisa).
+            # Si el área se mantiene, el Ishikawa NO se toca (antes se perdía siempre).
             if "cubicador_asignado" in body.__fields_set__ or "asignado_a" in body.__fields_set__:
                 _nuevo_resp = None
                 if "cubicador_asignado" in body.__fields_set__ and body.cubicador_asignado:
@@ -1659,6 +1664,8 @@ def actualizar_reclamo(reclamo_id: int, body: ReclamoUpdate, user=Depends(get_cu
                     _nuevo_resp = body.asignado_a
                 _nuevo_area = _area_id_de_usuario(cur, _nuevo_resp) if _nuevo_resp else None
                 if _nuevo_area is not None and not _col_in_sets("area_id"):
+                    if _nuevo_area != rec.get("area_id"):
+                        _area_cambio_por_responsable = True
                     sets.append("area_id = %s")
                     params.append(_nuevo_area)
 
@@ -1670,6 +1677,8 @@ def actualizar_reclamo(reclamo_id: int, body: ReclamoUpdate, user=Depends(get_cu
                 if role not in ("admin", "admin_calidad"):
                     raise HTTPException(status_code=403, detail="Solo Calidad puede reasignar el área de un reclamo interno")
                 _nueva_area = body.area_id
+                if _nueva_area != rec.get("area_id"):
+                    _area_cambio_por_responsable = True  # 5L.4: mismo criterio para internos
                 _jefe = _jefe_servicio_de_area(cur, _nueva_area)
                 if not _col_in_sets("area_id"):
                     sets.append("area_id = %s")
@@ -1680,6 +1689,13 @@ def actualizar_reclamo(reclamo_id: int, body: ReclamoUpdate, user=Depends(get_cu
                 if not _col_in_sets("responsable"):
                     sets.append("responsable = %s")
                     params.append(_jefe)
+
+            # 5L.4: limpiar Ishikawa si el área cambió (por responsable en externos, o
+            # por reasignación directa en internos) y el usuario no envió causa nueva.
+            if _area_cambio_por_responsable:
+                for ishikawa_field in ishikawa_fields:
+                    if not _col_in_sets(ishikawa_field):
+                        sets.append(f"{ishikawa_field} = NULL")
 
             # Auto-set respuesta metadata when respuesta_texto is provided
             if body.respuesta_texto and body.respuesta_texto.strip():
@@ -1816,7 +1832,7 @@ def actualizar_reclamo(reclamo_id: int, body: ReclamoUpdate, user=Depends(get_cu
     except Exception:
         pass  # No bloquear actualización por error en notificaciones
 
-    return {"ok": True, "id": reclamo_id}
+    return {"ok": True, "id": reclamo_id, "ishikawa_limpiado_por_area": _area_cambio_por_responsable}
 
 
 @router.delete("/reclamos/{reclamo_id}")
