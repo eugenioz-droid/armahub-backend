@@ -537,14 +537,14 @@ Objetivo: endurecer Reclamos y cerrar los pendientes reales arrastrados.
 | 5L.1 | FIX: quitar `<option>` "Cerrado" duplicado en desplegable de seguimiento — resuelto al eliminar el bloque completo (ver 5L.5) | ☑ | YO |
 | 5L.2 | FIX zona horaria: convertir UTC→Chile (`America/Santiago`) en `shared/formatters.js` (formatDateTime/Short/Input) vía `Intl`, maneja los 3 formatos ISO + no toca fechas puras. Listados de reclamos migrados a `formatDateShort`. DECIDIDO: display-only | ☑ | YO |
 | 5L.3 | Implementar edición de acciones en la UI (el endpoint `PATCH /reclamos/{id}/acciones/{id}` ya existe, falta botón/form). Permiso: creador de la acción o admin | ☐ | YO |
-| 5L.4 | FIX Ishikawa se borra al cambiar responsable (la matriz es por área y el cambio re-infiere área). Definir con TÚ si la causa raíz sigue al reclamo o se re-evalúa; luego corregir | ☐ | TÚ+YO |
+| 5L.4 | FIX Ishikawa al cambiar responsable. La causa raíz responde al ÁREA: se limpia SOLO cuando `area_id` cambia de valor (externos: por responsable; internos: reasignación directa). Si el área se mantiene, NO se toca (antes se perdía siempre). Backend devuelve `ishikawa_limpiado_por_area`; frontend avisa con toast. DECIDIDO | ☑ | YO |
 | 5L.5 | Eliminar input de "Agregar seguimiento" MANUAL del modal; mantener el timeline/historial automático de estados. Se limpió HTML + `agregarSeguimiento()` + registro + reset. DECIDIDO | ☑ | YO |
 | 5L.6 | Ampliar categorías de error (externos + internos): agregar Documentación, Stock, Programación, Diferencia de Kilogramos. Tocar 2 create-forms + 2 edit-forms + `TIPOS_RECLAMO` + CHECK BD (migración) + dashboards. Definir con TÚ si conviven o reemplazan las actuales | ☐ | TÚ+YO |
 | 5L.7 | Agregar campo `fecha_fin` de análisis (diferenciar de fecha de análisis): migración + Pydantic + input + `_setIf` | ☐ | YO |
 | 5L.8 | Agregar columna "Resuelto" (días que tomó resolver) en listados Clientes e Internos, junto a "Días". Helper `_calcDiasResolucion`/`_diasResolucionBadgeHtml`; solo con reclamo cerrado (`fecha_cierre - fecha_creacion`); automática | ☑ | YO |
 | 5L.9 | Verificar que en externos el área se reconozca correctamente según el responsable (ya se infiere en backend; validar tras migración de roles) | ☐ | TÚ+YO |
 | 5L.10 | Mostrar el área al lado del responsable en el form de registro externo (hoy no se muestra; requiere exponer área del usuario al frontend) | ☐ | YO |
-| 5L.11 | Centralizar creación de clientes/constructoras en el frontend: unificar las 5 funciones JS casi idénticas en un helper único (backend ya es único, `POST /constructoras`). Definir con TÚ si los forms cortos capturan más campos | ☐ | TÚ+YO |
+| 5L.11 | Centralizar gestión de clientes en UN tab oficial. DECIDIDO: retirar los 5 puntos de creación "al vuelo" (servían para probar); crear/editar clientes solo en un tab, con permiso USC + super admin + admin_calidad (USC = dueños naturales). Se puede crear con pocos datos, pero en un solo lugar. Se apoya en 10.2/10.3 (editor central + cerrar creación al vuelo). Requiere definir dónde vive el tab → NO es tarea sencilla, planificar | ☐ | TÚ+YO |
 
 #### 5L.12 — Control de plazos / SLA de reclamos (requiere diseño, NO implementar aún)
 
