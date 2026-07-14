@@ -170,7 +170,8 @@ def _estado_bloquea_edicion_analisis(estado: str) -> bool:
 # ========================= CONSTANTS =========================
 
 ESTADOS_RECLAMO = ("abierto", "en_analisis", "en_revision", "validacion", "cerrado", "rechazado")
-TIPOS_RECLAMO = ("error", "faltante", "atraso", "actualizacion_portal")
+TIPOS_RECLAMO = ("error", "faltante", "atraso", "actualizacion_portal",
+                 "documentacion", "stock", "programacion", "diferencia_kg")
 VALIDACION_RESULTADOS = ("aprobado", "rechazado", "corregido")
 PRIORIDADES = ("baja", "media", "alta", "critica")
 APLICA_VALUES = ("si", "no", "pendiente")

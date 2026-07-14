@@ -69,8 +69,8 @@ function _renderReclamoHeader(data) {
 
 function _renderReclamoAntecedentes(data) {
   var info = document.getElementById('recDetailInfo');
-  var tipoLabel = data.tipo_reclamo === 'faltante' ? 'Faltante' : 'Error';
-  var tipoColor = data.tipo_reclamo === 'faltante' ? '#ff9800' : '#e53935';
+  var tipoLabel = _recTipoLabel(data.tipo_reclamo);
+  var tipoColor = _recTipoColor(data.tipo_reclamo);
   var infoHtml = '<div class="row" style="gap:16px; flex-wrap:wrap;">';
   infoHtml += '<div><strong>Categoría:</strong> <span style="color:' + tipoColor + '; font-weight:600;">' + tipoLabel + '</span></div>';
   infoHtml += '<div><strong>Estado:</strong> <span style="color:' + (_recEstadoColors[data.estado] || '#666') + '; font-weight:600;">' + (_recEstadoLabels[data.estado] || data.estado) + '</span></div>';

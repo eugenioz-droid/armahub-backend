@@ -29,6 +29,20 @@ var _recIshikawaLabels = {
 };
 var _recAplicaLabels = { si: 'Sí aplica', no: 'No aplica', pendiente: 'Pendiente' };
 var _recAplicaColors = { si: '#e53935', no: '#4CAF50', pendiente: '#ff9800' };
+
+// Categorías de reclamo (tipo_reclamo). Catálogo ampliable (5L.6).
+var _recTipoReclamoLabels = {
+  error: 'Error', faltante: 'Faltante', atraso: 'Atraso',
+  actualizacion_portal: 'Actualización Portal', documentacion: 'Documentación',
+  stock: 'Stock', programacion: 'Programación', diferencia_kg: 'Diferencia de Kilogramos'
+};
+var _recTipoReclamoColors = {
+  error: '#e53935', faltante: '#ff9800', atraso: '#8e24aa',
+  actualizacion_portal: '#1976d2', documentacion: '#00897b',
+  stock: '#6d4c41', programacion: '#5e35b1', diferencia_kg: '#c62828'
+};
+function _recTipoLabel(t) { return _recTipoReclamoLabels[t] || t || 'Error'; }
+function _recTipoColor(t) { return _recTipoReclamoColors[t] || '#e53935'; }
 var _recAccionTipoColors = { inmediata: '#e53935', correctiva: '#2196F3', preventiva: '#4CAF50' };
 var _ishikawaCatColors = {
   medio_ambiente: '#26A69A', material: '#5C6BC0', maquina: '#EF5350',

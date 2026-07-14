@@ -1256,6 +1256,14 @@ MIGRATIONS = [
     (76, "reclamos: columna fecha_fin_analisis", [
         "DO $$ BEGIN ALTER TABLE reclamos ADD COLUMN fecha_fin_analisis TEXT; EXCEPTION WHEN duplicate_column THEN NULL; END $$;",
     ]),
+
+    # --- Migration 77: ampliar catálogo de categorías de reclamo (5L.6) ---
+    # Adicionales a las 4 existentes (no las reemplaza): documentacion, stock,
+    # programacion, diferencia_kg. Mismo patrón que migraciones 33/34.
+    (77, "reclamos: ampliar CHECK tipo_reclamo con documentacion/stock/programacion/diferencia_kg", [
+        "ALTER TABLE reclamos DROP CONSTRAINT IF EXISTS reclamos_tipo_reclamo_check",
+        "ALTER TABLE reclamos ADD CONSTRAINT reclamos_tipo_reclamo_check CHECK (tipo_reclamo IN ('error','faltante','atraso','actualizacion_portal','documentacion','stock','programacion','diferencia_kg'))",
+    ]),
 ]
 
 

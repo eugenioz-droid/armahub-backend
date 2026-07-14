@@ -215,8 +215,8 @@ async function loadReclamos() {
       var eLabel = _recEstadoLabels[r.estado] || r.estado;
       var aplLabel = _recAplicaLabels[r.aplica] || 'Pendiente';
       var aplColor = _recAplicaColors[r.aplica] || '#ff9800';
-      var tipoLabel = r.tipo_reclamo === 'faltante' ? 'Faltante' : 'Error';
-      var tipoColor = r.tipo_reclamo === 'faltante' ? '#ff9800' : '#e53935';
+      var tipoLabel = _recTipoLabel(r.tipo_reclamo);
+      var tipoColor = _recTipoColor(r.tipo_reclamo);
       var causaText = r.cod_causa ? '[' + r.cod_causa + ']' : (r.categoria_ishikawa ? _recIshikawaLabels[r.categoria_ishikawa] : '-');
       var fecha = r.fecha_deteccion || (r.fecha_creacion ? formatDateShort(r.fecha_creacion) : '');
       var idLabel = _formatCorrelativoCalidad(r) || (r.correlativo || '#' + r.id);
