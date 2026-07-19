@@ -565,8 +565,8 @@ Objetivo: endurecer Reclamos y cerrar los pendientes reales arrastrados.
 
 | N° | Descripción | Realizado | Quién |
 |----|-------------|-----------|-------|
-| 5L.13.1 | Definir diseño y estructura del tab (vista global de acciones, filtros, por responsable, vencimientos) | ☐ | TÚ+YO |
-| 5L.13.2 | Implementar tab de seguimiento de acciones (incluye edición — absorbe 5L.3) | ☐ | YO |
+| 5L.13.1 | Definir diseño y estructura del tab. DECIDIDO: ambas vistas por rol (Calidad/admin ven TODAS con toggle "Mis acciones"; resto solo las suyas) + foco v1 en vencimientos/estado (semáforo vencida/por vencer 7d/al día + cambio de estado inline). Prerrequisito elegido: opción A (responsable de acción como email estable) | ☑ | TÚ+YO |
+| 5L.13.2 | Implementar tab de seguimiento de acciones. (A) Migración 78: `reclamo_acciones.responsable_email` + backfill por nombre contra users; POST/PATCH/detalle y form de acciones guardan display+email (mapa display→email). (B) Sub-tab "Acciones" (nivel 2, visible a todos; backend restringe datos): endpoint `GET /reclamos/acciones` (antes de `{reclamo_id}`), KPIs clicables, filtros estado/vencimiento/búsqueda, cambio de estado inline (PATCH mantiene fecha_completada coherente), clic en fila abre el reclamo. PATCH ampliado: creador, responsable asignado o admin pueden editar | ☑ | YO |
 
 #### 5L.14 — [DIFERIDO a sesión dedicada] Rol admin_calidad como jefe de servicio de su área
 
