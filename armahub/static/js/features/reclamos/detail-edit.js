@@ -608,6 +608,7 @@ async function agregarAccion() {
   var formState = {
     tipo: document.getElementById('recNuevaAccionTipo').value,
     responsable: responsable,
+    responsable_email: (document.getElementById('recNuevaAccionRespEmail') || {}).value || null,
     fecha_prevista: document.getElementById('recNuevaAccionFecha').value
   };
 
@@ -615,6 +616,7 @@ async function agregarAccion() {
     tipo: formState.tipo,
     descripcion: desc,
     responsable: formState.responsable,
+    responsable_email: formState.responsable_email,
     fecha_prevista: formState.fecha_prevista || null,
   };
 
@@ -662,6 +664,9 @@ function editarAccion(accionId) {
   document.getElementById('recNuevaAccionTipo').value = a.tipo || 'inmediata';
   document.getElementById('recNuevaAccionDesc').value = a.descripcion || '';
   document.getElementById('recNuevaAccionResp').value = a.responsable || '';
+  var emailHidden = document.getElementById('recNuevaAccionRespEmail');
+  // Preferir el email guardado; si es legacy (sin email) resolverlo desde el nombre.
+  if (emailHidden) emailHidden.value = a.responsable_email || (window._recAccionRespEmailMap || {})[a.responsable] || '';
   var searchField = document.getElementById('recNuevaAccionRespSearch');
   if (searchField) searchField.value = a.responsable || '';
   document.getElementById('recNuevaAccionFecha').value = a.fecha_prevista || '';
@@ -693,6 +698,7 @@ async function _guardarEdicionAccion() {
     tipo: document.getElementById('recNuevaAccionTipo').value,
     descripcion: desc,
     responsable: responsable,
+    responsable_email: (document.getElementById('recNuevaAccionRespEmail') || {}).value || null,
     fecha_prevista: document.getElementById('recNuevaAccionFecha').value || null,
     estado: document.getElementById('recNuevaAccionEstado').value,
   };
@@ -742,16 +748,22 @@ async function eliminarAccion(accionId) {
   else { alert('Error: ' + (data.detail || 'desconocido')); }
 }
 
-// Combobox de responsable en acciones: sincroniza texto→hidden para validación
+// Combobox de responsable en acciones: sincroniza texto→hidden (display) y
+// resuelve el email estable desde el mapa (5L.13-A).
 function _onAccionRespInput(texto) {
+  var t = texto.trim();
   var hidden = document.getElementById('recNuevaAccionResp');
-  if (hidden) hidden.value = texto.trim();
+  if (hidden) hidden.value = t;
+  var hiddenEmail = document.getElementById('recNuevaAccionRespEmail');
+  if (hiddenEmail) hiddenEmail.value = (window._recAccionRespEmailMap || {})[t] || '';
 }
 
 // Función para limpiar el formulario de acciones manualmente
 function limpiarFormularioAcciones() {
   document.getElementById('recNuevaAccionDesc').value = '';
   document.getElementById('recNuevaAccionResp').value = '';
+  var emailHidden = document.getElementById('recNuevaAccionRespEmail');
+  if (emailHidden) emailHidden.value = '';
   var searchField = document.getElementById('recNuevaAccionRespSearch');
   if (searchField) searchField.value = '';
   document.getElementById('recNuevaAccionFecha').value = '';

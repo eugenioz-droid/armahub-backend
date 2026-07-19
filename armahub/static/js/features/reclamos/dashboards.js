@@ -16,12 +16,14 @@ var _rcaRecData = null;
 // posición tras F5 sin parpadeo. Default 'clientes' (primer sub-tab).
 var _recSubTabActual = 'clientes';
 
-// Metadatos de los 5 sub-tabs en un solo lugar: panel, color, botón y qué
-// roles pueden verlo. Clientes/Internos: todos los roles del módulo. Matriz
-// RCA / Presentaciones / Validaciones: restringidos. Único flujo para los 5.
+// Metadatos de los sub-tabs en un solo lugar: panel, color, botón y qué
+// roles pueden verlo. Clientes/Internos/Acciones: todos los roles del módulo
+// (Acciones se auto-restringe en backend: cada uno ve las suyas salvo Calidad).
+// Matriz RCA / Presentaciones / Validaciones: restringidos. Único flujo para todos.
 var REC_SUBTABS = {
   clientes:      { panel: 'recSubClientes',       btn: 'recSubBtnClientes', color: '#e53935', roles: null },
   internos:      { panel: 'recSubInternos',       btn: 'recSubBtnInternos', color: '#1565C0', roles: null },
+  acciones:      { panel: 'recSubAcciones',       btn: 'recSubBtnAcciones', color: '#00897b', roles: null },
   rca:           { panel: 'recSubRCA',            btn: 'recSubBtnRCA',      color: '#e65100', roles: ['admin','admin_calidad'] },
   presentaciones:{ panel: 'recSubPresentaciones', btn: 'recSubBtnPres',     color: '#7B1FA2', roles: ['admin','admin_calidad','miembro','externo'] },
   validaciones:  { panel: 'recSubValidaciones',   btn: 'recSubBtnVal',      color: '#7B1FA2', roles: ['admin','admin_calidad'] }
@@ -73,6 +75,7 @@ function switchRecSubTab(sub) {
   }
   if (sub === 'validaciones') { _ensureModalFueraDeSubpaneles(); loadRecValidaciones(); }
   if (sub === 'internos') { _ensureModalFueraDeSubpaneles(); if (typeof loadReclamosInternos === 'function') loadReclamosInternos(); if (typeof initInternosForm === 'function') initInternosForm(); }
+  if (sub === 'acciones') { _ensureModalFueraDeSubpaneles(); if (typeof loadRecAccionesSeguimiento === 'function') loadRecAccionesSeguimiento(); }
 
   if (typeof window.__armahubUpdateNavHash === 'function') {
     window.__armahubUpdateNavHash(window.currentModule, 'reclamos', sub);

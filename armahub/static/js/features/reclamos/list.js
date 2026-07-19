@@ -19,11 +19,14 @@ async function loadRecUsersDropdown() {
     createSel.value = val;
     if (typeof _syncExtResponsableDatalist === 'function') _syncExtResponsableDatalist();
   }
-  // Populate acciones responsable datalist (all users)
+  // Populate acciones responsable datalist (all users) + mapa display→email
+  // para resolver el responsable_email estable de una acción (5L.13-A).
   var accionRespList = document.getElementById('recAccionRespList');
+  window._recAccionRespEmailMap = {};
   if (accionRespList) {
     accionRespList.innerHTML = '';
     _recUsersCache.forEach(function(u) {
+      window._recAccionRespEmailMap[u.display] = u.email;
       accionRespList.innerHTML += '<option value="' + u.display + '">' + u.display + ' (' + u.role + ')</option>';
     });
   }

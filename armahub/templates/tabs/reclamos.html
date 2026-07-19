@@ -7,6 +7,7 @@
     <div id="recSubTabNav" style="display:flex; gap:0; margin-bottom:16px; padding-top:4px; border-bottom:1px solid #f0f0f0; background:#fafafa;">
       <button id="recSubBtnClientes" onclick="switchRecSubTab('clientes')" style="padding:5px 16px; font-size:12px; font-weight:600; border:none; border-bottom:2px solid #e53935; background:none; color:#e53935; cursor:pointer;">Reclamos Clientes</button>
       <button id="recSubBtnInternos" onclick="switchRecSubTab('internos')" style="padding:5px 16px; font-size:12px; font-weight:600; border:none; border-bottom:2px solid transparent; background:none; color:#aaa; cursor:pointer;">Reclamos Internos</button>
+      <button id="recSubBtnAcciones" onclick="switchRecSubTab('acciones')" style="padding:5px 16px; font-size:12px; font-weight:600; border:none; border-bottom:2px solid transparent; background:none; color:#aaa; cursor:pointer;">Acciones</button>
       <button id="recSubBtnRCA" onclick="switchRecSubTab('rca')" style="padding:5px 16px; font-size:12px; font-weight:600; border:none; border-bottom:2px solid transparent; background:none; color:#aaa; cursor:pointer;">Matriz RCA</button>
       <button id="recSubBtnPres" onclick="switchRecSubTab('presentaciones')" style="padding:5px 16px; font-size:12px; font-weight:600; border:none; border-bottom:2px solid transparent; background:none; color:#aaa; cursor:pointer;">Presentaciones</button>
       <button id="recSubBtnVal" onclick="switchRecSubTab('validaciones')" style="padding:5px 16px; font-size:12px; font-weight:600; border:none; border-bottom:2px solid transparent; background:none; color:#aaa; cursor:pointer;">Validaciones</button>
@@ -580,6 +581,7 @@
                        oninput="_onAccionRespInput(this.value)" />
                 <datalist id="recAccionRespList"></datalist>
                 <input type="hidden" id="recNuevaAccionResp" />
+                <input type="hidden" id="recNuevaAccionRespEmail" />
               </div>
               <div class="col" style="max-width:130px;">
                 <label style="font-size:11px; color:#666;">Fecha prevista</label>
@@ -778,6 +780,56 @@
           <button class="secondary" style="font-size:10px; padding:2px 8px;" onclick="limpiarFiltrosInternos()">Limpiar</button>
         </div>
         <div id="reclamosInternosList"><div class="muted">Cargando reclamos internos...</div></div>
+      </div>
+    </div>
+
+    <!-- Sub-panel: Seguimiento de Acciones (5L.13) -->
+    <div id="recSubAcciones" style="display:none;">
+      <div class="card" style="border-left:4px solid #00897b;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+          <h3 style="margin:0; color:#00897b;">📋 Seguimiento de Acciones</h3>
+          <button id="recAccScopeBtn" onclick="toggleAccScope()" style="display:none; font-size:11px; padding:3px 10px; border:1px solid #00897b; background:#00897b; color:#fff; border-radius:4px; cursor:pointer; white-space:nowrap;">Todas</button>
+        </div>
+        <p class="muted" style="font-size:12px; margin:0 0 12px 0;">Control de las acciones comprometidas en los reclamos: vencimientos, avance y estado. Haz clic en una fila para abrir el reclamo. Cambia el estado directo desde la columna Estado.</p>
+
+        <!-- KPIs semáforo (clic filtra la tabla) -->
+        <div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:10px; margin-bottom:14px;">
+          <div style="background:#ffebee; border-radius:8px; padding:12px; text-align:center; cursor:pointer;" title="Ver solo vencidas" onclick="setAccVencFiltro('vencida')">
+            <div style="font-size:11px; color:#c62828; text-transform:uppercase; margin-bottom:4px;">🔴 Vencidas</div>
+            <div id="accKpiVencidas" style="font-size:28px; font-weight:700; color:#c62828;">0</div>
+          </div>
+          <div style="background:#fff3e0; border-radius:8px; padding:12px; text-align:center; cursor:pointer;" title="Vencen dentro de 7 días" onclick="setAccVencFiltro('por_vencer')">
+            <div style="font-size:11px; color:#e65100; text-transform:uppercase; margin-bottom:4px;">🟠 Por vencer (7 días)</div>
+            <div id="accKpiPorVencer" style="font-size:28px; font-weight:700; color:#e65100;">0</div>
+          </div>
+          <div style="background:#e8f5e9; border-radius:8px; padding:12px; text-align:center; cursor:pointer;" title="Ver solo al día" onclick="setAccVencFiltro('al_dia')">
+            <div style="font-size:11px; color:#388e3c; text-transform:uppercase; margin-bottom:4px;">🟢 Al día</div>
+            <div id="accKpiAlDia" style="font-size:28px; font-weight:700; color:#388e3c;">0</div>
+          </div>
+          <div style="background:#f5f5f5; border-radius:8px; padding:12px; text-align:center; cursor:pointer;" title="Ver solo completadas" onclick="setAccEstadoFiltro('completada')">
+            <div style="font-size:11px; color:#666; text-transform:uppercase; margin-bottom:4px;">✅ Completadas</div>
+            <div id="accKpiCompletadas" style="font-size:28px; font-weight:700; color:#666;">0</div>
+          </div>
+        </div>
+
+        <!-- Filtros -->
+        <div class="row" style="gap:6px; align-items:center; flex-wrap:wrap; margin-bottom:8px;">
+          <select id="accFiltroEstado" onchange="renderRecAccionesSeguimiento()" style="font-size:11px;">
+            <option value="">Estado: Todos</option>
+            <option value="pendiente">⏳ Pendiente</option>
+            <option value="en_proceso">🔄 En proceso</option>
+            <option value="completada">✅ Completada</option>
+          </select>
+          <select id="accFiltroVenc" onchange="renderRecAccionesSeguimiento()" style="font-size:11px;">
+            <option value="">Vencimiento: Todos</option>
+            <option value="vencida">🔴 Vencidas</option>
+            <option value="por_vencer">🟠 Por vencer</option>
+            <option value="al_dia">🟢 Al día</option>
+          </select>
+          <input type="text" id="accFiltroBusqueda" placeholder="Buscar..." onkeyup="renderRecAccionesSeguimiento()" style="font-size:11px; max-width:160px; padding:3px 6px;" />
+          <button class="secondary" style="font-size:10px; padding:2px 8px;" onclick="limpiarFiltrosAcciones()">Limpiar</button>
+        </div>
+        <div id="recAccionesGlobalList"><div class="muted">Cargando acciones...</div></div>
       </div>
     </div>
 

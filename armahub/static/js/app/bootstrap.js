@@ -148,6 +148,13 @@
             'armahubFeature',
             'reclamos-internos',
             '[ArmaHub] No se pudo cargar reclamos/internos.js'
+          ),
+          loadScript(
+            'script[data-armahub-feature="reclamos-acciones"]',
+            '/static/js/features/reclamos/acciones.js' + suffix,
+            'armahubFeature',
+            'reclamos-acciones',
+            '[ArmaHub] No se pudo cargar reclamos/acciones.js'
           )
         ]);
       }).then(function() {

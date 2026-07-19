@@ -1264,6 +1264,23 @@ MIGRATIONS = [
         "ALTER TABLE reclamos DROP CONSTRAINT IF EXISTS reclamos_tipo_reclamo_check",
         "ALTER TABLE reclamos ADD CONSTRAINT reclamos_tipo_reclamo_check CHECK (tipo_reclamo IN ('error','faltante','atraso','actualizacion_portal','documentacion','stock','programacion','diferencia_kg'))",
     ]),
+
+    # --- Migration 78: responsable de acción como email estable (5L.13-A) ---
+    # Hasta ahora reclamo_acciones.responsable guardaba solo el nombre visible
+    # (texto libre), lo que impide filtrar "mis acciones" de forma confiable. Se
+    # agrega responsable_email (identificador estable) y se backfillea matcheando
+    # el nombre existente contra users (nombre + apellido). Los que no matchean
+    # quedan NULL sin perder el nombre en 'responsable'.
+    (78, "reclamo_acciones: columna responsable_email + backfill por nombre", [
+        "DO $$ BEGIN ALTER TABLE reclamo_acciones ADD COLUMN responsable_email TEXT; EXCEPTION WHEN duplicate_column THEN NULL; END $$;",
+        """UPDATE reclamo_acciones ra
+           SET responsable_email = u.email
+           FROM users u
+           WHERE ra.responsable_email IS NULL
+             AND ra.responsable IS NOT NULL
+             AND TRIM(ra.responsable) <> ''
+             AND LOWER(TRIM(ra.responsable)) = LOWER(TRIM(COALESCE(u.nombre,'') || ' ' || COALESCE(u.apellido,'')))""",
+    ]),
 ]
 
 

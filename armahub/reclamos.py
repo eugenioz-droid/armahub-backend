@@ -347,7 +347,8 @@ class SeguimientoCreate(BaseModel):
 class AccionCreate(BaseModel):
     tipo: str
     descripcion: str
-    responsable: Optional[str] = None
+    responsable: Optional[str] = None          # display (nombre visible)
+    responsable_email: Optional[str] = None    # identificador estable (5L.13-A)
     fecha_prevista: Optional[str] = None
 
 
@@ -355,6 +356,7 @@ class AccionUpdate(BaseModel):
     tipo: Optional[str] = None
     descripcion: Optional[str] = None
     responsable: Optional[str] = None
+    responsable_email: Optional[str] = None
     fecha_prevista: Optional[str] = None
     estado: Optional[str] = None
     fecha_completada: Optional[str] = None
@@ -1196,6 +1198,86 @@ def _get_table_columns(cur, table_name: str):
     _schema_columns_cache[cache_key] = columns
     return columns
 
+# Listado global de acciones (tab Seguimiento de Acciones, 5L.13).
+# DEBE ir antes de /reclamos/{reclamo_id} para que FastAPI no matchee
+# "acciones" como un id (mismo motivo que /reclamos/cerrados-envio).
+@router.get("/reclamos/acciones")
+def listar_acciones(scope: Optional[str] = None, estado: Optional[str] = None,
+                    vencimiento: Optional[str] = None, user=Depends(get_current_user)):
+    """Listado global de acciones para el tab de seguimiento (5L.13).
+    - admin/admin_calidad: ven TODAS. Otros roles: solo las asignadas a ellos
+      (por responsable_email) o creadas por ellos.
+    - scope='mine' fuerza "solo mías" incluso para admin.
+    - Filtros opcionales: estado (pendiente|en_proceso|completada),
+      vencimiento (vencida|por_vencer|al_dia) — calculado sobre fecha_prevista.
+    Devuelve datos del reclamo (correlativo, título) para contexto."""
+    email = user.get("email", "unknown")
+    role = user.get("role", "usc")
+    es_supervisor = role in ("admin", "admin_calidad")
+    solo_mias = (scope == "mine") or not es_supervisor
+
+    where = []
+    params: list = []
+    if solo_mias:
+        where.append("(ra.responsable_email = %s OR ra.creado_por = %s)")
+        params.extend([email, email])
+    if estado in ("pendiente", "en_proceso", "completada"):
+        where.append("ra.estado = %s")
+        params.append(estado)
+    where_sql = (" WHERE " + " AND ".join(where)) if where else ""
+
+    with get_conn() as conn:
+        with conn.cursor(row_factory=dict_row) as cur:
+            cols = _get_table_columns(cur, "reclamo_acciones")
+            if not cols:
+                return {"data": []}
+            _has_email = "responsable_email" in cols
+            cur.execute(f"""
+                SELECT ra.id, ra.reclamo_id, ra.tipo, ra.descripcion,
+                       ra.responsable, {'ra.responsable_email' if _has_email else 'NULL'} AS responsable_email,
+                       ra.fecha_prevista, ra.fecha_completada, ra.estado, ra.creado_por,
+                       r.correlativo, r.titulo, r.estado AS reclamo_estado, r.tipo_origen
+                FROM reclamo_acciones ra
+                JOIN reclamos r ON r.id = ra.reclamo_id
+                {where_sql}
+                ORDER BY (ra.estado = 'completada'), ra.fecha_prevista NULLS LAST, ra.id DESC
+            """, params)
+            rows = cur.fetchall()
+
+    from datetime import date as _date
+    hoy = _date.today()
+    data = []
+    for a in rows:
+        fecha_prev = _as_text(a.get("fecha_prevista"))
+        venc = None  # vencida | por_vencer | al_dia | None (sin fecha o completada)
+        dias_para = None
+        if a.get("estado") != "completada" and fecha_prev:
+            try:
+                fp = _date.fromisoformat(fecha_prev[:10])
+                dias_para = (fp - hoy).days
+                if dias_para < 0:
+                    venc = "vencida"
+                elif dias_para <= 7:
+                    venc = "por_vencer"
+                else:
+                    venc = "al_dia"
+            except (ValueError, TypeError):
+                pass
+        if vencimiento and venc != vencimiento:
+            continue
+        data.append({
+            "id": a.get("id"), "reclamo_id": a.get("reclamo_id"),
+            "tipo": a.get("tipo"), "descripcion": a.get("descripcion"),
+            "responsable": a.get("responsable"), "responsable_email": a.get("responsable_email"),
+            "fecha_prevista": fecha_prev, "fecha_completada": _as_text(a.get("fecha_completada")),
+            "estado": a.get("estado"), "creado_por": a.get("creado_por"),
+            "correlativo": a.get("correlativo"), "titulo_reclamo": a.get("titulo"),
+            "reclamo_estado": a.get("reclamo_estado"), "tipo_origen": a.get("tipo_origen"),
+            "vencimiento": venc, "dias_para_vencer": dias_para,
+        })
+    return {"data": data, "scope": "mine" if solo_mias else "all"}
+
+
 # Lista de reclamos CERRADOS con estado de envío (Mailing → Cierre Reclamos).
 # DEBE ir antes de /reclamos/{reclamo_id} para que FastAPI no matchee
 # "cerrados-envio" como un id (mismo motivo que /reclamos/para-presentar).
@@ -1396,6 +1478,7 @@ def get_reclamo_optimizado(
                             "tipo" if "tipo" in acciones_columns else "NULL AS tipo",
                             "descripcion" if "descripcion" in acciones_columns else "NULL AS descripcion",
                             "responsable" if "responsable" in acciones_columns else "NULL AS responsable",
+                            "responsable_email" if "responsable_email" in acciones_columns else "NULL AS responsable_email",
                             ("fecha_prevista" if "fecha_prevista" in acciones_columns else "NULL") + " AS fecha_prevista_ref",
                             ("fecha_completada" if "fecha_completada" in acciones_columns else "NULL") + " AS fecha_completada_ref",
                             "estado" if "estado" in acciones_columns else "NULL AS estado",
@@ -1415,6 +1498,7 @@ def get_reclamo_optimizado(
                                 "tipo": a.get("tipo"),
                                 "descripcion": a.get("descripcion"),
                                 "responsable": a.get("responsable"),
+                                "responsable_email": a.get("responsable_email"),
                                 "fecha_prevista": _as_text(a.get("fecha_prevista_ref")),
                                 "fecha_completada": _as_text(a.get("fecha_completada_ref")),
                                 "estado": a.get("estado"),
@@ -1957,10 +2041,10 @@ def crear_accion(reclamo_id: int, body: AccionCreate, user=Depends(get_current_u
                     raise HTTPException(status_code=403, detail="Solo puede agregar acciones en reclamos propios")
 
             cur.execute("""
-                INSERT INTO reclamo_acciones (reclamo_id, tipo, descripcion, responsable, fecha_prevista, creado_por, fecha_creacion)
-                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                INSERT INTO reclamo_acciones (reclamo_id, tipo, descripcion, responsable, responsable_email, fecha_prevista, creado_por, fecha_creacion)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING id
-            """, (reclamo_id, body.tipo, body.descripcion, body.responsable, body.fecha_prevista, email, now))
+            """, (reclamo_id, body.tipo, body.descripcion, body.responsable, body.responsable_email, body.fecha_prevista, email, now))
             accion_id = cur.fetchone()[0]
 
             cur.execute("UPDATE reclamos SET fecha_actualizacion = %s WHERE id = %s", (now, reclamo_id))
@@ -1972,29 +2056,40 @@ def crear_accion(reclamo_id: int, body: AccionCreate, user=Depends(get_current_u
 
 @router.patch("/reclamos/{reclamo_id}/acciones/{accion_id}")
 def actualizar_accion(reclamo_id: int, accion_id: int, body: AccionUpdate, user=Depends(get_current_user)):
-    """Actualizar una acción de un reclamo. 5L.3: solo el creador de la acción o
-    admin/admin_calidad pueden editarla."""
+    """Actualizar una acción de un reclamo. 5L.3/5L.13: pueden editarla el creador
+    de la acción, el responsable asignado (para marcar avance desde el tab de
+    seguimiento) o admin/admin_calidad."""
     email = user.get("email", "unknown")
     role = user.get("role", "usc")
     now = datetime.now(timezone.utc).isoformat()
 
     with get_conn() as conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT id, creado_por FROM reclamo_acciones WHERE id = %s AND reclamo_id = %s", (accion_id, reclamo_id))
+            cur.execute("SELECT id, creado_por, responsable_email FROM reclamo_acciones WHERE id = %s AND reclamo_id = %s", (accion_id, reclamo_id))
             _accion_row = cur.fetchone()
             if not _accion_row:
                 raise HTTPException(status_code=404, detail="Acción no encontrada")
-            _creador_accion = _accion_row[1]
-            if role not in ("admin", "admin_calidad") and _creador_accion and _creador_accion != email:
-                raise HTTPException(status_code=403, detail="Solo puedes editar acciones que tú creaste.")
+            _creador = _accion_row[1]
+            _resp_email = _accion_row[2]
+            _es_duenio = (_creador and _creador == email) or (_resp_email and _resp_email == email)
+            if role not in ("admin", "admin_calidad") and not _es_duenio:
+                raise HTTPException(status_code=403, detail="Solo puedes editar acciones que tú creaste o que están asignadas a ti.")
 
             sets = []
             params = []
-            for field in ["tipo", "descripcion", "responsable", "fecha_prevista", "estado", "fecha_completada"]:
+            for field in ["tipo", "descripcion", "responsable", "responsable_email", "fecha_prevista", "estado", "fecha_completada"]:
                 val = getattr(body, field)
                 if val is not None:
                     sets.append(f"{field} = %s")
                     params.append(val)
+
+            # 5L.13: mantener fecha_completada coherente con el estado sin exigirla
+            # al frontend: completada → fecha de hoy; reabierta → se limpia.
+            if body.estado == "completada" and body.fecha_completada is None:
+                sets.append("fecha_completada = %s")
+                params.append(now[:10])
+            elif body.estado in ("pendiente", "en_proceso") and body.fecha_completada is None:
+                sets.append("fecha_completada = NULL")
 
             if not sets:
                 return {"ok": True, "id": accion_id}
