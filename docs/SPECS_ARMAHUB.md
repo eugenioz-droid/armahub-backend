@@ -38,10 +38,21 @@
 | **Obra** (= Proyecto) | El proyecto específico que se cubica. Pertenece a UNA constructora. | `proyectos` | "Edificio Talca 2 Sur" |
 | ~~Cliente~~ | **Término AMBIGUO — evitar en lo técnico.** Históricamente se usó tanto para la constructora como para la obra. En la UI la caluga se rotula "Clientes" por costumbre comercial, pero conceptualmente gestiona **Constructoras**. | — | — |
 
+**Tipos de cliente (columna `constructoras.tipo`, migración 80):** el mismo modelo
+(empresa → hijos vía `proyectos.constructora_id`) sirve para distintos clientes; solo
+cambia el rótulo del hijo:
+
+| `tipo` | Empresa | Hijo (rótulo) | Ejemplo |
+|--------|---------|---------------|---------|
+| `constructora` | Constructora | **Obra** | DLP → Edificio Talca |
+| `retail` | Cliente retail | **Sede** | Sodimac → Sodimac Maipú |
+| `otro` | Otro | **Proyecto** | — |
+
 **Notas de terminología:**
-- El `nombre_proyecto` histórico es un texto compuesto `Constructora - Obra` (ej. `"DLP - Edificio Talca 2 Sur"`). El prefijo de constructora está embebido en el nombre de la obra por cómo se ingresa en el sistema de procesamiento (Detailer). Se deja tal cual; limpiar el prefijo es tarea futura aparte.
-- La relación real Obra→Constructora es `proyectos.constructora_id`. Hoy está mayormente NULL (las obras existen pero no vinculadas). Poblarla es el objetivo de la caluga Clientes (5L.11).
-- Una **Constructora** NO es lo mismo que un **Calculista** (quien diseña la obra, tabla `calculistas`) ni que un **Mandante** (no se usa ese término; todo cliente se modela como constructora).
+- El `nombre_proyecto` histórico es un texto compuesto `Constructora - Obra` (ej. `"DLP - Edificio Talca 2 Sur"`). El prefijo está embebido en el nombre por cómo se ingresa en el sistema de procesamiento (Detailer). Se deja tal cual; limpiar el prefijo es tarea futura aparte.
+- La relación real Obra/Sede → Cliente es `proyectos.constructora_id`. Hoy está mayormente NULL (las obras existen pero no vinculadas). Poblarla es el objetivo de la caluga Constructoras/Clientes (5L.11.10).
+- La caluga se rotula **"Constructoras / Clientes"** en la UI. Gestiona la tabla `constructoras` para todos los tipos.
+- Una **Constructora** NO es lo mismo que un **Calculista** (quien diseña la obra, tabla `calculistas`). El modelo unificado completo de cliente (con toda la sofisticación CRM) sigue siendo Fase 11; el campo `tipo` es el mínimo para soportar retail desde ya sin deuda.
 
 ---
 
