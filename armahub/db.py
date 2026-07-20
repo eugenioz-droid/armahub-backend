@@ -1289,6 +1289,14 @@ MIGRATIONS = [
     (79, "constructoras: columna creado_por", [
         "DO $$ BEGIN ALTER TABLE constructoras ADD COLUMN creado_por TEXT; EXCEPTION WHEN duplicate_column THEN NULL; END $$;",
     ]),
+
+    # --- Migration 80: tipo de cliente (5L.11) ---
+    # Mismo modelo (empresa → hijos vía proyectos.constructora_id), distinta
+    # terminología del hijo según el tipo: constructora→Obra, retail→Sede, otro→Proyecto.
+    # Los existentes quedan 'constructora'. No cambia la relación en BD.
+    (80, "constructoras: columna tipo (constructora/retail/otro)", [
+        "DO $$ BEGIN ALTER TABLE constructoras ADD COLUMN tipo TEXT NOT NULL DEFAULT 'constructora'; EXCEPTION WHEN duplicate_column THEN NULL; END $$;",
+    ]),
 ]
 
 

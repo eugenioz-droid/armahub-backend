@@ -47,8 +47,12 @@ def _puede_modificar_cliente(cur, constructora_id: int, user: dict) -> bool:
     return bool(creador) and creador == user.get("email")
 
 
+_TIPOS_CLIENTE = ("constructora", "retail", "otro")
+
+
 class ConstructoraCreate(BaseModel):
     nombre: str
+    tipo: Optional[str] = "constructora"
     rut: Optional[str] = None
     contacto: Optional[str] = None
     email: Optional[str] = None
@@ -59,6 +63,7 @@ class ConstructoraCreate(BaseModel):
 
 class ConstructoraUpdate(BaseModel):
     nombre: Optional[str] = None
+    tipo: Optional[str] = None
     rut: Optional[str] = None
     contacto: Optional[str] = None
     email: Optional[str] = None
@@ -86,7 +91,7 @@ def listar_constructoras(activo: Optional[bool] = None, user=Depends(get_current
 
             cur.execute("""
                 SELECT c.id, c.nombre, c.rut, c.contacto, c.email, c.telefono,
-                       c.direccion, c.notas, c.activo, c.fecha_creacion, c.creado_por,
+                       c.direccion, c.notas, c.activo, c.fecha_creacion, c.creado_por, c.tipo,
                        COUNT(p.id_proyecto) AS proyectos_count,
                        COALESCE(SUM(stats.barras), 0) AS total_barras,
                        COALESCE(SUM(stats.kilos), 0) AS total_kilos
@@ -98,7 +103,7 @@ def listar_constructoras(activo: Optional[bool] = None, user=Depends(get_current
                 ) stats ON stats.id_proyecto = p.id_proyecto
             """ + where + """
                 GROUP BY c.id, c.nombre, c.rut, c.contacto, c.email, c.telefono,
-                         c.direccion, c.notas, c.activo, c.fecha_creacion, c.creado_por
+                         c.direccion, c.notas, c.activo, c.fecha_creacion, c.creado_por, c.tipo
                 ORDER BY c.nombre
             """, params)
             rows = cur.fetchall()
@@ -114,10 +119,10 @@ def listar_constructoras(activo: Optional[bool] = None, user=Depends(get_current
             {
                 "id": r[0], "nombre": r[1], "rut": r[2], "contacto": r[3],
                 "email": r[4], "telefono": r[5], "direccion": r[6], "notas": r[7],
-                "activo": r[8], "fecha_creacion": r[9], "creado_por": r[10],
-                "proyectos_count": int(r[11]),
-                "total_barras": int(r[12]),
-                "total_kilos": round(float(r[13]), 2),
+                "activo": r[8], "fecha_creacion": r[9], "creado_por": r[10], "tipo": r[11],
+                "proyectos_count": int(r[12]),
+                "total_barras": int(r[13]),
+                "total_kilos": round(float(r[14]), 2),
                 # El frontend usa esto para mostrar/ocultar los botones editar/eliminar.
                 "puede_modificar": _puede_mod(r[10]),
             }
@@ -133,7 +138,7 @@ def detalle_constructora(constructora_id: int, user=Depends(_require_gestion_cli
         with conn.cursor() as cur:
             cur.execute("""
                 SELECT id, nombre, rut, contacto, email, telefono,
-                       direccion, notas, activo, fecha_creacion, creado_por
+                       direccion, notas, activo, fecha_creacion, creado_por, tipo
                 FROM constructoras WHERE id = %s
             """, (constructora_id,))
             r = cur.fetchone()
@@ -143,7 +148,7 @@ def detalle_constructora(constructora_id: int, user=Depends(_require_gestion_cli
             constructora = {
                 "id": r[0], "nombre": r[1], "rut": r[2], "contacto": r[3],
                 "email": r[4], "telefono": r[5], "direccion": r[6], "notas": r[7],
-                "activo": r[8], "fecha_creacion": r[9], "creado_por": r[10],
+                "activo": r[8], "fecha_creacion": r[9], "creado_por": r[10], "tipo": r[11],
                 "puede_modificar": _puede_modificar_cliente(cur, constructora_id, user),
             }
 
@@ -178,16 +183,17 @@ def crear_constructora(body: ConstructoraCreate, user=Depends(_require_gestion_c
         raise HTTPException(status_code=400, detail="El nombre es requerido")
 
     email = user.get("email", "?")
+    tipo = body.tipo if body.tipo in _TIPOS_CLIENTE else "constructora"
     try:
         with get_conn() as conn:
             with conn.cursor() as cur:
                 cur.execute("""
-                    INSERT INTO constructoras (nombre, rut, contacto, email, telefono, direccion, notas, creado_por)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                    INSERT INTO constructoras (nombre, tipo, rut, contacto, email, telefono, direccion, notas, creado_por)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                     RETURNING id
-                """, (nombre, body.rut, body.contacto, body.email, body.telefono, body.direccion, body.notas, email))
+                """, (nombre, tipo, body.rut, body.contacto, body.email, body.telefono, body.direccion, body.notas, email))
                 new_id = cur.fetchone()[0]
-        audit(email, "crear_constructora", nombre, "constructora", str(new_id))
+        audit(email, "crear_constructora", f"{nombre} ({tipo})", "constructora", str(new_id))
         return {"ok": True, "id": new_id, "nombre": nombre}
     except Exception as e:
         if "idx_constructoras_nombre" in str(e):
@@ -213,6 +219,9 @@ def actualizar_constructora(constructora_id: int, body: ConstructoraUpdate, user
                 if val is not None:
                     sets.append(f"{field} = %s")
                     params.append(val.strip() if isinstance(val, str) else val)
+            if body.tipo is not None and body.tipo in _TIPOS_CLIENTE:
+                sets.append("tipo = %s")
+                params.append(body.tipo)
             if body.activo is not None:
                 sets.append("activo = %s")
                 params.append(body.activo)
@@ -285,9 +294,64 @@ def eliminar_constructora(constructora_id: int, user=Depends(_require_gestion_cl
     return {"ok": True, "id": constructora_id}
 
 
+@router.get("/proyectos-sin-constructora")
+def proyectos_sin_constructora(busqueda: Optional[str] = None, user=Depends(_require_gestion_clientes)):
+    """Obras que aún no tienen constructora asignada (constructora_id NULL). Para el
+    poblado desde la ficha (5L.11.10). Filtro opcional por texto del nombre."""
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            where = "WHERE p.constructora_id IS NULL"
+            params: list = []
+            if busqueda and busqueda.strip():
+                where += " AND p.nombre_proyecto ILIKE %s"
+                params.append(f"%{busqueda.strip()}%")
+            cur.execute(f"""
+                SELECT p.id_proyecto, p.nombre_proyecto,
+                       COUNT(b.id_unico) AS barras,
+                       COALESCE(SUM(b.peso_total), 0) AS kilos
+                FROM proyectos p
+                LEFT JOIN barras b ON b.id_proyecto = p.id_proyecto
+                {where}
+                GROUP BY p.id_proyecto, p.nombre_proyecto
+                ORDER BY p.nombre_proyecto
+            """, params)
+            obras = [
+                {"id_proyecto": r[0], "nombre_proyecto": r[1],
+                 "barras": int(r[2]), "kilos": round(float(r[3]), 2)}
+                for r in cur.fetchall()
+            ]
+    return {"obras": obras}
+
+
+class VincularObrasIn(BaseModel):
+    ids_proyecto: list  # lista de id_proyecto a vincular a la constructora
+
+
+@router.post("/constructoras/{constructora_id}/vincular-obras")
+def vincular_obras(constructora_id: int, body: VincularObrasIn, user=Depends(_require_gestion_clientes)):
+    """Vincula (o revincula) una o varias obras a esta constructora. Usado en el
+    poblado masivo desde la ficha. Permiso de gestión de clientes (admin/admin_calidad/usc)."""
+    ids = [str(x) for x in (body.ids_proyecto or []) if x]
+    if not ids:
+        raise HTTPException(status_code=400, detail="No se indicaron obras")
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT id FROM constructoras WHERE id = %s", (constructora_id,))
+            if not cur.fetchone():
+                raise HTTPException(status_code=404, detail="Constructora no encontrada")
+            cur.execute(
+                "UPDATE proyectos SET constructora_id = %s WHERE id_proyecto = ANY(%s)",
+                (constructora_id, ids),
+            )
+            vinculadas = cur.rowcount
+    audit(user.get("email", "?"), "vincular_obras_constructora", f"{vinculadas} obra(s)", "constructora", str(constructora_id))
+    return {"ok": True, "vinculadas": vinculadas}
+
+
 @router.post("/proyectos/{id_proyecto}/asignar-constructora")
-def asignar_constructora(id_proyecto: str, constructora_id: Optional[int] = None, user=Depends(require_admin_or_admin_calidad)):
-    """Asignar o desasignar una constructora a un proyecto. constructora_id=null para desasignar."""
+def asignar_constructora(id_proyecto: str, constructora_id: Optional[int] = None, user=Depends(_require_gestion_clientes)):
+    """Asignar o desasignar una constructora a un proyecto. constructora_id=null para
+    desvincular (usado para limpiar una constructora antes de borrarla)."""
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("SELECT id_proyecto FROM proyectos WHERE id_proyecto = %s", (id_proyecto,))
