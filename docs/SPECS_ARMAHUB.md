@@ -13,6 +13,7 @@
 
 ## ÍNDICE
 
+0. [Glosario / terminología](#0-glosario--terminología)
 1. [Roles y permisos globales](#1-roles-y-permisos-globales)
 2. [Infraestructura y almacenamiento](#2-infraestructura-y-almacenamiento)
 3. [Caluga: Reclamos](#3-caluga-reclamos)
@@ -23,6 +24,24 @@
 8. [Caluga: CRM](#8-caluga-crm)
 9. [Servicios transversales](#9-servicios-transversales)
 10. [Decisiones de diseño globales](#10-decisiones-de-diseño-globales)
+
+---
+
+## 0. GLOSARIO / TERMINOLOGÍA
+
+> Fijado 2026-07. Términos rectores para evitar la ambigüedad histórica entre "cliente",
+> "obra" y "constructora". Usar estos términos en código, UI y documentación.
+
+| Término | Qué es | Tabla | Ejemplo |
+|---------|--------|-------|---------|
+| **Constructora** | La empresa que encarga las obras. Nivel corporativo: una constructora tiene MUCHAS obras. Es la entidad que agrupa para métricas corporativas. | `constructoras` | "DLP" |
+| **Obra** (= Proyecto) | El proyecto específico que se cubica. Pertenece a UNA constructora. | `proyectos` | "Edificio Talca 2 Sur" |
+| ~~Cliente~~ | **Término AMBIGUO — evitar en lo técnico.** Históricamente se usó tanto para la constructora como para la obra. En la UI la caluga se rotula "Clientes" por costumbre comercial, pero conceptualmente gestiona **Constructoras**. | — | — |
+
+**Notas de terminología:**
+- El `nombre_proyecto` histórico es un texto compuesto `Constructora - Obra` (ej. `"DLP - Edificio Talca 2 Sur"`). El prefijo de constructora está embebido en el nombre de la obra por cómo se ingresa en el sistema de procesamiento (Detailer). Se deja tal cual; limpiar el prefijo es tarea futura aparte.
+- La relación real Obra→Constructora es `proyectos.constructora_id`. Hoy está mayormente NULL (las obras existen pero no vinculadas). Poblarla es el objetivo de la caluga Clientes (5L.11).
+- Una **Constructora** NO es lo mismo que un **Calculista** (quien diseña la obra, tabla `calculistas`) ni que un **Mandante** (no se usa ese término; todo cliente se modela como constructora).
 
 ---
 

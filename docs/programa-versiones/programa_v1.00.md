@@ -571,6 +571,7 @@ Objetivo: endurecer Reclamos y cerrar los pendientes reales arrastrados.
 | 5L.11.7 | Retirar creación de cliente "al vuelo": quitados los mini-forms + botones "+ nueva constructora" del form crear-obra-desde-reclamo y del editar-obra (app.html). Los selectores solo listan existentes | ☑ | YO |
 | 5L.11.8 | Retirar sección constructoras de Admin → Datos maestros: reemplazada por puntero "Ir a Clientes →". `editarCliente()` legacy de entidades.js eliminado (evita colisión con la caluga nueva); `loadClientes()` se mantiene (llena selectores) | ☑ | YO |
 | 5L.11.9 | Smoke test: crear cliente (USC) → usar en obra → intentar borrar con obra asociada (bloqueado, aviso correcto) → limpiar → borrar OK. Editar/borrar cliente ajeno (bloqueado para USC no dueño). Reclamo externo sin obra no avanza a validación | ☐ | TÚ+YO |
+| 5L.11.10 | **Poblar constructoras + vincular obras existentes (el valor real de la caluga).** Hoy `constructoras` está vacía y todas las obras tienen `constructora_id` NULL (el "cliente" vive embebido en `nombre_proyecto` = `"Constructora - Obra"`). En la ficha de cada constructora, mostrar las OBRAS SIN CONSTRUCTORA para asignarlas con checkboxes (usa `POST /proyectos/{id}/asignar-constructora`, ya existe). Método MANUAL (el prefijo del nombre no siempre es confiable). Terminología fijada: Constructora = empresa (agrupa obras), Obra = proyecto. Ver Glosario SPECS §0 | ☐ | YO |
 
 #### 5L.12 — Control de plazos / SLA de reclamos (requiere diseño, NO implementar aún)
 
@@ -605,6 +606,39 @@ Objetivo: endurecer Reclamos y cerrar los pendientes reales arrastrados.
 | N° | Descripción | Realizado | Quién |
 |----|-------------|-----------|-------|
 | 5L.14.1 | Decidir modelo (A rol_area / B fallback) en sesión dedicada | ☐ | TÚ+YO |
+
+#### 5L.15 — [DISEÑO PENDIENTE] Inteligencia de Calculistas (bitácora + vistas embebidas)
+
+> Surgió al construir la caluga Clientes (2026-07). Objetivo del usuario: "estudiar a los
+> proyectistas" para que el cubicador tenga feedback cuando entra una obra de un calculista
+> conocido. HOY existe: tabla `calculistas` (nombre, email) + CRUD en Admin + KPIs
+> cuantitativos (`GET /calculistas/kpis`: kilos, PPI, PPB, diámetro ponderado). NO existe
+> nada cualitativo (comentarios/recomendaciones) ni vistas embebidas.
+>
+> **Dirección propuesta (a validar en discovery):** Calculista es entidad TÉCNICO-PRODUCTIVA
+> distinta de Constructora (comercial) — amerita **caluga propia**, no sub-tab de Clientes.
+> Tres capas: (1) datos duros/KPIs [existen], (2) bitácora cualitativa [comentarios con
+> fecha+autor], (3) **vistas embebidas** del resumen en Cubicación y en Programa de Obra
+> (F8), donde el cubicador lo consume al abrir una obra de ese calculista. El "protocolo de
+> cubicaciones" (hoy en Excel) NO va aquí — va en Programa de Obra (F8), es cosa distinta.
+
+| N° | Descripción | Realizado | Quién |
+|----|-------------|-----------|-------|
+| 5L.15.1 | Discovery: definir alcance de la bitácora (quién comenta, privacidad, si afecta asignaciones), ficha ampliada de calculista, y puntos de visualización embebida. Actualizar SPECS §7/nueva sección | ☐ | TÚ+YO |
+| 5L.15.2 | Implementar caluga Calculistas (mover gestión desde Admin) + bitácora + vistas embebidas. Solo tras discovery | ☐ | YO |
+
+#### 5L.16 — [INFRAESTRUCTURA, tarea propia] Reorganizar migraciones a estructura de carpeta
+
+> Hoy las 79 migraciones viven como un único array gigante en `db.py` (`MIGRATIONS`). Es
+> frágil y no calza con la estructura del resto de los desarrollos. Mover a una carpeta de
+> archivos por migración, MANTENIENDO intacto el mecanismo de versionado (`schema_migrations`
+> registra por número) para no romper el tracking en producción. Tarea con riesgo → su propio
+> momento, no mezclar con features. Ver SPECS §9.1 (sistema de migraciones).
+
+| N° | Descripción | Realizado | Quién |
+|----|-------------|-----------|-------|
+| 5L.16.1 | Diseñar estructura de carpeta de migraciones + plan de corte sin romper `schema_migrations` | ☐ | TÚ+YO |
+| 5L.16.2 | Migrar el array de `db.py` a la nueva estructura y validar que el tracking sigue intacto | ☐ | YO |
 
 ---
 
@@ -671,7 +705,9 @@ Objetivo: USC programa la obra; cubicadores dan cumplimiento (auto o manual + va
 | 8.8 | UI: marca de cumplimiento del cubicador + indicador auto/manual/validado | ☐ | YO |
 | 8.9 | Permisos: USC edita, cubicador cumple, jefatura valida | ☐ | TÚ+YO |
 | 8.10 | Conectar avance del programa a la vista de obra en Mis Proyectos (F7.7) | ☐ | YO |
-| 8.11 | Smoke test: USC programa → cubicador cumple (auto y manual) → jefatura valida | ☐ | TÚ+YO |
+| 8.11 | **Protocolo de cubicaciones**: migrar el protocolo que hoy vive en Excel a un módulo dentro de Programa de Obra (checklist/pasos de cómo se cubica una obra). Distinto de la bitácora de calculistas (5L.15). Definir estructura con el usuario | ☐ | TÚ+YO |
+| 8.12 | Consumir el resumen/feedback del calculista (5L.15) en la vista de administración de obra, como antecedente para el cubicador | ☐ | YO |
+| 8.13 | Smoke test: USC programa → cubicador cumple (auto y manual) → jefatura valida | ☐ | TÚ+YO |
 
 **Criterio de salida:** USC puede programar una obra y ver su avance real.
 
