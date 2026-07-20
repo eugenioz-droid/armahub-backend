@@ -1372,6 +1372,21 @@ def dashboard_sectores(
     }
 
 
+@router.get("/proyectos/empresas")
+def get_empresas_distintas(user=Depends(get_current_user)):
+    """Lista de nombres de empresa ya usados (para autocompletado en la ficha de obra).
+    Evita duplicados por tipeo ('DLP' vs 'D.L.P')."""
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT DISTINCT empresa FROM proyectos
+                WHERE empresa IS NOT NULL AND TRIM(empresa) <> ''
+                ORDER BY empresa
+            """)
+            empresas = [r[0] for r in cur.fetchall()]
+    return {"empresas": empresas}
+
+
 @router.get("/proyectos")
 def get_proyectos(user=Depends(get_current_user)):
     """
@@ -1396,7 +1411,9 @@ def get_proyectos(user=Depends(get_current_user)):
                     p.fecha_creacion,
                     p.usuario_creador,
                     p.fecha_inicio,
-                    COALESCE(ROUND(CAST(SUM(b.diam * b.peso_total) / NULLIF(SUM(b.peso_total), 0) AS NUMERIC), 1), 0) as diam_prom
+                    COALESCE(ROUND(CAST(SUM(b.diam * b.peso_total) / NULLIF(SUM(b.peso_total), 0) AS NUMERIC), 1), 0) as diam_prom,
+                    p.clasificacion,
+                    p.empresa
                 FROM proyectos p
                 LEFT JOIN barras b ON p.id_proyecto = b.id_proyecto
                 LEFT JOIN constructoras co ON p.constructora_id = co.id
@@ -1404,7 +1421,8 @@ def get_proyectos(user=Depends(get_current_user)):
                 WHERE 1=1""" + pf_p + """
                 GROUP BY p.id_proyecto, p.nombre_proyecto,
                          p.constructora_id, co.nombre, p.calculista_id, ca.nombre,
-                         p.descripcion, p.fecha_creacion, p.usuario_creador, p.fecha_inicio
+                         p.descripcion, p.fecha_creacion, p.usuario_creador, p.fecha_inicio,
+                         p.clasificacion, p.empresa
                 ORDER BY COALESCE(p.fecha_inicio, p.fecha_creacion) ASC NULLS LAST, p.nombre_proyecto ASC
             """, pf_pp)
             rows = cur.fetchall()
@@ -1463,6 +1481,8 @@ def get_proyectos(user=Depends(get_current_user)):
             "ppb": ppb,
             "cubicador": cubicador_map.get(r[0], ""),
             "aliases": alias_map.get(r[0], []),
+            "clasificacion": r[13] or "obra",
+            "empresa": r[14],
         })
     
     return {"proyectos": proyectos}
@@ -1525,6 +1545,9 @@ class ProyectoUpdate(BaseModel):
     descripcion: Optional[str] = None
     calculista_id: Optional[int] = None
     constructora_id: Optional[int] = None
+    clasificacion: Optional[str] = None   # obra | tienda | otro (5L.11)
+    empresa: Optional[str] = None         # nombre constructora/retail (texto libre)
+    fecha_inicio: Optional[str] = None
 
 class AutorizarUsuarioRequest(BaseModel):
     user_id: int
@@ -1599,6 +1622,15 @@ def editar_proyecto(id_proyecto: str, body: ProyectoUpdate, user=Depends(get_cur
             if body.constructora_id is not None:
                 sets.append("constructora_id = %s")
                 params.append(body.constructora_id if body.constructora_id != 0 else None)
+            if body.clasificacion is not None and body.clasificacion in ("obra", "tienda", "otro"):
+                sets.append("clasificacion = %s")
+                params.append(body.clasificacion)
+            if body.empresa is not None:
+                sets.append("empresa = %s")
+                params.append(body.empresa.strip() or None)
+            if body.fecha_inicio is not None:
+                sets.append("fecha_inicio = %s")
+                params.append(body.fecha_inicio.strip() or None)
 
             if not sets:
                 return {"ok": True, "message": "Sin cambios"}

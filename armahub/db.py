@@ -1297,6 +1297,16 @@ MIGRATIONS = [
     (80, "constructoras: columna tipo (constructora/retail/otro)", [
         "DO $$ BEGIN ALTER TABLE constructoras ADD COLUMN tipo TEXT NOT NULL DEFAULT 'constructora'; EXCEPTION WHEN duplicate_column THEN NULL; END $$;",
     ]),
+
+    # --- Migration 81: clasificación + empresa a nivel de OBRA (5L.11 rework) ---
+    # La OBRA (proyectos) es el registro principal. Se le agregan 2 atributos:
+    #  - clasificacion: obra | tienda | otro (qué es la unidad)
+    #  - empresa: nombre de la constructora/retail (TEXTO libre, para agrupar/filtrar)
+    # La caluga Clientes gira en torno a la obra, no a una tabla de constructoras.
+    (81, "proyectos: columnas clasificacion + empresa", [
+        "DO $$ BEGIN ALTER TABLE proyectos ADD COLUMN clasificacion TEXT NOT NULL DEFAULT 'obra'; EXCEPTION WHEN duplicate_column THEN NULL; END $$;",
+        "DO $$ BEGIN ALTER TABLE proyectos ADD COLUMN empresa TEXT; EXCEPTION WHEN duplicate_column THEN NULL; END $$;",
+    ]),
 ]
 
 
