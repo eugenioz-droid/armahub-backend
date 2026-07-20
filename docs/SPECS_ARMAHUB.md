@@ -215,6 +215,29 @@ Reglas para que la navegación sea uniforme y la restauración tras F5 funcione 
 - **Referencia:** `shell.js` (`switchModule`, `switchTab`, `tabLoaders`, `updateNavHash`)
   + `app.js` (init que restaura desde el hash).
 
+#### Sensación rápida — actualización optimista tras guardar (estándar — NO romper)
+
+> Directriz transversal (2026-07). El portal debe sentirse instantáneo al editar. El
+> antipatrón que genera lag: **"guardar → recargar TODO del servidor"**.
+
+- **Al guardar un cambio, NO recargar toda la lista desde el servidor.** Si el backend
+  confirmó (`data.ok`), el frontend ya sabe qué cambió: actualizar el objeto en la caché
+  en memoria (el array que ya tiene el listado) y **re-renderizar solo la vista local**.
+  Sin viaje de red extra → respuesta instantánea.
+- **Patrón:** `PATCH` → `if (data.ok) { actualizar item en el array local; render(); }`.
+  Recargar del servidor (`loadXxx()`) solo si el cambio afecta datos que el frontend NO
+  puede calcular (ej. un total del backend que no se puede derivar localmente) — y aún así,
+  evaluar si vale el lag.
+- **Por qué:** el caso típico malo es recargar un endpoint pesado (que recalcula kilos de
+  todas las barras, hace joins, etc.) tras editar UN campo de UNA fila. Editaste una cosa,
+  no el universo.
+- **Datos derivados en memoria:** si un campo editado alimenta un selector/autocompletado
+  (ej. lista de empresas), incorporar el valor nuevo al array local en vez de re-pedirlo.
+- **Referencia (piloto):** `features/clientes/index.js` (`guardarObraData` → optimistic
+  update de `_obrasData` + `renderClientesLista()`, sin recargar `/proyectos`).
+- **Pendiente:** propagar este patrón a los módulos que aún hacen "guardar → recargar todo"
+  (Reclamos, Cubicación, Admin). Ver tarea en el programa.
+
 ---
 
 ## 3. CALUGA: RECLAMOS

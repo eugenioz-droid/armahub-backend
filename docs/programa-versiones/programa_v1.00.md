@@ -643,6 +643,19 @@ Objetivo: endurecer Reclamos y cerrar los pendientes reales arrastrados.
 | 5L.16.1 | Diseñar estructura de carpeta de migraciones + plan de corte sin romper `schema_migrations` | ☐ | TÚ+YO |
 | 5L.16.2 | Migrar el array de `db.py` a la nueva estructura y validar que el tracking sigue intacto | ☐ | YO |
 
+#### 5L.17 — Sensación rápida: actualización optimista tras guardar (transversal)
+
+> Directriz fijada en SPECS §2.4 (2026-07). El lag al editar viene del antipatrón
+> "guardar → recargar TODO del servidor". El fix: al confirmar el PATCH, actualizar el
+> item en la caché en memoria y re-renderizar solo la vista local (sin viaje de red).
+> Piloto aplicado en caluga Clientes (`guardarObraData`). Propagar módulo por módulo.
+
+| N° | Descripción | Realizado | Quién |
+|----|-------------|-----------|-------|
+| 5L.17.1 | Piloto: caluga Clientes — optimistic update en `guardarObraData` (no recarga `/proyectos`) | ☑ | YO |
+| 5L.17.2 | Auditar y aplicar el patrón en Reclamos (guardados que hoy llaman `loadReclamos`/`verReclamo` completo tras cada edición) | ☐ | YO |
+| 5L.17.3 | Aplicar en Cubicación (editar obra/carga) y Admin (usuarios/entidades) | ☐ | YO |
+
 ---
 
 ## FASE 6 — Discovery del dominio Obra (modelo común)
@@ -816,6 +829,7 @@ Objetivo: consolidar la base administrativa con el conocimiento real de las calu
 | 15.2 | Auditoría de seguridad formal: OWASP Top 10 en endpoints críticos | ☐ | YO |
 | 15.3 | Revisar ownership y aislamiento por obra/cliente en todas las calugas | ☐ | YO |
 | 15.4 | Performance de queries sensibles + índices | ☐ | YO |
+| 15.4b | Verificar que el patrón "actualización optimista tras guardar" (ver 5L.17 y SPECS §2.4) esté aplicado en todas las calugas antes del cierre | ☐ | YO |
 | 15.5 | Backup/restore documentado de Supabase y R2 | ☐ | YO |
 | 15.6 | Configurar dominio propio (DNS) | ☐ | TÚ+YO |
 | 15.7 | Checklist de release por caluga | ☐ | YO |
