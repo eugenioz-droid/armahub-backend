@@ -32,20 +32,24 @@
     switchCliSubTab(_cliSubActual);
   }
 
+  var _SUB_COLORS = { obras: '#00897b', empresas: '#00897b', calculistas: '#5e35b1' };
+
   function switchCliSubTab(sub) {
     _cliSubActual = sub;
-    var panels = { obras: 'cliSubObras', empresas: 'cliSubEmpresas' };
-    var btns = { obras: 'cliSubBtnObras', empresas: 'cliSubBtnEmpresas' };
+    var panels = { obras: 'cliSubObras', empresas: 'cliSubEmpresas', calculistas: 'cliSubCalculistas' };
+    var btns = { obras: 'cliSubBtnObras', empresas: 'cliSubBtnEmpresas', calculistas: 'cliSubBtnCalculistas' };
     Object.keys(panels).forEach(function(k) {
       var p = document.getElementById(panels[k]);
       if (p) p.style.display = (k === sub) ? '' : 'none';
       var b = document.getElementById(btns[k]);
       if (b) {
-        b.style.borderBottomColor = (k === sub) ? '#00897b' : 'transparent';
-        b.style.color = (k === sub) ? '#00897b' : '#999';
+        b.style.borderBottomColor = (k === sub) ? (_SUB_COLORS[sub] || '#00897b') : 'transparent';
+        b.style.color = (k === sub) ? (_SUB_COLORS[sub] || '#00897b') : '#999';
       }
     });
-    if (sub === 'obras') renderObrasLista(); else renderEmpresasLista();
+    if (sub === 'obras') renderObrasLista();
+    else if (sub === 'empresas') renderEmpresasLista();
+    else renderCalculistasLista();
   }
 
   async function _cargarObras() {
@@ -354,6 +358,120 @@
     }
   }
 
+  // ======================= SUB-TAB CALCULISTAS =======================
+  // El CRUD de calculistas (POST/PATCH/DELETE) es admin/admin_calidad only.
+  function _puedeGestionarCalc() {
+    return (typeof currentRole !== 'undefined') && (currentRole === 'admin' || currentRole === 'admin_calidad');
+  }
+
+  function renderCalculistasLista() {
+    var cont = document.getElementById('calculistasLista');
+    if (!cont) return;
+    var btn = document.getElementById('btnNuevoCalc');
+    if (btn) btn.style.display = _puedeGestionarCalc() ? '' : 'none';
+    var busq = ((document.getElementById('calcFiltroBusqueda') || {}).value || '').trim().toLowerCase();
+    var rows = _calculistasCache.filter(function(c) {
+      if (!busq) return true;
+      return ((c.nombre || '') + ' ' + (c.email || '')).toLowerCase().indexOf(busq) !== -1;
+    });
+    if (rows.length === 0) {
+      cont.innerHTML = '<div class="muted">No hay calculistas registrados.' +
+        (_puedeGestionarCalc() ? ' Crea el primero con "+ Nuevo calculista".' : '') + '</div>';
+      return;
+    }
+    var puede = _puedeGestionarCalc();
+    cont.innerHTML = '<table style="width:100%; font-size:12px; border-collapse:collapse;">' +
+      '<tr style="background:#f5f5f5; text-align:left;">' +
+        '<th style="padding:5px 6px;">Nombre</th>' +
+        '<th style="padding:5px 6px;">Email</th>' +
+        '<th style="padding:5px 6px; text-align:right;">Obras</th>' +
+        '<th style="padding:5px 6px; text-align:right;">Kilos</th>' +
+        '<th style="padding:5px 4px;"></th>' +
+      '</tr>' +
+      rows.map(function(c) {
+        var acciones = puede
+          ? '<button class="secondary" title="Editar" style="font-size:10px; padding:1px 6px; color:#5e35b1; margin-right:3px;" onclick="editarCalc(' + c.id + ')">✏️</button>' +
+            '<button class="secondary" title="Eliminar" style="font-size:10px; padding:1px 6px; color:#b42318;" onclick="eliminarCalc(' + c.id + ')">✕</button>'
+          : '';
+        return '<tr style="border-bottom:1px solid #eee;">' +
+          '<td style="padding:4px 6px; font-weight:500;">' + _esc(c.nombre) + '</td>' +
+          '<td style="padding:4px 6px; font-size:11px;">' + _esc(c.email || '-') + '</td>' +
+          '<td style="padding:4px 6px; text-align:right;">' + (c.proyectos_count || 0) + '</td>' +
+          '<td style="padding:4px 6px; text-align:right; font-size:11px;">' + _kg(c.total_kilos) + '</td>' +
+          '<td style="padding:4px 4px; white-space:nowrap; text-align:right;">' + acciones + '</td>' +
+          '</tr>';
+      }).join('') +
+      '</table>' +
+      '<div class="muted" style="font-size:11px; margin-top:4px;">Mostrando ' + rows.length + ' calculista(s)</div>';
+  }
+
+  function abrirModalCalc() {
+    document.getElementById('calcId').value = '';
+    document.getElementById('calcNombre').value = '';
+    document.getElementById('calcEmail').value = '';
+    document.getElementById('calcModalTitulo').textContent = 'Nuevo calculista';
+    document.getElementById('calcModalMsg').textContent = '';
+    document.getElementById('calcModal').style.display = 'block';
+    document.getElementById('calcNombre').focus();
+  }
+  function editarCalc(id) {
+    var c = _calculistasCache.filter(function(x) { return x.id === id; })[0];
+    if (!c) return;
+    document.getElementById('calcId').value = c.id;
+    document.getElementById('calcNombre').value = c.nombre || '';
+    document.getElementById('calcEmail').value = c.email || '';
+    document.getElementById('calcModalTitulo').textContent = 'Editar calculista';
+    document.getElementById('calcModalMsg').textContent = '';
+    document.getElementById('calcModal').style.display = 'block';
+  }
+  function cerrarModalCalc() { document.getElementById('calcModal').style.display = 'none'; }
+
+  async function guardarCalc() {
+    var msg = document.getElementById('calcModalMsg');
+    var id = document.getElementById('calcId').value;
+    var nombre = document.getElementById('calcNombre').value.trim();
+    if (!nombre) { msg.textContent = 'El nombre es requerido'; msg.style.color = '#b42318'; return; }
+    var body = { nombre: nombre, email: document.getElementById('calcEmail').value.trim() || null };
+    msg.textContent = 'Guardando...'; msg.style.color = '#666';
+    var url = id ? ('/calculistas/' + id) : '/calculistas';
+    var res = await fetch(apiUrl(url), {
+      method: id ? 'PATCH' : 'POST',
+      headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    if (res.status === 401) { logout(); return; }
+    var data = await res.json();
+    if (data.ok) {
+      cerrarModalCalc();
+      if (typeof showToast === 'function') showToast(id ? 'Calculista actualizado' : 'Calculista creado', 'success');
+      await _cargarCalculistas();   // lista chica, no pesa
+      renderCalculistasLista();
+    } else {
+      msg.textContent = 'Error: ' + (data.detail || 'desconocido'); msg.style.color = '#b42318';
+    }
+  }
+
+  async function eliminarCalc(id) {
+    var c = _calculistasCache.filter(function(x) { return x.id === id; })[0];
+    var nombre = c ? c.nombre : ('#' + id);
+    if (c && c.proyectos_count > 0) {
+      alert('No se puede eliminar "' + nombre + '": tiene ' + c.proyectos_count + ' obra(s) asignada(s). ' +
+            'Cambia el calculista de esas obras primero.');
+      return;
+    }
+    if (!confirm('¿Eliminar el calculista "' + nombre + '"?')) return;
+    var res = await fetch(apiUrl('/calculistas/' + id), { method: 'DELETE', headers: authHeaders() });
+    if (res.status === 401) { logout(); return; }
+    var data = await res.json();
+    if (data.ok) {
+      if (typeof showToast === 'function') showToast('Calculista eliminado', 'success');
+      await _cargarCalculistas();
+      renderCalculistasLista();
+    } else {
+      alert('Error: ' + (data.detail || 'no se pudo eliminar'));
+    }
+  }
+
   // Exponer como globales (onclick del HTML + loader del shell)
   global.loadClientesModule = loadClientesModule;
   global.switchCliSubTab = switchCliSubTab;
@@ -368,4 +486,10 @@
   global.cerrarModalEmpresa = cerrarModalEmpresa;
   global.guardarEmpresa = guardarEmpresa;
   global.eliminarEmpresa = eliminarEmpresa;
+  global.renderCalculistasLista = renderCalculistasLista;
+  global.abrirModalCalc = abrirModalCalc;
+  global.editarCalc = editarCalc;
+  global.cerrarModalCalc = cerrarModalCalc;
+  global.guardarCalc = guardarCalc;
+  global.eliminarCalc = eliminarCalc;
 })(window);
