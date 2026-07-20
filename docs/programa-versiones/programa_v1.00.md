@@ -562,15 +562,15 @@ Objetivo: endurecer Reclamos y cerrar los pendientes reales arrastrados.
 
 | N° | Descripción | Realizado | Quién |
 |----|-------------|-----------|-------|
-| 5L.11.1 | FIX puntual: asignar la obra correcta a los 2 reclamos huérfanos detectados (SQL directo, sin nueva funcionalidad) | ☐ | YO |
-| 5L.11.2 | Migración: `constructoras.creado_por TEXT` (existentes quedan NULL = editable/borrable solo por admin) | ☐ | YO |
-| 5L.11.3 | Backend `constructoras.py`: permisos por ownership en lugar de `require_admin_or_admin_calidad` fijo (crear=todos del grupo; editar/eliminar=creador o admin). Endpoint `GET /constructoras/{id}/puede-eliminar` (proyectos_count + motivo) | ☐ | YO |
-| 5L.11.4 | Backend: `DELETE /constructoras/{id}` pasa de soft-delete a borrado real cuando `proyectos_count == 0`; bloquea con mensaje claro si tiene obras asociadas | ☐ | YO |
-| 5L.11.5 | Frontend: nueva caluga "Clientes" (registry) — tabla con nombre/RUT/contacto/#obras/#kilos, modal crear/editar, acciones según ownership, aviso de qué limpiar antes de poder eliminar | ☐ | YO |
-| 5L.11.6 | Cerrar el agujero: bloquear que un reclamo EXTERNO avance a validación o se cierre sin `id_proyecto` asignado (backend, mensaje claro al intentar) | ☐ | YO |
-| 5L.11.7 | Retirar los 4 puntos de creación de cliente "al vuelo" (obras.js×2, admin/proyectos.js, reclamos/form.js) — los selectores solo listan existentes, sin botón "+ nuevo" inline | ☐ | YO |
-| 5L.11.8 | Retirar sección clientes/constructoras de Admin → Entidades | ☐ | YO |
-| 5L.11.9 | Smoke test: crear cliente (USC) → usar en obra → intentar borrar con obra asociada (bloqueado, aviso correcto) → limpiar → borrar OK. Editar/borrar cliente ajeno (bloqueado para USC no dueño) | ☐ | TÚ+YO |
+| 5L.11.1 | FIX puntual: asignar obra a los 2 reclamos huérfanos (SQL). REC-051(id57)→PROY-D47634AE, REC-065(id74)→PROY-DB91C0B0. Aplicado y verificado en BD | ☑ | YO |
+| 5L.11.2 | Migración 79: `constructoras.creado_por TEXT` (existentes NULL = solo admin los gestiona) | ☑ | YO |
+| 5L.11.3 | Backend `constructoras.py`: permisos por ownership (`_require_gestion_clientes` admin/admin_calidad/usc; editar/eliminar solo creador o admin via `_puede_modificar_cliente`). GET expone `puede_gestionar`/`puede_modificar`. Endpoint `GET /constructoras/{id}/puede-eliminar` | ☑ | YO |
+| 5L.11.4 | Backend: `DELETE /constructoras/{id}` = borrado REAL cuando 0 obras; 409 con mensaje claro si tiene obras (antes era soft-delete) | ☑ | YO |
+| 5L.11.5 | Frontend: caluga "Clientes" (registry hubOrder 25, roles admin/admin_calidad/usc). `tabs/clientes.html` + `features/clientes/index.js`: tabla nombre/RUT/contacto/#obras/#kilos, modal crear/editar, botones editar/eliminar por `puede_modificar`, aviso de obras a limpiar antes de eliminar. Registrado en app.html/shell (tabLabels/tabLoaders)/bootstrap | ☑ | YO |
+| 5L.11.6 | Cerrar el agujero: reclamo EXTERNO no avanza a en_revision/validación sin `id_proyecto` (validación en `_primer_envio`, mensaje claro). Internos exentos | ☑ | YO |
+| 5L.11.7 | Retirar creación de cliente "al vuelo": quitados los mini-forms + botones "+ nueva constructora" del form crear-obra-desde-reclamo y del editar-obra (app.html). Los selectores solo listan existentes | ☑ | YO |
+| 5L.11.8 | Retirar sección constructoras de Admin → Datos maestros: reemplazada por puntero "Ir a Clientes →". `editarCliente()` legacy de entidades.js eliminado (evita colisión con la caluga nueva); `loadClientes()` se mantiene (llena selectores) | ☑ | YO |
+| 5L.11.9 | Smoke test: crear cliente (USC) → usar en obra → intentar borrar con obra asociada (bloqueado, aviso correcto) → limpiar → borrar OK. Editar/borrar cliente ajeno (bloqueado para USC no dueño). Reclamo externo sin obra no avanza a validación | ☐ | TÚ+YO |
 
 #### 5L.12 — Control de plazos / SLA de reclamos (requiere diseño, NO implementar aún)
 
