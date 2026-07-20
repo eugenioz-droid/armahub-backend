@@ -171,9 +171,28 @@
     if (res.status === 401) { logout(); return; }
     var data = await res.json();
     if (data.ok) {
+      // Optimistic update: el servidor confirmó, así que actualizo el dato en memoria
+      // y re-renderizo solo la tabla — sin recargar TODO del servidor (evita el lag).
+      var o = _obrasData.filter(function(x) { return x.id_proyecto === id; })[0];
+      if (o) {
+        o.clasificacion = body.clasificacion;
+        o.empresa = body.empresa || null;
+        o.calculista_id = body.calculista_id || null;
+        var calc = _calculistasCache.filter(function(c) { return c.id === body.calculista_id; })[0];
+        o.calculista_nombre = calc ? calc.nombre : null;
+        o.descripcion = body.descripcion || null;
+        o.fecha_inicio = body.fecha_inicio || null;
+      }
+      // Si la empresa es nueva, incorporarla al autocompletado sin ir al servidor.
+      if (body.empresa && _empresasKnown.indexOf(body.empresa) === -1) {
+        _empresasKnown.push(body.empresa);
+        _empresasKnown.sort();
+        _poblarFiltroEmpresa();
+        _poblarDatalistEmpresa();
+      }
       cerrarModalCliente();
       if (typeof showToast === 'function') showToast('Obra actualizada', 'success');
-      await loadClientesModule();
+      renderClientesLista();  // instantáneo, sin red
     } else {
       msg.textContent = 'Error: ' + (data.detail || 'desconocido'); msg.style.color = '#b42318';
     }
