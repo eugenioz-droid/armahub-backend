@@ -1,77 +1,158 @@
-  <!-- TAB: CONSTRUCTORAS / CLIENTES (5L.11) — la OBRA es el registro; empresa y
-       clasificación son atributos de la obra para agrupar/filtrar -->
+  <!-- TAB: CONSTRUCTORAS / CLIENTES (5L.11) — dos sub-tabs: Obras/Tiendas (primario)
+       y Empresas (secundario). La OBRA es el registro; la empresa es entidad propia
+       (tabla constructoras) que la obra referencia. -->
   <div id="tab-clientes" class="tab-content">
-    <div class="card" style="border-top:3px solid #00897b;">
-      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
-        <h3 style="margin:0; color:#00897b;">🏢 Constructoras / Clientes</h3>
-        <span class="muted" style="font-size:11px;" id="cliResumen"></span>
+
+    <!-- Nivel 2: sub-tabs -->
+    <div style="display:flex; gap:0; margin-bottom:16px; padding-top:4px; border-bottom:1px solid #f0f0f0; background:#fafafa;">
+      <button id="cliSubBtnObras" onclick="switchCliSubTab('obras')" style="padding:5px 16px; font-size:12px; font-weight:600; border:none; border-bottom:2px solid #00897b; background:none; color:#00897b; cursor:pointer;">Obras / Tiendas</button>
+      <button id="cliSubBtnEmpresas" onclick="switchCliSubTab('empresas')" style="padding:5px 16px; font-size:12px; font-weight:600; border:none; border-bottom:2px solid transparent; background:none; color:#aaa; cursor:pointer;">Empresas</button>
+    </div>
+
+    <!-- ===== Sub-panel: OBRAS / TIENDAS (primario) ===== -->
+    <div id="cliSubObras">
+      <div class="card" style="border-top:3px solid #00897b;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+          <h3 style="margin:0; color:#00897b;">🏗️ Obras / Tiendas</h3>
+          <span class="muted" style="font-size:11px;" id="cliResumen"></span>
+        </div>
+        <p class="muted" style="font-size:12px; margin:0 0 12px 0;">Completa la data de cada obra/tienda: su clasificación y a qué empresa pertenece. Haz clic en una fila para editarla.</p>
+        <div class="row" style="gap:6px; align-items:center; flex-wrap:wrap; margin-bottom:8px;">
+          <input type="text" id="cliFiltroBusqueda" placeholder="Buscar obra o empresa..." autocomplete="off" name="cli-busqueda-nofill" onkeyup="renderObrasLista()" style="font-size:12px; max-width:240px; padding:4px 8px;" />
+          <select id="cliFiltroClasif" onchange="renderObrasLista()" style="font-size:11px;">
+            <option value="">Clasificación: Todas</option>
+            <option value="obra">Obra</option>
+            <option value="tienda">Tienda</option>
+            <option value="otro">Otro</option>
+          </select>
+          <select id="cliFiltroEmpresa" onchange="renderObrasLista()" style="font-size:11px; max-width:180px;">
+            <option value="">Empresa: Todas</option>
+          </select>
+          <label style="font-size:11px; color:#666; display:flex; align-items:center; gap:4px; cursor:pointer;">
+            <input type="checkbox" id="cliFiltroSinEmpresa" onchange="renderObrasLista()" /> Solo sin empresa
+          </label>
+          <button class="secondary" style="font-size:10px; padding:2px 8px;" onclick="limpiarFiltrosObras()">Limpiar</button>
+        </div>
+        <div id="obrasLista"><div class="muted">Cargando obras...</div></div>
       </div>
-      <p class="muted" style="font-size:12px; margin:0 0 12px 0;">Completa y edita la data de cada obra: su <strong>clasificación</strong> (obra / tienda / otro) y la <strong>empresa</strong> (constructora o retail). La empresa sirve para agrupar y filtrar. Haz clic en una fila para editarla.</p>
-      <div class="row" style="gap:6px; align-items:center; flex-wrap:wrap; margin-bottom:8px;">
-        <input type="text" id="cliFiltroBusqueda" placeholder="Buscar obra o empresa..." autocomplete="off" name="cli-busqueda-nofill" onkeyup="renderClientesLista()" style="font-size:12px; max-width:240px; padding:4px 8px;" />
-        <select id="cliFiltroClasif" onchange="renderClientesLista()" style="font-size:11px;">
-          <option value="">Clasificación: Todas</option>
-          <option value="obra">Obra</option>
-          <option value="tienda">Tienda</option>
-          <option value="otro">Otro</option>
-        </select>
-        <select id="cliFiltroEmpresa" onchange="renderClientesLista()" style="font-size:11px; max-width:180px;">
-          <option value="">Empresa: Todas</option>
-        </select>
-        <label style="font-size:11px; color:#666; display:flex; align-items:center; gap:4px; cursor:pointer;">
-          <input type="checkbox" id="cliFiltroSinEmpresa" onchange="renderClientesLista()" /> Solo sin empresa
-        </label>
-        <button class="secondary" style="font-size:10px; padding:2px 8px;" onclick="limpiarFiltrosClientes()">Limpiar</button>
+    </div>
+
+    <!-- ===== Sub-panel: EMPRESAS (secundario) ===== -->
+    <div id="cliSubEmpresas" style="display:none;">
+      <div class="card" style="border-top:3px solid #00695c;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+          <h3 style="margin:0; color:#00695c;">🏢 Empresas (constructoras / retail)</h3>
+          <button id="btnNuevaEmpresa" onclick="abrirModalEmpresa()" style="font-size:12px; padding:5px 14px; background:#00695c; border-color:#00695c;">+ Nueva empresa</button>
+        </div>
+        <p class="muted" style="font-size:12px; margin:0 0 12px 0;">Registro de empresas con sus datos (RUT, contacto). Las obras se asignan a una empresa desde el sub-tab Obras. No se puede eliminar una empresa con obras asignadas.</p>
+        <div class="row" style="gap:6px; align-items:center; flex-wrap:wrap; margin-bottom:8px;">
+          <input type="text" id="empFiltroBusqueda" placeholder="Buscar empresa..." autocomplete="off" name="emp-busqueda-nofill" onkeyup="renderEmpresasLista()" style="font-size:12px; max-width:220px; padding:4px 8px;" />
+        </div>
+        <div id="empresasLista"><div class="muted">Cargando empresas...</div></div>
       </div>
-      <div id="clientesLista"><div class="muted">Cargando obras...</div></div>
     </div>
   </div>
 
-  <!-- MODAL editar data de la obra -->
-  <div id="clienteModal" onclick="if(event.target===this)cerrarModalCliente()" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.6); z-index:9999; overflow-y:auto;">
+  <!-- MODAL editar data de la OBRA -->
+  <div id="obraModal" onclick="if(event.target===this)cerrarModalObra()" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.6); z-index:9999; overflow-y:auto;">
     <div style="margin:40px auto; max-width:560px; background:#fff; border-radius:12px; padding:20px; position:relative;">
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
-        <h3 id="clienteModalTitulo" style="margin:0; color:#00897b;">Editar obra</h3>
-        <button onclick="cerrarModalCliente()" style="background:none; border:none; font-size:20px; cursor:pointer; padding:4px 8px;">✕</button>
+        <h3 style="margin:0; color:#00897b;">Editar obra</h3>
+        <button onclick="cerrarModalObra()" style="background:none; border:none; font-size:20px; cursor:pointer; padding:4px 8px;">✕</button>
       </div>
-      <p class="muted" style="font-size:11px; margin:0 0 12px 0;" id="cliModalObraNombre"></p>
-      <input type="hidden" id="cliObraId" />
+      <p class="muted" style="font-size:11px; margin:0 0 12px 0;" id="obraModalNombre"></p>
+      <input type="hidden" id="obraId" />
       <div class="row" style="gap:8px; flex-wrap:wrap; align-items:flex-end;">
         <div class="col" style="max-width:150px;">
           <label style="font-size:11px; color:#666;">Clasificación</label>
-          <select id="cliClasificacion" style="width:100%; font-size:12px;">
+          <select id="obraClasificacion" style="width:100%; font-size:12px;">
             <option value="obra">Obra</option>
             <option value="tienda">Tienda</option>
             <option value="otro">Otro</option>
           </select>
         </div>
         <div class="col" style="flex:1; min-width:200px;">
-          <label style="font-size:11px; color:#666;">Empresa (constructora / retail)</label>
-          <input type="text" id="cliEmpresa" list="cliEmpresaList" placeholder="Ej: DLP, Sodimac..." autocomplete="off" style="width:100%; font-size:12px;" />
-          <datalist id="cliEmpresaList"></datalist>
+          <label style="font-size:11px; color:#666;">Empresa</label>
+          <select id="obraEmpresa" style="width:100%; font-size:12px;">
+            <option value="">— Sin empresa —</option>
+          </select>
         </div>
       </div>
       <div class="row" style="gap:8px; flex-wrap:wrap; align-items:flex-end; margin-top:8px;">
         <div class="col" style="flex:1; min-width:180px;">
           <label style="font-size:11px; color:#666;">Calculista</label>
-          <select id="cliCalculista" style="width:100%; font-size:12px;">
+          <select id="obraCalculista" style="width:100%; font-size:12px;">
             <option value="">— Sin calculista —</option>
           </select>
         </div>
         <div class="col" style="max-width:150px;">
           <label style="font-size:11px; color:#666;">Fecha inicio</label>
-          <input type="date" id="cliFechaInicio" style="width:100%; font-size:12px;" />
+          <input type="date" id="obraFechaInicio" style="width:100%; font-size:12px;" />
         </div>
       </div>
       <div style="margin-top:8px;">
         <label style="font-size:11px; color:#666;">Descripción</label>
-        <textarea id="cliDescripcion" rows="2" style="width:100%; font-size:12px; resize:vertical;"></textarea>
+        <textarea id="obraDescripcion" rows="2" style="width:100%; font-size:12px; resize:vertical;"></textarea>
       </div>
-      <div style="margin-top:10px; padding:8px 10px; background:#f5f5f5; border-radius:6px; font-size:11px; color:#666;" id="cliObraStats"></div>
+      <div style="margin-top:10px; padding:8px 10px; background:#f5f5f5; border-radius:6px; font-size:11px; color:#666;" id="obraStats"></div>
       <div style="margin-top:14px; display:flex; gap:8px; align-items:center;">
         <button onclick="guardarObraData()" style="font-size:12px; padding:6px 16px; background:#00897b; border-color:#00897b;">Guardar</button>
-        <button class="secondary" onclick="cerrarModalCliente()" style="font-size:12px; padding:6px 14px;">Cancelar</button>
-        <span id="cliModalMsg" class="muted" style="font-size:11px;"></span>
+        <button class="secondary" onclick="cerrarModalObra()" style="font-size:12px; padding:6px 14px;">Cancelar</button>
+        <span id="obraModalMsg" class="muted" style="font-size:11px;"></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL crear/editar EMPRESA -->
+  <div id="empresaModal" onclick="if(event.target===this)cerrarModalEmpresa()" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.6); z-index:9999; overflow-y:auto;">
+    <div style="margin:40px auto; max-width:520px; background:#fff; border-radius:12px; padding:20px; position:relative;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
+        <h3 id="empresaModalTitulo" style="margin:0; color:#00695c;">Nueva empresa</h3>
+        <button onclick="cerrarModalEmpresa()" style="background:none; border:none; font-size:20px; cursor:pointer; padding:4px 8px;">✕</button>
+      </div>
+      <input type="hidden" id="empId" />
+      <div class="row" style="gap:8px; flex-wrap:wrap; align-items:flex-end;">
+        <div class="col" style="flex:2; min-width:180px;">
+          <label style="font-size:11px; color:#666;">Nombre *</label>
+          <input type="text" id="empNombre" placeholder="Ej: DLP, Sodimac..." autocomplete="off" style="width:100%; font-size:12px;" />
+        </div>
+        <div class="col" style="max-width:150px;">
+          <label style="font-size:11px; color:#666;">Tipo</label>
+          <select id="empTipo" style="width:100%; font-size:12px;">
+            <option value="constructora">Constructora</option>
+            <option value="retail">Retail</option>
+            <option value="otro">Otro</option>
+          </select>
+        </div>
+      </div>
+      <div class="row" style="gap:8px; flex-wrap:wrap; margin-top:8px;">
+        <div class="col" style="flex:1; min-width:140px;">
+          <label style="font-size:11px; color:#666;">RUT</label>
+          <input type="text" id="empRut" style="width:100%; font-size:12px;" />
+        </div>
+        <div class="col" style="flex:1; min-width:140px;">
+          <label style="font-size:11px; color:#666;">Contacto</label>
+          <input type="text" id="empContacto" style="width:100%; font-size:12px;" />
+        </div>
+      </div>
+      <div class="row" style="gap:8px; flex-wrap:wrap; margin-top:8px;">
+        <div class="col" style="flex:1; min-width:140px;">
+          <label style="font-size:11px; color:#666;">Email</label>
+          <input type="text" id="empEmail" style="width:100%; font-size:12px;" />
+        </div>
+        <div class="col" style="flex:1; min-width:140px;">
+          <label style="font-size:11px; color:#666;">Teléfono</label>
+          <input type="text" id="empTelefono" style="width:100%; font-size:12px;" />
+        </div>
+      </div>
+      <div style="margin-top:8px;">
+        <label style="font-size:11px; color:#666;">Notas</label>
+        <textarea id="empNotas" rows="2" style="width:100%; font-size:12px; resize:vertical;"></textarea>
+      </div>
+      <div style="margin-top:14px; display:flex; gap:8px; align-items:center;">
+        <button onclick="guardarEmpresa()" style="font-size:12px; padding:6px 16px; background:#00695c; border-color:#00695c;">Guardar</button>
+        <button class="secondary" onclick="cerrarModalEmpresa()" style="font-size:12px; padding:6px 14px;">Cancelar</button>
+        <span id="empModalMsg" class="muted" style="font-size:11px;"></span>
       </div>
     </div>
   </div>

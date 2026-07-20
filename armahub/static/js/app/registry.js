@@ -97,14 +97,14 @@
 
   registerModule({
     id: 'clientes',
-    title: 'Constructoras / Clientes',
+    title: 'Clientes',
     css: 'mod-clientes',
     defaultTab: 'clientes',
     allowedRoles: ['admin', 'admin_calidad', 'usc'],
     loaderFunction: 'loadClientesModule',
     hubCardId: 'hubCardClientes',
     hubOrder: 25,
-    hubDescription: 'Gestion de constructoras/clientes: datos, obras vinculadas y kilos.',
+    hubDescription: 'Obras/tiendas y empresas: completar data, empresa asignada, kilos y reclamos.',
     hubAccent: '#00897b',
     hubIcon: '🏢'
   });

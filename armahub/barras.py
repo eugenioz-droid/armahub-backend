@@ -1413,16 +1413,21 @@ def get_proyectos(user=Depends(get_current_user)):
                     p.fecha_inicio,
                     COALESCE(ROUND(CAST(SUM(b.diam * b.peso_total) / NULLIF(SUM(b.peso_total), 0) AS NUMERIC), 1), 0) as diam_prom,
                     p.clasificacion,
-                    p.empresa
+                    p.empresa,
+                    COALESCE(rec.n_reclamos, 0) as n_reclamos
                 FROM proyectos p
                 LEFT JOIN barras b ON p.id_proyecto = b.id_proyecto
                 LEFT JOIN constructoras co ON p.constructora_id = co.id
                 LEFT JOIN calculistas ca ON p.calculista_id = ca.id
+                LEFT JOIN (
+                    SELECT id_proyecto, COUNT(*) AS n_reclamos
+                    FROM reclamos GROUP BY id_proyecto
+                ) rec ON rec.id_proyecto = p.id_proyecto
                 WHERE 1=1""" + pf_p + """
                 GROUP BY p.id_proyecto, p.nombre_proyecto,
                          p.constructora_id, co.nombre, p.calculista_id, ca.nombre,
                          p.descripcion, p.fecha_creacion, p.usuario_creador, p.fecha_inicio,
-                         p.clasificacion, p.empresa
+                         p.clasificacion, p.empresa, rec.n_reclamos
                 ORDER BY COALESCE(p.fecha_inicio, p.fecha_creacion) ASC NULLS LAST, p.nombre_proyecto ASC
             """, pf_pp)
             rows = cur.fetchall()
@@ -1483,6 +1488,7 @@ def get_proyectos(user=Depends(get_current_user)):
             "aliases": alias_map.get(r[0], []),
             "clasificacion": r[13] or "obra",
             "empresa": r[14],
+            "n_reclamos": int(r[15]) if r[15] else 0,
         })
     
     return {"proyectos": proyectos}

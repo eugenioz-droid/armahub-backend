@@ -16,7 +16,7 @@
     rec_dashboards: 'Dashboards',
     rec_procedimientos: 'Procedimientos',
     rec_settings: 'Mailing',
-    clientes: 'Constructoras',
+    clientes: 'Clientes',
     admin: 'Admin'
   };
 
