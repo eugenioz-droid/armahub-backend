@@ -3,11 +3,11 @@
     <div class="card" style="border-top:3px solid #00897b;">
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
         <h3 style="margin:0; color:#00897b;">🏢 Constructoras / Clientes</h3>
-        <button id="btnNuevoCliente" onclick="abrirModalCliente()" style="font-size:12px; padding:5px 14px; background:#00897b; border-color:#00897b;">+ Nueva constructora</button>
+        <button id="btnNuevoCliente" onclick="abrirModalCliente()" style="font-size:12px; padding:5px 14px; background:#00897b; border-color:#00897b;">+ Nuevo cliente</button>
       </div>
-      <p class="muted" style="font-size:12px; margin:0 0 12px 0;">Único lugar oficial para crear, editar y eliminar constructoras. Una constructora agrupa varias obras. Para vincular las obras existentes, entra a su ficha (botón 🔗). No se puede eliminar una constructora con obras: primero desvincula o elimina esas obras.</p>
+      <p class="muted" style="font-size:12px; margin:0 0 12px 0;">Único lugar oficial para crear, editar y eliminar clientes. Al crear un cliente eliges si es constructora, retail u otro. Cada cliente agrupa varias obras/sedes. Para vincular las obras existentes, entra a su ficha (botón 🔗). No se puede eliminar un cliente con obras: primero desvincula o elimina esas obras.</p>
       <div class="row" style="gap:6px; align-items:center; flex-wrap:wrap; margin-bottom:8px;">
-        <input type="text" id="cliFiltroBusqueda" placeholder="Buscar cliente..." onkeyup="renderClientesLista()" style="font-size:12px; max-width:220px; padding:4px 8px;" />
+        <input type="text" id="cliFiltroBusqueda" placeholder="Buscar cliente..." autocomplete="off" name="cli-busqueda-nofill" onkeyup="renderClientesLista()" style="font-size:12px; max-width:220px; padding:4px 8px;" />
         <label style="font-size:11px; color:#666; display:flex; align-items:center; gap:4px; cursor:pointer;">
           <input type="checkbox" id="cliFiltroInactivos" onchange="loadClientesModule()" /> Mostrar inactivos
         </label>
@@ -88,7 +88,7 @@
 
       <!-- Buscar + lista de obras SIN constructora -->
       <label style="font-size:12px; font-weight:600; color:#444;" id="vincularLabelDisponibles">Obras sin constructora</label>
-      <input type="text" id="vincularBusqueda" placeholder="Buscar obra..." onkeyup="renderVincularDisponibles()" style="width:100%; font-size:12px; margin:4px 0 8px 0;" />
+      <input type="text" id="vincularBusqueda" placeholder="Buscar obra..." autocomplete="off" name="vinc-busqueda-nofill" onkeyup="renderVincularDisponibles()" style="width:100%; font-size:12px; margin:4px 0 8px 0;" />
       <div id="vincularListaDisponibles" style="max-height:260px; overflow-y:auto; border:1px solid #eee; border-radius:6px; padding:8px;">
         <div class="muted" style="font-size:12px;">Cargando...</div>
       </div>
