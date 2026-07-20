@@ -96,6 +96,20 @@
   });
 
   registerModule({
+    id: 'clientes',
+    title: 'Clientes',
+    css: 'mod-clientes',
+    defaultTab: 'clientes',
+    allowedRoles: ['admin', 'admin_calidad', 'usc'],
+    loaderFunction: 'loadClientesModule',
+    hubCardId: 'hubCardClientes',
+    hubOrder: 25,
+    hubDescription: 'Gestion de clientes y constructoras (crear, editar, eliminar).',
+    hubAccent: '#00897b',
+    hubIcon: '🏢'
+  });
+
+  registerModule({
     id: 'admin',
     title: 'Administracion',
     css: 'mod-admin',

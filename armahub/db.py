@@ -1281,6 +1281,14 @@ MIGRATIONS = [
              AND TRIM(ra.responsable) <> ''
              AND LOWER(TRIM(ra.responsable)) = LOWER(TRIM(COALESCE(u.nombre,'') || ' ' || COALESCE(u.apellido,'')))""",
     ]),
+
+    # --- Migration 79: ownership de clientes/constructoras (5L.11) ---
+    # creado_por permite la regla de permisos del tab Clientes: editar/eliminar solo
+    # el creador o admin/admin_calidad. Los existentes quedan NULL = sin dueño
+    # (solo admin puede gestionarlos, ya que no hay forma de saber quién los creó).
+    (79, "constructoras: columna creado_por", [
+        "DO $$ BEGIN ALTER TABLE constructoras ADD COLUMN creado_por TEXT; EXCEPTION WHEN duplicate_column THEN NULL; END $$;",
+    ]),
 ]
 
 

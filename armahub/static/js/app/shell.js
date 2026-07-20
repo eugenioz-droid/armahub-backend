@@ -16,6 +16,7 @@
     rec_dashboards: 'Dashboards',
     rec_procedimientos: 'Procedimientos',
     rec_settings: 'Mailing',
+    clientes: 'Clientes',
     admin: 'Admin'
   };
 
@@ -92,7 +93,8 @@
   // sin datos propios simplemente no aparecen aquí.
   var tabLoaders = {
     rec_dashboards: 'loadRecAdminDashboards',
-    rec_settings: 'loadRecSettings'
+    rec_settings: 'loadRecSettings',
+    clientes: 'loadClientesModule'
   };
 
   window.switchTab = function switchTab(tabName) {

@@ -22,6 +22,30 @@ from .db import get_conn, audit
 
 router = APIRouter()
 
+# Roles que pueden gestionar clientes desde el tab (5L.11). USC = dueños naturales.
+_ROLES_CLIENTES = ("admin", "admin_calidad", "usc")
+
+
+def _require_gestion_clientes(user: dict):
+    """Permite el acceso al tab de Clientes: admin/admin_calidad/usc."""
+    if user.get("role") not in _ROLES_CLIENTES:
+        raise HTTPException(status_code=403, detail="No tiene permiso para gestionar clientes")
+    return user
+
+
+def _puede_modificar_cliente(cur, constructora_id: int, user: dict) -> bool:
+    """Editar/eliminar: solo el creador o admin/admin_calidad. Un USC no toca lo
+    de otro USC. Clientes legacy (creado_por NULL) solo los gestiona admin."""
+    role = user.get("role", "")
+    if role in ("admin", "admin_calidad"):
+        return True
+    cur.execute("SELECT creado_por FROM constructoras WHERE id = %s", (constructora_id,))
+    row = cur.fetchone()
+    if not row:
+        return False
+    creador = row[0]
+    return bool(creador) and creador == user.get("email")
+
 
 class ConstructoraCreate(BaseModel):
     nombre: str
@@ -46,7 +70,12 @@ class ConstructoraUpdate(BaseModel):
 
 @router.get("/constructoras")
 def listar_constructoras(activo: Optional[bool] = None, user=Depends(get_current_user)):
-    """Listar constructoras con conteo de proyectos asociados."""
+    """Listar constructoras con conteo de proyectos asociados. Accesible a cualquier
+    autenticado (los selectores de obra/reclamo la consumen); la GESTIÓN (crear/
+    editar/borrar) sí está restringida por rol y ownership en sus endpoints."""
+    email = user.get("email", "")
+    role = user.get("role", "")
+    puede_gestionar = role in _ROLES_CLIENTES
     with get_conn() as conn:
         with conn.cursor() as cur:
             where = ""
@@ -57,7 +86,7 @@ def listar_constructoras(activo: Optional[bool] = None, user=Depends(get_current
 
             cur.execute("""
                 SELECT c.id, c.nombre, c.rut, c.contacto, c.email, c.telefono,
-                       c.direccion, c.notas, c.activo, c.fecha_creacion,
+                       c.direccion, c.notas, c.activo, c.fecha_creacion, c.creado_por,
                        COUNT(p.id_proyecto) AS proyectos_count,
                        COALESCE(SUM(stats.barras), 0) AS total_barras,
                        COALESCE(SUM(stats.kilos), 0) AS total_kilos
@@ -69,20 +98,28 @@ def listar_constructoras(activo: Optional[bool] = None, user=Depends(get_current
                 ) stats ON stats.id_proyecto = p.id_proyecto
             """ + where + """
                 GROUP BY c.id, c.nombre, c.rut, c.contacto, c.email, c.telefono,
-                         c.direccion, c.notas, c.activo, c.fecha_creacion
+                         c.direccion, c.notas, c.activo, c.fecha_creacion, c.creado_por
                 ORDER BY c.nombre
             """, params)
             rows = cur.fetchall()
 
+    def _puede_mod(creador):
+        if role in ("admin", "admin_calidad"):
+            return True
+        return puede_gestionar and bool(creador) and creador == email
+
     return {
+        "puede_gestionar": puede_gestionar,
         "constructoras": [
             {
                 "id": r[0], "nombre": r[1], "rut": r[2], "contacto": r[3],
                 "email": r[4], "telefono": r[5], "direccion": r[6], "notas": r[7],
-                "activo": r[8], "fecha_creacion": r[9],
-                "proyectos_count": int(r[10]),
-                "total_barras": int(r[11]),
-                "total_kilos": round(float(r[12]), 2),
+                "activo": r[8], "fecha_creacion": r[9], "creado_por": r[10],
+                "proyectos_count": int(r[11]),
+                "total_barras": int(r[12]),
+                "total_kilos": round(float(r[13]), 2),
+                # El frontend usa esto para mostrar/ocultar los botones editar/eliminar.
+                "puede_modificar": _puede_mod(r[10]),
             }
             for r in rows
         ]
@@ -90,13 +127,13 @@ def listar_constructoras(activo: Optional[bool] = None, user=Depends(get_current
 
 
 @router.get("/constructoras/{constructora_id}")
-def detalle_constructora(constructora_id: int, user=Depends(require_admin_or_admin_calidad)):
+def detalle_constructora(constructora_id: int, user=Depends(_require_gestion_clientes)):
     """Detalle de una constructora con sus proyectos."""
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("""
                 SELECT id, nombre, rut, contacto, email, telefono,
-                       direccion, notas, activo, fecha_creacion
+                       direccion, notas, activo, fecha_creacion, creado_por
                 FROM constructoras WHERE id = %s
             """, (constructora_id,))
             r = cur.fetchone()
@@ -106,7 +143,8 @@ def detalle_constructora(constructora_id: int, user=Depends(require_admin_or_adm
             constructora = {
                 "id": r[0], "nombre": r[1], "rut": r[2], "contacto": r[3],
                 "email": r[4], "telefono": r[5], "direccion": r[6], "notas": r[7],
-                "activo": r[8], "fecha_creacion": r[9],
+                "activo": r[8], "fecha_creacion": r[9], "creado_por": r[10],
+                "puede_modificar": _puede_modificar_cliente(cur, constructora_id, user),
             }
 
             cur.execute("""
@@ -132,22 +170,24 @@ def detalle_constructora(constructora_id: int, user=Depends(require_admin_or_adm
 
 
 @router.post("/constructoras")
-def crear_constructora(body: ConstructoraCreate, user=Depends(require_admin_or_admin_calidad)):
-    """Crear una nueva constructora."""
+def crear_constructora(body: ConstructoraCreate, user=Depends(_require_gestion_clientes)):
+    """Crear una nueva constructora. admin/admin_calidad/usc. Guarda creado_por
+    para la regla de ownership (editar/borrar solo el creador o admin)."""
     nombre = body.nombre.strip()
     if not nombre:
         raise HTTPException(status_code=400, detail="El nombre es requerido")
 
+    email = user.get("email", "?")
     try:
         with get_conn() as conn:
             with conn.cursor() as cur:
                 cur.execute("""
-                    INSERT INTO constructoras (nombre, rut, contacto, email, telefono, direccion, notas)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    INSERT INTO constructoras (nombre, rut, contacto, email, telefono, direccion, notas, creado_por)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                     RETURNING id
-                """, (nombre, body.rut, body.contacto, body.email, body.telefono, body.direccion, body.notas))
+                """, (nombre, body.rut, body.contacto, body.email, body.telefono, body.direccion, body.notas, email))
                 new_id = cur.fetchone()[0]
-        audit(user.get("email", "?"), "crear_constructora", nombre, "constructora", str(new_id))
+        audit(email, "crear_constructora", nombre, "constructora", str(new_id))
         return {"ok": True, "id": new_id, "nombre": nombre}
     except Exception as e:
         if "idx_constructoras_nombre" in str(e):
@@ -156,13 +196,15 @@ def crear_constructora(body: ConstructoraCreate, user=Depends(require_admin_or_a
 
 
 @router.patch("/constructoras/{constructora_id}")
-def actualizar_constructora(constructora_id: int, body: ConstructoraUpdate, user=Depends(require_admin_or_admin_calidad)):
-    """Actualizar datos de una constructora."""
+def actualizar_constructora(constructora_id: int, body: ConstructoraUpdate, user=Depends(_require_gestion_clientes)):
+    """Actualizar datos de una constructora. Solo el creador o admin/admin_calidad."""
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("SELECT id FROM constructoras WHERE id = %s", (constructora_id,))
             if not cur.fetchone():
                 raise HTTPException(status_code=404, detail="Constructora no encontrada")
+            if not _puede_modificar_cliente(cur, constructora_id, user):
+                raise HTTPException(status_code=403, detail="Solo puedes editar clientes que tú creaste.")
 
             sets = []
             params = []
@@ -190,16 +232,56 @@ def actualizar_constructora(constructora_id: int, body: ConstructoraUpdate, user
     return {"ok": True, "id": constructora_id}
 
 
-@router.delete("/constructoras/{constructora_id}")
-def eliminar_constructora(constructora_id: int, user=Depends(require_admin_or_admin_calidad)):
-    """Soft-delete: desactiva la constructora. Los proyectos mantienen la referencia."""
+@router.get("/constructoras/{constructora_id}/puede-eliminar")
+def puede_eliminar_constructora(constructora_id: int, user=Depends(_require_gestion_clientes)):
+    """Informa si el cliente puede eliminarse (sin obras asociadas) y, si no,
+    qué obras hay que limpiar antes (5L.11). También valida ownership."""
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("SELECT id FROM constructoras WHERE id = %s", (constructora_id,))
             if not cur.fetchone():
                 raise HTTPException(status_code=404, detail="Constructora no encontrada")
-            cur.execute("UPDATE constructoras SET activo = FALSE WHERE id = %s", (constructora_id,))
-    audit(user.get("email", "?"), "desactivar_constructora", None, "constructora", str(constructora_id))
+            puede_mod = _puede_modificar_cliente(cur, constructora_id, user)
+            cur.execute("""
+                SELECT id_proyecto, nombre_proyecto FROM proyectos
+                WHERE constructora_id = %s ORDER BY nombre_proyecto
+            """, (constructora_id,))
+            obras = [{"id_proyecto": o[0], "nombre_proyecto": o[1]} for o in cur.fetchall()]
+    if not puede_mod:
+        return {"puede": False, "motivo": "sin_permiso",
+                "mensaje": "Solo el creador del cliente o un administrador puede eliminarlo.",
+                "obras": obras}
+    if obras:
+        return {"puede": False, "motivo": "tiene_obras",
+                "mensaje": f"No se puede eliminar: el cliente tiene {len(obras)} obra(s) asociada(s). "
+                           "Reasigna o elimina esas obras primero y vuelve a intentar.",
+                "obras": obras}
+    return {"puede": True, "obras": []}
+
+
+@router.delete("/constructoras/{constructora_id}")
+def eliminar_constructora(constructora_id: int, user=Depends(_require_gestion_clientes)):
+    """Borrado REAL del cliente. Solo el creador o admin/admin_calidad, y solo si
+    NO tiene obras asociadas (el usuario debe limpiarlas antes — 5L.11)."""
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT id, nombre FROM constructoras WHERE id = %s", (constructora_id,))
+            row = cur.fetchone()
+            if not row:
+                raise HTTPException(status_code=404, detail="Constructora no encontrada")
+            if not _puede_modificar_cliente(cur, constructora_id, user):
+                raise HTTPException(status_code=403, detail="Solo puedes eliminar clientes que tú creaste.")
+            cur.execute("SELECT COUNT(*) FROM proyectos WHERE constructora_id = %s", (constructora_id,))
+            n_obras = int(cur.fetchone()[0] or 0)
+            if n_obras > 0:
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"No se puede eliminar: el cliente tiene {n_obras} obra(s) asociada(s). "
+                           "Reasigna o elimina esas obras primero."
+                )
+            nombre = row[1]
+            cur.execute("DELETE FROM constructoras WHERE id = %s", (constructora_id,))
+    audit(user.get("email", "?"), "eliminar_constructora", nombre, "constructora", str(constructora_id))
     return {"ok": True, "id": constructora_id}
 
 

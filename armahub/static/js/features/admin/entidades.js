@@ -101,25 +101,9 @@ async function crearCliente() {
   }
 }
 
-async function editarCliente(clienteId) {
-  const c = _clientesCache.find(x => x.id === clienteId);
-  if (!c) return;
-  const nuevoNombre = prompt('Nombre de la constructora:', c.nombre);
-  if (nuevoNombre === null || nuevoNombre.trim() === '') return;
-  const body = { nombre: nuevoNombre.trim() };
-  const res = await fetch(apiUrl('/constructoras/' + clienteId), {
-    method: 'PATCH',
-    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
-    body: JSON.stringify(body)
-  });
-  if (res.status === 401) { logout(); return; }
-  const data = await res.json();
-  if (data.ok) {
-    await loadClientes();
-  } else {
-    alert('Error: ' + (data.detail || 'desconocido'));
-  }
-}
+// editarCliente() se retiró de aquí (5L.11.8): la edición de clientes vive en la
+// caluga Clientes (features/clientes/index.js). El panel de constructoras de Admin
+// fue reemplazado por un puntero a esa caluga.
 
 // ========================= CALCULISTAS =========================
 let _calculistasCache = [];

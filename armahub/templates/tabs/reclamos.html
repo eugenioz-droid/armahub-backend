@@ -113,19 +113,11 @@
             </div>
             <div style="flex:1; min-width:150px;">
               <label style="font-size:10px; color:#666;">Constructora</label>
-              <div style="display:flex; gap:3px; align-items:center;">
-                <select id="recNuevoProjConstructora" style="flex:1; font-size:11px;">
-                  <option value="">— Sin constructora —</option>
-                </select>
-                <button type="button" class="secondary" style="font-size:10px; padding:2px 6px;" onclick="toggleRecNewConst()">+</button>
-              </div>
-              <div id="recNewConstForm" style="display:none; margin-top:3px; padding:4px; background:#fff; border-radius:4px;">
-                <div style="display:flex; gap:3px;">
-                  <input type="text" id="recNewConstNombre" placeholder="Nombre constructora" style="flex:1; font-size:10px;" />
-                  <button type="button" onclick="crearConstDesdeRecForm()" style="font-size:10px; padding:2px 6px;">Crear</button>
-                </div>
-                <span id="recNewConstMsg" style="font-size:10px;"></span>
-              </div>
+              <!-- 5L.11.7: creación de constructora al vuelo retirada. Se gestiona
+                   en la caluga Clientes. Aquí solo se elige una existente. -->
+              <select id="recNuevoProjConstructora" style="width:100%; font-size:11px;">
+                <option value="">— Sin constructora —</option>
+              </select>
             </div>
             <div style="display:flex; gap:4px; align-items:flex-end; padding-bottom:1px;">
               <button type="button" onclick="crearProyectoDesdeReclamo()" style="font-size:11px; padding:4px 10px; white-space:nowrap;">Crear obra</button>

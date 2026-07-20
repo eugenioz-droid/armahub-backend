@@ -1,0 +1,65 @@
+  <!-- TAB: CLIENTES (5L.11) — gestión centralizada de clientes/constructoras -->
+  <div id="tab-clientes" class="tab-content">
+    <div class="card" style="border-top:3px solid #00897b;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+        <h3 style="margin:0; color:#00897b;">🏢 Clientes</h3>
+        <button id="btnNuevoCliente" onclick="abrirModalCliente()" style="font-size:12px; padding:5px 14px; background:#00897b; border-color:#00897b;">+ Nuevo cliente</button>
+      </div>
+      <p class="muted" style="font-size:12px; margin:0 0 12px 0;">Único lugar oficial para crear, editar y eliminar clientes. Un cliente con obras asociadas no se puede eliminar: primero reasigna o elimina esas obras desde Cubicación.</p>
+      <div class="row" style="gap:6px; align-items:center; flex-wrap:wrap; margin-bottom:8px;">
+        <input type="text" id="cliFiltroBusqueda" placeholder="Buscar cliente..." onkeyup="renderClientesLista()" style="font-size:12px; max-width:220px; padding:4px 8px;" />
+        <label style="font-size:11px; color:#666; display:flex; align-items:center; gap:4px; cursor:pointer;">
+          <input type="checkbox" id="cliFiltroInactivos" onchange="loadClientesModule()" /> Mostrar inactivos
+        </label>
+      </div>
+      <div id="clientesLista"><div class="muted">Cargando clientes...</div></div>
+    </div>
+  </div>
+
+  <!-- MODAL crear/editar cliente -->
+  <div id="clienteModal" onclick="if(event.target===this)cerrarModalCliente()" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.6); z-index:9999; overflow-y:auto;">
+    <div style="margin:40px auto; max-width:520px; background:#fff; border-radius:12px; padding:20px; position:relative;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
+        <h3 id="clienteModalTitulo" style="margin:0; color:#00897b;">Nuevo cliente</h3>
+        <button onclick="cerrarModalCliente()" style="background:none; border:none; font-size:20px; cursor:pointer; padding:4px 8px;">✕</button>
+      </div>
+      <input type="hidden" id="cliId" />
+      <div style="margin-bottom:8px;">
+        <label style="font-size:11px; color:#666;">Nombre *</label>
+        <input type="text" id="cliNombre" placeholder="Nombre de la constructora / cliente" style="width:100%; font-size:12px;" />
+      </div>
+      <div class="row" style="gap:8px; flex-wrap:wrap;">
+        <div class="col" style="flex:1; min-width:140px;">
+          <label style="font-size:11px; color:#666;">RUT</label>
+          <input type="text" id="cliRut" style="width:100%; font-size:12px;" />
+        </div>
+        <div class="col" style="flex:1; min-width:140px;">
+          <label style="font-size:11px; color:#666;">Contacto</label>
+          <input type="text" id="cliContacto" style="width:100%; font-size:12px;" />
+        </div>
+      </div>
+      <div class="row" style="gap:8px; flex-wrap:wrap; margin-top:8px;">
+        <div class="col" style="flex:1; min-width:140px;">
+          <label style="font-size:11px; color:#666;">Email</label>
+          <input type="text" id="cliEmail" style="width:100%; font-size:12px;" />
+        </div>
+        <div class="col" style="flex:1; min-width:140px;">
+          <label style="font-size:11px; color:#666;">Teléfono</label>
+          <input type="text" id="cliTelefono" style="width:100%; font-size:12px;" />
+        </div>
+      </div>
+      <div style="margin-top:8px;">
+        <label style="font-size:11px; color:#666;">Dirección</label>
+        <input type="text" id="cliDireccion" style="width:100%; font-size:12px;" />
+      </div>
+      <div style="margin-top:8px;">
+        <label style="font-size:11px; color:#666;">Notas</label>
+        <textarea id="cliNotas" rows="2" style="width:100%; font-size:12px; resize:vertical;"></textarea>
+      </div>
+      <div style="margin-top:14px; display:flex; gap:8px; align-items:center;">
+        <button onclick="guardarCliente()" style="font-size:12px; padding:6px 16px; background:#00897b; border-color:#00897b;">Guardar</button>
+        <button class="secondary" onclick="cerrarModalCliente()" style="font-size:12px; padding:6px 14px;">Cancelar</button>
+        <span id="cliModalMsg" class="muted" style="font-size:11px;"></span>
+      </div>
+    </div>
+  </div>

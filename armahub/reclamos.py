@@ -1648,12 +1648,23 @@ def actualizar_reclamo(reclamo_id: int, body: ReclamoUpdate, user=Depends(get_cu
                 #  - área sin revisión  → validacion (directo a Calidad)
                 # Esto reemplaza el "es Cubicación por el texto" y no se puede falsear
                 # desde el cliente.
-                cur.execute("SELECT area_id, tipo_origen FROM reclamos WHERE id = %s", (reclamo_id,))
+                cur.execute("SELECT area_id, tipo_origen, id_proyecto FROM reclamos WHERE id = %s", (reclamo_id,))
                 _arow = cur.fetchone()
                 _area_id_rec = _arow[0] if _arow else None
                 _tipo_origen_rec = (_arow[1] if _arow else None) or "externo"
+                _id_proyecto_rec = _arow[2] if _arow else None
                 body.estado = "en_revision" if _area_tiene_revision(cur, _area_id_rec, _tipo_origen_rec) else "validacion"
                 _destino_label = "revisión" if body.estado == "en_revision" else "validación"
+
+                # 5L.11.6: un reclamo EXTERNO no puede avanzar sin obra asignada.
+                # Cierra el agujero que dejaba reclamos huérfanos (sin id_proyecto)
+                # llegando a validación. La obra puede venir en este PATCH o ya estar
+                # guardada. Internos NO requieren obra (cliente = Armacero).
+                if _tipo_origen_rec == "externo":
+                    _obra_efectiva = body.id_proyecto if ("id_proyecto" in body.__fields_set__) else _id_proyecto_rec
+                    if not (_obra_efectiva and str(_obra_efectiva).strip()):
+                        raise HTTPException(status_code=400, detail=f"Debe asignar una obra al reclamo antes de enviar a {_destino_label}")
+
                 aplica_efectiva = body.aplica if body.aplica is not None else aplica_actual
                 if aplica_efectiva not in ("si", "no"):
                     raise HTTPException(status_code=400, detail=f"Debe marcar si el reclamo aplica o no aplica antes de enviar a {_destino_label}")

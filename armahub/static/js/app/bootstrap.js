@@ -280,6 +280,13 @@
         'armahubFeature',
         'notifications',
         '[ArmaHub] No se pudo cargar notifications/index.js'
+      ),
+      loadScript(
+        'script[data-armahub-feature="clientes"]',
+        '/static/js/features/clientes/index.js' + suffix,
+        'armahubFeature',
+        'clientes',
+        '[ArmaHub] No se pudo cargar clientes/index.js'
       )
     ]);
   }).catch(function(error) {
