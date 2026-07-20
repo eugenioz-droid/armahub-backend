@@ -545,7 +545,32 @@ Objetivo: endurecer Reclamos y cerrar los pendientes reales arrastrados.
 | 5L.8 | Agregar columna "Resuelto" (días que tomó resolver) en listados Clientes e Internos, junto a "Días". Helper `_calcDiasResolucion`/`_diasResolucionBadgeHtml`; solo con reclamo cerrado (`fecha_cierre - fecha_creacion`); automática | ☑ | YO |
 | 5L.9 | Verificar que en externos el área se reconozca correctamente según el responsable (ya se infiere en backend; validar tras migración de roles) | ☐ | TÚ+YO |
 | 5L.10 | Mostrar el área al lado del responsable en el form de registro externo (read-only). `/users/dropdown` ahora expone area_id/area_nombre por usuario (mismo criterio que _area_id_de_usuario: prioriza jefe_servicio); el form la puebla al elegir responsable | ☑ | YO |
-| 5L.11 | Centralizar gestión de clientes en UN tab oficial. DECIDIDO: retirar los 5 puntos de creación "al vuelo" (servían para probar); crear/editar clientes solo en un tab, con permiso USC + super admin + admin_calidad (USC = dueños naturales). Se puede crear con pocos datos, pero en un solo lugar. Se apoya en 10.2/10.3 (editor central + cerrar creación al vuelo). Requiere definir dónde vive el tab → NO es tarea sencilla, planificar | ☐ | TÚ+YO |
+#### 5L.11 — Tab centralizado de Clientes (DISEÑO CERRADO, listo para implementar)
+
+> Hallazgo clave: la única referencia real a un cliente es `proyectos.constructora_id`.
+> `reclamos.cliente_id` se eliminó en migración 39 (columna rota, nunca usada) — los
+> reclamos cuelgan de la obra, no del cliente directo. Reasignar una obra resuelve
+> de una vez sus reclamos y kilos asociados. El backend CRUD (`constructoras.py`)
+> ya existe casi completo, incluido `POST /proyectos/{id}/asignar-constructora`.
+
+**Decisiones:**
+- **Ubicación:** caluga propia "Clientes" en el menú principal (no sub-tab de Reclamos ni panel de Admin). Visible a admin/admin_calidad/usc.
+- **Admin → Entidades** (parte clientes/constructoras): se retira. Un solo lugar oficial.
+- **Permisos:** Crear = cualquiera del grupo (admin/admin_calidad/usc). Editar y Eliminar = el creador o admin/admin_calidad (un USC no toca lo de otro USC).
+- **Eliminar con historial:** NO se construye flujo de reasignación masiva. El usuario ve qué tiene asignado el cliente (obras) y lo limpia MANUALMENTE con las herramientas que ya existen (editar obra → cambiar cliente, o eliminar la obra si fue error). Solo se puede eliminar el cliente cuando queda en 0 asociaciones. Se agrega el AVISO claro de qué falta limpiar.
+- **Caso real detectado:** 2 reclamos huérfanos sin obra en validación final — reveló que el flujo NO exige `id_proyecto` antes de avanzar/cerrar un reclamo externo. Fix puntual (SQL a esos 2 registros) + cerrar el agujero con validación (ver 5L.11.6). Se descartó dar a admin un botón de "reasignar obra en cualquier etapa" (parche que se puede usar mal después).
+
+| N° | Descripción | Realizado | Quién |
+|----|-------------|-----------|-------|
+| 5L.11.1 | FIX puntual: asignar la obra correcta a los 2 reclamos huérfanos detectados (SQL directo, sin nueva funcionalidad) | ☐ | YO |
+| 5L.11.2 | Migración: `constructoras.creado_por TEXT` (existentes quedan NULL = editable/borrable solo por admin) | ☐ | YO |
+| 5L.11.3 | Backend `constructoras.py`: permisos por ownership en lugar de `require_admin_or_admin_calidad` fijo (crear=todos del grupo; editar/eliminar=creador o admin). Endpoint `GET /constructoras/{id}/puede-eliminar` (proyectos_count + motivo) | ☐ | YO |
+| 5L.11.4 | Backend: `DELETE /constructoras/{id}` pasa de soft-delete a borrado real cuando `proyectos_count == 0`; bloquea con mensaje claro si tiene obras asociadas | ☐ | YO |
+| 5L.11.5 | Frontend: nueva caluga "Clientes" (registry) — tabla con nombre/RUT/contacto/#obras/#kilos, modal crear/editar, acciones según ownership, aviso de qué limpiar antes de poder eliminar | ☐ | YO |
+| 5L.11.6 | Cerrar el agujero: bloquear que un reclamo EXTERNO avance a validación o se cierre sin `id_proyecto` asignado (backend, mensaje claro al intentar) | ☐ | YO |
+| 5L.11.7 | Retirar los 4 puntos de creación de cliente "al vuelo" (obras.js×2, admin/proyectos.js, reclamos/form.js) — los selectores solo listan existentes, sin botón "+ nuevo" inline | ☐ | YO |
+| 5L.11.8 | Retirar sección clientes/constructoras de Admin → Entidades | ☐ | YO |
+| 5L.11.9 | Smoke test: crear cliente (USC) → usar en obra → intentar borrar con obra asociada (bloqueado, aviso correcto) → limpiar → borrar OK. Editar/borrar cliente ajeno (bloqueado para USC no dueño) | ☐ | TÚ+YO |
 
 #### 5L.12 — Control de plazos / SLA de reclamos (requiere diseño, NO implementar aún)
 
