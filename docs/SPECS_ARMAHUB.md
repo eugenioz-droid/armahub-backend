@@ -38,18 +38,21 @@
 | **Obra** (= Proyecto) | El proyecto específico que se cubica. Pertenece a UNA constructora. | `proyectos` | "Edificio Talca 2 Sur" |
 | ~~Cliente~~ | **Término AMBIGUO — evitar en lo técnico.** Históricamente se usó tanto para la constructora como para la obra. En la UI la caluga se rotula "Clientes" por costumbre comercial, pero conceptualmente gestiona **Constructoras**. | — | — |
 
-**Modelo (fijado 2026-07, rework):** la **OBRA** (`proyectos`) es el registro principal.
-La empresa y la clasificación son **atributos de la obra**, no entidades que mandan:
+**Modelo (fijado 2026-07):** dos niveles. La **OBRA** (`proyectos`) es el registro de
+trabajo; la **EMPRESA** (`constructoras`) es una entidad propia que la obra referencia.
 
-| Campo de la obra | Qué es | Valores | Ejemplo |
-|------------------|--------|---------|---------|
-| `proyectos.clasificacion` | Qué es la unidad | `obra` / `tienda` / `otro` | obra |
-| `proyectos.empresa` | Nombre de la constructora o retail (TEXTO libre, agrupa/filtra) | libre | "DLP", "Sodimac" |
+| Nivel | Tabla | Qué es | Campos clave |
+|-------|-------|--------|--------------|
+| **Obra / Tienda** | `proyectos` | La unidad que se cubica. Registro principal de trabajo. | `clasificacion` (obra/tienda/otro), `constructora_id` (→ empresa), `calculista_id`, kilos, reclamos |
+| **Empresa** | `constructoras` | Constructora o retail. Entidad con ficha propia. | `nombre`, `tipo` (constructora/retail/otro), `rut`, `contacto`, `email`... |
+
+**Caluga "Clientes"** (nombre global — engloba obras y tiendas). Dos sub-tabs:
+- **Obras / Tiendas** (primario): lista las obras existentes, edita su data (clasificación, empresa —selector de entidad—, calculista, fecha, descripción). Columnas incluyen Kilos y **Reclamos** (indicador de carga asignada). Filtros por clasificación/empresa/sin-empresa.
+- **Empresas** (secundario): CRUD de empresas (ficha con RUT/contacto). Conteo de obras por empresa. Borrado bloqueado si la empresa tiene obras asignadas.
 
 **Notas de terminología:**
 - El `nombre_proyecto` histórico es texto compuesto `Empresa - Obra` (ej. `"DLP - Edificio Talca 2 Sur"`). El prefijo está embebido por cómo se ingresa en el sistema de procesamiento (Detailer). Se deja tal cual; limpiar el prefijo es tarea futura.
-- La caluga **"Constructoras / Clientes"** gira en torno a la OBRA: lista las obras existentes y permite completar/editar su data (clasificación, empresa, calculista, descripción, fecha inicio). NO es un ABM de una tabla de constructoras.
-- `constructoras.tipo` (mig. 80) y la relación `proyectos.constructora_id` quedaron INERTES tras el rework — la empresa se guarda como texto en `proyectos.empresa`. No se borran, no molestan.
+- La obra→empresa es `proyectos.constructora_id` (FK a `constructoras`). `proyectos.empresa` (texto, mig 81) quedó INERTE al reactivar la empresa como entidad.
 - Una **Empresa** (constructora/retail) NO es lo mismo que un **Calculista** (quien diseña la obra, `calculistas`). El modelo unificado completo de cliente/CRM sigue siendo Fase 11.
 
 ---
