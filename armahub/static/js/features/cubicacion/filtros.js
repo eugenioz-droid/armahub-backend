@@ -91,6 +91,7 @@ function onProyectoChange() {
   loadFilters(proy ? { proyecto: proy } : null);
   loadCargasDropdown(proy);
   loadFacetasDropdown(proy);   // 5M.2: figuras/tipologías presentes en la obra
+  if (typeof bmResetModoEdicion === 'function') bmResetModoEdicion();  // 5M.3
   saveFiltersToStorage();
   buscar(true);
 }

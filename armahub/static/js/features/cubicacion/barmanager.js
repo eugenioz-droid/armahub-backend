@@ -164,6 +164,9 @@ async function buscar(reset = false) {
   if (_coberturaVisible) {
     loadCobertura();
   }
+
+  // 5M.3: panel de ediciones manuales recientes de la obra.
+  if (typeof cargarEdicionesRecientes === 'function') cargarEdicionesRecientes();
 }
 
 function _renderElementos() {
@@ -272,6 +275,20 @@ async function _hydrateDetail(idx) {
   _renderDetail(cont, e, barras);
 }
 
+// 5M.3: re-dibuja los detalles ya expandidos (sin re-fetch) al cambiar el modo
+// edición, para que aparezcan/desaparezcan los inputs.
+function reRenderDetallesAbiertos() {
+  lastElementos.forEach(function(e, idx) {
+    var cont = document.getElementById('bm-detail-content-' + idx);
+    if (!cont) return;
+    var row = document.getElementById('bm-detail-' + idx);
+    if (row && row.style.display === 'none') return; // no expandido
+    var barras = detailCache.get(_elemKey(e));
+    if (barras) _renderDetail(cont, e, barras);
+  });
+}
+window.reRenderDetallesAbiertos = reRenderDetallesAbiertos;
+
 function _renderDetail(cont, elem, barras) {
   if (!barras.length) {
     cont.innerHTML = '<em>Sin barras detalladas para este elemento.</em>';
@@ -325,16 +342,27 @@ function _renderDetail(cont, elem, barras) {
       angLabels.map(L => '<th style="text-align:right; padding:2px 6px;">' + L + '</th>').join('') +
       '<th style="text-align:right; padding:2px 6px;">R</th>' +
       '</tr></thead><tbody>';
+    const editando = (typeof bmEnModoEdicion === 'function') && bmEnModoEdicion();
     grp.forEach(b => {
       const idShort = (b.id_unico || '').split('-').slice(-1)[0];
       const dims = dimKeys.map(k => '<td style="padding:2px 6px; text-align:right; color:#444;">' + _num(b[k]) + '</td>').join('');
       const angs = angKeys.map(k => '<td style="padding:2px 6px; text-align:right; color:#444;">' + _num(b[k], 1) + '</td>').join('');
-      html += '<tr style="border-top:1px solid #f0f0f0;">' +
-        '<td style="padding:2px 6px; font-family:monospace; font-size:10px; position:sticky; left:0; background:#fff;" title="' + (b.id_unico || '') + '">' + idShort + '</td>' +
+      // 5M.3: en modo edición, φ/Cant/Largo son inputs. El backend valida permiso.
+      function _celdaEdit(campo, val, dec) {
+        if (!editando) return '<td style="padding:2px 6px; text-align:right;">' + _num(val, dec) + '</td>';
+        return '<td style="padding:1px 4px; text-align:right;"><input type="number" step="any" value="' + (val != null ? val : '') +
+          '" data-barra-id="' + b.id + '" data-campo="' + campo + '" onchange="bmRegistrarCambio(this)" ' +
+          'style="width:70px; font-size:11px; text-align:right; padding:1px 3px;" /></td>';
+      }
+      // Marca de barra editada a mano (fila con borde). editado_por != null.
+      const editadaBorde = b.editado_por ? 'border-left:3px solid #8d6e63;' : '';
+      const editadaTitle = b.editado_por ? (' title="Editada por ' + b.editado_por + '"') : '';
+      html += '<tr style="border-top:1px solid #f0f0f0; ' + editadaBorde + '"' + editadaTitle + '>' +
+        '<td style="padding:2px 6px; font-family:monospace; font-size:10px; position:sticky; left:0; background:#fff;" title="' + (b.id_unico || '') + '">' + (b.editado_por ? '✏️ ' : '') + idShort + '</td>' +
         '<td style="padding:2px 6px; font-weight:600;">' + (b.marca || '—') + '</td>' +
-        '<td style="padding:2px 6px; text-align:right;">' + _num(b.diam) + '</td>' +
-        '<td style="padding:2px 6px; text-align:right;">' + _num(b.cant_total) + '</td>' +
-        '<td style="padding:2px 6px; text-align:right;">' + _num(b.largo_total) + '</td>' +
+        _celdaEdit('diam', b.diam, 0) +
+        _celdaEdit('cant_total', b.cant_total, 0) +
+        _celdaEdit('largo_total', b.largo_total, 0) +
         '<td style="padding:2px 6px; text-align:right;">' + _num(b.peso_unitario, 2) + '</td>' +
         '<td style="padding:2px 6px; text-align:right;">' + _num(b.peso_total, 1) + '</td>' +
         '<td style="padding:2px 6px;">' + _origenBadge(b.origen) + '</td>' +

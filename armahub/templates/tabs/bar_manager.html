@@ -102,6 +102,9 @@
         <button class="secondary" onclick="expandAll()" style="font-size:11px; padding:3px 10px;">▾ Expandir todo</button>
         <button class="secondary" onclick="collapseAll()" style="font-size:11px; padding:3px 10px;">▸ Colapsar todo</button>
         <button class="secondary" id="btnCobertura" onclick="toggleCobertura()" style="font-size:11px; padding:3px 10px;">📊 Mostrar cobertura</button>
+        <!-- 5M.3: candado de edición. Cerrado = solo lectura; abrir habilita editar barras. -->
+        <button id="btnEdicionBarras" onclick="toggleModoEdicion()" style="font-size:11px; padding:3px 12px; background:#eee; border:1px solid #ccc; border-radius:4px; cursor:pointer;">🔒 Edición bloqueada</button>
+        <span id="edicionStatus" class="muted" style="font-size:11px;"></span>
         <span class="muted" id="count" style="margin-left:auto; font-size:11px;"></span>
       </div>
     </div>
@@ -134,5 +137,14 @@
         <span class="muted" id="pageInfo" style="font-size:12px;"></span>
         <button onclick="nextPage()" style="font-size:12px; padding:4px 14px;">Siguiente ▶</button>
       </div>
+    </div>
+
+    <!-- 5M.3: panel de ediciones manuales recientes de esta obra -->
+    <div class="card" id="bmEdicionesCard" style="padding:8px 16px; display:none;">
+      <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
+        <strong style="font-size:12px; color:#5d4037;">✏️ Ediciones manuales recientes (esta obra)</strong>
+        <span class="muted" style="font-size:11px;">Quién editó qué barra y cuándo. Auditoría completa en Admin → Auditoría.</span>
+      </div>
+      <div id="bmEdicionesLista"><div class="muted" style="font-size:11px;">Sin ediciones registradas.</div></div>
     </div>
   </div>

@@ -217,6 +217,13 @@
         '[ArmaHub] No se pudo cargar cubicacion/barmanager.js'
       ),
       loadScript(
+        'script[data-armahub-feature="cubicacion-barmanager-edit"]',
+        '/static/js/features/cubicacion/barmanager_edit.js' + suffix,
+        'armahubFeature',
+        'cubicacion-barmanager-edit',
+        '[ArmaHub] No se pudo cargar cubicacion/barmanager_edit.js'
+      ),
+      loadScript(
         'script[data-armahub-feature="cubicacion-exportacion"]',
         '/static/js/features/cubicacion/exportacion.js' + suffix,
         'armahubFeature',

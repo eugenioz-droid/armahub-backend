@@ -4,6 +4,7 @@ from typing import Optional, List
 from datetime import datetime, timezone
 import uuid
 import math
+from psycopg.rows import dict_row
 from .db import get_conn, audit
 from .auth import get_current_user, ROL_MAP, _rol_proyecto_usuarios, _PROYECTO_USUARIOS_ROLES
 from . import cache as _cache
@@ -43,13 +44,15 @@ def _puede_editar_proyecto(cur, id_proyecto: str, user: dict) -> bool:
     return cur.fetchone() is not None
 
 BARRAS_COLUMNS = [
+    "id",  # PK numérico (5M.3) — necesario para editar una barra
     "id_unico","id_proyecto","nombre_proyecto","plano_code","nombre_plano","sector","piso","ciclo","eje",
     "diam","largo_total","mult","cant","cant_total",
     "peso_unitario","peso_total","version_mod","version_exp","fecha_carga",
     "origen","import_id",
     "marca","figura",
     "dim_a","dim_b","dim_c","dim_d","dim_e","dim_f","dim_g","dim_h","dim_i",
-    "ang1","ang2","ang3","ang4","radio"
+    "ang1","ang2","ang3","ang4","radio",
+    "editado_por","editado_fecha"  # marca de edición manual (5M.3)
 ]
 
 ALLOWED_ORDER_BY = {
@@ -1236,6 +1239,103 @@ def _calcular_peso(diam, largo):
         return None, None
     peso_unitario = 7850 * 3.1416 * (diam / 2000) ** 2 * (largo / 100)
     return peso_unitario, peso_unitario
+
+
+class BarraUpdate(BaseModel):
+    # 5M.3 — edición de campos simples (no rompen figura). Geometría llega en 5M.4.
+    diam: Optional[float] = None
+    largo_total: Optional[float] = None
+    cant: Optional[float] = None
+    cant_total: Optional[float] = None
+    mult: Optional[float] = None
+
+
+@router.patch("/barras/{barra_id}")
+def editar_barra(barra_id: int, body: BarraUpdate, user=Depends(get_current_user)):
+    """Editar campos simples de UNA barra desde la plataforma (5M.3). Permiso:
+    cubicador dueño de la obra (proyecto_usuarios) o admin. Recalcula peso al cambiar
+    diam/largo/cant. Marca edición manual (editado_por/fecha) y audita."""
+    email = user.get("email", "?")
+    campos = body.model_dump(exclude_unset=True)
+    if not campos:
+        return {"ok": True, "message": "Sin cambios"}
+    now = datetime.now(timezone.utc).isoformat()
+
+    with get_conn() as conn:
+        with conn.cursor(row_factory=dict_row) as cur:
+            cur.execute(
+                "SELECT id, id_proyecto, diam, largo_total, cant, cant_total, mult FROM barras WHERE id = %s",
+                (barra_id,),
+            )
+            barra = cur.fetchone()
+            if not barra:
+                raise HTTPException(status_code=404, detail="Barra no encontrada")
+            if not _puede_editar_proyecto(cur, barra["id_proyecto"], user):
+                raise HTTPException(status_code=403, detail="No puedes editar barras de esta obra. Solo el cubicador asignado a la obra o un administrador pueden hacerlo.")
+
+            # Valores efectivos (nuevo si vino, si no el actual) para recálculo de peso.
+            diam = campos.get("diam", barra["diam"])
+            largo = campos.get("largo_total", barra["largo_total"])
+            cant_total = campos.get("cant_total", barra["cant_total"])
+
+            sets, params, cambios = [], [], []
+            for f in ("diam", "largo_total", "cant", "cant_total", "mult"):
+                if f in campos:
+                    sets.append(f"{f} = %s")
+                    params.append(campos[f])
+                    cambios.append(f"{f}: {barra[f]}→{campos[f]}")
+
+            # Recalcular peso si cambió diam/largo/cant_total.
+            if any(k in campos for k in ("diam", "largo_total", "cant_total")):
+                peso_unitario, _ = _calcular_peso(diam, largo)
+                peso_total = (peso_unitario * cant_total) if (peso_unitario is not None and cant_total is not None) else None
+                sets.append("peso_unitario = %s"); params.append(peso_unitario)
+                sets.append("peso_total = %s"); params.append(peso_total)
+
+            # Marca de edición manual.
+            sets.append("editado_por = %s"); params.append(email)
+            sets.append("editado_fecha = %s"); params.append(now)
+
+            params.append(barra_id)
+            cur.execute(f"UPDATE barras SET {', '.join(sets)} WHERE id = %s", params)
+
+    _cache.invalidate("stats:", "landing:")
+    audit(email, "editar_barra", "; ".join(cambios), "barra", str(barra_id))
+    return {"ok": True, "id": barra_id, "cambios": cambios, "editado_por": email, "editado_fecha": now}
+
+
+@router.get("/barras/ediciones")
+def ediciones_barras(proyecto: str, limit: int = 20, user=Depends(get_current_user)):
+    """Ediciones manuales recientes de barras de UNA obra (5M.3), para el panel al
+    final del Bar Manager. Une audit_log (accion editar_barra) con las barras de la
+    obra por su id."""
+    if limit < 1: limit = 1
+    if limit > 100: limit = 100
+    with get_conn() as conn:
+        with conn.cursor(row_factory=dict_row) as cur:
+            allowed = _get_allowed_project_ids(cur, user)
+            pf_sql, pf_params = _project_filter_sql(allowed, "b")
+            cur.execute(
+                """
+                SELECT a.usuario, a.detalle, a.fecha, a.entidad_id,
+                       b.id_unico, b.sector, b.piso, b.eje
+                FROM audit_log a
+                JOIN barras b ON b.id::text = a.entidad_id
+                WHERE a.accion = 'editar_barra' AND a.entidad = 'barra'
+                  AND b.id_proyecto = %s""" + pf_sql + """
+                ORDER BY a.fecha DESC
+                LIMIT %s
+                """,
+                [proyecto] + pf_params + [limit],
+            )
+            rows = cur.fetchall()
+    return {
+        "ediciones": [
+            {"usuario": r["usuario"], "detalle": r["detalle"], "fecha": r["fecha"],
+             "id_unico": r["id_unico"], "sector": r["sector"], "piso": r["piso"], "eje": r["eje"]}
+            for r in rows
+        ]
+    }
 
 
 class BarraManualCreate(BaseModel):
