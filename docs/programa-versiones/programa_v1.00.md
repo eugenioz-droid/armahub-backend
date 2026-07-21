@@ -632,18 +632,18 @@ Objetivo: endurecer Reclamos y cerrar los pendientes reales arrastrados.
 | 5L.15.1 | Discovery: definir alcance de la bitácora (quién comenta, privacidad, si afecta asignaciones), ficha ampliada de calculista, y puntos de visualización embebida. Actualizar SPECS §7/nueva sección | ☐ | TÚ+YO |
 | 5L.15.2 | Implementar caluga Calculistas (mover gestión desde Admin) + bitácora + vistas embebidas. Solo tras discovery | ☐ | YO |
 
-#### 5L.16 — [INFRAESTRUCTURA, tarea propia] Reorganizar migraciones a estructura de carpeta
+#### 5L.16 — [INFRAESTRUCTURA] Directorio de migraciones (registro ordenado, estilo Tekplan)
 
-> Hoy las 79 migraciones viven como un único array gigante en `db.py` (`MIGRATIONS`). Es
-> frágil y no calza con la estructura del resto de los desarrollos. Mover a una carpeta de
-> archivos por migración, MANTENIENDO intacto el mecanismo de versionado (`schema_migrations`
-> registra por número) para no romper el tracking en producción. Tarea con riesgo → su propio
-> momento, no mezclar con features. Ver SPECS §9.1 (sistema de migraciones).
+> Objetivo simple (aclarado por el usuario): crear un **directorio de migraciones** donde
+> cada migración FUTURA se guarde como su propio archivo, para que vaya quedando registro
+> ordenado — igual que en Tekplan. Hoy todas viven amontonadas en un array dentro de `db.py`.
+> Las migraciones existentes (1–81) se dejan donde están; a partir de ahora las nuevas van
+> al directorio, numeradas y en su archivo. El sistema sigue registrando por número en
+> `schema_migrations` (eso no cambia). Sin plan complicado.
 
 | N° | Descripción | Realizado | Quién |
 |----|-------------|-----------|-------|
-| 5L.16.1 | Diseñar estructura de carpeta de migraciones + plan de corte sin romper `schema_migrations` | ☐ | TÚ+YO |
-| 5L.16.2 | Migrar el array de `db.py` a la nueva estructura y validar que el tracking sigue intacto | ☐ | YO |
+| 5L.16.1 | Crear directorio de migraciones + cargador que lea los archivos y respete la numeración de `schema_migrations`. Las nuevas migraciones van ahí (las viejas se quedan en `db.py`, no se tocan) | ☐ | YO |
 
 #### 5L.17 — Sensación rápida: actualización optimista tras guardar (transversal)
 
