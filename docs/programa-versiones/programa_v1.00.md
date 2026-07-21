@@ -645,7 +645,7 @@ Objetivo: endurecer Reclamos y cerrar los pendientes reales arrastrados.
 
 | N° | Descripción | Realizado | Quién |
 |----|-------------|-----------|-------|
-| 5L.16.1 | Crear directorio de migraciones + cargador que lea los archivos y respete la numeración de `schema_migrations`. Las nuevas migraciones van ahí (las viejas se quedan en `db.py`, no se tocan) | ☐ | YO |
+| 5L.16.1 | Directorio `armahub/migrations/` + cargador (`_load_file_migrations`/`_split_sql_statements` en db.py) que lee archivos `NNN_desc.sql`, respeta bloques `DO $$`, y aplica contra el mismo `schema_migrations`. Legacy 1–81 en db.py sin tocar; 82+ como archivos. README + SPECS §9.1 actualizados. Parser testeado | ☑ | YO |
 
 #### 5L.17 — Sensación rápida: actualización optimista tras guardar (transversal)
 

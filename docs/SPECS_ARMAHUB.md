@@ -694,8 +694,8 @@ Panel de administración del sistema: usuarios, roles, entidades, configuración
 | Sección | Estado |
 |---------|--------|
 | Gestión de usuarios (crear, editar, activar/desactivar) | ✅ implementado |
-| Gestión de constructoras | ✅ implementado |
-| Gestión de calculistas | ✅ implementado |
+| Gestión de constructoras | ➡️ movida a caluga **Clientes** (5L.11) |
+| Gestión de calculistas | ➡️ movida a caluga **Clientes** → sub-tab Calculistas (5L.11.15) |
 | Gestión de notificaciones (config por rol/evento) | ✅ implementado |
 | Gestión de permisos por obra (proyecto_usuarios) | ✅ implementado |
 
@@ -721,10 +721,18 @@ Gestión de relación con clientes: contactos, seguimientos, oportunidades.
 
 ### 9.1 Sistema de migraciones
 
-- Definidas en `armahub/db.py` → lista `MIGRATIONS`.
-- Numeradas y correlativas (última: migración 54).
-- Idempotentes: cada migración verifica si ya se aplicó antes de ejecutar.
-- Toda modificación de esquema debe entrar como migración versionada.
+- **Dos fuentes, un solo registro** (`schema_migrations`, por número de versión):
+  - **Legacy (1–81):** array `MIGRATIONS` en `armahub/db.py`. No se tocan.
+  - **Nuevas (82+):** archivos `.sql` en `armahub/migrations/` (una por archivo, estilo
+    Tekplan). Ver `armahub/migrations/README.md`.
+- **Formato de archivo:** `NNN_descripcion.sql`. El prefijo `NNN` es la versión. La primera
+  línea `-- descripción` se guarda como descripción. Varias sentencias separadas por `;`
+  (el cargador respeta los bloques `DO $$ ... $$`).
+- El cargador (`_run_migrations` en `db.py`) une legacy + archivos, ordena por versión y
+  aplica solo las que no están en `schema_migrations`. Idempotente por diseño.
+- Numeración correlativa y única. Nunca modificar/borrar una migración ya aplicada; para
+  corregir, crear una nueva.
+- Toda modificación de esquema entra como migración versionada.
 
 ### 9.2 Notificaciones en app
 
