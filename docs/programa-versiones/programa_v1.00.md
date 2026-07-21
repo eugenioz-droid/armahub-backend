@@ -678,6 +678,35 @@ Objetivo: endurecer Reclamos y cerrar los pendientes reales arrastrados.
 > (settings.js), áreas (areas.js excepto lo ya optimista), autorizados por obra. Recargan
 > listas chicas — el lag es marginal. Convertir solo si sobra tiempo.
 
+#### 5M — Edición de barras + Catálogo Armacero (sistema por fases)
+
+> DISEÑO CERRADO (2026-07). Objetivo: que el cubicador corrija data de barras desde el Bar
+> Manager sin re-exportar desde ArmaDetailer, con validación de figura (evita corromper la
+> geometría), bloqueo, auditoría, y aviso ante re-import. Base: caluga "Catálogo Armacero"
+> (data maestra de figuras, portada de `typology_catalog.py`). Ver SPECS §4.5 y §4A.
+>
+> **Decisiones fijadas:** catálogo = tabla editable (no módulo estático). Bloqueo = toggle UI
+> candado con warning; guardar-al-cerrar. Permisos edición barra = cubicador dueño de obra +
+> admin. Resaltado en rojo del dim que sobra (borrado manual). Re-import = aviso en preview.
+> Marca = `editado_por`/`editado_fecha`. Editor de figuras (F8) = dibujo paramétrico guiado
+> (no CAD libre), acceso restringido. Render (F7) = SVG en navegador (sin imágenes). Sin fase
+> de imágenes (descartada). Caluga "Catálogo Armacero" (ícono barra), ampliable a lectura de
+> otros formatos / config técnica / multi-catálogo.
+>
+> **Fases ordenadas por facilidad + urgencia + dependencia. Lo urgente = F1–F4 (editar masivo
+> con figura protegida).**
+
+| N° | Descripción | Realizado | Quién |
+|----|-------------|-----------|-------|
+| 5M.1 | **Fase 1 — Catálogo a tabla.** Migración: tabla `figuras_catalogo` (codigo, parciales, angulos, radio, descripción) + tipologías + relación tipología→figuras. Seed que porta `typology_catalog.py` (FIGURE_CATALOG/TIPOS_*/FIGURAS_POR_TIPO). Endpoints lectura `GET /figuras-catalogo`, `GET /tipologias`. Caluga "Catálogo Armacero" en registry (ícono barra) con sub-tabs Figuras/Tipologías (lectura; edición UI en F8) | ☐ | YO |
+| 5M.2 | **Fase 2 — Filtros por figura/tipología en Bar Manager.** Filtros `figura` y `marca`/tipología en `_buildFilterParams` + `GET /barras` + `GET /barras/elementos`. Selectores poblados del catálogo (F1). Independiente y fácil | ☐ | YO |
+| 5M.3 | **Fase 3 — Edición de campos simples + toggle + auditoría (habilita edición YA).** `PATCH /barras/{id}` (permiso dueño de obra + admin; 403 claro si no). Campos seguros: diam/largo_total/cant/cant_total/mult/marca; recalcular peso en backend. Columnas `editado_por`/`editado_fecha`. Toggle candado 🔒 + warning + guardar-al-cerrar + celdas resaltadas. Auditoría `editar_barra` + panel de ediciones recientes al final del Bar Manager | ☐ | YO |
+| 5M.4 | **Fase 4 — Edición de geometría con validación (el corazón).** Editar figura/dim_a..i/ang1..4/radio validados contra el catálogo (la figura exige valor en sus slots, no en otros → incoherente rechaza). Resaltado en ROJO del dim que sobra al cambiar de figura; borrado manual por el usuario | ☐ | YO |
+| 5M.5 | **Fase 5 — Aviso en re-import.** En el preview del import, detectar barras con `editado_por` que el CSV reescribiría → avisar "N barras editadas en plataforma se reescribirían" con detalle, antes de confirmar | ☐ | YO |
+| 5M.6 | **Fase 6 — Color en matrices.** Exponer la marca de edición manual en `export-history`; nuevo color/badge + leyenda en `exportacion.js` distinto del rojo de re-import | ☐ | YO |
+| 5M.7 | **Fase 7 — Render SVG (futuro).** Dibujo de la figura en el navegador desde catálogo (plantilla) + valores de la barra (proporcionado). Vectorial, liviano, sin imágenes. Se acopla al catálogo | ☐ | TÚ+YO |
+| 5M.8 | **Fase 8 — Editor/creador de figuras + multi-catálogo (musculatura completa).** Dibujo paramétrico guiado (arma la figura por tramos → SVG auto), acceso restringido. Multi-catálogo por empresa; lectura de catálogos en otros formatos. Requiere discovery propio | ☐ | TÚ+YO |
+
 ---
 
 ## FASE 6 — Discovery del dominio Obra (modelo común)

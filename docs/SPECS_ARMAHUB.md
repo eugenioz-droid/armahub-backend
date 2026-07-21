@@ -18,6 +18,7 @@
 2. [Infraestructura y almacenamiento](#2-infraestructura-y-almacenamiento)
 3. [Caluga: Reclamos](#3-caluga-reclamos)
 4. [Caluga: Cubicación](#4-caluga-cubicacion)
+4A. [Caluga: Catálogo Armacero](#4a-caluga-catálogo-armacero)
 5. [Caluga: Mis Proyectos (Discovery Obra)](#5-caluga-mis-proyectos-discovery-obra)
 6. [Caluga: Programa de Obra](#6-caluga-programa-de-obra)
 7. [Caluga: Admin](#7-caluga-admin)
@@ -647,9 +648,90 @@ Cubicador selecciona barras
 | Bar Manager (mover/editar) | ✅ | ✅ | — | — | — |
 | Exportar | ✅ | ✅ | ✅ | ✅ | ✅ |
 
-### 4.5 Pendientes funcionales
+### 4.5 Edición de barras desde la plataforma (5M — en construcción)
+
+> Objetivo: que el cubicador corrija data de una barra sin re-exportar desde ArmaDetailer.
+> Ver programa sección 5M (fases). Diseño fijado 2026-07.
+
+**Modelo de geometría de la barra:** `figura` (código) + `dim_a..dim_i` (9 slots de
+dimensión) + `ang1..ang4` (4 ángulos) + `radio`. Los slots que usa cada figura pueden ser
+NO contiguos (ej. figura 201A usa B, G, H). La semántica de qué slots/ángulos usa cada
+figura vive en el **Catálogo Armacero** (§4A), no en las barras.
+
+**Edición segura (reglas de diseño):**
+- **Bloqueo:** botón candado 🔒 en Bar Manager, con warning al activar el modo edición.
+  Por defecto solo lectura; se abre a propósito. Solo UI (no persiste). Al cerrar el candado,
+  si hay cambios sin guardar → pregunta "¿Guardar cambios?". Celdas editadas se resaltan.
+- **Permisos:** editar = cubicador DUEÑO de la obra (`proyecto_usuarios`) + admin. Otro
+  cubicador → aviso "no puedes editar esta barra".
+- **Validación de figura:** al editar geometría, el backend valida contra el catálogo: la
+  figura exige valor en SUS slots (`parciales`) y no en otros. Incoherente → rechaza.
+- **Resaltado del dato que sobra:** al cambiar a una figura con menos lados, el sistema pinta
+  en ROJO el/los dim(s) que sobran; el usuario los borra MANUALMENTE (control humano). No
+  se borra solo.
+- **Marca de edición manual:** columnas `editado_por`/`editado_fecha` en `barras`. Distingue
+  la edición-plataforma de la data del CSV.
+- **Auditoría:** acción `editar_barra` al `audit_log` central + panel de ediciones recientes
+  al final del Bar Manager (vista de conveniencia por obra).
+- **Re-import:** al subir un CSV que reescribiría barras con `editado_por`, el preview del
+  import AVISA qué barras/campos se reescribirían antes de confirmar.
+- **Color en matrices de exportación:** una celda editada en plataforma se pinta con color
+  DISTINTO al rojo de "re-import pendiente" (`exportacion.js`), para distinguir visualmente.
+
+### 4.6 Pendientes funcionales
 
 > Detalle en programa F8-F9. Esta sección se completa durante el trabajo de esas fases.
+
+---
+
+## 4A. CALUGA: CATÁLOGO ARMACERO
+
+> Caluga en construcción (programa 5M Fase 1). Centro técnico de data maestra: catálogo de
+> figuras/tipologías de fierro, y a futuro configuración de lectura de catálogos y cargas
+> en otros formatos, homologación multi-empresa, y motor de render.
+
+### 4A.1 Propósito
+
+Data maestra transversal de figuras de fierro. La consumen: Bar Manager (edición/validación
+/filtros de barras), la validación de geometría, y a futuro el render SVG y el multi-catálogo.
+Es una entidad de referencia propia (como Clientes/Calculistas), no un apéndice de Cubicación.
+
+### 4A.2 Modelo (portado de `typology_catalog.py` de ArmaPilot)
+
+- **Figura:** `codigo` (ej. 105A), `parciales` (slots dim que usa, ej. A,B,C,D,E), `angulos`
+  (lista, ej. 45,135), `radio` (bool), descripción. Mapea directo a los slots de la barra
+  (A→dim_a...). Fuente: `FIGURE_CATALOG`.
+- **Tipología / tipo de estructura:** MURO/LOSA/VIGA/COLUMNA/FUNDACION/GEN → tipos (MH, MV,
+  Fi, ES, CB...). Fuente: `TIPOS_*`.
+- **Relación tipología → figuras aplicables:** qué figuras valen para cada tipología. Fuente:
+  `FIGURAS_POR_TIPO`.
+- **Tabla en BD editable** (no módulo estático) para habilitar el editor (Fase 8) y el
+  multi-catálogo futuro.
+
+### 4A.3 Sub-tabs (previstos)
+
+- **Figuras:** lista/creación/edición del catálogo de figuras.
+- **Tipologías:** tipologías y sus figuras aplicables.
+- (Futuro) **Catálogos / Configuración:** multi-catálogo por empresa, lectura de otros
+  formatos, config técnica de importación.
+
+### 4A.4 Editor de figuras (Fase 8, futuro)
+
+Dibujo PARAMÉTRICO GUIADO (no lienzo CAD libre): el usuario arma la figura conectando tramos
+(lado → doblez con ángulo/radio → lado...) y el SVG se genera automáticamente. Siempre
+coherente (restringido a lo que una barra puede ser). Liviano, eficiente. Acceso restringido.
+
+### 4A.5 Permisos
+
+- **Ver catálogo:** admin + cubicadores (lo consumen para editar/filtrar barras).
+- **Editar el catálogo (crear/modificar figuras):** restringido (definir rol exacto en Fase 8).
+
+### 4A.6 Render SVG (Fase 7, futuro)
+
+El catálogo (plantilla: parciales/ángulos/radio) + los valores reales de la barra
+(dims/ángulos) → SVG dibujado en el navegador, proporcionado a las medidas. Vectorial,
+liviano, sin imágenes ni servidor. El catálogo es la fuente de verdad; el SVG dibuja a
+partir de él (se acoplan, no se reemplazan).
 
 ---
 
