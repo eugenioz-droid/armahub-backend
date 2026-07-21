@@ -26,8 +26,10 @@ router = APIRouter()
 _ROLES_CLIENTES = ("admin", "admin_calidad", "usc")
 
 
-def _require_gestion_clientes(user: dict):
-    """Permite el acceso al tab de Clientes: admin/admin_calidad/usc."""
+def _require_gestion_clientes(user: dict = Depends(get_current_user)):
+    """Permite el acceso al tab de Clientes: admin/admin_calidad/usc.
+    IMPORTANTE: `user` DEBE declararse como Depends aquí, si no FastAPI lo interpreta
+    como campo del request body y falla con 'user: Field required'."""
     if user.get("role") not in _ROLES_CLIENTES:
         raise HTTPException(status_code=403, detail="No tiene permiso para gestionar clientes")
     return user
