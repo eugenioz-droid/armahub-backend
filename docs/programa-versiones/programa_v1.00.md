@@ -649,16 +649,34 @@ Objetivo: endurecer Reclamos y cerrar los pendientes reales arrastrados.
 
 #### 5L.17 — Sensación rápida: actualización optimista tras guardar (transversal)
 
-> Directriz fijada en SPECS §2.4 (2026-07). El lag al editar viene del antipatrón
-> "guardar → recargar TODO del servidor". El fix: al confirmar el PATCH, actualizar el
-> item en la caché en memoria y re-renderizar solo la vista local (sin viaje de red).
-> Piloto aplicado en caluga Clientes (`guardarObraData`). Propagar módulo por módulo.
+> Directriz en SPECS §2.4 (2026-07). El lag viene del antipatrón "guardar → recargar TODO".
+> Fix: al confirmar el PATCH/POST/DELETE, actualizar el item en la caché en memoria y
+> re-renderizar solo la vista local (sin viaje de red). Piloto en caluga Clientes.
+>
+> **Auditoría 2026-07 (mapa del lag, priorizado por gravedad):** las recargas HEAVY son las
+> que re-piden listas con agregación DB (kilos/counts/joins) o el detalle completo con
+> imágenes/relaciones. Referencia del patrón correcto: `toggleAreaRevision` (areas.js:84)
+> — actualiza `_areasCache` en memoria, solo recarga en el path de ERROR para revertir.
+>
+> **Regla de conversión:** en éxito, mutar el objeto en el array/`_reclamoActual` + re-render;
+> mantener el reload SOLO en el path de error (revertir) o cuando el dato dependa de un
+> cálculo que el front no puede derivar. `verReclamo(id)` completo tras editar un campo es
+> el peor patrón (re-pide detalle + imágenes + acciones).
 
 | N° | Descripción | Realizado | Quién |
 |----|-------------|-----------|-------|
-| 5L.17.1 | Piloto: caluga Clientes — optimistic update en `guardarObraData` (no recarga `/proyectos`) | ☑ | YO |
-| 5L.17.2 | Auditar y aplicar el patrón en Reclamos (guardados que hoy llaman `loadReclamos`/`verReclamo` completo tras cada edición) | ☐ | YO |
-| 5L.17.3 | Aplicar en Cubicación (editar obra/carga) y Admin (usuarios/entidades) | ☐ | YO |
+| 5L.17.1 | Piloto: caluga Clientes — optimistic update en `guardarObraData`/empresa/calculista (no recarga `/proyectos`) | ☑ | YO |
+| 5L.17.2 | **Reclamos — acciones (prioridad 1, más frecuente).** `refreshAccionesList` (detail-edit.js:721) re-pide el DETALLE COMPLETO del reclamo (`GET /reclamos/{id}`) solo para redibujar la sub-lista de acciones. Convertir a mutar `_recAccionesCache` + `renderAcciones()` local, en: `agregarAccion` (:648), `_guardarEdicionAccion` (:714), `eliminarAccion` (:746). También `cambiarEstadoAccionSeguimiento` (acciones.js:152, tab global) que recarga todo para refrescar KPIs | ☐ | YO |
+| 5L.17.3 | **Reclamos — PATCH de 1 campo (prioridad 2).** Cada uno hace `verReclamo(id)` + `loadReclamos()` (2 HEAVY) por un solo campo: `guardarAnioNumeroCalidad` (detail-edit.js:383), `cambiarProyectoReclamo` (:398), `cambiarAsignadoAReclamo` (:411). Mutar `_reclamoActual` + fila del listado en memoria | ☐ | YO |
+| 5L.17.4 | **Reclamos — flujo/RCA (prioridad 3, 3 HEAVY c/u).** `guardarRespuesta` (detail-edit.js:557) y el helper `_refrescarTrasAccionFlujo` (detail-flow.js:159) que dispara verReclamo + loadReclamos/Internos + loadRecLanding. Callers: aprobar/devolver validación/revisión, `reabrirReclamo`. Terminar también `cambiarAplicaReclamo` (ya es medio-optimista: quitar los `loadReclamos`/`loadRecLanding` finales). Ojo: el cambio de estado sí puede necesitar refrescar el landing (KPIs) — evaluar cuáles se pueden derivar en memoria | ☐ | TÚ+YO |
+| 5L.17.5 | **Reclamos — imágenes.** `_uploadFilesWithTipo` (detail-edit.js:830) y `eliminarImagen` (:843) hacen `verReclamo` completo para reflejar thumbnails. Mutar la lista de imágenes en memoria + re-render del bloque de imágenes | ☐ | YO |
+| 5L.17.6 | **Cubicación — cargas (prioridad 4, cadenas de 5 reloads).** `eliminarCargasSeleccionadas` (obras.js:1021, 5 reloads), `deleteCarga` (:975), `eliminarCargasSeleccionadasModal` (:741), `moverCargasSeleccionadasModal` (:768). Todas disparan `loadProyectos`+`loadInicio`+`loadMiActividad`(+`loadCargasProyecto`). Mutar la carga/obra en memoria; los totales de kilos sí pueden requerir recálculo — evaluar derivar localmente restando los kilos de la carga borrada | ☐ | TÚ+YO |
+| 5L.17.7 | **Cubicación + Admin — editar obra (doble agregación).** `guardarEditObra` (obras.js:1176) y `editarProyectoAdmin` (proyectos.js:250) editan metadata de UNA obra pero recargan `/proyectos` completo (agregado) — el de admin lo hace DOS veces (`loadAdminProyectos`+`loadProyectos`). Mutar la fila en memoria | ☐ | YO |
+| 5L.17.8 | **Admin — single-field (prioridad menor).** Calculista rename (`editarCalculista` entidades.js:196 → recarga lista agregada), y usuarios: `guardarRolUsuario`/`toggleActivoUsuario`/`editarNombreUsuario`/`asignarAreaInline`/`quitarAreaUsuario` (index.js) que recargan la tabla users+areas completa por un campo. Mutar fila en memoria (referencia: `toggleAreaRevision`) | ☐ | YO |
+
+> **LIGHT (no urgente, baja prioridad):** pedidos (pedidos.js), plantillas de correo
+> (settings.js), áreas (areas.js excepto lo ya optimista), autorizados por obra. Recargan
+> listas chicas — el lag es marginal. Convertir solo si sobra tiempo.
 
 ---
 
