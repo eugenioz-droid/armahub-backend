@@ -1310,12 +1310,74 @@ MIGRATIONS = [
 ]
 
 
+_MIGRATIONS_DIR = os.path.join(os.path.dirname(__file__), "migrations")
+
+
+def _load_file_migrations():
+    """Lee las migraciones del directorio armahub/migrations/ (5L.16). Cada archivo
+    'NNN_descripcion.sql' es una migración; NNN es la versión. Devuelve tuplas
+    (version, desc, [sqls]) para aplicarlas igual que el array MIGRATIONS legacy.
+    Las migraciones 1–81 siguen en db.py; de la 82 en adelante van como archivos."""
+    result = []
+    if not os.path.isdir(_MIGRATIONS_DIR):
+        return result
+    for fname in sorted(os.listdir(_MIGRATIONS_DIR)):
+        if not fname.endswith(".sql"):
+            continue
+        prefix = fname.split("_", 1)[0]
+        if not prefix.isdigit():
+            continue
+        version = int(prefix)
+        path = os.path.join(_MIGRATIONS_DIR, fname)
+        with open(path, "r", encoding="utf-8") as f:
+            raw = f.read()
+        # Descripción: primera línea si es comentario '-- ...', si no el nombre del archivo.
+        desc = fname
+        first = raw.strip().splitlines()[0].strip() if raw.strip() else ""
+        if first.startswith("--"):
+            desc = first.lstrip("-").strip() or fname
+        # Separar sentencias por ';' respetando bloques DO $$ ... $$ (no partir dentro).
+        sqls = _split_sql_statements(raw)
+        result.append((version, desc, sqls))
+    return result
+
+
+def _split_sql_statements(raw: str):
+    """Divide el SQL en sentencias por ';', sin partir dentro de un bloque
+    dollar-quoted ($$ ... $$). Ignora líneas de comentario '--' sueltas."""
+    statements = []
+    buf = []
+    in_dollar = False
+    for line in raw.splitlines():
+        stripped = line.strip()
+        if not in_dollar and stripped.startswith("--"):
+            continue  # comentario suelto (fuera de bloque)
+        if "$$" in line:
+            # Alterna el estado por cada aparición de $$ en la línea.
+            in_dollar = (in_dollar != (line.count("$$") % 2 == 1))
+        buf.append(line)
+        if not in_dollar and stripped.endswith(";"):
+            stmt = "\n".join(buf).strip()
+            if stmt:
+                statements.append(stmt)
+            buf = []
+    tail = "\n".join(buf).strip()
+    if tail:
+        statements.append(tail)
+    return statements
+
+
 def _run_migrations(cur) -> int:
-    """Ejecuta migraciones pendientes. Retorna cantidad aplicada."""
+    """Ejecuta migraciones pendientes. Retorna cantidad aplicada.
+    Fuentes: el array MIGRATIONS legacy (db.py, versiones 1–81) + los archivos del
+    directorio migrations/ (82 en adelante). Ambas contra el mismo schema_migrations."""
     cur.execute("SELECT version FROM schema_migrations ORDER BY version")
     applied = {r[0] for r in cur.fetchall()}
+    # Unir legacy + archivos, ordenar por versión, evitar duplicados de número.
+    todas = list(MIGRATIONS) + _load_file_migrations()
+    todas.sort(key=lambda m: m[0])
     count = 0
-    for version, desc, sqls in MIGRATIONS:
+    for version, desc, sqls in todas:
         if version in applied:
             continue
         for sql in sqls:
@@ -1324,6 +1386,7 @@ def _run_migrations(cur) -> int:
             "INSERT INTO schema_migrations (version, description) VALUES (%s, %s)",
             (version, desc),
         )
+        applied.add(version)  # evita reaplicar si un número está duplicado entre fuentes
         count += 1
     return count
 
