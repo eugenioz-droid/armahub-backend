@@ -341,6 +341,15 @@
       cerrarModalEmpresa();
       if (typeof showToast === 'function') showToast(id ? 'Empresa actualizada' : 'Empresa creada', 'success');
       await _cargarEmpresas();   // recarga solo empresas (lista chica, no pesa)
+      // Al editar una empresa, el nombre embebido en las obras (constructora_nombre)
+      // queda desactualizado en _obrasData. Refrescarlo en memoria para que el
+      // sub-tab Obras muestre el cambio sin F5.
+      if (id) {
+        var idNum = parseInt(id);
+        _obrasData.forEach(function(o) {
+          if (o.constructora_id === idNum) o.constructora_nombre = body.nombre;
+        });
+      }
       renderEmpresasLista();
     } else {
       msg.textContent = 'Error: ' + _errDetail(data); msg.style.color = '#b42318';
@@ -463,6 +472,13 @@
       cerrarModalCalc();
       if (typeof showToast === 'function') showToast(id ? 'Calculista actualizado' : 'Calculista creado', 'success');
       await _cargarCalculistas();   // lista chica, no pesa
+      // Refrescar el nombre del calculista embebido en las obras (sin F5).
+      if (id) {
+        var idNum = parseInt(id);
+        _obrasData.forEach(function(o) {
+          if (o.calculista_id === idNum) o.calculista_nombre = body.nombre;
+        });
+      }
       renderCalculistasLista();
     } else {
       msg.textContent = 'Error: ' + _errDetail(data); msg.style.color = '#b42318';
