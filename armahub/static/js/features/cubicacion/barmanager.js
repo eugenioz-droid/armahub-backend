@@ -94,6 +94,11 @@ function _buildFilterParams() {
   if (fo && fo.value) params.set('origen', fo.value);
   const fc = document.getElementById('filtroCarga');
   if (fc && fc.value) params.set('import_id', fc.value);
+  // 5M.2: filtros por figura y tipología (marca)
+  const ff = document.getElementById('filtroFigura');
+  if (ff && ff.value) params.set('figura', ff.value);
+  const fm = document.getElementById('filtroTipologia');
+  if (fm && fm.value) params.set('marca', fm.value);
   return params;
 }
 
@@ -657,6 +662,8 @@ function resetFiltros() {
   });
   const qel = document.getElementById('q'); if (qel) qel.value = '';
   const fo = document.getElementById('filtroOrigen'); if (fo) fo.value = '';
+  const ff = document.getElementById('filtroFigura'); if (ff) ff.value = '';
+  const ftip = document.getElementById('filtroTipologia'); if (ftip) ftip.value = '';
   if (typeof clearCargaFilter === 'function') clearCargaFilter(true);
   if (typeof loadCargasDropdown === 'function') loadCargasDropdown('');
   const si = document.getElementById('proyectoSearchInput'); if (si) si.value = '';

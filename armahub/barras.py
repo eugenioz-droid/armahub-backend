@@ -70,6 +70,8 @@ def get_barras(
     q: str = None,                      # búsqueda simple
     origen: str = None,                 # csv / manual / pedido
     import_id: int = None,              # filtrar por carga específica
+    figura: str = None,                 # 5M.2: filtro por código de figura
+    marca: str = None,                  # 5M.2: filtro por tipología (marca)
     limit: int = 200,                   # paginación
     offset: int = 0,
     order_by: str = "fecha_carga",      # orden
@@ -119,6 +121,14 @@ def get_barras(
     if import_id is not None:
         base_where += " AND import_id = %s"
         params.append(import_id)
+
+    # 5M.2: filtro por figura y por tipología (marca)
+    if figura:
+        base_where += " AND figura = %s"
+        params.append(figura)
+    if marca:
+        base_where += " AND marca = %s"
+        params.append(marca)
 
     # búsqueda simple: id_unico, eje, plano_code
     if q and q.strip():
@@ -180,6 +190,8 @@ def get_barras_elementos(
     q: str = None,
     origen: str = None,
     import_id: int = None,
+    figura: str = None,                 # 5M.2
+    marca: str = None,                  # 5M.2
     limit: int = 50,
     offset: int = 0,
     user=Depends(get_current_user),
@@ -218,6 +230,10 @@ def get_barras_elementos(
         base_where += " AND origen = %s"; params.append(origen)
     if import_id is not None:
         base_where += " AND import_id = %s"; params.append(import_id)
+    if figura:
+        base_where += " AND figura = %s"; params.append(figura)
+    if marca:
+        base_where += " AND marca = %s"; params.append(marca)
     if q and q.strip():
         qq = f"%{q.strip()}%"
         base_where += " AND (id_unico ILIKE %s OR eje ILIKE %s OR plano_code ILIKE %s)"
@@ -340,6 +356,30 @@ def get_barras_elementos(
             "ejes_count": int(kpi_row[5] or 0),
         }
     }
+
+
+@router.get("/barras/facetas")
+def get_barras_facetas(proyecto: str, user=Depends(get_current_user)):
+    """Valores distintos de figura y tipología (marca) PRESENTES en una obra (5M.2).
+    Para poblar los filtros del Bar Manager con lo que realmente existe, no el
+    catálogo entero."""
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            allowed = _get_allowed_project_ids(cur, user)
+            pf_sql, pf_params = _project_filter_sql(allowed)
+            cur.execute(
+                "SELECT DISTINCT figura FROM barras WHERE id_proyecto = %s AND figura IS NOT NULL AND figura <> ''"
+                + pf_sql + " ORDER BY figura",
+                [proyecto] + pf_params,
+            )
+            figuras = [r[0] for r in cur.fetchall()]
+            cur.execute(
+                "SELECT DISTINCT marca FROM barras WHERE id_proyecto = %s AND marca IS NOT NULL AND marca <> ''"
+                + pf_sql + " ORDER BY marca",
+                [proyecto] + pf_params,
+            )
+            tipologias = [r[0] for r in cur.fetchall()]
+    return {"figuras": figuras, "tipologias": tipologias}
 
 
 # ========================= MAPA DE COBERTURA PISO × CICLO =========================

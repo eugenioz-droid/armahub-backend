@@ -86,12 +86,35 @@ function onProyectoChange() {
   // When project changes, reload dependent filters for that project
   const proy = document.getElementById('proyecto').value;
   // Clear dependent selects (their current values may not exist in new project)
-  ['plano','sector','piso','ciclo','eje'].forEach(f => { const el=document.getElementById(f); if(el) el.value = ''; });
+  ['plano','sector','piso','ciclo','eje','filtroFigura','filtroTipologia'].forEach(f => { const el=document.getElementById(f); if(el) el.value = ''; });
   clearCargaFilter(true);
   loadFilters(proy ? { proyecto: proy } : null);
   loadCargasDropdown(proy);
+  loadFacetasDropdown(proy);   // 5M.2: figuras/tipologías presentes en la obra
   saveFiltersToStorage();
   buscar(true);
+}
+
+// 5M.2: puebla los selectores de figura y tipología con lo PRESENTE en la obra
+// (no el catálogo entero). Filtro de solo lectura para navegar.
+async function loadFacetasDropdown(idProyecto) {
+  var selFig = document.getElementById('filtroFigura');
+  var selTip = document.getElementById('filtroTipologia');
+  if (selFig) selFig.innerHTML = '<option value="">Figura: Todas</option>';
+  if (selTip) selTip.innerHTML = '<option value="">Tipología: Todas</option>';
+  if (!idProyecto) return;
+  var data = await apiGet('/barras/facetas?proyecto=' + encodeURIComponent(idProyecto));
+  if (!data) return;
+  if (selFig && data.figuras) {
+    data.figuras.forEach(function(f) {
+      var o = document.createElement('option'); o.value = f; o.textContent = f; selFig.appendChild(o);
+    });
+  }
+  if (selTip && data.tipologias) {
+    data.tipologias.forEach(function(t) {
+      var o = document.createElement('option'); o.value = t; o.textContent = t; selTip.appendChild(o);
+    });
+  }
 }
 
 async function loadCargasDropdown(idProyecto) {
