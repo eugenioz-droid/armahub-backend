@@ -24,6 +24,24 @@
     var e = _empresasData.filter(function(x) { return x.id === id; })[0];
     return e ? e.nombre : null;
   }
+  // El detail de FastAPI puede ser string (HTTPException) o array de objetos
+  // (validación Pydantic 422). Concatenar el array daba "[object Object]". Este
+  // helper lo formatea de forma legible en ambos casos.
+  function _errDetail(data) {
+    var d = data && data.detail;
+    if (!d) return 'desconocido';
+    if (typeof d === 'string') return d;
+    if (Array.isArray(d)) {
+      return d.map(function(x) {
+        if (x && x.msg) {
+          var campo = (x.loc && x.loc.length) ? x.loc[x.loc.length - 1] : '';
+          return (campo ? (campo + ': ') : '') + x.msg;
+        }
+        return (typeof x === 'string') ? x : JSON.stringify(x);
+      }).join(' · ');
+    }
+    return (typeof d === 'object') ? JSON.stringify(d) : String(d);
+  }
 
   // ---- Carga + navegación de sub-tabs ----
   async function loadClientesModule() {
@@ -217,7 +235,7 @@
       if (typeof showToast === 'function') showToast('Obra actualizada', 'success');
       renderObrasLista();
     } else {
-      msg.textContent = 'Error: ' + (data.detail || 'desconocido'); msg.style.color = '#b42318';
+      msg.textContent = 'Error: ' + _errDetail(data); msg.style.color = '#b42318';
     }
   }
 
@@ -325,7 +343,7 @@
       await _cargarEmpresas();   // recarga solo empresas (lista chica, no pesa)
       renderEmpresasLista();
     } else {
-      msg.textContent = 'Error: ' + (data.detail || 'desconocido'); msg.style.color = '#b42318';
+      msg.textContent = 'Error: ' + _errDetail(data); msg.style.color = '#b42318';
     }
   }
 
@@ -354,7 +372,7 @@
       await _cargarEmpresas();
       renderEmpresasLista();
     } else {
-      alert('Error: ' + (data.detail || 'no se pudo eliminar'));
+      alert('Error: ' + _errDetail(data));
     }
   }
 
@@ -447,7 +465,7 @@
       await _cargarCalculistas();   // lista chica, no pesa
       renderCalculistasLista();
     } else {
-      msg.textContent = 'Error: ' + (data.detail || 'desconocido'); msg.style.color = '#b42318';
+      msg.textContent = 'Error: ' + _errDetail(data); msg.style.color = '#b42318';
     }
   }
 
@@ -468,7 +486,7 @@
       await _cargarCalculistas();
       renderCalculistasLista();
     } else {
-      alert('Error: ' + (data.detail || 'no se pudo eliminar'));
+      alert('Error: ' + _errDetail(data));
     }
   }
 
