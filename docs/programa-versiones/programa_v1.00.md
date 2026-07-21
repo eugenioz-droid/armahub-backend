@@ -580,8 +580,9 @@ Objetivo: endurecer Reclamos y cerrar los pendientes reales arrastrados.
 
 #### 5L.12 — Control de plazos / SLA de reclamos (requiere diseño, NO implementar aún)
 
-> Plazos aún no definidos por el usuario. Preparar estructura para verificar cumplimiento
-> de días para resolver/analizar. Depende de 5L.7 (fecha fin) y 5L.8 (días).
+> DECIDIDO (2026-07): empezar con **1 plazo global de 2 días** (refinable a por categoría/área
+> después). Semáforo en listados: en plazo / vencido según días transcurridos vs plazo.
+> Depende de 5L.7 (fecha fin) y 5L.8 (días).
 
 | N° | Descripción | Realizado | Quién |
 |----|-------------|-----------|-------|
@@ -610,7 +611,8 @@ Objetivo: endurecer Reclamos y cerrar los pendientes reales arrastrados.
 
 | N° | Descripción | Realizado | Quién |
 |----|-------------|-----------|-------|
-| 5L.14.1 | Decidir modelo (A rol_area / B fallback) en sesión dedicada | ☐ | TÚ+YO |
+| 5L.14.1 | DECIDIDO: Opción B (fallback). Solo afecta reclamos INTERNOS (crear/reasignar/aviso). Helper `_responsable_area`: jefe del área o, si no hay, la Jefa de Calidad (admin_calidad, única). Aplicado en los 3 puntos. Evita reclamos internos sin responsable (ej. área Calidad). La Opción A (rol_area) queda descartada por ahora | ☑ | YO |
+| 5L.14.2 | (Opcional) Backfill de reclamos internos existentes sin responsable (cubicador_asignado NULL) hacia áreas sin jefe → asignar Jefa de Calidad. Solo si hay alguno | ☐ | TÚ+YO |
 
 #### 5L.15 — [DISEÑO PENDIENTE] Inteligencia de Calculistas (bitácora + vistas embebidas)
 
