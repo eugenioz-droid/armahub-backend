@@ -81,6 +81,20 @@ def _jefe_servicio_de_area(cur, area_id):
     return row[0] if row else None
 
 
+def _responsable_area(cur, area_id):
+    """Responsable de un área para reclamos INTERNOS (5L.14): el Jefe de Servicio
+    del área; si el área NO tiene uno asignado, cae a la Jefa de Calidad
+    (admin_calidad). Evita reclamos internos sin responsable (ej. área Calidad,
+    cuya jefa es admin_calidad y no jefe_servicio). None solo si tampoco hay
+    admin_calidad."""
+    jefe = _jefe_servicio_de_area(cur, area_id)
+    if jefe:
+        return jefe
+    cur.execute("SELECT email FROM users WHERE role = 'admin_calidad' AND activo = TRUE ORDER BY id LIMIT 1")
+    row = cur.fetchone()
+    return row[0] if row else None
+
+
 def _role_puede(cur, role, accion):
     """Configurable: ¿el rol global tiene permiso para la acción dada?
     Consulta la tabla role_permisos. Sin fila de config → False."""
@@ -566,8 +580,9 @@ def crear_reclamo(body: ReclamoCreate, user=Depends(get_current_user)):
                 area_id = body.area_id
                 if not area_id:
                     raise HTTPException(status_code=400, detail="Debe indicar el área responsable del reclamo interno")
-                jefe = _jefe_servicio_de_area(cur, area_id)
-                # El responsable es el Jefe de Servicio del área destino (si existe).
+                # Responsable = Jefe de Servicio del área; si no hay, cae a Jefa de
+                # Calidad (5L.14). Evita reclamos internos sin responsable.
+                jefe = _responsable_area(cur, area_id)
                 cub_asignado = jefe
                 responsable_label = jefe
             else:
@@ -1777,7 +1792,7 @@ def actualizar_reclamo(reclamo_id: int, body: ReclamoUpdate, user=Depends(get_cu
                 _nueva_area = body.area_id
                 if _nueva_area != rec.get("area_id"):
                     _area_cambio_por_responsable = True  # 5L.4: mismo criterio para internos
-                _jefe = _jefe_servicio_de_area(cur, _nueva_area)
+                _jefe = _responsable_area(cur, _nueva_area)  # 5L.14: fallback a Jefa de Calidad
                 if not _col_in_sets("area_id"):
                     sets.append("area_id = %s")
                     params.append(_nueva_area)
@@ -3002,7 +3017,8 @@ def _destinatarios_aviso_reclamo(cur, rec: dict) -> dict:
     Roles relativos al reclamo, no genéricos."""
     es_interno = (rec.get("tipo_origen") == "interno")
     if es_interno:
-        asignado = _jefe_servicio_de_area(cur, rec.get("area_id"))
+        # 5L.14: jefe del área o, si no hay, Jefa de Calidad (mismo fallback que al crear).
+        asignado = rec.get("cubicador_asignado") or _responsable_area(cur, rec.get("area_id"))
     else:
         asignado = rec.get("cubicador_asignado")
     return {
