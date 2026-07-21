@@ -113,6 +113,8 @@
       <button id="recShellBtnSettings" class="tab-btn mod-reclamos" onclick="switchTab('rec_settings')" style="display:none;">⚙️ Mailing</button>
       <!-- Clientes tab -->
       <button class="tab-btn mod-clientes" onclick="switchTab('clientes')" style="display:none;">🏢 Clientes</button>
+      <!-- Catálogo Armacero tab -->
+      <button class="tab-btn mod-catalogo" onclick="switchTab('catalogo')" style="display:none;">🏗️ Catálogo</button>
       <!-- Admin tabs -->
       <button class="tab-btn mod-admin" onclick="switchTab('admin')" style="display:none;">⚙️ Admin</button>
     </div>
@@ -127,6 +129,7 @@
     {% include 'tabs/rec_procedimientos.html' %}
     {% include 'tabs/rec_settings.html' %}
     {% include 'tabs/clientes.html' %}
+    {% include 'tabs/catalogo.html' %}
     {% include 'tabs/admin.html' %}
   </div>
 

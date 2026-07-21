@@ -1416,6 +1416,13 @@ def _init_db_once() -> None:
             _create_base_tables(cur)
             _run_migrations(cur)
             _create_indexes(cur)
+            # Seed del catálogo Armacero (5M.1) — idempotente, tras las migraciones
+            # (la 082 crea las tablas). Import local para evitar ciclo con catalogo.py.
+            try:
+                from .catalogo import seed_catalogo
+                seed_catalogo(cur)
+            except Exception as exc:
+                logger.warning("seed_catalogo falló (no bloquea el arranque): %s", exc)
 
 
 def init_db() -> None:

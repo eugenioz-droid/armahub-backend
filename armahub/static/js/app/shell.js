@@ -17,6 +17,7 @@
     rec_procedimientos: 'Procedimientos',
     rec_settings: 'Mailing',
     clientes: 'Clientes',
+    catalogo: 'Catálogo',
     admin: 'Admin'
   };
 
@@ -94,7 +95,8 @@
   var tabLoaders = {
     rec_dashboards: 'loadRecAdminDashboards',
     rec_settings: 'loadRecSettings',
-    clientes: 'loadClientesModule'
+    clientes: 'loadClientesModule',
+    catalogo: 'loadCatalogoModule'
   };
 
   window.switchTab = function switchTab(tabName) {

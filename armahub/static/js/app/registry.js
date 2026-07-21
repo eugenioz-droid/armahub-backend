@@ -110,6 +110,20 @@
   });
 
   registerModule({
+    id: 'catalogo',
+    title: 'Catálogo Armacero',
+    css: 'mod-catalogo',
+    defaultTab: 'catalogo',
+    allowedRoles: ['admin', 'admin_calidad', 'miembro'],
+    loaderFunction: 'loadCatalogoModule',
+    hubCardId: 'hubCardCatalogo',
+    hubOrder: 15,
+    hubDescription: 'Catálogo de figuras y tipologías de fierro (data maestra Armacero).',
+    hubAccent: '#5d4037',
+    hubIcon: '🏗️'
+  });
+
+  registerModule({
     id: 'admin',
     title: 'Administracion',
     css: 'mod-admin',

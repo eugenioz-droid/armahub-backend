@@ -287,6 +287,13 @@
         'armahubFeature',
         'clientes',
         '[ArmaHub] No se pudo cargar clientes/index.js'
+      ),
+      loadScript(
+        'script[data-armahub-feature="catalogo"]',
+        '/static/js/features/catalogo/index.js' + suffix,
+        'armahubFeature',
+        'catalogo',
+        '[ArmaHub] No se pudo cargar catalogo/index.js'
       )
     ]);
   }).catch(function(error) {
