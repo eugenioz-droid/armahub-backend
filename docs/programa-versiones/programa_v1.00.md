@@ -705,7 +705,7 @@ Objetivo: endurecer Reclamos y cerrar los pendientes reales arrastrados.
 | 5M.5 | **Fase 5 — Aviso en re-import.** En el preview del import, detectar barras con `editado_por` que el CSV reescribiría → avisar "N barras editadas en plataforma se reescribirían" con detalle, antes de confirmar | ☐ | YO |
 | 5M.6 | **Fase 6 — Color en matrices.** Exponer la marca de edición manual en `export-history`; nuevo color/badge + leyenda en `exportacion.js` distinto del rojo de re-import | ☐ | YO |
 | 5M.7 | **Fase 7 — Render SVG (futuro).** Dibujo de la figura en el navegador desde catálogo (plantilla) + valores de la barra (proporcionado). Vectorial, liviano, sin imágenes. Se acopla al catálogo | ☐ | TÚ+YO |
-| 5M.8 | **Fase 8 — Editor/creador de figuras + multi-catálogo (musculatura completa).** Dibujo paramétrico guiado (arma la figura por tramos → SVG auto), acceso restringido. Multi-catálogo por empresa; lectura de catálogos en otros formatos. Requiere discovery propio | ☐ | TÚ+YO |
+| 5M.8 | **Fase 8 — Editor de figuras + HOMOLOGACIÓN de catálogos externos.** Dibujo paramétrico guiado (arma la figura por tramos → SVG auto), acceso restringido. Homologación: el catálogo Armacero es ÚNICO (fuente de verdad); F8 agrega un motor para traer data de catálogos externos (otros formatos) y mapearla/homologarla al Armacero (integración 1-a-1 por catálogo, con su tab de config). NO son catálogos paralelos: el resultado final siempre es Armacero. Requiere discovery propio | ☐ | TÚ+YO |
 
 ---
 

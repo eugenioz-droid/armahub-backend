@@ -705,15 +705,18 @@ Es una entidad de referencia propia (como Clientes/Calculistas), no un apéndice
   Fi, ES, CB...). Fuente: `TIPOS_*`.
 - **Relación tipología → figuras aplicables:** qué figuras valen para cada tipología. Fuente:
   `FIGURAS_POR_TIPO`.
-- **Tabla en BD editable** (no módulo estático) para habilitar el editor (Fase 8) y el
-  multi-catálogo futuro.
+- **Tabla en BD editable** (no módulo estático), catálogo **ÚNICO** (Armacero). No hay
+  multi-catálogo paralelo: el catálogo Armacero es la fuente de verdad. Lo que viene a futuro
+  (F8) es un motor de **homologación** — traer data de catálogos externos (otros formatos) y
+  mapearla al Armacero.
 
 ### 4A.3 Sub-tabs (previstos)
 
 - **Figuras:** lista/creación/edición del catálogo de figuras.
 - **Tipologías:** tipologías y sus figuras aplicables.
-- (Futuro) **Catálogos / Configuración:** multi-catálogo por empresa, lectura de otros
-  formatos, config técnica de importación.
+- (Futuro) **Homologación / Integraciones:** por cada catálogo externo, un tab de config que
+  define cómo su formato se mapea al catálogo Armacero (integración 1-a-1). El resultado
+  siempre queda homologado al Armacero.
 
 ### 4A.4 Editor de figuras (Fase 8, futuro)
 
