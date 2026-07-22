@@ -42,7 +42,7 @@ async function restoreBarManagerState() {
   if (!Array.from(selProy.options).some(o => o.value === state.proyecto)) return false;
   selProy.value = state.proyecto;
   // Reflejar el nombre de la obra en el input de búsqueda (coherencia visual).
-  const si = document.getElementById('proyectoSearchInput');
+  const si = document.getElementById('bmProyectoSearchInput');
   if (si && selProy.selectedIndex >= 0) si.value = selProy.options[selProy.selectedIndex].textContent;
   // Cargar dependientes + facetas de esa obra (necesario para que las opciones
   // de figura/tipología/diámetro existan antes de re-seleccionarlas).
@@ -137,7 +137,7 @@ function _fillProyectosDatalist(proyectos) {
 // El usuario escribió/eligió en el buscador de obra. Resuelve nombre→id, fija el
 // <select> oculto y dispara el cambio de proyecto solo si el id cambió.
 function onProyectoInput() {
-  var input = document.getElementById('proyectoSearchInput');
+  var input = document.getElementById('bmProyectoSearchInput');
   var sel = document.getElementById('proyecto');
   if (!input || !sel) return;
   var txt = (input.value || '').trim();
@@ -157,7 +157,6 @@ function onProyectoInput() {
       }
     }
   }
-  console.log('[BM] onProyectoInput txt="' + txt + '" -> id="' + id + '" (cache:' + _proyectosCache.length + ')');
   if (sel.value === id) return;   // sin cambio real → no re-buscar
   sel.value = id;
   onProyectoChange();

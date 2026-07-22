@@ -18,7 +18,10 @@
             <!-- Buscador único con datalist. autocomplete=off (NO new-password:
                  rellenaba el valor sin disparar el evento → el proyecto no cargaba).
                  Se sincroniza el <select> oculto en input/change/blur. -->
-            <input type="text" id="proyectoSearchInput" list="bmProyectosDatalist"
+            <!-- id ÚNICO: 'proyectoSearchInput' ya existe en obras.html; como ambos
+                 tabs están en el DOM a la vez, getElementById tomaba el de Obras
+                 (vacío) y el proyecto no cargaba. -->
+            <input type="text" id="bmProyectoSearchInput" list="bmProyectosDatalist"
                    name="bm-obra-buscar" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"
                    data-lpignore="true" data-form-type="other"
                    placeholder="Escribe para buscar la obra…"
