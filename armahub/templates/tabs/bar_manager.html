@@ -17,8 +17,11 @@
             <span style="position:absolute; left:9px; top:50%; transform:translateY(-50%); font-size:13px; color:#999; pointer-events:none;">🔍</span>
             <!-- Buscador único: escribes y el datalist despliega coincidencias.
                  autocomplete=off evita que el navegador ofrezca usuario/clave. -->
-            <input type="text" id="proyectoSearchInput" list="bmProyectosDatalist"
-                   name="bm-obra-buscar" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"
+            <!-- type=search + autocomplete=new-password: evita que el gestor de
+                 contraseñas del navegador ofrezca usuario/clave en este campo. -->
+            <input type="search" id="proyectoSearchInput" list="bmProyectosDatalist"
+                   name="bm-obra-buscar" autocomplete="new-password" autocapitalize="off" autocorrect="off" spellcheck="false"
+                   data-lpignore="true" data-form-type="other"
                    placeholder="Escribe para buscar la obra…"
                    oninput="onProyectoInput()" onchange="onProyectoInput()"
                    style="padding-left:30px; width:100%; font-size:13px; height:34px; box-sizing:border-box;" />
@@ -119,8 +122,9 @@
         <button class="secondary" onclick="expandAll()" style="font-size:11px; padding:3px 10px;">▾ Expandir todo</button>
         <button class="secondary" onclick="collapseAll()" style="font-size:11px; padding:3px 10px;">▸ Colapsar todo</button>
         <button class="secondary" id="btnCobertura" onclick="toggleCobertura()" style="font-size:11px; padding:3px 10px;">📊 Mostrar cobertura</button>
-        <!-- 5M.3: candado de edición. Cerrado = solo lectura; abrir habilita editar barras. -->
-        <button id="btnEdicionBarras" onclick="toggleModoEdicion()" style="font-size:11px; padding:3px 12px; background:#eee; border:1px solid #ccc; border-radius:4px; cursor:pointer;">🔒 Edición bloqueada</button>
+        <!-- 5M.3: candado de edición. Cerrado = solo lectura; abrir habilita editar barras.
+             Color propio (ámbar) para que resalte entre los botones grises. -->
+        <button id="btnEdicionBarras" onclick="toggleModoEdicion()" style="font-size:11px; padding:3px 12px; background:#fff3e0; border:1px solid #ffb74d; border-radius:4px; cursor:pointer; color:#e65100; font-weight:600;">🔒 Edición bloqueada</button>
         <button id="btnGuardarBarras" onclick="guardarCambiosBarras()" style="display:none; font-size:11px; padding:3px 12px; background:#2e7d32; color:#fff; border:none; border-radius:4px; cursor:pointer;">💾 Guardar cambios</button>
         <!-- 5M.9: descartar solo los cambios de ESTA sesión de edición (desde que se abrió el candado). -->
         <button id="btnDescartarBarras" onclick="descartarCambiosBarras()" style="display:none; font-size:11px; padding:3px 12px; background:#fff; color:#c62828; border:1px solid #c62828; border-radius:4px; cursor:pointer;">↩ Descartar cambios</button>

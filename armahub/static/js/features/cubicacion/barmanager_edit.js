@@ -189,17 +189,20 @@
     var status = document.getElementById('edicionStatus');
     var nCambios = Object.keys(_cambios).length;
     if (btn) {
+      btn.style.fontWeight = '600';
       if (_modoEdicion) {
+        // Activo: ámbar LLENO para que se note que el modo está encendido.
         btn.textContent = '🔓 Salir de edición';
-        btn.style.background = '#fff3e0';
+        btn.style.background = '#e65100';
         btn.style.borderColor = '#e65100';
-        btn.style.color = '#e65100';
+        btn.style.color = '#fff';
         if (status) status.textContent = nCambios > 0 ? (nCambios + ' barra(s) con cambios sin guardar') : 'Modo edición activo — edita las celdas.';
       } else {
+        // Bloqueado: ámbar suave que resalta entre los botones grises.
         btn.textContent = '🔒 Edición bloqueada';
-        btn.style.background = '#eee';
-        btn.style.borderColor = '#ccc';
-        btn.style.color = '#333';
+        btn.style.background = '#fff3e0';
+        btn.style.borderColor = '#ffb74d';
+        btn.style.color = '#e65100';
         if (status) status.textContent = '';
       }
     }
