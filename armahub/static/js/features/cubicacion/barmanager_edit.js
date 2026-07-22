@@ -148,8 +148,11 @@
       await _cargarDatalistFiguras();   // 5M.4: figuras del catálogo para el input
     }
     _actualizarBotonEdicion();
-    // Re-render del detalle abierto para reflejar inputs / solo-lectura.
-    if (typeof reRenderDetallesAbiertos === 'function') reRenderDetallesAbiertos();
+    // Re-render de la vista ACTIVA (plana o agrupada) para reflejar inputs /
+    // solo-lectura. bmReRenderVistaActual bifurca según _modoVistaPlana (5M.9);
+    // así el candado también cambia la grilla plana, no solo los desplegables.
+    if (typeof bmReRenderVistaActual === 'function') bmReRenderVistaActual();
+    else if (typeof reRenderDetallesAbiertos === 'function') reRenderDetallesAbiertos();
     // Validar filas visibles (resalta las incoherentes de origen).
     if (_modoEdicion) setTimeout(function() { global.bmValidarTodasLasFilas(); }, 50);
   };
