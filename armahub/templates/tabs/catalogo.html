@@ -6,6 +6,7 @@
     <div style="display:flex; gap:0; margin-bottom:16px; padding-top:4px; border-bottom:1px solid #f0f0f0; background:#fafafa;">
       <button id="catSubBtnFiguras" onclick="switchCatSubTab('figuras')" style="padding:5px 16px; font-size:12px; font-weight:600; border:none; border-bottom:2px solid #5d4037; background:none; color:#5d4037; cursor:pointer;">Figuras</button>
       <button id="catSubBtnTipologias" onclick="switchCatSubTab('tipologias')" style="padding:5px 16px; font-size:12px; font-weight:600; border:none; border-bottom:2px solid transparent; background:none; color:#aaa; cursor:pointer;">Tipologías</button>
+      <button id="catSubBtnDisenador" onclick="switchCatSubTab('disenador')" style="padding:5px 16px; font-size:12px; font-weight:600; border:none; border-bottom:2px solid transparent; background:none; color:#aaa; cursor:pointer;">🎨 Diseñador</button>
     </div>
 
     <!-- ===== Sub-panel: FIGURAS ===== -->
@@ -38,6 +39,47 @@
           <input type="text" id="catTipBusqueda" placeholder="Buscar tipología..." autocomplete="off" name="cattip-nofill" onkeyup="renderTipologiasLista()" style="font-size:12px; max-width:220px; padding:4px 8px;" />
         </div>
         <div id="tipologiasLista"><div class="muted">Cargando tipologías...</div></div>
+      </div>
+    </div>
+
+    <!-- ===== Sub-panel: DISEÑADOR (5M.7/5M.8 — Paso 1: render SVG de solo lectura) ===== -->
+    <div id="catSubDisenador" style="display:none;">
+      <div class="card" style="border-top:3px solid #00695c;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+          <h3 style="margin:0; color:#00695c;">🎨 Diseñador de figuras</h3>
+          <span class="muted" style="font-size:11px;" id="disenadorResumen"></span>
+        </div>
+        <p class="muted" style="font-size:12px; margin:0 0 12px 0;">
+          Dibujo vectorial (SVG) de una figura a partir de su geometría de armado (tramos: lado + giro + sentido).
+          <strong>Paso 1 (esta versión):</strong> solo visualización. La creación/edición de la geometría llega en el siguiente paso.
+          Las figuras sin geometría definida aún no se pueden dibujar.
+        </p>
+        <div class="row" style="gap:10px; align-items:flex-end; flex-wrap:wrap; margin-bottom:12px;">
+          <div style="display:flex; flex-direction:column;">
+            <label style="font-size:11px; color:#666; font-weight:600; margin-bottom:2px;">Figura</label>
+            <select id="disenadorFiguraSel" onchange="disenadorRender()" style="font-size:13px; min-width:160px;">
+              <option value="">— Selecciona una figura —</option>
+            </select>
+          </div>
+          <div style="display:flex; flex-direction:column;">
+            <label style="font-size:11px; color:#666; font-weight:600; margin-bottom:2px;">Ejemplo de prueba</label>
+            <select id="disenadorDemoSel" onchange="disenadorRenderDemo()" style="font-size:13px; min-width:220px;">
+              <option value="">— Figuras de demostración —</option>
+            </select>
+          </div>
+        </div>
+        <div style="display:flex; gap:16px; flex-wrap:wrap; align-items:flex-start;">
+          <!-- Vista SVG -->
+          <div style="flex:1; min-width:280px;">
+            <div id="disenadorSvgWrap" style="border:1px solid #e0e0e0; border-radius:8px; background:#fafafa; min-height:260px; display:flex; align-items:center; justify-content:center; padding:12px;">
+              <span class="muted" style="font-size:12px;">Selecciona una figura para ver su dibujo.</span>
+            </div>
+          </div>
+          <!-- Info de la figura -->
+          <div style="width:260px; flex-shrink:0;">
+            <div id="disenadorInfo" class="muted" style="font-size:12px;">—</div>
+          </div>
+        </div>
       </div>
     </div>
   </div>

@@ -22,9 +22,9 @@
 
   function switchCatSubTab(sub) {
     _catSubActual = sub;
-    var panels = { figuras: 'catSubFiguras', tipologias: 'catSubTipologias' };
-    var btns = { figuras: 'catSubBtnFiguras', tipologias: 'catSubBtnTipologias' };
-    var colors = { figuras: '#5d4037', tipologias: '#6d4c41' };
+    var panels = { figuras: 'catSubFiguras', tipologias: 'catSubTipologias', disenador: 'catSubDisenador' };
+    var btns = { figuras: 'catSubBtnFiguras', tipologias: 'catSubBtnTipologias', disenador: 'catSubBtnDisenador' };
+    var colors = { figuras: '#5d4037', tipologias: '#6d4c41', disenador: '#00695c' };
     Object.keys(panels).forEach(function(k) {
       var p = document.getElementById(panels[k]);
       if (p) p.style.display = (k === sub) ? '' : 'none';
@@ -34,7 +34,9 @@
         b.style.color = (k === sub) ? colors[sub] : '#999';
       }
     });
-    if (sub === 'figuras') renderFigurasLista(); else renderTipologiasLista();
+    if (sub === 'figuras') renderFigurasLista();
+    else if (sub === 'tipologias') renderTipologiasLista();
+    else if (sub === 'disenador' && typeof disenadorInit === 'function') disenadorInit(_figurasData);
   }
 
   async function _cargarFiguras() {

@@ -296,6 +296,13 @@
         '[ArmaHub] No se pudo cargar clientes/index.js'
       ),
       loadScript(
+        'script[data-armahub-feature="catalogo-disenador"]',
+        '/static/js/features/catalogo/disenador.js' + suffix,
+        'armahubFeature',
+        'catalogo-disenador',
+        '[ArmaHub] No se pudo cargar catalogo/disenador.js'
+      ),
+      loadScript(
         'script[data-armahub-feature="catalogo"]',
         '/static/js/features/catalogo/index.js' + suffix,
         'armahubFeature',
