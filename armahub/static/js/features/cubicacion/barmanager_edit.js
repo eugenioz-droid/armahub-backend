@@ -19,19 +19,104 @@
     _actualizarBotonEdicion();
   };
 
-  // Datalist de figuras del catálogo (5M.4), cargado una vez al activar edición.
+  // Catálogo de figuras cargado en memoria (5M.4): código → {parciales, angulos, radio}.
+  // Permite validar la geometría AL EDITAR (inmediato), no solo al guardar.
   var _figurasCargadas = false;
+  var _catFiguras = {};
   async function _cargarDatalistFiguras() {
     if (_figurasCargadas) return;
     var dl = document.getElementById('bmFigurasDatalist');
-    if (!dl) return;
     var data = await apiGet('/figuras-catalogo');
     var figs = (data && data.figuras) || [];
-    dl.innerHTML = figs.map(function(f) {
-      return '<option value="' + f.codigo + '">' + f.codigo + ' (' + (f.parciales || []).join('') + ')</option>';
-    }).join('');
+    _catFiguras = {};
+    figs.forEach(function(f) { _catFiguras[f.codigo] = f; });
+    if (dl) {
+      dl.innerHTML = figs.map(function(f) {
+        return '<option value="' + f.codigo + '">' + f.codigo + ' (' + (f.parciales || []).join('') + ')</option>';
+      }).join('');
+    }
     _figurasCargadas = true;
   }
+
+  // Un valor cuenta como "presente" solo si es distinto de 0 y no vacío (mismo
+  // criterio que el backend: los lados no usados vienen en 0 = no existen).
+  function _valReal(v) {
+    if (v === null || v === undefined || v === '') return false;
+    var n = parseFloat(v);
+    return !isNaN(n) && n !== 0;
+  }
+
+  // Valida en el navegador la geometría de una barra contra el catálogo y resalta
+  // en ROJO al instante los lados/ángulos/radio que sobran o faltan (5M.4).
+  // Lee los valores EFECTIVOS de los inputs de esa fila.
+  function _validarFilaLocal(barraId) {
+    // Figura efectiva: input de figura o (si no editada) no la tenemos aquí → skip.
+    var figInput = document.getElementById('bmcell-' + barraId + '-figura');
+    if (!figInput) return;
+    var figura = (figInput.value || '').trim();
+    // Slots (dim_a..i, ang1..4, radio) a evaluar.
+    var slots = ['dim_a','dim_b','dim_c','dim_d','dim_e','dim_f','dim_g','dim_h','dim_i',
+                 'ang1','ang2','ang3','ang4','radio'];
+    // Limpiar resaltados previos de esta fila.
+    slots.forEach(function(s) {
+      var el = document.getElementById('bmcell-' + barraId + '-' + s);
+      if (el) { el.style.border = ''; el.style.background = el.value !== '' && _cambioTocado(barraId, s) ? '#fff3cd' : ''; el.title = ''; }
+    });
+    var fig = _catFiguras[figura];
+    if (!fig) return;   // figura desconocida → el backend la rechazará al guardar
+    var usados = {};
+    (fig.parciales || []).forEach(function(l) { usados['dim_' + l.toLowerCase()] = true; });
+    var nAng = (fig.angulos || []).length;
+    // Dims
+    ['a','b','c','d','e','f','g','h','i'].forEach(function(l) {
+      var col = 'dim_' + l;
+      var el = document.getElementById('bmcell-' + barraId + '-' + col);
+      if (!el) return;
+      var tiene = _valReal(el.value);
+      if (usados[col] && !tiene) _marcarRojo(el, 'falta');
+      else if (!usados[col] && tiene) _marcarRojo(el, 'sobra');
+    });
+    // Ángulos
+    [1,2,3,4].forEach(function(i) {
+      var el = document.getElementById('bmcell-' + barraId + '-ang' + i);
+      if (!el) return;
+      var usa = i <= nAng;
+      var tiene = _valReal(el.value);
+      if (usa && !tiene) _marcarRojo(el, 'falta');
+      else if (!usa && tiene) _marcarRojo(el, 'sobra');
+    });
+    // Radio
+    var elR = document.getElementById('bmcell-' + barraId + '-radio');
+    if (elR) {
+      var tieneR = _valReal(elR.value);
+      if (fig.radio && !tieneR) _marcarRojo(elR, 'falta');
+      else if (!fig.radio && tieneR) _marcarRojo(elR, 'sobra');
+    }
+  }
+
+  function _marcarRojo(el, tipo) {
+    el.style.background = '#ffcdd2';
+    el.style.border = '2px solid #c62828';
+    el.title = (tipo === 'sobra')
+      ? 'SOBRA para esta figura — déjalo vacío o en 0'
+      : 'FALTA para esta figura — complétalo';
+  }
+
+  function _cambioTocado(barraId, campo) {
+    return _cambios[barraId] && (campo in _cambios[barraId]);
+  }
+
+  // Valida TODAS las filas visibles (5M.4): al entrar en modo edición o tras
+  // re-render, resalta en rojo las barras que ya vienen incoherentes de origen.
+  global.bmValidarTodasLasFilas = function() {
+    if (!_modoEdicion) return;
+    var inputs = document.querySelectorAll('input[data-campo="figura"]');
+    var vistos = {};
+    inputs.forEach(function(el) {
+      var id = el.getAttribute('data-barra-id');
+      if (id && !vistos[id]) { vistos[id] = true; _validarFilaLocal(id); }
+    });
+  };
 
   // ---- Botón GUARDAR explícito (5M.4) ----
   global.guardarCambiosBarras = async function() {
@@ -65,6 +150,8 @@
     _actualizarBotonEdicion();
     // Re-render del detalle abierto para reflejar inputs / solo-lectura.
     if (typeof reRenderDetallesAbiertos === 'function') reRenderDetallesAbiertos();
+    // Validar filas visibles (resalta las incoherentes de origen).
+    if (_modoEdicion) setTimeout(function() { global.bmValidarTodasLasFilas(); }, 50);
   };
 
   function _actualizarBotonEdicion() {
@@ -110,10 +197,10 @@
     } else {
       _cambios[id][campo] = parseFloat(val);
     }
-    // Limpiar resaltado de error rojo al corregir; marcar celda modificada.
-    el.style.border = '';
-    el.title = '';
+    // Marcar celda modificada (amarillo).
     el.style.background = '#fff3cd';
+    // 5M.4: revalidar la fila al instante (resalta en rojo lo que sobra/falta).
+    _validarFilaLocal(id);
     _actualizarBotonEdicion();
   };
 

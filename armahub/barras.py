@@ -1341,8 +1341,14 @@ def editar_barra(barra_id: int, body: BarraUpdate, user=Depends(get_current_user
                         largo = nuevo_largo
                 for c in _GEOM_COLS:
                     if c in campos:
-                        sets.append(f"{c} = %s"); params.append(campos[c])
-                        cambios.append(f"{c}: {barra[c]}→{campos[c]}")
+                        # 5M.4: un dim/ángulo/radio dejado vacío (null) se normaliza a 0
+                        # (los lados no usados van en 0, no NULL, como la data de origen).
+                        # La figura (texto) no se normaliza.
+                        val = campos[c]
+                        if c != "figura" and val is None:
+                            val = 0
+                        sets.append(f"{c} = %s"); params.append(val)
+                        cambios.append(f"{c}: {barra[c]}→{val}")
 
             # Recalcular peso si cambió diam, cant_total o el largo (por geometría).
             if any(k in campos for k in ("diam", "cant_total")) or toca_geom:

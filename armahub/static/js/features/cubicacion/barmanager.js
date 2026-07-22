@@ -273,6 +273,8 @@ async function _hydrateDetail(idx) {
     detailCache.set(key, barras);
   }
   _renderDetail(cont, e, barras);
+  // 5M.4: si está en modo edición, validar las filas recién dibujadas (resalta rojo).
+  if (typeof bmValidarTodasLasFilas === 'function') setTimeout(bmValidarTodasLasFilas, 30);
 }
 
 // 5M.3: re-dibuja los detalles ya expandidos (sin re-fetch) al cambiar el modo

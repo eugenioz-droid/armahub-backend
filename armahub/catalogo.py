@@ -227,13 +227,19 @@ def get_figura(cur, codigo: str):
     return {"parciales": row[0] or [], "angulos": row[1] or [], "radio": bool(row[2])}
 
 
-def _no_vacio(v):
-    """Un slot tiene valor si NO es None (0 cuenta como valor presente). Para
-    'eliminar' un lado que no va hay que dejarlo VACÍO (null), no en 0."""
+def _tiene_valor_real(v):
+    """Un slot tiene valor REAL si no es None/vacío Y es distinto de 0.
+    En la data de origen, los lados que la figura no usa vienen en 0 (no NULL).
+    Por eso 0 y vacío = 'no existe'; solo un valor ≠ 0 cuenta como presente."""
     if v is None:
         return False
     s = str(v).strip()
-    return s != "" and s.lower() != "none"
+    if s == "" or s.lower() == "none":
+        return False
+    try:
+        return float(s) != 0
+    except (ValueError, TypeError):
+        return False
 
 
 def largo_desde_lados(cur, codigo_figura: str, valores: dict):
@@ -277,7 +283,7 @@ def validar_geometria(cur, codigo_figura: str, valores: dict) -> dict:
     # Dims
     for letra, dim_col in _SLOT_A_DIM.items():
         usa = letra in usados
-        tiene = _no_vacio(valores.get(dim_col))
+        tiene = _tiene_valor_real(valores.get(dim_col))
         if usa and not tiene:
             slots_faltan.append(dim_col)
         elif not usa and tiene:
@@ -286,14 +292,14 @@ def validar_geometria(cur, codigo_figura: str, valores: dict) -> dict:
     # Ángulos: los primeros n_ang deben tener valor; el resto vacío.
     for i, ang_col in enumerate(_ANG_COLS):
         usa = i < n_ang
-        tiene = _no_vacio(valores.get(ang_col))
+        tiene = _tiene_valor_real(valores.get(ang_col))
         if usa and not tiene:
             slots_faltan.append(ang_col)
         elif not usa and tiene:
             slots_sobran.append(ang_col)
 
     # Radio
-    tiene_r = _no_vacio(valores.get("radio"))
+    tiene_r = _tiene_valor_real(valores.get("radio"))
     if usa_radio and not tiene_r:
         slots_faltan.append("radio")
     elif not usa_radio and tiene_r:
