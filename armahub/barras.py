@@ -1277,7 +1277,7 @@ def editar_barra(barra_id: int, body: BarraUpdate, user=Depends(get_current_user
     (5M.4: figura/dims/ángulos/radio, validada contra el catálogo). Si la geometría
     queda incoherente con la figura, RECHAZA (409) — no se guarda data mala. Marca
     edición manual y audita."""
-    from .catalogo import validar_geometria
+    from .catalogo import validar_geometria, largo_desde_lados
     email = user.get("email", "?")
     campos = body.model_dump(exclude_unset=True)
     if not campos:
@@ -1301,13 +1301,15 @@ def editar_barra(barra_id: int, body: BarraUpdate, user=Depends(get_current_user
             if not _puede_editar_proyecto(cur, barra["id_proyecto"], user):
                 raise HTTPException(status_code=403, detail="No puedes editar barras de esta obra. Solo el cubicador asignado a la obra o un administrador pueden hacerlo.")
 
-            # Valores efectivos (nuevo si vino, si no el actual).
+            # Valores efectivos (nuevo si vino, si no el actual). NOTA: largo_total NO
+            # es editable directamente — se calcula de la suma de los lados (5M.4).
+            campos.pop("largo_total", None)
             diam = campos.get("diam", barra["diam"])
-            largo = campos.get("largo_total", barra["largo_total"])
+            largo = barra["largo_total"]
             cant_total = campos.get("cant_total", barra["cant_total"])
 
             sets, params, cambios = [], [], []
-            for f in ("diam", "largo_total", "cant", "cant_total", "mult"):
+            for f in ("diam", "cant", "cant_total", "mult"):
                 if f in campos:
                     sets.append(f"{f} = %s"); params.append(campos[f])
                     cambios.append(f"{f}: {barra[f]}→{campos[f]}")
@@ -1331,13 +1333,19 @@ def editar_barra(barra_id: int, body: BarraUpdate, user=Depends(get_current_user
                             "slots_sobran": val["slots_sobran"],
                             "slots_faltan": val["slots_faltan"],
                         })
+                    # Recalcular el largo = suma de los lados usados (5M.4).
+                    nuevo_largo = largo_desde_lados(cur, figura_efectiva, efectivos)
+                    if nuevo_largo is not None and nuevo_largo != largo:
+                        sets.append("largo_total = %s"); params.append(nuevo_largo)
+                        cambios.append(f"largo_total: {largo}→{nuevo_largo}")
+                        largo = nuevo_largo
                 for c in _GEOM_COLS:
                     if c in campos:
                         sets.append(f"{c} = %s"); params.append(campos[c])
                         cambios.append(f"{c}: {barra[c]}→{campos[c]}")
 
-            # Recalcular peso si cambió diam/largo/cant_total.
-            if any(k in campos for k in ("diam", "largo_total", "cant_total")):
+            # Recalcular peso si cambió diam, cant_total o el largo (por geometría).
+            if any(k in campos for k in ("diam", "cant_total")) or toca_geom:
                 peso_unitario, _ = _calcular_peso(diam, largo)
                 peso_total = (peso_unitario * cant_total) if (peso_unitario is not None and cant_total is not None) else None
                 sets.append("peso_unitario = %s"); params.append(peso_unitario)

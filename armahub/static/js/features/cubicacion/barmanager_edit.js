@@ -33,22 +33,31 @@
     _figurasCargadas = true;
   }
 
+  // ---- Botón GUARDAR explícito (5M.4) ----
+  global.guardarCambiosBarras = async function() {
+    if (Object.keys(_cambios).length === 0) {
+      if (typeof showToast === 'function') showToast('No hay cambios que guardar', 'info');
+      return;
+    }
+    await _guardarCambios();
+    _actualizarBotonEdicion();
+  };
+
   // ---- Toggle candado ----
   global.toggleModoEdicion = async function() {
     if (_modoEdicion) {
-      // Cerrando el candado: si hay cambios, preguntar si guardar.
+      // Cerrando el candado = SALIR del modo edición. Si hay cambios sin guardar,
+      // preguntar (guardar / descartar / cancelar).
       if (Object.keys(_cambios).length > 0) {
-        if (confirm('Tienes cambios sin guardar. ¿Deseas guardarlos?')) {
-          var ok = await _guardarCambios();
-          if (!ok) return; // si falló, seguir en modo edición
-        } else {
-          _cambios = {}; // descartar
-        }
+        var resp = confirm('Tienes cambios sin guardar.\n\nAceptar = GUARDAR y salir.\nCancelar = seguir editando (no sale).');
+        if (!resp) return; // seguir en modo edición
+        var ok = await _guardarCambios();
+        if (!ok) return;   // hubo errores/geometría inválida: seguir para corregir
       }
       _modoEdicion = false;
     } else {
       // Abriendo: warning explícito.
-      if (!confirm('Vas a ACTIVAR el modo edición de barras.\n\nPodrás modificar diámetro, cantidad, largo y la geometría (figura, lados A–I, ángulos, radio) de barras individuales. La figura se valida contra el catálogo: NO podrás guardar una barra con lados que sobran o faltan (quedan marcados en rojo para que los corrijas).\n\nLos cambios quedan auditados. Edita solo lo necesario. ¿Continuar?')) return;
+      if (!confirm('Vas a ACTIVAR el modo edición de barras.\n\nPodrás modificar diámetro, cantidad y la geometría (figura, lados A–I, ángulos, radio). El largo se calcula solo de los lados. La figura se valida contra el catálogo: NO podrás guardar una barra con lados/ángulos que sobran o faltan (quedan en ROJO para corregir).\n\nUsa el botón "💾 Guardar cambios". Los cambios quedan auditados. ¿Continuar?')) return;
       _modoEdicion = true;
       _cambios = {};
       await _cargarDatalistFiguras();   // 5M.4: figuras del catálogo para el input
@@ -60,20 +69,27 @@
 
   function _actualizarBotonEdicion() {
     var btn = document.getElementById('btnEdicionBarras');
+    var btnGuardar = document.getElementById('btnGuardarBarras');
     var status = document.getElementById('edicionStatus');
-    if (!btn) return;
-    if (_modoEdicion) {
-      btn.textContent = '🔓 Edición activa — clic para bloquear/guardar';
-      btn.style.background = '#fff3e0';
-      btn.style.borderColor = '#e65100';
-      btn.style.color = '#e65100';
-      if (status) status.textContent = 'Modo edición: modifica y luego bloquea para guardar.';
-    } else {
-      btn.textContent = '🔒 Edición bloqueada';
-      btn.style.background = '#eee';
-      btn.style.borderColor = '#ccc';
-      btn.style.color = '#333';
-      if (status) status.textContent = '';
+    var nCambios = Object.keys(_cambios).length;
+    if (btn) {
+      if (_modoEdicion) {
+        btn.textContent = '🔓 Salir de edición';
+        btn.style.background = '#fff3e0';
+        btn.style.borderColor = '#e65100';
+        btn.style.color = '#e65100';
+        if (status) status.textContent = nCambios > 0 ? (nCambios + ' barra(s) con cambios sin guardar') : 'Modo edición activo — edita las celdas.';
+      } else {
+        btn.textContent = '🔒 Edición bloqueada';
+        btn.style.background = '#eee';
+        btn.style.borderColor = '#ccc';
+        btn.style.color = '#333';
+        if (status) status.textContent = '';
+      }
+    }
+    if (btnGuardar) {
+      btnGuardar.style.display = (_modoEdicion && nCambios > 0) ? '' : 'none';
+      btnGuardar.textContent = '💾 Guardar ' + (nCambios > 0 ? ('(' + nCambios + ')') : 'cambios');
     }
   }
 
@@ -145,18 +161,23 @@
         if (!otroError) otroError = (data && data.detail) ? (typeof data.detail === 'string' ? data.detail : JSON.stringify(data.detail)) : 'error';
       }
     }
-    // Refrescar solo si hubo guardados (los pesos cambiaron).
+    if (fallidas.length > 0) {
+      // Hay barras con problemas: NO re-renderizar (perdería el resaltado rojo).
+      // Solo actualizar el panel de ediciones si algo se guardó.
+      if (okCount > 0 && typeof cargarEdicionesRecientes === 'function') cargarEdicionesRecientes();
+      var msg = okCount + ' guardada(s). ' + fallidas.length + ' con problema: corrige lo marcado en ROJO (sobra/falta) antes de guardar.' + (otroError ? (' Otro: ' + otroError) : '');
+      if (typeof showToast === 'function') showToast(msg, 'error');
+      _actualizarBotonEdicion();
+      return false;   // deja el modo edición abierto para corregir
+    }
+    // Todo OK: refrescar la vista (pesos/largo recalculados) + panel + botón.
     if (okCount > 0) {
       if (typeof detailCache !== 'undefined' && detailCache.clear) detailCache.clear();
       if (typeof buscar === 'function') await buscar(false);
       if (typeof cargarEdicionesRecientes === 'function') cargarEdicionesRecientes();
     }
-    if (fallidas.length > 0) {
-      var msg = okCount + ' guardada(s). ' + fallidas.length + ' con geometría incoherente: corrige los lados marcados en rojo antes de guardar.' + (otroError ? (' Otro error: ' + otroError) : '');
-      if (typeof showToast === 'function') showToast(msg, 'error');
-      return false;   // deja el candado abierto para corregir
-    }
     if (typeof showToast === 'function') showToast(okCount + ' barra(s) actualizada(s)', 'success');
+    _actualizarBotonEdicion();
     return true;
   }
 

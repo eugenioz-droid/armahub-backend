@@ -213,6 +213,7 @@ def seed_catalogo(cur) -> dict:
 
 # Mapa slot (letra del catálogo) → columna dim de barras.
 _SLOT_A_DIM = {L: f"dim_{L.lower()}" for L in "ABCDEFGHI"}
+_ANG_COLS = ["ang1", "ang2", "ang3", "ang4"]
 
 
 def get_figura(cur, codigo: str):
@@ -226,45 +227,91 @@ def get_figura(cur, codigo: str):
     return {"parciales": row[0] or [], "angulos": row[1] or [], "radio": bool(row[2])}
 
 
+def _no_vacio(v):
+    """Un slot tiene valor si NO es None (0 cuenta como valor presente). Para
+    'eliminar' un lado que no va hay que dejarlo VACÍO (null), no en 0."""
+    if v is None:
+        return False
+    s = str(v).strip()
+    return s != "" and s.lower() != "none"
+
+
+def largo_desde_lados(cur, codigo_figura: str, valores: dict):
+    """Largo = suma de los lados (dims) que la figura USA (5M.4). None si no hay
+    figura o falta algún lado usado."""
+    fig = get_figura(cur, codigo_figura)
+    if fig is None:
+        return None
+    total = 0.0
+    for letra in fig["parciales"]:
+        v = valores.get(_SLOT_A_DIM[letra])
+        try:
+            total += float(v)
+        except (ValueError, TypeError):
+            return None  # falta un lado usado → no se puede calcular aún
+    return total
+
+
 def validar_geometria(cur, codigo_figura: str, valores: dict) -> dict:
     """Valida la geometría de una barra contra el catálogo (5M.4).
     `valores`: dict con dim_a..dim_i, ang1..ang4, radio (los valores EFECTIVOS tras editar).
     Reglas:
       - La figura debe existir en el catálogo.
-      - Los slots que la figura usa (parciales) deben tener valor (> 0).
-      - Los slots que la figura NO usa deben estar vacíos (NULL/0) → si tienen valor, SOBRAN.
-    Retorna {ok: bool, errores: [str], slots_sobran: [dim_x], slots_faltan: [dim_x]}.
-    NO lanza excepción: el caller decide (avisar o rechazar)."""
+      - Los slots (dims) que la figura USA deben tener valor; los que NO usa deben estar
+        VACÍOS (null). Un slot que no va con valor (incl. 0) → SOBRA.
+      - Ángulos: la figura usa N ángulos (len de su lista). Los ang más allá de N deben
+        estar vacíos; los primeros N deben tener valor.
+      - Radio: si la figura NO usa radio, radio debe estar vacío; si lo usa, con valor.
+    Retorna {ok, errores, slots_sobran, slots_faltan} donde los slots incluyen
+    dim_x, angN y 'radio' (columnas a resaltar en el front)."""
     fig = get_figura(cur, codigo_figura)
     if fig is None:
         return {"ok": False, "errores": [f"La figura '{codigo_figura}' no existe en el catálogo."],
                 "slots_sobran": [], "slots_faltan": []}
 
-    usados = set(fig["parciales"])                 # ej. {'A','B','C','D','E'}
+    usados = set(fig["parciales"])
+    n_ang = len(fig["angulos"] or [])
+    usa_radio = fig["radio"]
     slots_faltan, slots_sobran = [], []
 
-    def _tiene_valor(dim_col):
-        v = valores.get(dim_col)
-        try:
-            return v is not None and float(v) != 0
-        except (ValueError, TypeError):
-            return False
-
+    # Dims
     for letra, dim_col in _SLOT_A_DIM.items():
         usa = letra in usados
-        tiene = _tiene_valor(dim_col)
+        tiene = _no_vacio(valores.get(dim_col))
         if usa and not tiene:
             slots_faltan.append(dim_col)
         elif not usa and tiene:
             slots_sobran.append(dim_col)
 
+    # Ángulos: los primeros n_ang deben tener valor; el resto vacío.
+    for i, ang_col in enumerate(_ANG_COLS):
+        usa = i < n_ang
+        tiene = _no_vacio(valores.get(ang_col))
+        if usa and not tiene:
+            slots_faltan.append(ang_col)
+        elif not usa and tiene:
+            slots_sobran.append(ang_col)
+
+    # Radio
+    tiene_r = _no_vacio(valores.get("radio"))
+    if usa_radio and not tiene_r:
+        slots_faltan.append("radio")
+    elif not usa_radio and tiene_r:
+        slots_sobran.append("radio")
+
+    def _lbl(col):
+        if col.startswith("dim_"):
+            return "lado " + col.split("_")[1].upper()
+        if col.startswith("ang"):
+            return "ángulo " + col[3:]
+        return "radio"
+
     errores = []
     if slots_faltan:
-        letras = ", ".join(s.split("_")[1].upper() for s in slots_faltan)
-        errores.append(f"La figura {codigo_figura} usa el/los lado(s) {letras} pero está(n) vacío(s).")
+        errores.append("Falta(n): " + ", ".join(_lbl(s) for s in slots_faltan) + ".")
     if slots_sobran:
-        letras = ", ".join(s.split("_")[1].upper() for s in slots_sobran)
-        errores.append(f"El/los lado(s) {letras} tiene(n) valor pero la figura {codigo_figura} no los usa — elimínalo(s).")
+        errores.append("Sobra(n) para la figura " + codigo_figura + " — déjalo(s) vacío(s): "
+                       + ", ".join(_lbl(s) for s in slots_sobran) + ".")
 
     return {"ok": len(errores) == 0, "errores": errores,
             "slots_sobran": slots_sobran, "slots_faltan": slots_faltan}

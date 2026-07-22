@@ -294,6 +294,7 @@ function _renderDetail(cont, elem, barras) {
     cont.innerHTML = '<em>Sin barras detalladas para este elemento.</em>';
     return;
   }
+  const editando = (typeof bmEnModoEdicion === 'function') && bmEnModoEdicion();
   // Agrupar por ciclo
   const byCiclo = {};
   barras.forEach(b => {
@@ -321,11 +322,17 @@ function _renderDetail(cont, elem, barras) {
     const grp = byCiclo[c];
     const sumKg = grp.reduce((s, b) => s + (Number(b.peso_total) || 0), 0);
     const sumCant = grp.reduce((s, b) => s + (Number(b.cant_total) || 0), 0);
+    // 5M.4: en modo edición, el contenedor de la tabla tiene alto acotado con scroll
+    // para que la barra de scroll horizontal quede accesible (no al final de toda la
+    // data). Fuera de edición, scroll horizontal normal.
+    const scrollWrap = editando
+      ? 'overflow:auto; max-height:60vh;'
+      : 'overflow-x:auto;';
     html += '<div style="margin:6px 0; border-left:3px solid ' + _cicloColor(c) + '; padding:4px 10px; background:#fff; border-radius:0 4px 4px 0;">' +
       '<div style="font-size:11px; color:' + _cicloColor(c) + '; font-weight:700; margin-bottom:4px;">' +
       'Ciclo ' + c + ' · ' + grp.length + ' barras · ' + _fmt(sumCant) + ' uds · ' + _fmt(sumKg, 1) + ' kg' +
       '</div>' +
-      '<div style="overflow-x:auto;">' +
+      '<div style="' + scrollWrap + '">' +
       '<table style="width:100%; min-width:1100px; font-size:11px; border-collapse:collapse;">' +
       '<thead><tr style="color:#666; background:#fafafa;">' +
       '<th style="text-align:left; padding:2px 6px; position:sticky; left:0; background:#fafafa;">ID</th>' +
@@ -342,7 +349,6 @@ function _renderDetail(cont, elem, barras) {
       angLabels.map(L => '<th style="text-align:right; padding:2px 6px;">' + L + '</th>').join('') +
       '<th style="text-align:right; padding:2px 6px;">R</th>' +
       '</tr></thead><tbody>';
-    const editando = (typeof bmEnModoEdicion === 'function') && bmEnModoEdicion();
     grp.forEach(b => {
       const idShort = (b.id_unico || '').split('-').slice(-1)[0];
       // 5M.3/5M.4: en modo edición, celdas numéricas son inputs. El backend valida.
@@ -370,7 +376,8 @@ function _renderDetail(cont, elem, barras) {
         '<td style="padding:2px 6px; font-weight:600;">' + (b.marca || '—') + '</td>' +
         _celdaEdit('diam', b.diam, 0) +
         _celdaEdit('cant_total', b.cant_total, 0) +
-        _celdaEdit('largo_total', b.largo_total, 0) +
+        // Largo NO editable: se calcula de la suma de los lados usados (5M.4).
+        '<td style="padding:2px 6px; text-align:right; color:#888;" title="Se calcula de la suma de los lados">' + _num(b.largo_total, 0) + '</td>' +
         '<td style="padding:2px 6px; text-align:right;">' + _num(b.peso_unitario, 2) + '</td>' +
         '<td style="padding:2px 6px; text-align:right;">' + _num(b.peso_total, 1) + '</td>' +
         '<td style="padding:2px 6px;">' + _origenBadge(b.origen) + '</td>' +
