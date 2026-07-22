@@ -967,15 +967,20 @@ async def import_armadetailer_preview(
             pisos_csv = sorted({p for (_e, p) in groups_ep.keys()}, key=_piso_sort_key)
             planos_list = sorted(planos_csv) if planos_csv else []
 
-            # BD: contar barras por (eje, piso, ciclo) restringido a los ejes y pisos del CSV
+            # BD: contar barras por (eje, piso, ciclo) restringido a los ejes y pisos
+            # del CSV. n = total; n_edit = cuántas fueron EDITADAS a mano en la
+            # plataforma (editado_por IS NOT NULL) — 5M.5: para avisar qué trabajo
+            # manual reescribiría el re-import.
             db_epc: dict = {}
+            db_epc_edit: dict = {}
             if ejes_csv and pisos_csv:
                 cur.execute(
                     """
                     SELECT COALESCE(eje, '')   AS eje,
                            COALESCE(piso, '')  AS piso,
                            COALESCE(ciclo, '') AS ciclo,
-                           COUNT(*)            AS n
+                           COUNT(*)                                                 AS n,
+                           COUNT(*) FILTER (WHERE editado_por IS NOT NULL)           AS n_edit
                     FROM barras
                     WHERE id_proyecto = %s
                       AND COALESCE(eje, '')  = ANY(%s)
@@ -984,8 +989,36 @@ async def import_armadetailer_preview(
                     """,
                     (obra_destino, ejes_csv, pisos_csv),
                 )
-                for eje, piso, ciclo, n in cur.fetchall():
+                for eje, piso, ciclo, n, n_edit in cur.fetchall():
                     db_epc[(eje, piso, ciclo)] = int(n)
+                    db_epc_edit[(eje, piso, ciclo)] = int(n_edit or 0)
+
+            # Detalle de las barras editadas a mano que serían reemplazadas (para
+            # mostrar quién editó qué). Solo en (eje, piso, ciclo) que el CSV pisa.
+            replace_keys_pre = set(groups_epc.keys())
+            editadas_detalle = []
+            if ejes_csv and pisos_csv and replace_keys_pre:
+                cur.execute(
+                    """
+                    SELECT COALESCE(eje,'') , COALESCE(piso,''), COALESCE(ciclo,''),
+                           marca, id_unico, editado_por, editado_fecha
+                    FROM barras
+                    WHERE id_proyecto = %s
+                      AND editado_por IS NOT NULL
+                      AND COALESCE(eje, '')  = ANY(%s)
+                      AND COALESCE(piso, '') = ANY(%s)
+                    ORDER BY editado_fecha DESC NULLS LAST
+                    LIMIT 200
+                    """,
+                    (obra_destino, ejes_csv, pisos_csv),
+                )
+                for e, pi, ci, marca, id_unico, edp, edf in cur.fetchall():
+                    if (e, pi, ci) in replace_keys_pre:
+                        editadas_detalle.append({
+                            "eje": e, "piso": pi, "ciclo": ci,
+                            "marca": marca, "id_unico": id_unico,
+                            "editado_por": edp, "editado_fecha": edf,
+                        })
 
     # Set de claves (eje, piso, ciclo) presentes en CSV → ciclos que serán reemplazados
     replace_epc_keys = set(groups_epc.keys())
@@ -1000,11 +1033,13 @@ async def import_armadetailer_preview(
 
         existentes_replace = 0
         existentes_keep = 0
+        editadas_replace = 0   # 5M.5: editadas a mano que este re-import pisaría
         for (e, pi, ci), n in db_epc.items():
             if e != eje or pi != piso:
                 continue
             if (e, pi, ci) in replace_epc_keys:
                 existentes_replace += n
+                editadas_replace += db_epc_edit.get((e, pi, ci), 0)
             else:
                 existentes_keep += n
         existentes_bd = existentes_replace + existentes_keep
@@ -1018,6 +1053,7 @@ async def import_armadetailer_preview(
             "existentes_bd": existentes_bd,
             "existentes_replace": existentes_replace,
             "existentes_keep": existentes_keep,
+            "editadas_replace": editadas_replace,
             "nuevas_csv": nuevas_csv,
             "final": final,
             "action": action,
@@ -1028,6 +1064,7 @@ async def import_armadetailer_preview(
 
     total_csv         = sum(info["count"] for info in groups_ep.values())
     total_replace     = sum(r["existentes_replace"] for r in pisos_rows)
+    total_editadas    = sum(r["editadas_replace"] for r in pisos_rows)   # 5M.5
     pisos_a_reemplazar = sum(1 for r in pisos_rows if r["action"] == "replace")
     pisos_a_sumar      = sum(1 for r in pisos_rows if r["action"] == "add")
 
@@ -1055,9 +1092,12 @@ async def import_armadetailer_preview(
         "multi_plano_warning": multi_plano_warning,
         "ejes_multi_plano": ejes_con_multi_plano,
         "cod_prod_desfasados": cod_prod_desfasados,
+        # 5M.5: barras editadas a mano en la plataforma que este re-import pisaría.
+        "editadas_a_reemplazar": editadas_detalle,
         "summary": {
             "total_csv": total_csv,
             "total_db_a_reemplazar": total_replace,
+            "total_editadas_a_reemplazar": total_editadas,
             "pisos_a_reemplazar": pisos_a_reemplazar,
             "pisos_a_sumar": pisos_a_sumar,
             "cod_prod_a_corregir": len(cod_prod_desfasados),

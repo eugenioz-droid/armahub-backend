@@ -1581,7 +1581,8 @@ def dashboard_sectores(
                     b.piso,
                     b.ciclo,
                     COUNT(*) AS barras,
-                    COALESCE(SUM(b.peso_total), 0) AS kilos
+                    COALESCE(SUM(b.peso_total), 0) AS kilos,
+                    COUNT(*) FILTER (WHERE b.editado_por IS NOT NULL) AS editadas
                 FROM barras b
                 {where}
                 GROUP BY b.sector, b.piso, b.ciclo
@@ -1599,6 +1600,9 @@ def dashboard_sectores(
                 "ciclo": r[3],
                 "barras": int(r[4]),
                 "kilos": round(float(r[5]), 2),
+                # 5M.6: barras de esta celda editadas a mano en la plataforma
+                # (para distinguir en la matriz edición-plataforma vs re-import).
+                "editadas": int(r[6] or 0),
             }
             for r in rows
         ],

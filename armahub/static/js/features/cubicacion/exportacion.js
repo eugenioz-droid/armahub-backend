@@ -65,7 +65,8 @@ function buildExportMatriz(items, proy) {
     const s = (i.sector || '?').toUpperCase().trim();
     const p = (i.piso || '?').trim();
     const c = (i.ciclo || '?').trim();
-    lookup[s + '|' + p + '|' + c] = { barras: i.barras, kilos: i.kilos };
+    // 5M.6: editadas = barras de la celda editadas a mano en la plataforma.
+    lookup[s + '|' + p + '|' + c] = { barras: i.barras, kilos: i.kilos, editadas: i.editadas || 0 };
   });
 
   // Collect unique pisos and ciclos
@@ -201,13 +202,17 @@ function buildExportMatriz(items, proy) {
           } else if (isDone) {
             bg = '#e8f5e9'; // green - exported and unchanged
           }
+          // 5M.6: ¿celda con barras editadas a mano en la plataforma?
+          const tieneEditadas = (d.editadas || 0) > 0;
           const border = isSelected ? '2px solid #4285f4' : '1px solid #ccc';
+          const borderLeft = tieneEditadas ? 'border-left:3px solid #8d6e63;' : '';
           let doneTitle = '';
           if (isDone) {
             doneTitle = ' | Exportado ' + hist.veces + 'x, \u00faltimo: ' + (hist.ultima_fecha || '').substring(0, 10);
             if (isModified) doneTitle += ' | ⚠️ MODIFICADO - requiere re-exportar';
           }
-          html += '<td style="border:' + border + '; padding:2px 4px; background:' + bg + '; text-align:center; cursor:pointer; position:relative; transition:all 0.12s; min-width:80px; white-space:nowrap;" ';
+          if (tieneEditadas) doneTitle += ' | editada(s) a mano en la plataforma: ' + d.editadas;
+          html += '<td style="border:' + border + '; ' + borderLeft + ' padding:2px 4px; background:' + bg + '; text-align:center; cursor:pointer; position:relative; transition:all 0.12s; min-width:80px; white-space:nowrap;" ';
           html += 'onclick="exportToggleCell(\'' + exportKey + '\')" ';
           html += 'title="' + tipo + ' ' + piso + ' ' + ciclo + ': ' + d.barras + ' barras, ' + Math.round(d.kilos).toLocaleString() + ' kg' + doneTitle + '">';
           // Checkbox
@@ -219,6 +224,11 @@ function buildExportMatriz(items, proy) {
             } else {
               html += '<span style="position:absolute; top:0px; right:2px; font-size:9px; color:#558B2F;" title="Exportado ' + hist.veces + ' vez(es)">&#10004;</span>';
             }
+          }
+          // 5M.6: marca de edición-plataforma (abajo-derecha para no chocar con el
+          // badge de exportación arriba-derecha).
+          if (tieneEditadas) {
+            html += '<span style="position:absolute; bottom:0px; right:2px; font-size:9px;" title="' + d.editadas + ' barra(s) editada(s) a mano en la plataforma">&#9997;</span>';
           }
           // Compact single-line: TIPO  kg  un
           html += '<div style="display:flex; align-items:baseline; justify-content:center; gap:4px;">';

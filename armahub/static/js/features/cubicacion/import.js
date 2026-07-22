@@ -365,12 +365,13 @@ function showImportPreviewModalMulti(previews) {
           + `<td style="padding:3px 8px; font-weight:600;">${_esc(r.piso) || '-'}</td>`
           + `<td style="padding:3px 8px; text-align:right;">${r.existentes_bd || 0}</td>`
           + `<td style="padding:3px 8px; text-align:right; font-weight:600;">${r.nuevas_csv || 0}</td>`
+          + `<td style="padding:3px 8px; text-align:right;">${(r.editadas_replace || 0) > 0 ? `<b style="color:#c62828;" title="Se reescribirán al importar">✏️ ${r.editadas_replace}</b>` : '<span style="color:#bbb;">—</span>'}</td>`
           + `<td style="padding:3px 8px; text-align:right; color:#1565C0; font-weight:600;">${r.final || 0}</td>`
           + `<td style="padding:3px 8px; font-size:11px;">${icon} ${label}</td>`
           + `</tr>`;
       });
       if (!rowsHtml) {
-        rowsHtml = '<tr><td colspan="6" style="padding:8px; text-align:center; color:#888;">El archivo no tiene pisos detectables.</td></tr>';
+        rowsHtml = '<tr><td colspan="7" style="padding:8px; text-align:center; color:#888;">El archivo no tiene pisos detectables.</td></tr>';
       }
 
       // Warning si hay multi-plano
@@ -405,6 +406,28 @@ function showImportPreviewModalMulti(previews) {
         `;
       }
 
+      // 5M.5: aviso DESTACADO — el re-import pisaría barras editadas a mano en la
+      // plataforma. Muestra el total y quién editó qué (para decidir importar/omitir).
+      let editadasWarning = '';
+      const nEditadas = (s.total_editadas_a_reemplazar || 0);
+      if (nEditadas > 0) {
+        const eds = p.editadas_a_reemplazar || [];
+        const ejemplos = eds.slice(0, 6).map(e => {
+          const ubic = [e.piso, e.eje, e.ciclo].filter(Boolean).join('/');
+          const quien = (e.editado_por || '').split('@')[0];
+          const fecha = (typeof formatDateTime === 'function' && e.editado_fecha) ? formatDateTime(e.editado_fecha) : (e.editado_fecha || '');
+          return `• <b>${_esc(e.marca || e.id_unico || '?')}</b> (${_esc(ubic)}) — editó <b>${_esc(quien)}</b>${fecha ? ' · ' + _esc(fecha) : ''}`;
+        }).join('<br>');
+        const resto = eds.length > 6 ? `<br><span style="color:#7f1d1d;">…y ${eds.length - 6} más</span>` : '';
+        editadasWarning = `
+          <div style="margin-top:6px; padding:9px 11px; background:#fdecea; border:1px solid #e57373; border-left:4px solid #c62828; border-radius:4px; font-size:11px; color:#7f1d1d;">
+            ✏️ <b>${nEditadas} barra${nEditadas > 1 ? 's' : ''} editada${nEditadas > 1 ? 's' : ''} a mano en la plataforma se reescribirá${nEditadas > 1 ? 'n' : ''}</b> si importas este archivo (el CSV manda sobre la corrección manual).
+            <div style="margin-top:5px; font-weight:400; line-height:1.5;">${ejemplos}${resto}</div>
+            <div style="margin-top:5px; font-weight:600;">Revisa antes de importar. Si no quieres perder esas correcciones, <b>omite</b> este archivo.</div>
+          </div>
+        `;
+      }
+
       blocks += `
         <div data-block="${idx}" style="margin-bottom:14px; border:1px solid #e0e0e0; border-radius:6px; overflow:hidden;">
           <div style="padding:10px 12px; background:#eef5ff; border-bottom:1px solid #d0d7de; display:flex; align-items:flex-start; gap:12px;">
@@ -417,8 +440,9 @@ function showImportPreviewModalMulti(previews) {
               <div style="font-size:11px; color:#555; margin-top:2px;">
                 CSV: <b>${s.total_csv || 0}</b> barras ·
                 A reemplazar: <b style="color:#92400e;">${s.total_db_a_reemplazar || 0}</b> ·
-                Pisos: <b>${s.pisos_a_reemplazar || 0}</b> reemplazar / <b>${s.pisos_a_sumar || 0}</b> sumar
+                Pisos: <b>${s.pisos_a_reemplazar || 0}</b> reemplazar / <b>${s.pisos_a_sumar || 0}</b> sumar${nEditadas > 0 ? ` · <b style="color:#c62828;">✏️ ${nEditadas} editada${nEditadas > 1 ? 's' : ''}</b>` : ''}
               </div>
+              ${editadasWarning}
               ${multiWarning}
               ${codProdWarning}
             </div>
@@ -441,6 +465,7 @@ function showImportPreviewModalMulti(previews) {
                   <th style="padding:5px 8px; text-align:left;">Piso</th>
                   <th style="padding:5px 8px; text-align:right;" title="Barras que ya existen en BD para ese piso (todos los ciclos)">Existentes</th>
                   <th style="padding:5px 8px; text-align:right;" title="Barras que aporta este CSV en ese piso">Nueva carga (CSV)</th>
+                  <th style="padding:5px 8px; text-align:right;" title="De las que se reemplazan, cuántas fueron editadas a mano en la plataforma">✏️ Editadas</th>
                   <th style="padding:5px 8px; text-align:right;" title="Total que quedará tras importar = (existentes en ciclos no incluidos) + (nuevas del CSV)">Final</th>
                   <th style="padding:5px 8px; text-align:left;">Acción</th>
                 </tr>
