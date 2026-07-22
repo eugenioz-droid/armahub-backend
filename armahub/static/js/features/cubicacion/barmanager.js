@@ -345,15 +345,23 @@ function _renderDetail(cont, elem, barras) {
     const editando = (typeof bmEnModoEdicion === 'function') && bmEnModoEdicion();
     grp.forEach(b => {
       const idShort = (b.id_unico || '').split('-').slice(-1)[0];
-      const dims = dimKeys.map(k => '<td style="padding:2px 6px; text-align:right; color:#444;">' + _num(b[k]) + '</td>').join('');
-      const angs = angKeys.map(k => '<td style="padding:2px 6px; text-align:right; color:#444;">' + _num(b[k], 1) + '</td>').join('');
-      // 5M.3: en modo edición, φ/Cant/Largo son inputs. El backend valida permiso.
-      function _celdaEdit(campo, val, dec) {
-        if (!editando) return '<td style="padding:2px 6px; text-align:right;">' + _num(val, dec) + '</td>';
-        return '<td style="padding:1px 4px; text-align:right;"><input type="number" step="any" value="' + (val != null ? val : '') +
-          '" data-barra-id="' + b.id + '" data-campo="' + campo + '" onchange="bmRegistrarCambio(this)" ' +
-          'style="width:70px; font-size:11px; text-align:right; padding:1px 3px;" /></td>';
+      // 5M.3/5M.4: en modo edición, celdas numéricas son inputs. El backend valida.
+      // Cada input lleva data-barra-id + data-campo; onchange registra el cambio.
+      function _celdaEdit(campo, val, dec, ancho) {
+        if (!editando) return '<td style="padding:2px 6px; text-align:right; color:#444;">' + _num(val, dec) + '</td>';
+        return '<td style="padding:1px 3px; text-align:right;"><input type="number" step="any" value="' + (val != null ? val : '') +
+          '" data-barra-id="' + b.id + '" data-campo="' + campo + '" id="bmcell-' + b.id + '-' + campo + '" onchange="bmRegistrarCambio(this)" ' +
+          'style="width:' + (ancho || 60) + 'px; font-size:11px; text-align:right; padding:1px 3px;" /></td>';
       }
+      // Figura: texto con datalist del catálogo (5M.4).
+      function _celdaFigura() {
+        if (!editando) return '<td style="padding:2px 6px; color:#666;">' + (b.figura || '—') + '</td>';
+        return '<td style="padding:1px 3px;"><input type="text" list="bmFigurasDatalist" value="' + (b.figura || '') +
+          '" data-barra-id="' + b.id + '" data-campo="figura" id="bmcell-' + b.id + '-figura" onchange="bmRegistrarCambio(this)" ' +
+          'style="width:64px; font-size:11px; padding:1px 3px;" /></td>';
+      }
+      const dims = dimKeys.map(k => _celdaEdit(k, b[k], 0)).join('');
+      const angs = angKeys.map(k => _celdaEdit(k, b[k], 1)).join('');
       // Marca de barra editada a mano (fila con borde). editado_por != null.
       const editadaBorde = b.editado_por ? 'border-left:3px solid #8d6e63;' : '';
       const editadaTitle = b.editado_por ? (' title="Editada por ' + b.editado_por + '"') : '';
@@ -367,10 +375,10 @@ function _renderDetail(cont, elem, barras) {
         '<td style="padding:2px 6px; text-align:right;">' + _num(b.peso_total, 1) + '</td>' +
         '<td style="padding:2px 6px;">' + _origenBadge(b.origen) + '</td>' +
         '<td style="padding:2px 6px; color:#666;">' + (b.plano_code || '—') + '</td>' +
-        '<td style="padding:2px 6px; color:#666;">' + (b.figura || '—') + '</td>' +
+        _celdaFigura() +
         dims +
         angs +
-        '<td style="padding:2px 6px; text-align:right; color:#444;">' + _num(b.radio, 1) + '</td>' +
+        _celdaEdit('radio', b.radio, 1) +
         '</tr>';
     });
     html += '</tbody></table></div></div>';

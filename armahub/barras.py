@@ -1242,29 +1242,57 @@ def _calcular_peso(diam, largo):
 
 
 class BarraUpdate(BaseModel):
-    # 5M.3 — edición de campos simples (no rompen figura). Geometría llega en 5M.4.
+    # 5M.3 — campos simples.
     diam: Optional[float] = None
     largo_total: Optional[float] = None
     cant: Optional[float] = None
     cant_total: Optional[float] = None
     mult: Optional[float] = None
+    # 5M.4 — geometría (validada contra el catálogo).
+    figura: Optional[str] = None
+    dim_a: Optional[float] = None
+    dim_b: Optional[float] = None
+    dim_c: Optional[float] = None
+    dim_d: Optional[float] = None
+    dim_e: Optional[float] = None
+    dim_f: Optional[float] = None
+    dim_g: Optional[float] = None
+    dim_h: Optional[float] = None
+    dim_i: Optional[float] = None
+    ang1: Optional[float] = None
+    ang2: Optional[float] = None
+    ang3: Optional[float] = None
+    ang4: Optional[float] = None
+    radio: Optional[float] = None
+
+
+_GEOM_FIELDS = ["figura", "dim_a", "dim_b", "dim_c", "dim_d", "dim_e", "dim_f",
+                "dim_g", "dim_h", "dim_i", "ang1", "ang2", "ang3", "ang4", "radio"]
 
 
 @router.patch("/barras/{barra_id}")
 def editar_barra(barra_id: int, body: BarraUpdate, user=Depends(get_current_user)):
-    """Editar campos simples de UNA barra desde la plataforma (5M.3). Permiso:
-    cubicador dueño de la obra (proyecto_usuarios) o admin. Recalcula peso al cambiar
-    diam/largo/cant. Marca edición manual (editado_por/fecha) y audita."""
+    """Editar una barra desde la plataforma. Permiso: cubicador dueño de la obra o
+    admin. Campos simples (5M.3: diam/largo/cant/mult, recalcula peso) y geometría
+    (5M.4: figura/dims/ángulos/radio, validada contra el catálogo). Si la geometría
+    queda incoherente con la figura, RECHAZA (409) — no se guarda data mala. Marca
+    edición manual y audita."""
+    from .catalogo import validar_geometria
     email = user.get("email", "?")
     campos = body.model_dump(exclude_unset=True)
     if not campos:
         return {"ok": True, "message": "Sin cambios"}
     now = datetime.now(timezone.utc).isoformat()
 
+    _GEOM_COLS = ["figura", "dim_a", "dim_b", "dim_c", "dim_d", "dim_e", "dim_f",
+                  "dim_g", "dim_h", "dim_i", "ang1", "ang2", "ang3", "ang4", "radio"]
+
     with get_conn() as conn:
         with conn.cursor(row_factory=dict_row) as cur:
             cur.execute(
-                "SELECT id, id_proyecto, diam, largo_total, cant, cant_total, mult FROM barras WHERE id = %s",
+                "SELECT id, id_proyecto, diam, largo_total, cant, cant_total, mult, "
+                "figura, dim_a, dim_b, dim_c, dim_d, dim_e, dim_f, dim_g, dim_h, dim_i, "
+                "ang1, ang2, ang3, ang4, radio FROM barras WHERE id = %s",
                 (barra_id,),
             )
             barra = cur.fetchone()
@@ -1273,7 +1301,7 @@ def editar_barra(barra_id: int, body: BarraUpdate, user=Depends(get_current_user
             if not _puede_editar_proyecto(cur, barra["id_proyecto"], user):
                 raise HTTPException(status_code=403, detail="No puedes editar barras de esta obra. Solo el cubicador asignado a la obra o un administrador pueden hacerlo.")
 
-            # Valores efectivos (nuevo si vino, si no el actual) para recálculo de peso.
+            # Valores efectivos (nuevo si vino, si no el actual).
             diam = campos.get("diam", barra["diam"])
             largo = campos.get("largo_total", barra["largo_total"])
             cant_total = campos.get("cant_total", barra["cant_total"])
@@ -1281,9 +1309,32 @@ def editar_barra(barra_id: int, body: BarraUpdate, user=Depends(get_current_user
             sets, params, cambios = [], [], []
             for f in ("diam", "largo_total", "cant", "cant_total", "mult"):
                 if f in campos:
-                    sets.append(f"{f} = %s")
-                    params.append(campos[f])
+                    sets.append(f"{f} = %s"); params.append(campos[f])
                     cambios.append(f"{f}: {barra[f]}→{campos[f]}")
+
+            # 5M.4: si se tocó geometría, validar coherencia contra el catálogo.
+            toca_geom = any(k in campos for k in _GEOM_COLS)
+            if toca_geom:
+                # Valores geométricos efectivos (nuevos o actuales) para validar.
+                efectivos = {c: campos.get(c, barra[c]) for c in _GEOM_COLS}
+                figura_efectiva = efectivos["figura"]
+                # Solo se valida contra el catálogo si hay figura efectiva (si la barra
+                # no tiene figura, no hay contra qué validar y no se bloquea).
+                if figura_efectiva:
+                    val = validar_geometria(cur, figura_efectiva, efectivos)
+                    if not val["ok"]:
+                        # No se guarda geometría incoherente (decisión 5M.4): la data
+                        # siempre debe quedar buena. El front resalta sobran/faltan.
+                        raise HTTPException(status_code=409, detail={
+                            "geometria_invalida": True,
+                            "mensaje": " ".join(val["errores"]),
+                            "slots_sobran": val["slots_sobran"],
+                            "slots_faltan": val["slots_faltan"],
+                        })
+                for c in _GEOM_COLS:
+                    if c in campos:
+                        sets.append(f"{c} = %s"); params.append(campos[c])
+                        cambios.append(f"{c}: {barra[c]}→{campos[c]}")
 
             # Recalcular peso si cambió diam/largo/cant_total.
             if any(k in campos for k in ("diam", "largo_total", "cant_total")):
@@ -1291,6 +1342,9 @@ def editar_barra(barra_id: int, body: BarraUpdate, user=Depends(get_current_user
                 peso_total = (peso_unitario * cant_total) if (peso_unitario is not None and cant_total is not None) else None
                 sets.append("peso_unitario = %s"); params.append(peso_unitario)
                 sets.append("peso_total = %s"); params.append(peso_total)
+
+            if not sets:
+                return {"ok": True, "message": "Sin cambios"}
 
             # Marca de edición manual.
             sets.append("editado_por = %s"); params.append(email)

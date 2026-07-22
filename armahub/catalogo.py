@@ -208,6 +208,69 @@ def seed_catalogo(cur) -> dict:
 
 
 # ============================================================================
+# VALIDACIÓN DE GEOMETRÍA (5M.4)
+# ============================================================================
+
+# Mapa slot (letra del catálogo) → columna dim de barras.
+_SLOT_A_DIM = {L: f"dim_{L.lower()}" for L in "ABCDEFGHI"}
+
+
+def get_figura(cur, codigo: str):
+    """Devuelve {parciales, angulos, radio} de una figura, o None si no existe."""
+    if not codigo:
+        return None
+    cur.execute("SELECT parciales, angulos, radio FROM figuras_catalogo WHERE codigo = %s", (codigo,))
+    row = cur.fetchone()
+    if not row:
+        return None
+    return {"parciales": row[0] or [], "angulos": row[1] or [], "radio": bool(row[2])}
+
+
+def validar_geometria(cur, codigo_figura: str, valores: dict) -> dict:
+    """Valida la geometría de una barra contra el catálogo (5M.4).
+    `valores`: dict con dim_a..dim_i, ang1..ang4, radio (los valores EFECTIVOS tras editar).
+    Reglas:
+      - La figura debe existir en el catálogo.
+      - Los slots que la figura usa (parciales) deben tener valor (> 0).
+      - Los slots que la figura NO usa deben estar vacíos (NULL/0) → si tienen valor, SOBRAN.
+    Retorna {ok: bool, errores: [str], slots_sobran: [dim_x], slots_faltan: [dim_x]}.
+    NO lanza excepción: el caller decide (avisar o rechazar)."""
+    fig = get_figura(cur, codigo_figura)
+    if fig is None:
+        return {"ok": False, "errores": [f"La figura '{codigo_figura}' no existe en el catálogo."],
+                "slots_sobran": [], "slots_faltan": []}
+
+    usados = set(fig["parciales"])                 # ej. {'A','B','C','D','E'}
+    slots_faltan, slots_sobran = [], []
+
+    def _tiene_valor(dim_col):
+        v = valores.get(dim_col)
+        try:
+            return v is not None and float(v) != 0
+        except (ValueError, TypeError):
+            return False
+
+    for letra, dim_col in _SLOT_A_DIM.items():
+        usa = letra in usados
+        tiene = _tiene_valor(dim_col)
+        if usa and not tiene:
+            slots_faltan.append(dim_col)
+        elif not usa and tiene:
+            slots_sobran.append(dim_col)
+
+    errores = []
+    if slots_faltan:
+        letras = ", ".join(s.split("_")[1].upper() for s in slots_faltan)
+        errores.append(f"La figura {codigo_figura} usa el/los lado(s) {letras} pero está(n) vacío(s).")
+    if slots_sobran:
+        letras = ", ".join(s.split("_")[1].upper() for s in slots_sobran)
+        errores.append(f"El/los lado(s) {letras} tiene(n) valor pero la figura {codigo_figura} no los usa — elimínalo(s).")
+
+    return {"ok": len(errores) == 0, "errores": errores,
+            "slots_sobran": slots_sobran, "slots_faltan": slots_faltan}
+
+
+# ============================================================================
 # ENDPOINTS DE LECTURA (5M.1) — CRUD de edición viene en Fase 8
 # ============================================================================
 

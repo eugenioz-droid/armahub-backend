@@ -19,6 +19,20 @@
     _actualizarBotonEdicion();
   };
 
+  // Datalist de figuras del catálogo (5M.4), cargado una vez al activar edición.
+  var _figurasCargadas = false;
+  async function _cargarDatalistFiguras() {
+    if (_figurasCargadas) return;
+    var dl = document.getElementById('bmFigurasDatalist');
+    if (!dl) return;
+    var data = await apiGet('/figuras-catalogo');
+    var figs = (data && data.figuras) || [];
+    dl.innerHTML = figs.map(function(f) {
+      return '<option value="' + f.codigo + '">' + f.codigo + ' (' + (f.parciales || []).join('') + ')</option>';
+    }).join('');
+    _figurasCargadas = true;
+  }
+
   // ---- Toggle candado ----
   global.toggleModoEdicion = async function() {
     if (_modoEdicion) {
@@ -34,9 +48,10 @@
       _modoEdicion = false;
     } else {
       // Abriendo: warning explícito.
-      if (!confirm('Vas a ACTIVAR el modo edición de barras.\n\nPodrás modificar diámetro, cantidad y largo de barras individuales. Los cambios quedan auditados (quién, qué, cuándo).\n\nEdita solo lo necesario. ¿Continuar?')) return;
+      if (!confirm('Vas a ACTIVAR el modo edición de barras.\n\nPodrás modificar diámetro, cantidad, largo y la geometría (figura, lados A–I, ángulos, radio) de barras individuales. La figura se valida contra el catálogo: NO podrás guardar una barra con lados que sobran o faltan (quedan marcados en rojo para que los corrijas).\n\nLos cambios quedan auditados. Edita solo lo necesario. ¿Continuar?')) return;
       _modoEdicion = true;
       _cambios = {};
+      await _cargarDatalistFiguras();   // 5M.4: figuras del catálogo para el input
     }
     _actualizarBotonEdicion();
     // Re-render del detalle abierto para reflejar inputs / solo-lectura.
@@ -69,22 +84,45 @@
     var val = el.value.trim();
     if (!id || !campo) return;
     _cambios[id] = _cambios[id] || {};
-    if (val === '') {
-      delete _cambios[id][campo];
-      if (Object.keys(_cambios[id]).length === 0) delete _cambios[id];
+    if (campo === 'figura') {
+      // Texto (no parseFloat). Vacío = figura sin definir (se envía null).
+      _cambios[id][campo] = (val === '') ? null : val;
+    } else if (val === '') {
+      // Vaciar un dim/ángulo = eliminar ese lado. Enviar null EXPLÍCITO (no omitir)
+      // para que el backend lo borre — clave para quitar el lado que sobra (5M.4).
+      _cambios[id][campo] = null;
     } else {
       _cambios[id][campo] = parseFloat(val);
     }
-    // Resaltar la celda modificada.
-    el.style.background = (_cambios[id] && _cambios[id][campo] != null) ? '#fff3cd' : '';
+    // Limpiar resaltado de error rojo al corregir; marcar celda modificada.
+    el.style.border = '';
+    el.title = '';
+    el.style.background = '#fff3cd';
     _actualizarBotonEdicion();
   };
 
+  // Resalta en ROJO los slots (dim/lados) que sobran o faltan de una barra según
+  // el detalle del 409 del backend. El usuario los corrige manualmente (5M.4).
+  function _resaltarSlots(barraId, slots, tipo) {
+    (slots || []).forEach(function(col) {
+      var el = document.getElementById('bmcell-' + barraId + '-' + col);
+      if (el) {
+        el.style.background = '#ffcdd2';         // rojo
+        el.style.border = '2px solid #c62828';
+        el.title = (tipo === 'sobra') ? 'Este lado SOBRA para la figura elegida — bórralo (deja vacío)' : 'Este lado FALTA para la figura elegida — complétalo';
+      }
+    });
+  }
+
   // ---- Guardar todos los cambios (PATCH por barra) ----
+  // Regla 5M.4: NO se guarda una barra con geometría incoherente. Las buenas se
+  // guardan; las malas quedan resaltadas y con sus cambios intactos para corregir.
   async function _guardarCambios() {
     var ids = Object.keys(_cambios);
     if (ids.length === 0) return true;
-    var okCount = 0, errCount = 0, errMsg = '';
+    var okCount = 0;
+    var fallidas = [];   // ids que no pasaron validación (quedan pendientes)
+    var otroError = '';
     for (var i = 0; i < ids.length; i++) {
       var id = ids[i];
       var res = await fetch(apiUrl('/barras/' + encodeURIComponent(id)), {
@@ -94,20 +132,32 @@
       });
       if (res.status === 401) { logout(); return false; }
       var data = await res.json();
-      if (data && data.ok) { okCount++; }
-      else { errCount++; if (!errMsg) errMsg = (data && data.detail) ? data.detail : 'error'; }
+      if (res.ok && data && data.ok) {
+        okCount++;
+        delete _cambios[id];   // guardada: quitar de pendientes
+      } else if (res.status === 409 && data && data.detail && data.detail.geometria_invalida) {
+        // Geometría incoherente: resaltar slots, dejar cambios para corregir.
+        fallidas.push(id);
+        _resaltarSlots(id, data.detail.slots_sobran, 'sobra');
+        _resaltarSlots(id, data.detail.slots_faltan, 'falta');
+      } else {
+        fallidas.push(id);
+        if (!otroError) otroError = (data && data.detail) ? (typeof data.detail === 'string' ? data.detail : JSON.stringify(data.detail)) : 'error';
+      }
     }
-    _cambios = {};
-    if (errCount > 0) {
-      if (typeof showToast === 'function') showToast(okCount + ' guardada(s), ' + errCount + ' con error: ' + errMsg, 'error');
-    } else {
-      if (typeof showToast === 'function') showToast(okCount + ' barra(s) actualizada(s)', 'success');
+    // Refrescar solo si hubo guardados (los pesos cambiaron).
+    if (okCount > 0) {
+      if (typeof detailCache !== 'undefined' && detailCache.clear) detailCache.clear();
+      if (typeof buscar === 'function') await buscar(false);
+      if (typeof cargarEdicionesRecientes === 'function') cargarEdicionesRecientes();
     }
-    // Refrescar: recargar la vista de barras (los pesos cambiaron) + panel ediciones.
-    if (typeof detailCache !== 'undefined' && detailCache.clear) detailCache.clear();
-    if (typeof buscar === 'function') await buscar(false);
-    if (typeof cargarEdicionesRecientes === 'function') cargarEdicionesRecientes();
-    return errCount === 0;
+    if (fallidas.length > 0) {
+      var msg = okCount + ' guardada(s). ' + fallidas.length + ' con geometría incoherente: corrige los lados marcados en rojo antes de guardar.' + (otroError ? (' Otro error: ' + otroError) : '');
+      if (typeof showToast === 'function') showToast(msg, 'error');
+      return false;   // deja el candado abierto para corregir
+    }
+    if (typeof showToast === 'function') showToast(okCount + ' barra(s) actualizada(s)', 'success');
+    return true;
   }
 
   // ---- Panel de ediciones recientes (obra actual) ----
