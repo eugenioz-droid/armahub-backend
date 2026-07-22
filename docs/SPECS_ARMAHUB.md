@@ -242,6 +242,33 @@ Reglas para que la navegación sea uniforme y la restauración tras F5 funcione 
 - **Pendiente:** propagar este patrón a los módulos que aún hacen "guardar → recargar todo"
   (Reclamos, Cubicación, Admin). Ver tarea en el programa.
 
+#### IDs de HTML únicos en TODO el DOM (estándar — NO romper)
+
+> Regla nacida de un bug real (2026-07): el buscador de obra del Bar Manager dejó de cargar
+> data porque su `id="proyectoSearchInput"` **ya existía** en el tab Obras. Como TODOS los
+> tabs se incluyen en la misma página (`{% include %}`) y coexisten en el DOM, un id repetido
+> hace que `document.getElementById(id)` devuelva **el primero en el DOM** (el de otro tab),
+> normalmente vacío → el filtro lee el elemento equivocado → falla en silencio, sin error.
+
+- **Cada `id` debe ser único en TODA la app, no solo dentro de su tab.** Los tabs no están
+  aislados: conviven en el mismo documento. No hay "scope por tab".
+- **Convención:** prefijar los ids de controles con el tab/caluga cuando el nombre es genérico
+  y podría chocar (`bmProyectoSearchInput`, `recFiltroEstado`, `catFigBusqueda`…). Nombres
+  genéricos sin prefijo (`proyecto`, `sector`, `q`, `buscar`) son la trampa.
+- **Filtros con texto (input + `<datalist>` o input que controla un `<select>` oculto):** el
+  patrón depende de `getElementById` para leer el input y fijar el valor; un id duplicado lo
+  rompe callado. Aplica al buscador de obra y al de Eje (Bar Manager) — y a cualquier filtro
+  nuevo de este tipo. Si agregas uno, **dale id único con prefijo**.
+- **Verificación (correr al tocar plantillas de tabs):**
+  ```
+  py -c "import re,glob,collections,os; ids=collections.defaultdict(set)
+  [ids[m].add(os.path.basename(f)) for f in glob.glob('armahub/templates/tabs/*.html')
+   for m in re.findall(r'\\sid=\"([^\"]+)\"', open(f,encoding='utf-8').read())]
+  [print(k,'->',sorted(v)) for k,v in sorted(ids.items()) if len(v)>1] or print('sin duplicados cross-tab')"
+  ```
+  Debe imprimir "sin duplicados cross-tab". Si lista alguno, renómbralo con prefijo.
+- **Referencia del bug:** commit `b406ffc` (id duplicado `proyectoSearchInput` bar_manager↔obras).
+
 ---
 
 ## 3. CALUGA: RECLAMOS
