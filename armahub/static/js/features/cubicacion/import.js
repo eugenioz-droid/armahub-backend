@@ -421,7 +421,7 @@ function showImportPreviewModalMulti(previews) {
         const resto = eds.length > 6 ? `<br><span style="color:#7f1d1d;">…y ${eds.length - 6} más</span>` : '';
         editadasWarning = `
           <div style="margin-top:6px; padding:9px 11px; background:#fdecea; border:1px solid #e57373; border-left:4px solid #c62828; border-radius:4px; font-size:11px; color:#7f1d1d;">
-            ✏️ <b>${nEditadas} barra${nEditadas > 1 ? 's' : ''} editada${nEditadas > 1 ? 's' : ''} a mano en la plataforma se reescribirá${nEditadas > 1 ? 'n' : ''}</b> si importas este archivo (el CSV manda sobre la corrección manual).
+            ✏️ <b>Se eliminarán ${nEditadas} barra${nEditadas > 1 ? 's' : ''} editada${nEditadas > 1 ? 's' : ''} a mano en la plataforma</b> si importas este archivo: el re-import borra y reescribe esos ciclos, y esas correcciones manuales se pierden.
             <div style="margin-top:5px; font-weight:400; line-height:1.5;">${ejemplos}${resto}</div>
             <div style="margin-top:5px; font-weight:600;">Revisa antes de importar. Si no quieres perder esas correcciones, <b>omite</b> este archivo.</div>
           </div>

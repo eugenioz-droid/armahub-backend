@@ -117,7 +117,8 @@ async function loadMatriz() {
     const p = (i.piso || '?').trim();
     const c = (i.ciclo || '?').trim();
     const key = s + '|' + p + '|' + c;
-    lookup[key] = { barras: i.barras, kilos: i.kilos };
+    // 5M.6: editadas = barras de la celda editadas a mano en la plataforma.
+    lookup[key] = { barras: i.barras, kilos: i.kilos, editadas: i.editadas || 0 };
     if (i.kilos > maxKilos) maxKilos = i.kilos;
   });
 
@@ -221,8 +222,14 @@ async function loadMatriz() {
         if (d) {
           const bg = heatColor(d.kilos);
           const textColor = isCompleted ? '#558B2F' : (d.kilos > maxKilos * 0.5 ? '#fff' : '#1a1a1a');
-          html += `<td style="border:1px solid #aaa; padding:3px 4px; background:${bg}; text-align:center; position:relative;" title="${tipo} ${piso} ${ciclo}: ${d.barras} barras, ${Math.round(d.kilos).toLocaleString()} kg">`;
+          // 5M.6: marca de edición-plataforma (borde marrón izquierdo + badge ✏️),
+          // ortogonal al heatmap de kilos.
+          const tieneEditadas = (d.editadas || 0) > 0;
+          const borderLeft = tieneEditadas ? 'border-left:3px solid #8d6e63;' : '';
+          const editTitle = tieneEditadas ? ` | editada(s) a mano en la plataforma: ${d.editadas}` : '';
+          html += `<td style="border:1px solid #aaa; ${borderLeft} padding:3px 4px; background:${bg}; text-align:center; position:relative;" title="${tipo} ${piso} ${ciclo}: ${d.barras} barras, ${Math.round(d.kilos).toLocaleString()} kg${editTitle}">`;
           html += `<input type="checkbox" ${isCompleted ? 'checked' : ''} onclick="window._matrizToggle('${key}')" style="position:absolute; top:2px; right:2px; width:12px; height:12px; cursor:pointer; accent-color:#8BC34A;" title="Marcar como completado" />`;
+          if (tieneEditadas) html += `<span style="position:absolute; bottom:0px; right:2px; font-size:9px;" title="${d.editadas} barra(s) editada(s) a mano en la plataforma">&#9997;</span>`;
           html += `<div style="font-weight:600; font-size:9px; color:${textColor}; opacity:0.85;">${tipo}</div>`;
           html += `<div style="font-size:11px; font-weight:bold; color:${textColor};">${Math.round(d.kilos).toLocaleString()} kg</div>`;
           html += `<div style="font-size:9px; color:${textColor}; opacity:0.7;">${d.barras} bar</div>`;
@@ -245,6 +252,8 @@ async function loadMatriz() {
   html += '<span style="display:inline-block; width:16px; height:12px; background:#6B6B6B; border:1px solid #aaa; vertical-align:middle;"></span> <span class="muted">Más</span>';
   html += '<span style="margin-left:8px;">☐ = Pendiente</span>';
   html += '<span style="color:#558B2F; font-weight:bold;">☑ = Completado</span>';
+  // 5M.6: marca de edición-plataforma (borde marrón + ✏️).
+  html += '<span style="margin-left:8px;"><span style="display:inline-block; width:14px; height:12px; background:#fff; border-left:3px solid #8d6e63; border-top:1px solid #aaa; border-bottom:1px solid #aaa; border-right:1px solid #aaa; vertical-align:middle;"></span> &#9997; Editado a mano en la plataforma</span>';
   html += '</div>';
 
   container.innerHTML = html;

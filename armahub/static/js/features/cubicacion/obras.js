@@ -482,7 +482,8 @@ async function buildObraDetailMatriz(items, idProyecto) {
     var s = (i.sector || '?').toUpperCase().trim();
     var p = (i.piso || '?').trim();
     var c = (i.ciclo || '?').trim();
-    lookup[s + '|' + p + '|' + c] = { barras: i.barras, kilos: i.kilos };
+    // 5M.6: editadas = barras de la celda editadas a mano en la plataforma.
+    lookup[s + '|' + p + '|' + c] = { barras: i.barras, kilos: i.kilos, editadas: i.editadas || 0 };
   });
 
   var pisosSet = new Set(), ciclosSet = new Set(), sectoresSet = new Set();
@@ -587,7 +588,12 @@ async function buildObraDetailMatriz(items, idProyecto) {
             doneTitle = ' | Exportado ' + hist.veces + 'x, último: ' + (hist.ultima_fecha || '').substring(0, 10);
             if (isModified) doneTitle += ' | ⚠️ MODIFICADO';
           }
-          html += '<td style="border:1px solid #ccc; padding:2px 4px; background:' + cellBg + '; text-align:center; cursor:pointer; position:relative; min-width:80px; white-space:nowrap;" ';
+          // 5M.6: distinción edición-plataforma vs re-import (igual que la matriz
+          // de exportación): borde marrón izquierdo + badge ✏️, ortogonal al rosado.
+          var tieneEditadas = (d.editadas || 0) > 0;
+          var borderLeft = tieneEditadas ? 'border-left:3px solid #8d6e63;' : '';
+          if (tieneEditadas) doneTitle += ' | editada(s) a mano en la plataforma: ' + d.editadas;
+          html += '<td style="border:1px solid #ccc; ' + borderLeft + ' padding:2px 4px; background:' + cellBg + '; text-align:center; cursor:pointer; position:relative; min-width:80px; white-space:nowrap;" ';
           html += 'onclick="closeObraDetailModal(); goToBarManager(\'' + idProyecto.replace(/'/g, "\\'") + '\', \'' + tipo.replace(/'/g, "\\'") + '\', \'' + (piso || '').replace(/'/g, "\\'") + '\', \'' + (ciclo || '').replace(/'/g, "\\'") + '\')" ';
           html += 'title="' + tipo + ' ' + piso + ' ' + ciclo + ': ' + d.barras + ' barras, ' + Math.round(d.kilos).toLocaleString() + ' kg' + doneTitle + ' — click para ver barras">';
           if (isDone) {
@@ -596,6 +602,9 @@ async function buildObraDetailMatriz(items, idProyecto) {
             } else {
               html += '<span style="position:absolute; top:0px; right:2px; font-size:9px; color:#558B2F;" title="Exportado ' + hist.veces + ' vez(es)">&#10004;</span>';
             }
+          }
+          if (tieneEditadas) {
+            html += '<span style="position:absolute; bottom:0px; right:2px; font-size:9px;" title="' + d.editadas + ' barra(s) editada(s) a mano en la plataforma">&#9997;</span>';
           }
           html += '<div style="display:flex; align-items:baseline; justify-content:center; gap:4px;">';
           html += '<span style="font-weight:600; font-size:9px; color:#666;">' + tipo + '</span>';
@@ -616,7 +625,8 @@ async function buildObraDetailMatriz(items, idProyecto) {
   // Legend
   html += '<div style="margin-top:6px; display:flex; gap:10px; align-items:center; font-size:10px; flex-wrap:wrap;">';
   html += '<span><span style="display:inline-block; width:12px; height:10px; background:#e8f5e9; border:1px solid #8BC34A; vertical-align:middle;"></span> <span style="color:#558B2F;">&#10004;</span> Exportado</span>';
-  html += '<span><span style="display:inline-block; width:12px; height:10px; background:#ffcdd2; border:1px solid #e57373; vertical-align:middle;"></span> <span style="color:#c62828;">&#9888;</span> Modificado</span>';
+  html += '<span><span style="display:inline-block; width:12px; height:10px; background:#ffcdd2; border:1px solid #e57373; vertical-align:middle;"></span> <span style="color:#c62828;">&#9888;</span> Modificado por re-import</span>';
+  html += '<span><span style="display:inline-block; width:12px; height:10px; background:#fff; border-left:3px solid #8d6e63; border-top:1px solid #ccc; border-bottom:1px solid #ccc; border-right:1px solid #ccc; vertical-align:middle;"></span> &#9997; Editado a mano en la plataforma</span>';
   html += '<span><span style="display:inline-block; width:12px; height:10px; background:#fff; border:1px solid #ccc; vertical-align:middle;"></span> Pendiente</span>';
   html += '</div>';
 
