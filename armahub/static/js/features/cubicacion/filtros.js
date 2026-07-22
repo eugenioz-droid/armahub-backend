@@ -115,7 +115,8 @@ async function loadFilters(depParams) {
   fillSelect('sector', data.sectores);
   fillSelect('piso', data.pisos);
   fillSelect('ciclo', data.ciclos);
-  fillSelect('eje', data.ejes);
+  // Eje: ahora es input+datalist (buscador con texto), no un <select>.
+  _fillEjesDatalist(data.ejes);
 
 }
 
@@ -150,6 +151,17 @@ function onProyectoInput() {
   if (sel.value === id) return;   // sin cambio real → no re-buscar
   sel.value = id;
   onProyectoChange();
+}
+
+// Puebla el datalist del buscador de Eje con los ejes de la obra. El input es de
+// texto libre: el valor escrito ES el valor del filtro (no hay id que resolver).
+// Preserva lo que el usuario tenga escrito.
+function _fillEjesDatalist(ejes) {
+  var dl = document.getElementById('bmEjesDatalist');
+  if (!dl) return;
+  dl.innerHTML = (ejes || []).map(function(e) {
+    return '<option value="' + String(e).replace(/"/g, '&quot;') + '"></option>';
+  }).join('');
 }
 
 // 5M.9: plegar/desplegar el bloque de filtros avanzados (plano/carga/origen).
