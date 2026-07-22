@@ -75,6 +75,7 @@ def get_barras(
     import_id: int = None,              # filtrar por carga específica
     figura: str = None,                 # 5M.2: filtro por código de figura
     marca: str = None,                  # 5M.2: filtro por tipología (marca)
+    diam: int = None,                   # 5M.9: filtro por diámetro
     limit: int = 200,                   # paginación
     offset: int = 0,
     order_by: str = "fecha_carga",      # orden
@@ -132,6 +133,10 @@ def get_barras(
     if marca:
         base_where += " AND marca = %s"
         params.append(marca)
+    # 5M.9: filtro por diámetro
+    if diam:
+        base_where += " AND diam = %s"
+        params.append(diam)
 
     # búsqueda simple: id_unico, eje, plano_code
     if q and q.strip():
@@ -195,6 +200,7 @@ def get_barras_elementos(
     import_id: int = None,
     figura: str = None,                 # 5M.2
     marca: str = None,                  # 5M.2
+    diam: int = None,                   # 5M.9
     limit: int = 50,
     offset: int = 0,
     user=Depends(get_current_user),
@@ -237,6 +243,8 @@ def get_barras_elementos(
         base_where += " AND figura = %s"; params.append(figura)
     if marca:
         base_where += " AND marca = %s"; params.append(marca)
+    if diam:
+        base_where += " AND diam = %s"; params.append(diam)
     if q and q.strip():
         qq = f"%{q.strip()}%"
         base_where += " AND (id_unico ILIKE %s OR eje ILIKE %s OR plano_code ILIKE %s)"
@@ -382,7 +390,15 @@ def get_barras_facetas(proyecto: str, user=Depends(get_current_user)):
                 [proyecto] + pf_params,
             )
             tipologias = [r[0] for r in cur.fetchall()]
-    return {"figuras": figuras, "tipologias": tipologias}
+            # Diámetros presentes en la obra (5M.9): para poblar el filtro φ solo
+            # con los diámetros que realmente existen, no una lista comercial fija.
+            cur.execute(
+                "SELECT DISTINCT diam FROM barras WHERE id_proyecto = %s AND diam IS NOT NULL AND diam > 0"
+                + pf_sql + " ORDER BY diam",
+                [proyecto] + pf_params,
+            )
+            diametros = [int(r[0]) for r in cur.fetchall()]
+    return {"figuras": figuras, "tipologias": tipologias, "diametros": diametros}
 
 
 # ========================= MAPA DE COBERTURA PISO × CICLO =========================

@@ -2,21 +2,19 @@
   <div id="tab-buscar" class="tab-content">
     <div class="card">
       <h3>Bar Manager</h3>
+
+      <!-- ── GRUPO 1: UBICACIÓN (dónde está la barra) ── -->
       <div class="row" style="gap:8px; align-items:flex-end;">
         <div class="col" style="position:relative; flex:2;">
           <label style="font-size:11px; color:#666; font-weight:600;">Proyecto *</label>
+          <!-- Buscador-desplegable en un solo control: input de búsqueda arriba +
+               select pegado abajo, mismo ancho, sin descuadre. -->
           <div style="position:relative;">
             <span style="position:absolute; left:8px; top:50%; transform:translateY(-50%); font-size:14px; color:#999; pointer-events:none;">🔍</span>
-            <input type="text" id="proyectoSearchInput" placeholder="Buscar proyecto..." oninput="filterProjectSelect('proyectoSearchInput','proyecto')" style="padding-left:30px; width:100%; font-size:13px; margin-bottom:4px;" />
+            <input type="text" id="proyectoSearchInput" placeholder="Escribe para buscar la obra…" oninput="filterProjectSelect('proyectoSearchInput','proyecto')" style="padding-left:30px; width:100%; font-size:13px; border-bottom-left-radius:0; border-bottom-right-radius:0;" />
           </div>
-          <select id="proyecto" onchange="onProyectoChange()">
+          <select id="proyecto" onchange="onProyectoChange()" style="width:100%; margin-top:-1px; border-top-left-radius:0; border-top-right-radius:0;">
             <option value="">-- Selecciona proyecto --</option>
-          </select>
-        </div>
-        <div class="col">
-          <label style="font-size:11px; color:#666;">Plano</label>
-          <select id="plano" onchange="onFilterChange()">
-            <option value="">Todos</option>
           </select>
         </div>
         <div class="col">
@@ -45,22 +43,10 @@
         </div>
       </div>
 
-      <!-- Carga filter row -->
-      <div class="row" style="gap:8px; margin-top:8px; align-items:flex-end;">
-        <div class="col" style="flex:3;">
-          <label style="font-size:11px; color:#666;">Carga</label>
-          <select id="filtroCarga" onchange="onCargaFilterChange()" style="font-size:12px;">
-            <option value="">Todas las cargas</option>
-          </select>
-        </div>
-        <div class="col" style="flex:0;">
-          <label style="font-size:11px; color:#666;">Origen</label>
-          <select id="filtroOrigen" onchange="buscar(true)" style="font-size:12px;">
-            <option value="">Todos</option>
-            <option value="csv">CSV</option>
-            <option value="manual">Manual</option>
-            <option value="pedido">Pedido</option>
-          </select>
+      <!-- ── GRUPO 2: TIPO DE BARRA (qué barra) · activan VISTA PLANA ── -->
+      <div class="row" style="gap:8px; margin-top:10px; align-items:flex-end; padding-top:8px; border-top:1px dashed #e0e0e0;">
+        <div style="display:flex; flex-direction:column; justify-content:flex-end;">
+          <span style="font-size:10px; font-weight:700; color:#5d4037; background:#efebe9; padding:2px 8px; border-radius:10px; white-space:nowrap;">📋 Vista plana</span>
         </div>
         <div class="col" style="flex:0;">
           <label style="font-size:11px; color:#666;">Figura</label>
@@ -74,16 +60,44 @@
             <option value="">Todas</option>
           </select>
         </div>
-        <button onclick="buscar(true)" style="font-size:12px; padding:6px 14px;">🔍 Buscar</button>
+        <div class="col" style="flex:0;">
+          <label style="font-size:11px; color:#666;">φ Diámetro</label>
+          <select id="filtroDiametro" onchange="buscar(true)" style="font-size:12px;">
+            <option value="">Todos</option>
+          </select>
+        </div>
+        <button onclick="buscar(true)" style="font-size:12px; padding:6px 14px; margin-left:auto;">🔍 Buscar</button>
         <button class="secondary" onclick="resetFiltros()" style="font-size:12px; padding:6px 14px;">Limpiar</button>
       </div>
 
-      <!-- Búsqueda libre (independiente de la cascada) -->
-      <div class="row" style="gap:8px; margin-top:8px; align-items:center; padding-top:8px; border-top:1px dashed #ddd;">
-        <label style="font-size:11px; color:#666; white-space:nowrap;">🔎 Búsqueda libre</label>
-        <input id="q" placeholder="Buscar por id_único, eje o plano…" onkeyup="if(event.key==='Enter') buscar(true)" style="font-size:13px; flex:1;" />
-        <button class="secondary" onclick="buscar(true)" style="font-size:11px; padding:4px 10px;">Aplicar</button>
-        <button class="secondary" onclick="document.getElementById('q').value=''; buscar(true);" style="font-size:11px; padding:4px 10px;">Limpiar</button>
+      <!-- ── FILTROS AVANZADOS (bajo uso: plano/carga/origen) — plegado ── -->
+      <div style="margin-top:8px;">
+        <button class="secondary" id="btnFiltrosAvanzados" onclick="toggleFiltrosAvanzados()" style="font-size:11px; padding:3px 10px; background:none; border:none; color:#1565C0; cursor:pointer;">⚙ Filtros avanzados ▾</button>
+        <div id="filtrosAvanzados" style="display:none; margin-top:6px; padding:8px 12px; background:#fafafa; border:1px solid #eee; border-radius:6px;">
+          <div class="row" style="gap:8px; align-items:flex-end;">
+            <div class="col" style="flex:2;">
+              <label style="font-size:11px; color:#666;">Plano</label>
+              <select id="plano" onchange="onFilterChange()">
+                <option value="">Todos</option>
+              </select>
+            </div>
+            <div class="col" style="flex:3;">
+              <label style="font-size:11px; color:#666;">Carga</label>
+              <select id="filtroCarga" onchange="onCargaFilterChange()" style="font-size:12px;">
+                <option value="">Todas las cargas</option>
+              </select>
+            </div>
+            <div class="col" style="flex:0;">
+              <label style="font-size:11px; color:#666;">Origen</label>
+              <select id="filtroOrigen" onchange="buscar(true)" style="font-size:12px;">
+                <option value="">Todos</option>
+                <option value="csv">CSV</option>
+                <option value="manual">Manual</option>
+                <option value="pedido">Pedido</option>
+              </select>
+            </div>
+          </div>
+        </div>
       </div>
 
       <!-- Active carga filter badge (for navigation from Obras) -->

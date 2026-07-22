@@ -88,8 +88,14 @@ function _buildFilterParams() {
     const v = document.getElementById(f) && document.getElementById(f).value;
     if (v) params.set(f === 'plano' ? 'plano_code' : f, v);
   });
-  const q = (document.getElementById('q').value || '').trim();
+  // Búsqueda libre eliminada (5M.9): el elemento 'q' ya no existe en el DOM.
+  // Se mantiene la guarda por si algún flujo antiguo aún lo referencia.
+  const qEl = document.getElementById('q');
+  const q = qEl ? (qEl.value || '').trim() : '';
   if (q) params.set('q', q);
+  // Filtro de diámetro (5M.9): activa vista plana igual que figura/tipología.
+  const fd = document.getElementById('filtroDiametro');
+  if (fd && fd.value) params.set('diam', fd.value);
   const fo = document.getElementById('filtroOrigen');
   if (fo && fo.value) params.set('origen', fo.value);
   const fc = document.getElementById('filtroCarga');
@@ -107,7 +113,7 @@ function _buildFilterParams() {
 // todas las barras del filtro, editable, sin desplegables de agrupación. Sin esos
 // filtros, la vista normal AGRUPADA (piso/sector/eje → ciclos → barras).
 function _modoVistaPlana() {
-  var campos = ['filtroFigura', 'filtroTipologia'];  // ampliar aquí (ej. filtroDiametro)
+  var campos = ['filtroFigura', 'filtroTipologia', 'filtroDiametro'];  // filtros de nivel-barra
   return campos.some(function(id) {
     var el = document.getElementById(id);
     return el && el.value;
@@ -846,6 +852,7 @@ function resetFiltros() {
   const fo = document.getElementById('filtroOrigen'); if (fo) fo.value = '';
   const ff = document.getElementById('filtroFigura'); if (ff) ff.value = '';
   const ftip = document.getElementById('filtroTipologia'); if (ftip) ftip.value = '';
+  const fdia = document.getElementById('filtroDiametro'); if (fdia) fdia.value = '';
   if (typeof clearCargaFilter === 'function') clearCargaFilter(true);
   if (typeof loadCargasDropdown === 'function') loadCargasDropdown('');
   const si = document.getElementById('proyectoSearchInput'); if (si) si.value = '';

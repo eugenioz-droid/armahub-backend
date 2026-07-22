@@ -1,26 +1,60 @@
 // ========================= CUBICACIÓN — Filtros Dependientes + Persistencia (E.4) =========================
 const FILTER_STORAGE_KEY = 'armahub_filters';
 
-// NOTA: NO persistimos `q` (búsqueda libre por ID/eje) — es input transitorio.
-// Persistimos solo los selects de cascada + filtros de carga/origen.
+// 5M.9 — Persistencia SELECTIVA para sobrevivir refresh (F5):
+//   • proyecto (obra) + filtros de nivel-barra (figura/tipología/diámetro) SÍ.
+//   • ubicación (sector/piso/ciclo/eje) y avanzados (plano/carga/origen) NO:
+//     recordarlos "esconde" data sin que el usuario sepa por qué (resultados
+//     fantasma). Así el usuario vuelve a la OBRA y la VISTA en que estaba, con
+//     los filtros de foco limpios.
+// Los que NO se persisten arrancan vacíos siempre.
+const FILTER_PERSIST_KEYS = ['proyecto','filtroFigura','filtroTipologia','filtroDiametro'];
+
 function saveFiltersToStorage() {
   const state = {};
-  ['proyecto','plano','sector','piso','ciclo','eje','filtroCarga','filtroOrigen'].forEach(f => {
+  FILTER_PERSIST_KEYS.forEach(f => {
     const el = document.getElementById(f);
-    if (el) state[f] = el.value;
+    if (el && el.value) state[f] = el.value;
   });
-  try { localStorage.setItem(FILTER_STORAGE_KEY, JSON.stringify(state)); } catch(e) {}
+  try {
+    if (Object.keys(state).length) localStorage.setItem(FILTER_STORAGE_KEY, JSON.stringify(state));
+    else localStorage.removeItem(FILTER_STORAGE_KEY);
+  } catch(e) {}
 }
 
 function restoreFiltersFromStorage() {
   try {
     const raw = localStorage.getItem(FILTER_STORAGE_KEY);
-    if (!raw) return;
-    const state = JSON.parse(raw);
-    // Restaurar valores que no dependen de selects pobladas (ninguno hoy);
-    // los selects se restauran tras `loadFilters` desde el state retornado.
-    return state;
+    if (!raw) return null;
+    return JSON.parse(raw);
   } catch(e) { return null; }
+}
+
+// 5M.9: al entrar/refrescar el Bar Manager, restaura la obra guardada y sus
+// filtros de nivel-barra, carga las facetas de esa obra y busca. Devuelve true
+// si restauró una obra (para que el arranque no pise la selección).
+async function restoreBarManagerState() {
+  const state = restoreFiltersFromStorage();
+  if (!state || !state.proyecto) return false;
+  const selProy = document.getElementById('proyecto');
+  if (!selProy) return false;
+  // La obra debe existir en la lista (permisos/carga); si no, no restaurar.
+  if (!Array.from(selProy.options).some(o => o.value === state.proyecto)) return false;
+  selProy.value = state.proyecto;
+  // Reflejar el nombre de la obra en el input de búsqueda (coherencia visual).
+  const si = document.getElementById('proyectoSearchInput');
+  if (si && selProy.selectedIndex >= 0) si.value = selProy.options[selProy.selectedIndex].textContent;
+  // Cargar dependientes + facetas de esa obra (necesario para que las opciones
+  // de figura/tipología/diámetro existan antes de re-seleccionarlas).
+  await loadFilters({ proyecto: state.proyecto });
+  if (typeof loadCargasDropdown === 'function') await loadCargasDropdown(state.proyecto);
+  if (typeof loadFacetasDropdown === 'function') await loadFacetasDropdown(state.proyecto);
+  ['filtroFigura','filtroTipologia','filtroDiametro'].forEach(function(f) {
+    const el = document.getElementById(f);
+    if (el && state[f] && Array.from(el.options).some(o => o.value === state[f])) el.value = state[f];
+  });
+  await buscar(true);
+  return true;
 }
 
 async function loadFilters(depParams) {
@@ -82,11 +116,21 @@ async function loadFilters(depParams) {
 
 }
 
+// 5M.9: plegar/desplegar el bloque de filtros avanzados (plano/carga/origen).
+function toggleFiltrosAvanzados() {
+  var box = document.getElementById('filtrosAvanzados');
+  var btn = document.getElementById('btnFiltrosAvanzados');
+  if (!box) return;
+  var abierto = box.style.display !== 'none';
+  box.style.display = abierto ? 'none' : '';
+  if (btn) btn.textContent = abierto ? '⚙ Filtros avanzados ▾' : '⚙ Filtros avanzados ▴';
+}
+
 function onProyectoChange() {
   // When project changes, reload dependent filters for that project
   const proy = document.getElementById('proyecto').value;
   // Clear dependent selects (their current values may not exist in new project)
-  ['plano','sector','piso','ciclo','eje','filtroFigura','filtroTipologia'].forEach(f => { const el=document.getElementById(f); if(el) el.value = ''; });
+  ['plano','sector','piso','ciclo','eje','filtroFigura','filtroTipologia','filtroDiametro'].forEach(f => { const el=document.getElementById(f); if(el) el.value = ''; });
   clearCargaFilter(true);
   loadFilters(proy ? { proyecto: proy } : null);
   loadCargasDropdown(proy);
@@ -101,8 +145,11 @@ function onProyectoChange() {
 async function loadFacetasDropdown(idProyecto) {
   var selFig = document.getElementById('filtroFigura');
   var selTip = document.getElementById('filtroTipologia');
-  if (selFig) selFig.innerHTML = '<option value="">Figura: Todas</option>';
-  if (selTip) selTip.innerHTML = '<option value="">Tipología: Todas</option>';
+  var selDia = document.getElementById('filtroDiametro');
+  // Placeholder sin repetir el nombre del filtro (el label ya lo dice).
+  if (selFig) selFig.innerHTML = '<option value="">Todas</option>';
+  if (selTip) selTip.innerHTML = '<option value="">Todas</option>';
+  if (selDia) selDia.innerHTML = '<option value="">Todos</option>';
   if (!idProyecto) return;
   var data = await apiGet('/barras/facetas?proyecto=' + encodeURIComponent(idProyecto));
   if (!data) return;
@@ -114,6 +161,12 @@ async function loadFacetasDropdown(idProyecto) {
   if (selTip && data.tipologias) {
     data.tipologias.forEach(function(t) {
       var o = document.createElement('option'); o.value = t; o.textContent = t; selTip.appendChild(o);
+    });
+  }
+  // 5M.9: diámetros presentes en la obra (φ8, φ10…).
+  if (selDia && data.diametros) {
+    data.diametros.forEach(function(d) {
+      var o = document.createElement('option'); o.value = d; o.textContent = 'φ' + d; selDia.appendChild(o);
     });
   }
 }

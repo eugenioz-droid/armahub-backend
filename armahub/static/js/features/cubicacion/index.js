@@ -9,15 +9,17 @@ async function loadCubicacionModule() {
   await loadClientes();
   await loadCalculistas();
 
-  // Filtros del Bar Manager: NO restauramos selección previa al re-entrar.
-  // Al volver al tab queremos vista limpia (sin proyecto seleccionado),
-  // tal como pidió el usuario para evitar resultados “fantasma”.
-  try { localStorage.removeItem(FILTER_STORAGE_KEY); } catch (e) {}
+  // 5M.9: al entrar/refrescar restauramos la OBRA seleccionada y los filtros de
+  // nivel-barra (figura/tipología/diámetro), NO los de ubicación (evita
+  // resultados "fantasma"). Si no hay obra guardada, arranque limpio.
   await loadFilters(null);
-
   await loadCargas();
   await loadPedidos();
-  await buscar(true);
+  var restaurado = false;
+  if (typeof restoreBarManagerState === 'function') {
+    restaurado = await restoreBarManagerState();
+  }
+  if (!restaurado) await buscar(true);
 }
 
 // Reusable piso ordering function (building order: SM top, subterráneos bottom)
