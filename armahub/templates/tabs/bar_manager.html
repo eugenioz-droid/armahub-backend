@@ -3,71 +3,72 @@
     <div class="card">
       <h3>Bar Manager</h3>
 
-      <!-- ── GRUPO 1: UBICACIÓN (dónde está la barra) ── -->
-      <div class="row" style="gap:8px; align-items:flex-end;">
-        <div class="col" style="position:relative; flex:2;">
-          <label style="font-size:11px; color:#666; font-weight:600;">Proyecto *</label>
-          <!-- Buscador-desplegable en un solo control: input de búsqueda arriba +
-               select pegado abajo, mismo ancho, sin descuadre. -->
-          <div style="position:relative;">
-            <span style="position:absolute; left:8px; top:50%; transform:translateY(-50%); font-size:14px; color:#999; pointer-events:none;">🔍</span>
-            <input type="text" id="proyectoSearchInput" placeholder="Escribe para buscar la obra…" oninput="filterProjectSelect('proyectoSearchInput','proyecto')" style="padding-left:30px; width:100%; font-size:13px; border-bottom-left-radius:0; border-bottom-right-radius:0;" />
-          </div>
-          <select id="proyecto" onchange="onProyectoChange()" style="width:100%; margin-top:-1px; border-top-left-radius:0; border-top-right-radius:0;">
-            <option value="">-- Selecciona proyecto --</option>
-          </select>
-        </div>
-        <div class="col">
-          <label style="font-size:11px; color:#666;">Sector</label>
-          <select id="sector" onchange="onFilterChange()">
-            <option value="">Todos</option>
-          </select>
-        </div>
-        <div class="col">
-          <label style="font-size:11px; color:#666;">Piso</label>
-          <select id="piso" onchange="onFilterChange()">
-            <option value="">Todos</option>
-          </select>
-        </div>
-        <div class="col">
-          <label style="font-size:11px; color:#666;">Ciclo</label>
-          <select id="ciclo" onchange="onFilterChange()">
-            <option value="">Todos</option>
-          </select>
-        </div>
-        <div class="col">
-          <label style="font-size:11px; color:#666;">Eje</label>
-          <select id="eje" onchange="onFilterChange()">
-            <option value="">Todos</option>
-          </select>
-        </div>
-      </div>
+      <!-- ── FILTROS EN UNA LÍNEA · 3 grupos separados por divisor vertical ── -->
+      <!-- Grupo A: UBICACIÓN (proyecto + sector/piso/ciclo/eje) · Grupo B: TIPO
+           DE BARRA (figura/tipología/diámetro → Vista plana). Labels 12px pegados
+           a su control; gap chico dentro del grupo, divisor entre grupos. -->
+      <div style="display:flex; align-items:flex-end; flex-wrap:wrap; gap:14px;">
 
-      <!-- ── GRUPO 2: TIPO DE BARRA (qué barra) · activan VISTA PLANA ── -->
-      <div class="row" style="gap:8px; margin-top:10px; align-items:flex-end; padding-top:8px; border-top:1px dashed #e0e0e0;">
-        <div style="display:flex; flex-direction:column; justify-content:flex-end;">
-          <span style="font-size:10px; font-weight:700; color:#5d4037; background:#efebe9; padding:2px 8px; border-radius:10px; white-space:nowrap;">📋 Vista plana</span>
+        <!-- Grupo A · UBICACIÓN -->
+        <div style="display:flex; align-items:flex-end; gap:8px;">
+          <div style="display:flex; flex-direction:column; min-width:230px;">
+            <label style="font-size:12px; color:#444; font-weight:600; margin-bottom:2px;">Proyecto *</label>
+            <div style="position:relative;">
+              <span style="position:absolute; left:9px; top:50%; transform:translateY(-50%); font-size:13px; color:#999; pointer-events:none;">🔍</span>
+              <!-- Buscador único: escribes y el datalist despliega coincidencias.
+                   autocomplete=off evita que el navegador ofrezca usuario/clave. -->
+              <input type="text" id="proyectoSearchInput" list="bmProyectosDatalist"
+                     name="bm-obra-buscar" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"
+                     placeholder="Escribe para buscar la obra…"
+                     oninput="onProyectoInput()" onchange="onProyectoInput()"
+                     style="padding-left:30px; width:100%; font-size:13px;" />
+              <datalist id="bmProyectosDatalist"></datalist>
+              <!-- select oculto: guarda el id real del proyecto seleccionado -->
+              <select id="proyecto" onchange="onProyectoChange()" style="display:none;">
+                <option value="">-- Selecciona proyecto --</option>
+              </select>
+            </div>
+          </div>
+          <div style="display:flex; flex-direction:column;">
+            <label style="font-size:12px; color:#444; font-weight:600; margin-bottom:2px;">Sector</label>
+            <select id="sector" onchange="onFilterChange()" style="font-size:13px;"><option value="">Todos</option></select>
+          </div>
+          <div style="display:flex; flex-direction:column;">
+            <label style="font-size:12px; color:#444; font-weight:600; margin-bottom:2px;">Piso</label>
+            <select id="piso" onchange="onFilterChange()" style="font-size:13px;"><option value="">Todos</option></select>
+          </div>
+          <div style="display:flex; flex-direction:column;">
+            <label style="font-size:12px; color:#444; font-weight:600; margin-bottom:2px;">Ciclo</label>
+            <select id="ciclo" onchange="onFilterChange()" style="font-size:13px;"><option value="">Todos</option></select>
+          </div>
+          <div style="display:flex; flex-direction:column;">
+            <label style="font-size:12px; color:#444; font-weight:600; margin-bottom:2px;">Eje</label>
+            <select id="eje" onchange="onFilterChange()" style="font-size:13px;"><option value="">Todos</option></select>
+          </div>
         </div>
-        <div class="col" style="flex:0;">
-          <label style="font-size:11px; color:#666;">Figura</label>
-          <select id="filtroFigura" onchange="buscar(true)" style="font-size:12px;">
-            <option value="">Todas</option>
-          </select>
+
+        <!-- divisor -->
+        <div style="align-self:stretch; width:1px; background:#e0e0e0; margin:2px 0;"></div>
+
+        <!-- Grupo B · TIPO DE BARRA (activan Vista plana) -->
+        <div style="display:flex; flex-direction:column; gap:2px;">
+          <div style="display:flex; align-items:flex-end; gap:8px;">
+            <div style="display:flex; flex-direction:column;">
+              <label style="font-size:12px; color:#444; font-weight:600; margin-bottom:2px;">Figura</label>
+              <select id="filtroFigura" onchange="buscar(true)" style="font-size:13px;"><option value="">Todas</option></select>
+            </div>
+            <div style="display:flex; flex-direction:column;">
+              <label style="font-size:12px; color:#444; font-weight:600; margin-bottom:2px;">Tipología</label>
+              <select id="filtroTipologia" onchange="buscar(true)" style="font-size:13px;"><option value="">Todas</option></select>
+            </div>
+            <div style="display:flex; flex-direction:column;">
+              <label style="font-size:12px; color:#444; font-weight:600; margin-bottom:2px;">φ Diámetro</label>
+              <select id="filtroDiametro" onchange="buscar(true)" style="font-size:13px;"><option value="">Todos</option></select>
+            </div>
+          </div>
+          <!-- leyenda: estos 3 activan la vista plana -->
+          <span style="font-size:11px; color:#8d6e63; margin-top:2px;">📋 Filtrar por uno de estos activa la <strong>Vista plana</strong></span>
         </div>
-        <div class="col" style="flex:0;">
-          <label style="font-size:11px; color:#666;">Tipología</label>
-          <select id="filtroTipologia" onchange="buscar(true)" style="font-size:12px;">
-            <option value="">Todas</option>
-          </select>
-        </div>
-        <div class="col" style="flex:0;">
-          <label style="font-size:11px; color:#666;">φ Diámetro</label>
-          <select id="filtroDiametro" onchange="buscar(true)" style="font-size:12px;">
-            <option value="">Todos</option>
-          </select>
-        </div>
-        <button onclick="buscar(true)" style="font-size:12px; padding:6px 14px; margin-left:auto;">🔍 Buscar</button>
-        <button class="secondary" onclick="resetFiltros()" style="font-size:12px; padding:6px 14px;">Limpiar</button>
       </div>
 
       <!-- ── FILTROS AVANZADOS (bajo uso: plano/carga/origen) — plegado ── -->
@@ -113,6 +114,7 @@
         <span class="muted">Selecciona un proyecto…</span>
       </div>
       <div class="row" style="gap:8px; margin-top:8px; align-items:center;">
+        <button class="secondary" onclick="resetFiltros()" style="font-size:11px; padding:3px 10px;">🧹 Limpiar filtros</button>
         <button class="secondary" onclick="expandAll()" style="font-size:11px; padding:3px 10px;">▾ Expandir todo</button>
         <button class="secondary" onclick="collapseAll()" style="font-size:11px; padding:3px 10px;">▸ Colapsar todo</button>
         <button class="secondary" id="btnCobertura" onclick="toggleCobertura()" style="font-size:11px; padding:3px 10px;">📊 Mostrar cobertura</button>

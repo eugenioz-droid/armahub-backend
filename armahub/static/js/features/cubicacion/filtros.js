@@ -102,6 +102,9 @@ async function loadFilters(depParams) {
   
   // Proyectos always full list (show nombre, value=id)
   fillSelect('proyecto', data.proyectos, 'proyectos');
+  // 5M.10: poblar el datalist del buscador único de obra (nombre visible; el id
+  // vive en el <select> oculto y se resuelve en onProyectoInput).
+  _fillProyectosDatalist(data.proyectos);
   fillSelect('exportProyecto', data.proyectos, 'proyectos');
   fillSelect('sectorProyectoFilter', data.proyectos, 'proyectos');
   fillSelect('matrizProyectoFilter', data.proyectos, 'proyectos');
@@ -114,6 +117,39 @@ async function loadFilters(depParams) {
   fillSelect('ciclo', data.ciclos);
   fillSelect('eje', data.ejes);
 
+}
+
+// 5M.10: buscador único de obra (input + datalist). El datalist muestra los
+// nombres; el <select id="proyecto"> oculto conserva el id real. _proyectosCache
+// mapea nombre→id para resolver lo que el usuario escribe/elige.
+var _proyectosCache = [];
+function _fillProyectosDatalist(proyectos) {
+  _proyectosCache = proyectos || [];
+  var dl = document.getElementById('bmProyectosDatalist');
+  if (!dl) return;
+  dl.innerHTML = _proyectosCache.map(function(p) {
+    var nombre = (p.nombre || p.id);
+    return '<option value="' + String(nombre).replace(/"/g, '&quot;') + '"></option>';
+  }).join('');
+}
+
+// El usuario escribió/eligió en el buscador de obra. Resuelve nombre→id, fija el
+// <select> oculto y dispara el cambio de proyecto solo si el id cambió.
+function onProyectoInput() {
+  var input = document.getElementById('proyectoSearchInput');
+  var sel = document.getElementById('proyecto');
+  if (!input || !sel) return;
+  var txt = (input.value || '').trim().toLowerCase();
+  var id = '';
+  if (txt) {
+    // Coincidencia exacta de nombre primero; si no, primera que empieza igual.
+    var exact = _proyectosCache.find(function(p) { return String(p.nombre || p.id).toLowerCase() === txt; });
+    var starts = exact || _proyectosCache.find(function(p) { return String(p.nombre || p.id).toLowerCase().indexOf(txt) === 0; });
+    if (starts) id = String(starts.id);
+  }
+  if (sel.value === id) return;   // sin cambio real → no re-buscar
+  sel.value = id;
+  onProyectoChange();
 }
 
 // 5M.9: plegar/desplegar el bloque de filtros avanzados (plano/carga/origen).
