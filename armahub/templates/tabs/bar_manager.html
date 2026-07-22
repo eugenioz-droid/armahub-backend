@@ -51,8 +51,9 @@
         <div style="display:flex; flex-direction:column; flex:1;">
           <label style="font-size:12.5px; color:#444; font-weight:600; margin-bottom:3px;">Eje</label>
           <!-- Buscador con datalist: escribes y despliega los ejes de la obra.
+               type=text (no search: evita la X nativa que dispara eventos raros).
                autocomplete=off para que el navegador no ofrezca usuario/clave. -->
-          <input type="search" id="eje" list="bmEjesDatalist" onchange="onFilterChange()"
+          <input type="text" id="eje" list="bmEjesDatalist" onchange="onFilterChange()"
                  name="bm-eje-buscar" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"
                  placeholder="Todos" style="font-size:13px; height:34px; width:100%; box-sizing:border-box;" />
           <datalist id="bmEjesDatalist"></datalist>

@@ -95,17 +95,29 @@ function _buildFilterParams() {
   if (q) params.set('q', q);
   // Filtro de diámetro (5M.9): activa vista plana igual que figura/tipología.
   const fd = document.getElementById('filtroDiametro');
-  if (fd && fd.value) params.set('diam', fd.value);
+  if (_valorFiltroValido(fd)) params.set('diam', fd.value);
   const fo = document.getElementById('filtroOrigen');
   if (fo && fo.value) params.set('origen', fo.value);
   const fc = document.getElementById('filtroCarga');
   if (fc && fc.value) params.set('import_id', fc.value);
   // 5M.2: filtros por figura y tipología (marca)
   const ff = document.getElementById('filtroFigura');
-  if (ff && ff.value) params.set('figura', ff.value);
+  if (_valorFiltroValido(ff)) params.set('figura', ff.value);
   const fm = document.getElementById('filtroTipologia');
-  if (fm && fm.value) params.set('marca', fm.value);
+  if (_valorFiltroValido(fm)) params.set('marca', fm.value);
   return params;
+}
+
+// Un <select> de faceta (figura/tipología/diámetro) solo aporta filtro si su
+// valor sigue existiendo entre sus opciones. Evita que un valor PEGADO (de otra
+// obra o de localStorage) filtre por algo inexistente → vista plana vacía sin
+// error. Si el valor quedó fantasma, se limpia en el acto.
+function _valorFiltroValido(sel) {
+  if (!sel || !sel.value) return false;
+  var opciones = sel.options ? Array.from(sel.options) : [];
+  var existe = opciones.some(function(o) { return o.value === sel.value; });
+  if (!existe) { sel.value = ''; return false; }   // auto-sanear el pegado
+  return true;
 }
 
 // 5M.9: la vista PLANA se activa cuando hay un filtro de nivel-barra activo
@@ -115,8 +127,9 @@ function _buildFilterParams() {
 function _modoVistaPlana() {
   var campos = ['filtroFigura', 'filtroTipologia', 'filtroDiametro'];  // filtros de nivel-barra
   return campos.some(function(id) {
-    var el = document.getElementById(id);
-    return el && el.value;
+    // Usa la misma validación que _buildFilterParams: un valor pegado/fantasma
+    // NO activa la vista plana (y se auto-limpia). Así no queda una tabla vacía.
+    return _valorFiltroValido(document.getElementById(id));
   });
 }
 
