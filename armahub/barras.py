@@ -1369,7 +1369,16 @@ def editar_barra(barra_id: int, body: BarraUpdate, user=Depends(get_current_user
 
     _cache.invalidate("stats:", "landing:")
     audit(email, "editar_barra", "; ".join(cambios), "barra", str(barra_id))
-    return {"ok": True, "id": barra_id, "cambios": cambios, "editado_por": email, "editado_fecha": now}
+    # Devolver la barra actualizada (para optimistic update en el front, 5M.9).
+    with get_conn() as conn2:
+        with conn2.cursor(row_factory=dict_row) as cur2:
+            cur2.execute(
+                "SELECT " + ", ".join(BARRAS_COLUMNS) + " FROM barras WHERE id = %s",
+                (barra_id,),
+            )
+            barra_actual = cur2.fetchone()
+    return {"ok": True, "id": barra_id, "cambios": cambios,
+            "editado_por": email, "editado_fecha": now, "barra": barra_actual}
 
 
 @router.get("/barras/ediciones")

@@ -102,6 +102,18 @@ function _buildFilterParams() {
   return params;
 }
 
+// 5M.9: la vista PLANA se activa cuando hay un filtro de nivel-barra activo
+// (figura o tipología; ampliable a diámetro después). Devuelve una tabla única de
+// todas las barras del filtro, editable, sin desplegables de agrupación. Sin esos
+// filtros, la vista normal AGRUPADA (piso/sector/eje → ciclos → barras).
+function _modoVistaPlana() {
+  var campos = ['filtroFigura', 'filtroTipologia'];  // ampliar aquí (ej. filtroDiametro)
+  return campos.some(function(id) {
+    var el = document.getElementById(id);
+    return el && el.value;
+  });
+}
+
 async function buscar(reset = false) {
   if (reset) {
     currentOffset = 0;
@@ -128,6 +140,12 @@ async function buscar(reset = false) {
   params.set('offset', currentOffset);
 
   if (typeof saveFiltersToStorage === 'function') saveFiltersToStorage();
+
+  // Bifurcación vista plana / agrupada (5M.9).
+  if (_modoVistaPlana()) {
+    await _buscarPlano(params);
+    return;
+  }
 
   const data = await apiGet('/barras/elementos?' + params.toString());
   if (!data) return;
@@ -167,6 +185,113 @@ async function buscar(reset = false) {
 
   // 5M.3: panel de ediciones manuales recientes de la obra.
   if (typeof cargarEdicionesRecientes === 'function') cargarEdicionesRecientes();
+}
+
+// ========================= VISTA PLANA (5M.9) =========================
+// Tabla única de todas las barras del filtro (figura/tipología), editable, paginada,
+// sin desplegables. Mismas columnas que el detalle agrupado.
+var lastBarrasPlano = [];
+
+async function _buscarPlano(params) {
+  const kpisEl = document.getElementById('bmKpis');
+  const countEl = document.getElementById('count');
+  const tbl = document.getElementById('tabla');
+  const pageInfo = document.getElementById('pageInfo');
+
+  // El endpoint /barras espera 'proyecto' + filtros; ya vienen en params.
+  params.set('order_by', 'plano_code');
+  params.set('order_dir', 'asc');
+  const data = await apiGet('/barras?' + params.toString());
+  if (!data) return;
+
+  lastBarrasPlano = data.data || [];
+  lastTotal = data.total || lastBarrasPlano.length;
+
+  // KPIs simples de la vista plana.
+  const sumKg = lastBarrasPlano.reduce((s, b) => s + (Number(b.peso_total) || 0), 0);
+  const sumCant = lastBarrasPlano.reduce((s, b) => s + (Number(b.cant_total) || 0), 0);
+  kpisEl.innerHTML =
+    '<span style="color:#5d4037; font-weight:600;">📋 Vista plana</span>' +
+    '<span class="muted">·</span>' +
+    '<span><strong>' + _fmt(lastTotal) + '</strong> barras (filtro)</span>' +
+    '<span class="muted">·</span>' +
+    '<span><strong>' + _fmt(sumCant) + '</strong> uds pág.</span>' +
+    '<span class="muted">·</span>' +
+    '<span><strong>' + _fmt(sumKg, 1) + '</strong> kg pág.</span>';
+  countEl.textContent = _fmt(lastTotal) + ' barra' + (lastTotal === 1 ? '' : 's') + ' (mostrando ' + lastBarrasPlano.length + ')';
+  const page = Math.floor(currentOffset / pageLimit) + 1;
+  const totalPages = Math.max(1, Math.ceil(lastTotal / pageLimit));
+  pageInfo.textContent = 'Pág ' + page + '/' + totalPages;
+
+  _renderPlano();
+
+  if (_coberturaVisible) loadCobertura();
+  if (typeof cargarEdicionesRecientes === 'function') cargarEdicionesRecientes();
+}
+
+// 5M.9 optimistic update: actualiza una barra en las estructuras en memoria
+// (vista plana + cache de detalles agrupados) sin re-pedir la lista.
+function bmActualizarBarraEnMemoria(barra) {
+  if (!barra || barra.id == null) return;
+  // Vista plana.
+  for (let i = 0; i < lastBarrasPlano.length; i++) {
+    if (lastBarrasPlano[i].id === barra.id) { lastBarrasPlano[i] = barra; break; }
+  }
+  // Cache de detalles agrupados (detailCache: key → [barras]).
+  if (typeof detailCache !== 'undefined' && detailCache.forEach) {
+    detailCache.forEach(function(barras, key) {
+      for (let j = 0; j < barras.length; j++) {
+        if (barras[j].id === barra.id) { barras[j] = barra; break; }
+      }
+    });
+  }
+}
+window.bmActualizarBarraEnMemoria = bmActualizarBarraEnMemoria;
+
+// Re-renderiza la vista activa (plana o agrupada) desde memoria, sin fetch.
+function bmReRenderVistaActual() {
+  if (typeof _modoVistaPlana === 'function' && _modoVistaPlana()) {
+    _renderPlano();
+  } else {
+    _renderElementos();
+    if (typeof reRenderDetallesAbiertos === 'function') reRenderDetallesAbiertos();
+  }
+}
+window.bmReRenderVistaActual = bmReRenderVistaActual;
+
+function _renderPlano() {
+  const tbl = document.getElementById('tabla');
+  if (!lastBarrasPlano.length) {
+    tbl.innerHTML = '<tbody><tr><td style="padding:12px; color:#888;">No hay barras con ese filtro.</td></tr></tbody>';
+    return;
+  }
+  const editando = (typeof bmEnModoEdicion === 'function') && bmEnModoEdicion();
+  // Contenedor con scroll acotado (igual criterio que el detalle en edición).
+  const scrollWrap = editando ? 'overflow:auto; max-height:65vh;' : 'overflow-x:auto;';
+  let html = '<tbody><tr><td style="padding:0;"><div style="' + scrollWrap + '">' +
+    '<table style="width:100%; min-width:1300px; font-size:11px; border-collapse:collapse;">' +
+    '<thead><tr style="color:#666; background:#fafafa; position:sticky; top:0;">' +
+    '<th style="text-align:left; padding:3px 6px;">Piso</th>' +
+    '<th style="text-align:left; padding:3px 6px;">Sector</th>' +
+    '<th style="text-align:left; padding:3px 6px;">Ciclo</th>' +
+    '<th style="text-align:left; padding:3px 6px;">Eje</th>' +
+    '<th style="text-align:left; padding:3px 6px;">Tipología</th>' +
+    '<th style="text-align:right; padding:3px 6px;">φ</th>' +
+    '<th style="text-align:right; padding:3px 6px;">Cant</th>' +
+    '<th style="text-align:right; padding:3px 6px;">Largo</th>' +
+    '<th style="text-align:right; padding:3px 6px;">Peso Tot</th>' +
+    '<th style="text-align:left; padding:3px 6px;">Figura</th>' +
+    ['A','B','C','D','E','F','G','H','I'].map(L => '<th style="text-align:right; padding:3px 6px;">' + L + '</th>').join('') +
+    ['α1','α2','α3','α4'].map(L => '<th style="text-align:right; padding:3px 6px;">' + L + '</th>').join('') +
+    '<th style="text-align:right; padding:3px 6px;">R</th>' +
+    '</tr></thead><tbody>';
+  lastBarrasPlano.forEach(b => {
+    html += _bmFilaBarraHTML(b, editando, true);
+  });
+  html += '</tbody></table></div></td></tr></tbody>';
+  tbl.innerHTML = html;
+  // Validar filas en modo edición (resalta incoherentes).
+  if (editando && typeof bmValidarTodasLasFilas === 'function') setTimeout(bmValidarTodasLasFilas, 30);
 }
 
 function _renderElementos() {
@@ -291,6 +416,54 @@ function reRenderDetallesAbiertos() {
 }
 window.reRenderDetallesAbiertos = reRenderDetallesAbiertos;
 
+// 5M.9: render de UNA fila de barra, compartido por la vista agrupada (_renderDetail)
+// y la vista plana (_renderPlano). conUbicacion=true antepone piso/sector/ciclo/eje.
+function _bmFilaBarraHTML(b, editando, conUbicacion) {
+  function _n(v, d) { if (v == null || v === '' || isNaN(v)) return ''; return d ? Number(v).toFixed(d) : Math.round(Number(v)); }
+  function _celdaEdit(campo, val, dec, ancho) {
+    if (!editando) return '<td style="padding:2px 6px; text-align:right; color:#444;">' + _n(val, dec) + '</td>';
+    return '<td style="padding:1px 3px; text-align:right;"><input type="number" step="any" value="' + (val != null ? val : '') +
+      '" data-barra-id="' + b.id + '" data-campo="' + campo + '" id="bmcell-' + b.id + '-' + campo + '" onchange="bmRegistrarCambio(this)" ' +
+      'style="width:' + (ancho || 60) + 'px; font-size:11px; text-align:right; padding:1px 3px;" /></td>';
+  }
+  function _celdaFigura() {
+    if (!editando) return '<td style="padding:2px 6px; color:#666;">' + (b.figura || '—') + '</td>';
+    return '<td style="padding:1px 3px;"><input type="text" list="bmFigurasDatalist" value="' + (b.figura || '') +
+      '" data-barra-id="' + b.id + '" data-campo="figura" id="bmcell-' + b.id + '-figura" onchange="bmRegistrarCambio(this)" ' +
+      'style="width:64px; font-size:11px; padding:1px 3px;" /></td>';
+  }
+  var dimKeys = ['dim_a','dim_b','dim_c','dim_d','dim_e','dim_f','dim_g','dim_h','dim_i'];
+  var angKeys = ['ang1','ang2','ang3','ang4'];
+  var dims = dimKeys.map(k => _celdaEdit(k, b[k], 0)).join('');
+  var angs = angKeys.map(k => _celdaEdit(k, b[k], 1)).join('');
+  var editadaBorde = b.editado_por ? 'border-left:3px solid #8d6e63;' : '';
+  var editadaTitle = b.editado_por ? (' title="Editada por ' + b.editado_por + '"') : '';
+  var ubic = '';
+  if (conUbicacion) {
+    ubic = '<td style="padding:2px 6px; font-size:10px;">' + (b.piso || '—') + '</td>' +
+      '<td style="padding:2px 6px;">' + _sectorBadge(b.sector) + '</td>' +
+      '<td style="padding:2px 6px;">' + _cicloBadge(b.ciclo) + '</td>' +
+      '<td style="padding:2px 6px; font-size:10px;">' + (b.eje || '—') + '</td>';
+  } else {
+    var idShort = (b.id_unico || '').split('-').slice(-1)[0];
+    ubic = '<td style="padding:2px 6px; font-family:monospace; font-size:10px; position:sticky; left:0; background:#fff;" title="' + (b.id_unico || '') + '">' + (b.editado_por ? '✏️ ' : '') + idShort + '</td>';
+  }
+  var html = '<tr style="border-top:1px solid #f0f0f0; ' + editadaBorde + '"' + editadaTitle + '>' +
+    ubic +
+    '<td style="padding:2px 6px; font-weight:600;">' + (conUbicacion && b.editado_por ? '✏️ ' : '') + (b.marca || '—') + '</td>' +
+    _celdaEdit('diam', b.diam, 0) +
+    _celdaEdit('cant_total', b.cant_total, 0) +
+    '<td style="padding:2px 6px; text-align:right; color:#888;" title="Se calcula de la suma de los lados">' + _n(b.largo_total, 0) + '</td>';
+  if (!conUbicacion) html += '<td style="padding:2px 6px; text-align:right;">' + _n(b.peso_unitario, 2) + '</td>';
+  html += '<td style="padding:2px 6px; text-align:right;">' + _n(b.peso_total, 1) + '</td>';
+  if (!conUbicacion) {
+    html += '<td style="padding:2px 6px;">' + _origenBadge(b.origen) + '</td>' +
+      '<td style="padding:2px 6px; color:#666;">' + (b.plano_code || '—') + '</td>';
+  }
+  html += _celdaFigura() + dims + angs + _celdaEdit('radio', b.radio, 1) + '</tr>';
+  return html;
+}
+
 function _renderDetail(cont, elem, barras) {
   if (!barras.length) {
     cont.innerHTML = '<em>Sin barras detalladas para este elemento.</em>';
@@ -352,43 +525,7 @@ function _renderDetail(cont, elem, barras) {
       '<th style="text-align:right; padding:2px 6px;">R</th>' +
       '</tr></thead><tbody>';
     grp.forEach(b => {
-      const idShort = (b.id_unico || '').split('-').slice(-1)[0];
-      // 5M.3/5M.4: en modo edición, celdas numéricas son inputs. El backend valida.
-      // Cada input lleva data-barra-id + data-campo; onchange registra el cambio.
-      function _celdaEdit(campo, val, dec, ancho) {
-        if (!editando) return '<td style="padding:2px 6px; text-align:right; color:#444;">' + _num(val, dec) + '</td>';
-        return '<td style="padding:1px 3px; text-align:right;"><input type="number" step="any" value="' + (val != null ? val : '') +
-          '" data-barra-id="' + b.id + '" data-campo="' + campo + '" id="bmcell-' + b.id + '-' + campo + '" onchange="bmRegistrarCambio(this)" ' +
-          'style="width:' + (ancho || 60) + 'px; font-size:11px; text-align:right; padding:1px 3px;" /></td>';
-      }
-      // Figura: texto con datalist del catálogo (5M.4).
-      function _celdaFigura() {
-        if (!editando) return '<td style="padding:2px 6px; color:#666;">' + (b.figura || '—') + '</td>';
-        return '<td style="padding:1px 3px;"><input type="text" list="bmFigurasDatalist" value="' + (b.figura || '') +
-          '" data-barra-id="' + b.id + '" data-campo="figura" id="bmcell-' + b.id + '-figura" onchange="bmRegistrarCambio(this)" ' +
-          'style="width:64px; font-size:11px; padding:1px 3px;" /></td>';
-      }
-      const dims = dimKeys.map(k => _celdaEdit(k, b[k], 0)).join('');
-      const angs = angKeys.map(k => _celdaEdit(k, b[k], 1)).join('');
-      // Marca de barra editada a mano (fila con borde). editado_por != null.
-      const editadaBorde = b.editado_por ? 'border-left:3px solid #8d6e63;' : '';
-      const editadaTitle = b.editado_por ? (' title="Editada por ' + b.editado_por + '"') : '';
-      html += '<tr style="border-top:1px solid #f0f0f0; ' + editadaBorde + '"' + editadaTitle + '>' +
-        '<td style="padding:2px 6px; font-family:monospace; font-size:10px; position:sticky; left:0; background:#fff;" title="' + (b.id_unico || '') + '">' + (b.editado_por ? '✏️ ' : '') + idShort + '</td>' +
-        '<td style="padding:2px 6px; font-weight:600;">' + (b.marca || '—') + '</td>' +
-        _celdaEdit('diam', b.diam, 0) +
-        _celdaEdit('cant_total', b.cant_total, 0) +
-        // Largo NO editable: se calcula de la suma de los lados usados (5M.4).
-        '<td style="padding:2px 6px; text-align:right; color:#888;" title="Se calcula de la suma de los lados">' + _num(b.largo_total, 0) + '</td>' +
-        '<td style="padding:2px 6px; text-align:right;">' + _num(b.peso_unitario, 2) + '</td>' +
-        '<td style="padding:2px 6px; text-align:right;">' + _num(b.peso_total, 1) + '</td>' +
-        '<td style="padding:2px 6px;">' + _origenBadge(b.origen) + '</td>' +
-        '<td style="padding:2px 6px; color:#666;">' + (b.plano_code || '—') + '</td>' +
-        _celdaFigura() +
-        dims +
-        angs +
-        _celdaEdit('radio', b.radio, 1) +
-        '</tr>';
+      html += _bmFilaBarraHTML(b, editando, false);
     });
     html += '</tbody></table></div></div>';
   });

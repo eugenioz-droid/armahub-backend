@@ -238,6 +238,11 @@
       if (res.ok && data && data.ok) {
         okCount++;
         delete _cambios[id];   // guardada: quitar de pendientes
+        // Optimistic update (5M.9): actualizar la barra en memoria con lo que devolvió
+        // el backend (peso/largo recalculados), sin re-pedir toda la lista.
+        if (data.barra && typeof bmActualizarBarraEnMemoria === 'function') {
+          bmActualizarBarraEnMemoria(data.barra);
+        }
       } else if (res.status === 409 && data && data.detail && data.detail.geometria_invalida) {
         // Geometría incoherente: resaltar slots, dejar cambios para corregir.
         fallidas.push(id);
@@ -257,10 +262,10 @@
       _actualizarBotonEdicion();
       return false;   // deja el modo edición abierto para corregir
     }
-    // Todo OK: refrescar la vista (pesos/largo recalculados) + panel + botón.
+    // Todo OK: optimistic update — re-render local (sin re-pedir la lista), el panel
+    // de ediciones y el botón. La memoria ya se actualizó con la barra del backend.
     if (okCount > 0) {
-      if (typeof detailCache !== 'undefined' && detailCache.clear) detailCache.clear();
-      if (typeof buscar === 'function') await buscar(false);
+      if (typeof bmReRenderVistaActual === 'function') bmReRenderVistaActual();
       if (typeof cargarEdicionesRecientes === 'function') cargarEdicionesRecientes();
     }
     if (typeof showToast === 'function') showToast(okCount + ' barra(s) actualizada(s)', 'success');
