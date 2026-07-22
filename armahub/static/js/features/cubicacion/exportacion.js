@@ -253,6 +253,8 @@ function buildExportMatriz(items, proy) {
   html += '<span><span style="display:inline-block; width:12px; height:10px; background:#e8f5e9; border:1px solid #8BC34A; vertical-align:middle;"></span> <span style="color:#558B2F;">&#10004;</span> Ya exportado</span>';
   html += '<span><span style="display:inline-block; width:12px; height:10px; background:#ffcdd2; border:1px solid #e57373; vertical-align:middle;"></span> <span style="color:#c62828;">&#9888;</span> Modificado (re-exportar)</span>';
   html += '<span><span style="display:inline-block; width:12px; height:10px; background:#fff; border:1px solid #ccc; vertical-align:middle;"></span> Pendiente</span>';
+  // 5M.6: marca de edición-plataforma (borde marrón + ✏️), ortogonal al estado.
+  html += '<span><span style="display:inline-block; width:12px; height:10px; background:#fff; border-left:3px solid #8d6e63; border-top:1px solid #ccc; border-bottom:1px solid #ccc; border-right:1px solid #ccc; vertical-align:middle;"></span> &#9997; Editado a mano en la plataforma</span>';
   html += '</div>';
 
   container.innerHTML = html;

@@ -644,15 +644,22 @@ async def import_armadetailer(
 
             # ── DELETE selectivo previo (decidido por el usuario en preview) ──
             barras_eliminadas_previo = 0
+            # 5M.5: capturar las barras EDITADAS A MANO que este DELETE borra, para
+            # dejar rastro en el audit_log (el re-import las elimina sin retorno).
+            editadas_borradas = []
             try:
                 if replace_full_planos:
                     planos = [p.strip() for p in replace_full_planos.split(';') if p.strip()]
                     if planos:
                         cur.execute(
-                            "DELETE FROM barras WHERE id_proyecto = %s AND plano_code = ANY(%s)",
+                            "DELETE FROM barras WHERE id_proyecto = %s AND plano_code = ANY(%s) "
+                            "RETURNING marca, piso, eje, ciclo, editado_por",
                             (proyecto_id, planos),
                         )
-                        barras_eliminadas_previo += cur.rowcount or 0
+                        for m, pi, ej, ci, edp in cur.fetchall():
+                            barras_eliminadas_previo += 1
+                            if edp:
+                                editadas_borradas.append({"marca": m, "piso": pi, "eje": ej, "ciclo": ci, "editado_por": edp})
                 if replace_keys:
                     triples = []
                     for token in replace_keys.split(';'):
@@ -671,10 +678,14 @@ async def import_armadetailer(
                               AND COALESCE(eje, '')   = %s
                               AND COALESCE(piso, '')  = %s
                               AND COALESCE(ciclo, '') = %s
+                            RETURNING marca, piso, eje, ciclo, editado_por
                             """,
                             (proyecto_id, eje, piso, ciclo),
                         )
-                        barras_eliminadas_previo += cur.rowcount or 0
+                        for m, pi, ej, ci, edp in cur.fetchall():
+                            barras_eliminadas_previo += 1
+                            if edp:
+                                editadas_borradas.append({"marca": m, "piso": pi, "eje": ej, "ciclo": ci, "editado_por": edp})
             except Exception as _e:
                 # Si falla el DELETE selectivo, abortar la importación
                 raise
@@ -721,6 +732,27 @@ async def import_armadetailer(
             # ────────────────────────────────────────────────────────────────────
 
     audit(user.get("email","unknown"), "importar_csv", f"{file.filename} → {proyecto_nombre} ({len(rows_to_upsert)} barras, {round(total_kilos,1)} kg, estado={estado})", "proyecto", proyecto_id)
+
+    # 5M.5: rastro del EVENTO DESTRUCTIVO — el re-import eliminó barras que habían
+    # sido editadas a mano en la plataforma (se borran sin retorno). Una línea de
+    # audit con el conteo + detalle (marca/ubicación/quién editó), para poder
+    # responder "¿por qué se perdió mi corrección?".
+    if editadas_borradas:
+        n = len(editadas_borradas)
+        muestras = editadas_borradas[:15]
+        detalle_list = "; ".join(
+            f"{(b['marca'] or b.get('id_unico') or '?')} ({'/'.join([x for x in [b.get('piso'), b.get('eje'), b.get('ciclo')] if x])}) editó {(b['editado_por'] or '?').split('@')[0]}"
+            for b in muestras
+        )
+        if n > len(muestras):
+            detalle_list += f"; …y {n - len(muestras)} más"
+        audit(
+            user.get("email", "unknown"),
+            "reimport_borro_editadas",
+            f"Import '{file.filename}' → {proyecto_nombre}: eliminó {n} barra(s) editada(s) a mano en la plataforma: {detalle_list}",
+            "proyecto",
+            proyecto_id,
+        )
 
     _cache.invalidate("stats:", "landing:")
 
