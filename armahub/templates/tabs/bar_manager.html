@@ -105,6 +105,8 @@
         <!-- 5M.3: candado de edición. Cerrado = solo lectura; abrir habilita editar barras. -->
         <button id="btnEdicionBarras" onclick="toggleModoEdicion()" style="font-size:11px; padding:3px 12px; background:#eee; border:1px solid #ccc; border-radius:4px; cursor:pointer;">🔒 Edición bloqueada</button>
         <button id="btnGuardarBarras" onclick="guardarCambiosBarras()" style="display:none; font-size:11px; padding:3px 12px; background:#2e7d32; color:#fff; border:none; border-radius:4px; cursor:pointer;">💾 Guardar cambios</button>
+        <!-- 5M.9: descartar solo los cambios de ESTA sesión de edición (desde que se abrió el candado). -->
+        <button id="btnDescartarBarras" onclick="descartarCambiosBarras()" style="display:none; font-size:11px; padding:3px 12px; background:#fff; color:#c62828; border:1px solid #c62828; border-radius:4px; cursor:pointer;">↩ Descartar cambios</button>
         <span id="edicionStatus" class="muted" style="font-size:11px;"></span>
         <span class="muted" id="count" style="margin-left:auto; font-size:11px;"></span>
       </div>

@@ -208,6 +208,16 @@
   // default y "saltar" después. Mecanismo GLOBAL: sirve a cualquier módulo/tab,
   // no hay lógica especial por panel.
   window.switchModule = async function switchModule(mod, tabDestino) {
+    // 5M.9: si salgo del Bar Manager (cubicación) con cambios de edición sin
+    // guardar, confirmar el descarte antes de navegar a otra sección.
+    if (window.currentModule === 'cubicacion' && mod !== 'cubicacion' &&
+        typeof window.bmHayCambiosSinGuardar === 'function' && window.bmHayCambiosSinGuardar()) {
+      if (!confirm('Tienes cambios sin guardar en las barras.\n\nSi cambias de sección se descartarán. ¿Salir de todas formas?')) {
+        return;
+      }
+      if (typeof window.bmResetModoEdicion === 'function') window.bmResetModoEdicion();
+    }
+
     var hub = document.getElementById('hubScreen');
     var container = document.getElementById('moduleContainer');
     var title = document.getElementById('moduleTitle');

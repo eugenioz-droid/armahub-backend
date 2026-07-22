@@ -11,6 +11,11 @@
 
   global.bmEnModoEdicion = function() { return _modoEdicion; };
   global.bmHayCambios = function() { return Object.keys(_cambios).length > 0; };
+  // ¿Hay cambios sin guardar en la sesión de edición actual? Lo consulta la
+  // navegación (cambio de sección) y el aviso de cerrar navegador (5M.9).
+  global.bmHayCambiosSinGuardar = function() {
+    return _modoEdicion && Object.keys(_cambios).length > 0;
+  };
 
   // Reset del modo edición (al cambiar de obra). Descarta cambios sin guardar.
   global.bmResetModoEdicion = function() {
@@ -128,6 +133,26 @@
     _actualizarBotonEdicion();
   };
 
+  // ---- Botón DESCARTAR (5M.9) ----
+  // Descarta SOLO los cambios de esta sesión de edición (los hechos desde que se
+  // abrió el candado). No sale del modo edición. La memoria de las barras nunca
+  // se tocó, así que un re-render limpio restituye los valores originales.
+  global.descartarCambiosBarras = function() {
+    var n = Object.keys(_cambios).length;
+    if (n === 0) {
+      if (typeof showToast === 'function') showToast('No hay cambios que descartar', 'info');
+      return;
+    }
+    if (!confirm('¿Descartar ' + n + ' cambio(s) sin guardar de esta sesión?\n\nLas barras vuelven a sus valores originales. Esto no se puede deshacer.')) return;
+    _cambios = {};
+    // Re-render de la vista activa: los inputs recuperan el valor original (la
+    // memoria no cambió) y se limpian los resaltados amarillo/rojo.
+    if (typeof bmReRenderVistaActual === 'function') bmReRenderVistaActual();
+    else if (typeof reRenderDetallesAbiertos === 'function') reRenderDetallesAbiertos();
+    _actualizarBotonEdicion();
+    if (typeof showToast === 'function') showToast('Cambios descartados', 'success');
+  };
+
   // ---- Toggle candado ----
   global.toggleModoEdicion = async function() {
     if (_modoEdicion) {
@@ -160,6 +185,7 @@
   function _actualizarBotonEdicion() {
     var btn = document.getElementById('btnEdicionBarras');
     var btnGuardar = document.getElementById('btnGuardarBarras');
+    var btnDescartar = document.getElementById('btnDescartarBarras');
     var status = document.getElementById('edicionStatus');
     var nCambios = Object.keys(_cambios).length;
     if (btn) {
@@ -180,6 +206,9 @@
     if (btnGuardar) {
       btnGuardar.style.display = (_modoEdicion && nCambios > 0) ? '' : 'none';
       btnGuardar.textContent = '💾 Guardar ' + (nCambios > 0 ? ('(' + nCambios + ')') : 'cambios');
+    }
+    if (btnDescartar) {
+      btnDescartar.style.display = (_modoEdicion && nCambios > 0) ? '' : 'none';
     }
   }
 
@@ -301,4 +330,15 @@
           '</tr>';
       }).join('') + '</table>';
   };
+
+  // ---- Aviso al cerrar/recargar el navegador con cambios sin guardar (5M.9) ----
+  // El navegador solo permite su diálogo genérico ("¿salir del sitio?"), no texto
+  // propio; con eso basta para evitar perder cambios por accidente.
+  window.addEventListener('beforeunload', function(e) {
+    if (global.bmHayCambiosSinGuardar && global.bmHayCambiosSinGuardar()) {
+      e.preventDefault();
+      e.returnValue = '';   // requerido por los navegadores para disparar el aviso
+      return '';
+    }
+  });
 })(window);
