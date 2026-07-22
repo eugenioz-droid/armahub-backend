@@ -134,32 +134,41 @@ function _fillProyectosDatalist(proyectos) {
   }).join('');
 }
 
-// El usuario escribió/eligió en el buscador de obra. Resuelve nombre→id, fija el
-// <select> oculto y dispara el cambio de proyecto solo si el id cambió.
+// El usuario escribió/eligió en el buscador de obra. Resuelve el texto → id de
+// proyecto y, si cambió, dispara la carga. Se llama en input/change/blur.
+//   forzar=true (change/blur) reevalúa aunque el id no cambie, para no quedar
+//   "pegado" cuando escribes otra obra sin limpiar antes.
 function onProyectoInput() {
   var input = document.getElementById('bmProyectoSearchInput');
   var sel = document.getElementById('proyecto');
   if (!input || !sel) return;
-  var txt = (input.value || '').trim();
-  var txtLow = txt.toLowerCase();
-  var id = '';
-  if (txt) {
-    // 1) Buscar en el cache de proyectos (nombre → id).
-    var exact = _proyectosCache.find(function(p) { return String(p.nombre || p.id).toLowerCase() === txtLow; });
-    var starts = exact || _proyectosCache.find(function(p) { return String(p.nombre || p.id).toLowerCase().indexOf(txtLow) === 0; });
-    if (starts) id = String(starts.id);
-    // 2) Fallback: si el cache no resolvió (timing/edge), buscar en las OPCIONES
-    //    del <select> oculto por texto visible. Así el buscador nunca queda "mudo".
-    if (!id && sel.options) {
-      for (var i = 0; i < sel.options.length; i++) {
-        var o = sel.options[i];
-        if (o.value && o.textContent.trim().toLowerCase() === txtLow) { id = o.value; break; }
-      }
-    }
-  }
-  if (sel.value === id) return;   // sin cambio real → no re-buscar
+  var txtLow = (input.value || '').trim().toLowerCase();
+  var id = _resolverProyectoId(txtLow, sel);
+  if (id === sel.value) return;   // el proyecto resuelto no cambió → no recargar
   sel.value = id;
   onProyectoChange();
+}
+
+// Resuelve un texto (minúsculas) a un id de proyecto. Prioridad: match EXACTO de
+// nombre; si no, prefijo ÚNICO (una sola obra empieza con ese texto); si nada,
+// fallback por las opciones del <select> oculto. Vacío o ambiguo → ''.
+function _resolverProyectoId(txtLow, sel) {
+  if (!txtLow) return '';
+  // 1) Exacto por nombre.
+  var exact = _proyectosCache.find(function(p) { return String(p.nombre || p.id).toLowerCase() === txtLow; });
+  if (exact) return String(exact.id);
+  // 2) Prefijo, pero solo si es ÚNICO (evita resolver a la obra equivocada
+  //    mientras escribes un prefijo que varias comparten).
+  var matches = _proyectosCache.filter(function(p) { return String(p.nombre || p.id).toLowerCase().indexOf(txtLow) === 0; });
+  if (matches.length === 1) return String(matches[0].id);
+  // 3) Fallback: opción del select oculto con ese texto visible exacto.
+  if (sel && sel.options) {
+    for (var i = 0; i < sel.options.length; i++) {
+      var o = sel.options[i];
+      if (o.value && o.textContent.trim().toLowerCase() === txtLow) return o.value;
+    }
+  }
+  return '';
 }
 
 // Puebla el datalist del buscador de Eje con los ejes de la obra. El input es de
