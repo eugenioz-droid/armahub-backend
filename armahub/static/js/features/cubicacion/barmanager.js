@@ -148,6 +148,7 @@ async function buscar(reset = false) {
   const pageInfo = document.getElementById('pageInfo');
 
   const params = _buildFilterParams();
+  console.log('[BM] buscar() proyecto="' + (document.getElementById('proyecto') || {}).value + '" params=' + (params ? params.toString() : 'NULL'));
   if (!params) {
     kpisEl.innerHTML = '<span class="muted">Selecciona un proyecto…</span>';
     countEl.textContent = '';
@@ -169,6 +170,7 @@ async function buscar(reset = false) {
   }
 
   const data = await apiGet('/barras/elementos?' + params.toString());
+  console.log('[BM] /barras/elementos ->', data ? ('total=' + data.total + ' items=' + (data.data ? data.data.length : '?')) : 'NULL/ERROR');
   if (!data) return;
 
   lastTotal = data.total || 0;

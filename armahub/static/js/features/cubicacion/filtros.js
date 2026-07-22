@@ -140,14 +140,24 @@ function onProyectoInput() {
   var input = document.getElementById('proyectoSearchInput');
   var sel = document.getElementById('proyecto');
   if (!input || !sel) return;
-  var txt = (input.value || '').trim().toLowerCase();
+  var txt = (input.value || '').trim();
+  var txtLow = txt.toLowerCase();
   var id = '';
   if (txt) {
-    // Coincidencia exacta de nombre primero; si no, primera que empieza igual.
-    var exact = _proyectosCache.find(function(p) { return String(p.nombre || p.id).toLowerCase() === txt; });
-    var starts = exact || _proyectosCache.find(function(p) { return String(p.nombre || p.id).toLowerCase().indexOf(txt) === 0; });
+    // 1) Buscar en el cache de proyectos (nombre → id).
+    var exact = _proyectosCache.find(function(p) { return String(p.nombre || p.id).toLowerCase() === txtLow; });
+    var starts = exact || _proyectosCache.find(function(p) { return String(p.nombre || p.id).toLowerCase().indexOf(txtLow) === 0; });
     if (starts) id = String(starts.id);
+    // 2) Fallback: si el cache no resolvió (timing/edge), buscar en las OPCIONES
+    //    del <select> oculto por texto visible. Así el buscador nunca queda "mudo".
+    if (!id && sel.options) {
+      for (var i = 0; i < sel.options.length; i++) {
+        var o = sel.options[i];
+        if (o.value && o.textContent.trim().toLowerCase() === txtLow) { id = o.value; break; }
+      }
+    }
   }
+  console.log('[BM] onProyectoInput txt="' + txt + '" -> id="' + id + '" (cache:' + _proyectosCache.length + ')');
   if (sel.value === id) return;   // sin cambio real → no re-buscar
   sel.value = id;
   onProyectoChange();
