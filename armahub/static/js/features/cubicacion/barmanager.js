@@ -138,6 +138,8 @@ async function buscar(reset = false) {
     currentOffset = 0;
     expanded.clear();
     detailCache.clear();
+    // 5M.11: al cambiar el filtro/lista, la selección previa ya no aplica.
+    if (typeof bmLimpiarSeleccion === 'function') bmLimpiarSeleccion();
   }
 
   const kpisEl = document.getElementById('bmKpis');
@@ -287,9 +289,14 @@ function _renderPlano() {
   const editando = (typeof bmEnModoEdicion === 'function') && bmEnModoEdicion();
   // Contenedor con scroll acotado (igual criterio que el detalle en edición).
   const scrollWrap = editando ? 'overflow:auto; max-height:65vh;' : 'overflow-x:auto;';
+  // 5M.11: columna de selección múltiple (solo en modo edición) para operaciones masivas.
+  var colSel = editando
+    ? '<th style="text-align:center; padding:3px 4px;"><input type="checkbox" id="bmSelTodas" onclick="bmToggleSeleccionTodas(this.checked)" title="Seleccionar todas" /></th>'
+    : '';
   let html = '<tbody><tr><td style="padding:0;"><div style="' + scrollWrap + '">' +
     '<table style="width:100%; min-width:1300px; font-size:11px; border-collapse:collapse;">' +
     '<thead><tr style="color:#666; background:#fafafa; position:sticky; top:0;">' +
+    colSel +
     '<th style="text-align:left; padding:3px 6px;">Piso</th>' +
     '<th style="text-align:left; padding:3px 6px;">Sector</th>' +
     '<th style="text-align:left; padding:3px 6px;">Ciclo</th>' +
@@ -311,6 +318,15 @@ function _renderPlano() {
   tbl.innerHTML = html;
   // Validar filas en modo edición (resalta incoherentes).
   if (editando && typeof bmValidarTodasLasFilas === 'function') setTimeout(bmValidarTodasLasFilas, 30);
+  // 5M.11: sincronizar checkbox "todas" + contador de selección tras el re-render.
+  if (editando) {
+    var selTodas = document.getElementById('bmSelTodas');
+    if (selTodas && typeof bmSeleccionCount === 'function') {
+      var n = bmSeleccionCount();
+      selTodas.checked = (n > 0 && n === lastBarrasPlano.length);
+    }
+    if (typeof bmActualizarBarraSeleccion === 'function') bmActualizarBarraSeleccion();
+  }
 }
 
 function _renderElementos() {
@@ -459,7 +475,15 @@ function _bmFilaBarraHTML(b, editando, conUbicacion) {
   var editadaTitle = b.editado_por ? (' title="Editada por ' + b.editado_por + '"') : '';
   var ubic = '';
   if (conUbicacion) {
-    ubic = '<td style="padding:2px 6px; font-size:10px;">' + (b.piso || '—') + '</td>' +
+    // 5M.11: celda de selección (solo en modo edición, vista plana).
+    var selCell = '';
+    if (editando) {
+      var checked = (typeof bmEstaSeleccionada === 'function' && bmEstaSeleccionada(b.id)) ? ' checked' : '';
+      selCell = '<td style="padding:2px 4px; text-align:center;"><input type="checkbox"' + checked +
+        ' onclick="bmToggleSeleccion(' + b.id + ', this.checked)" /></td>';
+    }
+    ubic = selCell +
+      '<td style="padding:2px 6px; font-size:10px;">' + (b.piso || '—') + '</td>' +
       '<td style="padding:2px 6px;">' + _sectorBadge(b.sector) + '</td>' +
       '<td style="padding:2px 6px;">' + _cicloBadge(b.ciclo) + '</td>' +
       '<td style="padding:2px 6px; font-size:10px;">' + (b.eje || '—') + '</td>';

@@ -9,7 +9,49 @@
   var _modoEdicion = false;
   var _cambios = {};
 
+  // 5M.11 — Selección múltiple en vista plana (Paso 1). Set de ids de barra
+  // seleccionadas para una futura operación masiva. Solo selección, sin acción.
+  var _seleccion = {};   // { barraId: true }
+
   global.bmEnModoEdicion = function() { return _modoEdicion; };
+  global.bmSeleccionCount = function() { return Object.keys(_seleccion).length; };
+  global.bmEstaSeleccionada = function(id) { return !!_seleccion[id]; };
+
+  // Alterna la selección de una barra (checkbox por fila).
+  global.bmToggleSeleccion = function(id, checked) {
+    if (id == null) return;
+    id = String(id);
+    if (checked) _seleccion[id] = true; else delete _seleccion[id];
+    _actualizarBarraSeleccion();
+  };
+
+  // Selecciona / deselecciona TODAS las barras de la vista plana actual.
+  global.bmToggleSeleccionTodas = function(checked) {
+    _seleccion = {};
+    if (checked && typeof lastBarrasPlano !== 'undefined' && lastBarrasPlano.forEach) {
+      lastBarrasPlano.forEach(function(b) { if (b && b.id != null) _seleccion[String(b.id)] = true; });
+    }
+    // Re-render para reflejar los checkboxes de todas las filas.
+    if (typeof bmReRenderVistaActual === 'function') bmReRenderVistaActual();
+    _actualizarBarraSeleccion();
+  };
+
+  // Limpia la selección (al cambiar de obra, salir de edición, re-buscar).
+  global.bmLimpiarSeleccion = function() {
+    _seleccion = {};
+    _actualizarBarraSeleccion();
+  };
+
+  // Actualiza la barra de estado de selección (contador). El panel de acciones
+  // masivas se construye en el Paso 2; por ahora solo informa cuántas hay.
+  function _actualizarBarraSeleccion() {
+    var cont = document.getElementById('bmSeleccionBar');
+    var lbl = document.getElementById('bmSeleccionCount');
+    var n = Object.keys(_seleccion).length;
+    if (lbl) lbl.textContent = n + ' barra' + (n === 1 ? '' : 's') + ' seleccionada' + (n === 1 ? '' : 's');
+    if (cont) cont.style.display = (_modoEdicion && n > 0) ? 'flex' : 'none';
+  }
+  global.bmActualizarBarraSeleccion = _actualizarBarraSeleccion;
   global.bmHayCambios = function() { return Object.keys(_cambios).length > 0; };
   // ¿Hay cambios sin guardar en la sesión de edición actual? Lo consulta la
   // navegación (cambio de sección) y el aviso de cerrar navegador (5M.9).
@@ -21,7 +63,9 @@
   global.bmResetModoEdicion = function() {
     _modoEdicion = false;
     _cambios = {};
+    _seleccion = {};
     _actualizarBotonEdicion();
+    _actualizarBarraSeleccion();
   };
 
   // Catálogo de figuras cargado en memoria (5M.4): código → {parciales, angulos, radio}.
@@ -165,6 +209,7 @@
         if (!ok) return;   // hubo errores/geometría inválida: seguir para corregir
       }
       _modoEdicion = false;
+      _seleccion = {};      // salir de edición limpia la selección
     } else {
       // Abriendo: warning explícito.
       if (!confirm('Vas a ACTIVAR el modo edición de barras.\n\nPodrás modificar diámetro, cantidad y la geometría (figura, lados A–I, ángulos, radio). El largo se calcula solo de los lados. La figura se valida contra el catálogo: NO podrás guardar una barra con lados/ángulos que sobran o faltan (quedan en ROJO para corregir).\n\nUsa el botón "💾 Guardar cambios". Los cambios quedan auditados. ¿Continuar?')) return;
@@ -178,6 +223,7 @@
     // así el candado también cambia la grilla plana, no solo los desplegables.
     if (typeof bmReRenderVistaActual === 'function') bmReRenderVistaActual();
     else if (typeof reRenderDetallesAbiertos === 'function') reRenderDetallesAbiertos();
+    _actualizarBarraSeleccion();
     // Validar filas visibles (resalta las incoherentes de origen).
     if (_modoEdicion) setTimeout(function() { global.bmValidarTodasLasFilas(); }, 50);
   };
