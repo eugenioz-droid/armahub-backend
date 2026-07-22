@@ -217,13 +217,17 @@ _ANG_COLS = ["ang1", "ang2", "ang3", "ang4"]
 
 
 def get_figura(cur, codigo: str):
-    """Devuelve {parciales, angulos, radio} de una figura, o None si no existe."""
+    """Devuelve {parciales, angulos, radio} de una figura, o None si no existe.
+    Robusto al tipo de cursor (tupla o dict_row): accede por nombre de columna."""
     if not codigo:
         return None
     cur.execute("SELECT parciales, angulos, radio FROM figuras_catalogo WHERE codigo = %s", (codigo,))
     row = cur.fetchone()
     if not row:
         return None
+    # dict_row → acceso por clave; tupla → por índice.
+    if isinstance(row, dict):
+        return {"parciales": row.get("parciales") or [], "angulos": row.get("angulos") or [], "radio": bool(row.get("radio"))}
     return {"parciales": row[0] or [], "angulos": row[1] or [], "radio": bool(row[2])}
 
 
