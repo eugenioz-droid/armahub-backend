@@ -9,13 +9,40 @@
   var _modoEdicion = false;
   var _cambios = {};
 
-  // 5M.11 — Selección múltiple en vista plana (Paso 1). Set de ids de barra
-  // seleccionadas para una futura operación masiva. Solo selección, sin acción.
-  var _seleccion = {};   // { barraId: true }
+  // 5M.11 — Modificación MASIVA en vista plana. Con el modo activo aparecen los
+  // checkboxes; al editar una celda de una barra marcada, el cambio se replica
+  // en tándem a TODAS las marcadas (misma columna). Sin modo masivo, edición
+  // normal celda por celda.
+  var _seleccion = {};      // { barraId: true } — barras marcadas
+  var _modoMasivo = false;  // ¿modificación masiva activa? (muestra checkboxes + replica)
 
   global.bmEnModoEdicion = function() { return _modoEdicion; };
+  global.bmEnModoMasivo = function() { return _modoEdicion && _modoMasivo; };
   global.bmSeleccionCount = function() { return Object.keys(_seleccion).length; };
   global.bmEstaSeleccionada = function(id) { return !!_seleccion[id]; };
+
+  // Toggle del modo "Modificación masiva". Muestra/oculta los checkboxes.
+  global.bmToggleModoMasivo = function() {
+    _modoMasivo = !_modoMasivo;
+    if (!_modoMasivo) _seleccion = {};   // al apagar, limpiar selección
+    _actualizarBotonMasivo();
+    if (typeof bmReRenderVistaActual === 'function') bmReRenderVistaActual();
+    _actualizarBarraSeleccion();
+  };
+
+  function _actualizarBotonMasivo() {
+    var btn = document.getElementById('btnModMasiva');
+    if (!btn) return;
+    btn.style.display = _modoEdicion ? '' : 'none';
+    if (_modoMasivo) {
+      btn.textContent = '🔁 Modificación masiva: ON';
+      btn.style.background = '#1565c0'; btn.style.color = '#fff'; btn.style.borderColor = '#1565c0';
+    } else {
+      btn.textContent = '🔁 Modificación masiva';
+      btn.style.background = '#fff'; btn.style.color = '#1565c0'; btn.style.borderColor = '#1565c0';
+    }
+  }
+  global.bmActualizarBotonMasivo = _actualizarBotonMasivo;
 
   // Alterna la selección de una barra (checkbox por fila).
   global.bmToggleSeleccion = function(id, checked) {
@@ -48,8 +75,9 @@
     var cont = document.getElementById('bmSeleccionBar');
     var lbl = document.getElementById('bmSeleccionCount');
     var n = Object.keys(_seleccion).length;
-    if (lbl) lbl.textContent = n + ' barra' + (n === 1 ? '' : 's') + ' seleccionada' + (n === 1 ? '' : 's');
-    if (cont) cont.style.display = (_modoEdicion && n > 0) ? 'flex' : 'none';
+    if (lbl) lbl.textContent = n + ' barra' + (n === 1 ? '' : 's') + ' marcada' + (n === 1 ? '' : 's');
+    // La barra aparece con el modo masivo activo (aunque aún no haya marcadas).
+    if (cont) cont.style.display = (_modoEdicion && _modoMasivo) ? 'flex' : 'none';
   }
   global.bmActualizarBarraSeleccion = _actualizarBarraSeleccion;
   global.bmHayCambios = function() { return Object.keys(_cambios).length > 0; };
@@ -62,9 +90,11 @@
   // Reset del modo edición (al cambiar de obra). Descarta cambios sin guardar.
   global.bmResetModoEdicion = function() {
     _modoEdicion = false;
+    _modoMasivo = false;
     _cambios = {};
     _seleccion = {};
     _actualizarBotonEdicion();
+    _actualizarBotonMasivo();
     _actualizarBarraSeleccion();
   };
 
@@ -209,7 +239,8 @@
         if (!ok) return;   // hubo errores/geometría inválida: seguir para corregir
       }
       _modoEdicion = false;
-      _seleccion = {};      // salir de edición limpia la selección
+      _modoMasivo = false;  // salir de edición apaga el modo masivo
+      _seleccion = {};      // ...y limpia la selección
     } else {
       // Abriendo: warning explícito.
       if (!confirm('Vas a ACTIVAR el modo edición de barras.\n\nPodrás modificar diámetro, cantidad y la geometría (figura, lados A–I, ángulos, radio). El largo se calcula solo de los lados. La figura se valida contra el catálogo: NO podrás guardar una barra con lados/ángulos que sobran o faltan (quedan en ROJO para corregir).\n\nUsa el botón "💾 Guardar cambios". Los cambios quedan auditados. ¿Continuar?')) return;
@@ -218,6 +249,7 @@
       await _cargarDatalistFiguras();   // 5M.4: figuras del catálogo para el input
     }
     _actualizarBotonEdicion();
+    _actualizarBotonMasivo();
     // Re-render de la vista ACTIVA (plana o agrupada) para reflejar inputs /
     // solo-lectura. bmReRenderVistaActual bifurca según _modoVistaPlana (5M.9);
     // así el candado también cambia la grilla plana, no solo los desplegables.
@@ -261,27 +293,51 @@
     }
   }
 
+  // Normaliza el valor de una celda según el campo (figura=texto/null; dim/áng
+  // vacío=null para borrar; resto=número). Devuelve el valor a guardar.
+  function _normalizarValorCelda(campo, val) {
+    if (campo === 'figura') return (val === '') ? null : val;
+    if (val === '') return null;   // vaciar dim/ángulo = borrar ese lado (5M.4)
+    return parseFloat(val);
+  }
+
+  // Aplica un cambio de (campo→valor) a UNA barra: registra en _cambios, refleja
+  // en su input (si está en pantalla), marca amarillo y revalida esa fila.
+  function _aplicarCambioBarra(id, campo, valor) {
+    id = String(id);
+    _cambios[id] = _cambios[id] || {};
+    _cambios[id][campo] = valor;
+    var cell = document.getElementById('bmcell-' + id + '-' + campo);
+    if (cell) {
+      // Reflejar el valor en el input (para las réplicas que no fueron tecleadas).
+      cell.value = (valor == null) ? '' : valor;
+      cell.style.background = '#fff3cd';   // amarillo = modificado
+    }
+    _validarFilaLocal(id);
+  }
+
   // ---- Registro de un cambio en un input (onchange desde el render) ----
   global.bmRegistrarCambio = function(el) {
     var id = el.getAttribute('data-barra-id');
     var campo = el.getAttribute('data-campo');
-    var val = el.value.trim();
     if (!id || !campo) return;
-    _cambios[id] = _cambios[id] || {};
-    if (campo === 'figura') {
-      // Texto (no parseFloat). Vacío = figura sin definir (se envía null).
-      _cambios[id][campo] = (val === '') ? null : val;
-    } else if (val === '') {
-      // Vaciar un dim/ángulo = eliminar ese lado. Enviar null EXPLÍCITO (no omitir)
-      // para que el backend lo borre — clave para quitar el lado que sobra (5M.4).
-      _cambios[id][campo] = null;
-    } else {
-      _cambios[id][campo] = parseFloat(val);
+    var valor = _normalizarValorCelda(campo, el.value.trim());
+    _aplicarCambioBarra(id, campo, valor);
+
+    // 5M.11: modificación MASIVA en tándem. Si el modo masivo está activo y la
+    // barra editada está marcada, replicar este mismo cambio a TODAS las marcadas.
+    if (_modoEdicion && _modoMasivo && _seleccion[String(id)]) {
+      var ids = Object.keys(_seleccion);
+      var n = 0;
+      ids.forEach(function(otroId) {
+        if (otroId === String(id)) return;   // la editada ya se aplicó
+        _aplicarCambioBarra(otroId, campo, valor);
+        n++;
+      });
+      if (n > 0 && typeof showToast === 'function') {
+        showToast('Aplicado a ' + (n + 1) + ' barras marcadas (' + campo + ')', 'info');
+      }
     }
-    // Marcar celda modificada (amarillo).
-    el.style.background = '#fff3cd';
-    // 5M.4: revalidar la fila al instante (resalta en rojo lo que sobra/falta).
-    _validarFilaLocal(id);
     _actualizarBotonEdicion();
   };
 

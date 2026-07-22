@@ -289,9 +289,10 @@ function _renderPlano() {
   const editando = (typeof bmEnModoEdicion === 'function') && bmEnModoEdicion();
   // Contenedor con scroll acotado (igual criterio que el detalle en edición).
   const scrollWrap = editando ? 'overflow:auto; max-height:65vh;' : 'overflow-x:auto;';
-  // 5M.11: columna de selección múltiple (solo en modo edición) para operaciones masivas.
-  var colSel = editando
-    ? '<th style="text-align:center; padding:3px 4px;"><input type="checkbox" id="bmSelTodas" onclick="bmToggleSeleccionTodas(this.checked)" title="Seleccionar todas" /></th>'
+  // 5M.11: columna de selección solo en modo MASIVO (no en edición normal).
+  var masivo = (typeof bmEnModoMasivo === 'function') && bmEnModoMasivo();
+  var colSel = masivo
+    ? '<th style="text-align:center; padding:3px 4px;"><input type="checkbox" id="bmSelTodas" onclick="bmToggleSeleccionTodas(this.checked)" title="Marcar todas" /></th>'
     : '';
   let html = '<tbody><tr><td style="padding:0;"><div style="' + scrollWrap + '">' +
     '<table style="width:100%; min-width:1300px; font-size:11px; border-collapse:collapse;">' +
@@ -318,8 +319,8 @@ function _renderPlano() {
   tbl.innerHTML = html;
   // Validar filas en modo edición (resalta incoherentes).
   if (editando && typeof bmValidarTodasLasFilas === 'function') setTimeout(bmValidarTodasLasFilas, 30);
-  // 5M.11: sincronizar checkbox "todas" + contador de selección tras el re-render.
-  if (editando) {
+  // 5M.11: sincronizar checkbox "todas" + contador tras el re-render (modo masivo).
+  if (masivo) {
     var selTodas = document.getElementById('bmSelTodas');
     if (selTodas && typeof bmSeleccionCount === 'function') {
       var n = bmSeleccionCount();
@@ -475,9 +476,9 @@ function _bmFilaBarraHTML(b, editando, conUbicacion) {
   var editadaTitle = b.editado_por ? (' title="Editada por ' + b.editado_por + '"') : '';
   var ubic = '';
   if (conUbicacion) {
-    // 5M.11: celda de selección (solo en modo edición, vista plana).
+    // 5M.11: celda de selección (solo en modo MASIVO, vista plana).
     var selCell = '';
-    if (editando) {
+    if ((typeof bmEnModoMasivo === 'function') && bmEnModoMasivo()) {
       var checked = (typeof bmEstaSeleccionada === 'function' && bmEstaSeleccionada(b.id)) ? ' checked' : '';
       selCell = '<td style="padding:2px 4px; text-align:center;"><input type="checkbox"' + checked +
         ' onclick="bmToggleSeleccion(' + b.id + ', this.checked)" /></td>';

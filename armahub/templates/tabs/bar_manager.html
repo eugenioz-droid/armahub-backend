@@ -136,16 +136,19 @@
         <button id="btnGuardarBarras" onclick="guardarCambiosBarras()" style="display:none; font-size:11px; padding:3px 12px; background:#2e7d32; color:#fff; border:none; border-radius:4px; cursor:pointer;">💾 Guardar cambios</button>
         <!-- 5M.9: descartar solo los cambios de ESTA sesión de edición (desde que se abrió el candado). -->
         <button id="btnDescartarBarras" onclick="descartarCambiosBarras()" style="display:none; font-size:11px; padding:3px 12px; background:#fff; color:#c62828; border:1px solid #c62828; border-radius:4px; cursor:pointer;">↩ Descartar cambios</button>
+        <!-- 5M.11: modificación masiva. Solo visible en modo edición. Al activarlo,
+             aparecen los checkboxes; editar una celda marcada replica a todas. -->
+        <button id="btnModMasiva" onclick="bmToggleModoMasivo()" style="display:none; font-size:11px; padding:3px 12px; background:#fff; color:#1565c0; border:1px solid #1565c0; border-radius:4px; cursor:pointer; font-weight:600;">🔁 Modificación masiva</button>
         <span id="edicionStatus" class="muted" style="font-size:11px;"></span>
         <span class="muted" id="count" style="margin-left:auto; font-size:11px;"></span>
       </div>
 
-      <!-- 5M.11: barra de selección múltiple (vista plana, modo edición). Paso 1:
-           solo el contador. El panel de operación masiva llega en el Paso 2. -->
-      <div id="bmSeleccionBar" style="display:none; margin-top:8px; padding:6px 12px; background:#e8f5e9; border:1px solid #a5d6a7; border-radius:6px; font-size:12px; align-items:center; gap:12px;">
-        <span style="font-weight:600; color:#2e7d32;">☑ <span id="bmSeleccionCount">0 barras seleccionadas</span></span>
-        <span class="muted" style="font-size:11px;">La operación masiva sobre la selección llegará en el siguiente paso.</span>
-        <button class="secondary" onclick="bmLimpiarSeleccion()" style="font-size:11px; padding:2px 10px; margin-left:auto;">Quitar selección</button>
+      <!-- 5M.11: barra de modificación masiva (vista plana). Aparece con el modo
+           masivo activo. Explica cómo se usa: marcar + editar una celda = replica. -->
+      <div id="bmSeleccionBar" style="display:none; margin-top:8px; padding:6px 12px; background:#e3f0ff; border:1px solid #90caf9; border-radius:6px; font-size:12px; align-items:center; gap:12px;">
+        <span style="font-weight:600; color:#1565c0;">🔁 Modificación masiva · <span id="bmSeleccionCount">0 barras marcadas</span></span>
+        <span class="muted" style="font-size:11px;">Marca las barras y edita una celda: ese valor se copia a TODAS las marcadas (misma columna). Luego revisa/guarda.</span>
+        <button class="secondary" onclick="bmLimpiarSeleccion()" style="font-size:11px; padding:2px 10px; margin-left:auto;">Quitar marcas</button>
       </div>
     </div>
 
