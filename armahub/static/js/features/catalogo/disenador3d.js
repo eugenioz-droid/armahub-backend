@@ -254,8 +254,23 @@
     _nodos3d = []; _redibujarFigura3d(); _actualizarInfo3d();
   };
 
-  // Preview 3D: snapshot del canvas del visor (así el preview = lo que se verá,
-  // un mini-render 3D). Requiere preserveDrawingBuffer en el renderer.
+  var _snapshotFijado = null;   // dataURL del snapshot fijado por el usuario (o null)
+
+  // FIJAR la vista 3D actual como el snapshot oficial (lo que se verá/guardará).
+  // Así el usuario controla desde qué ángulo se representa la figura 3D.
+  global.disenador3dFijarVista = function() {
+    if (_nodos3d.length < 2 || !_renderer) { alert('Dibuja la figura 3D antes de fijar la vista.'); return; }
+    try {
+      _renderer.render(_scene, _camera);
+      _snapshotFijado = _renderer.domElement.toDataURL('image/png');
+      _actualizarPreview3d();
+      if (typeof showToast === 'function') showToast('Vista 3D fijada como preview.', 'success');
+    } catch (e) { alert('No se pudo fijar la vista.'); }
+  };
+  global.disenador3dSnapshot = function() { return _snapshotFijado; };
+
+  // Preview 3D: si hay una vista FIJADA, la usa (control del usuario). Si no, toma
+  // un snapshot en vivo del canvas (preview provisional mientras rota/dibuja).
   function _actualizarPreview3d() {
     var prev = document.getElementById('disPreview');
     if (!prev) return;
@@ -263,15 +278,17 @@
       prev.innerHTML = '<span class="muted" style="font-size:11px;">Dibuja para ver el preview.</span>';
       return;
     }
-    try {
-      // Forzar un render antes del snapshot.
-      _renderer.render(_scene, _camera);
-      var url = _renderer.domElement.toDataURL('image/png');
-      prev.innerHTML = '<img src="' + url + '" style="max-width:100%; max-height:120px; border-radius:4px;" alt="preview 3D"/>';
-    } catch (e) {
-      prev.innerHTML = '<span class="muted" style="font-size:11px;">Preview 3D no disponible.</span>';
+    var url = _snapshotFijado;
+    if (!url) {
+      try { _renderer.render(_scene, _camera); url = _renderer.domElement.toDataURL('image/png'); }
+      catch (e) { prev.innerHTML = '<span class="muted" style="font-size:11px;">Preview 3D no disponible.</span>'; return; }
     }
+    var nota = _snapshotFijado ? '' : '<div style="font-size:9px; color:#b26a00; text-align:center; margin-top:2px;">Vista en vivo — usa "Fijar vista" para congelarla.</div>';
+    prev.innerHTML = '<img src="' + url + '" style="max-width:100%; max-height:120px; border-radius:4px;" alt="preview 3D"/>' + nota;
   }
+
+  // Al cambiar la figura, el snapshot fijado deja de ser válido (se libera).
+  function _invalidarSnapshot() { _snapshotFijado = null; }
 
   var _LETRAS3D = 'ABCDEFGHI'.split('');
   // Panel de parámetros 3D: por cada tramo (nodo i-1 → i), su lado, largo (grillas)
@@ -310,6 +327,7 @@
   // Info del dibujo (nº de tramos) en el panel.
   function _actualizarInfo3d() {
     _actualizarPanel3d();
+    _invalidarSnapshot();   // la figura cambió → el snapshot fijado ya no vale
     // Preview con un pequeño delay para que el render del frame esté listo.
     setTimeout(_actualizarPreview3d, 60);
     var el = document.getElementById('dis3dInfo');
