@@ -166,6 +166,10 @@
   var SNAP_ANG = 45;             // snap de ángulo (grados) — ángulos limpios
   var LETRAS = 'ABCDEFGHI'.split('');
 
+  // El sistema (aSa) pide el ÁNGULO INTERNO del vértice (el suplementario del
+  // giro/desviación que el motor calcula). interno = 180 − giro. 90 queda 90.
+  function _anguloInterno(giro) { return 180 - (Number(giro) || 0); }
+
   // Construye el atributo `d` de un <path> desde puntos, usando L (línea) para
   // segmentos rectos y A (arco) para curvos. tipos/radios son paralelos a los
   // segmentos (índice = i-1 para el segmento entre punto i-1 e i).
@@ -552,7 +556,8 @@
     var geo = _puntosAGeometria();
     var largos = _largos();
     var ladosUsados = geo.tramos.map(function(t) { return t.lado; });
-    var angulos = geo.tramos.filter(function(t, i) { return i > 0; }).map(function(t) { return t.giro; });
+    // Ángulos INTERNOS (convención aSa) de cada vértice, para el panel.
+    var angulos = geo.tramos.filter(function(t, i) { return i > 0; }).map(function(t) { return _anguloInterno(t.giro); });
 
     var html = '<div style="font-weight:700; color:#00695c; margin-bottom:8px;">Parámetros de la figura</div>';
     html += '<table style="width:100%; font-size:12px; border-collapse:collapse;">';
@@ -588,9 +593,11 @@
     var parciales = geo.tramos.map(function(t) { return t.lado; });
     // Convención aSa: solo los ángulos ESPECIALES (≠90 y ≠0) van a `angulos`.
     // Un doblez de 90° es implícito (no es α1-α4).
+    // Ángulos que se guardan = ÁNGULO INTERNO del vértice (convención aSa).
+    // Solo los especiales (giro ≠90 y ≠0). Un giro de 90 → interno 90 (implícito).
     var angulos = geo.tramos
-      .map(function(t) { return t.giro; })
-      .filter(function(g) { return g !== 90 && g !== 0; });
+      .filter(function(t) { return t.giro !== 90 && t.giro !== 0; })
+      .map(function(t) { return _anguloInterno(t.giro); });
     if (angulos.length > 4) {
       alert('Esta figura tiene ' + angulos.length + ' ángulos especiales (≠90°), pero el sistema soporta máximo 4 (α1-α4).\n\nAjusta la figura antes de guardar.');
       return;
