@@ -86,9 +86,9 @@
     // geometría (radios escalados al mismo factor que los puntos).
     var tiposEsc = opts.tipos_seg || [];
     var radiosEsc = (opts.radios_seg || []).map(function(r) { return (r || 0) * scale; });
-    // La transformación tx() invierte la Y → el sweep del arco se ve al revés.
-    // Invertir el sweep para el render (1↔0) para que la curva vaya al mismo lado.
-    var sweepsEsc = (opts.sweeps_seg || []).map(function(sw) { return (sw != null ? (1 - sw) : 0); });
+    // Sweep directo: tx() ya invierte la Y, así que el arco se ve al MISMO lado
+    // que en el lienzo sin invertir el sweep (invertirlo lo dejaba al revés).
+    var sweepsEsc = (opts.sweeps_seg || []).map(function(sw) { return (sw != null ? sw : 1); });
     svg += '<path d="' + _pathDesdePuntos(tpts, tiposEsc, radiosEsc, sweepsEsc) + '" fill="none" stroke="#00695c" stroke-width="3" stroke-linejoin="round" stroke-linecap="round" />';
     // Vértices (nodos pequeños para no recargar la miniatura).
     tpts.forEach(function(p, i) {
