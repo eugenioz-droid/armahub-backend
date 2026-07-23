@@ -25,6 +25,11 @@
   // sin dimensiones reales, útil en el catálogo).
   function geometriaAPuntos(geometria, dims, unidad) {
     unidad = unidad || 100;                 // largo por defecto de un lado sin dimensión
+    // 5M.8.6: si la geometría trae PUNTOS reales (dibujados), usarlos tal cual →
+    // render idéntico al lienzo (sin rotar). Fallback: reconstruir desde tramos.
+    if (geometria && geometria.puntos && geometria.puntos.length >= 2) {
+      return geometria.puntos.map(function(p) { return { x: p.x, y: p.y }; });
+    }
     var tramos = (geometria && geometria.tramos) || [];
     var pts = [{ x: 0, y: 0 }];
     var heading = 0;                        // rumbo actual en grados (0 = hacia la derecha)
@@ -77,14 +82,41 @@
       svg += '<circle cx="' + p.x.toFixed(1) + '" cy="' + p.y.toFixed(1) + '" r="' + (isEnd ? 4 : 3) +
         '" fill="' + (isEnd ? '#004d40' : '#4db6ac') + '" />';
     });
-    // Etiquetas de lado (en el punto medio de cada segmento).
+    // Etiquetas de lado, desplazadas perpendicular a la línea (no encima).
     for (var i = 1; i < tpts.length; i++) {
       var a = tpts[i - 1], b = tpts[i];
       var mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
       var lbl = labels[i - 1] || '';
       if (lbl) {
-        svg += '<text x="' + mx.toFixed(1) + '" y="' + (my - 4).toFixed(1) +
-          '" text-anchor="middle" fill="#00695c" font-size="12" font-weight="700">' + lbl + '</text>';
+        var svx = b.x - a.x, svy = b.y - a.y; var sl = Math.sqrt(svx*svx + svy*svy) || 1;
+        var lox = mx - (svy/sl) * 10, loy = my + (svx/sl) * 10;
+        svg += '<text x="' + lox.toFixed(1) + '" y="' + (loy + 3).toFixed(1) +
+          '" text-anchor="middle" fill="#00695c" font-size="11" font-weight="700">' + lbl + '</text>';
+      }
+    }
+    // 5M.8.6: etiquetas de ÁNGULO en la bisectriz de cada vértice interno (α1…;
+    // 90° gris). Solo si opts.angulos !== false (permite render limpio si se quiere).
+    if (opts.angulos !== false) {
+      var nAlfa = 0;
+      for (var j = 1; j < tpts.length - 1; j++) {
+        // Ángulo de doblez en el vértice j (sobre los puntos ORIGINALES, no escalados).
+        var q0 = pts[j - 1], q1 = pts[j], q2 = pts[j + 1];
+        var a1 = Math.atan2(q1.y - q0.y, q1.x - q0.x);
+        var a2 = Math.atan2(q2.y - q1.y, q2.x - q1.x);
+        var dd = (a2 - a1) * 180 / Math.PI; while (dd > 180) dd -= 360; while (dd < -180) dd += 360;
+        var giro = Math.abs(Math.round(dd));
+        if (giro === 0) continue;
+        var txt, col;
+        if (giro === 90) { txt = '90°'; col = '#bbb'; }
+        else { nAlfa++; txt = 'α' + nAlfa; col = '#c62828'; }
+        // Bisectriz en coords escaladas (tpts).
+        var tv = tpts[j], ta = tpts[j - 1], tb = tpts[j + 1];
+        var w1x = ta.x - tv.x, w1y = ta.y - tv.y; var m1 = Math.sqrt(w1x*w1x + w1y*w1y) || 1;
+        var w2x = tb.x - tv.x, w2y = tb.y - tv.y; var m2 = Math.sqrt(w2x*w2x + w2y*w2y) || 1;
+        var cbx = w1x/m1 + w2x/m2, cby = w1y/m1 + w2y/m2; var cbl = Math.sqrt(cbx*cbx + cby*cby);
+        if (cbl < 0.15) { cbx = -w1y/m1; cby = w1x/m1; cbl = 1; }
+        var aox = tv.x + (cbx/cbl) * 14, aoy = tv.y + (cby/cbl) * 14;
+        svg += '<text x="' + aox.toFixed(1) + '" y="' + (aoy + 3).toFixed(1) + '" text-anchor="middle" fill="' + col + '" font-size="10" font-weight="700">' + txt + '</text>';
       }
     }
     svg += '</svg>';
@@ -200,7 +232,12 @@
         tramos.push({ lado: lado, giro: giro, sentido: sentido });
       }
     }
-    return { dim: '2D', tramos: tramos };
+    // 5M.8.6: guardar también los PUNTOS reales (normalizados al primer punto y
+    // con Y invertida a "hacia arriba"), para que el render reproduzca la figura
+    // IDÉNTICA a como se dibujó (no reconstruida desde heading=0, que rotaba).
+    var p0 = _puntos[0] || { x: 0, y: 0 };
+    var puntos = _puntos.map(function(p) { return { x: p.x - p0.x, y: -(p.y - p0.y) }; });
+    return { dim: '2D', tramos: tramos, puntos: puntos };
   }
 
   // ---- Longitudes de cada lado desde los puntos del lienzo (en px de grilla) ----
@@ -303,14 +340,24 @@
       s += '<circle cx="' + lx.toFixed(1) + '" cy="' + ly.toFixed(1) + '" r="9" fill="#fff" opacity="0.85"/>';
       s += '<text x="' + lx.toFixed(1) + '" y="' + (ly + 4).toFixed(1) + '" text-anchor="middle" fill="#00695c" font-size="13" font-weight="700">' + lbl + '</text>';
     }
-    // Etiquetas de ÁNGULO en cada vértice interno (α1, α2… solo especiales; 90°
-    // se marca aparte). Ligeramente separadas del vértice para no tapar la barra.
+    // Etiquetas de ÁNGULO en cada vértice interno, ubicadas en la BISECTRIZ del
+    // ángulo (entre los dos segmentos que forman el vértice), pegadas al vértice.
     var angs = _etiquetasAngulos();
     Object.keys(angs).forEach(function(idx) {
-      var v = _puntos[idx];
+      idx = Number(idx);
+      var v = _puntos[idx], pa = _puntos[idx - 1], pb = _puntos[idx + 1];
       var info = angs[idx];
       var color = info.esAlfa ? '#c62828' : '#999';   // α especial en rojo, 90° gris
-      s += '<text x="' + (v.x + 8) + '" y="' + (v.y + 16) + '" fill="' + color + '" font-size="12" font-weight="700">' + info.texto + '</text>';
+      // Vectores unitarios desde el vértice hacia cada segmento vecino.
+      var u1x = pa.x - v.x, u1y = pa.y - v.y; var l1 = Math.sqrt(u1x*u1x + u1y*u1y) || 1;
+      var u2x = pb.x - v.x, u2y = pb.y - v.y; var l2 = Math.sqrt(u2x*u2x + u2y*u2y) || 1;
+      var bx = u1x/l1 + u2x/l2, by = u1y/l1 + u2y/l2;
+      var bl = Math.sqrt(bx*bx + by*by);
+      // Si los segmentos son casi opuestos (bisectriz ~0), usar la perpendicular.
+      if (bl < 0.15) { bx = -u1y/l1; by = u1x/l1; bl = 1; }
+      var off = 20;
+      var lx = v.x + (bx/bl) * off, ly = v.y + (by/bl) * off;
+      s += '<text x="' + lx.toFixed(1) + '" y="' + (ly + 4).toFixed(1) + '" text-anchor="middle" fill="' + color + '" font-size="12" font-weight="700">' + info.texto + '</text>';
     });
     capa.innerHTML = s;
   }
