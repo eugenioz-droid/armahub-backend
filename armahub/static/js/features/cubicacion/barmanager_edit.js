@@ -348,21 +348,30 @@
   };
 
   // ==== 5M.12: OPERAR COLUMNAS (copiar / intercambiar) sobre las marcadas ====
-  // Columnas operables: lados parciales A-I, ángulos α1-α4 y R (radio).
-  // NO φ diámetro ni cantidad (no aplican para desplazar/intercambiar geometría).
-  var _COLS_OPERABLES = [
+  // Se opera entre columnas del MISMO TIPO: lados parciales A-I, o ángulos α1-α4.
+  // No se mezclan (no tiene sentido copiar un lado a un ángulo). R/φ/cant no aplican.
+  var _COLS_LADOS = [
     { campo: 'dim_a', label: 'A' }, { campo: 'dim_b', label: 'B' }, { campo: 'dim_c', label: 'C' },
     { campo: 'dim_d', label: 'D' }, { campo: 'dim_e', label: 'E' }, { campo: 'dim_f', label: 'F' },
-    { campo: 'dim_g', label: 'G' }, { campo: 'dim_h', label: 'H' }, { campo: 'dim_i', label: 'I' },
-    { campo: 'ang1', label: 'α1' }, { campo: 'ang2', label: 'α2' }, { campo: 'ang3', label: 'α3' }, { campo: 'ang4', label: 'α4' },
-    { campo: 'radio', label: 'R' }
+    { campo: 'dim_g', label: 'G' }, { campo: 'dim_h', label: 'H' }, { campo: 'dim_i', label: 'I' }
   ];
+  var _COLS_ANGULOS = [
+    { campo: 'ang1', label: 'α1' }, { campo: 'ang2', label: 'α2' }, { campo: 'ang3', label: 'α3' }, { campo: 'ang4', label: 'α4' }
+  ];
+  var _colTipo = 'lados';
 
-  // Puebla los dropdowns de columna origen/destino (una vez que existen en el DOM).
+  // Cambia el tipo (lados/ángulos) y repuebla los dropdowns con ese grupo.
+  global.bmSetColTipo = function(tipo) {
+    _colTipo = (tipo === 'angulos') ? 'angulos' : 'lados';
+    _poblarColsOperar();
+  };
+
+  // Puebla los dropdowns de columna origen/destino con el grupo del tipo activo.
   function _poblarColsOperar() {
     var so = document.getElementById('bmColOrigen'), sd = document.getElementById('bmColDestino');
     if (!so || !sd) return;
-    var opts = _COLS_OPERABLES.map(function(c) { return '<option value="' + c.campo + '">' + c.label + '</option>'; }).join('');
+    var cols = (_colTipo === 'angulos') ? _COLS_ANGULOS : _COLS_LADOS;
+    var opts = cols.map(function(c) { return '<option value="' + c.campo + '">' + c.label + '</option>'; }).join('');
     so.innerHTML = opts; sd.innerHTML = opts;
     if (sd.options.length > 1) sd.selectedIndex = 1;   // destino distinto por defecto
     // Flecha según la operación.
@@ -410,7 +419,8 @@
   };
 
   function _labelCol(campo) {
-    for (var i = 0; i < _COLS_OPERABLES.length; i++) if (_COLS_OPERABLES[i].campo === campo) return _COLS_OPERABLES[i].label;
+    var todas = _COLS_LADOS.concat(_COLS_ANGULOS);
+    for (var i = 0; i < todas.length; i++) if (todas[i].campo === campo) return todas[i].label;
     return campo;
   }
 

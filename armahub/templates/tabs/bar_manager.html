@@ -154,6 +154,14 @@
         <!-- 5M.12: operar columnas (copiar / intercambiar) sobre las marcadas -->
         <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap; border-top:1px solid #bbdefb; padding-top:8px;">
           <span style="font-weight:600; color:#1565c0;">Operar columnas:</span>
+          <!-- Tipo: acota los dropdowns a lados O ángulos (no se mezclan) -->
+          <label style="display:inline-flex; align-items:center; gap:3px; cursor:pointer;">
+            <input type="radio" name="bmColTipo" value="lados" checked onchange="bmSetColTipo('lados')" /> Lados
+          </label>
+          <label style="display:inline-flex; align-items:center; gap:3px; cursor:pointer;">
+            <input type="radio" name="bmColTipo" value="angulos" onchange="bmSetColTipo('angulos')" /> Ángulos
+          </label>
+          <span style="color:#90caf9;">|</span>
           <select id="bmColOp" style="font-size:12px;">
             <option value="copiar">Copiar (origen → destino)</option>
             <option value="intercambiar">Intercambiar (origen ↔ destino)</option>
