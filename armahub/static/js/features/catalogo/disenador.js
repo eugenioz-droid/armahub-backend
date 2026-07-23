@@ -82,6 +82,10 @@
     var tpts = pts.map(tx);
 
     var svg = '<svg width="' + W + '" height="' + H + '" viewBox="0 0 ' + W + ' ' + H + '" style="max-width:100%; height:auto;">';
+    svg += '<defs>' +
+      '<marker id="disArrowEnd" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#1565c0"/></marker>' +
+      '<marker id="disArrowStart" markerWidth="9" markerHeight="9" refX="0" refY="3" orient="auto"><path d="M7,0 L0,3 L7,6 Z" fill="#1565c0"/></marker>' +
+      '</defs>';
     // Línea principal: path con L (rectos) y A (arcos), usando tipos/radios de la
     // geometría (radios escalados al mismo factor que los puntos).
     var tiposEsc = opts.tipos_seg || [];
@@ -135,6 +139,28 @@
         svg += '<text x="' + aox.toFixed(1) + '" y="' + (aoy + 3).toFixed(1) + '" text-anchor="middle" fill="' + col + '" font-size="10" font-weight="700">' + txt + '</text>';
       }
     }
+    // Etiquetas MANUALES (letra/ángulo/radio/cotas), mapeadas con tx() al render.
+    var COLE = { letra: '#00695c', angulo: '#c62828', radio: '#1565c0', diametro: '#1565c0' };
+    (opts.etiquetas || []).forEach(function(e) {
+      if (e.tipo === 'cota' || e.tipo === 'radio' || e.tipo === 'diametro') {
+        var p1 = tx({x:e.x1, y:e.y1}), p2 = tx({x:e.x2, y:e.y2});
+        var dx = p2.x-p1.x, dy = p2.y-p1.y, len = Math.sqrt(dx*dx+dy*dy)||1;
+        var nx = -dy/len*4, ny = dx/len*4;
+        var cc = (e.tipo === 'cota') ? '#888' : '#1565c0';
+        var mk = e.tipo === 'diametro' ? ' marker-start="url(#disArrowStart)" marker-end="url(#disArrowEnd)"'
+               : (e.tipo === 'radio' ? ' marker-end="url(#disArrowEnd)"' : '');
+        svg += '<line x1="'+p1.x.toFixed(1)+'" y1="'+p1.y.toFixed(1)+'" x2="'+p2.x.toFixed(1)+'" y2="'+p2.y.toFixed(1)+'" stroke="'+cc+'" stroke-width="1.2"'+mk+'/>';
+        // Cota: topes perpendiculares en cada extremo (radio/diámetro usan flechas).
+        if (e.tipo === 'cota') {
+          svg += '<line x1="'+(p1.x+nx)+'" y1="'+(p1.y+ny)+'" x2="'+(p1.x-nx)+'" y2="'+(p1.y-ny)+'" stroke="#888" stroke-width="1.2"/>';
+          svg += '<line x1="'+(p2.x+nx)+'" y1="'+(p2.y+ny)+'" x2="'+(p2.x-nx)+'" y2="'+(p2.y-ny)+'" stroke="#888" stroke-width="1.2"/>';
+        }
+        return;
+      }
+      var t2 = tx({x:e.x, y:e.y}); var col2 = COLE[e.tipo] || '#333';
+      svg += '<text x="'+t2.x.toFixed(1)+'" y="'+(t2.y+3).toFixed(1)+'" text-anchor="middle" fill="#fff" stroke="#fff" stroke-width="2.5" font-size="11" font-weight="800">'+String(e.texto).replace(/[<>&]/g,'')+'</text>';
+      svg += '<text x="'+t2.x.toFixed(1)+'" y="'+(t2.y+3).toFixed(1)+'" text-anchor="middle" fill="'+col2+'" font-size="11" font-weight="800">'+String(e.texto).replace(/[<>&]/g,'')+'</text>';
+    });
     svg += '</svg>';
     return svg;
   }
@@ -152,7 +178,8 @@
     var sweeps = (geometria && geometria.sweeps_seg) ||
       (((geometria && geometria.tramos) || []).map(function(t) { return (t.sweep != null ? t.sweep : 1); }));
     var o = { labels: labels, width: opts.width, height: opts.height, pad: opts.pad,
-              angulos: opts.angulos, tipos_seg: tipos, radios_seg: radios, sweeps_seg: sweeps };
+              angulos: opts.angulos, tipos_seg: tipos, radios_seg: radios, sweeps_seg: sweeps,
+              etiquetas: (geometria && geometria.etiquetas) || [] };
     return svgDesdePuntos(pts, o);
   }
 
@@ -262,12 +289,12 @@
 
   global.disenadorLimpiarEtiquetas = function() {
     if (_etiquetas.length && !confirm('¿Borrar TODAS las etiquetas?')) return;
-    _etiquetas = []; _cotaInicio = null; _cotaHover = null; _redibujarLienzo();
+    _etiquetas = []; _cotaInicio = null; _cotaHover = null; _redibujarLienzo(); _redibujarPanel();
   };
   // Deshacer la ÚLTIMA etiqueta (no borrar todo).
   global.disenadorDeshacerEtiqueta = function() {
     if (_cotaInicio) { _cotaInicio = null; _cotaHover = null; _redibujarLienzo(); return; }  // cancela cota a medias
-    if (_etiquetas.length) { _etiquetas.pop(); _redibujarLienzo(); }
+    if (_etiquetas.length) { _etiquetas.pop(); _redibujarLienzo(); _redibujarPanel(); }
   };
 
   // Muestra el selector de letra o ángulo según el tipo de etiqueta elegido.
@@ -371,9 +398,10 @@
     var p0 = _puntos[0] || { x: 0, y: 0 };
     var puntos = _puntos.map(function(p) { return { x: p.x - p0.x, y: -(p.y - p0.y) }; });
     // Etiquetas manuales del lienzo, normalizadas al mismo origen (Y hacia arriba).
-    // Cota lleva x1/y1/x2/y2; letra/ángulo llevan x/y + texto.
+    // Cota/radio/diámetro llevan x1/y1/x2/y2; letra/ángulo llevan x/y + texto.
     var etiquetas = _etiquetas.map(function(e) {
-      if (e.tipo === 'cota') return { tipo: 'cota', x1: e.x1-p0.x, y1: -(e.y1-p0.y), x2: e.x2-p0.x, y2: -(e.y2-p0.y) };
+      if (e.tipo === 'cota' || e.tipo === 'radio' || e.tipo === 'diametro')
+        return { tipo: e.tipo, x1: e.x1-p0.x, y1: -(e.y1-p0.y), x2: e.x2-p0.x, y2: -(e.y2-p0.y) };
       return { tipo: e.tipo, texto: e.texto, x: e.x-p0.x, y: -(e.y-p0.y) };
     });
     return { dim: '2D', tramos: tramos, puntos: puntos,
@@ -431,6 +459,11 @@
     if (!wrap) return;
     var s = '<svg id="disenadorSvgCanvas" width="' + CW + '" height="' + CH + '" ' +
       'style="background:#fff; border-radius:6px; cursor:crosshair; touch-action:none; max-width:100%;">';
+    // Flechas de acotación (radio/diámetro), estilo CAD.
+    s += '<defs>' +
+      '<marker id="disArrowEnd" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#1565c0"/></marker>' +
+      '<marker id="disArrowStart" markerWidth="9" markerHeight="9" refX="0" refY="3" orient="auto"><path d="M7,0 L0,3 L7,6 Z" fill="#1565c0"/></marker>' +
+      '</defs>';
     // Grilla (estática).
     for (var gx = 0; gx <= CW; gx += GRID) s += '<line x1="' + gx + '" y1="0" x2="' + gx + '" y2="' + CH + '" stroke="#eee" stroke-width="1"/>';
     for (var gy = 0; gy <= CH; gy += GRID) s += '<line x1="0" y1="' + gy + '" x2="' + CW + '" y2="' + gy + '" stroke="#eee" stroke-width="1"/>';
@@ -470,7 +503,7 @@
     var c = _coord(ev); if (!c) return;
     if (_dragEtiq >= 0 && _etiquetas[_dragEtiq]) {    // mover etiqueta (libre, sin snap)
       var et = _etiquetas[_dragEtiq];
-      if (et.tipo === 'cota') {
+      if (et.tipo === 'cota' || et.tipo === 'radio' || et.tipo === 'diametro') {
         // Trasladar la línea completa (mantener su largo/ángulo). Ancla: punto medio.
         if (et._offx == null) { et._offx = c.x - (et.x1+et.x2)/2; et._offy = c.y - (et.y1+et.y2)/2; }
         var cx = c.x - et._offx, cy = c.y - et._offy;
@@ -559,14 +592,23 @@
         s += '<line x1="' + (e.x2+nx) + '" y1="' + (e.y2+ny) + '" x2="' + (e.x2-nx) + '" y2="' + (e.y2-ny) + '" stroke="#888" stroke-width="1.5"/>';
         return;
       }
+      if (e.tipo === 'radio' || e.tipo === 'diametro') {
+        // Radio: flecha al final (→ hacia el arco). Diámetro: flecha en ambos extremos (↔).
+        var mk = e.tipo === 'diametro'
+          ? ' marker-start="url(#disArrowStart)" marker-end="url(#disArrowEnd)"'
+          : ' marker-end="url(#disArrowEnd)"';
+        s += '<line x1="' + e.x1 + '" y1="' + e.y1 + '" x2="' + e.x2 + '" y2="' + e.y2 + '" stroke="#1565c0" stroke-width="1.5" data-etiq="' + k + '" style="cursor:move;"' + mk + '/>';
+        return;
+      }
       var col = COL_ET[e.tipo] || '#333';
       s += '<text x="' + e.x + '" y="' + (e.y + 4) + '" text-anchor="middle" fill="#fff" stroke="#fff" stroke-width="3" font-size="13" font-weight="800" data-etiq="' + k + '" style="cursor:move;">' + String(e.texto).replace(/[<>&]/g, '') + '</text>';
       s += '<text x="' + e.x + '" y="' + (e.y + 4) + '" text-anchor="middle" fill="' + col + '" font-size="13" font-weight="800" data-etiq="' + k + '" style="cursor:move;">' + String(e.texto).replace(/[<>&]/g, '') + '</text>';
     });
-    // Rubber band de la cota en curso (tras el 1er click, hasta el cursor).
+    // Rubber band de la cota/radio/diámetro en curso (tras el 1er click, hasta el cursor).
     if (_modoEtiquetas && _cotaInicio && _cotaHover) {
-      s += '<line x1="' + _cotaInicio.x + '" y1="' + _cotaInicio.y + '" x2="' + _cotaHover.x + '" y2="' + _cotaHover.y + '" stroke="#4db6ac" stroke-width="1.5" stroke-dasharray="5,4"/>';
-      s += '<circle cx="' + _cotaInicio.x + '" cy="' + _cotaInicio.y + '" r="3" fill="#4db6ac"/>';
+      var rbCol = (_cotaInicio.tipo === 'radio' || _cotaInicio.tipo === 'diametro') ? '#1565c0' : '#4db6ac';
+      s += '<line x1="' + _cotaInicio.x + '" y1="' + _cotaInicio.y + '" x2="' + _cotaHover.x + '" y2="' + _cotaHover.y + '" stroke="' + rbCol + '" stroke-width="1.5" stroke-dasharray="5,4"/>';
+      s += '<circle cx="' + _cotaInicio.x + '" cy="' + _cotaInicio.y + '" r="3" fill="' + rbCol + '"/>';
     }
     capa.innerHTML = s;
   }
@@ -602,21 +644,22 @@
       if (ev.target && ev.target.getAttribute && ev.target.getAttribute('data-etiq') != null) return;
       var cc = _coord(ev); if (!cc) return;
       var tipo = (document.getElementById('disEtTipo') || {}).value || 'cota';
-      if (tipo === 'cota') {
-        // Cota = línea de 2 clicks (inicio y fin), sin botón previo.
+      if (tipo === 'cota' || tipo === 'radio' || tipo === 'diametro') {
+        // Cota/radio/diámetro = línea de 2 clicks (inicio y fin), sin botón previo.
         if (!_cotaInicio) {
-          _cotaInicio = { x: cc.x, y: cc.y };
-          if (typeof showToast === 'function') showToast('Cota: ahora click en el punto FINAL', 'info');
+          _cotaInicio = { x: cc.x, y: cc.y, tipo: tipo };
+          var msg = tipo === 'radio' ? 'Radio: click en el CENTRO del arco' : (tipo === 'diametro' ? 'Diámetro: click en el otro extremo' : 'Cota: ahora click en el punto FINAL');
+          if (typeof showToast === 'function') showToast(msg, 'info');
         } else {
-          _etiquetas.push({ tipo: 'cota', x1: _cotaInicio.x, y1: _cotaInicio.y, x2: cc.x, y2: cc.y });
-          _cotaInicio = null; _cotaHover = null; _redibujarLienzo();
+          _etiquetas.push({ tipo: _cotaInicio.tipo || 'cota', x1: _cotaInicio.x, y1: _cotaInicio.y, x2: cc.x, y2: cc.y });
+          _cotaInicio = null; _cotaHover = null; _redibujarLienzo(); _redibujarPanel();
         }
       } else {
         var texto = (tipo === 'letra')
           ? ((document.getElementById('disEtLetra') || {}).value || 'A')
           : ((document.getElementById('disEtAngulo') || {}).value || 'α1');
         _etiquetas.push({ tipo: tipo, texto: texto, x: cc.x, y: cc.y });
-        _redibujarLienzo();
+        _redibujarLienzo(); _redibujarPanel();
       }
       return;
     }
@@ -870,9 +913,10 @@
     _sweepsSeg = f.geometria.sweeps_seg ? f.geometria.sweeps_seg.slice()
       : f.geometria.tramos.map(function(t) { return t.sweep != null ? t.sweep : 1; });
     // Cargar etiquetas manuales (guardadas relativas a p0, Y arriba → lienzo).
-    // Cota lleva x1/y1/x2/y2; el resto x/y.
+    // Cota/radio/diámetro llevan x1/y1/x2/y2; el resto x/y.
     _etiquetas = (f.geometria.etiquetas || []).map(function(e) {
-      if (e.tipo === 'cota') return { tipo: 'cota', x1: Math.round(e.x1)+offX, y1: offY-Math.round(e.y1), x2: Math.round(e.x2)+offX, y2: offY-Math.round(e.y2) };
+      if (e.tipo === 'cota' || e.tipo === 'radio' || e.tipo === 'diametro')
+        return { tipo: e.tipo, x1: Math.round(e.x1)+offX, y1: offY-Math.round(e.y1), x2: Math.round(e.x2)+offX, y2: offY-Math.round(e.y2) };
       return { tipo: e.tipo, texto: e.texto, x: Math.round(e.x) + offX, y: offY - Math.round(e.y) };
     });
     _segSel = -1;
