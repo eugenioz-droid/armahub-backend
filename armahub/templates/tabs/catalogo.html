@@ -69,14 +69,25 @@
           <!-- Lienzo de dibujo -->
           <div style="flex:1; min-width:300px;">
             <div id="disenadorLienzo" style="border:1px solid #e0e0e0; border-radius:8px; overflow:hidden; display:inline-block;"></div>
-            <div class="row" style="gap:8px; margin-top:8px;">
+            <div class="row" style="gap:8px; margin-top:8px; flex-wrap:wrap;">
               <button class="secondary" onclick="disenadorDeshacer()" style="font-size:11px; padding:4px 12px;">↶ Deshacer punto</button>
               <button class="secondary" onclick="disenadorLimpiar()" style="font-size:11px; padding:4px 12px;">🗑 Limpiar</button>
+              <!-- Terminar apaga el rubber band; Retomar lo reactiva. -->
+              <button id="disenadorBtnTerminar" onclick="disenadorTerminar()" style="display:none; font-size:11px; padding:4px 12px; background:#00695c; color:#fff; border:none; border-radius:4px; cursor:pointer;">✓ Terminar figura</button>
+              <button id="disenadorBtnRetomar" onclick="disenadorRetomar()" style="display:none; font-size:11px; padding:4px 12px; background:#fff; color:#00695c; border:1px solid #00695c; border-radius:4px; cursor:pointer;">✎ Retomar dibujo</button>
             </div>
           </div>
           <!-- Panel de parámetros en vivo -->
           <div style="width:280px; flex-shrink:0; padding:10px 12px; background:#fafafa; border:1px solid #eee; border-radius:8px;">
             <div id="disenadorPanel" class="muted" style="font-size:12px;">Haz click en el lienzo para empezar.</div>
+          </div>
+        </div>
+
+        <!-- Galería de figuras YA dibujadas (con render): click = editar, ✕ = borrar -->
+        <div style="margin-top:16px; border-top:1px dashed #ddd; padding-top:12px;">
+          <div style="font-size:12px; font-weight:600; color:#00695c; margin-bottom:8px;">Figuras dibujadas (click para editar · ✕ para borrar)</div>
+          <div id="disenadorGaleria" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(100px, 1fr)); gap:8px;">
+            <div class="muted" style="font-size:12px;">Cargando…</div>
           </div>
         </div>
       </div>

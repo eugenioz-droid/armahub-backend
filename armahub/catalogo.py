@@ -401,6 +401,29 @@ def crear_o_actualizar_figura(body: FiguraCrear, user=Depends(get_current_user))
     return {"ok": True, "codigo": codigo}
 
 
+@router.delete("/figuras-catalogo/{codigo}")
+def eliminar_figura(codigo: str, user=Depends(get_current_user)):
+    """Elimina una figura del catálogo (5M.8). Solo admin. Data maestra: se borra
+    de verdad (no soft-delete) porque el diseñador la puede recrear."""
+    from fastapi import HTTPException
+    rol = (user.get("role") or "").lower()
+    if rol not in ("admin", "admin_calidad"):
+        raise HTTPException(status_code=403, detail="Solo un administrador puede eliminar figuras del catálogo.")
+    codigo = (codigo or "").strip()
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM figuras_catalogo WHERE codigo = %s", (codigo,))
+            n = cur.rowcount or 0
+    if n == 0:
+        raise HTTPException(status_code=404, detail=f"Figura '{codigo}' no encontrada.")
+    try:
+        from .db import audit
+        audit(user.get("email", "?"), "eliminar_figura_catalogo", codigo, "figura", codigo)
+    except Exception:
+        pass
+    return {"ok": True, "codigo": codigo}
+
+
 @router.get("/tipologias")
 def listar_tipologias(user=Depends(get_current_user)):
     """Tipologías por estructura + las figuras que aplican a cada una."""

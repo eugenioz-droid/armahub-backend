@@ -120,11 +120,13 @@
   // Estado del editor.
   var _puntos = [];              // vértices clickeados en el lienzo {x,y} (coord lienzo)
   var _labels = [];              // letra asignada a cada LADO (segmento). editable.
-  var _figurasCat = [];          // catálogo (para el paso de homologación futuro)
+  var _figurasCat = [];          // catálogo (para galería/edición/homologación)
   var _hoverPt = null;           // punto de previsualización bajo el cursor (con snap)
+  var _dibujando = true;         // ¿rubber band activo? false = figura terminada
+  var _editando = null;          // código de figura que se está EDITANDO (o null = nueva)
 
   function disenadorInit(figuras) {
-    _figurasCat = figuras || [];
+    if (figuras) _figurasCat = figuras;
     var res = document.getElementById('disenadorResumen');
     if (res) {
       var conGeom = _figurasCat.filter(function(f) { return f.geometria && f.geometria.tramos && f.geometria.tramos.length; }).length;
@@ -132,7 +134,30 @@
     }
     _redibujarLienzo();
     _redibujarPanel();
+    _redibujarGaleria();
   }
+
+  // Termina el dibujo: apaga el rubber band (deja de proponer el próximo lado).
+  global.disenadorTerminar = function() {
+    _dibujando = false;
+    _hoverPt = null;
+    _redibujarLienzo();
+    _actualizarBotonTerminar();
+  };
+
+  function _actualizarBotonTerminar() {
+    var b = document.getElementById('disenadorBtnTerminar');
+    if (b) b.style.display = (_dibujando && _puntos.length >= 2) ? '' : 'none';
+    var r = document.getElementById('disenadorBtnRetomar');
+    if (r) r.style.display = (!_dibujando && _puntos.length >= 1) ? '' : 'none';
+  }
+
+  // Retoma el dibujo (vuelve a activar el rubber band para agregar más lados).
+  global.disenadorRetomar = function() {
+    _dibujando = true;
+    _redibujarLienzo();
+    _actualizarBotonTerminar();
+  };
 
   // ---- Snap: pega un punto a la grilla y fuerza ángulo limpio desde el previo ----
   function _snap(x, y) {
@@ -144,10 +169,12 @@
     var last = _puntos[_puntos.length - 1];
     var dx = x - last.x, dy = y - last.y;
     var dist = Math.sqrt(dx * dx + dy * dy);
-    if (dist < 1) return { x: last.x, y: last.y };
-    var ang = Math.atan2(dy, dx) * 180 / Math.PI;
+    // Si el cursor está casi encima del último punto, aún así proponer un tramo
+    // hacia la derecha (nunca colapsar → el click SIEMPRE engancha un lado).
+    var ang = (dist < GRID / 2) ? 0 : Math.atan2(dy, dx) * 180 / Math.PI;
     var angSnap = Math.round(ang / SNAP_ANG) * SNAP_ANG;    // ángulo limpio
-    var distSnap = Math.max(GRID, Math.round(dist / GRID) * GRID);  // largo a la grilla
+    // Largo a la grilla, mínimo 1 GRID (avance garantizado).
+    var distSnap = Math.max(GRID, Math.round(dist / GRID) * GRID);
     var rad = angSnap * Math.PI / 180;
     return { x: last.x + distSnap * Math.cos(rad), y: last.y + distSnap * Math.sin(rad) };
   }
@@ -233,6 +260,7 @@
   }
 
   global.disenadorHover = function(ev) {
+    if (!_dibujando) return;         // figura terminada → sin rubber band
     var c = _coord(ev); if (!c) return;
     _hoverPt = _snap(c.x, c.y);
     _redibujarLienzo();
@@ -240,6 +268,7 @@
   global.disenadorHoverOut = function() { _hoverPt = null; _redibujarLienzo(); };
 
   global.disenadorClick = function(ev) {
+    if (!_dibujando) return;         // terminado → los clicks no agregan lados
     var c = _coord(ev); if (!c) return;
     var p = _snap(c.x, c.y);
     // Evitar duplicar el mismo punto.
@@ -249,6 +278,7 @@
     if (_puntos.length >= 2) _labels[_puntos.length - 2] = LETRAS[_puntos.length - 2] || ('L' + (_puntos.length - 1));
     _redibujarLienzo();
     _redibujarPanel();
+    _actualizarBotonTerminar();
   };
 
   global.disenadorDeshacer = function() {
@@ -262,8 +292,11 @@
   global.disenadorLimpiar = function() {
     if (_puntos.length && !confirm('¿Borrar el dibujo actual?')) return;
     _puntos = []; _labels = []; _hoverPt = null;
+    _dibujando = true; _editando = null;
+    var nb = document.getElementById('disenadorNombre'); if (nb) nb.value = '';
     _redibujarLienzo();
     _redibujarPanel();
+    _actualizarBotonTerminar();
   };
 
   // Cambiar la LETRA asignada a un lado (requerimiento: reasignar A/B/C…).
@@ -324,14 +357,85 @@
       });
       if (res.ok) {
         if (typeof showToast === 'function') showToast('Figura "' + nombre + '" guardada en el catálogo', 'success');
-        global.disenadorLimpiar();
+        // Limpiar el lienzo y refrescar el catálogo/galería con lo recién guardado.
+        _puntos = []; _labels = []; _hoverPt = null; _dibujando = true; _editando = null;
         var nb = document.getElementById('disenadorNombre'); if (nb) nb.value = '';
+        await _recargarCatalogo();
+        _redibujarLienzo(); _redibujarPanel(); _actualizarBotonTerminar();
       } else {
         var d = await res.json().catch(function() { return {}; });
         alert('No se pudo guardar: ' + (d.detail || res.status));
       }
     } catch (e) {
       alert('Error al guardar la figura: ' + e.message);
+    }
+  };
+
+  // Recarga el catálogo desde el backend (tras guardar/borrar) y refresca galería.
+  async function _recargarCatalogo() {
+    try {
+      var data = await apiGet('/figuras-catalogo');
+      _figurasCat = (data && data.figuras) || _figurasCat;
+    } catch (e) {}
+    disenadorInit();   // refresca resumen + galería
+  }
+
+  // ---- GALERÍA de figuras YA dibujadas (con render): editar / eliminar ----
+  function _redibujarGaleria() {
+    var cont = document.getElementById('disenadorGaleria');
+    if (!cont) return;
+    var conGeom = _figurasCat.filter(function(f) { return f.geometria && f.geometria.tramos && f.geometria.tramos.length; });
+    if (conGeom.length === 0) {
+      cont.innerHTML = '<div class="muted" style="font-size:12px;">Aún no hay figuras dibujadas. Las que guardes aparecerán aquí para editarlas o borrarlas.</div>';
+      return;
+    }
+    cont.innerHTML = conGeom.map(function(f) {
+      var svg = dibujarFigura(f.geometria, null, { width: 90, height: 72, pad: 12 });
+      var cod = String(f.codigo).replace(/'/g, "\\'");
+      return '<div style="border:1px solid #e0e0e0; border-radius:6px; padding:6px; text-align:center; background:#fff; position:relative;">' +
+        '<div style="cursor:pointer;" title="Editar" onclick="disenadorEditar(\'' + cod + '\')">' + svg + '</div>' +
+        '<div style="font-size:11px; font-weight:700; color:#00695c; margin-top:2px;">' + f.codigo + '</div>' +
+        '<button title="Borrar" onclick="disenadorEliminar(\'' + cod + '\')" style="position:absolute; top:2px; right:2px; width:18px; height:18px; line-height:1; padding:0; border:none; background:#fdecea; color:#c62828; border-radius:4px; cursor:pointer; font-size:12px;">✕</button>' +
+        '</div>';
+    }).join('');
+  }
+
+  // Carga una figura del catálogo al lienzo para EDITARLA. Convierte su geometría
+  // a puntos del lienzo (misma dirección de armado; se escala a la grilla).
+  global.disenadorEditar = function(codigo) {
+    var f = _figurasCat.find(function(x) { return x.codigo === codigo; });
+    if (!f || !f.geometria || !f.geometria.tramos) return;
+    // geometriaAPuntos usa Y hacia arriba; el lienzo usa Y hacia abajo → invertir Y.
+    var pts = geometriaAPuntos(f.geometria, null, GRID);   // largo unidad = 1 grilla
+    // Centrar en el lienzo (offset simple).
+    var offX = 120, offY = 140;
+    _puntos = pts.map(function(p) { return { x: Math.round(p.x) + offX, y: offY - Math.round(p.y) }; });
+    _labels = f.geometria.tramos.map(function(t) { return t.lado; });
+    _dibujando = false;    // cargada = terminada (sin rubber band); "Retomar" para seguir
+    _editando = codigo;
+    _hoverPt = null;
+    var nb = document.getElementById('disenadorNombre'); if (nb) nb.value = f.codigo;
+    _redibujarLienzo(); _redibujarPanel(); _actualizarBotonTerminar();
+    if (typeof showToast === 'function') showToast('Editando "' + codigo + '". Usa "Retomar dibujo" para agregar lados.', 'info');
+  };
+
+  // Elimina una figura del catálogo (solo admin; confirma).
+  global.disenadorEliminar = async function(codigo) {
+    if (!confirm('¿Eliminar la figura "' + codigo + '" del catálogo?\n\nEsto la quita del catálogo Armacero. No se puede deshacer.')) return;
+    try {
+      var res = await fetch(apiUrl('/figuras-catalogo/' + encodeURIComponent(codigo)), {
+        method: 'DELETE',
+        headers: (typeof authHeaders === 'function' ? authHeaders() : {})
+      });
+      if (res.ok) {
+        if (typeof showToast === 'function') showToast('Figura "' + codigo + '" eliminada', 'success');
+        await _recargarCatalogo();
+      } else {
+        var d = await res.json().catch(function() { return {}; });
+        alert('No se pudo eliminar: ' + (d.detail || res.status));
+      }
+    } catch (e) {
+      alert('Error al eliminar: ' + e.message);
     }
   };
 
