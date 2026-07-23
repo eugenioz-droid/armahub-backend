@@ -214,6 +214,31 @@
     return out;
   }
 
+  // ---- Etiquetas de ángulo por vértice interno (α1, α2… solo para especiales) ----
+  // Convención aSa: un doblez de 90° NO cuenta como α (queda implícito). Solo los
+  // ángulos ≠90 reciben número α, en orden. Devuelve { indicePunto: {texto, esAlfa} }
+  // donde indicePunto es la posición del vértice en _puntos (1..n-1).
+  function _etiquetasAngulos() {
+    var out = {};
+    var nAlfa = 0;
+    for (var i = 1; i < _puntos.length - 1; i++) {   // vértices internos
+      var p0 = _puntos[i - 1], p1 = _puntos[i], p2 = _puntos[i + 1];
+      var a1 = Math.atan2(p1.y - p0.y, p1.x - p0.x);
+      var a2 = Math.atan2(p2.y - p1.y, p2.x - p1.x);
+      var d = (a2 - a1) * 180 / Math.PI;
+      while (d > 180) d -= 360; while (d < -180) d += 360;
+      var giro = Math.abs(Math.round(d));
+      if (giro === 0) continue;                       // sin doblez → nada
+      if (giro === 90) {
+        out[i] = { texto: '90°', esAlfa: false };     // implícito, no es α
+      } else {
+        nAlfa++;
+        out[i] = { texto: 'α' + nAlfa + ' (' + giro + '°)', esAlfa: true };
+      }
+    }
+    return out;
+  }
+
   var CW = 420, CH = 320;   // dimensiones del lienzo
   var _svgCreado = false;
 
@@ -269,6 +294,15 @@
       var lbl = _labels[i - 1] || LETRAS[i - 1];
       s += '<text x="' + mx + '" y="' + (my - 6) + '" text-anchor="middle" fill="#00695c" font-size="13" font-weight="700">' + lbl + '</text>';
     }
+    // Etiquetas de ÁNGULO en cada vértice interno (α1, α2… solo especiales; 90°
+    // se marca aparte). Ligeramente separadas del vértice para no tapar la barra.
+    var angs = _etiquetasAngulos();
+    Object.keys(angs).forEach(function(idx) {
+      var v = _puntos[idx];
+      var info = angs[idx];
+      var color = info.esAlfa ? '#c62828' : '#999';   // α especial en rojo, 90° gris
+      s += '<text x="' + (v.x + 8) + '" y="' + (v.y + 16) + '" fill="' + color + '" font-size="12" font-weight="700">' + info.texto + '</text>';
+    });
     capa.innerHTML = s;
   }
 
@@ -352,10 +386,16 @@
         '</tr>';
     });
     html += '</table>';
+    // Ángulos como α (solo especiales ≠90; los 90° son implícitos, convención aSa).
+    var especiales = angulos.filter(function(g) { return g !== 90 && g !== 0; });
+    var alfaTxt = especiales.length
+      ? especiales.map(function(g, k) { return 'α' + (k + 1) + '=' + g + '°'; }).join(', ')
+      : '— (todos 90° o rectos)';
     html += '<div style="margin-top:8px; font-size:12px; color:#444;">' +
       '<div><b>Lados:</b> ' + ladosUsados.join(', ') + '</div>' +
-      '<div><b>Ángulos:</b> ' + (angulos.length ? (angulos.join('°, ') + '°') : '—') + '</div>' +
+      '<div><b>Ángulos α (≠90°):</b> ' + alfaTxt + '</div>' +
       '<div><b>N° de lados:</b> ' + ladosUsados.length + '</div>' +
+      (especiales.length > 4 ? '<div style="color:#c62828; margin-top:4px;">⚠ ' + especiales.length + ' ángulos especiales — el sistema soporta máx. 4 (α1-α4).</div>' : '') +
       '</div>';
     cont.innerHTML = html;
   }
@@ -367,7 +407,15 @@
     if (_puntos.length < 2) { alert('Dibuja al menos un lado (dos puntos) antes de guardar.'); return; }
     var geo = _puntosAGeometria();
     var parciales = geo.tramos.map(function(t) { return t.lado; });
-    var angulos = geo.tramos.filter(function(t, i) { return i > 0; }).map(function(t) { return t.giro; });
+    // Convención aSa: solo los ángulos ESPECIALES (≠90 y ≠0) van a `angulos`.
+    // Un doblez de 90° es implícito (no es α1-α4).
+    var angulos = geo.tramos
+      .map(function(t) { return t.giro; })
+      .filter(function(g) { return g !== 90 && g !== 0; });
+    if (angulos.length > 4) {
+      alert('Esta figura tiene ' + angulos.length + ' ángulos especiales (≠90°), pero el sistema soporta máximo 4 (α1-α4).\n\nAjusta la figura antes de guardar.');
+      return;
+    }
     var payload = { codigo: nombre, parciales: parciales, angulos: angulos, radio: false, geometria: geo };
     // Endpoint de creación (se implementa en backend). Por ahora avisamos si no existe.
     try {
