@@ -154,6 +154,17 @@
   var _planoActivo = 'XZ';      // 'XZ' (piso) | 'XY' (frontal) | 'YZ' (lateral)
   var _planoOffset = 0;         // desplazamiento del plano en su eje normal
   var _raycaster = null, _mouseNDC = null;
+  var _orto = true;             // ORTO: fuerza tramos a 90° en el plano (default ON)
+
+  global.disenador3dToggleOrto = function() {
+    _orto = !_orto;
+    var b = document.getElementById('dis3dBtnOrto');
+    if (b) {
+      b.textContent = _orto ? '📐 ORTO: ON' : '📐 ORTO: OFF';
+      b.style.background = _orto ? '#00695c' : '#fff';
+      b.style.color = _orto ? '#fff' : '#00695c';
+    }
+  };
 
   // Cambia el plano de trabajo. El nodo nuevo caerá en este plano.
   global.disenador3dSetPlano = function(p) {
@@ -201,6 +212,18 @@
     hit.x = Math.round(hit.x / _GRID3D) * _GRID3D;
     hit.y = Math.round(hit.y / _GRID3D) * _GRID3D;
     hit.z = Math.round(hit.z / _GRID3D) * _GRID3D;
+    // ORTO: forzar el tramo a 90° dentro del plano (solo se mueve en UN eje del
+    // plano respecto al último nodo — el de mayor cambio). Evita las diagonales.
+    if (_orto && _nodos3d.length) {
+      var last = _nodos3d[_nodos3d.length - 1];
+      // Ejes libres del plano activo (el eje normal queda fijo por el plano).
+      var ejes = (_planoActivo === 'XZ') ? ['x', 'z'] : (_planoActivo === 'XY') ? ['x', 'y'] : ['y', 'z'];
+      var d0 = Math.abs(hit[ejes[0]] - last[ejes[0]]);
+      var d1 = Math.abs(hit[ejes[1]] - last[ejes[1]]);
+      // Mantener solo el eje con mayor desplazamiento; el otro se iguala al último.
+      if (d0 >= d1) hit[ejes[1]] = last[ejes[1]];
+      else hit[ejes[0]] = last[ejes[0]];
+    }
     return hit;
   }
 
