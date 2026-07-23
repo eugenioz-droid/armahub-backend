@@ -401,11 +401,11 @@
     // WYSIWYG. + tipos/radios de segmento (A1) para reproducir las curvas.
     var p0 = _puntos[0] || { x: 0, y: 0 };
     var puntos = _puntos.map(function(p) { return { x: p.x - p0.x, y: -(p.y - p0.y) }; });
-    // Etiquetas manuales normalizadas al mismo origen (para render consistente).
-    var etiquetas = _etiquetas.map(function(e) { return { tipo: e.tipo, texto: e.texto, x: e.x - p0.x, y: -(e.y - p0.y) }; });
+    // Etiquetas manuales: ahora viven en el PREVIEW (coords propias del preview).
+    var etiqPv = (typeof previewEtiqGet === 'function') ? previewEtiqGet() : [];
     return { dim: '2D', tramos: tramos, puntos: puntos,
              tipos_seg: _tiposSeg.slice(), radios_seg: _radiosSeg.slice(),
-             sweeps_seg: _sweepsSeg.slice(), etiquetas: etiquetas };
+             sweeps_seg: _sweepsSeg.slice(), etiquetas_preview: etiqPv };
   }
 
   // ---- Longitudes de cada lado desde los puntos del lienzo (en px de grilla) ----
@@ -704,20 +704,16 @@
     disenadorActualizarPreview2d();
   }
 
-  // Preview 2D: dibuja la figura actual como se verá su miniatura (mismo motor).
+  // Preview 2D: pone la figura como FONDO del preview (el módulo de etiquetas del
+  // preview la muestra + permite etiquetar encima). Mismo motor de render.
   global.disenadorActualizarPreview2d = function() {
-    var prev = document.getElementById('disPreview');
-    if (!prev) return;
-    if (_puntos.length < 2) {
-      prev.innerHTML = '<span class="muted" style="font-size:11px;">Dibuja para ver el preview.</span>';
-      return;
-    }
+    if (typeof previewEtiqSetFondo !== 'function') return;
+    if (_puntos.length < 2) { previewEtiqSetFondo(''); return; }
     try {
+      var t = (typeof previewEtiqTamano === 'function') ? previewEtiqTamano() : { w: 200, h: 130 };
       var geo = _puntosAGeometria();
-      prev.innerHTML = dibujarFigura(geo, null, { width: 200, height: 130, pad: 16 });
-    } catch (e) {
-      prev.innerHTML = '<span class="muted" style="font-size:11px;">Preview no disponible.</span>';
-    }
+      previewEtiqSetFondo(dibujarFigura(geo, null, { width: t.w, height: t.h, pad: 16 }));
+    } catch (e) { previewEtiqSetFondo(''); }
   };
 
   // ---- Guardar la figura dibujada (crear en el catálogo con nombre del usuario) ----
@@ -755,6 +751,7 @@
         // Limpiar el lienzo y refrescar el catálogo/galería con lo recién guardado.
         _puntos = []; _labels = []; _hoverPt = null; _dibujando = true; _editando = null;
         _tiposSeg = []; _radiosSeg = []; _sweepsSeg = []; _segSel = -1; _etiquetas = [];
+        if (typeof previewEtiqLimpiar === 'function') previewEtiqLimpiar();
         var nb = document.getElementById('disenadorNombre'); if (nb) nb.value = '';
         await _recargarCatalogo();
         _redibujarLienzo(); _redibujarPanel(); _actualizarBotonTerminar();
@@ -772,10 +769,9 @@
     if (typeof disenador3dGeometria !== 'function') { alert('Editor 3D no disponible.'); return; }
     var geo = disenador3dGeometria();
     if (!geo) { alert('Dibuja la figura 3D (al menos 2 nodos) antes de guardar.'); return; }
-    // Las etiquetas manuales de la vista 2D (si se colocaron) van con la geometría.
-    if (_etiquetas && _etiquetas.length) {
-      geo.etiquetas = _etiquetas.map(function(e) { return { tipo: e.tipo, texto: e.texto, x: e.x, y: e.y }; });
-    }
+    // Las etiquetas manuales (colocadas sobre el preview) van con la geometría.
+    var etiqPv = (typeof previewEtiqGet === 'function') ? previewEtiqGet() : [];
+    if (etiqPv.length) geo.etiquetas_preview = etiqPv;
     var payload = { codigo: nombre, parciales: geo.parciales || [], angulos: [], radio: false, geometria: geo };
     try {
       var res = await fetch(apiUrl('/figuras-catalogo'), {
@@ -788,6 +784,7 @@
         var nb = document.getElementById('disenadorNombre'); if (nb) nb.value = '';
         if (typeof disenador3dLimpiarDibujo === 'function') disenador3dLimpiarDibujo();
         _etiquetas = [];
+        if (typeof previewEtiqLimpiar === 'function') previewEtiqLimpiar();
         await _recargarCatalogo();
       } else {
         var d = await res.json().catch(function() { return {}; });

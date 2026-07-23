@@ -299,19 +299,16 @@
   // Preview 3D: si hay una vista FIJADA, la usa (control del usuario). Si no, toma
   // un snapshot en vivo del canvas (preview provisional mientras rota/dibuja).
   function _actualizarPreview3d() {
-    var prev = document.getElementById('disPreview');
-    if (!prev) return;
-    if (_nodos3d.length < 2 || !_renderer) {
-      prev.innerHTML = '<span class="muted" style="font-size:11px;">Dibuja para ver el preview.</span>';
-      return;
-    }
+    if (typeof previewEtiqSetFondo !== 'function') return;
+    if (_nodos3d.length < 2 || !_renderer) { previewEtiqSetFondo(''); return; }
     var url = _snapshotFijado;
     if (!url) {
       try { _renderer.render(_scene, _camera); url = _renderer.domElement.toDataURL('image/png'); }
-      catch (e) { prev.innerHTML = '<span class="muted" style="font-size:11px;">Preview 3D no disponible.</span>'; return; }
+      catch (e) { previewEtiqSetFondo(''); return; }
     }
-    var nota = _snapshotFijado ? '' : '<div style="font-size:9px; color:#b26a00; text-align:center; margin-top:2px;">Vista en vivo — usa "Fijar vista" para congelarla.</div>';
-    prev.innerHTML = '<img src="' + url + '" style="max-width:100%; max-height:120px; border-radius:4px;" alt="preview 3D"/>' + nota;
+    var t = (typeof previewEtiqTamano === 'function') ? previewEtiqTamano() : { w: 220, h: 150 };
+    // La figura 3D (snapshot) va como fondo del preview → se etiqueta encima.
+    previewEtiqSetFondo('<img src="' + url + '" style="max-width:' + t.w + 'px; max-height:' + t.h + 'px; object-fit:contain;" alt="preview 3D"/>');
   }
 
   // Al cambiar la figura, el snapshot fijado deja de ser válido (se libera).
