@@ -206,6 +206,10 @@
   var _radiosSeg = [];           // radio en px por segmento (solo arcos)
   var _segSel = -1;              // segmento seleccionado (para ajustar su radio)
   var _modoTrazo = 'recto';      // 'recto' | 'arco' — tipo del PRÓXIMO segmento
+  // A5: etiquetas MANUALES (para figuras raras). Modo aparte; las simples siguen
+  // con el etiquetado automático. Cada etiqueta: {tipo:'medida'|'letra'|'angulo', texto, x, y}.
+  var _modoEtiquetas = false;
+  var _etiquetas = [];
 
   // El próximo segmento que se dibuje será recto o arco.
   global.disenadorSetTrazo = function(t) { _modoTrazo = (t === 'arco') ? 'arco' : 'recto'; };
@@ -215,6 +219,52 @@
     var r = Number(v) || 80;
     var val = document.getElementById('disRadioVal'); if (val) val.textContent = r;
     if (_segSel >= 0) { _radiosSeg[_segSel] = r; _redibujarLienzo(); _redibujarPanel(); }
+  };
+
+  // ---- A5: EDITOR DE ETIQUETAS MANUALES (toggle; para figuras raras) ----
+  global.disenadorToggleEtiquetas = function() {
+    _modoEtiquetas = !_modoEtiquetas;
+    var btn = document.getElementById('disBtnEtiquetas');
+    if (btn) {
+      btn.textContent = _modoEtiquetas ? '🏷️ Etiquetas: ON' : '🏷️ Etiquetas manuales';
+      btn.style.background = _modoEtiquetas ? '#00695c' : '#fff';
+      btn.style.color = _modoEtiquetas ? '#fff' : '#00695c';
+    }
+    var bar = document.getElementById('disEtiquetasBar');
+    if (bar) bar.style.display = _modoEtiquetas ? 'flex' : 'none';
+    _redibujarLienzo();
+  };
+
+  // Agrega una etiqueta manual del tipo elegido en el próximo click en el lienzo.
+  // El tipo se toma del selector; letra/ángulo deben ser de la data disponible.
+  var _etTipoPendiente = null;   // tipo a colocar en el próximo click
+  global.disenadorAgregarEtiqueta = function() {
+    if (!_modoEtiquetas) return;
+    var tipo = (document.getElementById('disEtTipo') || {}).value || 'medida';
+    var texto;
+    if (tipo === 'medida') {
+      texto = prompt('Cota / medida (texto libre):', '');
+      if (texto == null || texto === '') return;
+    } else if (tipo === 'letra') {
+      texto = (document.getElementById('disEtLetra') || {}).value || 'A';
+    } else { // angulo
+      texto = (document.getElementById('disEtAngulo') || {}).value || 'α1';
+    }
+    _etTipoPendiente = { tipo: tipo, texto: texto };
+    if (typeof showToast === 'function') showToast('Haz click en el lienzo para colocar "' + texto + '"', 'info');
+  };
+
+  global.disenadorLimpiarEtiquetas = function() {
+    if (_etiquetas.length && !confirm('¿Borrar todas las etiquetas manuales?')) return;
+    _etiquetas = []; _redibujarLienzo();
+  };
+
+  // Muestra el selector de letra o ángulo según el tipo de etiqueta elegido.
+  global.disenadorEtTipoChange = function() {
+    var tipo = (document.getElementById('disEtTipo') || {}).value;
+    var sl = document.getElementById('disEtLetra'), sa = document.getElementById('disEtAngulo');
+    if (sl) sl.style.display = (tipo === 'letra') ? '' : 'none';
+    if (sa) sa.style.display = (tipo === 'angulo') ? '' : 'none';
   };
 
   // Muestra/oculta el slider de radio según haya un segmento arco seleccionado.
@@ -308,8 +358,11 @@
     // WYSIWYG. + tipos/radios de segmento (A1) para reproducir las curvas.
     var p0 = _puntos[0] || { x: 0, y: 0 };
     var puntos = _puntos.map(function(p) { return { x: p.x - p0.x, y: -(p.y - p0.y) }; });
+    // Etiquetas manuales normalizadas al mismo origen (para render consistente).
+    var etiquetas = _etiquetas.map(function(e) { return { tipo: e.tipo, texto: e.texto, x: e.x - p0.x, y: -(e.y - p0.y) }; });
     return { dim: '2D', tramos: tramos, puntos: puntos,
-             tipos_seg: _tiposSeg.slice(), radios_seg: _radiosSeg.slice() };
+             tipos_seg: _tiposSeg.slice(), radios_seg: _radiosSeg.slice(),
+             etiquetas: etiquetas };
   }
 
   // ---- Longitudes de cada lado desde los puntos del lienzo (en px de grilla) ----
@@ -381,32 +434,37 @@
     _svgCreado = true;
   }
 
-  // ---- A6: DRAG de nodos (arrastrar vértices para modificar la figura) ----
-  var _dragIdx = -1;      // índice del punto que se arrastra (-1 = ninguno)
+  // ---- A6: DRAG de nodos y etiquetas (arrastrar para reposicionar) ----
+  var _dragIdx = -1;      // índice del vértice que se arrastra (-1 = ninguno)
+  var _dragEtiq = -1;     // índice de la etiqueta manual que se arrastra (-1 = ninguna)
   var _dragMovido = false; // ¿hubo movimiento? (para suprimir el click posterior)
   function _dragStart(ev) {
-    var t = ev.target;
-    if (!t || t.getAttribute('data-nodo') == null) return;   // solo sobre un vértice
-    _dragIdx = parseInt(t.getAttribute('data-nodo'), 10);
-    _dragMovido = false;
-    ev.preventDefault();
+    var t = ev.target; if (!t || !t.getAttribute) return;
+    if (t.getAttribute('data-etiq') != null) {        // etiqueta manual
+      _dragEtiq = parseInt(t.getAttribute('data-etiq'), 10); _dragMovido = false; ev.preventDefault(); return;
+    }
+    if (t.getAttribute('data-nodo') != null) {        // vértice
+      _dragIdx = parseInt(t.getAttribute('data-nodo'), 10); _dragMovido = false; ev.preventDefault();
+    }
   }
   function _dragMove(ev) {
-    if (_dragIdx < 0) return;
     var c = _coord(ev); if (!c) return;
-    // Snap del punto arrastrado a la grilla (no fuerza ángulo — es reposición libre).
-    var p = { x: Math.round(c.x / GRID) * GRID, y: Math.round(c.y / GRID) * GRID };
+    if (_dragEtiq >= 0 && _etiquetas[_dragEtiq]) {    // mover etiqueta (libre, sin snap)
+      _etiquetas[_dragEtiq].x = c.x; _etiquetas[_dragEtiq].y = c.y;
+      _dragMovido = true; _redibujarLienzo(); return;
+    }
+    if (_dragIdx < 0) return;
+    var p = { x: Math.round(c.x / GRID) * GRID, y: Math.round(c.y / GRID) * GRID };  // vértice snapea a grilla
     _puntos[_dragIdx] = p;
     _dragMovido = true;
     _redibujarLienzo();
     _redibujarPanel();
   }
   function _dragEnd() {
-    if (_dragIdx < 0) return;
-    _dragIdx = -1;
+    if (_dragIdx < 0 && _dragEtiq < 0) return;
+    _dragIdx = -1; _dragEtiq = -1;
     _redibujarLienzo();
     _redibujarPanel();
-    // Suprimir el click que sigue al soltar (para no agregar un punto nuevo).
     if (_dragMovido) { _suprimirClick = true; setTimeout(function(){ _suprimirClick = false; }, 0); }
   }
   var _suprimirClick = false;
@@ -432,39 +490,41 @@
       s += '<circle cx="' + p.x + '" cy="' + p.y + '" r="9" fill="transparent" data-nodo="' + i + '" style="cursor:move;"/>';
       s += '<circle cx="' + p.x + '" cy="' + p.y + '" r="' + (isEnd ? 5 : 4) + '" fill="' + (isEnd ? '#004d40' : '#00897b') + '" data-nodo="' + i + '" style="cursor:move;"/>';
     });
-    for (var i = 1; i < _puntos.length; i++) {
-      var a = _puntos[i - 1], b = _puntos[i];
-      var mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
-      var lbl = _labels[i - 1] || LETRAS[i - 1];
-      // Desplazar la etiqueta PERPENDICULAR a la línea (hacia afuera) para que no
-      // quede tapada por la barra. Normal unitaria del segmento × offset.
-      var vx = b.x - a.x, vy = b.y - a.y;
-      var len = Math.sqrt(vx * vx + vy * vy) || 1;
-      var off = 15;
-      var lx = mx - (vy / len) * off;   // normal = (-vy, vx)
-      var ly = my + (vx / len) * off;
-      // Fondo blanco sutil detrás del texto para legibilidad sobre la grilla.
-      s += '<circle cx="' + lx.toFixed(1) + '" cy="' + ly.toFixed(1) + '" r="9" fill="#fff" opacity="0.85"/>';
-      s += '<text x="' + lx.toFixed(1) + '" y="' + (ly + 4).toFixed(1) + '" text-anchor="middle" fill="#00695c" font-size="13" font-weight="700">' + lbl + '</text>';
+    // Etiquetas AUTOMÁTICAS (lado + ángulo). Se OCULTAN en modo etiquetas manuales
+    // (el usuario toma control total de las etiquetas para figuras raras).
+    if (!_modoEtiquetas) {
+      for (var i = 1; i < _puntos.length; i++) {
+        var a = _puntos[i - 1], b = _puntos[i];
+        var mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+        var lbl = _labels[i - 1] || LETRAS[i - 1];
+        var vx = b.x - a.x, vy = b.y - a.y;
+        var len = Math.sqrt(vx * vx + vy * vy) || 1;
+        var off = 15;
+        var lx = mx - (vy / len) * off, ly = my + (vx / len) * off;
+        s += '<circle cx="' + lx.toFixed(1) + '" cy="' + ly.toFixed(1) + '" r="9" fill="#fff" opacity="0.85"/>';
+        s += '<text x="' + lx.toFixed(1) + '" y="' + (ly + 4).toFixed(1) + '" text-anchor="middle" fill="#00695c" font-size="13" font-weight="700">' + lbl + '</text>';
+      }
+      var angs = _etiquetasAngulos();
+      Object.keys(angs).forEach(function(idx) {
+        idx = Number(idx);
+        var v = _puntos[idx], pa = _puntos[idx - 1], pb = _puntos[idx + 1];
+        var info = angs[idx];
+        var color = info.esAlfa ? '#c62828' : '#999';
+        var u1x = pa.x - v.x, u1y = pa.y - v.y; var l1 = Math.sqrt(u1x*u1x + u1y*u1y) || 1;
+        var u2x = pb.x - v.x, u2y = pb.y - v.y; var l2 = Math.sqrt(u2x*u2x + u2y*u2y) || 1;
+        var bx = u1x/l1 + u2x/l2, by = u1y/l1 + u2y/l2;
+        var bl = Math.sqrt(bx*bx + by*by);
+        if (bl < 0.15) { bx = -u1y/l1; by = u1x/l1; bl = 1; }
+        var lx2 = v.x + (bx/bl) * 20, ly2 = v.y + (by/bl) * 20;
+        s += '<text x="' + lx2.toFixed(1) + '" y="' + (ly2 + 4).toFixed(1) + '" text-anchor="middle" fill="' + color + '" font-size="12" font-weight="700">' + info.texto + '</text>';
+      });
     }
-    // Etiquetas de ÁNGULO en cada vértice interno, ubicadas en la BISECTRIZ del
-    // ángulo (entre los dos segmentos que forman el vértice), pegadas al vértice.
-    var angs = _etiquetasAngulos();
-    Object.keys(angs).forEach(function(idx) {
-      idx = Number(idx);
-      var v = _puntos[idx], pa = _puntos[idx - 1], pb = _puntos[idx + 1];
-      var info = angs[idx];
-      var color = info.esAlfa ? '#c62828' : '#999';   // α especial en rojo, 90° gris
-      // Vectores unitarios desde el vértice hacia cada segmento vecino.
-      var u1x = pa.x - v.x, u1y = pa.y - v.y; var l1 = Math.sqrt(u1x*u1x + u1y*u1y) || 1;
-      var u2x = pb.x - v.x, u2y = pb.y - v.y; var l2 = Math.sqrt(u2x*u2x + u2y*u2y) || 1;
-      var bx = u1x/l1 + u2x/l2, by = u1y/l1 + u2y/l2;
-      var bl = Math.sqrt(bx*bx + by*by);
-      // Si los segmentos son casi opuestos (bisectriz ~0), usar la perpendicular.
-      if (bl < 0.15) { bx = -u1y/l1; by = u1x/l1; bl = 1; }
-      var off = 20;
-      var lx = v.x + (bx/bl) * off, ly = v.y + (by/bl) * off;
-      s += '<text x="' + lx.toFixed(1) + '" y="' + (ly + 4).toFixed(1) + '" text-anchor="middle" fill="' + color + '" font-size="12" font-weight="700">' + info.texto + '</text>';
+    // Etiquetas MANUALES (siempre visibles): arrastrables (data-etiq), con color por tipo.
+    var COL_ET = { medida: '#1565c0', letra: '#00695c', angulo: '#c62828' };
+    _etiquetas.forEach(function(e, k) {
+      var col = COL_ET[e.tipo] || '#333';
+      s += '<circle cx="' + e.x + '" cy="' + e.y + '" r="10" fill="#fff" opacity="0.9" data-etiq="' + k + '" style="cursor:move;"/>';
+      s += '<text x="' + e.x + '" y="' + (e.y + 4) + '" text-anchor="middle" fill="' + col + '" font-size="12" font-weight="700" data-etiq="' + k + '" style="cursor:move;">' + String(e.texto).replace(/[<>&]/g, '') + '</text>';
     });
     capa.innerHTML = s;
   }
@@ -487,6 +547,16 @@
 
   global.disenadorClick = function(ev) {
     if (_suprimirClick) return;      // click que sigue a un drag → ignorar
+    // A5: en modo etiquetas, un click coloca la etiqueta pendiente (no agrega vértice).
+    if (_modoEtiquetas) {
+      if (_etTipoPendiente) {
+        var cc = _coord(ev); if (!cc) return;
+        _etiquetas.push({ tipo: _etTipoPendiente.tipo, texto: _etTipoPendiente.texto, x: cc.x, y: cc.y });
+        _etTipoPendiente = null;
+        _redibujarLienzo();
+      }
+      return;
+    }
     // Click sobre un nodo existente = seleccionar/arrastrar, no agregar punto.
     if (ev.target && ev.target.getAttribute && ev.target.getAttribute('data-nodo') != null) return;
     if (!_dibujando) return;         // terminado → los clicks no agregan lados
@@ -529,6 +599,7 @@
     if (_puntos.length && !confirm('¿Borrar el dibujo actual?')) return;
     _puntos = []; _labels = []; _hoverPt = null;
     _tiposSeg = []; _radiosSeg = []; _segSel = -1;
+    _etiquetas = [];
     _dibujando = true; _editando = null;
     var nb = document.getElementById('disenadorNombre'); if (nb) nb.value = '';
     _redibujarLienzo();
@@ -614,7 +685,7 @@
         if (typeof showToast === 'function') showToast('Figura "' + nombre + '" guardada en el catálogo', 'success');
         // Limpiar el lienzo y refrescar el catálogo/galería con lo recién guardado.
         _puntos = []; _labels = []; _hoverPt = null; _dibujando = true; _editando = null;
-        _tiposSeg = []; _radiosSeg = []; _segSel = -1;
+        _tiposSeg = []; _radiosSeg = []; _segSel = -1; _etiquetas = [];
         var nb = document.getElementById('disenadorNombre'); if (nb) nb.value = '';
         await _recargarCatalogo();
         _redibujarLienzo(); _redibujarPanel(); _actualizarBotonTerminar();
@@ -672,6 +743,10 @@
       : f.geometria.tramos.map(function(t) { return t.tipo || 'recto'; });
     _radiosSeg = f.geometria.radios_seg ? f.geometria.radios_seg.slice()
       : f.geometria.tramos.map(function(t) { return t.radio || 0; });
+    // Cargar etiquetas manuales (guardadas relativas a p0, Y arriba → lienzo).
+    _etiquetas = (f.geometria.etiquetas || []).map(function(e) {
+      return { tipo: e.tipo, texto: e.texto, x: Math.round(e.x) + offX, y: offY - Math.round(e.y) };
+    });
     _segSel = -1;
     _dibujando = false;    // cargada = terminada (sin rubber band); "Retomar" para seguir
     _editando = codigo;

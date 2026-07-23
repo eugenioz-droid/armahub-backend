@@ -87,6 +87,27 @@
               <!-- Terminar apaga el rubber band; Retomar lo reactiva. -->
               <button id="disenadorBtnTerminar" onclick="disenadorTerminar()" style="display:none; font-size:11px; padding:4px 12px; background:#00695c; color:#fff; border:none; border-radius:4px; cursor:pointer;">✓ Terminar figura</button>
               <button id="disenadorBtnRetomar" onclick="disenadorRetomar()" style="display:none; font-size:11px; padding:4px 12px; background:#fff; color:#00695c; border:1px solid #00695c; border-radius:4px; cursor:pointer;">✎ Retomar dibujo</button>
+              <!-- A5: modo etiquetas manuales (para figuras raras). Oculta las auto. -->
+              <button id="disBtnEtiquetas" onclick="disenadorToggleEtiquetas()" style="font-size:11px; padding:4px 12px; background:#fff; color:#00695c; border:1px solid #00695c; border-radius:4px; cursor:pointer;">🏷️ Etiquetas manuales</button>
+            </div>
+            <!-- Barra de etiquetas (visible en modo etiquetas). Letra/ángulo de la data. -->
+            <div id="disEtiquetasBar" style="display:none; margin-top:8px; padding:8px 10px; background:#e8f5e9; border:1px solid #a5d6a7; border-radius:6px; align-items:center; gap:6px; flex-wrap:wrap;">
+              <span style="font-size:11px; color:#00695c; font-weight:600;">Agregar etiqueta:</span>
+              <select id="disEtTipo" onchange="disenadorEtTipoChange()" style="font-size:12px;">
+                <option value="medida">Medida (cota)</option>
+                <option value="letra">Letra (lado)</option>
+                <option value="angulo">Ángulo</option>
+              </select>
+              <select id="disEtLetra" style="font-size:12px; display:none;">
+                <option>A</option><option>B</option><option>C</option><option>D</option><option>E</option>
+                <option>F</option><option>G</option><option>H</option><option>I</option>
+              </select>
+              <select id="disEtAngulo" style="font-size:12px; display:none;">
+                <option>α1</option><option>α2</option><option>α3</option><option>α4</option>
+              </select>
+              <button onclick="disenadorAgregarEtiqueta()" style="font-size:11px; padding:3px 10px; background:#00695c; color:#fff; border:none; border-radius:4px; cursor:pointer;">＋ Colocar (click en lienzo)</button>
+              <button class="secondary" onclick="disenadorLimpiarEtiquetas()" style="font-size:11px; padding:3px 10px;">🗑 Borrar etiquetas</button>
+              <span class="muted" style="font-size:10px;">Las etiquetas se pueden arrastrar.</span>
             </div>
           </div>
           <!-- Panel de parámetros en vivo -->
