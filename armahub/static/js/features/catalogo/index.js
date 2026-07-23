@@ -74,7 +74,7 @@
     function _miniFig(f) {
       if (!f.geometria || !f.geometria.tramos || !f.geometria.tramos.length) return '<span class="muted" style="font-size:11px;">—</span>';
       if (!window.disenadorMotor || !window.disenadorMotor.dibujarFigura) return '<span class="muted" style="font-size:11px;">—</span>';
-      try { return window.disenadorMotor.dibujarFigura(f.geometria, null, { width: 56, height: 40, pad: 6 }); }
+      try { return window.disenadorMotor.dibujarFigura(f.geometria, null, { width: 80, height: 54 }); }
       catch (e) { return '<span class="muted" style="font-size:11px;">—</span>'; }
     }
     cont.innerHTML = '<table style="width:100%; font-size:12px; border-collapse:collapse;">' +

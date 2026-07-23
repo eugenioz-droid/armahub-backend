@@ -32,7 +32,7 @@ function _bmMiniFigura(codigo) {
   if (!codigo || !_bmGeometrias || !_bmGeometrias[codigo]) return '';
   if (!window.disenadorMotor || !window.disenadorMotor.dibujarFigura) return '';
   try {
-    return window.disenadorMotor.dibujarFigura(_bmGeometrias[codigo], null, { width: 72, height: 40, pad: 6 });
+    return window.disenadorMotor.dibujarFigura(_bmGeometrias[codigo], null, { width: 84, height: 52 });
   } catch (e) { return ''; }
 }
 

@@ -55,7 +55,10 @@
   // vértices y etiqueta cada lado con su letra.
   function svgDesdePuntos(pts, opts) {
     opts = opts || {};
-    var W = opts.width || 320, H = opts.height || 240, pad = opts.pad || 26;
+    var W = opts.width || 320, H = opts.height || 240;
+    // Pad mínimo de 16px para que las etiquetas (letra ~10px afuera, ángulo ~14px)
+    // NO queden cortadas contra el borde del SVG. La figura queda más centrada.
+    var pad = Math.max(16, opts.pad || 26);
     var labels = opts.labels || [];         // etiqueta por tramo (letra del lado)
     if (!pts || pts.length < 2) {
       return '<svg width="' + W + '" height="' + H + '"><text x="' + (W/2) + '" y="' + (H/2) +
@@ -76,10 +79,10 @@
     var poly = tpts.map(function(p) { return p.x.toFixed(1) + ',' + p.y.toFixed(1); }).join(' ');
     var svg = '<svg width="' + W + '" height="' + H + '" viewBox="0 0 ' + W + ' ' + H + '" style="max-width:100%; height:auto;">';
     svg += '<polyline points="' + poly + '" fill="none" stroke="#00695c" stroke-width="3" stroke-linejoin="round" stroke-linecap="round" />';
-    // Vértices.
+    // Vértices (nodos pequeños para no recargar la miniatura).
     tpts.forEach(function(p, i) {
       var isEnd = (i === 0 || i === tpts.length - 1);
-      svg += '<circle cx="' + p.x.toFixed(1) + '" cy="' + p.y.toFixed(1) + '" r="' + (isEnd ? 4 : 3) +
+      svg += '<circle cx="' + p.x.toFixed(1) + '" cy="' + p.y.toFixed(1) + '" r="' + (isEnd ? 2.5 : 2) +
         '" fill="' + (isEnd ? '#004d40' : '#4db6ac') + '" />';
     });
     // Etiquetas de lado, desplazadas perpendicular a la línea (no encima).
