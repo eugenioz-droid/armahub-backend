@@ -62,8 +62,16 @@
       cont.innerHTML = '<div class="muted">No hay figuras con ese filtro.</div>';
       return;
     }
+    // Mini-render de la figura (si tiene geometría del Diseñador). Degrada a "—".
+    function _miniFig(f) {
+      if (!f.geometria || !f.geometria.tramos || !f.geometria.tramos.length) return '<span class="muted" style="font-size:11px;">—</span>';
+      if (!window.disenadorMotor || !window.disenadorMotor.dibujarFigura) return '<span class="muted" style="font-size:11px;">—</span>';
+      try { return window.disenadorMotor.dibujarFigura(f.geometria, null, { width: 56, height: 40, pad: 6 }); }
+      catch (e) { return '<span class="muted" style="font-size:11px;">—</span>'; }
+    }
     cont.innerHTML = '<table style="width:100%; font-size:12px; border-collapse:collapse;">' +
       '<tr style="background:#f5f5f5; text-align:left;">' +
+        '<th style="padding:5px 6px;">Figura</th>' +
         '<th style="padding:5px 6px;">Código</th>' +
         '<th style="padding:5px 6px;">Lados (dims)</th>' +
         '<th style="padding:5px 6px; text-align:center;">N° lados</th>' +
@@ -74,6 +82,7 @@
         var parc = (f.parciales || []).join(', ');
         var ang = (f.angulos || []).length ? (f.angulos.join('°, ') + '°') : '—';
         return '<tr style="border-bottom:1px solid #eee;">' +
+          '<td style="padding:4px 6px;">' + _miniFig(f) + '</td>' +
           '<td style="padding:4px 6px; font-weight:600;">' + _esc(f.codigo) + '</td>' +
           '<td style="padding:4px 6px; font-size:11px;">' + _esc(parc || '—') + '</td>' +
           '<td style="padding:4px 6px; text-align:center;">' + (f.parciales || []).length + '</td>' +
