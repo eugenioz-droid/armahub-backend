@@ -86,7 +86,10 @@
     // geometría (radios escalados al mismo factor que los puntos).
     var tiposEsc = opts.tipos_seg || [];
     var radiosEsc = (opts.radios_seg || []).map(function(r) { return (r || 0) * scale; });
-    svg += '<path d="' + _pathDesdePuntos(tpts, tiposEsc, radiosEsc) + '" fill="none" stroke="#00695c" stroke-width="3" stroke-linejoin="round" stroke-linecap="round" />';
+    // La transformación tx() invierte la Y → el sweep del arco se ve al revés.
+    // Invertir el sweep para el render (1↔0) para que la curva vaya al mismo lado.
+    var sweepsEsc = (opts.sweeps_seg || []).map(function(sw) { return (sw != null ? (1 - sw) : 0); });
+    svg += '<path d="' + _pathDesdePuntos(tpts, tiposEsc, radiosEsc, sweepsEsc) + '" fill="none" stroke="#00695c" stroke-width="3" stroke-linejoin="round" stroke-linecap="round" />';
     // Vértices (nodos pequeños para no recargar la miniatura).
     tpts.forEach(function(p, i) {
       var isEnd = (i === 0 || i === tpts.length - 1);
@@ -110,6 +113,8 @@
     if (opts.angulos !== false) {
       var nAlfa = 0;
       for (var j = 1; j < tpts.length - 1; j++) {
+        // Saltar vértices adyacentes a un arco (la curva es el doblez, no un ángulo).
+        if (tiposEsc[j - 1] === 'arco' || tiposEsc[j] === 'arco') continue;
         // Ángulo de doblez en el vértice j (sobre los puntos ORIGINALES, no escalados).
         var q0 = pts[j - 1], q1 = pts[j], q2 = pts[j + 1];
         var a1 = Math.atan2(q1.y - q0.y, q1.x - q0.x);
@@ -144,8 +149,10 @@
       (((geometria && geometria.tramos) || []).map(function(t) { return t.tipo || 'recto'; }));
     var radios = (geometria && geometria.radios_seg) ||
       (((geometria && geometria.tramos) || []).map(function(t) { return t.radio || 0; }));
+    var sweeps = (geometria && geometria.sweeps_seg) ||
+      (((geometria && geometria.tramos) || []).map(function(t) { return (t.sweep != null ? t.sweep : 1); }));
     var o = { labels: labels, width: opts.width, height: opts.height, pad: opts.pad,
-              angulos: opts.angulos, tipos_seg: tipos, radios_seg: radios };
+              angulos: opts.angulos, tipos_seg: tipos, radios_seg: radios, sweeps_seg: sweeps };
     return svgDesdePuntos(pts, o);
   }
 
@@ -173,7 +180,7 @@
   // Construye el atributo `d` de un <path> desde puntos, usando L (línea) para
   // segmentos rectos y A (arco) para curvos. tipos/radios son paralelos a los
   // segmentos (índice = i-1 para el segmento entre punto i-1 e i).
-  function _pathDesdePuntos(pts, tipos, radios) {
+  function _pathDesdePuntos(pts, tipos, radios, sweeps) {
     if (!pts || pts.length < 1) return '';
     var d = 'M ' + pts[0].x + ' ' + pts[0].y;
     for (var i = 1; i < pts.length; i++) {
@@ -181,11 +188,11 @@
       if (tipo === 'arco') {
         var a = pts[i - 1], b = pts[i];
         var cuerda = Math.sqrt((b.x - a.x) * (b.x - a.x) + (b.y - a.y) * (b.y - a.y)) || 1;
-        // Radio mínimo = media cuerda (si es menor, el arco no existe). Usar el
-        // radio guardado o 1.2× la media cuerda por defecto.
         var r = (radios && radios[i - 1]) ? radios[i - 1] : cuerda * 0.75;
         r = Math.max(r, cuerda / 2 + 0.5);
-        d += ' A ' + r.toFixed(1) + ' ' + r.toFixed(1) + ' 0 0 1 ' + b.x + ' ' + b.y;
+        // sweep 0/1 define hacia qué lado curva (invertible por el usuario).
+        var sw = (sweeps && sweeps[i - 1] != null) ? sweeps[i - 1] : 1;
+        d += ' A ' + r.toFixed(1) + ' ' + r.toFixed(1) + ' 0 0 ' + sw + ' ' + b.x + ' ' + b.y;
       } else {
         d += ' L ' + pts[i].x + ' ' + pts[i].y;
       }
@@ -204,6 +211,7 @@
   // radio (px, para arcos). Paralelos a los tramos (índice de segmento = i-1).
   var _tiposSeg = [];            // ['recto'|'arco', ...] por segmento
   var _radiosSeg = [];           // radio en px por segmento (solo arcos)
+  var _sweepsSeg = [];           // 0/1 por segmento arco: hacia qué lado curva
   var _segSel = -1;              // segmento seleccionado (para ajustar su radio)
   var _modoTrazo = 'recto';      // 'recto' | 'arco' — tipo del PRÓXIMO segmento
   // A5: etiquetas MANUALES (para figuras raras). Modo aparte; las simples siguen
@@ -219,6 +227,14 @@
     var r = Number(v) || 80;
     var val = document.getElementById('disRadioVal'); if (val) val.textContent = r;
     if (_segSel >= 0) { _radiosSeg[_segSel] = r; _redibujarLienzo(); _redibujarPanel(); }
+  };
+
+  // Invierte hacia qué lado curva el arco seleccionado (sweep 0↔1).
+  global.disenadorInvertirCurva = function() {
+    if (_segSel >= 0 && _tiposSeg[_segSel] === 'arco') {
+      _sweepsSeg[_segSel] = _sweepsSeg[_segSel] ? 0 : 1;
+      _redibujarLienzo();
+    }
   };
 
   // ---- A5: EDITOR DE ETIQUETAS MANUALES (toggle; para figuras raras) ----
@@ -341,8 +357,9 @@
       var lado = _labels[i - 1] || LETRAS[i - 1] || ('L' + i);
       var tipo = _tiposSeg[i - 1] || 'recto';
       var radio = (tipo === 'arco') ? (_radiosSeg[i - 1] || 0) : 0;
+      var sweep = (tipo === 'arco') ? (_sweepsSeg[i - 1] != null ? _sweepsSeg[i - 1] : 1) : null;
       if (i === 1) {
-        tramos.push({ lado: lado, giro: 0, sentido: null, tipo: tipo, radio: radio });
+        tramos.push({ lado: lado, giro: 0, sentido: null, tipo: tipo, radio: radio, sweep: sweep });
       } else {
         var p0v = _puntos[i - 2], p1v = _puntos[i - 1], p2v = _puntos[i];
         var a1 = Math.atan2(p1v.y - p0v.y, p1v.x - p0v.x);
@@ -351,7 +368,7 @@
         while (d > 180) d -= 360; while (d < -180) d += 360;
         var giro = Math.abs(Math.round(d));
         var sentido = (d < 0) ? 'izq' : 'der';   // pantalla: horario = der
-        tramos.push({ lado: lado, giro: giro, sentido: sentido, tipo: tipo, radio: radio });
+        tramos.push({ lado: lado, giro: giro, sentido: sentido, tipo: tipo, radio: radio, sweep: sweep });
       }
     }
     // 5M.8.6: guardar los PUNTOS reales (normalizados, Y hacia arriba) → render
@@ -362,7 +379,7 @@
     var etiquetas = _etiquetas.map(function(e) { return { tipo: e.tipo, texto: e.texto, x: e.x - p0.x, y: -(e.y - p0.y) }; });
     return { dim: '2D', tramos: tramos, puntos: puntos,
              tipos_seg: _tiposSeg.slice(), radios_seg: _radiosSeg.slice(),
-             etiquetas: etiquetas };
+             sweeps_seg: _sweepsSeg.slice(), etiquetas: etiquetas };
   }
 
   // ---- Longitudes de cada lado desde los puntos del lienzo (en px de grilla) ----
@@ -384,6 +401,9 @@
     var out = {};
     var nAlfa = 0;
     for (var i = 1; i < _puntos.length - 1; i++) {   // vértices internos
+      // Si el segmento entrante (i) o saliente (i+1) es un ARCO, la curva ES el
+      // doblez → ese vértice NO genera ángulo α (evita los 45° falsos).
+      if (_tiposSeg[i - 1] === 'arco' || _tiposSeg[i] === 'arco') continue;
       var p0 = _puntos[i - 1], p1 = _puntos[i], p2 = _puntos[i + 1];
       var a1 = Math.atan2(p1.y - p0.y, p1.x - p0.x);
       var a2 = Math.atan2(p2.y - p1.y, p2.x - p1.x);
@@ -477,7 +497,7 @@
     if (!capa) return;
     var s = '';
     if (_puntos.length >= 2) {
-      s += '<path d="' + _pathDesdePuntos(_puntos, _tiposSeg, _radiosSeg) + '" fill="none" stroke="#00695c" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"/>';
+      s += '<path d="' + _pathDesdePuntos(_puntos, _tiposSeg, _radiosSeg, _sweepsSeg) + '" fill="none" stroke="#00695c" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"/>';
     }
     if (_dibujando && _puntos.length >= 1 && _hoverPt) {
       var lp = _puntos[_puntos.length - 1];
@@ -574,6 +594,7 @@
       if (_modoTrazo === 'arco') {
         var cuerda = Math.sqrt((p.x - last.x) * (p.x - last.x) + (p.y - last.y) * (p.y - last.y));
         _radiosSeg[segIdx] = Math.round(cuerda * 0.75);   // radio inicial razonable
+        _sweepsSeg[segIdx] = 1;                            // lado por defecto (invertible)
         _segSel = segIdx;                                  // seleccionarlo para el slider
       }
     }
@@ -589,6 +610,7 @@
     _labels = _labels.slice(0, Math.max(0, _puntos.length - 1));
     _tiposSeg = _tiposSeg.slice(0, Math.max(0, _puntos.length - 1));
     _radiosSeg = _radiosSeg.slice(0, Math.max(0, _puntos.length - 1));
+    _sweepsSeg = _sweepsSeg.slice(0, Math.max(0, _puntos.length - 1));
     _segSel = -1;
     _redibujarLienzo();
     _redibujarPanel();
@@ -598,7 +620,7 @@
   global.disenadorLimpiar = function() {
     if (_puntos.length && !confirm('¿Borrar el dibujo actual?')) return;
     _puntos = []; _labels = []; _hoverPt = null;
-    _tiposSeg = []; _radiosSeg = []; _segSel = -1;
+    _tiposSeg = []; _radiosSeg = []; _sweepsSeg = []; _segSel = -1;
     _etiquetas = [];
     _dibujando = true; _editando = null;
     var nb = document.getElementById('disenadorNombre'); if (nb) nb.value = '';
@@ -667,7 +689,7 @@
     // Ángulos que se guardan = ÁNGULO INTERNO del vértice (convención aSa).
     // Solo los especiales (giro ≠90 y ≠0). Un giro de 90 → interno 90 (implícito).
     var angulos = geo.tramos
-      .filter(function(t) { return t.giro !== 90 && t.giro !== 0; })
+      .filter(function(t) { return t.tipo !== 'arco' && t.giro !== 90 && t.giro !== 0; })
       .map(function(t) { return _anguloInterno(t.giro); });
     if (angulos.length > 4) {
       alert('Esta figura tiene ' + angulos.length + ' ángulos especiales (≠90°), pero el sistema soporta máximo 4 (α1-α4).\n\nAjusta la figura antes de guardar.');
@@ -685,7 +707,7 @@
         if (typeof showToast === 'function') showToast('Figura "' + nombre + '" guardada en el catálogo', 'success');
         // Limpiar el lienzo y refrescar el catálogo/galería con lo recién guardado.
         _puntos = []; _labels = []; _hoverPt = null; _dibujando = true; _editando = null;
-        _tiposSeg = []; _radiosSeg = []; _segSel = -1; _etiquetas = [];
+        _tiposSeg = []; _radiosSeg = []; _sweepsSeg = []; _segSel = -1; _etiquetas = [];
         var nb = document.getElementById('disenadorNombre'); if (nb) nb.value = '';
         await _recargarCatalogo();
         _redibujarLienzo(); _redibujarPanel(); _actualizarBotonTerminar();
@@ -743,6 +765,8 @@
       : f.geometria.tramos.map(function(t) { return t.tipo || 'recto'; });
     _radiosSeg = f.geometria.radios_seg ? f.geometria.radios_seg.slice()
       : f.geometria.tramos.map(function(t) { return t.radio || 0; });
+    _sweepsSeg = f.geometria.sweeps_seg ? f.geometria.sweeps_seg.slice()
+      : f.geometria.tramos.map(function(t) { return t.sweep != null ? t.sweep : 1; });
     // Cargar etiquetas manuales (guardadas relativas a p0, Y arriba → lienzo).
     _etiquetas = (f.geometria.etiquetas || []).map(function(e) {
       return { tipo: e.tipo, texto: e.texto, x: Math.round(e.x) + offX, y: offY - Math.round(e.y) };
