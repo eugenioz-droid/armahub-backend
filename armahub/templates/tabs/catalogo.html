@@ -74,8 +74,13 @@
               <button id="disBtn3D" onclick="disenadorSetVista('3D')" style="font-size:12px; padding:4px 14px; background:#fff; color:#00695c; border:1px solid #00695c; border-radius:0 4px 4px 0; cursor:pointer; font-weight:600; margin-left:-6px;">3D</button>
               <span class="muted" style="font-size:10px; margin-left:8px;">El 3D carga el visor la primera vez.</span>
             </div>
-            <!-- Visor 3D (oculto en 2D). Three.js se carga on-demand al activar. -->
+            <!-- Espacio 3D (oculto en 2D). Three.js se carga on-demand al activar. -->
             <div id="disenador3D" style="display:none; width:420px; max-width:100%; height:320px; border:1px solid #e0e0e0; border-radius:8px; background:#f7f9fa; overflow:hidden;"></div>
+            <!-- Controles 3D (Etapa B: dibujo por clicks + ORTO). Por ahora informativo. -->
+            <div id="disControles3D" style="display:none; margin-top:8px; font-size:11px; color:#666;">
+              Arrastra para rotar la vista. <span style="color:#d32f2f;">■</span>X <span style="color:#388e3c;">■</span>Y <span style="color:#1976d2;">■</span>Z.
+              <span class="muted">El dibujo por clicks + ORTO llega en la próxima etapa.</span>
+            </div>
             <!-- Modo de trazo: recto o curva. En curva, el proximo segmento se dibuja como arco. -->
             <div id="disControles2D">
             <div class="row" style="gap:8px; margin-bottom:8px; align-items:center; flex-wrap:wrap;">
