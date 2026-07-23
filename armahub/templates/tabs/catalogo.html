@@ -120,15 +120,17 @@
             </div>
             </div><!-- /disControles2D -->
           </div>
-          <!-- Columna derecha: preview + etiquetas (al activar) + parámetros. -->
-          <div style="width:280px; flex-shrink:0; display:flex; flex-direction:column; gap:12px;">
-            <!-- PREVIEW: como se verá la miniatura de la figura (2D o 3D). -->
-            <div style="padding:10px 12px; background:#fff; border:1px solid #e0e0e0; border-radius:8px;">
+          <!-- PREVIEW: columna propia, JUSTO al lado del canvas. -->
+          <div style="width:240px; flex-shrink:0;">
+            <div style="padding:10px 12px; background:#fff; border:1px solid #e0e0e0; border-radius:8px; position:sticky; top:8px;">
               <div style="font-size:11px; color:#666; font-weight:600; margin-bottom:6px;">Vista previa (como se verá)</div>
-              <div id="disPreview" style="min-height:74px; display:flex; align-items:center; justify-content:center;">
+              <div id="disPreview" style="min-height:120px; display:flex; align-items:center; justify-content:center;">
                 <span class="muted" style="font-size:11px;">Dibuja para ver el preview.</span>
               </div>
             </div>
+          </div>
+          <!-- Columna derecha: etiquetas (al activar) + parámetros. -->
+          <div style="width:280px; flex-shrink:0; display:flex; flex-direction:column; gap:12px;">
             <!-- Panel de parámetros 3D (visible solo en vista 3D). -->
             <div id="dis3dPanelWrap" style="display:none; padding:10px 12px; background:#fafafa; border:1px solid #eee; border-radius:8px;">
               <div id="dis3dPanel" class="muted" style="font-size:12px;">Haz click en el visor para trazar el primer lado.</div>
