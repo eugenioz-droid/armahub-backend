@@ -21,6 +21,19 @@
   // Nodos de la figura 3D (Vector3). Etapa B los llenará con clicks.
   var _nodos3d = [];
 
+  // Proyección ISOMÉTRICA de un punto 3D → punto 2D (para la vista 2D etiquetable).
+  // Proyección estándar de dibujo técnico: da sensación 3D sobre un plano.
+  function _iso(p) {
+    var a = Math.PI / 6;   // 30°
+    return { x: (p.x - p.z) * Math.cos(a), y: p.y - (p.x + p.z) * Math.sin(a) };
+  }
+
+  // Nodos 3D → puntos 2D isométricos (para el SVG de etiquetado / preview 2D).
+  global.disenador3dNodos2D = function() {
+    return _nodos3d.map(function(p) { return _iso(p); });
+  };
+  global.disenador3dTieneFigura = function() { return _nodos3d.length >= 2; };
+
   global.disenadorSetVista = function(v) {
     _vista = (v === '3D') ? '3D' : '2D';
     var c2d = document.getElementById('disControles2D');

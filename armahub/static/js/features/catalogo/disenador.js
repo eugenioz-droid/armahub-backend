@@ -251,6 +251,32 @@
     _redibujarLienzo();
   };
 
+  // Etiquetar una figura 3D sobre su VISTA 2D (proyección isométrica): carga esa
+  // proyección como puntos del lienzo 2D y activa el modo etiquetas → se reutiliza
+  // TODO el sistema de etiquetas del 2D (click + arrastrar, medida/letra/ángulo).
+  global.disenadorEtiquetarVista3D = function() {
+    if (typeof disenador3dTieneFigura !== 'function' || !disenador3dTieneFigura()) {
+      alert('Dibuja la figura en 3D antes de etiquetar su vista.');
+      return;
+    }
+    var pts2d = disenador3dNodos2D();   // proyección isométrica {x,y}
+    // Escalar/centrar en el lienzo (la iso viene en coords 3D, se ajusta a la grilla).
+    var minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    pts2d.forEach(function(p){ if(p.x<minX)minX=p.x; if(p.x>maxX)maxX=p.x; if(p.y<minY)minY=p.y; if(p.y>maxY)maxY=p.y; });
+    var bw = Math.max(1, maxX-minX), bh = Math.max(1, maxY-minY);
+    var sc = Math.min((CW-80)/bw, (CH-80)/bh);
+    var offX = 40 - minX*sc, offY = 40 - minY*sc;
+    _puntos = pts2d.map(function(p){ return { x: Math.round(p.x*sc+offX), y: Math.round(p.y*sc+offY) }; });
+    _labels = []; _tiposSeg = []; _radiosSeg = []; _sweepsSeg = [];
+    for (var i=1;i<_puntos.length;i++){ _labels[i-1]=LETRAS[i-1]||('L'+i); _tiposSeg[i-1]='recto'; }
+    _dibujando = false;   // solo etiquetar, no seguir dibujando la forma
+    // Cambiar a vista 2D para mostrar el lienzo, y activar etiquetas.
+    if (typeof disenadorSetVista === 'function') disenadorSetVista('2D');
+    _modoEtiquetas = false; disenadorToggleEtiquetas();   // enciende etiquetas
+    _redibujarLienzo(); _redibujarPanel();
+    if (typeof showToast === 'function') showToast('Vista 2D de la figura 3D cargada. Coloca las etiquetas.', 'info');
+  };
+
   // Agrega una etiqueta manual del tipo elegido en el próximo click en el lienzo.
   // El tipo se toma del selector; letra/ángulo deben ser de la data disponible.
   var _etTipoPendiente = null;   // tipo a colocar en el próximo click
