@@ -95,20 +95,17 @@
       etiq += '<circle cx="' + e.x + '" cy="' + e.y + '" r="10" fill="#fff" opacity="0.9" data-eti="' + k + '" style="cursor:move;"/>';
       etiq += '<text x="' + e.x + '" y="' + (e.y + 4) + '" text-anchor="middle" fill="' + col + '" font-size="12" font-weight="700" data-eti="' + k + '" style="cursor:move;">' + String(e.texto).replace(/[<>&]/g, '') + '</text>';
     });
-    // El fondo va como <foreignObject> si es HTML (img), o inline si es SVG.
-    var fondo;
-    if (/^\s*<svg/i.test(_fondoHTML)) {
-      // SVG 2D: incrustar como imagen de datos para escalar al viewBox.
-      fondo = '<foreignObject x="0" y="0" width="' + PW + '" height="' + PH + '">' +
-        '<div xmlns="http://www.w3.org/1999/xhtml" style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;">' + _fondoHTML + '</div></foreignObject>';
-    } else {
-      // Imagen (snapshot 3D u <img>): incrustar como foreignObject.
-      fondo = '<foreignObject x="0" y="0" width="' + PW + '" height="' + PH + '">' +
-        '<div xmlns="http://www.w3.org/1999/xhtml" style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;">' + _fondoHTML + '</div></foreignObject>';
-    }
+    // Fondo (figura) en un <foreignObject> que NO captura eventos (pointer-events
+    // none) y con la imagen NO arrastrable → los clicks/drag caen sobre el SVG y
+    // sus etiquetas, no sobre la imagen (bug: los clicks arrastraban la imagen).
+    var fondoHTML = _fondoHTML.replace(/<img /gi, '<img draggable="false" ');
+    var fondo = '<foreignObject x="0" y="0" width="' + PW + '" height="' + PH + '" style="pointer-events:none;">' +
+      '<div xmlns="http://www.w3.org/1999/xhtml" style="width:100%;height:100%;display:flex;align-items:center;justify-content:center; pointer-events:none;">' + fondoHTML + '</div></foreignObject>';
+    // Rect transparente que captura los clicks en toda el área (para colocar).
+    var captura = _modo ? '<rect x="0" y="0" width="' + PW + '" height="' + PH + '" fill="transparent"/>' : '';
     var svg = '<svg id="disPreviewSvg" width="' + PW + '" height="' + PH + '" viewBox="0 0 ' + PW + ' ' + PH +
-      '" style="max-width:100%; border-radius:4px; ' + (_modo ? 'cursor:crosshair;' : '') + '">' +
-      fondo + etiq + '</svg>';
+      '" style="max-width:100%; border-radius:4px; user-select:none; ' + (_modo ? 'cursor:crosshair;' : '') + '">' +
+      fondo + captura + etiq + '</svg>';
     cont.innerHTML = svg;
     // Bind eventos (el SVG se recrea en cada render).
     var s = document.getElementById('disPreviewSvg');

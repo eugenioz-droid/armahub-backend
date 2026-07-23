@@ -155,12 +155,15 @@
       var mat = new THREE.MeshStandardMaterial({ color: 0x00695c, metalness: 0.3, roughness: 0.5 });
       _figuraGroup.add(new THREE.Mesh(geo, mat));
     }
-    // Nodos como esferitas.
-    _nodos3d.forEach(function(p) {
-      var s = new THREE.Mesh(new THREE.SphereGeometry(5, 12, 12), new THREE.MeshStandardMaterial({ color: 0x004d40 }));
-      s.position.copy(p); _figuraGroup.add(s);
+    // Nodos como esferitas (marcadas con su índice para poder arrastrarlas).
+    _nodosMesh = [];
+    _nodos3d.forEach(function(p, idx) {
+      var s = new THREE.Mesh(new THREE.SphereGeometry(7, 12, 12), new THREE.MeshStandardMaterial({ color: 0x004d40 }));
+      s.position.copy(p); s.userData.nodoIdx = idx;
+      _figuraGroup.add(s); _nodosMesh.push(s);
     });
   }
+  var _nodosMesh = [];
   global.disenador3dRedibujar = _redibujarFigura3d;
   global.disenador3dNodos = function() { return _nodos3d; };
 
@@ -231,17 +234,21 @@
     hit.x = Math.round(hit.x / _GRID3D) * _GRID3D;
     hit.y = Math.round(hit.y / _GRID3D) * _GRID3D;
     hit.z = Math.round(hit.z / _GRID3D) * _GRID3D;
-    // ORTO: forzar el tramo a 90° dentro del plano (solo se mueve en UN eje del
-    // plano respecto al último nodo — el de mayor cambio). Evita las diagonales.
+    // ORTO: snapea el ángulo del tramo (dentro del plano) a múltiplos de 45°
+    // (0/45/90/135…), igual que el 2D. Permite rectos, diagonales limpias y 135°.
     if (_orto && _nodos3d.length) {
       var last = _nodos3d[_nodos3d.length - 1];
-      // Ejes libres del plano activo (el eje normal queda fijo por el plano).
       var ejes = (_planoActivo === 'XZ') ? ['x', 'z'] : (_planoActivo === 'XY') ? ['x', 'y'] : ['y', 'z'];
-      var d0 = Math.abs(hit[ejes[0]] - last[ejes[0]]);
-      var d1 = Math.abs(hit[ejes[1]] - last[ejes[1]]);
-      // Mantener solo el eje con mayor desplazamiento; el otro se iguala al último.
-      if (d0 >= d1) hit[ejes[1]] = last[ejes[1]];
-      else hit[ejes[0]] = last[ejes[0]];
+      var e0 = hit[ejes[0]] - last[ejes[0]], e1 = hit[ejes[1]] - last[ejes[1]];
+      var dist = Math.sqrt(e0 * e0 + e1 * e1);
+      if (dist > 0.1) {
+        var ang = Math.atan2(e1, e0);
+        var snap = Math.round(ang / (Math.PI / 4)) * (Math.PI / 4);   // múltiplos de 45°
+        // Largo a la grilla (proyección sobre la dirección snapeada).
+        var largo = Math.max(_GRID3D, Math.round(dist / _GRID3D) * _GRID3D);
+        hit[ejes[0]] = Math.round((last[ejes[0]] + largo * Math.cos(snap)) / _GRID3D) * _GRID3D;
+        hit[ejes[1]] = Math.round((last[ejes[1]] + largo * Math.sin(snap)) / _GRID3D) * _GRID3D;
+      }
     }
     return hit;
   }
@@ -361,16 +368,43 @@
     }
   }
 
-  var _downX = 0, _downY = 0, _moved = 0;
+  var _downX = 0, _downY = 0, _moved = 0, _dragNodo = -1;
   function _bindRotacion(cont) {
     cont.onmousedown = function(e) {
-      _dragging = true; _lastX = e.clientX; _lastY = e.clientY;
+      _lastX = e.clientX; _lastY = e.clientY;
       _downX = e.clientX; _downY = e.clientY; _moved = 0;
+      // ¿El mousedown golpeó una esfera de nodo? → arrastrar ese nodo (no rotar).
+      _dragNodo = _nodoBajoCursor(e);
+      _dragging = (_dragNodo < 0);   // solo rota si NO arrastramos un nodo
     };
     window.addEventListener('mousemove', _onMove);
     window.addEventListener('mouseup', _onUp);
   }
+
+  // Índice del nodo bajo el cursor (raycast contra las esferas), o -1.
+  function _nodoBajoCursor(ev) {
+    if (!window.THREE || !_renderer || !_nodosMesh.length) return -1;
+    var rect = _renderer.domElement.getBoundingClientRect();
+    if (!_raycaster) { _raycaster = new THREE.Raycaster(); _mouseNDC = new THREE.Vector2(); }
+    _mouseNDC.x = ((ev.clientX - rect.left) / rect.width) * 2 - 1;
+    _mouseNDC.y = -((ev.clientY - rect.top) / rect.height) * 2 + 1;
+    _raycaster.setFromCamera(_mouseNDC, _camera);
+    var hits = _raycaster.intersectObjects(_nodosMesh, false);
+    if (hits.length && hits[0].object.userData.nodoIdx != null) return hits[0].object.userData.nodoIdx;
+    return -1;
+  }
+
   function _onMove(e) {
+    // Arrastrar un nodo: reposicionarlo en el plano de trabajo activo.
+    if (_dragNodo >= 0) {
+      var p = _puntoEnPlano(e);
+      if (p && _nodos3d[_dragNodo]) {
+        _nodos3d[_dragNodo].copy(p);
+        _redibujarFigura3d(); _actualizarInfo3d();
+        _moved += 10;   // marcar que hubo arrastre (para no colocar nodo al soltar)
+      }
+      return;
+    }
     if (!_dragging) return;
     _rotY += (e.clientX - _lastX) * 0.01;
     _rotX += (e.clientY - _lastY) * 0.01;
@@ -378,11 +412,11 @@
     _lastX = e.clientX; _lastY = e.clientY;
   }
   function _onUp(e) {
+    if (_dragNodo >= 0) { _dragNodo = -1; return; }   // fin del arrastre de nodo
     if (!_dragging) return;
     _dragging = false;
     // Si casi no se movió → fue un CLICK: colocar un nodo en el plano de trabajo.
     if (_moved < 5 && _vista === '3D') {
-      // Verificar que el mouseup cayó dentro del canvas 3D.
       var cont = document.getElementById('disenador3D');
       if (cont) {
         var r = cont.getBoundingClientRect();

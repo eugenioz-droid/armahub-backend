@@ -234,6 +234,7 @@
     if (_segSel >= 0 && _tiposSeg[_segSel] === 'arco') {
       _sweepsSeg[_segSel] = _sweepsSeg[_segSel] ? 0 : 1;
       _redibujarLienzo();
+      _redibujarPanel();   // actualiza el PREVIEW con la nueva dirección de curva
     }
   };
 
