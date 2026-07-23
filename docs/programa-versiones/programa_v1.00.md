@@ -715,6 +715,26 @@ Objetivo: endurecer Reclamos y cerrar los pendientes reales arrastrados.
 | 5M.11.1 | **Paso 1 — Selección múltiple (sin tocar datos).** En la vista plana + modo edición: checkbox por fila + "seleccionar todas", estado `_seleccion` (Set de ids). La selección se limpia al: cambiar de obra, salir de edición, re-buscar. Persiste entre páginas (por id). | ☑ | YO |
 | 5M.11.2 | **Paso 2 — Modificación MASIVA en tándem (diseño de Eugenio).** Botón "🔁 Modificación masiva" (solo en modo edición). Al activarlo aparecen los checkboxes (no antes → tabla limpia en edición normal). Con el modo ON: marcas barras y al editar UNA celda de una marcada, ese valor se copia a TODAS las marcadas (misma columna) — reutiliza la edición celda-por-celda existente, sin panel/endpoint nuevo. La validación en rojo corre por fila (celda incoherente → roja); NADA incoherente se guarda (backend 409, regla 5M.4). Flujo: cambiar figura masivo → se pintan rojas → luego limpiar/ajustar la columna que sobra en las marcadas → guardar. Barra azul con contador + instrucción en pantalla. Toast "aplicado a N barras". Nota: la réplica pinta/valida solo las barras visibles de la página; las marcadas en otra página igual reciben el cambio y el backend las valida al guardar. Seguridad: la réplica SOLO ocurre con el modo masivo ON y sobre barras marcadas (sin accidentes en edición normal). | ☑ | YO |
 | 5M.10 | **Orden de filtros del Bar Manager (iteración 1).** 2 grupos por significado: UBICACIÓN (proyecto + sector/piso/ciclo/eje) y TIPO DE BARRA · Vista plana (figura/tipología/**φ diámetro** nuevo). **Diámetro implementado** (backend: `diam` en /barras + /barras/elementos + `diametros` en /barras/facetas, poblado con los φ presentes en la obra). Proyecto = buscador-desplegable en un control (input+select fusionados). Plano/Carga/Origen → **Filtros avanzados** plegable (bajo uso). **Búsqueda libre eliminada** (sin valor). **Persistencia selectiva en refresh (F5):** recuerda la OBRA + figura/tipología/diámetro (vuelve a la vista en que estabas); NO recuerda ubicación/avanzados (evita resultados "fantasma"). | ☑ | YO |
+| 5M.8.3 | **Bar Manager: mini-render de figura (seguro).** En la celda de figura (solo lectura), muestra el dibujo SVG junto al código si la figura tiene geometría (del Diseñador). Carga perezosa `/figuras-catalogo`; usa `window.disenadorMotor`. **Degrada a solo texto** si no hay geometría o el motor no cargó → cero riesgo para el Bar Manager. Paso intermedio antes de un render más rico. | ☑ | YO |
+
+---
+
+## 5N — CUBICACIÓN MANUAL (ingresar barras desde la plataforma) — PLANIFICADO
+
+> **Misión (Eugenio, fin de sesión):** un tab en caluga Cubicación, parecido a Bar Manager,
+> para CREAR/ingresar barras directamente en una obra (no solo por import CSV). Agrupación
+> similar + vista plana. **Las barras creadas acá NO deben ser borradas por un re-import**
+> (ej. si creo barras en un piso/ciclo, una carga posterior de ese piso/ciclo no las elimina).
+> Probar el render de figuras acá antes de llevarlo a Bar Manager.
+
+**Decisiones de diseño (pensadas, para validar mañana):**
+
+| N° | Descripción | Realizado | Quién |
+|----|-------------|-----------|-------|
+| 5N.1 | **Discovery + diseño del tab.** Nuevo tab "Cubicar" en caluga Cubicación. Reutiliza la estructura de Bar Manager (agrupación piso/sector/eje→ciclos + vista plana), pero con CRUD: agregar barra, editar, eliminar. Toda barra creada acá lleva `origen='manual'` (el campo YA existe en `barras`). Formulario de alta: piso/sector/ciclo/eje/figura/φ/dims/cant → calcula largo (suma de lados) y peso (fórmula existente). Valida geometría contra el catálogo (reusar `validar_geometria`). | ☐ | TÚ+YO |
+| 5N.2 | **PROTECCIÓN clave: el re-import NO borra barras manuales.** El import hace DELETE de los (eje,piso,ciclo) del CSV (importer.py). Cambio: el DELETE selectivo **excluye `origen='manual'`** (`AND COALESCE(origen,'csv') <> 'manual'`). Así, si creo barras manuales en un piso/ciclo, una carga CSV de ese mismo cruce reescribe solo las del CSV y **conserva las manuales**. Avisar en el preview cuántas manuales conviven (informativo). Ojo: revisar interacción con el aviso 5M.5 (editadas) — son marcas distintas (`editado_por` vs `origen`). | ☐ | YO |
+| 5N.3 | **Render de figuras acá (piloto antes de Bar Manager).** Mostrar el render SVG de la figura de cada barra en este tab (más grande que la mini de Bar Manager). Sirve de campo de pruebas del render con data real sin arriesgar Bar Manager. | ☐ | YO |
+| 5N.4 | **Homologación catálogo (paso intermedio).** Cruzar figuras dibujadas en el Diseñador con las del catálogo existente (de la herramienta de detallado). Cuando haya varias figuras con geometría, un panel para asociar/confirmar. Base para multi-catálogo futuro (geometría=verdad, nombres=etiquetas mapeables). | ☐ | TÚ+YO |
 
 ---
 
