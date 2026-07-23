@@ -56,9 +56,10 @@
   function svgDesdePuntos(pts, opts) {
     opts = opts || {};
     var W = opts.width || 320, H = opts.height || 240;
-    // Pad mínimo de 16px para que las etiquetas (letra ~10px afuera, ángulo ~14px)
-    // NO queden cortadas contra el borde del SVG. La figura queda más centrada.
-    var pad = Math.max(16, opts.pad || 26);
+    // Pad PROPORCIONAL al tamaño del SVG (no fijo): ~14% del lado menor, acotado.
+    // Un pad fijo grande achicaba la figura en miniaturas pequeñas. Deja aire para
+    // las etiquetas sin comerse el espacio.
+    var pad = opts.pad != null ? opts.pad : Math.max(6, Math.min(W, H) * 0.14);
     var labels = opts.labels || [];         // etiqueta por tramo (letra del lado)
     if (!pts || pts.length < 2) {
       return '<svg width="' + W + '" height="' + H + '"><text x="' + (W/2) + '" y="' + (H/2) +
@@ -71,9 +72,13 @@
       if (p.y < minY) minY = p.y; if (p.y > maxY) maxY = p.y;
     });
     var bw = Math.max(1, maxX - minX), bh = Math.max(1, maxY - minY);
+    // Escalar para llenar el marco (menos el pad), y luego CENTRAR la figura en el
+    // SVG (no anclarla a la esquina). Así queda centrada y aprovecha el espacio.
     var scale = Math.min((W - 2 * pad) / bw, (H - 2 * pad) / bh);
-    // El eje Y del SVG crece hacia abajo; invertimos para que la figura no salga espejada.
-    function tx(p) { return { x: pad + (p.x - minX) * scale, y: H - (pad + (p.y - minY) * scale) }; }
+    var fw = bw * scale, fh = bh * scale;         // tamaño final de la figura
+    var offX = (W - fw) / 2, offY = (H - fh) / 2; // centrado
+    // El eje Y del SVG crece hacia abajo; invertimos para que no salga espejada.
+    function tx(p) { return { x: offX + (p.x - minX) * scale, y: H - (offY + (p.y - minY) * scale) }; }
     var tpts = pts.map(tx);
 
     var poly = tpts.map(function(p) { return p.x.toFixed(1) + ',' + p.y.toFixed(1); }).join(' ');
