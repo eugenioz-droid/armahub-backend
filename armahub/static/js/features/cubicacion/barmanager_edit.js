@@ -28,6 +28,7 @@
     _actualizarBotonMasivo();
     if (typeof bmReRenderVistaActual === 'function') bmReRenderVistaActual();
     _actualizarBarraSeleccion();
+    if (_modoMasivo) _poblarColsOperar();   // 5M.12: dropdowns de operar columnas
   };
 
   function _actualizarBotonMasivo() {
@@ -340,6 +341,72 @@
     }
     _actualizarBotonEdicion();
   };
+
+  // ==== 5M.12: OPERAR COLUMNAS (copiar / intercambiar) sobre las marcadas ====
+  // Columnas operables: lados A-I, ángulos α1-α4, diámetro, cantidad.
+  var _COLS_OPERABLES = [
+    { campo: 'dim_a', label: 'A' }, { campo: 'dim_b', label: 'B' }, { campo: 'dim_c', label: 'C' },
+    { campo: 'dim_d', label: 'D' }, { campo: 'dim_e', label: 'E' }, { campo: 'dim_f', label: 'F' },
+    { campo: 'dim_g', label: 'G' }, { campo: 'dim_h', label: 'H' }, { campo: 'dim_i', label: 'I' },
+    { campo: 'ang1', label: 'α1' }, { campo: 'ang2', label: 'α2' }, { campo: 'ang3', label: 'α3' }, { campo: 'ang4', label: 'α4' },
+    { campo: 'diam', label: 'φ diámetro' }, { campo: 'cant_total', label: 'Cantidad' }
+  ];
+
+  // Puebla los dropdowns de columna origen/destino (una vez que existen en el DOM).
+  function _poblarColsOperar() {
+    var so = document.getElementById('bmColOrigen'), sd = document.getElementById('bmColDestino');
+    if (!so || !sd) return;
+    var opts = _COLS_OPERABLES.map(function(c) { return '<option value="' + c.campo + '">' + c.label + '</option>'; }).join('');
+    so.innerHTML = opts; sd.innerHTML = opts;
+    if (sd.options.length > 1) sd.selectedIndex = 1;   // destino distinto por defecto
+    // Flecha según la operación.
+    var op = document.getElementById('bmColOp'), fl = document.getElementById('bmColFlecha');
+    if (op && fl) { op.onchange = function() { fl.textContent = (op.value === 'intercambiar') ? '↔' : '→'; }; }
+  }
+
+  // Valor EFECTIVO de una columna en una barra: el cambio pendiente si existe,
+  // si no el valor en memoria (lastBarrasPlano).
+  function _valorEfectivo(id, campo) {
+    id = String(id);
+    if (_cambios[id] && (campo in _cambios[id])) return _cambios[id][campo];
+    if (typeof lastBarrasPlano !== 'undefined' && lastBarrasPlano.forEach) {
+      for (var i = 0; i < lastBarrasPlano.length; i++) {
+        if (String(lastBarrasPlano[i].id) === id) return lastBarrasPlano[i][campo];
+      }
+    }
+    return null;
+  }
+
+  // Aplica copiar/intercambiar entre 2 columnas a TODAS las barras marcadas.
+  global.bmOperarColumnas = function() {
+    if (!_modoEdicion || !_modoMasivo) return;
+    var ids = Object.keys(_seleccion);
+    if (ids.length === 0) { if (typeof showToast === 'function') showToast('Marca al menos una barra', 'info'); return; }
+    var op = (document.getElementById('bmColOp') || {}).value || 'copiar';
+    var origen = (document.getElementById('bmColOrigen') || {}).value;
+    var destino = (document.getElementById('bmColDestino') || {}).value;
+    if (!origen || !destino) return;
+    if (origen === destino) { alert('La columna de origen y destino deben ser distintas.'); return; }
+    ids.forEach(function(id) {
+      var vOrig = _valorEfectivo(id, origen);
+      if (op === 'intercambiar') {
+        var vDest = _valorEfectivo(id, destino);
+        _aplicarCambioBarra(id, destino, vOrig);
+        _aplicarCambioBarra(id, origen, vDest);
+      } else {   // copiar: origen → destino (pisa destino; origen queda igual)
+        _aplicarCambioBarra(id, destino, vOrig);
+      }
+    });
+    var labOr = _labelCol(origen), labDe = _labelCol(destino);
+    var verbo = (op === 'intercambiar') ? ('intercambió ' + labOr + ' ↔ ' + labDe) : ('copió ' + labOr + ' → ' + labDe);
+    if (typeof showToast === 'function') showToast('Se ' + verbo + ' en ' + ids.length + ' barra(s) marcada(s)', 'info');
+    _actualizarBotonEdicion();
+  };
+
+  function _labelCol(campo) {
+    for (var i = 0; i < _COLS_OPERABLES.length; i++) if (_COLS_OPERABLES[i].campo === campo) return _COLS_OPERABLES[i].label;
+    return campo;
+  }
 
   // Resalta en ROJO los slots (dim/lados) que sobran o faltan de una barra según
   // el detalle del 409 del backend. El usuario los corrige manualmente (5M.4).
