@@ -42,7 +42,7 @@
       </div>
     </div>
 
-    <!-- ===== Sub-panel: DISEÑADOR (5M.7/5M.8 — Paso 1: render SVG de solo lectura) ===== -->
+    <!-- ===== Sub-panel: DISEÑADOR — crear figura NUEVA dibujando por clicks (5M.8) ===== -->
     <div id="catSubDisenador" style="display:none;">
       <div class="card" style="border-top:3px solid #00695c;">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
@@ -50,34 +50,33 @@
           <span class="muted" style="font-size:11px;" id="disenadorResumen"></span>
         </div>
         <p class="muted" style="font-size:12px; margin:0 0 12px 0;">
-          Dibujo vectorial (SVG) de una figura a partir de su geometría de armado (tramos: lado + giro + sentido).
-          <strong>Paso 1 (esta versión):</strong> solo visualización. La creación/edición de la geometría llega en el siguiente paso.
-          Las figuras sin geometría definida aún no se pueden dibujar.
+          Crea una figura NUEVA dibujándola: haz click en el lienzo para trazar cada lado. Los ángulos se ajustan solos
+          a 45/90/135°. Ponle un nombre (el que uses en tu catálogo) y guárdala. Cada lado recibe una letra (A, B, C…)
+          que puedes cambiar. La geometría queda lista para renderizar en el Bar Manager y (a futuro) 3D / BVBS.
         </p>
-        <div class="row" style="gap:10px; align-items:flex-end; flex-wrap:wrap; margin-bottom:12px;">
+
+        <!-- Nombre de la figura (lo pone el usuario, NO se autogenera) -->
+        <div class="row" style="gap:10px; align-items:flex-end; flex-wrap:wrap; margin-bottom:10px;">
           <div style="display:flex; flex-direction:column;">
-            <label style="font-size:11px; color:#666; font-weight:600; margin-bottom:2px;">Figura</label>
-            <select id="disenadorFiguraSel" onchange="disenadorRender()" style="font-size:13px; min-width:160px;">
-              <option value="">— Selecciona una figura —</option>
-            </select>
+            <label style="font-size:11px; color:#666; font-weight:600; margin-bottom:2px;">Nombre de la figura *</label>
+            <input type="text" id="disenadorNombre" placeholder="ej. 104B" autocomplete="off" name="disenador-nombre"
+                   style="font-size:13px; min-width:180px; padding:5px 8px;" />
           </div>
-          <div style="display:flex; flex-direction:column;">
-            <label style="font-size:11px; color:#666; font-weight:600; margin-bottom:2px;">Ejemplo de prueba</label>
-            <select id="disenadorDemoSel" onchange="disenadorRenderDemo()" style="font-size:13px; min-width:220px;">
-              <option value="">— Figuras de demostración —</option>
-            </select>
-          </div>
+          <button onclick="disenadorGuardar()" style="font-size:13px; padding:7px 16px; background:#00695c; color:#fff; border:none; border-radius:4px; cursor:pointer;">💾 Guardar en catálogo</button>
         </div>
+
         <div style="display:flex; gap:16px; flex-wrap:wrap; align-items:flex-start;">
-          <!-- Vista SVG -->
-          <div style="flex:1; min-width:280px;">
-            <div id="disenadorSvgWrap" style="border:1px solid #e0e0e0; border-radius:8px; background:#fafafa; min-height:260px; display:flex; align-items:center; justify-content:center; padding:12px;">
-              <span class="muted" style="font-size:12px;">Selecciona una figura para ver su dibujo.</span>
+          <!-- Lienzo de dibujo -->
+          <div style="flex:1; min-width:300px;">
+            <div id="disenadorLienzo" style="border:1px solid #e0e0e0; border-radius:8px; overflow:hidden; display:inline-block;"></div>
+            <div class="row" style="gap:8px; margin-top:8px;">
+              <button class="secondary" onclick="disenadorDeshacer()" style="font-size:11px; padding:4px 12px;">↶ Deshacer punto</button>
+              <button class="secondary" onclick="disenadorLimpiar()" style="font-size:11px; padding:4px 12px;">🗑 Limpiar</button>
             </div>
           </div>
-          <!-- Info de la figura -->
-          <div style="width:260px; flex-shrink:0;">
-            <div id="disenadorInfo" class="muted" style="font-size:12px;">—</div>
+          <!-- Panel de parámetros en vivo -->
+          <div style="width:280px; flex-shrink:0; padding:10px 12px; background:#fafafa; border:1px solid #eee; border-radius:8px;">
+            <div id="disenadorPanel" class="muted" style="font-size:12px;">Haz click en el lienzo para empezar.</div>
           </div>
         </div>
       </div>

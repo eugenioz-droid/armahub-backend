@@ -338,17 +338,67 @@ def listar_figuras(activo: Optional[bool] = True, user=Depends(get_current_user)
         with conn.cursor() as cur:
             where = " WHERE activo = TRUE" if activo else ""
             cur.execute(f"""
-                SELECT codigo, parciales, angulos, radio, descripcion, activo
+                SELECT codigo, parciales, angulos, radio, descripcion, activo, geometria
                 FROM figuras_catalogo{where} ORDER BY codigo
             """)
             rows = cur.fetchall()
     return {
         "figuras": [
             {"codigo": r[0], "parciales": r[1] or [], "angulos": r[2] or [],
-             "radio": bool(r[3]), "descripcion": r[4], "activo": r[5]}
+             "radio": bool(r[3]), "descripcion": r[4], "activo": r[5],
+             "geometria": r[6]}   # 5M.8: JSON de armado (o None si sin render)
             for r in rows
         ]
     }
+
+
+class FiguraCrear(BaseModel):
+    codigo: str
+    parciales: list = []
+    angulos: list = []
+    radio: bool = False
+    descripcion: Optional[str] = None
+    geometria: Optional[dict] = None   # { dim, tramos:[{lado,giro,sentido}] }
+
+
+@router.post("/figuras-catalogo")
+def crear_o_actualizar_figura(body: FiguraCrear, user=Depends(get_current_user)):
+    """Crea una figura NUEVA o actualiza su geometría (5M.8 Diseñador). El
+    catálogo es data maestra → solo admin. UPSERT por código: permite crear
+    figuras nuevas dibujadas Y poblar la geometría de figuras que ya existían
+    (el trabajo de render 1×1). NO borra data: si la figura ya existe, actualiza
+    geometría/parciales/ángulos; el resto se conserva."""
+    import json
+    rol = (user.get("role") or "").lower()
+    if rol not in ("admin", "admin_calidad"):
+        from fastapi import HTTPException
+        raise HTTPException(status_code=403, detail="Solo un administrador puede crear/editar figuras del catálogo.")
+    codigo = (body.codigo or "").strip()
+    if not codigo:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=400, detail="El código/nombre de la figura es obligatorio.")
+    geo_json = json.dumps(body.geometria) if body.geometria is not None else None
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO figuras_catalogo (codigo, parciales, angulos, radio, descripcion, geometria, activo)
+                VALUES (%s, %s, %s, %s, %s, %s, TRUE)
+                ON CONFLICT (codigo) DO UPDATE SET
+                    parciales   = EXCLUDED.parciales,
+                    angulos     = EXCLUDED.angulos,
+                    radio       = EXCLUDED.radio,
+                    geometria   = EXCLUDED.geometria,
+                    descripcion = COALESCE(EXCLUDED.descripcion, figuras_catalogo.descripcion)
+                """,
+                (codigo, body.parciales, body.angulos, body.radio, body.descripcion, geo_json),
+            )
+    try:
+        from .db import audit
+        audit(user.get("email", "?"), "guardar_figura_catalogo", codigo, "figura", codigo)
+    except Exception:
+        pass
+    return {"ok": True, "codigo": codigo}
 
 
 @router.get("/tipologias")

@@ -100,101 +100,243 @@
     return svgDesdePuntos(pts, o);
   }
 
-  // ---- Figuras de DEMOSTRACIÓN (para validar el motor en el Paso 1) ----
-  // Geometrías de prueba escritas a mano hasta que exista el editor. Muestran que
-  // el motor dibuja: recto, L, U, Z, con giro libre.
-  var DEMOS = {
-    '101A (recta)':      { dim: '2D', tramos: [ {lado:'A', giro:0} ] },
-    '102A (L 90°)':      { dim: '2D', tramos: [ {lado:'A', giro:0}, {lado:'B', giro:90, sentido:'izq'} ] },
-    '103A (U / gancho)': { dim: '2D', tramos: [ {lado:'A', giro:0}, {lado:'B', giro:90, sentido:'izq'}, {lado:'C', giro:90, sentido:'izq'} ] },
-    '104A (marco C)':    { dim: '2D', tramos: [ {lado:'A', giro:0}, {lado:'B', giro:90, sentido:'izq'}, {lado:'C', giro:90, sentido:'izq'}, {lado:'D', giro:90, sentido:'izq'} ] },
-    '102B (135°)':       { dim: '2D', tramos: [ {lado:'A', giro:0}, {lado:'B', giro:135, sentido:'izq'} ] },
-    'Z (giro libre)':    { dim: '2D', tramos: [ {lado:'A', giro:0}, {lado:'B', giro:60, sentido:'izq'}, {lado:'C', giro:120, sentido:'der'} ] }
-  };
+  // ==========================================================================
+  // EDITOR POR LIENZO — crear una figura NUEVA dibujando con clicks (5M.8)
+  // El usuario hace click en un lienzo; los puntos se pegan (snap) a ángulos
+  // limpios; cada segmento se vuelve un LADO (A, B, C…). El nombre lo pone el
+  // usuario (no se autogenera). Salida = geometría (tramos) → catálogo.
+  //
+  // MODELO ampliable (preparado, NO todo dibujado aún):
+  //   - Ø real de la barra → grosor del trazo (trivial en 2D, se activa después).
+  //   - radio_doblado → esquinas redondeadas (arco por vértice; futuro).
+  //   - dim:"3D" → render TubeGeometry (Three.js on-demand; futuro).
+  //   - La geometría es la VERDAD; el nombre es etiqueta (multi-catálogo).
+  // ==========================================================================
 
-  // ---- Estado / UI del sub-tab Diseñador ----
-  var _figurasCat = [];   // catálogo de figuras (para el selector y su info)
+  var GRID = 40;                 // paso de la grilla del lienzo (px)
+  var SNAP_ANG = 45;             // snap de ángulo (grados) — ángulos limpios
+  var LETRAS = 'ABCDEFGHI'.split('');
 
-  // Cargado por la caluga al abrir el diseñador.
+  // Estado del editor.
+  var _puntos = [];              // vértices clickeados en el lienzo {x,y} (coord lienzo)
+  var _labels = [];              // letra asignada a cada LADO (segmento). editable.
+  var _figurasCat = [];          // catálogo (para el paso de homologación futuro)
+  var _hoverPt = null;           // punto de previsualización bajo el cursor (con snap)
+
   function disenadorInit(figuras) {
     _figurasCat = figuras || [];
-    var sel = document.getElementById('disenadorFiguraSel');
-    if (sel) {
-      sel.innerHTML = '<option value="">— Selecciona una figura —</option>' +
-        _figurasCat.map(function(f) {
-          var tieneGeom = !!(f.geometria && f.geometria.tramos && f.geometria.tramos.length);
-          return '<option value="' + f.codigo + '">' + f.codigo + (tieneGeom ? '' : ' (sin geometría)') + '</option>';
-        }).join('');
-    }
-    var demo = document.getElementById('disenadorDemoSel');
-    if (demo) {
-      demo.innerHTML = '<option value="">— Figuras de demostración —</option>' +
-        Object.keys(DEMOS).map(function(k) { return '<option value="' + k + '">' + k + '</option>'; }).join('');
-    }
     var res = document.getElementById('disenadorResumen');
     if (res) {
       var conGeom = _figurasCat.filter(function(f) { return f.geometria && f.geometria.tramos && f.geometria.tramos.length; }).length;
-      res.textContent = conGeom + ' de ' + _figurasCat.length + ' figuras con geometría';
+      res.textContent = conGeom + ' de ' + _figurasCat.length + ' figuras con render';
     }
+    _redibujarLienzo();
+    _redibujarPanel();
   }
 
-  // Render de una figura del catálogo (si tiene geometría).
-  function disenadorRender() {
-    var codigo = (document.getElementById('disenadorFiguraSel') || {}).value || '';
-    var wrap = document.getElementById('disenadorSvgWrap');
-    var info = document.getElementById('disenadorInfo');
-    if (!codigo) {
-      if (wrap) wrap.innerHTML = '<span class="muted" style="font-size:12px;">Selecciona una figura para ver su dibujo.</span>';
-      if (info) info.innerHTML = '—';
+  // ---- Snap: pega un punto a la grilla y fuerza ángulo limpio desde el previo ----
+  function _snap(x, y) {
+    if (_puntos.length === 0) {
+      // Primer punto: solo a la grilla.
+      return { x: Math.round(x / GRID) * GRID, y: Math.round(y / GRID) * GRID };
+    }
+    // Puntos siguientes: ángulo limpio respecto al último punto + largo a la grilla.
+    var last = _puntos[_puntos.length - 1];
+    var dx = x - last.x, dy = y - last.y;
+    var dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist < 1) return { x: last.x, y: last.y };
+    var ang = Math.atan2(dy, dx) * 180 / Math.PI;
+    var angSnap = Math.round(ang / SNAP_ANG) * SNAP_ANG;    // ángulo limpio
+    var distSnap = Math.max(GRID, Math.round(dist / GRID) * GRID);  // largo a la grilla
+    var rad = angSnap * Math.PI / 180;
+    return { x: last.x + distSnap * Math.cos(rad), y: last.y + distSnap * Math.sin(rad) };
+  }
+
+  // ---- Puntos del lienzo → geometría (tramos con lado + giro + sentido) ----
+  // Deriva, por cada segmento, el ángulo de doblez respecto al anterior.
+  function _puntosAGeometria() {
+    var tramos = [];
+    for (var i = 1; i < _puntos.length; i++) {
+      var lado = _labels[i - 1] || LETRAS[i - 1] || ('L' + i);
+      if (i === 1) {
+        tramos.push({ lado: lado, giro: 0, sentido: null });
+      } else {
+        var p0 = _puntos[i - 2], p1 = _puntos[i - 1], p2 = _puntos[i];
+        var a1 = Math.atan2(p1.y - p0.y, p1.x - p0.x);
+        var a2 = Math.atan2(p2.y - p1.y, p2.x - p1.x);
+        var d = (a2 - a1) * 180 / Math.PI;
+        while (d > 180) d -= 360; while (d < -180) d += 360;
+        // En coords de pantalla el Y crece hacia abajo; el motor usa Y hacia arriba.
+        // El giro es el mismo valor absoluto; el sentido se normaliza para el motor.
+        var giro = Math.abs(Math.round(d));
+        var sentido = (d < 0) ? 'izq' : 'der';   // pantalla: horario = der
+        tramos.push({ lado: lado, giro: giro, sentido: sentido });
+      }
+    }
+    return { dim: '2D', tramos: tramos };
+  }
+
+  // ---- Longitudes de cada lado desde los puntos del lienzo (en px de grilla) ----
+  function _largos() {
+    var out = {};
+    for (var i = 1; i < _puntos.length; i++) {
+      var lado = _labels[i - 1] || LETRAS[i - 1];
+      var dx = _puntos[i].x - _puntos[i - 1].x, dy = _puntos[i].y - _puntos[i - 1].y;
+      out[lado] = Math.round(Math.sqrt(dx * dx + dy * dy) / GRID);   // en unidades de grilla
+    }
+    return out;
+  }
+
+  // ---- Render del LIENZO interactivo (SVG con grilla + puntos + preview) ----
+  function _redibujarLienzo() {
+    var wrap = document.getElementById('disenadorLienzo');
+    if (!wrap) return;
+    var W = 420, H = 320;
+    var s = '<svg id="disenadorSvgCanvas" width="' + W + '" height="' + H + '" ' +
+      'style="background:#fff; border-radius:6px; cursor:crosshair; touch-action:none; max-width:100%;" ' +
+      'onmousemove="disenadorHover(event)" onmouseleave="disenadorHoverOut()" onclick="disenadorClick(event)">';
+    // Grilla.
+    for (var gx = 0; gx <= W; gx += GRID) s += '<line x1="' + gx + '" y1="0" x2="' + gx + '" y2="' + H + '" stroke="#eee" stroke-width="1"/>';
+    for (var gy = 0; gy <= H; gy += GRID) s += '<line x1="0" y1="' + gy + '" x2="' + W + '" y2="' + gy + '" stroke="#eee" stroke-width="1"/>';
+    // Polilínea dibujada.
+    if (_puntos.length >= 2) {
+      var poly = _puntos.map(function(p) { return p.x + ',' + p.y; }).join(' ');
+      s += '<polyline points="' + poly + '" fill="none" stroke="#00695c" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"/>';
+    }
+    // Preview del próximo segmento (línea punteada hasta el cursor con snap).
+    if (_puntos.length >= 1 && _hoverPt) {
+      var lp = _puntos[_puntos.length - 1];
+      s += '<line x1="' + lp.x + '" y1="' + lp.y + '" x2="' + _hoverPt.x + '" y2="' + _hoverPt.y + '" stroke="#4db6ac" stroke-width="2" stroke-dasharray="5,4"/>';
+      s += '<circle cx="' + _hoverPt.x + '" cy="' + _hoverPt.y + '" r="4" fill="#4db6ac" opacity="0.6"/>';
+    }
+    // Vértices + etiqueta de lado en el medio de cada segmento.
+    _puntos.forEach(function(p, i) {
+      var isEnd = (i === 0 || i === _puntos.length - 1);
+      s += '<circle cx="' + p.x + '" cy="' + p.y + '" r="' + (isEnd ? 5 : 4) + '" fill="' + (isEnd ? '#004d40' : '#00897b') + '"/>';
+    });
+    for (var i = 1; i < _puntos.length; i++) {
+      var a = _puntos[i - 1], b = _puntos[i];
+      var mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+      var lbl = _labels[i - 1] || LETRAS[i - 1];
+      s += '<text x="' + mx + '" y="' + (my - 6) + '" text-anchor="middle" fill="#00695c" font-size="13" font-weight="700">' + lbl + '</text>';
+    }
+    s += '</svg>';
+    wrap.innerHTML = s;
+  }
+
+  // ---- Coordenada del evento relativa al SVG ----
+  function _coord(ev) {
+    var svg = document.getElementById('disenadorSvgCanvas');
+    if (!svg) return null;
+    var r = svg.getBoundingClientRect();
+    return { x: ev.clientX - r.left, y: ev.clientY - r.top };
+  }
+
+  global.disenadorHover = function(ev) {
+    var c = _coord(ev); if (!c) return;
+    _hoverPt = _snap(c.x, c.y);
+    _redibujarLienzo();
+  };
+  global.disenadorHoverOut = function() { _hoverPt = null; _redibujarLienzo(); };
+
+  global.disenadorClick = function(ev) {
+    var c = _coord(ev); if (!c) return;
+    var p = _snap(c.x, c.y);
+    // Evitar duplicar el mismo punto.
+    var last = _puntos[_puntos.length - 1];
+    if (last && Math.abs(last.x - p.x) < 1 && Math.abs(last.y - p.y) < 1) return;
+    _puntos.push(p);
+    if (_puntos.length >= 2) _labels[_puntos.length - 2] = LETRAS[_puntos.length - 2] || ('L' + (_puntos.length - 1));
+    _redibujarLienzo();
+    _redibujarPanel();
+  };
+
+  global.disenadorDeshacer = function() {
+    if (_puntos.length === 0) return;
+    _puntos.pop();
+    _labels = _labels.slice(0, Math.max(0, _puntos.length - 1));
+    _redibujarLienzo();
+    _redibujarPanel();
+  };
+
+  global.disenadorLimpiar = function() {
+    if (_puntos.length && !confirm('¿Borrar el dibujo actual?')) return;
+    _puntos = []; _labels = []; _hoverPt = null;
+    _redibujarLienzo();
+    _redibujarPanel();
+  };
+
+  // Cambiar la LETRA asignada a un lado (requerimiento: reasignar A/B/C…).
+  global.disenadorSetLetra = function(idx, valor) {
+    valor = (valor || '').trim().toUpperCase();
+    if (valor) _labels[idx] = valor;
+    _redibujarLienzo();
+    _redibujarPanel();
+  };
+
+  // ---- Panel lateral de PARÁMETROS en vivo (el resumen que gustó) ----
+  function _redibujarPanel() {
+    var cont = document.getElementById('disenadorPanel');
+    if (!cont) return;
+    if (_puntos.length < 2) {
+      cont.innerHTML = '<div class="muted" style="font-size:12px;">Haz click en el lienzo para trazar el primer lado. Cada click agrega un lado; el ángulo se ajusta a 45/90/135°.</div>';
       return;
     }
-    // Al elegir una figura del catálogo, limpiar el selector de demo.
-    var demo = document.getElementById('disenadorDemoSel'); if (demo) demo.value = '';
-    var f = _figurasCat.find(function(x) { return x.codigo === codigo; });
-    if (!f) return;
-    var tieneGeom = !!(f.geometria && f.geometria.tramos && f.geometria.tramos.length);
-    if (wrap) {
-      wrap.innerHTML = tieneGeom
-        ? dibujarFigura(f.geometria, null, { width: 340, height: 260 })
-        : '<div style="text-align:center; color:#b26a00; font-size:12px;">⚠ Esta figura aún no tiene geometría definida.<br><span class="muted">Se podrá dibujar cuando se cree su geometría en el editor (próximo paso).</span></div>';
-    }
-    if (info) {
-      info.innerHTML =
-        '<div style="font-weight:700; color:#00695c; font-size:14px; margin-bottom:6px;">' + f.codigo + '</div>' +
-        '<div><b>Lados:</b> ' + ((f.parciales || []).join(', ') || '—') + '</div>' +
-        '<div><b>Ángulos:</b> ' + ((f.angulos || []).length ? (f.angulos.join('°, ') + '°') : '—') + '</div>' +
-        '<div><b>Radio:</b> ' + (f.radio ? 'sí' : 'no') + '</div>' +
-        '<div style="margin-top:6px;"><b>Geometría:</b> ' + (tieneGeom ? (f.geometria.tramos.length + ' tramos') : '<span style="color:#b26a00;">no definida</span>') + '</div>';
-    }
+    var geo = _puntosAGeometria();
+    var largos = _largos();
+    var ladosUsados = geo.tramos.map(function(t) { return t.lado; });
+    var angulos = geo.tramos.filter(function(t, i) { return i > 0; }).map(function(t) { return t.giro; });
+
+    var html = '<div style="font-weight:700; color:#00695c; margin-bottom:8px;">Parámetros de la figura</div>';
+    html += '<table style="width:100%; font-size:12px; border-collapse:collapse;">';
+    html += '<tr style="color:#666; text-align:left;"><th style="padding:2px 4px;">Lado</th><th style="padding:2px 4px;">Largo (grilla)</th><th style="padding:2px 4px;">Ángulo prev.</th></tr>';
+    geo.tramos.forEach(function(t, i) {
+      html += '<tr style="border-top:1px solid #eee;">' +
+        '<td style="padding:2px 4px;"><input value="' + t.lado + '" maxlength="2" onchange="disenadorSetLetra(' + i + ', this.value)" style="width:34px; font-weight:700; color:#00695c; text-align:center; font-size:12px;" /></td>' +
+        '<td style="padding:2px 4px;">' + (largos[t.lado] || '—') + '</td>' +
+        '<td style="padding:2px 4px;">' + (i === 0 ? '—' : (t.giro + '° ' + (t.sentido || ''))) + '</td>' +
+        '</tr>';
+    });
+    html += '</table>';
+    html += '<div style="margin-top:8px; font-size:12px; color:#444;">' +
+      '<div><b>Lados:</b> ' + ladosUsados.join(', ') + '</div>' +
+      '<div><b>Ángulos:</b> ' + (angulos.length ? (angulos.join('°, ') + '°') : '—') + '</div>' +
+      '<div><b>N° de lados:</b> ' + ladosUsados.length + '</div>' +
+      '</div>';
+    cont.innerHTML = html;
   }
 
-  // Render de una figura de demostración (geometría de prueba a mano).
-  function disenadorRenderDemo() {
-    var key = (document.getElementById('disenadorDemoSel') || {}).value || '';
-    var wrap = document.getElementById('disenadorSvgWrap');
-    var info = document.getElementById('disenadorInfo');
-    if (!key || !DEMOS[key]) return;
-    var sel = document.getElementById('disenadorFiguraSel'); if (sel) sel.value = '';
-    var geom = DEMOS[key];
-    if (wrap) wrap.innerHTML = dibujarFigura(geom, null, { width: 340, height: 260 });
-    if (info) {
-      info.innerHTML =
-        '<div style="font-weight:700; color:#00695c; font-size:14px; margin-bottom:6px;">' + key + '</div>' +
-        '<div class="muted" style="font-size:11px; margin-bottom:6px;">Geometría de demostración (motor de prueba).</div>' +
-        '<div><b>Tramos:</b></div>' +
-        '<ol style="margin:4px 0 0 16px; padding:0; font-size:11px;">' +
-        geom.tramos.map(function(t) {
-          var giro = t.giro ? (t.giro + '° ' + (t.sentido || 'izq')) : 'recto';
-          return '<li>Lado ' + t.lado + ' · ' + giro + '</li>';
-        }).join('') +
-        '</ol>';
+  // ---- Guardar la figura dibujada (crear en el catálogo con nombre del usuario) ----
+  global.disenadorGuardar = async function() {
+    var nombre = ((document.getElementById('disenadorNombre') || {}).value || '').trim();
+    if (!nombre) { alert('Ponle un nombre a la figura antes de guardar.'); return; }
+    if (_puntos.length < 2) { alert('Dibuja al menos un lado (dos puntos) antes de guardar.'); return; }
+    var geo = _puntosAGeometria();
+    var parciales = geo.tramos.map(function(t) { return t.lado; });
+    var angulos = geo.tramos.filter(function(t, i) { return i > 0; }).map(function(t) { return t.giro; });
+    var payload = { codigo: nombre, parciales: parciales, angulos: angulos, radio: false, geometria: geo };
+    // Endpoint de creación (se implementa en backend). Por ahora avisamos si no existe.
+    try {
+      var res = await fetch(apiUrl('/figuras-catalogo'), {
+        method: 'POST',
+        headers: Object.assign({ 'Content-Type': 'application/json' }, (typeof authHeaders === 'function' ? authHeaders() : {})),
+        body: JSON.stringify(payload)
+      });
+      if (res.ok) {
+        if (typeof showToast === 'function') showToast('Figura "' + nombre + '" guardada en el catálogo', 'success');
+        global.disenadorLimpiar();
+        var nb = document.getElementById('disenadorNombre'); if (nb) nb.value = '';
+      } else {
+        var d = await res.json().catch(function() { return {}; });
+        alert('No se pudo guardar: ' + (d.detail || res.status));
+      }
+    } catch (e) {
+      alert('Error al guardar la figura: ' + e.message);
     }
-  }
+  };
 
-  // Exponer al scope global (para onclick/onchange y la caluga).
+  // Exponer al scope global.
   global.disenadorInit = disenadorInit;
-  global.disenadorRender = disenadorRender;
-  global.disenadorRenderDemo = disenadorRenderDemo;
-  // Motor reutilizable por el futuro editor.
-  global.disenadorMotor = { geometriaAPuntos: geometriaAPuntos, svgDesdePuntos: svgDesdePuntos, dibujarFigura: dibujarFigura };
+  // Motor reutilizable (SVG 2D; base para 3D TubeGeometry y export BVBS futuros).
+  global.disenadorMotor = { geometriaAPuntos: geometriaAPuntos, svgDesdePuntos: svgDesdePuntos, dibujarFigura: dibujarFigura, puntosAGeometria: _puntosAGeometria };
 })(window);
