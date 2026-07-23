@@ -86,9 +86,9 @@
     _figuraGroup = new THREE.Group();
     _worldGroup.add(_figuraGroup);
     _redibujarFigura3d();
-
     _bindRotacion(cont);
     _animar();
+    global.disenador3dSetPlano(_planoActivo);   // plano inicial + resaltado del botón
   }
 
   // Grilla de referencia en el plano base (XZ) para ubicarse en el espacio.
@@ -130,39 +130,72 @@
   global.disenador3dRedibujar = _redibujarFigura3d;
   global.disenador3dNodos = function() { return _nodos3d; };
 
-  // ---- Etapa B: DIBUJO por dirección + ORTO ----
-  // Un click plano en 3D es ambiguo, así que el dibujo se hace por DIRECCIÓN de
-  // eje (X/Y/Z ±) + un paso de grilla. Es ORTO puro (tipo CAD): cada tramo va en
-  // un eje exacto → inequívoco y preciso. El usuario elige eje y "avanza".
-  var _pasoGrilla = 40;          // largo de cada avance (px del espacio)
-  var _dibujando3d = true;
+  // ---- Etapa B: DIBUJO por CLICKS sobre un PLANO de trabajo ----
+  // Un click 3D es un rayo (ambiguo en profundidad). Solución: el nodo cae en el
+  // PLANO de trabajo activo (con snap a grilla). Para dibujar en otra dirección,
+  // el usuario cambia el plano (XZ piso / XY frontal / YZ lateral). Clicks + nodos
+  // como el 2D; lo único extra es elegir el plano.
+  var _GRID3D = 40;              // paso de grilla del espacio
+  var _planoActivo = 'XZ';      // 'XZ' (piso) | 'XY' (frontal) | 'YZ' (lateral)
+  var _planoOffset = 0;         // desplazamiento del plano en su eje normal
+  var _raycaster = null, _mouseNDC = null;
 
-  // Agrega un nodo en la dirección de eje dada desde el último nodo (o desde el
-  // origen si es el primero). eje: 'x+','x-','y+','y-','z+','z-'. pasos: nº de grilla.
-  global.disenador3dAvanzar = function(eje, pasos) {
-    if (!window.THREE) return;
-    pasos = pasos || 1;
-    var d = _pasoGrilla * pasos;
-    var base = _nodos3d.length ? _nodos3d[_nodos3d.length - 1].clone() : new THREE.Vector3(0, 0, 0);
-    if (_nodos3d.length === 0) _nodos3d.push(base.clone());   // primer nodo = origen
-    var last = _nodos3d[_nodos3d.length - 1].clone();
-    if (eje === 'x+') last.x += d; else if (eje === 'x-') last.x -= d;
-    else if (eje === 'y+') last.y += d; else if (eje === 'y-') last.y -= d;
-    else if (eje === 'z+') last.z += d; else if (eje === 'z-') last.z -= d;
-    _nodos3d.push(last);
-    _redibujarFigura3d();
+  // Cambia el plano de trabajo. El nodo nuevo caerá en este plano.
+  global.disenador3dSetPlano = function(p) {
+    _planoActivo = (p === 'XY' || p === 'YZ') ? p : 'XZ';
+    // El offset del plano = la coordenada normal del último nodo (para "continuar"
+    // dibujando desde donde quedó, no volver al origen del plano).
+    if (_nodos3d.length) {
+      var l = _nodos3d[_nodos3d.length - 1];
+      _planoOffset = (_planoActivo === 'XZ') ? l.y : (_planoActivo === 'XY') ? l.z : l.x;
+    } else _planoOffset = 0;
+    _actualizarPlanoVisual();
     _actualizarInfo3d();
+    // Resaltar el botón del plano activo.
+    ['XZ', 'XY', 'YZ'].forEach(function(pl) {
+      var b = document.getElementById('dis3dPl' + pl);
+      if (b) { var on = (pl === _planoActivo);
+        b.style.background = on ? '#00695c' : '#fff'; b.style.color = on ? '#fff' : '#333';
+        b.style.border = on ? 'none' : '1px solid #ccc'; }
+    });
   };
+
+  // Intersección del rayo del click con el plano de trabajo → punto 3D snapeado.
+  function _puntoEnPlano(ev) {
+    if (!window.THREE || !_renderer) return null;
+    var rect = _renderer.domElement.getBoundingClientRect();
+    if (!_raycaster) { _raycaster = new THREE.Raycaster(); _mouseNDC = new THREE.Vector2(); }
+    _mouseNDC.x = ((ev.clientX - rect.left) / rect.width) * 2 - 1;
+    _mouseNDC.y = -((ev.clientY - rect.top) / rect.height) * 2 + 1;
+    _raycaster.setFromCamera(_mouseNDC, _camera);
+    // Plano en coords del MUNDO (sin la rotación del worldGroup): construir el
+    // plano y transformar el rayo al espacio local del worldGroup.
+    var normal, constante;
+    if (_planoActivo === 'XZ') { normal = new THREE.Vector3(0, 1, 0); constante = -_planoOffset; }
+    else if (_planoActivo === 'XY') { normal = new THREE.Vector3(0, 0, 1); constante = -_planoOffset; }
+    else { normal = new THREE.Vector3(1, 0, 0); constante = -_planoOffset; }
+    // Transformar el rayo al espacio local del worldGroup (que está rotado).
+    var inv = new THREE.Matrix4().copy(_worldGroup.matrixWorld).invert();
+    var origin = _raycaster.ray.origin.clone().applyMatrix4(inv);
+    var dir = _raycaster.ray.direction.clone().transformDirection(inv).normalize();
+    var plane = new THREE.Plane(normal, constante);
+    var ray = new THREE.Ray(origin, dir);
+    var hit = new THREE.Vector3();
+    if (!ray.intersectPlane(plane, hit)) return null;
+    // Snap a la grilla.
+    hit.x = Math.round(hit.x / _GRID3D) * _GRID3D;
+    hit.y = Math.round(hit.y / _GRID3D) * _GRID3D;
+    hit.z = Math.round(hit.z / _GRID3D) * _GRID3D;
+    return hit;
+  }
 
   global.disenador3dDeshacer = function() {
     if (_nodos3d.length > 0) _nodos3d.pop();
-    if (_nodos3d.length === 1) _nodos3d.pop();   // si queda solo el origen, limpiar
     _redibujarFigura3d(); _actualizarInfo3d();
   };
   global.disenador3dLimpiarDibujo = function() {
     _nodos3d = []; _redibujarFigura3d(); _actualizarInfo3d();
   };
-  global.disenador3dSetPaso = function(v) { _pasoGrilla = Number(v) || 40; };
 
   // Info del dibujo (nº de tramos) en el panel.
   function _actualizarInfo3d() {
@@ -173,16 +206,52 @@
     }
   }
 
+  var _downX = 0, _downY = 0, _moved = 0;
   function _bindRotacion(cont) {
-    cont.onmousedown = function(e) { _dragging = true; _lastX = e.clientX; _lastY = e.clientY; };
+    cont.onmousedown = function(e) {
+      _dragging = true; _lastX = e.clientX; _lastY = e.clientY;
+      _downX = e.clientX; _downY = e.clientY; _moved = 0;
+    };
     window.addEventListener('mousemove', _onMove);
-    window.addEventListener('mouseup', function() { _dragging = false; });
+    window.addEventListener('mouseup', _onUp);
   }
   function _onMove(e) {
     if (!_dragging) return;
     _rotY += (e.clientX - _lastX) * 0.01;
     _rotX += (e.clientY - _lastY) * 0.01;
+    _moved += Math.abs(e.clientX - _lastX) + Math.abs(e.clientY - _lastY);
     _lastX = e.clientX; _lastY = e.clientY;
+  }
+  function _onUp(e) {
+    if (!_dragging) return;
+    _dragging = false;
+    // Si casi no se movió → fue un CLICK: colocar un nodo en el plano de trabajo.
+    if (_moved < 5 && _vista === '3D') {
+      // Verificar que el mouseup cayó dentro del canvas 3D.
+      var cont = document.getElementById('disenador3D');
+      if (cont) {
+        var r = cont.getBoundingClientRect();
+        if (e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom) {
+          var p = _puntoEnPlano(e);
+          if (p) { _nodos3d.push(p); _redibujarFigura3d(); _actualizarInfo3d(); }
+        }
+      }
+    }
+  }
+
+  // Malla visual del plano de trabajo activo (para que el usuario vea dónde caerá
+  // el click). Se actualiza al cambiar de plano.
+  var _planoMesh = null;
+  function _actualizarPlanoVisual() {
+    if (!window.THREE || !_worldGroup) return;
+    if (_planoMesh) { _worldGroup.remove(_planoMesh); _planoMesh = null; }
+    var geo = new THREE.PlaneGeometry(400, 400);
+    var mat = new THREE.MeshBasicMaterial({ color: 0x4db6ac, transparent: true, opacity: 0.12, side: THREE.DoubleSide });
+    _planoMesh = new THREE.Mesh(geo, mat);
+    if (_planoActivo === 'XZ') { _planoMesh.rotation.x = -Math.PI / 2; _planoMesh.position.y = _planoOffset; }
+    else if (_planoActivo === 'XY') { _planoMesh.position.z = _planoOffset; }
+    else { _planoMesh.rotation.y = Math.PI / 2; _planoMesh.position.x = _planoOffset; }
+    _worldGroup.add(_planoMesh);
   }
 
   function _animar() {

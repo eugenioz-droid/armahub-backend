@@ -76,29 +76,18 @@
             </div>
             <!-- Espacio 3D (oculto en 2D). Three.js se carga on-demand al activar. -->
             <div id="disenador3D" style="display:none; width:420px; max-width:100%; height:320px; border:1px solid #e0e0e0; border-radius:8px; background:#f7f9fa; overflow:hidden;"></div>
-            <!-- Controles 3D: dibujo por dirección de eje (ORTO). Arrastra el visor para rotar. -->
+            <!-- Controles 3D: dibujo por CLICKS sobre el plano de trabajo activo. -->
             <div id="disControles3D" style="display:none; margin-top:8px;">
-              <div style="font-size:11px; color:#666; margin-bottom:6px;">Arrastra el visor para rotar. Agrega tramos por dirección de eje (ORTO):
-                <span style="color:#d32f2f;">■X</span> <span style="color:#388e3c;">■Y</span> <span style="color:#1976d2;">■Z</span></div>
-              <div class="row" style="gap:4px; align-items:center; flex-wrap:wrap;">
-                <span style="font-size:11px; color:#d32f2f; font-weight:700;">X</span>
-                <button onclick="disenador3dAvanzar('x+',1)" style="font-size:12px; padding:3px 9px; cursor:pointer;">→ +X</button>
-                <button onclick="disenador3dAvanzar('x-',1)" style="font-size:12px; padding:3px 9px; cursor:pointer;">← −X</button>
-                <span style="font-size:11px; color:#388e3c; font-weight:700; margin-left:6px;">Y</span>
-                <button onclick="disenador3dAvanzar('y+',1)" style="font-size:12px; padding:3px 9px; cursor:pointer;">↑ +Y</button>
-                <button onclick="disenador3dAvanzar('y-',1)" style="font-size:12px; padding:3px 9px; cursor:pointer;">↓ −Y</button>
-                <span style="font-size:11px; color:#1976d2; font-weight:700; margin-left:6px;">Z</span>
-                <button onclick="disenador3dAvanzar('z+',1)" style="font-size:12px; padding:3px 9px; cursor:pointer;">⊙ +Z</button>
-                <button onclick="disenador3dAvanzar('z-',1)" style="font-size:12px; padding:3px 9px; cursor:pointer;">⊗ −Z</button>
+              <div style="font-size:11px; color:#666; margin-bottom:6px;">
+                <b>Click</b> en el visor coloca un nodo en el plano de trabajo (celeste). <b>Arrastra</b> para rotar.
+                Cambia de plano para dibujar en otra dirección.
               </div>
-              <div class="row" style="gap:6px; align-items:center; margin-top:6px; flex-wrap:wrap;">
-                <label style="font-size:11px; color:#666;">Largo tramo:
-                  <select onchange="disenador3dSetPaso(this.value)" style="font-size:12px;">
-                    <option value="40">1 grilla</option><option value="80">2 grillas</option>
-                    <option value="120">3 grillas</option><option value="160">4 grillas</option>
-                  </select>
-                </label>
-                <button class="secondary" onclick="disenador3dDeshacer()" style="font-size:11px; padding:3px 10px;">↶ Deshacer</button>
+              <div class="row" style="gap:6px; align-items:center; flex-wrap:wrap;">
+                <span style="font-size:11px; color:#666; font-weight:600;">Plano:</span>
+                <button id="dis3dPlXZ" onclick="disenador3dSetPlano('XZ')" style="font-size:12px; padding:3px 10px; cursor:pointer;">▦ Piso (XZ)</button>
+                <button id="dis3dPlXY" onclick="disenador3dSetPlano('XY')" style="font-size:12px; padding:3px 10px; cursor:pointer;">▤ Frontal (XY)</button>
+                <button id="dis3dPlYZ" onclick="disenador3dSetPlano('YZ')" style="font-size:12px; padding:3px 10px; cursor:pointer;">▥ Lateral (YZ)</button>
+                <button class="secondary" onclick="disenador3dDeshacer()" style="font-size:11px; padding:3px 10px; margin-left:6px;">↶ Deshacer</button>
                 <button class="secondary" onclick="disenador3dLimpiarDibujo()" style="font-size:11px; padding:3px 10px;">🗑 Limpiar</button>
                 <span id="dis3dInfo" class="muted" style="font-size:11px;">0 tramos · 0 nodos</span>
               </div>
