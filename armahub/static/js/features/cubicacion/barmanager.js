@@ -32,7 +32,7 @@ function _bmMiniFigura(codigo) {
   if (!codigo || !_bmGeometrias || !_bmGeometrias[codigo]) return '';
   if (!window.disenadorMotor || !window.disenadorMotor.dibujarFigura) return '';
   try {
-    return window.disenadorMotor.dibujarFigura(_bmGeometrias[codigo], null, { width: 44, height: 32, pad: 5 });
+    return window.disenadorMotor.dibujarFigura(_bmGeometrias[codigo], null, { width: 72, height: 40, pad: 6 });
   } catch (e) { return ''; }
 }
 
@@ -492,12 +492,14 @@ function _bmFilaBarraHTML(b, editando, conUbicacion) {
   }
   function _celdaFigura() {
     if (!editando) {
-      // 5M.8.3: mini-render de la figura si tiene geometría (degrada a texto).
+      // 5M.8.3: código primero, luego el render CENTRADO (con etiquetas de lado).
+      // Degrada a solo texto si la figura no tiene geometría.
       var mini = (typeof _bmMiniFigura === 'function') ? _bmMiniFigura(b.figura) : '';
       var cont = mini
-        ? '<span style="display:inline-flex; align-items:center; gap:4px;">' + mini + '<span>' + (b.figura || '—') + '</span></span>'
+        ? '<span style="font-weight:600;">' + (b.figura || '—') + '</span>' +
+          '<span style="display:inline-block; vertical-align:middle; margin-left:10px;">' + mini + '</span>'
         : (b.figura || '—');
-      return '<td style="padding:2px 6px; color:#666;">' + cont + '</td>';
+      return '<td style="padding:2px 6px; color:#666; white-space:nowrap;">' + cont + '</td>';
     }
     return '<td style="padding:1px 3px;"><input type="text" list="bmFigurasDatalist" value="' + (b.figura || '') +
       '" data-barra-id="' + b.id + '" data-campo="figura" id="bmcell-' + b.id + '-figura" onchange="bmRegistrarCambio(this)" ' +
