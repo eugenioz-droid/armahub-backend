@@ -98,16 +98,31 @@
     _worldGroup.add(grid);
   }
 
-  // Ejes XYZ con colores (X rojo, Y verde, Z azul) para orientar el dibujo.
+  // Ejes XYZ con colores (X rojo, Y verde, Z azul) + su LETRA al final.
   function _agregarEjes() {
     var L = 220;
     _worldGroup.add(_lineaEje(new THREE.Vector3(0,0,0), new THREE.Vector3(L,0,0), 0xd32f2f)); // X rojo
     _worldGroup.add(_lineaEje(new THREE.Vector3(0,0,0), new THREE.Vector3(0,L,0), 0x388e3c)); // Y verde
     _worldGroup.add(_lineaEje(new THREE.Vector3(0,0,0), new THREE.Vector3(0,0,L), 0x1976d2)); // Z azul
+    _worldGroup.add(_etiquetaEje('X', L + 18, 0, 0, '#d32f2f'));
+    _worldGroup.add(_etiquetaEje('Y', 0, L + 18, 0, '#388e3c'));
+    _worldGroup.add(_etiquetaEje('Z', 0, 0, L + 18, '#1976d2'));
   }
   function _lineaEje(a, b, color) {
     var g = new THREE.BufferGeometry().setFromPoints([a, b]);
     return new THREE.Line(g, new THREE.LineBasicMaterial({ color: color }));
+  }
+  // Etiqueta de texto (sprite con canvas) — liviano, sin cargar fuentes externas.
+  function _etiquetaEje(texto, x, y, z, color) {
+    var cv = document.createElement('canvas'); cv.width = 64; cv.height = 64;
+    var ctx = cv.getContext('2d');
+    ctx.fillStyle = color; ctx.font = 'bold 44px Arial';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(texto, 32, 34);
+    var tex = new THREE.CanvasTexture(cv);
+    var spr = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false }));
+    spr.position.set(x, y, z); spr.scale.set(28, 28, 1);
+    return spr;
   }
 
   // Dibuja la figura 3D (nodos → tubo). En la Etapa A está vacía; la Etapa B la
@@ -241,17 +256,45 @@
 
   // Malla visual del plano de trabajo activo (para que el usuario vea dónde caerá
   // el click). Se actualiza al cambiar de plano.
-  var _planoMesh = null;
+  var _planoMesh = null, _planoBorde = null;
   function _actualizarPlanoVisual() {
     if (!window.THREE || !_worldGroup) return;
     if (_planoMesh) { _worldGroup.remove(_planoMesh); _planoMesh = null; }
-    var geo = new THREE.PlaneGeometry(400, 400);
-    var mat = new THREE.MeshBasicMaterial({ color: 0x4db6ac, transparent: true, opacity: 0.12, side: THREE.DoubleSide });
+    if (_planoBorde) { _worldGroup.remove(_planoBorde); _planoBorde = null; }
+    var S = 400;
+    var geo = new THREE.PlaneGeometry(S, S);
+    // Relleno celeste más visible + borde marcado (para que se distinga el plano).
+    var mat = new THREE.MeshBasicMaterial({ color: 0x26a69a, transparent: true, opacity: 0.20, side: THREE.DoubleSide });
     _planoMesh = new THREE.Mesh(geo, mat);
-    if (_planoActivo === 'XZ') { _planoMesh.rotation.x = -Math.PI / 2; _planoMesh.position.y = _planoOffset; }
-    else if (_planoActivo === 'XY') { _planoMesh.position.z = _planoOffset; }
-    else { _planoMesh.rotation.y = Math.PI / 2; _planoMesh.position.x = _planoOffset; }
-    _worldGroup.add(_planoMesh);
+    var edges = new THREE.EdgesGeometry(geo);
+    _planoBorde = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0x00897b, linewidth: 2 }));
+    // Orientar según el plano activo.
+    function orientar(obj) {
+      if (_planoActivo === 'XZ') { obj.rotation.x = -Math.PI / 2; obj.position.y = _planoOffset; }
+      else if (_planoActivo === 'XY') { obj.rotation.set(0,0,0); obj.position.set(0,0,_planoOffset); }
+      else { obj.rotation.y = Math.PI / 2; obj.position.set(_planoOffset,0,0); }
+    }
+    orientar(_planoMesh); orientar(_planoBorde);
+    _worldGroup.add(_planoMesh); _worldGroup.add(_planoBorde);
+    // Etiqueta HTML fija en el visor con el plano activo.
+    _actualizarBadgePlano();
+  }
+
+  // Badge fijo (HTML) sobre el visor, indicando el plano de trabajo activo.
+  function _actualizarBadgePlano() {
+    var cont = document.getElementById('disenador3D');
+    if (!cont) return;
+    var badge = document.getElementById('dis3dBadgePlano');
+    if (!badge) {
+      badge = document.createElement('div');
+      badge.id = 'dis3dBadgePlano';
+      badge.style.cssText = 'position:absolute; top:6px; left:8px; background:rgba(0,137,123,0.9); color:#fff; font-size:11px; font-weight:700; padding:3px 8px; border-radius:4px; pointer-events:none; z-index:2;';
+      // El contenedor del visor debe ser relative para posicionar el badge.
+      cont.style.position = 'relative';
+      cont.appendChild(badge);
+    }
+    var nombres = { XZ: 'Plano PISO (X-Z)', XY: 'Plano FRONTAL (X-Y)', YZ: 'Plano LATERAL (Y-Z)' };
+    badge.textContent = '✏️ ' + (nombres[_planoActivo] || _planoActivo);
   }
 
   function _animar() {
