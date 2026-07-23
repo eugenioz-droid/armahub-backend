@@ -292,7 +292,16 @@
       var a = _puntos[i - 1], b = _puntos[i];
       var mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
       var lbl = _labels[i - 1] || LETRAS[i - 1];
-      s += '<text x="' + mx + '" y="' + (my - 6) + '" text-anchor="middle" fill="#00695c" font-size="13" font-weight="700">' + lbl + '</text>';
+      // Desplazar la etiqueta PERPENDICULAR a la línea (hacia afuera) para que no
+      // quede tapada por la barra. Normal unitaria del segmento × offset.
+      var vx = b.x - a.x, vy = b.y - a.y;
+      var len = Math.sqrt(vx * vx + vy * vy) || 1;
+      var off = 15;
+      var lx = mx - (vy / len) * off;   // normal = (-vy, vx)
+      var ly = my + (vx / len) * off;
+      // Fondo blanco sutil detrás del texto para legibilidad sobre la grilla.
+      s += '<circle cx="' + lx.toFixed(1) + '" cy="' + ly.toFixed(1) + '" r="9" fill="#fff" opacity="0.85"/>';
+      s += '<text x="' + lx.toFixed(1) + '" y="' + (ly + 4).toFixed(1) + '" text-anchor="middle" fill="#00695c" font-size="13" font-weight="700">' + lbl + '</text>';
     }
     // Etiquetas de ÁNGULO en cada vértice interno (α1, α2… solo especiales; 90°
     // se marca aparte). Ligeramente separadas del vértice para no tapar la barra.
