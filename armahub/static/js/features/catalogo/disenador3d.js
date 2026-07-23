@@ -130,6 +130,49 @@
   global.disenador3dRedibujar = _redibujarFigura3d;
   global.disenador3dNodos = function() { return _nodos3d; };
 
+  // ---- Etapa B: DIBUJO por dirección + ORTO ----
+  // Un click plano en 3D es ambiguo, así que el dibujo se hace por DIRECCIÓN de
+  // eje (X/Y/Z ±) + un paso de grilla. Es ORTO puro (tipo CAD): cada tramo va en
+  // un eje exacto → inequívoco y preciso. El usuario elige eje y "avanza".
+  var _pasoGrilla = 40;          // largo de cada avance (px del espacio)
+  var _dibujando3d = true;
+
+  // Agrega un nodo en la dirección de eje dada desde el último nodo (o desde el
+  // origen si es el primero). eje: 'x+','x-','y+','y-','z+','z-'. pasos: nº de grilla.
+  global.disenador3dAvanzar = function(eje, pasos) {
+    if (!window.THREE) return;
+    pasos = pasos || 1;
+    var d = _pasoGrilla * pasos;
+    var base = _nodos3d.length ? _nodos3d[_nodos3d.length - 1].clone() : new THREE.Vector3(0, 0, 0);
+    if (_nodos3d.length === 0) _nodos3d.push(base.clone());   // primer nodo = origen
+    var last = _nodos3d[_nodos3d.length - 1].clone();
+    if (eje === 'x+') last.x += d; else if (eje === 'x-') last.x -= d;
+    else if (eje === 'y+') last.y += d; else if (eje === 'y-') last.y -= d;
+    else if (eje === 'z+') last.z += d; else if (eje === 'z-') last.z -= d;
+    _nodos3d.push(last);
+    _redibujarFigura3d();
+    _actualizarInfo3d();
+  };
+
+  global.disenador3dDeshacer = function() {
+    if (_nodos3d.length > 0) _nodos3d.pop();
+    if (_nodos3d.length === 1) _nodos3d.pop();   // si queda solo el origen, limpiar
+    _redibujarFigura3d(); _actualizarInfo3d();
+  };
+  global.disenador3dLimpiarDibujo = function() {
+    _nodos3d = []; _redibujarFigura3d(); _actualizarInfo3d();
+  };
+  global.disenador3dSetPaso = function(v) { _pasoGrilla = Number(v) || 40; };
+
+  // Info del dibujo (nº de tramos) en el panel.
+  function _actualizarInfo3d() {
+    var el = document.getElementById('dis3dInfo');
+    if (el) {
+      var n = Math.max(0, _nodos3d.length - 1);
+      el.textContent = n + ' tramo' + (n === 1 ? '' : 's') + ' · ' + _nodos3d.length + ' nodos';
+    }
+  }
+
   function _bindRotacion(cont) {
     cont.onmousedown = function(e) { _dragging = true; _lastX = e.clientX; _lastY = e.clientY; };
     window.addEventListener('mousemove', _onMove);
