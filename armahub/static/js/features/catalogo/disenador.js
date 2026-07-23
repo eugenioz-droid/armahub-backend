@@ -724,6 +724,10 @@
   global.disenadorGuardar = async function() {
     var nombre = ((document.getElementById('disenadorNombre') || {}).value || '').trim();
     if (!nombre) { alert('Ponle un nombre a la figura antes de guardar.'); return; }
+    // Si estamos en modo 3D, guardar la figura 3D (nodos + snapshot).
+    if (typeof disenador3dEstado === 'function' && disenador3dEstado().vista === '3D') {
+      return _guardarFigura3d(nombre);
+    }
     if (_puntos.length < 2) { alert('Dibuja al menos un lado (dos puntos) antes de guardar.'); return; }
     var geo = _puntosAGeometria();
     var parciales = geo.tramos.map(function(t) { return t.lado; });
@@ -763,6 +767,37 @@
     }
   };
 
+  // Guardar una figura 3D (dim:"3D"). Reutiliza el mismo POST/catálogo del 2D.
+  async function _guardarFigura3d(nombre) {
+    if (typeof disenador3dGeometria !== 'function') { alert('Editor 3D no disponible.'); return; }
+    var geo = disenador3dGeometria();
+    if (!geo) { alert('Dibuja la figura 3D (al menos 2 nodos) antes de guardar.'); return; }
+    // Las etiquetas manuales de la vista 2D (si se colocaron) van con la geometría.
+    if (_etiquetas && _etiquetas.length) {
+      geo.etiquetas = _etiquetas.map(function(e) { return { tipo: e.tipo, texto: e.texto, x: e.x, y: e.y }; });
+    }
+    var payload = { codigo: nombre, parciales: geo.parciales || [], angulos: [], radio: false, geometria: geo };
+    try {
+      var res = await fetch(apiUrl('/figuras-catalogo'), {
+        method: 'POST',
+        headers: Object.assign({ 'Content-Type': 'application/json' }, (typeof authHeaders === 'function' ? authHeaders() : {})),
+        body: JSON.stringify(payload)
+      });
+      if (res.ok) {
+        if (typeof showToast === 'function') showToast('Figura 3D "' + nombre + '" guardada', 'success');
+        var nb = document.getElementById('disenadorNombre'); if (nb) nb.value = '';
+        if (typeof disenador3dLimpiarDibujo === 'function') disenador3dLimpiarDibujo();
+        _etiquetas = [];
+        await _recargarCatalogo();
+      } else {
+        var d = await res.json().catch(function() { return {}; });
+        alert('No se pudo guardar: ' + (d.detail || res.status));
+      }
+    } catch (e) {
+      alert('Error al guardar la figura 3D: ' + e.message);
+    }
+  }
+
   // Recarga el catálogo desde el backend (tras guardar/borrar) y refresca galería.
   async function _recargarCatalogo() {
     try {
@@ -782,10 +817,19 @@
       return;
     }
     cont.innerHTML = conGeom.map(function(f) {
-      var svg = dibujarFigura(f.geometria, null, { width: 90, height: 72, pad: 12 });
+      var es3d = f.geometria && f.geometria.dim === '3D';
+      // 3D con snapshot fijado → mostrar la imagen; si no, el SVG (vista iso 2D).
+      var vis;
+      if (es3d && f.geometria.snapshot) {
+        vis = '<img src="' + f.geometria.snapshot + '" style="width:90px; height:72px; object-fit:contain; border-radius:4px;" alt="' + f.codigo + '"/>';
+      } else {
+        vis = dibujarFigura(f.geometria, null, { width: 90, height: 72, pad: 12 });
+      }
       var cod = String(f.codigo).replace(/'/g, "\\'");
+      var badge3d = es3d ? '<span style="position:absolute; top:2px; left:2px; background:#1976d2; color:#fff; font-size:9px; font-weight:700; padding:1px 4px; border-radius:3px;">3D</span>' : '';
       return '<div style="border:1px solid #e0e0e0; border-radius:6px; padding:6px; text-align:center; background:#fff; position:relative;">' +
-        '<div style="cursor:pointer;" title="Editar" onclick="disenadorEditar(\'' + cod + '\')">' + svg + '</div>' +
+        badge3d +
+        '<div style="cursor:pointer;" title="Editar" onclick="disenadorEditar(\'' + cod + '\')">' + vis + '</div>' +
         '<div style="font-size:11px; font-weight:700; color:#00695c; margin-top:2px;">' + f.codigo + '</div>' +
         '<button title="Borrar" onclick="disenadorEliminar(\'' + cod + '\')" style="position:absolute; top:2px; right:2px; width:18px; height:18px; line-height:1; padding:0; border:none; background:#fdecea; color:#c62828; border-radius:4px; cursor:pointer; font-size:12px;">✕</button>' +
         '</div>';

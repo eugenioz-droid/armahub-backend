@@ -269,6 +269,33 @@
   };
   global.disenador3dSnapshot = function() { return _snapshotFijado; };
 
+  // Geometría 3D para guardar: nodos (normalizados al 1er nodo), tramos con
+  // lado + dirección + largo, y la vista isométrica 2D (para render en catálogo/BM).
+  global.disenador3dGeometria = function() {
+    if (_nodos3d.length < 2) return null;
+    var p0 = _nodos3d[0];
+    var nodos = _nodos3d.map(function(p) { return { x: p.x - p0.x, y: p.y - p0.y, z: p.z - p0.z }; });
+    var tramos = [], parciales = [];
+    for (var i = 1; i < _nodos3d.length; i++) {
+      var a = _nodos3d[i - 1], b = _nodos3d[i];
+      var dx = b.x - a.x, dy = b.y - a.y, dz = b.z - a.z;
+      var largo = Math.round(Math.sqrt(dx*dx + dy*dy + dz*dz) / _GRID3D);
+      var lado = _LETRAS3D[i - 1] || ('L' + i);
+      parciales.push(lado);
+      tramos.push({ lado: lado, largo: largo, dx: dx, dy: dy, dz: dz });
+    }
+    // Vista isométrica 2D (puntos) para dibujar la miniatura sin cargar Three.js.
+    var puntos2d = _nodos3d.map(function(p) { return _iso(p); });
+    return {
+      dim: '3D',
+      nodos: nodos,
+      tramos: tramos,
+      parciales: parciales,
+      puntos: puntos2d,           // vista iso 2D → el motor SVG la dibuja como render
+      snapshot: _snapshotFijado   // imagen 3D fijada por el usuario (o null)
+    };
+  };
+
   // Preview 3D: si hay una vista FIJADA, la usa (control del usuario). Si no, toma
   // un snapshot en vivo del canvas (preview provisional mientras rota/dibuja).
   function _actualizarPreview3d() {
