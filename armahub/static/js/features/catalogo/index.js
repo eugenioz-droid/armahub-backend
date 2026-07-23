@@ -15,7 +15,17 @@
   }
 
   async function loadCatalogoModule() {
-    await Promise.all([_cargarFiguras(), _cargarTipologias()]);
+    // allSettled (no all): si un fetch falla (ej. backend reiniciando por deploy),
+    // el otro igual carga — evita que TODO quede vacío por un solo fallo.
+    await Promise.allSettled([_cargarFiguras(), _cargarTipologias()]);
+    // Si nada cargó (backend no respondió), reintentar una vez tras un momento.
+    if (_figurasData.length === 0 && _tipologiasData.length === 0) {
+      setTimeout(function() {
+        Promise.allSettled([_cargarFiguras(), _cargarTipologias()]).then(function() {
+          _poblarFiltroEstructura(); switchCatSubTab(_catSubActual);
+        });
+      }, 1500);
+    }
     _poblarFiltroEstructura();
     switchCatSubTab(_catSubActual);
   }
