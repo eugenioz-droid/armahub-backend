@@ -10,6 +10,32 @@ let lastElementos = [];           // cache de elementos visibles
 const expanded = new Set();       // claves "piso||sector||eje"
 const detailCache = new Map();    // key -> array de barras
 
+// 5M.8.3: mapa figura(código) → geometría, para mostrar mini-render en la celda
+// de figura (solo lectura). Se carga una vez, perezoso. Si no hay geometría o
+// falla, la celda degrada a solo texto (cero riesgo).
+let _bmGeometrias = null;         // { codigo: geometria } | null (no cargado)
+async function _bmCargarGeometrias() {
+  if (_bmGeometrias) return;
+  _bmGeometrias = {};             // marca "intentado" aunque falle
+  try {
+    const data = await apiGet('/figuras-catalogo');
+    (data && data.figuras || []).forEach(function(f) {
+      if (f.geometria && f.geometria.tramos && f.geometria.tramos.length) {
+        _bmGeometrias[f.codigo] = f.geometria;
+      }
+    });
+  } catch (e) { /* degrada a solo texto */ }
+}
+// Mini-SVG de la figura (o '' si no hay geometría / motor). Reutiliza el motor
+// del diseñador (window.disenadorMotor).
+function _bmMiniFigura(codigo) {
+  if (!codigo || !_bmGeometrias || !_bmGeometrias[codigo]) return '';
+  if (!window.disenadorMotor || !window.disenadorMotor.dibujarFigura) return '';
+  try {
+    return window.disenadorMotor.dibujarFigura(_bmGeometrias[codigo], null, { width: 44, height: 32, pad: 5 });
+  } catch (e) { return ''; }
+}
+
 const SECTOR_LABEL = {
   'ELEV': 'Elevación',
   'LCIELO': 'Losas',
@@ -161,6 +187,8 @@ async function buscar(reset = false) {
   params.set('offset', currentOffset);
 
   if (typeof saveFiltersToStorage === 'function') saveFiltersToStorage();
+  // 5M.8.3: cargar geometrías del catálogo (perezoso) para el mini-render de figura.
+  if (typeof _bmCargarGeometrias === 'function') await _bmCargarGeometrias();
 
   // Bifurcación vista plana / agrupada (5M.9).
   if (_modoVistaPlana()) {
@@ -463,7 +491,14 @@ function _bmFilaBarraHTML(b, editando, conUbicacion) {
       'style="width:' + (ancho || 60) + 'px; font-size:11px; text-align:right; padding:1px 3px;" /></td>';
   }
   function _celdaFigura() {
-    if (!editando) return '<td style="padding:2px 6px; color:#666;">' + (b.figura || '—') + '</td>';
+    if (!editando) {
+      // 5M.8.3: mini-render de la figura si tiene geometría (degrada a texto).
+      var mini = (typeof _bmMiniFigura === 'function') ? _bmMiniFigura(b.figura) : '';
+      var cont = mini
+        ? '<span style="display:inline-flex; align-items:center; gap:4px;">' + mini + '<span>' + (b.figura || '—') + '</span></span>'
+        : (b.figura || '—');
+      return '<td style="padding:2px 6px; color:#666;">' + cont + '</td>';
+    }
     return '<td style="padding:1px 3px;"><input type="text" list="bmFigurasDatalist" value="' + (b.figura || '') +
       '" data-barra-id="' + b.id + '" data-campo="figura" id="bmcell-' + b.id + '-figura" onchange="bmRegistrarCambio(this)" ' +
       'style="width:64px; font-size:11px; padding:1px 3px;" /></td>';
