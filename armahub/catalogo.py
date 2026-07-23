@@ -361,18 +361,34 @@ class FiguraCrear(BaseModel):
     geometria: Optional[dict] = None   # { dim, tramos:[{lado,giro,sentido}] }
 
 
+# 5M.8: quién puede crear/editar/eliminar figuras del catálogo. Base = admins.
+# EXTRA = override por email para colaboradores puntuales (ej. cubicadores que
+# ayudan a poblar el catálogo) sin darles rol admin. Agregar un email aquí es una
+# línea. Pendiente "bien hecho": permiso configurable en Admin (no urgente).
+_FIGURAS_EDITORES_EXTRA = {
+    "nicolas.lopez@armacero.cl",   # cubicador — ayuda a completar el catálogo
+}
+
+def _puede_editar_catalogo(user) -> bool:
+    rol = (user.get("role") or "").lower()
+    if rol in ("admin", "admin_calidad"):
+        return True
+    email = (user.get("email") or "").strip().lower()
+    return email in _FIGURAS_EDITORES_EXTRA
+
+
 @router.post("/figuras-catalogo")
 def crear_o_actualizar_figura(body: FiguraCrear, user=Depends(get_current_user)):
     """Crea una figura NUEVA o actualiza su geometría (5M.8 Diseñador). El
-    catálogo es data maestra → solo admin. UPSERT por código: permite crear
-    figuras nuevas dibujadas Y poblar la geometría de figuras que ya existían
-    (el trabajo de render 1×1). NO borra data: si la figura ya existe, actualiza
-    geometría/parciales/ángulos; el resto se conserva."""
+    catálogo es data maestra → admins + editores extra (override por email).
+    UPSERT por código: permite crear figuras nuevas dibujadas Y poblar la
+    geometría de figuras que ya existían (el trabajo de render 1×1). NO borra
+    data: si la figura ya existe, actualiza geometría/parciales/ángulos; el resto
+    se conserva."""
     import json
-    rol = (user.get("role") or "").lower()
-    if rol not in ("admin", "admin_calidad"):
+    if not _puede_editar_catalogo(user):
         from fastapi import HTTPException
-        raise HTTPException(status_code=403, detail="Solo un administrador puede crear/editar figuras del catálogo.")
+        raise HTTPException(status_code=403, detail="No tienes permiso para crear/editar figuras del catálogo.")
     codigo = (body.codigo or "").strip()
     if not codigo:
         from fastapi import HTTPException
