@@ -214,29 +214,51 @@
     return out;
   }
 
-  // ---- Render del LIENZO interactivo (SVG con grilla + puntos + preview) ----
-  function _redibujarLienzo() {
+  var CW = 420, CH = 320;   // dimensiones del lienzo
+  var _svgCreado = false;
+
+  // Crea el SVG del lienzo UNA sola vez (grilla + rect capturador de eventos + una
+  // capa <g> dinámica). Los listeners van con addEventListener sobre el SVG, que
+  // NO se recrea → el click nunca cae sobre un nodo destruido (causa del bug).
+  function _crearLienzo() {
     var wrap = document.getElementById('disenadorLienzo');
     if (!wrap) return;
-    var W = 420, H = 320;
-    var s = '<svg id="disenadorSvgCanvas" width="' + W + '" height="' + H + '" ' +
-      'style="background:#fff; border-radius:6px; cursor:crosshair; touch-action:none; max-width:100%;" ' +
-      'onmousemove="disenadorHover(event)" onmouseleave="disenadorHoverOut()" onclick="disenadorClick(event)">';
-    // Grilla.
-    for (var gx = 0; gx <= W; gx += GRID) s += '<line x1="' + gx + '" y1="0" x2="' + gx + '" y2="' + H + '" stroke="#eee" stroke-width="1"/>';
-    for (var gy = 0; gy <= H; gy += GRID) s += '<line x1="0" y1="' + gy + '" x2="' + W + '" y2="' + gy + '" stroke="#eee" stroke-width="1"/>';
-    // Polilínea dibujada.
+    var s = '<svg id="disenadorSvgCanvas" width="' + CW + '" height="' + CH + '" ' +
+      'style="background:#fff; border-radius:6px; cursor:crosshair; touch-action:none; max-width:100%;">';
+    // Grilla (estática).
+    for (var gx = 0; gx <= CW; gx += GRID) s += '<line x1="' + gx + '" y1="0" x2="' + gx + '" y2="' + CH + '" stroke="#eee" stroke-width="1"/>';
+    for (var gy = 0; gy <= CH; gy += GRID) s += '<line x1="0" y1="' + gy + '" x2="' + CW + '" y2="' + gy + '" stroke="#eee" stroke-width="1"/>';
+    // Rect transparente que captura mouse en toda el área.
+    s += '<rect x="0" y="0" width="' + CW + '" height="' + CH + '" fill="transparent"/>';
+    // Capa dinámica (polilínea, preview, vértices, etiquetas).
+    s += '<g id="disenadorCapa"></g>';
+    s += '</svg>';
+    wrap.innerHTML = s;
+    var svg = document.getElementById('disenadorSvgCanvas');
+    if (svg) {
+      svg.addEventListener('mousemove', global.disenadorHover);
+      svg.addEventListener('mouseleave', global.disenadorHoverOut);
+      svg.addEventListener('click', global.disenadorClick);
+    }
+    _svgCreado = true;
+  }
+
+  // Redibuja SOLO la capa dinámica (no toca el SVG raíz ni la grilla ni el rect
+  // de eventos). Así un mousemove no destruye el nodo sobre el que caerá el click.
+  function _redibujarLienzo() {
+    if (!_svgCreado || !document.getElementById('disenadorSvgCanvas')) _crearLienzo();
+    var capa = document.getElementById('disenadorCapa');
+    if (!capa) return;
+    var s = '';
     if (_puntos.length >= 2) {
       var poly = _puntos.map(function(p) { return p.x + ',' + p.y; }).join(' ');
       s += '<polyline points="' + poly + '" fill="none" stroke="#00695c" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"/>';
     }
-    // Preview del próximo segmento (línea punteada hasta el cursor con snap).
-    if (_puntos.length >= 1 && _hoverPt) {
+    if (_dibujando && _puntos.length >= 1 && _hoverPt) {
       var lp = _puntos[_puntos.length - 1];
       s += '<line x1="' + lp.x + '" y1="' + lp.y + '" x2="' + _hoverPt.x + '" y2="' + _hoverPt.y + '" stroke="#4db6ac" stroke-width="2" stroke-dasharray="5,4"/>';
       s += '<circle cx="' + _hoverPt.x + '" cy="' + _hoverPt.y + '" r="4" fill="#4db6ac" opacity="0.6"/>';
     }
-    // Vértices + etiqueta de lado en el medio de cada segmento.
     _puntos.forEach(function(p, i) {
       var isEnd = (i === 0 || i === _puntos.length - 1);
       s += '<circle cx="' + p.x + '" cy="' + p.y + '" r="' + (isEnd ? 5 : 4) + '" fill="' + (isEnd ? '#004d40' : '#00897b') + '"/>';
@@ -247,8 +269,7 @@
       var lbl = _labels[i - 1] || LETRAS[i - 1];
       s += '<text x="' + mx + '" y="' + (my - 6) + '" text-anchor="middle" fill="#00695c" font-size="13" font-weight="700">' + lbl + '</text>';
     }
-    s += '</svg>';
-    wrap.innerHTML = s;
+    capa.innerHTML = s;
   }
 
   // ---- Coordenada del evento relativa al SVG ----
