@@ -241,9 +241,12 @@
   // ---- A5: EDITOR DE ETIQUETAS MANUALES (toggle; para figuras raras) ----
   global.disenadorToggleEtiquetas = function() {
     _modoEtiquetas = !_modoEtiquetas;
+    // Al activar etiquetas, la figura se da por TERMINADA (no más rubber band de
+    // dibujo). Si estaba dibujando, se cierra el trazo.
+    if (_modoEtiquetas) { _dibujando = false; _hoverPt = null; _cotaInicio = null; _cotaHover = null; _actualizarBotonTerminar(); }
     var btn = document.getElementById('disBtnEtiquetas');
     if (btn) {
-      btn.textContent = _modoEtiquetas ? '🏷️ Etiquetas: ON' : '🏷️ Etiquetas manuales';
+      btn.textContent = _modoEtiquetas ? '🏷️ Etiquetas: ON' : '🏷️ Etiquetas';
       btn.style.background = _modoEtiquetas ? '#00695c' : '#fff';
       btn.style.color = _modoEtiquetas ? '#fff' : '#00695c';
     }
@@ -258,8 +261,13 @@
   var _cotaInicio = null;
 
   global.disenadorLimpiarEtiquetas = function() {
-    if (_etiquetas.length && !confirm('¿Borrar todas las etiquetas manuales?')) return;
-    _etiquetas = []; _redibujarLienzo();
+    if (_etiquetas.length && !confirm('¿Borrar TODAS las etiquetas?')) return;
+    _etiquetas = []; _cotaInicio = null; _cotaHover = null; _redibujarLienzo();
+  };
+  // Deshacer la ÚLTIMA etiqueta (no borrar todo).
+  global.disenadorDeshacerEtiqueta = function() {
+    if (_cotaInicio) { _cotaInicio = null; _cotaHover = null; _redibujarLienzo(); return; }  // cancela cota a medias
+    if (_etiquetas.length) { _etiquetas.pop(); _redibujarLienzo(); }
   };
 
   // Muestra el selector de letra o ángulo según el tipo de etiqueta elegido.
@@ -555,6 +563,11 @@
       s += '<text x="' + e.x + '" y="' + (e.y + 4) + '" text-anchor="middle" fill="#fff" stroke="#fff" stroke-width="3" font-size="13" font-weight="800" data-etiq="' + k + '" style="cursor:move;">' + String(e.texto).replace(/[<>&]/g, '') + '</text>';
       s += '<text x="' + e.x + '" y="' + (e.y + 4) + '" text-anchor="middle" fill="' + col + '" font-size="13" font-weight="800" data-etiq="' + k + '" style="cursor:move;">' + String(e.texto).replace(/[<>&]/g, '') + '</text>';
     });
+    // Rubber band de la cota en curso (tras el 1er click, hasta el cursor).
+    if (_modoEtiquetas && _cotaInicio && _cotaHover) {
+      s += '<line x1="' + _cotaInicio.x + '" y1="' + _cotaInicio.y + '" x2="' + _cotaHover.x + '" y2="' + _cotaHover.y + '" stroke="#4db6ac" stroke-width="1.5" stroke-dasharray="5,4"/>';
+      s += '<circle cx="' + _cotaInicio.x + '" cy="' + _cotaInicio.y + '" r="3" fill="#4db6ac"/>';
+    }
     capa.innerHTML = s;
   }
 
@@ -567,11 +580,17 @@
   }
 
   global.disenadorHover = function(ev) {
+    // En modo etiquetas con una cota iniciada: rubber band de la cota hasta el cursor.
+    if (_modoEtiquetas) {
+      if (_cotaInicio) { var cc = _coord(ev); if (cc) { _cotaHover = cc; _redibujarLienzo(); } }
+      return;
+    }
     if (!_dibujando) return;         // figura terminada → sin rubber band
     var c = _coord(ev); if (!c) return;
     _hoverPt = _snap(c.x, c.y);
     _redibujarLienzo();
   };
+  var _cotaHover = null;
   global.disenadorHoverOut = function() { _hoverPt = null; _redibujarLienzo(); };
 
   global.disenadorClick = function(ev) {
@@ -590,7 +609,7 @@
           if (typeof showToast === 'function') showToast('Cota: ahora click en el punto FINAL', 'info');
         } else {
           _etiquetas.push({ tipo: 'cota', x1: _cotaInicio.x, y1: _cotaInicio.y, x2: cc.x, y2: cc.y });
-          _cotaInicio = null; _redibujarLienzo();
+          _cotaInicio = null; _cotaHover = null; _redibujarLienzo();
         }
       } else {
         var texto = (tipo === 'letra')
@@ -851,7 +870,9 @@
     _sweepsSeg = f.geometria.sweeps_seg ? f.geometria.sweeps_seg.slice()
       : f.geometria.tramos.map(function(t) { return t.sweep != null ? t.sweep : 1; });
     // Cargar etiquetas manuales (guardadas relativas a p0, Y arriba → lienzo).
+    // Cota lleva x1/y1/x2/y2; el resto x/y.
     _etiquetas = (f.geometria.etiquetas || []).map(function(e) {
+      if (e.tipo === 'cota') return { tipo: 'cota', x1: Math.round(e.x1)+offX, y1: offY-Math.round(e.y1), x2: Math.round(e.x2)+offX, y2: offY-Math.round(e.y2) };
       return { tipo: e.tipo, texto: e.texto, x: Math.round(e.x) + offX, y: offY - Math.round(e.y) };
     });
     _segSel = -1;
