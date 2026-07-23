@@ -270,7 +270,7 @@
         out[i] = { texto: '90°', esAlfa: false };     // implícito, no es α
       } else {
         nAlfa++;
-        out[i] = { texto: 'α' + nAlfa + ' (' + giro + '°)', esAlfa: true };
+        out[i] = { texto: 'α' + nAlfa, esAlfa: true }; // solo el nombre, sin el valor
       }
     }
     return out;
