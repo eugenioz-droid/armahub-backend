@@ -146,9 +146,8 @@
               <select id="disEtAngulo" style="font-size:12px; display:none;">
                 <option>α1</option><option>α2</option><option>α3</option><option>α4</option>
               </select>
-              <button onclick="disenadorAgregarEtiqueta()" style="font-size:11px; padding:4px 12px; background:#00695c; color:#fff; border:none; border-radius:4px; cursor:pointer;">＋ Colocar</button>
               <button class="secondary" onclick="disenadorLimpiarEtiquetas()" style="font-size:11px; padding:4px 12px;">🗑 Borrar</button>
-              <span class="muted" style="font-size:10px;">Cota: click inicio → click fin. Letra/ángulo: un click. Arrastra para mover.</span>
+              <span class="muted" style="font-size:10px;">Elige el tipo y haz click en el lienzo. Cota: click inicio → click fin. Arrastra para mover.</span>
             </div>
             </div><!-- /disControles2D -->
           </div>
@@ -168,27 +167,6 @@
             <!-- Panel de parámetros 3D (visible solo en vista 3D). -->
             <div id="dis3dPanelWrap" style="display:none; padding:10px 12px; background:#fafafa; border:1px solid #eee; border-radius:8px;">
               <div id="dis3dPanel" class="muted" style="font-size:12px;">Haz click en el visor para trazar el primer lado.</div>
-            </div>
-            <!-- Panel de etiquetas manuales, apilado vertical, al lado del lienzo. -->
-            <div id="disEtiquetasBar" style="display:none; padding:10px 12px; background:#e8f5e9; border:1px solid #a5d6a7; border-radius:8px; flex-direction:column; gap:8px;">
-              <span style="font-size:12px; color:#00695c; font-weight:700;">🏷️ Etiquetas manuales</span>
-              <label style="font-size:11px; color:#666;">Tipo
-                <select id="disEtTipo" onchange="disenadorEtTipoChange()" style="font-size:12px; width:100%; margin-top:2px;">
-                  <option value="medida">Medida (cota)</option>
-                  <option value="letra">Letra (lado)</option>
-                  <option value="angulo">Ángulo</option>
-                </select>
-              </label>
-              <select id="disEtLetra" style="font-size:12px; display:none; width:100%;">
-                <option>A</option><option>B</option><option>C</option><option>D</option><option>E</option>
-                <option>F</option><option>G</option><option>H</option><option>I</option>
-              </select>
-              <select id="disEtAngulo" style="font-size:12px; display:none; width:100%;">
-                <option>α1</option><option>α2</option><option>α3</option><option>α4</option>
-              </select>
-              <button onclick="disenadorAgregarEtiqueta()" style="font-size:11px; padding:5px 10px; background:#00695c; color:#fff; border:none; border-radius:4px; cursor:pointer;">＋ Colocar (click en lienzo)</button>
-              <button class="secondary" onclick="disenadorLimpiarEtiquetas()" style="font-size:11px; padding:5px 10px;">🗑 Borrar etiquetas</button>
-              <span class="muted" style="font-size:10px;">Las etiquetas se pueden arrastrar en el lienzo.</span>
             </div>
             <!-- Panel de parámetros en vivo -->
             <div style="padding:10px 12px; background:#fafafa; border:1px solid #eee; border-radius:8px;">

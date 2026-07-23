@@ -252,25 +252,10 @@
     _redibujarLienzo();
   };
 
-  // Agrega una etiqueta al próximo click en el lienzo. Tipos:
-  //  - 'cota'   → LÍNEA de acotación (2 clicks: inicio y fin). Sutil, gris.
-  //  - 'letra'  → letra de lado (A-I o R), un click.
-  //  - 'angulo' → α1-α4, un click.
-  var _etTipoPendiente = null;   // {tipo, texto, fase} a colocar en el próximo click
-  global.disenadorAgregarEtiqueta = function() {
-    if (!_modoEtiquetas) return;
-    var tipo = (document.getElementById('disEtTipo') || {}).value || 'cota';
-    if (tipo === 'cota') {
-      _etTipoPendiente = { tipo: 'cota', fase: 'inicio' };
-      if (typeof showToast === 'function') showToast('Cota: click en el punto de INICIO de la medida', 'info');
-      return;
-    }
-    var texto = (tipo === 'letra')
-      ? ((document.getElementById('disEtLetra') || {}).value || 'A')
-      : ((document.getElementById('disEtAngulo') || {}).value || 'α1');
-    _etTipoPendiente = { tipo: tipo, texto: texto };
-    if (typeof showToast === 'function') showToast('Haz click en el lienzo para colocar "' + texto + '"', 'info');
-  };
+  // Con "Etiquetas ON", el click en el lienzo coloca DIRECTO una etiqueta del tipo
+  // seleccionado (sin botón "Colocar"). La cota necesita 2 clicks: _cotaInicio
+  // guarda el primero mientras espera el segundo.
+  var _cotaInicio = null;
 
   global.disenadorLimpiarEtiquetas = function() {
     if (_etiquetas.length && !confirm('¿Borrar todas las etiquetas manuales?')) return;
@@ -591,23 +576,28 @@
 
   global.disenadorClick = function(ev) {
     if (_suprimirClick) return;      // click que sigue a un drag → ignorar
-    // A5: en modo etiquetas, un click coloca la etiqueta pendiente (no agrega vértice).
+    // Modo etiquetas: el click coloca DIRECTO una etiqueta del tipo seleccionado
+    // (sin botón "Colocar"). Si el click cae sobre una etiqueta existente, no
+    // coloca (deja arrastrarla).
     if (_modoEtiquetas) {
-      if (_etTipoPendiente) {
-        var cc = _coord(ev); if (!cc) return;
-        if (_etTipoPendiente.tipo === 'cota') {
-          // Cota = línea de 2 clicks: inicio y fin.
-          if (_etTipoPendiente.fase === 'inicio') {
-            _etTipoPendiente.x1 = cc.x; _etTipoPendiente.y1 = cc.y; _etTipoPendiente.fase = 'fin';
-            if (typeof showToast === 'function') showToast('Cota: click en el punto FINAL de la medida', 'info');
-          } else {
-            _etiquetas.push({ tipo: 'cota', x1: _etTipoPendiente.x1, y1: _etTipoPendiente.y1, x2: cc.x, y2: cc.y });
-            _etTipoPendiente = null; _redibujarLienzo();
-          }
+      if (ev.target && ev.target.getAttribute && ev.target.getAttribute('data-etiq') != null) return;
+      var cc = _coord(ev); if (!cc) return;
+      var tipo = (document.getElementById('disEtTipo') || {}).value || 'cota';
+      if (tipo === 'cota') {
+        // Cota = línea de 2 clicks (inicio y fin), sin botón previo.
+        if (!_cotaInicio) {
+          _cotaInicio = { x: cc.x, y: cc.y };
+          if (typeof showToast === 'function') showToast('Cota: ahora click en el punto FINAL', 'info');
         } else {
-          _etiquetas.push({ tipo: _etTipoPendiente.tipo, texto: _etTipoPendiente.texto, x: cc.x, y: cc.y });
-          _etTipoPendiente = null; _redibujarLienzo();
+          _etiquetas.push({ tipo: 'cota', x1: _cotaInicio.x, y1: _cotaInicio.y, x2: cc.x, y2: cc.y });
+          _cotaInicio = null; _redibujarLienzo();
         }
+      } else {
+        var texto = (tipo === 'letra')
+          ? ((document.getElementById('disEtLetra') || {}).value || 'A')
+          : ((document.getElementById('disEtAngulo') || {}).value || 'α1');
+        _etiquetas.push({ tipo: tipo, texto: texto, x: cc.x, y: cc.y });
+        _redibujarLienzo();
       }
       return;
     }
