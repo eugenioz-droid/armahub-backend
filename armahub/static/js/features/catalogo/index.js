@@ -49,9 +49,17 @@
   }
 
   // ---- Figuras ----
+  var _reintentoMotor = false;
   function renderFigurasLista() {
     var cont = document.getElementById('figurasLista');
     if (!cont) return;
+    // Si hay figuras con geometría pero el motor de dibujo aún no cargó (timing de
+    // scripts), reintentar una vez cuando esté disponible (para ver el render).
+    var hayGeom = _figurasData.some(function(f) { return f.geometria && f.geometria.tramos && f.geometria.tramos.length; });
+    if (hayGeom && (!window.disenadorMotor || !window.disenadorMotor.dibujarFigura) && !_reintentoMotor) {
+      _reintentoMotor = true;
+      setTimeout(function() { if (_catSubActual === 'figuras') renderFigurasLista(); }, 400);
+    }
     var busq = ((document.getElementById('catFigBusqueda') || {}).value || '').trim().toLowerCase();
     var rows = _figurasData.filter(function(f) {
       return !busq || (f.codigo || '').toLowerCase().indexOf(busq) !== -1;
