@@ -772,27 +772,31 @@ cuenta como α, solo los especiales van a `angulos`).
 Manager (celda Figura). Vectorial, liviano, sin imágenes ni servidor. Estilo unificado
 (90×72, pad proporcional, centrado).
 
-### 4A.4.1 Plan CURVAS 2D + etiquetas manuales + drag de nodos (EN CURSO)
+### 4A.4.1 Curvas 2D + etiquetas + drag de nodos (HECHO)
 
-- **Curvas:** tramo `tipo:"arco"` (radio + barrido) → `<path>` SVG comando `A` (nativo).
-  Control del radio = **slider** (decisión: lo más simple/liviano; el usuario pone los 2
-  extremos con clicks y el slider curva). Parámetros de curva: **radio, altura de cuerda,
-  desarrollo** — se ingresan 2, el sistema calcula el 3º.
-- **Etiquetas manuales:** botón "Etiquetas" → modo donde el dibujo se limpia y el usuario
-  coloca etiquetas de **medida (cota), letra y ángulo**. Visuales, ayudan a identificar. Regla
-  de sistema: letra y ángulo deben ser de los DISPONIBLES en la data (no texto libre); la cota
-  de medida sí es libre. Modelo `etiquetas:[{tipo,texto,x,y}]`.
-- **Drag de nodos:** arrastrar los vértices para modificar la figura (2D y 3D). Factible (el
-  SVG es persistente). Da versatilidad sin rehacer.
+- **Curvas 2D:** tramo `tipo:"arco"` (radio + sweep) → `<path>` SVG comando `A` (nativo).
+  Control del radio = **slider**; botón **"Invertir lado"** (sweep 0↔1). Los vértices junto a
+  un arco NO generan ángulo α (la curva ES el doblez). Guardado: `tipos_seg`/`radios_seg`/
+  `sweeps_seg`. Params radio/cuerda/desarrollo NO van en el diseñador (la figura es solo FORMA;
+  las medidas mm las aporta la barra concreta en Bar Manager).
+- **Etiquetas manuales:** botón "Etiquetas" → abre un **canvas GRANDE** (reemplaza el área de
+  dibujo) con la figura de fondo; se colocan/arrastran etiquetas de **medida (cota libre),
+  letra (A-I de la data), ángulo (α1-α4)**. Halo blanco sutil. `disenador_preview_etiq.js`.
+  Guardado: `geometria.etiquetas_preview`. Preview chico = solo ver.
+- **Drag de nodos:** 2D (SVG) y 3D (raycast a esferas) — arrastrar vértices para modificar.
 
-### 4A.4.2 Plan 3D (toggle 2D/3D) (PLANIFICADO)
+### 4A.4.2 Editor 3D (toggle 2D/3D) (HECHO — falta arcos 3D)
 
-- **Activación:** botones **2D / 3D** que cargan un lienzo u otro (con sus funciones).
-- En 3D: visor Three.js `TubeGeometry` (barra=tubo de radio Ø siguiendo la polilínea 3D),
-  cargado ON-DEMAND (solo al activar 3D). Entrada por parámetros de tramo (largo + giro +
-  plano de doblez) — clicks planos son ambiguos en profundidad. + etiquetado manual también.
-- Modelo `dim:"3D"` + plano por tramo. Las 2D no se tocan. Curva-3D = arco orientado (mismo
-  concepto de tramo → no rehacer).
+- **Activación:** botones **2D / 3D**. Three.js ON-DEMAND (solo al activar 3D).
+- **Espacio 3D:** grilla + ejes XYZ rotulados (sprites), rotable con el mouse.
+- **Dibujo por CLICKS** sobre un **plano de trabajo** (Piso XZ / Frontal XY / Lateral YZ;
+  raycasting al plano; badge del plano activo). Se decidió clicks (no parámetros — más
+  intuitivo). **ORTO:** snap a múltiplos de 45° dentro del plano (igual que 2D). **Drag de
+  nodos** (raycast a esferas). **Snapshot FIJABLE** ("📸 Fijar vista": congela el ángulo que
+  se verá/guardará). Panel de parámetros 3D (lado/largo/dirección).
+- **Guardado:** `dim:"3D"` con nodos + tramos (lado/largo/dir) + puntos iso 2D + snapshot.
+  Galería: badge "3D" + imagen del snapshot. Backend sin cambios (geometría es JSONB).
+- **PENDIENTE: arcos/curvas 3D** (la "patita" final). Modelo ya contempla `tipo:"arco"`.
 
 ### 4A.5 Permisos
 
