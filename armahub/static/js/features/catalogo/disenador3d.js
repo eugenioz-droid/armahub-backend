@@ -144,14 +144,60 @@
     return spr;
   }
 
-  // Dibuja la figura 3D (nodos → tubo). En la Etapa A está vacía; la Etapa B la
-  // llena con los clicks. Se deja lista la mecánica de render.
+  // Por SEGMENTO (nodo i-1 → i): tipo 'recto'|'arco', radio, plano y sweep del arco.
+  var _tiposSeg3d = [], _radiosSeg3d = [], _planosSeg3d = [], _sweepsSeg3d = [];
+
+  // Genera puntos intermedios de un ARCO 3D entre a y b, curvado EN el plano dado.
+  // El plano define el eje normal (fijo); el arco vive en los otros dos ejes.
+  function _puntosArco3d(a, b, radio, plano, sweep) {
+    var ejes = (plano === 'XZ') ? ['x','z'] : (plano === 'XY') ? ['x','y'] : ['y','z'];
+    var normalEje = (plano === 'XZ') ? 'y' : (plano === 'XY') ? 'z' : 'x';
+    // Trabajar en 2D dentro del plano.
+    var ax = a[ejes[0]], ay = a[ejes[1]], bx = b[ejes[0]], by = b[ejes[1]];
+    var cuerda = Math.sqrt((bx-ax)*(bx-ax) + (by-ay)*(by-ay)) || 1;
+    var r = Math.max(radio || cuerda*0.75, cuerda/2 + 0.5);
+    // Centro del arco (a un lado de la cuerda según sweep).
+    var mx = (ax+bx)/2, my = (ay+by)/2;
+    var h = Math.sqrt(Math.max(0, r*r - (cuerda/2)*(cuerda/2)));
+    var ux = (bx-ax)/cuerda, uy = (by-ay)/cuerda;       // dir cuerda
+    var nx = -uy, ny = ux;                               // normal a la cuerda
+    var s = (sweep ? 1 : -1);
+    var cx = mx + nx*h*s, cy = my + ny*h*s;             // centro
+    var a0 = Math.atan2(ay-cy, ax-cx), a1 = Math.atan2(by-cy, bx-cx);
+    // Elegir el arco corto en el sentido del sweep.
+    var da = a1 - a0; while (da > Math.PI) da -= 2*Math.PI; while (da < -Math.PI) da += 2*Math.PI;
+    var pts = [], N = 16;
+    for (var k = 0; k <= N; k++) {
+      var ang = a0 + da * (k/N);
+      var p = {}; p[ejes[0]] = cx + r*Math.cos(ang); p[ejes[1]] = cy + r*Math.sin(ang);
+      p[normalEje] = a[normalEje] + (b[normalEje]-a[normalEje])*(k/N);   // interp normal
+      pts.push(new THREE.Vector3(p.x, p.y, p.z));
+    }
+    return pts;
+  }
+
+  // Construye la polilínea COMPLETA del tubo respetando rectos y arcos por tramo.
+  function _polilineaTubo() {
+    var pts = [_nodos3d[0].clone()];
+    for (var i = 1; i < _nodos3d.length; i++) {
+      if (_tiposSeg3d[i-1] === 'arco') {
+        var arco = _puntosArco3d(_nodos3d[i-1], _nodos3d[i], _radiosSeg3d[i-1], _planosSeg3d[i-1] || _planoActivo, _sweepsSeg3d[i-1]);
+        for (var k = 1; k < arco.length; k++) pts.push(arco[k]);
+      } else {
+        pts.push(_nodos3d[i].clone());
+      }
+    }
+    return pts;
+  }
+
   function _redibujarFigura3d() {
     if (!_figuraGroup) return;
     while (_figuraGroup.children.length) _figuraGroup.remove(_figuraGroup.children[0]);
     if (_nodos3d.length >= 2) {
-      var curve = new THREE.CatmullRomCurve3(_nodos3d, false, 'catmullrom', 0.0);
-      var geo = new THREE.TubeGeometry(curve, Math.max(16, _nodos3d.length * 12), 8, 12, false);
+      var linea = _polilineaTubo();
+      // Curva por segmentos rectos entre los puntos (arcos ya vienen suavizados).
+      var curve = new THREE.CatmullRomCurve3(linea, false, 'catmullrom', 0.0);
+      var geo = new THREE.TubeGeometry(curve, Math.max(24, linea.length * 4), 8, 12, false);
       var mat = new THREE.MeshStandardMaterial({ color: 0x00695c, metalness: 0.3, roughness: 0.5 });
       _figuraGroup.add(new THREE.Mesh(geo, mat));
     }
@@ -177,6 +223,28 @@
   var _planoOffset = 0;         // desplazamiento del plano en su eje normal
   var _raycaster = null, _mouseNDC = null;
   var _orto = true;             // ORTO: fuerza tramos a 90° en el plano (default ON)
+
+  // Modo de trazo 3D: recto o arco (para el próximo segmento).
+  var _modoTrazo3d = 'recto', _segSel3d = -1;
+  global.disenador3dSetTrazo = function(t) { _modoTrazo3d = (t === 'arco') ? 'arco' : 'recto'; };
+  global.disenador3dSetRadio = function(v) {
+    var r = Number(v) || 80;
+    var val = document.getElementById('dis3dRadioVal'); if (val) val.textContent = r;
+    if (_segSel3d >= 0) { _radiosSeg3d[_segSel3d] = r; _redibujarFigura3d(); _actualizarInfo3d(); }
+  };
+  global.disenador3dInvertirCurva = function() {
+    if (_segSel3d >= 0 && _tiposSeg3d[_segSel3d] === 'arco') {
+      _sweepsSeg3d[_segSel3d] = _sweepsSeg3d[_segSel3d] ? 0 : 1;
+      _redibujarFigura3d(); _actualizarInfo3d();
+    }
+  };
+  function _actualizarSlider3d() {
+    var wrap = document.getElementById('dis3dRadioWrap');
+    var es = _segSel3d >= 0 && _tiposSeg3d[_segSel3d] === 'arco';
+    if (wrap) wrap.style.display = es ? 'inline-flex' : 'none';
+    if (es) { var sl = document.getElementById('dis3dRadioSlider'); if (sl) sl.value = _radiosSeg3d[_segSel3d] || 80;
+      var val = document.getElementById('dis3dRadioVal'); if (val) val.textContent = Math.round(_radiosSeg3d[_segSel3d] || 80); }
+  }
 
   global.disenador3dToggleOrto = function() {
     _orto = !_orto;
@@ -254,11 +322,12 @@
   }
 
   global.disenador3dDeshacer = function() {
-    if (_nodos3d.length > 0) _nodos3d.pop();
-    _redibujarFigura3d(); _actualizarInfo3d();
+    if (_nodos3d.length > 0) { _nodos3d.pop(); _tiposSeg3d.pop(); _radiosSeg3d.pop(); _planosSeg3d.pop(); _sweepsSeg3d.pop(); _segSel3d = -1; }
+    _redibujarFigura3d(); _actualizarInfo3d(); _actualizarSlider3d();
   };
   global.disenador3dLimpiarDibujo = function() {
-    _nodos3d = []; _redibujarFigura3d(); _actualizarInfo3d();
+    _nodos3d = []; _tiposSeg3d = []; _radiosSeg3d = []; _planosSeg3d = []; _sweepsSeg3d = []; _segSel3d = -1;
+    _redibujarFigura3d(); _actualizarInfo3d(); _actualizarSlider3d();
   };
 
   var _snapshotFijado = null;   // dataURL del snapshot fijado por el usuario (o null)
@@ -289,7 +358,9 @@
       var largo = Math.round(Math.sqrt(dx*dx + dy*dy + dz*dz) / _GRID3D);
       var lado = _LETRAS3D[i - 1] || ('L' + i);
       parciales.push(lado);
-      tramos.push({ lado: lado, largo: largo, dx: dx, dy: dy, dz: dz });
+      tramos.push({ lado: lado, largo: largo, dx: dx, dy: dy, dz: dz,
+        tipo: _tiposSeg3d[i-1] || 'recto', radio: _radiosSeg3d[i-1] || 0,
+        plano: _planosSeg3d[i-1] || null, sweep: _sweepsSeg3d[i-1] != null ? _sweepsSeg3d[i-1] : 1 });
     }
     // Vista isométrica 2D (puntos) para dibujar la miniatura sin cargar Three.js.
     var puntos2d = _nodos3d.map(function(p) { return _iso(p); });
@@ -422,7 +493,23 @@
         var r = cont.getBoundingClientRect();
         if (e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom) {
           var p = _puntoEnPlano(e);
-          if (p) { _nodos3d.push(p); _redibujarFigura3d(); _actualizarInfo3d(); }
+          if (p) {
+            _nodos3d.push(p);
+            // Marcar el segmento recién creado según el modo de trazo.
+            if (_nodos3d.length >= 2) {
+              var seg = _nodos3d.length - 2;
+              _tiposSeg3d[seg] = _modoTrazo3d;
+              if (_modoTrazo3d === 'arco') {
+                var a = _nodos3d[seg], b = _nodos3d[seg+1];
+                var cu = Math.sqrt((b.x-a.x)*(b.x-a.x)+(b.y-a.y)*(b.y-a.y)+(b.z-a.z)*(b.z-a.z));
+                _radiosSeg3d[seg] = Math.round(cu * 0.75);
+                _planosSeg3d[seg] = _planoActivo;   // el arco vive en el plano activo
+                _sweepsSeg3d[seg] = 1;
+                _segSel3d = seg;
+              }
+            }
+            _redibujarFigura3d(); _actualizarInfo3d(); _actualizarSlider3d();
+          }
         }
       }
     }
