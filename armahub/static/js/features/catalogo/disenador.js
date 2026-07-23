@@ -81,9 +81,12 @@
     function tx(p) { return { x: offX + (p.x - minX) * scale, y: H - (offY + (p.y - minY) * scale) }; }
     var tpts = pts.map(tx);
 
-    var poly = tpts.map(function(p) { return p.x.toFixed(1) + ',' + p.y.toFixed(1); }).join(' ');
     var svg = '<svg width="' + W + '" height="' + H + '" viewBox="0 0 ' + W + ' ' + H + '" style="max-width:100%; height:auto;">';
-    svg += '<polyline points="' + poly + '" fill="none" stroke="#00695c" stroke-width="3" stroke-linejoin="round" stroke-linecap="round" />';
+    // Línea principal: path con L (rectos) y A (arcos), usando tipos/radios de la
+    // geometría (radios escalados al mismo factor que los puntos).
+    var tiposEsc = opts.tipos_seg || [];
+    var radiosEsc = (opts.radios_seg || []).map(function(r) { return (r || 0) * scale; });
+    svg += '<path d="' + _pathDesdePuntos(tpts, tiposEsc, radiosEsc) + '" fill="none" stroke="#00695c" stroke-width="3" stroke-linejoin="round" stroke-linecap="round" />';
     // Vértices (nodos pequeños para no recargar la miniatura).
     tpts.forEach(function(p, i) {
       var isEnd = (i === 0 || i === tpts.length - 1);
@@ -136,7 +139,13 @@
     opts = opts || {};
     var pts = geometriaAPuntos(geometria, dims, opts.unidad || 100);
     var labels = ((geometria && geometria.tramos) || []).map(function(t) { return t.lado; });
-    var o = { labels: labels, width: opts.width, height: opts.height, pad: opts.pad };
+    // Tipos/radios de segmento: del array directo o derivados de tramos[].tipo.
+    var tipos = (geometria && geometria.tipos_seg) ||
+      (((geometria && geometria.tramos) || []).map(function(t) { return t.tipo || 'recto'; }));
+    var radios = (geometria && geometria.radios_seg) ||
+      (((geometria && geometria.tramos) || []).map(function(t) { return t.radio || 0; }));
+    var o = { labels: labels, width: opts.width, height: opts.height, pad: opts.pad,
+              angulos: opts.angulos, tipos_seg: tipos, radios_seg: radios };
     return svgDesdePuntos(pts, o);
   }
 
@@ -157,6 +166,29 @@
   var SNAP_ANG = 45;             // snap de ángulo (grados) — ángulos limpios
   var LETRAS = 'ABCDEFGHI'.split('');
 
+  // Construye el atributo `d` de un <path> desde puntos, usando L (línea) para
+  // segmentos rectos y A (arco) para curvos. tipos/radios son paralelos a los
+  // segmentos (índice = i-1 para el segmento entre punto i-1 e i).
+  function _pathDesdePuntos(pts, tipos, radios) {
+    if (!pts || pts.length < 1) return '';
+    var d = 'M ' + pts[0].x + ' ' + pts[0].y;
+    for (var i = 1; i < pts.length; i++) {
+      var tipo = (tipos && tipos[i - 1]) || 'recto';
+      if (tipo === 'arco') {
+        var a = pts[i - 1], b = pts[i];
+        var cuerda = Math.sqrt((b.x - a.x) * (b.x - a.x) + (b.y - a.y) * (b.y - a.y)) || 1;
+        // Radio mínimo = media cuerda (si es menor, el arco no existe). Usar el
+        // radio guardado o 1.2× la media cuerda por defecto.
+        var r = (radios && radios[i - 1]) ? radios[i - 1] : cuerda * 0.75;
+        r = Math.max(r, cuerda / 2 + 0.5);
+        d += ' A ' + r.toFixed(1) + ' ' + r.toFixed(1) + ' 0 0 1 ' + b.x + ' ' + b.y;
+      } else {
+        d += ' L ' + pts[i].x + ' ' + pts[i].y;
+      }
+    }
+    return d;
+  }
+
   // Estado del editor.
   var _puntos = [];              // vértices clickeados en el lienzo {x,y} (coord lienzo)
   var _labels = [];              // letra asignada a cada LADO (segmento). editable.
@@ -164,6 +196,34 @@
   var _hoverPt = null;           // punto de previsualización bajo el cursor (con snap)
   var _dibujando = true;         // ¿rubber band activo? false = figura terminada
   var _editando = null;          // código de figura que se está EDITANDO (o null = nueva)
+  // A1-A3: por cada SEGMENTO (entre punto i-1 e i) si es 'recto' o 'arco', y su
+  // radio (px, para arcos). Paralelos a los tramos (índice de segmento = i-1).
+  var _tiposSeg = [];            // ['recto'|'arco', ...] por segmento
+  var _radiosSeg = [];           // radio en px por segmento (solo arcos)
+  var _segSel = -1;              // segmento seleccionado (para ajustar su radio)
+  var _modoTrazo = 'recto';      // 'recto' | 'arco' — tipo del PRÓXIMO segmento
+
+  // El próximo segmento que se dibuje será recto o arco.
+  global.disenadorSetTrazo = function(t) { _modoTrazo = (t === 'arco') ? 'arco' : 'recto'; };
+
+  // Ajusta el radio del segmento seleccionado (slider).
+  global.disenadorSetRadio = function(v) {
+    var r = Number(v) || 80;
+    var val = document.getElementById('disRadioVal'); if (val) val.textContent = r;
+    if (_segSel >= 0) { _radiosSeg[_segSel] = r; _redibujarLienzo(); _redibujarPanel(); }
+  };
+
+  // Muestra/oculta el slider de radio según haya un segmento arco seleccionado.
+  function _actualizarSliderRadio() {
+    var wrap = document.getElementById('disRadioWrap');
+    var esArco = _segSel >= 0 && _tiposSeg[_segSel] === 'arco';
+    if (wrap) wrap.style.display = esArco ? 'inline-flex' : 'none';
+    if (esArco) {
+      var sl = document.getElementById('disRadioSlider'), val = document.getElementById('disRadioVal');
+      var r = _radiosSeg[_segSel] || 80;
+      if (sl) sl.value = r; if (val) val.textContent = Math.round(r);
+    }
+  }
 
   function disenadorInit(figuras) {
     if (figuras) _figurasCat = figuras;
@@ -225,27 +285,27 @@
     var tramos = [];
     for (var i = 1; i < _puntos.length; i++) {
       var lado = _labels[i - 1] || LETRAS[i - 1] || ('L' + i);
+      var tipo = _tiposSeg[i - 1] || 'recto';
+      var radio = (tipo === 'arco') ? (_radiosSeg[i - 1] || 0) : 0;
       if (i === 1) {
-        tramos.push({ lado: lado, giro: 0, sentido: null });
+        tramos.push({ lado: lado, giro: 0, sentido: null, tipo: tipo, radio: radio });
       } else {
-        var p0 = _puntos[i - 2], p1 = _puntos[i - 1], p2 = _puntos[i];
-        var a1 = Math.atan2(p1.y - p0.y, p1.x - p0.x);
-        var a2 = Math.atan2(p2.y - p1.y, p2.x - p1.x);
+        var p0v = _puntos[i - 2], p1v = _puntos[i - 1], p2v = _puntos[i];
+        var a1 = Math.atan2(p1v.y - p0v.y, p1v.x - p0v.x);
+        var a2 = Math.atan2(p2v.y - p1v.y, p2v.x - p1v.x);
         var d = (a2 - a1) * 180 / Math.PI;
         while (d > 180) d -= 360; while (d < -180) d += 360;
-        // En coords de pantalla el Y crece hacia abajo; el motor usa Y hacia arriba.
-        // El giro es el mismo valor absoluto; el sentido se normaliza para el motor.
         var giro = Math.abs(Math.round(d));
         var sentido = (d < 0) ? 'izq' : 'der';   // pantalla: horario = der
-        tramos.push({ lado: lado, giro: giro, sentido: sentido });
+        tramos.push({ lado: lado, giro: giro, sentido: sentido, tipo: tipo, radio: radio });
       }
     }
-    // 5M.8.6: guardar también los PUNTOS reales (normalizados al primer punto y
-    // con Y invertida a "hacia arriba"), para que el render reproduzca la figura
-    // IDÉNTICA a como se dibujó (no reconstruida desde heading=0, que rotaba).
+    // 5M.8.6: guardar los PUNTOS reales (normalizados, Y hacia arriba) → render
+    // WYSIWYG. + tipos/radios de segmento (A1) para reproducir las curvas.
     var p0 = _puntos[0] || { x: 0, y: 0 };
     var puntos = _puntos.map(function(p) { return { x: p.x - p0.x, y: -(p.y - p0.y) }; });
-    return { dim: '2D', tramos: tramos, puntos: puntos };
+    return { dim: '2D', tramos: tramos, puntos: puntos,
+             tipos_seg: _tiposSeg.slice(), radios_seg: _radiosSeg.slice() };
   }
 
   // ---- Longitudes de cada lado desde los puntos del lienzo (en px de grilla) ----
@@ -355,8 +415,7 @@
     if (!capa) return;
     var s = '';
     if (_puntos.length >= 2) {
-      var poly = _puntos.map(function(p) { return p.x + ',' + p.y; }).join(' ');
-      s += '<polyline points="' + poly + '" fill="none" stroke="#00695c" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"/>';
+      s += '<path d="' + _pathDesdePuntos(_puntos, _tiposSeg, _radiosSeg) + '" fill="none" stroke="#00695c" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"/>';
     }
     if (_dibujando && _puntos.length >= 1 && _hoverPt) {
       var lp = _puntos[_puntos.length - 1];
@@ -433,28 +492,45 @@
     var last = _puntos[_puntos.length - 1];
     if (last && Math.abs(last.x - p.x) < 1 && Math.abs(last.y - p.y) < 1) return;
     _puntos.push(p);
-    if (_puntos.length >= 2) _labels[_puntos.length - 2] = LETRAS[_puntos.length - 2] || ('L' + (_puntos.length - 1));
+    if (_puntos.length >= 2) {
+      _labels[_puntos.length - 2] = LETRAS[_puntos.length - 2] || ('L' + (_puntos.length - 1));
+      // Tipo del segmento recién creado según el modo de trazo.
+      var segIdx = _puntos.length - 2;
+      _tiposSeg[segIdx] = _modoTrazo;
+      if (_modoTrazo === 'arco') {
+        var cuerda = Math.sqrt((p.x - last.x) * (p.x - last.x) + (p.y - last.y) * (p.y - last.y));
+        _radiosSeg[segIdx] = Math.round(cuerda * 0.75);   // radio inicial razonable
+        _segSel = segIdx;                                  // seleccionarlo para el slider
+      }
+    }
     _redibujarLienzo();
     _redibujarPanel();
     _actualizarBotonTerminar();
+    _actualizarSliderRadio();
   };
 
   global.disenadorDeshacer = function() {
     if (_puntos.length === 0) return;
     _puntos.pop();
     _labels = _labels.slice(0, Math.max(0, _puntos.length - 1));
+    _tiposSeg = _tiposSeg.slice(0, Math.max(0, _puntos.length - 1));
+    _radiosSeg = _radiosSeg.slice(0, Math.max(0, _puntos.length - 1));
+    _segSel = -1;
     _redibujarLienzo();
     _redibujarPanel();
+    _actualizarSliderRadio();
   };
 
   global.disenadorLimpiar = function() {
     if (_puntos.length && !confirm('¿Borrar el dibujo actual?')) return;
     _puntos = []; _labels = []; _hoverPt = null;
+    _tiposSeg = []; _radiosSeg = []; _segSel = -1;
     _dibujando = true; _editando = null;
     var nb = document.getElementById('disenadorNombre'); if (nb) nb.value = '';
     _redibujarLienzo();
     _redibujarPanel();
     _actualizarBotonTerminar();
+    _actualizarSliderRadio();
   };
 
   // Cambiar la LETRA asignada a un lado (requerimiento: reasignar A/B/C…).
@@ -531,6 +607,7 @@
         if (typeof showToast === 'function') showToast('Figura "' + nombre + '" guardada en el catálogo', 'success');
         // Limpiar el lienzo y refrescar el catálogo/galería con lo recién guardado.
         _puntos = []; _labels = []; _hoverPt = null; _dibujando = true; _editando = null;
+        _tiposSeg = []; _radiosSeg = []; _segSel = -1;
         var nb = document.getElementById('disenadorNombre'); if (nb) nb.value = '';
         await _recargarCatalogo();
         _redibujarLienzo(); _redibujarPanel(); _actualizarBotonTerminar();
@@ -583,6 +660,12 @@
     var offX = 120, offY = 140;
     _puntos = pts.map(function(p) { return { x: Math.round(p.x) + offX, y: offY - Math.round(p.y) }; });
     _labels = f.geometria.tramos.map(function(t) { return t.lado; });
+    // Cargar tipos/radios de segmento (arcos) si la figura los tiene.
+    _tiposSeg = f.geometria.tipos_seg ? f.geometria.tipos_seg.slice()
+      : f.geometria.tramos.map(function(t) { return t.tipo || 'recto'; });
+    _radiosSeg = f.geometria.radios_seg ? f.geometria.radios_seg.slice()
+      : f.geometria.tramos.map(function(t) { return t.radio || 0; });
+    _segSel = -1;
     _dibujando = false;    // cargada = terminada (sin rubber band); "Retomar" para seguir
     _editando = codigo;
     _hoverPt = null;

@@ -68,6 +68,18 @@
         <div style="display:flex; gap:16px; flex-wrap:wrap; align-items:flex-start;">
           <!-- Lienzo de dibujo -->
           <div style="flex:1; min-width:300px;">
+            <!-- Modo de trazo: recto o curva. En curva, el proximo segmento se dibuja como arco. -->
+            <div class="row" style="gap:8px; margin-bottom:8px; align-items:center; flex-wrap:wrap;">
+              <span style="font-size:11px; color:#666; font-weight:600;">Trazo:</span>
+              <label style="display:inline-flex; align-items:center; gap:3px; cursor:pointer; font-size:12px;"><input type="radio" name="disTrazo" value="recto" checked onchange="disenadorSetTrazo('recto')"/> Recto</label>
+              <label style="display:inline-flex; align-items:center; gap:3px; cursor:pointer; font-size:12px;"><input type="radio" name="disTrazo" value="arco" onchange="disenadorSetTrazo('arco')"/> Curva</label>
+              <!-- Slider de radio: ajusta el arco del segmento seleccionado (click en un segmento curvo). -->
+              <span id="disRadioWrap" style="display:none; align-items:center; gap:6px; margin-left:8px;">
+                <span style="font-size:11px; color:#666;">Radio:</span>
+                <input type="range" id="disRadioSlider" min="20" max="300" value="80" oninput="disenadorSetRadio(this.value)" style="vertical-align:middle;"/>
+                <span id="disRadioVal" style="font-size:11px; color:#00695c; font-weight:700;">80</span>
+              </span>
+            </div>
             <div id="disenadorLienzo" style="border:1px solid #e0e0e0; border-radius:8px; overflow:hidden; display:inline-block;"></div>
             <div class="row" style="gap:8px; margin-top:8px; flex-wrap:wrap;">
               <button class="secondary" onclick="disenadorDeshacer()" style="font-size:11px; padding:4px 12px;">↶ Deshacer punto</button>
