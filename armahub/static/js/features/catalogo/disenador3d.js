@@ -35,7 +35,13 @@
     if (c2d) c2d.style.display = (_vista === '2D') ? '' : 'none';
     if (v3d) v3d.style.display = (_vista === '3D') ? '' : 'none';
     if (ctrl3d) ctrl3d.style.display = (_vista === '3D') ? '' : 'none';
+    // Panel de parámetros 3D visible solo en 3D; el 2D usa disenadorPanel.
+    var p3d = document.getElementById('dis3dPanelWrap');
+    if (p3d) p3d.style.display = (_vista === '3D') ? '' : 'none';
     if (_vista === '3D') _activar3D(); else _detener3D();
+    // Refrescar el preview según la vista.
+    if (_vista === '3D') _actualizarPreview3d();
+    else if (typeof disenadorActualizarPreview2d === 'function') disenadorActualizarPreview2d();
   };
 
   function _activar3D() {
@@ -67,7 +73,7 @@
     _camera = new THREE.PerspectiveCamera(45, W / H, 0.1, 4000);
     _camera.position.set(0, 0, 520);
 
-    _renderer = new THREE.WebGLRenderer({ antialias: true });
+    _renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
     _renderer.setSize(W, H);
     _renderer.setPixelRatio(window.devicePixelRatio || 1);
     cont.appendChild(_renderer.domElement);
@@ -235,8 +241,64 @@
     _nodos3d = []; _redibujarFigura3d(); _actualizarInfo3d();
   };
 
+  // Preview 3D: snapshot del canvas del visor (así el preview = lo que se verá,
+  // un mini-render 3D). Requiere preserveDrawingBuffer en el renderer.
+  function _actualizarPreview3d() {
+    var prev = document.getElementById('disPreview');
+    if (!prev) return;
+    if (_nodos3d.length < 2 || !_renderer) {
+      prev.innerHTML = '<span class="muted" style="font-size:11px;">Dibuja para ver el preview.</span>';
+      return;
+    }
+    try {
+      // Forzar un render antes del snapshot.
+      _renderer.render(_scene, _camera);
+      var url = _renderer.domElement.toDataURL('image/png');
+      prev.innerHTML = '<img src="' + url + '" style="max-width:100%; max-height:120px; border-radius:4px;" alt="preview 3D"/>';
+    } catch (e) {
+      prev.innerHTML = '<span class="muted" style="font-size:11px;">Preview 3D no disponible.</span>';
+    }
+  }
+
+  var _LETRAS3D = 'ABCDEFGHI'.split('');
+  // Panel de parámetros 3D: por cada tramo (nodo i-1 → i), su lado, largo (grillas)
+  // y dirección (eje dominante ±). Paridad con el panel del 2D.
+  function _actualizarPanel3d() {
+    var cont = document.getElementById('dis3dPanel');
+    if (!cont) return;
+    if (_nodos3d.length < 2) {
+      cont.innerHTML = '<div class="muted" style="font-size:12px;">Haz click en el visor para trazar el primer lado.</div>';
+      return;
+    }
+    var html = '<div style="font-weight:700; color:#00695c; margin-bottom:6px;">Parámetros de la figura 3D</div>';
+    html += '<table style="width:100%; font-size:12px; border-collapse:collapse;">';
+    html += '<tr style="color:#666; text-align:left;"><th style="padding:2px 4px;">Lado</th><th style="padding:2px 4px;">Largo</th><th style="padding:2px 4px;">Dirección</th></tr>';
+    for (var i = 1; i < _nodos3d.length; i++) {
+      var a = _nodos3d[i - 1], b = _nodos3d[i];
+      var dx = b.x - a.x, dy = b.y - a.y, dz = b.z - a.z;
+      var largo = Math.round(Math.sqrt(dx*dx + dy*dy + dz*dz) / _GRID3D);
+      // Eje dominante para nombrar la dirección.
+      var adx = Math.abs(dx), ady = Math.abs(dy), adz = Math.abs(dz);
+      var dir;
+      if (adx >= ady && adx >= adz) dir = (dx >= 0 ? '+X' : '−X');
+      else if (ady >= adz) dir = (dy >= 0 ? '+Y' : '−Y');
+      else dir = (dz >= 0 ? '+Z' : '−Z');
+      var lado = _LETRAS3D[i - 1] || ('L' + i);
+      html += '<tr style="border-top:1px solid #eee;">' +
+        '<td style="padding:2px 4px; font-weight:700; color:#00695c;">' + lado + '</td>' +
+        '<td style="padding:2px 4px;">' + largo + '</td>' +
+        '<td style="padding:2px 4px;">' + dir + '</td></tr>';
+    }
+    html += '</table>';
+    html += '<div style="margin-top:6px; font-size:12px; color:#444;"><b>N° de lados:</b> ' + (_nodos3d.length - 1) + '</div>';
+    cont.innerHTML = html;
+  }
+
   // Info del dibujo (nº de tramos) en el panel.
   function _actualizarInfo3d() {
+    _actualizarPanel3d();
+    // Preview con un pequeño delay para que el render del frame esté listo.
+    setTimeout(_actualizarPreview3d, 60);
     var el = document.getElementById('dis3dInfo');
     if (el) {
       var n = Math.max(0, _nodos3d.length - 1);

@@ -675,7 +675,24 @@
       (especiales.length > 4 ? '<div style="color:#c62828; margin-top:4px;">⚠ ' + especiales.length + ' ángulos especiales — el sistema soporta máx. 4 (α1-α4).</div>' : '') +
       '</div>';
     cont.innerHTML = html;
+    disenadorActualizarPreview2d();
   }
+
+  // Preview 2D: dibuja la figura actual como se verá su miniatura (mismo motor).
+  global.disenadorActualizarPreview2d = function() {
+    var prev = document.getElementById('disPreview');
+    if (!prev) return;
+    if (_puntos.length < 2) {
+      prev.innerHTML = '<span class="muted" style="font-size:11px;">Dibuja para ver el preview.</span>';
+      return;
+    }
+    try {
+      var geo = _puntosAGeometria();
+      prev.innerHTML = dibujarFigura(geo, null, { width: 200, height: 130, pad: 16 });
+    } catch (e) {
+      prev.innerHTML = '<span class="muted" style="font-size:11px;">Preview no disponible.</span>';
+    }
+  };
 
   // ---- Guardar la figura dibujada (crear en el catálogo con nombre del usuario) ----
   global.disenadorGuardar = async function() {
