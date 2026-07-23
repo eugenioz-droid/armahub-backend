@@ -745,23 +745,61 @@ Es una entidad de referencia propia (como Clientes/Calculistas), no un apéndice
   define cómo su formato se mapea al catálogo Armacero (integración 1-a-1). El resultado
   siempre queda homologado al Armacero.
 
-### 4A.4 Editor de figuras (Fase 8, futuro)
+### 4A.4 Diseñador de figuras (IMPLEMENTADO — `disenador.js`)
 
-Dibujo PARAMÉTRICO GUIADO (no lienzo CAD libre): el usuario arma la figura conectando tramos
-(lado → doblez con ángulo/radio → lado...) y el SVG se genera automáticamente. Siempre
-coherente (restringido a lo que una barra puede ser). Liviano, eficiente. Acceso restringido.
+Sub-tab "🎨 Diseñador". El usuario **dibuja la figura por clicks** en un lienzo con grilla;
+snap a ángulos limpios (45/90/135°). Cada segmento = un lado (A,B,C… reasignables). **El
+nombre lo pone el usuario** (no autogenera). Guardar → `POST /figuras-catalogo` (UPSERT por
+código): crea figura nueva O **puebla la geometría de una existente** (esto ES la homologación
+por nombre — dibujar con el nombre del catálogo pega la geometría a esa figura). Galería de
+figuras dibujadas (editar/borrar). Etiquetas α1/α2… en los vértices (convención aSa: 90° no
+cuenta como α, solo los especiales van a `angulos`).
+
+**Modelo de geometría** (campo `geometria` JSONB de `figuras_catalogo`):
+```
+{ dim:"2D"|"3D",
+  tramos:[ {tipo:"recto",  lado, giro, sentido},              // línea
+           {tipo:"arco",   lado, radio, barrido, sentido} ],  // curva (Plan curvas)
+  puntos:[{x,y}...],          // WYSIWYG: render reproduce el dibujo exacto (no rota)
+  etiquetas:[{tipo:"medida"|"letra"|"angulo", texto, x, y}] } // manuales (Plan curvas)
+```
+- **WYSIWYG:** `puntos` se guardan tal cual se dibujaron; el render los usa directo (no
+  reconstruye desde heading=0, que rotaba la figura). Fallback a tramos para figuras viejas.
+- El motor (`geometriaAPuntos`/`svgDesdePuntos`/`dibujarFigura`) es compartido por lienzo,
+  galería, catálogo y Bar Manager. Vive en `window.disenadorMotor`.
+
+**Render (antes "Fase 7"): HECHO.** El SVG se dibuja en el Diseñador, catálogo (tabla) y Bar
+Manager (celda Figura). Vectorial, liviano, sin imágenes ni servidor. Estilo unificado
+(90×72, pad proporcional, centrado).
+
+### 4A.4.1 Plan CURVAS 2D + etiquetas manuales + drag de nodos (EN CURSO)
+
+- **Curvas:** tramo `tipo:"arco"` (radio + barrido) → `<path>` SVG comando `A` (nativo).
+  Control del radio = **slider** (decisión: lo más simple/liviano; el usuario pone los 2
+  extremos con clicks y el slider curva). Parámetros de curva: **radio, altura de cuerda,
+  desarrollo** — se ingresan 2, el sistema calcula el 3º.
+- **Etiquetas manuales:** botón "Etiquetas" → modo donde el dibujo se limpia y el usuario
+  coloca etiquetas de **medida (cota), letra y ángulo**. Visuales, ayudan a identificar. Regla
+  de sistema: letra y ángulo deben ser de los DISPONIBLES en la data (no texto libre); la cota
+  de medida sí es libre. Modelo `etiquetas:[{tipo,texto,x,y}]`.
+- **Drag de nodos:** arrastrar los vértices para modificar la figura (2D y 3D). Factible (el
+  SVG es persistente). Da versatilidad sin rehacer.
+
+### 4A.4.2 Plan 3D (toggle 2D/3D) (PLANIFICADO)
+
+- **Activación:** botones **2D / 3D** que cargan un lienzo u otro (con sus funciones).
+- En 3D: visor Three.js `TubeGeometry` (barra=tubo de radio Ø siguiendo la polilínea 3D),
+  cargado ON-DEMAND (solo al activar 3D). Entrada por parámetros de tramo (largo + giro +
+  plano de doblez) — clicks planos son ambiguos en profundidad. + etiquetado manual también.
+- Modelo `dim:"3D"` + plano por tramo. Las 2D no se tocan. Curva-3D = arco orientado (mismo
+  concepto de tramo → no rehacer).
 
 ### 4A.5 Permisos
 
-- **Ver catálogo:** admin + cubicadores (lo consumen para editar/filtrar barras).
-- **Editar el catálogo (crear/modificar figuras):** restringido (definir rol exacto en Fase 8).
-
-### 4A.6 Render SVG (Fase 7, futuro)
-
-El catálogo (plantilla: parciales/ángulos/radio) + los valores reales de la barra
-(dims/ángulos) → SVG dibujado en el navegador, proporcionado a las medidas. Vectorial,
-liviano, sin imágenes ni servidor. El catálogo es la fuente de verdad; el SVG dibuja a
-partir de él (se acoplan, no se reemplazan).
+- **Ver catálogo:** admin + miembros (rol `miembro`; lo consumen para editar/filtrar barras).
+- **Crear/editar figuras (Diseñador):** admins + editores extra por email (`_FIGURAS_EDITORES_EXTRA`
+  en catalogo.py — override para cubicadores que ayudan a poblar, ej. Nicolás López). **Eliminar:
+  solo admins.** Pendiente "bien hecho": permiso configurable en Admin.
 
 ---
 

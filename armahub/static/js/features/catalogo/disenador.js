@@ -309,9 +309,43 @@
       svg.addEventListener('mousemove', global.disenadorHover);
       svg.addEventListener('mouseleave', global.disenadorHoverOut);
       svg.addEventListener('click', global.disenadorClick);
+      // A6: arrastre de nodos. mousedown sobre un vértice inicia el drag.
+      svg.addEventListener('mousedown', _dragStart);
+      svg.addEventListener('mousemove', _dragMove);
+      window.addEventListener('mouseup', _dragEnd);
     }
     _svgCreado = true;
   }
+
+  // ---- A6: DRAG de nodos (arrastrar vértices para modificar la figura) ----
+  var _dragIdx = -1;      // índice del punto que se arrastra (-1 = ninguno)
+  var _dragMovido = false; // ¿hubo movimiento? (para suprimir el click posterior)
+  function _dragStart(ev) {
+    var t = ev.target;
+    if (!t || t.getAttribute('data-nodo') == null) return;   // solo sobre un vértice
+    _dragIdx = parseInt(t.getAttribute('data-nodo'), 10);
+    _dragMovido = false;
+    ev.preventDefault();
+  }
+  function _dragMove(ev) {
+    if (_dragIdx < 0) return;
+    var c = _coord(ev); if (!c) return;
+    // Snap del punto arrastrado a la grilla (no fuerza ángulo — es reposición libre).
+    var p = { x: Math.round(c.x / GRID) * GRID, y: Math.round(c.y / GRID) * GRID };
+    _puntos[_dragIdx] = p;
+    _dragMovido = true;
+    _redibujarLienzo();
+    _redibujarPanel();
+  }
+  function _dragEnd() {
+    if (_dragIdx < 0) return;
+    _dragIdx = -1;
+    _redibujarLienzo();
+    _redibujarPanel();
+    // Suprimir el click que sigue al soltar (para no agregar un punto nuevo).
+    if (_dragMovido) { _suprimirClick = true; setTimeout(function(){ _suprimirClick = false; }, 0); }
+  }
+  var _suprimirClick = false;
 
   // Redibuja SOLO la capa dinámica (no toca el SVG raíz ni la grilla ni el rect
   // de eventos). Así un mousemove no destruye el nodo sobre el que caerá el click.
@@ -331,7 +365,9 @@
     }
     _puntos.forEach(function(p, i) {
       var isEnd = (i === 0 || i === _puntos.length - 1);
-      s += '<circle cx="' + p.x + '" cy="' + p.y + '" r="' + (isEnd ? 5 : 4) + '" fill="' + (isEnd ? '#004d40' : '#00897b') + '"/>';
+      // data-nodo + área de captura grande (r 8 transparente) para arrastrar fácil.
+      s += '<circle cx="' + p.x + '" cy="' + p.y + '" r="9" fill="transparent" data-nodo="' + i + '" style="cursor:move;"/>';
+      s += '<circle cx="' + p.x + '" cy="' + p.y + '" r="' + (isEnd ? 5 : 4) + '" fill="' + (isEnd ? '#004d40' : '#00897b') + '" data-nodo="' + i + '" style="cursor:move;"/>';
     });
     for (var i = 1; i < _puntos.length; i++) {
       var a = _puntos[i - 1], b = _puntos[i];
@@ -387,6 +423,9 @@
   global.disenadorHoverOut = function() { _hoverPt = null; _redibujarLienzo(); };
 
   global.disenadorClick = function(ev) {
+    if (_suprimirClick) return;      // click que sigue a un drag → ignorar
+    // Click sobre un nodo existente = seleccionar/arrastrar, no agregar punto.
+    if (ev.target && ev.target.getAttribute && ev.target.getAttribute('data-nodo') != null) return;
     if (!_dibujando) return;         // terminado → los clicks no agregan lados
     var c = _coord(ev); if (!c) return;
     var p = _snap(c.x, c.y);
