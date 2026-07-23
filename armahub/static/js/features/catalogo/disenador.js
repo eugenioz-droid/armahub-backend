@@ -252,47 +252,22 @@
     _redibujarLienzo();
   };
 
-  // Etiquetar una figura 3D sobre su VISTA 2D (proyección isométrica): carga esa
-  // proyección como puntos del lienzo 2D y activa el modo etiquetas → se reutiliza
-  // TODO el sistema de etiquetas del 2D (click + arrastrar, medida/letra/ángulo).
-  global.disenadorEtiquetarVista3D = function() {
-    if (typeof disenador3dTieneFigura !== 'function' || !disenador3dTieneFigura()) {
-      alert('Dibuja la figura en 3D antes de etiquetar su vista.');
-      return;
-    }
-    var pts2d = disenador3dNodos2D();   // proyección isométrica {x,y}
-    // Escalar/centrar en el lienzo (la iso viene en coords 3D, se ajusta a la grilla).
-    var minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-    pts2d.forEach(function(p){ if(p.x<minX)minX=p.x; if(p.x>maxX)maxX=p.x; if(p.y<minY)minY=p.y; if(p.y>maxY)maxY=p.y; });
-    var bw = Math.max(1, maxX-minX), bh = Math.max(1, maxY-minY);
-    var sc = Math.min((CW-80)/bw, (CH-80)/bh);
-    var offX = 40 - minX*sc, offY = 40 - minY*sc;
-    _puntos = pts2d.map(function(p){ return { x: Math.round(p.x*sc+offX), y: Math.round(p.y*sc+offY) }; });
-    _labels = []; _tiposSeg = []; _radiosSeg = []; _sweepsSeg = [];
-    for (var i=1;i<_puntos.length;i++){ _labels[i-1]=LETRAS[i-1]||('L'+i); _tiposSeg[i-1]='recto'; }
-    _dibujando = false;   // solo etiquetar, no seguir dibujando la forma
-    // Cambiar a vista 2D para mostrar el lienzo, y activar etiquetas.
-    if (typeof disenadorSetVista === 'function') disenadorSetVista('2D');
-    _modoEtiquetas = false; disenadorToggleEtiquetas();   // enciende etiquetas
-    _redibujarLienzo(); _redibujarPanel();
-    if (typeof showToast === 'function') showToast('Vista 2D de la figura 3D cargada. Coloca las etiquetas.', 'info');
-  };
-
-  // Agrega una etiqueta manual del tipo elegido en el próximo click en el lienzo.
-  // El tipo se toma del selector; letra/ángulo deben ser de la data disponible.
-  var _etTipoPendiente = null;   // tipo a colocar en el próximo click
+  // Agrega una etiqueta al próximo click en el lienzo. Tipos:
+  //  - 'cota'   → LÍNEA de acotación (2 clicks: inicio y fin). Sutil, gris.
+  //  - 'letra'  → letra de lado (A-I o R), un click.
+  //  - 'angulo' → α1-α4, un click.
+  var _etTipoPendiente = null;   // {tipo, texto, fase} a colocar en el próximo click
   global.disenadorAgregarEtiqueta = function() {
     if (!_modoEtiquetas) return;
-    var tipo = (document.getElementById('disEtTipo') || {}).value || 'medida';
-    var texto;
-    if (tipo === 'medida') {
-      texto = prompt('Cota / medida (texto libre):', '');
-      if (texto == null || texto === '') return;
-    } else if (tipo === 'letra') {
-      texto = (document.getElementById('disEtLetra') || {}).value || 'A';
-    } else { // angulo
-      texto = (document.getElementById('disEtAngulo') || {}).value || 'α1';
+    var tipo = (document.getElementById('disEtTipo') || {}).value || 'cota';
+    if (tipo === 'cota') {
+      _etTipoPendiente = { tipo: 'cota', fase: 'inicio' };
+      if (typeof showToast === 'function') showToast('Cota: click en el punto de INICIO de la medida', 'info');
+      return;
     }
+    var texto = (tipo === 'letra')
+      ? ((document.getElementById('disEtLetra') || {}).value || 'A')
+      : ((document.getElementById('disEtAngulo') || {}).value || 'α1');
     _etTipoPendiente = { tipo: tipo, texto: texto };
     if (typeof showToast === 'function') showToast('Haz click en el lienzo para colocar "' + texto + '"', 'info');
   };
@@ -402,11 +377,15 @@
     // WYSIWYG. + tipos/radios de segmento (A1) para reproducir las curvas.
     var p0 = _puntos[0] || { x: 0, y: 0 };
     var puntos = _puntos.map(function(p) { return { x: p.x - p0.x, y: -(p.y - p0.y) }; });
-    // Etiquetas manuales: ahora viven en el PREVIEW (coords propias del preview).
-    var etiqPv = (typeof previewEtiqGet === 'function') ? previewEtiqGet() : [];
+    // Etiquetas manuales del lienzo, normalizadas al mismo origen (Y hacia arriba).
+    // Cota lleva x1/y1/x2/y2; letra/ángulo llevan x/y + texto.
+    var etiquetas = _etiquetas.map(function(e) {
+      if (e.tipo === 'cota') return { tipo: 'cota', x1: e.x1-p0.x, y1: -(e.y1-p0.y), x2: e.x2-p0.x, y2: -(e.y2-p0.y) };
+      return { tipo: e.tipo, texto: e.texto, x: e.x-p0.x, y: -(e.y-p0.y) };
+    });
     return { dim: '2D', tramos: tramos, puntos: puntos,
              tipos_seg: _tiposSeg.slice(), radios_seg: _radiosSeg.slice(),
-             sweeps_seg: _sweepsSeg.slice(), etiquetas_preview: etiqPv };
+             sweeps_seg: _sweepsSeg.slice(), etiquetas: etiquetas };
   }
 
   // ---- Longitudes de cada lado desde los puntos del lienzo (en px de grilla) ----
@@ -497,7 +476,14 @@
   function _dragMove(ev) {
     var c = _coord(ev); if (!c) return;
     if (_dragEtiq >= 0 && _etiquetas[_dragEtiq]) {    // mover etiqueta (libre, sin snap)
-      _etiquetas[_dragEtiq].x = c.x; _etiquetas[_dragEtiq].y = c.y;
+      var et = _etiquetas[_dragEtiq];
+      if (et.tipo === 'cota') {
+        // Trasladar la línea completa (mantener su largo/ángulo). Ancla: punto medio.
+        if (et._offx == null) { et._offx = c.x - (et.x1+et.x2)/2; et._offy = c.y - (et.y1+et.y2)/2; }
+        var cx = c.x - et._offx, cy = c.y - et._offy;
+        var hx = (et.x2-et.x1)/2, hy = (et.y2-et.y1)/2;
+        et.x1 = cx-hx; et.y1 = cy-hy; et.x2 = cx+hx; et.y2 = cy+hy;
+      } else { et.x = c.x; et.y = c.y; }
       _dragMovido = true; _redibujarLienzo(); return;
     }
     if (_dragIdx < 0) return;
@@ -509,6 +495,8 @@
   }
   function _dragEnd() {
     if (_dragIdx < 0 && _dragEtiq < 0) return;
+    // Limpiar el offset temporal de arrastre de cotas.
+    _etiquetas.forEach(function(e){ delete e._offx; delete e._offy; });
     _dragIdx = -1; _dragEtiq = -1;
     _redibujarLienzo();
     _redibujarPanel();
@@ -567,11 +555,20 @@
       });
     }
     // Etiquetas MANUALES (siempre visibles): arrastrables (data-etiq), con color por tipo.
-    var COL_ET = { medida: '#1565c0', letra: '#00695c', angulo: '#c62828' };
+    var COL_ET = { letra: '#00695c', angulo: '#c62828' };
     _etiquetas.forEach(function(e, k) {
+      if (e.tipo === 'cota') {
+        // Cota: línea gris sutil con topes perpendiculares en cada extremo.
+        var dx = e.x2 - e.x1, dy = e.y2 - e.y1, len = Math.sqrt(dx*dx+dy*dy) || 1;
+        var nx = -dy/len*5, ny = dx/len*5;   // perpendicular, tope de 5px
+        s += '<line x1="' + e.x1 + '" y1="' + e.y1 + '" x2="' + e.x2 + '" y2="' + e.y2 + '" stroke="#888" stroke-width="1.5" data-etiq="' + k + '" style="cursor:move;"/>';
+        s += '<line x1="' + (e.x1+nx) + '" y1="' + (e.y1+ny) + '" x2="' + (e.x1-nx) + '" y2="' + (e.y1-ny) + '" stroke="#888" stroke-width="1.5"/>';
+        s += '<line x1="' + (e.x2+nx) + '" y1="' + (e.y2+ny) + '" x2="' + (e.x2-nx) + '" y2="' + (e.y2-ny) + '" stroke="#888" stroke-width="1.5"/>';
+        return;
+      }
       var col = COL_ET[e.tipo] || '#333';
-      s += '<circle cx="' + e.x + '" cy="' + e.y + '" r="10" fill="#fff" opacity="0.9" data-etiq="' + k + '" style="cursor:move;"/>';
-      s += '<text x="' + e.x + '" y="' + (e.y + 4) + '" text-anchor="middle" fill="' + col + '" font-size="12" font-weight="700" data-etiq="' + k + '" style="cursor:move;">' + String(e.texto).replace(/[<>&]/g, '') + '</text>';
+      s += '<text x="' + e.x + '" y="' + (e.y + 4) + '" text-anchor="middle" fill="#fff" stroke="#fff" stroke-width="3" font-size="13" font-weight="800" data-etiq="' + k + '" style="cursor:move;">' + String(e.texto).replace(/[<>&]/g, '') + '</text>';
+      s += '<text x="' + e.x + '" y="' + (e.y + 4) + '" text-anchor="middle" fill="' + col + '" font-size="13" font-weight="800" data-etiq="' + k + '" style="cursor:move;">' + String(e.texto).replace(/[<>&]/g, '') + '</text>';
     });
     capa.innerHTML = s;
   }
@@ -598,9 +595,19 @@
     if (_modoEtiquetas) {
       if (_etTipoPendiente) {
         var cc = _coord(ev); if (!cc) return;
-        _etiquetas.push({ tipo: _etTipoPendiente.tipo, texto: _etTipoPendiente.texto, x: cc.x, y: cc.y });
-        _etTipoPendiente = null;
-        _redibujarLienzo();
+        if (_etTipoPendiente.tipo === 'cota') {
+          // Cota = línea de 2 clicks: inicio y fin.
+          if (_etTipoPendiente.fase === 'inicio') {
+            _etTipoPendiente.x1 = cc.x; _etTipoPendiente.y1 = cc.y; _etTipoPendiente.fase = 'fin';
+            if (typeof showToast === 'function') showToast('Cota: click en el punto FINAL de la medida', 'info');
+          } else {
+            _etiquetas.push({ tipo: 'cota', x1: _etTipoPendiente.x1, y1: _etTipoPendiente.y1, x2: cc.x, y2: cc.y });
+            _etTipoPendiente = null; _redibujarLienzo();
+          }
+        } else {
+          _etiquetas.push({ tipo: _etTipoPendiente.tipo, texto: _etTipoPendiente.texto, x: cc.x, y: cc.y });
+          _etTipoPendiente = null; _redibujarLienzo();
+        }
       }
       return;
     }
@@ -708,13 +715,14 @@
   // Preview 2D: pone la figura como FONDO del preview (el módulo de etiquetas del
   // preview la muestra + permite etiquetar encima). Mismo motor de render.
   global.disenadorActualizarPreview2d = function() {
-    if (typeof previewEtiqSetFondo !== 'function') return;
-    if (_puntos.length < 2) { previewEtiqSetFondo(''); return; }
+    var prev = document.getElementById('disPreview');
+    if (!prev) return;
+    if (_puntos.length < 2) { prev.innerHTML = '<span class="muted" style="font-size:11px;">Dibuja para ver el preview.</span>'; return; }
     try {
-      var t = (typeof previewEtiqTamano === 'function') ? previewEtiqTamano() : { w: 200, h: 130 };
       var geo = _puntosAGeometria();
-      previewEtiqSetFondo(dibujarFigura(geo, null, { width: t.w, height: t.h, pad: 16 }));
-    } catch (e) { previewEtiqSetFondo(''); }
+      // Render de la figura a tamaño de preview (chico pero legible, con etiquetas).
+      prev.innerHTML = dibujarFigura(geo, null, { width: 210, height: 140, pad: 18 });
+    } catch (e) { prev.innerHTML = '<span class="muted" style="font-size:11px;">Preview no disponible.</span>'; }
   };
 
   // ---- Guardar la figura dibujada (crear en el catálogo con nombre del usuario) ----

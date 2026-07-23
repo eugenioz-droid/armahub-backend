@@ -76,32 +76,6 @@
             </div>
             <!-- Espacio 3D (oculto en 2D). Three.js se carga on-demand al activar. -->
             <div id="disenador3D" style="display:none; width:420px; max-width:100%; height:320px; border:1px solid #e0e0e0; border-radius:8px; background:#f7f9fa; overflow:hidden;"></div>
-            <!-- CANVAS DE ETIQUETADO GRANDE: reemplaza el area de dibujo al activar
-                 "Etiquetas". La figura grande de fondo + etiquetas comodas. -->
-            <div id="disEtiqCanvasWrap" style="display:none;">
-              <div class="row" style="gap:8px; align-items:center; margin-bottom:8px; flex-wrap:wrap;">
-                <span style="font-size:12px; font-weight:700; color:#00695c;">🏷️ Etiquetado</span>
-                <label style="font-size:11px; color:#666;">Tipo
-                  <select id="disEtiqPvTipo" onchange="previewEtiqTipoChange()" style="font-size:12px; margin-left:3px;">
-                    <option value="medida">Medida (cota)</option>
-                    <option value="letra">Letra (lado)</option>
-                    <option value="angulo">Ángulo</option>
-                  </select>
-                </label>
-                <select id="disEtiqPvLetra" style="font-size:12px; display:none;">
-                  <option>A</option><option>B</option><option>C</option><option>D</option><option>E</option>
-                  <option>F</option><option>G</option><option>H</option><option>I</option>
-                </select>
-                <select id="disEtiqPvAngulo" style="font-size:12px; display:none;">
-                  <option>α1</option><option>α2</option><option>α3</option><option>α4</option>
-                </select>
-                <button onclick="previewEtiqAgregar()" style="font-size:11px; padding:4px 12px; background:#00695c; color:#fff; border:none; border-radius:4px; cursor:pointer;">＋ Colocar (click en el canvas)</button>
-                <button class="secondary" onclick="previewEtiqLimpiar()" style="font-size:11px; padding:4px 12px;">🗑 Borrar</button>
-                <button onclick="previewEtiqToggle()" style="font-size:11px; padding:4px 14px; background:#00695c; color:#fff; border:none; border-radius:4px; cursor:pointer;">✓ Listo</button>
-              </div>
-              <div id="disEtiqCanvas" style="border:1px solid #00897b; border-radius:8px; overflow:hidden; display:inline-block; background:#fff;"></div>
-              <div class="muted" style="font-size:11px; margin-top:4px;">Elige tipo → "Colocar" → click en el canvas. Arrastra las etiquetas para moverlas.</div>
-            </div>
             <!-- Controles 3D: dibujo por CLICKS sobre el plano de trabajo activo. -->
             <div id="disControles3D" style="display:none; margin-top:8px;">
               <div style="font-size:11px; color:#666; margin-bottom:6px;">
@@ -153,18 +127,36 @@
               <!-- Terminar apaga el rubber band; Retomar lo reactiva. -->
               <button id="disenadorBtnTerminar" onclick="disenadorTerminar()" style="display:none; font-size:11px; padding:4px 12px; background:#00695c; color:#fff; border:none; border-radius:4px; cursor:pointer;">✓ Terminar figura</button>
               <button id="disenadorBtnRetomar" onclick="disenadorRetomar()" style="display:none; font-size:11px; padding:4px 12px; background:#fff; color:#00695c; border:1px solid #00695c; border-radius:4px; cursor:pointer;">✎ Retomar dibujo</button>
-              <!-- Etiquetado manual unificado: ahora se hace sobre el PREVIEW (botón
-                   "Etiquetas" en el preview), para 2D y 3D igual. Botón viejo oculto. -->
-              <button id="disBtnEtiquetas" onclick="disenadorToggleEtiquetas()" style="display:none; font-size:11px; padding:4px 12px; background:#fff; color:#00695c; border:1px solid #00695c; border-radius:4px; cursor:pointer;">🏷️ Etiquetas manuales</button>
+              <!-- Etiquetado 2D sobre el CANVAS de dibujo (a tamaño real). -->
+              <button id="disBtnEtiquetas" onclick="disenadorToggleEtiquetas()" style="font-size:11px; padding:4px 12px; background:#fff; color:#00695c; border:1px solid #00695c; border-radius:4px; cursor:pointer;">🏷️ Etiquetas</button>
+            </div>
+            <!-- Barra de controles de etiqueta 2D (visible al activar). -->
+            <div id="disEtiquetasBar" style="display:none; margin-top:8px; padding:8px 10px; background:#e8f5e9; border:1px solid #a5d6a7; border-radius:6px; align-items:center; gap:8px; flex-wrap:wrap;">
+              <label style="font-size:11px; color:#666;">Tipo
+                <select id="disEtTipo" onchange="disenadorEtTipoChange()" style="font-size:12px; margin-left:3px;">
+                  <option value="cota">Cota (línea de medida)</option>
+                  <option value="letra">Letra (lado)</option>
+                  <option value="angulo">Ángulo</option>
+                </select>
+              </label>
+              <select id="disEtLetra" style="font-size:12px; display:none;">
+                <option>A</option><option>B</option><option>C</option><option>D</option><option>E</option>
+                <option>F</option><option>G</option><option>H</option><option>I</option><option>R</option>
+              </select>
+              <select id="disEtAngulo" style="font-size:12px; display:none;">
+                <option>α1</option><option>α2</option><option>α3</option><option>α4</option>
+              </select>
+              <button onclick="disenadorAgregarEtiqueta()" style="font-size:11px; padding:4px 12px; background:#00695c; color:#fff; border:none; border-radius:4px; cursor:pointer;">＋ Colocar</button>
+              <button class="secondary" onclick="disenadorLimpiarEtiquetas()" style="font-size:11px; padding:4px 12px;">🗑 Borrar</button>
+              <span class="muted" style="font-size:10px;">Cota: click inicio → click fin. Letra/ángulo: un click. Arrastra para mover.</span>
             </div>
             </div><!-- /disControles2D -->
           </div>
           <!-- PREVIEW: columna propia, JUSTO al lado del canvas. Se puede etiquetar encima. -->
           <div style="width:240px; flex-shrink:0;">
             <div style="padding:10px 12px; background:#fff; border:1px solid #e0e0e0; border-radius:8px; position:sticky; top:8px;">
-              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+              <div style="margin-bottom:6px;">
                 <span style="font-size:11px; color:#666; font-weight:600;">Vista previa (como se verá)</span>
-                <button id="disBtnEtiqPreview" onclick="previewEtiqToggle()" style="font-size:10px; padding:2px 8px; background:#fff; color:#00695c; border:1px solid #00695c; border-radius:4px; cursor:pointer;">🏷️ Etiquetas</button>
               </div>
               <div id="disPreview" style="min-height:120px; display:flex; align-items:center; justify-content:center;">
                 <span class="muted" style="font-size:11px;">Dibuja para ver el preview.</span>
