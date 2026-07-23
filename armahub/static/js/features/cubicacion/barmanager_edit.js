@@ -79,6 +79,11 @@
     if (lbl) lbl.textContent = n + ' barra' + (n === 1 ? '' : 's') + ' marcada' + (n === 1 ? '' : 's');
     // La barra aparece con el modo masivo activo (aunque aún no haya marcadas).
     if (cont) cont.style.display = (_modoEdicion && _modoMasivo) ? 'flex' : 'none';
+    // Garantizar que los dropdowns de operar columnas estén poblados al mostrarse.
+    if (_modoEdicion && _modoMasivo) {
+      var so = document.getElementById('bmColOrigen');
+      if (so && so.options.length === 0) _poblarColsOperar();
+    }
   }
   global.bmActualizarBarraSeleccion = _actualizarBarraSeleccion;
   global.bmHayCambios = function() { return Object.keys(_cambios).length > 0; };
@@ -343,13 +348,14 @@
   };
 
   // ==== 5M.12: OPERAR COLUMNAS (copiar / intercambiar) sobre las marcadas ====
-  // Columnas operables: lados A-I, ángulos α1-α4, diámetro, cantidad.
+  // Columnas operables: lados parciales A-I, ángulos α1-α4 y R (radio).
+  // NO φ diámetro ni cantidad (no aplican para desplazar/intercambiar geometría).
   var _COLS_OPERABLES = [
     { campo: 'dim_a', label: 'A' }, { campo: 'dim_b', label: 'B' }, { campo: 'dim_c', label: 'C' },
     { campo: 'dim_d', label: 'D' }, { campo: 'dim_e', label: 'E' }, { campo: 'dim_f', label: 'F' },
     { campo: 'dim_g', label: 'G' }, { campo: 'dim_h', label: 'H' }, { campo: 'dim_i', label: 'I' },
     { campo: 'ang1', label: 'α1' }, { campo: 'ang2', label: 'α2' }, { campo: 'ang3', label: 'α3' }, { campo: 'ang4', label: 'α4' },
-    { campo: 'diam', label: 'φ diámetro' }, { campo: 'cant_total', label: 'Cantidad' }
+    { campo: 'radio', label: 'R' }
   ];
 
   // Puebla los dropdowns de columna origen/destino (una vez que existen en el DOM).
