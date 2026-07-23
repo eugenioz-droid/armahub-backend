@@ -120,7 +120,7 @@
     hubOrder: 15,
     hubDescription: 'Catálogo de figuras y tipologías de fierro (data maestra Armacero).',
     hubAccent: '#5d4037',
-    hubIcon: '🧰'
+    hubIcon: '🔧'
   });
 
   registerModule({

@@ -13,7 +13,7 @@
     <div id="catSubFiguras">
       <div class="card" style="border-top:3px solid #5d4037;">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
-          <h3 style="margin:0; color:#5d4037;">🧰 Catálogo de Figuras</h3>
+          <h3 style="margin:0; color:#5d4037;">🔧 Catálogo de Figuras</h3>
           <span class="muted" style="font-size:11px;" id="catFigResumen"></span>
         </div>
         <p class="muted" style="font-size:12px; margin:0 0 12px 0;">Catálogo Armacero de figuras de fierro. Cada figura define qué lados (dimensiones A–I) usa, sus ángulos y si tiene radio. Esta data valida y protege la geometría al editar barras. La edición del catálogo llega en una fase posterior.</p>
@@ -68,7 +68,16 @@
         <div style="display:flex; gap:16px; flex-wrap:wrap; align-items:flex-start;">
           <!-- Lienzo de dibujo -->
           <div style="flex:1; min-width:300px;">
+            <!-- Modo de vista: 2D (lienzo) o 3D (visor Three.js on-demand). -->
+            <div class="row" style="gap:6px; margin-bottom:8px; align-items:center;">
+              <button id="disBtn2D" onclick="disenadorSetVista('2D')" style="font-size:12px; padding:4px 14px; background:#00695c; color:#fff; border:none; border-radius:4px 0 0 4px; cursor:pointer; font-weight:600;">2D</button>
+              <button id="disBtn3D" onclick="disenadorSetVista('3D')" style="font-size:12px; padding:4px 14px; background:#fff; color:#00695c; border:1px solid #00695c; border-radius:0 4px 4px 0; cursor:pointer; font-weight:600; margin-left:-6px;">3D</button>
+              <span class="muted" style="font-size:10px; margin-left:8px;">El 3D carga el visor la primera vez.</span>
+            </div>
+            <!-- Visor 3D (oculto en 2D). Three.js se carga on-demand al activar. -->
+            <div id="disenador3D" style="display:none; width:420px; max-width:100%; height:320px; border:1px solid #e0e0e0; border-radius:8px; background:#f7f9fa; overflow:hidden;"></div>
             <!-- Modo de trazo: recto o curva. En curva, el proximo segmento se dibuja como arco. -->
+            <div id="disControles2D">
             <div class="row" style="gap:8px; margin-bottom:8px; align-items:center; flex-wrap:wrap;">
               <span style="font-size:11px; color:#666; font-weight:600;">Trazo:</span>
               <label style="display:inline-flex; align-items:center; gap:3px; cursor:pointer; font-size:12px;"><input type="radio" name="disTrazo" value="recto" checked onchange="disenadorSetTrazo('recto')"/> Recto</label>
@@ -91,28 +100,33 @@
               <!-- A5: modo etiquetas manuales (para figuras raras). Oculta las auto. -->
               <button id="disBtnEtiquetas" onclick="disenadorToggleEtiquetas()" style="font-size:11px; padding:4px 12px; background:#fff; color:#00695c; border:1px solid #00695c; border-radius:4px; cursor:pointer;">🏷️ Etiquetas manuales</button>
             </div>
-            <!-- Barra de etiquetas (visible en modo etiquetas). Letra/ángulo de la data. -->
-            <div id="disEtiquetasBar" style="display:none; margin-top:8px; padding:8px 10px; background:#e8f5e9; border:1px solid #a5d6a7; border-radius:6px; align-items:center; gap:6px; flex-wrap:wrap;">
-              <span style="font-size:11px; color:#00695c; font-weight:600;">Agregar etiqueta:</span>
-              <select id="disEtTipo" onchange="disenadorEtTipoChange()" style="font-size:12px;">
-                <option value="medida">Medida (cota)</option>
-                <option value="letra">Letra (lado)</option>
-                <option value="angulo">Ángulo</option>
-              </select>
-              <select id="disEtLetra" style="font-size:12px; display:none;">
+            </div><!-- /disControles2D -->
+          </div>
+          <!-- Columna derecha: panel de etiquetas (arriba, al activar el modo) + parámetros. -->
+          <div style="width:280px; flex-shrink:0; display:flex; flex-direction:column; gap:12px;">
+            <!-- Panel de etiquetas manuales, apilado vertical, al lado del lienzo. -->
+            <div id="disEtiquetasBar" style="display:none; padding:10px 12px; background:#e8f5e9; border:1px solid #a5d6a7; border-radius:8px; flex-direction:column; gap:8px;">
+              <span style="font-size:12px; color:#00695c; font-weight:700;">🏷️ Etiquetas manuales</span>
+              <label style="font-size:11px; color:#666;">Tipo
+                <select id="disEtTipo" onchange="disenadorEtTipoChange()" style="font-size:12px; width:100%; margin-top:2px;">
+                  <option value="medida">Medida (cota)</option>
+                  <option value="letra">Letra (lado)</option>
+                  <option value="angulo">Ángulo</option>
+                </select>
+              </label>
+              <select id="disEtLetra" style="font-size:12px; display:none; width:100%;">
                 <option>A</option><option>B</option><option>C</option><option>D</option><option>E</option>
                 <option>F</option><option>G</option><option>H</option><option>I</option>
               </select>
-              <select id="disEtAngulo" style="font-size:12px; display:none;">
+              <select id="disEtAngulo" style="font-size:12px; display:none; width:100%;">
                 <option>α1</option><option>α2</option><option>α3</option><option>α4</option>
               </select>
-              <button onclick="disenadorAgregarEtiqueta()" style="font-size:11px; padding:3px 10px; background:#00695c; color:#fff; border:none; border-radius:4px; cursor:pointer;">＋ Colocar (click en lienzo)</button>
-              <button class="secondary" onclick="disenadorLimpiarEtiquetas()" style="font-size:11px; padding:3px 10px;">🗑 Borrar etiquetas</button>
-              <span class="muted" style="font-size:10px;">Las etiquetas se pueden arrastrar.</span>
+              <button onclick="disenadorAgregarEtiqueta()" style="font-size:11px; padding:5px 10px; background:#00695c; color:#fff; border:none; border-radius:4px; cursor:pointer;">＋ Colocar (click en lienzo)</button>
+              <button class="secondary" onclick="disenadorLimpiarEtiquetas()" style="font-size:11px; padding:5px 10px;">🗑 Borrar etiquetas</button>
+              <span class="muted" style="font-size:10px;">Las etiquetas se pueden arrastrar en el lienzo.</span>
             </div>
-          </div>
-          <!-- Panel de parámetros en vivo -->
-          <div style="width:280px; flex-shrink:0; padding:10px 12px; background:#fafafa; border:1px solid #eee; border-radius:8px;">
+            <!-- Panel de parámetros en vivo -->
+            <div style="padding:10px 12px; background:#fafafa; border:1px solid #eee; border-radius:8px;">
             <div id="disenadorPanel" class="muted" style="font-size:12px;">Haz click en el lienzo para empezar.</div>
           </div>
         </div>

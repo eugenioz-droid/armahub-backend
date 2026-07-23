@@ -303,6 +303,13 @@
         '[ArmaHub] No se pudo cargar catalogo/disenador.js'
       ),
       loadScript(
+        'script[data-armahub-feature="catalogo-disenador3d"]',
+        '/static/js/features/catalogo/disenador3d.js' + suffix,
+        'armahubFeature',
+        'catalogo-disenador3d',
+        '[ArmaHub] No se pudo cargar catalogo/disenador3d.js'
+      ),
+      loadScript(
         'script[data-armahub-feature="catalogo"]',
         '/static/js/features/catalogo/index.js' + suffix,
         'armahubFeature',
