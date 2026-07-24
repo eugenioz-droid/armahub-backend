@@ -365,49 +365,6 @@
     _validarFilaLocal(id);
   }
 
-  // Al CAMBIAR la figura de una barra: auto-ajustar sus lados/ángulos a lo que la
-  // nueva figura usa. Los lados/ángulos que la nueva figura NO usa se limpian solos
-  // (se ponen en 0 = vacío), en vez de dejarlos en rojo para que el usuario los borre
-  // a mano. Es lo que el usuario espera: cambiar figura → la barra se ajusta sola.
-  // (Los lados que la figura SÍ usa y están vacíos quedan igual: el usuario los llena.)
-  function _ajustarLadosAFigura(id, nuevaFigura) {
-    var fig = _catFiguras[nuevaFigura];
-    if (!fig) return;   // figura desconocida → no tocar (el backend la rechazará)
-    var usaDim = {};
-    (fig.parciales || []).forEach(function(l) { usaDim['dim_' + String(l).trim().toLowerCase()] = true; });
-    var nAng = (fig.angulos || []).length;
-    var usaRadio = !!fig.radio;
-    // Valor efectivo actual de un campo (cambio pendiente o memoria de la barra).
-    var b = _barraEnMemoria(id);
-    function efectivo(col) {
-      if (_cambios[id] && (col in _cambios[id])) return _cambios[id][col];
-      return b ? b[col] : null;
-    }
-    // Lados que la figura NO usa pero tienen valor → limpiar (0).
-    ['a','b','c','d','e','f','g','h','i'].forEach(function(l) {
-      var col = 'dim_' + l;
-      if (!usaDim[col] && _valReal(efectivo(col))) _aplicarCambioBarra(id, col, null);
-    });
-    // Ángulos más allá de los que usa la figura → limpiar.
-    [1,2,3,4].forEach(function(i) {
-      var col = 'ang' + i;
-      if (i > nAng && _valReal(efectivo(col))) _aplicarCambioBarra(id, col, null);
-    });
-    // Radio si la figura no usa radio → limpiar.
-    if (!usaRadio && _valReal(efectivo('radio'))) _aplicarCambioBarra(id, 'radio', null);
-  }
-
-  // Barra en memoria por id (vista plana o cache de detalles).
-  function _barraEnMemoria(id) {
-    id = String(id);
-    if (typeof lastBarrasPlano !== 'undefined' && lastBarrasPlano.forEach) {
-      for (var i = 0; i < lastBarrasPlano.length; i++) {
-        if (String(lastBarrasPlano[i].id) === id) return lastBarrasPlano[i];
-      }
-    }
-    return null;
-  }
-
   // ---- Registro de un cambio en un input (onchange desde el render) ----
   global.bmRegistrarCambio = function(el) {
     var id = el.getAttribute('data-barra-id');
@@ -415,9 +372,6 @@
     if (!id || !campo) return;
     var valor = _normalizarValorCelda(campo, el.value.trim());
     _aplicarCambioBarra(id, campo, valor);
-    // Al cambiar la figura, ajustar los lados/ángulos a la nueva figura (auto-limpia
-    // lo que sobra) para que el usuario no tenga que borrar a mano los rojos.
-    if (campo === 'figura' && valor) _ajustarLadosAFigura(id, valor);
 
     // 5M.11: modificación MASIVA en tándem. Si el modo masivo está activo y la
     // barra editada está marcada, replicar este mismo cambio a TODAS las marcadas.
@@ -427,18 +381,11 @@
       ids.forEach(function(otroId) {
         if (otroId === String(id)) return;   // la editada ya se aplicó
         _aplicarCambioBarra(otroId, campo, valor);
-        if (campo === 'figura' && valor) _ajustarLadosAFigura(otroId, valor);
         n++;
       });
       if (n > 0 && typeof showToast === 'function') {
         showToast('Aplicado a ' + (n + 1) + ' barras marcadas (' + campo + ')', 'info');
       }
-    }
-    // Cambiar figura ajustó varias celdas (lados/largo): re-render para reflejarlo
-    // coherente (el render ya usa _cambios, así que no pierde nada). Foco preservado
-    // no es crítico aquí porque el usuario terminó de elegir la figura.
-    if (campo === 'figura' && valor && typeof bmReRenderVistaActual === 'function') {
-      bmReRenderVistaActual();
     }
     _actualizarBotonEdicion();
   };
