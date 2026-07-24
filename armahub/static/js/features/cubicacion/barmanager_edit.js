@@ -157,6 +157,39 @@
     return total;
   };
 
+  // Refresca EN VIVO la celda del largo de una barra (id) sin re-render completo
+  // (así no se pierde el foco del input). Se llama tras cada cambio de dim/figura.
+  // Muestra el largo recalculado (azul) si hay cambios de geometría, o el de memoria.
+  function _refrescarLargoFila(id) {
+    id = String(id);
+    var celda = document.getElementById('bmlargo-' + id);
+    if (!celda) return;
+    var b = _barraEnMemoria(id);
+    if (!b) return;
+    var lEf = global.bmLargoEfectivo(b);
+    if (lEf != null) {
+      celda.textContent = Math.round(lEf);
+      celda.style.color = '#1565c0'; celda.style.fontWeight = '600';
+      celda.title = 'Largo recalculado de los lados (se guardará así)';
+    } else {
+      celda.textContent = (b.largo_total != null && !isNaN(b.largo_total)) ? Math.round(b.largo_total) : '';
+      celda.style.color = '#888'; celda.style.fontWeight = '';
+      celda.title = 'Se calcula de la suma de los lados';
+    }
+  }
+  global.bmRefrescarLargoFila = _refrescarLargoFila;
+
+  // Barra en memoria por id (vista plana). Usado por el refresco del largo.
+  function _barraEnMemoria(id) {
+    id = String(id);
+    if (typeof lastBarrasPlano !== 'undefined' && lastBarrasPlano.forEach) {
+      for (var i = 0; i < lastBarrasPlano.length; i++) {
+        if (String(lastBarrasPlano[i].id) === id) return lastBarrasPlano[i];
+      }
+    }
+    return null;
+  }
+
   // Valida en el navegador la geometría de una barra contra el catálogo y resalta
   // en ROJO al instante los lados/ángulos/radio que sobran o faltan (5M.4).
   // Lee los valores EFECTIVOS de los inputs de esa fila.
@@ -365,6 +398,9 @@
       cell.style.background = '#fff3cd';   // amarillo = modificado
     }
     _validarFilaLocal(id);
+    // Si el cambio afecta el largo (un lado o la figura), refrescar la celda del
+    // largo EN VIVO (sin re-render, para no perder el foco del input).
+    if (campo === 'figura' || /^dim_/.test(campo)) _refrescarLargoFila(id);
   }
 
   // ---- Registro de un cambio en un input (onchange desde el render) ----

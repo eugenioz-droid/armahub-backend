@@ -527,10 +527,11 @@ function _bmFilaBarraHTML(b, editando, conUbicacion) {
   // cuando los lados ya suman otra cosa (180).
   function _celdaLargo() {
     var lEf = (editando && typeof bmLargoEfectivo === 'function') ? bmLargoEfectivo(b) : null;
+    var idAttr = ' id="bmlargo-' + b.id + '"';
     if (lEf != null) {
-      return '<td style="padding:2px 6px; text-align:right; color:#1565c0; font-weight:600;" title="Largo recalculado de los lados (se guardará así)">' + _n(lEf, 0) + '</td>';
+      return '<td' + idAttr + ' style="padding:2px 6px; text-align:right; color:#1565c0; font-weight:600;" title="Largo recalculado de los lados (se guardará así)">' + _n(lEf, 0) + '</td>';
     }
-    return '<td style="padding:2px 6px; text-align:right; color:#888;" title="Se calcula de la suma de los lados">' + _n(b.largo_total, 0) + '</td>';
+    return '<td' + idAttr + ' style="padding:2px 6px; text-align:right; color:#888;" title="Se calcula de la suma de los lados">' + _n(b.largo_total, 0) + '</td>';
   }
   var dimKeys = ['dim_a','dim_b','dim_c','dim_d','dim_e','dim_f','dim_g','dim_h','dim_i'];
   var angKeys = ['ang1','ang2','ang3','ang4'];
