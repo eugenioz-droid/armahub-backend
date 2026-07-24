@@ -477,6 +477,7 @@
     var okCount = 0;
     var fallidas = [];   // ids que no pasaron validación (quedan pendientes)
     var otroError = '';
+    var nGeom = 0, nServidor = 0;   // desglose de fallidas: geometría vs error server
     for (var i = 0; i < ids.length; i += _BM_LOTE) {
       var lote = ids.slice(i, i + _BM_LOTE);
       var resultados = await Promise.all(lote.map(_guardarUnaBarra));
@@ -493,10 +494,12 @@
           }
         } else if (r.geomInvalida) {
           fallidas.push(r.id);
+          nGeom++;
           _resaltarSlots(r.id, r.detail.slots_sobran, 'sobra');
           _resaltarSlots(r.id, r.detail.slots_faltan, 'falta');
         } else {
           fallidas.push(r.id);
+          nServidor++;
           if (!otroError) otroError = r.error;
         }
       }
@@ -505,7 +508,11 @@
       // Hay barras con problemas: NO re-renderizar (perdería el resaltado rojo).
       // Solo actualizar el panel de ediciones si algo se guardó.
       if (okCount > 0 && typeof cargarEdicionesRecientes === 'function') cargarEdicionesRecientes();
-      var msg = okCount + ' guardada(s). ' + fallidas.length + ' con problema: corrige lo marcado en ROJO (sobra/falta) antes de guardar.' + (otroError ? (' Otro: ' + otroError) : '');
+      // Mensaje diferenciado: geometría (culpa del dato, corregible en ROJO) vs
+      // error del servidor (NO es culpa del usuario; sus cambios se conservan).
+      var msg = okCount + ' guardada(s).';
+      if (nGeom > 0) msg += ' ' + nGeom + ' con geometría incoherente: corrige lo marcado en ROJO (sobra/falta).';
+      if (nServidor > 0) msg += ' ' + nServidor + ' falló por error del servidor (tus cambios se conservan, reintenta).' + (otroError ? (' Detalle: ' + otroError) : '');
       if (typeof showToast === 'function') showToast(msg, 'error');
       _actualizarBotonEdicion();
       return false;   // deja el modo edición abierto para corregir

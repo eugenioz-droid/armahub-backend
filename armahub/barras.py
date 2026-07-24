@@ -4,12 +4,15 @@ from typing import Optional, List
 from datetime import datetime, timezone
 import uuid
 import math
+import logging
+import traceback
 from psycopg.rows import dict_row
 from .db import get_conn, audit
 from .auth import get_current_user, ROL_MAP, _rol_proyecto_usuarios, _PROYECTO_USUARIOS_ROLES
 from . import cache as _cache
 
 router = APIRouter()
+_log = logging.getLogger("armahub.barras")
 
 def _get_allowed_project_ids(cur, user: dict):
     """Returns None (unrestricted) for all roles.
@@ -1250,8 +1253,15 @@ def cambiar_sector_barras(body: CambiarSectorRequest, user=Depends(get_current_u
 
 
 def _calcular_peso(diam, largo):
-    """Fórmula ArmaHub: diam mm, largo cm => kg."""
+    """Fórmula ArmaHub: diam mm, largo cm => kg. Castea de forma segura: si la data
+    de origen guardó diam/largo como texto (data legada del CSV), float(str) evita
+    el TypeError que rompía el guardado con 500."""
     if diam is None or largo is None:
+        return None, None
+    try:
+        diam = float(diam)
+        largo = float(largo)
+    except (ValueError, TypeError):
         return None, None
     peso_unitario = 7850 * 3.1416 * (diam / 2000) ** 2 * (largo / 100)
     return peso_unitario, peso_unitario
@@ -1293,6 +1303,19 @@ def editar_barra(barra_id: int, body: BarraUpdate, user=Depends(get_current_user
     (5M.4: figura/dims/ángulos/radio, validada contra el catálogo). Si la geometría
     queda incoherente con la figura, RECHAZA (409) — no se guarda data mala. Marca
     edición manual y audita."""
+    try:
+        return _editar_barra_impl(barra_id, body, user)
+    except HTTPException:
+        raise   # 403/404/409 son respuestas legítimas, no errores internos
+    except Exception as e:
+        # Diagnóstico: cualquier otra excepción se loguea con traceback y se
+        # devuelve su mensaje real al front (para identificar la causa exacta del
+        # 500 que rompía el guardado masivo). TODO: acotar el detalle una vez fijado.
+        _log.error("editar_barra id=%s FALLO: %s\n%s", barra_id, e, traceback.format_exc())
+        raise HTTPException(status_code=500, detail="Error al guardar la barra: " + type(e).__name__ + ": " + str(e))
+
+
+def _editar_barra_impl(barra_id: int, body: BarraUpdate, user):
     from .catalogo import validar_geometria, largo_desde_lados
     email = user.get("email", "?")
     campos = body.model_dump(exclude_unset=True)
