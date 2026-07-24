@@ -40,22 +40,22 @@
         <!-- Grupo 2 · UBICACIÓN -->
         <div style="display:flex; flex-direction:column; flex:1;">
           <label style="font-size:12.5px; color:#444; font-weight:600; margin-bottom:3px;">Sector</label>
-          <select id="sector" onchange="onFilterChange()" style="font-size:13px; height:34px; width:100%;"><option value="">Todos</option></select>
+          <select id="sector" onchange="onFilterChange('sector')" style="font-size:13px; height:34px; width:100%;"><option value="">Todos</option></select>
         </div>
         <div style="display:flex; flex-direction:column; flex:1;">
           <label style="font-size:12.5px; color:#444; font-weight:600; margin-bottom:3px;">Piso</label>
-          <select id="piso" onchange="onFilterChange()" style="font-size:13px; height:34px; width:100%;"><option value="">Todos</option></select>
+          <select id="piso" onchange="onFilterChange('piso')" style="font-size:13px; height:34px; width:100%;"><option value="">Todos</option></select>
         </div>
         <div style="display:flex; flex-direction:column; flex:1;">
           <label style="font-size:12.5px; color:#444; font-weight:600; margin-bottom:3px;">Ciclo</label>
-          <select id="ciclo" onchange="onFilterChange()" style="font-size:13px; height:34px; width:100%;"><option value="">Todos</option></select>
+          <select id="ciclo" onchange="onFilterChange('ciclo')" style="font-size:13px; height:34px; width:100%;"><option value="">Todos</option></select>
         </div>
         <div style="display:flex; flex-direction:column; flex:1;">
           <label style="font-size:12.5px; color:#444; font-weight:600; margin-bottom:3px;">Eje</label>
           <!-- Buscador con datalist: escribes y despliega los ejes de la obra.
                type=text (no search: evita la X nativa que dispara eventos raros).
                autocomplete=off para que el navegador no ofrezca usuario/clave. -->
-          <input type="text" id="eje" list="bmEjesDatalist" onchange="onFilterChange()"
+          <input type="text" id="eje" list="bmEjesDatalist" onchange="onFilterChange('eje')"
                  name="bm-eje-buscar" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"
                  placeholder="Todos" style="font-size:13px; height:34px; width:100%; box-sizing:border-box;" />
           <datalist id="bmEjesDatalist"></datalist>
@@ -67,15 +67,15 @@
         <!-- Grupo 3 · TIPO DE BARRA (activan Vista plana) -->
         <div style="display:flex; flex-direction:column; flex:1.15;">
           <label style="font-size:12.5px; color:#444; font-weight:600; margin-bottom:3px;">Figura</label>
-          <select id="filtroFigura" onchange="buscar(true)" style="font-size:13px; height:34px; width:100%;"><option value="">Todas</option></select>
+          <select id="filtroFigura" onchange="onFacetaFilterChange('filtroFigura')" style="font-size:13px; height:34px; width:100%;"><option value="">Todas</option></select>
         </div>
         <div style="display:flex; flex-direction:column; flex:1.15;">
           <label style="font-size:12.5px; color:#444; font-weight:600; margin-bottom:3px;">Tipología</label>
-          <select id="filtroTipologia" onchange="buscar(true)" style="font-size:13px; height:34px; width:100%;"><option value="">Todas</option></select>
+          <select id="filtroTipologia" onchange="onFacetaFilterChange('filtroTipologia')" style="font-size:13px; height:34px; width:100%;"><option value="">Todas</option></select>
         </div>
         <div style="display:flex; flex-direction:column; flex:1.15;">
           <label style="font-size:12.5px; color:#444; font-weight:600; margin-bottom:3px;">φ Diámetro</label>
-          <select id="filtroDiametro" onchange="buscar(true)" style="font-size:13px; height:34px; width:100%;"><option value="">Todos</option></select>
+          <select id="filtroDiametro" onchange="onFacetaFilterChange('filtroDiametro')" style="font-size:13px; height:34px; width:100%;"><option value="">Todos</option></select>
         </div>
 
         <!-- leyenda Vista plana: ABSOLUTA para no alterar la base de los selects -->
@@ -90,7 +90,7 @@
           <div class="row" style="gap:8px; align-items:flex-end;">
             <div class="col" style="flex:2;">
               <label style="font-size:11px; color:#666;">Plano</label>
-              <select id="plano" onchange="onFilterChange()">
+              <select id="plano" onchange="onFilterChange('plano')">
                 <option value="">Todos</option>
               </select>
             </div>

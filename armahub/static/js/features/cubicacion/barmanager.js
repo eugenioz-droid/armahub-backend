@@ -234,6 +234,9 @@ async function buscar(reset = false) {
 
   // 5M.3: panel de ediciones manuales recientes de la obra.
   if (typeof cargarEdicionesRecientes === 'function') cargarEdicionesRecientes();
+  // 5M.12: esta combinación de filtros quedó aplicada con éxito — es el estado
+  // al que hay que revertir si luego se bloquea un cambio con edición pendiente.
+  if (typeof _bmGuardarSnapshotFiltros === 'function') _bmGuardarSnapshotFiltros();
 }
 
 // ========================= VISTA PLANA (5M.9) =========================
@@ -276,6 +279,7 @@ async function _buscarPlano(params) {
 
   if (_coberturaVisible) loadCobertura();
   if (typeof cargarEdicionesRecientes === 'function') cargarEdicionesRecientes();
+  if (typeof _bmGuardarSnapshotFiltros === 'function') _bmGuardarSnapshotFiltros();
 }
 
 // 5M.9 optimistic update: actualiza una barra en las estructuras en memoria
@@ -920,6 +924,10 @@ function filtrarPorCobertura(piso, ciclo, sector) {
 // ========================= RESET / CARGA / PAGINACIÓN =========================
 
 function resetFiltros() {
+  if (typeof bmHayCambiosSinGuardar === 'function' && bmHayCambiosSinGuardar()) {
+    if (typeof showToast === 'function') showToast('Tienes cambios sin guardar en la edición actual. Guarda o descarta antes de limpiar filtros.', 'error');
+    return;
+  }
   ['proyecto', 'plano', 'sector', 'piso', 'ciclo', 'eje'].forEach(f => {
     const el = document.getElementById(f); if (el) el.value = '';
   });
@@ -963,6 +971,10 @@ function resetFiltros() {
 }
 
 async function verBarrasCarga(importId, idProyecto, archivo) {
+  if (typeof bmHayCambiosSinGuardar === 'function' && bmHayCambiosSinGuardar()) {
+    if (typeof showToast === 'function') showToast('Tienes cambios sin guardar en la edición actual. Guarda o descarta antes de navegar.', 'error');
+    return;
+  }
   switchTab('buscar');
   const proySel = document.getElementById('proyecto');
   if (proySel) proySel.value = idProyecto;
@@ -980,6 +992,10 @@ async function verBarrasCarga(importId, idProyecto, archivo) {
 }
 
 function clearCargaFilter(skipSearch) {
+  if (!skipSearch && typeof bmHayCambiosSinGuardar === 'function' && bmHayCambiosSinGuardar()) {
+    if (typeof showToast === 'function') showToast('Tienes cambios sin guardar en la edición actual. Guarda o descarta antes de cambiar de filtro.', 'error');
+    return;
+  }
   const fc = document.getElementById('filtroCarga');
   if (fc) fc.value = '';
   const badge = document.getElementById('cargaFilterBadge');

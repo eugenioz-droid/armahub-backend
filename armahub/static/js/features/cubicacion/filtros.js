@@ -10,6 +10,47 @@ const FILTER_STORAGE_KEY = 'armahub_filters';
 // Los que NO se persisten arrancan vacíos siempre.
 const FILTER_PERSIST_KEYS = ['proyecto','filtroFigura','filtroTipologia','filtroDiametro'];
 
+// 5M.12 — BLOQUEO de filtros durante edición con cambios sin guardar.
+// Antes: cambiar de proyecto DESCARTABA los cambios en silencio; cambiar
+// sector/piso/ciclo/figura/carga los dejaba COLGADOS (invisibles pero pendientes
+// de guardar, referidos a barras que ya no se ven en pantalla) — fuente de
+// "embarradas" reportadas. Ahora: mientras haya cambios sin guardar, CUALQUIER
+// filtro queda bloqueado; el usuario debe Guardar o Descartar (botón del modo
+// edición) antes de poder navegar a otra vista.
+var _BM_FILTROS_IDS = ['proyecto','sector','piso','ciclo','eje','filtroFigura','filtroTipologia','filtroDiametro','plano','filtroCarga'];
+var _bmFiltrosSnapshot = {};   // último valor CONOCIDO/aplicado de cada filtro
+
+// Wrapper para los filtros de faceta (figura/tipología/diámetro), que llamaban
+// buscar(true) directo desde el HTML sin pasar por ningún guard.
+function onFacetaFilterChange(id) {
+  if (_bmBloqueadoPorEdicion(id)) return;
+  saveFiltersToStorage();
+  buscar(true);
+}
+
+// Guarda el estado actual de los filtros como "válido" (llamar tras cada
+// búsqueda exitosa, para saber a qué revertir si luego se bloquea un cambio).
+function _bmGuardarSnapshotFiltros() {
+  _BM_FILTROS_IDS.forEach(function(id) {
+    var el = document.getElementById(id);
+    if (el) _bmFiltrosSnapshot[id] = el.value;
+  });
+}
+
+// Si hay cambios sin guardar, avisa, REVIERTE el select al último valor válido
+// conocido y bloquea la acción (true = bloqueado, el handler debe abortar).
+function _bmBloqueadoPorEdicion(selectId) {
+  if (typeof bmHayCambiosSinGuardar !== 'function' || !bmHayCambiosSinGuardar()) return false;
+  var el = document.getElementById(selectId);
+  if (el && (selectId in _bmFiltrosSnapshot)) el.value = _bmFiltrosSnapshot[selectId];
+  if (typeof showToast === 'function') {
+    showToast('Tienes cambios sin guardar en la edición actual. Guarda o descarta (botón del modo edición) antes de cambiar de filtro.', 'error');
+  } else {
+    alert('Tienes cambios sin guardar en la edición actual. Guarda o descarta antes de cambiar de filtro.');
+  }
+  return true;
+}
+
 function saveFiltersToStorage() {
   const state = {};
   FILTER_PERSIST_KEYS.forEach(f => {
@@ -193,6 +234,7 @@ function toggleFiltrosAvanzados() {
 }
 
 function onProyectoChange() {
+  if (_bmBloqueadoPorEdicion('proyecto')) return;
   // When project changes, reload dependent filters for that project
   const proy = document.getElementById('proyecto').value;
   // Clear dependent selects (their current values may not exist in new project)
@@ -256,6 +298,7 @@ async function loadCargasDropdown(idProyecto) {
 }
 
 function onCargaFilterChange() {
+  if (_bmBloqueadoPorEdicion('filtroCarga')) return;
   var sel = document.getElementById('filtroCarga');
   var badge = document.getElementById('cargaFilterBadge');
   if (sel && sel.value && badge) {
@@ -269,7 +312,8 @@ function onCargaFilterChange() {
   buscar(true);
 }
 
-function onFilterChange() {
+function onFilterChange(idOrigen) {
+  if (_bmBloqueadoPorEdicion(idOrigen)) return;
   // When any sub-filter changes, reload further dependent filters
   const proy = document.getElementById('proyecto').value;
   const plano = document.getElementById('plano').value;

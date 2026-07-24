@@ -440,37 +440,65 @@
   // ---- Guardar todos los cambios (PATCH por barra) ----
   // Regla 5M.4: NO se guarda una barra con geometría incoherente. Las buenas se
   // guardan; las malas quedan resaltadas y con sus cambios intactos para corregir.
+  // PATCH de UNA barra. Aísla el resultado (ok/fallida/401) para que el llamador
+  // decida qué hacer sin que una excepción de esta barra tumbe a las demás.
+  async function _guardarUnaBarra(id) {
+    try {
+      var res = await fetch(apiUrl('/barras/' + encodeURIComponent(id)), {
+        method: 'PATCH',
+        headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify(_cambios[id])
+      });
+      if (res.status === 401) return { id: id, auth401: true };
+      // El backend SIEMPRE responde JSON (incluso sus errores 500), pero nos
+      // blindamos igual: si por lo que sea la respuesta no es JSON parseable, esta
+      // barra queda "fallida" sin afectar a las demás.
+      var data = null;
+      try { data = await res.json(); } catch (parseErr) { data = null; }
+      if (res.ok && data && data.ok) return { id: id, ok: true, data: data };
+      if (res.status === 409 && data && data.detail && data.detail.geometria_invalida) {
+        return { id: id, ok: false, geomInvalida: true, detail: data.detail };
+      }
+      return { id: id, ok: false, error: (data && data.detail) ? (typeof data.detail === 'string' ? data.detail : JSON.stringify(data.detail)) : ('HTTP ' + res.status) };
+    } catch (netErr) {
+      return { id: id, ok: false, error: 'Error de conexión: ' + (netErr && netErr.message ? netErr.message : netErr) };
+    }
+  }
+
+  // Guarda TODAS las barras con cambios EN PARALELO (por lotes, no una por una).
+  // Antes era un PATCH secuencial por barra (await dentro de un for) → con N
+  // barras, N round-trips en SERIE (lento, sobre todo con cold start de Render).
+  // Ahora se procesan lotes de _BM_LOTE en paralelo — mismo resultado, mucho más
+  // rápido, sin saturar el backend con cientos de requests simultáneas.
+  var _BM_LOTE = 6;
   async function _guardarCambios() {
     var ids = Object.keys(_cambios);
     if (ids.length === 0) return true;
     var okCount = 0;
     var fallidas = [];   // ids que no pasaron validación (quedan pendientes)
     var otroError = '';
-    for (var i = 0; i < ids.length; i++) {
-      var id = ids[i];
-      var res = await fetch(apiUrl('/barras/' + encodeURIComponent(id)), {
-        method: 'PATCH',
-        headers: { ...authHeaders(), 'Content-Type': 'application/json' },
-        body: JSON.stringify(_cambios[id])
-      });
-      if (res.status === 401) { logout(); return false; }
-      var data = await res.json();
-      if (res.ok && data && data.ok) {
-        okCount++;
-        delete _cambios[id];   // guardada: quitar de pendientes
-        // Optimistic update (5M.9): actualizar la barra en memoria con lo que devolvió
-        // el backend (peso/largo recalculados), sin re-pedir toda la lista.
-        if (data.barra && typeof bmActualizarBarraEnMemoria === 'function') {
-          bmActualizarBarraEnMemoria(data.barra);
+    for (var i = 0; i < ids.length; i += _BM_LOTE) {
+      var lote = ids.slice(i, i + _BM_LOTE);
+      var resultados = await Promise.all(lote.map(_guardarUnaBarra));
+      for (var j = 0; j < resultados.length; j++) {
+        var r = resultados[j];
+        if (r.auth401) { logout(); return false; }
+        if (r.ok) {
+          okCount++;
+          delete _cambios[r.id];   // guardada: quitar de pendientes
+          // Optimistic update (5M.9): actualizar la barra en memoria con lo que
+          // devolvió el backend (peso/largo recalculados), sin re-pedir la lista.
+          if (r.data.barra && typeof bmActualizarBarraEnMemoria === 'function') {
+            bmActualizarBarraEnMemoria(r.data.barra);
+          }
+        } else if (r.geomInvalida) {
+          fallidas.push(r.id);
+          _resaltarSlots(r.id, r.detail.slots_sobran, 'sobra');
+          _resaltarSlots(r.id, r.detail.slots_faltan, 'falta');
+        } else {
+          fallidas.push(r.id);
+          if (!otroError) otroError = r.error;
         }
-      } else if (res.status === 409 && data && data.detail && data.detail.geometria_invalida) {
-        // Geometría incoherente: resaltar slots, dejar cambios para corregir.
-        fallidas.push(id);
-        _resaltarSlots(id, data.detail.slots_sobran, 'sobra');
-        _resaltarSlots(id, data.detail.slots_faltan, 'falta');
-      } else {
-        fallidas.push(id);
-        if (!otroError) otroError = (data && data.detail) ? (typeof data.detail === 'string' ? data.detail : JSON.stringify(data.detail)) : 'error';
       }
     }
     if (fallidas.length > 0) {

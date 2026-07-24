@@ -15,7 +15,8 @@ En Render, lo ideal es arrancar con:
 from fastapi import FastAPI, Response, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-import os, time, logging
+from fastapi.responses import JSONResponse
+import os, time, logging, traceback
 
 from .db import init_db, get_conn
 from . import mailer, storage
@@ -100,7 +101,18 @@ def create_app() -> FastAPI:
     @app.middleware("http")
     async def log_requests(request: Request, call_next):
         start = time.time()
-        response = await call_next(request)
+        try:
+            response = await call_next(request)
+        except Exception:
+            # Cualquier excepción NO capturada por un endpoint caía en el manejador
+            # genérico de Starlette, que responde 500 con texto plano ("Internal
+            # Server Error"). El frontend siempre espera JSON (hace res.json()), así
+            # que ese texto plano rompía el parseo (SyntaxError) y el guardado
+            # quedaba sin completar SIN aviso claro al usuario. Ahora se loguea el
+            # traceback completo (para diagnosticar) y se devuelve JSON siempre.
+            ms = round((time.time() - start) * 1000)
+            logger.error("UNHANDLED %s %s %dms\n%s", request.method, request.url.path, ms, traceback.format_exc())
+            return JSONResponse(status_code=500, content={"detail": "Error interno del servidor. Ya quedó registrado — vuelve a intentar en un momento."})
         ms = round((time.time() - start) * 1000)
         if not request.url.path.startswith(("/static", "/health")):
             logger.info("%s %s %s %dms", request.method, request.url.path, response.status_code, ms)
