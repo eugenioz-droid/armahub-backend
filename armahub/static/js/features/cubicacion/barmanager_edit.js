@@ -564,6 +564,7 @@
     var fallidas = [];   // ids que no pasaron validación (quedan pendientes)
     var otroError = '';
     var nGeom = 0, nServidor = 0;   // desglose de fallidas: geometría vs error server
+    var detallesGeom = [];   // mensajes EXPLÍCITOS de qué sobra/falta por barra
     for (var i = 0; i < ids.length; i += _BM_LOTE) {
       var lote = ids.slice(i, i + _BM_LOTE);
       var resultados = await Promise.all(lote.map(_guardarUnaBarra));
@@ -583,6 +584,13 @@
           nGeom++;
           _resaltarSlots(r.id, r.detail.slots_sobran, 'sobra');
           _resaltarSlots(r.id, r.detail.slots_faltan, 'falta');
+          // Guardar el mensaje EXPLÍCITO del backend (ej. "Sobra(n): lado E — déjalo
+          // vacío."), con una referencia legible de la barra.
+          if (r.detail.mensaje) {
+            var bref = _barraEnMemoria(r.id);
+            var ref = bref ? ((bref.marca || bref.id_unico || ('#' + r.id))) : ('#' + r.id);
+            detallesGeom.push(ref + ': ' + r.detail.mensaje);
+          }
         } else {
           fallidas.push(r.id);
           nServidor++;
@@ -594,10 +602,20 @@
       // Hay barras con problemas: NO re-renderizar (perdería el resaltado rojo).
       // Solo actualizar el panel de ediciones si algo se guardó.
       if (okCount > 0 && typeof cargarEdicionesRecientes === 'function') cargarEdicionesRecientes();
-      // Mensaje diferenciado: geometría (culpa del dato, corregible en ROJO) vs
-      // error del servidor (NO es culpa del usuario; sus cambios se conservan).
-      var msg = okCount + ' guardada(s).';
-      if (nGeom > 0) msg += ' ' + nGeom + ' con geometría incoherente: corrige lo marcado en ROJO (sobra/falta).';
+      // Mensaje diferenciado y EXPLÍCITO: geometría (dice qué lado sobra/falta y en
+      // qué barra) vs error del servidor. Antes decía solo "geometría incoherente".
+      var msg = (okCount > 0 ? (okCount + ' guardada(s). ') : '');
+      if (nGeom > 0) {
+        if (detallesGeom.length) {
+          // Mostrar el detalle exacto (hasta 3 barras; si hay más, resumir).
+          var muestra = detallesGeom.slice(0, 3).join('  •  ');
+          msg += (nGeom === 1 ? 'No se guardó 1 barra: ' : ('No se guardaron ' + nGeom + ' barras. ')) +
+                 muestra + (detallesGeom.length > 3 ? ('  (+' + (detallesGeom.length - 3) + ' más)') : '') +
+                 '  → corrige los lados en ROJO.';
+        } else {
+          msg += nGeom + ' con lados que sobran o faltan para su figura: corrige lo marcado en ROJO.';
+        }
+      }
       if (nServidor > 0) msg += ' ' + nServidor + ' falló por error del servidor (tus cambios se conservan, reintenta).' + (otroError ? (' Detalle: ' + otroError) : '');
       if (typeof showToast === 'function') showToast(msg, 'error');
       _actualizarBotonEdicion();
