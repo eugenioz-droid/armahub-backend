@@ -685,12 +685,35 @@ dimensión) + `ang1..ang4` (4 ángulos) + `radio`. Los slots que usa cada figura
 NO contiguos (ej. figura 201A usa B, G, H). La semántica de qué slots/ángulos usa cada
 figura vive en el **Catálogo Armacero** (§4A), no en las barras.
 
+> **⚠ DEUDA / UPGRADE FUTURO — ampliación de parámetros de barra (transversal).**
+> El modelo actual de parámetros (9 dims + 4 ángulos + radio) es FIJO y probablemente se
+> quedará corto. A futuro habrá que **ampliar los parámetros** de una barra (más slots, o
+> tipos de parámetro nuevos: pesos, recubrimientos, tipos de acero, ganchos, etc.). Esto es
+> **TRANSVERSAL** y toca varios sistemas a la vez, hay que considerarlo al construir features
+> nuevas para no cablear el número/tipo de parámetros en cada lugar:
+> - **Editores** (diseñador de figuras 2D/3D, `disenador.js`/`disenador3d.js`): las etiquetas
+>   letra/ángulo/radio que definen los parámetros de una figura.
+> - **Catálogo Armacero** (§4A): `parciales`/`angulos`/`radio` de cada figura → debería poder
+>   crecer sin migración destructiva.
+> - **Bar Manager / edición de barras**: columnas `dim_a..i`/`ang1..4`/`radio` en la tabla
+>   `barras` y en el form de edición (hoy hard-coded a 9+4+1).
+> - **Cubicación manual** (§4.7), **exportaciones/matrices**, **PDF/pedidos**, **validación**
+>   (`validar_geometria`, `largo_desde_lados` en catalogo.py).
+> **Dirección recomendada al implementar:** modelar los parámetros como una lista
+> extensible/JSONB (no columnas fijas) o un catálogo de "tipos de parámetro", para que agregar
+> uno nuevo sea dato/config y no un cambio de esquema + toque en N archivos. NO abordar hasta
+> que haya un requerimiento concreto; solo tenerlo presente para no cablear más el 9+4+1.
+
 **Edición segura (reglas de diseño):**
 - **Bloqueo:** botón candado 🔒 en Bar Manager, con warning al activar el modo edición.
   Por defecto solo lectura; se abre a propósito. Solo UI (no persiste). Al cerrar el candado,
   si hay cambios sin guardar → pregunta "¿Guardar cambios?". Celdas editadas se resaltan.
-- **Permisos:** editar = cubicador DUEÑO de la obra (`proyecto_usuarios`) + admin. Otro
-  cubicador → aviso "no puedes editar esta barra".
+- **Permisos (actualizado 2026-07-24):** editar barras = **miembro del área 'cubicaciones'**
+  (`area_usuarios.rol_area='miembro'`, `areas.slug='cubicaciones'`) O admin/admin_calidad.
+  NO depende de la obra (cualquier obra). Ni USC, jefe_servicio, cubicador-global, cliente,
+  externo. Función backend `_puede_editar_barras` (separada de `_puede_editar_proyecto`, que
+  controla editar proyectos/autorizar usuarios). Antes exigía estar en `proyecto_usuarios` de
+  la obra → causaba 403 en cada guardado a cubicadores no asignados.
 - **Validación de figura:** al editar geometría, el backend valida contra el catálogo: la
   figura exige valor en SUS slots (`parciales`) y no en otros. Incoherente → rechaza.
 - **Resaltado del dato que sobra:** al cambiar a una figura con menos lados, el sistema pinta
