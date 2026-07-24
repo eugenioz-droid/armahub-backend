@@ -149,40 +149,27 @@
         svg += '<text x="' + aox.toFixed(1) + '" y="' + (aoy + 3).toFixed(1) + '" text-anchor="middle" fill="' + col + '" font-size="10" font-weight="700">' + txt + '</text>';
       }
     }
-    // Etiquetas MANUALES mapeadas con tx() al render. La forma la decide el registro.
+    // Etiquetas MANUALES mapeadas con tx() al render. Mismas funciones de dibujo
+    // que el lienzo (registro), con los tamaños/estilos propios del render.
+    var oR = { sw: 1.2, tope: 4, dash: '3,2', fs: 11, halo: 2.5, dy: 3 };
     (opts.etiquetas || []).forEach(function(e) {
       if (REG().esArco(e.tipo)) {
         // Cota de arco enganchada al segmento e.seg (en el espacio escalado tpts).
         if (e.seg == null || !tpts[e.seg] || !tpts[e.seg + 1]) return;
         var pa = tpts[e.seg], pb = tpts[e.seg + 1];
-        var mx = (pa.x+pb.x)/2, my = (pa.y+pb.y)/2;
-        var dx = pb.x-pa.x, dy = pb.y-pa.y, len = Math.sqrt(dx*dx+dy*dy)||1;
-        var sw = (sweepsEsc[e.seg] != null ? sweepsEsc[e.seg] : 1) ? 1 : -1;
-        var sgn = sw * (e.lado || 1);
-        var off = (radiosEsc[e.seg] || 20) * 0.35 + 8;
-        var cxo = mx + (-dy/len)*off*sgn, cyo = my + (dx/len)*off*sgn;
-        svg += '<path d="M'+pa.x.toFixed(1)+','+pa.y.toFixed(1)+' Q'+cxo.toFixed(1)+','+cyo.toFixed(1)+' '+pb.x.toFixed(1)+','+pb.y.toFixed(1)+'" fill="none" stroke="#888" stroke-width="1.2" stroke-dasharray="3,2"/>';
+        var c = REG().controlArco(pa, pb, sweepsEsc[e.seg], e.lado, radiosEsc[e.seg] || 20, 8);
+        svg += REG().dibujarArco(pa, pb, c.cx, c.cy, oR);
         return;
       }
       if (REG().esLinea(e.tipo)) {
         var p1 = tx({x:e.x1, y:e.y1}), p2 = tx({x:e.x2, y:e.y2});
-        var dx = p2.x-p1.x, dy = p2.y-p1.y, len = Math.sqrt(dx*dx+dy*dy)||1;
-        var nx = -dy/len*4, ny = dx/len*4;
-        var cc = (e.tipo === 'cota') ? '#888' : '#1565c0';
-        var mk = e.tipo === 'diametro' ? ' marker-start="url(#disArrowStart)" marker-end="url(#disArrowEnd)"'
-               : (e.tipo === 'radio' ? ' marker-end="url(#disArrowEnd)"' : '');
-        svg += '<line x1="'+p1.x.toFixed(1)+'" y1="'+p1.y.toFixed(1)+'" x2="'+p2.x.toFixed(1)+'" y2="'+p2.y.toFixed(1)+'" stroke="'+cc+'" stroke-width="1.2"'+mk+'/>';
-        // Cota: topes perpendiculares en cada extremo (radio/diámetro usan flechas).
-        if (e.tipo === 'cota') {
-          svg += '<line x1="'+(p1.x+nx)+'" y1="'+(p1.y+ny)+'" x2="'+(p1.x-nx)+'" y2="'+(p1.y-ny)+'" stroke="#888" stroke-width="1.2"/>';
-          svg += '<line x1="'+(p2.x+nx)+'" y1="'+(p2.y+ny)+'" x2="'+(p2.x-nx)+'" y2="'+(p2.y-ny)+'" stroke="#888" stroke-width="1.2"/>';
-        }
+        svg += (e.tipo === 'cota')
+          ? REG().dibujarCota(p1, p2, oR)
+          : REG().dibujarRadioDiam(e.tipo, p1, p2, oR);
         return;
       }
-      // Texto (letra/ángulo): halo blanco + color del registro.
-      var t2 = tx({x:e.x, y:e.y}); var col2 = REG().color(e.tipo);
-      svg += '<text x="'+t2.x.toFixed(1)+'" y="'+(t2.y+3).toFixed(1)+'" text-anchor="middle" fill="#fff" stroke="#fff" stroke-width="2.5" font-size="11" font-weight="800">'+String(e.texto).replace(/[<>&]/g,'')+'</text>';
-      svg += '<text x="'+t2.x.toFixed(1)+'" y="'+(t2.y+3).toFixed(1)+'" text-anchor="middle" fill="'+col2+'" font-size="11" font-weight="800">'+String(e.texto).replace(/[<>&]/g,'')+'</text>';
+      // Texto (letra/ángulo).
+      svg += REG().dibujarTexto(e.tipo, e.texto, tx({x:e.x, y:e.y}), oR);
     });
     svg += '</svg>';
     return svg;
@@ -591,32 +578,8 @@
     return (mejor >= 0 && dmin < 60 * 60) ? mejor : -1;
   }
 
-  // Puntos extremos de un segmento-arco (idx) en coords de LIENZO, y su punto de
-  // control desplazado hacia afuera (lado ±1) para dibujar la cota paralela.
-  function _cotaArcoPuntos(idx, lado) {
-    var a = _puntos[idx], b = _puntos[idx + 1];
-    var mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
-    var dx = b.x - a.x, dy = b.y - a.y, len = Math.sqrt(dx*dx + dy*dy) || 1;
-    // Perpendicular; el sweep del arco define hacia dónde abomba la barra → la cota
-    // va al MISMO lado, un poco más afuera. `lado` invierte la guata si se pide.
-    var sw = (_sweepsSeg[idx] != null ? _sweepsSeg[idx] : 1) ? 1 : -1;
-    var s = sw * (lado || 1);
-    var off = (_radiosSeg[idx] || 40) * 0.35 + 16;   // separación proporcional al radio
-    var nx = -dy/len * off * s, ny = dx/len * off * s;
-    return { x1: a.x, y1: a.y, x2: b.x, y2: b.y, cx: mx + nx, cy: my + ny };
-  }
-
-  // Path de una cota de arco decorativa entre (x1,y1) y (x2,y2), abombada hacia un
-  // lado con `off` px de offset (curva cuadrática con control en el punto medio
-  // desplazado perpendicularmente). Sirve para acotar radios como en CAD.
-  function _pathCotaArco(x1, y1, x2, y2, off) {
-    var mx = (x1+x2)/2, my = (y1+y2)/2;
-    var dx = x2-x1, dy = y2-y1, len = Math.sqrt(dx*dx+dy*dy) || 1;
-    var nx = -dy/len, ny = dx/len;                 // perpendicular unitaria
-    var cx = mx + nx*(off||14), cy = my + ny*(off||14);   // punto de control
-    return 'M' + x1.toFixed(1) + ',' + y1.toFixed(1) +
-           ' Q' + cx.toFixed(1) + ',' + cy.toFixed(1) + ' ' + x2.toFixed(1) + ',' + y2.toFixed(1);
-  }
+  // (El cálculo de la cota de arco vive ahora en EtiquetasRegistro.controlArco/
+  // dibujarArco — un solo lugar para lienzo y render.)
 
   // Redibuja SOLO la capa dinámica (no toca el SVG raíz ni la grilla ni el rect
   // de eventos). Así un mousemove no destruye el nodo sobre el que caerá el click.
@@ -672,34 +635,22 @@
     // (arco/línea/texto) la decide el registro; el color sale del registro.
     _etiquetas.forEach(function(e, k) {
       if (REG().esArco(e.tipo)) {
-        // Cota de arco: enganchada al segmento curvo `e.seg`, paralela al arco y
-        // separada hacia afuera (offset). `e.lado` (±1) invierte la guata.
+        // Cota de arco: enganchada al segmento curvo `e.seg`. `e.lado` invierte la guata.
         if (e.seg == null || !_puntos[e.seg + 1]) return;
-        var ca = _cotaArcoPuntos(e.seg, e.lado);
-        s += '<path d="M' + ca.x1.toFixed(1) + ',' + ca.y1.toFixed(1) + ' Q' + ca.cx.toFixed(1) + ',' + ca.cy.toFixed(1) + ' ' + ca.x2.toFixed(1) + ',' + ca.y2.toFixed(1) + '" fill="none" stroke="#888" stroke-width="1.5" stroke-dasharray="4,3" data-etiq="' + k + '" style="cursor:pointer;"/>';
+        var a = _puntos[e.seg], b = _puntos[e.seg + 1];
+        var c = REG().controlArco(a, b, _sweepsSeg[e.seg], e.lado, _radiosSeg[e.seg] || 40, 16);
+        s += REG().dibujarArco(a, b, c.cx, c.cy, { interactivo: true, idx: k });
         return;
       }
       if (REG().esLinea(e.tipo)) {
-        if (e.tipo === 'cota') {
-          // Cota: línea gris sutil con topes perpendiculares en cada extremo.
-          var dx = e.x2 - e.x1, dy = e.y2 - e.y1, len = Math.sqrt(dx*dx+dy*dy) || 1;
-          var nx = -dy/len*5, ny = dx/len*5;   // perpendicular, tope de 5px
-          s += '<line x1="' + e.x1 + '" y1="' + e.y1 + '" x2="' + e.x2 + '" y2="' + e.y2 + '" stroke="#888" stroke-width="1.5" data-etiq="' + k + '" style="cursor:move;"/>';
-          s += '<line x1="' + (e.x1+nx) + '" y1="' + (e.y1+ny) + '" x2="' + (e.x1-nx) + '" y2="' + (e.y1-ny) + '" stroke="#888" stroke-width="1.5"/>';
-          s += '<line x1="' + (e.x2+nx) + '" y1="' + (e.y2+ny) + '" x2="' + (e.x2-nx) + '" y2="' + (e.y2-ny) + '" stroke="#888" stroke-width="1.5"/>';
-        } else {
-          // Radio: flecha al final (→). Diámetro: flecha en ambos extremos (↔).
-          var mk = e.tipo === 'diametro'
-            ? ' marker-start="url(#disArrowStart)" marker-end="url(#disArrowEnd)"'
-            : ' marker-end="url(#disArrowEnd)"';
-          s += '<line x1="' + e.x1 + '" y1="' + e.y1 + '" x2="' + e.x2 + '" y2="' + e.y2 + '" stroke="#1565c0" stroke-width="1.5" data-etiq="' + k + '" style="cursor:move;"' + mk + '/>';
-        }
+        var p1 = { x: e.x1, y: e.y1 }, p2 = { x: e.x2, y: e.y2 };
+        s += (e.tipo === 'cota')
+          ? REG().dibujarCota(p1, p2, { interactivo: true, idx: k })
+          : REG().dibujarRadioDiam(e.tipo, p1, p2, { interactivo: true, idx: k });
         return;
       }
-      // Texto (letra/ángulo): halo blanco + color del registro.
-      var col = REG().color(e.tipo);
-      s += '<text x="' + e.x + '" y="' + (e.y + 4) + '" text-anchor="middle" fill="#fff" stroke="#fff" stroke-width="3" font-size="13" font-weight="800" data-etiq="' + k + '" style="cursor:move;">' + String(e.texto).replace(/[<>&]/g, '') + '</text>';
-      s += '<text x="' + e.x + '" y="' + (e.y + 4) + '" text-anchor="middle" fill="' + col + '" font-size="13" font-weight="800" data-etiq="' + k + '" style="cursor:move;">' + String(e.texto).replace(/[<>&]/g, '') + '</text>';
+      // Texto (letra/ángulo).
+      s += REG().dibujarTexto(e.tipo, e.texto, { x: e.x, y: e.y }, { interactivo: true, idx: k });
     });
     // Rubber band de la cota/radio/diámetro en curso (tras el 1er click).
     if (_modoEtiquetas && _cotaInicio && _cotaHover) {

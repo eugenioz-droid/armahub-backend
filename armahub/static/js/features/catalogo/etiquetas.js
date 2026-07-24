@@ -81,12 +81,63 @@
     return (etiquetas || []).some(function(e) { return esParametro(e.tipo); });
   }
 
+  function _escTxt(t) { return String(t == null ? '' : t).replace(/[<>&]/g, function(c){ return {'<':'&lt;','>':'&gt;','&':'&amp;'}[c]; }); }
+
+  // ---- Funciones de DIBUJO por forma (un solo lugar; antes estaban duplicadas
+  // inline en el lienzo 2D y en el render svgDesdePuntos). Reciben los puntos YA
+  // resueltos en el espacio de destino y devuelven string SVG.
+  // opt: { sw: ancho línea, tope: px del tope de cota, interactivo: bool, idx: k }.
+
+  // Cota: línea gris con topes perpendiculares. p1/p2 = extremos.
+  function dibujarCota(p1, p2, opt) {
+    opt = opt || {}; var sw = opt.sw || 1.5, tope = opt.tope || 5;
+    var dx = p2.x - p1.x, dy = p2.y - p1.y, len = Math.sqrt(dx*dx + dy*dy) || 1;
+    var nx = -dy/len*tope, ny = dx/len*tope;
+    var ia = opt.interactivo ? (' data-etiq="' + opt.idx + '" style="cursor:move;"') : '';
+    return '<line x1="'+p1.x+'" y1="'+p1.y+'" x2="'+p2.x+'" y2="'+p2.y+'" stroke="#888" stroke-width="'+sw+'"'+ia+'/>' +
+      '<line x1="'+(p1.x+nx)+'" y1="'+(p1.y+ny)+'" x2="'+(p1.x-nx)+'" y2="'+(p1.y-ny)+'" stroke="#888" stroke-width="'+sw+'"/>' +
+      '<line x1="'+(p2.x+nx)+'" y1="'+(p2.y+ny)+'" x2="'+(p2.x-nx)+'" y2="'+(p2.y-ny)+'" stroke="#888" stroke-width="'+sw+'"/>';
+  }
+  // Radio (flecha →) / Diámetro (flecha ↔). Requiere markers disArrowStart/End en el SVG.
+  function dibujarRadioDiam(tipo, p1, p2, opt) {
+    opt = opt || {}; var sw = opt.sw || 1.5;
+    var mk = tipo === 'diametro' ? ' marker-start="url(#disArrowStart)" marker-end="url(#disArrowEnd)"' : ' marker-end="url(#disArrowEnd)"';
+    var ia = opt.interactivo ? (' data-etiq="' + opt.idx + '" style="cursor:move;"') : '';
+    return '<line x1="'+p1.x+'" y1="'+p1.y+'" x2="'+p2.x+'" y2="'+p2.y+'" stroke="#1565c0" stroke-width="'+sw+'"'+ia+mk+'/>';
+  }
+  // Cota de arco: curva Q entre pa y pb con punto de control cxo/cyo (offset ya calculado).
+  function dibujarArco(pa, pb, cxo, cyo, opt) {
+    opt = opt || {}; var sw = opt.sw || 1.5, dash = opt.dash || '4,3';
+    var ia = opt.interactivo ? (' data-etiq="' + opt.idx + '" style="cursor:pointer;"') : '';
+    return '<path d="M'+pa.x.toFixed(1)+','+pa.y.toFixed(1)+' Q'+cxo.toFixed(1)+','+cyo.toFixed(1)+' '+pb.x.toFixed(1)+','+pb.y.toFixed(1)+'" fill="none" stroke="#888" stroke-width="'+sw+'" stroke-dasharray="'+dash+'"'+ia+'/>';
+  }
+  // Texto (letra/ángulo): halo blanco + color del tipo. p = posición.
+  function dibujarTexto(tipo, texto, p, opt) {
+    opt = opt || {}; var fs = opt.fs || 13, halo = opt.halo || 3, dy = opt.dy || 4;
+    var col = color(tipo), t = _escTxt(texto);
+    var ia = opt.interactivo ? (' data-etiq="' + opt.idx + '" style="cursor:move;"') : '';
+    return '<text x="'+p.x+'" y="'+(p.y+dy)+'" text-anchor="middle" fill="#fff" stroke="#fff" stroke-width="'+halo+'" font-size="'+fs+'" font-weight="800"'+ia+'>'+t+'</text>' +
+      '<text x="'+p.x+'" y="'+(p.y+dy)+'" text-anchor="middle" fill="'+col+'" font-size="'+fs+'" font-weight="800"'+ia+'>'+t+'</text>';
+  }
+  // Punto de control de la cota de arco (offset perpendicular proporcional al radio).
+  // a/b = extremos del segmento; sweep = lado de la barra; lado = ±1 guata; radio px.
+  function controlArco(a, b, sweep, lado, radio, baseOff) {
+    var mx = (a.x+b.x)/2, my = (a.y+b.y)/2;
+    var dx = b.x-a.x, dy = b.y-a.y, len = Math.sqrt(dx*dx+dy*dy) || 1;
+    var sw = (sweep != null ? sweep : 1) ? 1 : -1;
+    var sgn = sw * (lado || 1);
+    var off = (radio || 0) * 0.35 + (baseOff || 16);
+    return { cx: mx + (-dy/len)*off*sgn, cy: my + (dx/len)*off*sgn };
+  }
+
   global.EtiquetasRegistro = {
     TIPOS: TIPOS, COLORES: COLORES,
     esLinea: esLinea, esArco: esArco, esTexto: esTexto,
     esArrastrable: esArrastrable, esParametro: esParametro,
     clicks: clicks, color: color,
     normalizar: normalizar, desnormalizar: desnormalizar,
-    parametros: parametros, tieneParametros: tieneParametros
+    parametros: parametros, tieneParametros: tieneParametros,
+    dibujarCota: dibujarCota, dibujarRadioDiam: dibujarRadioDiam,
+    dibujarArco: dibujarArco, dibujarTexto: dibujarTexto, controlArco: controlArco
   };
 })(window);
