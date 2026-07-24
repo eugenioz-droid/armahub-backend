@@ -1065,8 +1065,16 @@
     var geo = disenador3dGeometria();
     if (!geo) { alert('Dibuja la figura 3D (al menos 2 nodos) antes de guardar.'); return; }
     // Etiquetas colocadas sobre el snapshot 2D → van con la geometría y definen los
-    // parámetros REALES (modo etiqueta-manda, igual que el 2D).
-    var etiq3d = (typeof disenador3dEtiquetas === 'function') ? disenador3dEtiquetas() : [];
+    // parámetros REALES (modo etiqueta-manda, igual que el 2D). Si el usuario guarda
+    // AÚN en modo etiquetado (sin cerrarlo), las etiquetas están en el lienzo actual
+    // (disenador3dEtiquetasGet las lee de ahí); si ya cerró, están en _etiquetas3d
+    // (disenador3dEtiquetas). Tomar las del lienzo si están disponibles.
+    var etiq3d = [];
+    if (typeof disenadorEnModoImagen === 'function' && disenadorEnModoImagen() && typeof disenador3dEtiquetasGet === 'function') {
+      etiq3d = disenador3dEtiquetasGet();   // etiquetas del lienzo en curso
+    } else if (typeof disenador3dEtiquetas === 'function') {
+      etiq3d = disenador3dEtiquetas();      // etiquetas ya guardadas al cerrar etiquetado
+    }
     if (etiq3d.length) geo.etiquetas = etiq3d;
     var parciales, angulos, radio;
     var pe = REG().parametros(etiq3d);

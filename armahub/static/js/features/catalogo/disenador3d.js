@@ -135,9 +135,11 @@
   // Grilla de referencia = PISO horizontal en el plano XY (Z es la altura). El
   // GridHelper nace en XZ (Y vertical), así que lo rotamos 90° sobre X para llevarlo
   // al plano XY con Z como normal vertical (convención de ingeniería).
+  var _gridMesh = null;
   function _agregarGrilla() {
     var grid = new THREE.GridHelper(400, 10, 0xcccccc, 0xe6e6e6);
     grid.rotation.x = Math.PI / 2;
+    _gridMesh = grid;
     _worldGroup.add(grid);
   }
 
@@ -374,20 +376,56 @@
 
   var _snapshotFijado = null;   // dataURL del snapshot fijado por el usuario (o null)
 
-  // Captura un PNG de la vista SIN el plano de trabajo resaltado (queda solo la
-  // barra + ejes). El plano es una ayuda de dibujo, no parte de la figura.
+  // Captura un PNG de la vista SIN el plano ni la grilla (solo la barra + ejes),
+  // ENCUADRANDO la cámara a la figura para que llene el frame (antes quedaba chica
+  // y perdida en el centro con mucho espacio vacío). Restaura todo tras capturar.
   function _capturarSnapshot() {
-    if (!_renderer) return null;
-    var visM = _planoMesh ? _planoMesh.visible : null;
-    var visB = _planoBorde ? _planoBorde.visible : null;
-    if (_planoMesh) _planoMesh.visible = false;
-    if (_planoBorde) _planoBorde.visible = false;
+    if (!_renderer || !_camera) return null;
+    // Ocultar ayudas de dibujo (plano + grilla) para la foto.
+    var ocultados = [];
+    [_planoMesh, _planoBorde, _gridMesh].forEach(function(o) {
+      if (o && o.visible) { o.visible = false; ocultados.push(o); }
+    });
+    // Guardar la posición actual de la cámara para restaurarla.
+    var pos0 = _camera.position.clone();
+    // Encuadrar: centro y radio de la figura (nodos) en coords del MUNDO (con la
+    // rotación actual del worldGroup aplicada), y acercar la cámara para que llene.
+    _encuadrarCamaraAFigura();
     var url = null;
     try { _renderer.render(_scene, _camera); url = _renderer.domElement.toDataURL('image/png'); }
     catch (e) { url = null; }
-    if (_planoMesh && visM != null) _planoMesh.visible = visM;
-    if (_planoBorde && visB != null) _planoBorde.visible = visB;
+    // Restaurar cámara y visibilidades.
+    _camera.position.copy(pos0);
+    _camera.lookAt(0, 0, 0);
+    ocultados.forEach(function(o) { o.visible = true; });
     return url;
+  }
+
+  // Ajusta la distancia de la cámara para que la figura (nodos) llene el frame,
+  // manteniendo el ángulo de vista actual. Mira al CENTRO de la figura.
+  function _encuadrarCamaraAFigura() {
+    if (!_nodos3d.length) return;
+    // Bounding box de los nodos en el espacio del worldGroup (local).
+    var min = _nodos3d[0].clone(), max = _nodos3d[0].clone();
+    _nodos3d.forEach(function(p) {
+      min.min(p); max.max(p);
+    });
+    var centroLocal = min.clone().add(max).multiplyScalar(0.5);
+    // Radio que envuelve la figura (media diagonal del bbox) + margen.
+    var radio = max.clone().sub(min).length() * 0.5;
+    if (radio < 1) radio = 40;   // figura mínima
+    radio *= 1.35;               // margen para que no quede pegada al borde
+    // Centro en coords del MUNDO (aplicar la rotación actual del worldGroup).
+    var centroMundo = centroLocal.clone();
+    if (_worldGroup) { _worldGroup.updateMatrixWorld(); centroMundo.applyMatrix4(_worldGroup.matrixWorld); }
+    // Distancia para que el radio quepa en el FOV vertical de la cámara.
+    var fov = _camera.fov * Math.PI / 180;
+    var dist = radio / Math.sin(fov / 2);
+    // Mantener la DIRECCIÓN actual de la cámara (desde el origen), reubicándola a
+    // esa distancia del centro de la figura.
+    var dir = _camera.position.clone().normalize();   // dirección desde origen
+    _camera.position.copy(centroMundo).add(dir.multiplyScalar(dist));
+    _camera.lookAt(centroMundo);
   }
 
   // FIJAR la vista 3D actual como el snapshot oficial (lo que se verá/guardará).
