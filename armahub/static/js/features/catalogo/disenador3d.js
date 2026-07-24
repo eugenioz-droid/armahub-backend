@@ -358,6 +358,66 @@
   };
   global.disenador3dSnapshot = function() { return _snapshotFijado; };
 
+  // ---- ETIQUETADO 3D: oculta el canvas 3D y muestra el lienzo 2D con el snapshot
+  // de la barra como fondo, para etiquetar encima (reutiliza TODO el sistema 2D).
+  var _etiquetando3d = false;
+  var _etiquetas3d = [];        // etiquetas colocadas sobre el snapshot (persisten)
+  global.disenador3dToggleEtiquetas = function() {
+    if (!_etiquetando3d) {
+      if (_nodos3d.length < 2) { alert('Dibuja la figura 3D (al menos 2 nodos) antes de etiquetar.'); return; }
+      // Snapshot: el fijado por el usuario, o auto-captura de la vista actual.
+      var url = _snapshotFijado;
+      if (!url && _renderer) {
+        try { _renderer.render(_scene, _camera); url = _renderer.domElement.toDataURL('image/png'); }
+        catch (e) { alert('No se pudo capturar la vista 3D.'); return; }
+      }
+      if (!url) { alert('No se pudo obtener la imagen de la barra.'); return; }
+      _etiquetando3d = true;
+      // Ocultar el visor 3D y sus controles; mostrar el lienzo 2D (con imagen).
+      var v3d = document.getElementById('disenador3D'), ctrl3d = document.getElementById('disControles3D');
+      var c2d = document.getElementById('disControles2D');
+      if (v3d) v3d.style.display = 'none';
+      if (ctrl3d) ctrl3d.style.display = 'none';
+      if (c2d) c2d.style.display = '';
+      // Ocultar los controles de DIBUJO 2D (trazo/deshacer/etc.), solo dejar etiquetas.
+      _toggleControlesDibujo2d(false);
+      if (typeof disenadorEntrarEtiquetado3D === 'function') disenadorEntrarEtiquetado3D(url, _etiquetas3d);
+      _actualizarBtnEtiq3d(true);
+    } else {
+      // Guardar las etiquetas colocadas y volver al visor 3D.
+      if (typeof disenador3dEtiquetasGet === 'function') _etiquetas3d = disenador3dEtiquetasGet();
+      if (typeof disenadorSalirEtiquetado3D === 'function') disenadorSalirEtiquetado3D();
+      _etiquetando3d = false;
+      var v3d2 = document.getElementById('disenador3D'), ctrl3d2 = document.getElementById('disControles3D');
+      var c2d2 = document.getElementById('disControles2D');
+      if (c2d2) c2d2.style.display = 'none';
+      if (v3d2) v3d2.style.display = '';
+      if (ctrl3d2) ctrl3d2.style.display = '';
+      _toggleControlesDibujo2d(true);   // restaurar para cuando se vuelva a 2D
+      _actualizarBtnEtiq3d(false);
+      _iniciarEspacio();   // re-render del visor 3D
+    }
+  };
+  // Muestra/oculta los controles de DIBUJO 2D (trazo, deshacer, limpiar, terminar),
+  // dejando solo la barra de etiquetas visible durante el etiquetado 3D.
+  function _toggleControlesDibujo2d(mostrar) {
+    var ids = ['disenadorLienzo'];   // el lienzo SIEMPRE visible; ocultamos los hermanos de control
+    var c2d = document.getElementById('disControles2D');
+    if (!c2d) return;
+    // Ocultar las filas .row de controles de dibujo (no la barra de etiquetas).
+    var rows = c2d.querySelectorAll(':scope > .row');
+    rows.forEach(function(r) { r.style.display = mostrar ? '' : 'none'; });
+    var btnEt = document.getElementById('disBtnEtiquetas');
+    if (btnEt && btnEt.parentElement) btnEt.parentElement.style.display = mostrar ? '' : 'none';
+  }
+  function _actualizarBtnEtiq3d(on) {
+    var b = document.getElementById('dis3dBtnEtiquetas');
+    if (b) { b.textContent = on ? '✓ Terminar etiquetado' : '🏷️ Etiquetar barra';
+      b.style.background = on ? '#00695c' : '#fff'; b.style.color = on ? '#fff' : '#00695c'; }
+  }
+  global.disenador3dEtiquetas = function() { return _etiquetas3d.slice(); };
+  global.disenador3dSetEtiquetas = function(arr) { _etiquetas3d = (arr || []).slice(); };
+
   // Geometría 3D para guardar: nodos (normalizados al 1er nodo), tramos con
   // lado + dirección + largo, y la vista isométrica 2D (para render en catálogo/BM).
   global.disenador3dGeometria = function() {
@@ -387,19 +447,20 @@
     };
   };
 
-  // Preview 3D: si hay una vista FIJADA, la usa (control del usuario). Si no, toma
-  // un snapshot en vivo del canvas (preview provisional mientras rota/dibuja).
+  // Preview 3D: escribe el snapshot (fijado o en vivo) en el preview chico #disPreview.
   function _actualizarPreview3d() {
-    if (typeof previewEtiqSetFondo !== 'function') return;
-    if (_nodos3d.length < 2 || !_renderer) { previewEtiqSetFondo(''); return; }
+    var prev = document.getElementById('disPreview');
+    if (!prev) return;
+    if (_nodos3d.length < 2 || !_renderer) {
+      prev.innerHTML = '<span class="muted" style="font-size:11px;">Dibuja la barra 3D para ver el preview.</span>';
+      return;
+    }
     var url = _snapshotFijado;
     if (!url) {
       try { _renderer.render(_scene, _camera); url = _renderer.domElement.toDataURL('image/png'); }
-      catch (e) { previewEtiqSetFondo(''); return; }
+      catch (e) { return; }
     }
-    var t = (typeof previewEtiqTamano === 'function') ? previewEtiqTamano() : { w: 220, h: 150 };
-    // La figura 3D (snapshot) va como fondo del preview → se etiqueta encima.
-    previewEtiqSetFondo('<img src="' + url + '" style="max-width:' + t.w + 'px; max-height:' + t.h + 'px; object-fit:contain;" alt="preview 3D"/>');
+    prev.innerHTML = '<img src="' + url + '" style="max-width:210px; max-height:140px; object-fit:contain;" alt="preview 3D"/>';
   }
 
   // Al cambiar la figura, el snapshot fijado deja de ser válido (se libera).

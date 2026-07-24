@@ -317,13 +317,6 @@
         '[ArmaHub] No se pudo cargar catalogo/disenador3d.js'
       ),
       loadScript(
-        'script[data-armahub-feature="catalogo-preview-etiq"]',
-        '/static/js/features/catalogo/disenador_preview_etiq.js' + suffix,
-        'armahubFeature',
-        'catalogo-preview-etiq',
-        '[ArmaHub] No se pudo cargar catalogo/disenador_preview_etiq.js'
-      ),
-      loadScript(
         'script[data-armahub-feature="catalogo"]',
         '/static/js/features/catalogo/index.js' + suffix,
         'armahubFeature',

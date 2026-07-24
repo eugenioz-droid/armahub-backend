@@ -89,7 +89,7 @@
                 <label style="font-size:12px; cursor:pointer;"><input type="radio" name="dis3dTrazo" value="arco" onchange="disenador3dSetTrazo('arco')"/> Curva</label>
                 <span id="dis3dRadioWrap" style="display:none; align-items:center; gap:6px; margin-left:8px;">
                   <span style="font-size:11px; color:#666;">Radio:</span>
-                  <input type="range" id="dis3dRadioSlider" min="20" max="300" value="80" oninput="disenador3dSetRadio(this.value)" style="vertical-align:middle;"/>
+                  <input type="range" id="dis3dRadioSlider" min="40" max="300" value="80" oninput="disenador3dSetRadio(this.value)" style="vertical-align:middle;"/>
                   <span id="dis3dRadioVal" style="font-size:11px; color:#00695c; font-weight:700;">80</span>
                   <button onclick="disenador3dInvertirCurva()" style="font-size:11px; padding:2px 10px; margin-left:6px; background:#fff; color:#00695c; border:1px solid #00695c; border-radius:4px; cursor:pointer;">🔄 Invertir</button>
                 </span>
@@ -103,6 +103,7 @@
                 <button class="secondary" onclick="disenador3dDeshacer()" style="font-size:11px; padding:3px 10px; margin-left:6px;">↶ Deshacer</button>
                 <button class="secondary" onclick="disenador3dLimpiarDibujo()" style="font-size:11px; padding:3px 10px;">🗑 Limpiar</button>
                 <button onclick="disenador3dFijarVista()" style="font-size:11px; padding:3px 10px; background:#fff; color:#00695c; border:1px solid #00695c; border-radius:4px; cursor:pointer;">📸 Fijar vista</button>
+                <button id="dis3dBtnEtiquetas" onclick="disenador3dToggleEtiquetas()" style="font-size:11px; padding:3px 10px; background:#fff; color:#00695c; border:1px solid #00695c; border-radius:4px; cursor:pointer;">🏷️ Etiquetar barra</button>
                 <span id="dis3dInfo" class="muted" style="font-size:11px;">0 tramos · 0 nodos</span>
               </div>
             </div>

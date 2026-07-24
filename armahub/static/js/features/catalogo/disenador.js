@@ -306,6 +306,38 @@
     _redibujarPanel();   // el panel cambia de fuente (tramos ↔ etiquetas) según el modo
   };
 
+  // ---- ETIQUETADO 3D (reutiliza el lienzo 2D con imagen de fondo) ----
+  // El 3D llama esto con el snapshot 2D de la barra. El lienzo 2D entra en "modo
+  // imagen": muestra el snapshot y permite etiquetar encima con TODO el sistema 2D
+  // (registro, click, drag, tipos). Las etiquetas colocadas se guardan con la
+  // figura 3D (via disenador3dEtiquetasGet). Vuelve al 3D con salirEtiquetado3D.
+  global.disenadorEntrarEtiquetado3D = function(snapshotUrl, etiquetasPrevias) {
+    _fondoImagen = snapshotUrl || null;
+    _etiquetas = (etiquetasPrevias || []).slice();   // reutiliza etiquetas ya puestas
+    _puntos = [];                                    // sin figura de puntos en modo imagen
+    _modoEtiquetas = true; _dibujando = false;
+    _cotaInicio = null; _cotaHover = null;
+    // Mostrar la barra de tipos de etiqueta (reutilizada del 2D).
+    var bar = document.getElementById('disEtiquetasBar');
+    if (bar) bar.style.display = 'flex';
+    var btn = document.getElementById('disBtnEtiquetas');
+    if (btn) { btn.textContent = '🏷️ Etiquetas: ON'; btn.style.background = '#00695c'; btn.style.color = '#fff'; }
+    _redibujarLienzo();
+    _redibujarPanel();
+  };
+  // Devuelve las etiquetas colocadas en modo imagen (para guardarlas con la figura 3D).
+  global.disenador3dEtiquetasGet = function() { return _fondoImagen ? _etiquetas.slice() : []; };
+  // Sale del modo imagen (vuelve el lienzo 2D a su estado normal).
+  global.disenadorSalirEtiquetado3D = function() {
+    _fondoImagen = null; _etiquetas = []; _modoEtiquetas = false;
+    _cotaInicio = null; _cotaHover = null;
+    var bar = document.getElementById('disEtiquetasBar');
+    if (bar) bar.style.display = 'none';
+    var btn = document.getElementById('disBtnEtiquetas');
+    if (btn) { btn.textContent = '🏷️ Etiquetas'; btn.style.background = '#fff'; btn.style.color = '#00695c'; }
+  };
+  global.disenadorEnModoImagen = function() { return !!_fondoImagen; };
+
   // Con "Etiquetas ON", el click en el lienzo coloca DIRECTO una etiqueta del tipo
   // seleccionado (sin botón "Colocar"). La cota necesita 2 clicks: _cotaInicio
   // guarda el primero mientras espera el segundo.
@@ -474,6 +506,11 @@
 
   var CW = 420, CH = 320;   // dimensiones del lienzo
   var _svgCreado = false;
+  // MODO IMAGEN DE FONDO (etiquetado 3D): cuando el 3D activa el etiquetado, pone
+  // aquí el snapshot 2D de la barra. El lienzo lo dibuja como fondo (en vez de la
+  // figura de puntos) y las etiquetas se colocan encima, reutilizando TODO el
+  // sistema 2D (registro, click, drag, tipos). null = modo normal 2D.
+  var _fondoImagen = null;
 
   // Crea el SVG del lienzo UNA sola vez (grilla + rect capturador de eventos + una
   // capa <g> dinámica). Los listeners van con addEventListener sobre el SVG, que
@@ -481,7 +518,7 @@
   function _crearLienzo() {
     var wrap = document.getElementById('disenadorLienzo');
     if (!wrap) return;
-    var s = '<svg id="disenadorSvgCanvas" width="' + CW + '" height="' + CH + '" ' +
+    var s = '<svg id="disenadorSvgCanvas" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="' + CW + '" height="' + CH + '" ' +
       'style="background:#fff; border-radius:6px; cursor:crosshair; touch-action:none; max-width:100%;">';
     // Flechas de acotación (radio/diámetro), estilo CAD.
     s += '<defs>' +
@@ -587,6 +624,14 @@
     var capa = document.getElementById('disenadorCapa');
     if (!capa) return;
     var s = '';
+    // MODO IMAGEN (etiquetado 3D): fondo = snapshot de la barra; sin figura de puntos.
+    if (_fondoImagen) {
+      s += '<image href="' + _fondoImagen + '" xlink:href="' + _fondoImagen + '" x="0" y="0" width="' + CW + '" height="' + CH + '" preserveAspectRatio="xMidYMid meet" style="pointer-events:none;"/>';
+      _etiquetas.forEach(function(e, k) { s += _svgEtiqueta(e, k); });
+      if (_modoEtiquetas && _cotaInicio && _cotaHover) s += _svgRubberCota();
+      capa.innerHTML = s;
+      return;
+    }
     if (_puntos.length >= 2) {
       s += '<path d="' + _pathDesdePuntos(_puntos, _tiposSeg, _radiosSeg, _sweepsSeg) + '" fill="none" stroke="#00695c" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"/>';
     }
@@ -630,34 +675,58 @@
         s += '<text x="' + lx2.toFixed(1) + '" y="' + (ly2 + 4).toFixed(1) + '" text-anchor="middle" fill="' + color + '" font-size="12" font-weight="700">' + info.texto + '</text>';
       });
     }
-    // Etiquetas MANUALES (siempre visibles): arrastrables (data-etiq). La forma
-    // (arco/línea/texto) la decide el registro; el color sale del registro.
-    _etiquetas.forEach(function(e, k) {
-      if (REG().esArco(e.tipo)) {
-        // Cota de arco: arco concéntrico al segmento curvo `e.seg`, offset 12px hacia
-        // afuera. `e.lado` invierte la guata. Sigue la misma curvatura de la barra.
-        if (e.seg == null || !_puntos[e.seg + 1]) return;
-        var a = _puntos[e.seg], b = _puntos[e.seg + 1];
-        s += REG().dibujarArco(a, b, _radiosSeg[e.seg], _sweepsSeg[e.seg], e.lado, 12, { interactivo: true, idx: k });
-        return;
-      }
-      if (REG().esLinea(e.tipo)) {
-        var p1 = { x: e.x1, y: e.y1 }, p2 = { x: e.x2, y: e.y2 };
-        s += (e.tipo === 'cota')
-          ? REG().dibujarCota(p1, p2, { interactivo: true, idx: k })
-          : REG().dibujarRadioDiam(e.tipo, p1, p2, { interactivo: true, idx: k });
-        return;
-      }
-      // Texto (letra/ángulo).
-      s += REG().dibujarTexto(e.tipo, e.texto, { x: e.x, y: e.y }, { interactivo: true, idx: k });
-    });
+    // Etiquetas MANUALES (siempre visibles): arrastrables (data-etiq).
+    _etiquetas.forEach(function(e, k) { s += _svgEtiqueta(e, k); });
     // Rubber band de la cota/radio/diámetro en curso (tras el 1er click).
-    if (_modoEtiquetas && _cotaInicio && _cotaHover) {
-      var rbCol = (_cotaInicio.tipo === 'radio' || _cotaInicio.tipo === 'diametro') ? '#1565c0' : '#4db6ac';
-      s += '<line x1="' + _cotaInicio.x + '" y1="' + _cotaInicio.y + '" x2="' + _cotaHover.x + '" y2="' + _cotaHover.y + '" stroke="' + rbCol + '" stroke-width="1.5" stroke-dasharray="5,4"/>';
-      s += '<circle cx="' + _cotaInicio.x + '" cy="' + _cotaInicio.y + '" r="3" fill="' + rbCol + '"/>';
-    }
+    if (_modoEtiquetas && _cotaInicio && _cotaHover) s += _svgRubberCota();
     capa.innerHTML = s;
+  }
+
+  // SVG de una etiqueta manual (interactiva). La forma la decide el registro. Se
+  // usa en el lienzo 2D normal Y en el modo imagen (etiquetado 3D). En modo imagen
+  // NO hay segmentos de barra, así que la cota de arco se omite (no tiene curva base).
+  function _svgEtiqueta(e, k) {
+    if (REG().esArco(e.tipo)) {
+      if (_fondoImagen) return '';   // sin curva base sobre la imagen 3D
+      if (e.seg == null || !_puntos[e.seg + 1]) return '';
+      var a = _puntos[e.seg], b = _puntos[e.seg + 1];
+      return REG().dibujarArco(a, b, _radiosSeg[e.seg], _sweepsSeg[e.seg], e.lado, 12, { interactivo: true, idx: k });
+    }
+    if (REG().esLinea(e.tipo)) {
+      var p1 = { x: e.x1, y: e.y1 }, p2 = { x: e.x2, y: e.y2 };
+      return (e.tipo === 'cota')
+        ? REG().dibujarCota(p1, p2, { interactivo: true, idx: k })
+        : REG().dibujarRadioDiam(e.tipo, p1, p2, { interactivo: true, idx: k });
+    }
+    return REG().dibujarTexto(e.tipo, e.texto, { x: e.x, y: e.y }, { interactivo: true, idx: k });
+  }
+  function _svgRubberCota() {
+    var rbCol = (_cotaInicio.tipo === 'radio' || _cotaInicio.tipo === 'diametro') ? '#1565c0' : '#4db6ac';
+    return '<line x1="' + _cotaInicio.x + '" y1="' + _cotaInicio.y + '" x2="' + _cotaHover.x + '" y2="' + _cotaHover.y + '" stroke="' + rbCol + '" stroke-width="1.5" stroke-dasharray="5,4"/>' +
+      '<circle cx="' + _cotaInicio.x + '" cy="' + _cotaInicio.y + '" r="3" fill="' + rbCol + '"/>';
+  }
+
+  // Capa SVG de etiquetas 3D (coords del lienzo 420x320) escalada a un overlay w×h,
+  // para superponer sobre el snapshot en galería/preview. Sin cota de arco (no hay
+  // curva base sobre la imagen). Devuelve un <svg> absoluto o '' si no hay etiquetas.
+  function _svgEtiquetasEscaladas(etiquetas, w, h) {
+    if (!etiquetas || !etiquetas.length) return '';
+    var e = '';
+    etiquetas.forEach(function(et) {
+      if (REG().esArco(et.tipo)) return;   // no aplica sobre imagen
+      if (REG().esLinea(et.tipo)) {
+        var p1 = { x: et.x1, y: et.y1 }, p2 = { x: et.x2, y: et.y2 };
+        e += (et.tipo === 'cota') ? REG().dibujarCota(p1, p2, { sw: 1 }) : REG().dibujarRadioDiam(et.tipo, p1, p2, { sw: 1 });
+      } else {
+        e += REG().dibujarTexto(et.tipo, et.texto, { x: et.x, y: et.y }, { fs: 13, halo: 3, dy: 4 });
+      }
+    });
+    if (!e) return '';
+    return '<svg viewBox="0 0 ' + CW + ' ' + CH + '" width="' + w + '" height="' + h + '" preserveAspectRatio="xMidYMid meet" ' +
+      'style="position:absolute; top:0; left:0; width:' + w + 'px; height:' + h + 'px; pointer-events:none;">' +
+      '<defs><marker id="disArrowEnd" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#1565c0"/></marker>' +
+      '<marker id="disArrowStart" markerWidth="9" markerHeight="9" refX="0" refY="3" orient="auto"><path d="M7,0 L0,3 L7,6 Z" fill="#1565c0"/></marker></defs>' +
+      e + '</svg>';
   }
 
   // ---- Coordenada del evento relativa al SVG ----
@@ -796,6 +865,9 @@
   function _redibujarPanel() {
     var cont = document.getElementById('disenadorPanel');
     if (!cont) return;
+    // MODO IMAGEN (etiquetado 3D): sin figura de puntos; el panel muestra los
+    // parámetros de las etiquetas colocadas sobre el snapshot. No tocar el preview.
+    if (_fondoImagen) { _redibujarPanelEtiquetas(cont); return; }
     if (_puntos.length < 2) {
       cont.innerHTML = '<div class="muted" style="font-size:12px;">Haz click en el lienzo para trazar el primer lado. Cada click agrega un lado; el ángulo se ajusta a 45/90/135°.</div>';
       disenadorActualizarPreview2d();   // sin figura → limpiar el preview (no dejar la anterior pegada)
@@ -870,7 +942,8 @@
       (angs.length > 4 ? '<div style="color:#c62828; margin-top:4px;">⚠ ' + angs.length + ' ángulos — el sistema soporta máx. 4 (α1-α4).</div>' : '') +
       '</div>';
     cont.innerHTML = html;
-    disenadorActualizarPreview2d();
+    // En modo imagen (etiquetado 3D) el preview lo maneja el 3D; no pisarlo.
+    if (!_fondoImagen) disenadorActualizarPreview2d();
   }
 
   // Largo (en grilla) del tramo dibujado cuyo punto medio esté más cerca de la
@@ -948,7 +1021,6 @@
         // Limpiar el lienzo y refrescar el catálogo/galería con lo recién guardado.
         _puntos = []; _labels = []; _hoverPt = null; _dibujando = true; _editando = null;
         _tiposSeg = []; _radiosSeg = []; _sweepsSeg = []; _segSel = -1; _etiquetas = [];
-        if (typeof previewEtiqLimpiar === 'function') previewEtiqLimpiar();
         var nb = document.getElementById('disenadorNombre'); if (nb) nb.value = '';
         await _recargarCatalogo();
         _redibujarLienzo(); _redibujarPanel(); _actualizarBotonTerminar();
@@ -966,10 +1038,22 @@
     if (typeof disenador3dGeometria !== 'function') { alert('Editor 3D no disponible.'); return; }
     var geo = disenador3dGeometria();
     if (!geo) { alert('Dibuja la figura 3D (al menos 2 nodos) antes de guardar.'); return; }
-    // Las etiquetas manuales (colocadas sobre el preview) van con la geometría.
-    var etiqPv = (typeof previewEtiqGet === 'function') ? previewEtiqGet() : [];
-    if (etiqPv.length) geo.etiquetas_preview = etiqPv;
-    var payload = { codigo: nombre, parciales: geo.parciales || [], angulos: [], radio: false, geometria: geo };
+    // Etiquetas colocadas sobre el snapshot 2D → van con la geometría y definen los
+    // parámetros REALES (modo etiqueta-manda, igual que el 2D).
+    var etiq3d = (typeof disenador3dEtiquetas === 'function') ? disenador3dEtiquetas() : [];
+    if (etiq3d.length) geo.etiquetas = etiq3d;
+    var parciales, angulos, radio;
+    var pe = REG().parametros(etiq3d);
+    if (pe.parciales.length || pe.angulos.length || pe.radio) {
+      parciales = pe.parciales; angulos = pe.angulos; radio = pe.radio;
+      geo.etiquetas_manda = true;
+    } else {
+      parciales = geo.parciales || []; angulos = []; radio = false;
+    }
+    if (angulos.length > 4) {
+      alert('Esta figura tiene ' + angulos.length + ' ángulos, pero el sistema soporta máximo 4 (α1-α4).'); return;
+    }
+    var payload = { codigo: nombre, parciales: parciales, angulos: angulos, radio: radio, geometria: geo };
     try {
       var res = await fetch(apiUrl('/figuras-catalogo'), {
         method: 'POST',
@@ -980,8 +1064,8 @@
         if (typeof showToast === 'function') showToast('Figura 3D "' + nombre + '" guardada', 'success');
         var nb = document.getElementById('disenadorNombre'); if (nb) nb.value = '';
         if (typeof disenador3dLimpiarDibujo === 'function') disenador3dLimpiarDibujo();
+        if (typeof disenador3dSetEtiquetas === 'function') disenador3dSetEtiquetas([]);
         _etiquetas = [];
-        if (typeof previewEtiqLimpiar === 'function') previewEtiqLimpiar();
         await _recargarCatalogo();
       } else {
         var d = await res.json().catch(function() { return {}; });
@@ -1015,7 +1099,11 @@
       // 3D con snapshot fijado → mostrar la imagen; si no, el SVG (vista iso 2D).
       var vis;
       if (es3d && f.geometria.snapshot) {
-        vis = '<img src="' + f.geometria.snapshot + '" style="width:90px; height:72px; object-fit:contain; border-radius:4px;" alt="' + f.codigo + '"/>';
+        // Snapshot + capa de etiquetas 3D superpuesta (escaladas del lienzo 420x320).
+        var capaEt = _svgEtiquetasEscaladas((f.geometria.etiquetas || []), 90, 72);
+        vis = '<div style="position:relative; width:90px; height:72px; margin:0 auto;">' +
+          '<img src="' + f.geometria.snapshot + '" style="width:90px; height:72px; object-fit:contain; border-radius:4px;" alt="' + f.codigo + '"/>' +
+          capaEt + '</div>';
       } else {
         vis = dibujarFigura(f.geometria, null, { width: 90, height: 72, pad: 12 });
       }
