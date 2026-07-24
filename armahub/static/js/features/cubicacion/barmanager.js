@@ -947,8 +947,8 @@ function filtrarPorCobertura(piso, ciclo, sector) {
 // ========================= RESET / CARGA / PAGINACIÓN =========================
 
 function resetFiltros() {
-  if (typeof bmHayCambiosSinGuardar === 'function' && bmHayCambiosSinGuardar()) {
-    if (typeof showToast === 'function') showToast('Tienes cambios sin guardar en la edición actual. Guarda o descarta antes de limpiar filtros.', 'error');
+  if (typeof bmEnModoEdicion === 'function' && bmEnModoEdicion()) {
+    if (typeof showToast === 'function') showToast('Estás en modo edición: los filtros están bloqueados. Sal de edición para limpiar filtros.', 'error');
     return;
   }
   ['proyecto', 'plano', 'sector', 'piso', 'ciclo', 'eje'].forEach(f => {
@@ -995,8 +995,8 @@ function resetFiltros() {
 }
 
 async function verBarrasCarga(importId, idProyecto, archivo) {
-  if (typeof bmHayCambiosSinGuardar === 'function' && bmHayCambiosSinGuardar()) {
-    if (typeof showToast === 'function') showToast('Tienes cambios sin guardar en la edición actual. Guarda o descarta antes de navegar.', 'error');
+  if (typeof bmEnModoEdicion === 'function' && bmEnModoEdicion()) {
+    if (typeof showToast === 'function') showToast('Estás en modo edición: los filtros están bloqueados. Sal de edición para navegar a una carga.', 'error');
     return;
   }
   switchTab('buscar');
@@ -1016,8 +1016,8 @@ async function verBarrasCarga(importId, idProyecto, archivo) {
 }
 
 function clearCargaFilter(skipSearch) {
-  if (!skipSearch && typeof bmHayCambiosSinGuardar === 'function' && bmHayCambiosSinGuardar()) {
-    if (typeof showToast === 'function') showToast('Tienes cambios sin guardar en la edición actual. Guarda o descarta antes de cambiar de filtro.', 'error');
+  if (!skipSearch && typeof bmEnModoEdicion === 'function' && bmEnModoEdicion()) {
+    if (typeof showToast === 'function') showToast('Estás en modo edición: los filtros están bloqueados. Sal de edición para cambiar de filtro.', 'error');
     return;
   }
   const fc = document.getElementById('filtroCarga');

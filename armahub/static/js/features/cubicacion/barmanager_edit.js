@@ -102,6 +102,7 @@
     _actualizarBotonEdicion();
     _actualizarBotonMasivo();
     _actualizarBarraSeleccion();
+    if (typeof bmSetFiltrosBloqueados === 'function') bmSetFiltrosBloqueados(false);
   };
 
   // Catálogo de figuras cargado en memoria (5M.4): código → {parciales, angulos, radio}.
@@ -295,6 +296,9 @@
     }
     _actualizarBotonEdicion();
     _actualizarBotonMasivo();
+    // Bloquear/desbloquear los filtros según el modo edición (flujo: entrar a
+    // edición congela la navegación; salir la libera).
+    if (typeof bmSetFiltrosBloqueados === 'function') bmSetFiltrosBloqueados(_modoEdicion);
     // Re-render de la vista ACTIVA (plana o agrupada) para reflejar inputs /
     // solo-lectura. bmReRenderVistaActual bifurca según _modoVistaPlana (5M.9);
     // así el candado también cambia la grilla plana, no solo los desplegables.

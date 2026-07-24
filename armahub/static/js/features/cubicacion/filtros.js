@@ -37,16 +37,18 @@ function _bmGuardarSnapshotFiltros() {
   });
 }
 
-// Si hay cambios sin guardar, avisa, REVIERTE el select al último valor válido
-// conocido y bloquea la acción (true = bloqueado, el handler debe abortar).
+// Bloqueo de filtros MIENTRAS el modo edición está activo (no solo si hay cambios).
+// Decisión de flujo: entrar a edición congela los filtros → el usuario no puede ir
+// filtrando y perder el rastro de sus cambios; debe SALIR de edición (guardar/
+// descartar) para volver a navegar. Avisa, revierte el select y bloquea (true).
 function _bmBloqueadoPorEdicion(selectId) {
-  if (typeof bmHayCambiosSinGuardar !== 'function' || !bmHayCambiosSinGuardar()) return false;
+  if (typeof bmEnModoEdicion !== 'function' || !bmEnModoEdicion()) return false;
   var el = document.getElementById(selectId);
   if (el && (selectId in _bmFiltrosSnapshot)) el.value = _bmFiltrosSnapshot[selectId];
   if (typeof showToast === 'function') {
-    showToast('Tienes cambios sin guardar en la edición actual. Guarda o descarta (botón del modo edición) antes de cambiar de filtro.', 'error');
+    showToast('Estás en modo edición: los filtros están bloqueados. Sal de edición (guarda o descarta) para cambiar de filtro.', 'error');
   } else {
-    alert('Tienes cambios sin guardar en la edición actual. Guarda o descarta antes de cambiar de filtro.');
+    alert('Estás en modo edición: los filtros están bloqueados. Sal de edición para cambiar de filtro.');
   }
   return true;
 }
@@ -89,6 +91,35 @@ function bmHayFiltrosActivos() {
 }
 window.bmHayFiltrosActivos = bmHayFiltrosActivos;
 window.clearFiltersStorage = clearFiltersStorage;
+
+// Bloquea/desbloquea VISUALMENTE los filtros (al entrar/salir de modo edición).
+// disabled real (refuerza el guard) + gris + tooltip. Incluye el proyecto y el
+// botón de limpiar/buscar, para que quede claro que la navegación está congelada.
+function bmSetFiltrosBloqueados(bloq) {
+  var ids = ['proyecto','sector','piso','ciclo','eje','filtroFigura','filtroTipologia',
+             'filtroDiametro','plano','filtroCarga','q','filtroOrigen','bmProyectoSearchInput'];
+  ids.forEach(function(id) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    el.disabled = !!bloq;
+    el.style.opacity = bloq ? '0.5' : '';
+    el.style.cursor = bloq ? 'not-allowed' : '';
+    el.title = bloq ? 'Bloqueado en modo edición — sal de edición para filtrar' : '';
+  });
+  // Banda indicadora sobre el panel de filtros.
+  var panel = document.getElementById('bmFiltrosPanel');
+  var aviso = document.getElementById('bmFiltrosBloqueadosAviso');
+  if (bloq && !aviso && panel) {
+    aviso = document.createElement('div');
+    aviso.id = 'bmFiltrosBloqueadosAviso';
+    aviso.textContent = '🔒 Filtros bloqueados mientras editas. Guarda o descarta para volver a filtrar.';
+    aviso.style.cssText = 'background:#fff3e0; color:#e65100; border:1px solid #ffb74d; border-radius:6px; padding:5px 10px; font-size:12px; font-weight:600; margin-bottom:8px;';
+    panel.insertBefore(aviso, panel.firstChild);
+  } else if (!bloq && aviso) {
+    aviso.remove();
+  }
+}
+window.bmSetFiltrosBloqueados = bmSetFiltrosBloqueados;
 
 // 5M.9: al entrar/refrescar el Bar Manager, restaura la obra guardada y sus
 // filtros de nivel-barra, carga las facetas de esa obra y busca. Devuelve true
