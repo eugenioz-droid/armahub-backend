@@ -19,6 +19,11 @@
 
 (function(global) {
 
+  // Registro de tipos de etiqueta (etiquetas.js). Se resuelve en runtime (la carga
+  // de scripts es paralela) para no depender del orden. Todas las decisiones sobre
+  // "qué es cada tipo de etiqueta" salen de aquí, no de cadenas if (tipo===...).
+  function REG() { return global.EtiquetasRegistro; }
+
   // ---- Motor: tramos + longitudes → puntos {x,y} ----
   // dims: mapa { A: 120, B: 80, ... } con la longitud de cada lado.
   // Si una longitud falta, usa longitud unitaria (para previsualizar la FORMA
@@ -144,10 +149,9 @@
         svg += '<text x="' + aox.toFixed(1) + '" y="' + (aoy + 3).toFixed(1) + '" text-anchor="middle" fill="' + col + '" font-size="10" font-weight="700">' + txt + '</text>';
       }
     }
-    // Etiquetas MANUALES (letra/ángulo/radio/cotas), mapeadas con tx() al render.
-    var COLE = { letra: '#00695c', angulo: '#c62828', radio: '#1565c0', diametro: '#1565c0' };
+    // Etiquetas MANUALES mapeadas con tx() al render. La forma la decide el registro.
     (opts.etiquetas || []).forEach(function(e) {
-      if (e.tipo === 'arco') {
+      if (REG().esArco(e.tipo)) {
         // Cota de arco enganchada al segmento e.seg (en el espacio escalado tpts).
         if (e.seg == null || !tpts[e.seg] || !tpts[e.seg + 1]) return;
         var pa = tpts[e.seg], pb = tpts[e.seg + 1];
@@ -160,7 +164,7 @@
         svg += '<path d="M'+pa.x.toFixed(1)+','+pa.y.toFixed(1)+' Q'+cxo.toFixed(1)+','+cyo.toFixed(1)+' '+pb.x.toFixed(1)+','+pb.y.toFixed(1)+'" fill="none" stroke="#888" stroke-width="1.2" stroke-dasharray="3,2"/>';
         return;
       }
-      if (e.tipo === 'cota' || e.tipo === 'radio' || e.tipo === 'diametro') {
+      if (REG().esLinea(e.tipo)) {
         var p1 = tx({x:e.x1, y:e.y1}), p2 = tx({x:e.x2, y:e.y2});
         var dx = p2.x-p1.x, dy = p2.y-p1.y, len = Math.sqrt(dx*dx+dy*dy)||1;
         var nx = -dy/len*4, ny = dx/len*4;
@@ -175,7 +179,8 @@
         }
         return;
       }
-      var t2 = tx({x:e.x, y:e.y}); var col2 = COLE[e.tipo] || '#333';
+      // Texto (letra/ángulo): halo blanco + color del registro.
+      var t2 = tx({x:e.x, y:e.y}); var col2 = REG().color(e.tipo);
       svg += '<text x="'+t2.x.toFixed(1)+'" y="'+(t2.y+3).toFixed(1)+'" text-anchor="middle" fill="#fff" stroke="#fff" stroke-width="2.5" font-size="11" font-weight="800">'+String(e.texto).replace(/[<>&]/g,'')+'</text>';
       svg += '<text x="'+t2.x.toFixed(1)+'" y="'+(t2.y+3).toFixed(1)+'" text-anchor="middle" fill="'+col2+'" font-size="11" font-weight="800">'+String(e.texto).replace(/[<>&]/g,'')+'</text>';
     });
@@ -273,14 +278,9 @@
   // figura (lados/ángulos que alimentan las planillas) los definen las etiquetas
   // MANUALES de letra/ángulo, no los tramos automáticos del dibujo. Las etiquetas
   // de cota/radio/diámetro/arco son decorativas (no parámetros).
-  // Devuelve { parciales:[...], angulos:[...] } derivados de _etiquetas.
+  // Devuelve { parciales:[...], angulos:[...] } derivados de _etiquetas (registro).
   function _parametrosDeEtiquetas() {
-    var parciales = [], angulos = [];
-    _etiquetas.forEach(function(e) {
-      if (e.tipo === 'letra' && e.texto && e.texto !== 'R') parciales.push(String(e.texto));
-      else if (e.tipo === 'angulo' && e.texto) angulos.push(String(e.texto));
-    });
-    return { parciales: parciales, angulos: angulos };
+    return REG().parametros(_etiquetas);
   }
 
   // El próximo segmento que se dibuje será recto o arco.
@@ -435,18 +435,12 @@
     // WYSIWYG. + tipos/radios de segmento (A1) para reproducir las curvas.
     var p0 = _puntos[0] || { x: 0, y: 0 };
     var puntos = _puntos.map(function(p) { return { x: p.x - p0.x, y: -(p.y - p0.y) }; });
-    // Etiquetas manuales del lienzo, normalizadas al mismo origen (Y hacia arriba).
-    // Arco: enganchada a un segmento (seg/lado, sin coords). Cota/radio/diámetro:
-    // x1/y1/x2/y2. Letra/ángulo: x/y + texto.
-    var etiquetas = _etiquetas.map(function(e) {
-      if (e.tipo === 'arco') return { tipo: 'arco', seg: e.seg, lado: e.lado || 1 };
-      if (e.tipo === 'cota' || e.tipo === 'radio' || e.tipo === 'diametro')
-        return { tipo: e.tipo, x1: e.x1-p0.x, y1: -(e.y1-p0.y), x2: e.x2-p0.x, y2: -(e.y2-p0.y) };
-      return { tipo: e.tipo, texto: e.texto, x: e.x-p0.x, y: -(e.y-p0.y) };
-    });
+    // Etiquetas manuales normalizadas al origen p0 (el registro sabe la forma de
+    // cada tipo: arco=seg/lado, línea=x1..y2, texto=x/y).
+    var etiquetas = _etiquetas.map(function(e) { return REG().normalizar(e, p0); });
     // etiquetas_manda: la figura usa las etiquetas MANUALES como parámetros → al
     // renderizarla (galería/catálogo) NO se dibujan letras/ángulos automáticos.
-    var etMandaFlag = _etiquetas.some(function(e) { return e.tipo === 'letra' || e.tipo === 'angulo'; });
+    var etMandaFlag = REG().tieneParametros(_etiquetas);
     return { dim: '2D', tramos: tramos, puntos: puntos,
              tipos_seg: _tiposSeg.slice(), radios_seg: _radiosSeg.slice(),
              sweeps_seg: _sweepsSeg.slice(), etiquetas: etiquetas,
@@ -540,7 +534,7 @@
       var ei = parseInt(t.getAttribute('data-etiq'), 10);
       var et = _etiquetas[ei];
       // La cota de arco no se arrastra: un click sobre ella INVIERTE la guata.
-      if (et && et.tipo === 'arco') {
+      if (et && REG().esArco(et.tipo)) {
         et.lado = (et.lado || 1) * -1;
         _suprimirClick = true; setTimeout(function(){ _suprimirClick = false; }, 0);
         ev.preventDefault(); _redibujarLienzo(); return;
@@ -555,8 +549,8 @@
     var c = _coord(ev); if (!c) return;
     if (_dragEtiq >= 0 && _etiquetas[_dragEtiq]) {    // mover etiqueta (libre, sin snap)
       var et = _etiquetas[_dragEtiq];
-      if (et.tipo === 'arco') { return; }   // la cota de arco está enganchada al segmento; no se arrastra
-      if (et.tipo === 'cota' || et.tipo === 'radio' || et.tipo === 'diametro') {
+      if (!REG().esArrastrable(et.tipo)) { return; }   // ej. cota de arco: enganchada, no se arrastra
+      if (REG().esLinea(et.tipo)) {
         // Trasladar la línea completa (mantener su largo/ángulo). Ancla: punto medio.
         if (et._offx == null) { et._offx = c.x - (et.x1+et.x2)/2; et._offy = c.y - (et.y1+et.y2)/2; }
         var cx = c.x - et._offx, cy = c.y - et._offy;
@@ -674,10 +668,10 @@
         s += '<text x="' + lx2.toFixed(1) + '" y="' + (ly2 + 4).toFixed(1) + '" text-anchor="middle" fill="' + color + '" font-size="12" font-weight="700">' + info.texto + '</text>';
       });
     }
-    // Etiquetas MANUALES (siempre visibles): arrastrables (data-etiq), con color por tipo.
-    var COL_ET = { letra: '#00695c', angulo: '#c62828' };
+    // Etiquetas MANUALES (siempre visibles): arrastrables (data-etiq). La forma
+    // (arco/línea/texto) la decide el registro; el color sale del registro.
     _etiquetas.forEach(function(e, k) {
-      if (e.tipo === 'arco') {
+      if (REG().esArco(e.tipo)) {
         // Cota de arco: enganchada al segmento curvo `e.seg`, paralela al arco y
         // separada hacia afuera (offset). `e.lado` (±1) invierte la guata.
         if (e.seg == null || !_puntos[e.seg + 1]) return;
@@ -685,24 +679,25 @@
         s += '<path d="M' + ca.x1.toFixed(1) + ',' + ca.y1.toFixed(1) + ' Q' + ca.cx.toFixed(1) + ',' + ca.cy.toFixed(1) + ' ' + ca.x2.toFixed(1) + ',' + ca.y2.toFixed(1) + '" fill="none" stroke="#888" stroke-width="1.5" stroke-dasharray="4,3" data-etiq="' + k + '" style="cursor:pointer;"/>';
         return;
       }
-      if (e.tipo === 'cota') {
-        // Cota: línea gris sutil con topes perpendiculares en cada extremo.
-        var dx = e.x2 - e.x1, dy = e.y2 - e.y1, len = Math.sqrt(dx*dx+dy*dy) || 1;
-        var nx = -dy/len*5, ny = dx/len*5;   // perpendicular, tope de 5px
-        s += '<line x1="' + e.x1 + '" y1="' + e.y1 + '" x2="' + e.x2 + '" y2="' + e.y2 + '" stroke="#888" stroke-width="1.5" data-etiq="' + k + '" style="cursor:move;"/>';
-        s += '<line x1="' + (e.x1+nx) + '" y1="' + (e.y1+ny) + '" x2="' + (e.x1-nx) + '" y2="' + (e.y1-ny) + '" stroke="#888" stroke-width="1.5"/>';
-        s += '<line x1="' + (e.x2+nx) + '" y1="' + (e.y2+ny) + '" x2="' + (e.x2-nx) + '" y2="' + (e.y2-ny) + '" stroke="#888" stroke-width="1.5"/>';
+      if (REG().esLinea(e.tipo)) {
+        if (e.tipo === 'cota') {
+          // Cota: línea gris sutil con topes perpendiculares en cada extremo.
+          var dx = e.x2 - e.x1, dy = e.y2 - e.y1, len = Math.sqrt(dx*dx+dy*dy) || 1;
+          var nx = -dy/len*5, ny = dx/len*5;   // perpendicular, tope de 5px
+          s += '<line x1="' + e.x1 + '" y1="' + e.y1 + '" x2="' + e.x2 + '" y2="' + e.y2 + '" stroke="#888" stroke-width="1.5" data-etiq="' + k + '" style="cursor:move;"/>';
+          s += '<line x1="' + (e.x1+nx) + '" y1="' + (e.y1+ny) + '" x2="' + (e.x1-nx) + '" y2="' + (e.y1-ny) + '" stroke="#888" stroke-width="1.5"/>';
+          s += '<line x1="' + (e.x2+nx) + '" y1="' + (e.y2+ny) + '" x2="' + (e.x2-nx) + '" y2="' + (e.y2-ny) + '" stroke="#888" stroke-width="1.5"/>';
+        } else {
+          // Radio: flecha al final (→). Diámetro: flecha en ambos extremos (↔).
+          var mk = e.tipo === 'diametro'
+            ? ' marker-start="url(#disArrowStart)" marker-end="url(#disArrowEnd)"'
+            : ' marker-end="url(#disArrowEnd)"';
+          s += '<line x1="' + e.x1 + '" y1="' + e.y1 + '" x2="' + e.x2 + '" y2="' + e.y2 + '" stroke="#1565c0" stroke-width="1.5" data-etiq="' + k + '" style="cursor:move;"' + mk + '/>';
+        }
         return;
       }
-      if (e.tipo === 'radio' || e.tipo === 'diametro') {
-        // Radio: flecha al final (→ hacia el arco). Diámetro: flecha en ambos extremos (↔).
-        var mk = e.tipo === 'diametro'
-          ? ' marker-start="url(#disArrowStart)" marker-end="url(#disArrowEnd)"'
-          : ' marker-end="url(#disArrowEnd)"';
-        s += '<line x1="' + e.x1 + '" y1="' + e.y1 + '" x2="' + e.x2 + '" y2="' + e.y2 + '" stroke="#1565c0" stroke-width="1.5" data-etiq="' + k + '" style="cursor:move;"' + mk + '/>';
-        return;
-      }
-      var col = COL_ET[e.tipo] || '#333';
+      // Texto (letra/ángulo): halo blanco + color del registro.
+      var col = REG().color(e.tipo);
       s += '<text x="' + e.x + '" y="' + (e.y + 4) + '" text-anchor="middle" fill="#fff" stroke="#fff" stroke-width="3" font-size="13" font-weight="800" data-etiq="' + k + '" style="cursor:move;">' + String(e.texto).replace(/[<>&]/g, '') + '</text>';
       s += '<text x="' + e.x + '" y="' + (e.y + 4) + '" text-anchor="middle" fill="' + col + '" font-size="13" font-weight="800" data-etiq="' + k + '" style="cursor:move;">' + String(e.texto).replace(/[<>&]/g, '') + '</text>';
     });
@@ -746,7 +741,7 @@
       if (ev.target && ev.target.getAttribute && ev.target.getAttribute('data-etiq') != null) return;
       var cc = _coord(ev); if (!cc) return;
       var tipo = (document.getElementById('disEtTipo') || {}).value || 'cota';
-      if (tipo === 'arco') {
+      if (REG().esArco(tipo)) {
         // Cota de ARCO: 1 click sobre un segmento CURVO → la cota sigue ese arco,
         // separada hacia afuera (offset). Se puede invertir la guata luego.
         var seg = _arcoCercaDe(cc);
@@ -756,7 +751,7 @@
           _etiquetas.push({ tipo: 'arco', seg: seg, lado: 1 });   // lado: 1/-1 = guata
           _redibujarLienzo(); _redibujarPanel();
         }
-      } else if (tipo === 'cota' || tipo === 'radio' || tipo === 'diametro') {
+      } else if (REG().esLinea(tipo)) {
         // Cota/radio/diámetro = línea de 2 clicks (inicio y fin), sin botón previo.
         if (!_cotaInicio) {
           _cotaInicio = { x: cc.x, y: cc.y, tipo: tipo };
@@ -768,6 +763,7 @@
           _cotaInicio = null; _cotaHover = null; _redibujarLienzo(); _redibujarPanel();
         }
       } else {
+        // Texto (letra/ángulo): 1 click; es PARÁMETRO en modo etiqueta-manda.
         var texto = (tipo === 'letra')
           ? ((document.getElementById('disEtLetra') || {}).value || 'A')
           : ((document.getElementById('disEtAngulo') || {}).value || 'α1');
@@ -1095,13 +1091,8 @@
     _sweepsSeg = f.geometria.sweeps_seg ? f.geometria.sweeps_seg.slice()
       : f.geometria.tramos.map(function(t) { return t.sweep != null ? t.sweep : 1; });
     // Cargar etiquetas manuales (guardadas relativas a p0, Y arriba → lienzo).
-    // Arco: seg/lado (sin coords). Cota/radio/diámetro: x1/y1/x2/y2. Resto: x/y.
-    _etiquetas = (f.geometria.etiquetas || []).map(function(e) {
-      if (e.tipo === 'arco') return { tipo: 'arco', seg: e.seg, lado: e.lado || 1 };
-      if (e.tipo === 'cota' || e.tipo === 'radio' || e.tipo === 'diametro')
-        return { tipo: e.tipo, x1: Math.round(e.x1)+offX, y1: offY-Math.round(e.y1), x2: Math.round(e.x2)+offX, y2: offY-Math.round(e.y2) };
-      return { tipo: e.tipo, texto: e.texto, x: Math.round(e.x) + offX, y: offY - Math.round(e.y) };
-    });
+    // El registro sabe la forma de cada tipo (arco/línea/texto).
+    _etiquetas = (f.geometria.etiquetas || []).map(function(e) { return REG().desnormalizar(e, offX, offY); });
     _segSel = -1;
     _dibujando = false;    // cargada = terminada (sin rubber band); "Retomar" para seguir
     _editando = codigo;
