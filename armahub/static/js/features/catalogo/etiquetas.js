@@ -117,19 +117,23 @@
     // Radio efectivo del arco de la barra (misma regla que _pathDesdePuntos).
     var r = Math.max(radioBarra || cuerda * 0.75, cuerda / 2 + 0.5);
     var sw = (sweep != null ? sweep : 1) ? 1 : 0;   // flag de barrido SVG (0/1)
-    // Centro del arco de la barra: a un lado de la cuerda según sweep.
     var mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
     var h = Math.sqrt(Math.max(0, r*r - (cuerda/2)*(cuerda/2)));
-    var ux = dx/cuerda, uy = dy/cuerda;             // dir cuerda
-    var nx = -uy, ny = ux;                          // normal a la cuerda
-    // El flag sweep=1 (SVG) curva hacia un lado; el centro está al lado opuesto.
-    var s = sw ? -1 : 1;
-    var cx = mx + nx*h*s, cy = my + ny*h*s;         // centro del arco
-    // Cota concéntrica: mismo centro, radio = r + off (o r - off para la otra guata).
+    var ux = dx/cuerda, uy = dy/cuerda;             // dir cuerda (unit)
+    var nx = -uy, ny = ux;                          // normal a la cuerda (unit)
+    // CENTRO del arco SVG "A r r 0 0 sw b" (verificado contra el algoritmo W3C
+    // endpoint→center): para sweep=1 el centro está al lado +normal; para sweep=0,
+    // al lado -normal. La cota concéntrica se separa del centro → hacia la guata.
+    var s = sw ? 1 : -1;
+    var cx = mx + nx*h*s, cy = my + ny*h*s;
+    // La "guata" del arco (su punto medio) apunta al lado OPUESTO al centro respecto
+    // a la cuerda. Ese es el lado hacia el que hay que separar la cota (hacia afuera).
+    // lado ±1 permite invertir manualmente si se quisiera al otro lado.
     var lg = (lado || 1) >= 0 ? 1 : -1;
     var rc = r + off * lg;
-    if (rc < 1) rc = 1;
-    // Puntos de la cota sobre el círculo concéntrico (misma dirección desde el centro).
+    if (rc < cuerda/2 + 0.5) rc = cuerda/2 + 0.5;   // no colapsar el arco
+    // Extremos de la cota: sobre el círculo concéntrico (mismo centro, radio rc),
+    // en la MISMA dirección angular que a y b desde el centro → paralela pareja.
     var a0 = Math.atan2(a.y - cy, a.x - cx), a1 = Math.atan2(b.y - cy, b.x - cx);
     var pax = cx + rc*Math.cos(a0), pay = cy + rc*Math.sin(a0);
     var pbx = cx + rc*Math.cos(a1), pby = cy + rc*Math.sin(a1);
