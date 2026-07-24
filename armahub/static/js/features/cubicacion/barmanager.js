@@ -944,7 +944,8 @@ function resetFiltros() {
   if (typeof clearCargaFilter === 'function') clearCargaFilter(true);
   if (typeof loadCargasDropdown === 'function') loadCargasDropdown('');
   const si = document.getElementById('bmProyectoSearchInput'); if (si) si.value = '';
-  try { localStorage.removeItem(FILTER_STORAGE_KEY); } catch (e) {}
+  // Limpiar memoria de filtros (session + cualquier residuo viejo en local).
+  try { sessionStorage.removeItem(FILTER_STORAGE_KEY); localStorage.removeItem(FILTER_STORAGE_KEY); } catch (e) {}
 
   // Estado interno: limpiar resultados previos para evitar que queden barras
   // de la búsqueda anterior en pantalla cuando no hay proyecto seleccionado.

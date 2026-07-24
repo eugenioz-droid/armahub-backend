@@ -218,6 +218,20 @@
       if (typeof window.bmResetModoEdicion === 'function') window.bmResetModoEdicion();
     }
 
+    // Salir del Bar Manager con filtros de ubicación/foco activos: avisar que se
+    // perderán (los filtros no sobreviven a la salida de la pantalla; solo a un F5).
+    if (window.currentModule === 'cubicacion' && mod !== 'cubicacion' &&
+        typeof window.bmHayFiltrosActivos === 'function' && window.bmHayFiltrosActivos()) {
+      if (!confirm('Al salir se perderán los filtros aplicados en el Bar Manager.\n\n¿Salir de todas formas?')) {
+        return;
+      }
+    }
+    // Al salir del Bar Manager, limpiar la memoria de filtros (sessionStorage).
+    if (window.currentModule === 'cubicacion' && mod !== 'cubicacion' &&
+        typeof window.clearFiltersStorage === 'function') {
+      window.clearFiltersStorage();
+    }
+
     var hub = document.getElementById('hubScreen');
     var container = document.getElementById('moduleContainer');
     var title = document.getElementById('moduleTitle');

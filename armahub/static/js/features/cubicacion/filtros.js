@@ -51,6 +51,9 @@ function _bmBloqueadoPorEdicion(selectId) {
   return true;
 }
 
+// sessionStorage (no localStorage): sobrevive un refresh (F5) para no perder el
+// trabajo por un recargado accidental, pero se BORRA al cerrar la pestaña o salir
+// del Bar Manager. Así los filtros no quedan "pegados" entre sesiones/navegación.
 function saveFiltersToStorage() {
   const state = {};
   FILTER_PERSIST_KEYS.forEach(f => {
@@ -58,18 +61,34 @@ function saveFiltersToStorage() {
     if (el && el.value) state[f] = el.value;
   });
   try {
-    if (Object.keys(state).length) localStorage.setItem(FILTER_STORAGE_KEY, JSON.stringify(state));
-    else localStorage.removeItem(FILTER_STORAGE_KEY);
+    if (Object.keys(state).length) sessionStorage.setItem(FILTER_STORAGE_KEY, JSON.stringify(state));
+    else sessionStorage.removeItem(FILTER_STORAGE_KEY);
   } catch(e) {}
 }
 
 function restoreFiltersFromStorage() {
   try {
-    const raw = localStorage.getItem(FILTER_STORAGE_KEY);
+    const raw = sessionStorage.getItem(FILTER_STORAGE_KEY);
     if (!raw) return null;
     return JSON.parse(raw);
   } catch(e) { return null; }
 }
+
+// Limpia la memoria de filtros (al salir del Bar Manager). Los filtros no deben
+// sobrevivir a la salida de la pantalla.
+function clearFiltersStorage() {
+  try { sessionStorage.removeItem(FILTER_STORAGE_KEY); } catch(e) {}
+}
+
+// ¿Hay algún filtro de UBICACIÓN/foco activo? (sector/piso/ciclo/eje/figura/
+// tipología/diámetro/plano/carga). El proyecto NO cuenta: es la obra, no un foco.
+// Lo usa el aviso al salir del Bar Manager ("se perderán los filtros").
+function bmHayFiltrosActivos() {
+  var ids = ['sector','piso','ciclo','eje','filtroFigura','filtroTipologia','filtroDiametro','plano','filtroCarga'];
+  return ids.some(function(id) { var el = document.getElementById(id); return el && el.value; });
+}
+window.bmHayFiltrosActivos = bmHayFiltrosActivos;
+window.clearFiltersStorage = clearFiltersStorage;
 
 // 5M.9: al entrar/refrescar el Bar Manager, restaura la obra guardada y sus
 // filtros de nivel-barra, carga las facetas de esa obra y busca. Devuelve true

@@ -55,8 +55,13 @@
           <!-- Buscador con datalist: escribes y despliega los ejes de la obra.
                type=text (no search: evita la X nativa que dispara eventos raros).
                autocomplete=off para que el navegador no ofrezca usuario/clave. -->
+          <!-- autocomplete con valor único no estándar: Chrome ignora "off" en inputs
+               de texto y ofrecía guardar/rellenar como si fuera credencial. Un token
+               inventado + readonly-hasta-enfocar evita el gestor de contraseñas. -->
           <input type="text" id="eje" list="bmEjesDatalist" onchange="onFilterChange('eje')"
-                 name="bm-eje-buscar" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"
+                 name="bm-eje-filtro-6371" autocomplete="off" data-lpignore="true" data-form-type="other"
+                 autocapitalize="off" autocorrect="off" spellcheck="false"
+                 readonly onfocus="this.removeAttribute('readonly')"
                  placeholder="Todos" style="font-size:13px; height:34px; width:100%; box-sizing:border-box;" />
           <datalist id="bmEjesDatalist"></datalist>
         </div>
