@@ -709,6 +709,44 @@ figura vive en el **Catálogo Armacero** (§4A), no en las barras.
 
 > Detalle en programa F8-F9. Esta sección se completa durante el trabajo de esas fases.
 
+### 4.7 Creación manual de barras — tab "Cubicar" (PLANIFICADO, no iniciar hasta terminar editores)
+
+> Objetivo: panel de **alta** de barras en Cubicaciones (no consulta como el Bar Manager,
+> sino ingreso). El cubicador crea barras que NO vienen de un CSV de ArmaDetailer.
+> Programa completo en `docs/programa_panel_creacion_barras.md`. NO empezar hasta cerrar
+> los editores de figuras (2D/3D).
+
+**Qué queremos:**
+- Formulario de alta con **ubicación reutilizable**: Proyecto → Piso → Ciclo → Sector → Eje,
+  autopoblado con las ubicaciones ya existentes del proyecto (dropdowns con opción "＋ nueva"),
+  usando `GET /proyectos/{id}/sectores-nav` y los `SELECT DISTINCT` de ubicación existentes.
+- **Selector de figura** del Catálogo Armacero (§4A) → el form pide **solo las dimensiones que
+  esa figura usa** (sus `parciales` + ángulos + radio). Homologa con el diseñador: la figura
+  define qué campos se piden. Render de la figura via `disenadorMotor.dibujarFigura`.
+- Diámetro (selector estándar), cantidad, marca, peso calculado en vivo (`_calcular_peso`).
+- Barra guardada con `origen='manual'`, `import_id=NULL`, `editado_por=user`.
+
+**Requisito CLAVE — protección contra reimportación:** las barras `origen='manual'` deben
+**sobrevivir** a la reimportación de un sector constructivo. Hoy la eliminación de carga es por
+`import_id` (barras.py:1048) → las manuales ya sobreviven a "eliminar carga". Falta **blindar
+cualquier path que borre por sector/proyecto** al reimportar (agregar `AND origen <> 'manual'`).
+
+**Estado del andamiaje (verificado 2026-07):**
+- `POST /barras/crear` con `BarraManualCreate` YA existe pero **DESHABILITADO** (403). Rehabilitar.
+- `POST /barras/{id}/duplicar` (manual) también deshabilitado.
+- Columna `origen` (csv/manual/pedido) existe; filtros/stats la respetan. `_calcular_peso` listo.
+- **⚠ El modelo `BarraManualCreate` está INCOMPLETO para lo que queremos.** Tiene ubicación +
+  diam/largo/cant/figura/marca, pero **le faltan `dim_a..dim_i`, `ang1..ang4`, `radio`,
+  `nombre_proyecto`, `mult`** — es decir, toda la parte dimensional que homologa con el catálogo.
+  Sirve como esqueleto de ubicación pero hay que ampliarlo antes de usarlo.
+- **Generación de `id_unico`** para barras manuales: pendiente de definir (correlativo legible
+  vs UUID; no debe chocar con CSV ni reimportaciones). Ver preguntas del programa.
+
+**Decisiones pendientes (9 preguntas en el programa):** largo total auto vs manual, formato de
+id_unico, multi-alta (grilla) vs "guardar y crear otra", permisos (dueño de obra vs cualquiera),
+marca libre vs sugerida, diámetros estándar vs libre, crear ubicación nueva al vuelo, tab
+separado vs botón en Bar Manager, confirmación del comportamiento de reimport.
+
 ---
 
 ## 4A. CALUGA: CATÁLOGO ARMACERO
