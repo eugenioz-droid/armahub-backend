@@ -131,6 +131,31 @@
     return !isNaN(n) && n !== 0;
   }
 
+  // Largo EFECTIVO de una barra si tiene cambios de geometría pendientes: suma los
+  // lados que la figura USA, con los valores efectivos (cambio pendiente o memoria).
+  // Réplica de largo_desde_lados del backend, para mostrar el largo YA actualizado
+  // en pantalla (antes mostraba el viejo hasta guardar → confusión 192 vs 180).
+  // Devuelve null si no hay cambios de geometría o la figura es desconocida.
+  global.bmLargoEfectivo = function(b) {
+    var id = String(b.id);
+    var camb = _cambios[id];
+    if (!camb) return null;
+    var tocaGeom = ['figura','dim_a','dim_b','dim_c','dim_d','dim_e','dim_f','dim_g','dim_h','dim_i']
+      .some(function(k) { return k in camb; });
+    if (!tocaGeom) return null;
+    var figura = ('figura' in camb) ? camb.figura : b.figura;
+    var fig = _catFiguras[figura];
+    if (!fig) return null;   // figura desconocida → que el backend recalcule al guardar
+    var total = 0;
+    (fig.parciales || []).forEach(function(l) {
+      var col = 'dim_' + String(l).trim().toLowerCase();
+      var v = (col in camb) ? camb[col] : b[col];
+      var n = parseFloat(v);
+      if (!isNaN(n)) total += n;
+    });
+    return total;
+  };
+
   // Valida en el navegador la geometría de una barra contra el catálogo y resalta
   // en ROJO al instante los lados/ángulos/radio que sobran o faltan (5M.4).
   // Lee los valores EFECTIVOS de los inputs de esa fila.
@@ -190,6 +215,20 @@
   function _cambioTocado(barraId, campo) {
     return _cambios[barraId] && (campo in _cambios[barraId]);
   }
+
+  // FUENTE ÚNICA DE VERDAD para lo que se ve en una celda editable: si hay un
+  // cambio pendiente para (barra, campo), ese manda; si no, el valor de memoria.
+  // Con esto CUALQUIER re-render preserva los cambios sin guardar (antes el render
+  // leía solo la memoria e "ignoraba" _cambios → los cambios desaparecían al
+  // marcar todas / togglear masivo / paginar, y el estado se desincronizaba).
+  // Devuelve { valor, tocado } — tocado=true para pintar la celda de amarillo.
+  global.bmValorEfectivoCelda = function(id, campo, valorMemoria) {
+    id = String(id);
+    if (_cambios[id] && (campo in _cambios[id])) {
+      return { valor: _cambios[id][campo], tocado: true };
+    }
+    return { valor: valorMemoria, tocado: false };
+  };
 
   // Valida TODAS las filas visibles (5M.4): al entrar en modo edición o tras
   // re-render, resalta en rojo las barras que ya vienen incoherentes de origen.

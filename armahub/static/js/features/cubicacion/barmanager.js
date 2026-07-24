@@ -490,14 +490,19 @@ function _bmFilaBarraHTML(b, editando, conUbicacion) {
   function _n(v, d) { if (v == null || v === '' || isNaN(v)) return ''; return d ? Number(v).toFixed(d) : Math.round(Number(v)); }
   function _celdaEdit(campo, val, dec, ancho) {
     if (!editando) return '<td style="padding:2px 6px; text-align:right; color:#444;">' + _n(val, dec) + '</td>';
+    // Valor EFECTIVO: el cambio pendiente si existe, si no el de memoria. Así un
+    // re-render (marcar todas, togglear masivo, paginar) NUNCA pierde los cambios.
+    var ef = (typeof bmValorEfectivoCelda === 'function') ? bmValorEfectivoCelda(b.id, campo, val) : { valor: val, tocado: false };
+    var v = ef.valor;
     // Un lado/ángulo/radio NO usado se guarda como 0 en el backend (no NULL). Para
     // el usuario, 0 = "vacío" (lado que la figura no usa). Mostrar el 0 hacía que un
     // borrado pareciera no haber funcionado (reaparecía "0"). Por eso 0 → vacío.
     var esGeom = /^(dim_|ang|radio)/.test(campo);
-    var mostrar = (val == null || (esGeom && Number(val) === 0)) ? '' : val;
+    var mostrar = (v == null || (esGeom && Number(v) === 0)) ? '' : v;
+    var bg = ef.tocado ? ' background:#fff3cd;' : '';   // amarillo = modificado sin guardar
     return '<td style="padding:1px 3px; text-align:right;"><input type="number" step="any" value="' + mostrar +
       '" data-barra-id="' + b.id + '" data-campo="' + campo + '" id="bmcell-' + b.id + '-' + campo + '" onchange="bmRegistrarCambio(this)" ' +
-      'style="width:' + (ancho || 60) + 'px; font-size:11px; text-align:right; padding:1px 3px;" /></td>';
+      'style="width:' + (ancho || 60) + 'px; font-size:11px; text-align:right; padding:1px 3px;' + bg + '" /></td>';
   }
   function _celdaFigura() {
     if (!editando) {
@@ -510,9 +515,22 @@ function _bmFilaBarraHTML(b, editando, conUbicacion) {
         : (b.figura || '—');
       return '<td style="padding:2px 6px; color:#666; white-space:nowrap;">' + cont + '</td>';
     }
-    return '<td style="padding:1px 3px;"><input type="text" list="bmFigurasDatalist" value="' + (b.figura || '') +
+    var efF = (typeof bmValorEfectivoCelda === 'function') ? bmValorEfectivoCelda(b.id, 'figura', b.figura) : { valor: b.figura, tocado: false };
+    var bgF = efF.tocado ? ' background:#fff3cd;' : '';
+    return '<td style="padding:1px 3px;"><input type="text" list="bmFigurasDatalist" value="' + (efF.valor || '') +
       '" data-barra-id="' + b.id + '" data-campo="figura" id="bmcell-' + b.id + '-figura" onchange="bmRegistrarCambio(this)" ' +
-      'style="width:64px; font-size:11px; padding:1px 3px;" /></td>';
+      'style="width:64px; font-size:11px; padding:1px 3px;' + bgF + '" /></td>';
+  }
+  // Celda del LARGO. Si hay cambios de geometría pendientes, muestra el largo YA
+  // recalculado (suma de lados efectivos) en color, con nota "se guardará así".
+  // Si no, el largo de memoria. Evita el desconcierto de ver el largo viejo (192)
+  // cuando los lados ya suman otra cosa (180).
+  function _celdaLargo() {
+    var lEf = (editando && typeof bmLargoEfectivo === 'function') ? bmLargoEfectivo(b) : null;
+    if (lEf != null) {
+      return '<td style="padding:2px 6px; text-align:right; color:#1565c0; font-weight:600;" title="Largo recalculado de los lados (se guardará así)">' + _n(lEf, 0) + '</td>';
+    }
+    return '<td style="padding:2px 6px; text-align:right; color:#888;" title="Se calcula de la suma de los lados">' + _n(b.largo_total, 0) + '</td>';
   }
   var dimKeys = ['dim_a','dim_b','dim_c','dim_d','dim_e','dim_f','dim_g','dim_h','dim_i'];
   var angKeys = ['ang1','ang2','ang3','ang4'];
@@ -543,7 +561,7 @@ function _bmFilaBarraHTML(b, editando, conUbicacion) {
     '<td style="padding:2px 6px; font-weight:600;">' + (conUbicacion && b.editado_por ? '✏️ ' : '') + (b.marca || '—') + '</td>' +
     _celdaEdit('diam', b.diam, 0) +
     _celdaEdit('cant_total', b.cant_total, 0) +
-    '<td style="padding:2px 6px; text-align:right; color:#888;" title="Se calcula de la suma de los lados">' + _n(b.largo_total, 0) + '</td>';
+    _celdaLargo();
   if (!conUbicacion) html += '<td style="padding:2px 6px; text-align:right;">' + _n(b.peso_unitario, 2) + '</td>';
   html += '<td style="padding:2px 6px; text-align:right;">' + _n(b.peso_total, 1) + '</td>';
   if (!conUbicacion) {
