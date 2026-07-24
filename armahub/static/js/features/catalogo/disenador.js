@@ -861,9 +861,11 @@
         '</tr>';
     });
     html += '</table>';
+    var p = REG().parametros(_etiquetas);
     html += '<div style="margin-top:8px; font-size:12px; color:#444;">' +
       '<div><b>Lados:</b> ' + letras.map(function(e){ return e.texto; }).join(', ') + '</div>' +
       '<div><b>Ángulos:</b> ' + (angs.length ? angs.join(', ') : '— (todos 90°/implícitos)') + '</div>' +
+      '<div><b>Radio:</b> ' + (p.radio ? 'Sí' : '—') + '</div>' +
       '<div><b>N° de lados:</b> ' + letras.length + '</div>' +
       (angs.length > 4 ? '<div style="color:#c62828; margin-top:4px;">⚠ ' + angs.length + ' ángulos — el sistema soporta máx. 4 (α1-α4).</div>' : '') +
       '</div>';
@@ -915,14 +917,11 @@
     // son los parámetros reales (así el diseñador alimenta el catálogo). Las cotas
     // decorativas no cuentan. Si no hay etiquetas, se usan los tramos automáticos.
     var pe = _parametrosDeEtiquetas();
-    var usarEtiquetas = _modoEtiquetas && (pe.parciales.length || pe.angulos.length);
+    var usarEtiquetas = _modoEtiquetas && (pe.parciales.length || pe.angulos.length || pe.radio);
     if (usarEtiquetas) {
       parciales = pe.parciales;
       angulos = pe.angulos;
-      // Radio true si hay etiqueta 'R', o cualquier cota de radio/diámetro/arco.
-      radio = _etiquetas.some(function(e) {
-        return (e.tipo === 'letra' && e.texto === 'R') || e.tipo === 'radio' || e.tipo === 'diametro' || e.tipo === 'arco';
-      });
+      radio = pe.radio;   // R / cota de radio / diámetro / cota de arco → figura con radio
     } else {
       parciales = geo.tramos.map(function(t) { return t.lado; });
       // Convención aSa: solo los ángulos ESPECIALES (≠90 y ≠0) van a `angulos`.

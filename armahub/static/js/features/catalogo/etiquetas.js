@@ -72,7 +72,11 @@
       if (d.parametro === 'parcial' && e.texto && e.texto !== 'R') parciales.push(String(e.texto));
       else if (d.parametro === 'angulo' && e.texto) angulos.push(String(e.texto));
     });
-    return { parciales: parciales, angulos: angulos };
+    // La R (radio) NO es un lado: se registra como flag `radio` de la figura.
+    var radio = (etiquetas || []).some(function(e) {
+      return (e.tipo === 'letra' && e.texto === 'R') || e.tipo === 'radio' || e.tipo === 'diametro' || e.tipo === 'arco';
+    });
+    return { parciales: parciales, angulos: angulos, radio: radio };
   }
 
   // ¿La figura debe considerarse "etiqueta-manda"? (hay al menos una etiqueta de
