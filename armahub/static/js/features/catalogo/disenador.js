@@ -100,21 +100,26 @@
       svg += '<circle cx="' + p.x.toFixed(1) + '" cy="' + p.y.toFixed(1) + '" r="' + (isEnd ? 2.5 : 2) +
         '" fill="' + (isEnd ? '#004d40' : '#4db6ac') + '" />';
     });
-    // Etiquetas de lado, desplazadas perpendicular a la línea (no encima).
-    for (var i = 1; i < tpts.length; i++) {
-      var a = tpts[i - 1], b = tpts[i];
-      var mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
-      var lbl = labels[i - 1] || '';
-      if (lbl) {
-        var svx = b.x - a.x, svy = b.y - a.y; var sl = Math.sqrt(svx*svx + svy*svy) || 1;
-        var lox = mx - (svy/sl) * 10, loy = my + (svx/sl) * 10;
-        svg += '<text x="' + lox.toFixed(1) + '" y="' + (loy + 3).toFixed(1) +
-          '" text-anchor="middle" fill="#00695c" font-size="11" font-weight="700">' + lbl + '</text>';
+    // Etiquetas de lado AUTOMÁTICAS, desplazadas perpendicular a la línea (no encima).
+    // Se pueden suprimir con opts.labels_auto === false (modo etiqueta-manda: las
+    // letras las pone el usuario a mano, no se muestran las automáticas).
+    if (opts.labels_auto !== false) {
+      for (var i = 1; i < tpts.length; i++) {
+        var a = tpts[i - 1], b = tpts[i];
+        var mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+        var lbl = labels[i - 1] || '';
+        if (lbl) {
+          var svx = b.x - a.x, svy = b.y - a.y; var sl = Math.sqrt(svx*svx + svy*svy) || 1;
+          var lox = mx - (svy/sl) * 10, loy = my + (svx/sl) * 10;
+          svg += '<text x="' + lox.toFixed(1) + '" y="' + (loy + 3).toFixed(1) +
+            '" text-anchor="middle" fill="#00695c" font-size="11" font-weight="700">' + lbl + '</text>';
+        }
       }
     }
     // 5M.8.6: etiquetas de ÁNGULO en la bisectriz de cada vértice interno (α1…;
-    // 90° gris). Solo si opts.angulos !== false (permite render limpio si se quiere).
-    if (opts.angulos !== false) {
+    // 90° gris). Se suprimen con opts.angulos===false o en modo etiqueta-manda
+    // (opts.labels_auto===false: los ángulos los pone el usuario a mano).
+    if (opts.angulos !== false && opts.labels_auto !== false) {
       var nAlfa = 0;
       for (var j = 1; j < tpts.length - 1; j++) {
         // Saltar vértices adyacentes a un arco (la curva es el doblez, no un ángulo).
@@ -182,8 +187,13 @@
       (((geometria && geometria.tramos) || []).map(function(t) { return t.radio || 0; }));
     var sweeps = (geometria && geometria.sweeps_seg) ||
       (((geometria && geometria.tramos) || []).map(function(t) { return (t.sweep != null ? t.sweep : 1); }));
+    // labels_auto: si la geometría es "etiqueta-manda", suprimir letras/ángulos
+    // automáticos también en galería/catálogo (aunque no pasen el flag explícito).
+    var labelsAuto = opts.labels_auto;
+    if (labelsAuto === undefined && geometria && geometria.etiquetas_manda) labelsAuto = false;
     var o = { labels: labels, width: opts.width, height: opts.height, pad: opts.pad,
-              angulos: opts.angulos, tipos_seg: tipos, radios_seg: radios, sweeps_seg: sweeps,
+              angulos: opts.angulos, labels_auto: labelsAuto,
+              tipos_seg: tipos, radios_seg: radios, sweeps_seg: sweeps,
               etiquetas: (geometria && geometria.etiquetas) || [] };
     return svgDesdePuntos(pts, o);
   }
@@ -424,9 +434,13 @@
         return { tipo: e.tipo, x1: e.x1-p0.x, y1: -(e.y1-p0.y), x2: e.x2-p0.x, y2: -(e.y2-p0.y) };
       return { tipo: e.tipo, texto: e.texto, x: e.x-p0.x, y: -(e.y-p0.y) };
     });
+    // etiquetas_manda: la figura usa las etiquetas MANUALES como parámetros → al
+    // renderizarla (galería/catálogo) NO se dibujan letras/ángulos automáticos.
+    var etMandaFlag = _etiquetas.some(function(e) { return e.tipo === 'letra' || e.tipo === 'angulo'; });
     return { dim: '2D', tramos: tramos, puntos: puntos,
              tipos_seg: _tiposSeg.slice(), radios_seg: _radiosSeg.slice(),
-             sweeps_seg: _sweepsSeg.slice(), etiquetas: etiquetas };
+             sweeps_seg: _sweepsSeg.slice(), etiquetas: etiquetas,
+             etiquetas_manda: etMandaFlag };
   }
 
   // ---- Longitudes de cada lado desde los puntos del lienzo (en px de grilla) ----
@@ -837,8 +851,9 @@
     if (_puntos.length < 2) { prev.innerHTML = '<span class="muted" style="font-size:11px;">Dibuja para ver el preview.</span>'; return; }
     try {
       var geo = _puntosAGeometria();
-      // Render de la figura a tamaño de preview (chico pero legible, con etiquetas).
-      prev.innerHTML = dibujarFigura(geo, null, { width: 210, height: 140, pad: 18 });
+      // Render a tamaño de preview. En modo etiqueta-manda NO dibujar las letras/
+      // ángulos automáticos (labels_auto:false): solo se ven las etiquetas manuales.
+      prev.innerHTML = dibujarFigura(geo, null, { width: 210, height: 140, pad: 18, labels_auto: _modoEtiquetas ? false : undefined });
     } catch (e) { prev.innerHTML = '<span class="muted" style="font-size:11px;">Preview no disponible.</span>'; }
   };
 
