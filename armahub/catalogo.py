@@ -254,7 +254,13 @@ def largo_desde_lados(cur, codigo_figura: str, valores: dict):
         return None
     total = 0.0
     for letra in fig["parciales"]:
-        v = valores.get(_SLOT_A_DIM[letra])
+        # Normalizar la letra del parcial: mayúscula y sin espacios. Si viene una
+        # letra fuera de A-I (data sucia en el catálogo), se ignora ese parcial en
+        # vez de reventar con KeyError (que provocaba un 500 al guardar la barra).
+        dim_col = _SLOT_A_DIM.get(str(letra).strip().upper())
+        if dim_col is None:
+            continue
+        v = valores.get(dim_col)
         try:
             total += float(v)
         except (ValueError, TypeError):
