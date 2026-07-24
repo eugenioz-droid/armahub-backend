@@ -733,14 +733,21 @@
   // curva base sobre la imagen). Devuelve un <svg> absoluto o '' si no hay etiquetas.
   function _svgEtiquetasEscaladas(etiquetas, w, h) {
     if (!etiquetas || !etiquetas.length) return '';
+    // El overlay usa viewBox CWxCH (420x320) reducido a wxh (ej. 90x72). Ese factor
+    // achica TODO, incluido el texto → letras minúsculas. Compensamos agrandando el
+    // texto en el espacio del viewBox, para que al reducir quede legible.
+    var fesc = CW / (w || CW);        // factor de reducción del overlay
+    var fs = Math.max(13, Math.round(11 * fesc));   // texto agrandado en el viewBox
+    var halo = Math.max(3, Math.round(fs * 0.28));
+    var sw = Math.max(1, fesc * 0.7);
     var e = '';
     etiquetas.forEach(function(et) {
       if (REG().esArco(et.tipo)) return;   // no aplica sobre imagen
       if (REG().esLinea(et.tipo)) {
         var p1 = { x: et.x1, y: et.y1 }, p2 = { x: et.x2, y: et.y2 };
-        e += (et.tipo === 'cota') ? REG().dibujarCota(p1, p2, { sw: 1 }) : REG().dibujarRadioDiam(et.tipo, p1, p2, { sw: 1 });
+        e += (et.tipo === 'cota') ? REG().dibujarCota(p1, p2, { sw: sw }) : REG().dibujarRadioDiam(et.tipo, p1, p2, { sw: sw });
       } else {
-        e += REG().dibujarTexto(et.tipo, et.texto, { x: et.x, y: et.y }, { fs: 13, halo: 3, dy: 4 });
+        e += REG().dibujarTexto(et.tipo, et.texto, { x: et.x, y: et.y }, { fs: fs, halo: halo, dy: fs * 0.32 });
       }
     });
     if (!e) return '';
@@ -750,6 +757,7 @@
       '<marker id="disArrowStart" markerWidth="9" markerHeight="9" refX="0" refY="3" orient="auto"><path d="M7,0 L0,3 L7,6 Z" fill="#1565c0"/></marker></defs>' +
       e + '</svg>';
   }
+  global.disenadorSvgEtiquetasEscaladas = _svgEtiquetasEscaladas;
 
   // ---- Coordenada del evento relativa al SVG ----
   function _coord(ev) {

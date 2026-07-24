@@ -130,6 +130,14 @@
     _bindRotacion(cont);
     _animar();
     global.disenador3dSetPlano(_planoActivo);   // plano inicial + resaltado del botón
+    // Si se cargó una figura ANTES de que Three.js estuviera listo (re-editar),
+    // ahora que el espacio existe: redibujarla y refrescar el preview con su
+    // snapshot + etiquetas.
+    if (_nodos3d.length >= 2) {
+      _redibujarFigura3d();
+      _actualizarInfo3d();
+      setTimeout(_actualizarPreview3d, 80);
+    }
   }
 
   // Grilla de referencia = PISO horizontal en el plano XY (Z es la altura). El
@@ -143,15 +151,20 @@
     _worldGroup.add(grid);
   }
 
-  // Ejes XYZ con colores (X rojo, Y verde, Z azul) + su LETRA al final.
+  // Ejes XYZ con colores (X rojo, Y verde, Z azul) + su LETRA al final. Van en un
+  // grupo propio (_ejesGroup) para poder ocultarlos al capturar el snapshot (los
+  // ejes son ayuda de dibujo, no parte de la barra guardada).
+  var _ejesGroup = null;
   function _agregarEjes() {
     var L = 220;
-    _worldGroup.add(_lineaEje(new THREE.Vector3(0,0,0), new THREE.Vector3(L,0,0), 0xd32f2f)); // X rojo
-    _worldGroup.add(_lineaEje(new THREE.Vector3(0,0,0), new THREE.Vector3(0,L,0), 0x388e3c)); // Y verde
-    _worldGroup.add(_lineaEje(new THREE.Vector3(0,0,0), new THREE.Vector3(0,0,L), 0x1976d2)); // Z azul
-    _worldGroup.add(_etiquetaEje('X', L + 18, 0, 0, '#d32f2f'));
-    _worldGroup.add(_etiquetaEje('Y', 0, L + 18, 0, '#388e3c'));
-    _worldGroup.add(_etiquetaEje('Z', 0, 0, L + 18, '#1976d2'));
+    _ejesGroup = new THREE.Group();
+    _ejesGroup.add(_lineaEje(new THREE.Vector3(0,0,0), new THREE.Vector3(L,0,0), 0xd32f2f)); // X rojo
+    _ejesGroup.add(_lineaEje(new THREE.Vector3(0,0,0), new THREE.Vector3(0,L,0), 0x388e3c)); // Y verde
+    _ejesGroup.add(_lineaEje(new THREE.Vector3(0,0,0), new THREE.Vector3(0,0,L), 0x1976d2)); // Z azul
+    _ejesGroup.add(_etiquetaEje('X', L + 18, 0, 0, '#d32f2f'));
+    _ejesGroup.add(_etiquetaEje('Y', 0, L + 18, 0, '#388e3c'));
+    _ejesGroup.add(_etiquetaEje('Z', 0, 0, L + 18, '#1976d2'));
+    _worldGroup.add(_ejesGroup);
   }
   function _lineaEje(a, b, color) {
     var g = new THREE.BufferGeometry().setFromPoints([a, b]);
@@ -381,9 +394,9 @@
   // y perdida en el centro con mucho espacio vacío). Restaura todo tras capturar.
   function _capturarSnapshot() {
     if (!_renderer || !_camera) return null;
-    // Ocultar ayudas de dibujo (plano + grilla) para la foto.
+    // Ocultar ayudas de dibujo (plano + grilla + EJES) para la foto: solo la barra.
     var ocultados = [];
-    [_planoMesh, _planoBorde, _gridMesh].forEach(function(o) {
+    [_planoMesh, _planoBorde, _gridMesh, _ejesGroup].forEach(function(o) {
       if (o && o.visible) { o.visible = false; ocultados.push(o); }
     });
     // Guardar la posición actual de la cámara para restaurarla.
@@ -541,7 +554,13 @@
     }
     var url = _snapshotFijado || _capturarSnapshot();
     if (!url) return;
-    prev.innerHTML = '<img src="' + url + '" style="max-width:210px; max-height:140px; object-fit:contain;" alt="preview 3D"/>';
+    // Superponer las etiquetas 3D sobre el snapshot (mismo criterio que galería/
+    // catálogo), para que se VEAN en el preview y no solo la imagen pelada.
+    var capaEt = (typeof disenadorSvgEtiquetasEscaladas === 'function')
+      ? disenadorSvgEtiquetasEscaladas(_etiquetas3d, 210, 140) : '';
+    prev.innerHTML = '<div style="position:relative; width:210px; height:140px; margin:0 auto;">' +
+      '<img src="' + url + '" style="width:210px; height:140px; object-fit:contain;" alt="preview 3D"/>' +
+      capaEt + '</div>';
   }
 
   // Al cambiar la figura, el snapshot fijado deja de ser válido (se libera).
