@@ -774,6 +774,7 @@
     if (!cont) return;
     if (_puntos.length < 2) {
       cont.innerHTML = '<div class="muted" style="font-size:12px;">Haz click en el lienzo para trazar el primer lado. Cada click agrega un lado; el ángulo se ajusta a 45/90/135°.</div>';
+      disenadorActualizarPreview2d();   // sin figura → limpiar el preview (no dejar la anterior pegada)
       return;
     }
     // MODO ETIQUETA-MANDA: los parámetros son las etiquetas MANUALES, no los tramos.

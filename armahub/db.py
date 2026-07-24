@@ -35,14 +35,17 @@ def get_database_url() -> str:
 
 
 def _get_pool():
-    """Lazy-init del pool de conexiones. Min 2, max 10."""
+    """Lazy-init del pool de conexiones. Min 0 (no abre conexiones en el arranque
+    para no agravar el cold start de Render free: cada conexión a Supabase hace
+    handshake TLS y sumarlas al startup retrasa la 1ª respuesta). max 10.
+    Con el plan pago de Render (sin sueño) esto deja de importar."""
     global _pool
     if _pool is None:
         try:
             from psycopg_pool import ConnectionPool
             _pool = ConnectionPool(
                 conninfo=get_database_url(),
-                min_size=2,
+                min_size=0,
                 max_size=10,
                 open=True,
             )
