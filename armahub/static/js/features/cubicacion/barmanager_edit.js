@@ -168,10 +168,12 @@
     // Slots (dim_a..i, ang1..4, radio) a evaluar.
     var slots = ['dim_a','dim_b','dim_c','dim_d','dim_e','dim_f','dim_g','dim_h','dim_i',
                  'ang1','ang2','ang3','ang4','radio'];
-    // Limpiar resaltados previos de esta fila.
+    // Limpiar resaltados previos de esta fila. Una celda TOCADA (con cambio
+    // pendiente) queda AMARILLA aunque esté vacía (borrar un valor ES un cambio);
+    // el resto queda sin fondo. Los rojos se repintan abajo solo si corresponde.
     slots.forEach(function(s) {
       var el = document.getElementById('bmcell-' + barraId + '-' + s);
-      if (el) { el.style.border = ''; el.style.background = el.value !== '' && _cambioTocado(barraId, s) ? '#fff3cd' : ''; el.title = ''; }
+      if (el) { el.style.border = ''; el.style.background = _cambioTocado(barraId, s) ? '#fff3cd' : ''; el.title = ''; }
     });
     var fig = _catFiguras[figura];
     if (!fig) return;   // figura desconocida → el backend la rechazará al guardar
@@ -469,14 +471,19 @@
 
   // Resalta en ROJO los slots (dim/lados) que sobran o faltan de una barra según
   // el detalle del 409 del backend. El usuario los corrige manualmente (5M.4).
+  // OJO: respeta la misma regla que la validación local — un slot que "sobra" pero
+  // ya está VACÍO/0 NO se pinta rojo (0 = no usado). Así, si el usuario ya borró el
+  // valor, no queda un rojo fantasma que nunca se limpia.
   function _resaltarSlots(barraId, slots, tipo) {
     (slots || []).forEach(function(col) {
       var el = document.getElementById('bmcell-' + barraId + '-' + col);
-      if (el) {
-        el.style.background = '#ffcdd2';         // rojo
-        el.style.border = '2px solid #c62828';
-        el.title = (tipo === 'sobra') ? 'Este lado SOBRA para la figura elegida — bórralo (deja vacío)' : 'Este lado FALTA para la figura elegida — complétalo';
-      }
+      if (!el) return;
+      // Un "sobra" solo tiene sentido si la celda TIENE valor real. Si ya está
+      // vacía/0, no hay nada que sobre → no pintar rojo.
+      if (tipo === 'sobra' && !_valReal(el.value)) return;
+      el.style.background = '#ffcdd2';         // rojo
+      el.style.border = '2px solid #c62828';
+      el.title = (tipo === 'sobra') ? 'Este lado SOBRA para la figura elegida — bórralo (deja vacío)' : 'Este lado FALTA para la figura elegida — complétalo';
     });
   }
 
