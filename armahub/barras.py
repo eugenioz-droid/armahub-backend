@@ -33,7 +33,10 @@ def _project_filter_sql(allowed_ids, table_alias="", col="id_proyecto"):
 
 
 def _puede_editar_proyecto(cur, id_proyecto: str, user: dict) -> bool:
-    """Retorna True si el usuario es admin/admin_calidad o está en proyecto_usuarios."""
+    """Retorna True si el usuario es admin/admin_calidad o está en proyecto_usuarios.
+    OJO: esto controla editar PROYECTOS, autorizar/revocar usuarios y mover barras
+    entre obras — NO es el permiso de editar barras del Bar Manager (ver
+    _puede_editar_barras). No mezclar."""
     email = user.get("email", "")
     role = user.get("role", "")
     if role in ("admin", "admin_calidad"):
@@ -44,6 +47,34 @@ def _puede_editar_proyecto(cur, id_proyecto: str, user: dict) -> bool:
         return False
     uid = row[0]
     cur.execute("SELECT 1 FROM proyecto_usuarios WHERE id_proyecto = %s AND user_id = %s", (id_proyecto, uid))
+    return cur.fetchone() is not None
+
+
+def _puede_editar_barras(cur, user: dict) -> bool:
+    """Permiso para EDITAR barras en el Bar Manager (5M). Decisión (2026-07-24):
+    un MIEMBRO del área 'cubicaciones' (area_usuarios.rol_area='miembro' en el área
+    slug='cubicaciones') O un admin/admin_calidad (acceso total, para soporte). Ni
+    USC, ni jefes de servicio, ni cubicador global, ni cliente/externo. No depende
+    de la obra (cualquier obra)."""
+    role = (user.get("role") or "").lower()
+    if role in ("admin", "admin_calidad"):
+        return True
+    email = (user.get("email") or "").strip().lower()
+    if not email:
+        return False
+    cur.execute(
+        """
+        SELECT 1
+        FROM area_usuarios au
+        JOIN areas a ON a.id = au.area_id
+        JOIN users u ON u.id = au.user_id
+        WHERE a.slug = 'cubicaciones'
+          AND au.rol_area = 'miembro'
+          AND LOWER(u.email) = %s
+        LIMIT 1
+        """,
+        (email,),
+    )
     return cur.fetchone() is not None
 
 BARRAS_COLUMNS = [
@@ -1337,8 +1368,8 @@ def _editar_barra_impl(barra_id: int, body: BarraUpdate, user):
             barra = cur.fetchone()
             if not barra:
                 raise HTTPException(status_code=404, detail="Barra no encontrada")
-            if not _puede_editar_proyecto(cur, barra["id_proyecto"], user):
-                raise HTTPException(status_code=403, detail="No puedes editar barras de esta obra. Solo el cubicador asignado a la obra o un administrador pueden hacerlo.")
+            if not _puede_editar_barras(cur, user):
+                raise HTTPException(status_code=403, detail="No tienes permiso para editar barras. Solo un miembro del área de Cubicaciones puede editar en el Bar Manager.")
 
             # Valores efectivos (nuevo si vino, si no el actual). NOTA: largo_total NO
             # es editable directamente — se calcula de la suma de los lados (5M.4).
