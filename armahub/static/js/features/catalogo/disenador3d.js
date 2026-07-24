@@ -14,7 +14,8 @@
   var _scene = null, _camera = null, _renderer = null;
   var _worldGroup = null;               // grupo que rota (grilla + ejes + figura)
   var _figuraGroup = null;              // la barra que se dibuja (Etapa B)
-  var _rotX = -0.5, _rotY = 0.6;        // rotación de la vista (rad)
+  var _rotX = 0, _rotY = 0;             // rotación extra de la vista (la cámara ya da
+                                        // el ángulo isométrico natural con Z arriba)
   var _dragging = false, _lastX = 0, _lastY = 0;
   var _rafId = null;
 
@@ -97,7 +98,12 @@
     _scene.background = new THREE.Color(0xf7f9fa);
 
     _camera = new THREE.PerspectiveCamera(45, W / H, 0.1, 4000);
-    _camera.position.set(0, 0, 520);
+    // Convención de ingeniería: Z es la ALTURA (vertical). Orientamos la cámara con
+    // el "arriba" en Z y la ubicamos en una vista isométrica natural (mirando desde
+    // adelante-derecha-arriba hacia el origen), no de frente al plano.
+    _camera.up.set(0, 0, 1);
+    _camera.position.set(360, -360, 300);
+    _camera.lookAt(0, 0, 0);
 
     _renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
     _renderer.setSize(W, H);
@@ -123,10 +129,12 @@
     global.disenador3dSetPlano(_planoActivo);   // plano inicial + resaltado del botón
   }
 
-  // Grilla de referencia en el plano base (XZ) para ubicarse en el espacio.
+  // Grilla de referencia = PISO horizontal en el plano XY (Z es la altura). El
+  // GridHelper nace en XZ (Y vertical), así que lo rotamos 90° sobre X para llevarlo
+  // al plano XY con Z como normal vertical (convención de ingeniería).
   function _agregarGrilla() {
     var grid = new THREE.GridHelper(400, 10, 0xcccccc, 0xe6e6e6);
-    // GridHelper está en el plano XZ (horizontal) por defecto — bien como piso.
+    grid.rotation.x = Math.PI / 2;
     _worldGroup.add(grid);
   }
 
@@ -229,10 +237,10 @@
   // ---- Etapa B: DIBUJO por CLICKS sobre un PLANO de trabajo ----
   // Un click 3D es un rayo (ambiguo en profundidad). Solución: el nodo cae en el
   // PLANO de trabajo activo (con snap a grilla). Para dibujar en otra dirección,
-  // el usuario cambia el plano (XZ piso / XY frontal / YZ lateral). Clicks + nodos
-  // como el 2D; lo único extra es elegir el plano.
+  // el usuario cambia el plano. Convención de ingeniería: Z = ALTURA (vertical),
+  // X e Y horizontales. PISO = XY (horizontal), FRONTAL = XZ, LATERAL = YZ.
   var _GRID3D = 40;              // paso de grilla del espacio
-  var _planoActivo = 'XZ';      // 'XZ' (piso) | 'XY' (frontal) | 'YZ' (lateral)
+  var _planoActivo = 'XY';      // 'XY' (piso, horizontal) | 'XZ' (frontal) | 'YZ' (lateral)
   var _planoOffset = 0;         // desplazamiento del plano en su eje normal
   var _raycaster = null, _mouseNDC = null;
   var _orto = true;             // ORTO: fuerza tramos a 90° en el plano (default ON)
@@ -628,13 +636,21 @@
       cont.style.position = 'relative';
       cont.appendChild(badge);
     }
-    var nombres = { XZ: 'Plano PISO (X-Z)', XY: 'Plano FRONTAL (X-Y)', YZ: 'Plano LATERAL (Y-Z)' };
+    var nombres = { XY: 'Plano PISO (X-Y)', XZ: 'Plano FRONTAL (X-Z)', YZ: 'Plano LATERAL (Y-Z)' };
     badge.textContent = '✏️ ' + (nombres[_planoActivo] || _planoActivo);
   }
 
   function _animar() {
     if (_vista !== '3D' || !_renderer) return;
-    if (_worldGroup) { _worldGroup.rotation.x = _rotX; _worldGroup.rotation.y = _rotY; }
+    // Con Z vertical: el arrastre HORIZONTAL (_rotY) gira alrededor del eje vertical
+    // Z; el arrastre VERTICAL (_rotX) inclina alrededor del eje X del mundo. Orden
+    // ZXY para que el giro sobre Z se sienta como "girar la mesa".
+    if (_worldGroup) {
+      _worldGroup.rotation.order = 'ZXY';
+      _worldGroup.rotation.z = _rotY;
+      _worldGroup.rotation.x = _rotX;
+      _worldGroup.rotation.y = 0;
+    }
     _renderer.render(_scene, _camera);
     _rafId = requestAnimationFrame(_animar);
   }
