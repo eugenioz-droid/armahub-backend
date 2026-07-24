@@ -154,11 +154,10 @@
     var oR = { sw: 1.2, tope: 4, dash: '3,2', fs: 11, halo: 2.5, dy: 3 };
     (opts.etiquetas || []).forEach(function(e) {
       if (REG().esArco(e.tipo)) {
-        // Cota de arco enganchada al segmento e.seg (en el espacio escalado tpts).
+        // Cota de arco concéntrica al segmento e.seg (mismo radio/sweep escalados).
         if (e.seg == null || !tpts[e.seg] || !tpts[e.seg + 1]) return;
         var pa = tpts[e.seg], pb = tpts[e.seg + 1];
-        var c = REG().controlArco(pa, pb, sweepsEsc[e.seg], e.lado, radiosEsc[e.seg] || 20, 8);
-        svg += REG().dibujarArco(pa, pb, c.cx, c.cy, oR);
+        svg += REG().dibujarArco(pa, pb, radiosEsc[e.seg], sweepsEsc[e.seg], e.lado, 7 * scale, oR);
         return;
       }
       if (REG().esLinea(e.tipo)) {
@@ -578,8 +577,8 @@
     return (mejor >= 0 && dmin < 60 * 60) ? mejor : -1;
   }
 
-  // (El cálculo de la cota de arco vive ahora en EtiquetasRegistro.controlArco/
-  // dibujarArco — un solo lugar para lienzo y render.)
+  // (El dibujo de la cota de arco vive ahora en EtiquetasRegistro.dibujarArco —
+  // arco concéntrico al de la barra; un solo lugar para lienzo y render.)
 
   // Redibuja SOLO la capa dinámica (no toca el SVG raíz ni la grilla ni el rect
   // de eventos). Así un mousemove no destruye el nodo sobre el que caerá el click.
@@ -635,11 +634,11 @@
     // (arco/línea/texto) la decide el registro; el color sale del registro.
     _etiquetas.forEach(function(e, k) {
       if (REG().esArco(e.tipo)) {
-        // Cota de arco: enganchada al segmento curvo `e.seg`. `e.lado` invierte la guata.
+        // Cota de arco: arco concéntrico al segmento curvo `e.seg`, offset 12px hacia
+        // afuera. `e.lado` invierte la guata. Sigue la misma curvatura de la barra.
         if (e.seg == null || !_puntos[e.seg + 1]) return;
         var a = _puntos[e.seg], b = _puntos[e.seg + 1];
-        var c = REG().controlArco(a, b, _sweepsSeg[e.seg], e.lado, _radiosSeg[e.seg] || 40, 16);
-        s += REG().dibujarArco(a, b, c.cx, c.cy, { interactivo: true, idx: k });
+        s += REG().dibujarArco(a, b, _radiosSeg[e.seg], _sweepsSeg[e.seg], e.lado, 12, { interactivo: true, idx: k });
         return;
       }
       if (REG().esLinea(e.tipo)) {

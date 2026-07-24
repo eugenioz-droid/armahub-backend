@@ -105,11 +105,35 @@
     var ia = opt.interactivo ? (' data-etiq="' + opt.idx + '" style="cursor:move;"') : '';
     return '<line x1="'+p1.x+'" y1="'+p1.y+'" x2="'+p2.x+'" y2="'+p2.y+'" stroke="#1565c0" stroke-width="'+sw+'"'+ia+mk+'/>';
   }
-  // Cota de arco: curva Q entre pa y pb con punto de control cxo/cyo (offset ya calculado).
-  function dibujarArco(pa, pb, cxo, cyo, opt) {
-    opt = opt || {}; var sw = opt.sw || 1.5, dash = opt.dash || '4,3';
+  // Cota de arco: arco circular CONCÉNTRICO al de la barra, desplazado hacia afuera
+  // `off` px. Sigue exactamente la misma curvatura y sentido que la curva real
+  // (por eso queda paralela y pareja, no una Q genérica). a/b = extremos del
+  // segmento; radioBarra = radio del arco de la barra (px); sweep 0/1 = sentido;
+  // lado ±1 = guata (invierte hacia qué lado sale la cota).
+  function dibujarArco(a, b, radioBarra, sweep, lado, off, opt) {
+    opt = opt || {}; var w = opt.sw || 1.5, dash = opt.dash || '4,3';
     var ia = opt.interactivo ? (' data-etiq="' + opt.idx + '" style="cursor:pointer;"') : '';
-    return '<path d="M'+pa.x.toFixed(1)+','+pa.y.toFixed(1)+' Q'+cxo.toFixed(1)+','+cyo.toFixed(1)+' '+pb.x.toFixed(1)+','+pb.y.toFixed(1)+'" fill="none" stroke="#888" stroke-width="'+sw+'" stroke-dasharray="'+dash+'"'+ia+'/>';
+    var dx = b.x - a.x, dy = b.y - a.y, cuerda = Math.sqrt(dx*dx + dy*dy) || 1;
+    // Radio efectivo del arco de la barra (misma regla que _pathDesdePuntos).
+    var r = Math.max(radioBarra || cuerda * 0.75, cuerda / 2 + 0.5);
+    var sw = (sweep != null ? sweep : 1) ? 1 : 0;   // flag de barrido SVG (0/1)
+    // Centro del arco de la barra: a un lado de la cuerda según sweep.
+    var mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+    var h = Math.sqrt(Math.max(0, r*r - (cuerda/2)*(cuerda/2)));
+    var ux = dx/cuerda, uy = dy/cuerda;             // dir cuerda
+    var nx = -uy, ny = ux;                          // normal a la cuerda
+    // El flag sweep=1 (SVG) curva hacia un lado; el centro está al lado opuesto.
+    var s = sw ? -1 : 1;
+    var cx = mx + nx*h*s, cy = my + ny*h*s;         // centro del arco
+    // Cota concéntrica: mismo centro, radio = r + off (o r - off para la otra guata).
+    var lg = (lado || 1) >= 0 ? 1 : -1;
+    var rc = r + off * lg;
+    if (rc < 1) rc = 1;
+    // Puntos de la cota sobre el círculo concéntrico (misma dirección desde el centro).
+    var a0 = Math.atan2(a.y - cy, a.x - cx), a1 = Math.atan2(b.y - cy, b.x - cx);
+    var pax = cx + rc*Math.cos(a0), pay = cy + rc*Math.sin(a0);
+    var pbx = cx + rc*Math.cos(a1), pby = cy + rc*Math.sin(a1);
+    return '<path d="M'+pax.toFixed(1)+','+pay.toFixed(1)+' A '+rc.toFixed(1)+' '+rc.toFixed(1)+' 0 0 '+sw+' '+pbx.toFixed(1)+','+pby.toFixed(1)+'" fill="none" stroke="#888" stroke-width="'+w+'" stroke-dasharray="'+dash+'"'+ia+'/>';
   }
   // Texto (letra/ángulo): halo blanco + color del tipo. p = posición.
   function dibujarTexto(tipo, texto, p, opt) {
@@ -119,17 +143,6 @@
     return '<text x="'+p.x+'" y="'+(p.y+dy)+'" text-anchor="middle" fill="#fff" stroke="#fff" stroke-width="'+halo+'" font-size="'+fs+'" font-weight="800"'+ia+'>'+t+'</text>' +
       '<text x="'+p.x+'" y="'+(p.y+dy)+'" text-anchor="middle" fill="'+col+'" font-size="'+fs+'" font-weight="800"'+ia+'>'+t+'</text>';
   }
-  // Punto de control de la cota de arco (offset perpendicular proporcional al radio).
-  // a/b = extremos del segmento; sweep = lado de la barra; lado = ±1 guata; radio px.
-  function controlArco(a, b, sweep, lado, radio, baseOff) {
-    var mx = (a.x+b.x)/2, my = (a.y+b.y)/2;
-    var dx = b.x-a.x, dy = b.y-a.y, len = Math.sqrt(dx*dx+dy*dy) || 1;
-    var sw = (sweep != null ? sweep : 1) ? 1 : -1;
-    var sgn = sw * (lado || 1);
-    var off = (radio || 0) * 0.35 + (baseOff || 16);
-    return { cx: mx + (-dy/len)*off*sgn, cy: my + (dx/len)*off*sgn };
-  }
-
   global.EtiquetasRegistro = {
     TIPOS: TIPOS, COLORES: COLORES,
     esLinea: esLinea, esArco: esArco, esTexto: esTexto,
@@ -138,6 +151,6 @@
     normalizar: normalizar, desnormalizar: desnormalizar,
     parametros: parametros, tieneParametros: tieneParametros,
     dibujarCota: dibujarCota, dibujarRadioDiam: dibujarRadioDiam,
-    dibujarArco: dibujarArco, dibujarTexto: dibujarTexto, controlArco: controlArco
+    dibujarArco: dibujarArco, dibujarTexto: dibujarTexto
   };
 })(window);
