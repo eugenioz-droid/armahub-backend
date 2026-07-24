@@ -70,11 +70,18 @@
       return '<svg width="' + W + '" height="' + H + '"><text x="' + (W/2) + '" y="' + (H/2) +
         '" text-anchor="middle" fill="#999" font-size="12">Sin geometría para dibujar</text></svg>';
     }
-    // Bounding box.
+    // Bounding box: incluye los puntos de la figura Y las etiquetas manuales, para
+    // que las letras/cotas fuera del contorno NO queden cortadas y todo salga centrado.
     var minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-    pts.forEach(function(p) {
-      if (p.x < minX) minX = p.x; if (p.x > maxX) maxX = p.x;
-      if (p.y < minY) minY = p.y; if (p.y > maxY) maxY = p.y;
+    function _acum(x, y) {
+      if (x < minX) minX = x; if (x > maxX) maxX = x;
+      if (y < minY) minY = y; if (y > maxY) maxY = y;
+    }
+    pts.forEach(function(p) { _acum(p.x, p.y); });
+    (opts.etiquetas || []).forEach(function(e) {
+      if (e.x != null && e.y != null) _acum(e.x, e.y);        // texto (letra/ángulo)
+      if (e.x1 != null) { _acum(e.x1, e.y1); _acum(e.x2, e.y2); }  // cota/radio/diámetro
+      // arco (seg/lado): sus extremos ya están en pts, no aporta límites nuevos.
     });
     var bw = Math.max(1, maxX - minX), bh = Math.max(1, maxY - minY);
     // Escalar para llenar el marco (menos el pad), y luego CENTRAR la figura en el
@@ -290,6 +297,11 @@
 
   // ---- A5: EDITOR DE ETIQUETAS MANUALES (toggle; para figuras raras) ----
   global.disenadorToggleEtiquetas = function() {
+    // Al APAGAR con etiquetas dibujadas: avisar. NO se borran (solo cambia el modo
+    // de visualización: al apagar se vuelve a mostrar el etiquetado automático).
+    if (_modoEtiquetas && _etiquetas.length) {
+      if (!confirm('Vas a salir del modo etiquetas.\n\nTus etiquetas se CONSERVAN (no se borran), pero el panel volverá a mostrar los lados automáticos del dibujo hasta que vuelvas a activar Etiquetas.\n\n¿Continuar?')) return;
+    }
     _modoEtiquetas = !_modoEtiquetas;
     // Al activar etiquetas, la figura se da por TERMINADA (no más rubber band de
     // dibujo). Si estaba dibujando, se cierra el trazo.
@@ -324,7 +336,17 @@
     if (btn) { btn.textContent = '🏷️ Etiquetas: ON'; btn.style.background = '#00695c'; btn.style.color = '#fff'; }
     _redibujarLienzo();
     _redibujarPanel();
+    _actualizarPreviewImagen();
   };
+  // Preview en modo imagen (etiquetado 3D): snapshot + etiquetas superpuestas.
+  function _actualizarPreviewImagen() {
+    var prev = document.getElementById('disPreview');
+    if (!prev || !_fondoImagen) return;
+    var capa = _svgEtiquetasEscaladas(_etiquetas, 210, 140);
+    prev.innerHTML = '<div style="position:relative; width:210px; height:140px; margin:0 auto;">' +
+      '<img src="' + _fondoImagen + '" style="width:210px; height:140px; object-fit:contain;" alt="preview 3D"/>' +
+      capa + '</div>';
+  }
   // Devuelve las etiquetas colocadas en modo imagen (para guardarlas con la figura 3D).
   global.disenador3dEtiquetasGet = function() { return _fondoImagen ? _etiquetas.slice() : []; };
   // Sale del modo imagen (vuelve el lienzo 2D a su estado normal).
@@ -897,9 +919,12 @@
     var alfaTxt = especiales.length
       ? especiales.map(function(g, k) { return 'α' + (k + 1) + '=' + g + '°'; }).join(', ')
       : '— (todos 90° o rectos)';
+    // Radio: hay curva → la figura tiene radio (o etiqueta R/radio/diámetro/arco).
+    var hayRadio = _tiposSeg.some(function(t) { return t === 'arco'; }) || REG().parametros(_etiquetas).radio;
     html += '<div style="margin-top:8px; font-size:12px; color:#444;">' +
       '<div><b>Lados:</b> ' + ladosUsados.join(', ') + '</div>' +
       '<div><b>Ángulos α (≠90°):</b> ' + alfaTxt + '</div>' +
+      '<div><b>Radio:</b> ' + (hayRadio ? 'Sí' : '—') + '</div>' +
       '<div><b>N° de lados:</b> ' + ladosUsados.length + '</div>' +
       (especiales.length > 4 ? '<div style="color:#c62828; margin-top:4px;">⚠ ' + especiales.length + ' ángulos especiales — el sistema soporta máx. 4 (α1-α4).</div>' : '') +
       '</div>';
@@ -942,8 +967,9 @@
       (angs.length > 4 ? '<div style="color:#c62828; margin-top:4px;">⚠ ' + angs.length + ' ángulos — el sistema soporta máx. 4 (α1-α4).</div>' : '') +
       '</div>';
     cont.innerHTML = html;
-    // En modo imagen (etiquetado 3D) el preview lo maneja el 3D; no pisarlo.
-    if (!_fondoImagen) disenadorActualizarPreview2d();
+    // Preview: en modo imagen (etiquetado 3D) = snapshot + etiquetas; en 2D = figura.
+    if (_fondoImagen) _actualizarPreviewImagen();
+    else disenadorActualizarPreview2d();
   }
 
   // Largo (en grilla) del tramo dibujado cuyo punto medio esté más cerca de la
@@ -1123,6 +1149,15 @@
   global.disenadorEditar = function(codigo) {
     var f = _figurasCat.find(function(x) { return x.codigo === codigo; });
     if (!f || !f.geometria || !f.geometria.tramos) return;
+    // Figura 3D → cargarla en el EDITOR 3D (no interpretarla como 2D, que la rompía).
+    if (f.geometria.dim === '3D') {
+      if (typeof disenadorSetVista === 'function') disenadorSetVista('3D');
+      var okCarga = (typeof disenador3dCargarFigura === 'function') && disenador3dCargarFigura(f.geometria);
+      var nb3 = document.getElementById('disenadorNombre'); if (nb3) nb3.value = f.codigo;
+      _editando = codigo;
+      if (typeof showToast === 'function') showToast(okCarga ? ('Editando figura 3D "' + codigo + '"') : 'No se pudo cargar la figura 3D', okCarga ? 'info' : 'error');
+      return;
+    }
     // geometriaAPuntos usa Y hacia arriba; el lienzo usa Y hacia abajo → invertir Y.
     var pts = geometriaAPuntos(f.geometria, null, GRID);   // largo unidad = 1 grilla
     // Centrar en el lienzo (offset simple).
@@ -1143,9 +1178,17 @@
     _dibujando = false;    // cargada = terminada (sin rubber band); "Retomar" para seguir
     _editando = codigo;
     _hoverPt = null;
+    // Si la figura fue creada en modo etiqueta-manda (o tiene etiquetas manuales),
+    // reabrir en ese modo → así el render usa las etiquetas y NO reaparece la A auto.
+    _modoEtiquetas = !!(f.geometria.etiquetas_manda || (_etiquetas && _etiquetas.length));
+    var barEt = document.getElementById('disEtiquetasBar');
+    if (barEt) barEt.style.display = _modoEtiquetas ? 'flex' : 'none';
+    var btnEt = document.getElementById('disBtnEtiquetas');
+    if (btnEt) { btnEt.textContent = _modoEtiquetas ? '🏷️ Etiquetas: ON' : '🏷️ Etiquetas';
+      btnEt.style.background = _modoEtiquetas ? '#00695c' : '#fff'; btnEt.style.color = _modoEtiquetas ? '#fff' : '#00695c'; }
     var nb = document.getElementById('disenadorNombre'); if (nb) nb.value = f.codigo;
     _redibujarLienzo(); _redibujarPanel(); _actualizarBotonTerminar();
-    if (typeof showToast === 'function') showToast('Editando "' + codigo + '". Usa "Retomar dibujo" para agregar lados.', 'info');
+    if (typeof showToast === 'function') showToast('Editando "' + codigo + '".', 'info');
   };
 
   // Elimina una figura del catálogo (solo admin; confirma).

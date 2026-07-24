@@ -62,9 +62,12 @@
     if (c2d) c2d.style.display = (_vista === '2D') ? '' : 'none';
     if (v3d) v3d.style.display = (_vista === '3D') ? '' : 'none';
     if (ctrl3d) ctrl3d.style.display = (_vista === '3D') ? '' : 'none';
-    // Panel de parámetros 3D visible solo en 3D; el 2D usa disenadorPanel.
+    // UN SOLO panel visible: en 3D-dibujando el panel 3D (largo/dirección de tramos);
+    // en 2D el panel unificado (disenadorPanel). El etiquetado 3D muestra el 2D.
     var p3d = document.getElementById('dis3dPanelWrap');
+    var p2d = document.getElementById('disenadorPanelWrap');
     if (p3d) p3d.style.display = (_vista === '3D') ? '' : 'none';
+    if (p2d) p2d.style.display = (_vista === '3D') ? 'none' : '';
     if (_vista === '3D') _activar3D(); else _detener3D();
     // Refrescar el preview según la vista.
     if (_vista === '3D') _actualizarPreview3d();
@@ -216,16 +219,17 @@
     while (_figuraGroup.children.length) _figuraGroup.remove(_figuraGroup.children[0]);
     if (_nodos3d.length >= 2) {
       var linea = _polilineaTubo();
-      // Curva por segmentos rectos entre los puntos (arcos ya vienen suavizados).
+      // Estilo LÍNEA fina (como el 2D), no tubo grueso. Un tubo delgado da grosor
+      // visual mínimo + se ve bien en cualquier ángulo. Radio pequeño (1.5).
       var curve = new THREE.CatmullRomCurve3(linea, false, 'catmullrom', 0.0);
-      var geo = new THREE.TubeGeometry(curve, Math.max(24, linea.length * 4), 8, 12, false);
-      var mat = new THREE.MeshStandardMaterial({ color: 0x00695c, metalness: 0.3, roughness: 0.5 });
+      var geo = new THREE.TubeGeometry(curve, Math.max(24, linea.length * 4), 1.5, 6, false);
+      var mat = new THREE.MeshBasicMaterial({ color: 0x00695c });
       _figuraGroup.add(new THREE.Mesh(geo, mat));
     }
     // Nodos como esferitas (marcadas con su índice para poder arrastrarlas).
     _nodosMesh = [];
     _nodos3d.forEach(function(p, idx) {
-      var s = new THREE.Mesh(new THREE.SphereGeometry(7, 12, 12), new THREE.MeshStandardMaterial({ color: 0x004d40 }));
+      var s = new THREE.Mesh(new THREE.SphereGeometry(4.5, 10, 10), new THREE.MeshBasicMaterial({ color: 0x004d40 }));
       s.position.copy(p); s.userData.nodoIdx = idx;
       _figuraGroup.add(s); _nodosMesh.push(s);
     });
@@ -351,15 +355,47 @@
     _redibujarFigura3d(); _actualizarInfo3d(); _actualizarSlider3d();
   };
 
+  // Carga una figura 3D guardada (geo.nodos + tramos) al editor para re-editarla.
+  // Reconstruye los nodos 3D y los arrays por segmento; restaura snapshot/etiquetas.
+  global.disenador3dCargarFigura = function(geo) {
+    if (!geo || geo.dim !== '3D' || !geo.nodos || geo.nodos.length < 2) return false;
+    _nodos3d = geo.nodos.map(function(n) { return new THREE.Vector3(n.x, n.y, n.z); });
+    var tr = geo.tramos || [];
+    _tiposSeg3d = tr.map(function(t) { return t.tipo || 'recto'; });
+    _radiosSeg3d = tr.map(function(t) { return t.radio || 0; });
+    _planosSeg3d = tr.map(function(t) { return t.plano || null; });
+    _sweepsSeg3d = tr.map(function(t) { return t.sweep != null ? t.sweep : 1; });
+    _segSel3d = -1;
+    _snapshotFijado = geo.snapshot || null;
+    _etiquetas3d = (geo.etiquetas || []).slice();
+    if (_threeListo && _scene) { _redibujarFigura3d(); _actualizarInfo3d(); _actualizarSlider3d(); }
+    return true;
+  };
+
   var _snapshotFijado = null;   // dataURL del snapshot fijado por el usuario (o null)
+
+  // Captura un PNG de la vista SIN el plano de trabajo resaltado (queda solo la
+  // barra + ejes). El plano es una ayuda de dibujo, no parte de la figura.
+  function _capturarSnapshot() {
+    if (!_renderer) return null;
+    var visM = _planoMesh ? _planoMesh.visible : null;
+    var visB = _planoBorde ? _planoBorde.visible : null;
+    if (_planoMesh) _planoMesh.visible = false;
+    if (_planoBorde) _planoBorde.visible = false;
+    var url = null;
+    try { _renderer.render(_scene, _camera); url = _renderer.domElement.toDataURL('image/png'); }
+    catch (e) { url = null; }
+    if (_planoMesh && visM != null) _planoMesh.visible = visM;
+    if (_planoBorde && visB != null) _planoBorde.visible = visB;
+    return url;
+  }
 
   // FIJAR la vista 3D actual como el snapshot oficial (lo que se verá/guardará).
   // Así el usuario controla desde qué ángulo se representa la figura 3D.
   global.disenador3dFijarVista = function() {
     if (_nodos3d.length < 2 || !_renderer) { alert('Dibuja la figura 3D antes de fijar la vista.'); return; }
     try {
-      _renderer.render(_scene, _camera);
-      _snapshotFijado = _renderer.domElement.toDataURL('image/png');
+      _snapshotFijado = _capturarSnapshot();
       _actualizarPreview3d();
       if (typeof showToast === 'function') showToast('Vista 3D fijada como preview.', 'success');
     } catch (e) { alert('No se pudo fijar la vista.'); }
@@ -373,12 +409,8 @@
   global.disenador3dToggleEtiquetas = function() {
     if (!_etiquetando3d) {
       if (_nodos3d.length < 2) { alert('Dibuja la figura 3D (al menos 2 nodos) antes de etiquetar.'); return; }
-      // Snapshot: el fijado por el usuario, o auto-captura de la vista actual.
-      var url = _snapshotFijado;
-      if (!url && _renderer) {
-        try { _renderer.render(_scene, _camera); url = _renderer.domElement.toDataURL('image/png'); }
-        catch (e) { alert('No se pudo capturar la vista 3D.'); return; }
-      }
+      // Snapshot: el fijado por el usuario, o auto-captura de la vista actual (sin plano).
+      var url = _snapshotFijado || _capturarSnapshot();
       if (!url) { alert('No se pudo obtener la imagen de la barra.'); return; }
       _etiquetando3d = true;
       // Ocultar el visor 3D y sus controles; mostrar el lienzo 2D (con imagen).
@@ -387,6 +419,9 @@
       if (v3d) v3d.style.display = 'none';
       if (ctrl3d) ctrl3d.style.display = 'none';
       if (c2d) c2d.style.display = '';
+      // Panel: ocultar el de tramos 3D, mostrar el unificado (parámetros por etiqueta).
+      var p3dW = document.getElementById('dis3dPanelWrap'); if (p3dW) p3dW.style.display = 'none';
+      var p2dW = document.getElementById('disenadorPanelWrap'); if (p2dW) p2dW.style.display = '';
       // Ocultar los controles de DIBUJO 2D (trazo/deshacer/etc.), solo dejar etiquetas.
       _toggleControlesDibujo2d(false);
       if (typeof disenadorEntrarEtiquetado3D === 'function') disenadorEntrarEtiquetado3D(url, _etiquetas3d);
@@ -401,6 +436,9 @@
       if (c2d2) c2d2.style.display = 'none';
       if (v3d2) v3d2.style.display = '';
       if (ctrl3d2) ctrl3d2.style.display = '';
+      // Panel: volver a mostrar el de tramos 3D, ocultar el unificado.
+      var p3dW2 = document.getElementById('dis3dPanelWrap'); if (p3dW2) p3dW2.style.display = '';
+      var p2dW2 = document.getElementById('disenadorPanelWrap'); if (p2dW2) p2dW2.style.display = 'none';
       _toggleControlesDibujo2d(true);   // restaurar para cuando se vuelva a 2D
       _actualizarBtnEtiq3d(false);
       _iniciarEspacio();   // re-render del visor 3D
@@ -451,7 +489,7 @@
       tramos: tramos,
       parciales: parciales,
       puntos: puntos2d,           // vista iso 2D → el motor SVG la dibuja como render
-      snapshot: _snapshotFijado   // imagen 3D fijada por el usuario (o null)
+      snapshot: _snapshotFijado || _capturarSnapshot()   // fijado, o captura al guardar
     };
   };
 
@@ -463,11 +501,8 @@
       prev.innerHTML = '<span class="muted" style="font-size:11px;">Dibuja la barra 3D para ver el preview.</span>';
       return;
     }
-    var url = _snapshotFijado;
-    if (!url) {
-      try { _renderer.render(_scene, _camera); url = _renderer.domElement.toDataURL('image/png'); }
-      catch (e) { return; }
-    }
+    var url = _snapshotFijado || _capturarSnapshot();
+    if (!url) return;
     prev.innerHTML = '<img src="' + url + '" style="max-width:210px; max-height:140px; object-fit:contain;" alt="preview 3D"/>';
   }
 
