@@ -490,7 +490,12 @@ function _bmFilaBarraHTML(b, editando, conUbicacion) {
   function _n(v, d) { if (v == null || v === '' || isNaN(v)) return ''; return d ? Number(v).toFixed(d) : Math.round(Number(v)); }
   function _celdaEdit(campo, val, dec, ancho) {
     if (!editando) return '<td style="padding:2px 6px; text-align:right; color:#444;">' + _n(val, dec) + '</td>';
-    return '<td style="padding:1px 3px; text-align:right;"><input type="number" step="any" value="' + (val != null ? val : '') +
+    // Un lado/ángulo/radio NO usado se guarda como 0 en el backend (no NULL). Para
+    // el usuario, 0 = "vacío" (lado que la figura no usa). Mostrar el 0 hacía que un
+    // borrado pareciera no haber funcionado (reaparecía "0"). Por eso 0 → vacío.
+    var esGeom = /^(dim_|ang|radio)/.test(campo);
+    var mostrar = (val == null || (esGeom && Number(val) === 0)) ? '' : val;
+    return '<td style="padding:1px 3px; text-align:right;"><input type="number" step="any" value="' + mostrar +
       '" data-barra-id="' + b.id + '" data-campo="' + campo + '" id="bmcell-' + b.id + '-' + campo + '" onchange="bmRegistrarCambio(this)" ' +
       'style="width:' + (ancho || 60) + 'px; font-size:11px; text-align:right; padding:1px 3px;" /></td>';
   }
