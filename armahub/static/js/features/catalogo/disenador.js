@@ -142,6 +142,11 @@
     // Etiquetas MANUALES (letra/ángulo/radio/cotas), mapeadas con tx() al render.
     var COLE = { letra: '#00695c', angulo: '#c62828', radio: '#1565c0', diametro: '#1565c0' };
     (opts.etiquetas || []).forEach(function(e) {
+      if (e.tipo === 'arco') {
+        var pa = tx({x:e.x1, y:e.y1}), pb = tx({x:e.x2, y:e.y2});
+        svg += '<path d="' + _pathCotaArco(pa.x, pa.y, pb.x, pb.y, 10) + '" fill="none" stroke="#888" stroke-width="1.2"/>';
+        return;
+      }
       if (e.tipo === 'cota' || e.tipo === 'radio' || e.tipo === 'diametro') {
         var p1 = tx({x:e.x1, y:e.y1}), p2 = tx({x:e.x2, y:e.y2});
         var dx = p2.x-p1.x, dy = p2.y-p1.y, len = Math.sqrt(dx*dx+dy*dy)||1;
@@ -246,6 +251,20 @@
   var _modoEtiquetas = false;
   var _etiquetas = [];
 
+  // MODO ETIQUETA-MANDA (Tanda B): con Etiquetas ON, los PARÁMETROS REALES de la
+  // figura (lados/ángulos que alimentan las planillas) los definen las etiquetas
+  // MANUALES de letra/ángulo, no los tramos automáticos del dibujo. Las etiquetas
+  // de cota/radio/diámetro/arco son decorativas (no parámetros).
+  // Devuelve { parciales:[...], angulos:[...] } derivados de _etiquetas.
+  function _parametrosDeEtiquetas() {
+    var parciales = [], angulos = [];
+    _etiquetas.forEach(function(e) {
+      if (e.tipo === 'letra' && e.texto && e.texto !== 'R') parciales.push(String(e.texto));
+      else if (e.tipo === 'angulo' && e.texto) angulos.push(String(e.texto));
+    });
+    return { parciales: parciales, angulos: angulos };
+  }
+
   // El próximo segmento que se dibuje será recto o arco.
   global.disenadorSetTrazo = function(t) { _modoTrazo = (t === 'arco') ? 'arco' : 'recto'; };
 
@@ -280,6 +299,7 @@
     var bar = document.getElementById('disEtiquetasBar');
     if (bar) bar.style.display = _modoEtiquetas ? 'flex' : 'none';
     _redibujarLienzo();
+    _redibujarPanel();   // el panel cambia de fuente (tramos ↔ etiquetas) según el modo
   };
 
   // Con "Etiquetas ON", el click en el lienzo coloca DIRECTO una etiqueta del tipo
@@ -400,7 +420,7 @@
     // Etiquetas manuales del lienzo, normalizadas al mismo origen (Y hacia arriba).
     // Cota/radio/diámetro llevan x1/y1/x2/y2; letra/ángulo llevan x/y + texto.
     var etiquetas = _etiquetas.map(function(e) {
-      if (e.tipo === 'cota' || e.tipo === 'radio' || e.tipo === 'diametro')
+      if (e.tipo === 'cota' || e.tipo === 'radio' || e.tipo === 'diametro' || e.tipo === 'arco')
         return { tipo: e.tipo, x1: e.x1-p0.x, y1: -(e.y1-p0.y), x2: e.x2-p0.x, y2: -(e.y2-p0.y) };
       return { tipo: e.tipo, texto: e.texto, x: e.x-p0.x, y: -(e.y-p0.y) };
     });
@@ -503,7 +523,7 @@
     var c = _coord(ev); if (!c) return;
     if (_dragEtiq >= 0 && _etiquetas[_dragEtiq]) {    // mover etiqueta (libre, sin snap)
       var et = _etiquetas[_dragEtiq];
-      if (et.tipo === 'cota' || et.tipo === 'radio' || et.tipo === 'diametro') {
+      if (et.tipo === 'cota' || et.tipo === 'radio' || et.tipo === 'diametro' || et.tipo === 'arco') {
         // Trasladar la línea completa (mantener su largo/ángulo). Ancla: punto medio.
         if (et._offx == null) { et._offx = c.x - (et.x1+et.x2)/2; et._offy = c.y - (et.y1+et.y2)/2; }
         var cx = c.x - et._offx, cy = c.y - et._offy;
@@ -529,6 +549,18 @@
     if (_dragMovido) { _suprimirClick = true; setTimeout(function(){ _suprimirClick = false; }, 0); }
   }
   var _suprimirClick = false;
+
+  // Path de una cota de arco decorativa entre (x1,y1) y (x2,y2), abombada hacia un
+  // lado con `off` px de offset (curva cuadrática con control en el punto medio
+  // desplazado perpendicularmente). Sirve para acotar radios como en CAD.
+  function _pathCotaArco(x1, y1, x2, y2, off) {
+    var mx = (x1+x2)/2, my = (y1+y2)/2;
+    var dx = x2-x1, dy = y2-y1, len = Math.sqrt(dx*dx+dy*dy) || 1;
+    var nx = -dy/len, ny = dx/len;                 // perpendicular unitaria
+    var cx = mx + nx*(off||14), cy = my + ny*(off||14);   // punto de control
+    return 'M' + x1.toFixed(1) + ',' + y1.toFixed(1) +
+           ' Q' + cx.toFixed(1) + ',' + cy.toFixed(1) + ' ' + x2.toFixed(1) + ',' + y2.toFixed(1);
+  }
 
   // Redibuja SOLO la capa dinámica (no toca el SVG raíz ni la grilla ni el rect
   // de eventos). Así un mousemove no destruye el nodo sobre el que caerá el click.
@@ -583,6 +615,12 @@
     // Etiquetas MANUALES (siempre visibles): arrastrables (data-etiq), con color por tipo.
     var COL_ET = { letra: '#00695c', angulo: '#c62828' };
     _etiquetas.forEach(function(e, k) {
+      if (e.tipo === 'arco') {
+        // Cota de arco decorativa: curva gris sutil entre los 2 puntos, abombada
+        // hacia afuera con un offset fijo (como la línea de dimensión de un radio en CAD).
+        s += '<path d="' + _pathCotaArco(e.x1, e.y1, e.x2, e.y2, 14) + '" fill="none" stroke="#888" stroke-width="1.5" data-etiq="' + k + '" style="cursor:move;"/>';
+        return;
+      }
       if (e.tipo === 'cota') {
         // Cota: línea gris sutil con topes perpendiculares en cada extremo.
         var dx = e.x2 - e.x1, dy = e.y2 - e.y1, len = Math.sqrt(dx*dx+dy*dy) || 1;
@@ -604,10 +642,14 @@
       s += '<text x="' + e.x + '" y="' + (e.y + 4) + '" text-anchor="middle" fill="#fff" stroke="#fff" stroke-width="3" font-size="13" font-weight="800" data-etiq="' + k + '" style="cursor:move;">' + String(e.texto).replace(/[<>&]/g, '') + '</text>';
       s += '<text x="' + e.x + '" y="' + (e.y + 4) + '" text-anchor="middle" fill="' + col + '" font-size="13" font-weight="800" data-etiq="' + k + '" style="cursor:move;">' + String(e.texto).replace(/[<>&]/g, '') + '</text>';
     });
-    // Rubber band de la cota/radio/diámetro en curso (tras el 1er click, hasta el cursor).
+    // Rubber band de la cota/arco/radio/diámetro en curso (tras el 1er click).
     if (_modoEtiquetas && _cotaInicio && _cotaHover) {
       var rbCol = (_cotaInicio.tipo === 'radio' || _cotaInicio.tipo === 'diametro') ? '#1565c0' : '#4db6ac';
-      s += '<line x1="' + _cotaInicio.x + '" y1="' + _cotaInicio.y + '" x2="' + _cotaHover.x + '" y2="' + _cotaHover.y + '" stroke="' + rbCol + '" stroke-width="1.5" stroke-dasharray="5,4"/>';
+      if (_cotaInicio.tipo === 'arco') {
+        s += '<path d="' + _pathCotaArco(_cotaInicio.x, _cotaInicio.y, _cotaHover.x, _cotaHover.y, 14) + '" fill="none" stroke="' + rbCol + '" stroke-width="1.5" stroke-dasharray="5,4"/>';
+      } else {
+        s += '<line x1="' + _cotaInicio.x + '" y1="' + _cotaInicio.y + '" x2="' + _cotaHover.x + '" y2="' + _cotaHover.y + '" stroke="' + rbCol + '" stroke-width="1.5" stroke-dasharray="5,4"/>';
+      }
       s += '<circle cx="' + _cotaInicio.x + '" cy="' + _cotaInicio.y + '" r="3" fill="' + rbCol + '"/>';
     }
     capa.innerHTML = s;
@@ -644,11 +686,13 @@
       if (ev.target && ev.target.getAttribute && ev.target.getAttribute('data-etiq') != null) return;
       var cc = _coord(ev); if (!cc) return;
       var tipo = (document.getElementById('disEtTipo') || {}).value || 'cota';
-      if (tipo === 'cota' || tipo === 'radio' || tipo === 'diametro') {
-        // Cota/radio/diámetro = línea de 2 clicks (inicio y fin), sin botón previo.
+      if (tipo === 'cota' || tipo === 'radio' || tipo === 'diametro' || tipo === 'arco') {
+        // Cota/arco/radio/diámetro = línea de 2 clicks (inicio y fin), sin botón previo.
         if (!_cotaInicio) {
           _cotaInicio = { x: cc.x, y: cc.y, tipo: tipo };
-          var msg = tipo === 'radio' ? 'Radio: click en el CENTRO del arco' : (tipo === 'diametro' ? 'Diámetro: click en el otro extremo' : 'Cota: ahora click en el punto FINAL');
+          var msg = tipo === 'radio' ? 'Radio: click en el CENTRO del arco'
+                  : (tipo === 'diametro' ? 'Diámetro: click en el otro extremo'
+                  : (tipo === 'arco' ? 'Cota de arco: click en el otro extremo del arco' : 'Cota: ahora click en el punto FINAL'));
           if (typeof showToast === 'function') showToast(msg, 'info');
         } else {
           _etiquetas.push({ tipo: _cotaInicio.tipo || 'cota', x1: _cotaInicio.x, y1: _cotaInicio.y, x2: cc.x, y2: cc.y });
@@ -732,6 +776,8 @@
       cont.innerHTML = '<div class="muted" style="font-size:12px;">Haz click en el lienzo para trazar el primer lado. Cada click agrega un lado; el ángulo se ajusta a 45/90/135°.</div>';
       return;
     }
+    // MODO ETIQUETA-MANDA: los parámetros son las etiquetas MANUALES, no los tramos.
+    if (_modoEtiquetas) { _redibujarPanelEtiquetas(cont); return; }
     var geo = _puntosAGeometria();
     var largos = _largos();
     var ladosUsados = geo.tramos.map(function(t) { return t.lado; });
@@ -764,6 +810,24 @@
     disenadorActualizarPreview2d();
   }
 
+  // Panel en MODO ETIQUETA-MANDA: los parámetros REALES son las etiquetas manuales.
+  function _redibujarPanelEtiquetas(cont) {
+    var p = _parametrosDeEtiquetas();
+    var html = '<div style="font-weight:700; color:#00695c; margin-bottom:6px;">Parámetros (por etiquetas) 🏷️</div>';
+    if (!p.parciales.length && !p.angulos.length) {
+      html += '<div class="muted" style="font-size:12px;">Coloca etiquetas de <b>letra</b> (lados) y <b>ángulo</b> en la figura. Esas serán los parámetros reales que alimentan las planillas. Cotas/radio/diámetro son solo visuales.</div>';
+    } else {
+      html += '<div style="font-size:12px; color:#444;">' +
+        '<div><b>Lados:</b> ' + (p.parciales.length ? p.parciales.join(', ') : '— (etiqueta letras)') + '</div>' +
+        '<div><b>N° de lados:</b> ' + p.parciales.length + '</div>' +
+        '<div style="margin-top:4px;"><b>Ángulos:</b> ' + (p.angulos.length ? p.angulos.join(', ') : '— (todos 90°/implícitos)') + '</div>' +
+        (p.angulos.length > 4 ? '<div style="color:#c62828; margin-top:4px;">⚠ ' + p.angulos.length + ' ángulos — el sistema soporta máx. 4 (α1-α4).</div>' : '') +
+        '</div>';
+    }
+    cont.innerHTML = html;
+    disenadorActualizarPreview2d();
+  }
+
   // Preview 2D: pone la figura como FONDO del preview (el módulo de etiquetas del
   // preview la muestra + permite etiquetar encima). Mismo motor de render.
   global.disenadorActualizarPreview2d = function() {
@@ -787,19 +851,33 @@
     }
     if (_puntos.length < 2) { alert('Dibuja al menos un lado (dos puntos) antes de guardar.'); return; }
     var geo = _puntosAGeometria();
-    var parciales = geo.tramos.map(function(t) { return t.lado; });
-    // Convención aSa: solo los ángulos ESPECIALES (≠90 y ≠0) van a `angulos`.
-    // Un doblez de 90° es implícito (no es α1-α4).
-    // Ángulos que se guardan = ÁNGULO INTERNO del vértice (convención aSa).
-    // Solo los especiales (giro ≠90 y ≠0). Un giro de 90 → interno 90 (implícito).
-    var angulos = geo.tramos
-      .filter(function(t) { return t.tipo !== 'arco' && t.giro !== 90 && t.giro !== 0; })
-      .map(function(t) { return _anguloInterno(t.giro); });
+    var parciales, angulos, radio;
+    // MODO ETIQUETA-MANDA (Tanda B): si hay etiquetas manuales de letra/ángulo, ESAS
+    // son los parámetros reales (así el diseñador alimenta el catálogo). Las cotas
+    // decorativas no cuentan. Si no hay etiquetas, se usan los tramos automáticos.
+    var pe = _parametrosDeEtiquetas();
+    var usarEtiquetas = _modoEtiquetas && (pe.parciales.length || pe.angulos.length);
+    if (usarEtiquetas) {
+      parciales = pe.parciales;
+      angulos = pe.angulos;
+      // Radio true si hay etiqueta 'R', o cualquier cota de radio/diámetro/arco.
+      radio = _etiquetas.some(function(e) {
+        return (e.tipo === 'letra' && e.texto === 'R') || e.tipo === 'radio' || e.tipo === 'diametro' || e.tipo === 'arco';
+      });
+    } else {
+      parciales = geo.tramos.map(function(t) { return t.lado; });
+      // Convención aSa: solo los ángulos ESPECIALES (≠90 y ≠0) van a `angulos`.
+      // Ángulo guardado = INTERNO del vértice. Un giro de 90 → interno 90 (implícito).
+      angulos = geo.tramos
+        .filter(function(t) { return t.tipo !== 'arco' && t.giro !== 90 && t.giro !== 0; })
+        .map(function(t) { return _anguloInterno(t.giro); });
+      radio = false;
+    }
     if (angulos.length > 4) {
       alert('Esta figura tiene ' + angulos.length + ' ángulos especiales (≠90°), pero el sistema soporta máximo 4 (α1-α4).\n\nAjusta la figura antes de guardar.');
       return;
     }
-    var payload = { codigo: nombre, parciales: parciales, angulos: angulos, radio: false, geometria: geo };
+    var payload = { codigo: nombre, parciales: parciales, angulos: angulos, radio: radio, geometria: geo };
     // Endpoint de creación (se implementa en backend). Por ahora avisamos si no existe.
     try {
       var res = await fetch(apiUrl('/figuras-catalogo'), {
@@ -913,9 +991,9 @@
     _sweepsSeg = f.geometria.sweeps_seg ? f.geometria.sweeps_seg.slice()
       : f.geometria.tramos.map(function(t) { return t.sweep != null ? t.sweep : 1; });
     // Cargar etiquetas manuales (guardadas relativas a p0, Y arriba → lienzo).
-    // Cota/radio/diámetro llevan x1/y1/x2/y2; el resto x/y.
+    // Cota/arco/radio/diámetro llevan x1/y1/x2/y2; el resto x/y.
     _etiquetas = (f.geometria.etiquetas || []).map(function(e) {
-      if (e.tipo === 'cota' || e.tipo === 'radio' || e.tipo === 'diametro')
+      if (e.tipo === 'cota' || e.tipo === 'radio' || e.tipo === 'diametro' || e.tipo === 'arco')
         return { tipo: e.tipo, x1: Math.round(e.x1)+offX, y1: offY-Math.round(e.y1), x2: Math.round(e.x2)+offX, y2: offY-Math.round(e.y2) };
       return { tipo: e.tipo, texto: e.texto, x: Math.round(e.x) + offX, y: offY - Math.round(e.y) };
     });
