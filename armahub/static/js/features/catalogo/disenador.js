@@ -812,18 +812,27 @@
     _actualizarSliderRadio();
   };
 
-  global.disenadorLimpiar = function() {
-    if (_puntos.length && !confirm('¿Borrar el dibujo actual?')) return;
+  // Limpiado real del lienzo 2D (sin confirmación). Reutilizado por el botón
+  // Limpiar y por el cambio de vista 2D↔3D.
+  function _limpiar2d() {
     _puntos = []; _labels = []; _hoverPt = null;
     _tiposSeg = []; _radiosSeg = []; _sweepsSeg = []; _segSel = -1;
-    _etiquetas = [];
+    _etiquetas = []; _cotaInicio = null; _cotaHover = null;
+    _modoEtiquetas = false;
     _dibujando = true; _editando = null;
     var nb = document.getElementById('disenadorNombre'); if (nb) nb.value = '';
     _redibujarLienzo();
     _redibujarPanel();
     _actualizarBotonTerminar();
     _actualizarSliderRadio();
+  }
+  global.disenadorLimpiar = function() {
+    if (_puntos.length && !confirm('¿Borrar el dibujo actual?')) return;
+    _limpiar2d();
   };
+  // Helpers para el switch de vista 2D↔3D (los usa disenador3d.js).
+  global.disenador2dTieneFigura = function() { return _puntos.length >= 2; };
+  global.disenador2dLimpiarSilencioso = function() { _limpiar2d(); };
 
   // Cambiar la LETRA asignada a un lado (requerimiento: reasignar A/B/C…).
   global.disenadorSetLetra = function(idx, valor) {

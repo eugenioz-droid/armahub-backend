@@ -35,7 +35,20 @@
   global.disenador3dTieneFigura = function() { return _nodos3d.length >= 2; };
 
   global.disenadorSetVista = function(v) {
-    _vista = (v === '3D') ? '3D' : '2D';
+    var destino = (v === '3D') ? '3D' : '2D';
+    if (destino === _vista) return;   // ya estamos ahí
+    // Cambiar de vista DESCARTA la figura del otro modo (2D y 3D no se mezclan).
+    // Avisar solo si hay una figura que se perdería.
+    var hay2d = (typeof disenador2dTieneFigura === 'function') && disenador2dTieneFigura();
+    var hay3d = _nodos3d.length >= 2;
+    var perdemos = (destino === '3D') ? hay2d : hay3d;
+    if (perdemos && !confirm('Cambiar a vista ' + destino + ' descartará la figura actual y empezarás de cero. ¿Continuar?')) {
+      return;   // el usuario canceló → no cambiamos de vista
+    }
+    // Limpiar el lado que se abandona.
+    if (destino === '3D') { if (typeof disenador2dLimpiarSilencioso === 'function') disenador2dLimpiarSilencioso(); }
+    else { disenador3dLimpiarDibujo(); }
+    _vista = destino;
     var c2d = document.getElementById('disControles2D');
     var v3d = document.getElementById('disenador3D');
     var ctrl3d = document.getElementById('disControles3D');
