@@ -148,8 +148,16 @@
     var COLE = { letra: '#00695c', angulo: '#c62828', radio: '#1565c0', diametro: '#1565c0' };
     (opts.etiquetas || []).forEach(function(e) {
       if (e.tipo === 'arco') {
-        var pa = tx({x:e.x1, y:e.y1}), pb = tx({x:e.x2, y:e.y2});
-        svg += '<path d="' + _pathCotaArco(pa.x, pa.y, pb.x, pb.y, 10) + '" fill="none" stroke="#888" stroke-width="1.2"/>';
+        // Cota de arco enganchada al segmento e.seg (en el espacio escalado tpts).
+        if (e.seg == null || !tpts[e.seg] || !tpts[e.seg + 1]) return;
+        var pa = tpts[e.seg], pb = tpts[e.seg + 1];
+        var mx = (pa.x+pb.x)/2, my = (pa.y+pb.y)/2;
+        var dx = pb.x-pa.x, dy = pb.y-pa.y, len = Math.sqrt(dx*dx+dy*dy)||1;
+        var sw = (sweepsEsc[e.seg] != null ? sweepsEsc[e.seg] : 1) ? 1 : -1;
+        var sgn = sw * (e.lado || 1);
+        var off = (radiosEsc[e.seg] || 20) * 0.35 + 8;
+        var cxo = mx + (-dy/len)*off*sgn, cyo = my + (dx/len)*off*sgn;
+        svg += '<path d="M'+pa.x.toFixed(1)+','+pa.y.toFixed(1)+' Q'+cxo.toFixed(1)+','+cyo.toFixed(1)+' '+pb.x.toFixed(1)+','+pb.y.toFixed(1)+'" fill="none" stroke="#888" stroke-width="1.2" stroke-dasharray="3,2"/>';
         return;
       }
       if (e.tipo === 'cota' || e.tipo === 'radio' || e.tipo === 'diametro') {
@@ -428,9 +436,11 @@
     var p0 = _puntos[0] || { x: 0, y: 0 };
     var puntos = _puntos.map(function(p) { return { x: p.x - p0.x, y: -(p.y - p0.y) }; });
     // Etiquetas manuales del lienzo, normalizadas al mismo origen (Y hacia arriba).
-    // Cota/radio/diámetro llevan x1/y1/x2/y2; letra/ángulo llevan x/y + texto.
+    // Arco: enganchada a un segmento (seg/lado, sin coords). Cota/radio/diámetro:
+    // x1/y1/x2/y2. Letra/ángulo: x/y + texto.
     var etiquetas = _etiquetas.map(function(e) {
-      if (e.tipo === 'cota' || e.tipo === 'radio' || e.tipo === 'diametro' || e.tipo === 'arco')
+      if (e.tipo === 'arco') return { tipo: 'arco', seg: e.seg, lado: e.lado || 1 };
+      if (e.tipo === 'cota' || e.tipo === 'radio' || e.tipo === 'diametro')
         return { tipo: e.tipo, x1: e.x1-p0.x, y1: -(e.y1-p0.y), x2: e.x2-p0.x, y2: -(e.y2-p0.y) };
       return { tipo: e.tipo, texto: e.texto, x: e.x-p0.x, y: -(e.y-p0.y) };
     });
@@ -527,7 +537,15 @@
   function _dragStart(ev) {
     var t = ev.target; if (!t || !t.getAttribute) return;
     if (t.getAttribute('data-etiq') != null) {        // etiqueta manual
-      _dragEtiq = parseInt(t.getAttribute('data-etiq'), 10); _dragMovido = false; ev.preventDefault(); return;
+      var ei = parseInt(t.getAttribute('data-etiq'), 10);
+      var et = _etiquetas[ei];
+      // La cota de arco no se arrastra: un click sobre ella INVIERTE la guata.
+      if (et && et.tipo === 'arco') {
+        et.lado = (et.lado || 1) * -1;
+        _suprimirClick = true; setTimeout(function(){ _suprimirClick = false; }, 0);
+        ev.preventDefault(); _redibujarLienzo(); return;
+      }
+      _dragEtiq = ei; _dragMovido = false; ev.preventDefault(); return;
     }
     if (t.getAttribute('data-nodo') != null) {        // vértice
       _dragIdx = parseInt(t.getAttribute('data-nodo'), 10); _dragMovido = false; ev.preventDefault();
@@ -537,7 +555,8 @@
     var c = _coord(ev); if (!c) return;
     if (_dragEtiq >= 0 && _etiquetas[_dragEtiq]) {    // mover etiqueta (libre, sin snap)
       var et = _etiquetas[_dragEtiq];
-      if (et.tipo === 'cota' || et.tipo === 'radio' || et.tipo === 'diametro' || et.tipo === 'arco') {
+      if (et.tipo === 'arco') { return; }   // la cota de arco está enganchada al segmento; no se arrastra
+      if (et.tipo === 'cota' || et.tipo === 'radio' || et.tipo === 'diametro') {
         // Trasladar la línea completa (mantener su largo/ángulo). Ancla: punto medio.
         if (et._offx == null) { et._offx = c.x - (et.x1+et.x2)/2; et._offy = c.y - (et.y1+et.y2)/2; }
         var cx = c.x - et._offx, cy = c.y - et._offy;
@@ -563,6 +582,35 @@
     if (_dragMovido) { _suprimirClick = true; setTimeout(function(){ _suprimirClick = false; }, 0); }
   }
   var _suprimirClick = false;
+
+  // Índice del segmento CURVO (i-1→i, tipo 'arco') cuyo punto medio esté más cerca
+  // del click `pt` (coords de lienzo). -1 si no hay arcos o el click está lejos.
+  function _arcoCercaDe(pt) {
+    var mejor = -1, dmin = Infinity;
+    for (var i = 1; i < _puntos.length; i++) {
+      if (_tiposSeg[i - 1] !== 'arco') continue;
+      var mx = (_puntos[i-1].x + _puntos[i].x) / 2, my = (_puntos[i-1].y + _puntos[i].y) / 2;
+      var d = (mx - pt.x) * (mx - pt.x) + (my - pt.y) * (my - pt.y);
+      if (d < dmin) { dmin = d; mejor = i - 1; }   // guardamos índice de SEGMENTO
+    }
+    // Aceptar solo si el click está razonablemente cerca del arco (< 60px del medio).
+    return (mejor >= 0 && dmin < 60 * 60) ? mejor : -1;
+  }
+
+  // Puntos extremos de un segmento-arco (idx) en coords de LIENZO, y su punto de
+  // control desplazado hacia afuera (lado ±1) para dibujar la cota paralela.
+  function _cotaArcoPuntos(idx, lado) {
+    var a = _puntos[idx], b = _puntos[idx + 1];
+    var mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+    var dx = b.x - a.x, dy = b.y - a.y, len = Math.sqrt(dx*dx + dy*dy) || 1;
+    // Perpendicular; el sweep del arco define hacia dónde abomba la barra → la cota
+    // va al MISMO lado, un poco más afuera. `lado` invierte la guata si se pide.
+    var sw = (_sweepsSeg[idx] != null ? _sweepsSeg[idx] : 1) ? 1 : -1;
+    var s = sw * (lado || 1);
+    var off = (_radiosSeg[idx] || 40) * 0.35 + 16;   // separación proporcional al radio
+    var nx = -dy/len * off * s, ny = dx/len * off * s;
+    return { x1: a.x, y1: a.y, x2: b.x, y2: b.y, cx: mx + nx, cy: my + ny };
+  }
 
   // Path de una cota de arco decorativa entre (x1,y1) y (x2,y2), abombada hacia un
   // lado con `off` px de offset (curva cuadrática con control en el punto medio
@@ -630,9 +678,11 @@
     var COL_ET = { letra: '#00695c', angulo: '#c62828' };
     _etiquetas.forEach(function(e, k) {
       if (e.tipo === 'arco') {
-        // Cota de arco decorativa: curva gris sutil entre los 2 puntos, abombada
-        // hacia afuera con un offset fijo (como la línea de dimensión de un radio en CAD).
-        s += '<path d="' + _pathCotaArco(e.x1, e.y1, e.x2, e.y2, 14) + '" fill="none" stroke="#888" stroke-width="1.5" data-etiq="' + k + '" style="cursor:move;"/>';
+        // Cota de arco: enganchada al segmento curvo `e.seg`, paralela al arco y
+        // separada hacia afuera (offset). `e.lado` (±1) invierte la guata.
+        if (e.seg == null || !_puntos[e.seg + 1]) return;
+        var ca = _cotaArcoPuntos(e.seg, e.lado);
+        s += '<path d="M' + ca.x1.toFixed(1) + ',' + ca.y1.toFixed(1) + ' Q' + ca.cx.toFixed(1) + ',' + ca.cy.toFixed(1) + ' ' + ca.x2.toFixed(1) + ',' + ca.y2.toFixed(1) + '" fill="none" stroke="#888" stroke-width="1.5" stroke-dasharray="4,3" data-etiq="' + k + '" style="cursor:pointer;"/>';
         return;
       }
       if (e.tipo === 'cota') {
@@ -656,14 +706,10 @@
       s += '<text x="' + e.x + '" y="' + (e.y + 4) + '" text-anchor="middle" fill="#fff" stroke="#fff" stroke-width="3" font-size="13" font-weight="800" data-etiq="' + k + '" style="cursor:move;">' + String(e.texto).replace(/[<>&]/g, '') + '</text>';
       s += '<text x="' + e.x + '" y="' + (e.y + 4) + '" text-anchor="middle" fill="' + col + '" font-size="13" font-weight="800" data-etiq="' + k + '" style="cursor:move;">' + String(e.texto).replace(/[<>&]/g, '') + '</text>';
     });
-    // Rubber band de la cota/arco/radio/diámetro en curso (tras el 1er click).
+    // Rubber band de la cota/radio/diámetro en curso (tras el 1er click).
     if (_modoEtiquetas && _cotaInicio && _cotaHover) {
       var rbCol = (_cotaInicio.tipo === 'radio' || _cotaInicio.tipo === 'diametro') ? '#1565c0' : '#4db6ac';
-      if (_cotaInicio.tipo === 'arco') {
-        s += '<path d="' + _pathCotaArco(_cotaInicio.x, _cotaInicio.y, _cotaHover.x, _cotaHover.y, 14) + '" fill="none" stroke="' + rbCol + '" stroke-width="1.5" stroke-dasharray="5,4"/>';
-      } else {
-        s += '<line x1="' + _cotaInicio.x + '" y1="' + _cotaInicio.y + '" x2="' + _cotaHover.x + '" y2="' + _cotaHover.y + '" stroke="' + rbCol + '" stroke-width="1.5" stroke-dasharray="5,4"/>';
-      }
+      s += '<line x1="' + _cotaInicio.x + '" y1="' + _cotaInicio.y + '" x2="' + _cotaHover.x + '" y2="' + _cotaHover.y + '" stroke="' + rbCol + '" stroke-width="1.5" stroke-dasharray="5,4"/>';
       s += '<circle cx="' + _cotaInicio.x + '" cy="' + _cotaInicio.y + '" r="3" fill="' + rbCol + '"/>';
     }
     capa.innerHTML = s;
@@ -700,13 +746,22 @@
       if (ev.target && ev.target.getAttribute && ev.target.getAttribute('data-etiq') != null) return;
       var cc = _coord(ev); if (!cc) return;
       var tipo = (document.getElementById('disEtTipo') || {}).value || 'cota';
-      if (tipo === 'cota' || tipo === 'radio' || tipo === 'diametro' || tipo === 'arco') {
-        // Cota/arco/radio/diámetro = línea de 2 clicks (inicio y fin), sin botón previo.
+      if (tipo === 'arco') {
+        // Cota de ARCO: 1 click sobre un segmento CURVO → la cota sigue ese arco,
+        // separada hacia afuera (offset). Se puede invertir la guata luego.
+        var seg = _arcoCercaDe(cc);
+        if (seg < 0) {
+          if (typeof showToast === 'function') showToast('Haz click sobre un segmento CURVO de la figura para acotarlo.', 'info');
+        } else {
+          _etiquetas.push({ tipo: 'arco', seg: seg, lado: 1 });   // lado: 1/-1 = guata
+          _redibujarLienzo(); _redibujarPanel();
+        }
+      } else if (tipo === 'cota' || tipo === 'radio' || tipo === 'diametro') {
+        // Cota/radio/diámetro = línea de 2 clicks (inicio y fin), sin botón previo.
         if (!_cotaInicio) {
           _cotaInicio = { x: cc.x, y: cc.y, tipo: tipo };
           var msg = tipo === 'radio' ? 'Radio: click en el CENTRO del arco'
-                  : (tipo === 'diametro' ? 'Diámetro: click en el otro extremo'
-                  : (tipo === 'arco' ? 'Cota de arco: click en el otro extremo del arco' : 'Cota: ahora click en el punto FINAL'));
+                  : (tipo === 'diametro' ? 'Diámetro: click en el otro extremo' : 'Cota: ahora click en el punto FINAL');
           if (typeof showToast === 'function') showToast(msg, 'info');
         } else {
           _etiquetas.push({ tipo: _cotaInicio.tipo || 'cota', x1: _cotaInicio.x, y1: _cotaInicio.y, x2: cc.x, y2: cc.y });
@@ -826,21 +881,54 @@
   }
 
   // Panel en MODO ETIQUETA-MANDA: los parámetros REALES son las etiquetas manuales.
+  // MISMA tabla que el panel automático (Lado / Largo / Ángulo), orden alfabético.
   function _redibujarPanelEtiquetas(cont) {
-    var p = _parametrosDeEtiquetas();
-    var html = '<div style="font-weight:700; color:#00695c; margin-bottom:6px;">Parámetros (por etiquetas) 🏷️</div>';
-    if (!p.parciales.length && !p.angulos.length) {
-      html += '<div class="muted" style="font-size:12px;">Coloca etiquetas de <b>letra</b> (lados) y <b>ángulo</b> en la figura. Esas serán los parámetros reales que alimentan las planillas. Cotas/radio/diámetro son solo visuales.</div>';
-    } else {
-      html += '<div style="font-size:12px; color:#444;">' +
-        '<div><b>Lados:</b> ' + (p.parciales.length ? p.parciales.join(', ') : '— (etiqueta letras)') + '</div>' +
-        '<div><b>N° de lados:</b> ' + p.parciales.length + '</div>' +
-        '<div style="margin-top:4px;"><b>Ángulos:</b> ' + (p.angulos.length ? p.angulos.join(', ') : '— (todos 90°/implícitos)') + '</div>' +
-        (p.angulos.length > 4 ? '<div style="color:#c62828; margin-top:4px;">⚠ ' + p.angulos.length + ' ángulos — el sistema soporta máx. 4 (α1-α4).</div>' : '') +
-        '</div>';
+    // Etiquetas de letra (lados) ordenadas alfabéticamente; a cada una le asociamos
+    // el LARGO del tramo cuyo punto medio esté más cerca de la etiqueta (en grilla).
+    var letras = _etiquetas.filter(function(e) { return e.tipo === 'letra' && e.texto !== 'R'; });
+    letras.sort(function(a, b) { return String(a.texto).localeCompare(String(b.texto)); });
+    var angs = _etiquetas.filter(function(e) { return e.tipo === 'angulo'; })
+                         .map(function(e) { return e.texto; });
+
+    var html = '<div style="font-weight:700; color:#00695c; margin-bottom:8px;">Parámetros de la figura 🏷️</div>';
+    if (!letras.length && !angs.length) {
+      html += '<div class="muted" style="font-size:12px;">Coloca etiquetas de <b>letra</b> (lados) y <b>ángulo</b> sobre la figura. Esas serán los parámetros reales que alimentan las planillas. Cota/arco/radio/diámetro son solo visuales.</div>';
+      cont.innerHTML = html;
+      disenadorActualizarPreview2d();
+      return;
     }
+    html += '<table style="width:100%; font-size:12px; border-collapse:collapse;">';
+    html += '<tr style="color:#666; text-align:left;"><th style="padding:2px 4px;">Lado</th><th style="padding:2px 4px;">Largo (grilla)</th></tr>';
+    letras.forEach(function(e) {
+      html += '<tr style="border-top:1px solid #eee;">' +
+        '<td style="padding:2px 4px; font-weight:700; color:#00695c; text-align:center;">' + String(e.texto).replace(/[<>&]/g, '') + '</td>' +
+        '<td style="padding:2px 4px;">' + _largoCercaDe(e) + '</td>' +
+        '</tr>';
+    });
+    html += '</table>';
+    html += '<div style="margin-top:8px; font-size:12px; color:#444;">' +
+      '<div><b>Lados:</b> ' + letras.map(function(e){ return e.texto; }).join(', ') + '</div>' +
+      '<div><b>Ángulos:</b> ' + (angs.length ? angs.join(', ') : '— (todos 90°/implícitos)') + '</div>' +
+      '<div><b>N° de lados:</b> ' + letras.length + '</div>' +
+      (angs.length > 4 ? '<div style="color:#c62828; margin-top:4px;">⚠ ' + angs.length + ' ángulos — el sistema soporta máx. 4 (α1-α4).</div>' : '') +
+      '</div>';
     cont.innerHTML = html;
     disenadorActualizarPreview2d();
+  }
+
+  // Largo (en grilla) del tramo dibujado cuyo punto medio esté más cerca de la
+  // etiqueta `e` (en coords de lienzo). Devuelve '—' si no hay tramos.
+  function _largoCercaDe(e) {
+    if (_puntos.length < 2) return '—';
+    var mejor = -1, dmin = Infinity;
+    for (var i = 1; i < _puntos.length; i++) {
+      var mx = (_puntos[i-1].x + _puntos[i].x) / 2, my = (_puntos[i-1].y + _puntos[i].y) / 2;
+      var d = (mx - e.x) * (mx - e.x) + (my - e.y) * (my - e.y);
+      if (d < dmin) { dmin = d; mejor = i; }
+    }
+    if (mejor < 0) return '—';
+    var dx = _puntos[mejor].x - _puntos[mejor-1].x, dy = _puntos[mejor].y - _puntos[mejor-1].y;
+    return Math.round(Math.sqrt(dx*dx + dy*dy) / GRID);
   }
 
   // Preview 2D: pone la figura como FONDO del preview (el módulo de etiquetas del
@@ -1007,9 +1095,10 @@
     _sweepsSeg = f.geometria.sweeps_seg ? f.geometria.sweeps_seg.slice()
       : f.geometria.tramos.map(function(t) { return t.sweep != null ? t.sweep : 1; });
     // Cargar etiquetas manuales (guardadas relativas a p0, Y arriba → lienzo).
-    // Cota/arco/radio/diámetro llevan x1/y1/x2/y2; el resto x/y.
+    // Arco: seg/lado (sin coords). Cota/radio/diámetro: x1/y1/x2/y2. Resto: x/y.
     _etiquetas = (f.geometria.etiquetas || []).map(function(e) {
-      if (e.tipo === 'cota' || e.tipo === 'radio' || e.tipo === 'diametro' || e.tipo === 'arco')
+      if (e.tipo === 'arco') return { tipo: 'arco', seg: e.seg, lado: e.lado || 1 };
+      if (e.tipo === 'cota' || e.tipo === 'radio' || e.tipo === 'diametro')
         return { tipo: e.tipo, x1: Math.round(e.x1)+offX, y1: offY-Math.round(e.y1), x2: Math.round(e.x2)+offX, y2: offY-Math.round(e.y2) };
       return { tipo: e.tipo, texto: e.texto, x: Math.round(e.x) + offX, y: offY - Math.round(e.y) };
     });
