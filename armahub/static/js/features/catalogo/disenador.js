@@ -106,6 +106,15 @@
     // que en el lienzo sin invertir el sweep (invertirlo lo dejaba al revés).
     var sweepsEsc = (opts.sweeps_seg || []).map(function(sw) { return (sw != null ? sw : 1); });
     svg += '<path d="' + _pathDesdePuntos(tpts, tiposEsc, radiosEsc, sweepsEsc) + '" fill="none" stroke="#00695c" stroke-width="3" stroke-linejoin="round" stroke-linecap="round" />';
+    // 4 COTAS AUTOMÁTICAS del ARCO (un arco = 1 segmento pero 4 dims lo definen):
+    // cuerda, proyección horizontal, proyección vertical y radio. Se dibujan solas
+    // para cada segmento curvo, estilo CAD. Sirve a 2D y 3D (motor compartido).
+    if (opts.cotas_arco !== false) {
+      for (var ci = 1; ci < tpts.length; ci++) {
+        if (tiposEsc[ci - 1] !== 'arco') continue;
+        svg += _cotasArcoSVG(tpts[ci - 1], tpts[ci], radiosEsc[ci - 1] || 0, sweepsEsc[ci - 1]);
+      }
+    }
     // Vértices (nodos pequeños para no recargar la miniatura).
     tpts.forEach(function(p, i) {
       var isEnd = (i === 0 || i === tpts.length - 1);
@@ -259,6 +268,43 @@
       }
     }
     return d;
+  }
+
+  // 4 cotas automáticas de un ARCO entre a y b (radio ya escalado, sweep). Estilo CAD:
+  // cuerda (gris punteada entre extremos), proy. HORIZONTAL (abajo), proy. VERTICAL
+  // (al lado) y RADIO (flecha del centro a la curva). Devuelve el SVG.
+  function _cotasArcoSVG(a, b, radio, sweep) {
+    var col = '#888', ar = '#1565c0';
+    var dx = b.x - a.x, dy = b.y - a.y, cuerda = Math.sqrt(dx*dx + dy*dy) || 1;
+    var r = Math.max(radio || cuerda*0.75, cuerda/2 + 0.5);
+    var sw = (sweep != null ? sweep : 1) ? 1 : 0;
+    // Centro del arco (misma geometría que el path SVG "A r r 0 0 sw").
+    var mx = (a.x+b.x)/2, my = (a.y+b.y)/2;
+    var h = Math.sqrt(Math.max(0, r*r - (cuerda/2)*(cuerda/2)));
+    var ux = dx/cuerda, uy = dy/cuerda, nx = -uy, ny = ux;
+    var s = sw ? 1 : -1;
+    var cx = mx + nx*h*s, cy = my + ny*h*s;   // centro
+    // Punto medio del arco (la "guata"): opuesto al centro respecto a la cuerda.
+    var midArcX = mx - nx*h*s, midArcY = my - ny*h*s;
+    var out = '';
+    // 1) CUERDA: recta gris punteada entre extremos.
+    out += '<line x1="'+a.x.toFixed(1)+'" y1="'+a.y.toFixed(1)+'" x2="'+b.x.toFixed(1)+'" y2="'+b.y.toFixed(1)+'" stroke="'+col+'" stroke-width="0.8" stroke-dasharray="3,2"/>';
+    // 2) RADIO: flecha del centro al punto medio del arco.
+    out += '<line x1="'+cx.toFixed(1)+'" y1="'+cy.toFixed(1)+'" x2="'+midArcX.toFixed(1)+'" y2="'+midArcY.toFixed(1)+'" stroke="'+ar+'" stroke-width="0.8" marker-end="url(#disArrowEnd)"/>';
+    // Bounding box del arco (extremos + punto medio) para las proyecciones.
+    var minX = Math.min(a.x, b.x, midArcX), maxX = Math.max(a.x, b.x, midArcX);
+    var minY = Math.min(a.y, b.y, midArcY), maxY = Math.max(a.y, b.y, midArcY);
+    // 3) Proy. HORIZONTAL: cota bajo el arco (ancho), con topes.
+    var yH = maxY + 8;
+    out += '<line x1="'+minX.toFixed(1)+'" y1="'+yH.toFixed(1)+'" x2="'+maxX.toFixed(1)+'" y2="'+yH.toFixed(1)+'" stroke="'+col+'" stroke-width="0.8"/>';
+    out += '<line x1="'+minX.toFixed(1)+'" y1="'+(yH-3).toFixed(1)+'" x2="'+minX.toFixed(1)+'" y2="'+(yH+3).toFixed(1)+'" stroke="'+col+'" stroke-width="0.8"/>';
+    out += '<line x1="'+maxX.toFixed(1)+'" y1="'+(yH-3).toFixed(1)+'" x2="'+maxX.toFixed(1)+'" y2="'+(yH+3).toFixed(1)+'" stroke="'+col+'" stroke-width="0.8"/>';
+    // 4) Proy. VERTICAL: cota al lado del arco (alto), con topes.
+    var xV = maxX + 8;
+    out += '<line x1="'+xV.toFixed(1)+'" y1="'+minY.toFixed(1)+'" x2="'+xV.toFixed(1)+'" y2="'+maxY.toFixed(1)+'" stroke="'+col+'" stroke-width="0.8"/>';
+    out += '<line x1="'+(xV-3).toFixed(1)+'" y1="'+minY.toFixed(1)+'" x2="'+(xV+3).toFixed(1)+'" y2="'+minY.toFixed(1)+'" stroke="'+col+'" stroke-width="0.8"/>';
+    out += '<line x1="'+(xV-3).toFixed(1)+'" y1="'+maxY.toFixed(1)+'" x2="'+(xV+3).toFixed(1)+'" y2="'+maxY.toFixed(1)+'" stroke="'+col+'" stroke-width="0.8"/>';
+    return out;
   }
 
   // Estado del editor.
