@@ -83,6 +83,19 @@
       if (e.x1 != null) { _acum(e.x1, e.y1); _acum(e.x2, e.y2); }  // cota/radio/diámetro
       // arco (seg/lado): sus extremos ya están en pts, no aporta límites nuevos.
     });
+    // Cotas automáticas de arco en 2D: se calculan sobre los puntos ORIGINALES (mismo
+    // espacio que pts, pre-tx) para poder incluirlas en el bbox y luego dibujarlas con
+    // tx (escaladas junto con la figura). En 3D las cotas ya vienen (cotas_arco_iso).
+    var _cotas2d = null;
+    if (!opts.cotas_arco_iso && (opts.tipos_seg || []).indexOf('arco') !== -1) {
+      _cotas2d = _cotasArco2dDesde(pts, opts.tipos_seg, opts.radios_seg, opts.sweeps_seg);
+      _cotas2d.forEach(function(seg) {
+        (seg.desarrollo || []).forEach(function(p) { _acum(p.x, p.y); });
+        [seg.radio, seg.horiz, seg.vert].forEach(function(par) {
+          if (par && par.length >= 2) { _acum(par[0].x, par[0].y); _acum(par[1].x, par[1].y); }
+        });
+      });
+    }
     // 3D: los puntos del ARCO proyectado sobresalen del segmento nodo-nodo; sin esto
     // un arco muy pronunciado se sale del marco. También las COTAS del arco (desarrollo/
     // radio/vertical) que quedan por fuera. Todo va al bbox para que el encuadre las
@@ -132,12 +145,17 @@
       });
     }
     svg += '<path d="' + _pathDesdePuntos(tpts, tiposEsc, radiosEsc, sweepsEsc, arcosTx) + '" fill="none" stroke="#00695c" stroke-width="3" stroke-linejoin="round" stroke-linecap="round" />';
-    // Cotas automáticas del ARCO. En 3D las calcula el editor 3D en el espacio real y
-    // las pasa YA PROYECTADAS (cotas_arco_iso, mismo espacio que pts) → nunca se
-    // descalibran de la vista. Aquí solo se mapean con tx() y se dibujan.
-    (opts.cotas_arco_iso || []).forEach(function(seg) {
-      svg += _dibujarCotasArcoProyectadas(seg, tx);
-    });
+    // Cotas automáticas del ARCO. Dos orígenes, MISMO formato y MISMA función de dibujo:
+    //  - 3D: el editor las calcula en el espacio real y las pasa proyectadas
+    //    (cotas_arco_iso, en coords de la proyección) → se mapean con tx().
+    //  - 2D: se calculan aquí desde los puntos escalados del lienzo (tpts). Como ya
+    //    están en coords de render, se dibujan con tx identidad.
+    if (opts.cotas_arco_iso) {
+      opts.cotas_arco_iso.forEach(function(seg) { svg += _dibujarCotasArcoProyectadas(seg, tx); });
+    } else if (_cotas2d) {
+      // 2D: calculadas sobre pts originales (arriba); tx las escala/posiciona al render.
+      _cotas2d.forEach(function(seg) { svg += _dibujarCotasArcoProyectadas(seg, tx); });
+    }
     // Vértices (nodos pequeños para no recargar la miniatura).
     tpts.forEach(function(p, i) {
       var isEnd = (i === 0 || i === tpts.length - 1);
@@ -301,10 +319,63 @@
     return d;
   }
 
-  // Dibuja las 4 cotas de un arco a partir de sus PUNTOS 3D YA PROYECTADOS (el editor
-  // 3D los calculó en el espacio real y los proyectó con _iso, en coords de `pts`).
-  // `seg` = { cuerda:[p0,p1], radio:[centro,arco], horiz:[p0,p1], vert:[p0,p1] } en
-  // coords de la proyección. tx() los mapea al render. Así NUNCA se descalibran.
+  // NÚCLEO COMÚN de las 4 cotas de un arco. Trabaja en UN plano 2D (los puntos a,b
+  // están en ese plano) y devuelve las cotas como puntos 2D del MISMO plano:
+  //   { desarrollo:[...], radio:[m,rp], horiz:[a,b], vert:[mv,gv] }.
+  // Lo usan: el editor 2D (plano = lienzo, se dibuja directo) y el 3D (plano = plano
+  // del arco; luego cada punto se proyecta con _iso). Misma geometría, cero duplicación.
+  //   horiz = recta entre los 2 nodos; vert = sagita (medio cuerda→guata) al costado;
+  //   desarrollo = curva paralela al arco con offset; radio = medio cuerda→arco a 45°.
+  function _calcCotasArco(ax, ay, bx, by, radio, sweep) {
+    var cuerdaLen = Math.sqrt((bx-ax)*(bx-ax)+(by-ay)*(by-ay)) || 1;
+    var r = Math.max(radio || cuerdaLen*0.75, cuerdaLen/2 + 0.5);
+    var mx = (ax+bx)/2, my = (ay+by)/2;
+    var hh = Math.sqrt(Math.max(0, r*r - (cuerdaLen/2)*(cuerdaLen/2)));
+    var ux = (bx-ax)/cuerdaLen, uy = (by-ay)/cuerdaLen, nx = -uy, ny = ux;
+    var s = (sweep ? 1 : -1);
+    var cx = mx + nx*hh*s, cy = my + ny*hh*s;            // centro del arco
+    var a0 = Math.atan2(ay - cy, ax - cx);
+    var a1 = Math.atan2(by - cy, bx - cx);
+    var da = a1 - a0; while (da > Math.PI) da -= 2*Math.PI; while (da < -Math.PI) da += 2*Math.PI;
+    var angMed = a0 + da/2;
+    var gx = cx + r*Math.cos(angMed), gy = cy + r*Math.sin(angMed);   // guata
+    // radio inclinado ~45° (para distinguirlo de la vertical).
+    var incl = Math.min(Math.PI/4, Math.abs(da)/2 * 0.85) * (da >= 0 ? 1 : -1);
+    var angRad = angMed + incl;
+    var rpx = cx + r*Math.cos(angRad), rpy = cy + r*Math.sin(angRad);
+    // desarrollo: curva del arco empujada a r+offArco.
+    var offArco = Math.max(6, r*0.14), rOff = r + offArco;
+    var N = 24, desarrollo = [];
+    for (var k = 0; k <= N; k++) {
+      var t = a0 + da * (k / N);
+      desarrollo.push({ x: cx + rOff*Math.cos(t), y: cy + rOff*Math.sin(t) });
+    }
+    // vert: sagita (medio cuerda→guata) desplazada al costado a lo largo de la cuerda.
+    var lat = cuerdaLen * 0.5 + offArco;
+    return {
+      desarrollo: desarrollo,
+      radio:  [ { x: mx, y: my }, { x: rpx, y: rpy } ],
+      horiz:  [ { x: ax, y: ay }, { x: bx, y: by } ],
+      vert:   [ { x: mx + ux*lat, y: my + uy*lat }, { x: gx + ux*lat, y: gy + uy*lat } ]
+    };
+  }
+
+  // Cotas de arco para una figura 2D (plano = lienzo): recorre los segmentos arco y
+  // devuelve un array de cotas ya en coords de los puntos 2D (mismo espacio que pts).
+  // Formato idéntico al cotas_arco_iso del 3D → se dibuja con la misma función.
+  function _cotasArco2dDesde(pts, tipos, radios, sweeps) {
+    var res = [];
+    for (var i = 1; i < pts.length; i++) {
+      if ((tipos && tipos[i-1]) !== 'arco') continue;
+      var a = pts[i-1], b = pts[i];
+      res.push(_calcCotasArco(a.x, a.y, b.x, b.y, (radios && radios[i-1]) || 0, (sweeps && sweeps[i-1] != null) ? sweeps[i-1] : 1));
+    }
+    return res;
+  }
+
+  // Dibuja las 4 cotas de un arco a partir de sus PUNTOS YA EN EL ESPACIO DESTINO.
+  // 2D: coords del lienzo (tx identidad). 3D: puntos proyectados con _iso (tx mapea al
+  // render). `seg` = { desarrollo:[...], radio:[m,rp], horiz:[a,b], vert:[mv,gv] }.
   function _dibujarCotasArcoProyectadas(seg, tx) {
     var col = '#888', ar = '#1565c0', out = '';
     function linea(par, color, dash, marker) {
