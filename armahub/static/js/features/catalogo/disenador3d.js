@@ -548,23 +548,34 @@
     };
   };
 
-  // Preview 3D: escribe el snapshot (fijado o en vivo) en el preview chico #disPreview.
+  // Preview 3D: dibujo VECTORIAL (SVG iso) del preview chico #disPreview. Usa la
+  // proyección isométrica de los nodos (dibujarFigura del motor 2D), no una foto →
+  // paramétrico, sin deformación, con las etiquetas integradas.
   function _actualizarPreview3d() {
     var prev = document.getElementById('disPreview');
     if (!prev) return;
-    if (_nodos3d.length < 2 || !_renderer) {
+    if (_nodos3d.length < 2) {
       prev.innerHTML = '<span class="muted" style="font-size:11px;">Dibuja la barra 3D para ver el preview.</span>';
       return;
     }
-    var url = _snapshotFijado || _capturarSnapshot();
-    if (!url) return;
-    // Superponer las etiquetas 3D sobre el snapshot (mismo criterio que galería/
-    // catálogo), para que se VEAN en el preview y no solo la imagen pelada.
-    var capaEt = (typeof disenadorSvgEtiquetasEscaladas === 'function')
-      ? disenadorSvgEtiquetasEscaladas(_etiquetas3d, 210, 140) : '';
-    prev.innerHTML = '<div style="position:relative; width:210px; height:140px; margin:0 auto;">' +
-      '<img src="' + url + '" style="width:210px; height:140px; object-fit:contain;" alt="preview 3D"/>' +
-      capaEt + '</div>';
+    // Geometría en vivo (puntos iso + tramos + etiquetas) → SVG con el motor 2D.
+    var geo = _geometriaLiveParaRender();
+    if (geo && window.disenadorMotor && window.disenadorMotor.dibujarFigura) {
+      try { prev.innerHTML = window.disenadorMotor.dibujarFigura(geo, null, { width: 210, height: 140, pad: 18 }); return; }
+      catch (e) { /* fallback abajo */ }
+    }
+    prev.innerHTML = '<span class="muted" style="font-size:11px;">Preview no disponible.</span>';
+  }
+  // Geometría mínima para el render SVG iso en vivo (sin recalcular todo el guardado).
+  function _geometriaLiveParaRender() {
+    if (_nodos3d.length < 2) return null;
+    var puntos2d = _nodos3d.map(function(p) { return _iso(p); });
+    var tramos = [];
+    for (var i = 1; i < _nodos3d.length; i++) {
+      tramos.push({ lado: _LETRAS3D[i-1] || ('L'+i), tipo: _tiposSeg3d[i-1] || 'recto',
+                    radio: _radiosSeg3d[i-1] || 0, sweep: _sweepsSeg3d[i-1] != null ? _sweepsSeg3d[i-1] : 1 });
+    }
+    return { dim: '3D', puntos: puntos2d, tramos: tramos, etiquetas: _etiquetas3d.slice() };
   }
 
   // Al cambiar la figura, el snapshot fijado deja de ser válido (se libera).

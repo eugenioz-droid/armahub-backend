@@ -1182,21 +1182,12 @@
     }
     cont.innerHTML = conGeom.map(function(f) {
       var es3d = f.geometria && f.geometria.dim === '3D';
-      // 3D con snapshot fijado → mostrar la imagen; si no, el SVG (vista iso 2D).
-      var vis;
-      if (es3d && f.geometria.snapshot) {
-        // Snapshot + capa de etiquetas 3D superpuesta (escaladas del lienzo 420x320).
-        var capaEt = _svgEtiquetasEscaladas((f.geometria.etiquetas || []), 90, 72);
-        vis = '<div style="position:relative; width:90px; height:72px; margin:0 auto;">' +
-          '<img src="' + f.geometria.snapshot + '" style="width:90px; height:72px; object-fit:contain; border-radius:4px;" alt="' + f.codigo + '"/>' +
-          capaEt + '</div>';
-      } else {
-        vis = dibujarFigura(f.geometria, null, { width: 90, height: 72, pad: 12 });
-      }
+      // Render VECTORIAL (SVG) tanto 2D como 3D: la geometría 3D guarda `puntos`
+      // = proyección isométrica de los nodos, y dibujarFigura los dibuja igual que
+      // el 2D (paramétrico, sin foto). Antes las 3D usaban <img> del snapshot.
+      var vis = dibujarFigura(f.geometria, null, { width: 90, height: 72, pad: 12 });
       var cod = String(f.codigo).replace(/'/g, "\\'");
-      // Badge "3D": z-index ALTO y declarado DESPUÉS del snapshot para que gane el
-      // apilamiento (el SVG de etiquetas del snapshot tiene su propio contexto y
-      // tapaba el badge aunque tuviera z-index bajo).
+      // Badge "3D": z-index alto para que no lo tape el SVG de la figura.
       var badge3d = es3d ? '<span style="position:absolute; top:4px; left:4px; z-index:10; background:#1976d2; color:#fff; font-size:9px; font-weight:700; padding:1px 5px; border-radius:3px; pointer-events:none;">3D</span>' : '';
       return '<div style="border:1px solid #e0e0e0; border-radius:6px; padding:6px; text-align:center; background:#fff; position:relative;">' +
         '<div style="cursor:pointer;" title="Editar" onclick="disenadorEditar(\'' + cod + '\')">' + vis + '</div>' +

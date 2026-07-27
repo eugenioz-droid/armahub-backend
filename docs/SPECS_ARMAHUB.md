@@ -948,6 +948,15 @@ El motor SVG es compartido → esto se implementa una vez y sirve a ambos. Regla
 el usuario dibuja y ya tiene letras + geometría sin etiquetar nada. Con arco, las 4 cotas salen
 solas. El etiquetado manual pasa de "obligatorio" a "excepcional".
 
+**A.4.2 — Las cotas del arco SIEMPRE se dibujan (aclarado Eugenio 2026-07-27).**
+Las 4 cotas del arco se DERIVAN de la geometría del segmento curvo → se dibujan SIEMPRE, en
+cualquier modo (normal o etiquetado manual). No viven en `_etiquetas`, se recalculan del dato del
+arco. Por eso NUNCA se pierden y el usuario NO tiene que volver a dibujarlas — que era la
+preocupación. Lo ÚNICO que el modo etiqueta-manda oculta/gestiona son las LETRAS (para que el
+usuario ponga las suyas). NO se reordenan letras, NO se "materializa" nada — era una confusión
+mía. Regla simple: cotas de arco = siempre automáticas y persistentes; letras = automáticas con
+override manual; el arco dibujado (con sus cotas) es intocable por el etiquetado.
+
 **A.5 — Data 3D existente: DESCARTADA (decisión Eugenio).** Solo hay 1 barra 3D de prueba; el
 usuario la elimina. Empezamos limpio con SVG iso — sin migración ni fallback de snapshot para
 data vieja. (El `snapshot` puede conservarse en el modelo por si se quiere una foto de respaldo,
