@@ -63,6 +63,10 @@
                    style="font-size:13px; min-width:180px; padding:5px 8px;" />
           </div>
           <button onclick="disenadorGuardar()" style="font-size:13px; padding:7px 16px; background:#00695c; color:#fff; border:none; border-radius:4px; cursor:pointer;">💾 Guardar en catálogo</button>
+          <button id="disBtnNuevaFigura" onclick="disenadorNuevaFigura()" style="font-size:13px; padding:7px 14px; background:#fff; color:#00695c; border:1px solid #00695c; border-radius:4px; cursor:pointer;">✚ Nueva figura</button>
+          <!-- Banda "editando": aparece al cargar una figura existente, para que se sepa
+               que NO se está creando desde cero. Se oculta con Nueva figura. -->
+          <span id="disEditandoBanda" style="display:none; align-items:center; gap:6px; font-size:12px; font-weight:600; color:#e65100; background:#fff3e0; border:1px solid #ffb74d; border-radius:6px; padding:5px 10px;">✏️ Editando <span id="disEditandoNombre"></span></span>
         </div>
 
         <div style="display:flex; gap:16px; flex-wrap:wrap; align-items:flex-start;">
@@ -133,6 +137,9 @@
             </div>
             <!-- Barra de controles de etiqueta 2D (visible al activar). -->
             <div id="disEtiquetasBar" style="display:none; margin-top:8px; padding:8px 10px; background:#e8f5e9; border:1px solid #a5d6a7; border-radius:6px; align-items:center; gap:8px; flex-wrap:wrap;">
+              <!-- Terminar etiquetado 3D: solo visible cuando se etiqueta una figura 3D
+                   (el botón "Etiquetar barra" del panel 3D se oculta al entrar). Vuelve al visor 3D. -->
+              <button id="disBtnTerminarEtiq3d" onclick="disenador3dToggleEtiquetas()" style="display:none; font-size:11px; padding:4px 12px; background:#00695c; color:#fff; border:none; border-radius:4px; cursor:pointer; font-weight:600;">✓ Terminar etiquetado</button>
               <label style="font-size:11px; color:#666;">Tipo
                 <select id="disEtTipo" onchange="disenadorEtTipoChange()" style="font-size:12px; margin-left:3px;">
                   <option value="cota">Cota (línea de medida)</option>

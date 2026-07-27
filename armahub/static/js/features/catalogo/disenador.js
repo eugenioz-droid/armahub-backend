@@ -889,7 +889,35 @@
   global.disenadorLimpiar = function() {
     if (_puntos.length && !confirm('¿Borrar el dibujo actual?')) return;
     _limpiar2d();
+    _actualizarBandaEditando();
   };
+
+  // NUEVA FIGURA: limpia TODO (2D y 3D según la vista) y sale de "editando", para
+  // empezar de cero. Funciona en ambas vistas (antes, al cargar una 3D no había
+  // forma de vaciar). Pide confirmación si hay algo dibujado o se está editando.
+  global.disenadorNuevaFigura = function() {
+    var hay2d = _puntos.length >= 2;
+    var hay3d = (typeof disenador3dEstado === 'function' && disenador3dEstado().nodos >= 2);
+    if ((hay2d || hay3d || _editando) && !confirm('¿Empezar una figura NUEVA? Se descartará lo que no hayas guardado.')) return;
+    _limpiar2d();                                   // limpia el lienzo 2D
+    if (typeof disenador3dLimpiarDibujo === 'function') disenador3dLimpiarDibujo();   // limpia el 3D
+    if (typeof disenador3dSetEtiquetas === 'function') disenador3dSetEtiquetas([]);   // etiquetas 3D
+    _editando = null;
+    var nb = document.getElementById('disenadorNombre'); if (nb) nb.value = '';
+    _actualizarBandaEditando();
+  };
+
+  // Muestra/oculta la banda "✏️ Editando X" según si se está editando una figura
+  // existente. Se llama al cargar (disenadorEditar) y al limpiar/nueva.
+  function _actualizarBandaEditando() {
+    var banda = document.getElementById('disEditandoBanda');
+    var nom = document.getElementById('disEditandoNombre');
+    if (!banda) return;
+    if (_editando) { banda.style.display = 'inline-flex'; if (nom) nom.textContent = _editando; }
+    else { banda.style.display = 'none'; }
+  }
+  global.disenadorActualizarBandaEditando = _actualizarBandaEditando;
+
   // Helpers para el switch de vista 2D↔3D (los usa disenador3d.js).
   global.disenador2dTieneFigura = function() { return _puntos.length >= 2; };
   global.disenador2dLimpiarSilencioso = function() { _limpiar2d(); };
@@ -1067,6 +1095,7 @@
         _puntos = []; _labels = []; _hoverPt = null; _dibujando = true; _editando = null;
         _tiposSeg = []; _radiosSeg = []; _sweepsSeg = []; _segSel = -1; _etiquetas = [];
         var nb = document.getElementById('disenadorNombre'); if (nb) nb.value = '';
+        _actualizarBandaEditando();
         await _recargarCatalogo();
         _redibujarLienzo(); _redibujarPanel(); _actualizarBotonTerminar();
       } else {
@@ -1118,7 +1147,8 @@
         var nb = document.getElementById('disenadorNombre'); if (nb) nb.value = '';
         if (typeof disenador3dLimpiarDibujo === 'function') disenador3dLimpiarDibujo();
         if (typeof disenador3dSetEtiquetas === 'function') disenador3dSetEtiquetas([]);
-        _etiquetas = [];
+        _etiquetas = []; _editando = null;
+        _actualizarBandaEditando();
         await _recargarCatalogo();
       } else {
         var d = await res.json().catch(function() { return {}; });
@@ -1188,6 +1218,7 @@
       var okCarga = (typeof disenador3dCargarFigura === 'function') && disenador3dCargarFigura(f.geometria);
       var nb3 = document.getElementById('disenadorNombre'); if (nb3) nb3.value = f.codigo;
       _editando = codigo;
+      _actualizarBandaEditando();
       if (typeof showToast === 'function') showToast(okCarga ? ('Editando figura 3D "' + codigo + '"') : 'No se pudo cargar la figura 3D', okCarga ? 'info' : 'error');
       return;
     }
@@ -1220,6 +1251,7 @@
     if (btnEt) { btnEt.textContent = _modoEtiquetas ? '🏷️ Etiquetas: ON' : '🏷️ Etiquetas';
       btnEt.style.background = _modoEtiquetas ? '#00695c' : '#fff'; btnEt.style.color = _modoEtiquetas ? '#fff' : '#00695c'; }
     var nb = document.getElementById('disenadorNombre'); if (nb) nb.value = f.codigo;
+    _actualizarBandaEditando();
     _redibujarLienzo(); _redibujarPanel(); _actualizarBotonTerminar();
     if (typeof showToast === 'function') showToast('Editando "' + codigo + '".', 'info');
   };

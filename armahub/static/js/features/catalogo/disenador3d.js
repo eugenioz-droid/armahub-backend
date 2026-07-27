@@ -477,11 +477,15 @@
       _toggleControlesDibujo2d(false);
       if (typeof disenadorEntrarEtiquetado3D === 'function') disenadorEntrarEtiquetado3D(url, _etiquetas3d);
       _actualizarBtnEtiq3d(true);
+      // Mostrar el botón "Terminar etiquetado" (el de "Etiquetar barra" quedó oculto
+      // con los controles 3D → sin él no había forma de salir del etiquetado).
+      var bt = document.getElementById('disBtnTerminarEtiq3d'); if (bt) bt.style.display = '';
     } else {
       // Guardar las etiquetas colocadas y volver al visor 3D.
       if (typeof disenador3dEtiquetasGet === 'function') _etiquetas3d = disenador3dEtiquetasGet();
       if (typeof disenadorSalirEtiquetado3D === 'function') disenadorSalirEtiquetado3D();
       _etiquetando3d = false;
+      var bt2 = document.getElementById('disBtnTerminarEtiq3d'); if (bt2) bt2.style.display = 'none';
       var v3d2 = document.getElementById('disenador3D'), ctrl3d2 = document.getElementById('disControles3D');
       var c2d2 = document.getElementById('disControles2D');
       if (c2d2) c2d2.style.display = 'none';
