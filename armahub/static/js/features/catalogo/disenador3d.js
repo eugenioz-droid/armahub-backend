@@ -33,13 +33,42 @@
   // segmentos — NO se tocan los ejes 3D de entrada, así las patas no se invierten) y
   // luego se ROTA la IMAGEN 2D final 180° (negar x e y de salida). Rotar la imagen ≠
   // espejar ejes: mantiene las direcciones de recorrido, solo gira la vista completa.
+  // FIX DE RAÍZ (2026): en vez de una fórmula iso inventada (que nunca calzaba con el
+  // visor porque proyectaba con otra orientación), se proyecta con los MISMOS vectores
+  // de la cámara real del canvas Three.js (posición 3D del azimut, mirando al origen,
+  // up=Z). right/camUp se derivan de esa cámara → el preview queda IGUAL que el canvas
+  // por construcción, no por prueba-y-error. Ortográfico (iso), sin perspectiva, sin
+  // depender de Three.js en runtime (los vectores son constantes por el ángulo).
+  // El ángulo iso (30/40/50) controla la ELEVACIÓN de la cámara virtual sobre el plano.
+  var _isoBasisCache = null, _isoBasisAng = null;
+  function _isoBasis() {
+    if (_isoBasisCache && _isoBasisAng === _isoAngulo) return _isoBasisCache;
+    // Cámara: azimut fijo a 45° (esquina) mirando al origen; elevación = _isoAngulo.
+    var el = _isoAngulo * Math.PI / 180;   // elevación sobre el plano horizontal
+    var az = 45 * Math.PI / 180;           // azimut (desde qué esquina se mira)
+    // Posición de la cámara (dir desde el origen hacia el ojo), con Z arriba.
+    var ex = Math.cos(el) * Math.cos(az);
+    var ey = -Math.cos(el) * Math.sin(az);
+    var ez = Math.sin(el);
+    // forward = -eye (mira al origen); up = Z.
+    var fx = -ex, fy = -ey, fz = -ez;
+    // right = forward × up (up = (0,0,1)).
+    var rx = fy * 1 - fz * 0, ry = fz * 0 - fx * 1, rz = fx * 0 - fy * 0;
+    var rn = Math.sqrt(rx*rx + ry*ry + rz*rz) || 1; rx/=rn; ry/=rn; rz/=rn;
+    // camUp = right × forward.
+    var ux = ry * fz - rz * fy, uy = rz * fx - rx * fz, uz = rx * fy - ry * fx;
+    var un = Math.sqrt(ux*ux + uy*uy + uz*uz) || 1; ux/=un; uy/=un; uz/=un;
+    _isoBasisCache = { rx: rx, ry: ry, rz: rz, ux: ux, uy: uy, uz: uz };
+    _isoBasisAng = _isoAngulo;
+    return _isoBasisCache;
+  }
   function _iso(p) {
-    var a = _isoAngulo * Math.PI / 180;
-    var x = (p.x - p.y) * Math.cos(a);      // proyección base (direcciones correctas)
-    var y = p.z - (p.x + p.y) * Math.sin(a);
-    // Girar SOLO en el plano horizontal (negar x de salida) para alinear con el visor.
-    // NO negar la y: si se niega, la figura queda de cabeza (Z hacia abajo). Verificado.
-    return { x: -x, y: y };
+    var b = _isoBasis();
+    // Proyección ortográfica: x = p·right, y = p·camUp. NO invertir la y: el motor
+    // (svgDesdePuntos/tx) ya la invierte al dibujar; con camUp·Z positivo, esa única
+    // inversión deja la altura Z hacia arriba (verificado numéricamente).
+    return { x: p.x*b.rx + p.y*b.ry + p.z*b.rz,
+             y: p.x*b.ux + p.y*b.uy + p.z*b.uz };
   }
   global.disenador3dSetIsoAngulo = function(deg) {
     var d = Number(deg); if (isNaN(d)) return;
