@@ -477,7 +477,16 @@
     if (geoIso && geoIso.puntos && geoIso.puntos.length >= 2) {
       // Escalar/centrar los puntos iso al lienzo (misma idea que disenadorEditar).
       var pts = geoIso.puntos, minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;
-      pts.forEach(function(p){ if(p.x<minX)minX=p.x; if(p.x>maxX)maxX=p.x; if(p.y<minY)minY=p.y; if(p.y>maxY)maxY=p.y; });
+      function _acc(p){ if(p.x<minX)minX=p.x; if(p.x>maxX)maxX=p.x; if(p.y<minY)minY=p.y; if(p.y>maxY)maxY=p.y; }
+      // El bbox debe incluir TODO lo que se dibuja (nodos + arco proyectado + cotas),
+      // no solo los nodos; si no, el arco/cotas se salen del lienzo al escalar. Mismo
+      // criterio que el bbox del preview (svgDesdePuntos).
+      pts.forEach(_acc);
+      if (geoIso.arcos_iso) { Object.keys(geoIso.arcos_iso).forEach(function(k){ (geoIso.arcos_iso[k]||[]).forEach(_acc); }); }
+      (geoIso.cotas_arco_iso||[]).forEach(function(seg){
+        (seg.desarrollo||[]).forEach(_acc);
+        [seg.radio, seg.horiz, seg.vert].forEach(function(par){ if(par&&par.length>=2){ _acc(par[0]); _acc(par[1]); } });
+      });
       var bw=Math.max(1,maxX-minX), bh=Math.max(1,maxY-minY);
       var sc=Math.min((CW-120)/bw,(CH-120)/bh);   // escala para llenar el lienzo con margen
       var offX=(CW-bw*sc)/2, offY=(CH-bh*sc)/2;
