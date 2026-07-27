@@ -332,15 +332,19 @@
       var M3 = P3(mx, my), R3 = P3(rpx, rpy);
       // VERT: la SAGITA (flecha) del arco = del medio de la cuerda a la GUATA,
       // perpendicular a la cuerda. Es el "alto" real del arco y por construcción
-      // nunca cae paralela a la horizontal (antes usaba el bounding box del plano,
-      // que en el piso XY se acostaba y parecía una 2ª horizontal).
-      var G3 = P3(gx, gy);
+      // nunca cae paralela a la horizontal. Se dibuja AL COSTADO del arco (desplazada
+      // lateralmente a lo largo de la cuerda hacia el extremo b), no al centro, para
+      // que no se encime con el radio.
+      var lat = cuerdaLen * 0.5 + off;     // corrimiento lateral (más allá del extremo)
+      var mvx = mx + ux*lat, mvy = my + uy*lat;   // base de la sagita, corrida al costado
+      var gvx = gx + ux*lat, gvy = gy + uy*lat;   // tope de la sagita, mismo corrimiento
+      var Mv3 = P3(mvx, mvy), Gv3 = P3(gvx, gvy);
       res.push({
         desarrollo: desarrollo,          // curva (muchos puntos)
         radio:  [ _iso(M3), _iso(R3) ],  // medio cuerda → punto del arco a 45°
         // HORIZ: recta directa entre los DOS NODOS extremos del arco (más limpio).
         horiz:  [ _iso({ x: a.x, y: a.y, z: a.z }), _iso({ x: b.x, y: b.y, z: b.z }) ],
-        vert:   [ _iso(M3), _iso(G3) ]    // sagita: medio cuerda → guata
+        vert:   [ _iso(Mv3), _iso(Gv3) ]  // sagita (alto del arco) dibujada al costado
       });
     }
     return res;
