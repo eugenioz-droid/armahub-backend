@@ -156,6 +156,13 @@
         svg += '<text x="' + aox.toFixed(1) + '" y="' + (aoy + 3).toFixed(1) + '" text-anchor="middle" fill="' + col + '" font-size="10" font-weight="700">' + txt + '</text>';
       }
     }
+    // Ángulos REALES 3D (angulos_iso): los aporta el editor 3D calculados de los
+    // nodos (no de la proyección). Ya vienen en coords de la proyección (espacio pts)
+    // con su posición → aplicar tx() y dibujar en rojo (son los α especiales).
+    (opts.angulos_iso || []).forEach(function(an) {
+      var pt = tx({ x: an.x, y: an.y });
+      svg += '<text x="' + pt.x.toFixed(1) + '" y="' + (pt.y + 3).toFixed(1) + '" text-anchor="middle" fill="#c62828" font-size="10" font-weight="700">' + String(an.texto).replace(/[<>&]/g,'') + '</text>';
+    });
     // Etiquetas MANUALES mapeadas con tx() al render. Mismas funciones de dibujo
     // que el lienzo (registro), con los tamaños/estilos propios del render.
     var oR = { sw: 1.2, tope: 4, dash: '3,2', fs: 11, halo: 2.5, dy: 3 };
@@ -197,10 +204,16 @@
     // automáticos también en galería/catálogo (aunque no pasen el flag explícito).
     var labelsAuto = opts.labels_auto;
     if (labelsAuto === undefined && geometria && geometria.etiquetas_manda) labelsAuto = false;
+    // Ángulos automáticos: en 3D NO se calculan de la proyección (el ángulo proyectado
+    // NO es el ángulo real 3D → daría α falsos en segmentos ortogonales). El 3D aporta
+    // sus ángulos reales por separado (geometria.angulos_iso, dibujados abajo).
+    var angAuto = opts.angulos;
+    if (angAuto === undefined && geometria && geometria.dim === '3D') angAuto = false;
     var o = { labels: labels, width: opts.width, height: opts.height, pad: opts.pad,
-              angulos: opts.angulos, labels_auto: labelsAuto,
+              angulos: angAuto, labels_auto: labelsAuto,
               tipos_seg: tipos, radios_seg: radios, sweeps_seg: sweeps,
-              etiquetas: (geometria && geometria.etiquetas) || [] };
+              etiquetas: (geometria && geometria.etiquetas) || [],
+              angulos_iso: (geometria && geometria.angulos_iso) || null };
     return svgDesdePuntos(pts, o);
   }
 
@@ -318,47 +331,50 @@
     _redibujarPanel();   // el panel cambia de fuente (tramos ↔ etiquetas) según el modo
   };
 
-  // ---- ETIQUETADO 3D (reutiliza el lienzo 2D con imagen de fondo) ----
-  // El 3D llama esto con el snapshot 2D de la barra. El lienzo 2D entra en "modo
-  // imagen": muestra el snapshot y permite etiquetar encima con TODO el sistema 2D
-  // (registro, click, drag, tipos). Las etiquetas colocadas se guardan con la
-  // figura 3D (via disenador3dEtiquetasGet). Vuelve al 3D con salirEtiquetado3D.
-  global.disenadorEntrarEtiquetado3D = function(snapshotUrl, etiquetasPrevias) {
-    _fondoImagen = snapshotUrl || null;
-    _etiquetas = (etiquetasPrevias || []).slice();   // reutiliza etiquetas ya puestas
-    _puntos = [];                                    // sin figura de puntos en modo imagen
-    _modoEtiquetas = true; _dibujando = false;
-    _cotaInicio = null; _cotaHover = null;
-    // Mostrar la barra de tipos de etiqueta (reutilizada del 2D).
+  // ---- ETIQUETADO 3D (sobre el SVG isométrico VECTORIAL, no sobre una foto) ----
+  // El 3D pasa la GEOMETRÍA iso (puntos proyectados + tramos). Se cargan al lienzo
+  // 2D como una figura normal, y se etiqueta encima con TODO el sistema 2D (registro,
+  // click, drag, tipos) — idéntico al 2D, pero la figura es la proyección iso del 3D.
+  // Las etiquetas se guardan con la figura 3D (via disenador3dEtiquetasGet).
+  global.disenadorEntrarEtiquetado3D = function(geoIso, etiquetasPrevias) {
+    _fondoImagen = null;   // ya NO es foto: es el SVG vectorial de la figura iso
+    // Cargar los puntos iso al lienzo (centrar + escalar a la grilla, como al editar).
+    _puntos = []; _tiposSeg = []; _radiosSeg = []; _sweepsSeg = []; _labels = [];
+    if (geoIso && geoIso.puntos && geoIso.puntos.length >= 2) {
+      // Escalar/centrar los puntos iso al lienzo (misma idea que disenadorEditar).
+      var pts = geoIso.puntos, minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;
+      pts.forEach(function(p){ if(p.x<minX)minX=p.x; if(p.x>maxX)maxX=p.x; if(p.y<minY)minY=p.y; if(p.y>maxY)maxY=p.y; });
+      var bw=Math.max(1,maxX-minX), bh=Math.max(1,maxY-minY);
+      var sc=Math.min((CW-120)/bw,(CH-120)/bh);   // escala para llenar el lienzo con margen
+      var offX=(CW-bw*sc)/2, offY=(CH-bh*sc)/2;
+      _puntos = pts.map(function(p){ return { x: Math.round(offX+(p.x-minX)*sc), y: Math.round(CH-(offY+(p.y-minY)*sc)) }; });
+      (geoIso.tramos||[]).forEach(function(t,i){ _labels[i]=t.lado; _tiposSeg[i]=t.tipo||'recto'; _radiosSeg[i]=t.radio||0; _sweepsSeg[i]=t.sweep!=null?t.sweep:1; });
+    }
+    _etiquetas = (etiquetasPrevias || []).slice();
+    _modoEtiquetas = true; _dibujando = false; _etiquetando3dActivo = true;
+    _cotaInicio = null; _cotaHover = null; _segSel = -1;
     var bar = document.getElementById('disEtiquetasBar');
     if (bar) bar.style.display = 'flex';
     var btn = document.getElementById('disBtnEtiquetas');
     if (btn) { btn.textContent = '🏷️ Etiquetas: ON'; btn.style.background = '#00695c'; btn.style.color = '#fff'; }
     _redibujarLienzo();
     _redibujarPanel();
-    _actualizarPreviewImagen();
   };
-  // Preview en modo imagen (etiquetado 3D): snapshot + etiquetas superpuestas.
-  function _actualizarPreviewImagen() {
-    var prev = document.getElementById('disPreview');
-    if (!prev || !_fondoImagen) return;
-    var capa = _svgEtiquetasEscaladas(_etiquetas, 210, 140);
-    prev.innerHTML = '<div style="position:relative; width:210px; height:140px; margin:0 auto;">' +
-      '<img src="' + _fondoImagen + '" style="width:210px; height:140px; object-fit:contain;" alt="preview 3D"/>' +
-      capa + '</div>';
-  }
-  // Devuelve las etiquetas colocadas en modo imagen (para guardarlas con la figura 3D).
-  global.disenador3dEtiquetasGet = function() { return _fondoImagen ? _etiquetas.slice() : []; };
-  // Sale del modo imagen (vuelve el lienzo 2D a su estado normal).
+  // Bandera: estamos etiquetando una figura 3D (sobre su SVG iso en el lienzo 2D).
+  var _etiquetando3dActivo = false;
+  // Devuelve las etiquetas colocadas (para guardarlas con la figura 3D).
+  global.disenador3dEtiquetasGet = function() { return _etiquetando3dActivo ? _etiquetas.slice() : []; };
+  // Sale del etiquetado 3D (vuelve el lienzo 2D a su estado normal).
   global.disenadorSalirEtiquetado3D = function() {
-    _fondoImagen = null; _etiquetas = []; _modoEtiquetas = false;
+    _etiquetando3dActivo = false; _fondoImagen = null; _etiquetas = []; _modoEtiquetas = false;
+    _puntos = []; _tiposSeg = []; _radiosSeg = []; _sweepsSeg = []; _labels = [];
     _cotaInicio = null; _cotaHover = null;
     var bar = document.getElementById('disEtiquetasBar');
     if (bar) bar.style.display = 'none';
     var btn = document.getElementById('disBtnEtiquetas');
     if (btn) { btn.textContent = '🏷️ Etiquetas'; btn.style.background = '#fff'; btn.style.color = '#00695c'; }
   };
-  global.disenadorEnModoImagen = function() { return !!_fondoImagen; };
+  global.disenadorEnModoImagen = function() { return _etiquetando3dActivo; };
 
   // Con "Etiquetas ON", el click en el lienzo coloca DIRECTO una etiqueta del tipo
   // seleccionado (sin botón "Colocar"). La cota necesita 2 clicks: _cotaInicio
@@ -647,14 +663,6 @@
     var capa = document.getElementById('disenadorCapa');
     if (!capa) return;
     var s = '';
-    // MODO IMAGEN (etiquetado 3D): fondo = snapshot de la barra; sin figura de puntos.
-    if (_fondoImagen) {
-      s += '<image href="' + _fondoImagen + '" xlink:href="' + _fondoImagen + '" x="0" y="0" width="' + CW + '" height="' + CH + '" preserveAspectRatio="xMidYMid meet" style="pointer-events:none;"/>';
-      _etiquetas.forEach(function(e, k) { s += _svgEtiqueta(e, k); });
-      if (_modoEtiquetas && _cotaInicio && _cotaHover) s += _svgRubberCota();
-      capa.innerHTML = s;
-      return;
-    }
     if (_puntos.length >= 2) {
       s += '<path d="' + _pathDesdePuntos(_puntos, _tiposSeg, _radiosSeg, _sweepsSeg) + '" fill="none" stroke="#00695c" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"/>';
     }
@@ -706,11 +714,10 @@
   }
 
   // SVG de una etiqueta manual (interactiva). La forma la decide el registro. Se
-  // usa en el lienzo 2D normal Y en el modo imagen (etiquetado 3D). En modo imagen
-  // NO hay segmentos de barra, así que la cota de arco se omite (no tiene curva base).
+  // usa en el lienzo 2D normal Y en el etiquetado 3D (que ahora tiene puntos reales
+  // de la proyección iso, así que la cota de arco SÍ tiene curva base).
   function _svgEtiqueta(e, k) {
     if (REG().esArco(e.tipo)) {
-      if (_fondoImagen) return '';   // sin curva base sobre la imagen 3D
       if (e.seg == null || !_puntos[e.seg + 1]) return '';
       var a = _puntos[e.seg], b = _puntos[e.seg + 1];
       return REG().dibujarArco(a, b, _radiosSeg[e.seg], _sweepsSeg[e.seg], e.lado, 12, { interactivo: true, idx: k });
@@ -940,9 +947,6 @@
   function _redibujarPanel() {
     var cont = document.getElementById('disenadorPanel');
     if (!cont) return;
-    // MODO IMAGEN (etiquetado 3D): sin figura de puntos; el panel muestra los
-    // parámetros de las etiquetas colocadas sobre el snapshot. No tocar el preview.
-    if (_fondoImagen) { _redibujarPanelEtiquetas(cont); return; }
     if (_puntos.length < 2) {
       cont.innerHTML = '<div class="muted" style="font-size:12px;">Haz click en el lienzo para trazar el primer lado. Cada click agrega un lado; el ángulo se ajusta a 45/90/135°.</div>';
       disenadorActualizarPreview2d();   // sin figura → limpiar el preview (no dejar la anterior pegada)
@@ -1020,9 +1024,8 @@
       (angs.length > 4 ? '<div style="color:#c62828; margin-top:4px;">⚠ ' + angs.length + ' ángulos — el sistema soporta máx. 4 (α1-α4).</div>' : '') +
       '</div>';
     cont.innerHTML = html;
-    // Preview: en modo imagen (etiquetado 3D) = snapshot + etiquetas; en 2D = figura.
-    if (_fondoImagen) _actualizarPreviewImagen();
-    else disenadorActualizarPreview2d();
+    // Preview: el lienzo tiene los puntos (2D o iso del 3D) + etiquetas → mismo motor.
+    disenadorActualizarPreview2d();
   }
 
   // Largo (en grilla) del tramo dibujado cuyo punto medio esté más cerca de la

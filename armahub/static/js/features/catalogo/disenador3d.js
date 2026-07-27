@@ -28,9 +28,12 @@
   var _isoAngulo = 30;
 
   // Proyección ISOMÉTRICA de un punto 3D → punto 2D (para la vista 2D vectorial).
+  // Convención del editor: Z es la ALTURA (vertical), X e Y horizontales. Por eso el
+  // eje VERTICAL de la proyección es Z (no Y): los horizontales X,Y se "abren" en
+  // diagonal y Z sube. (Antes usaba Y vertical → la figura salía rotada.)
   function _iso(p) {
     var a = _isoAngulo * Math.PI / 180;
-    return { x: (p.x - p.z) * Math.cos(a), y: p.y - (p.x + p.z) * Math.sin(a) };
+    return { x: (p.x - p.y) * Math.cos(a), y: p.z - (p.x + p.y) * Math.sin(a) };
   }
   global.disenador3dSetIsoAngulo = function(deg) {
     var d = Number(deg); if (isNaN(d)) return;
@@ -484,9 +487,10 @@
   global.disenador3dToggleEtiquetas = function() {
     if (!_etiquetando3d) {
       if (_nodos3d.length < 2) { alert('Dibuja la figura 3D (al menos 2 nodos) antes de etiquetar.'); return; }
-      // Snapshot: el fijado por el usuario, o auto-captura de la vista actual (sin plano).
-      var url = _snapshotFijado || _capturarSnapshot();
-      if (!url) { alert('No se pudo obtener la imagen de la barra.'); return; }
+      // Etiquetado sobre el SVG isométrico VECTORIAL (no una foto): se pasa la
+      // geometría iso (puntos proyectados + tramos) al lienzo 2D.
+      var geoIso = _geometriaLiveParaRender();
+      if (!geoIso) { alert('No se pudo preparar la figura para etiquetar.'); return; }
       _etiquetando3d = true;
       // Ocultar el visor 3D y sus controles; mostrar el lienzo 2D (con imagen).
       var v3d = document.getElementById('disenador3D'), ctrl3d = document.getElementById('disControles3D');
@@ -499,7 +503,7 @@
       var p2dW = document.getElementById('disenadorPanelWrap'); if (p2dW) p2dW.style.display = '';
       // Ocultar los controles de DIBUJO 2D (trazo/deshacer/etc.), solo dejar etiquetas.
       _toggleControlesDibujo2d(false);
-      if (typeof disenadorEntrarEtiquetado3D === 'function') disenadorEntrarEtiquetado3D(url, _etiquetas3d);
+      if (typeof disenadorEntrarEtiquetado3D === 'function') disenadorEntrarEtiquetado3D(geoIso, _etiquetas3d);
       _actualizarBtnEtiq3d(true);
       // Mostrar el botón "Terminar etiquetado" (el de "Etiquetar barra" quedó oculto
       // con los controles 3D → sin él no había forma de salir del etiquetado).
@@ -569,6 +573,7 @@
       parciales: parciales,
       puntos: puntos2d,           // vista iso 2D (motor SVG la dibuja como render)
       iso_angulo: _isoAngulo,     // ángulo de la proyección iso (para re-render coherente)
+      angulos_iso: _angulosReales3d(),   // ángulos reales 3D (posición en la proyección)
       snapshot: _snapshotFijado || _capturarSnapshot()   // fallback (foto de respaldo)
     };
   };
@@ -600,7 +605,40 @@
       tramos.push({ lado: _LETRAS3D[i-1] || ('L'+i), tipo: _tiposSeg3d[i-1] || 'recto',
                     radio: _radiosSeg3d[i-1] || 0, sweep: _sweepsSeg3d[i-1] != null ? _sweepsSeg3d[i-1] : 1 });
     }
-    return { dim: '3D', puntos: puntos2d, tramos: tramos, etiquetas: _etiquetas3d.slice() };
+    return { dim: '3D', puntos: puntos2d, tramos: tramos, etiquetas: _etiquetas3d.slice(),
+             angulos_iso: _angulosReales3d() };
+  }
+
+  // Ángulos REALES de los vértices, calculados en 3D (con los nodos), NO de la
+  // proyección. Aplica el criterio aSa (igual que el 2D): un doblez de 90° es
+  // implícito (no cuenta como α especial); solo los ≠90 y ≠0 se marcan (α rojo).
+  // Devuelve [{idx, texto, x, y}] con la posición en la PROYECCIÓN (para dibujar).
+  function _angulosReales3d() {
+    var out = [], nAlfa = 0;
+    for (var j = 1; j < _nodos3d.length - 1; j++) {
+      // Saltar vértices adyacentes a un arco (la curva es el doblez, no un ángulo).
+      if (_tiposSeg3d[j-1] === 'arco' || _tiposSeg3d[j] === 'arco') continue;
+      var a = _nodos3d[j-1], v = _nodos3d[j], b = _nodos3d[j+1];
+      // Ángulo interno real 3D entre los dos segmentos (producto punto de vectores).
+      var u1 = { x: a.x-v.x, y: a.y-v.y, z: a.z-v.z };
+      var u2 = { x: b.x-v.x, y: b.y-v.y, z: b.z-v.z };
+      var m1 = Math.sqrt(u1.x*u1.x+u1.y*u1.y+u1.z*u1.z) || 1;
+      var m2 = Math.sqrt(u2.x*u2.x+u2.y*u2.y+u2.z*u2.z) || 1;
+      var cos = (u1.x*u2.x+u1.y*u2.y+u1.z*u2.z)/(m1*m2);
+      cos = Math.max(-1, Math.min(1, cos));
+      var interno = Math.round(Math.acos(cos) * 180 / Math.PI);   // ángulo interno real
+      if (interno === 0 || interno === 180) continue;   // recto continuo, sin doblez
+      if (interno === 90) continue;                     // 90° implícito (criterio aSa)
+      nAlfa++;
+      // Posición: bisectriz en la PROYECCIÓN (donde se ve el vértice en 2D).
+      var pv = _iso(v), pa = _iso(a), pb = _iso(b);
+      var w1x = pa.x-pv.x, w1y = pa.y-pv.y; var l1 = Math.sqrt(w1x*w1x+w1y*w1y)||1;
+      var w2x = pb.x-pv.x, w2y = pb.y-pv.y; var l2 = Math.sqrt(w2x*w2x+w2y*w2y)||1;
+      var bx = w1x/l1+w2x/l2, by = w1y/l1+w2y/l2; var bl = Math.sqrt(bx*bx+by*by);
+      if (bl < 0.15) { bx = -w1y/l1; by = w1x/l1; bl = 1; }
+      out.push({ texto: 'α'+nAlfa, x: pv.x + (bx/bl)*14, y: pv.y + (by/bl)*14 });
+    }
+    return out;
   }
 
   // Al cambiar la figura, el snapshot fijado deja de ser válido (se libera).
