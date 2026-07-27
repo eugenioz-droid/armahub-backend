@@ -731,6 +731,7 @@
   // Capa SVG de etiquetas 3D (coords del lienzo 420x320) escalada a un overlay w×h,
   // para superponer sobre el snapshot en galería/preview. Sin cota de arco (no hay
   // curva base sobre la imagen). Devuelve un <svg> absoluto o '' si no hay etiquetas.
+  var _svgEtiqSeq = 0;   // contador para IDs de marker únicos por instancia
   function _svgEtiquetasEscaladas(etiquetas, w, h) {
     if (!etiquetas || !etiquetas.length) return '';
     // El overlay usa viewBox CWxCH (420x320) reducido a wxh (ej. 90x72). Ese factor
@@ -740,22 +741,32 @@
     var fs = Math.max(13, Math.round(11 * fesc));   // texto agrandado en el viewBox
     var halo = Math.max(3, Math.round(fs * 0.28));
     var sw = Math.max(1, fesc * 0.7);
+    // Solo las etiquetas de radio/diámetro usan flechas → solo entonces incluir los
+    // markers. Además IDs ÚNICOS por instancia: varias miniaturas con el mismo id
+    // colisionaban y algunos navegadores pintaban un marker huérfano en (0,0)
+    // (la "mancha azul" en la esquina).
+    var seq = (++_svgEtiqSeq);
+    var mkEnd = 'disArrEnd' + seq, mkStart = 'disArrStart' + seq;
+    var usaFlechas = false;
     var e = '';
     etiquetas.forEach(function(et) {
       if (REG().esArco(et.tipo)) return;   // no aplica sobre imagen
       if (REG().esLinea(et.tipo)) {
         var p1 = { x: et.x1, y: et.y1 }, p2 = { x: et.x2, y: et.y2 };
-        e += (et.tipo === 'cota') ? REG().dibujarCota(p1, p2, { sw: sw }) : REG().dibujarRadioDiam(et.tipo, p1, p2, { sw: sw });
+        if (et.tipo === 'cota') { e += REG().dibujarCota(p1, p2, { sw: sw }); }
+        else { usaFlechas = true; e += REG().dibujarRadioDiam(et.tipo, p1, p2, { sw: sw, mkEnd: mkEnd, mkStart: mkStart }); }
       } else {
         e += REG().dibujarTexto(et.tipo, et.texto, { x: et.x, y: et.y }, { fs: fs, halo: halo, dy: fs * 0.32 });
       }
     });
     if (!e) return '';
+    var defs = usaFlechas
+      ? ('<defs><marker id="' + mkEnd + '" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#1565c0"/></marker>' +
+         '<marker id="' + mkStart + '" markerWidth="9" markerHeight="9" refX="0" refY="3" orient="auto"><path d="M7,0 L0,3 L7,6 Z" fill="#1565c0"/></marker></defs>')
+      : '';
     return '<svg viewBox="0 0 ' + CW + ' ' + CH + '" width="' + w + '" height="' + h + '" preserveAspectRatio="xMidYMid meet" ' +
       'style="position:absolute; top:0; left:0; width:' + w + 'px; height:' + h + 'px; pointer-events:none;">' +
-      '<defs><marker id="disArrowEnd" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#1565c0"/></marker>' +
-      '<marker id="disArrowStart" markerWidth="9" markerHeight="9" refX="0" refY="3" orient="auto"><path d="M7,0 L0,3 L7,6 Z" fill="#1565c0"/></marker></defs>' +
-      e + '</svg>';
+      defs + e + '</svg>';
   }
   global.disenadorSvgEtiquetasEscaladas = _svgEtiquetasEscaladas;
 

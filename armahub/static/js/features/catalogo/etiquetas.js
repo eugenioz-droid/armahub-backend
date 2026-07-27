@@ -102,10 +102,14 @@
       '<line x1="'+(p1.x+nx)+'" y1="'+(p1.y+ny)+'" x2="'+(p1.x-nx)+'" y2="'+(p1.y-ny)+'" stroke="#888" stroke-width="'+sw+'"/>' +
       '<line x1="'+(p2.x+nx)+'" y1="'+(p2.y+ny)+'" x2="'+(p2.x-nx)+'" y2="'+(p2.y-ny)+'" stroke="#888" stroke-width="'+sw+'"/>';
   }
-  // Radio (flecha →) / Diámetro (flecha ↔). Requiere markers disArrowStart/End en el SVG.
+  // Radio (flecha →) / Diámetro (flecha ↔). Usa los markers del SVG contenedor.
+  // opt.mkEnd/mkStart permiten IDs personalizados (overlays con IDs únicos, para
+  // evitar colisión de <marker id> entre varios SVGs en la página); si no se pasan,
+  // usa los del lienzo (disArrowEnd/disArrowStart).
   function dibujarRadioDiam(tipo, p1, p2, opt) {
     opt = opt || {}; var sw = opt.sw || 1.5;
-    var mk = tipo === 'diametro' ? ' marker-start="url(#disArrowStart)" marker-end="url(#disArrowEnd)"' : ' marker-end="url(#disArrowEnd)"';
+    var mE = opt.mkEnd || 'disArrowEnd', mS = opt.mkStart || 'disArrowStart';
+    var mk = tipo === 'diametro' ? (' marker-start="url(#'+mS+')" marker-end="url(#'+mE+')"') : (' marker-end="url(#'+mE+')"');
     var ia = opt.interactivo ? (' data-etiq="' + opt.idx + '" style="cursor:move;"') : '';
     return '<line x1="'+p1.x+'" y1="'+p1.y+'" x2="'+p2.x+'" y2="'+p2.y+'" stroke="#1565c0" stroke-width="'+sw+'"'+ia+mk+'/>';
   }

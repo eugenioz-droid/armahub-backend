@@ -83,11 +83,15 @@
     // Mini-render de la figura (si tiene geometría del Diseñador). Degrada a "—".
     function _miniFig(f) {
       if (!f.geometria || !f.geometria.tramos || !f.geometria.tramos.length) return '<span class="muted" style="font-size:11px;">—</span>';
-      // Figura 3D con snapshot: mostrar la IMAGEN fijada (el mismo criterio que la
-      // galería del diseñador). Reconstruirla con dibujarFigura la mostraba rotada
-      // (dibujarFigura reconstruye desde puntos 2D, no respeta la vista 3D fijada).
+      // Figura 3D con snapshot: mostrar la IMAGEN fijada + capa de etiquetas encima
+      // (mismo criterio que la galería del diseñador). Reconstruirla con dibujarFigura
+      // la mostraba rotada (reconstruye desde puntos 2D, no respeta la vista 3D fijada).
       if (f.geometria.dim === '3D' && f.geometria.snapshot) {
-        return '<img src="' + f.geometria.snapshot + '" style="width:90px; height:72px; object-fit:contain; border-radius:4px;" alt="' + _esc(f.codigo) + '"/>';
+        var capaEt = (typeof disenadorSvgEtiquetasEscaladas === 'function')
+          ? disenadorSvgEtiquetasEscaladas((f.geometria.etiquetas || []), 90, 72) : '';
+        return '<div style="position:relative; width:90px; height:72px; margin:0 auto;">' +
+          '<img src="' + f.geometria.snapshot + '" style="width:90px; height:72px; object-fit:contain; border-radius:4px;" alt="' + _esc(f.codigo) + '"/>' +
+          capaEt + '</div>';
       }
       if (!window.disenadorMotor || !window.disenadorMotor.dibujarFigura) return '<span class="muted" style="font-size:11px;">—</span>';
       try { return window.disenadorMotor.dibujarFigura(f.geometria, null, { width: 90, height: 72, pad: 12 }); }
