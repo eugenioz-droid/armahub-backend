@@ -28,13 +28,13 @@
   var _isoAngulo = 30;
 
   // Proyección ISOMÉTRICA de un punto 3D → punto 2D (para la vista 2D vectorial).
-  // Convención del editor: Z es la ALTURA (vertical), X e Y horizontales. El eje
-  // VERTICAL de la proyección es Z. La componente vertical va NEGADA porque el motor
-  // (svgDesdePuntos/tx) invierte la Y al dibujar en pantalla: sin negar, la figura
-  // salía espejada verticalmente (180° en X). Con -(...) queda Z hacia arriba real.
+  // Convención del editor: Z es la ALTURA (vertical), X e Y horizontales.
+  // VERIFICADO numéricamente (contra el visor 3D): Z sube; X va a la derecha, Y a la
+  // izquierda (abiertos en V). El motor (svgDesdePuntos/tx) invierte la Y al dibujar,
+  // por eso el eje vertical usa +z (no −z). Ejes: X derecha-abajo, Y izq-abajo, Z arriba.
   function _iso(p) {
     var a = _isoAngulo * Math.PI / 180;
-    return { x: (p.x - p.y) * Math.cos(a), y: -(p.z - (p.x + p.y) * Math.sin(a)) };
+    return { x: (p.x - p.y) * Math.cos(a), y: p.z - (p.x + p.y) * Math.sin(a) };
   }
   global.disenador3dSetIsoAngulo = function(deg) {
     var d = Number(deg); if (isNaN(d)) return;
@@ -46,7 +46,7 @@
   // refresca el preview en vivo (para que el usuario vea cómo queda antes de guardar).
   global.disenador3dSetVistaAngulo = function(deg) {
     disenador3dSetIsoAngulo(deg);
-    [30, 35, 40].forEach(function(a) {
+    [30, 40, 50].forEach(function(a) {
       var b = document.getElementById('dis3dIso' + a);
       if (!b) return;
       var on = (a === deg);
