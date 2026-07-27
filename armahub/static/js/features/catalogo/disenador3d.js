@@ -628,9 +628,8 @@
       _toggleControlesDibujo2d(false);
       if (typeof disenadorEntrarEtiquetado3D === 'function') disenadorEntrarEtiquetado3D(geoIso, _etiquetas3d);
       _actualizarBtnEtiq3d(true);
-      // Refrescar el preview con la MISMA geoIso que se cargó al lienzo, para que
-      // preview y canvas queden coordinados (mismo encuadre relativo, sin desplazarse).
-      _actualizarPreview3d();
+      // NO refrescar el preview aquí: debe quedarse EXACTAMENTE como estaba (no saltar).
+      // El lienzo de etiquetado hereda el mismo encuadre (misma fórmula que el preview).
       // Mostrar el botón "Terminar etiquetado" (el de "Etiquetar barra" quedó oculto
       // con los controles 3D → sin él no había forma de salir del etiquetado).
       var bt = document.getElementById('disBtnTerminarEtiq3d'); if (bt) bt.style.display = '';

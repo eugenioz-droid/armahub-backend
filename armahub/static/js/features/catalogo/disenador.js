@@ -488,8 +488,12 @@
         [seg.radio, seg.horiz, seg.vert].forEach(function(par){ if(par&&par.length>=2){ _acc(par[0]); _acc(par[1]); } });
       });
       var bw=Math.max(1,maxX-minX), bh=Math.max(1,maxY-minY);
-      var sc=Math.min((CW-120)/bw,(CH-120)/bh);   // escala para llenar el lienzo con margen
-      var offX=(CW-bw*sc)/2, offY=(CH-bh*sc)/2;
+      // MISMA fórmula de encuadre que svgDesdePuntos, escalando el pad del preview
+      // (pad 18 sobre 140 de alto) al tamaño del lienzo → mismo encuadre relativo, así
+      // la figura NO salta al pasar a Etiquetas ON (hereda el encuadre del preview).
+      var pad = 18 * (CH / 140);
+      var sc = Math.min((CW - 2*pad) / bw, (CH - 2*pad) / bh);
+      var offX = (CW - bw*sc) / 2, offY = (CH - bh*sc) / 2;   // centrado (idéntico al preview)
       // Misma transformación (proyección iso → lienzo) para puntos, arcos y cotas, para
       // que el arco (guata) y las cotas 3D queden EXACTAS, sin reconstruir con 'A'.
       function alLienzo(p){ return { x: offX+(p.x-minX)*sc, y: CH-(offY+(p.y-minY)*sc) }; }
