@@ -320,17 +320,17 @@
         var ex = cx + rOff * Math.cos(t), ey = cy + rOff * Math.sin(t);
         desarrollo.push(_iso(P3(ex, ey)));
       }
-      // --- RADIO: del centro a la guata REAL. HORIZ/VERT: bounding box del arco. ---
+      // --- RADIO: del centro a la guata REAL. VERT: lado del bounding box del arco. ---
       var C3 = P3(cx, cy), G3 = P3(gx, gy);
-      var minE0 = Math.min(ax,bx,gx), maxE0 = Math.max(ax,bx,gx);
+      var maxE0 = Math.max(ax,bx,gx);
       var minE1 = Math.min(ay,by,gy), maxE1 = Math.max(ay,by,gy);
       var off = Math.max(6, r*0.12);
-      var pHa = P3(minE0, minE1 - off), pHb = P3(maxE0, minE1 - off);
       var pVa = P3(maxE0 + off, minE1), pVb = P3(maxE0 + off, maxE1);
       res.push({
         desarrollo: desarrollo,          // curva (muchos puntos)
         radio:  [ _iso(C3), _iso(G3) ],  // centro → guata real del arco
-        horiz:  [ _iso(pHa), _iso(pHb) ],
+        // HORIZ: recta directa entre los DOS NODOS extremos del arco (más limpio).
+        horiz:  [ _iso({ x: a.x, y: a.y, z: a.z }), _iso({ x: b.x, y: b.y, z: b.z }) ],
         vert:   [ _iso(pVa), _iso(pVb) ]
       });
     }
