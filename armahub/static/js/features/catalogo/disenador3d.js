@@ -326,15 +326,17 @@
         var ex = cx + rOff * Math.cos(t), ey = cy + rOff * Math.sin(t);
         desarrollo.push(_iso(P3(ex, ey)));
       }
-      // --- RADIO: del CENTRO real al arco, inclinado 45°. VERT: lado del bounding box. ---
-      var C3 = P3(cx, cy), R3 = P3(rpx, rpy);
+      // --- RADIO: del PUNTO MEDIO de la cuerda al arco, inclinado 45°. ---
+      // Nace en el medio de la recta que une los 2 nodos (mx,my) y sube al punto del
+      // arco inclinado 45° (rpx,rpy). VERT: lado del bounding box.
+      var M3 = P3(mx, my), R3 = P3(rpx, rpy);
       var maxE0 = Math.max(ax,bx,gx);
       var minE1 = Math.min(ay,by,gy), maxE1 = Math.max(ay,by,gy);
       var off = Math.max(6, r*0.12);
       var pVa = P3(maxE0 + off, minE1), pVb = P3(maxE0 + off, maxE1);
       res.push({
         desarrollo: desarrollo,          // curva (muchos puntos)
-        radio:  [ _iso(C3), _iso(R3) ],  // centro real → punto del arco a 45°
+        radio:  [ _iso(M3), _iso(R3) ],  // medio cuerda → punto del arco a 45°
         // HORIZ: recta directa entre los DOS NODOS extremos del arco (más limpio).
         horiz:  [ _iso({ x: a.x, y: a.y, z: a.z }), _iso({ x: b.x, y: b.y, z: b.z }) ],
         vert:   [ _iso(pVa), _iso(pVb) ]
