@@ -37,7 +37,9 @@
     var a = _isoAngulo * Math.PI / 180;
     var x = (p.x - p.y) * Math.cos(a);      // proyección base (direcciones correctas)
     var y = p.z - (p.x + p.y) * Math.sin(a);
-    return { x: -x, y: -y };                 // rotar la imagen 2D 180° (giro puro)
+    // Girar SOLO en el plano horizontal (negar x de salida) para alinear con el visor.
+    // NO negar la y: si se niega, la figura queda de cabeza (Z hacia abajo). Verificado.
+    return { x: -x, y: y };
   }
   global.disenador3dSetIsoAngulo = function(deg) {
     var d = Number(deg); if (isNaN(d)) return;
