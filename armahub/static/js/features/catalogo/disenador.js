@@ -845,10 +845,20 @@
       // 3D), no reconstruido con 'A' (que invertía la guata). _arcosIso3d es null en 2D.
       s += '<path d="' + _pathDesdePuntos(_puntos, _tiposSeg, _radiosSeg, _sweepsSeg, _arcosIso3d) + '" fill="none" stroke="#00695c" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"/>';
     }
-    // Cotas automáticas del arco (3D): no se pierden al etiquetar. Ya están en coords
-    // de lienzo → tx identidad. En 2D _cotasArcoIso3d es null (aún no implementado).
+    // Cotas automáticas del arco (3D): ya están en coords de lienzo → tx identidad.
     if (_cotasArcoIso3d) {
       _cotasArcoIso3d.forEach(function(seg){ s += _dibujarCotasArcoProyectadas(seg, function(p){ return p; }); });
+    } else if (_puntos.length >= 2) {
+      // Cotas automáticas del arco en el LIENZO 2D (mientras se dibuja). _puntos ya están
+      // en coords de pantalla (Y abajo, igual que el path 'A'), SIN tx posterior → se usa
+      // el sweep DIRECTO (no invertido como en el preview, que sí aplica tx). Así el
+      // desarrollo/cotas comban al MISMO lado que el arco del lienzo.
+      for (var ai = 1; ai < _puntos.length; ai++) {
+        if (_tiposSeg[ai-1] !== 'arco') continue;
+        var pa = _puntos[ai-1], pb = _puntos[ai];
+        var segC = _calcCotasArco(pa.x, pa.y, pb.x, pb.y, _radiosSeg[ai-1] || 0, (_sweepsSeg[ai-1] != null ? _sweepsSeg[ai-1] : 1));
+        s += _dibujarCotasArcoProyectadas(segC, function(p){ return p; });
+      }
     }
     if (_dibujando && _puntos.length >= 1 && _hoverPt) {
       var lp = _puntos[_puntos.length - 1];
