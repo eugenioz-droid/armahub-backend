@@ -895,6 +895,80 @@ El botón "Etiquetar barra" debe alternar entrar/salir (o botón "Terminar etiqu
 **E) Cota de arco 3D:** queda resuelta por (A) — con SVG iso hay curva real → la cota de arco
 con offset funciona como en 2D. Sin (A), en 3D sería manual (2 clicks sobre la foto).
 
+### 4A.4.4 Especificación TÉCNICA de A (render 3D vectorial) — para implementar sin iterar
+
+> Estado: B/C/D aprobados y en curso. **A aprobado en concepto; esta spec detalla el CÓMO.**
+> Objetivo: que quede a la primera. Implementar A de forma AISLADA (rama/commit propio).
+
+**A.1 — Qué es la vista y cómo se genera.**
+- El editor 3D interactivo (dibujar/rotar/clickear nodos) **SIGUE con Three.js, sin cambios**.
+- El **preview + render de catálogo/galería/Bar Manager + (futuro) formulario de cubicación**
+  pasa a ser un **SVG generado por proyección isométrica** de los nodos 3D. NO es foto.
+- Función base ya existe: `_iso(p)` en disenador3d.js = proyección iso a 30°: `x=(px−pz)·cos(a)`,
+  `y=py−(px+pz)·sin(a)`. El modelo ya guarda `geometria.puntos` = nodos proyectados con `_iso`.
+- El motor SVG del 2D (`svgDesdePuntos`/`dibujarFigura`) debe aceptar esos puntos iso y dibujar
+  la polilínea + arcos + nodos IGUAL que una figura 2D. Es el mismo motor; solo cambia el origen
+  de los puntos (proyección de 3D vs figura plana).
+
+**A.2 — Ángulo isométrico configurable por figura (pedido de Eugenio).**
+- Guardar en `geometria.iso_angulo` (grados; default 30). El usuario elige UNA vez al crear la
+  figura (opciones 30/35/40 — o un selector simple). Ese ángulo queda fijo para TODAS las
+  visualizaciones de esa figura en toda la plataforma (preview, catálogo, cubicación).
+- `_iso` toma el ángulo de la figura en vez de la constante 30. Costo: nulo (un parámetro).
+- Sirve para casos donde a 30° las cotas/líneas se solapan → el usuario prueba otro ángulo.
+
+**A.3 — Paramétrico (lo que vale ORO para cubicación).**
+- El SVG iso se dibuja desde los `nodos` (coords 3D). Si se pasan DIMENSIONES reales (A=115,
+  B=80…), los nodos se ESCALAN proporcional a esas medidas antes de proyectar → la figura se ve
+  al tamaño/proporción que se fabricará. Esto es lo que el formulario de cubicación (§4.7) usará:
+  el cubicador ingresa medidas y ve la figura real. Con foto era imposible.
+- La figura del catálogo es la PLANTILLA (forma); las medidas mm las aporta la barra concreta
+  (misma lógica que el 2D — decisión ya tomada en 5M.8.7 A4).
+
+**A.4 — Etiquetas: se HEREDAN, con un matiz de coordenadas a resolver.**
+- El etiquetado 3D YA es SVG (letras/ángulos/cotas/radios via registro). HOY se colocan sobre el
+  LIENZO 2D (420×320) con el snapshot de FONDO, y se guardan en coords de ese lienzo.
+- Con A, el fondo pasa a ser el SVG iso. Las etiquetas deben posicionarse en el MISMO espacio que
+  el SVG iso (coords de la proyección iso), no en el lienzo-con-foto. **Decisión de diseño:** las
+  etiquetas se colocan/arrastran sobre el SVG iso (igual que el 2D sobre su figura); sus coords se
+  guardan relativas a ese espacio (como el 2D relativo a p0). El registro no cambia.
+- **Cota de arco:** con SVG iso el arco es una curva vectorial real → `dibujarArco`/`controlArco`
+  del 2D funcionan directo (hoy no, porque no hay curva sobre la foto).
+
+**A.5 — Migración de figuras 3D YA guardadas (data existente).**
+- Las 3D guardadas hoy tienen `snapshot` (PNG) + `etiquetas` en coords del lienzo-con-foto +
+  `puntos` iso. Al migrar a SVG iso: los `puntos`/`nodos` ya están → el SVG se dibuja bien. Las
+  `etiquetas` en coords viejas PUEDEN quedar descolocadas respecto al SVG iso (el encuadre/escala
+  cambia). **Opciones:** (a) re-mapear las coords viejas al nuevo espacio (complejo, aproximado);
+  (b) dejar el `snapshot` como fallback para figuras viejas y usar SVG solo para las nuevas;
+  (c) pocas 3D hoy → re-etiquetarlas a mano. **Recomendación: (b)** — SVG iso para nuevas, snapshot
+  fallback para viejas; sin migración destructiva. DECIDIR con Eugenio (ver preguntas).
+
+**A.6 — Qué se conserva y qué se elimina.**
+- CONSERVAR `snapshot` en el modelo (fallback + no romper data vieja). No es obligatorio generarlo
+  para figuras nuevas si el SVG iso lo reemplaza, pero mantenerlo no cuesta.
+- El editor 3D Three.js, el fijado de vista, el encuadre: se mantienen (para dibujar).
+- Se elimina la DEPENDENCIA del preview/catálogo respecto a la foto (pasa a SVG).
+
+**A.7 — Alcance del cambio (archivos).**
+- `disenador3d.js`: exponer `nodos`/`puntos` iso + el `iso_angulo`; punto de entrada al etiquetado
+  sobre SVG iso en vez de sobre foto.
+- `disenador.js`: `svgDesdePuntos`/`dibujarFigura` — asegurar que dibujan bien los puntos iso
+  (arcos incluidos); el modo etiquetado usa SVG iso de fondo (no `_fondoImagen` foto).
+- `index.js` (catálogo) + galería + Bar Manager mini: usar `dibujarFigura(puntos_iso)` para las 3D
+  en vez de la `<img>` del snapshot.
+- Registro etiquetas: sin cambios (ya es agnóstico al fondo).
+
+**A.8 — Riesgos / casos borde a cubrir en la implementación.**
+- Arcos 3D en la proyección iso: un arco en un plano 3D, proyectado a iso, es una ELIPSE, no un
+  círculo. `dibujarArco` asume arco circular. Verificar cómo se ve un arco 3D proyectado; si se
+  deforma, aproximar con el path que ya usamos (aceptable a nivel esquemático) o documentar la
+  limitación. **Este es el punto más incierto de A** — probar temprano.
+- Figuras muy "planas" (casi 2D en un plano): la iso puede aplanarlas; el ángulo configurable
+  (A.2) mitiga.
+- Nodos superpuestos en la proyección (dos nodos 3D distintos caen en el mismo punto 2D): posible
+  con ciertas geometrías; no es error, solo visual. El ángulo configurable ayuda.
+
 ### 4A.5 Permisos
 
 - **Ver catálogo:** admin + miembros (rol `miembro`; lo consumen para editar/filtrar barras).
