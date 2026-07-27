@@ -28,13 +28,16 @@
   var _isoAngulo = 30;
 
   // Proyección ISOMÉTRICA de un punto 3D → punto 2D (para la vista 2D vectorial).
-  // Convención del editor: Z es la ALTURA (vertical), X e Y horizontales. Debe quedar
-  // IGUAL que el visor 3D (no arbitrario). Es la iso base ROTADA 180° sobre Z (px→−px,
-  // py→−py) para que coincida con el canvas — verificado numéricamente: X e Y quedan
-  // como en el visor y Z arriba. El motor (svgDesdePuntos/tx) invierte la Y al dibujar.
+  // Convención del editor: Z es la ALTURA (vertical), X e Y horizontales. Debe verse
+  // IGUAL que el visor 3D. Se usa la proyección BASE (que preserva la dirección de los
+  // segmentos — NO se tocan los ejes 3D de entrada, así las patas no se invierten) y
+  // luego se ROTA la IMAGEN 2D final 180° (negar x e y de salida). Rotar la imagen ≠
+  // espejar ejes: mantiene las direcciones de recorrido, solo gira la vista completa.
   function _iso(p) {
     var a = _isoAngulo * Math.PI / 180;
-    return { x: (-p.x + p.y) * Math.cos(a), y: p.z + (p.x + p.y) * Math.sin(a) };
+    var x = (p.x - p.y) * Math.cos(a);      // proyección base (direcciones correctas)
+    var y = p.z - (p.x + p.y) * Math.sin(a);
+    return { x: -x, y: -y };                 // rotar la imagen 2D 180° (giro puro)
   }
   global.disenador3dSetIsoAngulo = function(deg) {
     var d = Number(deg); if (isNaN(d)) return;
