@@ -311,6 +311,12 @@
       // Guata REAL = punto medio del arco (a mitad de barrido, a distancia r del centro).
       var angMed = a0 + da/2;
       var gx = cx + r*Math.cos(angMed), gy = cy + r*Math.sin(angMed);
+      // Punto del arco para el RADIO: inclinado ~45° respecto a la guata (perpendicular
+      // a la cuerda), para que el radio NO salga vertical y se distinga de la proy.
+      // vertical. Se limita a no pasarse del extremo del arco si éste es chico.
+      var incl = Math.min(Math.PI/4, Math.abs(da)/2 * 0.85) * (da >= 0 ? 1 : -1);
+      var angRad = angMed + incl;
+      var rpx = cx + r*Math.cos(angRad), rpy = cy + r*Math.sin(angRad);
       // --- DESARROLLO: misma curva del arco, empujada a radio r+off (queda por fuera). ---
       var offArco = Math.max(6, r*0.14);
       var rOff = r + offArco;
@@ -320,15 +326,15 @@
         var ex = cx + rOff * Math.cos(t), ey = cy + rOff * Math.sin(t);
         desarrollo.push(_iso(P3(ex, ey)));
       }
-      // --- RADIO: del centro a la guata REAL. VERT: lado del bounding box del arco. ---
-      var C3 = P3(cx, cy), G3 = P3(gx, gy);
+      // --- RADIO: del CENTRO real al arco, inclinado 45°. VERT: lado del bounding box. ---
+      var C3 = P3(cx, cy), R3 = P3(rpx, rpy);
       var maxE0 = Math.max(ax,bx,gx);
       var minE1 = Math.min(ay,by,gy), maxE1 = Math.max(ay,by,gy);
       var off = Math.max(6, r*0.12);
       var pVa = P3(maxE0 + off, minE1), pVb = P3(maxE0 + off, maxE1);
       res.push({
         desarrollo: desarrollo,          // curva (muchos puntos)
-        radio:  [ _iso(C3), _iso(G3) ],  // centro → guata real del arco
+        radio:  [ _iso(C3), _iso(R3) ],  // centro real → punto del arco a 45°
         // HORIZ: recta directa entre los DOS NODOS extremos del arco (más limpio).
         horiz:  [ _iso({ x: a.x, y: a.y, z: a.z }), _iso({ x: b.x, y: b.y, z: b.z }) ],
         vert:   [ _iso(pVa), _iso(pVb) ]

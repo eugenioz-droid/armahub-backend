@@ -83,6 +83,21 @@
       if (e.x1 != null) { _acum(e.x1, e.y1); _acum(e.x2, e.y2); }  // cota/radio/diámetro
       // arco (seg/lado): sus extremos ya están en pts, no aporta límites nuevos.
     });
+    // 3D: los puntos del ARCO proyectado sobresalen del segmento nodo-nodo; sin esto
+    // un arco muy pronunciado se sale del marco. También las COTAS del arco (desarrollo/
+    // radio/vertical) que quedan por fuera. Todo va al bbox para que el encuadre las
+    // incluya y nada quede cortado.
+    if (opts.arcos_iso) {
+      Object.keys(opts.arcos_iso).forEach(function(k) {
+        (opts.arcos_iso[k] || []).forEach(function(p) { _acum(p.x, p.y); });
+      });
+    }
+    (opts.cotas_arco_iso || []).forEach(function(seg) {
+      (seg.desarrollo || []).forEach(function(p) { _acum(p.x, p.y); });
+      [seg.radio, seg.horiz, seg.vert].forEach(function(par) {
+        if (par && par.length >= 2) { _acum(par[0].x, par[0].y); _acum(par[1].x, par[1].y); }
+      });
+    });
     var bw = Math.max(1, maxX - minX), bh = Math.max(1, maxY - minY);
     // Escalar para llenar el marco (menos el pad), y luego CENTRAR la figura en el
     // SVG (no anclarla a la esquina). Así queda centrada y aprovecha el espacio.
