@@ -402,6 +402,7 @@
     _fondoImagen = null;   // ya NO es foto: es el SVG vectorial de la figura iso
     // Cargar los puntos iso al lienzo (centrar + escalar a la grilla, como al editar).
     _puntos = []; _tiposSeg = []; _radiosSeg = []; _sweepsSeg = []; _labels = [];
+    _arcosIso3d = null; _cotasArcoIso3d = null;
     if (geoIso && geoIso.puntos && geoIso.puntos.length >= 2) {
       // Escalar/centrar los puntos iso al lienzo (misma idea que disenadorEditar).
       var pts = geoIso.puntos, minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;
@@ -409,8 +410,27 @@
       var bw=Math.max(1,maxX-minX), bh=Math.max(1,maxY-minY);
       var sc=Math.min((CW-120)/bw,(CH-120)/bh);   // escala para llenar el lienzo con margen
       var offX=(CW-bw*sc)/2, offY=(CH-bh*sc)/2;
-      _puntos = pts.map(function(p){ return { x: Math.round(offX+(p.x-minX)*sc), y: Math.round(CH-(offY+(p.y-minY)*sc)) }; });
+      // Misma transformación (proyección iso → lienzo) para puntos, arcos y cotas, para
+      // que el arco (guata) y las cotas 3D queden EXACTAS, sin reconstruir con 'A'.
+      function alLienzo(p){ return { x: offX+(p.x-minX)*sc, y: CH-(offY+(p.y-minY)*sc) }; }
+      _puntos = pts.map(function(p){ var q=alLienzo(p); return { x: Math.round(q.x), y: Math.round(q.y) }; });
       (geoIso.tramos||[]).forEach(function(t,i){ _labels[i]=t.lado; _tiposSeg[i]=t.tipo||'recto'; _radiosSeg[i]=t.radio||0; _sweepsSeg[i]=t.sweep!=null?t.sweep:1; });
+      // Arcos proyectados → lienzo (polyline fiel, evita guata invertida).
+      if (geoIso.arcos_iso) {
+        _arcosIso3d = {};
+        Object.keys(geoIso.arcos_iso).forEach(function(k){ _arcosIso3d[k] = (geoIso.arcos_iso[k]||[]).map(alLienzo); });
+      }
+      // Cotas del arco → lienzo (para no perderlas al etiquetar).
+      if (geoIso.cotas_arco_iso) {
+        _cotasArcoIso3d = geoIso.cotas_arco_iso.map(function(seg){
+          return {
+            desarrollo: (seg.desarrollo||[]).map(alLienzo),
+            radio: (seg.radio||[]).map(alLienzo),
+            horiz: (seg.horiz||[]).map(alLienzo),
+            vert: (seg.vert||[]).map(alLienzo)
+          };
+        });
+      }
     }
     _etiquetas = (etiquetasPrevias || []).slice();
     _modoEtiquetas = true; _dibujando = false; _etiquetando3dActivo = true;
@@ -430,6 +450,7 @@
   global.disenadorSalirEtiquetado3D = function() {
     _etiquetando3dActivo = false; _fondoImagen = null; _etiquetas = []; _modoEtiquetas = false;
     _puntos = []; _tiposSeg = []; _radiosSeg = []; _sweepsSeg = []; _labels = [];
+    _arcosIso3d = null; _cotasArcoIso3d = null;
     _cotaInicio = null; _cotaHover = null;
     var bar = document.getElementById('disEtiquetasBar');
     if (bar) bar.style.display = 'none';
@@ -612,6 +633,11 @@
   // figura de puntos) y las etiquetas se colocan encima, reutilizando TODO el
   // sistema 2D (registro, click, drag, tipos). null = modo normal 2D.
   var _fondoImagen = null;
+  // Etiquetado 3D: puntos del arco proyectados y cotas automáticas (ya en coords de
+  // lienzo). Se dibujan igual que en el preview → el arco NO se reconstruye con 'A'
+  // (evita guata invertida) y las cotas automáticas NO se pierden. null en modo 2D.
+  var _arcosIso3d = null;
+  var _cotasArcoIso3d = null;
 
   // Crea el SVG del lienzo UNA sola vez (grilla + rect capturador de eventos + una
   // capa <g> dinámica). Los listeners van con addEventListener sobre el SVG, que
@@ -726,7 +752,14 @@
     if (!capa) return;
     var s = '';
     if (_puntos.length >= 2) {
-      s += '<path d="' + _pathDesdePuntos(_puntos, _tiposSeg, _radiosSeg, _sweepsSeg) + '" fill="none" stroke="#00695c" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"/>';
+      // En etiquetado 3D, dibujar el arco con sus puntos proyectados (polyline fiel al
+      // 3D), no reconstruido con 'A' (que invertía la guata). _arcosIso3d es null en 2D.
+      s += '<path d="' + _pathDesdePuntos(_puntos, _tiposSeg, _radiosSeg, _sweepsSeg, _arcosIso3d) + '" fill="none" stroke="#00695c" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"/>';
+    }
+    // Cotas automáticas del arco (3D): no se pierden al etiquetar. Ya están en coords
+    // de lienzo → tx identidad. En 2D _cotasArcoIso3d es null (aún no implementado).
+    if (_cotasArcoIso3d) {
+      _cotasArcoIso3d.forEach(function(seg){ s += _dibujarCotasArcoProyectadas(seg, function(p){ return p; }); });
     }
     if (_dibujando && _puntos.length >= 1 && _hoverPt) {
       var lp = _puntos[_puntos.length - 1];

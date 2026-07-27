@@ -328,18 +328,19 @@
       }
       // --- RADIO: del PUNTO MEDIO de la cuerda al arco, inclinado 45°. ---
       // Nace en el medio de la recta que une los 2 nodos (mx,my) y sube al punto del
-      // arco inclinado 45° (rpx,rpy). VERT: lado del bounding box.
+      // arco inclinado 45° (rpx,rpy).
       var M3 = P3(mx, my), R3 = P3(rpx, rpy);
-      var maxE0 = Math.max(ax,bx,gx);
-      var minE1 = Math.min(ay,by,gy), maxE1 = Math.max(ay,by,gy);
-      var off = Math.max(6, r*0.12);
-      var pVa = P3(maxE0 + off, minE1), pVb = P3(maxE0 + off, maxE1);
+      // VERT: la SAGITA (flecha) del arco = del medio de la cuerda a la GUATA,
+      // perpendicular a la cuerda. Es el "alto" real del arco y por construcción
+      // nunca cae paralela a la horizontal (antes usaba el bounding box del plano,
+      // que en el piso XY se acostaba y parecía una 2ª horizontal).
+      var G3 = P3(gx, gy);
       res.push({
         desarrollo: desarrollo,          // curva (muchos puntos)
         radio:  [ _iso(M3), _iso(R3) ],  // medio cuerda → punto del arco a 45°
         // HORIZ: recta directa entre los DOS NODOS extremos del arco (más limpio).
         horiz:  [ _iso({ x: a.x, y: a.y, z: a.z }), _iso({ x: b.x, y: b.y, z: b.z }) ],
-        vert:   [ _iso(pVa), _iso(pVb) ]
+        vert:   [ _iso(M3), _iso(G3) ]    // sagita: medio cuerda → guata
       });
     }
     return res;
