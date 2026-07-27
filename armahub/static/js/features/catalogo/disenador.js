@@ -368,7 +368,12 @@
     for (var i = 1; i < pts.length; i++) {
       if ((tipos && tipos[i-1]) !== 'arco') continue;
       var a = pts[i-1], b = pts[i];
-      res.push(_calcCotasArco(a.x, a.y, b.x, b.y, (radios && radios[i-1]) || 0, (sweeps && sweeps[i-1] != null) ? sweeps[i-1] : 1));
+      // Sweep INVERTIDO: las cotas se calculan en coords originales (Y arriba) y luego
+      // se aplican con tx (que invierte Y para pantalla). Esa inversión de Y espeja el
+      // sentido de curvatura respecto al arco del path SVG (comando 'A', en coords de
+      // pantalla). Invertir el sweep compensa → la cota comba al MISMO lado que el arco.
+      var sw = (sweeps && sweeps[i-1] != null) ? sweeps[i-1] : 1;
+      res.push(_calcCotasArco(a.x, a.y, b.x, b.y, (radios && radios[i-1]) || 0, sw ? 0 : 1));
     }
     return res;
   }
