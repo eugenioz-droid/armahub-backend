@@ -1164,10 +1164,13 @@
         vis = dibujarFigura(f.geometria, null, { width: 90, height: 72, pad: 12 });
       }
       var cod = String(f.codigo).replace(/'/g, "\\'");
-      var badge3d = es3d ? '<span style="position:absolute; top:2px; left:2px; z-index:2; background:#1976d2; color:#fff; font-size:9px; font-weight:700; padding:1px 4px; border-radius:3px;">3D</span>' : '';
+      // Badge "3D": z-index ALTO y declarado DESPUÉS del snapshot para que gane el
+      // apilamiento (el SVG de etiquetas del snapshot tiene su propio contexto y
+      // tapaba el badge aunque tuviera z-index bajo).
+      var badge3d = es3d ? '<span style="position:absolute; top:4px; left:4px; z-index:10; background:#1976d2; color:#fff; font-size:9px; font-weight:700; padding:1px 5px; border-radius:3px; pointer-events:none;">3D</span>' : '';
       return '<div style="border:1px solid #e0e0e0; border-radius:6px; padding:6px; text-align:center; background:#fff; position:relative;">' +
-        badge3d +
         '<div style="cursor:pointer;" title="Editar" onclick="disenadorEditar(\'' + cod + '\')">' + vis + '</div>' +
+        badge3d +
         '<div style="font-size:11px; font-weight:700; color:#00695c; margin-top:2px;">' + f.codigo + '</div>' +
         '<button title="Borrar" onclick="disenadorEliminar(\'' + cod + '\')" style="position:absolute; top:2px; right:2px; width:18px; height:18px; line-height:1; padding:0; border:none; background:#fdecea; color:#c62828; border-radius:4px; cursor:pointer; font-size:12px;">✕</button>' +
         '</div>';

@@ -859,6 +859,42 @@ Manager (celda Figura). Vectorial, liviano, sin imágenes ni servidor. Estilo un
   Galería: badge "3D" + imagen del snapshot. Backend sin cambios (geometría es JSONB).
 - **PENDIENTE: arcos/curvas 3D** (la "patita" final). Modelo ya contempla `tipo:"arco"`.
 
+### 4A.4.3 Render 3D vectorial + mejoras de UX del editor (PLANIFICADO 2026-07-27)
+
+**A) Migrar el preview/render 3D de FOTO (snapshot PNG) → SVG isométrico paramétrico.**
+Hoy la miniatura de una figura 3D es una foto del canvas Three.js. Problemas: (1) no es
+paramétrico — no puede escalar proporcional a las dimensiones reales (A=115) ni mostrar la
+figura al tamaño que se fabricará; (2) deformación diagonal (antialiasing del PNG WebGL);
+(3) el badge "3D" y las cotas quedan pegados sobre una foto, no integrados; (4) la cota de
+arco 3D no funciona (no hay curva real que seguir, solo una foto).
+**Solución (sin reinventar):** el modelo 3D YA guarda `nodos` (coords 3D) + `puntos` (proyección
+isométrica 2D). Alimentar el **motor SVG del 2D** (`dibujarFigura`) con los puntos isométricos
+→ dibujo vectorial de la figura 3D, igual criterio que el 2D. El **etiquetado ya es SVG** (letras/
+ángulos/cotas/radios se dibujan sobre el lienzo con el registro; solo el FONDO es foto hoy) →
+al cambiar el fondo de foto a SVG iso, el etiquetado se hereda tal cual Y la **cota de arco 3D
+pasa a funcionar** (hay curva vectorial real). El editor 3D interactivo SIGUE con Three.js
+(ahí se quiere rotación/perspectiva); solo el preview/catálogo pasa a SVG. Matiz aceptado: las
+cotas acotan la VISTA isométrica (ángulo fijo estándar de dibujo técnico), no el 3D real — es
+lo correcto para un catálogo/plano de fierro. **NO** buscar otra librería 3D (Babylon, etc.):
+no aporta, ya tenemos los datos; el problema es solo usarlos. Descartar `SVGRenderer` de Three.js
+(más pesado que la proyección iso que ya calculamos).
+
+**B) Flujo de editor real (2D y 3D):** botón **"Nueva figura / Limpiar"** siempre visible +
+banda/indicador **"✏️ Editando 305A"** al cargar una figura (hoy al cargar una 3D no hay forma
+de vaciar ni señal de que se está editando algo cargado).
+
+**C) Barra de etiquetado con botones (no desplegables):** un **botón por tipo** (6: cota, arco,
+radio, diámetro, letra, ángulo) en vez del `<select>` de tipo. Para **letra/ángulo: avance
+automático** (colocas → siguiente letra/ángulo libre; corregible). Más fluido que elegir en
+dropdown cada vez. (Campo de texto libre descartado de primera: propenso a error; el avance
+automático da el 90% del beneficio.)
+
+**D) Salir del etiquetado en 3D:** hoy NO hay forma de salir del modo etiquetado en 3D (bug).
+El botón "Etiquetar barra" debe alternar entrar/salir (o botón "Terminar etiquetado").
+
+**E) Cota de arco 3D:** queda resuelta por (A) — con SVG iso hay curva real → la cota de arco
+con offset funciona como en 2D. Sin (A), en 3D sería manual (2 clicks sobre la foto).
+
 ### 4A.5 Permisos
 
 - **Ver catálogo:** admin + miembros (rol `miembro`; lo consumen para editar/filtrar barras).
