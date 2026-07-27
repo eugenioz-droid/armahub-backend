@@ -28,12 +28,13 @@
   var _isoAngulo = 30;
 
   // Proyección ISOMÉTRICA de un punto 3D → punto 2D (para la vista 2D vectorial).
-  // Convención del editor: Z es la ALTURA (vertical), X e Y horizontales. Por eso el
-  // eje VERTICAL de la proyección es Z (no Y): los horizontales X,Y se "abren" en
-  // diagonal y Z sube. (Antes usaba Y vertical → la figura salía rotada.)
+  // Convención del editor: Z es la ALTURA (vertical), X e Y horizontales. El eje
+  // VERTICAL de la proyección es Z. La componente vertical va NEGADA porque el motor
+  // (svgDesdePuntos/tx) invierte la Y al dibujar en pantalla: sin negar, la figura
+  // salía espejada verticalmente (180° en X). Con -(...) queda Z hacia arriba real.
   function _iso(p) {
     var a = _isoAngulo * Math.PI / 180;
-    return { x: (p.x - p.y) * Math.cos(a), y: p.z - (p.x + p.y) * Math.sin(a) };
+    return { x: (p.x - p.y) * Math.cos(a), y: -(p.z - (p.x + p.y) * Math.sin(a)) };
   }
   global.disenador3dSetIsoAngulo = function(deg) {
     var d = Number(deg); if (isNaN(d)) return;
