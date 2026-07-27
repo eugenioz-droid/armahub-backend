@@ -910,12 +910,14 @@ con offset funciona como en 2D. Sin (A), en 3D sería manual (2 clicks sobre la 
   la polilínea + arcos + nodos IGUAL que una figura 2D. Es el mismo motor; solo cambia el origen
   de los puntos (proyección de 3D vs figura plana).
 
-**A.2 — Ángulo isométrico configurable por figura (pedido de Eugenio).**
-- Guardar en `geometria.iso_angulo` (grados; default 30). El usuario elige UNA vez al crear la
-  figura (opciones 30/35/40 — o un selector simple). Ese ángulo queda fijo para TODAS las
-  visualizaciones de esa figura en toda la plataforma (preview, catálogo, cubicación).
+**A.2 — Ángulo isométrico configurable por figura (DECIDIDO: selector 30/35/40 con preview).**
+- Guardar en `geometria.iso_angulo` (grados; default 30). **Selector simple 30°/35°/40°** al
+  crear/guardar la figura 3D. **Al presionar una opción, el PREVIEW se actualiza en vivo** para
+  que el usuario vea cómo queda el render con ese ángulo antes de fijarlo. Ese ángulo queda
+  guardado para TODAS las visualizaciones de esa figura en toda la plataforma (preview, catálogo,
+  cubicación). Futuro (si las funciones de edición operan bien): permitir re-editar el ángulo;
+  por ahora se fija al crear.
 - `_iso` toma el ángulo de la figura en vez de la constante 30. Costo: nulo (un parámetro).
-- Sirve para casos donde a 30° las cotas/líneas se solapan → el usuario prueba otro ángulo.
 
 **A.3 — Paramétrico (lo que vale ORO para cubicación).**
 - El SVG iso se dibuja desde los `nodos` (coords 3D). Si se pasan DIMENSIONES reales (A=115,
@@ -925,24 +927,31 @@ con offset funciona como en 2D. Sin (A), en 3D sería manual (2 clicks sobre la 
 - La figura del catálogo es la PLANTILLA (forma); las medidas mm las aporta la barra concreta
   (misma lógica que el 2D — decisión ya tomada en 5M.8.7 A4).
 
-**A.4 — Etiquetas: se HEREDAN, con un matiz de coordenadas a resolver.**
-- El etiquetado 3D YA es SVG (letras/ángulos/cotas/radios via registro). HOY se colocan sobre el
-  LIENZO 2D (420×320) con el snapshot de FONDO, y se guardan en coords de ese lienzo.
-- Con A, el fondo pasa a ser el SVG iso. Las etiquetas deben posicionarse en el MISMO espacio que
-  el SVG iso (coords de la proyección iso), no en el lienzo-con-foto. **Decisión de diseño:** las
-  etiquetas se colocan/arrastran sobre el SVG iso (igual que el 2D sobre su figura); sus coords se
-  guardan relativas a ese espacio (como el 2D relativo a p0). El registro no cambia.
-- **Cota de arco:** con SVG iso el arco es una curva vectorial real → `dibujarArco`/`controlArco`
-  del 2D funcionan directo (hoy no, porque no hay curva sobre la foto).
+**A.4 — Etiquetado: modelo AUTOMÁTICO (redefinido con Eugenio 2026-07-27, aplica 2D Y 3D).**
+El motor SVG es compartido → esto se implementa una vez y sirve a ambos. Reglas:
+- **Letras de lado: AUTOMÁTICAS siempre** (A, B, C…), con ajuste manual opcional (reordenar/
+  renombrar, útil en curvas). La LETRA representa la cota del lado recto → **los lados rectos NO
+  llevan cota de medida** (redundante). Ya existe en 2D (`svgDesdePuntos` dibuja las letras).
+- **Ángulos:** sin cambios — convención aSa (solo especiales ≠90 en la bisectriz del vértice).
+- **ARCO → 4 COTAS AUTOMÁTICAS** (un arco es 1 segmento pero requiere 4 dimensiones para quedar
+  definido): (1) **largo de cuerda** (recta entre extremos), (2) **proyección vertical** (alto),
+  (3) **proyección horizontal** (ancho), (4) **radio**. Se generan solas cuando hay un segmento
+  curvo, copiando/derivando de la geometría del arco (NO se dibujan a mano). El "problema de la
+  elipse" NO existe: la cota del arco COPIA la línea del arco YA proyectado (con offset), sea
+  círculo o elipse en la proyección — sigue lo que está dibujado.
+- **Modo etiquetado MANUAL:** queda solo para casos que lo necesitan (reordenar parámetros en
+  curvas, ajustar posición de una letra). No es el flujo principal — la mayoría queda automático.
+- Coords: las etiquetas manuales se colocan sobre el SVG iso (no sobre foto), coords relativas a
+  ese espacio (como el 2D relativo a p0). El registro de etiquetas no cambia.
 
-**A.5 — Migración de figuras 3D YA guardadas (data existente).**
-- Las 3D guardadas hoy tienen `snapshot` (PNG) + `etiquetas` en coords del lienzo-con-foto +
-  `puntos` iso. Al migrar a SVG iso: los `puntos`/`nodos` ya están → el SVG se dibuja bien. Las
-  `etiquetas` en coords viejas PUEDEN quedar descolocadas respecto al SVG iso (el encuadre/escala
-  cambia). **Opciones:** (a) re-mapear las coords viejas al nuevo espacio (complejo, aproximado);
-  (b) dejar el `snapshot` como fallback para figuras viejas y usar SVG solo para las nuevas;
-  (c) pocas 3D hoy → re-etiquetarlas a mano. **Recomendación: (b)** — SVG iso para nuevas, snapshot
-  fallback para viejas; sin migración destructiva. DECIDIR con Eugenio (ver preguntas).
+**A.4.1 — Ganancia:** esto SIMPLIFICA la creación de barras. Con figuras 3D sin arco (las más),
+el usuario dibuja y ya tiene letras + geometría sin etiquetar nada. Con arco, las 4 cotas salen
+solas. El etiquetado manual pasa de "obligatorio" a "excepcional".
+
+**A.5 — Data 3D existente: DESCARTADA (decisión Eugenio).** Solo hay 1 barra 3D de prueba; el
+usuario la elimina. Empezamos limpio con SVG iso — sin migración ni fallback de snapshot para
+data vieja. (El `snapshot` puede conservarse en el modelo por si se quiere una foto de respaldo,
+pero el render pasa a ser SVG iso para todas.)
 
 **A.6 — Qué se conserva y qué se elimina.**
 - CONSERVAR `snapshot` en el modelo (fallback + no romper data vieja). No es obligatorio generarlo
@@ -959,15 +968,21 @@ con offset funciona como en 2D. Sin (A), en 3D sería manual (2 clicks sobre la 
   en vez de la `<img>` del snapshot.
 - Registro etiquetas: sin cambios (ya es agnóstico al fondo).
 
-**A.8 — Riesgos / casos borde a cubrir en la implementación.**
-- Arcos 3D en la proyección iso: un arco en un plano 3D, proyectado a iso, es una ELIPSE, no un
-  círculo. `dibujarArco` asume arco circular. Verificar cómo se ve un arco 3D proyectado; si se
-  deforma, aproximar con el path que ya usamos (aceptable a nivel esquemático) o documentar la
-  limitación. **Este es el punto más incierto de A** — probar temprano.
-- Figuras muy "planas" (casi 2D en un plano): la iso puede aplanarlas; el ángulo configurable
-  (A.2) mitiga.
-- Nodos superpuestos en la proyección (dos nodos 3D distintos caen en el mismo punto 2D): posible
-  con ciertas geometrías; no es error, solo visual. El ángulo configurable ayuda.
+**A.8 — Riesgos / casos borde.**
+- **Arco proyectado (RESUELTO, no era problema):** el arco de la barra se dibuja en el SVG iso con
+  la forma que tenga (círculo o elipse según la proyección). Las cotas del arco (cuerda/vert/horiz/
+  radio) se derivan de la geometría y se dibujan sobre esa curva ya proyectada. No hay que "resolver
+  la elipse" — se copia lo dibujado. Descartada la preocupación inicial.
+- **Las 4 cotas del arco:** cuerda = recta entre extremos; proy. horizontal/vertical = bounding box
+  del arco en la proyección; radio = del dato del segmento. Todas derivables de la geometría ya
+  proyectada. Probar que se posicionan legibles (sin solaparse) — el ángulo iso configurable (A.2)
+  ayuda si se amontonan.
+- Figuras muy "planas" o con nodos superpuestos en la proyección: no es error, solo visual; el
+  ángulo configurable mitiga.
+- **Orden de implementación sugerido:** (1) render SVG iso de figuras RECTAS + letras automáticas
+  (el 90% de casos, prueba el núcleo); (2) selector de ángulo iso con preview en vivo; (3) las 4
+  cotas automáticas del arco; (4) etiquetado manual sobre SVG iso; (5) enganchar catálogo/galería/
+  Bar Manager a `dibujarFigura(iso)`. Cada paso verificable.
 
 ### 4A.5 Permisos
 
