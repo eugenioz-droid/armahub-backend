@@ -335,7 +335,7 @@
       // nunca cae paralela a la horizontal. Se dibuja AL COSTADO del arco (desplazada
       // lateralmente a lo largo de la cuerda hacia el extremo b), no al centro, para
       // que no se encime con el radio.
-      var lat = cuerdaLen * 0.5 + off;     // corrimiento lateral (más allá del extremo)
+      var lat = cuerdaLen * 0.5 + offArco; // corrimiento lateral (más allá del extremo)
       var mvx = mx + ux*lat, mvy = my + uy*lat;   // base de la sagita, corrida al costado
       var gvx = gx + ux*lat, gvy = gy + uy*lat;   // tope de la sagita, mismo corrimiento
       var Mv3 = P3(mvx, mvy), Gv3 = P3(gvx, gvy);
