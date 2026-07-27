@@ -105,7 +105,18 @@
     // Sweep directo: tx() ya invierte la Y, así que el arco se ve al MISMO lado
     // que en el lienzo sin invertir el sweep (invertirlo lo dejaba al revés).
     var sweepsEsc = (opts.sweeps_seg || []).map(function(sw) { return (sw != null ? sw : 1); });
-    svg += '<path d="' + _pathDesdePuntos(tpts, tiposEsc, radiosEsc, sweepsEsc) + '" fill="none" stroke="#00695c" stroke-width="3" stroke-linejoin="round" stroke-linecap="round" />';
+    // En 3D, cada arco viene con sus PUNTOS ya proyectados desde el espacio real
+    // (arcos_iso). Se transforman con tx() y el path los dibuja como polyline (L),
+    // fiel al tubo del visor 3D, en vez de reconstruir la curva con 'A' (que se
+    // invertía porque la proyección iso deforma el círculo).
+    var arcosTx = null;
+    if (opts.arcos_iso) {
+      arcosTx = {};
+      Object.keys(opts.arcos_iso).forEach(function(k) {
+        arcosTx[k] = (opts.arcos_iso[k] || []).map(tx);
+      });
+    }
+    svg += '<path d="' + _pathDesdePuntos(tpts, tiposEsc, radiosEsc, sweepsEsc, arcosTx) + '" fill="none" stroke="#00695c" stroke-width="3" stroke-linejoin="round" stroke-linecap="round" />';
     // Cotas automáticas del ARCO. En 3D las calcula el editor 3D en el espacio real y
     // las pasa YA PROYECTADAS (cotas_arco_iso, mismo espacio que pts) → nunca se
     // descalibran de la vista. Aquí solo se mapean con tx() y se dibujan.
@@ -219,6 +230,7 @@
               angulos: angAuto, labels_auto: labelsAuto,
               tipos_seg: tipos, radios_seg: radios, sweeps_seg: sweeps,
               etiquetas: (geometria && geometria.etiquetas) || [],
+              arcos_iso: (geometria && geometria.arcos_iso) || null,
               angulos_iso: (geometria && geometria.angulos_iso) || null,
               cotas_arco_iso: (geometria && geometria.cotas_arco_iso) || null };
     return svgDesdePuntos(pts, o);
@@ -248,12 +260,18 @@
   // Construye el atributo `d` de un <path> desde puntos, usando L (línea) para
   // segmentos rectos y A (arco) para curvos. tipos/radios son paralelos a los
   // segmentos (índice = i-1 para el segmento entre punto i-1 e i).
-  function _pathDesdePuntos(pts, tipos, radios, sweeps) {
+  function _pathDesdePuntos(pts, tipos, radios, sweeps, arcosTx) {
     if (!pts || pts.length < 1) return '';
     var d = 'M ' + pts[0].x + ' ' + pts[0].y;
     for (var i = 1; i < pts.length; i++) {
       var tipo = (tipos && tipos[i - 1]) || 'recto';
-      if (tipo === 'arco') {
+      // 3D: si hay puntos proyectados del arco, dibujarlo como polyline (fiel al 3D).
+      var arcPts = arcosTx && arcosTx[i - 1];
+      if (tipo === 'arco' && arcPts && arcPts.length > 1) {
+        for (var j = 1; j < arcPts.length; j++) {
+          d += ' L ' + arcPts[j].x.toFixed(1) + ' ' + arcPts[j].y.toFixed(1);
+        }
+      } else if (tipo === 'arco') {
         var a = pts[i - 1], b = pts[i];
         var cuerda = Math.sqrt((b.x - a.x) * (b.x - a.x) + (b.y - a.y) * (b.y - a.y)) || 1;
         var r = (radios && radios[i - 1]) ? radios[i - 1] : cuerda * 0.75;

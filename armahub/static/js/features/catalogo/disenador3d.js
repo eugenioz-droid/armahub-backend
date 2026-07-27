@@ -299,34 +299,29 @@
       var hh = Math.sqrt(Math.max(0, r*r - (cuerdaLen/2)*(cuerdaLen/2)));
       var ux = (bx-ax)/cuerdaLen, uy = (by-ay)/cuerdaLen, nx = -uy, ny = ux;
       var s = (sweep ? 1 : -1);
-      var cx = mx + nx*hh*s, cy = my + ny*hh*s;            // centro (en el plano)
-      var gx = mx - nx*hh*s, gy = my - ny*hh*s;            // "guata" (punto medio del arco)
+      var cx = mx + nx*hh*s, cy = my + ny*hh*s;            // centro (IGUAL que _puntosArco3d)
       var nrm = a[normalEje];   // coord normal (el plano es constante en ese eje)
       // Helper: punto 3D desde coords del plano (e0,e1) + normal.
       function P3(e0, e1) { var o = {}; o[ejes[0]]=e0; o[ejes[1]]=e1; o[normalEje]=nrm; return { x:o.x, y:o.y, z:o.z }; }
-      // --- DESARROLLO del arco: curva paralela al arco, con offset hacia afuera. ---
-      // Ángulos de barrido desde el centro hacia A y hacia B; muestreo N puntos y
-      // los empujo a radio (r + off) para que la cota quede AFUERA del fierro.
-      var ang0 = Math.atan2(ay - cy, ax - cx);
-      var ang1 = Math.atan2(by - cy, bx - cx);
-      // Normalizar el barrido para que pase por la guata (punto medio real del arco).
-      var angG = Math.atan2(gy - cy, gx - cx);
-      function norm(t) { while (t - ang0 > Math.PI) t -= 2*Math.PI; while (t - ang0 < -Math.PI) t += 2*Math.PI; return t; }
-      var a1 = norm(ang1), aG = norm(angG);
-      // Si la guata no cae entre ang0 y a1, invertir el sentido del barrido.
-      if (!((aG >= Math.min(ang0, a1)) && (aG <= Math.max(ang0, a1)))) {
-        a1 = a1 + (a1 > ang0 ? -2*Math.PI : 2*Math.PI);
-      }
+      // --- Barrido de ángulos IDÉNTICO al tubo (_puntosArco3d): a0→a1, arco CORTO. ---
+      // Así el desarrollo y el radio comban EXACTAMENTE hacia el mismo lado que el fierro.
+      var a0 = Math.atan2(ay - cy, ax - cx);
+      var a1 = Math.atan2(by - cy, bx - cx);
+      var da = a1 - a0; while (da > Math.PI) da -= 2*Math.PI; while (da < -Math.PI) da += 2*Math.PI;
+      // Guata REAL = punto medio del arco (a mitad de barrido, a distancia r del centro).
+      var angMed = a0 + da/2;
+      var gx = cx + r*Math.cos(angMed), gy = cy + r*Math.sin(angMed);
+      // --- DESARROLLO: misma curva del arco, empujada a radio r+off (queda por fuera). ---
       var offArco = Math.max(6, r*0.14);
       var rOff = r + offArco;
       var N = 24, desarrollo = [];
       for (var k = 0; k <= N; k++) {
-        var t = ang0 + (a1 - ang0) * (k / N);
+        var t = a0 + da * (k / N);
         var ex = cx + rOff * Math.cos(t), ey = cy + rOff * Math.sin(t);
         desarrollo.push(_iso(P3(ex, ey)));
       }
-      // --- RADIO, HORIZONTAL, VERTICAL (rectas, del bounding box del arco). ---
-      var A3 = P3(ax, ay), B3 = P3(bx, by), C3 = P3(cx, cy), G3 = P3(gx, gy);
+      // --- RADIO: del centro a la guata REAL. HORIZ/VERT: bounding box del arco. ---
+      var C3 = P3(cx, cy), G3 = P3(gx, gy);
       var minE0 = Math.min(ax,bx,gx), maxE0 = Math.max(ax,bx,gx);
       var minE1 = Math.min(ay,by,gy), maxE1 = Math.max(ay,by,gy);
       var off = Math.max(6, r*0.12);
@@ -334,7 +329,7 @@
       var pVa = P3(maxE0 + off, minE1), pVb = P3(maxE0 + off, maxE1);
       res.push({
         desarrollo: desarrollo,          // curva (muchos puntos)
-        radio:  [ _iso(C3), _iso(G3) ],
+        radio:  [ _iso(C3), _iso(G3) ],  // centro → guata real del arco
         horiz:  [ _iso(pHa), _iso(pHb) ],
         vert:   [ _iso(pVa), _iso(pVb) ]
       });
@@ -354,6 +349,20 @@
       }
     }
     return pts;
+  }
+
+  // Puntos de cada ARCO ya PROYECTADOS con _iso (mismos puntos 3D que el tubo del
+  // visor). El motor SVG los dibuja como polyline (L), en vez de reconstruir la curva
+  // con el comando SVG 'A' en 2D (que salía invertida porque la iso deforma el círculo).
+  // Devuelve { <índice de segmento i-1>: [ptProy, ptProy, ...] } solo para arcos.
+  function _arcosIso() {
+    var res = {};
+    for (var i = 1; i < _nodos3d.length; i++) {
+      if (_tiposSeg3d[i-1] !== 'arco') continue;
+      var arco3d = _puntosArco3d(_nodos3d[i-1], _nodos3d[i], _radiosSeg3d[i-1], _planosSeg3d[i-1] || _planoActivo, _sweepsSeg3d[i-1]);
+      res[i-1] = arco3d.map(function(p) { return _iso({ x: p.x, y: p.y, z: p.z }); });
+    }
+    return res;
   }
 
   function _redibujarFigura3d() {
@@ -673,6 +682,7 @@
       tramos: tramos,
       parciales: parciales,
       puntos: puntos2d,           // vista iso 2D (motor SVG la dibuja como render)
+      arcos_iso: _arcosIso(),     // puntos de cada arco proyectados (polyline fiel al 3D)
       iso_angulo: _isoAngulo,     // ángulo de la proyección iso (para re-render coherente)
       angulos_iso: _angulosReales3d(),   // ángulos reales 3D (posición en la proyección)
       cotas_arco_iso: _cotasArco3d(),    // 4 cotas de cada arco, ya proyectadas
@@ -708,6 +718,7 @@
                     radio: _radiosSeg3d[i-1] || 0, sweep: _sweepsSeg3d[i-1] != null ? _sweepsSeg3d[i-1] : 1 });
     }
     return { dim: '3D', puntos: puntos2d, tramos: tramos, etiquetas: _etiquetas3d.slice(),
+             arcos_iso: _arcosIso(),
              angulos_iso: _angulosReales3d(), cotas_arco_iso: _cotasArco3d() };
   }
 
