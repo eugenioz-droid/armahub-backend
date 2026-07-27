@@ -174,8 +174,17 @@
       '<div class="muted" style="font-size:11px; margin-top:4px;">Mostrando ' + rows.length + ' de ' + _tipologiasData.length + ' tipología(s)</div>';
   }
 
+  // Recarga las figuras del catálogo desde el backend y refresca la lista si el
+  // sub-tab de figuras está activo. La llama el diseñador tras guardar una figura
+  // nueva, para que aparezca en la tabla sin tener que refrescar a mano.
+  async function recargarCatalogoFiguras() {
+    await _cargarFiguras();
+    if (_catSubActual === 'figuras') renderFigurasLista();
+  }
+
   global.loadCatalogoModule = loadCatalogoModule;
   global.switchCatSubTab = switchCatSubTab;
   global.renderFigurasLista = renderFigurasLista;
   global.renderTipologiasLista = renderTipologiasLista;
+  global.recargarCatalogoFiguras = recargarCatalogoFiguras;
 })(window);

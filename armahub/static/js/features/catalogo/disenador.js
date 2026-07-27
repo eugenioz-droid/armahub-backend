@@ -1135,7 +1135,10 @@
       var data = await apiGet('/figuras-catalogo');
       _figurasCat = (data && data.figuras) || _figurasCat;
     } catch (e) {}
-    disenadorInit();   // refresca resumen + galería
+    disenadorInit();   // refresca resumen + galería del diseñador
+    // También refrescar la TABLA del catálogo (index.js tiene su propio estado
+    // _figurasData) para que la figura recién guardada aparezca sin refrescar a mano.
+    if (typeof recargarCatalogoFiguras === 'function') { try { recargarCatalogoFiguras(); } catch (e) {} }
   }
 
   // ---- GALERÍA de figuras YA dibujadas (con render): editar / eliminar ----
@@ -1161,7 +1164,7 @@
         vis = dibujarFigura(f.geometria, null, { width: 90, height: 72, pad: 12 });
       }
       var cod = String(f.codigo).replace(/'/g, "\\'");
-      var badge3d = es3d ? '<span style="position:absolute; top:2px; left:2px; background:#1976d2; color:#fff; font-size:9px; font-weight:700; padding:1px 4px; border-radius:3px;">3D</span>' : '';
+      var badge3d = es3d ? '<span style="position:absolute; top:2px; left:2px; z-index:2; background:#1976d2; color:#fff; font-size:9px; font-weight:700; padding:1px 4px; border-radius:3px;">3D</span>' : '';
       return '<div style="border:1px solid #e0e0e0; border-radius:6px; padding:6px; text-align:center; background:#fff; position:relative;">' +
         badge3d +
         '<div style="cursor:pointer;" title="Editar" onclick="disenadorEditar(\'' + cod + '\')">' + vis + '</div>' +
