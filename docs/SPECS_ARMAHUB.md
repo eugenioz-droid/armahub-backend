@@ -934,11 +934,12 @@ El motor SVG es compartido → esto se implementa una vez y sirve a ambos. Regla
   llevan cota de medida** (redundante). Ya existe en 2D (`svgDesdePuntos` dibuja las letras).
 - **Ángulos:** sin cambios — convención aSa (solo especiales ≠90 en la bisectriz del vértice).
 - **ARCO → 4 COTAS AUTOMÁTICAS** (un arco es 1 segmento pero requiere 4 dimensiones para quedar
-  definido): (1) **largo de cuerda** (recta entre extremos), (2) **proyección vertical** (alto),
-  (3) **proyección horizontal** (ancho), (4) **radio**. Se generan solas cuando hay un segmento
-  curvo, copiando/derivando de la geometría del arco (NO se dibujan a mano). El "problema de la
-  elipse" NO existe: la cota del arco COPIA la línea del arco YA proyectado (con offset), sea
-  círculo o elipse en la proyección — sigue lo que está dibujado.
+  definido): (1) **proyección horizontal** = recta entre los dos nodos extremos, (2) **proyección
+  vertical** = sagita del arco (medio cuerda→guata) dibujada AL COSTADO, (3) **desarrollo** = curva
+  paralela al arco con offset, (4) **radio** = medio cuerda→arco inclinado 45°. Se generan solas
+  cuando hay un segmento curvo, derivando de la geometría del arco (NO se dibujan a mano). El
+  "problema de la elipse" NO existe: la cota del arco COPIA la línea del arco YA proyectado (con
+  offset), sea círculo o elipse en la proyección — sigue lo que está dibujado.
 - **Modo etiquetado MANUAL:** queda solo para casos que lo necesitan (reordenar parámetros en
   curvas, ajustar posición de una letra). No es el flujo principal — la mayoría queda automático.
 - Coords: las etiquetas manuales se colocan sobre el SVG iso (no sobre foto), coords relativas a
@@ -982,10 +983,16 @@ pero el render pasa a ser SVG iso para todas.)
   la forma que tenga (círculo o elipse según la proyección). Las cotas del arco (cuerda/vert/horiz/
   radio) se derivan de la geometría y se dibujan sobre esa curva ya proyectada. No hay que "resolver
   la elipse" — se copia lo dibujado. Descartada la preocupación inicial.
-- **Las 4 cotas del arco:** cuerda = recta entre extremos; proy. horizontal/vertical = bounding box
-  del arco en la proyección; radio = del dato del segmento. Todas derivables de la geometría ya
-  proyectada. Probar que se posicionan legibles (sin solaparse) — el ángulo iso configurable (A.2)
-  ayuda si se amontonan.
+- **Las 4 cotas del arco (definición final, Eugenio 2026-07-27):**
+  (1) **proyección horizontal** = recta que conecta los DOS NODOS extremos del arco (la cuerda
+  directa entre extremos, NO bounding box);
+  (2) **proyección vertical** = la sagita/flecha del arco (del medio de la cuerda a la guata,
+  perpendicular a la cuerda), pero DIBUJADA AL COSTADO del arco (desplazada lateralmente), no al
+  centro;
+  (3) **desarrollo** = curva paralela al arco con offset (copia el arco ya proyectado);
+  (4) **radio** = del medio de la cuerda al arco, inclinado ~45° (para no confundirse con la vertical).
+  Todas se calculan en 3D y se proyectan con `_iso` (nunca se reconstruyen con SVG 'A' en 2D, que
+  se descalibra). Probar que se posicionan legibles — el ángulo iso configurable (A.2) ayuda.
 - Figuras muy "planas" o con nodos superpuestos en la proyección: no es error, solo visual; el
   ángulo configurable mitiga.
 - **Orden de implementación sugerido:** (1) render SVG iso de figuras RECTAS + letras automáticas
