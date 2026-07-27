@@ -405,6 +405,7 @@
     _redibujarLienzo();
     _redibujarPanel();
     _redibujarGaleria();
+    _actualizarBandaEditando();   // muestra "Nueva figura" / "Editando X" según estado
   }
 
   // Termina el dibujo: apaga el rubber band (deja de proponer el próximo lado).
@@ -907,14 +908,19 @@
     _actualizarBandaEditando();
   };
 
-  // Muestra/oculta la banda "✏️ Editando X" según si se está editando una figura
-  // existente. Se llama al cargar (disenadorEditar) y al limpiar/nueva.
+  // Alterna el indicador de estado: "● Nueva figura" (creando) vs "✏️ Editando X"
+  // (editando una figura cargada). Se llama al cargar, guardar y crear nueva.
   function _actualizarBandaEditando() {
-    var banda = document.getElementById('disEditandoBanda');
+    var editBanda = document.getElementById('disEditandoBanda');
+    var nuevaBanda = document.getElementById('disEstadoNueva');
     var nom = document.getElementById('disEditandoNombre');
-    if (!banda) return;
-    if (_editando) { banda.style.display = 'inline-flex'; if (nom) nom.textContent = _editando; }
-    else { banda.style.display = 'none'; }
+    if (_editando) {
+      if (editBanda) { editBanda.style.display = 'inline-flex'; if (nom) nom.textContent = _editando; }
+      if (nuevaBanda) nuevaBanda.style.display = 'none';
+    } else {
+      if (editBanda) editBanda.style.display = 'none';
+      if (nuevaBanda) nuevaBanda.style.display = 'inline-flex';
+    }
   }
   global.disenadorActualizarBandaEditando = _actualizarBandaEditando;
 

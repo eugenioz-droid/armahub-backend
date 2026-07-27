@@ -22,12 +22,35 @@
   // Nodos de la figura 3D (Vector3). Etapa B los llenará con clicks.
   var _nodos3d = [];
 
-  // Proyección ISOMÉTRICA de un punto 3D → punto 2D (para la vista 2D etiquetable).
-  // Proyección estándar de dibujo técnico: da sensación 3D sobre un plano.
+  // Ángulo de la proyección isométrica (grados). Configurable por figura (30/35/40):
+  // se guarda en geometria.iso_angulo y define cómo se ve la figura 3D en TODA la
+  // plataforma. Default 30 (estándar de dibujo técnico).
+  var _isoAngulo = 30;
+
+  // Proyección ISOMÉTRICA de un punto 3D → punto 2D (para la vista 2D vectorial).
   function _iso(p) {
-    var a = Math.PI / 6;   // 30°
+    var a = _isoAngulo * Math.PI / 180;
     return { x: (p.x - p.z) * Math.cos(a), y: p.y - (p.x + p.z) * Math.sin(a) };
   }
+  global.disenador3dSetIsoAngulo = function(deg) {
+    var d = Number(deg); if (isNaN(d)) return;
+    _isoAngulo = d;
+    _actualizarPreview3d();   // refrescar el preview con el nuevo ángulo
+  };
+  global.disenador3dGetIsoAngulo = function() { return _isoAngulo; };
+  // Botones 30/35/40 del selector de ángulo de vista: setea + resalta el activo +
+  // refresca el preview en vivo (para que el usuario vea cómo queda antes de guardar).
+  global.disenador3dSetVistaAngulo = function(deg) {
+    disenador3dSetIsoAngulo(deg);
+    [30, 35, 40].forEach(function(a) {
+      var b = document.getElementById('dis3dIso' + a);
+      if (!b) return;
+      var on = (a === deg);
+      b.style.background = on ? '#00695c' : '#fff';
+      b.style.color = on ? '#fff' : '#00695c';
+      b.style.border = on ? 'none' : '1px solid #ccc';
+    });
+  };
 
   // Nodos 3D → puntos 2D isométricos (para el SVG de etiquetado / preview 2D).
   global.disenador3dNodos2D = function() {
@@ -375,6 +398,7 @@
   global.disenador3dCargarFigura = function(geo) {
     if (!geo || geo.dim !== '3D' || !geo.nodos || geo.nodos.length < 2) return false;
     _nodos3d = geo.nodos.map(function(n) { return new THREE.Vector3(n.x, n.y, n.z); });
+    if (geo.iso_angulo != null && !isNaN(geo.iso_angulo)) _isoAngulo = Number(geo.iso_angulo);
     var tr = geo.tramos || [];
     _tiposSeg3d = tr.map(function(t) { return t.tipo || 'recto'; });
     _radiosSeg3d = tr.map(function(t) { return t.radio || 0; });
@@ -543,8 +567,9 @@
       nodos: nodos,
       tramos: tramos,
       parciales: parciales,
-      puntos: puntos2d,           // vista iso 2D → el motor SVG la dibuja como render
-      snapshot: _snapshotFijado || _capturarSnapshot()   // fijado, o captura al guardar
+      puntos: puntos2d,           // vista iso 2D (motor SVG la dibuja como render)
+      iso_angulo: _isoAngulo,     // ángulo de la proyección iso (para re-render coherente)
+      snapshot: _snapshotFijado || _capturarSnapshot()   // fallback (foto de respaldo)
     };
   };
 
