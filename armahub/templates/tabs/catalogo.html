@@ -155,20 +155,29 @@
               <!-- Terminar etiquetado 3D: solo visible cuando se etiqueta una figura 3D
                    (el botón "Etiquetar barra" del panel 3D se oculta al entrar). Vuelve al visor 3D. -->
               <button id="disBtnTerminarEtiq3d" onclick="disenador3dToggleEtiquetas()" style="display:none; font-size:11px; padding:4px 12px; background:#00695c; color:#fff; border:none; border-radius:4px; cursor:pointer; font-weight:600;">🏷️ Etiquetado: ON (clic para volver al 3D)</button>
-              <!-- Tipo de etiqueta: UN botón por tipo (reemplaza el <select>). El botón
-                   activo queda resaltado. Compartido por 2D y 3D. -->
-              <span style="font-size:11px; color:#666; font-weight:600;">Tipo:</span>
-              <button id="disEtBtn_cota"     onclick="disenadorSetEtTipo('cota')"     style="font-size:12px; padding:4px 10px; background:#00695c; color:#fff; border:1px solid #00695c; border-radius:4px; cursor:pointer;">📏 Cota</button>
-              <button id="disEtBtn_arco"     onclick="disenadorSetEtTipo('arco')"     style="font-size:12px; padding:4px 10px; background:#fff; color:#00695c; border:1px solid #00695c; border-radius:4px; cursor:pointer;">⌒ Arco</button>
-              <button id="disEtBtn_radio"    onclick="disenadorSetEtTipo('radio')"    style="font-size:12px; padding:4px 10px; background:#fff; color:#00695c; border:1px solid #00695c; border-radius:4px; cursor:pointer;">↗ Radio</button>
-              <button id="disEtBtn_diametro" onclick="disenadorSetEtTipo('diametro')" style="font-size:12px; padding:4px 10px; background:#fff; color:#00695c; border:1px solid #00695c; border-radius:4px; cursor:pointer;">↔ Diámetro</button>
-              <button id="disEtBtn_letra"    onclick="disenadorSetEtTipo('letra')"    style="font-size:12px; padding:4px 10px; background:#fff; color:#00695c; border:1px solid #00695c; border-radius:4px; cursor:pointer;">🔤 Letra</button>
-              <button id="disEtBtn_angulo"   onclick="disenadorSetEtTipo('angulo')"   style="font-size:12px; padding:4px 10px; background:#fff; color:#00695c; border:1px solid #00695c; border-radius:4px; cursor:pointer;">∠ Ángulo</button>
-              <!-- Indicador de avance automático: cuál letra/ángulo se colocará al próximo click. -->
-              <span id="disEtProxima" style="display:none; font-size:11px; color:#00695c; font-weight:700; background:#fff; padding:2px 8px; border-radius:4px; border:1px solid #a5d6a7;"></span>
-              <button class="secondary" onclick="disenadorDeshacerEtiqueta()" style="font-size:11px; padding:4px 12px;">↶ Deshacer etiqueta</button>
-              <button class="secondary" onclick="disenadorLimpiarEtiquetas()" style="font-size:11px; padding:4px 12px;">🗑 Borrar todo</button>
-              <span class="muted" style="font-size:10px;">Elige el tipo y haz click. Cota/radio/diámetro: click inicio → click fin. Cota de arco: click sobre la curva. Letra/ángulo: se colocan solas en orden (A, B, C… / α1, α2…). Se arrastran para mover.</span>
+              <!-- Barra de etiquetado en 3 FILAS. Fila 1: LETRA + desplegable (avance
+                   auto, pero se puede reelegir; repetir la misma letra = simetría, NO
+                   agrega otro parámetro). Fila 2: ÁNGULO + desplegable. Fila 3: DIÁMETRO
+                   (arco/radio/cota son automáticos → no hacen falta como botón). -->
+              <div class="row" style="gap:8px; align-items:center; flex-wrap:wrap; width:100%; margin-bottom:6px;">
+                <button id="disEtBtn_letra" onclick="disenadorSetEtTipo('letra')" style="font-size:12px; padding:4px 12px; background:#fff; color:#00695c; border:1px solid #00695c; border-radius:4px; cursor:pointer; min-width:90px;">🔤 Letra</button>
+                <label style="font-size:11px; color:#666;">Próxima:
+                  <select id="disEtSelLetra" onchange="disenadorSetEtLetra(this.value)" style="font-size:12px; margin-left:3px;"></select>
+                </label>
+                <span class="muted" style="font-size:10px;">Se avanza sola; puedes reelegir. Repetir una letra = lados iguales (simetría), no suma parámetro.</span>
+              </div>
+              <div class="row" style="gap:8px; align-items:center; flex-wrap:wrap; width:100%; margin-bottom:6px;">
+                <button id="disEtBtn_angulo" onclick="disenadorSetEtTipo('angulo')" style="font-size:12px; padding:4px 12px; background:#fff; color:#00695c; border:1px solid #00695c; border-radius:4px; cursor:pointer; min-width:90px;">∠ Ángulo</button>
+                <label style="font-size:11px; color:#666;">Próximo:
+                  <select id="disEtSelAngulo" onchange="disenadorSetEtAngulo(this.value)" style="font-size:12px; margin-left:3px;"></select>
+                </label>
+              </div>
+              <div class="row" style="gap:8px; align-items:center; flex-wrap:wrap; width:100%;">
+                <button id="disEtBtn_diametro" onclick="disenadorSetEtTipo('diametro')" style="font-size:12px; padding:4px 12px; background:#fff; color:#00695c; border:1px solid #00695c; border-radius:4px; cursor:pointer; min-width:90px;">↔ Diámetro</button>
+                <button class="secondary" onclick="disenadorDeshacerEtiqueta()" style="font-size:11px; padding:4px 12px;">↶ Deshacer etiqueta</button>
+                <button class="secondary" onclick="disenadorLimpiarEtiquetas()" style="font-size:11px; padding:4px 12px;">🗑 Borrar todo</button>
+                <span class="muted" style="font-size:10px;">Letra/ángulo: click coloca la del desplegable. Diámetro: click inicio → click fin.</span>
+              </div>
             </div>
             </div><!-- /disControles2D -->
           </div>

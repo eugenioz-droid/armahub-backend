@@ -564,13 +564,19 @@
     if (_etiquetas.length) { _etiquetas.pop(); _actualizarProximaEtiqueta(); _redibujarLienzo(); _redibujarPanel(); }
   };
 
-  // Tipo de etiqueta seleccionado en la barra (6 botones, no ya un <select>).
-  // Compartido por 2D y 3D (misma barra de etiquetado).
-  var _etTipoActual = 'cota';
-  var _ET_TIPOS = ['cota', 'arco', 'radio', 'diametro', 'letra', 'angulo'];
+  // Tipo de etiqueta a colocar: 3 botones (letra/ángulo/diámetro). arco/radio/cota son
+  // automáticos → no van como botón. Compartido por 2D y 3D (misma barra).
+  var _etTipoActual = 'letra';
+  var _ET_TIPOS = ['letra', 'angulo', 'diametro'];
+  var _ET_LETRAS = ['A','B','C','D','E','F','G','H','I','R'];
+  var _ET_ANGULOS = ['α1','α2','α3','α4'];
+  // Valor ELEGIDO en el desplegable (qué letra/ángulo se colocará al próximo click).
+  // El avance automático lo mueve solo, pero el usuario puede reelegir (incl. repetir
+  // una letra ya usada → simetría; parametros() la deduplica, no suma parámetro).
+  var _etLetraSel = 'A';
+  var _etAnguloSel = 'α1';
 
-  // Selecciona el tipo de etiqueta a colocar y resalta su botón. Reemplaza al
-  // <select> + disenadorEtTipoChange. Cancela cualquier cota a medias al cambiar.
+  // Selecciona el tipo de etiqueta a colocar y resalta su botón.
   global.disenadorSetEtTipo = function(tipo) {
     if (_ET_TIPOS.indexOf(tipo) === -1) return;
     _etTipoActual = tipo;
@@ -579,15 +585,14 @@
       var b = document.getElementById('disEtBtn_' + t);
       if (b) { b.style.background = (t === tipo) ? '#00695c' : '#fff'; b.style.color = (t === tipo) ? '#fff' : '#00695c'; }
     });
-    _actualizarProximaEtiqueta();
+    _refrescarSelectsEtiqueta();
     _redibujarLienzo();
   };
+  // El usuario elige manualmente una letra/ángulo del desplegable.
+  global.disenadorSetEtLetra = function(v) { _etLetraSel = v; _etTipoActual = 'letra'; disenadorSetEtTipo('letra'); };
+  global.disenadorSetEtAngulo = function(v) { _etAnguloSel = v; _etTipoActual = 'angulo'; disenadorSetEtTipo('angulo'); };
 
-  // Próxima LETRA libre (A-I, luego R) y próximo ÁNGULO libre (α1-α4), según lo ya
-  // colocado en _etiquetas. Alimenta el avance automático: al colocar, salta al
-  // siguiente sin usar. Devuelve '' si no quedan libres.
-  var _ET_LETRAS = ['A','B','C','D','E','F','G','H','I','R'];
-  var _ET_ANGULOS = ['α1','α2','α3','α4'];
+  // Próxima letra/ángulo LIBRE (no usada aún), para el avance automático. '' si no hay.
   function _proximaLetra() {
     var usadas = _etiquetas.filter(function(e){ return e.tipo === 'letra'; }).map(function(e){ return e.texto; });
     for (var i = 0; i < _ET_LETRAS.length; i++) if (usadas.indexOf(_ET_LETRAS[i]) === -1) return _ET_LETRAS[i];
@@ -598,14 +603,23 @@
     for (var i = 0; i < _ET_ANGULOS.length; i++) if (usados.indexOf(_ET_ANGULOS[i]) === -1) return _ET_ANGULOS[i];
     return '';
   }
-  // Muestra en la barra cuál letra/ángulo se colocará al próximo click (avance auto).
-  function _actualizarProximaEtiqueta() {
-    var ind = document.getElementById('disEtProxima');
-    if (!ind) return;
-    if (_etTipoActual === 'letra') { var l = _proximaLetra(); ind.textContent = l ? ('Próxima letra: ' + l) : 'Sin letras libres'; ind.style.display = ''; }
-    else if (_etTipoActual === 'angulo') { var a = _proximoAngulo(); ind.textContent = a ? ('Próximo ángulo: ' + a) : 'Sin ángulos libres'; ind.style.display = ''; }
-    else { ind.style.display = 'none'; }
+  // Rellena/actualiza los desplegables. TODAS las opciones quedan disponibles (se
+  // puede reelegir/repetir); la seleccionada refleja el valor actual. Las ya usadas
+  // se marcan con • para orientar sin bloquear (repetir = simetría intencional).
+  function _refrescarSelectsEtiqueta() {
+    var usadasL = _etiquetas.filter(function(e){ return e.tipo === 'letra'; }).map(function(e){ return e.texto; });
+    var usadasA = _etiquetas.filter(function(e){ return e.tipo === 'angulo'; }).map(function(e){ return e.texto; });
+    var selL = document.getElementById('disEtSelLetra');
+    if (selL) {
+      selL.innerHTML = _ET_LETRAS.map(function(l){ return '<option value="'+l+'"'+(l===_etLetraSel?' selected':'')+'>'+l+(usadasL.indexOf(l)!==-1?' •':'')+'</option>'; }).join('');
+    }
+    var selA = document.getElementById('disEtSelAngulo');
+    if (selA) {
+      selA.innerHTML = _ET_ANGULOS.map(function(a){ return '<option value="'+a+'"'+(a===_etAnguloSel?' selected':'')+'>'+a+(usadasA.indexOf(a)!==-1?' •':'')+'</option>'; }).join('');
+    }
   }
+  // Alias para los sitios que llamaban a la versión anterior (entrar a etiquetas, etc.).
+  function _actualizarProximaEtiqueta() { _refrescarSelectsEtiqueta(); }
 
   // Muestra/oculta el slider de radio según haya un segmento arco seleccionado.
   function _actualizarSliderRadio() {
@@ -1062,14 +1076,15 @@
         }
       } else {
         // Texto (letra/ángulo): 1 click; es PARÁMETRO en modo etiqueta-manda.
-        // AVANCE AUTOMÁTICO: se coloca la próxima letra/ángulo libre y se avanza sola.
-        var texto = (tipo === 'letra') ? _proximaLetra() : _proximoAngulo();
-        if (!texto) {
-          if (typeof showToast === 'function') showToast(tipo === 'letra' ? 'No quedan letras libres.' : 'No quedan ángulos libres.', 'info');
-          return;
-        }
+        // Coloca la letra/ángulo ELEGIDA en el desplegable (puede ser una repetida =
+        // simetría; parametros() la deduplica). Luego AVANCE AUTOMÁTICO: mueve el
+        // desplegable a la siguiente LIBRE, salvo que el usuario ya la haya reelegido.
+        var texto = (tipo === 'letra') ? _etLetraSel : _etAnguloSel;
         _etiquetas.push({ tipo: tipo, texto: texto, x: cc.x, y: cc.y });
-        _actualizarProximaEtiqueta();   // refresca el indicador a la SIGUIENTE libre
+        // Avanzar la selección a la próxima libre (si queda).
+        if (tipo === 'letra') { var nl = _proximaLetra(); if (nl) _etLetraSel = nl; }
+        else { var na = _proximoAngulo(); if (na) _etAnguloSel = na; }
+        _refrescarSelectsEtiqueta();   // refleja el • en las usadas y la nueva selección
         _redibujarLienzo(); _redibujarPanel();
       }
       return;

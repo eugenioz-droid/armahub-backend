@@ -69,8 +69,14 @@
     (etiquetas || []).forEach(function(e) {
       var d = _def(e.tipo);
       if (!d || !d.parametro) return;
-      if (d.parametro === 'parcial' && e.texto && e.texto !== 'R') parciales.push(String(e.texto));
-      else if (d.parametro === 'angulo' && e.texto) angulos.push(String(e.texto));
+      // DEDUPLICAR: la MISMA letra/ángulo colocada en varios lados (simetrías) es UN
+      // solo parámetro (esos lados miden lo mismo, por eso comparten letra). Si no se
+      // deduplica, una barra simétrica agrega A dos veces y se cae el modelo.
+      if (d.parametro === 'parcial' && e.texto && e.texto !== 'R') {
+        if (parciales.indexOf(String(e.texto)) === -1) parciales.push(String(e.texto));
+      } else if (d.parametro === 'angulo' && e.texto) {
+        if (angulos.indexOf(String(e.texto)) === -1) angulos.push(String(e.texto));
+      }
     });
     // La R (radio) NO es un lado: se registra como flag `radio` de la figura.
     var radio = (etiquetas || []).some(function(e) {
