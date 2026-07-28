@@ -759,9 +759,9 @@ Objetivo: endurecer Reclamos y cerrar los pendientes reales arrastrados.
 
 | N° | Descripción | Realizado | Quién |
 |----|-------------|-----------|-------|
-| 5N.6 | **Rehabilitar creación (parte del modelo de canales).** `POST /barras/crear` (hoy 403, `barras.py:1502`) + alta MASIVA transaccional (array de barras del lote). `id_unico` = patrón de lámina + **letra prefijo** (marca "creado en plataforma"; no colisiona con CSV). Setear `origen='manual'`, `import_id=NULL`, `lote_id`, `fecha_carga=now`, `editado_por=user`. Ampliar modelo con dims/ángulos/radio/mult (hoy `BarraManualCreate` está incompleto). Permisos: cualquier cubicador cualquier proyecto (validado en backend). Nunca crea `origen != 'manual'`. Actualiza `sector_estado`. | ☐ | YO |
-| 5N.7 | **`largo_total` automático + hook figuras raras.** Largo = suma de dims parciales (radio NO suma; sin desarrollo de dobleces). Cálculo aislado en `_largo_desde_figura` para ampliar a barras redondas/estribos circulares sin tocar el resto. | ☐ | YO |
-| 5N.8 | **Config de peso por obra (factor global).** Factor default **0%** sobre el peso teórico (`_calcular_peso`, `barras.py:1297`). Persistir por proyecto. Aplica en creación (× cant × factor) y en el recálculo. | ☐ | TÚ+YO |
+| 5N.6 | **Rehabilitar creación (parte del modelo de canales).** `POST /barras/crear` (hoy 403, `barras.py:1502`) + alta MASIVA transaccional (array de barras del lote). `id_unico` = patrón de lámina + **letra prefijo** (marca "creado en plataforma"; no colisiona con CSV). Setear `origen='manual'`, `import_id=NULL`, `lote_id`, `fecha_carga=now`, `editado_por=user`. Ampliar modelo con dims/ángulos/radio/mult (hoy `BarraManualCreate` está incompleto). Permisos: cualquier cubicador cualquier proyecto (validado en backend). Nunca crea `origen != 'manual'`. Actualiza `sector_estado`. | ☑ | YO |
+| 5N.7 | **`largo_total` automático + hook figuras raras.** Largo = suma de dims parciales (radio NO suma; sin desarrollo de dobleces). Cálculo aislado en `_largo_desde_figura` para ampliar a barras redondas/estribos circulares sin tocar el resto. | ☑ | YO |
+| 5N.8 | **Config de peso por obra (factor global).** Factor default **0%** sobre el peso teórico (`_calcular_peso`, `barras.py:1297`). Persistir por proyecto. Aplica en creación (× cant × factor) y en el recálculo. | ☑ | TÚ+YO |
 
 ### 5N-C — Frontend: Formulario de Cubicación (grilla)
 
