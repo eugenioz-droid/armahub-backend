@@ -10,6 +10,7 @@
     inicio: 'Metrics',
     obras: 'Obras',
     buscar: 'Bar Manager',
+    agregar: 'Agregar Cubicación',
     pedidos: 'Pedidos',
     export: 'Exportacion',
     reclamos: 'Reclamos',
@@ -96,7 +97,8 @@
     rec_dashboards: 'loadRecAdminDashboards',
     rec_settings: 'loadRecSettings',
     clientes: 'loadClientesModule',
-    catalogo: 'loadCatalogoModule'
+    catalogo: 'loadCatalogoModule',
+    agregar: 'loadAgregarCubicacion'   // 5N-C: tab "Agregar Cubicación"
   };
 
   window.switchTab = function switchTab(tabName) {
