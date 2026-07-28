@@ -732,43 +732,81 @@ figura vive en el **Catálogo Armacero** (§4A), no en las barras.
 
 > Detalle en programa F8-F9. Esta sección se completa durante el trabajo de esas fases.
 
-### 4.7 Creación manual de barras — tab "Cubicar" (PLANIFICADO, no iniciar hasta terminar editores)
+### 4.7 "Agregar Cubicación" — Ingreso manual de barras (DISEÑO CERRADO 2026-07-28)
 
-> Objetivo: panel de **alta** de barras en Cubicaciones (no consulta como el Bar Manager,
-> sino ingreso). El cubicador crea barras que NO vienen de un CSV de ArmaDetailer.
-> Programa completo en `docs/programa_panel_creacion_barras.md`. NO empezar hasta cerrar
-> los editores de figuras (2D/3D).
+> Tab **"Agregar Cubicación"** (entre Bar Manager y Pedidos). Título de sección: **"Formulario
+> de Cubicación"**. Panel de **alta** de barras (no consulta). Programa detallado en
+> `docs/programa_agregar_cubicacion.md`. Reemplaza al viejo `programa_panel_creacion_barras.md`.
+> Incluye 3 REDISEÑOS de fondo (no fixes). Producción activa → todo aditivo, nunca borrar data.
 
-**Qué queremos:**
-- Formulario de alta con **ubicación reutilizable**: Proyecto → Piso → Ciclo → Sector → Eje,
-  autopoblado con las ubicaciones ya existentes del proyecto (dropdowns con opción "＋ nueva"),
-  usando `GET /proyectos/{id}/sectores-nav` y los `SELECT DISTINCT` de ubicación existentes.
-- **Selector de figura** del Catálogo Armacero (§4A) → el form pide **solo las dimensiones que
-  esa figura usa** (sus `parciales` + ángulos + radio). Homologa con el diseñador: la figura
-  define qué campos se piden. Render de la figura via `disenadorMotor.dibujarFigura`.
-- Diámetro (selector estándar), cantidad, marca, peso calculado en vivo (`_calcular_peso`).
-- Barra guardada con `origen='manual'`, `import_id=NULL`, `editado_por=user`.
+**Vocabulario:**
+- **Lote** (`lote_id`): tanda de barras ingresadas juntas manualmente (gemelo del `import_id` del
+  CSV; procedencia/provenance). Estado del lote: `borrador` → `terminada` (bloqueo). Nombre UI a
+  decidir (Planilla/Ingreso/Tanda/Carga).
+- **`origen`** ∈ `csv`|`manual`|`pedido`: canal de datos de la barra.
 
-**Requisito CLAVE — protección contra reimportación:** las barras `origen='manual'` deben
-**sobrevivir** a la reimportación de un sector constructivo. Hoy la eliminación de carga es por
-`import_id` (barras.py:1048) → las manuales ya sobreviven a "eliminar carga". Falta **blindar
-cualquier path que borre por sector/proyecto** al reimportar (agregar `AND origen <> 'manual'`).
+**REDISEÑO A — Canales de datos independientes (invariante):** cada canal solo tiene autoridad
+sobre SUS barras. La importación CSV opera solo sobre `origen='csv'` (sus DELETE de reemplazo
+llevan `AND origen='csv'`, centralizado en una guardia). Barras `manual`/`pedido` sobreviven
+SIEMPRE a cualquier reimport. El preview de reimport AVISA "N barras manuales/pedido se
+conservarán". (Antes: el DELETE por `(eje,piso,ciclo)`/`plano_code` en importer.py NO miraba
+origen → las manuales se borraban. Era brecha real.)
 
-**Estado del andamiaje (verificado 2026-07):**
-- `POST /barras/crear` con `BarraManualCreate` YA existe pero **DESHABILITADO** (403). Rehabilitar.
-- `POST /barras/{id}/duplicar` (manual) también deshabilitado.
-- Columna `origen` (csv/manual/pedido) existe; filtros/stats la respetan. `_calcular_peso` listo.
-- **⚠ El modelo `BarraManualCreate` está INCOMPLETO para lo que queremos.** Tiene ubicación +
-  diam/largo/cant/figura/marca, pero **le faltan `dim_a..dim_i`, `ang1..ang4`, `radio`,
-  `nombre_proyecto`, `mult`** — es decir, toda la parte dimensional que homologa con el catálogo.
-  Sirve como esqueleto de ubicación pero hay que ampliarlo antes de usarlo.
-- **Generación de `id_unico`** para barras manuales: pendiente de definir (correlativo legible
-  vs UUID; no debe chocar con CSV ni reimportaciones). Ver preguntas del programa.
+**REDISEÑO B — Estado del sector constructivo como entidad (`sector_estado`):** el dirty-flag
+verde/rojo hoy es un hack por fechas (`MAX(fecha_carga) > MAX(export_log.fecha)`) y tiene una
+BRECHA: `editar_barra` no toca `fecha_carga` → editar una barra NO marca el sector como
+modificado (sigue verde = mentira). Rediseño: tabla `sector_estado(id_proyecto, sector, piso,
+ciclo, estado, ...)` con estados explícitos `pendiente`/`exportado`/`modificado`, actualizada por
+EVENTOS (crear/editar/eliminar barra, reimport con cambios, exportar). Aditivo y en paralelo: el
+mecanismo viejo se mantiene hasta verificar el nuevo; los lectores (`export-history`,
+`exportacion.js`, `obras.js`) migran a leer `sector_estado`. `version_mod`/`version_exp` son
+columnas MUERTAS (nadie las lee) — se dejan quietas, no forman parte del diseño.
 
-**Decisiones pendientes (9 preguntas en el programa):** largo total auto vs manual, formato de
-id_unico, multi-alta (grilla) vs "guardar y crear otra", permisos (dueño de obra vs cualquiera),
-marca libre vs sugerida, diámetros estándar vs libre, crear ubicación nueva al vuelo, tab
-separado vs botón en Bar Manager, confirmación del comportamiento de reimport.
+**REDISEÑO C — Lote (`lote_id`):** tabla `lotes` + columna `lote_id` en `barras` (aditiva, NULL
+para CSV). Trazabilidad de la tanda; no afecta la agrupación constructiva.
+
+**Formulario (grilla estilo planilla):**
+- **3 modos de vista:** Agrupar (colapsable) · Filtro plano · **Agrupación visual** (todas las
+  barras visibles, pintadas por bandas de color por elemento, SIN colapsar — resuelve "agregar en
+  2 ejes sin desagrupar").
+- Navegación matricial con flechas, **pegar desde Excel**, copiar-fila-abajo, fila plantilla.
+- **Ubicación en cascada** (Proyecto→Piso→Ciclo→Sector→Eje) autopoblada (`sectores-nav`) +
+  "＋ nuevo". Calidad de datos de ejes: NO bloquear, autocompletar agresivo, **advertencia suave**
+  ante nombres similares (distancia de edición sobre normalizado: trim+espacios+minúsculas),
+  guardar el texto TAL CUAL (apóstrofes/tildes importan), + **herramienta de merge posterior**
+  (posproceso). Nunca fusión automática.
+- **Figura del catálogo** → dims dinámicas (solo las que usa) + **render en vivo ajustado a las
+  medidas** (`disenadorMotor.dibujarFigura`) + toggle de renders.
+- Diámetro: lista fija (8,10,12,16,18,22,25,28,32,36 mm). Marca: filtro de texto (limitar
+  variaciones). `cant` + `mult` (doble/triple malla), `cant_total` derivado. Peso en vivo.
+- **Replicar en pisos:** modal de selección de pisos → copia la barra, queda editable en el form
+  (preview) antes de confirmar → al confirmar se reparte en sus agrupaciones.
+- **`largo_total` AUTOMÁTICO** = suma de dims parciales (radio NO suma; sin desarrollo de
+  dobleces). Hook aislado (`_largo_desde_figura`) para futuras barras redondas/estribos.
+
+**Backend creación:** rehabilitar `POST /barras/crear` como parte del modelo de canales. Barra:
+`origen='manual'`, `import_id=NULL`, `lote_id=<lote>`, `fecha_carga=now`, `editado_por=user`,
+peso = `_calcular_peso` × cant × **factor_obra**. `id_unico` = patrón de lámina + **letra prefijo**
+(marca "creado en plataforma"; no colisiona con CSV). Alta masiva transaccional. Permisos:
+cualquier cubicador en cualquier proyecto (revisar set después). Valida en backend; nunca crea
+`origen != 'manual'`.
+
+**Bar Manager (integración):** badge + filtro de barras `manual`. Edición de barras `terminada`
+SOLO desde Bar Manager (formulario = alta masiva; Bar Manager = corrección puntual; mismo motor,
+permiso por estado). **Procedencia SE PRESERVA** al editar (conserva `origen`/`lote_id`, suma
+`editado_por/fecha`). Editar marca el sector `modificado`. En "Agregar Cubicación" NUNCA se editan
+barras de otro canal.
+
+**Config de peso por obra:** factor global (default **0%**, no altera nada hoy) sobre el peso
+teórico. Persistir por proyecto.
+
+**Limpieza:** borrar la tercera matriz MUERTA (`dashboards.js` + `tabs/dashboards.html` + 3
+no-ops en `filtros.js:200-202`; confirmado sin uso, no enlazada). Endpoints `/dashboard/sectores`
+y `/sectores-nav` SE CONSERVAN (los usan las 2 matrices vivas).
+
+**Pedidos de cliente:** el motor se RECICLA para `origen='pedido'` (portal externo separado,
+misma API, bandeja → USC valida/forward → cubicador → aSa Studio). SOLO PLANIFICADO — ver
+`docs/programa_pedidos_cliente.md`. Condiciona hoy solo: `origen`/`estado`/`lote` parametrizables.
 
 ---
 
