@@ -1329,6 +1329,14 @@
     var prev = document.getElementById('disPreview');
     if (!prev) return;
     if (_puntos.length < 2) { prev.innerHTML = '<span class="muted" style="font-size:11px;">Dibuja para ver el preview.</span>'; return; }
+    // ETIQUETADO 3D: NO redibujar el preview como figura 2D (eso reconstruía el arco
+    // con 'A' → guata invertida y cotas descoordinadas). El preview lo mantiene el
+    // módulo 3D con su proyección iso + vista fijada + arcos_iso (idéntico al canvas).
+    // Se le pide refrescar; si no está disponible, se deja el preview 3D como estaba.
+    if (_etiquetando3dActivo) {
+      if (typeof disenador3dRefrescarPreview === 'function') disenador3dRefrescarPreview();
+      return;
+    }
     try {
       var geo = _puntosAGeometria();
       // Render a tamaño de preview. En modo etiqueta-manda NO dibujar las letras/

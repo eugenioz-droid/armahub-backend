@@ -769,6 +769,9 @@
     }
     prev.innerHTML = '<span class="muted" style="font-size:11px;">Preview no disponible.</span>';
   }
+  // Expuesto: refrescar el preview 3D desde el módulo 2D (durante el etiquetado 3D, para
+  // que el preview NO se redibuje como figura 2D con el arco reconstruido con 'A').
+  global.disenador3dRefrescarPreview = function() { _actualizarPreview3d(); };
   // Geometría mínima para el render SVG iso en vivo (sin recalcular todo el guardado).
   function _geometriaLiveParaRender() {
     if (_nodos3d.length < 2) return null;
