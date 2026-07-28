@@ -1427,7 +1427,12 @@
       parciales = pe.parciales; angulos = pe.angulos; radio = pe.radio;
       geo.etiquetas_manda = true;
     } else {
-      parciales = geo.parciales || []; angulos = []; radio = false;
+      // Sin etiquetas manuales: derivar los ÁNGULOS INTERNOS reales de la geometría 3D
+      // (criterio aSa, homologado con el 2D). Antes guardaba [] → el catálogo 3D no
+      // registraba ángulos. El radio se marca si hay algún tramo arco.
+      parciales = geo.parciales || [];
+      angulos = (typeof disenador3dValoresAngulos === 'function') ? disenador3dValoresAngulos() : [];
+      radio = (geo.tramos || []).some(function(t) { return t.tipo === 'arco'; });
     }
     if (angulos.length > 4) {
       alert('Esta figura tiene ' + angulos.length + ' ángulos, pero el sistema soporta máximo 4 (α1-α4).'); return;

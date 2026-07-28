@@ -835,6 +835,27 @@
     return out;
   }
 
+  // VALORES de los ángulos internos reales (3D), con criterio aSa (mismo que 2D y que
+  // _angulosReales3d): salta arcos y los internos 0/90/180 (90 es implícito). Devuelve
+  // [45, 135, ...] en el orden de los vértices. Lo usa el guardado del catálogo 3D para
+  // que la figura 3D guarde sus ángulos internos (antes guardaba []), homologado con 2D.
+  global.disenador3dValoresAngulos = function() {
+    var out = [];
+    for (var j = 1; j < _nodos3d.length - 1; j++) {
+      if (_tiposSeg3d[j-1] === 'arco' || _tiposSeg3d[j] === 'arco') continue;
+      var a = _nodos3d[j-1], v = _nodos3d[j], b = _nodos3d[j+1];
+      var u1 = { x: a.x-v.x, y: a.y-v.y, z: a.z-v.z };
+      var u2 = { x: b.x-v.x, y: b.y-v.y, z: b.z-v.z };
+      var m1 = Math.sqrt(u1.x*u1.x+u1.y*u1.y+u1.z*u1.z) || 1;
+      var m2 = Math.sqrt(u2.x*u2.x+u2.y*u2.y+u2.z*u2.z) || 1;
+      var cos = Math.max(-1, Math.min(1, (u1.x*u2.x+u1.y*u2.y+u1.z*u2.z)/(m1*m2)));
+      var interno = Math.round(Math.acos(cos) * 180 / Math.PI);
+      if (interno === 0 || interno === 180 || interno === 90) continue;   // criterio aSa
+      out.push(interno);
+    }
+    return out;
+  };
+
   // Al cambiar la figura, el snapshot fijado deja de ser válido (se libera).
   function _invalidarSnapshot() { _snapshotFijado = null; }
 
