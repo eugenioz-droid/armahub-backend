@@ -206,8 +206,9 @@ async function loadFilters(depParams) {
   fillSelect('sector', data.sectores);
   fillSelect('piso', data.pisos);
   fillSelect('ciclo', data.ciclos);
-  // Eje: ahora es input+datalist (buscador con texto), no un <select>.
-  _fillEjesDatalist(data.ejes);
+  // Eje: <select> normal (como sector/piso/ciclo). El input+datalist anterior no
+  // aplicaba el filtro al elegir del datalist (Chrome no dispara change fiable).
+  fillSelect('eje', data.ejes);
 
 }
 
@@ -260,17 +261,6 @@ function _resolverProyectoId(txtLow, sel) {
     }
   }
   return '';
-}
-
-// Puebla el datalist del buscador de Eje con los ejes de la obra. El input es de
-// texto libre: el valor escrito ES el valor del filtro (no hay id que resolver).
-// Preserva lo que el usuario tenga escrito.
-function _fillEjesDatalist(ejes) {
-  var dl = document.getElementById('bmEjesDatalist');
-  if (!dl) return;
-  dl.innerHTML = (ejes || []).map(function(e) {
-    return '<option value="' + String(e).replace(/"/g, '&quot;') + '"></option>';
-  }).join('');
 }
 
 // 5M.9: plegar/desplegar el bloque de filtros avanzados (plano/carga/origen).
@@ -381,16 +371,3 @@ function onFilterChange(idOrigen) {
   buscar(true);
 }
 
-// Handler del buscador de EJE (input de texto libre + datalist). Con debounce corto:
-// oninput dispara en cada tecla/selección; el debounce evita rearmar la búsqueda en
-// cada carácter mientras se escribe, pero aplica al instante al elegir del datalist.
-// El eje no tiene filtros dependientes debajo → basta re-buscar (no recargar filtros).
-var _bmEjeTimer = null;
-function onEjeInput() {
-  if (_bmBloqueadoPorEdicion('eje')) return;
-  if (_bmEjeTimer) clearTimeout(_bmEjeTimer);
-  _bmEjeTimer = setTimeout(function() {
-    saveFiltersToStorage();
-    buscar(true);
-  }, 250);
-}
