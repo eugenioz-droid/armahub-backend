@@ -1355,8 +1355,9 @@ async function eliminarObra(id, nombre, barrasCount) {
     await loadProyectos();
     await loadFilters();
     await loadInicio();
-    await loadDashboard('sector');
-    await loadSectores();
+    // (5N.16: loadDashboard/loadSectores eran de la matriz muerta dashboards.js, ya
+    //  eliminada. Se quitan estas llamadas directas — antes hubieran reventado con
+    //  ReferenceError al no existir la función.)
   } else {
     showToast('Error: ' + (data.detail || 'desconocido'), 'error');
   }

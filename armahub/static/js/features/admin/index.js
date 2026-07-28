@@ -169,7 +169,9 @@ async function resetDatabase() {
   await loadDbInfo();
   await loadProyectos();
   await loadFilters();
-  await loadDashboard('sector');
+  // 5N.16: loadDashboard era de la matriz muerta dashboards.js (ya eliminada). Guarda
+  // defensiva por si algún build la conserva; sin ella, ReferenceError.
+  if (typeof loadDashboard === 'function') await loadDashboard('sector');
 }
 
 // ========================= USUARIOS =========================

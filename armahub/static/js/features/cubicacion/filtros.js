@@ -197,9 +197,8 @@ async function loadFilters(depParams) {
   // vive en el <select> oculto y se resuelve en onProyectoInput).
   _fillProyectosDatalist(data.proyectos);
   fillSelect('exportProyecto', data.proyectos, 'proyectos');
-  fillSelect('sectorProyectoFilter', data.proyectos, 'proyectos');
-  fillSelect('matrizProyectoFilter', data.proyectos, 'proyectos');
-  fillSelect('navProyectoFilter', data.proyectos, 'proyectos');
+  // (5N.16: se quitaron los fillSelect de sectorProyectoFilter/matrizProyectoFilter/
+  //  navProyectoFilter — eran no-ops de la matriz muerta dashboards.js, ya eliminada.)
   fillSelect('pedidoProyecto', data.proyectos, 'proyectos');
   // Dependent selects
   fillSelect('plano', data.planos, 'planos');
