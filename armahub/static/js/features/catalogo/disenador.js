@@ -621,6 +621,16 @@
   // Alias para los sitios que llamaban a la versión anterior (entrar a etiquetas, etc.).
   function _actualizarProximaEtiqueta() { _refrescarSelectsEtiqueta(); }
 
+  // Reset del avance automático: la selección de letra/ángulo vuelve al inicio (A/α1).
+  // Se llama al empezar una figura NUEVA (2D o 3D) y al limpiar, para que las letras
+  // no queden "avanzadas" de una figura anterior.
+  function _resetSeleccionEtiqueta() {
+    _etLetraSel = 'A'; _etAnguloSel = 'α1'; _etTipoActual = 'letra';
+    _refrescarSelectsEtiqueta();
+  }
+  // Expuesto para que el editor 3D resetee la selección al limpiar su dibujo.
+  global.disenadorResetSeleccionEtiqueta = _resetSeleccionEtiqueta;
+
   // Muestra/oculta el slider de radio según haya un segmento arco seleccionado.
   function _actualizarSliderRadio() {
     var wrap = document.getElementById('disRadioWrap');
@@ -1137,6 +1147,7 @@
     _etiquetas = []; _cotaInicio = null; _cotaHover = null;
     _modoEtiquetas = false;
     _dibujando = true; _editando = null;
+    _resetSeleccionEtiqueta();   // letra/ángulo del desplegable vuelven a A / α1
     var nb = document.getElementById('disenadorNombre'); if (nb) nb.value = '';
     _redibujarLienzo();
     _redibujarPanel();

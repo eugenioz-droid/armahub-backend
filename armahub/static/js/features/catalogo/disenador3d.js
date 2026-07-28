@@ -516,6 +516,8 @@
   };
   global.disenador3dLimpiarDibujo = function() {
     _nodos3d = []; _tiposSeg3d = []; _radiosSeg3d = []; _planosSeg3d = []; _sweepsSeg3d = []; _segSel3d = -1;
+    _etiquetas3d = [];   // etiquetas 3D también se limpian (figura nueva)
+    if (typeof disenadorResetSeleccionEtiqueta === 'function') disenadorResetSeleccionEtiqueta();
     _redibujarFigura3d(); _actualizarInfo3d(); _actualizarSlider3d();
   };
 
