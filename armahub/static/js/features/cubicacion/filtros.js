@@ -206,9 +206,9 @@ async function loadFilters(depParams) {
   fillSelect('sector', data.sectores);
   fillSelect('piso', data.pisos);
   fillSelect('ciclo', data.ciclos);
-  // Eje: <select> normal (como sector/piso/ciclo). El input+datalist anterior no
-  // aplicaba el filtro al elegir del datalist (Chrome no dispara change fiable).
-  fillSelect('eje', data.ejes);
+  // Eje/Losa: input+datalist (buscador con texto). Se llena el datalist con los ejes
+  // de la obra; el texto escrito ES el valor del filtro.
+  _fillEjesDatalist(data.ejes);
 
 }
 
@@ -261,6 +261,28 @@ function _resolverProyectoId(txtLow, sel) {
     }
   }
   return '';
+}
+
+// Puebla el datalist del buscador de Eje/Losa con los ejes de la obra. El input es de
+// texto libre: el valor escrito ES el valor del filtro (no hay id que resolver, a
+// diferencia del buscador de obra). No pisa lo que el usuario tenga escrito.
+function _fillEjesDatalist(ejes) {
+  var dl = document.getElementById('bmEjesDatalist');
+  if (!dl) return;
+  dl.innerHTML = (ejes || []).map(function(e) {
+    return '<option value="' + String(e).replace(/"/g, '&quot;') + '"></option>';
+  }).join('');
+}
+
+// Handler del buscador de Eje/Losa. Estructura calcada de onProyectoInput (el buscador
+// de obra que SÍ funciona): oninput/onchange/onblur → aquí. El input NO es readonly (el
+// readonly impedía que oninput disparara → era la causa del bug). Debounce corto para
+// no rearmar la búsqueda en cada tecla; aplica al instante al elegir del datalist.
+var _bmEjeTimer = null;
+function onEjeInput() {
+  if (_bmBloqueadoPorEdicion('eje')) return;
+  if (_bmEjeTimer) clearTimeout(_bmEjeTimer);
+  _bmEjeTimer = setTimeout(function() { onFilterChange('eje'); }, 200);
 }
 
 // 5M.9: plegar/desplegar el bloque de filtros avanzados (plano/carga/origen).

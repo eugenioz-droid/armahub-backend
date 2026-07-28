@@ -51,12 +51,18 @@
           <select id="ciclo" onchange="onFilterChange('ciclo')" style="font-size:13px; height:34px; width:100%;"><option value="">Todos</option></select>
         </div>
         <div style="display:flex; flex-direction:column; flex:1;">
-          <label style="font-size:12.5px; color:#444; font-weight:600; margin-bottom:3px;">Eje</label>
-          <!-- Eje = <select> normal (como Sector/Piso/Ciclo). El input+datalist previo
-               NO aplicaba el filtro al elegir del datalist (Chrome no dispara change/input
-               de forma fiable en <input list>) y obligaba a tocar otro filtro. El select
-               dispara onchange 100% confiable al elegir. Se llena en _fillEjesSelect. -->
-          <select id="eje" onchange="onFilterChange('eje')" style="font-size:13px; height:34px; width:100%;"><option value="">Todos</option></select>
+          <label style="font-size:12.5px; color:#444; font-weight:600; margin-bottom:3px;">Eje/Losa</label>
+          <!-- Buscador con datalist (texto libre + lista de ejes de la obra). Estructura
+               COPIADA del buscador de obra (bmProyectoSearchInput) que SÍ funciona:
+               input+datalist, oninput/onchange/onblur, y SIN readonly. El readonly era la
+               causa del bug: un <input readonly> NO dispara oninput; el input arrancaba
+               readonly y el filtro no se aplicaba al elegir del datalist. -->
+          <input type="text" id="eje" list="bmEjesDatalist"
+                 oninput="onEjeInput()" onchange="onEjeInput()" onblur="onEjeInput()"
+                 name="bm-eje-filtro-6371" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"
+                 data-lpignore="true" data-form-type="other"
+                 placeholder="Todos" style="font-size:13px; height:34px; width:100%; box-sizing:border-box;" />
+          <datalist id="bmEjesDatalist"></datalist>
         </div>
 
         <!-- divisor -->
