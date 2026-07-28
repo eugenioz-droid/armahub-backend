@@ -1178,15 +1178,14 @@
   // Alterna el indicador de estado: "● Nueva figura" (creando) vs "✏️ Editando X"
   // (editando una figura cargada). Se llama al cargar, guardar y crear nueva.
   function _actualizarBandaEditando() {
+    // Solo la banda "Editando X" (naranja) al cargar una figura del catálogo. Al crear
+    // nueva no se muestra nada (el indicador "Nueva figura" se eliminó por ruido visual).
     var editBanda = document.getElementById('disEditandoBanda');
-    var nuevaBanda = document.getElementById('disEstadoNueva');
     var nom = document.getElementById('disEditandoNombre');
     if (_editando) {
       if (editBanda) { editBanda.style.display = 'inline-flex'; if (nom) nom.textContent = _editando; }
-      if (nuevaBanda) nuevaBanda.style.display = 'none';
     } else {
       if (editBanda) editBanda.style.display = 'none';
-      if (nuevaBanda) nuevaBanda.style.display = 'inline-flex';
     }
   }
   global.disenadorActualizarBandaEditando = _actualizarBandaEditando;

@@ -124,6 +124,8 @@
     if (c2d) c2d.style.display = (_vista === '2D') ? '' : 'none';
     if (v3d) v3d.style.display = (_vista === '3D') ? '' : 'none';
     if (ctrl3d) ctrl3d.style.display = (_vista === '3D') ? '' : 'none';
+    var trazo3d = document.getElementById('disTrazo3DRow');   // trazo 3D arriba del canvas
+    if (trazo3d) trazo3d.style.display = (_vista === '3D') ? 'flex' : 'none';
     // UN SOLO panel visible: en 3D-dibujando el panel 3D (largo/dirección de tramos);
     // en 2D el panel unificado (disenadorPanel). El etiquetado 3D muestra el 2D.
     var p3d = document.getElementById('dis3dPanelWrap');
@@ -623,6 +625,7 @@
       var c2d = document.getElementById('disControles2D');
       if (v3d) v3d.style.display = 'none';
       if (ctrl3d) ctrl3d.style.display = 'none';
+      var tr3 = document.getElementById('disTrazo3DRow'); if (tr3) tr3.style.display = 'none';   // ocultar trazo 3D al etiquetar
       if (c2d) c2d.style.display = '';
       // Panel: ocultar el de tramos 3D, mostrar el unificado (parámetros por etiqueta).
       var p3dW = document.getElementById('dis3dPanelWrap'); if (p3dW) p3dW.style.display = 'none';
@@ -647,6 +650,7 @@
       if (c2d2) c2d2.style.display = 'none';
       if (v3d2) v3d2.style.display = '';
       if (ctrl3d2) ctrl3d2.style.display = '';
+      var tr32 = document.getElementById('disTrazo3DRow'); if (tr32) tr32.style.display = 'flex';   // restaurar trazo 3D
       // Panel: volver a mostrar el de tramos 3D, ocultar el unificado.
       var p3dW2 = document.getElementById('dis3dPanelWrap'); if (p3dW2) p3dW2.style.display = '';
       var p2dW2 = document.getElementById('disenadorPanelWrap'); if (p2dW2) p2dW2.style.display = 'none';
