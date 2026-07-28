@@ -666,7 +666,8 @@
   }
   function _actualizarBtnEtiq3d(on) {
     var b = document.getElementById('dis3dBtnEtiquetas');
-    if (b) { b.textContent = on ? '✓ Terminar etiquetado' : '🏷️ Etiquetar barra';
+    // Mismos textos que el 2D: OFF = "🏷️ Etiquetas", ON = "🏷️ Etiquetas: ON".
+    if (b) { b.textContent = on ? '🏷️ Etiquetas: ON' : '🏷️ Etiquetas';
       b.style.background = on ? '#00695c' : '#fff'; b.style.color = on ? '#fff' : '#00695c'; }
   }
   global.disenador3dEtiquetas = function() { return _etiquetas3d.slice(); };
