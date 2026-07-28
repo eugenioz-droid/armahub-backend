@@ -575,6 +575,7 @@ async def import_armadetailer(
         nombre_dwg=EXCLUDED.nombre_dwg,
         origen=EXCLUDED.origen,
         import_id=EXCLUDED.import_id
+    WHERE (barras.origen IS NULL OR barras.origen = 'csv')
 
     """
 
@@ -647,12 +648,19 @@ async def import_armadetailer(
             # 5M.5: capturar las barras EDITADAS A MANO que este DELETE borra, para
             # dejar rastro en el audit_log (el re-import las elimina sin retorno).
             editadas_borradas = []
+            # 5N.1 (INVARIANTE de canales de datos): la importación CSV solo tiene
+            # AUTORIDAD sobre sus propias barras (origen='csv' o la data legada sin
+            # origen). Las barras origen='manual'/'pedido' son OTRO canal y NUNCA se
+            # borran por un reimport, aunque compartan (eje,piso,ciclo) o plano_code.
+            # Este filtro va en TODOS los DELETE del import (guardia única del invariante).
+            _ORIGEN_CSV = "(origen IS NULL OR origen = 'csv')"
             try:
                 if replace_full_planos:
                     planos = [p.strip() for p in replace_full_planos.split(';') if p.strip()]
                     if planos:
                         cur.execute(
                             "DELETE FROM barras WHERE id_proyecto = %s AND plano_code = ANY(%s) "
+                            "AND " + _ORIGEN_CSV + " "
                             "RETURNING marca, piso, eje, ciclo, editado_por",
                             (proyecto_id, planos),
                         )
@@ -678,6 +686,7 @@ async def import_armadetailer(
                               AND COALESCE(eje, '')   = %s
                               AND COALESCE(piso, '')  = %s
                               AND COALESCE(ciclo, '') = %s
+                              AND """ + _ORIGEN_CSV + """
                             RETURNING marca, piso, eje, ciclo, editado_por
                             """,
                             (proyecto_id, eje, piso, ciclo),
@@ -714,6 +723,19 @@ async def import_armadetailer(
                         f"Integridad post-carga fallida: se esperaban {len(rows_to_upsert)} barras "
                         f"pero quedaron {actual_en_db} en la BD. Se revirtio la importacion."
                     )
+                # 5N.4 (Rediseño B): el reimport cambió el contenido de sus sectores →
+                # marcarlos 'modificado' (mismo cursor = misma transacción). Se hace en
+                # bloque por los sectores distintos que trajo este import.
+                try:
+                    from .sector_estado import marcar_sector_modificado
+                    cur.execute(
+                        "SELECT DISTINCT sector, piso, ciclo FROM barras WHERE import_id = %s",
+                        (import_id,),
+                    )
+                    for _sec, _pis, _cic in cur.fetchall():
+                        marcar_sector_modificado(cur, proyecto_id, _sec, _pis, _cic, por="import_csv")
+                except Exception:
+                    pass  # el estado del sector no debe romper la importación
 
             # ── Marcar imports supersedidos ──────────────────────────────────────
             # Si un import anterior de esta obra quedó sin barras activas (porque
@@ -1005,6 +1027,7 @@ async def import_armadetailer_preview(
             # manual reescribiría el re-import.
             db_epc: dict = {}
             db_epc_edit: dict = {}
+            db_epc_manual: dict = {}   # 5N.2: barras manual/pedido que se CONSERVAN
             if ejes_csv and pisos_csv:
                 cur.execute(
                     """
@@ -1012,7 +1035,8 @@ async def import_armadetailer_preview(
                            COALESCE(piso, '')  AS piso,
                            COALESCE(ciclo, '') AS ciclo,
                            COUNT(*)                                                 AS n,
-                           COUNT(*) FILTER (WHERE editado_por IS NOT NULL)           AS n_edit
+                           COUNT(*) FILTER (WHERE editado_por IS NOT NULL)           AS n_edit,
+                           COUNT(*) FILTER (WHERE origen IN ('manual','pedido'))     AS n_manual
                     FROM barras
                     WHERE id_proyecto = %s
                       AND COALESCE(eje, '')  = ANY(%s)
@@ -1021,9 +1045,13 @@ async def import_armadetailer_preview(
                     """,
                     (obra_destino, ejes_csv, pisos_csv),
                 )
-                for eje, piso, ciclo, n, n_edit in cur.fetchall():
+                # 5N.2: n_manual = barras origen manual/pedido que NO se borran (otro
+                # canal). Se informa al usuario que se CONSERVARÁN (no es una alerta de
+                # pérdida como las editadas — es tranquilizador).
+                for eje, piso, ciclo, n, n_edit, n_manual in cur.fetchall():
                     db_epc[(eje, piso, ciclo)] = int(n)
                     db_epc_edit[(eje, piso, ciclo)] = int(n_edit or 0)
+                    db_epc_manual[(eje, piso, ciclo)] = int(n_manual or 0)
 
             # Detalle de las barras editadas a mano que serían reemplazadas (para
             # mostrar quién editó qué). Solo en (eje, piso, ciclo) que el CSV pisa.
@@ -1066,16 +1094,20 @@ async def import_armadetailer_preview(
         existentes_replace = 0
         existentes_keep = 0
         editadas_replace = 0   # 5M.5: editadas a mano que este re-import pisaría
+        manual_conserva = 0    # 5N.2: barras manual/pedido que se CONSERVAN (otro canal)
         for (e, pi, ci), n in db_epc.items():
             if e != eje or pi != piso:
                 continue
+            n_man = db_epc_manual.get((e, pi, ci), 0)
+            manual_conserva += n_man
             if (e, pi, ci) in replace_epc_keys:
-                existentes_replace += n
+                # Las CSV se reemplazan; las manual/pedido NO (invariante de canales).
+                existentes_replace += (n - n_man)
                 editadas_replace += db_epc_edit.get((e, pi, ci), 0)
             else:
                 existentes_keep += n
-        existentes_bd = existentes_replace + existentes_keep
-        final = existentes_keep + nuevas_csv
+        existentes_bd = existentes_replace + existentes_keep + manual_conserva
+        final = existentes_keep + manual_conserva + nuevas_csv
         action = "replace" if existentes_replace > 0 else "add"
 
         pisos_rows.append({
@@ -1086,6 +1118,7 @@ async def import_armadetailer_preview(
             "existentes_replace": existentes_replace,
             "existentes_keep": existentes_keep,
             "editadas_replace": editadas_replace,
+            "manual_conserva": manual_conserva,   # 5N.2: informativo (se conservan)
             "nuevas_csv": nuevas_csv,
             "final": final,
             "action": action,
@@ -1097,6 +1130,7 @@ async def import_armadetailer_preview(
     total_csv         = sum(info["count"] for info in groups_ep.values())
     total_replace     = sum(r["existentes_replace"] for r in pisos_rows)
     total_editadas    = sum(r["editadas_replace"] for r in pisos_rows)   # 5M.5
+    total_manual_conserva = sum(r.get("manual_conserva", 0) for r in pisos_rows)  # 5N.2
     pisos_a_reemplazar = sum(1 for r in pisos_rows if r["action"] == "replace")
     pisos_a_sumar      = sum(1 for r in pisos_rows if r["action"] == "add")
 
@@ -1130,6 +1164,7 @@ async def import_armadetailer_preview(
             "total_csv": total_csv,
             "total_db_a_reemplazar": total_replace,
             "total_editadas_a_reemplazar": total_editadas,
+            "total_manual_conserva": total_manual_conserva,   # 5N.2: barras manual/pedido que se CONSERVAN
             "pisos_a_reemplazar": pisos_a_reemplazar,
             "pisos_a_sumar": pisos_a_sumar,
             "cod_prod_a_corregir": len(cod_prod_desfasados),

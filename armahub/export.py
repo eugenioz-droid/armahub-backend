@@ -238,6 +238,14 @@ def exportar_proyecto(
                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """, (id_proyecto, sector, piso, ciclo, export_key, email, now_iso,
                       int(stats[0]) if stats else 0, round(float(stats[1]), 2) if stats else 0))
+                # 5N.4 (Rediseño B): marcar el sector 'exportado' (mismo cursor = misma
+                # transacción que el INSERT en export_log). El export_log se conserva para
+                # el histórico/kilos; sector_estado es el estado consultable actual.
+                try:
+                    from .sector_estado import marcar_sector_exportado
+                    marcar_sector_exportado(cur, id_proyecto, sector, piso, ciclo, por=email)
+                except Exception:
+                    pass  # no romper la exportación por el estado
 
             audit(email, "exportar_excel", f"{len(combos)} sectores, {nombre_proyecto}", "proyecto", id_proyecto)
 

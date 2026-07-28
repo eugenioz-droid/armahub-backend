@@ -1360,7 +1360,7 @@ def _editar_barra_impl(barra_id: int, body: BarraUpdate, user):
     with get_conn() as conn:
         with conn.cursor(row_factory=dict_row) as cur:
             cur.execute(
-                "SELECT id, id_proyecto, diam, largo_total, cant, cant_total, mult, "
+                "SELECT id, id_proyecto, sector, piso, ciclo, diam, largo_total, cant, cant_total, mult, "
                 "figura, dim_a, dim_b, dim_c, dim_d, dim_e, dim_f, dim_g, dim_h, dim_i, "
                 "ang1, ang2, ang3, ang4, radio FROM barras WHERE id = %s",
                 (barra_id,),
@@ -1433,9 +1433,23 @@ def _editar_barra_impl(barra_id: int, body: BarraUpdate, user):
             # Marca de edición manual.
             sets.append("editado_por = %s"); params.append(email)
             sets.append("editado_fecha = %s"); params.append(now)
+            # 5N.4 (Rediseño B): editar una barra ES un cambio de contenido → el sector
+            # queda desactualizado respecto a lo exportado. Actualizar fecha_carga (para
+            # que el mecanismo viejo de fechas también lo detecte) y marcar el sector
+            # 'modificado' en sector_estado (mecanismo nuevo). Antes editar NO marcaba el
+            # sector → la matriz seguía verde (exportado) mostrando data desactualizada.
+            sets.append("fecha_carga = %s"); params.append(now)
 
             params.append(barra_id)
             cur.execute(f"UPDATE barras SET {', '.join(sets)} WHERE id = %s", params)
+
+            # Evento de estado del sector (mismo cursor = misma transacción, atómico).
+            try:
+                from .sector_estado import marcar_sector_modificado
+                marcar_sector_modificado(cur, barra["id_proyecto"], barra.get("sector"),
+                                         barra.get("piso"), barra.get("ciclo"), por=email)
+            except Exception:
+                pass  # el estado del sector no debe romper la edición de la barra
 
     _cache.invalidate("stats:", "landing:")
     audit(email, "editar_barra", "; ".join(cambios), "barra", str(barra_id))

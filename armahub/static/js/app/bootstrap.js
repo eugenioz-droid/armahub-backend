@@ -245,6 +245,14 @@
         'cubicacion-index',
         '[ArmaHub] No se pudo cargar cubicacion/index.js'
       ),
+      // 5N-C: tab "Agregar Cubicación" (ingreso manual de barras).
+      loadScript(
+        'script[data-armahub-feature="cubicacion-agregar"]',
+        '/static/js/features/cubicacion/agregar_cubicacion.js' + suffix,
+        'armahubFeature',
+        'cubicacion-agregar',
+        '[ArmaHub] No se pudo cargar cubicacion/agregar_cubicacion.js'
+      ),
       // Admin submodules (E.5) — entidades must load before proyectos and index
       loadScript(
         'script[data-armahub-feature="admin-entidades"]',

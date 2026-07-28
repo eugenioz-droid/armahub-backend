@@ -1,0 +1,83 @@
+<!-- 5N-C: Tab "Agregar Cubicación" — Formulario de Cubicación (ingreso manual de
+     barras). Grilla estilo planilla. IDs prefijados 'ac' para no colisionar con el
+     Bar Manager. El contenido dinámico (grilla) lo arma agregar_cubicacion.js. -->
+<div id="tab-agregar" class="tab-content">
+  <div style="padding:4px 2px 12px;">
+
+    <!-- Cabecera: título + estado del lote + acciones -->
+    <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:10px;">
+      <h3 style="margin:0; color:#00695c;">➕ Formulario de Cubicación</h3>
+      <span id="acLoteEstado" class="muted" style="font-size:12px;"></span>
+      <div style="flex:1;"></div>
+      <button id="acBtnGuardar" onclick="acGuardarBarras()" title="Guardar las barras del lote"
+              style="font-size:13px; padding:6px 14px; background:#00695c; color:#fff; border:none; border-radius:4px; cursor:pointer;">💾 Guardar</button>
+      <button id="acBtnTerminar" onclick="acTerminarLote()" title="Terminar el lote (se editará solo desde Bar Manager)"
+              style="font-size:13px; padding:6px 14px; background:#fff; color:#00695c; border:1px solid #00695c; border-radius:4px; cursor:pointer;">✓ Terminar lote</button>
+    </div>
+
+    <!-- Ubicación por defecto de las barras nuevas (cascada; se hereda a cada fila) -->
+    <div style="display:flex; gap:10px; align-items:flex-end; flex-wrap:wrap; margin-bottom:10px; padding:10px; background:#f5f7f7; border:1px solid #e0e0e0; border-radius:8px;">
+      <div style="display:flex; flex-direction:column;">
+        <label style="font-size:11px; color:#666; font-weight:600; margin-bottom:2px;">Obra *</label>
+        <input type="text" id="acProyectoInput" list="acProyectosDatalist"
+               oninput="acProyectoInput()" onchange="acProyectoInput()" onblur="acProyectoInput()"
+               autocomplete="off" name="ac-obra-6371" placeholder="Escribe para buscar la obra…"
+               style="font-size:13px; height:34px; min-width:220px; box-sizing:border-box;" />
+        <datalist id="acProyectosDatalist"></datalist>
+        <select id="acProyecto" style="display:none;"><option value=""></option></select>
+      </div>
+      <div style="display:flex; flex-direction:column;">
+        <label style="font-size:11px; color:#666; font-weight:600; margin-bottom:2px;">Sector/Elemento</label>
+        <input type="text" id="acSector" list="acSectorDatalist" placeholder="ELEV / LOSA / FUND…"
+               autocomplete="off" name="ac-sector-6371" style="font-size:13px; height:34px; min-width:120px; box-sizing:border-box;" />
+        <datalist id="acSectorDatalist"></datalist>
+      </div>
+      <div style="display:flex; flex-direction:column;">
+        <label style="font-size:11px; color:#666; font-weight:600; margin-bottom:2px;">Piso</label>
+        <input type="text" id="acPiso" list="acPisoDatalist" placeholder="Piso"
+               autocomplete="off" name="ac-piso-6371" style="font-size:13px; height:34px; min-width:90px; box-sizing:border-box;" />
+        <datalist id="acPisoDatalist"></datalist>
+      </div>
+      <div style="display:flex; flex-direction:column;">
+        <label style="font-size:11px; color:#666; font-weight:600; margin-bottom:2px;">Ciclo</label>
+        <input type="text" id="acCiclo" list="acCicloDatalist" placeholder="Ciclo"
+               autocomplete="off" name="ac-ciclo-6371" style="font-size:13px; height:34px; min-width:90px; box-sizing:border-box;" />
+        <datalist id="acCicloDatalist"></datalist>
+      </div>
+      <div style="display:flex; flex-direction:column;">
+        <label style="font-size:11px; color:#666; font-weight:600; margin-bottom:2px;">Eje/Losa</label>
+        <input type="text" id="acEje" list="acEjeDatalist" placeholder="Eje/Losa"
+               oninput="acEjeInput()" autocomplete="off" name="ac-eje-6371"
+               style="font-size:13px; height:34px; min-width:110px; box-sizing:border-box;" />
+        <datalist id="acEjeDatalist"></datalist>
+        <span id="acEjeAviso" style="display:none; font-size:10px; color:#e65100; margin-top:2px;"></span>
+      </div>
+    </div>
+
+    <!-- Barra de herramientas de la grilla: agregar fila, modos de vista, renders -->
+    <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:8px;">
+      <button onclick="acAgregarFila()" style="font-size:12px; padding:5px 12px; background:#00695c; color:#fff; border:none; border-radius:4px; cursor:pointer;">＋ Agregar fila</button>
+      <button onclick="acReplicarModal()" style="font-size:12px; padding:5px 12px; background:#fff; color:#00695c; border:1px solid #00695c; border-radius:4px; cursor:pointer;">⧉ Replicar en pisos</button>
+      <span style="width:1px; height:22px; background:#ddd; margin:0 4px;"></span>
+      <span style="font-size:11px; color:#666; font-weight:600;">Vista:</span>
+      <button id="acVistaAgrupar" onclick="acSetVista('agrupar')" style="font-size:12px; padding:4px 10px; background:#fff; color:#00695c; border:1px solid #00695c; border-radius:4px; cursor:pointer;">Agrupar</button>
+      <button id="acVistaPlano" onclick="acSetVista('plano')" style="font-size:12px; padding:4px 10px; background:#00695c; color:#fff; border:1px solid #00695c; border-radius:4px; cursor:pointer;">Plano</button>
+      <button id="acVistaColor" onclick="acSetVista('color')" style="font-size:12px; padding:4px 10px; background:#fff; color:#00695c; border:1px solid #00695c; border-radius:4px; cursor:pointer;">Agrupación visual</button>
+      <span style="width:1px; height:22px; background:#ddd; margin:0 4px;"></span>
+      <label style="font-size:12px; color:#666; cursor:pointer;"><input type="checkbox" id="acToggleRender" checked onchange="acToggleRender()"/> Renders</label>
+      <span id="acResumen" class="muted" style="font-size:11px; margin-left:8px;"></span>
+    </div>
+
+    <!-- Grilla de barras (la construye agregar_cubicacion.js) -->
+    <div id="acGridWrap" style="overflow-x:auto; border:1px solid #e0e0e0; border-radius:8px;">
+      <div id="acGrid"></div>
+    </div>
+
+    <div class="muted" style="font-size:11px; margin-top:6px;">
+      Cada fila es una barra (o grupo con multiplicador). Elige la figura → se piden solo
+      sus dimensiones. Flechas para moverte entre celdas; puedes pegar desde Excel. Guardar
+      crea las barras (origen manual); Terminar cierra el lote.
+    </div>
+
+  </div>
+</div>
