@@ -955,6 +955,24 @@
     _renderer.render(_scene, _camera);
     _rafId = requestAnimationFrame(_animar);
   }
+
+  // Botón "Centrar" (toggle): reencuadra la cámara para que la figura orbite CENTRADA
+  // (mira al centro geométrico de la barra en vez de al origen). Solo mueve la CÁMARA
+  // → NO toca _worldGroup ni la geometría, así los clicks/arrastre (raycast desde la
+  // cámara) siguen exactos. Es solo ayuda de visualización. OFF = vista por defecto.
+  var _centrado = false;
+  global.disenador3dToggleCentrar = function() {
+    _centrado = !_centrado;
+    if (_centrado) {
+      if (_nodos3d.length >= 1) _encuadrarCamaraAFigura();   // mira al centro de la figura
+    } else {
+      // Volver a la vista por defecto (mira al origen desde la posición isométrica).
+      if (_camera) { _camera.position.set(360, -360, 300); _camera.lookAt(0, 0, 0); }
+    }
+    var b = document.getElementById('dis3dBtnCentrar');
+    if (b) { b.style.background = _centrado ? '#00695c' : '#fff'; b.style.color = _centrado ? '#fff' : '#00695c';
+             b.textContent = _centrado ? '🎯 Centrado: ON' : '🎯 Centrar'; }
+  };
   function _detener3D() { if (_rafId) { cancelAnimationFrame(_rafId); _rafId = null; } }
 
   global.disenador3dEstado = function() { return { vista: _vista, listo: _threeListo, nodos: _nodos3d.length }; };
