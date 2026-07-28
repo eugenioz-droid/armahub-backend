@@ -539,6 +539,13 @@
 
   global.disenador3dDeshacer = function() {
     if (_nodos3d.length > 0) { _nodos3d.pop(); _tiposSeg3d.pop(); _radiosSeg3d.pop(); _planosSeg3d.pop(); _sweepsSeg3d.pop(); _segSel3d = -1; }
+    // Recolocar el plano de trabajo al ÚLTIMO nodo restante (si no, el plano queda
+    // flotando en la posición del nodo borrado hasta que se dibuje otro).
+    if (_nodos3d.length) {
+      var l = _nodos3d[_nodos3d.length - 1];
+      _planoOffset = (_planoActivo === 'XZ') ? l.y : (_planoActivo === 'XY') ? l.z : l.x;
+    } else { _planoOffset = 0; }
+    _actualizarPlanoVisual();
     _redibujarFigura3d(); _actualizarInfo3d(); _actualizarSlider3d();
   };
   global.disenador3dLimpiarDibujo = function() {

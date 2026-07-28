@@ -105,11 +105,8 @@
         (opts.arcos_iso[k] || []).forEach(function(p) { _acum(p.x, p.y); });
       });
     }
-    if (opts.ejes_iso) {
-      ['x','y','z'].forEach(function(k) {
-        var e = opts.ejes_iso[k]; if (e && e.o && e.p) { _acum(e.o.x, e.o.y); _acum(e.p.x, e.p.y); }
-      });
-    }
+    // (Los ejes_iso NO entran al bbox: el gizmo se dibuja FIJO en la esquina, no según
+    // la posición de la figura → no debe afectar el encuadre.)
     (opts.cotas_arco_iso || []).forEach(function(seg) {
       (seg.desarrollo || []).forEach(function(p) { _acum(p.x, p.y); });
       [seg.radio, seg.horiz, seg.vert].forEach(function(par) {
@@ -131,15 +128,22 @@
       '<marker id="disArrowEnd" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#1565c0"/></marker>' +
       '<marker id="disArrowStart" markerWidth="9" markerHeight="9" refX="0" refY="3" orient="auto"><path d="M7,0 L0,3 L7,6 Z" fill="#1565c0"/></marker>' +
       '</defs>';
-    // Ejes X/Y/Z SUTILES (solo 3D con vista fijada): ayudan a leer la profundidad/
-    // orientación de la barra. Van DETRÁS de la figura. Colores tenues estándar.
+    // GIZMO de ejes X/Y/Z (solo 3D con vista fijada): pequeño indicador de ORIENTACIÓN
+    // FIJO en la esquina inferior izquierda del preview. Muestra solo la dirección de
+    // cada eje (no su posición), así NUNCA se pierde aunque la figura esté lejos del
+    // origen. Usa la dirección proyectada de cada eje (p-o), a un largo fijo.
     if (opts.ejes_iso) {
       var ejeCols = { x: '#e57373', y: '#81c784', z: '#64b5f6' };   // rojo/verde/azul suaves
+      var gcx = 20, gcy = H - 18, gL = 13;    // centro del gizmo (esquina inf. izq.) y largo
       ['x','y','z'].forEach(function(k) {
         var e = opts.ejes_iso[k]; if (!e || !e.o || !e.p) return;
-        var a = tx(e.o), b = tx(e.p);
-        svg += '<line x1="'+a.x.toFixed(1)+'" y1="'+a.y.toFixed(1)+'" x2="'+b.x.toFixed(1)+'" y2="'+b.y.toFixed(1)+'" stroke="'+ejeCols[k]+'" stroke-width="1" opacity="0.7"/>';
-        svg += '<text x="'+b.x.toFixed(1)+'" y="'+(b.y-2).toFixed(1)+'" text-anchor="middle" fill="'+ejeCols[k]+'" font-size="8" font-weight="700" opacity="0.85">'+k.toUpperCase()+'</text>';
+        // Dirección del eje en pantalla: (p-o) en coords de proyección; la Y se invierte
+        // como en tx() (el SVG crece hacia abajo) para que coincida con la figura.
+        var dx = e.p.x - e.o.x, dy = -(e.p.y - e.o.y);
+        var m = Math.sqrt(dx*dx + dy*dy) || 1; dx = dx/m*gL; dy = dy/m*gL;
+        var ex2 = gcx + dx, ey2 = gcy + dy;
+        svg += '<line x1="'+gcx+'" y1="'+gcy+'" x2="'+ex2.toFixed(1)+'" y2="'+ey2.toFixed(1)+'" stroke="'+ejeCols[k]+'" stroke-width="1.3" opacity="0.85"/>';
+        svg += '<text x="'+(gcx+dx*1.25).toFixed(1)+'" y="'+(gcy+dy*1.25+3).toFixed(1)+'" text-anchor="middle" fill="'+ejeCols[k]+'" font-size="8" font-weight="700">'+k.toUpperCase()+'</text>';
       });
     }
     // Línea principal: path con L (rectos) y A (arcos), usando tipos/radios de la
