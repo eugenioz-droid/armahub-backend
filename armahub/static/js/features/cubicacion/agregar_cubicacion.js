@@ -24,7 +24,7 @@ async function loadAgregarCubicacion() {
   await _acCargarFiguras();
   await _acCargarProyectos();
   if (_acGrupos.length === 0) acAgregarGrupo();
-  _acRender();
+  acRender();
 }
 window.loadAgregarCubicacion = loadAgregarCubicacion;
 
@@ -75,7 +75,7 @@ async function _acCargarContexto(idProyecto) {
     var d = await apiGet('/filters?proyecto=' + encodeURIComponent(idProyecto));
     _acFillDatalist('acCicloDatalist', d && d.ciclos);
     _acEjesObra = (d && d.ejes) || [];
-    _acRender();   // re-render para poblar los datalists de eje de cada grupo
+    acRender();   // re-render para poblar los datalists de eje de cada grupo
   } catch (e) {}
 }
 async function _acCargarMarcas(idProyecto) {
@@ -104,13 +104,13 @@ function _acNuevaBarra() {
   _AC_ANGS.forEach(function(a) { b[a] = null; });
   return b;
 }
-function acAgregarGrupo() { _acGrupos.push(_acNuevoGrupo()); _acRender(); }
+function acAgregarGrupo() { _acGrupos.push(_acNuevoGrupo()); acRender(); }
 window.acAgregarGrupo = acAgregarGrupo;
 
 function acBorrarGrupo(gid) {
   if (_acGrupos.length <= 1) { _acGrupos = [_acNuevoGrupo()]; }
   else _acGrupos = _acGrupos.filter(function(g) { return g._id !== gid; });
-  _acRender();
+  acRender();
 }
 window.acBorrarGrupo = acBorrarGrupo;
 
@@ -121,7 +121,7 @@ function acDuplicarGrupo(gid) {
   _acSeq++; copia._id = _acSeq;
   copia.barras.forEach(function(b) { _acSeq++; b._id = _acSeq; });
   _acGrupos.push(copia);
-  _acRender();
+  acRender();
 }
 window.acDuplicarGrupo = acDuplicarGrupo;
 
@@ -173,7 +173,7 @@ function _acAvisoEje(gid, valor) {
 // ---- Barras de un grupo ----
 function acAgregarBarra(gid) {
   var g = _acGrupos.find(function(x) { return x._id === gid; });
-  if (g) { g.barras.push(_acNuevaBarra()); _acRender(); }
+  if (g) { g.barras.push(_acNuevaBarra()); acRender(); }
 }
 window.acAgregarBarra = acAgregarBarra;
 
@@ -182,7 +182,7 @@ function acBorrarBarra(gid, bid) {
   if (!g) return;
   g.barras = g.barras.filter(function(b) { return b._id !== bid; });
   if (!g.barras.length) g.barras.push(_acNuevaBarra());
-  _acRender();
+  acRender();
 }
 window.acBorrarBarra = acBorrarBarra;
 
@@ -193,7 +193,7 @@ function acCopiarBarra(gid, bid) {
   var b = g.barras.find(function(x) { return x._id === bid; });
   if (!b) return;
   var c = JSON.parse(JSON.stringify(b)); _acSeq++; c._id = _acSeq;
-  g.barras.push(c); _acRender();
+  g.barras.push(c); acRender();
 }
 window.acCopiarBarra = acCopiarBarra;
 
@@ -204,7 +204,7 @@ function acSetBarra(gid, bid, campo, valor) {
   if (!b) return;
   var num = ['diam','cant','mult','radio'].indexOf(campo) !== -1 || campo.indexOf('dim_') === 0 || campo.indexOf('ang') === 0;
   b[campo] = (valor === '' || valor == null) ? null : (num ? Number(valor) : valor);
-  if (campo === 'figura') _acRender();        // cambian las dims pedidas
+  if (campo === 'figura') acRender();        // cambian las dims pedidas
   else _acActualizarBarraVisual(gid, b);
 }
 window.acSetBarra = acSetBarra;
@@ -239,7 +239,7 @@ function _acPesoBarra(b) {
 function acToggleRender() {
   var c = document.getElementById('acToggleRender');
   _acRenders = !!(c && c.checked);
-  _acRender();
+  acRender();
 }
 window.acToggleRender = acToggleRender;
 
@@ -421,7 +421,7 @@ async function acGuardar() {
     var res = await apiPostJson('/lotes/' + _acLoteId + '/barras', { barras: items });
     if (res && res.ok) {
       if (typeof showToast === 'function') showToast(res.creadas + ' barra(s) guardadas · lote #' + _acLoteId, 'success');
-      _acGrupos = [_acNuevoGrupo()]; _acRender();
+      _acGrupos = [_acNuevoGrupo()]; acRender();
     } else { alert('No se pudieron guardar las barras.'); }
   } catch (e) {
     // El backend devuelve 400 con detalle de geometría inválida.
@@ -439,7 +439,7 @@ async function acTerminarLote() {
     var res = await apiPostJson('/lotes/' + _acLoteId + '/terminar', {});
     if (res && res.ok) {
       if (typeof showToast === 'function') showToast('Lote #' + _acLoteId + ' terminado.', 'success');
-      _acLoteId = null; _acLoteEstado = null; _acGrupos = [_acNuevoGrupo()]; _acRender();
+      _acLoteId = null; _acLoteEstado = null; _acGrupos = [_acNuevoGrupo()]; acRender();
     }
   } catch (e) { alert('Error al terminar.'); }
   _acActualizarEstadoLote();
