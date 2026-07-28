@@ -26,6 +26,7 @@ from .barras import router as barras_router
 from .ui import router as ui_router
 from .admin import router as admin_router
 from .export import router as export_router
+from .lotes import router as lotes_router
 from .pedidos import router as pedidos_router
 from .constructoras import router as constructoras_router
 from .calculistas import router as calculistas_router
@@ -57,6 +58,7 @@ def create_app() -> FastAPI:
     app.include_router(ui_router)
     app.include_router(admin_router)
     app.include_router(export_router)
+    app.include_router(lotes_router)
     app.include_router(pedidos_router)
     app.include_router(constructoras_router)
     app.include_router(calculistas_router)
