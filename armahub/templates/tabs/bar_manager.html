@@ -58,7 +58,12 @@
           <!-- autocomplete con valor único no estándar: Chrome ignora "off" en inputs
                de texto y ofrecía guardar/rellenar como si fuera credencial. Un token
                inventado + readonly-hasta-enfocar evita el gestor de contraseñas. -->
-          <input type="text" id="eje" list="bmEjesDatalist" onchange="onFilterChange('eje')"
+          <!-- oninput/onchange/onblur (los 3, igual que el buscador de obra): con <input
+               list=datalist> el `change` solo no dispara de forma fiable al ELEGIR una
+               opción del datalist con el mouse → el filtro no se aplicaba hasta tocar otro
+               filtro. oninput lo dispara en vivo (con debounce en onEjeInput). -->
+          <input type="text" id="eje" list="bmEjesDatalist"
+                 oninput="onEjeInput()" onchange="onEjeInput()" onblur="onEjeInput()"
                  name="bm-eje-filtro-6371" autocomplete="off" data-lpignore="true" data-form-type="other"
                  autocapitalize="off" autocorrect="off" spellcheck="false"
                  readonly onfocus="this.removeAttribute('readonly')"

@@ -380,3 +380,17 @@ function onFilterChange(idOrigen) {
   saveFiltersToStorage();
   buscar(true);
 }
+
+// Handler del buscador de EJE (input de texto libre + datalist). Con debounce corto:
+// oninput dispara en cada tecla/selección; el debounce evita rearmar la búsqueda en
+// cada carácter mientras se escribe, pero aplica al instante al elegir del datalist.
+// El eje no tiene filtros dependientes debajo → basta re-buscar (no recargar filtros).
+var _bmEjeTimer = null;
+function onEjeInput() {
+  if (_bmBloqueadoPorEdicion('eje')) return;
+  if (_bmEjeTimer) clearTimeout(_bmEjeTimer);
+  _bmEjeTimer = setTimeout(function() {
+    saveFiltersToStorage();
+    buscar(true);
+  }, 250);
+}
