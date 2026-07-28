@@ -63,17 +63,37 @@
     _isoBasisAng = _isoAngulo;
     return _isoBasisCache;
   }
+  // Base de proyección FIJADA (capturada de la cámara real con "Fijar vista"). Si es
+  // null, se usa la base paramétrica del ángulo iso (_isoBasis). Al fijar vista, el
+  // preview hereda la orientación EXACTA del canvas (con su profundidad), en vez de un
+  // iso plano. Se guarda con la figura (geometria.vista_base) para persistir.
+  var _isoBaseFijada = null;
   function _iso(p) {
-    var b = _isoBasis();
+    var b = _isoBaseFijada || _isoBasis();
     // Proyección ortográfica: x = p·right, y = p·camUp. NO invertir la y: el motor
     // (svgDesdePuntos/tx) ya la invierte al dibujar; con camUp·Z positivo, esa única
     // inversión deja la altura Z hacia arriba (verificado numéricamente).
     return { x: p.x*b.rx + p.y*b.ry + p.z*b.rz,
              y: p.x*b.ux + p.y*b.uy + p.z*b.uz };
   }
+  // Captura la base de proyección de la CÁMARA real en el sistema local del worldGroup
+  // (así _iso, que proyecta coords locales de los nodos, reproduce la vista del canvas).
+  function _capturarBaseVista() {
+    if (!_camera || !_worldGroup || !window.THREE) return null;
+    _worldGroup.updateMatrixWorld();
+    // right/up de la cámara en MUNDO.
+    var right = new THREE.Vector3().setFromMatrixColumn(_camera.matrixWorld, 0).normalize();
+    var up = new THREE.Vector3().setFromMatrixColumn(_camera.matrixWorld, 1).normalize();
+    // Llevarlos al sistema LOCAL del worldGroup (solo rotación → usar la parte 3x3).
+    var invRot = new THREE.Matrix3().setFromMatrix4(_worldGroup.matrixWorld).invert();
+    right.applyMatrix3(invRot).normalize();
+    up.applyMatrix3(invRot).normalize();
+    return { rx: right.x, ry: right.y, rz: right.z, ux: up.x, uy: up.y, uz: up.z };
+  }
   global.disenador3dSetIsoAngulo = function(deg) {
     var d = Number(deg); if (isNaN(d)) return;
     _isoAngulo = d;
+    _isoBaseFijada = null;   // elegir un ángulo iso vuelve al modo paramétrico (descarta vista fijada)
     _actualizarPreview3d();   // refrescar el preview con el nuevo ángulo
   };
   global.disenador3dGetIsoAngulo = function() { return _isoAngulo; };
@@ -524,6 +544,7 @@
   global.disenador3dLimpiarDibujo = function() {
     _nodos3d = []; _tiposSeg3d = []; _radiosSeg3d = []; _planosSeg3d = []; _sweepsSeg3d = []; _segSel3d = -1;
     _etiquetas3d = [];   // etiquetas 3D también se limpian (figura nueva)
+    _isoBaseFijada = null;   // figura nueva → sin vista fijada (vuelve al iso paramétrico)
     if (typeof disenadorResetSeleccionEtiqueta === 'function') disenadorResetSeleccionEtiqueta();
     _redibujarFigura3d(); _actualizarInfo3d(); _actualizarSlider3d();
   };
@@ -534,6 +555,8 @@
     if (!geo || geo.dim !== '3D' || !geo.nodos || geo.nodos.length < 2) return false;
     _nodos3d = geo.nodos.map(function(n) { return new THREE.Vector3(n.x, n.y, n.z); });
     if (geo.iso_angulo != null && !isNaN(geo.iso_angulo)) _isoAngulo = Number(geo.iso_angulo);
+    // Restaurar la orientación fijada (si la figura se guardó con "Fijar vista").
+    _isoBaseFijada = (geo.vista_base && geo.vista_base.rx != null) ? geo.vista_base : null;
     var tr = geo.tramos || [];
     _tiposSeg3d = tr.map(function(t) { return t.tipo || 'recto'; });
     _radiosSeg3d = tr.map(function(t) { return t.radio || 0; });
@@ -605,9 +628,12 @@
   global.disenador3dFijarVista = function() {
     if (_nodos3d.length < 2 || !_renderer) { alert('Dibuja la figura 3D antes de fijar la vista.'); return; }
     try {
-      _snapshotFijado = _capturarSnapshot();
+      // Capturar la orientación REAL del canvas (right/up de la cámara en local del
+      // worldGroup) → el preview la hereda con su profundidad, en vez del iso plano.
+      _isoBaseFijada = _capturarBaseVista();
+      _snapshotFijado = _capturarSnapshot();   // respaldo PNG
       _actualizarPreview3d();
-      if (typeof showToast === 'function') showToast('Vista 3D fijada como preview.', 'success');
+      if (typeof showToast === 'function') showToast('Vista fijada: el preview usa la orientación actual del 3D.', 'success');
     } catch (e) { alert('No se pudo fijar la vista.'); }
   };
   global.disenador3dSnapshot = function() { return _snapshotFijado; };
@@ -711,6 +737,7 @@
       puntos: puntos2d,           // vista iso 2D (motor SVG la dibuja como render)
       arcos_iso: _arcosIso(),     // puntos de cada arco proyectados (polyline fiel al 3D)
       iso_angulo: _isoAngulo,     // ángulo de la proyección iso (para re-render coherente)
+      vista_base: _isoBaseFijada, // orientación fijada con "Fijar vista" (null si no se fijó)
       angulos_iso: _angulosReales3d(),   // ángulos reales 3D (posición en la proyección)
       cotas_arco_iso: _cotasArco3d(),    // 4 cotas de cada arco, ya proyectadas
       snapshot: _snapshotFijado || _capturarSnapshot()   // fallback (foto de respaldo)
@@ -745,8 +772,25 @@
                     radio: _radiosSeg3d[i-1] || 0, sweep: _sweepsSeg3d[i-1] != null ? _sweepsSeg3d[i-1] : 1 });
     }
     return { dim: '3D', puntos: puntos2d, tramos: tramos, etiquetas: _etiquetas3d.slice(),
-             arcos_iso: _arcosIso(),
+             arcos_iso: _arcosIso(), ejes_iso: _ejesIso(),
              angulos_iso: _angulosReales3d(), cotas_arco_iso: _cotasArco3d() };
+  }
+
+  // Ejes X/Y/Z proyectados con _iso (misma orientación que la figura), para dibujarlos
+  // SUTILMENTE en el preview → ayudan a entender la profundidad/orientación de la barra.
+  // Cada eje: origen (0,0,0) → punto unitario escalado. Longitud relativa al tamaño.
+  function _ejesIso() {
+    if (!_nodos3d.length) return null;
+    // Escala de los ejes = una fracción del tamaño de la figura (para que no dominen).
+    var min = _nodos3d[0].clone(), max = _nodos3d[0].clone();
+    _nodos3d.forEach(function(p){ min.min(p); max.max(p); });
+    var L = Math.max(40, max.clone().sub(min).length() * 0.28);
+    var o = _iso({ x: 0, y: 0, z: 0 });
+    return {
+      x: { o: o, p: _iso({ x: L, y: 0, z: 0 }) },
+      y: { o: o, p: _iso({ x: 0, y: L, z: 0 }) },
+      z: { o: o, p: _iso({ x: 0, y: 0, z: L }) }
+    };
   }
 
   // Ángulos REALES de los vértices, calculados en 3D (con los nodos), NO de la
