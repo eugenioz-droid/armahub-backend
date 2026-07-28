@@ -1,7 +1,11 @@
-# Programa: "Agregar Cubicación" — Ingreso manual de barras + rediseños de fondo
+# ANEXO de detalle: "Agregar Cubicación" — Ingreso manual de barras
 
-**Estado:** PLANIFICACIÓN APROBADA en concepto (2026-07-28). Pendiente OK final del programa
-escrito antes de codear. Producción activa → todo aditivo, nunca borrar/perder data.
+> **NO es un programa independiente.** Es el detalle extendido del bloque **5N** del programa
+> maestro `docs/programa-versiones/programa_v1.00.md` (tareas 5N.1–5N.18) y de SPECS §4.7. El
+> roadmap/checkboxes viven en el maestro; acá está el fundamento técnico. Si algo cambia, se
+> refleja primero en el maestro y en SPECS.
+
+**Estado:** DISEÑO CERRADO (2026-07-28). Producción activa → todo aditivo, nunca borrar/perder data.
 
 **Tab:** "Agregar Cubicación" (dice qué hace). **Título de sección:** "Formulario de Cubicación".
 

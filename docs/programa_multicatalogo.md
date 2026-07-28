@@ -1,8 +1,10 @@
-# Planificación: Multicatálogo e Interoperabilidad de Formatos
+# ANEXO de detalle: Multicatálogo e Interoperabilidad de Formatos
 
-**Estado:** PLANIFICACIÓN (no implementar aún). Levantamiento para expandir catálogos e
-importar/exportar en distintos formatos, con el **Catálogo Armacero** como catálogo
-OFICIAL de la plataforma.
+> **NO es un programa independiente.** Es el levantamiento de la visión multicatálogo referida
+> en la caluga Catálogo Armacero (SPECS §4A) y en el maestro `docs/programa-versiones/
+> programa_v1.00.md`. Cuando se planifique su implementación tendrá su propia fase en el maestro.
+
+**Estado:** PLANIFICACIÓN (no implementar aún). Catálogo Armacero = catálogo OFICIAL/canónico.
 
 **Fecha:** 2026-07-28 · Autor de la visión: Eugenio.
 

@@ -729,22 +729,63 @@ Objetivo: endurecer Reclamos y cerrar los pendientes reales arrastrados.
 
 ---
 
-## 5N — CUBICACIÓN MANUAL (ingresar barras desde la plataforma) — PLANIFICADO
+## 5N — "AGREGAR CUBICACIÓN" (ingreso manual de barras) — DISEÑO CERRADO 2026-07-28
 
-> **Misión (Eugenio, fin de sesión):** un tab en caluga Cubicación, parecido a Bar Manager,
-> para CREAR/ingresar barras directamente en una obra (no solo por import CSV). Agrupación
-> similar + vista plana. **Las barras creadas acá NO deben ser borradas por un re-import**
-> (ej. si creo barras en un piso/ciclo, una carga posterior de ese piso/ciclo no las elimina).
-> Probar el render de figuras acá antes de llevarlo a Bar Manager.
+> Tab **"Agregar Cubicación"** (entre Bar Manager y Pedidos). Título de sección: **"Formulario
+> de Cubicación"**. Panel de ALTA de barras manuales. Reutiliza el motor del catálogo/diseñador.
+> **Detalle de diseño completo:** SPECS §4.7 + `docs/programa_agregar_cubicacion.md` (referencia
+> extendida de este bloque, no programa aparte). Pedidos de cliente (futuro): SPECS §4.7 +
+> `docs/programa_pedidos_cliente.md`.
+>
+> **MENTALIDAD (Eugenio):** REDISEÑAR para código óptimo, NO parchar. Producción activa →
+> migraciones aditivas/idempotentes, NUNCA borrar/perder data, ediciones preservan procedencia.
+> **DECISIONES ya cerradas — no re-preguntar:** todos los requerimientos están definidos (ver
+> tareas). Decisiones abiertas menores (nombre UI del lote, formato id_unico, tabla lotes propia
+> vs imports, config peso columna vs tabla, sector_estado tabla) NO bloquean: se toman los
+> defaults recomendados del programa detallado y se avanza.
 
-**Decisiones de diseño (pensadas, para validar mañana):**
+### 5N-A — Rediseños de fondo (backend + migraciones) — LO MÁS CRÍTICO PRIMERO
 
 | N° | Descripción | Realizado | Quién |
 |----|-------------|-----------|-------|
-| 5N.1 | **Discovery + diseño del tab.** Nuevo tab "Cubicar" en caluga Cubicación. Reutiliza la estructura de Bar Manager (agrupación piso/sector/eje→ciclos + vista plana), pero con CRUD: agregar barra, editar, eliminar. Toda barra creada acá lleva `origen='manual'` (el campo YA existe en `barras`). Formulario de alta: piso/sector/ciclo/eje/figura/φ/dims/cant → calcula largo (suma de lados) y peso (fórmula existente). Valida geometría contra el catálogo (reusar `validar_geometria`). | ☐ | TÚ+YO |
-| 5N.2 | **PROTECCIÓN clave: el re-import NO borra barras manuales.** El import hace DELETE de los (eje,piso,ciclo) del CSV (importer.py). Cambio: el DELETE selectivo **excluye `origen='manual'`** (`AND COALESCE(origen,'csv') <> 'manual'`). Así, si creo barras manuales en un piso/ciclo, una carga CSV de ese mismo cruce reescribe solo las del CSV y **conserva las manuales**. Avisar en el preview cuántas manuales conviven (informativo). Ojo: revisar interacción con el aviso 5M.5 (editadas) — son marcas distintas (`editado_por` vs `origen`). | ☐ | YO |
-| 5N.3 | **Render de figuras acá (piloto antes de Bar Manager).** Mostrar el render SVG de la figura de cada barra en este tab (más grande que la mini de Bar Manager). Sirve de campo de pruebas del render con data real sin arriesgar Bar Manager. | ☐ | YO |
-| 5N.4 | **Homologación catálogo (paso intermedio).** Cruzar figuras dibujadas en el Diseñador con las del catálogo existente (de la herramienta de detallado). Cuando haya varias figuras con geometría, un panel para asociar/confirmar. Base para multi-catálogo futuro (geometría=verdad, nombres=etiquetas mapeables). | ☐ | TÚ+YO |
+| 5N.1 | **Rediseño A — Canales de datos independientes (invariante).** Cada canal (`origen` csv/manual/pedido) solo tiene autoridad sobre SUS barras. La importación CSV opera SOLO sobre `origen='csv'`: sus DELETE de reemplazo (`importer.py:654-684`, por `(eje,piso,ciclo)` y `plano_code`) llevan `AND (origen IS NULL OR origen='csv')`, centralizado en UNA guardia (no repetir el filtro). Barras `manual`/`pedido` sobreviven SIEMPRE a cualquier reimport. **Brecha real hoy:** el DELETE no mira `origen` → mata las manuales. Es rediseño (invariante), no parche por DELETE. | ☐ | YO |
+| 5N.2 | **Aviso en preview de reimport.** El preview (`/import/armadetailer/preview`) informa "N barras manuales/pedido en estos sectores se CONSERVARÁN" (cuenta por `origen IN ('manual','pedido')`, distinto del conteo por `editado_por` de 5M.5). Transparencia; no las borra. | ☐ | YO |
+| 5N.3 | **Rediseño B — Estado del sector constructivo como entidad (`sector_estado`).** Migración ≥086: tabla `sector_estado(id_proyecto, sector, piso, ciclo, estado, actualizado_fecha/por, exportado_fecha, modificado_fecha)`, UNIQUE (proyecto,sector,piso,ciclo), estado ∈ `pendiente`/`exportado`/`modificado`. Actualizada por EVENTOS (helper `marcar_sector_*`): crear/editar/eliminar barra, reimport con cambios, exportar. **Cierra la brecha:** hoy `editar_barra` no toca `fecha_carga` (`barras.py:1434`) → editar barra NO marca el sector modificado (matriz sigue verde=mentira). Migrar datos desde `DISTINCT(sector,piso,ciclo)` + estado derivado actual. `version_mod`/`version_exp` = columnas muertas, se dejan quietas. | ☐ | YO |
+| 5N.4 | **Migrar lectores del dirty-flag a `sector_estado` (en paralelo, verificado).** `export-history` (`export.py:255`) y el cálculo frontend (`exportacion.js:193`, `obras.js:577`) leen `sector_estado` en vez de restar fechas. El mecanismo viejo se mantiene hasta verificar el nuevo, luego se retira. `export_log` se conserva (histórico/kilos). | ☐ | YO |
+| 5N.5 | **Rediseño C — Lote de ingreso manual (`lote_id`).** Migración: tabla `lotes(id, id_proyecto, tipo='manual', estado borrador\|terminada, creado_por/fecha, terminado_fecha, n_barras)` + columna `lote_id` en `barras` (aditiva, NULL para CSV). Trazabilidad de la tanda (provenance, gemelo de `import_id`); no afecta agrupación constructiva. Endpoints `POST /lotes`, `POST /lotes/{id}/terminar`. | ☐ | YO |
+
+### 5N-B — Backend creación de barras
+
+| N° | Descripción | Realizado | Quién |
+|----|-------------|-----------|-------|
+| 5N.6 | **Rehabilitar creación (parte del modelo de canales).** `POST /barras/crear` (hoy 403, `barras.py:1502`) + alta MASIVA transaccional (array de barras del lote). `id_unico` = patrón de lámina + **letra prefijo** (marca "creado en plataforma"; no colisiona con CSV). Setear `origen='manual'`, `import_id=NULL`, `lote_id`, `fecha_carga=now`, `editado_por=user`. Ampliar modelo con dims/ángulos/radio/mult (hoy `BarraManualCreate` está incompleto). Permisos: cualquier cubicador cualquier proyecto (validado en backend). Nunca crea `origen != 'manual'`. Actualiza `sector_estado`. | ☐ | YO |
+| 5N.7 | **`largo_total` automático + hook figuras raras.** Largo = suma de dims parciales (radio NO suma; sin desarrollo de dobleces). Cálculo aislado en `_largo_desde_figura` para ampliar a barras redondas/estribos circulares sin tocar el resto. | ☐ | YO |
+| 5N.8 | **Config de peso por obra (factor global).** Factor default **0%** sobre el peso teórico (`_calcular_peso`, `barras.py:1297`). Persistir por proyecto. Aplica en creación (× cant × factor) y en el recálculo. | ☐ | TÚ+YO |
+
+### 5N-C — Frontend: Formulario de Cubicación (grilla)
+
+| N° | Descripción | Realizado | Quién |
+|----|-------------|-----------|-------|
+| 5N.9 | **Tab + grilla estilo planilla.** Sub-tab entre Bar Manager y Pedidos. Grilla: filas=barras (etiqueta+mult+cant), navegación matricial con flechas, **pegar desde Excel**, copiar-fila-abajo (Ctrl+D), fila plantilla con defaults heredables. | ☐ | YO |
+| 5N.10 | **3 modos de vista.** Agrupar (colapsable) · Filtro plano · **Agrupación visual** (todas visibles, pintadas por bandas de color por elemento, SIN colapsar → resuelve agregar en 2 ejes sin desagrupar). Toggle de renders (apagar para ver más barras). | ☐ | YO |
+| 5N.11 | **Ubicación en cascada + calidad de datos (ejes parecidos).** Proyecto→Piso→Ciclo→Sector→Eje autopoblado (`sectores-nav`) + "＋nuevo". NO bloquear; autocompletar agresivo; **advertencia SUAVE** por similitud (distancia de edición sobre normalizado trim+espacios+minúsculas); guardar el texto TAL CUAL (apóstrofes/tildes importan). Nunca fusión automática. | ☐ | YO |
+| 5N.12 | **Figura + dims dinámicas + render en vivo.** Selector de figura del catálogo → pide solo las dims que usa. Render con `disenadorMotor.dibujarFigura` **ajustado a las medidas** ingresadas. Diámetro lista fija (8,10,12,16,18,22,25,28,32,36). Marca por filtro de texto. cant+mult, cant_total derivado. Peso en vivo (con factor obra). | ☐ | YO |
+| 5N.13 | **Replicar en pisos.** Modal de selección de pisos → copia la barra, queda editable en el form (preview) antes de confirmar → al confirmar se reparte en sus agrupaciones. "Guardar y crear otra" (mantiene ubicación). Terminar lote → bloqueo. | ☐ | YO |
+
+### 5N-D — Bar Manager (integración)
+
+| N° | Descripción | Realizado | Quién |
+|----|-------------|-----------|-------|
+| 5N.14 | **Badge + filtro de barras `manual`** en Bar Manager (columna existe, filtros la respetan). Se ven separadas o integradas en la agrupación estándar. | ☐ | YO |
+| 5N.15 | **Edición por estado.** Barras `terminada` se editan SOLO desde Bar Manager (formulario = alta masiva; Bar Manager = corrección puntual; mismo motor, permiso por estado). Editar PRESERVA procedencia (`origen`/`lote_id`, suma `editado_por/fecha`) y marca el sector `modificado`. En "Agregar Cubicación" NUNCA se editan barras de otro canal. | ☐ | YO |
+
+### 5N-E — Limpieza y posproceso
+
+| N° | Descripción | Realizado | Quién |
+|----|-------------|-----------|-------|
+| 5N.16 | **Borrar la tercera matriz MUERTA** (confirmado huérfana, no en DOM ni navegación): `dashboards.js` + `tabs/dashboards.html` + 3 no-ops en `filtros.js:200-202`. CONSERVAR endpoints `/dashboard/sectores` y `/sectores-nav` (los usan las 2 matrices vivas: Exportación y ficha Obra). | ☐ | YO |
+| 5N.17 | **Herramienta de merge de ejes parecidos (posproceso).** Vista que agrupa ejes sospechosamente similares y permite fusionar manualmente ("Eje 1"/"EJE 1" → unificar). Fase aparte, no bloqueante. | ☐ | TÚ+YO |
+| 5N.18 | **Homologación catálogo (arrastrada de la 5N vieja).** Cruzar figuras dibujadas con las del catálogo detailer; panel para asociar/confirmar. Base para multi-catálogo (ver `docs/programa_multicatalogo.md`). No bloqueante. | ☐ | TÚ+YO |
 
 ---
 

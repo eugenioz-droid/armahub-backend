@@ -1,4 +1,12 @@
-# Programa de trabajo — Panel de creación de barras (Cubicación manual)
+# [SUPERSEDED 2026-07-28] Panel de creación de barras (Cubicación manual)
+
+> ⛔ **DOCUMENTO SUPERADO.** Reemplazado por el diseño cerrado en el maestro (bloque **5N** de
+> `docs/programa-versiones/programa_v1.00.md`), SPECS §4.7, y el anexo
+> `docs/programa_agregar_cubicacion.md`. Se conserva por trazabilidad histórica (protocolo:
+> no borrar sin confirmación). NO usar como referencia vigente — el diseño evolucionó
+> (rediseños de canales/sector_estado/lote, grilla, etc. no están acá).
+>
+> --- contenido histórico original abajo ---
 
 > Tab **Cubicar** dentro de Cubicaciones. Similar al Bar Manager pero enfocado en
 > **ingresar** barras (no consultar). Barras marcadas `origen='manual'` que

@@ -1,8 +1,11 @@
-# Planificación: Pedidos de Cliente (portal externo)
+# ANEXO de detalle: Pedidos de Cliente (portal externo)
+
+> **NO es un programa independiente.** Es el detalle de la visión de pedidos referida en SPECS
+> §4.7 y en el bloque 5N del maestro `docs/programa-versiones/programa_v1.00.md`. Cuando se
+> planifique su implementación tendrá su propia sub-fase en el maestro. Por ahora es fundamento.
 
 **Estado:** PLANIFICACIÓN — NO implementar aún. Se construye después de "Agregar Cubicación".
-Condiciona el diseño de HOY solo en que las barras llevan `origen` + `estado` + `lote` para que
-este flujo se enganche sin refactor. Ver [[project-armahub-pedidos-cliente]].
+Condiciona el diseño de HOY solo en que las barras llevan `origen` + `estado` + `lote`.
 
 ---
 
