@@ -264,34 +264,46 @@ function acRender() {
 }
 window.acRender = acRender;
 
+// Etiquetas y colores de sector, iguales al Bar Manager (SECTOR_LABEL/SECTOR_COLOR).
 var _AC_SECT_LBL = { ELEV:'Elevación', LCIELO:'Losas', VCIELO:'Vigas', FUND:'Fundación' };
+var _AC_SECT_COL = { ELEV:'#1565C0', LCIELO:'#7B1FA2', VCIELO:'#00897B', FUND:'#6D4C41' };
 function _acCtx() {
   return { sector: _acVal('acSector'), ciclo: _acVal('acCiclo') };
 }
 function _acVal(id) { var el = document.getElementById(id); return el && el.value ? el.value : ''; }
+// Badge de sector tipo pill, igual al _sectorBadge del Bar Manager.
+function _acSectorBadge(s) {
+  var lbl = _AC_SECT_LBL[s] || s || '—', col = _AC_SECT_COL[s] || '#555';
+  return '<span style="background:' + col + ';color:#fff;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600;">' + _acEsc(lbl) + '</span>';
+}
 
 function _acGrupoHTML(g) {
   var ctx = _acCtx();
-  var titulo = (_AC_SECT_LBL[ctx.sector] || ctx.sector || '—') + ' · ' + (ctx.ciclo || '—') +
-               ' · Eje ' + (g.eje || '—');
-  var h = '<div style="border:1px solid #cfd8dc; border-radius:8px; margin-bottom:14px; overflow:hidden;">';
-  // Cabecera del grupo.
-  h += '<div style="display:flex; gap:10px; align-items:flex-end; flex-wrap:wrap; padding:8px 10px; background:#eceff1;">';
-  h += '<div style="font-weight:700; color:#37474f; font-size:12px; align-self:center; min-width:180px;">' + _acEsc(titulo) + '</div>';
+  var h = '<div style="border:1px solid #e0e0e0; border-radius:8px; margin-bottom:14px; overflow:hidden;">';
+  // Cabecera del grupo: badge de sector (color BM) + ciclo + eje.
+  h += '<div style="display:flex; gap:10px; align-items:flex-end; flex-wrap:wrap; padding:8px 10px; background:#f7f7f7; border-bottom:1px solid #eee;">';
+  h += '<div style="align-self:center; min-width:170px; font-size:12px; color:#37474f;">' +
+       _acSectorBadge(ctx.sector) + ' <b>' + _acEsc(ctx.ciclo || '—') + '</b> · Eje <b>' + _acEsc(g.eje || '—') + '</b></div>';
   h += _acCampo('Eje/Losa', '<input type="text" list="acEjeDatalist" value="' + _acEsc(g.eje) + '" oninput="acSetGrupo(' + g._id + ',\'eje\',this.value)" style="' + _acInpStyle(110) + '"/><span id="acEjeAviso-' + g._id + '" style="display:none; font-size:10px; color:#e65100;"></span>');
   h += _acCampo('Plano (origen)', '<input type="text" value="' + _acEsc(g.nombre_plano) + '" oninput="acSetGrupo(' + g._id + ',\'nombre_plano\',this.value)" placeholder="nombre del plano" style="' + _acInpStyle(140) + '"/>');
   h += _acCampo('Pisos', '<input type="text" value="' + _acEsc(g.pisos.join(',')) + '" oninput="acSetPisos(' + g._id + ',this.value)" placeholder="P3,P4,P5 o P3-P7" style="' + _acInpStyle(150) + '"/><span id="acPisosInd-' + g._id + '" style="font-size:10px; color:#00695c;"></span>');
   h += '<div style="flex:1;"></div>';
+  // Rollup del grupo (Σ), estética Bar Manager: N barras · uds · kg (considera el
+  // estampado en pisos: cada barra × nº de pisos).
+  var roll = _acRollupGrupo(g);
+  h += '<div style="align-self:center; font-size:11px; color:#666; margin-right:6px;">' +
+       '<b style="color:#37474f;">' + roll.n + '</b> barras · <b style="color:#37474f;">' + _acFmt(roll.uds) + '</b> uds · <b style="color:#00695c;">' + _acFmt(roll.kg, 1) + '</b> kg</div>';
   h += '<button onclick="acAgregarBarra(' + g._id + ')" style="font-size:11px; padding:4px 10px; background:#00695c; color:#fff; border:none; border-radius:4px; cursor:pointer;">＋ barra</button>';
   h += '<button onclick="acDuplicarGrupo(' + g._id + ')" title="Duplicar grupo" style="font-size:11px; padding:4px 8px; background:#fff; color:#00695c; border:1px solid #00695c; border-radius:4px; cursor:pointer;">⧉</button>';
   h += '<button onclick="acBorrarGrupo(' + g._id + ')" title="Quitar grupo" style="font-size:13px; padding:2px 8px; border:none; background:none; color:#c62828; cursor:pointer;">✕</button>';
   h += '</div>';
-  // Grilla de barras del grupo.
-  h += '<div style="overflow-x:auto;"><table style="width:100%; font-size:11px; border-collapse:collapse; white-space:nowrap;">';
-  var cols = ['Marca'];
+  // Grilla de barras del grupo. Orden de columnas homologado con el Bar Manager:
+  // Marca · φ · Cant · Mult · Largo · Peso · Figura · [Dibujo] · A-I · α1-α4 · R.
+  h += '<div style="overflow-x:auto;"><table style="width:100%; min-width:1100px; font-size:11px; border-collapse:collapse; white-space:nowrap;">';
+  var cols = ['Marca', 'φ', 'Cant', 'Mult', 'Largo', 'Peso', 'Figura'];
   if (_acRenders) cols.push('Dibujo');
-  cols = cols.concat(['Figura']).concat(_AC_LETRAS).concat(['α1','α2','α3','α4','R','φ','Cant','Mult','Largo','Peso','']);
-  h += '<tr style="background:#f5f5f5;">' + cols.map(function(c){ return '<th style="padding:3px 5px; border-bottom:1px solid #ddd; font-weight:600;">' + c + '</th>'; }).join('') + '</tr>';
+  cols = cols.concat(_AC_LETRAS).concat(['α1','α2','α3','α4','R','']);
+  h += '<tr style="color:#666; background:#fafafa;">' + cols.map(function(c){ return '<th style="padding:3px 6px; border-bottom:1px solid #ddd; font-weight:600; text-align:left;">' + c + '</th>'; }).join('') + '</tr>';
   g.barras.forEach(function(b) { h += _acBarraHTML(g, b); });
   h += '</table></div>';
   h += '</div>';
@@ -310,29 +322,32 @@ function _acBarraHTML(g, b) {
       'oninput="acSetBarra(' + g._id + ',' + b._id + ',\'' + campo + '\',this.value)" ' +
       'style="width:' + (w||42) + 'px; font-size:11px; box-sizing:border-box; border:1px solid #ddd; padding:1px 2px;" />';
   }
-  var td = '<td style="padding:2px 3px; border-bottom:1px solid #eee;">';
+  var td = '<td style="padding:2px 6px; border-bottom:1px solid #f0f0f0;">';
+  var vacio = '<td style="padding:2px 6px; border-bottom:1px solid #f0f0f0; background:#fafafa;"></td>';
   var h = '<tr>';
-  // Marca: input con datalist de marcas de la obra.
-  h += td + '<input type="text" list="acMarcasDatalist" value="' + _acEsc(b.marca||'') + '" oninput="acSetBarra(' + g._id + ',' + b._id + ',\'marca\',this.value)" style="width:64px; font-size:11px; border:1px solid #ddd; padding:1px 2px;"/></td>';
-  if (_acRenders) h += td + '<span id="acFig-' + b._id + '">' + _acMiniFigura(b) + '</span></td>';
-  // Figura con datalist del catálogo.
-  h += td + '<input type="text" list="acFigurasDatalist" value="' + _acEsc(b.figura||'') + '" oninput="acSetBarra(' + g._id + ',' + b._id + ',\'figura\',this.value)" style="width:64px; font-size:11px; border:1px solid #ddd; padding:1px 2px;"/></td>';
-  _AC_LETRAS.forEach(function(l) {
-    var campo = 'dim_' + l.toLowerCase();
-    var usa = info.dims.indexOf(campo) !== -1 || !b.figura;
-    h += usa ? (td + inp(campo, 38, 'number') + '</td>') : '<td style="padding:2px 3px; border-bottom:1px solid #eee; background:#fafafa;"></td>';
-  });
-  _AC_ANGS.forEach(function(a, idx) {
-    var usa = idx < info.angs || !b.figura;
-    h += usa ? (td + inp(a, 38, 'number') + '</td>') : '<td style="padding:2px 3px; border-bottom:1px solid #eee; background:#fafafa;"></td>';
-  });
-  var usaR = info.radio || !b.figura;
-  h += usaR ? (td + inp('radio', 42, 'number') + '</td>') : '<td style="padding:2px 3px; border-bottom:1px solid #eee; background:#fafafa;"></td>';
+  // Orden homologado con el Bar Manager: Marca · φ · Cant · Mult · Largo · Peso · Figura
+  // · [Dibujo] · A-I · α1-α4 · R · acciones.
+  // Marca (datalist de marcas de la obra).
+  h += td + '<input type="text" list="acMarcasDatalist" value="' + _acEsc(b.marca||'') + '" oninput="acSetBarra(' + g._id + ',' + b._id + ',\'marca\',this.value)" style="width:64px; font-size:11px; border:1px solid #ddd; padding:1px 2px; font-weight:600;"/></td>';
   h += td + inp('diam', 42, 'number') + '</td>';
   h += td + inp('cant', 42, 'number') + '</td>';
   h += td + inp('mult', 38, 'number') + '</td>';
-  h += td + '<span id="acLargo-' + b._id + '" style="color:#00695c; font-weight:600;">' + _acFmt(_acLargoBarra(b)) + '</span></td>';
-  h += td + '<span id="acPeso-' + b._id + '" style="color:#00695c; font-weight:600;">' + _acFmt(_acPesoBarra(b), 2) + '</span></td>';
+  h += td + '<span id="acLargo-' + b._id + '" style="color:#1565c0; font-weight:600;">' + _acFmt(_acLargoBarra(b)) + '</span></td>';
+  h += td + '<span id="acPeso-' + b._id + '" style="color:#00695c; font-weight:600;">' + _acFmt(_acPesoBarra(b), 1) + '</span></td>';
+  // Figura (datalist del catálogo).
+  h += td + '<input type="text" list="acFigurasDatalist" value="' + _acEsc(b.figura||'') + '" oninput="acSetBarra(' + g._id + ',' + b._id + ',\'figura\',this.value)" style="width:64px; font-size:11px; border:1px solid #ddd; padding:1px 2px;"/></td>';
+  if (_acRenders) h += td + '<span id="acFig-' + b._id + '">' + _acMiniFigura(b) + '</span></td>';
+  _AC_LETRAS.forEach(function(l) {
+    var campo = 'dim_' + l.toLowerCase();
+    var usa = info.dims.indexOf(campo) !== -1 || !b.figura;
+    h += usa ? (td + inp(campo, 38, 'number') + '</td>') : vacio;
+  });
+  _AC_ANGS.forEach(function(a, idx) {
+    var usa = idx < info.angs || !b.figura;
+    h += usa ? (td + inp(a, 38, 'number') + '</td>') : vacio;
+  });
+  var usaR = info.radio || !b.figura;
+  h += usaR ? (td + inp('radio', 42, 'number') + '</td>') : vacio;
   h += td + '<button onclick="acCopiarBarra(' + g._id + ',' + b._id + ')" title="Copiar barra" style="border:none; background:none; color:#1565c0; cursor:pointer; font-size:12px;">⎘</button>' +
        '<button onclick="acBorrarBarra(' + g._id + ',' + b._id + ')" title="Quitar" style="border:none; background:none; color:#c62828; cursor:pointer; font-size:12px;">✕</button></td>';
   h += '</tr>';
@@ -340,6 +355,22 @@ function _acBarraHTML(g, b) {
 }
 
 function _acFmt(v, dec) { if (v == null || isNaN(v)) return '—'; return dec ? Number(v).toFixed(dec) : Math.round(Number(v)); }
+
+// Rollup del grupo: totales considerando el estampado en pisos (cada barra se replica
+// en nº de pisos). n = nº de items al guardar; uds = Σ cant_total; kg = Σ peso_total.
+function _acRollupGrupo(g) {
+  var mult = Math.max(1, g.pisos.length);   // sin pisos → cuenta 1 vez
+  var n = 0, uds = 0, kg = 0;
+  g.barras.forEach(function(b) {
+    if (b.diam == null) return;
+    n += mult;
+    var ct = (Number(b.cant) || 0) * (Number(b.mult) || 1);
+    uds += ct * mult;
+    var p = _acPesoBarra(b);
+    if (p != null) kg += p * mult;
+  });
+  return { n: n, uds: uds, kg: kg };
+}
 
 function _acMiniFigura(b) {
   if (!b.figura || !_acFiguras[b.figura]) return '<span style="color:#bbb;">—</span>';
