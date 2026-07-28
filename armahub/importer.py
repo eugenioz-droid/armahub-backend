@@ -823,18 +823,9 @@ async def import_armadetailer(
 # ========================= MAPEO DIÁMETRO → CÓDIGO PRODUCTO =========================
 
 # Códigos de producto oficiales Armacero por diámetro (mm)
-_DIAM_COD_MAP: dict[float, str] = {
-    8.0:  "110002788",
-    10.0: "110002774",
-    12.0: "110002710",
-    16.0: "110002776",
-    18.0: "110002718",
-    22.0: "110002790",
-    25.0: "110002717",
-    28.0: "110002777",
-    32.0: "110002778",
-    36.0: "110002779",
-}
+# Fuente de verdad compartida (diametros.py): el mismo mapa lo usa lotes.py al crear
+# barras manuales, sin importar importer.py (que arrastra pandas).
+from .diametros import DIAM_COD_MAP as _DIAM_COD_MAP
 
 
 def _normalizar_cod_prod(val) -> str:

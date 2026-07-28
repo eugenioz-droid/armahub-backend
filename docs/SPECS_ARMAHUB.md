@@ -765,24 +765,31 @@ columnas MUERTAS (nadie las lee) — se dejan quietas, no forman parte del dise�
 **REDISEÑO C — Lote (`lote_id`):** tabla `lotes` + columna `lote_id` en `barras` (aditiva, NULL
 para CSV). Trazabilidad de la tanda; no afecta la agrupación constructiva.
 
-**Formulario (grilla estilo planilla):**
-- **3 modos de vista:** Agrupar (colapsable) · Filtro plano · **Agrupación visual** (todas las
-  barras visibles, pintadas por bandas de color por elemento, SIN colapsar — resuelve "agregar en
-  2 ejes sin desagrupar").
-- Navegación matricial con flechas, **pegar desde Excel**, copiar-fila-abajo, fila plantilla.
-- **Ubicación en cascada** (Proyecto→Piso→Ciclo→Sector→Eje) autopoblada (`sectores-nav`) +
-  "＋ nuevo". Calidad de datos de ejes: NO bloquear, autocompletar agresivo, **advertencia suave**
-  ante nombres similares (distancia de edición sobre normalizado: trim+espacios+minúsculas),
-  guardar el texto TAL CUAL (apóstrofes/tildes importan), + **herramienta de merge posterior**
-  (posproceso). Nunca fusión automática.
-- **Figura del catálogo** → dims dinámicas (solo las que usa) + **render en vivo ajustado a las
-  medidas** (`disenadorMotor.dibujarFigura`) + toggle de renders.
-- Diámetro: lista fija (8,10,12,16,18,22,25,28,32,36 mm). Marca: filtro de texto (limitar
-  variaciones). `cant` + `mult` (doble/triple malla), `cant_total` derivado. Peso en vivo.
-- **Replicar en pisos:** modal de selección de pisos → copia la barra, queda editable en el form
-  (preview) antes de confirmar → al confirmar se reparte en sus agrupaciones.
-- **`largo_total` AUTOMÁTICO** = suma de dims parciales (radio NO suma; sin desarrollo de
-  dobleces). Hook aislado (`_largo_desde_figura`) para futuras barras redondas/estribos.
+**MODELO DE INGRESO — "GRUPOS por elemento + estampado en pisos" (rediseño 2026-07-28, tras
+smoke test; reemplaza la grilla plana inicial que no reflejaba cómo cubica el usuario).** El
+cubicador NO piensa en barras sueltas; piensa por ELEMENTO constructivo y el PISO es el eje de
+replicación masiva (una losa tipo se repite en 15 pisos = 15 items idénticos salvo el piso).
+- **Contexto GLOBAL (arriba, común a todos los grupos):** Obra · Ciclo · Sector (elemento
+  constructivo: ELEV/LCIELO/VCIELO/FUND, selector FIJO — es enum validado, NO texto libre). Ej.
+  "ELEV · C1". Cambiar de ciclo/sector = nueva tanda de trabajo.
+- **GRUPOS de barras (unidad de cubicación):** cada grupo define **Eje** + **Nombre de plano**
+  (texto libre, de dónde sacó las barras — POR grupo/elemento) + **selector de PISOS** (P3,P4,P5…)
+  + sus **barras**. Se pueden tener varios grupos abiertos (distintos ejes del mismo ciclo/sector).
+- **Estampado en pisos (la eficiencia):** el grupo se define UNA vez y se aplica a los pisos
+  elegidos → al guardar genera **1 item por (barra × piso)**. `cant` es POR PISO (cant=4 en 5
+  pisos = 4 barras en cada uno). Herramientas: duplicar grupo, pegar desde Excel (barras), copiar
+  barra-abajo.
+- **Barras de un grupo (grilla):** Marca (desplegable con texto dinámico de las marcas existentes)
+  · Figura (del catálogo → pide solo las dims que usa + **render en vivo** ajustado a las medidas)
+  · φ (lista fija 8,10,12,16,18,22,25,28,32,36) · dims · Cant · Mult (doble/triple malla).
+- **PROD (cod_proyecto):** NO se pide en el editor. Se deriva del DIÁMETRO en el backend con el
+  mapa `_DIAM_COD_MAP` (importer.py) reutilizado en `lotes.py`. Va a la BD y a la exportación.
+- **Eje:** texto libre autopoblado (`/filters`), NO bloquear, **advertencia suave** por similitud
+  (normalizado solo para comparar; guardar tal cual). Merge posterior = fase aparte.
+- **`largo_total` y peso AUTOMÁTICOS** (suma de dims de la figura; radio no suma; peso × factor
+  obra). Hook `_largo_desde_figura` para barras redondas futuras.
+- **Vista:** las barras creadas se agrupan por ELEMENTO real (piso+sector+eje), como el Bar
+  Manager, con rollups Σcant/Σlargo/Σkg por grupo.
 
 **Backend creación:** rehabilitar `POST /barras/crear` como parte del modelo de canales. Barra:
 `origen='manual'`, `import_id=NULL`, `lote_id=<lote>`, `fecha_carga=now`, `editado_por=user`,

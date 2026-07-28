@@ -1,58 +1,57 @@
-// ArmaHub — 5N-C: "Agregar Cubicación" (Formulario de Cubicación).
-// Grilla estilo planilla para ingresar barras manuales. Reusa: /filters (cascada de
-// ubicación), /figuras-catalogo + disenadorMotor.dibujarFigura (figura+render),
-// /lotes + /lotes/{id}/barras (backend 5N-B). IDs propios 'ac*' (no chocan con el
-// Bar Manager, que vive en el DOM a la vez). Scope global (como filtros.js/barmanager.js).
+// ArmaHub — "Agregar Cubicación" (Formulario de Cubicación) — modelo GRUPOS por elemento.
+// Contexto global (Obra·Ciclo·Sector) + GRUPOS (cada uno = Eje + plano + pisos + barras).
+// Al guardar, cada grupo se ESTAMPA en sus pisos: 1 barra por (barra × piso). El backend
+// (lotes.py) recibe el array ya expandido, valida geometría, asigna PROD por diámetro, y
+// calcula largo/peso. Reusa /filters (contexto), /figuras-catalogo (figuras+render),
+// /barras/facetas (marcas). Scope global. IDs 'ac*'.
 
-// ---- Estado del módulo ----
-var _acProyCache = [];        // [{id, nombre}] para resolver el buscador de obra
-var _acFiguras = {};          // codigo -> {parciales, angulos, radio, geometria}
-var _acFilas = [];            // filas de la grilla (cada una = una barra a crear)
-var _acVista = 'plano';       // 'agrupar' | 'plano' | 'color'
-var _acRenders = true;        // mostrar mini-render de figura
-var _acLoteId = null;         // lote en curso (se crea al guardar)
-var _acLoteEstado = null;     // 'borrador' | 'terminada'
-var _acSeq = 0;               // id local incremental de fila
-var _acEjesObra = [];         // ejes existentes de la obra (para autocompletar/advertir)
+// ---- Estado ----
+var _acProyCache = [];        // [{id, nombre}]
+var _acFiguras = {};          // codigo -> figura del catálogo
+var _acMarcas = [];           // marcas existentes de la obra (para el datalist)
+var _acGrupos = [];           // [{_id, eje, nombre_plano, pisos:[], barras:[]}]
+var _acRenders = true;
+var _acLoteId = null;
+var _acLoteEstado = null;
+var _acSeq = 0;               // id incremental (grupos y barras)
+var _acEjesObra = [];
 
-var _AC_DIMS = ['dim_a','dim_b','dim_c','dim_d','dim_e','dim_f','dim_g','dim_h','dim_i'];
-var _AC_ANGS = ['ang1','ang2','ang3','ang4'];
 var _AC_LETRAS = ['A','B','C','D','E','F','G','H','I'];
+var _AC_ANGS = ['ang1','ang2','ang3','ang4'];
 
-// Loader del tab (registrado en shell.js tabLoaders). Se llama al abrir el tab.
+// Loader del tab.
 async function loadAgregarCubicacion() {
   await _acCargarFiguras();
   await _acCargarProyectos();
-  if (_acFilas.length === 0) acAgregarFila();   // arrancar con una fila vacía
+  if (_acGrupos.length === 0) acAgregarGrupo();
   _acRender();
 }
 window.loadAgregarCubicacion = loadAgregarCubicacion;
 
-// ---- Carga de datos maestros ----
+// ---- Datos maestros ----
 async function _acCargarFiguras() {
   try {
-    var data = await apiGet('/figuras-catalogo');
-    (data && data.figuras || []).forEach(function(f) { _acFiguras[f.codigo] = f; });
-  } catch (e) { /* degrada: sin figuras el form igual pide dims por defecto */ }
+    var d = await apiGet('/figuras-catalogo');
+    (d && d.figuras || []).forEach(function(f) { _acFiguras[f.codigo] = f; });
+  } catch (e) {}
 }
 async function _acCargarProyectos() {
   try {
-    var data = await apiGet('/filters');
-    _acProyCache = (data && data.proyectos) || [];
+    var d = await apiGet('/filters');
+    _acProyCache = (d && d.proyectos) || [];
     var dl = document.getElementById('acProyectosDatalist');
     if (dl) dl.innerHTML = _acProyCache.map(function(p) {
       return '<option value="' + _acEsc(p.nombre || p.id) + '"></option>';
     }).join('');
-  } catch (e) { /* degrada */ }
+  } catch (e) {}
 }
-
 function _acEsc(s) {
   return String(s == null ? '' : s).replace(/[&<>"']/g, function(c) {
     return { '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c];
   });
 }
 
-// ---- Buscador de obra (resuelve texto -> id, luego carga ubicación de esa obra) ----
+// ---- Buscador de obra → carga contexto (ciclos/ejes/marcas de la obra) ----
 function acProyectoInput() {
   var input = document.getElementById('acProyectoInput');
   var sel = document.getElementById('acProyecto');
@@ -67,88 +66,150 @@ function acProyectoInput() {
   }
   if (id === sel.value) return;
   sel.value = id;
-  if (id) _acCargarUbicacion(id);
+  if (id) { _acCargarContexto(id); _acCargarMarcas(id); }
 }
 window.acProyectoInput = acProyectoInput;
 
-// Poblar los datalists de ubicación (sector/piso/ciclo/eje) con lo existente de la obra.
-async function _acCargarUbicacion(idProyecto) {
+async function _acCargarContexto(idProyecto) {
   try {
     var d = await apiGet('/filters?proyecto=' + encodeURIComponent(idProyecto));
-    _acFillDatalist('acSectorDatalist', d && d.sectores);
-    _acFillDatalist('acPisoDatalist', d && d.pisos);
     _acFillDatalist('acCicloDatalist', d && d.ciclos);
-    _acFillDatalist('acEjeDatalist', d && d.ejes);
     _acEjesObra = (d && d.ejes) || [];
-  } catch (e) { /* degrada */ }
+    _acRender();   // re-render para poblar los datalists de eje de cada grupo
+  } catch (e) {}
+}
+async function _acCargarMarcas(idProyecto) {
+  try {
+    var d = await apiGet('/barras/facetas?proyecto=' + encodeURIComponent(idProyecto));
+    _acMarcas = (d && d.tipologias) || [];   // 'tipologias' = marcas presentes en la obra
+    _acRefrescarDatalists();
+  } catch (e) {}
 }
 function _acFillDatalist(id, items) {
   var dl = document.getElementById(id);
   if (!dl) return;
   dl.innerHTML = (items || []).map(function(v) { return '<option value="' + _acEsc(v) + '"></option>'; }).join('');
 }
-
-// Advertencia SUAVE de eje parecido (5N.11): no bloquea, solo avisa. Compara normalizado
-// (trim + colapsar espacios + minúsculas); si existe uno igual normalizado pero distinto
-// tal cual, sugiere el existente. NUNCA fusiona.
-function acEjeInput() {
-  var input = document.getElementById('acEje');
-  var av = document.getElementById('acEjeAviso');
-  if (!input || !av) return;
-  var v = (input.value || '');
-  var norm = _acNorm(v);
-  if (!norm) { av.style.display = 'none'; return; }
-  var iguales = _acEjesObra.filter(function(e) { return _acNorm(e) === norm && e !== v; });
-  if (iguales.length) {
-    av.textContent = '⚠ Existe "' + iguales[0] + '". ¿Es ese o uno nuevo?';
-    av.style.display = '';
-  } else { av.style.display = 'none'; }
-}
-window.acEjeInput = acEjeInput;
 function _acNorm(s) { return String(s || '').trim().replace(/\s+/g, ' ').toLowerCase(); }
 
-// ---- Grilla: filas ----
-function _acNuevaFila() {
+// ---- Grupos ----
+function _acNuevoGrupo() {
   _acSeq++;
-  return {
-    _id: _acSeq,
-    sector: null, piso: null, ciclo: null, eje: null,
-    diam: null, figura: null, marca: null, cant: 1, mult: 1,
-    dim_a: null, dim_b: null, dim_c: null, dim_d: null, dim_e: null,
-    dim_f: null, dim_g: null, dim_h: null, dim_i: null,
-    ang1: null, ang2: null, ang3: null, ang4: null, radio: null
-  };
+  return { _id: _acSeq, eje: '', nombre_plano: '', pisos: [], barras: [_acNuevaBarra()] };
 }
-function acAgregarFila() {
-  var f = _acNuevaFila();
-  // Heredar la ubicación por defecto de la cabecera.
-  f.sector = _acVal('acSector'); f.piso = _acVal('acPiso');
-  f.ciclo = _acVal('acCiclo'); f.eje = _acVal('acEje');
-  _acFilas.push(f);
+function _acNuevaBarra() {
+  _acSeq++;
+  var b = { _id: _acSeq, marca: '', figura: '', diam: null, cant: 1, mult: 1, radio: null };
+  _AC_LETRAS.forEach(function(l) { b['dim_' + l.toLowerCase()] = null; });
+  _AC_ANGS.forEach(function(a) { b[a] = null; });
+  return b;
+}
+function acAgregarGrupo() { _acGrupos.push(_acNuevoGrupo()); _acRender(); }
+window.acAgregarGrupo = acAgregarGrupo;
+
+function acBorrarGrupo(gid) {
+  if (_acGrupos.length <= 1) { _acGrupos = [_acNuevoGrupo()]; }
+  else _acGrupos = _acGrupos.filter(function(g) { return g._id !== gid; });
   _acRender();
 }
-window.acAgregarFila = acAgregarFila;
-function _acVal(id) { var el = document.getElementById(id); return el && el.value ? el.value : null; }
+window.acBorrarGrupo = acBorrarGrupo;
 
-function acBorrarFila(fid) {
-  _acFilas = _acFilas.filter(function(f) { return f._id !== fid; });
+function acDuplicarGrupo(gid) {
+  var g = _acGrupos.find(function(x) { return x._id === gid; });
+  if (!g) return;
+  var copia = JSON.parse(JSON.stringify(g));
+  _acSeq++; copia._id = _acSeq;
+  copia.barras.forEach(function(b) { _acSeq++; b._id = _acSeq; });
+  _acGrupos.push(copia);
   _acRender();
 }
-window.acBorrarFila = acBorrarFila;
+window.acDuplicarGrupo = acDuplicarGrupo;
 
-// Actualiza un campo de una fila desde un input de la grilla.
-function acSetCampo(fid, campo, valor) {
-  var f = _acFilas.find(function(x) { return x._id === fid; });
-  if (!f) return;
+function acSetGrupo(gid, campo, valor) {
+  var g = _acGrupos.find(function(x) { return x._id === gid; });
+  if (!g) return;
+  g[campo] = valor;
+  if (campo === 'eje') _acAvisoEje(gid, valor);
+}
+window.acSetGrupo = acSetGrupo;
+
+// Pisos del grupo: se ingresan como texto "P3,P4,P5" o rango "P3-P7" (se expande).
+function acSetPisos(gid, texto) {
+  var g = _acGrupos.find(function(x) { return x._id === gid; });
+  if (!g) return;
+  g.pisos = _acParsePisos(texto);
+  var ind = document.getElementById('acPisosInd-' + gid);
+  if (ind) ind.textContent = g.pisos.length ? (g.pisos.length + ' piso(s): ' + g.pisos.join(', ')) : '';
+}
+window.acSetPisos = acSetPisos;
+
+// Acepta "P3,P4,P5", "3,4,5", "P3-P7" (rango numérico con prefijo P). Devuelve lista.
+function _acParsePisos(texto) {
+  var out = [];
+  (texto || '').split(',').forEach(function(tok) {
+    tok = tok.trim();
+    if (!tok) return;
+    var m = tok.match(/^([A-Za-z]*)(\d+)\s*-\s*([A-Za-z]*)(\d+)$/);
+    if (m) {
+      var pref = m[1] || m[3] || '';
+      var a = parseInt(m[2], 10), b = parseInt(m[4], 10);
+      if (a <= b) for (var i = a; i <= b; i++) out.push(pref + i);
+    } else out.push(tok);
+  });
+  // dedup preservando orden
+  var seen = {}; return out.filter(function(p) { if (seen[p]) return false; seen[p] = 1; return true; });
+}
+
+function _acAvisoEje(gid, valor) {
+  var av = document.getElementById('acEjeAviso-' + gid);
+  if (!av) return;
+  var norm = _acNorm(valor);
+  if (!norm) { av.style.display = 'none'; return; }
+  var iguales = _acEjesObra.filter(function(e) { return _acNorm(e) === norm && e !== valor; });
+  if (iguales.length) { av.textContent = '⚠ Existe "' + iguales[0] + '"'; av.style.display = ''; }
+  else av.style.display = 'none';
+}
+
+// ---- Barras de un grupo ----
+function acAgregarBarra(gid) {
+  var g = _acGrupos.find(function(x) { return x._id === gid; });
+  if (g) { g.barras.push(_acNuevaBarra()); _acRender(); }
+}
+window.acAgregarBarra = acAgregarBarra;
+
+function acBorrarBarra(gid, bid) {
+  var g = _acGrupos.find(function(x) { return x._id === gid; });
+  if (!g) return;
+  g.barras = g.barras.filter(function(b) { return b._id !== bid; });
+  if (!g.barras.length) g.barras.push(_acNuevaBarra());
+  _acRender();
+}
+window.acBorrarBarra = acBorrarBarra;
+
+// Copiar una barra hacia abajo (duplica al final del grupo).
+function acCopiarBarra(gid, bid) {
+  var g = _acGrupos.find(function(x) { return x._id === gid; });
+  if (!g) return;
+  var b = g.barras.find(function(x) { return x._id === bid; });
+  if (!b) return;
+  var c = JSON.parse(JSON.stringify(b)); _acSeq++; c._id = _acSeq;
+  g.barras.push(c); _acRender();
+}
+window.acCopiarBarra = acCopiarBarra;
+
+function acSetBarra(gid, bid, campo, valor) {
+  var g = _acGrupos.find(function(x) { return x._id === gid; });
+  if (!g) return;
+  var b = g.barras.find(function(x) { return x._id === bid; });
+  if (!b) return;
   var num = ['diam','cant','mult','radio'].indexOf(campo) !== -1 || campo.indexOf('dim_') === 0 || campo.indexOf('ang') === 0;
-  f[campo] = (valor === '' || valor == null) ? null : (num ? Number(valor) : valor);
-  // Al cambiar figura, re-render (cambian las dims pedidas) y refrescar preview de esa fila.
-  if (campo === 'figura') _acRender();
-  else _acActualizarFilaVisual(f);
+  b[campo] = (valor === '' || valor == null) ? null : (num ? Number(valor) : valor);
+  if (campo === 'figura') _acRender();        // cambian las dims pedidas
+  else _acActualizarBarraVisual(gid, b);
 }
-window.acSetCampo = acSetCampo;
+window.acSetBarra = acSetBarra;
 
-// Qué dims usa la figura elegida (parciales). Si no hay figura, no pide dims.
+// ---- Geometría / largo / peso ----
 function _acDimsDeFigura(codigo) {
   var fig = _acFiguras[codigo];
   if (!fig) return { dims: [], angs: 0, radio: false };
@@ -157,39 +218,24 @@ function _acDimsDeFigura(codigo) {
                    .map(function(l) { return 'dim_' + l.toLowerCase(); });
   return { dims: dims, angs: (fig.angulos || []).length, radio: !!fig.radio };
 }
-
-// Largo automático de una fila (suma de las dims que usa la figura; radio no suma).
-function _acLargoFila(f) {
-  if (!f.figura || !_acFiguras[f.figura]) return null;
-  var info = _acDimsDeFigura(f.figura);
-  var total = 0;
+function _acLargoBarra(b) {
+  if (!b.figura || !_acFiguras[b.figura]) return null;
+  var info = _acDimsDeFigura(b.figura), total = 0;
   for (var i = 0; i < info.dims.length; i++) {
-    var v = f[info.dims[i]];
-    if (v == null || isNaN(v)) return null;   // falta un lado usado
+    var v = b[info.dims[i]];
+    if (v == null || isNaN(v)) return null;
     total += Number(v);
   }
   return total;
 }
-// Peso teórico (kg) de una fila. Mismo cálculo que el backend (sin factor de obra,
-// que es del server; acá es solo preview).
-function _acPesoFila(f) {
-  var largo = _acLargoFila(f);
-  if (f.diam == null || largo == null) return null;
-  var pu = 7850 * 3.1416 * (Number(f.diam) / 2000) * (Number(f.diam) / 2000) * (largo / 100);
-  var ct = (Number(f.cant) || 0) * (Number(f.mult) || 1);
-  return pu * ct;
+function _acPesoBarra(b) {
+  var largo = _acLargoBarra(b);
+  if (b.diam == null || largo == null) return null;
+  var pu = 7850 * 3.1416 * (Number(b.diam) / 2000) * (Number(b.diam) / 2000) * (largo / 100);
+  return pu * ((Number(b.cant) || 0) * (Number(b.mult) || 1));
 }
 
-// ---- Render de la grilla ----
-function acSetVista(v) {
-  _acVista = v;
-  ['agrupar','plano','color'].forEach(function(m) {
-    var b = document.getElementById('acVista' + m.charAt(0).toUpperCase() + m.slice(1));
-    if (b) { b.style.background = (m === v) ? '#00695c' : '#fff'; b.style.color = (m === v) ? '#fff' : '#00695c'; }
-  });
-  _acRender();
-}
-window.acSetVista = acSetVista;
+// ---- Render ----
 function acToggleRender() {
   var c = document.getElementById('acToggleRender');
   _acRenders = !!(c && c.checked);
@@ -197,212 +243,205 @@ function acToggleRender() {
 }
 window.acToggleRender = acToggleRender;
 
-// Color por elemento constructivo (para la "agrupación visual" sin colapsar).
-var _AC_COLORES = ['#e8f5e9','#e3f2fd','#fff3e0','#f3e5f5','#e0f2f1','#fce4ec'];
-function _acColorElemento(f) {
-  if (_acVista !== 'color') return '';
-  var key = (f.sector || '') + '|' + (f.piso || '') + '|' + (f.eje || '');
-  var idx = _acHash(key) % _AC_COLORES.length;
-  return _AC_COLORES[idx];
-}
-function _acHash(s) { var h = 0; for (var i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) & 0x7fffffff; return h; }
-
-function _acRender() {
-  var cont = document.getElementById('acGrid');
+function acRender() {
+  var cont = document.getElementById('acGrupos');
   if (!cont) return;
-  // Cabecera de la grilla.
-  var cols = ['#','Sector','Piso','Ciclo','Eje/Losa','Figura'];
-  if (_acRenders) cols.push('Dibujo');
-  cols = cols.concat(_AC_LETRAS.map(function(l){ return l; }));
-  cols = cols.concat(['α1','α2','α3','α4','R','φ','Cant','Mult','Largo','Peso','']);
-  var html = '<table style="width:100%; font-size:11px; border-collapse:collapse; white-space:nowrap;">';
-  html += '<tr style="background:#f5f5f5; position:sticky; top:0;">' +
-    cols.map(function(c){ return '<th style="padding:3px 5px; border-bottom:1px solid #ddd; font-weight:600;">' + c + '</th>'; }).join('') + '</tr>';
-
-  var filas = _acFilas.slice();
-  if (_acVista === 'agrupar') filas.sort(_acCmpAgrupar);
-  filas.forEach(function(f, i) {
-    html += _acFilaHTML(f, i);
+  _acAsegurarDatalists();
+  cont.innerHTML = _acGrupos.map(_acGrupoHTML).join('');
+  // Restaurar indicador de pisos por grupo.
+  _acGrupos.forEach(function(g) {
+    var ind = document.getElementById('acPisosInd-' + g._id);
+    if (ind) ind.textContent = g.pisos.length ? (g.pisos.length + ' piso(s): ' + g.pisos.join(', ')) : '';
   });
-  html += '</table>';
-  cont.innerHTML = html;
-
   var res = document.getElementById('acResumen');
-  if (res) res.textContent = _acFilas.length + ' barra(s) en el lote';
+  if (res) {
+    var totalItems = _acGrupos.reduce(function(s, g) {
+      return s + g.barras.filter(function(b){ return b.diam != null; }).length * Math.max(1, g.pisos.length);
+    }, 0);
+    res.textContent = _acGrupos.length + ' grupo(s) · ' + totalItems + ' barra(s) al guardar';
+  }
   _acActualizarEstadoLote();
 }
+window.acRender = acRender;
 
-function _acCmpAgrupar(a, b) {
-  return ((a.sector||'')+(a.piso||'')+(a.eje||'')).localeCompare((b.sector||'')+(b.piso||'')+(b.eje||''));
+var _AC_SECT_LBL = { ELEV:'Elevación', LCIELO:'Losas', VCIELO:'Vigas', FUND:'Fundación' };
+function _acCtx() {
+  return { sector: _acVal('acSector'), ciclo: _acVal('acCiclo') };
+}
+function _acVal(id) { var el = document.getElementById(id); return el && el.value ? el.value : ''; }
+
+function _acGrupoHTML(g) {
+  var ctx = _acCtx();
+  var titulo = (_AC_SECT_LBL[ctx.sector] || ctx.sector || '—') + ' · ' + (ctx.ciclo || '—') +
+               ' · Eje ' + (g.eje || '—');
+  var h = '<div style="border:1px solid #cfd8dc; border-radius:8px; margin-bottom:14px; overflow:hidden;">';
+  // Cabecera del grupo.
+  h += '<div style="display:flex; gap:10px; align-items:flex-end; flex-wrap:wrap; padding:8px 10px; background:#eceff1;">';
+  h += '<div style="font-weight:700; color:#37474f; font-size:12px; align-self:center; min-width:180px;">' + _acEsc(titulo) + '</div>';
+  h += _acCampo('Eje/Losa', '<input type="text" list="acEjeDatalist" value="' + _acEsc(g.eje) + '" oninput="acSetGrupo(' + g._id + ',\'eje\',this.value)" style="' + _acInpStyle(110) + '"/><span id="acEjeAviso-' + g._id + '" style="display:none; font-size:10px; color:#e65100;"></span>');
+  h += _acCampo('Plano (origen)', '<input type="text" value="' + _acEsc(g.nombre_plano) + '" oninput="acSetGrupo(' + g._id + ',\'nombre_plano\',this.value)" placeholder="nombre del plano" style="' + _acInpStyle(140) + '"/>');
+  h += _acCampo('Pisos', '<input type="text" value="' + _acEsc(g.pisos.join(',')) + '" oninput="acSetPisos(' + g._id + ',this.value)" placeholder="P3,P4,P5 o P3-P7" style="' + _acInpStyle(150) + '"/><span id="acPisosInd-' + g._id + '" style="font-size:10px; color:#00695c;"></span>');
+  h += '<div style="flex:1;"></div>';
+  h += '<button onclick="acAgregarBarra(' + g._id + ')" style="font-size:11px; padding:4px 10px; background:#00695c; color:#fff; border:none; border-radius:4px; cursor:pointer;">＋ barra</button>';
+  h += '<button onclick="acDuplicarGrupo(' + g._id + ')" title="Duplicar grupo" style="font-size:11px; padding:4px 8px; background:#fff; color:#00695c; border:1px solid #00695c; border-radius:4px; cursor:pointer;">⧉</button>';
+  h += '<button onclick="acBorrarGrupo(' + g._id + ')" title="Quitar grupo" style="font-size:13px; padding:2px 8px; border:none; background:none; color:#c62828; cursor:pointer;">✕</button>';
+  h += '</div>';
+  // Grilla de barras del grupo.
+  h += '<div style="overflow-x:auto;"><table style="width:100%; font-size:11px; border-collapse:collapse; white-space:nowrap;">';
+  var cols = ['Marca'];
+  if (_acRenders) cols.push('Dibujo');
+  cols = cols.concat(['Figura']).concat(_AC_LETRAS).concat(['α1','α2','α3','α4','R','φ','Cant','Mult','Largo','Peso','']);
+  h += '<tr style="background:#f5f5f5;">' + cols.map(function(c){ return '<th style="padding:3px 5px; border-bottom:1px solid #ddd; font-weight:600;">' + c + '</th>'; }).join('') + '</tr>';
+  g.barras.forEach(function(b) { h += _acBarraHTML(g, b); });
+  h += '</table></div>';
+  h += '</div>';
+  return h;
 }
 
-function _acFilaHTML(f, i) {
-  var bg = _acColorElemento(f);
-  var trStyle = bg ? (' style="background:' + bg + ';"') : '';
-  var info = f.figura ? _acDimsDeFigura(f.figura) : { dims: [], angs: 0, radio: false };
+function _acCampo(label, inner) {
+  return '<div style="display:flex; flex-direction:column;"><label style="font-size:10px; color:#607d8b; font-weight:600;">' + label + '</label>' + inner + '</div>';
+}
+function _acInpStyle(w) { return 'width:' + w + 'px; font-size:12px; height:28px; box-sizing:border-box; border:1px solid #cfd8dc; padding:1px 4px;'; }
+
+function _acBarraHTML(g, b) {
+  var info = b.figura ? _acDimsDeFigura(b.figura) : { dims: [], angs: 0, radio: false };
   function inp(campo, w, tipo) {
-    var val = f[campo] == null ? '' : f[campo];
-    return '<input type="' + (tipo||'text') + '" value="' + _acEsc(val) + '" ' +
-      'oninput="acSetCampo(' + f._id + ',\'' + campo + '\',this.value)" ' +
-      'data-fid="' + f._id + '" data-campo="' + campo + '" ' +
-      'style="width:' + (w||46) + 'px; font-size:11px; box-sizing:border-box; border:1px solid #ddd; padding:1px 2px;" />';
+    return '<input type="' + (tipo||'text') + '" value="' + _acEsc(b[campo]==null?'':b[campo]) + '" ' +
+      'oninput="acSetBarra(' + g._id + ',' + b._id + ',\'' + campo + '\',this.value)" ' +
+      'style="width:' + (w||42) + 'px; font-size:11px; box-sizing:border-box; border:1px solid #ddd; padding:1px 2px;" />';
   }
   var td = '<td style="padding:2px 3px; border-bottom:1px solid #eee;">';
-  var h = '<tr' + trStyle + '>';
-  h += td + (i+1) + '</td>';
-  h += td + inp('sector', 70) + '</td>';
-  h += td + inp('piso', 50) + '</td>';
-  h += td + inp('ciclo', 50) + '</td>';
-  h += td + inp('eje', 60) + '</td>';
-  // Figura: input con datalist del catálogo.
-  h += td + '<input type="text" list="acFigurasDatalist" value="' + _acEsc(f.figura||'') + '" ' +
-       'oninput="acSetCampo(' + f._id + ',\'figura\',this.value)" style="width:70px; font-size:11px; border:1px solid #ddd; padding:1px 2px;" /></td>';
-  // Dibujo (opcional).
-  if (_acRenders) {
-    h += td + '<span id="acFig-' + f._id + '">' + _acMiniFigura(f) + '</span></td>';
-  }
-  // Dims A-I: solo editable si la figura la usa; si no, celda deshabilitada.
+  var h = '<tr>';
+  // Marca: input con datalist de marcas de la obra.
+  h += td + '<input type="text" list="acMarcasDatalist" value="' + _acEsc(b.marca||'') + '" oninput="acSetBarra(' + g._id + ',' + b._id + ',\'marca\',this.value)" style="width:64px; font-size:11px; border:1px solid #ddd; padding:1px 2px;"/></td>';
+  if (_acRenders) h += td + '<span id="acFig-' + b._id + '">' + _acMiniFigura(b) + '</span></td>';
+  // Figura con datalist del catálogo.
+  h += td + '<input type="text" list="acFigurasDatalist" value="' + _acEsc(b.figura||'') + '" oninput="acSetBarra(' + g._id + ',' + b._id + ',\'figura\',this.value)" style="width:64px; font-size:11px; border:1px solid #ddd; padding:1px 2px;"/></td>';
   _AC_LETRAS.forEach(function(l) {
     var campo = 'dim_' + l.toLowerCase();
-    var usa = info.dims.indexOf(campo) !== -1 || !f.figura;
-    if (usa) h += td + inp(campo, 40, 'number') + '</td>';
-    else h += '<td style="padding:2px 3px; border-bottom:1px solid #eee; background:#fafafa;"></td>';
+    var usa = info.dims.indexOf(campo) !== -1 || !b.figura;
+    h += usa ? (td + inp(campo, 38, 'number') + '</td>') : '<td style="padding:2px 3px; border-bottom:1px solid #eee; background:#fafafa;"></td>';
   });
-  // Ángulos.
   _AC_ANGS.forEach(function(a, idx) {
-    var usa = idx < info.angs || !f.figura;
-    if (usa) h += td + inp(a, 40, 'number') + '</td>';
-    else h += '<td style="padding:2px 3px; border-bottom:1px solid #eee; background:#fafafa;"></td>';
+    var usa = idx < info.angs || !b.figura;
+    h += usa ? (td + inp(a, 38, 'number') + '</td>') : '<td style="padding:2px 3px; border-bottom:1px solid #eee; background:#fafafa;"></td>';
   });
-  // Radio.
-  var usaR = info.radio || !f.figura;
-  h += usaR ? (td + inp('radio', 44, 'number') + '</td>')
-            : '<td style="padding:2px 3px; border-bottom:1px solid #eee; background:#fafafa;"></td>';
-  // φ, cant, mult, largo (auto), peso (auto).
-  h += td + inp('diam', 44, 'number') + '</td>';
-  h += td + inp('cant', 44, 'number') + '</td>';
-  h += td + inp('mult', 40, 'number') + '</td>';
-  h += td + '<span id="acLargo-' + f._id + '" style="color:#00695c; font-weight:600;">' + _acFmt(_acLargoFila(f)) + '</span></td>';
-  h += td + '<span id="acPeso-' + f._id + '" style="color:#00695c; font-weight:600;">' + _acFmt(_acPesoFila(f), 2) + '</span></td>';
-  h += td + '<button onclick="acBorrarFila(' + f._id + ')" title="Quitar fila" style="border:none; background:none; color:#c62828; cursor:pointer; font-size:13px;">✕</button></td>';
+  var usaR = info.radio || !b.figura;
+  h += usaR ? (td + inp('radio', 42, 'number') + '</td>') : '<td style="padding:2px 3px; border-bottom:1px solid #eee; background:#fafafa;"></td>';
+  h += td + inp('diam', 42, 'number') + '</td>';
+  h += td + inp('cant', 42, 'number') + '</td>';
+  h += td + inp('mult', 38, 'number') + '</td>';
+  h += td + '<span id="acLargo-' + b._id + '" style="color:#00695c; font-weight:600;">' + _acFmt(_acLargoBarra(b)) + '</span></td>';
+  h += td + '<span id="acPeso-' + b._id + '" style="color:#00695c; font-weight:600;">' + _acFmt(_acPesoBarra(b), 2) + '</span></td>';
+  h += td + '<button onclick="acCopiarBarra(' + g._id + ',' + b._id + ')" title="Copiar barra" style="border:none; background:none; color:#1565c0; cursor:pointer; font-size:12px;">⎘</button>' +
+       '<button onclick="acBorrarBarra(' + g._id + ',' + b._id + ')" title="Quitar" style="border:none; background:none; color:#c62828; cursor:pointer; font-size:12px;">✕</button></td>';
   h += '</tr>';
   return h;
 }
 
-function _acFmt(v, dec) {
-  if (v == null || isNaN(v)) return '—';
-  return dec ? Number(v).toFixed(dec) : Math.round(Number(v));
-}
+function _acFmt(v, dec) { if (v == null || isNaN(v)) return '—'; return dec ? Number(v).toFixed(dec) : Math.round(Number(v)); }
 
-// Mini-render de la figura de una fila, escalado a sus dims.
-function _acMiniFigura(f) {
-  if (!f.figura || !_acFiguras[f.figura]) return '<span style="color:#bbb;">—</span>';
-  var fig = _acFiguras[f.figura];
+function _acMiniFigura(b) {
+  if (!b.figura || !_acFiguras[b.figura]) return '<span style="color:#bbb;">—</span>';
+  var fig = _acFiguras[b.figura];
   if (!fig.geometria || !fig.geometria.tramos || !fig.geometria.tramos.length) return '<span style="color:#bbb;">—</span>';
   if (!window.disenadorMotor || !window.disenadorMotor.dibujarFigura) return '<span style="color:#bbb;">—</span>';
-  // dims map A:valor para escalar el dibujo.
   var dims = {};
-  _AC_LETRAS.forEach(function(l) { var v = f['dim_' + l.toLowerCase()]; if (v != null && !isNaN(v)) dims[l] = Number(v); });
-  try { return window.disenadorMotor.dibujarFigura(fig.geometria, dims, { width: 70, height: 46, pad: 8 }); }
+  _AC_LETRAS.forEach(function(l) { var v = b['dim_' + l.toLowerCase()]; if (v != null && !isNaN(v)) dims[l] = Number(v); });
+  try { return window.disenadorMotor.dibujarFigura(fig.geometria, dims, { width: 64, height: 42, pad: 6 }); }
   catch (e) { return '<span style="color:#bbb;">—</span>'; }
 }
 
-// Actualiza en vivo largo/peso/dibujo de una fila sin re-render completo (para no perder
-// el foco de la celda que se está editando).
-function _acActualizarFilaVisual(f) {
-  var l = document.getElementById('acLargo-' + f._id); if (l) l.textContent = _acFmt(_acLargoFila(f));
-  var p = document.getElementById('acPeso-' + f._id); if (p) p.textContent = _acFmt(_acPesoFila(f), 2);
-  if (_acRenders) { var g = document.getElementById('acFig-' + f._id); if (g) g.innerHTML = _acMiniFigura(f); }
+function _acActualizarBarraVisual(gid, b) {
+  var l = document.getElementById('acLargo-' + b._id); if (l) l.textContent = _acFmt(_acLargoBarra(b));
+  var p = document.getElementById('acPeso-' + b._id); if (p) p.textContent = _acFmt(_acPesoBarra(b), 2);
+  if (_acRenders) { var f = document.getElementById('acFig-' + b._id); if (f) f.innerHTML = _acMiniFigura(b); }
 }
 
 function _acActualizarEstadoLote() {
   var el = document.getElementById('acLoteEstado');
   if (!el) return;
-  if (_acLoteId) el.textContent = 'Lote #' + _acLoteId + ' · ' + (_acLoteEstado || 'borrador');
-  else el.textContent = 'Lote nuevo (sin guardar)';
+  el.textContent = _acLoteId ? ('Lote #' + _acLoteId + ' · ' + (_acLoteEstado || 'borrador')) : 'Lote nuevo (sin guardar)';
 }
 
-// ---- Guardar / Terminar ----
-async function acGuardarBarras() {
+// Datalists compartidos (figuras, marcas, eje). Se agregan una vez al contenedor.
+function _acAsegurarDatalists() {
+  var wrap = document.getElementById('acGrupos');
+  if (!wrap) return;
+  _acDatalist('acFigurasDatalist', Object.keys(_acFiguras).map(function(c) {
+    var f = _acFiguras[c]; return { v: c, l: c + (f.parciales && f.parciales.length ? ' (' + f.parciales.join('') + ')' : '') };
+  }));
+  _acDatalist('acMarcasDatalist', _acMarcas.map(function(m) { return { v: m, l: m }; }));
+  _acDatalist('acEjeDatalist', _acEjesObra.map(function(e) { return { v: e, l: e }; }));
+}
+function _acDatalist(id, opts) {
+  var dl = document.getElementById(id);
+  if (!dl) { dl = document.createElement('datalist'); dl.id = id; document.getElementById('acGrupos').appendChild(dl); }
+  dl.innerHTML = opts.map(function(o) { return '<option value="' + _acEsc(o.v) + '">' + _acEsc(o.l) + '</option>'; }).join('');
+}
+function _acRefrescarDatalists() { _acDatalist('acMarcasDatalist', _acMarcas.map(function(m){ return { v:m, l:m }; })); }
+
+// ---- Estampado + Guardar ----
+// Expande todos los grupos a un array plano de barras (1 por barra×piso), con el contexto.
+function _acExpandir() {
+  var ctx = _acCtx();
+  var items = [];
+  _acGrupos.forEach(function(g) {
+    var pisos = g.pisos.length ? g.pisos : [null];   // sin pisos → 1 item sin piso
+    g.barras.forEach(function(b) {
+      if (b.diam == null) return;                      // barra incompleta se omite
+      pisos.forEach(function(piso) {
+        var it = { sector: ctx.sector || null, ciclo: ctx.ciclo || null, piso: piso,
+                   eje: g.eje || null, nombre_plano: g.nombre_plano || null,
+                   diam: Number(b.diam), figura: b.figura || null, marca: b.marca || null,
+                   cant: Number(b.cant) || 1, mult: Number(b.mult) || 1,
+                   radio: b.radio != null ? Number(b.radio) : null };
+        _AC_LETRAS.forEach(function(l) { var k = 'dim_' + l.toLowerCase(); it[k] = b[k] != null ? Number(b[k]) : null; });
+        _AC_ANGS.forEach(function(a) { it[a] = b[a] != null ? Number(b[a]) : null; });
+        items.push(it);
+      });
+    });
+  });
+  return items;
+}
+
+async function acGuardar() {
   var sel = document.getElementById('acProyecto');
   var idProyecto = sel && sel.value;
-  if (!idProyecto) { alert('Elige la obra antes de guardar.'); return; }
-  var validas = _acFilas.filter(function(f) { return f.diam != null; });
-  if (!validas.length) { alert('Agrega al menos una barra con diámetro.'); return; }
+  if (!idProyecto) { alert('Elige la obra.'); return; }
+  if (!_acVal('acSector') || !_acVal('acCiclo')) { alert('Completa Sector y Ciclo.'); return; }
+  var items = _acExpandir();
+  if (!items.length) { alert('Agrega al menos una barra con diámetro (y pisos si quieres replicar).'); return; }
   try {
     if (!_acLoteId) {
       var r = await apiPostJson('/lotes', { id_proyecto: idProyecto });
       if (!r || !r.lote_id) { alert('No se pudo crear el lote.'); return; }
       _acLoteId = r.lote_id; _acLoteEstado = 'borrador';
     }
-    var payload = { barras: validas.map(_acFilaAPayload) };
-    var res = await apiPostJson('/lotes/' + _acLoteId + '/barras', payload);
+    var res = await apiPostJson('/lotes/' + _acLoteId + '/barras', { barras: items });
     if (res && res.ok) {
-      if (typeof showToast === 'function') showToast(res.creadas + ' barra(s) guardadas en el lote #' + _acLoteId, 'success');
-      _acFilas = []; acAgregarFila();   // limpiar para seguir cargando
+      if (typeof showToast === 'function') showToast(res.creadas + ' barra(s) guardadas · lote #' + _acLoteId, 'success');
+      _acGrupos = [_acNuevoGrupo()]; _acRender();
     } else { alert('No se pudieron guardar las barras.'); }
-  } catch (e) { alert('Error al guardar: ' + (e && e.message || e)); }
+  } catch (e) {
+    // El backend devuelve 400 con detalle de geometría inválida.
+    var msg = (e && e.detail && e.detail.msg) || (e && e.message) || 'Error al guardar.';
+    alert(msg);
+  }
   _acActualizarEstadoLote();
 }
-window.acGuardarBarras = acGuardarBarras;
-
-function _acFilaAPayload(f) {
-  var p = { sector: f.sector, piso: f.piso, ciclo: f.ciclo, eje: f.eje,
-            diam: Number(f.diam), figura: f.figura || null, marca: f.marca || null,
-            cant: Number(f.cant) || 1, mult: Number(f.mult) || 1, radio: f.radio != null ? Number(f.radio) : null };
-  _AC_DIMS.forEach(function(d) { p[d] = f[d] != null ? Number(f[d]) : null; });
-  _AC_ANGS.forEach(function(a) { p[a] = f[a] != null ? Number(f[a]) : null; });
-  return p;
-}
+window.acGuardar = acGuardar;
 
 async function acTerminarLote() {
-  if (!_acLoteId) { alert('Primero guarda las barras del lote.'); return; }
-  if (!confirm('Terminar el lote #' + _acLoteId + '?\n\nLas barras quedarán bloqueadas en este formulario; se editan luego desde el Bar Manager.')) return;
+  if (!_acLoteId) { alert('Primero guarda las barras.'); return; }
+  if (!confirm('Terminar el lote #' + _acLoteId + '?\n\nLas barras quedarán bloqueadas aquí; se editan desde el Bar Manager.')) return;
   try {
     var res = await apiPostJson('/lotes/' + _acLoteId + '/terminar', {});
     if (res && res.ok) {
-      _acLoteEstado = 'terminada';
       if (typeof showToast === 'function') showToast('Lote #' + _acLoteId + ' terminado.', 'success');
-      _acLoteId = null; _acLoteEstado = null; _acFilas = []; acAgregarFila();
+      _acLoteId = null; _acLoteEstado = null; _acGrupos = [_acNuevoGrupo()]; _acRender();
     }
-  } catch (e) { alert('Error al terminar: ' + (e && e.message || e)); }
+  } catch (e) { alert('Error al terminar.'); }
   _acActualizarEstadoLote();
 }
 window.acTerminarLote = acTerminarLote;
-
-// ---- Replicar en pisos (modal simple) ----
-function acReplicarModal() {
-  if (!_acFilas.length) { alert('No hay filas para replicar.'); return; }
-  var pisos = prompt('Replicar TODAS las filas actuales en estos pisos (separados por coma):\nEj. 3, 4, 5');
-  if (!pisos) return;
-  var lista = pisos.split(',').map(function(s) { return s.trim(); }).filter(Boolean);
-  if (!lista.length) return;
-  var base = _acFilas.slice();
-  lista.forEach(function(piso) {
-    base.forEach(function(f) {
-      var copia = JSON.parse(JSON.stringify(f));
-      _acSeq++; copia._id = _acSeq; copia.piso = piso;
-      _acFilas.push(copia);
-    });
-  });
-  _acRender();
-}
-window.acReplicarModal = acReplicarModal;
-
-// Datalist de figuras (una vez, al primer render). Se agrega al DOM del tab.
-function _acAsegurarDatalistFiguras() {
-  if (document.getElementById('acFigurasDatalist')) return;
-  var dl = document.createElement('datalist');
-  dl.id = 'acFigurasDatalist';
-  dl.innerHTML = Object.keys(_acFiguras).map(function(c) {
-    var f = _acFiguras[c];
-    var label = c + (f.parciales && f.parciales.length ? ' (' + f.parciales.join('') + ')' : '');
-    return '<option value="' + _acEsc(c) + '">' + _acEsc(label) + '</option>';
-  }).join('');
-  var wrap = document.getElementById('acGridWrap');
-  if (wrap) wrap.appendChild(dl);
-}
-
-// Envolver _acRender para asegurar el datalist de figuras.
-var _acRenderBase = _acRender;
-_acRender = function() { _acAsegurarDatalistFiguras(); _acRenderBase(); };

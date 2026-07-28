@@ -29,10 +29,9 @@ import uuid
 from .db import get_conn, audit
 from .auth import get_current_user
 from . import cache as _cache
+from .diametros import DIAM_ESTANDAR as _DIAM_ESTANDAR, cod_prod_de_diam
 
 router = APIRouter()
-
-_DIAM_ESTANDAR = [8, 10, 12, 16, 18, 22, 25, 28, 32, 36]  # 5N.12: lista fija
 
 
 def _now_iso():
@@ -92,6 +91,7 @@ class BarraManual(BaseModel):
     piso: Optional[str] = None
     ciclo: Optional[str] = None
     eje: Optional[str] = None
+    nombre_plano: Optional[str] = None   # texto libre: de qué plano salió (por grupo/elemento)
     # Barra
     diam: float
     figura: Optional[str] = None
@@ -188,10 +188,25 @@ def agregar_barras(lote_id: int, body: BarrasBatch, user=Depends(get_current_use
             factor = _factor_peso(cur, id_proyecto)
             now = _now_iso()
             sectores_tocados = set()
-            for b in body.barras:
+            from .catalogo import validar_geometria
+            for i, b in enumerate(body.barras):
                 dims = {f"dim_{L}": getattr(b, f"dim_{L}") for L in "abcdefghi"}
                 dims.update({a: getattr(b, a) for a in ("ang1", "ang2", "ang3", "ang4")})
                 dims["radio"] = b.radio
+                # Validar la geometría contra el catálogo (misma regla que el Bar Manager):
+                # la figura exige valor en SUS slots y vacío en los demás. Si no cuadra, se
+                # rechaza TODA la tanda (transaccional) con detalle de qué barra/slots fallan
+                # → no se crean barras con geometría inválida (data siempre buena).
+                if b.figura:
+                    v = validar_geometria(cur, b.figura, dims)
+                    if not v.get("ok"):
+                        raise HTTPException(status_code=400, detail={
+                            "msg": "Geometría inválida en la barra " + str(i + 1) + " (figura " + str(b.figura) + ").",
+                            "barra_idx": i, "figura": b.figura,
+                            "slots_sobran": v.get("slots_sobran", []),
+                            "slots_faltan": v.get("slots_faltan", []),
+                            "errores": v.get("errores", []),
+                        })
                 largo = _largo_desde_figura(cur, b.figura, dims)
                 peso_u = _peso_teorico(b.diam, largo)
                 if peso_u is not None:
@@ -199,18 +214,20 @@ def agregar_barras(lote_id: int, body: BarrasBatch, user=Depends(get_current_use
                 cant_total = (b.cant or 0) * (b.mult or 1)
                 peso_t = (peso_u * cant_total) if (peso_u is not None) else None
                 idu = _id_unico_manual()
+                # PROD (cod_proyecto) se DERIVA del diámetro (no lo ingresa el usuario).
+                cod_prod = cod_prod_de_diam(b.diam)
                 cur.execute(
                     """INSERT INTO barras
-                       (id_unico, id_proyecto, sector, piso, ciclo, eje, diam, largo_total,
-                        mult, cant, cant_total, peso_unitario, peso_total, marca, figura,
+                       (id_unico, id_proyecto, sector, piso, ciclo, eje, nombre_plano, diam, largo_total,
+                        mult, cant, cant_total, peso_unitario, peso_total, marca, figura, cod_proyecto,
                         dim_a, dim_b, dim_c, dim_d, dim_e, dim_f, dim_g, dim_h, dim_i,
                         ang1, ang2, ang3, ang4, radio,
                         origen, import_id, lote_id, estado, fecha_carga, editado_por, editado_fecha)
-                       VALUES (%s,%s,%s,%s,%s,%s,%s,%s, %s,%s,%s,%s,%s,%s,%s,
+                       VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s, %s,%s,%s,%s,%s,%s,%s,%s,
                                %s,%s,%s,%s,%s,%s,%s,%s,%s, %s,%s,%s,%s,%s,
                                'manual', NULL, %s, 'borrador', %s, %s, %s)""",
-                    (idu, id_proyecto, b.sector, b.piso, b.ciclo, b.eje, b.diam, largo,
-                     b.mult, b.cant, cant_total, peso_u, peso_t, b.marca, b.figura,
+                    (idu, id_proyecto, b.sector, b.piso, b.ciclo, b.eje, b.nombre_plano, b.diam, largo,
+                     b.mult, b.cant, cant_total, peso_u, peso_t, b.marca, b.figura, cod_prod,
                      b.dim_a, b.dim_b, b.dim_c, b.dim_d, b.dim_e, b.dim_f, b.dim_g, b.dim_h, b.dim_i,
                      b.ang1, b.ang2, b.ang3, b.ang4, b.radio,
                      lote_id, now, email, now),
