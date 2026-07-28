@@ -155,26 +155,20 @@
               <!-- Terminar etiquetado 3D: solo visible cuando se etiqueta una figura 3D
                    (el botón "Etiquetar barra" del panel 3D se oculta al entrar). Vuelve al visor 3D. -->
               <button id="disBtnTerminarEtiq3d" onclick="disenador3dToggleEtiquetas()" style="display:none; font-size:11px; padding:4px 12px; background:#00695c; color:#fff; border:none; border-radius:4px; cursor:pointer; font-weight:600;">🏷️ Etiquetado: ON (clic para volver al 3D)</button>
-              <label style="font-size:11px; color:#666;">Tipo
-                <select id="disEtTipo" onchange="disenadorEtTipoChange()" style="font-size:12px; margin-left:3px;">
-                  <option value="cota">Cota (línea de medida)</option>
-                  <option value="arco">Cota de arco (curva)</option>
-                  <option value="radio">Radio (flecha →)</option>
-                  <option value="diametro">Diámetro (flecha ↔)</option>
-                  <option value="letra">Letra (lado) · parámetro</option>
-                  <option value="angulo">Ángulo · parámetro</option>
-                </select>
-              </label>
-              <select id="disEtLetra" style="font-size:12px; display:none;">
-                <option>A</option><option>B</option><option>C</option><option>D</option><option>E</option>
-                <option>F</option><option>G</option><option>H</option><option>I</option><option>R</option>
-              </select>
-              <select id="disEtAngulo" style="font-size:12px; display:none;">
-                <option>α1</option><option>α2</option><option>α3</option><option>α4</option>
-              </select>
+              <!-- Tipo de etiqueta: UN botón por tipo (reemplaza el <select>). El botón
+                   activo queda resaltado. Compartido por 2D y 3D. -->
+              <span style="font-size:11px; color:#666; font-weight:600;">Tipo:</span>
+              <button id="disEtBtn_cota"     onclick="disenadorSetEtTipo('cota')"     style="font-size:12px; padding:4px 10px; background:#00695c; color:#fff; border:1px solid #00695c; border-radius:4px; cursor:pointer;">📏 Cota</button>
+              <button id="disEtBtn_arco"     onclick="disenadorSetEtTipo('arco')"     style="font-size:12px; padding:4px 10px; background:#fff; color:#00695c; border:1px solid #00695c; border-radius:4px; cursor:pointer;">⌒ Arco</button>
+              <button id="disEtBtn_radio"    onclick="disenadorSetEtTipo('radio')"    style="font-size:12px; padding:4px 10px; background:#fff; color:#00695c; border:1px solid #00695c; border-radius:4px; cursor:pointer;">↗ Radio</button>
+              <button id="disEtBtn_diametro" onclick="disenadorSetEtTipo('diametro')" style="font-size:12px; padding:4px 10px; background:#fff; color:#00695c; border:1px solid #00695c; border-radius:4px; cursor:pointer;">↔ Diámetro</button>
+              <button id="disEtBtn_letra"    onclick="disenadorSetEtTipo('letra')"    style="font-size:12px; padding:4px 10px; background:#fff; color:#00695c; border:1px solid #00695c; border-radius:4px; cursor:pointer;">🔤 Letra</button>
+              <button id="disEtBtn_angulo"   onclick="disenadorSetEtTipo('angulo')"   style="font-size:12px; padding:4px 10px; background:#fff; color:#00695c; border:1px solid #00695c; border-radius:4px; cursor:pointer;">∠ Ángulo</button>
+              <!-- Indicador de avance automático: cuál letra/ángulo se colocará al próximo click. -->
+              <span id="disEtProxima" style="display:none; font-size:11px; color:#00695c; font-weight:700; background:#fff; padding:2px 8px; border-radius:4px; border:1px solid #a5d6a7;"></span>
               <button class="secondary" onclick="disenadorDeshacerEtiqueta()" style="font-size:11px; padding:4px 12px;">↶ Deshacer etiqueta</button>
               <button class="secondary" onclick="disenadorLimpiarEtiquetas()" style="font-size:11px; padding:4px 12px;">🗑 Borrar todo</button>
-              <span class="muted" style="font-size:10px;">Elige el tipo y haz click. Cota/radio/diámetro: click inicio → click fin. Cota de arco: click sobre la curva (vuelve a hacer click en la cota para invertir la guata). Letras/ángulos y cotas se arrastran para mover.</span>
+              <span class="muted" style="font-size:10px;">Elige el tipo y haz click. Cota/radio/diámetro: click inicio → click fin. Cota de arco: click sobre la curva. Letra/ángulo: se colocan solas en orden (A, B, C… / α1, α2…). Se arrastran para mover.</span>
             </div>
             </div><!-- /disControles2D -->
           </div>

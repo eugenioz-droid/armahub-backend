@@ -456,7 +456,7 @@
     _modoEtiquetas = !_modoEtiquetas;
     // Al activar etiquetas, la figura se da por TERMINADA (no más rubber band de
     // dibujo). Si estaba dibujando, se cierra el trazo.
-    if (_modoEtiquetas) { _dibujando = false; _hoverPt = null; _cotaInicio = null; _cotaHover = null; _actualizarBotonTerminar(); }
+    if (_modoEtiquetas) { _dibujando = false; _hoverPt = null; _cotaInicio = null; _cotaHover = null; _actualizarBotonTerminar(); disenadorSetEtTipo(_etTipoActual); }
     var btn = document.getElementById('disBtnEtiquetas');
     if (btn) {
       btn.textContent = _modoEtiquetas ? '🏷️ Etiquetas: ON' : '🏷️ Etiquetas';
@@ -528,6 +528,7 @@
     if (bar) bar.style.display = 'flex';
     var btn = document.getElementById('disBtnEtiquetas');
     if (btn) { btn.textContent = '🏷️ Etiquetas: ON'; btn.style.background = '#00695c'; btn.style.color = '#fff'; }
+    disenadorSetEtTipo(_etTipoActual);   // resalta el botón de tipo + indicador de próxima
     _redibujarLienzo();
     _redibujarPanel();
   };
@@ -555,21 +556,56 @@
 
   global.disenadorLimpiarEtiquetas = function() {
     if (_etiquetas.length && !confirm('¿Borrar TODAS las etiquetas?')) return;
-    _etiquetas = []; _cotaInicio = null; _cotaHover = null; _redibujarLienzo(); _redibujarPanel();
+    _etiquetas = []; _cotaInicio = null; _cotaHover = null; _actualizarProximaEtiqueta(); _redibujarLienzo(); _redibujarPanel();
   };
   // Deshacer la ÚLTIMA etiqueta (no borrar todo).
   global.disenadorDeshacerEtiqueta = function() {
     if (_cotaInicio) { _cotaInicio = null; _cotaHover = null; _redibujarLienzo(); return; }  // cancela cota a medias
-    if (_etiquetas.length) { _etiquetas.pop(); _redibujarLienzo(); _redibujarPanel(); }
+    if (_etiquetas.length) { _etiquetas.pop(); _actualizarProximaEtiqueta(); _redibujarLienzo(); _redibujarPanel(); }
   };
 
-  // Muestra el selector de letra o ángulo según el tipo de etiqueta elegido.
-  global.disenadorEtTipoChange = function() {
-    var tipo = (document.getElementById('disEtTipo') || {}).value;
-    var sl = document.getElementById('disEtLetra'), sa = document.getElementById('disEtAngulo');
-    if (sl) sl.style.display = (tipo === 'letra') ? '' : 'none';
-    if (sa) sa.style.display = (tipo === 'angulo') ? '' : 'none';
+  // Tipo de etiqueta seleccionado en la barra (6 botones, no ya un <select>).
+  // Compartido por 2D y 3D (misma barra de etiquetado).
+  var _etTipoActual = 'cota';
+  var _ET_TIPOS = ['cota', 'arco', 'radio', 'diametro', 'letra', 'angulo'];
+
+  // Selecciona el tipo de etiqueta a colocar y resalta su botón. Reemplaza al
+  // <select> + disenadorEtTipoChange. Cancela cualquier cota a medias al cambiar.
+  global.disenadorSetEtTipo = function(tipo) {
+    if (_ET_TIPOS.indexOf(tipo) === -1) return;
+    _etTipoActual = tipo;
+    _cotaInicio = null; _cotaHover = null;   // cambiar de tipo cancela la cota en curso
+    _ET_TIPOS.forEach(function(t) {
+      var b = document.getElementById('disEtBtn_' + t);
+      if (b) { b.style.background = (t === tipo) ? '#00695c' : '#fff'; b.style.color = (t === tipo) ? '#fff' : '#00695c'; }
+    });
+    _actualizarProximaEtiqueta();
+    _redibujarLienzo();
   };
+
+  // Próxima LETRA libre (A-I, luego R) y próximo ÁNGULO libre (α1-α4), según lo ya
+  // colocado en _etiquetas. Alimenta el avance automático: al colocar, salta al
+  // siguiente sin usar. Devuelve '' si no quedan libres.
+  var _ET_LETRAS = ['A','B','C','D','E','F','G','H','I','R'];
+  var _ET_ANGULOS = ['α1','α2','α3','α4'];
+  function _proximaLetra() {
+    var usadas = _etiquetas.filter(function(e){ return e.tipo === 'letra'; }).map(function(e){ return e.texto; });
+    for (var i = 0; i < _ET_LETRAS.length; i++) if (usadas.indexOf(_ET_LETRAS[i]) === -1) return _ET_LETRAS[i];
+    return '';
+  }
+  function _proximoAngulo() {
+    var usados = _etiquetas.filter(function(e){ return e.tipo === 'angulo'; }).map(function(e){ return e.texto; });
+    for (var i = 0; i < _ET_ANGULOS.length; i++) if (usados.indexOf(_ET_ANGULOS[i]) === -1) return _ET_ANGULOS[i];
+    return '';
+  }
+  // Muestra en la barra cuál letra/ángulo se colocará al próximo click (avance auto).
+  function _actualizarProximaEtiqueta() {
+    var ind = document.getElementById('disEtProxima');
+    if (!ind) return;
+    if (_etTipoActual === 'letra') { var l = _proximaLetra(); ind.textContent = l ? ('Próxima letra: ' + l) : 'Sin letras libres'; ind.style.display = ''; }
+    else if (_etTipoActual === 'angulo') { var a = _proximoAngulo(); ind.textContent = a ? ('Próximo ángulo: ' + a) : 'Sin ángulos libres'; ind.style.display = ''; }
+    else { ind.style.display = 'none'; }
+  }
 
   // Muestra/oculta el slider de radio según haya un segmento arco seleccionado.
   function _actualizarSliderRadio() {
@@ -1002,7 +1038,7 @@
     if (_modoEtiquetas) {
       if (ev.target && ev.target.getAttribute && ev.target.getAttribute('data-etiq') != null) return;
       var cc = _coord(ev); if (!cc) return;
-      var tipo = (document.getElementById('disEtTipo') || {}).value || 'cota';
+      var tipo = _etTipoActual || 'cota';
       if (REG().esArco(tipo)) {
         // Cota de ARCO: 1 click sobre un segmento CURVO → la cota sigue ese arco,
         // separada hacia afuera (offset). Se puede invertir la guata luego.
@@ -1026,10 +1062,14 @@
         }
       } else {
         // Texto (letra/ángulo): 1 click; es PARÁMETRO en modo etiqueta-manda.
-        var texto = (tipo === 'letra')
-          ? ((document.getElementById('disEtLetra') || {}).value || 'A')
-          : ((document.getElementById('disEtAngulo') || {}).value || 'α1');
+        // AVANCE AUTOMÁTICO: se coloca la próxima letra/ángulo libre y se avanza sola.
+        var texto = (tipo === 'letra') ? _proximaLetra() : _proximoAngulo();
+        if (!texto) {
+          if (typeof showToast === 'function') showToast(tipo === 'letra' ? 'No quedan letras libres.' : 'No quedan ángulos libres.', 'info');
+          return;
+        }
         _etiquetas.push({ tipo: tipo, texto: texto, x: cc.x, y: cc.y });
+        _actualizarProximaEtiqueta();   // refresca el indicador a la SIGUIENTE libre
         _redibujarLienzo(); _redibujarPanel();
       }
       return;
