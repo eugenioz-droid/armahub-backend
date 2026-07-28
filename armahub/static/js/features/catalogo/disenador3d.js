@@ -126,6 +126,8 @@
     if (ctrl3d) ctrl3d.style.display = (_vista === '3D') ? '' : 'none';
     var trazo3d = document.getElementById('disTrazo3DRow');   // trazo 3D arriba del canvas
     if (trazo3d) trazo3d.style.display = (_vista === '3D') ? 'flex' : 'none';
+    // Resaltar el botón del plano activo al entrar a 3D (por defecto XY).
+    if (_vista === '3D') { ['XZ','XY','YZ'].forEach(function(pl){ var b=document.getElementById('dis3dPl'+pl); if(b){var on=(pl===_planoActivo); b.style.background=on?'#00695c':'rgba(255,255,255,0.9)'; b.style.color=on?'#fff':'#00695c'; b.style.border='1px solid #00695c';} }); }
     // UN SOLO panel visible: en 3D-dibujando el panel 3D (largo/dirección de tramos);
     // en 2D el panel unificado (disenadorPanel). El etiquetado 3D muestra el 2D.
     var p3d = document.getElementById('dis3dPanelWrap');
@@ -442,9 +444,11 @@
     _orto = !_orto;
     var b = document.getElementById('dis3dBtnOrto');
     if (b) {
-      b.textContent = _orto ? '📐 ORTO: ON' : '📐 ORTO: OFF';
-      b.style.background = _orto ? '#00695c' : '#fff';
+      // Botón compacto (solo ícono 📐): el estado ON/OFF se refleja con el color, no
+      // con texto. title informa el estado para accesibilidad.
+      b.style.background = _orto ? '#00695c' : 'rgba(255,255,255,0.9)';
       b.style.color = _orto ? '#fff' : '#00695c';
+      b.title = _orto ? 'Ortogonal: ON (ángulos rectos)' : 'Ortogonal: OFF (ángulos libres)';
     }
   };
 
@@ -463,8 +467,8 @@
     ['XZ', 'XY', 'YZ'].forEach(function(pl) {
       var b = document.getElementById('dis3dPl' + pl);
       if (b) { var on = (pl === _planoActivo);
-        b.style.background = on ? '#00695c' : '#fff'; b.style.color = on ? '#fff' : '#333';
-        b.style.border = on ? 'none' : '1px solid #ccc'; }
+        b.style.background = on ? '#00695c' : 'rgba(255,255,255,0.9)'; b.style.color = on ? '#fff' : '#00695c';
+        b.style.border = '1px solid #00695c'; }
     });
   };
 

@@ -1166,7 +1166,7 @@
   global.disenadorNuevaFigura = function() {
     var hay2d = _puntos.length >= 2;
     var hay3d = (typeof disenador3dEstado === 'function' && disenador3dEstado().nodos >= 2);
-    if ((hay2d || hay3d || _editando) && !confirm('¿Empezar una figura NUEVA? Se descartará lo que no hayas guardado.')) return;
+    if ((hay2d || hay3d || _editando) && !confirm('Se vaciará el editor para empezar de cero.\n\nSe descartará lo que no hayas guardado (esto NO borra las figuras del catálogo).\n\n¿Continuar?')) return;
     _limpiar2d();                                   // limpia el lienzo 2D
     if (typeof disenador3dLimpiarDibujo === 'function') disenador3dLimpiarDibujo();   // limpia el 3D
     if (typeof disenador3dSetEtiquetas === 'function') disenador3dSetEtiquetas([]);   // etiquetas 3D

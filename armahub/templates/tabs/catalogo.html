@@ -105,6 +105,14 @@
                 <button id="dis3dEjeY" onclick="disenador3dSetEjeRot('Y')" title="Rotar solo en eje Y" style="pointer-events:auto; width:28px; height:28px; padding:0; font-size:11px; font-weight:700; line-height:1; background:rgba(255,255,255,0.9); color:#00695c; border:1px solid #00695c; border-radius:4px; cursor:pointer; display:inline-flex; flex-direction:column; align-items:center; justify-content:center;"><span style="font-size:8px; line-height:1;">↻</span><span>Y</span></button>
                 <button id="dis3dEjeZ" onclick="disenador3dSetEjeRot('Z')" title="Rotar solo en eje Z" style="pointer-events:auto; width:28px; height:28px; padding:0; font-size:11px; font-weight:700; line-height:1; background:rgba(255,255,255,0.9); color:#00695c; border:1px solid #00695c; border-radius:4px; cursor:pointer; display:inline-flex; flex-direction:column; align-items:center; justify-content:center;"><span style="font-size:8px; line-height:1;">↻</span><span>Z</span></button>
               </div>
+              <!-- Planos de trabajo (XY/XZ/YZ) + Orto, DENTRO del canvas, costado DERECHO,
+                   espejando los botones de eje de la izquierda. Orto marcado por defecto. -->
+              <div style="position:absolute; right:8px; bottom:8px; display:flex; gap:4px; pointer-events:none;">
+                <button id="dis3dPlXY" onclick="disenador3dSetPlano('XY')" title="Plano Piso (XY)" style="pointer-events:auto; width:28px; height:28px; padding:0; font-size:10px; font-weight:700; background:rgba(255,255,255,0.9); color:#00695c; border:1px solid #00695c; border-radius:4px; cursor:pointer;">XY</button>
+                <button id="dis3dPlXZ" onclick="disenador3dSetPlano('XZ')" title="Plano Frontal (XZ)" style="pointer-events:auto; width:28px; height:28px; padding:0; font-size:10px; font-weight:700; background:rgba(255,255,255,0.9); color:#00695c; border:1px solid #00695c; border-radius:4px; cursor:pointer;">XZ</button>
+                <button id="dis3dPlYZ" onclick="disenador3dSetPlano('YZ')" title="Plano Lateral (YZ)" style="pointer-events:auto; width:28px; height:28px; padding:0; font-size:10px; font-weight:700; background:rgba(255,255,255,0.9); color:#00695c; border:1px solid #00695c; border-radius:4px; cursor:pointer;">YZ</button>
+                <button id="dis3dBtnOrto" onclick="disenador3dToggleOrto()" title="Modo ortogonal (ángulos rectos)" style="pointer-events:auto; width:28px; height:28px; padding:0; font-size:13px; background:#00695c; color:#fff; border:1px solid #00695c; border-radius:4px; cursor:pointer;">📐</button>
+              </div>
             </div>
             <!-- Controles 3D: dibujo por CLICKS sobre el plano de trabajo activo. -->
             <div id="disControles3D" style="display:none; margin-top:8px;">
@@ -112,18 +120,10 @@
                 <b>Click</b> en el visor coloca un nodo en el plano de trabajo (celeste). <b>Arrastra</b> para rotar.
                 Cambia de plano para dibujar en otra dirección.
               </div>
-              <!-- Fila PLANO (+ ORTO): en su propia fila, como pidió el usuario. -->
-              <div class="row" style="gap:6px; align-items:center; flex-wrap:wrap; margin-bottom:6px;">
-                <span style="font-size:11px; color:#666; font-weight:600;">Plano:</span>
-                <button id="dis3dPlXY" onclick="disenador3dSetPlano('XY')" style="font-size:12px; padding:3px 10px; cursor:pointer;">▦ Piso (XY)</button>
-                <button id="dis3dPlXZ" onclick="disenador3dSetPlano('XZ')" style="font-size:12px; padding:3px 10px; cursor:pointer;">▤ Frontal (XZ)</button>
-                <button id="dis3dPlYZ" onclick="disenador3dSetPlano('YZ')" style="font-size:12px; padding:3px 10px; cursor:pointer;">▥ Lateral (YZ)</button>
-                <button id="dis3dBtnOrto" onclick="disenador3dToggleOrto()" style="font-size:12px; padding:3px 10px; margin-left:6px; background:#00695c; color:#fff; border:none; border-radius:4px; cursor:pointer; font-weight:600;">📐 ORTO: ON</button>
-                <span id="dis3dInfo" class="muted" style="font-size:11px; margin-left:6px;">0 tramos · 0 nodos</span>
-              </div>
-              <!-- Fila de 4 BOTONES homologada con el 2D (mismos textos y posición):
-                   Deshacer punto · Limpiar · Fijar vista · Etiquetas. -->
+              <!-- (Los botones de PLANO + ORTO se movieron DENTRO del canvas, costado
+                   derecho — ver #disenador3DWrap. Aquí solo quedan las acciones.) -->
               <div class="row" style="gap:8px; align-items:center; flex-wrap:wrap;">
+                <span id="dis3dInfo" class="muted" style="font-size:11px;">0 tramos · 0 nodos</span>
                 <button class="secondary" onclick="disenador3dDeshacer()" style="font-size:11px; padding:4px 12px;">↶ Deshacer punto</button>
                 <button onclick="disenador3dFijarVista()" style="font-size:11px; padding:4px 12px; background:#fff; color:#00695c; border:1px solid #00695c; border-radius:4px; cursor:pointer;">📸 Fijar vista</button>
                 <button id="dis3dBtnEtiquetas" onclick="disenador3dToggleEtiquetas()" style="font-size:11px; padding:4px 12px; background:#fff; color:#00695c; border:1px solid #00695c; border-radius:4px; cursor:pointer;">🏷️ Etiquetas</button>
