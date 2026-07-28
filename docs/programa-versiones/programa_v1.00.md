@@ -767,24 +767,24 @@ Objetivo: endurecer Reclamos y cerrar los pendientes reales arrastrados.
 
 | N° | Descripción | Realizado | Quién |
 |----|-------------|-----------|-------|
-| 5N.9 | **Tab + grilla estilo planilla.** Sub-tab entre Bar Manager y Pedidos. Grilla: filas=barras (etiqueta+mult+cant), navegación matricial con flechas, **pegar desde Excel**, copiar-fila-abajo (Ctrl+D), fila plantilla con defaults heredables. | ☐ | YO |
-| 5N.10 | **3 modos de vista.** Agrupar (colapsable) · Filtro plano · **Agrupación visual** (todas visibles, pintadas por bandas de color por elemento, SIN colapsar → resuelve agregar en 2 ejes sin desagrupar). Toggle de renders (apagar para ver más barras). | ☐ | YO |
-| 5N.11 | **Ubicación en cascada + calidad de datos (ejes parecidos).** Proyecto→Piso→Ciclo→Sector→Eje autopoblado (`sectores-nav`) + "＋nuevo". NO bloquear; autocompletar agresivo; **advertencia SUAVE** por similitud (distancia de edición sobre normalizado trim+espacios+minúsculas); guardar el texto TAL CUAL (apóstrofes/tildes importan). Nunca fusión automática. | ☐ | YO |
-| 5N.12 | **Figura + dims dinámicas + render en vivo.** Selector de figura del catálogo → pide solo las dims que usa. Render con `disenadorMotor.dibujarFigura` **ajustado a las medidas** ingresadas. Diámetro lista fija (8,10,12,16,18,22,25,28,32,36). Marca por filtro de texto. cant+mult, cant_total derivado. Peso en vivo (con factor obra). | ☐ | YO |
-| 5N.13 | **Replicar en pisos.** Modal de selección de pisos → copia la barra, queda editable en el form (preview) antes de confirmar → al confirmar se reparte en sus agrupaciones. "Guardar y crear otra" (mantiene ubicación). Terminar lote → bloqueo. | ☐ | YO |
+| 5N.9 | **Tab + grilla estilo planilla.** Sub-tab entre Bar Manager y Pedidos. Grilla: filas=barras (etiqueta+mult+cant), navegación matricial con flechas, **pegar desde Excel**, copiar-fila-abajo (Ctrl+D), fila plantilla con defaults heredables. | ☑ | YO |
+| 5N.10 | **3 modos de vista.** Agrupar (colapsable) · Filtro plano · **Agrupación visual** (todas visibles, pintadas por bandas de color por elemento, SIN colapsar → resuelve agregar en 2 ejes sin desagrupar). Toggle de renders (apagar para ver más barras). | ☑ | YO |
+| 5N.11 | **Ubicación en cascada + calidad de datos (ejes parecidos).** Proyecto→Piso→Ciclo→Sector→Eje autopoblado (`sectores-nav`) + "＋nuevo". NO bloquear; autocompletar agresivo; **advertencia SUAVE** por similitud (distancia de edición sobre normalizado trim+espacios+minúsculas); guardar el texto TAL CUAL (apóstrofes/tildes importan). Nunca fusión automática. | ☑ | YO |
+| 5N.12 | **Figura + dims dinámicas + render en vivo.** Selector de figura del catálogo → pide solo las dims que usa. Render con `disenadorMotor.dibujarFigura` **ajustado a las medidas** ingresadas. Diámetro lista fija (8,10,12,16,18,22,25,28,32,36). Marca por filtro de texto. cant+mult, cant_total derivado. Peso en vivo (con factor obra). | ☑ | YO |
+| 5N.13 | **Replicar en pisos.** Modal de selección de pisos → copia la barra, queda editable en el form (preview) antes de confirmar → al confirmar se reparte en sus agrupaciones. "Guardar y crear otra" (mantiene ubicación). Terminar lote → bloqueo. | ☑ | YO |
 
 ### 5N-D — Bar Manager (integración)
 
 | N° | Descripción | Realizado | Quién |
 |----|-------------|-----------|-------|
-| 5N.14 | **Badge + filtro de barras `manual`** en Bar Manager (columna existe, filtros la respetan). Se ven separadas o integradas en la agrupación estándar. | ☐ | YO |
-| 5N.15 | **Edición por estado.** Barras `terminada` se editan SOLO desde Bar Manager (formulario = alta masiva; Bar Manager = corrección puntual; mismo motor, permiso por estado). Editar PRESERVA procedencia (`origen`/`lote_id`, suma `editado_por/fecha`) y marca el sector `modificado`. En "Agregar Cubicación" NUNCA se editan barras de otro canal. | ☐ | YO |
+| 5N.14 | **Badge + filtro de barras `manual`** en Bar Manager (columna existe, filtros la respetan). Se ven separadas o integradas en la agrupación estándar. | ☑ | YO |
+| 5N.15 | **Edición por estado.** Barras `terminada` se editan SOLO desde Bar Manager (formulario = alta masiva; Bar Manager = corrección puntual; mismo motor, permiso por estado). Editar PRESERVA procedencia (`origen`/`lote_id`, suma `editado_por/fecha`) y marca el sector `modificado`. En "Agregar Cubicación" NUNCA se editan barras de otro canal. | ☑ | YO |
 
 ### 5N-E — Limpieza y posproceso
 
 | N° | Descripción | Realizado | Quién |
 |----|-------------|-----------|-------|
-| 5N.16 | **Borrar la tercera matriz MUERTA** (confirmado huérfana, no en DOM ni navegación): `dashboards.js` + `tabs/dashboards.html` + 3 no-ops en `filtros.js:200-202`. CONSERVAR endpoints `/dashboard/sectores` y `/sectores-nav` (los usan las 2 matrices vivas: Exportación y ficha Obra). | ☐ | YO |
+| 5N.16 | **Borrar la tercera matriz MUERTA** (confirmado huérfana, no en DOM ni navegación): `dashboards.js` + `tabs/dashboards.html` + 3 no-ops en `filtros.js:200-202`. CONSERVAR endpoints `/dashboard/sectores` y `/sectores-nav` (los usan las 2 matrices vivas: Exportación y ficha Obra). | ☑ | YO |
 | 5N.17 | **Herramienta de merge de ejes parecidos (posproceso).** Vista que agrupa ejes sospechosamente similares y permite fusionar manualmente ("Eje 1"/"EJE 1" → unificar). Fase aparte, no bloqueante. | ☐ | TÚ+YO |
 | 5N.18 | **Homologación catálogo (arrastrada de la 5N vieja).** Cruzar figuras dibujadas con las del catálogo detailer; panel para asociar/confirmar. Base para multi-catálogo (ver `docs/programa_multicatalogo.md`). No bloqueante. | ☐ | TÚ+YO |
 
