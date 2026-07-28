@@ -79,8 +79,21 @@
               <button id="disBtn3D" onclick="disenadorSetVista('3D')" style="font-size:12px; padding:4px 14px; background:#fff; color:#00695c; border:1px solid #00695c; border-radius:0 4px 4px 0; cursor:pointer; font-weight:600; margin-left:-6px;">3D</button>
               <span class="muted" style="font-size:10px; margin-left:8px;">El 3D carga el visor la primera vez.</span>
             </div>
-            <!-- Espacio 3D (oculto en 2D). Three.js se carga on-demand al activar. -->
-            <div id="disenador3D" style="display:none; width:420px; max-width:100%; height:320px; border:1px solid #e0e0e0; border-radius:8px; background:#f7f9fa; overflow:hidden;"></div>
+            <!-- Espacio 3D (oculto en 2D). Three.js se carga on-demand al activar.
+                 Wrapper relativo para superponer los botones de eje de rotación en la
+                 esquina inferior izquierda, DENTRO del canvas. -->
+            <div id="disenador3DWrap" style="display:none; position:relative; width:420px; max-width:100%;">
+              <div id="disenador3D" style="width:100%; height:320px; border:1px solid #e0e0e0; border-radius:8px; background:#f7f9fa; overflow:hidden;"></div>
+              <!-- Candado de eje de rotación: X/Y/Z. Al seleccionar uno, el arrastre solo
+                   rota alrededor de ese eje. Volver a clickearlo = libre. pointer-events
+                   solo en los botones para no bloquear la rotación/clicks del canvas. -->
+              <div style="position:absolute; left:8px; bottom:8px; display:flex; gap:4px; pointer-events:none;">
+                <span style="font-size:10px; color:#888; align-self:center; margin-right:2px; pointer-events:none; background:rgba(255,255,255,0.7); padding:1px 4px; border-radius:3px;">Eje ↻</span>
+                <button id="dis3dEjeX" onclick="disenador3dSetEjeRot('X')" title="Rotar solo en eje X" style="pointer-events:auto; width:26px; height:26px; font-size:12px; font-weight:700; background:rgba(255,255,255,0.9); color:#00695c; border:1px solid #00695c; border-radius:4px; cursor:pointer;">X</button>
+                <button id="dis3dEjeY" onclick="disenador3dSetEjeRot('Y')" title="Rotar solo en eje Y" style="pointer-events:auto; width:26px; height:26px; font-size:12px; font-weight:700; background:rgba(255,255,255,0.9); color:#00695c; border:1px solid #00695c; border-radius:4px; cursor:pointer;">Y</button>
+                <button id="dis3dEjeZ" onclick="disenador3dSetEjeRot('Z')" title="Rotar solo en eje Z" style="pointer-events:auto; width:26px; height:26px; font-size:12px; font-weight:700; background:rgba(255,255,255,0.9); color:#00695c; border:1px solid #00695c; border-radius:4px; cursor:pointer;">Z</button>
+              </div>
+            </div>
             <!-- Controles 3D: dibujo por CLICKS sobre el plano de trabajo activo. -->
             <div id="disControles3D" style="display:none; margin-top:8px;">
               <div style="font-size:11px; color:#666; margin-bottom:6px;">
@@ -106,7 +119,6 @@
                 <button id="dis3dPlXZ" onclick="disenador3dSetPlano('XZ')" style="font-size:12px; padding:3px 10px; cursor:pointer;">▤ Frontal (XZ)</button>
                 <button id="dis3dPlYZ" onclick="disenador3dSetPlano('YZ')" style="font-size:12px; padding:3px 10px; cursor:pointer;">▥ Lateral (YZ)</button>
                 <button id="dis3dBtnOrto" onclick="disenador3dToggleOrto()" style="font-size:12px; padding:3px 10px; margin-left:6px; background:#00695c; color:#fff; border:none; border-radius:4px; cursor:pointer; font-weight:600;">📐 ORTO: ON</button>
-                <button id="dis3dBtnCentrar" onclick="disenador3dToggleCentrar()" style="font-size:12px; padding:3px 10px; background:#fff; color:#00695c; border:1px solid #00695c; border-radius:4px; cursor:pointer;">🎯 Centrar</button>
                 <span id="dis3dInfo" class="muted" style="font-size:11px; margin-left:6px;">0 tramos · 0 nodos</span>
               </div>
               <!-- Fila de 4 BOTONES homologada con el 2D (mismos textos y posición):

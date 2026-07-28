@@ -14,8 +14,9 @@
   var _scene = null, _camera = null, _renderer = null;
   var _worldGroup = null;               // grupo que rota (grilla + ejes + figura)
   var _figuraGroup = null;              // la barra que se dibuja (Etapa B)
-  var _rotX = 0, _rotY = 0;             // rotación extra de la vista (la cámara ya da
-                                        // el ángulo isométrico natural con Z arriba)
+  var _rotX = 0, _rotY = 0, _rotZ = 0;  // rotación extra de la vista (la cámara ya da
+                                        // el ángulo isométrico natural con Z arriba).
+                                        // _rotZ = giro sobre el eje Y del mundo (botón Y).
   var _dragging = false, _lastX = 0, _lastY = 0;
   var _rafId = null;
 
@@ -112,7 +113,7 @@
     else { disenador3dLimpiarDibujo(); }
     _vista = destino;
     var c2d = document.getElementById('disControles2D');
-    var v3d = document.getElementById('disenador3D');
+    var v3d = document.getElementById('disenador3DWrap');   // wrapper (visor + botones eje)
     var ctrl3d = document.getElementById('disControles3D');
     var b2 = document.getElementById('disBtn2D'), b3 = document.getElementById('disBtn3D');
     if (b2 && b3) {
@@ -618,7 +619,7 @@
       if (!geoIso) { alert('No se pudo preparar la figura para etiquetar.'); return; }
       _etiquetando3d = true;
       // Ocultar el visor 3D y sus controles; mostrar el lienzo 2D (con imagen).
-      var v3d = document.getElementById('disenador3D'), ctrl3d = document.getElementById('disControles3D');
+      var v3d = document.getElementById('disenador3DWrap'), ctrl3d = document.getElementById('disControles3D');
       var c2d = document.getElementById('disControles2D');
       if (v3d) v3d.style.display = 'none';
       if (ctrl3d) ctrl3d.style.display = 'none';
@@ -641,7 +642,7 @@
       if (typeof disenadorSalirEtiquetado3D === 'function') disenadorSalirEtiquetado3D();
       _etiquetando3d = false;
       var bt2 = document.getElementById('disBtnTerminarEtiq3d'); if (bt2) bt2.style.display = 'none';
-      var v3d2 = document.getElementById('disenador3D'), ctrl3d2 = document.getElementById('disControles3D');
+      var v3d2 = document.getElementById('disenador3DWrap'), ctrl3d2 = document.getElementById('disControles3D');
       var c2d2 = document.getElementById('disControles2D');
       if (c2d2) c2d2.style.display = 'none';
       if (v3d2) v3d2.style.display = '';
@@ -860,8 +861,13 @@
       return;
     }
     if (!_dragging) return;
-    _rotY += (e.clientX - _lastX) * 0.01;
-    _rotX += (e.clientY - _lastY) * 0.01;
+    var dx = (e.clientX - _lastX) * 0.01, dy = (e.clientY - _lastY) * 0.01;
+    // CANDADO DE EJE: si hay un eje seleccionado, el arrastre solo rota alrededor de
+    // ESE eje (usa el desplazamiento total del mouse). Sin eje = 2 ejes como siempre.
+    if (_ejeRot === 'Z') { _rotY += dx; }        // eje vertical (girar la mesa)
+    else if (_ejeRot === 'X') { _rotX += dy; }   // inclinar adelante/atrás
+    else if (_ejeRot === 'Y') { _rotZ += dx; }   // girar sobre el eje Y del mundo
+    else { _rotY += dx; _rotX += dy; }           // libre: 2 ejes (como siempre)
     _moved += Math.abs(e.clientX - _lastX) + Math.abs(e.clientY - _lastY);
     _lastX = e.clientX; _lastY = e.clientY;
   }
@@ -944,34 +950,31 @@
   function _animar() {
     if (_vista !== '3D' || !_renderer) return;
     // Con Z vertical: el arrastre HORIZONTAL (_rotY) gira alrededor del eje vertical
-    // Z; el arrastre VERTICAL (_rotX) inclina alrededor del eje X del mundo. Orden
-    // ZXY para que el giro sobre Z se sienta como "girar la mesa".
+    // Z; el arrastre VERTICAL (_rotX) inclina alrededor del eje X del mundo. _rotZ
+    // gira sobre el eje Y del mundo (botón Y). Orden ZXY para que el giro sobre Z se
+    // sienta como "girar la mesa".
     if (_worldGroup) {
       _worldGroup.rotation.order = 'ZXY';
       _worldGroup.rotation.z = _rotY;
       _worldGroup.rotation.x = _rotX;
-      _worldGroup.rotation.y = 0;
+      _worldGroup.rotation.y = _rotZ;
     }
     _renderer.render(_scene, _camera);
     _rafId = requestAnimationFrame(_animar);
   }
 
-  // Botón "Centrar" (toggle): reencuadra la cámara para que la figura orbite CENTRADA
-  // (mira al centro geométrico de la barra en vez de al origen). Solo mueve la CÁMARA
-  // → NO toca _worldGroup ni la geometría, así los clicks/arrastre (raycast desde la
-  // cámara) siguen exactos. Es solo ayuda de visualización. OFF = vista por defecto.
-  var _centrado = false;
-  global.disenador3dToggleCentrar = function() {
-    _centrado = !_centrado;
-    if (_centrado) {
-      if (_nodos3d.length >= 1) _encuadrarCamaraAFigura();   // mira al centro de la figura
-    } else {
-      // Volver a la vista por defecto (mira al origen desde la posición isométrica).
-      if (_camera) { _camera.position.set(360, -360, 300); _camera.lookAt(0, 0, 0); }
-    }
-    var b = document.getElementById('dis3dBtnCentrar');
-    if (b) { b.style.background = _centrado ? '#00695c' : '#fff'; b.style.color = _centrado ? '#fff' : '#00695c';
-             b.textContent = _centrado ? '🎯 Centrado: ON' : '🎯 Centrar'; }
+  // CANDADO DE EJE (botones X/Y/Z en la esquina del canvas): selecciona un eje y el
+  // arrastre con mouse queda RESTRINGIDO a rotar solo alrededor de ese eje. Sin eje
+  // ('libre') rota en 2 ejes como siempre. Es un selector: no rota solo, solo filtra
+  // qué componente cambia el arrastre (_onMove). No toca geometría ni clicks → seguro.
+  var _ejeRot = null;   // 'X' | 'Y' | 'Z' | null (libre)
+  global.disenador3dSetEjeRot = function(eje) {
+    _ejeRot = (_ejeRot === eje) ? null : eje;   // volver a clickear el mismo = liberar
+    ['X','Y','Z'].forEach(function(e) {
+      var b = document.getElementById('dis3dEje' + e);
+      if (b) { b.style.background = (e === _ejeRot) ? '#00695c' : 'rgba(255,255,255,0.9)';
+               b.style.color = (e === _ejeRot) ? '#fff' : '#00695c'; }
+    });
   };
   function _detener3D() { if (_rafId) { cancelAnimationFrame(_rafId); _rafId = null; } }
 
