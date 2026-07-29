@@ -31,6 +31,14 @@ def get_database_url() -> str:
     # Render a veces entrega postgres://; psycopg espera postgresql://
     if db_url.startswith("postgres://"):
         db_url = "postgresql://" + db_url[len("postgres://") :]
+    # connect_timeout OBLIGATORIO. Sin él, si Supabase no contesta el handshake (free
+    # tier pausa la BD por inactividad), psycopg espera INDEFINIDAMENTE → el arranque
+    # cuelga y NADA responde (ni GET /). Este era el bug "carga una vez y luego no".
+    # Con timeout el connect FALLA RÁPIDO y visible (se loguea y se reintenta), en vez
+    # de colgar mudo. No esconde el error: lo hace aparecer.
+    if "connect_timeout=" not in db_url:
+        sep = "&" if "?" in db_url else "?"
+        db_url = f"{db_url}{sep}connect_timeout={os.getenv('DB_CONNECT_TIMEOUT', '10')}"
     return db_url
 
 
@@ -38,7 +46,13 @@ def _get_pool():
     """Lazy-init del pool de conexiones. Min 0 (no abre conexiones en el arranque
     para no agravar el cold start de Render free: cada conexión a Supabase hace
     handshake TLS y sumarlas al startup retrasa la 1ª respuesta). max 10.
-    Con el plan pago de Render (sin sueño) esto deja de importar."""
+    Con el plan pago de Render (sin sueño) esto deja de importar.
+
+    open=False es CRÍTICO: con open=True el constructor del pool intenta abrir/verificar
+    conexiones al crearse, y si el connect a Supabase cuelga, el CONSTRUCTOR cuelga →
+    create_app() nunca retorna → uvicorn no levanta → ni GET / responde. Con open=False
+    el pool se construye sin tocar la red; abre conexiones on-demand en el primer checkout
+    (ya con connect_timeout). Así el arranque NUNCA se bloquea por la BD."""
     global _pool
     if _pool is None:
         try:
@@ -47,8 +61,13 @@ def _get_pool():
                 conninfo=get_database_url(),
                 min_size=0,
                 max_size=10,
-                open=True,
+                open=False,
+                timeout=float(os.getenv("DB_POOL_CHECKOUT_TIMEOUT", "15")),
             )
+            # wait=False explícito: open() arranca el worker en background y RETORNA
+            # de inmediato; NO espera a que haya conexiones listas (eso volvería a
+            # bloquear el arranque si la BD está dormida).
+            _pool.open(wait=False)
         except ImportError:
             pass
     return _pool
