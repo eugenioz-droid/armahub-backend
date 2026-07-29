@@ -153,3 +153,28 @@ para siempre.
 Resumen de la regla: **corregir barras = Bar Manager (valida, preserva procedencia, no re-abre);
 rehacer/deshacer tanda = eliminar lote; editor terminado = solo-lectura, no se desbloquea con
 barras dentro.**
+
+## Feedback maqueta 1c → 1d (2026-07-29, pendiente de aplicar)
+1. **Render S/M/L**: agrandar de verdad (se ven iguales) + poner un RENDER REAL de una barra
+   (no placeholder) para apreciar el tamaño. Usar `disenadorMotor.dibujarFigura` con una
+   geometría de ejemplo.
+2. **Check doble → unificar**: hoy hay check de revisión (siempre) + check de masiva (en modo
+   masivo) = confuso. El check de REVISIÓN va AL FINAL de la fila, antes de +/⎘, con texto
+   "Rev". El check de masiva solo aparece en modo masivo (al inicio de fila).
+3. **Botón `+` de fila COPIA la tipología** de esa fila (agregar en blanco = botón "+barra" de
+   arriba).
+4. **X de descartar (vuelve):** botón X junto al disquete para DESCARTAR un lote NO guardado
+   (warning "se descartará todo"). Es DISTINTO de "Eliminar lote" (borra uno ya guardado).
+   No es redundante.
+
+## Requerimiento GRANDE — configuración de PISOS de la obra (pendiente de diseñar bien)
+- La obra debe tener sus PISOS ingresados en algún lado (config).
+- Al presionar "Pisos múltiples" → menú con TODOS los pisos CHECKEADOS; el cubicador deschequea
+  los que no aplican → se ingresa una barra por piso seleccionado.
+- **Problema a resolver:** que los nombres de piso NO se creen a mano inconsistentes (P1, p1,
+  P 1…). Detailer lo tiene resuelto (el cubicador ingresa una vez). Aquí puede no haber data
+  previa, o la cargada no cubre todos los pisos.
+- **Idea:** preconfiguración de nombres de piso (ej. Subte-10 … P40, + SM, PF) + opción CUSTOM
+  para niveles raros; luego, al detectar diferencias, instancia de HOMOLOGAR los pisos
+  customizados (unificar Detailer ↔ manual). Objetivo: pisos unificados entre ambos canales.
+  → Diseñar esto con más calma; es transversal (afecta también la coherencia con Detailer).
