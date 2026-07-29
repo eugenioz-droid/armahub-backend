@@ -184,8 +184,17 @@ barras dentro.**
     marcar/desmarcar revisadas en bloque.)
 
 ## Ajustes de MAQUETA aplicados/por aplicar (2026-07-29)
-- Separar la columna Figura del Peso Total (dar aire al campo de texto).
+- Separar la columna Figura del Peso Total (dar aire al campo de texto). HECHO.
+- Check maestro de grupo operativo (marca/desmarca su grupo, indeterminate). HECHO.
+- Menú de "Pisos múltiples" con pisos checkeables. HECHO (maqueta).
+- Check Rev: revisión de a 1 (proceso real), pero DEBE poder desmarcarse. HECHO (persiste en el dato).
+- Botón "＋ barras M": agrega N filas = N pisos seleccionados, cada una con su piso y la
+  tipología del subtab activo. Orden de botones: ＋ barra | ＋ barras M | ⚙ Pisos. HECHO (maqueta).
 - (calibración fina de anchos de campos = cableado, no maqueta)
+
+### Nota de producto — acción masiva "Editar φ/cant / figura" (aclaración al usuario)
+Es una acción para aplicar de una vez un mismo valor (diámetro φ, cantidad o figura) a TODAS
+las barras seleccionadas; ahorra editar celda por celda cuando muchas comparten el dato.
 
 ## Requerimiento GRANDE — configuración de PISOS de la obra (pendiente de diseñar bien)
 - La obra debe tener sus PISOS ingresados en algún lado (config).
