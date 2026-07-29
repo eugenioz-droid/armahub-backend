@@ -1,22 +1,24 @@
 -- 5N.3 (Rediseno B): estado del SECTOR CONSTRUCTIVO como entidad real.
--- El sector constructivo = (id_proyecto, sector, piso, ciclo). Hoy no existe como
--- entidad; su estado exportado/modificado se infiere restando fechas (export_log vs
--- MAX(fecha_carga)), lo que tiene una brecha: editar una barra no marca el sector
--- modificado. Esta tabla materializa el estado con valores explicitos, actualizado por
--- eventos (crear/editar/eliminar barra, reimport con cambios, exportar).
+-- El sector constructivo = (id_proyecto, sector, piso, ciclo).
 --
--- estado: 'pendiente'  = nunca exportado
---         'exportado'  = al dia (exportado y sin cambios posteriores)
---         'modificado' = cambio despues de exportar (rojo en las matrices)
+-- estado: 'pendiente' (nunca exportado) | 'exportado' (al dia) | 'modificado' (cambio
+-- despues de exportar). Actualizado por eventos (crear/editar/eliminar barra, reimport,
+-- exportar).
 --
--- Aditiva e idempotente. No borra nada. Se puebla desde barras + export_log en el
--- backfill de la migracion 087.
+-- FIX (arranque colgado): sector/piso/ciclo son NOT NULL DEFAULT '' y el indice unico va
+-- sobre las COLUMNAS DIRECTAS (NO un indice de EXPRESION con COALESCE). El ON CONFLICT
+-- con indices de expresion (COALESCE(...)) no siempre lo matchea Postgres -> el INSERT
+-- fallaba -> la migracion fallaba -> el server no arrancaba. Con columnas NOT NULL
+-- DEFAULT '' no hay NULL, no hace falta COALESCE, y el ON CONFLICT sobre columnas simples
+-- es 100% soportado.
+--
+-- Aditiva e idempotente. No borra nada.
 CREATE TABLE IF NOT EXISTS sector_estado (
     id                 SERIAL PRIMARY KEY,
     id_proyecto        TEXT NOT NULL,
-    sector             TEXT,
-    piso               TEXT,
-    ciclo              TEXT,
+    sector             TEXT NOT NULL DEFAULT '',
+    piso               TEXT NOT NULL DEFAULT '',
+    ciclo              TEXT NOT NULL DEFAULT '',
     estado             TEXT NOT NULL DEFAULT 'pendiente',
     exportado_fecha    TEXT,
     modificado_fecha   TEXT,
@@ -24,9 +26,8 @@ CREATE TABLE IF NOT EXISTS sector_estado (
     actualizado_por    TEXT
 );
 
--- Clave unica del sector constructivo (COALESCE para tolerar NULL en sector/piso/ciclo,
--- que en la data existen). El UPSERT del backend usa esta clave.
+-- Indice unico sobre columnas DIRECTAS (no expresion) → ON CONFLICT lo matchea siempre.
 CREATE UNIQUE INDEX IF NOT EXISTS ux_sector_estado_clave
-    ON sector_estado (id_proyecto, COALESCE(sector,''), COALESCE(piso,''), COALESCE(ciclo,''));
+    ON sector_estado (id_proyecto, sector, piso, ciclo);
 
 CREATE INDEX IF NOT EXISTS ix_sector_estado_proyecto ON sector_estado (id_proyecto);

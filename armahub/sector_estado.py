@@ -34,12 +34,16 @@ def marcar_sector_modificado(cur, id_proyecto, sector, piso, ciclo, por=None):
     Idempotente por la clave unica; el ON CONFLICT decide la transicion.
     """
     now = _now_iso()
+    # Columnas NOT NULL DEFAULT '' (migracion 086) → normalizar NULL a '' y usar ON
+    # CONFLICT sobre columnas DIRECTAS (Postgres lo matchea siempre; con COALESCE en el
+    # target no, y colgaba el arranque).
+    sector = sector or ''; piso = piso or ''; ciclo = ciclo or ''
     cur.execute(
         """
         INSERT INTO sector_estado
             (id_proyecto, sector, piso, ciclo, estado, modificado_fecha, actualizado_fecha, actualizado_por)
         VALUES (%s, %s, %s, %s, 'pendiente', %s, %s, %s)
-        ON CONFLICT (id_proyecto, COALESCE(sector,''), COALESCE(piso,''), COALESCE(ciclo,''))
+        ON CONFLICT (id_proyecto, sector, piso, ciclo)
         DO UPDATE SET
             -- Si estaba exportado, ahora esta desactualizado -> 'modificado'.
             -- Si estaba pendiente, sigue pendiente (nunca se exporto). 'modificado' se mantiene.
@@ -58,12 +62,13 @@ def marcar_sector_exportado(cur, id_proyecto, sector, piso, ciclo, por=None):
     previo. Se registra la fecha de exportacion.
     """
     now = _now_iso()
+    sector = sector or ''; piso = piso or ''; ciclo = ciclo or ''
     cur.execute(
         """
         INSERT INTO sector_estado
             (id_proyecto, sector, piso, ciclo, estado, exportado_fecha, actualizado_fecha, actualizado_por)
         VALUES (%s, %s, %s, %s, 'exportado', %s, %s, %s)
-        ON CONFLICT (id_proyecto, COALESCE(sector,''), COALESCE(piso,''), COALESCE(ciclo,''))
+        ON CONFLICT (id_proyecto, sector, piso, ciclo)
         DO UPDATE SET
             estado = 'exportado',
             exportado_fecha = EXCLUDED.exportado_fecha,
@@ -82,7 +87,7 @@ def estado_de_sectores(cur, id_proyecto):
     """
     cur.execute(
         """
-        SELECT UPPER(COALESCE(sector,'')) || '_' || COALESCE(piso,'') || '_' || COALESCE(ciclo,'') AS export_key,
+        SELECT UPPER(sector) || '_' || piso || '_' || ciclo AS export_key,
                estado, exportado_fecha, modificado_fecha
         FROM sector_estado
         WHERE id_proyecto = %s
