@@ -1383,14 +1383,29 @@ def _run_migrations(cur) -> int:
     for version, desc, sqls in todas:
         if version in applied:
             continue
-        for sql in sqls:
-            cur.execute(sql)
-        cur.execute(
-            "INSERT INTO schema_migrations (version, description) VALUES (%s, %s)",
-            (version, desc),
-        )
-        applied.add(version)  # evita reaplicar si un número está duplicado entre fuentes
-        count += 1
+        # Cada migración corre en su propio SAVEPOINT: si UNA falla, se revierte SOLO ella
+        # (no las demás) y NO se cuelga el arranque (antes un fallo propagaba la excepción,
+        # init_db reintentaba 6x y hacía raise → el server no arrancaba, página pegada).
+        # Las migraciones legacy 1–81 (ya aplicadas hace tiempo) no llegan aquí.
+        cur.execute("SAVEPOINT mig")
+        try:
+            for sql in sqls:
+                cur.execute(sql)
+            cur.execute(
+                "INSERT INTO schema_migrations (version, description) VALUES (%s, %s)",
+                (version, desc),
+            )
+            cur.execute("RELEASE SAVEPOINT mig")
+            applied.add(version)  # evita reaplicar si un número está duplicado entre fuentes
+            count += 1
+        except Exception as exc:
+            cur.execute("ROLLBACK TO SAVEPOINT mig")
+            logger.error(
+                "Migracion %s (%s) FALLO y se OMITE (no bloquea el arranque): %s",
+                version, desc, exc,
+            )
+            # No se registra en schema_migrations → se reintentará en el proximo arranque
+            # (idempotente). El arranque continua para que el server responda.
     return count
 
 
