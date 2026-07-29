@@ -49,7 +49,18 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
-    init_db()
+    # init_db corre en CADA cold-start (Render free tier duerme el proceso). Si algo
+    # falla (una migración, la BD lenta), NUNCA debe impedir que el web server arranque
+    # → causa del "carga una vez y luego no": init_db hacía raise y tumbaba el boot.
+    # Se envuelve: si falla, se loguea y la app arranca igual (las migraciones pendientes
+    # se reintentan en el próximo arranque; son idempotentes). El server SIEMPRE responde.
+    try:
+        init_db()
+    except Exception as _exc:
+        import logging as _logging
+        _logging.getLogger("armahub").error(
+            "init_db falló en el arranque (la app arranca igual; se reintenta luego): %s", _exc
+        )
 
     # --- Current routes (no prefix, backward compatible) ---
     app.include_router(auth_router)
