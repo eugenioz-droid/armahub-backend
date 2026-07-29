@@ -167,6 +167,26 @@ barras dentro.**
    (warning "se descartará todo"). Es DISTINTO de "Eliminar lote" (borra uno ya guardado).
    No es redundante.
 
+## Pendientes de LÓGICA (anotados 2026-07-29, para trabajar en el cableado, no en maqueta)
+- **Check maestro de grupo (acciones masivas):** debe marcar/desmarcar TODAS las barras de esa
+  tipología. En la maqueta no persiste (no está operativo). Cablear al hacer la interacción real.
+- **Barras paramétricas / edición de dims:** las celdas de dims/ángulos deben ser editables como
+  en el EDITOR (inputs bien calibrados por dato). Dejar buen espacio para el trabajo de barras.
+  Calibrar el ancho/tipo de cada campo igual que el editor de barras. (Etapa cableado.)
+- **Botón de selección de pisos:** el "Pisos múltiples" abre el menú de pisos de la obra (depende
+  de la config de pisos, tarea grande abajo).
+- **Acciones masivas — funciones adicionales (cablear):**
+  - Copiar columna(s) — copiar el valor de una columna a las seleccionadas.
+  - Intercambiar columnas — intercambia los DATOS entre dos columnas SIN cambiar la letra del
+    lado (ideal: arrastre de columna; si no, botón como el del editor).
+  - Copiar seleccionadas — duplicar las barras marcadas.
+  - (evaluar más: aplicar φ/cant/figura a todas las seleccionadas; borrar seleccionadas — ya está;
+    marcar/desmarcar revisadas en bloque.)
+
+## Ajustes de MAQUETA aplicados/por aplicar (2026-07-29)
+- Separar la columna Figura del Peso Total (dar aire al campo de texto).
+- (calibración fina de anchos de campos = cableado, no maqueta)
+
 ## Requerimiento GRANDE — configuración de PISOS de la obra (pendiente de diseñar bien)
 - La obra debe tener sus PISOS ingresados en algún lado (config).
 - Al presionar "Pisos múltiples" → menú con TODOS los pisos CHECKEADOS; el cubicador deschequea
