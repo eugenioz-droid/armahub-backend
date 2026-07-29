@@ -92,3 +92,64 @@ para no reinventarlo mal cada vez. Trabajar DESPUÉS (deuda separada).
 **Decisiones de UX confirmadas:**
 - Vistas (piso/tipología/masivas): un **toggle** que las alterna (más elegante), no apiladas.
 - Botones `+` (agregar barra debajo) y `⎘` (duplicar) por fila: **siempre visibles** al final.
+
+## Acuerdos APROBADOS (2026-07-29) — implementar en maqueta, volcar a SPECS al cerrar Etapa 1
+
+**Render en tabla:** 3 tamaños. S = actual; M = intermedio; L = +50% sobre M. + toggle on/off.
+
+**Tipología = SUBTABS de trabajo (no solo selector):**
+- Cada tipología (MH, MV, TR, EC, TC, CB…) es un subtab. Estar en un subtab: (a) FILTRA la vista a
+  esa tipología, (b) FIJA la tipología por defecto de las barras nuevas (nacen con ese tipo). En
+  un subtab se OCULTA la columna Tipología (redundante) y el orden "por tipología" (solo hay uno).
+- Subtab **TODOS**: muestra todas. La barra nueva NO tiene tipología fija → la columna Tipología
+  aparece como **selector editable por fila**. Toggle de orden Piso/Tipología disponible.
+- Una fila nueva SIN tipología elegida (en TODOS) NO se reordena por tipología hasta que se elija;
+  queda donde se agregó y luego se reordena.
+- La barra SIEMPRE guarda su tipología como dato; solo cambia de dónde sale (subtab vs selector).
+
+**Bloqueo Sector + Estructura:** al elegirlos quedan bloqueados. Desbloqueo SOLO si el lote está
+VACÍO (sin barras). Con barras → bloqueo DURO (no se puede: un sector no puede tener tipologías
+ajenas). Botón "🔓 cambiar" solo activo con lote vacío.
+
+**Validación de geometría (como Bar Manager):** al elegir figura, solo se piden/aceptan las dims
+que esa figura usa; **la celda se pinta ROJA en vivo si es inválida** (sin depender del check),
+reusando `validar_geometria` del catálogo (Etapa 3). Config de bloqueos por diámetro
+(normativos/fabricación) + coeficientes de peso = TAB FUTURO (deuda, no ahora).
+
+**Check "revisada" por FILA:** checkbox por barra = el cubicador la validó. Libre para llenar sin
+marcarlo. Rollup muestra "X de Y revisadas". El botón "Terminar lote" (global) NO se puede activar
+si hay data inconclusa/inválida (ni con filas sin revisar, a definir el rigor exacto).
+
+**Estados e íconos (2 conceptos DISTINTOS, no confundir):**
+- **Revisada** (por fila) = checkbox en la grilla.
+- **Terminar lote** (global) = botón grande tipo **BANDERA que cambia ROJO (en edición) → VERDE
+  (terminado)**, al lado del disquete. El **candado NO es botón**: es solo indicador visual del
+  estado "bloqueado".
+
+**Eliminar lote:** barra abajo con botón "Eliminar" que pide escribir **ELIMINAR** en pantalla para
+confirmar. ES LA ÚNICA forma de borrar un lote. (Nombre "lote" aún no convence a Eugenio — buscar
+alternativa.)
+
+## REGLA TÉCNICA CRÍTICA — editar/eliminar un lote TERMINADO (aprobada, clave para consistencia)
+
+El "lote" es un ÁTOMO de carga de datos (como el import CSV). Su trazabilidad (`lote_id`, quién/
+cuándo) es INMUTABLE. "Terminado" = el cubicador cerró la tanda de ingreso; NO congela las barras
+para siempre.
+
+1. **Corregir una barra de un lote terminado → SÍ, desde BAR MANAGER.** Bar Manager ya valida
+   geometría (`validar_geometria`) y preserva procedencia (`editar_barra` no toca origen/lote_id).
+   Una edición bien hecha NO genera inconsistencia.
+2. **Editar en Bar Manager NO re-abre el lote** en el editor de cubicación. El lote sigue
+   'terminado'; solo cambió una barra (con su `editado_por/fecha`). Separación por herramienta:
+   Bar Manager = corrección puntual; editor de cubicación = ingreso masivo. Una sola verdad por acción.
+3. **Eliminar un lote → SÍ, incluso terminado.** Es un átomo → borrar el lote borra sus barras
+   (confirmación ELIMINAR). Análogo a "eliminar carga CSV". No rompe el modelo (borra el conjunto
+   completo + su registro).
+4. **LÍNEA ROJA:** NO se re-abre/desbloquea un lote terminado EN EL EDITOR DE CUBICACIÓN para
+   estampar/agregar masivo (podría cambiar sector/estructura de un lote con barras → rompe modelo).
+   Terminado → editor en SOLO-LECTURA. Corregir barra = Bar Manager. Rehacer todo = eliminar lote
+   y crear uno nuevo.
+
+Resumen de la regla: **corregir barras = Bar Manager (valida, preserva procedencia, no re-abre);
+rehacer/deshacer tanda = eliminar lote; editor terminado = solo-lectura, no se desbloquea con
+barras dentro.**
