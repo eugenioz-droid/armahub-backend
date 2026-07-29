@@ -1,11 +1,10 @@
-<!-- MAQUETA VISUAL (Etapa 1) — Agregar Cubicación 2. SOLO HTML/CSS con datos de ejemplo.
-     CERO lógica/backend. Para aprobar el diseño antes de cablear. El tab "Agregar
-     Cubicación" original queda intacto hasta que este reemplace. Look homologado con el
-     Bar Manager (fuente 11px, cabecera #fafafa/#666, badges de sector por color). -->
+<!-- MAQUETA VISUAL (Etapa 1b) — Agregar Cubicación 2. SOLO HTML/CSS + JS de maqueta
+     (toggles de vista/render). CERO backend. Datos de ejemplo. Para aprobar el diseño.
+     Look homologado con el Bar Manager. El tab original queda intacto. -->
 <div id="tab-agregar2" class="tab-content">
   <div style="padding:4px 2px 12px;">
 
-    <!-- Cabecera: título + lote + guardar/descartar -->
+    <!-- Cabecera -->
     <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:12px;">
       <h3 style="margin:0; color:#00695c;">➕ Formulario de Cubicación</h3>
       <span style="font-size:12px; color:#e65100; background:#fff3e0; border:1px solid #ffb74d; border-radius:6px; padding:3px 10px; font-weight:600;">Lote #128 · En edición</span>
@@ -14,7 +13,7 @@
       <button style="font-size:14px; font-weight:700; padding:6px 11px; background:#fff; color:#c62828; border:1px solid #e0a0a0; border-radius:4px; cursor:pointer;" title="Descartar todo">✕</button>
     </div>
 
-    <!-- FILA 1 · Contexto: Obra + Eje -->
+    <!-- FILA 1 · Contexto -->
     <div style="display:flex; gap:14px; align-items:flex-end; flex-wrap:wrap; margin-bottom:10px; padding:10px 12px; background:#e0f2f1; border:1px solid #b2dfdb; border-radius:8px;">
       <div style="display:flex; flex-direction:column;">
         <label style="font-size:11px; color:#00695c; font-weight:700; margin-bottom:2px;">Obra *</label>
@@ -24,12 +23,11 @@
         <label style="font-size:11px; color:#00695c; font-weight:700; margin-bottom:2px;">Eje / Losa *</label>
         <input type="text" value="24(A-E)" placeholder="🔍 buscar o escribir…" style="font-size:13px; height:34px; min-width:150px; box-sizing:border-box;" />
       </div>
-      <button style="font-size:12px; height:34px; padding:0 14px; background:#fff; color:#00695c; border:1px dashed #00695c; border-radius:4px; cursor:pointer;" title="Aparece cuando escribes un eje nuevo">＋ Crear Eje</button>
+      <button style="font-size:12px; height:34px; padding:0 14px; background:#fff; color:#00695c; border:1px dashed #00695c; border-radius:4px; cursor:pointer;">＋ Crear Eje</button>
     </div>
 
-    <!-- FILA 2 · Selección rápida (3 secciones de botones) -->
+    <!-- FILA 2 · Selección rápida -->
     <div style="display:flex; flex-direction:column; gap:6px; margin-bottom:10px; padding:10px 12px; background:#f7f7f7; border:1px solid #e0e0e0; border-radius:8px;">
-      <!-- Sector constructivo -->
       <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
         <span style="font-size:11px; color:#607d8b; font-weight:700; width:80px;">Sector</span>
         <button style="font-size:12px; padding:4px 12px; border-radius:14px; border:1px solid #6D4C41; background:#fff; color:#6D4C41; cursor:pointer;">FUND</button>
@@ -37,7 +35,6 @@
         <button style="font-size:12px; padding:4px 12px; border-radius:14px; border:1px solid #00897B; background:#fff; color:#00897B; cursor:pointer;">VCIELO</button>
         <button style="font-size:12px; padding:4px 12px; border-radius:14px; border:1px solid #7B1FA2; background:#fff; color:#7B1FA2; cursor:pointer;">LCIELO</button>
       </div>
-      <!-- Estructura -->
       <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
         <span style="font-size:11px; color:#607d8b; font-weight:700; width:80px;">Estructura</span>
         <button style="font-size:12px; padding:4px 12px; border-radius:4px; border:1px solid #00695c; background:#00695c; color:#fff; cursor:pointer; font-weight:600;">MURO</button>
@@ -47,7 +44,6 @@
         <button style="font-size:12px; padding:4px 12px; border-radius:4px; border:1px solid #cfd8dc; background:#fff; color:#455a64; cursor:pointer;">FUNDACIÓN</button>
         <button style="font-size:12px; padding:4px 12px; border-radius:4px; border:1px solid #cfd8dc; background:#fff; color:#455a64; cursor:pointer;">GENERAL</button>
       </div>
-      <!-- Tipología (varía según estructura; aquí MURO = 6) -->
       <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
         <span style="font-size:11px; color:#607d8b; font-weight:700; width:80px;">Tipología</span>
         <button style="font-size:12px; padding:4px 12px; border-radius:4px; border:1px solid #00695c; background:#00695c; color:#fff; cursor:pointer; font-weight:600;" title="Malla Horizontal">MH</button>
@@ -59,135 +55,225 @@
       </div>
     </div>
 
-    <!-- FILA 3 · Botones rápidos -->
+    <!-- FILA 3 · Botones rápidos + toggles -->
     <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:8px;">
-      <button style="font-size:12px; padding:5px 12px; background:#00695c; color:#fff; border:none; border-radius:4px; cursor:pointer;">＋ 1 barra por piso</button>
-      <button style="font-size:12px; padding:5px 12px; background:#fff; color:#00695c; border:1px solid #00695c; border-radius:4px; cursor:pointer;">＋ barra</button>
-      <button style="font-size:12px; padding:5px 12px; background:#fff; color:#607d8b; border:1px solid #cfd8dc; border-radius:4px; cursor:pointer;">⚙ Pisos múltiples</button>
+      <button style="font-size:12px; padding:5px 12px; background:#00695c; color:#fff; border:none; border-radius:4px; cursor:pointer;">＋ barra</button>
+      <button style="font-size:12px; padding:5px 12px; background:#fff; color:#00695c; border:1px solid #00695c; border-radius:4px; cursor:pointer;">⚙ Pisos múltiples</button>
+      <span style="width:1px; height:22px; background:#ddd; margin:0 4px;"></span>
+      <!-- Toggle de VISTA -->
+      <span style="font-size:11px; color:#666; font-weight:600;">Orden:</span>
+      <div style="display:inline-flex; border:1px solid #00695c; border-radius:4px; overflow:hidden;">
+        <button id="ac2v_piso" onclick="ac2SetVista('piso')" style="font-size:11px; padding:4px 10px; border:none; background:#00695c; color:#fff; cursor:pointer;">Piso</button>
+        <button id="ac2v_tipo" onclick="ac2SetVista('tipo')" style="font-size:11px; padding:4px 10px; border:none; background:#fff; color:#00695c; cursor:pointer;">Tipología</button>
+      </div>
+      <button id="ac2v_masiva" onclick="ac2SetVista('masiva')" style="font-size:11px; padding:5px 10px; background:#fff; color:#00695c; border:1px solid #00695c; border-radius:4px; cursor:pointer;">☑ Acciones masivas</button>
+      <span style="width:1px; height:22px; background:#ddd; margin:0 4px;"></span>
+      <!-- Toggle RENDER on/off + tamaño -->
+      <label style="font-size:11px; color:#666; cursor:pointer;"><input type="checkbox" id="ac2_render" checked onchange="ac2Render()"/> Render</label>
+      <div style="display:inline-flex; border:1px solid #cfd8dc; border-radius:4px; overflow:hidden;">
+        <button id="ac2r_s" onclick="ac2SetTam('s')" style="font-size:10px; padding:3px 8px; border:none; background:#fff; color:#607d8b; cursor:pointer;">S</button>
+        <button id="ac2r_m" onclick="ac2SetTam('m')" style="font-size:11px; padding:3px 8px; border:none; background:#00695c; color:#fff; cursor:pointer;">M</button>
+        <button id="ac2r_l" onclick="ac2SetTam('l')" style="font-size:12px; padding:3px 8px; border:none; background:#fff; color:#607d8b; cursor:pointer;">L</button>
+      </div>
       <div style="flex:1;"></div>
       <span style="font-size:11px; color:#666;">contexto: <b>ELEV · MURO · MH</b> · Eje <b>24(A-E)</b></span>
     </div>
 
-    <!-- GRILLA de barras (look Bar Manager plano; sin agrupación; datos de ejemplo) -->
-    <div style="overflow-x:auto; border:1px solid #e0e0e0; border-radius:6px;">
-      <table style="width:100%; min-width:1100px; font-size:11px; border-collapse:collapse; white-space:nowrap;">
-        <thead>
-          <tr style="color:#666; background:#fafafa;">
-            <th style="text-align:left; padding:3px 6px;">Piso</th>
-            <th style="text-align:left; padding:3px 6px;">Tipología</th>
-            <th style="text-align:right; padding:3px 6px;">φ</th>
-            <th style="text-align:right; padding:3px 6px;">Cant</th>
-            <th style="text-align:right; padding:3px 6px;">Largo</th>
-            <th style="text-align:right; padding:3px 6px;">Peso Tot</th>
-            <th style="text-align:left; padding:3px 6px;">Figura</th>
-            <th style="text-align:right; padding:3px 6px;">A</th>
-            <th style="text-align:right; padding:3px 6px;">B</th>
-            <th style="text-align:right; padding:3px 6px;">C</th>
-            <th style="text-align:right; padding:3px 6px;">D</th>
-            <th style="text-align:right; padding:3px 6px;">E</th>
-            <th style="text-align:right; padding:3px 6px;">F</th>
-            <th style="text-align:right; padding:3px 6px;">G</th>
-            <th style="text-align:right; padding:3px 6px;">H</th>
-            <th style="text-align:right; padding:3px 6px;">I</th>
-            <th style="text-align:right; padding:3px 6px;">α1</th>
-            <th style="text-align:right; padding:3px 6px;">α2</th>
-            <th style="text-align:right; padding:3px 6px;">α3</th>
-            <th style="text-align:right; padding:3px 6px;">α4</th>
-            <th style="text-align:right; padding:3px 6px;">R</th>
-            <th style="padding:3px 6px;"></th>
-          </tr>
-        </thead>
-        <tbody>
-          <!-- Fila ejemplo 1 -->
-          <tr style="border-top:1px solid #f0f0f0;">
-            <td style="padding:2px 6px;">P3</td>
-            <td style="padding:2px 6px; font-weight:600;">MH</td>
-            <td style="padding:2px 6px; text-align:right;">16</td>
-            <td style="padding:2px 6px; text-align:right;">120</td>
-            <td style="padding:2px 6px; text-align:right; color:#1565c0; font-weight:600;">340</td>
-            <td style="padding:2px 6px; text-align:right; color:#00695c; font-weight:600;">643.2</td>
-            <td style="padding:2px 6px; color:#666;"><b>104B</b></td>
-            <td style="padding:2px 6px; text-align:right;">340</td>
-            <td style="padding:2px 6px; text-align:right;">85</td>
-            <td style="padding:2px 6px; background:#fafafa;"></td>
-            <td style="padding:2px 6px; background:#fafafa;"></td>
-            <td style="padding:2px 6px; background:#fafafa;"></td>
-            <td style="padding:2px 6px; background:#fafafa;"></td>
-            <td style="padding:2px 6px; background:#fafafa;"></td>
-            <td style="padding:2px 6px; background:#fafafa;"></td>
-            <td style="padding:2px 6px; background:#fafafa;"></td>
-            <td style="padding:2px 6px; background:#fafafa;"></td>
-            <td style="padding:2px 6px; background:#fafafa;"></td>
-            <td style="padding:2px 6px; background:#fafafa;"></td>
-            <td style="padding:2px 6px; background:#fafafa;"></td>
-            <td style="padding:2px 6px; background:#fafafa;"></td>
-            <td style="padding:2px 6px; text-align:center;"><span style="color:#c62828; cursor:pointer;">✕</span></td>
-          </tr>
-          <!-- Fila ejemplo 2 -->
-          <tr style="border-top:1px solid #f0f0f0;">
-            <td style="padding:2px 6px;">P4</td>
-            <td style="padding:2px 6px; font-weight:600;">MH</td>
-            <td style="padding:2px 6px; text-align:right;">16</td>
-            <td style="padding:2px 6px; text-align:right;">120</td>
-            <td style="padding:2px 6px; text-align:right; color:#1565c0; font-weight:600;">340</td>
-            <td style="padding:2px 6px; text-align:right; color:#00695c; font-weight:600;">643.2</td>
-            <td style="padding:2px 6px; color:#666;"><b>104B</b></td>
-            <td style="padding:2px 6px; text-align:right;">340</td>
-            <td style="padding:2px 6px; text-align:right;">85</td>
-            <td style="padding:2px 6px; background:#fafafa;"></td>
-            <td style="padding:2px 6px; background:#fafafa;"></td>
-            <td style="padding:2px 6px; background:#fafafa;"></td>
-            <td style="padding:2px 6px; background:#fafafa;"></td>
-            <td style="padding:2px 6px; background:#fafafa;"></td>
-            <td style="padding:2px 6px; background:#fafafa;"></td>
-            <td style="padding:2px 6px; background:#fafafa;"></td>
-            <td style="padding:2px 6px; background:#fafafa;"></td>
-            <td style="padding:2px 6px; background:#fafafa;"></td>
-            <td style="padding:2px 6px; background:#fafafa;"></td>
-            <td style="padding:2px 6px; background:#fafafa;"></td>
-            <td style="padding:2px 6px; background:#fafafa;"></td>
-            <td style="padding:2px 6px; text-align:center;"><span style="color:#c62828; cursor:pointer;">✕</span></td>
-          </tr>
-          <!-- Fila ejemplo 3 (otra tipología, con ángulos) -->
-          <tr style="border-top:1px solid #f0f0f0;">
-            <td style="padding:2px 6px;">P5</td>
-            <td style="padding:2px 6px; font-weight:600;">TR</td>
-            <td style="padding:2px 6px; text-align:right;">12</td>
-            <td style="padding:2px 6px; text-align:right;">80</td>
-            <td style="padding:2px 6px; text-align:right; color:#1565c0; font-weight:600;">500</td>
-            <td style="padding:2px 6px; text-align:right; color:#00695c; font-weight:600;">355.0</td>
-            <td style="padding:2px 6px; color:#666;"><b>201A</b></td>
-            <td style="padding:2px 6px; text-align:right;">200</td>
-            <td style="padding:2px 6px; text-align:right;">100</td>
-            <td style="padding:2px 6px; text-align:right;">200</td>
-            <td style="padding:2px 6px; background:#fafafa;"></td>
-            <td style="padding:2px 6px; background:#fafafa;"></td>
-            <td style="padding:2px 6px; background:#fafafa;"></td>
-            <td style="padding:2px 6px; background:#fafafa;"></td>
-            <td style="padding:2px 6px; background:#fafafa;"></td>
-            <td style="padding:2px 6px; background:#fafafa;"></td>
-            <td style="padding:2px 6px; text-align:right;">135</td>
-            <td style="padding:2px 6px; background:#fafafa;"></td>
-            <td style="padding:2px 6px; background:#fafafa;"></td>
-            <td style="padding:2px 6px; background:#fafafa;"></td>
-            <td style="padding:2px 6px; text-align:right;">8</td>
-            <td style="padding:2px 6px; text-align:center;"><span style="color:#c62828; cursor:pointer;">✕</span></td>
-          </tr>
-        </tbody>
-      </table>
+    <!-- Barra de acción masiva (solo visible en vista masiva) -->
+    <div id="ac2_masivaBar" style="display:none; align-items:center; gap:10px; margin-bottom:8px; padding:6px 12px; background:#e8f5e9; border:1px solid #a5d6a7; border-radius:6px;">
+      <span style="font-size:12px; color:#2e7d32; font-weight:600;">Acciones masivas</span>
+      <button style="font-size:11px; padding:4px 10px; background:#fff; color:#2e7d32; border:1px solid #2e7d32; border-radius:4px; cursor:pointer;">✎ Editar φ/cant…</button>
+      <button style="font-size:11px; padding:4px 10px; background:#fff; color:#c62828; border:1px solid #c62828; border-radius:4px; cursor:pointer;">🗑 Borrar seleccionadas</button>
+      <span style="font-size:11px; color:#2e7d32;">2 seleccionadas · agrupado por tipología</span>
     </div>
 
-    <!-- VALIDACIÓN / estado -->
+    <!-- GRILLA — se renderiza por JS de maqueta según vista/render -->
+    <div id="ac2_grid" style="overflow-x:auto; border:1px solid #e0e0e0; border-radius:6px;"></div>
+
+    <!-- VALIDACIÓN -->
     <div style="display:flex; align-items:center; gap:14px; flex-wrap:wrap; margin-top:10px; padding:8px 12px; background:#f5f5f5; border:1px solid #e0e0e0; border-radius:6px;">
       <label style="font-size:12px; color:#455a64; cursor:pointer; font-weight:600;"><input type="checkbox" style="vertical-align:middle;"/> Terminado <span style="font-weight:400; color:#888;">(bloquea la edición del lote)</span></label>
       <div style="flex:1;"></div>
       <span style="font-size:11px; color:#666;"><b style="color:#37474f;">3</b> barras · <b style="color:#37474f;">320</b> uds · <b style="color:#00695c;">1.641,4</b> kg</span>
     </div>
 
-    <div class="muted" style="font-size:11px; margin-top:8px;">
-      🧪 <b>Maqueta visual (Etapa 1)</b> — datos de ejemplo, sin funcionalidad. Sirve para
-      aprobar el diseño antes de cablear. El tab "Agregar Cubicación" original sigue activo.
+    <!-- REPOSITORIO / histórico de lotes de la obra -->
+    <div style="margin-top:18px;">
+      <h4 style="margin:0 0 8px; color:#5d4037; font-size:14px;">📚 Lotes de la obra (histórico)</h4>
+      <table style="width:100%; font-size:11px; border-collapse:collapse;">
+        <thead><tr style="color:#666; background:#fafafa;">
+          <th style="text-align:left; padding:4px 8px;">Lote</th>
+          <th style="text-align:left; padding:4px 8px;">Sector · Estruct · Eje</th>
+          <th style="text-align:left; padding:4px 8px;">Estado</th>
+          <th style="text-align:right; padding:4px 8px;">Barras</th>
+          <th style="text-align:right; padding:4px 8px;">Kg</th>
+          <th style="text-align:left; padding:4px 8px;">Creado</th>
+          <th style="padding:4px 8px;"></th>
+        </tr></thead>
+        <tbody>
+          <tr style="border-top:1px solid #f0f0f0;">
+            <td style="padding:4px 8px; font-weight:600;">#128</td>
+            <td style="padding:4px 8px;">ELEV · MURO · 24(A-E)</td>
+            <td style="padding:4px 8px;"><span style="background:#fff3e0; color:#e65100; border:1px solid #ffb74d; padding:1px 8px; border-radius:8px;">En edición</span></td>
+            <td style="padding:4px 8px; text-align:right;">3</td>
+            <td style="padding:4px 8px; text-align:right;">1.641</td>
+            <td style="padding:4px 8px; color:#888;">hoy 14:20</td>
+            <td style="padding:4px 8px; text-align:right;"><button style="font-size:11px; padding:2px 10px; background:#00695c; color:#fff; border:none; border-radius:4px; cursor:pointer;">Cargar</button></td>
+          </tr>
+          <tr style="border-top:1px solid #f0f0f0;">
+            <td style="padding:4px 8px; font-weight:600;">#119</td>
+            <td style="padding:4px 8px;">LCIELO · LOSA · 25(B-F)</td>
+            <td style="padding:4px 8px;"><span style="background:#e8f5e9; color:#2e7d32; border:1px solid #a5d6a7; padding:1px 8px; border-radius:8px;">🔒 Terminado</span></td>
+            <td style="padding:4px 8px; text-align:right;">14</td>
+            <td style="padding:4px 8px; text-align:right;">5.230</td>
+            <td style="padding:4px 8px; color:#888;">ayer 10:05</td>
+            <td style="padding:4px 8px; text-align:right;"><button style="font-size:11px; padding:2px 10px; background:#fff; color:#607d8b; border:1px solid #cfd8dc; border-radius:4px; cursor:pointer;" title="Cargar en solo lectura; desbloquear con warning + audit">Cargar 🔒</button></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="muted" style="font-size:11px; margin-top:10px;">
+      🧪 <b>Maqueta visual (Etapa 1b)</b> — datos de ejemplo, sin funcionalidad real (solo los
+      toggles de vista/render funcionan para que compares). Sirve para aprobar el diseño.
     </div>
 
   </div>
 </div>
+
+<script>
+/* JS de MAQUETA (solo visual, sin backend). Alterna vistas y tamaño de render. */
+(function(){
+  var AC2 = {
+    render: true, tam: 'm', vista: 'piso',
+    // Datos de ejemplo. dims: A..I; angs: α1..α4.
+    barras: [
+      { piso:'P3', tipo:'MH', diam:16, cant:120, largo:340, peso:643.2, fig:'104B', dims:[340,85], angs:[], r:null },
+      { piso:'P3', tipo:'TR', diam:12, cant:80,  largo:500, peso:355.0, fig:'201A', dims:[200,100,200], angs:['','','',''], r:8, a1:'', a3:135 },
+      { piso:'P4', tipo:'MH', diam:16, cant:120, largo:340, peso:643.2, fig:'104B', dims:[340,85], angs:[], r:null },
+      { piso:'P5', tipo:'MV', diam:10, cant:60,  largo:280, peso:172.5, fig:'101A', dims:[280], angs:[], r:null }
+    ]
+  };
+  var LADOS = ['A','B','C','D','E','F','G','H','I'];
+  var TAM = { s:{w:46,h:30}, m:{w:70,h:46}, l:{w:110,h:72} };
+  // Orden canónico de tipologías de MURO (para la vista por tipología).
+  var ORD_TIPO = { MH:0, MV:1, TR:2, EC:3, TC:4, CB:5 };
+
+  function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+  function n(v,d){ if(v==null||v===''||isNaN(v)) return ''; return d? Number(v).toFixed(d): Math.round(Number(v)); }
+
+  // Mini-render de figura (usa el motor real del diseñador si está; si no, placeholder).
+  function figSvg(b){
+    var t = TAM[AC2.tam];
+    if (window.disenadorMotor && window.disenadorMotor.dibujarFigura) {
+      // La maqueta no tiene la geometría real → placeholder con el tamaño elegido.
+    }
+    return '<span style="display:inline-block; width:'+t.w+'px; height:'+t.h+'px; border:1px dashed #cfd8dc; border-radius:3px; vertical-align:middle; text-align:center; line-height:'+t.h+'px; color:#bbb; font-size:9px;">▱</span>';
+  }
+
+  function thead(masiva){
+    var h = '<tr style="color:#666; background:#fafafa;">';
+    if (masiva) h += '<th style="padding:3px 6px; text-align:center; width:24px;">✓</th>';
+    h += '<th style="text-align:left; padding:3px 6px;">Piso</th>';
+    h += '<th style="text-align:left; padding:3px 6px;">Tipología</th>';
+    h += '<th style="text-align:right; padding:3px 6px;">φ</th>';
+    h += '<th style="text-align:right; padding:3px 6px;">Cant</th>';
+    h += '<th style="text-align:right; padding:3px 6px;">Largo</th>';
+    h += '<th style="text-align:right; padding:3px 6px;">Peso Tot</th>';
+    h += '<th style="text-align:left; padding:3px 6px;">Figura</th>';
+    if (AC2.render) h += '<th style="text-align:left; padding:3px 6px;">Dibujo</th>';
+    LADOS.forEach(function(L){ h += '<th style="text-align:right; padding:3px 6px;">'+L+'</th>'; });
+    ['α1','α2','α3','α4'].forEach(function(a){ h += '<th style="text-align:right; padding:3px 6px;">'+a+'</th>'; });
+    h += '<th style="text-align:right; padding:3px 6px;">R</th>';
+    h += '<th style="padding:3px 6px;"></th>';   // acciones por fila (+ / ⎘ / ✕)
+    return h;
+  }
+
+  function filaHTML(b, masiva){
+    var td='<td style="padding:2px 6px; border-top:1px solid #f0f0f0;">';
+    var tdr='<td style="padding:2px 6px; border-top:1px solid #f0f0f0; text-align:right;">';
+    var vac='<td style="padding:2px 6px; border-top:1px solid #f0f0f0; background:#fafafa;"></td>';
+    var h='<tr>';
+    if (masiva) h += '<td style="padding:2px 6px; border-top:1px solid #f0f0f0; text-align:center;"><input type="checkbox"/></td>';
+    h += td + esc(b.piso) + '</td>';
+    h += td + '<b>'+esc(b.tipo)+'</b></td>';
+    h += tdr + n(b.diam) + '</td>';
+    h += tdr + n(b.cant) + '</td>';
+    h += '<td style="padding:2px 6px; border-top:1px solid #f0f0f0; text-align:right; color:#1565c0; font-weight:600;">' + n(b.largo) + '</td>';
+    h += '<td style="padding:2px 6px; border-top:1px solid #f0f0f0; text-align:right; color:#00695c; font-weight:600;">' + n(b.peso,1) + '</td>';
+    h += '<td style="padding:2px 6px; border-top:1px solid #f0f0f0; color:#666;"><b>'+esc(b.fig)+'</b></td>';
+    if (AC2.render) h += td + figSvg(b) + '</td>';
+    for (var i=0;i<9;i++){ var v=b.dims[i]; h += (v!=null&&v!=='')? (tdr+n(v)+'</td>') : vac; }
+    for (var j=0;j<4;j++){ var a=(b.angs&&b.angs[j]); var av=(b['a'+(j+1)]!=null?b['a'+(j+1)]:a); h += (av!=null&&av!=='')?(tdr+n(av)+'</td>'):vac; }
+    h += (b.r!=null&&b.r!=='')? (tdr+n(b.r)+'</td>') : vac;
+    // Acciones por fila SIEMPRE visibles: + (agregar debajo), ⎘ (duplicar), ✕ (quitar).
+    h += '<td style="padding:2px 6px; border-top:1px solid #f0f0f0; white-space:nowrap;">' +
+         '<span title="Agregar barra debajo" style="color:#00695c; cursor:pointer; font-weight:700; margin-right:6px;">＋</span>' +
+         '<span title="Duplicar" style="color:#1565c0; cursor:pointer; margin-right:6px;">⎘</span>' +
+         '<span title="Quitar" style="color:#c62828; cursor:pointer;">✕</span></td>';
+    h += '</tr>';
+    return h;
+  }
+
+  window.ac2Render = function(){
+    var cont = document.getElementById('ac2_grid');
+    if (!cont) return;
+    AC2.render = document.getElementById('ac2_render').checked;
+    var masiva = (AC2.vista === 'masiva');
+    document.getElementById('ac2_masivaBar').style.display = masiva ? 'flex' : 'none';
+    // Ordenar según la vista.
+    var arr = AC2.barras.slice();
+    if (AC2.vista === 'piso') {
+      arr.sort(function(a,b){ return a.piso.localeCompare(b.piso) || (ORD_TIPO[a.tipo]-ORD_TIPO[b.tipo]); });
+    } else { // 'tipo' o 'masiva' → por tipología
+      arr.sort(function(a,b){ return (ORD_TIPO[a.tipo]-ORD_TIPO[b.tipo]) || a.piso.localeCompare(b.piso); });
+    }
+    var html = '<table style="width:100%; min-width:1150px; font-size:11px; border-collapse:collapse; white-space:nowrap;"><thead>'+thead(masiva)+'</thead><tbody>';
+    if (AC2.vista === 'tipo' || masiva) {
+      // Agrupar por tipología con encabezado de grupo (+ check maestro en masiva).
+      var tipoActual = null;
+      arr.forEach(function(b){
+        if (b.tipo !== tipoActual) {
+          tipoActual = b.tipo;
+          var cnt = arr.filter(function(x){ return x.tipo===tipoActual; }).length;
+          var colspan = 8 + (AC2.render?1:0) + 9 + 4 + 1 + 1 + (masiva?1:0);
+          html += '<tr style="background:#eef2f3;"><td colspan="'+colspan+'" style="padding:3px 8px; border-top:1px solid #ddd; font-weight:700; color:#37474f; font-size:11px;">' +
+                  (masiva? '<input type="checkbox" style="vertical-align:middle; margin-right:6px;"/>' : '') +
+                  '▎'+esc(b.tipo)+' · '+cnt+' barra'+(cnt>1?'s':'')+'</td></tr>';
+        }
+        html += filaHTML(b, masiva);
+      });
+    } else {
+      arr.forEach(function(b){ html += filaHTML(b, false); });
+    }
+    html += '</tbody></table>';
+    cont.innerHTML = html;
+  };
+
+  window.ac2SetVista = function(v){
+    AC2.vista = v;
+    // Estilar los 3 controles de vista.
+    ['piso','tipo'].forEach(function(x){
+      var b=document.getElementById('ac2v_'+x);
+      if(b){ var on=(v===x); b.style.background=on?'#00695c':'#fff'; b.style.color=on?'#fff':'#00695c'; }
+    });
+    var m=document.getElementById('ac2v_masiva');
+    if(m){ var on=(v==='masiva'); m.style.background=on?'#2e7d32':'#fff'; m.style.color=on?'#fff':'#00695c'; m.style.borderColor=on?'#2e7d32':'#00695c'; }
+    ac2Render();
+  };
+
+  window.ac2SetTam = function(t){
+    AC2.tam = t;
+    ['s','m','l'].forEach(function(x){
+      var b=document.getElementById('ac2r_'+x);
+      if(b){ var on=(t===x); b.style.background=on?'#00695c':'#fff'; b.style.color=on?'#fff':'#607d8b'; }
+    });
+    ac2Render();
+  };
+
+  // Render inicial cuando el tab exista en el DOM.
+  document.addEventListener('DOMContentLoaded', function(){ if(document.getElementById('ac2_grid')) ac2Render(); });
+  // Fallback: si el DOM ya cargó (tab incluido tras load), render inmediato.
+  if (document.getElementById('ac2_grid')) ac2Render();
+})();
+</script>

@@ -55,5 +55,40 @@ crean en estos editores fallan (ej. el readonly que rompía oninput; el datalist
 al elegir). **Estandarizar un componente de filtro-de-texto reutilizable** que funcione siempre,
 para no reinventarlo mal cada vez. Trabajar DESPUÉS (deuda separada).
 
-## Requerimientos PENDIENTES DE DEFINIR (Eugenio dijo "vienen más")
-- (se irán agregando aquí a medida que los dé)
+## Requerimientos nuevos (2026-07-29, tras ver la maqueta Etapa 1)
+
+**Tipos de formulario según elemento/avance (tener en mente, no ahora):**
+- Habrá diferencias pequeñas de cómo se trabaja según sea MURO / LOSA / o "por avance en
+  planta". Idea futura: poder elegir entre 2 tipos de formulario. POR AHORA se trabajan igual;
+  solo se agregan herramientas para pisos múltiples y acciones masivas. Mantenerlo presente al
+  recibir más input.
+
+**Repositorio / histórico de lotes de la obra (nueva sección dentro del tab):**
+- Sección (al final del tab) que muestre TODO lo ingresado para la obra seleccionada: histórico
+  de lotes creados. Tipo librería/repositorio.
+- Seleccionar un lote → CARGA todo en el formulario para seguir editando.
+- Si el lote está TERMINADO, se carga BLOQUEADO. El usuario puede DESBLOQUEARLO con un WARNING,
+  y ese desbloqueo debe quedar en AUDIT / trazabilidad.
+
+**Ajustes a la maqueta (Etapa 1 → 1b):**
+- Intercambiar "cantidad de barras por piso" ↔ "agregar barra" (el botón grande pasa a ser
+  +barra; el de pisos como acción).
+- Cada FILA con un botón chico `+` al final → agrega una barra debajo de esa. Al lado, botón de
+  copia (⎘) para duplicar la fila.
+- En la fila de botones rápidos: **toggle de orden** (por PISO en orden / por TIPOLOGÍA en
+  orden).
+- Botón **Acciones masivas**: al entrar, el sistema OBLIGA a mostrar el orden por TIPOLOGÍA
+  (porque las acciones masivas suelen ser por tipología). Muestra un check por barra + al inicio
+  de cada grupo de tipología un check "masivo" que marca todas las barras de ese grupo.
+  → En la maqueta: mostrar los DISTINTOS diseños/vistas (normal, orden por piso, orden por
+     tipología, modo acciones masivas) para elegir cómo se ordena a nivel de maqueta.
+
+**Renderizado de figura en la tabla (2026-07-29):**
+- Mostrar el render de la figura DENTRO de la tabla, al lado de la columna Figura, a un
+  tamaño razonable (que se vea).
+- **Toggle de 3 tamaños** de render (chico / mediano / grande).
+- **Toggle mostrar/ocultar render** (para compactar la data cuando se quiere ver más filas).
+
+**Decisiones de UX confirmadas:**
+- Vistas (piso/tipología/masivas): un **toggle** que las alterna (más elegante), no apiladas.
+- Botones `+` (agregar barra debajo) y `⎘` (duplicar) por fila: **siempre visibles** al final.
