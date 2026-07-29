@@ -207,3 +207,41 @@ las barras seleccionadas; ahorra editar celda por celda cuando muchas comparten 
   para niveles raros; luego, al detectar diferencias, instancia de HOMOLOGAR los pisos
   customizados (unificar Detailer ↔ manual). Objetivo: pisos unificados entre ambos canales.
   → Diseñar esto con más calma; es transversal (afecta también la coherencia con Detailer).
+
+## TAREA — Limpieza del editor v1 (obsoleto), tras cablear el v2 (2026-07-29)
+El editor v1 (`agregar_cubicacion.html` + `agregar_cubicacion.js`) quedó **OCULTO de la UI**
+(se quitó su botón en `app.html`, ~línea 107). El `{% include %}` y el loader siguen registrados
+para que el archivo sirva de REFERENCIA de cableado mientras se implementa el v2. Cuando el v2
+esté cableado y a la par, BORRAR el v1 y su rastro:
+- Archivos a borrar: `armahub/templates/tabs/agregar_cubicacion.html`,
+  `armahub/static/js/features/cubicacion/agregar_cubicacion.js`.
+- Rastro a quitar: `app.html` (el `{% include 'tabs/agregar_cubicacion.html' %}`),
+  `shell.js` (`tabLabels: agregar`, `tabLoaders: agregar→loadAgregarCubicacion`),
+  `bootstrap.js` (el `loadScript(...)` de `agregar_cubicacion.js`).
+- El BACKEND (lotes.py, diametros.py, sector_estado.py, endpoints, migraciones 086-090) NO se
+  toca: es la base que el v2 reusa.
+
+### Qué RESCATAR del v1 al cablear el v2 (SOLO lo sano — NO reciclar lo defectuoso)
+Referencia en `agregar_cubicacion.js`. Rescatar la INTENCIÓN y el contrato con el backend,
+reescribiendo limpio; NO copiar tal cual lo que estaba mal (en especial los filtros de texto).
+- **Contrato de guardado (lo más valioso):** cómo arma el payload del lote y de las barras y a
+  qué endpoints pega — `POST /lotes` (crea, devuelve lote_id), `POST /lotes/{id}/barras` (array
+  plano con sector/ciclo/piso/eje/nombre_plano/diam/figura/marca/cant/mult/radio/dim_a..i/ang1..4),
+  `POST /lotes/{id}/terminar`. Funciones v1: `acGuardar`, `_acExpandir`, `acTerminarLote`.
+- **Cargas de datos maestros:** `/figuras-catalogo`, `/filters` (obras), `/filters?proyecto=`
+  (ciclos/ejes), `/barras/facetas?proyecto=` (marcas/tipologías). Funciones v1:
+  `_acCargarFiguras`, `_acCargarProyectos`, `_acCargarContexto`, `_acCargarMarcas`.
+- **Cálculos de preview:** largo (suma dims de la figura) y peso (`7850*π*(diam/2000)²*largo/100*
+  cant*mult`). El backend recalcula el peso definitivo → cliente solo para mostrar. Funciones v1:
+  `_acLargoBarra`, `_acPesoBarra`, `_acDimsDeFigura`.
+- **Render real de figura:** usar `disenadorMotor.dibujarFigura(fig.geometria, dims, …)` con la
+  geometría REAL del catálogo (el v2 hoy usa GEO_EJEMPLO hardcodeado).
+- **Validación de geometría (celda roja):** la valida el BACKEND (`catalogo.validar_geometria`);
+  el cliente refleja el 400. El v2 ya tiene el estilo rojo simulado (`b.invalida`) → conectar al
+  resultado real.
+
+### Qué NO reciclar (defectuoso — reescribir bien)
+- **Filtros de texto / datalist:** NO copiar el mecanismo del v1 (cascada obra→ejes con datalist).
+  Es la [[DEUDA TRANSVERSAL — filtros de texto]]: establecer PRIMERO un componente de filtro-de-
+  texto estándar que funcione siempre (sin el readonly que rompía oninput, con el select del
+  datalist disparando bien) y recién sobre él montar la cascada del v2. Ver §"DEUDA TRANSVERSAL".
