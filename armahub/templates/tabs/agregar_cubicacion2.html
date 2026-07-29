@@ -59,16 +59,19 @@
     <!-- FILA 3 · Botones rápidos + toggles -->
     <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:8px;">
       <button style="font-size:12px; padding:5px 12px; background:#00695c; color:#fff; border:none; border-radius:4px; cursor:pointer;">＋ barra</button>
+      <!-- +barras M: agrega N filas (una por piso seleccionado en el menú de Pisos), cada
+           una con SU piso y la tipología del subtab activo. En la maqueta lo simula. -->
+      <button id="ac2_barrasMBtn" onclick="ac2AgregarBarrasMulti()" style="font-size:12px; padding:5px 12px; background:#00897b; color:#fff; border:none; border-radius:4px; cursor:pointer;" title="Agregar una barra por cada piso seleccionado, cada una con su piso y tipología">＋ barras M</button>
       <!-- Pisos múltiples: abre el selector de pisos de la obra (los pisos se CONFIGURAN
            en la tarea grande de "config de pisos"). Aquí es maqueta del menú. -->
       <div style="position:relative; display:inline-block;">
         <button id="ac2_pisosBtn" onclick="ac2TogglePisos()" style="font-size:12px; padding:5px 12px; background:#fff; color:#00695c; border:1px solid #00695c; border-radius:4px; cursor:pointer;">⚙ Pisos múltiples ▾</button>
         <div id="ac2_pisosMenu" style="display:none; position:absolute; z-index:20; top:34px; left:0; min-width:180px; background:#fff; border:1px solid #cfd8dc; border-radius:6px; box-shadow:0 4px 14px rgba(0,0,0,.12); padding:8px;">
-          <div style="font-size:11px; color:#607d8b; font-weight:700; margin-bottom:6px;">Agregar la barra a los pisos:</div>
-          <label style="display:block; font-size:12px; padding:2px 0; cursor:pointer;"><input type="checkbox" checked/> P3</label>
-          <label style="display:block; font-size:12px; padding:2px 0; cursor:pointer;"><input type="checkbox" checked/> P4</label>
-          <label style="display:block; font-size:12px; padding:2px 0; cursor:pointer;"><input type="checkbox"/> P5</label>
-          <label style="display:block; font-size:12px; padding:2px 0; cursor:pointer;"><input type="checkbox"/> P6</label>
+          <div style="font-size:11px; color:#607d8b; font-weight:700; margin-bottom:6px;">Pisos seleccionados (para “＋ barras M”):</div>
+          <label style="display:block; font-size:12px; padding:2px 0; cursor:pointer;"><input type="checkbox" class="ac2piso" value="P3" checked/> P3</label>
+          <label style="display:block; font-size:12px; padding:2px 0; cursor:pointer;"><input type="checkbox" class="ac2piso" value="P4" checked/> P4</label>
+          <label style="display:block; font-size:12px; padding:2px 0; cursor:pointer;"><input type="checkbox" class="ac2piso" value="P5"/> P5</label>
+          <label style="display:block; font-size:12px; padding:2px 0; cursor:pointer;"><input type="checkbox" class="ac2piso" value="P6"/> P6</label>
           <div style="border-top:1px solid #eee; margin:6px 0;"></div>
           <div style="display:flex; gap:6px;">
             <button onclick="ac2TogglePisos()" style="font-size:11px; padding:3px 10px; background:#00695c; color:#fff; border:none; border-radius:4px; cursor:pointer;">Aplicar</button>
@@ -168,9 +171,10 @@
     </div>
 
     <div class="muted" style="font-size:11px; margin-top:10px;">
-      🧪 <b>Maqueta visual (Etapa 1e)</b> — datos de ejemplo. Funcionan: subtabs de tipología,
+      🧪 <b>Maqueta visual (Etapa 1f)</b> — datos de ejemplo. Funcionan: subtabs de tipología,
       toggle orden (en TODOS), acciones masivas con check maestro por grupo, menú de pisos,
-      render S/M/L, check revisada, bandera terminar. Los botones masivos y guardar aún no operan.
+      ＋barras M (una fila por piso seleccionado), render S/M/L, check revisada marca/desmarca,
+      bandera terminar. Los botones masivos y guardar aún no operan (se cablean en Etapa interacción).
     </div>
 
   </div>
@@ -221,6 +225,8 @@
   }
 
   function visibles(){
+    // _i = índice en AC2.barras (para que el toggle Rev mute la barra correcta pese al reorden).
+    AC2.barras.forEach(function(b,i){ b._i=i; });
     var arr = AC2.barras.filter(function(b){ return AC2.tipo==='TODOS' || b.tipo===AC2.tipo; });
     var porTipo = (AC2.tipo==='TODOS' && AC2.orden==='tipo') || AC2.masiva;
     arr.sort(function(a,b){ return porTipo
@@ -271,7 +277,7 @@
     for (var j=0;j<4;j++){ var av=b['a'+(j+1)]; h+= (av!=null&&av!=='')?(tdr+n(av)+'</td>'):'<td style="padding:2px 6px; border-top:1px solid #f0f0f0; background:#fafafa;"></td>'; }
     h+= (b.r!=null&&b.r!=='')?(tdr+n(b.r)+'</td>'):'<td style="padding:2px 6px; border-top:1px solid #f0f0f0; background:#fafafa;"></td>';
     // Rev (revisada por el cubicador) — AL FINAL, antes de las acciones.
-    h+='<td style="padding:2px 6px; border-top:1px solid #f0f0f0; text-align:center;"><input type="checkbox"'+(b.rev?' checked':'')+' onclick="ac2ToggleRev(this)" title="Revisada"/></td>';
+    h+='<td style="padding:2px 6px; border-top:1px solid #f0f0f0; text-align:center;"><input type="checkbox"'+(b.rev?' checked':'')+' onclick="ac2ToggleRev('+b._i+',this)" title="Marcar/desmarcar revisada"/></td>';
     // Acciones por fila: + (agrega debajo COPIANDO la tipología), ⎘ (duplicar), ✕.
     h+='<td style="padding:2px 6px; border-top:1px solid #f0f0f0; white-space:nowrap;">'+
        '<span title="Agregar barra '+esc(b.tipo)+' debajo (copia la tipología)" style="color:#00695c; cursor:pointer; font-weight:700; margin-right:6px;">＋</span>'+
@@ -327,7 +333,12 @@
   window.ac2SetTam=function(t){ AC2.tam=t;
     ['s','m','l'].forEach(function(x){ var b=document.getElementById('ac2r_'+x); if(b){var on=(t===x); b.style.background=on?'#00695c':'#fff'; b.style.color=on?'#fff':'#607d8b';} });
     ac2Render(); };
-  window.ac2ToggleRev=function(el){ /* maqueta: no persiste, solo refresca contador al re-render */ ac2Render(); };
+  window.ac2ToggleRev=function(i,el){
+    // Revisión de a 1 (proceso real): guarda el nuevo estado en el dato para que se
+    // pueda MARCAR y también DESMARCAR (antes no persistía y "volvía" al re-render).
+    if (AC2.barras[i]) AC2.barras[i].rev = el.checked;
+    ac2Render();
+  };
   // Check MAESTRO del grupo: marca/desmarca todas las filas de esa tipología.
   window.ac2SelGrupo=function(el){
     var grp=el.getAttribute('data-grp'), on=el.checked;
@@ -368,6 +379,17 @@
   window.ac2TogglePisos=function(){
     var m=document.getElementById('ac2_pisosMenu'); if(!m) return;
     m.style.display=(m.style.display==='none')?'block':'none';
+  };
+  // ＋ barras M: una barra por cada piso seleccionado, con SU piso y la tipología activa.
+  window.ac2AgregarBarrasMulti=function(){
+    var pisos=[].slice.call(document.querySelectorAll('.ac2piso:checked')).map(function(c){return c.value;});
+    if(!pisos.length){ alert('Selecciona al menos un piso en “⚙ Pisos múltiples”.'); return; }
+    // Tipología nueva = la del subtab activo; en TODOS, MH por defecto (editable por fila).
+    var tipo=(AC2.tipo==='TODOS')?'MH':AC2.tipo;
+    pisos.forEach(function(p){
+      AC2.barras.push({ piso:p, tipo:tipo, diam:16, cant:0, largo:0, peso:0, fig:'', dims:[], r:null, rev:false, invalida:false });
+    });
+    ac2Render();
   };
   window.ac2Descartar=function(){
     // Descartar lo NO guardado (distinto de eliminar un lote ya guardado).
