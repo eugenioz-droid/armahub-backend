@@ -59,7 +59,24 @@
     <!-- FILA 3 · Botones rápidos + toggles -->
     <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:8px;">
       <button style="font-size:12px; padding:5px 12px; background:#00695c; color:#fff; border:none; border-radius:4px; cursor:pointer;">＋ barra</button>
-      <button style="font-size:12px; padding:5px 12px; background:#fff; color:#00695c; border:1px solid #00695c; border-radius:4px; cursor:pointer;">⚙ Pisos múltiples</button>
+      <!-- Pisos múltiples: abre el selector de pisos de la obra (los pisos se CONFIGURAN
+           en la tarea grande de "config de pisos"). Aquí es maqueta del menú. -->
+      <div style="position:relative; display:inline-block;">
+        <button id="ac2_pisosBtn" onclick="ac2TogglePisos()" style="font-size:12px; padding:5px 12px; background:#fff; color:#00695c; border:1px solid #00695c; border-radius:4px; cursor:pointer;">⚙ Pisos múltiples ▾</button>
+        <div id="ac2_pisosMenu" style="display:none; position:absolute; z-index:20; top:34px; left:0; min-width:180px; background:#fff; border:1px solid #cfd8dc; border-radius:6px; box-shadow:0 4px 14px rgba(0,0,0,.12); padding:8px;">
+          <div style="font-size:11px; color:#607d8b; font-weight:700; margin-bottom:6px;">Agregar la barra a los pisos:</div>
+          <label style="display:block; font-size:12px; padding:2px 0; cursor:pointer;"><input type="checkbox" checked/> P3</label>
+          <label style="display:block; font-size:12px; padding:2px 0; cursor:pointer;"><input type="checkbox" checked/> P4</label>
+          <label style="display:block; font-size:12px; padding:2px 0; cursor:pointer;"><input type="checkbox"/> P5</label>
+          <label style="display:block; font-size:12px; padding:2px 0; cursor:pointer;"><input type="checkbox"/> P6</label>
+          <div style="border-top:1px solid #eee; margin:6px 0;"></div>
+          <div style="display:flex; gap:6px;">
+            <button onclick="ac2TogglePisos()" style="font-size:11px; padding:3px 10px; background:#00695c; color:#fff; border:none; border-radius:4px; cursor:pointer;">Aplicar</button>
+            <button onclick="ac2TogglePisos()" style="font-size:11px; padding:3px 10px; background:#fff; color:#607d8b; border:1px solid #cfd8dc; border-radius:4px; cursor:pointer;">Cerrar</button>
+          </div>
+          <div class="muted" style="font-size:9px; margin-top:6px; color:#999;">Los pisos se definen en “Config de pisos” de la obra.</div>
+        </div>
+      </div>
       <span style="width:1px; height:22px; background:#ddd; margin:0 4px;"></span>
       <!-- Orden: solo relevante en TODOS (en un subtab hay una sola tipología). -->
       <span id="ac2_ordenWrap" style="display:none; align-items:center; gap:6px;">
@@ -81,11 +98,17 @@
       <span id="ac2_ctx" style="font-size:11px; color:#666;"></span>
     </div>
 
-    <!-- Barra de acciones masivas -->
-    <div id="ac2_masivaBar" style="display:none; align-items:center; gap:10px; margin-bottom:8px; padding:6px 12px; background:#e8f5e9; border:1px solid #a5d6a7; border-radius:6px;">
-      <span style="font-size:12px; color:#2e7d32; font-weight:600;">Acciones masivas</span>
-      <button style="font-size:11px; padding:4px 10px; background:#fff; color:#2e7d32; border:1px solid #2e7d32; border-radius:4px; cursor:pointer;">✎ Editar φ/cant…</button>
-      <button style="font-size:11px; padding:4px 10px; background:#fff; color:#c62828; border:1px solid #c62828; border-radius:4px; cursor:pointer;">🗑 Borrar seleccionadas</button>
+    <!-- Barra de acciones masivas (maqueta de botones; la lógica se cablea en Etapa interacción) -->
+    <div id="ac2_masivaBar" style="display:none; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:8px; padding:6px 12px; background:#e8f5e9; border:1px solid #a5d6a7; border-radius:6px;">
+      <span style="font-size:12px; color:#2e7d32; font-weight:700;">Acciones masivas</span>
+      <span id="ac2_selcount" style="font-size:11px; color:#2e7d32; min-width:120px;">ninguna seleccionada</span>
+      <span style="width:1px; height:20px; background:#a5d6a7;"></span>
+      <button style="font-size:11px; padding:4px 10px; background:#fff; color:#2e7d32; border:1px solid #2e7d32; border-radius:4px; cursor:pointer;" title="Aplicar φ/cant/figura a las seleccionadas">✎ Editar φ/cant…</button>
+      <button style="font-size:11px; padding:4px 10px; background:#fff; color:#2e7d32; border:1px solid #2e7d32; border-radius:4px; cursor:pointer;" title="Copiar el valor de una columna a las filas seleccionadas">⧉ Copiar columna…</button>
+      <button style="font-size:11px; padding:4px 10px; background:#fff; color:#2e7d32; border:1px solid #2e7d32; border-radius:4px; cursor:pointer;" title="Intercambiar los DATOS de dos columnas (no cambia la letra del lado)">⇄ Intercambiar columnas…</button>
+      <button style="font-size:11px; padding:4px 10px; background:#fff; color:#2e7d32; border:1px solid #2e7d32; border-radius:4px; cursor:pointer;" title="Duplicar las barras seleccionadas">⎘ Copiar seleccionadas</button>
+      <button style="font-size:11px; padding:4px 10px; background:#fff; color:#c62828; border:1px solid #c62828; border-radius:4px; cursor:pointer;" title="Eliminar las barras seleccionadas">🗑 Borrar seleccionadas</button>
+      <div style="flex:1;"></div>
       <span style="font-size:11px; color:#2e7d32;">agrupado por tipología</span>
     </div>
 
@@ -145,8 +168,9 @@
     </div>
 
     <div class="muted" style="font-size:11px; margin-top:10px;">
-      🧪 <b>Maqueta visual (Etapa 1c)</b> — datos de ejemplo. Funcionan: subtabs de tipología,
-      toggle orden (en TODOS), acciones masivas, render S/M/L, check revisada, bandera terminar.
+      🧪 <b>Maqueta visual (Etapa 1e)</b> — datos de ejemplo. Funcionan: subtabs de tipología,
+      toggle orden (en TODOS), acciones masivas con check maestro por grupo, menú de pisos,
+      render S/M/L, check revisada, bandera terminar. Los botones masivos y guardar aún no operan.
     </div>
 
   </div>
@@ -213,8 +237,9 @@
     h+='<th style="text-align:left; padding:3px 6px;">Piso</th>';
     if (mostrarTipo) h+='<th style="text-align:left; padding:3px 6px;">Tipología</th>';
     h+='<th style="text-align:right; padding:3px 6px;">φ</th><th style="text-align:right; padding:3px 6px;">Cant</th>';
-    h+='<th style="text-align:right; padding:3px 6px;">Largo</th><th style="text-align:right; padding:3px 6px;">Peso Tot</th>';
-    h+='<th style="text-align:left; padding:3px 6px;">Figura</th>';
+    h+='<th style="text-align:right; padding:3px 6px;">Largo</th><th style="text-align:right; padding:3px 10px 3px 6px;">Peso Tot</th>';
+    // Figura + Dibujo separados del bloque numérico (Peso Tot) con un borde suave y aire.
+    h+='<th style="text-align:left; padding:3px 6px 3px 14px; border-left:1px solid #e0e0e0;">Figura</th>';
     if (AC2.render) h+='<th style="text-align:left; padding:3px 6px;">Dibujo</th>';
     LADOS.forEach(function(L){ h+='<th style="text-align:right; padding:3px 6px;">'+L+'</th>'; });
     ['α1','α2','α3','α4'].forEach(function(a){ h+='<th style="text-align:right; padding:3px 6px;">'+a+'</th>'; });
@@ -231,14 +256,16 @@
     // Celda de dim: roja si la barra es inválida (simulado con b.invalida en la maqueta).
     var tddim=function(v){ var bg=b.invalida?' background:#ffcdd2;':(v!=null&&v!==''?'':' background:#fafafa;'); return '<td style="padding:2px 6px; border-top:1px solid #f0f0f0; text-align:right;'+bg+'">'+n(v)+'</td>'; };
     var h='<tr'+(b.invalida?' title="Geometría inválida para la figura"':'')+'>';
-    // Check de SELECCIÓN masiva SOLO al inicio y SOLO en modo masivo.
-    if (AC2.masiva) h+='<td style="padding:2px 6px; border-top:1px solid #f0f0f0; text-align:center;"><input type="checkbox"/></td>';
+    // Check de SELECCIÓN masiva SOLO al inicio y SOLO en modo masivo. data-grp = tipología
+    // (para que el check maestro del grupo marque/desmarque solo los suyos).
+    if (AC2.masiva) h+='<td style="padding:2px 6px; border-top:1px solid #f0f0f0; text-align:center;"><input type="checkbox" class="ac2sel" data-grp="'+esc(b.tipo)+'" onclick="ac2SelFila()"/></td>';
     h+=td+esc(b.piso)+'</td>';
     if (mostrarTipo) h+=td+'<b>'+esc(b.tipo)+'</b></td>';   // en TODOS: aquí iría un <select> al cablear
     h+=tdr+n(b.diam)+'</td>'+tdr+n(b.cant)+'</td>';
     h+='<td style="padding:2px 6px; border-top:1px solid #f0f0f0; text-align:right; color:#1565c0; font-weight:600;">'+n(b.largo)+'</td>';
-    h+='<td style="padding:2px 6px; border-top:1px solid #f0f0f0; text-align:right; color:#00695c; font-weight:600;">'+n(b.peso,1)+'</td>';
-    h+='<td style="padding:2px 6px; border-top:1px solid #f0f0f0; color:#666;"><b>'+esc(b.fig)+'</b></td>';
+    h+='<td style="padding:2px 10px 2px 6px; border-top:1px solid #f0f0f0; text-align:right; color:#00695c; font-weight:600;">'+n(b.peso,1)+'</td>';
+    // Figura separada del bloque numérico con borde suave + aire a la izquierda.
+    h+='<td style="padding:2px 6px 2px 14px; border-top:1px solid #f0f0f0; border-left:1px solid #eee; color:#666;"><b>'+esc(b.fig)+'</b></td>';
     if (AC2.render) h+=td+figSvg(b)+'</td>';
     for (var i=0;i<9;i++){ h+=tddim(b.dims[i]); }
     for (var j=0;j<4;j++){ var av=b['a'+(j+1)]; h+= (av!=null&&av!=='')?(tdr+n(av)+'</td>'):'<td style="padding:2px 6px; border-top:1px solid #f0f0f0; background:#fafafa;"></td>'; }
@@ -258,7 +285,7 @@
     //        + 4 áng + R + Rev + acciones.
     var cols = (AC2.masiva?1:0) + 1 + (AC2.tipo==='TODOS'?1:0) + 5 + (AC2.render?1:0) + 9 + 4 + 1 + 1 + 1;
     return '<tr style="background:#eef2f3;"><td colspan="'+cols+'" style="padding:3px 8px; border-top:1px solid #ddd; font-weight:700; color:#37474f;">'+
-      (AC2.masiva?'<input type="checkbox" style="vertical-align:middle; margin-right:6px;"/>':'')+
+      (AC2.masiva?'<input type="checkbox" class="ac2grp" data-grp="'+esc(tipo)+'" onclick="ac2SelGrupo(this)" style="vertical-align:middle; margin-right:6px;" title="Marcar/desmarcar todo el grupo '+esc(tipo)+'"/>':'')+
       '▎'+esc(tipo)+' · '+cnt+' barra'+(cnt>1?'s':'')+'</td></tr>';
   }
 
@@ -301,6 +328,30 @@
     ['s','m','l'].forEach(function(x){ var b=document.getElementById('ac2r_'+x); if(b){var on=(t===x); b.style.background=on?'#00695c':'#fff'; b.style.color=on?'#fff':'#607d8b';} });
     ac2Render(); };
   window.ac2ToggleRev=function(el){ /* maqueta: no persiste, solo refresca contador al re-render */ ac2Render(); };
+  // Check MAESTRO del grupo: marca/desmarca todas las filas de esa tipología.
+  window.ac2SelGrupo=function(el){
+    var grp=el.getAttribute('data-grp'), on=el.checked;
+    document.querySelectorAll('.ac2sel[data-grp="'+grp+'"]').forEach(function(c){ c.checked=on; });
+    el.indeterminate=false;
+    ac2SelResumen();
+  };
+  // Al marcar UNA fila: sincroniza el maestro de su grupo (checked / indeterminate).
+  window.ac2SelFila=function(){
+    document.querySelectorAll('.ac2grp').forEach(function(m){
+      var grp=m.getAttribute('data-grp');
+      var hijos=[].slice.call(document.querySelectorAll('.ac2sel[data-grp="'+grp+'"]'));
+      var marc=hijos.filter(function(c){return c.checked;}).length;
+      m.checked=(marc>0 && marc===hijos.length);
+      m.indeterminate=(marc>0 && marc<hijos.length);
+    });
+    ac2SelResumen();
+  };
+  // Contador de seleccionadas en la barra de acciones masivas.
+  function ac2SelResumen(){
+    var s=document.getElementById('ac2_selcount'); if(!s) return;
+    var nsel=document.querySelectorAll('.ac2sel:checked').length;
+    s.textContent = nsel? (nsel+' seleccionada'+(nsel>1?'s':'')) : 'ninguna seleccionada';
+  }
   window.ac2ToggleTerminado=function(){
     AC2.terminado=!AC2.terminado;
     var b=document.getElementById('ac2_bandera'), badge=document.getElementById('ac2_estadoBadge');
@@ -313,6 +364,10 @@
     var t=prompt('Esto BORRA el lote #128 y TODAS sus barras.\n\nEscribe ELIMINAR para confirmar:');
     if (t==='ELIMINAR') alert('(maqueta) El lote se eliminaría aquí.');
     else if (t!=null) alert('Cancelado: debes escribir exactamente ELIMINAR.');
+  };
+  window.ac2TogglePisos=function(){
+    var m=document.getElementById('ac2_pisosMenu'); if(!m) return;
+    m.style.display=(m.style.display==='none')?'block':'none';
   };
   window.ac2Descartar=function(){
     // Descartar lo NO guardado (distinto de eliminar un lote ya guardado).
