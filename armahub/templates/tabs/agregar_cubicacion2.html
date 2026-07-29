@@ -1,0 +1,193 @@
+<!-- MAQUETA VISUAL (Etapa 1) — Agregar Cubicación 2. SOLO HTML/CSS con datos de ejemplo.
+     CERO lógica/backend. Para aprobar el diseño antes de cablear. El tab "Agregar
+     Cubicación" original queda intacto hasta que este reemplace. Look homologado con el
+     Bar Manager (fuente 11px, cabecera #fafafa/#666, badges de sector por color). -->
+<div id="tab-agregar2" class="tab-content">
+  <div style="padding:4px 2px 12px;">
+
+    <!-- Cabecera: título + lote + guardar/descartar -->
+    <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:12px;">
+      <h3 style="margin:0; color:#00695c;">➕ Formulario de Cubicación</h3>
+      <span style="font-size:12px; color:#e65100; background:#fff3e0; border:1px solid #ffb74d; border-radius:6px; padding:3px 10px; font-weight:600;">Lote #128 · En edición</span>
+      <div style="flex:1;"></div>
+      <button style="font-size:14px; padding:6px 12px; background:#00695c; color:#fff; border:none; border-radius:4px; cursor:pointer;" title="Guardar">💾</button>
+      <button style="font-size:14px; font-weight:700; padding:6px 11px; background:#fff; color:#c62828; border:1px solid #e0a0a0; border-radius:4px; cursor:pointer;" title="Descartar todo">✕</button>
+    </div>
+
+    <!-- FILA 1 · Contexto: Obra + Eje -->
+    <div style="display:flex; gap:14px; align-items:flex-end; flex-wrap:wrap; margin-bottom:10px; padding:10px 12px; background:#e0f2f1; border:1px solid #b2dfdb; border-radius:8px;">
+      <div style="display:flex; flex-direction:column;">
+        <label style="font-size:11px; color:#00695c; font-weight:700; margin-bottom:2px;">Obra *</label>
+        <input type="text" value="Obra de Prueba" style="font-size:13px; height:34px; min-width:240px; box-sizing:border-box;" />
+      </div>
+      <div style="display:flex; flex-direction:column;">
+        <label style="font-size:11px; color:#00695c; font-weight:700; margin-bottom:2px;">Eje / Losa *</label>
+        <input type="text" value="24(A-E)" placeholder="🔍 buscar o escribir…" style="font-size:13px; height:34px; min-width:150px; box-sizing:border-box;" />
+      </div>
+      <button style="font-size:12px; height:34px; padding:0 14px; background:#fff; color:#00695c; border:1px dashed #00695c; border-radius:4px; cursor:pointer;" title="Aparece cuando escribes un eje nuevo">＋ Crear Eje</button>
+    </div>
+
+    <!-- FILA 2 · Selección rápida (3 secciones de botones) -->
+    <div style="display:flex; flex-direction:column; gap:6px; margin-bottom:10px; padding:10px 12px; background:#f7f7f7; border:1px solid #e0e0e0; border-radius:8px;">
+      <!-- Sector constructivo -->
+      <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+        <span style="font-size:11px; color:#607d8b; font-weight:700; width:80px;">Sector</span>
+        <button style="font-size:12px; padding:4px 12px; border-radius:14px; border:1px solid #6D4C41; background:#fff; color:#6D4C41; cursor:pointer;">FUND</button>
+        <button style="font-size:12px; padding:4px 12px; border-radius:14px; border:1px solid #1565C0; background:#1565C0; color:#fff; cursor:pointer; font-weight:600;">ELEV</button>
+        <button style="font-size:12px; padding:4px 12px; border-radius:14px; border:1px solid #00897B; background:#fff; color:#00897B; cursor:pointer;">VCIELO</button>
+        <button style="font-size:12px; padding:4px 12px; border-radius:14px; border:1px solid #7B1FA2; background:#fff; color:#7B1FA2; cursor:pointer;">LCIELO</button>
+      </div>
+      <!-- Estructura -->
+      <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+        <span style="font-size:11px; color:#607d8b; font-weight:700; width:80px;">Estructura</span>
+        <button style="font-size:12px; padding:4px 12px; border-radius:4px; border:1px solid #00695c; background:#00695c; color:#fff; cursor:pointer; font-weight:600;">MURO</button>
+        <button style="font-size:12px; padding:4px 12px; border-radius:4px; border:1px solid #cfd8dc; background:#fff; color:#455a64; cursor:pointer;">LOSA</button>
+        <button style="font-size:12px; padding:4px 12px; border-radius:4px; border:1px solid #cfd8dc; background:#fff; color:#455a64; cursor:pointer;">VIGA</button>
+        <button style="font-size:12px; padding:4px 12px; border-radius:4px; border:1px solid #cfd8dc; background:#fff; color:#455a64; cursor:pointer;">COLUMNA</button>
+        <button style="font-size:12px; padding:4px 12px; border-radius:4px; border:1px solid #cfd8dc; background:#fff; color:#455a64; cursor:pointer;">FUNDACIÓN</button>
+        <button style="font-size:12px; padding:4px 12px; border-radius:4px; border:1px solid #cfd8dc; background:#fff; color:#455a64; cursor:pointer;">GENERAL</button>
+      </div>
+      <!-- Tipología (varía según estructura; aquí MURO = 6) -->
+      <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+        <span style="font-size:11px; color:#607d8b; font-weight:700; width:80px;">Tipología</span>
+        <button style="font-size:12px; padding:4px 12px; border-radius:4px; border:1px solid #00695c; background:#00695c; color:#fff; cursor:pointer; font-weight:600;" title="Malla Horizontal">MH</button>
+        <button style="font-size:12px; padding:4px 12px; border-radius:4px; border:1px solid #cfd8dc; background:#fff; color:#455a64; cursor:pointer;" title="Malla Vertical">MV</button>
+        <button style="font-size:12px; padding:4px 12px; border-radius:4px; border:1px solid #cfd8dc; background:#fff; color:#455a64; cursor:pointer;" title="Traba Muro">TR</button>
+        <button style="font-size:12px; padding:4px 12px; border-radius:4px; border:1px solid #cfd8dc; background:#fff; color:#455a64; cursor:pointer;" title="Estribo Confinamiento">EC</button>
+        <button style="font-size:12px; padding:4px 12px; border-radius:4px; border:1px solid #cfd8dc; background:#fff; color:#455a64; cursor:pointer;" title="Traba Confinamiento">TC</button>
+        <button style="font-size:12px; padding:4px 12px; border-radius:4px; border:1px solid #cfd8dc; background:#fff; color:#455a64; cursor:pointer;" title="Cabezal">CB</button>
+      </div>
+    </div>
+
+    <!-- FILA 3 · Botones rápidos -->
+    <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:8px;">
+      <button style="font-size:12px; padding:5px 12px; background:#00695c; color:#fff; border:none; border-radius:4px; cursor:pointer;">＋ 1 barra por piso</button>
+      <button style="font-size:12px; padding:5px 12px; background:#fff; color:#00695c; border:1px solid #00695c; border-radius:4px; cursor:pointer;">＋ barra</button>
+      <button style="font-size:12px; padding:5px 12px; background:#fff; color:#607d8b; border:1px solid #cfd8dc; border-radius:4px; cursor:pointer;">⚙ Pisos múltiples</button>
+      <div style="flex:1;"></div>
+      <span style="font-size:11px; color:#666;">contexto: <b>ELEV · MURO · MH</b> · Eje <b>24(A-E)</b></span>
+    </div>
+
+    <!-- GRILLA de barras (look Bar Manager plano; sin agrupación; datos de ejemplo) -->
+    <div style="overflow-x:auto; border:1px solid #e0e0e0; border-radius:6px;">
+      <table style="width:100%; min-width:1100px; font-size:11px; border-collapse:collapse; white-space:nowrap;">
+        <thead>
+          <tr style="color:#666; background:#fafafa;">
+            <th style="text-align:left; padding:3px 6px;">Piso</th>
+            <th style="text-align:left; padding:3px 6px;">Tipología</th>
+            <th style="text-align:right; padding:3px 6px;">φ</th>
+            <th style="text-align:right; padding:3px 6px;">Cant</th>
+            <th style="text-align:right; padding:3px 6px;">Largo</th>
+            <th style="text-align:right; padding:3px 6px;">Peso Tot</th>
+            <th style="text-align:left; padding:3px 6px;">Figura</th>
+            <th style="text-align:right; padding:3px 6px;">A</th>
+            <th style="text-align:right; padding:3px 6px;">B</th>
+            <th style="text-align:right; padding:3px 6px;">C</th>
+            <th style="text-align:right; padding:3px 6px;">D</th>
+            <th style="text-align:right; padding:3px 6px;">E</th>
+            <th style="text-align:right; padding:3px 6px;">F</th>
+            <th style="text-align:right; padding:3px 6px;">G</th>
+            <th style="text-align:right; padding:3px 6px;">H</th>
+            <th style="text-align:right; padding:3px 6px;">I</th>
+            <th style="text-align:right; padding:3px 6px;">α1</th>
+            <th style="text-align:right; padding:3px 6px;">α2</th>
+            <th style="text-align:right; padding:3px 6px;">α3</th>
+            <th style="text-align:right; padding:3px 6px;">α4</th>
+            <th style="text-align:right; padding:3px 6px;">R</th>
+            <th style="padding:3px 6px;"></th>
+          </tr>
+        </thead>
+        <tbody>
+          <!-- Fila ejemplo 1 -->
+          <tr style="border-top:1px solid #f0f0f0;">
+            <td style="padding:2px 6px;">P3</td>
+            <td style="padding:2px 6px; font-weight:600;">MH</td>
+            <td style="padding:2px 6px; text-align:right;">16</td>
+            <td style="padding:2px 6px; text-align:right;">120</td>
+            <td style="padding:2px 6px; text-align:right; color:#1565c0; font-weight:600;">340</td>
+            <td style="padding:2px 6px; text-align:right; color:#00695c; font-weight:600;">643.2</td>
+            <td style="padding:2px 6px; color:#666;"><b>104B</b></td>
+            <td style="padding:2px 6px; text-align:right;">340</td>
+            <td style="padding:2px 6px; text-align:right;">85</td>
+            <td style="padding:2px 6px; background:#fafafa;"></td>
+            <td style="padding:2px 6px; background:#fafafa;"></td>
+            <td style="padding:2px 6px; background:#fafafa;"></td>
+            <td style="padding:2px 6px; background:#fafafa;"></td>
+            <td style="padding:2px 6px; background:#fafafa;"></td>
+            <td style="padding:2px 6px; background:#fafafa;"></td>
+            <td style="padding:2px 6px; background:#fafafa;"></td>
+            <td style="padding:2px 6px; background:#fafafa;"></td>
+            <td style="padding:2px 6px; background:#fafafa;"></td>
+            <td style="padding:2px 6px; background:#fafafa;"></td>
+            <td style="padding:2px 6px; background:#fafafa;"></td>
+            <td style="padding:2px 6px; background:#fafafa;"></td>
+            <td style="padding:2px 6px; text-align:center;"><span style="color:#c62828; cursor:pointer;">✕</span></td>
+          </tr>
+          <!-- Fila ejemplo 2 -->
+          <tr style="border-top:1px solid #f0f0f0;">
+            <td style="padding:2px 6px;">P4</td>
+            <td style="padding:2px 6px; font-weight:600;">MH</td>
+            <td style="padding:2px 6px; text-align:right;">16</td>
+            <td style="padding:2px 6px; text-align:right;">120</td>
+            <td style="padding:2px 6px; text-align:right; color:#1565c0; font-weight:600;">340</td>
+            <td style="padding:2px 6px; text-align:right; color:#00695c; font-weight:600;">643.2</td>
+            <td style="padding:2px 6px; color:#666;"><b>104B</b></td>
+            <td style="padding:2px 6px; text-align:right;">340</td>
+            <td style="padding:2px 6px; text-align:right;">85</td>
+            <td style="padding:2px 6px; background:#fafafa;"></td>
+            <td style="padding:2px 6px; background:#fafafa;"></td>
+            <td style="padding:2px 6px; background:#fafafa;"></td>
+            <td style="padding:2px 6px; background:#fafafa;"></td>
+            <td style="padding:2px 6px; background:#fafafa;"></td>
+            <td style="padding:2px 6px; background:#fafafa;"></td>
+            <td style="padding:2px 6px; background:#fafafa;"></td>
+            <td style="padding:2px 6px; background:#fafafa;"></td>
+            <td style="padding:2px 6px; background:#fafafa;"></td>
+            <td style="padding:2px 6px; background:#fafafa;"></td>
+            <td style="padding:2px 6px; background:#fafafa;"></td>
+            <td style="padding:2px 6px; background:#fafafa;"></td>
+            <td style="padding:2px 6px; text-align:center;"><span style="color:#c62828; cursor:pointer;">✕</span></td>
+          </tr>
+          <!-- Fila ejemplo 3 (otra tipología, con ángulos) -->
+          <tr style="border-top:1px solid #f0f0f0;">
+            <td style="padding:2px 6px;">P5</td>
+            <td style="padding:2px 6px; font-weight:600;">TR</td>
+            <td style="padding:2px 6px; text-align:right;">12</td>
+            <td style="padding:2px 6px; text-align:right;">80</td>
+            <td style="padding:2px 6px; text-align:right; color:#1565c0; font-weight:600;">500</td>
+            <td style="padding:2px 6px; text-align:right; color:#00695c; font-weight:600;">355.0</td>
+            <td style="padding:2px 6px; color:#666;"><b>201A</b></td>
+            <td style="padding:2px 6px; text-align:right;">200</td>
+            <td style="padding:2px 6px; text-align:right;">100</td>
+            <td style="padding:2px 6px; text-align:right;">200</td>
+            <td style="padding:2px 6px; background:#fafafa;"></td>
+            <td style="padding:2px 6px; background:#fafafa;"></td>
+            <td style="padding:2px 6px; background:#fafafa;"></td>
+            <td style="padding:2px 6px; background:#fafafa;"></td>
+            <td style="padding:2px 6px; background:#fafafa;"></td>
+            <td style="padding:2px 6px; background:#fafafa;"></td>
+            <td style="padding:2px 6px; text-align:right;">135</td>
+            <td style="padding:2px 6px; background:#fafafa;"></td>
+            <td style="padding:2px 6px; background:#fafafa;"></td>
+            <td style="padding:2px 6px; background:#fafafa;"></td>
+            <td style="padding:2px 6px; text-align:right;">8</td>
+            <td style="padding:2px 6px; text-align:center;"><span style="color:#c62828; cursor:pointer;">✕</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- VALIDACIÓN / estado -->
+    <div style="display:flex; align-items:center; gap:14px; flex-wrap:wrap; margin-top:10px; padding:8px 12px; background:#f5f5f5; border:1px solid #e0e0e0; border-radius:6px;">
+      <label style="font-size:12px; color:#455a64; cursor:pointer; font-weight:600;"><input type="checkbox" style="vertical-align:middle;"/> Terminado <span style="font-weight:400; color:#888;">(bloquea la edición del lote)</span></label>
+      <div style="flex:1;"></div>
+      <span style="font-size:11px; color:#666;"><b style="color:#37474f;">3</b> barras · <b style="color:#37474f;">320</b> uds · <b style="color:#00695c;">1.641,4</b> kg</span>
+    </div>
+
+    <div class="muted" style="font-size:11px; margin-top:8px;">
+      🧪 <b>Maqueta visual (Etapa 1)</b> — datos de ejemplo, sin funcionalidad. Sirve para
+      aprobar el diseño antes de cablear. El tab "Agregar Cubicación" original sigue activo.
+    </div>
+
+  </div>
+</div>

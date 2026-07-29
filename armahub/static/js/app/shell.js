@@ -11,6 +11,7 @@
     obras: 'Obras',
     buscar: 'Bar Manager',
     agregar: 'Agregar Cubicación',
+    agregar2: 'Agregar Cubicación 2',
     pedidos: 'Pedidos',
     export: 'Exportacion',
     reclamos: 'Reclamos',
