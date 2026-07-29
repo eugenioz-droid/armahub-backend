@@ -15,6 +15,8 @@
       <button id="ac2_bandera" onclick="ac2ToggleTerminado()" title="Terminar la cubicación del lote"
               style="font-size:16px; padding:5px 12px; background:#ffebee; color:#c62828; border:1px solid #ef9a9a; border-radius:4px; cursor:pointer;">🚩</button>
       <button style="font-size:14px; padding:6px 12px; background:#00695c; color:#fff; border:none; border-radius:4px; cursor:pointer;" title="Guardar">💾</button>
+      <!-- X: DESCARTAR lo no guardado (distinto de "Eliminar lote", que borra uno ya guardado). -->
+      <button onclick="ac2Descartar()" title="Descartar lo no guardado" style="font-size:14px; font-weight:700; padding:6px 11px; background:#fff; color:#c62828; border:1px solid #e0a0a0; border-radius:4px; cursor:pointer;">✕</button>
     </div>
 
     <!-- FILA 1 · Contexto -->
@@ -171,12 +173,28 @@
   var LADOS=['A','B','C','D','E','F','G','H','I'];
   var TIPOS=['MH','MV','TR','EC','TC','CB'];
   var ORD_TIPO={MH:0,MV:1,TR:2,EC:3,TC:4,CB:5};
-  var TAM={ s:{w:46,h:30}, m:{w:78,h:52}, l:{w:118,h:78} };   // S igual · M intermedio · L +50%
+  var TAM={ s:{w:54,h:36}, m:{w:90,h:60}, l:{w:135,h:90} };   // S · M (~+66%) · L (+50% sobre M)
 
   function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
   function n(v,d){ if(v==null||v===''||isNaN(v)) return ''; return d? Number(v).toFixed(d): Math.round(Number(v)); }
-  function figSvg(){ var t=TAM[AC2.tam];
-    return '<span style="display:inline-block; width:'+t.w+'px; height:'+t.h+'px; border:1px dashed #cfd8dc; border-radius:3px; vertical-align:middle; text-align:center; line-height:'+t.h+'px; color:#bbb; font-size:9px;">▱</span>'; }
+  // Geometrías de EJEMPLO por figura (maqueta) para ver el render REAL escalar con S/M/L.
+  // Al cablear se usará la geometría del catálogo (/figuras-catalogo).
+  var GEO_EJEMPLO = {
+    '104B': { dim:'2D', tramos:[{lado:'A',tipo:'recto'},{lado:'B',tipo:'recto'}], puntos:[{x:0,y:0},{x:100,y:0},{x:100,y:40}] },  // L
+    '101A': { dim:'2D', tramos:[{lado:'A',tipo:'recto'}], puntos:[{x:0,y:0},{x:100,y:0}] },  // recta
+    '201A': { dim:'2D', tramos:[{lado:'A',tipo:'recto'},{lado:'B',tipo:'recto'},{lado:'C',tipo:'recto'}], puntos:[{x:0,y:40},{x:0,y:0},{x:100,y:0},{x:100,y:40}] }  // U
+  };
+  function figSvg(b){
+    var t=TAM[AC2.tam];
+    var geo = GEO_EJEMPLO[b.fig];
+    if (geo && window.disenadorMotor && window.disenadorMotor.dibujarFigura) {
+      try { return '<span style="display:inline-block; vertical-align:middle;">' +
+        window.disenadorMotor.dibujarFigura(geo, null, { width:t.w, height:t.h, pad:6 }) + '</span>'; }
+      catch(e){}
+    }
+    // Fallback si el motor no cargó: caja con el tamaño para ver el escalado igual.
+    return '<span style="display:inline-block; width:'+t.w+'px; height:'+t.h+'px; border:1px dashed #cfd8dc; border-radius:3px; vertical-align:middle; text-align:center; line-height:'+t.h+'px; color:#bbb; font-size:9px;">'+esc(b.fig||'▱')+'</span>';
+  }
 
   function visibles(){
     var arr = AC2.barras.filter(function(b){ return AC2.tipo==='TODOS' || b.tipo===AC2.tipo; });
@@ -190,8 +208,8 @@
   function thead(){
     var mostrarTipo = (AC2.tipo==='TODOS');   // en subtab se oculta la columna Tipología
     var h='<tr style="color:#666; background:#fafafa;">';
-    h+='<th style="padding:3px 6px; text-align:center; width:22px;" title="Revisada">✓</th>';
-    if (AC2.masiva) h+='<th style="padding:3px 6px; text-align:center; width:22px;">☑</th>';
+    // Solo en modo masivo, un check de SELECCIÓN al inicio (para acciones masivas).
+    if (AC2.masiva) h+='<th style="padding:3px 6px; text-align:center; width:22px;" title="Seleccionar">☑</th>';
     h+='<th style="text-align:left; padding:3px 6px;">Piso</th>';
     if (mostrarTipo) h+='<th style="text-align:left; padding:3px 6px;">Tipología</th>';
     h+='<th style="text-align:right; padding:3px 6px;">φ</th><th style="text-align:right; padding:3px 6px;">Cant</th>';
@@ -200,7 +218,9 @@
     if (AC2.render) h+='<th style="text-align:left; padding:3px 6px;">Dibujo</th>';
     LADOS.forEach(function(L){ h+='<th style="text-align:right; padding:3px 6px;">'+L+'</th>'; });
     ['α1','α2','α3','α4'].forEach(function(a){ h+='<th style="text-align:right; padding:3px 6px;">'+a+'</th>'; });
-    h+='<th style="text-align:right; padding:3px 6px;">R</th><th style="padding:3px 6px;"></th></tr>';
+    h+='<th style="text-align:right; padding:3px 6px;">R</th>';
+    h+='<th style="padding:3px 6px; text-align:center;" title="Revisada por el cubicador">Rev</th>';
+    h+='<th style="padding:3px 6px;"></th></tr>';
     return h;
   }
 
@@ -211,7 +231,7 @@
     // Celda de dim: roja si la barra es inválida (simulado con b.invalida en la maqueta).
     var tddim=function(v){ var bg=b.invalida?' background:#ffcdd2;':(v!=null&&v!==''?'':' background:#fafafa;'); return '<td style="padding:2px 6px; border-top:1px solid #f0f0f0; text-align:right;'+bg+'">'+n(v)+'</td>'; };
     var h='<tr'+(b.invalida?' title="Geometría inválida para la figura"':'')+'>';
-    h+='<td style="padding:2px 6px; border-top:1px solid #f0f0f0; text-align:center;"><input type="checkbox"'+(b.rev?' checked':'')+' onclick="ac2ToggleRev(this)"/></td>';
+    // Check de SELECCIÓN masiva SOLO al inicio y SOLO en modo masivo.
     if (AC2.masiva) h+='<td style="padding:2px 6px; border-top:1px solid #f0f0f0; text-align:center;"><input type="checkbox"/></td>';
     h+=td+esc(b.piso)+'</td>';
     if (mostrarTipo) h+=td+'<b>'+esc(b.tipo)+'</b></td>';   // en TODOS: aquí iría un <select> al cablear
@@ -219,19 +239,24 @@
     h+='<td style="padding:2px 6px; border-top:1px solid #f0f0f0; text-align:right; color:#1565c0; font-weight:600;">'+n(b.largo)+'</td>';
     h+='<td style="padding:2px 6px; border-top:1px solid #f0f0f0; text-align:right; color:#00695c; font-weight:600;">'+n(b.peso,1)+'</td>';
     h+='<td style="padding:2px 6px; border-top:1px solid #f0f0f0; color:#666;"><b>'+esc(b.fig)+'</b></td>';
-    if (AC2.render) h+=td+figSvg()+'</td>';
+    if (AC2.render) h+=td+figSvg(b)+'</td>';
     for (var i=0;i<9;i++){ h+=tddim(b.dims[i]); }
     for (var j=0;j<4;j++){ var av=b['a'+(j+1)]; h+= (av!=null&&av!=='')?(tdr+n(av)+'</td>'):'<td style="padding:2px 6px; border-top:1px solid #f0f0f0; background:#fafafa;"></td>'; }
     h+= (b.r!=null&&b.r!=='')?(tdr+n(b.r)+'</td>'):'<td style="padding:2px 6px; border-top:1px solid #f0f0f0; background:#fafafa;"></td>';
+    // Rev (revisada por el cubicador) — AL FINAL, antes de las acciones.
+    h+='<td style="padding:2px 6px; border-top:1px solid #f0f0f0; text-align:center;"><input type="checkbox"'+(b.rev?' checked':'')+' onclick="ac2ToggleRev(this)" title="Revisada"/></td>';
+    // Acciones por fila: + (agrega debajo COPIANDO la tipología), ⎘ (duplicar), ✕.
     h+='<td style="padding:2px 6px; border-top:1px solid #f0f0f0; white-space:nowrap;">'+
-       '<span title="Agregar debajo" style="color:#00695c; cursor:pointer; font-weight:700; margin-right:6px;">＋</span>'+
+       '<span title="Agregar barra '+esc(b.tipo)+' debajo (copia la tipología)" style="color:#00695c; cursor:pointer; font-weight:700; margin-right:6px;">＋</span>'+
        '<span title="Duplicar" style="color:#1565c0; cursor:pointer; margin-right:6px;">⎘</span>'+
        '<span title="Quitar" style="color:#c62828; cursor:pointer;">✕</span></td></tr>';
     return h;
   }
 
   function grupoHdr(tipo, cnt){
-    var cols = 2 + (AC2.masiva?1:0) + (AC2.tipo==='TODOS'?1:0) + 6 + (AC2.render?1:0) + 9 + 4 + 1 + 1;
+    // cols = masiva(0/1) + Piso + [Tipo] + φ+Cant+Largo+Peso+Figura(5) + [Dibujo] + 9 lados
+    //        + 4 áng + R + Rev + acciones.
+    var cols = (AC2.masiva?1:0) + 1 + (AC2.tipo==='TODOS'?1:0) + 5 + (AC2.render?1:0) + 9 + 4 + 1 + 1 + 1;
     return '<tr style="background:#eef2f3;"><td colspan="'+cols+'" style="padding:3px 8px; border-top:1px solid #ddd; font-weight:700; color:#37474f;">'+
       (AC2.masiva?'<input type="checkbox" style="vertical-align:middle; margin-right:6px;"/>':'')+
       '▎'+esc(tipo)+' · '+cnt+' barra'+(cnt>1?'s':'')+'</td></tr>';
@@ -288,6 +313,10 @@
     var t=prompt('Esto BORRA el lote #128 y TODAS sus barras.\n\nEscribe ELIMINAR para confirmar:');
     if (t==='ELIMINAR') alert('(maqueta) El lote se eliminaría aquí.');
     else if (t!=null) alert('Cancelado: debes escribir exactamente ELIMINAR.');
+  };
+  window.ac2Descartar=function(){
+    // Descartar lo NO guardado (distinto de eliminar un lote ya guardado).
+    if (confirm('Se descartará todo lo que no hayas guardado.\n\n¿Continuar?')) alert('(maqueta) Se descartaría el formulario.');
   };
 
   function init(){ if(document.getElementById('ac2_grid')){ ac2SetTipo('TODOS'); } }
