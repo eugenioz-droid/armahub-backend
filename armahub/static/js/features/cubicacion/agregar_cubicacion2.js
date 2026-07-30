@@ -30,9 +30,11 @@ var AC2_DIMKEYS=['dim_a','dim_b','dim_c','dim_d','dim_e','dim_f','dim_g','dim_h'
 var _ac2Figuras = {};
 var _ac2Seq = 1;   // correlativo para _id estable de cada barra (handlers/id de fila)
 
-// Crea una barra NUEVA con el shape del backend (dim_a..i, marca, etc.). marca = tipología activa.
+// Crea una barra NUEVA con el shape del backend (dim_a..i, marca, etc.). En un subtab la barra
+// nace con esa tipología; en TODOS nace SIN marca (el cubicador la elige en el selector de la
+// columna Tipología) — según diseño: en TODOS la barra nueva NO tiene tipología fija.
 function ac2NuevaBarra(over){
-  var b = { _id: _ac2Seq++, piso:'', marca:(AC2.tipo==='TODOS'?'MH':AC2.tipo),
+  var b = { _id: _ac2Seq++, piso:'', marca:(AC2.tipo==='TODOS'?'':AC2.tipo),
             diam:null, cant:1, mult:1, figura:'',
             dim_a:null,dim_b:null,dim_c:null,dim_d:null,dim_e:null,dim_f:null,dim_g:null,dim_h:null,dim_i:null,
             ang1:null,ang2:null,ang3:null,ang4:null, radio:null,
@@ -119,9 +121,11 @@ function ac2Fila(b){
   if (AC2.masiva) h+='<td style="'+AC2_TDS+' text-align:center;"><input type="checkbox" class="ac2sel" data-grp="'+ac2Esc(b.marca)+'" onclick="ac2SelFila()"/></td>';
   // Piso (texto libre editable).
   h+='<td style="'+AC2_TDS+'"><input type="text" value="'+ac2Esc(b.piso)+'" onchange="ac2SetBarra('+b._id+',\'piso\',this.value)" style="width:44px; font-size:11px; padding:1px 3px; border:1px solid #dfe6e9; border-radius:3px;"/></td>';
-  // Tipología (marca) — select solo en TODOS; en un subtab está implícita.
+  // Tipología (marca) — select solo en TODOS; en un subtab está implícita. Opción vacía para
+  // barras nuevas sin tipología aún (en TODOS nacen sin marca; el cubicador la elige acá).
   if (mostrarTipo){
-    var op=AC2_TIPOS.map(function(m){return '<option'+(m===b.marca?' selected':'')+'>'+m+'</option>';}).join('');
+    var op='<option value=""'+(b.marca?'':' selected')+'>— tipo —</option>'+
+      AC2_TIPOS.map(function(m){return '<option'+(m===b.marca?' selected':'')+'>'+m+'</option>';}).join('');
     h+='<td style="'+AC2_TDS+'"><select onchange="ac2SetBarra('+b._id+',\'marca\',this.value)" style="font-size:11px; padding:1px 2px;">'+op+'</select></td>';
   }
   // φ (diámetro) — select de lista fija.
@@ -240,7 +244,8 @@ window.ac2SetBarra=function(id,campo,valor){
   if (campo in AC2_CAMPOS_NUM){ var s=String(valor).trim(); b[campo]=(s===''?null:Number(s)); }
   else b[campo]=valor;
   if (campo==='figura'){ ac2ReRenderFila(id); }          // cambian las dims → re-pinta la fila
-  if (campo==='marca' && AC2.tipo!=='TODOS'){ /* no aplica: en subtab no se ve el select */ }
+  // Elegir la tipología en TODOS puede cambiar la agrupación/orden → re-render completo.
+  else if (campo==='marca'){ var agrupa=((AC2.tipo==='TODOS' && AC2.orden==='tipo')||AC2.masiva); if(agrupa){ ac2Render(); return; } }
   ac2ActualizarContadores();                              // cant/rev afectan el rollup
 };
 
@@ -420,9 +425,9 @@ async function _ac2CargarFiguras(){
 async function loadAgregarCubicacion2(){
   if(!document.getElementById('ac2_grid')) return;
   _ac2InitComboboxes();
-  ac2SetTipo('TODOS');
   await _ac2CargarFiguras();
   await _ac2CargarObras();
+  ac2SetTipo(AC2.tipo || 'TODOS');   // re-sincroniza subtabs + re-pinta el grid al (re)entrar
 }
 window.loadAgregarCubicacion2 = loadAgregarCubicacion2;
 
