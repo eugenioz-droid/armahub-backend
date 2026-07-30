@@ -788,8 +788,35 @@ Objetivo: endurecer Reclamos y cerrar los pendientes reales arrastrados.
 | N° | Descripción | Realizado | Quién |
 |----|-------------|-----------|-------|
 | 5N.16 | **Borrar la tercera matriz MUERTA** (confirmado huérfana, no en DOM ni navegación): `dashboards.js` + `tabs/dashboards.html` + 3 no-ops en `filtros.js:200-202`. CONSERVAR endpoints `/dashboard/sectores` y `/sectores-nav` (los usan las 2 matrices vivas: Exportación y ficha Obra). | ☑ | YO |
-| 5N.17 | **Herramienta de merge de ejes parecidos (posproceso).** Vista que agrupa ejes sospechosamente similares y permite fusionar manualmente ("Eje 1"/"EJE 1" → unificar). Fase aparte, no bloqueante. | ☐ | TÚ+YO |
+| 5N.17 | **Herramienta de HOMOLOGACIÓN de datos (posproceso) — botón en Bar Manager.** Depurar grafías duplicadas de campos de texto de la obra (Eje/Piso/Sector/Ciclo): agrupa sospechosos, el usuario SELECCIONA a mano cuáles son el mismo, define el nombre canónico, preview de N barras afectadas, confirma. NO normaliza automático. Transaccional, preserva procedencia, marca sectores `modificado`, auditoría. Empezar por Eje, mecanismo genérico para sumar los demás. (En el CREADOR: solo advertencia suave al escribir §6.3, no fusiona.) Fase aparte, no bloqueante. | ☐ | TÚ+YO |
 | 5N.18 | **Homologación catálogo (arrastrada de la 5N vieja).** Cruzar figuras dibujadas con las del catálogo detailer; panel para asociar/confirmar. Base para multi-catálogo (ver `docs/programa_multicatalogo.md`). No bloqueante. | ☐ | TÚ+YO |
+
+### 5N-F — CABLEADO del creador v2 (rediseño de interfaz, reemplaza el frontend v1)
+
+> Frontend NUEVO (`agregar_cubicacion2.html`, maqueta aprobada) cableado al backend YA existente
+> (F1/F2 hechos: lotes, sector_estado, /lotes, cálculo peso/largo/PROD en backend). Diseño de UI
+> en `docs/diseno_editor_cubicacion.md`. Backend a consumir SIN prefijo `/api/v1` para /lotes.
+> **Decisiones cerradas (2026-07-30):** (1) Tipología (subtabs MH/MV/TR/EC/TC/CB) = campo `marca`
+> (mismo dato, doble nombre por herencia CAD); a futuro más valores + campo abierto, no ahora.
+> (2) Check "Revisada" DEBE PERSISTIR con trazabilidad (usuario+fecha) → nueva columna en `barras`;
+> terminar lote EXIGE todas las barras revisadas (regla dura backend). (3) NO hay "Eliminar lote"
+> suelto (se entra al lote; borrar = función Admin futura). (4) Contexto arriba = Obra · **Ciclo**
+> (faltaba, agregar entre Obra y Eje, sugerido o crear nuevo) · Eje/Losa; Sector ya viene; PISOS
+> se asignan automático al agregar barras (＋barras M ya trae pisos), no cascada manual.
+> **Componentes:** usar `shared/combobox.js` (textoLibre para eje/marca/ciclo; resuelve-id para
+> obra) — NO el datalist nativo (bug Chrome). NO tocar el Bar Manager. Portar del v1 SOLO lo sano
+> (guardado `_acExpandir`/`acGuardar`, cargas maestras, cálculos `_acLargoBarra`/`_acPesoBarra`,
+> render `_acMiniFigura`); NO reciclar su input+datalist ni su render por innerHTML completo.
+
+| N° | Descripción | Realizado | Quién |
+|----|-------------|-----------|-------|
+| 5N.19 | **Migración: columna `revisada`** en `barras` (`revisada` bool default false, `revisada_por`, `revisada_fecha`). Aditiva, NULL/false para lo existente. Endpoint PATCH para marcar/desmarcar (trazabilidad). Terminar lote valida que todas las barras del lote estén revisadas (409 si falta alguna). | ☐ | YO |
+| 5N.20 | **Cableado sub-paso 1 — Contexto real.** Comboboxes Obra (resuelve-id) · Ciclo (textoLibre, nuevo) · Eje (textoLibre) con `/filters`; al elegir obra cargar ejes/ciclos/marcas/figuras. Subtabs de tipología ↔ `marca`. Estado en JS (no en el DOM). | ☐ | YO |
+| 5N.21 | **Cableado sub-paso 2 — Grilla editable.** Celdas φ/cant/mult/dims/áng/R/figura como inputs; re-render GRANULAR por celda (no innerHTML completo); dims dinámicas según `fig.parciales/angulos/radio`. | ☐ | YO |
+| 5N.22 | **Cableado sub-paso 3 — Cálculos + render vivos.** Largo (Σ parciales) + peso (con factor obra) al editar; render de figura real con `disenadorMotor.dibujarFigura(geometria, dims)`. Portados del v1. | ☐ | YO |
+| 5N.23 | **Cableado sub-paso 4 — Validación en vivo.** Celda roja según regla del catálogo (figura exige valor en sus slots, vacío en el resto). Refleja la validación del backend. | ☐ | YO |
+| 5N.24 | **Cableado sub-paso 5 — Guardado real.** `POST /lotes` → `/lotes/{id}/barras` (array expandido por piso) → `/terminar`. Reusa contrato del v1. Check revisada persistente (5N.19). | ☐ | YO |
+| 5N.25 | **Etapa 6 — Reemplazo del v1.** Verificar paridad; borrar `agregar_cubicacion.html/.js` + rastro (include/loader/bootstrap). Backend intacto. | ☐ | YO |
 
 ---
 
