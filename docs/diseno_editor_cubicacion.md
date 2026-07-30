@@ -49,11 +49,28 @@ ArmaDetailer).
 - Tiene que haber en algún lugar una configuración para pisos múltiples (replicar/estampar en
   varios pisos). Definir DÓNDE va (¿panel de config? ¿por barra? ¿por tanda?).
 
-## DEUDA TRANSVERSAL — filtros de texto
-Los filtros/inputs de texto (con datalist) NO funcionan bien en varios casos; cada vez que se
-crean en estos editores fallan (ej. el readonly que rompía oninput; el datalist que no dispara
-al elegir). **Estandarizar un componente de filtro-de-texto reutilizable** que funcione siempre,
-para no reinventarlo mal cada vez. Trabajar DESPUÉS (deuda separada).
+## DEUDA TRANSVERSAL — filtros de texto → COMPONENTE ESTÁNDAR (Etapa 2, en curso 2026-07-29)
+Los filtros/inputs de texto (con `<datalist>`) NO funcionaban bien; cada vez fallaban distinto
+(el readonly que rompía oninput; el datalist que no dispara al elegir; el filtro de EJE del Bar
+Manager que pedía CLAVE / se comportaba como campo password). Inventario: 13 filtros, todos
+`<datalist>` disperso en 3 familias, atributos anti-Chrome desparejos. Los que funcionan bien:
+buscador de OBRA y de FIGURA del Bar Manager.
+
+**Solución (implementada como componente):** `armahub/static/js/shared/combobox.js` +
+estilos `.cb-*` en `app.css`. Es un filtro de texto con lista de sugerencias PROPIA (divs), SIN
+`<datalist>` nativo → mata el bug del gestor de contraseñas de Chrome de raíz (no hay `list=`).
+- Filtra por "CONTIENE" (no solo prefijo). Click entrega el ITEM completo {id,label}.
+- `textoLibre:true` para eje/ciclo (permite escribir uno nuevo); resolución a id para obra/figura.
+- Valida que lo escrito exista (marca `.cb-invalido` en rojo si no es texto libre y no matchea).
+- Teclado (↑↓/Enter/Esc), cierra al click-fuera, blindaje anti passwordmanager completo.
+- API: `Combobox.crear(input, {items, onSelect, getLabel, getSub, textoLibre, placeholder})`
+  → `{setValor, getItem, getTexto, limpiar, refrescar}`.
+
+**Estado:** maqueta cableada en el editor de cubicación (campos Obra=resuelve-id, Eje=texto-libre)
+con datos de ejemplo. **Pendiente:** (1) probar visual/UX y aprobar; (2) al cablear el editor,
+alimentar `items` desde la API real; (3) MIGRAR el filtro de EJE del Bar Manager a este componente
+(el que no se logró arreglar con muchas iteraciones); (4) migrar el resto (obra BM ya funciona, se
+migra por consistencia; reclamos: 5 filtros con mapas globales). Migrar de a uno, probado.
 
 ## Requerimientos nuevos (2026-07-29, tras ver la maqueta Etapa 1)
 
