@@ -102,7 +102,15 @@
       panel.style.display = 'block';
     }
 
-    function abrir() { render = filtrar(input.value); activo = -1; pintar(); }
+    // Reconcilia el estado interno con el .value REAL del input. El resto del Bar Manager
+    // limpia el filtro con `eje.value = ''` por fuera del componente; sin esto, itemSel
+    // quedaría desincronizado. Así el componente nunca asume que es el único que toca su input.
+    function sync() {
+      var v = (input.value || '').trim();
+      if (!v) { itemSel = null; input.classList.remove('cb-invalido'); ultimoValor = valorActual(); return; }
+      if (itemSel && String(getLabel(itemSel)).trim() !== v) itemSel = null;   // el value ya no calza
+    }
+    function abrir() { sync(); render = filtrar(input.value); activo = -1; pintar(); }
     function cerrar() { panel.style.display = 'none'; activo = -1; }
 
     function elegir(it) {
@@ -165,8 +173,8 @@
       setValor: function (it) { itemSel = it; input.value = it ? String(getLabel(it)) : ''; input.classList.remove('cb-invalido'); },
       getItem: function () { return itemSel; },
       getTexto: function () { return input.value; },
-      limpiar: function () { itemSel = null; input.value = ''; input.classList.remove('cb-invalido'); cerrar(); },
-      refrescar: function () { if (panel.style.display !== 'none') abrir(); }
+      limpiar: function () { itemSel = null; input.value = ''; input.classList.remove('cb-invalido'); ultimoValor = valorActual(); cerrar(); },
+      refrescar: function () { sync(); if (panel.style.display !== 'none') { render = filtrar(input.value); activo = -1; pintar(); } }
     };
   }
 

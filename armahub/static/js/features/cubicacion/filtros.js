@@ -273,7 +273,7 @@ var _cbEje = null;
 // el resto del Bar Manager. Conserva el nombre para no tocar a los llamadores (loadFilters).
 function _fillEjesDatalist(ejes) {
   _ejesCache = (ejes || []).map(function(e) { return { id: String(e), label: String(e) }; });
-  _initEjeCombobox();
+  _initEjeCombobox();          // idempotente (guard _cbEje); el montaje real ya lo hace index.js
   if (_cbEje) _cbEje.refrescar();
 }
 
