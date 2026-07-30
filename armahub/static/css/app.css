@@ -300,18 +300,23 @@ tr:hover { background: #fafafa; }
 .cb-wrap { position: relative; display: inline-block; width: 100%; }
 .cb-panel {
   position: absolute; z-index: 50; top: 100%; left: 0; right: 0;
-  max-height: 260px; overflow-y: auto;
+  min-width: 240px;                 /* no más angosto que el input, muestra labels largos */
+  max-height: 340px; overflow-y: auto;  /* ~10-11 filas antes de scroll (antes 260 = ~6) */
   background: #fff; border: 1px solid #cfd8dc; border-top: none;
   border-radius: 0 0 6px 6px; box-shadow: 0 6px 16px rgba(0,0,0,.12);
 }
 .cb-opt {
   display: flex; align-items: baseline; gap: 8px;
-  padding: 6px 10px; cursor: pointer; font-size: 13px; border-top: 1px solid #f2f2f2;
+  padding: 7px 11px; cursor: pointer; font-size: 13px; border-top: 1px solid #f2f2f2;
+  white-space: nowrap;
 }
 .cb-opt:first-child { border-top: none; }
 .cb-opt:hover, .cb-opt.on { background: #e0f2f1; }
 .cb-lab { color: #263238; font-weight: 600; }
 .cb-sub { color: #90a4ae; font-size: 11px; }
-.cb-empty { padding: 8px 10px; color: #b0bec5; font-size: 12px; font-style: italic; }
+.cb-empty { padding: 8px 11px; color: #b0bec5; font-size: 12px; font-style: italic; }
+/* Pie: "mostrando N de M — sigue escribiendo para afinar" cuando se truncó la lista. */
+.cb-more { padding: 5px 11px; color: #90a4ae; font-size: 10.5px; font-style: italic;
+  border-top: 1px solid #eceff1; background: #fafafa; position: sticky; bottom: 0; }
 /* Campo con texto que NO corresponde a ninguna opción (y no es texto libre). */
 .cb-invalido { border-color: #e57373 !important; background: #ffebee !important; }

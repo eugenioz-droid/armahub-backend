@@ -73,31 +73,45 @@
     var ultimoValor = null; // último valor informado por onSelect (para no re-disparar)
     function valorActual() { return itemSel ? ('#' + getId(itemSel)) : ('=' + (input.value || '').trim().toLowerCase()); }
 
+    var MAX_VISIBLE = 100;   // tope de opciones pintadas (perf); el pie avisa si hay más
+    var totalCoincidencias = 0;   // cuántas matchean en total (para el pie "N de M")
+
     function filtrar(txt) {
       var q = (txt || '').trim().toLowerCase();
       var all = (opts.items ? opts.items() : []) || [];
-      if (q.length < minChars) return all.slice(0, 50);
-      if (!q) return all.slice(0, 50);
-      // "CONTIENE" (no solo prefijo); prioriza los que EMPIEZAN con la query.
-      var pre = [], mid = [];
-      all.forEach(function (it) {
-        var lab = String(getLabel(it) || '').toLowerCase();
-        var i = lab.indexOf(q);
-        if (i === 0) pre.push(it); else if (i > 0) mid.push(it);
-      });
-      return pre.concat(mid).slice(0, 50);
+      var res;
+      if (q.length < minChars || !q) {
+        res = all;
+      } else {
+        // "CONTIENE" (no solo prefijo); prioriza los que EMPIEZAN con la query.
+        var pre = [], mid = [];
+        all.forEach(function (it) {
+          var lab = String(getLabel(it) || '').toLowerCase();
+          var i = lab.indexOf(q);
+          if (i === 0) pre.push(it); else if (i > 0) mid.push(it);
+        });
+        res = pre.concat(mid);
+      }
+      totalCoincidencias = res.length;
+      return res.slice(0, MAX_VISIBLE);
     }
 
     function pintar() {
       if (!render.length) {
         panel.innerHTML = '<div class="cb-empty">Sin coincidencias</div>';
       } else {
-        panel.innerHTML = render.map(function (it, i) {
+        var html = render.map(function (it, i) {
           var sub = getSub(it);
           return '<div class="cb-opt' + (i === activo ? ' on' : '') + '" data-i="' + i + '">' +
             '<span class="cb-lab">' + esc(getLabel(it)) + '</span>' +
             (sub ? '<span class="cb-sub">' + esc(sub) + '</span>' : '') + '</div>';
         }).join('');
+        // Pie: si hay más coincidencias de las pintadas, avisa que siga escribiendo.
+        if (totalCoincidencias > render.length) {
+          html += '<div class="cb-more">Mostrando ' + render.length + ' de ' + totalCoincidencias +
+                  ' — escribe para afinar</div>';
+        }
+        panel.innerHTML = html;
       }
       panel.style.display = 'block';
     }
