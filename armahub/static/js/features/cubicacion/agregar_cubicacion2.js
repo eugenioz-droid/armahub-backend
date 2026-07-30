@@ -293,11 +293,13 @@ window.ac2SetSector=function(s){ if(ac2Bloqueado()) return; AC2.sector=s; ac2Pin
 window.ac2SetEstructura=function(e){
   if(ac2Bloqueado()) return;
   AC2.estructura=e;
-  // Las tipologías (subtabs) dependen de la estructura.
+  // Las tipologías (subtabs) dependen de la estructura (en su orden funcional del catálogo).
   AC2_TIPOS=(AC2_TIPOS_MAP[e]||[]).map(function(t){return t.codigo;});
   AC2_ORD_TIPO={}; AC2_TIPOS.forEach(function(t,i){ AC2_ORD_TIPO[t]=i; });
-  AC2.tipo='TODOS';
-  ac2PintarSectorEstructura(); ac2PintarSubtabs(); ac2SetTipo('TODOS');
+  ac2PintarSectorEstructura(); ac2PintarSubtabs();
+  // Entrar por defecto a la PRIMERA tipología (no a TODOS) → los botones de crear ya quedan
+  // habilitados y el flujo es directo. Si la estructura no tuviera tipologías, cae a TODOS.
+  ac2SetTipo(AC2_TIPOS.length ? AC2_TIPOS[0] : 'TODOS');
 };
 
 // Genera los botones de subtab de tipología según AC2_TIPOS + TODOS.
@@ -663,14 +665,28 @@ async function _ac2CargarFiguras(){
   if (dl) dl.innerHTML=figs.map(function(f){ return '<option value="'+ac2Esc(f.codigo)+'"></option>'; }).join('');
 }
 
-// Tipologías reales por estructura (GET /tipologias, con figuras embebidas por tipología).
-// Sobrescribe AC2_TIPOS_MAP con lo de la BD. Fallback al seed si la API no responde.
+// Tipologías reales por estructura (GET /tipologias, con figuras embebidas). La API ordena por
+// código (ALFABÉTICO), pero el orden CORRECTO es el funcional del catálogo (MH,MV,TR,EC,TC,CB…),
+// que está en el fallback AC2_TIPOS_MAP. Estrategia: conservar el ORDEN del fallback y solo
+// enriquecer cada tipología con {nombre, figuras} de la API. Códigos de la API que no estén en
+// el fallback se agregan al final (por si el catálogo creció).
 async function _ac2CargarTipologias(){
   var tips=[];
   try { var d=await apiGet('/tipologias'); tips=(d && d.tipologias)||[]; } catch(e){ tips=[]; }
-  if (!tips.length) return;   // deja el fallback (seed)
+  if (!tips.length) return;   // deja el fallback (orden correcto)
+  // Index por estructura+código para buscar rápido lo que trajo la API.
+  var api={}; tips.forEach(function(t){ var es=t.estructura||'GEN'; api[es+'|'+t.codigo]={nombre:t.nombre, figuras:t.figuras||[]}; });
   var map={};
-  tips.forEach(function(t){ var es=t.estructura||'GEN'; (map[es]=map[es]||[]).push({codigo:t.codigo, nombre:t.nombre, figuras:t.figuras||[]}); });
+  // 1) Recorrer el fallback EN SU ORDEN, enriqueciendo con la API.
+  Object.keys(AC2_TIPOS_MAP).forEach(function(es){
+    map[es]=AC2_TIPOS_MAP[es].map(function(t){
+      var extra=api[es+'|'+t.codigo]; return { codigo:t.codigo, nombre:(extra&&extra.nombre)||t.nombre, figuras:(extra&&extra.figuras)||[] };
+    });
+  });
+  // 2) Códigos de la API que NO estaban en el fallback → al final de su estructura.
+  tips.forEach(function(t){ var es=t.estructura||'GEN'; map[es]=map[es]||[];
+    if (!map[es].some(function(x){return x.codigo===t.codigo;})) map[es].push({codigo:t.codigo, nombre:t.nombre, figuras:t.figuras||[]});
+  });
   AC2_TIPOS_MAP=map;
 }
 
