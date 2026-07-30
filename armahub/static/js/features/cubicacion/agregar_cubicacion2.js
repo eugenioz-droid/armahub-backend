@@ -164,14 +164,41 @@ function ac2Thead(){
 
 // Estilos de celda reutilizables.
 var AC2_TDS='padding:2px 5px; border-top:1px solid #f0f0f0;';
-// input numérico editable en celda; onchange muta el dato (sin re-render, salvo figura).
-function ac2Inp(id, campo, val, w){
+// input numérico editable en celda (clase .ac2cell = estilo Bar Manager). class ac2nav marca
+// las celdas navegables con Tab/flechas tipo Excel (ac2NavKey). rojo = validación inválida.
+function ac2Inp(id, campo, val, w, rojo){
+  var wst = w ? ' style="width:'+w+'px;"' : '';
   return '<input type="number" value="'+(val==null?'':ac2Esc(val))+'" '+
-    'onchange="ac2SetBarra('+id+',\''+campo+'\',this.value)" '+
-    'style="width:'+(w||46)+'px; font-size:11px; text-align:right; padding:1px 3px; border:1px solid #dfe6e9; border-radius:3px;"/>';
+    'class="ac2cell ac2nav'+(rojo?' rojo':'')+'"'+wst+' '+
+    'onchange="ac2SetBarra('+id+',\''+campo+'\',this.value)" onkeydown="ac2NavKey(event,this)"/>';
 }
 // celda deshabilitada (la figura no usa ese slot).
 function ac2CeldaOff(){ return '<td style="'+AC2_TDS+' background:#fafafa;"></td>'; }
+
+// Navegación tipo Excel entre celdas editables (.ac2nav) de la grilla:
+//   Tab / →  → siguiente celda    ·  Shift+Tab / ←  → anterior
+//   ↓ / Enter → misma columna, fila de abajo  ·  ↑ → fila de arriba
+// Trabaja sobre el orden VISUAL de los inputs .ac2nav en el DOM y el nº de columnas por fila.
+window.ac2NavKey=function(ev, el){
+  var k=ev.key;
+  var navKeys={'Tab':1,'ArrowRight':1,'ArrowLeft':1,'ArrowUp':1,'ArrowDown':1,'Enter':1};
+  if (!navKeys[k]) return;
+  // Datalist abierto (figura): ↑/↓ navegan la lista nativa; no interceptar.
+  if ((k==='ArrowUp'||k==='ArrowDown') && el.getAttribute('list')) return;
+  var grid=document.getElementById('ac2_grid'); if(!grid) return;
+  var inputs=[].slice.call(grid.querySelectorAll('input.ac2nav'));
+  var i=inputs.indexOf(el); if(i<0) return;
+  // Columnas por fila = celdas .ac2nav en el <tr> del input actual.
+  var tr=el.closest('tr'); var cols=tr?tr.querySelectorAll('input.ac2nav').length:1;
+  var next=-1;
+  if (k==='Tab' && !ev.shiftKey) next=i+1;
+  else if (k==='Tab' && ev.shiftKey) next=i-1;
+  else if (k==='ArrowRight') next=i+1;
+  else if (k==='ArrowLeft') next=i-1;
+  else if (k==='ArrowDown'||k==='Enter') next=i+cols;
+  else if (k==='ArrowUp') next=i-cols;
+  if (next>=0 && next<inputs.length){ ev.preventDefault(); inputs[next].focus(); if(inputs[next].select) inputs[next].select(); }
+};
 
 function ac2Fila(b){
   var mostrarTipo=(AC2.tipo==='TODOS');
@@ -179,12 +206,12 @@ function ac2Fila(b){
   var val = ac2Validar(b);                          // {ok, rojas:{campo:1}}
   var td='<td style="'+AC2_TDS+'">';
   var tdr='<td style="'+AC2_TDS+' text-align:right;">';
-  // Celda de dato con input, fondo ROJO si el campo está inválido (falta / sobra).
-  var tdDato=function(campo,w){ var rojo=val.rojas[campo]?' background:#ffcdd2;':''; return '<td style="'+AC2_TDS+' text-align:right;'+rojo+'">'+ac2Inp(b._id,campo,b[campo],w)+'</td>'; };
+  // Celda de dato con input; el input se marca ROJO (clase) si el campo está inválido.
+  var tdDato=function(campo,w){ return '<td style="'+AC2_TDS+' text-align:right;">'+ac2Inp(b._id,campo,b[campo],w,!!val.rojas[campo])+'</td>'; };
   var h='<tr id="ac2row_'+b._id+'"'+(!val.ok?' title="Geometría inválida para la figura"':'')+'>';
   if (AC2.masiva) h+='<td style="'+AC2_TDS+' text-align:center;"><input type="checkbox" class="ac2sel" data-grp="'+ac2Esc(b.marca)+'" onclick="ac2SelFila()"/></td>';
   // Piso (texto libre editable).
-  h+='<td style="'+AC2_TDS+'"><input type="text" value="'+ac2Esc(b.piso)+'" onchange="ac2SetBarra('+b._id+',\'piso\',this.value)" style="width:44px; font-size:11px; padding:1px 3px; border:1px solid #dfe6e9; border-radius:3px;"/></td>';
+  h+='<td style="'+AC2_TDS+'"><input type="text" value="'+ac2Esc(b.piso)+'" class="ac2cell ac2nav" style="width:44px; text-align:left;" onchange="ac2SetBarra('+b._id+',\'piso\',this.value)" onkeydown="ac2NavKey(event,this)"/></td>';
   // Tipología (marca) — select solo en TODOS; en un subtab está implícita. Opción vacía para
   // barras nuevas sin tipología aún (en TODOS nacen sin marca; el cubicador la elige acá).
   if (mostrarTipo){
@@ -200,9 +227,9 @@ function ac2Fila(b){
   // Largo (calculado en vivo) — solo lectura, id para actualización granular.
   h+='<td id="ac2largo_'+b._id+'" style="'+AC2_TDS+' text-align:right; color:#1565c0; font-weight:600;">'+ac2Num(ac2Largo(b))+'</td>';
   // Peso (calculado en vivo) — solo lectura.
-  h+='<td id="ac2peso_'+b._id+'" style="'+AC2_TDS+' padding-right:10px; text-align:right; color:#00695c; font-weight:600;">'+ac2Num(ac2Peso(b),1)+'</td>';
+  h+='<td id="ac2peso_'+b._id+'" style="'+AC2_TDS+' padding-right:10px; text-align:right; color:#558B2F; font-weight:600;">'+ac2Num(ac2Peso(b),1)+'</td>';
   // Figura (input+datalist del catálogo). Cambiarla re-renderiza SOLO la fila (cambian las dims).
-  h+='<td style="'+AC2_TDS+' padding-left:14px; border-left:1px solid #eee;"><input type="text" list="ac2_figDatalist" value="'+ac2Esc(b.figura)+'" onchange="ac2SetBarra('+b._id+',\'figura\',this.value)" placeholder="fig" style="width:54px; font-size:11px; padding:1px 3px; border:1px solid #dfe6e9; border-radius:3px;"/></td>';
+  h+='<td style="'+AC2_TDS+' padding-left:14px; border-left:1px solid #eee;"><input type="text" list="ac2_figDatalist" value="'+ac2Esc(b.figura)+'" class="ac2cell ac2nav" style="width:54px; text-align:left;" onchange="ac2SetBarra('+b._id+',\'figura\',this.value)" onkeydown="ac2NavKey(event,this)" placeholder="fig"/></td>';
   if (AC2.render) h+=td+ac2FigSvg(b)+'</td>';
   // Dims A-I: input si la figura usa ese lado (rojo si inválido), celda gris si no la usa.
   for (var i=0;i<9;i++){ var k=AC2_DIMKEYS[i];
@@ -218,7 +245,7 @@ function ac2Fila(b){
   h+='<td style="'+AC2_TDS+' text-align:center;"><input type="checkbox"'+(b.rev?' checked':'')+' onclick="ac2ToggleRev('+b._id+',this)" title="Marcar/desmarcar revisada"/></td>';
   // Acciones por fila.
   h+='<td style="'+AC2_TDS+' white-space:nowrap;">'+
-     '<span onclick="ac2CopiarTipologia('+b._id+')" title="Agregar barra '+ac2Esc(b.marca)+' debajo" style="color:#00695c; cursor:pointer; font-weight:700; margin-right:6px;">＋</span>'+
+     '<span onclick="ac2CopiarTipologia('+b._id+')" title="Agregar barra '+ac2Esc(b.marca)+' debajo" style="color:#558B2F; cursor:pointer; font-weight:700; margin-right:6px;">＋</span>'+
      '<span onclick="ac2Duplicar('+b._id+')" title="Duplicar" style="color:#1565c0; cursor:pointer; margin-right:6px;">⎘</span>'+
      '<span onclick="ac2Quitar('+b._id+')" title="Quitar" style="color:#c62828; cursor:pointer;">✕</span></td></tr>';
   return h;
@@ -330,14 +357,14 @@ window.ac2SetTipo=function(t){
   ac2Render();
 };
 window.ac2SetOrden=function(o){ AC2.orden=o;
-  ['piso','tipo'].forEach(function(x){ var b=document.getElementById('ac2o_'+x); if(b){var on=(o===x); b.style.background=on?'#00695c':'#fff'; b.style.color=on?'#fff':'#00695c';} });
+  ['piso','tipo'].forEach(function(x){ var b=document.getElementById('ac2o_'+x); if(b){var on=(o===x); b.style.background=on?'#8BC34A':'#fff'; b.style.color=on?'#fff':'#8BC34A';} });
   ac2Render(); };
 window.ac2ToggleMasiva=function(){ AC2.masiva=!AC2.masiva;
-  var b=document.getElementById('ac2_masivaBtn'); b.style.background=AC2.masiva?'#2e7d32':'#fff'; b.style.color=AC2.masiva?'#fff':'#00695c'; b.style.borderColor=AC2.masiva?'#2e7d32':'#00695c';
+  var b=document.getElementById('ac2_masivaBtn'); b.style.background=AC2.masiva?'#2e7d32':'#fff'; b.style.color=AC2.masiva?'#fff':'#8BC34A'; b.style.borderColor=AC2.masiva?'#2e7d32':'#8BC34A';
   document.getElementById('ac2_masivaBar').style.display=AC2.masiva?'flex':'none';
   ac2Render(); };
 window.ac2SetTam=function(t){ AC2.tam=t;
-  ['s','m','l'].forEach(function(x){ var b=document.getElementById('ac2r_'+x); if(b){var on=(t===x); b.style.background=on?'#00695c':'#fff'; b.style.color=on?'#fff':'#607d8b';} });
+  ['s','m','l'].forEach(function(x){ var b=document.getElementById('ac2r_'+x); if(b){var on=(t===x); b.style.background=on?'#8BC34A':'#fff'; b.style.color=on?'#fff':'#607d8b';} });
   ac2Render(); };
 window.ac2ToggleRev=function(id,el){
   // Revisión de a 1 (proceso real): guarda el estado en el dato (marca/desmarca). No re-render
@@ -386,7 +413,7 @@ function ac2ActualizarContadores(){
   var rc=document.getElementById('ac2_revcount');
   if(rc){ rc.innerHTML = !arr.length ? '' :
     ('✓ '+rev+' de '+arr.length+' revisadas' + (inval?(' · <b style="color:#c62828;">⚠ '+inval+' con geometría inválida</b>'):'')); }
-  var ro=document.getElementById('ac2_rollup'); if(ro) ro.innerHTML=arr.length?('<b style="color:#37474f;">'+arr.length+'</b> barras · <b style="color:#37474f;">'+ac2Num(uds)+'</b> uds · <b style="color:#00695c;">'+ac2Num(kg,1)+'</b> kg'):'';
+  var ro=document.getElementById('ac2_rollup'); if(ro) ro.innerHTML=arr.length?('<b style="color:#37474f;">'+arr.length+'</b> barras · <b style="color:#37474f;">'+ac2Num(uds)+'</b> uds · <b style="color:#558B2F;">'+ac2Num(kg,1)+'</b> kg'):'';
 }
 
 // ── Agregar / copiar / duplicar / quitar barras (cambios estructurales → re-render completo) ──

@@ -6,13 +6,13 @@
 
     <!-- Cabecera -->
     <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:12px;">
-      <h3 style="margin:0; color:#00695c;">➕ Formulario de Cubicación</h3>
+      <h3 style="margin:0; color:#558B2F;">➕ Formulario de Cubicación</h3>
       <span id="ac2_estadoBadge" style="font-size:12px; color:#607d8b; background:#eceff1; border:1px solid #cfd8dc; border-radius:6px; padding:3px 10px; font-weight:600;">Nuevo lote · sin barras</span>
       <div style="flex:1;"></div>
       <!-- Terminar lote: bandera ROJO (en edición) → VERDE (terminado). -->
       <button id="ac2_bandera" onclick="ac2ToggleTerminado()" title="Terminar la cubicación del lote"
               style="font-size:16px; padding:5px 12px; background:#ffebee; color:#c62828; border:1px solid #ef9a9a; border-radius:4px; cursor:pointer;">🚩</button>
-      <button onclick="ac2Guardar()" style="font-size:14px; padding:6px 12px; background:#00695c; color:#fff; border:none; border-radius:4px; cursor:pointer;" title="Guardar las barras en el lote">💾</button>
+      <button onclick="ac2Guardar()" style="font-size:14px; padding:6px 12px; background:#8BC34A; color:#fff; border:none; border-radius:4px; cursor:pointer;" title="Guardar las barras en el lote">💾</button>
       <!-- X: DESCARTAR lo no guardado (distinto de "Eliminar lote", que borra uno ya guardado). -->
       <button onclick="ac2Descartar()" title="Descartar lo no guardado" style="font-size:14px; font-weight:700; padding:6px 11px; background:#fff; color:#c62828; border:1px solid #e0a0a0; border-radius:4px; cursor:pointer;">✕</button>
     </div>
@@ -22,22 +22,22 @@
       <!-- Obra: MISMO componente que el Bar Manager (shared/buscador_obra.js): input+datalist
            + select oculto que guarda el id. -->
       <div style="display:flex; flex-direction:column; width:260px;">
-        <label style="font-size:11px; color:#00695c; font-weight:700; margin-bottom:2px;">Obra *</label>
+        <label style="font-size:11px; color:#558B2F; font-weight:700; margin-bottom:2px;">Obra *</label>
         <input type="text" id="ac2_obra" list="ac2_obraDatalist" placeholder="🔍 buscar obra…" style="font-size:13px; height:34px; box-sizing:border-box;" />
         <datalist id="ac2_obraDatalist"></datalist>
         <select id="ac2_obraSel" style="display:none;"></select>
       </div>
       <!-- Ciclo: combobox de TEXTO LIBRE (sugiere ciclos de la obra, o escribe uno nuevo). -->
       <div style="display:flex; flex-direction:column; width:180px;">
-        <label style="font-size:11px; color:#00695c; font-weight:700; margin-bottom:2px;">Ciclo</label>
+        <label style="font-size:11px; color:#558B2F; font-weight:700; margin-bottom:2px;">Ciclo</label>
         <input type="text" id="ac2_ciclo" style="font-size:13px; height:34px; box-sizing:border-box;" />
       </div>
       <!-- Eje: combobox de TEXTO LIBRE (sugiere ejes existentes, pero puedes escribir uno nuevo). -->
       <div style="display:flex; flex-direction:column; width:180px;">
-        <label style="font-size:11px; color:#00695c; font-weight:700; margin-bottom:2px;">Eje / Losa *</label>
+        <label style="font-size:11px; color:#558B2F; font-weight:700; margin-bottom:2px;">Eje / Losa *</label>
         <input type="text" id="ac2_eje" style="font-size:13px; height:34px; box-sizing:border-box;" />
       </div>
-      <button onclick="ac2CrearEje()" style="font-size:12px; height:34px; padding:0 14px; background:#fff; color:#00695c; border:1px dashed #00695c; border-radius:4px; cursor:pointer;">＋ Crear Eje</button>
+      <button onclick="ac2CrearEje()" style="font-size:12px; height:34px; padding:0 14px; background:#fff; color:#558B2F; border:1px dashed #8BC34A; border-radius:4px; cursor:pointer;">＋ Crear Eje</button>
     </div>
 
     <!-- FILA 2 · Sector + Estructura (se BLOQUEAN al elegir; 🔓 solo si lote vacío) -->
@@ -64,20 +64,20 @@
 
     <!-- FILA 3 · Botones rápidos + toggles -->
     <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:8px;">
-      <button id="ac2_barraBtn" onclick="ac2AgregarBarra()" style="font-size:12px; padding:5px 12px; background:#00695c; color:#fff; border:none; border-radius:4px; cursor:pointer;">＋ barra</button>
+      <button id="ac2_barraBtn" onclick="ac2AgregarBarra()" style="font-size:12px; padding:5px 12px; background:#8BC34A; color:#fff; border:none; border-radius:4px; cursor:pointer;">＋ barra</button>
       <!-- +barras M: agrega N filas (una por piso seleccionado en el menú de Pisos), cada
            una con SU piso y la tipología del subtab activo. En la maqueta lo simula. -->
-      <button id="ac2_barrasMBtn" onclick="ac2AgregarBarrasMulti()" style="font-size:12px; padding:5px 12px; background:#00897b; color:#fff; border:none; border-radius:4px; cursor:pointer;" title="Agregar una barra por cada piso seleccionado, cada una con su piso y tipología">＋ barras M</button>
+      <button id="ac2_barrasMBtn" onclick="ac2AgregarBarrasMulti()" style="font-size:12px; padding:5px 12px; background:#7cb342; color:#fff; border:none; border-radius:4px; cursor:pointer;" title="Agregar una barra por cada piso seleccionado, cada una con su piso y tipología">＋ barras M</button>
       <!-- Pisos múltiples: abre el selector de pisos de la obra (los pisos se CONFIGURAN
            en la tarea grande de "config de pisos"). Aquí es maqueta del menú. -->
       <div style="position:relative; display:inline-block;">
-        <button id="ac2_pisosBtn" onclick="ac2TogglePisos()" style="font-size:12px; padding:5px 12px; background:#fff; color:#00695c; border:1px solid #00695c; border-radius:4px; cursor:pointer;">⚙ Pisos múltiples ▾</button>
+        <button id="ac2_pisosBtn" onclick="ac2TogglePisos()" style="font-size:12px; padding:5px 12px; background:#fff; color:#558B2F; border:1px solid #8BC34A; border-radius:4px; cursor:pointer;">⚙ Pisos múltiples ▾</button>
         <div id="ac2_pisosMenu" style="display:none; position:absolute; z-index:20; top:34px; left:0; min-width:180px; background:#fff; border:1px solid #cfd8dc; border-radius:6px; box-shadow:0 4px 14px rgba(0,0,0,.12); padding:8px;">
           <div style="font-size:11px; color:#607d8b; font-weight:700; margin-bottom:6px;">Pisos seleccionados (para “＋ barras M”):</div>
           <div id="ac2_pisosLista" style="font-size:12px; color:#90a4ae; font-style:italic; padding:4px 0;">Aún no hay pisos configurados para esta obra.</div>
           <div style="border-top:1px solid #eee; margin:6px 0;"></div>
           <div style="display:flex; gap:6px;">
-            <button onclick="ac2TogglePisos()" style="font-size:11px; padding:3px 10px; background:#00695c; color:#fff; border:none; border-radius:4px; cursor:pointer;">Aplicar</button>
+            <button onclick="ac2TogglePisos()" style="font-size:11px; padding:3px 10px; background:#8BC34A; color:#fff; border:none; border-radius:4px; cursor:pointer;">Aplicar</button>
             <button onclick="ac2TogglePisos()" style="font-size:11px; padding:3px 10px; background:#fff; color:#607d8b; border:1px solid #cfd8dc; border-radius:4px; cursor:pointer;">Cerrar</button>
           </div>
           <div class="muted" style="font-size:9px; margin-top:6px; color:#999;">Los pisos se definen en “Config de pisos” de la obra.</div>
@@ -87,17 +87,17 @@
       <!-- Orden: solo relevante en TODOS (en un subtab hay una sola tipología). -->
       <span id="ac2_ordenWrap" style="display:none; align-items:center; gap:6px;">
         <span style="font-size:11px; color:#666; font-weight:600;">Orden:</span>
-        <div style="display:inline-flex; border:1px solid #00695c; border-radius:4px; overflow:hidden;">
-          <button id="ac2o_piso" onclick="ac2SetOrden('piso')" style="font-size:11px; padding:4px 10px; border:none; background:#00695c; color:#fff; cursor:pointer;">Piso</button>
-          <button id="ac2o_tipo" onclick="ac2SetOrden('tipo')" style="font-size:11px; padding:4px 10px; border:none; background:#fff; color:#00695c; cursor:pointer;">Tipología</button>
+        <div style="display:inline-flex; border:1px solid #8BC34A; border-radius:4px; overflow:hidden;">
+          <button id="ac2o_piso" onclick="ac2SetOrden('piso')" style="font-size:11px; padding:4px 10px; border:none; background:#8BC34A; color:#fff; cursor:pointer;">Piso</button>
+          <button id="ac2o_tipo" onclick="ac2SetOrden('tipo')" style="font-size:11px; padding:4px 10px; border:none; background:#fff; color:#558B2F; cursor:pointer;">Tipología</button>
         </div>
       </span>
-      <button id="ac2_masivaBtn" onclick="ac2ToggleMasiva()" style="font-size:11px; padding:5px 10px; background:#fff; color:#00695c; border:1px solid #00695c; border-radius:4px; cursor:pointer;">☑ Acciones masivas</button>
+      <button id="ac2_masivaBtn" onclick="ac2ToggleMasiva()" style="font-size:11px; padding:5px 10px; background:#fff; color:#558B2F; border:1px solid #8BC34A; border-radius:4px; cursor:pointer;">☑ Acciones masivas</button>
       <span style="width:1px; height:22px; background:#ddd; margin:0 4px;"></span>
       <label style="font-size:11px; color:#666; cursor:pointer;"><input type="checkbox" id="ac2_render" checked onchange="ac2Render()"/> Render</label>
       <div style="display:inline-flex; border:1px solid #cfd8dc; border-radius:4px; overflow:hidden;">
         <button id="ac2r_s" onclick="ac2SetTam('s')" style="font-size:10px; padding:3px 8px; border:none; background:#fff; color:#607d8b; cursor:pointer;">S</button>
-        <button id="ac2r_m" onclick="ac2SetTam('m')" style="font-size:11px; padding:3px 8px; border:none; background:#00695c; color:#fff; cursor:pointer;">M</button>
+        <button id="ac2r_m" onclick="ac2SetTam('m')" style="font-size:11px; padding:3px 8px; border:none; background:#8BC34A; color:#fff; cursor:pointer;">M</button>
         <button id="ac2r_l" onclick="ac2SetTam('l')" style="font-size:12px; padding:3px 8px; border:none; background:#fff; color:#607d8b; cursor:pointer;">L</button>
       </div>
       <div style="flex:1;"></div>
@@ -153,7 +153,15 @@
 </div>
 
 <style>
-  .ac2tab { font-size:12px; padding:5px 14px; border:none; background:transparent; color:#607d8b;
-            cursor:pointer; border-bottom:2px solid transparent; margin-bottom:-2px; font-weight:600; }
-  .ac2tab.on { color:#00695c; border-bottom-color:#00695c; }
+  /* Tab de tipología: activo con FONDO COMPLETO verde Armacero (#8BC34A), homologado al
+     color primario de la plataforma. */
+  .ac2tab { font-size:12px; padding:5px 14px; border:none; background:transparent; color:#546e7a;
+            cursor:pointer; border-radius:4px 4px 0 0; margin:0 1px; font-weight:600; }
+  .ac2tab:hover { background:#f1f8e9; color:#558B2F; }
+  .ac2tab.on { background:#8BC34A; color:#fff; }
+  /* Celdas editables de la grilla — estilo homologado al Bar Manager. */
+  .ac2cell { width:56px; font-size:11px; text-align:right; padding:2px 4px; border:1px solid #d5dbdb;
+             border-radius:3px; box-sizing:border-box; }
+  .ac2cell:focus { outline:none; border-color:#8BC34A; box-shadow:0 0 0 2px rgba(139,195,74,.25); }
+  .ac2cell.rojo { border-color:#e57373; background:#ffebee; }
 </style>
