@@ -262,15 +262,34 @@ function _resolverProyectoId(txtLow, sel) {
   return '';
 }
 
-// Puebla el datalist del buscador de Eje/Losa con los ejes de la obra. El input es de
-// texto libre: el valor escrito ES el valor del filtro (no hay id que resolver, a
-// diferencia del buscador de obra). No pisa lo que el usuario tenga escrito.
+// Ejes de la obra (cache) + instancia del combobox del filtro de Eje/Losa.
+var _ejesCache = [];
+var _cbEje = null;
+
+// Alimenta el buscador de Eje/Losa con los ejes de la obra usando el COMPONENTE ESTÁNDAR
+// (shared/combobox.js), reemplazando el <datalist> nativo (que se comportaba como campo de
+// clave y no aplicaba al elegir). Texto libre: el valor escrito ES el filtro (no hay id que
+// resolver). Se monta sobre el mismo #eje, cuyo .value sigue siendo la fuente de verdad para
+// el resto del Bar Manager. Conserva el nombre para no tocar a los llamadores (loadFilters).
 function _fillEjesDatalist(ejes) {
-  var dl = document.getElementById('bmEjesDatalist');
-  if (!dl) return;
-  dl.innerHTML = (ejes || []).map(function(e) {
-    return '<option value="' + String(e).replace(/"/g, '&quot;') + '"></option>';
-  }).join('');
+  _ejesCache = (ejes || []).map(function(e) { return { id: String(e), label: String(e) }; });
+  _initEjeCombobox();
+  if (_cbEje) _cbEje.refrescar();
+}
+
+function _initEjeCombobox() {
+  var input = document.getElementById('eje');
+  if (!input || _cbEje || !window.Combobox) return;   // ya montado, o combobox aún no cargó
+  _cbEje = window.Combobox.crear(input, {
+    items: function() { return _ejesCache; },
+    textoLibre: true,                         // se puede filtrar por un eje escrito a mano
+    placeholder: 'Todos',
+    // Mientras escribe (con debounce) y al elegir/limpiar → mismo flujo que antes: onEjeInput()
+    // aplica el guard de edición + debounce → onFilterChange('eje'). El .value del #eje ya está
+    // actualizado por el combobox cuando estos disparan, así que el filtro lee el valor correcto.
+    onInput: function() { onEjeInput(); },
+    onSelect: function() { onEjeInput(); }
+  });
 }
 
 // Handler del buscador de Eje/Losa. Estructura calcada de onProyectoInput (el buscador

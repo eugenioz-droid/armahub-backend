@@ -129,7 +129,12 @@
     }
 
     input.addEventListener('focus', abrir);
-    input.addEventListener('input', function () { itemSel = null; abrir(); });
+    input.addEventListener('input', function () {
+      itemSel = null; abrir();
+      // onInput: para filtros de texto libre que aplican MIENTRAS se escribe (con su propio
+      // debounce). onSelect sigue disparando solo al elegir/limpiar/resolver en blur.
+      if (opts.onInput) opts.onInput(input.value);
+    });
     input.addEventListener('keydown', function (e) {
       if (panel.style.display === 'none' && (e.key === 'ArrowDown')) { abrir(); return; }
       if (e.key === 'ArrowDown') { activo = Math.min(activo + 1, render.length - 1); pintar(); e.preventDefault(); }
