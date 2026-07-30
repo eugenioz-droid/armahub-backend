@@ -113,6 +113,7 @@ class BarraManual(BaseModel):
     ang3: Optional[float] = None
     ang4: Optional[float] = None
     radio: Optional[float] = None
+    revisada: bool = False   # el cubicador la marcó revisada en la grilla (5N.19); viaja con la barra
 
 
 class BarrasBatch(BaseModel):
@@ -277,20 +278,27 @@ def agregar_barras(lote_id: int, body: BarrasBatch, user=Depends(get_current_use
                 idu = _id_unico_manual()
                 # PROD (cod_proyecto) se DERIVA del diámetro (no lo ingresa el usuario).
                 cod_prod = cod_prod_de_diam(b.diam)
+                # Revisada viaja con la barra: si el cubicador la marcó en la grilla, se guarda
+                # revisada=true + trazabilidad (quién/cuándo). Habilita terminar el lote (5N.19).
+                rev_por = email if b.revisada else None
+                rev_fecha = now if b.revisada else None
                 cur.execute(
                     """INSERT INTO barras
                        (id_unico, id_proyecto, sector, piso, ciclo, eje, nombre_plano, diam, largo_total,
                         mult, cant, cant_total, peso_unitario, peso_total, marca, figura, cod_proyecto,
                         dim_a, dim_b, dim_c, dim_d, dim_e, dim_f, dim_g, dim_h, dim_i,
                         ang1, ang2, ang3, ang4, radio,
+                        revisada, revisada_por, revisada_fecha,
                         origen, import_id, lote_id, estado, fecha_carga, editado_por, editado_fecha)
                        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s, %s,%s,%s,%s,%s,%s,%s,%s,
                                %s,%s,%s,%s,%s,%s,%s,%s,%s, %s,%s,%s,%s,%s,
+                               %s,%s,%s,
                                'manual', NULL, %s, 'borrador', %s, %s, %s)""",
                     (idu, id_proyecto, b.sector, b.piso, b.ciclo, b.eje, b.nombre_plano, b.diam, largo,
                      b.mult, b.cant, cant_total, peso_u, peso_t, b.marca, b.figura, cod_prod,
                      b.dim_a, b.dim_b, b.dim_c, b.dim_d, b.dim_e, b.dim_f, b.dim_g, b.dim_h, b.dim_i,
                      b.ang1, b.ang2, b.ang3, b.ang4, b.radio,
+                     bool(b.revisada), rev_por, rev_fecha,
                      lote_id, now, email, now),
                 )
                 creadas.append(idu)

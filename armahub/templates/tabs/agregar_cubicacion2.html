@@ -12,7 +12,7 @@
       <!-- Terminar lote: bandera ROJO (en edición) → VERDE (terminado). -->
       <button id="ac2_bandera" onclick="ac2ToggleTerminado()" title="Terminar la cubicación del lote"
               style="font-size:16px; padding:5px 12px; background:#ffebee; color:#c62828; border:1px solid #ef9a9a; border-radius:4px; cursor:pointer;">🚩</button>
-      <button style="font-size:14px; padding:6px 12px; background:#00695c; color:#fff; border:none; border-radius:4px; cursor:pointer;" title="Guardar">💾</button>
+      <button onclick="ac2Guardar()" style="font-size:14px; padding:6px 12px; background:#00695c; color:#fff; border:none; border-radius:4px; cursor:pointer;" title="Guardar las barras en el lote">💾</button>
       <!-- X: DESCARTAR lo no guardado (distinto de "Eliminar lote", que borra uno ya guardado). -->
       <button onclick="ac2Descartar()" title="Descartar lo no guardado" style="font-size:14px; font-weight:700; padding:6px 11px; background:#fff; color:#c62828; border:1px solid #e0a0a0; border-radius:4px; cursor:pointer;">✕</button>
     </div>
@@ -37,7 +37,7 @@
         <label style="font-size:11px; color:#00695c; font-weight:700; margin-bottom:2px;">Eje / Losa *</label>
         <input type="text" id="ac2_eje" style="font-size:13px; height:34px; box-sizing:border-box;" />
       </div>
-      <button style="font-size:12px; height:34px; padding:0 14px; background:#fff; color:#00695c; border:1px dashed #00695c; border-radius:4px; cursor:pointer;">＋ Crear Eje</button>
+      <button onclick="ac2CrearEje()" style="font-size:12px; height:34px; padding:0 14px; background:#fff; color:#00695c; border:1px dashed #00695c; border-radius:4px; cursor:pointer;">＋ Crear Eje</button>
     </div>
 
     <!-- FILA 2 · Sector + Estructura (se BLOQUEAN al elegir; 🔓 solo si lote vacío) -->

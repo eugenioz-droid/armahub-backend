@@ -14,6 +14,9 @@ var AC2 = {
   proyecto:null,   // id de la obra elegida (GET /filters → proyectos[].id)
   ciclo:'',        // ciclo elegido/escrito (texto libre)
   eje:'',          // eje/losa elegido/escrito (texto libre)
+  sector:'',       // sector/estructura (FILA 2) — pendiente de cablear su UI; hoy null al guardar
+  loteId:null,     // id del lote en curso (null = aún no creado; se crea al primer guardado)
+  loteEstado:'',   // '' | 'borrador' | 'terminada'
   // 5N.20 sub-paso 1: la "tipología" (subtab MH/MV/TR/EC/TC/CB) ES el campo `marca` de la
   // barra (decisión de producto CERRADA). AC2.tipo = valor de `marca` que se asignará a las
   // barras nuevas. NO es un campo nuevo; el guardado (sub-paso siguiente) estampará marca=tipo.
@@ -374,15 +377,91 @@ function ac2SelResumen(){
   var nsel=document.querySelectorAll('.ac2sel:checked').length;
   s.textContent = nsel? (nsel+' seleccionada'+(nsel>1?'s':'')) : 'ninguna seleccionada';
 }
-window.ac2ToggleTerminado=function(){
-  // (El guardado/terminado real del lote se cablea en el sub-paso 5.) Por ahora solo refleja
-  // el estado visual del formulario en curso, sin número de lote inventado.
-  AC2.terminado=!AC2.terminado;
+// ── Estado visual del badge/bandera según el estado del lote (sin número inventado) ──
+function ac2PintarEstado(){
   var b=document.getElementById('ac2_bandera'), badge=document.getElementById('ac2_estadoBadge');
-  if (AC2.terminado){ b.textContent='🏁'; b.style.background='#e8f5e9'; b.style.color='#2e7d32'; b.style.borderColor='#a5d6a7';
-    badge.textContent='🔒 Terminado'; badge.style.background='#e8f5e9'; badge.style.color='#2e7d32'; badge.style.borderColor='#a5d6a7'; }
-  else { b.textContent='🚩'; b.style.background='#ffebee'; b.style.color='#c62828'; b.style.borderColor='#ef9a9a';
-    badge.textContent=AC2.barras.length?'En edición':'Nuevo lote · sin barras'; badge.style.background='#fff3e0'; badge.style.color='#e65100'; badge.style.borderColor='#ffb74d'; }
+  var terminado=(AC2.loteEstado==='terminada');
+  var lote=AC2.loteId?('Lote #'+AC2.loteId+' · '):'';
+  if (b){ b.textContent=terminado?'🏁':'🚩';
+    b.style.background=terminado?'#e8f5e9':'#ffebee'; b.style.color=terminado?'#2e7d32':'#c62828'; b.style.borderColor=terminado?'#a5d6a7':'#ef9a9a'; }
+  if (badge){
+    if (terminado){ badge.textContent=lote+'🔒 Terminado'; badge.style.background='#e8f5e9'; badge.style.color='#2e7d32'; badge.style.borderColor='#a5d6a7'; }
+    else if (AC2.loteId){ badge.textContent=lote+'En edición'; badge.style.background='#fff3e0'; badge.style.color='#e65100'; badge.style.borderColor='#ffb74d'; }
+    else { badge.textContent='Nuevo lote · sin barras'; badge.style.background='#eceff1'; badge.style.color='#607d8b'; badge.style.borderColor='#cfd8dc'; }
+  }
+}
+
+// POST a un endpoint SIN el prefijo /api/v1 (los /lotes van en raíz). Devuelve {response,data}.
+async function _ac2Post(url, body){
+  var tok=localStorage.getItem('armahub_token');
+  var res=await fetch(url, { method:'POST',
+    headers: Object.assign({'Content-Type':'application/json'}, tok?{Authorization:'Bearer '+tok}:{}),
+    body: JSON.stringify(body||{}) });
+  var data=null; try{ data=await res.json(); }catch(e){}
+  return { ok:res.ok, status:res.status, data:data };
+}
+
+// Barras COMPLETAS (con figura y φ) y NO guardadas aún, listas para guardar. Omite las que
+// están a medio llenar o las ya guardadas (para no duplicarlas al re-guardar).
+function ac2BarrasListas(){
+  return AC2.barras.filter(function(b){ return !b._guardada && b.diam!=null && b.figura && ac2Validar(b).ok; });
+}
+// Mapea una barra del estado al payload del backend (mismo shape; solo limpia nulls/estampa contexto).
+function ac2Payload(b){
+  var it={ sector:AC2.sector||null, ciclo:AC2.ciclo||null, piso:(b.piso||null), eje:AC2.eje||null,
+           diam:Number(b.diam), figura:b.figura||null, marca:b.marca||null,
+           cant:Number(b.cant)||1, mult:Number(b.mult)||1, radio:(b.radio!=null?Number(b.radio):null),
+           revisada: !!b.rev };
+  AC2_DIMKEYS.forEach(function(k){ it[k]=(b[k]!=null?Number(b[k]):null); });
+  ['ang1','ang2','ang3','ang4'].forEach(function(a){ it[a]=(b[a]!=null?Number(b[a]):null); });
+  return it;
+}
+
+// 💾 GUARDAR: crea el lote (si no existe) y agrega las barras completas. NO termina el lote.
+window.ac2Guardar=async function(){
+  if (!AC2.proyecto){ alert('Elige primero una obra.'); return; }
+  if (AC2.loteEstado==='terminada'){ alert('El lote está terminado; se edita desde Bar Manager.'); return; }
+  var listas=ac2BarrasListas();
+  if (!listas.length){ alert('No hay barras completas y válidas para guardar.\nRevisa las celdas en rojo.'); return; }
+  var invalidas=AC2.barras.length-listas.length;
+  if (invalidas && !confirm(invalidas+' barra(s) incompletas o inválidas NO se guardarán. ¿Continuar con '+listas.length+'?')) return;
+  try{
+    // 1) Crear lote si aún no existe.
+    if (!AC2.loteId){
+      var r=await _ac2Post('/lotes', { id_proyecto:AC2.proyecto });
+      if (!r.ok || !r.data || !r.data.lote_id){ alert('No se pudo crear el lote'+(r.data&&r.data.detail?': '+(r.data.detail.msg||r.data.detail):'')+'.'); return; }
+      AC2.loteId=r.data.lote_id; AC2.loteEstado='borrador';
+    }
+    // 2) Agregar las barras (transaccional en el backend).
+    var rb=await _ac2Post('/lotes/'+AC2.loteId+'/barras', { barras: listas.map(ac2Payload) });
+    if (!rb.ok){
+      var d=rb.data&&rb.data.detail;
+      alert('No se guardaron las barras'+(d?': '+(d.msg||JSON.stringify(d)):' (error '+rb.status+')')+'.');
+      return;
+    }
+    var n=(rb.data&&rb.data.creadas)||listas.length;
+    // Las barras guardadas PERMANECEN en la grilla (marcadas _guardada) para poder revisarlas
+    // ahí (el check "revisada" es por fila) y terminar el lote. NO se vacían.
+    listas.forEach(function(b){ b._guardada=true; });
+    ac2PintarEstado(); ac2Render(); ac2CargarLotes();
+    alert('✅ '+n+' barra(s) guardadas en el lote #'+AC2.loteId+'. Marca "Rev" en cada una y luego 🏁 Terminar.');
+  }catch(e){ alert('Error de red al guardar. Reintenta.'); }
+};
+
+// 🏁 TERMINAR: cierra el lote. El backend exige que TODAS sus barras estén revisadas (5N.19).
+window.ac2ToggleTerminado=async function(){
+  if (!AC2.loteId){ alert('Primero guarda barras en el lote (💾) antes de terminarlo.'); return; }
+  if (AC2.loteEstado==='terminada'){ alert('El lote ya está terminado.'); return; }
+  if (!confirm('Terminar el lote #'+AC2.loteId+' lo cierra: sus barras se editarán solo desde Bar Manager.\n\n¿Continuar?')) return;
+  var r=await _ac2Post('/lotes/'+AC2.loteId+'/terminar', {});
+  if (!r.ok){
+    var d=r.data&&r.data.detail;
+    alert('No se pudo terminar'+(d?': '+(d.msg||JSON.stringify(d)):'')+'.');   // 409 si faltan revisadas / lote vacío
+    return;
+  }
+  AC2.loteEstado='terminada';
+  ac2PintarEstado(); ac2CargarLotes();
+  alert('🏁 Lote #'+AC2.loteId+' terminado.');
 };
 window.ac2TogglePisos=function(){
   var m=document.getElementById('ac2_pisosMenu'); if(!m) return;
@@ -398,10 +477,43 @@ window.ac2AgregarBarrasMulti=function(){
   pisos.forEach(function(p){ AC2.barras.push(ac2NuevaBarra({ piso:p })); });
   ac2Render();
 };
+// ✕ DESCARTAR: limpia las barras del formulario NO guardadas (no toca el lote ya guardado).
 window.ac2Descartar=function(){
-  // Descartar lo NO guardado (distinto de eliminar un lote ya guardado).
-  if (confirm('Se descartará todo lo que no hayas guardado.\n\n¿Continuar?')) alert('(maqueta) Se descartaría el formulario.');
+  if (!AC2.barras.length){ return; }
+  if (confirm('Se quitarán del formulario las '+AC2.barras.length+' barra(s) que aún NO guardaste.\n(Las ya guardadas en el lote no se tocan.)\n\n¿Continuar?')){
+    AC2.barras=[]; ac2Render();
+  }
 };
+
+// ＋ Crear Eje: fija el eje escrito para la tanda (si no existe en la obra, igual queda como el
+// eje del lote — nace al guardar la primera barra en él). Simplemente confirma AC2.eje.
+window.ac2CrearEje=function(){
+  var txt=(_ac2CbEje?_ac2CbEje.getTexto().trim():'') || AC2.eje;
+  if (!txt){ alert('Escribe primero el nombre del eje/losa.'); return; }
+  AC2.eje=txt;
+  var existe=_ac2EjesObra.some(function(e){ return String(e.id).toLowerCase()===txt.toLowerCase(); });
+  ac2Render();   // refresca el contexto mostrado
+  alert(existe ? ('Eje "'+txt+'" seleccionado para esta tanda.')
+               : ('Eje NUEVO "'+txt+'" fijado para esta tanda. Se creará al guardar la primera barra.'));
+};
+
+// Carga los lotes de la obra en el repositorio (histórico). Usa /barras para contar/kg por lote.
+// Simplificado: por ahora lista el lote en curso; el listado completo por obra es mejora futura
+// (el backend aún no tiene GET /lotes?proyecto=X — ver gap de la auditoría).
+function ac2CargarLotes(){
+  var tb=document.getElementById('ac2_lotesBody'); if(!tb) return;
+  if (!AC2.proyecto){ tb.innerHTML='<tr><td colspan="7" style="padding:10px 8px; color:#90a4ae; font-style:italic; text-align:center;">Elige una obra para ver sus lotes.</td></tr>'; return; }
+  if (!AC2.loteId){ tb.innerHTML='<tr><td colspan="7" style="padding:10px 8px; color:#90a4ae; font-style:italic; text-align:center;">Aún no hay lotes creados en esta sesión.</td></tr>'; return; }
+  var estado = AC2.loteEstado==='terminada'
+    ? '<span style="background:#e8f5e9; color:#2e7d32; border:1px solid #a5d6a7; padding:1px 8px; border-radius:8px;">🏁 Terminado</span>'
+    : '<span style="background:#fff3e0; color:#e65100; border:1px solid #ffb74d; padding:1px 8px; border-radius:8px;">🚩 En edición</span>';
+  tb.innerHTML='<tr style="border-top:1px solid #f0f0f0;">'+
+    '<td style="padding:4px 8px; font-weight:600;">#'+AC2.loteId+'</td>'+
+    '<td style="padding:4px 8px;">'+ac2Esc(AC2.sector||'—')+' · '+ac2Esc(AC2.ciclo||'—')+' · '+ac2Esc(AC2.eje||'—')+'</td>'+
+    '<td style="padding:4px 8px;">'+estado+'</td>'+
+    '<td style="padding:4px 8px; text-align:right;">—</td><td style="padding:4px 8px; text-align:right;">—</td>'+
+    '<td style="padding:4px 8px; color:#888;">esta sesión</td><td style="padding:4px 8px;"></td></tr>';
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CONTEXTO REAL (5N.20 sub-paso 1) — Obra·Ciclo·Eje desde /filters.
@@ -443,11 +555,14 @@ function _ac2InitComboboxes(){
       inputId:'ac2_obra', datalistId:'ac2_obraDatalist', selectId:'ac2_obraSel',
       onElegir: function(idProyecto){
         AC2.proyecto = idProyecto || null;
-        // Al cambiar de obra, el ciclo/eje elegidos dejan de aplicar → limpiar estado.
-        AC2.ciclo=''; AC2.eje='';
+        // Al cambiar de obra: se descarta la tanda en curso (ciclo/eje/lote/barras son de la
+        // obra anterior). El lote guardado no se pierde (vive en BD); solo se limpia el form.
+        AC2.ciclo=''; AC2.eje=''; AC2.sector='';
+        AC2.loteId=null; AC2.loteEstado=''; AC2.barras=[];
         if (_ac2CbCiclo) _ac2CbCiclo.limpiar();
         if (_ac2CbEje)   _ac2CbEje.limpiar();
         _ac2CiclosObra=[]; _ac2EjesObra=[];
+        ac2PintarEstado(); ac2Render(); ac2CargarLotes();
         if (AC2.proyecto) _ac2CargarContexto(AC2.proyecto);
       }
     });
