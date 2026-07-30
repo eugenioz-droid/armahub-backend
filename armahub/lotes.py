@@ -158,6 +158,26 @@ def terminar_lote(lote_id: int, user=Depends(get_current_user)):
             r = cur.fetchone()
             if not r:
                 raise HTTPException(status_code=404, detail="Lote no encontrado.")
+            # 5N.19 — REGLA DURA: no se termina un lote VACÍO ni uno con barras SIN revisar.
+            # La revisión es el filtro de calidad del cubicador; cerrar bloquea la edición.
+            cur.execute("SELECT COUNT(*) FROM barras WHERE lote_id = %s", (lote_id,))
+            total = cur.fetchone()[0]
+            if total == 0:
+                raise HTTPException(status_code=409, detail={"msg": "El lote no tiene barras; no se puede terminar."})
+            cur.execute(
+                "SELECT COUNT(*) FROM barras WHERE lote_id = %s AND COALESCE(revisada, FALSE) = FALSE",
+                (lote_id,),
+            )
+            sin_revisar = cur.fetchone()[0]
+            if sin_revisar:
+                raise HTTPException(
+                    status_code=409,
+                    detail={
+                        "msg": f"No se puede terminar: {sin_revisar} barra(s) sin revisar. "
+                               "Marca todas como revisadas antes de cerrar el lote.",
+                        "sin_revisar": sin_revisar,
+                    },
+                )
             cur.execute(
                 "UPDATE lotes SET estado = 'terminada', terminado_fecha = %s WHERE id = %s",
                 (_now_iso(), lote_id),
@@ -166,6 +186,47 @@ def terminar_lote(lote_id: int, user=Depends(get_current_user)):
             cur.execute("UPDATE barras SET estado = 'terminada' WHERE lote_id = %s", (lote_id,))
     audit(email, "terminar_lote", "", "lote", str(lote_id))
     return {"ok": True, "lote_id": lote_id, "estado": "terminada"}
+
+
+class RevisadaBody(BaseModel):
+    barra_ids: List[int]        # barras a marcar (por id numérico)
+    revisada: bool = True       # True = marcar revisada; False = desmarcar
+
+
+@router.post("/lotes/{lote_id}/revisar")
+def marcar_revisadas(lote_id: int, body: RevisadaBody, user=Depends(get_current_user)):
+    """5N.19 — Marca/desmarca barras como REVISADAS, con trazabilidad (quién + cuándo).
+    La revisión es de a una (proceso real); el front puede enviar 1..N ids de un golpe.
+    Solo afecta barras de ESTE lote (no se puede revisar barras de otro lote por error).
+    """
+    email = user.get("email", "?")
+    if not body.barra_ids:
+        raise HTTPException(status_code=400, detail="No hay barras para revisar.")
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            _check_permiso(cur, user)
+            cur.execute("SELECT estado FROM lotes WHERE id = %s", (lote_id,))
+            r = cur.fetchone()
+            if not r:
+                raise HTTPException(status_code=404, detail="Lote no encontrado.")
+            if r[0] == "terminada":
+                raise HTTPException(status_code=409, detail="El lote está terminado; no se puede cambiar la revisión.")
+            if body.revisada:
+                cur.execute(
+                    "UPDATE barras SET revisada = TRUE, revisada_por = %s, revisada_fecha = %s "
+                    "WHERE lote_id = %s AND id = ANY(%s)",
+                    (email, _now_iso(), lote_id, body.barra_ids),
+                )
+            else:
+                # Desmarcar: limpia también la trazabilidad (ya no está revisada).
+                cur.execute(
+                    "UPDATE barras SET revisada = FALSE, revisada_por = NULL, revisada_fecha = NULL "
+                    "WHERE lote_id = %s AND id = ANY(%s)",
+                    (lote_id, body.barra_ids),
+                )
+            afectadas = cur.rowcount
+    audit(email, "revisar_barras", str(body.revisada), "lote", str(lote_id))
+    return {"ok": True, "lote_id": lote_id, "revisada": body.revisada, "afectadas": afectadas}
 
 
 @router.post("/lotes/{lote_id}/barras")

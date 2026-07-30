@@ -86,7 +86,8 @@ BARRAS_COLUMNS = [
     "marca","figura",
     "dim_a","dim_b","dim_c","dim_d","dim_e","dim_f","dim_g","dim_h","dim_i",
     "ang1","ang2","ang3","ang4","radio",
-    "editado_por","editado_fecha"  # marca de edición manual (5M.3)
+    "editado_por","editado_fecha",  # marca de edición manual (5M.3)
+    "revisada","revisada_por","revisada_fecha"  # check de revisión del cubicador (5N.19)
 ]
 
 ALLOWED_ORDER_BY = {
@@ -1442,6 +1443,13 @@ def _editar_barra_impl(barra_id: int, body: BarraUpdate, user):
             # Marca de edición manual.
             sets.append("editado_por = %s"); params.append(email)
             sets.append("editado_fecha = %s"); params.append(now)
+            # 5N.19 — editar una barra INVALIDA su revisión: si el contenido cambió, la
+            # revisión anterior ya no refleja el estado actual → vuelve a "sin revisar"
+            # (se limpia la trazabilidad). Debe volver a revisarse. Coherente con que
+            # terminar un lote exige todas las barras revisadas.
+            sets.append("revisada = FALSE")
+            sets.append("revisada_por = %s"); params.append(None)
+            sets.append("revisada_fecha = %s"); params.append(None)
             # 5N.4 (Rediseño B): editar una barra ES un cambio de contenido → el sector
             # queda desactualizado respecto a lo exportado. Actualizar fecha_carga (para
             # que el mecanismo viejo de fechas también lo detecte) y marcar el sector
