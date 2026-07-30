@@ -877,6 +877,19 @@ y `/sectores-nav` SE CONSERVAN (los usan las 2 matrices vivas).
 misma API, bandeja → USC valida/forward → cubicador → aSa Studio). SOLO PLANIFICADO — ver
 `docs/programa_pedidos_cliente.md`. Condiciona hoy solo: `origen`/`estado`/`lote` parametrizables.
 
+**VALORES POR DEFECTO al crear barra (creador v2, 2026-07-30):** rellenan solo celdas vacías.
+Al elegir FIGURA: ángulos = los del catálogo (`f.angulos`), lados INTERMEDIOS = 100 cm. Al elegir
+DIÁMETRO: lados EXTREMOS (1º y último parcial) = `AC2_FACTOR_EXTREMO`(8) × diámetro. RADIO no se
+rellena. *(Nota: ArmaDetailer HOY usa extremos = 1× el diámetro, no 8×; el factor quedó
+parametrizado para alinear cuando se confirme la convención correcta.)*
+
+**RENDER paramétrico — límite y DEUDA:** el dibujo se re-escala con las medidas ingresadas SOLO
+donde cada letra está bien asociada a un lado recto. En figuras con RADIO, la "R" es hoy solo una
+letra con un valor (no un radio geométrico con propiedades), y en figuras etiquetadas a MANO el
+motor no re-escala. **DEUDA:** dar a los radios propiedades geométricas reales (radio/cuerda/
+desarrollo) para render exacto y evitar el etiquetado a mano. Ambicioso — futuro. Mientras: el
+render vale como referencia de forma; largo/peso SÍ son paramétricos (se calculan con las medidas).
+
 ---
 
 ## 4A. CALUGA: CATÁLOGO ARMACERO
