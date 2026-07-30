@@ -308,14 +308,23 @@ opciones fijas (sector, piso, ciclo, φ), usar `<select>` normal — más simple
   `<select>` oculto + fn que resuelve texto→id (exacto → prefijo único → fallback). Elegir la
   variante según si el valor final es el texto o un id.
 
-**Lo que se DESCARTÓ (no volver a intentar):** un componente `combobox` propio con lista de divs
-(`shared/combobox.js`) se probó y se abandonó para el Bar Manager — acoplarlo a un editor con
-muchas ramas dio más bugs que valor. El `<datalist>` nativo, una vez resueltas las 3 causas de
-arriba, funciona bien y es más simple. (El combobox puede seguir usándose en el editor de
-cubicación nuevo, aislado.)
+**DOS implementaciones válidas — elegir según el contexto (NO son intercambiables a ciegas):**
+- **`<datalist>` nativo** (patrón de arriba): para código con MUCHAS ramas ya existentes que tocan
+  el mismo input (ej. el Bar Manager: `bmSetFiltrosBloqueados`, limpiezas por `eje.value=''`, etc.).
+  Ahí montar un componente propio dio más bugs que valor. Es el que usa el Bar Manager HOY.
+- **Componente `shared/combobox.js`** (input + lista propia de `<div>`, sin `<datalist>`): para
+  código NUEVO/limpio. Es SUPERIOR: filtra por "contiene", el click entrega el item `{id,label}`
+  completo, valida existencia (`cb-invalido`), soporta `textoLibre` (crear valores nuevos),
+  teclado, cierre al click-fuera, y un pie "N de M — escribe para afinar" si hay muchas opciones.
+  Panel con scroll (`.cb-panel` max-height ~340px). API: `Combobox.crear(input, {items, onSelect,
+  onInput, getLabel, getSub, textoLibre, placeholder})`. Lo usa el **creador v2** (Obra resuelve-id,
+  Ciclo/Eje textoLibre). **Este es el estándar preferido para features nuevas.**
+- **DEUDA:** unificar el Bar Manager al `combobox.js` cuando el creador esté estable, para tener
+  UN solo componente en toda la app (hoy conviven los dos → se ven distintos). No hacerlo en
+  medio de otro trabajo (riesgo sobre el Bar Manager que recién quedó estable).
 
-**Referencia:** commits `a8c6307` (fix backend eje + password fuera del DOM), `5599114` (eje como
-input buscable clonado del de obra).
+**Referencia:** commits `a8c6307` (fix backend eje + password fuera del DOM), `5599114` (eje Bar
+Manager como input buscable), + mejoras del combobox (pie "N de M", panel más alto) en el creador.
 
 ---
 
