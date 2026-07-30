@@ -52,17 +52,36 @@ function ac2DimsDeFigura(codigo){
   return { dims:dims, angs:(f.angulos||[]).length, radio:!!f.radio };
 }
 
+// LARGO = suma de las dims que la figura usa (el radio NO suma). null si falta alguna o no hay
+// figura. Espeja _largo_desde_figura del backend (lotes.py). El backend recalcula el definitivo.
+function ac2Largo(b){
+  if (!b.figura || !_ac2Figuras[b.figura]) return null;
+  var info=ac2DimsDeFigura(b.figura), total=0;
+  for (var i=0;i<info.dims.length;i++){ var v=b[info.dims[i]]; if(v==null||isNaN(v)) return null; total+=Number(v); }
+  return total;
+}
+// PESO = 7850·π·(φ/2000)²·(largo/100)·cant·mult. Espeja _peso_teorico del backend (sin el factor
+// de obra, que el backend aplica al guardar). Preview en pantalla.
+function ac2Peso(b){
+  var largo=ac2Largo(b);
+  if (b.diam==null || largo==null) return null;
+  var pu=7850*Math.PI*(Number(b.diam)/2000)*(Number(b.diam)/2000)*(largo/100);
+  return pu*((Number(b.cant)||0)*(Number(b.mult)||1));
+}
+
 function ac2Esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
 function ac2Num(v,d){ if(v==null||v===''||isNaN(v)) return ''; return d? Number(v).toFixed(d): Math.round(Number(v)); }
-// Render de la mini-figura desde la geometría REAL del catálogo (_ac2Figuras[cod].geometria).
-// El escalado a las medidas reales (dims) llega en el sub-paso 3; aquí ya usa la geometría real.
+// Render de la mini-figura desde la geometría REAL del catálogo, ESCALADA a las medidas que
+// ingresó el usuario (dims {A:val,B:val,...} desde b.dim_a..i). Portado de _acMiniFigura del v1.
 function ac2FigSvg(b){
   var t=AC2_TAM[AC2.tam];
   var f = _ac2Figuras[b.figura];
   var geo = f && f.geometria;
   if (geo && window.disenadorMotor && window.disenadorMotor.dibujarFigura) {
+    var dims={};
+    AC2_LADOS.forEach(function(L){ var v=b['dim_'+L.toLowerCase()]; if(v!=null && !isNaN(v)) dims[L]=Number(v); });
     try { return '<span style="display:inline-block; vertical-align:middle;">' +
-      window.disenadorMotor.dibujarFigura(geo, null, { width:t.w, height:t.h, pad:6 }) + '</span>'; }
+      window.disenadorMotor.dibujarFigura(geo, dims, { width:t.w, height:t.h, pad:6 }) + '</span>'; }
     catch(e){}
   }
   // Fallback si no hay geometría o el motor no cargó: caja con el tamaño (muestra el código).
@@ -133,10 +152,10 @@ function ac2Fila(b){
   h+='<td style="'+AC2_TDS+' text-align:right;"><select onchange="ac2SetBarra('+b._id+',\'diam\',this.value)" style="font-size:11px; padding:1px 2px;">'+opd+'</select></td>';
   // Cant.
   h+='<td style="'+AC2_TDS+' text-align:right;">'+ac2Inp(b._id,'cant',b.cant,40)+'</td>';
-  // Largo (calculado, sub-paso 3) — solo lectura.
-  h+='<td class="ac2-largo" style="'+AC2_TDS+' text-align:right; color:#1565c0; font-weight:600;">'+ac2Num(b._largo)+'</td>';
-  // Peso (calculado, sub-paso 3) — solo lectura.
-  h+='<td class="ac2-peso" style="'+AC2_TDS+' padding-right:10px; text-align:right; color:#00695c; font-weight:600;">'+ac2Num(b._peso,1)+'</td>';
+  // Largo (calculado en vivo) — solo lectura, id para actualización granular.
+  h+='<td id="ac2largo_'+b._id+'" style="'+AC2_TDS+' text-align:right; color:#1565c0; font-weight:600;">'+ac2Num(ac2Largo(b))+'</td>';
+  // Peso (calculado en vivo) — solo lectura.
+  h+='<td id="ac2peso_'+b._id+'" style="'+AC2_TDS+' padding-right:10px; text-align:right; color:#00695c; font-weight:600;">'+ac2Num(ac2Peso(b),1)+'</td>';
   // Figura (input+datalist del catálogo). Cambiarla re-renderiza SOLO la fila (cambian las dims).
   h+='<td style="'+AC2_TDS+' padding-left:14px; border-left:1px solid #eee;"><input type="text" list="ac2_figDatalist" value="'+ac2Esc(b.figura)+'" onchange="ac2SetBarra('+b._id+',\'figura\',this.value)" placeholder="fig" style="width:54px; font-size:11px; padding:1px 3px; border:1px solid #dfe6e9; border-radius:3px;"/></td>';
   if (AC2.render) h+=td+ac2FigSvg(b)+'</td>';
@@ -195,7 +214,7 @@ window.ac2Render=function(){
   // Rollup + contador de revisadas (sobre las visibles). Peso = calculado (sub-paso 3).
   var rev=arr.filter(function(b){return b.rev;}).length;
   var uds=arr.reduce(function(s,b){return s+(Number(b.cant)||0);},0);
-  var kg=arr.reduce(function(s,b){return s+(Number(b._peso)||0);},0);
+  var kg=arr.reduce(function(s,b){return s+(Number(ac2Peso(b))||0);},0);
   document.getElementById('ac2_revcount').textContent='✓ '+rev+' de '+arr.length+' revisadas';
   document.getElementById('ac2_rollup').innerHTML='<b style="color:#37474f;">'+arr.length+'</b> barras · <b style="color:#37474f;">'+ac2Num(uds)+'</b> uds · <b style="color:#00695c;">'+ac2Num(kg,1)+'</b> kg';
   document.getElementById('ac2_ctx').innerHTML=ac2CtxText();
@@ -243,11 +262,23 @@ window.ac2SetBarra=function(id,campo,valor){
   var b=ac2BarraPorId(id); if(!b) return;
   if (campo in AC2_CAMPOS_NUM){ var s=String(valor).trim(); b[campo]=(s===''?null:Number(s)); }
   else b[campo]=valor;
-  if (campo==='figura'){ ac2ReRenderFila(id); }          // cambian las dims → re-pinta la fila
+  if (campo==='figura'){ ac2ReRenderFila(id); }          // cambian las dims → re-pinta la fila (ya recalcula largo/peso)
   // Elegir la tipología en TODOS puede cambiar la agrupación/orden → re-render completo.
   else if (campo==='marca'){ var agrupa=((AC2.tipo==='TODOS' && AC2.orden==='tipo')||AC2.masiva); if(agrupa){ ac2Render(); return; } }
-  ac2ActualizarContadores();                              // cant/rev afectan el rollup
+  // Cambiar una dimensión afecta el DIBUJO (escala) → re-pinta la fila (foco no se pierde: el
+  // input ya disparó su change). φ/cant/mult solo afectan largo/peso → actualización granular.
+  else if (campo.indexOf('dim_')===0 && AC2.render){ ac2ReRenderFila(id); }
+  else { ac2ActualizarLargoPeso(id); }
+  ac2ActualizarContadores();                              // rollup (uds/kg/revisadas)
 };
+
+// Recalcula y pinta largo+peso de UNA fila (granular, sin re-render). También refresca el
+// dibujo de la figura (escala a las nuevas medidas) si el render está activo.
+function ac2ActualizarLargoPeso(id){
+  var b=ac2BarraPorId(id); if(!b) return;
+  var l=document.getElementById('ac2largo_'+id); if(l) l.textContent=ac2Num(ac2Largo(b));
+  var p=document.getElementById('ac2peso_'+id);  if(p) p.textContent=ac2Num(ac2Peso(b),1);
+}
 
 // Re-render GRANULAR: reemplaza SOLO el <tr> de esa barra (no toda la tabla).
 function ac2ReRenderFila(id){
@@ -260,7 +291,7 @@ function ac2ActualizarContadores(){
   var arr=ac2Visibles();
   var rev=arr.filter(function(b){return b.rev;}).length;
   var uds=arr.reduce(function(s,b){return s+(Number(b.cant)||0);},0);
-  var kg=arr.reduce(function(s,b){return s+(Number(b._peso)||0);},0);
+  var kg=arr.reduce(function(s,b){return s+(Number(ac2Peso(b))||0);},0);
   var rc=document.getElementById('ac2_revcount'); if(rc) rc.textContent=arr.length?('✓ '+rev+' de '+arr.length+' revisadas'):'';
   var ro=document.getElementById('ac2_rollup'); if(ro) ro.innerHTML=arr.length?('<b style="color:#37474f;">'+arr.length+'</b> barras · <b style="color:#37474f;">'+ac2Num(uds)+'</b> uds · <b style="color:#00695c;">'+ac2Num(kg,1)+'</b> kg'):'';
 }
