@@ -21,13 +21,15 @@
 
     <!-- FILA 1 · Contexto -->
     <div style="display:flex; gap:14px; align-items:flex-end; flex-wrap:wrap; margin-bottom:10px; padding:10px 12px; background:#e0f2f1; border:1px solid #b2dfdb; border-radius:8px;">
-      <div style="display:flex; flex-direction:column;">
+      <!-- Obra: combobox que RESUELVE a id (escribes, filtra por "contiene", eliges de la lista). -->
+      <div style="display:flex; flex-direction:column; width:260px;">
         <label style="font-size:11px; color:#00695c; font-weight:700; margin-bottom:2px;">Obra *</label>
-        <input type="text" value="Obra de Prueba" style="font-size:13px; height:34px; min-width:240px; box-sizing:border-box;" />
+        <input type="text" id="ac2_obra" style="font-size:13px; height:34px; box-sizing:border-box;" />
       </div>
-      <div style="display:flex; flex-direction:column;">
+      <!-- Eje: combobox de TEXTO LIBRE (sugiere ejes existentes, pero puedes escribir uno nuevo). -->
+      <div style="display:flex; flex-direction:column; width:180px;">
         <label style="font-size:11px; color:#00695c; font-weight:700; margin-bottom:2px;">Eje / Losa *</label>
-        <input type="text" value="24(A-E)" placeholder="🔍 buscar o escribir…" style="font-size:13px; height:34px; min-width:150px; box-sizing:border-box;" />
+        <input type="text" id="ac2_eje" style="font-size:13px; height:34px; box-sizing:border-box;" />
       </div>
       <button style="font-size:12px; height:34px; padding:0 14px; background:#fff; color:#00695c; border:1px dashed #00695c; border-radius:4px; cursor:pointer;">＋ Crear Eje</button>
     </div>
@@ -396,7 +398,43 @@
     if (confirm('Se descartará todo lo que no hayas guardado.\n\n¿Continuar?')) alert('(maqueta) Se descartaría el formulario.');
   };
 
-  function init(){ if(document.getElementById('ac2_grid')){ ac2SetTipo('TODOS'); } }
+  // Datos de EJEMPLO para probar el combobox en la maqueta (al cablear vendrán de la API).
+  var OBRAS_EJ = [
+    {id:'P-101', label:'Edificio Costanera',   sub:'P-101'},
+    {id:'P-102', label:'Condominio Las Palmas', sub:'P-102'},
+    {id:'P-103', label:'Torre Norte',           sub:'P-103'},
+    {id:'P-104', label:'Obra de Prueba',        sub:'P-104'},
+    {id:'P-105', label:'Hospital Regional',     sub:'P-105'}
+  ];
+  var EJES_EJ = [
+    {id:'24(A-E)', label:'24(A-E)'}, {id:'25(B-F)', label:'25(B-F)'},
+    {id:'26(A-D)', label:'26(A-D)'}, {id:'L-12',    label:'L-12'}
+  ];
+  var cbObra=null, cbEje=null;
+  function initCombobox(){
+    if (!window.Combobox) return;   // combobox.js aún no cargó
+    var iO=document.getElementById('ac2_obra'), iE=document.getElementById('ac2_eje');
+    if (iO && !cbObra){
+      cbObra = Combobox.crear(iO, {
+        items: function(){ return OBRAS_EJ; },
+        getSub: function(it){ return it.sub; },
+        placeholder: '🔍 buscar obra…',
+        onSelect: function(it){ /* maqueta: al cablear dispara carga de contexto */ }
+      });
+      cbObra.setValor(OBRAS_EJ[3]);   // "Obra de Prueba" preseleccionada
+    }
+    if (iE && !cbEje){
+      cbEje = Combobox.crear(iE, {
+        items: function(){ return EJES_EJ; },
+        textoLibre: true,             // eje: se puede escribir uno nuevo
+        placeholder: '🔍 buscar o escribir eje…',
+        onSelect: function(it){}
+      });
+      cbEje.setValor(EJES_EJ[0]);
+    }
+  }
+
+  function init(){ if(document.getElementById('ac2_grid')){ ac2SetTipo('TODOS'); initCombobox(); } }
   document.addEventListener('DOMContentLoaded', init);
   init();
 })();
