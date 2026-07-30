@@ -165,11 +165,12 @@ function ac2Thead(){
 // Estilos de celda reutilizables.
 var AC2_TDS='padding:2px 5px; border-top:1px solid #f0f0f0;';
 // input numérico editable en celda (clase .ac2cell = estilo Bar Manager). class ac2nav marca
-// las celdas navegables con Tab/flechas tipo Excel (ac2NavKey). rojo = validación inválida.
+// las celdas navegables con Tab/flechas tipo Excel (ac2NavKey). data-col/data-row para que
+// ↑↓ vayan a la MISMA columna de la fila de arriba/abajo (robusto aunque las filas difieran).
 function ac2Inp(id, campo, val, w, rojo){
   var wst = w ? ' style="width:'+w+'px;"' : '';
   return '<input type="number" value="'+(val==null?'':ac2Esc(val))+'" '+
-    'class="ac2cell ac2nav'+(rojo?' rojo':'')+'"'+wst+' '+
+    'class="ac2cell ac2nav'+(rojo?' rojo':'')+'" data-col="'+campo+'" data-row="'+id+'"'+wst+' '+
     'onchange="ac2SetBarra('+id+',\''+campo+'\',this.value)" onkeydown="ac2NavKey(event,this)"/>';
 }
 // celda deshabilitada (la figura no usa ese slot).
@@ -186,18 +187,26 @@ window.ac2NavKey=function(ev, el){
   // Datalist abierto (figura): ↑/↓ navegan la lista nativa; no interceptar.
   if ((k==='ArrowUp'||k==='ArrowDown') && el.getAttribute('list')) return;
   var grid=document.getElementById('ac2_grid'); if(!grid) return;
-  var inputs=[].slice.call(grid.querySelectorAll('input.ac2nav'));
-  var i=inputs.indexOf(el); if(i<0) return;
-  // Columnas por fila = celdas .ac2nav en el <tr> del input actual.
-  var tr=el.closest('tr'); var cols=tr?tr.querySelectorAll('input.ac2nav').length:1;
-  var next=-1;
-  if (k==='Tab' && !ev.shiftKey) next=i+1;
-  else if (k==='Tab' && ev.shiftKey) next=i-1;
-  else if (k==='ArrowRight') next=i+1;
-  else if (k==='ArrowLeft') next=i-1;
-  else if (k==='ArrowDown'||k==='Enter') next=i+cols;
-  else if (k==='ArrowUp') next=i-cols;
-  if (next>=0 && next<inputs.length){ ev.preventDefault(); inputs[next].focus(); if(inputs[next].select) inputs[next].select(); }
+  var target=null;
+  if (k==='ArrowUp' || k==='ArrowDown' || k==='Enter'){
+    // ↑↓/Enter: ir a la MISMA columna (data-col) de la fila anterior/siguiente. Robusto
+    // aunque las filas tengan distinto nº de celdas (dims según figura).
+    var col=el.getAttribute('data-col');
+    var filas=[].slice.call(grid.querySelectorAll('tr[id^="ac2row_"]'));
+    var trAct=el.closest('tr'); var fi=filas.indexOf(trAct);
+    var dir=(k==='ArrowUp')?-1:1;
+    for (var r=fi+dir; r>=0 && r<filas.length; r+=dir){
+      var cand=filas[r].querySelector('input.ac2nav[data-col="'+col+'"]');
+      if (cand){ target=cand; break; }   // salta filas donde esa columna está deshabilitada
+    }
+  } else {
+    // ←→/Tab: input anterior/siguiente en el orden visual del DOM.
+    var inputs=[].slice.call(grid.querySelectorAll('input.ac2nav'));
+    var i=inputs.indexOf(el); if(i<0) return;
+    var ni=(k==='ArrowLeft' || (k==='Tab'&&ev.shiftKey))? i-1 : i+1;
+    if (ni>=0 && ni<inputs.length) target=inputs[ni];
+  }
+  if (target){ ev.preventDefault(); target.focus(); if(target.select) target.select(); }
 };
 
 function ac2Fila(b){
@@ -211,7 +220,7 @@ function ac2Fila(b){
   var h='<tr id="ac2row_'+b._id+'"'+(!val.ok?' title="Geometría inválida para la figura"':'')+'>';
   if (AC2.masiva) h+='<td style="'+AC2_TDS+' text-align:center;"><input type="checkbox" class="ac2sel" data-grp="'+ac2Esc(b.marca)+'" onclick="ac2SelFila()"/></td>';
   // Piso (texto libre editable).
-  h+='<td style="'+AC2_TDS+'"><input type="text" value="'+ac2Esc(b.piso)+'" class="ac2cell ac2nav" style="width:44px; text-align:left;" onchange="ac2SetBarra('+b._id+',\'piso\',this.value)" onkeydown="ac2NavKey(event,this)"/></td>';
+  h+='<td style="'+AC2_TDS+'"><input type="text" value="'+ac2Esc(b.piso)+'" class="ac2cell ac2nav" data-col="piso" data-row="'+b._id+'" style="width:44px; text-align:left;" onchange="ac2SetBarra('+b._id+',\'piso\',this.value)" onkeydown="ac2NavKey(event,this)"/></td>';
   // Tipología (marca) — select solo en TODOS; en un subtab está implícita. Opción vacía para
   // barras nuevas sin tipología aún (en TODOS nacen sin marca; el cubicador la elige acá).
   if (mostrarTipo){
@@ -229,7 +238,7 @@ function ac2Fila(b){
   // Peso (calculado en vivo) — solo lectura.
   h+='<td id="ac2peso_'+b._id+'" style="'+AC2_TDS+' padding-right:10px; text-align:right; color:#558B2F; font-weight:600;">'+ac2Num(ac2Peso(b),1)+'</td>';
   // Figura (input+datalist del catálogo). Cambiarla re-renderiza SOLO la fila (cambian las dims).
-  h+='<td style="'+AC2_TDS+' padding-left:14px; border-left:1px solid #eee;"><input type="text" list="ac2_figDatalist" value="'+ac2Esc(b.figura)+'" class="ac2cell ac2nav" style="width:54px; text-align:left;" onchange="ac2SetBarra('+b._id+',\'figura\',this.value)" onkeydown="ac2NavKey(event,this)" placeholder="fig"/></td>';
+  h+='<td style="'+AC2_TDS+' padding-left:14px; border-left:1px solid #eee;"><input type="text" list="ac2_figDatalist" value="'+ac2Esc(b.figura)+'" class="ac2cell ac2nav" data-col="figura" data-row="'+b._id+'" style="width:54px; text-align:left;" onchange="ac2SetBarra('+b._id+',\'figura\',this.value)" onkeydown="ac2NavKey(event,this)" placeholder="fig"/></td>';
   if (AC2.render) h+=td+ac2FigSvg(b)+'</td>';
   // Dims A-I: input si la figura usa ese lado (rojo si inválido), celda gris si no la usa.
   for (var i=0;i<9;i++){ var k=AC2_DIMKEYS[i];
