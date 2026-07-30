@@ -119,6 +119,13 @@ function ac2Peso(b){
   var pu=7850*Math.PI*(Number(b.diam)/2000)*(Number(b.diam)/2000)*(largo/100);
   return pu*((Number(b.cant)||0)*(Number(b.mult)||1));
 }
+// Texto de la celda de peso: el valor, o "—" con pista de qué falta (φ o dims).
+function ac2PesoTxt(b){
+  var p=ac2Peso(b);
+  if (p!=null) return ac2Num(p,1);
+  if (ac2Largo(b)!=null && b.diam==null) return '<span style="color:#e57373;" title="Elige el diámetro (φ) para calcular el peso">—</span>';
+  return '';
+}
 
 // Validación de geometría contra el catálogo (espeja validar_geometria del backend, catalogo.py):
 // la figura EXIGE valor en sus slots (dims parciales, N ángulos, radio) y VACÍO en el resto.
@@ -153,8 +160,18 @@ function ac2FigSvg(b){
   if (geo && window.disenadorMotor && window.disenadorMotor.dibujarFigura) {
     var dims={};
     AC2_LADOS.forEach(function(L){ var v=b['dim_'+L.toLowerCase()]; if(v!=null && !isNaN(v)) dims[L]=Number(v); });
+    // PARAMÉTRICO: el motor, si la geometría trae `puntos` dibujados, los usa tal cual e IGNORA
+    // las medidas. Para escalar con las dims reales, si la figura tiene `tramos` (y no usa radio
+    // ni etiquetas manuales) le pasamos una copia SIN `puntos` → el motor reconstruye desde
+    // tramos escalando a cada lado. En figuras con radio/etiquetas manuales dejamos el dibujo
+    // original (deuda 5N.27: los radios aún no tienen geometría real).
+    var geoUse=geo;
+    var tieneDims=Object.keys(dims).length>0;
+    if (tieneDims && geo.tramos && geo.tramos.length && !f.radio && !(geo.etiquetas&&geo.etiquetas.length) && !geo.etiquetas_manda){
+      geoUse={}; for(var kk in geo) geoUse[kk]=geo[kk]; delete geoUse.puntos;   // copia sin puntos
+    }
     try { return '<span style="display:inline-block; vertical-align:middle;">' +
-      window.disenadorMotor.dibujarFigura(geo, dims, { width:t.w, height:t.h, pad:6 }) + '</span>'; }
+      window.disenadorMotor.dibujarFigura(geoUse, dims, { width:t.w, height:t.h, pad:6 }) + '</span>'; }
     catch(e){}
   }
   // Fallback si no hay geometría o el motor no cargó: caja con el tamaño (muestra el código).
@@ -266,21 +283,21 @@ function ac2Fila(b){
   h+='<td style="'+AC2_TDS+' text-align:right;">'+ac2Inp(b._id,'cant',b.cant,40)+'</td>';
   // Largo (calculado en vivo) — solo lectura, id para actualización granular.
   h+='<td id="ac2largo_'+b._id+'" style="'+AC2_TDS+' text-align:right; color:#1565c0; font-weight:600;">'+ac2Num(ac2Largo(b))+'</td>';
-  // Peso (calculado en vivo) — solo lectura.
-  h+='<td id="ac2peso_'+b._id+'" style="'+AC2_TDS+' padding-right:10px; text-align:right; color:#558B2F; font-weight:600;">'+ac2Num(ac2Peso(b),1)+'</td>';
+  // Peso (calculado en vivo) — solo lectura. Si hay largo pero falta φ, muestra "—" (falta φ).
+  h+='<td id="ac2peso_'+b._id+'" style="'+AC2_TDS+' padding-right:10px; text-align:right; color:#558B2F; font-weight:600;">'+ac2PesoTxt(b)+'</td>';
   // Figura (input+datalist del catálogo). Cambiarla re-renderiza SOLO la fila (cambian las dims).
   h+='<td style="'+AC2_TDS+' padding-left:14px; border-left:1px solid #eee;"><input type="text" list="ac2_figDatalist" value="'+ac2Esc(b.figura)+'" class="ac2cell ac2nav" data-col="figura" data-row="'+b._id+'" style="width:54px; text-align:left;" onchange="ac2SetBarra('+b._id+',\'figura\',this.value)" onkeydown="ac2NavKey(event,this)" placeholder="fig"/></td>';
   if (AC2.render) h+=td+ac2FigSvg(b)+'</td>';
   // Dims A-I: input si la figura usa ese lado (rojo si inválido), celda gris si no la usa.
   for (var i=0;i<9;i++){ var k=AC2_DIMKEYS[i];
-    h+= (info.dims.indexOf(k)!==-1) ? tdDato(k,46) : ac2CeldaOff();
+    h+= (info.dims.indexOf(k)!==-1) ? tdDato(k,54) : ac2CeldaOff();
   }
-  // Ángulos α1-α4: input si la figura usa ese ángulo.
+  // Ángulos α1-α4: input si la figura usa ese ángulo. Ancho para 3 cifras (135) sin cortar.
   for (var j=0;j<4;j++){ var ak='ang'+(j+1);
-    h+= (j<info.angs) ? tdDato(ak,40) : ac2CeldaOff();
+    h+= (j<info.angs) ? tdDato(ak,52) : ac2CeldaOff();
   }
   // Radio.
-  h+= info.radio ? tdDato('radio',44) : ac2CeldaOff();
+  h+= info.radio ? tdDato('radio',52) : ac2CeldaOff();
   // Rev (revisada).
   h+='<td style="'+AC2_TDS+' text-align:center;"><input type="checkbox"'+(b.rev?' checked':'')+' onclick="ac2ToggleRev('+b._id+',this)" title="Marcar/desmarcar revisada"/></td>';
   // Acciones por fila.
@@ -438,7 +455,7 @@ window.ac2SetBarra=function(id,campo,valor){
 function ac2ActualizarLargoPeso(id){
   var b=ac2BarraPorId(id); if(!b) return;
   var l=document.getElementById('ac2largo_'+id); if(l) l.textContent=ac2Num(ac2Largo(b));
-  var p=document.getElementById('ac2peso_'+id);  if(p) p.textContent=ac2Num(ac2Peso(b),1);
+  var p=document.getElementById('ac2peso_'+id);  if(p) p.innerHTML=ac2PesoTxt(b);
 }
 
 // Re-render GRANULAR: reemplaza SOLO el <tr> de esa barra (no toda la tabla).
