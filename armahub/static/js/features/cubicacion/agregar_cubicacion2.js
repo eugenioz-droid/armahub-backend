@@ -17,12 +17,7 @@ var AC2 = {
   // 5N.20 sub-paso 1: la "tipología" (subtab MH/MV/TR/EC/TC/CB) ES el campo `marca` de la
   // barra (decisión de producto CERRADA). AC2.tipo = valor de `marca` que se asignará a las
   // barras nuevas. NO es un campo nuevo; el guardado (sub-paso siguiente) estampará marca=tipo.
-  barras: [
-    { piso:'P3', tipo:'MH', diam:16, cant:120, largo:340, peso:643.2, fig:'104B', dims:[340,85], r:null, rev:true,  invalida:false },
-    { piso:'P3', tipo:'TR', diam:12, cant:80,  largo:500, peso:355.0, fig:'201A', dims:[200,100,200], r:8, a3:135, rev:false, invalida:false },
-    { piso:'P4', tipo:'MH', diam:16, cant:120, largo:340, peso:643.2, fig:'104B', dims:[340,85], r:null, rev:true,  invalida:false },
-    { piso:'P5', tipo:'MV', diam:10, cant:60,  largo:280, peso:172.5, fig:'101A', dims:[280,999], r:null, rev:false, invalida:true }  // ejemplo inválido: 101A no usa B
-  ]
+  barras: []   // vacío: se llena al agregar barras (＋ barra / ＋ barras M) o al cargar un lote
 };
 var AC2_LADOS=['A','B','C','D','E','F','G','H','I'];
 var AC2_TIPOS=['MH','MV','TR','EC','TC','CB'];
@@ -31,8 +26,8 @@ var AC2_TAM={ s:{w:54,h:36}, m:{w:90,h:60}, l:{w:135,h:90} };   // S · M (~+66%
 
 function ac2Esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
 function ac2Num(v,d){ if(v==null||v===''||isNaN(v)) return ''; return d? Number(v).toFixed(d): Math.round(Number(v)); }
-// Geometrías de EJEMPLO por figura (maqueta) para ver el render REAL escalar con S/M/L.
-// Al cablear se usará la geometría del catálogo (/figuras-catalogo).
+// TODO sub-paso 3 (5N.22): reemplazar por la geometría REAL del catálogo (/figuras-catalogo).
+// Se deja como fallback temporal; con la grilla vacía hoy no se ejerce.
 var AC2_GEO_EJEMPLO = {
   '104B': { dim:'2D', tramos:[{lado:'A',tipo:'recto'},{lado:'B',tipo:'recto'}], puntos:[{x:0,y:0},{x:100,y:0},{x:100,y:40}] },  // L
   '101A': { dim:'2D', tramos:[{lado:'A',tipo:'recto'}], puntos:[{x:0,y:0},{x:100,y:0}] },  // recta
@@ -123,8 +118,19 @@ function ac2GrupoHdr(tipo, cnt){
 
 window.ac2Render=function(){
   var cont=document.getElementById('ac2_grid'); if(!cont) return;
-  AC2.render=document.getElementById('ac2_render').checked;
+  var renderEl=document.getElementById('ac2_render'); if(renderEl) AC2.render=renderEl.checked;
   var arr=ac2Visibles();
+  // EMPTY STATE: sin barras aún, mostrar un mensaje según haya obra elegida o no.
+  if (!arr.length) {
+    var msg = AC2.proyecto
+      ? 'Aún no has agregado barras. Usa <b>＋ barra</b> o <b>＋ barras M</b> para empezar.'
+      : 'Elige una <b>obra</b> arriba para empezar a cubicar.';
+    cont.innerHTML='<div style="padding:26px 16px; text-align:center; color:#90a4ae; font-size:13px;">'+msg+'</div>';
+    var rc=document.getElementById('ac2_revcount'); if(rc) rc.textContent='';
+    var ro=document.getElementById('ac2_rollup'); if(ro) ro.innerHTML='';
+    var cx=document.getElementById('ac2_ctx'); if(cx) cx.innerHTML=ac2CtxText();
+    return;
+  }
   var agrupar=((AC2.tipo==='TODOS' && AC2.orden==='tipo') || AC2.masiva);
   var html='<table style="width:100%; min-width:1150px; font-size:11px; border-collapse:collapse; white-space:nowrap;"><thead>'+ac2Thead()+'</thead><tbody>';
   if (agrupar) {
@@ -139,8 +145,18 @@ window.ac2Render=function(){
   var kg=arr.reduce(function(s,b){return s+(b.peso||0);},0);
   document.getElementById('ac2_revcount').textContent='✓ '+rev+' de '+arr.length+' revisadas';
   document.getElementById('ac2_rollup').innerHTML='<b style="color:#37474f;">'+arr.length+'</b> barras · <b style="color:#37474f;">'+ac2Num(uds)+'</b> uds · <b style="color:#00695c;">'+ac2Num(kg,1)+'</b> kg';
-  document.getElementById('ac2_ctx').innerHTML='contexto: <b>ELEV · MURO'+(AC2.tipo!=='TODOS'?' · '+AC2.tipo:'')+'</b> · Eje <b>24(A-E)</b>';
+  document.getElementById('ac2_ctx').innerHTML=ac2CtxText();
 };
+
+// Texto de contexto REAL (obra/ciclo/eje/tipología elegidos), sin datos hardcodeados.
+function ac2CtxText(){
+  var obra = AC2.proyecto ? ('Obra '+ac2Esc(AC2.proyecto)) : '—';
+  var partes=[obra];
+  if (AC2.ciclo) partes.push('Ciclo '+ac2Esc(AC2.ciclo));
+  if (AC2.eje)   partes.push('Eje '+ac2Esc(AC2.eje));
+  if (AC2.tipo && AC2.tipo!=='TODOS') partes.push(ac2Esc(AC2.tipo));
+  return 'contexto: <b>'+partes.join(' · ')+'</b>';
+}
 
 window.ac2SetTipo=function(t){
   AC2.tipo=t;
@@ -190,27 +206,24 @@ function ac2SelResumen(){
   s.textContent = nsel? (nsel+' seleccionada'+(nsel>1?'s':'')) : 'ninguna seleccionada';
 }
 window.ac2ToggleTerminado=function(){
+  // (El guardado/terminado real del lote se cablea en el sub-paso 5.) Por ahora solo refleja
+  // el estado visual del formulario en curso, sin número de lote inventado.
   AC2.terminado=!AC2.terminado;
   var b=document.getElementById('ac2_bandera'), badge=document.getElementById('ac2_estadoBadge');
   if (AC2.terminado){ b.textContent='🏁'; b.style.background='#e8f5e9'; b.style.color='#2e7d32'; b.style.borderColor='#a5d6a7';
-    badge.textContent='Lote #128 · 🔒 Terminado'; badge.style.background='#e8f5e9'; badge.style.color='#2e7d32'; badge.style.borderColor='#a5d6a7'; }
+    badge.textContent='🔒 Terminado'; badge.style.background='#e8f5e9'; badge.style.color='#2e7d32'; badge.style.borderColor='#a5d6a7'; }
   else { b.textContent='🚩'; b.style.background='#ffebee'; b.style.color='#c62828'; b.style.borderColor='#ef9a9a';
-    badge.textContent='Lote #128 · En edición'; badge.style.background='#fff3e0'; badge.style.color='#e65100'; badge.style.borderColor='#ffb74d'; }
-};
-window.ac2EliminarLote=function(){
-  var t=prompt('Esto BORRA el lote #128 y TODAS sus barras.\n\nEscribe ELIMINAR para confirmar:');
-  if (t==='ELIMINAR') alert('(maqueta) El lote se eliminaría aquí.');
-  else if (t!=null) alert('Cancelado: debes escribir exactamente ELIMINAR.');
+    badge.textContent=AC2.barras.length?'En edición':'Nuevo lote · sin barras'; badge.style.background='#fff3e0'; badge.style.color='#e65100'; badge.style.borderColor='#ffb74d'; }
 };
 window.ac2TogglePisos=function(){
   var m=document.getElementById('ac2_pisosMenu'); if(!m) return;
   m.style.display=(m.style.display==='none')?'block':'none';
 };
 // ＋ barras M: una barra por cada piso seleccionado, con SU piso y la tipología activa.
+// Los pisos vienen de la CONFIG de pisos de la obra (tarea aparte, aún no disponible).
 window.ac2AgregarBarrasMulti=function(){
   var pisos=[].slice.call(document.querySelectorAll('.ac2piso:checked')).map(function(c){return c.value;});
-  if(!pisos.length){ alert('Selecciona al menos un piso en “⚙ Pisos múltiples”.'); return; }
-  // Tipología nueva = la del subtab activo; en TODOS, MH por defecto (editable por fila).
+  if(!pisos.length){ alert('Aún no hay pisos configurados para esta obra.\nLa configuración de pisos es una tarea pendiente.'); return; }
   var tipo=(AC2.tipo==='TODOS')?'MH':AC2.tipo;
   pisos.forEach(function(p){
     AC2.barras.push({ piso:p, tipo:tipo, diam:16, cant:0, largo:0, peso:0, fig:'', dims:[], r:null, rev:false, invalida:false });
