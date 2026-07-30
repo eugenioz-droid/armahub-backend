@@ -269,6 +269,54 @@ Reglas para que la navegación sea uniforme y la restauración tras F5 funcione 
   Debe imprimir "sin duplicados cross-tab". Si lista alguno, renómbralo con prefijo.
 - **Referencia del bug:** commit `b406ffc` (id duplicado `proyectoSearchInput` bar_manager↔obras).
 
+#### Filtro de texto BUSCABLE (input + datalist) — patrón estándar (NO reinventar)
+
+> Nació de ~5 días de bugs (2026-07) intentando arreglar el filtro de Eje del Bar Manager. La
+> lección: los 3 problemas que perseguíamos NO eran del campo, y se arreglan en la raíz. Este es
+> el patrón que quedó funcionando; **reutilizarlo para cualquier filtro donde el usuario deba
+> ESCRIBIR para buscar** (obra, eje, y futuros con muchas opciones — un `<select>` no sirve
+> cuando hay decenas/cientos de valores, p.ej. una obra con ~140 ejes).
+
+**Cuándo usarlo:** filtro sobre una lista con muchas opciones donde conviene teclear. Si son pocas
+opciones fijas (sector, piso, ciclo, φ), usar `<select>` normal — más simple.
+
+**Las 3 causas raíz que hacían fallar estos campos (y su fix DEFINITIVO, ya aplicado):**
+1. **"Pide clave" / ícono de llave de Chrome.** NO es del input. Chrome escanea TODO el documento;
+   si existe UN `<input type="password">` en el DOM (aunque esté `display:none`), trata los demás
+   text inputs como credenciales. Fix transversal: **no dejar ningún `type="password"` en reposo**
+   — el de crear-usuario (admin) arranca `type="text"` (+`-webkit-text-security:disc` para verse
+   con puntos) y se promueve a `password` por JS solo mientras su form está abierto. Con eso, los
+   blindajes por-campo (`autocomplete=off`, etc.) dejan de ser necesarios para el síntoma de clave.
+2. **"No filtra al elegir."** Era el BACKEND, no el front: el endpoint de la vista por defecto
+   (`GET /barras/elementos`) no declaraba el parámetro y FastAPI lo descartaba en silencio. Regla:
+   **si un filtro manda un query param, el endpoint DEBE declararlo y aplicarlo** (`AND col=%s`).
+   Al agregar un filtro, revisar los DOS endpoints (agrupado `/barras/elementos` y plano `/barras`).
+3. **`readonly` rompía el filtro.** Se había puesto `readonly` como defensa anti-Chrome, pero un
+   `<input readonly>` NO dispara `oninput` → el filtro no se aplicaba. **Nunca usar readonly** en
+   estos campos (ya no hace falta: la clave se resolvió por la causa 1).
+
+**Anatomía del patrón (clon del buscador de obra `bmProyectoSearchInput`, que es el de referencia):**
+- HTML: `<input type="text" id="<prefijo>Xxx" list="<prefijo>XxxDatalist" name="..." autocomplete="off"
+  autocapitalize="off" autocorrect="off" spellcheck="false" data-lpignore="true" data-form-type="other"
+  oninput/onchange/onblur="onXxxInput()">` + `<datalist id="<prefijo>XxxDatalist">`. **Sin readonly.**
+  Id único con prefijo de tab (ver sección anterior).
+- JS: una fn `_fill<Xxx>Datalist(lista)` que puebla el `<datalist>` (escapando `"`), y un handler
+  `onXxxInput()` con **debounce corto (~200ms)** que dispara la búsqueda. Los 3 eventos
+  (input/change/blur) apuntan al MISMO handler idempotente.
+- **Dos variantes:** (a) *texto libre* (eje) → lo escrito ES el valor del filtro, se lee
+  `getElementById('eje').value` directo, sin nada que resolver. (b) *resuelve a id* (obra) →
+  `<select>` oculto + fn que resuelve texto→id (exacto → prefijo único → fallback). Elegir la
+  variante según si el valor final es el texto o un id.
+
+**Lo que se DESCARTÓ (no volver a intentar):** un componente `combobox` propio con lista de divs
+(`shared/combobox.js`) se probó y se abandonó para el Bar Manager — acoplarlo a un editor con
+muchas ramas dio más bugs que valor. El `<datalist>` nativo, una vez resueltas las 3 causas de
+arriba, funciona bien y es más simple. (El combobox puede seguir usándose en el editor de
+cubicación nuevo, aislado.)
+
+**Referencia:** commits `a8c6307` (fix backend eje + password fuera del DOM), `5599114` (eje como
+input buscable clonado del de obra).
+
 ---
 
 ## 3. CALUGA: RECLAMOS
