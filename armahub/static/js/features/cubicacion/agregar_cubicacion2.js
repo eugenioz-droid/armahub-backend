@@ -14,7 +14,8 @@ var AC2 = {
   proyecto:null,   // id de la obra elegida (GET /filters → proyectos[].id)
   ciclo:'',        // ciclo elegido/escrito (texto libre)
   eje:'',          // eje/losa elegido/escrito (texto libre)
-  sector:'',       // sector/estructura (FILA 2) — pendiente de cablear su UI; hoy null al guardar
+  sector:'',       // sector constructivo elegido (FUND/ELEV/VCIELO/LCIELO)
+  estructura:'',   // estructura elegida (MURO/LOSA/VIGA/COLUMNA/FUNDACION/GENERAL)
   loteId:null,     // id del lote en curso (null = aún no creado; se crea al primer guardado)
   loteEstado:'',   // '' | 'borrador' | 'terminada'
   // 5N.20 sub-paso 1: la "tipología" (subtab MH/MV/TR/EC/TC/CB) ES el campo `marca` de la
@@ -23,8 +24,24 @@ var AC2 = {
   barras: []   // vacío: se llena al agregar barras (＋ barra / ＋ barras M) o al cargar un lote
 };
 var AC2_LADOS=['A','B','C','D','E','F','G','H','I'];
-var AC2_TIPOS=['MH','MV','TR','EC','TC','CB'];       // valores de `marca` (subtabs de tipología)
-var AC2_ORD_TIPO={MH:0,MV:1,TR:2,EC:3,TC:4,CB:5};
+// Sectores constructivos (enum fijo, orden canónico de barras.py) — sin endpoint.
+var AC2_SECTORES=['ELEV','LCIELO','VCIELO','FUND'];
+// Estructuras y sus tipologías: se cargan de GET /tipologias (agrupado por estructura). Cada
+// tipología trae sus `figuras`. AC2_TIPOS_MAP[estructura]=[{codigo,nombre,figuras}]. Fallback
+// mínimo (catálogo _TIPOLOGIAS_SEED) por si la API no responde; 'GEN' = estructura GENERAL.
+var AC2_ESTRUCTURAS=['MURO','LOSA','VIGA','COLUMNA','FUNDACION','GEN'];
+var AC2_TIPOS_MAP={
+  MURO:[{codigo:'MH'},{codigo:'MV'},{codigo:'TR'},{codigo:'EC'},{codigo:'TC'},{codigo:'CB'}],
+  LOSA:[{codigo:'Fi'},{codigo:'Fs'},{codigo:"F'i"},{codigo:"F's"},{codigo:'F'},{codigo:"F'"},{codigo:'SP'},{codigo:'Rp'},{codigo:'TRL'}],
+  VIGA:[{codigo:'CBS'},{codigo:'CBS2'},{codigo:'CBSn'},{codigo:'CBI'},{codigo:'CBI2'},{codigo:'CBIn'},{codigo:'LT'},{codigo:'ES'},{codigo:'TRV'}],
+  COLUMNA:[{codigo:'CB'},{codigo:'CB2'},{codigo:'CBn'},{codigo:'TRC'},{codigo:'ESC'}],
+  FUNDACION:[{codigo:'Fi'},{codigo:'Fs'},{codigo:"F'i"},{codigo:"F's"},{codigo:'SPF'},{codigo:'TRF'}],
+  GEN:[{codigo:'CB'},{codigo:'F'},{codigo:"F'"}]
+};
+// AC2_TIPOS = códigos de tipología de la estructura ACTUAL (subtabs). Se recalcula al elegir
+// estructura (ac2SetEstructura). AC2_ORD_TIPO deriva del orden de esa lista.
+var AC2_TIPOS=AC2_TIPOS_MAP.MURO.map(function(t){return t.codigo;});
+var AC2_ORD_TIPO={}; AC2_TIPOS.forEach(function(t,i){ AC2_ORD_TIPO[t]=i; });
 var AC2_TAM={ s:{w:54,h:36}, m:{w:90,h:60}, l:{w:135,h:90} };   // S · M (~+66%) · L (+50% sobre M)
 var AC2_DIAMS=[8,10,12,16,18,22,25,28,32,36];        // diámetros estándar (diametros.py)
 var AC2_DIMKEYS=['dim_a','dim_b','dim_c','dim_d','dim_e','dim_f','dim_g','dim_h','dim_i'];
@@ -253,21 +270,61 @@ function ac2CtxText(){
   return 'contexto: <b>'+partes.join(' · ')+'</b>';
 }
 
+// ── SECTOR + ESTRUCTURA (FILA 2): chips clickeables. Se BLOQUEAN al elegir; desbloqueo solo
+//    si el lote no tiene barras. La estructura define las tipologías (subtabs). ──
+function ac2Bloqueado(){ return AC2.barras.length>0 || AC2.loteEstado==='terminada'; }
+
+function ac2PintarSectorEstructura(){
+  var bloq=ac2Bloqueado();
+  var chip=function(txt,activo,onclick){
+    var base='font-size:12px; padding:4px 12px; border-radius:14px; font-weight:600; margin:0;';
+    if (activo) return '<span style="'+base+' border:1px solid #1565C0; background:#1565C0; color:#fff;">'+ac2Esc(txt)+'</span>';
+    if (bloq)   return '<span style="'+base+' border:1px dashed #cfd8dc; background:#fff; color:#cfd8dc; cursor:not-allowed;">'+ac2Esc(txt)+'</span>';
+    return '<button onclick="'+onclick+'" style="'+base+' border:1px solid #90a4ae; background:#fff; color:#546e7a; cursor:pointer;">'+ac2Esc(txt)+'</button>';
+  };
+  var sc=document.getElementById('ac2_sectorChips');
+  if (sc) sc.innerHTML=AC2_SECTORES.map(function(s){ return chip(s, AC2.sector===s, "ac2SetSector('"+s+"')"); }).join(' ');
+  var ec=document.getElementById('ac2_estructChips');
+  if (ec) ec.innerHTML=AC2_ESTRUCTURAS.map(function(e){ return chip(e==='GEN'?'GENERAL':e, AC2.estructura===e, "ac2SetEstructura('"+e+"')"); }).join(' ');
+  var lk=document.getElementById('ac2_sectorLock');
+  if (lk) lk.textContent = bloq ? '🔒 bloqueado (hay barras) — para cambiar, descarta/elimina el lote' : '';
+}
+window.ac2SetSector=function(s){ if(ac2Bloqueado()) return; AC2.sector=s; ac2PintarSectorEstructura(); ac2ActualizarBotonesCrear(); };
+window.ac2SetEstructura=function(e){
+  if(ac2Bloqueado()) return;
+  AC2.estructura=e;
+  // Las tipologías (subtabs) dependen de la estructura.
+  AC2_TIPOS=(AC2_TIPOS_MAP[e]||[]).map(function(t){return t.codigo;});
+  AC2_ORD_TIPO={}; AC2_TIPOS.forEach(function(t,i){ AC2_ORD_TIPO[t]=i; });
+  AC2.tipo='TODOS';
+  ac2PintarSectorEstructura(); ac2PintarSubtabs(); ac2SetTipo('TODOS');
+};
+
+// Genera los botones de subtab de tipología según AC2_TIPOS + TODOS.
+function ac2PintarSubtabs(){
+  var cont=document.getElementById('ac2_subtabs'); if(!cont) return;
+  var h='<span style="font-size:11px; color:#607d8b; font-weight:700; margin-right:8px;">Tipología:</span>';
+  AC2_TIPOS.forEach(function(t){ h+='<button id="ac2t_'+ac2Esc(t)+'" onclick="ac2SetTipo(\''+t+'\')" class="ac2tab">'+ac2Esc(t)+'</button>'; });
+  h+='<span style="width:1px; height:22px; background:#ddd; margin:0 6px;"></span>';
+  h+='<button id="ac2t_TODOS" onclick="ac2SetTipo(\'TODOS\')" class="ac2tab">TODOS</button>';
+  cont.innerHTML=h;
+}
+
+// Habilita ＋barra/＋barras M solo si hay obra + sector + estructura + un subtab (no TODOS).
+function ac2ActualizarBotonesCrear(){
+  var puede = AC2.proyecto && AC2.sector && AC2.estructura && AC2.tipo!=='TODOS' && AC2.loteEstado!=='terminada';
+  ['ac2_barraBtn','ac2_barrasMBtn'].forEach(function(bid){
+    var btn=document.getElementById(bid); if(!btn) return;
+    btn.disabled=!puede; btn.style.opacity=puede?'1':'0.45'; btn.style.cursor=puede?'pointer':'not-allowed';
+    btn.title=puede?'':(!AC2.sector||!AC2.estructura?'Elige Sector y Estructura primero.':'Entra a una tipología (no TODOS) para agregar barras.');
+  });
+}
+
 window.ac2SetTipo=function(t){
   AC2.tipo=t;
   AC2_TIPOS.concat(['TODOS']).forEach(function(x){ var b=document.getElementById('ac2t_'+x); if(b) b.className='ac2tab'+(x===t?' on':''); });
-  // El orden Piso/Tipología solo aplica en TODOS.
   document.getElementById('ac2_ordenWrap').style.display=(t==='TODOS')?'inline-flex':'none';
-  // Opción A: en TODOS NO se crean barras (solo ver/editar). Crear = desde un subtab de
-  // tipología. Se deshabilitan ＋barra y ＋barras M con un tooltip que lo explica.
-  var enTodos=(t==='TODOS');
-  ['ac2_barraBtn','ac2_barrasMBtn'].forEach(function(bid){
-    var btn=document.getElementById(bid); if(!btn) return;
-    btn.disabled=enTodos;
-    btn.style.opacity=enTodos?'0.45':'1';
-    btn.style.cursor=enTodos?'not-allowed':'pointer';
-    btn.title=enTodos?'Para agregar barras, entra a una tipología (MH, MV, …).':'';
-  });
+  ac2ActualizarBotonesCrear();
   ac2Render();
 };
 window.ac2SetOrden=function(o){ AC2.orden=o;
@@ -331,10 +388,16 @@ function ac2ActualizarContadores(){
 }
 
 // ── Agregar / copiar / duplicar / quitar barras (cambios estructurales → re-render completo) ──
+function ac2PuedeCrear(){
+  if (!AC2.proyecto){ alert('Elige primero una obra.'); return false; }
+  if (!AC2.sector || !AC2.estructura){ alert('Elige Sector y Estructura antes de agregar barras.'); return false; }
+  if (AC2.tipo==='TODOS'){ alert('Para agregar barras, entra a una tipología (no TODOS).'); return false; }
+  return true;
+}
 window.ac2AgregarBarra=function(){
-  if (!AC2.proyecto){ alert('Elige primero una obra.'); return; }
-  if (AC2.tipo==='TODOS'){ alert('Para agregar barras, entra a una tipología (MH, MV, …).'); return; }
+  if (!ac2PuedeCrear()) return;
   AC2.barras.push(ac2NuevaBarra({ piso:'' }));
+  ac2PintarSectorEstructura();   // al haber barras, sector/estructura se bloquean
   ac2Render();
 };
 window.ac2CopiarTipologia=function(id){
@@ -470,11 +533,11 @@ window.ac2TogglePisos=function(){
 // ＋ barras M: una barra por cada piso seleccionado, con SU piso y la tipología activa.
 // Los pisos vienen de la CONFIG de pisos de la obra (tarea aparte, aún no disponible).
 window.ac2AgregarBarrasMulti=function(){
-  if (!AC2.proyecto){ alert('Elige primero una obra.'); return; }
-  if (AC2.tipo==='TODOS'){ alert('Para agregar barras, entra a una tipología (MH, MV, …).'); return; }
+  if (!ac2PuedeCrear()) return;
   var pisos=[].slice.call(document.querySelectorAll('.ac2piso:checked')).map(function(c){return c.value;});
   if(!pisos.length){ alert('Aún no hay pisos configurados para esta obra.\nLa configuración de pisos es una tarea pendiente.'); return; }
   pisos.forEach(function(p){ AC2.barras.push(ac2NuevaBarra({ piso:p })); });
+  ac2PintarSectorEstructura();
   ac2Render();
 };
 // ✕ DESCARTAR: limpia las barras del formulario NO guardadas (no toca el lote ya guardado).
@@ -557,12 +620,13 @@ function _ac2InitComboboxes(){
         AC2.proyecto = idProyecto || null;
         // Al cambiar de obra: se descarta la tanda en curso (ciclo/eje/lote/barras son de la
         // obra anterior). El lote guardado no se pierde (vive en BD); solo se limpia el form.
-        AC2.ciclo=''; AC2.eje=''; AC2.sector='';
-        AC2.loteId=null; AC2.loteEstado=''; AC2.barras=[];
+        AC2.ciclo=''; AC2.eje=''; AC2.sector=''; AC2.estructura='';
+        AC2.loteId=null; AC2.loteEstado=''; AC2.barras=[]; AC2.tipo='TODOS';
         if (_ac2CbCiclo) _ac2CbCiclo.limpiar();
         if (_ac2CbEje)   _ac2CbEje.limpiar();
         _ac2CiclosObra=[]; _ac2EjesObra=[];
-        ac2PintarEstado(); ac2Render(); ac2CargarLotes();
+        ac2PintarEstado(); ac2PintarSectorEstructura(); ac2PintarSubtabs();
+        ac2ActualizarBotonesCrear(); ac2Render(); ac2CargarLotes();
         if (AC2.proyecto) _ac2CargarContexto(AC2.proyecto);
       }
     });
@@ -599,19 +663,32 @@ async function _ac2CargarFiguras(){
   if (dl) dl.innerHTML=figs.map(function(f){ return '<option value="'+ac2Esc(f.codigo)+'"></option>'; }).join('');
 }
 
+// Tipologías reales por estructura (GET /tipologias, con figuras embebidas por tipología).
+// Sobrescribe AC2_TIPOS_MAP con lo de la BD. Fallback al seed si la API no responde.
+async function _ac2CargarTipologias(){
+  var tips=[];
+  try { var d=await apiGet('/tipologias'); tips=(d && d.tipologias)||[]; } catch(e){ tips=[]; }
+  if (!tips.length) return;   // deja el fallback (seed)
+  var map={};
+  tips.forEach(function(t){ var es=t.estructura||'GEN'; (map[es]=map[es]||[]).push({codigo:t.codigo, nombre:t.nombre, figuras:t.figuras||[]}); });
+  AC2_TIPOS_MAP=map;
+}
+
 // Loader del tab (registrado en shell.js tabLoaders['agregar2']): se llama al ACTIVAR el
 // tab (clic o restauración tras F5). Refresca la lista de obras real. Idempotente.
 async function loadAgregarCubicacion2(){
   if(!document.getElementById('ac2_grid')) return;
   _ac2InitComboboxes();
   await _ac2CargarFiguras();
+  await _ac2CargarTipologias();
   await _ac2CargarObras();
+  ac2PintarSectorEstructura(); ac2PintarSubtabs();
   ac2SetTipo(AC2.tipo || 'TODOS');   // re-sincroniza subtabs + re-pinta el grid al (re)entrar
 }
 window.loadAgregarCubicacion2 = loadAgregarCubicacion2;
 
 // Init al cargar el módulo (el markup ya está en el DOM por el {% include %}). El loader
 // del tab vuelve a correr al activarlo; ambas rutas son idempotentes.
-function _ac2Init(){ if(document.getElementById('ac2_grid')){ _ac2InitComboboxes(); ac2SetTipo('TODOS'); _ac2CargarObras(); } }
+function _ac2Init(){ if(document.getElementById('ac2_grid')){ _ac2InitComboboxes(); ac2PintarSectorEstructura(); ac2PintarSubtabs(); ac2SetTipo('TODOS'); _ac2CargarObras(); } }
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', _ac2Init);
 else _ac2Init();

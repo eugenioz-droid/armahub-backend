@@ -42,26 +42,24 @@
 
     <!-- FILA 2 · Sector + Estructura (se BLOQUEAN al elegir; 🔓 solo si lote vacío) -->
     <div style="display:flex; flex-direction:column; gap:6px; margin-bottom:8px; padding:10px 12px; background:#f7f7f7; border:1px solid #e0e0e0; border-radius:8px;">
+      <!-- Sector constructivo (enum fijo) + Estructura → chips clickeables. Se BLOQUEAN al elegir
+           (se desbloquean solo si el lote no tiene barras). Las TIPOLOGÍAS cambian según la
+           estructura elegida. Los botones se generan en JS (ac2PintarSectorEstructura). -->
       <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
         <span style="font-size:11px; color:#607d8b; font-weight:700; width:80px;">Sector</span>
-        <span id="ac2_sectorBadge" style="font-size:12px; padding:4px 12px; border-radius:14px; border:1px dashed #b0bec5; background:#fff; color:#90a4ae; font-weight:600;">— elige —</span>
-        <span style="font-size:11px; color:#607d8b; font-weight:700; width:80px; margin-left:18px;">Estructura</span>
-        <span id="ac2_estructBadge" style="font-size:12px; padding:4px 12px; border-radius:4px; border:1px dashed #b0bec5; background:#fff; color:#90a4ae; font-weight:600;">— elige —</span>
-        <span id="ac2_sectorLock" style="font-size:10px; color:#90a4ae; margin-left:6px;"></span>
+        <span id="ac2_sectorChips" style="display:inline-flex; gap:5px; flex-wrap:wrap;"></span>
+      </div>
+      <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+        <span style="font-size:11px; color:#607d8b; font-weight:700; width:80px;">Estructura</span>
+        <span id="ac2_estructChips" style="display:inline-flex; gap:5px; flex-wrap:wrap;"></span>
+        <span id="ac2_sectorLock" style="font-size:10px; color:#c62828; margin-left:8px;"></span>
       </div>
     </div>
 
-    <!-- SUBTABS de TIPOLOGÍA (cada uno filtra la vista + fija la tipología nueva) + TODOS -->
-    <div style="display:flex; align-items:center; gap:2px; flex-wrap:wrap; border-bottom:2px solid #e0e0e0; margin-bottom:8px;">
+    <!-- SUBTABS de TIPOLOGÍA — DINÁMICOS según la estructura elegida. Los genera JS
+         (ac2PintarSubtabs); cada uno filtra la vista + fija la tipología nueva. + TODOS. -->
+    <div id="ac2_subtabs" style="display:flex; align-items:center; gap:2px; flex-wrap:wrap; border-bottom:2px solid #e0e0e0; margin-bottom:8px;">
       <span style="font-size:11px; color:#607d8b; font-weight:700; margin-right:8px;">Tipología:</span>
-      <button id="ac2t_MH" onclick="ac2SetTipo('MH')" title="Malla Horizontal" class="ac2tab">MH</button>
-      <button id="ac2t_MV" onclick="ac2SetTipo('MV')" title="Malla Vertical" class="ac2tab">MV</button>
-      <button id="ac2t_TR" onclick="ac2SetTipo('TR')" title="Traba Muro" class="ac2tab">TR</button>
-      <button id="ac2t_EC" onclick="ac2SetTipo('EC')" title="Estribo Confinamiento" class="ac2tab">EC</button>
-      <button id="ac2t_TC" onclick="ac2SetTipo('TC')" title="Traba Confinamiento" class="ac2tab">TC</button>
-      <button id="ac2t_CB" onclick="ac2SetTipo('CB')" title="Cabezal" class="ac2tab">CB</button>
-      <span style="width:1px; height:22px; background:#ddd; margin:0 6px;"></span>
-      <button id="ac2t_TODOS" onclick="ac2SetTipo('TODOS')" class="ac2tab">TODOS</button>
     </div>
 
     <!-- FILA 3 · Botones rápidos + toggles -->
