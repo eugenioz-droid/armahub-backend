@@ -239,20 +239,19 @@ window.ac2Descartar=function(){
 // CONTEXTO REAL (5N.20 sub-paso 1) — Obra·Ciclo·Eje desde /filters.
 // El estado vive en AC2.{proyecto,ciclo,eje}; los comboboxes solo lo escriben.
 // ─────────────────────────────────────────────────────────────────────────────
-var _ac2ObrasCache = [];    // [{id, label, sub}] para el combobox de obra
 var _ac2CiclosObra = [];    // [{id, label}] ciclos de la obra elegida (texto libre)
 var _ac2EjesObra = [];      // [{id, label}] ejes de la obra elegida (texto libre)
 var _ac2CbObra=null, _ac2CbCiclo=null, _ac2CbEje=null;
 
-// Carga la lista de obras (GET /api/v1/filters → {proyectos:[{id,nombre}]}).
+// Carga la lista de obras (GET /api/v1/filters → {proyectos:[{id,nombre}]}) y la pasa al
+// COMPONENTE buscador de obra (el mismo del Bar Manager).
 async function _ac2CargarObras(){
+  var proyectos = [];
   try {
     var d = await apiGet('/filters');
-    _ac2ObrasCache = ((d && d.proyectos) || []).map(function(p){
-      return { id:String(p.id), label:String(p.nombre==null?p.id:p.nombre), sub:String(p.id) };
-    });
-  } catch(e){ _ac2ObrasCache = []; }
-  if (_ac2CbObra) _ac2CbObra.refrescar();
+    proyectos = (d && d.proyectos) || [];
+  } catch(e){ proyectos = []; }
+  if (_ac2CbObra) _ac2CbObra.setProyectos(proyectos);
 }
 
 // Carga el contexto de la obra (GET /api/v1/filters?proyecto=X → {ciclos:[str], ejes:[str]}).
@@ -267,18 +266,15 @@ async function _ac2CargarContexto(idProyecto){
 }
 
 function _ac2InitComboboxes(){
-  if (!window.Combobox) return;   // combobox.js aún no cargó
-  var iO=document.getElementById('ac2_obra'),
-      iC=document.getElementById('ac2_ciclo'),
+  var iC=document.getElementById('ac2_ciclo'),
       iE=document.getElementById('ac2_eje');
-  // Obra: resuelve a id. Al elegir → guarda id en el estado y dispara la carga de contexto.
-  if (iO && !_ac2CbObra){
-    _ac2CbObra = Combobox.crear(iO, {
-      items: function(){ return _ac2ObrasCache; },
-      getSub: function(it){ return it.sub; },
-      placeholder: '🔍 buscar obra…',
-      onSelect: function(it){
-        AC2.proyecto = it ? it.id : null;
+  // Obra: MISMO componente que el Bar Manager (shared/buscador_obra.js). Al elegir → guarda
+  // el id en el estado y dispara la carga de contexto (ciclos/ejes de esa obra).
+  if (document.getElementById('ac2_obra') && !_ac2CbObra && window.BuscadorObra){
+    _ac2CbObra = window.BuscadorObra.crear({
+      inputId:'ac2_obra', datalistId:'ac2_obraDatalist', selectId:'ac2_obraSel',
+      onElegir: function(idProyecto){
+        AC2.proyecto = idProyecto || null;
         // Al cambiar de obra, el ciclo/eje elegidos dejan de aplicar → limpiar estado.
         AC2.ciclo=''; AC2.eje='';
         if (_ac2CbCiclo) _ac2CbCiclo.limpiar();
@@ -288,6 +284,7 @@ function _ac2InitComboboxes(){
       }
     });
   }
+  if (!window.Combobox) return;   // combobox.js aún no cargó (ciclo/eje lo usan)
   // Ciclo: texto libre (se puede escribir uno nuevo o elegir uno existente de la obra).
   if (iC && !_ac2CbCiclo){
     _ac2CbCiclo = Combobox.crear(iC, {

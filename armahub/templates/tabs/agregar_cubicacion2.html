@@ -19,10 +19,13 @@
 
     <!-- FILA 1 · Contexto -->
     <div style="display:flex; gap:14px; align-items:flex-end; flex-wrap:wrap; margin-bottom:10px; padding:10px 12px; background:#e0f2f1; border:1px solid #b2dfdb; border-radius:8px;">
-      <!-- Obra: combobox que RESUELVE a id (escribes, filtra por "contiene", eliges de la lista). -->
+      <!-- Obra: MISMO componente que el Bar Manager (shared/buscador_obra.js): input+datalist
+           + select oculto que guarda el id. -->
       <div style="display:flex; flex-direction:column; width:260px;">
         <label style="font-size:11px; color:#00695c; font-weight:700; margin-bottom:2px;">Obra *</label>
-        <input type="text" id="ac2_obra" style="font-size:13px; height:34px; box-sizing:border-box;" />
+        <input type="text" id="ac2_obra" list="ac2_obraDatalist" placeholder="🔍 buscar obra…" style="font-size:13px; height:34px; box-sizing:border-box;" />
+        <datalist id="ac2_obraDatalist"></datalist>
+        <select id="ac2_obraSel" style="display:none;"></select>
       </div>
       <!-- Ciclo: combobox de TEXTO LIBRE (sugiere ciclos de la obra, o escribe uno nuevo). -->
       <div style="display:flex; flex-direction:column; width:180px;">

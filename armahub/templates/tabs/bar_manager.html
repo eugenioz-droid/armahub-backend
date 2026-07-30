@@ -21,11 +21,12 @@
             <!-- id ÚNICO: 'proyectoSearchInput' ya existe en obras.html; como ambos
                  tabs están en el DOM a la vez, getElementById tomaba el de Obras
                  (vacío) y el proyecto no cargaba. -->
+            <!-- Buscador de obra = componente shared/buscador_obra.js (adjunta sus propios
+                 listeners input/change/blur; no hay handlers inline). -->
             <input type="text" id="bmProyectoSearchInput" list="bmProyectosDatalist"
                    name="bm-obra-buscar" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"
                    data-lpignore="true" data-form-type="other"
                    placeholder="Escribe para buscar la obra…"
-                   oninput="onProyectoInput()" onchange="onProyectoInput()" onblur="onProyectoInput()"
                    style="padding-left:30px; width:100%; font-size:13px; height:34px; box-sizing:border-box;" />
             <datalist id="bmProyectosDatalist"></datalist>
             <select id="proyecto" onchange="onProyectoChange()" style="display:none;">

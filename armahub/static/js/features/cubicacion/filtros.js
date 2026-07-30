@@ -239,52 +239,26 @@ async function loadFilters(depParams) {
 // 5M.10: buscador único de obra (input + datalist). El datalist muestra los
 // nombres; el <select id="proyecto"> oculto conserva el id real. _proyectosCache
 // mapea nombre→id para resolver lo que el usuario escribe/elige.
-var _proyectosCache = [];
-function _fillProyectosDatalist(proyectos) {
-  _proyectosCache = proyectos || [];
-  var dl = document.getElementById('bmProyectosDatalist');
-  if (!dl) return;
-  dl.innerHTML = _proyectosCache.map(function(p) {
-    var nombre = (p.nombre || p.id);
-    return '<option value="' + String(nombre).replace(/"/g, '&quot;') + '"></option>';
-  }).join('');
-}
-
-// El usuario escribió/eligió en el buscador de obra. Resuelve el texto → id de
-// proyecto y, si cambió, dispara la carga. Se llama en input/change/blur.
-//   forzar=true (change/blur) reevalúa aunque el id no cambie, para no quedar
-//   "pegado" cuando escribes otra obra sin limpiar antes.
-function onProyectoInput() {
-  var input = document.getElementById('bmProyectoSearchInput');
-  var sel = document.getElementById('proyecto');
-  if (!input || !sel) return;
-  var txtLow = (input.value || '').trim().toLowerCase();
-  var id = _resolverProyectoId(txtLow, sel);
-  if (id === sel.value) return;   // el proyecto resuelto no cambió → no recargar
-  sel.value = id;
-  onProyectoChange();
-}
-
-// Resuelve un texto (minúsculas) a un id de proyecto. Prioridad: match EXACTO de
-// nombre; si no, prefijo ÚNICO (una sola obra empieza con ese texto); si nada,
-// fallback por las opciones del <select> oculto. Vacío o ambiguo → ''.
-function _resolverProyectoId(txtLow, sel) {
-  if (!txtLow) return '';
-  // 1) Exacto por nombre.
-  var exact = _proyectosCache.find(function(p) { return String(p.nombre || p.id).toLowerCase() === txtLow; });
-  if (exact) return String(exact.id);
-  // 2) Prefijo, pero solo si es ÚNICO (evita resolver a la obra equivocada
-  //    mientras escribes un prefijo que varias comparten).
-  var matches = _proyectosCache.filter(function(p) { return String(p.nombre || p.id).toLowerCase().indexOf(txtLow) === 0; });
-  if (matches.length === 1) return String(matches[0].id);
-  // 3) Fallback: opción del select oculto con ese texto visible exacto.
-  if (sel && sel.options) {
-    for (var i = 0; i < sel.options.length; i++) {
-      var o = sel.options[i];
-      if (o.value && o.textContent.trim().toLowerCase() === txtLow) return o.value;
-    }
+// Buscador de obra del Bar Manager = COMPONENTE reutilizable (shared/buscador_obra.js), el
+// MISMO que usa el creador de barras. Se instancia una vez (lazy, guard anti-doble). El
+// callback onElegir = onProyectoChange (recarga el Bar Manager), igual que antes.
+var _bmBuscadorObra = null;
+function _bmGetBuscadorObra() {
+  if (!_bmBuscadorObra && window.BuscadorObra) {
+    _bmBuscadorObra = window.BuscadorObra.crear({
+      inputId: 'bmProyectoSearchInput',
+      datalistId: 'bmProyectosDatalist',
+      selectId: 'proyecto',
+      onElegir: function () { onProyectoChange(); }
+    });
   }
-  return '';
+  return _bmBuscadorObra;
+}
+// Puebla el buscador con las obras (lo llama loadFilters). Conserva el nombre para no tocar
+// a su llamador.
+function _fillProyectosDatalist(proyectos) {
+  var b = _bmGetBuscadorObra();
+  if (b) b.setProyectos(proyectos || []);
 }
 
 // --- Buscador de Eje/Losa (texto) — clonado del de obra, pero SIN id que resolver ---
