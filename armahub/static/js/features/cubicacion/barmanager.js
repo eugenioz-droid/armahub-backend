@@ -110,9 +110,14 @@ function _buildFilterParams() {
   const proy = document.getElementById('proyecto').value;
   if (!proy) return null;
   params.set('proyecto', proy);
-  ['plano', 'sector', 'piso', 'ciclo', 'eje'].forEach(f => {
-    const v = document.getElementById(f) && document.getElementById(f).value;
-    if (v) params.set(f === 'plano' ? 'plano_code' : f, v);
+  // Filtros de UBICACIÓN (excepto proyecto, ya seteado arriba): value directo → su param.
+  // Las facetas (figura/tipología/diámetro) y avanzados van aparte porque usan
+  // _valorFiltroValido (auto-sanean valores fantasma), comportamiento distinto.
+  BM_FILTROS.filter(function(f){ return f.grupo === 'ubicacion' && f.id !== 'proyecto'; })
+            .forEach(function(f) {
+    const el = document.getElementById(f.id);
+    const v = el && el.value;
+    if (v) params.set(f.param, v);
   });
   // Búsqueda libre eliminada (5M.9): el elemento 'q' ya no existe en el DOM.
   // Se mantiene la guarda por si algún flujo antiguo aún lo referencia.
@@ -151,7 +156,9 @@ function _valorFiltroValido(sel) {
 // todas las barras del filtro, editable, sin desplegables de agrupación. Sin esos
 // filtros, la vista normal AGRUPADA (piso/sector/eje → ciclos → barras).
 function _modoVistaPlana() {
-  var campos = ['filtroFigura', 'filtroTipologia', 'filtroDiametro'];  // filtros de nivel-barra
+  // Filtros de nivel-barra (derivado de BM_FILTROS: activaVistaPlana). Agregar un 4º
+  // filtro de nivel-barra = marcar su flag en la constante, sin tocar aquí.
+  var campos = BM_FILTROS.filter(function(f){ return f.activaVistaPlana; }).map(function(f){ return f.id; });
   return campos.some(function(id) {
     // Usa la misma validación que _buildFilterParams: un valor pegado/fantasma
     // NO activa la vista plana (y se auto-limpia). Así no queda una tabla vacía.
@@ -952,8 +959,9 @@ function resetFiltros() {
     if (typeof showToast === 'function') showToast('Estás en modo edición: los filtros están bloqueados. Sal de edición para limpiar filtros.', 'error');
     return;
   }
-  ['proyecto', 'plano', 'sector', 'piso', 'ciclo', 'eje'].forEach(f => {
-    const el = document.getElementById(f); if (el) el.value = '';
+  // Reset TOTAL: limpia todos los de ubicación (incl. proyecto). Facetas/avanzados abajo.
+  BM_FILTROS.filter(function(f){ return f.grupo === 'ubicacion'; }).forEach(function(f) {
+    const el = document.getElementById(f.id); if (el) el.value = '';
   });
   const qel = document.getElementById('q'); if (qel) qel.value = '';
   const fo = document.getElementById('filtroOrigen'); if (fo) fo.value = '';
@@ -1003,9 +1011,9 @@ async function verBarrasCarga(importId, idProyecto, archivo) {
   switchTab('buscar');
   const proySel = document.getElementById('proyecto');
   if (proySel) proySel.value = idProyecto;
-  // Limpiar subfiltros para evitar que filtros de navegación anterior contaminen la búsqueda
-  ['plano', 'sector', 'piso', 'ciclo', 'eje'].forEach(function(f) {
-    var el = document.getElementById(f); if (el) el.value = '';
+  // Limpiar subfiltros de ubicación (excepto proyecto, recién seteado) para no contaminar.
+  BM_FILTROS.filter(function(f){ return f.grupo === 'ubicacion' && f.id !== 'proyecto'; }).forEach(function(f) {
+    var el = document.getElementById(f.id); if (el) el.value = '';
   });
   var qel = document.getElementById('q'); if (qel) qel.value = '';
   await loadCargasDropdown(idProyecto);

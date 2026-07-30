@@ -1,23 +1,47 @@
 // ========================= CUBICACIÓN — Filtros Dependientes + Persistencia (E.4) =========================
 const FILTER_STORAGE_KEY = 'armahub_filters';
 
-// 5M.9 — Persistencia SELECTIVA para sobrevivir refresh (F5):
-//   • proyecto (obra) + filtros de nivel-barra (figura/tipología/diámetro) SÍ.
-//   • ubicación (sector/piso/ciclo/eje) y avanzados (plano/carga/origen) NO:
-//     recordarlos "esconde" data sin que el usuario sepa por qué (resultados
-//     fantasma). Así el usuario vuelve a la OBRA y la VISTA en que estaba, con
-//     los filtros de foco limpios.
-// Los que NO se persisten arrancan vacíos siempre.
-const FILTER_PERSIST_KEYS = ['proyecto','filtroFigura','filtroTipologia','filtroDiametro'];
+// ─────────────────────────────────────────────────────────────────────────────
+// 5M.14 — CONSTANTE ÚNICA de filtros del Bar Manager (fuente de verdad).
+// Antes, la lista de IDs de filtros estaba duplicada ~9 veces con subsets distintos
+// → cambiar/agregar un filtro obligaba a tocar todas y "cada cambio rompía otro".
+// Ahora cada lista se DERIVA de aquí. Para agregar un filtro: un objeto más, y punto.
+// Flags:
+//   grupo:       'ubicacion' | 'faceta' | 'avanzado'  (separa cómo se construye el param)
+//   param:       nombre del query param al backend (¡casi nunca == id! ej. plano→plano_code)
+//   persiste:    se guarda/restaura en sessionStorage (sobrevive F5)
+//   limpiaProy:  se limpia (value='') al cambiar de obra
+//   snapshot:    entra al snapshot de revert por bloqueo de edición
+//   esFoco:      cuenta como "filtro activo" (proyecto NO — es la obra, no un foco)
+// Flags adicionales:
+//   sanea:          usa _valorFiltroValido (auto-limpia valor "fantasma") al construir el param
+//   activaVistaPlana: filtro de nivel-barra → activa la vista PLANA cuando tiene valor
+// CAMBIOS de comportamiento (mejoras, corrigen bugs latentes que detectó la auditoría):
+//  - filtroOrigen ENTRA a la constante con limpiaProy:true → antes quedaba "pegado" al cambiar
+//    de obra (no se limpiaba); ahora sí. Es avanzado, esFoco (cuenta como filtro activo).
+var BM_FILTROS = [
+  { id:'proyecto',        param:'proyecto',   grupo:'ubicacion', persiste:true,  limpiaProy:false, snapshot:true,  esFoco:false, sanea:false, activaVistaPlana:false },
+  { id:'plano',           param:'plano_code', grupo:'ubicacion', persiste:false, limpiaProy:true,  snapshot:true,  esFoco:true,  sanea:false, activaVistaPlana:false },
+  { id:'sector',          param:'sector',     grupo:'ubicacion', persiste:false, limpiaProy:true,  snapshot:true,  esFoco:true,  sanea:false, activaVistaPlana:false },
+  { id:'piso',            param:'piso',       grupo:'ubicacion', persiste:false, limpiaProy:true,  snapshot:true,  esFoco:true,  sanea:false, activaVistaPlana:false },
+  { id:'ciclo',           param:'ciclo',      grupo:'ubicacion', persiste:false, limpiaProy:true,  snapshot:true,  esFoco:true,  sanea:false, activaVistaPlana:false },
+  { id:'eje',             param:'eje',        grupo:'ubicacion', persiste:false, limpiaProy:true,  snapshot:true,  esFoco:true,  sanea:false, activaVistaPlana:false },
+  { id:'filtroFigura',    param:'figura',     grupo:'faceta',    persiste:true,  limpiaProy:true,  snapshot:true,  esFoco:true,  sanea:true,  activaVistaPlana:true  },
+  { id:'filtroTipologia', param:'marca',      grupo:'faceta',    persiste:true,  limpiaProy:true,  snapshot:true,  esFoco:true,  sanea:true,  activaVistaPlana:true  },
+  { id:'filtroDiametro',  param:'diam',       grupo:'faceta',    persiste:true,  limpiaProy:true,  snapshot:true,  esFoco:true,  sanea:true,  activaVistaPlana:true  },
+  { id:'filtroCarga',     param:'import_id',  grupo:'avanzado',  persiste:false, limpiaProy:false, snapshot:true,  esFoco:true,  sanea:false, activaVistaPlana:false }, // se limpia vía clearCargaFilter
+  { id:'filtroOrigen',    param:'origen',     grupo:'avanzado',  persiste:false, limpiaProy:true,  snapshot:false, esFoco:true,  sanea:false, activaVistaPlana:false },
+];
+window.BM_FILTROS = BM_FILTROS;   // contrato compartido explícito (lo usa barmanager.js)
 
-// 5M.12 — BLOQUEO de filtros durante edición con cambios sin guardar.
-// Antes: cambiar de proyecto DESCARTABA los cambios en silencio; cambiar
-// sector/piso/ciclo/figura/carga los dejaba COLGADOS (invisibles pero pendientes
-// de guardar, referidos a barras que ya no se ven en pantalla) — fuente de
-// "embarradas" reportadas. Ahora: mientras haya cambios sin guardar, CUALQUIER
-// filtro queda bloqueado; el usuario debe Guardar o Descartar (botón del modo
-// edición) antes de poder navegar a otra vista.
-var _BM_FILTROS_IDS = ['proyecto','sector','piso','ciclo','eje','filtroFigura','filtroTipologia','filtroDiametro','plano','filtroCarga'];
+// Derivaciones (reproducen EXACTAMENTE las listas que había, verificadas 1:1):
+// 5M.9 — Persistencia SELECTIVA (F5): proyecto + figura/tipología/diámetro SÍ; el resto NO
+// (recordar ubicación esconde data → "resultados fantasma"). Los NO persistidos arrancan vacíos.
+const FILTER_PERSIST_KEYS = BM_FILTROS.filter(function(f){ return f.persiste; }).map(function(f){ return f.id; });
+
+// 5M.12 — snapshot para revertir el filtro bloqueado en modo edición (congela navegación
+// mientras hay cambios; el usuario debe Guardar/Descartar antes de cambiar de vista).
+var _BM_FILTROS_IDS = BM_FILTROS.filter(function(f){ return f.snapshot; }).map(function(f){ return f.id; });
 var _bmFiltrosSnapshot = {};   // último valor CONOCIDO/aplicado de cada filtro
 
 // Wrapper para los filtros de faceta (figura/tipología/diámetro), que llamaban
@@ -86,7 +110,7 @@ function clearFiltersStorage() {
 // tipología/diámetro/plano/carga). El proyecto NO cuenta: es la obra, no un foco.
 // Lo usa el aviso al salir del Bar Manager ("se perderán los filtros").
 function bmHayFiltrosActivos() {
-  var ids = ['sector','piso','ciclo','eje','filtroFigura','filtroTipologia','filtroDiametro','plano','filtroCarga'];
+  var ids = BM_FILTROS.filter(function(f){ return f.esFoco; }).map(function(f){ return f.id; });
   return ids.some(function(id) { var el = document.getElementById(id); return el && el.value; });
 }
 window.bmHayFiltrosActivos = bmHayFiltrosActivos;
@@ -96,8 +120,10 @@ window.clearFiltersStorage = clearFiltersStorage;
 // disabled real (refuerza el guard) + gris + tooltip. Incluye el proyecto y el
 // botón de limpiar/buscar, para que quede claro que la navegación está congelada.
 function bmSetFiltrosBloqueados(bloq) {
-  var ids = ['proyecto','sector','piso','ciclo','eje','filtroFigura','filtroTipologia',
-             'filtroDiametro','plano','filtroCarga','q','filtroOrigen','bmProyectoSearchInput'];
+  // Bloqueo VISUAL = todos los filtros de la constante (incl. filtroOrigen) + 2 controles
+  // extra que no son "filtros de datos" pero sí deben congelarse: la búsqueda libre (q, hoy
+  // DOM muerto) y el input de texto del buscador de obra.
+  var ids = BM_FILTROS.map(function(f){ return f.id; }).concat(['q','bmProyectoSearchInput']);
   ids.forEach(function(id) {
     var el = document.getElementById(id);
     if (!el) return;
@@ -297,7 +323,7 @@ function onProyectoChange() {
   // When project changes, reload dependent filters for that project
   const proy = document.getElementById('proyecto').value;
   // Clear dependent selects (their current values may not exist in new project)
-  ['plano','sector','piso','ciclo','eje','filtroFigura','filtroTipologia','filtroDiametro'].forEach(f => { const el=document.getElementById(f); if(el) el.value = ''; });
+  BM_FILTROS.filter(function(f){ return f.limpiaProy; }).forEach(function(f){ const el=document.getElementById(f.id); if(el) el.value = ''; });
   clearCargaFilter(true);
   loadFilters(proy ? { proyecto: proy } : null);
   loadCargasDropdown(proy);

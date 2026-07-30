@@ -147,7 +147,9 @@ def get_barras(
         params.append(ciclo)
 
     if eje:
-        base_where += " AND eje = %s"
+        # TRIM en ambos lados: igual que /barras/elementos (FIX 5M.12). El eje se guarda
+        # crudo del CSV y puede traer espacios; ambos endpoints deben filtrar idéntico.
+        base_where += " AND TRIM(eje) = TRIM(%s)"
         params.append(eje)
 
     # filtro por origen
