@@ -20,41 +20,64 @@ var AC2 = {
   barras: []   // vacío: se llena al agregar barras (＋ barra / ＋ barras M) o al cargar un lote
 };
 var AC2_LADOS=['A','B','C','D','E','F','G','H','I'];
-var AC2_TIPOS=['MH','MV','TR','EC','TC','CB'];
+var AC2_TIPOS=['MH','MV','TR','EC','TC','CB'];       // valores de `marca` (subtabs de tipología)
 var AC2_ORD_TIPO={MH:0,MV:1,TR:2,EC:3,TC:4,CB:5};
 var AC2_TAM={ s:{w:54,h:36}, m:{w:90,h:60}, l:{w:135,h:90} };   // S · M (~+66%) · L (+50% sobre M)
+var AC2_DIAMS=[8,10,12,16,18,22,25,28,32,36];        // diámetros estándar (diametros.py)
+var AC2_DIMKEYS=['dim_a','dim_b','dim_c','dim_d','dim_e','dim_f','dim_g','dim_h','dim_i'];
+
+// Catálogo de figuras (GET /figuras-catalogo). _ac2Figuras[codigo] = {parciales,angulos,radio,geometria}.
+var _ac2Figuras = {};
+var _ac2Seq = 1;   // correlativo para _id estable de cada barra (handlers/id de fila)
+
+// Crea una barra NUEVA con el shape del backend (dim_a..i, marca, etc.). marca = tipología activa.
+function ac2NuevaBarra(over){
+  var b = { _id: _ac2Seq++, piso:'', marca:(AC2.tipo==='TODOS'?'MH':AC2.tipo),
+            diam:null, cant:1, mult:1, figura:'',
+            dim_a:null,dim_b:null,dim_c:null,dim_d:null,dim_e:null,dim_f:null,dim_g:null,dim_h:null,dim_i:null,
+            ang1:null,ang2:null,ang3:null,ang4:null, radio:null,
+            rev:false, _invalida:false };
+  if (over) for (var k in over) b[k]=over[k];
+  return b;
+}
+
+// Qué slots pide una figura del catálogo (dims parciales, nº de ángulos, si usa radio).
+// Portado de _acDimsDeFigura del v1. Si la figura no está en el catálogo → nada habilitado.
+function ac2DimsDeFigura(codigo){
+  var f = _ac2Figuras[codigo];
+  if (!f) return { dims:[], angs:0, radio:false };
+  var dims = (f.parciales||[]).map(function(L){ return 'dim_'+String(L).toLowerCase(); });
+  return { dims:dims, angs:(f.angulos||[]).length, radio:!!f.radio };
+}
 
 function ac2Esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
 function ac2Num(v,d){ if(v==null||v===''||isNaN(v)) return ''; return d? Number(v).toFixed(d): Math.round(Number(v)); }
-// TODO sub-paso 3 (5N.22): reemplazar por la geometría REAL del catálogo (/figuras-catalogo).
-// Se deja como fallback temporal; con la grilla vacía hoy no se ejerce.
-var AC2_GEO_EJEMPLO = {
-  '104B': { dim:'2D', tramos:[{lado:'A',tipo:'recto'},{lado:'B',tipo:'recto'}], puntos:[{x:0,y:0},{x:100,y:0},{x:100,y:40}] },  // L
-  '101A': { dim:'2D', tramos:[{lado:'A',tipo:'recto'}], puntos:[{x:0,y:0},{x:100,y:0}] },  // recta
-  '201A': { dim:'2D', tramos:[{lado:'A',tipo:'recto'},{lado:'B',tipo:'recto'},{lado:'C',tipo:'recto'}], puntos:[{x:0,y:40},{x:0,y:0},{x:100,y:0},{x:100,y:40}] }  // U
-};
+// Render de la mini-figura desde la geometría REAL del catálogo (_ac2Figuras[cod].geometria).
+// El escalado a las medidas reales (dims) llega en el sub-paso 3; aquí ya usa la geometría real.
 function ac2FigSvg(b){
   var t=AC2_TAM[AC2.tam];
-  var geo = AC2_GEO_EJEMPLO[b.fig];
+  var f = _ac2Figuras[b.figura];
+  var geo = f && f.geometria;
   if (geo && window.disenadorMotor && window.disenadorMotor.dibujarFigura) {
     try { return '<span style="display:inline-block; vertical-align:middle;">' +
       window.disenadorMotor.dibujarFigura(geo, null, { width:t.w, height:t.h, pad:6 }) + '</span>'; }
     catch(e){}
   }
-  // Fallback si el motor no cargó: caja con el tamaño para ver el escalado igual.
-  return '<span style="display:inline-block; width:'+t.w+'px; height:'+t.h+'px; border:1px dashed #cfd8dc; border-radius:3px; vertical-align:middle; text-align:center; line-height:'+t.h+'px; color:#bbb; font-size:9px;">'+ac2Esc(b.fig||'▱')+'</span>';
+  // Fallback si no hay geometría o el motor no cargó: caja con el tamaño (muestra el código).
+  return '<span style="display:inline-block; width:'+t.w+'px; height:'+t.h+'px; border:1px dashed #cfd8dc; border-radius:3px; vertical-align:middle; text-align:center; line-height:'+t.h+'px; color:#bbb; font-size:9px;">'+ac2Esc(b.figura||'▱')+'</span>';
 }
 
+// Orden de marca para agrupar (las conocidas primero en su orden; el resto al final alfabético).
+function ac2OrdMarca(m){ return (m in AC2_ORD_TIPO) ? AC2_ORD_TIPO[m] : 90; }
 function ac2Visibles(){
-  // _i = índice en AC2.barras (para que el toggle Rev mute la barra correcta pese al reorden).
-  AC2.barras.forEach(function(b,i){ b._i=i; });
-  var arr = AC2.barras.filter(function(b){ return AC2.tipo==='TODOS' || b.tipo===AC2.tipo; });
+  var arr = AC2.barras.filter(function(b){ return AC2.tipo==='TODOS' || b.marca===AC2.tipo; });
   var porTipo = (AC2.tipo==='TODOS' && AC2.orden==='tipo') || AC2.masiva;
   arr.sort(function(a,b){ return porTipo
-    ? ((AC2_ORD_TIPO[a.tipo]-AC2_ORD_TIPO[b.tipo]) || a.piso.localeCompare(b.piso))
-    : (a.piso.localeCompare(b.piso) || (AC2_ORD_TIPO[a.tipo]-AC2_ORD_TIPO[b.tipo])); });
+    ? ((ac2OrdMarca(a.marca)-ac2OrdMarca(b.marca)) || String(a.piso).localeCompare(String(b.piso)))
+    : (String(a.piso).localeCompare(String(b.piso)) || (ac2OrdMarca(a.marca)-ac2OrdMarca(b.marca))); });
   return arr;
 }
+function ac2BarraPorId(id){ for(var i=0;i<AC2.barras.length;i++){ if(AC2.barras[i]._id===id) return AC2.barras[i]; } return null; }
 
 function ac2Thead(){
   var mostrarTipo = (AC2.tipo==='TODOS');   // en subtab se oculta la columna Tipología
@@ -76,34 +99,60 @@ function ac2Thead(){
   return h;
 }
 
+// Estilos de celda reutilizables.
+var AC2_TDS='padding:2px 5px; border-top:1px solid #f0f0f0;';
+// input numérico editable en celda; onchange muta el dato (sin re-render, salvo figura).
+function ac2Inp(id, campo, val, w){
+  return '<input type="number" value="'+(val==null?'':ac2Esc(val))+'" '+
+    'onchange="ac2SetBarra('+id+',\''+campo+'\',this.value)" '+
+    'style="width:'+(w||46)+'px; font-size:11px; text-align:right; padding:1px 3px; border:1px solid #dfe6e9; border-radius:3px;"/>';
+}
+// celda deshabilitada (la figura no usa ese slot).
+function ac2CeldaOff(){ return '<td style="'+AC2_TDS+' background:#fafafa;"></td>'; }
+
 function ac2Fila(b){
   var mostrarTipo=(AC2.tipo==='TODOS');
-  var td='<td style="padding:2px 6px; border-top:1px solid #f0f0f0;">';
-  var tdr='<td style="padding:2px 6px; border-top:1px solid #f0f0f0; text-align:right;">';
-  // Celda de dim: roja si la barra es inválida (simulado con b.invalida en la maqueta).
-  var tddim=function(v){ var bg=b.invalida?' background:#ffcdd2;':(v!=null&&v!==''?'':' background:#fafafa;'); return '<td style="padding:2px 6px; border-top:1px solid #f0f0f0; text-align:right;'+bg+'">'+ac2Num(v)+'</td>'; };
-  var h='<tr'+(b.invalida?' title="Geometría inválida para la figura"':'')+'>';
-  // Check de SELECCIÓN masiva SOLO al inicio y SOLO en modo masivo. data-grp = tipología
-  // (para que el check maestro del grupo marque/desmarque solo los suyos).
-  if (AC2.masiva) h+='<td style="padding:2px 6px; border-top:1px solid #f0f0f0; text-align:center;"><input type="checkbox" class="ac2sel" data-grp="'+ac2Esc(b.tipo)+'" onclick="ac2SelFila()"/></td>';
-  h+=td+ac2Esc(b.piso)+'</td>';
-  if (mostrarTipo) h+=td+'<b>'+ac2Esc(b.tipo)+'</b></td>';   // en TODOS: aquí iría un <select> al cablear
-  h+=tdr+ac2Num(b.diam)+'</td>'+tdr+ac2Num(b.cant)+'</td>';
-  h+='<td style="padding:2px 6px; border-top:1px solid #f0f0f0; text-align:right; color:#1565c0; font-weight:600;">'+ac2Num(b.largo)+'</td>';
-  h+='<td style="padding:2px 10px 2px 6px; border-top:1px solid #f0f0f0; text-align:right; color:#00695c; font-weight:600;">'+ac2Num(b.peso,1)+'</td>';
-  // Figura separada del bloque numérico con borde suave + aire a la izquierda.
-  h+='<td style="padding:2px 6px 2px 14px; border-top:1px solid #f0f0f0; border-left:1px solid #eee; color:#666;"><b>'+ac2Esc(b.fig)+'</b></td>';
+  var info = b.figura ? ac2DimsDeFigura(b.figura) : {dims:[],angs:0,radio:false};
+  var td='<td style="'+AC2_TDS+'">';
+  var tdr='<td style="'+AC2_TDS+' text-align:right;">';
+  var h='<tr id="ac2row_'+b._id+'"'+(b._invalida?' title="Geometría inválida para la figura"':'')+'>';
+  if (AC2.masiva) h+='<td style="'+AC2_TDS+' text-align:center;"><input type="checkbox" class="ac2sel" data-grp="'+ac2Esc(b.marca)+'" onclick="ac2SelFila()"/></td>';
+  // Piso (texto libre editable).
+  h+='<td style="'+AC2_TDS+'"><input type="text" value="'+ac2Esc(b.piso)+'" onchange="ac2SetBarra('+b._id+',\'piso\',this.value)" style="width:44px; font-size:11px; padding:1px 3px; border:1px solid #dfe6e9; border-radius:3px;"/></td>';
+  // Tipología (marca) — select solo en TODOS; en un subtab está implícita.
+  if (mostrarTipo){
+    var op=AC2_TIPOS.map(function(m){return '<option'+(m===b.marca?' selected':'')+'>'+m+'</option>';}).join('');
+    h+='<td style="'+AC2_TDS+'"><select onchange="ac2SetBarra('+b._id+',\'marca\',this.value)" style="font-size:11px; padding:1px 2px;">'+op+'</select></td>';
+  }
+  // φ (diámetro) — select de lista fija.
+  var opd='<option value=""></option>'+AC2_DIAMS.map(function(d){return '<option'+(Number(b.diam)===d?' selected':'')+'>'+d+'</option>';}).join('');
+  h+='<td style="'+AC2_TDS+' text-align:right;"><select onchange="ac2SetBarra('+b._id+',\'diam\',this.value)" style="font-size:11px; padding:1px 2px;">'+opd+'</select></td>';
+  // Cant.
+  h+='<td style="'+AC2_TDS+' text-align:right;">'+ac2Inp(b._id,'cant',b.cant,40)+'</td>';
+  // Largo (calculado, sub-paso 3) — solo lectura.
+  h+='<td class="ac2-largo" style="'+AC2_TDS+' text-align:right; color:#1565c0; font-weight:600;">'+ac2Num(b._largo)+'</td>';
+  // Peso (calculado, sub-paso 3) — solo lectura.
+  h+='<td class="ac2-peso" style="'+AC2_TDS+' padding-right:10px; text-align:right; color:#00695c; font-weight:600;">'+ac2Num(b._peso,1)+'</td>';
+  // Figura (input+datalist del catálogo). Cambiarla re-renderiza SOLO la fila (cambian las dims).
+  h+='<td style="'+AC2_TDS+' padding-left:14px; border-left:1px solid #eee;"><input type="text" list="ac2_figDatalist" value="'+ac2Esc(b.figura)+'" onchange="ac2SetBarra('+b._id+',\'figura\',this.value)" placeholder="fig" style="width:54px; font-size:11px; padding:1px 3px; border:1px solid #dfe6e9; border-radius:3px;"/></td>';
   if (AC2.render) h+=td+ac2FigSvg(b)+'</td>';
-  for (var i=0;i<9;i++){ h+=tddim(b.dims[i]); }
-  for (var j=0;j<4;j++){ var av=b['a'+(j+1)]; h+= (av!=null&&av!=='')?(tdr+ac2Num(av)+'</td>'):'<td style="padding:2px 6px; border-top:1px solid #f0f0f0; background:#fafafa;"></td>'; }
-  h+= (b.r!=null&&b.r!=='')?(tdr+ac2Num(b.r)+'</td>'):'<td style="padding:2px 6px; border-top:1px solid #f0f0f0; background:#fafafa;"></td>';
-  // Rev (revisada por el cubicador) — AL FINAL, antes de las acciones.
-  h+='<td style="padding:2px 6px; border-top:1px solid #f0f0f0; text-align:center;"><input type="checkbox"'+(b.rev?' checked':'')+' onclick="ac2ToggleRev('+b._i+',this)" title="Marcar/desmarcar revisada"/></td>';
-  // Acciones por fila: + (agrega debajo COPIANDO la tipología), ⎘ (duplicar), ✕.
-  h+='<td style="padding:2px 6px; border-top:1px solid #f0f0f0; white-space:nowrap;">'+
-     '<span title="Agregar barra '+ac2Esc(b.tipo)+' debajo (copia la tipología)" style="color:#00695c; cursor:pointer; font-weight:700; margin-right:6px;">＋</span>'+
-     '<span title="Duplicar" style="color:#1565c0; cursor:pointer; margin-right:6px;">⎘</span>'+
-     '<span title="Quitar" style="color:#c62828; cursor:pointer;">✕</span></td></tr>';
+  // Dims A-I: input si la figura usa ese lado, celda gris si no.
+  for (var i=0;i<9;i++){ var k=AC2_DIMKEYS[i];
+    h+= (info.dims.indexOf(k)!==-1) ? '<td style="'+AC2_TDS+' text-align:right;">'+ac2Inp(b._id,k,b[k])+'</td>' : ac2CeldaOff();
+  }
+  // Ángulos α1-α4: input si la figura usa ese ángulo.
+  for (var j=0;j<4;j++){ var ak='ang'+(j+1);
+    h+= (j<info.angs) ? '<td style="'+AC2_TDS+' text-align:right;">'+ac2Inp(b._id,ak,b[ak],40)+'</td>' : ac2CeldaOff();
+  }
+  // Radio.
+  h+= info.radio ? '<td style="'+AC2_TDS+' text-align:right;">'+ac2Inp(b._id,'radio',b.radio,44)+'</td>' : ac2CeldaOff();
+  // Rev (revisada).
+  h+='<td style="'+AC2_TDS+' text-align:center;"><input type="checkbox"'+(b.rev?' checked':'')+' onclick="ac2ToggleRev('+b._id+',this)" title="Marcar/desmarcar revisada"/></td>';
+  // Acciones por fila.
+  h+='<td style="'+AC2_TDS+' white-space:nowrap;">'+
+     '<span onclick="ac2CopiarTipologia('+b._id+')" title="Agregar barra '+ac2Esc(b.marca)+' debajo" style="color:#00695c; cursor:pointer; font-weight:700; margin-right:6px;">＋</span>'+
+     '<span onclick="ac2Duplicar('+b._id+')" title="Duplicar" style="color:#1565c0; cursor:pointer; margin-right:6px;">⎘</span>'+
+     '<span onclick="ac2Quitar('+b._id+')" title="Quitar" style="color:#c62828; cursor:pointer;">✕</span></td></tr>';
   return h;
 }
 
@@ -135,14 +184,14 @@ window.ac2Render=function(){
   var html='<table style="width:100%; min-width:1150px; font-size:11px; border-collapse:collapse; white-space:nowrap;"><thead>'+ac2Thead()+'</thead><tbody>';
   if (agrupar) {
     var actual=null;
-    arr.forEach(function(b){ if(b.tipo!==actual){ actual=b.tipo; html+=ac2GrupoHdr(actual, arr.filter(function(x){return x.tipo===actual;}).length); } html+=ac2Fila(b); });
+    arr.forEach(function(b){ if(b.marca!==actual){ actual=b.marca; html+=ac2GrupoHdr(actual, arr.filter(function(x){return x.marca===actual;}).length); } html+=ac2Fila(b); });
   } else arr.forEach(function(b){ html+=ac2Fila(b); });
   html+='</tbody></table>';
   cont.innerHTML=html;
-  // Rollup + contador de revisadas (sobre las visibles).
+  // Rollup + contador de revisadas (sobre las visibles). Peso = calculado (sub-paso 3).
   var rev=arr.filter(function(b){return b.rev;}).length;
-  var uds=arr.reduce(function(s,b){return s+(b.cant||0);},0);
-  var kg=arr.reduce(function(s,b){return s+(b.peso||0);},0);
+  var uds=arr.reduce(function(s,b){return s+(Number(b.cant)||0);},0);
+  var kg=arr.reduce(function(s,b){return s+(Number(b._peso)||0);},0);
   document.getElementById('ac2_revcount').textContent='✓ '+rev+' de '+arr.length+' revisadas';
   document.getElementById('ac2_rollup').innerHTML='<b style="color:#37474f;">'+arr.length+'</b> barras · <b style="color:#37474f;">'+ac2Num(uds)+'</b> uds · <b style="color:#00695c;">'+ac2Num(kg,1)+'</b> kg';
   document.getElementById('ac2_ctx').innerHTML=ac2CtxText();
@@ -175,10 +224,62 @@ window.ac2ToggleMasiva=function(){ AC2.masiva=!AC2.masiva;
 window.ac2SetTam=function(t){ AC2.tam=t;
   ['s','m','l'].forEach(function(x){ var b=document.getElementById('ac2r_'+x); if(b){var on=(t===x); b.style.background=on?'#00695c':'#fff'; b.style.color=on?'#fff':'#607d8b';} });
   ac2Render(); };
-window.ac2ToggleRev=function(i,el){
-  // Revisión de a 1 (proceso real): guarda el nuevo estado en el dato para que se
-  // pueda MARCAR y también DESMARCAR (antes no persistía y "volvía" al re-render).
-  if (AC2.barras[i]) AC2.barras[i].rev = el.checked;
+window.ac2ToggleRev=function(id,el){
+  // Revisión de a 1 (proceso real): guarda el estado en el dato (marca/desmarca). No re-render
+  // completo (el checkbox ya refleja el valor); solo refresca el contador de revisadas.
+  var b=ac2BarraPorId(id); if(b) b.rev=el.checked;
+  ac2ActualizarContadores();
+};
+
+// ── Edición de celda: muta el dato. Sin re-render (el input ya muestra el valor). Solo la
+//    FIGURA re-renderiza su fila (cambian qué dims pide). Casting numérico donde aplica. ──
+var AC2_CAMPOS_NUM={diam:1,cant:1,mult:1,radio:1,ang1:1,ang2:1,ang3:1,ang4:1,
+  dim_a:1,dim_b:1,dim_c:1,dim_d:1,dim_e:1,dim_f:1,dim_g:1,dim_h:1,dim_i:1};
+window.ac2SetBarra=function(id,campo,valor){
+  var b=ac2BarraPorId(id); if(!b) return;
+  if (campo in AC2_CAMPOS_NUM){ var s=String(valor).trim(); b[campo]=(s===''?null:Number(s)); }
+  else b[campo]=valor;
+  if (campo==='figura'){ ac2ReRenderFila(id); }          // cambian las dims → re-pinta la fila
+  if (campo==='marca' && AC2.tipo!=='TODOS'){ /* no aplica: en subtab no se ve el select */ }
+  ac2ActualizarContadores();                              // cant/rev afectan el rollup
+};
+
+// Re-render GRANULAR: reemplaza SOLO el <tr> de esa barra (no toda la tabla).
+function ac2ReRenderFila(id){
+  var b=ac2BarraPorId(id); if(!b) return;
+  var tr=document.getElementById('ac2row_'+id);
+  if (tr) tr.outerHTML=ac2Fila(b);
+}
+// Refresca contador de revisadas + rollup sin reconstruir la tabla.
+function ac2ActualizarContadores(){
+  var arr=ac2Visibles();
+  var rev=arr.filter(function(b){return b.rev;}).length;
+  var uds=arr.reduce(function(s,b){return s+(Number(b.cant)||0);},0);
+  var kg=arr.reduce(function(s,b){return s+(Number(b._peso)||0);},0);
+  var rc=document.getElementById('ac2_revcount'); if(rc) rc.textContent=arr.length?('✓ '+rev+' de '+arr.length+' revisadas'):'';
+  var ro=document.getElementById('ac2_rollup'); if(ro) ro.innerHTML=arr.length?('<b style="color:#37474f;">'+arr.length+'</b> barras · <b style="color:#37474f;">'+ac2Num(uds)+'</b> uds · <b style="color:#00695c;">'+ac2Num(kg,1)+'</b> kg'):'';
+}
+
+// ── Agregar / copiar / duplicar / quitar barras (cambios estructurales → re-render completo) ──
+window.ac2AgregarBarra=function(){
+  if (!AC2.proyecto){ alert('Elige primero una obra.'); return; }
+  AC2.barras.push(ac2NuevaBarra({ piso:'' }));
+  ac2Render();
+};
+window.ac2CopiarTipologia=function(id){
+  var b=ac2BarraPorId(id); if(!b) return;
+  var idx=AC2.barras.indexOf(b);
+  AC2.barras.splice(idx+1,0, ac2NuevaBarra({ marca:b.marca, piso:b.piso }));
+  ac2Render();
+};
+window.ac2Duplicar=function(id){
+  var b=ac2BarraPorId(id); if(!b) return;
+  var copia=JSON.parse(JSON.stringify(b)); copia._id=_ac2Seq++; copia.rev=false;
+  AC2.barras.splice(AC2.barras.indexOf(b)+1,0, copia);
+  ac2Render();
+};
+window.ac2Quitar=function(id){
+  AC2.barras=AC2.barras.filter(function(x){return x._id!==id;});
   ac2Render();
 };
 // Check MAESTRO del grupo: marca/desmarca todas las filas de esa tipología.
@@ -222,12 +323,10 @@ window.ac2TogglePisos=function(){
 // ＋ barras M: una barra por cada piso seleccionado, con SU piso y la tipología activa.
 // Los pisos vienen de la CONFIG de pisos de la obra (tarea aparte, aún no disponible).
 window.ac2AgregarBarrasMulti=function(){
+  if (!AC2.proyecto){ alert('Elige primero una obra.'); return; }
   var pisos=[].slice.call(document.querySelectorAll('.ac2piso:checked')).map(function(c){return c.value;});
   if(!pisos.length){ alert('Aún no hay pisos configurados para esta obra.\nLa configuración de pisos es una tarea pendiente.'); return; }
-  var tipo=(AC2.tipo==='TODOS')?'MH':AC2.tipo;
-  pisos.forEach(function(p){
-    AC2.barras.push({ piso:p, tipo:tipo, diam:16, cant:0, largo:0, peso:0, fig:'', dims:[], r:null, rev:false, invalida:false });
-  });
+  pisos.forEach(function(p){ AC2.barras.push(ac2NuevaBarra({ piso:p })); });
   ac2Render();
 };
 window.ac2Descartar=function(){
@@ -305,12 +404,24 @@ function _ac2InitComboboxes(){
   }
 }
 
+// Catálogo de figuras (GET /figuras-catalogo). Cachea _ac2Figuras[codigo] = {parciales,
+// angulos, radio, geometria} y puebla el <datalist id=ac2_figDatalist> de la grilla. Una vez.
+async function _ac2CargarFiguras(){
+  if (Object.keys(_ac2Figuras).length) return;   // ya cargadas
+  var figs=[];
+  try { var d=await apiGet('/figuras-catalogo'); figs=(d && d.figuras)||[]; } catch(e){ figs=[]; }
+  figs.forEach(function(f){ if(f && f.codigo) _ac2Figuras[f.codigo]=f; });
+  var dl=document.getElementById('ac2_figDatalist');
+  if (dl) dl.innerHTML=figs.map(function(f){ return '<option value="'+ac2Esc(f.codigo)+'"></option>'; }).join('');
+}
+
 // Loader del tab (registrado en shell.js tabLoaders['agregar2']): se llama al ACTIVAR el
 // tab (clic o restauración tras F5). Refresca la lista de obras real. Idempotente.
 async function loadAgregarCubicacion2(){
   if(!document.getElementById('ac2_grid')) return;
   _ac2InitComboboxes();
   ac2SetTipo('TODOS');
+  await _ac2CargarFiguras();
   await _ac2CargarObras();
 }
 window.loadAgregarCubicacion2 = loadAgregarCubicacion2;

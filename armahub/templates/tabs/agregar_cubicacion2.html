@@ -66,7 +66,7 @@
 
     <!-- FILA 3 · Botones rápidos + toggles -->
     <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:8px;">
-      <button style="font-size:12px; padding:5px 12px; background:#00695c; color:#fff; border:none; border-radius:4px; cursor:pointer;">＋ barra</button>
+      <button onclick="ac2AgregarBarra()" style="font-size:12px; padding:5px 12px; background:#00695c; color:#fff; border:none; border-radius:4px; cursor:pointer;">＋ barra</button>
       <!-- +barras M: agrega N filas (una por piso seleccionado en el menú de Pisos), cada
            una con SU piso y la tipología del subtab activo. En la maqueta lo simula. -->
       <button id="ac2_barrasMBtn" onclick="ac2AgregarBarrasMulti()" style="font-size:12px; padding:5px 12px; background:#00897b; color:#fff; border:none; border-radius:4px; cursor:pointer;" title="Agregar una barra por cada piso seleccionado, cada una con su piso y tipología">＋ barras M</button>
@@ -121,6 +121,7 @@
     </div>
 
     <!-- GRILLA -->
+    <datalist id="ac2_figDatalist"></datalist>   <!-- figuras del catálogo (celda Figura editable) -->
     <div id="ac2_grid" style="overflow-x:auto; border:1px solid #e0e0e0; border-radius:6px;"></div>
 
     <!-- VALIDACIÓN / rollup -->
