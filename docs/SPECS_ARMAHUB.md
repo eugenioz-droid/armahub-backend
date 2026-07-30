@@ -308,19 +308,25 @@ opciones fijas (sector, piso, ciclo, φ), usar `<select>` normal — más simple
   `<select>` oculto + fn que resuelve texto→id (exacto → prefijo único → fallback). Elegir la
   variante según si el valor final es el texto o un id.
 
-**DOS implementaciones válidas — elegir según el contexto (NO son intercambiables a ciegas):**
-- **`<datalist>` nativo** (patrón de arriba): para código con MUCHAS ramas ya existentes que tocan
-  el mismo input (ej. el Bar Manager: `bmSetFiltrosBloqueados`, limpiezas por `eje.value=''`, etc.).
-  Ahí montar un componente propio dio más bugs que valor. Es el que usa el Bar Manager HOY.
-- **Componente `shared/combobox.js`** (input + lista propia de `<div>`, sin `<datalist>`): para
-  código NUEVO/limpio. Es SUPERIOR: filtra por "contiene", el click entrega el item `{id,label}`
-  completo, valida existencia (`cb-invalido`), soporta `textoLibre` (crear valores nuevos),
-  teclado, cierre al click-fuera, y un pie "N de M — escribe para afinar" si hay muchas opciones.
-  Panel con scroll (`.cb-panel` max-height ~340px). API: `Combobox.crear(input, {items, onSelect,
-  onInput, getLabel, getSub, textoLibre, placeholder})`. Lo usa el **creador v2** (Obra resuelve-id,
-  Ciclo/Eje textoLibre). **Este es el estándar preferido para features nuevas.**
-El Bar Manager (datalist) funciona bien y queda como está. El combobox.js es para features
-nuevas. No hay nada que "unificar" — cada uno cumple en su contexto.
+**COMPONENTES REUTILIZABLES (usar estos; NO reescribir el patrón cada vez):**
+
+- **`shared/buscador_obra.js` → `BuscadorObra`** — buscador de OBRA (input + `<datalist>` +
+  `<select>` oculto que guarda el id). Resuelve texto→id (exacto → prefijo único → fallback),
+  idempotente. **Es EL componente para el filtro/selector de obra; lo usan el Bar Manager Y el
+  creador v2** (misma UX, un solo código). API:
+  `BuscadorObra.crear({ inputId, datalistId, selectId, onElegir(idProyecto) })` →
+  `{ setProyectos([{id,nombre}]), getId(), limpiar(), resolver() }`. El HTML necesita el trío
+  `<input list=X>` + `<datalist id=X>` + `<select id=Y style="display:none">`. Cada vez que se
+  necesite un filtro de este tipo (elegir una obra existente), REUTILIZAR este componente.
+
+- **`shared/combobox.js` → `Combobox`** — buscador de texto genérico con lista propia de `<div>`
+  (sin `<datalist>`). Filtra por "contiene", `onSelect` entrega el item completo, soporta
+  `textoLibre:true` (crear valores nuevos, ej. ciclo/eje del creador), teclado, pie "N de M".
+  API: `Combobox.crear(input, {items, onSelect, onInput, getLabel, getSub, textoLibre, placeholder})`.
+  Úsalo para campos donde se pueda ESCRIBIR un valor nuevo (ciclo, eje, marca en el creador).
+
+- El Bar Manager sigue usando `<datalist>` nativo para eje/ciclo/etc. (funciona, no se toca).
+  Regla: para OBRA → `BuscadorObra`; para campos de texto libre nuevos → `Combobox`.
 
 **Referencia:** commits `a8c6307` (fix backend eje + password fuera del DOM), `5599114` (eje Bar
 Manager como input buscable), + mejoras del combobox (pie "N de M", panel más alto) en el creador.
