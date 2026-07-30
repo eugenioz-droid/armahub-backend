@@ -253,6 +253,14 @@
         'cubicacion-agregar',
         '[ArmaHub] No se pudo cargar cubicacion/agregar_cubicacion.js'
       ),
+      // 5N.20: creador de lotes v2 (maqueta + contexto real Obra·Ciclo·Eje).
+      loadScript(
+        'script[data-armahub-feature="cubicacion-agregar2"]',
+        '/static/js/features/cubicacion/agregar_cubicacion2.js' + suffix,
+        'armahubFeature',
+        'cubicacion-agregar2',
+        '[ArmaHub] No se pudo cargar cubicacion/agregar_cubicacion2.js'
+      ),
       // Admin submodules (E.5) — entidades must load before proyectos and index
       loadScript(
         'script[data-armahub-feature="admin-entidades"]',

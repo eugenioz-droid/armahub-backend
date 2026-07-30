@@ -99,7 +99,8 @@
     rec_settings: 'loadRecSettings',
     clientes: 'loadClientesModule',
     catalogo: 'loadCatalogoModule',
-    agregar: 'loadAgregarCubicacion'   // 5N-C: tab "Agregar Cubicación"
+    agregar: 'loadAgregarCubicacion',  // 5N-C: tab "Agregar Cubicación"
+    agregar2: 'loadAgregarCubicacion2' // 5N.20: creador de lotes v2 (contexto real)
   };
 
   window.switchTab = function switchTab(tabName) {
