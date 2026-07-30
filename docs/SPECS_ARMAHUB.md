@@ -319,9 +319,8 @@ opciones fijas (sector, piso, ciclo, φ), usar `<select>` normal — más simple
   Panel con scroll (`.cb-panel` max-height ~340px). API: `Combobox.crear(input, {items, onSelect,
   onInput, getLabel, getSub, textoLibre, placeholder})`. Lo usa el **creador v2** (Obra resuelve-id,
   Ciclo/Eje textoLibre). **Este es el estándar preferido para features nuevas.**
-- **DEUDA:** unificar el Bar Manager al `combobox.js` cuando el creador esté estable, para tener
-  UN solo componente en toda la app (hoy conviven los dos → se ven distintos). No hacerlo en
-  medio de otro trabajo (riesgo sobre el Bar Manager que recién quedó estable).
+El Bar Manager (datalist) funciona bien y queda como está. El combobox.js es para features
+nuevas. No hay nada que "unificar" — cada uno cumple en su contexto.
 
 **Referencia:** commits `a8c6307` (fix backend eje + password fuera del DOM), `5599114` (eje Bar
 Manager como input buscable), + mejoras del combobox (pie "N de M", panel más alto) en el creador.
