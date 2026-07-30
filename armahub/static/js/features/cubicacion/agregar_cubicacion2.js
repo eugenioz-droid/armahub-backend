@@ -72,10 +72,9 @@ function ac2DimsDeFigura(codigo){
   return { dims:dims, angs:(f.angulos||[]).length, radio:!!f.radio };
 }
 
-// Factor del largo por defecto de los lados EXTREMOS = FACTOR × diámetro. El usuario pidió 8×;
-// (nota: ArmaDetailer HOY usa 1× = el diámetro; fue 10× en una versión vieja). Parametrizado
-// aquí para cambiarlo fácil si se ajusta la convención.
-var AC2_FACTOR_EXTREMO=8;
+// Factor del largo por defecto de los lados EXTREMOS = FACTOR × diámetro. Confirmado 10×
+// (convención del cubicador; coincide con la versión histórica de ArmaDetailer). Parametrizado.
+var AC2_FACTOR_EXTREMO=10;
 var AC2_LARGO_INTERMEDIO=100;   // cm, estándar para lados intermedios
 // Valores por DEFECTO al elegir figura/diámetro (regla del cubicador, estilo ADetailer):
 //  - Ángulos: los del CATÁLOGO de la figura (f.angulos), se rellenan al elegir figura.

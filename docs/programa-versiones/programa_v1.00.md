@@ -820,7 +820,7 @@ Objetivo: endurecer Reclamos y cerrar los pendientes reales arrastrados.
 | 5N.25 | **Etapa 6 — Reemplazo del v1.** Verificar paridad; borrar `agregar_cubicacion.html/.js` + rastro (include/loader/bootstrap). Backend intacto. | ☐ | YO |
 | 5N.26 | **Config de PISOS de la obra (bloque propio, POSTERIOR al creador).** Decisiones (2026-07-30): (A) En **TODOS** NO se crean barras (solo ver/editar); crear = desde subtab de tipología. (B) Piso del creador: barra normal nace en el piso más bajo preseleccionado; piso = **desplegable NORMAL** (no texto libre) poblado con los pisos de la obra; **botón rápido para agregar piso**. Requiere lista de pisos de la obra (config). Podría vivir en el MISMO menú extendido de "Configurar obra" junto con homologación de ejes/datos (5N.17). Provisional hoy: piso texto editable. | ☐ | TÚ+YO |
 | 5N.27 | **Radios con propiedades geométricas reales (DEUDA, futuro ambicioso).** Hoy la "R" de una figura con radio es solo una letra con un valor; no tiene semántica geométrica → el render NO re-escala esas figuras y hay que etiquetar a mano. Darle a los radios propiedades reales (radio/cuerda/desarrollo) permitiría render exacto y evitar el etiquetado manual. Ver SPECS §4.7. No bloqueante. | ☐ | TÚ+YO |
-| 5N.28 | **Confirmar factor del largo por defecto de lados EXTREMOS.** El usuario pidió 8×diámetro; ArmaDetailer hoy usa 1× (= el diámetro); fue 10× en una versión vieja. Está parametrizado (`AC2_FACTOR_EXTREMO`). Confirmar cuál es la convención correcta. | ☐ | TÚ | 
+| 5N.28 | **Factor del largo por defecto de lados EXTREMOS = 10×diámetro** (confirmado por el usuario 2026-07-30). Parametrizado en `AC2_FACTOR_EXTREMO`. | ☑ | TÚ |
 
 ---
 

@@ -879,9 +879,8 @@ misma API, bandeja → USC valida/forward → cubicador → aSa Studio). SOLO PL
 
 **VALORES POR DEFECTO al crear barra (creador v2, 2026-07-30):** rellenan solo celdas vacías.
 Al elegir FIGURA: ángulos = los del catálogo (`f.angulos`), lados INTERMEDIOS = 100 cm. Al elegir
-DIÁMETRO: lados EXTREMOS (1º y último parcial) = `AC2_FACTOR_EXTREMO`(8) × diámetro. RADIO no se
-rellena. *(Nota: ArmaDetailer HOY usa extremos = 1× el diámetro, no 8×; el factor quedó
-parametrizado para alinear cuando se confirme la convención correcta.)*
+DIÁMETRO: lados EXTREMOS (1º y último parcial) = `AC2_FACTOR_EXTREMO`(**10**) × diámetro (confirmado
+por el usuario). RADIO no se rellena.
 
 **RENDER paramétrico — límite y DEUDA:** el dibujo se re-escala con las medidas ingresadas SOLO
 donde cada letra está bien asociada a un lado recto. En figuras con RADIO, la "R" es hoy solo una
