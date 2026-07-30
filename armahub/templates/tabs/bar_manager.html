@@ -52,10 +52,19 @@
         </div>
         <div style="display:flex; flex-direction:column; flex:1;">
           <label style="font-size:12.5px; color:#444; font-weight:600; margin-bottom:3px;">Eje/Losa</label>
-          <!-- Eje = <select> normal, IGUAL que Sector/Piso/Ciclo (sus hermanos que funcionan).
-               Un <select> NUNCA pide clave (Chrome no lo autocompleta) y filtra al onchange.
-               Simple y sin capas: se acabaron los datalist/combobox/blindajes que daban bugs. -->
-          <select id="eje" onchange="onFilterChange('eje')" style="font-size:13px; height:34px; width:100%;"><option value="">Todos</option></select>
+          <!-- Eje = input de texto BUSCABLE (una obra puede tener ~140 ejes: un <select> es
+               inservible, hay que ESCRIBIR para filtrar). Clonado EXACTO del buscador de obra
+               (bmProyectoSearchInput) que sí funciona: input+datalist, mismos atributos,
+               oninput/onchange/onblur. Texto libre: lo escrito ES el filtro (sin id que resolver).
+               Ya no pide clave: el password salió del DOM (FIX 5M.13); y el backend ya filtra
+               por eje (FIX 5M.12). -->
+          <input type="text" id="eje" list="bmEjesDatalist"
+                 name="bm-eje-buscar" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"
+                 data-lpignore="true" data-form-type="other"
+                 placeholder="Escribe para filtrar eje…"
+                 oninput="onEjeInput()" onchange="onEjeInput()" onblur="onEjeInput()"
+                 style="width:100%; font-size:13px; height:34px; box-sizing:border-box;" />
+          <datalist id="bmEjesDatalist"></datalist>
         </div>
 
         <!-- divisor -->

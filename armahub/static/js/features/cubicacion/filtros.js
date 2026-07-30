@@ -205,8 +205,8 @@ async function loadFilters(depParams) {
   fillSelect('sector', data.sectores);
   fillSelect('piso', data.pisos);
   fillSelect('ciclo', data.ciclos);
-  // Eje/Losa: <select> normal, poblado IGUAL que sus hermanos (sin combobox ni datalist).
-  fillSelect('eje', data.ejes);
+  // Eje/Losa: buscador de TEXTO (input+datalist), poblado con los ejes de la obra.
+  _fillEjesDatalist(data.ejes);
 
 }
 
@@ -259,6 +259,27 @@ function _resolverProyectoId(txtLow, sel) {
     }
   }
   return '';
+}
+
+// --- Buscador de Eje/Losa (texto) — clonado del de obra, pero SIN id que resolver ---
+// El eje es texto libre: lo escrito ES el valor del filtro. Se puebla el datalist con los
+// ejes de la obra (una obra puede tener ~140, por eso es buscador y no <select>).
+function _fillEjesDatalist(ejes) {
+  var dl = document.getElementById('bmEjesDatalist');
+  if (!dl) return;
+  dl.innerHTML = (ejes || []).map(function(e) {
+    return '<option value="' + String(e).replace(/"/g, '&quot;') + '"></option>';
+  }).join('');
+}
+
+// El usuario escribió/eligió un eje. Dispara la búsqueda con el texto actual. Debounce corto
+// para no rearmar en cada tecla; al elegir del datalist (change) aplica de inmediato. Igual
+// que el de obra, se llama en input/change/blur. onFilterChange lee el #eje.value directo.
+var _bmEjeTimer = null;
+function onEjeInput() {
+  if (typeof _bmBloqueadoPorEdicion === 'function' && _bmBloqueadoPorEdicion('eje')) return;
+  if (_bmEjeTimer) clearTimeout(_bmEjeTimer);
+  _bmEjeTimer = setTimeout(function() { _bmEjeTimer = null; onFilterChange('eje'); }, 200);
 }
 
 // 5M.9: plegar/desplegar el bloque de filtros avanzados (plano/carga/origen).
