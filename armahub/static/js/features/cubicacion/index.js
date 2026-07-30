@@ -9,12 +9,6 @@ async function loadCubicacionModule() {
   await loadClientes();
   await loadCalculistas();
 
-  // Montar el combobox del filtro de Eje AQUÍ, GARANTIZADO y desacoplado de loadFilters:
-  // si se montara solo dentro de loadFilters y apiGet('/filters') fallara (token, red),
-  // el #eje quedaba crudo y Chrome lo trataba como campo de clave. Aquí #eje ya existe
-  // (el tab es include estático) y Combobox ya cargó (script síncrono en app.html).
-  if (typeof _initEjeCombobox === 'function') _initEjeCombobox();
-
   // 5M.9: al entrar/refrescar restauramos la OBRA seleccionada y los filtros de
   // nivel-barra (figura/tipología/diámetro), NO los de ubicación (evita
   // resultados "fantasma"). Si no hay obra guardada, arranque limpio.

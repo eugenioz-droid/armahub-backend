@@ -52,16 +52,10 @@
         </div>
         <div style="display:flex; flex-direction:column; flex:1;">
           <label style="font-size:12.5px; color:#444; font-weight:600; margin-bottom:3px;">Eje/Losa</label>
-          <!-- Buscador de eje con el COMPONENTE ESTÁNDAR (shared/combobox.js): input + lista
-               propia (SIN <datalist>). El combobox se monta sobre este mismo #eje en filtros.js;
-               su .value es la fuente de verdad que lee el resto del Bar Manager. Texto libre.
-               BLINDAJE anti gestor-de-contraseñas EN EL HTML (no solo en el JS): así el campo
-               NUNCA pide clave aunque el combobox no alcance a montarse (endpoint lento, etc.).
-               Mismos atributos que el buscador de obra (bmProyectoSearchInput) que nunca falla. -->
-          <input type="text" id="eje"
-                 name="bm-eje-filtro" autocomplete="off" autocapitalize="off" autocorrect="off"
-                 spellcheck="false" data-lpignore="true" data-form-type="other" data-1p-ignore="true"
-                 placeholder="Todos" style="font-size:13px; height:34px; width:100%; box-sizing:border-box;" />
+          <!-- Eje = <select> normal, IGUAL que Sector/Piso/Ciclo (sus hermanos que funcionan).
+               Un <select> NUNCA pide clave (Chrome no lo autocompleta) y filtra al onchange.
+               Simple y sin capas: se acabaron los datalist/combobox/blindajes que daban bugs. -->
+          <select id="eje" onchange="onFilterChange('eje')" style="font-size:13px; height:34px; width:100%;"><option value="">Todos</option></select>
         </div>
 
         <!-- divisor -->

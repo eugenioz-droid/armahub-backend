@@ -205,9 +205,8 @@ async function loadFilters(depParams) {
   fillSelect('sector', data.sectores);
   fillSelect('piso', data.pisos);
   fillSelect('ciclo', data.ciclos);
-  // Eje/Losa: input+datalist (buscador con texto). Se llena el datalist con los ejes
-  // de la obra; el texto escrito ES el valor del filtro.
-  _fillEjesDatalist(data.ejes);
+  // Eje/Losa: <select> normal, poblado IGUAL que sus hermanos (sin combobox ni datalist).
+  fillSelect('eje', data.ejes);
 
 }
 
@@ -260,48 +259,6 @@ function _resolverProyectoId(txtLow, sel) {
     }
   }
   return '';
-}
-
-// Ejes de la obra (cache) + instancia del combobox del filtro de Eje/Losa.
-var _ejesCache = [];
-var _cbEje = null;
-
-// Alimenta el buscador de Eje/Losa con los ejes de la obra usando el COMPONENTE ESTÁNDAR
-// (shared/combobox.js), reemplazando el <datalist> nativo (que se comportaba como campo de
-// clave y no aplicaba al elegir). Texto libre: el valor escrito ES el filtro (no hay id que
-// resolver). Se monta sobre el mismo #eje, cuyo .value sigue siendo la fuente de verdad para
-// el resto del Bar Manager. Conserva el nombre para no tocar a los llamadores (loadFilters).
-function _fillEjesDatalist(ejes) {
-  _ejesCache = (ejes || []).map(function(e) { return { id: String(e), label: String(e) }; });
-  _initEjeCombobox();          // idempotente (guard _cbEje); el montaje real ya lo hace index.js
-  if (_cbEje) _cbEje.refrescar();
-}
-
-function _initEjeCombobox() {
-  var input = document.getElementById('eje');
-  if (!input || _cbEje || !window.Combobox) return;   // ya montado, o combobox aún no cargó
-  _cbEje = window.Combobox.crear(input, {
-    items: function() { return _ejesCache; },
-    textoLibre: true,                         // se puede filtrar por un eje escrito a mano
-    placeholder: 'Todos',
-    onInput:  function() { onEjeInput(false); },   // escribiendo → debounce
-    onSelect: function() { onEjeInput(true); }     // elegí/limpié/resolví → aplica YA
-  });
-}
-
-// Handler del buscador de Eje/Losa (combobox). DOS caminos, para que aplique de verdad:
-//  - inmediato=true  → al ELEGIR de la lista o resolver en blur: aplica YA, sin debounce
-//    (es un evento discreto; el bug "no actualiza hasta tocar otro filtro" venía de meterle
-//    debounce a esto y que el timer quedara pendiente/pisado por el doble disparo click+blur).
-//  - inmediato=false → mientras se ESCRIBE: debounce corto para no rearmar en cada tecla.
-// El .value del #eje ya está actualizado por el combobox cuando esto se llama, así que
-// _buildFilterParams (en buscar) lee el eje correcto.
-var _bmEjeTimer = null;
-function onEjeInput(inmediato) {
-  if (_bmBloqueadoPorEdicion('eje')) return;
-  if (_bmEjeTimer) { clearTimeout(_bmEjeTimer); _bmEjeTimer = null; }
-  if (inmediato) { onFilterChange('eje'); return; }
-  _bmEjeTimer = setTimeout(function() { _bmEjeTimer = null; onFilterChange('eje'); }, 200);
 }
 
 // 5M.9: plegar/desplegar el bloque de filtros avanzados (plano/carga/origen).
