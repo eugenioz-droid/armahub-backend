@@ -817,6 +817,7 @@ Objetivo: endurecer Reclamos y cerrar los pendientes reales arrastrados.
 | 5N.23 | **Cableado sub-paso 4 — Validación en vivo.** Celda roja según regla del catálogo (figura exige valor en sus slots, vacío en el resto). Refleja la validación del backend. | ☐ | YO |
 | 5N.24 | **Cableado sub-paso 5 — Guardado real + lote + "Crear Eje".** `POST /lotes` → `/lotes/{id}/barras` (array expandido por piso, contexto sector/ciclo/eje estampado) → `/terminar` (exige revisadas, 5N.19). Botón "＋ Crear Eje": al escribir un eje NUEVO, fija/bloquea la tanda en ese eje (abre el lote). Disquete guarda; X descarta; retomar lote en avance por `lote_id`. Reusa contrato del v1 (`_acExpandir`/`acGuardar`). | ☐ | YO |
 | 5N.25 | **Etapa 6 — Reemplazo del v1.** Verificar paridad; borrar `agregar_cubicacion.html/.js` + rastro (include/loader/bootstrap). Backend intacto. | ☐ | YO |
+| 5N.26 | **Config de PISOS de la obra (bloque propio, POSTERIOR al creador).** Decisiones (2026-07-30): (A) En **TODOS** NO se crean barras (solo ver/editar); crear = desde subtab de tipología. (B) Piso del creador: barra normal nace en el piso más bajo preseleccionado; piso = **desplegable NORMAL** (no texto libre) poblado con los pisos de la obra; **botón rápido para agregar piso**. Requiere lista de pisos de la obra (config). Podría vivir en el MISMO menú extendido de "Configurar obra" junto con homologación de ejes/datos (5N.17). Provisional hoy: piso texto editable. | ☐ | TÚ+YO |
 
 ---
 
