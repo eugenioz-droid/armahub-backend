@@ -40,6 +40,7 @@
     opts = opts || {};
     var getLabel = opts.getLabel || function (it) { return it && (it.label != null ? it.label : it.id); };
     var getSub = opts.getSub || function (it) { return it && it.sub; };
+    var getId = opts.getId || function (it) { return it && (it.id != null ? it.id : getLabel(it)); };
     var textoLibre = !!opts.textoLibre;
     var minChars = opts.minChars || 0;
 
@@ -69,6 +70,8 @@
     var itemSel = null;   // item elegido
     var activo = -1;       // índice resaltado por teclado
     var render = [];       // items visibles actualmente
+    var ultimoValor = null; // último valor informado por onSelect (para no re-disparar)
+    function valorActual() { return itemSel ? ('#' + getId(itemSel)) : ('=' + (input.value || '').trim().toLowerCase()); }
 
     function filtrar(txt) {
       var q = (txt || '').trim().toLowerCase();
@@ -107,25 +110,31 @@
       input.value = it ? String(getLabel(it)) : '';
       input.classList.remove('cb-invalido');
       cerrar();
+      ultimoValor = valorActual();      // marca el estado ya informado (el blur no re-dispara)
       if (opts.onSelect) opts.onSelect(it);
     }
 
-    // Resuelve el texto actual a un item (exacto → único que contiene). En texto libre,
-    // si no matchea, igual es válido (el valor es el texto). Si no, marca inválido.
+    // Resuelve el texto actual a un item (exacto → único que contiene) e informa SOLO si el
+    // estado cambió respecto de la última vez. En texto libre, si no matchea, el string vale.
     function resolverAlSalir() {
       var q = (input.value || '').trim().toLowerCase();
-      if (!q) { itemSel = null; input.classList.remove('cb-invalido'); if (opts.onSelect) opts.onSelect(null); return; }
-      var all = (opts.items ? opts.items() : []) || [];
-      var exact = all.find(function (it) { return String(getLabel(it)).toLowerCase() === q; });
-      var cand = exact || (function () {
-        var m = all.filter(function (it) { return String(getLabel(it)).toLowerCase().indexOf(q) >= 0; });
-        return m.length === 1 ? m[0] : null;
-      })();
-      if (cand) { elegir(cand); return; }
-      // No resolvió a un item.
-      itemSel = null;
-      if (textoLibre) { input.classList.remove('cb-invalido'); if (opts.onSelect) opts.onSelect(null); }
-      else { input.classList.add('cb-invalido'); if (opts.onSelect) opts.onSelect(null); }
+      var cand = null;
+      if (q) {
+        var all = (opts.items ? opts.items() : []) || [];
+        cand = all.find(function (it) { return String(getLabel(it)).toLowerCase() === q; }) || null;
+        if (!cand) {
+          var m = all.filter(function (it) { return String(getLabel(it)).toLowerCase().indexOf(q) >= 0; });
+          cand = (m.length === 1) ? m[0] : null;
+        }
+      }
+      if (cand) { itemSel = cand; input.value = String(getLabel(cand)); }
+      else { itemSel = null; }
+      // Válido si hay item, o es texto libre (aunque no matchee), o el campo está vacío.
+      var esValido = !!cand || textoLibre || !q;
+      input.classList.toggle('cb-invalido', !esValido);
+      // Disparar onSelect solo si el estado cambió (idempotencia, como el buscador de obra).
+      var v = valorActual();
+      if (v !== ultimoValor) { ultimoValor = v; if (opts.onSelect) opts.onSelect(itemSel); }
     }
 
     input.addEventListener('focus', abrir);

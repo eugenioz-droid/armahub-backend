@@ -284,23 +284,24 @@ function _initEjeCombobox() {
     items: function() { return _ejesCache; },
     textoLibre: true,                         // se puede filtrar por un eje escrito a mano
     placeholder: 'Todos',
-    // Mientras escribe (con debounce) y al elegir/limpiar → mismo flujo que antes: onEjeInput()
-    // aplica el guard de edición + debounce → onFilterChange('eje'). El .value del #eje ya está
-    // actualizado por el combobox cuando estos disparan, así que el filtro lee el valor correcto.
-    onInput: function() { onEjeInput(); },
-    onSelect: function() { onEjeInput(); }
+    onInput:  function() { onEjeInput(false); },   // escribiendo → debounce
+    onSelect: function() { onEjeInput(true); }     // elegí/limpié/resolví → aplica YA
   });
 }
 
-// Handler del buscador de Eje/Losa. Estructura calcada de onProyectoInput (el buscador
-// de obra que SÍ funciona): oninput/onchange/onblur → aquí. El input NO es readonly (el
-// readonly impedía que oninput disparara → era la causa del bug). Debounce corto para
-// no rearmar la búsqueda en cada tecla; aplica al instante al elegir del datalist.
+// Handler del buscador de Eje/Losa (combobox). DOS caminos, para que aplique de verdad:
+//  - inmediato=true  → al ELEGIR de la lista o resolver en blur: aplica YA, sin debounce
+//    (es un evento discreto; el bug "no actualiza hasta tocar otro filtro" venía de meterle
+//    debounce a esto y que el timer quedara pendiente/pisado por el doble disparo click+blur).
+//  - inmediato=false → mientras se ESCRIBE: debounce corto para no rearmar en cada tecla.
+// El .value del #eje ya está actualizado por el combobox cuando esto se llama, así que
+// _buildFilterParams (en buscar) lee el eje correcto.
 var _bmEjeTimer = null;
-function onEjeInput() {
+function onEjeInput(inmediato) {
   if (_bmBloqueadoPorEdicion('eje')) return;
-  if (_bmEjeTimer) clearTimeout(_bmEjeTimer);
-  _bmEjeTimer = setTimeout(function() { onFilterChange('eje'); }, 200);
+  if (_bmEjeTimer) { clearTimeout(_bmEjeTimer); _bmEjeTimer = null; }
+  if (inmediato) { onFilterChange('eje'); return; }
+  _bmEjeTimer = setTimeout(function() { _bmEjeTimer = null; onFilterChange('eje'); }, 200);
 }
 
 // 5M.9: plegar/desplegar el bloque de filtros avanzados (plano/carga/origen).
