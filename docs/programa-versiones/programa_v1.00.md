@@ -810,7 +810,7 @@ Objetivo: endurecer Reclamos y cerrar los pendientes reales arrastrados.
 
 | N° | Descripción | Realizado | Quién |
 |----|-------------|-----------|-------|
-| 5N.19 | **Migración: columna `revisada`** en `barras` (`revisada` bool default false, `revisada_por`, `revisada_fecha`). Aditiva, NULL/false para lo existente. Endpoint PATCH para marcar/desmarcar (trazabilidad). Terminar lote valida que todas las barras del lote estén revisadas (409 si falta alguna). | ☐ | YO |
+| 5N.19 | **Check `revisada` con trazabilidad.** Migración 091 (aditiva): `revisada`/`revisada_por`/`revisada_fecha`. `POST /lotes/{id}/revisar` marca/desmarca 1..N barras del lote (trazabilidad, limpia traza al desmarcar, 409 si terminado). `terminar_lote`: 409 si lote vacío o con barras sin revisar (regla dura). Editar una barra INVALIDA su revisión (vuelve a sin-revisar). Validado por subagente, desplegado. | ☑ | YO |
 | 5N.20 | **Cableado sub-paso 1 — Contexto real.** Comboboxes Obra (resuelve-id) · Ciclo (textoLibre, nuevo) · Eje (textoLibre) con `/filters`; al elegir obra cargar ejes/ciclos/marcas/figuras. Subtabs de tipología ↔ `marca`. Estado en JS (no en el DOM). | ☐ | YO |
 | 5N.21 | **Cableado sub-paso 2 — Grilla editable.** Celdas φ/cant/mult/dims/áng/R/figura como inputs; re-render GRANULAR por celda (no innerHTML completo); dims dinámicas según `fig.parciales/angulos/radio`. | ☐ | YO |
 | 5N.22 | **Cableado sub-paso 3 — Cálculos + render vivos.** Largo (Σ parciales) + peso (con factor obra) al editar; render de figura real con `disenadorMotor.dibujarFigura(geometria, dims)`. Portados del v1. | ☐ | YO |
