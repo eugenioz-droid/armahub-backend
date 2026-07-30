@@ -72,6 +72,38 @@ function ac2DimsDeFigura(codigo){
   return { dims:dims, angs:(f.angulos||[]).length, radio:!!f.radio };
 }
 
+// Factor del largo por defecto de los lados EXTREMOS = FACTOR × diámetro. El usuario pidió 8×;
+// (nota: ArmaDetailer HOY usa 1× = el diámetro; fue 10× en una versión vieja). Parametrizado
+// aquí para cambiarlo fácil si se ajusta la convención.
+var AC2_FACTOR_EXTREMO=8;
+var AC2_LARGO_INTERMEDIO=100;   // cm, estándar para lados intermedios
+// Valores por DEFECTO al elegir figura/diámetro (regla del cubicador, estilo ADetailer):
+//  - Ángulos: los del CATÁLOGO de la figura (f.angulos), se rellenan al elegir figura.
+//  - Lados EXTREMOS (1º y último parcial): AC2_FACTOR_EXTREMO × diámetro (al elegir diámetro).
+//  - Lados INTERMEDIOS: AC2_LARGO_INTERMEDIO, al elegir figura.
+//  - RADIO: NO se rellena (queda vacío para llenar a mano).
+// Solo rellena celdas VACÍAS (no pisa lo que el usuario ya escribió).
+function ac2AplicarDefaults(b, motivo){
+  var f=_ac2Figuras[b.figura]; if(!f) return;
+  var dims=(f.parciales||[]).map(function(L){ return 'dim_'+String(L).toLowerCase(); });
+  var nExtremo=dims.length-1;   // índice del último lado
+  if (motivo==='figura'){
+    // Ángulos del catálogo (valores reales de la figura).
+    (f.angulos||[]).forEach(function(av,i){ var k='ang'+(i+1); if(i<4 && (b[k]==null||b[k]==='')) b[k]=Number(av); });
+    // Lados intermedios (ni el primero ni el último).
+    dims.forEach(function(k,idx){ if(idx>0 && idx<nExtremo && (b[k]==null||b[k]==='')) b[k]=AC2_LARGO_INTERMEDIO; });
+    // Si ya hay diámetro, aprovecha para llenar los extremos también.
+    if (b.diam!=null) ac2RellenarExtremos(b, dims, nExtremo);
+  } else if (motivo==='diam'){
+    if (b.figura && b.diam!=null) ac2RellenarExtremos(b, dims, nExtremo);
+  }
+}
+function ac2RellenarExtremos(b, dims, nExtremo){
+  var v8=AC2_FACTOR_EXTREMO*Number(b.diam);
+  if (dims.length>=1 && (b[dims[0]]==null||b[dims[0]]==='')) b[dims[0]]=v8;                 // primer lado
+  if (nExtremo>0 && (b[dims[nExtremo]]==null||b[dims[nExtremo]]==='')) b[dims[nExtremo]]=v8; // último lado
+}
+
 // LARGO = suma de las dims que la figura usa (el radio NO suma). null si falta alguna o no hay
 // figura. Espeja _largo_desde_figura del backend (lotes.py). El backend recalcula el definitivo.
 function ac2Largo(b){
@@ -390,11 +422,15 @@ window.ac2SetBarra=function(id,campo,valor){
   var b=ac2BarraPorId(id); if(!b) return;
   if (campo in AC2_CAMPOS_NUM){ var s=String(valor).trim(); b[campo]=(s===''?null:Number(s)); }
   else b[campo]=valor;
-  var esGeom=(campo==='figura' || campo.indexOf('dim_')===0 || campo.indexOf('ang')===0 || campo==='radio');
-  if (esGeom){ ac2ReRenderFila(id); }                    // afecta dims/validación(rojo)/dibujo → re-pinta la fila
+  // Valores por defecto (rellena solo celdas vacías): al elegir figura → ángulos+intermedios;
+  // al elegir diámetro → lados extremos = 8×diam.
+  if (campo==='figura') ac2AplicarDefaults(b,'figura');
+  else if (campo==='diam') ac2AplicarDefaults(b,'diam');
+  var esGeom=(campo==='figura' || campo==='diam' || campo.indexOf('dim_')===0 || campo.indexOf('ang')===0 || campo==='radio');
+  if (esGeom){ ac2ReRenderFila(id); }                    // dims/validación/dibujo/defaults → re-pinta la fila
   // Elegir la tipología en TODOS puede cambiar la agrupación/orden → re-render completo.
   else if (campo==='marca'){ var agrupa=((AC2.tipo==='TODOS' && AC2.orden==='tipo')||AC2.masiva); if(agrupa){ ac2Render(); return; } }
-  else { ac2ActualizarLargoPeso(id); }                   // φ/cant/mult → solo largo/peso granular
+  else { ac2ActualizarLargoPeso(id); }                   // cant/mult → solo largo/peso granular
   ac2ActualizarContadores();                              // rollup (uds/kg/revisadas)
 };
 
