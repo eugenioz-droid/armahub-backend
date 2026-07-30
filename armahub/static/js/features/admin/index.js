@@ -180,7 +180,13 @@ var _roleLabels = { admin: 'Admin', admin_calidad: 'Admin Calidad', cubicador: '
 
 function toggleNuevoUsuario() {
   var f = document.getElementById('nuevoUsuarioForm');
-  f.style.display = f.style.display === 'none' ? '' : 'none';
+  var abriendo = f.style.display === 'none';
+  f.style.display = abriendo ? '' : 'none';
+  // FIX 5M.13: el campo de clave es type=text en reposo (para que NO haya ningún
+  // <input password> en el DOM que haga a Chrome tratar los filtros como credenciales).
+  // Se promueve a password SOLO mientras el form está abierto, y se revierte al cerrar.
+  var pw = document.getElementById('newUserPassword');
+  if (pw) pw.type = abriendo ? 'password' : 'text';
 }
 
 async function createUser() {

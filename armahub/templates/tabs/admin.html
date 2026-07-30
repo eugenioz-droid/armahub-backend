@@ -34,7 +34,15 @@
             </div>
             <div class="col" style="max-width:160px;">
               <label style="font-size:11px; color:#666;">Contraseña *</label>
-              <input type="password" id="newUserPassword" placeholder="Mín. 6 caracteres" style="width:100%; font-size:12px;" />
+              <!-- FIX 5M.13: arranca como type=text para que NO haya un <input password> en el
+                   DOM en reposo. Un solo password persistente hacía que Chrome tratara TODOS los
+                   campos de texto de la app (filtros de obra, eje, etc.) como credenciales y
+                   ofreciera guardar clave. Se promueve a type=password por JS solo mientras el
+                   form "Nuevo usuario" está visible (toggleNuevoUsuario). autocomplete=new-password
+                   evita que Chrome autocomplete una credencial vieja cuando sí es password. -->
+              <input type="text" id="newUserPassword" placeholder="Mín. 6 caracteres"
+                     autocomplete="new-password" data-lpignore="true" data-1p-ignore="true"
+                     style="width:100%; font-size:12px; -webkit-text-security:disc;" />
             </div>
             <div class="col" style="max-width:160px;">
               <label style="font-size:11px; color:#666;">Rol</label>

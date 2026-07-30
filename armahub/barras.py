@@ -229,6 +229,7 @@ def get_barras_elementos(
     sector: str = None,
     piso: str = None,
     ciclo: str = None,
+    eje: str = None,                    # FIX 5M.12: faltaba → el filtro de Eje no aplicaba
     q: str = None,
     origen: str = None,
     import_id: int = None,
@@ -269,6 +270,12 @@ def get_barras_elementos(
         base_where += " AND piso = %s"; params.append(piso)
     if ciclo:
         base_where += " AND ciclo = %s"; params.append(ciclo)
+    if eje:
+        # FIX 5M.12: aplicar el filtro de Eje (antes se descartaba en silencio). TRIM en
+        # ambos lados por el bug latente: 'eje' se guarda crudo del CSV y puede traer
+        # espacios (24(A-E) vs 24 (A-E)); /filters devuelve el valor exacto, así que el
+        # match funciona igual, pero el TRIM lo blinda ante espacios sobrantes.
+        base_where += " AND TRIM(eje) = TRIM(%s)"; params.append(eje)
     if origen:
         base_where += " AND origen = %s"; params.append(origen)
     if import_id is not None:
