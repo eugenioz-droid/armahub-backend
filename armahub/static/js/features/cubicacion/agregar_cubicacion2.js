@@ -72,9 +72,11 @@ function ac2DimsDeFigura(codigo){
   return { dims:dims, angs:(f.angulos||[]).length, radio:!!f.radio };
 }
 
-// Factor del largo por defecto de los lados EXTREMOS = FACTOR × diámetro. Confirmado 10×
-// (convención del cubicador; coincide con la versión histórica de ArmaDetailer). Parametrizado.
-var AC2_FACTOR_EXTREMO=10;
+// Largo por defecto de los lados EXTREMOS = 10 × diámetro, PERO en unidades coherentes: el
+// diámetro está en MM y las medidas de la barra en CM. 10×φ(mm) = 10φ mm = φ cm.
+// → extremo (cm) = FACTOR × diámetro(mm) / 10. Ej: φ10mm → 10cm; φ16mm → 16cm.
+var AC2_FACTOR_EXTREMO=10;      // veces el diámetro
+var AC2_MM_A_CM=10;             // 1 cm = 10 mm (el diámetro viene en mm; las medidas en cm)
 var AC2_LARGO_INTERMEDIO=100;   // cm, estándar para lados intermedios
 // Valores por DEFECTO al elegir figura/diámetro (regla del cubicador, estilo ADetailer):
 //  - Ángulos: los del CATÁLOGO de la figura (f.angulos), se rellenan al elegir figura.
@@ -98,7 +100,8 @@ function ac2AplicarDefaults(b, motivo){
   }
 }
 function ac2RellenarExtremos(b, dims, nExtremo){
-  var v8=AC2_FACTOR_EXTREMO*Number(b.diam);
+  // 10 × φ(mm) convertido a cm = φ(mm) × 10 / 10 = φ. (φ10mm→10cm, φ16mm→16cm.)
+  var v8=AC2_FACTOR_EXTREMO*Number(b.diam)/AC2_MM_A_CM;
   if (dims.length>=1 && (b[dims[0]]==null||b[dims[0]]==='')) b[dims[0]]=v8;                 // primer lado
   if (nExtremo>0 && (b[dims[nExtremo]]==null||b[dims[nExtremo]]==='')) b[dims[nExtremo]]=v8; // último lado
 }
