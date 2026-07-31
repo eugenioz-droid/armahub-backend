@@ -42,7 +42,9 @@ var AC2_TIPOS_MAP={
 // estructura (ac2SetEstructura). AC2_ORD_TIPO deriva del orden de esa lista.
 var AC2_TIPOS=AC2_TIPOS_MAP.MURO.map(function(t){return t.codigo;});
 var AC2_ORD_TIPO={}; AC2_TIPOS.forEach(function(t,i){ AC2_ORD_TIPO[t]=i; });
-var AC2_TAM={ s:{w:54,h:36}, m:{w:90,h:60}, l:{w:135,h:90} };   // S · M (~+66%) · L (+50% sobre M)
+// Tamaños del render. Se agrandaron para que las ETIQUETAS (cotas/ángulos, que salen fuera del
+// contorno) quepan sin cortarse. + XL para figuras densas.
+var AC2_TAM={ s:{w:70,h:52}, m:{w:110,h:80}, l:{w:160,h:118}, xl:{w:220,h:160} };
 var AC2_DIAMS=[8,10,12,16,18,22,25,28,32,36];        // diámetros estándar (diametros.py)
 var AC2_DIMKEYS=['dim_a','dim_b','dim_c','dim_d','dim_e','dim_f','dim_g','dim_h','dim_i'];
 
@@ -198,7 +200,7 @@ function ac2FigSvg(b){
       });
     }
     try { return '<span style="display:inline-block; vertical-align:middle;">' +
-      window.disenadorMotor.dibujarFigura(geoUse, dims, { width:t.w, height:t.h, pad:6 }) + '</span>'; }
+      window.disenadorMotor.dibujarFigura(geoUse, dims, { width:t.w, height:t.h, pad:Math.round(Math.min(t.w,t.h)*0.22) }) + '</span>'; }
     catch(e){}
   }
   // Fallback si no hay geometría o el motor no cargó: caja con el tamaño (muestra el código).
@@ -449,7 +451,7 @@ window.ac2ToggleMasiva=function(){ AC2.masiva=!AC2.masiva;
   document.getElementById('ac2_masivaBar').style.display=AC2.masiva?'flex':'none';
   ac2Render(); };
 window.ac2SetTam=function(t){ AC2.tam=t;
-  ['s','m','l'].forEach(function(x){ var b=document.getElementById('ac2r_'+x); if(b){var on=(t===x); b.style.background=on?'#8BC34A':'#fff'; b.style.color=on?'#fff':'#607d8b';} });
+  ['s','m','l','xl'].forEach(function(x){ var b=document.getElementById('ac2r_'+x); if(b){var on=(t===x); b.style.background=on?'#8BC34A':'#fff'; b.style.color=on?'#fff':'#607d8b';} });
   ac2Render(); };
 window.ac2ToggleRev=function(id,el){
   // Revisión de a 1 (proceso real). Solo se puede marcar si la barra está completa y válida
