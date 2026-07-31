@@ -10,6 +10,8 @@
 /* Estado de la maqueta/creador. */
 var AC2 = {
   render:true, tam:'m', tipo:'TODOS', orden:'piso', masiva:false, terminado:false,
+  seleccion:{},    // { _id: true } — barras marcadas en modo masivo. Estado JS (NO en el DOM):
+                   // así sobrevive a los re-renders de fila (antes se perdía → bug masivo).
   // Contexto real (vive en JS, no en el DOM):
   proyecto:null,   // id de la obra elegida (GET /filters → proyectos[].id)
   ciclo:'',        // ciclo elegido/escrito (texto libre)
@@ -298,7 +300,7 @@ function ac2Fila(b){
   // Celda de dato con input; el input se marca ROJO (clase) si el campo está inválido.
   var tdDato=function(campo,w){ return '<td style="'+AC2_TDS+' text-align:right;">'+ac2Inp(b._id,campo,b[campo],w,!!val.rojas[campo])+'</td>'; };
   var h='<tr id="ac2row_'+b._id+'"'+(!val.ok?' title="Geometría inválida para la figura"':'')+'>';
-  if (AC2.masiva) h+='<td style="'+AC2_TDS+' text-align:center;"><input type="checkbox" class="ac2sel" data-grp="'+ac2Esc(b.marca)+'" data-id="'+b._id+'" onclick="ac2SelFila()"/></td>';
+  if (AC2.masiva) h+='<td style="'+AC2_TDS+' text-align:center;"><input type="checkbox" class="ac2sel" data-grp="'+ac2Esc(b.marca)+'" data-id="'+b._id+'"'+(AC2.seleccion[b._id]?' checked':'')+' onclick="ac2SelFila(this)"/></td>';
   // Piso: <select> con los pisos configurados de la obra. Si la barra trae un piso que no está
   // en la lista (ej. retomado de un lote), se agrega como opción para no perderlo.
   var pisosOps=_ac2Pisos.slice();
@@ -458,6 +460,7 @@ window.ac2ToggleMasiva=function(){ AC2.masiva=!AC2.masiva;
   var b=document.getElementById('ac2_masivaBtn'); b.style.background=AC2.masiva?'#2e7d32':'#fff'; b.style.color=AC2.masiva?'#fff':'#8BC34A'; b.style.borderColor=AC2.masiva?'#2e7d32':'#8BC34A';
   document.getElementById('ac2_masivaBar').style.display=AC2.masiva?'flex':'none';
   if (AC2.masiva) ac2SetColTipo('lados');   // poblar dropdowns de columna al abrir
+  else ac2LimpiarSeleccion();               // al apagar masivas, limpiar selección
   ac2Render(); };
 window.ac2SetTam=function(t){ AC2.tam=t;
   ['s','m','l','xl'].forEach(function(x){ var b=document.getElementById('ac2r_'+x); if(b){var on=(t===x); b.style.background=on?'#8BC34A':'#fff'; b.style.color=on?'#fff':'#607d8b';} });
@@ -489,16 +492,12 @@ window.ac2SetBarra=function(id,campo,valor){
   // EDICIÓN MASIVA EN TÁNDEM (igual que Bar Manager): si el modo masivo está activo y la barra
   // editada está MARCADA, aplicar este mismo cambio (campo+valor) a TODAS las marcadas de una vez
   // y re-render completo. Se maneja aparte (no cae al flujo granular de una sola fila).
-  if (AC2.masiva){
-    var chk=document.querySelector('.ac2sel[data-id="'+id+'"]');
-    if (chk && chk.checked){
-      var ids=ac2IdsSeleccionados();
-      if (ids.length>1){
-        ids.forEach(function(oid){ ac2SetBarraDato(oid, campo, valor); });
-        ac2Render();
-        ac2RestaurarSeleccion(ids);   // el re-render borra los checks → volver a marcarlos
-        return;
-      }
+  if (AC2.masiva && AC2.seleccion[id]){
+    var ids=ac2IdsSeleccionados();
+    if (ids.length>1){
+      ids.forEach(function(oid){ ac2SetBarraDato(oid, campo, valor); });
+      ac2Render();   // re-pinta todo; los checks se restauran solos desde AC2.seleccion
+      return;
     }
   }
   if (campo in AC2_CAMPOS_NUM){ var s=String(valor).trim(); b[campo]=(s===''?null:Number(s)); }
@@ -617,15 +616,23 @@ window.ac2Quitar=function(id){
   AC2.barras=AC2.barras.filter(function(x){return x._id!==id;});
   ac2Render();
 };
-// Check MAESTRO del grupo: marca/desmarca todas las filas de esa tipología.
+// La SELECCIÓN vive en AC2.seleccion (estado JS), NO en el DOM → sobrevive a los re-renders de
+// fila (antes se perdía y la edición masiva fallaba de forma inconsistente).
+// Check MAESTRO del grupo: marca/desmarca todas las barras de esa tipología (en el estado).
 window.ac2SelGrupo=function(el){
   var grp=el.getAttribute('data-grp'), on=el.checked;
+  ac2Visibles().forEach(function(b){ if(b.marca===grp){ if(on) AC2.seleccion[b._id]=true; else delete AC2.seleccion[b._id]; } });
   document.querySelectorAll('.ac2sel[data-grp="'+grp+'"]').forEach(function(c){ c.checked=on; });
   el.indeterminate=false;
-  ac2SelResumen();
+  ac2SelSyncMaestros(); ac2SelResumen();
 };
-// Al marcar UNA fila: sincroniza el maestro de su grupo (checked / indeterminate).
-window.ac2SelFila=function(){
+// Al marcar/desmarcar UNA fila: actualiza el estado + sincroniza el maestro de su grupo.
+window.ac2SelFila=function(el){
+  if (el){ var id=Number(el.getAttribute('data-id')); if(el.checked) AC2.seleccion[id]=true; else delete AC2.seleccion[id]; }
+  ac2SelSyncMaestros(); ac2SelResumen();
+};
+// Sincroniza los checkboxes maestros de grupo (checked / indeterminate) desde el estado.
+function ac2SelSyncMaestros(){
   document.querySelectorAll('.ac2grp').forEach(function(m){
     var grp=m.getAttribute('data-grp');
     var hijos=[].slice.call(document.querySelectorAll('.ac2sel[data-grp="'+grp+'"]'));
@@ -633,23 +640,20 @@ window.ac2SelFila=function(){
     m.checked=(marc>0 && marc===hijos.length);
     m.indeterminate=(marc>0 && marc<hijos.length);
   });
-  ac2SelResumen();
-};
-// Contador de seleccionadas en la barra de acciones masivas.
+}
+// Contador de seleccionadas (desde el estado).
 function ac2SelResumen(){
   var s=document.getElementById('ac2_selcount'); if(!s) return;
-  var nsel=document.querySelectorAll('.ac2sel:checked').length;
+  var nsel=ac2IdsSeleccionados().length;
   s.textContent = nsel? (nsel+' seleccionada'+(nsel>1?'s':'')) : 'ninguna seleccionada';
 }
-// ── ACCIONES MASIVAS: operan sobre las barras MARCADAS (checkbox .ac2sel:checked) ──
+// ── ACCIONES MASIVAS: operan sobre las barras MARCADAS (AC2.seleccion, estado JS) ──
 function ac2IdsSeleccionados(){
-  return [].slice.call(document.querySelectorAll('.ac2sel:checked')).map(function(c){ return Number(c.getAttribute('data-id')); });
+  // Solo ids de barras que existen (limpia selección de barras ya borradas).
+  return Object.keys(AC2.seleccion).map(Number).filter(function(id){ return !!ac2BarraPorId(id); });
 }
-// Vuelve a marcar los checkboxes de estos ids tras un re-render (que los recrea desmarcados).
-function ac2RestaurarSeleccion(ids){
-  ids.forEach(function(id){ var c=document.querySelector('.ac2sel[data-id="'+id+'"]'); if(c) c.checked=true; });
-  ac2SelFila();   // re-sincroniza los checks maestros de grupo + contador
-}
+// Limpia toda la selección (al descartar, retomar lote, cambiar de obra…).
+function ac2LimpiarSeleccion(){ AC2.seleccion={}; }
 // Columnas por tipo (mismo criterio que Bar Manager): lados A-I o ángulos α1-α4. R/φ/cant no aplican.
 var AC2_COLS_LADOS=[['dim_a','A'],['dim_b','B'],['dim_c','C'],['dim_d','D'],['dim_e','E'],['dim_f','F'],['dim_g','G'],['dim_h','H'],['dim_i','I']];
 var AC2_COLS_ANG=[['ang1','α1'],['ang2','α2'],['ang3','α3'],['ang4','α4']];
@@ -698,6 +702,7 @@ window.ac2BorrarSeleccionadas=function(){
   if (!ids.length){ alert('Marca al menos una barra.'); return; }
   if (!confirm('Borrar '+ids.length+' barra(s) seleccionada(s)?\n(Las ya guardadas en el lote no se tocan hasta guardar.)')) return;
   AC2.barras=AC2.barras.filter(function(b){ return ids.indexOf(b._id)<0; });
+  ids.forEach(function(id){ delete AC2.seleccion[id]; });
   ac2Render();
 };
 // ── Estado visual del badge/bandera según el estado del lote (sin número inventado) ──
@@ -819,7 +824,7 @@ window.ac2AgregarBarrasMulti=function(){
 window.ac2Descartar=function(){
   if (!AC2.barras.length){ return; }
   if (confirm('Se quitarán del formulario las '+AC2.barras.length+' barra(s) que aún NO guardaste.\n(Las ya guardadas en el lote no se tocan.)\n\n¿Continuar?')){
-    AC2.barras=[]; ac2Render();
+    AC2.barras=[]; ac2LimpiarSeleccion(); ac2Render();
   }
 };
 
@@ -878,7 +883,7 @@ window.ac2RetomarLote=async function(id){
   AC2.sector=b0.sector||''; AC2.ciclo=b0.ciclo||''; AC2.eje=b0.eje||'';
   AC2.estructura=ac2EstructuraDeMarca(b0.marca)||AC2.estructura;
   // Reconstruir las barras (todas ya guardadas → _guardada=true).
-  _ac2Seq=1;
+  _ac2Seq=1; ac2LimpiarSeleccion();
   AC2.barras=bs.map(function(x){
     var nb=ac2NuevaBarra({ piso:x.piso||'', marca:x.marca||'', diam:x.diam, cant:x.cant, mult:x.mult,
       figura:x.figura||'', radio:x.radio, rev:!!x.revisada });
@@ -947,7 +952,7 @@ function _ac2InitComboboxes(){
         // Al cambiar de obra: se descarta la tanda en curso (ciclo/eje/lote/barras son de la
         // obra anterior). El lote guardado no se pierde (vive en BD); solo se limpia el form.
         AC2.ciclo=''; AC2.eje=''; AC2.sector=''; AC2.estructura='';
-        AC2.loteId=null; AC2.loteEstado=''; AC2.barras=[]; AC2.tipo='TODOS';
+        AC2.loteId=null; AC2.loteEstado=''; AC2.barras=[]; AC2.tipo='TODOS'; ac2LimpiarSeleccion();
         if (_ac2CbCiclo) _ac2CbCiclo.limpiar();
         if (_ac2CbEje)   _ac2CbEje.limpiar();
         _ac2CiclosObra=[]; _ac2EjesObra=[];
