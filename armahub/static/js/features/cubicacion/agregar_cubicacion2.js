@@ -425,6 +425,7 @@ window.ac2Render=function(){
   html+='</tbody></table>';
   cont.innerHTML=html;
   ac2ActualizarContadores();                        // rollup + revisadas + inválidas (una sola fuente)
+  if (AC2.masiva){ ac2SelSyncMaestros(); ac2SelResumen(); }   // refresca contador/maestros/macro desde el estado
   document.getElementById('ac2_ctx').innerHTML=ac2CtxText();
 };
 
@@ -672,13 +673,21 @@ window.ac2Quitar=function(id){
 };
 // La SELECCIÓN vive en AC2.seleccion (estado JS), NO en el DOM → sobrevive a los re-renders de
 // fila (antes se perdía y la edición masiva fallaba de forma inconsistente).
-// Check MAESTRO del grupo: marca/desmarca todas las barras de esa tipología (en el estado).
+// Check MAESTRO del grupo: marca/desmarca todas las barras del grupo (en el estado). El grupo
+// puede ser por TIPOLOGÍA o por PISO según la vista → comparamos contra el campo vigente.
 window.ac2SelGrupo=function(el){
   var grp=el.getAttribute('data-grp'), on=el.checked;
-  ac2Visibles().forEach(function(b){ if(b.marca===grp){ if(on) AC2.seleccion[b._id]=true; else delete AC2.seleccion[b._id]; } });
+  var gc=ac2AgrupaPor(), campo=(gc==='piso')?'piso':'marca';
+  ac2Visibles().forEach(function(b){ if((b[campo]||'')===grp){ if(on) AC2.seleccion[b._id]=true; else delete AC2.seleccion[b._id]; } });
   document.querySelectorAll('.ac2sel[data-grp="'+grp+'"]').forEach(function(c){ c.checked=on; });
   el.indeterminate=false;
   ac2SelSyncMaestros(); ac2SelResumen();
+};
+// Check MACRO: marca/desmarca TODAS las barras visibles de una, sin importar el grupo/piso.
+window.ac2SelTodo=function(el){
+  var on=el.checked;
+  ac2Visibles().forEach(function(b){ if(on) AC2.seleccion[b._id]=true; else delete AC2.seleccion[b._id]; });
+  ac2Render();   // re-render: repinta filas y maestros de grupo desde el estado
 };
 // Al marcar/desmarcar UNA fila: actualiza el estado + sincroniza el maestro de su grupo.
 window.ac2SelFila=function(el){
@@ -695,11 +704,16 @@ function ac2SelSyncMaestros(){
     m.indeterminate=(marc>0 && marc<hijos.length);
   });
 }
-// Contador de seleccionadas (desde el estado).
+// Contador de seleccionadas (desde el estado) + estado del check MACRO (todas/algunas/ninguna).
 function ac2SelResumen(){
-  var s=document.getElementById('ac2_selcount'); if(!s) return;
+  var s=document.getElementById('ac2_selcount');
   var nsel=ac2IdsSeleccionados().length;
-  s.textContent = nsel? (nsel+' seleccionada'+(nsel>1?'s':'')) : 'ninguna seleccionada';
+  if (s) s.textContent = nsel? (nsel+' seleccionada'+(nsel>1?'s':'')) : 'ninguna seleccionada';
+  var macro=document.getElementById('ac2_selTodo');
+  if (macro){ var total=ac2Visibles().length;
+    macro.checked=(nsel>0 && nsel===total);
+    macro.indeterminate=(nsel>0 && nsel<total);
+  }
 }
 // ── ACCIONES MASIVAS: operan sobre las barras MARCADAS (AC2.seleccion, estado JS) ──
 function ac2IdsSeleccionados(){
@@ -739,15 +753,20 @@ window.ac2OperarColumnas=function(){
   });
   ac2Render();   // re-render (cambian dims → largo/peso/validación/dibujo de varias filas)
 };
-// Duplicar las barras marcadas (cada una debajo de sí misma).
+// Duplicar las barras marcadas en el mismo piso. Las copias se insertan JUNTAS tras la última
+// original (no intercaladas) y quedan PRE-SELECCIONADAS para editarlas de una sin marcar nada.
 window.ac2CopiarSeleccionadas=function(){
   var ids=ac2IdsSeleccionados();
   if (!ids.length){ alert('Marca al menos una barra.'); return; }
-  ids.forEach(function(id){
-    var b=ac2BarraPorId(id); if(!b) return;
+  var origen=AC2.barras.filter(function(b){ return ids.indexOf(b._id)>=0; });
+  var copias=[], ultimoIdx=-1;
+  origen.forEach(function(b){
     var copia=JSON.parse(JSON.stringify(b)); copia._id=_ac2Seq++; copia.rev=false; delete copia._guardada;
-    AC2.barras.splice(AC2.barras.indexOf(b)+1,0,copia);
+    copias.push(copia);
+    ultimoIdx=Math.max(ultimoIdx, AC2.barras.indexOf(b));
   });
+  Array.prototype.splice.apply(AC2.barras, [ultimoIdx+1,0].concat(copias));
+  AC2.seleccion={}; copias.forEach(function(c){ AC2.seleccion[c._id]=true; });   // selección → copias
   ac2Render();
 };
 // Duplicar las marcadas moviéndolas un piso (dir=+1 sube, dir=-1 baja). _ac2Pisos va de más
