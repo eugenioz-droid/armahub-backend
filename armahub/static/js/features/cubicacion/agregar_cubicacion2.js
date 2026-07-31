@@ -167,8 +167,17 @@ function ac2FigSvg(b){
     // original (deuda 5N.27: los radios aún no tienen geometría real).
     var geoUse=geo;
     var tieneDims=Object.keys(dims).length>0;
-    if (tieneDims && geo.tramos && geo.tramos.length && !f.radio && !(geo.etiquetas&&geo.etiquetas.length) && !geo.etiquetas_manda){
-      geoUse={}; for(var kk in geo) geoUse[kk]=geo[kk]; delete geoUse.puntos;   // copia sin puntos
+    var escalable=(tieneDims && geo.tramos && geo.tramos.length && !f.radio && !(geo.etiquetas&&geo.etiquetas.length) && !geo.etiquetas_manda);
+    if (escalable){
+      geoUse={}; for(var kk in geo) geoUse[kk]=geo[kk]; delete geoUse.puntos;   // copia sin puntos → escala
+      // MOSTRAR EL VALOR en vez de la letra: en cada tramo, la etiqueta (lado) pasa a ser la
+      // medida ingresada (ej. "150" en vez de "B"). Si un lado no tiene medida, deja la letra.
+      geoUse.tramos=geo.tramos.map(function(tr){
+        var v=dims[tr.lado];
+        var nt={}; for(var kk2 in tr) nt[kk2]=tr[kk2];
+        if (v!=null) nt.lado=String(v);
+        return nt;
+      });
     }
     try { return '<span style="display:inline-block; vertical-align:middle;">' +
       window.disenadorMotor.dibujarFigura(geoUse, dims, { width:t.w, height:t.h, pad:6 }) + '</span>'; }
@@ -287,7 +296,7 @@ function ac2Fila(b){
   h+='<td id="ac2peso_'+b._id+'" style="'+AC2_TDS+' padding-right:10px; text-align:right; color:#558B2F; font-weight:600;">'+ac2PesoTxt(b)+'</td>';
   // Figura (input+datalist del catálogo). Cambiarla re-renderiza SOLO la fila (cambian las dims).
   h+='<td style="'+AC2_TDS+' padding-left:14px; border-left:1px solid #eee;"><input type="text" list="ac2_figDatalist" value="'+ac2Esc(b.figura)+'" class="ac2cell ac2nav" data-col="figura" data-row="'+b._id+'" style="width:54px; text-align:left;" onchange="ac2SetBarra('+b._id+',\'figura\',this.value)" onkeydown="ac2NavKey(event,this)" placeholder="fig"/></td>';
-  if (AC2.render) h+=td+ac2FigSvg(b)+'</td>';
+  if (AC2.render) h+='<td id="ac2dib_'+b._id+'" style="'+AC2_TDS+'">'+ac2FigSvg(b)+'</td>';
   // Dims A-I: input si la figura usa ese lado (rojo si inválido), celda gris si no la usa.
   for (var i=0;i<9;i++){ var k=AC2_DIMKEYS[i];
     h+= (info.dims.indexOf(k)!==-1) ? tdDato(k,54) : ac2CeldaOff();
@@ -298,8 +307,9 @@ function ac2Fila(b){
   }
   // Radio.
   h+= info.radio ? tdDato('radio',52) : ac2CeldaOff();
-  // Rev (revisada).
-  h+='<td style="'+AC2_TDS+' text-align:center;"><input type="checkbox"'+(b.rev?' checked':'')+' onclick="ac2ToggleRev('+b._id+',this)" title="Marcar/desmarcar revisada"/></td>';
+  // Rev (revisada): solo marcable si la barra está COMPLETA y VÁLIDA (φ+figura+medidas ok).
+  var lista=ac2BarraLista(b);
+  h+='<td style="'+AC2_TDS+' text-align:center;"><input type="checkbox" class="ac2rev"'+(b.rev&&lista?' checked':'')+(lista?'':' disabled')+' onclick="ac2ToggleRev('+b._id+',this)" title="'+(lista?'Marcar/desmarcar revisada':'Completa la barra (φ, figura y sus medidas) para poder revisarla.')+'"/></td>';
   // Acciones por fila.
   h+='<td style="'+AC2_TDS+' white-space:nowrap;">'+
      '<span onclick="ac2CopiarTipologia('+b._id+')" title="Agregar barra '+ac2Esc(b.marca)+' debajo" style="color:#558B2F; cursor:pointer; font-weight:700; margin-right:6px;">＋</span>'+
@@ -424,9 +434,11 @@ window.ac2SetTam=function(t){ AC2.tam=t;
   ['s','m','l'].forEach(function(x){ var b=document.getElementById('ac2r_'+x); if(b){var on=(t===x); b.style.background=on?'#8BC34A':'#fff'; b.style.color=on?'#fff':'#607d8b';} });
   ac2Render(); };
 window.ac2ToggleRev=function(id,el){
-  // Revisión de a 1 (proceso real): guarda el estado en el dato (marca/desmarca). No re-render
-  // completo (el checkbox ya refleja el valor); solo refresca el contador de revisadas.
-  var b=ac2BarraPorId(id); if(b) b.rev=el.checked;
+  // Revisión de a 1 (proceso real). Solo se puede marcar si la barra está completa y válida
+  // (defensa: el checkbox ya está disabled si no lo está, pero por si acaso).
+  var b=ac2BarraPorId(id); if(!b) return;
+  if (el.checked && !ac2BarraLista(b)){ el.checked=false; return; }
+  b.rev=el.checked;
   ac2ActualizarContadores();
 };
 
@@ -439,30 +451,75 @@ window.ac2SetBarra=function(id,campo,valor){
   if (campo in AC2_CAMPOS_NUM){ var s=String(valor).trim(); b[campo]=(s===''?null:Number(s)); }
   else b[campo]=valor;
   // Valores por defecto (rellena solo celdas vacías): al elegir figura → ángulos+intermedios;
-  // al elegir diámetro → lados extremos = 8×diam.
+  // al elegir diámetro → lados extremos = 10×diam.
   if (campo==='figura') ac2AplicarDefaults(b,'figura');
   else if (campo==='diam') ac2AplicarDefaults(b,'diam');
-  var esGeom=(campo==='figura' || campo==='diam' || campo.indexOf('dim_')===0 || campo.indexOf('ang')===0 || campo==='radio');
-  if (esGeom){ ac2ReRenderFila(id); }                    // dims/validación/dibujo/defaults → re-pinta la fila
-  // Elegir la tipología en TODOS puede cambiar la agrupación/orden → re-render completo.
-  else if (campo==='marca'){ var agrupa=((AC2.tipo==='TODOS' && AC2.orden==='tipo')||AC2.masiva); if(agrupa){ ac2Render(); return; } }
-  else { ac2ActualizarLargoPeso(id); }                   // cant/mult → solo largo/peso granular
+  if (campo==='figura' || campo==='diam'){
+    // Cambian QUÉ celdas existen (dims/ángulos según figura) o los defaults → re-render de fila.
+    // (El foco vuelve a la celda editada si sigue existiendo — ac2ReRenderFila lo preserva.)
+    ac2ReRenderFila(id);
+  } else if (campo.indexOf('dim_')===0 || campo.indexOf('ang')===0 || campo==='radio'){
+    // Editar una MEDIDA: NO re-render (perdería el foco/cursor). Actualiza granularmente el
+    // dibujo, largo/peso y el marcado rojo de validación, sin recrear los inputs.
+    ac2ActualizarGeom(id);
+  } else if (campo==='marca'){
+    var agrupa=((AC2.tipo==='TODOS' && AC2.orden==='tipo')||AC2.masiva); if(agrupa){ ac2Render(); return; }
+  } else { ac2ActualizarLargoPeso(id); }                  // cant/mult → solo largo/peso granular
   ac2ActualizarContadores();                              // rollup (uds/kg/revisadas)
 };
 
-// Recalcula y pinta largo+peso de UNA fila (granular, sin re-render). También refresca el
-// dibujo de la figura (escala a las nuevas medidas) si el render está activo.
+// Recalcula y pinta largo+peso de UNA fila (granular, sin re-render). No toca los inputs.
 function ac2ActualizarLargoPeso(id){
   var b=ac2BarraPorId(id); if(!b) return;
   var l=document.getElementById('ac2largo_'+id); if(l) l.textContent=ac2Num(ac2Largo(b));
   var p=document.getElementById('ac2peso_'+id);  if(p) p.innerHTML=ac2PesoTxt(b);
 }
-
-// Re-render GRANULAR: reemplaza SOLO el <tr> de esa barra (no toda la tabla).
-function ac2ReRenderFila(id){
+// Al editar una MEDIDA (dim/áng/radio): actualiza el DIBUJO (escala), largo/peso, el marcado
+// ROJO de validación de cada celda, y el estado del check Rev — TODO sin recrear los inputs
+// (el foco/cursor se conserva → Tab y flechas siguen funcionando).
+function ac2ActualizarGeom(id){
   var b=ac2BarraPorId(id); if(!b) return;
+  ac2ActualizarLargoPeso(id);
+  var dib=document.getElementById('ac2dib_'+id); if(dib) dib.innerHTML=ac2FigSvg(b);
+  // Marcado rojo por celda según la validación en vivo.
+  var val=ac2Validar(b);
+  var tr=document.getElementById('ac2row_'+id);
+  if (tr) tr.querySelectorAll('input.ac2nav[data-row="'+id+'"]').forEach(function(inp){
+    inp.classList.toggle('rojo', !!val.rojas[inp.getAttribute('data-col')]);
+  });
+  // El check Rev solo se puede marcar si la barra está completa y válida (ver ac2Fila).
+  ac2ActualizarRevHabilitado(id, b);
+}
+// Habilita/deshabilita el checkbox Rev de una fila según si la barra está lista para revisar.
+function ac2BarraLista(b){ return b.diam!=null && b.figura && ac2Validar(b).ok; }
+function ac2ActualizarRevHabilitado(id, b){
+  b=b||ac2BarraPorId(id); if(!b) return;
+  var chk=document.querySelector('#ac2row_'+id+' input.ac2rev'); if(!chk) return;
+  var lista=ac2BarraLista(b);
+  if (!lista && chk.checked){ chk.checked=false; b.rev=false; }   // si dejó de estar válida, se desmarca
+  chk.disabled=!lista;
+  chk.title=lista?'Marcar/desmarcar revisada':'Completa la barra (φ, figura y sus medidas) para poder revisarla.';
+}
+
+// Re-render GRANULAR: reemplaza SOLO el <tr> de esa barra (no toda la tabla). PRESERVA el foco:
+// el onchange dispara este re-render y recrea los inputs → si no re-enfocamos, el usuario pierde
+// el cursor (no puede seguir con Tab/flechas). Guardamos la celda enfocada (fila+col) y la
+// re-enfocamos tras re-pintar. focoCol = data-col a re-enfocar (por si el foco ya se movió).
+function ac2ReRenderFila(id, focoCol){
+  var b=ac2BarraPorId(id); if(!b) return;
+  // Si no se indicó, deducir la celda activa (la que tiene el foco ahora).
+  if (focoCol===undefined){
+    var act=document.activeElement;
+    if (act && act.classList && act.classList.contains('ac2nav')) focoCol={ row:act.getAttribute('data-row'), col:act.getAttribute('data-col') };
+  }
   var tr=document.getElementById('ac2row_'+id);
   if (tr) tr.outerHTML=ac2Fila(b);
+  // Re-enfocar la celda que estaba activa (misma fila+columna), si sigue existiendo.
+  if (focoCol && focoCol.row!=null){
+    var sel='input.ac2nav[data-row="'+focoCol.row+'"][data-col="'+focoCol.col+'"]';
+    var again=document.querySelector(sel);
+    if (again){ again.focus(); if(again.select) again.select(); }
+  }
 }
 // Refresca contador de revisadas + rollup sin reconstruir la tabla.
 function ac2ActualizarContadores(){
@@ -570,14 +627,19 @@ function ac2Payload(b){
   return it;
 }
 
-// 💾 GUARDAR: crea el lote (si no existe) y agrega las barras completas. NO termina el lote.
+// 💾 GUARDAR AVANCE: crea el lote (si no existe) y persiste las barras COMPLETAS y válidas. Las
+// incompletas NO se pierden: quedan en el formulario para seguir completándolas y guardarlas
+// después. (El backend solo acepta barras con geometría válida; guardar avance = fijar lo que ya
+// está listo, sin exigir terminar todo.)
 window.ac2Guardar=async function(){
   if (!AC2.proyecto){ alert('Elige primero una obra.'); return; }
   if (AC2.loteEstado==='terminada'){ alert('El lote está terminado; se edita desde Bar Manager.'); return; }
   var listas=ac2BarrasListas();
-  if (!listas.length){ alert('No hay barras completas y válidas para guardar.\nRevisa las celdas en rojo.'); return; }
-  var invalidas=AC2.barras.length-listas.length;
-  if (invalidas && !confirm(invalidas+' barra(s) incompletas o inválidas NO se guardarán. ¿Continuar con '+listas.length+'?')) return;
+  var pendientes=AC2.barras.filter(function(b){ return !b._guardada; }).length - listas.length;
+  if (!listas.length){
+    alert('Aún no hay ninguna barra COMPLETA para guardar.\n\nGuardar fija en el lote las barras que ya tienen φ, figura y sus medidas válidas. Las que están a medio llenar (celdas en rojo/vacías) se quedan en pantalla para que las completes; guarda de nuevo cuando estén listas.');
+    return;
+  }
   try{
     // 1) Crear lote si aún no existe.
     if (!AC2.loteId){
@@ -597,7 +659,10 @@ window.ac2Guardar=async function(){
     // ahí (el check "revisada" es por fila) y terminar el lote. NO se vacían.
     listas.forEach(function(b){ b._guardada=true; });
     ac2PintarEstado(); ac2Render(); ac2CargarLotes();
-    alert('✅ '+n+' barra(s) guardadas en el lote #'+AC2.loteId+'. Marca "Rev" en cada una y luego 🏁 Terminar.');
+    var msg='✅ '+n+' barra(s) guardadas en el lote #'+AC2.loteId+'.';
+    if (pendientes>0) msg+='\n\nQuedan '+pendientes+' barra(s) sin completar en el formulario — complétalas y vuelve a guardar.';
+    else msg+='\nMarca "Rev" en cada barra y luego 🏁 Terminar.';
+    alert(msg);
   }catch(e){ alert('Error de red al guardar. Reintenta.'); }
 };
 
