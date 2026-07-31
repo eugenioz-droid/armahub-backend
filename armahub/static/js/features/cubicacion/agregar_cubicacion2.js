@@ -613,6 +613,13 @@ async function _ac2Post(url, body){
   var data=null; try{ data=await res.json(); }catch(e){}
   return { ok:res.ok, status:res.status, data:data };
 }
+// GET a un endpoint SIN el prefijo /api/v1 (los /lotes van en raíz). Devuelve el JSON o null.
+async function _ac2Get(url){
+  var tok=localStorage.getItem('armahub_token');
+  var res=await fetch(url, { headers: tok?{Authorization:'Bearer '+tok}:{} });
+  if (!res.ok) return null;
+  try{ return await res.json(); }catch(e){ return null; }
+}
 
 // Barras COMPLETAS (con figura y φ) y NO guardadas aún, listas para guardar. Omite las que
 // están a medio llenar o las ya guardadas (para no duplicarlas al re-guardar).
@@ -718,22 +725,31 @@ window.ac2CrearEje=function(){
                : ('Eje NUEVO "'+txt+'" fijado para esta tanda. Se creará al guardar la primera barra.'));
 };
 
-// Carga los lotes de la obra en el repositorio (histórico). Usa /barras para contar/kg por lote.
-// Simplificado: por ahora lista el lote en curso; el listado completo por obra es mejora futura
-// (el backend aún no tiene GET /lotes?proyecto=X — ver gap de la auditoría).
-function ac2CargarLotes(){
+// Carga TODOS los lotes de la obra en el repositorio (GET /lotes?proyecto=X, con n_barras/kg
+// reales). Permite ver que los lotes guardados SIGUEN existiendo entre sesiones y (a futuro)
+// retomarlos. Los datos viven en BD; esta lista los muestra aunque recargues la página.
+async function ac2CargarLotes(){
   var tb=document.getElementById('ac2_lotesBody'); if(!tb) return;
   if (!AC2.proyecto){ tb.innerHTML='<tr><td colspan="7" style="padding:10px 8px; color:#90a4ae; font-style:italic; text-align:center;">Elige una obra para ver sus lotes.</td></tr>'; return; }
-  if (!AC2.loteId){ tb.innerHTML='<tr><td colspan="7" style="padding:10px 8px; color:#90a4ae; font-style:italic; text-align:center;">Aún no hay lotes creados en esta sesión.</td></tr>'; return; }
-  var estado = AC2.loteEstado==='terminada'
-    ? '<span style="background:#e8f5e9; color:#2e7d32; border:1px solid #a5d6a7; padding:1px 8px; border-radius:8px;">🏁 Terminado</span>'
-    : '<span style="background:#fff3e0; color:#e65100; border:1px solid #ffb74d; padding:1px 8px; border-radius:8px;">🚩 En edición</span>';
-  tb.innerHTML='<tr style="border-top:1px solid #f0f0f0;">'+
-    '<td style="padding:4px 8px; font-weight:600;">#'+AC2.loteId+'</td>'+
-    '<td style="padding:4px 8px;">'+ac2Esc(AC2.sector||'—')+' · '+ac2Esc(AC2.ciclo||'—')+' · '+ac2Esc(AC2.eje||'—')+'</td>'+
-    '<td style="padding:4px 8px;">'+estado+'</td>'+
-    '<td style="padding:4px 8px; text-align:right;">—</td><td style="padding:4px 8px; text-align:right;">—</td>'+
-    '<td style="padding:4px 8px; color:#888;">esta sesión</td><td style="padding:4px 8px;"></td></tr>';
+  var lotes=[];
+  try { var d=await _ac2Get('/lotes?proyecto='+encodeURIComponent(AC2.proyecto)); lotes=(d&&d.lotes)||[]; }
+  catch(e){ lotes=[]; }
+  if (!lotes.length){ tb.innerHTML='<tr><td colspan="7" style="padding:10px 8px; color:#90a4ae; font-style:italic; text-align:center;">Esta obra aún no tiene lotes.</td></tr>'; return; }
+  tb.innerHTML=lotes.map(function(l){
+    var esta=(l.id===AC2.loteId);
+    var estado = l.estado==='terminada'
+      ? '<span style="background:#e8f5e9; color:#2e7d32; border:1px solid #a5d6a7; padding:1px 8px; border-radius:8px;">🏁 Terminado</span>'
+      : '<span style="background:#fff3e0; color:#e65100; border:1px solid #ffb74d; padding:1px 8px; border-radius:8px;">🚩 En edición</span>';
+    var fecha=(l.creado_fecha||'').slice(0,10);
+    return '<tr style="border-top:1px solid #f0f0f0;'+(esta?' background:#f1f8e9;':'')+'">'+
+      '<td style="padding:4px 8px; font-weight:600;">#'+l.id+(esta?' •':'')+'</td>'+
+      '<td style="padding:4px 8px;">'+ac2Esc(l.sector||'—')+' · '+ac2Esc(l.ciclo||'—')+' · '+ac2Esc(l.eje||'—')+'</td>'+
+      '<td style="padding:4px 8px;">'+estado+'</td>'+
+      '<td style="padding:4px 8px; text-align:right;">'+(l.n_barras||0)+'</td>'+
+      '<td style="padding:4px 8px; text-align:right;">'+ac2Num(l.kg,1)+'</td>'+
+      '<td style="padding:4px 8px; color:#888;">'+ac2Esc(fecha)+'</td>'+
+      '<td style="padding:4px 8px; text-align:right; color:#90a4ae; font-size:10px;">'+(l.estado==='terminada'?'🔒':'')+'</td></tr>';
+  }).join('');
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -320,6 +320,37 @@ def agregar_barras(lote_id: int, body: BarrasBatch, user=Depends(get_current_use
     return {"ok": True, "lote_id": lote_id, "creadas": len(creadas), "id_unicos": creadas}
 
 
+@router.get("/lotes")
+def listar_lotes(proyecto: str, user=Depends(get_current_user)):
+    """Lista los lotes de una obra (para el repositorio del creador: retomar/ver lotes).
+    Cada lote trae conteo de barras y kg REALES (desde la tabla barras) + sector/ciclo/eje
+    representativos de la tanda (para mostrar de qué es el lote)."""
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            _check_permiso(cur, user)
+            cur.execute(
+                """
+                SELECT l.id, l.estado, l.creado_por, l.creado_fecha, l.terminado_fecha,
+                       COUNT(b.id_unico)                       AS n_barras,
+                       COALESCE(SUM(b.peso_total), 0)          AS kg,
+                       MIN(b.sector) AS sector, MIN(b.ciclo) AS ciclo, MIN(b.eje) AS eje
+                FROM lotes l
+                LEFT JOIN barras b ON b.lote_id = l.id
+                WHERE l.id_proyecto = %s
+                GROUP BY l.id, l.estado, l.creado_por, l.creado_fecha, l.terminado_fecha
+                ORDER BY l.id DESC
+                """,
+                (proyecto,),
+            )
+            lotes = [
+                {"id": r[0], "estado": r[1], "creado_por": r[2], "creado_fecha": r[3],
+                 "terminado_fecha": r[4], "n_barras": r[5], "kg": float(r[6] or 0),
+                 "sector": r[7], "ciclo": r[8], "eje": r[9]}
+                for r in cur.fetchall()
+            ]
+    return {"ok": True, "lotes": lotes}
+
+
 @router.get("/lotes/{lote_id}")
 def ver_lote(lote_id: int, user=Depends(get_current_user)):
     with get_conn() as conn:
