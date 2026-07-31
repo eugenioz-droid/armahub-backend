@@ -33,6 +33,7 @@ from .calculistas import router as calculistas_router
 from .catalogo import router as catalogo_router
 from .reclamos import router as reclamos_router
 from .notifications import router as notifications_router
+from .obra_config import router as obra_config_router
 
 
 def create_app() -> FastAPI:
@@ -76,12 +77,17 @@ def create_app() -> FastAPI:
     app.include_router(catalogo_router)
     app.include_router(reclamos_router)
     app.include_router(notifications_router)
+    # obra_config expone /proyectos/{id}/config y /pisos-combinados. Se monta IGUAL que
+    # barras_router (sin prefijo Y bajo /api/v1) porque comparte el espacio de rutas
+    # /proyectos; así el front lo consume por cualquiera de las dos bases, sin sorpresas.
+    app.include_router(obra_config_router)
 
     # --- API v1 (same routers under /api/v1 prefix) ---
     _api_routers = [
         auth_router, importer_router, barras_router, admin_router,
         export_router, pedidos_router, constructoras_router,
         calculistas_router, catalogo_router, reclamos_router, notifications_router,
+        obra_config_router,
     ]
     for r in _api_routers:
         app.include_router(r, prefix="/api/v1")
