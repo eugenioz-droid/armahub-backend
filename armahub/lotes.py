@@ -353,6 +353,12 @@ def listar_lotes(proyecto: str, user=Depends(get_current_user)):
 
 @router.get("/lotes/{lote_id}")
 def ver_lote(lote_id: int, user=Depends(get_current_user)):
+    """Estado del lote + SUS barras (para RETOMAR un lote en el creador). Trae los campos que el
+    formulario necesita para reconstruir cada barra (ubicación, diám, figura, dims, áng, revisada)."""
+    from .barras import BARRAS_COLUMNS
+    campos = ["sector", "piso", "ciclo", "eje", "marca", "figura", "diam", "cant", "mult",
+              "dim_a", "dim_b", "dim_c", "dim_d", "dim_e", "dim_f", "dim_g", "dim_h", "dim_i",
+              "ang1", "ang2", "ang3", "ang4", "radio", "revisada"]
     with get_conn() as conn:
         with conn.cursor() as cur:
             _check_permiso(cur, user)
@@ -364,7 +370,11 @@ def ver_lote(lote_id: int, user=Depends(get_current_user)):
                 raise HTTPException(status_code=404, detail="Lote no encontrado.")
             lote = {"id": r[0], "id_proyecto": r[1], "estado": r[2], "creado_por": r[3],
                     "creado_fecha": r[4], "terminado_fecha": r[5], "n_barras": r[6]}
-    return {"ok": True, "lote": lote}
+            cur.execute(
+                "SELECT " + ", ".join(campos) + " FROM barras WHERE lote_id = %s ORDER BY id",
+                (lote_id,))
+            barras = [dict(zip(campos, row)) for row in cur.fetchall()]
+    return {"ok": True, "lote": lote, "barras": barras}
 
 
 @router.get("/diametros-estandar")

@@ -756,15 +756,56 @@ async function ac2CargarLotes(){
       ? '<span style="background:#e8f5e9; color:#2e7d32; border:1px solid #a5d6a7; padding:1px 8px; border-radius:8px;">🏁 Terminado</span>'
       : '<span style="background:#fff3e0; color:#e65100; border:1px solid #ffb74d; padding:1px 8px; border-radius:8px;">🚩 En edición</span>';
     var fecha=(l.creado_fecha||'').slice(0,10);
-    return '<tr style="border-top:1px solid #f0f0f0;'+(esta?' background:#f1f8e9;':'')+'">'+
-      '<td style="padding:4px 8px; font-weight:600;">#'+l.id+(esta?' •':'')+'</td>'+
-      '<td style="padding:4px 8px;">'+ac2Esc(l.sector||'—')+' · '+ac2Esc(l.ciclo||'—')+' · '+ac2Esc(l.eje||'—')+'</td>'+
-      '<td style="padding:4px 8px;">'+estado+'</td>'+
-      '<td style="padding:4px 8px; text-align:right;">'+(l.n_barras||0)+'</td>'+
-      '<td style="padding:4px 8px; text-align:right;">'+ac2Num(l.kg,1)+'</td>'+
-      '<td style="padding:4px 8px; color:#888;">'+ac2Esc(fecha)+'</td>'+
-      '<td style="padding:4px 8px; text-align:right; color:#90a4ae; font-size:10px;">'+(l.estado==='terminada'?'🔒':'')+'</td></tr>';
+    // Fila COMPLETA como hiperlink: hover la resalta, click retoma el lote.
+    return '<tr class="ac2loterow" onclick="ac2RetomarLote('+l.id+')" title="Abrir este lote para verlo/seguir editándolo" style="border-top:1px solid #f0f0f0; cursor:pointer;'+(esta?' background:#f1f8e9;':'')+'">'+
+      '<td style="padding:6px 8px; font-weight:600; color:#558B2F;">#'+l.id+(esta?' •':'')+'</td>'+
+      '<td style="padding:6px 8px;">'+ac2Esc(l.sector||'—')+' · '+ac2Esc(l.ciclo||'—')+' · '+ac2Esc(l.eje||'—')+'</td>'+
+      '<td style="padding:6px 8px;">'+estado+'</td>'+
+      '<td style="padding:6px 8px; text-align:right;">'+(l.n_barras||0)+'</td>'+
+      '<td style="padding:6px 8px; text-align:right;">'+ac2Num(l.kg,1)+'</td>'+
+      '<td style="padding:6px 8px; color:#888;">'+ac2Esc(fecha)+'</td>'+
+      '<td style="padding:6px 8px; text-align:right; color:#558B2F; font-size:11px;">'+(l.estado==='terminada'?'🔒 ver':'✎ abrir')+'</td></tr>';
   }).join('');
+}
+
+// RETOMAR un lote: carga sus barras (GET /lotes/{id}) y reconstruye el formulario. Un lote
+// TERMINADO se abre en solo-lectura (sus barras se corrigen en Bar Manager). Uno en borrador
+// se puede seguir editando. Advierte si hay cambios sin guardar en el form actual.
+window.ac2RetomarLote=async function(id){
+  var pend=AC2.barras.filter(function(b){return !b._guardada;}).length;
+  if (pend && !confirm('Tienes '+pend+' barra(s) sin guardar en el formulario. Si abres otro lote se descartarán.\n\n¿Continuar?')) return;
+  var d=await _ac2Get('/lotes/'+id);
+  if (!d || !d.lote){ alert('No se pudo abrir el lote.'); return; }
+  var L=d.lote, bs=d.barras||[];
+  AC2.loteId=L.id; AC2.loteEstado=L.estado;
+  // Contexto del lote (de su primera barra): sector, estructura (se infiere de la marca), ciclo, eje.
+  var b0=bs[0]||{};
+  AC2.sector=b0.sector||''; AC2.ciclo=b0.ciclo||''; AC2.eje=b0.eje||'';
+  AC2.estructura=ac2EstructuraDeMarca(b0.marca)||AC2.estructura;
+  // Reconstruir las barras (todas ya guardadas → _guardada=true).
+  _ac2Seq=1;
+  AC2.barras=bs.map(function(x){
+    var nb=ac2NuevaBarra({ piso:x.piso||'', marca:x.marca||'', diam:x.diam, cant:x.cant, mult:x.mult,
+      figura:x.figura||'', radio:x.radio, rev:!!x.revisada });
+    AC2_DIMKEYS.forEach(function(k){ nb[k]=x[k]; });
+    ['ang1','ang2','ang3','ang4'].forEach(function(a){ nb[a]=x[a]; });
+    nb._guardada=true;
+    return nb;
+  });
+  // Sincronizar tipologías de la estructura + reflejar contexto en los comboboxes/chips.
+  if (AC2.estructura){ AC2_TIPOS=(AC2_TIPOS_MAP[AC2.estructura]||[]).map(function(t){return t.codigo;}); AC2_ORD_TIPO={}; AC2_TIPOS.forEach(function(t,i){ AC2_ORD_TIPO[t]=i; }); }
+  if (_ac2CbCiclo) _ac2CbCiclo.setValor({id:AC2.ciclo,label:AC2.ciclo});
+  if (_ac2CbEje)   _ac2CbEje.setValor({id:AC2.eje,label:AC2.eje});
+  AC2.tipo='TODOS';
+  ac2PintarSectorEstructura(); ac2PintarSubtabs(); ac2PintarEstado();
+  ac2SetTipo('TODOS'); ac2CargarLotes();
+  if (L.estado==='terminada') alert('Lote #'+L.id+' TERMINADO — solo lectura. Para corregir una barra, usa Bar Manager.');
+};
+// Deduce la estructura a partir de un código de marca/tipología (busca en el mapa).
+function ac2EstructuraDeMarca(m){
+  if (!m) return '';
+  for (var es in AC2_TIPOS_MAP){ if (AC2_TIPOS_MAP[es].some(function(t){return t.codigo===m;})) return es; }
+  return '';
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
