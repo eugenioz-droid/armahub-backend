@@ -85,6 +85,7 @@ function ac2DimsDeFigura(codigo){
 var AC2_FACTOR_EXTREMO=10;      // veces el diámetro
 var AC2_MM_A_CM=10;             // 1 cm = 10 mm (el diámetro viene en mm; las medidas en cm)
 var AC2_LARGO_INTERMEDIO=100;   // cm, estándar para lados intermedios
+var AC2_MIN_LADO_REL=0.28;      // en el render, ningún lado se dibuja menor a 28% del lado más grande (evita que los chicos se pierdan)
 // Valores por DEFECTO al elegir figura/diámetro (regla del cubicador, estilo ADetailer):
 //  - Ángulos: los del CATÁLOGO de la figura (f.angulos), se rellenan al elegir figura.
 //  - Lados EXTREMOS (1º y último parcial): AC2_FACTOR_EXTREMO × diámetro (al elegir diámetro).
@@ -186,12 +187,24 @@ function ac2FigSvg(b){
       // original (de geo.puntos → mantiene la orientación de la figura dibujada) pero con la
       // LONGITUD nueva (dims). Reconstruir desde `tramos` puros rotaba la figura (siempre
       // arrancaba hacia la derecha). Así escala cada lado y no cambia la orientación.
+      // LÍMITE A LADOS CHICOS: si un lado es enorme y otro diminuto, el motor escala todo al
+      // viewport y el chico se pierde. Comprimimos el rango dando a cada lado un mínimo relativo
+      // al lado más grande (AC2_MIN_LADO_REL). Se pierde algo de proporción realista (aceptado),
+      // pero los lados chicos siguen siendo visibles.
+      var largos=[];
+      for (var mi=0; mi<geo.tramos.length && mi+1<geo.puntos.length; mi++){
+        var dxm=geo.puntos[mi+1].x-geo.puntos[mi].x, dym=geo.puntos[mi+1].y-geo.puntos[mi].y;
+        var l0=Math.sqrt(dxm*dxm+dym*dym)||1;
+        var vm=dims[geo.tramos[mi].lado];
+        largos.push((vm!=null && !isNaN(vm) && vm>0) ? Number(vm) : l0);
+      }
+      var maxLado=Math.max.apply(null, largos.concat([1]));
+      var minLado=maxLado*AC2_MIN_LADO_REL;                          // piso visual por lado
       var op=geo.puntos, np=[{x:op[0].x, y:op[0].y}];
       for (var si=0; si<geo.tramos.length && si+1<op.length; si++){
         var dx=op[si+1].x-op[si].x, dy=op[si+1].y-op[si].y;
         var len0=Math.sqrt(dx*dx+dy*dy)||1;
-        var v=dims[geo.tramos[si].lado];
-        var lnew=(v!=null && !isNaN(v) && v>0) ? Number(v) : len0;   // longitud nueva o la original
+        var lnew=Math.max(largos[si], minLado);                      // longitud nueva, no menor al piso visual
         var ux=dx/len0, uy=dy/len0;                                  // dirección unitaria original
         var last=np[np.length-1];
         np.push({ x:last.x+ux*lnew, y:last.y+uy*lnew });
@@ -739,25 +752,32 @@ window.ac2CopiarSeleccionadas=function(){
 };
 // Duplicar las marcadas moviéndolas un piso (dir=+1 sube, dir=-1 baja). _ac2Pisos va de más
 // bajo (índice 0) a más alto, así que subir = índice+1, bajar = índice-1.
+// ORDENADO: las copias se insertan TODAS JUNTAS después de la última original (no intercaladas),
+// en el mismo orden en que estaban las originales, y quedan SELECCIONADAS (para encadenar +piso).
 window.ac2DuplicarPiso=function(dir){
   var ids=ac2IdsSeleccionados();
   if (!ids.length){ alert('Marca al menos una barra.'); return; }
   if (!_ac2Pisos.length){ alert('No hay pisos configurados en la obra.\nÁbrelos en ⚙ Configuración de obra para poder duplicar por piso.'); return; }
-  var nuevas=[], sinDestino=0;
-  ids.forEach(function(id){
-    var b=ac2BarraPorId(id); if(!b) return;
+  // Originales en su orden actual dentro de AC2.barras (para que las copias salgan ordenadas).
+  var origen=AC2.barras.filter(function(b){ return ids.indexOf(b._id)>=0; });
+  var copias=[], sinDestino=0, ultimoIdx=-1;
+  origen.forEach(function(b){
     var i=_ac2Pisos.indexOf(b.piso);
-    // Si la barra no tiene piso o no está en la plantilla, no sabemos a qué piso moverla.
-    if (i<0){ sinDestino++; return; }
+    if (i<0){ sinDestino++; return; }                          // sin piso / fuera de plantilla
     var j=i+dir;
-    if (j<0 || j>=_ac2Pisos.length){ sinDestino++; return; }   // ya está en el tope/piso más bajo
+    if (j<0 || j>=_ac2Pisos.length){ sinDestino++; return; }   // ya en el tope / piso más bajo
     var copia=JSON.parse(JSON.stringify(b)); copia._id=_ac2Seq++; copia.rev=false; delete copia._guardada;
     copia.piso=_ac2Pisos[j];
-    nuevas.push({copia:copia, tras:b});
+    copias.push(copia);
+    ultimoIdx=Math.max(ultimoIdx, AC2.barras.indexOf(b));      // insertaremos tras la última original
   });
-  if (!nuevas.length){ alert('Ninguna barra pudo moverse '+(dir>0?'un piso arriba':'un piso abajo')+'.\n(Ya están en el '+(dir>0?'piso más alto':'piso más bajo')+' o no tienen piso asignado.)'); return; }
-  nuevas.forEach(function(n){ AC2.barras.splice(AC2.barras.indexOf(n.tras)+1,0,n.copia); });
-  if (sinDestino) alert(nuevas.length+' barra(s) duplicada(s). '+sinDestino+' no se movieron (tope de pisos o sin piso).');
+  if (!copias.length){ alert('Ninguna barra pudo moverse '+(dir>0?'un piso arriba':'un piso abajo')+'.\n(Ya están en el '+(dir>0?'piso más alto':'piso más bajo')+' o no tienen piso asignado.)'); return; }
+  // Insertar el bloque de copias junto, tras la última original.
+  var args=[ultimoIdx+1,0].concat(copias);
+  Array.prototype.splice.apply(AC2.barras, args);
+  // La selección pasa a las copias (encadenar: duplicar +piso otra vez sube otro nivel).
+  AC2.seleccion={}; copias.forEach(function(c){ AC2.seleccion[c._id]=true; });
+  if (sinDestino) alert(copias.length+' barra(s) duplicada(s). '+sinDestino+' no se movieron (tope de pisos o sin piso).');
   ac2Render();
 };
 // Borrar las barras marcadas (con confirmación).

@@ -47,13 +47,15 @@ def _now_iso():
 
 
 def _piso_order(p: str) -> int:
-    """Orden de pisos: subterráneos (S2,S1..) primero (el más profundo primero, S2<S1) →
-    P1..Pn ascendente → SM/PM (sala de máquinas / techumbre) al final. Idéntico a
-    _piso_order de barras.py y a pisoOrder del front (fuente única de criterio)."""
+    """Orden de pisos: FUND (fundación) SIEMPRE al fondo → subterráneos (el más profundo
+    primero, S2<S1) → P1..Pn ascendente → SM/PM (sala de máquinas / techumbre) SIEMPRE
+    arriba. Idéntico a _piso_order de barras.py (fuente única de criterio)."""
     import re
     up = (p or "").upper().strip()
+    if up in ("FUND", "FUNDACION", "FUNDACIÓN"):
+        return -1000000       # fundación: bajo todo, siempre
     if up in ("SM", "PM", "SALA DE MAQUINAS"):
-        return 9999
+        return 9999           # sala de máquinas/techumbre: sobre todo, siempre
     m = re.match(r"^S(\d+)", up)
     if m:
         return -int(m.group(1))

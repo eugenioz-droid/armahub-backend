@@ -1550,10 +1550,14 @@ def eliminar_barra(id_unico: str, user=Depends(get_current_user)):
 import re as _re
 
 def _piso_order(p: str) -> int:
-    """Orden de pisos: subterráneos (S1,S2..) < P1,P2.. < SM/PM (techumbre) al final."""
+    """Orden de pisos: FUND (fundación) SIEMPRE al fondo < subterráneos (S2<S1) <
+    P1,P2.. < SM/PM (techumbre) SIEMPRE arriba. Fuente única del criterio (obra_config
+    y el front comparten). Un piso de texto libre desconocido cae en medio (0)."""
     up = (p or '').upper().strip()
+    if up in ('FUND', 'FUNDACION', 'FUNDACIÓN'):
+        return -1000000       # bajo todo, siempre
     if up in ('SM', 'PM', 'SALA DE MAQUINAS'):
-        return 9999
+        return 9999           # sobre todo, siempre
     m = _re.match(r'^S(\d+)', up)
     if m:
         return -int(m.group(1))
