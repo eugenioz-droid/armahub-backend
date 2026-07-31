@@ -475,8 +475,32 @@ window.ac2ToggleRev=function(id,el){
 //    FIGURA re-renderiza su fila (cambian qué dims pide). Casting numérico donde aplica. ──
 var AC2_CAMPOS_NUM={diam:1,cant:1,mult:1,radio:1,ang1:1,ang2:1,ang3:1,ang4:1,
   dim_a:1,dim_b:1,dim_c:1,dim_d:1,dim_e:1,dim_f:1,dim_g:1,dim_h:1,dim_i:1};
+// Muta SOLO el dato de una barra (casting numérico + defaults por figura/diámetro), sin re-render.
+// Lo usa la edición masiva en tándem para aplicar el mismo cambio a varias barras y re-render una vez.
+function ac2SetBarraDato(id, campo, valor){
+  var b=ac2BarraPorId(id); if(!b) return;
+  if (campo in AC2_CAMPOS_NUM){ var s=String(valor).trim(); b[campo]=(s===''?null:Number(s)); }
+  else b[campo]=valor;
+  if (campo==='figura') ac2AplicarDefaults(b,'figura');
+  else if (campo==='diam') ac2AplicarDefaults(b,'diam');
+}
 window.ac2SetBarra=function(id,campo,valor){
   var b=ac2BarraPorId(id); if(!b) return;
+  // EDICIÓN MASIVA EN TÁNDEM (igual que Bar Manager): si el modo masivo está activo y la barra
+  // editada está MARCADA, aplicar este mismo cambio (campo+valor) a TODAS las marcadas de una vez
+  // y re-render completo. Se maneja aparte (no cae al flujo granular de una sola fila).
+  if (AC2.masiva){
+    var chk=document.querySelector('.ac2sel[data-id="'+id+'"]');
+    if (chk && chk.checked){
+      var ids=ac2IdsSeleccionados();
+      if (ids.length>1){
+        ids.forEach(function(oid){ ac2SetBarraDato(oid, campo, valor); });
+        ac2Render();
+        ac2RestaurarSeleccion(ids);   // el re-render borra los checks → volver a marcarlos
+        return;
+      }
+    }
+  }
   if (campo in AC2_CAMPOS_NUM){ var s=String(valor).trim(); b[campo]=(s===''?null:Number(s)); }
   else b[campo]=valor;
   // Valores por defecto (rellena solo celdas vacías): al elegir figura → ángulos+intermedios;
@@ -620,6 +644,11 @@ function ac2SelResumen(){
 // ── ACCIONES MASIVAS: operan sobre las barras MARCADAS (checkbox .ac2sel:checked) ──
 function ac2IdsSeleccionados(){
   return [].slice.call(document.querySelectorAll('.ac2sel:checked')).map(function(c){ return Number(c.getAttribute('data-id')); });
+}
+// Vuelve a marcar los checkboxes de estos ids tras un re-render (que los recrea desmarcados).
+function ac2RestaurarSeleccion(ids){
+  ids.forEach(function(id){ var c=document.querySelector('.ac2sel[data-id="'+id+'"]'); if(c) c.checked=true; });
+  ac2SelFila();   // re-sincroniza los checks maestros de grupo + contador
 }
 // Columnas por tipo (mismo criterio que Bar Manager): lados A-I o ángulos α1-α4. R/φ/cant no aplican.
 var AC2_COLS_LADOS=[['dim_a','A'],['dim_b','B'],['dim_c','C'],['dim_d','D'],['dim_e','E'],['dim_f','F'],['dim_g','G'],['dim_h','H'],['dim_i','I']];
