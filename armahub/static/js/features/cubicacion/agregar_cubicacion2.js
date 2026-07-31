@@ -170,16 +170,31 @@ function ac2FigSvg(b){
     // original (deuda 5N.27: los radios aún no tienen geometría real).
     var geoUse=geo;
     var tieneDims=Object.keys(dims).length>0;
-    var escalable=(tieneDims && geo.tramos && geo.tramos.length && !f.radio && !(geo.etiquetas&&geo.etiquetas.length) && !geo.etiquetas_manda);
+    // Escalable = tiene tramos Y puntos dibujados (para tomar la orientación real), sin radio ni
+    // etiquetas manuales (deuda 5N.27).
+    var escalable=(tieneDims && geo.tramos && geo.tramos.length && geo.puntos && geo.puntos.length>=2
+                   && !f.radio && !(geo.etiquetas&&geo.etiquetas.length) && !geo.etiquetas_manda);
     if (escalable){
-      geoUse={}; for(var kk in geo) geoUse[kk]=geo[kk]; delete geoUse.puntos;   // copia sin puntos → escala
-      // MOSTRAR EL VALOR en vez de la letra: en cada tramo, la etiqueta (lado) pasa a ser la
-      // medida ingresada (ej. "150" en vez de "B"). Si un lado no tiene medida, deja la letra.
+      // PARAMÉTRICO SIN ROTAR: reconstruyo los PUNTOS conservando la DIRECCIÓN de cada segmento
+      // original (de geo.puntos → mantiene la orientación de la figura dibujada) pero con la
+      // LONGITUD nueva (dims). Reconstruir desde `tramos` puros rotaba la figura (siempre
+      // arrancaba hacia la derecha). Así escala cada lado y no cambia la orientación.
+      var op=geo.puntos, np=[{x:op[0].x, y:op[0].y}];
+      for (var si=0; si<geo.tramos.length && si+1<op.length; si++){
+        var dx=op[si+1].x-op[si].x, dy=op[si+1].y-op[si].y;
+        var len0=Math.sqrt(dx*dx+dy*dy)||1;
+        var v=dims[geo.tramos[si].lado];
+        var lnew=(v!=null && !isNaN(v) && v>0) ? Number(v) : len0;   // longitud nueva o la original
+        var ux=dx/len0, uy=dy/len0;                                  // dirección unitaria original
+        var last=np[np.length-1];
+        np.push({ x:last.x+ux*lnew, y:last.y+uy*lnew });
+      }
+      geoUse={}; for(var kk in geo) geoUse[kk]=geo[kk];
+      geoUse.puntos=np;                                              // puntos re-escalados, misma orientación
+      // MOSTRAR EL VALOR en vez de la letra en cada lado.
       geoUse.tramos=geo.tramos.map(function(tr){
-        var v=dims[tr.lado];
-        var nt={}; for(var kk2 in tr) nt[kk2]=tr[kk2];
-        if (v!=null) nt.lado=String(v);
-        return nt;
+        var vv=dims[tr.lado]; var nt={}; for(var k2 in tr) nt[k2]=tr[k2];
+        if (vv!=null) nt.lado=String(vv); return nt;
       });
     }
     try { return '<span style="display:inline-block; vertical-align:middle;">' +
