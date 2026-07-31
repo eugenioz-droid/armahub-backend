@@ -127,16 +127,21 @@
       <span id="ac2_ctx" style="font-size:11px; color:#666;"></span>
     </div>
 
-    <!-- Barra de acciones masivas (maqueta de botones; la lógica se cablea en Etapa interacción) -->
+    <!-- Barra de acciones masivas: operan sobre las barras MARCADAS. Copiar/intercambiar columnas
+         = mismo patrón que Bar Manager (solo entre lados↔lados o ángulos↔ángulos). -->
     <div id="ac2_masivaBar" style="display:none; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:8px; padding:6px 12px; background:#e8f5e9; border:1px solid #a5d6a7; border-radius:6px;">
       <span style="font-size:12px; color:#2e7d32; font-weight:700;">Acciones masivas</span>
-      <span id="ac2_selcount" style="font-size:11px; color:#2e7d32; min-width:120px;">ninguna seleccionada</span>
+      <span id="ac2_selcount" style="font-size:11px; color:#2e7d32; min-width:110px;">ninguna seleccionada</span>
       <span style="width:1px; height:20px; background:#a5d6a7;"></span>
-      <button style="font-size:11px; padding:4px 10px; background:#fff; color:#2e7d32; border:1px solid #2e7d32; border-radius:4px; cursor:pointer;" title="Aplicar φ/cant/figura a las seleccionadas">✎ Editar φ/cant…</button>
-      <button style="font-size:11px; padding:4px 10px; background:#fff; color:#2e7d32; border:1px solid #2e7d32; border-radius:4px; cursor:pointer;" title="Copiar el valor de una columna a las filas seleccionadas">⧉ Copiar columna…</button>
-      <button style="font-size:11px; padding:4px 10px; background:#fff; color:#2e7d32; border:1px solid #2e7d32; border-radius:4px; cursor:pointer;" title="Intercambiar los DATOS de dos columnas (no cambia la letra del lado)">⇄ Intercambiar columnas…</button>
-      <button style="font-size:11px; padding:4px 10px; background:#fff; color:#2e7d32; border:1px solid #2e7d32; border-radius:4px; cursor:pointer;" title="Duplicar las barras seleccionadas">⎘ Copiar seleccionadas</button>
-      <button style="font-size:11px; padding:4px 10px; background:#fff; color:#c62828; border:1px solid #c62828; border-radius:4px; cursor:pointer;" title="Eliminar las barras seleccionadas">🗑 Borrar seleccionadas</button>
+      <!-- Operar columnas: tipo (lados/ángulos) → origen [op] destino → aplicar -->
+      <select id="ac2ColTipo" onchange="ac2SetColTipo(this.value)" style="font-size:11px; padding:2px 4px;"><option value="lados">Lados</option><option value="angulos">Ángulos</option></select>
+      <select id="ac2ColOrigen" style="font-size:11px; padding:2px 4px;"></select>
+      <select id="ac2ColOp" onchange="ac2ColFlecha()" style="font-size:11px; padding:2px 4px;"><option value="copiar">copiar →</option><option value="intercambiar">intercambiar ↔</option></select>
+      <select id="ac2ColDestino" style="font-size:11px; padding:2px 4px;"></select>
+      <button onclick="ac2OperarColumnas()" style="font-size:11px; padding:4px 10px; background:#8BC34A; color:#fff; border:none; border-radius:4px; cursor:pointer;" title="Aplicar a las barras marcadas">Aplicar</button>
+      <span style="width:1px; height:20px; background:#a5d6a7;"></span>
+      <button onclick="ac2CopiarSeleccionadas()" style="font-size:11px; padding:4px 10px; background:#fff; color:#2e7d32; border:1px solid #2e7d32; border-radius:4px; cursor:pointer;" title="Duplicar las barras marcadas">⎘ Copiar seleccionadas</button>
+      <button onclick="ac2BorrarSeleccionadas()" style="font-size:11px; padding:4px 10px; background:#fff; color:#c62828; border:1px solid #c62828; border-radius:4px; cursor:pointer;" title="Eliminar las barras marcadas">🗑 Borrar seleccionadas</button>
       <div style="flex:1;"></div>
       <span style="font-size:11px; color:#2e7d32;">agrupado por tipología</span>
     </div>

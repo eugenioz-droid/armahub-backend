@@ -298,7 +298,7 @@ function ac2Fila(b){
   // Celda de dato con input; el input se marca ROJO (clase) si el campo está inválido.
   var tdDato=function(campo,w){ return '<td style="'+AC2_TDS+' text-align:right;">'+ac2Inp(b._id,campo,b[campo],w,!!val.rojas[campo])+'</td>'; };
   var h='<tr id="ac2row_'+b._id+'"'+(!val.ok?' title="Geometría inválida para la figura"':'')+'>';
-  if (AC2.masiva) h+='<td style="'+AC2_TDS+' text-align:center;"><input type="checkbox" class="ac2sel" data-grp="'+ac2Esc(b.marca)+'" onclick="ac2SelFila()"/></td>';
+  if (AC2.masiva) h+='<td style="'+AC2_TDS+' text-align:center;"><input type="checkbox" class="ac2sel" data-grp="'+ac2Esc(b.marca)+'" data-id="'+b._id+'" onclick="ac2SelFila()"/></td>';
   // Piso: <select> con los pisos configurados de la obra. Si la barra trae un piso que no está
   // en la lista (ej. retomado de un lote), se agrega como opción para no perderlo.
   var pisosOps=_ac2Pisos.slice();
@@ -457,6 +457,7 @@ window.ac2SetOrden=function(o){ AC2.orden=o;
 window.ac2ToggleMasiva=function(){ AC2.masiva=!AC2.masiva;
   var b=document.getElementById('ac2_masivaBtn'); b.style.background=AC2.masiva?'#2e7d32':'#fff'; b.style.color=AC2.masiva?'#fff':'#8BC34A'; b.style.borderColor=AC2.masiva?'#2e7d32':'#8BC34A';
   document.getElementById('ac2_masivaBar').style.display=AC2.masiva?'flex':'none';
+  if (AC2.masiva) ac2SetColTipo('lados');   // poblar dropdowns de columna al abrir
   ac2Render(); };
 window.ac2SetTam=function(t){ AC2.tam=t;
   ['s','m','l','xl'].forEach(function(x){ var b=document.getElementById('ac2r_'+x); if(b){var on=(t===x); b.style.background=on?'#8BC34A':'#fff'; b.style.color=on?'#fff':'#607d8b';} });
@@ -616,6 +617,60 @@ function ac2SelResumen(){
   var nsel=document.querySelectorAll('.ac2sel:checked').length;
   s.textContent = nsel? (nsel+' seleccionada'+(nsel>1?'s':'')) : 'ninguna seleccionada';
 }
+// ── ACCIONES MASIVAS: operan sobre las barras MARCADAS (checkbox .ac2sel:checked) ──
+function ac2IdsSeleccionados(){
+  return [].slice.call(document.querySelectorAll('.ac2sel:checked')).map(function(c){ return Number(c.getAttribute('data-id')); });
+}
+// Columnas por tipo (mismo criterio que Bar Manager): lados A-I o ángulos α1-α4. R/φ/cant no aplican.
+var AC2_COLS_LADOS=[['dim_a','A'],['dim_b','B'],['dim_c','C'],['dim_d','D'],['dim_e','E'],['dim_f','F'],['dim_g','G'],['dim_h','H'],['dim_i','I']];
+var AC2_COLS_ANG=[['ang1','α1'],['ang2','α2'],['ang3','α3'],['ang4','α4']];
+// Puebla los dropdowns de columna origen/destino con el grupo del tipo activo.
+window.ac2SetColTipo=function(tipo){
+  var cols=(tipo==='angulos')?AC2_COLS_ANG:AC2_COLS_LADOS;
+  var opts=cols.map(function(c){ return '<option value="'+c[0]+'">'+c[1]+'</option>'; }).join('');
+  var so=document.getElementById('ac2ColOrigen'), sd=document.getElementById('ac2ColDestino');
+  if(so) so.innerHTML=opts; if(sd){ sd.innerHTML=opts; if(sd.options.length>1) sd.selectedIndex=1; }
+  ac2ColFlecha();
+};
+window.ac2ColFlecha=function(){
+  var op=document.getElementById('ac2ColOp'); if(!op) return;
+  // (la flecha ya está en el texto de la opción; nada extra que hacer, hook por consistencia)
+};
+// Copiar/intercambiar una columna a otra (mismo tipo) en las barras MARCADAS. Igual que Bar Manager.
+window.ac2OperarColumnas=function(){
+  var ids=ac2IdsSeleccionados();
+  if (!ids.length){ alert('Marca al menos una barra.'); return; }
+  var op=(document.getElementById('ac2ColOp')||{}).value||'copiar';
+  var origen=(document.getElementById('ac2ColOrigen')||{}).value;
+  var destino=(document.getElementById('ac2ColDestino')||{}).value;
+  if (!origen||!destino) return;
+  if (origen===destino){ alert('La columna de origen y destino deben ser distintas.'); return; }
+  ids.forEach(function(id){
+    var b=ac2BarraPorId(id); if(!b) return;
+    if (op==='intercambiar'){ var t=b[destino]; b[destino]=b[origen]; b[origen]=t; }
+    else { b[destino]=b[origen]; }   // copiar: origen → destino
+  });
+  ac2Render();   // re-render (cambian dims → largo/peso/validación/dibujo de varias filas)
+};
+// Duplicar las barras marcadas (cada una debajo de sí misma).
+window.ac2CopiarSeleccionadas=function(){
+  var ids=ac2IdsSeleccionados();
+  if (!ids.length){ alert('Marca al menos una barra.'); return; }
+  ids.forEach(function(id){
+    var b=ac2BarraPorId(id); if(!b) return;
+    var copia=JSON.parse(JSON.stringify(b)); copia._id=_ac2Seq++; copia.rev=false; delete copia._guardada;
+    AC2.barras.splice(AC2.barras.indexOf(b)+1,0,copia);
+  });
+  ac2Render();
+};
+// Borrar las barras marcadas (con confirmación).
+window.ac2BorrarSeleccionadas=function(){
+  var ids=ac2IdsSeleccionados();
+  if (!ids.length){ alert('Marca al menos una barra.'); return; }
+  if (!confirm('Borrar '+ids.length+' barra(s) seleccionada(s)?\n(Las ya guardadas en el lote no se tocan hasta guardar.)')) return;
+  AC2.barras=AC2.barras.filter(function(b){ return ids.indexOf(b._id)<0; });
+  ac2Render();
+};
 // ── Estado visual del badge/bandera según el estado del lote (sin número inventado) ──
 function ac2PintarEstado(){
   var b=document.getElementById('ac2_bandera'), badge=document.getElementById('ac2_estadoBadge');
