@@ -106,12 +106,14 @@
         </div>
       </div>
       <span style="width:1px; height:22px; background:#ddd; margin:0 4px;"></span>
-      <!-- Orden: solo relevante en TODOS (en un subtab hay una sola tipología). -->
-      <span id="ac2_ordenWrap" style="display:none; align-items:center; gap:6px;">
+      <!-- Orden/agrupación de la grilla: Creación (sin agrupar) · Piso · Tipología. Aplica en
+           subtabs y en TODOS. En un subtab, "Tipología" no agrupa (hay una sola). -->
+      <span id="ac2_ordenWrap" style="display:inline-flex; align-items:center; gap:6px;">
         <span style="font-size:11px; color:#666; font-weight:600;">Orden:</span>
         <div style="display:inline-flex; border:1px solid #8BC34A; border-radius:4px; overflow:hidden;">
-          <button id="ac2o_piso" onclick="ac2SetOrden('piso')" style="font-size:11px; padding:4px 10px; border:none; background:#8BC34A; color:#fff; cursor:pointer;">Piso</button>
-          <button id="ac2o_tipo" onclick="ac2SetOrden('tipo')" style="font-size:11px; padding:4px 10px; border:none; background:#fff; color:#558B2F; cursor:pointer;">Tipología</button>
+          <button id="ac2o_creacion" onclick="ac2SetOrden('creacion')" style="font-size:11px; padding:4px 10px; border:none; background:#fff; color:#558B2F; cursor:pointer;">Creación</button>
+          <button id="ac2o_piso" onclick="ac2SetOrden('piso')" style="font-size:11px; padding:4px 10px; border:none; border-left:1px solid #8BC34A; background:#8BC34A; color:#fff; cursor:pointer;">Piso</button>
+          <button id="ac2o_tipo" onclick="ac2SetOrden('tipo')" style="font-size:11px; padding:4px 10px; border:none; border-left:1px solid #8BC34A; background:#fff; color:#558B2F; cursor:pointer;">Tipología</button>
         </div>
       </span>
       <button id="ac2_masivaBtn" onclick="ac2ToggleMasiva()" style="font-size:11px; padding:5px 10px; background:#fff; color:#558B2F; border:1px solid #8BC34A; border-radius:4px; cursor:pointer;">☑ Acciones masivas</button>
@@ -129,21 +131,28 @@
 
     <!-- Barra de acciones masivas: operan sobre las barras MARCADAS. Copiar/intercambiar columnas
          = mismo patrón que Bar Manager (solo entre lados↔lados o ángulos↔ángulos). -->
-    <div id="ac2_masivaBar" style="display:none; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:8px; padding:6px 12px; background:#e8f5e9; border:1px solid #a5d6a7; border-radius:6px;">
-      <span style="font-size:12px; color:#2e7d32; font-weight:700;">Acciones masivas</span>
-      <span id="ac2_selcount" style="font-size:11px; color:#2e7d32; min-width:110px;">ninguna seleccionada</span>
-      <span style="width:1px; height:20px; background:#a5d6a7;"></span>
-      <!-- Operar columnas: tipo (lados/ángulos) → origen [op] destino → aplicar -->
-      <select id="ac2ColTipo" onchange="ac2SetColTipo(this.value)" style="font-size:11px; padding:2px 4px;"><option value="lados">Lados</option><option value="angulos">Ángulos</option></select>
-      <select id="ac2ColOrigen" style="font-size:11px; padding:2px 4px;"></select>
-      <select id="ac2ColOp" onchange="ac2ColFlecha()" style="font-size:11px; padding:2px 4px;"><option value="copiar">copiar →</option><option value="intercambiar">intercambiar ↔</option></select>
-      <select id="ac2ColDestino" style="font-size:11px; padding:2px 4px;"></select>
-      <button onclick="ac2OperarColumnas()" style="font-size:11px; padding:4px 10px; background:#8BC34A; color:#fff; border:none; border-radius:4px; cursor:pointer;" title="Aplicar a las barras marcadas">Aplicar</button>
-      <span style="width:1px; height:20px; background:#a5d6a7;"></span>
-      <button onclick="ac2CopiarSeleccionadas()" style="font-size:11px; padding:4px 10px; background:#fff; color:#2e7d32; border:1px solid #2e7d32; border-radius:4px; cursor:pointer;" title="Duplicar las barras marcadas">⎘ Copiar seleccionadas</button>
-      <button onclick="ac2BorrarSeleccionadas()" style="font-size:11px; padding:4px 10px; background:#fff; color:#c62828; border:1px solid #c62828; border-radius:4px; cursor:pointer;" title="Eliminar las barras marcadas">🗑 Borrar seleccionadas</button>
-      <div style="flex:1;"></div>
-      <span style="font-size:11px; color:#2e7d32;">agrupado por tipología</span>
+    <div id="ac2_masivaBar" style="display:none; flex-direction:column; gap:6px; margin-bottom:8px; padding:6px 12px; background:#e8f5e9; border:1px solid #a5d6a7; border-radius:6px;">
+      <!-- NIVEL 1: selección + operar columnas -->
+      <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+        <span style="font-size:12px; color:#2e7d32; font-weight:700;">Acciones masivas</span>
+        <span id="ac2_selcount" style="font-size:11px; color:#2e7d32; min-width:110px;">ninguna seleccionada</span>
+        <span style="width:1px; height:20px; background:#a5d6a7;"></span>
+        <!-- Operar columnas: tipo (lados/ángulos) → origen [op] destino → aplicar -->
+        <select id="ac2ColTipo" onchange="ac2SetColTipo(this.value)" style="font-size:11px; padding:2px 4px;"><option value="lados">Lados</option><option value="angulos">Ángulos</option></select>
+        <select id="ac2ColOrigen" style="font-size:11px; padding:2px 4px;"></select>
+        <select id="ac2ColOp" onchange="ac2ColFlecha()" style="font-size:11px; padding:2px 4px;"><option value="copiar">copiar →</option><option value="intercambiar">intercambiar ↔</option></select>
+        <select id="ac2ColDestino" style="font-size:11px; padding:2px 4px;"></select>
+        <button onclick="ac2OperarColumnas()" style="font-size:11px; padding:4px 10px; background:#8BC34A; color:#fff; border:none; border-radius:4px; cursor:pointer;" title="Aplicar a las barras marcadas">Aplicar</button>
+        <div style="flex:1;"></div>
+        <button onclick="ac2BorrarSeleccionadas()" style="font-size:11px; padding:4px 10px; background:#fff; color:#c62828; border:1px solid #c62828; border-radius:4px; cursor:pointer;" title="Eliminar las barras marcadas">🗑 Borrar seleccionadas</button>
+      </div>
+      <!-- NIVEL 2: duplicado -->
+      <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; border-top:1px dashed #a5d6a7; padding-top:6px;">
+        <span style="font-size:11px; color:#2e7d32; font-weight:600;">Duplicar:</span>
+        <button onclick="ac2DuplicarPiso(1)" style="font-size:11px; padding:4px 10px; background:#fff; color:#2e7d32; border:1px solid #2e7d32; border-radius:4px; cursor:pointer;" title="Duplica las barras marcadas y las sube un piso">⎘ +piso ▲</button>
+        <button onclick="ac2DuplicarPiso(-1)" style="font-size:11px; padding:4px 10px; background:#fff; color:#2e7d32; border:1px solid #2e7d32; border-radius:4px; cursor:pointer;" title="Duplica las barras marcadas y las baja un piso">⎘ -piso ▼</button>
+        <button onclick="ac2CopiarSeleccionadas()" style="font-size:11px; padding:4px 10px; background:#fff; color:#2e7d32; border:1px solid #2e7d32; border-radius:4px; cursor:pointer;" title="Duplica las barras marcadas en el mismo piso">⎘ Duplicar seleccionados</button>
+      </div>
     </div>
 
     <!-- GRILLA -->

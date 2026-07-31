@@ -214,14 +214,26 @@ function ac2FigSvg(b){
 
 // Orden de marca para agrupar (las conocidas primero en su orden; el resto al final alfabético).
 function ac2OrdMarca(m){ return (m in AC2_ORD_TIPO) ? AC2_ORD_TIPO[m] : 90; }
+// Orden de piso según la plantilla de la obra (_ac2Pisos: S2,S1,P1..Pn,SM). Los que no están
+// en la plantilla van al final. Respeta el orden lógico configurado, más el manual (ac2MoverGrupo).
+function ac2OrdPiso(p){ var i=(_ac2PisosOrden.length?_ac2PisosOrden:_ac2Pisos).indexOf(p); return i<0?9999:i; }
+var _ac2PisosOrden=[];   // orden manual de grupos de piso (flechas subir/bajar); vacío = usa _ac2Pisos
+
+// AC2.orden ∈ 'creacion' | 'piso' | 'tipo'. Filtra por el subtab (o TODOS) y ordena/agrupa.
 function ac2Visibles(){
   var arr = AC2.barras.filter(function(b){ return AC2.tipo==='TODOS' || b.marca===AC2.tipo; });
-  var porTipo = (AC2.tipo==='TODOS' && AC2.orden==='tipo') || AC2.masiva;
-  arr.sort(function(a,b){ return porTipo
-    ? ((ac2OrdMarca(a.marca)-ac2OrdMarca(b.marca)) || String(a.piso).localeCompare(String(b.piso)))
-    : (String(a.piso).localeCompare(String(b.piso)) || (ac2OrdMarca(a.marca)-ac2OrdMarca(b.marca))); });
+  if (AC2.orden==='creacion'){
+    // Orden de CREACIÓN = el orden real en AC2.barras (por _id incremental).
+    arr.sort(function(a,b){ return a._id-b._id; });
+  } else if (AC2.orden==='piso'){
+    arr.sort(function(a,b){ return (ac2OrdPiso(a.piso)-ac2OrdPiso(b.piso)) || (ac2OrdMarca(a.marca)-ac2OrdMarca(b.marca)) || (a._id-b._id); });
+  } else { // 'tipo'
+    arr.sort(function(a,b){ return (ac2OrdMarca(a.marca)-ac2OrdMarca(b.marca)) || (ac2OrdPiso(a.piso)-ac2OrdPiso(b.piso)) || (a._id-b._id); });
+  }
   return arr;
 }
+// ¿Se agrupa la vista? (por piso o por tipología). En creación no se agrupa.
+function ac2AgrupaPor(){ return (AC2.orden==='piso') ? 'piso' : (AC2.orden==='tipo' ? 'marca' : null); }
 function ac2BarraPorId(id){ for(var i=0;i<AC2.barras.length;i++){ if(AC2.barras[i]._id===id) return AC2.barras[i]; } return null; }
 
 function ac2Thead(){
@@ -300,7 +312,10 @@ function ac2Fila(b){
   // Celda de dato con input; el input se marca ROJO (clase) si el campo está inválido.
   var tdDato=function(campo,w){ return '<td style="'+AC2_TDS+' text-align:right;">'+ac2Inp(b._id,campo,b[campo],w,!!val.rojas[campo])+'</td>'; };
   var h='<tr id="ac2row_'+b._id+'"'+(!val.ok?' title="Geometría inválida para la figura"':'')+'>';
-  if (AC2.masiva) h+='<td style="'+AC2_TDS+' text-align:center;"><input type="checkbox" class="ac2sel" data-grp="'+ac2Esc(b.marca)+'" data-id="'+b._id+'"'+(AC2.seleccion[b._id]?' checked':'')+' onclick="ac2SelFila(this)"/></td>';
+  // data-grp = valor del campo por el que se agrupa (piso o marca), para que el maestro del
+  // header de grupo encuentre a sus hijos. En "creación" (sin agrupar) no hay maestro, da igual.
+  if (AC2.masiva){ var gc=ac2AgrupaPor(); var grpVal=(gc==='piso')?(b.piso||''):b.marca;
+    h+='<td style="'+AC2_TDS+' text-align:center;"><input type="checkbox" class="ac2sel" data-grp="'+ac2Esc(grpVal)+'" data-id="'+b._id+'"'+(AC2.seleccion[b._id]?' checked':'')+' onclick="ac2SelFila(this)"/></td>'; }
   // Piso: <select> con los pisos configurados de la obra. Si la barra trae un piso que no está
   // en la lista (ej. retomado de un lote), se agrega como opción para no perderlo.
   var pisosOps=_ac2Pisos.slice();
@@ -348,13 +363,18 @@ function ac2Fila(b){
   return h;
 }
 
-function ac2GrupoHdr(tipo, cnt){
-  // cols = masiva(0/1) + Piso + [Tipo] + φ+Cant+Largo+Peso+Figura(5) + [Dibujo] + 9 lados
-  //        + 4 áng + R + Rev + acciones.
+// Header de grupo. porPiso=true muestra flechas para reordenar el grupo (subir/bajar). El check
+// maestro de grupo (masiva) se genera con data-grp = valor del grupo.
+function ac2GrupoHdr(valor, cnt, porPiso){
   var cols = (AC2.masiva?1:0) + 1 + (AC2.tipo==='TODOS'?1:0) + 5 + (AC2.render?1:0) + 9 + 4 + 1 + 1 + 1;
+  var flechas = porPiso
+    ? '<span style="float:right; white-space:nowrap;">'+
+      '<span onclick="ac2MoverGrupo(\''+ac2Esc(valor)+'\',-1)" title="Subir este piso" style="cursor:pointer; color:#558B2F; margin-left:6px;">▲</span>'+
+      '<span onclick="ac2MoverGrupo(\''+ac2Esc(valor)+'\',1)" title="Bajar este piso" style="cursor:pointer; color:#558B2F; margin-left:4px;">▼</span></span>'
+    : '';
   return '<tr style="background:#eef2f3;"><td colspan="'+cols+'" style="padding:3px 8px; border-top:1px solid #ddd; font-weight:700; color:#37474f;">'+
-    (AC2.masiva?'<input type="checkbox" class="ac2grp" data-grp="'+ac2Esc(tipo)+'" onclick="ac2SelGrupo(this)" style="vertical-align:middle; margin-right:6px;" title="Marcar/desmarcar todo el grupo '+ac2Esc(tipo)+'"/>':'')+
-    '▎'+ac2Esc(tipo)+' · '+cnt+' barra'+(cnt>1?'s':'')+'</td></tr>';
+    (AC2.masiva?'<input type="checkbox" class="ac2grp" data-grp="'+ac2Esc(valor)+'" onclick="ac2SelGrupo(this)" style="vertical-align:middle; margin-right:6px;" title="Marcar/desmarcar todo el grupo"/>':'')+
+    '▎'+ac2Esc(valor||'(sin '+(porPiso?'piso':'tipo')+')')+' · '+cnt+' barra'+(cnt>1?'s':'')+flechas+'</td></tr>';
 }
 
 window.ac2Render=function(){
@@ -372,12 +392,23 @@ window.ac2Render=function(){
     var cx=document.getElementById('ac2_ctx'); if(cx) cx.innerHTML=ac2CtxText();
     return;
   }
-  var agrupar=((AC2.tipo==='TODOS' && AC2.orden==='tipo') || AC2.masiva);
+  var grupoCampo=ac2AgrupaPor();   // 'piso' | 'marca' | null (creación = sin agrupar)
   var html='<table style="width:100%; min-width:1150px; font-size:11px; border-collapse:collapse; white-space:nowrap;"><thead>'+ac2Thead()+'</thead><tbody>';
-  if (agrupar) {
-    var actual=null;
-    arr.forEach(function(b){ if(b.marca!==actual){ actual=b.marca; html+=ac2GrupoHdr(actual, arr.filter(function(x){return x.marca===actual;}).length); } html+=ac2Fila(b); });
-  } else arr.forEach(function(b){ html+=ac2Fila(b); });
+  if (grupoCampo) {
+    var porPiso=(grupoCampo==='piso'), actual=null;
+    arr.forEach(function(b){
+      var v=b[grupoCampo];
+      if(v!==actual){ actual=v; html+=ac2GrupoHdr(v, arr.filter(function(x){return x[grupoCampo]===v;}).length, porPiso); }
+      html+=ac2Fila(b);
+    });
+  } else {
+    // Sin agrupar (orden por creación): separador SUTIL entre filas de distinto piso.
+    var pisoAnt=null;
+    arr.forEach(function(b){
+      if (pisoAnt!==null && b.piso!==pisoAnt) html+='<tr class="ac2sep"><td colspan="99" style="height:4px; background:#f5f7f5; border-top:2px solid #e3ebe0; padding:0;"></td></tr>';
+      pisoAnt=b.piso; html+=ac2Fila(b);
+    });
+  }
   html+='</tbody></table>';
   cont.innerHTML=html;
   ac2ActualizarContadores();                        // rollup + revisadas + inválidas (una sola fuente)
@@ -449,13 +480,23 @@ function ac2ActualizarBotonesCrear(){
 window.ac2SetTipo=function(t){
   AC2.tipo=t;
   AC2_TIPOS.concat(['TODOS']).forEach(function(x){ var b=document.getElementById('ac2t_'+x); if(b) b.className='ac2tab'+(x===t?' on':''); });
-  document.getElementById('ac2_ordenWrap').style.display=(t==='TODOS')?'inline-flex':'none';
   ac2ActualizarBotonesCrear();
   ac2Render();
 };
-window.ac2SetOrden=function(o){ AC2.orden=o;
-  ['piso','tipo'].forEach(function(x){ var b=document.getElementById('ac2o_'+x); if(b){var on=(o===x); b.style.background=on?'#8BC34A':'#fff'; b.style.color=on?'#fff':'#8BC34A';} });
+window.ac2SetOrden=function(o){ AC2.orden=o; _ac2PisosOrden=[];   // reset del orden manual de grupos
+  ['creacion','piso','tipo'].forEach(function(x){ var b=document.getElementById('ac2o_'+x); if(b){var on=(o===x); b.style.background=on?'#8BC34A':'#fff'; b.style.color=on?'#fff':'#558B2F';} });
   ac2Render(); };
+// Sube/baja un grupo de PISO en el orden de la grilla (flechas del header). dir=-1 sube, +1 baja.
+window.ac2MoverGrupo=function(piso, dir){
+  // Construir el orden actual de pisos visibles (según el orden vigente).
+  var base=_ac2PisosOrden.length?_ac2PisosOrden.slice():null;
+  if(!base){ base=[]; ac2Visibles().forEach(function(b){ if(base.indexOf(b.piso)<0) base.push(b.piso); }); }
+  var i=base.indexOf(piso); if(i<0) return;
+  var j=i+dir; if(j<0||j>=base.length) return;
+  var t=base[i]; base[i]=base[j]; base[j]=t;   // swap
+  _ac2PisosOrden=base;
+  ac2Render();
+};
 window.ac2ToggleMasiva=function(){ AC2.masiva=!AC2.masiva;
   var b=document.getElementById('ac2_masivaBtn'); b.style.background=AC2.masiva?'#2e7d32':'#fff'; b.style.color=AC2.masiva?'#fff':'#8BC34A'; b.style.borderColor=AC2.masiva?'#2e7d32':'#8BC34A';
   document.getElementById('ac2_masivaBar').style.display=AC2.masiva?'flex':'none';
@@ -694,6 +735,29 @@ window.ac2CopiarSeleccionadas=function(){
     var copia=JSON.parse(JSON.stringify(b)); copia._id=_ac2Seq++; copia.rev=false; delete copia._guardada;
     AC2.barras.splice(AC2.barras.indexOf(b)+1,0,copia);
   });
+  ac2Render();
+};
+// Duplicar las marcadas moviéndolas un piso (dir=+1 sube, dir=-1 baja). _ac2Pisos va de más
+// bajo (índice 0) a más alto, así que subir = índice+1, bajar = índice-1.
+window.ac2DuplicarPiso=function(dir){
+  var ids=ac2IdsSeleccionados();
+  if (!ids.length){ alert('Marca al menos una barra.'); return; }
+  if (!_ac2Pisos.length){ alert('No hay pisos configurados en la obra.\nÁbrelos en ⚙ Configuración de obra para poder duplicar por piso.'); return; }
+  var nuevas=[], sinDestino=0;
+  ids.forEach(function(id){
+    var b=ac2BarraPorId(id); if(!b) return;
+    var i=_ac2Pisos.indexOf(b.piso);
+    // Si la barra no tiene piso o no está en la plantilla, no sabemos a qué piso moverla.
+    if (i<0){ sinDestino++; return; }
+    var j=i+dir;
+    if (j<0 || j>=_ac2Pisos.length){ sinDestino++; return; }   // ya está en el tope/piso más bajo
+    var copia=JSON.parse(JSON.stringify(b)); copia._id=_ac2Seq++; copia.rev=false; delete copia._guardada;
+    copia.piso=_ac2Pisos[j];
+    nuevas.push({copia:copia, tras:b});
+  });
+  if (!nuevas.length){ alert('Ninguna barra pudo moverse '+(dir>0?'un piso arriba':'un piso abajo')+'.\n(Ya están en el '+(dir>0?'piso más alto':'piso más bajo')+' o no tienen piso asignado.)'); return; }
+  nuevas.forEach(function(n){ AC2.barras.splice(AC2.barras.indexOf(n.tras)+1,0,n.copia); });
+  if (sinDestino) alert(nuevas.length+' barra(s) duplicada(s). '+sinDestino+' no se movieron (tope de pisos o sin piso).');
   ac2Render();
 };
 // Borrar las barras marcadas (con confirmación).
