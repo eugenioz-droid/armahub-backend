@@ -922,10 +922,26 @@ function _ac2PisoMasBajo(){ return _ac2Pisos.length ? _ac2Pisos[0] : ''; }
 function ac2PintarMenuPisos(){
   var cont=document.getElementById('ac2_pisosLista'); if(!cont) return;
   if (!_ac2Pisos.length){ cont.innerHTML='<span style="color:#90a4ae; font-style:italic;">No hay pisos configurados. Ábrelos en ⚙ Configuración de obra.</span>'; return; }
-  cont.innerHTML=_ac2Pisos.map(function(p){
-    return '<label style="display:block; font-size:12px; padding:2px 0; cursor:pointer;"><input type="checkbox" class="ac2piso" value="'+ac2Esc(p)+'"/> '+ac2Esc(p)+'</label>';
+  // Check MAESTRO (marca/desmarca todos) arriba, separado de la lista de pisos.
+  var maestro='<label style="display:block; font-size:12px; font-weight:700; padding:2px 0; cursor:pointer; color:#546e7a;"><input type="checkbox" id="ac2_pisoAll" onclick="ac2PisosTodos(this)"/> Todos</label>'+
+    '<div style="border-top:1px solid #eee; margin:4px 0;"></div>';
+  cont.innerHTML=maestro+_ac2Pisos.map(function(p){
+    return '<label style="display:block; font-size:12px; padding:2px 0; cursor:pointer;"><input type="checkbox" class="ac2piso" value="'+ac2Esc(p)+'" onclick="ac2PisosSync()"/> '+ac2Esc(p)+'</label>';
   }).join('');
 }
+// Check maestro: marca/desmarca todos los pisos.
+window.ac2PisosTodos=function(el){
+  document.querySelectorAll('.ac2piso').forEach(function(c){ c.checked=el.checked; });
+  el.indeterminate=false;
+};
+// Al marcar un piso individual: sincroniza el maestro (todos / ninguno / indeterminado).
+window.ac2PisosSync=function(){
+  var todos=[].slice.call(document.querySelectorAll('.ac2piso'));
+  var marc=todos.filter(function(c){return c.checked;}).length;
+  var all=document.getElementById('ac2_pisoAll'); if(!all) return;
+  all.checked=(marc>0 && marc===todos.length);
+  all.indeterminate=(marc>0 && marc<todos.length);
+};
 
 // Tipologías reales por estructura (GET /tipologias, con figuras embebidas). La API ordena por
 // código (ALFABÉTICO), pero el orden CORRECTO es el funcional del catálogo (MH,MV,TR,EC,TC,CB…),
