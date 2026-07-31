@@ -38,6 +38,28 @@
         <input type="text" id="ac2_eje" style="font-size:13px; height:34px; box-sizing:border-box;" />
       </div>
       <button onclick="ac2CrearEje()" style="font-size:12px; height:34px; padding:0 14px; background:#fff; color:#558B2F; border:1px dashed #8BC34A; border-radius:4px; cursor:pointer;">＋ Crear Eje</button>
+      <div style="flex:1;"></div>
+      <button onclick="ac2AbrirConfig()" title="Pisos, ciclos, factores y restricciones de la obra" style="font-size:12px; height:34px; padding:0 14px; background:#fff; color:#546e7a; border:1px solid #b0bec5; border-radius:4px; cursor:pointer;">⚙ Configuración de obra</button>
+    </div>
+
+    <!-- MODAL: Configuración de obra (pisos/ciclos/ejes/factores). Se abre desde el botón ⚙.
+         Carga GET /proyectos/{id}/config; guarda con PUT. No sale del creador. -->
+    <div id="ac2_cfgModal" style="display:none; position:fixed; inset:0; z-index:200; background:rgba(0,0,0,.35);">
+      <div style="max-width:720px; margin:40px auto; background:#fff; border-radius:10px; box-shadow:0 10px 40px rgba(0,0,0,.25); max-height:88vh; overflow-y:auto;">
+        <div style="display:flex; align-items:center; gap:10px; padding:14px 18px; border-bottom:1px solid #eee;">
+          <h3 style="margin:0; color:#558B2F; font-size:16px;">⚙ Configuración de obra</h3>
+          <span id="ac2_cfgObra" style="font-size:12px; color:#90a4ae;"></span>
+          <div style="flex:1;"></div>
+          <button onclick="ac2CerrarConfig()" style="font-size:16px; background:none; border:none; cursor:pointer; color:#90a4ae;">✕</button>
+        </div>
+        <div id="ac2_cfgBody" style="padding:16px 18px;">
+          <div style="color:#90a4ae; text-align:center; padding:20px;">Cargando…</div>
+        </div>
+        <div style="display:flex; gap:8px; justify-content:flex-end; padding:12px 18px; border-top:1px solid #eee;">
+          <button onclick="ac2CerrarConfig()" style="font-size:12px; padding:6px 14px; background:#fff; color:#607d8b; border:1px solid #cfd8dc; border-radius:4px; cursor:pointer;">Cerrar</button>
+          <button id="ac2_cfgGuardar" onclick="ac2GuardarConfig()" style="font-size:12px; padding:6px 16px; background:#8BC34A; color:#fff; border:none; border-radius:4px; cursor:pointer;">💾 Guardar configuración</button>
+        </div>
+      </div>
     </div>
 
     <!-- FILA 2 · Sector + Estructura (se BLOQUEAN al elegir; 🔓 solo si lote vacío) -->

@@ -51,6 +51,9 @@ var AC2_DIMKEYS=['dim_a','dim_b','dim_c','dim_d','dim_e','dim_f','dim_g','dim_h'
 // Catálogo de figuras (GET /figuras-catalogo). _ac2Figuras[codigo] = {parciales,angulos,radio,geometria}.
 var _ac2Figuras = {};
 var _ac2Seq = 1;   // correlativo para _id estable de cada barra (handlers/id de fila)
+// Pisos disponibles de la obra (combinados: existentes + plantilla), para el <select> de la
+// grilla y el menú "＋barras M". Se cargan al elegir obra (GET /pisos-combinados).
+var _ac2Pisos = [];   // ['S2','S1','P1',...] en orden lógico (subterráneos → P1..Pn → SM)
 
 // Crea una barra NUEVA con el shape del backend (dim_a..i, marca, etc.). En un subtab la barra
 // nace con esa tipología; en TODOS nace SIN marca (el cubicador la elige en el selector de la
@@ -296,8 +299,13 @@ function ac2Fila(b){
   var tdDato=function(campo,w){ return '<td style="'+AC2_TDS+' text-align:right;">'+ac2Inp(b._id,campo,b[campo],w,!!val.rojas[campo])+'</td>'; };
   var h='<tr id="ac2row_'+b._id+'"'+(!val.ok?' title="Geometría inválida para la figura"':'')+'>';
   if (AC2.masiva) h+='<td style="'+AC2_TDS+' text-align:center;"><input type="checkbox" class="ac2sel" data-grp="'+ac2Esc(b.marca)+'" onclick="ac2SelFila()"/></td>';
-  // Piso (texto libre editable).
-  h+='<td style="'+AC2_TDS+'"><input type="text" value="'+ac2Esc(b.piso)+'" class="ac2cell ac2nav" data-col="piso" data-row="'+b._id+'" style="width:44px; text-align:left;" onchange="ac2SetBarra('+b._id+',\'piso\',this.value)" onkeydown="ac2NavKey(event,this)"/></td>';
+  // Piso: <select> con los pisos configurados de la obra. Si la barra trae un piso que no está
+  // en la lista (ej. retomado de un lote), se agrega como opción para no perderlo.
+  var pisosOps=_ac2Pisos.slice();
+  if (b.piso && pisosOps.indexOf(b.piso)<0) pisosOps.unshift(b.piso);
+  var opPiso='<option value=""'+(b.piso?'':' selected')+'>—</option>'+
+    pisosOps.map(function(p){ return '<option'+(p===b.piso?' selected':'')+'>'+ac2Esc(p)+'</option>'; }).join('');
+  h+='<td style="'+AC2_TDS+'"><select class="ac2cell ac2nav" data-col="piso" data-row="'+b._id+'" style="width:56px; text-align:left;" onchange="ac2SetBarra('+b._id+',\'piso\',this.value)" onkeydown="ac2NavKey(event,this)">'+opPiso+'</select></td>';
   // Tipología (marca) — select solo en TODOS; en un subtab está implícita. Opción vacía para
   // barras nuevas sin tipología aún (en TODOS nacen sin marca; el cubicador la elige acá).
   if (mostrarTipo){
@@ -563,7 +571,8 @@ function ac2PuedeCrear(){
 }
 window.ac2AgregarBarra=function(){
   if (!ac2PuedeCrear()) return;
-  AC2.barras.push(ac2NuevaBarra({ piso:'' }));
+  // Nace en el piso MÁS BAJO configurado (ya poblado); el cubicador lo cambia si quiere.
+  AC2.barras.push(ac2NuevaBarra({ piso:_ac2PisoMasBajo() }));
   ac2PintarSectorEstructura();   // al haber barras, sector/estructura se bloquean
   ac2Render();
 };
@@ -800,6 +809,7 @@ window.ac2RetomarLote=async function(id){
   if (_ac2CbEje)   _ac2CbEje.setValor({id:AC2.eje,label:AC2.eje});
   AC2.tipo='TODOS';
   ac2PintarSectorEstructura(); ac2PintarSubtabs(); ac2PintarEstado();
+  _ac2CargarPisos();   // pisos de la obra para el <select> de la grilla
   ac2SetTipo('TODOS'); ac2CargarLotes();
   if (L.estado==='terminada') alert('Lote #'+L.id+' TERMINADO — solo lectura. Para corregir una barra, usa Bar Manager.');
 };
@@ -859,7 +869,8 @@ function _ac2InitComboboxes(){
         _ac2CiclosObra=[]; _ac2EjesObra=[];
         ac2PintarEstado(); ac2PintarSectorEstructura(); ac2PintarSubtabs();
         ac2ActualizarBotonesCrear(); ac2Render(); ac2CargarLotes();
-        if (AC2.proyecto) _ac2CargarContexto(AC2.proyecto);
+        _ac2Pisos=[]; ac2PintarMenuPisos();
+        if (AC2.proyecto){ _ac2CargarContexto(AC2.proyecto); _ac2CargarPisos(); }
       }
     });
   }
@@ -893,6 +904,27 @@ async function _ac2CargarFiguras(){
   figs.forEach(function(f){ if(f && f.codigo) _ac2Figuras[f.codigo]=f; });
   var dl=document.getElementById('ac2_figDatalist');
   if (dl) dl.innerHTML=figs.map(function(f){ return '<option value="'+ac2Esc(f.codigo)+'"></option>'; }).join('');
+}
+
+// Pisos disponibles de la obra (GET /proyectos/{id}/pisos-combinados): plantilla ∪ existentes,
+// ordenados (subterráneos → P1..Pn → SM). Alimenta el <select> de piso de la grilla y el menú
+// "＋barras M". Se llama al elegir obra y tras guardar la config.
+async function _ac2CargarPisos(){
+  _ac2Pisos=[];
+  if (!AC2.proyecto) { ac2PintarMenuPisos(); return; }
+  try { var d=await _ac2Get('/proyectos/'+encodeURIComponent(AC2.proyecto)+'/pisos-combinados');
+        _ac2Pisos=((d&&d.pisos)||[]).map(function(p){ return p.valor; }); } catch(e){ _ac2Pisos=[]; }
+  ac2PintarMenuPisos();
+}
+// Piso por defecto = el MÁS BAJO configurado (primero de la lista ya ordenada: S2 antes que P1).
+function _ac2PisoMasBajo(){ return _ac2Pisos.length ? _ac2Pisos[0] : ''; }
+// Puebla el menú "＋barras M" con checkboxes de los pisos reales de la obra.
+function ac2PintarMenuPisos(){
+  var cont=document.getElementById('ac2_pisosLista'); if(!cont) return;
+  if (!_ac2Pisos.length){ cont.innerHTML='<span style="color:#90a4ae; font-style:italic;">No hay pisos configurados. Ábrelos en ⚙ Configuración de obra.</span>'; return; }
+  cont.innerHTML=_ac2Pisos.map(function(p){
+    return '<label style="display:block; font-size:12px; padding:2px 0; cursor:pointer;"><input type="checkbox" class="ac2piso" value="'+ac2Esc(p)+'"/> '+ac2Esc(p)+'</label>';
+  }).join('');
 }
 
 // Tipologías reales por estructura (GET /tipologias, con figuras embebidas). La API ordena por
@@ -932,6 +964,123 @@ async function loadAgregarCubicacion2(){
   ac2SetTipo(AC2.tipo || 'TODOS');   // re-sincroniza subtabs + re-pinta el grid al (re)entrar
 }
 window.loadAgregarCubicacion2 = loadAgregarCubicacion2;
+
+// ═════════════════════════════════════════════════════════════════════════════
+// PANEL "⚙ Configuración de obra" (5N.26): modal con pisos/ciclos (plantilla + derivados),
+// factor de peso y valores por defecto. GET/PUT /proyectos/{id}/config. No sale del creador.
+// La config es PLANTILLA de opciones (no compite con lo derivado de barras). Los pisos/ciclos
+// que YA tienen barras se muestran bloqueados (no borrables: para eso se limpia la data).
+// ═════════════════════════════════════════════════════════════════════════════
+var AC2_CFG = { pisos:[], ciclos:[], factor_peso:0, factor_extremo:10, largo_intermedio:100, existP:{}, existC:{} };
+
+window.ac2AbrirConfig=async function(){
+  if (!AC2.proyecto){ alert('Elige primero una obra.'); return; }
+  document.getElementById('ac2_cfgObra').textContent='Obra '+ac2Esc(AC2.proyecto);
+  document.getElementById('ac2_cfgModal').style.display='block';
+  document.getElementById('ac2_cfgBody').innerHTML='<div style="color:#90a4ae; text-align:center; padding:20px;">Cargando…</div>';
+  var d=await _ac2Get('/proyectos/'+encodeURIComponent(AC2.proyecto)+'/config');
+  if (!d){ document.getElementById('ac2_cfgBody').innerHTML='<div style="color:#c62828; text-align:center; padding:20px;">No se pudo cargar la configuración.</div>'; return; }
+  // Pisos/ciclos a mostrar = plantilla ∪ existentes. Marcar cuáles tienen barras (no borrables).
+  AC2_CFG.existP={}; (d.pisos_existentes||[]).forEach(function(x){ AC2_CFG.existP[x.valor]=!!x.tiene_barras; });
+  AC2_CFG.existC={}; (d.ciclos_existentes||[]).forEach(function(x){ AC2_CFG.existC[x.valor]=!!x.tiene_barras; });
+  // Lista combinada: existentes primero (en su orden), luego los de plantilla que no estén.
+  AC2_CFG.pisos = _ac2CfgUnir((d.pisos_existentes||[]).map(function(x){return x.valor;}), d.pisos_plantilla||[]);
+  AC2_CFG.ciclos= _ac2CfgUnir((d.ciclos_existentes||[]).map(function(x){return x.valor;}), d.ciclos_plantilla||[]);
+  // Si la obra está LIMPIA (sin pisos existentes ni plantilla) → default.
+  if (!AC2_CFG.pisos.length) AC2_CFG.pisos=['S2','S1','P1','P2','P3','P4','P5','P6','P7','P8','P9','P10','SM'];
+  AC2_CFG.factor_peso=Number(d.factor_peso)||0;
+  AC2_CFG.factor_extremo=Number(d.factor_extremo)||10;
+  AC2_CFG.largo_intermedio=Number(d.largo_intermedio)||100;
+  ac2CfgRender();
+};
+function _ac2CfgUnir(a,b){ var out=a.slice(); b.forEach(function(v){ if(out.indexOf(v)<0) out.push(v); }); return out; }
+window.ac2CerrarConfig=function(){ document.getElementById('ac2_cfgModal').style.display='none'; };
+
+function ac2CfgRender(){
+  var body=document.getElementById('ac2_cfgBody'); if(!body) return;
+  body.innerHTML =
+    ac2CfgSeccionLista('Pisos', 'piso', AC2_CFG.pisos, AC2_CFG.existP,
+      'Los pisos disponibles para elegir al crear barras. Los que ya tienen barras no se pueden quitar.') +
+    ac2CfgSeccionLista('Ciclos', 'ciclo', AC2_CFG.ciclos, AC2_CFG.existC,
+      'Ciclos de la obra. Deja listos los que uses.') +
+    '<div style="margin:16px 0 8px; border-top:1px solid #eee; padding-top:12px;">'+
+      '<div style="font-weight:700; color:#37474f; font-size:13px; margin-bottom:8px;">Factores</div>'+
+      ac2CfgCampoNum('Factor de peso (%)', 'factor_peso', AC2_CFG.factor_peso, 'Se suma al peso teórico. 0 = sin ajuste.')+
+      ac2CfgCampoNum('Largo por defecto de extremos (× φ)', 'factor_extremo', AC2_CFG.factor_extremo, 'Los lados extremos nacen con este factor × diámetro (en cm).')+
+      ac2CfgCampoNum('Largo por defecto de lados intermedios (cm)', 'largo_intermedio', AC2_CFG.largo_intermedio, '')+
+    '</div>'+
+    // Restricciones: solo placeholder (diseño futuro, 5N.29).
+    '<div style="margin:16px 0 0; border-top:1px solid #eee; padding-top:12px;">'+
+      '<div style="font-weight:700; color:#37474f; font-size:13px; margin-bottom:4px;">Restricciones <span style="font-weight:400; color:#b0bec5; font-size:11px;">(próximamente)</span></div>'+
+      '<div style="font-size:11px; color:#90a4ae; font-style:italic;">Normativa · Fabricación · Particulares de barras — generarán bloqueos en la grilla. En diseño.</div>'+
+    '</div>';
+}
+
+// Sección de lista editable (pisos/ciclos): chips con los valores; los que tienen barras van
+// bloqueados (🔒, no se pueden quitar); botón para agregar uno nuevo.
+function ac2CfgSeccionLista(titulo, tipo, lista, exist, ayuda){
+  var chips=lista.map(function(v){
+    var bloq=!!exist[v];
+    return '<span style="display:inline-flex; align-items:center; gap:4px; font-size:12px; padding:3px 8px; margin:2px; border-radius:12px; border:1px solid #cfd8dc; background:'+(bloq?'#eceff1':'#f1f8e9')+'; color:#37474f;">'+
+      ac2Esc(v)+ (bloq?' <span title="Tiene barras — no se puede quitar">🔒</span>'
+        : ' <span onclick="ac2CfgQuitar(\''+tipo+'\',\''+ac2Esc(v)+'\')" title="Quitar" style="cursor:pointer; color:#c62828; font-weight:700;">✕</span>')+'</span>';
+  }).join(' ');
+  return '<div style="margin-bottom:12px;">'+
+    '<div style="font-weight:700; color:#37474f; font-size:13px;">'+titulo+'</div>'+
+    (ayuda?'<div style="font-size:10.5px; color:#90a4ae; margin:2px 0 6px;">'+ayuda+'</div>':'')+
+    '<div style="margin-bottom:6px;">'+(chips||'<span style="color:#b0bec5; font-size:11px; font-style:italic;">— ninguno —</span>')+'</div>'+
+    '<input id="ac2cfg_new_'+tipo+'" type="text" placeholder="agregar '+tipo+'…" style="font-size:12px; padding:3px 8px; border:1px solid #cfd8dc; border-radius:4px; width:140px;" onkeydown="if(event.key===\'Enter\'){ac2CfgAgregar(\''+tipo+'\');event.preventDefault();}"/>'+
+    '<button onclick="ac2CfgAgregar(\''+tipo+'\')" style="font-size:11px; padding:4px 10px; margin-left:4px; background:#8BC34A; color:#fff; border:none; border-radius:4px; cursor:pointer;">＋ agregar</button>'+
+    '</div>';
+}
+function ac2CfgCampoNum(label, campo, val, ayuda){
+  return '<div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">'+
+    '<label style="font-size:12px; color:#546e7a; min-width:260px;">'+label+'</label>'+
+    '<input id="ac2cfg_'+campo+'" type="number" value="'+ac2Esc(val)+'" style="font-size:12px; width:90px; padding:2px 6px; border:1px solid #cfd8dc; border-radius:4px; text-align:right;"/>'+
+    (ayuda?'<span style="font-size:10.5px; color:#b0bec5;">'+ayuda+'</span>':'')+'</div>';
+}
+
+window.ac2CfgAgregar=function(tipo){
+  var inp=document.getElementById('ac2cfg_new_'+tipo); if(!inp) return;
+  var v=(inp.value||'').trim(); if(!v) return;
+  var lista=(tipo==='piso')?AC2_CFG.pisos:AC2_CFG.ciclos;
+  if (lista.indexOf(v)<0) lista.push(v);
+  inp.value=''; ac2CfgRender();
+  var again=document.getElementById('ac2cfg_new_'+tipo); if(again) again.focus();
+};
+window.ac2CfgQuitar=function(tipo, v){
+  var exist=(tipo==='piso')?AC2_CFG.existP:AC2_CFG.existC;
+  if (exist[v]){ alert('"'+v+'" tiene barras; no se puede quitar. Para eliminarlo, primero limpia sus barras.'); return; }
+  var lista=(tipo==='piso')?AC2_CFG.pisos:AC2_CFG.ciclos;
+  var i=lista.indexOf(v); if(i>=0) lista.splice(i,1);
+  ac2CfgRender();
+};
+
+window.ac2GuardarConfig=async function(){
+  // Leer los factores de sus inputs (las listas ya están en AC2_CFG).
+  var fp=parseFloat(document.getElementById('ac2cfg_factor_peso').value); if(isNaN(fp)) fp=0;
+  var fe=parseFloat(document.getElementById('ac2cfg_factor_extremo').value); if(isNaN(fe)) fe=10;
+  var li=parseFloat(document.getElementById('ac2cfg_largo_intermedio').value); if(isNaN(li)) li=100;
+  var body={ pisos_plantilla:AC2_CFG.pisos, ciclos_plantilla:AC2_CFG.ciclos,
+             factor_peso:fp, factor_extremo:fe, largo_intermedio:li };
+  var r=await _ac2Put('/proyectos/'+encodeURIComponent(AC2.proyecto)+'/config', body);
+  if (!r || !r.ok){ alert('No se pudo guardar la configuración.'); return; }
+  // Reflejar en el creador: factores por defecto vigentes + pisos combinados para la grilla.
+  AC2_FACTOR_EXTREMO=fe; AC2_LARGO_INTERMEDIO=li; AC2_CFG.factor_peso=fp;
+  await _ac2CargarPisos();
+  ac2CerrarConfig();
+  alert('✅ Configuración de la obra guardada.');
+};
+
+// PUT sin prefijo /api/v1 (config va en raíz también, coherente con el resto).
+async function _ac2Put(url, body){
+  var tok=localStorage.getItem('armahub_token');
+  var res=await fetch(url, { method:'PUT',
+    headers: Object.assign({'Content-Type':'application/json'}, tok?{Authorization:'Bearer '+tok}:{}),
+    body: JSON.stringify(body||{}) });
+  var data=null; try{ data=await res.json(); }catch(e){}
+  return res.ok ? Object.assign({ok:true}, data) : { ok:false, status:res.status, data:data };
+}
 
 // Init al cargar el módulo (el markup ya está en el DOM por el {% include %}). El loader
 // del tab vuelve a correr al activarlo; ambas rutas son idempotentes.
