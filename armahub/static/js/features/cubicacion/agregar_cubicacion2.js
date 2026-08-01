@@ -252,8 +252,8 @@ function ac2BarraPorId(id){ for(var i=0;i<AC2.barras.length;i++){ if(AC2.barras[
 function ac2Thead(){
   var mostrarTipo = (AC2.tipo==='TODOS');   // en subtab se oculta la columna Tipología
   var h='<tr style="color:#666; background:#fafafa;">';
-  // Solo en modo masivo, un check de SELECCIÓN al inicio (para acciones masivas).
-  if (AC2.masiva) h+='<th style="padding:3px 6px; text-align:center; width:22px;" title="Seleccionar">☑</th>';
+  // Solo en modo masivo, el check MACRO al inicio: marca/desmarca TODAS las barras visibles.
+  if (AC2.masiva) h+='<th style="padding:3px 6px; text-align:center; width:22px;"><input type="checkbox" id="ac2_selTodo" onclick="ac2SelTodo(this)" title="Marcar/desmarcar todas"/></th>';
   h+='<th style="text-align:left; padding:3px 6px;">Piso</th>';
   if (mostrarTipo) h+='<th style="text-align:left; padding:3px 6px;">Tipología</th>';
   h+='<th style="text-align:right; padding:3px 6px;">φ</th><th style="text-align:right; padding:3px 6px;">Cant</th>';
