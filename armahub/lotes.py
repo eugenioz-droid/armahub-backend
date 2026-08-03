@@ -303,7 +303,7 @@ def agregar_barras(lote_id: int, body: BarrasBatch, user=Depends(get_current_use
                        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s, %s,%s,%s,%s,%s,%s,%s,%s,
                                %s,%s,%s,%s,%s,%s,%s,%s,%s, %s,%s,%s,%s,%s,
                                %s,%s,%s,
-                               'manual', NULL, %s, 'borrador', %s, %s, %s)""",
+                               'manual', NULL, %s, 'borrador', %s, %s, %s) RETURNING id""",
                     (idu, id_proyecto, b.sector, b.piso, b.ciclo, b.eje, b.nombre_plano, b.diam, largo,
                      b.mult, b.cant, cant_total, peso_u, peso_t, b.marca, b.figura, cod_prod,
                      b.dim_a, b.dim_b, b.dim_c, b.dim_d, b.dim_e, b.dim_f, b.dim_g, b.dim_h, b.dim_i,
@@ -311,7 +311,7 @@ def agregar_barras(lote_id: int, body: BarrasBatch, user=Depends(get_current_use
                      bool(b.revisada), rev_por, rev_fecha,
                      lote_id, now, email, now),
                 )
-                creadas.append(idu)
+                creadas.append({"id": cur.fetchone()[0], "id_unico": idu})   # id numérico + id_unico
                 sectores_tocados.add((b.sector, b.piso, b.ciclo))
             # Actualizar contador del lote.
             cur.execute(
@@ -327,7 +327,10 @@ def agregar_barras(lote_id: int, body: BarrasBatch, user=Depends(get_current_use
                 pass
     _cache.invalidate("stats:", "landing:")
     audit(email, "crear_barras_manual", f"{len(creadas)} barras · lote {lote_id}", "lote", str(lote_id))
-    return {"ok": True, "lote_id": lote_id, "creadas": len(creadas), "id_unicos": creadas}
+    # Devolvemos id numérico + id_unico de cada barra creada (en orden), para que el front asocie
+    # cada barra del formulario con su id de BD y pueda luego marcarla revisada (/revisar) sin re-insertar.
+    return {"ok": True, "lote_id": lote_id, "creadas": len(creadas),
+            "ids": [c["id"] for c in creadas], "id_unicos": [c["id_unico"] for c in creadas]}
 
 
 @router.delete("/lotes/{lote_id}")
@@ -403,7 +406,9 @@ def ver_lote(lote_id: int, user=Depends(get_current_user)):
     """Estado del lote + SUS barras (para RETOMAR un lote en el creador). Trae los campos que el
     formulario necesita para reconstruir cada barra (ubicación, diám, figura, dims, áng, revisada)."""
     from .barras import BARRAS_COLUMNS
-    campos = ["sector", "piso", "ciclo", "eje", "marca", "figura", "diam", "cant", "mult",
+    # Incluimos `id` (id de BD) para que el front lo asocie a cada barra (_dbid) y pueda sincronizar
+    # su estado "revisada" (/revisar) al terminar un lote retomado.
+    campos = ["id", "sector", "piso", "ciclo", "eje", "marca", "figura", "diam", "cant", "mult",
               "dim_a", "dim_b", "dim_c", "dim_d", "dim_e", "dim_f", "dim_g", "dim_h", "dim_i",
               "ang1", "ang2", "ang3", "ang4", "radio", "revisada"]
     with get_conn() as conn:

@@ -380,10 +380,13 @@ function ac2Fila(b){
 // maestro de grupo (masiva) se genera con data-grp = valor del grupo.
 function ac2GrupoHdr(valor, cnt, porPiso){
   var cols = (AC2.masiva?1:0) + 1 + (AC2.tipo==='TODOS'?1:0) + 5 + (AC2.render?1:0) + 9 + 4 + 1 + 1 + 1;
+  // Flechas para reordenar el PISO completo (solo en modo agrupado-por-piso). Botones claros con
+  // texto "mover piso" para que se entienda que actúan sobre el grupo, no sobre una fila.
+  var b=function(dir,fl,tit){ return '<button onclick="ac2MoverGrupo(\''+ac2Esc(valor)+'\','+dir+')" title="'+tit+'" '+
+    'style="font-size:11px; line-height:1; padding:2px 6px; margin-left:4px; background:#fff; color:#558B2F; border:1px solid #8BC34A; border-radius:3px; cursor:pointer;">'+fl+'</button>'; };
   var flechas = porPiso
-    ? '<span style="float:right; white-space:nowrap;">'+
-      '<span onclick="ac2MoverGrupo(\''+ac2Esc(valor)+'\',-1)" title="Subir este piso" style="cursor:pointer; color:#558B2F; margin-left:6px;">▲</span>'+
-      '<span onclick="ac2MoverGrupo(\''+ac2Esc(valor)+'\',1)" title="Bajar este piso" style="cursor:pointer; color:#558B2F; margin-left:4px;">▼</span></span>'
+    ? '<span style="float:right; white-space:nowrap; font-weight:400;"><span style="font-size:10px; color:#78909c; margin-right:2px;">mover piso</span>'+
+      b(-1,'▲','Subir este piso')+b(1,'▼','Bajar este piso')+'</span>'
     : '';
   return '<tr style="background:#eef2f3;"><td colspan="'+cols+'" style="padding:3px 8px; border-top:1px solid #ddd; font-weight:700; color:#37474f;">'+
     (AC2.masiva?'<input type="checkbox" class="ac2grp" data-grp="'+ac2Esc(valor)+'" onclick="ac2SelGrupo(this)" style="vertical-align:middle; margin-right:6px;" title="Marcar/desmarcar todo el grupo"/>':'')+
@@ -542,13 +545,14 @@ window.ac2SetOrden=function(o){ AC2.orden=o; _ac2PisosOrden=[];   // reset del o
   ac2Render(); };
 // Sube/baja un grupo de PISO en el orden de la grilla (flechas del header). dir=-1 sube, +1 baja.
 window.ac2MoverGrupo=function(piso, dir){
-  // Construir el orden actual de pisos visibles (según el orden vigente).
-  var base=_ac2PisosOrden.length?_ac2PisosOrden.slice():null;
-  if(!base){ base=[]; ac2Visibles().forEach(function(b){ if(base.indexOf(b.piso)<0) base.push(b.piso); }); }
+  // SIEMPRE partimos del orden VISIBLE actual (los pisos que tienen barras, en el orden en que se
+  // muestran) para que el swap sea consistente aunque _ac2PisosOrden esté vacío o desactualizado.
+  var base=[];
+  ac2Visibles().forEach(function(b){ if(base.indexOf(b.piso)<0) base.push(b.piso); });
   var i=base.indexOf(piso); if(i<0) return;
-  var j=i+dir; if(j<0||j>=base.length) return;
-  var t=base[i]; base[i]=base[j]; base[j]=t;   // swap
-  _ac2PisosOrden=base;
+  var j=i+dir; if(j<0||j>=base.length) return;   // ya en el tope/fondo
+  var t=base[i]; base[i]=base[j]; base[j]=t;      // swap con el vecino
+  _ac2PisosOrden=base;                            // este orden manda en ac2OrdPiso
   ac2Render();
 };
 window.ac2ToggleMasiva=function(){ AC2.masiva=!AC2.masiva;
@@ -567,6 +571,13 @@ window.ac2ToggleRev=function(id,el){
   if (el.checked && !ac2BarraLista(b)){ el.checked=false; return; }
   b.rev=el.checked;
   ac2ActualizarContadores();
+  // Si la barra YA está guardada, persistir el estado revisada al instante (/revisar). Antes
+  // vivía solo en el front y la BD no se enteraba → la bandera veía "sin revisar" (bug). Las
+  // barras aún NO guardadas viajan con revisada en ac2Payload al guardar.
+  if (b._guardada && b._dbid){
+    _ac2Post('/lotes/'+AC2.loteId+'/revisar', { barra_ids:[b._dbid], revisada:!!b.rev })
+      .then(function(r){ if(!r.ok){ b.rev=!b.rev; el.checked=b.rev; ac2ActualizarContadores(); alert('No se pudo actualizar la revisión en el servidor. Reintenta.'); } });
+  }
 };
 
 // ── Edición de celda: muta el dato. Sin re-render (el input ya muestra el valor). Solo la
@@ -927,13 +938,14 @@ window.ac2CrearLote=async function(){
 // 💾 GUARDAR AVANCE: persiste las barras COMPLETAS y válidas en el lote YA creado. Las incompletas
 // NO se pierden: quedan en el formulario para completarlas y guardar después. (El backend solo
 // acepta barras con geometría válida + ubicación completa; guardar avance = fijar lo listo.)
-window.ac2Guardar=async function(){
-  if (!AC2.loteId){ alert('Primero crea el lote (🆕 Crear lote) definiendo Obra, Ciclo y Eje.'); return; }
-  if (AC2.loteEstado==='terminada'){ alert('El lote está terminado; se edita desde Bar Manager.'); return; }
+window.ac2Guardar=async function(opts){
+  var silencioso=!!(opts&&opts.silencioso);   // sin alerts (lo llama la bandera antes de terminar)
+  if (!AC2.loteId){ if(!silencioso) alert('Primero crea el lote (🆕 Crear lote) definiendo Obra, Ciclo y Eje.'); return; }
+  if (AC2.loteEstado==='terminada'){ if(!silencioso) alert('El lote está terminado; se edita desde Bar Manager.'); return; }
   var listas=ac2BarrasListas();
   var pendientes=AC2.barras.filter(function(b){ return !b._guardada; }).length - listas.length;
   if (!listas.length){
-    alert('Aún no hay ninguna barra COMPLETA para guardar.\n\nGuardar fija en el lote las barras que ya tienen φ, figura y sus medidas válidas. Las que están a medio llenar (celdas en rojo/vacías) se quedan en pantalla para que las completes; guarda de nuevo cuando estén listas.');
+    if(!silencioso) alert('Aún no hay ninguna barra COMPLETA para guardar.\n\nGuardar fija en el lote las barras que ya tienen φ, figura y sus medidas válidas. Las que están a medio llenar (celdas en rojo/vacías) se quedan en pantalla para que las completes; guarda de nuevo cuando estén listas.');
     return;
   }
   _ac2LeerContexto();   // reconciliar ciclo/eje por si el usuario los ajustó justo antes de guardar
@@ -946,9 +958,18 @@ window.ac2Guardar=async function(){
       return;
     }
     var n=(rb.data&&rb.data.creadas)||listas.length;
+    if (silencioso){   // guardado desde la bandera: solo persistir + refrescar, sin alert
+      var idsS=(rb.data&&rb.data.ids)||[];
+      listas.forEach(function(b,i){ b._guardada=true; if(idsS[i]!=null) b._dbid=idsS[i]; });
+      ac2PintarEstado(); ac2ActualizarCabecera(); ac2Render(); ac2CargarLotes();
+      return;
+    }
     // Las barras guardadas PERMANECEN en la grilla (marcadas _guardada) para poder revisarlas
-    // ahí (el check "revisada" es por fila) y terminar el lote. NO se vacían.
-    listas.forEach(function(b){ b._guardada=true; });
+    // ahí (el check "revisada" es por fila) y terminar el lote. NO se vacían. Guardamos el id de
+    // BD (_dbid) de cada una — el backend los devuelve en ORDEN — para poder sincronizar luego su
+    // estado "revisada" (/revisar) sin re-insertarlas.
+    var idsDb=(rb.data&&rb.data.ids)||[];
+    listas.forEach(function(b,i){ b._guardada=true; if(idsDb[i]!=null) b._dbid=idsDb[i]; });
     ac2PintarEstado(); ac2ActualizarCabecera(); ac2Render(); ac2CargarLotes();
     var msg='✅ '+n+' barra(s) guardadas en el lote #'+AC2.loteId+'.';
     if (pendientes>0) msg+='\n\nQuedan '+pendientes+' barra(s) sin completar en el formulario — complétalas y vuelve a guardar.';
@@ -958,9 +979,22 @@ window.ac2Guardar=async function(){
 };
 
 // 🏁 TERMINAR: cierra el lote. El backend exige que TODAS sus barras estén revisadas (5N.19).
+// GUARDA PRIMERO lo pendiente (barras nuevas + su estado revisada) para que la BD refleje lo que
+// el usuario ve marcado en la grilla — antes la bandera veía "sin revisar" porque el check vivía
+// solo en el front (bug: 14 con ticket = 14 sin revisar).
 window.ac2ToggleTerminado=async function(){
-  if (!AC2.loteId){ alert('Primero guarda barras en el lote (💾) antes de terminarlo.'); return; }
+  if (!AC2.loteId){ alert('Primero crea el lote y guarda barras (💾) antes de terminarlo.'); return; }
   if (AC2.loteEstado==='terminada'){ alert('El lote ya está terminado.'); return; }
+  // Guardar avance si hay barras completas sin persistir (sincroniza revisada de las nuevas).
+  if (ac2BarrasListas().length){ await ac2Guardar({ silencioso:true }); }
+  var pendientes=AC2.barras.filter(function(b){ return !b._guardada; }).length;
+  if (pendientes){ alert('Quedan '+pendientes+' barra(s) sin completar en el formulario. Complétalas y guárdalas, o descártalas, antes de terminar.'); return; }
+  // Sincronizar el estado "revisada" de TODAS las barras guardadas (por si alguna se marcó en el
+  // front antes de este fix y nunca llegó a la BD). Marcamos revisadas y desmarcamos las no-rev.
+  var revIds=AC2.barras.filter(function(b){return b._dbid && b.rev;}).map(function(b){return b._dbid;});
+  var noRevIds=AC2.barras.filter(function(b){return b._dbid && !b.rev;}).map(function(b){return b._dbid;});
+  if (revIds.length)   await _ac2Post('/lotes/'+AC2.loteId+'/revisar', { barra_ids:revIds,   revisada:true });
+  if (noRevIds.length) await _ac2Post('/lotes/'+AC2.loteId+'/revisar', { barra_ids:noRevIds, revisada:false });
   if (!confirm('Terminar el lote #'+AC2.loteId+' lo cierra: sus barras se editarán solo desde Bar Manager.\n\n¿Continuar?')) return;
   var r=await _ac2Post('/lotes/'+AC2.loteId+'/terminar', {});
   if (!r.ok){
@@ -1067,7 +1101,7 @@ window.ac2RetomarLote=async function(id){
       figura:x.figura||'', radio:x.radio, rev:!!x.revisada });
     AC2_DIMKEYS.forEach(function(k){ nb[k]=x[k]; });
     ['ang1','ang2','ang3','ang4'].forEach(function(a){ nb[a]=x[a]; });
-    nb._guardada=true;
+    nb._guardada=true; nb._dbid=x.id;   // id de BD para sincronizar revisada (/revisar) al terminar
     return nb;
   });
   // Sincronizar tipologías de la estructura + reflejar contexto en los comboboxes/chips.
