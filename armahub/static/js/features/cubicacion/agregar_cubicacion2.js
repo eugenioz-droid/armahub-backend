@@ -364,10 +364,14 @@ function ac2Fila(b){
   var tdr='<td style="'+AC2_TDS+' text-align:right;">';
   // Celda de dato con input; el input se marca ROJO (clase) si el campo está inválido.
   var tdDato=function(campo,w){ return '<td style="'+AC2_TDS+' text-align:right;">'+ac2Inp(b._id,campo,b[campo],w,!!val.rojas[campo])+'</td>'; };
-  // Fondo rojo TENUE si la barra ya tiene figura y su geometría es inválida → el usuario ubica
-  // al toque cuál es la fila con problema (las celdas en conflicto ya van en rojo).
+  // Fondo de fila: rojo TENUE si la geometría es inválida (prioritario) → el usuario ubica la fila
+  // con problema. Si NO es inválida y está SELECCIONADA en modo masivo, azul suave (resalta lo
+  // marcado sin confundir con el rojo de error).
   var filaMala = (b.figura && !val.ok);
-  var h='<tr id="ac2row_'+b._id+'"'+(filaMala?' style="background:#fff5f5;" title="Geometría inválida: revisa las celdas en rojo (faltan o sobran medidas para la figura '+ac2Esc(b.figura)+')"':'')+'>';
+  var seleccionada = (AC2.masiva && AC2.seleccion[b._id]);
+  var trStyle = filaMala ? ' style="background:#fff5f5;"' : (seleccionada ? ' style="background:#e3f2fd;"' : '');
+  var trTitle = filaMala ? ' title="Geometría inválida: revisa las celdas en rojo (faltan o sobran medidas para la figura '+ac2Esc(b.figura)+')"' : '';
+  var h='<tr id="ac2row_'+b._id+'"'+trStyle+trTitle+'>';
   // data-grp = valor del campo por el que se agrupa (piso o marca), para que el maestro del
   // header de grupo encuentre a sus hijos. En "creación" (sin agrupar) no hay maestro, da igual.
   if (AC2.masiva){ var gc=ac2AgrupaPor(); var grpVal=(gc==='piso')?(b.piso||''):b.marca;
@@ -815,7 +819,7 @@ window.ac2Quitar=async function(id){
 window.ac2SelGrupo=function(el){
   var grp=el.getAttribute('data-grp'), on=el.checked;
   var gc=ac2AgrupaPor(), campo=(gc==='piso')?'piso':'marca';
-  ac2Visibles().forEach(function(b){ if((b[campo]||'')===grp){ if(on) AC2.seleccion[b._id]=true; else delete AC2.seleccion[b._id]; } });
+  ac2Visibles().forEach(function(b){ if((b[campo]||'')===grp){ if(on) AC2.seleccion[b._id]=true; else delete AC2.seleccion[b._id]; ac2PintarFilaSel(b._id); } });
   document.querySelectorAll('.ac2sel[data-grp="'+grp+'"]').forEach(function(c){ c.checked=on; });
   el.indeterminate=false;
   ac2SelSyncMaestros(); ac2SelResumen();
@@ -826,9 +830,18 @@ window.ac2SelTodo=function(el){
   ac2Visibles().forEach(function(b){ if(on) AC2.seleccion[b._id]=true; else delete AC2.seleccion[b._id]; });
   ac2Render();   // re-render: repinta filas y maestros de grupo desde el estado
 };
-// Al marcar/desmarcar UNA fila: actualiza el estado + sincroniza el maestro de su grupo.
+// Pinta (o despinta) el FONDO de resaltado de una fila seleccionada, granular (sin re-render, no
+// pierde foco). No pisa el rojo de "inválida" (ese tiene prioridad).
+function ac2PintarFilaSel(id){
+  var tr=document.getElementById('ac2row_'+id); if(!tr) return;
+  var b=ac2BarraPorId(id); if(!b) return;
+  var mala=(b.figura && !ac2Validar(b).ok);
+  if (mala) return;   // la fila inválida conserva su fondo rojo
+  tr.style.background=(AC2.masiva && AC2.seleccion[id]) ? '#e3f2fd' : '';
+}
+// Al marcar/desmarcar UNA fila: actualiza el estado + resalta la fila + sincroniza el maestro.
 window.ac2SelFila=function(el){
-  if (el){ var id=Number(el.getAttribute('data-id')); if(el.checked) AC2.seleccion[id]=true; else delete AC2.seleccion[id]; }
+  if (el){ var id=Number(el.getAttribute('data-id')); if(el.checked) AC2.seleccion[id]=true; else delete AC2.seleccion[id]; ac2PintarFilaSel(id); }
   ac2SelSyncMaestros(); ac2SelResumen();
 };
 // Sincroniza los checkboxes maestros de grupo (checked / indeterminate) desde el estado.
