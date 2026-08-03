@@ -98,6 +98,13 @@ function ac2AplicarDefaults(b, motivo){
   var dims=(f.parciales||[]).map(function(L){ return 'dim_'+String(L).toLowerCase(); });
   var nExtremo=dims.length-1;   // índice del último lado
   if (motivo==='figura'){
+    // LIMPIEZA: al cambiar de figura, borrar los slots que la NUEVA figura NO usa. Si no, quedan
+    // valores "pegados" de la figura anterior y ac2Validar los marca como inválidos ("sobran").
+    // Ej: de 3 lados (a,b,c) a 2 (a,b) → borra dim_c; de 2 ángulos a 0 → borra ang1/ang2.
+    var _nAng=(f.angulos||[]).length;
+    AC2_DIMKEYS.forEach(function(k){ if(dims.indexOf(k)===-1) b[k]=null; });   // dims que no usa
+    for (var _ia=0; _ia<4; _ia++){ if(_ia>=_nAng) b['ang'+(_ia+1)]=null; }     // ángulos sobrantes
+    if (!f.radio) b.radio=null;                                                // radio si no aplica
     // Ángulos del catálogo (valores reales de la figura).
     (f.angulos||[]).forEach(function(av,i){ var k='ang'+(i+1); if(i<4 && (b[k]==null||b[k]==='')) b[k]=Number(av); });
     // Lados intermedios (ni el primero ni el último).
