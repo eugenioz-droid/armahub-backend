@@ -232,8 +232,11 @@ function ac2FigSvg(b){
       window.disenadorMotor.dibujarFigura(geoUse, dims, { width:t.w, height:t.h, pad:Math.round(Math.min(t.w,t.h)*0.22) }) + '</span>'; }
     catch(e){}
   }
-  // Fallback si no hay geometría o el motor no cargó: caja con el tamaño (muestra el código).
-  return '<span style="display:inline-block; width:'+t.w+'px; height:'+t.h+'px; border:1px dashed #cfd8dc; border-radius:3px; vertical-align:middle; text-align:center; line-height:'+t.h+'px; color:#bbb; font-size:9px;">'+ac2Esc(b.figura||'▱')+'</span>';
+  // Fallback: la figura NO tiene geometría dibujada en el catálogo (o el motor no cargó). Antes
+  // mostraba el código crudo (parecía "letras" = un error). Ahora muestra "sin dibujo" + el código
+  // en chico, con tooltip, para que se entienda que hay que dibujarla en el Diseñador (Catálogo).
+  var falta = b.figura ? ('sin dibujo · '+ac2Esc(b.figura)) : '▱';
+  return '<span title="'+(b.figura?('La figura '+ac2Esc(b.figura)+' no tiene dibujo en el catálogo. Dibújala en el Diseñador (tab Catálogo).'):'')+'" style="display:inline-block; width:'+t.w+'px; height:'+t.h+'px; border:1px dashed #cfd8dc; border-radius:3px; vertical-align:middle; text-align:center; line-height:1.1; color:#b0bec5; font-size:8px; padding:2px; box-sizing:border-box; overflow:hidden;">'+falta+'</span>';
 }
 
 // Orden de marca para agrupar (las conocidas primero en su orden; el resto al final alfabético).
