@@ -207,34 +207,6 @@ def seed_catalogo(cur) -> dict:
     return {"figuras": n_fig, "tipologias": n_tip, "relaciones": n_rel}
 
 
-def reparar_parciales_vacios(cur) -> int:
-    """Repara en la BD las figuras que quedaron con `parciales` vacío pero SÍ tienen geometría
-    dibujada (bug histórico del Diseñador que podía guardar parciales=[]). Deriva los lados de
-    geometria.tramos y los escribe de vuelta. Se ejecuta en el arranque; idempotente (una figura
-    ya reparada no vuelve a entrar). Corrige la data de raíz — sin esto, esas figuras marcan sus
-    barras como 'geometría inválida'."""
-    import json as _json
-    cur.execute("""
-        SELECT codigo, geometria FROM figuras_catalogo
-        WHERE (parciales IS NULL OR parciales = '{}') AND geometria IS NOT NULL
-    """)
-    filas = cur.fetchall()
-    reparadas = 0
-    for codigo, geometria in filas:
-        try:
-            g = geometria if isinstance(geometria, dict) else _json.loads(geometria)
-            tramos = (g or {}).get("tramos") or []
-            lados = [t.get("lado") for t in tramos
-                     if t.get("lado") and str(t.get("lado")).isalpha() and len(str(t.get("lado"))) == 1]
-            if not lados:
-                continue
-            cur.execute("UPDATE figuras_catalogo SET parciales = %s WHERE codigo = %s", (lados, codigo))
-            reparadas += 1
-        except Exception:
-            continue
-    return reparadas
-
-
 # ============================================================================
 # VALIDACIÓN DE GEOMETRÍA (5M.4)
 # ============================================================================
@@ -364,36 +336,6 @@ def validar_geometria(cur, codigo_figura: str, valores: dict) -> dict:
 # ============================================================================
 # ENDPOINTS DE LECTURA (5M.1) — CRUD de edición viene en Fase 8
 # ============================================================================
-
-@router.get("/figuras-catalogo/_diag/{codigo}")
-def _diag_figura(codigo: str, user=Depends(get_current_user)):
-    """DIAGNÓSTICO TEMPORAL: devuelve el dato CRUDO de una figura para depurar la validación.
-    Muestra parciales (con repr para ver espacios/caja), tipo, y los tramos de la geometría."""
-    with get_conn() as conn:
-        with conn.cursor() as cur:
-            cur.execute("SELECT codigo, parciales, angulos, radio, geometria FROM figuras_catalogo WHERE codigo = %s", (codigo,))
-            r = cur.fetchone()
-            if not r:
-                return {"encontrada": False, "codigo": codigo}
-            parciales = r[1]
-            geo = r[4]
-            import json as _json
-            tramos = []
-            try:
-                g = geo if isinstance(geo, dict) else (_json.loads(geo) if geo else {})
-                tramos = [{"lado": t.get("lado"), "lado_repr": repr(t.get("lado"))} for t in (g.get("tramos") or [])]
-            except Exception as e:
-                tramos = [{"error": str(e)}]
-            return {
-                "encontrada": True, "codigo": r[0],
-                "parciales": parciales,
-                "parciales_repr": [repr(x) for x in (parciales or [])],
-                "parciales_tipo": str(type(parciales)),
-                "angulos": r[2], "radio": r[3],
-                "tiene_geometria": geo is not None,
-                "tramos": tramos,
-            }
-
 
 @router.get("/figuras-catalogo")
 def listar_figuras(activo: Optional[bool] = True, user=Depends(get_current_user)):

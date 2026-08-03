@@ -1456,13 +1456,8 @@ def _init_db_once() -> None:
             # Seed del catálogo Armacero (5M.1) — idempotente, tras las migraciones
             # (la 082 crea las tablas). Import local para evitar ciclo con catalogo.py.
             try:
-                from .catalogo import seed_catalogo, reparar_parciales_vacios
+                from .catalogo import seed_catalogo
                 seed_catalogo(cur)
-                # Repara figuras con parciales vacío pero geometría presente (bug histórico del
-                # Diseñador). Corrige la data de raíz; idempotente.
-                n_rep = reparar_parciales_vacios(cur)
-                if n_rep:
-                    logger.info("reparar_parciales_vacios: %d figura(s) corregida(s)", n_rep)
             except Exception as exc:
                 logger.warning("seed_catalogo falló (no bloquea el arranque): %s", exc)
 
