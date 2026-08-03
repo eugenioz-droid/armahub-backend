@@ -339,6 +339,42 @@ def agregar_barras(lote_id: int, body: BarrasBatch, user=Depends(get_current_use
             "ids": [c["id"] for c in creadas], "id_unicos": [c["id_unico"] for c in creadas]}
 
 
+@router.delete("/lotes/{lote_id}/barras/{barra_id}")
+def eliminar_barra_lote(lote_id: int, barra_id: int, user=Depends(get_current_user)):
+    """Borra UNA barra ya guardada de un lote (cuando el usuario la quita de la grilla). Sin esto,
+    quitar una barra guardada solo la sacaba del front y quedaba huérfana en BD → 'terminar' la
+    contaba como no revisada. Solo barras origen='manual' de un lote NO terminado."""
+    email = user.get("email", "?")
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            _check_permiso(cur, user)
+            cur.execute("SELECT estado FROM lotes WHERE id = %s", (lote_id,))
+            r = cur.fetchone()
+            if not r:
+                raise HTTPException(status_code=404, detail="Lote no encontrado.")
+            if r[0] == "terminada":
+                raise HTTPException(status_code=409, detail="El lote está terminado; edita las barras desde el Bar Manager.")
+            cur.execute(
+                "SELECT sector, piso, ciclo FROM barras WHERE id = %s AND lote_id = %s AND origen = 'manual'",
+                (barra_id, lote_id))
+            b = cur.fetchone()
+            if not b:
+                raise HTTPException(status_code=404, detail="Barra no encontrada en este lote.")
+            cur.execute("DELETE FROM barras WHERE id = %s AND lote_id = %s AND origen = 'manual'", (barra_id, lote_id))
+            cur.execute("UPDATE lotes SET n_barras = (SELECT COUNT(*) FROM barras WHERE lote_id = %s) WHERE id = %s",
+                        (lote_id, lote_id))
+            cur.execute("SELECT id_proyecto FROM lotes WHERE id = %s", (lote_id,))
+            id_proyecto = cur.fetchone()[0]
+            try:
+                from .sector_estado import marcar_sector_modificado
+                marcar_sector_modificado(cur, id_proyecto, b[0], b[1], b[2], por=email)
+            except Exception:
+                pass
+    _cache.invalidate("stats:", "landing:")
+    audit(email, "eliminar_barra_lote", f"barra {barra_id} · lote {lote_id}", "lote", str(lote_id))
+    return {"ok": True, "lote_id": lote_id, "barra_id": barra_id}
+
+
 @router.delete("/lotes/{lote_id}")
 def eliminar_lote(lote_id: int, user=Depends(get_current_user)):
     """Elimina un lote: borra TODAS sus barras, pero el LOTE queda como LÁPIDA (estado='eliminado'

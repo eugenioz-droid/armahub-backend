@@ -1356,22 +1356,23 @@
     if (_puntos.length < 2) { alert('Dibuja al menos un lado (dos puntos) antes de guardar.'); return; }
     var geo = _puntosAGeometria();
     var pe = _parametrosDeEtiquetas();
-    var usarEtiquetas = _modoEtiquetas && (pe.parciales.length || pe.angulos.length || pe.radio);
-    // LADOS (parciales): son los TRAMOS DIBUJADOS — esa es su fuente real. En modo etiqueta-manda,
-    // si el usuario etiquetó los lados a mano, esas letras mandan; pero si etiquetó solo
-    // ángulos/radio (sin lados), los lados igual salen de los tramos (nunca quedan vacíos con
-    // una figura dibujada). Antes se tomaban SOLO de las etiquetas → parciales=[] si etiquetabas
-    // únicamente un ángulo → la figura marcaba sus barras como inválidas.
-    var parciales = (usarEtiquetas && pe.parciales.length)
-      ? pe.parciales
-      : geo.tramos.map(function(t) { return t.lado; }).filter(function(L){ return L; });
-    // ÁNGULOS: de las etiquetas si etiqueta-manda; si no, los ESPECIALES (≠90 y ≠0) de los tramos
-    // (convención aSa: un giro de 90° queda implícito).
-    var angulos = usarEtiquetas ? pe.angulos
-      : geo.tramos.filter(function(t) { return t.tipo !== 'arco' && t.giro !== 90 && t.giro !== 0; })
-                  .map(function(t) { return _anguloInterno(t.giro); });
-    // RADIO: de las etiquetas (R/cota/diámetro/arco) si etiqueta-manda; si no, false.
-    var radio = usarEtiquetas ? pe.radio : false;
+    // Los parámetros salen de UNA sola fuente coherente (nunca se mezclan lados de un lado y
+    // ángulos de otro → eso guardaba figuras inconsistentes, ej. 4 lados pero 0 ángulos, y sus
+    // barras salían "inválidas"). Se usa el modo ETIQUETA-MANDA solo si el usuario etiquetó LADOS
+    // a mano (pe.parciales); en ese caso mandan las etiquetas (lados+ángulos+radio, todo junto).
+    // En cualquier otro caso, TODO sale de los tramos dibujados.
+    var parciales, angulos, radio;
+    if (_modoEtiquetas && pe.parciales.length) {
+      parciales = pe.parciales;
+      angulos = pe.angulos;
+      radio = pe.radio;
+    } else {
+      parciales = geo.tramos.map(function(t) { return t.lado; }).filter(function(L){ return L; });
+      // Convención aSa: solo los ángulos ESPECIALES (≠90 y ≠0) van a `angulos` (90° implícito).
+      angulos = geo.tramos.filter(function(t) { return t.tipo !== 'arco' && t.giro !== 90 && t.giro !== 0; })
+                          .map(function(t) { return _anguloInterno(t.giro); });
+      radio = false;
+    }
     if (angulos.length > 4) {
       alert('Esta figura tiene ' + angulos.length + ' ángulos especiales (≠90°), pero el sistema soporta máximo 4 (α1-α4).\n\nAjusta la figura antes de guardar.');
       return;

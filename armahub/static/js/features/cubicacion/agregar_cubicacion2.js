@@ -319,8 +319,8 @@ function ac2Inp(id, campo, val, w, rojo){
 function ac2CeldaOff(){ return '<td style="'+AC2_TDS+' background:#fafafa;"></td>'; }
 
 // Navegación tipo Excel entre celdas editables (.ac2nav) de la grilla:
-//   Tab / →  → siguiente celda    ·  Shift+Tab / ←  → anterior
-//   ↓ / Enter → misma columna, fila de abajo  ·  ↑ → fila de arriba
+//   Tab / → / Enter  → siguiente celda a la DERECHA   ·  Shift+Tab / ←  → anterior
+//   ↓ → misma columna, fila de abajo  ·  ↑ → fila de arriba
 // Trabaja sobre el orden VISUAL de los inputs .ac2nav en el DOM y el nº de columnas por fila.
 window.ac2NavKey=function(ev, el){
   var k=ev.key;
@@ -331,9 +331,9 @@ window.ac2NavKey=function(ev, el){
   var grid=document.getElementById('ac2_grid'); if(!grid) return;
   var NAV='input.ac2nav, select.ac2nav';   // celdas navegables (inputs Y selects: piso/φ/marca)
   var target=null;
-  if (k==='ArrowUp' || k==='ArrowDown' || k==='Enter'){
-    // ↑↓/Enter: ir a la MISMA columna (data-col) de la fila anterior/siguiente. Robusto
-    // aunque las filas tengan distinto nº de celdas (dims según figura).
+  if (k==='ArrowUp' || k==='ArrowDown'){
+    // ↑↓: ir a la MISMA columna (data-col) de la fila anterior/siguiente. Robusto aunque las
+    // filas tengan distinto nº de celdas (dims según figura).
     var col=el.getAttribute('data-col');
     var filas=[].slice.call(grid.querySelectorAll('tr[id^="ac2row_"]'));
     var trAct=el.closest('tr'); var fi=filas.indexOf(trAct);
@@ -342,15 +342,16 @@ window.ac2NavKey=function(ev, el){
       var cand=filas[r].querySelector('input.ac2nav[data-col="'+col+'"], select.ac2nav[data-col="'+col+'"]');
       if (cand){ target=cand; break; }   // salta filas donde esa columna está deshabilitada
     }
-    // Enter SIEMPRE previene el default (submit/blur) aunque no haya fila destino (última fila),
-    // para NO perder el foco actual (bug: el cursor desaparecía en la última fila).
-    if (k==='Enter' && !target){ ev.preventDefault(); return; }
   } else {
-    // ←→/Tab: celda anterior/siguiente en el orden visual del DOM (inputs y selects).
+    // ←→/Tab/ENTER: celda anterior/siguiente en el orden visual del DOM (inputs y selects). Enter
+    // avanza a la DERECHA igual que Tab (pedido del usuario). Shift+Tab/← retroceden.
     var inputs=[].slice.call(grid.querySelectorAll(NAV));
     var i=inputs.indexOf(el); if(i<0) return;
-    var ni=(k==='ArrowLeft' || (k==='Tab'&&ev.shiftKey))? i-1 : i+1;
+    var atras=(k==='ArrowLeft' || (k==='Tab'&&ev.shiftKey));
+    var ni=atras? i-1 : i+1;
     if (ni>=0 && ni<inputs.length) target=inputs[ni];
+    // Enter/Tab en la última celda: prevenir el default (submit/blur) para no perder el foco.
+    if (!target && (k==='Enter'||k==='Tab')){ ev.preventDefault(); return; }
   }
   if (target){ ev.preventDefault(); target.focus(); if(target.select) target.select(); }
 };
@@ -794,9 +795,18 @@ window.ac2Duplicar=function(id){
   AC2.barras.splice(AC2.barras.indexOf(b)+1,0, copia);
   ac2Render();
 };
-window.ac2Quitar=function(id){
+window.ac2Quitar=async function(id){
+  var b=ac2BarraPorId(id);
+  // Si la barra YA está guardada en BD, hay que borrarla también allá; si no, quedaría huérfana y
+  // 'terminar' la contaría como no revisada (aunque el usuario ya no la vea).
+  if (b && b._guardada && b._dbid){
+    if (!confirm('Esta barra ya está guardada en el lote. ¿Eliminarla también del lote guardado?')) return;
+    var r=await _ac2Delete('/lotes/'+AC2.loteId+'/barras/'+b._dbid);
+    if (!r.ok){ alert('No se pudo eliminar la barra del lote'+(r.data&&r.data.detail?': '+(r.data.detail.msg||r.data.detail):'')+'.'); return; }
+  }
   AC2.barras=AC2.barras.filter(function(x){return x._id!==id;});
-  ac2Render();
+  delete AC2.seleccion[id];
+  ac2Render(); ac2CargarLotes();
 };
 // La SELECCIÓN vive en AC2.seleccion (estado JS), NO en el DOM → sobrevive a los re-renders de
 // fila (antes se perdía y la edición masiva fallaba de forma inconsistente).
@@ -926,14 +936,23 @@ window.ac2DuplicarPiso=function(dir){
   if (sinDestino) alert(copias.length+' barra(s) duplicada(s). '+sinDestino+' no se movieron (tope de pisos o sin piso).');
   ac2Render();
 };
-// Borrar las barras marcadas (con confirmación).
-window.ac2BorrarSeleccionadas=function(){
+// Borrar las barras marcadas (con confirmación). Las que ya están guardadas en BD se borran
+// también allá (si no, quedarían huérfanas y 'terminar' las contaría como no revisadas).
+window.ac2BorrarSeleccionadas=async function(){
   var ids=ac2IdsSeleccionados();
   if (!ids.length){ alert('Marca al menos una barra.'); return; }
-  if (!confirm('Borrar '+ids.length+' barra(s) seleccionada(s)?\n(Las ya guardadas en el lote no se tocan hasta guardar.)')) return;
+  var guardadas=ids.map(ac2BarraPorId).filter(function(b){ return b && b._guardada && b._dbid; });
+  var msg='Borrar '+ids.length+' barra(s) seleccionada(s)?';
+  if (guardadas.length) msg+='\n\n'+guardadas.length+' de ellas YA están guardadas y se eliminarán también del lote guardado.';
+  if (!confirm(msg)) return;
+  // Borrar del backend las ya guardadas.
+  for (var i=0;i<guardadas.length;i++){
+    var r=await _ac2Delete('/lotes/'+AC2.loteId+'/barras/'+guardadas[i]._dbid);
+    if (!r.ok){ alert('No se pudo eliminar una barra guardada. Se detiene el borrado; reintenta.'); ac2Render(); ac2CargarLotes(); return; }
+  }
   AC2.barras=AC2.barras.filter(function(b){ return ids.indexOf(b._id)<0; });
   ids.forEach(function(id){ delete AC2.seleccion[id]; });
-  ac2Render();
+  ac2Render(); ac2CargarLotes();
 };
 // ── Estado visual del badge/bandera según el estado del lote (sin número inventado) ──
 function ac2PintarEstado(){
