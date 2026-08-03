@@ -9,7 +9,7 @@
 
 /* Estado de la maqueta/creador. */
 var AC2 = {
-  render:true, tam:'m', tipo:'TODOS', orden:'piso', masiva:false, terminado:false,
+  render:true, tam:'m', tipo:'TODOS', orden:'piso', masiva:false, terminado:false, verMult:false,
   seleccion:{},    // { _id: true } — barras marcadas en modo masivo. Estado JS (NO en el DOM):
                    // así sobrevive a los re-renders de fila (antes se perdía → bug masivo).
   // Contexto real (vive en JS, no en el DOM):
@@ -297,7 +297,7 @@ function ac2Thead(){
   }
   // Cant (unitaria) · Mult · Cant.T (= cant×mult, solo lectura) · Largo · Peso Tot.
   h+='<th style="text-align:right; padding:3px 6px;">φ</th><th style="text-align:right; padding:3px 6px;">Cant</th>';
-  h+='<th style="text-align:right; padding:3px 6px;" title="Multiplicador (doble/triple malla)">Mult</th>';
+  if (AC2.verMult) h+='<th style="text-align:right; padding:3px 6px;" title="Multiplicador (doble/triple malla)">Mult</th>';
   h+='<th style="text-align:right; padding:3px 6px;" title="Cantidad total = Cant × Mult">Cant.T</th>';
   h+='<th style="text-align:right; padding:3px 6px;">Largo</th><th style="text-align:right; padding:3px 10px 3px 6px;">Peso Tot</th>';
   // Figura + Dibujo separados del bloque numérico (Peso Tot) con un borde suave y aire.
@@ -407,7 +407,7 @@ function ac2Fila(b){
   // Cant (unitaria) · Mult (multiplicador) · Cant.T (= cant×mult, SOLO LECTURA — no re-multiplica
   // el peso, que ya usa cant×mult; solo informa el total).
   h+='<td style="'+AC2_TDS+' text-align:right;">'+ac2Inp(b._id,'cant',b.cant,40)+'</td>';
-  h+='<td style="'+AC2_TDS+' text-align:right;">'+ac2Inp(b._id,'mult',b.mult,40)+'</td>';
+  if (AC2.verMult) h+='<td style="'+AC2_TDS+' text-align:right;">'+ac2Inp(b._id,'mult',b.mult,40)+'</td>';
   h+='<td id="ac2cantt_'+b._id+'" style="'+AC2_TDS+' text-align:right; color:#607d8b; font-weight:600;">'+ac2CantTotal(b)+'</td>';
   // Largo (calculado en vivo) — solo lectura, id para actualización granular.
   h+='<td id="ac2largo_'+b._id+'" style="'+AC2_TDS+' text-align:right; color:#1565c0; font-weight:600;">'+ac2Num(ac2Largo(b))+'</td>';
@@ -440,9 +440,9 @@ function ac2Fila(b){
 // Header de grupo. porPiso=true muestra flechas para reordenar el grupo (subir/bajar). El check
 // maestro de grupo (masiva) se genera con data-grp = valor del grupo.
 function ac2GrupoHdr(valor, cnt, porPiso){
-  // Columnas: [masiva] + Piso + [Tipología + Sufijo] + φ,Cant,Mult,Cant.T,Largo,PesoTot,Figura(7)
+  // Columnas: [masiva] + Piso + [Tipología + Sufijo] + φ,Cant,[Mult],Cant.T,Largo,PesoTot,Figura(6+mult)
   //           + [Dibujo] + 9 lados + 4 áng + R + Rev + acciones.
-  var cols = (AC2.masiva?1:0) + 1 + (AC2.tipo==='TODOS'?2:0) + 7 + (AC2.render?1:0) + 9 + 4 + 1 + 1 + 1;
+  var cols = (AC2.masiva?1:0) + 1 + (AC2.tipo==='TODOS'?2:0) + 6 + (AC2.verMult?1:0) + (AC2.render?1:0) + 9 + 4 + 1 + 1 + 1;
   // Flechas para reordenar el PISO completo (solo en modo agrupado-por-piso). Botones claros con
   // texto "mover piso" para que se entienda que actúan sobre el grupo, no sobre una fila.
   var b=function(dir,fl,tit){ return '<button onclick="ac2MoverGrupo(\''+ac2Esc(valor)+'\','+dir+')" title="'+tit+'" '+
@@ -646,6 +646,8 @@ window.ac2ToggleMasiva=function(){ AC2.masiva=!AC2.masiva;
   if (AC2.masiva) ac2SetColTipo('lados');   // poblar dropdowns de columna al abrir
   else ac2LimpiarSeleccion();               // al apagar masivas, limpiar selección
   ac2Render(); };
+// Muestra/oculta la columna Multiplicador en la grilla (checkbox "Mult").
+window.ac2ToggleMult=function(on){ AC2.verMult=!!on; ac2Render(); };
 window.ac2SetTam=function(t){ AC2.tam=t;
   ['s','m','l','xl'].forEach(function(x){ var b=document.getElementById('ac2r_'+x); if(b){var on=(t===x); b.style.background=on?'#8BC34A':'#fff'; b.style.color=on?'#fff':'#607d8b';} });
   ac2Render(); };
@@ -721,10 +723,15 @@ window.ac2SetBarra=function(id,campo,valor){
     // Editar una MEDIDA: NO re-render (perdería el foco/cursor). Actualiza granularmente el
     // dibujo, largo/peso y el marcado rojo de validación, sin recrear los inputs.
     ac2ActualizarGeom(id);
-  } else if (campo==='marca'){
-    var agrupa=((AC2.tipo==='TODOS' && AC2.orden==='tipo')||AC2.masiva); if(agrupa){ ac2Render(); return; }
-  } else { ac2ActualizarLargoPeso(id); }                  // cant/mult → solo largo/peso granular
-  ac2ActualizarContadores();                              // rollup (uds/kg/revisadas)
+  } else {
+    if (campo==='cant' || campo==='mult') ac2ActualizarLargoPeso(id);   // solo largo/peso/cant.T
+    // Si cambió el campo por el que se ORDENA/AGRUPA la vista (piso cuando ordenas por piso, marca
+    // cuando ordenas por tipo), hay que re-renderizar para REUBICAR la fila en su grupo. Antes solo
+    // se reordenaba al cambiar la marca → cambiar el PISO no movía la barra a su grupo de piso.
+    var campoOrden = ac2AgrupaPor();   // 'piso' | 'marca' | null
+    if ((campo===campoOrden) || (campo==='marca' && AC2.masiva)){ ac2Render(); return; }
+  }
+  ac2ActualizarContadores();                              // rollup (items/barras/kg/revisadas)
 };
 
 // Recalcula y pinta largo+peso de UNA fila (granular, sin re-render). No toca los inputs.
