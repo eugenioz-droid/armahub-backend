@@ -1017,17 +1017,6 @@ window.ac2EliminarLote=async function(){
   }catch(e){ alert('Error de red al eliminar el lote. Reintenta.'); }
 };
 
-// ＋ Crear Eje: fija el eje escrito para la tanda (si no existe en la obra, igual queda como el
-// eje del lote — nace al guardar la primera barra en él). Simplemente confirma AC2.eje.
-window.ac2CrearEje=function(){
-  var txt=(_ac2CbEje?_ac2CbEje.getTexto().trim():'') || AC2.eje;
-  if (!txt){ alert('Escribe primero el nombre del eje/losa.'); return; }
-  AC2.eje=txt;
-  var existe=_ac2EjesObra.some(function(e){ return String(e.id).toLowerCase()===txt.toLowerCase(); });
-  ac2Render();   // refresca el contexto mostrado
-  alert(existe ? ('Eje "'+txt+'" seleccionado para esta tanda.')
-               : ('Eje NUEVO "'+txt+'" fijado para esta tanda. Se creará al guardar la primera barra.'));
-};
 
 // Carga TODOS los lotes de la obra en el repositorio (GET /lotes?proyecto=X, con n_barras/kg
 // reales). Permite ver que los lotes guardados SIGUEN existiendo entre sesiones y (a futuro)
