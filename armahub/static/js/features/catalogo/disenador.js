@@ -1355,31 +1355,23 @@
     }
     if (_puntos.length < 2) { alert('Dibuja al menos un lado (dos puntos) antes de guardar.'); return; }
     var geo = _puntosAGeometria();
-    var parciales, angulos, radio;
-    // MODO ETIQUETA-MANDA (Tanda B): si hay etiquetas manuales de letra/ángulo, ESAS
-    // son los parámetros reales (así el diseñador alimenta el catálogo). Las cotas
-    // decorativas no cuentan. Si no hay etiquetas, se usan los tramos automáticos.
     var pe = _parametrosDeEtiquetas();
     var usarEtiquetas = _modoEtiquetas && (pe.parciales.length || pe.angulos.length || pe.radio);
-    if (usarEtiquetas) {
-      parciales = pe.parciales;
-      angulos = pe.angulos;
-      radio = pe.radio;   // R / cota de radio / diámetro / cota de arco → figura con radio
-    } else {
-      parciales = geo.tramos.map(function(t) { return t.lado; });
-      // Convención aSa: solo los ángulos ESPECIALES (≠90 y ≠0) van a `angulos`.
-      // Ángulo guardado = INTERNO del vértice. Un giro de 90 → interno 90 (implícito).
-      angulos = geo.tramos
-        .filter(function(t) { return t.tipo !== 'arco' && t.giro !== 90 && t.giro !== 0; })
-        .map(function(t) { return _anguloInterno(t.giro); });
-      radio = false;
-    }
-    // BLINDAJE: nunca guardar `parciales` vacío si SÍ se dibujaron lados. Sin parciales, la
-    // validación de barras marca la figura como inválida (le "sobran" las medidas). Si el modo
-    // etiquetas no aportó lados, derivamos de los tramos dibujados (fuente real de la figura).
-    if ((!parciales || !parciales.length) && geo.tramos && geo.tramos.length) {
-      parciales = geo.tramos.map(function(t) { return t.lado; }).filter(function(L){ return L; });
-    }
+    // LADOS (parciales): son los TRAMOS DIBUJADOS — esa es su fuente real. En modo etiqueta-manda,
+    // si el usuario etiquetó los lados a mano, esas letras mandan; pero si etiquetó solo
+    // ángulos/radio (sin lados), los lados igual salen de los tramos (nunca quedan vacíos con
+    // una figura dibujada). Antes se tomaban SOLO de las etiquetas → parciales=[] si etiquetabas
+    // únicamente un ángulo → la figura marcaba sus barras como inválidas.
+    var parciales = (usarEtiquetas && pe.parciales.length)
+      ? pe.parciales
+      : geo.tramos.map(function(t) { return t.lado; }).filter(function(L){ return L; });
+    // ÁNGULOS: de las etiquetas si etiqueta-manda; si no, los ESPECIALES (≠90 y ≠0) de los tramos
+    // (convención aSa: un giro de 90° queda implícito).
+    var angulos = usarEtiquetas ? pe.angulos
+      : geo.tramos.filter(function(t) { return t.tipo !== 'arco' && t.giro !== 90 && t.giro !== 0; })
+                  .map(function(t) { return _anguloInterno(t.giro); });
+    // RADIO: de las etiquetas (R/cota/diámetro/arco) si etiqueta-manda; si no, false.
+    var radio = usarEtiquetas ? pe.radio : false;
     if (angulos.length > 4) {
       alert('Esta figura tiene ' + angulos.length + ' ángulos especiales (≠90°), pero el sistema soporta máximo 4 (α1-α4).\n\nAjusta la figura antes de guardar.');
       return;
