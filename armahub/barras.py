@@ -625,8 +625,12 @@ def get_stats(
                 w += " AND fecha_carga <= %s"
                 wp.append(fecha_hasta + "T23:59:59Z")
 
-            cur.execute("SELECT COUNT(*) FROM barras" + w, wp)
-            total_barras = int(cur.fetchone()[0])
+            # total_barras = nº de ENTRADAS/filas (items en el vocabulario estándar: COUNT).
+            # total_barras_fisicas = BARRAS FÍSICAS = Σ cant_total (cant×mult). Ambos se exponen.
+            cur.execute("SELECT COUNT(*), COALESCE(SUM(cant_total), 0) FROM barras" + w, wp)
+            _row_tb = cur.fetchone()
+            total_barras = int(_row_tb[0])
+            total_barras_fisicas = float(_row_tb[1] or 0)
 
             if allowed is None:
                 cur.execute("SELECT COUNT(*) FROM proyectos")
@@ -705,7 +709,8 @@ def get_stats(
     ]
 
     result = {
-        "total_barras": total_barras,
+        "total_barras": total_barras,                       # nº de entradas/filas (items)
+        "total_barras_fisicas": round(total_barras_fisicas), # barras físicas = Σ cant_total
         "total_proyectos": total_proyectos,
         "total_kilos": round(total_kilos, 2),
         "ultima_carga": ultima_carga,

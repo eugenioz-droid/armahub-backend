@@ -210,11 +210,14 @@ async function buscar(reset = false) {
   lastElementos = data.data || [];
   const summary = data.summary || {};
 
-  // KPIs
+  // KPIs. Nomenclatura estandarizada: elementos (agrupaciones) · items (nº de filas/entradas =
+  // barras_total COUNT) · barras (físicas = Σ cant_total) · kg.
   kpisEl.innerHTML =
     '<span><strong>' + _fmt(summary.elementos_total || 0) + '</strong> elementos</span>' +
     '<span class="muted">·</span>' +
-    '<span><strong>' + _fmt(summary.barras_total || 0) + '</strong> barras</span>' +
+    '<span title="Entradas / filas"><strong>' + _fmt(summary.barras_total || 0) + '</strong> items</span>' +
+    '<span class="muted">·</span>' +
+    '<span title="Barras físicas = Σ (cantidad × multiplicador)"><strong>' + _fmt(summary.cant_total_sum || 0) + '</strong> barras</span>' +
     '<span class="muted">·</span>' +
     '<span><strong>' + _fmt(summary.kg_total || 0, 1) + '</strong> kg</span>' +
     '<span class="muted">·</span>' +
@@ -272,12 +275,12 @@ async function _buscarPlano(params) {
   kpisEl.innerHTML =
     '<span style="color:#5d4037; font-weight:600;">📋 Vista plana</span>' +
     '<span class="muted">·</span>' +
-    '<span><strong>' + _fmt(lastTotal) + '</strong> barras (filtro)</span>' +
+    '<span title="Entradas / filas del filtro"><strong>' + _fmt(lastTotal) + '</strong> items (filtro)</span>' +
     '<span class="muted">·</span>' +
-    '<span><strong>' + _fmt(sumCant) + '</strong> uds pág.</span>' +
+    '<span title="Barras físicas de la página = Σ cant_total"><strong>' + _fmt(sumCant) + '</strong> barras pág.</span>' +
     '<span class="muted">·</span>' +
     '<span><strong>' + _fmt(sumKg, 1) + '</strong> kg pág.</span>';
-  countEl.textContent = _fmt(lastTotal) + ' barra' + (lastTotal === 1 ? '' : 's') + ' (mostrando ' + lastBarrasPlano.length + ')';
+  countEl.textContent = _fmt(lastTotal) + ' item' + (lastTotal === 1 ? '' : 's') + ' (mostrando ' + lastBarrasPlano.length + ')';
   const page = Math.floor(currentOffset / pageLimit) + 1;
   const totalPages = Math.max(1, Math.ceil(lastTotal / pageLimit));
   pageInfo.textContent = 'Pág ' + page + '/' + totalPages;
@@ -625,7 +628,7 @@ function _renderDetail(cont, elem, barras) {
       : 'overflow-x:auto;';
     html += '<div style="margin:6px 0; border-left:3px solid ' + _cicloColor(c) + '; padding:4px 10px; background:#fff; border-radius:0 4px 4px 0;">' +
       '<div style="font-size:11px; color:' + _cicloColor(c) + '; font-weight:700; margin-bottom:4px;">' +
-      'Ciclo ' + c + ' · ' + grp.length + ' barras · ' + _fmt(sumCant) + ' uds · ' + _fmt(sumKg, 1) + ' kg' +
+      'Ciclo ' + c + ' · ' + grp.length + ' items · ' + _fmt(sumCant) + ' barras · ' + _fmt(sumKg, 1) + ' kg' +
       '</div>' +
       '<div style="' + scrollWrap + '">' +
       '<table style="width:100%; min-width:1100px; font-size:11px; border-collapse:collapse;">' +

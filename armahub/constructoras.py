@@ -95,12 +95,15 @@ def listar_constructoras(activo: Optional[bool] = None, user=Depends(get_current
                 SELECT c.id, c.nombre, c.rut, c.contacto, c.email, c.telefono,
                        c.direccion, c.notas, c.activo, c.fecha_creacion, c.creado_por, c.tipo,
                        COUNT(p.id_proyecto) AS proyectos_count,
-                       COALESCE(SUM(stats.barras), 0) AS total_barras,
+                       COALESCE(SUM(stats.items), 0) AS total_items,
+                       COALESCE(SUM(stats.barras_fis), 0) AS total_barras,
                        COALESCE(SUM(stats.kilos), 0) AS total_kilos
                 FROM constructoras c
                 LEFT JOIN proyectos p ON p.constructora_id = c.id
                 LEFT JOIN (
-                    SELECT id_proyecto, COUNT(*) AS barras, COALESCE(SUM(peso_total), 0) AS kilos
+                    -- items = nº de filas (COUNT); barras_fis = barras físicas (Σ cant_total).
+                    SELECT id_proyecto, COUNT(*) AS items, COALESCE(SUM(cant_total), 0) AS barras_fis,
+                           COALESCE(SUM(peso_total), 0) AS kilos
                     FROM barras GROUP BY id_proyecto
                 ) stats ON stats.id_proyecto = p.id_proyecto
             """ + where + """
@@ -123,8 +126,9 @@ def listar_constructoras(activo: Optional[bool] = None, user=Depends(get_current
                 "email": r[4], "telefono": r[5], "direccion": r[6], "notas": r[7],
                 "activo": r[8], "fecha_creacion": r[9], "creado_por": r[10], "tipo": r[11],
                 "proyectos_count": int(r[12]),
-                "total_barras": int(r[13]),
-                "total_kilos": round(float(r[14]), 2),
+                "total_items": int(r[13]),
+                "total_barras": round(float(r[14])),   # barras físicas (Σ cant_total)
+                "total_kilos": round(float(r[15]), 2),
                 # El frontend usa esto para mostrar/ocultar los botones editar/eliminar.
                 "puede_modificar": _puede_mod(r[10]),
             }
@@ -156,7 +160,8 @@ def detalle_constructora(constructora_id: int, user=Depends(_require_gestion_cli
 
             cur.execute("""
                 SELECT p.id_proyecto, p.nombre_proyecto,
-                       COUNT(b.id_unico) AS barras,
+                       COUNT(b.id_unico) AS items,
+                       COALESCE(SUM(b.cant_total), 0) AS barras_fis,
                        COALESCE(SUM(b.peso_total), 0) AS kilos
                 FROM proyectos p
                 LEFT JOIN barras b ON b.id_proyecto = p.id_proyecto
@@ -167,7 +172,7 @@ def detalle_constructora(constructora_id: int, user=Depends(_require_gestion_cli
             proyectos = [
                 {
                     "id_proyecto": pr[0], "nombre_proyecto": pr[1],
-                    "barras": int(pr[2]), "kilos": round(float(pr[3]), 2),
+                    "items": int(pr[2]), "barras": round(float(pr[3])), "kilos": round(float(pr[4]), 2),
                 }
                 for pr in cur.fetchall()
             ]
