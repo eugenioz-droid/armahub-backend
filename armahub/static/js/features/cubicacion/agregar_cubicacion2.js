@@ -580,7 +580,8 @@ window.ac2MoverGrupo=function(piso, dir){
   ac2Render();
 };
 window.ac2ToggleMasiva=function(){ AC2.masiva=!AC2.masiva;
-  var b=document.getElementById('ac2_masivaBtn'); b.style.background=AC2.masiva?'#2e7d32':'#fff'; b.style.color=AC2.masiva?'#fff':'#8BC34A'; b.style.borderColor=AC2.masiva?'#2e7d32':'#8BC34A';
+  // Color AZUL estilo Bar Manager (acciones masivas = azul en toda la app). On = azul lleno.
+  var b=document.getElementById('ac2_masivaBtn'); b.style.background=AC2.masiva?'#1565c0':'#fff'; b.style.color=AC2.masiva?'#fff':'#1565c0'; b.style.borderColor='#1565c0';
   document.getElementById('ac2_masivaBar').style.display=AC2.masiva?'flex':'none';
   if (AC2.masiva) ac2SetColTipo('lados');   // poblar dropdowns de columna al abrir
   else ac2LimpiarSeleccion();               // al apagar masivas, limpiar selección

@@ -110,9 +110,14 @@
           <div class="muted" style="font-size:9px; margin-top:6px; color:#999;">Los pisos se definen en “Config de pisos” de la obra.</div>
         </div>
       </div>
-      <span style="width:1px; height:22px; background:#ddd; margin:0 4px;"></span>
-      <!-- Orden/agrupación de la grilla: Creación (sin agrupar) · Piso · Tipología. Aplica en
-           subtabs y en TODOS. En un subtab, "Tipología" no agrupa (hay una sola). -->
+      <!-- ACCIONES masivas: junto a "Pisos múltiples", a la IZQUIERDA (grupo de acciones). Color
+           AZUL estilo Bar Manager (off = borde azul; on = azul lleno, vía ac2ToggleMasiva). -->
+      <button id="ac2_masivaBtn" onclick="ac2ToggleMasiva()" style="font-size:11px; padding:5px 10px; background:#fff; color:#1565c0; border:1px solid #1565c0; border-radius:4px; cursor:pointer;">☑ Acciones masivas</button>
+
+      <!-- Empuja el grupo de VISUALIZACIÓN (orden + render + tamaños) hacia la DERECHA. -->
+      <div style="flex:1;"></div>
+
+      <!-- Orden/agrupación de la grilla: Creación (sin agrupar) · Piso · Tipología. -->
       <span id="ac2_ordenWrap" style="display:inline-flex; align-items:center; gap:6px;">
         <span style="font-size:11px; color:#666; font-weight:600;">Orden:</span>
         <div style="display:inline-flex; border:1px solid #8BC34A; border-radius:4px; overflow:hidden;">
@@ -121,7 +126,6 @@
           <button id="ac2o_tipo" onclick="ac2SetOrden('tipo')" style="font-size:11px; padding:4px 10px; border:none; border-left:1px solid #8BC34A; background:#fff; color:#558B2F; cursor:pointer;">Tipología</button>
         </div>
       </span>
-      <button id="ac2_masivaBtn" onclick="ac2ToggleMasiva()" style="font-size:11px; padding:5px 10px; background:#fff; color:#558B2F; border:1px solid #8BC34A; border-radius:4px; cursor:pointer;">☑ Acciones masivas</button>
       <span style="width:1px; height:22px; background:#ddd; margin:0 4px;"></span>
       <label style="font-size:11px; color:#666; cursor:pointer;"><input type="checkbox" id="ac2_render" checked onchange="ac2Render()"/> Render</label>
       <div style="display:inline-flex; border:1px solid #cfd8dc; border-radius:4px; overflow:hidden;">
@@ -130,8 +134,6 @@
         <button id="ac2r_l" onclick="ac2SetTam('l')" style="font-size:12px; padding:3px 8px; border:none; background:#fff; color:#607d8b; cursor:pointer;">L</button>
         <button id="ac2r_xl" onclick="ac2SetTam('xl')" style="font-size:13px; padding:3px 8px; border:none; background:#fff; color:#607d8b; cursor:pointer;">XL</button>
       </div>
-      <div style="flex:1;"></div>
-      <span id="ac2_ctx" style="font-size:11px; color:#666;"></span>
     </div>
 
     <!-- Barra de acciones masivas: operan sobre las barras MARCADAS. Copiar/intercambiar columnas
