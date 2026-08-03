@@ -252,6 +252,16 @@ def agregar_barras(lote_id: int, body: BarrasBatch, user=Depends(get_current_use
             sectores_tocados = set()
             from .catalogo import validar_geometria
             for i, b in enumerate(body.barras):
+                # UBICACIÓN OBLIGATORIA (defensa server-side, fuente de verdad): ninguna barra
+                # manual se guarda sin ciclo, eje y sector. Antes eran Optional y se insertaba
+                # NULL en silencio → lotes "corruptos" sin contexto. Se rechaza TODA la tanda.
+                faltan = [n for n, val in (("sector", b.sector), ("ciclo", b.ciclo), ("eje", b.eje))
+                          if not (val or "").strip()]
+                if faltan:
+                    raise HTTPException(status_code=400, detail={
+                        "msg": "Falta ubicación obligatoria (" + ", ".join(faltan) + ") en la barra " + str(i + 1) + ".",
+                        "barra_idx": i, "faltan": faltan,
+                    })
                 dims = {f"dim_{L}": getattr(b, f"dim_{L}") for L in "abcdefghi"}
                 dims.update({a: getattr(b, a) for a in ("ang1", "ang2", "ang3", "ang4")})
                 dims["radio"] = b.radio
@@ -318,6 +328,43 @@ def agregar_barras(lote_id: int, body: BarrasBatch, user=Depends(get_current_use
     _cache.invalidate("stats:", "landing:")
     audit(email, "crear_barras_manual", f"{len(creadas)} barras · lote {lote_id}", "lote", str(lote_id))
     return {"ok": True, "lote_id": lote_id, "creadas": len(creadas), "id_unicos": creadas}
+
+
+@router.delete("/lotes/{lote_id}")
+def eliminar_lote(lote_id: int, user=Depends(get_current_user)):
+    """Elimina un lote y TODAS sus barras (átomo de carga, análogo a 'eliminar carga CSV').
+    Aplica a cualquier estado, INCLUSO terminado (diseno_editor_cubicacion.md §150-168): es la
+    ÚNICA forma de borrar un lote. La confirmación (escribir ELIMINAR) se hace en el front; aquí
+    se ejecuta el borrado. Solo toca barras origen='manual' de ESTE lote (nunca CSV)."""
+    email = user.get("email", "?")
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            _check_permiso(cur, user)
+            cur.execute("SELECT id_proyecto FROM lotes WHERE id = %s", (lote_id,))
+            r = cur.fetchone()
+            if not r:
+                raise HTTPException(status_code=404, detail="Lote no encontrado.")
+            id_proyecto = r[0]
+            # Sectores afectados ANTES de borrar (para marcarlos 'modificado' tras el borrado).
+            cur.execute(
+                "SELECT DISTINCT sector, piso, ciclo FROM barras WHERE lote_id = %s AND origen = 'manual'",
+                (lote_id,),
+            )
+            sectores_tocados = cur.fetchall()
+            # Borrar barras del lote (solo manuales — invariante de canales) y luego el lote.
+            cur.execute("DELETE FROM barras WHERE lote_id = %s AND origen = 'manual'", (lote_id,))
+            n_barras = cur.rowcount
+            cur.execute("DELETE FROM lotes WHERE id = %s", (lote_id,))
+            # Los sectores que quedaron sin esas barras cambian de contenido → 'modificado'.
+            try:
+                from .sector_estado import marcar_sector_modificado
+                for sec, pis, cic in sectores_tocados:
+                    marcar_sector_modificado(cur, id_proyecto, sec, pis, cic, por=email)
+            except Exception:
+                pass
+    _cache.invalidate("stats:", "landing:")
+    audit(email, "eliminar_lote", f"lote {lote_id} · {n_barras} barras · obra {id_proyecto}", "lote", str(lote_id))
+    return {"ok": True, "lote_id": lote_id, "barras_eliminadas": n_barras}
 
 
 @router.get("/lotes")

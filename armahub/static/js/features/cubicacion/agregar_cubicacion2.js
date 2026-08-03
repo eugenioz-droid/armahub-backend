@@ -441,7 +441,18 @@ function ac2CtxText(){
 
 // ── SECTOR + ESTRUCTURA (FILA 2): chips clickeables. Se BLOQUEAN al elegir; desbloqueo solo
 //    si el lote no tiene barras. La estructura define las tipologías (subtabs). ──
-function ac2Bloqueado(){ return AC2.barras.length>0 || AC2.loteEstado==='terminada'; }
+// Sector/Estructura NO se pueden tocar hasta CREAR el lote (antes se podían elegir sueltos, sin
+// contexto). Y quedan bloqueados si ya hay barras o el lote está terminado (no se puede cambiar
+// el sector de un lote con barras → rompería el modelo).
+function ac2Bloqueado(){ return !AC2.loteId || AC2.barras.length>0 || AC2.loteEstado==='terminada'; }
+// Reconcilia el TEXTO visible de los comboboxes de ciclo/eje hacia el estado. Necesario porque el
+// combobox solo copia su texto a AC2 en el blur (con delay); si el usuario hace clic en un botón
+// antes del blur, el texto se perdía (causa de lotes guardados sin ciclo/eje). Llamar SIEMPRE
+// antes de crear el lote o guardar.
+function _ac2LeerContexto(){
+  if (_ac2CbCiclo){ var c=_ac2CbCiclo.getTexto(); if(c!=null) AC2.ciclo=String(c).trim(); }
+  if (_ac2CbEje){   var e=_ac2CbEje.getTexto();   if(e!=null) AC2.eje=String(e).trim(); }
+}
 
 function ac2PintarSectorEstructura(){
   var bloq=ac2Bloqueado();
@@ -481,14 +492,40 @@ function ac2PintarSubtabs(){
   cont.innerHTML=h;
 }
 
-// Habilita ＋barra/＋barras M solo si hay obra + sector + estructura + un subtab (no TODOS).
+// Habilita ＋barra/＋barras M solo con LOTE creado + sector + estructura + un subtab (no TODOS).
 function ac2ActualizarBotonesCrear(){
-  var puede = AC2.proyecto && AC2.sector && AC2.estructura && AC2.tipo!=='TODOS' && AC2.loteEstado!=='terminada';
+  var puede = AC2.loteId && AC2.sector && AC2.estructura && AC2.tipo!=='TODOS' && AC2.loteEstado!=='terminada';
   ['ac2_barraBtn','ac2_barrasMBtn'].forEach(function(bid){
     var btn=document.getElementById(bid); if(!btn) return;
     btn.disabled=!puede; btn.style.opacity=puede?'1':'0.45'; btn.style.cursor=puede?'pointer':'not-allowed';
-    btn.title=puede?'':(!AC2.sector||!AC2.estructura?'Elige Sector y Estructura primero.':'Entra a una tipología (no TODOS) para agregar barras.');
+    btn.title=puede?'':(!AC2.loteId?'Crea el lote primero (Obra, Ciclo y Eje).':(!AC2.sector||!AC2.estructura?'Elige Sector y Estructura primero.':'Entra a una tipología (no TODOS) para agregar barras.'));
   });
+}
+
+// Cabecera del formulario según haya lote o no:
+//  - SIN lote: se muestra "🆕 Crear lote" (pintado vivo si obra+ciclo+eje listos) y se ocultan
+//    guardar/terminar/eliminar (no hay lote sobre el cual actuar).
+//  - CON lote: se ocultan Crear lote; se muestran 💾 guardar, 🚩 terminar, ✕ descartar y 🗑 eliminar.
+// En lote TERMINADO/bloqueado, la única acción real es 🗑 Eliminar (el resto queda deshabilitado).
+function ac2ActualizarCabecera(){
+  var hayLote=!!AC2.loteId, terminado=(AC2.loteEstado==='terminada');
+  var show=function(id,on){ var el=document.getElementById(id); if(el) el.style.display=on?'':'none'; };
+  var dis=function(id,off){ var el=document.getElementById(id); if(!el) return; el.disabled=off; el.style.opacity=off?'0.45':'1'; el.style.cursor=off?'not-allowed':'pointer'; };
+  // Botón Crear lote: visible solo sin lote; pintado vivo si la ubicación está completa.
+  _ac2LeerContexto();
+  var listo = AC2.proyecto && AC2.ciclo && AC2.eje;
+  var crear=document.getElementById('ac2_crearLoteBtn');
+  if (crear){
+    crear.style.display=hayLote?'none':'';
+    crear.style.background=listo?'#8BC34A':'#eceff1';
+    crear.style.color=listo?'#fff':'#90a4ae';
+    crear.style.cursor=listo?'pointer':'not-allowed';
+    crear.title=listo?'Crear el lote y empezar a cubicar':'Completa Obra, Ciclo y Eje/Losa.';
+  }
+  show('ac2_bandera', hayLote); show('ac2_guardarBtn', hayLote); show('ac2_descartarBtn', hayLote);
+  show('ac2_eliminarBtn', hayLote);   // Eliminar: solo con lote (única acción en terminado)
+  // En terminado, guardar/terminar/descartar quedan inertes; Eliminar sigue vivo.
+  dis('ac2_guardarBtn', terminado); dis('ac2_bandera', terminado); dis('ac2_descartarBtn', terminado);
 }
 
 window.ac2SetTipo=function(t){
@@ -644,6 +681,8 @@ function ac2ActualizarContadores(){
 // ── Agregar / copiar / duplicar / quitar barras (cambios estructurales → re-render completo) ──
 function ac2PuedeCrear(){
   if (!AC2.proyecto){ alert('Elige primero una obra.'); return false; }
+  if (!AC2.loteId){ alert('Crea el lote primero (🆕 Crear lote) definiendo Obra, Ciclo y Eje.'); return false; }
+  if (AC2.loteEstado==='terminada'){ alert('El lote está terminado; se edita desde Bar Manager.'); return false; }
   if (!AC2.sector || !AC2.estructura){ alert('Elige Sector y Estructura antes de agregar barras.'); return false; }
   if (AC2.tipo==='TODOS'){ alert('Para agregar barras, entra a una tipología (no TODOS).'); return false; }
   return true;
@@ -838,6 +877,13 @@ async function _ac2Get(url){
   if (!res.ok) return null;
   try{ return await res.json(); }catch(e){ return null; }
 }
+// DELETE a un endpoint SIN el prefijo /api/v1. Mismo shape que _ac2Post: { ok, status, data }.
+async function _ac2Delete(url){
+  var tok=localStorage.getItem('armahub_token');
+  var res=await fetch(url, { method:'DELETE', headers: tok?{Authorization:'Bearer '+tok}:{} });
+  var data=null; try{ data=await res.json(); }catch(e){}
+  return { ok:res.ok, status:res.status, data:data };
+}
 
 // Barras COMPLETAS (con figura y φ) y NO guardadas aún, listas para guardar. Omite las que
 // están a medio llenar o las ya guardadas (para no duplicarlas al re-guardar).
@@ -855,12 +901,31 @@ function ac2Payload(b){
   return it;
 }
 
-// 💾 GUARDAR AVANCE: crea el lote (si no existe) y persiste las barras COMPLETAS y válidas. Las
-// incompletas NO se pierden: quedan en el formulario para seguir completándolas y guardarlas
-// después. (El backend solo acepta barras con geometría válida; guardar avance = fijar lo que ya
-// está listo, sin exigir terminar todo.)
-window.ac2Guardar=async function(){
+// 🆕 CREAR LOTE (paso EXPLÍCITO y previo): exige ubicación completa (obra + ciclo + eje) ANTES
+// de poder elegir sector/estructura y agregar barras. Reconcilia el texto de los comboboxes para
+// no perder lo escrito. Sin lote creado, la ubicación está bloqueada (ver ac2Bloqueado).
+window.ac2CrearLote=async function(){
+  if (AC2.loteId){ return; }   // ya hay lote en curso
   if (!AC2.proyecto){ alert('Elige primero una obra.'); return; }
+  _ac2LeerContexto();          // vuelca el texto visible de ciclo/eje al estado (evita perderlo)
+  var faltan=[];
+  if (!AC2.ciclo) faltan.push('Ciclo');
+  if (!AC2.eje)   faltan.push('Eje / Losa');
+  if (faltan.length){ alert('Para crear el lote completa: '+faltan.join(' y ')+'.'); return; }
+  try{
+    var r=await _ac2Post('/lotes', { id_proyecto:AC2.proyecto });
+    if (!r.ok || !r.data || !r.data.lote_id){ alert('No se pudo crear el lote'+(r.data&&r.data.detail?': '+(r.data.detail.msg||r.data.detail):'')+'.'); return; }
+    AC2.loteId=r.data.lote_id; AC2.loteEstado='borrador';
+    ac2PintarEstado(); ac2PintarSectorEstructura(); ac2ActualizarBotonesCrear();
+    ac2ActualizarCabecera(); ac2Render(); ac2CargarLotes();
+  }catch(e){ alert('Error de red al crear el lote. Reintenta.'); }
+};
+
+// 💾 GUARDAR AVANCE: persiste las barras COMPLETAS y válidas en el lote YA creado. Las incompletas
+// NO se pierden: quedan en el formulario para completarlas y guardar después. (El backend solo
+// acepta barras con geometría válida + ubicación completa; guardar avance = fijar lo listo.)
+window.ac2Guardar=async function(){
+  if (!AC2.loteId){ alert('Primero crea el lote (🆕 Crear lote) definiendo Obra, Ciclo y Eje.'); return; }
   if (AC2.loteEstado==='terminada'){ alert('El lote está terminado; se edita desde Bar Manager.'); return; }
   var listas=ac2BarrasListas();
   var pendientes=AC2.barras.filter(function(b){ return !b._guardada; }).length - listas.length;
@@ -868,14 +933,9 @@ window.ac2Guardar=async function(){
     alert('Aún no hay ninguna barra COMPLETA para guardar.\n\nGuardar fija en el lote las barras que ya tienen φ, figura y sus medidas válidas. Las que están a medio llenar (celdas en rojo/vacías) se quedan en pantalla para que las completes; guarda de nuevo cuando estén listas.');
     return;
   }
+  _ac2LeerContexto();   // reconciliar ciclo/eje por si el usuario los ajustó justo antes de guardar
   try{
-    // 1) Crear lote si aún no existe.
-    if (!AC2.loteId){
-      var r=await _ac2Post('/lotes', { id_proyecto:AC2.proyecto });
-      if (!r.ok || !r.data || !r.data.lote_id){ alert('No se pudo crear el lote'+(r.data&&r.data.detail?': '+(r.data.detail.msg||r.data.detail):'')+'.'); return; }
-      AC2.loteId=r.data.lote_id; AC2.loteEstado='borrador';
-    }
-    // 2) Agregar las barras (transaccional en el backend).
+    // Agregar las barras (transaccional en el backend; rechaza si falta ubicación).
     var rb=await _ac2Post('/lotes/'+AC2.loteId+'/barras', { barras: listas.map(ac2Payload) });
     if (!rb.ok){
       var d=rb.data&&rb.data.detail;
@@ -886,7 +946,7 @@ window.ac2Guardar=async function(){
     // Las barras guardadas PERMANECEN en la grilla (marcadas _guardada) para poder revisarlas
     // ahí (el check "revisada" es por fila) y terminar el lote. NO se vacían.
     listas.forEach(function(b){ b._guardada=true; });
-    ac2PintarEstado(); ac2Render(); ac2CargarLotes();
+    ac2PintarEstado(); ac2ActualizarCabecera(); ac2Render(); ac2CargarLotes();
     var msg='✅ '+n+' barra(s) guardadas en el lote #'+AC2.loteId+'.';
     if (pendientes>0) msg+='\n\nQuedan '+pendientes+' barra(s) sin completar en el formulario — complétalas y vuelve a guardar.';
     else msg+='\nMarca "Rev" en cada barra y luego 🏁 Terminar.';
@@ -906,8 +966,8 @@ window.ac2ToggleTerminado=async function(){
     return;
   }
   AC2.loteEstado='terminada';
-  ac2PintarEstado(); ac2CargarLotes();
-  alert('🏁 Lote #'+AC2.loteId+' terminado.');
+  ac2PintarEstado(); ac2ActualizarCabecera(); ac2PintarSectorEstructura(); ac2CargarLotes();
+  alert('🏁 Lote #'+AC2.loteId+' terminado.\nDesde aquí solo puedes eliminarlo; corrige barras en Bar Manager.');
 };
 window.ac2TogglePisos=function(){
   var m=document.getElementById('ac2_pisosMenu'); if(!m) return;
@@ -929,6 +989,29 @@ window.ac2Descartar=function(){
   if (confirm('Se quitarán del formulario las '+AC2.barras.length+' barra(s) que aún NO guardaste.\n(Las ya guardadas en el lote no se tocan.)\n\n¿Continuar?')){
     AC2.barras=[]; ac2LimpiarSeleccion(); ac2Render();
   }
+};
+
+// 🗑 ELIMINAR LOTE: borra el lote y TODAS sus barras. ES LA ÚNICA forma de borrar un lote
+// (diseno_editor_cubicacion.md §146). Aplica INCLUSO a lotes terminados/bloqueados (única acción
+// posible ahí). Pide escribir ELIMINAR para confirmar (acción destructiva e irreversible).
+window.ac2EliminarLote=async function(){
+  if (!AC2.loteId){ alert('No hay lote abierto para eliminar.'); return; }
+  var n=AC2.barras.filter(function(b){return b._guardada;}).length;
+  var txt=prompt('⚠ Vas a ELIMINAR el lote #'+AC2.loteId+' y sus '+n+' barra(s) guardada(s).\n'+
+    'Esta acción es IRREVERSIBLE.\n\nEscribe ELIMINAR para confirmar:');
+  if (txt===null) return;                          // canceló
+  if (txt.trim().toUpperCase()!=='ELIMINAR'){ alert('No se eliminó: debes escribir ELIMINAR.'); return; }
+  try{
+    var r=await _ac2Delete('/lotes/'+AC2.loteId);
+    if (!r.ok){ var d=r.data&&r.data.detail; alert('No se pudo eliminar el lote'+(d?': '+(d.msg||JSON.stringify(d)):' (error '+r.status+')')+'.'); return; }
+    var borradas=(r.data&&r.data.barras_eliminadas)||0;
+    // Reset total del formulario (el lote ya no existe).
+    AC2.loteId=null; AC2.loteEstado=''; AC2.barras=[]; AC2.sector=''; AC2.estructura=''; AC2.tipo='TODOS';
+    ac2LimpiarSeleccion();
+    ac2PintarEstado(); ac2PintarSectorEstructura(); ac2PintarSubtabs();
+    ac2ActualizarBotonesCrear(); ac2ActualizarCabecera(); ac2SetTipo('TODOS'); ac2CargarLotes();
+    alert('🗑 Lote eliminado ('+borradas+' barra(s) borradas).');
+  }catch(e){ alert('Error de red al eliminar el lote. Reintenta.'); }
 };
 
 // ＋ Crear Eje: fija el eje escrito para la tanda (si no existe en la obra, igual queda como el
@@ -1000,10 +1083,10 @@ window.ac2RetomarLote=async function(id){
   if (_ac2CbCiclo) _ac2CbCiclo.setValor({id:AC2.ciclo,label:AC2.ciclo});
   if (_ac2CbEje)   _ac2CbEje.setValor({id:AC2.eje,label:AC2.eje});
   AC2.tipo='TODOS';
-  ac2PintarSectorEstructura(); ac2PintarSubtabs(); ac2PintarEstado();
+  ac2PintarSectorEstructura(); ac2PintarSubtabs(); ac2PintarEstado(); ac2ActualizarCabecera();
   _ac2CargarPisos();   // pisos de la obra para el <select> de la grilla
   ac2SetTipo('TODOS'); ac2CargarLotes();
-  if (L.estado==='terminada') alert('Lote #'+L.id+' TERMINADO — solo lectura. Para corregir una barra, usa Bar Manager.');
+  if (L.estado==='terminada') alert('Lote #'+L.id+' TERMINADO — solo lectura.\nDesde aquí solo puedes ELIMINARLO. Para corregir una barra, usa Bar Manager.');
 };
 // Deduce la estructura a partir de un código de marca/tipología (busca en el mapa).
 function ac2EstructuraDeMarca(m){
@@ -1060,20 +1143,22 @@ function _ac2InitComboboxes(){
         if (_ac2CbEje)   _ac2CbEje.limpiar();
         _ac2CiclosObra=[]; _ac2EjesObra=[];
         ac2PintarEstado(); ac2PintarSectorEstructura(); ac2PintarSubtabs();
-        ac2ActualizarBotonesCrear(); ac2Render(); ac2CargarLotes();
+        ac2ActualizarBotonesCrear(); ac2ActualizarCabecera(); ac2Render(); ac2CargarLotes();
         _ac2Pisos=[]; ac2PintarMenuPisos();
         if (AC2.proyecto){ _ac2CargarContexto(AC2.proyecto); _ac2CargarPisos(); }
       }
     });
   }
   if (!window.Combobox) return;   // combobox.js aún no cargó (ciclo/eje lo usan)
-  // Ciclo: texto libre (se puede escribir uno nuevo o elegir uno existente de la obra).
+  // Ciclo: texto libre (se puede escribir uno nuevo o elegir uno existente de la obra). onInput
+  // pinta el botón Crear lote mientras se escribe; onSelect fija el valor final.
   if (iC && !_ac2CbCiclo){
     _ac2CbCiclo = Combobox.crear(iC, {
       items: function(){ return _ac2CiclosObra; },
       textoLibre: true,
       placeholder: '🔍 buscar o escribir ciclo…',
-      onSelect: function(it){ AC2.ciclo = it ? it.id : (_ac2CbCiclo ? _ac2CbCiclo.getTexto().trim() : ''); }
+      onInput: function(v){ AC2.ciclo=String(v||'').trim(); ac2ActualizarCabecera(); },
+      onSelect: function(it){ AC2.ciclo = it ? it.id : (_ac2CbCiclo ? _ac2CbCiclo.getTexto().trim() : ''); ac2ActualizarCabecera(); }
     });
   }
   // Eje/Losa: texto libre (el cubicador puede crear un eje nuevo).
@@ -1082,7 +1167,8 @@ function _ac2InitComboboxes(){
       items: function(){ return _ac2EjesObra; },
       textoLibre: true,
       placeholder: '🔍 buscar o escribir eje…',
-      onSelect: function(it){ AC2.eje = it ? it.id : (_ac2CbEje ? _ac2CbEje.getTexto().trim() : ''); }
+      onInput: function(v){ AC2.eje=String(v||'').trim(); ac2ActualizarCabecera(); },
+      onSelect: function(it){ AC2.eje = it ? it.id : (_ac2CbEje ? _ac2CbEje.getTexto().trim() : ''); ac2ActualizarCabecera(); }
     });
   }
 }
@@ -1178,7 +1264,7 @@ async function loadAgregarCubicacion2(){
   await _ac2CargarFiguras();
   await _ac2CargarTipologias();
   await _ac2CargarObras();
-  ac2PintarSectorEstructura(); ac2PintarSubtabs();
+  ac2PintarSectorEstructura(); ac2PintarSubtabs(); ac2ActualizarCabecera();
   ac2SetTipo(AC2.tipo || 'TODOS');   // re-sincroniza subtabs + re-pinta el grid al (re)entrar
 }
 window.loadAgregarCubicacion2 = loadAgregarCubicacion2;
@@ -1306,7 +1392,7 @@ async function _ac2Put(url, body){
 // tab se monta por esta ruta y no por loadAgregarCubicacion2).
 function _ac2Init(){
   if(!document.getElementById('ac2_grid')) return;
-  _ac2InitComboboxes(); ac2PintarSectorEstructura(); ac2PintarSubtabs(); ac2SetTipo('TODOS');
+  _ac2InitComboboxes(); ac2PintarSectorEstructura(); ac2PintarSubtabs(); ac2ActualizarCabecera(); ac2SetTipo('TODOS');
   _ac2CargarFiguras(); _ac2CargarTipologias(); _ac2CargarObras();
 }
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', _ac2Init);
