@@ -140,17 +140,17 @@ def crear_lote(body: LoteCreate, user=Depends(get_current_user)):
             cur.execute("SELECT 1 FROM proyectos WHERE id_proyecto = %s", (body.id_proyecto,))
             if not cur.fetchone():
                 raise HTTPException(status_code=404, detail="Obra no encontrada.")
+            # num_obra FIJO: MAX(num_obra de la obra) + 1. Monótono: nunca se reusa ni se recalcula,
+            # aunque se eliminen lotes (quedan lápidas). Es una referencia estable (como una factura).
+            cur.execute("SELECT COALESCE(MAX(num_obra), 0) + 1 FROM lotes WHERE id_proyecto = %s",
+                        (body.id_proyecto,))
+            num_obra = int(cur.fetchone()[0])
             cur.execute(
-                """INSERT INTO lotes (id_proyecto, tipo, estado, creado_por, creado_fecha, n_barras)
-                   VALUES (%s, 'manual', 'borrador', %s, %s, 0) RETURNING id""",
-                (body.id_proyecto, email, _now_iso()),
+                """INSERT INTO lotes (id_proyecto, tipo, estado, creado_por, creado_fecha, n_barras, num_obra)
+                   VALUES (%s, 'manual', 'borrador', %s, %s, 0, %s) RETURNING id""",
+                (body.id_proyecto, email, _now_iso(), num_obra),
             )
             lote_id = cur.fetchone()[0]
-            # Correlativo del lote DENTRO de la obra (lo que ve el usuario). Es el conteo de lotes
-            # de esa obra con id <= el recién creado (= su posición 1..N).
-            cur.execute("SELECT COUNT(*) FROM lotes WHERE id_proyecto = %s AND id <= %s",
-                        (body.id_proyecto, lote_id))
-            num_obra = int(cur.fetchone()[0])
     audit(email, "crear_lote", f"obra {body.id_proyecto}", "lote", str(lote_id))
     return {"ok": True, "lote_id": lote_id, "estado": "borrador", "num_obra": num_obra}
 
@@ -341,29 +341,44 @@ def agregar_barras(lote_id: int, body: BarrasBatch, user=Depends(get_current_use
 
 @router.delete("/lotes/{lote_id}")
 def eliminar_lote(lote_id: int, user=Depends(get_current_user)):
-    """Elimina un lote y TODAS sus barras (átomo de carga, análogo a 'eliminar carga CSV').
-    Aplica a cualquier estado, INCLUSO terminado (diseno_editor_cubicacion.md §150-168): es la
-    ÚNICA forma de borrar un lote. La confirmación (escribir ELIMINAR) se hace en el front; aquí
-    se ejecuta el borrado. Solo toca barras origen='manual' de ESTE lote (nunca CSV)."""
+    """Elimina un lote: borra TODAS sus barras, pero el LOTE queda como LÁPIDA (estado='eliminado'
+    + snapshot del resumen + quién/cuándo) para trazabilidad en el histórico de la obra. El número
+    de lote (num_obra) NO se reusa. Aplica a cualquier estado, INCLUSO terminado
+    (diseno_editor_cubicacion.md §150-168). Confirmación (escribir ELIMINAR) se valida en el front.
+    Solo toca barras origen='manual' de ESTE lote (nunca CSV)."""
     email = user.get("email", "?")
     with get_conn() as conn:
         with conn.cursor() as cur:
             _check_permiso(cur, user)
-            cur.execute("SELECT id_proyecto FROM lotes WHERE id = %s", (lote_id,))
+            cur.execute("SELECT id_proyecto, estado FROM lotes WHERE id = %s", (lote_id,))
             r = cur.fetchone()
             if not r:
                 raise HTTPException(status_code=404, detail="Lote no encontrado.")
             id_proyecto = r[0]
+            if r[1] == "eliminado":
+                raise HTTPException(status_code=409, detail="El lote ya fue eliminado.")
             # Sectores afectados ANTES de borrar (para marcarlos 'modificado' tras el borrado).
             cur.execute(
                 "SELECT DISTINCT sector, piso, ciclo FROM barras WHERE lote_id = %s AND origen = 'manual'",
                 (lote_id,),
             )
             sectores_tocados = cur.fetchall()
-            # Borrar barras del lote (solo manuales — invariante de canales) y luego el lote.
+            # Snapshot del resumen ANTES de borrar las barras (para la lápida del histórico).
+            cur.execute(
+                """SELECT COUNT(*), COALESCE(SUM(peso_total),0), MIN(sector), MIN(ciclo), MIN(eje)
+                   FROM barras WHERE lote_id = %s AND origen = 'manual'""", (lote_id,))
+            s = cur.fetchone()
+            snap_n, snap_kg, snap_sec, snap_cic, snap_eje = int(s[0]), float(s[1] or 0), s[2], s[3], s[4]
+            # Borrar las barras (solo manuales — invariante de canales) y dejar el lote como LÁPIDA.
             cur.execute("DELETE FROM barras WHERE lote_id = %s AND origen = 'manual'", (lote_id,))
             n_barras = cur.rowcount
-            cur.execute("DELETE FROM lotes WHERE id = %s", (lote_id,))
+            cur.execute(
+                """UPDATE lotes SET estado='eliminado', n_barras=0,
+                       eliminado_por=%s, eliminado_fecha=%s,
+                       snap_n_barras=%s, snap_kg=%s, snap_sector=%s, snap_ciclo=%s, snap_eje=%s
+                   WHERE id=%s""",
+                (email, _now_iso(), snap_n, snap_kg, snap_sec, snap_cic, snap_eje, lote_id),
+            )
             # Los sectores que quedaron sin esas barras cambian de contenido → 'modificado'.
             try:
                 from .sector_estado import marcar_sector_modificado
@@ -384,28 +399,33 @@ def listar_lotes(proyecto: str, user=Depends(get_current_user)):
     with get_conn() as conn:
         with conn.cursor() as cur:
             _check_permiso(cur, user)
-            # num_obra: correlativo del lote DENTRO de la obra (1,2,3…) por orden de creación (id).
-            # El `id` real (SERIAL global) se mantiene para uso interno; num_obra es lo que ve el
-            # usuario ("Lote #1 de esta obra" aunque el id global sea 7).
+            # num_obra: correlativo FIJO del lote en la obra (columna, asignado al crear; nunca se
+            # recalcula). Para lotes ELIMINADOS (lápidas) las barras ya no existen → se usa el
+            # snapshot (snap_*) guardado al eliminar. Se incluyen las lápidas en el histórico.
             cur.execute(
                 """
                 SELECT l.id, l.estado, l.creado_por, l.creado_fecha, l.terminado_fecha,
-                       COUNT(b.id_unico)                       AS n_barras,
-                       COALESCE(SUM(b.peso_total), 0)          AS kg,
-                       MIN(b.sector) AS sector, MIN(b.ciclo) AS ciclo, MIN(b.eje) AS eje,
-                       ROW_NUMBER() OVER (ORDER BY l.id)       AS num_obra
+                       CASE WHEN l.estado='eliminado' THEN COALESCE(l.snap_n_barras,0) ELSE COUNT(b.id_unico) END AS n_barras,
+                       CASE WHEN l.estado='eliminado' THEN COALESCE(l.snap_kg,0)       ELSE COALESCE(SUM(b.peso_total),0) END AS kg,
+                       CASE WHEN l.estado='eliminado' THEN l.snap_sector ELSE MIN(b.sector) END AS sector,
+                       CASE WHEN l.estado='eliminado' THEN l.snap_ciclo  ELSE MIN(b.ciclo)  END AS ciclo,
+                       CASE WHEN l.estado='eliminado' THEN l.snap_eje    ELSE MIN(b.eje)    END AS eje,
+                       l.num_obra, l.eliminado_por, l.eliminado_fecha
                 FROM lotes l
                 LEFT JOIN barras b ON b.lote_id = l.id
                 WHERE l.id_proyecto = %s
-                GROUP BY l.id, l.estado, l.creado_por, l.creado_fecha, l.terminado_fecha
-                ORDER BY l.id DESC
+                GROUP BY l.id, l.estado, l.creado_por, l.creado_fecha, l.terminado_fecha,
+                         l.snap_n_barras, l.snap_kg, l.snap_sector, l.snap_ciclo, l.snap_eje,
+                         l.num_obra, l.eliminado_por, l.eliminado_fecha
+                ORDER BY l.num_obra DESC NULLS LAST, l.id DESC
                 """,
                 (proyecto,),
             )
             lotes = [
                 {"id": r[0], "estado": r[1], "creado_por": r[2], "creado_fecha": r[3],
                  "terminado_fecha": r[4], "n_barras": r[5], "kg": float(r[6] or 0),
-                 "sector": r[7], "ciclo": r[8], "eje": r[9], "num_obra": r[10]}
+                 "sector": r[7], "ciclo": r[8], "eje": r[9], "num_obra": r[10],
+                 "eliminado_por": r[11], "eliminado_fecha": r[12]}
                 for r in cur.fetchall()
             ]
     return {"ok": True, "lotes": lotes}
@@ -425,14 +445,12 @@ def ver_lote(lote_id: int, user=Depends(get_current_user)):
         with conn.cursor() as cur:
             _check_permiso(cur, user)
             cur.execute(
-                "SELECT id, id_proyecto, estado, creado_por, creado_fecha, terminado_fecha, n_barras "
+                "SELECT id, id_proyecto, estado, creado_por, creado_fecha, terminado_fecha, n_barras, num_obra "
                 "FROM lotes WHERE id = %s", (lote_id,))
             r = cur.fetchone()
             if not r:
                 raise HTTPException(status_code=404, detail="Lote no encontrado.")
-            # Correlativo por obra (lo que ve el usuario), independiente del id global.
-            cur.execute("SELECT COUNT(*) FROM lotes WHERE id_proyecto = %s AND id <= %s", (r[1], r[0]))
-            num_obra = int(cur.fetchone()[0])
+            num_obra = r[7]   # correlativo FIJO por obra (columna)
             lote = {"id": r[0], "id_proyecto": r[1], "estado": r[2], "creado_por": r[3],
                     "creado_fecha": r[4], "terminado_fecha": r[5], "n_barras": r[6], "num_obra": num_obra}
             cur.execute(

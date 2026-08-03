@@ -1159,10 +1159,25 @@ async function ac2CargarLotes(){
   if (!lotes.length){ tb.innerHTML='<tr><td colspan="7" style="padding:10px 8px; color:#90a4ae; font-style:italic; text-align:center;">Esta obra aún no tiene lotes.</td></tr>'; return; }
   tb.innerHTML=lotes.map(function(l){
     var esta=(l.id===AC2.loteId);
-    var estado = l.estado==='terminada'
-      ? '<span style="background:#e8f5e9; color:#2e7d32; border:1px solid #a5d6a7; padding:1px 8px; border-radius:8px;">🏁 Terminado</span>'
-      : '<span style="background:#fff3e0; color:#e65100; border:1px solid #ffb74d; padding:1px 8px; border-radius:8px;">🚩 En edición</span>';
+    var eliminado=(l.estado==='eliminado');
+    var estado = eliminado
+      ? '<span style="background:#f5f5f5; color:#9e9e9e; border:1px solid #e0e0e0; padding:1px 8px; border-radius:8px;">🗑 Eliminado</span>'
+      : (l.estado==='terminada'
+        ? '<span style="background:#e8f5e9; color:#2e7d32; border:1px solid #a5d6a7; padding:1px 8px; border-radius:8px;">🏁 Terminado</span>'
+        : '<span style="background:#fff3e0; color:#e65100; border:1px solid #ffb74d; padding:1px 8px; border-radius:8px;">🚩 En edición</span>');
     var fecha=(l.creado_fecha||'').slice(0,10);
+    // LÁPIDA (eliminado): fila en gris, sin link (no se puede abrir), con quién/cuándo lo eliminó.
+    if (eliminado){
+      var elim=(l.eliminado_fecha||'').slice(0,10);
+      return '<tr style="border-top:1px solid #f0f0f0; color:#b0b0b0; background:#fafafa;">'+
+        '<td style="padding:6px 8px; font-weight:600;">#'+(l.num_obra||l.id)+'</td>'+
+        '<td style="padding:6px 8px;"><s>'+ac2Esc(l.sector||'—')+' · '+ac2Esc(l.ciclo||'—')+' · '+ac2Esc(l.eje||'—')+'</s></td>'+
+        '<td style="padding:6px 8px;">'+estado+'</td>'+
+        '<td style="padding:6px 8px; text-align:right;"><s>'+(l.n_barras||0)+'</s></td>'+
+        '<td style="padding:6px 8px; text-align:right;"><s>'+ac2Num(l.kg,1)+'</s></td>'+
+        '<td style="padding:6px 8px;">'+ac2Esc(fecha)+'</td>'+
+        '<td style="padding:6px 8px; text-align:right; font-size:10px;" title="Eliminado por '+ac2Esc(l.eliminado_por||'?')+' el '+ac2Esc(elim)+'">por '+ac2Esc((l.eliminado_por||'').split('@')[0])+'</td></tr>';
+    }
     // Fila COMPLETA como hiperlink: hover la resalta, click retoma el lote.
     return '<tr class="ac2loterow" onclick="ac2RetomarLote('+l.id+')" title="Abrir este lote para verlo/seguir editándolo" style="border-top:1px solid #f0f0f0; cursor:pointer;'+(esta?' background:#f1f8e9;':'')+'">'+
       '<td style="padding:6px 8px; font-weight:600; color:#558B2F;">#'+(l.num_obra||l.id)+(esta?' •':'')+'</td>'+
