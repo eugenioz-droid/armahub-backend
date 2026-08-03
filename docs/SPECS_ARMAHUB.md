@@ -869,6 +869,17 @@ barras de otro canal.
 **Config de peso por obra:** factor global (default **0%**, no altera nada hoy) sobre el peso
 teórico. Persistir por proyecto.
 
+**Sufijo de tipología (`suf_tipo`, 5N.42):** campo de texto libre por barra, a la derecha de la
+Tipología en la grilla. Se **CONCATENA a la columna MARCA solo al exportar a aSa Studio** (marca +
+suf_tipo, en `export.py`); la tipología interna (`marca`) NO se modifica, para que los dashboards y
+agrupaciones no se rompan por inconsistencias. Columna `barras.suf_tipo` (migración 093), nullable.
+Viaja en el payload de `agregar_barras`, se restaura al retomar el lote.
+
+**Multiplicador en la grilla (5N.42):** columnas **Mult** (editable) y **Cant.T** (=cant×mult, solo
+lectura, informativa) entre Cant y Largo. Coherente con el importador (CANT del CSV = total,
+cant_total = cant×mult, peso sobre cant_total). El peso YA incluye ×mult → Cant.T es solo display
+(no re-multiplicar el peso, sería cant×mult²).
+
 **Limpieza:** borrar la tercera matriz MUERTA (`dashboards.js` + `tabs/dashboards.html` + 3
 no-ops en `filtros.js:200-202`; confirmado sin uso, no enlazada). Endpoints `/dashboard/sectores`
 y `/sectores-nav` SE CONSERVAN (los usan las 2 matrices vivas).
