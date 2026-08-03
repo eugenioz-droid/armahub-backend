@@ -18,7 +18,8 @@ var AC2 = {
   eje:'',          // eje/losa elegido/escrito (texto libre)
   sector:'',       // sector constructivo elegido (FUND/ELEV/VCIELO/LCIELO)
   estructura:'',   // estructura elegida (MURO/LOSA/VIGA/COLUMNA/FUNDACION/GENERAL)
-  loteId:null,     // id del lote en curso (null = aún no creado; se crea al primer guardado)
+  loteId:null,     // id GLOBAL del lote (para la API). null = aún no creado.
+  loteNum:null,    // correlativo del lote DENTRO de la obra (lo que ve el usuario: #1, #2…)
   loteEstado:'',   // '' | 'borrador' | 'terminada'
   // 5N.20 sub-paso 1: la "tipología" (subtab MH/MV/TR/EC/TC/CB) ES el campo `marca` de la
   // barra (decisión de producto CERRADA). AC2.tipo = valor de `marca` que se asignará a las
@@ -247,8 +248,15 @@ function ac2FigSvg(b){
 function ac2OrdMarca(m){ return (m in AC2_ORD_TIPO) ? AC2_ORD_TIPO[m] : 90; }
 // Orden de piso según la plantilla de la obra (_ac2Pisos: S2,S1,P1..Pn,SM). Los que no están
 // en la plantilla van al final. Respeta el orden lógico configurado, más el manual (ac2MoverGrupo).
-function ac2OrdPiso(p){ var i=(_ac2PisosOrden.length?_ac2PisosOrden:_ac2Pisos).indexOf(p); return i<0?9999:i; }
+// Orden de un piso: índice en el orden manual (flechas) o en _ac2Pisos, aplicando la dirección
+// GLOBAL asc/desc (_ac2PisoDir). Los no encontrados van siempre al final.
+function ac2OrdPiso(p){
+  var base=(_ac2PisosOrden.length?_ac2PisosOrden:_ac2Pisos);
+  var i=base.indexOf(p); if(i<0) return 999999;
+  return _ac2PisoDir<0 ? (base.length-1-i) : i;   // desc = invierte el índice
+}
 var _ac2PisosOrden=[];   // orden manual de grupos de piso (flechas subir/bajar); vacío = usa _ac2Pisos
+var _ac2PisoDir=1;       // dirección global del orden por piso: 1 = ascendente, -1 = descendente
 
 // AC2.orden ∈ 'creacion' | 'piso' | 'tipo'. Filtra por el subtab (o TODOS) y ordena/agrupa.
 function ac2Visibles(){
@@ -273,7 +281,12 @@ function ac2Thead(){
   // Solo en modo masivo, el check MACRO al inicio: marca/desmarca TODAS las barras visibles.
   // Borde derecho para separarlo VISUALMENTE de la columna Piso (antes se confundían).
   if (AC2.masiva) h+='<th style="padding:3px 6px; text-align:center; width:22px; border-right:1px solid #e0e0e0;"><input type="checkbox" id="ac2_selTodo" onclick="ac2SelTodo(this)" title="Marcar/desmarcar todas"/></th>';
-  h+='<th style="text-align:left; padding:3px 6px 3px '+(AC2.masiva?'12px':'6px')+';">Piso</th>';
+  // Header Piso: al ordenar por piso, iconos ▲/▼ para ordenar TODOS los pisos asc/descendente.
+  var ordPiso = (AC2.orden==='piso') ?
+    ('<span style="margin-left:6px; white-space:nowrap;">'+
+     '<span onclick="ac2OrdenarPisos(1)" title="Pisos ascendente" style="cursor:pointer; font-size:10px; color:'+(_ac2PisoDir>0?'#8BC34A':'#b0bec5')+';">▲</span>'+
+     '<span onclick="ac2OrdenarPisos(-1)" title="Pisos descendente" style="cursor:pointer; font-size:10px; margin-left:2px; color:'+(_ac2PisoDir<0?'#8BC34A':'#b0bec5')+';">▼</span></span>') : '';
+  h+='<th style="text-align:left; padding:3px 6px 3px '+(AC2.masiva?'12px':'6px')+';">Piso'+ordPiso+'</th>';
   if (mostrarTipo){
     h+='<th style="text-align:left; padding:3px 6px;">Tipología</th>';
     // Sufijo: texto libre que se CONCATENA a la tipología SOLO al exportar a aSa (no cambia la
@@ -582,9 +595,12 @@ window.ac2SetTipo=function(t){
   ac2ActualizarBotonesCrear();
   ac2Render();
 };
-window.ac2SetOrden=function(o){ AC2.orden=o; _ac2PisosOrden=[];   // reset del orden manual de grupos
+window.ac2SetOrden=function(o){ AC2.orden=o; _ac2PisosOrden=[]; _ac2PisoDir=1;   // reset orden manual + dirección
   ['creacion','piso','tipo'].forEach(function(x){ var b=document.getElementById('ac2o_'+x); if(b){var on=(o===x); b.style.background=on?'#8BC34A':'#fff'; b.style.color=on?'#fff':'#558B2F';} });
   ac2Render(); };
+// Orden GLOBAL de pisos ascendente (dir=1) o descendente (dir=-1). Limpia el orden manual (flechas)
+// para que la dirección mande. Icono ▲ (asc) / ▼ (desc) en el header de la columna Piso.
+window.ac2OrdenarPisos=function(dir){ _ac2PisosOrden=[]; _ac2PisoDir=(dir<0?-1:1); ac2Render(); };
 // Sube/baja un grupo de PISO en el orden de la grilla (flechas del header). dir=-1 sube, +1 baja.
 window.ac2MoverGrupo=function(piso, dir){
   // SIEMPRE partimos del orden VISIBLE actual (los pisos que tienen barras, en el orden en que se
@@ -919,7 +935,8 @@ window.ac2BorrarSeleccionadas=function(){
 function ac2PintarEstado(){
   var b=document.getElementById('ac2_bandera'), badge=document.getElementById('ac2_estadoBadge');
   var terminado=(AC2.loteEstado==='terminada');
-  var lote=AC2.loteId?('Lote #'+AC2.loteId+' · '):'';
+  // Mostramos el correlativo POR OBRA (AC2.loteNum), no el id global. Fallback al id si no vino.
+  var lote=AC2.loteId?('Lote #'+(AC2.loteNum||AC2.loteId)+' · '):'';
   if (b){ b.textContent=terminado?'🏁':'🚩';
     b.style.background=terminado?'#e8f5e9':'#ffebee'; b.style.color=terminado?'#2e7d32':'#c62828'; b.style.borderColor=terminado?'#a5d6a7':'#ef9a9a'; }
   if (badge){
@@ -983,7 +1000,7 @@ window.ac2CrearLote=async function(){
   try{
     var r=await _ac2Post('/lotes', { id_proyecto:AC2.proyecto });
     if (!r.ok || !r.data || !r.data.lote_id){ alert('No se pudo crear el lote'+(r.data&&r.data.detail?': '+(r.data.detail.msg||r.data.detail):'')+'.'); return; }
-    AC2.loteId=r.data.lote_id; AC2.loteEstado='borrador';
+    AC2.loteId=r.data.lote_id; AC2.loteNum=r.data.num_obra||null; AC2.loteEstado='borrador';
     ac2PintarEstado(); ac2PintarSectorEstructura(); ac2ActualizarBotonesCrear();
     ac2ActualizarCabecera(); ac2Render(); ac2CargarLotes();
   }catch(e){ alert('Error de red al crear el lote. Reintenta.'); }
@@ -1024,11 +1041,17 @@ window.ac2Guardar=async function(opts){
     // estado "revisada" (/revisar) sin re-insertarlas.
     var idsDb=(rb.data&&rb.data.ids)||[];
     listas.forEach(function(b,i){ b._guardada=true; if(idsDb[i]!=null) b._dbid=idsDb[i]; });
-    ac2PintarEstado(); ac2ActualizarCabecera(); ac2Render(); ac2CargarLotes();
-    var msg='✅ '+n+' barra(s) guardadas en el lote #'+AC2.loteId+'.';
-    if (pendientes>0) msg+='\n\nQuedan '+pendientes+' barra(s) sin completar en el formulario — complétalas y vuelve a guardar.';
-    else msg+='\nMarca "Rev" en cada barra y luego 🏁 Terminar.';
-    alert(msg);
+    // Si quedan barras a medio llenar, NO limpiamos (se perderían): el usuario las completa y vuelve
+    // a guardar. Si TODO quedó guardado, limpiamos la interfaz y volvemos a "crear lote" (el lote
+    // guardado queda en el repositorio de la obra; se retoma desde ahí si hace falta).
+    if (pendientes>0){
+      ac2PintarEstado(); ac2ActualizarCabecera(); ac2Render(); ac2CargarLotes();
+      alert('✅ '+n+' barra(s) guardadas en el lote #'+(AC2.loteNum||AC2.loteId)+'.\n\nQuedan '+pendientes+' barra(s) sin completar en el formulario — complétalas y vuelve a guardar.');
+    } else {
+      var loteGuardado=(AC2.loteNum||AC2.loteId);
+      _ac2ResetTanda();
+      alert('✅ '+n+' barra(s) guardadas en el lote #'+loteGuardado+'.\n\nEl formulario está listo para crear otro lote. Para revisar/terminar el guardado, ábrelo desde el repositorio de lotes abajo.');
+    }
   }catch(e){ alert('Error de red al guardar. Reintenta.'); }
 };
 
@@ -1049,7 +1072,7 @@ window.ac2ToggleTerminado=async function(){
   var noRevIds=AC2.barras.filter(function(b){return b._dbid && !b.rev;}).map(function(b){return b._dbid;});
   if (revIds.length)   await _ac2Post('/lotes/'+AC2.loteId+'/revisar', { barra_ids:revIds,   revisada:true });
   if (noRevIds.length) await _ac2Post('/lotes/'+AC2.loteId+'/revisar', { barra_ids:noRevIds, revisada:false });
-  if (!confirm('Terminar el lote #'+AC2.loteId+' lo cierra: sus barras se editarán solo desde Bar Manager.\n\n¿Continuar?')) return;
+  if (!confirm('Terminar el lote #'+(AC2.loteNum||AC2.loteId)+' lo cierra: sus barras se editarán solo desde Bar Manager.\n\n¿Continuar?')) return;
   var r=await _ac2Post('/lotes/'+AC2.loteId+'/terminar', {});
   if (!r.ok){
     var d=r.data&&r.data.detail;
@@ -1058,7 +1081,7 @@ window.ac2ToggleTerminado=async function(){
   }
   AC2.loteEstado='terminada';
   ac2PintarEstado(); ac2ActualizarCabecera(); ac2PintarSectorEstructura(); ac2CargarLotes();
-  alert('🏁 Lote #'+AC2.loteId+' terminado.\nDesde aquí solo puedes eliminarlo; corrige barras en Bar Manager.');
+  alert('🏁 Lote #'+(AC2.loteNum||AC2.loteId)+' terminado.\nDesde aquí solo puedes eliminarlo; corrige barras en Bar Manager.');
 };
 window.ac2TogglePisos=function(){
   var m=document.getElementById('ac2_pisosMenu'); if(!m) return;
@@ -1088,7 +1111,7 @@ window.ac2Descartar=function(){
 window.ac2EliminarLote=async function(){
   if (!AC2.loteId){ alert('No hay lote abierto para eliminar.'); return; }
   var n=AC2.barras.filter(function(b){return b._guardada;}).length;
-  var txt=prompt('⚠ Vas a ELIMINAR el lote #'+AC2.loteId+' y sus '+n+' barra(s) guardada(s).\n'+
+  var txt=prompt('⚠ Vas a ELIMINAR el lote #'+(AC2.loteNum||AC2.loteId)+' y sus '+n+' barra(s) guardada(s).\n'+
     'Esta acción es IRREVERSIBLE.\n\nEscribe ELIMINAR para confirmar:');
   if (txt===null) return;                          // canceló
   if (txt.trim().toUpperCase()!=='ELIMINAR'){ alert('No se eliminó: debes escribir ELIMINAR.'); return; }
@@ -1096,14 +1119,22 @@ window.ac2EliminarLote=async function(){
     var r=await _ac2Delete('/lotes/'+AC2.loteId);
     if (!r.ok){ var d=r.data&&r.data.detail; alert('No se pudo eliminar el lote'+(d?': '+(d.msg||JSON.stringify(d)):' (error '+r.status+')')+'.'); return; }
     var borradas=(r.data&&r.data.barras_eliminadas)||0;
-    // Reset total del formulario (el lote ya no existe).
-    AC2.loteId=null; AC2.loteEstado=''; AC2.barras=[]; AC2.sector=''; AC2.estructura=''; AC2.tipo='TODOS';
-    ac2LimpiarSeleccion();
-    ac2PintarEstado(); ac2PintarSectorEstructura(); ac2PintarSubtabs();
-    ac2ActualizarBotonesCrear(); ac2ActualizarCabecera(); ac2SetTipo('TODOS'); ac2CargarLotes();
+    _ac2ResetTanda();
     alert('🗑 Lote eliminado ('+borradas+' barra(s) borradas).');
   }catch(e){ alert('Error de red al eliminar el lote. Reintenta.'); }
 };
+// Resetea el FORMULARIO para volver a "crear lote" (sin cambiar de obra): limpia lote/barras/
+// sector/estructura/ciclo/eje y vuelve a la cabecera con el botón Crear lote. Reutilizado tras
+// guardar un lote (volver a crear otro) y tras eliminar.
+function _ac2ResetTanda(){
+  AC2.loteId=null; AC2.loteNum=null; AC2.loteEstado=''; AC2.barras=[]; AC2.sector=''; AC2.estructura=''; AC2.tipo='TODOS';
+  AC2.ciclo=''; AC2.eje='';
+  ac2LimpiarSeleccion();
+  if (_ac2CbCiclo) _ac2CbCiclo.limpiar();
+  if (_ac2CbEje)   _ac2CbEje.limpiar();
+  ac2PintarEstado(); ac2PintarSectorEstructura(); ac2PintarSubtabs();
+  ac2ActualizarBotonesCrear(); ac2ActualizarCabecera(); ac2SetTipo('TODOS'); ac2CargarLotes();
+}
 
 
 // Carga TODOS los lotes de la obra en el repositorio (GET /lotes?proyecto=X, con n_barras/kg
@@ -1124,7 +1155,7 @@ async function ac2CargarLotes(){
     var fecha=(l.creado_fecha||'').slice(0,10);
     // Fila COMPLETA como hiperlink: hover la resalta, click retoma el lote.
     return '<tr class="ac2loterow" onclick="ac2RetomarLote('+l.id+')" title="Abrir este lote para verlo/seguir editándolo" style="border-top:1px solid #f0f0f0; cursor:pointer;'+(esta?' background:#f1f8e9;':'')+'">'+
-      '<td style="padding:6px 8px; font-weight:600; color:#558B2F;">#'+l.id+(esta?' •':'')+'</td>'+
+      '<td style="padding:6px 8px; font-weight:600; color:#558B2F;">#'+(l.num_obra||l.id)+(esta?' •':'')+'</td>'+
       '<td style="padding:6px 8px;">'+ac2Esc(l.sector||'—')+' · '+ac2Esc(l.ciclo||'—')+' · '+ac2Esc(l.eje||'—')+'</td>'+
       '<td style="padding:6px 8px;">'+estado+'</td>'+
       '<td style="padding:6px 8px; text-align:right;">'+(l.n_barras||0)+'</td>'+
@@ -1143,7 +1174,7 @@ window.ac2RetomarLote=async function(id){
   var d=await _ac2Get('/lotes/'+id);
   if (!d || !d.lote){ alert('No se pudo abrir el lote.'); return; }
   var L=d.lote, bs=d.barras||[];
-  AC2.loteId=L.id; AC2.loteEstado=L.estado;
+  AC2.loteId=L.id; AC2.loteNum=L.num_obra||null; AC2.loteEstado=L.estado;
   // Contexto del lote (de su primera barra): sector, estructura (se infiere de la marca), ciclo, eje.
   var b0=bs[0]||{};
   AC2.sector=b0.sector||''; AC2.ciclo=b0.ciclo||''; AC2.eje=b0.eje||'';

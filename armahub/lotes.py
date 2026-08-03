@@ -146,8 +146,13 @@ def crear_lote(body: LoteCreate, user=Depends(get_current_user)):
                 (body.id_proyecto, email, _now_iso()),
             )
             lote_id = cur.fetchone()[0]
+            # Correlativo del lote DENTRO de la obra (lo que ve el usuario). Es el conteo de lotes
+            # de esa obra con id <= el recién creado (= su posición 1..N).
+            cur.execute("SELECT COUNT(*) FROM lotes WHERE id_proyecto = %s AND id <= %s",
+                        (body.id_proyecto, lote_id))
+            num_obra = int(cur.fetchone()[0])
     audit(email, "crear_lote", f"obra {body.id_proyecto}", "lote", str(lote_id))
-    return {"ok": True, "lote_id": lote_id, "estado": "borrador"}
+    return {"ok": True, "lote_id": lote_id, "estado": "borrador", "num_obra": num_obra}
 
 
 @router.post("/lotes/{lote_id}/terminar")
@@ -379,12 +384,16 @@ def listar_lotes(proyecto: str, user=Depends(get_current_user)):
     with get_conn() as conn:
         with conn.cursor() as cur:
             _check_permiso(cur, user)
+            # num_obra: correlativo del lote DENTRO de la obra (1,2,3…) por orden de creación (id).
+            # El `id` real (SERIAL global) se mantiene para uso interno; num_obra es lo que ve el
+            # usuario ("Lote #1 de esta obra" aunque el id global sea 7).
             cur.execute(
                 """
                 SELECT l.id, l.estado, l.creado_por, l.creado_fecha, l.terminado_fecha,
                        COUNT(b.id_unico)                       AS n_barras,
                        COALESCE(SUM(b.peso_total), 0)          AS kg,
-                       MIN(b.sector) AS sector, MIN(b.ciclo) AS ciclo, MIN(b.eje) AS eje
+                       MIN(b.sector) AS sector, MIN(b.ciclo) AS ciclo, MIN(b.eje) AS eje,
+                       ROW_NUMBER() OVER (ORDER BY l.id)       AS num_obra
                 FROM lotes l
                 LEFT JOIN barras b ON b.lote_id = l.id
                 WHERE l.id_proyecto = %s
@@ -396,7 +405,7 @@ def listar_lotes(proyecto: str, user=Depends(get_current_user)):
             lotes = [
                 {"id": r[0], "estado": r[1], "creado_por": r[2], "creado_fecha": r[3],
                  "terminado_fecha": r[4], "n_barras": r[5], "kg": float(r[6] or 0),
-                 "sector": r[7], "ciclo": r[8], "eje": r[9]}
+                 "sector": r[7], "ciclo": r[8], "eje": r[9], "num_obra": r[10]}
                 for r in cur.fetchall()
             ]
     return {"ok": True, "lotes": lotes}
@@ -421,8 +430,11 @@ def ver_lote(lote_id: int, user=Depends(get_current_user)):
             r = cur.fetchone()
             if not r:
                 raise HTTPException(status_code=404, detail="Lote no encontrado.")
+            # Correlativo por obra (lo que ve el usuario), independiente del id global.
+            cur.execute("SELECT COUNT(*) FROM lotes WHERE id_proyecto = %s AND id <= %s", (r[1], r[0]))
+            num_obra = int(cur.fetchone()[0])
             lote = {"id": r[0], "id_proyecto": r[1], "estado": r[2], "creado_por": r[3],
-                    "creado_fecha": r[4], "terminado_fecha": r[5], "n_barras": r[6]}
+                    "creado_fecha": r[4], "terminado_fecha": r[5], "n_barras": r[6], "num_obra": num_obra}
             cur.execute(
                 "SELECT " + ", ".join(campos) + " FROM barras WHERE lote_id = %s ORDER BY id",
                 (lote_id,))
