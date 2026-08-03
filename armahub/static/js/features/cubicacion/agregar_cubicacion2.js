@@ -476,7 +476,10 @@ window.ac2Render=function(){
   cont.innerHTML=html;
   ac2ActualizarContadores();                        // rollup + revisadas + inválidas (una sola fuente)
   if (AC2.masiva){ ac2SelSyncMaestros(); ac2SelResumen(); }   // refresca contador/maestros/macro desde el estado
-  document.getElementById('ac2_ctx').innerHTML=ac2CtxText();
+  // El elemento ac2_ctx fue removido del layout: solo actualizarlo si existe (antes esta línea
+  // hacía innerHTML sobre null → TypeError que ABORTABA ac2Render a la mitad y dejaba la UI y la
+  // validación inconsistentes: la X no limpiaba, botones colgados, barras no se revalidaban).
+  var cx=document.getElementById('ac2_ctx'); if(cx) cx.innerHTML=ac2CtxText();
 };
 
 // Texto de contexto REAL (obra/ciclo/eje/tipología elegidos), sin datos hardcodeados.
