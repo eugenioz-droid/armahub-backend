@@ -546,6 +546,10 @@ function _bmFilaBarraHTML(b, editando, conUbicacion) {
   var angs = angKeys.map(k => _celdaEdit(k, b[k], 1)).join('');
   var editadaBorde = b.editado_por ? 'border-left:3px solid #8d6e63;' : '';
   var editadaTitle = b.editado_por ? (' title="Editada por ' + b.editado_por + '"') : '';
+  // Resalte azul suave si la barra está SELECCIONADA en modo masivo (mismo criterio que el creador).
+  var selBg = ((typeof bmEnModoMasivo === 'function') && bmEnModoMasivo()
+               && (typeof bmEstaSeleccionada === 'function') && bmEstaSeleccionada(b.id))
+    ? 'background:#e3f2fd;' : '';
   var ubic = '';
   if (conUbicacion) {
     // 5M.11: celda de selección (solo en modo MASIVO, vista plana).
@@ -564,7 +568,7 @@ function _bmFilaBarraHTML(b, editando, conUbicacion) {
     var idShort = (b.id_unico || '').split('-').slice(-1)[0];
     ubic = '<td style="padding:2px 6px; font-family:monospace; font-size:10px; position:sticky; left:0; background:#fff;" title="' + (b.id_unico || '') + '">' + (b.editado_por ? '✏️ ' : '') + idShort + '</td>';
   }
-  var html = '<tr style="border-top:1px solid #f0f0f0; ' + editadaBorde + '"' + editadaTitle + '>' +
+  var html = '<tr id="bmrow-' + b.id + '" style="border-top:1px solid #f0f0f0; ' + editadaBorde + selBg + '"' + editadaTitle + '>' +
     ubic +
     '<td style="padding:2px 6px; font-weight:600;">' + (conUbicacion && b.editado_por ? '✏️ ' : '') + (b.marca || '—') + '</td>' +
     _celdaEdit('diam', b.diam, 0) +

@@ -50,6 +50,9 @@
     if (id == null) return;
     id = String(id);
     if (checked) _seleccion[id] = true; else delete _seleccion[id];
+    // Resalte azul suave de la fila seleccionada (granular, sin re-render → no pierde foco/edición).
+    var tr = document.getElementById('bmrow-' + id);
+    if (tr) tr.style.background = checked ? '#e3f2fd' : '';
     _actualizarBarraSeleccion();
   };
 

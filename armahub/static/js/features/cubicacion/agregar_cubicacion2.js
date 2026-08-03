@@ -311,8 +311,9 @@ var AC2_TDS='padding:2px 5px; border-top:1px solid #f0f0f0;';
 // ↑↓ vayan a la MISMA columna de la fila de arriba/abajo (robusto aunque las filas difieran).
 function ac2Inp(id, campo, val, w, rojo){
   var wst = w ? ' style="width:'+w+'px;"' : '';
+  var ro = ac2SoloLectura() ? ' disabled' : '';   // lote eliminado (histórico) → inputs bloqueados
   return '<input type="number" value="'+(val==null?'':ac2Esc(val))+'" '+
-    'class="ac2cell ac2nav'+(rojo?' rojo':'')+'" data-col="'+campo+'" data-row="'+id+'"'+wst+' '+
+    'class="ac2cell ac2nav'+(rojo?' rojo':'')+'" data-col="'+campo+'" data-row="'+id+'"'+wst+ro+' '+
     'onchange="ac2SetBarra('+id+',\''+campo+'\',this.value)" onkeydown="ac2NavKey(event,this)"/>';
 }
 // celda deshabilitada (la figura no usa ese slot).
@@ -482,6 +483,11 @@ window.ac2Render=function(){
   }
   html+='</tbody></table>';
   cont.innerHTML=html;
+  // Lote ELIMINADO (histórico): grilla en gris y TODOS los controles bloqueados (solo consulta).
+  if (ac2SoloLectura()){
+    cont.style.opacity='0.75';
+    cont.querySelectorAll('input,select,button').forEach(function(el){ el.disabled=true; });
+  } else { cont.style.opacity=''; }
   ac2ActualizarContadores();                        // rollup + revisadas + inválidas (una sola fuente)
   if (AC2.masiva){ ac2SelSyncMaestros(); ac2SelResumen(); }   // refresca contador/maestros/macro desde el estado
   // El elemento ac2_ctx fue removido del layout: solo actualizarlo si existe (antes esta línea
@@ -506,6 +512,8 @@ function ac2CtxText(){
 // contexto). Y quedan bloqueados si ya hay barras o el lote está terminado (no se puede cambiar
 // el sector de un lote con barras → rompería el modelo).
 function ac2Bloqueado(){ return !AC2.loteId || AC2.barras.length>0 || AC2.loteEstado==='terminada'; }
+// Solo-lectura DURA: un lote eliminado es histórico congelado; no se edita nada de su grilla.
+function ac2SoloLectura(){ return AC2.loteEstado==='eliminado'; }
 // Reconcilia el TEXTO visible de los comboboxes de ciclo/eje hacia el estado. Necesario porque el
 // combobox solo copia su texto a AC2 en el blur (con delay); si el usuario hace clic en un botón
 // antes del blur, el texto se perdía (causa de lotes guardados sin ciclo/eje). Llamar SIEMPRE
@@ -569,7 +577,7 @@ function ac2ActualizarBotonesCrear(){
 //  - CON lote: se ocultan Crear lote; se muestran 💾 guardar, 🚩 terminar, ✕ descartar y 🗑 eliminar.
 // En lote TERMINADO/bloqueado, la única acción real es 🗑 Eliminar (el resto queda deshabilitado).
 function ac2ActualizarCabecera(){
-  var hayLote=!!AC2.loteId, terminado=(AC2.loteEstado==='terminada');
+  var hayLote=!!AC2.loteId, terminado=(AC2.loteEstado==='terminada'), eliminado=(AC2.loteEstado==='eliminado');
   var show=function(id,on){ var el=document.getElementById(id); if(el) el.style.display=on?'':'none'; };
   var dis=function(id,off){ var el=document.getElementById(id); if(!el) return; el.disabled=off; el.style.opacity=off?'0.45':'1'; el.style.cursor=off?'not-allowed':'pointer'; };
   // Botón Crear lote: visible solo sin lote; pintado vivo si la ubicación está completa.
@@ -586,10 +594,12 @@ function ac2ActualizarCabecera(){
     crear.style.cursor=listo?'pointer':'not-allowed';
     crear.title=listo?'Crear el lote y empezar a cubicar':'Completa Obra, Ciclo y Eje/Losa.';
   }
-  show('ac2_bandera', hayLote); show('ac2_guardarBtn', hayLote); show('ac2_descartarBtn', hayLote);
-  show('ac2_eliminarBtn', hayLote);   // Eliminar: solo con lote (única acción en terminado)
-  // En terminado, guardar/terminar/descartar quedan inertes; Eliminar sigue vivo.
-  dis('ac2_guardarBtn', terminado); dis('ac2_bandera', terminado); dis('ac2_descartarBtn', terminado);
+  show('ac2_bandera', hayLote && !eliminado); show('ac2_guardarBtn', hayLote && !eliminado);
+  show('ac2_descartarBtn', hayLote);   // la X (cerrar/volver) sigue disponible siempre
+  show('ac2_eliminarBtn', hayLote && !eliminado);   // ya eliminado → no se puede re-eliminar
+  // En terminado, guardar/terminar quedan inertes; Eliminar sigue vivo. En eliminado, todo inerte
+  // salvo la X (para salir y crear otro lote).
+  dis('ac2_guardarBtn', terminado); dis('ac2_bandera', terminado);
 }
 
 window.ac2SetTipo=function(t){
@@ -1112,9 +1122,12 @@ window.ac2ToggleTerminado=async function(){
     alert('No se pudo terminar'+(d?': '+(d.msg||JSON.stringify(d)):'')+'.');   // 409 si faltan revisadas / lote vacío
     return;
   }
+  var numTerm=(AC2.loteNum||AC2.loteId);
   AC2.loteEstado='terminada';
-  ac2PintarEstado(); ac2ActualizarCabecera(); ac2PintarSectorEstructura(); ac2CargarLotes();
-  alert('🏁 Lote #'+(AC2.loteNum||AC2.loteId)+' terminado.\nDesde aquí solo puedes eliminarlo; corrige barras en Bar Manager.');
+  // Terminar CIERRA la tanda → limpiamos el formulario para crear otro lote. El lote terminado
+  // queda en el repositorio (se puede ver desde ahí; sus barras se corrigen en Bar Manager).
+  _ac2ResetTanda();
+  alert('🏁 Lote #'+numTerm+' terminado.\nEl formulario quedó listo para crear otro lote. El lote terminado está en el repositorio (corrige barras desde Bar Manager).');
 };
 window.ac2TogglePisos=function(){
   var m=document.getElementById('ac2_pisosMenu'); if(!m) return;
@@ -1162,7 +1175,8 @@ window.ac2EliminarLote=async function(){
     if (!r.ok){ var d=r.data&&r.data.detail; alert('No se pudo eliminar el lote'+(d?': '+(d.msg||JSON.stringify(d)):' (error '+r.status+')')+'.'); return; }
     var borradas=(r.data&&r.data.barras_eliminadas)||0;
     _ac2ResetTanda();
-    alert('🗑 Lote eliminado ('+borradas+' barra(s) borradas).');
+    await ac2CargarLotes();   // esperar el refresco de la lista ANTES del alert (así la lápida ya se ve)
+    alert('🗑 Lote eliminado ('+borradas+' barra(s) borradas). Queda registrado como eliminado en el histórico.');
   }catch(e){ alert('Error de red al eliminar el lote. Reintenta.'); }
 };
 // Resetea el FORMULARIO para volver a "crear lote" (sin cambiar de obra): limpia lote/barras/
@@ -1198,17 +1212,18 @@ async function ac2CargarLotes(){
         ? '<span style="background:#e8f5e9; color:#2e7d32; border:1px solid #a5d6a7; padding:1px 8px; border-radius:8px;">🏁 Terminado</span>'
         : '<span style="background:#fff3e0; color:#e65100; border:1px solid #ffb74d; padding:1px 8px; border-radius:8px;">🚩 En edición</span>');
     var fecha=(l.creado_fecha||'').slice(0,10);
-    // LÁPIDA (eliminado): fila en gris, sin link (no se puede abrir), con quién/cuándo lo eliminó.
+    // LÁPIDA (eliminado): fila en gris, CLICKEABLE para VER su contenido en solo-lectura (desde el
+    // snapshot congelado). Muestra quién/cuándo lo eliminó.
     if (eliminado){
       var elim=(l.eliminado_fecha||'').slice(0,10);
-      return '<tr style="border-top:1px solid #f0f0f0; color:#b0b0b0; background:#fafafa;">'+
+      return '<tr class="ac2loterow" onclick="ac2RetomarLote('+l.id+')" title="Ver el contenido de este lote eliminado (solo lectura)" style="border-top:1px solid #f0f0f0; color:#9e9e9e; background:#fafafa; cursor:pointer;">'+
         '<td style="padding:6px 8px; font-weight:600;">#'+(l.num_obra||l.id)+'</td>'+
         '<td style="padding:6px 8px;"><s>'+ac2Esc(l.sector||'—')+' · '+ac2Esc(l.ciclo||'—')+' · '+ac2Esc(l.eje||'—')+'</s></td>'+
         '<td style="padding:6px 8px;">'+estado+'</td>'+
         '<td style="padding:6px 8px; text-align:right;"><s>'+(l.n_barras||0)+'</s></td>'+
         '<td style="padding:6px 8px; text-align:right;"><s>'+ac2Num(l.kg,1)+'</s></td>'+
         '<td style="padding:6px 8px;">'+ac2Esc(fecha)+'</td>'+
-        '<td style="padding:6px 8px; text-align:right; font-size:10px;" title="Eliminado por '+ac2Esc(l.eliminado_por||'?')+' el '+ac2Esc(elim)+'">por '+ac2Esc((l.eliminado_por||'').split('@')[0])+'</td></tr>';
+        '<td style="padding:6px 8px; text-align:right; font-size:10px;" title="Eliminado por '+ac2Esc(l.eliminado_por||'?')+' el '+ac2Esc(elim)+'">👁 ver · por '+ac2Esc((l.eliminado_por||'').split('@')[0])+'</td></tr>';
     }
     // Fila COMPLETA como hiperlink: hover la resalta, click retoma el lote.
     return '<tr class="ac2loterow" onclick="ac2RetomarLote('+l.id+')" title="Abrir este lote para verlo/seguir editándolo" style="border-top:1px solid #f0f0f0; cursor:pointer;'+(esta?' background:#f1f8e9;':'')+'">'+
@@ -1254,7 +1269,8 @@ window.ac2RetomarLote=async function(id){
   ac2PintarSectorEstructura(); ac2PintarSubtabs(); ac2PintarEstado(); ac2ActualizarCabecera();
   _ac2CargarPisos();   // pisos de la obra para el <select> de la grilla
   ac2SetTipo('TODOS'); ac2CargarLotes();
-  if (L.estado==='terminada') alert('Lote #'+L.id+' TERMINADO — solo lectura.\nDesde aquí solo puedes ELIMINARLO. Para corregir una barra, usa Bar Manager.');
+  if (L.estado==='eliminado') alert('Lote #'+(L.num_obra||L.id)+' ELIMINADO — solo lectura (histórico).\nSe conserva su contenido para consulta; no se puede editar. Usa la ✕ para volver.');
+  else if (L.estado==='terminada') alert('Lote #'+(L.num_obra||L.id)+' TERMINADO — solo lectura.\nDesde aquí solo puedes ELIMINARLO. Para corregir una barra, usa Bar Manager.');
 };
 // Deduce la estructura a partir de un código de marca/tipología (busca en el mapa).
 function ac2EstructuraDeMarca(m){

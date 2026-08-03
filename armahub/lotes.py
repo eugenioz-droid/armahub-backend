@@ -405,15 +405,26 @@ def eliminar_lote(lote_id: int, user=Depends(get_current_user)):
                    FROM barras WHERE lote_id = %s AND origen = 'manual'""", (lote_id,))
             s = cur.fetchone()
             snap_n, snap_kg, snap_sec, snap_cic, snap_eje = int(s[0]), float(s[1] or 0), s[2], s[3], s[4]
+            # Snapshot del DETALLE completo de las barras (para poder VERLAS luego en solo-lectura).
+            # Mismos campos que ver_lote, así el front reconstruye la grilla igual.
+            _snap_campos = ["id", "sector", "piso", "ciclo", "eje", "marca", "figura", "diam", "cant", "mult",
+                            "dim_a", "dim_b", "dim_c", "dim_d", "dim_e", "dim_f", "dim_g", "dim_h", "dim_i",
+                            "ang1", "ang2", "ang3", "ang4", "radio", "revisada", "suf_tipo"]
+            cur.execute("SELECT " + ", ".join(_snap_campos) +
+                        " FROM barras WHERE lote_id = %s AND origen = 'manual' ORDER BY id", (lote_id,))
+            snap_barras = [dict(zip(_snap_campos, row)) for row in cur.fetchall()]
+            import json as _json
+            snap_barras_json = _json.dumps(snap_barras, default=str)
             # Borrar las barras (solo manuales — invariante de canales) y dejar el lote como LÁPIDA.
             cur.execute("DELETE FROM barras WHERE lote_id = %s AND origen = 'manual'", (lote_id,))
             n_barras = cur.rowcount
             cur.execute(
                 """UPDATE lotes SET estado='eliminado', n_barras=0,
                        eliminado_por=%s, eliminado_fecha=%s,
-                       snap_n_barras=%s, snap_kg=%s, snap_sector=%s, snap_ciclo=%s, snap_eje=%s
+                       snap_n_barras=%s, snap_kg=%s, snap_sector=%s, snap_ciclo=%s, snap_eje=%s,
+                       snap_barras=%s
                    WHERE id=%s""",
-                (email, _now_iso(), snap_n, snap_kg, snap_sec, snap_cic, snap_eje, lote_id),
+                (email, _now_iso(), snap_n, snap_kg, snap_sec, snap_cic, snap_eje, snap_barras_json, lote_id),
             )
             # Los sectores que quedaron sin esas barras cambian de contenido → 'modificado'.
             try:
@@ -481,18 +492,29 @@ def ver_lote(lote_id: int, user=Depends(get_current_user)):
         with conn.cursor() as cur:
             _check_permiso(cur, user)
             cur.execute(
-                "SELECT id, id_proyecto, estado, creado_por, creado_fecha, terminado_fecha, n_barras, num_obra "
+                "SELECT id, id_proyecto, estado, creado_por, creado_fecha, terminado_fecha, n_barras, num_obra, snap_barras "
                 "FROM lotes WHERE id = %s", (lote_id,))
             r = cur.fetchone()
             if not r:
                 raise HTTPException(status_code=404, detail="Lote no encontrado.")
             num_obra = r[7]   # correlativo FIJO por obra (columna)
-            lote = {"id": r[0], "id_proyecto": r[1], "estado": r[2], "creado_por": r[3],
+            estado = r[2]
+            lote = {"id": r[0], "id_proyecto": r[1], "estado": estado, "creado_por": r[3],
                     "creado_fecha": r[4], "terminado_fecha": r[5], "n_barras": r[6], "num_obra": num_obra}
-            cur.execute(
-                "SELECT " + ", ".join(campos) + " FROM barras WHERE lote_id = %s ORDER BY id",
-                (lote_id,))
-            barras = [dict(zip(campos, row)) for row in cur.fetchall()]
+            if estado == "eliminado":
+                # Lote ELIMINADO: sus barras ya no están en la tabla; se leen del snapshot congelado
+                # (solo lectura). El front las muestra bloqueadas/en gris.
+                import json as _json
+                snap = r[8]
+                if isinstance(snap, str):
+                    try: snap = _json.loads(snap)
+                    except Exception: snap = []
+                barras = snap or []
+            else:
+                cur.execute(
+                    "SELECT " + ", ".join(campos) + " FROM barras WHERE lote_id = %s ORDER BY id",
+                    (lote_id,))
+                barras = [dict(zip(campos, row)) for row in cur.fetchall()]
     return {"ok": True, "lote": lote, "barras": barras}
 
 
