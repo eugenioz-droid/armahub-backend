@@ -677,6 +677,8 @@ function ac2SetBarraDato(id, campo, valor){
   var b=ac2BarraPorId(id); if(!b) return;
   if (campo in AC2_CAMPOS_NUM){ var s=String(valor).trim(); b[campo]=(s===''?null:Number(s)); }
   else b[campo]=valor;
+  // mult NUNCA queda vacío ni <1: si el usuario lo borra o pone 0, vuelve a 1 (cant_total = cant×mult).
+  if (campo==='mult' && !(Number(b.mult)>=1)) b.mult=1;
   if (campo==='figura') ac2AplicarDefaults(b,'figura');
   else if (campo==='diam') ac2AplicarDefaults(b,'diam');
 }
@@ -710,6 +712,8 @@ window.ac2SetBarra=function(id,campo,valor){
   }
   if (campo in AC2_CAMPOS_NUM){ var s=String(valor).trim(); b[campo]=(s===''?null:Number(s)); }
   else b[campo]=valor;
+  // mult NUNCA vacío ni <1: si lo borran o ponen 0, vuelve a 1 (cant_total = cant×mult siempre).
+  if (campo==='mult' && !(Number(b.mult)>=1)){ b.mult=1; var mi=document.querySelector('input.ac2nav[data-row="'+id+'"][data-col="mult"]'); if(mi) mi.value=1; }
   // Valores por defecto (rellena solo celdas vacías): al elegir figura → ángulos+intermedios;
   // al elegir diámetro → lados extremos = 10×diam.
   if (campo==='figura') ac2AplicarDefaults(b,'figura');
