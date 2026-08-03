@@ -155,6 +155,33 @@ def crear_lote(body: LoteCreate, user=Depends(get_current_user)):
     return {"ok": True, "lote_id": lote_id, "estado": "borrador", "num_obra": num_obra}
 
 
+@router.delete("/lotes/{lote_id}/vacio")
+def descartar_lote_vacio(lote_id: int, user=Depends(get_current_user)):
+    """Borra FÍSICAMENTE un lote SOLO si está vacío (0 barras en BD, estado borrador). Se llama al
+    abandonar el creador sin guardar (X, cambiar de obra, crear otro). Así un lote creado y nunca
+    usado no ensucia el histórico y LIBERA su num_obra (el próximo lo reusa vía MAX+1). Si el lote
+    tiene barras o no es borrador, NO se toca (para eso está la eliminación con lápida). Idempotente:
+    si ya no existe, responde ok sin error."""
+    email = user.get("email", "?")
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            _check_permiso(cur, user)
+            cur.execute("SELECT estado FROM lotes WHERE id = %s", (lote_id,))
+            r = cur.fetchone()
+            if not r:
+                return {"ok": True, "borrado": False, "motivo": "no_existe"}
+            if r[0] != "borrador":
+                return {"ok": True, "borrado": False, "motivo": "no_borrador"}
+            cur.execute("SELECT COUNT(*) FROM barras WHERE lote_id = %s", (lote_id,))
+            if int(cur.fetchone()[0]) > 0:
+                return {"ok": True, "borrado": False, "motivo": "tiene_barras"}
+            cur.execute("DELETE FROM lotes WHERE id = %s AND estado = 'borrador'", (lote_id,))
+            borrado = cur.rowcount > 0
+    if borrado:
+        audit(email, "descartar_lote_vacio", f"lote {lote_id}", "lote", str(lote_id))
+    return {"ok": True, "borrado": borrado}
+
+
 class LoteDuplicar(BaseModel):
     ciclo: str          # ciclo del NUEVO lote (obligatorio)
     eje: str            # eje del NUEVO lote (obligatorio)

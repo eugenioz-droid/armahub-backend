@@ -1242,7 +1242,17 @@ window.ac2EliminarLote=async function(){
 // Resetea el FORMULARIO para volver a "crear lote" (sin cambiar de obra): limpia lote/barras/
 // sector/estructura/ciclo/eje y vuelve a la cabecera con el botón Crear lote. Reutilizado tras
 // guardar un lote (volver a crear otro) y tras eliminar.
+// Si el lote en curso está VACÍO (borrador, sin ninguna barra guardada), lo borra físicamente en
+// el backend para no ensuciar el histórico y liberar su num_obra. Fire-and-forget (no bloquea). El
+// backend solo borra si de verdad está vacío (0 barras, borrador), así que es seguro llamarlo.
+function _ac2DescartarLoteVacioSiCorresponde(){
+  if (!AC2.loteId || AC2.loteEstado!=='borrador') return;
+  var hayGuardadas=AC2.barras.some(function(b){ return b._guardada; });
+  if (hayGuardadas) return;   // tiene barras guardadas → NO es vacío, no se toca
+  _ac2Delete('/lotes/'+AC2.loteId+'/vacio');   // fire-and-forget
+}
 function _ac2ResetTanda(){
+  _ac2DescartarLoteVacioSiCorresponde();   // borra el lote vacío antes de soltarlo
   AC2.loteId=null; AC2.loteNum=null; AC2.loteEstado=''; AC2.barras=[]; AC2.sector=''; AC2.estructura=''; AC2.tipo='TODOS';
   AC2.ciclo=''; AC2.eje='';
   ac2LimpiarSeleccion();
@@ -1348,8 +1358,10 @@ window.ac2DuplicarLote=async function(loteId){
 // TERMINADO se abre en solo-lectura (sus barras se corrigen en Bar Manager). Uno en borrador
 // se puede seguir editando. Advierte si hay cambios sin guardar en el form actual.
 window.ac2RetomarLote=async function(id){
+  if (id===AC2.loteId) return;   // ya está abierto
   var pend=AC2.barras.filter(function(b){return !b._guardada;}).length;
   if (pend && !confirm('Tienes '+pend+' barra(s) sin guardar en el formulario. Si abres otro lote se descartarán.\n\n¿Continuar?')) return;
+  _ac2DescartarLoteVacioSiCorresponde();   // si el lote actual estaba vacío, borrarlo antes de abrir otro
   var d=await _ac2Get('/lotes/'+id);
   if (!d || !d.lote){ alert('No se pudo abrir el lote.'); return; }
   var L=d.lote, bs=d.barras||[];
@@ -1425,6 +1437,8 @@ function _ac2InitComboboxes(){
     _ac2CbObra = window.BuscadorObra.crear({
       inputId:'ac2_obra', datalistId:'ac2_obraDatalist', selectId:'ac2_obraSel',
       onElegir: function(idProyecto){
+        // Antes de soltar el lote de la obra anterior: si estaba vacío (nunca se guardó), borrarlo.
+        _ac2DescartarLoteVacioSiCorresponde();
         AC2.proyecto = idProyecto || null;
         // Al cambiar de obra: se descarta la tanda en curso (ciclo/eje/lote/barras son de la
         // obra anterior). El lote guardado no se pierde (vive en BD); solo se limpia el form.
