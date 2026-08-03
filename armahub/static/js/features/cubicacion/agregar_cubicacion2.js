@@ -189,10 +189,13 @@ function ac2FigSvg(b){
     // original (deuda 5N.27: los radios aún no tienen geometría real).
     var geoUse=geo;
     var tieneDims=Object.keys(dims).length>0;
-    // Escalable = tiene tramos Y puntos dibujados (para tomar la orientación real), sin radio ni
-    // etiquetas manuales (deuda 5N.27).
+    // Escalable = tiene tramos Y puntos dibujados (para tomar la orientación real), sin radio y sin
+    // que las etiquetas SEAN los parámetros (etiquetas_manda). Antes se excluía escalable si había
+    // CUALQUIER etiqueta, aunque fuera decorativa → figuras simples (ej. 101A recreada con una
+    // etiqueta residual) mostraban la LETRA en vez del VALOR. Ahora solo las etiqueta-manda o con
+    // radio caen al dibujo original (deuda 5N.27).
     var escalable=(tieneDims && geo.tramos && geo.tramos.length && geo.puntos && geo.puntos.length>=2
-                   && !f.radio && !(geo.etiquetas&&geo.etiquetas.length) && !geo.etiquetas_manda);
+                   && !f.radio && !geo.etiquetas_manda);
     if (escalable){
       // PARAMÉTRICO SIN ROTAR: reconstruyo los PUNTOS conservando la DIRECCIÓN de cada segmento
       // original (de geo.puntos → mantiene la orientación de la figura dibujada) pero con la
@@ -222,6 +225,7 @@ function ac2FigSvg(b){
       }
       geoUse={}; for(var kk in geo) geoUse[kk]=geo[kk];
       geoUse.puntos=np;                                              // puntos re-escalados, misma orientación
+      geoUse.etiquetas=[];                                           // sin etiquetas decorativas sobre el valor
       // MOSTRAR EL VALOR en vez de la letra en cada lado.
       geoUse.tramos=geo.tramos.map(function(tr){
         var vv=dims[tr.lado]; var nt={}; for(var k2 in tr) nt[k2]=tr[k2];
