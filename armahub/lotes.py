@@ -155,6 +155,95 @@ def crear_lote(body: LoteCreate, user=Depends(get_current_user)):
     return {"ok": True, "lote_id": lote_id, "estado": "borrador", "num_obra": num_obra}
 
 
+class LoteDuplicar(BaseModel):
+    ciclo: str          # ciclo del NUEVO lote (obligatorio)
+    eje: str            # eje del NUEVO lote (obligatorio)
+
+
+@router.post("/lotes/{lote_id}/duplicar")
+def duplicar_lote(lote_id: int, body: LoteDuplicar, user=Depends(get_current_user)):
+    """Crea un lote NUEVO con TODA la data del lote origen (piso, sector, tipología, figura, dims,
+    ángulos, cant, mult, sufijo), cambiando SOLO el ciclo y el eje por los que elige el usuario. El
+    nuevo lote nace en 'borrador' con su propio num_obra. Sirve el origen desde la tabla `barras` o,
+    si el origen es una lápida (eliminado), desde su snapshot congelado."""
+    email = user.get("email", "?")
+    ciclo = (body.ciclo or "").strip()
+    eje = (body.eje or "").strip()
+    if not ciclo or not eje:
+        raise HTTPException(status_code=400, detail="Ciclo y Eje son obligatorios para duplicar.")
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            _check_permiso(cur, user)
+            cur.execute("SELECT id_proyecto, estado, snap_barras FROM lotes WHERE id = %s", (lote_id,))
+            r = cur.fetchone()
+            if not r:
+                raise HTTPException(status_code=404, detail="Lote origen no encontrado.")
+            id_proyecto, estado_o, snap = r[0], r[1], r[2]
+            campos = ["sector", "piso", "marca", "figura", "diam", "cant", "mult",
+                      "dim_a", "dim_b", "dim_c", "dim_d", "dim_e", "dim_f", "dim_g", "dim_h", "dim_i",
+                      "ang1", "ang2", "ang3", "ang4", "radio", "suf_tipo"]
+            if estado_o == "eliminado":
+                import json as _json
+                origen = snap if isinstance(snap, list) else (_json.loads(snap) if snap else [])
+            else:
+                cur.execute("SELECT " + ", ".join(campos) +
+                            " FROM barras WHERE lote_id = %s AND origen = 'manual' ORDER BY id", (lote_id,))
+                origen = [dict(zip(campos, row)) for row in cur.fetchall()]
+            if not origen:
+                raise HTTPException(status_code=400, detail="El lote origen no tiene barras que duplicar.")
+            # Crear el lote nuevo (num_obra fijo).
+            cur.execute("SELECT COALESCE(MAX(num_obra), 0) + 1 FROM lotes WHERE id_proyecto = %s", (id_proyecto,))
+            num_obra = int(cur.fetchone()[0])
+            cur.execute(
+                """INSERT INTO lotes (id_proyecto, tipo, estado, creado_por, creado_fecha, n_barras, num_obra)
+                   VALUES (%s, 'manual', 'borrador', %s, %s, 0, %s) RETURNING id""",
+                (id_proyecto, email, _now_iso(), num_obra))
+            nuevo_id = cur.fetchone()[0]
+            factor = _factor_peso(cur, id_proyecto)
+            now = _now_iso()
+            n = 0
+            for b in origen:
+                dims = {f"dim_{L}": b.get(f"dim_{L}") for L in "abcdefghi"}
+                dims.update({a: b.get(a) for a in ("ang1", "ang2", "ang3", "ang4")})
+                dims["radio"] = b.get("radio")
+                largo = _largo_desde_figura(cur, b.get("figura"), dims)
+                peso_u = _peso_teorico(b.get("diam"), largo)
+                if peso_u is not None:
+                    peso_u = peso_u * (1 + factor / 100.0)
+                cant_total = (b.get("cant") or 0) * (b.get("mult") or 1)
+                peso_t = (peso_u * cant_total) if (peso_u is not None) else None
+                idu = _id_unico_manual()
+                cod_prod = cod_prod_de_diam(b.get("diam"))
+                cur.execute(
+                    """INSERT INTO barras
+                       (id_unico, id_proyecto, sector, piso, ciclo, eje, diam, largo_total,
+                        mult, cant, cant_total, peso_unitario, peso_total, marca, figura, cod_proyecto,
+                        dim_a, dim_b, dim_c, dim_d, dim_e, dim_f, dim_g, dim_h, dim_i,
+                        ang1, ang2, ang3, ang4, radio, suf_tipo,
+                        origen, import_id, lote_id, estado, fecha_carga, editado_por, editado_fecha)
+                       VALUES (%s,%s,%s,%s,%s,%s,%s,%s, %s,%s,%s,%s,%s,%s,%s,%s,
+                               %s,%s,%s,%s,%s,%s,%s,%s,%s, %s,%s,%s,%s,%s,%s,
+                               'manual', NULL, %s, 'borrador', %s, %s, %s)""",
+                    (idu, id_proyecto, b.get("sector"), b.get("piso"), ciclo, eje, b.get("diam"), largo,
+                     b.get("mult"), b.get("cant"), cant_total, peso_u, peso_t, b.get("marca"), b.get("figura"), cod_prod,
+                     b.get("dim_a"), b.get("dim_b"), b.get("dim_c"), b.get("dim_d"), b.get("dim_e"),
+                     b.get("dim_f"), b.get("dim_g"), b.get("dim_h"), b.get("dim_i"),
+                     b.get("ang1"), b.get("ang2"), b.get("ang3"), b.get("ang4"), b.get("radio"),
+                     ((b.get("suf_tipo") or "").strip() or None),
+                     nuevo_id, now, email, now))
+                n += 1
+            cur.execute("UPDATE lotes SET n_barras = %s WHERE id = %s", (n, nuevo_id))
+            try:
+                from .sector_estado import marcar_sector_modificado
+                for sec, pis in {(b.get("sector"), b.get("piso")) for b in origen}:
+                    marcar_sector_modificado(cur, id_proyecto, sec, pis, ciclo, por=email)
+            except Exception:
+                pass
+    _cache.invalidate("stats:", "landing:")
+    audit(email, "duplicar_lote", f"origen {lote_id} → {nuevo_id} · {n} barras", "lote", str(nuevo_id))
+    return {"ok": True, "lote_id": nuevo_id, "num_obra": num_obra, "barras": n}
+
+
 @router.post("/lotes/{lote_id}/terminar")
 def terminar_lote(lote_id: int, user=Depends(get_current_user)):
     email = user.get("email", "?")

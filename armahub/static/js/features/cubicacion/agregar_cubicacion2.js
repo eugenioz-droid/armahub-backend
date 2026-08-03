@@ -1270,9 +1270,54 @@ async function ac2CargarLotes(){
       '<td style="padding:6px 8px; text-align:right;">'+ac2Num(l.n_barras||0)+'</td>'+
       '<td style="padding:6px 8px; text-align:right;">'+ac2Num(l.kg,1)+'</td>'+
       '<td style="padding:6px 8px; color:#888;">'+ac2Esc(fecha)+'</td>'+
-      '<td style="padding:6px 8px; text-align:right; color:#558B2F; font-size:11px;">'+(l.estado==='terminada'?'🔒 ver':'✎ abrir')+'</td></tr>';
+      '<td style="padding:6px 8px; text-align:right; white-space:nowrap; font-size:11px;">'+
+        '<span onclick="event.stopPropagation(); ac2DuplicarLotePrompt('+l.id+','+(l.num_obra||l.id)+')" title="Duplicar este lote en otro ciclo/eje" style="color:#1565c0; cursor:pointer; margin-right:10px;">⎘ duplicar</span>'+
+        '<span style="color:#558B2F;">'+(l.estado==='terminada'?'🔒 ver':'✎ abrir')+'</span>'+
+      '</td></tr>';
   }).join('');
 }
+
+// DUPLICAR LOTE: abre un mini-popup para elegir Ciclo y Eje del NUEVO lote (el resto de la data se
+// copia tal cual). Con datalists de los ciclos/ejes de la obra (texto libre igual que en el form).
+window.ac2DuplicarLotePrompt=function(loteId, numObra){
+  var ov=document.getElementById('ac2_dupModal');
+  if (!ov){
+    ov=document.createElement('div'); ov.id='ac2_dupModal';
+    ov.style.cssText='display:none; position:fixed; inset:0; z-index:300; background:rgba(0,0,0,.35);';
+    ov.innerHTML='<div style="max-width:420px; margin:80px auto; background:#fff; border-radius:10px; box-shadow:0 10px 40px rgba(0,0,0,.25); padding:18px;">'+
+      '<h3 style="margin:0 0 4px; color:#1565c0; font-size:16px;">⎘ Duplicar lote <span id="ac2_dupNum"></span></h3>'+
+      '<p style="margin:0 0 14px; font-size:12px; color:#607d8b;">Se copia toda la data del lote (pisos, tipologías, medidas, cant/mult). Elige el <b>Ciclo</b> y <b>Eje</b> del nuevo lote:</p>'+
+      '<div style="display:flex; gap:10px; margin-bottom:14px;">'+
+        '<div style="flex:1;"><label style="font-size:11px; color:#558B2F; font-weight:700;">Ciclo *</label><input id="ac2_dupCiclo" list="ac2_dupCiclosDL" style="width:100%; height:32px; box-sizing:border-box; font-size:13px;" placeholder="ciclo…"/><datalist id="ac2_dupCiclosDL"></datalist></div>'+
+        '<div style="flex:1;"><label style="font-size:11px; color:#558B2F; font-weight:700;">Eje / Losa *</label><input id="ac2_dupEje" list="ac2_dupEjesDL" style="width:100%; height:32px; box-sizing:border-box; font-size:13px;" placeholder="eje…"/><datalist id="ac2_dupEjesDL"></datalist></div>'+
+      '</div>'+
+      '<div style="display:flex; justify-content:flex-end; gap:8px;">'+
+        '<button onclick="ac2CerrarDup()" style="font-size:12px; padding:6px 14px; background:#fff; color:#607d8b; border:1px solid #cfd8dc; border-radius:4px; cursor:pointer;">Cancelar</button>'+
+        '<button id="ac2_dupOk" style="font-size:12px; padding:6px 16px; background:#1565c0; color:#fff; border:none; border-radius:4px; cursor:pointer;">Duplicar</button>'+
+      '</div></div>';
+    document.body.appendChild(ov);
+  }
+  document.getElementById('ac2_dupNum').textContent='#'+numObra;
+  // Poblar datalists con ciclos/ejes de la obra (ya cargados en el contexto).
+  var dlc=document.getElementById('ac2_dupCiclosDL'), dle=document.getElementById('ac2_dupEjesDL');
+  if (dlc) dlc.innerHTML=(_ac2CiclosObra||[]).map(function(c){return '<option value="'+ac2Esc(c.id)+'">';}).join('');
+  if (dle) dle.innerHTML=(_ac2EjesObra||[]).map(function(e){return '<option value="'+ac2Esc(e.id)+'">';}).join('');
+  document.getElementById('ac2_dupCiclo').value=''; document.getElementById('ac2_dupEje').value='';
+  document.getElementById('ac2_dupOk').onclick=function(){ ac2DuplicarLote(loteId); };
+  ov.style.display='block';
+  setTimeout(function(){ document.getElementById('ac2_dupCiclo').focus(); }, 50);
+};
+window.ac2CerrarDup=function(){ var m=document.getElementById('ac2_dupModal'); if(m) m.style.display='none'; };
+window.ac2DuplicarLote=async function(loteId){
+  var ciclo=(document.getElementById('ac2_dupCiclo').value||'').trim();
+  var eje=(document.getElementById('ac2_dupEje').value||'').trim();
+  if (!ciclo || !eje){ alert('Completa Ciclo y Eje para duplicar.'); return; }
+  var r=await _ac2Post('/lotes/'+loteId+'/duplicar', { ciclo:ciclo, eje:eje });
+  if (!r.ok){ var d=r.data&&r.data.detail; alert('No se pudo duplicar'+(d?': '+(d.msg||d):'')+'.'); return; }
+  ac2CerrarDup();
+  await ac2CargarLotes();
+  alert('⎘ Lote duplicado como #'+(r.data&&r.data.num_obra)+' ('+(r.data&&r.data.barras)+' barras) en Ciclo '+ciclo+' · Eje '+eje+'.\nÁbrelo desde el repositorio para revisarlo.');
+};
 
 // RETOMAR un lote: carga sus barras (GET /lotes/{id}) y reconstruye el formulario. Un lote
 // TERMINADO se abre en solo-lectura (sus barras se corrigen en Bar Manager). Uno en borrador
