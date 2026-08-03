@@ -1396,6 +1396,19 @@ def _editar_barra_impl(barra_id: int, body: BarraUpdate, user):
                     sets.append(f"{f} = %s"); params.append(campos[f])
                     cambios.append(f"{f}: {barra[f]}→{campos[f]}")
 
+            # COHERENCIA cant/mult/cant_total: en el Bar Manager el usuario edita la CANTIDAD (que
+            # es cant_total) y no ve cant ni mult. Al cambiar cant_total sin tocar cant/mult, estos
+            # quedaban desincronizados (cant×mult ≠ cant_total). Se sincronizan: cant = cant_total,
+            # mult = 1. Ambos cambios quedan en la TRAZA (mismo formato campo: viejo→nuevo).
+            if "cant_total" in campos:
+                nuevo_total = campos["cant_total"]
+                if "cant" not in campos and barra["cant"] != nuevo_total:
+                    sets.append("cant = %s"); params.append(nuevo_total)
+                    cambios.append(f"cant: {barra['cant']}→{nuevo_total}")
+                if "mult" not in campos and barra["mult"] != 1:
+                    sets.append("mult = %s"); params.append(1)
+                    cambios.append(f"mult: {barra['mult']}→1")
+
             # 5M.4: si se tocó geometría, validar coherencia contra el catálogo.
             toca_geom = any(k in campos for k in _GEOM_COLS)
             if toca_geom:
