@@ -537,16 +537,18 @@ def filters(
             # Role-based project filter
             allowed = _get_allowed_project_ids(cur, user)
             pf_sql, pf_params = _project_filter_sql(allowed)
-            pf_b, pf_bp = _project_filter_sql(allowed, "b")
 
-            # Proyectos: filtered by authorization (return id + nombre)
+            # Proyectos: TODAS las obras autorizadas (tabla proyectos), tengan o no barras.
+            # Antes salía de `barras` (DISTINCT id_proyecto) y omitía las obras vacías, lo que
+            # impedía elegir una obra recién creada en el CREADOR de barras. La fuente correcta
+            # es la tabla de obras; el Bar Manager, si eliges una obra sin barras, simplemente
+            # no lista barras (comportamiento esperado, no un error).
             cur.execute("""
-                SELECT DISTINCT b.id_proyecto, COALESCE(p.nombre_proyecto, b.nombre_proyecto, b.id_proyecto)
-                FROM barras b
-                LEFT JOIN proyectos p ON b.id_proyecto = p.id_proyecto
-                WHERE 1=1""" + pf_b + """
-                ORDER BY COALESCE(p.nombre_proyecto, b.nombre_proyecto, b.id_proyecto)
-            """, pf_bp)
+                SELECT id_proyecto, COALESCE(nombre_proyecto, id_proyecto)
+                FROM proyectos
+                WHERE 1=1""" + pf_sql + """
+                ORDER BY COALESCE(nombre_proyecto, id_proyecto)
+            """, list(pf_params))
             proyectos = [{"id": r[0], "nombre": r[1]} for r in cur.fetchall() if r[0] is not None]
 
             # Planos: filtrado solo por proyecto (+ auth)
