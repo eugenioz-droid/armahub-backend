@@ -449,32 +449,50 @@ def listar_lotes(proyecto: str, user=Depends(get_current_user)):
             # num_obra: correlativo FIJO del lote en la obra (columna, asignado al crear; nunca se
             # recalcula). Para lotes ELIMINADOS (lápidas) las barras ya no existen → se usa el
             # snapshot (snap_*) guardado al eliminar. Se incluyen las lápidas en el histórico.
+            # n_items = nº de ENTRADAS/filas (COUNT). n_barras = BARRAS FÍSICAS = SUM(cant_total).
+            # Nomenclatura estandarizada: "items"=filas, "barras"=físicas. Para lápidas se usa el
+            # snapshot (snap_n_barras era el COUNT histórico; las físicas se derivan del snap_barras).
             cur.execute(
                 """
                 SELECT l.id, l.estado, l.creado_por, l.creado_fecha, l.terminado_fecha,
-                       CASE WHEN l.estado='eliminado' THEN COALESCE(l.snap_n_barras,0) ELSE COUNT(b.id_unico) END AS n_barras,
+                       CASE WHEN l.estado='eliminado' THEN COALESCE(l.snap_n_barras,0) ELSE COUNT(b.id_unico) END AS n_items,
+                       CASE WHEN l.estado='eliminado' THEN 0 ELSE COALESCE(SUM(b.cant_total),0) END AS n_barras,
                        CASE WHEN l.estado='eliminado' THEN COALESCE(l.snap_kg,0)       ELSE COALESCE(SUM(b.peso_total),0) END AS kg,
                        CASE WHEN l.estado='eliminado' THEN l.snap_sector ELSE MIN(b.sector) END AS sector,
                        CASE WHEN l.estado='eliminado' THEN l.snap_ciclo  ELSE MIN(b.ciclo)  END AS ciclo,
                        CASE WHEN l.estado='eliminado' THEN l.snap_eje    ELSE MIN(b.eje)    END AS eje,
-                       l.num_obra, l.eliminado_por, l.eliminado_fecha
+                       l.num_obra, l.eliminado_por, l.eliminado_fecha, l.snap_barras
                 FROM lotes l
                 LEFT JOIN barras b ON b.lote_id = l.id
                 WHERE l.id_proyecto = %s
                 GROUP BY l.id, l.estado, l.creado_por, l.creado_fecha, l.terminado_fecha,
                          l.snap_n_barras, l.snap_kg, l.snap_sector, l.snap_ciclo, l.snap_eje,
-                         l.num_obra, l.eliminado_por, l.eliminado_fecha
+                         l.num_obra, l.eliminado_por, l.eliminado_fecha, l.snap_barras
                 ORDER BY l.num_obra DESC NULLS LAST, l.id DESC
                 """,
                 (proyecto,),
             )
-            lotes = [
-                {"id": r[0], "estado": r[1], "creado_por": r[2], "creado_fecha": r[3],
-                 "terminado_fecha": r[4], "n_barras": r[5], "kg": float(r[6] or 0),
-                 "sector": r[7], "ciclo": r[8], "eje": r[9], "num_obra": r[10],
-                 "eliminado_por": r[11], "eliminado_fecha": r[12]}
-                for r in cur.fetchall()
-            ]
+            # Columnas: 0 id, 1 estado, 2 creado_por, 3 creado_fecha, 4 terminado_fecha, 5 n_items,
+            # 6 n_barras(físicas), 7 kg, 8 sector, 9 ciclo, 10 eje, 11 num_obra, 12 eliminado_por,
+            # 13 eliminado_fecha, 14 snap_barras.
+            import json as _json
+            lotes = []
+            for r in cur.fetchall():
+                n_barras = float(r[6] or 0)
+                if r[1] == "eliminado":
+                    # Barras físicas de una lápida: derivar de snap_barras (cant×mult) si existe.
+                    snap = r[14]
+                    if isinstance(snap, str):
+                        try: snap = _json.loads(snap)
+                        except Exception: snap = []
+                    if snap:
+                        n_barras = sum((x.get("cant") or 0) * (x.get("mult") or 1) for x in snap)
+                lotes.append({
+                    "id": r[0], "estado": r[1], "creado_por": r[2], "creado_fecha": r[3],
+                    "terminado_fecha": r[4], "n_items": int(r[5] or 0), "n_barras": n_barras,
+                    "kg": float(r[7] or 0), "sector": r[8], "ciclo": r[9], "eje": r[10],
+                    "num_obra": r[11], "eliminado_por": r[12], "eliminado_fecha": r[13],
+                })
     return {"ok": True, "lotes": lotes}
 
 

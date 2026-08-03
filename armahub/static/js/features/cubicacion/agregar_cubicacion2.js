@@ -674,13 +674,28 @@ function ac2SetBarraDato(id, campo, valor){
 window.ac2SetBarra=function(id,campo,valor){
   var b=ac2BarraPorId(id); if(!b) return;
   // EDICIÓN MASIVA EN TÁNDEM (igual que Bar Manager): si el modo masivo está activo y la barra
-  // editada está MARCADA, aplicar este mismo cambio (campo+valor) a TODAS las marcadas de una vez
-  // y re-render completo. Se maneja aparte (no cae al flujo granular de una sola fila).
+  // editada está MARCADA, aplicar este mismo cambio a TODAS las marcadas. Actualización GRANULAR
+  // por fila (NO re-render completo → antes destruía el input enfocado y al presionar Enter se
+  // perdía el cursor). La fila que el usuario está editando NO se re-renderiza (conserva el foco);
+  // el resto se actualiza según el campo (geometría re-pinta su fila, cant/mult solo largo/peso).
   if (AC2.masiva && AC2.seleccion[id]){
     var ids=ac2IdsSeleccionados();
     if (ids.length>1){
-      ids.forEach(function(oid){ ac2SetBarraDato(oid, campo, valor); });
-      ac2Render();   // re-pinta todo; los checks se restauran solos desde AC2.seleccion
+      var esGeom = (campo.indexOf('dim_')===0 || campo.indexOf('ang')===0 || campo==='radio');
+      var esFigDiam = (campo==='figura' || campo==='diam');
+      ids.forEach(function(oid){
+        ac2SetBarraDato(oid, campo, valor);   // muta el dato (con defaults de figura/diam)
+        if (oid===id) return;                 // la fila activa: no la tocamos (conserva el foco)
+        if (esFigDiam) ac2ReRenderFila(oid);            // cambian qué celdas existen
+        else if (esGeom) ac2ActualizarGeom(oid);        // dibujo/largo/peso/rojo, sin recrear inputs
+        else ac2ActualizarLargoPeso(oid);               // cant/mult → largo/peso/cant.T
+      });
+      // La fila ACTIVA sí necesita reflejar el cambio de figura/diam (cambian sus celdas). En ese
+      // caso re-renderizamos SOLO esa fila y re-enfocamos la celda editada explícitamente.
+      if (esFigDiam) ac2ReRenderFila(id, { row:String(id), col:campo });
+      else if (esGeom) ac2ActualizarGeom(id);
+      else ac2ActualizarLargoPeso(id);
+      ac2ActualizarContadores();
       return;
     }
   }
@@ -765,7 +780,9 @@ function ac2ReRenderFila(id, focoCol){
 function ac2ActualizarContadores(){
   var arr=ac2Visibles();
   var rev=arr.filter(function(b){return b.rev;}).length;
-  var uds=arr.reduce(function(s,b){return s+(Number(b.cant)||0);},0);
+  // ITEMS = nº de filas (arr.length). BARRAS FÍSICAS = Σ(cant×mult) (no solo cant → antes el "uds"
+  // subreportaba con mult>1). Nomenclatura estandarizada: "items" = filas, "barras" = físicas.
+  var barrasFis=arr.reduce(function(s,b){return s+((Number(b.cant)||0)*(Number(b.mult)||1));},0);
   var kg=arr.reduce(function(s,b){return s+(Number(ac2Peso(b))||0);},0);
   // Barras inválidas: contamos SOLO las que ya tienen figura (una fila recién agregada, vacía, no
   // es "inválida", está a medio llenar). Y armamos un detalle para el tooltip (cuáles son).
@@ -778,7 +795,7 @@ function ac2ActualizarContadores(){
   var rc=document.getElementById('ac2_revcount');
   if(rc){ rc.innerHTML = !arr.length ? '' :
     ('✓ '+rev+' de '+arr.length+' revisadas' + (inval?(' · <b style="color:#c62828; cursor:help;" title="'+ac2Esc(detalle)+'">⚠ '+inval+' con geometría inválida</b>'):'')); }
-  var ro=document.getElementById('ac2_rollup'); if(ro) ro.innerHTML=arr.length?('<b style="color:#37474f;">'+arr.length+'</b> barras · <b style="color:#37474f;">'+ac2Num(uds)+'</b> uds · <b style="color:#558B2F;">'+ac2Num(kg,1)+'</b> kg'):'';
+  var ro=document.getElementById('ac2_rollup'); if(ro) ro.innerHTML=arr.length?('<b style="color:#37474f;">'+arr.length+'</b> items · <b style="color:#37474f;">'+ac2Num(barrasFis)+'</b> barras · <b style="color:#558B2F;">'+ac2Num(kg,1)+'</b> kg'):'';
 }
 
 // ── Agregar / copiar / duplicar / quitar barras (cambios estructurales → re-render completo) ──
@@ -1198,11 +1215,11 @@ function _ac2ResetTanda(){
 // retomarlos. Los datos viven en BD; esta lista los muestra aunque recargues la página.
 async function ac2CargarLotes(){
   var tb=document.getElementById('ac2_lotesBody'); if(!tb) return;
-  if (!AC2.proyecto){ tb.innerHTML='<tr><td colspan="7" style="padding:10px 8px; color:#90a4ae; font-style:italic; text-align:center;">Elige una obra para ver sus lotes.</td></tr>'; return; }
+  if (!AC2.proyecto){ tb.innerHTML='<tr><td colspan="8" style="padding:10px 8px; color:#90a4ae; font-style:italic; text-align:center;">Elige una obra para ver sus lotes.</td></tr>'; return; }
   var lotes=[];
   try { var d=await _ac2Get('/lotes?proyecto='+encodeURIComponent(AC2.proyecto)); lotes=(d&&d.lotes)||[]; }
   catch(e){ lotes=[]; }
-  if (!lotes.length){ tb.innerHTML='<tr><td colspan="7" style="padding:10px 8px; color:#90a4ae; font-style:italic; text-align:center;">Esta obra aún no tiene lotes.</td></tr>'; return; }
+  if (!lotes.length){ tb.innerHTML='<tr><td colspan="8" style="padding:10px 8px; color:#90a4ae; font-style:italic; text-align:center;">Esta obra aún no tiene lotes.</td></tr>'; return; }
   tb.innerHTML=lotes.map(function(l){
     var esta=(l.id===AC2.loteId);
     var eliminado=(l.estado==='eliminado');
@@ -1220,7 +1237,8 @@ async function ac2CargarLotes(){
         '<td style="padding:6px 8px; font-weight:600;">#'+(l.num_obra||l.id)+'</td>'+
         '<td style="padding:6px 8px;"><s>'+ac2Esc(l.sector||'—')+' · '+ac2Esc(l.ciclo||'—')+' · '+ac2Esc(l.eje||'—')+'</s></td>'+
         '<td style="padding:6px 8px;">'+estado+'</td>'+
-        '<td style="padding:6px 8px; text-align:right;"><s>'+(l.n_barras||0)+'</s></td>'+
+        '<td style="padding:6px 8px; text-align:right;"><s>'+(l.n_items||0)+'</s></td>'+
+        '<td style="padding:6px 8px; text-align:right;"><s>'+ac2Num(l.n_barras||0)+'</s></td>'+
         '<td style="padding:6px 8px; text-align:right;"><s>'+ac2Num(l.kg,1)+'</s></td>'+
         '<td style="padding:6px 8px;">'+ac2Esc(fecha)+'</td>'+
         '<td style="padding:6px 8px; text-align:right; font-size:10px;" title="Eliminado por '+ac2Esc(l.eliminado_por||'?')+' el '+ac2Esc(elim)+'">👁 ver · por '+ac2Esc((l.eliminado_por||'').split('@')[0])+'</td></tr>';
@@ -1230,7 +1248,8 @@ async function ac2CargarLotes(){
       '<td style="padding:6px 8px; font-weight:600; color:#558B2F;">#'+(l.num_obra||l.id)+(esta?' •':'')+'</td>'+
       '<td style="padding:6px 8px;">'+ac2Esc(l.sector||'—')+' · '+ac2Esc(l.ciclo||'—')+' · '+ac2Esc(l.eje||'—')+'</td>'+
       '<td style="padding:6px 8px;">'+estado+'</td>'+
-      '<td style="padding:6px 8px; text-align:right;">'+(l.n_barras||0)+'</td>'+
+      '<td style="padding:6px 8px; text-align:right;">'+(l.n_items||0)+'</td>'+
+      '<td style="padding:6px 8px; text-align:right;">'+ac2Num(l.n_barras||0)+'</td>'+
       '<td style="padding:6px 8px; text-align:right;">'+ac2Num(l.kg,1)+'</td>'+
       '<td style="padding:6px 8px; color:#888;">'+ac2Esc(fecha)+'</td>'+
       '<td style="padding:6px 8px; text-align:right; color:#558B2F; font-size:11px;">'+(l.estado==='terminada'?'🔒 ver':'✎ abrir')+'</td></tr>';
