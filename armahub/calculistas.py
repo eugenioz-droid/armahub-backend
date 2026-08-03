@@ -48,12 +48,15 @@ def listar_calculistas(activo: Optional[bool] = None, user=Depends(get_current_u
             cur.execute("""
                 SELECT c.id, c.nombre, c.email, c.activo, c.fecha_creacion,
                        COUNT(DISTINCT p.id_proyecto) AS proyectos_count,
-                       COALESCE(SUM(stats.barras), 0) AS total_barras,
+                       COALESCE(SUM(stats.items), 0) AS total_items,
+                       COALESCE(SUM(stats.barras_fis), 0) AS total_barras,
                        COALESCE(SUM(stats.kilos), 0) AS total_kilos
                 FROM calculistas c
                 LEFT JOIN proyectos p ON p.calculista_id = c.id
                 LEFT JOIN (
-                    SELECT id_proyecto, COUNT(*) AS barras, COALESCE(SUM(peso_total), 0) AS kilos
+                    -- items = filas (COUNT); barras_fis = barras físicas (Σ cant_total).
+                    SELECT id_proyecto, COUNT(*) AS items, COALESCE(SUM(cant_total), 0) AS barras_fis,
+                           COALESCE(SUM(peso_total), 0) AS kilos
                     FROM barras GROUP BY id_proyecto
                 ) stats ON stats.id_proyecto = p.id_proyecto
             """ + where + """
@@ -68,8 +71,9 @@ def listar_calculistas(activo: Optional[bool] = None, user=Depends(get_current_u
                 "id": r[0], "nombre": r[1], "email": r[2],
                 "activo": r[3], "fecha_creacion": r[4],
                 "proyectos_count": int(r[5]),
-                "total_barras": int(r[6]),
-                "total_kilos": round(float(r[7]), 2),
+                "total_items": int(r[6]),
+                "total_barras": round(float(r[7])),   # barras físicas (Σ cant_total)
+                "total_kilos": round(float(r[8]), 2),
             }
             for r in rows
         ]
@@ -99,7 +103,8 @@ def kpis_calculistas(user=Depends(require_admin_or_admin_calidad)):
                     CASE WHEN COUNT(b.id_unico) > 0
                         THEN COALESCE(SUM(b.peso_total), 0) / COUNT(b.id_unico)
                         ELSE 0
-                    END AS ppb
+                    END AS ppb,
+                    COALESCE(SUM(b.cant_total), 0) AS barras_fisicas
                 FROM calculistas c
                 LEFT JOIN proyectos p ON p.calculista_id = c.id
                 LEFT JOIN barras b ON b.id_proyecto = p.id_proyecto
@@ -115,7 +120,8 @@ def kpis_calculistas(user=Depends(require_admin_or_admin_calidad)):
                 "id": r[0],
                 "nombre": r[1],
                 "proyectos": int(r[2]),
-                "barras": int(r[3]),
+                "items": int(r[3]),                    # entradas/filas (COUNT)
+                "barras": round(float(r[8])),          # barras físicas (Σ cant_total)
                 "kilos": round(float(r[4]), 2),
                 "diam_prom_ponderado": round(float(r[5]), 1) if r[5] else 0,
                 "ppi": round(float(r[6]), 2),
