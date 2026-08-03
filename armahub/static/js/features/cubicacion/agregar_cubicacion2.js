@@ -274,10 +274,13 @@ function ac2Thead(){
   // Borde derecho para separarlo VISUALMENTE de la columna Piso (antes se confundían).
   if (AC2.masiva) h+='<th style="padding:3px 6px; text-align:center; width:22px; border-right:1px solid #e0e0e0;"><input type="checkbox" id="ac2_selTodo" onclick="ac2SelTodo(this)" title="Marcar/desmarcar todas"/></th>';
   // Header Piso: al ordenar por piso, iconos ▲/▼ para ordenar TODOS los pisos asc/descendente.
-  var ordPiso = (AC2.orden==='piso') ?
-    ('<span style="margin-left:6px; white-space:nowrap;">'+
-     '<span onclick="ac2OrdenarPisos(1)" title="Pisos ascendente" style="cursor:pointer; font-size:10px; color:'+(_ac2PisoDir>0?'#8BC34A':'#b0bec5')+';">▲</span>'+
-     '<span onclick="ac2OrdenarPisos(-1)" title="Pisos descendente" style="cursor:pointer; font-size:10px; margin-left:2px; color:'+(_ac2PisoDir<0?'#8BC34A':'#b0bec5')+';">▼</span></span>') : '';
+  // Iconos ▲/▼ SIEMPRE visibles en el header de Piso (en las 3 vistas). Al presionarlos se ordena
+  // por piso asc/descendente (si estabas en Creación o Tipología, cambia a orden por piso). Se
+  // resaltan según la dirección activa solo cuando la vista ya es por piso.
+  var pisoActivo=(AC2.orden==='piso');
+  var ordPiso='<span style="margin-left:6px; white-space:nowrap;">'+
+    '<span onclick="ac2OrdenarPisos(1)" title="Ordenar por piso, ascendente" style="cursor:pointer; font-size:10px; color:'+((pisoActivo&&_ac2PisoDir>0)?'#8BC34A':'#b0bec5')+';">▲</span>'+
+    '<span onclick="ac2OrdenarPisos(-1)" title="Ordenar por piso, descendente" style="cursor:pointer; font-size:10px; margin-left:2px; color:'+((pisoActivo&&_ac2PisoDir<0)?'#8BC34A':'#b0bec5')+';">▼</span></span>';
   h+='<th style="text-align:left; padding:3px 6px 3px '+(AC2.masiva?'12px':'6px')+';">Piso'+ordPiso+'</th>';
   if (mostrarTipo){
     h+='<th style="text-align:left; padding:3px 6px;">Tipología</th>';
@@ -593,9 +596,15 @@ window.ac2SetTipo=function(t){
 window.ac2SetOrden=function(o){ AC2.orden=o; _ac2PisosOrden=[]; _ac2PisoDir=1;   // reset orden manual + dirección
   ['creacion','piso','tipo'].forEach(function(x){ var b=document.getElementById('ac2o_'+x); if(b){var on=(o===x); b.style.background=on?'#8BC34A':'#fff'; b.style.color=on?'#fff':'#558B2F';} });
   ac2Render(); };
-// Orden GLOBAL de pisos ascendente (dir=1) o descendente (dir=-1). Limpia el orden manual (flechas)
-// para que la dirección mande. Icono ▲ (asc) / ▼ (desc) en el header de la columna Piso.
-window.ac2OrdenarPisos=function(dir){ _ac2PisosOrden=[]; _ac2PisoDir=(dir<0?-1:1); ac2Render(); };
+// Orden GLOBAL de pisos ascendente (dir=1) o descendente (dir=-1). Los iconos ▲/▼ del header de
+// Piso están visibles en las 3 vistas; al presionarlos, si no estabas ordenando por piso, se
+// cambia a "Orden: Piso" (para que la acción SIEMPRE tenga efecto visible). Resetea el orden
+// manual de grupos (flechas "mover piso") para que la dirección mande.
+window.ac2OrdenarPisos=function(dir){
+  if (AC2.orden!=='piso'){ ac2SetOrden('piso'); }   // fuerza el modo piso y re-pinta los botones de Orden
+  _ac2PisosOrden=[]; _ac2PisoDir=(dir<0?-1:1);       // DESPUÉS de ac2SetOrden (que resetea la dirección)
+  ac2Render();
+};
 // Sube/baja un grupo de PISO en el orden de la grilla (flechas del header). dir=-1 sube, +1 baja.
 window.ac2MoverGrupo=function(piso, dir){
   // SIEMPRE partimos del orden VISIBLE actual (los pisos que tienen barras, en el orden en que se
