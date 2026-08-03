@@ -365,6 +365,36 @@ def validar_geometria(cur, codigo_figura: str, valores: dict) -> dict:
 # ENDPOINTS DE LECTURA (5M.1) — CRUD de edición viene en Fase 8
 # ============================================================================
 
+@router.get("/figuras-catalogo/_diag/{codigo}")
+def _diag_figura(codigo: str, user=Depends(get_current_user)):
+    """DIAGNÓSTICO TEMPORAL: devuelve el dato CRUDO de una figura para depurar la validación.
+    Muestra parciales (con repr para ver espacios/caja), tipo, y los tramos de la geometría."""
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT codigo, parciales, angulos, radio, geometria FROM figuras_catalogo WHERE codigo = %s", (codigo,))
+            r = cur.fetchone()
+            if not r:
+                return {"encontrada": False, "codigo": codigo}
+            parciales = r[1]
+            geo = r[4]
+            import json as _json
+            tramos = []
+            try:
+                g = geo if isinstance(geo, dict) else (_json.loads(geo) if geo else {})
+                tramos = [{"lado": t.get("lado"), "lado_repr": repr(t.get("lado"))} for t in (g.get("tramos") or [])]
+            except Exception as e:
+                tramos = [{"error": str(e)}]
+            return {
+                "encontrada": True, "codigo": r[0],
+                "parciales": parciales,
+                "parciales_repr": [repr(x) for x in (parciales or [])],
+                "parciales_tipo": str(type(parciales)),
+                "angulos": r[2], "radio": r[3],
+                "tiene_geometria": geo is not None,
+                "tramos": tramos,
+            }
+
+
 @router.get("/figuras-catalogo")
 def listar_figuras(activo: Optional[bool] = True, user=Depends(get_current_user)):
     """Catálogo de figuras. Lo consumen Bar Manager (validación/filtros) y el editor."""
