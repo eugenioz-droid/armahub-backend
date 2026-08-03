@@ -1087,15 +1087,25 @@ function _ac2InitComboboxes(){
   }
 }
 
-// Catálogo de figuras (GET /figuras-catalogo). Cachea _ac2Figuras[codigo] = {parciales,
-// angulos, radio, geometria} y puebla el <datalist id=ac2_figDatalist> de la grilla. Una vez.
+// Puebla el <datalist id=ac2_figDatalist> de la grilla desde el catálogo YA cargado (_ac2Figuras).
+// Se llama en CADA montaje del tab: el datalist es un elemento del DOM que se re-inyecta al
+// re-entrar, así que hay que repoblarlo aunque los datos ya estén cacheados (antes el guard de
+// _ac2CargarFiguras retornaba temprano y dejaba el datalist vacío tras un re-montaje → el filtro
+// de figuras no ofrecía opciones, sobre todo visible en obras sin barras que lo enmascaren).
+function _ac2PoblarDatalistFiguras(){
+  var dl=document.getElementById('ac2_figDatalist'); if(!dl) return;
+  var codigos=Object.keys(_ac2Figuras);
+  dl.innerHTML=codigos.map(function(c){ return '<option value="'+ac2Esc(c)+'"></option>'; }).join('');
+}
+// Catálogo de figuras (GET /figuras-catalogo). Cachea _ac2Figuras[codigo] = {parciales, angulos,
+// radio, geometria}. La descarga se hace UNA vez; el datalist se (re)puebla SIEMPRE.
 async function _ac2CargarFiguras(){
-  if (Object.keys(_ac2Figuras).length) return;   // ya cargadas
-  var figs=[];
-  try { var d=await apiGet('/figuras-catalogo'); figs=(d && d.figuras)||[]; } catch(e){ figs=[]; }
-  figs.forEach(function(f){ if(f && f.codigo) _ac2Figuras[f.codigo]=f; });
-  var dl=document.getElementById('ac2_figDatalist');
-  if (dl) dl.innerHTML=figs.map(function(f){ return '<option value="'+ac2Esc(f.codigo)+'"></option>'; }).join('');
+  if (!Object.keys(_ac2Figuras).length){   // descargar solo si no está en caché
+    var figs=[];
+    try { var d=await apiGet('/figuras-catalogo'); figs=(d && d.figuras)||[]; } catch(e){ figs=[]; }
+    figs.forEach(function(f){ if(f && f.codigo) _ac2Figuras[f.codigo]=f; });
+  }
+  _ac2PoblarDatalistFiguras();   // repoblar el datalist del DOM actual (aunque venga de caché)
 }
 
 // Pisos disponibles de la obra (GET /proyectos/{id}/pisos-combinados): plantilla ∪ existentes,
@@ -1291,7 +1301,13 @@ async function _ac2Put(url, body){
 }
 
 // Init al cargar el módulo (el markup ya está en el DOM por el {% include %}). El loader
-// del tab vuelve a correr al activarlo; ambas rutas son idempotentes.
-function _ac2Init(){ if(document.getElementById('ac2_grid')){ _ac2InitComboboxes(); ac2PintarSectorEstructura(); ac2PintarSubtabs(); ac2SetTipo('TODOS'); _ac2CargarObras(); } }
+// del tab vuelve a correr al activarlo; ambas rutas son idempotentes. Carga también el catálogo
+// de figuras y las tipologías (poblar el datalist de figuras aquí evita que quede vacío si el
+// tab se monta por esta ruta y no por loadAgregarCubicacion2).
+function _ac2Init(){
+  if(!document.getElementById('ac2_grid')) return;
+  _ac2InitComboboxes(); ac2PintarSectorEstructura(); ac2PintarSubtabs(); ac2SetTipo('TODOS');
+  _ac2CargarFiguras(); _ac2CargarTipologias(); _ac2CargarObras();
+}
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', _ac2Init);
 else _ac2Init();
