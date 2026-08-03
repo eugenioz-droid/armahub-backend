@@ -75,7 +75,15 @@ function ac2NuevaBarra(over){
 function ac2DimsDeFigura(codigo){
   var f = _ac2Figuras[codigo];
   if (!f) return { dims:[], angs:0, radio:false };
-  var dims = (f.parciales||[]).map(function(L){ return 'dim_'+String(L).toLowerCase(); });
+  // Parciales (lados que usa la figura). Si `parciales` viene vacío pero la figura tiene geometría
+  // dibujada (tramos), DERIVAMOS los lados de los tramos → así una figura guardada por el diseñador
+  // sin `parciales` (bug de guardado) no marca la barra como inválida falsamente. Los tramos son la
+  // fuente real del dibujo, así que sus lados son los que la figura usa.
+  var parciales = f.parciales;
+  if ((!parciales || !parciales.length) && f.geometria && f.geometria.tramos && f.geometria.tramos.length){
+    parciales = f.geometria.tramos.map(function(t){ return t.lado; }).filter(function(L){ return L && /^[A-Za-z]$/.test(String(L)); });
+  }
+  var dims = (parciales||[]).map(function(L){ return 'dim_'+String(L).toLowerCase(); });
   return { dims:dims, angs:(f.angulos||[]).length, radio:!!f.radio };
 }
 

@@ -1374,6 +1374,12 @@
         .map(function(t) { return _anguloInterno(t.giro); });
       radio = false;
     }
+    // BLINDAJE: nunca guardar `parciales` vacío si SÍ se dibujaron lados. Sin parciales, la
+    // validación de barras marca la figura como inválida (le "sobran" las medidas). Si el modo
+    // etiquetas no aportó lados, derivamos de los tramos dibujados (fuente real de la figura).
+    if ((!parciales || !parciales.length) && geo.tramos && geo.tramos.length) {
+      parciales = geo.tramos.map(function(t) { return t.lado; }).filter(function(L){ return L; });
+    }
     if (angulos.length > 4) {
       alert('Esta figura tiene ' + angulos.length + ' ángulos especiales (≠90°), pero el sistema soporta máximo 4 (α1-α4).\n\nAjusta la figura antes de guardar.');
       return;

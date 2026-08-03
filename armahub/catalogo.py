@@ -218,17 +218,33 @@ _ANG_COLS = ["ang1", "ang2", "ang3", "ang4"]
 
 def get_figura(cur, codigo: str):
     """Devuelve {parciales, angulos, radio} de una figura, o None si no existe.
-    Robusto al tipo de cursor (tupla o dict_row): accede por nombre de columna."""
+    Robusto al tipo de cursor (tupla o dict_row): accede por nombre de columna.
+    Si `parciales` quedó vacío pero la figura tiene geometría dibujada, se DERIVAN los lados de
+    los tramos (fuente real del dibujo) → evita que una figura guardada por el Diseñador sin
+    `parciales` (bug de guardado) rechace barras válidas por 'geometría inválida'."""
     if not codigo:
         return None
-    cur.execute("SELECT parciales, angulos, radio FROM figuras_catalogo WHERE codigo = %s", (codigo,))
+    cur.execute("SELECT parciales, angulos, radio, geometria FROM figuras_catalogo WHERE codigo = %s", (codigo,))
     row = cur.fetchone()
     if not row:
         return None
-    # dict_row → acceso por clave; tupla → por índice.
     if isinstance(row, dict):
-        return {"parciales": row.get("parciales") or [], "angulos": row.get("angulos") or [], "radio": bool(row.get("radio"))}
-    return {"parciales": row[0] or [], "angulos": row[1] or [], "radio": bool(row[2])}
+        parciales = row.get("parciales") or []
+        angulos = row.get("angulos") or []
+        radio = bool(row.get("radio"))
+        geometria = row.get("geometria")
+    else:
+        parciales, angulos, radio, geometria = row[0] or [], row[1] or [], bool(row[2]), row[3]
+    if not parciales and geometria:
+        import json as _json
+        try:
+            g = geometria if isinstance(geometria, dict) else _json.loads(geometria)
+            tramos = (g or {}).get("tramos") or []
+            parciales = [t.get("lado") for t in tramos
+                         if t.get("lado") and str(t.get("lado")).isalpha() and len(str(t.get("lado"))) == 1]
+        except Exception:
+            pass
+    return {"parciales": parciales, "angulos": angulos, "radio": radio}
 
 
 def _tiene_valor_real(v):
