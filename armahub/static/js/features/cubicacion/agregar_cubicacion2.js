@@ -1036,17 +1036,14 @@ window.ac2Guardar=async function(opts){
     // estado "revisada" (/revisar) sin re-insertarlas.
     var idsDb=(rb.data&&rb.data.ids)||[];
     listas.forEach(function(b,i){ b._guardada=true; if(idsDb[i]!=null) b._dbid=idsDb[i]; });
-    // Si quedan barras a medio llenar, NO limpiamos (se perderían): el usuario las completa y vuelve
-    // a guardar. Si TODO quedó guardado, limpiamos la interfaz y volvemos a "crear lote" (el lote
-    // guardado queda en el repositorio de la obra; se retoma desde ahí si hace falta).
-    if (pendientes>0){
-      ac2PintarEstado(); ac2ActualizarCabecera(); ac2Render(); ac2CargarLotes();
-      alert('✅ '+n+' barra(s) guardadas en el lote #'+(AC2.loteNum||AC2.loteId)+'.\n\nQuedan '+pendientes+' barra(s) sin completar en el formulario — complétalas y vuelve a guardar.');
-    } else {
-      var loteGuardado=(AC2.loteNum||AC2.loteId);
-      _ac2ResetTanda();
-      alert('✅ '+n+' barra(s) guardadas en el lote #'+loteGuardado+'.\n\nEl formulario está listo para crear otro lote. Para revisar/terminar el guardado, ábrelo desde el repositorio de lotes abajo.');
-    }
+    // El disquete NUNCA limpia el formulario: el usuario debe poder guardar SEGUIDO (avance) sin
+    // perder lo que tiene en pantalla si se corta el internet. Para limpiar y crear otro lote está
+    // la X (ac2Descartar). Las barras guardadas quedan marcadas _guardada; las incompletas siguen ahí.
+    ac2PintarEstado(); ac2ActualizarCabecera(); ac2Render(); ac2CargarLotes();
+    var msg='✅ '+n+' barra(s) guardadas en el lote #'+(AC2.loteNum||AC2.loteId)+'.';
+    if (pendientes>0) msg+='\n\nQuedan '+pendientes+' barra(s) sin completar en el formulario — complétalas y guarda de nuevo.';
+    else msg+='\n\nMarca "Rev" y 🏁 Terminar, o sigue agregando. Para vaciar el formulario usa la X.';
+    alert(msg);
   }catch(e){ alert('Error de red al guardar. Reintenta.'); }
 };
 
@@ -1092,12 +1089,21 @@ window.ac2AgregarBarrasMulti=function(){
   ac2PintarSectorEstructura();
   ac2Render();
 };
-// ✕ DESCARTAR: limpia las barras del formulario NO guardadas (no toca el lote ya guardado).
+// ✕ DESCARTAR / LIMPIAR: vacía el formulario y vuelve al inicio (crear lote). NO borra de la BD
+// las barras ya guardadas (para eso está 🗑 Eliminar); el lote guardado queda en el repositorio.
+// Es EL botón para limpiar la pantalla (el disquete ya no limpia, para poder guardar seguido).
 window.ac2Descartar=function(){
-  if (!AC2.barras.length){ return; }
-  if (confirm('Se quitarán del formulario las '+AC2.barras.length+' barra(s) que aún NO guardaste.\n(Las ya guardadas en el lote no se tocan.)\n\n¿Continuar?')){
-    AC2.barras=[]; ac2LimpiarSeleccion(); ac2Render();
-  }
+  var sinGuardar=AC2.barras.filter(function(b){return !b._guardada;}).length;
+  var hayGuardadas=AC2.barras.some(function(b){return b._guardada;});
+  // Si no hay nada abierto, no hay qué limpiar.
+  if (!AC2.loteId && !AC2.barras.length){ return; }
+  var msg = sinGuardar
+    ? ('Se vaciará el formulario. Las '+sinGuardar+' barra(s) que aún NO guardaste se descartarán.'+
+       (hayGuardadas||AC2.loteId ? '\nEl lote guardado NO se borra (queda en el repositorio; para borrarlo usa 🗑 Eliminar).' : '')+
+       '\n\n¿Continuar?')
+    : ('Se cerrará el lote actual y el formulario quedará listo para crear otro.\nEl lote guardado NO se borra (queda en el repositorio).\n\n¿Continuar?');
+  if (!confirm(msg)) return;
+  _ac2ResetTanda();   // limpia lote/barras/ciclo/eje/sector/estructura y refresca cabecera+botones
 };
 
 // 🗑 ELIMINAR LOTE: borra el lote y TODAS sus barras. ES LA ÚNICA forma de borrar un lote
