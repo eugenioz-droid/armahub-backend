@@ -340,7 +340,10 @@ function ac2Fila(b){
   var tdr='<td style="'+AC2_TDS+' text-align:right;">';
   // Celda de dato con input; el input se marca ROJO (clase) si el campo está inválido.
   var tdDato=function(campo,w){ return '<td style="'+AC2_TDS+' text-align:right;">'+ac2Inp(b._id,campo,b[campo],w,!!val.rojas[campo])+'</td>'; };
-  var h='<tr id="ac2row_'+b._id+'"'+(!val.ok?' title="Geometría inválida para la figura"':'')+'>';
+  // Fondo rojo TENUE si la barra ya tiene figura y su geometría es inválida → el usuario ubica
+  // al toque cuál es la fila con problema (las celdas en conflicto ya van en rojo).
+  var filaMala = (b.figura && !val.ok);
+  var h='<tr id="ac2row_'+b._id+'"'+(filaMala?' style="background:#fff5f5;" title="Geometría inválida: revisa las celdas en rojo (faltan o sobran medidas para la figura '+ac2Esc(b.figura)+')"':'')+'>';
   // data-grp = valor del campo por el que se agrupa (piso o marca), para que el maestro del
   // header de grupo encuentre a sus hijos. En "creación" (sin agrupar) no hay maestro, da igual.
   if (AC2.masiva){ var gc=ac2AgrupaPor(); var grpVal=(gc==='piso')?(b.piso||''):b.marca;
@@ -714,10 +717,17 @@ function ac2ActualizarContadores(){
   var rev=arr.filter(function(b){return b.rev;}).length;
   var uds=arr.reduce(function(s,b){return s+(Number(b.cant)||0);},0);
   var kg=arr.reduce(function(s,b){return s+(Number(ac2Peso(b))||0);},0);
-  var inval=arr.filter(function(b){return !ac2Validar(b).ok;}).length;
+  // Barras inválidas: contamos SOLO las que ya tienen figura (una fila recién agregada, vacía, no
+  // es "inválida", está a medio llenar). Y armamos un detalle para el tooltip (cuáles son).
+  var malas=arr.filter(function(b){ return b.figura && !ac2Validar(b).ok; });
+  var inval=malas.length;
+  var detalle=malas.map(function(b){
+    var faltan=Object.keys(ac2Validar(b).rojas).map(function(c){ return c.indexOf('dim_')===0?('lado '+c.split('_')[1].toUpperCase()):(c.indexOf('ang')===0?('áng '+c.slice(3)):c); });
+    return '• '+(b.piso||'?')+' '+(b.marca||'')+' fig '+b.figura+(faltan.length?(' → revisa: '+faltan.join(', ')):'');
+  }).join('\n');
   var rc=document.getElementById('ac2_revcount');
   if(rc){ rc.innerHTML = !arr.length ? '' :
-    ('✓ '+rev+' de '+arr.length+' revisadas' + (inval?(' · <b style="color:#c62828;">⚠ '+inval+' con geometría inválida</b>'):'')); }
+    ('✓ '+rev+' de '+arr.length+' revisadas' + (inval?(' · <b style="color:#c62828; cursor:help;" title="'+ac2Esc(detalle)+'">⚠ '+inval+' con geometría inválida</b>'):'')); }
   var ro=document.getElementById('ac2_rollup'); if(ro) ro.innerHTML=arr.length?('<b style="color:#37474f;">'+arr.length+'</b> barras · <b style="color:#37474f;">'+ac2Num(uds)+'</b> uds · <b style="color:#558B2F;">'+ac2Num(kg,1)+'</b> kg'):'';
 }
 
