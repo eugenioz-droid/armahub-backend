@@ -512,7 +512,10 @@ function ac2ActualizarCabecera(){
   var show=function(id,on){ var el=document.getElementById(id); if(el) el.style.display=on?'':'none'; };
   var dis=function(id,off){ var el=document.getElementById(id); if(!el) return; el.disabled=off; el.style.opacity=off?'0.45':'1'; el.style.cursor=off?'not-allowed':'pointer'; };
   // Botón Crear lote: visible solo sin lote; pintado vivo si la ubicación está completa.
+  // Leemos las 3 fuentes DIRECTO del DOM/estado en el momento (no dependemos de que los eventos
+  // onElegir/onInput hayan corrido antes): obra del BuscadorObra, ciclo/eje del texto visible.
   _ac2LeerContexto();
+  if (_ac2CbObra){ var oid=_ac2CbObra.getId(); if(oid) AC2.proyecto=oid; }
   var listo = AC2.proyecto && AC2.ciclo && AC2.eje;
   var crear=document.getElementById('ac2_crearLoteBtn');
   if (crear){
@@ -1171,6 +1174,14 @@ function _ac2InitComboboxes(){
       onSelect: function(it){ AC2.eje = it ? it.id : (_ac2CbEje ? _ac2CbEje.getTexto().trim() : ''); ac2ActualizarCabecera(); }
     });
   }
+  // RESPALDO robusto del pintado: escuchar `input` NATIVO en obra/ciclo/eje. Así el botón Crear
+  // lote se repinta en CADA tecla, sin depender del wiring interno del combobox/buscador (evita
+  // el caso "escribí ciclo y eje y el botón no se pintó"). ac2ActualizarCabecera relee los 3
+  // valores del DOM, así que es idempotente. Marcamos el input para no duplicar el listener.
+  ['ac2_obra','ac2_ciclo','ac2_eje'].forEach(function(id){
+    var el=document.getElementById(id);
+    if (el && !el._ac2CabHook){ el._ac2CabHook=true; el.addEventListener('input', ac2ActualizarCabecera); el.addEventListener('change', ac2ActualizarCabecera); }
+  });
 }
 
 // Puebla el <datalist id=ac2_figDatalist> de la grilla desde el catálogo YA cargado (_ac2Figuras).
