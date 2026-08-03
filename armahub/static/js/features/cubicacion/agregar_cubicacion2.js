@@ -33,6 +33,17 @@ var AC2_SECTORES=['ELEV','LCIELO','VCIELO','FUND'];
 // tipología trae sus `figuras`. AC2_TIPOS_MAP[estructura]=[{codigo,nombre,figuras}]. Fallback
 // mínimo (catálogo _TIPOLOGIAS_SEED) por si la API no responde; 'GEN' = estructura GENERAL.
 var AC2_ESTRUCTURAS=['MURO','LOSA','VIGA','COLUMNA','FUNDACION','GEN'];
+// Estructuras VÁLIDAS por sector (regla del negocio): ELEV=vertical (muro/columna), LCIELO=losa,
+// VCIELO=viga, FUND=fundación. GEN (GENERAL) sirve para todos. Evita combinaciones inconsistentes
+// (ej. ELEV+Losa). Si un sector no está en el mapa, se permiten todas (fallback seguro).
+var AC2_ESTRUCT_POR_SECTOR={
+  ELEV:   ['MURO','COLUMNA','GEN'],
+  LCIELO: ['LOSA','GEN'],
+  VCIELO: ['VIGA','GEN'],
+  FUND:   ['FUNDACION','GEN']
+};
+// ¿La estructura `e` es válida para el sector `s`? Sin sector elegido → todas (aún no filtra).
+function ac2EstructValida(e, s){ if(!s) return true; var v=AC2_ESTRUCT_POR_SECTOR[s]; return !v || v.indexOf(e)>=0; }
 var AC2_TIPOS_MAP={
   MURO:[{codigo:'MH'},{codigo:'MV'},{codigo:'TR'},{codigo:'EC'},{codigo:'TC'},{codigo:'CB'}],
   LOSA:[{codigo:'Fi'},{codigo:'Fs'},{codigo:"F'i"},{codigo:"F's"},{codigo:'F'},{codigo:"F'"},{codigo:'SP'},{codigo:'Rp'},{codigo:'TRL'}],
@@ -538,16 +549,30 @@ function ac2PintarSectorEstructura(){
     if (bloq)   return '<span style="'+base+' border:1px dashed #cfd8dc; background:#fff; color:#cfd8dc; cursor:not-allowed;">'+ac2Esc(txt)+'</span>';
     return '<button onclick="'+onclick+'" style="'+base+' border:1px solid #90a4ae; background:#fff; color:#546e7a; cursor:pointer;">'+ac2Esc(txt)+'</button>';
   };
+  // Chip DESHABILITADO (no aplica): gris tenue, no clickeable (distinto del "bloqueado por barras").
+  var chipOff=function(txt,tit){ var base='font-size:12px; padding:4px 12px; border-radius:14px; font-weight:600; margin:0;';
+    return '<span title="'+ac2Esc(tit||'')+'" style="'+base+' border:1px solid #eceff1; background:#f7f8f9; color:#cfd8dc; cursor:not-allowed;">'+ac2Esc(txt)+'</span>'; };
   var sc=document.getElementById('ac2_sectorChips');
   if (sc) sc.innerHTML=AC2_SECTORES.map(function(s){ return chip(s, AC2.sector===s, "ac2SetSector('"+s+"')"); }).join(' ');
   var ec=document.getElementById('ac2_estructChips');
-  if (ec) ec.innerHTML=AC2_ESTRUCTURAS.map(function(e){ return chip(e==='GEN'?'GENERAL':e, AC2.estructura===e, "ac2SetEstructura('"+e+"')"); }).join(' ');
+  if (ec) ec.innerHTML=AC2_ESTRUCTURAS.map(function(e){
+    var lbl=(e==='GEN'?'GENERAL':e);
+    // Estructura no válida para el sector elegido → chip deshabilitado (regla ELEV/LCIELO/VCIELO/FUND).
+    if (AC2.sector && !ac2EstructValida(e, AC2.sector)) return chipOff(lbl, 'No aplica a '+AC2.sector);
+    return chip(lbl, AC2.estructura===e, "ac2SetEstructura('"+e+"')");
+  }).join(' ');
   var lk=document.getElementById('ac2_sectorLock');
   if (lk) lk.textContent = bloq ? '🔒 bloqueado (hay barras) — para cambiar, descarta/elimina el lote' : '';
 }
-window.ac2SetSector=function(s){ if(ac2Bloqueado()) return; AC2.sector=s; ac2PintarSectorEstructura(); ac2ActualizarBotonesCrear(); };
+window.ac2SetSector=function(s){ if(ac2Bloqueado()) return;
+  AC2.sector=s;
+  // Si la estructura ya elegida NO aplica al nuevo sector, se resetea (evita ELEV+Losa colgado).
+  if (AC2.estructura && !ac2EstructValida(AC2.estructura, s)){ AC2.estructura=''; AC2_TIPOS=[]; ac2PintarSubtabs(); }
+  ac2PintarSectorEstructura(); ac2ActualizarBotonesCrear();
+};
 window.ac2SetEstructura=function(e){
   if(ac2Bloqueado()) return;
+  if(!ac2EstructValida(e, AC2.sector)){ return; }   // defensa: no permitir una estructura inválida para el sector
   AC2.estructura=e;
   // Las tipologías (subtabs) dependen de la estructura (en su orden funcional del catálogo).
   AC2_TIPOS=(AC2_TIPOS_MAP[e]||[]).map(function(t){return t.codigo;});
