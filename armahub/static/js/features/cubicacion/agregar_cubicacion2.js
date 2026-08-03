@@ -62,7 +62,7 @@ var _ac2Pisos = [];   // ['S2','S1','P1',...] en orden lógico (subterráneos �
 // columna Tipología) — según diseño: en TODOS la barra nueva NO tiene tipología fija.
 function ac2NuevaBarra(over){
   var b = { _id: _ac2Seq++, piso:'', marca:(AC2.tipo==='TODOS'?'':AC2.tipo),
-            diam:null, cant:1, mult:1, figura:'',
+            diam:null, cant:1, mult:1, figura:'', suf_tipo:'',
             dim_a:null,dim_b:null,dim_c:null,dim_d:null,dim_e:null,dim_f:null,dim_g:null,dim_h:null,dim_i:null,
             ang1:null,ang2:null,ang3:null,ang4:null, radio:null,
             rev:false, _invalida:false };
@@ -130,6 +130,9 @@ function ac2Peso(b){
   var pu=7850*Math.PI*(Number(b.diam)/2000)*(Number(b.diam)/2000)*(largo/100);
   return pu*((Number(b.cant)||0)*(Number(b.mult)||1));
 }
+// Cantidad TOTAL = cant × mult (solo para mostrar; el peso YA incluye este factor). Coincide con
+// cant_total del backend (lotes.py) y del importador (CANT del CSV = total).
+function ac2CantTotal(b){ return ac2Num((Number(b.cant)||0)*(Number(b.mult)||1)); }
 // Texto de la celda de peso: el valor, o "—" con pista de qué falta (φ o dims).
 function ac2PesoTxt(b){
   var p=ac2Peso(b);
@@ -253,10 +256,19 @@ function ac2Thead(){
   var mostrarTipo = (AC2.tipo==='TODOS');   // en subtab se oculta la columna Tipología
   var h='<tr style="color:#666; background:#fafafa;">';
   // Solo en modo masivo, el check MACRO al inicio: marca/desmarca TODAS las barras visibles.
-  if (AC2.masiva) h+='<th style="padding:3px 6px; text-align:center; width:22px;"><input type="checkbox" id="ac2_selTodo" onclick="ac2SelTodo(this)" title="Marcar/desmarcar todas"/></th>';
-  h+='<th style="text-align:left; padding:3px 6px;">Piso</th>';
-  if (mostrarTipo) h+='<th style="text-align:left; padding:3px 6px;">Tipología</th>';
+  // Borde derecho para separarlo VISUALMENTE de la columna Piso (antes se confundían).
+  if (AC2.masiva) h+='<th style="padding:3px 6px; text-align:center; width:22px; border-right:1px solid #e0e0e0;"><input type="checkbox" id="ac2_selTodo" onclick="ac2SelTodo(this)" title="Marcar/desmarcar todas"/></th>';
+  h+='<th style="text-align:left; padding:3px 6px 3px '+(AC2.masiva?'12px':'6px')+';">Piso</th>';
+  if (mostrarTipo){
+    h+='<th style="text-align:left; padding:3px 6px;">Tipología</th>';
+    // Sufijo: texto libre que se CONCATENA a la tipología SOLO al exportar a aSa (no cambia la
+    // tipología interna → dashboards sin inconsistencias). Va a la derecha de Tipología.
+    h+='<th style="text-align:left; padding:3px 6px;" title="Sufijo que se concatena a la tipología SOLO al exportar (no altera la tipología del sistema)">Sufijo</th>';
+  }
+  // Cant (unitaria) · Mult · Cant.T (= cant×mult, solo lectura) · Largo · Peso Tot.
   h+='<th style="text-align:right; padding:3px 6px;">φ</th><th style="text-align:right; padding:3px 6px;">Cant</th>';
+  h+='<th style="text-align:right; padding:3px 6px;" title="Multiplicador (doble/triple malla)">Mult</th>';
+  h+='<th style="text-align:right; padding:3px 6px;" title="Cantidad total = Cant × Mult">Cant.T</th>';
   h+='<th style="text-align:right; padding:3px 6px;">Largo</th><th style="text-align:right; padding:3px 10px 3px 6px;">Peso Tot</th>';
   // Figura + Dibujo separados del bloque numérico (Peso Tot) con un borde suave y aire.
   h+='<th style="text-align:left; padding:3px 6px 3px 14px; border-left:1px solid #e0e0e0;">Figura</th>';
@@ -294,6 +306,7 @@ window.ac2NavKey=function(ev, el){
   // Datalist abierto (figura): ↑/↓ navegan la lista nativa; no interceptar.
   if ((k==='ArrowUp'||k==='ArrowDown') && el.getAttribute('list')) return;
   var grid=document.getElementById('ac2_grid'); if(!grid) return;
+  var NAV='input.ac2nav, select.ac2nav';   // celdas navegables (inputs Y selects: piso/φ/marca)
   var target=null;
   if (k==='ArrowUp' || k==='ArrowDown' || k==='Enter'){
     // ↑↓/Enter: ir a la MISMA columna (data-col) de la fila anterior/siguiente. Robusto
@@ -303,12 +316,15 @@ window.ac2NavKey=function(ev, el){
     var trAct=el.closest('tr'); var fi=filas.indexOf(trAct);
     var dir=(k==='ArrowUp')?-1:1;
     for (var r=fi+dir; r>=0 && r<filas.length; r+=dir){
-      var cand=filas[r].querySelector('input.ac2nav[data-col="'+col+'"]');
+      var cand=filas[r].querySelector('input.ac2nav[data-col="'+col+'"], select.ac2nav[data-col="'+col+'"]');
       if (cand){ target=cand; break; }   // salta filas donde esa columna está deshabilitada
     }
+    // Enter SIEMPRE previene el default (submit/blur) aunque no haya fila destino (última fila),
+    // para NO perder el foco actual (bug: el cursor desaparecía en la última fila).
+    if (k==='Enter' && !target){ ev.preventDefault(); return; }
   } else {
-    // ←→/Tab: input anterior/siguiente en el orden visual del DOM.
-    var inputs=[].slice.call(grid.querySelectorAll('input.ac2nav'));
+    // ←→/Tab: celda anterior/siguiente en el orden visual del DOM (inputs y selects).
+    var inputs=[].slice.call(grid.querySelectorAll(NAV));
     var i=inputs.indexOf(el); if(i<0) return;
     var ni=(k==='ArrowLeft' || (k==='Tab'&&ev.shiftKey))? i-1 : i+1;
     if (ni>=0 && ni<inputs.length) target=inputs[ni];
@@ -328,26 +344,32 @@ function ac2Fila(b){
   // data-grp = valor del campo por el que se agrupa (piso o marca), para que el maestro del
   // header de grupo encuentre a sus hijos. En "creación" (sin agrupar) no hay maestro, da igual.
   if (AC2.masiva){ var gc=ac2AgrupaPor(); var grpVal=(gc==='piso')?(b.piso||''):b.marca;
-    h+='<td style="'+AC2_TDS+' text-align:center;"><input type="checkbox" class="ac2sel" data-grp="'+ac2Esc(grpVal)+'" data-id="'+b._id+'"'+(AC2.seleccion[b._id]?' checked':'')+' onclick="ac2SelFila(this)"/></td>'; }
+    h+='<td style="'+AC2_TDS+' text-align:center; border-right:1px solid #e0e0e0;"><input type="checkbox" class="ac2sel" data-grp="'+ac2Esc(grpVal)+'" data-id="'+b._id+'"'+(AC2.seleccion[b._id]?' checked':'')+' onclick="ac2SelFila(this)"/></td>'; }
   // Piso: <select> con los pisos configurados de la obra. Si la barra trae un piso que no está
   // en la lista (ej. retomado de un lote), se agrega como opción para no perderlo.
   var pisosOps=_ac2Pisos.slice();
   if (b.piso && pisosOps.indexOf(b.piso)<0) pisosOps.unshift(b.piso);
   var opPiso='<option value=""'+(b.piso?'':' selected')+'>—</option>'+
     pisosOps.map(function(p){ return '<option'+(p===b.piso?' selected':'')+'>'+ac2Esc(p)+'</option>'; }).join('');
-  h+='<td style="'+AC2_TDS+'"><select class="ac2cell ac2nav" data-col="piso" data-row="'+b._id+'" style="width:56px; text-align:left;" onchange="ac2SetBarra('+b._id+',\'piso\',this.value)" onkeydown="ac2NavKey(event,this)">'+opPiso+'</select></td>';
+  h+='<td style="'+AC2_TDS+(AC2.masiva?' padding-left:12px;':'')+'"><select class="ac2cell ac2nav" data-col="piso" data-row="'+b._id+'" style="width:56px; text-align:left;" onchange="ac2SetBarra('+b._id+',\'piso\',this.value)" onkeydown="ac2NavKey(event,this)">'+opPiso+'</select></td>';
   // Tipología (marca) — select solo en TODOS; en un subtab está implícita. Opción vacía para
   // barras nuevas sin tipología aún (en TODOS nacen sin marca; el cubicador la elige acá).
   if (mostrarTipo){
     var op='<option value=""'+(b.marca?'':' selected')+'>— tipo —</option>'+
       AC2_TIPOS.map(function(m){return '<option'+(m===b.marca?' selected':'')+'>'+m+'</option>';}).join('');
-    h+='<td style="'+AC2_TDS+'"><select onchange="ac2SetBarra('+b._id+',\'marca\',this.value)" style="font-size:11px; padding:1px 2px;">'+op+'</select></td>';
+    h+='<td style="'+AC2_TDS+'"><select class="ac2cell ac2nav" data-col="marca" data-row="'+b._id+'" onchange="ac2SetBarra('+b._id+',\'marca\',this.value)" onkeydown="ac2NavKey(event,this)" style="font-size:11px; padding:1px 2px;">'+op+'</select></td>';
+    // Sufijo de tipología: texto libre. Se concatena a la tipología SOLO al exportar (aSa); NO
+    // altera b.marca. Estado en b.suf_tipo. Input directo (no re-render).
+    h+='<td style="'+AC2_TDS+'"><input type="text" value="'+ac2Esc(b.suf_tipo||'')+'" maxlength="20" class="ac2cell ac2nav" data-col="suf_tipo" data-row="'+b._id+'" style="width:56px; font-size:11px; padding:1px 3px;" onchange="ac2SetBarra('+b._id+',\'suf_tipo\',this.value)" onkeydown="ac2NavKey(event,this)" placeholder="—" title="Se concatena a la tipología solo al exportar"/></td>';
   }
-  // φ (diámetro) — select de lista fija.
+  // φ (diámetro) — select de lista fija, navegable con teclado.
   var opd='<option value=""></option>'+AC2_DIAMS.map(function(d){return '<option'+(Number(b.diam)===d?' selected':'')+'>'+d+'</option>';}).join('');
-  h+='<td style="'+AC2_TDS+' text-align:right;"><select onchange="ac2SetBarra('+b._id+',\'diam\',this.value)" style="font-size:11px; padding:1px 2px;">'+opd+'</select></td>';
-  // Cant.
+  h+='<td style="'+AC2_TDS+' text-align:right;"><select class="ac2cell ac2nav" data-col="diam" data-row="'+b._id+'" onchange="ac2SetBarra('+b._id+',\'diam\',this.value)" onkeydown="ac2NavKey(event,this)" style="font-size:11px; padding:1px 2px;">'+opd+'</select></td>';
+  // Cant (unitaria) · Mult (multiplicador) · Cant.T (= cant×mult, SOLO LECTURA — no re-multiplica
+  // el peso, que ya usa cant×mult; solo informa el total).
   h+='<td style="'+AC2_TDS+' text-align:right;">'+ac2Inp(b._id,'cant',b.cant,40)+'</td>';
+  h+='<td style="'+AC2_TDS+' text-align:right;">'+ac2Inp(b._id,'mult',b.mult,40)+'</td>';
+  h+='<td id="ac2cantt_'+b._id+'" style="'+AC2_TDS+' text-align:right; color:#607d8b; font-weight:600;">'+ac2CantTotal(b)+'</td>';
   // Largo (calculado en vivo) — solo lectura, id para actualización granular.
   h+='<td id="ac2largo_'+b._id+'" style="'+AC2_TDS+' text-align:right; color:#1565c0; font-weight:600;">'+ac2Num(ac2Largo(b))+'</td>';
   // Peso (calculado en vivo) — solo lectura. Si hay largo pero falta φ, muestra "—" (falta φ).
@@ -379,7 +401,9 @@ function ac2Fila(b){
 // Header de grupo. porPiso=true muestra flechas para reordenar el grupo (subir/bajar). El check
 // maestro de grupo (masiva) se genera con data-grp = valor del grupo.
 function ac2GrupoHdr(valor, cnt, porPiso){
-  var cols = (AC2.masiva?1:0) + 1 + (AC2.tipo==='TODOS'?1:0) + 5 + (AC2.render?1:0) + 9 + 4 + 1 + 1 + 1;
+  // Columnas: [masiva] + Piso + [Tipología + Sufijo] + φ,Cant,Mult,Cant.T,Largo,PesoTot,Figura(7)
+  //           + [Dibujo] + 9 lados + 4 áng + R + Rev + acciones.
+  var cols = (AC2.masiva?1:0) + 1 + (AC2.tipo==='TODOS'?2:0) + 7 + (AC2.render?1:0) + 9 + 4 + 1 + 1 + 1;
   // Flechas para reordenar el PISO completo (solo en modo agrupado-por-piso). Botones claros con
   // texto "mover piso" para que se entienda que actúan sobre el grupo, no sobre una fila.
   var b=function(dir,fl,tit){ return '<button onclick="ac2MoverGrupo(\''+ac2Esc(valor)+'\','+dir+')" title="'+tit+'" '+
@@ -614,8 +638,9 @@ window.ac2SetBarra=function(id,campo,valor){
   else if (campo==='diam') ac2AplicarDefaults(b,'diam');
   if (campo==='figura' || campo==='diam'){
     // Cambian QUÉ celdas existen (dims/ángulos según figura) o los defaults → re-render de fila.
-    // (El foco vuelve a la celda editada si sigue existiendo — ac2ReRenderFila lo preserva.)
-    ac2ReRenderFila(id);
+    // Pasamos focoCol EXPLÍCITO (no lo deducimos de document.activeElement, que en un <input list>
+    // o <select> ya perdió el foco al disparar el change → antes el cursor desaparecía).
+    ac2ReRenderFila(id, { row:String(id), col:campo });
   } else if (campo.indexOf('dim_')===0 || campo.indexOf('ang')===0 || campo==='radio'){
     // Editar una MEDIDA: NO re-render (perdería el foco/cursor). Actualiza granularmente el
     // dibujo, largo/peso y el marcado rojo de validación, sin recrear los inputs.
@@ -631,6 +656,7 @@ function ac2ActualizarLargoPeso(id){
   var b=ac2BarraPorId(id); if(!b) return;
   var l=document.getElementById('ac2largo_'+id); if(l) l.textContent=ac2Num(ac2Largo(b));
   var p=document.getElementById('ac2peso_'+id);  if(p) p.innerHTML=ac2PesoTxt(b);
+  var ct=document.getElementById('ac2cantt_'+id); if(ct) ct.textContent=ac2CantTotal(b);   // cant×mult
 }
 // Al editar una MEDIDA (dim/áng/radio): actualiza el DIBUJO (escala), largo/peso, el marcado
 // ROJO de validación de cada celda, y el estado del check Rev — TODO sin recrear los inputs
@@ -672,9 +698,11 @@ function ac2ReRenderFila(id, focoCol){
   }
   var tr=document.getElementById('ac2row_'+id);
   if (tr) tr.outerHTML=ac2Fila(b);
-  // Re-enfocar la celda que estaba activa (misma fila+columna), si sigue existiendo.
+  // Re-enfocar la celda que estaba activa (misma fila+columna), si sigue existiendo. Incluye
+  // <select> (φ) además de <input>, porque la celda editada puede ser cualquiera de los dos.
   if (focoCol && focoCol.row!=null){
-    var sel='input.ac2nav[data-row="'+focoCol.row+'"][data-col="'+focoCol.col+'"]';
+    var sel='input.ac2nav[data-row="'+focoCol.row+'"][data-col="'+focoCol.col+'"],'+
+            'select.ac2nav[data-row="'+focoCol.row+'"][data-col="'+focoCol.col+'"]';
     var again=document.querySelector(sel);
     if (again){ again.focus(); if(again.select) again.select(); }
   }
@@ -909,7 +937,7 @@ function ac2Payload(b){
   var it={ sector:AC2.sector||null, ciclo:AC2.ciclo||null, piso:(b.piso||null), eje:AC2.eje||null,
            diam:Number(b.diam), figura:b.figura||null, marca:b.marca||null,
            cant:Number(b.cant)||1, mult:Number(b.mult)||1, radio:(b.radio!=null?Number(b.radio):null),
-           revisada: !!b.rev };
+           revisada: !!b.rev, suf_tipo:(b.suf_tipo||'').trim()||null };
   AC2_DIMKEYS.forEach(function(k){ it[k]=(b[k]!=null?Number(b[k]):null); });
   ['ang1','ang2','ang3','ang4'].forEach(function(a){ it[a]=(b[a]!=null?Number(b[a]):null); });
   return it;
@@ -1098,7 +1126,7 @@ window.ac2RetomarLote=async function(id){
   _ac2Seq=1; ac2LimpiarSeleccion();
   AC2.barras=bs.map(function(x){
     var nb=ac2NuevaBarra({ piso:x.piso||'', marca:x.marca||'', diam:x.diam, cant:x.cant, mult:x.mult,
-      figura:x.figura||'', radio:x.radio, rev:!!x.revisada });
+      figura:x.figura||'', radio:x.radio, rev:!!x.revisada, suf_tipo:x.suf_tipo||'' });
     AC2_DIMKEYS.forEach(function(k){ nb[k]=x[k]; });
     ['ang1','ang2','ang3','ang4'].forEach(function(a){ nb[a]=x[a]; });
     nb._guardada=true; nb._dbid=x.id;   // id de BD para sincronizar revisada (/revisar) al terminar

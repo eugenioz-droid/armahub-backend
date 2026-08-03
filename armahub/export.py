@@ -63,6 +63,7 @@ DB_FIELDS = [
     "dim_a", "dim_b", "dim_c", "dim_d", "dim_e", "dim_f", "dim_g", "dim_h", "dim_i",
     "ang1", "ang2", "ang3", "ang4", "radio",
     "peso_unitario", "peso_total",
+    "suf_tipo",   # 5N.42: se concatena a MARCA en el export (no es una columna propia de la planilla)
 ]
 
 
@@ -203,6 +204,14 @@ def exportar_proyecto(
 
                     if not rows:
                         continue
+
+                    # 5N.42: la columna MARCA de la planilla aSa lleva la tipología CONCATENADA con
+                    # su sufijo (marca+suf_tipo) cuando existe. En la BD la tipología (marca) queda
+                    # intacta; el sufijo solo afecta este export. `suf_tipo` no es columna propia.
+                    for _r in rows:
+                        _suf = (_r.get("suf_tipo") or "").strip()
+                        if _suf:
+                            _r["marca"] = (str(_r.get("marca") or "") + _suf)
 
                     # Crear workbook para esta combinación
                     wb = Workbook()

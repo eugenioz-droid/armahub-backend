@@ -114,6 +114,7 @@ class BarraManual(BaseModel):
     ang4: Optional[float] = None
     radio: Optional[float] = None
     revisada: bool = False   # el cubicador la marcó revisada en la grilla (5N.19); viaja con la barra
+    suf_tipo: Optional[str] = None   # sufijo que se concatena a la tipología SOLO al exportar (5N.42)
 
 
 class BarrasBatch(BaseModel):
@@ -298,17 +299,17 @@ def agregar_barras(lote_id: int, body: BarrasBatch, user=Depends(get_current_use
                         mult, cant, cant_total, peso_unitario, peso_total, marca, figura, cod_proyecto,
                         dim_a, dim_b, dim_c, dim_d, dim_e, dim_f, dim_g, dim_h, dim_i,
                         ang1, ang2, ang3, ang4, radio,
-                        revisada, revisada_por, revisada_fecha,
+                        revisada, revisada_por, revisada_fecha, suf_tipo,
                         origen, import_id, lote_id, estado, fecha_carga, editado_por, editado_fecha)
                        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s, %s,%s,%s,%s,%s,%s,%s,%s,
                                %s,%s,%s,%s,%s,%s,%s,%s,%s, %s,%s,%s,%s,%s,
-                               %s,%s,%s,
+                               %s,%s,%s,%s,
                                'manual', NULL, %s, 'borrador', %s, %s, %s) RETURNING id""",
                     (idu, id_proyecto, b.sector, b.piso, b.ciclo, b.eje, b.nombre_plano, b.diam, largo,
                      b.mult, b.cant, cant_total, peso_u, peso_t, b.marca, b.figura, cod_prod,
                      b.dim_a, b.dim_b, b.dim_c, b.dim_d, b.dim_e, b.dim_f, b.dim_g, b.dim_h, b.dim_i,
                      b.ang1, b.ang2, b.ang3, b.ang4, b.radio,
-                     bool(b.revisada), rev_por, rev_fecha,
+                     bool(b.revisada), rev_por, rev_fecha, ((b.suf_tipo or "").strip() or None),
                      lote_id, now, email, now),
                 )
                 creadas.append({"id": cur.fetchone()[0], "id_unico": idu})   # id numérico + id_unico
@@ -410,7 +411,7 @@ def ver_lote(lote_id: int, user=Depends(get_current_user)):
     # su estado "revisada" (/revisar) al terminar un lote retomado.
     campos = ["id", "sector", "piso", "ciclo", "eje", "marca", "figura", "diam", "cant", "mult",
               "dim_a", "dim_b", "dim_c", "dim_d", "dim_e", "dim_f", "dim_g", "dim_h", "dim_i",
-              "ang1", "ang2", "ang3", "ang4", "radio", "revisada"]
+              "ang1", "ang2", "ang3", "ang4", "radio", "revisada", "suf_tipo"]
     with get_conn() as conn:
         with conn.cursor() as cur:
             _check_permiso(cur, user)
