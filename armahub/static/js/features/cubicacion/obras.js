@@ -345,9 +345,10 @@ async function openObraDetailModal(idProyecto) {
   // Delete button: visible for admin/admin_calidad, o miembro (de Cubicaciones) con 0 barras
   // (antes 'cubicador', rol migrado a miembro). El backend valida el permiso real.
   var delBtn = document.getElementById('obraDetailDeleteBtn');
-  var canDelete = currentRole === 'admin' || currentRole === 'admin_calidad' || (currentRole === 'miembro' && (p.total_barras || 0) === 0);
+  var _nItems = (p.total_items != null ? p.total_items : p.total_barras) || 0;   // entradas/filas
+  var canDelete = currentRole === 'admin' || currentRole === 'admin_calidad' || (currentRole === 'miembro' && _nItems === 0);
   delBtn.style.display = canDelete ? '' : 'none';
-  delBtn.onclick = function() { eliminarObra(idProyecto, p.nombre_proyecto, p.total_barras || 0); };
+  delBtn.onclick = function() { eliminarObra(idProyecto, p.nombre_proyecto, _nItems); };
 
   // Reset sections
   document.getElementById('obraDetailSidebar').innerHTML = '<div class="muted">Cargando...</div>';

@@ -1760,7 +1760,8 @@ def get_proyectos(user=Depends(get_current_user)):
                     COALESCE(ROUND(CAST(SUM(b.diam * b.peso_total) / NULLIF(SUM(b.peso_total), 0) AS NUMERIC), 1), 0) as diam_prom,
                     p.clasificacion,
                     p.empresa,
-                    COALESCE(rec.n_reclamos, 0) as n_reclamos
+                    COALESCE(rec.n_reclamos, 0) as n_reclamos,
+                    COALESCE(SUM(b.cant_total), 0) as total_barras_fisicas
                 FROM proyectos p
                 LEFT JOIN barras b ON p.id_proyecto = b.id_proyecto
                 LEFT JOIN constructoras co ON p.constructora_id = co.id
@@ -1806,17 +1807,19 @@ def get_proyectos(user=Depends(get_current_user)):
 
     proyectos = []
     for r in rows:
-        total_barras = int(r[2]) if r[2] else 0
+        total_items = int(r[2]) if r[2] else 0            # nº de entradas/filas (COUNT)
+        total_barras = round(float(r[16])) if r[16] else 0  # barras físicas (Σ cant_total)
         total_kilos = float(r[3]) if r[3] else 0.0
         diam_prom = float(r[12]) if r[12] else 0.0
-        # PPI = Peso Por Item (kg promedio por barra)
-        ppi = round(total_kilos / total_barras, 2) if total_barras > 0 else 0.0
-        # PPB = Peso Por Barra (same as PPI for now, can be refined)
-        ppb = ppi
-        
+        # PPI = Peso Por Item (kg promedio por entrada/fila)
+        ppi = round(total_kilos / total_items, 2) if total_items > 0 else 0.0
+        # PPB = Peso Por Barra física (kg / Σ cant_total)
+        ppb = round(total_kilos / total_barras, 2) if total_barras > 0 else 0.0
+
         proyectos.append({
             "id_proyecto": r[0],
             "nombre_proyecto": r[1],
+            "total_items": total_items,
             "total_barras": total_barras,
             "total_kilos": total_kilos,
             "constructora_id": r[4],

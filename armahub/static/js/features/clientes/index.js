@@ -197,7 +197,7 @@
     document.getElementById('obraFechaInicio').value = (typeof formatDateInput === 'function' ? formatDateInput(o.fecha_inicio) : (o.fecha_inicio || '')) || '';
     document.getElementById('obraDescripcion').value = o.descripcion || '';
     var stats = document.getElementById('obraStats');
-    if (stats) stats.textContent = (o.total_barras || 0) + ' barras · ' + _kg(o.total_kilos) +
+    if (stats) stats.textContent = (o.total_items != null ? (o.total_items + ' items · ') : '') + (o.total_barras || 0) + ' barras · ' + _kg(o.total_kilos) +
       ' · ' + (o.n_reclamos || 0) + ' reclamo(s)' + (o.diam_prom ? (' · Ø prom ' + o.diam_prom + ' mm') : '');
     document.getElementById('obraModalMsg').textContent = '';
     document.getElementById('obraModal').style.display = 'block';
