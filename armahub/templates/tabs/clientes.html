@@ -13,9 +13,12 @@
     <!-- ===== Sub-panel: OBRAS / TIENDAS (primario) ===== -->
     <div id="cliSubObras">
       <div class="card" style="border-top:3px solid #00897b;">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; gap:8px;">
           <h3 style="margin:0; color:#00897b;">🏗️ Obras / Tiendas</h3>
-          <span class="muted" style="font-size:11px;" id="cliResumen"></span>
+          <div style="display:flex; align-items:center; gap:10px;">
+            <span class="muted" style="font-size:11px;" id="cliResumen"></span>
+            <button id="btnNuevaObra" onclick="abrirModalNuevaObra()" style="font-size:12px; padding:5px 14px; background:#00897b; border-color:#00897b; display:none;">+ Crear obra</button>
+          </div>
         </div>
         <p class="muted" style="font-size:12px; margin:0 0 12px 0;">Completa la data de cada obra/tienda: su clasificación y a qué empresa pertenece. Haz clic en una fila para editarla.</p>
         <div class="row" style="gap:6px; align-items:center; flex-wrap:wrap; margin-bottom:8px;">
@@ -115,6 +118,54 @@
         <button onclick="guardarObraData()" style="font-size:12px; padding:6px 16px; background:#00897b; border-color:#00897b;">Guardar</button>
         <button class="secondary" onclick="cerrarModalObra()" style="font-size:12px; padding:6px 14px;">Cancelar</button>
         <span id="obraModalMsg" class="muted" style="font-size:11px;"></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL crear nueva OBRA -->
+  <div id="nuevaObraModal" onclick="if(event.target===this)cerrarModalNuevaObra()" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.6); z-index:9999; overflow-y:auto;">
+    <div style="margin:40px auto; max-width:520px; background:#fff; border-radius:12px; padding:20px; position:relative;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+        <h3 style="margin:0; color:#00897b;">Crear obra / tienda</h3>
+        <button onclick="cerrarModalNuevaObra()" style="background:none; border:none; font-size:20px; cursor:pointer; padding:4px 8px;">✕</button>
+      </div>
+      <p class="muted" style="font-size:11px; margin:0 0 12px 0;">Crea una obra vacía. Luego podrás importar barras o completar su data. El código de obra se genera automáticamente.</p>
+      <div style="margin-bottom:8px;">
+        <label style="font-size:11px; color:#666;">Nombre de la obra / tienda *</label>
+        <input type="text" id="nuevaObraNombre" placeholder="Ej: DLP - Edificio Talca 2 Sur" autocomplete="off" style="width:100%; font-size:12px;" />
+      </div>
+      <div class="row" style="gap:8px; flex-wrap:wrap; align-items:flex-end;">
+        <div class="col" style="max-width:150px;">
+          <label style="font-size:11px; color:#666;">Clasificación</label>
+          <select id="nuevaObraClasificacion" style="width:100%; font-size:12px;">
+            <option value="obra">Obra</option>
+            <option value="tienda">Tienda</option>
+            <option value="otro">Otro</option>
+          </select>
+        </div>
+        <div class="col" style="flex:1; min-width:180px;">
+          <label style="font-size:11px; color:#666;">Empresa</label>
+          <select id="nuevaObraEmpresa" style="width:100%; font-size:12px;">
+            <option value="">— Sin empresa —</option>
+          </select>
+        </div>
+      </div>
+      <div class="row" style="gap:8px; flex-wrap:wrap; align-items:flex-end; margin-top:8px;">
+        <div class="col" style="flex:1; min-width:180px;">
+          <label style="font-size:11px; color:#666;">Calculista</label>
+          <select id="nuevaObraCalculista" style="width:100%; font-size:12px;">
+            <option value="">— Sin calculista —</option>
+          </select>
+        </div>
+      </div>
+      <div style="margin-top:8px;">
+        <label style="font-size:11px; color:#666;">Descripción</label>
+        <textarea id="nuevaObraDescripcion" rows="2" style="width:100%; font-size:12px; resize:vertical;"></textarea>
+      </div>
+      <div style="margin-top:14px; display:flex; gap:8px; align-items:center;">
+        <button onclick="guardarNuevaObra()" style="font-size:12px; padding:6px 16px; background:#00897b; border-color:#00897b;">Crear obra</button>
+        <button class="secondary" onclick="cerrarModalNuevaObra()" style="font-size:12px; padding:6px 14px;">Cancelar</button>
+        <span id="nuevaObraMsg" class="muted" style="font-size:11px;"></span>
       </div>
     </div>
   </div>

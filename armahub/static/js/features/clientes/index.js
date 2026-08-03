@@ -20,6 +20,10 @@
     });
   }
   function _kg(v) { return (typeof formatKilos === 'function') ? formatKilos(v) : ((v || 0) + ' kg'); }
+  // Crear obra (POST /proyectos) es admin/admin_calidad only — igual que el backend.
+  function _puedeCrearObra() {
+    return (typeof currentRole !== 'undefined') && (currentRole === 'admin' || currentRole === 'admin_calidad');
+  }
   function _empNombre(id) {
     var e = _empresasData.filter(function(x) { return x.id === id; })[0];
     return e ? e.nombre : null;
@@ -96,6 +100,8 @@
   function renderObrasLista() {
     var cont = document.getElementById('obrasLista');
     if (!cont) return;
+    var btnNueva = document.getElementById('btnNuevaObra');
+    if (btnNueva) btnNueva.style.display = _puedeCrearObra() ? '' : 'none';
     _poblarFiltroEmpresaObras();
     var busq = ((document.getElementById('cliFiltroBusqueda') || {}).value || '').trim().toLowerCase();
     var fClasif = (document.getElementById('cliFiltroClasif') || {}).value || '';
@@ -236,6 +242,92 @@
       renderObrasLista();
     } else {
       msg.textContent = 'Error: ' + _errDetail(data); msg.style.color = '#b42318';
+    }
+  }
+
+  // ----- Crear nueva obra (POST /proyectos) -----
+  function abrirModalNuevaObra() {
+    if (!_puedeCrearObra()) return;
+    document.getElementById('nuevaObraNombre').value = '';
+    document.getElementById('nuevaObraClasificacion').value = 'obra';
+    document.getElementById('nuevaObraDescripcion').value = '';
+    // Poblar selector de empresa (entidades constructoras)
+    var empSel = document.getElementById('nuevaObraEmpresa');
+    if (empSel) {
+      empSel.innerHTML = '<option value="">— Sin empresa —</option>' +
+        _empresasData.map(function(e) {
+          return '<option value="' + e.id + '">' + _esc(e.nombre) + ' (' + (_TIPO_EMP_LABELS[e.tipo] || e.tipo) + ')</option>';
+        }).join('');
+    }
+    // Poblar selector de calculista
+    var calcSel = document.getElementById('nuevaObraCalculista');
+    if (calcSel) {
+      calcSel.innerHTML = '<option value="">— Sin calculista —</option>' +
+        _calculistasCache.map(function(c) {
+          return '<option value="' + c.id + '">' + _esc(c.nombre) + '</option>';
+        }).join('');
+    }
+    document.getElementById('nuevaObraMsg').textContent = '';
+    document.getElementById('nuevaObraModal').style.display = 'block';
+    document.getElementById('nuevaObraNombre').focus();
+  }
+
+  function cerrarModalNuevaObra() { document.getElementById('nuevaObraModal').style.display = 'none'; }
+
+  async function guardarNuevaObra() {
+    var msg = document.getElementById('nuevaObraMsg');
+    var nombre = document.getElementById('nuevaObraNombre').value.trim();
+    if (!nombre) { msg.textContent = 'El nombre es requerido'; msg.style.color = '#b42318'; return; }
+    // Evitar duplicado por nombre (la BD genera el id; el usuario no lo elige).
+    var dup = _obrasData.filter(function(o) {
+      return (o.nombre_proyecto || '').trim().toLowerCase() === nombre.toLowerCase();
+    })[0];
+    if (dup) { msg.textContent = 'Ya existe una obra con ese nombre.'; msg.style.color = '#b42318'; return; }
+    var body = { nombre_proyecto: nombre };
+    var clasif = document.getElementById('nuevaObraClasificacion').value || 'obra';
+    var empVal = parseInt(document.getElementById('nuevaObraEmpresa').value);
+    var calcVal = parseInt(document.getElementById('nuevaObraCalculista').value);
+    var desc = document.getElementById('nuevaObraDescripcion').value.trim();
+    if (empVal) body.constructora_id = empVal;
+    if (calcVal) body.calculista_id = calcVal;
+    if (desc) body.descripcion = desc;
+    msg.textContent = 'Creando...'; msg.style.color = '#666';
+    var res, data;
+    try {
+      res = await fetch(apiUrl('/proyectos'), {
+        method: 'POST',
+        headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+    } catch (e) {
+      msg.textContent = 'Error de conexión al crear la obra'; msg.style.color = '#b42318';
+      return;
+    }
+    if (res.status === 401) { logout(); return; }
+    try { data = await res.json(); } catch (e) { data = null; }
+    if (res.ok && data && data.ok) {
+      var idNuevo = data.id_proyecto;
+      // La clasificación no se envía en POST /proyectos; si el usuario eligió algo
+      // distinto de 'obra', persistirlo con un PATCH (mismo patrón que guardarObraData).
+      if (clasif && clasif !== 'obra' && idNuevo) {
+        try {
+          await fetch(apiUrl('/proyectos/' + encodeURIComponent(idNuevo)), {
+            method: 'PATCH',
+            headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+            body: JSON.stringify({ clasificacion: clasif })
+          });
+        } catch (e) { /* no bloquear: la obra ya quedó creada */ }
+      }
+      cerrarModalNuevaObra();
+      if (typeof showToast === 'function') showToast('Obra creada', 'success');
+      // Recargar obras del servidor para traer la nueva con sus campos calculados.
+      await _cargarObras();
+      // Refrescar también otros listados de proyectos si están cargados (tab Obras).
+      if (typeof loadProyectos === 'function') { try { await loadProyectos(); } catch (e) {} }
+      renderObrasLista();
+    } else {
+      var detalle = (data && (data.detail || data.error)) ? _errDetail(data) : ('Error ' + res.status);
+      msg.textContent = 'Error: ' + detalle; msg.style.color = '#b42318';
     }
   }
 
@@ -514,6 +606,9 @@
   global.editarObraData = editarObraData;
   global.cerrarModalObra = cerrarModalObra;
   global.guardarObraData = guardarObraData;
+  global.abrirModalNuevaObra = abrirModalNuevaObra;
+  global.cerrarModalNuevaObra = cerrarModalNuevaObra;
+  global.guardarNuevaObra = guardarNuevaObra;
   global.renderEmpresasLista = renderEmpresasLista;
   global.abrirModalEmpresa = abrirModalEmpresa;
   global.editarEmpresa = editarEmpresa;
