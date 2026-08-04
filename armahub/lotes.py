@@ -623,17 +623,29 @@ def purgar_lote(lote_id: int, user=Depends(get_current_user)):
     email = user.get("email", "?")
     with get_conn() as conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT id_proyecto FROM lotes WHERE id = %s", (lote_id,))
+            cur.execute("SELECT id_proyecto, num_obra FROM lotes WHERE id = %s", (lote_id,))
             r = cur.fetchone()
             if not r:
                 raise HTTPException(status_code=404, detail="Despiece no encontrado.")
-            id_proyecto = r[0]
+            id_proyecto, num_purgado = r[0], r[1]
             # Sectores tocados (por si quedaban barras) para marcarlos modificados tras purgar.
             cur.execute("SELECT DISTINCT sector, piso, ciclo FROM barras WHERE lote_id = %s AND origen='manual'", (lote_id,))
             sectores = cur.fetchall()
             cur.execute("DELETE FROM barras WHERE lote_id = %s AND origen = 'manual'", (lote_id,))
             n = cur.rowcount
             cur.execute("DELETE FROM lotes WHERE id = %s", (lote_id,))
+            # RENUMERAR EN CASCADA (solo en la purga admin, acción muy eventual): todos los despieces
+            # de la MISMA obra con num_obra mayor al purgado bajan en 1, para no dejar hueco y mantener
+            # el correlativo en orden. La eliminación con lápida NO renumera (el número queda estable);
+            # esto es exclusivo del borrado físico del histórico.
+            renumerados = 0
+            if num_purgado is not None:
+                cur.execute(
+                    "UPDATE lotes SET num_obra = num_obra - 1 "
+                    "WHERE id_proyecto = %s AND num_obra > %s",
+                    (id_proyecto, num_purgado),
+                )
+                renumerados = cur.rowcount
             try:
                 from .sector_estado import marcar_sector_modificado
                 for sec, pis, cic in sectores:
@@ -641,8 +653,8 @@ def purgar_lote(lote_id: int, user=Depends(get_current_user)):
             except Exception:
                 pass
     _cache.invalidate("stats:", "landing:")
-    audit(email, "purgar_lote", f"lote {lote_id} · {n} barras · obra {id_proyecto} (PURGA ADMIN)", "lote", str(lote_id))
-    return {"ok": True, "lote_id": lote_id, "barras_purgadas": n}
+    audit(email, "purgar_lote", f"lote {lote_id} · {n} barras · obra {id_proyecto} · #{num_purgado} (PURGA ADMIN, {renumerados} renumerados)", "lote", str(lote_id))
+    return {"ok": True, "lote_id": lote_id, "barras_purgadas": n, "renumerados": renumerados}
 
 
 @router.get("/lotes")
