@@ -562,7 +562,7 @@ function ac2PintarSectorEstructura(){
     return chip(lbl, AC2.estructura===e, "ac2SetEstructura('"+e+"')");
   }).join(' ');
   var lk=document.getElementById('ac2_sectorLock');
-  if (lk) lk.textContent = bloq ? '🔒 bloqueado (hay barras) — para cambiar, descarta/elimina el lote' : '';
+  if (lk) lk.textContent = bloq ? '🔒 bloqueado (hay barras) — para cambiar, descarta/elimina el despiece' : '';
 }
 window.ac2SetSector=function(s){ if(ac2Bloqueado()) return;
   AC2.sector=s;
@@ -624,7 +624,7 @@ function ac2ActualizarCabecera(){
     crear.style.background=listo?'#8BC34A':'#eceff1';
     crear.style.color=listo?'#fff':'#90a4ae';
     crear.style.cursor=listo?'pointer':'not-allowed';
-    crear.title=listo?'Crear el lote y empezar a cubicar':'Completa Obra, Ciclo y Eje/Losa.';
+    crear.title=listo?'Crear el despiece y empezar a cubicar':'Completa Obra, Ciclo y Eje/Losa.';
   }
   show('ac2_bandera', hayLote && !eliminado); show('ac2_guardarBtn', hayLote && !eliminado);
   show('ac2_descartarBtn', hayLote);   // la X (cerrar/volver) sigue disponible siempre
@@ -845,7 +845,7 @@ function ac2ActualizarContadores(){
 function ac2PuedeCrear(){
   if (!AC2.proyecto){ alert('Elige primero una obra.'); return false; }
   if (!AC2.loteId){ alert('Crea el lote primero (🆕 Crear lote) definiendo Obra, Ciclo y Eje.'); return false; }
-  if (AC2.loteEstado==='terminada'){ alert('El lote está terminado; se edita desde Bar Manager.'); return false; }
+  if (AC2.loteEstado==='terminada'){ alert('El despiece está terminado; se edita desde Bar Manager.'); return false; }
   if (!AC2.sector || !AC2.estructura){ alert('Elige Sector y Estructura antes de agregar barras.'); return false; }
   if (AC2.tipo==='TODOS'){ alert('Para agregar barras, entra a una tipología (no TODOS).'); return false; }
   return true;
@@ -874,9 +874,9 @@ window.ac2Quitar=async function(id){
   // Si la barra YA está guardada en BD, hay que borrarla también allá; si no, quedaría huérfana y
   // 'terminar' la contaría como no revisada (aunque el usuario ya no la vea).
   if (b && b._guardada && b._dbid){
-    if (!confirm('Esta barra ya está guardada en el lote. ¿Eliminarla también del lote guardado?')) return;
+    if (!confirm('Esta barra ya está guardada en el despiece. ¿Eliminarla también del despiece guardado?')) return;
     var r=await _ac2Delete('/lotes/'+AC2.loteId+'/barras/'+b._dbid);
-    if (!r.ok){ alert('No se pudo eliminar la barra del lote'+(r.data&&r.data.detail?': '+(r.data.detail.msg||r.data.detail):'')+'.'); return; }
+    if (!r.ok){ alert('No se pudo eliminar la barra del despiece'+(r.data&&r.data.detail?': '+(r.data.detail.msg||r.data.detail):'')+'.'); return; }
   }
   AC2.barras=AC2.barras.filter(function(x){return x._id!==id;});
   delete AC2.seleccion[id];
@@ -1026,7 +1026,7 @@ window.ac2BorrarSeleccionadas=async function(){
   if (!ids.length){ alert('Marca al menos una barra.'); return; }
   var guardadas=ids.map(ac2BarraPorId).filter(function(b){ return b && b._guardada && b._dbid; });
   var msg='Borrar '+ids.length+' barra(s) seleccionada(s)?';
-  if (guardadas.length) msg+='\n\n'+guardadas.length+' de ellas YA están guardadas y se eliminarán también del lote guardado.';
+  if (guardadas.length) msg+='\n\n'+guardadas.length+' de ellas YA están guardadas y se eliminarán también del despiece guardado.';
   if (!confirm(msg)) return;
   // Borrar del backend las ya guardadas.
   for (var i=0;i<guardadas.length;i++){
@@ -1042,13 +1042,13 @@ function ac2PintarEstado(){
   var b=document.getElementById('ac2_bandera'), badge=document.getElementById('ac2_estadoBadge');
   var terminado=(AC2.loteEstado==='terminada');
   // Mostramos el correlativo POR OBRA (AC2.loteNum), no el id global. Fallback al id si no vino.
-  var lote=AC2.loteId?('Lote #'+(AC2.loteNum||AC2.loteId)+' · '):'';
+  var lote=AC2.loteId?('Despiece #'+(AC2.loteNum||AC2.loteId)+' · '):'';
   if (b){ b.textContent=terminado?'🏁':'🚩';
     b.style.background=terminado?'#e8f5e9':'#ffebee'; b.style.color=terminado?'#2e7d32':'#c62828'; b.style.borderColor=terminado?'#a5d6a7':'#ef9a9a'; }
   if (badge){
     if (terminado){ badge.textContent=lote+'🔒 Terminado'; badge.style.background='#e8f5e9'; badge.style.color='#2e7d32'; badge.style.borderColor='#a5d6a7'; }
     else if (AC2.loteId){ badge.textContent=lote+'En edición'; badge.style.background='#fff3e0'; badge.style.color='#e65100'; badge.style.borderColor='#ffb74d'; }
-    else { badge.textContent='Nuevo lote · sin barras'; badge.style.background='#eceff1'; badge.style.color='#607d8b'; badge.style.borderColor='#cfd8dc'; }
+    else { badge.textContent='Nuevo Despiece'; badge.style.background='#eceff1'; badge.style.color='#607d8b'; badge.style.borderColor='#cfd8dc'; }
   }
 }
 
@@ -1102,14 +1102,14 @@ window.ac2CrearLote=async function(){
   var faltan=[];
   if (!AC2.ciclo) faltan.push('Ciclo');
   if (!AC2.eje)   faltan.push('Eje / Losa');
-  if (faltan.length){ alert('Para crear el lote completa: '+faltan.join(' y ')+'.'); return; }
+  if (faltan.length){ alert('Para crear el despiece completa: '+faltan.join(' y ')+'.'); return; }
   try{
     var r=await _ac2Post('/lotes', { id_proyecto:AC2.proyecto });
-    if (!r.ok || !r.data || !r.data.lote_id){ alert('No se pudo crear el lote'+(r.data&&r.data.detail?': '+(r.data.detail.msg||r.data.detail):'')+'.'); return; }
+    if (!r.ok || !r.data || !r.data.lote_id){ alert('No se pudo crear el despiece'+(r.data&&r.data.detail?': '+(r.data.detail.msg||r.data.detail):'')+'.'); return; }
     AC2.loteId=r.data.lote_id; AC2.loteNum=r.data.num_obra||null; AC2.loteEstado='borrador';
     ac2PintarEstado(); ac2PintarSectorEstructura(); ac2ActualizarBotonesCrear();
     ac2ActualizarCabecera(); ac2Render(); ac2CargarLotes();
-  }catch(e){ alert('Error de red al crear el lote. Reintenta.'); }
+  }catch(e){ alert('Error de red al crear el despiece. Reintenta.'); }
 };
 
 // 💾 GUARDAR AVANCE: persiste las barras COMPLETAS y válidas en el lote YA creado. Las incompletas
@@ -1117,12 +1117,12 @@ window.ac2CrearLote=async function(){
 // acepta barras con geometría válida + ubicación completa; guardar avance = fijar lo listo.)
 window.ac2Guardar=async function(opts){
   var silencioso=!!(opts&&opts.silencioso);   // sin alerts (lo llama la bandera antes de terminar)
-  if (!AC2.loteId){ if(!silencioso) alert('Primero crea el lote (🆕 Crear lote) definiendo Obra, Ciclo y Eje.'); return; }
-  if (AC2.loteEstado==='terminada'){ if(!silencioso) alert('El lote está terminado; se edita desde Bar Manager.'); return; }
+  if (!AC2.loteId){ if(!silencioso) alert('Primero crea el despiece (🆕 Crear despiece) definiendo Obra, Ciclo y Eje.'); return; }
+  if (AC2.loteEstado==='terminada'){ if(!silencioso) alert('El despiece está terminado; se edita desde Bar Manager.'); return; }
   var listas=ac2BarrasListas();
   var pendientes=AC2.barras.filter(function(b){ return !b._guardada; }).length - listas.length;
   if (!listas.length){
-    if(!silencioso) alert('Aún no hay ninguna barra COMPLETA para guardar.\n\nGuardar fija en el lote las barras que ya tienen φ, figura y sus medidas válidas. Las que están a medio llenar (celdas en rojo/vacías) se quedan en pantalla para que las completes; guarda de nuevo cuando estén listas.');
+    if(!silencioso) alert('Aún no hay ninguna barra COMPLETA para guardar.\n\nGuardar fija en el despiece las barras que ya tienen φ, figura y sus medidas válidas. Las que están a medio llenar (celdas en rojo/vacías) se quedan en pantalla para que las completes; guarda de nuevo cuando estén listas.');
     return;
   }
   _ac2LeerContexto();   // reconciliar ciclo/eje por si el usuario los ajustó justo antes de guardar
@@ -1151,7 +1151,7 @@ window.ac2Guardar=async function(opts){
     // perder lo que tiene en pantalla si se corta el internet. Para limpiar y crear otro lote está
     // la X (ac2Descartar). Las barras guardadas quedan marcadas _guardada; las incompletas siguen ahí.
     ac2PintarEstado(); ac2ActualizarCabecera(); ac2Render(); ac2CargarLotes();
-    var msg='✅ '+n+' barra(s) guardadas en el lote #'+(AC2.loteNum||AC2.loteId)+'.';
+    var msg='✅ '+n+' barra(s) guardadas en el despiece #'+(AC2.loteNum||AC2.loteId)+'.';
     if (pendientes>0) msg+='\n\nQuedan '+pendientes+' barra(s) sin completar en el formulario — complétalas y guarda de nuevo.';
     else msg+='\n\nMarca "Rev" y 🏁 Terminar, o sigue agregando. Para vaciar el formulario usa la X.';
     alert(msg);
@@ -1163,8 +1163,8 @@ window.ac2Guardar=async function(opts){
 // el usuario ve marcado en la grilla — antes la bandera veía "sin revisar" porque el check vivía
 // solo en el front (bug: 14 con ticket = 14 sin revisar).
 window.ac2ToggleTerminado=async function(){
-  if (!AC2.loteId){ alert('Primero crea el lote y guarda barras (💾) antes de terminarlo.'); return; }
-  if (AC2.loteEstado==='terminada'){ alert('El lote ya está terminado.'); return; }
+  if (!AC2.loteId){ alert('Primero crea el despiece y guarda barras (💾) antes de terminarlo.'); return; }
+  if (AC2.loteEstado==='terminada'){ alert('El despiece ya está terminado.'); return; }
   // Guardar avance si hay barras completas sin persistir (sincroniza revisada de las nuevas).
   if (ac2BarrasListas().length){ await ac2Guardar({ silencioso:true }); }
   var pendientes=AC2.barras.filter(function(b){ return !b._guardada; }).length;
@@ -1175,7 +1175,7 @@ window.ac2ToggleTerminado=async function(){
   var noRevIds=AC2.barras.filter(function(b){return b._dbid && !b.rev;}).map(function(b){return b._dbid;});
   if (revIds.length)   await _ac2Post('/lotes/'+AC2.loteId+'/revisar', { barra_ids:revIds,   revisada:true });
   if (noRevIds.length) await _ac2Post('/lotes/'+AC2.loteId+'/revisar', { barra_ids:noRevIds, revisada:false });
-  if (!confirm('Terminar el lote #'+(AC2.loteNum||AC2.loteId)+' lo cierra: sus barras se editarán solo desde Bar Manager.\n\n¿Continuar?')) return;
+  if (!confirm('Terminar el despiece #'+(AC2.loteNum||AC2.loteId)+' lo cierra: sus barras se editarán solo desde Bar Manager.\n\n¿Continuar?')) return;
   var r=await _ac2Post('/lotes/'+AC2.loteId+'/terminar', {});
   if (!r.ok){
     var d=r.data&&r.data.detail;
@@ -1187,7 +1187,7 @@ window.ac2ToggleTerminado=async function(){
   // Terminar CIERRA la tanda → limpiamos el formulario para crear otro lote. El lote terminado
   // queda en el repositorio (se puede ver desde ahí; sus barras se corrigen en Bar Manager).
   _ac2ResetTanda();
-  alert('🏁 Lote #'+numTerm+' terminado.\nEl formulario quedó listo para crear otro lote. El lote terminado está en el repositorio (corrige barras desde Bar Manager).');
+  alert('🏁 Despiece #'+numTerm+' terminado.\nEl formulario quedó listo para crear otro despiece. El despiece terminado está en el repositorio (corrige barras desde Bar Manager).');
 };
 window.ac2TogglePisos=function(){
   var m=document.getElementById('ac2_pisosMenu'); if(!m) return;
@@ -1213,9 +1213,9 @@ window.ac2Descartar=function(){
   if (!AC2.loteId && !AC2.barras.length){ return; }
   var msg = sinGuardar
     ? ('Se vaciará el formulario. Las '+sinGuardar+' barra(s) que aún NO guardaste se descartarán.'+
-       (hayGuardadas||AC2.loteId ? '\nEl lote guardado NO se borra (queda en el repositorio; para borrarlo usa 🗑 Eliminar).' : '')+
+       (hayGuardadas||AC2.loteId ? '\nEl despiece guardado NO se borra (queda en el repositorio; para borrarlo usa 🗑 Eliminar).' : '')+
        '\n\n¿Continuar?')
-    : ('Se cerrará el lote actual y el formulario quedará listo para crear otro.\nEl lote guardado NO se borra (queda en el repositorio).\n\n¿Continuar?');
+    : ('Se cerrará el despiece actual y el formulario quedará listo para crear otro.\nEl despiece guardado NO se borra (queda en el repositorio).\n\n¿Continuar?');
   if (!confirm(msg)) return;
   _ac2ResetTanda();   // limpia lote/barras/ciclo/eje/sector/estructura y refresca cabecera+botones
 };
@@ -1224,20 +1224,20 @@ window.ac2Descartar=function(){
 // (diseno_editor_cubicacion.md §146). Aplica INCLUSO a lotes terminados/bloqueados (única acción
 // posible ahí). Pide escribir ELIMINAR para confirmar (acción destructiva e irreversible).
 window.ac2EliminarLote=async function(){
-  if (!AC2.loteId){ alert('No hay lote abierto para eliminar.'); return; }
+  if (!AC2.loteId){ alert('No hay despiece abierto para eliminar.'); return; }
   var n=AC2.barras.filter(function(b){return b._guardada;}).length;
-  var txt=prompt('⚠ Vas a ELIMINAR el lote #'+(AC2.loteNum||AC2.loteId)+' y sus '+n+' barra(s) guardada(s).\n'+
+  var txt=prompt('⚠ Vas a ELIMINAR el despiece #'+(AC2.loteNum||AC2.loteId)+' y sus '+n+' barra(s) guardada(s).\n'+
     'Esta acción es IRREVERSIBLE.\n\nEscribe ELIMINAR para confirmar:');
   if (txt===null) return;                          // canceló
   if (txt.trim().toUpperCase()!=='ELIMINAR'){ alert('No se eliminó: debes escribir ELIMINAR.'); return; }
   try{
     var r=await _ac2Delete('/lotes/'+AC2.loteId);
-    if (!r.ok){ var d=r.data&&r.data.detail; alert('No se pudo eliminar el lote'+(d?': '+(d.msg||JSON.stringify(d)):' (error '+r.status+')')+'.'); return; }
+    if (!r.ok){ var d=r.data&&r.data.detail; alert('No se pudo eliminar el despiece'+(d?': '+(d.msg||JSON.stringify(d)):' (error '+r.status+')')+'.'); return; }
     var borradas=(r.data&&r.data.barras_eliminadas)||0;
     _ac2ResetTanda();
     await ac2CargarLotes();   // esperar el refresco de la lista ANTES del alert (así la lápida ya se ve)
-    alert('🗑 Lote eliminado ('+borradas+' barra(s) borradas). Queda registrado como eliminado en el histórico.');
-  }catch(e){ alert('Error de red al eliminar el lote. Reintenta.'); }
+    alert('🗑 Despiece eliminado ('+borradas+' barra(s) borradas). Queda registrado como eliminado en el histórico.');
+  }catch(e){ alert('Error de red al eliminar el despiece. Reintenta.'); }
 };
 // Resetea el FORMULARIO para volver a "crear lote" (sin cambiar de obra): limpia lote/barras/
 // sector/estructura/ciclo/eje y vuelve a la cabecera con el botón Crear lote. Reutilizado tras
@@ -1268,11 +1268,11 @@ function _ac2ResetTanda(){
 // retomarlos. Los datos viven en BD; esta lista los muestra aunque recargues la página.
 async function ac2CargarLotes(){
   var tb=document.getElementById('ac2_lotesBody'); if(!tb) return;
-  if (!AC2.proyecto){ tb.innerHTML='<tr><td colspan="8" style="padding:10px 8px; color:#90a4ae; font-style:italic; text-align:center;">Elige una obra para ver sus lotes.</td></tr>'; return; }
+  if (!AC2.proyecto){ tb.innerHTML='<tr><td colspan="8" style="padding:10px 8px; color:#90a4ae; font-style:italic; text-align:center;">Elige una obra para ver sus despieces.</td></tr>'; return; }
   var lotes=[];
   try { var d=await _ac2Get('/lotes?proyecto='+encodeURIComponent(AC2.proyecto)); lotes=(d&&d.lotes)||[]; }
   catch(e){ lotes=[]; }
-  if (!lotes.length){ tb.innerHTML='<tr><td colspan="8" style="padding:10px 8px; color:#90a4ae; font-style:italic; text-align:center;">Esta obra aún no tiene lotes.</td></tr>'; return; }
+  if (!lotes.length){ tb.innerHTML='<tr><td colspan="8" style="padding:10px 8px; color:#90a4ae; font-style:italic; text-align:center;">Esta obra aún no tiene despieces.</td></tr>'; return; }
   tb.innerHTML=lotes.map(function(l){
     var esta=(l.id===AC2.loteId);
     var eliminado=(l.estado==='eliminado');
@@ -1286,7 +1286,7 @@ async function ac2CargarLotes(){
     // snapshot congelado). Muestra quién/cuándo lo eliminó.
     if (eliminado){
       var elim=(l.eliminado_fecha||'').slice(0,10);
-      return '<tr class="ac2loterow" onclick="ac2RetomarLote('+l.id+')" title="Ver el contenido de este lote eliminado (solo lectura)" style="border-top:1px solid #f0f0f0; color:#9e9e9e; background:#fafafa; cursor:pointer;">'+
+      return '<tr class="ac2loterow" onclick="ac2RetomarLote('+l.id+')" title="Ver el contenido de este despiece eliminado (solo lectura)" style="border-top:1px solid #f0f0f0; color:#9e9e9e; background:#fafafa; cursor:pointer;">'+
         '<td style="padding:6px 8px; font-weight:600;">#'+(l.num_obra||l.id)+'</td>'+
         '<td style="padding:6px 8px;"><s>'+ac2Esc(l.sector||'—')+' · '+ac2Esc(l.ciclo||'—')+' · '+ac2Esc(l.eje||'—')+'</s></td>'+
         '<td style="padding:6px 8px;">'+estado+'</td>'+
@@ -1297,7 +1297,7 @@ async function ac2CargarLotes(){
         '<td style="padding:6px 8px; text-align:right; font-size:10px;" title="Eliminado por '+ac2Esc(l.eliminado_por||'?')+' el '+ac2Esc(elim)+'">👁 ver · por '+ac2Esc((l.eliminado_por||'').split('@')[0])+'</td></tr>';
     }
     // Fila COMPLETA como hiperlink: hover la resalta, click retoma el lote.
-    return '<tr class="ac2loterow" onclick="ac2RetomarLote('+l.id+')" title="Abrir este lote para verlo/seguir editándolo" style="border-top:1px solid #f0f0f0; cursor:pointer;'+(esta?' background:#f1f8e9;':'')+'">'+
+    return '<tr class="ac2loterow" onclick="ac2RetomarLote('+l.id+')" title="Abrir este despiece para verlo/seguir editándolo" style="border-top:1px solid #f0f0f0; cursor:pointer;'+(esta?' background:#f1f8e9;':'')+'">'+
       '<td style="padding:6px 8px; font-weight:600; color:#558B2F;">#'+(l.num_obra||l.id)+(esta?' •':'')+'</td>'+
       '<td style="padding:6px 8px;">'+ac2Esc(l.sector||'—')+' · '+ac2Esc(l.ciclo||'—')+' · '+ac2Esc(l.eje||'—')+'</td>'+
       '<td style="padding:6px 8px;">'+estado+'</td>'+
@@ -1306,7 +1306,7 @@ async function ac2CargarLotes(){
       '<td style="padding:6px 8px; text-align:right;">'+ac2Num(l.kg,1)+'</td>'+
       '<td style="padding:6px 8px; color:#888;">'+ac2Esc(fecha)+'</td>'+
       '<td style="padding:6px 8px; text-align:right; white-space:nowrap; font-size:11px;">'+
-        '<span onclick="event.stopPropagation(); ac2DuplicarLotePrompt('+l.id+','+(l.num_obra||l.id)+')" title="Duplicar este lote en otro ciclo/eje" style="color:#1565c0; cursor:pointer; margin-right:10px;">⎘ duplicar</span>'+
+        '<span onclick="event.stopPropagation(); ac2DuplicarLotePrompt('+l.id+','+(l.num_obra||l.id)+')" title="Duplicar este despiece en otro ciclo/eje" style="color:#1565c0; cursor:pointer; margin-right:10px;">⎘ duplicar</span>'+
         '<span style="color:#558B2F;">'+(l.estado==='terminada'?'🔒 ver':'✎ abrir')+'</span>'+
       '</td></tr>';
   }).join('');
@@ -1320,8 +1320,8 @@ window.ac2DuplicarLotePrompt=function(loteId, numObra){
     ov=document.createElement('div'); ov.id='ac2_dupModal';
     ov.style.cssText='display:none; position:fixed; inset:0; z-index:300; background:rgba(0,0,0,.35);';
     ov.innerHTML='<div style="max-width:420px; margin:80px auto; background:#fff; border-radius:10px; box-shadow:0 10px 40px rgba(0,0,0,.25); padding:18px;">'+
-      '<h3 style="margin:0 0 4px; color:#1565c0; font-size:16px;">⎘ Duplicar lote <span id="ac2_dupNum"></span></h3>'+
-      '<p style="margin:0 0 14px; font-size:12px; color:#607d8b;">Se copia toda la data del lote (pisos, tipologías, medidas, cant/mult). Elige el <b>Ciclo</b> y <b>Eje</b> del nuevo lote:</p>'+
+      '<h3 style="margin:0 0 4px; color:#1565c0; font-size:16px;">⎘ Duplicar despiece <span id="ac2_dupNum"></span></h3>'+
+      '<p style="margin:0 0 14px; font-size:12px; color:#607d8b;">Se copia toda la data del despiece (pisos, tipologías, medidas, cant/mult). Elige el <b>Ciclo</b> y <b>Eje</b> del nuevo despiece:</p>'+
       '<div style="display:flex; gap:10px; margin-bottom:14px;">'+
         '<div style="flex:1;"><label style="font-size:11px; color:#558B2F; font-weight:700;">Ciclo *</label><input id="ac2_dupCiclo" list="ac2_dupCiclosDL" style="width:100%; height:32px; box-sizing:border-box; font-size:13px;" placeholder="ciclo…"/><datalist id="ac2_dupCiclosDL"></datalist></div>'+
         '<div style="flex:1;"><label style="font-size:11px; color:#558B2F; font-weight:700;">Eje / Losa *</label><input id="ac2_dupEje" list="ac2_dupEjesDL" style="width:100%; height:32px; box-sizing:border-box; font-size:13px;" placeholder="eje…"/><datalist id="ac2_dupEjesDL"></datalist></div>'+
@@ -1351,7 +1351,7 @@ window.ac2DuplicarLote=async function(loteId){
   if (!r.ok){ var d=r.data&&r.data.detail; alert('No se pudo duplicar'+(d?': '+(d.msg||d):'')+'.'); return; }
   ac2CerrarDup();
   await ac2CargarLotes();
-  alert('⎘ Lote duplicado como #'+(r.data&&r.data.num_obra)+' ('+(r.data&&r.data.barras)+' barras) en Ciclo '+ciclo+' · Eje '+eje+'.\nÁbrelo desde el repositorio para revisarlo.');
+  alert('⎘ Despiece duplicado como #'+(r.data&&r.data.num_obra)+' ('+(r.data&&r.data.barras)+' barras) en Ciclo '+ciclo+' · Eje '+eje+'.\nÁbrelo desde el repositorio para revisarlo.');
 };
 
 // RETOMAR un lote: carga sus barras (GET /lotes/{id}) y reconstruye el formulario. Un lote
@@ -1360,10 +1360,10 @@ window.ac2DuplicarLote=async function(loteId){
 window.ac2RetomarLote=async function(id){
   if (id===AC2.loteId) return;   // ya está abierto
   var pend=AC2.barras.filter(function(b){return !b._guardada;}).length;
-  if (pend && !confirm('Tienes '+pend+' barra(s) sin guardar en el formulario. Si abres otro lote se descartarán.\n\n¿Continuar?')) return;
-  _ac2DescartarLoteVacioSiCorresponde();   // si el lote actual estaba vacío, borrarlo antes de abrir otro
+  if (pend && !confirm('Tienes '+pend+' barra(s) sin guardar en el formulario. Si abres otro despiece se descartarán.\n\n¿Continuar?')) return;
+  _ac2DescartarLoteVacioSiCorresponde();   // si el despiece actual estaba vacío, borrarlo antes de abrir otro
   var d=await _ac2Get('/lotes/'+id);
-  if (!d || !d.lote){ alert('No se pudo abrir el lote.'); return; }
+  if (!d || !d.lote){ alert('No se pudo abrir el despiece.'); return; }
   var L=d.lote, bs=d.barras||[];
   AC2.loteId=L.id; AC2.loteNum=L.num_obra||null; AC2.loteEstado=L.estado;
   // Contexto del lote (de su primera barra): sector, estructura (se infiere de la marca), ciclo, eje.
@@ -1388,8 +1388,8 @@ window.ac2RetomarLote=async function(id){
   ac2PintarSectorEstructura(); ac2PintarSubtabs(); ac2PintarEstado(); ac2ActualizarCabecera();
   _ac2CargarPisos();   // pisos de la obra para el <select> de la grilla
   ac2SetTipo('TODOS'); ac2CargarLotes();
-  if (L.estado==='eliminado') alert('Lote #'+(L.num_obra||L.id)+' ELIMINADO — solo lectura (histórico).\nSe conserva su contenido para consulta; no se puede editar. Usa la ✕ para volver.');
-  else if (L.estado==='terminada') alert('Lote #'+(L.num_obra||L.id)+' TERMINADO — solo lectura.\nDesde aquí solo puedes ELIMINARLO. Para corregir una barra, usa Bar Manager.');
+  if (L.estado==='eliminado') alert('Despiece #'+(L.num_obra||L.id)+' ELIMINADO — solo lectura (histórico).\nSe conserva su contenido para consulta; no se puede editar. Usa la ✕ para volver.');
+  else if (L.estado==='terminada') alert('Despiece #'+(L.num_obra||L.id)+' TERMINADO — solo lectura.\nDesde aquí solo puedes ELIMINARLO. Para corregir una barra, usa Bar Manager.');
 };
 // Deduce la estructura a partir de un código de marca/tipología (busca en el mapa).
 function ac2EstructuraDeMarca(m){
@@ -1577,8 +1577,17 @@ async function loadAgregarCubicacion2(){
   await _ac2CargarFiguras();
   await _ac2CargarTipologias();
   await _ac2CargarObras();
-  ac2PintarSectorEstructura(); ac2PintarSubtabs(); ac2ActualizarCabecera();
-  ac2SetTipo(AC2.tipo || 'TODOS');   // re-sincroniza subtabs + re-pinta el grid al (re)entrar
+  // PARTIR LIMPIO al (re)entrar al tab: si venías de otra sección con un despiece a medias, se
+  // resetea el formulario. Si ese despiece estaba VACÍO (nunca se guardó), se descarta en la BD
+  // (no ensucia el histórico). Si tenía barras guardadas, quedan en su lote del repositorio; el
+  // formulario igual parte limpio (se retoma desde el repositorio si hace falta).
+  var pendSinGuardar=AC2.barras.some(function(b){ return !b._guardada; });
+  if (AC2.loteId || AC2.barras.length || AC2.ciclo || AC2.eje || pendSinGuardar){
+    _ac2ResetTanda();   // limpia estado + descarta lote vacío + reinicia la cabecera
+  } else {
+    ac2PintarSectorEstructura(); ac2PintarSubtabs(); ac2ActualizarCabecera();
+    ac2SetTipo(AC2.tipo || 'TODOS');
+  }
 }
 window.loadAgregarCubicacion2 = loadAgregarCubicacion2;
 
