@@ -61,19 +61,17 @@ var AC2_ORD_TIPO={}; AC2_TIPOS.forEach(function(t,i){ AC2_ORD_TIPO[t]=i; });
 var AC2_TAM={ s:{w:70,h:52}, m:{w:110,h:80}, l:{w:160,h:118}, xl:{w:220,h:160} };
 var AC2_DIAMS=[8,10,12,16,18,22,25,28,32,36];        // diámetros estándar (diametros.py)
 // Resalte de color por diámetro para detectar de un vistazo un φ equivocado (p.ej. 18 donde iba 16).
-// TRES familias tipo semáforo de grosor (verde → amarillo → teja), con intensidad CRECIENTE dentro de
-// cada una → los vecinos (16 vs 18, etc.) quedan en tonos distinguibles. Grupos: FINOS 8-12 (verde),
-// MEDIOS 16-22 (amarillo/ámbar), GRUESOS 25-36 (teja/rojo). El color va en la CELDA del φ (fondo), no
-// en la fila, así no choca con el azul de "fila seleccionada", el rosado de "inválida" ni el verde de
-// "lote activo" (que son fondos de fila pálidos). Mapa fijo: mismo φ = mismo color, siempre.
+// Rampa MONOCROMÁTICA azul-acero, de claro (φ fino) a oscuro (φ grueso): sobria, sin ruido cromático;
+// los vecinos (16 vs 18, etc.) se distinguen por INTENSIDAD. El color va en la CELDA del φ (fondo), no
+// en la fila, así no choca con el azul de "fila seleccionada" (celeste #e3f2fd, distinto del acero), el
+// rosado de "inválida" ni el verde de "lote activo". Mapa fijo: mismo φ = mismo color, siempre.
 var AC2_DIAM_COLOR={
-  8:'#e8f5e9', 10:'#a5d6a7', 12:'#66bb6a',                 // finos: verde, claro → medio
-  16:'#fff59d', 18:'#ffe23f', 22:'#ffc107',               // medios: amarillo → ámbar
-  25:'#ffab91', 28:'#ff8a65', 32:'#f4511e', 36:'#d84315'  // gruesos: teja, creciente hasta rojo ladrillo
+  8:'#eceff1', 10:'#cfd8dc', 12:'#b0bec5', 16:'#90a4ae', 18:'#78909c',
+  22:'#607d8b', 25:'#546e7a', 28:'#455a64', 32:'#37474f', 36:'#263238'
 };
 function ac2DiamColor(d){ return AC2_DIAM_COLOR[Number(d)] || ''; }
-// Los tonos más oscuros (φ grande) necesitan texto claro para leerse; el resto, texto oscuro.
-var AC2_DIAM_TXT_CLARO={32:1, 36:1};
+// Los tonos más oscuros (φ grueso) necesitan texto claro para leerse; los claros, texto oscuro.
+var AC2_DIAM_TXT_CLARO={22:1, 25:1, 28:1, 32:1, 36:1};
 function ac2DiamTexto(d){ return AC2_DIAM_TXT_CLARO[Number(d)] ? '#fff' : '#37474f'; }
 var AC2_DIMKEYS=['dim_a','dim_b','dim_c','dim_d','dim_e','dim_f','dim_g','dim_h','dim_i'];
 
