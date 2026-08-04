@@ -726,12 +726,18 @@ var AC2_CAMPOS_NUM={diam:1,cant:1,mult:1,radio:1,ang1:1,ang2:1,ang3:1,ang4:1,
 function ac2SetBarraDato(id, campo, valor){
   var b=ac2BarraPorId(id); if(!b) return;
   if (campo in AC2_CAMPOS_NUM){ var s=String(valor).trim(); b[campo]=(s===''?null:Number(s)); }
+  else if (campo==='figura') b[campo]=_ac2NormFigura(valor);   // normalizar para que matchee el catálogo
   else b[campo]=valor;
   // mult NUNCA queda vacío ni <1: si el usuario lo borra o pone 0, vuelve a 1 (cant_total = cant×mult).
   if (campo==='mult' && !(Number(b.mult)>=1)) b.mult=1;
   if (campo==='figura') ac2AplicarDefaults(b,'figura');
   else if (campo==='diam') ac2AplicarDefaults(b,'diam');
 }
+// Normaliza el código de figura que teclea el usuario para que SIEMPRE matchee la clave del catálogo
+// (_ac2Figuras usa códigos como '101A', '102A'). Sin esto, si el cubicador escribe '102a' o '102A '
+// la figura no se encontraba → ac2AplicarDefaults salía sin limpiar los slots de la figura anterior
+// → quedaba "geometría inválida" con datos pegados, hasta reescribir el código exacto. Raíz del bug.
+function _ac2NormFigura(v){ return String(v==null?'':v).trim().toUpperCase(); }
 window.ac2SetBarra=function(id,campo,valor){
   var b=ac2BarraPorId(id); if(!b) return;
   // EDICIÓN MASIVA EN TÁNDEM (igual que Bar Manager): si el modo masivo está activo y la barra
@@ -768,6 +774,8 @@ window.ac2SetBarra=function(id,campo,valor){
     }
   }
   if (campo in AC2_CAMPOS_NUM){ var s=String(valor).trim(); b[campo]=(s===''?null:Number(s)); }
+  else if (campo==='figura'){ b[campo]=_ac2NormFigura(valor);   // normalizar para que matchee el catálogo
+    var fi=document.querySelector('input.ac2nav[data-row="'+id+'"][data-col="figura"]'); if(fi && fi.value!==b.figura) fi.value=b.figura; }
   else b[campo]=valor;
   // mult NUNCA vacío ni <1: si lo borran o ponen 0, vuelve a 1 (cant_total = cant×mult siempre).
   if (campo==='mult' && !(Number(b.mult)>=1)){ b.mult=1; var mi=document.querySelector('input.ac2nav[data-row="'+id+'"][data-col="mult"]'); if(mi) mi.value=1; }
@@ -815,6 +823,15 @@ function ac2ActualizarGeom(id){
   if (tr) tr.querySelectorAll('input.ac2nav[data-row="'+id+'"]').forEach(function(inp){
     inp.classList.toggle('rojo', !!val.rojas[inp.getAttribute('data-col')]);
   });
+  // FONDO de la fila según validez (mismo criterio que ac2Fila). Antes solo lo pintaba/quitaba el
+  // re-render completo (ac2Fila) → si el usuario corregía una barra editando una MEDIDA (que no
+  // re-renderiza la fila), el fondo rosado "inválida" quedaba PEGADO aunque la barra ya fuera válida,
+  // hasta forzar un re-render (cambiar figura/diám). Ahora el fondo se recalcula aquí también.
+  if (tr){
+    var mala=(b.figura && !val.ok);
+    tr.style.background = mala ? '#fff5f5' : ((AC2.masiva && AC2.seleccion[id]) ? '#e3f2fd' : '');
+    tr.title = mala ? ('Geometría inválida: revisa las celdas en rojo (faltan o sobran medidas para la figura '+b.figura+')') : '';
+  }
   // El check Rev solo se puede marcar si la barra está completa y válida (ver ac2Fila).
   ac2ActualizarRevHabilitado(id, b);
 }
