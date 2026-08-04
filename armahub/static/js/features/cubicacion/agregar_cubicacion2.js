@@ -724,7 +724,15 @@ window.ac2SetBarra=function(id,campo,valor){
         if (oid===id) return;                 // la fila activa: no la tocamos (conserva el foco)
         if (esFigDiam) ac2ReRenderFila(oid);            // cambian qué celdas existen
         else if (esGeom) ac2ActualizarGeom(oid);        // dibujo/largo/peso/rojo, sin recrear inputs
-        else ac2ActualizarLargoPeso(oid);               // cant/mult → largo/peso/cant.T
+        else {
+          // cant/mult: el <input> de esas filas NO se re-renderiza → hay que reescribir su value
+          // con el dato YA normalizado (mult vacío→1), o el input muestra el valor viejo mientras
+          // Cant.T sí se actualiza (descuadre visual). Solo el input del campo editado.
+          var _bo=ac2BarraPorId(oid);
+          var _inp=document.querySelector('input.ac2nav[data-row="'+oid+'"][data-col="'+campo+'"]');
+          if (_inp && _bo){ _inp.value = (_bo[campo]==null ? '' : _bo[campo]); }
+          ac2ActualizarLargoPeso(oid);                  // largo/peso/cant.T
+        }
       });
       // La fila ACTIVA sí necesita reflejar el cambio de figura/diam (cambian sus celdas). En ese
       // caso re-renderizamos SOLO esa fila y re-enfocamos la celda editada explícitamente.
