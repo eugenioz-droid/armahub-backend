@@ -2222,7 +2222,7 @@ def get_cobertura_ciclos(id_proyecto: str, user=Depends(get_current_user)):
 @router.get("/landing/indicadores")
 def landing_indicadores(user=Depends(get_current_user)):
     """Flash indicators for the hub landing page, role-aware."""
-    from datetime import timedelta
+    from datetime import timedelta, date
     email = user.get("email", "")
     role = user.get("role", "usc")
 
@@ -2273,14 +2273,19 @@ def landing_indicadores(user=Depends(get_current_user)):
                     cub_map[email_cub]["dias"][r[3] - 1] = round(float(r[4]), 1)
                 result["cubicado_semana"] = list(cub_map.values())
 
-                # --- Cubicado MES (para el zoom del gráfico): mismo desglose por cubicador pero
-                # agrupado por SEMANA del mes (S1..S5), no por día. Mostrar el mes día por día serían
-                # ~30×N barras ilegibles; por semana son ≤5 grupos y se lee la tendencia del mes.
-                mes_ini = now.replace(day=1).strftime("%Y-%m-%d")
+                # --- Cubicado AÑO (para el zoom del gráfico): línea de tiempo MIXTA del año en curso.
+                # Los meses YA CERRADOS van comprimidos a 1 barra por mes (Ene…mes anterior); el mes
+                # ACTUAL va desglosado por SEMANA (cortes fijos por día: 1-7, 8-14, 15-21, 22-28, 29-fin)
+                # con sus fechas reales. Así se ve la tendencia del año y el detalle del mes en curso,
+                # sin las ~30×N barras ilegibles de un día-a-día. Una sola consulta anual agrupada por
+                # (mes, semana-del-mes); Python arma los períodos.
+                anio = now.year
+                anio_ini = date(anio, 1, 1).strftime("%Y-%m-%d")
                 cur.execute("""
                     SELECT b.creado_por AS usuario,
                            COALESCE(u.nombre, '') AS nombre,
                            COALESCE(u.apellido, '') AS apellido,
+                           EXTRACT(MONTH FROM b.fecha_carga::timestamp)::INTEGER AS mes,
                            LEAST(4, (EXTRACT(DAY FROM b.fecha_carga::timestamp)::INTEGER - 1) / 7)::INTEGER AS semana,
                            COALESCE(SUM(b.peso_total), 0) AS kilos
                     FROM barras b
@@ -2288,23 +2293,53 @@ def landing_indicadores(user=Depends(get_current_user)):
                     WHERE b.creado_por IS NOT NULL
                       AND LEFT(b.fecha_carga, 10) >= %s
                       AND LEFT(b.fecha_carga, 10) <= %s
-                    GROUP BY b.creado_por, u.nombre, u.apellido, semana
-                    ORDER BY b.creado_por, semana
-                """, (mes_ini, now.strftime("%Y-%m-%d")))
-                mrows = cur.fetchall()
-                mes_map = {}
-                for r in mrows:
-                    email_cub = r[0]
-                    if email_cub not in mes_map:
+                    GROUP BY b.creado_por, u.nombre, u.apellido, mes, semana
+                    ORDER BY b.creado_por, mes, semana
+                """, (anio_ini, now.strftime("%Y-%m-%d")))
+                arows = cur.fetchall()
+
+                # Definir las columnas (períodos) del eje: meses 1..(mes_actual-1) comprimidos + las
+                # semanas del mes actual. Cada período tiene una clave para mapear los kilos.
+                MESES_ABR = ["", "Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"]
+                periodos = []   # [{"key": ..., "label": ...}]
+                mes_actual = now.month
+                for m in range(1, mes_actual):
+                    periodos.append({"key": ("mes", m), "label": MESES_ABR[m]})
+                # Semanas del mes actual con su rango de días real (1-7, 8-14, 15-21, 22-28, 29-fin).
+                import calendar as _cal
+                ult_dia = _cal.monthrange(anio, mes_actual)[1]
+                sem_hasta = min(4, (now.day - 1) // 7)   # solo hasta la semana en curso (no futuras)
+                for s in range(0, sem_hasta + 1):
+                    d0 = s * 7 + 1
+                    d1 = ult_dia if s == 4 else min(s * 7 + 7, ult_dia)
+                    periodos.append({"key": ("sem", mes_actual, s),
+                                     "label": "{}-{} {}".format(d0, d1, MESES_ABR[mes_actual].lower())})
+                idx_por_key = {p["key"]: i for i, p in enumerate(periodos)}
+
+                anio_map = {}
+                for r in arows:
+                    email_cub, mes_r, sem_r = r[0], r[3], r[4]
+                    # ¿este dato cae en un mes cerrado o en una semana del mes actual?
+                    key = ("sem", mes_r, sem_r) if mes_r == mes_actual else ("mes", mes_r)
+                    idx = idx_por_key.get(key)
+                    if idx is None:
+                        continue
+                    if email_cub not in anio_map:
                         nombre = ((r[1] or "") + " " + (r[2] or "")).strip()
-                        mes_map[email_cub] = {
+                        anio_map[email_cub] = {
                             "email": email_cub,
                             "nombre": nombre or email_cub.split("@")[0],
-                            "semanas": [0, 0, 0, 0, 0],   # S1..S5 del mes
+                            "valores": [0] * len(periodos),
                         }
-                    mes_map[email_cub]["semanas"][r[3]] = round(float(r[4]), 1)
-                result["cubicado_mes"] = list(mes_map.values())
-                result["cubicado_mes_label"] = now.strftime("%m/%Y")
+                    anio_map[email_cub]["valores"][idx] += round(float(r[5]), 1)
+                result["cubicado_anio"] = {
+                    "labels": [p["label"] for p in periodos],
+                    # índice donde termina el histórico mensual y empiezan las semanas del mes actual
+                    # (para dibujar una separación visual). = cantidad de meses cerrados.
+                    "corte_semanas": mes_actual - 1,
+                    "anio": anio,
+                    "cubicadores": list(anio_map.values()),
+                }
 
             # --- Reclamos levantados semana (visible a admin, admin_calidad, usc, miembro, externo) ---
             if role in ("admin", "admin_calidad", "usc", "miembro", "externo"):

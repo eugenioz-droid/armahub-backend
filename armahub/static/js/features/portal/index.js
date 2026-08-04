@@ -579,22 +579,20 @@ async function loadLandingIndicadores() {
   }
 }
 
-// ── ZOOM: Cubicado del MES (modal, por semana) ─────────────────────────────────────────────────
-// Reusa la data ya cargada (_hubLandingData.cubicado_mes): mismo desglose por cubicador pero con 5
-// posiciones (S1..S5) en vez de 7 días. Mismo estilo del gráfico semanal (valor corto en barra,
-// total del período bajo el eje). No pega al backend de nuevo: la data viene con el landing.
+// ── ZOOM: Cubicado del AÑO (modal) ─────────────────────────────────────────────────────────────
+// Reusa la data ya cargada (_hubLandingData.cubicado_anio): línea de tiempo mixta del año en curso.
+// Meses cerrados = 1 barra por mes (Ene…mes anterior); mes actual = desglosado por semana con fechas
+// reales (1-7 ago…). Mismo estilo del gráfico semanal (valor corto en barra, total del período bajo
+// el eje). No pega al backend de nuevo: la data viene con el landing. Una línea separa histórico
+// mensual de las semanas del mes en curso (corte_semanas).
 window.abrirCubicadoMes = function() {
   var modal = document.getElementById('hubCubicadoMesModal');
   var data = _hubLandingData || {};
-  var mesData = data.cubicado_mes || [];
+  var anioData = data.cubicado_anio || {};
+  var labelsBase = anioData.labels || [];
+  var cubs = anioData.cubicadores || [];
   if (!modal) return;
-  if (!mesData.length) { alert('Aún no hay cubicación registrada este mes.'); return; }
-
-  // Etiquetas de semanas presentes (recorta las semanas vacías al final del mes).
-  var maxSem = 0;
-  mesData.forEach(function(c) { (c.semanas || []).forEach(function(v, i) { if (v > 0 && i + 1 > maxSem) maxSem = i + 1; }); });
-  if (maxSem === 0) maxSem = 4;
-  var semLabels = []; for (var i = 0; i < maxSem; i++) semLabels.push('Sem ' + (i + 1));
+  if (!labelsBase.length || !cubs.length) { alert('Aún no hay cubicación registrada este año.'); return; }
 
   var _fmtKg = function(v) { return v.toLocaleString('es-CL', { maximumFractionDigits: 1 }); };
   var _fmtCorto = function(v) {
@@ -604,22 +602,25 @@ window.abrirCubicadoMes = function() {
     return v.toLocaleString('es-CL', { maximumFractionDigits: 0 });
   };
 
-  var mesDS = mesData.map(function(c, idx) {
-    return { label: c.nombre, data: (c.semanas || []).slice(0, maxSem),
+  var n = labelsBase.length;
+  var anioDS = cubs.map(function(c, idx) {
+    return { label: c.nombre, data: (c.valores || []).slice(0, n),
              backgroundColor: _hubCubColors[idx % _hubCubColors.length], borderRadius: 2 };
   });
-  // Total por semana → 2a línea de la etiqueta del eje X. Y totales por usuario + total del mes.
-  var totSem = semLabels.map(function(_, i) { return mesData.reduce(function(s, c) { return s + ((c.semanas || [])[i] || 0); }, 0); });
-  var mesLabels = semLabels.map(function(lbl, i) { return totSem[i] > 0 ? [lbl, _fmtKg(totSem[i]) + ' kg'] : lbl; });
-  var totUsr = mesData.map(function(c, idx) {
-    return { nombre: c.nombre, kg: (c.semanas || []).reduce(function(s, v) { return s + v; }, 0), color: _hubCubColors[idx % _hubCubColors.length] };
+  // Total por período → 2a línea de la etiqueta del eje X. Y totales por usuario + total del año.
+  var totPer = labelsBase.map(function(_, i) { return cubs.reduce(function(s, c) { return s + ((c.valores || [])[i] || 0); }, 0); });
+  var chartLabels = labelsBase.map(function(lbl, i) {
+    return totPer[i] > 0 ? [lbl, _fmtKg(totPer[i]) + ' kg'] : lbl;
+  });
+  var totUsr = cubs.map(function(c, idx) {
+    return { nombre: c.nombre, kg: (c.valores || []).reduce(function(s, v) { return s + v; }, 0), color: _hubCubColors[idx % _hubCubColors.length] };
   }).sort(function(a, b) { return b.kg - a.kg; });
-  var totMes = totUsr.reduce(function(s, u) { return s + u.kg; }, 0);
+  var totAnio = totUsr.reduce(function(s, u) { return s + u.kg; }, 0);
 
   var tit = document.getElementById('hubCubicadoMesTitulo');
-  if (tit) tit.textContent = 'Cubicado del mes ' + (data.cubicado_mes_label || '') + ' (kg)';
+  if (tit) tit.textContent = 'Cubicado del año ' + (anioData.anio || '') + ' (kg)';
   var totEl = document.getElementById('hubCubicadoMesTotal');
-  if (totEl) totEl.textContent = 'Total mes: ' + _fmtKg(totMes) + ' kg';
+  if (totEl) totEl.textContent = 'Total año: ' + _fmtKg(totAnio) + ' kg';
   var porUsr = document.getElementById('hubCubicadoMesPorUsuario');
   if (porUsr) {
     var _esc = function(s) { var d = document.createElement('div'); d.textContent = (s == null ? '' : String(s)); return d.innerHTML; };
@@ -631,10 +632,30 @@ window.abrirCubicadoMes = function() {
     }).join('');
   }
 
+  // Separación visual entre histórico mensual y semanas del mes actual: una línea vertical en x =
+  // corte_semanas (frontera). Plugin inline que dibuja la línea después de las barras.
+  var corte = anioData.corte_semanas || 0;
+  var separadorPlugin = {
+    id: 'sepMesSemana',
+    afterDatasetsDraw: function(chart) {
+      if (corte <= 0 || corte >= n) return;
+      var xAxis = chart.scales.x, yAxis = chart.scales.y;
+      if (!xAxis || !yAxis) return;
+      // La frontera va entre la barra (corte-1) y la barra (corte): punto medio de sus centros.
+      var xa = xAxis.getPixelForValue(corte - 1), xb = xAxis.getPixelForValue(corte);
+      var x = (xa + xb) / 2;
+      var ctx = chart.ctx;
+      ctx.save();
+      ctx.strokeStyle = 'rgba(120,120,120,.35)'; ctx.lineWidth = 1; ctx.setLineDash([4, 3]);
+      ctx.beginPath(); ctx.moveTo(x, yAxis.top); ctx.lineTo(x, yAxis.bottom); ctx.stroke();
+      ctx.restore();
+    }
+  };
+
   modal.style.display = 'block';
   _hubChartCubicadoMes = replaceChart(_hubChartCubicadoMes, document.getElementById('hubChartCubicadoMes'), {
     type: 'bar',
-    data: { labels: mesLabels, datasets: mesDS },
+    data: { labels: chartLabels, datasets: anioDS },
     options: {
       responsive: true, maintainAspectRatio: false,
       layout: { padding: { top: 16 } },
@@ -649,10 +670,10 @@ window.abrirCubicadoMes = function() {
       },
       scales: {
         y: { beginAtZero: true, ticks: { font: { size: 10 } } },
-        x: { ticks: { font: { size: 10 }, color: '#546e7a' } }
+        x: { ticks: { font: { size: 9 }, color: '#546e7a', autoSkip: false, maxRotation: 0 } }
       }
     },
-    plugins: [ChartDataLabels]
+    plugins: [ChartDataLabels, separadorPlugin]
   });
 };
 window.cerrarCubicadoMes = function() {
