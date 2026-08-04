@@ -487,39 +487,49 @@ async function loadLandingIndicadores() {
         }).join('');
       }
 
+      // Total por DÍA (suma de todos los cubicadores ese día) → va como 2a línea de la etiqueta del
+      // eje X (bajo "Lun", "Mar"…). Así el total del día NO se dibuja sobre una barra (antes flotaba
+      // sobre la barra más alta y parecía SU valor: p.ej. el total del lunes 15.761 sobre la barra
+      // de Nicolás que en realidad valía 9.959). Etiqueta multilínea solo para este gráfico.
+      var totalesDia = diasLabels.map(function(_, i) {
+        return cubData.reduce(function(s, c) { return s + (c.dias[i] || 0); }, 0);
+      });
+      var cubLabels = diasLabels.map(function(dia, i) {
+        return totalesDia[i] > 0 ? [dia, _fmtKg(totalesDia[i]) + ' kg'] : dia;
+      });
+      // Formato CORTO solo para el número DENTRO de la barra (poco espacio): 9,9k · 1,2M · 850.
+      // El resto (leyenda, total semana, total día) queda en kg completos.
+      var _fmtCorto = function(v) {
+        if (!v) return '';
+        if (v >= 1000000) return (v / 1000000).toLocaleString('es-CL', {maximumFractionDigits: 1}) + 'M';
+        if (v >= 1000) return (v / 1000).toLocaleString('es-CL', {maximumFractionDigits: 1}) + 'k';
+        return v.toLocaleString('es-CL', {maximumFractionDigits: 0});
+      };
+
       _hubChartCubicado = replaceChart(_hubChartCubicado, document.getElementById('hubChartCubicado'), {
         type: 'bar',
-        data: { labels: diasLabels, datasets: cubDS },
+        data: { labels: cubLabels, datasets: cubDS },
         options: {
           responsive: true, maintainAspectRatio: false,
           layout: { padding: { top: 16 } },   // aire arriba para los números sobre las barras
           plugins: {
             legend: { position: 'bottom', labels: { font: { size: 10 }, padding: 8, usePointStyle: true, pointStyle: 'rect' } },
-            // Total del día ENCIMA de la barra del día. Se dibuja sobre el ÚLTIMO dataset que tiene
-            // barra ese día (no el último dataset a secas → antes, si ese cubicador no cubicó ese
-            // día, el número se anclaba a una barra de altura 0 y no se veía → faltaban en varios días).
+            // Valor de CADA barra, en formato corto (9,9k) encima de su propia barra. El total del
+            // día ya no va aquí (pasó a la 2a línea del eje X): así el número sobre la barra es SIEMPRE
+            // el valor de esa barra, sin ambigüedad. Solo se dibuja si la barra tiene valor ese día.
             datalabels: {
-              display: function(ctx) {
-                var i = ctx.dataIndex, dss = ctx.chart.data.datasets;
-                if ((dss[ctx.datasetIndex].data[i] || 0) <= 0) return false;   // esta barra no existe ese día
-                // ¿soy el último dataset CON valor ese día? (para no repetir el total por cubicador)
-                for (var k = dss.length - 1; k > ctx.datasetIndex; k--) {
-                  if ((dss[k].data[i] || 0) > 0) return false;
-                }
-                return true;
-              },
-              anchor: 'end', align: 'end', offset: 2, clamp: true, clip: false,
-              color: '#37474f', font: { size: 9, weight: 'bold' },
-              formatter: function(v, ctx) {
-                var i = ctx.dataIndex, tot = 0;
-                ctx.chart.data.datasets.forEach(function(ds) { tot += (ds.data[i] || 0); });
-                return tot > 0 ? _fmtKg(tot) : '';
-              }
+              display: function(ctx) { return (ctx.chart.data.datasets[ctx.datasetIndex].data[ctx.dataIndex] || 0) > 0; },
+              anchor: 'end', align: 'end', offset: 1, clamp: true, clip: false,
+              color: '#37474f', font: { size: 8, weight: 'bold' },
+              formatter: function(v) { return _fmtCorto(v); }
             }
           },
           scales: {
             y: { beginAtZero: true, ticks: { font: { size: 9 } } },
-            x: { ticks: { font: { size: 10 } } }
+            // Eje X con etiqueta de 2 líneas (día + total del día en kg). Fuente 9 para que ambas
+            // líneas entren sin apretarse; el total del día en color más tenue lo da Chart.js igual
+            // que el día (mismo tick), así que se distingue por estar en la línea de abajo.
+            x: { ticks: { font: { size: 9 }, color: '#546e7a' } }
           }
         },
         plugins: [ChartDataLabels]
