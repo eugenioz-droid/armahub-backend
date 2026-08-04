@@ -477,10 +477,11 @@ async function loadLandingIndicadores() {
       var porUsr = document.getElementById('hubCubicadoPorUsuario');
       var _escTxt = function(s) { var d = document.createElement('div'); d.textContent = (s == null ? '' : String(s)); return d.innerHTML; };
       if (porUsr) {
+        // Nombre + total PEGADOS a la izquierda (no separados a los extremos): color · nombre · kg.
         porUsr.innerHTML = totalesUsuario.map(function(u) {
-          return '<div style="display:flex; align-items:center; gap:6px; font-size:11px; padding:2px 0;">' +
-                 '<span style="width:10px; height:10px; border-radius:2px; background:' + u.color + '; flex-shrink:0;"></span>' +
-                 '<span style="color:#555; flex:1;">' + _escTxt(u.nombre) + '</span>' +
+          return '<div style="display:flex; align-items:baseline; gap:6px; font-size:11px; padding:2px 0;">' +
+                 '<span style="width:10px; height:10px; border-radius:2px; background:' + u.color + '; flex-shrink:0; align-self:center;"></span>' +
+                 '<span style="color:#555;">' + _escTxt(u.nombre) + ':</span>' +
                  '<span style="color:#333; font-weight:600;">' + _fmtKg(u.kg) + ' kg</span>' +
                  '</div>';
         }).join('');
@@ -494,13 +495,21 @@ async function loadLandingIndicadores() {
           layout: { padding: { top: 16 } },   // aire arriba para los números sobre las barras
           plugins: {
             legend: { position: 'bottom', labels: { font: { size: 10 }, padding: 8, usePointStyle: true, pointStyle: 'rect' } },
-            // Total del día ENCIMA de la barra (suma de todos los cubicadores ese día).
+            // Total del día ENCIMA de la barra del día. Se dibuja sobre el ÚLTIMO dataset que tiene
+            // barra ese día (no el último dataset a secas → antes, si ese cubicador no cubicó ese
+            // día, el número se anclaba a una barra de altura 0 y no se veía → faltaban en varios días).
             datalabels: {
               display: function(ctx) {
-                // Solo en el último dataset visible de cada día (para no repetir por cubicador).
-                return ctx.datasetIndex === ctx.chart.data.datasets.length - 1;
+                var i = ctx.dataIndex, dss = ctx.chart.data.datasets;
+                if ((dss[ctx.datasetIndex].data[i] || 0) <= 0) return false;   // esta barra no existe ese día
+                // ¿soy el último dataset CON valor ese día? (para no repetir el total por cubicador)
+                for (var k = dss.length - 1; k > ctx.datasetIndex; k--) {
+                  if ((dss[k].data[i] || 0) > 0) return false;
+                }
+                return true;
               },
-              anchor: 'end', align: 'end', offset: 2, color: '#37474f', font: { size: 9, weight: 'bold' },
+              anchor: 'end', align: 'end', offset: 2, clamp: true, clip: false,
+              color: '#37474f', font: { size: 9, weight: 'bold' },
               formatter: function(v, ctx) {
                 var i = ctx.dataIndex, tot = 0;
                 ctx.chart.data.datasets.forEach(function(ds) { tot += (ds.data[i] || 0); });
