@@ -43,10 +43,17 @@
       <!-- Crear lote: exige Obra + Ciclo + Eje; ac2ActualizarCabecera lo pinta VIVO al completarlos.
            Reemplaza al antiguo "＋ Crear Eje" (mismo lugar, junto a los campos de contexto). -->
       <button id="ac2_crearLoteBtn" onclick="ac2CrearLote()" title="Completa Obra, Ciclo y Eje/Losa." style="font-size:13px; font-weight:600; height:34px; padding:0 16px; background:#eceff1; color:#90a4ae; border:none; border-radius:4px; cursor:not-allowed;">Crear despiece</button>
-      <!-- Reasignar ciclo/eje: solo visible en despiece BORRADOR con barras (corregir eje mal escrito). -->
-      <button id="ac2_reasignarBtn" onclick="ac2ReasignarContexto()" title="Aplicar el ciclo/eje escrito a todas las barras del despiece (solo mientras está en edición)" style="display:none; font-size:12px; height:34px; padding:0 14px; background:#fff; color:#1565c0; border:1px solid #1565c0; border-radius:4px; cursor:pointer;">✎ Reasignar ciclo/eje</button>
+      <!-- Corregir eje/ciclo: modo explícito de 2 pasos. Botón "Corregir" (paso 1) desbloquea y
+           resalta ciclo/eje; luego "Aplicar" (paso 2) hace el PATCH. Solo en BORRADOR con barras. -->
+      <button id="ac2_reasignarBtn" onclick="ac2CorregirContextoInicio()" title="Corregir el eje/ciclo de este despiece (aún en edición, sin bandera)" style="display:none; font-size:12px; height:34px; padding:0 14px; background:#fff; color:#1565c0; border:1px solid #1565c0; border-radius:4px; cursor:pointer;">✎ Corregir eje/ciclo</button>
+      <button id="ac2_reasignarAplicarBtn" onclick="ac2ReasignarContexto()" title="Aplicar el nuevo eje/ciclo a todas las barras del despiece" style="display:none; font-size:12px; font-weight:600; height:34px; padding:0 14px; background:#43a047; color:#fff; border:1px solid #388e3c; border-radius:4px; cursor:pointer;">✓ Aplicar cambio</button>
+      <button id="ac2_reasignarCancelarBtn" onclick="ac2CorregirContextoCancelar()" title="Cancelar la corrección sin cambiar nada" style="display:none; font-size:12px; height:34px; padding:0 12px; background:#fff; color:#c62828; border:1px solid #ef9a9a; border-radius:4px; cursor:pointer;">✕ Cancelar</button>
       <div style="flex:1;"></div>
       <button onclick="ac2AbrirConfig()" title="Pisos, ciclos, factores y restricciones de la obra" style="font-size:12px; height:34px; padding:0 14px; background:#fff; color:#546e7a; border:1px solid #b0bec5; border-radius:4px; cursor:pointer;">⚙ Configuración de obra</button>
+    </div>
+    <!-- Guía del modo corrección: aparece solo al presionar "Corregir eje/ciclo". -->
+    <div id="ac2_corregirHint" style="display:none; margin:6px 0 2px; padding:7px 12px; background:#fff8e1; border:1px solid #ffe082; border-radius:6px; font-size:12px; color:#8d6e00;">
+      ✎ <b>Modo corrección:</b> ajusta el <b>Ciclo</b> y/o el <b>Eje/Losa</b> resaltados y presiona <b>✓ Aplicar cambio</b>. Se reasignará a todas las barras de este despiece.
     </div>
 
     <!-- MODAL: Configuración de obra (pisos/ciclos/ejes/factores). Se abre desde el botón ⚙.

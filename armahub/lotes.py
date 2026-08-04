@@ -567,37 +567,82 @@ def eliminar_lote(lote_id: int, user=Depends(get_current_user)):
                    FROM barras WHERE lote_id = %s AND origen = 'manual'""", (lote_id,))
             s = cur.fetchone()
             snap_n, snap_kg, snap_sec, snap_cic, snap_eje = int(s[0]), float(s[1] or 0), s[2], s[3], s[4]
-            # Snapshot del DETALLE completo de las barras (para poder VERLAS luego en solo-lectura).
-            # Mismos campos que ver_lote, así el front reconstruye la grilla igual.
-            _snap_campos = ["id", "sector", "piso", "ciclo", "eje", "marca", "figura", "diam", "cant", "mult",
-                            "dim_a", "dim_b", "dim_c", "dim_d", "dim_e", "dim_f", "dim_g", "dim_h", "dim_i",
-                            "ang1", "ang2", "ang3", "ang4", "radio", "revisada", "suf_tipo"]
-            cur.execute("SELECT " + ", ".join(_snap_campos) +
-                        " FROM barras WHERE lote_id = %s AND origen = 'manual' ORDER BY id", (lote_id,))
-            snap_barras = [dict(zip(_snap_campos, row)) for row in cur.fetchall()]
-            import json as _json
-            snap_barras_json = _json.dumps(snap_barras, default=str)
-            # Borrar las barras (solo manuales — invariante de canales) y dejar el lote como LÁPIDA.
+            # DESPIECE VACÍO (0 barras): NO se lapida (no hay data que preservar → sería una lápida
+            # basura). Se borra FÍSICAMENTE y libera su número. La lápida solo tiene sentido si había
+            # data real. Esto evita lápidas en cero en el histórico. El return se hace FUERA del `with`
+            # (patrón de descartar_lote_vacio) para no saltar el commit del context manager.
+            vacio = (snap_n == 0)
+            n_barras = 0
+            if vacio:
+                cur.execute("DELETE FROM lotes WHERE id = %s", (lote_id,))
+            else:
+                # Snapshot del DETALLE completo de las barras (para poder VERLAS luego en solo-lectura).
+                # Mismos campos que ver_lote, así el front reconstruye la grilla igual.
+                _snap_campos = ["id", "sector", "piso", "ciclo", "eje", "marca", "figura", "diam", "cant", "mult",
+                                "dim_a", "dim_b", "dim_c", "dim_d", "dim_e", "dim_f", "dim_g", "dim_h", "dim_i",
+                                "ang1", "ang2", "ang3", "ang4", "radio", "revisada", "suf_tipo"]
+                cur.execute("SELECT " + ", ".join(_snap_campos) +
+                            " FROM barras WHERE lote_id = %s AND origen = 'manual' ORDER BY id", (lote_id,))
+                snap_barras = [dict(zip(_snap_campos, row)) for row in cur.fetchall()]
+                import json as _json
+                snap_barras_json = _json.dumps(snap_barras, default=str)
+                # Borrar las barras (solo manuales — invariante de canales) y dejar el lote como LÁPIDA.
+                cur.execute("DELETE FROM barras WHERE lote_id = %s AND origen = 'manual'", (lote_id,))
+                n_barras = cur.rowcount
+                cur.execute(
+                    """UPDATE lotes SET estado='eliminado', n_barras=0,
+                           eliminado_por=%s, eliminado_fecha=%s,
+                           snap_n_barras=%s, snap_kg=%s, snap_sector=%s, snap_ciclo=%s, snap_eje=%s,
+                           snap_barras=%s
+                       WHERE id=%s""",
+                    (email, _now_iso(), snap_n, snap_kg, snap_sec, snap_cic, snap_eje, snap_barras_json, lote_id),
+                )
+                # Los sectores que quedaron sin esas barras cambian de contenido → 'modificado'.
+                try:
+                    from .sector_estado import marcar_sector_modificado
+                    for sec, pis, cic in sectores_tocados:
+                        marcar_sector_modificado(cur, id_proyecto, sec, pis, cic, por=email)
+                except Exception:
+                    pass
+    _cache.invalidate("stats:", "landing:")
+    if vacio:
+        audit(email, "eliminar_lote_vacio", f"lote {lote_id} (sin barras) · obra {id_proyecto}", "lote", str(lote_id))
+        return {"ok": True, "lote_id": lote_id, "barras_eliminadas": 0, "purgado": True}
+    audit(email, "eliminar_lote", f"lote {lote_id} · {n_barras} barras · obra {id_proyecto}", "lote", str(lote_id))
+    return {"ok": True, "lote_id": lote_id, "barras_eliminadas": n_barras}
+
+
+@router.delete("/lotes/{lote_id}/purgar")
+def purgar_lote(lote_id: int, user=Depends(get_current_user)):
+    """PURGA FÍSICA de un despiece del histórico. SOLO ADMIN. Borra la fila del lote y cualquier
+    barra manual residual — para limpiar registros mal asignados por usuarios nuevos. Es
+    IRREVERSIBLE y no deja lápida. Distinto de 'eliminar' (que deja lápida con snapshot)."""
+    role = (user.get("role") or "").lower()
+    if role not in ("admin", "admin_calidad"):
+        raise HTTPException(status_code=403, detail="Solo un administrador puede purgar despieces del histórico.")
+    email = user.get("email", "?")
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT id_proyecto FROM lotes WHERE id = %s", (lote_id,))
+            r = cur.fetchone()
+            if not r:
+                raise HTTPException(status_code=404, detail="Despiece no encontrado.")
+            id_proyecto = r[0]
+            # Sectores tocados (por si quedaban barras) para marcarlos modificados tras purgar.
+            cur.execute("SELECT DISTINCT sector, piso, ciclo FROM barras WHERE lote_id = %s AND origen='manual'", (lote_id,))
+            sectores = cur.fetchall()
             cur.execute("DELETE FROM barras WHERE lote_id = %s AND origen = 'manual'", (lote_id,))
-            n_barras = cur.rowcount
-            cur.execute(
-                """UPDATE lotes SET estado='eliminado', n_barras=0,
-                       eliminado_por=%s, eliminado_fecha=%s,
-                       snap_n_barras=%s, snap_kg=%s, snap_sector=%s, snap_ciclo=%s, snap_eje=%s,
-                       snap_barras=%s
-                   WHERE id=%s""",
-                (email, _now_iso(), snap_n, snap_kg, snap_sec, snap_cic, snap_eje, snap_barras_json, lote_id),
-            )
-            # Los sectores que quedaron sin esas barras cambian de contenido → 'modificado'.
+            n = cur.rowcount
+            cur.execute("DELETE FROM lotes WHERE id = %s", (lote_id,))
             try:
                 from .sector_estado import marcar_sector_modificado
-                for sec, pis, cic in sectores_tocados:
+                for sec, pis, cic in sectores:
                     marcar_sector_modificado(cur, id_proyecto, sec, pis, cic, por=email)
             except Exception:
                 pass
     _cache.invalidate("stats:", "landing:")
-    audit(email, "eliminar_lote", f"lote {lote_id} · {n_barras} barras · obra {id_proyecto}", "lote", str(lote_id))
-    return {"ok": True, "lote_id": lote_id, "barras_eliminadas": n_barras}
+    audit(email, "purgar_lote", f"lote {lote_id} · {n} barras · obra {id_proyecto} (PURGA ADMIN)", "lote", str(lote_id))
+    return {"ok": True, "lote_id": lote_id, "barras_purgadas": n}
 
 
 @router.get("/lotes")
@@ -640,19 +685,25 @@ def listar_lotes(proyecto: str, user=Depends(get_current_user)):
             import json as _json
             lotes = []
             for r in cur.fetchall():
+                n_items = int(r[5] or 0)
                 n_barras = float(r[6] or 0)
+                kg = float(r[7] or 0)
                 if r[1] == "eliminado":
-                    # Barras físicas de una lápida: derivar de snap_barras (cant×mult) si existe.
+                    # Lápida: si el snapshot de resumen (snap_n_barras/snap_kg) quedó vacío pero hay
+                    # detalle (snap_barras), derivar items/barras/kg del detalle. Barras físicas =
+                    # Σ cant×mult; items = nº de filas; kg = Σ peso (si el detalle lo trajera).
                     snap = r[14]
                     if isinstance(snap, str):
                         try: snap = _json.loads(snap)
                         except Exception: snap = []
                     if snap:
                         n_barras = sum((x.get("cant") or 0) * (x.get("mult") or 1) for x in snap)
+                        if not n_items:
+                            n_items = len(snap)
                 lotes.append({
                     "id": r[0], "estado": r[1], "creado_por": r[2], "creado_fecha": r[3],
-                    "terminado_fecha": r[4], "n_items": int(r[5] or 0), "n_barras": n_barras,
-                    "kg": float(r[7] or 0), "sector": r[8], "ciclo": r[9], "eje": r[10],
+                    "terminado_fecha": r[4], "n_items": n_items, "n_barras": n_barras,
+                    "kg": kg, "sector": r[8], "ciclo": r[9], "eje": r[10],
                     "num_obra": r[11], "eliminado_por": r[12], "eliminado_fecha": r[13],
                 })
     return {"ok": True, "lotes": lotes}

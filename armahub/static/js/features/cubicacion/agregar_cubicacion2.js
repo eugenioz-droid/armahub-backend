@@ -629,10 +629,19 @@ function ac2ActualizarCabecera(){
   show('ac2_bandera', hayLote && !eliminado); show('ac2_guardarBtn', hayLote && !eliminado);
   show('ac2_descartarBtn', hayLote);   // la X (cerrar/volver) sigue disponible siempre
   show('ac2_eliminarBtn', hayLote && !eliminado);   // ya eliminado → no se puede re-eliminar
-  // Reasignar ciclo/eje: solo en despiece BORRADOR que ya tiene barras guardadas (corregir un eje
+  // Corregir ciclo/eje: solo en despiece BORRADOR que ya tiene barras guardadas (corregir un eje
   // mal escrito). En terminado/eliminado no aplica (ya no se toca).
   var borradorConBarras = hayLote && AC2.loteEstado==='borrador' && AC2.barras.some(function(b){return b._guardada;});
-  show('ac2_reasignarBtn', borradorConBarras);
+  if (borradorConBarras && _ac2ModoCorregir){
+    // En plena corrección: ocultar "Corregir", mostrar Aplicar/Cancelar, mantener resalte.
+    show('ac2_reasignarBtn', false); show('ac2_reasignarAplicarBtn', true); show('ac2_reasignarCancelarBtn', true);
+    _ac2LockContexto(false);
+  } else {
+    // Fuera de corrección: si es borrador con barras → candado en ciclo/eje + botón "Corregir".
+    if (_ac2ModoCorregir){ _ac2ModoCorregir=false; _ac2HighlightContexto(false); var _h=document.getElementById('ac2_corregirHint'); if(_h) _h.style.display='none'; }
+    show('ac2_reasignarBtn', borradorConBarras); show('ac2_reasignarAplicarBtn', false); show('ac2_reasignarCancelarBtn', false);
+    _ac2LockContexto(borradorConBarras);
+  }
   // En terminado, guardar/terminar quedan inertes; Eliminar sigue vivo. En eliminado, todo inerte
   // salvo la X (para salir y crear otro lote).
   dis('ac2_guardarBtn', terminado); dis('ac2_bandera', terminado);
@@ -1132,21 +1141,76 @@ window.ac2CrearLote=async function(){
   }catch(e){ alert('Error de red al crear el despiece. Reintenta.'); }
 };
 
-// ✎ REASIGNAR ciclo/eje del despiece ABIERTO (borrador): corrige un eje/ciclo mal escrito sin dejar
-// registro sucio. Aplica el nuevo ciclo/eje a TODAS las barras guardadas del despiece. Un despiece
-// terminado ya no se puede reasignar (backend 409). Solo tiene sentido si ya hay barras guardadas.
+// ── CORRECCIÓN DE EJE/CICLO (modo explícito de 2 pasos) ────────────────────────────────────────
+// En un despiece BORRADOR con barras guardadas, ciclo/eje quedan BLOQUEADOS (candado visual) para
+// que no se editen por error. Para corregir un eje/ciclo mal escrito, el usuario entra a "modo
+// corrección": el botón ✎ Corregir desbloquea y RESALTA ciclo/eje; luego ✓ Aplicar hace el PATCH.
+// Así el gesto es explícito y no hay que adivinar "modifica y después presiona".
+var _ac2ModoCorregir=false;
+
+// Aplica/quita el look BLOQUEADO (candado) a los inputs ciclo/eje. locked=true → readonly + gris.
+function _ac2LockContexto(locked){
+  ['ac2_ciclo','ac2_eje'].forEach(function(id){
+    var el=document.getElementById(id); if(!el) return;
+    el.readOnly=locked;
+    el.style.background=locked?'#f4f6f7':'';
+    el.style.color=locked?'#607d8b':'';
+    el.style.cursor=locked?'not-allowed':'';
+    el.title=locked?'🔒 Bloqueado. Usa "✎ Corregir eje/ciclo" para cambiarlo.':'';
+  });
+}
+// Aplica/quita el RESALTE (ámbar) de edición durante el modo corrección.
+function _ac2HighlightContexto(on){
+  ['ac2_ciclo','ac2_eje'].forEach(function(id){
+    var el=document.getElementById(id); if(!el) return;
+    el.style.border=on?'2px solid #ffa000':'';
+    el.style.boxShadow=on?'0 0 0 3px rgba(255,193,7,.25)':'';
+    el.style.background=on?'#fffdf5':'';
+  });
+}
+
+// Paso 1: entrar a modo corrección → desbloquea + resalta ciclo/eje, muestra hint y botones.
+window.ac2CorregirContextoInicio=function(){
+  if (!AC2.loteId || AC2.loteEstado!=='borrador'){ return; }
+  _ac2ModoCorregir=true;
+  _ac2LockContexto(false);
+  _ac2HighlightContexto(true);
+  var hint=document.getElementById('ac2_corregirHint'); if(hint) hint.style.display='';
+  var show=function(id,on){ var el=document.getElementById(id); if(el) el.style.display=on?'':'none'; };
+  show('ac2_reasignarBtn', false);
+  show('ac2_reasignarAplicarBtn', true);
+  show('ac2_reasignarCancelarBtn', true);
+  var e=document.getElementById('ac2_ciclo'); if(e){ e.focus(); e.select&&e.select(); }
+};
+
+// Cancelar: descarta la corrección, restaura ciclo/eje al valor real y re-bloquea.
+window.ac2CorregirContextoCancelar=function(){
+  _ac2ModoCorregir=false;
+  _ac2HighlightContexto(false);
+  // Restaurar el ciclo/eje visible al valor real del despiece (por si el usuario alcanzó a tipear).
+  var iC=document.getElementById('ac2_ciclo'), iE=document.getElementById('ac2_eje');
+  if (iC) iC.value=AC2.ciclo||''; if (iE) iE.value=AC2.eje||'';
+  var hint=document.getElementById('ac2_corregirHint'); if(hint) hint.style.display='none';
+  ac2ActualizarCabecera();   // re-pinta botones y re-bloquea contexto
+};
+
+// Paso 2: aplicar. Aplica el nuevo ciclo/eje a TODAS las barras guardadas del despiece (PATCH).
+// Un despiece terminado ya no se puede reasignar (backend 409). Al terminar, sale del modo.
 window.ac2ReasignarContexto=async function(){
   if (!AC2.loteId || AC2.loteEstado!=='borrador'){ return; }
   _ac2LeerContexto();   // toma el ciclo/eje que el usuario tiene escrito ahora
   if (!AC2.ciclo || !AC2.eje){ alert('Ciclo y Eje no pueden quedar vacíos.'); return; }
   var hayGuardadas=AC2.barras.some(function(b){ return b._guardada; });
-  if (!hayGuardadas){ return; }   // sin barras guardadas, no hay nada que reasignar (las nuevas ya usan el valor)
+  if (!hayGuardadas){ ac2CorregirContextoCancelar(); return; }   // sin barras guardadas, nada que reasignar
   if (!confirm('Reasignar el despiece a Ciclo "'+AC2.ciclo+'" · Eje "'+AC2.eje+'".\nSe aplica a TODAS las barras guardadas del despiece.\n\n¿Continuar?')) return;
   var r=await _ac2Patch('/lotes/'+AC2.loteId+'/contexto', { ciclo:AC2.ciclo, eje:AC2.eje });
   if (!r.ok){ var d=r.data&&r.data.detail; alert('No se pudo reasignar'+(d?': '+(d.msg||d):'')+'.'); return; }
   // Actualizar las barras del front (ciclo/eje) para reflejar el cambio sin recargar.
   AC2.barras.forEach(function(b){ if(b._guardada){ b.ciclo=AC2.ciclo; b.eje=AC2.eje; } });
+  _ac2ModoCorregir=false;
+  _ac2HighlightContexto(false);
   ac2CargarLotes();
+  ac2ActualizarCabecera();
   alert('✎ Despiece reasignado a Ciclo '+AC2.ciclo+' · Eje '+AC2.eje+' ('+(r.data&&r.data.barras)+' barras).');
 };
 
@@ -1277,6 +1341,28 @@ window.ac2EliminarLote=async function(){
     alert('🗑 Despiece eliminado ('+borradas+' barra(s) borradas). Queda registrado como eliminado en el histórico.');
   }catch(e){ alert('Error de red al eliminar el despiece. Reintenta.'); }
 };
+// ¿El usuario actual es administrador? (admin o admin_calidad → puede purgar del histórico).
+function _ac2EsAdmin(){
+  return (typeof currentRole !== 'undefined') && (currentRole === 'admin' || currentRole === 'admin_calidad');
+}
+
+// 🗑 PURGAR (ADMIN): borra DEFINITIVAMENTE un despiece eliminado del histórico (no deja lápida).
+// Sirve para limpiar registros mal asignados por usuarios nuevos. Irreversible. Solo admin (el
+// backend también lo exige: 403 si no lo es). Pide confirmación escribiendo BORRAR.
+window.ac2PurgarLote=async function(loteId, numObra){
+  if (!_ac2EsAdmin()){ alert('Solo un administrador puede borrar despieces del histórico.'); return; }
+  var txt=prompt('⚠ ADMIN: vas a BORRAR DEFINITIVAMENTE el despiece #'+numObra+' del histórico.\n'+
+    'No quedará ningún rastro (esto NO es "eliminar con lápida", es purga total).\n\nEscribe BORRAR para confirmar:');
+  if (txt===null) return;
+  if (txt.trim().toUpperCase()!=='BORRAR'){ alert('No se borró: debes escribir BORRAR.'); return; }
+  try{
+    var r=await _ac2Delete('/lotes/'+loteId+'/purgar');
+    if (!r.ok){ var d=r.data&&r.data.detail; alert('No se pudo purgar el despiece'+(d?': '+(d.msg||JSON.stringify(d)):' (error '+r.status+')')+'.'); return; }
+    await ac2CargarLotes();
+    alert('🗑 Despiece #'+numObra+' borrado definitivamente del histórico.');
+  }catch(e){ alert('Error de red al purgar el despiece. Reintenta.'); }
+};
+
 // Resetea el FORMULARIO para volver a "crear lote" (sin cambiar de obra): limpia lote/barras/
 // sector/estructura/ciclo/eje y vuelve a la cabecera con el botón Crear lote. Reutilizado tras
 // guardar un lote (volver a crear otro) y tras eliminar.
@@ -1332,14 +1418,15 @@ async function ac2CargarLotes(){
       var elim=(l.eliminado_fecha||'').slice(0,10);
       return '<tr class="ac2loterow" onclick="ac2RetomarLote('+l.id+')" title="Ver el contenido de este despiece eliminado (solo lectura)" style="border-top:1px solid #f0f0f0; color:#9e9e9e; background:#fafafa; cursor:pointer;">'+
         '<td style="padding:6px 8px; font-weight:600;">#'+(l.num_obra||l.id)+'</td>'+
-        '<td style="padding:6px 8px;"><s>'+ac2Esc(l.sector||'—')+' · '+ac2Esc(l.ciclo||'—')+' · '+ac2Esc(l.eje||'—')+'</s></td>'+
+        '<td style="padding:6px 8px;">'+ac2Esc(l.sector||'—')+' · '+ac2Esc(l.ciclo||'—')+' · '+ac2Esc(l.eje||'—')+'</td>'+
         '<td style="padding:6px 8px;">'+estado+'</td>'+
-        '<td style="padding:6px 8px; text-align:right;"><s>'+(l.n_items||0)+'</s></td>'+
-        '<td style="padding:6px 8px; text-align:right;"><s>'+ac2Num(l.n_barras||0)+'</s></td>'+
-        '<td style="padding:6px 8px; text-align:right;"><s>'+ac2Num(l.kg,1)+'</s></td>'+
+        '<td style="padding:6px 8px; text-align:right;" title="Items que tenía al eliminarse">'+(l.n_items||0)+'</td>'+
+        '<td style="padding:6px 8px; text-align:right;" title="Barras que tenía al eliminarse">'+ac2Num(l.n_barras||0)+'</td>'+
+        '<td style="padding:6px 8px; text-align:right;" title="Kg que tenía al eliminarse">'+ac2Num(l.kg,1)+'</td>'+
         '<td style="padding:6px 8px;">'+ac2Esc(fecha)+'</td>'+
         '<td style="padding:6px 8px; text-align:right; white-space:nowrap; font-size:10px;">'+
           '<span onclick="event.stopPropagation(); ac2DuplicarLotePrompt('+l.id+','+(l.num_obra||l.id)+')" title="Duplicar este despiece en otro ciclo/eje" style="color:#1565c0; cursor:pointer; margin-right:10px;">⎘ duplicar</span>'+
+          (_ac2EsAdmin() ? '<span onclick="event.stopPropagation(); ac2PurgarLote('+l.id+','+(l.num_obra||l.id)+')" title="ADMIN: borrar DEFINITIVAMENTE este despiece del histórico (no deja rastro)" style="color:#c62828; cursor:pointer; margin-right:10px;">🗑 borrar del histórico</span>' : '')+
           '<span title="Eliminado por '+ac2Esc(l.eliminado_por||'?')+' el '+ac2Esc(elim)+'">👁 ver · por '+ac2Esc((l.eliminado_por||'').split('@')[0])+'</span>'+
         '</td></tr>';
     }
