@@ -875,10 +875,37 @@ suf_tipo, en `export.py`); la tipología interna (`marca`) NO se modifica, para 
 agrupaciones no se rompan por inconsistencias. Columna `barras.suf_tipo` (migración 093), nullable.
 Viaja en el payload de `agregar_barras`, se restaura al retomar el lote.
 
-**Multiplicador en la grilla (5N.42):** columnas **Mult** (editable) y **Cant.T** (=cant×mult, solo
-lectura, informativa) entre Cant y Largo. Coherente con el importador (CANT del CSV = total,
-cant_total = cant×mult, peso sobre cant_total). El peso YA incluye ×mult → Cant.T es solo display
-(no re-multiplicar el peso, sería cant×mult²).
+**Multiplicador en la grilla (5N.42):** columnas **Mult** (editable, ocultable con un checkbox) y
+**Cant.T** (=cant×mult, solo lectura, informativa) entre Cant y Largo. Coherente con el importador
+(CANT del CSV = total, cant_total = cant×mult, peso sobre cant_total). El peso YA incluye ×mult →
+Cant.T es solo display (no re-multiplicar el peso, sería cant×mult²). `mult` nunca queda vacío.
+
+**Nomenclatura "Items" vs "Barras" (5N.49):** en TODA la plataforma, **items** = nº de entradas/filas
+(`COUNT`); **barras** = barras físicas (`Σ cant_total` = cant×mult). Una fila con cant=20/mult=2 es
+**1 item** y **40 barras**. Aplicado en Bar Manager, creador, histórico, /stats, constructoras,
+calculistas, obras, clientes.
+
+**"Despiece" = nombre visible del "lote" (5N.51):** en la UI se llama **Despiece** (tab "Agregar
+Despiece", "Despiece de Cubicación", "Despiece #N"). Internamente sigue siendo `lote` (tabla `lotes`,
+endpoints `/lotes`, `loteId`): la capa de datos NO cambia por una etiqueta de UI. El despiece es el
+átomo de carga manual (gemelo del import CSV).
+
+**Despiece — reglas cerradas (5N.38, 5N.47b, 5N.48):**
+- **Crear** es explícito y previo: exige Obra + Ciclo + Eje (obligatorios). Sin despiece creado,
+  Sector/Estructura/+barra bloqueados.
+- **num_obra** (correlativo por obra, "#N") es FIJO: se asigna una vez al crear (`MAX+1`) y no se
+  reusa ni recalcula. Un despiece **vacío** (nunca guardado, 0 barras) se descarta físicamente al
+  abandonarlo y libera su número.
+- **Eliminar** deja LÁPIDA (estado `eliminado` + snapshot del resumen y del detalle de barras en
+  `snap_barras` JSONB); las barras se borran de la tabla. La lápida es visible en el histórico (gris)
+  y clickeable para VER su contenido en solo-lectura. Pide escribir ELIMINAR; aplica incluso a
+  terminados. Es la ÚNICA forma de borrar un despiece.
+- **Duplicar** (botón en el histórico): crea un despiece nuevo con toda la data del origen; el usuario
+  elige Ciclo y Eje; el resto (piso/sector/tipología/figura/dims/cant/mult/sufijo) se copia. Funciona
+  también desde una lápida.
+- **Disquete** guarda avance y NO limpia; **la X** limpia el formulario y vuelve a crear despiece.
+- **Sector↔Estructura**: combinaciones válidas ELEV→MURO/COLUMNA/GEN, LCIELO→LOSA/GEN, VCIELO→VIGA/GEN,
+  FUND→FUNDACION/GEN (GEN sirve para todos). Las no válidas se deshabilitan en la UI.
 
 **Limpieza:** borrar la tercera matriz MUERTA (`dashboards.js` + `tabs/dashboards.html` + 3
 no-ops en `filtros.js:200-202`; confirmado sin uso, no enlazada). Endpoints `/dashboard/sectores`
