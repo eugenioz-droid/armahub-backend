@@ -464,22 +464,56 @@ async function loadLandingIndicadores() {
           borderRadius: 2
         };
       });
-      var totalKilos = cubData.reduce(function(sum, c) {
-        return sum + c.dias.reduce(function(s, v) { return s + v; }, 0);
-      }, 0);
-      document.getElementById('hubCubicadoTotal').textContent = 'Total semana: ' + totalKilos.toLocaleString('es-CL', {maximumFractionDigits: 1}) + ' kg';
+      // Total por usuario (suma de sus días) + total general de la semana.
+      var totalesUsuario = cubData.map(function(c, idx) {
+        return { nombre: c.nombre, kg: c.dias.reduce(function(s, v) { return s + v; }, 0),
+                 color: _hubCubColors[idx % _hubCubColors.length] };
+      }).sort(function(a, b) { return b.kg - a.kg; });   // de mayor a menor
+      var totalKilos = totalesUsuario.reduce(function(sum, u) { return sum + u.kg; }, 0);
+      var _fmtKg = function(v) { return v.toLocaleString('es-CL', {maximumFractionDigits: 1}); };
+
+      document.getElementById('hubCubicadoTotal').textContent = 'Total semana: ' + _fmtKg(totalKilos) + ' kg';
+      // Tabla de totales por usuario (en columna, ordenada), cada uno con su color del gráfico.
+      var porUsr = document.getElementById('hubCubicadoPorUsuario');
+      var _escTxt = function(s) { var d = document.createElement('div'); d.textContent = (s == null ? '' : String(s)); return d.innerHTML; };
+      if (porUsr) {
+        porUsr.innerHTML = totalesUsuario.map(function(u) {
+          return '<div style="display:flex; align-items:center; gap:6px; font-size:11px; padding:2px 0;">' +
+                 '<span style="width:10px; height:10px; border-radius:2px; background:' + u.color + '; flex-shrink:0;"></span>' +
+                 '<span style="color:#555; flex:1;">' + _escTxt(u.nombre) + '</span>' +
+                 '<span style="color:#333; font-weight:600;">' + _fmtKg(u.kg) + ' kg</span>' +
+                 '</div>';
+        }).join('');
+      }
 
       _hubChartCubicado = replaceChart(_hubChartCubicado, document.getElementById('hubChartCubicado'), {
         type: 'bar',
         data: { labels: diasLabels, datasets: cubDS },
         options: {
           responsive: true, maintainAspectRatio: false,
-          plugins: { legend: { position: 'bottom', labels: { font: { size: 10 }, padding: 8, usePointStyle: true, pointStyle: 'rect' } } },
+          layout: { padding: { top: 16 } },   // aire arriba para los números sobre las barras
+          plugins: {
+            legend: { position: 'bottom', labels: { font: { size: 10 }, padding: 8, usePointStyle: true, pointStyle: 'rect' } },
+            // Total del día ENCIMA de la barra (suma de todos los cubicadores ese día).
+            datalabels: {
+              display: function(ctx) {
+                // Solo en el último dataset visible de cada día (para no repetir por cubicador).
+                return ctx.datasetIndex === ctx.chart.data.datasets.length - 1;
+              },
+              anchor: 'end', align: 'end', offset: 2, color: '#37474f', font: { size: 9, weight: 'bold' },
+              formatter: function(v, ctx) {
+                var i = ctx.dataIndex, tot = 0;
+                ctx.chart.data.datasets.forEach(function(ds) { tot += (ds.data[i] || 0); });
+                return tot > 0 ? _fmtKg(tot) : '';
+              }
+            }
+          },
           scales: {
             y: { beginAtZero: true, ticks: { font: { size: 9 } } },
             x: { ticks: { font: { size: 10 } } }
           }
-        }
+        },
+        plugins: [ChartDataLabels]
       });
     } else {
       cubWrap.style.display = 'none';
