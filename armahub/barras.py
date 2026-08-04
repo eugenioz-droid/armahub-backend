@@ -738,32 +738,32 @@ def get_stats_timeline(
     with get_conn() as conn:
         with conn.cursor() as cur:
             allowed = _get_allowed_project_ids(cur, user)
-            pf_sql, pf_params = _project_filter_sql(allowed, "i")
+            pf_sql, pf_params = _project_filter_sql(allowed, "b")
 
             w = " WHERE 1=1" + pf_sql
             wp = list(pf_params)
 
             if fecha_desde:
-                w += " AND i.fecha >= %s"
+                w += " AND b.fecha_carga >= %s"
                 wp.append(fecha_desde)
             if fecha_hasta:
-                w += " AND i.fecha <= %s"
+                w += " AND b.fecha_carga <= %s"
                 wp.append(fecha_hasta + "T23:59:59Z")
 
-            # Group by truncated date
+            # Group by truncated date (sobre fecha_carga de barras). Incluye CSV + manual.
             if agrupacion == "semana":
-                trunc = "LEFT(i.fecha, 4) || '-W' || LPAD(CAST(EXTRACT(WEEK FROM CAST(LEFT(i.fecha, 10) AS DATE)) AS TEXT), 2, '0')"
+                trunc = "LEFT(b.fecha_carga, 4) || '-W' || LPAD(CAST(EXTRACT(WEEK FROM CAST(LEFT(b.fecha_carga, 10) AS DATE)) AS TEXT), 2, '0')"
             elif agrupacion == "mes":
-                trunc = "LEFT(i.fecha, 7)"
+                trunc = "LEFT(b.fecha_carga, 7)"
             else:
-                trunc = "LEFT(i.fecha, 10)"
+                trunc = "LEFT(b.fecha_carga, 10)"
 
             cur.execute(f"""
                 SELECT {trunc} AS periodo,
-                       SUM(i.barras_count) AS barras,
-                       SUM(i.kilos) AS kilos,
+                       COALESCE(SUM(b.cant_total), 0) AS barras,
+                       COALESCE(SUM(b.peso_total), 0) AS kilos,
                        COUNT(*) AS cargas
-                FROM imports i
+                FROM barras b
                 {w}
                 GROUP BY periodo
                 ORDER BY periodo
@@ -791,29 +791,43 @@ def get_stats_cubicadores(
             allowed = _get_allowed_project_ids(cur, user)
             pf_sql, pf_params = _project_filter_sql(allowed, "i")
 
-            w = " WHERE 1=1" + pf_sql
-            wp = list(pf_params)
-
+            # Productividad por persona desde la tabla `barras` (por creado_por): incluye CSV Y
+            # cubicación manual (antes solo leía imports = solo CSV). barras=Σcant_total (físicas),
+            # items=COUNT (entradas), kilos=Σpeso_total. Filtro por proyecto (alias b) y fecha_carga.
+            pf_b, pf_bp = _project_filter_sql(allowed, "b")
+            w = " WHERE b.creado_por IS NOT NULL" + pf_b
+            wp = list(pf_bp)
             if fecha_desde:
-                w += " AND i.fecha >= %s"
+                w += " AND b.fecha_carga >= %s"
                 wp.append(fecha_desde)
             if fecha_hasta:
-                w += " AND i.fecha <= %s"
+                w += " AND b.fecha_carga <= %s"
                 wp.append(fecha_hasta + "T23:59:59Z")
-
             cur.execute(f"""
-                SELECT i.usuario,
-                       SUM(i.barras_count) AS barras,
-                       SUM(i.kilos) AS kilos,
-                       COUNT(*) AS cargas,
-                       COUNT(DISTINCT i.id_proyecto) AS proyectos,
-                       MAX(i.fecha) AS ultima_actividad
-                FROM imports i
+                SELECT b.creado_por AS usuario,
+                       COALESCE(SUM(b.cant_total), 0) AS barras,
+                       COUNT(*) AS items,
+                       COALESCE(SUM(b.peso_total), 0) AS kilos,
+                       COUNT(DISTINCT b.id_proyecto) AS proyectos,
+                       MAX(b.fecha_carga) AS ultima_actividad
+                FROM barras b
                 {w}
-                GROUP BY i.usuario
+                GROUP BY b.creado_por
                 ORDER BY kilos DESC
             """, wp)
             rows = cur.fetchall()
+
+            # nº de CARGAS (archivos CSV importados) por usuario — sigue viniendo de imports (es
+            # "cuántos archivos subió"); la cubicación manual no genera cargas.
+            pf_i, pf_ip = _project_filter_sql(allowed, "i")
+            wi = " WHERE 1=1" + pf_i
+            wip = list(pf_ip)
+            if fecha_desde:
+                wi += " AND i.fecha >= %s"; wip.append(fecha_desde)
+            if fecha_hasta:
+                wi += " AND i.fecha <= %s"; wip.append(fecha_hasta + "T23:59:59Z")
+            cur.execute(f"SELECT i.usuario, COUNT(*) FROM imports i {wi} GROUP BY i.usuario", wip)
+            cargas_map = {r[0]: int(r[1]) for r in cur.fetchall()}
 
             # Exported kilos per user (from export_log, deduplicated)
             pf_el, pf_elp = _project_filter_sql(allowed, "el")
@@ -834,10 +848,11 @@ def get_stats_cubicadores(
         "cubicadores": [
             {
                 "email": r[0],
-                "barras": int(r[1] or 0),
-                "kilos": round(float(r[2] or 0), 2),
+                "barras": round(float(r[1] or 0)),   # barras físicas (Σ cant_total)
+                "items": int(r[2] or 0),             # entradas/filas (COUNT)
+                "kilos": round(float(r[3] or 0), 2),
                 "kilos_exportados": exp_user_map.get(r[0], 0),
-                "cargas": int(r[3]),
+                "cargas": cargas_map.get(r[0], 0),   # nº de CSV importados (0 si solo cubicó manual)
                 "proyectos": int(r[4]),
                 "ultima_actividad": r[5],
             }
@@ -855,15 +870,15 @@ def get_cubicacion_mensual(
     with get_conn() as conn:
         with conn.cursor() as cur:
             allowed = _get_allowed_project_ids(cur, user)
-            pf_sql, pf_params = _project_filter_sql(allowed, "i")
-
+            # Cubicación mensual por persona desde `barras` (creado_por): incluye CSV + manual.
+            pf_sql, pf_params = _project_filter_sql(allowed, "b")
             cur.execute("""
-                SELECT EXTRACT(MONTH FROM CAST(LEFT(i.fecha, 10) AS DATE))::int AS mes,
-                       i.usuario,
-                       COALESCE(SUM(i.kilos), 0) AS kilos
-                FROM imports i
-                WHERE LEFT(i.fecha, 4) = %s""" + pf_sql + """
-                GROUP BY mes, i.usuario
+                SELECT EXTRACT(MONTH FROM CAST(LEFT(b.fecha_carga, 10) AS DATE))::int AS mes,
+                       b.creado_por AS usuario,
+                       COALESCE(SUM(b.peso_total), 0) AS kilos
+                FROM barras b
+                WHERE b.creado_por IS NOT NULL AND LEFT(b.fecha_carga, 4) = %s""" + pf_sql + """
+                GROUP BY mes, b.creado_por
                 ORDER BY mes, kilos DESC
             """, [str(anio)] + pf_params)
             rows = cur.fetchall()
@@ -910,22 +925,24 @@ def get_mi_actividad(user=Depends(get_current_user)):
 
     with get_conn() as conn:
         with conn.cursor() as cur:
+            # Actividad del usuario desde `barras` (creado_por): incluye CSV + manual. "barras" =
+            # Σ cant_total (físicas), "cargas" pasa a ser COUNT (items/entradas). fecha_carga.
             # Today's stats
             cur.execute("""
-                SELECT COALESCE(SUM(barras_count), 0), COALESCE(SUM(kilos), 0), COUNT(*)
-                FROM imports
-                WHERE usuario = %s AND LEFT(fecha, 10) = %s
+                SELECT COALESCE(SUM(cant_total), 0), COALESCE(SUM(peso_total), 0), COUNT(*)
+                FROM barras
+                WHERE creado_por = %s AND LEFT(fecha_carga, 10) = %s
             """, (email, today))
             hoy = cur.fetchone()
 
             # Daily breakdown last 14 days
             cur.execute("""
-                SELECT LEFT(fecha, 10) AS dia,
-                       COALESCE(SUM(barras_count), 0) AS barras,
-                       COALESCE(SUM(kilos), 0) AS kilos,
+                SELECT LEFT(fecha_carga, 10) AS dia,
+                       COALESCE(SUM(cant_total), 0) AS barras,
+                       COALESCE(SUM(peso_total), 0) AS kilos,
                        COUNT(*) AS cargas
-                FROM imports
-                WHERE usuario = %s AND LEFT(fecha, 10) >= %s
+                FROM barras
+                WHERE creado_por = %s AND LEFT(fecha_carga, 10) >= %s
                 GROUP BY dia
                 ORDER BY dia
             """, (email, day14_ago))
@@ -933,17 +950,17 @@ def get_mi_actividad(user=Depends(get_current_user)):
 
             # This week totals
             cur.execute("""
-                SELECT COALESCE(SUM(barras_count), 0), COALESCE(SUM(kilos), 0), COUNT(*)
-                FROM imports
-                WHERE usuario = %s AND LEFT(fecha, 10) >= %s
+                SELECT COALESCE(SUM(cant_total), 0), COALESCE(SUM(peso_total), 0), COUNT(*)
+                FROM barras
+                WHERE creado_por = %s AND LEFT(fecha_carga, 10) >= %s
             """, (email, this_monday))
             sem_actual = cur.fetchone()
 
             # Last week totals
             cur.execute("""
-                SELECT COALESCE(SUM(barras_count), 0), COALESCE(SUM(kilos), 0), COUNT(*)
-                FROM imports
-                WHERE usuario = %s AND LEFT(fecha, 10) >= %s AND LEFT(fecha, 10) <= %s
+                SELECT COALESCE(SUM(cant_total), 0), COALESCE(SUM(peso_total), 0), COUNT(*)
+                FROM barras
+                WHERE creado_por = %s AND LEFT(fecha_carga, 10) >= %s AND LEFT(fecha_carga, 10) <= %s
             """, (email, last_monday, last_sunday))
             sem_anterior = cur.fetchone()
 
@@ -2227,18 +2244,20 @@ def landing_indicadores(user=Depends(get_current_user)):
             # Cuenta a QUIEN hizo cargas esta semana, sin filtrar por rol (antes
             # filtraba u.role='cubicador' → vacío tras migrar a 'miembro').
             if role in ("admin", "admin_calidad", "miembro"):
+                # Desde `barras` (creado_por): incluye CSV + cubicación manual. Antes solo imports (CSV).
                 cur.execute("""
-                    SELECT i.usuario,
+                    SELECT b.creado_por AS usuario,
                            COALESCE(u.nombre, '') AS nombre,
                            COALESCE(u.apellido, '') AS apellido,
-                           EXTRACT(ISODOW FROM i.fecha::timestamp)::INTEGER AS dow,
-                           COALESCE(SUM(i.kilos), 0) AS kilos
-                    FROM imports i
-                    JOIN users u ON u.email = i.usuario
-                    WHERE LEFT(i.fecha, 10) >= %s
-                      AND LEFT(i.fecha, 10) <= %s
-                    GROUP BY i.usuario, u.nombre, u.apellido, dow
-                    ORDER BY i.usuario, dow
+                           EXTRACT(ISODOW FROM b.fecha_carga::timestamp)::INTEGER AS dow,
+                           COALESCE(SUM(b.peso_total), 0) AS kilos
+                    FROM barras b
+                    JOIN users u ON u.email = b.creado_por
+                    WHERE b.creado_por IS NOT NULL
+                      AND LEFT(b.fecha_carga, 10) >= %s
+                      AND LEFT(b.fecha_carga, 10) <= %s
+                    GROUP BY b.creado_por, u.nombre, u.apellido, dow
+                    ORDER BY b.creado_por, dow
                 """, (monday, sunday))
                 rows = cur.fetchall()
                 cub_map = {}

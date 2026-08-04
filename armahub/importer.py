@@ -530,9 +530,9 @@ async def import_armadetailer(
     INSERT INTO barras
     (id_unico,id_proyecto,nombre_proyecto,plano_code,nombre_plano,sector,piso,ciclo,eje,diam,largo_total,mult,cant,cant_total,peso_unitario,peso_total,version_mod,version_exp,fecha_carga,
      bar_id,estructura,tipo,marca,figura,esp,dim_a,dim_b,dim_c,dim_d,dim_e,dim_f,dim_g,dim_h,dim_i,ang1,ang2,ang3,ang4,radio,cod_proyecto,nombre_dwg,
-     origen,import_id)
+     origen,import_id,creado_por)
     VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,
-            %s,%s)
+            %s,%s,%s)
     ON CONFLICT (id_unico, id_proyecto) DO UPDATE SET
         nombre_proyecto=EXCLUDED.nombre_proyecto,
         plano_code=EXCLUDED.plano_code,
@@ -574,7 +574,8 @@ async def import_armadetailer(
         cod_proyecto=EXCLUDED.cod_proyecto,
         nombre_dwg=EXCLUDED.nombre_dwg,
         origen=EXCLUDED.origen,
-        import_id=EXCLUDED.import_id
+        import_id=EXCLUDED.import_id,
+        creado_por=COALESCE(barras.creado_por, EXCLUDED.creado_por)
     WHERE (barras.origen IS NULL OR barras.origen = 'csv')
 
     """
@@ -712,7 +713,10 @@ async def import_armadetailer(
             # (que borra por import_id), NO por plano_code — evita borrar
             # data de otros archivos que comparten plano_code.
             if rows_to_upsert:
-                rows_with_import = [row + ('csv', import_id) for row in rows_to_upsert]
+                # creado_por = quién importó → cada barra CSV sabe su responsable, igual que las
+                # manuales, para KPIs de productividad por persona (CSV + manual sobre `barras`).
+                _importador = user.get("email", "unknown")
+                rows_with_import = [row + ('csv', import_id, _importador) for row in rows_to_upsert]
                 cur.executemany(upsert_sql, rows_with_import)
                 # Verificar integridad post-upsert: las barras realmente deben haber
                 # quedado en la BD con el import_id correcto.
