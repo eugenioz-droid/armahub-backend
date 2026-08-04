@@ -182,6 +182,52 @@ def descartar_lote_vacio(lote_id: int, user=Depends(get_current_user)):
     return {"ok": True, "borrado": borrado}
 
 
+class LoteContexto(BaseModel):
+    ciclo: str          # nuevo ciclo del despiece
+    eje: str            # nuevo eje del despiece
+
+
+@router.patch("/lotes/{lote_id}/contexto")
+def reasignar_contexto(lote_id: int, body: LoteContexto, user=Depends(get_current_user)):
+    """Reasigna el CICLO y EJE de TODAS las barras de un despiece en BORRADOR (aún no terminado).
+    Permite corregir un eje/ciclo mal escrito sin dejar el registro sucio: mientras el despiece está
+    abierto (sin bandera) el nombre es editable. Un despiece TERMINADO ya no se puede reasignar."""
+    email = user.get("email", "?")
+    ciclo = (body.ciclo or "").strip()
+    eje = (body.eje or "").strip()
+    if not ciclo or not eje:
+        raise HTTPException(status_code=400, detail="Ciclo y Eje son obligatorios.")
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            _check_permiso(cur, user)
+            cur.execute("SELECT id_proyecto, estado FROM lotes WHERE id = %s", (lote_id,))
+            r = cur.fetchone()
+            if not r:
+                raise HTTPException(status_code=404, detail="Despiece no encontrado.")
+            id_proyecto, estado = r[0], r[1]
+            if estado != "borrador":
+                raise HTTPException(status_code=409,
+                                    detail="Solo se puede reasignar ciclo/eje mientras el despiece está en edición (no terminado ni eliminado).")
+            # Sectores tocados (antes y con el nuevo ciclo) para marcar 'modificado'.
+            cur.execute("SELECT DISTINCT sector, piso, ciclo FROM barras WHERE lote_id = %s AND origen='manual'", (lote_id,))
+            sectores = cur.fetchall()
+            cur.execute(
+                "UPDATE barras SET ciclo=%s, eje=%s, editado_por=%s, editado_fecha=%s "
+                "WHERE lote_id=%s AND origen='manual'",
+                (ciclo, eje, email, _now_iso(), lote_id))
+            n = cur.rowcount
+            try:
+                from .sector_estado import marcar_sector_modificado
+                for sec, pis, cic in sectores:
+                    marcar_sector_modificado(cur, id_proyecto, sec, pis, cic, por=email)
+                    marcar_sector_modificado(cur, id_proyecto, sec, pis, ciclo, por=email)
+            except Exception:
+                pass
+    _cache.invalidate("stats:", "landing:")
+    audit(email, "reasignar_contexto_lote", f"lote {lote_id} → ciclo {ciclo} · eje {eje} ({n} barras)", "lote", str(lote_id))
+    return {"ok": True, "lote_id": lote_id, "ciclo": ciclo, "eje": eje, "barras": n}
+
+
 class LoteDuplicar(BaseModel):
     ciclo: str          # ciclo del NUEVO lote (obligatorio)
     eje: str            # eje del NUEVO lote (obligatorio)

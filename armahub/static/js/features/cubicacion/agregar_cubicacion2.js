@@ -629,6 +629,10 @@ function ac2ActualizarCabecera(){
   show('ac2_bandera', hayLote && !eliminado); show('ac2_guardarBtn', hayLote && !eliminado);
   show('ac2_descartarBtn', hayLote);   // la X (cerrar/volver) sigue disponible siempre
   show('ac2_eliminarBtn', hayLote && !eliminado);   // ya eliminado → no se puede re-eliminar
+  // Reasignar ciclo/eje: solo en despiece BORRADOR que ya tiene barras guardadas (corregir un eje
+  // mal escrito). En terminado/eliminado no aplica (ya no se toca).
+  var borradorConBarras = hayLote && AC2.loteEstado==='borrador' && AC2.barras.some(function(b){return b._guardada;});
+  show('ac2_reasignarBtn', borradorConBarras);
   // En terminado, guardar/terminar quedan inertes; Eliminar sigue vivo. En eliminado, todo inerte
   // salvo la X (para salir y crear otro lote).
   dis('ac2_guardarBtn', terminado); dis('ac2_bandera', terminado);
@@ -1068,6 +1072,15 @@ async function _ac2Post(url, body){
   var data=null; try{ data=await res.json(); }catch(e){}
   return { ok:res.ok, status:res.status, data:data };
 }
+// PATCH a un endpoint SIN el prefijo /api/v1. Mismo shape que _ac2Post.
+async function _ac2Patch(url, body){
+  var tok=localStorage.getItem('armahub_token');
+  var res=await fetch(url, { method:'PATCH',
+    headers: Object.assign({'Content-Type':'application/json'}, tok?{Authorization:'Bearer '+tok}:{}),
+    body: JSON.stringify(body||{}) });
+  var data=null; try{ data=await res.json(); }catch(e){}
+  return { ok:res.ok, status:res.status, data:data };
+}
 // GET a un endpoint SIN el prefijo /api/v1 (los /lotes van en raíz). Devuelve el JSON o null.
 async function _ac2Get(url){
   var tok=localStorage.getItem('armahub_token');
@@ -1117,6 +1130,24 @@ window.ac2CrearLote=async function(){
     ac2PintarEstado(); ac2PintarSectorEstructura(); ac2ActualizarBotonesCrear();
     ac2ActualizarCabecera(); ac2Render(); ac2CargarLotes();
   }catch(e){ alert('Error de red al crear el despiece. Reintenta.'); }
+};
+
+// ✎ REASIGNAR ciclo/eje del despiece ABIERTO (borrador): corrige un eje/ciclo mal escrito sin dejar
+// registro sucio. Aplica el nuevo ciclo/eje a TODAS las barras guardadas del despiece. Un despiece
+// terminado ya no se puede reasignar (backend 409). Solo tiene sentido si ya hay barras guardadas.
+window.ac2ReasignarContexto=async function(){
+  if (!AC2.loteId || AC2.loteEstado!=='borrador'){ return; }
+  _ac2LeerContexto();   // toma el ciclo/eje que el usuario tiene escrito ahora
+  if (!AC2.ciclo || !AC2.eje){ alert('Ciclo y Eje no pueden quedar vacíos.'); return; }
+  var hayGuardadas=AC2.barras.some(function(b){ return b._guardada; });
+  if (!hayGuardadas){ return; }   // sin barras guardadas, no hay nada que reasignar (las nuevas ya usan el valor)
+  if (!confirm('Reasignar el despiece a Ciclo "'+AC2.ciclo+'" · Eje "'+AC2.eje+'".\nSe aplica a TODAS las barras guardadas del despiece.\n\n¿Continuar?')) return;
+  var r=await _ac2Patch('/lotes/'+AC2.loteId+'/contexto', { ciclo:AC2.ciclo, eje:AC2.eje });
+  if (!r.ok){ var d=r.data&&r.data.detail; alert('No se pudo reasignar'+(d?': '+(d.msg||d):'')+'.'); return; }
+  // Actualizar las barras del front (ciclo/eje) para reflejar el cambio sin recargar.
+  AC2.barras.forEach(function(b){ if(b._guardada){ b.ciclo=AC2.ciclo; b.eje=AC2.eje; } });
+  ac2CargarLotes();
+  alert('✎ Despiece reasignado a Ciclo '+AC2.ciclo+' · Eje '+AC2.eje+' ('+(r.data&&r.data.barras)+' barras).');
 };
 
 // 💾 GUARDAR AVANCE: persiste las barras COMPLETAS y válidas en el lote YA creado. Las incompletas
@@ -1273,13 +1304,19 @@ function _ac2ResetTanda(){
 // Carga TODOS los lotes de la obra en el repositorio (GET /lotes?proyecto=X, con n_barras/kg
 // reales). Permite ver que los lotes guardados SIGUEN existiendo entre sesiones y (a futuro)
 // retomarlos. Los datos viven en BD; esta lista los muestra aunque recargues la página.
+// Ver despieces eliminados en el histórico (checkbox "Ver eliminados"). Por defecto OCULTOS para no
+// ensuciar la vista; el usuario los muestra si quiere consultarlos.
+var _ac2VerEliminados=false;
+window.ac2ToggleVerEliminados=function(on){ _ac2VerEliminados=!!on; ac2CargarLotes(); };
 async function ac2CargarLotes(){
   var tb=document.getElementById('ac2_lotesBody'); if(!tb) return;
   if (!AC2.proyecto){ tb.innerHTML='<tr><td colspan="8" style="padding:10px 8px; color:#90a4ae; font-style:italic; text-align:center;">Elige una obra para ver sus despieces.</td></tr>'; return; }
   var lotes=[];
   try { var d=await _ac2Get('/lotes?proyecto='+encodeURIComponent(AC2.proyecto)); lotes=(d&&d.lotes)||[]; }
   catch(e){ lotes=[]; }
-  if (!lotes.length){ tb.innerHTML='<tr><td colspan="8" style="padding:10px 8px; color:#90a4ae; font-style:italic; text-align:center;">Esta obra aún no tiene despieces.</td></tr>'; return; }
+  // Filtrar eliminados salvo que el checkbox esté marcado.
+  if (!_ac2VerEliminados) lotes=lotes.filter(function(l){ return l.estado!=='eliminado'; });
+  if (!lotes.length){ tb.innerHTML='<tr><td colspan="8" style="padding:10px 8px; color:#90a4ae; font-style:italic; text-align:center;">'+(_ac2VerEliminados?'Esta obra aún no tiene despieces.':'Esta obra no tiene despieces activos.')+'</td></tr>'; return; }
   tb.innerHTML=lotes.map(function(l){
     var esta=(l.id===AC2.loteId);
     var eliminado=(l.estado==='eliminado');
@@ -1301,7 +1338,10 @@ async function ac2CargarLotes(){
         '<td style="padding:6px 8px; text-align:right;"><s>'+ac2Num(l.n_barras||0)+'</s></td>'+
         '<td style="padding:6px 8px; text-align:right;"><s>'+ac2Num(l.kg,1)+'</s></td>'+
         '<td style="padding:6px 8px;">'+ac2Esc(fecha)+'</td>'+
-        '<td style="padding:6px 8px; text-align:right; font-size:10px;" title="Eliminado por '+ac2Esc(l.eliminado_por||'?')+' el '+ac2Esc(elim)+'">👁 ver · por '+ac2Esc((l.eliminado_por||'').split('@')[0])+'</td></tr>';
+        '<td style="padding:6px 8px; text-align:right; white-space:nowrap; font-size:10px;">'+
+          '<span onclick="event.stopPropagation(); ac2DuplicarLotePrompt('+l.id+','+(l.num_obra||l.id)+')" title="Duplicar este despiece en otro ciclo/eje" style="color:#1565c0; cursor:pointer; margin-right:10px;">⎘ duplicar</span>'+
+          '<span title="Eliminado por '+ac2Esc(l.eliminado_por||'?')+' el '+ac2Esc(elim)+'">👁 ver · por '+ac2Esc((l.eliminado_por||'').split('@')[0])+'</span>'+
+        '</td></tr>';
     }
     // Fila COMPLETA como hiperlink: hover la resalta, click retoma el lote.
     return '<tr class="ac2loterow" onclick="ac2RetomarLote('+l.id+')" title="Abrir este despiece para verlo/seguir editándolo" style="border-top:1px solid #f0f0f0; cursor:pointer;'+(esta?' background:#f1f8e9;':'')+'">'+
