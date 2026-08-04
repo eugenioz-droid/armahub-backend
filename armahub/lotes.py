@@ -247,17 +247,17 @@ def duplicar_lote(lote_id: int, body: LoteDuplicar, user=Depends(get_current_use
                         mult, cant, cant_total, peso_unitario, peso_total, marca, figura, cod_proyecto,
                         dim_a, dim_b, dim_c, dim_d, dim_e, dim_f, dim_g, dim_h, dim_i,
                         ang1, ang2, ang3, ang4, radio, suf_tipo,
-                        origen, import_id, lote_id, estado, fecha_carga, editado_por, editado_fecha)
+                        origen, import_id, lote_id, estado, fecha_carga, creado_por, editado_por, editado_fecha)
                        VALUES (%s,%s,%s,%s,%s,%s,%s,%s, %s,%s,%s,%s,%s,%s,%s,%s,
                                %s,%s,%s,%s,%s,%s,%s,%s,%s, %s,%s,%s,%s,%s,%s,
-                               'manual', NULL, %s, 'borrador', %s, %s, %s)""",
+                               'manual', NULL, %s, 'borrador', %s, %s, %s, %s)""",
                     (idu, id_proyecto, b.get("sector"), b.get("piso"), ciclo, eje, b.get("diam"), largo,
                      b.get("mult"), b.get("cant"), cant_total, peso_u, peso_t, b.get("marca"), b.get("figura"), cod_prod,
                      b.get("dim_a"), b.get("dim_b"), b.get("dim_c"), b.get("dim_d"), b.get("dim_e"),
                      b.get("dim_f"), b.get("dim_g"), b.get("dim_h"), b.get("dim_i"),
                      b.get("ang1"), b.get("ang2"), b.get("ang3"), b.get("ang4"), b.get("radio"),
                      ((b.get("suf_tipo") or "").strip() or None),
-                     nuevo_id, now, email, now))
+                     nuevo_id, now, email, email, now))   # creado_por = quien duplica
                 n += 1
             cur.execute("UPDATE lotes SET n_barras = %s WHERE id = %s", (n, nuevo_id))
             try:
@@ -421,17 +421,17 @@ def agregar_barras(lote_id: int, body: BarrasBatch, user=Depends(get_current_use
                         dim_a, dim_b, dim_c, dim_d, dim_e, dim_f, dim_g, dim_h, dim_i,
                         ang1, ang2, ang3, ang4, radio,
                         revisada, revisada_por, revisada_fecha, suf_tipo,
-                        origen, import_id, lote_id, estado, fecha_carga, editado_por, editado_fecha)
+                        origen, import_id, lote_id, estado, fecha_carga, creado_por, editado_por, editado_fecha)
                        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s, %s,%s,%s,%s,%s,%s,%s,%s,
                                %s,%s,%s,%s,%s,%s,%s,%s,%s, %s,%s,%s,%s,%s,
                                %s,%s,%s,%s,
-                               'manual', NULL, %s, 'borrador', %s, %s, %s) RETURNING id""",
+                               'manual', NULL, %s, 'borrador', %s, %s, %s, %s) RETURNING id""",
                     (idu, id_proyecto, b.sector, b.piso, b.ciclo, b.eje, b.nombre_plano, b.diam, largo,
                      b.mult, b.cant, cant_total, peso_u, peso_t, b.marca, b.figura, cod_prod,
                      b.dim_a, b.dim_b, b.dim_c, b.dim_d, b.dim_e, b.dim_f, b.dim_g, b.dim_h, b.dim_i,
                      b.ang1, b.ang2, b.ang3, b.ang4, b.radio,
                      bool(b.revisada), rev_por, rev_fecha, ((b.suf_tipo or "").strip() or None),
-                     lote_id, now, email, now),
+                     lote_id, now, email, email, now),   # creado_por = editado_por = quien cubica
                 )
                 creadas.append({"id": cur.fetchone()[0], "id_unico": idu})   # id numérico + id_unico
                 sectores_tocados.add((b.sector, b.piso, b.ciclo))
