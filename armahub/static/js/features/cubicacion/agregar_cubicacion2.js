@@ -425,8 +425,12 @@ function ac2Fila(b){
     // altera b.marca. Estado en b.suf_tipo. Input directo (no re-render).
     h+='<td style="'+AC2_TDS+'"><input type="text" value="'+ac2Esc(b.suf_tipo||'')+'" maxlength="20" class="ac2cell ac2nav" data-col="suf_tipo" data-row="'+b._id+'" style="width:56px; font-size:11px; padding:1px 3px;" onchange="ac2SetBarra('+b._id+',\'suf_tipo\',this.value)" onkeydown="ac2NavKey(event,this)" placeholder="—" title="Se concatena a la tipología solo al exportar"/></td>';
   }
-  // φ (diámetro) — select de lista fija, navegable con teclado.
-  var opd='<option value=""></option>'+AC2_DIAMS.map(function(d){return '<option'+(Number(b.diam)===d?' selected':'')+'>'+d+'</option>';}).join('');
+  // φ (diámetro) — select de lista fija, navegable con teclado. Cada <option> lleva SU color (así el
+  // desplegable ayuda a elegir, no toma el del actual). El estilado de <option> depende del navegador;
+  // si lo ignora, cae a blanco (fallback limpio). La celda cerrada sí muestra el color del φ actual.
+  var opd='<option value="" style="background:#fff; color:#37474f;"></option>'+
+    AC2_DIAMS.map(function(d){ var c=ac2DiamColor(d);
+      return '<option'+(Number(b.diam)===d?' selected':'')+' style="background:'+(c||'#fff')+'; color:'+ac2DiamTexto(d)+';">'+d+'</option>'; }).join('');
   var _dcol=ac2DiamColor(b.diam);
   h+='<td style="'+AC2_TDS+' text-align:right;"><select class="ac2cell ac2nav" data-col="diam" data-row="'+b._id+'" onchange="ac2SetBarra('+b._id+',\'diam\',this.value)" onkeydown="ac2NavKey(event,this)" style="font-size:11px; padding:1px 2px;'+(_dcol?' background:'+_dcol+'; color:'+ac2DiamTexto(b.diam)+'; font-weight:600;':'')+'">'+opd+'</select></td>';
   // Cant (unitaria) · Mult (multiplicador) · Cant.T (= cant×mult, SOLO LECTURA — no re-multiplica
