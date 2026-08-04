@@ -650,9 +650,21 @@ function ac2ActualizarCabecera(){
 window.ac2SetTipo=function(t){
   AC2.tipo=t;
   AC2_TIPOS.concat(['TODOS']).forEach(function(x){ var b=document.getElementById('ac2t_'+x); if(b) b.className='ac2tab'+(x===t?' on':''); });
+  // Al cambiar de tipología, la selección masiva NO debe arrastrar barras que dejan de verse (si
+  // marqué en TODOS y entro a MH, no quiero seguir con la traba marcada por detrás). Se depura la
+  // selección para dejar SOLO lo visible en la nueva vista → estado coherente con lo que veo.
+  _ac2DepurarSeleccionVisible();
   ac2ActualizarBotonesCrear();
   ac2Render();
 };
+// Quita de AC2.seleccion cualquier barra que NO sea visible en la vista actual (tipología activa).
+// La selección siempre debe corresponder a lo que el usuario ve; así la masiva y el check global
+// operan exactamente sobre pantalla.
+function _ac2DepurarSeleccionVisible(){
+  if (!AC2.masiva) return;
+  var vis={}; ac2Visibles().forEach(function(b){ vis[b._id]=true; });
+  Object.keys(AC2.seleccion).forEach(function(k){ if(!vis[k]) delete AC2.seleccion[k]; });
+}
 window.ac2SetOrden=function(o){ AC2.orden=o; _ac2PisosOrden=[]; _ac2PisoDir=1;   // reset orden manual + dirección
   ['creacion','piso','tipo'].forEach(function(x){ var b=document.getElementById('ac2o_'+x); if(b){var on=(o===x); b.style.background=on?'#8BC34A':'#fff'; b.style.color=on?'#fff':'#558B2F';} });
   ac2Render(); };
@@ -955,10 +967,14 @@ function ac2SelResumen(){
     macro.indeterminate=(nsel>0 && nsel<total);
   }
 }
-// ── ACCIONES MASIVAS: operan sobre las barras MARCADAS (AC2.seleccion, estado JS) ──
+// ── ACCIONES MASIVAS: operan sobre las barras MARCADAS *Y VISIBLES* (AC2.seleccion, estado JS) ──
+// El universo de una acción masiva es SIEMPRE lo que se ve en pantalla: si estoy en la tipología MH,
+// solo toca barras MH; si estoy en TODOS, toca lo visible en TODOS. Nunca una barra fuera de la vista
+// activa (antes una selección hecha en otra tipología se arrastraba y editaba barras que no se veían
+// → p.ej. cambiar B en MH le cambiaba el B a una traba). Filtrar por visibles es la garantía de raíz.
 function ac2IdsSeleccionados(){
-  // Solo ids de barras que existen (limpia selección de barras ya borradas).
-  return Object.keys(AC2.seleccion).map(Number).filter(function(id){ return !!ac2BarraPorId(id); });
+  var vis={}; ac2Visibles().forEach(function(b){ vis[b._id]=true; });
+  return Object.keys(AC2.seleccion).map(Number).filter(function(id){ return vis[id] && !!ac2BarraPorId(id); });
 }
 // Limpia toda la selección (al descartar, retomar lote, cambiar de obra…).
 function ac2LimpiarSeleccion(){ AC2.seleccion={}; }
