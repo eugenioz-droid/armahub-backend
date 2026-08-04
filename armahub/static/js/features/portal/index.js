@@ -413,11 +413,14 @@ async function loadMiActividad() {
 // ========================= LANDING INDICADORES =========================
 var _hubChartCubicado = null;
 var _hubChartReclamos = null;
+var _hubChartCubicadoMes = null;
+var _hubLandingData = null;   // última respuesta de /landing/indicadores (la usa el modal del mes)
 var _hubCubColors = ['#2e7d32','#1565C0','#ff9800','#e53935','#7B1FA2','#00897B','#795548','#607D8B','#F44336','#009688'];
 
 async function loadLandingIndicadores() {
   var data = await apiGet('/landing/indicadores');
   if (!data) return;
+  _hubLandingData = data;
 
   var diasLabels = ['Lun','Mar','Mie','Jue','Vie','Sab','Dom'];
 
@@ -575,6 +578,91 @@ async function loadLandingIndicadores() {
     }
   }
 }
+
+// ── ZOOM: Cubicado del MES (modal, por semana) ─────────────────────────────────────────────────
+// Reusa la data ya cargada (_hubLandingData.cubicado_mes): mismo desglose por cubicador pero con 5
+// posiciones (S1..S5) en vez de 7 días. Mismo estilo del gráfico semanal (valor corto en barra,
+// total del período bajo el eje). No pega al backend de nuevo: la data viene con el landing.
+window.abrirCubicadoMes = function() {
+  var modal = document.getElementById('hubCubicadoMesModal');
+  var data = _hubLandingData || {};
+  var mesData = data.cubicado_mes || [];
+  if (!modal) return;
+  if (!mesData.length) { alert('Aún no hay cubicación registrada este mes.'); return; }
+
+  // Etiquetas de semanas presentes (recorta las semanas vacías al final del mes).
+  var maxSem = 0;
+  mesData.forEach(function(c) { (c.semanas || []).forEach(function(v, i) { if (v > 0 && i + 1 > maxSem) maxSem = i + 1; }); });
+  if (maxSem === 0) maxSem = 4;
+  var semLabels = []; for (var i = 0; i < maxSem; i++) semLabels.push('Sem ' + (i + 1));
+
+  var _fmtKg = function(v) { return v.toLocaleString('es-CL', { maximumFractionDigits: 1 }); };
+  var _fmtCorto = function(v) {
+    if (!v) return '';
+    if (v >= 1000000) return (v / 1000000).toLocaleString('es-CL', { maximumFractionDigits: 1 }) + 'M';
+    if (v >= 1000) return (v / 1000).toLocaleString('es-CL', { maximumFractionDigits: 1 }) + 'k';
+    return v.toLocaleString('es-CL', { maximumFractionDigits: 0 });
+  };
+
+  var mesDS = mesData.map(function(c, idx) {
+    return { label: c.nombre, data: (c.semanas || []).slice(0, maxSem),
+             backgroundColor: _hubCubColors[idx % _hubCubColors.length], borderRadius: 2 };
+  });
+  // Total por semana → 2a línea de la etiqueta del eje X. Y totales por usuario + total del mes.
+  var totSem = semLabels.map(function(_, i) { return mesData.reduce(function(s, c) { return s + ((c.semanas || [])[i] || 0); }, 0); });
+  var mesLabels = semLabels.map(function(lbl, i) { return totSem[i] > 0 ? [lbl, _fmtKg(totSem[i]) + ' kg'] : lbl; });
+  var totUsr = mesData.map(function(c, idx) {
+    return { nombre: c.nombre, kg: (c.semanas || []).reduce(function(s, v) { return s + v; }, 0), color: _hubCubColors[idx % _hubCubColors.length] };
+  }).sort(function(a, b) { return b.kg - a.kg; });
+  var totMes = totUsr.reduce(function(s, u) { return s + u.kg; }, 0);
+
+  var tit = document.getElementById('hubCubicadoMesTitulo');
+  if (tit) tit.textContent = 'Cubicado del mes ' + (data.cubicado_mes_label || '') + ' (kg)';
+  var totEl = document.getElementById('hubCubicadoMesTotal');
+  if (totEl) totEl.textContent = 'Total mes: ' + _fmtKg(totMes) + ' kg';
+  var porUsr = document.getElementById('hubCubicadoMesPorUsuario');
+  if (porUsr) {
+    var _esc = function(s) { var d = document.createElement('div'); d.textContent = (s == null ? '' : String(s)); return d.innerHTML; };
+    porUsr.innerHTML = totUsr.map(function(u) {
+      return '<div style="display:flex; align-items:baseline; gap:6px; font-size:11px; padding:2px 0;">' +
+             '<span style="width:10px; height:10px; border-radius:2px; background:' + u.color + '; flex-shrink:0; align-self:center;"></span>' +
+             '<span style="color:#555;">' + _esc(u.nombre) + ':</span>' +
+             '<span style="color:#333; font-weight:600;">' + _fmtKg(u.kg) + ' kg</span></div>';
+    }).join('');
+  }
+
+  modal.style.display = 'block';
+  _hubChartCubicadoMes = replaceChart(_hubChartCubicadoMes, document.getElementById('hubChartCubicadoMes'), {
+    type: 'bar',
+    data: { labels: mesLabels, datasets: mesDS },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      layout: { padding: { top: 16 } },
+      plugins: {
+        legend: { position: 'bottom', labels: { font: { size: 10 }, padding: 8, usePointStyle: true, pointStyle: 'rect' } },
+        datalabels: {
+          display: function(ctx) { return (ctx.chart.data.datasets[ctx.datasetIndex].data[ctx.dataIndex] || 0) > 0; },
+          anchor: 'end', align: 'end', offset: 1, clamp: true, clip: false,
+          color: '#37474f', font: { size: 9, weight: 'bold' },
+          formatter: function(v) { return _fmtCorto(v); }
+        }
+      },
+      scales: {
+        y: { beginAtZero: true, ticks: { font: { size: 10 } } },
+        x: { ticks: { font: { size: 10 }, color: '#546e7a' } }
+      }
+    },
+    plugins: [ChartDataLabels]
+  });
+};
+window.cerrarCubicadoMes = function() {
+  var modal = document.getElementById('hubCubicadoMesModal');
+  if (modal) modal.style.display = 'none';
+};
+// Cerrar el modal del mes con Escape.
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') { var m = document.getElementById('hubCubicadoMesModal'); if (m && m.style.display !== 'none') window.cerrarCubicadoMes(); }
+});
 
 // Auto-load indicators if hub is already visible when portal script loads
 (function() {

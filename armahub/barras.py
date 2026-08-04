@@ -2273,6 +2273,39 @@ def landing_indicadores(user=Depends(get_current_user)):
                     cub_map[email_cub]["dias"][r[3] - 1] = round(float(r[4]), 1)
                 result["cubicado_semana"] = list(cub_map.values())
 
+                # --- Cubicado MES (para el zoom del gráfico): mismo desglose por cubicador pero
+                # agrupado por SEMANA del mes (S1..S5), no por día. Mostrar el mes día por día serían
+                # ~30×N barras ilegibles; por semana son ≤5 grupos y se lee la tendencia del mes.
+                mes_ini = now.replace(day=1).strftime("%Y-%m-%d")
+                cur.execute("""
+                    SELECT b.creado_por AS usuario,
+                           COALESCE(u.nombre, '') AS nombre,
+                           COALESCE(u.apellido, '') AS apellido,
+                           LEAST(4, (EXTRACT(DAY FROM b.fecha_carga::timestamp)::INTEGER - 1) / 7)::INTEGER AS semana,
+                           COALESCE(SUM(b.peso_total), 0) AS kilos
+                    FROM barras b
+                    JOIN users u ON u.email = b.creado_por
+                    WHERE b.creado_por IS NOT NULL
+                      AND LEFT(b.fecha_carga, 10) >= %s
+                      AND LEFT(b.fecha_carga, 10) <= %s
+                    GROUP BY b.creado_por, u.nombre, u.apellido, semana
+                    ORDER BY b.creado_por, semana
+                """, (mes_ini, now.strftime("%Y-%m-%d")))
+                mrows = cur.fetchall()
+                mes_map = {}
+                for r in mrows:
+                    email_cub = r[0]
+                    if email_cub not in mes_map:
+                        nombre = ((r[1] or "") + " " + (r[2] or "")).strip()
+                        mes_map[email_cub] = {
+                            "email": email_cub,
+                            "nombre": nombre or email_cub.split("@")[0],
+                            "semanas": [0, 0, 0, 0, 0],   # S1..S5 del mes
+                        }
+                    mes_map[email_cub]["semanas"][r[3]] = round(float(r[4]), 1)
+                result["cubicado_mes"] = list(mes_map.values())
+                result["cubicado_mes_label"] = now.strftime("%m/%Y")
+
             # --- Reclamos levantados semana (visible a admin, admin_calidad, usc, miembro, externo) ---
             if role in ("admin", "admin_calidad", "usc", "miembro", "externo"):
                 # Filtro "propios" para miembro/externo/usc
