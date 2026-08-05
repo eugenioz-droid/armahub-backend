@@ -414,7 +414,10 @@ function ac2Fila(b){
   if (b.piso && pisosOps.indexOf(b.piso)<0) pisosOps.unshift(b.piso);
   var opPiso='<option value=""'+(b.piso?'':' selected')+'>—</option>'+
     pisosOps.map(function(p){ return '<option'+(p===b.piso?' selected':'')+'>'+ac2Esc(p)+'</option>'; }).join('');
-  h+='<td style="'+AC2_TDS+(AC2.masiva?' padding-left:12px;':'')+'"><select class="ac2cell ac2nav" data-col="piso" data-row="'+b._id+'" style="width:56px; text-align:left;" onchange="ac2SetBarra('+b._id+',\'piso\',this.value)" onkeydown="ac2NavKey(event,this)">'+opPiso+'</select></td>';
+  // Piso OBLIGATORIO: si la barra ya tiene figura pero le falta el piso, se resalta en rojo (igual
+  // que las medidas faltantes) para que el cubicador vea que debe elegirlo antes de guardar/revisar.
+  var _pisoFalta = (b.figura && !ac2TienePiso(b));
+  h+='<td style="'+AC2_TDS+(AC2.masiva?' padding-left:12px;':'')+'"><select class="ac2cell ac2nav'+(_pisoFalta?' rojo':'')+'" data-col="piso" data-row="'+b._id+'" style="width:56px; text-align:left;'+(_pisoFalta?' background:#ffebee;':'')+'" onchange="ac2SetBarra('+b._id+',\'piso\',this.value)" onkeydown="ac2NavKey(event,this)">'+opPiso+'</select></td>';
   // Tipología (marca) — select solo en TODOS; en un subtab está implícita. Opción vacía para
   // barras nuevas sin tipología aún (en TODOS nacen sin marca; el cubicador la elige acá).
   if (mostrarTipo){
@@ -812,6 +815,12 @@ window.ac2SetBarra=function(id,campo,valor){
     ac2ActualizarGeom(id);
   } else {
     if (campo==='cant' || campo==='mult') ac2ActualizarLargoPeso(id);   // solo largo/peso/cant.T
+    if (campo==='piso'){
+      // Piso obligatorio: al elegirlo/quitarlo, refrescar su resalte rojo y el check Rev (granular).
+      var _sp=document.querySelector('select.ac2nav[data-row="'+id+'"][data-col="piso"]');
+      if (_sp){ var _falta=(b.figura && !ac2TienePiso(b)); _sp.classList.toggle('rojo', !!_falta); _sp.style.background=_falta?'#ffebee':''; }
+      ac2ActualizarRevHabilitado(id, b);
+    }
     // Si cambió el campo por el que se ORDENA/AGRUPA la vista (piso cuando ordenas por piso, marca
     // cuando ordenas por tipo), hay que re-renderizar para REUBICAR la fila en su grupo. Antes solo
     // se reordenaba al cambiar la marca → cambiar el PISO no movía la barra a su grupo de piso.
@@ -853,8 +862,12 @@ function ac2ActualizarGeom(id){
   // El check Rev solo se puede marcar si la barra está completa y válida (ver ac2Fila).
   ac2ActualizarRevHabilitado(id, b);
 }
+// ¿La barra tiene PISO? (obligatorio, como sector/ciclo/eje). El piso es el único de la ubicación que
+// vive por barra (sector/ciclo/eje vienen del contexto global). Sin piso, la barra queda sin ubicar.
+function ac2TienePiso(b){ return !!(b.piso && String(b.piso).trim()); }
 // Habilita/deshabilita el checkbox Rev de una fila según si la barra está lista para revisar.
-function ac2BarraLista(b){ return b.diam!=null && b.figura && ac2Validar(b).ok; }
+// Exige φ, figura, geometría válida Y piso (obligatorio → no se guardan barras sin ubicar).
+function ac2BarraLista(b){ return b.diam!=null && b.figura && ac2TienePiso(b) && ac2Validar(b).ok; }
 function ac2ActualizarRevHabilitado(id, b){
   b=b||ac2BarraPorId(id); if(!b) return;
   var chk=document.querySelector('#ac2row_'+id+' input.ac2rev'); if(!chk) return;
@@ -1156,10 +1169,10 @@ async function _ac2Delete(url){
   return { ok:res.ok, status:res.status, data:data };
 }
 
-// Barras COMPLETAS (con figura y φ) y NO guardadas aún, listas para guardar. Omite las que
-// están a medio llenar o las ya guardadas (para no duplicarlas al re-guardar).
+// Barras COMPLETAS (con figura, φ, piso y geometría válida) y NO guardadas aún, listas para guardar.
+// Usa ac2BarraLista (mismo criterio que habilita el check Rev) → NO se guardan barras sin piso.
 function ac2BarrasListas(){
-  return AC2.barras.filter(function(b){ return !b._guardada && b.diam!=null && b.figura && ac2Validar(b).ok; });
+  return AC2.barras.filter(function(b){ return !b._guardada && ac2BarraLista(b); });
 }
 // Mapea una barra del estado al payload del backend (mismo shape; solo limpia nulls/estampa contexto).
 function ac2Payload(b){

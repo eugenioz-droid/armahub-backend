@@ -423,7 +423,7 @@ def agregar_barras(lote_id: int, body: BarrasBatch, user=Depends(get_current_use
                 # UBICACIÓN OBLIGATORIA (defensa server-side, fuente de verdad): ninguna barra
                 # manual se guarda sin ciclo, eje y sector. Antes eran Optional y se insertaba
                 # NULL en silencio → lotes "corruptos" sin contexto. Se rechaza TODA la tanda.
-                faltan = [n for n, val in (("sector", b.sector), ("ciclo", b.ciclo), ("eje", b.eje))
+                faltan = [n for n, val in (("sector", b.sector), ("piso", b.piso), ("ciclo", b.ciclo), ("eje", b.eje))
                           if not (val or "").strip()]
                 if faltan:
                     raise HTTPException(status_code=400, detail={
