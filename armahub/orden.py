@@ -47,13 +47,64 @@ def sector_order(s):
     return _SECTOR_ORDEN.get((s or "").upper().strip(), 99)
 
 
+# Orden canónico de TIPOLOGÍAS (marca) por estructura. Debe reflejar catalogo._TIPOLOGIAS_SEED (misma
+# secuencia). Se aplana a un índice único por código de marca (primera aparición) para poder ordenar
+# barras por tipología sin conocer su estructura. Mantener sincronizado con catalogo._TIPOLOGIAS_SEED.
+_TIPOLOGIAS_ORDEN = [
+    # MURO
+    "MH", "MV", "TR", "EC", "TC", "CB",
+    # LOSA
+    "Fi", "Fs", "F'i", "F's", "F", "F'", "SP", "Rp", "TRL",
+    # VIGA
+    "CBS", "CBS2", "CBSn", "CBI", "CBI2", "CBIn", "LT", "ES", "TRV",
+    # COLUMNA
+    "CB2", "CBn", "TRC", "ESC",
+    # FUNDACION
+    "SPF", "TRF",
+    # GEN (los repetidos ya indexados arriba)
+]
+_TIPOLOGIA_INDICE = {}
+for _i, _cod in enumerate(_TIPOLOGIAS_ORDEN):
+    _TIPOLOGIA_INDICE.setdefault(_cod, _i)   # primera aparición manda
+
+
+def tipologia_order(m):
+    """Índice de orden de una tipología (marca) según la convención por estructura (MH<MV<TR<…).
+    Marca desconocida → al final (999). Los códigos son case-sensitive (F'i, CBSn…); se compara con trim."""
+    return _TIPOLOGIA_INDICE.get((m or "").strip(), 999)
+
+
+def sql_tipologia_order(col="marca"):
+    """Genera el fragmento SQL `CASE TRIM(col) WHEN 'MH' THEN 0 ... ELSE 999 END` para ordenar por
+    tipología en un ORDER BY de Postgres, derivado del MISMO _TIPOLOGIA_INDICE (fuente única → no se
+    desincroniza). Los códigos se escapan doblando comillas simples (F'i → 'F''i')."""
+    whens = " ".join(
+        "WHEN '{}' THEN {}".format(cod.replace("'", "''"), idx)
+        for cod, idx in sorted(_TIPOLOGIA_INDICE.items(), key=lambda kv: kv[1])
+    )
+    return "CASE TRIM(COALESCE({}, '')) {} ELSE 999 END".format(col, whens)
+
+
 def orden_constructivo_key(b):
     """SORT KEY constructiva ÚNICA para barras/elementos. `b` es un dict con claves
-    piso/sector/ciclo/eje/diam (usa .get, tolera ausencias)."""
+    piso/sector/ciclo/eje/marca/diam (usa .get, tolera ausencias). Dentro de un eje, ordena por
+    TIPOLOGÍA (marca) según la convención (MH,MV,TR,…) y luego por diámetro."""
     return (
         piso_order(b.get("piso")),
         sector_order(b.get("sector")),
         ciclo_order(b.get("ciclo")),
         (b.get("eje") or ""),
+        tipologia_order(b.get("marca")),
+        (b.get("diam") or 0),
+    )
+
+
+def orden_barra_en_archivo_key(b):
+    """SORT KEY para las barras DENTRO de un archivo de exportación (1 sector·piso·ciclo). Ahí piso/
+    sector/ciclo son constantes, así que solo varían eje/marca/diam: eje → tipología (MH,MV,TR,…) →
+    diámetro. Es el orden que verá aSa dentro de cada planilla."""
+    return (
+        (b.get("eje") or ""),
+        tipologia_order(b.get("marca")),
         (b.get("diam") or 0),
     )

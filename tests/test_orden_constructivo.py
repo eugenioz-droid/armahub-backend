@@ -12,7 +12,13 @@ Correr con:  python -m pytest tests/test_orden_constructivo.py   (o)   python te
 import os, sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from armahub.orden import piso_order as _piso_order, sector_order as _sector_order, orden_constructivo_key as _orden_constructivo_key
+from armahub.orden import (
+    piso_order as _piso_order,
+    sector_order as _sector_order,
+    orden_constructivo_key as _orden_constructivo_key,
+    tipologia_order as _tipologia_order,
+    orden_barra_en_archivo_key as _orden_barra_en_archivo_key,
+)
 
 
 def _check(nombre, cond):
@@ -74,6 +80,27 @@ def main():
         _check("tolera None/campos ausentes sin reventar", True)
     except Exception as e:
         _check("tolera None/campos ausentes sin reventar", False); print("      excepción:", e); fallos += 1
+
+    # 6. Tipología (marca): MURO ordena MH<MV<TR<EC<TC<CB (convención); desconocida al final.
+    marcas = ["CB", "TR", "MH", "EC", "MV", "TC"]
+    orden_m = sorted(marcas, key=_tipologia_order)
+    if not _check("tipología MURO ordena MH<MV<TR<EC<TC<CB", orden_m == ["MH", "MV", "TR", "EC", "TC", "CB"]):
+        print("      obtuve:", orden_m); fallos += 1
+    if not _check("tipología desconocida va al final", _tipologia_order("ZZZ") > _tipologia_order("CB")):
+        fallos += 1
+
+    # 7. Orden DENTRO del archivo de export: eje → tipología → diam (piso/sector/ciclo son constantes).
+    en_archivo = [
+        {"eje": "B", "marca": "MH", "diam": 8},
+        {"eje": "A", "marca": "TR", "diam": 16},
+        {"eje": "A", "marca": "MH", "diam": 25},
+        {"eje": "A", "marca": "MH", "diam": 10},
+    ]
+    orden_a = sorted(en_archivo, key=_orden_barra_en_archivo_key)
+    firmas_a = [(b["eje"], b["marca"], b["diam"]) for b in orden_a]
+    esperado_a = [("A", "MH", 10), ("A", "MH", 25), ("A", "TR", 16), ("B", "MH", 8)]
+    if not _check("dentro de archivo: eje>tipología>diam", firmas_a == esperado_a):
+        print("      obtuve:", firmas_a); fallos += 1
 
     if fallos == 0:
         print("\nOK: el orden constructivo se cumple.")

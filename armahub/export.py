@@ -195,13 +195,13 @@ def exportar_proyecto(
 
             # Construir ZIP en memoria
             zip_buffer = BytesIO()
+            from .orden import orden_barra_en_archivo_key
             with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zf:
                 for sector, piso, ciclo in combos:
                     cur.execute(f"""
                         SELECT {fields_sql}
                         FROM barras
                         WHERE id_proyecto = %s AND sector = %s AND piso = %s AND ciclo = %s
-                        ORDER BY eje, diam, cant_total
                     """, (id_proyecto, sector, piso, ciclo))
 
                     col_names = [desc[0] for desc in cur.description]
@@ -209,6 +209,12 @@ def exportar_proyecto(
 
                     if not rows:
                         continue
+
+                    # Orden DENTRO del archivo (lo que verá aSa): eje → tipología (MH,MV,TR,… según la
+                    # convención) → diámetro. Se ordena con la marca PURA, ANTES de concatenar el sufijo
+                    # (si no, marca+suf rompería el orden por tipología). Antes ordenaba eje/diam/cant
+                    # sin considerar la tipología.
+                    rows.sort(key=orden_barra_en_archivo_key)
 
                     # 5N.42: la columna MARCA de la planilla aSa lleva la tipología CONCATENADA con
                     # su sufijo (marca+suf_tipo) cuando existe. En la BD la tipología (marca) queda

@@ -120,11 +120,17 @@ _SQL_SECTOR_ORDER = """
         WHEN 'FUND' THEN 0 WHEN 'ELEV' THEN 1 WHEN 'VCIELO' THEN 2 WHEN 'LCIELO' THEN 3 ELSE 99
     END ASC
 """
-# Variante COMPLETA (barra individual): piso → sector → ciclo → eje → diam → id (desempate estable
-# para que la paginación LIMIT/OFFSET sea determinista entre páginas).
+# CASE SQL de orden por tipología (marca), generado desde la fuente única (orden.py) para no
+# desincronizarse con la convención MH,MV,TR,…
+from .orden import sql_tipologia_order as _sql_tipologia_order
+_SQL_TIPOLOGIA_ORDER = _sql_tipologia_order("marca")
+
+# Variante COMPLETA (barra individual): piso → sector → ciclo → eje → tipología → diam → id (desempate
+# estable para que la paginación LIMIT/OFFSET sea determinista entre páginas).
 ORDER_CONSTRUCTIVO_SQL = _SQL_PISO_ORDER + "," + _SQL_SECTOR_ORDER + """,
     COALESCE(NULLIF(regexp_replace(COALESCE(ciclo,''), '\\D', '', 'g'), ''), '0')::int ASC,
     TRIM(COALESCE(eje,'')) ASC,
+    """ + _SQL_TIPOLOGIA_ORDER + """ ASC,
     COALESCE(diam, 0) ASC,
     id ASC
 """
