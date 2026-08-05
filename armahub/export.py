@@ -172,14 +172,19 @@ def exportar_proyecto(
                 raise HTTPException(status_code=404, detail="Proyecto no encontrado")
             nombre_proyecto = proy[0]
 
-            # Obtener combinaciones únicas de sector+piso+ciclo
+            # Obtener combinaciones únicas de sector+piso+ciclo, en orden CONSTRUCTIVO (piso bajo→alto
+            # → sector FUND→ELEV→VCIELO→LCIELO → ciclo). Así los archivos del ZIP salen en el orden de
+            # la obra, no alfabético (P1, P10, P2…). Se ordena en Python con el helper canónico (evita
+            # replicar SQL): traemos las combinaciones y las ordenamos con _orden_constructivo_key.
+            from .orden import orden_constructivo_key as _orden_constructivo_key
             cur.execute("""
                 SELECT DISTINCT sector, piso, ciclo
                 FROM barras
                 WHERE id_proyecto = %s AND sector IS NOT NULL AND sector != ''
-                ORDER BY sector, piso, ciclo
             """, (id_proyecto,))
             combos = cur.fetchall()
+            combos = sorted(combos, key=lambda c: _orden_constructivo_key(
+                {"sector": c[0], "piso": c[1], "ciclo": c[2]}))
 
             # Filter by selected combinations if provided
             if selected_set is not None:
@@ -347,15 +352,16 @@ def export_report(
             if not prow:
                 raise HTTPException(status_code=404, detail="Proyecto no encontrado")
 
-            # All sector combos in project
+            # All sector combos in project, en orden CONSTRUCTIVO (mismo criterio que la exportación).
+            from .orden import orden_constructivo_key as _orden_constructivo_key
             cur.execute("""
                 SELECT sector, piso, ciclo, COUNT(*) AS barras, COALESCE(SUM(peso_total), 0) AS kilos
                 FROM barras
                 WHERE id_proyecto = %s AND sector IS NOT NULL AND sector != ''
                 GROUP BY sector, piso, ciclo
-                ORDER BY sector, piso, ciclo
             """, (id_proyecto,))
-            combos = cur.fetchall()
+            combos = sorted(cur.fetchall(), key=lambda c: _orden_constructivo_key(
+                {"sector": c[0], "piso": c[1], "ciclo": c[2]}))
 
             # Export history
             cur.execute("""

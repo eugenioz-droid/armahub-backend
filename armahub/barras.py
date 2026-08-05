@@ -94,8 +94,44 @@ ALLOWED_ORDER_BY = {
     "fecha_carga", "peso_total", "peso_unitario", "cant_total",
     "diam", "largo_total",
     "id_proyecto", "plano_code", "sector", "piso", "ciclo", "eje", "id_unico", "nombre_proyecto",
-    "import_id"
+    "import_id",
+    "constructivo",   # orden constructivo: piso (bajo→alto) → sector → ciclo → eje → diam. Ver ORDER_CONSTRUCTIVO_SQL.
 }
+
+# ORDER BY constructivo expresado en SQL (para respetar paginación LIMIT/OFFSET). Es el ESPEJO en SQL
+# del helper _orden_constructivo_key/_piso_order (fuente única del criterio). Piso: FUND al fondo,
+# subterráneos (S1,S2) negativos, P1..Pn positivos, SM/PM arriba del todo, desconocido al medio.
+# Sector: FUND→ELEV→VCIELO→LCIELO. Mantener sincronizado con _piso_order/_sector_order si cambian.
+# No admite dirección (siempre bajo→alto).
+# _SQL_PISO_ORDER y _SQL_SECTOR_ORDER se componen para armar dos variantes: la de barra individual
+# (con ciclo/eje/diam) y la agrupada por elemento (solo piso/sector/eje, sin columnas no agrupadas).
+_SQL_PISO_ORDER = """
+    CASE
+        WHEN UPPER(TRIM(COALESCE(piso,''))) IN ('FUND','FUNDACION','FUNDACIÓN') THEN -1000000
+        WHEN UPPER(TRIM(COALESCE(piso,''))) IN ('SM','PM','SALA DE MAQUINAS') THEN 9999
+        WHEN UPPER(TRIM(COALESCE(piso,''))) ~ '^S[0-9]+' THEN -1 * (regexp_replace(UPPER(TRIM(piso)), '^S([0-9]+).*', '\\1'))::int
+        WHEN UPPER(TRIM(COALESCE(piso,''))) ~ '^P[0-9]+' THEN (regexp_replace(UPPER(TRIM(piso)), '^P([0-9]+).*', '\\1'))::int
+        WHEN COALESCE(piso,'') ~ '[0-9]' THEN (regexp_replace(piso, '\\D', '', 'g'))::int
+        ELSE 0
+    END ASC
+"""
+_SQL_SECTOR_ORDER = """
+    CASE UPPER(TRIM(COALESCE(sector,'')))
+        WHEN 'FUND' THEN 0 WHEN 'ELEV' THEN 1 WHEN 'VCIELO' THEN 2 WHEN 'LCIELO' THEN 3 ELSE 99
+    END ASC
+"""
+# Variante COMPLETA (barra individual): piso → sector → ciclo → eje → diam → id (desempate estable
+# para que la paginación LIMIT/OFFSET sea determinista entre páginas).
+ORDER_CONSTRUCTIVO_SQL = _SQL_PISO_ORDER + "," + _SQL_SECTOR_ORDER + """,
+    COALESCE(NULLIF(regexp_replace(COALESCE(ciclo,''), '\\D', '', 'g'), ''), '0')::int ASC,
+    TRIM(COALESCE(eje,'')) ASC,
+    COALESCE(diam, 0) ASC,
+    id ASC
+"""
+# Variante AGRUPADA por elemento (solo columnas del GROUP BY piso/sector/eje; sin ciclo/diam).
+ORDER_CONSTRUCTIVO_ELEMENTO_SQL = _SQL_PISO_ORDER + "," + _SQL_SECTOR_ORDER + """,
+    TRIM(COALESCE(eje,'')) ASC
+"""
 
 @router.get("/barras")
 def get_barras(
@@ -192,11 +228,14 @@ def get_barras(
             full_params = params + pf_params
 
             count_sql = "SELECT COUNT(*) FROM barras" + full_where
+            # El orden "constructivo" usa la expresión canónica (piso bajo→alto → sector → ciclo →
+            # eje → diam), que ignora order_dir. El resto de columnas siguen el ORDER BY simple.
+            order_sql = ORDER_CONSTRUCTIVO_SQL if order_by == "constructivo" else f"{order_by} {order_dir} NULLS LAST"
             data_sql = f"""
                 SELECT {select_cols}
                 FROM barras
                 {full_where}
-                ORDER BY {order_by} {order_dir} NULLS LAST
+                ORDER BY {order_sql}
                 LIMIT %s OFFSET %s
             """
 
@@ -341,24 +380,12 @@ def get_barras_elementos(
             cur.execute(kpi_sql, full_params)
             kpi_row = cur.fetchone() or (0, 0, 0, 0, 0, 0)
 
-            # Datos agrupados con orden natural por piso usando regex para extraer número
-            # Ej: P1, P2, P10 ordenan correctamente; resto al final.
-            # Orden: Piso (natural) → Sector (ELEV/LCIELO/VCIELO/FUND) → Eje
-            order_clause = """
-                ORDER BY
-                  CASE WHEN COALESCE(piso, '') = '' THEN 1 ELSE 0 END,
-                  COALESCE(NULLIF(regexp_replace(COALESCE(piso, ''), '\\D', '', 'g'), '')::int, 0),
-                  COALESCE(piso, ''),
-                  CASE COALESCE(sector, '')
-                    WHEN 'ELEV'   THEN 1
-                    WHEN 'LCIELO' THEN 2
-                    WHEN 'VCIELO' THEN 3
-                    WHEN 'FUND'   THEN 4
-                    ELSE 9
-                  END,
-                  COALESCE(sector, ''),
-                  COALESCE(eje, '')
-            """
+            # Orden CONSTRUCTIVO unificado (mismo criterio que el listado /barras y la exportación):
+            # Piso bajo→alto (FUND, S2, S1, P1…, SM) → Sector (FUND→ELEV→VCIELO→LCIELO) → Eje. Usa la
+            # expresión canónica ORDER_CONSTRUCTIVO_SQL (incluye también ciclo/diam, inertes en el
+            # agregado por elemento). Antes usaba un regex propio que ignoraba S/FUND/SM y tenía el
+            # orden de sectores invertido → pisos y sectores salían mal.
+            order_clause = "ORDER BY " + ORDER_CONSTRUCTIVO_ELEMENTO_SQL
             data_sql = f"""
                 {agg_select}
                 {full_where}
@@ -1585,31 +1612,15 @@ def eliminar_barra(id_unico: str, user=Depends(get_current_user)):
 
 
 import re as _re
-
-def _piso_order(p: str) -> int:
-    """Orden de pisos: FUND (fundación) SIEMPRE al fondo < subterráneos (S2<S1) <
-    P1,P2.. < SM/PM (techumbre) SIEMPRE arriba. Fuente única del criterio (obra_config
-    y el front comparten). Un piso de texto libre desconocido cae en medio (0)."""
-    up = (p or '').upper().strip()
-    if up in ('FUND', 'FUNDACION', 'FUNDACIÓN'):
-        return -1000000       # bajo todo, siempre
-    if up in ('SM', 'PM', 'SALA DE MAQUINAS'):
-        return 9999           # sobre todo, siempre
-    m = _re.match(r'^S(\d+)', up)
-    if m:
-        return -int(m.group(1))
-    m = _re.match(r'^P(\d+)', up)
-    if m:
-        return int(m.group(1))
-    m = _re.search(r'(\d+)', up)
-    if m:
-        return int(m.group(1))
-    return 0
-
-def _ciclo_order(c: str) -> int:
-    """Orden de ciclos: numérico por dígito encontrado."""
-    m = _re.search(r'(\d+)', c or '')
-    return int(m.group(1)) if m else 0
+# Orden constructivo: helpers en armahub/orden.py (módulo sin deps, fuente única + testeable). Se
+# re-exportan con nombres locales `_` para no tocar los usos existentes (sectores-nav, cobertura,
+# el ORDER BY constructivo y la exportación).
+from .orden import (
+    piso_order as _piso_order,
+    ciclo_order as _ciclo_order,
+    sector_order as _sector_order,
+    orden_constructivo_key as _orden_constructivo_key,
+)
 
 
 @router.get("/proyectos/{id_proyecto}/sectores-nav")

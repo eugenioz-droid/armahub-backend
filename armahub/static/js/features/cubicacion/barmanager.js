@@ -260,8 +260,10 @@ async function _buscarPlano(params) {
   const tbl = document.getElementById('tabla');
   const pageInfo = document.getElementById('pageInfo');
 
-  // El endpoint /barras espera 'proyecto' + filtros; ya vienen en params.
-  params.set('order_by', 'plano_code');
+  // El endpoint /barras espera 'proyecto' + filtros; ya vienen en params. Orden CONSTRUCTIVO
+  // (piso bajo→alto → sector → ciclo → eje → diam): antes ordenaba por plano_code alfabético y los
+  // pisos salían desordenados (P1, P10, P2…). El criterio lo define el backend (ORDER_CONSTRUCTIVO_SQL).
+  params.set('order_by', 'constructivo');
   params.set('order_dir', 'asc');
   const data = await apiGet('/barras?' + params.toString());
   if (!data) return;
@@ -469,7 +471,7 @@ async function _hydrateDetail(idx) {
     params.delete('q');
     params.set('limit', '500');
     params.set('offset', '0');
-    params.set('order_by', 'ciclo');
+    params.set('order_by', 'constructivo');   // dentro del elemento: ciclo → eje → diam (criterio único)
     params.set('order_dir', 'asc');
     const res = await apiGet('/barras?' + params.toString());
     barras = (res && res.data) ? res.data : [];
