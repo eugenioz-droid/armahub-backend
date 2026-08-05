@@ -128,8 +128,23 @@ ORDER_CONSTRUCTIVO_SQL = _SQL_PISO_ORDER + "," + _SQL_SECTOR_ORDER + """,
     COALESCE(diam, 0) ASC,
     id ASC
 """
-# Variante AGRUPADA por elemento (solo columnas del GROUP BY piso/sector/eje; sin ciclo/diam).
-ORDER_CONSTRUCTIVO_ELEMENTO_SQL = _SQL_PISO_ORDER + "," + _SQL_SECTOR_ORDER + """,
+# Variante AGRUPADA por elemento. IMPORTANTE: /barras/elementos agrupa por COALESCE(piso,''),
+# COALESCE(sector,''), COALESCE(eje,''), y Postgres exige que el ORDER BY de un GROUP BY use EXACTAMENTE
+# esas expresiones agrupadas (no `piso` crudo → "column must appear in GROUP BY"). Por eso esta variante
+# referencia siempre COALESCE(...) — no reutiliza _SQL_PISO_ORDER (que usa `piso` crudo en el substring,
+# válido solo en consultas SIN GROUP BY como el listado plano). Mismo criterio de orden, otra escritura.
+ORDER_CONSTRUCTIVO_ELEMENTO_SQL = """
+    CASE
+        WHEN UPPER(TRIM(COALESCE(piso,''))) IN ('FUND','FUNDACION','FUNDACIÓN') THEN -1000000
+        WHEN UPPER(TRIM(COALESCE(piso,''))) IN ('SM','PM','SALA DE MAQUINAS') THEN 9999
+        WHEN UPPER(TRIM(COALESCE(piso,''))) ~ '^S[0-9]' THEN -1 * COALESCE(NULLIF(substring(UPPER(TRIM(COALESCE(piso,''))) FROM '^S([0-9]+)'), '')::int, 0)
+        WHEN UPPER(TRIM(COALESCE(piso,''))) ~ '^P[0-9]' THEN COALESCE(NULLIF(substring(UPPER(TRIM(COALESCE(piso,''))) FROM '^P([0-9]+)'), '')::int, 0)
+        WHEN COALESCE(piso,'') ~ '[0-9]' THEN COALESCE(NULLIF(regexp_replace(COALESCE(piso,''), '\\D', '', 'g'), '')::int, 0)
+        ELSE 0
+    END ASC,
+    CASE UPPER(TRIM(COALESCE(sector,'')))
+        WHEN 'FUND' THEN 0 WHEN 'ELEV' THEN 1 WHEN 'VCIELO' THEN 2 WHEN 'LCIELO' THEN 3 ELSE 99
+    END ASC,
     TRIM(COALESCE(eje,'')) ASC
 """
 
