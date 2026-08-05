@@ -109,9 +109,9 @@ _SQL_PISO_ORDER = """
     CASE
         WHEN UPPER(TRIM(COALESCE(piso,''))) IN ('FUND','FUNDACION','FUNDACIÓN') THEN -1000000
         WHEN UPPER(TRIM(COALESCE(piso,''))) IN ('SM','PM','SALA DE MAQUINAS') THEN 9999
-        WHEN UPPER(TRIM(COALESCE(piso,''))) ~ '^S[0-9]+' THEN -1 * (regexp_replace(UPPER(TRIM(piso)), '^S([0-9]+).*', '\\1'))::int
-        WHEN UPPER(TRIM(COALESCE(piso,''))) ~ '^P[0-9]+' THEN (regexp_replace(UPPER(TRIM(piso)), '^P([0-9]+).*', '\\1'))::int
-        WHEN COALESCE(piso,'') ~ '[0-9]' THEN (regexp_replace(piso, '\\D', '', 'g'))::int
+        WHEN UPPER(TRIM(COALESCE(piso,''))) ~ '^S[0-9]' THEN -1 * COALESCE(NULLIF((substring(UPPER(TRIM(piso)) FROM '^S([0-9]+)')), '')::int, 0)
+        WHEN UPPER(TRIM(COALESCE(piso,''))) ~ '^P[0-9]' THEN COALESCE(NULLIF((substring(UPPER(TRIM(piso)) FROM '^P([0-9]+)')), '')::int, 0)
+        WHEN COALESCE(piso,'') ~ '[0-9]' THEN COALESCE(NULLIF(regexp_replace(COALESCE(piso,''), '\\D', '', 'g'), '')::int, 0)
         ELSE 0
     END ASC
 """
