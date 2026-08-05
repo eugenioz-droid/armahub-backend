@@ -1628,8 +1628,97 @@ def duplicar_barra(id_unico: str, user=Depends(get_current_user)):
 
 @router.delete("/barras/{id_unico}")
 def eliminar_barra(id_unico: str, user=Depends(get_current_user)):
-    """Eliminar una barra individual. DESHABILITADO."""
-    raise HTTPException(status_code=403, detail="Función deshabilitada — sistema cerrado")
+    """Eliminar una barra individual (ruta legacy por id_unico). DESHABILITADO — el borrado desde
+    Bar Manager usa POST /barras/eliminar (por id, con registro histórico). Ver eliminar_barras."""
+    raise HTTPException(status_code=403, detail="Función deshabilitada — usa el borrado del Bar Manager.")
+
+
+# Columnas de `barras` que se copian a `barras_eliminadas` como snapshot (registro histórico). El
+# orden mapea 1:1 con las columnas del INSERT de más abajo. `id` de la barra va a la columna barra_id.
+_SNAP_COLS_BARRA = [
+    "id", "id_unico", "id_proyecto", "nombre_proyecto", "plano_code", "nombre_plano",
+    "sector", "piso", "ciclo", "eje", "diam", "largo_total", "mult", "cant", "cant_total",
+    "peso_unitario", "peso_total", "fecha_carga", "origen", "import_id", "lote_id", "estado",
+    "marca", "figura",
+    "dim_a", "dim_b", "dim_c", "dim_d", "dim_e", "dim_f", "dim_g", "dim_h", "dim_i",
+    "ang1", "ang2", "ang3", "ang4", "radio", "suf_tipo", "editado_por", "revisada",
+]
+# Columnas destino en barras_eliminadas (misma secuencia; `id` → `barra_id`).
+_SNAP_COLS_DEST = ["barra_id" if c == "id" else c for c in _SNAP_COLS_BARRA]
+
+
+class EliminarBarrasReq(BaseModel):
+    ids: List[int]   # ids (PK) de las barras a eliminar. 1 o varias (individual y masivo).
+
+
+@router.post("/barras/eliminar")
+def eliminar_barras(body: EliminarBarrasReq, user=Depends(get_current_user)):
+    """Elimina barras desde el Bar Manager: las copia a `barras_eliminadas` (registro histórico de
+    solo lectura, con quién/cuándo) y las BORRA físicamente de `barras`. NO es un deshacer: la barra
+    desaparece de todas las vistas/cálculos/exportación; solo queda su registro. Individual o masivo
+    (una o varias ids). Permiso: mismo que editar barras (miembro de cubicaciones o admin)."""
+    ids = [int(i) for i in (body.ids or []) if i is not None]
+    if not ids:
+        raise HTTPException(status_code=400, detail="No se indicaron barras a eliminar.")
+    email = user.get("email", "?")
+    now = datetime.now(timezone.utc).isoformat()
+    cols_src = ", ".join(_SNAP_COLS_BARRA)
+    cols_dst = ", ".join(_SNAP_COLS_DEST)
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            if not _puede_editar_barras(cur, user):
+                raise HTTPException(status_code=403, detail="No tienes permiso para eliminar barras. Solo un miembro del área de Cubicaciones puede hacerlo.")
+            # Copiar a barras_eliminadas (snapshot) las que existen, estampando quién/cuándo.
+            cur.execute(
+                f"""INSERT INTO barras_eliminadas (eliminada_por, eliminada_fecha, {cols_dst})
+                    SELECT %s, %s, {cols_src} FROM barras WHERE id = ANY(%s)""",
+                (email, now, ids),
+            )
+            copiadas = cur.rowcount
+            # Sectores afectados (para marcar 'modificado' tras el borrado), antes de borrar.
+            cur.execute(
+                "SELECT DISTINCT id_proyecto, sector, piso, ciclo FROM barras WHERE id = ANY(%s)", (ids,))
+            sectores = cur.fetchall()
+            # Borrar físicamente de barras.
+            cur.execute("DELETE FROM barras WHERE id = ANY(%s)", (ids,))
+            borradas = cur.rowcount
+            try:
+                from .sector_estado import marcar_sector_modificado
+                for idp, sec, pis, cic in sectores:
+                    marcar_sector_modificado(cur, idp, sec, pis, cic, por=email)
+            except Exception:
+                pass
+    _cache.invalidate("stats:", "landing:")
+    audit(email, "eliminar_barras", f"{borradas} barra(s) · ids {ids[:20]}{'…' if len(ids) > 20 else ''}", "barra", str(ids[0]) if ids else "")
+    return {"ok": True, "eliminadas": borradas, "registradas": copiadas}
+
+
+@router.get("/barras/eliminadas")
+def listar_barras_eliminadas(proyecto: str, limit: int = 500, offset: int = 0, user=Depends(get_current_user)):
+    """Lista el registro histórico de barras eliminadas de una obra (solo lectura, para el panel del
+    Bar Manager). Ordena por fecha de eliminación descendente (lo más reciente arriba)."""
+    if limit < 1: limit = 1
+    if limit > 2000: limit = 2000
+    if offset < 0: offset = 0
+    cols = ", ".join(_SNAP_COLS_DEST)
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            allowed = _get_allowed_project_ids(cur, user)
+            # Respeta el filtro de proyectos por rol (si el usuario no puede ver la obra, no lista nada).
+            if allowed is not None and proyecto not in allowed:
+                return {"proyecto": proyecto, "total": 0, "data": []}
+            cur.execute("SELECT COUNT(*) FROM barras_eliminadas WHERE id_proyecto = %s", (proyecto,))
+            total = int(cur.fetchone()[0])
+            cur.execute(
+                f"""SELECT del_id, eliminada_por, eliminada_fecha, {cols}
+                    FROM barras_eliminadas WHERE id_proyecto = %s
+                    ORDER BY eliminada_fecha DESC, del_id DESC
+                    LIMIT %s OFFSET %s""",
+                (proyecto, limit, offset),
+            )
+            campos = ["del_id", "eliminada_por", "eliminada_fecha"] + _SNAP_COLS_DEST
+            data = [dict(zip(campos, r)) for r in cur.fetchall()]
+    return {"proyecto": proyecto, "total": total, "count": len(data), "data": data}
 
 
 import re as _re

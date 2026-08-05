@@ -244,6 +244,7 @@ async function buscar(reset = false) {
 
   // 5M.3: panel de ediciones manuales recientes de la obra.
   if (typeof cargarEdicionesRecientes === 'function') cargarEdicionesRecientes();
+  if (typeof bmCargarEliminadas === 'function') bmCargarEliminadas();   // panel de barras eliminadas (historial)
   // 5M.12: esta combinación de filtros quedó aplicada con éxito — es el estado
   // al que hay que revertir si luego se bloquea un cambio con edición pendiente.
   if (typeof _bmGuardarSnapshotFiltros === 'function') _bmGuardarSnapshotFiltros();
@@ -291,6 +292,7 @@ async function _buscarPlano(params) {
 
   if (_coberturaVisible) loadCobertura();
   if (typeof cargarEdicionesRecientes === 'function') cargarEdicionesRecientes();
+  if (typeof bmCargarEliminadas === 'function') bmCargarEliminadas();   // panel de barras eliminadas (historial)
   if (typeof _bmGuardarSnapshotFiltros === 'function') _bmGuardarSnapshotFiltros();
 }
 
@@ -355,6 +357,7 @@ function _renderPlano() {
     ['A','B','C','D','E','F','G','H','I'].map(L => '<th style="text-align:right; padding:3px 6px;">' + L + '</th>').join('') +
     ['α1','α2','α3','α4'].map(L => '<th style="text-align:right; padding:3px 6px;">' + L + '</th>').join('') +
     '<th style="text-align:right; padding:3px 6px;">R</th>' +
+    (editando ? '<th style="text-align:center; padding:3px 6px;">🗑</th>' : '') +
     '</tr></thead><tbody>';
   lastBarrasPlano.forEach(b => {
     html += _bmFilaBarraHTML(b, editando, true);
@@ -585,7 +588,14 @@ function _bmFilaBarraHTML(b, editando, conUbicacion) {
     html += '<td style="padding:2px 6px;">' + _origenBadge(b.origen) + '</td>' +
       '<td style="padding:2px 6px; color:#666;">' + (b.plano_code || '—') + '</td>';
   }
-  html += _celdaFigura() + dims + angs + _celdaEdit('radio', b.radio, 1) + '</tr>';
+  html += _celdaFigura() + dims + angs + _celdaEdit('radio', b.radio, 1);
+  // Acción ELIMINAR por fila: solo en modo edición. Borra la barra (con registro histórico).
+  if ((typeof bmEnModoEdicion === 'function') && bmEnModoEdicion()) {
+    html += '<td style="padding:2px 6px; text-align:center;">' +
+      '<span onclick="bmEliminarBarra(' + b.id + ')" title="Eliminar esta barra (queda solo en el historial)" ' +
+      'style="color:#c62828; cursor:pointer; font-size:13px;">🗑</span></td>';
+  }
+  html += '</tr>';
   return html;
 }
 
@@ -648,6 +658,7 @@ function _renderDetail(cont, elem, barras) {
       dimLabels.map(L => '<th style="text-align:right; padding:2px 6px;">' + L + '</th>').join('') +
       angLabels.map(L => '<th style="text-align:right; padding:2px 6px;">' + L + '</th>').join('') +
       '<th style="text-align:right; padding:2px 6px;">R</th>' +
+      (editando ? '<th style="text-align:center; padding:2px 6px;">🗑</th>' : '') +
       '</tr></thead><tbody>';
     grp.forEach(b => {
       html += _bmFilaBarraHTML(b, editando, false);

@@ -661,6 +661,107 @@
       }).join('') + '</table>';
   };
 
+  // ---- Panel de BARRAS ELIMINADAS (registro histórico, solo lectura) -----------------
+  var _bmEliminadasAbierto = false;
+  global.bmToggleEliminadas = function() {
+    _bmEliminadasAbierto = !_bmEliminadasAbierto;
+    var body = document.getElementById('bmEliminadasBody');
+    var caret = document.getElementById('bmEliminadasCaret');
+    if (body) body.style.display = _bmEliminadasAbierto ? '' : 'none';
+    if (caret) caret.textContent = _bmEliminadasAbierto ? '▾' : '▸';
+    if (_bmEliminadasAbierto) bmCargarEliminadas();   // cargar al expandir
+  };
+  // Carga el registro de eliminadas de la obra. Muestra el card solo si hay alguna. Refresca el
+  // contador siempre; el detalle solo si el panel está abierto (evita pedir data innecesaria).
+  global.bmCargarEliminadas = async function() {
+    var card = document.getElementById('bmEliminadasCard');
+    var body = document.getElementById('bmEliminadasBody');
+    var cnt = document.getElementById('bmEliminadasCount');
+    if (!card) return;
+    var proy = (document.getElementById('proyecto') || {}).value;
+    if (!proy) { card.style.display = 'none'; return; }
+    var data = await apiGet('/barras/eliminadas?proyecto=' + encodeURIComponent(proy) + '&limit=500');
+    var arr = (data && data.data) || [];
+    if (cnt) cnt.textContent = (data && data.total) || arr.length;
+    if (!arr.length) { card.style.display = 'none'; return; }
+    card.style.display = '';
+    if (!_bmEliminadasAbierto || !body) return;   // solo pintar la tabla si está expandido
+    function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
+    function n(v, d) { if (v == null || v === '' || isNaN(v)) return ''; return d ? Number(v).toFixed(d) : Math.round(Number(v)); }
+    body.innerHTML = '<table style="width:100%; font-size:11px; border-collapse:collapse; min-width:900px;">' +
+      '<thead><tr style="background:#fbeaea; color:#8d3a3a; text-align:left;">' +
+      '<th style="padding:3px 6px;">Eliminada</th><th style="padding:3px 6px;">Por</th>' +
+      '<th style="padding:3px 6px;">Sector·Piso·Ciclo·Eje</th><th style="padding:3px 6px;">Tipología</th>' +
+      '<th style="padding:3px 6px;">Figura</th><th style="padding:3px 6px; text-align:right;">φ</th>' +
+      '<th style="padding:3px 6px; text-align:right;">Cant</th><th style="padding:3px 6px; text-align:right;">Kg</th>' +
+      '<th style="padding:3px 6px;">Origen</th><th style="padding:3px 6px; font-family:monospace;">ID único</th>' +
+      '</tr></thead><tbody>' +
+      arr.map(function(b) {
+        var fecha = (typeof formatDateTime === 'function') ? formatDateTime(b.eliminada_fecha) : (b.eliminada_fecha || '').slice(0, 16).replace('T', ' ');
+        var ubic = [b.sector, b.piso, b.ciclo, b.eje].filter(Boolean).join(' · ');
+        return '<tr style="border-bottom:1px solid #f0e0e0; color:#555;">' +
+          '<td style="padding:3px 6px; white-space:nowrap;">' + esc(fecha) + '</td>' +
+          '<td style="padding:3px 6px;">' + esc((b.eliminada_por || '').split('@')[0]) + '</td>' +
+          '<td style="padding:3px 6px;">' + esc(ubic || '—') + '</td>' +
+          '<td style="padding:3px 6px; font-weight:600;">' + esc(b.marca || '—') + '</td>' +
+          '<td style="padding:3px 6px;">' + esc(b.figura || '—') + '</td>' +
+          '<td style="padding:3px 6px; text-align:right;">' + esc(n(b.diam)) + '</td>' +
+          '<td style="padding:3px 6px; text-align:right;">' + esc(n(b.cant_total)) + '</td>' +
+          '<td style="padding:3px 6px; text-align:right;">' + esc(n(b.peso_total, 1)) + '</td>' +
+          '<td style="padding:3px 6px;">' + esc(b.origen || '—') + '</td>' +
+          '<td style="padding:3px 6px; font-family:monospace; font-size:10px;" title="' + esc(b.id_unico || '') + '">' + esc((b.id_unico || '').split('-').slice(-1)[0]) + '</td>' +
+          '</tr>';
+      }).join('') + '</tbody></table>';
+  };
+
+  // ---- ELIMINAR barras (con registro histórico) ----------------------------------
+  // El borrado NO es un deshacer: la barra se elimina de verdad (sale de todas las vistas y cálculos)
+  // y queda solo en el registro de "Barras eliminadas". Backend: POST /barras/eliminar {ids:[...]}.
+  // Copia la barra a barras_eliminadas y la borra de barras. Individual (1 id) y masivo (varios).
+  async function _bmEliminar(ids, msgConfirm) {
+    if (!ids.length) { alert('No hay barras para eliminar.'); return; }
+    if (!confirm(msgConfirm)) return;
+    try {
+      var r = await apiPostJson('/barras/eliminar', { ids: ids });
+      if (!r || r.ok !== true) { alert('No se pudieron eliminar las barras' + (r && r.detail ? ': ' + r.detail : '') + '.'); return; }
+      _seleccion = {};   // limpiar selección tras borrar
+      if (typeof showToast === 'function') showToast((r.eliminadas || ids.length) + ' barra(s) eliminada(s). Quedan en el historial.', 'ok');
+      _actualizarBarraSeleccion();
+      if (typeof buscar === 'function') buscar();          // recargar la lista sin las eliminadas
+      if (typeof bmCargarEliminadas === 'function') bmCargarEliminadas();   // refrescar el panel de historial
+    } catch (e) {
+      alert('Error de red al eliminar las barras. Reintenta.');
+    }
+  }
+
+  // Borrado INDIVIDUAL (🗑 por fila). Mensaje sencillo y claro: se elimina y solo queda historial.
+  global.bmEliminarBarra = function(id) {
+    _bmEliminar([Number(id)],
+      'Se eliminará esta barra.\n\nNo se puede deshacer: la barra sale del Bar Manager y solo queda un registro en el historial de eliminadas.\n\n¿Eliminar?');
+  };
+
+  // Borrado MASIVO (barras marcadas). Al ser varias e irreversible, pide escribir ELIMINAR.
+  global.bmEliminarSeleccionadas = function() {
+    var ids = Object.keys(_seleccion).map(Number);
+    if (!ids.length) { alert('Marca al menos una barra para eliminar.'); return; }
+    var txt = prompt('Se eliminarán ' + ids.length + ' barra(s).\n\nNo se puede deshacer: salen del Bar Manager y solo quedan en el historial de eliminadas.\n\nEscribe ELIMINAR para confirmar:');
+    if (txt === null) return;
+    if (txt.trim().toUpperCase() !== 'ELIMINAR') { alert('No se eliminó: debes escribir ELIMINAR.'); return; }
+    // Ya confirmó por escrito; _bmEliminar no vuelve a pedir confirm (pasamos un mensaje ya aceptado).
+    _bmEliminarConfirmado(ids);
+  };
+  async function _bmEliminarConfirmado(ids) {
+    try {
+      var r = await apiPostJson('/barras/eliminar', { ids: ids });
+      if (!r || r.ok !== true) { alert('No se pudieron eliminar las barras' + (r && r.detail ? ': ' + r.detail : '') + '.'); return; }
+      _seleccion = {};
+      if (typeof showToast === 'function') showToast((r.eliminadas || ids.length) + ' barra(s) eliminada(s). Quedan en el historial.', 'ok');
+      _actualizarBarraSeleccion();
+      if (typeof buscar === 'function') buscar();
+      if (typeof bmCargarEliminadas === 'function') bmCargarEliminadas();
+    } catch (e) { alert('Error de red al eliminar las barras. Reintenta.'); }
+  }
+
   // ---- Aviso al cerrar/recargar el navegador con cambios sin guardar (5M.9) ----
   // El navegador solo permite su diálogo genérico ("¿salir del sitio?"), no texto
   // propio; con eso basta para evitar perder cambios por accidente.
