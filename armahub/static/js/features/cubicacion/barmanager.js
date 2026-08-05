@@ -10,10 +10,12 @@ let lastElementos = [];           // cache de elementos visibles
 const expanded = new Set();       // claves "piso||sector||eje"
 const detailCache = new Map();    // key -> array de barras
 
-// 5M.8.3: mapa figura(código) → geometría, para mostrar mini-render en la celda
-// de figura (solo lectura). Se carga una vez, perezoso. Si no hay geometría o
-// falla, la celda degrada a solo texto (cero riesgo).
-let _bmGeometrias = null;         // { codigo: geometria } | null (no cargado)
+// 5M.8.3: mapa figura(código) → figura completa del catálogo, para mostrar mini-render.
+// Se carga una vez, perezoso. Si no hay geometría o falla, degrada a solo texto (cero
+// riesgo). Guardamos la figura ENTERA (no solo la geometría) porque el render escalado
+// del botón "Ver dibujo" necesita `f.radio` para decidir si la figura es escalable
+// (mismo criterio que el editor Agregar Despiece).
+let _bmGeometrias = null;         // { codigo: figuraCompleta } | null (no cargado)
 async function _bmCargarGeometrias() {
   if (_bmGeometrias) return;
   _bmGeometrias = {};             // marca "intentado" aunque falle
@@ -21,20 +23,114 @@ async function _bmCargarGeometrias() {
     const data = await apiGet('/figuras-catalogo');
     (data && data.figuras || []).forEach(function(f) {
       if (f.geometria && f.geometria.tramos && f.geometria.tramos.length) {
-        _bmGeometrias[f.codigo] = f.geometria;
+        _bmGeometrias[f.codigo] = f;   // figura completa: { codigo, geometria, radio, ... }
       }
     });
   } catch (e) { /* degrada a solo texto */ }
 }
-// Mini-SVG de la figura (o '' si no hay geometría / motor). Reutiliza el motor
-// del diseñador (window.disenadorMotor).
+// Geometría cruda del catálogo para un código (o null). Helper para no repetir el
+// acceso _bmGeometrias[codigo].geometria en varios sitios.
+function _bmGeoDe(codigo) {
+  var f = codigo && _bmGeometrias && _bmGeometrias[codigo];
+  return (f && f.geometria) || null;
+}
+// Mini-SVG de la figura a tamaño fijo, SIN escalar a las dims (se usa en la celda
+// "Figura" como referencia visual del tipo). '' si no hay geometría / motor.
 function _bmMiniFigura(codigo) {
-  if (!codigo || !_bmGeometrias || !_bmGeometrias[codigo]) return '';
+  var geo = _bmGeoDe(codigo);
+  if (!geo) return '';
   if (!window.disenadorMotor || !window.disenadorMotor.dibujarFigura) return '';
   try {
-    return window.disenadorMotor.dibujarFigura(_bmGeometrias[codigo], null, { width: 90, height: 72, pad: 12 });
+    return window.disenadorMotor.dibujarFigura(geo, null, { width: 90, height: 72, pad: 12 });
   } catch (e) { return ''; }
 }
+
+// ── RENDER ESCALADO A LAS DIMS DE LA BARRA (columna "Dibujo", toggle Ver dibujo) ──
+// Estado del toggle. Por defecto DESACTIVADO: el dibujo escalado tiene costo y no
+// siempre se necesita (análogo a AC2.render del editor).
+let bmVerRender = false;
+
+// Piso visual por lado (ningún lado se dibuja menor a este % del mayor). Mismo valor
+// que AC2_MIN_LADO_REL del editor: evita que un lado chico se pierda cuando otro es enorme.
+const BM_MIN_LADO_REL = 0.28;
+const BM_LADOS = ['A','B','C','D','E','F','G','H','I'];
+
+// SVG de la figura ESCALADA a las medidas reales de la barra (A,B,C… reales), igual
+// criterio que ac2FigSvg del editor: si la geometría trae `tramos` + `puntos` dibujados,
+// sin radio y sin etiquetas-manda, se reconstruyen los puntos conservando la ORIENTACIÓN
+// original pero con la LONGITUD nueva (cada lado a su dim). En figuras con radio/etiquetas
+// manuales se deja el dibujo original del catálogo (deuda: los radios aún no escalan).
+// Devuelve '' si no hay figura/geometría/motor (la celda degrada a solo texto).
+function _bmFiguraSvg(b) {
+  if (!b) return '';
+  var f = b.figura && _bmGeometrias && _bmGeometrias[b.figura];
+  var geo = f && f.geometria;
+  if (!geo || !window.disenadorMotor || !window.disenadorMotor.dibujarFigura) return '';
+  // dims {A:val,B:val,...} desde b.dim_a..dim_i (medidas reales de esta barra).
+  var dims = {};
+  BM_LADOS.forEach(function(L) {
+    var v = b['dim_' + L.toLowerCase()];
+    if (v != null && v !== '' && !isNaN(v)) dims[L] = Number(v);
+  });
+  var geoUse = geo;
+  var tieneDims = Object.keys(dims).length > 0;
+  var escalable = (tieneDims && geo.tramos && geo.tramos.length &&
+                   geo.puntos && geo.puntos.length >= 2 &&
+                   !f.radio && !geo.etiquetas_manda);
+  if (escalable) {
+    // Longitud nueva de cada segmento = dim del lado (o el largo original si falta).
+    var largos = [];
+    for (var mi = 0; mi < geo.tramos.length && mi + 1 < geo.puntos.length; mi++) {
+      var dxm = geo.puntos[mi + 1].x - geo.puntos[mi].x;
+      var dym = geo.puntos[mi + 1].y - geo.puntos[mi].y;
+      var l0 = Math.sqrt(dxm * dxm + dym * dym) || 1;
+      var vm = dims[geo.tramos[mi].lado];
+      largos.push((vm != null && !isNaN(vm) && vm > 0) ? Number(vm) : l0);
+    }
+    var maxLado = Math.max.apply(null, largos.concat([1]));
+    var minLado = maxLado * BM_MIN_LADO_REL;
+    // Reconstruir puntos conservando la DIRECCIÓN unitaria original, con la longitud nueva.
+    var op = geo.puntos, np = [{ x: op[0].x, y: op[0].y }];
+    for (var si = 0; si < geo.tramos.length && si + 1 < op.length; si++) {
+      var dx = op[si + 1].x - op[si].x, dy = op[si + 1].y - op[si].y;
+      var len0 = Math.sqrt(dx * dx + dy * dy) || 1;
+      var lnew = Math.max(largos[si], minLado);
+      var ux = dx / len0, uy = dy / len0;
+      var last = np[np.length - 1];
+      np.push({ x: last.x + ux * lnew, y: last.y + uy * lnew });
+    }
+    geoUse = {}; for (var kk in geo) geoUse[kk] = geo[kk];
+    geoUse.puntos = np;          // puntos re-escalados, misma orientación
+    geoUse.etiquetas = [];       // sin etiquetas decorativas encima del valor
+    // Mostrar el VALOR de cada lado (no la letra) en el label del tramo.
+    geoUse.tramos = geo.tramos.map(function(tr) {
+      var vv = dims[tr.lado]; var nt = {}; for (var k2 in tr) nt[k2] = tr[k2];
+      if (vv != null) nt.lado = String(vv); return nt;
+    });
+  }
+  try {
+    return '<span style="display:inline-block; vertical-align:middle;">' +
+      window.disenadorMotor.dibujarFigura(geoUse, dims, { width: 90, height: 72, pad: 20 }) +
+      '</span>';
+  } catch (e) { return ''; }
+}
+
+// Celda "Dibujo" para una barra (o '' si el toggle está apagado). Se inserta en el
+// header y en cada fila SIEMPRE juntos, para no descuadrar columnas.
+function _bmCeldaDibujo(b) {
+  if (!bmVerRender) return '';
+  var svg = _bmFiguraSvg(b);
+  var cont = svg || '<span class="muted" style="font-size:10px;">—</span>';
+  return '<td style="padding:2px 6px; text-align:center;">' + cont + '</td>';
+}
+
+// Toggle del botón "Ver dibujo": guarda el estado y re-renderiza la vista actual
+// desde memoria (sin re-fetch). Análogo a ac2ToggleMult/ac2Render del editor.
+function bmToggleRender(on) {
+  bmVerRender = !!on;
+  if (typeof bmReRenderVistaActual === 'function') bmReRenderVistaActual();
+}
+window.bmToggleRender = bmToggleRender;
 
 const SECTOR_LABEL = {
   'ELEV': 'Elevación',
@@ -333,8 +429,14 @@ function _renderPlano() {
     return;
   }
   const editando = (typeof bmEnModoEdicion === 'function') && bmEnModoEdicion();
-  // Contenedor con scroll acotado (igual criterio que el detalle en edición).
-  const scrollWrap = editando ? 'overflow:auto; max-height:65vh;' : 'overflow-x:auto;';
+  // Contenedor con scroll acotado SIEMPRE (no solo en edición). Con solo overflow-x
+  // la barra de scroll horizontal quedaba al final de toda la tabla (había que bajar
+  // toda la página para alcanzarla → "el panel me queda fuera / no lo veo completo").
+  // Con max-height el viewport queda acotado y la barra horizontal siempre es accesible.
+  // max-width:100% ata el ancho al card para que el scroll interno reciba el desborde.
+  const scrollWrap = editando
+    ? 'overflow:auto; max-height:65vh; max-width:100%;'
+    : 'overflow:auto; max-height:70vh; max-width:100%;';
   // 5M.11: columna de selección solo en modo MASIVO (no en edición normal).
   var masivo = (typeof bmEnModoMasivo === 'function') && bmEnModoMasivo();
   var colSel = masivo
@@ -354,6 +456,9 @@ function _renderPlano() {
     '<th style="text-align:right; padding:3px 6px;">Largo</th>' +
     '<th style="text-align:right; padding:3px 6px;">Peso Tot</th>' +
     '<th style="text-align:left; padding:3px 6px;">Figura</th>' +
+    // Columna "Dibujo" solo con el toggle activo. El <td> correspondiente lo agrega
+    // _bmFilaBarraHTML con el mismo flag, para no descuadrar header vs filas.
+    (bmVerRender ? '<th style="text-align:center; padding:3px 6px;">Dibujo</th>' : '') +
     ['A','B','C','D','E','F','G','H','I'].map(L => '<th style="text-align:right; padding:3px 6px;">' + L + '</th>').join('') +
     ['α1','α2','α3','α4'].map(L => '<th style="text-align:right; padding:3px 6px;">' + L + '</th>').join('') +
     '<th style="text-align:right; padding:3px 6px;">R</th>' +
@@ -588,7 +693,9 @@ function _bmFilaBarraHTML(b, editando, conUbicacion) {
     html += '<td style="padding:2px 6px;">' + _origenBadge(b.origen) + '</td>' +
       '<td style="padding:2px 6px; color:#666;">' + (b.plano_code || '—') + '</td>';
   }
-  html += _celdaFigura() + dims + angs + _celdaEdit('radio', b.radio, 1);
+  // Celda "Dibujo" tras Figura (solo con el toggle activo). _bmCeldaDibujo devuelve ''
+  // cuando está apagado, así el <td> aparece SIEMPRE junto a su <th> (no descuadra).
+  html += _celdaFigura() + _bmCeldaDibujo(b) + dims + angs + _celdaEdit('radio', b.radio, 1);
   // Acción ELIMINAR por fila: solo en modo edición. Borra la barra (con registro histórico).
   if ((typeof bmEnModoEdicion === 'function') && bmEnModoEdicion()) {
     html += '<td style="padding:2px 6px; text-align:center;">' +
@@ -632,12 +739,13 @@ function _renderDetail(cont, elem, barras) {
     const grp = byCiclo[c];
     const sumKg = grp.reduce((s, b) => s + (Number(b.peso_total) || 0), 0);
     const sumCant = grp.reduce((s, b) => s + (Number(b.cant_total) || 0), 0);
-    // 5M.4: en modo edición, el contenedor de la tabla tiene alto acotado con scroll
-    // para que la barra de scroll horizontal quede accesible (no al final de toda la
-    // data). Fuera de edición, scroll horizontal normal.
+    // 5M.4: el contenedor de la tabla tiene alto acotado con scroll SIEMPRE (antes solo
+    // en edición) para que la barra de scroll horizontal quede accesible (no al final de
+    // toda la data → antes había que bajar toda la página para alcanzarla). max-width:100%
+    // ata el ancho al card para que el desborde vaya al scroll interno, no fuera de pantalla.
     const scrollWrap = editando
-      ? 'overflow:auto; max-height:60vh;'
-      : 'overflow-x:auto;';
+      ? 'overflow:auto; max-height:60vh; max-width:100%;'
+      : 'overflow:auto; max-height:60vh; max-width:100%;';
     html += '<div style="margin:6px 0; border-left:3px solid ' + _cicloColor(c) + '; padding:4px 10px; background:#fff; border-radius:0 4px 4px 0;">' +
       '<div style="font-size:11px; color:' + _cicloColor(c) + '; font-weight:700; margin-bottom:4px;">' +
       'Ciclo ' + c + ' · ' + grp.length + ' items · ' + _fmt(sumCant) + ' barras · ' + _fmt(sumKg, 1) + ' kg' +
@@ -655,6 +763,8 @@ function _renderDetail(cont, elem, barras) {
       '<th style="text-align:left; padding:2px 6px;">Origen</th>' +
       '<th style="text-align:left; padding:2px 6px;">Plano</th>' +
       '<th style="text-align:left; padding:2px 6px;">Figura</th>' +
+      // Columna "Dibujo" solo con el toggle activo (mismo flag que el <td> en _bmFilaBarraHTML).
+      (bmVerRender ? '<th style="text-align:center; padding:2px 6px;">Dibujo</th>' : '') +
       dimLabels.map(L => '<th style="text-align:right; padding:2px 6px;">' + L + '</th>').join('') +
       angLabels.map(L => '<th style="text-align:right; padding:2px 6px;">' + L + '</th>').join('') +
       '<th style="text-align:right; padding:2px 6px;">R</th>' +

@@ -137,6 +137,12 @@
         <button class="secondary" onclick="expandAll()" style="font-size:11px; padding:3px 10px;">▾ Expandir todo</button>
         <button class="secondary" onclick="collapseAll()" style="font-size:11px; padding:3px 10px;">▸ Colapsar todo</button>
         <button class="secondary" id="btnCobertura" onclick="toggleCobertura()" style="font-size:11px; padding:3px 10px;">📊 Mostrar cobertura</button>
+        <!-- Toggle "Ver dibujo": agrega una columna "Dibujo" con la figura escalada a las
+             medidas reales de cada barra (misma lógica que el render del editor Agregar
+             Despiece). Apagado por defecto (no cargar dibujos siempre). -->
+        <label style="font-size:11px; color:#555; cursor:pointer; display:inline-flex; align-items:center; gap:4px; padding:3px 8px; border:1px solid #ddd; border-radius:4px;" title="Mostrar la figura de cada barra dibujada a escala (A, B, C…, ángulos)">
+          <input type="checkbox" id="bmVerRender" onchange="bmToggleRender(this.checked)" style="margin:0;" /> 🖉 Ver dibujo
+        </label>
         <!-- 5M.3: candado de edición. Cerrado = solo lectura; abrir habilita editar barras.
              Color propio (ámbar) para que resalte entre los botones grises. -->
         <button id="btnEdicionBarras" onclick="toggleModoEdicion()" style="font-size:11px; padding:3px 12px; background:#fff3e0; border:1px solid #ffb74d; border-radius:4px; cursor:pointer; color:#e65100; font-weight:600;">🔒 Edición bloqueada</button>
