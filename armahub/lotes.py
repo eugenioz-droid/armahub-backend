@@ -768,24 +768,28 @@ def diametros_estandar(user=Depends(get_current_user)):
 
 
 @router.get("/despieces/obras-activas")
-def obras_con_despieces_activos(user=Depends(get_current_user)):
-    """Obras que tienen despieces EN CURSO (borrador, sin bandera) — para la landing del editor.
-    Por obra: nombre, nº de despieces activos y KPIs de lo LISTO (barras terminadas: items/barras/kg),
-    + fecha del último movimiento. Los KPIs miden lo cubicado y confirmado (bandera), no el borrador."""
+def obras_con_despieces(user=Depends(get_current_user)):
+    """Obras que TIENEN despieces (cualquier estado, salvo lápidas eliminadas) — para la landing del
+    editor: es el punto de entrada para RETOMAR/ver trabajo. Distinto del buscador, que encuentra
+    CUALQUIER obra del sistema (única forma de crear el primer despiece a una obra sin ninguno).
+    Por obra: nombre, nº de despieces EN EDICIÓN (borrador), total de despieces, KPIs de lo LISTO
+    (barras terminadas: items/barras/kg) y último movimiento."""
     with get_conn() as conn:
         with conn.cursor() as cur:
-            # Obras con al menos un lote 'borrador' (despiece activo) + su conteo y último movimiento.
+            # Obras con al menos un despiece NO eliminado + conteo total, en edición, y último mov.
             cur.execute("""
                 SELECT l.id_proyecto,
                        COALESCE(p.nombre_proyecto, l.id_proyecto) AS nombre,
-                       COUNT(*) AS activos,
+                       COUNT(*) FILTER (WHERE l.estado = 'borrador')  AS en_edicion,
+                       COUNT(*)                                        AS total,
                        MAX(COALESCE(l.terminado_fecha, l.creado_fecha)) AS ult
                 FROM lotes l
                 LEFT JOIN proyectos p ON p.id_proyecto = l.id_proyecto
-                WHERE l.estado = 'borrador'
+                WHERE l.estado IS DISTINCT FROM 'eliminado'
                 GROUP BY l.id_proyecto, p.nombre_proyecto
             """)
-            obras = [{"id_proyecto": r[0], "nombre": r[1], "activos": int(r[2]), "ultimo": (r[3] or "")[:10]}
+            obras = [{"id_proyecto": r[0], "nombre": r[1], "en_edicion": int(r[2] or 0),
+                      "total": int(r[3] or 0), "ultimo": (r[4] or "")[:10]}
                      for r in cur.fetchall()]
             if not obras:
                 return {"obras": []}

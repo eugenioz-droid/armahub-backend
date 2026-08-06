@@ -697,18 +697,12 @@ function ac2AplicarEtapa(){
   // Botón "Crear despiece" (landing): solo etapa 1. Volver a obras: etapas 1-3 (en 4 la ✕ hace de volver).
   show('ac2_crearDespieceWrap', e===1);
   show('ac2_volverObras', e>=1 && e<=3);
-  // Fila de contexto: cada CAMPO se muestra por etapa usando el ID del div EXTERNO (ac2_fld*) — NO el
+  // Fila de contexto (caja turquesa): SIEMPRE con su fondo (como la maqueta: el buscador vive dentro
+  // de la caja). Cada CAMPO se muestra por etapa usando el ID del div EXTERNO (ac2_fld*) — NO el
   // parentElement del input (el combobox de ciclo/eje lo envuelve y dejaría el label huérfano). Obra:
-  // en 0-1 (elegir/ver); Ciclo/Eje/Crear/Config: desde etapa 2. Además, en 0-1 la fila pierde el fondo
-  // turquesa y el marco (es solo el buscador, no la "caja de contexto" del editor); desde la etapa 2
-  // recupera el fondo turquesa completo.
+  // en 0-1 (elegir/ver); Ciclo/Eje/Crear/Config: desde la etapa 2 (al iniciar la creación).
   var _ctxDesde2 = (e>=2);
   show('ac2_filaContexto', true);
-  var _fila=document.getElementById('ac2_filaContexto');
-  if (_fila){
-    if (_ctxDesde2){ _fila.style.background='#e0f2f1'; _fila.style.border='1px solid #b2dfdb'; _fila.style.padding='10px 12px'; }
-    else { _fila.style.background='transparent'; _fila.style.border='none'; _fila.style.padding='0'; }
-  }
   show('ac2_fldObra', e<=1);
   show('ac2_fldCiclo', _ctxDesde2);
   show('ac2_fldEje', _ctxDesde2);
@@ -728,20 +722,23 @@ function ac2AplicarEtapa(){
 }
 // "Crear despiece" (etapa 1 → 2): abre el flujo de creación (aparecen Ciclo/Eje).
 window.ac2IniciarCreacion=function(){ AC2.creando=true; ac2ActualizarCabecera(); };
-// Landing de obras con despieces ACTIVOS (borrador) + KPIs de lo listo. Al click en una fila se
-// selecciona la obra (rellena el buscador y dispara su onElegir) → pasa a etapa 1.
+// Landing: TODAS las obras que tienen despieces (para retomar/ver). Para crear en una obra SIN
+// despieces se usa el buscador de arriba (encuentra cualquier obra). Al click en una fila → etapa 1.
 window.ac2CargarLandingObras=async function(){
   var tb=document.getElementById('ac2_landingObrasBody'); if(!tb) return;
   var d; try { d=await _ac2Get('/despieces/obras-activas'); } catch(e){ d=null; }
   var obras=(d&&d.obras)||[];
   if (!obras.length){
-    tb.innerHTML='<tr><td colspan="6" style="padding:10px 8px; color:#90a4ae; font-style:italic; text-align:center;">No hay obras con despieces en curso. Busca una obra arriba para empezar.</td></tr>';
+    tb.innerHTML='<tr><td colspan="6" style="padding:10px 8px; color:#90a4ae; font-style:italic; text-align:center;">Aún no hay obras con despieces. Busca una obra arriba para crear el primero.</td></tr>';
     return;
   }
   tb.innerHTML=obras.map(function(o){
+    // Columna "Despieces": total + cuántos en edición (borrador). Ej. "3 (2 en edición)".
+    var enEd = o.en_edicion||0;
+    var despTxt = (o.total||0) + (enEd ? ' <span style="color:#e65100;">('+enEd+' en edición)</span>' : '');
     return '<tr class="ac2loterow" onclick="ac2ElegirObraLanding('+"'"+ac2Esc(o.id_proyecto)+"','"+ac2Esc((o.nombre||'').replace(/'/g,"\\'"))+"'"+')" style="cursor:pointer; border-top:1px solid #f0f0f0;">'+
       '<td style="padding:6px 8px; font-weight:600; color:#558B2F;">'+ac2Esc(o.nombre||o.id_proyecto)+'</td>'+
-      '<td style="padding:6px 8px;">'+o.activos+' en edición</td>'+
+      '<td style="padding:6px 8px;">'+despTxt+'</td>'+
       '<td style="padding:6px 8px; text-align:right;">'+(o.items||0)+'</td>'+
       '<td style="padding:6px 8px; text-align:right;">'+ac2Num(o.barras||0)+'</td>'+
       '<td style="padding:6px 8px; text-align:right;">'+ac2Num(o.kg,1)+'</td>'+
