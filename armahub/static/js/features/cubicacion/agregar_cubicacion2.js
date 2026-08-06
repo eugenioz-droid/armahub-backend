@@ -828,7 +828,7 @@ window.ac2CargarGrafico=async function(){
         '<span style="width:10px; height:10px; border-radius:2px; background:'+u.color+'; flex-shrink:0; align-self:center;"></span>'+
         '<span style="color:#555;">'+ac2Esc(u.nombre)+':</span>'+
         '<span style="color:#333; font-weight:600;">'+_ac2FmtKg(u.kg)+' kg</span></div>';
-    }).join('') : '<span style="font-size:11px; color:#b0bec5; font-style:italic;">Sin cubicación en este período.</span>';
+    }).join('') : '<span style="font-size:11px; color:#b0bec5; font-style:italic;">Sin cubicación terminada en este período (los despieces “En edición” no suman).</span>';
   }
   var totEl=document.getElementById('ac2_graficoTotal');
   if (totEl) totEl.textContent = 'Total: '+_ac2FmtKg(totGeneral)+' kg';
