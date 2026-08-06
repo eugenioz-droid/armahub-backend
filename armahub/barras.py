@@ -841,43 +841,85 @@ def get_stats_timeline(
     }
 
 
-@router.get("/stats/cubicado-semana")
-def get_cubicado_semana(proyecto: Optional[str] = None, user=Depends(get_current_user)):
-    """Kilos LISTOS (barras cubicadas, excluye borrador) por cubicador y día de la SEMANA actual.
-    Para el gráfico del flujo del editor: sin `proyecto` = todas las obras (etapa 0); con `proyecto` =
-    esa obra (etapa 1). Mismo shape que 'cubicado_semana' del Hub: [{email, nombre, dias:[L..D]}]."""
-    from datetime import timedelta
+@router.get("/stats/cubicado")
+def get_cubicado(periodo: str = "S", anio: Optional[int] = None, proyecto: Optional[str] = None,
+                 user=Depends(get_current_user)):
+    """Kilos LISTOS (excluye borrador) por cubicador, agregados según `periodo` — para el gráfico del
+    editor. Períodos: S=semana actual por día (Lun-Dom); MS=mes actual por semana (S1-S5); MD=mes
+    actual por día (1-N); A=año por mes (Ene-Dic). `anio` filtra el año (default: el actual). `proyecto`
+    filtra la obra (sin él = todas). Respuesta GENÉRICA: {labels, cubicadores:[{nombre, valores:[...]}],
+    anios:[...]} — el front no distingue el período. `anios` = años que tienen data (para el selector)."""
+    import calendar as _cal
+    from datetime import date
     now = datetime.now(timezone.utc)
-    monday = (now - timedelta(days=now.weekday())).strftime("%Y-%m-%d")
-    sunday = (now - timedelta(days=now.weekday()) + timedelta(days=6)).strftime("%Y-%m-%d")
-    params = [monday, sunday]
-    obra_sql = ""
+    yr = int(anio) if anio else now.year
+    per = (periodo or "S").upper()
+
+    # Rango de fechas y expresión de "bucket" (a qué columna va cada barra) según el período.
+    if per == "S":  # semana actual por día (ignora `anio`; siempre la semana en curso)
+        from datetime import timedelta
+        d0 = (now - timedelta(days=now.weekday()))
+        ini, fin = d0.strftime("%Y-%m-%d"), (d0 + timedelta(days=6)).strftime("%Y-%m-%d")
+        n = 7
+        labels = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"]
+        bucket = "EXTRACT(ISODOW FROM b.fecha_carga::timestamp)::INTEGER - 1"
+    elif per == "A":  # año por mes
+        ini, fin = date(yr, 1, 1).strftime("%Y-%m-%d"), date(yr, 12, 31).strftime("%Y-%m-%d")
+        n = 12
+        labels = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"]
+        bucket = "EXTRACT(MONTH FROM b.fecha_carga::timestamp)::INTEGER - 1"
+    else:  # mes actual (del año `yr`): MS por semana, MD por día
+        mes = now.month if yr == now.year else 12   # si es un año pasado, mostramos su último mes con criterio simple
+        ini = date(yr, mes, 1).strftime("%Y-%m-%d")
+        ult = _cal.monthrange(yr, mes)[1]
+        fin = date(yr, mes, ult).strftime("%Y-%m-%d")
+        if per == "MD":  # por día del mes
+            n = ult
+            labels = [str(i + 1) for i in range(ult)]
+            bucket = "EXTRACT(DAY FROM b.fecha_carga::timestamp)::INTEGER - 1"
+        else:  # MS: por semana del mes (cortes fijos 1-7, 8-14, 15-21, 22-28, 29-fin)
+            n = min(5, (ult - 1) // 7 + 1)
+            labels = []
+            for s in range(n):
+                a = s * 7 + 1
+                b_ = ult if s == 4 else min(s * 7 + 7, ult)
+                labels.append("{}-{}".format(a, b_))
+            bucket = "LEAST(4, (EXTRACT(DAY FROM b.fecha_carga::timestamp)::INTEGER - 1) / 7)"
+
+    obra_sql, params = "", [ini, fin]
     if proyecto:
         obra_sql = " AND b.id_proyecto = %s"
         params.append(proyecto)
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("""
-                SELECT b.creado_por AS usuario,
-                       COALESCE(u.nombre, '') AS nombre, COALESCE(u.apellido, '') AS apellido,
-                       EXTRACT(ISODOW FROM b.fecha_carga::timestamp)::INTEGER AS dow,
-                       COALESCE(SUM(b.peso_total), 0) AS kilos
-                FROM barras b
-                JOIN users u ON u.email = b.creado_por
+                SELECT b.creado_por, COALESCE(u.nombre,''), COALESCE(u.apellido,''),
+                       (""" + bucket + """) AS bkt, COALESCE(SUM(b.peso_total),0)
+                FROM barras b JOIN users u ON u.email = b.creado_por
                 WHERE b.creado_por IS NOT NULL
-                  AND LEFT(b.fecha_carga, 10) >= %s AND LEFT(b.fecha_carga, 10) <= %s"""
+                  AND LEFT(b.fecha_carga,10) >= %s AND LEFT(b.fecha_carga,10) <= %s"""
                 + obra_sql + _sql_excluir_borrador("b") + """
-                GROUP BY b.creado_por, u.nombre, u.apellido, dow
-                ORDER BY b.creado_por, dow
+                GROUP BY b.creado_por, u.nombre, u.apellido, bkt
             """, params)
             cub = {}
             for r in cur.fetchall():
-                em = r[0]
+                em, bkt = r[0], int(r[3])
+                if bkt < 0 or bkt >= n:
+                    continue
                 if em not in cub:
                     nom = ((r[1] or "") + " " + (r[2] or "")).strip()
-                    cub[em] = {"email": em, "nombre": nom or em.split("@")[0], "dias": [0, 0, 0, 0, 0, 0, 0]}
-                cub[em]["dias"][r[3] - 1] = round(float(r[4]), 1)
-    return {"proyecto": proyecto or None, "cubicadores": list(cub.values())}
+                    cub[em] = {"email": em, "nombre": nom or em.split("@")[0], "valores": [0] * n}
+                cub[em]["valores"][bkt] += round(float(r[4]), 1)
+            # Años que tienen data (para el selector). Excluye borrador.
+            cur.execute("""
+                SELECT DISTINCT LEFT(fecha_carga,4)
+                FROM barras WHERE fecha_carga IS NOT NULL AND fecha_carga <> ''"""
+                + _sql_excluir_borrador() + """
+                ORDER BY 1 DESC
+            """)
+            anios = [int(r[0]) for r in cur.fetchall() if r[0] and r[0].isdigit()]
+    return {"periodo": per, "anio": yr, "proyecto": proyecto or None,
+            "labels": labels, "cubicadores": list(cub.values()), "anios": anios}
 
 
 @router.get("/stats/cubicadores")

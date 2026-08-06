@@ -773,32 +773,82 @@ window.ac2ElegirObraLanding=function(idProyecto, nombre){
   ac2CargarGrafico();   // gráfico filtrado a esta obra
 };
 
-// ── Gráfico de kilos por cubicador/día (semana). Etapa 0 = todas las obras; etapa 1 = la obra. ──
+// ── Gráfico de kilos por cubicador. Períodos: S=semana/día, MS=mes/semana, MD=mes/día, A=año/mes.
+// Etapa 0 = todas las obras; etapa 1 = la obra. Reusa la lógica de valores del Hub (valor corto en
+// barra, total del período bajo el eje X, totales por cubicador). ──
 var _ac2Chart=null;
+var _ac2GrafPeriodo='S';   // S | MS | MD | A
+var _ac2GrafAnio=null;     // año seleccionado (null = actual)
+var _AC2_GRAF_COLORES=['#8BC34A','#1565C0','#ff9800','#e53935','#7B1FA2','#00897B','#795548','#607D8B','#F44336','#009688'];
+function _ac2FmtKg(v){ return Number(v||0).toLocaleString('es-CL', {maximumFractionDigits:1}); }
+function _ac2FmtCorto(v){
+  if (!v) return '';
+  if (v>=1000000) return (v/1000000).toLocaleString('es-CL',{maximumFractionDigits:1})+'M';
+  if (v>=1000) return (v/1000).toLocaleString('es-CL',{maximumFractionDigits:1})+'k';
+  return v.toLocaleString('es-CL',{maximumFractionDigits:0});
+}
+window.ac2GraficoPeriodo=function(p){ _ac2GrafPeriodo=p;
+  ['S','MS','MD','A'].forEach(function(x){ var b=document.getElementById('ac2g_'+x); if(b){var on=(x===p); b.style.background=on?'#8BC34A':'#fff'; b.style.color=on?'#fff':'#607d8b';} });
+  ac2CargarGrafico();
+};
+window.ac2GraficoAnio=function(a){ _ac2GrafAnio=a||null; ac2CargarGrafico(); };
 window.ac2CargarGrafico=async function(){
   var cv=document.getElementById('ac2_graficoCanvas'); if(!cv || !window.Chart) return;
   var tit=document.getElementById('ac2_graficoTitulo');
-  var q = AC2.proyecto ? ('?proyecto='+encodeURIComponent(AC2.proyecto)) : '';
-  var d; try { d=await _ac2Get('/stats/cubicado-semana'+q); } catch(e){ d=null; }
-  var cubs=(d&&d.cubicadores)||[];
-  if (tit) tit.textContent = 'Cubicado esta semana (kg listos)' + (AC2.proyecto && AC2._nombreObra ? ' · '+AC2._nombreObra : ' · todas las obras');
-  // Sin datos: ocultar el canvas y mostrar un mensaje (evita el gráfico grande en blanco).
+  var qs='periodo='+_ac2GrafPeriodo;
+  if (_ac2GrafAnio) qs+='&anio='+encodeURIComponent(_ac2GrafAnio);
+  if (AC2.proyecto) qs+='&proyecto='+encodeURIComponent(AC2.proyecto);
+  var d; try { d=await _ac2Get('/stats/cubicado?'+qs); } catch(e){ d=null; }
+  var cubs=(d&&d.cubicadores)||[]; var labels=(d&&d.labels)||[]; var n=labels.length;
+  // Título según período + alcance (obra o todas).
+  var perTxt={S:'semana',MS:'mes (por semana)',MD:'mes (por día)',A:'año'}[_ac2GrafPeriodo]||'';
+  if (tit) tit.textContent = 'Cubicado '+perTxt+' (kg listos)' + (AC2.proyecto && AC2._nombreObra ? ' · '+AC2._nombreObra : ' · todas las obras');
+  // Selector de año: se puebla y muestra solo si hay >1 año con data.
+  var selA=document.getElementById('ac2g_anio');
+  if (selA && d && d.anios){
+    if (d.anios.length>1){
+      var cur=_ac2GrafAnio || d.anio;
+      selA.innerHTML=d.anios.map(function(y){ return '<option value="'+y+'"'+((''+y===''+cur)?' selected':'')+'>'+y+'</option>'; }).join('');
+      selA.style.display='';
+    } else { selA.style.display='none'; }
+  }
+  // Sin datos: mensaje en vez de canvas vacío.
   var vacioMsg=document.getElementById('ac2_graficoVacio');
-  var tieneDatos = cubs.some(function(c){ return (c.dias||[]).some(function(v){ return v>0; }); });
+  var tieneDatos = cubs.some(function(c){ return (c.valores||[]).some(function(v){ return v>0; }); });
   if (cv) cv.style.display = tieneDatos ? '' : 'none';
   if (vacioMsg) vacioMsg.style.display = tieneDatos ? 'none' : 'flex';
+  // Totales por cubicador + total del período (siempre, aunque no haya barras → 0).
+  var totUsr=cubs.map(function(c,i){ return { nombre:c.nombre, kg:(c.valores||[]).reduce(function(s,v){return s+v;},0), color:_AC2_GRAF_COLORES[i%_AC2_GRAF_COLORES.length] }; })
+    .sort(function(a,b){ return b.kg-a.kg; });
+  var totGeneral=totUsr.reduce(function(s,u){ return s+u.kg; },0);
+  var porUsr=document.getElementById('ac2_graficoPorUsuario');
+  if (porUsr){
+    porUsr.innerHTML = totUsr.length ? totUsr.map(function(u){
+      return '<div style="display:flex; align-items:baseline; gap:6px; font-size:11px; padding:2px 0;">'+
+        '<span style="width:10px; height:10px; border-radius:2px; background:'+u.color+'; flex-shrink:0; align-self:center;"></span>'+
+        '<span style="color:#555;">'+ac2Esc(u.nombre)+':</span>'+
+        '<span style="color:#333; font-weight:600;">'+_ac2FmtKg(u.kg)+' kg</span></div>';
+    }).join('') : '<span style="font-size:11px; color:#b0bec5; font-style:italic;">Sin cubicación en este período.</span>';
+  }
+  var totEl=document.getElementById('ac2_graficoTotal');
+  if (totEl) totEl.textContent = 'Total: '+_ac2FmtKg(totGeneral)+' kg';
   if (!tieneDatos){ if(_ac2Chart){ _ac2Chart.destroy(); _ac2Chart=null; } return; }
-  var dias=['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'];
-  var colores=['#8BC34A','#1565C0','#ff9800','#e53935','#7B1FA2','#00897B','#795548','#607D8B'];
-  var ds=cubs.map(function(c,i){ return { label:c.nombre, data:(c.dias||[]).slice(0,7), backgroundColor:colores[i%colores.length], borderRadius:2 }; });
+  // Total por columna (día/semana/mes) → 2a línea de la etiqueta del eje X.
+  var totCol=labels.map(function(_,i){ return cubs.reduce(function(s,c){ return s+((c.valores||[])[i]||0); },0); });
+  var chartLabels=labels.map(function(lbl,i){ return totCol[i]>0 ? [lbl, _ac2FmtKg(totCol[i])+' kg'] : lbl; });
+  var ds=cubs.map(function(c,i){ return { label:c.nombre, data:(c.valores||[]).slice(0,n), backgroundColor:_AC2_GRAF_COLORES[i%_AC2_GRAF_COLORES.length], borderRadius:2 }; });
   if (_ac2Chart){ _ac2Chart.destroy(); _ac2Chart=null; }
   _ac2Chart=new window.Chart(cv.getContext('2d'), {
     type:'bar',
-    data:{ labels:dias, datasets:ds },
-    options:{ responsive:true, maintainAspectRatio:false,
+    data:{ labels:chartLabels, datasets:ds },
+    options:{ responsive:true, maintainAspectRatio:false, layout:{ padding:{ top:14 } },
       plugins:{ legend:{ position:'bottom', labels:{ font:{size:10}, padding:8, usePointStyle:true, pointStyle:'rect' } },
-                datalabels:{ display:false } },   // el plugin datalabels está global (Hub); aquí lo apagamos
-      scales:{ y:{ beginAtZero:true, ticks:{ font:{size:9} } }, x:{ ticks:{ font:{size:10} } } } }
+        // Valor corto (9,9k) encima de cada barra con valor (lógica del Hub).
+        datalabels:{ display:function(ctx){ return (ctx.chart.data.datasets[ctx.datasetIndex].data[ctx.dataIndex]||0)>0; },
+          anchor:'end', align:'end', offset:1, clamp:true, clip:false, color:'#37474f', font:{size:8, weight:'bold'},
+          formatter:function(v){ return _ac2FmtCorto(v); } } },
+      scales:{ y:{ beginAtZero:true, ticks:{ font:{size:9} } }, x:{ ticks:{ font:{size:9}, color:'#546e7a', autoSkip:(_ac2GrafPeriodo==='MD'), maxRotation:0 } } } },
+    plugins:[window.ChartDataLabels].filter(Boolean)
   });
 };
 // "← Volver a obras": regresa a la landing (etapa 0). Descarta lo no guardado y limpia la obra.
