@@ -841,13 +841,18 @@ window.ac2CargarGrafico=async function(){
   _ac2Chart=new window.Chart(cv.getContext('2d'), {
     type:'bar',
     data:{ labels:chartLabels, datasets:ds },
-    options:{ responsive:true, maintainAspectRatio:false, layout:{ padding:{ top:14 } },
-      plugins:{ legend:{ position:'bottom', labels:{ font:{size:10}, padding:8, usePointStyle:true, pointStyle:'rect' } },
-        // Valor corto (9,9k) encima de cada barra con valor (lógica del Hub).
-        datalabels:{ display:function(ctx){ return (ctx.chart.data.datasets[ctx.datasetIndex].data[ctx.dataIndex]||0)>0; },
-          anchor:'end', align:'end', offset:1, clamp:true, clip:false, color:'#37474f', font:{size:8, weight:'bold'},
-          formatter:function(v){ return _ac2FmtCorto(v); } } },
-      scales:{ y:{ beginAtZero:true, ticks:{ font:{size:9} } }, x:{ ticks:{ font:{size:9}, color:'#546e7a', autoSkip:(_ac2GrafPeriodo==='MD'), maxRotation:0 } } } },
+    // Tamaños de texto según período: normal (más grande, hay espacio) salvo en M·D (muchas barras →
+    // números y etiquetas más chicos para que quepan). El valor sobre la barra es el que más se nota.
+    options:(function(){ var md=(_ac2GrafPeriodo==='MD');
+      var szVal=md?8:11, szEjeX=md?8:11, szLeg=md?9:11;
+      return { responsive:true, maintainAspectRatio:false, layout:{ padding:{ top:16 } },
+        plugins:{ legend:{ position:'bottom', labels:{ font:{size:szLeg}, padding:8, usePointStyle:true, pointStyle:'rect' } },
+          // Valor corto (9,9k) encima de cada barra con valor (lógica del Hub).
+          datalabels:{ display:function(ctx){ return (ctx.chart.data.datasets[ctx.datasetIndex].data[ctx.dataIndex]||0)>0; },
+            anchor:'end', align:'end', offset:1, clamp:true, clip:false, color:'#37474f', font:{size:szVal, weight:'bold'},
+            formatter:function(v){ return _ac2FmtCorto(v); } } },
+        scales:{ y:{ beginAtZero:true, ticks:{ font:{size:10} } }, x:{ ticks:{ font:{size:szEjeX}, color:'#546e7a', autoSkip:md, maxRotation:0 } } } };
+    })(),
     plugins:[window.ChartDataLabels].filter(Boolean)
   });
 };
