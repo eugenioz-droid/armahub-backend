@@ -49,7 +49,9 @@
       </div>
       <!-- Crear lote: exige Obra + Ciclo + Eje; ac2ActualizarCabecera lo pinta VIVO al completarlos.
            Reemplaza al antiguo "＋ Crear Eje" (mismo lugar, junto a los campos de contexto). -->
-      <button id="ac2_crearLoteBtn" onclick="ac2CrearLote()" title="Completa Obra, Ciclo y Eje/Losa." style="font-size:13px; font-weight:600; height:34px; padding:0 16px; background:#eceff1; color:#90a4ae; border:none; border-radius:4px; cursor:not-allowed;">Crear despiece</button>
+      <button id="ac2_crearLoteBtn" onclick="ac2CrearLote()" title="Completa Obra, Ciclo y Eje/Losa." style="display:none; font-size:13px; font-weight:600; height:34px; padding:0 16px; background:#eceff1; color:#90a4ae; border:none; border-radius:4px; cursor:not-allowed;">Crear despiece</button>
+      <!-- Guía del flujo: el despiece se crea al elegir Sector+Estructura (abajo), no acá. -->
+      <span id="ac2_ctxHint" style="display:none; align-self:center; font-size:11px; color:#607d8b;">Completa Ciclo y Eje, luego elige Sector y Estructura ↓ (ahí se crea el despiece)</span>
       <!-- Corregir eje/ciclo: modo explícito de 2 pasos. Botón "Corregir" (paso 1) desbloquea y
            resalta ciclo/eje; luego "Aplicar" (paso 2) hace el PATCH. Solo en BORRADOR con barras. -->
       <button id="ac2_reasignarBtn" onclick="ac2CorregirContextoInicio()" title="Corregir el eje/ciclo de este despiece (aún en edición, sin bandera)" style="display:none; font-size:12px; height:34px; padding:0 14px; background:#fff; color:#1565c0; border:1px solid #1565c0; border-radius:4px; cursor:pointer;">✎ Corregir eje/ciclo</button>

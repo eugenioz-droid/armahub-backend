@@ -603,6 +603,12 @@ window.ac2SetEstructura=function(e){
   // Entrar por defecto a la PRIMERA tipología (no a TODOS) → los botones de crear ya quedan
   // habilitados y el flujo es directo. Si la estructura no tuviera tipologías, cae a TODOS.
   ac2SetTipo(AC2_TIPOS.length ? AC2_TIPOS[0] : 'TODOS');
+  // FLUJO POR ETAPAS: el lote se crea AHORA (al completar sector+estructura), NO al presionar "Crear
+  // despiece" con solo ciclo+eje. Así el despiece nunca aparece en el histórico sin su ubicación
+  // completa (ciclo+eje+sector). Solo si aún no hay lote y el contexto está completo.
+  if (!AC2.loteId && AC2.proyecto && AC2.ciclo && AC2.eje && AC2.sector && AC2.estructura){
+    ac2CrearLote();
+  }
 };
 
 // Genera los botones de subtab de tipología según AC2_TIPOS + TODOS.
@@ -710,7 +716,11 @@ function ac2AplicarEtapa(){
   var _lbl=document.getElementById('ac2_lblObra'); if(_lbl) _lbl.textContent = (e===0) ? 'Buscar obra' : 'Obra';
   show('ac2_fldCiclo', _ctxDesde2, 'flex');
   show('ac2_fldEje', _ctxDesde2, 'flex');
-  var _crear=document.getElementById('ac2_crearLoteBtn'); if(_crear && !_ctxDesde2) _crear.style.display='none';
+  // El botón "Crear despiece" de la fila de contexto YA NO se usa (el lote se crea al elegir
+  // sector+estructura). El flujo es: ciclo+eje → aparece Sector/Estructura → al elegir se crea. Oculto.
+  var _crear=document.getElementById('ac2_crearLoteBtn'); if(_crear) _crear.style.display='none';
+  // En etapa 2 (ciclo/eje aún incompletos o recién abriendo), un hint guía al usuario.
+  var _hint=document.getElementById('ac2_ctxHint'); if(_hint) _hint.style.display=(e===2||e===3)?'':'none';
   var _cfg=document.getElementById('ac2_cfgBtn'); if(_cfg) _cfg.style.display=_ctxDesde2?'':'none';
   // Sector/Estructura: etapas 3-4. Tipologías, toolbar, grilla, rollup: solo editor (4). Todos son
   // contenedores FLEX en su HTML original → se muestran con 'flex' (el grid es block normal).
@@ -897,10 +907,13 @@ window.ac2CargarGrafico=async function(){
 };
 // "← Volver a obras": regresa a la landing (etapa 0). Descarta lo no guardado y limpia la obra.
 window.ac2VolverObras=function(){
-  // Si hay algo a medio crear/editar sin guardar, avisar (reusa la lógica de descartar).
+  // Avisos al salir: (a) barras sin guardar se descartan; (b) un despiece creado SIN barras (en blanco)
+  // se BORRA de la BD al salir (los despieces sin barras no se conservan). El aviso lo deja claro.
   var pend = AC2.barras && AC2.barras.filter(function(b){return !b._guardada;}).length;
+  var loteVacio = AC2.loteId && !(AC2.barras && AC2.barras.some(function(b){return b._guardada;}));
   if (pend && !confirm('Tienes '+pend+' barra(s) sin guardar. Si vuelves a obras se descartarán.\n\n¿Continuar?')) return;
-  _ac2ResetTanda();              // limpia lote/barras/contexto (reusa lo existente)
+  if (!pend && loteVacio && !confirm('Este despiece no tiene barras guardadas.\n\nSi vuelves a obras, el registro se BORRARÁ (no se conservan despieces en blanco).\n\n¿Continuar?')) return;
+  _ac2ResetTanda();              // limpia lote/barras/contexto (reusa lo existente); borra el lote vacío
   AC2.creando=false;
   AC2.proyecto=null; AC2._nombreObra='';
   if (_ac2CbObra && _ac2CbObra.limpiar) _ac2CbObra.limpiar();
