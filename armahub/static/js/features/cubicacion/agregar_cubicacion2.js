@@ -662,19 +662,20 @@ function ac2ActualizarCabecera(){
   show('ac2_bandera', hayLote && !eliminado); show('ac2_guardarBtn', hayLote && !eliminado);
   show('ac2_descartarBtn', hayLote);   // la X (cerrar/volver) sigue disponible siempre
   show('ac2_eliminarBtn', hayLote && !eliminado);   // ya eliminado → no se puede re-eliminar
-  // Corregir ciclo/eje: solo en despiece BORRADOR que ya tiene barras guardadas (corregir un eje
-  // mal escrito). En terminado/eliminado no aplica (ya no se toca).
-  var borradorConBarras = hayLote && AC2.loteEstado==='borrador' && AC2.barras.some(function(b){return b._guardada;});
-  if (borradorConBarras && _ac2ModoCorregir){
-    // En plena corrección: ocultar "Corregir", mostrar Aplicar/Cancelar, mantener resalte.
+  // Editar ciclo/eje: en un despiece BORRADOR (con o sin barras) se puede corregir la ubicación. Con
+  // barras es más delicado (reasigna todas), pero también sin barras (recién creado). En
+  // terminado/eliminado no aplica.
+  var borradorEditable = hayLote && AC2.loteEstado==='borrador';
+  if (borradorEditable && _ac2ModoCorregir){
+    // En plena corrección: ocultar "Editar", mostrar Aplicar/Cancelar, mantener resalte.
     show('ac2_reasignarBtn', false); show('ac2_reasignarAplicarBtn', true); show('ac2_reasignarCancelarBtn', true);
     _ac2LockContexto(false);
   } else {
-    // Fuera de corrección: si es borrador con barras → candado en ciclo/eje + botón "Editar ciclo/eje".
+    // Fuera de corrección: borrador → candado en ciclo/eje + botón "Editar ciclo/eje".
     if (_ac2ModoCorregir){ _ac2ModoCorregir=false; _ac2HighlightContexto(false); var _h=document.getElementById('ac2_corregirHint'); if(_h) _h.style.display='none'; }
-    show('ac2_reasignarBtn', borradorConBarras); show('ac2_reasignarAplicarBtn', false); show('ac2_reasignarCancelarBtn', false);
+    show('ac2_reasignarBtn', borradorEditable); show('ac2_reasignarAplicarBtn', false); show('ac2_reasignarCancelarBtn', false);
     var _rb=document.getElementById('ac2_reasignarBtn'); if(_rb) _rb.textContent='✎ Editar ciclo/eje';
-    _ac2LockContexto(borradorConBarras);
+    _ac2LockContexto(borradorEditable);
   }
   // En terminado, guardar/terminar quedan inertes; Eliminar sigue vivo. En eliminado, todo inerte
   // salvo la X (para salir y crear otro lote).
@@ -1475,7 +1476,9 @@ window.ac2CrearLote=async function(){
   if (!AC2.eje)   faltan.push('Eje / Losa');
   if (faltan.length){ alert('Para crear el despiece completa: '+faltan.join(' y ')+'.'); return; }
   try{
-    var r=await _ac2Post('/lotes', { id_proyecto:AC2.proyecto });
+    // Estampar la ubicación en el lote → el histórico la muestra aunque el despiece aún no tenga barras.
+    var r=await _ac2Post('/lotes', { id_proyecto:AC2.proyecto, ciclo:AC2.ciclo||null, eje:AC2.eje||null,
+                                     sector:AC2.sector||null, estructura:AC2.estructura||null });
     if (!r.ok || !r.data || !r.data.lote_id){ alert('No se pudo crear el despiece'+(r.data&&r.data.detail?': '+(r.data.detail.msg||r.data.detail):'')+'.'); return; }
     AC2.loteId=r.data.lote_id; AC2.loteNum=r.data.num_obra||null; AC2.loteEstado='borrador';
     ac2PintarEstado(); ac2PintarSectorEstructura(); ac2ActualizarBotonesCrear();
@@ -1543,8 +1546,11 @@ window.ac2ReasignarContexto=async function(){
   _ac2LeerContexto();   // toma el ciclo/eje que el usuario tiene escrito ahora
   if (!AC2.ciclo || !AC2.eje){ alert('Ciclo y Eje no pueden quedar vacíos.'); return; }
   var hayGuardadas=AC2.barras.some(function(b){ return b._guardada; });
-  if (!hayGuardadas){ ac2CorregirContextoCancelar(); return; }   // sin barras guardadas, nada que reasignar
-  if (!confirm('Reasignar el despiece a Ciclo "'+AC2.ciclo+'" · Eje "'+AC2.eje+'".\nSe aplica a TODAS las barras guardadas del despiece.\n\n¿Continuar?')) return;
+  var msg = hayGuardadas
+    ? 'Reasignar el despiece a Ciclo "'+AC2.ciclo+'" · Eje "'+AC2.eje+'".\nSe aplica a TODAS las barras guardadas del despiece.\n\n¿Continuar?'
+    : 'Cambiar el Ciclo/Eje del despiece a Ciclo "'+AC2.ciclo+'" · Eje "'+AC2.eje+'".\n\n¿Continuar?';
+  if (!confirm(msg)) return;
+  // El PATCH /contexto actualiza el lote (ubicación en el histórico) y sus barras si las hay.
   var r=await _ac2Patch('/lotes/'+AC2.loteId+'/contexto', { ciclo:AC2.ciclo, eje:AC2.eje });
   if (!r.ok){ var d=r.data&&r.data.detail; alert('No se pudo reasignar'+(d?': '+(d.msg||d):'')+'.'); return; }
   // Actualizar las barras del front (ciclo/eje) para reflejar el cambio sin recargar.

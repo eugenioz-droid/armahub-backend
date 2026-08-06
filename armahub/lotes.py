@@ -83,6 +83,11 @@ def _factor_peso(cur, id_proyecto):
 # ---------------------------------------------------------------------------
 class LoteCreate(BaseModel):
     id_proyecto: str
+    # Ubicación del despiece (se estampa en el lote para el histórico, aunque aún no tenga barras).
+    ciclo: Optional[str] = None
+    eje: Optional[str] = None
+    sector: Optional[str] = None
+    estructura: Optional[str] = None
 
 
 class BarraManual(BaseModel):
@@ -146,12 +151,14 @@ def crear_lote(body: LoteCreate, user=Depends(get_current_user)):
                         (body.id_proyecto,))
             num_obra = int(cur.fetchone()[0])
             cur.execute(
-                """INSERT INTO lotes (id_proyecto, tipo, estado, creado_por, creado_fecha, n_barras, num_obra)
-                   VALUES (%s, 'manual', 'borrador', %s, %s, 0, %s) RETURNING id""",
-                (body.id_proyecto, email, _now_iso(), num_obra),
+                """INSERT INTO lotes (id_proyecto, tipo, estado, creado_por, creado_fecha, n_barras,
+                                      num_obra, ciclo, eje, sector, estructura)
+                   VALUES (%s, 'manual', 'borrador', %s, %s, 0, %s, %s, %s, %s, %s) RETURNING id""",
+                (body.id_proyecto, email, _now_iso(), num_obra,
+                 (body.ciclo or None), (body.eje or None), (body.sector or None), (body.estructura or None)),
             )
             lote_id = cur.fetchone()[0]
-    audit(email, "crear_lote", f"obra {body.id_proyecto}", "lote", str(lote_id))
+    audit(email, "crear_lote", f"obra {body.id_proyecto} · {body.sector}/{body.ciclo}/{body.eje}", "lote", str(lote_id))
     return {"ok": True, "lote_id": lote_id, "estado": "borrador", "num_obra": num_obra}
 
 
@@ -216,6 +223,8 @@ def reasignar_contexto(lote_id: int, body: LoteContexto, user=Depends(get_curren
                 "WHERE lote_id=%s AND origen='manual'",
                 (ciclo, eje, email, _now_iso(), lote_id))
             n = cur.rowcount
+            # Sincronizar la ubicación del LOTE (para el histórico, aunque no tenga barras).
+            cur.execute("UPDATE lotes SET ciclo=%s, eje=%s WHERE id=%s", (ciclo, eje, lote_id))
             try:
                 from .sector_estado import marcar_sector_modificado
                 for sec, pis, cic in sectores:
@@ -677,15 +686,16 @@ def listar_lotes(proyecto: str, user=Depends(get_current_user)):
                        CASE WHEN l.estado='eliminado' THEN COALESCE(l.snap_n_barras,0) ELSE COUNT(b.id_unico) END AS n_items,
                        CASE WHEN l.estado='eliminado' THEN 0 ELSE COALESCE(SUM(b.cant_total),0) END AS n_barras,
                        CASE WHEN l.estado='eliminado' THEN COALESCE(l.snap_kg,0)       ELSE COALESCE(SUM(b.peso_total),0) END AS kg,
-                       CASE WHEN l.estado='eliminado' THEN l.snap_sector ELSE MIN(b.sector) END AS sector,
-                       CASE WHEN l.estado='eliminado' THEN l.snap_ciclo  ELSE MIN(b.ciclo)  END AS ciclo,
-                       CASE WHEN l.estado='eliminado' THEN l.snap_eje    ELSE MIN(b.eje)    END AS eje,
+                       CASE WHEN l.estado='eliminado' THEN l.snap_sector ELSE COALESCE(l.sector, MIN(b.sector)) END AS sector,
+                       CASE WHEN l.estado='eliminado' THEN l.snap_ciclo  ELSE COALESCE(l.ciclo,  MIN(b.ciclo))  END AS ciclo,
+                       CASE WHEN l.estado='eliminado' THEN l.snap_eje    ELSE COALESCE(l.eje,    MIN(b.eje))    END AS eje,
                        l.num_obra, l.eliminado_por, l.eliminado_fecha, l.snap_barras
                 FROM lotes l
                 LEFT JOIN barras b ON b.lote_id = l.id
                 WHERE l.id_proyecto = %s
                 GROUP BY l.id, l.estado, l.creado_por, l.creado_fecha, l.terminado_fecha,
                          l.snap_n_barras, l.snap_kg, l.snap_sector, l.snap_ciclo, l.snap_eje,
+                         l.sector, l.ciclo, l.eje,
                          l.num_obra, l.eliminado_por, l.eliminado_fecha, l.snap_barras
                 ORDER BY l.num_obra DESC NULLS LAST, l.id DESC
                 """,
