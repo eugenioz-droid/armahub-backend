@@ -45,10 +45,13 @@ function _bmMiniFigura(codigo) {
   } catch (e) { return ''; }
 }
 
-// ── RENDER ESCALADO A LAS DIMS DE LA BARRA (columna "Dibujo", toggle Ver dibujo) ──
-// Estado del toggle. Por defecto DESACTIVADO: el dibujo escalado tiene costo y no
-// siempre se necesita (análogo a AC2.render del editor).
+// ── RENDER ESCALADO A LAS DIMS DE LA BARRA (columna "Render", toggle Render + S/M/L/XL) ──
+// Réplica del control del editor Agregar Despiece: un toggle "Render" y tamaños S/M/L/XL. Por defecto
+// DESACTIVADO (el dibujo escalado tiene costo). Análogo a AC2.render / AC2.tam / ac2SetTam del editor.
 let bmVerRender = false;
+let bmTam = 'm';   // tamaño del render: s/m/l/xl (igual que AC2.tam)
+// Tamaños del dibujo por lado (mismos valores que AC2_TAM del editor).
+const BM_TAM = { s:{w:70,h:52}, m:{w:110,h:80}, l:{w:160,h:118}, xl:{w:220,h:160} };
 
 // Piso visual por lado (ningún lado se dibuja menor a este % del mayor). Mismo valor
 // que AC2_MIN_LADO_REL del editor: evita que un lado chico se pierda cuando otro es enorme.
@@ -109,13 +112,14 @@ function _bmFiguraSvg(b) {
     });
   }
   try {
+    var t = BM_TAM[bmTam] || BM_TAM.m;   // tamaño elegido (S/M/L/XL)
     return '<span style="display:inline-block; vertical-align:middle;">' +
-      window.disenadorMotor.dibujarFigura(geoUse, dims, { width: 90, height: 72, pad: 20 }) +
+      window.disenadorMotor.dibujarFigura(geoUse, dims, { width: t.w, height: t.h, pad: 20 }) +
       '</span>';
   } catch (e) { return ''; }
 }
 
-// Celda "Dibujo" para una barra (o '' si el toggle está apagado). Se inserta en el
+// Celda "Render" para una barra (o '' si el toggle está apagado). Se inserta en el
 // header y en cada fila SIEMPRE juntos, para no descuadrar columnas.
 function _bmCeldaDibujo(b) {
   if (!bmVerRender) return '';
@@ -124,12 +128,24 @@ function _bmCeldaDibujo(b) {
   return '<td style="padding:2px 6px; text-align:center;">' + cont + '</td>';
 }
 
-// Toggle del botón "Ver dibujo": guarda el estado y re-renderiza la vista actual
-// desde memoria (sin re-fetch). Análogo a ac2ToggleMult/ac2Render del editor.
+// Toggle "Render": guarda el estado, muestra/oculta los botones S/M/L/XL y re-renderiza la vista
+// actual desde memoria (sin re-fetch). Análogo a ac2Render del editor.
 function bmToggleRender(on) {
   bmVerRender = !!on;
+  var tams = document.getElementById('bmRenderTams');
+  if (tams) tams.style.display = bmVerRender ? '' : 'none';
   if (typeof bmReRenderVistaActual === 'function') bmReRenderVistaActual();
 }
+// Tamaño del render (S/M/L/XL). Pinta el botón activo (verde) y re-renderiza. Igual que ac2SetTam.
+function bmSetTam(t) {
+  bmTam = t;
+  ['s','m','l','xl'].forEach(function(x) {
+    var b = document.getElementById('bmr_' + x); if (!b) return;
+    var on = (t === x); b.style.background = on ? '#8BC34A' : '#fff'; b.style.color = on ? '#fff' : '#607d8b';
+  });
+  if (bmVerRender && typeof bmReRenderVistaActual === 'function') bmReRenderVistaActual();
+}
+window.bmSetTam = bmSetTam;
 window.bmToggleRender = bmToggleRender;
 
 const SECTOR_LABEL = {
@@ -456,9 +472,9 @@ function _renderPlano() {
     '<th style="text-align:right; padding:3px 6px;">Largo</th>' +
     '<th style="text-align:right; padding:3px 6px;">Peso Tot</th>' +
     '<th style="text-align:left; padding:3px 6px;">Figura</th>' +
-    // Columna "Dibujo" solo con el toggle activo. El <td> correspondiente lo agrega
+    // Columna "Render" solo con el toggle activo. El <td> correspondiente lo agrega
     // _bmFilaBarraHTML con el mismo flag, para no descuadrar header vs filas.
-    (bmVerRender ? '<th style="text-align:center; padding:3px 6px;">Dibujo</th>' : '') +
+    (bmVerRender ? '<th style="text-align:center; padding:3px 6px;">Render</th>' : '') +
     ['A','B','C','D','E','F','G','H','I'].map(L => '<th style="text-align:right; padding:3px 6px;">' + L + '</th>').join('') +
     ['α1','α2','α3','α4'].map(L => '<th style="text-align:right; padding:3px 6px;">' + L + '</th>').join('') +
     '<th style="text-align:right; padding:3px 6px;">R</th>' +
@@ -626,13 +642,10 @@ function _bmFilaBarraHTML(b, editando, conUbicacion) {
   }
   function _celdaFigura() {
     if (!editando) {
-      // 5M.8.3: código primero, luego el render CENTRADO (con etiquetas de lado).
-      // Degrada a solo texto si la figura no tiene geometría.
-      var mini = (typeof _bmMiniFigura === 'function') ? _bmMiniFigura(b.figura) : '';
-      var cont = mini
-        ? '<span style="font-weight:600;">' + (b.figura || '—') + '</span>' +
-          '<span style="display:inline-block; vertical-align:middle; margin-left:10px;">' + mini + '</span>'
-        : (b.figura || '—');
+      // La columna Figura muestra SOLO el código (como en el editor). El DIBUJO de la figura vive en
+      // la columna "Render" aparte, controlada por el toggle Render + S/M/L/XL — así no hay dos dibujos
+      // duplicados (antes esta celda tenía un mini-render fijo, redundante con la columna Render).
+      var cont = (b.figura || '—');
       return '<td style="padding:2px 6px; color:#666; white-space:nowrap;">' + cont + '</td>';
     }
     var efF = (typeof bmValorEfectivoCelda === 'function') ? bmValorEfectivoCelda(b.id, 'figura', b.figura) : { valor: b.figura, tocado: false };
@@ -693,7 +706,7 @@ function _bmFilaBarraHTML(b, editando, conUbicacion) {
     html += '<td style="padding:2px 6px;">' + _origenBadge(b.origen) + '</td>' +
       '<td style="padding:2px 6px; color:#666;">' + (b.plano_code || '—') + '</td>';
   }
-  // Celda "Dibujo" tras Figura (solo con el toggle activo). _bmCeldaDibujo devuelve ''
+  // Celda "Render" tras Figura (solo con el toggle activo). _bmCeldaDibujo devuelve ''
   // cuando está apagado, así el <td> aparece SIEMPRE junto a su <th> (no descuadra).
   html += _celdaFigura() + _bmCeldaDibujo(b) + dims + angs + _celdaEdit('radio', b.radio, 1);
   // Acción ELIMINAR por fila: solo en modo edición. Borra la barra (con registro histórico).
@@ -763,8 +776,8 @@ function _renderDetail(cont, elem, barras) {
       '<th style="text-align:left; padding:2px 6px;">Origen</th>' +
       '<th style="text-align:left; padding:2px 6px;">Plano</th>' +
       '<th style="text-align:left; padding:2px 6px;">Figura</th>' +
-      // Columna "Dibujo" solo con el toggle activo (mismo flag que el <td> en _bmFilaBarraHTML).
-      (bmVerRender ? '<th style="text-align:center; padding:2px 6px;">Dibujo</th>' : '') +
+      // Columna "Render" solo con el toggle activo (mismo flag que el <td> en _bmFilaBarraHTML).
+      (bmVerRender ? '<th style="text-align:center; padding:2px 6px;">Render</th>' : '') +
       dimLabels.map(L => '<th style="text-align:right; padding:2px 6px;">' + L + '</th>').join('') +
       angLabels.map(L => '<th style="text-align:right; padding:2px 6px;">' + L + '</th>').join('') +
       '<th style="text-align:right; padding:2px 6px;">R</th>' +

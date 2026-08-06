@@ -137,12 +137,6 @@
         <button class="secondary" onclick="expandAll()" style="font-size:11px; padding:3px 10px;">▾ Expandir todo</button>
         <button class="secondary" onclick="collapseAll()" style="font-size:11px; padding:3px 10px;">▸ Colapsar todo</button>
         <button class="secondary" id="btnCobertura" onclick="toggleCobertura()" style="font-size:11px; padding:3px 10px;">📊 Mostrar cobertura</button>
-        <!-- Toggle "Ver dibujo": agrega una columna "Dibujo" con la figura escalada a las
-             medidas reales de cada barra (misma lógica que el render del editor Agregar
-             Despiece). Apagado por defecto (no cargar dibujos siempre). -->
-        <label style="font-size:11px; color:#555; cursor:pointer; display:inline-flex; align-items:center; gap:4px; padding:3px 8px; border:1px solid #ddd; border-radius:4px;" title="Mostrar la figura de cada barra dibujada a escala (A, B, C…, ángulos)">
-          <input type="checkbox" id="bmVerRender" onchange="bmToggleRender(this.checked)" style="margin:0;" /> 🖉 Ver dibujo
-        </label>
         <!-- 5M.3: candado de edición. Cerrado = solo lectura; abrir habilita editar barras.
              Color propio (ámbar) para que resalte entre los botones grises. -->
         <button id="btnEdicionBarras" onclick="toggleModoEdicion()" style="font-size:11px; padding:3px 12px; background:#fff3e0; border:1px solid #ffb74d; border-radius:4px; cursor:pointer; color:#e65100; font-weight:600;">🔒 Edición bloqueada</button>
@@ -153,7 +147,21 @@
              aparecen los checkboxes; editar una celda marcada replica a todas. -->
         <button id="btnModMasiva" onclick="bmToggleModoMasivo()" style="display:none; font-size:11px; padding:3px 12px; background:#fff; color:#1565c0; border:1px solid #1565c0; border-radius:4px; cursor:pointer; font-weight:600;">🔁 Modificación masiva</button>
         <span id="edicionStatus" class="muted" style="font-size:11px;"></span>
-        <span class="muted" id="count" style="margin-left:auto; font-size:11px;"></span>
+        <!-- Control RENDER (idéntico al editor Agregar Despiece): toggle + tamaños S/M/L/XL. Dibuja la
+             figura de cada barra a ESCALA con sus medidas reales, en la columna "Render". Empujado a la
+             derecha (margin-left:auto) como control visual separado. Apagado por defecto. -->
+        <div style="margin-left:auto; display:inline-flex; align-items:center; gap:8px;">
+          <label style="font-size:11px; color:#666; cursor:pointer; display:inline-flex; align-items:center; gap:4px;" title="Dibujar la figura de cada barra a escala (A, B, C…, ángulos)">
+            <input type="checkbox" id="bmVerRender" onchange="bmToggleRender(this.checked)" style="margin:0;" /> Render
+          </label>
+          <div id="bmRenderTams" style="display:none; border:1px solid #cfd8dc; border-radius:4px; overflow:hidden;">
+            <button id="bmr_s"  onclick="bmSetTam('s')"  style="font-size:10px; padding:3px 8px; border:none; background:#fff; color:#607d8b; cursor:pointer;">S</button>
+            <button id="bmr_m"  onclick="bmSetTam('m')"  style="font-size:11px; padding:3px 8px; border:none; background:#8BC34A; color:#fff; cursor:pointer;">M</button>
+            <button id="bmr_l"  onclick="bmSetTam('l')"  style="font-size:12px; padding:3px 8px; border:none; background:#fff; color:#607d8b; cursor:pointer;">L</button>
+            <button id="bmr_xl" onclick="bmSetTam('xl')" style="font-size:13px; padding:3px 8px; border:none; background:#fff; color:#607d8b; cursor:pointer;">XL</button>
+          </div>
+        </div>
+        <span class="muted" id="count" style="font-size:11px;"></span>
       </div>
 
       <!-- 5M.11: barra de modificación masiva (vista plana). Aparece con el modo
