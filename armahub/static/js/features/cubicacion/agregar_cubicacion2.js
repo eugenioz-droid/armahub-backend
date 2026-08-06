@@ -22,6 +22,7 @@ var AC2 = {
   loteNum:null,    // correlativo del lote DENTRO de la obra (lo que ve el usuario: #1, #2…)
   loteEstado:'',   // '' | 'borrador' | 'terminada'
   creando:false,   // flujo por etapas: true tras "Crear despiece" (etapa 2) hasta crear el lote o volver
+  ctxFijado:false, // ciclo+eje confirmados con "Fijar" → habilita elegir Sector/Estructura (etapa 3)
   // 5N.20 sub-paso 1: la "tipología" (subtab MH/MV/TR/EC/TC/CB) ES el campo `marca` de la
   // barra (decisión de producto CERRADA). AC2.tipo = valor de `marca` que se asignará a las
   // barras nuevas. NO es un campo nuevo; el guardado (sub-paso siguiente) estampará marca=tipo.
@@ -551,7 +552,11 @@ function ac2CtxText(){
 // Sector/Estructura NO se pueden tocar hasta CREAR el lote (antes se podían elegir sueltos, sin
 // contexto). Y quedan bloqueados si ya hay barras o el lote está terminado (no se puede cambiar
 // el sector de un lote con barras → rompería el modelo).
-function ac2Bloqueado(){ return !AC2.loteId || AC2.barras.length>0 || AC2.loteEstado==='terminada'; }
+// Sector/Estructura se BLOQUEAN cuando el despiece ya tiene barras (para no cambiar su ubicación con
+// data dentro) o está terminado/eliminado. En el FLUJO NUEVO se pueden elegir ANTES de que exista el
+// lote (etapa 3: ciclo+eje listos, sin lote) → justamente al elegirlos se crea el lote. Por eso ya no
+// se bloquea por "no hay lote"; solo por barras presentes o estado cerrado.
+function ac2Bloqueado(){ return (AC2.barras.length>0) || AC2.loteEstado==='terminada' || AC2.loteEstado==='eliminado'; }
 // Solo-lectura DURA: un lote eliminado es histórico congelado; no se edita nada de su grilla.
 function ac2SoloLectura(){ return AC2.loteEstado==='eliminado'; }
 // Reconcilia el TEXTO visible de los comboboxes de ciclo/eje hacia el estado. Necesario porque el
@@ -665,9 +670,10 @@ function ac2ActualizarCabecera(){
     show('ac2_reasignarBtn', false); show('ac2_reasignarAplicarBtn', true); show('ac2_reasignarCancelarBtn', true);
     _ac2LockContexto(false);
   } else {
-    // Fuera de corrección: si es borrador con barras → candado en ciclo/eje + botón "Corregir".
+    // Fuera de corrección: si es borrador con barras → candado en ciclo/eje + botón "Editar ciclo/eje".
     if (_ac2ModoCorregir){ _ac2ModoCorregir=false; _ac2HighlightContexto(false); var _h=document.getElementById('ac2_corregirHint'); if(_h) _h.style.display='none'; }
     show('ac2_reasignarBtn', borradorConBarras); show('ac2_reasignarAplicarBtn', false); show('ac2_reasignarCancelarBtn', false);
+    var _rb=document.getElementById('ac2_reasignarBtn'); if(_rb) _rb.textContent='✎ Editar ciclo/eje';
     _ac2LockContexto(borradorConBarras);
   }
   // En terminado, guardar/terminar quedan inertes; Eliminar sigue vivo. En eliminado, todo inerte
@@ -691,8 +697,10 @@ function ac2Etapa(){
   if (!AC2.proyecto) return 0;
   if (AC2.loteId) return 4;
   if (!AC2.creando) return 1;
+  // Etapa 3 (elegir Sector/Estructura) recién cuando ciclo+eje están listos Y FIJADOS (botón Fijar).
+  // Así el usuario confirma las coordenadas antes de que aparezca el sector; hasta entonces, etapa 2.
   var ctxListo = (AC2.ciclo && String(AC2.ciclo).trim() && AC2.eje && String(AC2.eje).trim());
-  return ctxListo ? 3 : 2;
+  return (ctxListo && AC2.ctxFijado) ? 3 : 2;
 }
 function ac2AplicarEtapa(){
   var e = ac2Etapa();
@@ -717,10 +725,15 @@ function ac2AplicarEtapa(){
   show('ac2_fldCiclo', _ctxDesde2, 'flex');
   show('ac2_fldEje', _ctxDesde2, 'flex');
   // El botón "Crear despiece" de la fila de contexto YA NO se usa (el lote se crea al elegir
-  // sector+estructura). El flujo es: ciclo+eje → aparece Sector/Estructura → al elegir se crea. Oculto.
+  // sector+estructura). Oculto siempre.
   var _crear=document.getElementById('ac2_crearLoteBtn'); if(_crear) _crear.style.display='none';
-  // En etapa 2 (ciclo/eje aún incompletos o recién abriendo), un hint guía al usuario.
-  var _hint=document.getElementById('ac2_ctxHint'); if(_hint) _hint.style.display=(e===2||e===3)?'':'none';
+  // Flujo de creación (sin lote): en etapa 2, si ciclo+eje están listos → botón "✓ Fijar" (confirma y
+  // habilita elegir sector); si falta ciclo/eje → hint. Al fijar → etapa 3 (sector visible), sin botón.
+  var _ctxListo = (AC2.ciclo && String(AC2.ciclo).trim() && AC2.eje && String(AC2.eje).trim());
+  var _fijar=document.getElementById('ac2_fijarBtn');
+  var _hint=document.getElementById('ac2_ctxHint');
+  if (_fijar) _fijar.style.display = (e===2 && _ctxListo) ? '' : 'none';
+  if (_hint)  _hint.style.display  = (e===2 && !_ctxListo) ? '' : 'none';
   var _cfg=document.getElementById('ac2_cfgBtn'); if(_cfg) _cfg.style.display=_ctxDesde2?'':'none';
   // Sector/Estructura: etapas 3-4. Tipologías, toolbar, grilla, rollup: solo editor (4). Todos son
   // contenedores FLEX en su HTML original → se muestran con 'flex' (el grid es block normal).
@@ -735,8 +748,18 @@ function ac2AplicarEtapa(){
   var tit = document.getElementById('ac2_tituloObra');
   if (tit) tit.textContent = (e>=1 && AC2._nombreObra) ? ('📋 ' + AC2._nombreObra) : '📋 Despiece de Cubicación';
 }
-// "Crear despiece" (etapa 1 → 2): abre el flujo de creación (aparecen Ciclo/Eje).
-window.ac2IniciarCreacion=function(){ AC2.creando=true; ac2ActualizarCabecera(); };
+// "Crear despiece" (etapa 1 → 2): abre el flujo de creación (aparecen Ciclo/Eje). Parte NO fijado.
+window.ac2IniciarCreacion=function(){ AC2.creando=true; AC2.ctxFijado=false; ac2ActualizarCabecera(); };
+// "✓ Fijar ciclo/eje" (etapa 2 → 3): confirma ciclo+eje, los bloquea y habilita elegir Sector/Estructura.
+window.ac2FijarContexto=function(){
+  _ac2LeerContexto();   // vuelca el texto visible de ciclo/eje al estado
+  if (!AC2.ciclo || !String(AC2.ciclo).trim() || !AC2.eje || !String(AC2.eje).trim()){
+    alert('Completa Ciclo y Eje/Losa antes de fijar.'); return;
+  }
+  AC2.ctxFijado=true;
+  _ac2LockContexto(true);        // bloquea ciclo/eje (candado); "Editar" los desbloquea después
+  ac2ActualizarCabecera();
+};
 // Landing: TODAS las obras que tienen despieces (para retomar/ver). Para crear en una obra SIN
 // despieces se usa el buscador de arriba (encuentra cualquier obra). Al click en una fila → etapa 1.
 window.ac2CargarLandingObras=async function(){
@@ -1698,7 +1721,7 @@ function _ac2ResetTanda(){
   _ac2DescartarLoteVacioSiCorresponde();   // borra el lote vacío antes de soltarlo
   AC2.loteId=null; AC2.loteNum=null; AC2.loteEstado=''; AC2.barras=[]; AC2.sector=''; AC2.estructura=''; AC2.tipo='TODOS';
   AC2.ciclo=''; AC2.eje='';
-  AC2.creando=false;   // flujo por etapas: tras descartar/cerrar un despiece, volver a etapa 1 (obra sin lote)
+  AC2.creando=false; AC2.ctxFijado=false;   // flujo por etapas: tras descartar/cerrar, volver a etapa 1 (obra sin lote)
   ac2LimpiarSeleccion();
   if (_ac2CbCiclo) _ac2CbCiclo.limpiar();
   if (_ac2CbEje)   _ac2CbEje.limpiar();

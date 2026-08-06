@@ -918,7 +918,8 @@ def get_cubicado(periodo: str = "S", anio: Optional[int] = None, anios: Optional
                 SELECT b.creado_por, COALESCE(u.nombre,''), COALESCE(u.apellido,''),
                        (""" + bucket + """) AS bkt, COALESCE(SUM(b.peso_total),0)
                 FROM barras b JOIN users u ON u.email = b.creado_por
-                WHERE b.creado_por IS NOT NULL"""
+                WHERE b.creado_por IS NOT NULL
+                  AND b.origen = 'manual'"""
                 + fecha_sql + obra_sql + _sql_excluir_borrador("b") + """
                 GROUP BY b.creado_por, u.nombre, u.apellido, bkt
             """, params)
