@@ -778,7 +778,7 @@ window.ac2ElegirObraLanding=function(idProyecto, nombre){
 // barra, total del período bajo el eje X, totales por cubicador). ──
 var _ac2Chart=null;
 var _ac2GrafPeriodo='S';   // S | MS | MD | A
-var _ac2GrafAnio=null;     // año seleccionado (null = actual)
+var _ac2GrafAnios=[String(new Date().getFullYear())];   // años marcados (checkboxes). Default: año actual.
 var _AC2_GRAF_COLORES=['#8BC34A','#1565C0','#ff9800','#e53935','#7B1FA2','#00897B','#795548','#607D8B','#F44336','#009688'];
 function _ac2FmtKg(v){ return Number(v||0).toLocaleString('es-CL', {maximumFractionDigits:1}); }
 function _ac2FmtCorto(v){
@@ -787,16 +787,37 @@ function _ac2FmtCorto(v){
   if (v>=1000) return (v/1000).toLocaleString('es-CL',{maximumFractionDigits:1})+'k';
   return v.toLocaleString('es-CL',{maximumFractionDigits:0});
 }
-window.ac2GraficoPeriodo=function(p){ _ac2GrafPeriodo=p;
-  ['S','MS','MD','A'].forEach(function(x){ var b=document.getElementById('ac2g_'+x); if(b){var on=(x===p); b.style.background=on?'#8BC34A':'#fff'; b.style.color=on?'#fff':'#607d8b';} });
+window.ac2GraficoPeriodo=function(p){
+  // Con varios años marcados solo vale 'A' (los otros períodos no cuadran por fecha) → se ignora.
+  if (_ac2GrafAnios.length>1 && p!=='A') return;
+  _ac2GrafPeriodo=p;
+  _ac2PintarBotonesPeriodo();
   ac2CargarGrafico();
 };
-window.ac2GraficoAnio=function(a){ _ac2GrafAnio=a||null; ac2CargarGrafico(); };
+function _ac2PintarBotonesPeriodo(){
+  var multi=_ac2GrafAnios.length>1;
+  ['S','MS','MD','A'].forEach(function(x){ var b=document.getElementById('ac2g_'+x); if(!b) return;
+    var on=(x===_ac2GrafPeriodo);
+    b.style.background=on?'#8BC34A':'#fff'; b.style.color=on?'#fff':'#607d8b';
+    // En multi-año, S/M·S/M·D quedan deshabilitados (solo A).
+    var dis=(multi && x!=='A');
+    b.disabled=dis; b.style.opacity=dis?'0.4':'1'; b.style.cursor=dis?'not-allowed':'pointer';
+  });
+}
+// Toggle de un año (checkbox). Al marcar varios → fuerza período A. Al quedar 1, reactiva los períodos.
+window.ac2GraficoToggleAnio=function(y, on){
+  y=String(y);
+  if (on){ if(_ac2GrafAnios.indexOf(y)<0) _ac2GrafAnios.push(y); }
+  else { _ac2GrafAnios=_ac2GrafAnios.filter(function(a){return a!==y;}); }
+  if (!_ac2GrafAnios.length){ _ac2GrafAnios=[String(new Date().getFullYear())]; }   // nunca vacío
+  if (_ac2GrafAnios.length>1) _ac2GrafPeriodo='A';   // varios años → solo por mes
+  _ac2PintarBotonesPeriodo();
+  ac2CargarGrafico();
+};
 window.ac2CargarGrafico=async function(){
   var cv=document.getElementById('ac2_graficoCanvas'); if(!cv || !window.Chart) return;
   var tit=document.getElementById('ac2_graficoTitulo');
-  var qs='periodo='+_ac2GrafPeriodo;
-  if (_ac2GrafAnio) qs+='&anio='+encodeURIComponent(_ac2GrafAnio);
+  var qs='periodo='+_ac2GrafPeriodo+'&anios='+encodeURIComponent(_ac2GrafAnios.join(','));
   if (AC2.proyecto) qs+='&proyecto='+encodeURIComponent(AC2.proyecto);
   var d; try { d=await _ac2Get('/stats/cubicado?'+qs); } catch(e){ d=null; }
   var cubs=(d&&d.cubicadores)||[]; var labels=(d&&d.labels)||[]; var n=labels.length;
@@ -814,17 +835,21 @@ window.ac2CargarGrafico=async function(){
   }
   var _cont=document.getElementById('ac2_grafico');
   if (_cont){ _cont.style.borderColor = enObra ? '#a5d6a7' : '#e0e0e0'; _cont.style.borderWidth = enObra ? '2px' : '1px'; }
-  // Selector de año: SIEMPRE visible, con el año en curso (o el seleccionado) marcado por defecto.
-  // Se asegura de incluir el año en curso aunque aún no tenga data (para poder elegirlo).
-  var selA=document.getElementById('ac2g_anio');
-  if (selA){
+  // Checkboxes de año: SIEMPRE visibles. Se pueblan con los años con data + el año en curso (aunque no
+  // tenga data). Marca los que estén en _ac2GrafAnios. Marcar >1 fuerza período A (los otros períodos
+  // se deshabilitan en _ac2PintarBotonesPeriodo).
+  var wrapA=document.getElementById('ac2g_anios');
+  if (wrapA){
     var anios=(d&&d.anios&&d.anios.slice())||[];
-    var actual=(d&&d.anio)||new Date().getFullYear();
+    var actual=new Date().getFullYear();
     if (anios.indexOf(actual)===-1) anios.push(actual);
     anios.sort(function(a,b){ return b-a; });   // más reciente arriba
-    var cur=_ac2GrafAnio || actual;
-    selA.innerHTML=anios.map(function(y){ return '<option value="'+y+'"'+((''+y===''+cur)?' selected':'')+'>'+y+'</option>'; }).join('');
-    selA.style.display='';
+    wrapA.innerHTML=anios.map(function(y){
+      var mk=(_ac2GrafAnios.indexOf(String(y))>=0);
+      return '<label style="font-size:11px; color:#607d8b; cursor:pointer; display:inline-flex; align-items:center; gap:3px;">'+
+        '<input type="checkbox"'+(mk?' checked':'')+' onchange="ac2GraficoToggleAnio('+y+',this.checked)" style="margin:0;"/> '+y+'</label>';
+    }).join('');
+    _ac2PintarBotonesPeriodo();
   }
   // Sin datos: mensaje en vez de canvas vacío.
   var vacioMsg=document.getElementById('ac2_graficoVacio');

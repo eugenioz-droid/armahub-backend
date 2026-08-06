@@ -842,42 +842,59 @@ def get_stats_timeline(
 
 
 @router.get("/stats/cubicado")
-def get_cubicado(periodo: str = "S", anio: Optional[int] = None, proyecto: Optional[str] = None,
-                 user=Depends(get_current_user)):
+def get_cubicado(periodo: str = "S", anio: Optional[int] = None, anios: Optional[str] = None,
+                 proyecto: Optional[str] = None, user=Depends(get_current_user)):
     """Kilos LISTOS (excluye borrador) por cubicador, agregados según `periodo` — para el gráfico del
-    editor. Períodos: S=semana actual por día (Lun-Dom); MS=mes actual por semana (S1-S5); MD=mes
-    actual por día (1-N); A=año por mes (Ene-Dic). `anio` filtra el año (default: el actual). `proyecto`
-    filtra la obra (sin él = todas). Respuesta GENÉRICA: {labels, cubicadores:[{nombre, valores:[...]}],
-    anios:[...]} — el front no distingue el período. `anios` = años que tienen data (para el selector)."""
+    editor. Períodos: S=semana actual por día; MS=mes actual por semana; MD=mes actual por día; A=año
+    por mes (Ene-Dic). `anios` = CSV de años a totalizar (ej. '2026,2025'). Con 1 año, todos los
+    períodos valen; con VARIOS años se FUERZA A (por mes) y se suman los años (los otros períodos no
+    cuadran por fecha). `anio` (singular) sigue soportado por compat. `proyecto` filtra la obra.
+    Respuesta: {labels, cubicadores:[{nombre,valores}], anios(con data), forzadoA(bool)}."""
     import calendar as _cal
     from datetime import date
     now = datetime.now(timezone.utc)
-    yr = int(anio) if anio else now.year
+    # Años seleccionados: de `anios` (CSV) o `anio` (single) o el actual.
+    yrs = []
+    if anios:
+        for tok in str(anios).split(","):
+            tok = tok.strip()
+            if tok.isdigit():
+                yrs.append(int(tok))
+    elif anio:
+        yrs = [int(anio)]
+    if not yrs:
+        yrs = [now.year]
+    yrs = sorted(set(yrs))
+    multi = len(yrs) > 1
     per = (periodo or "S").upper()
+    if multi:
+        per = "A"   # varios años → solo tiene sentido "por mes" (suma de los años)
 
-    # Rango de fechas y expresión de "bucket" (a qué columna va cada barra) según el período.
-    if per == "S":  # semana actual por día (ignora `anio`; siempre la semana en curso)
+    # Rango(s) de fechas y bucket según el período. En multi-año, el rango es la unión de años.
+    rangos = []  # lista de (ini, fin)
+    if per == "S":  # semana actual por día (ignora año)
         from datetime import timedelta
         d0 = (now - timedelta(days=now.weekday()))
-        ini, fin = d0.strftime("%Y-%m-%d"), (d0 + timedelta(days=6)).strftime("%Y-%m-%d")
+        rangos = [(d0.strftime("%Y-%m-%d"), (d0 + timedelta(days=6)).strftime("%Y-%m-%d"))]
         n = 7
         labels = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"]
         bucket = "EXTRACT(ISODOW FROM b.fecha_carga::timestamp)::INTEGER - 1"
-    elif per == "A":  # año por mes
-        ini, fin = date(yr, 1, 1).strftime("%Y-%m-%d"), date(yr, 12, 31).strftime("%Y-%m-%d")
+    elif per == "A":  # año por mes — un rango por cada año marcado (se suman)
+        for y in yrs:
+            rangos.append((date(y, 1, 1).strftime("%Y-%m-%d"), date(y, 12, 31).strftime("%Y-%m-%d")))
         n = 12
         labels = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"]
         bucket = "EXTRACT(MONTH FROM b.fecha_carga::timestamp)::INTEGER - 1"
-    else:  # mes actual (del año `yr`): MS por semana, MD por día
-        mes = now.month if yr == now.year else 12   # si es un año pasado, mostramos su último mes con criterio simple
-        ini = date(yr, mes, 1).strftime("%Y-%m-%d")
+    else:  # mes actual del (único) año seleccionado: MS por semana, MD por día
+        yr = yrs[0]
+        mes = now.month if yr == now.year else 12
         ult = _cal.monthrange(yr, mes)[1]
-        fin = date(yr, mes, ult).strftime("%Y-%m-%d")
-        if per == "MD":  # por día del mes
+        rangos = [(date(yr, mes, 1).strftime("%Y-%m-%d"), date(yr, mes, ult).strftime("%Y-%m-%d"))]
+        if per == "MD":
             n = ult
             labels = [str(i + 1) for i in range(ult)]
             bucket = "EXTRACT(DAY FROM b.fecha_carga::timestamp)::INTEGER - 1"
-        else:  # MS: por semana del mes (cortes fijos 1-7, 8-14, 15-21, 22-28, 29-fin)
+        else:
             n = min(5, (ult - 1) // 7 + 1)
             labels = []
             for s in range(n):
@@ -886,7 +903,12 @@ def get_cubicado(periodo: str = "S", anio: Optional[int] = None, proyecto: Optio
                 labels.append("{}-{}".format(a, b_))
             bucket = "LEAST(4, (EXTRACT(DAY FROM b.fecha_carga::timestamp)::INTEGER - 1) / 7)"
 
-    obra_sql, params = "", [ini, fin]
+    # WHERE de fechas: unión de rangos (OR). En multi-año son varios; normalmente uno.
+    fecha_sql = " AND (" + " OR ".join(["(LEFT(b.fecha_carga,10) >= %s AND LEFT(b.fecha_carga,10) <= %s)"] * len(rangos)) + ")"
+    params = []
+    for (i0, i1) in rangos:
+        params.extend([i0, i1])
+    obra_sql = ""
     if proyecto:
         obra_sql = " AND b.id_proyecto = %s"
         params.append(proyecto)
@@ -896,9 +918,8 @@ def get_cubicado(periodo: str = "S", anio: Optional[int] = None, proyecto: Optio
                 SELECT b.creado_por, COALESCE(u.nombre,''), COALESCE(u.apellido,''),
                        (""" + bucket + """) AS bkt, COALESCE(SUM(b.peso_total),0)
                 FROM barras b JOIN users u ON u.email = b.creado_por
-                WHERE b.creado_por IS NOT NULL
-                  AND LEFT(b.fecha_carga,10) >= %s AND LEFT(b.fecha_carga,10) <= %s"""
-                + obra_sql + _sql_excluir_borrador("b") + """
+                WHERE b.creado_por IS NOT NULL"""
+                + fecha_sql + obra_sql + _sql_excluir_borrador("b") + """
                 GROUP BY b.creado_por, u.nombre, u.apellido, bkt
             """, params)
             cub = {}
@@ -917,9 +938,9 @@ def get_cubicado(periodo: str = "S", anio: Optional[int] = None, proyecto: Optio
                 + _sql_excluir_borrador() + """
                 ORDER BY 1 DESC
             """)
-            anios = [int(r[0]) for r in cur.fetchall() if r[0] and r[0].isdigit()]
-    return {"periodo": per, "anio": yr, "proyecto": proyecto or None,
-            "labels": labels, "cubicadores": list(cub.values()), "anios": anios}
+            anios_data = [int(r[0]) for r in cur.fetchall() if r[0] and r[0].isdigit()]
+    return {"periodo": per, "anios_sel": yrs, "forzado_a": multi, "proyecto": proyecto or None,
+            "labels": labels, "cubicadores": list(cub.values()), "anios": anios_data}
 
 
 @router.get("/stats/cubicadores")

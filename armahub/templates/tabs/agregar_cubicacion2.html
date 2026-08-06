@@ -80,8 +80,9 @@
           <button id="ac2g_MD" onclick="ac2GraficoPeriodo('MD')" style="font-size:11px; padding:3px 10px; border:none; border-left:1px solid #cfd8dc; background:#fff; color:#607d8b; cursor:pointer;" title="Mes por día">M·D</button>
           <button id="ac2g_A"  onclick="ac2GraficoPeriodo('A')"  style="font-size:11px; padding:3px 10px; border:none; border-left:1px solid #cfd8dc; background:#fff; color:#607d8b; cursor:pointer;" title="Año por mes">A</button>
         </div>
-        <!-- Selector de año: se puebla y muestra solo si hay >1 año con data. -->
-        <select id="ac2g_anio" onchange="ac2GraficoAnio(this.value)" style="display:none; font-size:11px; padding:3px 6px; border:1px solid #cfd8dc; border-radius:4px;"></select>
+        <!-- Años: checkboxes para TOTALIZAR uno o varios años a la vez. Se pueblan con los años que
+             tengan data + el año en curso. Por defecto marcado el año actual. -->
+        <span id="ac2g_anios" style="display:inline-flex; align-items:center; gap:8px;"></span>
       </div>
       <div style="position:relative; height:200px;">
         <canvas id="ac2_graficoCanvas"></canvas>
