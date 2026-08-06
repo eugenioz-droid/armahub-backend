@@ -723,7 +723,7 @@ function ac2AplicarEtapa(){
   show('ac2_historicoWrap', e===1 || e===4);
   // Título: nombre de la obra desde etapa 1; genérico en la landing.
   var tit = document.getElementById('ac2_tituloObra');
-  if (tit) tit.textContent = (e>=1 && AC2._nombreObra) ? ('➕ ' + AC2._nombreObra) : '➕ Despiece de Cubicación';
+  if (tit) tit.textContent = (e>=1 && AC2._nombreObra) ? ('📋 ' + AC2._nombreObra) : '📋 Despiece de Cubicación';
 }
 // "Crear despiece" (etapa 1 → 2): abre el flujo de creación (aparecen Ciclo/Eje).
 window.ac2IniciarCreacion=function(){ AC2.creando=true; ac2ActualizarCabecera(); };
