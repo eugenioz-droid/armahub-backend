@@ -21,6 +21,7 @@ var AC2 = {
   loteId:null,     // id GLOBAL del lote (para la API). null = aún no creado.
   loteNum:null,    // correlativo del lote DENTRO de la obra (lo que ve el usuario: #1, #2…)
   loteEstado:'',   // '' | 'borrador' | 'terminada'
+  creando:false,   // flujo por etapas: true tras "Crear despiece" (etapa 2) hasta crear el lote o volver
   // 5N.20 sub-paso 1: la "tipología" (subtab MH/MV/TR/EC/TC/CB) ES el campo `marca` de la
   // barra (decisión de producto CERRADA). AC2.tipo = valor de `marca` que se asignará a las
   // barras nuevas. NO es un campo nuevo; el guardado (sub-paso siguiente) estampará marca=tipo.
@@ -666,7 +667,74 @@ function ac2ActualizarCabecera(){
   // En terminado, guardar/terminar quedan inertes; Eliminar sigue vivo. En eliminado, todo inerte
   // salvo la X (para salir y crear otro lote).
   dis('ac2_guardarBtn', terminado); dis('ac2_bandera', terminado);
+  // Flujo por etapas: tras ajustar la cabecera, decidir qué BLOQUES se muestran según la etapa.
+  ac2AplicarEtapa();
 }
+
+// ── FLUJO POR ETAPAS (revelación progresiva) ──────────────────────────────────────────────────
+// Deriva la etapa (0-4) del estado YA existente (no inventa fuentes de verdad) y muestra/oculta los
+// BLOQUES del editor según corresponda. No toca el cableado de ningún control: la lógica fina de cada
+// control (botones de estado, masiva, corregir eje/ciclo) sigue en ac2ActualizarCabecera; la etapa
+// solo decide si el bloque contenedor está visible. Ver docs/programa_flujo_editor_despieces.md.
+//  0 landing        : sin obra
+//  1 obra sin lote  : obra elegida, sin lote abierto (retomar histórico o crear)
+//  2 creando ctx    : presionó "Crear despiece", aún sin ciclo+eje
+//  3 ctx listo      : ciclo+eje completos, aún sin lote creado
+//  4 editor         : lote abierto/creado
+function ac2Etapa(){
+  if (!AC2.proyecto) return 0;
+  if (AC2.loteId) return 4;
+  if (!AC2.creando) return 1;
+  var ctxListo = (AC2.ciclo && String(AC2.ciclo).trim() && AC2.eje && String(AC2.eje).trim());
+  return ctxListo ? 3 : 2;
+}
+function ac2AplicarEtapa(){
+  var e = ac2Etapa();
+  var show=function(id,on){ var el=document.getElementById(id); if(el) el.style.display=on?'':'none'; };
+  // Landing (gráfico + lista de obras): el gráfico en 0-3, la lista de obras solo en 0.
+  show('ac2_grafico', e>=0 && e<=3);
+  show('ac2_landingObras', e===0);
+  // Botón "Crear despiece" (landing): solo etapa 1. Volver a obras: etapas 1-3 (en 4 la ✕ hace de volver).
+  show('ac2_crearDespieceWrap', e===1);
+  show('ac2_volverObras', e>=1 && e<=3);
+  // Contexto (fila obra/ciclo/eje): en 0 se usa solo el buscador de obra; en 2-4 aparece completo.
+  // La fila entera se muestra desde etapa 0 (para buscar la obra); el CAMPO obra se oculta en 2-4.
+  show('ac2_filaContexto', e===0 || e>=2);
+  var campoObra = document.getElementById('ac2_obra');
+  if (campoObra && campoObra.parentElement){ campoObra.parentElement.style.display = (e>=2) ? 'none' : ''; }
+  // Sector/Estructura: etapas 3-4. Tipologías, toolbar, grilla, rollup: solo editor (4).
+  show('ac2_filaSector', e>=3);
+  show('ac2_subtabs', e===4);
+  show('ac2_toolbar', e===4);
+  show('ac2_grid', e===4);
+  show('ac2_rollupWrap', e===4);
+  // Histórico de despieces: protagonista en etapa 1, y visible también en el editor (4) como hoy.
+  show('ac2_historicoWrap', e===1 || e===4);
+  // Título: nombre de la obra desde etapa 1; genérico en la landing.
+  var tit = document.getElementById('ac2_tituloObra');
+  if (tit) tit.textContent = (e>=1 && AC2._nombreObra) ? ('➕ ' + AC2._nombreObra) : '➕ Despiece de Cubicación';
+}
+// "Crear despiece" (etapa 1 → 2): abre el flujo de creación (aparecen Ciclo/Eje).
+window.ac2IniciarCreacion=function(){ AC2.creando=true; ac2ActualizarCabecera(); };
+// Landing de obras con despieces activos (Fase B). En Fase A es un stub: deja un mensaje guía en vez
+// de "Cargando…" infinito. Al implementar la Fase B, esta función pega al endpoint y pinta la tabla.
+window.ac2CargarLandingObras=function(){
+  var tb=document.getElementById('ac2_landingObrasBody'); if(!tb) return;
+  tb.innerHTML='<tr><td colspan="6" style="padding:10px 8px; color:#90a4ae; font-style:italic; text-align:center;">Usa el buscador de arriba para elegir una obra. (El listado de obras con despieces llega en la próxima etapa.)</td></tr>';
+};
+// "← Volver a obras": regresa a la landing (etapa 0). Descarta lo no guardado y limpia la obra.
+window.ac2VolverObras=function(){
+  // Si hay algo a medio crear/editar sin guardar, avisar (reusa la lógica de descartar).
+  var pend = AC2.barras && AC2.barras.filter(function(b){return !b._guardada;}).length;
+  if (pend && !confirm('Tienes '+pend+' barra(s) sin guardar. Si vuelves a obras se descartarán.\n\n¿Continuar?')) return;
+  _ac2ResetTanda();              // limpia lote/barras/contexto (reusa lo existente)
+  AC2.creando=false;
+  AC2.proyecto=null; AC2._nombreObra='';
+  if (_ac2CbObra && _ac2CbObra.limpiar) _ac2CbObra.limpiar();
+  var io=document.getElementById('ac2_obra'); if(io) io.value='';
+  ac2ActualizarCabecera();
+  if (typeof ac2CargarLandingObras==='function') ac2CargarLandingObras();   // refrescar landing (Fase B)
+};
 
 window.ac2SetTipo=function(t){
   AC2.tipo=t;
@@ -1443,6 +1511,7 @@ function _ac2ResetTanda(){
   _ac2DescartarLoteVacioSiCorresponde();   // borra el lote vacío antes de soltarlo
   AC2.loteId=null; AC2.loteNum=null; AC2.loteEstado=''; AC2.barras=[]; AC2.sector=''; AC2.estructura=''; AC2.tipo='TODOS';
   AC2.ciclo=''; AC2.eje='';
+  AC2.creando=false;   // flujo por etapas: tras descartar/cerrar un despiece, volver a etapa 1 (obra sin lote)
   ac2LimpiarSeleccion();
   if (_ac2CbCiclo) _ac2CbCiclo.limpiar();
   if (_ac2CbEje)   _ac2CbEje.limpiar();
@@ -1642,6 +1711,9 @@ function _ac2InitComboboxes(){
         // Antes de soltar el lote de la obra anterior: si estaba vacío (nunca se guardó), borrarlo.
         _ac2DescartarLoteVacioSiCorresponde();
         AC2.proyecto = idProyecto || null;
+        // Nombre de la obra para el título del flujo por etapas (del texto visible del buscador).
+        var _io = document.getElementById('ac2_obra'); AC2._nombreObra = (_io && _io.value || '').trim();
+        AC2.creando = false;   // al elegir obra, arrancamos en etapa 1 (elegir/crear despiece)
         // Al cambiar de obra: se descarta la tanda en curso (ciclo/eje/lote/barras son de la
         // obra anterior). El lote guardado no se pierde (vive en BD); solo se limpia el form.
         AC2.ciclo=''; AC2.eje=''; AC2.sector=''; AC2.estructura='';
@@ -1790,6 +1862,8 @@ async function loadAgregarCubicacion2(){
     ac2PintarSectorEstructura(); ac2PintarSubtabs(); ac2ActualizarCabecera();
     ac2SetTipo(AC2.tipo || 'TODOS');
   }
+  // Flujo por etapas: al entrar sin obra (etapa 0), poblar la landing de obras (Fase B; stub en A).
+  if (typeof ac2CargarLandingObras==='function') ac2CargarLandingObras();
 }
 window.loadAgregarCubicacion2 = loadAgregarCubicacion2;
 

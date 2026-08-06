@@ -4,11 +4,14 @@
 <div id="tab-agregar2" class="tab-content">
   <div style="padding:4px 2px 12px;">
 
-    <!-- Cabecera -->
+    <!-- Cabecera. El título muestra el nombre de la obra desde la etapa 1 (ac2_tituloObra); en la
+         landing (etapa 0) queda el genérico. El botón Volver (a la derecha) regresa a la landing. -->
     <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:12px;">
-      <h3 style="margin:0; color:#558B2F;">➕ Despiece de Cubicación</h3>
+      <h3 id="ac2_tituloObra" style="margin:0; color:#558B2F;">➕ Despiece de Cubicación</h3>
       <span id="ac2_estadoBadge" style="font-size:12px; color:#607d8b; background:#eceff1; border:1px solid #cfd8dc; border-radius:6px; padding:3px 10px; font-weight:600;">Nuevo Despiece</span>
       <div style="flex:1;"></div>
+      <!-- ← Volver a obras: regresa a la landing (etapa 0). Visible en etapas 1-3 (en la 4 la ✕ hace de volver). -->
+      <button id="ac2_volverObras" onclick="ac2VolverObras()" style="display:none; font-size:12px; padding:5px 12px; background:#fff; color:#607d8b; border:1px solid #cfd8dc; border-radius:6px; cursor:pointer;">← Volver a obras</button>
       <!-- SIN lote: el botón CREAR LOTE vive junto a los campos de contexto (era "＋ Crear Eje").
            CON lote: Terminar (bandera ROJO→VERDE), Guardar, Descartar, Eliminar. -->
       <button id="ac2_bandera" onclick="ac2ToggleTerminado()" title="Terminar el despiece"
@@ -20,8 +23,42 @@
       <button id="ac2_eliminarBtn" onclick="ac2EliminarLote()" title="Eliminar este despiece y sus barras (irreversible)" style="display:none; font-size:14px; padding:6px 12px; background:#fff; color:#c62828; border:1px solid #c62828; border-radius:4px; cursor:pointer;">🗑 Eliminar</button>
     </div>
 
+    <!-- ── LANDING (etapas 0-1): gráfico de kilos + lista de obras con despieces. Se rellenan en la
+         Fase B; aquí son contenedores que la lógica de etapas muestra/oculta. ── -->
+    <!-- Gráfico de kilos por cubicador/día (semana). Etapa 0 = todas las obras; etapa 1 = esta obra.
+         Oculto en el editor (etapa 4). Reusa el componente Chart.js del Hub (Fase B). -->
+    <div id="ac2_grafico" style="display:none; background:#fff; border:1px solid #e0e0e0; border-radius:8px; padding:12px 16px; margin-bottom:14px;">
+      <div id="ac2_graficoTitulo" style="font-size:11px; color:#888; text-transform:uppercase; letter-spacing:.5px; font-weight:600; margin-bottom:8px;">Cubicado esta semana (kg listos)</div>
+      <div style="position:relative; height:200px;"><canvas id="ac2_graficoCanvas"></canvas></div>
+    </div>
+    <!-- Lista de obras con despieces activos (+ KPIs por fila). Solo etapa 0. Al click en una obra →
+         se selecciona y pasa a etapa 1. La llena la Fase B (ac2CargarLandingObras). -->
+    <div id="ac2_landingObras" style="display:none; margin-bottom:14px;">
+      <div style="display:flex; align-items:center; margin:0 0 8px;">
+        <h4 style="margin:0; color:#5d4037; font-size:14px;">📂 Obras con despieces activos</h4>
+      </div>
+      <table style="width:100%; font-size:12px; border-collapse:collapse;">
+        <thead><tr style="color:#666; background:#fafafa;">
+          <th style="text-align:left; padding:4px 8px;">Obra</th>
+          <th style="text-align:left; padding:4px 8px;">Despieces activos</th>
+          <th style="text-align:right; padding:4px 8px;">Items</th>
+          <th style="text-align:right; padding:4px 8px;">Barras</th>
+          <th style="text-align:right; padding:4px 8px;">Kg (listos)</th>
+          <th style="text-align:left; padding:4px 8px;">Último</th>
+        </tr></thead>
+        <tbody id="ac2_landingObrasBody">
+          <tr><td colspan="6" style="padding:10px 8px; color:#90a4ae; font-style:italic; text-align:center;">Cargando obras…</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <!-- Botón "Crear despiece" (etapa 1): abre el flujo de creación (etapa 2 → aparecen Ciclo/Eje). -->
+    <div id="ac2_crearDespieceWrap" style="display:none; margin-bottom:14px;">
+      <button id="ac2_crearDespieceBtn" onclick="ac2IniciarCreacion()" style="font-size:14px; font-weight:600; height:38px; padding:0 18px; background:#8BC34A; color:#fff; border:none; border-radius:4px; cursor:pointer;">＋ Crear despiece</button>
+      <span style="font-size:11px; color:#607d8b; margin-left:10px;">…o retoma uno del histórico ↓</span>
+    </div>
+
     <!-- FILA 1 · Contexto -->
-    <div style="display:flex; gap:14px; align-items:flex-end; flex-wrap:wrap; margin-bottom:10px; padding:10px 12px; background:#e0f2f1; border:1px solid #b2dfdb; border-radius:8px;">
+    <div id="ac2_filaContexto" style="display:flex; gap:14px; align-items:flex-end; flex-wrap:wrap; margin-bottom:10px; padding:10px 12px; background:#e0f2f1; border:1px solid #b2dfdb; border-radius:8px;">
       <!-- Obra: MISMO componente que el Bar Manager (shared/buscador_obra.js): input+datalist
            + select oculto que guarda el id. -->
       <div style="display:flex; flex-direction:column; width:260px;">
@@ -77,7 +114,7 @@
     </div>
 
     <!-- FILA 2 · Sector + Estructura (se BLOQUEAN al elegir; 🔓 solo si lote vacío) -->
-    <div style="display:flex; flex-direction:column; gap:6px; margin-bottom:8px; padding:10px 12px; background:#f7f7f7; border:1px solid #e0e0e0; border-radius:8px;">
+    <div id="ac2_filaSector" style="display:flex; flex-direction:column; gap:6px; margin-bottom:8px; padding:10px 12px; background:#f7f7f7; border:1px solid #e0e0e0; border-radius:8px;">
       <!-- Sector constructivo (enum fijo) + Estructura → chips clickeables. Se BLOQUEAN al elegir
            (se desbloquean solo si el lote no tiene barras). Las TIPOLOGÍAS cambian según la
            estructura elegida. Los botones se generan en JS (ac2PintarSectorEstructura). -->
@@ -99,7 +136,7 @@
     </div>
 
     <!-- FILA 3 · Botones rápidos + toggles -->
-    <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:8px;">
+    <div id="ac2_toolbar" style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:8px;">
       <button id="ac2_barraBtn" onclick="ac2AgregarBarra()" style="font-size:12px; padding:5px 12px; background:#8BC34A; color:#fff; border:none; border-radius:4px; cursor:pointer;">＋ barra</button>
       <!-- +barras M: agrega N filas (una por piso seleccionado en el menú de Pisos), cada
            una con SU piso y la tipología del subtab activo. En la maqueta lo simula. -->
@@ -177,14 +214,14 @@
     <div id="ac2_grid" style="overflow-x:auto; border:1px solid #e0e0e0; border-radius:6px;"></div>
 
     <!-- VALIDACIÓN / rollup -->
-    <div style="display:flex; align-items:center; gap:14px; flex-wrap:wrap; margin-top:10px; padding:8px 12px; background:#f5f5f5; border:1px solid #e0e0e0; border-radius:6px;">
+    <div id="ac2_rollupWrap" style="display:flex; align-items:center; gap:14px; flex-wrap:wrap; margin-top:10px; padding:8px 12px; background:#f5f5f5; border:1px solid #e0e0e0; border-radius:6px;">
       <span id="ac2_revcount" style="font-size:12px; color:#2e7d32; font-weight:600;"></span>
       <div style="flex:1;"></div>
       <span id="ac2_rollup" style="font-size:11px; color:#666;"></span>
     </div>
 
     <!-- REPOSITORIO / histórico de lotes -->
-    <div style="margin-top:18px;">
+    <div id="ac2_historicoWrap" style="margin-top:18px;">
       <div style="display:flex; align-items:center; margin:0 0 8px;">
         <h4 style="margin:0; color:#5d4037; font-size:14px;">📚 Despieces de la obra (histórico)</h4>
         <div style="flex:1;"></div>
