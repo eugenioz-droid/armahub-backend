@@ -841,6 +841,45 @@ def get_stats_timeline(
     }
 
 
+@router.get("/stats/cubicado-semana")
+def get_cubicado_semana(proyecto: Optional[str] = None, user=Depends(get_current_user)):
+    """Kilos LISTOS (barras cubicadas, excluye borrador) por cubicador y día de la SEMANA actual.
+    Para el gráfico del flujo del editor: sin `proyecto` = todas las obras (etapa 0); con `proyecto` =
+    esa obra (etapa 1). Mismo shape que 'cubicado_semana' del Hub: [{email, nombre, dias:[L..D]}]."""
+    from datetime import timedelta
+    now = datetime.now(timezone.utc)
+    monday = (now - timedelta(days=now.weekday())).strftime("%Y-%m-%d")
+    sunday = (now - timedelta(days=now.weekday()) + timedelta(days=6)).strftime("%Y-%m-%d")
+    params = [monday, sunday]
+    obra_sql = ""
+    if proyecto:
+        obra_sql = " AND b.id_proyecto = %s"
+        params.append(proyecto)
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT b.creado_por AS usuario,
+                       COALESCE(u.nombre, '') AS nombre, COALESCE(u.apellido, '') AS apellido,
+                       EXTRACT(ISODOW FROM b.fecha_carga::timestamp)::INTEGER AS dow,
+                       COALESCE(SUM(b.peso_total), 0) AS kilos
+                FROM barras b
+                JOIN users u ON u.email = b.creado_por
+                WHERE b.creado_por IS NOT NULL
+                  AND LEFT(b.fecha_carga, 10) >= %s AND LEFT(b.fecha_carga, 10) <= %s"""
+                + obra_sql + _sql_excluir_borrador("b") + """
+                GROUP BY b.creado_por, u.nombre, u.apellido, dow
+                ORDER BY b.creado_por, dow
+            """, params)
+            cub = {}
+            for r in cur.fetchall():
+                em = r[0]
+                if em not in cub:
+                    nom = ((r[1] or "") + " " + (r[2] or "")).strip()
+                    cub[em] = {"email": em, "nombre": nom or em.split("@")[0], "dias": [0, 0, 0, 0, 0, 0, 0]}
+                cub[em]["dias"][r[3] - 1] = round(float(r[4]), 1)
+    return {"proyecto": proyecto or None, "cubicadores": list(cub.values())}
+
+
 @router.get("/stats/cubicadores")
 def get_stats_cubicadores(
     fecha_desde: Optional[str] = Query(None, description="ISO date start filter"),

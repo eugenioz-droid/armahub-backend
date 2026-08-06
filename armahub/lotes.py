@@ -765,3 +765,46 @@ def ver_lote(lote_id: int, user=Depends(get_current_user)):
 def diametros_estandar(user=Depends(get_current_user)):
     """Lista fija de diámetros estándar (5N.12)."""
     return {"diametros": _DIAM_ESTANDAR}
+
+
+@router.get("/despieces/obras-activas")
+def obras_con_despieces_activos(user=Depends(get_current_user)):
+    """Obras que tienen despieces EN CURSO (borrador, sin bandera) — para la landing del editor.
+    Por obra: nombre, nº de despieces activos y KPIs de lo LISTO (barras terminadas: items/barras/kg),
+    + fecha del último movimiento. Los KPIs miden lo cubicado y confirmado (bandera), no el borrador."""
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            # Obras con al menos un lote 'borrador' (despiece activo) + su conteo y último movimiento.
+            cur.execute("""
+                SELECT l.id_proyecto,
+                       COALESCE(p.nombre_proyecto, l.id_proyecto) AS nombre,
+                       COUNT(*) AS activos,
+                       MAX(COALESCE(l.terminado_fecha, l.creado_fecha)) AS ult
+                FROM lotes l
+                LEFT JOIN proyectos p ON p.id_proyecto = l.id_proyecto
+                WHERE l.estado = 'borrador'
+                GROUP BY l.id_proyecto, p.nombre_proyecto
+            """)
+            obras = [{"id_proyecto": r[0], "nombre": r[1], "activos": int(r[2]), "ultimo": (r[3] or "")[:10]}
+                     for r in cur.fetchall()]
+            if not obras:
+                return {"obras": []}
+            ids = [o["id_proyecto"] for o in obras]
+            # KPIs de lo LISTO por obra (barras terminadas: no borrador, no eliminadas físicamente).
+            # items = filas; barras = Σ cant_total; kg = Σ peso_total. Excluye borrador.
+            cur.execute("""
+                SELECT id_proyecto,
+                       COUNT(*) AS items,
+                       COALESCE(SUM(cant_total), 0) AS barras,
+                       COALESCE(SUM(peso_total), 0) AS kg
+                FROM barras
+                WHERE id_proyecto = ANY(%s) AND estado = 'terminada'
+                GROUP BY id_proyecto
+            """, (ids,))
+            kpi = {r[0]: {"items": int(r[1]), "barras": float(r[2] or 0), "kg": round(float(r[3] or 0), 1)}
+                   for r in cur.fetchall()}
+    for o in obras:
+        k = kpi.get(o["id_proyecto"], {"items": 0, "barras": 0, "kg": 0})
+        o.update(k)
+    obras.sort(key=lambda o: o["ultimo"], reverse=True)   # más reciente arriba
+    return {"obras": obras}

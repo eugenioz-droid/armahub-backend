@@ -697,11 +697,19 @@ function ac2AplicarEtapa(){
   // Botón "Crear despiece" (landing): solo etapa 1. Volver a obras: etapas 1-3 (en 4 la ✕ hace de volver).
   show('ac2_crearDespieceWrap', e===1);
   show('ac2_volverObras', e>=1 && e<=3);
-  // Contexto (fila obra/ciclo/eje): en 0 se usa solo el buscador de obra; en 2-4 aparece completo.
-  // La fila entera se muestra desde etapa 0 (para buscar la obra); el CAMPO obra se oculta en 2-4.
-  show('ac2_filaContexto', e===0 || e>=2);
+  // Fila de contexto (turquesa): visible en 0-1 (solo el buscador de obra) y en 2-4 (ciclo/eje/crear).
+  // El CAMPO obra se ve en 0-1 (para elegir/ver la obra) y se OCULTA en 2-4 (la obra va en el título).
+  // Los campos ciclo/eje/crear/config solo aparecen desde la etapa 2 (al iniciar la creación).
+  show('ac2_filaContexto', true);   // la fila siempre existe; se controla pieza por pieza abajo
+  var _showChild=function(el,on){ if(el){ var c=(el.classList&&el.classList.contains('ac2fld'))?el:(el.parentElement||el); c.style.display=on?'':'none'; } };
   var campoObra = document.getElementById('ac2_obra');
-  if (campoObra && campoObra.parentElement){ campoObra.parentElement.style.display = (e>=2) ? 'none' : ''; }
+  if (campoObra && campoObra.parentElement){ campoObra.parentElement.style.display = (e<=1) ? '' : 'none'; }
+  // Ciclo, Eje, Crear despiece, Config obra: solo desde etapa 2.
+  var _ctxDesde2 = (e>=2);
+  _showChild(document.getElementById('ac2_ciclo'), _ctxDesde2);
+  _showChild(document.getElementById('ac2_eje'), _ctxDesde2);
+  var _crear=document.getElementById('ac2_crearLoteBtn'); if(_crear) _crear.style.display=_ctxDesde2?'':'none';
+  var _cfg=document.getElementById('ac2_cfgBtn'); if(_cfg) _cfg.style.display=_ctxDesde2?'':'none';
   // Sector/Estructura: etapas 3-4. Tipologías, toolbar, grilla, rollup: solo editor (4).
   show('ac2_filaSector', e>=3);
   show('ac2_subtabs', e===4);
@@ -716,11 +724,76 @@ function ac2AplicarEtapa(){
 }
 // "Crear despiece" (etapa 1 → 2): abre el flujo de creación (aparecen Ciclo/Eje).
 window.ac2IniciarCreacion=function(){ AC2.creando=true; ac2ActualizarCabecera(); };
-// Landing de obras con despieces activos (Fase B). En Fase A es un stub: deja un mensaje guía en vez
-// de "Cargando…" infinito. Al implementar la Fase B, esta función pega al endpoint y pinta la tabla.
-window.ac2CargarLandingObras=function(){
+// Landing de obras con despieces ACTIVOS (borrador) + KPIs de lo listo. Al click en una fila se
+// selecciona la obra (rellena el buscador y dispara su onElegir) → pasa a etapa 1.
+window.ac2CargarLandingObras=async function(){
   var tb=document.getElementById('ac2_landingObrasBody'); if(!tb) return;
-  tb.innerHTML='<tr><td colspan="6" style="padding:10px 8px; color:#90a4ae; font-style:italic; text-align:center;">Usa el buscador de arriba para elegir una obra. (El listado de obras con despieces llega en la próxima etapa.)</td></tr>';
+  var d; try { d=await _ac2Get('/despieces/obras-activas'); } catch(e){ d=null; }
+  var obras=(d&&d.obras)||[];
+  if (!obras.length){
+    tb.innerHTML='<tr><td colspan="6" style="padding:10px 8px; color:#90a4ae; font-style:italic; text-align:center;">No hay obras con despieces en curso. Busca una obra arriba para empezar.</td></tr>';
+    return;
+  }
+  tb.innerHTML=obras.map(function(o){
+    return '<tr class="ac2loterow" onclick="ac2ElegirObraLanding('+"'"+ac2Esc(o.id_proyecto)+"','"+ac2Esc((o.nombre||'').replace(/'/g,"\\'"))+"'"+')" style="cursor:pointer; border-top:1px solid #f0f0f0;">'+
+      '<td style="padding:6px 8px; font-weight:600; color:#558B2F;">'+ac2Esc(o.nombre||o.id_proyecto)+'</td>'+
+      '<td style="padding:6px 8px;">'+o.activos+' en edición</td>'+
+      '<td style="padding:6px 8px; text-align:right;">'+(o.items||0)+'</td>'+
+      '<td style="padding:6px 8px; text-align:right;">'+ac2Num(o.barras||0)+'</td>'+
+      '<td style="padding:6px 8px; text-align:right;">'+ac2Num(o.kg,1)+'</td>'+
+      '<td style="padding:6px 8px; color:#888;">'+ac2Esc(o.ultimo||'')+'</td>'+
+    '</tr>';
+  }).join('');
+};
+// Click en una obra de la landing: setea la obra (mismo efecto que elegirla en el buscador) → etapa 1.
+window.ac2ElegirObraLanding=function(idProyecto, nombre){
+  // Sincronizar el buscador de obra (input visible + select oculto), para que getId() devuelva la obra
+  // y ac2ActualizarCabecera no pise AC2.proyecto con vacío. El select oculto ya tiene las opciones.
+  var io=document.getElementById('ac2_obra'); if(io) io.value=nombre||'';
+  var sel=document.getElementById('ac2_obraSel');
+  if (sel){
+    var found=false;
+    for (var i=0;i<sel.options.length;i++){ if(sel.options[i].value===idProyecto){ sel.selectedIndex=i; found=true; break; } }
+    if (!found){ var op=document.createElement('option'); op.value=idProyecto; op.text=nombre||idProyecto; sel.appendChild(op); sel.value=idProyecto; }
+  }
+  // Efecto de "obra elegida" (mismo camino que el buscador).
+  AC2.proyecto=idProyecto; AC2._nombreObra=nombre||''; AC2.creando=false;
+  AC2.ciclo=''; AC2.eje=''; AC2.sector=''; AC2.estructura=''; AC2.loteId=null; AC2.loteEstado=''; AC2.barras=[];
+  if (_ac2CbCiclo) _ac2CbCiclo.limpiar(); if (_ac2CbEje) _ac2CbEje.limpiar();
+  ac2PintarEstado(); ac2PintarSectorEstructura(); ac2PintarSubtabs();
+  ac2ActualizarBotonesCrear(); ac2ActualizarCabecera(); ac2Render(); ac2CargarLotes();
+  _ac2Pisos=[]; ac2PintarMenuPisos();
+  _ac2CargarContexto(idProyecto); _ac2CargarPisos();
+  ac2CargarGrafico();   // gráfico filtrado a esta obra
+};
+
+// ── Gráfico de kilos por cubicador/día (semana). Etapa 0 = todas las obras; etapa 1 = la obra. ──
+var _ac2Chart=null;
+window.ac2CargarGrafico=async function(){
+  var cv=document.getElementById('ac2_graficoCanvas'); if(!cv || !window.Chart) return;
+  var tit=document.getElementById('ac2_graficoTitulo');
+  var q = AC2.proyecto ? ('?proyecto='+encodeURIComponent(AC2.proyecto)) : '';
+  var d; try { d=await _ac2Get('/stats/cubicado-semana'+q); } catch(e){ d=null; }
+  var cubs=(d&&d.cubicadores)||[];
+  if (tit) tit.textContent = 'Cubicado esta semana (kg listos)' + (AC2.proyecto && AC2._nombreObra ? ' · '+AC2._nombreObra : ' · todas las obras');
+  // Sin datos: ocultar el canvas y mostrar un mensaje (evita el gráfico grande en blanco).
+  var vacioMsg=document.getElementById('ac2_graficoVacio');
+  var tieneDatos = cubs.some(function(c){ return (c.dias||[]).some(function(v){ return v>0; }); });
+  if (cv) cv.style.display = tieneDatos ? '' : 'none';
+  if (vacioMsg) vacioMsg.style.display = tieneDatos ? 'none' : 'flex';
+  if (!tieneDatos){ if(_ac2Chart){ _ac2Chart.destroy(); _ac2Chart=null; } return; }
+  var dias=['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'];
+  var colores=['#8BC34A','#1565C0','#ff9800','#e53935','#7B1FA2','#00897B','#795548','#607D8B'];
+  var ds=cubs.map(function(c,i){ return { label:c.nombre, data:(c.dias||[]).slice(0,7), backgroundColor:colores[i%colores.length], borderRadius:2 }; });
+  if (_ac2Chart){ _ac2Chart.destroy(); _ac2Chart=null; }
+  _ac2Chart=new window.Chart(cv.getContext('2d'), {
+    type:'bar',
+    data:{ labels:dias, datasets:ds },
+    options:{ responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{ position:'bottom', labels:{ font:{size:10}, padding:8, usePointStyle:true, pointStyle:'rect' } },
+                datalabels:{ display:false } },   // el plugin datalabels está global (Hub); aquí lo apagamos
+      scales:{ y:{ beginAtZero:true, ticks:{ font:{size:9} } }, x:{ ticks:{ font:{size:10} } } } }
+  });
 };
 // "← Volver a obras": regresa a la landing (etapa 0). Descarta lo no guardado y limpia la obra.
 window.ac2VolverObras=function(){
@@ -733,7 +806,8 @@ window.ac2VolverObras=function(){
   if (_ac2CbObra && _ac2CbObra.limpiar) _ac2CbObra.limpiar();
   var io=document.getElementById('ac2_obra'); if(io) io.value='';
   ac2ActualizarCabecera();
-  if (typeof ac2CargarLandingObras==='function') ac2CargarLandingObras();   // refrescar landing (Fase B)
+  if (typeof ac2CargarLandingObras==='function') ac2CargarLandingObras();   // refrescar landing
+  if (typeof ac2CargarGrafico==='function') ac2CargarGrafico();             // gráfico → todas las obras
 };
 
 window.ac2SetTipo=function(t){
@@ -1725,6 +1799,7 @@ function _ac2InitComboboxes(){
         ac2ActualizarBotonesCrear(); ac2ActualizarCabecera(); ac2Render(); ac2CargarLotes();
         _ac2Pisos=[]; ac2PintarMenuPisos();
         if (AC2.proyecto){ _ac2CargarContexto(AC2.proyecto); _ac2CargarPisos(); }
+        if (typeof ac2CargarGrafico==='function') ac2CargarGrafico();   // gráfico → esta obra (o todas si se deseleccionó)
       }
     });
   }
@@ -1862,8 +1937,9 @@ async function loadAgregarCubicacion2(){
     ac2PintarSectorEstructura(); ac2PintarSubtabs(); ac2ActualizarCabecera();
     ac2SetTipo(AC2.tipo || 'TODOS');
   }
-  // Flujo por etapas: al entrar sin obra (etapa 0), poblar la landing de obras (Fase B; stub en A).
+  // Flujo por etapas: al entrar (etapa 0), poblar la landing de obras + el gráfico (todas las obras).
   if (typeof ac2CargarLandingObras==='function') ac2CargarLandingObras();
+  if (typeof ac2CargarGrafico==='function') ac2CargarGrafico();
 }
 window.loadAgregarCubicacion2 = loadAgregarCubicacion2;
 

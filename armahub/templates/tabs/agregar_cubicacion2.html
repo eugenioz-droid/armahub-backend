@@ -29,7 +29,10 @@
          Oculto en el editor (etapa 4). Reusa el componente Chart.js del Hub (Fase B). -->
     <div id="ac2_grafico" style="display:none; background:#fff; border:1px solid #e0e0e0; border-radius:8px; padding:12px 16px; margin-bottom:14px;">
       <div id="ac2_graficoTitulo" style="font-size:11px; color:#888; text-transform:uppercase; letter-spacing:.5px; font-weight:600; margin-bottom:8px;">Cubicado esta semana (kg listos)</div>
-      <div style="position:relative; height:200px;"><canvas id="ac2_graficoCanvas"></canvas></div>
+      <div style="position:relative; height:200px;">
+        <canvas id="ac2_graficoCanvas"></canvas>
+        <div id="ac2_graficoVacio" style="display:none; position:absolute; inset:0; align-items:center; justify-content:center; color:#b0bec5; font-size:12px; font-style:italic;">Sin cubicación registrada esta semana.</div>
+      </div>
     </div>
     <!-- Lista de obras con despieces activos (+ KPIs por fila). Solo etapa 0. Al click en una obra →
          se selecciona y pasa a etapa 1. La llena la Fase B (ac2CargarLandingObras). -->
@@ -86,7 +89,7 @@
       <button id="ac2_reasignarAplicarBtn" onclick="ac2ReasignarContexto()" title="Aplicar el nuevo eje/ciclo a todas las barras del despiece" style="display:none; font-size:12px; font-weight:600; height:34px; padding:0 14px; background:#43a047; color:#fff; border:1px solid #388e3c; border-radius:4px; cursor:pointer;">✓ Aplicar cambio</button>
       <button id="ac2_reasignarCancelarBtn" onclick="ac2CorregirContextoCancelar()" title="Cancelar la corrección sin cambiar nada" style="display:none; font-size:12px; height:34px; padding:0 12px; background:#fff; color:#c62828; border:1px solid #ef9a9a; border-radius:4px; cursor:pointer;">✕ Cancelar</button>
       <div style="flex:1;"></div>
-      <button onclick="ac2AbrirConfig()" title="Pisos, ciclos, factores y restricciones de la obra" style="font-size:12px; height:34px; padding:0 14px; background:#fff; color:#546e7a; border:1px solid #b0bec5; border-radius:4px; cursor:pointer;">⚙ Configuración de obra</button>
+      <button id="ac2_cfgBtn" onclick="ac2AbrirConfig()" title="Pisos, ciclos, factores y restricciones de la obra" style="font-size:12px; height:34px; padding:0 14px; background:#fff; color:#546e7a; border:1px solid #b0bec5; border-radius:4px; cursor:pointer;">⚙ Configuración de obra</button>
     </div>
     <!-- Guía del modo corrección: aparece solo al presionar "Corregir eje/ciclo". -->
     <div id="ac2_corregirHint" style="display:none; margin:6px 0 2px; padding:7px 12px; background:#fff8e1; border:1px solid #ffe082; border-radius:6px; font-size:12px; color:#8d6e00;">
