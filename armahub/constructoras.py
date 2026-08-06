@@ -19,6 +19,7 @@ from pydantic import BaseModel
 
 from .auth import get_current_user, require_admin_or_admin_calidad
 from .db import get_conn, audit
+from .barras import _sql_excluir_borrador
 
 router = APIRouter()
 
@@ -104,7 +105,7 @@ def listar_constructoras(activo: Optional[bool] = None, user=Depends(get_current
                     -- items = nº de filas (COUNT); barras_fis = barras físicas (Σ cant_total).
                     SELECT id_proyecto, COUNT(*) AS items, COALESCE(SUM(cant_total), 0) AS barras_fis,
                            COALESCE(SUM(peso_total), 0) AS kilos
-                    FROM barras GROUP BY id_proyecto
+                    FROM barras WHERE 1=1 """ + _sql_excluir_borrador() + """ GROUP BY id_proyecto
                 ) stats ON stats.id_proyecto = p.id_proyecto
             """ + where + """
                 GROUP BY c.id, c.nombre, c.rut, c.contacto, c.email, c.telefono,
@@ -164,7 +165,7 @@ def detalle_constructora(constructora_id: int, user=Depends(_require_gestion_cli
                        COALESCE(SUM(b.cant_total), 0) AS barras_fis,
                        COALESCE(SUM(b.peso_total), 0) AS kilos
                 FROM proyectos p
-                LEFT JOIN barras b ON b.id_proyecto = p.id_proyecto
+                LEFT JOIN barras b ON b.id_proyecto = p.id_proyecto AND b.estado IS DISTINCT FROM 'borrador'
                 WHERE p.constructora_id = %s
                 GROUP BY p.id_proyecto, p.nombre_proyecto
                 ORDER BY p.nombre_proyecto
@@ -317,7 +318,7 @@ def proyectos_sin_constructora(busqueda: Optional[str] = None, user=Depends(_req
                        COUNT(b.id_unico) AS barras,
                        COALESCE(SUM(b.peso_total), 0) AS kilos
                 FROM proyectos p
-                LEFT JOIN barras b ON b.id_proyecto = p.id_proyecto
+                LEFT JOIN barras b ON b.id_proyecto = p.id_proyecto AND b.estado IS DISTINCT FROM 'borrador'
                 {where}
                 GROUP BY p.id_proyecto, p.nombre_proyecto
                 ORDER BY p.nombre_proyecto

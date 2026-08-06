@@ -177,11 +177,12 @@ def exportar_proyecto(
             # la obra, no alfabético (P1, P10, P2…). Se ordena en Python con el helper canónico (evita
             # replicar SQL): traemos las combinaciones y las ordenamos con _orden_constructivo_key.
             from .orden import orden_constructivo_key as _orden_constructivo_key
+            from .barras import _sql_excluir_borrador
             cur.execute("""
                 SELECT DISTINCT sector, piso, ciclo
                 FROM barras
                 WHERE id_proyecto = %s AND sector IS NOT NULL AND sector != ''
-            """, (id_proyecto,))
+            """ + _sql_excluir_borrador(), (id_proyecto,))
             combos = cur.fetchall()
             combos = sorted(combos, key=lambda c: _orden_constructivo_key(
                 {"sector": c[0], "piso": c[1], "ciclo": c[2]}))
@@ -202,6 +203,7 @@ def exportar_proyecto(
                         SELECT {fields_sql}
                         FROM barras
                         WHERE id_proyecto = %s AND sector = %s AND piso = %s AND ciclo = %s
+                        {_sql_excluir_borrador()}
                     """, (id_proyecto, sector, piso, ciclo))
 
                     col_names = [desc[0] for desc in cur.description]
@@ -251,7 +253,7 @@ def exportar_proyecto(
                 cur.execute("""
                     SELECT COUNT(*), COALESCE(SUM(peso_total), 0)
                     FROM barras WHERE id_proyecto = %s AND sector = %s AND piso = %s AND ciclo = %s
-                """, (id_proyecto, sector, piso, ciclo))
+                """ + _sql_excluir_borrador(), (id_proyecto, sector, piso, ciclo))
                 stats = cur.fetchone()
                 cur.execute("""
                     INSERT INTO export_log (id_proyecto, sector, piso, ciclo, export_key, usuario, fecha, barras, kilos)
@@ -312,12 +314,14 @@ def export_history(
             rows = cur.fetchall()
             
             # Get last modification date per sector (max fecha_carga)
+            from .barras import _sql_excluir_borrador
             cur.execute("""
                 SELECT UPPER(sector) || '_' || piso || '_' || ciclo AS export_key,
                        MAX(fecha_carga) AS ultima_modificacion,
                        COUNT(*) AS barras_actuales
                 FROM barras
                 WHERE id_proyecto = %s AND sector IS NOT NULL AND sector != ''
+            """ + _sql_excluir_borrador() + """
                 GROUP BY UPPER(sector), piso, ciclo
             """, (id_proyecto,))
             mod_rows = cur.fetchall()
@@ -360,10 +364,12 @@ def export_report(
 
             # All sector combos in project, en orden CONSTRUCTIVO (mismo criterio que la exportación).
             from .orden import orden_constructivo_key as _orden_constructivo_key
+            from .barras import _sql_excluir_borrador
             cur.execute("""
                 SELECT sector, piso, ciclo, COUNT(*) AS barras, COALESCE(SUM(peso_total), 0) AS kilos
                 FROM barras
                 WHERE id_proyecto = %s AND sector IS NOT NULL AND sector != ''
+            """ + _sql_excluir_borrador() + """
                 GROUP BY sector, piso, ciclo
             """, (id_proyecto,))
             combos = sorted(cur.fetchall(), key=lambda c: _orden_constructivo_key(

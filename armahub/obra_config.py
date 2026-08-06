@@ -116,9 +116,11 @@ def _distinct_barras(cur, id_proyecto: str, campo: str) -> List[str]:
     Excluye NULL y ''. Todo lo que sale de aquí TIENE barras por definición. `campo` es una
     whitelist fija (no viene del usuario) → no hay inyección."""
     assert campo in ("piso", "ciclo", "eje")
+    from .barras import _sql_excluir_borrador
     cur.execute(
         f"SELECT DISTINCT {campo} FROM barras "
-        f"WHERE id_proyecto = %s AND {campo} IS NOT NULL AND {campo} <> ''",
+        f"WHERE id_proyecto = %s AND {campo} IS NOT NULL AND {campo} <> ''"
+        + _sql_excluir_borrador(),
         (id_proyecto,),
     )
     return [row[0] for row in cur.fetchall()]

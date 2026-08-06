@@ -21,15 +21,16 @@ router = APIRouter()
 @router.get("/admin/db-info")
 def db_info(admin=Depends(require_admin_or_admin_calidad)):
     """Info actual de la base de datos."""
+    from .barras import _sql_excluir_borrador
     with get_conn() as conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT COUNT(*) FROM barras")
+            cur.execute("SELECT COUNT(*) FROM barras WHERE 1=1" + _sql_excluir_borrador())
             total_barras = int(cur.fetchone()[0])
             cur.execute("SELECT COUNT(*) FROM proyectos")
             total_proyectos = int(cur.fetchone()[0])
             cur.execute("SELECT COUNT(*) FROM users")
             total_usuarios = int(cur.fetchone()[0])
-            cur.execute("SELECT COALESCE(SUM(peso_total), 0) FROM barras")
+            cur.execute("SELECT COALESCE(SUM(peso_total), 0) FROM barras WHERE 1=1" + _sql_excluir_borrador())
             total_kilos = float(cur.fetchone()[0])
     return {
         "barras": total_barras,

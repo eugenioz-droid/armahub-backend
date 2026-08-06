@@ -90,6 +90,16 @@ BARRAS_COLUMNS = [
     "revisada","revisada_por","revisada_fecha"  # check de revisión del cubicador (5N.19)
 ]
 
+# Filtro que EXCLUYE las barras de despieces en BORRADOR (no terminados). Directriz de negocio: una
+# barra de un despiece "no existe" hasta que el despiece se cierra con bandera (estado pasa a
+# 'terminada'). Hasta entonces no aparece en Bar Manager ni suma en KPIs/export/totales — solo vive en
+# el creador de despieces (única fuente de edición hasta la bandera). Usar IS DISTINCT FROM (NO !=)
+# para NO descartar las barras CSV que tienen estado NULL. Se antepone con el alias correcto donde haga
+# falta (ej. "b.estado"); por defecto sin alias.
+def _sql_excluir_borrador(alias=""):
+    col = (alias + ".estado") if alias else "estado"
+    return f" AND {col} IS DISTINCT FROM 'borrador' "
+
 ALLOWED_ORDER_BY = {
     "fecha_carga", "peso_total", "peso_unitario", "cant_total",
     "diam", "largo_total",
@@ -185,7 +195,7 @@ def get_barras(
     if order_dir not in ("asc", "desc"):
         raise HTTPException(status_code=400, detail="order_dir debe ser asc o desc")
 
-    base_where = " WHERE 1=1 "
+    base_where = " WHERE 1=1 " + _sql_excluir_borrador()   # ocultar barras de despieces en borrador
     params = []
 
     if proyecto:
@@ -321,7 +331,7 @@ def get_barras_elementos(
     if limit > 500: limit = 500
     if offset < 0: offset = 0
 
-    base_where = " WHERE 1=1 "
+    base_where = " WHERE 1=1 " + _sql_excluir_borrador()   # ocultar barras de despieces en borrador
     params = []
     if proyecto:
         base_where += " AND id_proyecto = %s"; params.append(proyecto)
@@ -472,13 +482,13 @@ def get_barras_facetas(proyecto: str, user=Depends(get_current_user)):
             pf_sql, pf_params = _project_filter_sql(allowed)
             cur.execute(
                 "SELECT DISTINCT figura FROM barras WHERE id_proyecto = %s AND figura IS NOT NULL AND figura <> ''"
-                + pf_sql + " ORDER BY figura",
+                + _sql_excluir_borrador() + pf_sql + " ORDER BY figura",
                 [proyecto] + pf_params,
             )
             figuras = [r[0] for r in cur.fetchall()]
             cur.execute(
                 "SELECT DISTINCT marca FROM barras WHERE id_proyecto = %s AND marca IS NOT NULL AND marca <> ''"
-                + pf_sql + " ORDER BY marca",
+                + _sql_excluir_borrador() + pf_sql + " ORDER BY marca",
                 [proyecto] + pf_params,
             )
             tipologias = [r[0] for r in cur.fetchall()]
@@ -486,7 +496,7 @@ def get_barras_facetas(proyecto: str, user=Depends(get_current_user)):
             # con los diámetros que realmente existen, no una lista comercial fija.
             cur.execute(
                 "SELECT DISTINCT diam FROM barras WHERE id_proyecto = %s AND diam IS NOT NULL AND diam > 0"
-                + pf_sql + " ORDER BY diam",
+                + _sql_excluir_borrador() + pf_sql + " ORDER BY diam",
                 [proyecto] + pf_params,
             )
             diametros = [int(r[0]) for r in cur.fetchall()]
@@ -506,7 +516,7 @@ def get_barras_cobertura(
 ):
     """Heatmap Piso × Ciclo. Para cada cruce devuelve barras y kg.
     Útil para detectar pisos/ciclos no cubicados ('huecos')."""
-    base_where = " WHERE 1=1 "
+    base_where = " WHERE 1=1 " + _sql_excluir_borrador()   # ocultar barras de despieces en borrador
     params = []
     if proyecto:
         base_where += " AND id_proyecto = %s"; params.append(proyecto)
@@ -603,6 +613,10 @@ def filters(
             w_parts, w_vals = ["1=1"], list(pf_params)
             if pf_sql:
                 w_parts[0] = "1=1" + pf_sql
+            # Ocultar barras de despieces en borrador (no confirmados) en TODAS las
+            # facetas de barras (planos/sectores/pisos/ciclos/ejes) de aquí en adelante.
+            # NO afecta la consulta de `proyectos` (arriba, tabla proyectos).
+            w_parts.append("estado IS DISTINCT FROM 'borrador'")
             if proyecto:
                 w_parts.append("id_proyecto = %s"); w_vals.append(proyecto)
             wsql = " WHERE " + " AND ".join(w_parts)
@@ -662,7 +676,7 @@ def get_stats(
         with conn.cursor() as cur:
             allowed = _get_allowed_project_ids(cur, user)
             pf_sql, pf_params = _project_filter_sql(allowed)
-            w = " WHERE 1=1" + pf_sql
+            w = " WHERE 1=1" + pf_sql + _sql_excluir_borrador()   # ocultar barras de despieces en borrador
             wp = list(pf_params)
 
             # Date range filter on fecha_carga
@@ -707,7 +721,7 @@ def get_stats(
                     SELECT COALESCE(SUM(diam * peso_total) / NULLIF(SUM(peso_total), 0), 0)
                     FROM barras
                     WHERE diam IS NOT NULL AND peso_total IS NOT NULL
-                """ + pf_sql, pf_params)
+                """ + pf_sql + _sql_excluir_borrador(), pf_params)
                 diam_prom = round(float(cur.fetchone()[0]), 1)
             except Exception:
                 cur.execute("ROLLBACK TO SAVEPOINT sp_diam_prom")
@@ -722,7 +736,7 @@ def get_stats(
                        COALESCE(SUM(b.peso_total), 0) AS kilos
                 FROM barras b
                 LEFT JOIN proyectos p ON b.id_proyecto = p.id_proyecto
-                WHERE 1=1""" + pf_b + """
+                WHERE 1=1""" + pf_b + _sql_excluir_borrador("b") + """
                 GROUP BY b.id_proyecto, p.nombre_proyecto
                 ORDER BY kilos DESC
             """, pf_bp)
@@ -788,7 +802,7 @@ def get_stats_timeline(
             allowed = _get_allowed_project_ids(cur, user)
             pf_sql, pf_params = _project_filter_sql(allowed, "b")
 
-            w = " WHERE 1=1" + pf_sql
+            w = " WHERE 1=1" + pf_sql + _sql_excluir_borrador("b")   # ocultar barras de despieces en borrador
             wp = list(pf_params)
 
             if fecha_desde:
@@ -843,7 +857,7 @@ def get_stats_cubicadores(
             # cubicación manual (antes solo leía imports = solo CSV). barras=Σcant_total (físicas),
             # items=COUNT (entradas), kilos=Σpeso_total. Filtro por proyecto (alias b) y fecha_carga.
             pf_b, pf_bp = _project_filter_sql(allowed, "b")
-            w = " WHERE b.creado_por IS NOT NULL" + pf_b
+            w = " WHERE b.creado_por IS NOT NULL" + pf_b + _sql_excluir_borrador("b")   # ocultar borrador
             wp = list(pf_bp)
             if fecha_desde:
                 w += " AND b.fecha_carga >= %s"
@@ -925,7 +939,7 @@ def get_cubicacion_mensual(
                        b.creado_por AS usuario,
                        COALESCE(SUM(b.peso_total), 0) AS kilos
                 FROM barras b
-                WHERE b.creado_por IS NOT NULL AND LEFT(b.fecha_carga, 4) = %s""" + pf_sql + """
+                WHERE b.creado_por IS NOT NULL AND LEFT(b.fecha_carga, 4) = %s""" + pf_sql + _sql_excluir_borrador("b") + """
                 GROUP BY mes, b.creado_por
                 ORDER BY mes, kilos DESC
             """, [str(anio)] + pf_params)
@@ -980,7 +994,7 @@ def get_mi_actividad(user=Depends(get_current_user)):
                 SELECT COALESCE(SUM(cant_total), 0), COALESCE(SUM(peso_total), 0), COUNT(*)
                 FROM barras
                 WHERE creado_por = %s AND LEFT(fecha_carga, 10) = %s
-            """, (email, today))
+            """ + _sql_excluir_borrador(), (email, today))
             hoy = cur.fetchone()
 
             # Daily breakdown last 14 days
@@ -991,6 +1005,7 @@ def get_mi_actividad(user=Depends(get_current_user)):
                        COUNT(*) AS cargas
                 FROM barras
                 WHERE creado_por = %s AND LEFT(fecha_carga, 10) >= %s
+            """ + _sql_excluir_borrador() + """
                 GROUP BY dia
                 ORDER BY dia
             """, (email, day14_ago))
@@ -1001,7 +1016,7 @@ def get_mi_actividad(user=Depends(get_current_user)):
                 SELECT COALESCE(SUM(cant_total), 0), COALESCE(SUM(peso_total), 0), COUNT(*)
                 FROM barras
                 WHERE creado_por = %s AND LEFT(fecha_carga, 10) >= %s
-            """, (email, this_monday))
+            """ + _sql_excluir_borrador(), (email, this_monday))
             sem_actual = cur.fetchone()
 
             # Last week totals
@@ -1009,7 +1024,7 @@ def get_mi_actividad(user=Depends(get_current_user)):
                 SELECT COALESCE(SUM(cant_total), 0), COALESCE(SUM(peso_total), 0), COUNT(*)
                 FROM barras
                 WHERE creado_por = %s AND LEFT(fecha_carga, 10) >= %s AND LEFT(fecha_carga, 10) <= %s
-            """, (email, last_monday, last_sunday))
+            """ + _sql_excluir_borrador(), (email, last_monday, last_sunday))
             sem_anterior = cur.fetchone()
 
     # Fill missing days in the 14-day window
@@ -1585,7 +1600,7 @@ def ediciones_barras(proyecto: str, limit: int = 20, user=Depends(get_current_us
                 FROM audit_log a
                 JOIN barras b ON b.id::text = a.entidad_id
                 WHERE a.accion = 'editar_barra' AND a.entidad = 'barra'
-                  AND b.id_proyecto = %s""" + pf_sql + """
+                  AND b.id_proyecto = %s""" + pf_sql + _sql_excluir_borrador("b") + """
                 ORDER BY a.fecha DESC
                 LIMIT %s
                 """,
@@ -1752,7 +1767,7 @@ def get_sectores_nav(id_proyecto: str, user=Depends(get_current_user)):
                          0
                        ) AS diam_prom
                 FROM barras
-                WHERE id_proyecto = %s
+                WHERE id_proyecto = %s""" + _sql_excluir_borrador() + """
                 GROUP BY sector, piso, ciclo
                 ORDER BY piso, ciclo, sector
             """, (id_proyecto,))
@@ -1815,7 +1830,7 @@ def dashboard_sectores(
         with conn.cursor() as cur:
             allowed_ids = _get_allowed_project_ids(cur, user)
             pf_b, pf_bp = _project_filter_sql(allowed_ids, "b")
-            where = "WHERE 1=1" + pf_b
+            where = "WHERE 1=1" + pf_b + _sql_excluir_borrador("b")   # ocultar barras de despieces en borrador
             params = list(pf_bp)
             if proyecto:
                 where += " AND b.id_proyecto = %s"
@@ -1901,7 +1916,7 @@ def get_proyectos(user=Depends(get_current_user)):
                     COALESCE(rec.n_reclamos, 0) as n_reclamos,
                     COALESCE(SUM(b.cant_total), 0) as total_barras_fisicas
                 FROM proyectos p
-                LEFT JOIN barras b ON p.id_proyecto = b.id_proyecto
+                LEFT JOIN barras b ON p.id_proyecto = b.id_proyecto AND b.estado IS DISTINCT FROM 'borrador'
                 LEFT JOIN constructoras co ON p.constructora_id = co.id
                 LEFT JOIN calculistas ca ON p.calculista_id = ca.id
                 LEFT JOIN (
@@ -2005,7 +2020,7 @@ def get_proyecto_sectores(
                     COUNT(DISTINCT id_unico) as total_barras,
                     COALESCE(SUM(peso_total), 0) as total_kilos
                 FROM barras
-                WHERE id_proyecto = %s
+                WHERE id_proyecto = %s""" + _sql_excluir_borrador() + """
                 GROUP BY sector
                 ORDER BY total_kilos DESC
             """, (id_proyecto,))
@@ -2300,7 +2315,7 @@ def get_cobertura_ciclos(id_proyecto: str, user=Depends(get_current_user)):
                        array_agg(DISTINCT eje ORDER BY eje) AS ejes
                 FROM barras
                 WHERE id_proyecto = %s
-                  AND eje IS NOT NULL AND eje <> ''
+                  AND eje IS NOT NULL AND eje <> ''""" + _sql_excluir_borrador() + """
                 GROUP BY COALESCE(ciclo, ''), COALESCE(sector, ''), COALESCE(piso, '')
                 """,
                 (id_proyecto,),
@@ -2376,7 +2391,7 @@ def landing_indicadores(user=Depends(get_current_user)):
                     JOIN users u ON u.email = b.creado_por
                     WHERE b.creado_por IS NOT NULL
                       AND LEFT(b.fecha_carga, 10) >= %s
-                      AND LEFT(b.fecha_carga, 10) <= %s
+                      AND LEFT(b.fecha_carga, 10) <= %s""" + _sql_excluir_borrador("b") + """
                     GROUP BY b.creado_por, u.nombre, u.apellido, dow
                     ORDER BY b.creado_por, dow
                 """, (monday, sunday))
@@ -2413,7 +2428,7 @@ def landing_indicadores(user=Depends(get_current_user)):
                     JOIN users u ON u.email = b.creado_por
                     WHERE b.creado_por IS NOT NULL
                       AND LEFT(b.fecha_carga, 10) >= %s
-                      AND LEFT(b.fecha_carga, 10) <= %s
+                      AND LEFT(b.fecha_carga, 10) <= %s""" + _sql_excluir_borrador("b") + """
                     GROUP BY b.creado_por, u.nombre, u.apellido, mes, semana
                     ORDER BY b.creado_por, mes, semana
                 """, (anio_ini, now.strftime("%Y-%m-%d")))

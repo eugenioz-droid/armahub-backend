@@ -1020,6 +1020,7 @@ async def import_armadetailer_preview(
             # del CSV. n = total; n_edit = cuántas fueron EDITADAS a mano en la
             # plataforma (editado_por IS NOT NULL) — 5M.5: para avisar qué trabajo
             # manual reescribiría el re-import.
+            from .barras import _sql_excluir_borrador
             db_epc: dict = {}
             db_epc_edit: dict = {}
             db_epc_manual: dict = {}   # 5N.2: barras manual/pedido que se CONSERVAN
@@ -1036,6 +1037,7 @@ async def import_armadetailer_preview(
                     WHERE id_proyecto = %s
                       AND COALESCE(eje, '')  = ANY(%s)
                       AND COALESCE(piso, '') = ANY(%s)
+                    """ + _sql_excluir_borrador() + """
                     GROUP BY 1, 2, 3
                     """,
                     (obra_destino, ejes_csv, pisos_csv),
@@ -1062,6 +1064,7 @@ async def import_armadetailer_preview(
                       AND editado_por IS NOT NULL
                       AND COALESCE(eje, '')  = ANY(%s)
                       AND COALESCE(piso, '') = ANY(%s)
+                    """ + _sql_excluir_borrador() + """
                     ORDER BY editado_fecha DESC NULLS LAST
                     LIMIT 200
                     """,

@@ -19,6 +19,7 @@ from pydantic import BaseModel
 
 from .auth import get_current_user, require_admin_or_admin_calidad
 from .db import get_conn, audit
+from .barras import _sql_excluir_borrador
 
 router = APIRouter()
 
@@ -57,7 +58,7 @@ def listar_calculistas(activo: Optional[bool] = None, user=Depends(get_current_u
                     -- items = filas (COUNT); barras_fis = barras físicas (Σ cant_total).
                     SELECT id_proyecto, COUNT(*) AS items, COALESCE(SUM(cant_total), 0) AS barras_fis,
                            COALESCE(SUM(peso_total), 0) AS kilos
-                    FROM barras GROUP BY id_proyecto
+                    FROM barras WHERE 1=1 """ + _sql_excluir_borrador() + """ GROUP BY id_proyecto
                 ) stats ON stats.id_proyecto = p.id_proyecto
             """ + where + """
                 GROUP BY c.id, c.nombre, c.email, c.activo, c.fecha_creacion
@@ -107,7 +108,7 @@ def kpis_calculistas(user=Depends(require_admin_or_admin_calidad)):
                     COALESCE(SUM(b.cant_total), 0) AS barras_fisicas
                 FROM calculistas c
                 LEFT JOIN proyectos p ON p.calculista_id = c.id
-                LEFT JOIN barras b ON b.id_proyecto = p.id_proyecto
+                LEFT JOIN barras b ON b.id_proyecto = p.id_proyecto AND b.estado IS DISTINCT FROM 'borrador'
                 WHERE c.activo = TRUE
                 GROUP BY c.id, c.nombre
                 ORDER BY kilos DESC
@@ -155,7 +156,7 @@ def detalle_calculista(calculista_id: int, user=Depends(require_admin_or_admin_c
                        COUNT(b.id_unico) AS barras,
                        COALESCE(SUM(b.peso_total), 0) AS kilos
                 FROM proyectos p
-                LEFT JOIN barras b ON b.id_proyecto = p.id_proyecto
+                LEFT JOIN barras b ON b.id_proyecto = p.id_proyecto AND b.estado IS DISTINCT FROM 'borrador'
                 WHERE p.calculista_id = %s
                 GROUP BY p.id_proyecto, p.nombre_proyecto
                 ORDER BY p.nombre_proyecto
