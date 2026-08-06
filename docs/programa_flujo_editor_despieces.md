@@ -102,3 +102,14 @@ cubicador/día con filtro `proyecto` opcional (para el gráfico). Cablear `ac2_l
 - **Reusar, no reinventar:** buscador_obra.js, histórico (`ac2CargarLotes`), componente Chart.js del Hub.
 
 Ver [[project_armahub_agregar_cubicacion]], maqueta aprobada (artifact flujo por etapas).
+
+---
+
+## Pendientes (post Fase C)
+
+- **Limpiar el buscador dentro de una obra:** hoy al borrar el texto del buscador estando en etapa 1
+  (obra elegida) NO se vuelve a la landing (etapa 0). Falta: (a) detectar el "vaciado" del buscador
+  para volver a etapa 0, o (b) dar feedback claro de que se está "dentro de una obra" (el título ya
+  muestra el nombre, pero el buscador vacío confunde). Evaluar si el buscador debe deshabilitarse/
+  cambiar de aspecto una vez elegida la obra, o si el "← Volver a obras" es suficiente y el buscador
+  no debería resetear la etapa. Reportado por el usuario 2026-08-06.

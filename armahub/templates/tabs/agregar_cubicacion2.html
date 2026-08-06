@@ -32,7 +32,7 @@
            etapas muestra/oculta (NO el parentElement del input: el combobox lo envuelve y ese
            parent deja de contener el label). -->
       <div id="ac2_fldObra" style="display:flex; flex-direction:column; width:260px;">
-        <label style="font-size:11px; color:#558B2F; font-weight:700; margin-bottom:2px;">Obra *</label>
+        <label id="ac2_lblObra" style="font-size:11px; color:#558B2F; font-weight:700; margin-bottom:2px;">Obra *</label>
         <input type="text" id="ac2_obra" list="ac2_obraDatalist" placeholder="🔍 buscar obra…" style="font-size:13px; height:34px; box-sizing:border-box;" />
         <datalist id="ac2_obraDatalist"></datalist>
         <select id="ac2_obraSel" style="display:none;"></select>
@@ -267,7 +267,24 @@
              border-radius:3px; box-sizing:border-box; }
   .ac2cell:focus { outline:none; border-color:#8BC34A; box-shadow:0 0 0 2px rgba(139,195,74,.25); }
   .ac2cell.rojo { border-color:#e57373; background:#ffebee; }
-  /* Fila del repositorio de lotes como hiperlink: hover la resalta (click abre el lote). */
+  /* Fila del repositorio de lotes / landing como hiperlink: hover la resalta (click abre). */
+  .ac2loterow { transition: background-color .12s ease; }
   .ac2loterow:hover { background:#f1f8e9 !important; }
   .ac2loterow:hover td:first-child { text-decoration:underline; }
+
+  /* ── Pulido del flujo por etapas (Fase C) ── */
+  /* Transición suave de los bloques que aparecen por etapa (fade-in). NO se aplica a #ac2_grid porque
+     se re-renderiza en cada edición de barra → parpadearía. Solo bloques que aparecen una vez por etapa. */
+  #ac2_grafico, #ac2_landingObras, #ac2_crearDespieceWrap, #ac2_filaSector { animation: ac2fade .18s ease; }
+  @keyframes ac2fade { from { opacity:0; transform:translateY(-3px); } to { opacity:1; transform:none; } }
+  @media (prefers-reduced-motion: reduce){
+    .ac2loterow, #ac2_grafico, #ac2_landingObras, #ac2_crearDespieceWrap, #ac2_filaSector { animation:none; transition:none; }
+  }
+  /* La tabla de obras de la landing hace scroll horizontal en pantallas chicas (no rompe el layout). */
+  #ac2_landingObras { overflow-x:auto; }
+  #ac2_landingObras table { min-width:640px; }
+  /* Botón "Crear despiece" (landing): micro-realce al pasar el mouse. */
+  #ac2_crearDespieceBtn { transition: filter .12s ease, transform .12s ease; }
+  #ac2_crearDespieceBtn:hover { filter:brightness(1.06); transform:translateY(-1px); }
+  #ac2_crearDespieceBtn:focus-visible { outline:2px solid #558B2F; outline-offset:2px; }
 </style>

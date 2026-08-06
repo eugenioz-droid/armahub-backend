@@ -704,6 +704,8 @@ function ac2AplicarEtapa(){
   var _ctxDesde2 = (e>=2);
   show('ac2_filaContexto', true);
   show('ac2_fldObra', e<=1);
+  // En la landing el campo obra es un BUSCADOR (elegir obra); el label lo refleja.
+  var _lbl=document.getElementById('ac2_lblObra'); if(_lbl) _lbl.textContent = (e===0) ? 'Buscar obra' : 'Obra';
   show('ac2_fldCiclo', _ctxDesde2);
   show('ac2_fldEje', _ctxDesde2);
   var _crear=document.getElementById('ac2_crearLoteBtn'); if(_crear && !_ctxDesde2) _crear.style.display='none';
