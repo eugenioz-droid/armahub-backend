@@ -15,18 +15,32 @@ const detailCache = new Map();    // key -> array de barras
 // riesgo). Guardamos la figura ENTERA (no solo la geometría) porque el render escalado
 // del botón "Ver dibujo" necesita `f.radio` para decidir si la figura es escalable
 // (mismo criterio que el editor Agregar Despiece).
-let _bmGeometrias = null;         // { codigo: figuraCompleta } | null (no cargado)
+let _bmGeometrias = null;         // { codigo: figuraCompleta } cuando cargó con ÉXITO | null si no
+let _bmGeomPromesa = null;        // promesa en curso (evita cargas duplicadas concurrentes)
+// Carga las geometrías del catálogo UNA vez. Antes marcaba _bmGeometrias={} ANTES del await, así que
+// si algo re-renderizaba antes de que el fetch terminara (o si fallaba), quedaba "cargado" vacío y NO
+// reintentaba → el render quedaba en blanco para siempre. Ahora _bmGeometrias solo se setea al ÉXITO;
+// si falla se deja null para reintentar, y las cargas concurrentes comparten la misma promesa.
 async function _bmCargarGeometrias() {
-  if (_bmGeometrias) return;
-  _bmGeometrias = {};             // marca "intentado" aunque falle
-  try {
-    const data = await apiGet('/figuras-catalogo');
-    (data && data.figuras || []).forEach(function(f) {
-      if (f.geometria && f.geometria.tramos && f.geometria.tramos.length) {
-        _bmGeometrias[f.codigo] = f;   // figura completa: { codigo, geometria, radio, ... }
-      }
-    });
-  } catch (e) { /* degrada a solo texto */ }
+  if (_bmGeometrias) return;            // ya cargado con éxito
+  if (_bmGeomPromesa) return _bmGeomPromesa;   // carga en curso → esperar la misma
+  _bmGeomPromesa = (async function() {
+    try {
+      const data = await apiGet('/figuras-catalogo');
+      const mapa = {};
+      (data && data.figuras || []).forEach(function(f) {
+        if (f.geometria && f.geometria.tramos && f.geometria.tramos.length) {
+          mapa[f.codigo] = f;          // figura completa: { codigo, geometria, radio, ... }
+        }
+      });
+      _bmGeometrias = mapa;            // recién ahora "cargado" (con éxito)
+    } catch (e) {
+      _bmGeometrias = null;            // falló → permitir reintento en el próximo render
+    } finally {
+      _bmGeomPromesa = null;
+    }
+  })();
+  return _bmGeomPromesa;
 }
 // Geometría cruda del catálogo para un código (o null). Helper para no repetir el
 // acceso _bmGeometrias[codigo].geometria en varios sitios.
@@ -129,11 +143,14 @@ function _bmCeldaDibujo(b) {
 }
 
 // Toggle "Render": guarda el estado, muestra/oculta los botones S/M/L/XL y re-renderiza la vista
-// actual desde memoria (sin re-fetch). Análogo a ac2Render del editor.
-function bmToggleRender(on) {
+// actual. Async: al ACTIVAR el render asegura que las geometrías estén cargadas ANTES de dibujar (si
+// no, la vista plana re-renderizaba con _bmGeometrias vacío → columna Render en blanco). Análogo a
+// ac2Render del editor.
+async function bmToggleRender(on) {
   bmVerRender = !!on;
   var tams = document.getElementById('bmRenderTams');
   if (tams) tams.style.display = bmVerRender ? '' : 'none';
+  if (bmVerRender && typeof _bmCargarGeometrias === 'function') await _bmCargarGeometrias();
   if (typeof bmReRenderVistaActual === 'function') bmReRenderVistaActual();
 }
 // Tamaño del render (S/M/L/XL). Pinta el botón activo (verde) y re-renderiza. Igual que ac2SetTam.
