@@ -62,7 +62,7 @@ function _bmMiniFigura(codigo) {
 // ── RENDER ESCALADO A LAS DIMS DE LA BARRA (columna "Render", toggle Render + S/M/L/XL) ──
 // Réplica del control del editor Agregar Despiece: un toggle "Render" y tamaños S/M/L/XL. Por defecto
 // DESACTIVADO (el dibujo escalado tiene costo). Análogo a AC2.render / AC2.tam / ac2SetTam del editor.
-let bmVerRender = false;
+let bmVerRender = true;   // Render ON por defecto (el checkbox del HTML nace checked)
 let bmTam = 'm';   // tamaño del render: s/m/l/xl (igual que AC2.tam)
 // Tamaños del dibujo por lado (mismos valores que AC2_TAM del editor).
 const BM_TAM = { s:{w:70,h:52}, m:{w:110,h:80}, l:{w:160,h:118}, xl:{w:220,h:160} };

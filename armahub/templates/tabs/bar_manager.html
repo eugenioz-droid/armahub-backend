@@ -152,9 +152,9 @@
              derecha (margin-left:auto) como control visual separado. Apagado por defecto. -->
         <div style="margin-left:auto; display:inline-flex; align-items:center; gap:8px;">
           <label style="font-size:11px; color:#666; cursor:pointer; display:inline-flex; align-items:center; gap:4px;" title="Dibujar la figura de cada barra a escala (A, B, C…, ángulos)">
-            <input type="checkbox" id="bmVerRender" onchange="bmToggleRender(this.checked)" style="margin:0;" /> Render
+            <input type="checkbox" id="bmVerRender" checked onchange="bmToggleRender(this.checked)" style="margin:0;" /> Render
           </label>
-          <div id="bmRenderTams" style="display:none; border:1px solid #cfd8dc; border-radius:4px; overflow:hidden;">
+          <div id="bmRenderTams" style="border:1px solid #cfd8dc; border-radius:4px; overflow:hidden;">
             <button id="bmr_s"  onclick="bmSetTam('s')"  style="font-size:10px; padding:3px 8px; border:none; background:#fff; color:#607d8b; cursor:pointer;">S</button>
             <button id="bmr_m"  onclick="bmSetTam('m')"  style="font-size:11px; padding:3px 8px; border:none; background:#8BC34A; color:#fff; cursor:pointer;">M</button>
             <button id="bmr_l"  onclick="bmSetTam('l')"  style="font-size:12px; padding:3px 8px; border:none; background:#fff; color:#607d8b; cursor:pointer;">L</button>
