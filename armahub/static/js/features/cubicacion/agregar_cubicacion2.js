@@ -697,18 +697,22 @@ function ac2AplicarEtapa(){
   // Botón "Crear despiece" (landing): solo etapa 1. Volver a obras: etapas 1-3 (en 4 la ✕ hace de volver).
   show('ac2_crearDespieceWrap', e===1);
   show('ac2_volverObras', e>=1 && e<=3);
-  // Fila de contexto (turquesa): visible en 0-1 (solo el buscador de obra) y en 2-4 (ciclo/eje/crear).
-  // El CAMPO obra se ve en 0-1 (para elegir/ver la obra) y se OCULTA en 2-4 (la obra va en el título).
-  // Los campos ciclo/eje/crear/config solo aparecen desde la etapa 2 (al iniciar la creación).
-  show('ac2_filaContexto', true);   // la fila siempre existe; se controla pieza por pieza abajo
-  var _showChild=function(el,on){ if(el){ var c=(el.classList&&el.classList.contains('ac2fld'))?el:(el.parentElement||el); c.style.display=on?'':'none'; } };
-  var campoObra = document.getElementById('ac2_obra');
-  if (campoObra && campoObra.parentElement){ campoObra.parentElement.style.display = (e<=1) ? '' : 'none'; }
-  // Ciclo, Eje, Crear despiece, Config obra: solo desde etapa 2.
+  // Fila de contexto: cada CAMPO se muestra por etapa usando el ID del div EXTERNO (ac2_fld*) — NO el
+  // parentElement del input (el combobox de ciclo/eje lo envuelve y dejaría el label huérfano). Obra:
+  // en 0-1 (elegir/ver); Ciclo/Eje/Crear/Config: desde etapa 2. Además, en 0-1 la fila pierde el fondo
+  // turquesa y el marco (es solo el buscador, no la "caja de contexto" del editor); desde la etapa 2
+  // recupera el fondo turquesa completo.
   var _ctxDesde2 = (e>=2);
-  _showChild(document.getElementById('ac2_ciclo'), _ctxDesde2);
-  _showChild(document.getElementById('ac2_eje'), _ctxDesde2);
-  var _crear=document.getElementById('ac2_crearLoteBtn'); if(_crear) _crear.style.display=_ctxDesde2?'':'none';
+  show('ac2_filaContexto', true);
+  var _fila=document.getElementById('ac2_filaContexto');
+  if (_fila){
+    if (_ctxDesde2){ _fila.style.background='#e0f2f1'; _fila.style.border='1px solid #b2dfdb'; _fila.style.padding='10px 12px'; }
+    else { _fila.style.background='transparent'; _fila.style.border='none'; _fila.style.padding='0'; }
+  }
+  show('ac2_fldObra', e<=1);
+  show('ac2_fldCiclo', _ctxDesde2);
+  show('ac2_fldEje', _ctxDesde2);
+  var _crear=document.getElementById('ac2_crearLoteBtn'); if(_crear && !_ctxDesde2) _crear.style.display='none';
   var _cfg=document.getElementById('ac2_cfgBtn'); if(_cfg) _cfg.style.display=_ctxDesde2?'':'none';
   // Sector/Estructura: etapas 3-4. Tipologías, toolbar, grilla, rollup: solo editor (4).
   show('ac2_filaSector', e>=3);
