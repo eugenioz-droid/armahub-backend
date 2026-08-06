@@ -690,32 +690,34 @@ function ac2Etapa(){
 }
 function ac2AplicarEtapa(){
   var e = ac2Etapa();
-  var show=function(id,on){ var el=document.getElementById(id); if(el) el.style.display=on?'':'none'; };
+  // show(id, on, disp): al MOSTRAR usa el display correcto (por defecto '' = block; para los
+  // contenedores flex hay que pasar 'flex', si no style.display='' los resetea a block y rompe el
+  // layout en línea de la fila de contexto). Al ocultar, 'none'.
+  var show=function(id,on,disp){ var el=document.getElementById(id); if(el) el.style.display=on?(disp||''):'none'; };
   // Landing (gráfico + lista de obras): el gráfico en 0-3, la lista de obras solo en 0.
   show('ac2_grafico', e>=0 && e<=3);
   show('ac2_landingObras', e===0);
   // Botón "Crear despiece" (landing): solo etapa 1. Volver a obras: etapas 1-3 (en 4 la ✕ hace de volver).
   show('ac2_crearDespieceWrap', e===1);
   show('ac2_volverObras', e>=1 && e<=3);
-  // Fila de contexto (caja turquesa): SIEMPRE con su fondo (como la maqueta: el buscador vive dentro
-  // de la caja). Cada CAMPO se muestra por etapa usando el ID del div EXTERNO (ac2_fld*) — NO el
-  // parentElement del input (el combobox de ciclo/eje lo envuelve y dejaría el label huérfano). Obra:
-  // en 0-1 (elegir/ver); Ciclo/Eje/Crear/Config: desde la etapa 2 (al iniciar la creación).
+  // Fila de contexto (caja turquesa): SIEMPRE con su fondo. Es un contenedor FLEX (campos en línea);
+  // por eso se muestra con 'flex'. Los divs de campo (ac2_fld*) también son flex-column → 'flex'.
   var _ctxDesde2 = (e>=2);
-  show('ac2_filaContexto', true);
-  show('ac2_fldObra', e<=1);
+  show('ac2_filaContexto', true, 'flex');
+  show('ac2_fldObra', e<=1, 'flex');
   // En la landing el campo obra es un BUSCADOR (elegir obra); el label lo refleja.
   var _lbl=document.getElementById('ac2_lblObra'); if(_lbl) _lbl.textContent = (e===0) ? 'Buscar obra' : 'Obra';
-  show('ac2_fldCiclo', _ctxDesde2);
-  show('ac2_fldEje', _ctxDesde2);
+  show('ac2_fldCiclo', _ctxDesde2, 'flex');
+  show('ac2_fldEje', _ctxDesde2, 'flex');
   var _crear=document.getElementById('ac2_crearLoteBtn'); if(_crear && !_ctxDesde2) _crear.style.display='none';
   var _cfg=document.getElementById('ac2_cfgBtn'); if(_cfg) _cfg.style.display=_ctxDesde2?'':'none';
-  // Sector/Estructura: etapas 3-4. Tipologías, toolbar, grilla, rollup: solo editor (4).
-  show('ac2_filaSector', e>=3);
-  show('ac2_subtabs', e===4);
-  show('ac2_toolbar', e===4);
-  show('ac2_grid', e===4);
-  show('ac2_rollupWrap', e===4);
+  // Sector/Estructura: etapas 3-4. Tipologías, toolbar, grilla, rollup: solo editor (4). Todos son
+  // contenedores FLEX en su HTML original → se muestran con 'flex' (el grid es block normal).
+  show('ac2_filaSector', e>=3, 'flex');
+  show('ac2_subtabs', e===4, 'flex');
+  show('ac2_toolbar', e===4, 'flex');
+  show('ac2_grid', e===4);            // grid: div block normal
+  show('ac2_rollupWrap', e===4, 'flex');
   // Histórico de despieces: protagonista en etapa 1, y visible también en el editor (4) como hoy.
   show('ac2_historicoWrap', e===1 || e===4);
   // Título: nombre de la obra desde etapa 1; genérico en la landing.
