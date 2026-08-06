@@ -802,15 +802,29 @@ window.ac2CargarGrafico=async function(){
   var cubs=(d&&d.cubicadores)||[]; var labels=(d&&d.labels)||[]; var n=labels.length;
   // Título según período + alcance (obra o todas).
   var perTxt={S:'semana',MS:'mes (por semana)',MD:'mes (por día)',A:'año'}[_ac2GrafPeriodo]||'';
-  if (tit) tit.textContent = 'Cubicado '+perTxt+' (kg listos)' + (AC2.proyecto && AC2._nombreObra ? ' · '+AC2._nombreObra : ' · todas las obras');
-  // Selector de año: se puebla y muestra solo si hay >1 año con data.
+  var enObra = !!(AC2.proyecto && AC2._nombreObra);
+  if (tit) tit.textContent = 'Cubicado '+perTxt+' (kg listos)' + (enObra ? ' · '+AC2._nombreObra : ' · todas las obras');
+  // RESALTE dentro de una obra: el gráfico se diferencia del global (todas las obras). El título gana
+  // un fondo verde suave (píldora) y el contenedor un borde verde; en global queda neutro. Así se
+  // entiende de un vistazo que es el gráfico de ESA obra, no el general.
+  if (tit){
+    tit.style.transition='background-color .15s ease, color .15s ease';
+    if (enObra){ tit.style.background='#e8f5e9'; tit.style.color='#2e7d32'; tit.style.padding='3px 10px'; tit.style.borderRadius='6px'; }
+    else { tit.style.background='transparent'; tit.style.color='#888'; tit.style.padding='0'; tit.style.borderRadius='0'; }
+  }
+  var _cont=document.getElementById('ac2_grafico');
+  if (_cont){ _cont.style.borderColor = enObra ? '#a5d6a7' : '#e0e0e0'; _cont.style.borderWidth = enObra ? '2px' : '1px'; }
+  // Selector de año: SIEMPRE visible, con el año en curso (o el seleccionado) marcado por defecto.
+  // Se asegura de incluir el año en curso aunque aún no tenga data (para poder elegirlo).
   var selA=document.getElementById('ac2g_anio');
-  if (selA && d && d.anios){
-    if (d.anios.length>1){
-      var cur=_ac2GrafAnio || d.anio;
-      selA.innerHTML=d.anios.map(function(y){ return '<option value="'+y+'"'+((''+y===''+cur)?' selected':'')+'>'+y+'</option>'; }).join('');
-      selA.style.display='';
-    } else { selA.style.display='none'; }
+  if (selA){
+    var anios=(d&&d.anios&&d.anios.slice())||[];
+    var actual=(d&&d.anio)||new Date().getFullYear();
+    if (anios.indexOf(actual)===-1) anios.push(actual);
+    anios.sort(function(a,b){ return b-a; });   // más reciente arriba
+    var cur=_ac2GrafAnio || actual;
+    selA.innerHTML=anios.map(function(y){ return '<option value="'+y+'"'+((''+y===''+cur)?' selected':'')+'>'+y+'</option>'; }).join('');
+    selA.style.display='';
   }
   // Sin datos: mensaje en vez de canvas vacío.
   var vacioMsg=document.getElementById('ac2_graficoVacio');
