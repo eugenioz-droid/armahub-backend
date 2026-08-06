@@ -1584,7 +1584,11 @@ window.ac2RetomarLote=async function(id){
   if (_ac2CbEje)   _ac2CbEje.setValor({id:AC2.eje,label:AC2.eje});
   AC2.tipo='TODOS';
   ac2PintarSectorEstructura(); ac2PintarSubtabs(); ac2PintarEstado(); ac2ActualizarCabecera();
-  _ac2CargarPisos();   // pisos de la obra para el <select> de la grilla
+  // Cargar los pisos de la obra ANTES de pintar la grilla: _ac2CargarPisos es async y si no se
+  // espera, ac2SetTipo renderiza los <select> de piso con _ac2Pisos aún vacío → el desplegable
+  // salía sin pisos al retomar un despiece (carrera). Con await, la grilla se pinta con los pisos ya
+  // disponibles. Si falla la carga, igual se renderiza (los pisos existentes de las barras aparecen).
+  try { await _ac2CargarPisos(); } catch(e) {}
   ac2SetTipo('TODOS'); ac2CargarLotes();
   if (L.estado==='eliminado') alert('Despiece #'+(L.num_obra||L.id)+' ELIMINADO — solo lectura (histórico).\nSe conserva su contenido para consulta; no se puede editar. Usa la ✕ para volver.');
   else if (L.estado==='terminada') alert('Despiece #'+(L.num_obra||L.id)+' TERMINADO — solo lectura.\nDesde aquí solo puedes ELIMINARLO. Para corregir una barra, usa Bar Manager.');
