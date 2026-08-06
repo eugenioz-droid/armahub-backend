@@ -694,8 +694,9 @@ function ac2AplicarEtapa(){
   // contenedores flex hay que pasar 'flex', si no style.display='' los resetea a block y rompe el
   // layout en línea de la fila de contexto). Al ocultar, 'none'.
   var show=function(id,on,disp){ var el=document.getElementById(id); if(el) el.style.display=on?(disp||''):'none'; };
-  // Landing (gráfico + lista de obras): el gráfico en 0-3, la lista de obras solo en 0.
-  show('ac2_grafico', e>=0 && e<=3);
+  // Gráfico: solo en la landing (etapa 0, todas las obras) y en la obra elegida (etapa 1, esa obra).
+  // Al iniciar la creación de un despiece (etapa 2+) DESAPARECE → foco en crear. Lista de obras: etapa 0.
+  show('ac2_grafico', e<=1);
   show('ac2_landingObras', e===0);
   // Botón "Crear despiece" (landing): solo etapa 1. Volver a obras: etapas 1-3 (en 4 la ✕ hace de volver).
   show('ac2_crearDespieceWrap', e===1);
