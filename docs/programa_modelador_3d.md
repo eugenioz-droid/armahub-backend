@@ -110,6 +110,32 @@ usan para generar. Guardarlo = persistir ese JSON. NO hay dos sistemas (crear vs
 mismo. Un template instanciado (elementos_template) referencia opcionalmente el template de origen
 (templates_catalogo) del que salió.
 
+## 0-5ter. Modelo de COMPONENTE fijado (discovery UI, 08-ago) — firme
+
+- **Componente = N capas** (tabla de capas dentro). Cada capa: N° barras + OFFSET a la cara
+  (retranqueo hacia el núcleo). RAZÓN DE FABRICACIÓN (no solo UI): capas IGUALES en 1 componente →
+  1 item / 1 ETIQUETA / 1 tanda (con cantidad ×N). Hacerlas como componentes separados duplicaría
+  etiquetas/tandas. El sistema deja AMBAS abiertas (2 componentes de 1 capa, o 1 de 2 capas): el
+  usuario agrupa cuando son iguales. Conecta con la lógica cant/mult ya existente en barras.
+- **Cara editable por componente** = radial de 3 botones (Sup/Inf/Lat), NO dropdown. Para muros:
+  cabezal en un lado u otro; trabas/estribos igual.
+- **Offset a la cara por capa** = el retranqueo. Recubrimiento GLOBAL del elemento + OVERRIDE por
+  componente. NO los 4-recubrimientos-por-lado de Tekla (eso es para fabricar/detallar, no cubicar;
+  futuro, con el offset ya por-componente extensible a por-lado sin romper).
+- **Jerarquía de recubrimiento = FIJA por defecto por elemento** (MVP) + ajuste manual del offset donde
+  no calce. Escalable a jerarquía configurable después (el offset por componente ya lo permite). NO
+  modelar la jerarquía completa ahora (pozo: reglas de armado por elemento = proyecto en sí).
+- **φ = dropdown** (el usuario lo acepta: evita el "dedo malo" de escribirlo).
+- **Estribo:** zonas NUMERADAS (1,2,3…; el usuario sabe cuál es ext/centro). Cada zona = longitud +
+  @espaciamiento; la CANTIDAD se calcula sola (longitud÷@). REDONDEO debe replicar EXACTO el criterio
+  de ADetailer → TAREA de investigación (agente).
+- **Componentes REORDENABLES** (drag).
+- **SIN vista previa tabla** (el usuario corrigió): el 3D + stats en vivo (items/etiquetas, barras, kg)
+  ES la previa. El detalle fino se ve en el Bar Manager después.
+- **Templates agrupados por OBRA** (orden) + poder cargar templates de OTRAS obras (reutilización).
+- Maqueta v2 en `static/demo/template3d.html` refleja todo lo anterior. Sirve de referencia para que
+  la implementación calce (método anti-desviación §9).
+
 ## 1. Correcciones de concepto (errores previos, ahora fijados)
 
 - **R (radio) NO es el radio de doblado de los codos.** En ArmaHub, `radio` es un BOOLEAN por figura

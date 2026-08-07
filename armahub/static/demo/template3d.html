@@ -38,7 +38,26 @@
   #body{flex:1;display:flex;min-height:0}
 
   /* ---- PANEL DE PARÁMETROS (izquierda) ---- */
-  #panel{width:390px;min-width:390px;overflow-y:auto;border-right:1px solid var(--line);background:var(--panel);padding:14px 16px 22px}
+  #panel{width:440px;min-width:440px;overflow-y:auto;border-right:1px solid var(--line);background:var(--panel);padding:14px 16px 22px}
+
+  /* Radial de cara (3 botones) */
+  .radial{display:inline-flex;border:1px solid var(--line);border-radius:7px;overflow:hidden}
+  .radial button{border:none;background:#fff;padding:5px 10px;font-size:11.5px;color:var(--muted);cursor:pointer;font-weight:600}
+  .radial button+button{border-left:1px solid var(--line)}
+  .radial button.on{background:var(--azul-b);color:var(--azul)}
+  .drag{cursor:grab;color:#b6c0cc;font-size:13px;padding:0 2px}
+
+  /* Tabla de CAPAS dentro de un componente */
+  .capas{margin-top:9px;border:1px solid var(--line);border-radius:7px;overflow:hidden}
+  .capas .ch{display:grid;grid-template-columns:26px 1fr 1fr 34px;gap:0;background:var(--panel2);font-size:10.5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px}
+  .capas .ch span{padding:5px 8px}
+  .capas .cr{display:grid;grid-template-columns:26px 1fr 1fr 34px;gap:0;border-top:1px solid var(--line);align-items:center}
+  .capas .cr .n{padding:4px 8px;font-weight:700;color:var(--muted)}
+  .capas .cr input{border:none;border-left:1px solid var(--line);border-radius:0;padding:5px 8px}
+  .capas .cr input:focus{box-shadow:none;background:#f7fbf2}
+  .capas .cr .del{border:none;background:none;color:#b6c0cc;cursor:pointer;font-size:12px}
+  .capas .cr .del:hover{color:var(--danger)}
+  .addcapa{width:100%;border:none;border-top:1px solid var(--line);background:#f7fbf2;color:var(--acero-d);padding:5px;font-size:11px;font-weight:600;cursor:pointer}
   .sect{margin-bottom:16px}
   .sect > .h{display:flex;align-items:center;gap:7px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin-bottom:8px}
   .sect > .h .ln{flex:1;height:1px;background:var(--line)}
@@ -80,8 +99,11 @@
   .addbtn:hover{background:#eef7e4}
 
   /* Zonas de espaciamiento (estribo) */
-  .zona{display:grid;grid-template-columns:auto 1fr 1fr auto;gap:6px;align-items:center;margin-top:6px;font-size:11.5px}
-  .zona .z{font-weight:700;color:var(--muted)}
+  .zona{display:grid;grid-template-columns:26px 1fr 1fr 56px;gap:6px;align-items:center;margin-top:6px;font-size:11.5px}
+  .zona .z{font-weight:700;color:var(--muted);text-align:center}
+  .zona.zh{font-size:10.5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin-top:8px}
+  .zona.zh span{text-align:center}
+  .zona .calc{text-align:center;font-weight:700;color:var(--acero-d);background:var(--chip);border-radius:6px;padding:3px 0}
 
   /* ---- CANVAS (derecha) ---- */
   #stage{flex:1;position:relative;background:var(--canvas);min-width:0;display:flex;flex-direction:column}
@@ -141,7 +163,7 @@
       <div class="sub">Despiece activo: <b>Desco - Edificio Marín</b> · P4 · ELEV · Ciclo C1 · Eje 1(M-S)</div>
     </div>
     <div class="spacer"></div>
-    <button class="btn ghost" style="background:#eef2f6;color:#37474f;border-color:var(--line)">📂 Cargar template…</button>
+    <button class="btn ghost" style="background:#eef2f6;color:#37474f;border-color:var(--line)" title="Templates de esta obra y de otras obras">📂 Cargar template…</button>
     <button class="xbtn" title="Cerrar">✕</button>
   </div>
 
@@ -172,47 +194,50 @@
 
       <!-- Componentes -->
       <div class="sect">
-        <div class="h"><span>Componentes</span><span class="ln"></span><span class="meta" style="font-size:11px;color:var(--muted)">4</span></div>
+        <div class="h"><span>Componentes</span><span style="font-size:9.5px;font-weight:600;color:#b6c0cc;text-transform:none;letter-spacing:0">⠿ arrastra para reordenar</span><span class="ln"></span><span class="meta" style="font-size:11px;color:var(--muted)">4</span></div>
 
-        <!-- Cabezal superior 1ª capa -->
+        <!-- Cabezal superior (componente con N capas) -->
         <div class="comp open sel">
           <div class="head">
+            <span class="drag" title="Arrastra para reordenar">⠿</span>
             <span class="swatch" style="background:#1565c0"></span>
-            <span class="tip">CBS</span><span class="suf">sup · capa 1</span>
-            <span class="meta">· 3ø16 · fig 101A</span>
+            <span class="tip">CBS</span><span class="suf">superior</span>
+            <span class="meta">· ø16 · fig 101A · 2 capas</span>
             <span class="sp"></span>
             <button class="mini" title="Duplicar">⧉</button>
             <button class="mini" title="Quitar">🗑</button>
           </div>
           <div class="body">
-            <div class="cap">Cabezal Superior — primera capa. Anclado a la cara superior con el recubrimiento.</div>
+            <div class="cap">Cabezal Superior. Un componente = N capas iguales o distintas (capas iguales → 1 etiqueta / 1 tanda).</div>
             <div class="grid3">
               <div class="fld"><label>Figura</label><input type="text" value="101A" list="figs"></div>
               <div class="fld"><label>φ <span class="u">mm</span></label>
                 <select><option>8</option><option selected>16</option><option>18</option><option>22</option><option>25</option></select></div>
-              <div class="fld"><label>N° barras</label><input type="number" value="3"></div>
-            </div>
-            <div class="grid3" style="margin-top:8px">
               <div class="fld"><label>Cara</label>
-                <select><option selected>Superior</option><option>Inferior</option><option>Lateral</option></select></div>
-              <div class="fld"><label>Capa</label>
-                <select><option selected>1</option><option>2</option><option>3</option></select></div>
-              <div class="fld"><label>Recub. propio <span class="u">cm</span></label><input type="number" placeholder="auto"></div>
+                <div class="radial"><button class="on">Sup</button><button>Inf</button><button>Lat</button></div></div>
             </div>
-            <div class="rowline">
-              <div class="fld" style="flex:1"><label>Ajuste de largo <span class="u">cm (±)</span></label><input type="number" value="0"></div>
-              <div class="fld" style="flex:1"><label>Distribución</label>
-                <select><option selected>Repartida en el ancho</option><option>A ambos extremos</option><option>Manual</option></select></div>
+            <div class="grid2" style="margin-top:8px">
+              <div class="fld"><label>Recub. (override) <span class="u">cm</span></label><input type="number" placeholder="global (4)"></div>
+              <div class="fld"><label>Ajuste largo <span class="u">cm (±)</span></label><input type="number" value="0"></div>
             </div>
+            <!-- Tabla de capas: cada capa = N barras + offset a la cara (retranqueo hacia el núcleo) -->
+            <div class="capas">
+              <div class="ch"><span>#</span><span>N° barras</span><span>Offset cara (cm)</span><span></span></div>
+              <div class="cr"><span class="n">1</span><input type="number" value="3"><input type="number" value="0"><button class="del" title="Quitar capa">✕</button></div>
+              <div class="cr"><span class="n">2</span><input type="number" value="3"><input type="number" value="4"><button class="del" title="Quitar capa">✕</button></div>
+              <button class="addcapa">＋ capa</button>
+            </div>
+            <div class="note">2 capas iguales (3ø16) → se agrupan como 1 etiqueta con cantidad ×2.</div>
           </div>
         </div>
 
         <!-- Cabezal inferior -->
         <div class="comp">
           <div class="head">
+            <span class="drag" title="Arrastra para reordenar">⠿</span>
             <span class="swatch" style="background:#00897b"></span>
-            <span class="tip">CBI</span><span class="suf">inf · capa 1</span>
-            <span class="meta">· 4ø18 · fig 101A</span>
+            <span class="tip">CBI</span><span class="suf">inferior</span>
+            <span class="meta">· ø18 · fig 101A · 1 capa</span>
             <span class="sp"></span>
             <button class="mini" title="Duplicar">⧉</button>
             <button class="mini" title="Quitar">🗑</button>
@@ -223,6 +248,7 @@
         <!-- Estribo (con zonas de espaciamiento) -->
         <div class="comp open">
           <div class="head">
+            <span class="drag" title="Arrastra para reordenar">⠿</span>
             <span class="swatch" style="background:#e65100"></span>
             <span class="tip">ES</span><span class="suf">estribo</span>
             <span class="meta">· ø8 · fig 104D · por tramos</span>
@@ -240,16 +266,19 @@
                 <select><option selected>135°</option><option>90°</option></select></div>
             </div>
             <div style="margin-top:10px;font-size:11px;font-weight:700;color:var(--muted)">Zonas de espaciamiento</div>
-            <div class="zona"><span class="z">1</span><input type="number" value="150" title="longitud cm"><input type="number" value="10" title="@ cm"><span class="meta">ext.</span></div>
-            <div class="zona"><span class="z">2</span><input type="number" value="300" title="longitud cm"><input type="number" value="20" title="@ cm"><span class="meta">centro</span></div>
-            <div class="zona"><span class="z">3</span><input type="number" value="150" title="longitud cm"><input type="number" value="10" title="@ cm"><span class="meta">ext.</span></div>
+            <div class="zona zh"><span class="z">#</span><span>Longitud cm</span><span>@ cm</span><span>= barras</span></div>
+            <div class="zona"><span class="z">1</span><input type="number" value="150"><input type="number" value="10"><span class="meta calc">16</span></div>
+            <div class="zona"><span class="z">2</span><input type="number" value="300"><input type="number" value="20"><span class="meta calc">15</span></div>
+            <div class="zona"><span class="z">3</span><input type="number" value="150"><input type="number" value="10"><span class="meta calc">16</span></div>
             <button class="addbtn" style="margin-top:8px;padding:6px">＋ zona</button>
+            <div class="note">La cantidad se calcula sola (longitud ÷ @). El redondeo replica el criterio de ADetailer.</div>
           </div>
         </div>
 
         <!-- Traba -->
         <div class="comp">
           <div class="head">
+            <span class="drag" title="Arrastra para reordenar">⠿</span>
             <span class="swatch" style="background:#7b1fa2"></span>
             <span class="tip">TRV</span><span class="suf">traba</span>
             <span class="meta">· ø8 · fig 101A · auto si ancho ≥ 35</span>
@@ -326,8 +355,8 @@
       </div>
 
       <div id="stats">
+        <span>Items/etiquetas: <b>5</b></span>
         <span>Barras: <b>77</b></span>
-        <span>Componentes: <b>4</b></span>
         <span class="kg">Peso: <b>264,4 kg</b></span>
         <span>Tri: <b>~98k</b> · 5 draw calls</span>
       </div>
