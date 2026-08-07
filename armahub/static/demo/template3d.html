@@ -139,6 +139,10 @@
   .tool.on{background:var(--acero);color:#fff;border-color:var(--acero)}
   .tool:hover{border-color:rgba(255,255,255,.35)}
   #toolbar .sp{flex:1}
+  .radialdark{display:inline-flex;border:1px solid rgba(255,255,255,.18);border-radius:7px;overflow:hidden}
+  .radialdark button{border:none;background:rgba(30,36,45,.78);color:#cfd6e0;padding:5px 10px;font-size:11.5px;cursor:pointer;font-weight:600}
+  .radialdark button+button{border-left:1px solid rgba(255,255,255,.14)}
+  .radialdark button.on{background:var(--acero);color:#fff}
 
   /* Canvas Three.js real */
   #view{flex:1;position:relative;min-height:0}
@@ -360,9 +364,16 @@
         <button class="tool on" id="t_horm">🧊 Hormigón</button>
         <button class="tool">📐 Cotas</button>
         <button class="tool">📏 Medir</button>
-        <button class="tool" id="t_reset">↻ Reset vista</button>
+        <button class="tool" id="t_ancla">🎯 Anclar centro</button>
+        <button class="tool" id="t_reset">↻ Vista iso</button>
         <span class="sp"></span>
-        <span class="tool" style="cursor:default;background:none;border-color:transparent;color:#7d8896">arrastra = rotar · rueda = zoom</span>
+        <span style="font-size:10.5px;color:#9fb0c4">Rotar eje:</span>
+        <span class="radialdark" id="ejes">
+          <button class="on" data-eje="libre">Libre</button>
+          <button data-eje="x">X</button>
+          <button data-eje="y">Y</button>
+          <button data-eje="z">Z</button>
+        </span>
       </div>
 
       <div id="view">
@@ -430,8 +441,9 @@
   });
 </script>
 
-<!-- Three.js (mismo CDN/versión que rebar3d) -->
+<!-- Three.js (mismo CDN/versión que rebar3d) + BufferGeometryUtils para fusionar (5 draw calls) -->
 <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/examples/js/utils/BufferGeometryUtils.js"></script>
 <script>
 /* ============================================================================
    CABLEADO REAL DEL CANVAS (interoperabilidad controles ↔ 3D).
@@ -443,17 +455,17 @@
 (function(){
   if(!window.THREE){ return; }
   var cv=document.getElementById('cv'), host=document.getElementById('view');
-  var scene=new THREE.Scene(); scene.background=new THREE.Color(0x161a20);
+  var scene=new THREE.Scene(); scene.background=new THREE.Color(0x2b3242);  // fondo más claro (azul grisáceo)
   var camera=new THREE.PerspectiveCamera(38,1,1,6000);
   var renderer=new THREE.WebGLRenderer({canvas:cv,antialias:true});
   var world=new THREE.Group(); scene.add(world);
 
-  // Luces
-  scene.add(new THREE.AmbientLight(0xffffff,0.55));
-  var dir=new THREE.DirectionalLight(0xffffff,0.8); dir.position.set(1,1.4,0.8); scene.add(dir);
-  var dir2=new THREE.DirectionalLight(0x88aaff,0.25); dir2.position.set(-1,-0.4,-0.7); scene.add(dir2);
-  // Grilla piso
-  var grid=new THREE.GridHelper(1400,28,0x2a3340,0x222a34); grid.position.y=-1; scene.add(grid);
+  // Luces (más luminosas para que resalten los colores)
+  scene.add(new THREE.AmbientLight(0xffffff,0.7));
+  var dir=new THREE.DirectionalLight(0xffffff,0.9); dir.position.set(1,1.4,0.8); scene.add(dir);
+  var dir2=new THREE.DirectionalLight(0xbcd4ff,0.35); dir2.position.set(-1,-0.4,-0.7); scene.add(dir2);
+  // Grilla piso (más suave sobre el fondo claro)
+  var grid=new THREE.GridHelper(1400,28,0x4a5568,0x3a4353); grid.position.y=-1; scene.add(grid);
 
   var matAcero={
     CBS:new THREE.MeshStandardMaterial({color:0x3f7fd0,metalness:0.55,roughness:0.5}),
@@ -464,26 +476,53 @@
   var matHormigon=new THREE.MeshStandardMaterial({color:0x9aa6b5,transparent:true,opacity:0.16,roughness:0.9,depthWrite:false});
   var verHormigon=true;
 
-  // ---- helpers de geometría (adaptado de rebar3d) ----
-  function cil(a,b,rad){
-    var dirv=new THREE.Vector3().subVectors(b,a), len=dirv.length();
-    var g=new THREE.CylinderGeometry(rad,rad,len,10,1,false);
-    var m=new THREE.Matrix4().makeTranslation(0,len/2,0);
-    g.applyMatrix4(m);
-    var q=new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0,1,0),dirv.clone().normalize());
-    g.applyQuaternion(q); g.translate(a.x,a.y,a.z);
-    return g;
+  // ---- Generador de barra sólida CON CODOS REALES (portado de rebar3d) --------
+  // Tramos rectos = cilindros; dobleces = sectores de toro tangentes (radio real).
+  function cil(a,b,rad,segRad){
+    var len=a.distanceTo(b); if(len<1e-6)return null;
+    var g=new THREE.CylinderGeometry(rad,rad,len,segRad||12,1,false);
+    var dir=new THREE.Vector3().subVectors(b,a).normalize();
+    var q=new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0,1,0),dir);
+    var m=new THREE.Matrix4().makeRotationFromQuaternion(q);
+    m.setPosition(new THREE.Vector3().addVectors(a,b).multiplyScalar(0.5));
+    g.applyMatrix4(m); return g;
   }
-  // Polilínea sólida: cilindros por tramo + esferita en los vértices (codo simple para la demo)
-  function barraSolida(pts,rad,mat){
-    var group=new THREE.Group();
-    for(var i=0;i<pts.length-1;i++){
-      var mesh=new THREE.Mesh(cil(pts[i],pts[i+1],rad),mat); group.add(mesh);
+  function radioDoblado(dia){ return (dia<=1.6? 2:3.5)*dia; }  // norma aprox (cm, dia en cm)
+  function barraSolida(puntos,dia,mat){
+    var rTubo=dia/2, Rc=radioDoblado(dia)+rTubo, segRad=12, geos=[];
+    var pts=[]; for(var i=0;i<puntos.length;i++){ if(!pts.length||puntos[i].distanceToSquared(pts[pts.length-1])>1e-6)pts.push(puntos[i].clone()); }
+    if(pts.length<2)return new THREE.Group();
+    var dob=[]; for(i=0;i<pts.length;i++)dob.push(null);
+    for(i=1;i<pts.length-1;i++){
+      var d1=new THREE.Vector3().subVectors(pts[i],pts[i-1]).normalize();
+      var d2=new THREE.Vector3().subVectors(pts[i+1],pts[i]).normalize();
+      var ang=Math.acos(THREE.MathUtils.clamp(d1.dot(d2),-1,1));
+      if(ang<0.01)continue;
+      var R=Rc, t=R*Math.tan(ang/2);
+      var tMax=0.49*Math.min(pts[i].distanceTo(pts[i-1]),pts[i+1].distanceTo(pts[i]));
+      if(t>tMax){t=tMax;R=t/Math.tan(ang/2);}
+      var T1=pts[i].clone().addScaledVector(d1,-t), T2=pts[i].clone().addScaledVector(d2,t);
+      var eje=new THREE.Vector3().crossVectors(d1,d2).normalize();
+      var hacia=new THREE.Vector3().crossVectors(eje,d1).normalize();
+      var O=T1.clone().addScaledVector(hacia,R);
+      dob[i]={T1:T1,T2:T2,O:O,ang:ang,R:R,u:hacia.clone().negate(),d1:d1,eje:eje};
     }
-    for(var j=1;j<pts.length-1;j++){
-      var s=new THREE.Mesh(new THREE.SphereGeometry(rad,10,8),mat); s.position.copy(pts[j]); group.add(s);
+    var cursor=pts[0];
+    for(i=1;i<pts.length;i++){
+      var d=dob[i];
+      var g=cil(cursor,d?d.T1:pts[i],rTubo,segRad); if(g)geos.push(g);
+      if(d){
+        var nSeg=Math.max(4,Math.ceil(d.ang/(Math.PI/16)));
+        var codo=new THREE.TorusGeometry(d.R,rTubo,segRad,nSeg,d.ang);
+        var m=new THREE.Matrix4().makeBasis(d.u,d.d1,d.eje); m.setPosition(d.O);
+        codo.applyMatrix4(m); geos.push(codo); cursor=d.T2;
+      } else cursor=pts[i];
     }
-    return group;
+    // fusionar en una sola malla
+    var merged=(THREE.BufferGeometryUtils&&THREE.BufferGeometryUtils.mergeGeometries)
+      ? THREE.BufferGeometryUtils.mergeGeometries(geos) : null;
+    if(merged) return new THREE.Mesh(merged,mat);
+    var grp=new THREE.Group(); geos.forEach(function(gg){grp.add(new THREE.Mesh(gg,mat));}); return grp;
   }
   var V=function(x,y,z){return new THREE.Vector3(x,y,z);};
 
@@ -541,22 +580,30 @@
     fit(L,h,b);
   }
 
-  // ---- órbita simple + zoom ----
-  var rotX=-0.5, rotY=0.7, dist=800, target=new THREE.Vector3(0,0,0);
-  function fit(L,h,b){ dist=L*1.15+120; }
+  // ---- órbita + zoom ----
+  // Orientación inicial ISOMÉTRICA bien orientada (X hacia la derecha-abajo, Y arriba, Z al frente).
+  var ISO_X=-0.62, ISO_Y=0.78;                   // ángulos de la iso estándar
+  var rotX=ISO_X, rotY=ISO_Y, dist=900, target=new THREE.Vector3(0,0,0);
+  var ejeRot='libre';                            // 'libre' | 'x' | 'y' | 'z' (rotar solo ese eje)
+  function fit(L,h,b){ dist=L*1.15+160; }
   function applyCam(){
     var cx=target.x+dist*Math.cos(rotX)*Math.sin(rotY);
     var cy=target.y+dist*Math.sin(rotX);
     var cz=target.z+dist*Math.cos(rotX)*Math.cos(rotY);
-    camera.position.set(cx,cy,cz); camera.lookAt(target);
+    camera.position.set(cx,cy,cz); camera.up.set(0,1,0); camera.lookAt(target);
   }
   var drag=false,lx=0,ly=0;
   cv.addEventListener('mousedown',function(e){drag=true;lx=e.clientX;ly=e.clientY;});
   window.addEventListener('mouseup',function(){drag=false;});
   window.addEventListener('mousemove',function(e){
     if(!drag)return;
-    rotY+=(e.clientX-lx)*0.008; rotX+=(e.clientY-ly)*0.008;
-    rotX=Math.max(-1.4,Math.min(1.4,rotX)); lx=e.clientX; ly=e.clientY;
+    var dx=(e.clientX-lx), dy=(e.clientY-ly);
+    // Control NO invertido: arrastrar a la derecha gira la vista a la derecha (signo corregido).
+    if(ejeRot==='libre'){ rotY-=dx*0.008; rotX-=dy*0.008; }
+    else if(ejeRot==='y'){ rotY-=dx*0.008; }        // rotar solo alrededor de Y (vertical)
+    else if(ejeRot==='x'){ rotX-=dy*0.008; }        // solo elevación (X)
+    else if(ejeRot==='z'){ rotY-=dx*0.008; }        // (aprox; Z real requiere roll)
+    rotX=Math.max(-1.45,Math.min(1.45,rotX)); lx=e.clientX; ly=e.clientY;
   });
   cv.addEventListener('wheel',function(e){e.preventDefault();dist*=(e.deltaY>0?1.1:0.9);dist=Math.max(120,Math.min(4000,dist));},{passive:false});
 
@@ -579,7 +626,19 @@
   var th=document.getElementById('t_horm');
   if(th) th.addEventListener('click',function(){verHormigon=!verHormigon;th.classList.toggle('on',verHormigon);generar();});
   var tr=document.getElementById('t_reset');
-  if(tr) tr.addEventListener('click',function(){rotX=-0.5;rotY=0.7;var L=val('p_largo',600);dist=L*1.15+120;});
+  if(tr) tr.addEventListener('click',function(){rotX=ISO_X;rotY=ISO_Y;target.set(0,0,0);var L=val('p_largo',600);dist=L*1.15+160;});
+  // Radial de ejes de rotación
+  var ejes=document.getElementById('ejes');
+  if(ejes) ejes.querySelectorAll('button').forEach(function(bt){
+    bt.addEventListener('click',function(){
+      ejes.querySelectorAll('button').forEach(function(x){x.classList.remove('on');});
+      bt.classList.add('on'); ejeRot=bt.getAttribute('data-eje');
+    });
+  });
+  // Ancla al centro (target en el centro de la viga = 0,0,0; siempre lo está aquí, pero el toggle
+  // deja claro que la rotación es alrededor del centro). Visual on/off.
+  var ta=document.getElementById('t_ancla');
+  if(ta) ta.addEventListener('click',function(){ta.classList.toggle('on');target.set(0,0,0);});
 
   // arranque
   resize(); generar(); loop();
