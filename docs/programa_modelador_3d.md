@@ -150,6 +150,41 @@ CREAR/EDITAR templates sin programar. Debe ser ESCALABLE (requisito explícito):
   botón explícito "Cargar/Regenerar" escribe, y avisa qué hará (crea nuevas / reemplaza las del
   template_instancia_id / respeta ediciones manuales).
 
+## 7bis. HALLAZGOS DE INVESTIGACIÓN TÉCNICA (subagente, 08-ago) — impactan el diseño
+
+**Gancho "/ /" (P1):** la maqueta rebar3d.js separa los dos ganchos con un offset ARTIFICIAL
+`dx = 1.15·φ` en el eje de la viga (rebar3d.js:156-171, el comentario lo admite). Los codos SÍ son
+toros reales y el LARGO del gancho deriva de la tangencia real del doblez 135°; lo inventado es solo
+la SEPARACIÓN lateral. Conceptualmente incorrecto: el "/ /" real nace del ESPESOR de la barra (un
+gancho pasa por delante/detrás del otro, offset ≈1·φ PERPENDICULAR al plano del estribo), no a lo
+largo de la viga. → Para producto: parametrizar el offset (dirección perpendicular al plano + magnitud
+= f(φ)) y elegir qué gancho va por dentro. NO es un número mágico en X. (Cierra parte de decisión D.)
+
+**Tramos curvos / arcos (P2) — CORRIGE un supuesto:** el arco de desarrollo YA ESTÁ RESUELTO, pero en
+el editor de figuras (disenador3d.js), NO en la maqueta sólida. disenador3d.js:277-302 `_puntosArco3d`
+genera arcos 3D reales (centro/cuerda/sagita/sweep, 16 pts) y los renderiza con CatmullRomCurve3 +
+TubeGeometry (L413-414), y calcula sus cotas (desarrollo/radio/horiz/vert, L309-376). La maqueta
+rebar3d.js solo hace rectos+codos. → Integrar arcos sólidos al motor NO es rediseño: ruta recomendada
+= TubeGeometry con radio=φ/2 sobre la polilínea de arco ya existente, o toro parcial reusando el
+patrón de codos (rebar3d.js:137-139 makeBasis). El código de arco YA existe y es reutilizable.
+
+**Multi-radio / estructura de datos (P3) — HALLAZGO CLAVE:** el JSON `geometria.tramos[]` YA es
+por-segmento y YA soporta N arcos, cada uno con radio/plano/sweep propios (disenador3d.js:733-735:
+`{lado,largo,tipo:'recto'|'arco',radio,plano,sweep}`). La FORMA escala. Lo que está ATADO A 1 es:
+(a) el flag `radio BOOLEAN` de figuras_catalogo (082:11) y (b) los VALORES por barra: columnas fijas
+`dim_a..dim_i` + `ang1..ang4` + UN `radio` escalar en la tabla `barras`. Una figura con 2 arcos de
+radios distintos NO tiene dónde poner el 2º valor.
+→ Recomendaciones del agente para el modelo de datos:
+  1. `radio BOOLEAN` del catálogo → DERIVARLO (= existe algún tramo tipo 'arco', o `n_radios` contado
+     del JSON). No mantener un booleano manual desincronizable.
+  2. Consolidar `tramos[]` como modelo canónico; cada arco con `{radio,cuerda,desarrollo,sweep,plano}`
+     (2 grados de libertad fuente, 3º derivado) + `grupo_radio`/`ref_espejo` opcional para modelar
+     "radio espejo (1 R → 2 tramos)" vs "R1/R2 independientes". Campo ADITIVO, no rompe nada.
+  3. El cuello real = valores por barra en columnas fijas. Para N arcos, migrar los VALORES a un JSON
+     por-tramo (`valores_tramo`) en vez de dim_*/ang*/radio fijos. (Diseño mayor — planificar, no
+     bloquear F0/F1 que usan figuras de ≤1 radio.)
+  4. "Radio 1/Radio 2" = etiqueta derivada del orden de arcos en tramos[]. Sin esquema nuevo.
+
 ## 8. SUB-SISTEMA D · Impacto en catálogo y render actual (a decidir)
 
 - ¿El render 2D del catálogo/Bar Manager/Fabricator pasa a mostrar CURVAS (doblado + tramos curvos) o
