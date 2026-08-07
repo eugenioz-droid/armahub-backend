@@ -57,6 +57,38 @@ codear una viga rígida. Se re-planifica en §11bis tras cerrar el discovery.
 Alternativa intermedia a evaluar: un editor de composición SIMPLE (formulario + pocas reglas) para el
 MVP, y el posicionamiento por clicks/volúmenes como evolución. DECISIÓN PENDIENTE (§13 D8).
 
+## 0ter. DECISIÓN DE ALCANCE D8 — RESUELTA: "paramétrico por componentes con capas"
+
+Tras el debate crítico (08-ago), el MVP NO es ni hardcodeo rígido ni editor gráfico por clicks. Es un
+**motor paramétrico por componentes con posicionamiento por reglas**:
+
+- Una viga = **volumen de hormigón (caja)** + **lista de componentes**.
+- Cada componente se define por: **tipología** (CBS/CBI/LT/ES/TRV…, cerrada), **figura** (libre),
+  **φ**, **cara de anclaje** (sup/inf/lateral/perímetro), **recubrimiento/offset** desde esa cara,
+  **índice de capa** (1ª/2ª/n → se apila hacia el núcleo automáticamente), **cantidad/distribución**,
+  y para estribos **espaciamiento por tramos** (§ zonas confinadas/central).
+- El **motor posiciona** cada componente aplicando esas reglas: la capa 2 se corre hacia el núcleo por
+  su índice + φ; el recubrimiento define el offset desde la cara. RESUELVE el problema de las capas
+  variables (CBS/CBS2/CBSn ya existen en el catálogo) que el hardcodeo rígido NO resolvía.
+- El cubicador **agrega/quita/edita componentes** en un FORMULARIO (no dibuja). "Agregar 2ª capa de
+  cabezal sup" = agregar componente con capa=2; el motor lo apila solo.
+- Un **"template" = una composición de componentes guardada** ("Viga tipo Explora"). Se carga, se
+  ajustan 2 cosas, se genera. Esto ES el flujo "20% + edición posterior = mitad de tiempo" que el
+  usuario quiere, PERO sin el techo del hardcodeo (soporta capas, figuras libres, componentes N).
+
+**Por qué este punto medio (opinión crítica registrada):**
+- El hardcodeo rígido resuelve el 20% pero se ROMPE con capas variables (hueco que el usuario detectó).
+- El editor gráfico por clicks es potente pero es un editor serio → tarda mucho antes de dar valor.
+- Posicionar por reglas (cara + offset + capa) NO es difícil (el usuario tiene razón): no necesita
+  Tekla, necesita anclaje-a-cara + apilado-por-capa. El click es comodidad futura, no prerrequisito.
+- Ventaja: da valor rápido, soporta la realidad (capas/figuras libres), y evoluciona a clicks sin
+  rehacer (el click solo cambia CÓMO se fija el offset, no el modelo de datos).
+
+**Evolución natural (post-MVP):** posicionamiento fino por CLICKS/arrastre sobre el 3D (mover un
+componente respecto a la cara con el mouse en vez del formulario) + restricciones visuales, estilo
+Tekla-lite. El modelo de datos (componente = cara+offset+capa) ya lo soporta; solo cambia la UI de
+edición del offset. Muros (7 componentes) usan el MISMO motor con más tipos de componente.
+
 ## 1. Correcciones de concepto (errores previos, ahora fijados)
 
 - **R (radio) NO es el radio de doblado de los codos.** En ArmaHub, `radio` es un BOOLEAN por figura
