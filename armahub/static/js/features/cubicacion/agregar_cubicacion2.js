@@ -1350,7 +1350,9 @@ function ac2PintarEstado(){
   var b=document.getElementById('ac2_bandera'), badge=document.getElementById('ac2_estadoBadge');
   var terminado=(AC2.loteEstado==='terminada');
   // Mostramos el correlativo POR OBRA (AC2.loteNum), no el id global. Fallback al id si no vino.
-  var lote=AC2.loteId?('Despiece #'+(AC2.loteNum||AC2.loteId)+' · '):'';
+  // Incluye el nombre de la obra para que NUNCA se pierda del encabezado.
+  var obraTxt=(AC2._nombreObra?(AC2._nombreObra+' · '):'');
+  var lote=AC2.loteId?(obraTxt+'Despiece #'+(AC2.loteNum||AC2.loteId)+' · '):obraTxt;
   if (b){ b.textContent=terminado?'🏁':'🚩';
     b.style.background=terminado?'#e8f5e9':'#ffebee'; b.style.color=terminado?'#2e7d32':'#c62828'; b.style.borderColor=terminado?'#a5d6a7':'#ef9a9a'; }
   if (badge){
@@ -1784,6 +1786,11 @@ window.ac2RetomarLote=async function(id){
   var L=d.lote, bs=d.barras||[];
   AC2.loteId=L.id; AC2.loteNum=L.num_obra||null; AC2.loteEstado=L.estado;
   AC2.plano=L.plano||'';   // M1.10: recuperar el plano del lote
+  // Reponer el nombre de la obra si se perdió (título/cabecera): del input visible o del nombre guardado.
+  if (!AC2._nombreObra){
+    var _io2=document.getElementById('ac2_obra');
+    AC2._nombreObra=(_io2 && _io2.value || '').trim() || AC2._nombreObra;
+  }
   // Contexto del lote (de su primera barra): sector, estructura (se infiere de la marca), ciclo, eje.
   var b0=bs[0]||{};
   AC2.sector=b0.sector||''; AC2.ciclo=b0.ciclo||''; AC2.eje=b0.eje||'';

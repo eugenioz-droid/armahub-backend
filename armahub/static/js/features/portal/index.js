@@ -194,11 +194,16 @@ window.hubAgrandarPanel = function() {
   var m = document.getElementById('hubPanelModal');
   if (!m) return;
   m.style.display = 'flex';
-  if (!_hubPanelCubGrande) {
-    var el = document.getElementById('hubPanelCubGrande');
-    if (el && window.PanelCubicacion) _hubPanelCubGrande = PanelCubicacion.crear(el, _hubPanelOpts(430));
-  }
-  if (_hubPanelCubGrande) _hubPanelCubGrande.recargar();
+  // El panel se crea/recarga en el SIGUIENTE frame: así el modal ya tiene ancho real
+  // y el header (toggle período + checkbox año) + el canvas se miden bien (si se crea
+  // con el modal recién mostrado, el ancho es 0 y los controles/gráfico salen colapsados).
+  requestAnimationFrame(function() {
+    if (!_hubPanelCubGrande) {
+      var el = document.getElementById('hubPanelCubGrande');
+      if (el && window.PanelCubicacion) _hubPanelCubGrande = PanelCubicacion.crear(el, _hubPanelOpts(430));
+    }
+    if (_hubPanelCubGrande) _hubPanelCubGrande.recargar();
+  });
 };
 
 window.hubCerrarPanelGrande = function() {
