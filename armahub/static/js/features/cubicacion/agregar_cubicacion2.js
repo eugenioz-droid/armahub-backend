@@ -860,10 +860,14 @@ window.ac2CargarGrafico=function(){
     var el=document.getElementById('ac2_grafico');
     if (!el || !window.PanelCubicacion) return;
     _ac2Panel=PanelCubicacion.crear(el, {
-      getParams:  function(){ return AC2.proyecto ? { proyecto: AC2.proyecto } : {}; },
+      getParams:  function(){
+        // Dentro de una obra: SOLO lo cubicado a mano en ESA obra (foco del cubicador).
+        // En la landing (sin obra): TODO (CSV + manual) de todas las obras, igual que el Hub.
+        return AC2.proyecto ? { proyecto: AC2.proyecto, origen: 'manual' } : { origen: 'todos' };
+      },
       getAlcance: function(){
         var enObra=!!(AC2.proyecto && AC2._nombreObra);
-        return { texto: enObra ? (' · '+AC2._nombreObra) : ' · todas las obras', resaltar: enObra };
+        return { texto: enObra ? (' · '+AC2._nombreObra) : ' · todas las obras (CSV + creados)', resaltar: enObra };
       }
     });
     if (!_ac2Panel) return;
