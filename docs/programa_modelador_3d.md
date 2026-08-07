@@ -306,6 +306,18 @@ genera → kilos/largo por familia salen directo.
 - Points: positions[], count_each.
 - Transversal: cover (offset desde cara), bar (figura+φ).
 
+## 0-12ter. ALCANCE MVP CERRADO (usuario 08-ago) — para el agente ejecutor
+
+- **MVP = F0 (motor genérico) + F1 (3D Template que USA una viga-semilla, la ajusta, la carga al
+  despiece).** El COLOCADOR (construir templates desde cero por proyecciones) NO va en el MVP; es 2ª
+  entrega. La viga-semilla se carga como DATA (no código) para tener de dónde partir.
+- **Agente ejecuta DE CORRIDO** (F0→F1 sin parar); el usuario revisa al final. Expectativa: primera
+  pasada deja la base funcional; se afinan detalles después (como con las maquetas).
+- **BD: migraciones NUEVAS idempotentes** (patrón del repo, no tocan datos existentes).
+- Maquetas de referencia (método anti-desviación §9): 3D Template = `static/demo/template3d.html`
+  (modo AJUSTAR); Colocador = `static/demo/colocador.html` (2ª entrega). El MVP implementa el modo
+  AJUSTAR + el motor + carga al despiece.
+
 ## 1. Correcciones de concepto (errores previos, ahora fijados)
 
 - **R (radio) NO es el radio de doblado de los codos.** En ArmaHub, `radio` es un BOOLEAN por figura
