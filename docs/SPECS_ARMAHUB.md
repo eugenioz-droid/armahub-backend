@@ -1296,6 +1296,10 @@ fases M0-M7 (M0 seguridad, M1 higiene, M2 autorización multi-obra, M3 deuda sel
 M5 epic app clientes, M6 CRM, M7 templates 3D) + transversales C (Ley 21.719) e I (infraestructura).
 Ordena — no reemplaza — el roadmap de features de `programa-versiones/programa_v1.00.md`.
 
+El **Modelador 3D de elementos** (expande M7) tiene su diseño en **`docs/programa_modelador_3d.md`**:
+generador paramétrico (templates viga/muro/columna) que crea barras y las carga al despiece; guarda
+la RECETA (parámetros), no el resultado (barras derivadas); reusa el render de la maqueta M7.0.
+
 ---
 
 *Fin del documento. Actualizar al cerrar cada caluga o al cambiar flujos, permisos o decisiones de diseño.*
