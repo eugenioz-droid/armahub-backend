@@ -197,7 +197,43 @@ radios distintos NO tiene dónde poner el 2º valor.
   del 3D Template, pero el motor DEBE saber dibujarlas (una figura con `radio` real). Verificar que la
   técnica de la maqueta (toros/arcos) las cubra. [Checkear en §13-C.]
 
-## 9. UX / diseño del módulo (barrido — a definir en discovery)
+## 8bis. Aclaraciones del usuario sobre los hallazgos (08-ago)
+- **Gancho (P1):** la solución correcta = espaciar en el sentido PERPENDICULAR (por el espesor). Si
+  resulta muy complejo, es aceptable NO espaciar (no complica nada constructivo). Preferible hacerlo.
+- **Multi-parámetro / letras (P2):** los valores extra por barra (más allá de dim_a..i, ang1..4, 1
+  radio) hoy NO están parametrizados en la barra. El usuario resolverá cómo aSa Studio reconoce esos
+  parámetros (en aSa puede asignar distintas letras) → el diseño solo debe dar FLEXIBILIDAD para que
+  esos valores existan y se puedan mapear. No resolver el lado aSa aquí.
+- **Multi-radio (P3):** igual — el usuario verá cómo lo resuelve con aSa Studio. Nuestro trabajo:
+  estructura de datos flexible que soporte N radios; el mapeo a aSa lo define él después.
+
+## 9. UX / diseño del módulo — POR DEFINIR (falta barrido de tabs/flujos/botones)
+
+*Reconocido con el usuario (08-ago): NO se ha visto el diseño de cada tab, flujos, botones, colores.
+La maqueta rebar3d.html sirve como APROXIMACIÓN visual del 3D Template, PERO hay un riesgo real
+histórico: maquetas que a la hora de implementar no quedaban iguales. Mitigación acordada abajo.*
+
+**Método anti-desviación (para que la implementación quede IGUAL a lo aprobado):**
+- Antes de codear cada superficie (3D Template, Template Editor), se hace una MAQUETA VISUAL sin
+  lógica, se aprueba, y el código parte DE esa maqueta (no se rehace). Método ya usado en el proyecto.
+- La maqueta aprobada se conserva en el repo como referencia; la implementación debe calzar pixel a
+  pixel con ella (mismos IDs, mismo layout, mismos textos). Si algo cambia, se cambia la maqueta primero.
+- Se implementa por ETAPAS separadas (maqueta → cableado → datos reales), no todo junto.
+
+**Superficies a diseñar (cada una necesita su maqueta aprobada):**
+1. **Botón "3D Template" en el Fabricator:** dónde va, qué dice, ícono. Abre el visor (¿modal a pantalla
+   completa? ¿panel lateral? ¿pestaña?).
+2. **Visor 3D Template:** layout = panel de parámetros + canvas 3D + barra de acciones. Definir:
+   - Zona de parámetros: agrupación (elemento / componentes / recubrimientos / espaciamiento por tramos).
+   - Canvas: controles de vista (rotar/zoom/reset), toggle hormigón, ejes/grilla.
+   - Acciones: "Cargar al despiece", "Regenerar", "Cerrar". Contadores en vivo (barras, kg).
+   - Estados: vacío, generando, WebGL ausente (mensaje claro), error.
+3. **Template Editor (en Catálogo/Configurador):** cómo se lista/crea/edita un template; cómo se define
+   un componente (elegir figura, reglas). Maqueta propia.
+4. **Colores/estética:** paleta (acero metálico, hormigón semitransparente, grilla, ejes, acento verde
+   Armacero). Consistente con la identidad ArmaHub.
+
+## 9-ORIG. UX técnica (referencia)
 
 - **Dónde se activa:** botón "3D Template" dentro del Fabricator (abre visor); "Template Editor" como
   sub-sección del Catálogo/Configurador.
@@ -246,23 +282,35 @@ radios distintos NO tiene dónde poner el 2º valor.
 
 ---
 
-## 13. DECISIONES ABIERTAS (cerrar antes de codear — el usuario responde)
+## 13. DECISIONES QUE NECESITO DEL USUARIO (cerrar antes de codear)
 
-- **A. Render 2D actual:** ¿pasa a mostrar curvas (doblado/tramos) usando el motor nuevo, o se mantiene
-  simple por ahora y el motor solo alimenta el 3D Template?
-- **B. Modo de re-apertura del 3D (borrar/editar barra):** ¿"estado original re-generable" vs "refleja
-  las barras actuales del despiece"? El usuario quiere que reconozca un cabezal borrado → definir la
-  mecánica exacta (¿el 3D lee barras actuales? ¿hay botón "regenerar respetando ediciones"?).
-- **C. Barras con tramos curvos (radio real):** confirmar que la técnica del motor las dibuja bien
-  (arco). ¿Se necesitan en el elemento inicial o se difiere?
-- **D. Gancho traslapado:** investigar si el render actual resuelve el "/ /" con desarrollo curvo; si
-  no, se muestra traslapado. (Tarea de investigación, no requiere decisión de negocio.)
-- **E. Elemento de partida real:** el usuario prefiere MURO (más productividad) pero teme que quede a
-  medias; alternativa VIGA (más simple). Cerrar cuál, sabiendo cuántos parámetros/componentes implica
-  (se dimensiona en el discovery del elemento).
-- **F. Parámetros completos del elemento elegido** (§4) — lista exhaustiva con el usuario.
-- **G. Colores/estética del módulo** (§9).
-- **H. Multi-radio en figuras:** ¿se diseña la estructura de datos ahora (recomendado) aunque se use 1?
+**Ya resueltas (no requieren al usuario):**
+- Gancho: offset perpendicular (por espesor); si es complejo, sin espaciar (aceptable). Usuario OK.
+- Curvas/arcos: el motor las dibujará reusando `disenador3d.js` (código ya existe).
+- Multi-radio: estructura de datos flexible (JSON por-tramo); el mapeo a aSa lo resuelve el usuario aparte.
 
-**MÉTODO:** cerrar A-H en discovery, luego detallar §12 tarea por tarea, y recién ahí dejar un agente
-ejecutando F0→F1 de corrido. Prioridad del usuario: barrido COMPLETO antes de tocar un elemento.
+**PENDIENTES (el usuario decide):**
+
+- **D1. Elemento de partida:** ¿MURO (más productividad, más complejo) o VIGA (más simple, menos riesgo
+  de quedar a medias)? El usuario prefiere muro pero teme que quede incompleto. Se dimensiona con D5.
+- **D2. Render 2D actual:** ¿el render 2D del catálogo/Bar Manager/Fabricator pasa a mostrar curvas
+  (doblado + arcos) reusando el motor nuevo, o se mantiene en punta por ahora y el motor solo alimenta
+  el 3D Template? (Recom: mantener 2D simple ahora, evaluar unificar después.)
+- **D3. Modo de re-apertura del 3D tras editar/borrar barras:** al re-abrir el 3D de un elemento ya
+  cargado, ¿el visor LEE las barras actuales del despiece (si borraste el cabezal, no aparece) o
+  muestra el ESTADO ORIGINAL de la receta (cabezal reaparece)? El usuario quiere que reconozca un
+  cabezal borrado → apunta a "leer barras actuales" + un botón explícito "Regenerar" (que sí vuelve al
+  original, avisando). Confirmar la mecánica exacta.
+- **D4. Ubicación/activación de las superficies:** confirmar (a) el botón "3D Template" dentro del
+  Fabricator (¿modal pantalla completa / panel lateral / pestaña?); (b) "Template Editor" como
+  sub-sección del Catálogo (que se renombra a "Configurador de herramientas"). ¿OK?
+- **D5. Parámetros completos del elemento elegido (D1):** lista exhaustiva (largo/ancho/alto,
+  recubrimiento por-barra, componentes, φ, espaciamiento por tramos, confinamiento, figuras elegibles…).
+  Discovery dedicado del elemento. ESTO ES LO MÁS GRANDE y define el alcance real.
+- **D6. Colores/estética del módulo** (§9): paleta del 3D y del Template Editor.
+- **D7. Nombre nuevo del Fabricator:** confirmar que el tab "Agregar Despiece" se renombra a
+  "Fabricator" en toda la plataforma.
+
+**MÉTODO:** cerrar D1-D7 → MAQUETA VISUAL aprobada de cada superficie (anti-desviación, §9) → detallar
+§12 tarea por tarea → agente ejecuta F0(motor)→F1(3D Template) de corrido. Barrido COMPLETO antes de
+tocar un elemento (prioridad del usuario).
