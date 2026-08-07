@@ -156,6 +156,11 @@ dimensiones, en vivo. NO es el Bar Manager: es un resumen COMPACTO abajo del can
 A/B/C/D/largo/kg) que se actualiza con cada cambio de parámetro. Complementa el 3D (uno ve la forma, el
 otro las medidas exactas que se van a fabricar). Maqueta v3 lo incluye.
 
+## 0-7ter. Pendiente de flujo (usuario, 08-ago)
+El selector de elemento (viga/muro/columna) NO debería vivir dentro del modal del 3D Template. Debe
+haber un FLUJO PREVIO: elegir elemento → cargar/abrir el 3D Template con ese elemento. Resolver DESPUÉS
+(no bloquea el cableado del canvas). Anotado para el diseño del flujo de entrada.
+
 ## 1. Correcciones de concepto (errores previos, ahora fijados)
 
 - **R (radio) NO es el radio de doblado de los codos.** En ArmaHub, `radio` es un BOOLEAN por figura
