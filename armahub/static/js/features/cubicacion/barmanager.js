@@ -485,6 +485,7 @@ function _renderPlano() {
     '<th style="text-align:left; padding:3px 6px;">Sector</th>' +
     '<th style="text-align:left; padding:3px 6px;">Ciclo</th>' +
     '<th style="text-align:left; padding:3px 6px;">Eje</th>' +
+    '<th style="text-align:left; padding:3px 6px;">Plano</th>' +
     '<th style="text-align:left; padding:3px 6px;">Tipología</th>' +
     '<th style="text-align:right; padding:3px 6px;">φ</th>' +
     '<th style="text-align:right; padding:3px 6px;">Cant</th>' +
@@ -708,7 +709,9 @@ function _bmFilaBarraHTML(b, editando, conUbicacion) {
       '<td style="padding:2px 6px; font-size:10px;">' + (b.piso || '—') + '</td>' +
       '<td style="padding:2px 6px;">' + _sectorBadge(b.sector) + '</td>' +
       '<td style="padding:2px 6px;">' + _cicloBadge(b.ciclo) + '</td>' +
-      '<td style="padding:2px 6px; font-size:10px;">' + (b.eje || '—') + '</td>';
+      '<td style="padding:2px 6px; font-size:10px;">' + (b.eje || '—') + '</td>' +
+      // Columna Plano (nombre legible del plano; nombre_plano, no el código interno plano_code).
+      '<td style="padding:2px 6px; font-size:10px; color:#607d8b;" title="' + (b.nombre_plano || '') + '">' + (b.nombre_plano || '—') + '</td>';
   } else {
     var idShort = (b.id_unico || '').split('-').slice(-1)[0];
     ubic = '<td style="padding:2px 6px; font-family:monospace; font-size:10px; position:sticky; left:0; background:#fff;" title="' + (b.id_unico || '') + '">' + (b.editado_por ? '✏️ ' : '') + idShort + '</td>';
@@ -723,7 +726,7 @@ function _bmFilaBarraHTML(b, editando, conUbicacion) {
   html += '<td style="padding:2px 6px; text-align:right;">' + _n(b.peso_total, 1) + '</td>';
   if (!conUbicacion) {
     html += '<td style="padding:2px 6px;">' + _origenBadge(b.origen) + '</td>' +
-      '<td style="padding:2px 6px; color:#666;">' + (b.plano_code || '—') + '</td>';
+      '<td style="padding:2px 6px; color:#666;" title="' + (b.nombre_plano || '') + '">' + (b.nombre_plano || '—') + '</td>';
   }
   // Celda "Render" tras Figura (solo con el toggle activo). _bmCeldaDibujo devuelve ''
   // cuando está apagado, así el <td> aparece SIEMPRE junto a su <th> (no descuadra).

@@ -249,9 +249,11 @@ class LotePlano(BaseModel):
 @router.patch("/lotes/{lote_id}/plano")
 def fijar_plano(lote_id: int, body: LotePlano, user=Depends(get_current_user)):
     """M1.10 — Fija el PLANO del despiece (edificio = un plano por lote). Editable mientras el
-    despiece está en BORRADOR; se estampa a plano_code de todas sus barras manuales."""
+    despiece está en BORRADOR; se estampa a nombre_plano de sus barras manuales.
+    NOTA: se usa nombre_plano (el NOMBRE legible del plano, mismo campo que trae el header del
+    CSV: 'PLANO: UID|Nombre'), NO plano_code (que es el código interno UID de ADetailer)."""
     email = user.get("email", "?")
-    plano = (body.plano or "").strip()[:60]
+    plano = (body.plano or "").strip()[:120]
     with get_conn() as conn:
         with conn.cursor() as cur:
             _check_permiso(cur, user)
@@ -263,7 +265,7 @@ def fijar_plano(lote_id: int, body: LotePlano, user=Depends(get_current_user)):
                 raise HTTPException(status_code=409, detail="El plano solo se edita mientras el despiece está en edición.")
             cur.execute("UPDATE lotes SET plano=%s WHERE id=%s", (plano or None, lote_id))
             cur.execute(
-                "UPDATE barras SET plano_code=%s, editado_por=%s, editado_fecha=%s "
+                "UPDATE barras SET nombre_plano=%s, editado_por=%s, editado_fecha=%s "
                 "WHERE lote_id=%s AND origen='manual'",
                 (plano or None, email, _now_iso(), lote_id))
             n = cur.rowcount
