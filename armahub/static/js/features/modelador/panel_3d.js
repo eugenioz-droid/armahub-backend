@@ -20,6 +20,7 @@
   var ST = {
     receta: null,        // receta viva (se muta al ajustar el panel)
     ultimoOut: null,     // salida de generarViga (barras + resumen)
+    piso: null,          // piso (floor) del elemento — se pide al cargar (AC2 no tiene piso global)
     // three
     scene: null, camera: null, renderer: null, world: null, grid: null,
     verHormigon: true, tema: 'medio', ejeRot: 'libre',
@@ -65,12 +66,15 @@
   // --------------------------------------------------------------------------
   // Contexto del despiece (AC2)
   // --------------------------------------------------------------------------
+  // Contexto del despiece. NOTA: en AC2 el `piso` es POR BARRA (no hay un piso
+  // global); el backend lo EXIGE no vacío. Por eso el piso lo pide "Cargar al
+  // despiece" (ST.piso), y aquí solo se refleja el último elegido para el resumen.
   function _ctxAC2() {
     var A = global.AC2 || {};
     return {
       loteId: A.loteId || null,
       sector: A.sector || null, ciclo: A.ciclo || null, eje: A.eje || null,
-      piso: (A.piso || A.sector || null),
+      piso: ST.piso || null,
       nombre_plano: A.plano || null,
       proyecto: A.proyecto || null
     };
@@ -473,18 +477,27 @@
   // CARGAR AL DESPIECE (T1.6) — reusa POST /lotes/{id}/barras
   // --------------------------------------------------------------------------
   global.modelador3dCargarAlDespiece = async function () {
-    var ctx = _ctxAC2();
-    if (!ctx.loteId) { alert('No hay un despiece activo. Crea uno en el Fabricator primero.'); return; }
+    var A = global.AC2 || {};
+    if (!A.loteId) { alert('No hay un despiece activo. Crea uno en el Fabricator primero.'); return; }
     if (!ST.ultimoOut || !ST.ultimoOut.barras.length) { alert('No hay barras generadas para cargar.'); return; }
+    // PISO: el backend lo exige por barra y AC2 no tiene piso global → pedirlo (default = último).
+    var piso = prompt('¿A qué piso pertenece esta viga? (ej. P4)', ST.piso || A.sector || '');
+    if (piso == null) return;
+    piso = piso.trim();
+    if (!piso) { alert('El piso es obligatorio para cargar las barras.'); return; }
+    ST.piso = piso;
+    regenerar();   // re-genera con el piso ya fijado (queda en cada barra)
+    var ctx = _ctxAC2();
     // Traza opcional: guardar la receta como instancia (elementos_template) para template_instancia_id.
     var instId = null;
     try {
       var ri = await _post('/elementos/instancia', { lote_id: ctx.loteId, template_id: null, params: ST.receta });
       if (ri && ri.ok && ri.id) instId = ri.id;
     } catch (e) { /* la traza es opcional; seguimos sin ella */ }
-    // Armar las barras con el shape del backend (ya lo trae generar), estampando template_instancia_id.
+    // Armar las barras con el shape del backend (ya lo trae generar), estampando piso/template/origen.
     var barras = ST.ultimoOut.barras.map(function (b) {
       var o = {}; for (var k in b) if (b.hasOwnProperty(k) && k.charAt(0) !== '_') o[k] = b[k];
+      o.piso = piso;
       o.template_instancia_id = instId;
       o.origen = 'template';
       return o;
