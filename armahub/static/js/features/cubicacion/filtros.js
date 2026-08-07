@@ -261,6 +261,53 @@ function _fillProyectosDatalist(proyectos) {
   if (b) b.setProyectos(proyectos || []);
 }
 
+// --- Lista de OBRAS con barras (CSV + manual) — mismo concepto que el landing del editor ---
+// Visible SOLO cuando aún no se eligió obra. Click en una fila la selecciona en el buscador.
+// Usa /proyectos (trae total_barras + total_kilos; excluye borrador globalmente).
+var _bmObrasCargadas = false;
+async function bmCargarObras(force) {
+  var card = document.getElementById('bmObrasCard');
+  if (!card) return;
+  // Si ya hay obra elegida, ocultar la lista.
+  var proy = (document.getElementById('proyecto') || {}).value || '';
+  if (proy) { card.style.display = 'none'; return; }
+  card.style.display = '';
+  if (_bmObrasCargadas && !force) return;
+  var data = await apiGet('/proyectos');
+  var obras = (data && data.proyectos) || [];
+  // Solo las que tienen barras; de mayor a menor kilos.
+  obras = obras.filter(function(o){ return (o.total_barras || 0) > 0; })
+               .sort(function(a,b){ return (b.total_kilos||0) - (a.total_kilos||0); });
+  var body = document.getElementById('bmObrasBody');
+  if (!body) return;
+  var _fmt = function(v){ return Math.round(v||0).toLocaleString('es-CL'); };
+  var _esc = function(s){ var d=document.createElement('div'); d.textContent=(s==null?'':String(s)); return d.innerHTML; };
+  body.innerHTML = obras.map(function(o){
+    var id = o.id_proyecto || o.id;
+    var nom = o.nombre_proyecto || o.nombre || id;
+    return '<tr style="border-top:1px solid #f0f0f0; cursor:pointer;" onmouseover="this.style.background=\'#f5faf5\'" onmouseout="this.style.background=\'\'"' +
+           ' onclick="bmElegirObra(\'' + String(id).replace(/'/g,"\\'") + '\', \'' + String(nom).replace(/'/g,"\\'") + '\')">' +
+           '<td style="padding:6px 8px; color:#1565c0; font-weight:600;">' + _esc(nom) + '</td>' +
+           '<td style="padding:6px 8px; text-align:right;">' + _fmt(o.total_barras) + '</td>' +
+           '<td style="padding:6px 8px; text-align:right;">' + _fmt(o.total_kilos) + ' kg</td></tr>';
+  }).join('') || '<tr><td colspan="3" style="padding:10px; color:#b0bec5; font-style:italic;">No hay obras con barras.</td></tr>';
+  _bmObrasCargadas = true;
+}
+
+// Selecciona una obra desde la lista: pone el valor en el buscador y dispara el cambio.
+window.bmElegirObra = function(id, nombre) {
+  var input = document.getElementById('bmProyectoSearchInput');
+  var sel = document.getElementById('proyecto');
+  if (input) input.value = nombre || '';
+  if (sel) {
+    var found = false;
+    for (var i=0;i<sel.options.length;i++){ if(sel.options[i].value===id){ sel.selectedIndex=i; found=true; break; } }
+    if (!found){ var op=document.createElement('option'); op.value=id; op.text=nombre||id; sel.appendChild(op); sel.value=id; }
+  }
+  var card = document.getElementById('bmObrasCard'); if (card) card.style.display = 'none';
+  if (typeof onProyectoChange === 'function') onProyectoChange();
+};
+
 // --- Buscador de Eje/Losa (texto) — clonado del de obra, pero SIN id que resolver ---
 // El eje es texto libre: lo escrito ES el valor del filtro. Se puebla el datalist con los
 // ejes de la obra (una obra puede tener ~140, por eso es buscador y no <select>).
@@ -305,6 +352,7 @@ function onProyectoChange() {
   if (typeof bmResetModoEdicion === 'function') bmResetModoEdicion();  // 5M.3
   saveFiltersToStorage();
   buscar(true);
+  if (typeof bmCargarObras === 'function') bmCargarObras();   // muestra/oculta la lista según haya obra
 }
 
 // 5M.2: puebla los selectores de figura y tipología con lo PRESENTE en la obra

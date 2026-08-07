@@ -20,6 +20,8 @@ async function loadCubicacionModule() {
     restaurado = await restoreBarManagerState();
   }
   if (!restaurado) await buscar(true);
+  // Lista de obras (CSV + manual) abajo, visible si no hay obra elegida.
+  if (typeof bmCargarObras === 'function') bmCargarObras();
 }
 
 // M1.2: pisoOrder vive en shared/orden_pisos.js (fuente única, espejo de orden.py).
