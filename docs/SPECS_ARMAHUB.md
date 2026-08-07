@@ -1299,6 +1299,15 @@ Ordena — no reemplaza — el roadmap de features de `programa-versiones/progra
 El **Modelador 3D de elementos** (expande M7) tiene su diseño en **`docs/programa_modelador_3d.md`**:
 generador paramétrico (templates viga/muro/columna) que crea barras y las carga al despiece; guarda
 la RECETA (parámetros), no el resultado (barras derivadas); reusa el render de la maqueta M7.0.
+**MVP F0+F1 IMPLEMENTADO** (guion en `docs/programa_modelador_3d_TAREAS.md`): motor genérico
+client-side (`static/js/features/modelador/`: motor_geom/figura_puntos/reglas/generar/semilla_viga) +
+3D Template modo AJUSTAR (`panel_3d.js` + modal `tabs/modelador3d_modal.html`, botón "🧱 3D Template" en
+el Fabricator). Backend: router `modelador.py` (templates + elementos_template) + `lotes.py::agregar_barras`
+acepta `origen='template'`/`template_instancia_id` (migración 104). Las barras se insertan por el endpoint
+EXISTENTE `POST /lotes/{id}/barras`. FUNCIONAL: viga-semilla (cabezales 103A/103B, estribo 104D por zonas,
+traba 101A) → ajustar → cargar al despiece. STUB (2ª entrega): grid/perimeter/points (muro/columna),
+Colocador. PENDIENTE de confirmar con el usuario: redondeo exacto de ADetailer (hoy `round(L/@)`,
+centralizado en `reglas.js::redondeoCantidadZona`).
 
 ---
 

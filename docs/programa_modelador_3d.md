@@ -1,7 +1,60 @@
 # PROGRAMA — Sistema de Modelado 3D y Templates de Elementos
 
-**Estado:** DISEÑO / DISCOVERY (08-ago-2026). Barrido completo de requerimientos. NO implementar hasta
-cerrar decisiones abiertas (§13). Documento fuente para ejecución continua por agente.
+**Estado:** DISEÑO + **MVP F0/F1 IMPLEMENTADO** (08-ago-2026). Documento fuente. Ver §IMPL abajo para
+lo que quedó construido y los hallazgos de la ejecución.
+
+## §IMPL — Estado de implementación (MVP F0+F1, ejecutado de corrido)
+
+**HECHO y verificado (tests headless + py_compile/node --check):**
+- **F0 motor genérico (client-side, `armahub/static/js/features/modelador/`):**
+  - `motor_geom.js` — barra sólida (cilindros + toros tangentes con radio de doblado de norma; portado
+    de rebar3d). Lógica de dobleces testeable sin THREE. Test `tests/test_motor_geom.js`.
+  - `figura_puntos.js` — figura+dims+anchor → polilínea 3D (cabezal longitudinal / estribo perimetral /
+    traba). Test `tests/test_figura_puntos.js`.
+  - `reglas.js` — EXPANSOR genérico de distribuidores: **linear** (estribos por zonas) + **layered**
+    (cabezales en capas). `grid`/`perimeter`/`points` = **STUB** (devuelven []; 2ª entrega muro/columna).
+    Redondeo de cantidad centralizado. Test `tests/test_reglas.js`.
+  - `generar.js` — `generarViga(receta,ctx)` → placements → BarraPayload (shape ac2, SIN largo/peso: los
+    calcula el backend), agrupa por item/etiqueta (capas iguales → 1 etiqueta ×N), estima kg (espejo
+    peso.py) solo para stats. Test `tests/test_generar.js` (viga-semilla → 4 items / 70 barras / ~139 kg).
+- **F1 3D Template (modo AJUSTAR):**
+  - `semilla_viga.js` — viga-semilla como DATA (CBS 103B ø16 2capas×3, CBI 101A ø18 1×4, ES 104D ø8 por
+    3 zonas, TRV 101A ø8 lineal).
+  - `panel_3d.js` + modal `armahub/templates/tabs/modelador3d_modal.html` (calca `static/demo/template3d.html`,
+    IDs `m3d_`): panel de componentes colapsables (φ/cara radial/dims fija-auto/capas/zonas), canvas 3D
+    (Three.js on-demand por CDN), toolbar (hormigón/tema/rotar eje), stats + resumen en vivo, pan con
+    botón MEDIO, mensaje claro si falta WebGL. Acciones: Cargar al despiece / Guardar template /
+    Regenerar / Cargar template.
+  - Botón **"🧱 3D Template"** en la cabecera del Fabricator (`agregar_cubicacion2.html`), visible solo
+    con lote BORRADOR activo; registrado en `bootstrap.js`; modal incluido en `app.html`.
+  - **Backend** (`armahub/modelador.py`, montado en `main.py` root + /api/v1): `POST /templates`,
+    `GET /templates?tipo=&obra=`, `GET /templates/{id}`, `POST /elementos/instancia` (traza opcional).
+    Migración **104_modelador.sql** (templates_catalogo + elementos_template + barras.template_instancia_id),
+    idempotente. `lotes.py::agregar_barras` + modelo `BarraManual` extendidos con `origen`/
+    `template_instancia_id` OPCIONALES (default 'manual'/NULL → comportamiento actual intacto). Las barras
+    del template se insertan por el endpoint EXISTENTE `POST /lotes/{id}/barras` (no hay endpoint nuevo de
+    inserción). Test no-regresión `tests/test_modelador_backend.py` + integración `tests/test_integracion_modelador.js`.
+
+**Flujo funcional end-to-end:** Fabricator con lote borrador → botón "🧱 3D Template" → modal con la
+viga-semilla → ajustar (largo/recub/φ/dims/zonas/capas) → 3D + resumen en vivo → "Cargar al despiece" →
+las barras entran al lote (origen='template', backend calcula largo/peso) → se ven en el editor y en el
+Bar Manager → el export aSa las trata como barras normales.
+
+**STUB / 2ª entrega (NO en el MVP):** modos grid/perimeter/points (muro/columna); Colocador por
+proyecciones; multi-radio real; homologación del render 2D; herramientas finas de medición/cotas.
+
+**HALLAZGO T0.5 — redondeo de cantidad de estribos (PENDIENTE confirmar con el usuario):** se buscó en
+el repo (importer/lotes/front) y **NO existe** ninguna derivación "cantidad desde el espaciamiento": el
+importador recibe la cantidad ya calculada del CSV de ADetailer y el ingreso manual la escribe a mano.
+No hay criterio previo que copiar. Se usó el DEFAULT `round(L/@)` (igual que la maqueta), **centralizado
+en `reglas.js::redondeoCantidadZona` con un flag `MODO_REDONDEO`** para que confirmar el criterio EXACTO
+de ADetailer sea un cambio de una línea. Alternativas frecuentes: `ceil(L/@)+1` (postes de cerca) o
+`floor(L/@)+1`. **Acción usuario:** confirmar cuál usa ADetailer.
+
+---
+
+**Estado (diseño original):** DISEÑO / DISCOVERY (08-ago-2026). Barrido completo de requerimientos. NO
+implementar hasta cerrar decisiones abiertas (§13). Documento fuente para ejecución continua por agente.
 
 Expande la fase **M7** de `docs/programa_maestro.md`. Reusa el render sólido validado en
 `static/demo/rebar3d.html` (M7.0).
