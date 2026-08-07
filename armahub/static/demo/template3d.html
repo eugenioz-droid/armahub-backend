@@ -75,13 +75,13 @@
   .dimrow .lbr{color:#00897b}   /* R en teal */
 
   /* Resumen de barras a crear (dinámico) */
-  #resumen{border-top:1px solid var(--line);background:var(--panel2)}
+  #resumen{border-top:1px solid var(--line);background:var(--panel2);flex-shrink:0}
   #resumen .rh{display:flex;align-items:center;gap:8px;padding:7px 14px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--muted)}
   #resumen table{width:100%;border-collapse:collapse;font-size:11.5px}
   #resumen th{text-align:left;padding:4px 10px;color:var(--muted);font-weight:600;background:#eef1f4;position:sticky;top:0}
   #resumen th.r,#resumen td.r{text-align:right}
   #resumen td{padding:4px 10px;border-top:1px solid var(--line);color:var(--ink)}
-  #resumen .tb{max-height:150px;overflow:auto}
+  #resumen .tb{max-height:270px;overflow:auto}
   #resumen tr:hover td{background:#eef7ff}
   .rtip{font-weight:700}
   .rsuf{color:var(--acero-d);font-size:10.5px}
@@ -429,6 +429,8 @@
               <tr><td><span class="rtip">CBI</span> <span class="rsuf">inf</span></td><td>103A</td><td class="r">18</td><td class="r">4</td><td class="r">30</td><td class="r">592</td><td class="r">30</td><td class="r">—</td><td class="r">—</td><td class="r">—</td><td class="r">—</td><td class="r">652</td><td class="r">52,1</td></tr>
               <tr><td><span class="rtip">ES</span> <span class="rsuf">z1</span></td><td>104D</td><td class="r">8</td><td class="r">16</td><td class="r">22</td><td class="r">52</td><td class="r">22</td><td class="r">52</td><td class="r">135</td><td class="r">135</td><td class="r">—</td><td class="r">148</td><td class="r">9,3</td></tr>
               <tr><td><span class="rtip">ES</span> <span class="rsuf">z2</span></td><td>104D</td><td class="r">8</td><td class="r">15</td><td class="r">22</td><td class="r">52</td><td class="r">22</td><td class="r">52</td><td class="r">135</td><td class="r">135</td><td class="r">—</td><td class="r">148</td><td class="r">8,7</td></tr>
+              <tr><td><span class="rtip">ES</span> <span class="rsuf">z3</span></td><td>104D</td><td class="r">8</td><td class="r">16</td><td class="r">22</td><td class="r">52</td><td class="r">22</td><td class="r">52</td><td class="r">135</td><td class="r">135</td><td class="r">—</td><td class="r">148</td><td class="r">9,3</td></tr>
+              <tr><td><span class="rtip">CBS</span> <span class="rsuf">sup·c2</span></td><td>103B</td><td class="r">16</td><td class="r">6</td><td class="r">30</td><td class="r">592</td><td class="r">30</td><td class="r">—</td><td class="r">45</td><td class="r">45</td><td class="r">—</td><td class="r">652</td><td class="r">61,8</td></tr>
               <tr><td><span class="rtip">TRV</span> <span class="rsuf">traba</span></td><td>101A</td><td class="r">8</td><td class="r">36</td><td class="r">26</td><td class="r">—</td><td class="r">—</td><td class="r">—</td><td class="r">—</td><td class="r">—</td><td class="r">—</td><td class="r">26</td><td class="r">3,7</td></tr>
             </tbody>
           </table>
