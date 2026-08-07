@@ -400,10 +400,8 @@ async function loadMiActividad() {
 }
 
 // ========================= LANDING INDICADORES =========================
-var _hubChartCubicado = null;
 var _hubChartReclamos = null;
-var _hubChartCubicadoMes = null;
-var _hubLandingData = null;   // última respuesta de /landing/indicadores (la usa el modal del mes)
+var _hubLandingData = null;   // última respuesta de /landing/indicadores
 var _hubCubColors = ['#2e7d32','#1565C0','#ff9800','#e53935','#7B1FA2','#00897B','#795548','#607D8B','#F44336','#009688'];
 
 async function loadLandingIndicadores() {
@@ -442,93 +440,11 @@ async function loadLandingIndicadores() {
     }
   }
 
-  // --- Cubicado semana (grouped bar by cubicador) ---
+  // --- Cubicado (Panel de Cubicación compartido, TODO CSV+manual con todos los controles) ---
   var cubWrap = document.getElementById('hubCubicadoWrap');
-  var cubData = data.cubicado_semana || [];
   if (cubWrap) {
-    if (cubData.length > 0) {
-      cubWrap.style.display = '';
-      var cubDS = cubData.map(function(cub, idx) {
-        return {
-          label: cub.nombre,
-          data: cub.dias,
-          backgroundColor: _hubCubColors[idx % _hubCubColors.length],
-          borderRadius: 2
-        };
-      });
-      // Total por usuario (suma de sus días) + total general de la semana.
-      var totalesUsuario = cubData.map(function(c, idx) {
-        return { nombre: c.nombre, kg: c.dias.reduce(function(s, v) { return s + v; }, 0),
-                 color: _hubCubColors[idx % _hubCubColors.length] };
-      }).sort(function(a, b) { return b.kg - a.kg; });   // de mayor a menor
-      var totalKilos = totalesUsuario.reduce(function(sum, u) { return sum + u.kg; }, 0);
-      var _fmtKg = function(v) { return v.toLocaleString('es-CL', {maximumFractionDigits: 1}); };
-
-      document.getElementById('hubCubicadoTotal').textContent = 'Total semana: ' + _fmtKg(totalKilos) + ' kg';
-      // Tabla de totales por usuario (en columna, ordenada), cada uno con su color del gráfico.
-      var porUsr = document.getElementById('hubCubicadoPorUsuario');
-      var _escTxt = function(s) { var d = document.createElement('div'); d.textContent = (s == null ? '' : String(s)); return d.innerHTML; };
-      if (porUsr) {
-        // Nombre + total PEGADOS a la izquierda (no separados a los extremos): color · nombre · kg.
-        porUsr.innerHTML = totalesUsuario.map(function(u) {
-          return '<div style="display:flex; align-items:baseline; gap:6px; font-size:11px; padding:2px 0;">' +
-                 '<span style="width:10px; height:10px; border-radius:2px; background:' + u.color + '; flex-shrink:0; align-self:center;"></span>' +
-                 '<span style="color:#555;">' + _escTxt(u.nombre) + ':</span>' +
-                 '<span style="color:#333; font-weight:600;">' + _fmtKg(u.kg) + ' kg</span>' +
-                 '</div>';
-        }).join('');
-      }
-
-      // Total por DÍA (suma de todos los cubicadores ese día) → va como 2a línea de la etiqueta del
-      // eje X (bajo "Lun", "Mar"…). Así el total del día NO se dibuja sobre una barra (antes flotaba
-      // sobre la barra más alta y parecía SU valor: p.ej. el total del lunes 15.761 sobre la barra
-      // de Nicolás que en realidad valía 9.959). Etiqueta multilínea solo para este gráfico.
-      var totalesDia = diasLabels.map(function(_, i) {
-        return cubData.reduce(function(s, c) { return s + (c.dias[i] || 0); }, 0);
-      });
-      var cubLabels = diasLabels.map(function(dia, i) {
-        return totalesDia[i] > 0 ? [dia, _fmtKg(totalesDia[i]) + ' kg'] : dia;
-      });
-      // Formato CORTO solo para el número DENTRO de la barra (poco espacio): 9,9k · 1,2M · 850.
-      // El resto (leyenda, total semana, total día) queda en kg completos.
-      var _fmtCorto = function(v) {
-        if (!v) return '';
-        if (v >= 1000000) return (v / 1000000).toLocaleString('es-CL', {maximumFractionDigits: 1}) + 'M';
-        if (v >= 1000) return (v / 1000).toLocaleString('es-CL', {maximumFractionDigits: 1}) + 'k';
-        return v.toLocaleString('es-CL', {maximumFractionDigits: 0});
-      };
-
-      _hubChartCubicado = replaceChart(_hubChartCubicado, document.getElementById('hubChartCubicado'), {
-        type: 'bar',
-        data: { labels: cubLabels, datasets: cubDS },
-        options: {
-          responsive: true, maintainAspectRatio: false,
-          layout: { padding: { top: 16 } },   // aire arriba para los números sobre las barras
-          plugins: {
-            legend: { position: 'bottom', labels: { font: { size: 10 }, padding: 8, usePointStyle: true, pointStyle: 'rect' } },
-            // Valor de CADA barra, en formato corto (9,9k) encima de su propia barra. El total del
-            // día ya no va aquí (pasó a la 2a línea del eje X): así el número sobre la barra es SIEMPRE
-            // el valor de esa barra, sin ambigüedad. Solo se dibuja si la barra tiene valor ese día.
-            datalabels: {
-              display: function(ctx) { return (ctx.chart.data.datasets[ctx.datasetIndex].data[ctx.dataIndex] || 0) > 0; },
-              anchor: 'end', align: 'end', offset: 1, clamp: true, clip: false,
-              color: '#37474f', font: { size: 8, weight: 'bold' },
-              formatter: function(v) { return _fmtCorto(v); }
-            }
-          },
-          scales: {
-            y: { beginAtZero: true, ticks: { font: { size: 9 } } },
-            // Eje X con etiqueta de 2 líneas (día + total del día en kg). Fuente 9 para que ambas
-            // líneas entren sin apretarse; el total del día en color más tenue lo da Chart.js igual
-            // que el día (mismo tick), así que se distingue por estar en la línea de abajo.
-            x: { ticks: { font: { size: 9 }, color: '#546e7a' } }
-          }
-        },
-        plugins: [ChartDataLabels]
-      });
-    } else {
-      cubWrap.style.display = 'none';
-    }
+    cubWrap.style.display = '';
+    hubScreenCargarPanelCub();
   }
 
   // --- Reclamos levantados semana (grouped bar by USC) ---
@@ -568,110 +484,50 @@ async function loadLandingIndicadores() {
   }
 }
 
-// ── ZOOM: Cubicado del AÑO (modal) ─────────────────────────────────────────────────────────────
-// Reusa la data ya cargada (_hubLandingData.cubicado_anio): línea de tiempo mixta del año en curso.
-// Meses cerrados = 1 barra por mes (Ene…mes anterior); mes actual = desglosado por semana con fechas
-// reales (1-7 ago…). Mismo estilo del gráfico semanal (valor corto en barra, total del período bajo
-// el eje). No pega al backend de nuevo: la data viene con el landing. Una línea separa histórico
-// mensual de las semanas del mes en curso (corte_semanas).
-window.abrirCubicadoMes = function() {
-  var modal = document.getElementById('hubCubicadoMesModal');
-  var data = _hubLandingData || {};
-  var anioData = data.cubicado_anio || {};
-  var labelsBase = anioData.labels || [];
-  var cubs = anioData.cubicadores || [];
-  if (!modal) return;
-  if (!labelsBase.length || !cubs.length) { alert('Aún no hay cubicación registrada este año.'); return; }
-
-  var _fmtKg = function(v) { return v.toLocaleString('es-CL', { maximumFractionDigits: 1 }); };
-  var _fmtCorto = function(v) {
-    if (!v) return '';
-    if (v >= 1000000) return (v / 1000000).toLocaleString('es-CL', { maximumFractionDigits: 1 }) + 'M';
-    if (v >= 1000) return (v / 1000).toLocaleString('es-CL', { maximumFractionDigits: 1 }) + 'k';
-    return v.toLocaleString('es-CL', { maximumFractionDigits: 0 });
+// ── Panel de Cubicación en la pantalla Hub (Indicadores) — MISMO componente que el editor/Metrics.
+// TODO (CSV + manual) de todas las obras, con todos los controles (año + S/M·S/M·D/A). La lupa
+// abre el MISMO componente agrandado. Antes había un gráfico propio "cubicado semana/año" (sin
+// controles); se reemplazó para que el Panel sea uno solo en toda la plataforma.
+var _hubScreenPanelCub = null;
+var _hubScreenPanelCubGrande = null;
+function _hubScreenPanelOpts(altura) {
+  return {
+    altura: altura,
+    getParams: function() { return { origen: 'todos' }; },
+    getAlcance: function() { return { texto: ' · todas las obras (CSV + creados)', resaltar: false }; }
   };
-
-  var n = labelsBase.length;
-  var anioDS = cubs.map(function(c, idx) {
-    return { label: c.nombre, data: (c.valores || []).slice(0, n),
-             backgroundColor: _hubCubColors[idx % _hubCubColors.length], borderRadius: 2 };
-  });
-  // Total por período → 2a línea de la etiqueta del eje X. Y totales por usuario + total del año.
-  var totPer = labelsBase.map(function(_, i) { return cubs.reduce(function(s, c) { return s + ((c.valores || [])[i] || 0); }, 0); });
-  var chartLabels = labelsBase.map(function(lbl, i) {
-    return totPer[i] > 0 ? [lbl, _fmtKg(totPer[i]) + ' kg'] : lbl;
-  });
-  var totUsr = cubs.map(function(c, idx) {
-    return { nombre: c.nombre, kg: (c.valores || []).reduce(function(s, v) { return s + v; }, 0), color: _hubCubColors[idx % _hubCubColors.length] };
-  }).sort(function(a, b) { return b.kg - a.kg; });
-  var totAnio = totUsr.reduce(function(s, u) { return s + u.kg; }, 0);
-
-  var tit = document.getElementById('hubCubicadoMesTitulo');
-  if (tit) tit.textContent = 'Cubicado del año ' + (anioData.anio || '') + ' (kg)';
-  var totEl = document.getElementById('hubCubicadoMesTotal');
-  if (totEl) totEl.textContent = 'Total año: ' + _fmtKg(totAnio) + ' kg';
-  var porUsr = document.getElementById('hubCubicadoMesPorUsuario');
-  if (porUsr) {
-    var _esc = function(s) { var d = document.createElement('div'); d.textContent = (s == null ? '' : String(s)); return d.innerHTML; };
-    porUsr.innerHTML = totUsr.map(function(u) {
-      return '<div style="display:flex; align-items:baseline; gap:6px; font-size:11px; padding:2px 0;">' +
-             '<span style="width:10px; height:10px; border-radius:2px; background:' + u.color + '; flex-shrink:0; align-self:center;"></span>' +
-             '<span style="color:#555;">' + _esc(u.nombre) + ':</span>' +
-             '<span style="color:#333; font-weight:600;">' + _fmtKg(u.kg) + ' kg</span></div>';
-    }).join('');
+}
+function hubScreenCargarPanelCub() {
+  if (!_hubScreenPanelCub) {
+    var el = document.getElementById('hubScreenPanelCub');
+    if (!el || !window.PanelCubicacion) return;
+    _hubScreenPanelCub = PanelCubicacion.crear(el, _hubScreenPanelOpts(260));
+    if (!_hubScreenPanelCub) return;
   }
-
-  // Separación visual entre histórico mensual y semanas del mes actual: una línea vertical en x =
-  // corte_semanas (frontera). Plugin inline que dibuja la línea después de las barras.
-  var corte = anioData.corte_semanas || 0;
-  var separadorPlugin = {
-    id: 'sepMesSemana',
-    afterDatasetsDraw: function(chart) {
-      if (corte <= 0 || corte >= n) return;
-      var xAxis = chart.scales.x, yAxis = chart.scales.y;
-      if (!xAxis || !yAxis) return;
-      // La frontera va entre la barra (corte-1) y la barra (corte): punto medio de sus centros.
-      var xa = xAxis.getPixelForValue(corte - 1), xb = xAxis.getPixelForValue(corte);
-      var x = (xa + xb) / 2;
-      var ctx = chart.ctx;
-      ctx.save();
-      ctx.strokeStyle = 'rgba(120,120,120,.35)'; ctx.lineWidth = 1; ctx.setLineDash([4, 3]);
-      ctx.beginPath(); ctx.moveTo(x, yAxis.top); ctx.lineTo(x, yAxis.bottom); ctx.stroke();
-      ctx.restore();
+  _hubScreenPanelCub.recargar();
+}
+window.hubScreenAgrandarPanel = function() {
+  var m = document.getElementById('hubCubicadoMesModal');
+  if (!m) return;
+  m.style.display = 'flex';
+  // Crear/recargar en el siguiente frame: el modal ya tiene ancho real → controles y gráfico bien.
+  requestAnimationFrame(function() {
+    if (!_hubScreenPanelCubGrande) {
+      var el = document.getElementById('hubScreenPanelCubGrande');
+      if (el && window.PanelCubicacion) _hubScreenPanelCubGrande = PanelCubicacion.crear(el, _hubScreenPanelOpts(440));
     }
-  };
-
-  modal.style.display = 'block';
-  _hubChartCubicadoMes = replaceChart(_hubChartCubicadoMes, document.getElementById('hubChartCubicadoMes'), {
-    type: 'bar',
-    data: { labels: chartLabels, datasets: anioDS },
-    options: {
-      responsive: true, maintainAspectRatio: false,
-      layout: { padding: { top: 16 } },
-      plugins: {
-        legend: { position: 'bottom', labels: { font: { size: 10 }, padding: 8, usePointStyle: true, pointStyle: 'rect' } },
-        datalabels: {
-          display: function(ctx) { return (ctx.chart.data.datasets[ctx.datasetIndex].data[ctx.dataIndex] || 0) > 0; },
-          anchor: 'end', align: 'end', offset: 1, clamp: true, clip: false,
-          color: '#37474f', font: { size: 9, weight: 'bold' },
-          formatter: function(v) { return _fmtCorto(v); }
-        }
-      },
-      scales: {
-        y: { beginAtZero: true, ticks: { font: { size: 10 } } },
-        x: { ticks: { font: { size: 9 }, color: '#546e7a', autoSkip: false, maxRotation: 0 } }
-      }
-    },
-    plugins: [ChartDataLabels, separadorPlugin]
+    if (_hubScreenPanelCubGrande) _hubScreenPanelCubGrande.recargar();
   });
 };
-window.cerrarCubicadoMes = function() {
-  var modal = document.getElementById('hubCubicadoMesModal');
-  if (modal) modal.style.display = 'none';
+window.hubScreenCerrarPanel = function() {
+  var m = document.getElementById('hubCubicadoMesModal');
+  if (m) m.style.display = 'none';
 };
-// Cerrar el modal del mes con Escape.
+// Compatibilidad: por si algún onclick viejo quedó cacheado, no romper.
+window.abrirCubicadoMes = window.hubScreenAgrandarPanel;
+window.cerrarCubicadoMes = window.hubScreenCerrarPanel;
 document.addEventListener('keydown', function(e) {
-  if (e.key === 'Escape') { var m = document.getElementById('hubCubicadoMesModal'); if (m && m.style.display !== 'none') window.cerrarCubicadoMes(); }
+  if (e.key === 'Escape') { var m = document.getElementById('hubCubicadoMesModal'); if (m && m.style.display !== 'none') window.hubScreenCerrarPanel(); }
 });
 
 // Auto-load indicators if hub is already visible when portal script loads

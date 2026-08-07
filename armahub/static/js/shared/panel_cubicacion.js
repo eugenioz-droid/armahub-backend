@@ -101,6 +101,9 @@
       });
     }
     pintarPeriodos();
+    // Los checkboxes de año se pintan YA (con el año en curso), sin esperar al fetch. Cuando llega
+    // la data, recargar() los repinta con los años que tienen registros (sin perder lo marcado).
+    pintarAnios([]);
 
     function toggleAnio(y, on) {
       y = String(y);

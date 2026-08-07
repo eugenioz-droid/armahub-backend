@@ -127,6 +127,27 @@
       </div>
     </div>
 
+    <!-- Lista de OBRAS (CSV + manual). Mismo concepto que el landing del editor: visible cuando aún
+         no se eligió obra; click en una fila la selecciona en el buscador de arriba. Lo llena bmCargarObras(). -->
+    <div id="bmObrasCard" class="card" style="display:none;">
+      <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
+        <strong style="font-size:13px;">📁 Obras con barras</strong>
+        <span class="muted" style="font-size:11px;">Click en una obra para abrirla · incluye CSV y cubicación manual.</span>
+      </div>
+      <div style="overflow-x:auto;">
+        <table style="width:100%; border-collapse:collapse; font-size:12px;">
+          <thead>
+            <tr style="color:#666; background:#fafafa; text-align:left;">
+              <th style="padding:6px 8px;">Obra</th>
+              <th style="padding:6px 8px; text-align:right;">Barras</th>
+              <th style="padding:6px 8px; text-align:right;">Kg</th>
+            </tr>
+          </thead>
+          <tbody id="bmObrasBody"></tbody>
+        </table>
+      </div>
+    </div>
+
     <!-- KPIs + toolbar de expansión -->
     <div class="card" style="padding:10px 16px;">
       <div id="bmKpis" class="row" style="gap:14px; align-items:center; flex-wrap:wrap; font-size:12px;">
