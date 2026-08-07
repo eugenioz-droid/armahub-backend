@@ -22,7 +22,7 @@
 
   /* Simulación del MODAL sobre el Fabricator */
   #backdrop{position:fixed;inset:0;background:rgba(15,20,28,.55);display:flex;align-items:center;justify-content:center;padding:18px}
-  #modal{width:min(1280px,97vw);height:min(860px,95vh);background:var(--panel);border-radius:14px;
+  #modal{width:min(1440px,98vw);height:min(920px,96vh);background:var(--panel);border-radius:14px;
     box-shadow:0 24px 70px rgba(0,0,0,.4);display:flex;flex-direction:column;overflow:hidden}
 
   /* Barra de título del modal */
@@ -59,16 +59,20 @@
   .capas .cr .del:hover{color:var(--danger)}
   .addcapa{width:100%;border:none;border-top:1px solid var(--line);background:#f7fbf2;color:var(--acero-d);padding:5px;font-size:11px;font-weight:600;cursor:pointer}
 
-  /* Dimensiones de la figura (dinámicas según parciales A..I de la figura elegida) */
-  .dims{margin-top:9px}
-  .dims .dh{font-size:10.5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin-bottom:5px}
-  .dimrow{display:grid;grid-template-columns:22px 1fr auto;gap:7px;align-items:center;margin-top:5px}
-  .dimrow .lb{font-weight:700;color:var(--azul);text-align:center}
-  .dimrow .autotag{display:inline-flex;border:1px solid var(--line);border-radius:6px;overflow:hidden;font-size:10.5px}
-  .dimrow .autotag button{border:none;background:#fff;padding:3px 8px;color:var(--muted);cursor:pointer;font-weight:600}
+  /* Dimensiones de la figura (dinámicas según parciales A..I + ángulos + R de la figura elegida) */
+  .dims{margin-top:11px;border:1px solid var(--line);border-radius:8px;padding:10px 12px;background:#fbfcfd}
+  .dims .dh{font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin-bottom:8px}
+  .dimrow{display:grid;grid-template-columns:30px 1fr auto;gap:9px;align-items:center;margin-top:7px}
+  .dimrow .lb{font-weight:700;color:var(--azul);text-align:center;font-size:13px}
+  .dimrow input{padding:7px 10px;font-size:13px}
+  .dimrow .autotag{display:inline-flex;border:1px solid var(--line);border-radius:6px;overflow:hidden;font-size:11px}
+  .dimrow .autotag button{border:none;background:#fff;padding:5px 11px;color:var(--muted);cursor:pointer;font-weight:600}
   .dimrow .autotag button+button{border-left:1px solid var(--line)}
   .dimrow .autotag button.on{background:var(--azul-b);color:var(--azul)}
   .dimrow input:disabled{background:#f2f5f8;color:#9aa4b0}
+  .dims .subh{font-size:10px;font-weight:700;color:#9aa4b0;text-transform:uppercase;letter-spacing:.4px;margin:11px 0 3px;border-top:1px dashed var(--line);padding-top:9px}
+  .dimrow .lba{color:#8d6e63}   /* ángulos en marrón */
+  .dimrow .lbr{color:#00897b}   /* R en teal */
 
   /* Resumen de barras a crear (dinámico) */
   #resumen{border-top:1px solid var(--line);background:var(--panel2)}
@@ -225,7 +229,7 @@
             <span class="drag" title="Arrastra para reordenar">⠿</span>
             <span class="swatch" style="background:#1565c0"></span>
             <span class="tip">CBS</span><span class="suf">superior</span>
-            <span class="meta">· ø16 · fig 103A · 2 capas</span>
+            <span class="meta">· ø16 · fig 103B · 2 capas</span>
             <span class="sp"></span>
             <button class="mini" title="Duplicar">⧉</button>
             <button class="mini" title="Quitar">🗑</button>
@@ -241,17 +245,26 @@
             </div>
             <div class="fld" style="margin-top:8px"><label>Recub. (override) <span class="u">cm</span></label><input type="number" placeholder="global (4)" style="width:130px"></div>
 
-            <!-- Dimensiones de la FIGURA elegida (dinámicas: fig 103A usa A,B,C). Cada dim: fija o
-                 derivada del elemento. Ej. cabezal 103: A,C = patas fijas; B = largo de la viga. -->
+            <!-- Dimensiones de la FIGURA elegida (dinámicas: fig 103B usa A,B,C + ángulos [45,45]).
+                 Cada dim: fija o derivada del elemento. Ej. cabezal: A,C = patas fijas; B = largo viga.
+                 Los ángulos (α) y el R (tramo curvo) también salen de la figura del catálogo. -->
             <div class="dims">
-              <div class="dh">Dimensiones · figura 103A (A · B · C)</div>
+              <div class="dh">Dimensiones · figura 103B</div>
               <div class="dimrow"><span class="lb">A</span><input type="number" value="30" title="cm">
                 <span class="autotag"><button class="on">Fija</button><button>Auto</button></span></div>
               <div class="dimrow"><span class="lb">B</span><input type="number" value="592" disabled title="= largo viga − recubrimientos">
                 <span class="autotag"><button>Fija</button><button class="on">Auto</button></span></div>
               <div class="dimrow"><span class="lb">C</span><input type="number" value="30" title="cm">
                 <span class="autotag"><button class="on">Fija</button><button>Auto</button></span></div>
-              <div class="note">“Auto” deriva la medida del elemento (B = largo − recubrimientos). “Fija” = la pones tú. Los campos dependen de la figura.</div>
+              <div class="subh">Ángulos (según la figura)</div>
+              <div class="dimrow"><span class="lb lba">α1</span><input type="number" value="45" title="grados">
+                <span class="autotag"><button class="on">Fija</button><button>Auto</button></span></div>
+              <div class="dimrow"><span class="lb lba">α2</span><input type="number" value="45" title="grados">
+                <span class="autotag"><button class="on">Fija</button><button>Auto</button></span></div>
+              <div class="subh">Radio (tramo curvo, si la figura lo usa)</div>
+              <div class="dimrow"><span class="lb lbr">R</span><input type="number" placeholder="—" title="radio de desarrollo (esta figura no usa R)" disabled>
+                <span class="autotag"><button>Fija</button><button>Auto</button></span></div>
+              <div class="note">Los campos (dims, ángulos, R) dependen de la figura elegida. “Auto” deriva del elemento (B = largo − recubr.); “Fija” = la pones tú.</div>
             </div>
             <!-- Tabla de capas: cada capa = N barras + offset a la cara (retranqueo hacia el núcleo) -->
             <div class="capas">
@@ -408,14 +421,15 @@
           <table>
             <thead><tr>
               <th>Tip.</th><th>Figura</th><th class="r">φ</th><th class="r">Cant</th>
-              <th class="r">A</th><th class="r">B</th><th class="r">C</th><th class="r">D</th><th class="r">Largo</th><th class="r">Kg</th>
+              <th class="r">A</th><th class="r">B</th><th class="r">C</th><th class="r">D</th>
+              <th class="r">α1</th><th class="r">α2</th><th class="r">R</th><th class="r">Largo</th><th class="r">Kg</th>
             </tr></thead>
             <tbody>
-              <tr><td><span class="rtip">CBS</span> <span class="rsuf">sup</span></td><td>103A</td><td class="r">16</td><td class="r">6</td><td class="r">30</td><td class="r">592</td><td class="r">30</td><td class="r">—</td><td class="r">652</td><td class="r">61,8</td></tr>
-              <tr><td><span class="rtip">CBI</span> <span class="rsuf">inf</span></td><td>103A</td><td class="r">18</td><td class="r">4</td><td class="r">30</td><td class="r">592</td><td class="r">30</td><td class="r">—</td><td class="r">652</td><td class="r">52,1</td></tr>
-              <tr><td><span class="rtip">ES</span> <span class="rsuf">z1</span></td><td>104D</td><td class="r">8</td><td class="r">16</td><td class="r">22</td><td class="r">52</td><td class="r">22</td><td class="r">52</td><td class="r">148</td><td class="r">9,3</td></tr>
-              <tr><td><span class="rtip">ES</span> <span class="rsuf">z2</span></td><td>104D</td><td class="r">8</td><td class="r">15</td><td class="r">22</td><td class="r">52</td><td class="r">22</td><td class="r">52</td><td class="r">148</td><td class="r">8,7</td></tr>
-              <tr><td><span class="rtip">TRV</span> <span class="rsuf">traba</span></td><td>101A</td><td class="r">8</td><td class="r">36</td><td class="r">26</td><td class="r">—</td><td class="r">—</td><td class="r">—</td><td class="r">26</td><td class="r">3,7</td></tr>
+              <tr><td><span class="rtip">CBS</span> <span class="rsuf">sup</span></td><td>103B</td><td class="r">16</td><td class="r">6</td><td class="r">30</td><td class="r">592</td><td class="r">30</td><td class="r">—</td><td class="r">45</td><td class="r">45</td><td class="r">—</td><td class="r">652</td><td class="r">61,8</td></tr>
+              <tr><td><span class="rtip">CBI</span> <span class="rsuf">inf</span></td><td>103A</td><td class="r">18</td><td class="r">4</td><td class="r">30</td><td class="r">592</td><td class="r">30</td><td class="r">—</td><td class="r">—</td><td class="r">—</td><td class="r">—</td><td class="r">652</td><td class="r">52,1</td></tr>
+              <tr><td><span class="rtip">ES</span> <span class="rsuf">z1</span></td><td>104D</td><td class="r">8</td><td class="r">16</td><td class="r">22</td><td class="r">52</td><td class="r">22</td><td class="r">52</td><td class="r">135</td><td class="r">135</td><td class="r">—</td><td class="r">148</td><td class="r">9,3</td></tr>
+              <tr><td><span class="rtip">ES</span> <span class="rsuf">z2</span></td><td>104D</td><td class="r">8</td><td class="r">15</td><td class="r">22</td><td class="r">52</td><td class="r">22</td><td class="r">52</td><td class="r">135</td><td class="r">135</td><td class="r">—</td><td class="r">148</td><td class="r">8,7</td></tr>
+              <tr><td><span class="rtip">TRV</span> <span class="rsuf">traba</span></td><td>101A</td><td class="r">8</td><td class="r">36</td><td class="r">26</td><td class="r">—</td><td class="r">—</td><td class="r">—</td><td class="r">—</td><td class="r">—</td><td class="r">—</td><td class="r">26</td><td class="r">3,7</td></tr>
             </tbody>
           </table>
         </div>
