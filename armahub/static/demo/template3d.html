@@ -58,6 +58,29 @@
   .capas .cr .del{border:none;background:none;color:#b6c0cc;cursor:pointer;font-size:12px}
   .capas .cr .del:hover{color:var(--danger)}
   .addcapa{width:100%;border:none;border-top:1px solid var(--line);background:#f7fbf2;color:var(--acero-d);padding:5px;font-size:11px;font-weight:600;cursor:pointer}
+
+  /* Dimensiones de la figura (dinámicas según parciales A..I de la figura elegida) */
+  .dims{margin-top:9px}
+  .dims .dh{font-size:10.5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin-bottom:5px}
+  .dimrow{display:grid;grid-template-columns:22px 1fr auto;gap:7px;align-items:center;margin-top:5px}
+  .dimrow .lb{font-weight:700;color:var(--azul);text-align:center}
+  .dimrow .autotag{display:inline-flex;border:1px solid var(--line);border-radius:6px;overflow:hidden;font-size:10.5px}
+  .dimrow .autotag button{border:none;background:#fff;padding:3px 8px;color:var(--muted);cursor:pointer;font-weight:600}
+  .dimrow .autotag button+button{border-left:1px solid var(--line)}
+  .dimrow .autotag button.on{background:var(--azul-b);color:var(--azul)}
+  .dimrow input:disabled{background:#f2f5f8;color:#9aa4b0}
+
+  /* Resumen de barras a crear (dinámico) */
+  #resumen{border-top:1px solid var(--line);background:var(--panel2)}
+  #resumen .rh{display:flex;align-items:center;gap:8px;padding:7px 14px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--muted)}
+  #resumen table{width:100%;border-collapse:collapse;font-size:11.5px}
+  #resumen th{text-align:left;padding:4px 10px;color:var(--muted);font-weight:600;background:#eef1f4;position:sticky;top:0}
+  #resumen th.r,#resumen td.r{text-align:right}
+  #resumen td{padding:4px 10px;border-top:1px solid var(--line);color:var(--ink)}
+  #resumen .tb{max-height:150px;overflow:auto}
+  #resumen tr:hover td{background:#eef7ff}
+  .rtip{font-weight:700}
+  .rsuf{color:var(--acero-d);font-size:10.5px}
   .sect{margin-bottom:16px}
   .sect > .h{display:flex;align-items:center;gap:7px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin-bottom:8px}
   .sect > .h .ln{flex:1;height:1px;background:var(--line)}
@@ -114,7 +137,7 @@
   #toolbar .sp{flex:1}
 
   /* “render” fingido de la viga (SVG) para la maqueta */
-  #view{flex:1;display:flex;align-items:center;justify-content:center;position:relative}
+  #view{flex:1;display:flex;align-items:center;justify-content:center;position:relative;min-height:0}
   #view svg{max-width:92%;max-height:78%}
 
   /* etiqueta de cota */
@@ -202,7 +225,7 @@
             <span class="drag" title="Arrastra para reordenar">⠿</span>
             <span class="swatch" style="background:#1565c0"></span>
             <span class="tip">CBS</span><span class="suf">superior</span>
-            <span class="meta">· ø16 · fig 101A · 2 capas</span>
+            <span class="meta">· ø16 · fig 103A · 2 capas</span>
             <span class="sp"></span>
             <button class="mini" title="Duplicar">⧉</button>
             <button class="mini" title="Quitar">🗑</button>
@@ -210,15 +233,25 @@
           <div class="body">
             <div class="cap">Cabezal Superior. Un componente = N capas iguales o distintas (capas iguales → 1 etiqueta / 1 tanda).</div>
             <div class="grid3">
-              <div class="fld"><label>Figura</label><input type="text" value="101A" list="figs"></div>
+              <div class="fld"><label>Figura</label><input type="text" value="103A" list="figs"></div>
               <div class="fld"><label>φ <span class="u">mm</span></label>
                 <select><option>8</option><option selected>16</option><option>18</option><option>22</option><option>25</option></select></div>
               <div class="fld"><label>Cara</label>
                 <div class="radial"><button class="on">Sup</button><button>Inf</button><button>Lat</button></div></div>
             </div>
-            <div class="grid2" style="margin-top:8px">
-              <div class="fld"><label>Recub. (override) <span class="u">cm</span></label><input type="number" placeholder="global (4)"></div>
-              <div class="fld"><label>Ajuste largo <span class="u">cm (±)</span></label><input type="number" value="0"></div>
+            <div class="fld" style="margin-top:8px"><label>Recub. (override) <span class="u">cm</span></label><input type="number" placeholder="global (4)" style="width:130px"></div>
+
+            <!-- Dimensiones de la FIGURA elegida (dinámicas: fig 103A usa A,B,C). Cada dim: fija o
+                 derivada del elemento. Ej. cabezal 103: A,C = patas fijas; B = largo de la viga. -->
+            <div class="dims">
+              <div class="dh">Dimensiones · figura 103A (A · B · C)</div>
+              <div class="dimrow"><span class="lb">A</span><input type="number" value="30" title="cm">
+                <span class="autotag"><button class="on">Fija</button><button>Auto</button></span></div>
+              <div class="dimrow"><span class="lb">B</span><input type="number" value="592" disabled title="= largo viga − recubrimientos">
+                <span class="autotag"><button>Fija</button><button class="on">Auto</button></span></div>
+              <div class="dimrow"><span class="lb">C</span><input type="number" value="30" title="cm">
+                <span class="autotag"><button class="on">Fija</button><button>Auto</button></span></div>
+              <div class="note">“Auto” deriva la medida del elemento (B = largo − recubrimientos). “Fija” = la pones tú. Los campos dependen de la figura.</div>
             </div>
             <!-- Tabla de capas: cada capa = N barras + offset a la cara (retranqueo hacia el núcleo) -->
             <div class="capas">
@@ -352,19 +385,40 @@
           <div class="r">Zona 1 (ext.) · <b>@10 cm</b></div>
           <div class="r">Cantidad en la viga: <b>60</b></div>
         </div>
+
+        <div id="stats">
+          <span>Items/etiquetas: <b>5</b></span>
+          <span>Barras: <b>77</b></span>
+          <span class="kg">Peso: <b>264,4 kg</b></span>
+          <span>Tri: <b>~98k</b> · 5 draw calls</span>
+        </div>
+
+        <div id="actions">
+          <button class="btn ghost">💾 Guardar como template</button>
+          <button class="btn ghost">↻ Regenerar</button>
+          <button class="btn primary">⬇ Cargar al despiece</button>
+        </div>
       </div>
 
-      <div id="stats">
-        <span>Items/etiquetas: <b>5</b></span>
-        <span>Barras: <b>77</b></span>
-        <span class="kg">Peso: <b>264,4 kg</b></span>
-        <span>Tri: <b>~98k</b> · 5 draw calls</span>
-      </div>
-
-      <div id="actions">
-        <button class="btn ghost">💾 Guardar como template</button>
-        <button class="btn ghost">↻ Regenerar</button>
-        <button class="btn primary">⬇ Cargar al despiece</button>
+      <!-- RESUMEN dinámico de las barras que se van a crear (se actualiza con cada cambio).
+           Compacto — no es el Bar Manager; es "qué voy a cargar y con qué medidas". -->
+      <div id="resumen">
+        <div class="rh"><span>Barras a crear</span><span style="font-weight:600;text-transform:none;letter-spacing:0;color:#9aa4b0">5 items · 77 barras · 264,4 kg · se actualiza en vivo</span></div>
+        <div class="tb">
+          <table>
+            <thead><tr>
+              <th>Tip.</th><th>Figura</th><th class="r">φ</th><th class="r">Cant</th>
+              <th class="r">A</th><th class="r">B</th><th class="r">C</th><th class="r">D</th><th class="r">Largo</th><th class="r">Kg</th>
+            </tr></thead>
+            <tbody>
+              <tr><td><span class="rtip">CBS</span> <span class="rsuf">sup</span></td><td>103A</td><td class="r">16</td><td class="r">6</td><td class="r">30</td><td class="r">592</td><td class="r">30</td><td class="r">—</td><td class="r">652</td><td class="r">61,8</td></tr>
+              <tr><td><span class="rtip">CBI</span> <span class="rsuf">inf</span></td><td>103A</td><td class="r">18</td><td class="r">4</td><td class="r">30</td><td class="r">592</td><td class="r">30</td><td class="r">—</td><td class="r">652</td><td class="r">52,1</td></tr>
+              <tr><td><span class="rtip">ES</span> <span class="rsuf">z1</span></td><td>104D</td><td class="r">8</td><td class="r">16</td><td class="r">22</td><td class="r">52</td><td class="r">22</td><td class="r">52</td><td class="r">148</td><td class="r">9,3</td></tr>
+              <tr><td><span class="rtip">ES</span> <span class="rsuf">z2</span></td><td>104D</td><td class="r">8</td><td class="r">15</td><td class="r">22</td><td class="r">52</td><td class="r">22</td><td class="r">52</td><td class="r">148</td><td class="r">8,7</td></tr>
+              <tr><td><span class="rtip">TRV</span> <span class="rsuf">traba</span></td><td>101A</td><td class="r">8</td><td class="r">36</td><td class="r">26</td><td class="r">—</td><td class="r">—</td><td class="r">—</td><td class="r">26</td><td class="r">3,7</td></tr>
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
 
