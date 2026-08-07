@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Maqueta M7 — Render sólido de armadura</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    display: flex;
+    background: #14171c;
+    color: #cfd6e0;
+    font: 13px/1.45 "Segoe UI", system-ui, sans-serif;
+    overflow: hidden;
+  }
+  #panel {
+    width: 300px;
+    min-width: 300px;
+    height: 100%;
+    overflow-y: auto;
+    background: #1b1f26;
+    border-right: 1px solid #2a2f38;
+    padding: 16px 18px 24px;
+  }
+  #panel h1 {
+    font-size: 15px;
+    font-weight: 600;
+    color: #e8edf4;
+    letter-spacing: 0.2px;
+  }
+  #panel .nota {
+    margin: 6px 0 14px;
+    font-size: 11.5px;
+    color: #8b94a3;
+  }
+  .grupo {
+    margin: 14px 0 6px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    color: #6f7a8a;
+    border-bottom: 1px solid #262c36;
+    padding-bottom: 3px;
+  }
+  .fila { margin: 8px 0; }
+  .fila label {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 2px;
+  }
+  .fila .valor { color: #9db4d4; font-variant-numeric: tabular-nums; }
+  .fila input[type="range"] { width: 100%; accent-color: #5b8dd9; }
+  .fila select, .fila input[type="number"] {
+    width: 100%;
+    background: #232935;
+    color: #cfd6e0;
+    border: 1px solid #323a48;
+    border-radius: 4px;
+    padding: 3px 6px;
+    font: inherit;
+  }
+  .fila.doble { display: flex; gap: 10px; }
+  .fila.doble > div { flex: 1; }
+  .check { display: flex; align-items: center; gap: 8px; margin: 10px 0; }
+  .check input { accent-color: #5b8dd9; }
+  #stats {
+    margin-top: 16px;
+    padding: 10px 12px;
+    background: #20252e;
+    border: 1px solid #2a303b;
+    border-radius: 6px;
+    font-variant-numeric: tabular-nums;
+  }
+  #stats div { display: flex; justify-content: space-between; padding: 1px 0; }
+  #stats .st-val { color: #a9c4e8; }
+  .ayuda { margin-top: 12px; font-size: 11px; color: #6f7a8a; }
+  #escena { flex: 1; height: 100%; position: relative; }
+  #escena canvas { display: block; }
+  #errorCdn {
+    display: none;
+    position: absolute;
+    top: 40%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: #2a2026;
+    border: 1px solid #5a3540;
+    color: #e0b8c0;
+    padding: 14px 20px;
+    border-radius: 6px;
+    z-index: 10;
+  }
+</style>
+</head>
+<body>
+
+<div id="panel">
+  <h1>Maqueta M7 — Render sólido de armadura</h1>
+  <p class="nota">Demo de nivel de detalle 3D (barras sólidas con radio de doblado de norma). No es un producto final.</p>
+
+  <div class="grupo">Viga</div>
+  <div class="fila">
+    <label>Largo L <span class="valor" id="valL"></span></label>
+    <input type="range" id="inpL" min="2" max="16" step="0.5" value="8">
+  </div>
+  <div class="fila">
+    <label>Ancho b <span class="valor" id="valB"></span></label>
+    <input type="range" id="inpB" min="20" max="80" step="1" value="30">
+  </div>
+  <div class="fila">
+    <label>Alto h <span class="valor" id="valH"></span></label>
+    <input type="range" id="inpH" min="25" max="120" step="1" value="60">
+  </div>
+  <div class="fila">
+    <label>Recubrimiento r <span class="valor" id="valR"></span></label>
+    <input type="range" id="inpR" min="2" max="6" step="0.5" value="4">
+  </div>
+
+  <div class="grupo">Armadura</div>
+  <div class="fila">
+    <label>Espaciamiento estribos s <span class="valor" id="valS"></span></label>
+    <input type="range" id="inpS" min="6" max="30" step="1" value="12">
+  </div>
+  <div class="fila doble">
+    <div>
+      <label>&phi; longitudinal</label>
+      <select id="inpDiaLong">
+        <option>12</option><option>16</option><option>18</option>
+        <option selected>22</option><option>25</option><option>28</option><option>32</option>
+      </select>
+    </div>
+    <div>
+      <label>&phi; estribo</label>
+      <select id="inpDiaEst">
+        <option>6</option><option>8</option><option selected>10</option><option>12</option>
+      </select>
+    </div>
+  </div>
+  <div class="fila doble">
+    <div>
+      <label>Barras sup.</label>
+      <input type="number" id="inpNSup" min="2" max="8" step="1" value="4">
+    </div>
+    <div>
+      <label>Barras inf.</label>
+      <input type="number" id="inpNInf" min="2" max="8" step="1" value="5">
+    </div>
+  </div>
+
+  <div class="grupo">Vista</div>
+  <div class="check">
+    <input type="checkbox" id="chkHormigon" checked>
+    <label for="chkHormigon">Ver hormig&oacute;n</label>
+  </div>
+  <div class="fila doble">
+    <div>
+      <label>Radio doblado</label>
+      <select id="inpFactorRadio">
+        <option value="1" selected>Norma (2&phi;/3.5&phi;)</option>
+        <option value="1.5">Norma &times;1.5</option>
+        <option value="2">Norma &times;2</option>
+      </select>
+    </div>
+    <div>
+      <label>Calidad malla</label>
+      <select id="inpSegRad">
+        <option value="8">8 lados</option>
+        <option value="12" selected>12 lados</option>
+        <option value="16">16 lados</option>
+      </select>
+    </div>
+  </div>
+
+  <div id="stats">
+    <div><span>Barras</span><span class="st-val" id="stBarras">&ndash;</span></div>
+    <div><span>Estribos / trabas</span><span class="st-val" id="stEstribos">&ndash;</span></div>
+    <div><span>Tri&aacute;ngulos</span><span class="st-val" id="stTris">&ndash;</span></div>
+    <div><span>Draw calls</span><span class="st-val" id="stCalls">&ndash;</span></div>
+    <div><span>FPS</span><span class="st-val" id="stFps">&ndash;</span></div>
+  </div>
+
+  <p class="ayuda">Arrastrar: rotar &middot; Rueda: zoom &middot; Clic derecho o Shift: desplazar</p>
+</div>
+
+<div id="escena">
+  <div id="errorCdn">No se pudo cargar Three.js desde el CDN.<br>Se requiere conexi&oacute;n a internet.</div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+<script src="rebar3d.js"></script>
+</body>
+</html>
