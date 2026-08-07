@@ -161,6 +161,30 @@ El selector de elemento (viga/muro/columna) NO debería vivir dentro del modal d
 haber un FLUJO PREVIO: elegir elemento → cargar/abrir el 3D Template con ese elemento. Resolver DESPUÉS
 (no bloquea el cableado del canvas). Anotado para el diseño del flujo de entrada.
 
+## 0-8ter. Cierre de la MAQUETA (08-ago) — validada como referencia UX
+
+La maqueta `static/demo/template3d.html` cumplió su rol: validó LAYOUT, controles, interoperabilidad
+controles↔3D, curvas de doblado reales (toros), colores, y las herramientas (órbita/zoom/pan/ejes).
+Queda como REFERENCIA VISUAL para que la implementación calce (método anti-desviación §9).
+
+**LÍMITE de la maqueta (reconocido con el usuario):** su motor de generación está HARDCODEADO para
+viga (corridaLong, estribos rectangulares). NO se puede configurar un muro con ella. Auditoría de
+cableado (subagente 08-ago): solo 7 controles cableados (largo/ancho/alto/recub/n-sup/zonas-estribo);
+el 3D NO lee Figura ni dims A/B/C de los componentes (usa geometría fija). Esto NO se arregla puliendo
+la maqueta — el motor genérico es implementación real (F0).
+
+**LECCIÓN CLAVE (para el MVP del muro):** viga y muro NO comparten geometría; el MVP "mismas funciones
+para viga y muro" se cumple SOLO si el MOTOR es GENÉRICO: una corrida = figura + cara + distribución +
+cantidad, sin saber el tipo de elemento. Viga = corridas cara sup/inf + distribución lineal; muro =
+corridas cara lateral + distribución MALLA 2D (horizontal×vertical) + bordes confinamiento + trabas
+que cosen las 2 mallas. El motor F0 debe soportar distribución 2D desde el diseño (no solo lineal).
+
+**Pendientes de la maqueta (arreglar en la IMPLEMENTACIÓN, no en el HTML):**
+- PAN real: debe ser con botón del MEDIO y desplazar sin rotar (hoy el pan aproximado "arrastra
+  rotando", tiene trampa). En la impl. usar el pan estándar de una lib de controles.
+- Cablear lo que la auditoría marcó decorativo (Figura→geometría, dims A/B/C, capas, acciones, etc.).
+- Cantidades .calc del estribo que se recalculen; Regenerar que llame a generar; stats/resumen en vivo.
+
 ## 1. Correcciones de concepto (errores previos, ahora fijados)
 
 - **R (radio) NO es el radio de doblado de los codos.** En ArmaHub, `radio` es un BOOLEAN por figura
