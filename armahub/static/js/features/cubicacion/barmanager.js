@@ -1201,6 +1201,8 @@ function resetFiltros() {
   const ff = document.getElementById('filtroFigura'); if (ff) ff.value = '';
   const ftip = document.getElementById('filtroTipologia'); if (ftip) ftip.value = '';
   const fdia = document.getElementById('filtroDiametro'); if (fdia) fdia.value = '';
+  const fpt = document.getElementById('planoTxt'); if (fpt) fpt.value = '';
+  const eje = document.getElementById('eje'); if (eje) eje.value = '';
   if (typeof clearCargaFilter === 'function') clearCargaFilter(true);
   if (typeof loadCargasDropdown === 'function') loadCargasDropdown('');
   const si = document.getElementById('bmProyectoSearchInput'); if (si) si.value = '';

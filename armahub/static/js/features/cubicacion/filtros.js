@@ -282,25 +282,30 @@ function _fillProyectosDatalist(proyectos) {
 // --- Lista de OBRAS con barras (CSV + manual) — mismo concepto que el landing del editor ---
 // Visible SOLO cuando aún no se eligió obra. Click en una fila la selecciona en el buscador.
 // Usa /proyectos (trae total_barras + total_kilos; excluye borrador globalmente).
-var _bmObrasCargadas = false;
+var _bmObrasHTML = '';   // cache del HTML ya renderizado (evita re-pedir /proyectos)
 async function bmCargarObras(force) {
   var card = document.getElementById('bmObrasCard');
-  if (!card) return;
-  // Si ya hay obra elegida, ocultar la lista.
-  var proy = (document.getElementById('proyecto') || {}).value || '';
-  if (proy) { card.style.display = 'none'; return; }
+  var body = document.getElementById('bmObrasBody');
+  if (!card || !body) return;
+  // ¿Hay obra elegida? Se considera elegida SOLO si el input visible tiene texto (el select
+  // oculto puede quedar con un value fantasma de una obra anterior → antes ocultaba la lista
+  // aunque el usuario ya no tuviera obra seleccionada = "desaparecen las obras").
+  var input = document.getElementById('bmProyectoSearchInput');
+  var hayObra = !!(input && (input.value || '').trim());
+  if (hayObra) { card.style.display = 'none'; return; }
+  // Sin obra → SIEMPRE mostrar el card.
   card.style.display = '';
-  if (_bmObrasCargadas && !force) return;
+  // Si ya tenemos el HTML y el body está poblado, no re-pedimos (salvo force). Pero si el body
+  // quedó vacío (se perdió en un re-render), lo re-pintamos desde la cache o volvemos a pedir.
+  if (!force && _bmObrasHTML && body.innerHTML.trim()) return;
+  if (!force && _bmObrasHTML) { body.innerHTML = _bmObrasHTML; return; }
   var data = await apiGet('/proyectos');
   var obras = (data && data.proyectos) || [];
-  // Solo las que tienen barras; de mayor a menor kilos.
   obras = obras.filter(function(o){ return (o.total_barras || 0) > 0; })
                .sort(function(a,b){ return (b.total_kilos||0) - (a.total_kilos||0); });
-  var body = document.getElementById('bmObrasBody');
-  if (!body) return;
   var _fmt = function(v){ return Math.round(v||0).toLocaleString('es-CL'); };
   var _esc = function(s){ var d=document.createElement('div'); d.textContent=(s==null?'':String(s)); return d.innerHTML; };
-  body.innerHTML = obras.map(function(o){
+  _bmObrasHTML = obras.map(function(o){
     var id = o.id_proyecto || o.id;
     var nom = o.nombre_proyecto || o.nombre || id;
     return '<tr style="border-top:1px solid #f0f0f0; cursor:pointer;" onmouseover="this.style.background=\'#f5faf5\'" onmouseout="this.style.background=\'\'"' +
@@ -309,7 +314,7 @@ async function bmCargarObras(force) {
            '<td style="padding:6px 8px; text-align:right;">' + _fmt(o.total_barras) + '</td>' +
            '<td style="padding:6px 8px; text-align:right;">' + _fmt(o.total_kilos) + ' kg</td></tr>';
   }).join('') || '<tr><td colspan="3" style="padding:10px; color:#b0bec5; font-style:italic;">No hay obras con barras.</td></tr>';
-  _bmObrasCargadas = true;
+  body.innerHTML = _bmObrasHTML;
 }
 
 // Selecciona una obra desde la lista: pone el valor en el buscador y dispara el cambio.
