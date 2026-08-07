@@ -89,6 +89,27 @@ componente respecto a la cara con el mouse en vez del formulario) + restriccione
 Tekla-lite. El modelo de datos (componente = cara+offset+capa) ya lo soporta; solo cambia la UI de
 edición del offset. Muros (7 componentes) usan el MISMO motor con más tipos de componente.
 
+## 0-4ter. QUÉ se programa vs. QUÉ es data + "guardar como template" (confirmado 08-ago)
+
+**Aclaración importante (el usuario preguntó si "hardcodeamos elementos"):**
+- Lo ÚNICO que se programa una vez = el **MOTOR** (posicionar un componente por cara+offset+capa;
+  genérico, sirve a cualquier componente de cualquier elemento).
+- Un ELEMENTO (viga/muro) NO se hardcodea: es **DATA** — una lista de componentes con parámetros, en
+  la BD. Cambiar/crear una viga distinta NO toca código.
+- Se carga una **viga tipo SEMILLA como data** (no código) para tener punto de partida.
+
+**"Guardar como template" (integración — corazón del diseño):** dos acciones sobre un elemento armado:
+1. **Cargar al despiece** → genera barras, las mete al despiece actual (uso puntual).
+2. **Guardar como template** → guarda la composición con nombre ("Viga Explora P1-P4") en la biblioteca
+   de templates (`templates_catalogo`).
+Luego, en cualquier despiece: **Cargar template** → reaparece con todos sus componentes configurados;
+se ajusta lo que cambie (ej. largo) y se genera. Reutilización total.
+
+**Por qué encaja natural:** un template ES una composición de componentes = los MISMOS datos que se
+usan para generar. Guardarlo = persistir ese JSON. NO hay dos sistemas (crear vs. guardar): son lo
+mismo. Un template instanciado (elementos_template) referencia opcionalmente el template de origen
+(templates_catalogo) del que salió.
+
 ## 1. Correcciones de concepto (errores previos, ahora fijados)
 
 - **R (radio) NO es el radio de doblado de los codos.** En ArmaHub, `radio` es un BOOLEAN por figura

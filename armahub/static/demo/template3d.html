@@ -1,0 +1,356 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Maqueta — 3D Template (modelador de elementos)</title>
+<style>
+  :root{
+    --bg:#eef1f4; --ink:#1f2937; --muted:#64748b; --line:#dbe1e8;
+    --panel:#ffffff; --panel2:#f6f8fa;
+    --acero:#8BC34A; --acero-d:#558B2F;      /* verde Armacero (acento) */
+    --azul:#1565c0; --azul-b:#e3f2fd;
+    --canvas:#161a20;                          /* fondo oscuro del 3D */
+    --chip:#eef5e6; --chip-ink:#33691e; --chip-b:#c5e1a5;
+    --warn:#e65100; --warn-b:#fff3e0;
+    --danger:#c62828;
+    --hormigon:rgba(150,160,175,.18);
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{height:100%}
+  body{font:13px/1.45 "Segoe UI",system-ui,sans-serif;color:var(--ink);background:var(--bg)}
+
+  /* Simulación del MODAL sobre el Fabricator */
+  #backdrop{position:fixed;inset:0;background:rgba(15,20,28,.55);display:flex;align-items:center;justify-content:center;padding:18px}
+  #modal{width:min(1280px,97vw);height:min(860px,95vh);background:var(--panel);border-radius:14px;
+    box-shadow:0 24px 70px rgba(0,0,0,.4);display:flex;flex-direction:column;overflow:hidden}
+
+  /* Barra de título del modal */
+  #titlebar{display:flex;align-items:center;gap:12px;padding:12px 18px;border-bottom:1px solid var(--line);background:var(--panel2)}
+  #titlebar .dot{width:26px;height:26px;border-radius:7px;background:var(--acero);display:flex;align-items:center;justify-content:center;font-size:15px}
+  #titlebar h1{font-size:15px;font-weight:600;letter-spacing:.2px}
+  #titlebar .sub{font-size:11.5px;color:var(--muted)}
+  #titlebar .spacer{flex:1}
+  .xbtn{border:1px solid var(--line);background:#fff;border-radius:8px;width:32px;height:30px;cursor:pointer;font-size:15px;color:var(--muted)}
+  .xbtn:hover{background:#f0f2f5}
+
+  /* Cuerpo: panel izq + canvas der */
+  #body{flex:1;display:flex;min-height:0}
+
+  /* ---- PANEL DE PARÁMETROS (izquierda) ---- */
+  #panel{width:390px;min-width:390px;overflow-y:auto;border-right:1px solid var(--line);background:var(--panel);padding:14px 16px 22px}
+  .sect{margin-bottom:16px}
+  .sect > .h{display:flex;align-items:center;gap:7px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin-bottom:8px}
+  .sect > .h .ln{flex:1;height:1px;background:var(--line)}
+
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px 10px}
+  .grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px 10px}
+  .fld{display:flex;flex-direction:column;gap:3px}
+  .fld label{font-size:11px;color:var(--muted);font-weight:600}
+  .fld .u{font-size:10px;color:#9aa4b0}
+  input[type=text],input[type=number],select{
+    border:1px solid var(--line);border-radius:6px;padding:5px 8px;font-size:12.5px;color:var(--ink);background:#fff;width:100%
+  }
+  input:focus,select:focus{outline:none;border-color:var(--acero);box-shadow:0 0 0 2px rgba(139,195,74,.18)}
+
+  /* Selector de elemento (segmented) */
+  .seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+  .seg button{border:none;background:#fff;padding:6px 12px;font-size:12px;color:var(--muted);cursor:pointer;font-weight:600}
+  .seg button+button{border-left:1px solid var(--line)}
+  .seg button.on{background:var(--acero);color:#fff}
+  .seg button.dis{opacity:.45;cursor:not-allowed}
+
+  /* Lista de COMPONENTES */
+  .comp{border:1px solid var(--line);border-radius:9px;margin-bottom:8px;overflow:hidden;background:#fff}
+  .comp.sel{border-color:var(--acero);box-shadow:0 0 0 2px rgba(139,195,74,.15)}
+  .comp .head{display:flex;align-items:center;gap:8px;padding:7px 10px;cursor:pointer;background:var(--panel2)}
+  .comp .swatch{width:12px;height:12px;border-radius:3px;flex-shrink:0}
+  .comp .tip{font-weight:700;font-size:12.5px}
+  .comp .suf{font-size:11px;color:var(--acero-d);background:var(--chip);border:1px solid var(--chip-b);border-radius:10px;padding:1px 7px;font-weight:600}
+  .comp .meta{font-size:11px;color:var(--muted)}
+  .comp .sp{flex:1}
+  .comp .mini{border:none;background:none;cursor:pointer;font-size:13px;color:var(--muted);padding:2px 4px}
+  .comp .mini:hover{color:var(--ink)}
+  .comp .body{padding:9px 10px;border-top:1px solid var(--line);display:none}
+  .comp.open .body{display:block}
+  .comp .cap{font-size:10.5px;color:#9aa4b0;margin:2px 0 6px}
+
+  .rowline{display:flex;align-items:center;gap:8px;margin-top:8px}
+  .addbtn{width:100%;border:1px dashed var(--acero);color:var(--acero-d);background:#f7fbf2;border-radius:9px;padding:9px;font-size:12.5px;font-weight:600;cursor:pointer}
+  .addbtn:hover{background:#eef7e4}
+
+  /* Zonas de espaciamiento (estribo) */
+  .zona{display:grid;grid-template-columns:auto 1fr 1fr auto;gap:6px;align-items:center;margin-top:6px;font-size:11.5px}
+  .zona .z{font-weight:700;color:var(--muted)}
+
+  /* ---- CANVAS (derecha) ---- */
+  #stage{flex:1;position:relative;background:var(--canvas);min-width:0;display:flex;flex-direction:column}
+  #toolbar{position:absolute;top:12px;left:12px;right:12px;display:flex;gap:8px;align-items:center;z-index:5;flex-wrap:wrap}
+  .tool{border:1px solid rgba(255,255,255,.15);background:rgba(30,36,45,.78);color:#cfd6e0;border-radius:7px;padding:5px 10px;font-size:11.5px;cursor:pointer;display:inline-flex;gap:6px;align-items:center;backdrop-filter:blur(4px)}
+  .tool.on{background:var(--acero);color:#fff;border-color:var(--acero)}
+  .tool:hover{border-color:rgba(255,255,255,.35)}
+  #toolbar .sp{flex:1}
+
+  /* “render” fingido de la viga (SVG) para la maqueta */
+  #view{flex:1;display:flex;align-items:center;justify-content:center;position:relative}
+  #view svg{max-width:92%;max-height:78%}
+
+  /* etiqueta de cota */
+  .cota{fill:#9fb2c9;font:11px "Segoe UI",sans-serif}
+  .cotaline{stroke:#5b6a7d;stroke-width:1}
+
+  /* Tooltip hover simulado */
+  #hover{position:absolute;pointer-events:none;background:rgba(20,26,34,.95);border:1px solid #2f3947;border-radius:8px;
+    padding:8px 10px;font-size:11.5px;color:#dbe3ec;box-shadow:0 8px 24px rgba(0,0,0,.4);z-index:8;max-width:230px}
+  #hover .t{font-weight:700;color:#fff;margin-bottom:2px}
+  #hover .r{color:#93a2b3}
+  #hover b{color:var(--acero)}
+
+  /* stats + acciones (abajo del canvas) */
+  #stats{position:absolute;bottom:12px;left:12px;display:flex;gap:14px;background:rgba(20,26,34,.8);border:1px solid #2a333f;border-radius:8px;padding:7px 12px;color:#cfd6e0;font-size:11.5px;backdrop-filter:blur(4px)}
+  #stats b{color:#fff}
+  #stats .kg b{color:var(--acero)}
+
+  #actions{position:absolute;bottom:12px;right:12px;display:flex;gap:8px}
+  .btn{border:none;border-radius:9px;padding:9px 15px;font-size:12.5px;font-weight:700;cursor:pointer}
+  .btn.primary{background:var(--acero);color:#fff}
+  .btn.primary:hover{background:var(--acero-d)}
+  .btn.ghost{background:rgba(255,255,255,.08);color:#e8edf4;border:1px solid rgba(255,255,255,.18)}
+  .btn.ghost:hover{background:rgba(255,255,255,.16)}
+
+  /* leyenda mini abajo del panel */
+  .legend{font-size:10.5px;color:var(--muted);border-top:1px solid var(--line);padding-top:10px;margin-top:6px}
+  .legend .row{display:flex;align-items:center;gap:6px;margin-top:3px}
+  .legend .sw{width:11px;height:11px;border-radius:3px}
+
+  .note{font-size:10.5px;color:#9aa4b0;margin-top:4px}
+  .maqueta-tag{position:fixed;top:8px;left:50%;transform:translateX(-50%);background:#111;color:#ffd54f;font-size:11px;padding:3px 12px;border-radius:0 0 8px 8px;z-index:100;font-weight:600;letter-spacing:.3px}
+</style>
+</head>
+<body>
+<div class="maqueta-tag">MAQUETA VISUAL — sin lógica. Solo para aprobar el layout del 3D Template.</div>
+
+<div id="backdrop">
+<div id="modal">
+
+  <!-- ===== TÍTULO ===== -->
+  <div id="titlebar">
+    <div class="dot">🧱</div>
+    <div>
+      <h1>3D Template — Viga</h1>
+      <div class="sub">Despiece activo: <b>Desco - Edificio Marín</b> · P4 · ELEV · Ciclo C1 · Eje 1(M-S)</div>
+    </div>
+    <div class="spacer"></div>
+    <button class="btn ghost" style="background:#eef2f6;color:#37474f;border-color:var(--line)">📂 Cargar template…</button>
+    <button class="xbtn" title="Cerrar">✕</button>
+  </div>
+
+  <div id="body">
+
+    <!-- ===== PANEL DE PARÁMETROS ===== -->
+    <div id="panel">
+
+      <!-- Elemento -->
+      <div class="sect">
+        <div class="h"><span>Elemento</span><span class="ln"></span></div>
+        <div class="seg" style="margin-bottom:10px">
+          <button class="on">Viga</button>
+          <button class="dis" title="Próximamente">Muro</button>
+          <button class="dis" title="Próximamente">Columna</button>
+        </div>
+        <div class="grid3">
+          <div class="fld"><label>Largo <span class="u">cm</span></label><input type="number" value="600"></div>
+          <div class="fld"><label>Ancho <span class="u">cm</span></label><input type="number" value="30"></div>
+          <div class="fld"><label>Alto <span class="u">cm</span></label><input type="number" value="60"></div>
+        </div>
+        <div class="grid2" style="margin-top:8px">
+          <div class="fld"><label>Recub. sup/inf <span class="u">cm</span></label><input type="number" value="4"></div>
+          <div class="fld"><label>Recub. lateral <span class="u">cm</span></label><input type="number" value="3"></div>
+        </div>
+        <div class="note">Cada componente puede sobrescribir su recubrimiento y ajustar largo (según la figura).</div>
+      </div>
+
+      <!-- Componentes -->
+      <div class="sect">
+        <div class="h"><span>Componentes</span><span class="ln"></span><span class="meta" style="font-size:11px;color:var(--muted)">4</span></div>
+
+        <!-- Cabezal superior 1ª capa -->
+        <div class="comp open sel">
+          <div class="head">
+            <span class="swatch" style="background:#1565c0"></span>
+            <span class="tip">CBS</span><span class="suf">sup · capa 1</span>
+            <span class="meta">· 3ø16 · fig 101A</span>
+            <span class="sp"></span>
+            <button class="mini" title="Duplicar">⧉</button>
+            <button class="mini" title="Quitar">🗑</button>
+          </div>
+          <div class="body">
+            <div class="cap">Cabezal Superior — primera capa. Anclado a la cara superior con el recubrimiento.</div>
+            <div class="grid3">
+              <div class="fld"><label>Figura</label><input type="text" value="101A" list="figs"></div>
+              <div class="fld"><label>φ <span class="u">mm</span></label>
+                <select><option>8</option><option selected>16</option><option>18</option><option>22</option><option>25</option></select></div>
+              <div class="fld"><label>N° barras</label><input type="number" value="3"></div>
+            </div>
+            <div class="grid3" style="margin-top:8px">
+              <div class="fld"><label>Cara</label>
+                <select><option selected>Superior</option><option>Inferior</option><option>Lateral</option></select></div>
+              <div class="fld"><label>Capa</label>
+                <select><option selected>1</option><option>2</option><option>3</option></select></div>
+              <div class="fld"><label>Recub. propio <span class="u">cm</span></label><input type="number" placeholder="auto"></div>
+            </div>
+            <div class="rowline">
+              <div class="fld" style="flex:1"><label>Ajuste de largo <span class="u">cm (±)</span></label><input type="number" value="0"></div>
+              <div class="fld" style="flex:1"><label>Distribución</label>
+                <select><option selected>Repartida en el ancho</option><option>A ambos extremos</option><option>Manual</option></select></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Cabezal inferior -->
+        <div class="comp">
+          <div class="head">
+            <span class="swatch" style="background:#00897b"></span>
+            <span class="tip">CBI</span><span class="suf">inf · capa 1</span>
+            <span class="meta">· 4ø18 · fig 101A</span>
+            <span class="sp"></span>
+            <button class="mini" title="Duplicar">⧉</button>
+            <button class="mini" title="Quitar">🗑</button>
+          </div>
+          <div class="body"></div>
+        </div>
+
+        <!-- Estribo (con zonas de espaciamiento) -->
+        <div class="comp open">
+          <div class="head">
+            <span class="swatch" style="background:#e65100"></span>
+            <span class="tip">ES</span><span class="suf">estribo</span>
+            <span class="meta">· ø8 · fig 104D · por tramos</span>
+            <span class="sp"></span>
+            <button class="mini" title="Duplicar">⧉</button>
+            <button class="mini" title="Quitar">🗑</button>
+          </div>
+          <div class="body">
+            <div class="cap">Estribo cerrado con gancho 135°. Espaciamiento por zonas a lo largo de la viga.</div>
+            <div class="grid3">
+              <div class="fld"><label>Figura</label><input type="text" value="104D" list="figs"></div>
+              <div class="fld"><label>φ <span class="u">mm</span></label>
+                <select><option selected>8</option><option>10</option><option>12</option></select></div>
+              <div class="fld"><label>Gancho</label>
+                <select><option selected>135°</option><option>90°</option></select></div>
+            </div>
+            <div style="margin-top:10px;font-size:11px;font-weight:700;color:var(--muted)">Zonas de espaciamiento</div>
+            <div class="zona"><span class="z">1</span><input type="number" value="150" title="longitud cm"><input type="number" value="10" title="@ cm"><span class="meta">ext.</span></div>
+            <div class="zona"><span class="z">2</span><input type="number" value="300" title="longitud cm"><input type="number" value="20" title="@ cm"><span class="meta">centro</span></div>
+            <div class="zona"><span class="z">3</span><input type="number" value="150" title="longitud cm"><input type="number" value="10" title="@ cm"><span class="meta">ext.</span></div>
+            <button class="addbtn" style="margin-top:8px;padding:6px">＋ zona</button>
+          </div>
+        </div>
+
+        <!-- Traba -->
+        <div class="comp">
+          <div class="head">
+            <span class="swatch" style="background:#7b1fa2"></span>
+            <span class="tip">TRV</span><span class="suf">traba</span>
+            <span class="meta">· ø8 · fig 101A · auto si ancho ≥ 35</span>
+            <span class="sp"></span>
+            <button class="mini" title="Duplicar">⧉</button>
+            <button class="mini" title="Quitar">🗑</button>
+          </div>
+          <div class="body"></div>
+        </div>
+
+        <button class="addbtn">＋ Agregar componente</button>
+        <div class="note">Tipología cerrada por elemento (CBS/CBI/LT/ES/TRV…); la figura es libre.</div>
+      </div>
+
+      <div class="legend">
+        <div style="font-weight:700;color:var(--muted);margin-bottom:2px">Colores del 3D</div>
+        <div class="row"><span class="sw" style="background:#1565c0"></span> Cabezal sup &nbsp;
+          <span class="sw" style="background:#00897b"></span> Cabezal inf</div>
+        <div class="row"><span class="sw" style="background:#e65100"></span> Estribo &nbsp;
+          <span class="sw" style="background:#7b1fa2"></span> Traba &nbsp;
+          <span class="sw" style="background:#9aa6b5"></span> Hormigón</div>
+      </div>
+
+      <datalist id="figs">
+        <option value="101A"><option value="102A"><option value="103A"><option value="104D"><option value="106A">
+      </datalist>
+    </div>
+
+    <!-- ===== CANVAS 3D (maqueta) ===== -->
+    <div id="stage">
+      <div id="toolbar">
+        <button class="tool on">🧊 Hormigón</button>
+        <button class="tool">📐 Cotas</button>
+        <button class="tool">📏 Medir</button>
+        <button class="tool">↻ Reset vista</button>
+        <span class="sp"></span>
+        <button class="tool">⟲ rotar</button>
+        <button class="tool">🔍 zoom</button>
+      </div>
+
+      <div id="view">
+        <!-- Render fingido de una viga en perspectiva (solo para el layout) -->
+        <svg viewBox="0 0 720 380" xmlns="http://www.w3.org/2000/svg">
+          <!-- caja de hormigón (semitransparente) -->
+          <g opacity="0.9">
+            <polygon points="70,150 620,120 690,175 140,205" fill="var(--hormigon)" stroke="#3a4658" stroke-width="1"/>
+            <polygon points="140,205 690,175 690,300 140,330" fill="rgba(150,160,175,.10)" stroke="#3a4658" stroke-width="1"/>
+            <polygon points="620,120 690,175 690,300 620,245" fill="rgba(150,160,175,.06)" stroke="#3a4658" stroke-width="1"/>
+          </g>
+          <!-- cabezales superiores (azul) -->
+          <line x1="95" y1="168" x2="648" y2="140" stroke="#3f7fd0" stroke-width="6" stroke-linecap="round"/>
+          <line x1="110" y1="176" x2="663" y2="148" stroke="#3f7fd0" stroke-width="6" stroke-linecap="round"/>
+          <!-- cabezales inferiores (teal) -->
+          <line x1="120" y1="300" x2="672" y2="272" stroke="#26a69a" stroke-width="7" stroke-linecap="round"/>
+          <line x1="120" y1="312" x2="672" y2="284" stroke="#26a69a" stroke-width="7" stroke-linecap="round"/>
+          <!-- estribos (naranja) — con doble gancho "/ /" arriba -->
+          <g stroke="#ef7d3a" stroke-width="4" fill="none" stroke-linecap="round">
+            <path d="M175,163 L185,300 M185,300 L235,296 M235,296 L226,158"/>
+            <path d="M300,157 L310,294 M310,294 L360,290 M360,290 L351,152"/>
+            <path d="M470,148 L480,285 M480,285 L530,281 M530,281 L521,143"/>
+            <path d="M585,142 L595,279 M595,279 L645,275 M645,275 L636,137"/>
+            <!-- ganchos dobles / / en un estribo destacado -->
+            <path d="M300,157 l12,-9 M308,160 l12,-9" stroke-width="3"/>
+          </g>
+        </svg>
+
+        <!-- tooltip hover simulado (muestra la idea) -->
+        <div id="hover" style="top:120px;left:300px">
+          <div class="t">Estribo · ES</div>
+          <div class="r">Figura <b>104D</b> · ø8 · gancho 135°</div>
+          <div class="r">Zona 1 (ext.) · <b>@10 cm</b></div>
+          <div class="r">Cantidad en la viga: <b>60</b></div>
+        </div>
+      </div>
+
+      <div id="stats">
+        <span>Barras: <b>77</b></span>
+        <span>Componentes: <b>4</b></span>
+        <span class="kg">Peso: <b>264,4 kg</b></span>
+        <span>Tri: <b>~98k</b> · 5 draw calls</span>
+      </div>
+
+      <div id="actions">
+        <button class="btn ghost">💾 Guardar como template</button>
+        <button class="btn ghost">↻ Regenerar</button>
+        <button class="btn primary">⬇ Cargar al despiece</button>
+      </div>
+    </div>
+
+  </div>
+</div>
+</div>
+
+<script>
+  // Maqueta: solo interacción cosmética (abrir/cerrar componentes). Sin lógica real.
+  document.querySelectorAll('.comp .head').forEach(function(h){
+    h.addEventListener('click',function(e){
+      if(e.target.classList.contains('mini'))return;
+      h.parentElement.classList.toggle('open');
+    });
+  });
+</script>
+</body>
+</html>
