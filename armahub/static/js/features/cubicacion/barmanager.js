@@ -289,6 +289,9 @@ function _valorFiltroValido(sel) {
 // todas las barras del filtro, editable, sin desplegables de agrupación. Sin esos
 // filtros, la vista normal AGRUPADA (piso/sector/eje → ciclos → barras).
 function _modoVistaPlana() {
+  // Checkbox manual: si está marcado, siempre vista plana.
+  var chk = document.getElementById('bmVistaPlanaChk');
+  if (chk && chk.checked) return true;
   // Filtro de texto por plano (input libre) también activa la vista plana.
   var planoEl = document.getElementById('planoTxt');
   if (planoEl && (planoEl.value || '').trim()) return true;
@@ -489,27 +492,30 @@ function _renderPlano() {
   // El <td> padre con width:0 + el div a width:100% fuerza a que el scroll horizontal se
   // calcule contra el ancho REAL de la celda (el card), no contra el contenido de la tabla
   // anidada (que con min-width:1420 empujaba las columnas fuera de pantalla sin scroll).
+  // th compacto para parámetros geométricos (A-I, α, R) y numéricos chicos (φ, Cant).
+  var thNum = 'text-align:right; padding:3px 3px;';
   let html = '<tbody><tr><td style="padding:0; width:0; max-width:0;"><div style="' + scrollWrap + '">' +
-    '<table style="width:100%; min-width:1420px; font-size:11px; border-collapse:collapse;">' +
+    '<table style="width:100%; min-width:1180px; font-size:11px; border-collapse:collapse;">' +
     '<thead><tr style="color:#666; background:#fafafa; position:sticky; top:0;">' +
     colSel +
     '<th style="text-align:left; padding:3px 6px;">Piso</th>' +
     '<th style="text-align:left; padding:3px 6px;">Sector</th>' +
     '<th style="text-align:left; padding:3px 6px;">Ciclo</th>' +
     '<th style="text-align:left; padding:3px 6px;">Eje</th>' +
-    '<th style="text-align:left; padding:3px 6px;">Plano</th>' +
     '<th style="text-align:left; padding:3px 6px;">Tipología</th>' +
-    '<th style="text-align:right; padding:3px 6px;">φ</th>' +
-    '<th style="text-align:right; padding:3px 6px;">Cant</th>' +
+    '<th style="' + thNum + '">φ</th>' +
+    '<th style="' + thNum + '">Cant</th>' +
     '<th style="text-align:right; padding:3px 6px;">Largo</th>' +
     '<th style="text-align:right; padding:3px 6px;">Peso Tot</th>' +
-    '<th style="text-align:left; padding:3px 6px;">Figura</th>' +
+    '<th style="text-align:left; padding:3px 4px;">Figura</th>' +
     // Columna "Render" solo con el toggle activo. El <td> correspondiente lo agrega
     // _bmFilaBarraHTML con el mismo flag, para no descuadrar header vs filas.
     (bmVerRender ? '<th style="text-align:center; padding:3px 6px;">Render</th>' : '') +
-    ['A','B','C','D','E','F','G','H','I'].map(L => '<th style="text-align:right; padding:3px 6px;">' + L + '</th>').join('') +
-    ['α1','α2','α3','α4'].map(L => '<th style="text-align:right; padding:3px 6px;">' + L + '</th>').join('') +
-    '<th style="text-align:right; padding:3px 6px;">R</th>' +
+    ['A','B','C','D','E','F','G','H','I'].map(L => '<th style="' + thNum + '">' + L + '</th>').join('') +
+    ['α1','α2','α3','α4'].map(L => '<th style="' + thNum + '">' + L + '</th>').join('') +
+    '<th style="' + thNum + '">R</th>' +
+    // Plano al FINAL (ocupa mucho ancho; deja de empujar los parámetros fuera de vista).
+    '<th style="text-align:left; padding:3px 6px;">Plano</th>' +
     (editando ? '<th style="text-align:center; padding:3px 6px;">🗑</th>' : '') +
     '</tr></thead><tbody>';
   lastBarrasPlano.forEach(b => {
@@ -668,9 +674,10 @@ function _bmFilaBarraHTML(b, editando, conUbicacion) {
     var esGeom = /^(dim_|ang|radio)/.test(campo);
     var mostrar = (v == null || (esGeom && Number(v) === 0)) ? '' : v;
     var bg = ef.tocado ? ' background:#fff3cd;' : '';   // amarillo = modificado sin guardar
-    return '<td style="padding:1px 3px; text-align:right;"><input type="number" step="any" value="' + mostrar +
+    // Ancho por defecto reducido (~20%): de 60→48px, para que la tabla quepa sin desbordar.
+    return '<td style="padding:1px 2px; text-align:right;"><input type="number" step="any" value="' + mostrar +
       '" data-barra-id="' + b.id + '" data-campo="' + campo + '" id="bmcell-' + b.id + '-' + campo + '" onchange="bmRegistrarCambio(this)" ' +
-      'style="width:' + (ancho || 60) + 'px; font-size:11px; text-align:right; padding:1px 3px;' + bg + '" /></td>';
+      'style="width:' + (ancho || 48) + 'px; font-size:11px; text-align:right; padding:1px 2px;' + bg + '" /></td>';
   }
   function _celdaFigura() {
     if (!editando) {
@@ -684,7 +691,7 @@ function _bmFilaBarraHTML(b, editando, conUbicacion) {
     var bgF = efF.tocado ? ' background:#fff3cd;' : '';
     return '<td style="padding:1px 3px;"><input type="text" list="bmFigurasDatalist" value="' + (efF.valor || '') +
       '" data-barra-id="' + b.id + '" data-campo="figura" id="bmcell-' + b.id + '-figura" onchange="bmRegistrarCambio(this)" ' +
-      'style="width:64px; font-size:11px; padding:1px 3px;' + bgF + '" /></td>';
+      'style="width:50px; font-size:11px; padding:1px 3px;' + bgF + '" /></td>';
   }
   // Celda PLANO (nombre_plano). En solo-lectura muestra el texto; en edición es un input editable.
   function _celdaPlano() {
@@ -734,10 +741,8 @@ function _bmFilaBarraHTML(b, editando, conUbicacion) {
       '<td style="padding:2px 6px; font-size:10px;">' + (b.piso || '—') + '</td>' +
       '<td style="padding:2px 6px;">' + _sectorBadge(b.sector) + '</td>' +
       '<td style="padding:2px 6px;">' + _cicloBadge(b.ciclo) + '</td>' +
-      '<td style="padding:2px 6px; font-size:10px;">' + (b.eje || '—') + '</td>' +
-      // Columna Plano (nombre legible del plano; nombre_plano, no el código interno plano_code).
-      // Editable en modo edición (como las demás celdas de texto).
-      _celdaPlano();
+      '<td style="padding:2px 6px; font-size:10px;">' + (b.eje || '—') + '</td>';
+      // (La columna Plano ahora va al FINAL de la fila — ver más abajo.)
   } else {
     var idShort = (b.id_unico || '').split('-').slice(-1)[0];
     ubic = '<td style="padding:2px 6px; font-family:monospace; font-size:10px; position:sticky; left:0; background:#fff;" title="' + (b.id_unico || '') + '">' + (b.editado_por ? '✏️ ' : '') + idShort + '</td>';
@@ -745,18 +750,20 @@ function _bmFilaBarraHTML(b, editando, conUbicacion) {
   var html = '<tr id="bmrow-' + b.id + '" style="border-top:1px solid #f0f0f0; ' + editadaBorde + selBg + '"' + editadaTitle + '>' +
     ubic +
     '<td style="padding:2px 6px; font-weight:600;">' + (conUbicacion && b.editado_por ? '✏️ ' : '') + (b.marca || '—') + '</td>' +
-    _celdaEdit('diam', b.diam, 0) +
-    _celdaEdit('cant_total', b.cant_total, 0) +
+    _celdaEdit('diam', b.diam, 0, 40) +        // φ angosto
+    _celdaEdit('cant_total', b.cant_total, 0, 44) +   // Cant angosto
     _celdaLargo();
   if (!conUbicacion) html += '<td style="padding:2px 6px; text-align:right;">' + _n(b.peso_unitario, 2) + '</td>';
   html += '<td style="padding:2px 6px; text-align:right;">' + _n(b.peso_total, 1) + '</td>';
   if (!conUbicacion) {
-    html += '<td style="padding:2px 6px;">' + _origenBadge(b.origen) + '</td>' +
-      '<td style="padding:2px 6px; color:#666;" title="' + (b.nombre_plano || '') + '">' + (b.nombre_plano || '—') + '</td>';
+    // Origen aquí; el Plano va al FINAL de la fila (después de R), como en conUbicacion.
+    html += '<td style="padding:2px 6px;">' + _origenBadge(b.origen) + '</td>';
   }
   // Celda "Render" tras Figura (solo con el toggle activo). _bmCeldaDibujo devuelve ''
   // cuando está apagado, así el <td> aparece SIEMPRE junto a su <th> (no descuadra).
   html += _celdaFigura() + _bmCeldaDibujo(b) + dims + angs + _celdaEdit('radio', b.radio, 1);
+  // Columna Plano al FINAL en AMBAS vistas (agrupada y plana).
+  html += _celdaPlano();
   // Acción ELIMINAR por fila: solo en modo edición. Borra la barra (con registro histórico).
   if ((typeof bmEnModoEdicion === 'function') && bmEnModoEdicion()) {
     html += '<td style="padding:2px 6px; text-align:center;">' +
@@ -812,23 +819,24 @@ function _renderDetail(cont, elem, barras) {
       'Ciclo ' + c + ' · ' + grp.length + ' items · ' + _fmt(sumCant) + ' barras · ' + _fmt(sumKg, 1) + ' kg' +
       '</div>' +
       '<div style="' + scrollWrap + '">' +
-      '<table style="width:100%; min-width:1100px; font-size:11px; border-collapse:collapse;">' +
+      '<table style="width:100%; min-width:980px; font-size:11px; border-collapse:collapse;">' +
       '<thead><tr style="color:#666; background:#fafafa;">' +
       '<th style="text-align:left; padding:2px 6px; position:sticky; left:0; background:#fafafa;">ID</th>' +
       '<th style="text-align:left; padding:2px 6px;">Tipología</th>' +
-      '<th style="text-align:right; padding:2px 6px;">φ</th>' +
-      '<th style="text-align:right; padding:2px 6px;">Cant</th>' +
+      '<th style="text-align:right; padding:2px 3px;">φ</th>' +
+      '<th style="text-align:right; padding:2px 3px;">Cant</th>' +
       '<th style="text-align:right; padding:2px 6px;">Largo</th>' +
       '<th style="text-align:right; padding:2px 6px;">Peso U.</th>' +
       '<th style="text-align:right; padding:2px 6px;">Peso Tot</th>' +
       '<th style="text-align:left; padding:2px 6px;">Origen</th>' +
-      '<th style="text-align:left; padding:2px 6px;">Plano</th>' +
-      '<th style="text-align:left; padding:2px 6px;">Figura</th>' +
+      '<th style="text-align:left; padding:2px 4px;">Figura</th>' +
       // Columna "Render" solo con el toggle activo (mismo flag que el <td> en _bmFilaBarraHTML).
       (bmVerRender ? '<th style="text-align:center; padding:2px 6px;">Render</th>' : '') +
-      dimLabels.map(L => '<th style="text-align:right; padding:2px 6px;">' + L + '</th>').join('') +
-      angLabels.map(L => '<th style="text-align:right; padding:2px 6px;">' + L + '</th>').join('') +
-      '<th style="text-align:right; padding:2px 6px;">R</th>' +
+      dimLabels.map(L => '<th style="text-align:right; padding:2px 3px;">' + L + '</th>').join('') +
+      angLabels.map(L => '<th style="text-align:right; padding:2px 3px;">' + L + '</th>').join('') +
+      '<th style="text-align:right; padding:2px 3px;">R</th>' +
+      // Plano al FINAL (ocupa ancho; lo movemos para que no empuje los parámetros).
+      '<th style="text-align:left; padding:2px 6px;">Plano</th>' +
       (editando ? '<th style="text-align:center; padding:2px 6px;">🗑</th>' : '') +
       '</tr></thead><tbody>';
     grp.forEach(b => {

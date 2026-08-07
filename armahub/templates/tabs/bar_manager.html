@@ -169,6 +169,11 @@
         <button class="secondary" onclick="collapseAll()" style="font-size:11px; padding:3px 10px;">▸ Colapsar todo</button>
         <button class="secondary" id="btnCobertura" onclick="toggleCobertura()" style="font-size:11px; padding:3px 10px;">📊 Mostrar cobertura</button>
         <button class="secondary" id="btnPanelCub" onclick="bmTogglePanelCub()" style="font-size:11px; padding:3px 10px;">👷 Panel de Cubicación</button>
+        <!-- Vista plana manual: tabla única sin agrupar (se ve mejor y con más ancho útil).
+             Antes solo se activaba al usar un filtro de nivel-barra; ahora también con este check. -->
+        <label style="font-size:11px; color:#555; cursor:pointer; display:inline-flex; align-items:center; gap:4px;" title="Ver todas las barras en una sola tabla, sin agrupar por piso/ciclo">
+          <input type="checkbox" id="bmVistaPlanaChk" onchange="buscar(true)" style="margin:0;" /> Vista plana
+        </label>
         <!-- 5M.3: candado de edición. Cerrado = solo lectura; abrir habilita editar barras.
              Color propio (ámbar) para que resalte entre los botones grises. -->
         <button id="btnEdicionBarras" onclick="toggleModoEdicion()" style="font-size:11px; padding:3px 12px; background:#fff3e0; border:1px solid #ffb74d; border-radius:4px; cursor:pointer; color:#e65100; font-weight:600;">🔒 Edición bloqueada</button>
