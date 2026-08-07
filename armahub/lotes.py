@@ -29,6 +29,7 @@ import uuid
 from psycopg.errors import UniqueViolation
 
 from .db import get_conn, audit
+from .peso import peso_unitario_kg
 from .auth import get_current_user
 from . import cache as _cache
 from .diametros import DIAM_ESTANDAR as _DIAM_ESTANDAR, cod_prod_de_diam
@@ -41,15 +42,8 @@ def _now_iso():
 
 
 def _peso_teorico(diam, largo):
-    """Peso teórico (kg) = 7850 kg/m³ × área × largo. Misma fórmula que _calcular_peso
-    de barras.py (diam mm, largo cm). Aislada aquí para no importar barras.py."""
-    if diam is None or largo is None:
-        return None
-    try:
-        diam = float(diam); largo = float(largo)
-    except (ValueError, TypeError):
-        return None
-    return 7850 * 3.1416 * (diam / 2000) ** 2 * (largo / 100)
+    """M1.3: delega en peso.py (fórmula única de la plataforma)."""
+    return peso_unitario_kg(diam, largo)
 
 
 def _largo_desde_figura(cur, figura, dims):

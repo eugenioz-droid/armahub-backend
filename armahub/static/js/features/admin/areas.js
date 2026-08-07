@@ -193,7 +193,7 @@
       return;
     }
     var rolLabels = { admin:'Admin', admin_calidad:'Admin Calidad', jefe_servicio:'Jefe de Servicio', miembro:'Miembro', cliente:'Cliente', cubicador:'Cubicador', usc:'USC', externo:'Externo' };
-    var rolColors = { admin:'#b42318', admin_calidad:'#1565C0', jefe_servicio:'#5e35b1', miembro:'#00897b', cliente:'#7B1FA2', cubicador:'#2e7d32', usc:'#ff9800', externo:'#795548' };
+    var rolColors = window.ROL_COLORES; // M1.3: fuente única shared/rol_colores.js
     cont.innerHTML =
       '<table style="width:100%; font-size:13px; border-collapse:collapse;">' +
       '<tr style="background:#f5f5f5; text-align:left;">' +

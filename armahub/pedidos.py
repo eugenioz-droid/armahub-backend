@@ -14,6 +14,7 @@ from pydantic import BaseModel
 
 from .auth import get_current_user, require_admin_or_admin_calidad
 from .db import get_conn, audit
+from .peso import peso_unitario_kg
 
 router = APIRouter()
 
@@ -349,10 +350,8 @@ def delete_pedido_item(pedido_id: int, item_id: int, user=Depends(require_admin_
 # ========================= PROCESAR PEDIDO → BARRAS =========================
 
 def _calcular_peso(diam, largo):
-    """Fórmula ArmaHub: diam mm, largo cm => kg."""
-    if diam is None or largo is None:
-        return None
-    return 7850 * 3.1416 * (diam / 2000) ** 2 * (largo / 100)
+    """M1.3: delega en peso.py (fórmula única de la plataforma)."""
+    return peso_unitario_kg(diam, largo)
 
 
 @router.post("/pedidos/{pedido_id}/procesar")

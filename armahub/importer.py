@@ -22,6 +22,7 @@ import uuid
 
 from .db import get_conn, audit
 from .auth import get_current_user, ROL_MAP, _rol_proyecto_usuarios
+from .peso import peso_unitario_kg
 from . import cache as _cache
 
 router = APIRouter()
@@ -454,10 +455,8 @@ async def import_armadetailer(
         if diam is None or largo is None:
             warnings.append(f"Fila {row_num}: sin diam/largo, peso no calculado")
 
-        # Fórmula ArmaHub (diam mm, largo cm => kg)
-        peso_unitario = None
-        if diam is not None and largo is not None:
-            peso_unitario = 7850 * 3.1416 * (diam / 2000) ** 2 * (largo / 100)
+        # M1.3: fórmula única en peso.py (diam mm, largo cm => kg)
+        peso_unitario = peso_unitario_kg(diam, largo)
 
         peso_total = None
         if peso_unitario is not None and cant_total is not None:

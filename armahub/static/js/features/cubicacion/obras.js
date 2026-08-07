@@ -448,7 +448,7 @@ function renderObraDetailSidebar(p, authData) {
       html += '<div class="muted" style="font-size:11px;">Sin usuarios adicionales</div>';
     } else {
       html += '<div style="margin-top:4px;">';
-      var rolColors = {admin:'#1565C0', usc:'#FF9800', cubicador:'#8BC34A', externo:'#9C27B0', cliente:'#607D8B'};
+      var rolColors = window.ROL_COLORES; // M1.3: fuente única shared/rol_colores.js
       authData.autorizados.forEach(function(a) {
         var rc = rolColors[a.rol] || '#666';
         var display = a.nombre ? a.nombre : a.email;
@@ -1078,7 +1078,7 @@ async function loadAutorizados(idProyecto) {
     list.innerHTML = '<span class="muted">Sin usuarios adicionales autorizados</span>';
     return;
   }
-  var rolColors = {admin:'#1565C0',usc:'#FF9800',cubicador:'#8BC34A',externo:'#9C27B0',cliente:'#607D8B'};
+  var rolColors = window.ROL_COLORES; // M1.3: fuente única shared/rol_colores.js
   list.innerHTML = data.autorizados.map(a => {
     var nombre = [a.nombre, a.apellido].filter(Boolean).join(' ');
     var display = nombre ? nombre + ' (' + a.email + ')' : a.email;
@@ -1220,7 +1220,7 @@ async function loadAutorizadosEditObra(idProyecto) {
   var data = await apiGet('/proyectos/' + encodeURIComponent(idProyecto) + '/autorizados');
   if (!data || !data.autorizados) { list.innerHTML = '<span class="muted">Error cargando</span>'; return; }
   if (data.autorizados.length === 0) { list.innerHTML = '<span class="muted">Sin usuarios autorizados</span>'; return; }
-  var rolColors = {admin:'#1565C0', usc:'#FF9800', cubicador:'#8BC34A', externo:'#9C27B0', cliente:'#607D8B'};
+  var rolColors = window.ROL_COLORES; // M1.3: fuente única shared/rol_colores.js
   list.innerHTML = data.autorizados.map(function(a) {
     var nombre = [a.nombre, a.apellido].filter(Boolean).join(' ');
     var display = nombre ? nombre + ' (' + a.email + ')' : a.email;

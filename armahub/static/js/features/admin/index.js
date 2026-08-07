@@ -175,7 +175,7 @@ async function resetDatabase() {
 }
 
 // ========================= USUARIOS =========================
-var _roleColors = { admin: '#b42318', admin_calidad: '#1565C0', jefe_servicio: '#5e35b1', miembro: '#00897b', cliente: '#7B1FA2', cubicador: '#2e7d32', usc: '#ff9800', externo: '#795548' };
+var _roleColors = window.ROL_COLORES; // M1.3: fuente única shared/rol_colores.js
 var _roleLabels = { admin: 'Admin', admin_calidad: 'Admin Calidad', cubicador: 'Cubicador (legacy)', usc: 'USC (legacy)', externo: 'Externo', cliente: 'Cliente', miembro: 'Miembro' };
 
 function toggleNuevoUsuario() {

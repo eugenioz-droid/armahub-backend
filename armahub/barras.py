@@ -8,6 +8,7 @@ import logging
 import traceback
 from psycopg.rows import dict_row
 from .db import get_conn, audit
+from .peso import peso_unitario_kg
 from .auth import get_current_user, ROL_MAP, _rol_proyecto_usuarios, _PROYECTO_USUARIOS_ROLES
 from . import cache as _cache
 
@@ -1485,18 +1486,9 @@ def cambiar_sector_barras(body: CambiarSectorRequest, user=Depends(get_current_u
 
 
 def _calcular_peso(diam, largo):
-    """Fórmula ArmaHub: diam mm, largo cm => kg. Castea de forma segura: si la data
-    de origen guardó diam/largo como texto (data legada del CSV), float(str) evita
-    el TypeError que rompía el guardado con 500."""
-    if diam is None or largo is None:
-        return None, None
-    try:
-        diam = float(diam)
-        largo = float(largo)
-    except (ValueError, TypeError):
-        return None, None
-    peso_unitario = 7850 * 3.1416 * (diam / 2000) ** 2 * (largo / 100)
-    return peso_unitario, peso_unitario
+    """M1.3: delega en peso.py (fórmula única). Mantiene la firma tupla histórica."""
+    p = peso_unitario_kg(diam, largo)
+    return (p, p) if p is not None else (None, None)
 
 
 class BarraUpdate(BaseModel):
