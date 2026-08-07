@@ -179,6 +179,7 @@ def get_barras(
     figura: str = None,                 # 5M.2: filtro por código de figura
     marca: str = None,                  # 5M.2: filtro por tipología (marca)
     diam: int = None,                   # 5M.9: filtro por diámetro
+    plano_txt: str = None,              # filtro de texto por nombre_plano (coincidencia parcial)
     limit: int = 200,                   # paginación
     offset: int = 0,
     order_by: str = "fecha_carga",      # orden
@@ -242,6 +243,9 @@ def get_barras(
     if diam:
         base_where += " AND diam = %s"
         params.append(diam)
+    if plano_txt and plano_txt.strip():
+        base_where += " AND nombre_plano ILIKE %s"
+        params.append(f"%{plano_txt.strip()}%")
 
     # búsqueda simple: id_unico, eje, plano_code
     if q and q.strip():
@@ -310,6 +314,7 @@ def get_barras_elementos(
     figura: str = None,                 # 5M.2
     marca: str = None,                  # 5M.2
     diam: int = None,                   # 5M.9
+    plano_txt: str = None,              # filtro de texto por nombre_plano (coincidencia parcial)
     limit: int = 50,
     offset: int = 0,
     user=Depends(get_current_user),
@@ -360,6 +365,8 @@ def get_barras_elementos(
         base_where += " AND marca = %s"; params.append(marca)
     if diam:
         base_where += " AND diam = %s"; params.append(diam)
+    if plano_txt and plano_txt.strip():
+        base_where += " AND nombre_plano ILIKE %s"; params.append(f"%{plano_txt.strip()}%")
     if q and q.strip():
         qq = f"%{q.strip()}%"
         base_where += " AND (id_unico ILIKE %s OR eje ILIKE %s OR plano_code ILIKE %s)"
@@ -1517,6 +1524,7 @@ class BarraUpdate(BaseModel):
     ang3: Optional[float] = None
     ang4: Optional[float] = None
     radio: Optional[float] = None
+    nombre_plano: Optional[str] = None   # nombre legible del plano (editable en Bar Manager)
 
 
 _GEOM_FIELDS = ["figura", "dim_a", "dim_b", "dim_c", "dim_d", "dim_e", "dim_f",
@@ -1578,6 +1586,12 @@ def _editar_barra_impl(barra_id: int, body: BarraUpdate, user):
                 if f in campos:
                     sets.append(f"{f} = %s"); params.append(campos[f])
                     cambios.append(f"{f}: {barra[f]}→{campos[f]}")
+
+            # nombre_plano: texto libre editable (nombre del plano). Vacío → NULL.
+            if "nombre_plano" in campos:
+                np_val = (campos["nombre_plano"] or "").strip()[:120] or None
+                sets.append("nombre_plano = %s"); params.append(np_val)
+                cambios.append(f"plano: →{np_val or '(vacío)'}")
 
             # COHERENCIA cant/mult/cant_total: en el Bar Manager el usuario edita la CANTIDAD (que
             # es cant_total) y no ve cant ni mult. Al cambiar cant_total sin tocar cant/mult, estos

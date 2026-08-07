@@ -260,6 +260,10 @@ function _buildFilterParams() {
   if (fo && fo.value) params.set('origen', fo.value);
   const fc = document.getElementById('filtroCarga');
   if (fc && fc.value) params.set('import_id', fc.value);
+  // Filtro de texto por PLANO (nombre_plano), coincidencia parcial. Activa vista plana.
+  const fp = document.getElementById('planoTxt');
+  const fpv = fp ? (fp.value || '').trim() : '';
+  if (fpv) params.set('plano_txt', fpv);
   // 5M.2: filtros por figura y tipología (marca)
   const ff = document.getElementById('filtroFigura');
   if (_valorFiltroValido(ff)) params.set('figura', ff.value);
@@ -285,6 +289,9 @@ function _valorFiltroValido(sel) {
 // todas las barras del filtro, editable, sin desplegables de agrupación. Sin esos
 // filtros, la vista normal AGRUPADA (piso/sector/eje → ciclos → barras).
 function _modoVistaPlana() {
+  // Filtro de texto por plano (input libre) también activa la vista plana.
+  var planoEl = document.getElementById('planoTxt');
+  if (planoEl && (planoEl.value || '').trim()) return true;
   // Filtros de nivel-barra (derivado de BM_FILTROS: activaVistaPlana). Agregar un 4º
   // filtro de nivel-barra = marcar su flag en la constante, sin tocar aquí.
   var campos = BM_FILTROS.filter(function(f){ return f.activaVistaPlana; }).map(function(f){ return f.id; });
@@ -674,6 +681,19 @@ function _bmFilaBarraHTML(b, editando, conUbicacion) {
       '" data-barra-id="' + b.id + '" data-campo="figura" id="bmcell-' + b.id + '-figura" onchange="bmRegistrarCambio(this)" ' +
       'style="width:64px; font-size:11px; padding:1px 3px;' + bgF + '" /></td>';
   }
+  // Celda PLANO (nombre_plano). En solo-lectura muestra el texto; en edición es un input editable.
+  function _celdaPlano() {
+    var val = b.nombre_plano;
+    if (!editando) {
+      return '<td style="padding:2px 6px; font-size:10px; color:#607d8b;" title="' + (val || '') + '">' + (val || '—') + '</td>';
+    }
+    var efP = (typeof bmValorEfectivoCelda === 'function') ? bmValorEfectivoCelda(b.id, 'nombre_plano', val) : { valor: val, tocado: false };
+    var bgP = efP.tocado ? ' background:#fff3cd;' : '';
+    var v = (efP.valor == null) ? '' : String(efP.valor).replace(/"/g, '&quot;');
+    return '<td style="padding:1px 3px;"><input type="text" value="' + v +
+      '" data-barra-id="' + b.id + '" data-campo="nombre_plano" id="bmcell-' + b.id + '-nombre_plano" onchange="bmRegistrarCambio(this)" ' +
+      'style="width:120px; font-size:11px; padding:1px 3px;' + bgP + '" /></td>';
+  }
   // Celda del LARGO. Si hay cambios de geometría pendientes, muestra el largo YA
   // recalculado (suma de lados efectivos) en color, con nota "se guardará así".
   // Si no, el largo de memoria. Evita el desconcierto de ver el largo viejo (192)
@@ -711,7 +731,8 @@ function _bmFilaBarraHTML(b, editando, conUbicacion) {
       '<td style="padding:2px 6px;">' + _cicloBadge(b.ciclo) + '</td>' +
       '<td style="padding:2px 6px; font-size:10px;">' + (b.eje || '—') + '</td>' +
       // Columna Plano (nombre legible del plano; nombre_plano, no el código interno plano_code).
-      '<td style="padding:2px 6px; font-size:10px; color:#607d8b;" title="' + (b.nombre_plano || '') + '">' + (b.nombre_plano || '—') + '</td>';
+      // Editable en modo edición (como las demás celdas de texto).
+      _celdaPlano();
   } else {
     var idShort = (b.id_unico || '').split('-').slice(-1)[0];
     ubic = '<td style="padding:2px 6px; font-family:monospace; font-size:10px; position:sticky; left:0; background:#fff;" title="' + (b.id_unico || '') + '">' + (b.editado_por ? '✏️ ' : '') + idShort + '</td>';

@@ -287,7 +287,7 @@ async function bmCargarObras(force) {
     var nom = o.nombre_proyecto || o.nombre || id;
     return '<tr style="border-top:1px solid #f0f0f0; cursor:pointer;" onmouseover="this.style.background=\'#f5faf5\'" onmouseout="this.style.background=\'\'"' +
            ' onclick="bmElegirObra(\'' + String(id).replace(/'/g,"\\'") + '\', \'' + String(nom).replace(/'/g,"\\'") + '\')">' +
-           '<td style="padding:6px 8px; color:#1565c0; font-weight:600;">' + _esc(nom) + '</td>' +
+           '<td style="padding:6px 8px; color:#558B2F; font-weight:600;">' + _esc(nom) + '</td>' +
            '<td style="padding:6px 8px; text-align:right;">' + _fmt(o.total_barras) + '</td>' +
            '<td style="padding:6px 8px; text-align:right;">' + _fmt(o.total_kilos) + ' kg</td></tr>';
   }).join('') || '<tr><td colspan="3" style="padding:10px; color:#b0bec5; font-style:italic;">No hay obras con barras.</td></tr>';
@@ -327,6 +327,14 @@ function onEjeInput() {
   if (typeof _bmBloqueadoPorEdicion === 'function' && _bmBloqueadoPorEdicion('eje')) return;
   if (_bmEjeTimer) clearTimeout(_bmEjeTimer);
   _bmEjeTimer = setTimeout(function() { _bmEjeTimer = null; onFilterChange('eje'); }, 200);
+}
+
+// Filtro de texto por PLANO (nombre_plano), con debounce. Activa vista plana (como eje/figura).
+var _bmPlanoTimer = null;
+function onPlanoTxtInput() {
+  if (typeof _bmBloqueadoPorEdicion === 'function' && _bmBloqueadoPorEdicion('plano')) return;
+  if (_bmPlanoTimer) clearTimeout(_bmPlanoTimer);
+  _bmPlanoTimer = setTimeout(function() { _bmPlanoTimer = null; buscar(true); }, 250);
 }
 
 // 5M.9: plegar/desplegar el bloque de filtros avanzados (plano/carga/origen).

@@ -25,10 +25,13 @@ from .auth import get_current_user
 
 router = APIRouter()
 
-# Columnas del formato de exportación aSa Studio
+# Columnas del formato de exportación aSa Studio.
+# NOTA (07-ago-2026): la columna B, que antes era SECTOR (dato visual redundante — el archivo ya
+# se nombra por sector+piso+ciclo), ahora lleva el NOMBRE DEL PLANO (nombre_plano). El sector sigue
+# en el nombre del archivo y en el header de la fila 2. El resto del formato NO cambia.
 EXPORT_COLUMNS = [
     ("EJE",       "eje",          "text"),
-    ("SECTOR",    "sector",       "text"),
+    ("PLANO",     "nombre_plano", "text"),   # antes SECTOR (visual); ahora el nombre del plano
     ("PISO",      "piso",         "text"),
     ("CICLO",     "ciclo",        "text"),
     ("CANT",      "cant_total",   "int"),
@@ -58,7 +61,7 @@ EXPORT_COLUMNS = [
 
 # Columnas a consultar de la BD
 DB_FIELDS = [
-    "eje", "sector", "piso", "ciclo", "cant_total", "diam", "figura",
+    "eje", "sector", "nombre_plano", "piso", "ciclo", "cant_total", "diam", "figura",
     "largo_total", "marca", "cod_proyecto",
     "dim_a", "dim_b", "dim_c", "dim_d", "dim_e", "dim_f", "dim_g", "dim_h", "dim_i",
     "ang1", "ang2", "ang3", "ang4", "radio",
@@ -71,9 +74,16 @@ def _build_sheet(wb: Workbook, sheet_name: str, rows: list, sector: str, piso: s
     """Construye una hoja Excel con el formato aSa Studio."""
     ws = wb.create_sheet(title=sheet_name[:31])  # Excel limita a 31 chars
 
-    # Filas 1-4 vacías (espacio para metadata si se necesita)
+    # Filas 1-4 vacías (espacio para metadata). Fila 2: encabezado legible del archivo
+    # con la ubicación → SECTOR - Piso - Ciclo - Eje. El eje puede ser uno o varios en
+    # la hoja: si es único, se muestra; si hay varios, "(varios ejes)".
     for i in range(1, 5):
         ws.cell(row=i, column=1, value="")
+    ejes_hoja = sorted({str(r.get("eje")).strip() for r in rows if r.get("eje")})
+    eje_txt = ejes_hoja[0] if len(ejes_hoja) == 1 else ("(varios ejes)" if ejes_hoja else "")
+    encabezado = " - ".join(x for x in [sector, piso, ciclo, eje_txt] if x)
+    c2 = ws.cell(row=2, column=1, value=encabezado)
+    c2.font = Font(bold=True, size=11)
 
     # Fila 5: headers
     header_font = Font(bold=True, size=10)

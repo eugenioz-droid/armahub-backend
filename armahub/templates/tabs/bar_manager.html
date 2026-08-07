@@ -67,6 +67,16 @@
                  style="width:100%; font-size:13px; height:34px; box-sizing:border-box;" />
           <datalist id="bmEjesDatalist"></datalist>
         </div>
+        <!-- Filtro de texto por PLANO (nombre_plano). Texto libre: filtra por coincidencia parcial. -->
+        <div style="display:flex; flex-direction:column; flex:1;">
+          <label style="font-size:12.5px; color:#444; font-weight:600; margin-bottom:3px;">Plano</label>
+          <input type="text" id="planoTxt"
+                 name="bm-plano-buscar" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"
+                 data-lpignore="true" data-form-type="other"
+                 placeholder="Filtrar por plano…"
+                 oninput="onPlanoTxtInput()" onchange="onPlanoTxtInput()"
+                 style="width:100%; font-size:13px; height:34px; box-sizing:border-box;" />
+        </div>
 
         <!-- divisor -->
         <div style="align-self:stretch; width:1px; background:#e0e0e0; margin:16px 2px 0;"></div>
