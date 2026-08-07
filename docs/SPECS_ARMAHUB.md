@@ -1289,4 +1289,13 @@ Gestión de relación con clientes: contactos, seguimientos, oportunidades.
 
 ---
 
+## Programa Maestro 2026-H2
+
+El orden de ejecución vigente (saneamiento + expansión) está en **`docs/programa_maestro.md`**:
+fases M0-M7 (M0 seguridad, M1 higiene, M2 autorización multi-obra, M3 deuda selectiva, M4 pre-armado,
+M5 epic app clientes, M6 CRM, M7 templates 3D) + transversales C (Ley 21.719) e I (infraestructura).
+Ordena — no reemplaza — el roadmap de features de `programa-versiones/programa_v1.00.md`.
+
+---
+
 *Fin del documento. Actualizar al cerrar cada caluga o al cambiar flujos, permisos o decisiones de diseño.*
