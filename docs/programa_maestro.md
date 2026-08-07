@@ -20,8 +20,10 @@ verificación de deploy SIEMPRE; nada destructivo sin backup previo (BD) — ver
 
 ---
 
-## M0 · SEGURIDAD CRÍTICA — [AUTO] completa · ~1 sesión
+## M0 · SEGURIDAD CRÍTICA — ✅ EJECUTADA 06-ago-2026 (commit 49cbf39, verificada en prod)
 *Bloqueantes antes de exponer clientes externos. Fuente: auditoría C1-C5, A1-A7.*
+*Verificado en producción: signup→403, rate limit→429 al 6º intento, headers presentes,
+health sin internals. NOTA: los tokens antiguos quedaron inválidos → re-login único.*
 
 | # | Tarea | Criterio de aceptación |
 |---|---|---|
@@ -36,8 +38,12 @@ verificación de deploy SIEMPRE; nada destructivo sin backup previo (BD) — ver
 | M0.9 | `audit()` deja de tragar errores en silencio (log warning) | Fallo de auditoría queda logueado |
 | M0.10 | Carpeta de seguridad para la reunión con infosec (ver anexo A) | Docs generados en docs/seguridad/ |
 
-## M1 · HIGIENE Y LIMPIEZA — [AUTO] completa · ~2 sesiones
+## M1 · HIGIENE Y LIMPIEZA — ✅ EJECUTADA 06-ago-2026 (commits 251c6e3…3db3431, verificada en prod)
 *Fuente: auditoría frontend/repo + código muerto backend.*
+*Notas de ejecución: M1.3 encontró menos duplicados que la auditoría (escapeHtml ya estaba
+consolidado); lo real consolidado = peso.py (4 copias BE) + rol_colores.js (2 paletas divergentes,
+6 sitios) + orden_pisos.js (2 copias FE sin FUND). M1.10 (campo plano) SALTADA — espera [DEF]
+columna visible. Migración 102 = unicidad num_obra/correlativo con reparación de duplicados.*
 
 | # | Tarea | Criterio |
 |---|---|---|
@@ -94,7 +100,8 @@ verificación de deploy SIEMPRE; nada destructivo sin backup previo (BD) — ver
 ## M7 · TEMPLATES 3D PARAMÉTRICOS — deseable · por versiones
 *Evaluación honesta: la BASE está cerca (render 3D rápido + catálogo con geometría real + motor paramétrico). El "editor de modelado libre" es lo de otra envergadura. Camino incremental:*
 
-- M7.1 [DEF+AUTO] **v1 — Templates codificados consumibles**: viga/columna/muro RECTANGULAR con reglas paramétricas fijas (largo/ancho/alto hormigón, recubrimiento, φ y espaciamiento de estribos, condiciones de confinamiento, cabezales/trabas/laterales) → genera la lista de barras (figuras del catálogo con dims calculadas) → vista 3D del CONJUNTO (posicionando las barras en el espacio, reusando disenador3d) → botón "cargar al editor" (las barras entran al despiece). ALCANZABLE con esfuerzo medio; todo client-side + catálogo.
+- M7.0 ✅ **Maqueta de nivel de detalle** (06-ago-2026): `/static/demo/rebar3d.html` — viga paramétrica con barras SÓLIDAS (cilindros + codos toroidales con radio de doblado de norma 2φ/3.5φ), ganchos 90°/135° sísmicos, trabas, hormigón semitransparente, órbita/zoom. Rendimiento: geometría fusionada + InstancedMesh = 5 draw calls para TODA la viga (~965k triángulos en el peor caso del UI) → congestión verificable visualmente rotando. Conclusión: el detalle "barra sólida con radios reales" es BARATO; no hacer corrugas geométricas ni colisión automática en v1.
+- M7.1 [DEF+AUTO] **v1 — Templates codificados consumibles**: viga/columna/muro RECTANGULAR con reglas paramétricas fijas (largo/ancho/alto hormigón, recubrimiento, φ y espaciamiento de estribos, condiciones de confinamiento, cabezales/trabas/laterales) → genera la lista de barras (figuras del catálogo con dims calculadas) → vista 3D del CONJUNTO (posicionando las barras en el espacio, con la técnica validada en M7.0) → botón "cargar al editor" (las barras entran al despiece). ALCANZABLE con esfuerzo medio; todo client-side + catálogo.
 - M7.2 [AUTO] v2 — Editor de REGLAS: el usuario ajusta parámetros del template y guarda variantes (JSON de reglas editable con UI de formulario, no modelado libre).
 - M7.3 [futuro] v3 — Modelado libre / secciones circulares → recién aquí es "otro nivel"; se evalúa tras v1/v2.
 
