@@ -95,19 +95,6 @@ def _responsable_area(cur, area_id):
     return row[0] if row else None
 
 
-def _role_puede(cur, role, accion):
-    """Configurable: ¿el rol global tiene permiso para la acción dada?
-    Consulta la tabla role_permisos. Sin fila de config → False."""
-    if not role:
-        return False
-    cur.execute(
-        "SELECT activo FROM role_permisos WHERE role = %s AND accion = %s",
-        (role, accion),
-    )
-    row = cur.fetchone()
-    return bool(row[0]) if row else False
-
-
 def _rol_puede_crear(cur, accion, rol):
     """Configurable: ¿el rol puede levantar reclamos de este tipo ('externo'|'interno')?
     Si no hay fila de config, se cae a un default seguro (admin/admin_calidad/usc para

@@ -2306,13 +2306,6 @@ def eliminar_proyecto(id_proyecto: str, user=Depends(get_current_user)):
 def mover_barras(id_proyecto: str, body: MoverBarrasRequest, user=Depends(get_current_user)):
     """Mover barras de un proyecto a otro. DESHABILITADO."""
     raise HTTPException(status_code=403, detail="Función deshabilitada — sistema cerrado")
-    audit(user.get("email", "?"), "mover_barras", f"{count} barras {id_proyecto} → {body.destino_id}", "proyecto", id_proyecto)
-    return {
-        "ok": True,
-        "movidas": count,
-        "origen": id_proyecto,
-        "destino": body.destino_id,
-    }
 
 
 # ========================= USERS LIST =========================

@@ -23,12 +23,6 @@ def q_por_estado(cur, where="", params=None):
     return [{"estado": r[0], "count": int(r[1])} for r in cur.fetchall()]
 
 
-def q_por_estado_dict(cur, where="", params=None):
-    """Distribución por estado → {estado: count} (para cálculos internos)."""
-    cur.execute(f"SELECT estado, COUNT(*) FROM reclamos r WHERE 1=1{where} GROUP BY estado", params or [])
-    return {r[0]: int(r[1]) for r in cur.fetchall()}
-
-
 def q_por_tipo(cur, where="", params=None):
     """Distribución por tipo_reclamo → {tipo: count}."""
     cur.execute(f"SELECT COALESCE(r.tipo_reclamo, 'error'), COUNT(*) FROM reclamos r WHERE 1=1{where} GROUP BY 1", params or [])
@@ -81,66 +75,6 @@ def q_por_proyecto(cur, limit=None):
         GROUP BY 1 ORDER BY 2 DESC{limit_clause}
     """)
     return [{"proyecto": str(r[0]), "count": int(r[1])} for r in cur.fetchall()]
-
-
-def q_avg_dias_resolucion(cur):
-    """Promedio de días de resolución para reclamos cerrados."""
-    cur.execute("""
-        SELECT AVG(
-            EXTRACT(EPOCH FROM (fecha_cierre::timestamp - fecha_creacion::timestamp)) / 86400.0
-        ) FROM reclamos WHERE estado IN ('cerrado') AND fecha_cierre IS NOT NULL
-    """)
-    row = cur.fetchone()
-    return round(float(row[0]), 1) if row and row[0] else None
-
-
-def q_top_causas(cur, limit=10):
-    """Top sub-causas más repetitivas → [{cod, sub_causa, categoria, count}]."""
-    cur.execute("""
-        SELECT cod_causa, sub_causa, categoria_ishikawa, COUNT(*) as cnt
-        FROM reclamos
-        WHERE sub_causa IS NOT NULL AND sub_causa != ''
-        GROUP BY cod_causa, sub_causa, categoria_ishikawa
-        ORDER BY cnt DESC LIMIT %s
-    """, (limit,))
-    return [{"cod": r[0], "sub_causa": r[1], "categoria": r[2], "count": int(r[3])} for r in cur.fetchall()]
-
-
-def q_resolucion_por_mes(cur, meses=12):
-    """Tiempo promedio de resolución por mes → [{mes, avg_dias}]."""
-    cur.execute("""
-        SELECT TO_CHAR(fecha_cierre::timestamp, 'YYYY-MM') AS mes,
-               AVG(EXTRACT(EPOCH FROM (fecha_cierre::timestamp - fecha_creacion::timestamp)) / 86400.0)
-        FROM reclamos
-        WHERE estado IN ('cerrado') AND fecha_cierre IS NOT NULL
-          AND fecha_cierre::timestamp >= NOW() - INTERVAL '%s months'
-        GROUP BY mes ORDER BY mes
-    """, (meses,))
-    return [{"mes": r[0], "avg_dias": round(float(r[1]), 1)} for r in cur.fetchall()]
-
-
-def q_matriz_obra_categoria(cur, top_obras=8):
-    """Matriz obras × categorías Ishikawa → {obras, categorias, data}."""
-    cur.execute("""
-        SELECT COALESCE(p.nombre_proyecto, r.id_proyecto, 'Sin obra') AS obra,
-               COALESCE(r.categoria_ishikawa, 'sin_categoria') AS cat,
-               COUNT(*)
-        FROM reclamos r
-        LEFT JOIN proyectos p ON p.id_proyecto = r.id_proyecto
-        GROUP BY obra, cat ORDER BY obra, cat
-    """)
-    obras_set = {}
-    cats_set = set()
-    for obra, cat, cnt in cur.fetchall():
-        obras_set.setdefault(obra, {})[cat] = int(cnt)
-        cats_set.add(cat)
-    obras_sorted = sorted(obras_set.items(), key=lambda x: sum(x[1].values()), reverse=True)[:top_obras]
-    cats_sorted = sorted(cats_set)
-    return {
-        "obras": [o[0] for o in obras_sorted],
-        "categorias": cats_sorted,
-        "data": [[o[1].get(c, 0) for c in cats_sorted] for o in obras_sorted],
-    }
 
 
 def build_role_filter(user, cur=None):
