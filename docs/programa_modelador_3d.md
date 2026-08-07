@@ -282,6 +282,37 @@ histórico: maquetas que a la hora de implementar no quedaban iguales. Mitigaci�
 
 ---
 
+## 12bis. DECISIONES CERRADAS POR EL USUARIO (08-ago) — firme
+
+- **D1 · Elemento de partida = VIGA.** El usuario acepta partir por viga (validar el motor completo de
+  punta a punta) y luego atacar muro sin riesgo de quedar a medias.
+- **D2 · Render 2D actual = SE MANTIENE SIMPLE POR AHORA**, con la CONDICIÓN (confirmada) de que el
+  motor nuevo tome bien las barras actuales del catálogo y permita HOMOLOGAR después el render de la
+  plataforma (que hoy se ve "producto": estribos sin codo, gancho como un solo segmento). El motor es
+  ÚNICO y sirve para ambos → homologar el 2D/wireframe a codos+ganchos reales es una fase corta
+  posterior, no un rehacer. Prioridad: motor bien hecho una vez.
+- **D3 · Re-apertura del 3D = LEE LAS BARRAS ACTUALES del despiece** (si borraste el cabezal, no
+  aparece) + botón explícito "Regenerar" que vuelve al original avisando. FLUJO A DEFINIR (§9): el
+  usuario propone que sea "una visualización POR ELEMENTO adicional a las que ya existen" (junto a las
+  vistas actuales del Bar Manager/Fabricator). Se maqueta.
+- **D4 · Activación = MODAL** (no salir de la sección actual). Confirmar que el modal a pantalla
+  ~completa no complica el canvas 3D (verificar en la maqueta; probablemente OK).
+- **D6 · Estética:** acero metálico + hormigón semitransparente + acento verde Armacero. ABRE temas
+  nuevos a definir (ver §9ter): color del canvas/fondo, cómo se diferencia el hormigón y otros datos
+  (cotas), y HERRAMIENTAS de inspección: medir distancias, HOVER que muestre cantidad de elementos y/o
+  detalle de una barra/grupo. → El 3D Template no es solo "ver", también "inspeccionar".
+- **D7 · Renombrar "Agregar Despiece" → "Fabricator"** en toda la plataforma. CONFIRMADO. Nota: en el
+  Fabricator SE SIGUEN CREANDO despieces (no es incongruente); el nombre abarca crear + generar 3D.
+
+## 9ter. Herramientas de inspección del 3D Template (D6 — nuevas, a diseñar)
+- **Cotas:** mostrar medidas del elemento y/o de barras (largo, espaciamiento, recubrimiento) sobre el
+  canvas. Definir cuáles por defecto y cuáles on-demand.
+- **Hover:** al pasar el cursor sobre una barra/grupo → tooltip con detalle (tipología, φ, cantidad,
+  largo) y/o "cantidad de elementos" del grupo señalado.
+- **Medición:** herramienta para medir distancias entre puntos (verificar separaciones, congestión).
+- **Diferenciación visual:** hormigón semitransparente vs. acero; posible resalte por tipología/φ.
+- Todo esto son CAPAS sobre el canvas; se especifica en la maqueta del visor (§9).
+
 ## 13. DECISIONES QUE NECESITO DEL USUARIO (cerrar antes de codear)
 
 **Ya resueltas (no requieren al usuario):**
