@@ -9,7 +9,7 @@
     --bg:#eef1f4; --ink:#1f2937; --muted:#64748b; --line:#dbe1e8;
     --panel:#ffffff; --panel2:#f6f8fa;
     --acero:#8BC34A; --acero-d:#558B2F; --azul:#1565c0; --azul-b:#e3f2fd;
-    --canvas:#eef2f6; --hormigon:#c9d2dc; --hormigon-b:#8a96a5;
+    --canvas:#eef2f6; --canvas3d:#2b3242; --hormigon:#c9d2dc; --hormigon-b:#8a96a5;
     --chip:#eef5e6; --chip-ink:#33691e; --chip-b:#c5e1a5;
     --cbs:#1565c0; --cbi:#00897b; --es:#e65100; --trv:#7b1fa2; --mall:#5e35b1;
   }
@@ -17,11 +17,12 @@
   html,body{height:100%}
   body{font:13px/1.45 "Segoe UI",system-ui,sans-serif;color:var(--ink);background:var(--bg)}
 
-  #backdrop{position:fixed;inset:0;background:rgba(15,20,28,.5);display:flex;align-items:center;justify-content:center;padding:14px}
-  #modal{width:min(1500px,99vw);height:min(940px,97vh);background:var(--panel);border-radius:14px;
+  #backdrop{position:fixed;inset:0;background:rgba(15,20,28,.5);display:flex;align-items:center;justify-content:center;padding:12px}
+  #modal{width:min(1520px,99vw);height:min(960px,98vh);background:var(--panel);border-radius:14px;
     box-shadow:0 24px 70px rgba(0,0,0,.4);display:flex;flex-direction:column;overflow:hidden}
 
-  #titlebar{display:flex;align-items:center;gap:12px;padding:11px 18px;border-bottom:1px solid var(--line);background:var(--panel2)}
+  /* ---- TÍTULO ---- */
+  #titlebar{display:flex;align-items:center;gap:12px;padding:10px 18px;border-bottom:1px solid var(--line);background:var(--panel2)}
   #titlebar .dot{width:26px;height:26px;border-radius:7px;background:var(--acero);display:flex;align-items:center;justify-content:center;font-size:15px}
   #titlebar h1{font-size:15px;font-weight:600}
   #titlebar .sub{font-size:11.5px;color:var(--muted)}
@@ -30,54 +31,48 @@
   .seg button{border:none;background:#fff;padding:6px 13px;font-size:12px;color:var(--muted);cursor:pointer;font-weight:600}
   .seg button+button{border-left:1px solid var(--line)}
   .seg button.on{background:var(--acero);color:#fff}
-  .seg button.dis{opacity:.45;cursor:not-allowed}
   .btn{border:none;border-radius:9px;padding:8px 14px;font-size:12.5px;font-weight:700;cursor:pointer}
   .btn.primary{background:var(--acero);color:#fff}.btn.primary:hover{background:var(--acero-d)}
   .btn.ghost{background:#eef2f6;color:#37474f;border:1px solid var(--line)}
   .xbtn{border:1px solid var(--line);background:#fff;border-radius:8px;width:32px;height:30px;cursor:pointer;font-size:15px;color:var(--muted)}
 
+  /* ---- RIBBON: figura + tipologías ---- */
+  #ribbon{display:flex;align-items:center;gap:14px;padding:9px 18px;border-bottom:1px solid var(--line);background:#fff}
+  #ribbon .grp{display:flex;align-items:center;gap:8px}
+  #ribbon .lbl{font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--muted)}
+  #ribbon .divv{width:1px;height:30px;background:var(--line)}
+  .figpick{display:inline-flex;align-items:center;gap:6px}
+  .figpick input{border:1px solid var(--line);border-radius:7px;padding:6px 9px;font-size:13px;width:120px}
+  .figpick .fbtns{display:inline-flex;gap:4px}
+  .fbtn{border:1px solid var(--line);background:#fff;border-radius:6px;padding:5px 8px;font-size:11px;cursor:pointer;color:#455}
+  .fbtn:hover{border-color:var(--acero)}
+  .tipbtns{display:inline-flex;gap:5px}
+  .tipbtn{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);background:#fff;border-radius:8px;padding:6px 11px;font-size:12px;cursor:pointer;font-weight:600}
+  .tipbtn .sw{width:11px;height:11px;border-radius:3px}
+  .tipbtn:hover{border-color:var(--acero);background:#f7fbf2}
+  .tipbtn.on{background:var(--acero);color:#fff;border-color:var(--acero)}
+  .tipbtn.on .mode{color:#eaffd9}
+  .tipbtn .mode{font-size:9px;color:#9aa4b0;border:1px solid var(--line);border-radius:7px;padding:0 5px}
+
   #body{flex:1;display:flex;min-height:0}
 
-  /* ---- IZQUIERDA: paleta de figuras/tipologías ---- */
-  #paleta{width:230px;min-width:230px;border-right:1px solid var(--line);background:var(--panel);overflow-y:auto;padding:12px 12px 20px}
-  .ph{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin:12px 0 6px;display:flex;align-items:center;gap:6px}
-  .ph .ln{flex:1;height:1px;background:var(--line)}
-  .tipo{display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:8px;padding:7px 9px;margin-bottom:6px;cursor:grab;background:#fff}
-  .tipo:hover{border-color:var(--acero);background:#f7fbf2}
-  .tipo .sw{width:12px;height:12px;border-radius:3px;flex-shrink:0}
-  .tipo .nm{font-weight:700;font-size:12.5px}
-  .tipo .de{font-size:10.5px;color:var(--muted)}
-  .tipo .mode{margin-left:auto;font-size:9.5px;color:#9aa4b0;border:1px solid var(--line);border-radius:8px;padding:1px 6px}
-  .figrow{display:flex;flex-wrap:wrap;gap:5px;margin-top:2px}
-  .fig{border:1px solid var(--line);border-radius:6px;padding:3px 7px;font-size:11px;color:#455;cursor:grab;background:#fff}
-  .fig:hover{border-color:var(--acero)}
-  .note{font-size:10.5px;color:#9aa4b0;margin-top:6px}
-
-  /* ---- CENTRO: las 3 vistas ---- */
-  #vistas{flex:1;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;gap:1px;background:var(--line);min-width:0}
-  .vista{background:var(--canvas);position:relative;overflow:hidden;display:flex;flex-direction:column}
-  .vista.big{grid-column:1;grid-row:1 / span 2}      /* elevación grande a la izq */
-  .vtitle{position:absolute;top:8px;left:10px;z-index:3;font-size:11px;font-weight:700;color:#5b6a7d;background:rgba(255,255,255,.75);border:1px solid var(--line);border-radius:6px;padding:2px 8px;letter-spacing:.3px}
-  .vaxes{position:absolute;bottom:8px;left:10px;z-index:3;font-size:10px;color:#9aa4b0;font-family:monospace}
-  .vista svg{width:100%;height:100%;display:block}
-  .vhint{position:absolute;bottom:8px;right:10px;z-index:3;font-size:10px;color:#9aa4b0}
-
-  /* hormigón + barras (SVG) */
-  .horm{fill:var(--hormigon);opacity:.55;stroke:var(--hormigon-b);stroke-width:1.5}
-  .recub{fill:none;stroke:#b0bcc9;stroke-width:1;stroke-dasharray:5 4}
-  .barCBS{stroke:var(--cbs)}.barCBI{stroke:var(--cbi)}.barES{stroke:var(--es)}.barTRV{stroke:var(--trv)}.barMALL{stroke:var(--mall)}
-  .bar{fill:none;stroke-width:3.4;stroke-linecap:round;stroke-linejoin:round}
-  .bar.sel{stroke-width:5}
-  .ghostbar{fill:none;stroke:#8BC34A;stroke-width:3;stroke-dasharray:4 3;opacity:.8}
-  .gpt{fill:#8BC34A}
-  .dim{fill:#8090a2;font:10px monospace}
-  .dimL{stroke:#c2ccd8;stroke-width:1}
-
-  /* ---- DERECHA: propiedades del elemento seleccionado ---- */
-  #props{width:290px;min-width:290px;border-left:1px solid var(--line);background:var(--panel);overflow-y:auto;padding:12px 14px 20px}
-  .pt{font-size:13px;font-weight:700;margin-bottom:2px}
-  .psub{font-size:11px;color:var(--muted);margin-bottom:10px}
-  .fld{display:flex;flex-direction:column;gap:3px;margin-bottom:9px}
+  /* ---- IZQUIERDA: componentes (desplegables con sus propiedades) ---- */
+  #side{width:300px;min-width:300px;border-right:1px solid var(--line);background:var(--panel);overflow-y:auto;padding:11px 12px 20px}
+  .sh{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin:6px 0 8px;display:flex;align-items:center;gap:6px}
+  .sh .ln{flex:1;height:1px;background:var(--line)}
+  .comp{border:1px solid var(--line);border-radius:9px;margin-bottom:7px;overflow:hidden;background:#fff}
+  .comp.sel{border-color:var(--acero);box-shadow:0 0 0 2px rgba(139,195,74,.15)}
+  .comp .ch{display:flex;align-items:center;gap:8px;padding:7px 9px;cursor:pointer;background:var(--panel2)}
+  .comp .sw{width:12px;height:12px;border-radius:3px;flex-shrink:0}
+  .comp .nm{font-weight:700;font-size:12.5px}
+  .comp .de{font-size:10.5px;color:var(--muted)}
+  .comp .drag{cursor:grab;color:#b6c0cc;margin-right:2px}
+  .comp .sp{flex:1}
+  .comp .mini{border:none;background:none;cursor:pointer;font-size:12px;color:#b6c0cc;padding:1px 3px}
+  .comp .mini:hover{color:var(--ink)}
+  .comp .body{display:none;padding:9px 10px;border-top:1px solid var(--line)}
+  .comp.open .body{display:block}
+  .fld{display:flex;flex-direction:column;gap:3px;margin-bottom:8px}
   .fld label{font-size:11px;color:var(--muted);font-weight:600}
   input,select{border:1px solid var(--line);border-radius:6px;padding:5px 8px;font-size:12.5px;width:100%}
   .grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
@@ -85,22 +80,44 @@
   .radial button{border:none;background:#fff;padding:5px 9px;font-size:11px;color:var(--muted);cursor:pointer;font-weight:600}
   .radial button+button{border-left:1px solid var(--line)}
   .radial button.on{background:var(--azul-b);color:var(--azul)}
-  .modebox{border:1px solid var(--line);border-radius:8px;padding:9px 10px;background:var(--panel2);margin-bottom:10px}
-  .modebox .mh{font-size:11px;font-weight:700;color:var(--muted);margin-bottom:6px;display:flex;align-items:center;gap:6px}
-  .chip{font-size:10px;color:var(--chip-ink);background:var(--chip);border:1px solid var(--chip-b);border-radius:9px;padding:1px 7px;font-weight:600}
+  .modebox{border:1px solid var(--line);border-radius:8px;padding:8px 9px;background:var(--panel2);margin-bottom:8px}
+  .modebox .mh{font-size:10.5px;font-weight:700;color:var(--muted);margin-bottom:6px;display:flex;align-items:center;gap:6px}
+  .chip{font-size:9.5px;color:var(--chip-ink);background:var(--chip);border:1px solid var(--chip-b);border-radius:9px;padding:1px 6px;font-weight:600}
+  .note{font-size:10.5px;color:#9aa4b0;margin-top:4px}
+  .addcomp{width:100%;border:1px dashed var(--acero);color:var(--acero-d);background:#f7fbf2;border-radius:9px;padding:8px;font-size:12px;font-weight:600;cursor:pointer;margin-top:4px}
 
-  /* barra de herramientas del canvas central */
-  #ctools{position:absolute;top:8px;right:10px;z-index:5;display:flex;gap:6px}
-  .ctool{border:1px solid var(--line);background:rgba(255,255,255,.85);border-radius:7px;padding:5px 10px;font-size:11px;cursor:pointer;color:#455;font-weight:600}
+  /* ---- CENTRO: 4 cuadrantes ---- */
+  #quad{flex:1;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;gap:1px;background:var(--line);min-width:0;position:relative}
+  .vista{background:var(--canvas);position:relative;overflow:hidden}
+  .vista.d3{background:var(--canvas3d)}
+  .vtitle{position:absolute;top:8px;left:10px;z-index:3;font-size:11px;font-weight:700;color:#5b6a7d;background:rgba(255,255,255,.78);border:1px solid var(--line);border-radius:6px;padding:2px 8px;letter-spacing:.3px}
+  .vtitle.d3{color:#cfd6e0;background:rgba(20,26,34,.6);border-color:#3a4658}
+  .vaxes{position:absolute;bottom:7px;left:10px;z-index:3;font-size:10px;color:#9aa4b0;font-family:monospace}
+  .vaxes.d3{color:#7d8896}
+  .vista svg{width:100%;height:100%;display:block}
+  .vhint{position:absolute;bottom:7px;right:10px;z-index:3;font-size:9.5px;color:#9aa4b0}
+
+  .horm{fill:var(--hormigon);opacity:.55;stroke:var(--hormigon-b);stroke-width:1.5}
+  .recub{fill:none;stroke:#9fb0c2;stroke-width:1.1;stroke-dasharray:5 4}   /* boundary de recubrimiento */
+  .barCBS{stroke:var(--cbs)}.barCBI{stroke:var(--cbi)}.barES{stroke:var(--es)}
+  .bar{fill:none;stroke-width:3.2;stroke-linecap:round;stroke-linejoin:round}
+  .ghostbar{fill:none;stroke:#8BC34A;stroke-width:3;stroke-dasharray:4 3;opacity:.85}
+  .gpt{fill:#8BC34A}
+  .dim{fill:#8090a2;font:10px monospace}
+  .dimL{stroke:#c2ccd8;stroke-width:1}
+
+  /* herramientas flotantes del canvas */
+  #ctools{position:absolute;top:8px;left:50%;transform:translateX(-50%);z-index:6;display:flex;gap:6px}
+  .ctool{border:1px solid var(--line);background:rgba(255,255,255,.9);border-radius:7px;padding:5px 11px;font-size:11px;cursor:pointer;color:#455;font-weight:600}
   .ctool.on{background:var(--acero);color:#fff;border-color:var(--acero)}
 
-  #footer{display:flex;align-items:center;gap:10px;padding:10px 18px;border-top:1px solid var(--line);background:var(--panel2)}
+  #footer{display:flex;align-items:center;gap:10px;padding:9px 18px;border-top:1px solid var(--line);background:var(--panel2)}
   #footer .spacer{flex:1}
   .maqueta-tag{position:fixed;top:8px;left:50%;transform:translateX(-50%);background:#111;color:#ffd54f;font-size:11px;padding:3px 12px;border-radius:0 0 8px 8px;z-index:100;font-weight:600}
 </style>
 </head>
 <body>
-<div class="maqueta-tag">MAQUETA VISUAL — Colocador por proyecciones. Sin lógica real (ilustra el flujo).</div>
+<div class="maqueta-tag">MAQUETA VISUAL — Colocador (4 cuadrantes). Sin lógica real (ilustra el flujo).</div>
 
 <div id="backdrop"><div id="modal">
 
@@ -108,186 +125,208 @@
   <div id="titlebar">
     <div class="dot">📐</div>
     <div>
-      <h1>Template Editor — Colocador por proyecciones</h1>
+      <h1>Template Editor — Colocador</h1>
       <div class="sub">Construyendo: <b>Viga tipo Explora</b> · Configurador de herramientas › Templates</div>
     </div>
     <div class="spacer"></div>
-    <div class="seg">
-      <button class="on">Viga</button><button>Muro</button><button>Columna</button>
-    </div>
+    <div class="seg"><button class="on">Viga</button><button>Muro</button><button>Columna</button></div>
     <button class="btn ghost">📂 Abrir</button>
     <button class="xbtn">✕</button>
   </div>
 
+  <!-- RIBBON: elegir figura + tipología, luego trabajas en el canvas -->
+  <div id="ribbon">
+    <div class="grp">
+      <span class="lbl">Figura</span>
+      <div class="figpick">
+        <input value="103B" list="figs">
+        <div class="fbtns">
+          <span class="fbtn">101A</span><span class="fbtn">103A</span><span class="fbtn">104D</span>
+        </div>
+      </div>
+    </div>
+    <div class="divv"></div>
+    <div class="grp">
+      <span class="lbl">Tipología</span>
+      <div class="tipbtns">
+        <span class="tipbtn on"><span class="sw" style="background:var(--cbs)"></span>CBS<span class="mode">capas</span></span>
+        <span class="tipbtn"><span class="sw" style="background:var(--cbi)"></span>CBI<span class="mode">capas</span></span>
+        <span class="tipbtn"><span class="sw" style="background:var(--es)"></span>ES<span class="mode">lineal</span></span>
+        <span class="tipbtn"><span class="sw" style="background:var(--trv)"></span>TRV<span class="mode">lineal</span></span>
+        <span class="tipbtn"><span class="sw" style="background:#607d8b"></span>LT<span class="mode">puntual</span></span>
+      </div>
+    </div>
+    <div class="spacer" style="flex:1"></div>
+    <span class="note" style="margin:0">Elige figura + tipología → posiciónala en una vista.</span>
+  </div>
+
   <div id="body">
 
-    <!-- PALETA IZQUIERDA: tipologías (arrastrables) -->
-    <div id="paleta">
-      <div class="ph"><span>Tipologías de viga</span><span class="ln"></span></div>
-      <div class="note" style="margin-top:0">Arrastra una tipología a una vista. Trae su figura y su modo de distribución por defecto (editable).</div>
+    <!-- IZQUIERDA: componentes colocados (desplegables con propiedades) -->
+    <div id="side">
+      <div class="sh"><span>Componentes colocados</span><span class="ln"></span><span style="color:var(--muted);font-size:11px">3</span></div>
 
-      <div class="tipo" style="margin-top:8px"><span class="sw" style="background:var(--cbs)"></span>
-        <div><div class="nm">CBS</div><div class="de">Cabezal superior</div></div><span class="mode">capas</span></div>
-      <div class="tipo"><span class="sw" style="background:var(--cbi)"></span>
-        <div><div class="nm">CBI</div><div class="de">Cabezal inferior</div></div><span class="mode">capas</span></div>
-      <div class="tipo"><span class="sw" style="background:var(--es)"></span>
-        <div><div class="nm">ES</div><div class="de">Estribo</div></div><span class="mode">lineal @</span></div>
-      <div class="tipo"><span class="sw" style="background:var(--trv)"></span>
-        <div><div class="nm">TRV</div><div class="de">Traba viga</div></div><span class="mode">lineal @</span></div>
-      <div class="tipo"><span class="sw" style="background:#607d8b"></span>
-        <div><div class="nm">LT</div><div class="de">Lateral / piel</div></div><span class="mode">puntual</span></div>
-
-      <div class="ph"><span>Figura del catálogo</span><span class="ln"></span></div>
-      <div class="note" style="margin-top:0">La tipología define el rol; la figura es libre. Se puede cambiar sin perder la orientación del rol.</div>
-      <div class="figrow" style="margin-top:6px">
-        <span class="fig">101A</span><span class="fig">102A</span><span class="fig">103A</span>
-        <span class="fig">103B</span><span class="fig">104D</span><span class="fig">106A</span>
+      <!-- CBS abierto con propiedades -->
+      <div class="comp open sel">
+        <div class="ch"><span class="drag">⠿</span><span class="sw" style="background:var(--cbs)"></span>
+          <div><div class="nm">CBS · 103B</div><div class="de">superior · 2 capas · ø16</div></div>
+          <span class="sp"></span><button class="mini" title="Duplicar">⧉</button><button class="mini" title="Quitar">🗑</button></div>
+        <div class="body">
+          <div class="grid2">
+            <div class="fld"><label>Figura</label><input value="103B" list="figs"></div>
+            <div class="fld"><label>φ mm</label><select><option>8</option><option selected>16</option><option>18</option></select></div>
+          </div>
+          <div class="fld"><label>Cara / anclaje</label>
+            <div class="radial"><button class="on">Sup</button><button>Inf</button><button>Lateral</button></div></div>
+          <div class="fld"><label>Recub. (override) cm</label><input placeholder="global (4)"></div>
+          <div class="modebox">
+            <div class="mh"><span>Distribución</span><span class="chip">CAPAS</span></div>
+            <div class="grid2">
+              <div class="fld" style="margin-bottom:0"><label>N° capas</label><input value="2"></div>
+              <div class="fld" style="margin-bottom:0"><label>Barras/capa</label><input value="3"></div>
+            </div>
+            <div class="fld" style="margin-top:8px;margin-bottom:0"><label>Separación capas cm</label><input value="4"></div>
+            <div class="note">Se apilan hacia el núcleo.</div>
+          </div>
+          <div class="grid2">
+            <div class="fld"><label>A (pata)</label><input value="30"></div>
+            <div class="fld"><label>C (pata)</label><input value="30"></div>
+          </div>
+          <div class="fld" style="margin-bottom:0"><label>B (largo)</label><input value="592" disabled></div>
+          <div class="note">B auto (largo − recub). A/C fijas. Ángulos/R de la figura.</div>
+        </div>
       </div>
 
-      <div class="ph"><span>Componentes colocados</span><span class="ln"></span></div>
-      <div class="tipo" style="border-color:var(--acero);background:#f7fbf2"><span class="sw" style="background:var(--cbs)"></span>
-        <div><div class="nm">CBS · 103B</div><div class="de">2 capas · ø16</div></div></div>
-      <div class="tipo"><span class="sw" style="background:var(--cbi)"></span>
-        <div><div class="nm">CBI · 103A</div><div class="de">1 capa · ø18</div></div></div>
-      <div class="tipo"><span class="sw" style="background:var(--es)"></span>
-        <div><div class="nm">ES · 104D</div><div class="de">3 zonas @</div></div></div>
+      <!-- CBI colapsado -->
+      <div class="comp">
+        <div class="ch"><span class="drag">⠿</span><span class="sw" style="background:var(--cbi)"></span>
+          <div><div class="nm">CBI · 103A</div><div class="de">inferior · 1 capa · ø18</div></div>
+          <span class="sp"></span><button class="mini" title="Duplicar">⧉</button><button class="mini" title="Quitar">🗑</button></div>
+        <div class="body"></div>
+      </div>
+
+      <!-- ES colapsado -->
+      <div class="comp">
+        <div class="ch"><span class="drag">⠿</span><span class="sw" style="background:var(--es)"></span>
+          <div><div class="nm">ES · 104D</div><div class="de">estribo · 3 zonas @ · ø8</div></div>
+          <span class="sp"></span><button class="mini" title="Duplicar">⧉</button><button class="mini" title="Quitar">🗑</button></div>
+        <div class="body"></div>
+      </div>
+
+      <button class="addcomp">＋ Agregar componente</button>
+      <div class="note" style="margin-top:8px">Arrastra ⠿ para reordenar. Selecciona un componente para editar sus propiedades aquí.</div>
     </div>
 
-    <!-- CENTRO: 3 vistas de proyección -->
-    <div id="vistas">
+    <!-- CENTRO: 4 CUADRANTES -->
+    <div id="quad">
       <div id="ctools">
-        <button class="ctool on" title="Colocar figura tal cual + rotar">✋ Colocar</button>
-        <button class="ctool" title="Definir rango con 2 clics (distribución)">↔ Rango</button>
-        <button class="ctool" title="Rotar la figura (barra espaciadora)">⟳ Rotar</button>
+        <button class="ctool on" title="Colocar la figura tal cual + rotar">✋ Colocar</button>
+        <button class="ctool" title="Definir rango con 2 clics">↔ Rango</button>
+        <button class="ctool" title="Rotar (barra espaciadora)">⟳ Rotar</button>
         <button class="ctool">🧲 Snap</button>
       </div>
 
-      <!-- ELEVACIÓN (grande, izq) -->
-      <div class="vista big">
-        <div class="vtitle">ELEVACIÓN · plano X-Y (largo × alto)</div>
+      <!-- 1.1 arriba-izq: SECCIÓN / corte (X-Z para viga; en muro sería la cara X-Y) -->
+      <div class="vista">
+        <div class="vtitle">SECCIÓN · corte de la pieza (X-Z)</div>
+        <div class="vaxes">Z →  ·  Y ↑</div>
+        <div class="vhint">aquí dibujas el recorrido del estribo</div>
+        <svg viewBox="0 0 360 300" preserveAspectRatio="xMidYMid meet">
+          <rect class="horm" x="120" y="50" width="120" height="200" rx="2"/>
+          <rect class="recub" x="130" y="60" width="100" height="180"/>
+          <path class="bar barES" d="M138,74 L130,66 M130,66 L130,240 L230,240 L230,66 L142,66 M142,66 L150,74"/>
+          <circle cx="142" cy="70" r="5" fill="var(--cbs)"/><circle cx="180" cy="70" r="5" fill="var(--cbs)"/><circle cx="218" cy="70" r="5" fill="var(--cbs)"/>
+          <circle cx="142" cy="82" r="5" fill="var(--cbs)"/><circle cx="180" cy="82" r="5" fill="var(--cbs)"/><circle cx="218" cy="82" r="5" fill="var(--cbs)"/>
+          <circle cx="142" cy="234" r="5.5" fill="var(--cbi)"/><circle cx="172" cy="234" r="5.5" fill="var(--cbi)"/><circle cx="188" cy="234" r="5.5" fill="var(--cbi)"/><circle cx="218" cy="234" r="5.5" fill="var(--cbi)"/>
+          <text class="dim" x="180" y="272" text-anchor="middle">Ancho 30 · Alto 60</text>
+        </svg>
+      </div>
+
+      <!-- 1.2 arriba-der: VISTA A LO LARGO (Y-Z... es la elevación lateral / a lo largo) -->
+      <div class="vista">
+        <div class="vtitle">A LO LARGO · elevación (Y-Z)</div>
         <div class="vaxes">X →  ·  Y ↑</div>
         <div class="vhint">arrastra tipología aquí · clic para anclar</div>
-        <svg viewBox="0 0 640 420" preserveAspectRatio="xMidYMid meet">
-          <!-- hormigón (largo x alto) -->
-          <rect class="horm" x="60" y="120" width="520" height="180" rx="2"/>
-          <rect class="recub" x="72" y="132" width="496" height="156"/>
-          <!-- cabezales superiores (2 capas) -->
-          <path class="bar barCBS" d="M78,150 L78,142 M78,142 L562,142 M562,142 L562,150"/>
-          <path class="bar barCBS" d="M78,160 L562,160"/>
-          <!-- cabezales inferiores -->
-          <path class="bar barCBI" d="M78,268 L78,276 M78,268 L562,268 M562,268 L562,276"/>
-          <!-- estribos (líneas verticales a lo largo) -->
+        <svg viewBox="0 0 620 300" preserveAspectRatio="xMidYMid meet">
+          <rect class="horm" x="40" y="90" width="540" height="130" rx="2"/>
+          <rect class="recub" x="52" y="102" width="516" height="106"/>
+          <path class="bar barCBS" d="M58,120 L58,112 M58,112 L562,112 M562,112 L562,120"/>
+          <path class="bar barCBS" d="M58,130 L562,130"/>
+          <path class="bar barCBI" d="M58,188 L58,196 M58,188 L562,188 M562,188 L562,196"/>
           <g class="bar barES">
-            <path d="M100,135 L100,285"/><path d="M120,135 L120,285"/><path d="M140,135 L140,285"/>
-            <path d="M300,135 L300,285"/><path d="M330,135 L330,285"/><path d="M360,135 L360,285"/>
-            <path d="M500,135 L500,285"/><path d="M520,135 L520,285"/><path d="M540,135 L540,285"/>
+            <path d="M80,105 L80,205"/><path d="M100,105 L100,205"/><path d="M120,105 L120,205"/>
+            <path d="M300,105 L300,205"/><path d="M330,105 L330,205"/><path d="M360,105 L360,205"/>
+            <path d="M500,105 L500,205"/><path d="M520,105 L520,205"/><path d="M540,105 L540,205"/>
           </g>
-          <!-- cota de largo -->
-          <line class="dimL" x1="60" y1="330" x2="580" y2="330"/>
-          <text class="dim" x="300" y="345" text-anchor="middle">Largo 600 cm</text>
-          <!-- ghost de figura siendo colocada -->
-          <path class="ghostbar" d="M200,200 L200,192 M200,192 L420,192 M420,192 L420,200"/>
-          <circle class="gpt" cx="200" cy="192" r="3"/><circle class="gpt" cx="420" cy="192" r="3"/>
+          <line class="dimL" x1="40" y1="245" x2="580" y2="245"/>
+          <text class="dim" x="310" y="260" text-anchor="middle">Largo 600 cm</text>
+          <path class="ghostbar" d="M200,155 L200,147 M200,147 L420,147 M420,147 L420,155"/>
+          <circle class="gpt" cx="200" cy="147" r="3"/><circle class="gpt" cx="420" cy="147" r="3"/>
         </svg>
       </div>
 
-      <!-- PLANTA (arriba der) -->
+      <!-- 2.1 abajo-izq: PLANTA (X-Y) -->
       <div class="vista">
-        <div class="vtitle">PLANTA · plano X-Z (largo × ancho)</div>
+        <div class="vtitle">PLANTA · vista superior (X-Y)</div>
         <div class="vaxes">X →  ·  Z ↑</div>
-        <svg viewBox="0 0 620 220" preserveAspectRatio="xMidYMid meet">
-          <rect class="horm" x="50" y="70" width="520" height="80" rx="2"/>
-          <rect class="recub" x="60" y="80" width="500" height="60"/>
-          <!-- cabezales repartidos en el ancho -->
-          <path class="bar barCBS" d="M66,90 L554,90"/>
-          <path class="bar barCBS" d="M66,110 L554,110"/>
-          <path class="bar barCBS" d="M66,130 L554,130"/>
-          <!-- estribos (líneas transversales) -->
+        <svg viewBox="0 0 620 260" preserveAspectRatio="xMidYMid meet">
+          <rect class="horm" x="40" y="90" width="540" height="80" rx="2"/>
+          <rect class="recub" x="52" y="100" width="516" height="60"/>
+          <path class="bar barCBS" d="M58,110 L562,110"/>
+          <path class="bar barCBS" d="M58,130 L562,130"/>
+          <path class="bar barCBS" d="M58,150 L562,150"/>
           <g class="bar barES" opacity=".6">
-            <path d="M100,80 L100,140"/><path d="M120,80 L120,140"/><path d="M300,80 L300,140"/>
-            <path d="M330,80 L330,140"/><path d="M500,80 L500,140"/><path d="M520,80 L520,140"/>
+            <path d="M80,100 L80,160"/><path d="M100,100 L100,160"/><path d="M300,100 L300,160"/>
+            <path d="M330,100 L330,160"/><path d="M500,100 L500,160"/><path d="M520,100 L520,160"/>
           </g>
         </svg>
       </div>
 
-      <!-- SECCIÓN (abajo der) -->
-      <div class="vista">
-        <div class="vtitle">SECCIÓN · plano Y-Z (ancho × alto)</div>
-        <div class="vaxes">Z →  ·  Y ↑</div>
-        <div class="vhint">aquí se dibuja el recorrido del estribo</div>
-        <svg viewBox="0 0 300 240" preserveAspectRatio="xMidYMid meet">
-          <rect class="horm" x="90" y="40" width="120" height="170" rx="2"/>
-          <rect class="recub" x="100" y="50" width="100" height="150"/>
-          <!-- estribo cerrado (recorrido perimetral) con doble gancho / / -->
-          <path class="bar barES" d="M108,64 L100,56 M100,56 L100,200 L200,200 L200,56 L112,56 M112,56 L120,64"/>
-          <!-- cabezales sup (puntos = corte) -->
-          <circle cx="112" cy="60" r="5" fill="var(--cbs)"/><circle cx="150" cy="60" r="5" fill="var(--cbs)"/><circle cx="188" cy="60" r="5" fill="var(--cbs)"/>
-          <circle cx="112" cy="72" r="5" fill="var(--cbs)"/><circle cx="150" cy="72" r="5" fill="var(--cbs)"/><circle cx="188" cy="72" r="5" fill="var(--cbs)"/>
-          <!-- cabezales inf -->
-          <circle cx="112" cy="196" r="5.5" fill="var(--cbi)"/><circle cx="140" cy="196" r="5.5" fill="var(--cbi)"/><circle cx="160" cy="196" r="5.5" fill="var(--cbi)"/><circle cx="188" cy="196" r="5.5" fill="var(--cbi)"/>
-          <text class="dim" x="150" y="228" text-anchor="middle">Ancho 30 · Alto 60</text>
+      <!-- 2.2 abajo-der: 3D EN VIVO -->
+      <div class="vista d3">
+        <div class="vtitle d3">3D · en vivo</div>
+        <div class="vaxes d3">arrastra = rotar</div>
+        <svg viewBox="0 0 620 300" preserveAspectRatio="xMidYMid meet">
+          <g opacity="0.85">
+            <polygon points="70,120 500,95 570,140 140,165" fill="rgba(150,160,175,.14)" stroke="#3a4658" stroke-width="1"/>
+            <polygon points="140,165 570,140 570,240 140,265" fill="rgba(150,160,175,.09)" stroke="#3a4658" stroke-width="1"/>
+            <polygon points="500,95 570,140 570,240 500,195" fill="rgba(150,160,175,.05)" stroke="#3a4658" stroke-width="1"/>
+          </g>
+          <line x1="92" y1="138" x2="524" y2="112" stroke="#3f7fd0" stroke-width="5" stroke-linecap="round"/>
+          <line x1="106" y1="146" x2="538" y2="120" stroke="#3f7fd0" stroke-width="5" stroke-linecap="round"/>
+          <line x1="120" y1="245" x2="548" y2="218" stroke="#26a69a" stroke-width="6" stroke-linecap="round"/>
+          <g stroke="#ef7d3a" stroke-width="3.5" fill="none" stroke-linecap="round">
+            <path d="M150,132 L158,250 M158,250 L205,246 M205,246 L197,127"/>
+            <path d="M300,122 L308,240 M308,240 L355,236 M355,236 L347,117"/>
+            <path d="M470,110 L478,228 M478,228 L525,224 M525,224 L517,105"/>
+          </g>
         </svg>
       </div>
-    </div>
-
-    <!-- DERECHA: propiedades del componente seleccionado -->
-    <div id="props">
-      <div class="pt">CBS · Cabezal superior</div>
-      <div class="psub">Componente seleccionado · figura 103B</div>
-
-      <div class="grid2">
-        <div class="fld"><label>Figura</label><input value="103B"></div>
-        <div class="fld"><label>φ mm</label><select><option>8</option><option selected>16</option><option>18</option></select></div>
-      </div>
-      <div class="fld"><label>Cara / anclaje</label>
-        <div class="radial"><button class="on">Sup</button><button>Inf</button><button>Lateral</button></div></div>
-      <div class="fld"><label>Recubrimiento (override) cm</label><input placeholder="global (4)"></div>
-
-      <!-- Modo de distribución (según la tipología) -->
-      <div class="modebox">
-        <div class="mh"><span>Distribución</span><span class="chip">CAPAS</span></div>
-        <div class="grid2">
-          <div class="fld" style="margin-bottom:0"><label>N° capas</label><input value="2"></div>
-          <div class="fld" style="margin-bottom:0"><label>N° barras/capa</label><input value="3"></div>
-        </div>
-        <div class="fld" style="margin-top:8px;margin-bottom:0"><label>Separación entre capas cm</label><input value="4"></div>
-        <div class="note">Las capas se apilan hacia el núcleo. Se agregan/quitan aquí.</div>
-      </div>
-
-      <div class="note" style="margin-bottom:10px">Otros modos según la tipología:
-        <b>ES</b> = lineal @ (zonas); <b>malla/traba muro</b> = área 2D (@h·@v, tresbolillo);
-        <b>columna</b> = perímetro; <b>bastón</b> = puntual.</div>
-
-      <div class="fld"><label>Dimensiones (figura 103B)</label></div>
-      <div class="grid2">
-        <div class="fld" style="margin-bottom:0"><label>A (pata)</label><input value="30"></div>
-        <div class="fld" style="margin-bottom:0"><label>C (pata)</label><input value="30"></div>
-      </div>
-      <div class="fld" style="margin-top:8px"><label>B (largo)</label><input value="592" disabled title="auto = largo − recubr."></div>
-      <div class="note">B es AUTO (deriva del largo). A/C fijas (patas). Ángulos y R vienen de la figura.</div>
     </div>
 
   </div>
 
   <!-- FOOTER -->
   <div id="footer">
-    <span style="font-size:11.5px;color:var(--muted)">Componentes: <b>3</b> · el 3D sólido se arma combinando las 3 vistas</span>
+    <span style="font-size:11.5px;color:var(--muted)">Componentes: <b>3</b> · 77 barras · 264,4 kg · el 3D se arma combinando las vistas</span>
     <div class="spacer"></div>
-    <button class="btn ghost">🧊 Ver en 3D</button>
     <button class="btn ghost">💾 Guardar template</button>
     <button class="btn primary">✓ Usar en el despiece</button>
   </div>
 
+  <datalist id="figs"><option value="101A"><option value="102A"><option value="103A"><option value="103B"><option value="104D"><option value="106A"></datalist>
 </div></div>
 
 <script>
-  // Maqueta: interacción cosmética (herramientas del canvas, seleccionar tipología).
+  document.querySelectorAll('.comp .ch').forEach(function(h){
+    h.addEventListener('click',function(e){ if(e.target.classList.contains('mini'))return; h.parentElement.classList.toggle('open'); });
+  });
   document.querySelectorAll('.ctool').forEach(function(b){
-    if(b.textContent.indexOf('Snap')>=0) return;
-    b.addEventListener('click',function(){
-      document.querySelectorAll('.ctool').forEach(function(x){ if(x.textContent.indexOf('Snap')<0) x.classList.remove('on'); });
-      b.classList.add('on');
-    });
+    if(b.textContent.indexOf('Snap')>=0)return;
+    b.addEventListener('click',function(){ document.querySelectorAll('.ctool').forEach(function(x){if(x.textContent.indexOf('Snap')<0)x.classList.remove('on');}); b.classList.add('on'); });
+  });
+  document.querySelectorAll('.tipbtn').forEach(function(b){
+    b.addEventListener('click',function(){ document.querySelectorAll('.tipbtn').forEach(function(x){x.classList.remove('on');}); b.classList.add('on'); });
   });
 </script>
 </body>
