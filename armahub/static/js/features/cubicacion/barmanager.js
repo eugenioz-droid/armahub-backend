@@ -500,7 +500,7 @@ function _renderPlano() {
   // th compacto para parámetros geométricos (A-I, α, R) y numéricos chicos (φ, Cant).
   var thNum = 'text-align:right; padding:3px 3px;';
   let html = '<tbody><tr><td style="padding:0; width:0; max-width:0;"><div style="' + scrollWrap + '">' +
-    '<table style="width:100%; min-width:1180px; font-size:11px; border-collapse:collapse;">' +
+    '<table style="width:100%; min-width:1230px; font-size:11px; border-collapse:collapse;">' +
     '<thead><tr style="color:#666; background:#fafafa; position:sticky; top:0;">' +
     colSel +
     '<th style="text-align:left; padding:3px 6px;">Piso</th>' +
@@ -508,6 +508,7 @@ function _renderPlano() {
     '<th style="text-align:left; padding:3px 6px;">Ciclo</th>' +
     '<th style="text-align:left; padding:3px 6px;">Eje</th>' +
     '<th style="text-align:left; padding:3px 6px;">Tipología</th>' +
+    '<th style="text-align:left; padding:3px 3px;" title="Sufijo complementario de la tipología (se concatena en el export)">Suf</th>' +
     '<th style="' + thNum + '">φ</th>' +
     '<th style="' + thNum + '">Cant</th>' +
     '<th style="text-align:right; padding:3px 6px;">Largo</th>' +
@@ -711,6 +712,20 @@ function _bmFilaBarraHTML(b, editando, conUbicacion) {
       '" data-barra-id="' + b.id + '" data-campo="nombre_plano" id="bmcell-' + b.id + '-nombre_plano" onchange="bmRegistrarCambio(this)" ' +
       'style="width:120px; font-size:11px; padding:1px 3px;' + bgP + '" /></td>';
   }
+  // Celda SUFIJO de tipología (suf_tipo). Complementa la marca sin alterarla; se concatena a
+  // la tipología SOLO en el export. Va junto a la columna Tipología.
+  function _celdaSufTipo() {
+    var val = b.suf_tipo;
+    if (!editando) {
+      return '<td style="padding:2px 4px; font-size:10px; color:#8d6e63;" title="Sufijo de tipología (' + (val || 'sin sufijo') + ')">' + (val || '') + '</td>';
+    }
+    var efS = (typeof bmValorEfectivoCelda === 'function') ? bmValorEfectivoCelda(b.id, 'suf_tipo', val) : { valor: val, tocado: false };
+    var bgS = efS.tocado ? ' background:#fff3cd;' : '';
+    var v = (efS.valor == null) ? '' : String(efS.valor).replace(/"/g, '&quot;');
+    return '<td style="padding:1px 3px;"><input type="text" value="' + v + '" maxlength="30" placeholder="A / sup…" ' +
+      'data-barra-id="' + b.id + '" data-campo="suf_tipo" id="bmcell-' + b.id + '-suf_tipo" onchange="bmRegistrarCambio(this)" ' +
+      'style="width:46px; font-size:11px; padding:1px 3px;' + bgS + '" title="Sufijo complementario (se concatena a la tipología en el export)" /></td>';
+  }
   // Celda del LARGO. Si hay cambios de geometría pendientes, muestra el largo YA
   // recalculado (suma de lados efectivos) en color, con nota "se guardará así".
   // Si no, el largo de memoria. Evita el desconcierto de ver el largo viejo (192)
@@ -755,6 +770,7 @@ function _bmFilaBarraHTML(b, editando, conUbicacion) {
   var html = '<tr id="bmrow-' + b.id + '" style="border-top:1px solid #f0f0f0; ' + editadaBorde + selBg + '"' + editadaTitle + '>' +
     ubic +
     '<td style="padding:2px 6px; font-weight:600;">' + (conUbicacion && b.editado_por ? '✏️ ' : '') + (b.marca || '—') + '</td>' +
+    _celdaSufTipo() +                          // sufijo complementario, junto a Tipología
     _celdaEdit('diam', b.diam, 0, 40) +        // φ angosto
     _celdaEdit('cant_total', b.cant_total, 0, 44) +   // Cant angosto
     _celdaLargo();
@@ -824,10 +840,11 @@ function _renderDetail(cont, elem, barras) {
       'Ciclo ' + c + ' · ' + grp.length + ' items · ' + _fmt(sumCant) + ' barras · ' + _fmt(sumKg, 1) + ' kg' +
       '</div>' +
       '<div style="' + scrollWrap + '">' +
-      '<table style="width:100%; min-width:980px; font-size:11px; border-collapse:collapse;">' +
+      '<table style="width:100%; min-width:1030px; font-size:11px; border-collapse:collapse;">' +
       '<thead><tr style="color:#666; background:#fafafa;">' +
       '<th style="text-align:left; padding:2px 6px; position:sticky; left:0; background:#fafafa;">ID</th>' +
       '<th style="text-align:left; padding:2px 6px;">Tipología</th>' +
+      '<th style="text-align:left; padding:2px 3px;" title="Sufijo complementario de la tipología (se concatena en el export)">Suf</th>' +
       '<th style="text-align:right; padding:2px 3px;">φ</th>' +
       '<th style="text-align:right; padding:2px 3px;">Cant</th>' +
       '<th style="text-align:right; padding:2px 6px;">Largo</th>' +

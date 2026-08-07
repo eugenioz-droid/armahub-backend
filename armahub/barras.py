@@ -1525,6 +1525,7 @@ class BarraUpdate(BaseModel):
     ang4: Optional[float] = None
     radio: Optional[float] = None
     nombre_plano: Optional[str] = None   # nombre legible del plano (editable en Bar Manager)
+    suf_tipo: Optional[str] = None       # sufijo complementario de la tipología (A/B/inf/sup/comentario corto)
 
 
 _GEOM_FIELDS = ["figura", "dim_a", "dim_b", "dim_c", "dim_d", "dim_e", "dim_f",
@@ -1592,6 +1593,13 @@ def _editar_barra_impl(barra_id: int, body: BarraUpdate, user):
                 np_val = (campos["nombre_plano"] or "").strip()[:120] or None
                 sets.append("nombre_plano = %s"); params.append(np_val)
                 cambios.append(f"plano: →{np_val or '(vacío)'}")
+
+            # suf_tipo: sufijo complementario de tipología (se concatena a MARCA solo en el export;
+            # NO altera el sistema fijo de tipologías). Texto corto; vacío → NULL.
+            if "suf_tipo" in campos:
+                st_val = (campos["suf_tipo"] or "").strip()[:30] or None
+                sets.append("suf_tipo = %s"); params.append(st_val)
+                cambios.append(f"suf_tipo: →{st_val or '(vacío)'}")
 
             # COHERENCIA cant/mult/cant_total: en el Bar Manager el usuario edita la CANTIDAD (que
             # es cant_total) y no ve cant ni mult. Al cambiar cant_total sin tocar cant/mult, estos
