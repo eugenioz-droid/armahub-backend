@@ -194,7 +194,9 @@ def crear_calculista(body: CalculistaCreate, user=Depends(require_admin_or_admin
     except Exception as e:
         if "idx_calculistas_nombre" in str(e):
             raise HTTPException(status_code=400, detail="Ya existe un calculista con ese nombre")
-        raise HTTPException(status_code=400, detail=str(e))
+        # M0.8: detalle al log, mensaje genérico al cliente
+        import logging as _l; _l.getLogger("armahub.calculistas").error("crear_calculista FALLO: %s", e)
+        raise HTTPException(status_code=400, detail="No se pudo crear el calculista.")
 
 
 @router.patch("/calculistas/{calculista_id}")

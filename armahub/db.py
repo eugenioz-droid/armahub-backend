@@ -1549,7 +1549,8 @@ def users_count() -> int:
 
 
 def audit(usuario: str, accion: str, detalle: str = None, entidad: str = None, entidad_id: str = None):
-    """Registra una acción en el audit_log. Fire-and-forget, no falla si la tabla no existe."""
+    """Registra una acción en el audit_log. Fire-and-forget: no interrumpe la operación
+    principal, pero un fallo NO puede ser invisible (M0.9) — queda en el log del server."""
     try:
         with get_conn() as conn:
             with conn.cursor() as cur:
@@ -1557,5 +1558,6 @@ def audit(usuario: str, accion: str, detalle: str = None, entidad: str = None, e
                     INSERT INTO audit_log (usuario, accion, detalle, entidad, entidad_id)
                     VALUES (%s, %s, %s, %s, %s)
                 """, (usuario, accion, detalle, entidad, entidad_id))
-    except Exception:
-        pass
+    except Exception as e:
+        import logging as _l
+        _l.getLogger("armahub.audit").warning("audit_log NO registrado (%s/%s): %s", usuario, accion, e)

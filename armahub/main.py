@@ -103,6 +103,9 @@ def create_app() -> FastAPI:
 
     @app.api_route("/health", methods=["GET", "HEAD"])
     def health():
+        # M0.6 — endpoint público: solo estados ok/error por componente. El detalle
+        # (mensajes de excepción, nombres de bucket, remitente) va al log, no al cliente.
+        _hlog = logging.getLogger("armahub.health")
         result = {"status": "ok", "db": "ok"}
         try:
             with get_conn() as conn:
@@ -110,12 +113,26 @@ def create_app() -> FastAPI:
                     cur.execute("SELECT 1")
         except Exception as e:
             result["db"] = "error"
-            result["detail"] = str(e)
-        result.update(storage.health())
-        result.update(mailer.health())
+            _hlog.error("health db error: %s", e)
+        sh = storage.health()
+        result["storage"] = sh.get("storage", "?")
+        if sh.get("detail"):
+            _hlog.error("health storage error: %s", sh.get("detail"))
+        mh = mailer.health()
+        result["mail"] = mh.get("mail", "?")
+        if result["db"] != "ok" or result["storage"] not in ("ok", "not-configured"):
+            result["status"] = "error"
         return result
     # --- Request logging middleware ---
     logger = logging.getLogger("armahub.access")
+
+    # M0.7 — security headers en toda respuesta (incl. el 500 genérico).
+    def _security_headers(response):
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Referrer-Policy"] = "same-origin"
+        response.headers["Strict-Transport-Security"] = "max-age=15552000"
+        return response
 
     @app.middleware("http")
     async def log_requests(request: Request, call_next):
@@ -131,11 +148,11 @@ def create_app() -> FastAPI:
             # traceback completo (para diagnosticar) y se devuelve JSON siempre.
             ms = round((time.time() - start) * 1000)
             logger.error("UNHANDLED %s %s %dms\n%s", request.method, request.url.path, ms, traceback.format_exc())
-            return JSONResponse(status_code=500, content={"detail": "Error interno del servidor. Ya quedó registrado — vuelve a intentar en un momento."})
+            return _security_headers(JSONResponse(status_code=500, content={"detail": "Error interno del servidor. Ya quedó registrado — vuelve a intentar en un momento."}))
         ms = round((time.time() - start) * 1000)
         if not request.url.path.startswith(("/static", "/health")):
             logger.info("%s %s %s %dms", request.method, request.url.path, response.status_code, ms)
-        return response
+        return _security_headers(response)
 
     return app
 

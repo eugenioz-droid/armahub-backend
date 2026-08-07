@@ -206,7 +206,9 @@ def crear_constructora(body: ConstructoraCreate, user=Depends(_require_gestion_c
     except Exception as e:
         if "idx_constructoras_nombre" in str(e):
             raise HTTPException(status_code=400, detail="Ya existe una constructora con ese nombre")
-        raise HTTPException(status_code=400, detail=str(e))
+        # M0.8: detalle al log, mensaje genérico al cliente
+        import logging as _l; _l.getLogger("armahub.constructoras").error("crear_constructora FALLO: %s", e)
+        raise HTTPException(status_code=400, detail="No se pudo crear la constructora.")
 
 
 @router.patch("/constructoras/{constructora_id}")

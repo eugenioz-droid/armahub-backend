@@ -19,8 +19,10 @@ Bootstrap:
 """
 
 import os
+import time
 import jwt
-from fastapi import APIRouter, Depends, HTTPException
+from datetime import datetime, timedelta, timezone
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from passlib.context import CryptContext
 
@@ -28,21 +30,36 @@ from .db import get_conn, users_count, audit
 
 router = APIRouter()
 
-JWT_SECRET = os.getenv("JWT_SECRET", "dev-secret-change-me")
+# M0.1 — la app NO arranca sin secreto real: un default público permitiría a
+# cualquiera firmar tokens admin.
+JWT_SECRET = os.getenv("JWT_SECRET", "")
+if not JWT_SECRET or JWT_SECRET == "dev-secret-change-me":
+    raise RuntimeError(
+        "JWT_SECRET no configurado (o con valor de desarrollo). "
+        "Define la variable de entorno JWT_SECRET antes de arrancar."
+    )
 JWT_ALG = "HS256"
+TOKEN_HORAS = 8  # M0.3 — vida del token; el front lo renueva en silencio antes de vencer
 
 pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
 auth_scheme = HTTPBearer()
 
 
 def create_token(email: str, role: str) -> str:
-    return jwt.encode({"email": email, "role": role}, JWT_SECRET, algorithm=JWT_ALG)
+    now = datetime.now(timezone.utc)
+    return jwt.encode(
+        {"email": email, "role": role, "iat": now, "exp": now + timedelta(hours=TOKEN_HORAS)},
+        JWT_SECRET, algorithm=JWT_ALG,
+    )
 
 
 def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(auth_scheme)):
     token = credentials.credentials
     try:
-        payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALG])
+        # require exp: tokens antiguos (sin expiración) dejan de valer → re-login único
+        payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALG], options={"require": ["exp"]})
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Sesión expirada. Vuelve a iniciar sesión.")
     except Exception:
         raise HTTPException(status_code=401, detail="Token inválido")
     # Always read fresh role from DB to avoid JWT/BD desync
@@ -90,8 +107,31 @@ def _rol_proyecto_usuarios(role: str) -> str:
     return mapped if mapped in _PROYECTO_USUARIOS_ROLES else "cubicador"
 
 
+# M0.5 — rate limit de login en memoria (una sola instancia en Render): máx. 5
+# intentos por IP por minuto. Suficiente contra fuerza bruta; sin dependencias.
+_LOGIN_MAX_INTENTOS = 5
+_LOGIN_VENTANA_SEG = 60
+_login_intentos = {}  # ip -> [timestamps recientes]
+
+
+def _rate_limit_login(request: Request):
+    ip = (request.headers.get("x-forwarded-for") or
+          (request.client.host if request.client else "?")).split(",")[0].strip()
+    now = time.time()
+    recientes = [t for t in _login_intentos.get(ip, []) if now - t < _LOGIN_VENTANA_SEG]
+    if len(recientes) >= _LOGIN_MAX_INTENTOS:
+        _login_intentos[ip] = recientes
+        raise HTTPException(status_code=429, detail="Demasiados intentos. Espera un minuto y reintenta.")
+    recientes.append(now)
+    _login_intentos[ip] = recientes
+    if len(_login_intentos) > 1000:  # poda: no crecer sin límite
+        for k in [k for k, v in list(_login_intentos.items()) if not v or now - v[-1] > _LOGIN_VENTANA_SEG]:
+            _login_intentos.pop(k, None)
+
+
 @router.post("/auth/login")
-def login(email: str, password: str):
+def login(request: Request, email: str, password: str):
+    _rate_limit_login(request)
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -154,31 +194,18 @@ def register(
 
 
 @router.post("/auth/signup")
-def signup(email: str, password: str, nombre: str = ""):
-    """
-    Registro público. Crea usuario con rol 'usc'.
-    El admin puede cambiar el rol después desde el panel.
-    """
-    email = email.strip().lower()
-    if not email or not password:
-        raise HTTPException(status_code=400, detail="Email y contraseña son requeridos")
-    if len(password) < 6:
-        raise HTTPException(status_code=400, detail="La contraseña debe tener al menos 6 caracteres")
+def signup():
+    """M0.2 — Registro público DESHABILITADO: los usuarios los crea un administrador
+    (/auth/register). Se mantiene la ruta para responder con mensaje claro."""
+    raise HTTPException(status_code=403, detail="Registro deshabilitado. Solicita tu cuenta a un administrador.")
 
-    password_hash = pwd_context.hash(password)
 
-    try:
-        with get_conn() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    "INSERT INTO users (email, password_hash, role) VALUES (%s, %s, 'usc')",
-                    (email, password_hash),
-                )
-        audit(email, "signup", "auto-registro usc", "usuario", email)
-        token = create_token(email, "usc")
-        return {"ok": True, "access_token": token, "token_type": "bearer", "role": "usc"}
-    except Exception:
-        raise HTTPException(status_code=400, detail="Este email ya está registrado")
+@router.post("/auth/renew")
+def renew(user=Depends(get_current_user)):
+    """M0.3 — Renovación silenciosa: emite un token fresco (8h) para la sesión activa.
+    El rol viene refrescado desde la BD por get_current_user."""
+    return {"access_token": create_token(user["email"], user.get("role", "")),
+            "token_type": "bearer", "role": user.get("role")}
 
 
 @router.get("/me")

@@ -1368,8 +1368,9 @@ def bulk_delete_cargas(body: BulkDeleteCargasRequest, user=Depends(get_current_u
             "sin_permiso": sin_permiso,
             "no_encontradas": no_encontradas,
         }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error al eliminar cargas: {str(e)}")
+    except Exception:
+        _log.error("eliminar_cargas FALLO:\n%s", traceback.format_exc())
+        raise HTTPException(status_code=500, detail="Error al eliminar cargas. Quedó registrado — reintenta en un momento.")
 
 
 class MoverCargasRequest(BaseModel):
@@ -1467,9 +1468,9 @@ def mover_cargas(body: MoverCargasRequest, user=Depends(get_current_user)):
         }
     except HTTPException:
         raise
-    except Exception as e:
-        print(f"[mover_cargas] Error: {e}")
-        raise HTTPException(status_code=500, detail=f"Error al mover cargas: {str(e)}")
+    except Exception:
+        _log.error("mover_cargas FALLO:\n%s", traceback.format_exc())
+        raise HTTPException(status_code=500, detail="Error al mover cargas. Quedó registrado — reintenta en un momento.")
 
 
 class CambiarSectorRequest(BaseModel):
@@ -1539,11 +1540,10 @@ def editar_barra(barra_id: int, body: BarraUpdate, user=Depends(get_current_user
     except HTTPException:
         raise   # 403/404/409 son respuestas legítimas, no errores internos
     except Exception as e:
-        # Diagnóstico: cualquier otra excepción se loguea con traceback y se
-        # devuelve su mensaje real al front (para identificar la causa exacta del
-        # 500 que rompía el guardado masivo). TODO: acotar el detalle una vez fijado.
+        # M0.8: el traceback completo queda en el log; al cliente solo mensaje
+        # genérico — no exponer tipos/estructura interna.
         _log.error("editar_barra id=%s FALLO: %s\n%s", barra_id, e, traceback.format_exc())
-        raise HTTPException(status_code=500, detail="Error al guardar la barra: " + type(e).__name__ + ": " + str(e))
+        raise HTTPException(status_code=500, detail="Error al guardar la barra. Quedó registrado — reintenta en un momento.")
 
 
 def _editar_barra_impl(barra_id: int, body: BarraUpdate, user):
