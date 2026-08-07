@@ -136,6 +136,26 @@ mismo. Un template instanciado (elementos_template) referencia opcionalmente el 
 - Maqueta v2 en `static/demo/template3d.html` refleja todo lo anterior. Sirve de referencia para que
   la implementación calce (método anti-desviación §9).
 
+## 0-6ter. Dimensiones de figura DINÁMICAS por componente (discovery UI v3, 08-ago)
+
+Hallazgo del usuario: **cada figura funciona distinto** — sus dimensiones dependen de sus `parciales`
+(catalogo.py ya los define): 101A usa [A]; 103A usa [A,B,C]; 104D usa [A,B,C,D]. En un cabezal de viga
+(típ. fig 103) A y C = patas del gancho (FIJAS, las pone el usuario), B = tramo largo (AUTO, derivado
+del largo de la viga − recubrimientos).
+
+**Diseño:** el componente muestra DINÁMICAMENTE los campos de dimensión de LA FIGURA elegida (leídos de
+`figuras_catalogo.parciales`). Cada dimensión tiene un toggle **Fija / Auto**:
+- Fija = el usuario ingresa el valor.
+- Auto = el motor la deriva del elemento (ej. B = largo − recubrimientos; en un estribo el perímetro
+  deriva de ancho/alto − recubrimientos).
+Qué es auto por defecto depende de la figura + rol (cabezal vs estribo). El usuario puede sobrescribir.
+Esto RESUELVE "distintas figuras funcionan diferente" sin hardcodear cada figura: se lee del catálogo.
+
+**Resumen de barras a crear (reincorporado):** el usuario SÍ quiere ver las barras resultantes con sus
+dimensiones, en vivo. NO es el Bar Manager: es un resumen COMPACTO abajo del canvas (tip/figura/φ/cant/
+A/B/C/D/largo/kg) que se actualiza con cada cambio de parámetro. Complementa el 3D (uno ve la forma, el
+otro las medidas exactas que se van a fabricar). Maqueta v3 lo incluye.
+
 ## 1. Correcciones de concepto (errores previos, ahora fijados)
 
 - **R (radio) NO es el radio de doblado de los codos.** En ArmaHub, `radio` es un BOOLEAN por figura
