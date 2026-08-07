@@ -225,6 +225,87 @@ maqueta de componentes ya hecha = modo AJUSTAR. Falta diseñar/maquetar el modo 
 cómo se define una distribución lineal vs malla 2D, cómo se pasan las 3 vistas al motor 3D). Este es el
 núcleo genérico que faltaba.
 
+## 0-10ter. Taxonomía de distribución (usuario 08-ago) — clave del motor
+
+**Orientación al colocar:** cada figura se coloca con la orientación con que se CONSTRUYÓ en el catálogo
+(incluido el estribo). El usuario a lo más no sabrá qué lado queda hacia qué cara del hormigón, pero
+ROTANDO se resuelve. Al cambiar de figura, la orientación la manda el ROL/tipología del componente (no
+el dibujo): un cabezal usa 2-3 figuras, todas mismo rol → cambio seguro. Cambio a rol distinto → avisar.
+
+**Anclaje (cerrado):** (1) colocar la figura tal cual + rotar (barra/botón medio/botón canvas); (2)
+distribución por RANGO con 2 clics (botón "definir rango" → inicio/fin → repetir cada @); (3) colocar la
+barra en la VISTA donde su recorrido es más natural (estribo en sección, cabezal en elevación); las
+otras vistas la reflejan. El 3D se arma solo.
+
+**DOS TIPOS de elemento (como ADetailer — investigación lanzada):**
+- **De DISTRIBUCIÓN:** se repiten con una regla. Modos:
+  - LINEAL 1D a lo largo con @ (estribos; traba de confinamiento en viga/columna = "como estribo").
+  - CAPAS apiladas hacia el núcleo (CABEZALES). Las capas las da la TIPOLOGÍA, no la figura. Se
+    agregan/quitan en el panel de componentes (modo Ajustar).
+  - ÁREA / MALLA 2D con @ en dos direcciones (mallas de muro; TRABAS de MURO = elemento de área,
+    espaciadas en X y Z, posible + capas ajustando la regla).
+- **PUNTUALES:** barras individuales sin regla de repetición (bastones, refuerzos puntuales).
+
+**NO todos los elementos usan capas:** solo cabezales (por tipología). La taxonomía de distribución la
+está precisando un agente (distribución vs puntual, modos, parámetros de cada modo, y una ABSTRACCIÓN
+genérica de "distribución" para que cabezal-con-capas / estribo-lineal / malla-2D / traba-área salgan
+del mismo modelo de datos). Resultado se integra aquí.
+
+## 0-11ter. MODELO GENÉRICO DE DISTRIBUCIÓN (investigación 08-ago) — el corazón del motor
+
+Hallazgo clave: "puntual vs distribución" = CÓMO se coloca la barra (no su forma). El cabezal es
+distribución POR CAPAS (no puntual). La abstracción que unifica viga/muro/columna:
+
+**Componente = figura de barra + CADENA de "distribuidores" (operadores) que se aplican en orden.**
+Cada distribuidor toma un conjunto de placements (poses) y lo multiplica. Un solo motor de expansión
+los aplica en cadena → viga, muro y columna salen del MISMO bucle, sin casos especiales.
+
+```
+Componente {
+  bar_figure_ref,        // la geometría de UNA barra (figura del catálogo) + φ
+  host_ref,              // elemento hospedador (viga/muro/columna) + sistema local
+  anchor { face|axis|corner, cover, u0,v0,w0 },   // dónde arranca la barra base
+  distribution: [ Distributor, ... ]              // cadena, en orden
+}
+Distributor =
+  | Linear   {path, segments:[{from,to,spacing|count}], start/end_offset, justify}  // (a) estribos, trabas confinamiento
+  | Layered  {count, step_vector(→núcleo), gap, per_layer?}                          // (b) CAPAS de cabezal, doble cortina malla
+  | Grid     {surface, spacing_u, spacing_v, pattern:aligned|staggered, stagger, edges} // (c) mallas, trabas de muro
+  | Perimeter{contour, per_face_count | equal_spacing}                                // (d) longitudinales de columna
+  | Points   {positions[], count_each}                                               // (e) puntuales/bastones
+```
+
+**Cada caso real = una cadena:**
+- Estribo c/confinamiento: `[Linear{segments: zonas @}]`
+- Traba de confinamiento: `Linear` que COMPARTE path/@ del estribo, anchor interno.
+- Cabezal (7φ25 en 2 capas): `[Perimeter/Points(7 pos a lo ancho), Layered{count:2, step→abajo, gap}]`
+- Longitudinales columna: `[Perimeter{per_face_count}, Layered?]`
+- Malla muro doble: una FAMILIA de barras por dirección (H y V, más limpio p/cubicar) + `Layered{count:2}` (2 cortinas)
+- Trabas de muro: `[Grid{@h,@v, pattern:"staggered", stagger:0.5}]`, atraviesa el espesor, capas=1
+  (patrón TRESBOLILLO por defecto, NO cuadrícula; "capas" del usuario = la traba conecta las 2 cortinas)
+
+**DOS NIVELES (recomendación firme):**
+1. **TIPOLOGÍA** (viga/muro/columna) = plantilla que conoce la geometría del hormigón y EMITE una lista
+   de componentes con cadenas de distribución POR DEFECTO. Aquí vive el conocimiento de dominio
+   ("cabezal→capas", "estribo→lineal con confinamiento", "muro→malla+trabas"). El usuario coloca
+   TIPOLOGÍAS; ellas instancian componentes; el usuario solo ajusta params (@, n capas, φ).
+2. **COMPONENTE** = figura + cadena de Distributors, editable.
+
+→ El MOTOR es genérico (expande cadenas de Distributors sobre placements). El conocimiento de qué lleva
+una viga/muro vive en las TIPOLOGÍAS, no en el motor. Esto ELIMINA el "motor viga-only" de la maqueta.
+
+**Encaja con la arquitectura ya definida:** la RECETA guardada = `figura + cadena de Distributors +
+params`; el motor la expande a barras al cargar al despiece. Cada Distributor sabe cuántas copias
+genera → kilos/largo por familia salen directo.
+
+**Parámetros por modo** (para el Template Editor / panel de ajuste):
+- Linear: path, length/from-to, @|count, zones[], offsets, justify.
+- Layered: n_layers, gap, step→núcleo, per_layer_count.
+- Grid: surface(paño), @u, @v, pattern, stagger, edge_offsets, n_cortinas.
+- Perimeter: contour, per_face_count | equal_spacing.
+- Points: positions[], count_each.
+- Transversal: cover (offset desde cara), bar (figura+φ).
+
 ## 1. Correcciones de concepto (errores previos, ahora fijados)
 
 - **R (radio) NO es el radio de doblado de los codos.** En ArmaHub, `radio` es un BOOLEAN por figura
