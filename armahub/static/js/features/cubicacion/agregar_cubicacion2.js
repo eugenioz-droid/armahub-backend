@@ -703,6 +703,8 @@ function ac2ActualizarCabecera(){
   show('ac2_bandera', hayLote && !eliminado); show('ac2_guardarBtn', hayLote && !eliminado);
   show('ac2_descartarBtn', hayLote);   // la X (cerrar/volver) sigue disponible siempre
   show('ac2_eliminarBtn', hayLote && !eliminado);   // ya eliminado → no se puede re-eliminar
+  // 🧱 3D Template (Modelador): visible en un despiece BORRADOR (donde se pueden agregar barras).
+  show('ac2_modelador3dBtn', hayLote && !eliminado && !terminado);
   // Editar ciclo/eje: en un despiece BORRADOR (con o sin barras) se puede corregir la ubicación. Con
   // barras es más delicado (reasigna todas), pero también sin barras (recién creado). En
   // terminado/eliminado no aplica.

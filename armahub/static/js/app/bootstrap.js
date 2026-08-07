@@ -330,6 +330,51 @@
         'armahubFeature',
         'catalogo',
         '[ArmaHub] No se pudo cargar catalogo/index.js'
+      ),
+      // Modelador 3D (3D Template) — motor F0 + panel F1. Sin interdependencias al
+      // cargar (cada archivo se registra en window.*); el orden real lo resuelven en
+      // uso. Three.js se carga on-demand desde panel_3d.js.
+      loadScript(
+        'script[data-armahub-feature="modelador-motor-geom"]',
+        '/static/js/features/modelador/motor_geom.js' + suffix,
+        'armahubFeature',
+        'modelador-motor-geom',
+        '[ArmaHub] No se pudo cargar modelador/motor_geom.js'
+      ),
+      loadScript(
+        'script[data-armahub-feature="modelador-figura-puntos"]',
+        '/static/js/features/modelador/figura_puntos.js' + suffix,
+        'armahubFeature',
+        'modelador-figura-puntos',
+        '[ArmaHub] No se pudo cargar modelador/figura_puntos.js'
+      ),
+      loadScript(
+        'script[data-armahub-feature="modelador-reglas"]',
+        '/static/js/features/modelador/reglas.js' + suffix,
+        'armahubFeature',
+        'modelador-reglas',
+        '[ArmaHub] No se pudo cargar modelador/reglas.js'
+      ),
+      loadScript(
+        'script[data-armahub-feature="modelador-generar"]',
+        '/static/js/features/modelador/generar.js' + suffix,
+        'armahubFeature',
+        'modelador-generar',
+        '[ArmaHub] No se pudo cargar modelador/generar.js'
+      ),
+      loadScript(
+        'script[data-armahub-feature="modelador-semilla"]',
+        '/static/js/features/modelador/semilla_viga.js' + suffix,
+        'armahubFeature',
+        'modelador-semilla',
+        '[ArmaHub] No se pudo cargar modelador/semilla_viga.js'
+      ),
+      loadScript(
+        'script[data-armahub-feature="modelador-panel"]',
+        '/static/js/features/modelador/panel_3d.js' + suffix,
+        'armahubFeature',
+        'modelador-panel',
+        '[ArmaHub] No se pudo cargar modelador/panel_3d.js'
       )
     ]);
   }).catch(function(error) {
