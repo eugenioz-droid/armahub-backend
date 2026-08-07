@@ -26,6 +26,8 @@ from typing import Optional, List
 from datetime import datetime, timezone
 import uuid
 
+from psycopg.errors import UniqueViolation
+
 from .db import get_conn, audit
 from .auth import get_current_user
 from . import cache as _cache
@@ -147,17 +149,26 @@ def crear_lote(body: LoteCreate, user=Depends(get_current_user)):
                 raise HTTPException(status_code=404, detail="Obra no encontrada.")
             # num_obra FIJO: MAX(num_obra de la obra) + 1. Monótono: nunca se reusa ni se recalcula,
             # aunque se eliminen lotes (quedan lápidas). Es una referencia estable (como una factura).
-            cur.execute("SELECT COALESCE(MAX(num_obra), 0) + 1 FROM lotes WHERE id_proyecto = %s",
-                        (body.id_proyecto,))
-            num_obra = int(cur.fetchone()[0])
-            cur.execute(
-                """INSERT INTO lotes (id_proyecto, tipo, estado, creado_por, creado_fecha, n_barras,
-                                      num_obra, ciclo, eje, sector, estructura)
-                   VALUES (%s, 'manual', 'borrador', %s, %s, 0, %s, %s, %s, %s, %s) RETURNING id""",
-                (body.id_proyecto, email, _now_iso(), num_obra,
-                 (body.ciclo or None), (body.eje or None), (body.sector or None), (body.estructura or None)),
-            )
-            lote_id = cur.fetchone()[0]
+            # M1.8: índice único (migración 102) + reintento con savepoint — dos creaciones
+            # simultáneas ya no pueden duplicar num_obra; el perdedor recalcula.
+            for _intento in range(3):
+                try:
+                    with conn.transaction():
+                        cur.execute("SELECT COALESCE(MAX(num_obra), 0) + 1 FROM lotes WHERE id_proyecto = %s",
+                                    (body.id_proyecto,))
+                        num_obra = int(cur.fetchone()[0])
+                        cur.execute(
+                            """INSERT INTO lotes (id_proyecto, tipo, estado, creado_por, creado_fecha, n_barras,
+                                                  num_obra, ciclo, eje, sector, estructura)
+                               VALUES (%s, 'manual', 'borrador', %s, %s, 0, %s, %s, %s, %s, %s) RETURNING id""",
+                            (body.id_proyecto, email, _now_iso(), num_obra,
+                             (body.ciclo or None), (body.eje or None), (body.sector or None), (body.estructura or None)),
+                        )
+                        lote_id = cur.fetchone()[0]
+                    break
+                except UniqueViolation:
+                    if _intento == 2:
+                        raise HTTPException(status_code=409, detail="Conflicto al numerar el despiece. Reintenta.")
     audit(email, "crear_lote", f"obra {body.id_proyecto} · {body.sector}/{body.ciclo}/{body.eje}", "lote", str(lote_id))
     return {"ok": True, "lote_id": lote_id, "estado": "borrador", "num_obra": num_obra}
 
@@ -273,14 +284,21 @@ def duplicar_lote(lote_id: int, body: LoteDuplicar, user=Depends(get_current_use
                 origen = [dict(zip(campos, row)) for row in cur.fetchall()]
             if not origen:
                 raise HTTPException(status_code=400, detail="El lote origen no tiene barras que duplicar.")
-            # Crear el lote nuevo (num_obra fijo).
-            cur.execute("SELECT COALESCE(MAX(num_obra), 0) + 1 FROM lotes WHERE id_proyecto = %s", (id_proyecto,))
-            num_obra = int(cur.fetchone()[0])
-            cur.execute(
-                """INSERT INTO lotes (id_proyecto, tipo, estado, creado_por, creado_fecha, n_barras, num_obra)
-                   VALUES (%s, 'manual', 'borrador', %s, %s, 0, %s) RETURNING id""",
-                (id_proyecto, email, _now_iso(), num_obra))
-            nuevo_id = cur.fetchone()[0]
+            # Crear el lote nuevo (num_obra fijo). M1.8: reintento sobre índice único.
+            for _intento in range(3):
+                try:
+                    with conn.transaction():
+                        cur.execute("SELECT COALESCE(MAX(num_obra), 0) + 1 FROM lotes WHERE id_proyecto = %s", (id_proyecto,))
+                        num_obra = int(cur.fetchone()[0])
+                        cur.execute(
+                            """INSERT INTO lotes (id_proyecto, tipo, estado, creado_por, creado_fecha, n_barras, num_obra)
+                               VALUES (%s, 'manual', 'borrador', %s, %s, 0, %s) RETURNING id""",
+                            (id_proyecto, email, _now_iso(), num_obra))
+                        nuevo_id = cur.fetchone()[0]
+                    break
+                except UniqueViolation:
+                    if _intento == 2:
+                        raise HTTPException(status_code=409, detail="Conflicto al numerar el despiece. Reintenta.")
             factor = _factor_peso(cur, id_proyecto)
             now = _now_iso()
             n = 0

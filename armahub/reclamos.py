@@ -14,6 +14,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, 
 from fastapi.responses import Response, RedirectResponse
 from pydantic import BaseModel
 from psycopg.rows import dict_row
+from psycopg.errors import UniqueViolation
 
 from .notifications import crear_notificacion
 
@@ -549,12 +550,6 @@ def crear_reclamo(body: ReclamoCreate, user=Depends(get_current_user)):
                 if not cur.fetchone():
                     raise HTTPException(status_code=404, detail="Proyecto no encontrado")
 
-            # Generar correlativo auto: REC-001, REC-002, ...
-            cur.execute("SELECT MAX(CAST(REPLACE(correlativo, 'REC-', '') AS INTEGER)) FROM reclamos WHERE correlativo IS NOT NULL AND correlativo LIKE 'REC-%%'")
-            max_seq = cur.fetchone()[0]
-            next_seq = (max_seq or 0) + 1
-            correlativo = f"REC-{next_seq:03d}"
-
             # Área y responsable según el tipo:
             #  - EXTERNO: el área se INFIERE del responsable (cubicador/asignado).
             #    Nunca se elige aparte (evita la incoherencia "cubicador de un área
@@ -576,22 +571,34 @@ def crear_reclamo(body: ReclamoCreate, user=Depends(get_current_user)):
                 area_id = _area_id_de_usuario(cur, body.cubicador_asignado) \
                     or _area_id_de_usuario(cur, asignado_a)
 
-            cur.execute("""
-                INSERT INTO reclamos (id_proyecto, titulo, descripcion, prioridad, tipo_reclamo,
-                    categoria_ishikawa, sub_causa, cod_causa, responsable,
-                    detectado_por, fecha_deteccion, analista,
-                    creado_por, fecha_creacion, correlativo, id_calidad, asignado_a,
-                    cubicador_asignado, anio_calidad, numero_calidad, area_id, tipo_origen)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                RETURNING id
-            """, (body.id_proyecto, body.titulo, body.descripcion,
-                  body.prioridad or "alta", body.tipo_reclamo or "error",
-                  body.categoria_ishikawa,
-                  body.sub_causa, body.cod_causa, responsable_label,
-                  body.detectado_por, body.fecha_deteccion, email,
-                  email, now, correlativo, body.id_calidad, asignado_a,
-                  cub_asignado, body.anio_calidad, body.numero_calidad, area_id, tipo_origen))
-            reclamo_id = cur.fetchone()[0]
+            # Correlativo auto REC-001, REC-002… M1.8: índice único (migración 102)
+            # + reintento con savepoint — dos creaciones simultáneas no duplican.
+            for _intento in range(3):
+                try:
+                    with conn.transaction():
+                        cur.execute("SELECT MAX(CAST(REPLACE(correlativo, 'REC-', '') AS INTEGER)) FROM reclamos WHERE correlativo IS NOT NULL AND correlativo LIKE 'REC-%%'")
+                        max_seq = cur.fetchone()[0]
+                        correlativo = f"REC-{(max_seq or 0) + 1:03d}"
+                        cur.execute("""
+                            INSERT INTO reclamos (id_proyecto, titulo, descripcion, prioridad, tipo_reclamo,
+                                categoria_ishikawa, sub_causa, cod_causa, responsable,
+                                detectado_por, fecha_deteccion, analista,
+                                creado_por, fecha_creacion, correlativo, id_calidad, asignado_a,
+                                cubicador_asignado, anio_calidad, numero_calidad, area_id, tipo_origen)
+                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                            RETURNING id
+                        """, (body.id_proyecto, body.titulo, body.descripcion,
+                              body.prioridad or "alta", body.tipo_reclamo or "error",
+                              body.categoria_ishikawa,
+                              body.sub_causa, body.cod_causa, responsable_label,
+                              body.detectado_por, body.fecha_deteccion, email,
+                              email, now, correlativo, body.id_calidad, asignado_a,
+                              cub_asignado, body.anio_calidad, body.numero_calidad, area_id, tipo_origen))
+                        reclamo_id = cur.fetchone()[0]
+                    break
+                except UniqueViolation:
+                    if _intento == 2:
+                        raise HTTPException(status_code=409, detail="Conflicto al numerar el reclamo. Reintenta.")
 
             # Auto-create first seguimiento
             cur.execute("""
@@ -1141,10 +1148,11 @@ def presentar_reclamo(reclamo_id: int, body: PresentarReclamoRequest, user=Depen
 
 
 # ========================= CACHE EN MEMORIA (FASE 8.2.1) =========================
+# M1.7 — un solo mecanismo de caché en la plataforma: cache.py (TTL + lock).
+# El detalle de reclamo usa el prefijo "reclamos:detalle:<id>:", así también lo
+# barre la invalidación general _invalidate_reclamos_cache ("reclamos:").
 
-# Cache simple en memoria para datos frecuentes
-_reclamos_cache = {}
-_cache_timeout = 300  # 5 minutos
+_CACHE_DETALLE_TTL = 300  # 5 minutos
 _schema_columns_cache = {}
 
 def _get_cache_key(
@@ -1154,32 +1162,15 @@ def _get_cache_key(
     include_acciones: bool = True,
 ) -> str:
     return (
-        f"reclamo_{reclamo_id}"
-        f"_imgs_{include_images}"
-        f"_seg_{include_seguimientos}"
-        f"_acc_{include_acciones}"
+        f"reclamos:detalle:{reclamo_id}:"
+        f"imgs_{include_images}_seg_{include_seguimientos}_acc_{include_acciones}"
     )
 
-def _is_cache_valid(cache_key: str) -> bool:
-    if cache_key not in _reclamos_cache:
-        return False
-    timestamp = _reclamos_cache[cache_key]["timestamp"]
-    return (datetime.now(timezone.utc).timestamp() - timestamp) < _cache_timeout
-
-def _get_from_cache(cache_key: str):
-    return _reclamos_cache[cache_key]["data"]
-
 def _set_cache(cache_key: str, data):
-    _reclamos_cache[cache_key] = {
-        "data": data,
-        "timestamp": datetime.now(timezone.utc).timestamp()
-    }
+    _cache.put(cache_key, data, ttl=_CACHE_DETALLE_TTL)
 
 def _invalidate_reclamo_cache(reclamo_id: int):
-    prefix = f"reclamo_{reclamo_id}"
-    for key in list(_reclamos_cache.keys()):
-        if key.startswith(prefix):
-            _reclamos_cache.pop(key, None)
+    _cache.invalidate(f"reclamos:detalle:{reclamo_id}:")
     _invalidate_reclamos_cache()
 
 
@@ -1346,8 +1337,10 @@ def get_reclamo_optimizado(
     use_cache = role in ("admin", "admin_calidad")
     cache_key = _get_cache_key(reclamo_id, include_images, include_seguimientos, include_acciones)
 
-    if use_cache and _is_cache_valid(cache_key):
-        return _get_from_cache(cache_key)
+    if use_cache:
+        cached = _cache.get(cache_key)
+        if cached is not None:
+            return cached
 
     try:
         with get_conn() as conn:
