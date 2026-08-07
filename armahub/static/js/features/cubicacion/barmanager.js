@@ -325,6 +325,8 @@ async function buscar(reset = false) {
     tbl.innerHTML = '';
     pageInfo.textContent = '';
     if (_coberturaVisible) loadCobertura();
+    // Sin obra elegida → mostrar la lista de obras (CSV + manual) para elegir.
+    if (typeof bmCargarObras === 'function') bmCargarObras();
     return;
   }
 
@@ -477,15 +479,18 @@ function _renderPlano() {
   // Con max-height el viewport queda acotado y la barra horizontal siempre es accesible.
   // max-width:100% ata el ancho al card para que el scroll interno reciba el desborde.
   const scrollWrap = editando
-    ? 'overflow:auto; max-height:65vh; max-width:100%;'
-    : 'overflow:auto; max-height:70vh; max-width:100%;';
+    ? 'overflow:auto; max-height:65vh;'
+    : 'overflow:auto; max-height:70vh;';
   // 5M.11: columna de selección solo en modo MASIVO (no en edición normal).
   var masivo = (typeof bmEnModoMasivo === 'function') && bmEnModoMasivo();
   var colSel = masivo
     ? '<th style="text-align:center; padding:3px 4px;"><input type="checkbox" id="bmSelTodas" onclick="bmToggleSeleccionTodas(this.checked)" title="Marcar todas" /></th>'
     : '';
-  let html = '<tbody><tr><td style="padding:0;"><div style="' + scrollWrap + '">' +
-    '<table style="width:100%; min-width:1300px; font-size:11px; border-collapse:collapse;">' +
+  // El <td> padre con width:0 + el div a width:100% fuerza a que el scroll horizontal se
+  // calcule contra el ancho REAL de la celda (el card), no contra el contenido de la tabla
+  // anidada (que con min-width:1420 empujaba las columnas fuera de pantalla sin scroll).
+  let html = '<tbody><tr><td style="padding:0; width:0; max-width:0;"><div style="' + scrollWrap + '">' +
+    '<table style="width:100%; min-width:1420px; font-size:11px; border-collapse:collapse;">' +
     '<thead><tr style="color:#666; background:#fafafa; position:sticky; top:0;">' +
     colSel +
     '<th style="text-align:left; padding:3px 6px;">Piso</th>' +
