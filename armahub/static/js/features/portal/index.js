@@ -6,7 +6,10 @@
 // ========================= METRICS =========================
 let _mensualChart = null;
 let _top15Chart = null;
-let _cubChart = null;
+// M1.9: el gráfico de cubicadores del Hub es el Panel de Cubicación compartido
+// (shared/panel_cubicacion.js) con origen=todos (CSV + creados). Lupa = modal grande.
+var _hubPanelCub = null;
+var _hubPanelCubGrande = null;
 let _inicioFechaDesde = '';
 let _inicioFechaHasta = '';
 let _mensualAnio = new Date().getFullYear();
@@ -101,8 +104,8 @@ async function loadInicio() {
   // Top 15 stacked horizontal bar
   renderTop15Chart(data.proyectos || []);
 
-  // Load cubicadores chart
-  loadCubicadoresChart();
+  // Load cubicadores chart (M1.9: Panel de Cubicación compartido)
+  hubCargarPanelCub();
 
   // Load monthly chart
   document.getElementById('mensualAnioLabel').textContent = _mensualAnio;
@@ -167,60 +170,41 @@ function renderTop15Chart(proyectos) {
   });
 }
 
-async function loadCubicadoresChart() {
-  var dp = _dateParams();
-  var url = '/stats/cubicadores' + (dp ? '?' + dp : '');
-  var data = await apiGet(url);
-  if (!data || !data.cubicadores) return;
-
-  var cubicadores = data.cubicadores;
-  var labels = cubicadores.map(function(c) {
-    var email = c.email || '—';
-    var at = email.indexOf('@');
-    return at > 0 ? email.substring(0, at) : email;
-  });
-  var cargado = cubicadores.map(function(c) {
-    var exp = Math.min(c.kilos_exportados || 0, c.kilos || 0);
-    return Math.round((c.kilos - exp) / 1000 * 100) / 100;
-  });
-  var exportado = cubicadores.map(function(c) {
-    return Math.round(Math.min(c.kilos_exportados || 0, c.kilos || 0) / 1000 * 100) / 100;
-  });
-  var totalGeneral = cubicadores.reduce(function(s, c) { return s + (c.kilos || 0); }, 0);
-
-  document.getElementById('cubTotal').textContent = 'Total: ' + (totalGeneral / 1000).toFixed(1) + ' Tn (' + cubicadores.length + ' cubicadores)';
-
-  _cubChart = replaceChart(_cubChart, document.getElementById('cubChart'), {
-    type: 'bar',
-    data: {
-      labels: labels,
-      datasets: [
-        { label: 'Cargado', data: cargado, backgroundColor: '#B0BEC5', borderRadius: 2 },
-        { label: 'Exportado', data: exportado, backgroundColor: '#66BB6A', borderRadius: 2 }
-      ]
-    },
-    options: {
-      responsive: true, maintainAspectRatio: false,
-      indexAxis: 'y',
-      plugins: {
-        legend: { display: false },
-        datalabels: {
-          display: function(ctx) { return ctx.dataset.data[ctx.dataIndex] > 0; },
-          color: '#fff',
-          font: { size: 9, weight: 'bold' },
-          anchor: 'center',
-          align: 'center',
-          formatter: function(v) { return v.toFixed(1); }
-        }
-      },
-      scales: {
-        x: { stacked: true, ticks: { font: { size: 9 }, callback: function(v) { return v + ' Tn'; } } },
-        y: { stacked: true, ticks: { font: { size: 10 } } }
-      }
-    },
-    plugins: [ChartDataLabels]
-  });
+// M1.9 — Panel de Cubicación en el Hub: alcance = TODAS las obras y TODOS los
+// orígenes (CSV + creados a mano); solo excluye borradores (regla global).
+function _hubPanelOpts(altura) {
+  return {
+    altura: altura,
+    getParams: function() { return { origen: 'todos' }; },
+    getAlcance: function() { return { texto: ' · todas las obras (CSV + creados)', resaltar: false }; }
+  };
 }
+
+function hubCargarPanelCub() {
+  if (!_hubPanelCub) {
+    var el = document.getElementById('hubPanelCub');
+    if (!el || !window.PanelCubicacion) return;
+    _hubPanelCub = PanelCubicacion.crear(el, _hubPanelOpts(300));
+    if (!_hubPanelCub) return;
+  }
+  _hubPanelCub.recargar();
+}
+
+window.hubAgrandarPanel = function() {
+  var m = document.getElementById('hubPanelModal');
+  if (!m) return;
+  m.style.display = 'flex';
+  if (!_hubPanelCubGrande) {
+    var el = document.getElementById('hubPanelCubGrande');
+    if (el && window.PanelCubicacion) _hubPanelCubGrande = PanelCubicacion.crear(el, _hubPanelOpts(430));
+  }
+  if (_hubPanelCubGrande) _hubPanelCubGrande.recargar();
+};
+
+window.hubCerrarPanelGrande = function() {
+  var m = document.getElementById('hubPanelModal');
+  if (m) m.style.display = 'none';
+};
 
 async function loadMensualChart() {
   var data = await apiGet('/stats/cubicacion-mensual?anio=' + _mensualAnio);

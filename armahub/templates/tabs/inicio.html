@@ -46,16 +46,25 @@
         </div>
       </div>
 
-      <!-- Cubicadores -->
+      <!-- Cubicadores — M1.9: Panel de Cubicación (componente compartido). Lupa = agrandar el mismo panel. -->
       <div class="card" style="flex:4; min-width:0;">
-        <h3 style="font-size:13px; margin-bottom:6px;">👷 Cubicadores (Tn)</h3>
-        <div style="height:380px;">
-          <canvas id="cubChart"></canvas>
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px;">
+          <h3 style="font-size:13px; margin:0;">👷 Panel de Cubicación</h3>
+          <button onclick="hubAgrandarPanel()" title="Agrandar panel"
+                  style="border:1px solid #ddd; background:#fff; border-radius:6px; cursor:pointer; font-size:13px; padding:2px 8px;">🔍</button>
         </div>
-        <div id="cubTotal" style="font-size:11px; color:#555; margin-top:4px; text-align:right;"></div>
-        <div style="display:flex; gap:12px; font-size:10px; color:#888; margin-top:2px;">
-          <span><span style="display:inline-block; width:10px; height:8px; background:#B0BEC5; border-radius:1px; vertical-align:middle;"></span> Cargado</span>
-          <span><span style="display:inline-block; width:10px; height:8px; background:#66BB6A; border-radius:1px; vertical-align:middle;"></span> Exportado</span>
+        <div id="hubPanelCub"></div>
+      </div>
+
+      <!-- Modal del panel agrandado (misma data, más alto/ancho) -->
+      <div id="hubPanelModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,.45); z-index:1000; align-items:center; justify-content:center;"
+           onclick="if(event.target===this) hubCerrarPanelGrande()">
+        <div style="background:#fff; border-radius:12px; padding:16px 20px; width:min(1100px, 94vw); max-height:92vh; overflow:auto; box-shadow:0 12px 40px rgba(0,0,0,.25);">
+          <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:4px;">
+            <h3 style="font-size:14px; margin:0;">👷 Panel de Cubicación</h3>
+            <button onclick="hubCerrarPanelGrande()" style="border:none; background:none; font-size:18px; cursor:pointer; color:#607d8b;">✕</button>
+          </div>
+          <div id="hubPanelCubGrande"></div>
         </div>
       </div>
 

@@ -844,7 +844,8 @@ def get_stats_timeline(
 
 @router.get("/stats/cubicado")
 def get_cubicado(periodo: str = "S", anio: Optional[int] = None, anios: Optional[str] = None,
-                 proyecto: Optional[str] = None, user=Depends(get_current_user)):
+                 proyecto: Optional[str] = None, origen: str = "manual",
+                 user=Depends(get_current_user)):
     """Kilos LISTOS (excluye borrador) por cubicador, agregados según `periodo` — para el gráfico del
     editor. Períodos: S=semana actual por día; MS=mes actual por semana; MD=mes actual por día; A=año
     por mes (Ene-Dic). `anios` = CSV de años a totalizar (ej. '2026,2025'). Con 1 año, todos los
@@ -913,15 +914,17 @@ def get_cubicado(periodo: str = "S", anio: Optional[int] = None, anios: Optional
     if proyecto:
         obra_sql = " AND b.id_proyecto = %s"
         params.append(proyecto)
+    # M1.9: origen='manual' (default, editor) cuenta solo lo creado a mano;
+    # origen='todos' (Hub/Bar Manager) suma también lo cargado por CSV.
+    origen_sql = "" if origen == "todos" else " AND b.origen = 'manual'"
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("""
                 SELECT b.creado_por, COALESCE(u.nombre,''), COALESCE(u.apellido,''),
                        (""" + bucket + """) AS bkt, COALESCE(SUM(b.peso_total),0)
                 FROM barras b JOIN users u ON u.email = b.creado_por
-                WHERE b.creado_por IS NOT NULL
-                  AND b.origen = 'manual'"""
-                + fecha_sql + obra_sql + _sql_excluir_borrador("b") + """
+                WHERE b.creado_por IS NOT NULL"""
+                + origen_sql + fecha_sql + obra_sql + _sql_excluir_borrador("b") + """
                 GROUP BY b.creado_por, u.nombre, u.apellido, bkt
             """, params)
             cub = {}

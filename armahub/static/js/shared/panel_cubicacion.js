@@ -60,7 +60,7 @@
         '<div class="pc-periodos" style="display:inline-flex; border:1px solid #cfd8dc; border-radius:4px; overflow:hidden;"></div>' +
         '<span class="pc-anios" style="display:inline-flex; align-items:center; gap:8px;"></span>' +
       '</div>' +
-      '<div style="position:relative; height:200px;">' +
+      '<div style="position:relative; height:' + ((opts && opts.altura) || 200) + 'px;">' +
         '<canvas class="pc-canvas"></canvas>' +
         '<div class="pc-vacio" style="display:none; position:absolute; inset:0; flex-direction:column; align-items:center; justify-content:center; gap:4px; color:#b0bec5; font-size:12px; font-style:italic; text-align:center; padding:0 20px;">' +
           '<span>Sin cubicación terminada en este período.</span>' +

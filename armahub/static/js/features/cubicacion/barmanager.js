@@ -302,6 +302,8 @@ async function buscar(reset = false) {
     detailCache.clear();
     // 5M.11: al cambiar el filtro/lista, la selección previa ya no aplica.
     if (typeof bmLimpiarSeleccion === 'function') bmLimpiarSeleccion();
+    // M1.9: si el Panel de Cubicación está abierto, sigue a la obra seleccionada.
+    if (_bmPanelCubVisible && _bmPanelCub) _bmPanelCub.recargar();
   }
 
   const kpisEl = document.getElementById('bmKpis');
@@ -821,6 +823,46 @@ async function expandAll() {
 function collapseAll() {
   expanded.clear();
   _renderElementos();
+}
+
+// ========================= PANEL DE CUBICACIÓN (M1.9) =========================
+// Componente compartido (shared/panel_cubicacion.js) scoped a la obra seleccionada;
+// origen=todos (CSV + creados). Toggle igual que la cobertura.
+let _bmPanelCubVisible = false;
+let _bmPanelCub = null;
+
+function bmTogglePanelCub() {
+  _bmPanelCubVisible = !_bmPanelCubVisible;
+  const card = document.getElementById('bmPanelCubCard');
+  const btn = document.getElementById('btnPanelCub');
+  if (_bmPanelCubVisible) {
+    card.style.display = '';
+    if (btn) btn.textContent = '👷 Ocultar Panel';
+    if (!_bmPanelCub) {
+      const el = document.getElementById('bmPanelCub');
+      if (el && window.PanelCubicacion) {
+        _bmPanelCub = PanelCubicacion.crear(el, {
+          getParams: function() {
+            const proy = document.getElementById('proyecto').value;
+            const p = { origen: 'todos' };
+            if (proy) p.proyecto = proy;
+            return p;
+          },
+          getAlcance: function() {
+            const sel = document.getElementById('proyecto');
+            const proy = sel ? sel.value : '';
+            const nombre = (sel && sel.selectedIndex >= 0 && proy) ? sel.options[sel.selectedIndex].text : '';
+            return proy ? { texto: ' · ' + (nombre || proy), resaltar: true }
+                        : { texto: ' · todas las obras (CSV + creados)', resaltar: false };
+          }
+        });
+      }
+    }
+    if (_bmPanelCub) _bmPanelCub.recargar();
+  } else {
+    card.style.display = 'none';
+    if (btn) btn.textContent = '👷 Panel de Cubicación';
+  }
 }
 
 // ========================= MAPA DE COBERTURA PISO × CICLO =========================

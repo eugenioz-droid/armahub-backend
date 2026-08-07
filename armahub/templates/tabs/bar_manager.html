@@ -137,6 +137,7 @@
         <button class="secondary" onclick="expandAll()" style="font-size:11px; padding:3px 10px;">▾ Expandir todo</button>
         <button class="secondary" onclick="collapseAll()" style="font-size:11px; padding:3px 10px;">▸ Colapsar todo</button>
         <button class="secondary" id="btnCobertura" onclick="toggleCobertura()" style="font-size:11px; padding:3px 10px;">📊 Mostrar cobertura</button>
+        <button class="secondary" id="btnPanelCub" onclick="bmTogglePanelCub()" style="font-size:11px; padding:3px 10px;">👷 Panel de Cubicación</button>
         <!-- 5M.3: candado de edición. Cerrado = solo lectura; abrir habilita editar barras.
              Color propio (ámbar) para que resalte entre los botones grises. -->
         <button id="btnEdicionBarras" onclick="toggleModoEdicion()" style="font-size:11px; padding:3px 12px; background:#fff3e0; border:1px solid #ffb74d; border-radius:4px; cursor:pointer; color:#e65100; font-weight:600;">🔒 Edición bloqueada</button>
@@ -195,6 +196,11 @@
           <button onclick="bmOperarColumnas()" style="font-size:12px; padding:3px 12px; background:#1565c0; color:#fff; border:none; border-radius:4px; cursor:pointer;">Aplicar a las marcadas</button>
         </div>
       </div>
+    </div>
+
+    <!-- M1.9: Panel de Cubicación (componente compartido) scoped a la obra seleccionada -->
+    <div id="bmPanelCubCard" class="card" style="display:none; padding:10px 16px;">
+      <div id="bmPanelCub"></div>
     </div>
 
     <!-- Mapa de cobertura Piso × Ciclo -->
