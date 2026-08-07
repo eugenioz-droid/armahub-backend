@@ -31,6 +31,7 @@ from .pedidos import router as pedidos_router
 from .constructoras import router as constructoras_router
 from .calculistas import router as calculistas_router
 from .catalogo import router as catalogo_router
+from .modelador import router as modelador_router
 from .reclamos import router as reclamos_router
 from .notifications import router as notifications_router
 from .obra_config import router as obra_config_router
@@ -75,6 +76,7 @@ def create_app() -> FastAPI:
     app.include_router(constructoras_router)
     app.include_router(calculistas_router)
     app.include_router(catalogo_router)
+    app.include_router(modelador_router)
     app.include_router(reclamos_router)
     app.include_router(notifications_router)
     # obra_config expone /proyectos/{id}/config y /pisos-combinados. Se monta IGUAL que
@@ -86,8 +88,8 @@ def create_app() -> FastAPI:
     _api_routers = [
         auth_router, importer_router, barras_router, admin_router,
         export_router, lotes_router, pedidos_router, constructoras_router,
-        calculistas_router, catalogo_router, reclamos_router, notifications_router,
-        obra_config_router,
+        calculistas_router, catalogo_router, modelador_router, reclamos_router,
+        notifications_router, obra_config_router,
     ]
     for r in _api_routers:
         app.include_router(r, prefix="/api/v1")

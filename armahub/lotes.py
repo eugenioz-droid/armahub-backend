@@ -116,6 +116,11 @@ class BarraManual(BaseModel):
     radio: Optional[float] = None
     revisada: bool = False   # el cubicador la marcó revisada en la grilla (5N.19); viaja con la barra
     suf_tipo: Optional[str] = None   # sufijo que se concatena a la tipología SOLO al exportar (5N.42)
+    # Modelador 3D (T1.1): origen/traza OPCIONALES. Default = comportamiento actual intacto
+    # (barra manual, sin instancia de template). El 3D Template manda origen='template' +
+    # el id de la receta (elementos_template) para trazabilidad. No cambia nada más.
+    origen: Optional[str] = None
+    template_instancia_id: Optional[int] = None
 
 
 class BarrasBatch(BaseModel):
@@ -512,6 +517,12 @@ def agregar_barras(lote_id: int, body: BarrasBatch, user=Depends(get_current_use
                 # revisada=true + trazabilidad (quién/cuándo). Habilita terminar el lote (5N.19).
                 rev_por = email if b.revisada else None
                 rev_fecha = now if b.revisada else None
+                # Modelador 3D (T1.1): origen OPCIONAL (default 'manual' → intacto) + template_instancia_id.
+                # Solo se aceptan orígenes conocidos de este canal (manual/template); cualquier otro
+                # cae a 'manual' (no se permite inyectar 'csv'/'pedido' desde aquí — invariante de canales).
+                origen_barra = (b.origen or "manual").strip().lower()
+                if origen_barra not in ("manual", "template"):
+                    origen_barra = "manual"
                 cur.execute(
                     """INSERT INTO barras
                        (id_unico, id_proyecto, sector, piso, ciclo, eje, nombre_plano, diam, largo_total,
@@ -519,16 +530,17 @@ def agregar_barras(lote_id: int, body: BarrasBatch, user=Depends(get_current_use
                         dim_a, dim_b, dim_c, dim_d, dim_e, dim_f, dim_g, dim_h, dim_i,
                         ang1, ang2, ang3, ang4, radio,
                         revisada, revisada_por, revisada_fecha, suf_tipo,
-                        origen, import_id, lote_id, estado, fecha_carga, creado_por, editado_por, editado_fecha)
+                        origen, template_instancia_id, import_id, lote_id, estado, fecha_carga, creado_por, editado_por, editado_fecha)
                        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s, %s,%s,%s,%s,%s,%s,%s,%s,
                                %s,%s,%s,%s,%s,%s,%s,%s,%s, %s,%s,%s,%s,%s,
                                %s,%s,%s,%s,
-                               'manual', NULL, %s, 'borrador', %s, %s, %s, %s) RETURNING id""",
+                               %s, %s, NULL, %s, 'borrador', %s, %s, %s, %s) RETURNING id""",
                     (idu, id_proyecto, b.sector, b.piso, b.ciclo, b.eje, b.nombre_plano, b.diam, largo,
                      b.mult, b.cant, cant_total, peso_u, peso_t, b.marca, b.figura, cod_prod,
                      b.dim_a, b.dim_b, b.dim_c, b.dim_d, b.dim_e, b.dim_f, b.dim_g, b.dim_h, b.dim_i,
                      b.ang1, b.ang2, b.ang3, b.ang4, b.radio,
                      bool(b.revisada), rev_por, rev_fecha, ((b.suf_tipo or "").strip() or None),
+                     origen_barra, b.template_instancia_id,
                      lote_id, now, email, email, now),   # creado_por = editado_por = quien cubica
                 )
                 creadas.append({"id": cur.fetchone()[0], "id_unico": idu})   # id numérico + id_unico
