@@ -367,7 +367,13 @@
         <button class="tool" id="t_ancla">🎯 Anclar centro</button>
         <button class="tool" id="t_reset">↻ Vista iso</button>
         <span class="sp"></span>
-        <span style="font-size:10.5px;color:#9fb0c4">Rotar eje:</span>
+        <span style="font-size:10.5px;color:#9fb0c4">Fondo:</span>
+        <span class="radialdark" id="tema">
+          <button data-tema="oscuro">Oscuro</button>
+          <button class="on" data-tema="medio">Medio</button>
+          <button data-tema="claro">Claro</button>
+        </span>
+        <span style="font-size:10.5px;color:#9fb0c4;margin-left:6px">Rotar eje:</span>
         <span class="radialdark" id="ejes">
           <button class="on" data-eje="libre">Libre</button>
           <button data-eje="x">X</button>
@@ -568,9 +574,20 @@
       for(var e2=0;e2<cnt;e2++){
         var xx=xcur + e2*seps[zi];
         if(xx>x1-rec) break;
-        // estribo cerrado rectangular (perímetro) con doble gancho arriba
+        // Estribo cerrado rectangular (perímetro) en el plano YZ (X = xx). Los DOS ganchos
+        // (inicio y cierre) se separan PERPENDICULAR al plano del estribo = en X, por el espesor
+        // de la barra (offset ≈ 1φ). Así se ven como "/ /" reales, no superpuestos en el mismo plano.
         var yy0=yBot, yy1=yTop, zz=zHalf;
-        var pts=[V(xx,yy1-8,-zz+8),V(xx,yy1,-zz),V(xx,yy0,-zz),V(xx,yy0,zz),V(xx,yy1,zz),V(xx,yy1,-zz),V(xx,yy1-8,-zz+8)];
+        var esp=rEst*2*1.05;                    // offset ≈ 1 diámetro, en X (espesor)
+        var pts=[
+          V(xx,       yy1-8, -zz+8),            // punta gancho 1 (hacia el núcleo)
+          V(xx,       yy1,   -zz),              // esquina sup-izq
+          V(xx,       yy0,   -zz),              // baja
+          V(xx,       yy0,    zz),              // cruza abajo
+          V(xx,       yy1,    zz),              // sube der
+          V(xx+esp,   yy1,   -zz),              // pasada de cierre — MISMA esquina, +esp en X
+          V(xx+esp,   yy1-8, -zz+8)             // punta gancho 2 (paralela al gancho 1, offset en X)
+        ];
         world.add(barraSolida(pts,rEst,matAcero.ES));
         totalEst++;
       }
@@ -580,29 +597,45 @@
     fit(L,h,b);
   }
 
-  // ---- órbita + zoom ----
-  // Orientación inicial ISOMÉTRICA bien orientada (X hacia la derecha-abajo, Y arriba, Z al frente).
-  var ISO_X=-0.62, ISO_Y=0.78;                   // ángulos de la iso estándar
+  // ---- órbita + zoom + pan ----
+  // Vista ISOMÉTRICA estándar: mirando desde arriba-adelante-derecha, Y vertical.
+  // rotX = elevación (positiva = cámara arriba mirando hacia abajo), rotY = azimut.
+  var ISO_X=0.62, ISO_Y=0.85;
   var rotX=ISO_X, rotY=ISO_Y, dist=900, target=new THREE.Vector3(0,0,0);
-  var ejeRot='libre';                            // 'libre' | 'x' | 'y' | 'z' (rotar solo ese eje)
+  var panX=0, panY=0;                            // desplazamiento de la vista (pan)
+  var ejeRot='libre';
   function fit(L,h,b){ dist=L*1.15+160; }
   function applyCam(){
-    var cx=target.x+dist*Math.cos(rotX)*Math.sin(rotY);
-    var cy=target.y+dist*Math.sin(rotX);
-    var cz=target.z+dist*Math.cos(rotX)*Math.cos(rotY);
-    camera.position.set(cx,cy,cz); camera.up.set(0,1,0); camera.lookAt(target);
+    // posición de la cámara en esfera alrededor del target
+    var cx=dist*Math.cos(rotX)*Math.sin(rotY);
+    var cy=dist*Math.sin(rotX);
+    var cz=dist*Math.cos(rotX)*Math.cos(rotY);
+    camera.up.set(0,1,0);
+    var pos=new THREE.Vector3(cx,cy,cz).add(target);
+    camera.position.copy(pos); camera.lookAt(target);
+    // aplicar pan: mover cámara y target juntos según los ejes de pantalla
+    var right=new THREE.Vector3().setFromMatrixColumn(camera.matrix,0);
+    var up=new THREE.Vector3().setFromMatrixColumn(camera.matrix,1);
+    var shift=right.multiplyScalar(panX).add(up.multiplyScalar(panY));
+    camera.position.add(shift); camera.lookAt(new THREE.Vector3().copy(target).add(shift));
   }
-  var drag=false,lx=0,ly=0;
-  cv.addEventListener('mousedown',function(e){drag=true;lx=e.clientX;ly=e.clientY;});
-  window.addEventListener('mouseup',function(){drag=false;});
+  var drag=false,panning=false,lx=0,ly=0;
+  cv.addEventListener('contextmenu',function(e){e.preventDefault();});  // botón derecho = pan
+  cv.addEventListener('mousedown',function(e){
+    lx=e.clientX;ly=e.clientY;
+    if(e.button===2||e.shiftKey){panning=true;} else {drag=true;}
+  });
+  window.addEventListener('mouseup',function(){drag=false;panning=false;});
   window.addEventListener('mousemove',function(e){
-    if(!drag)return;
     var dx=(e.clientX-lx), dy=(e.clientY-ly);
-    // Control NO invertido: arrastrar a la derecha gira la vista a la derecha (signo corregido).
-    if(ejeRot==='libre'){ rotY-=dx*0.008; rotX-=dy*0.008; }
-    else if(ejeRot==='y'){ rotY-=dx*0.008; }        // rotar solo alrededor de Y (vertical)
-    else if(ejeRot==='x'){ rotX-=dy*0.008; }        // solo elevación (X)
-    else if(ejeRot==='z'){ rotY-=dx*0.008; }        // (aprox; Z real requiere roll)
+    if(panning){
+      panX-=dx*dist*0.0011; panY+=dy*dist*0.0011; lx=e.clientX; ly=e.clientY; return;
+    }
+    if(!drag)return;
+    if(ejeRot==='libre'){ rotY-=dx*0.008; rotX+=dy*0.008; }
+    else if(ejeRot==='y'){ rotY-=dx*0.008; }
+    else if(ejeRot==='x'){ rotX+=dy*0.008; }
+    else if(ejeRot==='z'){ rotY-=dx*0.008; }
     rotX=Math.max(-1.45,Math.min(1.45,rotX)); lx=e.clientX; ly=e.clientY;
   });
   cv.addEventListener('wheel',function(e){e.preventDefault();dist*=(e.deltaY>0?1.1:0.9);dist=Math.max(120,Math.min(4000,dist));},{passive:false});
@@ -626,7 +659,7 @@
   var th=document.getElementById('t_horm');
   if(th) th.addEventListener('click',function(){verHormigon=!verHormigon;th.classList.toggle('on',verHormigon);generar();});
   var tr=document.getElementById('t_reset');
-  if(tr) tr.addEventListener('click',function(){rotX=ISO_X;rotY=ISO_Y;target.set(0,0,0);var L=val('p_largo',600);dist=L*1.15+160;});
+  if(tr) tr.addEventListener('click',function(){rotX=ISO_X;rotY=ISO_Y;panX=0;panY=0;target.set(0,0,0);var L=val('p_largo',600);dist=L*1.15+160;});
   // Radial de ejes de rotación
   var ejes=document.getElementById('ejes');
   if(ejes) ejes.querySelectorAll('button').forEach(function(bt){
@@ -640,8 +673,33 @@
   var ta=document.getElementById('t_ancla');
   if(ta) ta.addEventListener('click',function(){ta.classList.toggle('on');target.set(0,0,0);});
 
+  // ---- Esquemas de color (fondo + colores de barra más saturados que resalten) ----
+  var TEMAS={
+    oscuro:{ bg:0x14171c, grid1:0x2a3340, grid2:0x222a34,
+      CBS:0x4d9bff, CBI:0x2fd6c4, ES:0xff8c42, TRV:0xc07bff },
+    medio:{ bg:0x2b3242, grid1:0x4a5568, grid2:0x3a4353,
+      CBS:0x3f7fd0, CBI:0x26a69a, ES:0xef7d3a, TRV:0xa56bd0 },
+    claro:{ bg:0xd8dee7, grid1:0xb4bdc9, grid2:0xc6cdd6,
+      CBS:0x1565c0, CBI:0x00897b, ES:0xe65100, TRV:0x7b1fa2 }
+  };
+  function aplicarTema(t){
+    var T=TEMAS[t]||TEMAS.medio;
+    scene.background=new THREE.Color(T.bg);
+    scene.remove(grid);
+    grid=new THREE.GridHelper(1400,28,T.grid1,T.grid2); grid.position.y=-1; scene.add(grid);
+    matAcero.CBS.color.setHex(T.CBS); matAcero.CBI.color.setHex(T.CBI);
+    matAcero.ES.color.setHex(T.ES); matAcero.TRV.color.setHex(T.TRV);
+  }
+  var tema=document.getElementById('tema');
+  if(tema) tema.querySelectorAll('button').forEach(function(bt){
+    bt.addEventListener('click',function(){
+      tema.querySelectorAll('button').forEach(function(x){x.classList.remove('on');});
+      bt.classList.add('on'); aplicarTema(bt.getAttribute('data-tema'));
+    });
+  });
+
   // arranque
-  resize(); generar(); loop();
+  resize(); aplicarTema('medio'); generar(); loop();
 })();
 </script>
 </body>
