@@ -65,30 +65,53 @@ distribuidorGrid(base, cfg, host) -> Placement[]     // MVP: implementar linear+
 figuraAPuntos(figura, dims, host, anchor) -> Vector3[]   // usa la geometría del catálogo (parciales/tramos) + dims
 
 // modelador/generar.js  (F0)
-generarViga(receta) -> { placements:Placement[], barras:BarraLogica[], kg:number }
-  // BarraLogica = campos listos para insertar en `barras` (marca, figura, diam, dims, cant, largo, peso...)
-recalcularLargo(figura, dims) -> number   // suma de lados efectivos (reusa criterio del catálogo)
+generarViga(receta, catalogo) -> { placements:Placement[], barras:BarraPayload[], resumen:{items,barras,kg} }
+  // BarraPayload = shape de ac2Payload para POST /lotes/{id}/barras:
+  //   { sector, ciclo, piso, eje, diam, figura, marca, cant, mult, radio, suf_tipo, dim_a..dim_i, ang1..ang4 }
+  //   (+ origen:'template' y template_instancia_id que el backend aceptará — T1.1)
+  //   NO incluye largo ni peso: el BACKEND los calcula (largo_desde_lados + peso.py + factor obra).
+  //   sector/ciclo/eje/piso salen del contexto del lote activo (AC2), no de la receta.
+  // El motor SOLO llena los dim_*/ang* que la FIGURA usa (según parciales/angulos del catálogo);
+  //   los demás van en 0/vacío para pasar validar_geometria.
+  // El kg del resumen (para stats en vivo) se estima en el front con la misma fórmula (peso.py espejo),
+  //   pero NO se envía; el valor oficial lo pone el backend al insertar.
+estimarLargoYPeso(figura, dims, diam, catalogo) -> {largo, peso}  // SOLO para el stats en vivo del panel
 ```
 
 ### Backend — endpoints nuevos (router `modelador`)
 ```
-POST /templates            body: {nombre, tipo, params}            -> {id}          # guardar template (biblioteca)
+POST /templates             body: {nombre, tipo, params, obra?}    -> {id}          # guardar template (biblioteca)
 GET  /templates?tipo=&obra= -> {templates:[{id,nombre,tipo,params,obra}]}            # listar (por obra + otras)
 GET  /templates/{id}        -> {id,nombre,tipo,params}
-POST /elementos/generar     body: {lote_id, receta}                 -> {barras_creadas:N, kg}  # EXPANDE la receta e INSERTA barras en el lote (origen='template', template_instancia_id)
-  # Reusa la lógica de inserción de barras manuales (misma que lotes.py agregar_barras): id_unico, peso, estado.
+POST /elementos/instancia   body: {lote_id, template_id?, params}  -> {id}           # guarda la RECETA en elementos_template (traza)
 ```
+**IMPORTANTE (hallazgo del mapeo técnico):** para INSERTAR las barras generadas NO se crea endpoint
+nuevo — se REUSA el existente `POST /lotes/{id}/barras` (lotes.py) que ya el Fabricator usa vía
+`ac2Guardar`. El front EXPANDE la receta con el motor JS (F0), arma las barras con el MISMO shape que
+`ac2Payload` (sector/ciclo/eje/piso/diam/figura/marca/cant/mult/radio/suf_tipo/dim_*/ang1..4) y las
+manda a `POST /lotes/{AC2.loteId}/barras {barras:[...]}`. Así heredan id_unico, peso, estado, origen.
+Para marcar origen='template' + template_instancia_id: extender el payload de ac2Payload con esos
+campos y que lotes.py::agregar_barras los acepte (ver T1.1). El endpoint /elementos/instancia solo
+guarda la RECETA para trazabilidad (opcional en MVP; puede diferirse).
 
 ---
 
 ## FASE F0 — Motor geométrico genérico (client-side, testeable solo)
 
-**T0.1 [migración]** `NNN_modelador.sql` (idempotente):
-- `templates_catalogo` (id BIGSERIAL PK, nombre TEXT, tipo TEXT, params JSONB, obra TEXT NULL, creado_por, fecha).
-- `elementos_template` (id BIGSERIAL PK, template_id BIGINT NULL FK, lote_id BIGINT, params JSONB, creado_por, fecha).
-- `barras`: agregar columna `template_instancia_id BIGINT NULL` (DO $$ … EXCEPTION duplicate_column …).
-- `barras.origen` ya es TEXT libre → acepta 'template' sin cambio de constraint (VERIFICAR: si hay CHECK, ampliarlo).
-- Criterio: arranca sin error; tablas creadas; columna añadida. Sin tocar datos.
+**T0.1 [migración]** `armahub/migrations/104_modelador.sql` (primera línea `-- 104 — modelador 3D:
+templates + elementos_template + barras.template_instancia_id`). Idempotente:
+```sql
+CREATE TABLE IF NOT EXISTS templates_catalogo (
+  id BIGSERIAL PRIMARY KEY, nombre TEXT NOT NULL, tipo TEXT NOT NULL,
+  params JSONB NOT NULL, obra TEXT, creado_por TEXT, fecha TEXT DEFAULT (NOW() AT TIME ZONE 'UTC'));
+CREATE TABLE IF NOT EXISTS elementos_template (
+  id BIGSERIAL PRIMARY KEY, template_id BIGINT, lote_id BIGINT, params JSONB NOT NULL,
+  creado_por TEXT, fecha TEXT DEFAULT (NOW() AT TIME ZONE 'UTC'));
+DO $$ BEGIN ALTER TABLE barras ADD COLUMN template_instancia_id BIGINT; EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+CREATE INDEX IF NOT EXISTS ix_templates_obra ON templates_catalogo (obra, tipo);
+```
+- `barras.origen` es TEXT libre (sin CHECK) → 'template' sin cambio. Criterio: arranca sin error; tablas
+  y columna creadas; barras existentes intactas.
 
 **T0.2 [motor/geom]** `armahub/static/js/features/modelador/motor_geom.js`:
 - Portar de `rebar3d.js` el generador de barra sólida con CODOS REALES (cilindros + toros tangentes,
@@ -124,16 +147,16 @@ POST /elementos/generar     body: {lote_id, receta}                 -> {barras_c
 
 ## FASE F1 — 3D Template (UI que USA la viga-semilla + carga al despiece)
 
-**T1.1 [backend router]** `armahub/modelador.py` (nuevo router):
-- Endpoints POST /templates, GET /templates, GET /templates/{id}, POST /elementos/generar (contrato arriba).
-- `/elementos/generar`: recibe {lote_id, receta}; NO genera geometría en el server — recibe del front la
-  lista de barras ya expandida (el motor es client-side) O expande en server con una versión Python del
-  expansor. DECISIÓN DE IMPLEMENTACIÓN: para el MVP, el FRONT expande (reusa el motor JS) y manda las
-  BarraLogica; el endpoint solo las INSERTA en el lote reusando la lógica de lotes.py::agregar_barras
-  (mismo id_unico, peso, estado, origen='template', template_instancia_id). Guardar la receta en
-  elementos_template.
-- Montar el router en main.py (root + /api/v1), patrón del repo.
-- Criterio: py_compile OK; endpoints responden 401 sin token (montados); con token, insertan barras.
+**T1.1 [backend]** dos partes:
+- (a) `armahub/modelador.py` router NUEVO con: POST /templates, GET /templates?tipo=&obra=,
+  GET /templates/{id}, POST /elementos/instancia (guarda receta en elementos_template — trazabilidad,
+  opcional). Montar en main.py (root + _api_routers).
+- (b) EXTENDER `lotes.py::agregar_barras` + modelo `BarraManual`: agregar campos OPCIONALES
+  `origen: str = 'manual'` y `template_instancia_id: int = None`; usarlos en el INSERT (lotes.py:515-533)
+  en vez de los literales `'manual'`/NULL. Default = comportamiento actual intacto. Agregar la columna
+  `template_instancia_id` a la lista de columnas del INSERT.
+- Criterio: py_compile OK; /templates responde 401 sin token (montado); insertar una barra con
+  origen='template' la marca como tal; barras manuales normales SIGUEN insertándose igual (test de no-regresión).
 
 **T1.2 [viga-semilla]** cargar una viga-semilla como DATA:
 - Una receta viga por defecto (la de la maqueta: cabezales 103B sup/inf, estribo 104D por zonas, traba)
@@ -157,11 +180,14 @@ Regenerar / Cargar template). Reusar la maqueta como base literal.
 lote activo (AC2.loteId). Registrar la feature JS nueva en bootstrap.js (patrón data-armahub-feature).
 Cargar los scripts del modelador en app.html (?v=cache_bust).
 
-**T1.6 [cargar al despiece]** el botón "Cargar al despiece": el front expande la receta con el motor →
-manda las BarraLogica a POST /elementos/generar con el lote_id activo → refresca las barras del
-Fabricator (AC2.barras). Las barras aparecen en el editor y en el Bar Manager (origen='template').
-- Criterio: generar una viga y cargarla crea N barras correctas en el lote; se ven en Bar Manager;
-  el export aSa las trata como barras normales.
+**T1.6 [cargar al despiece]** el botón "Cargar al despiece": requiere lote activo (AC2.loteId; si no
+hay, crear uno con POST /lotes primero, como hace ac2CrearLote). El front expande la receta con el motor
+→ arma las BarraPayload (shape ac2Payload + origen='template') con sector/ciclo/eje/piso del AC2 →
+`_ac2Post('/lotes/'+AC2.loteId+'/barras', {barras:[...], })` (MISMO endpoint que ac2Guardar) →
+refresca AC2.barras / recarga el lote. Las barras aparecen en el editor y en el Bar Manager.
+- (Opcional) POST /elementos/instancia para guardar la receta como traza.
+- Criterio: generar una viga y cargarla crea N barras correctas en el lote (largo/peso calculados por el
+  backend); se ven en Bar Manager con origen='template'; el export aSa las trata como barras normales.
 
 **T1.7 [guardar/cargar template]** "Guardar como template" → POST /templates (con obra actual).
 "Cargar template" → GET /templates?tipo=viga&obra= (esta obra + otras) → elegir → carga la receta al panel.
@@ -176,6 +202,58 @@ Fabricator (AC2.barras). Las barras aparecen en el editor y en el Bar Manager (o
 ADetailer, decisiones de implementación) y el puntero en SPECS.
 
 ---
+
+## DATOS TÉCNICOS EXACTOS (del mapeo del repo — NO re-investigar)
+
+**Tabla `barras` (db.py:119 + migraciones):** PK `id` BIGSERIAL; `id_unico` TEXT único por obra (mig.51).
+Columnas relevantes para insertar: id_unico, id_proyecto, sector, piso, ciclo, eje, nombre_plano, diam,
+largo_total, mult, cant, cant_total, peso_unitario, peso_total, marca, figura, cod_proyecto,
+dim_a..dim_i (9), ang1..ang4 (4), radio, revisada/_por/_fecha, suf_tipo, origen, import_id, lote_id,
+estado, fecha_carga, creado_por, editado_por/_fecha. NO existe columna `nombre` ni `largo` sueltos
+(son nombre_plano y largo_total). Geometría 3D NO está en barras — vive en figuras_catalogo.geometria.
+
+**Insertar barras = `POST /lotes/{lote_id}/barras`** (lotes.py:453 `agregar_barras`, body `BarrasBatch` de
+`BarraManual` lotes.py:89-118). Requiere lote 'borrador' existente. Por barra:
+- El BACKEND calcula largo (`largo_desde_lados`: suma de lados que usa la figura, radio NO suma) y peso
+  (`peso_unitario_kg(diam mm, largo cm)=7850·π·(diam/2000)²·(largo/100)` × factor_peso de obra). → El
+  modelador NO envía largo_total ni peso; SOLO figura + dim_* + ang* + diam + cant + mult.
+- Valida con `validar_geometria(cur, figura, dims)`: los dim_* que la figura USA (sus `parciales`)
+  deben tener valor; los que NO usa, vacíos; ang: los primeros len(angulos); radio según flag. → El
+  motor debe llenar EXACTAMENTE los slots de la figura (leer parciales/angulos/radio del catálogo).
+- id_unico = 'M-'+uuid12; cod_proyecto = derivado del diam (diametros.py); estado/origen HARDCODEADOS
+  en el INSERT: `origen='manual'`, `estado='borrador'`, `import_id=NULL`.
+
+**Para origen='template' + template_instancia_id (T1.1):** extender `agregar_barras` (lotes.py:515-533)
+para aceptar `origen` y `template_instancia_id` OPCIONALES en el body (default 'manual'/NULL), y usarlos
+en el INSERT en vez de los literales. Extender el modelo `BarraManual` con esos campos opcionales.
+NO cambiar el comportamiento por defecto (barras manuales siguen igual).
+
+**Ángulos — convención aSa:** ángulo INTERNO del vértice = 180 − giro (mig.085). El motor de render usa
+el giro real; al PERSISTIR ang1..4 se guarda la convención que ya usa el catálogo/ingreso manual (mismo
+criterio que ac2Payload — copiarlo, no reinventar).
+
+**Catálogo (catalogo.py):** `get_figura(cur,codigo)→{parciales,angulos,radio}`. `figuras_catalogo.geometria`
+JSONB `{dim,tramos:[{lado,giro,sentido}]}` (para render). Tipologías VIGA: CBS/CBS2/CBSn/CBI/CBI2/CBIn/
+LT/ES/TRV con sus figuras (catalogo.py:134-142). Para el MVP la viga-semilla usa: CBS/CBI=103A/103B,
+ES=104D, TRV=101A.
+
+**Migraciones:** próxima = `104_*.sql`. Primera línea `-- 104 — descripción`. Idempotente:
+`CREATE TABLE IF NOT EXISTS`, `ALTER TABLE … ADD COLUMN IF NOT EXISTS`, o
+`DO $$ BEGIN ALTER TABLE … ADD COLUMN …; EXCEPTION WHEN duplicate_column THEN NULL; END $$;`.
+Se aplica sola al arranque (db.py:1392 _run_migrations, savepoint por migración). `barras.origen` es TEXT
+libre (sin CHECK) → acepta 'template' sin migración de constraint.
+
+**Router nuevo (main.py):** import + `app.include_router(mi_router)` (junto a main.py:67-83) + agregar a
+`_api_routers` (main.py:86-91) para /api/v1.
+
+**Front:** feature JS nueva → `loadScript(...)` en bootstrap.js (patrón :248-255, data-armahub-feature
+único). Shared en app.html:298-313 (ANTES de bootstrap.js). Botón "3D Template" en la cabecera del
+Fabricator (agregar_cubicacion2.html:9-24, junto a ac2_guardarBtn), visible solo con AC2.loteId.
+Estado: `AC2.loteId/proyecto/barras/sector/ciclo/eje` (agregar_cubicacion2.js:11-31). Insertar barras:
+patrón `ac2Guardar` → `_ac2Post('/lotes/'+AC2.loteId+'/barras',{barras:[...ac2Payload]})` (js:1517);
+`ac2Payload` (js:1391) arma {sector,ciclo,piso,eje,diam,figura,marca,cant,mult,radio,revisada,suf_tipo,
+dim_*,ang1..4}. Three.js: `https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js` (on-demand);
+BufferGeometryUtils se carga aparte (examples/js/utils/BufferGeometryUtils.js) SOLO si se usa fusión.
 
 ## ORDEN de ejecución
 F0 completo (T0.1→T0.6) → F1 completo (T1.1→T1.9). De corrido. Al final, reporte de: qué quedó
