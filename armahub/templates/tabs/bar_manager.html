@@ -97,7 +97,6 @@
         </div>
 
         <!-- leyenda Vista plana: ABSOLUTA para no alterar la base de los selects -->
-        <span style="position:absolute; right:0; bottom:-19px; font-size:11px; color:#8d6e63; white-space:nowrap;">📋 Filtrar por uno de estos activa la <strong>Vista plana</strong></span>
       </div>
 
       <!-- ── FILTROS AVANZADOS (bajo uso: plano/carga/origen) — plegado ── -->
@@ -170,11 +169,6 @@
         <button class="secondary" onclick="collapseAll()" style="font-size:11px; padding:3px 10px;">▸ Colapsar todo</button>
         <button class="secondary" id="btnCobertura" onclick="toggleCobertura()" style="font-size:11px; padding:3px 10px;">📊 Mostrar cobertura</button>
         <button class="secondary" id="btnPanelCub" onclick="bmTogglePanelCub()" style="font-size:11px; padding:3px 10px;">👷 Panel de Cubicación</button>
-        <!-- Vista plana manual: tabla única sin agrupar (se ve mejor y con más ancho útil).
-             Antes solo se activaba al usar un filtro de nivel-barra; ahora también con este check. -->
-        <label style="font-size:11px; color:#555; cursor:pointer; display:inline-flex; align-items:center; gap:4px;" title="Ver todas las barras en una sola tabla, sin agrupar por piso/ciclo">
-          <input type="checkbox" id="bmVistaPlanaChk" onchange="buscar(true)" style="margin:0;" /> Vista plana
-        </label>
         <!-- 5M.3: candado de edición. Cerrado = solo lectura; abrir habilita editar barras.
              Color propio (ámbar) para que resalte entre los botones grises. -->
         <button id="btnEdicionBarras" onclick="toggleModoEdicion()" style="font-size:11px; padding:3px 12px; background:#fff3e0; border:1px solid #ffb74d; border-radius:4px; cursor:pointer; color:#e65100; font-weight:600;">🔒 Edición bloqueada</button>
@@ -189,6 +183,9 @@
              figura de cada barra a ESCALA con sus medidas reales, en la columna "Render". Empujado a la
              derecha (margin-left:auto) como control visual separado. Apagado por defecto. -->
         <div style="margin-left:auto; display:inline-flex; align-items:center; gap:8px;">
+          <!-- Toggle de VISTA (único control de agrupación). Texto dinámico: muestra la ACCIÓN
+               que hará el clic. En agrupado dice "Vista plana"; en plano dice "Agrupar". -->
+          <button id="btnVistaPlana" onclick="bmToggleVistaPlana()" style="font-size:11px; padding:3px 10px; background:#fff; border:1px solid #cfd8dc; border-radius:4px; cursor:pointer; color:#555;">📄 Vista plana</button>
           <label style="font-size:11px; color:#666; cursor:pointer; display:inline-flex; align-items:center; gap:4px;" title="Dibujar la figura de cada barra a escala (A, B, C…, ángulos)">
             <input type="checkbox" id="bmVerRender" checked onchange="bmToggleRender(this.checked)" style="margin:0;" /> Render
           </label>

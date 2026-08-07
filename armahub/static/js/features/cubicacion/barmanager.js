@@ -288,21 +288,26 @@ function _valorFiltroValido(sel) {
 // (figura o tipología; ampliable a diámetro después). Devuelve una tabla única de
 // todas las barras del filtro, editable, sin desplegables de agrupación. Sin esos
 // filtros, la vista normal AGRUPADA (piso/sector/eje → ciclos → barras).
+// La vista plana ahora se controla ÚNICAMENTE con el toggle manual (btnVistaPlana).
+// Los filtros (figura/tipología/diámetro/plano) YA NO la activan automáticamente:
+// filtran igual en cualquiera de las dos vistas.
+var _bmVistaPlana = false;
 function _modoVistaPlana() {
-  // Checkbox manual: si está marcado, siempre vista plana.
-  var chk = document.getElementById('bmVistaPlanaChk');
-  if (chk && chk.checked) return true;
-  // Filtro de texto por plano (input libre) también activa la vista plana.
-  var planoEl = document.getElementById('planoTxt');
-  if (planoEl && (planoEl.value || '').trim()) return true;
-  // Filtros de nivel-barra (derivado de BM_FILTROS: activaVistaPlana). Agregar un 4º
-  // filtro de nivel-barra = marcar su flag en la constante, sin tocar aquí.
-  var campos = BM_FILTROS.filter(function(f){ return f.activaVistaPlana; }).map(function(f){ return f.id; });
-  return campos.some(function(id) {
-    // Usa la misma validación que _buildFilterParams: un valor pegado/fantasma
-    // NO activa la vista plana (y se auto-limpia). Así no queda una tabla vacía.
-    return _valorFiltroValido(document.getElementById(id));
-  });
+  return _bmVistaPlana;
+}
+window.bmToggleVistaPlana = function() {
+  _bmVistaPlana = !_bmVistaPlana;
+  _bmActualizarBtnVistaPlana();
+  buscar(true);
+};
+function _bmActualizarBtnVistaPlana() {
+  var btn = document.getElementById('btnVistaPlana');
+  if (!btn) return;
+  // El texto muestra la ACCIÓN del clic: en agrupado ofrece "Vista plana"; en plano ofrece "Agrupar".
+  btn.textContent = _bmVistaPlana ? '🗂 Agrupar' : '📄 Vista plana';
+  btn.style.background = _bmVistaPlana ? '#e3f2fd' : '#fff';
+  btn.style.borderColor = _bmVistaPlana ? '#90caf9' : '#cfd8dc';
+  btn.style.color = _bmVistaPlana ? '#1565c0' : '#555';
 }
 
 async function buscar(reset = false) {

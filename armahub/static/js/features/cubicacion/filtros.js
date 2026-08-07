@@ -347,7 +347,8 @@ function onEjeInput() {
   _bmEjeTimer = setTimeout(function() { _bmEjeTimer = null; onFilterChange('eje'); }, 200);
 }
 
-// Filtro de texto por PLANO (nombre_plano), con debounce. Activa vista plana (como eje/figura).
+// Filtro de texto por PLANO (nombre_plano), con debounce. Filtra en la vista actual
+// (agrupada o plana); ya NO fuerza la vista plana — eso lo controla solo el toggle.
 var _bmPlanoTimer = null;
 function onPlanoTxtInput() {
   if (typeof _bmBloqueadoPorEdicion === 'function' && _bmBloqueadoPorEdicion('plano')) return;
