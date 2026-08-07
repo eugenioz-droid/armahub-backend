@@ -32,6 +32,31 @@ Escalabilidad es requisito explícito del usuario en TODAS las fases.
 
 ---
 
+## 0bis. GIRO DE ARQUITECTURA (discovery viga, 08-ago) — CRÍTICO
+
+El discovery de la viga reveló que **hardcodear templates NO es el camino**. Razones (del usuario):
+- El recubrimiento varía por plano/cara (los 4 recubrimientos ajustables), y afecta distinto a cada
+  barra. Tekla/Revit lo resuelven ingresando PUNTOS por pantalla para limitar la distribución.
+- El cubicador ajusta manualmente largos de barra según la figura.
+- El cubicador decide cómo SUBDIVIDE el elemento (una "viga" puede abarcar 2 tramos con espaciamientos
+  distintos, según su criterio). No es un patrón fijo.
+- Una viga tiene ~5 componentes; un muro ~7. Hardcodear cada variante = trabajo enorme y cobertura baja.
+
+**Conclusión:** el corazón NO es "la viga tipo programada", sino un **EDITOR DE COMPOSICIÓN**: el
+cubicador trabaja sobre una vista por plano/volumen, POSICIONA componentes con clicks, define
+recubrimientos y restricciones, ajusta largos. Un "template" pasa a ser una **composición GUARDADA**
+que el usuario creó y reutiliza — no algo que programamos. Esto es esencialmente el **Template Editor**
+adelantado: se vuelve el núcleo, no una fase posterior.
+
+**Implicación en fases (revisar §11):** no "F1 viga hardcodeada → F2 editor". Más bien: el editor de
+composición ES el MVP. Un primer elemento (viga) sirve para acotar el alcance del editor, no para
+codear una viga rígida. Se re-planifica en §11bis tras cerrar el discovery.
+
+**Riesgo:** esto es MÁS ambicioso que un generador de templates fijos. Hay que dimensionarlo bien
+(posicionamiento por clicks, restricciones, recubrimientos por cara/barra = trabajo de editor gráfico).
+Alternativa intermedia a evaluar: un editor de composición SIMPLE (formulario + pocas reglas) para el
+MVP, y el posicionamiento por clicks/volúmenes como evolución. DECISIÓN PENDIENTE (§13 D8).
+
 ## 1. Correcciones de concepto (errores previos, ahora fijados)
 
 - **R (radio) NO es el radio de doblado de los codos.** En ArmaHub, `radio` es un BOOLEAN por figura
@@ -304,6 +329,30 @@ histórico: maquetas que a la hora de implementar no quedaban iguales. Mitigaci�
 - **D7 · Renombrar "Agregar Despiece" → "Fabricator"** en toda la plataforma. CONFIRMADO. Nota: en el
   Fabricator SE SIGUEN CREANDO despieces (no es incongruente); el nombre abarca crear + generar 3D.
 
+## 8ter. Catálogo de VIGA (real, de catalogo.py) + regla figura-libre
+
+**Tipologías de VIGA (cerradas por tipo de elemento, catalogo.py:105-108):**
+- CBS (Cabezal Superior 1ª capa), CBS2 (2ª capa), CBSn (n capas)
+- CBI (Cabezal Inferior), CBI2, CBIn
+- LT (Lateral), ES (Estribo), TRV (Traba Viga)
+- *(faltaría alguno según el usuario — confirmar en discovery)*
+
+**Figuras sugeridas por tipología** (catalogo.py:134-142), ej. VIGA-ES: 103H/103E/104D/104O/104P;
+VIGA-CBS: 101A/102A/102B/…/103D. PERO son SUGERENCIAS, no restricción.
+
+**REGLA CLAVE (usuario, 08-ago): la TIPOLOGÍA es lo cerrado por tipo de elemento; la FIGURA es LIBRE.**
+Ej.: EC es la tipología "estribo de confinamiento de muro", pero el usuario puede elegir la figura
+106A/106B/106C para ese estribo, o usar esas mismas figuras en una viga tradicional. No se puede
+restringir la figura por tipología (infinitas posibilidades). El sistema propone figuras frecuentes,
+pero permite cualquiera. El **sufijo (suf_tipo)** define el rol fino (cabezal sup/inf, primera/segunda
+capa, etc.) — ya existe en el sistema.
+
+## 8-4ter. Homologación del render de plataforma (tarea D2, POSTERIOR al motor)
+Una vez existe el motor geométrico (F0), homologar el render 2D/wireframe actual (Bar Manager/Fabricator/
+catálogo) para que muestre codos y ganchos reales (hoy los estribos se ven "producto": gancho como un
+solo segmento sin codo). Es fase CORTA porque reusa el mismo motor. NO se hace ahora; queda como tarea
+planificada. Mantener el 2D simple hasta entonces.
+
 ## 9ter. Herramientas de inspección del 3D Template (D6 — nuevas, a diseñar)
 - **Cotas:** mostrar medidas del elemento y/o de barras (largo, espaciamiento, recubrimiento) sobre el
   canvas. Definir cuáles por defecto y cuáles on-demand.
@@ -322,6 +371,18 @@ histórico: maquetas que a la hora de implementar no quedaban iguales. Mitigaci�
 
 **PENDIENTES (el usuario decide):**
 
+- **D8. ¿MVP = editor de composición completo (posicionar por clicks + recubrimientos por cara +
+  restricciones) o versión intermedia (formulario + pocas reglas)?** Es LA decisión de alcance tras el
+  giro de arquitectura (§0bis). El editor por clicks es potente pero es un editor gráfico serio; el
+  intermedio arranca antes pero cubre menos. Recomendación: MVP intermedio que YA guarde composiciones,
+  con el posicionamiento por clicks como evolución — pero validar con el usuario cuánto necesita de
+  entrada.
+- **D3-flujo. Botón "3D Template":** el usuario ACLARA (08-ago) que el botón para CREAR barras con el
+  3D Template va en el **Fabricator** (formulario de edición/creación de despieces), NO en el Bar
+  Manager. El Bar Manager es para revisar la obra global, editar masivo, administrar data. IDEA
+  ACEPTADA a futuro: cuando se depure el Bar Manager (mejores filtros, más info), PODRÍA incorporarse
+  una visualización 3D por elemento AHÍ también — pero eso es posterior, no el MVP. El MVP: botón en
+  el Fabricator.
 - **D1. Elemento de partida:** ¿MURO (más productividad, más complejo) o VIGA (más simple, menos riesgo
   de quedar a medias)? El usuario prefiere muro pero teme que quede incompleto. Se dimensiona con D5.
 - **D2. Render 2D actual:** ¿el render 2D del catálogo/Bar Manager/Fabricator pasa a mostrar curvas
