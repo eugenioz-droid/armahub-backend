@@ -85,7 +85,7 @@ def create_app() -> FastAPI:
     # --- API v1 (same routers under /api/v1 prefix) ---
     _api_routers = [
         auth_router, importer_router, barras_router, admin_router,
-        export_router, pedidos_router, constructoras_router,
+        export_router, lotes_router, pedidos_router, constructoras_router,
         calculistas_router, catalogo_router, reclamos_router, notifications_router,
         obra_config_router,
     ]

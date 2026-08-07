@@ -1315,37 +1315,24 @@ function ac2PintarEstado(){
   }
 }
 
-// POST a un endpoint SIN el prefijo /api/v1 (los /lotes van en raíz). Devuelve {response,data}.
-async function _ac2Post(url, body){
-  var tok=localStorage.getItem('armahub_token');
-  var res=await fetch(url, { method:'POST',
-    headers: Object.assign({'Content-Type':'application/json'}, tok?{Authorization:'Bearer '+tok}:{}),
-    body: JSON.stringify(body||{}) });
+// M1.4: los /lotes ahora también viven bajo /api/v1 → estos helpers usan la MISMA
+// convención (apiUrl) y auth (authHeaders) de shared/api.js. Conservan el shape
+// {ok,status,data} porque el editor maneja sus errores EN LÍNEA (409/404/estado),
+// sin el toast/logout global de apiGet.
+async function _ac2Req(method, url, body){
+  var headers = Object.assign({}, authHeaders());
+  var opts = { method: method, headers: headers };
+  if (body !== undefined){ headers['Content-Type']='application/json'; opts.body = JSON.stringify(body||{}); }
+  var res = await fetch(apiUrl(url), opts);
   var data=null; try{ data=await res.json(); }catch(e){}
   return { ok:res.ok, status:res.status, data:data };
 }
-// PATCH a un endpoint SIN el prefijo /api/v1. Mismo shape que _ac2Post.
-async function _ac2Patch(url, body){
-  var tok=localStorage.getItem('armahub_token');
-  var res=await fetch(url, { method:'PATCH',
-    headers: Object.assign({'Content-Type':'application/json'}, tok?{Authorization:'Bearer '+tok}:{}),
-    body: JSON.stringify(body||{}) });
-  var data=null; try{ data=await res.json(); }catch(e){}
-  return { ok:res.ok, status:res.status, data:data };
-}
-// GET a un endpoint SIN el prefijo /api/v1 (los /lotes van en raíz). Devuelve el JSON o null.
+async function _ac2Post(url, body){ return _ac2Req('POST', url, body||{}); }
+async function _ac2Patch(url, body){ return _ac2Req('PATCH', url, body||{}); }
+async function _ac2Delete(url){ return _ac2Req('DELETE', url); }
 async function _ac2Get(url){
-  var tok=localStorage.getItem('armahub_token');
-  var res=await fetch(url, { headers: tok?{Authorization:'Bearer '+tok}:{} });
-  if (!res.ok) return null;
-  try{ return await res.json(); }catch(e){ return null; }
-}
-// DELETE a un endpoint SIN el prefijo /api/v1. Mismo shape que _ac2Post: { ok, status, data }.
-async function _ac2Delete(url){
-  var tok=localStorage.getItem('armahub_token');
-  var res=await fetch(url, { method:'DELETE', headers: tok?{Authorization:'Bearer '+tok}:{} });
-  var data=null; try{ data=await res.json(); }catch(e){}
-  return { ok:res.ok, status:res.status, data:data };
+  var r = await _ac2Req('GET', url);
+  return r.ok ? r.data : null;
 }
 
 // Barras COMPLETAS (con figura, φ, piso y geometría válida) y NO guardadas aún, listas para guardar.
@@ -2092,14 +2079,10 @@ window.ac2GuardarConfig=async function(){
   alert('✅ Configuración de la obra guardada.');
 };
 
-// PUT sin prefijo /api/v1 (config va en raíz también, coherente con el resto).
+// M1.4: PUT por la misma convención /api/v1 + auth compartida (shape histórico).
 async function _ac2Put(url, body){
-  var tok=localStorage.getItem('armahub_token');
-  var res=await fetch(url, { method:'PUT',
-    headers: Object.assign({'Content-Type':'application/json'}, tok?{Authorization:'Bearer '+tok}:{}),
-    body: JSON.stringify(body||{}) });
-  var data=null; try{ data=await res.json(); }catch(e){}
-  return res.ok ? Object.assign({ok:true}, data) : { ok:false, status:res.status, data:data };
+  var r = await _ac2Req('PUT', url, body||{});
+  return r.ok ? Object.assign({ok:true}, r.data) : { ok:false, status:r.status, data:r.data };
 }
 
 // Init al cargar el módulo (el markup ya está en el DOM por el {% include %}). El loader
