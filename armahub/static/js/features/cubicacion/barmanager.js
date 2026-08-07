@@ -870,18 +870,7 @@ async function loadCobertura() {
   _renderCobertura(cont, data, info);
 }
 
-function _pisoSortKey(p) {
-  // Orden constructivo: SM/PM arriba, P1..P99 al medio, S1..S9 abajo (subterráneos al final)
-  const up = (p || '').toUpperCase().trim();
-  if (up === 'SM' || up === 'PM' || up === 'SALA DE MAQUINAS') return 100000;
-  let m = up.match(/^P(\d+)/);
-  if (m) return parseInt(m[1], 10);
-  m = up.match(/^S(\d+)/);
-  if (m) return -parseInt(m[1], 10);
-  m = up.match(/(\d+)/);
-  if (m) return parseInt(m[1], 10);
-  return 0;
-}
+// M1.2: el criterio de pisos vive en shared/orden_pisos.js (pisoOrder global).
 
 function _renderCobertura(cont, data, info) {
   if (!data.pisos.length || !data.ciclos.length) {
@@ -928,7 +917,7 @@ function _renderCobertura(cont, data, info) {
   // Pisos efectivos: los originales no-PF + PF (si hay datos FUND).
   const pisosSet = new Set();
   cellsRegrouped.forEach(c => { if (c.piso) pisosSet.add(c.piso); });
-  const pisos = Array.from(pisosSet).sort((a, b) => _pisoSortKey(b) - _pisoSortKey(a));
+  const pisos = Array.from(pisosSet).sort((a, b) => pisoOrder(b) - pisoOrder(a));
 
   // Ciclos: orden numérico.
   const ciclos = data.ciclos.slice().sort((a, b) => {

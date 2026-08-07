@@ -22,15 +22,4 @@ async function loadCubicacionModule() {
   if (!restaurado) await buscar(true);
 }
 
-// Reusable piso ordering function (building order: SM top, subterráneos bottom)
-function pisoOrder(p) {
-  const up = (p || '').toUpperCase().trim();
-  if (up === 'SM' || up === 'SALA DE MAQUINAS' || up === 'PM') return 9999;
-  const m = up.match(/^S(\d+)/);
-  if (m) return -parseInt(m[1]);
-  const m2 = up.match(/^P(\d+)/);
-  if (m2) return parseInt(m2[1]);
-  const m3 = up.match(/(\d+)/);
-  if (m3) return parseInt(m3[1]);
-  return 0;
-}
+// M1.2: pisoOrder vive en shared/orden_pisos.js (fuente única, espejo de orden.py).
