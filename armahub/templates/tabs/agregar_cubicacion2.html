@@ -136,6 +136,18 @@
         <span id="ac2_estructChips" style="display:inline-flex; gap:5px; flex-wrap:wrap;"></span>
         <span id="ac2_sectorLock" style="font-size:10px; color:#c62828; margin-left:8px;"></span>
       </div>
+      <!-- M1.10 · PLANO del despiece: se escribe y queda FIJO (chip). Click en el chip → editable
+           de nuevo (mientras el despiece no esté terminado). Se guarda en el lote y se estampa a
+           las barras. Lo cablea ac2_plano.* en JS. -->
+      <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+        <span style="font-size:11px; color:#607d8b; font-weight:700; width:80px;">Plano</span>
+        <input id="ac2_planoInput" type="text" maxlength="60" placeholder="Ej: E-12 · Rev.C"
+               onkeydown="if(event.key==='Enter'){event.preventDefault(); ac2FijarPlano();}"
+               onblur="ac2FijarPlano()"
+               style="display:none; font-size:12px; height:26px; padding:2px 8px; border:1px solid #8BC34A; border-radius:4px; width:220px; box-sizing:border-box;" />
+        <span id="ac2_planoChip" onclick="ac2EditarPlano()" title="Click para editar el plano"
+              style="display:none; font-size:12px; padding:3px 10px; background:#eef5e6; color:#33691e; border:1px solid #c5e1a5; border-radius:12px; cursor:pointer; font-weight:600;"></span>
+      </div>
     </div>
 
     <!-- SUBTABS de TIPOLOGÍA — DINÁMICOS según la estructura elegida. Los genera JS

@@ -21,6 +21,7 @@ var AC2 = {
   loteId:null,     // id GLOBAL del lote (para la API). null = aún no creado.
   loteNum:null,    // correlativo del lote DENTRO de la obra (lo que ve el usuario: #1, #2…)
   loteEstado:'',   // '' | 'borrador' | 'terminada'
+  plano:'',        // M1.10: plano del despiece (edificio = un plano por lote/despiece)
   creando:false,   // flujo por etapas: true tras "Crear despiece" (etapa 2) hasta crear el lote o volver
   ctxFijado:false, // ciclo+eje confirmados con "Fijar" → habilita elegir Sector/Estructura (etapa 3)
   // 5N.20 sub-paso 1: la "tipología" (subtab MH/MV/TR/EC/TC/CB) ES el campo `marca` de la
@@ -590,6 +591,7 @@ function ac2PintarSectorEstructura(){
   }).join(' ');
   var lk=document.getElementById('ac2_sectorLock');
   if (lk) lk.textContent = bloq ? '🔒 bloqueado (hay barras) — para cambiar, descarta/elimina el despiece' : '';
+  ac2PintarPlano();   // M1.10: el plano vive en esta misma fila
 }
 window.ac2SetSector=function(s){ if(ac2Bloqueado()) return;
   AC2.sector=s;
@@ -613,6 +615,45 @@ window.ac2SetEstructura=function(e){
   // completa (ciclo+eje+sector). Solo si aún no hay lote y el contexto está completo.
   if (!AC2.loteId && AC2.proyecto && AC2.ciclo && AC2.eje && AC2.sector && AC2.estructura){
     ac2CrearLote();
+  }
+};
+
+// ── M1.10 · PLANO del despiece (chip fijo ↔ input editable) ──────────────────
+// Estado en AC2.plano. Se pinta como chip verde (parece fijo); click en el chip lo
+// vuelve editable; al salir/Enter se fija y persiste. Solo editable en borrador.
+function ac2PintarPlano(){
+  var inp=document.getElementById('ac2_planoInput'), chip=document.getElementById('ac2_planoChip');
+  if(!inp||!chip) return;
+  var editable = AC2.loteEstado==='borrador' || !AC2.loteId;
+  var val=(AC2.plano||'').trim();
+  if (val){
+    chip.textContent='📄 '+val;
+    chip.style.display='inline-block';
+    chip.style.cursor=editable?'pointer':'default';
+    chip.title=editable?'Click para editar el plano':'Plano fijo (despiece terminado)';
+    inp.style.display='none';
+  } else {
+    // sin plano aún: input visible si editable, nada si no
+    chip.style.display='none';
+    inp.style.display=editable?'inline-block':'none';
+  }
+}
+window.ac2EditarPlano=function(){
+  if (!(AC2.loteEstado==='borrador' || !AC2.loteId)) return;   // terminado = fijo de verdad
+  var inp=document.getElementById('ac2_planoInput'), chip=document.getElementById('ac2_planoChip');
+  if(!inp||!chip) return;
+  inp.value=AC2.plano||''; chip.style.display='none'; inp.style.display='inline-block'; inp.focus(); inp.select();
+};
+window.ac2FijarPlano=async function(){
+  var inp=document.getElementById('ac2_planoInput'); if(!inp) return;
+  var nuevo=(inp.value||'').trim().slice(0,60);
+  if (nuevo===(AC2.plano||'')){ ac2PintarPlano(); return; }   // sin cambio
+  AC2.plano=nuevo;
+  ac2PintarPlano();
+  // Persistir si ya hay lote (si aún no, se guarda al crearlo — ver ac2CrearLote).
+  if (AC2.loteId && AC2.loteEstado==='borrador'){
+    var r=await _ac2Patch('/lotes/'+AC2.loteId+'/plano', { plano:nuevo });
+    if (!r.ok){ alert('No se pudo guardar el plano.'); }
   }
 };
 
@@ -798,7 +839,7 @@ window.ac2ElegirObraLanding=function(idProyecto, nombre){
   }
   // Efecto de "obra elegida" (mismo camino que el buscador).
   AC2.proyecto=idProyecto; AC2._nombreObra=nombre||''; AC2.creando=false;
-  AC2.ciclo=''; AC2.eje=''; AC2.sector=''; AC2.estructura=''; AC2.loteId=null; AC2.loteEstado=''; AC2.barras=[];
+  AC2.ciclo=''; AC2.eje=''; AC2.sector=''; AC2.estructura=''; AC2.loteId=null; AC2.loteEstado=''; AC2.barras=[]; AC2.plano='';
   if (_ac2CbCiclo) _ac2CbCiclo.limpiar(); if (_ac2CbEje) _ac2CbEje.limpiar();
   ac2PintarEstado(); ac2PintarSectorEstructura(); ac2PintarSubtabs();
   ac2ActualizarBotonesCrear(); ac2ActualizarCabecera(); ac2Render(); ac2CargarLotes();
@@ -1368,6 +1409,8 @@ window.ac2CrearLote=async function(){
                                      sector:AC2.sector||null, estructura:AC2.estructura||null });
     if (!r.ok || !r.data || !r.data.lote_id){ alert('No se pudo crear el despiece'+(r.data&&r.data.detail?': '+(r.data.detail.msg||r.data.detail):'')+'.'); return; }
     AC2.loteId=r.data.lote_id; AC2.loteNum=r.data.num_obra||null; AC2.loteEstado='borrador';
+    // M1.10: si ya se había escrito un plano antes de existir el lote, persistirlo ahora.
+    if ((AC2.plano||'').trim()){ _ac2Patch('/lotes/'+AC2.loteId+'/plano', { plano:AC2.plano.trim() }); }
     ac2PintarEstado(); ac2PintarSectorEstructura(); ac2ActualizarBotonesCrear();
     ac2ActualizarCabecera(); ac2Render(); ac2CargarLotes();
   }catch(e){ alert('Error de red al crear el despiece. Reintenta.'); }
@@ -1612,7 +1655,7 @@ function _ac2DescartarLoteVacioSiCorresponde(){
 }
 function _ac2ResetTanda(){
   _ac2DescartarLoteVacioSiCorresponde();   // borra el lote vacío antes de soltarlo
-  AC2.loteId=null; AC2.loteNum=null; AC2.loteEstado=''; AC2.barras=[]; AC2.sector=''; AC2.estructura=''; AC2.tipo='TODOS';
+  AC2.loteId=null; AC2.loteNum=null; AC2.loteEstado=''; AC2.barras=[]; AC2.sector=''; AC2.estructura=''; AC2.tipo='TODOS'; AC2.plano='';
   AC2.ciclo=''; AC2.eje='';
   AC2.creando=false; AC2.ctxFijado=false;   // flujo por etapas: tras descartar/cerrar, volver a etapa 1 (obra sin lote)
   ac2LimpiarSeleccion();
@@ -1736,6 +1779,7 @@ window.ac2RetomarLote=async function(id){
   if (!d || !d.lote){ alert('No se pudo abrir el despiece.'); return; }
   var L=d.lote, bs=d.barras||[];
   AC2.loteId=L.id; AC2.loteNum=L.num_obra||null; AC2.loteEstado=L.estado;
+  AC2.plano=L.plano||'';   // M1.10: recuperar el plano del lote
   // Contexto del lote (de su primera barra): sector, estructura (se infiere de la marca), ciclo, eje.
   var b0=bs[0]||{};
   AC2.sector=b0.sector||''; AC2.ciclo=b0.ciclo||''; AC2.eje=b0.eje||'';

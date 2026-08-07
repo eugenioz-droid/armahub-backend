@@ -242,6 +242,35 @@ def reasignar_contexto(lote_id: int, body: LoteContexto, user=Depends(get_curren
     return {"ok": True, "lote_id": lote_id, "ciclo": ciclo, "eje": eje, "barras": n}
 
 
+class LotePlano(BaseModel):
+    plano: str = ""
+
+
+@router.patch("/lotes/{lote_id}/plano")
+def fijar_plano(lote_id: int, body: LotePlano, user=Depends(get_current_user)):
+    """M1.10 — Fija el PLANO del despiece (edificio = un plano por lote). Editable mientras el
+    despiece está en BORRADOR; se estampa a plano_code de todas sus barras manuales."""
+    email = user.get("email", "?")
+    plano = (body.plano or "").strip()[:60]
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            _check_permiso(cur, user)
+            cur.execute("SELECT estado FROM lotes WHERE id = %s", (lote_id,))
+            r = cur.fetchone()
+            if not r:
+                raise HTTPException(status_code=404, detail="Despiece no encontrado.")
+            if r[0] != "borrador":
+                raise HTTPException(status_code=409, detail="El plano solo se edita mientras el despiece está en edición.")
+            cur.execute("UPDATE lotes SET plano=%s WHERE id=%s", (plano or None, lote_id))
+            cur.execute(
+                "UPDATE barras SET plano_code=%s, editado_por=%s, editado_fecha=%s "
+                "WHERE lote_id=%s AND origen='manual'",
+                (plano or None, email, _now_iso(), lote_id))
+            n = cur.rowcount
+    audit(email, "fijar_plano_lote", f"lote {lote_id} → {plano or '(vacío)'} ({n} barras)", "lote", str(lote_id))
+    return {"ok": True, "lote_id": lote_id, "plano": plano, "barras": n}
+
+
 class LoteDuplicar(BaseModel):
     ciclo: str          # ciclo del NUEVO lote (obligatorio)
     eje: str            # eje del NUEVO lote (obligatorio)
@@ -757,7 +786,7 @@ def ver_lote(lote_id: int, user=Depends(get_current_user)):
         with conn.cursor() as cur:
             _check_permiso(cur, user)
             cur.execute(
-                "SELECT id, id_proyecto, estado, creado_por, creado_fecha, terminado_fecha, n_barras, num_obra, snap_barras "
+                "SELECT id, id_proyecto, estado, creado_por, creado_fecha, terminado_fecha, n_barras, num_obra, snap_barras, plano "
                 "FROM lotes WHERE id = %s", (lote_id,))
             r = cur.fetchone()
             if not r:
@@ -765,7 +794,8 @@ def ver_lote(lote_id: int, user=Depends(get_current_user)):
             num_obra = r[7]   # correlativo FIJO por obra (columna)
             estado = r[2]
             lote = {"id": r[0], "id_proyecto": r[1], "estado": estado, "creado_por": r[3],
-                    "creado_fecha": r[4], "terminado_fecha": r[5], "n_barras": r[6], "num_obra": num_obra}
+                    "creado_fecha": r[4], "terminado_fecha": r[5], "n_barras": r[6], "num_obra": num_obra,
+                    "plano": r[9]}
             if estado == "eliminado":
                 # Lote ELIMINADO: sus barras ya no están en la tabla; se leen del snapshot congelado
                 # (solo lectura). El front las muestra bloqueadas/en gris.
