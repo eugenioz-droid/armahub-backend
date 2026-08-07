@@ -10,7 +10,6 @@
     inicio: 'Metrics',
     obras: 'Obras',
     buscar: 'Bar Manager',
-    agregar: 'Agregar Cubicación',
     agregar2: 'Agregar Despiece',
     pedidos: 'Pedidos',
     export: 'Exportacion',
@@ -99,7 +98,6 @@
     rec_settings: 'loadRecSettings',
     clientes: 'loadClientesModule',
     catalogo: 'loadCatalogoModule',
-    agregar: 'loadAgregarCubicacion',  // 5N-C: tab "Agregar Cubicación"
     agregar2: 'loadAgregarCubicacion2' // 5N.20: creador de lotes v2 (contexto real)
   };
 

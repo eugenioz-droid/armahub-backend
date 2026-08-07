@@ -245,14 +245,6 @@
         'cubicacion-index',
         '[ArmaHub] No se pudo cargar cubicacion/index.js'
       ),
-      // 5N-C: tab "Agregar Cubicación" (ingreso manual de barras).
-      loadScript(
-        'script[data-armahub-feature="cubicacion-agregar"]',
-        '/static/js/features/cubicacion/agregar_cubicacion.js' + suffix,
-        'armahubFeature',
-        'cubicacion-agregar',
-        '[ArmaHub] No se pudo cargar cubicacion/agregar_cubicacion.js'
-      ),
       // 5N.20: creador de lotes v2 (maqueta + contexto real Obra·Ciclo·Eje).
       loadScript(
         'script[data-armahub-feature="cubicacion-agregar2"]',
