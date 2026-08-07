@@ -780,7 +780,7 @@ function ac2AplicarEtapa(){
   // Sector/Estructura: etapas 3-4. Tipologías, toolbar, grilla, rollup: solo editor (4). Todos son
   // contenedores FLEX en su HTML original → se muestran con 'flex' (el grid es block normal).
   show('ac2_filaSector', e>=3, 'flex');
-  show('ac2_subtabs', e===4, 'flex');
+  show('ac2_filaTipologia', e===4, 'flex');   // fila con subtabs de tipología + campo Plano
   show('ac2_toolbar', e===4, 'flex');
   show('ac2_grid', e===4);            // grid: div block normal
   show('ac2_rollupWrap', e===4, 'flex');

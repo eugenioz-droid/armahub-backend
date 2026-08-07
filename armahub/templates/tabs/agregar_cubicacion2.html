@@ -136,24 +136,26 @@
         <span id="ac2_estructChips" style="display:inline-flex; gap:5px; flex-wrap:wrap;"></span>
         <span id="ac2_sectorLock" style="font-size:10px; color:#c62828; margin-left:8px;"></span>
       </div>
-      <!-- M1.10 · PLANO del despiece: se escribe y queda FIJO (chip). Click en el chip → editable
-           de nuevo (mientras el despiece no esté terminado). Se guarda en el lote y se estampa a
-           las barras. Lo cablea ac2_plano.* en JS. -->
-      <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
-        <span style="font-size:11px; color:#607d8b; font-weight:700; width:80px;">Plano</span>
-        <input id="ac2_planoInput" type="text" maxlength="60" placeholder="Ej: E-12 · Rev.C"
-               onkeydown="if(event.key==='Enter'){event.preventDefault(); ac2FijarPlano();}"
-               onblur="ac2FijarPlano()"
-               style="display:none; font-size:12px; height:26px; padding:2px 8px; border:1px solid #8BC34A; border-radius:4px; width:220px; box-sizing:border-box;" />
-        <span id="ac2_planoChip" onclick="ac2EditarPlano()" title="Click para editar el plano"
-              style="display:none; font-size:12px; padding:3px 10px; background:#eef5e6; color:#33691e; border:1px solid #c5e1a5; border-radius:12px; cursor:pointer; font-weight:600;"></span>
-      </div>
     </div>
 
-    <!-- SUBTABS de TIPOLOGÍA — DINÁMICOS según la estructura elegida. Los genera JS
-         (ac2PintarSubtabs); cada uno filtra la vista + fija la tipología nueva. + TODOS. -->
-    <div id="ac2_subtabs" style="display:flex; align-items:center; gap:2px; flex-wrap:wrap; border-bottom:2px solid #e0e0e0; margin-bottom:8px;">
-      <span style="font-size:11px; color:#607d8b; font-weight:700; margin-right:8px;">Tipología:</span>
+    <!-- Fila de Tipología (subtabs) + campo Plano a la derecha. El campo Plano vive FUERA de
+         #ac2_subtabs porque ese div se regenera por completo (ac2PintarSubtabs hace innerHTML=…)
+         y borraría el input/chip. Aquí son hermanos, así el plano persiste. -->
+    <div id="ac2_filaTipologia" style="display:flex; align-items:center; gap:8px; border-bottom:2px solid #e0e0e0; margin-bottom:8px;">
+      <!-- SUBTABS de TIPOLOGÍA — DINÁMICOS según la estructura elegida (ac2PintarSubtabs). -->
+      <div id="ac2_subtabs" style="display:flex; align-items:center; gap:2px; flex-wrap:wrap; flex:1;">
+        <span style="font-size:11px; color:#607d8b; font-weight:700; margin-right:8px;">Tipología:</span>
+      </div>
+      <!-- M1.10 · PLANO del despiece: se escribe y queda FIJO (chip). Click en el chip → editable
+           mientras el despiece no esté terminado. Input angosto (~30% menos): se edita completo
+           aunque no se vea todo el texto. -->
+      <span style="font-size:11px; color:#607d8b; font-weight:700;">Plano</span>
+      <input id="ac2_planoInput" type="text" maxlength="120" placeholder="Ej: E-12 · Rev.C"
+             onkeydown="if(event.key==='Enter'){event.preventDefault(); ac2FijarPlano();}"
+             onblur="ac2FijarPlano()"
+             style="display:none; font-size:12px; height:24px; padding:2px 8px; border:1px solid #8BC34A; border-radius:4px; width:154px; box-sizing:border-box;" />
+      <span id="ac2_planoChip" onclick="ac2EditarPlano()" title="Click para editar el plano"
+            style="display:none; max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:12px; padding:3px 10px; background:#eef5e6; color:#33691e; border:1px solid #c5e1a5; border-radius:12px; cursor:pointer; font-weight:600;"></span>
     </div>
 
     <!-- FILA 3 · Botones rápidos + toggles -->

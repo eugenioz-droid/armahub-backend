@@ -233,7 +233,25 @@ async function loadFilters(depParams) {
   fillSelect('ciclo', data.ciclos);
   // Eje/Losa: buscador de TEXTO (input+datalist), poblado con los ejes de la obra.
   _fillEjesDatalist(data.ejes);
+  // Filtro de texto por Plano: datalist con los NOMBRES de plano de la obra (autocompletado).
+  _fillPlanosDatalist(data.planos);
 
+}
+
+// Puebla el datalist del filtro de plano con los nombres de plano únicos de la obra.
+function _fillPlanosDatalist(planos) {
+  var dl = document.getElementById('bmPlanosDatalist');
+  if (!dl) return;
+  var nombres = [];
+  (planos || []).forEach(function(p) {
+    var n = (p && (p.nombre || p.code)) || '';
+    n = String(n).trim();
+    if (n && nombres.indexOf(n) === -1) nombres.push(n);
+  });
+  nombres.sort();
+  dl.innerHTML = nombres.map(function(n) {
+    return '<option value="' + n.replace(/"/g, '&quot;') + '"></option>';
+  }).join('');
 }
 
 // 5M.10: buscador único de obra (input + datalist). El datalist muestra los
