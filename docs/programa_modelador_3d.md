@@ -185,6 +185,46 @@ que cosen las 2 mallas. El motor F0 debe soportar distribución 2D desde el dise
 - Cablear lo que la auditoría marcó decorativo (Figura→geometría, dims A/B/C, capas, acciones, etc.).
 - Cantidades .calc del estribo que se recalculen; Regenerar que llame a generar; stats/resumen en vivo.
 
+## 0-9ter. COLOCADOR POR PROYECCIONES (idea del usuario, 08-ago) — resuelve el motor genérico
+
+Idea del usuario que RESUELVE cómo se construye un template de forma genérica (viga/muro/columna),
+sin dibujar barras con puntos:
+
+**Concepto:** 3 vistas 2D del elemento (proyecciones estándar del plano estructural):
+- ELEVACIÓN (X-Y, de frente): largo × alto.
+- PLANTA (X-Z, desde arriba): largo × ancho.
+- SECCIÓN/CORTE (Y-Z, transversal): ancho × alto.
+En cada vista el HORMIGÓN es un rectángulo (la cara de esa proyección) con sus recubrimientos = BOUNDARY
+conocido. El usuario TOMA una figura del catálogo y la ANCLA dentro del boundary (ej. cabezal 103A
+longitudinal en la elevación; estribo en la sección; malla distribuida en la elevación del muro) y
+define su tipología. NO dibuja nodos: ancla a las CARAS del hormigón; el recubrimiento define el offset.
+El 3D sólido se ARMA SOLO combinando las 3 proyecciones.
+
+**Por qué es el MOTOR GENÉRICO:** no hay "viga-only". Hay "anclar figuras a un volumen por sus
+proyecciones". Viga = cabezales long. en elevación + estribos en sección. Muro = mallas distribuidas 2D
+en elevación + confinamiento en bordes de sección + trabas. MISMO mecanismo, distintas figuras/
+distribuciones. La figura reconoce los boundaries del hormigón (o viceversa) → posición automática.
+
+**VERIFICADO (reuso):** el diseñador de figuras 2D (disenador.js) YA tiene la base: click en lienzo con
+SNAP a grilla (GRID=40), snap de ángulo (SNAP_ANG=45), manejo de planos/proyecciones (2D + iso 3D +
+arcos por plano), motor de tramos. Falta: el rectángulo de hormigón como BOUNDARY con recubrimientos, y
+ANCLAR figuras a caras (no dibujar nodos). Es EXTENSIÓN de lo existente, no desde cero.
+
+**DOS MODOS COMPLEMENTARIOS del módulo (opinión acordada — la UI previa NO se descarta):**
+1. **COLOCAR** (proyecciones 2D, esta idea) = construir el template anclando figuras. ES el
+   **Template Editor** real (vive en Catálogo/Configurador).
+2. **AJUSTAR** (panel de componentes colapsables de la maqueta v1-v8) = tomar un template YA construido
+   y afinar parámetros rápido por formulario (φ, cantidad, espaciamiento). Es el uso día-a-día del
+   cubicador en el **3D Template** (dentro del Fabricator).
+3. El **3D sólido** (técnica rebar) = VISOR/verificador del resultado de ambos.
+
+Los tres encajan: Colocar (nace el template) → Ajustar (se reutiliza y afina) → 3D (se verifica). La
+maqueta de componentes ya hecha = modo AJUSTAR. Falta diseñar/maquetar el modo COLOCAR (proyecciones).
+
+**Siguiente:** discovery/maqueta del COLOCADOR por proyecciones (cómo se ancla una figura a una cara,
+cómo se define una distribución lineal vs malla 2D, cómo se pasan las 3 vistas al motor 3D). Este es el
+núcleo genérico que faltaba.
+
 ## 1. Correcciones de concepto (errores previos, ahora fijados)
 
 - **R (radio) NO es el radio de doblado de los codos.** En ArmaHub, `radio` es un BOOLEAN por figura
