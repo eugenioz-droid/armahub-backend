@@ -254,60 +254,30 @@
 
       <!-- CENTRO: 4 CUADRANTES -->
       <div id="te_quad">
-        <!-- 1.1 arriba-izq: SECCIÓN / corte (X-Z para viga; en muro sería la cara X-Y) -->
+        <!-- 1.1 arriba-izq: SECCIÓN / corte transversal (plano Y-Z: ancho×alto).
+             Dibujo DINÁMICO desde placements — lo rellena _redibujar2D() en template_editor.js. -->
         <div class="te-vista">
-          <div class="te-vtitle">SECCIÓN · corte de la pieza (X-Z)</div>
+          <div class="te-vtitle">SECCIÓN · corte de la pieza (Y-Z)</div>
           <div class="te-vaxes">Z →  ·  Y ↑</div>
-          <div class="te-vhint">aquí dibujas el recorrido del estribo</div>
-          <svg viewBox="0 0 360 300" preserveAspectRatio="xMidYMid meet">
-            <rect class="te-horm" x="120" y="50" width="120" height="200" rx="2"/>
-            <rect class="te-recub" x="130" y="60" width="100" height="180"/>
-            <path class="te-bar te-barES" d="M138,74 L130,66 M130,66 L130,240 L230,240 L230,66 L142,66 M142,66 L150,74"/>
-            <circle cx="142" cy="70" r="5" fill="var(--te-cbs)"/><circle cx="180" cy="70" r="5" fill="var(--te-cbs)"/><circle cx="218" cy="70" r="5" fill="var(--te-cbs)"/>
-            <circle cx="142" cy="82" r="5" fill="var(--te-cbs)"/><circle cx="180" cy="82" r="5" fill="var(--te-cbs)"/><circle cx="218" cy="82" r="5" fill="var(--te-cbs)"/>
-            <circle cx="142" cy="234" r="5.5" fill="var(--te-cbi)"/><circle cx="172" cy="234" r="5.5" fill="var(--te-cbi)"/><circle cx="188" cy="234" r="5.5" fill="var(--te-cbi)"/><circle cx="218" cy="234" r="5.5" fill="var(--te-cbi)"/>
-            <text class="te-dim" x="180" y="272" text-anchor="middle">Ancho 30 · Alto 60</text>
-          </svg>
+          <div class="te-vhint">longitudinales = puntos · estribo = recorrido</div>
+          <svg id="te_svgSeccion" viewBox="0 0 360 300" preserveAspectRatio="xMidYMid meet"></svg>
         </div>
 
-        <!-- 1.2 arriba-der: VISTA A LO LARGO (elevación lateral / a lo largo) -->
+        <!-- 1.2 arriba-der: VISTA A LO LARGO (elevación, plano X-Y: largo×alto).
+             Dibujo DINÁMICO desde placements. -->
         <div class="te-vista">
-          <div class="te-vtitle">A LO LARGO · elevación (Y-Z)</div>
+          <div class="te-vtitle">A LO LARGO · elevación (X-Y)</div>
           <div class="te-vaxes">X →  ·  Y ↑</div>
-          <div class="te-vhint">arrastra tipología aquí · clic para anclar</div>
-          <svg viewBox="0 0 620 300" preserveAspectRatio="xMidYMid meet">
-            <rect class="te-horm" x="40" y="90" width="540" height="130" rx="2"/>
-            <rect class="te-recub" x="52" y="102" width="516" height="106"/>
-            <path class="te-bar te-barCBS" d="M58,120 L58,112 M58,112 L562,112 M562,112 L562,120"/>
-            <path class="te-bar te-barCBS" d="M58,130 L562,130"/>
-            <path class="te-bar te-barCBI" d="M58,188 L58,196 M58,188 L562,188 M562,188 L562,196"/>
-            <g class="te-bar te-barES">
-              <path d="M80,105 L80,205"/><path d="M100,105 L100,205"/><path d="M120,105 L120,205"/>
-              <path d="M300,105 L300,205"/><path d="M330,105 L330,205"/><path d="M360,105 L360,205"/>
-              <path d="M500,105 L500,205"/><path d="M520,105 L520,205"/><path d="M540,105 L540,205"/>
-            </g>
-            <line class="te-dimL" x1="40" y1="245" x2="580" y2="245"/>
-            <text class="te-dim" x="310" y="260" text-anchor="middle">Largo 600 cm</text>
-            <path class="te-ghostbar" d="M200,155 L200,147 M200,147 L420,147 M420,147 L420,155"/>
-            <circle class="te-gpt" cx="200" cy="147" r="3"/><circle class="te-gpt" cx="420" cy="147" r="3"/>
-          </svg>
+          <div class="te-vhint">cabezales = líneas · estribos = trazos verticales</div>
+          <svg id="te_svgLargo" viewBox="0 0 620 300" preserveAspectRatio="xMidYMid meet"></svg>
         </div>
 
-        <!-- 2.1 abajo-izq: PLANTA (X-Y) -->
+        <!-- 2.1 abajo-izq: PLANTA (vista superior, plano X-Z: largo×ancho).
+             Dibujo DINÁMICO desde placements. -->
         <div class="te-vista">
-          <div class="te-vtitle">PLANTA · vista superior (X-Y)</div>
+          <div class="te-vtitle">PLANTA · vista superior (X-Z)</div>
           <div class="te-vaxes">X →  ·  Z ↑</div>
-          <svg viewBox="0 0 620 260" preserveAspectRatio="xMidYMid meet">
-            <rect class="te-horm" x="40" y="90" width="540" height="80" rx="2"/>
-            <rect class="te-recub" x="52" y="100" width="516" height="60"/>
-            <path class="te-bar te-barCBS" d="M58,110 L562,110"/>
-            <path class="te-bar te-barCBS" d="M58,130 L562,130"/>
-            <path class="te-bar te-barCBS" d="M58,150 L562,150"/>
-            <g class="te-bar te-barES" opacity=".6">
-              <path d="M80,100 L80,160"/><path d="M100,100 L100,160"/><path d="M300,100 L300,160"/>
-              <path d="M330,100 L330,160"/><path d="M500,100 L500,160"/><path d="M520,100 L520,160"/>
-            </g>
-          </svg>
+          <svg id="te_svgPlanta" viewBox="0 0 620 260" preserveAspectRatio="xMidYMid meet"></svg>
         </div>
 
         <!-- 2.2 abajo-der: 3D EN VIVO (reusa el motor del modelador) -->

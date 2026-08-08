@@ -126,7 +126,8 @@
     if (fi) fi.textContent = out.resumen.items;
     if (fb) fb.textContent = out.resumen.barras;
     if (fk) fk.textContent = _num(out.resumen.kg);
-    if (ST.threeCargado && ST.webglOk) _redibujar(out);
+    _redibujar2D(out);                                  // 3 vistas 2D (siempre)
+    if (ST.threeCargado && ST.webglOk) _redibujar(out); // 3D (si hay WebGL listo)
   }
 
   function _num(n) { try { return Number(n).toLocaleString('es-CL'); } catch (e) { return '' + n; } }
@@ -194,6 +195,127 @@
       if (mesh) ST.world.add(mesh);
     });
     ST.dist = g.largo * 1.15 + 160;
+  }
+
+  // --------------------------------------------------------------------------
+  // Vistas 2D en vivo — proyectan los MISMOS placements que el 3D a cada plano.
+  // Genéricas: reciben placements + un proyector (punto3D → {u,v}) y escalan al
+  // tamaño del cuadrante por bounding box. Nada específico de viga: un muro o
+  // columna futuros usan los mismos placements con otras proyecciones.
+  //   SECCIÓN  = corte transversal  → plano Y-Z (u=z, v=y)
+  //   A LO LARGO = elevación        → plano X-Y (u=x, v=y)
+  //   PLANTA   = vista superior     → plano X-Z (u=x, v=z)
+  // Colores por tipología: mismos que el 3D (CBS azul / CBI teal / ES naranja /
+  // TRV morado / LT gris-azulado). En la SECCIÓN los cabezales (longitudinales)
+  // se ven como PUNTOS (círculos); estribos/trabas como el recorrido perimetral.
+  // --------------------------------------------------------------------------
+  var COL2D = { CBS: '#1565c0', CBI: '#00897b', ES: '#e65100', TRV: '#7b1fa2', LT: '#607d8b' };
+  var SVG_NS = 'http://www.w3.org/2000/svg';
+  // Proyectores por plano (genéricos: cualquier polilínea 3D → 2D).
+  var PROY2D = {
+    seccion: function (p) { return { u: p.z, v: p.y }; },
+    largo:   function (p) { return { u: p.x, v: p.y }; },
+    planta:  function (p) { return { u: p.x, v: p.z }; }
+  };
+
+  function _colDe(tip) {
+    tip = (tip || '').toUpperCase();
+    if (COL2D[tip]) return COL2D[tip];
+    var rol = _rolDe(tip);
+    if (rol === 'estribo') return COL2D.ES;
+    if (rol === 'traba') return COL2D.TRV;
+    return COL2D.LT;
+  }
+
+  function _svgEl(tag, attrs) {
+    var el = document.createElementNS(SVG_NS, tag);
+    for (var k in attrs) if (attrs.hasOwnProperty(k)) el.setAttribute(k, attrs[k]);
+    return el;
+  }
+
+  // Rectángulo de hormigón (+recubrimiento) para un plano dado, en unidades del
+  // host (cm), centrado en el origen. Devuelve {out:[w,h], in:[w,h]} en (u,v).
+  function _rectPlano(g, plano) {
+    var rs = g.recub_sup != null ? Number(g.recub_sup) : 4;
+    var ri = g.recub_inf != null ? Number(g.recub_inf) : 4;
+    var rl = g.recub_lat != null ? Number(g.recub_lat) : 3;
+    var largo = Number(g.largo), alto = Number(g.alto), ancho = Number(g.ancho);
+    if (plano === 'seccion') return { W: ancho, H: alto, iW: ancho - 2 * rl, iH: alto - rs - ri };
+    if (plano === 'largo')   return { W: largo, H: alto, iW: largo - 2 * rl, iH: alto - rs - ri };
+    return { W: largo, H: ancho, iW: largo - 2 * rl, iH: ancho - 2 * rl }; // planta
+  }
+
+  // Dibuja UN cuadrante 2D. `plano` ∈ {seccion,largo,planta}.
+  function _dibujarVista2D(svg, out, plano, geo) {
+    if (!svg) return;
+    while (svg.firstChild) svg.removeChild(svg.firstChild);
+    var proj = PROY2D[plano];
+    var placements = (out && out.placements) || [];
+
+    // --- Bounding box en (u,v): hormigón + todos los puntos proyectados ---
+    var minU = Infinity, maxU = -Infinity, minV = Infinity, maxV = -Infinity;
+    function acc(u, v) {
+      if (u < minU) minU = u; if (u > maxU) maxU = u;
+      if (v < minV) minV = v; if (v > maxV) maxV = v;
+    }
+    var rect = geo ? _rectPlano(geo, plano) : null;
+    if (rect) { acc(-rect.W / 2, -rect.H / 2); acc(rect.W / 2, rect.H / 2); }
+    placements.forEach(function (pl) {
+      (pl.puntos || []).forEach(function (pt) { var q = proj(pt); if (isFinite(q.u) && isFinite(q.v)) acc(q.u, q.v); });
+    });
+    if (!isFinite(minU) || !isFinite(minV)) return;   // sin geometría → vista vacía
+
+    // --- Escala fit al viewBox del SVG, con margen; V se invierte (SVG y↓) ---
+    var vb = (svg.getAttribute('viewBox') || '0 0 620 300').split(/\s+/).map(Number);
+    var VW = vb[2] || 620, VH = vb[3] || 300, MARGIN = 26;
+    var spanU = Math.max(maxU - minU, 1e-6), spanV = Math.max(maxV - minV, 1e-6);
+    var s = Math.min((VW - 2 * MARGIN) / spanU, (VH - 2 * MARGIN) / spanV);
+    var offX = (VW - spanU * s) / 2, offY = (VH - spanV * s) / 2;
+    function X(u) { return offX + (u - minU) * s; }
+    function Y(v) { return offY + (maxV - v) * s; }   // invertir eje vertical
+
+    // --- Hormigón + boundary de recubrimiento (centrados en el origen) ---
+    if (rect) {
+      svg.appendChild(_svgEl('rect', {
+        'class': 'te-horm', rx: 2,
+        x: X(-rect.W / 2), y: Y(rect.H / 2), width: rect.W * s, height: rect.H * s
+      }));
+      if (rect.iW > 0 && rect.iH > 0) {
+        svg.appendChild(_svgEl('rect', {
+          'class': 'te-recub',
+          x: X(-rect.iW / 2), y: Y(rect.iH / 2), width: rect.iW * s, height: rect.iH * s
+        }));
+      }
+    }
+
+    // --- Barras proyectadas ---
+    placements.forEach(function (pl) {
+      var color = _colDe(pl.tipologia);
+      var rol = _rolDe(pl.tipologia);
+      var pts = (pl.puntos || []).map(proj).filter(function (q) { return isFinite(q.u) && isFinite(q.v); });
+      if (!pts.length) return;
+
+      // En SECCIÓN, un cabezal longitudinal (corre por X) se proyecta a un punto
+      // → se dibuja como círculo. Estribos/trabas conservan su recorrido.
+      if (plano === 'seccion' && rol === 'cabezal') {
+        var q0 = pts[0];
+        svg.appendChild(_svgEl('circle', { cx: X(q0.u), cy: Y(q0.v), r: 4.2, fill: color }));
+        return;
+      }
+      // Polilínea (elevación, planta, y estribos en sección).
+      var d = pts.map(function (q, i) { return (i ? 'L' : 'M') + X(q.u).toFixed(1) + ',' + Y(q.v).toFixed(1); }).join(' ');
+      svg.appendChild(_svgEl('path', {
+        'class': 'te-bar', d: d, stroke: color,
+        opacity: (rol === 'estribo' && plano === 'planta') ? 0.6 : 1
+      }));
+    });
+  }
+
+  function _redibujar2D(out) {
+    var geo = ST.receta && ST.receta.geometria;
+    _dibujarVista2D($('te_svgSeccion'), out, 'seccion', geo);
+    _dibujarVista2D($('te_svgLargo'),   out, 'largo',   geo);
+    _dibujarVista2D($('te_svgPlanta'),  out, 'planta',  geo);
   }
 
   function _applyCam() {
