@@ -446,6 +446,56 @@ Cambiadas a descriptivas: "ancho→·alto↑", "largo→·alto↑", "largo→·a
 nodos?); "Usar en el despiece" (Enfierrador vs Fabricator directo); detalle de la herramienta de nodos;
 prioridad/dependencias UX exacta.
 
+## §DISCOVERY-INTERACCIÓN-2 — Empalmes, retranqueo, flujo, prioridad (usuario 08-ago)
+
+**A. EMPALMES (feat nuevo):** poder definir longitud de empalme por barra. Extiende el EXTREMO que el
+usuario defina, en la cara definida, una cantidad. Default = 60·φ + 10 mm (configurable). No todas las
+barras lo necesitan (típico: cabezales y verticales, pero debe ser posible para CUALQUIER tipología).
+Efecto: la barra se alarga FUERA del hormigón por la cara definida esa cantidad. CLAVE: al usar el
+template, el usuario reemplaza ese valor y las barras se reajustan solas. → Implementación: campo
+`empalme: { extremo:'inicio'|'fin'|null, valor: '60*phi+1' | número }` por componente; el motor alarga
+el lado/extremo indicado. El valor puede ser fórmula (60·φ+1cm) o override numérico.
+
+**B. RETRANQUEO / DEPENDENCIAS — MODELO CORREGIDO POR EL USUARIO (cambia veredicto a MEDIO-FÁCIL):**
+El agente lo entendió mal (creyó "escalones por tramo" → barra se alarga → peso roto). REAL: la barra
+se desplaza COMPLETA hacia el núcleo (no por tramos, no inserta escalones). Si es recta (101A) solo
+cambia de posición, largo IGUAL. Si tiene patas (103A): B (vertical) se corre adentro y A/C (patas) se
+ACORTAN en el offset → largo se recalcula normal (suma de lados) → PESO SALE BIEN, sin conflicto.
+Ej malla muro: horizontal (MH) al recubrimiento; verticales 1·φ_MH hacia el núcleo en cada cara. El
+motor ya posiciona todo por ANCHOR + dims → retranquear = correr el anchor + restar offset a las patas.
+Ambas son entradas que el motor ya consume. → SE INCLUYE (no era el algoritmo difícil).
+Objetivo de fondo: barras con BOUNDARIES claros para que al cambiar la forma del hormigón queden casi
+automáticamente bien, con mínimos ajustes manuales.
+
+**C. PRIORIDAD (cómo se define):** número de prioridad GLOBAL por componente, ÚNICO (nunca 2 iguales).
+Prioridad 1 va más afuera; la 2 se ajusta al núcleo si choca con un tramo de la 1. NO todas las barras
+tienen prioridad — puede existir dependencia de solo 2 componentes; las sin prioridad funcionan como si
+no chocaran con nadie. UX: desde el MENÚ (campo numérico que aparece al querer definir prioridades) o
+por PANTALLA (botón → clicar las barras a priorizar). Elegir la más fácil/funcional al implementar.
+
+**D. FLUJO "usar en el despiece" (definitivo, el usuario lo corrigió):** El Template Editor (caluga
+Catálogo › tab Template) SOLO crea/edita templates y los deja guardados. NADA más. Aparte: en
+CUBICACIONES → Fabricator → formulario de crear barras → botón "Enfierrador 3D" → el usuario ELIGE un
+template → recién ahí el Enfierrador se carga con el template preconfigurado → ajusta rápido → "cargar
+al editor" → se cierra el Enfierrador, las barras quedan en el editor y opera normal (como cualquier
+cubicación). Se genera un REGISTRO de esa entidad consultable en Bar Manager (visualizar el 3D). Si una
+barra de ese 3D se elimina (editor o Bar Manager), al consultar el 3D desde Bar Manager esa barra
+DEBE desaparecer (el 3D refleja las barras ACTUALES, no el estado original).
+
+**E. VEREDICTOS FINALES (qué se hace en esta ronda de implementación):**
+- P2 planos por elemento: SÍ (fácil, prerrequisito muro).
+- P3 resaltar plano activo en 3D: SÍ (fácil).
+- P4 hormigón polígono: NO implementar; SÍ dejar el DATO abierto (`contorno` nullable + boundaryDeVista
+  único). Casos futuros del usuario: muros con ventanas, pedestales (fundación + mini columna).
+- P1 dependencias/retranqueo: SÍ, con el modelo CORREGIDO del usuario (barra completa + acortar patas,
+  no escalones) → MEDIO-FÁCIL. Incluye empalmes (A) y prioridad (C).
+- Campos aditivos al modelo de componente: `comp_id`, `prioridad`, `empalme`, `depende_de`.
+
+**F. MÉTODO DE IMPLEMENTACIÓN (el usuario pregunta por una Skill multi-agente):** el usuario quiere un
+proceso donde yo lance MÚLTIPLES agentes, implemente todo, y luego un proceso que AUDITE lo hecho,
+revise, corrija — iterativo, para aprovechar el tiempo que él no está. (= orquestación tipo workflow con
+fase de implementación + fase de verificación adversarial. Evaluar usar Workflow/ultracode.)
+
 ## 1. Correcciones de concepto (errores previos, ahora fijados)
 
 - **R (radio) NO es el radio de doblado de los codos.** En ArmaHub, `radio` es un BOOLEAN por figura
