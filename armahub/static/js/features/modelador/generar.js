@@ -19,8 +19,13 @@
 (function (global) {
   'use strict';
 
-  var REGLAS = global.ModeladorReglas ||
-    (typeof require !== 'undefined' ? require('./reglas.js') : null);
+  // Resolver la dependencia EN EL MOMENTO DE USARLA, no al cargar el módulo: en el
+  // navegador los scripts se cargan en PARALELO y generar.js puede ejecutarse ANTES
+  // que reglas.js → capturarlo aquí daba null para siempre (bug "0 barras").
+  function _reglas() {
+    return global.ModeladorReglas ||
+      (typeof require !== 'undefined' ? require('./reglas.js') : null);
+  }
 
   // Espejo del catálogo (armahub/catalogo.py _FIGURAS_SEED) SOLO para las figuras
   // de la viga-semilla. Se usa para saber QUÉ slots llenar (parciales/ángulos) y
@@ -121,6 +126,8 @@
       recub_inf: geo.recub_inf != null ? Number(geo.recub_inf) : 4,
       recub_lat: geo.recub_lat != null ? Number(geo.recub_lat) : 3
     };
+    var REGLAS = _reglas();
+    if (!REGLAS) { console.error('[generar] ModeladorReglas no disponible aún'); return { placements: [], barras: [], resumen: { items: 0, barras: 0, kg: 0 } }; }
     var placements = [];
     (receta.componentes || []).forEach(function (comp) {
       var pls = REGLAS.expandirComponente(comp, host);

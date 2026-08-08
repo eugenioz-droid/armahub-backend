@@ -22,8 +22,12 @@
 (function (global) {
   'use strict';
 
-  var FP = global.ModeladorFiguraPuntos ||
-    (typeof require !== 'undefined' ? require('./figura_puntos.js') : null);
+  // Resolver EN EL MOMENTO DE USAR (no al cargar): scripts en paralelo en el
+  // navegador → figura_puntos.js puede cargar DESPUÉS que reglas.js.
+  function _fp() {
+    return global.ModeladorFiguraPuntos ||
+      (typeof require !== 'undefined' ? require('./figura_puntos.js') : null);
+  }
 
   // ---------------------------------------------------------------------------
   // T0.5 — REDONDEO DE CANTIDAD (longitud ÷ @ → nº de barras)
@@ -65,7 +69,7 @@
         var xx = xcur + k * (Number(z.sep) || 0);
         if (xx > x1 + 1e-6) break;
         var anchor = _mezclarAnchor(base.anchorBase, { x: xx });
-        var puntos = FP.figuraAPuntos(base.figura, base.dims, host, anchor,
+        var puntos = _fp().figuraAPuntos(base.figura, base.dims, host, anchor,
           { rol: base.rol || 'estribo', diamCm: base.diam });
         placements.push(_placement(base, puntos, { zona: zi + 1 }));
       }
@@ -95,7 +99,7 @@
       for (var i = 0; i < nBarras; i++) {
         var z = (nBarras > 1) ? (-zHalf + (2 * zHalf) * (i / (nBarras - 1))) : 0;
         var anchor = _mezclarAnchor(base.anchorBase, { y: y, z: z, cara: cara });
-        var puntos = FP.figuraAPuntos(base.figura, base.dims, host, anchor,
+        var puntos = _fp().figuraAPuntos(base.figura, base.dims, host, anchor,
           { rol: base.rol || 'cabezal', diamCm: base.diam });
         placements.push(_placement(base, puntos, { capa: c + 1, cara: cara }));
       }
