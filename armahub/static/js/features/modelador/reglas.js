@@ -28,29 +28,20 @@
   // ---------------------------------------------------------------------------
   // T0.5 — REDONDEO DE CANTIDAD (longitud ÷ @ → nº de barras)
   // ---------------------------------------------------------------------------
-  // HALLAZGO (buscado en el repo, T0.5): NO existe hoy en el backend ni el front
-  // ninguna derivación "cantidad de estribos desde el espaciamiento" — el
-  // importador recibe la cantidad ya calculada desde el CSV de ADetailer, y el
-  // ingreso manual la escribe a mano. La maqueta template3d usa round(L/@).
-  //
-  // Por eso NO hay un criterio existente que copiar. Se centraliza aquí en UNA
-  // función para que confirmar el criterio real de ADetailer con el usuario sea
-  // un cambio de UNA línea. DEFAULT conservador = round(L/@) (igual que la
-  // maqueta). Alternativas frecuentes en detallamiento: ceil(L/@)+1 (postes de
-  // cerca: N espacios → N+1 estribos) o floor(L/@)+1.
-  // TODO(usuario): confirmar el redondeo EXACTO de ADetailer y ajustar aquí.
-  var MODO_REDONDEO = 'round';   // 'round' | 'ceil' | 'floor_mas_1' | 'ceil_mas_1'
+  // REDONDEO DE ESTRIBOS — ESPEJO EXACTO de ArmaPilot (verificado 08-ago contra el
+  // código real: bar_model.py::calc_line_count y LISP ARM-FLUJOS-CALC-LINE-COUNT):
+  //     count = ceil(dist_util / esp) + 1    ("cerrando el intervalo útil")
+  //     garantiza que la separación REAL nunca exceda `esp` ("cada @ o menos").
+  //     edge: esp<=0 o dist<=0 → 1.
+  // OJO (uniones de zona): si una zona TERMINA donde otra ARRANCA, el estribo del
+  // punto de unión NO se duplica. Lo maneja distribuidorLinear al encadenar zonas
+  // (última posición de una zona = primera de la siguiente → se cuenta 1 sola vez).
+  // Esta función = conteo de UNA zona aislada (con sus 2 extremos); el encadenado
+  // descuenta la frontera compartida.
   function redondeoCantidadZona(longitud, sep) {
-    var s = Math.max(1e-6, Number(sep) || 0);
-    var q = Number(longitud) / s;
-    if (!isFinite(q) || q <= 0) return 0;
-    switch (MODO_REDONDEO) {
-      case 'ceil': return Math.max(1, Math.ceil(q));
-      case 'floor_mas_1': return Math.max(1, Math.floor(q) + 1);
-      case 'ceil_mas_1': return Math.max(1, Math.ceil(q) + 1);
-      case 'round':
-      default: return Math.max(1, Math.round(q));
-    }
+    var s = Number(sep) || 0, d = Number(longitud) || 0;
+    if (s <= 0 || d <= 0) return 1;
+    return Math.ceil(d / s) + 1;
   }
 
   // ---------------------------------------------------------------------------
@@ -207,7 +198,6 @@
   }
 
   var API = {
-    MODO_REDONDEO: MODO_REDONDEO,
     redondeoCantidadZona: redondeoCantidadZona,
     expandirComponente: expandirComponente,
     distribuidorLinear: distribuidorLinear,
