@@ -496,6 +496,13 @@ proceso donde yo lance MÚLTIPLES agentes, implemente todo, y luego un proceso q
 revise, corrija — iterativo, para aprovechar el tiempo que él no está. (= orquestación tipo workflow con
 fase de implementación + fase de verificación adversarial. Evaluar usar Workflow/ultracode.)
 
+## §MURO/COLUMNA = MISMA MÁQUINA (usuario 08-ago)
+Muro/columna NO requieren discovery propio: son la MISMA máquina que la viga. Solo cambian (a) qué eje
+muestra el primer cuadrante (preconfiguración por elemento = P2 PLANOS_POR_ELEMENTO) y (b) las
+tipologías disponibles (del catálogo por estructura). Todo lo demás (colocar/rotar/rango/nodos/empalme/
+dependencias/planos) es idéntico. → Muro/columna = preconfiguración posterior, NO fase de discovery.
+El MVP se implementa para VIGA; agregar otros elementos = poblar la tabla de planos + tipologías.
+
 ## 1. Correcciones de concepto (errores previos, ahora fijados)
 
 - **R (radio) NO es el radio de doblado de los codos.** En ArmaHub, `radio` es un BOOLEAN por figura
