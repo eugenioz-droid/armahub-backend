@@ -553,7 +553,7 @@
     var d = _deps();
     if (!d.gen || !d.semilla) { alert('El Modelador 3D aún se está cargando. Reintenta en un momento.'); return; }
     var ctx = _ctxAC2();
-    if (!ctx.loteId) { alert('Primero crea o abre un despiece (con Obra, Ciclo y Eje) para cargar barras del 3D Template.'); return; }
+    if (!ctx.loteId) { alert('Primero crea o abre un despiece (con Obra, Ciclo y Eje) para cargar barras del Enfierrador 3D.'); return; }
     if (!ST.receta) ST.receta = d.semilla.semillaViga();
     var bd = $('m3d_backdrop'); bd.classList.add('on');
     var sub = $('m3d_ctxSub');
@@ -658,7 +658,7 @@
         var d = r && r.detail; alert('No se cargaron las barras' + (d ? ': ' + (d.msg || JSON.stringify(d)) : '') + '.'); return;
       }
       var n = r.creadas || barras.length;
-      alert('✅ ' + n + ' item(s) del 3D Template cargados al despiece. Aparecen en el editor y en el Bar Manager (origen=template).');
+      alert('✅ ' + n + ' item(s) del Enfierrador 3D cargados al despiece. Aparecen en el editor y en el Bar Manager (origen=template).');
       modelador3dCerrar();
       // Refrescar la grilla del Fabricator si tiene el hook.
       if (typeof global.ac2CargarLote === 'function') { try { global.ac2CargarLote(ctx.loteId); } catch (e) {} }
