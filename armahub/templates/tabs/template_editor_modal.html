@@ -1,0 +1,356 @@
+<!-- =============================================================================
+     MODAL: Template Editor — Colocador por proyecciones (Configurador ›  Templates).
+     Calca la maqueta APROBADA static/demo/colocador.html (4 cuadrantes, ribbon,
+     herramientas, panel de componentes, footer). Lo abre templateEditorAbrir()
+     desde el sub-tab "Template Editor" del Catálogo.
+
+     TODO el CSS va SCOPEADO bajo #te_backdrop para no colisionar con app.css
+     (la maqueta usaba clases genéricas .btn/.comp/.vista/#body/#footer y un
+     selector global input,select — aquí quedan bajo el prefijo del modal).
+
+     El cuadrante 3D (abajo-derecha) reusa el motor del modelador (motor_geom +
+     generar + reglas + semilla) — lo cablea template_editor.js. Los otros 3
+     cuadrantes y la interacción del panel son COSMÉTICOS (calcan la maqueta).
+
+     OJO: NO tocar modelador3d_modal.html ni panel_3d.js (otro agente).
+     ========================================================================== -->
+<style>
+  #te_backdrop{
+    --te-bg:#eef1f4; --te-ink:#1f2937; --te-muted:#64748b; --te-line:#dbe1e8;
+    --te-panel:#ffffff; --te-panel2:#f6f8fa;
+    --te-acero:#8BC34A; --te-acero-d:#558B2F; --te-azul:#1565c0; --te-azul-b:#e3f2fd;
+    --te-canvas:#eef2f6; --te-canvas3d:#d8dee7; --te-hormigon:#c9d2dc; --te-hormigon-b:#8a96a5;
+    --te-chip:#eef5e6; --te-chip-ink:#33691e; --te-chip-b:#c5e1a5;
+    --te-cbs:#1565c0; --te-cbi:#00897b; --te-es:#e65100; --te-trv:#7b1fa2; --te-mall:#5e35b1;
+  }
+  #te_backdrop{position:fixed;inset:0;z-index:9800;background:rgba(15,20,28,.5);display:none;align-items:center;justify-content:center;padding:8px;
+    font:13px/1.45 "Segoe UI",system-ui,sans-serif;color:var(--te-ink)}
+  #te_backdrop.on{display:flex}
+  #te_backdrop *{box-sizing:border-box}
+  #te_modal{width:99vw;height:98vh;background:var(--te-panel);border-radius:14px;
+    box-shadow:0 24px 70px rgba(0,0,0,.4);display:flex;flex-direction:column;overflow:hidden}
+
+  /* ---- TÍTULO ---- */
+  #te_modal #te_titlebar{display:flex;align-items:center;gap:12px;padding:10px 18px;border-bottom:1px solid var(--te-line);background:var(--te-panel2)}
+  #te_modal #te_titlebar .te-dot{width:26px;height:26px;border-radius:7px;background:var(--te-acero);display:flex;align-items:center;justify-content:center;font-size:15px}
+  #te_modal #te_titlebar h1{font-size:15px;font-weight:600;margin:0}
+  #te_modal #te_titlebar .te-sub{font-size:11.5px;color:var(--te-muted)}
+  #te_modal #te_titlebar .te-spacer{flex:1}
+  #te_modal .te-seg{display:inline-flex;border:1px solid var(--te-line);border-radius:8px;overflow:hidden}
+  #te_modal .te-seg button{border:none;background:#fff;padding:6px 13px;font-size:12px;color:var(--te-muted);cursor:pointer;font-weight:600}
+  #te_modal .te-seg button+button{border-left:1px solid var(--te-line)}
+  #te_modal .te-seg button.on{background:var(--te-acero);color:#fff}
+  #te_modal .te-btn{border:none;border-radius:9px;padding:8px 14px;font-size:12.5px;font-weight:700;cursor:pointer}
+  #te_modal .te-btn.primary{background:var(--te-acero);color:#fff}
+  #te_modal .te-btn.primary:hover{background:var(--te-acero-d)}
+  #te_modal .te-btn.ghost{background:#eef2f6;color:#37474f;border:1px solid var(--te-line)}
+  #te_modal .te-xbtn{border:1px solid var(--te-line);background:#fff;border-radius:8px;width:32px;height:30px;cursor:pointer;font-size:15px;color:var(--te-muted)}
+
+  /* ---- RIBBON: figura + tipologías ---- */
+  #te_modal #te_ribbon{display:flex;align-items:center;gap:14px;padding:9px 18px;border-bottom:1px solid var(--te-line);background:#fff}
+  #te_modal #te_ribbon .te-grp{display:flex;align-items:center;gap:8px}
+  #te_modal #te_ribbon .te-lbl{font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--te-muted)}
+  #te_modal #te_ribbon .te-divv{width:1px;height:30px;background:var(--te-line)}
+  #te_modal .te-figpick{display:inline-flex;align-items:center;gap:6px}
+  #te_modal .te-figpick input{border:1px solid var(--te-line);border-radius:7px;padding:6px 9px;font-size:13px;width:120px}
+  #te_modal .te-tipbtns{display:inline-flex;gap:5px}
+  #te_modal .te-tipbtn{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--te-line);background:#fff;border-radius:8px;padding:6px 11px;font-size:12px;cursor:pointer;font-weight:600}
+  #te_modal .te-tipbtn .te-sw{width:11px;height:11px;border-radius:3px}
+  #te_modal .te-tipbtn:hover{border-color:var(--te-acero);background:#f7fbf2}
+  #te_modal .te-tipbtn.on{background:var(--te-acero);color:#fff;border-color:var(--te-acero)}
+  #te_modal .te-tipbtn.on .te-mode{color:#eaffd9}
+  #te_modal .te-tipbtn .te-mode{font-size:9px;color:#9aa4b0;border:1px solid var(--te-line);border-radius:7px;padding:0 5px}
+  #te_modal .te-note{font-size:10.5px;color:#9aa4b0;margin-top:4px}
+
+  #te_modal #te_body{flex:1;display:flex;min-height:0}
+
+  /* ---- IZQUIERDA: componentes (desplegables con sus propiedades) ---- */
+  #te_modal #te_side{width:360px;min-width:360px;border-right:1px solid var(--te-line);background:var(--te-panel);overflow-y:auto;padding:11px 14px 20px}
+  #te_modal .te-sh{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--te-muted);margin:6px 0 8px;display:flex;align-items:center;gap:6px}
+  #te_modal .te-sh .te-ln{flex:1;height:1px;background:var(--te-line)}
+  #te_modal .te-comp{border:1px solid var(--te-line);border-radius:9px;margin-bottom:7px;overflow:hidden;background:#fff}
+  #te_modal .te-comp.sel{border-color:var(--te-acero);box-shadow:0 0 0 2px rgba(139,195,74,.15)}
+  #te_modal .te-comp .te-ch{display:flex;align-items:center;gap:8px;padding:7px 9px;cursor:pointer;background:var(--te-panel2)}
+  #te_modal .te-comp .te-sw{width:12px;height:12px;border-radius:3px;flex-shrink:0}
+  #te_modal .te-comp .te-nm{font-weight:700;font-size:12.5px}
+  #te_modal .te-comp .te-de{font-size:10.5px;color:var(--te-muted)}
+  #te_modal .te-comp .te-drag{cursor:grab;color:#b6c0cc;margin-right:2px}
+  #te_modal .te-comp .te-sp{flex:1}
+  #te_modal .te-comp .te-mini{border:none;background:none;cursor:pointer;font-size:12px;color:#b6c0cc;padding:1px 3px}
+  #te_modal .te-comp .te-mini:hover{color:var(--te-ink)}
+  #te_modal .te-comp .te-cbody{display:none;padding:9px 10px;border-top:1px solid var(--te-line)}
+  #te_modal .te-comp.open .te-cbody{display:block}
+  #te_modal .te-fld{display:flex;flex-direction:column;gap:2px;margin-bottom:7px}
+  #te_modal .te-fld label{font-size:10.5px;color:var(--te-muted);font-weight:600}
+  #te_modal #te_side input,#te_modal #te_side select{border:1px solid var(--te-line);border-radius:6px;padding:4px 7px;font-size:12px;width:100%}
+  #te_modal .te-grid2{display:grid;grid-template-columns:1fr 1fr;gap:7px}
+  #te_modal .te-grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:7px}
+  #te_modal .te-row{display:grid;grid-template-columns:96px 1fr;gap:8px;align-items:center;margin-bottom:6px}
+  #te_modal .te-row label{font-size:11px;color:var(--te-muted);font-weight:600}
+  #te_modal .te-radial{display:inline-flex;border:1px solid var(--te-line);border-radius:7px;overflow:hidden}
+  #te_modal .te-radial button{border:none;background:#fff;padding:5px 9px;font-size:11px;color:var(--te-muted);cursor:pointer;font-weight:600}
+  #te_modal .te-radial button+button{border-left:1px solid var(--te-line)}
+  #te_modal .te-radial button.on{background:var(--te-azul-b);color:var(--te-azul)}
+  #te_modal .te-modebox{border:1px solid var(--te-line);border-radius:8px;padding:8px 9px;background:var(--te-panel2);margin-bottom:8px}
+  #te_modal .te-modebox .te-mh{font-size:10.5px;font-weight:700;color:var(--te-muted);margin-bottom:6px;display:flex;align-items:center;gap:6px}
+  #te_modal .te-chip{font-size:9.5px;color:var(--te-chip-ink);background:var(--te-chip);border:1px solid var(--te-chip-b);border-radius:9px;padding:1px 6px;font-weight:600}
+  #te_modal .te-addcomp{width:100%;border:1px dashed var(--te-acero);color:var(--te-acero-d);background:#f7fbf2;border-radius:9px;padding:8px;font-size:12px;font-weight:600;cursor:pointer;margin-top:4px}
+
+  /* ---- CENTRO: 4 cuadrantes ---- */
+  #te_modal #te_quad{flex:1;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;gap:1px;background:var(--te-line);min-width:0;position:relative}
+  #te_modal .te-vista{background:var(--te-canvas);position:relative;overflow:hidden}
+  #te_modal .te-vista.d3{background:var(--te-canvas3d)}
+  #te_modal .te-vtitle{position:absolute;top:8px;left:10px;z-index:3;font-size:11px;font-weight:700;color:#5b6a7d;background:rgba(255,255,255,.78);border:1px solid var(--te-line);border-radius:6px;padding:2px 8px;letter-spacing:.3px}
+  #te_modal .te-vaxes{position:absolute;bottom:7px;left:10px;z-index:3;font-size:10px;color:#9aa4b0;font-family:monospace}
+  #te_modal .te-vista svg{width:100%;height:100%;display:block}
+  #te_modal .te-vista canvas{width:100%;height:100%;display:block}
+  #te_modal .te-vhint{position:absolute;bottom:7px;right:10px;z-index:3;font-size:9.5px;color:#9aa4b0}
+
+  #te_modal .te-horm{fill:var(--te-hormigon);opacity:.55;stroke:var(--te-hormigon-b);stroke-width:1.5}
+  #te_modal .te-recub{fill:none;stroke:#9fb0c2;stroke-width:1.1;stroke-dasharray:5 4}
+  #te_modal .te-barCBS{stroke:var(--te-cbs)}
+  #te_modal .te-barCBI{stroke:var(--te-cbi)}
+  #te_modal .te-barES{stroke:var(--te-es)}
+  #te_modal .te-bar{fill:none;stroke-width:3.2;stroke-linecap:round;stroke-linejoin:round}
+  #te_modal .te-ghostbar{fill:none;stroke:#8BC34A;stroke-width:3;stroke-dasharray:4 3;opacity:.85}
+  #te_modal .te-gpt{fill:#8BC34A}
+  #te_modal .te-dim{fill:#8090a2;font:10px monospace}
+  #te_modal .te-dimL{stroke:#c2ccd8;stroke-width:1}
+
+  /* barra de herramientas del colocador (aplica a las 4 vistas) */
+  #te_modal #te_ctools{display:flex;align-items:center;gap:7px;padding:6px 14px;border-bottom:1px solid var(--te-line);background:var(--te-panel2)}
+  #te_modal #te_ctools .te-tlbl{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#9aa4b0;margin-right:2px}
+  #te_modal .te-ctool{border:1px solid var(--te-line);background:#fff;border-radius:7px;padding:5px 11px;font-size:11.5px;cursor:pointer;color:#455;font-weight:600}
+  #te_modal .te-ctool.on{background:var(--te-acero);color:#fff;border-color:var(--te-acero)}
+  #te_modal #te_ctools .te-divv{width:1px;height:22px;background:var(--te-line);margin:0 3px}
+
+  #te_modal #te_footer{display:flex;align-items:center;gap:10px;padding:9px 18px;border-top:1px solid var(--te-line);background:var(--te-panel2)}
+  #te_modal #te_footer .te-spacer{flex:1}
+  #te_modal .te-webglmsg{position:absolute;inset:0;display:none;align-items:center;justify-content:center;flex-direction:column;gap:6px;text-align:center;padding:20px;color:#5b6a7d;font-size:11.5px;z-index:4}
+</style>
+
+<div id="te_backdrop">
+  <div id="te_modal">
+
+    <!-- TÍTULO -->
+    <div id="te_titlebar">
+      <div class="te-dot">📐</div>
+      <div>
+        <h1>Template Editor — Colocador</h1>
+        <div class="te-sub">Construyendo: <b>Viga tipo Explora</b> · Configurador de herramientas › Templates</div>
+      </div>
+      <div class="te-spacer"></div>
+      <div class="te-seg"><button class="on">Viga</button><button>Muro</button><button>Columna</button></div>
+      <button class="te-btn ghost">📂 Abrir</button>
+      <button class="te-xbtn" onclick="templateEditorCerrar()">✕</button>
+    </div>
+
+    <!-- RIBBON: elegir figura + tipología, luego trabajas en el canvas -->
+    <div id="te_ribbon">
+      <div class="te-grp">
+        <span class="te-lbl">Figura</span>
+        <div class="te-figpick">
+          <input value="103B" list="te_figs" placeholder="buscar figura…">
+        </div>
+      </div>
+      <div class="te-divv"></div>
+      <div class="te-grp">
+        <span class="te-lbl">Tipología</span>
+        <div class="te-tipbtns">
+          <span class="te-tipbtn on"><span class="te-sw" style="background:var(--te-cbs)"></span>CBS</span>
+          <span class="te-tipbtn"><span class="te-sw" style="background:var(--te-cbi)"></span>CBI</span>
+          <span class="te-tipbtn"><span class="te-sw" style="background:var(--te-es)"></span>ES</span>
+          <span class="te-tipbtn"><span class="te-sw" style="background:var(--te-trv)"></span>TRV</span>
+          <span class="te-tipbtn"><span class="te-sw" style="background:#607d8b"></span>LT</span>
+        </div>
+      </div>
+      <div class="te-spacer" style="flex:1"></div>
+      <span class="te-note" style="margin:0">Elige figura + tipología → posiciónala en una vista.</span>
+    </div>
+
+    <!-- HERRAMIENTAS del colocador (aplican a las 4 vistas) -->
+    <div id="te_ctools">
+      <span class="te-tlbl">Herramientas</span>
+      <button class="te-ctool on" title="Colocar la figura tal cual + rotar">✋ Colocar</button>
+      <button class="te-ctool" title="Definir rango con 2 clics (distribución)">↔ Rango</button>
+      <button class="te-ctool" title="Rotar (barra espaciadora)">⟳ Rotar</button>
+      <button class="te-ctool" title="Mover">✥ Mover</button>
+      <span class="te-divv"></span>
+      <button class="te-ctool">🧲 Snap grilla</button>
+      <button class="te-ctool">📐 Cotas</button>
+      <span style="flex:1"></span>
+      <span style="font-size:10.5px;color:#9aa4b0">Tipología activa: <b style="color:var(--te-cbs)">CBS</b> · figura 103B</span>
+    </div>
+
+    <div id="te_body">
+
+      <!-- IZQUIERDA: componentes colocados (desplegables con propiedades) -->
+      <div id="te_side">
+        <div class="te-sh"><span>Componentes colocados</span><span class="te-ln"></span><span style="color:var(--te-muted);font-size:11px">3</span></div>
+
+        <!-- CBS abierto con propiedades -->
+        <div class="te-comp open sel">
+          <div class="te-ch"><span class="te-drag">⠿</span><span class="te-sw" style="background:var(--te-cbs)"></span>
+            <div><div class="te-nm">CBS · 103B</div><div class="te-de">superior · 2 capas · ø16</div></div>
+            <span class="te-sp"></span><button class="te-mini" title="Duplicar">⧉</button><button class="te-mini" title="Quitar">🗑</button></div>
+          <div class="te-cbody">
+            <!-- Identidad: figura + φ + cara, en línea (aprovecha el ancho) -->
+            <div class="te-grid3">
+              <div class="te-fld"><label>Figura</label><input value="103B" list="te_figs"></div>
+              <div class="te-fld"><label>φ mm</label><select><option>8</option><option selected>16</option><option>18</option><option>22</option></select></div>
+              <div class="te-fld"><label>Sufijo</label><input placeholder="sup / A…"></div>
+            </div>
+            <div class="te-row"><label>Cara / anclaje</label>
+              <div class="te-radial"><button class="on">Superior</button><button>Inferior</button><button>Lateral</button></div></div>
+            <div class="te-row"><label>Recub. override</label><input placeholder="global (4) cm"></div>
+
+            <!-- DISTRIBUCIÓN (según la tipología). Aquí van las funciones de la regla. -->
+            <div class="te-modebox">
+              <div class="te-mh"><span>Distribución</span><span class="te-chip">CAPAS</span>
+                <span style="flex:1"></span>
+                <select style="width:auto;padding:2px 6px;font-size:11px"><option selected>Capas</option><option>Lineal @</option><option>Área 2D</option><option>Perímetro</option><option>Puntual</option></select>
+              </div>
+              <div class="te-grid3">
+                <div class="te-fld"><label>N° capas</label><input value="2"></div>
+                <div class="te-fld"><label>Barras/capa</label><input value="3"></div>
+                <div class="te-fld"><label>Sep. capas cm</label><input value="4"></div>
+              </div>
+              <div class="te-row"><label>Sentido</label>
+                <div class="te-radial"><button class="on">Hacia núcleo</button><button>Desde núcleo</button></div></div>
+              <div class="te-note">Se apilan desde la cara hacia el núcleo con la separación indicada.</div>
+            </div>
+
+            <!-- Dimensiones de la figura (dinámicas: 103B usa A,B,C + α1,α2) -->
+            <div class="te-row"><label>A (pata)</label><input value="30"></div>
+            <div class="te-row"><label>B (largo)</label><input value="592" disabled title="auto = largo − recub."></div>
+            <div class="te-row"><label>C (pata)</label><input value="30"></div>
+            <div class="te-grid2">
+              <div class="te-fld"><label>α1 (°)</label><input value="45"></div>
+              <div class="te-fld"><label>α2 (°)</label><input value="45"></div>
+            </div>
+            <div class="te-note">B es auto (largo − recub). A/C fijas (patas). Ángulos y R vienen de la figura del catálogo.</div>
+          </div>
+        </div>
+
+        <!-- CBI colapsado -->
+        <div class="te-comp">
+          <div class="te-ch"><span class="te-drag">⠿</span><span class="te-sw" style="background:var(--te-cbi)"></span>
+            <div><div class="te-nm">CBI · 103A</div><div class="te-de">inferior · 1 capa · ø18</div></div>
+            <span class="te-sp"></span><button class="te-mini" title="Duplicar">⧉</button><button class="te-mini" title="Quitar">🗑</button></div>
+          <div class="te-cbody"></div>
+        </div>
+
+        <!-- ES colapsado -->
+        <div class="te-comp">
+          <div class="te-ch"><span class="te-drag">⠿</span><span class="te-sw" style="background:var(--te-es)"></span>
+            <div><div class="te-nm">ES · 104D</div><div class="te-de">estribo · 3 zonas @ · ø8</div></div>
+            <span class="te-sp"></span><button class="te-mini" title="Duplicar">⧉</button><button class="te-mini" title="Quitar">🗑</button></div>
+          <div class="te-cbody"></div>
+        </div>
+
+        <button class="te-addcomp">＋ Agregar componente</button>
+        <div class="te-note" style="margin-top:8px">Arrastra ⠿ para reordenar. Selecciona un componente para editar sus propiedades aquí.</div>
+      </div>
+
+      <!-- CENTRO: 4 CUADRANTES -->
+      <div id="te_quad">
+        <!-- 1.1 arriba-izq: SECCIÓN / corte (X-Z para viga; en muro sería la cara X-Y) -->
+        <div class="te-vista">
+          <div class="te-vtitle">SECCIÓN · corte de la pieza (X-Z)</div>
+          <div class="te-vaxes">Z →  ·  Y ↑</div>
+          <div class="te-vhint">aquí dibujas el recorrido del estribo</div>
+          <svg viewBox="0 0 360 300" preserveAspectRatio="xMidYMid meet">
+            <rect class="te-horm" x="120" y="50" width="120" height="200" rx="2"/>
+            <rect class="te-recub" x="130" y="60" width="100" height="180"/>
+            <path class="te-bar te-barES" d="M138,74 L130,66 M130,66 L130,240 L230,240 L230,66 L142,66 M142,66 L150,74"/>
+            <circle cx="142" cy="70" r="5" fill="var(--te-cbs)"/><circle cx="180" cy="70" r="5" fill="var(--te-cbs)"/><circle cx="218" cy="70" r="5" fill="var(--te-cbs)"/>
+            <circle cx="142" cy="82" r="5" fill="var(--te-cbs)"/><circle cx="180" cy="82" r="5" fill="var(--te-cbs)"/><circle cx="218" cy="82" r="5" fill="var(--te-cbs)"/>
+            <circle cx="142" cy="234" r="5.5" fill="var(--te-cbi)"/><circle cx="172" cy="234" r="5.5" fill="var(--te-cbi)"/><circle cx="188" cy="234" r="5.5" fill="var(--te-cbi)"/><circle cx="218" cy="234" r="5.5" fill="var(--te-cbi)"/>
+            <text class="te-dim" x="180" y="272" text-anchor="middle">Ancho 30 · Alto 60</text>
+          </svg>
+        </div>
+
+        <!-- 1.2 arriba-der: VISTA A LO LARGO (elevación lateral / a lo largo) -->
+        <div class="te-vista">
+          <div class="te-vtitle">A LO LARGO · elevación (Y-Z)</div>
+          <div class="te-vaxes">X →  ·  Y ↑</div>
+          <div class="te-vhint">arrastra tipología aquí · clic para anclar</div>
+          <svg viewBox="0 0 620 300" preserveAspectRatio="xMidYMid meet">
+            <rect class="te-horm" x="40" y="90" width="540" height="130" rx="2"/>
+            <rect class="te-recub" x="52" y="102" width="516" height="106"/>
+            <path class="te-bar te-barCBS" d="M58,120 L58,112 M58,112 L562,112 M562,112 L562,120"/>
+            <path class="te-bar te-barCBS" d="M58,130 L562,130"/>
+            <path class="te-bar te-barCBI" d="M58,188 L58,196 M58,188 L562,188 M562,188 L562,196"/>
+            <g class="te-bar te-barES">
+              <path d="M80,105 L80,205"/><path d="M100,105 L100,205"/><path d="M120,105 L120,205"/>
+              <path d="M300,105 L300,205"/><path d="M330,105 L330,205"/><path d="M360,105 L360,205"/>
+              <path d="M500,105 L500,205"/><path d="M520,105 L520,205"/><path d="M540,105 L540,205"/>
+            </g>
+            <line class="te-dimL" x1="40" y1="245" x2="580" y2="245"/>
+            <text class="te-dim" x="310" y="260" text-anchor="middle">Largo 600 cm</text>
+            <path class="te-ghostbar" d="M200,155 L200,147 M200,147 L420,147 M420,147 L420,155"/>
+            <circle class="te-gpt" cx="200" cy="147" r="3"/><circle class="te-gpt" cx="420" cy="147" r="3"/>
+          </svg>
+        </div>
+
+        <!-- 2.1 abajo-izq: PLANTA (X-Y) -->
+        <div class="te-vista">
+          <div class="te-vtitle">PLANTA · vista superior (X-Y)</div>
+          <div class="te-vaxes">X →  ·  Z ↑</div>
+          <svg viewBox="0 0 620 260" preserveAspectRatio="xMidYMid meet">
+            <rect class="te-horm" x="40" y="90" width="540" height="80" rx="2"/>
+            <rect class="te-recub" x="52" y="100" width="516" height="60"/>
+            <path class="te-bar te-barCBS" d="M58,110 L562,110"/>
+            <path class="te-bar te-barCBS" d="M58,130 L562,130"/>
+            <path class="te-bar te-barCBS" d="M58,150 L562,150"/>
+            <g class="te-bar te-barES" opacity=".6">
+              <path d="M80,100 L80,160"/><path d="M100,100 L100,160"/><path d="M300,100 L300,160"/>
+              <path d="M330,100 L330,160"/><path d="M500,100 L500,160"/><path d="M520,100 L520,160"/>
+            </g>
+          </svg>
+        </div>
+
+        <!-- 2.2 abajo-der: 3D EN VIVO (reusa el motor del modelador) -->
+        <div class="te-vista d3">
+          <div class="te-vtitle">3D · en vivo</div>
+          <div class="te-vaxes">arrastra = rotar</div>
+          <div class="te-vhint">motor del modelador · fondo claro</div>
+          <!-- canvas real (Three.js on-demand). Si no hay WebGL, se muestra el fallback SVG. -->
+          <canvas id="te_cv" style="display:none;"></canvas>
+          <!-- Placeholder SVG (visible hasta que carga Three.js; también fallback sin WebGL) -->
+          <svg id="te_svgFallback" viewBox="0 0 620 300" preserveAspectRatio="xMidYMid meet">
+            <g opacity="0.9">
+              <polygon points="70,120 500,95 570,140 140,165" fill="rgba(140,150,165,.20)" stroke="#9aa6b5" stroke-width="1"/>
+              <polygon points="140,165 570,140 570,240 140,265" fill="rgba(140,150,165,.13)" stroke="#9aa6b5" stroke-width="1"/>
+              <polygon points="500,95 570,140 570,240 500,195" fill="rgba(140,150,165,.08)" stroke="#9aa6b5" stroke-width="1"/>
+            </g>
+            <line x1="92" y1="138" x2="524" y2="112" stroke="#3f7fd0" stroke-width="5" stroke-linecap="round"/>
+            <line x1="106" y1="146" x2="538" y2="120" stroke="#3f7fd0" stroke-width="5" stroke-linecap="round"/>
+            <line x1="120" y1="245" x2="548" y2="218" stroke="#26a69a" stroke-width="6" stroke-linecap="round"/>
+            <g stroke="#ef7d3a" stroke-width="3.5" fill="none" stroke-linecap="round">
+              <path d="M150,132 L158,250 M158,250 L205,246 M205,246 L197,127"/>
+              <path d="M300,122 L308,240 M308,240 L355,236 M355,236 L347,117"/>
+              <path d="M470,110 L478,228 M478,228 L525,224 M525,224 L517,105"/>
+            </g>
+          </svg>
+          <div id="te_webglMsg" class="te-webglmsg">
+            <div style="font-size:20px;">🧊</div>
+            <div>Tu navegador no tiene WebGL disponible.<br>El 3D en vivo no se puede mostrar (las otras 3 vistas sí).</div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- FOOTER -->
+    <div id="te_footer">
+      <span style="font-size:11.5px;color:var(--te-muted)">Componentes: <b id="te_footItems">3</b> · <b id="te_footBarras">77</b> barras · <b id="te_footKg">264,4</b> kg · el 3D se arma combinando las vistas</span>
+      <div class="te-spacer"></div>
+      <button class="te-btn ghost" onclick="templateEditorVerEn3D()">🧊 Ver en 3D</button>
+      <button class="te-btn ghost">💾 Guardar template</button>
+      <button class="te-btn primary">✓ Usar en el despiece</button>
+    </div>
+
+    <datalist id="te_figs"><option value="101A"><option value="102A"><option value="103A"><option value="103B"><option value="104D"><option value="106A"></datalist>
+  </div>
+</div>

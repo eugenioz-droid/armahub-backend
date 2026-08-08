@@ -32,9 +32,9 @@
 
   function switchCatSubTab(sub) {
     _catSubActual = sub;
-    var panels = { figuras: 'catSubFiguras', tipologias: 'catSubTipologias', disenador: 'catSubDisenador' };
-    var btns = { figuras: 'catSubBtnFiguras', tipologias: 'catSubBtnTipologias', disenador: 'catSubBtnDisenador' };
-    var colors = { figuras: '#5d4037', tipologias: '#6d4c41', disenador: '#00695c' };
+    var panels = { figuras: 'catSubFiguras', tipologias: 'catSubTipologias', disenador: 'catSubDisenador', templates: 'catSubTemplates' };
+    var btns = { figuras: 'catSubBtnFiguras', tipologias: 'catSubBtnTipologias', disenador: 'catSubBtnDisenador', templates: 'catSubBtnTemplates' };
+    var colors = { figuras: '#5d4037', tipologias: '#6d4c41', disenador: '#00695c', templates: '#558B2F' };
     Object.keys(panels).forEach(function(k) {
       var p = document.getElementById(panels[k]);
       if (p) p.style.display = (k === sub) ? '' : 'none';

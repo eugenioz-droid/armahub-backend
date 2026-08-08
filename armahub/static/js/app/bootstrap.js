@@ -375,6 +375,16 @@
         'armahubFeature',
         'modelador-panel',
         '[ArmaHub] No se pudo cargar modelador/panel_3d.js'
+      ),
+      // Template Editor (Colocador por proyecciones) — sub-tab del Catálogo.
+      // Reusa el motor del modelador (motor_geom/generar/reglas/semilla) para el
+      // cuadrante 3D en vivo. Three.js se carga on-demand desde template_editor.js.
+      loadScript(
+        'script[data-armahub-feature="modelador-template-editor"]',
+        '/static/js/features/modelador/template_editor.js' + suffix,
+        'armahubFeature',
+        'modelador-template-editor',
+        '[ArmaHub] No se pudo cargar modelador/template_editor.js'
       )
     ]);
   }).catch(function(error) {
