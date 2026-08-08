@@ -43,6 +43,17 @@ Bar Manager → el export aSa las trata como barras normales.
 **STUB / 2ª entrega (NO en el MVP):** modos grid/perimeter/points (muro/columna); Colocador por
 proyecciones; multi-radio real; homologación del render 2D; herramientas finas de medición/cotas.
 
+**REGLA DE ARQUITECTURA (usuario 08-ago) — el PISO es del USO, no del TEMPLATE:** el 3D Template (USAR
+el template para generar barras en un despiece concreto) SÍ pide piso — es correcto, la barra necesita
+piso. Pero el TEMPLATE EDITOR (CREAR el template, el Colocador, 2ª entrega) NO debe tener piso: un
+template es genérico/reutilizable en cualquier piso/obra. Ponerle piso ahí lo amarraría a un caso y
+rompería la reutilización. → Al construir el Colocador, NO meter piso. Pendiente revisar: al cargar al
+despiece, que ningún piso quede fuera si la viga abarca varios (hoy pide 1 piso, default=sector).
+
+**REDONDEO estribos RESUELTO (08-ago):** ceil(L/@)+1 = espejo exacto de ArmaPilot
+(python/bar_model.py::calc_line_count + lisp ARM-FLUJOS-CALC-LINE-COUNT). "Cerrar el intervalo, @ o
+menos". Verificado contra el repo Arma Pilot real. Ya aplicado en reglas.js::redondeoCantidadZona.
+
 **HALLAZGO T0.5 — redondeo de cantidad de estribos (PENDIENTE confirmar con el usuario):** se buscó en
 el repo (importer/lotes/front) y **NO existe** ninguna derivación "cantidad desde el espaciamiento": el
 importador recibe la cantidad ya calculada del CSV de ADetailer y el ingreso manual la escribe a mano.
