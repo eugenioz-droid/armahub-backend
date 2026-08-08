@@ -14,7 +14,10 @@
 (function (global) {
   'use strict';
 
-  var THREE = global.THREE;
+  // THREE se lee DINÁMICAMENTE (no se captura al cargar): three.min.js se carga
+  // ON-DEMAND, mucho después que este módulo → capturarlo aquí daba undefined
+  // para siempre y barraSolida devolvía null (barras no dibujadas, solo hormigón).
+  function _T() { return global.THREE; }
 
   // ---- Norma de doblado (aprox. NCh 204 / ACI 318) --------------------------
   // Radio INTERNO de doblado: 2φ para φ ≤ 16 mm, 3.5φ para φ > 16 mm.
@@ -93,6 +96,7 @@
   // ---- Fusión de geometrías (three.min.js no trae BufferGeometryUtils) ------
   // Igual patrón que rebar3d.js: fusiona partes [{geo, matriz}] en una sola.
   function fusionarGeometrias(partes) {
+    var THREE = _T();
     if (!THREE) return null;
     if (THREE.BufferGeometryUtils && THREE.BufferGeometryUtils.mergeGeometries) {
       // Si el navegador cargó BufferGeometryUtils, aplicamos las matrices y usamos su merge.
@@ -142,6 +146,7 @@
   }
 
   function _cilindroParte(a, b, rTubo, segRad) {
+    var THREE = _T();
     var largo = _dist(a, b);
     if (largo < 1e-6) return null;
     var geo = new THREE.CylinderGeometry(rTubo, rTubo, largo, segRad, 1, false);
@@ -157,6 +162,7 @@
   // puntos: [{x,y,z}] o Vector3[]. diamCm en cm. material = THREE.Material.
   // Devuelve THREE.Mesh (fusionada) o THREE.Group (fallback), o null si <2 pts.
   function barraSolida(puntos, diamCm, material, opciones) {
+    var THREE = _T();
     if (!THREE) return null;
     opciones = opciones || {};
     var segRad = opciones.segmentosRadiales || 12;
