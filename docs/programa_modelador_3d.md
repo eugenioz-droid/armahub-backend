@@ -382,6 +382,70 @@ genera → kilos/largo por familia salen directo.
   (modo AJUSTAR); Colocador = `static/demo/colocador.html` (2ª entrega). El MVP implementa el modo
   AJUSTAR + el motor + carga al despiece.
 
+## §DISCOVERY-INTERACCIÓN — Template Editor (definiciones del usuario, 08-ago)
+
+Definiciones cerradas para la COLOCACIÓN INTERACTIVA (lo que falta para que los 3 cuadrantes 2D dejen
+de ser solo-visualización). Las vistas 2D ya dibujan la viga real (proyección de placements); FALTA la
+interacción encima.
+
+**1. Colocar una barra:**
+- Se coloca en CUALQUIER vista 2D. Ideal: todas las vistas + el 3D conectadas (si el 3D en vivo es
+  fácil, sumarlo; si no, al menos las 2D).
+- **Estribo (barra que toma el contorno):** eliges la CARA, y un CHECK hace que el estribo tome los
+  límites de la sección como medidas, definidos por el recubrimiento. Recub=0 → la barra se ajusta al
+  contorno de la sección.
+- **Barra con lados (101A, 103A…):** se posiciona y ajusta según sus lados (2 lados = uno a cada cara).
+  La ORIENTACIÓN inicial la determina la posición actual de la barra EN EL CATÁLOGO (ej. |___|).
+- Se pega a la cara con el recubrimiento; el usuario puede hacer OVERRIDE con un controlador.
+
+**2. Rotar:** seleccionar la barra + ESPACIO → rota 90° por defecto, en torno a la profundidad del plano
+(se ve girar de frente: ___|  →  |___). Deseable: rotación con ángulo preciso definido, y visualizar el
+ángulo resultante (opcional pero bienvenido).
+
+**3. Distribución (rango):** un CHECK define si el componente tiene distribución. Rango con 2 clics.
+Ej: dibujo el estribo en ZX, y en la vista ZY una FLECHITA DOBLE lo desplaza y van apareciendo los
+estribos @20. SNAP activable/desactivable. La distribución se elige en las otras vistas según convenga.
+
+**4. Nodos desplazables:** cada esquina del elemento dibujado tendría un NODO desplazable. Herramienta
+futura: desplazar nodos con medidas específicas. Esto REEMPLAZA en gran parte la necesidad de un 2º
+recubrimiento (mover el nodo resuelve la mayoría de los casos de ajuste fino).
+
+**5. Editar lo colocado:** clic en una barra → se selecciona → editar propiedades en el panel izq;
+mover y borrar desde la vista.
+
+**6. Guardar/usar:** el NOMBRE del template se define en el TAB antes de entrar al modal; editable
+después. (Pendiente aclarar: "Usar en el despiece" ¿abre el Enfierrador con el template cargado, o
+carga barras directo al Fabricator?)
+
+**7. Snap + Cotas:** snaps siempre, activables/desactivables con botón. Cotas: NO como tal, salvo para
+indicar TRAMOS de un estribo/distribución que cambia (zonas @). Botón para prender/apagar cotas.
+
+**8. Muro/Columna + PLANOS DE TRABAJO:** con lo anterior se resuelve. Ej muro: posiciono la 104B en la
+vista de sección transversal, y en la de elevación defino la altura. Para un vertical: 103C en la
+sección vertical, distribución en la elevación transversal. CLAVE: definir bien las COORDENADAS de los
+planos de trabajo por tipo de elemento (la "sección" es plano distinto en viga vs muro). DESEABLE:
+seleccionar el plano de trabajo activo (trabajar solo en uno) y que el 3D lo muestre RESALTADO.
+
+**9. DEPENDENCIAS entre barras (feat clave, factibilidad en estudio):** poder definir dependencias
+cuando el usuario quiera (no todas las barras las tienen). Ej: dependencia horizontal↔vertical con
+PRIORIDAD elegida: la de mayor prioridad va más afuera (al recubrimiento); la otra se ajusta hacia el
+interior SOLO en los tramos donde cruza una barra prioritaria. Si en un lado NO hay barra con prioridad,
+ese tramo NO se desplaza. Ahorra data de entrada. Requiere reconocer bien tramo-a-tramo cuándo se ajusta
+y cuándo no. (Subagente evaluando factibilidad.)
+
+**10. Dimensiones del template:** el usuario elige las dimensiones de la viga EN EL TEMPLATE; al cargar
+en el Enfierrador, parte con esos valores por defecto anclados.
+
+**11. FUTURO — dibujar el hormigón:** poder dibujar la sección de hormigón (polígono) para elementos
+especiales. NO ahora, pero dejar la puerta abierta si es posible (subagente evaluando).
+
+**FIX aplicado (08-ago):** etiquetas de ejes de las vistas 2D eran confusas (Z→·Y↑ con Z a la derecha).
+Cambiadas a descriptivas: "ancho→·alto↑", "largo→·alto↑", "largo→·ancho↑". Títulos sin ejes crudos.
+
+**PENDIENTE de aclarar (siguiente fase de discovery):** override de recubrimiento (¿controlador o solo
+nodos?); "Usar en el despiece" (Enfierrador vs Fabricator directo); detalle de la herramienta de nodos;
+prioridad/dependencias UX exacta.
+
 ## 1. Correcciones de concepto (errores previos, ahora fijados)
 
 - **R (radio) NO es el radio de doblado de los codos.** En ArmaHub, `radio` es un BOOLEAN por figura
