@@ -98,24 +98,46 @@
 
   /* ---- CENTRO: 4 cuadrantes ---- */
   #te_modal #te_quad{flex:1;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;gap:1px;background:var(--te-line);min-width:0;position:relative}
-  #te_modal .te-vista{background:var(--te-canvas);position:relative;overflow:hidden}
-  #te_modal .te-vista.d3{background:var(--te-canvas3d)}
+  #te_modal .te-vista{background:var(--te-canvas);position:relative;overflow:hidden;cursor:pointer}
+  #te_modal .te-vista.d3{background:var(--te-canvas3d);cursor:default}
+  /* P3 — cuadrante 2D cuyo plano de trabajo está ACTIVO (resaltado en el 3D).
+     Se alterna con doble clic en el cuadrante (ver _bindVistas en template_editor.js). */
+  #te_modal .te-vista.te-plano-on{box-shadow:inset 0 0 0 2px #2f80ed}
+  #te_modal .te-vista.te-plano-on .te-vtitle{background:#2f80ed;color:#fff;border-color:#2f80ed}
   #te_modal .te-vtitle{position:absolute;top:8px;left:10px;z-index:3;font-size:11px;font-weight:700;color:#5b6a7d;background:rgba(255,255,255,.78);border:1px solid var(--te-line);border-radius:6px;padding:2px 8px;letter-spacing:.3px}
   #te_modal .te-vaxes{position:absolute;bottom:7px;left:10px;z-index:3;font-size:10px;color:#9aa4b0;font-family:monospace}
   #te_modal .te-vista svg{width:100%;height:100%;display:block}
   #te_modal .te-vista canvas{width:100%;height:100%;display:block}
   #te_modal .te-vhint{position:absolute;bottom:7px;right:10px;z-index:3;font-size:9.5px;color:#9aa4b0}
 
-  #te_modal .te-horm{fill:var(--te-hormigon);opacity:.55;stroke:var(--te-hormigon-b);stroke-width:1.5}
-  #te_modal .te-recub{fill:none;stroke:#9fb0c2;stroke-width:1.1;stroke-dasharray:5 4}
+  #te_modal .te-horm{fill:var(--te-hormigon);opacity:.55;stroke:var(--te-hormigon-b);stroke-width:1.2}
+  #te_modal .te-recub{fill:none;stroke:#9fb0c2;stroke-width:1;stroke-dasharray:5 4}
   #te_modal .te-barCBS{stroke:var(--te-cbs)}
   #te_modal .te-barCBI{stroke:var(--te-cbi)}
   #te_modal .te-barES{stroke:var(--te-es)}
-  #te_modal .te-bar{fill:none;stroke-width:3.2;stroke-linecap:round;stroke-linejoin:round}
-  #te_modal .te-ghostbar{fill:none;stroke:#8BC34A;stroke-width:3;stroke-dasharray:4 3;opacity:.85}
+  /* Trazo TÉCNICO: líneas finas nítidas (butt/miter), NO "a mano". */
+  #te_modal .te-bar{fill:none;stroke-width:1.6;stroke-linecap:butt;stroke-linejoin:miter;vector-effect:non-scaling-stroke}
+  #te_modal .te-bar.sel{stroke-width:2.6}
+  /* Halo de selección: se dibuja DEBAJO de la barra (trazo ancho translúcido). */
+  #te_modal .te-bar-halo{fill:none;stroke:var(--te-acero);stroke-width:6;opacity:.35;stroke-linecap:round;stroke-linejoin:round}
+  #te_modal .te-ghostbar{fill:none;stroke:#8BC34A;stroke-width:1.8;stroke-dasharray:5 3;opacity:.9;stroke-linecap:butt}
   #te_modal .te-gpt{fill:#8BC34A}
-  #te_modal .te-dim{fill:#8090a2;font:10px monospace}
-  #te_modal .te-dimL{stroke:#c2ccd8;stroke-width:1}
+  /* NODOS de esquina del hormigón (arrastrables). */
+  #te_modal .te-node{fill:#fff;stroke:var(--te-acero-d);stroke-width:1.4;cursor:move}
+  #te_modal .te-node:hover{fill:var(--te-acero);stroke:var(--te-acero-d)}
+  /* Marcador de SNAP (cruz fina donde engancha). */
+  #te_modal .te-snap{stroke:var(--te-azul);stroke-width:1;opacity:.9}
+  /* Flechita doble de RANGO (desplazamiento de la distribución). */
+  #te_modal .te-rango-line{stroke:var(--te-acero-d);stroke-width:1.2;stroke-dasharray:2 2}
+  #te_modal .te-rango-arrow{fill:none;stroke:var(--te-acero-d);stroke-width:1.6;cursor:ew-resize}
+  #te_modal .te-rango-hit{fill:rgba(139,195,74,.001);cursor:ew-resize}
+  #te_modal .te-dim{fill:#607089;font:9px "Segoe UI",monospace}
+  #te_modal .te-dimL{stroke:#b6c2d0;stroke-width:.8}
+  #te_modal .te-dimTick{stroke:#b6c2d0;stroke-width:.8}
+  /* Cursores por herramienta (sobre las 3 vistas 2D). */
+  #te_modal #te_quad.tool-colocar .te-vista:not(.d3),
+  #te_modal #te_quad.tool-rango   .te-vista:not(.d3){cursor:crosshair}
+  #te_modal #te_quad.tool-mover   .te-vista:not(.d3){cursor:default}
 
   /* barra de herramientas del colocador (aplica a las 4 vistas) */
   #te_modal #te_ctools{display:flex;align-items:center;gap:7px;padding:6px 14px;border-bottom:1px solid var(--te-line);background:var(--te-panel2)}
@@ -150,106 +172,65 @@
       <div class="te-grp">
         <span class="te-lbl">Figura</span>
         <div class="te-figpick">
-          <input value="103B" list="te_figs" placeholder="buscar figura…">
+          <input id="te_ribFigura" value="103B" list="te_figs" placeholder="buscar figura…">
         </div>
       </div>
       <div class="te-divv"></div>
       <div class="te-grp">
+        <span class="te-lbl">φ mm</span>
+        <select id="te_ribDiam" style="width:auto;padding:6px 8px;font-size:12px;border:1px solid var(--te-line);border-radius:7px">
+          <option>8</option><option>10</option><option>12</option><option selected>16</option><option>18</option><option>22</option><option>25</option>
+        </select>
+      </div>
+      <div class="te-divv"></div>
+      <div class="te-grp">
         <span class="te-lbl">Tipología</span>
-        <div class="te-tipbtns">
-          <span class="te-tipbtn on"><span class="te-sw" style="background:var(--te-cbs)"></span>CBS</span>
-          <span class="te-tipbtn"><span class="te-sw" style="background:var(--te-cbi)"></span>CBI</span>
-          <span class="te-tipbtn"><span class="te-sw" style="background:var(--te-es)"></span>ES</span>
-          <span class="te-tipbtn"><span class="te-sw" style="background:var(--te-trv)"></span>TRV</span>
-          <span class="te-tipbtn"><span class="te-sw" style="background:#607d8b"></span>LT</span>
+        <div class="te-tipbtns" id="te_tipbtns">
+          <span class="te-tipbtn on" data-tip="CBS"><span class="te-sw" style="background:var(--te-cbs)"></span>CBS</span>
+          <span class="te-tipbtn" data-tip="CBI"><span class="te-sw" style="background:var(--te-cbi)"></span>CBI</span>
+          <span class="te-tipbtn" data-tip="ES"><span class="te-sw" style="background:var(--te-es)"></span>ES</span>
+          <span class="te-tipbtn" data-tip="TRV"><span class="te-sw" style="background:var(--te-trv)"></span>TRV</span>
+          <span class="te-tipbtn" data-tip="LT"><span class="te-sw" style="background:#607d8b"></span>LT</span>
         </div>
       </div>
+      <div class="te-grp" style="margin-left:8px">
+        <label style="display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--te-muted);font-weight:600">
+          <input type="checkbox" id="te_ribContorno" style="width:auto" checked> tomar contorno
+        </label>
+      </div>
       <div class="te-spacer" style="flex:1"></div>
-      <span class="te-note" style="margin:0">Elige figura + tipología → posiciónala en una vista.</span>
+      <span class="te-note" style="margin:0">Elige figura + tipología → clic en una vista para colocar.</span>
     </div>
 
     <!-- HERRAMIENTAS del colocador (aplican a las 4 vistas) -->
     <div id="te_ctools">
       <span class="te-tlbl">Herramientas</span>
-      <button class="te-ctool on" title="Colocar la figura tal cual + rotar">✋ Colocar</button>
-      <button class="te-ctool" title="Definir rango con 2 clics (distribución)">↔ Rango</button>
-      <button class="te-ctool" title="Rotar (barra espaciadora)">⟳ Rotar</button>
-      <button class="te-ctool" title="Mover">✥ Mover</button>
+      <button class="te-ctool on" data-tool="colocar" title="Colocar la figura tal cual + rotar">✋ Colocar</button>
+      <button class="te-ctool" data-tool="rango" title="Definir rango con 2 clics (distribución)">↔ Rango</button>
+      <button class="te-ctool" data-tool="rotar" title="Rotar (barra espaciadora)">⟳ Rotar</button>
+      <button class="te-ctool" data-tool="mover" title="Seleccionar / mover">✥ Mover</button>
       <span class="te-divv"></span>
-      <button class="te-ctool">🧲 Snap grilla</button>
-      <button class="te-ctool">📐 Cotas</button>
+      <button class="te-ctool on" data-toggle="snap" title="Snap a grilla / caras / barras">🧲 Snap</button>
+      <button class="te-ctool" data-toggle="cotas" title="Mostrar cotas de tramos">📐 Cotas</button>
+      <span class="te-divv"></span>
+      <button class="te-ctool" id="te_btnBorrar" title="Borrar la barra seleccionada (Supr)">🗑 Borrar</button>
       <span style="flex:1"></span>
-      <span style="font-size:10.5px;color:#9aa4b0">Tipología activa: <b style="color:var(--te-cbs)">CBS</b> · figura 103B</span>
+      <span id="te_ctoolsStatus" style="font-size:10.5px;color:#9aa4b0">Tipología activa: <b style="color:var(--te-cbs)">CBS</b> · figura 103B</span>
     </div>
 
     <div id="te_body">
 
-      <!-- IZQUIERDA: componentes colocados (desplegables con propiedades) -->
+      <!-- IZQUIERDA: componentes colocados (desplegables con propiedades).
+           Se RENDERIZA dinámicamente desde ST.receta.componentes en template_editor.js
+           (_renderPanel). Cada .te-comp lleva data-ci = índice del componente. -->
       <div id="te_side">
-        <div class="te-sh"><span>Componentes colocados</span><span class="te-ln"></span><span style="color:var(--te-muted);font-size:11px">3</span></div>
+        <div class="te-sh"><span>Componentes colocados</span><span class="te-ln"></span><span id="te_compCount" style="color:var(--te-muted);font-size:11px">0</span></div>
 
-        <!-- CBS abierto con propiedades -->
-        <div class="te-comp open sel">
-          <div class="te-ch"><span class="te-drag">⠿</span><span class="te-sw" style="background:var(--te-cbs)"></span>
-            <div><div class="te-nm">CBS · 103B</div><div class="te-de">superior · 2 capas · ø16</div></div>
-            <span class="te-sp"></span><button class="te-mini" title="Duplicar">⧉</button><button class="te-mini" title="Quitar">🗑</button></div>
-          <div class="te-cbody">
-            <!-- Identidad: figura + φ + cara, en línea (aprovecha el ancho) -->
-            <div class="te-grid3">
-              <div class="te-fld"><label>Figura</label><input value="103B" list="te_figs"></div>
-              <div class="te-fld"><label>φ mm</label><select><option>8</option><option selected>16</option><option>18</option><option>22</option></select></div>
-              <div class="te-fld"><label>Sufijo</label><input placeholder="sup / A…"></div>
-            </div>
-            <div class="te-row"><label>Cara / anclaje</label>
-              <div class="te-radial"><button class="on">Superior</button><button>Inferior</button><button>Lateral</button></div></div>
-            <div class="te-row"><label>Recub. override</label><input placeholder="global (4) cm"></div>
+        <!-- Lista dinámica de componentes -->
+        <div id="te_compList"></div>
 
-            <!-- DISTRIBUCIÓN (según la tipología). Aquí van las funciones de la regla. -->
-            <div class="te-modebox">
-              <div class="te-mh"><span>Distribución</span><span class="te-chip">CAPAS</span>
-                <span style="flex:1"></span>
-                <select style="width:auto;padding:2px 6px;font-size:11px"><option selected>Capas</option><option>Lineal @</option><option>Área 2D</option><option>Perímetro</option><option>Puntual</option></select>
-              </div>
-              <div class="te-grid3">
-                <div class="te-fld"><label>N° capas</label><input value="2"></div>
-                <div class="te-fld"><label>Barras/capa</label><input value="3"></div>
-                <div class="te-fld"><label>Sep. capas cm</label><input value="4"></div>
-              </div>
-              <div class="te-row"><label>Sentido</label>
-                <div class="te-radial"><button class="on">Hacia núcleo</button><button>Desde núcleo</button></div></div>
-              <div class="te-note">Se apilan desde la cara hacia el núcleo con la separación indicada.</div>
-            </div>
-
-            <!-- Dimensiones de la figura (dinámicas: 103B usa A,B,C + α1,α2) -->
-            <div class="te-row"><label>A (pata)</label><input value="30"></div>
-            <div class="te-row"><label>B (largo)</label><input value="592" disabled title="auto = largo − recub."></div>
-            <div class="te-row"><label>C (pata)</label><input value="30"></div>
-            <div class="te-grid2">
-              <div class="te-fld"><label>α1 (°)</label><input value="45"></div>
-              <div class="te-fld"><label>α2 (°)</label><input value="45"></div>
-            </div>
-            <div class="te-note">B es auto (largo − recub). A/C fijas (patas). Ángulos y R vienen de la figura del catálogo.</div>
-          </div>
-        </div>
-
-        <!-- CBI colapsado -->
-        <div class="te-comp">
-          <div class="te-ch"><span class="te-drag">⠿</span><span class="te-sw" style="background:var(--te-cbi)"></span>
-            <div><div class="te-nm">CBI · 103A</div><div class="te-de">inferior · 1 capa · ø18</div></div>
-            <span class="te-sp"></span><button class="te-mini" title="Duplicar">⧉</button><button class="te-mini" title="Quitar">🗑</button></div>
-          <div class="te-cbody"></div>
-        </div>
-
-        <!-- ES colapsado -->
-        <div class="te-comp">
-          <div class="te-ch"><span class="te-drag">⠿</span><span class="te-sw" style="background:var(--te-es)"></span>
-            <div><div class="te-nm">ES · 104D</div><div class="te-de">estribo · 3 zonas @ · ø8</div></div>
-            <span class="te-sp"></span><button class="te-mini" title="Duplicar">⧉</button><button class="te-mini" title="Quitar">🗑</button></div>
-          <div class="te-cbody"></div>
-        </div>
-
-        <button class="te-addcomp">＋ Agregar componente</button>
-        <div class="te-note" style="margin-top:8px">Arrastra ⠿ para reordenar. Selecciona un componente para editar sus propiedades aquí.</div>
+        <button class="te-addcomp" id="te_addComp">＋ Agregar componente</button>
+        <div class="te-note" style="margin-top:8px">Elige figura+tipología arriba y haz clic en una vista para colocar. Selecciona una barra (o un componente) para editar aquí. Arrastra ⠿ para reordenar.</div>
       </div>
 
       <!-- CENTRO: 4 CUADRANTES -->

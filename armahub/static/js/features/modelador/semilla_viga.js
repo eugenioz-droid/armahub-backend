@@ -9,6 +9,19 @@
 //
 // dims: cada dimensión de la figura es {modo:'fija',valor} o {modo:'auto'} (se
 // deriva del elemento). Estructura idéntica al modelo de datos del guion.
+//
+// MODELO ADITIVO (§DISCOVERY-INTERACCIÓN-2 · campos aditivos al componente): cada
+// componente lleva además campos OPCIONALES que HOY no cambian nada (defaults null)
+// pero abren empalmes / prioridad / dependencias sin romper la receta:
+//   - comp_id   : id estable del componente ('CBS','CBI','ES','TRV'). Lo usan
+//                 prioridad/depende_de para referenciar componentes por id.
+//   - prioridad : nº global único (1 = más afuera). null = no participa del
+//                 retranqueo por prioridad. NO se implementa aún (solo el DATO).
+//   - empalme   : { extremo:'inicio'|'fin'|null, valor:string|number } | null.
+//                 Alarga el extremo indicado (valor fórmula '60*phi+1' u override).
+//   - depende_de: [{ comp_id, holgura }] | null. Retranqueo hacia el núcleo
+//                 respecto de otros componentes. NO se implementa aún (solo el DATO).
+// Y a geometria: contorno = null (usa la caja rect actual; a futuro polígono).
 // =============================================================================
 (function (global) {
   'use strict';
@@ -16,11 +29,16 @@
   function semillaViga() {
     return {
       tipo: 'viga',
-      geometria: { largo: 600, ancho: 30, alto: 60, recub_sup: 4, recub_inf: 4, recub_lat: 3 },
+      geometria: {
+        largo: 600, ancho: 30, alto: 60, recub_sup: 4, recub_inf: 4, recub_lat: 3,
+        contorno: null   // null = caja rect (boundaryDeVista); a futuro polígono
+      },
       componentes: [
         {
+          comp_id: 'CBS',
           tipologia: 'CBS', figura: '103B', diam: 16, suf_tipo: 'sup', cara: 'sup',
           recub_override: null, angulos: [45, 45],
+          prioridad: null, empalme: null, depende_de: null,
           dims: {
             A: { modo: 'fija', valor: 30 },
             B: { modo: 'auto' },
@@ -29,14 +47,18 @@
           distribucion: { modo: 'layered', n_capas: 2, barras_capa: 3, gap: 4, sentido: 'nucleo' }
         },
         {
+          comp_id: 'CBI',
           tipologia: 'CBI', figura: '101A', diam: 18, suf_tipo: 'inf', cara: 'inf',
           recub_override: null, angulos: [],
+          prioridad: null, empalme: null, depende_de: null,
           dims: { A: { modo: 'auto' } },
           distribucion: { modo: 'layered', n_capas: 1, barras_capa: 4, gap: 0, sentido: 'nucleo' }
         },
         {
+          comp_id: 'ES',
           tipologia: 'ES', figura: '104D', diam: 8, suf_tipo: 'estribo', cara: 'lateral',
           recub_override: null, angulos: [135, 135],
+          prioridad: null, empalme: null, depende_de: null,
           dims: {
             A: { modo: 'auto' }, B: { modo: 'auto' },
             C: { modo: 'auto' }, D: { modo: 'auto' }
@@ -48,8 +70,10 @@
           }
         },
         {
+          comp_id: 'TRV',
           tipologia: 'TRV', figura: '101A', diam: 8, suf_tipo: 'traba', cara: 'lateral',
           recub_override: null, angulos: [],
+          prioridad: null, empalme: null, depende_de: null,
           dims: { A: { modo: 'auto' } },
           distribucion: {
             modo: 'linear',

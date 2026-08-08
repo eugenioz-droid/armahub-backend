@@ -37,13 +37,30 @@
     var y = anchor.y, z = anchor.z;
     var s = (anchor.cara === 'sup') ? -1 : 1;   // gancho hacia el núcleo
     var f = (figura || '').toUpperCase();
+    // Empalme: cuánto asoma FUERA del hormigón y por qué extremo (dato de
+    // trazabilidad; la dim ya viene alargada, aquí sólo se orienta el excedente
+    // al extremo indicado en vez de repartirlo simétrico). eIni/eFin en X.
+    var emp = anchor.empalme || null;
+    var eIni = 0, eFin = 0;
+    if (emp && emp.valor > 0) {
+      if (emp.extremo === 'inicio') eIni = emp.valor;
+      else if (emp.extremo === 'fin') eFin = emp.valor;
+      else if (emp.extremo === 'ambos') { eIni = emp.valor; eFin = emp.valor; }
+    }
     // 101A (una sola dim A): barra RECTA de largo A (no hay patas de gancho).
     if (f.indexOf('101') === 0) {
       var largoRecto = (dims.A != null) ? dims.A : (host.largo - 2 * (anchor.recubExtremo || 0));
-      return [V(-largoRecto / 2, y, z), V(largoRecto / 2, y, z)];
+      // El excedente de empalme (eIni+eFin) ya está DENTRO de largoRecto (dim
+      // alargada). Se ubica el segmento asimétrico: la mitad "base" centrada y
+      // el empalme sobresaliendo por su extremo.
+      var lBase = largoRecto - eIni - eFin;
+      var xi = -lBase / 2 - eIni, xf = lBase / 2 + eFin;
+      return [V(xi, y, z), V(xf, y, z)];
     }
     var largoTramo = (dims.B != null) ? dims.B : (host.largo - 2 * (anchor.recubExtremo || 0));
-    var x0 = -largoTramo / 2, x1 = largoTramo / 2;
+    // El empalme del tramo largo se reparte al extremo indicado sobre B.
+    var bBase = largoTramo - eIni - eFin;
+    var x0 = -bBase / 2 - eIni, x1 = bBase / 2 + eFin;
     var A = (dims.A != null) ? dims.A : 0;
     var C = (dims.C != null) ? dims.C : 0;
     // 102x / recta sin patas → segmento simple.
