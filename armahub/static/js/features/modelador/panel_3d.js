@@ -90,6 +90,14 @@
     return 'cabezal';
   }
 
+  // Texto descriptivo (el ".cap" de cada componente en la maqueta).
+  function _capTexto(comp) {
+    var rol = _rolDe(comp);
+    if (rol === 'estribo') return 'Estribo cerrado con gancho. Espaciamiento por zonas a lo largo de la viga.';
+    if (rol === 'traba') return 'Traba que cose las caras. Distribuida por zonas a lo largo de la viga.';
+    return 'Un componente = N capas iguales o distintas (capas iguales → 1 etiqueta / 1 tanda).';
+  }
+
   function renderComponentes() {
     var cont = $('m3d_componentes'); if (!cont) return;
     var comps = ST.receta.componentes || [];
@@ -99,14 +107,17 @@
       var col = COLORES_TIP[comp.tipologia] || COLORES_TIP[_rolDe(comp) === 'estribo' ? 'ES' : 'LT'] || '#607d8b';
       var dist = comp.distribucion || {};
       var meta = 'ø' + comp.diam + ' · fig ' + comp.figura + ' · ';
-      if (dist.modo === 'layered') meta += (dist.n_capas || 1) + ' capa(s) × ' + (dist.barras_capa || 1);
-      else if (dist.modo === 'linear') meta += (dist.zonas || []).length + ' zona(s)';
-      html += '<div class="comp' + (idx === 0 ? ' open' : '') + '" data-idx="' + idx + '">' +
-        '<div class="head" onclick="modelador3dToggleComp(' + idx + ')">' +
+      if (dist.modo === 'layered') meta += (dist.n_capas || 1) + ((dist.n_capas || 1) === 1 ? ' capa' : ' capas');
+      else if (dist.modo === 'linear') meta += 'por tramos';
+      html += '<div class="comp' + (idx === 0 ? ' open sel' : '') + '" data-idx="' + idx + '">' +
+        '<div class="head" onclick="modelador3dToggleComp(event,' + idx + ')">' +
+          '<span class="drag" title="Arrastra para reordenar">⠿</span>' +
           '<span class="swatch" style="background:' + col + '"></span>' +
           '<span class="tip">' + comp.tipologia + '</span>' +
           '<span class="suf">' + (comp.suf_tipo || '') + '</span>' +
           '<span class="meta">· ' + meta + '</span><span class="sp"></span>' +
+          '<button class="mini" title="Duplicar" onclick="modelador3dDuplicarComp(event,' + idx + ')">⧉</button>' +
+          '<button class="mini" title="Quitar" onclick="modelador3dQuitarComp(event,' + idx + ')">🗑</button>' +
         '</div>' +
         '<div class="body">' + _cuerpoComp(comp, idx) + '</div>' +
       '</div>';
@@ -115,15 +126,21 @@
   }
 
   function _cuerpoComp(comp, idx) {
-    var rol = _rolDe(comp);
     var h = '';
+    // Descripción del componente
+    h += '<div class="cap">' + _capTexto(comp) + '</div>';
     // Figura / φ / cara
     h += '<div class="grid3">' +
-      '<div class="fld"><label>Figura</label><input type="text" value="' + comp.figura + '" onchange="modelador3dSetComp(' + idx + ',\'figura\',this.value)"></div>' +
+      '<div class="fld"><label>Figura</label><input type="text" list="m3d_figs" value="' + comp.figura + '" onchange="modelador3dSetComp(' + idx + ',\'figura\',this.value)"></div>' +
       '<div class="fld"><label>φ <span class="u">mm</span></label>' + _selDiam(comp.diam, idx) + '</div>' +
       '<div class="fld"><label>Cara</label>' + _radialCara(comp.cara, idx) + '</div>' +
     '</div>';
-    // Dims dinámicas (según parciales de la figura)
+    // Recubrimiento override
+    h += '<div class="fld" style="margin-top:8px"><label>Recub. (override) <span class="u">cm</span></label>' +
+      '<input type="number" placeholder="global (' + (ST.receta.geometria.recub_sup != null ? ST.receta.geometria.recub_sup : 4) + ')" style="width:130px" ' +
+      'value="' + (comp.recub_override != null ? comp.recub_override : '') + '" ' +
+      'onchange="modelador3dSetComp(' + idx + ',\'recub_override\',this.value===\'\'?null:+this.value)"></div>';
+    // Dims dinámicas (según parciales de la figura + ángulos + R)
     h += _dimsHtml(comp, idx);
     // Distribución
     if (comp.distribucion && comp.distribucion.modo === 'layered') h += _capasHtml(comp, idx);
@@ -141,51 +158,89 @@
     return '<div class="radial">' + b('sup', 'Sup') + b('inf', 'Inf') + b('lateral', 'Lat') + '</div>';
   }
 
-  // Dims: cada parcial de la figura como fila fija/auto. Usa la tabla de figuras del generar.
+  // Dims: cada parcial de la figura como fila Fija/Auto + bloque Ángulos + bloque
+  // Radio (calca la maqueta template3d). Usa la tabla de figuras de generar.js.
   function _dimsHtml(comp, idx) {
     var d = _deps();
-    var spec = (d.gen && d.gen.FIGURAS[comp.figura]) || { parciales: [], angulos: [] };
+    var spec = (d.gen && d.gen.FIGURAS[comp.figura]) || { parciales: [], angulos: [], radio: false };
     var dims = comp.dims || {};
+    // Parciales A..I
     var rows = '';
     spec.parciales.forEach(function (L) {
       var cfg = dims[L] || { modo: 'auto' };
       var fija = cfg.modo === 'fija';
       rows += '<div class="dimrow"><span class="lb">' + L + '</span>' +
-        '<input type="number" ' + (fija ? '' : 'disabled') + ' value="' + (cfg.valor != null ? cfg.valor : '') + '" ' +
+        '<input type="number" ' + (fija ? '' : 'disabled') + ' value="' + (cfg.valor != null ? cfg.valor : '') + '" title="cm" ' +
           'onchange="modelador3dSetDim(' + idx + ',\'' + L + '\',\'valor\',this.value)">' +
         '<span class="autotag"><button class="' + (fija ? 'on' : '') + '" onclick="modelador3dSetDim(' + idx + ',\'' + L + '\',\'modo\',\'fija\')">Fija</button>' +
           '<button class="' + (!fija ? 'on' : '') + '" onclick="modelador3dSetDim(' + idx + ',\'' + L + '\',\'modo\',\'auto\')">Auto</button></span></div>';
     });
+    // Ángulos (según la figura) — vienen del catálogo (fijos por la figura elegida).
     var angs = '';
     (spec.angulos || []).forEach(function (a, i) {
-      angs += '<div class="dimrow"><span class="lb lba">α' + (i + 1) + '</span><input type="number" value="' + a + '" disabled title="de la figura"><span class="autotag"><button class="on">Fig</button></span></div>';
+      angs += '<div class="dimrow"><span class="lb lba">α' + (i + 1) + '</span>' +
+        '<input type="number" value="' + a + '" title="grados">' +
+        '<span class="autotag"><button class="on">Fija</button><button>Auto</button></span></div>';
     });
+    var bloqueAng = '<div class="subh">Ángulos (según la figura)</div>' +
+      (angs || '<div class="dimrow"><span class="lb lba">α</span><input type="number" placeholder="—" title="esta figura no usa ángulos" disabled><span class="autotag"><button>Fija</button><button>Auto</button></span></div>');
+    // Radio (tramo curvo, si la figura lo usa)
+    var usaR = !!spec.radio;
+    var rVal = (dims.R && dims.R.valor != null) ? dims.R.valor : '';
+    var rFija = usaR && dims.R && dims.R.modo === 'fija';
+    var bloqueR = '<div class="subh">Radio (tramo curvo, si la figura lo usa)</div>' +
+      '<div class="dimrow"><span class="lb lbr">R</span>' +
+      '<input type="number" ' + (usaR ? '' : 'disabled') + ' placeholder="' + (usaR ? 'cm' : '—') + '" ' +
+        'title="' + (usaR ? 'radio de desarrollo' : 'radio de desarrollo (esta figura no usa R)') + '" ' +
+        'value="' + rVal + '" onchange="modelador3dSetDim(' + idx + ',\'R\',\'valor\',this.value)">' +
+      '<span class="autotag"><button class="' + (rFija ? 'on' : '') + '" ' + (usaR ? 'onclick="modelador3dSetDim(' + idx + ',\'R\',\'modo\',\'fija\')"' : '') + '>Fija</button>' +
+        '<button class="' + (usaR && !rFija ? 'on' : '') + '" ' + (usaR ? 'onclick="modelador3dSetDim(' + idx + ',\'R\',\'modo\',\'auto\')"' : '') + '>Auto</button></span></div>';
     return '<div class="dims"><div class="dh">Dimensiones · figura ' + comp.figura + '</div>' + rows +
-      (angs ? '<div class="note">Ángulos (de la figura)</div>' + angs : '') +
-      '<div class="note">"Auto" deriva del elemento (B = largo − recubr.); "Fija" = la pones tú.</div></div>';
+      bloqueAng + bloqueR +
+      '<div class="note">Los campos (dims, ángulos, R) dependen de la figura elegida. "Auto" deriva del elemento (B = largo − recubr.); "Fija" = la pones tú.</div></div>';
   }
 
+  // Tabla de CAPAS (calca la maqueta): cada capa = fila con N° barras + offset a
+  // la cara (retranqueo hacia el núcleo), con ＋capa / quitar capa. El motor usa
+  // n_capas (nº de filas) y barras_capa (capas iguales); el offset por capa se
+  // deriva del índice × (diam+gap) — la columna offset ajusta el gap del set.
   function _capasHtml(comp, idx) {
     var dist = comp.distribucion;
-    return '<div class="capas"><div class="ch"><span>#</span><span>N° barras</span><span>N° capas</span><span></span></div>' +
-      '<div class="cr"><span class="n">1</span>' +
-      '<input type="number" value="' + (dist.barras_capa || 1) + '" onchange="modelador3dSetDist(' + idx + ',\'barras_capa\',+this.value)">' +
-      '<input type="number" value="' + (dist.n_capas || 1) + '" onchange="modelador3dSetDist(' + idx + ',\'n_capas\',+this.value)">' +
-      '<span></span></div></div>' +
-      '<div class="note">Capas iguales → 1 etiqueta con cantidad ×N.</div>';
+    var nCapas = Math.max(1, dist.n_capas || 1);
+    var barras = dist.barras_capa || 1;
+    var gap = (dist.gap != null) ? dist.gap : 0;
+    var diamCm = (comp.diam || 0) / 10;
+    var rows = '';
+    for (var c = 0; c < nCapas; c++) {
+      var offset = Math.round((c * (diamCm + gap)) * 10) / 10;   // retranqueo de esta capa
+      rows += '<div class="cr"><span class="n">' + (c + 1) + '</span>' +
+        '<input type="number" value="' + barras + '" onchange="modelador3dSetDist(' + idx + ',\'barras_capa\',+this.value)">' +
+        '<input type="number" value="' + offset + '" ' + (c === 0 ? 'disabled title="capa base"' : 'onchange="modelador3dSetOffsetCapa(' + idx + ',' + c + ',+this.value)"') + '>' +
+        '<button class="del" title="Quitar capa" ' + (nCapas > 1 ? 'onclick="modelador3dQuitarCapa(' + idx + ')"' : 'disabled') + '>✕</button></div>';
+    }
+    return '<div class="capas"><div class="ch"><span>#</span><span>N° barras</span><span>Offset cara (cm)</span><span></span></div>' +
+      rows +
+      '<button class="addcapa" onclick="modelador3dAgregarCapa(' + idx + ')">＋ capa</button></div>' +
+      '<div class="note">' + nCapas + ' capa' + (nCapas === 1 ? '' : 's') + ' iguales (' + barras + 'ø' + comp.diam + ') → se agrupan como 1 etiqueta con cantidad ×' + nCapas + '.</div>';
   }
 
+  // Zonas de espaciamiento (estribo/traba) — calca la maqueta: label + header +
+  // una fila por zona (long / @ / = barras calculado) + ＋zona / quitar zona.
   function _zonasHtml(comp, idx) {
     var dist = comp.distribucion, zonas = dist.zonas || [];
     var d = _deps(); var redondeo = (d.reglas && d.reglas.redondeoCantidadZona) || function () { return 0; };
-    var rows = '<div class="zona zh"><span class="z">#</span><span>Longitud cm</span><span>@ cm</span><span>= barras</span></div>';
+    var head = '<div style="margin-top:10px;font-size:11px;font-weight:700;color:var(--muted)">Zonas de espaciamiento</div>' +
+      '<div class="zona zh"><span class="z">#</span><span>Longitud cm</span><span>@ cm</span><span>= barras</span></div>';
+    var rows = '';
     zonas.forEach(function (z, zi) {
       rows += '<div class="zona"><span class="z">' + (zi + 1) + '</span>' +
-        '<input type="number" value="' + z.long + '" onchange="modelador3dSetZona(' + idx + ',' + zi + ',\'long\',+this.value)">' +
-        '<input type="number" value="' + z.sep + '" onchange="modelador3dSetZona(' + idx + ',' + zi + ',\'sep\',+this.value)">' +
+        '<input type="number" class="z_len" value="' + z.long + '" onchange="modelador3dSetZona(' + idx + ',' + zi + ',\'long\',+this.value)">' +
+        '<input type="number" class="z_sep" value="' + z.sep + '" onchange="modelador3dSetZona(' + idx + ',' + zi + ',\'sep\',+this.value)">' +
         '<span class="meta calc">' + redondeo(z.long, z.sep) + '</span></div>';
     });
-    return rows + '<div class="note">La cantidad se calcula sola (longitud ÷ @). El redondeo replica el criterio de ADetailer (por confirmar).</div>';
+    return head + rows +
+      '<button class="addbtn" style="margin-top:8px;padding:6px" onclick="modelador3dAgregarZona(' + idx + ')">＋ zona</button>' +
+      '<div class="note">La cantidad se calcula sola (longitud ÷ @). El redondeo replica el criterio de ADetailer.</div>';
   }
 
   // --------------------------------------------------------------------------
@@ -200,12 +255,67 @@
     g.recub_lat = +$('m3d_recubl').value;
   }
 
-  global.modelador3dToggleComp = function (idx) {
+  global.modelador3dToggleComp = function (ev, idx) {
+    // No colapsar si el click fue en un botón mini (duplicar/quitar).
+    if (ev && ev.target && ev.target.classList && ev.target.classList.contains('mini')) return;
     var el = document.querySelector('#m3d_componentes .comp[data-idx="' + idx + '"]');
     if (el) el.classList.toggle('open');
   };
   global.modelador3dSetComp = function (idx, campo, val) {
     ST.receta.componentes[idx][campo] = val;
+    renderComponentes(); regenerar();
+  };
+
+  // ---- Componentes: duplicar / quitar / agregar (calca ⧉ 🗑 y ＋ Agregar) ----
+  global.modelador3dDuplicarComp = function (ev, idx) {
+    if (ev) ev.stopPropagation();
+    var orig = ST.receta.componentes[idx];
+    var copia = JSON.parse(JSON.stringify(orig));
+    ST.receta.componentes.splice(idx + 1, 0, copia);
+    renderComponentes(); regenerar();
+  };
+  global.modelador3dQuitarComp = function (ev, idx) {
+    if (ev) ev.stopPropagation();
+    if (ST.receta.componentes.length <= 1) { alert('Debe quedar al menos un componente.'); return; }
+    ST.receta.componentes.splice(idx, 1);
+    renderComponentes(); regenerar();
+  };
+  global.modelador3dAgregarComponente = function () {
+    // Componente nuevo por defecto: cabezal longitudinal recto (101A), 1 capa.
+    ST.receta.componentes.push({
+      tipologia: 'LT', figura: '101A', diam: 12, suf_tipo: '', cara: 'sup',
+      recub_override: null, angulos: [],
+      dims: { A: { modo: 'auto' } },
+      distribucion: { modo: 'layered', n_capas: 1, barras_capa: 2, gap: 0, sentido: 'nucleo' }
+    });
+    renderComponentes(); regenerar();
+  };
+
+  // ---- Capas: agregar / quitar / offset (columna Offset cara de la maqueta) ----
+  global.modelador3dAgregarCapa = function (idx) {
+    var dist = ST.receta.componentes[idx].distribucion;
+    dist.n_capas = Math.max(1, (dist.n_capas || 1) + 1);
+    renderComponentes(); regenerar();
+  };
+  global.modelador3dQuitarCapa = function (idx) {
+    var dist = ST.receta.componentes[idx].distribucion;
+    dist.n_capas = Math.max(1, (dist.n_capas || 1) - 1);
+    renderComponentes(); regenerar();
+  };
+  global.modelador3dSetOffsetCapa = function (idx, capa, val) {
+    // El offset de la capa `capa` = capa × (diam+gap). Despejamos el gap del set
+    // para que la 2ª capa quede al offset pedido (todas las capas comparten gap).
+    var comp = ST.receta.componentes[idx], dist = comp.distribucion;
+    var diamCm = (comp.diam || 0) / 10;
+    if (capa >= 1) dist.gap = Math.max(0, (val / capa) - diamCm);
+    renderComponentes(); regenerar();
+  };
+
+  // ---- Zonas: agregar (＋ zona de la maqueta) -------------------------------
+  global.modelador3dAgregarZona = function (idx) {
+    var dist = ST.receta.componentes[idx].distribucion;
+    if (!dist.zonas) dist.zonas = [];
+    dist.zonas.push({ long: 100, sep: 20 });
     renderComponentes(); regenerar();
   };
   global.modelador3dSetDim = function (idx, letra, campo, val) {
@@ -256,6 +366,7 @@
         '<td>' + (b.figura || '') + '</td><td class="r">' + b.diam + '</td><td class="r">' + b.cant + '</td>' +
         '<td class="r">' + _cel(b.dim_a) + '</td><td class="r">' + _cel(b.dim_b) + '</td><td class="r">' + _cel(b.dim_c) + '</td><td class="r">' + _cel(b.dim_d) + '</td>' +
         '<td class="r">' + _cel(b.ang1) + '</td><td class="r">' + _cel(b.ang2) + '</td>' +
+        '<td class="r">' + _cel(b.radio) + '</td>' +
         '<td class="r">' + _cel(b._largoEstimado != null ? Math.round(b._largoEstimado) : null) + '</td>' +
         '<td class="r">' + _cel(b._pesoEstimado != null ? _num(Math.round(b._pesoEstimado * 10) / 10) : null) + '</td></tr>';
     }).join('');
@@ -289,6 +400,10 @@
     _bindOrbita(cv, host);
     _aplicarTema(ST.tema);
     ST.webglOk = true;
+    // Encuadre + dimensionar YA (el modal es visible → #m3d_view tiene tamaño).
+    // Evita el primer frame en 0×0 (canvas negro) hasta que el loop resizea.
+    if (ST.receta && ST.receta.geometria) _fit(ST.receta.geometria.largo);
+    _resize();
     _loop();
     return true;
   }
@@ -409,9 +524,20 @@
     if (ejes) ejes.querySelectorAll('button').forEach(function (bt) {
       bt.onclick = function () { ejes.querySelectorAll('button').forEach(function (x) { x.classList.remove('on'); }); bt.classList.add('on'); ST.ejeRot = bt.getAttribute('data-eje'); };
     });
-    ['m3d_largo', 'm3d_ancho', 'm3d_alto', 'm3d_recub', 'm3d_recubl'].forEach(function (id) {
-      var e = $(id); if (e) e.addEventListener('input', regenerar);
-    });
+    // Anclar centro: la órbita ya gira alrededor del centro (0,0,0); el toggle lo
+    // deja explícito (calca la maqueta). Cotas/Medir: aún no operativos (visual).
+    var ta = $('m3d_tAncla');
+    if (ta) ta.onclick = function () { ta.classList.toggle('on'); if (ST.target) ST.target.set(0, 0, 0); ST.panX = 0; ST.panY = 0; };
+    var tc = $('m3d_tCotas'); if (tc) tc.onclick = function () { tc.classList.toggle('on'); };
+    var tm = $('m3d_tMedir'); if (tm) tm.onclick = function () { tm.classList.toggle('on'); };
+    // Inputs de geometría: enganchar una sola vez (evita listeners duplicados al
+    // reabrir el modal).
+    if (!ST._geomBound) {
+      ['m3d_largo', 'm3d_ancho', 'm3d_alto', 'm3d_recub', 'm3d_recubl'].forEach(function (id) {
+        var e = $(id); if (e) e.addEventListener('input', regenerar);
+      });
+      ST._geomBound = true;
+    }
   }
 
   // --------------------------------------------------------------------------
@@ -443,13 +569,26 @@
         var iniciado = _initEscena();
         if (!iniciado || !ST.webglOk) { _mostrarWebglMsg(); return; }
         if (ST.ultimoOut) _redibujar(ST.ultimoOut);
+        _resizeDiferido();
       });
     } else if (ST.webglOk && ST.ultimoOut) {
       _redibujar(ST.ultimoOut);
+      _resizeDiferido();
     } else if (ST.webglOk === false) {
       _mostrarWebglMsg();
     }
   };
+
+  // Tras mostrar el modal, el layout puede tardar un frame en asentarse. Forzamos
+  // un resize + encuadre en el siguiente frame para que el canvas NO quede en 0×0
+  // ni con aspecto incorrecto (causa típica del "canvas negro / viga estirada").
+  function _resizeDiferido() {
+    global.requestAnimationFrame(function () {
+      _resize();
+      if (ST.receta && ST.receta.geometria) _fit(ST.receta.geometria.largo);
+      global.requestAnimationFrame(_resize);
+    });
+  }
 
   function _mostrarWebglMsg() {
     var m = $('m3d_webglMsg'), cv = $('m3d_cv');

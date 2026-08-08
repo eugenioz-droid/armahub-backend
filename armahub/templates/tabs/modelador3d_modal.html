@@ -1,40 +1,110 @@
 <!-- ============================================================================
      MODELADOR 3D — Modal "3D Template" (modo AJUSTAR · F1 · T1.3)
-     Calca la maqueta static/demo/template3d.html: panel de componentes
-     colapsables (capas / cara radial / dims dinámicas / estribo por zonas),
-     canvas Three.js, toolbar, stats en vivo, acciones. La lógica vive en
-     features/modelador/panel_3d.js. Oculto por defecto; lo abre modelador3dAbrir().
+     CALCA íntegra de la maqueta static/demo/template3d.html: panel de parámetros
+     (elemento) + lista de COMPONENTES colapsables donde cada componente muestra
+     figura+φ+cara radial, recub override, TABLA DE CAPAS (＋capa/quitar), DIMS
+     DINÁMICAS (A/B/C + Ángulos α + Radio R, cada dim Fija/Auto) y el estribo con
+     ZONAS de espaciamiento (＋zona). Más: ＋ Agregar componente, leyenda de
+     colores, canvas Three.js con toolbar, stats en vivo, resumen de barras y
+     acciones. La lógica vive en features/modelador/panel_3d.js (los componentes
+     se renderizan por JS desde la receta con este mismo markup). Oculto por
+     defecto; lo abre modelador3dAbrir().
      ============================================================================ -->
 <style>
+  /* Todo el CSS va scopeado bajo #m3d_backdrop / #m3d_modal para no filtrarse al
+     resto de la app (es un tab embebido, no una página). Las variables y los
+     nombres de clase CALCAN la maqueta template3d.html. */
   #m3d_backdrop{position:fixed;inset:0;background:rgba(15,20,28,.55);display:none;align-items:center;justify-content:center;padding:18px;z-index:9998;
-    font:13px/1.45 "Segoe UI",system-ui,sans-serif;color:#1f2937;}
-  #m3d_backdrop.on{display:flex;}
-  #m3d_modal{--acero:#8BC34A;--acero-d:#558B2F;--line:#dbe1e8;--panel2:#f6f8fa;--muted:#64748b;--azul:#1565c0;--azul-b:#e3f2fd;--chip:#eef5e6;--chip-b:#c5e1a5;--danger:#c62828;
-    width:min(1440px,98vw);height:min(920px,96vh);background:#fff;border-radius:14px;box-shadow:0 24px 70px rgba(0,0,0,.4);display:flex;flex-direction:column;overflow:hidden}
+    font:13px/1.45 "Segoe UI",system-ui,sans-serif;color:#1f2937}
+  #m3d_backdrop.on{display:flex}
+  #m3d_modal{--bg:#eef1f4;--ink:#1f2937;--muted:#64748b;--line:#dbe1e8;--panel:#ffffff;--panel2:#f6f8fa;
+    --acero:#8BC34A;--acero-d:#558B2F;--azul:#1565c0;--azul-b:#e3f2fd;--canvas:#161a20;
+    --chip:#eef5e6;--chip-ink:#33691e;--chip-b:#c5e1a5;--warn:#e65100;--warn-b:#fff3e0;--danger:#c62828;--hormigon:rgba(150,160,175,.18);
+    width:min(1440px,98vw);height:min(920px,96vh);background:var(--panel);border-radius:14px;
+    box-shadow:0 24px 70px rgba(0,0,0,.4);display:flex;flex-direction:column;overflow:hidden}
+
+  /* Barra de título del modal */
   #m3d_titlebar{display:flex;align-items:center;gap:12px;padding:12px 18px;border-bottom:1px solid var(--line);background:var(--panel2)}
   #m3d_titlebar .dot{width:26px;height:26px;border-radius:7px;background:var(--acero);display:flex;align-items:center;justify-content:center;font-size:15px}
-  #m3d_titlebar h1{font-size:15px;font-weight:600;margin:0}
+  #m3d_titlebar h1{font-size:15px;font-weight:600;letter-spacing:.2px;margin:0}
   #m3d_titlebar .sub{font-size:11.5px;color:var(--muted)}
   #m3d_titlebar .spacer{flex:1}
   #m3d_modal .xbtn{border:1px solid var(--line);background:#fff;border-radius:8px;width:32px;height:30px;cursor:pointer;font-size:15px;color:var(--muted)}
+  #m3d_modal .xbtn:hover{background:#f0f2f5}
+
+  /* Cuerpo: panel izq + canvas der */
   #m3d_body{flex:1;display:flex;min-height:0}
-  #m3d_panel{width:440px;min-width:440px;overflow-y:auto;border-right:1px solid var(--line);background:#fff;padding:14px 16px 22px}
+
+  /* ---- PANEL DE PARÁMETROS (izquierda) ---- */
+  #m3d_panel{width:440px;min-width:440px;overflow-y:auto;border-right:1px solid var(--line);background:var(--panel);padding:14px 16px 22px}
+
+  /* Radial de cara (3 botones) */
+  #m3d_modal .radial{display:inline-flex;border:1px solid var(--line);border-radius:7px;overflow:hidden}
+  #m3d_modal .radial button{border:none;background:#fff;padding:5px 10px;font-size:11.5px;color:var(--muted);cursor:pointer;font-weight:600}
+  #m3d_modal .radial button+button{border-left:1px solid var(--line)}
+  #m3d_modal .radial button.on{background:var(--azul-b);color:var(--azul)}
+  #m3d_modal .drag{cursor:grab;color:#b6c0cc;font-size:13px;padding:0 2px}
+
+  /* Tabla de CAPAS dentro de un componente */
+  #m3d_modal .capas{margin-top:9px;border:1px solid var(--line);border-radius:7px;overflow:hidden}
+  #m3d_modal .capas .ch{display:grid;grid-template-columns:26px 1fr 1fr 34px;gap:0;background:var(--panel2);font-size:10.5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px}
+  #m3d_modal .capas .ch span{padding:5px 8px}
+  #m3d_modal .capas .cr{display:grid;grid-template-columns:26px 1fr 1fr 34px;gap:0;border-top:1px solid var(--line);align-items:center}
+  #m3d_modal .capas .cr .n{padding:4px 8px;font-weight:700;color:var(--muted)}
+  #m3d_modal .capas .cr input{border:none;border-left:1px solid var(--line);border-radius:0;padding:5px 8px}
+  #m3d_modal .capas .cr input:focus{box-shadow:none;background:#f7fbf2}
+  #m3d_modal .capas .cr .del{border:none;background:none;color:#b6c0cc;cursor:pointer;font-size:12px}
+  #m3d_modal .capas .cr .del:hover{color:var(--danger)}
+  #m3d_modal .addcapa{width:100%;border:none;border-top:1px solid var(--line);background:#f7fbf2;color:var(--acero-d);padding:5px;font-size:11px;font-weight:600;cursor:pointer}
+
+  /* Dimensiones de la figura (dinámicas: parciales A..I + ángulos + R) */
+  #m3d_modal .dims{margin-top:11px;border:1px solid var(--line);border-radius:8px;padding:10px 12px;background:#fbfcfd}
+  #m3d_modal .dims .dh{font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin-bottom:8px}
+  #m3d_modal .dimrow{display:grid;grid-template-columns:30px 1fr auto;gap:9px;align-items:center;margin-top:7px}
+  #m3d_modal .dimrow .lb{font-weight:700;color:var(--azul);text-align:center;font-size:13px}
+  #m3d_modal .dimrow input{padding:7px 10px;font-size:13px}
+  #m3d_modal .dimrow .autotag{display:inline-flex;border:1px solid var(--line);border-radius:6px;overflow:hidden;font-size:11px}
+  #m3d_modal .dimrow .autotag button{border:none;background:#fff;padding:5px 11px;color:var(--muted);cursor:pointer;font-weight:600}
+  #m3d_modal .dimrow .autotag button+button{border-left:1px solid var(--line)}
+  #m3d_modal .dimrow .autotag button.on{background:var(--azul-b);color:var(--azul)}
+  #m3d_modal .dimrow input:disabled{background:#f2f5f8;color:#9aa4b0}
+  #m3d_modal .dims .subh{font-size:10px;font-weight:700;color:#9aa4b0;text-transform:uppercase;letter-spacing:.4px;margin:11px 0 3px;border-top:1px dashed var(--line);padding-top:9px}
+  #m3d_modal .dimrow .lba{color:#8d6e63}   /* ángulos en marrón */
+  #m3d_modal .dimrow .lbr{color:#00897b}   /* R en teal */
+
+  /* Resumen de barras a crear (dinámico) */
+  #m3d_resumen{border-top:1px solid var(--line);background:var(--panel2);flex-shrink:0}
+  #m3d_resumen .rh{display:flex;align-items:center;gap:8px;padding:7px 14px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--muted)}
+  #m3d_resumen table{width:100%;border-collapse:collapse;font-size:11.5px}
+  #m3d_resumen th{text-align:left;padding:4px 10px;color:var(--muted);font-weight:600;background:#eef1f4;position:sticky;top:0}
+  #m3d_resumen th.r,#m3d_resumen td.r{text-align:right}
+  #m3d_resumen td{padding:4px 10px;border-top:1px solid var(--line);color:var(--ink)}
+  #m3d_resumen .tb{max-height:270px;overflow:auto}
+  #m3d_resumen tr:hover td{background:#eef7ff}
+  #m3d_resumen .rtip{font-weight:700}
+  #m3d_resumen .rsuf{color:var(--acero-d);font-size:10.5px}
+
   #m3d_modal .sect{margin-bottom:16px}
   #m3d_modal .sect > .h{display:flex;align-items:center;gap:7px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin-bottom:8px}
   #m3d_modal .sect > .h .ln{flex:1;height:1px;background:var(--line)}
+
   #m3d_modal .grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px 10px}
   #m3d_modal .grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px 10px}
   #m3d_modal .fld{display:flex;flex-direction:column;gap:3px}
   #m3d_modal .fld label{font-size:11px;color:var(--muted);font-weight:600}
   #m3d_modal .fld .u{font-size:10px;color:#9aa4b0}
-  #m3d_modal input[type=text],#m3d_modal input[type=number],#m3d_modal select{border:1px solid var(--line);border-radius:6px;padding:5px 8px;font-size:12.5px;color:#1f2937;background:#fff;width:100%}
+  #m3d_modal input[type=text],#m3d_modal input[type=number],#m3d_modal select{
+    border:1px solid var(--line);border-radius:6px;padding:5px 8px;font-size:12.5px;color:var(--ink);background:#fff;width:100%}
   #m3d_modal input:focus,#m3d_modal select:focus{outline:none;border-color:var(--acero);box-shadow:0 0 0 2px rgba(139,195,74,.18)}
+
+  /* Selector de elemento (segmented) */
   #m3d_modal .seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
   #m3d_modal .seg button{border:none;background:#fff;padding:6px 12px;font-size:12px;color:var(--muted);cursor:pointer;font-weight:600}
   #m3d_modal .seg button+button{border-left:1px solid var(--line)}
   #m3d_modal .seg button.on{background:var(--acero);color:#fff}
   #m3d_modal .seg button.dis{opacity:.45;cursor:not-allowed}
-  #m3d_modal .note{font-size:10.5px;color:#9aa4b0;margin-top:4px}
+
+  /* Lista de COMPONENTES */
   #m3d_modal .comp{border:1px solid var(--line);border-radius:9px;margin-bottom:8px;overflow:hidden;background:#fff}
   #m3d_modal .comp.sel{border-color:var(--acero);box-shadow:0 0 0 2px rgba(139,195,74,.15)}
   #m3d_modal .comp .head{display:flex;align-items:center;gap:8px;padding:7px 10px;cursor:pointer;background:var(--panel2)}
@@ -44,170 +114,189 @@
   #m3d_modal .comp .meta{font-size:11px;color:var(--muted)}
   #m3d_modal .comp .sp{flex:1}
   #m3d_modal .comp .mini{border:none;background:none;cursor:pointer;font-size:13px;color:var(--muted);padding:2px 4px}
+  #m3d_modal .comp .mini:hover{color:var(--ink)}
   #m3d_modal .comp .body{padding:9px 10px;border-top:1px solid var(--line);display:none}
   #m3d_modal .comp.open .body{display:block}
   #m3d_modal .comp .cap{font-size:10.5px;color:#9aa4b0;margin:2px 0 6px}
-  #m3d_modal .radial{display:inline-flex;border:1px solid var(--line);border-radius:7px;overflow:hidden}
-  #m3d_modal .radial button{border:none;background:#fff;padding:5px 10px;font-size:11.5px;color:var(--muted);cursor:pointer;font-weight:600}
-  #m3d_modal .radial button+button{border-left:1px solid var(--line)}
-  #m3d_modal .radial button.on{background:var(--azul-b);color:var(--azul)}
-  #m3d_modal .capas{margin-top:9px;border:1px solid var(--line);border-radius:7px;overflow:hidden}
-  #m3d_modal .capas .ch{display:grid;grid-template-columns:26px 1fr 1fr 34px;background:var(--panel2);font-size:10.5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px}
-  #m3d_modal .capas .ch span{padding:5px 8px}
-  #m3d_modal .capas .cr{display:grid;grid-template-columns:26px 1fr 1fr 34px;border-top:1px solid var(--line);align-items:center}
-  #m3d_modal .capas .cr .n{padding:4px 8px;font-weight:700;color:var(--muted)}
-  #m3d_modal .capas .cr input{border:none;border-left:1px solid var(--line);border-radius:0;padding:5px 8px}
-  #m3d_modal .capas .cr .del{border:none;background:none;color:#b6c0cc;cursor:pointer;font-size:12px}
-  #m3d_modal .addcapa{width:100%;border:none;border-top:1px solid var(--line);background:#f7fbf2;color:var(--acero-d);padding:5px;font-size:11px;font-weight:600;cursor:pointer}
-  #m3d_modal .dims{margin-top:11px;border:1px solid var(--line);border-radius:8px;padding:10px 12px;background:#fbfcfd}
-  #m3d_modal .dims .dh{font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin-bottom:8px}
-  #m3d_modal .dimrow{display:grid;grid-template-columns:30px 1fr auto;gap:9px;align-items:center;margin-top:7px}
-  #m3d_modal .dimrow .lb{font-weight:700;color:var(--azul);text-align:center;font-size:13px}
-  #m3d_modal .dimrow .lba{color:#8d6e63}
-  #m3d_modal .dimrow .autotag{display:inline-flex;border:1px solid var(--line);border-radius:6px;overflow:hidden;font-size:11px}
-  #m3d_modal .dimrow .autotag button{border:none;background:#fff;padding:5px 11px;color:var(--muted);cursor:pointer;font-weight:600}
-  #m3d_modal .dimrow .autotag button+button{border-left:1px solid var(--line)}
-  #m3d_modal .dimrow .autotag button.on{background:var(--azul-b);color:var(--azul)}
-  #m3d_modal .dimrow input:disabled{background:#f2f5f8;color:#9aa4b0}
+
+  #m3d_modal .rowline{display:flex;align-items:center;gap:8px;margin-top:8px}
+  #m3d_modal .addbtn{width:100%;border:1px dashed var(--acero);color:var(--acero-d);background:#f7fbf2;border-radius:9px;padding:9px;font-size:12.5px;font-weight:600;cursor:pointer}
+  #m3d_modal .addbtn:hover{background:#eef7e4}
+
+  /* Zonas de espaciamiento (estribo) */
   #m3d_modal .zona{display:grid;grid-template-columns:26px 1fr 1fr 56px;gap:6px;align-items:center;margin-top:6px;font-size:11.5px}
   #m3d_modal .zona .z{font-weight:700;color:var(--muted);text-align:center}
   #m3d_modal .zona.zh{font-size:10.5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin-top:8px}
   #m3d_modal .zona.zh span{text-align:center}
   #m3d_modal .zona .calc{text-align:center;font-weight:700;color:var(--acero-d);background:var(--chip);border-radius:6px;padding:3px 0}
-  #m3d_modal .addbtn{width:100%;border:1px dashed var(--acero);color:var(--acero-d);background:#f7fbf2;border-radius:9px;padding:9px;font-size:12.5px;font-weight:600;cursor:pointer}
-  #m3d_stage{flex:1;position:relative;background:#161a20;min-width:0;display:flex;flex-direction:column}
+  #m3d_modal .zona .zdel{border:none;background:none;color:#b6c0cc;cursor:pointer;font-size:12px}
+  #m3d_modal .zona .zdel:hover{color:var(--danger)}
+
+  /* ---- CANVAS (derecha) ---- */
+  #m3d_stage{flex:1;position:relative;background:var(--canvas);min-width:0;display:flex;flex-direction:column}
   #m3d_toolbar{position:absolute;top:12px;left:12px;right:12px;display:flex;gap:8px;align-items:center;z-index:5;flex-wrap:wrap}
-  #m3d_modal .tool{border:1px solid rgba(255,255,255,.15);background:rgba(30,36,45,.78);color:#cfd6e0;border-radius:7px;padding:5px 10px;font-size:11.5px;cursor:pointer;display:inline-flex;gap:6px;align-items:center}
+  #m3d_modal .tool{border:1px solid rgba(255,255,255,.15);background:rgba(30,36,45,.78);color:#cfd6e0;border-radius:7px;padding:5px 10px;font-size:11.5px;cursor:pointer;display:inline-flex;gap:6px;align-items:center;backdrop-filter:blur(4px)}
   #m3d_modal .tool.on{background:var(--acero);color:#fff;border-color:var(--acero)}
+  #m3d_modal .tool:hover{border-color:rgba(255,255,255,.35)}
   #m3d_toolbar .sp{flex:1}
   #m3d_modal .radialdark{display:inline-flex;border:1px solid rgba(255,255,255,.18);border-radius:7px;overflow:hidden}
   #m3d_modal .radialdark button{border:none;background:rgba(30,36,45,.78);color:#cfd6e0;padding:5px 10px;font-size:11.5px;cursor:pointer;font-weight:600}
   #m3d_modal .radialdark button+button{border-left:1px solid rgba(255,255,255,.14)}
   #m3d_modal .radialdark button.on{background:var(--acero);color:#fff}
+
+  /* Canvas Three.js real */
   #m3d_view{flex:1;position:relative;min-height:0}
   #m3d_cv{width:100%;height:100%;display:block;cursor:grab}
   #m3d_cv:active{cursor:grabbing}
   #m3d_webglMsg{position:absolute;inset:0;display:none;flex-direction:column;align-items:center;justify-content:center;gap:8px;color:#cfd6e0;background:#161a20;text-align:center;padding:24px}
-  #m3d_stats{position:absolute;bottom:12px;left:12px;display:flex;gap:14px;background:rgba(20,26,34,.8);border:1px solid #2a333f;border-radius:8px;padding:7px 12px;color:#cfd6e0;font-size:11.5px}
+
+  /* stats + acciones (abajo del canvas) */
+  #m3d_stats{position:absolute;bottom:12px;left:12px;display:flex;gap:14px;background:rgba(20,26,34,.8);border:1px solid #2a333f;border-radius:8px;padding:7px 12px;color:#cfd6e0;font-size:11.5px;backdrop-filter:blur(4px)}
   #m3d_stats b{color:#fff}
   #m3d_stats .kg b{color:var(--acero)}
+
   #m3d_actions{position:absolute;bottom:12px;right:12px;display:flex;gap:8px}
   #m3d_modal .btn{border:none;border-radius:9px;padding:9px 15px;font-size:12.5px;font-weight:700;cursor:pointer}
   #m3d_modal .btn.primary{background:var(--acero);color:#fff}
   #m3d_modal .btn.primary:hover{background:var(--acero-d)}
   #m3d_modal .btn.ghost{background:rgba(255,255,255,.08);color:#e8edf4;border:1px solid rgba(255,255,255,.18)}
-  #m3d_resumen{border-top:1px solid var(--line);background:var(--panel2);flex-shrink:0}
-  #m3d_resumen .rh{display:flex;align-items:center;gap:8px;padding:7px 14px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--muted)}
-  #m3d_resumen table{width:100%;border-collapse:collapse;font-size:11.5px}
-  #m3d_resumen th{text-align:left;padding:4px 10px;color:var(--muted);font-weight:600;background:#eef1f4;position:sticky;top:0}
-  #m3d_resumen th.r,#m3d_resumen td.r{text-align:right}
-  #m3d_resumen td{padding:4px 10px;border-top:1px solid var(--line);color:#1f2937}
-  #m3d_resumen .tb{max-height:200px;overflow:auto}
-  #m3d_resumen .rtip{font-weight:700}
-  #m3d_resumen .rsuf{color:var(--acero-d);font-size:10.5px}
+  #m3d_modal .btn.ghost:hover{background:rgba(255,255,255,.16)}
+
+  /* leyenda mini abajo del panel */
+  #m3d_modal .legend{font-size:10.5px;color:var(--muted);border-top:1px solid var(--line);padding-top:10px;margin-top:6px}
+  #m3d_modal .legend .row{display:flex;align-items:center;gap:6px;margin-top:3px}
+  #m3d_modal .legend .sw{width:11px;height:11px;border-radius:3px}
+
+  #m3d_modal .note{font-size:10.5px;color:#9aa4b0;margin-top:4px}
 </style>
 
 <div id="m3d_backdrop">
-  <div id="m3d_modal">
-    <!-- TÍTULO -->
-    <div id="m3d_titlebar">
-      <div class="dot">🧱</div>
-      <div>
-        <h1>3D Template — Viga</h1>
-        <div class="sub" id="m3d_ctxSub">Despiece activo</div>
-      </div>
-      <div class="spacer"></div>
-      <button class="btn ghost" id="m3d_cargarTplBtn" style="background:#eef2f6;color:#37474f;border:1px solid var(--line)" title="Templates de esta obra y de otras obras" onclick="modelador3dCargarTemplate()">📂 Cargar template…</button>
-      <button class="xbtn" title="Cerrar" onclick="modelador3dCerrar()">✕</button>
+<div id="m3d_modal">
+
+  <!-- ===== TÍTULO ===== -->
+  <div id="m3d_titlebar">
+    <div class="dot">🧱</div>
+    <div>
+      <h1>3D Template — Viga</h1>
+      <div class="sub" id="m3d_ctxSub">Despiece activo</div>
     </div>
-
-    <div id="m3d_body">
-      <!-- PANEL DE PARÁMETROS -->
-      <div id="m3d_panel">
-        <!-- Elemento -->
-        <div class="sect">
-          <div class="h"><span>Elemento</span><span class="ln"></span></div>
-          <div class="seg" style="margin-bottom:10px">
-            <button class="on">Viga</button>
-            <button class="dis" title="Próximamente">Muro</button>
-            <button class="dis" title="Próximamente">Columna</button>
-          </div>
-          <div class="grid3">
-            <div class="fld"><label>Largo <span class="u">cm</span></label><input type="number" id="m3d_largo" value="600"></div>
-            <div class="fld"><label>Ancho <span class="u">cm</span></label><input type="number" id="m3d_ancho" value="30"></div>
-            <div class="fld"><label>Alto <span class="u">cm</span></label><input type="number" id="m3d_alto" value="60"></div>
-          </div>
-          <div class="grid2" style="margin-top:8px">
-            <div class="fld"><label>Recub. sup/inf <span class="u">cm</span></label><input type="number" id="m3d_recub" value="4"></div>
-            <div class="fld"><label>Recub. lateral <span class="u">cm</span></label><input type="number" id="m3d_recubl" value="3"></div>
-          </div>
-          <div class="note">Cada componente puede sobrescribir su recubrimiento y ajustar largo (según la figura).</div>
-        </div>
-
-        <!-- Componentes (se renderizan por JS desde la receta) -->
-        <div class="sect">
-          <div class="h"><span>Componentes</span><span class="ln"></span><span class="meta" id="m3d_compCount" style="font-size:11px;color:var(--muted)">0</span></div>
-          <div id="m3d_componentes"></div>
-          <div class="note">Tipología cerrada por elemento (CBS/CBI/LT/ES/TRV…); la figura es libre.</div>
-        </div>
-      </div>
-
-      <!-- CANVAS 3D -->
-      <div id="m3d_stage">
-        <div id="m3d_toolbar">
-          <button class="tool on" id="m3d_tHorm">🧊 Hormigón</button>
-          <button class="tool" id="m3d_tReset">↻ Vista iso</button>
-          <span class="sp"></span>
-          <span style="font-size:10.5px;color:#9fb0c4">Fondo:</span>
-          <span class="radialdark" id="m3d_tema">
-            <button data-tema="oscuro">Oscuro</button>
-            <button class="on" data-tema="medio">Medio</button>
-            <button data-tema="claro">Claro</button>
-          </span>
-          <span style="font-size:10.5px;color:#9fb0c4;margin-left:6px">Rotar eje:</span>
-          <span class="radialdark" id="m3d_ejes">
-            <button class="on" data-eje="libre">Libre</button>
-            <button data-eje="x">X</button>
-            <button data-eje="y">Y</button>
-            <button data-eje="z">Z</button>
-          </span>
-        </div>
-
-        <div id="m3d_view">
-          <canvas id="m3d_cv"></canvas>
-          <div id="m3d_webglMsg">
-            <div style="font-size:15px;font-weight:600">No se pudo iniciar el 3D (WebGL)</div>
-            <div style="font-size:12px;max-width:420px;color:#9fb0c4">Tu navegador no tiene aceleración por hardware activa. Actívala en la configuración del sistema del navegador (chrome://settings/system → "Usar aceleración por hardware") y recarga. El resto del panel y el resumen de barras funcionan igual.</div>
-          </div>
-
-          <div id="m3d_stats">
-            <span>Items: <b id="m3d_stItems">0</b></span>
-            <span>Barras: <b id="m3d_stBarras">0</b></span>
-            <span class="kg">Peso: <b id="m3d_stKg">0 kg</b></span>
-          </div>
-
-          <div id="m3d_actions">
-            <button class="btn ghost" onclick="modelador3dGuardarTemplate()">💾 Guardar como template</button>
-            <button class="btn ghost" onclick="modelador3dRegenerar()">↻ Regenerar</button>
-            <button class="btn primary" onclick="modelador3dCargarAlDespiece()">⬇ Cargar al despiece</button>
-          </div>
-        </div>
-
-        <!-- Resumen de barras a crear -->
-        <div id="m3d_resumen">
-          <div class="rh"><span>Barras a crear</span><span id="m3d_resumenSub" style="font-weight:600;text-transform:none;letter-spacing:0;color:#9aa4b0">se actualiza en vivo</span></div>
-          <div class="tb">
-            <table>
-              <thead><tr>
-                <th>Tip.</th><th>Figura</th><th class="r">φ</th><th class="r">Cant</th>
-                <th class="r">A</th><th class="r">B</th><th class="r">C</th><th class="r">D</th>
-                <th class="r">α1</th><th class="r">α2</th><th class="r">Largo</th><th class="r">Kg</th>
-              </tr></thead>
-              <tbody id="m3d_resumenBody"></tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-    </div>
+    <div class="spacer"></div>
+    <button class="btn ghost" id="m3d_cargarTplBtn" style="background:#eef2f6;color:#37474f;border:1px solid var(--line)" title="Templates de esta obra y de otras obras" onclick="modelador3dCargarTemplate()">📂 Cargar template…</button>
+    <button class="xbtn" title="Cerrar" onclick="modelador3dCerrar()">✕</button>
   </div>
+
+  <div id="m3d_body">
+
+    <!-- ===== PANEL DE PARÁMETROS ===== -->
+    <div id="m3d_panel">
+
+      <!-- Elemento -->
+      <div class="sect">
+        <div class="h"><span>Elemento</span><span class="ln"></span></div>
+        <div class="seg" style="margin-bottom:10px">
+          <button class="on">Viga</button>
+          <button class="dis" title="Próximamente">Muro</button>
+          <button class="dis" title="Próximamente">Columna</button>
+        </div>
+        <div class="grid3">
+          <div class="fld"><label>Largo <span class="u">cm</span></label><input type="number" id="m3d_largo" value="600"></div>
+          <div class="fld"><label>Ancho <span class="u">cm</span></label><input type="number" id="m3d_ancho" value="30"></div>
+          <div class="fld"><label>Alto <span class="u">cm</span></label><input type="number" id="m3d_alto" value="60"></div>
+        </div>
+        <div class="grid2" style="margin-top:8px">
+          <div class="fld"><label>Recub. sup/inf <span class="u">cm</span></label><input type="number" id="m3d_recub" value="4"></div>
+          <div class="fld"><label>Recub. lateral <span class="u">cm</span></label><input type="number" id="m3d_recubl" value="3"></div>
+        </div>
+        <div class="note">Cada componente puede sobrescribir su recubrimiento y ajustar largo (según la figura).</div>
+      </div>
+
+      <!-- Componentes (se renderizan por JS desde la receta con el markup de la maqueta) -->
+      <div class="sect">
+        <div class="h"><span>Componentes</span><span style="font-size:9.5px;font-weight:600;color:#b6c0cc;text-transform:none;letter-spacing:0">⠿ arrastra para reordenar</span><span class="ln"></span><span class="meta" id="m3d_compCount" style="font-size:11px;color:var(--muted)">0</span></div>
+
+        <div id="m3d_componentes"></div>
+
+        <button class="addbtn" onclick="modelador3dAgregarComponente()">＋ Agregar componente</button>
+        <div class="note">Tipología cerrada por elemento (CBS/CBI/LT/ES/TRV…); la figura es libre.</div>
+      </div>
+
+      <!-- Leyenda de colores del 3D -->
+      <div class="legend">
+        <div style="font-weight:700;color:var(--muted);margin-bottom:2px">Colores del 3D</div>
+        <div class="row"><span class="sw" style="background:#1565c0"></span> Cabezal sup &nbsp;
+          <span class="sw" style="background:#00897b"></span> Cabezal inf</div>
+        <div class="row"><span class="sw" style="background:#e65100"></span> Estribo &nbsp;
+          <span class="sw" style="background:#7b1fa2"></span> Traba &nbsp;
+          <span class="sw" style="background:#9aa6b5"></span> Hormigón</div>
+      </div>
+
+      <datalist id="m3d_figs">
+        <option value="101A"><option value="102A"><option value="103A"><option value="103B"><option value="104D"><option value="106A">
+      </datalist>
+    </div>
+
+    <!-- ===== CANVAS 3D ===== -->
+    <div id="m3d_stage">
+      <div id="m3d_toolbar">
+        <button class="tool on" id="m3d_tHorm">🧊 Hormigón</button>
+        <button class="tool" id="m3d_tCotas" title="Próximamente">📐 Cotas</button>
+        <button class="tool" id="m3d_tMedir" title="Próximamente">📏 Medir</button>
+        <button class="tool" id="m3d_tAncla">🎯 Anclar centro</button>
+        <button class="tool" id="m3d_tReset">↻ Vista iso</button>
+        <span class="sp"></span>
+        <span style="font-size:10.5px;color:#9fb0c4">Fondo:</span>
+        <span class="radialdark" id="m3d_tema">
+          <button data-tema="oscuro">Oscuro</button>
+          <button class="on" data-tema="medio">Medio</button>
+          <button data-tema="claro">Claro</button>
+        </span>
+        <span style="font-size:10.5px;color:#9fb0c4;margin-left:6px">Rotar eje:</span>
+        <span class="radialdark" id="m3d_ejes">
+          <button class="on" data-eje="libre">Libre</button>
+          <button data-eje="x">X</button>
+          <button data-eje="y">Y</button>
+          <button data-eje="z">Z</button>
+        </span>
+      </div>
+
+      <div id="m3d_view">
+        <!-- Canvas Three.js REAL — la viga sólida generada desde los controles del panel. -->
+        <canvas id="m3d_cv"></canvas>
+
+        <div id="m3d_webglMsg">
+          <div style="font-size:15px;font-weight:600">No se pudo iniciar el 3D (WebGL)</div>
+          <div style="font-size:12px;max-width:420px;color:#9fb0c4">Tu navegador no tiene aceleración por hardware activa. Actívala en la configuración del sistema del navegador (chrome://settings/system → "Usar aceleración por hardware") y recarga. El resto del panel y el resumen de barras funcionan igual.</div>
+        </div>
+
+        <div id="m3d_stats">
+          <span>Items: <b id="m3d_stItems">0</b></span>
+          <span>Barras: <b id="m3d_stBarras">0</b></span>
+          <span class="kg">Peso: <b id="m3d_stKg">0 kg</b></span>
+        </div>
+
+        <div id="m3d_actions">
+          <button class="btn ghost" onclick="modelador3dGuardarTemplate()">💾 Guardar como template</button>
+          <button class="btn ghost" onclick="modelador3dRegenerar()">↻ Regenerar</button>
+          <button class="btn primary" onclick="modelador3dCargarAlDespiece()">⬇ Cargar al despiece</button>
+        </div>
+      </div>
+
+      <!-- RESUMEN dinámico de las barras que se van a crear (se actualiza en vivo). -->
+      <div id="m3d_resumen">
+        <div class="rh"><span>Barras a crear</span><span id="m3d_resumenSub" style="font-weight:600;text-transform:none;letter-spacing:0;color:#9aa4b0">se actualiza en vivo</span></div>
+        <div class="tb">
+          <table>
+            <thead><tr>
+              <th>Tip.</th><th>Figura</th><th class="r">φ</th><th class="r">Cant</th>
+              <th class="r">A</th><th class="r">B</th><th class="r">C</th><th class="r">D</th>
+              <th class="r">α1</th><th class="r">α2</th><th class="r">R</th><th class="r">Largo</th><th class="r">Kg</th>
+            </tr></thead>
+            <tbody id="m3d_resumenBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
 </div>
