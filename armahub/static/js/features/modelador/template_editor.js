@@ -239,10 +239,11 @@
     var cv = $('te_cv'); if (!cv) return;
     var host = cv.parentElement; if (!host) return;
     var w = host.clientWidth, h = host.clientHeight;
-    if (!w || !h) return;
+    // Nunca abortar en 0×0 (canvas negro): cae a un mínimo si el layout no asentó.
+    if (!w) w = 300; if (!h) h = 200;
     ST.renderer.setSize(w, h, false);
     ST.renderer.setPixelRatio(Math.min(2, global.devicePixelRatio || 1));
-    ST.camera.aspect = w / h; ST.camera.updateProjectionMatrix();
+    if (ST.camera) { ST.camera.aspect = w / h; ST.camera.updateProjectionMatrix(); }
   }
 
   function _loop() {
@@ -275,6 +276,8 @@
       if (cv) cv.style.display = 'block';
       if (fb) fb.style.display = 'none';
       if (ST.ultimoOut) _redibujar(ST.ultimoOut);
+      _resize();
+      global.console && console.log('[Template Editor] 3D iniciado · placements:', (ST.ultimoOut && ST.ultimoOut.placements || []).length);
     });
   }
 
@@ -289,7 +292,10 @@
     bd.classList.add('on');
     _bindCosmetico();
     _regenerar();          // footer stats aunque el 3D no esté listo
-    _iniciar3dEnVivo();    // carga Three.js e inicia la escena (una vez)
+    // Diferir 2 frames: el modal recién mostrado ya tiene tamaño → canvas nunca 0×0.
+    global.requestAnimationFrame(function () { global.requestAnimationFrame(function () {
+      _iniciar3dEnVivo();
+    }); });
   };
 
   global.templateEditorCerrar = function () {

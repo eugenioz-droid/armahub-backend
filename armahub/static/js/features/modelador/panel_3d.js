@@ -496,10 +496,16 @@
     if (!ST.renderer) return;
     var host = $('m3d_view'); if (!host) return;
     var w = host.clientWidth, h = host.clientHeight;
-    if (!w || !h) return;
+    // Si el view aún no tiene tamaño (layout no asentado), cae al stage o a un mínimo,
+    // NUNCA aborta con 0×0 (esa era la causa del "canvas negro sin nada").
+    if (!w || !h) {
+      var st = $('m3d_stage');
+      if (st) { w = w || st.clientWidth; h = h || st.clientHeight; }
+      if (!w) w = 640; if (!h) h = 420;
+    }
     ST.renderer.setSize(w, h, false);
     ST.renderer.setPixelRatio(Math.min(2, global.devicePixelRatio || 1));
-    ST.camera.aspect = w / h; ST.camera.updateProjectionMatrix();
+    if (ST.camera) { ST.camera.aspect = w / h; ST.camera.updateProjectionMatrix(); }
   }
 
   function _loop() {
@@ -561,22 +567,27 @@
     renderComponentes();
     _bindToolbar();
     regenerar();   // stats + resumen aunque el 3D no esté listo aún
-    // Cargar Three.js e iniciar la escena (una sola vez).
-    if (!ST.threeCargado) {
-      cargarThree().then(function (ok) {
-        ST.threeCargado = true;
-        if (!ok || !global.THREE) { _mostrarWebglMsg(); return; }
-        var iniciado = _initEscena();
-        if (!iniciado || !ST.webglOk) { _mostrarWebglMsg(); return; }
+    // Cargar Three.js e iniciar la escena. Se difiere a 2 frames para que el modal
+    // (recién mostrado con .on) tenga tamaño real → el canvas nunca se crea en 0×0.
+    global.requestAnimationFrame(function () { global.requestAnimationFrame(function () {
+      if (!ST.threeCargado) {
+        cargarThree().then(function (ok) {
+          ST.threeCargado = true;
+          if (!ok || !global.THREE) { console.warn('[3D Template] Three.js no cargó'); _mostrarWebglMsg(); return; }
+          var iniciado = _initEscena();
+          if (!iniciado || !ST.webglOk) { console.warn('[3D Template] WebGL no disponible'); _mostrarWebglMsg(); return; }
+          if (ST.ultimoOut) _redibujar(ST.ultimoOut);
+          _resize();
+          console.log('[3D Template] escena iniciada · placements:', (ST.ultimoOut && ST.ultimoOut.placements || []).length);
+        });
+      } else if (ST.webglOk) {
         if (ST.ultimoOut) _redibujar(ST.ultimoOut);
-        _resizeDiferido();
-      });
-    } else if (ST.webglOk && ST.ultimoOut) {
-      _redibujar(ST.ultimoOut);
-      _resizeDiferido();
-    } else if (ST.webglOk === false) {
-      _mostrarWebglMsg();
-    }
+        _resize();
+        if (ST.rafId == null) _loop();   // reanudar el loop si estaba parado
+      } else if (ST.webglOk === false) {
+        _mostrarWebglMsg();
+      }
+    }); });
   };
 
   // Tras mostrar el modal, el layout puede tardar un frame en asentarse. Forzamos
