@@ -852,3 +852,101 @@ planificada. Mantener el 2D simple hasta entonces.
 **MÉTODO:** cerrar D1-D7 → MAQUETA VISUAL aprobada de cada superficie (anti-desviación, §9) → detallar
 §12 tarea por tarea → agente ejecuta F0(motor)→F1(3D Template) de corrido. Barrido COMPLETO antes de
 tocar un elemento (prioridad del usuario).
+
+## §INTERACCIÓN-2.0 — REDISEÑO DE INTERACCIÓN (usuario 09-ago) — MODULAR, cerrado, va a workflow
+
+Cierre completo tras probar la 1ª versión + 3 auditorías (ADetailer / arquitectura / UX). El motor NO
+cambia su núcleo; se COMPLETA la capa de interacción que la maqueta colocador.html prometía y el 1er
+workflow omitió (ghost, grosor, clamp). Y se adopta el modelo MODULAR del usuario: el comportamiento lo
+define el PLANO DE TRABAJO de la pieza + su rotación, NO el tipo de estructura.
+
+### PRINCIPIO RECTOR (lo que hace todo modular)
+- **El MODO de la barra es independiente de su TIPOLOGÍA.** 3 modos de uso: **PUNTUAL** (P1),
+  **DISTRIBUCIÓN LINEAL** (DX·DY), **ARREGLO** (ex-"área", ahora arreglo rango+capas). La tipología
+  trae un modo PRESETEADO (default), pero el usuario lo puede CAMBIAR con botoncitos. Reglas
+  específicas = SOLO en la preconfiguración de la tipología; el motor es genérico (no sabe de
+  vigas/muros). Fuente conceptual: ADetailer INPUT_METHOD_MAP (typology_catalog.py:452), pero allá el
+  modo está fijo por tipo; aquí es editable.
+- **ROTAR EL PLANO DE LA PIEZA (no rotar en el plano).** Cada pieza tiene un plano de trabajo propio
+  que se puede voltear 90°. Al voltearlo cambia su proyección Y su lógica:
+  - Estribo en sección XZ: plano normal -> figura completa (rectángulo cerrado); plano volteado -> de
+    canto (línea vertical) + su RANGO (tanda hacia la profundidad).
+  - Cabezal 103A en sección: plano normal -> círculo (viene longitudinal); volteado -> perfil de lado.
+  - Esto permite colocar CUALQUIER barra en CUALQUIER vista. El eje longitudinal y la dirección de
+    distribución quedan definidos por DÓNDE coloco + CÓMO roto el plano. Resuelve fundación (cualquier
+    eje puede ser longitudinal), trabas de muro, etc. con UN solo mecanismo, sin lógica por estructura.
+  - Control: **botón elegante SOBRE la pieza seleccionada** (overlay contextual, visualmente claro) +
+    **tecla `R`**. Ambos llaman a la misma acción `rotarPlanoPieza()`. La rotación de plano es
+    ORTOGONAL al modo (Puntual/DX·DY/Arreglo): el modo decide qué campos muestra el menú, la rotación
+    decide desde qué cara se ve/coloca. No se pisan.
+
+### LAS 3 LÓGICAS (mapeo ADetailer -> Template Editor)
+- **A · PUNTUAL** (cabezal/CB, longitudinales). Clic -> la barra se pega a una CARA con SNAP RESALTADO
+  (al acercar el cursor a una cara del hormigón, ESA cara se resalta y el ghost se pega; el usuario ve
+  a qué cara va ANTES de clicar). En sección = punto (mejorado con ghost/grosor). En vista longitudinal
+  = FORMA REAL de la barra (dibujar la figura; evaluar si además se puede COLOCAR desde ahí — deseable,
+  si es viable hacerlo). Centrar-vs-repartir + CAPAS hacia el núcleo = control EXPLÍCITO en el panel
+  (nº de barras/capa + nº de capas + espaciamiento), NO truco de nº de clics. Cantidad directa.
+- **B · DISTRIBUCIÓN LINEAL** (estribo/traba). Colocar en sección -> snapea al recubrimiento (figura
+  completa visible ahí). El RANGO de reparto (from/to, inicio/fin de la tanda) se ajusta en la vista
+  que el plano define; parte con un rango mínimo razonable. cant = ceil(dist_util/@)+1 (fórmula
+  ADetailer bar_model.calc_line_count, YA implementada en reglas.js). Al ROTAR el plano de la pieza en
+  la sección, se ve de canto + su rango -> habilita distribuir en el otro eje (fundación: cualquiera
+  de los 2 ejes puede ser el longitudinal). DXODY del ADetailer queda CONTENIDA aquí (elegir eje = rotar
+  plano), no es una lógica aparte.
+- **C · ARREGLO** (ex-área; trabas de muro, mallas). NO por cálculo de m². Se posiciona como cualquier
+  barra y se define: RANGO en un sentido (ej. vertical) + N CAPAS que replican con ESPACIAMIENTO (nº de
+  capas + separación, en vez de capa por capa) -> arreglo rango×capas, más preciso y simple. El PLANO DE
+  TRABAJO define la orientación: si el plano es XY, la barra se posiciona hacia la profundidad. Según el
+  plano donde defino el arreglo, se orienta la pieza. Soportes de losa (pieza 3D) = caso adaptado
+  APARTE, después (son muy pocos los de área). D del ADetailer = contenida, no aplica como lógica extra.
+
+### DIMENSIONES DE BARRA (el requerimiento real de "anclajes", aclarado por el usuario)
+- La barra NACE bien anclada al boundary de RECUBRIMIENTO (auto: largo = hueco menos 2·recub, CRECE con
+  el hormigón). Override por FIELD numérico (no por arrastre que congele): escribir valor -> dim pasa a
+  modo:'fija'. Modelo YA soportado (reglas.js dims {modo:'auto'|'fija'}).
+- FUTURO (no bloquea, se puede después): dibujar el BOUNDARY de la barra en pantalla y permitir
+  ajustarlo visualmente <-> el gesto se traduce a un OFFSET que se refleja en el field (offset visual
+  <-> field, sincronizados). NO se ancla al volumen de hormigón (innecesario si la barra ya viene pegada
+  al recubrimiento). Este punto (visualizar/editar boundary de barra) se ABORDA MÁS ADELANTE, cuando el
+  usuario entienda cómo quedó la plataforma. NO entra a este workflow.
+
+### AUDITORÍA UX — lo que se COMPLETA (la maqueta ya lo prometía; el 1er workflow lo omitió)
+Orden por impacto (van juntos, es el mínimo para que "se sienta bien"):
+1. **GHOST que sigue el cursor** con COLOR de la tipología + BADGE "CBS ø16" pegado al cursor. Forma
+   REAL (rectángulo para estribo snapeado al recub; punto/línea para longitudinal pegado a la cara).
+   El CSS `.te-ghostbar`/`.te-gpt` YA existe en template_editor_modal.html pero NUNCA se dibuja: cablear
+   el mousemove de la herramienta Colocar. Es el ~70% de la percepción de "herramienta natural".
+2. **GROSOR 2D**: barras a ~3px round-cap (hoy 1.6px non-scaling = 1px, regresión vs maqueta 3.2px).
+   **Separar los 2 ganchos del estribo** en la proyección de sección con offset visual de ½φ cada uno
+   (o 1φ a un lado) para que NO se lean como una sola línea.
+3. **CLAMP al hormigón**: fuera del boundary el ghost se pone rojo + cursor `not-allowed` y el clic no
+   hace nada (o se pega al borde válido más cercano). `boundaryDeVista()` YA existe: usarla como REJA de
+   validación, no solo para el bbox. Mata "barras al aire".
+4. **Ctrl+Z** (undo de la última colocación) — tabla stakes, hoy ausente.
+
+### SNAP DE CARA + HANDLES (v2 del mismo lote, va en este workflow)
+- Al acercar el cursor a una cara del hormigón: HIGHLIGHT de esa cara (línea gruesa) y el ghost se pega
+  a ella. El usuario elige cara VIENDO, no adivinando (hoy `_caraDefault` adivina con host.y>=0).
+- HANDLES/nodos SOLO en la vista donde tienen sentido (no en las 3 a la vez). Color por eje (X rojo /
+  Y verde / Z azul). Handles aparecen SOLO al seleccionar la pieza (no permanentes en las esquinas del
+  hormigón). Atenuar handles de las otras vistas cuando hay un plano de trabajo activo (reusar P3, el
+  resaltado de plano activo ya implementado).
+
+### CORRECCIONES INTERNAS (yo, sin decisión del usuario)
+- En SECCIÓN, un cabezal se mueve SOLO a lo ancho (Z), NUNCA en Y (la Y la manda el sistema de capas
+  `distribuidorLayered`). Hoy `_dragMover` escribe `pos_hint.y` en sección -> choca con capas (triple
+  contabilidad de Y: layered + pos_hint + retranqueo). PROHIBIR pos_hint.y en cabezales.
+- Prioridad/retranqueo/dependencias (resolverDependencias) queda FUERA de la UI de arrastre de este
+  lote (el dato ya está guardado; no activar el 3er offset de Y/Z en interacción todavía).
+- MURO/COLUMNA: "misma máquina" es cierto para colocar/rotar/mover, pero el distribuidor GRID (malla
+  2D) es stub. Con el modelo ARREGLO (rango+capas) de arriba, la malla se cubre SIN distribuidorGrid
+  nuevo (arreglo rango×capas + plano de trabajo). Verificar en implementación.
+
+### ALCANCE DE ESTE WORKFLOW (cerrado)
+Entra: ghost+badge, grosor+ganchos, clamp, Ctrl+Z, 3 modos independientes de la tipología con preset+
+override (botoncitos), rotar-plano-de-pieza (botón sobre la pieza + tecla R), snap de cara con highlight,
+Lógica A (cara+capas panel), Lógica B (rango en vista según plano, rotación habilita otro eje), Lógica C
+(arreglo rango+capas por plano de trabajo), handles por-vista con color por eje, correcciones internas.
+NO entra: boundary visual de barra editable <-> offset (después), soportes de losa 3D (después), activar
+retranqueo/prioridad en arrastre (después).
