@@ -473,14 +473,12 @@
     else if (def.depth === 'y') mesh.rotation.x = Math.PI / 2;  // normal → Y
     // depth === 'z' → sin rotar (normal ya es Z)
     mesh.renderOrder = 999;                 // dibujar al final (semitransparente)
-    // Posición en el eje de PROFUNDIDAD = donde el slider de corte de esa vista está
-    // cortando. La cámara mira desde +depth; el corte va desde la cara (half) hacia el
-    // centro según o.corte (0 = en la cara frontal, 1 = en el centro). Así el plano 3D
-    // muestra EXACTAMENTE el corte que se ve en la vista 2D.
+    // La vista muestra una LONJA centrada de semigrosor o.corteZ. El plano 3D se dibuja
+    // en el frente de esa lonja (profundidad +corteZ) para mostrar hasta dónde llega el
+    // corte que se ve en la vista 2D.
     var o = ST.orto && ST.orto[ST.planoActivo];
-    var half = _espesorProfundidad(def.depth) / 2;
-    var corteFrac = o && o.corte != null ? o.corte : 0.15;
-    mesh.position[def.depth] = Math.max(0.05, half - corteFrac * half);
+    var corteZ = o && o.corteZ != null ? o.corteZ : 0.05;
+    mesh.position[def.depth] = Math.max(0.05, corteZ);
     ST.planoMesh = mesh;
     ST.world.add(mesh);
   }
@@ -890,34 +888,12 @@
   }
 
   // Separa visualmente los DOS ganchos del estribo en la proyección de SECCIÓN
-  // (§INTERACCIÓN-2.0 tarea 2). En el corte, el gancho de apertura y el de cierre
-  // caen uno SOBRE otro (los puntos [0]≈[n-1] y sus anclas [1]≈[n-2] coinciden) →
-  // se veían como UNA sola línea. Aquí desplazamos cada gancho ±½·diam PERPENDICULAR
-  // a su propio tramo, en unidades host (cm), para que se lean separados. Opera solo
-  // sobre los tramos-gancho (primero y último); el rectángulo perimetral no se toca.
-  // NO altera el motor ni el peso: es puramente el trazo 2D de esta vista.
-  function _separarGanchosSeccion(pts, diamCm) {
-    if (!pts || pts.length < 4) return pts;
-    var off = Math.max((Number(diamCm) || 0) / 2, 0.3);   // ½·diam en cm (mín visible)
-    var out = pts.map(function (q) { return { u: q.u, v: q.v }; });
-    function nudgeSeg(iTip, iAnchor, sign) {
-      var tip = out[iTip], anc = out[iAnchor];
-      var du = tip.u - anc.u, dv = tip.v - anc.v;
-      var len = Math.hypot(du, dv);
-      if (len < 1e-6) {   // gancho degenerado (tip encima del ancla): usa vertical
-        du = 0; dv = 1; len = 1;
-      }
-      // perpendicular unitaria (−dv, du)
-      var pu = -dv / len, pv = du / len;
-      // desplaza tanto la punta como su ancla → el tramo entero se corre paralelo,
-      // así el gancho no se "tuerce", solo se separa de su gemelo.
-      tip.u += sign * off * pu; tip.v += sign * off * pv;
-      anc.u += sign * off * pu; anc.v += sign * off * pv;
-    }
-    nudgeSeg(0, 1, +1);                       // gancho de apertura → un lado
-    nudgeSeg(pts.length - 1, pts.length - 2, -1);  // gancho de cierre → el otro
-    return out;
-  }
+  // NOTA (09-ago): el hack `_separarGanchosSeccion` (que separaba los 2 ganchos del
+  // estribo EN EL PLANO de la sección) fue ELIMINADO. Era el offset equivocado: los
+  // ganchos deben llegar a la MISMA esquina y superponerse (estribo real); el único
+  // offset admisible es FUERA del plano (en X, por el espesor), y eso YA lo hace el
+  // motor 3D (figura_puntos.js::_estriboPerimetral, `esp = diamCm*1.05` en X). Como
+  // las vistas 2D ahora son el render 3D ortográfico, el estribo se ve correcto solo.
 
   // Dibuja UN cuadrante 2D. Guarda su transform para el hit-testing inverso.
   function _dibujarVista2D(svg, out, plano, geo) {
@@ -1001,7 +977,7 @@
         return;
       }
       // Estribo en SECCIÓN: separar los 2 ganchos ½·diam para que no se superpongan.
-      var dpts = (plano === 'seccion' && rol === 'estribo') ? _separarGanchosSeccion(pts, pl.diam) : pts;
+      var dpts = pts;   // sin offset en-plano: el estribo cierra en la esquina (motor 3D)
       var d = dpts.map(function (q, i) { return (i ? 'L' : 'M') + X(q.u).toFixed(1) + ',' + Y(q.v).toFixed(1); }).join(' ');
       if (sel) svg.appendChild(_svgEl('path', { 'class': 'te-bar-halo', d: d }));
       // barra VISIBLE (técnica, fina, sin eventos)
@@ -2128,9 +2104,12 @@
     // Así lo que sobresale hacia la cámara delante del plano (la pata/gancho que
     // tapaba) queda RECORTADO por el `near`. El plano 3D (P3) se dibuja a esta misma
     // profundidad para que se vea qué se está cortando.
-    var half = _espesorProfundidad(d) / 2;                 // semi-espesor (cm)
+    var half = _espesorProfundidad(d) / 2;                 // semi-espesor del elemento (cm)
     var frac = (o.corte != null ? o.corte : 0.15);
-    o.corteZ = half - frac * half;        // coordenada del plano de corte (desde el centro, lado cámara)
+    // o.corteZ = SEMIGROSOR de la lonja visible (cm). frac 0 → lonja finísima (solo el
+    // centro, esconde ganchos de extremos); frac 1 → ve todo el espesor. Mínimo ~1.5cm
+    // para que siempre se vea algo. Lo usan el clip (rebanada) y el plano 3D.
+    o.corteZ = Math.max(1.5, frac * half);
     // El corte lo hace el CLIPPING PLANE (a nivel de fragmento) en _renderVistasOrto;
     // near/far quedan amplios para no descartar geometría por profundidad.
     o.cam.near = -6000; o.cam.far = 6000;
@@ -2183,16 +2162,21 @@
       var g = ST.receta ? ST.receta.geometria : {};
       var W = Number(g[def.W]) || 60, H = Number(g[def.H]) || 60;
       _encuadrarOrto(o, W, H, w / h);
-      // CLIPPING PLANE real (corta a nivel de fragmento, no descarta triángulos como
-      // near/far): un plano perpendicular al eje de profundidad, en la coordenada del
-      // corte, con la NORMAL apuntando hacia -cámara → recorta todo lo que está
-      // delante (hacia la cámara) del plano. Así la pata/gancho que sobresale se
-      // borra limpio. o.corteZ lo fija _encuadrarOrto desde el slider.
+      // CLIPPING como REBANADA: dos planos perpendiculares al eje de profundidad que
+      // dejan ver sólo una LONJA centrada de grosor `2·o.corteZ`. Corta a nivel de
+      // fragmento (no descarta triángulos). El slider controla el grosor de la lonja:
+      // corte grande = ves casi toda la profundidad; corte chico = una rebanada fina
+      // en el centro (esconde los ganchos de los EXTREMOS, que están en profundidad).
+      // Dos planos porque la barra tiene ganchos en AMBOS extremos del eje.
       var dep = def.depth;
-      var nx = dep === 'x' ? -1 : 0, ny = dep === 'y' ? -1 : 0, nz = dep === 'z' ? -1 : 0;
-      if (!o.clip) o.clip = new THREE.Plane();
-      o.clip.set(new THREE.Vector3(nx, ny, nz), o.corteZ != null ? o.corteZ : 9999);
-      ST.renderer.clippingPlanes = [o.clip];
+      var ax = dep === 'x' ? 1 : 0, ay = dep === 'y' ? 1 : 0, az = dep === 'z' ? 1 : 0;
+      var media = (o.corteZ != null ? o.corteZ : 9999);   // semigrosor de la lonja (cm)
+      if (!o.clipA) { o.clipA = new THREE.Plane(); o.clipB = new THREE.Plane(); }
+      // conserva  x >= -media  (plano con normal +eje, constant = media)
+      o.clipA.set(new THREE.Vector3(ax, ay, az), media);
+      // conserva  x <=  media  (plano con normal -eje, constant = media)
+      o.clipB.set(new THREE.Vector3(-ax, -ay, -az), media);
+      ST.renderer.clippingPlanes = [o.clipA, o.clipB];
       ST.renderer.setViewport(x, y, w, h);
       ST.renderer.setScissor(x, y, w, h);
       ST.renderer.setScissorTest(true);
@@ -2421,7 +2405,7 @@
     _pushUndo: _pushUndo, _undo: _undo,
     _dentroDelBoundary: _dentroDelBoundary, _clampAlBoundary: _clampAlBoundary,
     _sellarCargado: _sellarCargado, _soltarCargado: _soltarCargado,
-    _ghostForma: _ghostForma, _separarGanchosSeccion: _separarGanchosSeccion,
+    _ghostForma: _ghostForma,
     // INTERACCIÓN-2.0 · rotar plano de la pieza + snap de cara
     rotarPlanoPieza: rotarPlanoPieza,                           // toggle plano_pieza.volteado + regenera
     _compVolteado: _compVolteado,
