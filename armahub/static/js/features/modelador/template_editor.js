@@ -388,7 +388,9 @@
       hormigon: new THREE.MeshStandardMaterial({ color: 0x9aa6b5, transparent: true, opacity: 0.14, roughness: 0.9, depthWrite: false })
     };
     _bindOrbita(cv);
+    _initVistasOrto();     // 3 cámaras ortográficas (secciones 2D) sobre la MISMA escena
     ST.webglOk = true;
+    ST.ortoActivo = true;  // las vistas 2D pasan a render orto; el SVG queda overlay
     _loop();
     return true;
   }
@@ -934,8 +936,9 @@
     // Persistir transform (para pixelToHost).
     ST.transforms[plano] = { minU: minU, maxU: maxU, minV: minV, maxV: maxV, s: s, offX: offX, offY: offY };
 
-    // Hormigón + boundary de recubrimiento.
-    if (rect) {
+    // Hormigón + boundary de recubrimiento (en modo orto lo pinta el 3D; el SVG solo
+    // conserva el boundary de recubrimiento punteado como guía de interacción).
+    if (rect && !ST.ortoActivo) {
       svg.appendChild(_svgEl('rect', {
         'class': 'te-horm', rx: 2,
         x: X(-rect.W / 2), y: Y(rect.H / 2), width: rect.W * s, height: rect.H * s
@@ -947,6 +950,12 @@
         }));
       }
     }
+
+    // ETAPA A (render ortográfico): el 3D proyectado ya dibuja hormigón + barras con
+    // la calidad del 3D. El SVG queda como OVERLAY transparente solo para la
+    // interacción (ghost/handles/cotas). No re-dibujamos hormigón ni barras aquí.
+    // (El transform ya quedó guardado arriba para el hit-testing.)
+    if (ST.ortoActivo) return;
 
     // Barras proyectadas (halo de selección DEBAJO; luego la barra).
     placements.forEach(function (pl) {
@@ -2000,6 +2009,121 @@
   }
 
   // ==========================================================================
+  // VISTAS ORTOGRÁFICAS 2D (Opción A) — cada cuadrante "2D" es la MISMA escena 3D
+  // vista con una cámara ORTOGRÁFICA fija (frente/lado/arriba). No se redibuja la
+  // barra en SVG: es el 3D proyectado → misma calidad y codos que el 3D, y escala
+  // igual (un solo renderer, 4 viewports con scissor). El SVG queda ENCIMA solo
+  // para la interacción (ghost/handles/cotas) en etapas siguientes.
+  //
+  // La dirección de cada cámara sale de la MISMA tabla PLANOS_POR_ELEMENTO (eje de
+  // profundidad `depth`): la cámara mira A LO LARGO de ese eje, con `up` = eje v.
+  // ==========================================================================
+  var _ORTO_DIR = {   // depth → posición de cámara (unitaria) y up, en ejes de mundo
+    x: { eye: [1, 0, 0], up: [0, 1, 0] },   // sección: mira por +X (ve el plano YZ)
+    y: { eye: [0, 1, 0], up: [0, 0, 1] },   // planta:  mira por +Y (ve el plano XZ)
+    z: { eye: [0, 0, 1], up: [0, 1, 0] }    // largo:   mira por +Z (ve el plano XY)
+  };
+
+  function _initVistasOrto() {
+    var THREE = global.THREE;
+    if (!THREE) return;
+    ST.orto = {};   // por plano: { cam, canvas, vista, zoom, panU, panV }
+    var defs = _defsPlanos() || {};
+    ['seccion', 'largo', 'planta'].forEach(function (plano) {
+      var def = defs[plano]; if (!def) return;
+      var vista = document.querySelector('#te_quad .te-vista[data-plano="' + plano + '"]');
+      var canvas = vista ? vista.querySelector('.te-vcanvas') : null;
+      if (!vista || !canvas) return;
+      var cam = new THREE.OrthographicCamera(-100, 100, 100, -100, -6000, 6000);
+      ST.orto[plano] = { cam: cam, canvas: canvas, vista: vista, def: def, zoom: 1, panU: 0, panV: 0 };
+      _bindVistaOrto(plano);
+    });
+    // botones de reset
+    Array.prototype.forEach.call(document.querySelectorAll('#te_quad .te-vreset'), function (b) {
+      b.addEventListener('click', function (e) {
+        e.stopPropagation();
+        var p = b.getAttribute('data-plano'); if (ST.orto && ST.orto[p]) { ST.orto[p].zoom = 1; ST.orto[p].panU = 0; ST.orto[p].panV = 0; }
+      });
+    });
+  }
+
+  // Encuadra la cámara ortográfica del plano al bounding del elemento + un margen,
+  // aplicando zoom/pan de esa vista. spanU/spanV en cm (mundo).
+  function _encuadrarOrto(o, W, H, aspect) {
+    var THREE = global.THREE;
+    var d = o.def.depth;
+    var dir = _ORTO_DIR[d];
+    var g = ST.receta ? ST.receta.geometria : { largo: 600, alto: 60, ancho: 30 };
+    var margen = 1.18;
+    // half-extents en U (horizontal de la vista) y V (vertical), en cm
+    var halfU = Math.max(W, 1) * margen / 2 / o.zoom;
+    var halfV = Math.max(H, 1) * margen / 2 / o.zoom;
+    // corregir por aspecto del cuadrante para no deformar
+    if (aspect > (halfU / halfV)) halfU = halfV * aspect; else halfV = halfU / aspect;
+    o.cam.left = -halfU + o.panU; o.cam.right = halfU + o.panU;
+    o.cam.top = halfV + o.panV; o.cam.bottom = -halfV + o.panV;
+    o.cam.updateProjectionMatrix();
+    var dist = 2000;
+    o.cam.position.set(dir.eye[0] * dist, dir.eye[1] * dist, dir.eye[2] * dist);
+    o.cam.up.set(dir.up[0], dir.up[1], dir.up[2]);
+    o.cam.lookAt(0, 0, 0);
+  }
+
+  // Pan (arrastre) + zoom (rueda) por vista ortográfica. Sin orbitar. Se cablea en
+  // el CONTENEDOR .te-vista (el canvas marcador no captura eventos; el SVG overlay
+  // sí, pero pan/zoom usan botón medio + rueda, que el SVG deja pasar por burbujeo).
+  function _bindVistaOrto(plano) {
+    var o = ST.orto[plano]; if (!o) return;
+    var host = o.vista, panning = false, lx = 0, ly = 0;
+    host.addEventListener('mousedown', function (e) {
+      // pan con botón medio o shift (el clic izq queda para la interacción SVG)
+      if (e.button === 1 || e.shiftKey) { panning = true; lx = e.clientX; ly = e.clientY; e.preventDefault(); }
+    });
+    global.addEventListener('mouseup', function () { panning = false; });
+    global.addEventListener('mousemove', function (e) {
+      if (!panning) return;
+      var r = host.getBoundingClientRect();
+      var kU = (o.cam.right - o.cam.left) / Math.max(r.width, 1);
+      var kV = (o.cam.top - o.cam.bottom) / Math.max(r.height, 1);
+      o.panU -= (e.clientX - lx) * kU; o.panV += (e.clientY - ly) * kV;
+      lx = e.clientX; ly = e.clientY;
+    });
+    host.addEventListener('wheel', function (e) {
+      e.preventDefault(); o.zoom *= (e.deltaY > 0 ? 0.9 : 1.1);
+      o.zoom = Math.max(0.15, Math.min(12, o.zoom));
+    }, { passive: false });
+  }
+
+  // Renderiza las 3 vistas ortográficas con scissor sobre el MISMO renderer/canvas
+  // grande. El canvas del renderer (te_cv) se estira para cubrir todo te_quad; cada
+  // vista se pinta en su rectángulo (viewport+scissor) mirando su .te-vcanvas.
+  function _renderVistasOrto() {
+    var THREE = global.THREE;
+    if (!THREE || !ST.renderer || !ST.orto) return;
+    var quad = $('te_quad'); if (!quad) return;
+    var qr = quad.getBoundingClientRect();
+    var full = ST.renderer.domElement.getBoundingClientRect();
+    Object.keys(ST.orto).forEach(function (plano) {
+      var o = ST.orto[plano];
+      var r = o.vista.getBoundingClientRect();
+      var w = r.width, h = r.height; if (w < 2 || h < 2) return;
+      // rect en píxeles del canvas del renderer (origen abajo-izq para GL)
+      var x = r.left - full.left;
+      var yTop = r.top - full.top;
+      var y = full.height - (yTop + h);
+      var def = o.def;
+      var g = ST.receta ? ST.receta.geometria : {};
+      var W = Number(g[def.W]) || 60, H = Number(g[def.H]) || 60;
+      _encuadrarOrto(o, W, H, w / h);
+      ST.renderer.setViewport(x, y, w, h);
+      ST.renderer.setScissor(x, y, w, h);
+      ST.renderer.setScissorTest(true);
+      ST.renderer.render(ST.scene, o.cam);
+    });
+    ST.renderer.setScissorTest(false);
+  }
+
+  // ==========================================================================
   // Cámara / órbita / loop / resize (3D) — sin cambios de comportamiento
   // ==========================================================================
   function _applyCam() {
@@ -2040,22 +2164,57 @@
     }, { passive: false });
   }
 
+  // El canvas del renderer cubre TODA la grilla te_quad (para pintar los 4
+  // cuadrantes con viewport+scissor). Se posiciona absoluto sobre te_quad, DEBAJO
+  // de los canvas/SVG de cada cuadrante (que quedan como marco/overlay).
   function _resize() {
     if (!ST.renderer) return;
     var cv = $('te_cv'); if (!cv) return;
-    var host = cv.parentElement; if (!host) return;
-    var w = host.clientWidth, h = host.clientHeight;
-    if (!w) w = 300; if (!h) h = 200;
-    ST.renderer.setSize(w, h, false);
-    ST.renderer.setPixelRatio(Math.min(2, global.devicePixelRatio || 1));
-    if (ST.camera) { ST.camera.aspect = w / h; ST.camera.updateProjectionMatrix(); }
+    var quad = $('te_quad'); if (!quad) return;
+    var w = quad.clientWidth || 600, h = quad.clientHeight || 400;
+    // estirar el canvas del renderer sobre toda la grilla (una sola vez por tamaño)
+    if (cv.parentElement !== quad) {
+      quad.appendChild(cv);
+      cv.style.position = 'absolute'; cv.style.left = '0'; cv.style.top = '0';
+      cv.style.width = '100%'; cv.style.height = '100%'; cv.style.zIndex = '0';
+      cv.style.display = 'block'; cv.style.pointerEvents = 'none';
+    }
+    if (ST._quadW !== w || ST._quadH !== h) {
+      ST.renderer.setSize(w, h, false);
+      ST.renderer.setPixelRatio(Math.min(2, global.devicePixelRatio || 1));
+      ST._quadW = w; ST._quadH = h;
+    }
+  }
+
+  // Renderiza el cuadrante 3D (perspectiva) en SU rectángulo con scissor. El resto
+  // del canvas grande lo pintan las vistas ortográficas.
+  function _render3DQuad() {
+    var d3 = document.querySelector('#te_quad .te-vista.d3');
+    if (!d3) { _applyCam(); ST.renderer.render(ST.scene, ST.camera); return; }
+    var r = d3.getBoundingClientRect();
+    var full = ST.renderer.domElement.getBoundingClientRect();
+    var w = r.width, h = r.height; if (w < 2 || h < 2) return;
+    var x = r.left - full.left, y = full.height - ((r.top - full.top) + h);
+    ST.camera.aspect = w / h; ST.camera.updateProjectionMatrix();
+    _applyCam();
+    ST.renderer.setViewport(x, y, w, h);
+    ST.renderer.setScissor(x, y, w, h);
+    ST.renderer.setScissorTest(true);
+    ST.renderer.render(ST.scene, ST.camera);
+    ST.renderer.setScissorTest(false);
   }
 
   function _loop() {
     ST.rafId = global.requestAnimationFrame(_loop);
     var bd = $('te_backdrop');
     if (!bd || !bd.classList.contains('on')) return;
-    _resize(); _applyCam(); ST.renderer.render(ST.scene, ST.camera);
+    _resize();
+    // grid solo en el 3D (molesta en las vistas planas): se oculta al pintar orto.
+    if (ST.grid) ST.grid.visible = true;
+    _render3DQuad();
+    if (ST.grid) ST.grid.visible = false;
+    _renderVistasOrto();
+    if (ST.grid) ST.grid.visible = true;
   }
 
   function _mostrarWebglMsg() {
