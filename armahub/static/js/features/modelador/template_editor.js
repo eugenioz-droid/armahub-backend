@@ -2049,6 +2049,15 @@
 
   // Encuadra la cámara ortográfica del plano al bounding del elemento + un margen,
   // aplicando zoom/pan de esa vista. spanU/spanV en cm (mundo).
+  // Espesor del elemento (cm) en el eje de PROFUNDIDAD de una vista (x→ancho·largo,
+  // según el mapeo). Es el rango de coordenadas que la cámara "atraviesa".
+  function _espesorProfundidad(depthEje) {
+    var g = ST.receta ? ST.receta.geometria : {};
+    if (depthEje === 'x') return Number(g.largo) || 600;
+    if (depthEje === 'y') return Number(g.alto) || 60;
+    return Number(g.ancho) || 30;   // z
+  }
+
   function _encuadrarOrto(o, W, H, aspect) {
     var THREE = global.THREE;
     var d = o.def.depth;
@@ -2062,11 +2071,20 @@
     if (aspect > (halfU / halfV)) halfU = halfV * aspect; else halfV = halfU / aspect;
     o.cam.left = -halfU + o.panU; o.cam.right = halfU + o.panU;
     o.cam.top = halfV + o.panV; o.cam.bottom = -halfV + o.panV;
-    o.cam.updateProjectionMatrix();
     var dist = 2000;
     o.cam.position.set(dir.eye[0] * dist, dir.eye[1] * dist, dir.eye[2] * dist);
     o.cam.up.set(dir.up[0], dir.up[1], dir.up[2]);
     o.cam.lookAt(0, 0, 0);
+    // PLANO DE CORTE: recortar lo que está más cerca de la cámara que un plano
+    // ubicado a `corteAdentro` cm dentro de la cara frontal. Así la pata/gancho que
+    // sobresale hacia la cámara (y tapaba el estribo) desaparece: se ve un corte
+    // "limpio" a esa profundidad. o.corte ∈ [0..1] (0 = en la cara, 1 = al centro);
+    // default 0.18 = un poco adentro. El `near` de la cámara hace el recorte.
+    var half = _espesorProfundidad(d) / 2;                 // semi-espesor (cm)
+    var corte = (o.corte != null ? o.corte : 0.18) * half; // cuánto adentro (cm)
+    o.cam.near = dist - (half - corte);   // recorta todo lo que sobresale más que el plano
+    o.cam.far = dist + half + 200;        // fondo con holgura
+    o.cam.updateProjectionMatrix();
   }
 
   // Pan (arrastre) + zoom (rueda) por vista ortográfica. Sin orbitar. Se cablea en
