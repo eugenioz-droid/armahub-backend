@@ -48,7 +48,7 @@
     threeCargado: false, webglOk: null, rafId: null, verHormigon: true,
     // --- Estado de interacción 2D ---
     figura: '103B', tipologia: 'CBS', diam: 16, contorno: true,
-    tool: 'colocar', snap: true, cotas: false,
+    tool: 'mover', snap: true, cotas: false,   // arranca en SELECCIONAR (flechita), no colocando
     selCi: -1,                 // índice del componente seleccionado (-1 = ninguno)
     ultimoPlano: 'largo',      // última vista tocada (define el eje de rotación)
     transforms: {},            // {plano: {minU,maxU,minV,maxV,s,offX,offY}}
@@ -1891,34 +1891,43 @@
           tips.querySelectorAll('.te-tipbtn').forEach(function (x) { x.classList.remove('on'); });
           b.classList.add('on');
           ST.tipologia = b.getAttribute('data-tip') || 'CBS';
-          // Elegir tipología "carga" la herramienta (si estás colocando/rango).
-          if (ST.tool === 'colocar' || ST.tool === 'rango') _sellarCargado();
-          else _actualizarStatus();
+          // Elegir una tipología es la señal explícita de "quiero colocar esto":
+          // si estamos en el estado neutro (Seleccionar), pasa a Colocar y carga el
+          // ghost. Si ya estaba en rango, respeta el rango. Esto hace que Seleccionar
+          // sea el estado por defecto real y colocar sea siempre intencional.
+          if (ST.tool !== 'colocar' && ST.tool !== 'rango') _activarHerramienta('colocar');
+          _sellarCargado();
         });
       });
     }
+  }
+
+  // Activa una herramienta (marca el botón + setea ST.tool + carga/suelta el ghost).
+  // Reutilizable desde el listener de botones y desde otros flujos (elegir tipología).
+  function _activarHerramienta(tool) {
+    var ct = $('te_ctools'); if (!ct) return;
+    ct.querySelectorAll('.te-ctool[data-tool]').forEach(function (x) {
+      x.classList.toggle('on', x.getAttribute('data-tool') === tool);
+    });
+    ST.tool = tool;
+    ST.rangoTmp = null;
+    // Al cambiar de herramienta se apaga el snap de cara (evita resaltados fantasma
+    // con Seleccionar/Rango/Rotar); el ghost se redibuja en el próximo hover.
+    var caraPlano = ST.caraHi && ST.caraHi.plano;
+    ST.caraHi = null;
+    // Herramienta de colocación → carga el ghost; las demás lo sueltan.
+    if (tool === 'colocar' || tool === 'rango') _sellarCargado();
+    else _soltarCargado();
+    if (caraPlano) _redibujar2D(ST.ultimoOut);   // limpia la cara resaltada
+    _setQuadCursor();
+    _actualizarStatus();
   }
 
   function _bindHerramientas() {
     var ct = $('te_ctools'); if (!ct || ct._teBound) return;
     ct._teBound = true;
     ct.querySelectorAll('.te-ctool[data-tool]').forEach(function (b) {
-      b.addEventListener('click', function () {
-        ct.querySelectorAll('.te-ctool[data-tool]').forEach(function (x) { x.classList.remove('on'); });
-        b.classList.add('on');
-        ST.tool = b.getAttribute('data-tool');
-        ST.rangoTmp = null;
-        // Al cambiar de herramienta se apaga el snap de cara (evita resaltados
-        // fantasma con Mover/Rango/Rotar); el ghost se redibuja en el próximo hover.
-        var caraPlano = ST.caraHi && ST.caraHi.plano;
-        ST.caraHi = null;
-        // Herramienta de colocación → carga el ghost; las demás lo sueltan.
-        if (ST.tool === 'colocar' || ST.tool === 'rango') _sellarCargado();
-        else _soltarCargado();
-        if (caraPlano) _redibujar2D(ST.ultimoOut);   // limpia la cara resaltada
-        _setQuadCursor();
-        _actualizarStatus();
-      });
+      b.addEventListener('click', function () { _activarHerramienta(b.getAttribute('data-tool')); });
     });
     ct.querySelectorAll('.te-ctool[data-toggle]').forEach(function (b) {
       b.addEventListener('click', function () {
