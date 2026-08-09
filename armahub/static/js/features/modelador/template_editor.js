@@ -473,12 +473,11 @@
     else if (def.depth === 'y') mesh.rotation.x = Math.PI / 2;  // normal → Y
     // depth === 'z' → sin rotar (normal ya es Z)
     mesh.renderOrder = 999;                 // dibujar al final (semitransparente)
-    // La vista muestra una LONJA centrada de semigrosor o.corteZ. El plano 3D se dibuja
-    // en el frente de esa lonja (profundidad +corteZ) para mostrar hasta dónde llega el
-    // corte que se ve en la vista 2D.
+    // El plano 3D se ubica en la POSICIÓN del cuchillo (o.cortePos) → muestra por dónde
+    // está pasando el corte que se ve en la vista 2D.
     var o = ST.orto && ST.orto[ST.planoActivo];
-    var corteZ = o && o.corteZ != null ? o.corteZ : 0.05;
-    mesh.position[def.depth] = Math.max(0.05, corteZ);
+    var pos = o && o.cortePos != null ? o.cortePos : 0.05;
+    mesh.position[def.depth] = pos;
     ST.planoMesh = mesh;
     ST.world.add(mesh);
   }
@@ -2043,7 +2042,7 @@
       var canvas = vista ? vista.querySelector('.te-vcanvas') : null;
       if (!vista || !canvas) return;
       var cam = new THREE.OrthographicCamera(-100, 100, 100, -100, -6000, 6000);
-      ST.orto[plano] = { cam: cam, canvas: canvas, vista: vista, def: def, zoom: 1, panU: 0, panV: 0, corte: 0.15 };
+      ST.orto[plano] = { cam: cam, canvas: canvas, vista: vista, def: def, zoom: 1, panU: 0, panV: 0, corte: 0.5 };
       _bindVistaOrto(plano);
     });
     // botones de reset (pan/zoom/corte)
@@ -2051,8 +2050,8 @@
       b.addEventListener('click', function (e) {
         e.stopPropagation();
         var p = b.getAttribute('data-plano'), o = ST.orto && ST.orto[p];
-        if (o) { o.zoom = 1; o.panU = 0; o.panV = 0; o.corte = 0.15; }
-        var r = document.querySelector('.te-vcut-r[data-plano="' + p + '"]'); if (r) r.value = 15;
+        if (o) { o.zoom = 1; o.panU = 0; o.panV = 0; o.corte = 0.5; }
+        var r = document.querySelector('.te-vcut-r[data-plano="' + p + '"]'); if (r) r.value = 50;
       });
     });
     // sliders de PLANO DE CORTE → o.corte (0..1). Mover el slider ACTIVA esa vista
@@ -2105,13 +2104,15 @@
     // tapaba) queda RECORTADO por el `near`. El plano 3D (P3) se dibuja a esta misma
     // profundidad para que se vea qué se está cortando.
     var half = _espesorProfundidad(d) / 2;                 // semi-espesor del elemento (cm)
-    var frac = (o.corte != null ? o.corte : 0.15);
-    // o.corteZ = SEMIGROSOR de la lonja visible (cm). frac 0 → lonja finísima (solo el
-    // centro, esconde ganchos de extremos); frac 1 → ve todo el espesor. Mínimo ~1.5cm
-    // para que siempre se vea algo. Lo usan el clip (rebanada) y el plano 3D.
-    o.corteZ = Math.max(1.5, frac * half);
-    // El corte lo hace el CLIPPING PLANE (a nivel de fragmento) en _renderVistasOrto;
-    // near/far quedan amplios para no descartar geometría por profundidad.
+    var frac = (o.corte != null ? o.corte : 0.5);
+    // MODELO CUCHILLO: el corte es una rebanada de grosor FIJO y fino; el slider MUEVE
+    // su POSICIÓN a lo largo de la profundidad (de una cara a la otra). frac 0 = cara
+    // frontal (lado cámara), 1 = cara trasera, 0.5 = centro. o.cortePos = centro de la
+    // rebanada; o.corteGrosor = semigrosor fijo. Así ves "lo que un cuchillo cortaría"
+    // en ese plano, y te mueves a donde quieras. (Antes cambiaba el grosor = mal.)
+    o.corteGrosor = Math.max(2.5, half * 0.06);   // semigrosor fino fijo (~6% o mín 2.5cm)
+    o.cortePos = (half) - frac * (2 * half);      // de +half (frontal) a -half (trasera)
+    // El corte lo hacen 2 CLIPPING PLANES en _renderVistasOrto; near/far amplios.
     o.cam.near = -6000; o.cam.far = 6000;
     o.cam.updateProjectionMatrix();
   }
@@ -2162,20 +2163,19 @@
       var g = ST.receta ? ST.receta.geometria : {};
       var W = Number(g[def.W]) || 60, H = Number(g[def.H]) || 60;
       _encuadrarOrto(o, W, H, w / h);
-      // CLIPPING como REBANADA: dos planos perpendiculares al eje de profundidad que
-      // dejan ver sólo una LONJA centrada de grosor `2·o.corteZ`. Corta a nivel de
-      // fragmento (no descarta triángulos). El slider controla el grosor de la lonja:
-      // corte grande = ves casi toda la profundidad; corte chico = una rebanada fina
-      // en el centro (esconde los ganchos de los EXTREMOS, que están en profundidad).
-      // Dos planos porque la barra tiene ganchos en AMBOS extremos del eje.
+      // CLIPPING = REBANADA (cuchillo): dos planos perpendiculares al eje de profundidad
+      // que dejan ver una lonja [cortePos-grosor .. cortePos+grosor]. El slider MUEVE
+      // cortePos (posición del cuchillo); el grosor es fijo/fino. Corta a nivel de
+      // fragmento. Dos planos porque hay ganchos en ambos extremos del eje.
       var dep = def.depth;
       var ax = dep === 'x' ? 1 : 0, ay = dep === 'y' ? 1 : 0, az = dep === 'z' ? 1 : 0;
-      var media = (o.corteZ != null ? o.corteZ : 9999);   // semigrosor de la lonja (cm)
+      var c = (o.cortePos != null ? o.cortePos : 0);
+      var gr = (o.corteGrosor != null ? o.corteGrosor : 9999);
       if (!o.clipA) { o.clipA = new THREE.Plane(); o.clipB = new THREE.Plane(); }
-      // conserva  x >= -media  (plano con normal +eje, constant = media)
-      o.clipA.set(new THREE.Vector3(ax, ay, az), media);
-      // conserva  x <=  media  (plano con normal -eje, constant = media)
-      o.clipB.set(new THREE.Vector3(-ax, -ay, -az), media);
+      // conserva  coord >= c-gr   → normal +eje, constant = -(c-gr) = gr-c
+      o.clipA.set(new THREE.Vector3(ax, ay, az), gr - c);
+      // conserva  coord <= c+gr   → normal -eje, constant = c+gr
+      o.clipB.set(new THREE.Vector3(-ax, -ay, -az), c + gr);
       ST.renderer.clippingPlanes = [o.clipA, o.clipB];
       ST.renderer.setViewport(x, y, w, h);
       ST.renderer.setScissor(x, y, w, h);
