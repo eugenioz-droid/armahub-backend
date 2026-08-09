@@ -194,6 +194,9 @@
   #te_modal #te_ctools .te-tlbl{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#9aa4b0;margin-right:2px}
   #te_modal .te-ctool{border:1px solid var(--te-line);background:#fff;border-radius:7px;padding:5px 11px;font-size:11.5px;cursor:pointer;color:#455;font-weight:600}
   #te_modal .te-ctool.on{background:var(--te-acero);color:#fff;border-color:var(--te-acero)}
+  /* botón solo-ícono (flecha de selección): compacto, cuadrado. */
+  #te_modal .te-ctool-ico{padding:5px 8px;display:inline-flex;align-items:center;justify-content:center}
+  #te_modal .te-ctool-ico svg{display:block}
   #te_modal #te_ctools .te-divv{width:1px;height:22px;background:var(--te-line);margin:0 3px}
 
   #te_modal #te_footer{display:flex;align-items:center;gap:10px;padding:9px 18px;border-top:1px solid var(--te-line);background:var(--te-panel2)}
@@ -236,7 +239,7 @@
       <div class="te-grp">
         <span class="te-lbl">Tipología</span>
         <div class="te-tipbtns" id="te_tipbtns">
-          <span class="te-tipbtn on" data-tip="CBS"><span class="te-sw" style="background:var(--te-cbs)"></span>CBS</span>
+          <span class="te-tipbtn" data-tip="CBS"><span class="te-sw" style="background:var(--te-cbs)"></span>CBS</span>
           <span class="te-tipbtn" data-tip="CBI"><span class="te-sw" style="background:var(--te-cbi)"></span>CBI</span>
           <span class="te-tipbtn" data-tip="ES"><span class="te-sw" style="background:var(--te-es)"></span>ES</span>
           <span class="te-tipbtn" data-tip="TRV"><span class="te-sw" style="background:var(--te-trv)"></span>TRV</span>
@@ -255,7 +258,7 @@
     <!-- HERRAMIENTAS del colocador (aplican a las 4 vistas) -->
     <div id="te_ctools">
       <span class="te-tlbl">Herramientas</span>
-      <button class="te-ctool on" data-tool="mover" title="Seleccionar / mover (cursor neutro)">➤ Seleccionar</button>
+      <button class="te-ctool te-ctool-ico on" data-tool="mover" title="Seleccionar / mover (cursor neutro)" aria-label="Seleccionar"><svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor"><path d="M5 3l14 8-6 1.5 3.5 6-2.5 1.4-3.4-6L5 19V3z"/></svg></button>
       <button class="te-ctool" data-tool="colocar" title="Colocar la figura de la tipología elegida">✋ Colocar</button>
       <button class="te-ctool" data-tool="rango" title="Definir rango con 2 clics (distribución)">↔ Rango</button>
       <button class="te-ctool" data-tool="rotar" title="Rotar (barra espaciadora)">⟳ Rotar</button>

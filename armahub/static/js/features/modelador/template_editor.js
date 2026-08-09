@@ -387,7 +387,10 @@
       LT: new THREE.MeshStandardMaterial({ color: TEMA.LT, metalness: 0.5, roughness: 0.5 }),
       hormigon: new THREE.MeshStandardMaterial({ color: 0x9aa6b5, transparent: true, opacity: 0.14, roughness: 0.9, depthWrite: false })
     };
-    _bindOrbita(cv);
+    // El 3D se orbita en el CUADRANTE 3D (la vista .d3), NO en el canvas te_cv: ese
+    // canvas ahora cubre toda la grilla con pointer-events:none (para no tapar los
+    // overlays de las vistas 2D), así que los eventos del 3D los captura su cuadrante.
+    _bindOrbita(document.querySelector('#te_quad .te-vista.d3') || cv);
     _initVistasOrto();     // 3 cámaras ortográficas (secciones 2D) sobre la MISMA escena
     ST.webglOk = true;
     ST.ortoActivo = true;  // las vistas 2D pasan a render orto; el SVG queda overlay
