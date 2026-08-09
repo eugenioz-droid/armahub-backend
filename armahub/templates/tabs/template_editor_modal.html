@@ -111,7 +111,10 @@
   #te_modal .te-vista.d3{background:var(--te-canvas3d);cursor:default}
   /* P3 — cuadrante 2D cuyo plano de trabajo está ACTIVO (resaltado en el 3D).
      Se alterna con doble clic en el cuadrante (ver _bindVistas en template_editor.js). */
-  #te_modal .te-vista.te-plano-on{box-shadow:inset 0 0 0 2px #2f80ed}
+  /* Borde del cuadrante activo en las 4 CARAS: un pseudo-elemento absoluto con
+     border completo (el box-shadow inset se recortaba en los bordes de la grilla). */
+  #te_modal .te-vista.te-plano-on::after{content:'';position:absolute;inset:0;z-index:5;
+    border:2.5px solid #2f80ed;pointer-events:none;border-radius:2px}
   #te_modal .te-vista.te-plano-on .te-vtitle{background:#2f80ed;color:#fff;border-color:#2f80ed}
   #te_modal .te-vtitle{position:absolute;top:8px;left:10px;z-index:3;font-size:11px;font-weight:700;color:#5b6a7d;background:rgba(255,255,255,.78);border:1px solid var(--te-line);border-radius:6px;padding:2px 8px;letter-spacing:.3px}
   #te_modal .te-vaxes{position:absolute;bottom:7px;left:10px;z-index:3;font-size:10px;color:#9aa4b0;font-family:monospace}

@@ -372,6 +372,7 @@
     ST.camera = new THREE.PerspectiveCamera(38, 1, 1, 8000);
     try {
       ST.renderer = new THREE.WebGLRenderer({ canvas: cv, antialias: true });
+      ST.renderer.localClippingEnabled = true;   // habilita el plano de corte de las vistas orto
     } catch (e) { ST.webglOk = false; return false; }
     ST.world = new THREE.Group(); ST.scene.add(ST.world);
     ST.target = new THREE.Vector3(0, 0, 0);
@@ -454,11 +455,19 @@
     var W = Number(g[def.W]), H = Number(g[def.H]);   // tamaño real de la cara (cm)
     if (!(W > 0) || !(H > 0)) return;
 
+    // Plano visualizador MÁS GRANDE (sobresale del elemento) y color MÁS VISIBLE
+    // (como el canvas 3D del editor de figuras). Borde marcado para leerlo bien.
     var mat = new THREE.MeshBasicMaterial({
-      color: 0x2f80ed, transparent: true, opacity: 0.15,
+      color: 0x2f80ed, transparent: true, opacity: 0.28,
       side: THREE.DoubleSide, depthWrite: false
     });
-    var mesh = new THREE.Mesh(new THREE.PlaneGeometry(W, H), mat);
+    var over = 1.25;   // 25% más grande que la cara del elemento
+    var mesh = new THREE.Mesh(new THREE.PlaneGeometry(W * over, H * over), mat);
+    // borde del plano (más visible)
+    var edge = new THREE.LineSegments(
+      new THREE.EdgesGeometry(new THREE.PlaneGeometry(W * over, H * over)),
+      new THREE.LineBasicMaterial({ color: 0x1565c0 }));
+    mesh.add(edge);
     // Orientar según el eje de profundidad (normal del plano).
     if (def.depth === 'x')      mesh.rotation.y = Math.PI / 2;  // normal → X
     else if (def.depth === 'y') mesh.rotation.x = Math.PI / 2;  // normal → Y
@@ -2113,15 +2122,18 @@
     o.cam.position.set(dir.eye[0] * dist, dir.eye[1] * dist, dir.eye[2] * dist);
     o.cam.up.set(dir.up[0], dir.up[1], dir.up[2]);
     o.cam.lookAt(0, 0, 0);
-    // PLANO DE CORTE: recortar lo que está más cerca de la cámara que un plano
-    // ubicado a `corteAdentro` cm dentro de la cara frontal. Así la pata/gancho que
-    // sobresale hacia la cámara (y tapaba el estribo) desaparece: se ve un corte
-    // "limpio" a esa profundidad. o.corte ∈ [0..1] (0 = en la cara, 1 = al centro);
-    // default 0.18 = un poco adentro. El `near` de la cámara hace el recorte.
+    // PLANO DE CORTE (rebanada): la cámara ortográfica sólo muestra una LONJA de
+    // profundidad. o.corte ∈ [0..1] mueve el plano frontal de la lonja desde la cara
+    // (0) hasta el centro (1); `far` deja ver todo lo que está DETRÁS de ese plano.
+    // Así lo que sobresale hacia la cámara delante del plano (la pata/gancho que
+    // tapaba) queda RECORTADO por el `near`. El plano 3D (P3) se dibuja a esta misma
+    // profundidad para que se vea qué se está cortando.
     var half = _espesorProfundidad(d) / 2;                 // semi-espesor (cm)
-    var corte = (o.corte != null ? o.corte : 0.18) * half; // cuánto adentro (cm)
-    o.cam.near = dist - (half - corte);   // recorta todo lo que sobresale más que el plano
-    o.cam.far = dist + half + 200;        // fondo con holgura
+    var frac = (o.corte != null ? o.corte : 0.15);
+    o.corteZ = half - frac * half;        // coordenada del plano de corte (desde el centro, lado cámara)
+    // El corte lo hace el CLIPPING PLANE (a nivel de fragmento) en _renderVistasOrto;
+    // near/far quedan amplios para no descartar geometría por profundidad.
+    o.cam.near = -6000; o.cam.far = 6000;
     o.cam.updateProjectionMatrix();
   }
 
@@ -2171,11 +2183,22 @@
       var g = ST.receta ? ST.receta.geometria : {};
       var W = Number(g[def.W]) || 60, H = Number(g[def.H]) || 60;
       _encuadrarOrto(o, W, H, w / h);
+      // CLIPPING PLANE real (corta a nivel de fragmento, no descarta triángulos como
+      // near/far): un plano perpendicular al eje de profundidad, en la coordenada del
+      // corte, con la NORMAL apuntando hacia -cámara → recorta todo lo que está
+      // delante (hacia la cámara) del plano. Así la pata/gancho que sobresale se
+      // borra limpio. o.corteZ lo fija _encuadrarOrto desde el slider.
+      var dep = def.depth;
+      var nx = dep === 'x' ? -1 : 0, ny = dep === 'y' ? -1 : 0, nz = dep === 'z' ? -1 : 0;
+      if (!o.clip) o.clip = new THREE.Plane();
+      o.clip.set(new THREE.Vector3(nx, ny, nz), o.corteZ != null ? o.corteZ : 9999);
+      ST.renderer.clippingPlanes = [o.clip];
       ST.renderer.setViewport(x, y, w, h);
       ST.renderer.setScissor(x, y, w, h);
       ST.renderer.setScissorTest(true);
       ST.renderer.render(ST.scene, o.cam);
     });
+    ST.renderer.clippingPlanes = [];
     ST.renderer.setScissorTest(false);
   }
 
