@@ -131,6 +131,12 @@
     border:1px solid var(--te-line);background:rgba(255,255,255,.9);border-radius:6px;cursor:pointer;
     font-size:13px;color:var(--te-muted);line-height:1;padding:0;display:flex;align-items:center;justify-content:center}
   #te_modal .te-vreset:hover{color:var(--te-ink);border-color:var(--te-acero)}
+  /* Slider de PLANO DE CORTE — vertical, borde derecho del cuadrante. Discreto;
+     resalta al pasar el mouse. Controla la profundidad del corte de esa vista. */
+  #te_modal .te-vcut{position:absolute;right:6px;top:50%;transform:translateY(-50%);z-index:4;
+    height:52%;display:flex;align-items:center;justify-content:center;opacity:.5;transition:opacity .15s}
+  #te_modal .te-vista:hover .te-vcut,#te_modal .te-vista.te-plano-on .te-vcut{opacity:1}
+  #te_modal .te-vcut-r{writing-mode:vertical-lr;direction:rtl;width:16px;height:100%;cursor:pointer;accent-color:#2f80ed}
   #te_modal .te-vhint{position:absolute;bottom:7px;right:10px;z-index:3;font-size:9.5px;color:#9aa4b0}
 
   #te_modal .te-horm{fill:var(--te-hormigon);opacity:.55;stroke:var(--te-hormigon-b);stroke-width:1.2}
@@ -299,6 +305,11 @@
           <canvas class="te-vcanvas" data-plano="seccion"></canvas>
           <svg id="te_svgSeccion" class="te-vsvg" viewBox="0 0 360 300" preserveAspectRatio="xMidYMid meet"></svg>
           <button class="te-vreset" data-plano="seccion" title="Centrar vista">⟳</button>
+          <!-- Slider de PLANO DE CORTE: desplaza la profundidad del corte de esta vista;
+               el plano se muestra en el 3D moviéndose con él. -->
+          <div class="te-vcut" title="Plano de corte (profundidad)">
+            <input type="range" class="te-vcut-r" data-plano="seccion" min="0" max="100" value="15">
+          </div>
         </div>
 
         <!-- 1.2 arriba-der: VISTA A LO LARGO (elevación, largo×alto).
@@ -310,6 +321,9 @@
           <canvas class="te-vcanvas" data-plano="largo"></canvas>
           <svg id="te_svgLargo" class="te-vsvg" viewBox="0 0 620 300" preserveAspectRatio="xMidYMid meet"></svg>
           <button class="te-vreset" data-plano="largo" title="Centrar vista">⟳</button>
+          <div class="te-vcut" title="Plano de corte (profundidad)">
+            <input type="range" class="te-vcut-r" data-plano="largo" min="0" max="100" value="15">
+          </div>
         </div>
 
         <!-- 2.1 abajo-izq: PLANTA (vista superior, largo×ancho).
@@ -320,6 +334,9 @@
           <canvas class="te-vcanvas" data-plano="planta"></canvas>
           <svg id="te_svgPlanta" class="te-vsvg" viewBox="0 0 620 260" preserveAspectRatio="xMidYMid meet"></svg>
           <button class="te-vreset" data-plano="planta" title="Centrar vista">⟳</button>
+          <div class="te-vcut" title="Plano de corte (profundidad)">
+            <input type="range" class="te-vcut-r" data-plano="planta" min="0" max="100" value="15">
+          </div>
         </div>
 
         <!-- 2.2 abajo-der: 3D EN VIVO (reusa el motor del modelador) -->

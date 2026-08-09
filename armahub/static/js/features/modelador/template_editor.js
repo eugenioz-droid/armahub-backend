@@ -464,7 +464,14 @@
     else if (def.depth === 'y') mesh.rotation.x = Math.PI / 2;  // normal → Y
     // depth === 'z' → sin rotar (normal ya es Z)
     mesh.renderOrder = 999;                 // dibujar al final (semitransparente)
-    mesh.position[def.depth] = 0.05;        // micro-offset anti z-fighting
+    // Posición en el eje de PROFUNDIDAD = donde el slider de corte de esa vista está
+    // cortando. La cámara mira desde +depth; el corte va desde la cara (half) hacia el
+    // centro según o.corte (0 = en la cara frontal, 1 = en el centro). Así el plano 3D
+    // muestra EXACTAMENTE el corte que se ve en la vista 2D.
+    var o = ST.orto && ST.orto[ST.planoActivo];
+    var half = _espesorProfundidad(def.depth) / 2;
+    var corteFrac = o && o.corte != null ? o.corte : 0.15;
+    mesh.position[def.depth] = Math.max(0.05, half - corteFrac * half);
     ST.planoMesh = mesh;
     ST.world.add(mesh);
   }
@@ -1334,12 +1341,16 @@
       if (!svg || svg._teBound) return;
       svg._teBound = true;
 
-      // P3 — DOBLE clic en el cuadrante 2D → fija/quita ese plano como activo
-      // (resaltado en el 3D). Doble clic para no chocar con los single-clicks de
-      // las herramientas (colocar/mover/rango).
+      // P3 — CUALQUIER acción en el cuadrante 2D lo hace la VISTA ACTIVA: resalta el
+      // cuadrante + muestra ESE plano en el 3D (a la profundidad del corte). Se activa
+      // al primer mousedown; no se desactiva con clics siguientes (queda activa hasta
+      // que el usuario actúe en otra vista). El doble-clic la apaga (toggle explícito).
+      svg.addEventListener('mousedown', function () {
+        if (ST.planoActivo !== plano) _setPlanoActivo(plano);
+      });
       svg.addEventListener('dblclick', function (evt) {
         evt.preventDefault();
-        _setPlanoActivo(plano);
+        ST.planoActivo = null; _sincronizarResaltado2D(); _redibujarPlanoActivo();
       });
 
       // GHOST (tarea 1) — sigue el cursor mientras haya algo cargado. No regenera:
@@ -2047,15 +2058,30 @@
       var canvas = vista ? vista.querySelector('.te-vcanvas') : null;
       if (!vista || !canvas) return;
       var cam = new THREE.OrthographicCamera(-100, 100, 100, -100, -6000, 6000);
-      ST.orto[plano] = { cam: cam, canvas: canvas, vista: vista, def: def, zoom: 1, panU: 0, panV: 0 };
+      ST.orto[plano] = { cam: cam, canvas: canvas, vista: vista, def: def, zoom: 1, panU: 0, panV: 0, corte: 0.15 };
       _bindVistaOrto(plano);
     });
-    // botones de reset
+    // botones de reset (pan/zoom/corte)
     Array.prototype.forEach.call(document.querySelectorAll('#te_quad .te-vreset'), function (b) {
       b.addEventListener('click', function (e) {
         e.stopPropagation();
-        var p = b.getAttribute('data-plano'); if (ST.orto && ST.orto[p]) { ST.orto[p].zoom = 1; ST.orto[p].panU = 0; ST.orto[p].panV = 0; }
+        var p = b.getAttribute('data-plano'), o = ST.orto && ST.orto[p];
+        if (o) { o.zoom = 1; o.panU = 0; o.panV = 0; o.corte = 0.15; }
+        var r = document.querySelector('.te-vcut-r[data-plano="' + p + '"]'); if (r) r.value = 15;
       });
+    });
+    // sliders de PLANO DE CORTE → o.corte (0..1). Mover el slider ACTIVA esa vista
+    // (highlight del cuadrante + plano en el 3D a esa profundidad).
+    Array.prototype.forEach.call(document.querySelectorAll('#te_quad .te-vcut-r'), function (r) {
+      var p = r.getAttribute('data-plano');
+      r.addEventListener('input', function (e) {
+        e.stopPropagation();
+        var o = ST.orto && ST.orto[p]; if (!o) return;
+        o.corte = Math.max(0, Math.min(1, Number(r.value) / 100));
+        if (ST.planoActivo !== p) _setPlanoActivo(p);   // activar la vista al ajustar
+        else _redibujarPlanoActivo();                    // mover el plano 3D con el corte
+      });
+      r.addEventListener('mousedown', function (e) { e.stopPropagation(); });   // no dispara pan
     });
   }
 
