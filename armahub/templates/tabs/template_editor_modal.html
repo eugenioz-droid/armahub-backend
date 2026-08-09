@@ -124,15 +124,13 @@
   #te_modal .te-barCBS{stroke:var(--te-cbs)}
   #te_modal .te-barCBI{stroke:var(--te-cbi)}
   #te_modal .te-barES{stroke:var(--te-es)}
-  /* Barra MACIZA: grosor = diámetro REAL a escala (lo fija el JS inline por barra),
-     codos REDONDEADOS con el radio de doblado de norma (path con arcos). Se dibuja
-     en 2 capas: borde oscuro DEBAJO + relleno de color ENCIMA → da volumen, como el
-     3D. round-cap/join para que los codos y puntas se vean limpios. */
-  #te_modal .te-bar{fill:none;stroke-linecap:round;stroke-linejoin:round}
-  #te_modal .te-bar.sel{filter:drop-shadow(0 0 2px rgba(21,101,192,.5))}
-  #te_modal .te-bar-edge{fill:none;stroke:rgba(30,40,55,.55);stroke-linecap:round;stroke-linejoin:round}
+  /* Trazo GRUESO redondeado (calca la maqueta colocador.html: stroke ~3.2, round).
+     Se separa de vector-effect para que el grosor sea REAL (escala con el zoom),
+     como en la maqueta; así las barras se ven con cuerpo, no como pelos. */
+  #te_modal .te-bar{fill:none;stroke-width:3;stroke-linecap:round;stroke-linejoin:round}
+  #te_modal .te-bar.sel{stroke-width:3.6}
   /* Halo de selección: se dibuja DEBAJO de la barra (trazo ancho translúcido). */
-  #te_modal .te-bar-halo{fill:none;stroke:var(--te-acero);opacity:.35;stroke-linecap:round;stroke-linejoin:round}
+  #te_modal .te-bar-halo{fill:none;stroke:var(--te-acero);stroke-width:7;opacity:.35;stroke-linecap:round;stroke-linejoin:round}
   /* GHOST (previsualización que sigue el cursor). Grueso + punteado, como la maqueta. */
   #te_modal .te-ghostbar{fill:none;stroke:#8BC34A;stroke-width:3;stroke-dasharray:4 3;opacity:.85;stroke-linecap:round;stroke-linejoin:round;pointer-events:none}
   #te_modal .te-ghostpt{opacity:.9}

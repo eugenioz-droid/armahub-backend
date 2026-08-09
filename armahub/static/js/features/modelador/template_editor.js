@@ -829,10 +829,7 @@
       var pp = _uvToPixel(plano, forma.pts[0].u, forma.pts[0].v); if (!pp) return;
       layer.appendChild(_svgEl('circle', { cx: pp.px.toFixed(1), cy: pp.py.toFixed(1), r: 4.6, fill: color, 'class': 'te-ghostpt', opacity: dentro ? 0.9 : 0.95 }));
     } else {
-      // codos redondeados también en el ghost (coherente con la barra final).
-      var Pg = forma.pts.map(function (q) { var p = _uvToPixel(plano, q.u, q.v); return { px: p.px, py: p.py }; });
-      var rDob = _radioDobladoCm(ST.cargado.diam ? Number(ST.cargado.diam) / 10 : 1) * ((ST.transforms[plano] || {}).s || 1);
-      var d = _pathRedondeado(Pg, rDob);
+      var d = forma.pts.map(function (q, i) { var p = _uvToPixel(plano, q.u, q.v); return (i ? 'L' : 'M') + p.px.toFixed(1) + ',' + p.py.toFixed(1); }).join(' ');
       if (forma.cerrar) d += ' Z';
       layer.appendChild(_svgEl('path', { 'class': 'te-ghostbar', d: d, stroke: color }));
       // puntas en los extremos (como la maqueta: circulitos .te-gpt en los vértices)
@@ -899,53 +896,6 @@
     nudgeSeg(0, 1, +1);                       // gancho de apertura → un lado
     nudgeSeg(pts.length - 1, pts.length - 2, -1);  // gancho de cierre → el otro
     return out;
-  }
-
-  // Radio INTERNO de doblado de norma (cm) para un diámetro (cm). Resuelve el
-  // motor EN EL MOMENTO (nunca captura global.* al cargar → bug histórico). Si el
-  // motor no está, cae a la norma 2φ/3.5φ local.
-  function _radioDobladoCm(diamCm) {
-    var d = Number(diamCm) || 0;
-    var geom = (global.ModeladorMotorGeom && global.ModeladorMotorGeom.radioDobladoNorma) ? global.ModeladorMotorGeom : null;
-    if (geom) { try { return geom.radioDobladoNorma(d); } catch (e) { /* fallback */ } }
-    return d * (d <= 1.6 ? 2 : 3.5);
-  }
-
-  // Construye el 'd' de un path con CODOS REDONDEADOS: recorta cada vértice
-  // interior por el radio de doblado (en px) y lo cierra con un arco tangente,
-  // como el desarrollo real de la barra (2φ/3.5φ de norma). Recibe puntos YA en
-  // px [{px,py}]. Si un tramo es muy corto para el radio pedido, lo reduce para
-  // que quepa (nunca invade el tramo vecino). Esto reemplaza el trazo recto
-  // "dibujado en Paint" (vértices en punta) por el redondeo técnico correcto.
-  function _pathRedondeado(P, radioPx) {
-    if (!P || P.length < 2) return '';
-    if (P.length === 2 || !(radioPx > 0)) {
-      return P.map(function (q, i) { return (i ? 'L' : 'M') + q.px.toFixed(1) + ',' + q.py.toFixed(1); }).join(' ');
-    }
-    var d = 'M' + P[0].px.toFixed(1) + ',' + P[0].py.toFixed(1);
-    for (var i = 1; i < P.length - 1; i++) {
-      var a = P[i - 1], b = P[i], c = P[i + 1];
-      var v1x = a.px - b.px, v1y = a.py - b.py, l1 = Math.hypot(v1x, v1y) || 1;
-      var v2x = c.px - b.px, v2y = c.py - b.py, l2 = Math.hypot(v2x, v2y) || 1;
-      // ángulo entre tramos → distancia de recorte para el radio pedido
-      var ang = Math.acos(Math.max(-1, Math.min(1, (v1x * v2x + v1y * v2y) / (l1 * l2))));
-      if (!isFinite(ang) || ang < 1e-3 || Math.PI - ang < 1e-3) {   // casi colineal → sin curva
-        d += ' L' + b.px.toFixed(1) + ',' + b.py.toFixed(1);
-        continue;
-      }
-      var cut = Math.min(radioPx / Math.tan(ang / 2), l1 / 2, l2 / 2);   // no invadir vecinos
-      var r = cut * Math.tan(ang / 2);
-      var t1x = b.px + (v1x / l1) * cut, t1y = b.py + (v1y / l1) * cut;   // entrada al codo
-      var t2x = b.px + (v2x / l2) * cut, t2y = b.py + (v2y / l2) * cut;   // salida del codo
-      // sentido del arco (cruz de los tramos): 0 = CW, 1 = CCW en coords SVG
-      var cross = v1x * v2y - v1y * v2x;
-      var sweep = cross > 0 ? 1 : 0;
-      d += ' L' + t1x.toFixed(1) + ',' + t1y.toFixed(1);
-      d += ' A' + r.toFixed(1) + ',' + r.toFixed(1) + ' 0 0 ' + sweep + ' ' + t2x.toFixed(1) + ',' + t2y.toFixed(1);
-    }
-    var last = P[P.length - 1];
-    d += ' L' + last.px.toFixed(1) + ',' + last.py.toFixed(1);
-    return d;
   }
 
   // Dibuja UN cuadrante 2D. Guarda su transform para el hit-testing inverso.
@@ -1024,26 +974,16 @@
       }
       // Estribo en SECCIÓN: separar los 2 ganchos ½·diam para que no se superpongan.
       var dpts = (plano === 'seccion' && rol === 'estribo') ? _separarGanchosSeccion(pts, pl.diam) : pts;
-      // Puntos en px + radio de doblado de norma (2φ/3.5φ) escalado a px.
-      var P = dpts.map(function (q) { return { px: X(q.u), py: Y(q.v) }; });
-      var rDobCm = _radioDobladoCm(pl.diam);
-      var d = _pathRedondeado(P, rDobCm * s);
-      // Grosor REAL de la barra: diámetro (cm) a escala de la vista, con mínimo
-      // visible. Así la barra se ve MACIZA (como el 3D), no una línea de 3px.
-      var wBarra = Math.max((Number(pl.diam) || 0) * s, 2.5);
-      if (sel) svg.appendChild(_svgEl('path', { 'class': 'te-bar-halo', d: d, style: 'stroke-width:' + (wBarra + 5).toFixed(1) }));
-      // borde oscuro DEBAJO (un poco más ancho) → da volumen de barra maciza.
+      var d = dpts.map(function (q, i) { return (i ? 'L' : 'M') + X(q.u).toFixed(1) + ',' + Y(q.v).toFixed(1); }).join(' ');
+      if (sel) svg.appendChild(_svgEl('path', { 'class': 'te-bar-halo', d: d }));
+      // barra VISIBLE (técnica, fina, sin eventos)
       svg.appendChild(_svgEl('path', {
-        'class': 'te-bar-edge', d: d, style: 'pointer-events:none;stroke-width:' + (wBarra + 1.4).toFixed(1)
-      }));
-      // relleno macizo (color de la tipología) ENCIMA.
-      svg.appendChild(_svgEl('path', {
-        'class': 'te-bar' + (sel ? ' sel' : ''), d: d, stroke: color, style: 'pointer-events:none;stroke-width:' + wBarra.toFixed(1),
+        'class': 'te-bar' + (sel ? ' sel' : ''), d: d, stroke: color, style: 'pointer-events:none',
         opacity: (rol === 'estribo' && plano === 'planta') ? 0.6 : 1
       }));
-      // trazo de HIT transparente ancho (facilita el clic sobre la barra)
+      // trazo de HIT transparente ancho (facilita el clic sobre la línea fina)
       svg.appendChild(_svgEl('path', {
-        d: d, fill: 'none', stroke: 'transparent', 'stroke-width': Math.max(wBarra + 4, 9), 'stroke-linecap': 'round',
+        d: d, fill: 'none', stroke: 'transparent', 'stroke-width': 9, 'stroke-linecap': 'round',
         'data-ci': ci, 'data-hit': '1', style: 'cursor:pointer'
       }));
     });
