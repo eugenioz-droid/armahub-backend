@@ -2240,6 +2240,11 @@
       if (fb) fb.style.display = 'none';
       if (ST.ultimoOut) _redibujar(ST.ultimoOut);
       _resize();
+      // Ahora ortoActivo=true: RE-dibujar las vistas 2D para LIMPIAR el SVG plano que
+      // se pintó durante el arranque (cuando ortoActivo aún era false) y quedaba
+      // encima del render orto ("Paint pegado"). Con ortoActivo=true el SVG solo deja
+      // el overlay (sin hormigón ni barras).
+      if (ST.ultimoOut) _redibujar2D(ST.ultimoOut);
       global.console && console.log('[Template Editor] 3D iniciado · placements:', (ST.ultimoOut && ST.ultimoOut.placements || []).length);
     });
   }
