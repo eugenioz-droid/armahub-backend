@@ -30,23 +30,80 @@
   }
 
   // ---------------------------------------------------------------------------
-  // MODELO ADITIVO DEL COMPONENTE (§DISCOVERY-INTERACCIÓN-2)
+  // MODO DE USO DE LA BARRA (§INTERACCIÓN-2.0 · PRINCIPIO RECTOR)
+  // ---------------------------------------------------------------------------
+  // El MODO es INDEPENDIENTE de la tipología. 3 modos de uso:
+  //   'puntual' | 'lineal' | 'arreglo'.
+  // Cada tipología trae un modo PRESETEADO por default (editable por el usuario
+  // con botoncitos en otra tarea). Espejo del INPUT_METHOD_MAP del ADetailer
+  // (typology_catalog.py), pero aquí el modo es un CAMPO editable, no fijo por
+  // tipo. Este mapa solo define el DEFAULT al crear/normalizar un componente.
+  //   cabezal/CB (longitudinales) -> 'puntual'
+  //   estribo/traba              -> 'lineal'
+  //   malla/traba-muro           -> 'arreglo'
+  var TIPOLOGIA_MODO_DEFAULT = {
+    // Longitudinales / cabezales → PUNTUAL
+    CB: 'puntual', CBS: 'puntual', CBI: 'puntual', CBS2: 'puntual', CBI2: 'puntual',
+    CBSN: 'puntual', CBIN: 'puntual', LT: 'puntual', L: 'puntual',
+    // Estribos / trabas de confinamiento → LINEAL
+    ES: 'lineal', ESC: 'lineal', EC: 'lineal',
+    TRV: 'lineal', TR: 'lineal', TC: 'lineal', TRC: 'lineal', TRL: 'lineal', TRF: 'lineal',
+    // Mallas / trabas de muro → ARREGLO (rango + N capas)
+    MA: 'arreglo', MALLA: 'arreglo', TM: 'arreglo', TRM: 'arreglo'
+  };
+
+  // Modo default para una tipología. Fallback por ROL (para tipologías no listadas):
+  // estribo/traba -> 'lineal'; el resto (longitudinales) -> 'puntual'.
+  function modoDefaultDeTipologia(tip) {
+    var t = (tip || '').toUpperCase();
+    if (TIPOLOGIA_MODO_DEFAULT.hasOwnProperty(t)) return TIPOLOGIA_MODO_DEFAULT[t];
+    var rol = _rolDeTipologia(t, null);
+    return (rol === 'estribo' || rol === 'traba') ? 'lineal' : 'puntual';
+  }
+
+  // ---------------------------------------------------------------------------
+  // MODELO ADITIVO DEL COMPONENTE (§DISCOVERY-INTERACCIÓN-2 · §INTERACCIÓN-2.0)
   // ---------------------------------------------------------------------------
   // SHAPE canónico del componente. Campos OPCIONALES que HOY no alteran nada
-  // (defaults null → comportamiento IDÉNTICO) pero son el DATO sobre el que se
-  // construirán empalmes / prioridad / dependencias en otra tarea:
+  // (defaults inertes → comportamiento IDÉNTICO) pero son el DATO sobre el que se
+  // construirán empalmes / prioridad / dependencias / interacción en otra tarea:
   //   comp_id    : id estable (string) — referenciado por depende_de/prioridad.
   //   prioridad  : nº global único | null (1 = más afuera). null = no participa.
   //   empalme    : { extremo:'inicio'|'fin'|null, valor:string|number } | null.
   //   depende_de : [{ comp_id, holgura }] | null.
+  //   modo       : 'puntual'|'lineal'|'arreglo' — MODO DE USO, independiente de la
+  //                tipología. Default = preset de la tipología. Solo DATO: NO cambia
+  //                el despacho actual (expandirComponente sigue usando distribucion.modo).
+  //   plano_pieza: { volteado:false } — plano de trabajo propio de la pieza (rotar
+  //                90° después). Default volteado:false = comportamiento IDÉNTICO.
+  //   arreglo    : { n_capas:1, sep_capas:20, rango:null } — params del modo arreglo
+  //                (rango en un sentido + N capas con espaciamiento). Default
+  //                n_capas:1 = una sola fila = igual que hoy. Solo DATO: la lógica de
+  //                arreglo/rotación NO está implementada aún (otras tareas).
   // normalizarComponente NO clona ni pisa lo que ya venga: solo RELLENA lo ausente
-  // con el default null, para que todo consumidor vea el mismo shape. Idempotente.
+  // con su default, para que todo consumidor vea el mismo shape. Idempotente.
   function normalizarComponente(comp) {
     if (!comp || typeof comp !== 'object') return comp;
     if (!('comp_id' in comp)) comp.comp_id = null;
     if (!('prioridad' in comp)) comp.prioridad = null;
     if (!('empalme' in comp)) comp.empalme = null;
     if (!('depende_de' in comp)) comp.depende_de = null;
+    // Modo de uso (preset por tipología; editable en otra tarea).
+    if (comp.modo == null) comp.modo = modoDefaultDeTipologia(comp.tipologia);
+    // Plano de trabajo de la pieza. Rellena idempotente sin pisar `volteado`.
+    if (!comp.plano_pieza || typeof comp.plano_pieza !== 'object') {
+      comp.plano_pieza = { volteado: false };
+    } else if (!('volteado' in comp.plano_pieza)) {
+      comp.plano_pieza.volteado = false;
+    }
+    // Params del modo arreglo (inertes: n_capas:1 = una fila = igual que hoy).
+    if (!comp.arreglo || typeof comp.arreglo !== 'object') {
+      comp.arreglo = { n_capas: 1, sep_capas: 20, rango: null };
+    } else {
+      if (!('n_capas' in comp.arreglo)) comp.arreglo.n_capas = 1;
+      if (!('sep_capas' in comp.arreglo)) comp.arreglo.sep_capas = 20;
+      if (!('rango' in comp.arreglo)) comp.arreglo.rango = null;
+    }
     return comp;
   }
 
@@ -190,6 +247,64 @@
     return placements;
   }
 
+  // ARREGLO — el distribuidor LINEAL de un rango, REPLICADO en N_capas separadas
+  // por `sep_capas` a lo largo de un eje de PROFUNDIDAD. Es un arreglo 2D:
+  //   (rango a lo largo del eje longitudinal)  ×  (capas en profundidad).
+  // Cubre malla/trabas sin necesitar el distribuidorGrid stub (§0-11ter: "Grid").
+  //
+  // cfg: {
+  //   rango: {from, to, sep},   // igual que distribuidorLinear (X absolutas, cm host)
+  //   sep,                      // @ del rango (alias de rango.sep)
+  //   n_capas,                  // nº de filas paralelas (default 1)
+  //   sep_capas,                // separación entre capas, cm (default 0)
+  //   eje_capas                 // 'x'|'y'|'z' — profundidad de las capas. Lo fija el
+  //                             //   PLANO DE TRABAJO (si trabajas en XY → 'z'). Default
+  //                             //   'z' (ancho de la viga: la 2ª cortina "hacia dentro").
+  // }
+  //
+  // CLAVE (no regresión): con n_capas=1 (y sep_capas ignorada) genera EXACTAMENTE
+  // lo mismo que distribuidorLinear(rango) — misma X, mismo anchor (offset 0 → no
+  // se toca el eje de profundidad), mismos puntos. Solo cambia la meta (capa).
+  // Las capas se apilan en el sentido POSITIVO del eje (0, +sep, +2·sep, …) para
+  // que la 1ª capa coincida con la que daría el lineal puro.
+  function distribuidorArreglo(base, cfg, host) {
+    var placements = [];
+    var rango = cfg && cfg.rango;
+    // Sin rango válido no hay a lo largo qué distribuir → [] (coherente con el
+    // resto de distribuidores cuando su cfg no aplica; el llamador ya validó modo).
+    if (!rango || rango.from == null || rango.to == null) return placements;
+    var rf = Math.min(Number(rango.from), Number(rango.to));
+    var rt = Math.max(Number(rango.from), Number(rango.to));
+    var sep = Number((cfg && cfg.sep) || rango.sep || 20) || 20;
+    var nCapas = Math.max(1, (cfg && Number(cfg.n_capas)) || 1);
+    var sepCapas = (cfg && cfg.sep_capas != null) ? Number(cfg.sep_capas) : 0;
+    var eje = (cfg && cfg.eje_capas) || 'z';
+    if (eje !== 'x' && eje !== 'y' && eje !== 'z') eje = 'z';
+    // Coordenada base del eje de profundidad en el anchor (para offsetear las capas
+    // RESPECTO de donde ya está anclada la barra; ausente = 0, como el lineal).
+    var baseEje = (base.anchorBase && base.anchorBase[eje] != null) ? Number(base.anchorBase[eje]) : 0;
+    var nR = redondeoCantidadZona(rt - rf, sep);
+    // 1 capa = distribución lineal pura: NO se toca el eje de profundidad, así el
+    // anchor queda BYTE-A-BYTE igual al de distribuidorLinear (garantía de cero
+    // regresión). Con ≥2 capas SÍ se fija el plano de profundidad en TODAS las
+    // capas (capa 1 en baseEje, no 'ausente') para que el arreglo sea consistente.
+    var unaCapa = (nCapas === 1);
+    for (var c = 0; c < nCapas; c++) {
+      var off = c * sepCapas;
+      for (var ri = 0; ri < nR; ri++) {
+        var xr = rf + ri * sep;
+        if (xr > rt + 1e-6) break;
+        var extra = { x: xr };
+        if (!unaCapa) extra[eje] = baseEje + off;
+        var anchorA = _mezclarAnchor(base.anchorBase, extra);
+        var puntosA = _fp().figuraAPuntos(base.figura, base.dims, host, anchorA,
+          { rol: base.rol || 'estribo', diamCm: base.diam });
+        placements.push(_placement(base, puntosA, unaCapa ? { rango: 1 } : { rango: 1, capa: c + 1 }));
+      }
+    }
+    return placements;
+  }
+
   // GRID / PERIMETER — STUBS (2ª entrega: muro/columna).
   // TODO(2ª entrega): implementar malla 2D (muro), perímetro (columna).
   function distribuidorGrid(base, cfg, host) { return []; /* TODO malla 2D muro */ }
@@ -257,9 +372,22 @@
     var dist = comp.distribucion || {};
     var base = _baseDeComponente(comp, host);
     var placements;
+    // MODO DE USO del Template Editor (§0-11ter / §INTERACCIÓN-2.0): comp.modo =
+    // 'puntual'|'lineal'|'arreglo' es el selector de ALTO NIVEL de los 3 botones
+    // del panel. Solo 'arreglo' necesita despacho propio (rango × capas);
+    // 'puntual'/'lineal' se materializan en dist.modo ('layered'/'linear') por el
+    // panel y caen al switch de abajo. IMPRESCINDIBLE: solo se ramifica con el
+    // valor EXPLÍCITO 'arreglo'. El preset por tipología de la viga-semilla es
+    // 'puntual'/'lineal' (nunca 'arreglo'), así que el switch queda intacto para
+    // ella (cero regresión: 72 placements / 140.3 kg / 4 items).
+    if (comp.modo === 'arreglo' || dist.modo === 'arreglo') {
+      placements = distribuidorArreglo(base, dist, host);
+      return _aplicarPostTransform(placements, comp);
+    }
     switch (dist.modo) {
       case 'linear': placements = distribuidorLinear(base, dist, host); break;
       case 'layered': placements = distribuidorLayered(base, dist, host); break;
+      case 'arreglo': placements = distribuidorArreglo(base, dist, host); break;
       case 'grid': placements = distribuidorGrid(base, dist, host); break;
       case 'perimeter': placements = distribuidorPerimeter(base, dist, host); break;
       case 'points': placements = distribuidorPoints(base, dist, host); break;
@@ -369,11 +497,14 @@
 
   var API = {
     normalizarComponente: normalizarComponente,
+    modoDefaultDeTipologia: modoDefaultDeTipologia,
+    TIPOLOGIA_MODO_DEFAULT: TIPOLOGIA_MODO_DEFAULT,
     redondeoCantidadZona: redondeoCantidadZona,
     evalEmpalme: evalEmpalme,
     expandirComponente: expandirComponente,
     distribuidorLinear: distribuidorLinear,
     distribuidorLayered: distribuidorLayered,
+    distribuidorArreglo: distribuidorArreglo,
     distribuidorGrid: distribuidorGrid,
     distribuidorPerimeter: distribuidorPerimeter,
     distribuidorPoints: distribuidorPoints

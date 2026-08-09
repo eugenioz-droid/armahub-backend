@@ -56,11 +56,24 @@
     dragMove: null,            // {ci, plano, startHost, startHint} durante mover
     dragNode: null,            // {plano, corner} durante arrastre de nodo
     dragRango: null,           // {ci} durante arrastre de la flechita doble
+    // --- Snap de CARA (§INTERACCIÓN-2.0) — elegir la cara VIENDO ---
+    caraHi: null,              // {plano, cara, edge, orient, pos, a, b} cara resaltada bajo el cursor
     _regenPendiente: false,
     _uiOk: false,
     // --- P3: plano de trabajo activo resaltado en el 3D ---
     //   'seccion' | 'largo' | 'planta' | null  (null = ninguno resaltado)
-    planoActivo: null, planoMesh: null, elemento: 'viga'
+    planoActivo: null, planoMesh: null, elemento: 'viga',
+    // --- INTERACCIÓN-2.0 (esta entrega) ---
+    // cargado: "sello" de lo que quedó cargado en el ribbon para colocar
+    //   { figura, tipologia, diam, contorno } | null. Se setea al elegir
+    //   figura+tipología con una herramienta de colocación (colocar/rango);
+    //   Esc lo suelta (deselecciona → herramienta 'mover').
+    cargado: null,
+    // ghost: estado del GHOST que sigue el cursor { plano, host, valido } | null.
+    ghost: null,
+    // undoStack: pila de snapshots de la receta para Ctrl+Z. _pushUndo() ANTES de
+    //   mutar; _undo() restaura el último snapshot.
+    undoStack: [], _undoMax: 60
   };
 
   function $(id) { return document.getElementById(id); }
@@ -107,6 +120,15 @@
     return 'lateral';   // ES/TRV/LT
   }
 
+  // ¿el componente ci está VOLTEADO? (plano_pieza.volteado). Campo ADITIVO: si el
+  // componente no lo trae, cuenta como false → proyección idéntica a la actual.
+  // (§INTERACCIÓN-2.0 · ROTAR PLANO DE LA PIEZA)
+  function _compVolteado(ci) {
+    if (ci == null || ci < 0 || !ST.receta) return false;
+    var c = ST.receta.componentes[ci];
+    return !!(c && c.plano_pieza && c.plano_pieza.volteado);
+  }
+
   // dims por defecto para una figura recién colocada. Estribo con "tomar contorno"
   // → todas auto (se ajustan al recubrimiento; recub 0 = al borde). Cabezal con
   // lados → B auto (largo − recub), patas A/C fijas.
@@ -130,16 +152,116 @@
     if (rol === 'traba') {
       return { modo: 'linear', activa: false, sep: 40, zonas: [{ long: 0, sep: 40 }], start_offset: 4 };
     }
-    return { modo: 'layered', n_capas: 1, barras_capa: 1, gap: 4, sentido: 'nucleo' };
+    return { modo: 'layered', n_capas: 1, barras_capa: 1, gap: 4, sentido: 'nucleo', justify: 'centrar' };
+  }
+
+  // ==========================================================================
+  // MODO DE USO (§0-11ter / §INTERACCIÓN-2.0 · los 3 botones del panel):
+  // 'puntual' | 'lineal' | 'arreglo'. Es el selector de ALTO NIVEL con el que el
+  // usuario decide CÓMO se coloca la barra; el panel muestra campos DISTINTOS por
+  // modo (menú contextual). Es INDEPENDIENTE de la tipología (la tipología solo
+  // trae un preset).
+  //   puntual → distribucion.modo:'layered'  (capas hacia el núcleo)
+  //   lineal  → distribucion.modo:'linear'   (rango @ ; cant = ceil(dist/@)+1)
+  //   arreglo → distribucion.modo:'arreglo'  (rango × n_capas @ sep_capas)
+  // reglas.js despacha 'arreglo' aparte; 'puntual'/'lineal' caen a layered/linear.
+  // ==========================================================================
+  var MODO_A_DIST = { puntual: 'layered', lineal: 'linear', arreglo: 'arreglo' };
+
+  // MODO por default de una TIPOLOGÍA (§INTERACCIÓN-2.0). Fuente autoritativa: el
+  // motor (ModeladorReglas.modoDefaultDeTipologia), resuelto EN EL MOMENTO de usar
+  // (nunca capturado a nivel de módulo: los scripts cargan en paralelo). Fallback
+  // por ROL si el motor no está: estribo/traba → 'lineal'; el resto → 'puntual'.
+  function _modoDefault(tip) {
+    var reglas = global.ModeladorReglas;
+    if (reglas && reglas.modoDefaultDeTipologia) return reglas.modoDefaultDeTipologia(tip);
+    var rol = _rolDe(tip);
+    return (rol === 'estribo' || rol === 'traba') ? 'lineal' : 'puntual';
+  }
+
+  // Metadata modular ADITIVA de un componente nuevo (§INTERACCIÓN-2.0). Defaults
+  // INERTES: plano sin voltear + arreglo de 1 sola capa (= igual que hoy). El
+  // `modo` es el preset de la tipología. Se copia al crear cada componente para
+  // que todo consumidor vea el mismo shape (el motor igual lo normaliza).
+  function _metaModular(tip) {
+    return {
+      modo: _modoDefault(tip),
+      plano_pieza: { volteado: false },
+      arreglo: { n_capas: 1, sep_capas: 20, rango: null }
+    };
+  }
+
+  // Deriva el modo de uso ACTUAL de un componente (sin mutarlo). Prioriza el campo
+  // explícito comp.modo; si no está, lo infiere de distribucion.modo (para la
+  // semilla y recetas viejas que solo traen distribucion.modo).
+  function _modoDe(c) {
+    if (c.modo === 'puntual' || c.modo === 'lineal' || c.modo === 'arreglo') return c.modo;
+    var dm = (c.distribucion && c.distribucion.modo) || '';
+    if (dm === 'layered') return 'puntual';
+    if (dm === 'arreglo') return 'arreglo';
+    if (dm === 'linear') return 'lineal';
+    return _modoDefault(c.tipologia);
+  }
+
+  // Rango por defecto (todo el largo útil) para modos que lo necesitan.
+  function _rangoDefault(sep) {
+    var g = ST.receta.geometria;
+    return { from: -g.largo / 2 + 4, to: g.largo / 2 - 4, sep: sep || 20 };
+  }
+
+  // Eje de PROFUNDIDAD por defecto de las capas del arreglo = el eje "depth" del
+  // plano de trabajo activo (si hay uno). Sin plano activo → 'z' (ancho de la viga:
+  // la 2ª cortina entra hacia el núcleo). Coherente con PLANOS_POR_ELEMENTO.
+  function _ejeCapasDefault() {
+    var def = ST.planoActivo && (_defsPlanos() || {})[ST.planoActivo];
+    return (def && def.depth) || 'z';
+  }
+
+  // Cambia el modo de uso del componente y REMODELA su distribucion a la forma que
+  // ese modo necesita, CONSERVANDO lo compartido (rango, @sep, capas) para no
+  // perder ajustes al alternar. NO borra campos ajenos (aditivo/idempotente).
+  function _setModoComp(c, modo) {
+    if (!MODO_A_DIST[modo]) return;
+    c.modo = modo;
+    var d = c.distribucion = c.distribucion || {};
+    var rol = _rolDe(c.tipologia);
+    d.modo = MODO_A_DIST[modo];
+    if (modo === 'puntual') {
+      if (d.n_capas == null) d.n_capas = 1;
+      if (d.barras_capa == null) d.barras_capa = 1;
+      if (d.gap == null) d.gap = 4;
+      if (d.sentido == null) d.sentido = 'nucleo';
+      if (d.justify == null) d.justify = 'centrar';
+    } else if (modo === 'lineal') {
+      if (d.sep == null) d.sep = (rol === 'traba') ? 40 : 20;
+      if (!d.rango) d.rango = _rangoDefault(d.sep);
+      d.activa = true;
+      if (c.pos_hint) delete c.pos_hint.x;   // el rango la distribuye
+    } else { // arreglo
+      if (d.sep == null) d.sep = (rol === 'traba') ? 40 : 20;
+      if (!d.rango) d.rango = _rangoDefault(d.sep);
+      if (d.n_capas == null) d.n_capas = 2;      // arreglo real ≥ 2 capas
+      if (d.sep_capas == null) d.sep_capas = 10;
+      if (d.eje_capas == null) d.eje_capas = _ejeCapasDefault();
+      d.activa = true;
+      if (c.pos_hint) delete c.pos_hint.x;
+    }
   }
 
   // Nombre corto legible del componente (para el panel).
   function _compDesc(c) {
-    var rol = _rolDe(c.tipologia);
     var d = c.distribucion || {};
-    if (rol === 'cabezal') return (c.cara === 'inf' ? 'inferior' : (c.cara === 'sup' ? 'superior' : 'lateral')) + ' · ' + (d.n_capas || 1) + ' capa' + ((d.n_capas || 1) > 1 ? 's' : '') + ' · ø' + c.diam;
-    if (rol === 'estribo') return 'estribo · ' + (d.activa ? ('@' + (d.sep || 20)) : 'sin distribución') + ' · ø' + c.diam;
-    return 'traba · ' + (d.activa ? ('@' + (d.sep || 40)) : 'sin distribución') + ' · ø' + c.diam;
+    var modo = _modoDe(c);
+    var caraTxt = (c.cara === 'inf' ? 'inferior' : (c.cara === 'sup' ? 'superior' : 'lateral'));
+    if (modo === 'arreglo') {
+      return caraTxt + ' · arreglo ' + (d.n_capas || 2) + '×@' + (d.sep || 20) + ' · ø' + c.diam;
+    }
+    if (modo === 'puntual') {
+      var nc = d.n_capas || 1;
+      return caraTxt + ' · ' + nc + ' capa' + (nc > 1 ? 's' : '') + '×' + (d.barras_capa || 1) + ' · ø' + c.diam;
+    }
+    // lineal
+    return caraTxt + ' · lineal @' + (d.sep || 20) + ' · ø' + c.diam;
   }
 
   // ==========================================================================
@@ -212,6 +334,34 @@
   }
 
   function _num(n) { try { return Number(n).toLocaleString('es-CL'); } catch (e) { return '' + n; } }
+
+  // ==========================================================================
+  // UNDO (§INTERACCIÓN-2.0 tarea 4) — snapshots de la receta.
+  //   _pushUndo()  → apila un clon de {receta, selCi} ANTES de mutar.
+  //   _undo()      → restaura el último snapshot (receta + selección) y redibuja.
+  // Se clona con JSON (la receta es data pura, sin refs vivas) para no compartir
+  // objetos con el estado presente. Pila acotada a _undoMax.
+  // ==========================================================================
+  function _pushUndo() {
+    if (!ST.receta) return;
+    try {
+      ST.undoStack.push({ receta: JSON.parse(JSON.stringify(ST.receta)), selCi: ST.selCi });
+    } catch (e) { return; }
+    if (ST.undoStack.length > ST._undoMax) ST.undoStack.shift();
+  }
+
+  function _undo() {
+    if (!ST.undoStack.length) { _actualizarStatus('Nada que deshacer.'); return; }
+    var snap = ST.undoStack.pop();
+    ST.receta = snap.receta;
+    ST.selCi = (snap.selCi != null) ? snap.selCi : -1;
+    if (ST.selCi >= (ST.receta.componentes || []).length) ST.selCi = -1;
+    // cualquier interacción a medio-hacer se cancela al deshacer
+    ST.rangoTmp = null; ST.dragMove = null; ST.dragNode = null; ST.dragRango = null;
+    _regenerar();
+    _renderPanel();
+    _actualizarStatus('Deshecho.');
+  }
 
   function _initEscena() {
     var THREE = global.THREE;
@@ -390,6 +540,22 @@
   function _proyectorDe(def) {
     return function (p) { return { u: p[def.u], v: p[def.v] }; };
   }
+  // Proyector "de canto" (pieza VOLTEADA, §INTERACCIÓN-2.0 / ROTAR PLANO DE LA
+  // PIEZA): en vez del par (u,v) del plano, proyecta sobre (depth, v). Efecto en
+  // la vista: una figura que se dibujaba "de frente" (rectángulo cerrado, p.ej.
+  // estribo en SECCIÓN) COLAPSA a una línea a lo largo de su eje de profundidad
+  // → se ve "de canto" (línea vertical + su rango). Es un cambio de PROYECCIÓN
+  // (no toca la geometría 3D ni los kilos): el eje horizontal de la vista pasa a
+  // ser el `depth` del plano, conservando la vertical `v`.
+  function _proyectorVolteado(def) {
+    return function (p) { return { u: p[def.depth], v: p[def.v] }; };
+  }
+  // Devuelve el proyector correcto para un placement según si el componente que lo
+  // generó está volteado (meta.ci → ST.receta.componentes[ci].plano_pieza.volteado).
+  function _proyPlacement(def, projNormal, projVolteado, pl) {
+    var ci = (pl && pl.meta && pl.meta.ci != null) ? pl.meta.ci : -1;
+    return (_compVolteado(ci)) ? projVolteado : projNormal;
+  }
   // Proyector por clave de plano (usado por el hit-testing y el ghost de rango).
   function _proyDe(plano) {
     var def = (_defsPlanos() || {})[plano];
@@ -445,16 +611,305 @@
     return _rectPlano(geo, plano);
   }
 
+  // ¿El punto host (o su (u,v) en el plano) cae DENTRO del hormigón de esta vista?
+  // Es la REJA del ghost/clamp (§INTERACCIÓN-2.0 tarea 3). Usa boundaryDeVista como
+  // ÚNICA fuente del contorno: hoy el rect [-W/2,W/2]×[-H/2,H/2]; a futuro, cuando
+  // boundaryDeVista devuelva un polígono, aquí se resolverá point-in-polygon.
+  // `tol` cm de holgura (permite pegarse al borde). Devuelve boolean.
+  function _dentroDelBoundary(plano, uv, tol) {
+    if (!uv || !ST.receta) return false;
+    var geo = ST.receta.geometria;
+    var b = boundaryDeVista(geo, plano, (_defsPlanos() || {})[plano]);
+    if (!b || !(b.W > 0) || !(b.H > 0)) return false;
+    var t = (tol != null) ? tol : 0.5;
+    return (uv.u >= -b.W / 2 - t && uv.u <= b.W / 2 + t &&
+            uv.v >= -b.H / 2 - t && uv.v <= b.H / 2 + t);
+  }
+
+  // Pega un (u,v) al borde válido más cercano del hormigón de la vista (clamp).
+  // Deja el punto SOBRE el contorno para que "pegarse al borde" coloque sin barras
+  // al aire. Devuelve un nuevo {u,v}.
+  function _clampAlBoundary(plano, uv) {
+    var geo = ST.receta && ST.receta.geometria;
+    var b = geo ? boundaryDeVista(geo, plano, (_defsPlanos() || {})[plano]) : null;
+    if (!b || !(b.W > 0) || !(b.H > 0)) return uv;
+    return {
+      u: Math.max(-b.W / 2, Math.min(b.W / 2, uv.u)),
+      v: Math.max(-b.H / 2, Math.min(b.H / 2, uv.v))
+    };
+  }
+
+  // ==========================================================================
+  // SNAP DE CARA (§INTERACCIÓN-2.0 · elegir la cara VIENDO) — reemplaza la
+  // adivinación _caraDefault(host.y>=0). Cada vista muestra el rectángulo del
+  // hormigón; sus 4 aristas son las CARAS. Mapeamos cada arista al eje del mundo
+  // que representa → cara colocable (sup/inf = eje Y; lateral = eje Z). Las
+  // aristas del eje X (extremos del elemento) NO son caras de anclaje en el MVP.
+  // ==========================================================================
+  // eje del mundo + signo → cara colocable (o null si no aplica al MVP viga).
+  function _caraDeEje(eje, sign) {
+    if (eje === 'y') return sign > 0 ? 'sup' : 'inf';
+    if (eje === 'z') return 'lateral';
+    return null;   // eje 'x' = extremos del elemento (no se ancla ahí por ahora)
+  }
+
+  // Las 4 aristas del rectángulo de hormigón de una vista, con su cara mapeada.
+  // Devuelve [{edge, cara, axis, sign, orient:'h'|'v', pos, a, b}] en coords (u,v):
+  //   orient 'h' (top/bottom) → línea horizontal en v=pos, de u=a a u=b.
+  //   orient 'v' (left/right) → línea vertical  en u=pos, de v=a a v=b.
+  function _facesDeVista(plano) {
+    var def = (_defsPlanos() || {})[plano];
+    var geo = ST.receta && ST.receta.geometria;
+    if (!def || !geo) return [];
+    var rect = boundaryDeVista(geo, plano, def);
+    if (!rect || !(rect.W > 0) || !(rect.H > 0)) return [];
+    var hw = rect.W / 2, hh = rect.H / 2;
+    return [
+      { edge: 'top',    cara: _caraDeEje(def.v, +1), axis: def.v, sign: +1, orient: 'h', pos: +hh, a: -hw, b: +hw },
+      { edge: 'bottom', cara: _caraDeEje(def.v, -1), axis: def.v, sign: -1, orient: 'h', pos: -hh, a: -hw, b: +hw },
+      { edge: 'right',  cara: _caraDeEje(def.u, +1), axis: def.u, sign: +1, orient: 'v', pos: +hw, a: -hh, b: +hh },
+      { edge: 'left',   cara: _caraDeEje(def.u, -1), axis: def.u, sign: -1, orient: 'v', pos: -hw, a: -hh, b: +hh }
+    ];
+  }
+
+  // Cara del hormigón MÁS CERCANA al cursor (uv en coords del plano), dentro de un
+  // umbral en cm. Solo caras colocables (cara != null). null si ninguna cerca.
+  function _caraCercana(plano, uv) {
+    if (!uv) return null;
+    var faces = _facesDeVista(plano);
+    var umbral = 9;   // cm — banda de captura de la cara (generosa, como el snap)
+    var best = null, bestD = umbral;
+    faces.forEach(function (f) {
+      if (!f.cara) return;                 // aristas no-colocables (extremos X)
+      var d = (f.orient === 'h') ? Math.abs(uv.v - f.pos) : Math.abs(uv.u - f.pos);
+      // exigir que el cursor esté DENTRO del tramo de la arista (con holgura).
+      var along = (f.orient === 'h') ? uv.u : uv.v;
+      if (along < f.a - 4 || along > f.b + 4) return;
+      if (d < bestD) { bestD = d; best = f; }
+    });
+    return best;
+  }
+
+  // ==========================================================================
+  // GHOST (§INTERACCIÓN-2.0 tarea 1) — previsualización que SIGUE al cursor con la
+  // forma REAL de la figura cargada, el COLOR de la tipología y un BADGE "CBS ø16".
+  // Se dibuja en una capa <g> DEDICADA por SVG (te-ghost-layer), separada de las
+  // barras, para poder refrescarla en cada mousemove SIN regenerar toda la escena.
+  // Si el cursor sale del hormigón → ghost ROJO + cursor not-allowed + el clic NO
+  // coloca (tarea 3, clamp). Usa boundaryDeVista/_dentroDelBoundary como reja.
+  // ==========================================================================
+
+  // (u,v) del plano → pixel del viewBox (inverso de _pixelToUV). Requiere transform.
+  function _uvToPixel(plano, u, v) {
+    var t = ST.transforms[plano];
+    if (!t) return null;
+    return { px: t.offX + (u - t.minU) * t.s, py: t.offY + (t.maxV - v) * t.s };
+  }
+
+  // Capa <g> persistente para el ghost de un SVG (se crea una vez; siempre al final).
+  function _ghostLayer(svg) {
+    if (!svg) return null;
+    var g = svg.querySelector('.te-ghost-layer');
+    // pointer-events:none → el ghost es SOLO preview; nunca intercepta los clics de
+    // las barras (data-hit) ni de los nodos que quedan debajo.
+    if (!g) { g = _svgEl('g', { 'class': 'te-ghost-layer', style: 'pointer-events:none' }); svg.appendChild(g); }
+    else if (g !== svg.lastChild) svg.appendChild(g);   // mantener al frente
+    return g;
+  }
+
+  // Limpia el ghost de TODOS los cuadrantes (al salir de una vista / soltar carga).
+  function _limpiarGhost() {
+    ST.ghost = null;
+    ST.caraHi = null;
+    Object.keys(SVG_ID).forEach(function (k) {
+      var svg = $(SVG_ID[k]); if (!svg) return;
+      var g = svg.querySelector('.te-ghost-layer'); if (g) while (g.firstChild) g.removeChild(g.firstChild);
+      var v = svg.closest ? svg.closest('.te-vista') : null;
+      if (v) v.classList.remove('te-ghost-block');
+    });
+  }
+
+  // ¿Hay algo cargado para colocar? (ribbon con figura+tipología y herramienta de
+  // colocación activa). Es el gate del ghost y del clic-para-colocar.
+  function _hayCargado() {
+    return !!ST.cargado && (ST.tool === 'colocar' || ST.tool === 'rango');
+  }
+
+  // Puntos (u,v en host) de la FORMA del ghost para un plano, dada la tipología
+  // cargada. Devuelve { tipo:'rect'|'line'|'point', pts:[{u,v}], cerrar:bool } o null.
+  // Calca la lógica con que se DIBUJAN las barras reales (estribo=recinto de recub;
+  // cabezal=punto en sección / línea a lo largo). Ancla en (u,v) del cursor los
+  // ejes libres; el resto sale del hormigón.
+  function _ghostForma(plano, uv) {
+    var geo = ST.receta && ST.receta.geometria; if (!geo) return null;
+    var rol = _rolDe(ST.cargado.tipologia);
+    var b = boundaryDeVista(geo, plano, (_defsPlanos() || {})[plano]);
+    if (!b) return null;
+    var rect = _rectPlano(geo, plano);          // W/H exteriores + iW/iH útiles (recub)
+    var iW = rect.iW > 0 ? rect.iW : rect.W, iH = rect.iH > 0 ? rect.iH : rect.H;
+    var contorno = (ST.cargado.contorno !== false);
+
+    if (rol === 'estribo' || rol === 'traba') {
+      // Estribo/traba "toma contorno": rectángulo al recubrimiento (o al borde si
+      // contorno=false / recub 0). En SECCIÓN se ve el recinto completo; en las
+      // vistas donde X es horizontal se ve como un trazo vertical a la X del cursor.
+      if (plano === 'seccion') {
+        var hw = (contorno ? iW : rect.W) / 2, hh = (contorno ? iH : rect.H) / 2;
+        return { tipo: 'rect', pts: [{ u: -hw, v: hh }, { u: -hw, v: -hh }, { u: hw, v: -hh }, { u: hw, v: hh }], cerrar: true };
+      }
+      // largo/planta: el estribo es un trazo perpendicular al eje X (vertical), a la
+      // X clicada. Su alto = recinto útil en V.
+      var vh = (contorno ? iH : rect.H) / 2;
+      return { tipo: 'line', pts: [{ u: uv.u, v: vh }, { u: uv.u, v: -vh }] };
+    }
+
+    // Cabezal longitudinal: en SECCIÓN es un PUNTO; a lo largo/planta una LÍNEA que
+    // corre todo el largo útil, a la V (altura/ancho) del cursor.
+    if (plano === 'seccion') return { tipo: 'point', pts: [{ u: uv.u, v: uv.v }] };
+    var uw = iW / 2;   // largo útil (recub extremo)
+    return { tipo: 'line', pts: [{ u: -uw, v: uv.v }, { u: uw, v: uv.v }] };
+  }
+
+  // Línea gruesa de color sobre la arista (cara) resaltada bajo el cursor. Se dibuja
+  // en la MISMA capa del ghost (no destructiva, pointer-events:none) para que
+  // conviva con el ghost y sobreviva a los redibujados igual que él.
+  function _dibujarCaraHiEnCapa(layer, plano, f, color) {
+    if (!f) return;
+    var p1, p2;
+    if (f.orient === 'h') { p1 = _uvToPixel(plano, f.a, f.pos); p2 = _uvToPixel(plano, f.b, f.pos); }
+    else { p1 = _uvToPixel(plano, f.pos, f.a); p2 = _uvToPixel(plano, f.pos, f.b); }
+    if (!p1 || !p2) return;
+    layer.appendChild(_svgEl('line', {
+      'class': 'te-face-hi', x1: p1.px.toFixed(1), y1: p1.py.toFixed(1),
+      x2: p2.px.toFixed(1), y2: p2.py.toFixed(1), stroke: color
+    }));
+  }
+
+  // Pega el (u,v) del cursor a la cara resaltada: mueve el eje LIBRE de la forma a la
+  // posición exacta de la cara (§INTERACCIÓN-2.0 · "el ghost se pega a ella"). Para
+  // una cara horizontal (sup/inf) se fija la V; para una vertical (lateral) se fija la U.
+  function _snapUvACara(uv, f) {
+    if (!f) return uv;
+    if (f.orient === 'h') return { u: uv.u, v: f.pos };
+    return { u: f.pos, v: uv.v };
+  }
+
+  // Dibuja el ghost en el cuadrante `plano`. `sp` = _svgPoint del mousemove.
+  function _dibujarGhost(plano, svg, sp) {
+    var layer = _ghostLayer(svg); if (!layer) return;
+    while (layer.firstChild) layer.removeChild(layer.firstChild);
+    if (!_hayCargado()) { ST.ghost = null; ST.caraHi = null; return; }
+    var uvRaw = _pixelToUV(plano, sp.px, sp.py);
+    if (!uvRaw) { ST.ghost = null; ST.caraHi = null; return; }
+
+    // SNAP DE CARA — al acercarse a una cara del hormigón, esa cara se RESALTA y el
+    // ghost se PEGA a ella (el usuario ve a qué cara va antes de clicar). Solo con la
+    // herramienta Colocar; con Rango el rango se define libre dentro del contorno.
+    var f = (ST.tool === 'colocar') ? _caraCercana(plano, uvRaw) : null;
+    ST.caraHi = f ? { plano: plano, cara: f.cara, edge: f.edge, orient: f.orient, pos: f.pos, a: f.a, b: f.b } : null;
+
+    var dentro = _dentroDelBoundary(plano, uvRaw);
+    // Fuera del hormigón: pegar la forma al borde válido (clamp) y pintar en rojo.
+    var uv = dentro ? uvRaw : _clampAlBoundary(plano, uvRaw);
+    // Si hay cara resaltada (y estamos dentro), pegar el eje libre a la cara.
+    if (f && dentro) uv = _snapUvACara(uv, f);
+    ST.ghost = { plano: plano, uv: uv, valido: dentro };
+
+    var vista = svg.closest ? svg.closest('.te-vista') : null;
+    if (vista) vista.classList.toggle('te-ghost-block', !dentro);
+
+    var color = dentro ? _colDe(ST.cargado.tipologia) : '#d32f2f';
+    // resaltado de la cara (bajo el trazo del ghost).
+    if (f && dentro) _dibujarCaraHiEnCapa(layer, plano, f, _colDe(ST.cargado.tipologia));
+    var forma = _ghostForma(plano, uv);
+    if (!forma) return;
+
+    // Trazar la forma en pixeles.
+    if (forma.tipo === 'point') {
+      var pp = _uvToPixel(plano, forma.pts[0].u, forma.pts[0].v); if (!pp) return;
+      layer.appendChild(_svgEl('circle', { cx: pp.px.toFixed(1), cy: pp.py.toFixed(1), r: 4.6, fill: color, 'class': 'te-ghostpt', opacity: dentro ? 0.9 : 0.95 }));
+    } else {
+      var d = forma.pts.map(function (q, i) { var p = _uvToPixel(plano, q.u, q.v); return (i ? 'L' : 'M') + p.px.toFixed(1) + ',' + p.py.toFixed(1); }).join(' ');
+      if (forma.cerrar) d += ' Z';
+      layer.appendChild(_svgEl('path', { 'class': 'te-ghostbar', d: d, stroke: color }));
+      // puntas en los extremos (como la maqueta: circulitos .te-gpt en los vértices)
+      var ends = forma.tipo === 'line' ? [forma.pts[0], forma.pts[forma.pts.length - 1]] : [];
+      ends.forEach(function (q) { var p = _uvToPixel(plano, q.u, q.v); layer.appendChild(_svgEl('circle', { cx: p.px.toFixed(1), cy: p.py.toFixed(1), r: 3, 'class': 'te-gpt', fill: color })); });
+    }
+
+    // BADGE de texto "CBS ø16" pegado al cursor (fondo + texto), desplazado para no
+    // quedar bajo el puntero.
+    _dibujarGhostBadge(layer, sp.px, sp.py, ST.cargado.tipologia + ' ø' + ST.cargado.diam, color, sp.VW, sp.VH, dentro);
+  }
+
+  // Badge flotante junto al cursor. Se ancla arriba-derecha del puntero y se voltea
+  // si se saldría del viewBox.
+  function _dibujarGhostBadge(layer, px, py, texto, color, VW, VH, dentro) {
+    var padX = 5, h = 15, chW = 6.1;
+    var w = padX * 2 + texto.length * chW;
+    var bx = px + 12, by = py - h - 8;
+    if (bx + w > VW - 2) bx = px - 12 - w;      // voltea a la izquierda
+    if (bx < 2) bx = 2;
+    if (by < 2) by = py + 12;                   // voltea abajo
+    var g = _svgEl('g', { 'class': 'te-ghostbadge' });
+    g.appendChild(_svgEl('rect', { x: bx.toFixed(1), y: by.toFixed(1), width: w.toFixed(1), height: h, rx: 3, fill: color, opacity: dentro ? 0.92 : 0.95 }));
+    var t = _svgEl('text', { x: (bx + padX).toFixed(1), y: (by + h - 4.2).toFixed(1), 'class': 'te-ghostbadge-t', fill: '#fff' });
+    t.textContent = texto;
+    g.appendChild(t);
+    if (!dentro) {
+      // marca de "no permitido"
+      var nx = bx + w + 3;
+      if (nx + 10 < VW) {
+        var no = _svgEl('text', { x: nx.toFixed(1), y: (by + h - 3).toFixed(1), 'class': 'te-ghostbadge-t', fill: '#d32f2f' });
+        no.textContent = '⃠';
+        g.appendChild(no);
+      }
+    }
+    layer.appendChild(g);
+  }
+
+  // Separa visualmente los DOS ganchos del estribo en la proyección de SECCIÓN
+  // (§INTERACCIÓN-2.0 tarea 2). En el corte, el gancho de apertura y el de cierre
+  // caen uno SOBRE otro (los puntos [0]≈[n-1] y sus anclas [1]≈[n-2] coinciden) →
+  // se veían como UNA sola línea. Aquí desplazamos cada gancho ±½·diam PERPENDICULAR
+  // a su propio tramo, en unidades host (cm), para que se lean separados. Opera solo
+  // sobre los tramos-gancho (primero y último); el rectángulo perimetral no se toca.
+  // NO altera el motor ni el peso: es puramente el trazo 2D de esta vista.
+  function _separarGanchosSeccion(pts, diamCm) {
+    if (!pts || pts.length < 4) return pts;
+    var off = Math.max((Number(diamCm) || 0) / 2, 0.3);   // ½·diam en cm (mín visible)
+    var out = pts.map(function (q) { return { u: q.u, v: q.v }; });
+    function nudgeSeg(iTip, iAnchor, sign) {
+      var tip = out[iTip], anc = out[iAnchor];
+      var du = tip.u - anc.u, dv = tip.v - anc.v;
+      var len = Math.hypot(du, dv);
+      if (len < 1e-6) {   // gancho degenerado (tip encima del ancla): usa vertical
+        du = 0; dv = 1; len = 1;
+      }
+      // perpendicular unitaria (−dv, du)
+      var pu = -dv / len, pv = du / len;
+      // desplaza tanto la punta como su ancla → el tramo entero se corre paralelo,
+      // así el gancho no se "tuerce", solo se separa de su gemelo.
+      tip.u += sign * off * pu; tip.v += sign * off * pv;
+      anc.u += sign * off * pu; anc.v += sign * off * pv;
+    }
+    nudgeSeg(0, 1, +1);                       // gancho de apertura → un lado
+    nudgeSeg(pts.length - 1, pts.length - 2, -1);  // gancho de cierre → el otro
+    return out;
+  }
+
   // Dibuja UN cuadrante 2D. Guarda su transform para el hit-testing inverso.
   function _dibujarVista2D(svg, out, plano, geo) {
     if (!svg) return;
     while (svg.firstChild) svg.removeChild(svg.firstChild);
     var def = (_defsPlanos() || {})[plano];
     if (!def) { ST.transforms[plano] = null; return; }
-    var proj = _proyectorDe(def);
+    var proj = _proyectorDe(def);            // normal (u,v)
+    var projV = _proyectorVolteado(def);     // "de canto" (depth,v) para piezas volteadas
     var placements = (out && out.placements) || [];
 
-    // Bounding box en (u,v): hormigón + puntos proyectados.
+    // Bounding box en (u,v): hormigón + puntos proyectados (cada placement con el
+    // proyector que le toca según su pieza esté o no volteada).
     var minU = Infinity, maxU = -Infinity, minV = Infinity, maxV = -Infinity;
     function acc(u, v) {
       if (u < minU) minU = u; if (u > maxU) maxU = u;
@@ -463,7 +918,8 @@
     var rect = geo ? boundaryDeVista(geo, plano, def) : null;
     if (rect) { acc(-rect.W / 2, -rect.H / 2); acc(rect.W / 2, rect.H / 2); }
     placements.forEach(function (pl) {
-      (pl.puntos || []).forEach(function (pt) { var q = proj(pt); if (isFinite(q.u) && isFinite(q.v)) acc(q.u, q.v); });
+      var pj = _proyPlacement(def, proj, projV, pl);
+      (pl.puntos || []).forEach(function (pt) { var q = pj(pt); if (isFinite(q.u) && isFinite(q.v)) acc(q.u, q.v); });
     });
     if (!isFinite(minU) || !isFinite(minV)) { ST.transforms[plano] = null; return; }
 
@@ -498,11 +954,14 @@
       var rol = _rolDe(pl.tipologia);
       var ci = (pl.meta && pl.meta.ci != null) ? pl.meta.ci : -1;
       var sel = (ci === ST.selCi && ST.selCi >= 0);
-      var pts = (pl.puntos || []).map(proj).filter(function (q) { return isFinite(q.u) && isFinite(q.v); });
+      var volteado = _compVolteado(ci);
+      var pj = volteado ? projV : proj;
+      var pts = (pl.puntos || []).map(pj).filter(function (q) { return isFinite(q.u) && isFinite(q.v); });
       if (!pts.length) return;
 
-      // Cabezal longitudinal en SECCIÓN → punto (círculo).
-      if (plano === 'seccion' && rol === 'cabezal') {
+      // Cabezal longitudinal en SECCIÓN → punto (círculo). Si está VOLTEADO se ve
+      // "de canto" (línea a lo largo de X): NO se colapsa a punto → cae al trazo.
+      if (plano === 'seccion' && rol === 'cabezal' && !volteado) {
         var q0 = pts[0];
         if (sel) svg.appendChild(_svgEl('circle', { cx: X(q0.u), cy: Y(q0.v), r: 6.5, 'class': 'te-bar-halo' }));
         // círculo visible (no interactivo) + hit generoso encima
@@ -513,7 +972,9 @@
         }));
         return;
       }
-      var d = pts.map(function (q, i) { return (i ? 'L' : 'M') + X(q.u).toFixed(1) + ',' + Y(q.v).toFixed(1); }).join(' ');
+      // Estribo en SECCIÓN: separar los 2 ganchos ½·diam para que no se superpongan.
+      var dpts = (plano === 'seccion' && rol === 'estribo') ? _separarGanchosSeccion(pts, pl.diam) : pts;
+      var d = dpts.map(function (q, i) { return (i ? 'L' : 'M') + X(q.u).toFixed(1) + ',' + Y(q.v).toFixed(1); }).join(' ');
       if (sel) svg.appendChild(_svgEl('path', { 'class': 'te-bar-halo', d: d }));
       // barra VISIBLE (técnica, fina, sin eventos)
       svg.appendChild(_svgEl('path', {
@@ -603,6 +1064,9 @@
     _dibujarVista2D($('te_svgSeccion'), out, 'seccion', geo);
     _dibujarVista2D($('te_svgLargo'),   out, 'largo',   geo);
     _dibujarVista2D($('te_svgPlanta'),  out, 'planta',  geo);
+    // El botón contextual "Voltear plano (R)" se re-pega a la pieza tras redibujar
+    // (los transforms de cada vista quedaron frescos arriba → posición exacta).
+    _posicionarFlipBtn();
   }
 
   // ==========================================================================
@@ -669,16 +1133,25 @@
   // COLOCAR — clic en una vista crea un componente anclado.
   // ==========================================================================
   function _colocarEnVista(plano, host) {
+    _pushUndo();   // snapshot ANTES de mutar (tarea 1: _pushUndo antes de colocar)
     var rol = _rolDe(ST.tipologia);
-    var cara = _caraDefault(ST.tipologia);
-    // La cara puede ajustarse por el click: en sección, click en mitad sup→'sup'.
-    if (rol === 'cabezal') {
-      if (plano === 'seccion' || plano === 'largo') cara = (host.y >= 0) ? 'sup' : 'inf';
+    // CARA por SNAP DE CARA (elegida VIENDO): si hay una cara resaltada bajo el
+    // cursor en esta vista, esa manda. Reemplaza la adivinación host.y>=0.
+    var cara;
+    if (ST.caraHi && ST.caraHi.plano === plano && ST.caraHi.cara) {
+      cara = ST.caraHi.cara;
+    } else {
+      cara = _caraDefault(ST.tipologia);
+      if (rol === 'cabezal' && (plano === 'seccion' || plano === 'largo')) {
+        cara = (host.y >= 0) ? 'sup' : 'inf';   // fallback si el cursor no tocó una cara
+      }
     }
+    var meta = _metaModular(ST.tipologia);
     var comp = {
       tipologia: ST.tipologia, figura: ST.figura, diam: Number(ST.diam), suf_tipo: '',
       cara: cara, recub_override: null,
       angulos: _figSpec(ST.figura).angulos.slice(),
+      modo: meta.modo, plano_pieza: meta.plano_pieza, arreglo: meta.arreglo,
       dims: _dimsDefault(ST.figura, rol, ST.contorno),
       distribucion: _distDefault(rol)
     };
@@ -707,6 +1180,106 @@
     return ph;
   }
 
+  // ==========================================================================
+  // ROTAR PLANO DE LA PIEZA (§INTERACCIÓN-2.0) — NO rota EN el plano; VOLTEA el
+  // plano de la pieza. Toggle de comp.plano_pieza.volteado + regenerar. El motor
+  // 3D y los kilos NO cambian (es un cambio de PROYECCIÓN): en las vistas 2D, la
+  // pieza volteada pasa de dibujarse "de frente" (rectángulo cerrado del estribo,
+  // círculo del cabezal) a "de canto" (línea vertical a lo largo de su eje de
+  // profundidad + su rango). Así se define su eje longitudinal / dirección de
+  // distribución con UN solo mecanismo (resuelve fundación y trabas).
+  function rotarPlanoPieza(comp) {
+    if (!comp) return;
+    comp.plano_pieza = comp.plano_pieza || { volteado: false };
+    comp.plano_pieza.volteado = !comp.plano_pieza.volteado;
+    _regenerar();          // reproyecta las 4 vistas (2D leen plano_pieza por placement)
+    _renderPanel();
+    _posicionarFlipBtn();  // el overlay sigue pegado a la pieza tras reproyectar
+    _actualizarStatus();
+  }
+
+  // Voltear el plano de la pieza SELECCIONADA (lo llaman la tecla 'R' y el botón
+  // contextual que flota sobre la barra seleccionada). Snapshot para Ctrl+Z.
+  function _voltearSeleccion() {
+    if (ST.selCi < 0 || !ST.receta) return;
+    _pushUndo();
+    rotarPlanoPieza(ST.receta.componentes[ST.selCi]);
+  }
+
+  // --------------------------------------------------------------------------
+  // BOTÓN CONTEXTUAL "Voltear plano (R)" — flota junto a la pieza seleccionada.
+  // Se posiciona en coords del contenedor #te_quad a partir del bounding box de
+  // los placements del componente seleccionado en la MEJOR vista donde se ve.
+  // --------------------------------------------------------------------------
+  // viewBox (px del svg) → coords cliente, inverso de _svgPoint (xMidYMid meet).
+  function _svgToClient(svg, px, py) {
+    var vb = (svg.getAttribute('viewBox') || '0 0 620 300').split(/\s+/).map(Number);
+    var r = svg.getBoundingClientRect();
+    if (!r.width || !r.height) return null;
+    var VW = vb[2] || 620, VH = vb[3] || 300;
+    var scale = Math.min(r.width / VW, r.height / VH);
+    var padX = (r.width - VW * scale) / 2, padY = (r.height - VH * scale) / 2;
+    return { x: r.left + padX + px * scale, y: r.top + padY + py * scale };
+  }
+
+  // bbox (en px del viewBox) de los placements del componente ci en un plano dado,
+  // usando el proyector que corresponde (volteado o no). null si no hay puntos.
+  function _bboxCompEnPlano(ci, plano) {
+    var t = ST.transforms[plano]; if (!t) return null;
+    var def = (_defsPlanos() || {})[plano]; if (!def) return null;
+    var out = ST.ultimoOut; if (!out || !out.placements) return null;
+    var pj = _compVolteado(ci) ? _proyectorVolteado(def) : _proyectorDe(def);
+    function X(u) { return t.offX + (u - t.minU) * t.s; }
+    function Y(v) { return t.offY + (t.maxV - v) * t.s; }
+    var minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity, n = 0;
+    out.placements.forEach(function (pl) {
+      if (!pl.meta || pl.meta.ci !== ci) return;
+      (pl.puntos || []).forEach(function (pt) {
+        var q = pj(pt); if (!isFinite(q.u) || !isFinite(q.v)) return;
+        var x = X(q.u), y = Y(q.v);
+        if (x < minX) minX = x; if (x > maxX) maxX = x;
+        if (y < minY) minY = y; if (y > maxY) maxY = y; n++;
+      });
+    });
+    if (!n) return null;
+    return { minX: minX, minY: minY, maxX: maxX, maxY: maxY };
+  }
+
+  // Posiciona (o esconde) el botón de voltear sobre la pieza seleccionada.
+  // Elige la vista donde la pieza tenga mayor extensión visible (más "agarrable"),
+  // priorizando la última tocada. Sin selección → oculto.
+  function _posicionarFlipBtn() {
+    var btn = $('te_flipBtn'); if (!btn) return;
+    var quad = $('te_quad');
+    if (ST.selCi < 0 || !ST.receta || !ST.receta.componentes[ST.selCi] || !quad) {
+      btn.classList.remove('on'); return;
+    }
+    var planos = ['seccion', 'largo', 'planta'];
+    // ordenar: la última tocada primero (empate → la de mayor área de bbox).
+    var mejor = null, mejorPlano = null, mejorScore = -1;
+    planos.forEach(function (p) {
+      var bb = _bboxCompEnPlano(ST.selCi, p); if (!bb) return;
+      var area = Math.max(1, (bb.maxX - bb.minX)) * Math.max(1, (bb.maxY - bb.minY));
+      var score = area + (p === ST.ultimoPlano ? 1e9 : 0);   // preferir la última vista tocada
+      if (score > mejorScore) { mejorScore = score; mejor = bb; mejorPlano = p; }
+    });
+    if (!mejor) { btn.classList.remove('on'); return; }
+    var svg = $(SVG_ID[mejorPlano]); if (!svg) { btn.classList.remove('on'); return; }
+    // Esquina sup-der del bbox en coords cliente → coords relativas a #te_quad.
+    var cli = _svgToClient(svg, mejor.maxX, mejor.minY); if (!cli) { btn.classList.remove('on'); return; }
+    var qr = quad.getBoundingClientRect();
+    var bw = 30, bh = 30, pad = 6;
+    var left = cli.x - qr.left + pad;             // un pelín a la derecha del extremo
+    var top = cli.y - qr.top - bh - pad;          // justo por encima
+    // Clampear dentro del cuadrante (que nunca se salga del área visible).
+    left = Math.max(2, Math.min(qr.width - bw - 2, left));
+    top = Math.max(2, Math.min(qr.height - bh - 2, top));
+    btn.style.left = left + 'px';
+    btn.style.top = top + 'px';
+    btn.classList.add('on');
+    btn.classList.toggle('flipped', _compVolteado(ST.selCi));
+  }
+
   // (El etiquetado ci de cada placement se hace en _regenerar → _etiquetarCi.)
 
   // ==========================================================================
@@ -721,6 +1294,7 @@
 
   function _borrarSeleccion() {
     if (ST.selCi < 0 || !ST.receta) return;
+    _pushUndo();
     ST.receta.componentes.splice(ST.selCi, 1);
     ST.selCi = -1;
     _regenerar();
@@ -729,6 +1303,7 @@
 
   function _rotarSeleccion(plano, deltaDeg) {
     if (ST.selCi < 0 || !ST.receta) return;
+    _pushUndo();
     var c = ST.receta.componentes[ST.selCi];
     var eje = EJE_ROT[plano] || 'x';
     if (!c.orient || c.orient.eje !== eje) c.orient = { eje: eje, deg: 0 };
@@ -755,23 +1330,40 @@
         _setPlanoActivo(plano);
       });
 
+      // GHOST (tarea 1) — sigue el cursor mientras haya algo cargado. No regenera:
+      // dibuja en la capa dedicada. Si hay un arrastre en curso, no interfiere.
+      svg.addEventListener('mousemove', function (evt) {
+        if (ST.dragMove || ST.dragNode || ST.dragRango) return;
+        if (!_hayCargado()) { if (ST.ghost) _limpiarGhost(); return; }
+        var sp = _svgPoint(svg, evt); if (!sp) return;
+        ST.ultimoPlano = plano;
+        _dibujarGhost(plano, svg, sp);
+      });
+      svg.addEventListener('mouseleave', function () {
+        var g = svg.querySelector('.te-ghost-layer'); if (g) while (g.firstChild) g.removeChild(g.firstChild);
+        var v = svg.closest ? svg.closest('.te-vista') : null; if (v) v.classList.remove('te-ghost-block');
+        if (ST.ghost && ST.ghost.plano === plano) ST.ghost = null;
+        if (ST.caraHi && ST.caraHi.plano === plano) ST.caraHi = null;
+      });
+
       svg.addEventListener('mousedown', function (evt) {
         ST.ultimoPlano = plano;
         var sp = _svgPoint(svg, evt); if (!sp) return;
 
         // ¿tocó un NODO?
         var tgtNode = evt.target && evt.target.getAttribute && evt.target.getAttribute('data-node');
-        if (tgtNode) { evt.preventDefault(); ST.dragNode = { plano: plano, corner: tgtNode }; return; }
+        if (tgtNode) { evt.preventDefault(); _pushUndo(); ST.dragNode = { plano: plano, corner: tgtNode }; return; }
 
         // ¿tocó la flechita de RANGO?
         var tgtRango = evt.target && evt.target.getAttribute && evt.target.getAttribute('data-rango');
-        if (tgtRango != null) { evt.preventDefault(); ST.dragRango = { ci: Number(tgtRango), plano: plano, lastX: sp.px }; return; }
+        if (tgtRango != null) { evt.preventDefault(); _pushUndo(); ST.dragRango = { ci: Number(tgtRango), plano: plano, lastX: sp.px }; return; }
 
         var uv = _pixelToUV(plano, sp.px, sp.py);
 
-        // Herramienta RANGO: 2 clics.
+        // Herramienta RANGO: 2 clics. Clamp: ambos clics dentro del hormigón.
         if (ST.tool === 'rango') {
           if (!uv) return;
+          if (!_dentroDelBoundary(plano, uv)) { _actualizarStatus('Fuera del hormigón: define el rango dentro del contorno.'); return; }
           var host = _clickHost(plano, uv);
           _rangoClick(plano, host);
           return;
@@ -783,14 +1375,19 @@
           ci = Number(ci);
           _seleccionar(ci);
           if (ST.tool === 'mover' && uv) {
-            ST.dragMove = { ci: ci, plano: plano, startHost: _clickHost(plano, uv), startHint: _clonHint(ci) };
+            // pushed:false → el snapshot se toma en el 1er movimiento real (un
+            // simple clic para seleccionar NO ensucia el stack de undo).
+            ST.dragMove = { ci: ci, plano: plano, startHost: _clickHost(plano, uv), startHint: _clonHint(ci), pushed: false };
           }
           evt.preventDefault();
           return;
         }
 
         // Herramienta COLOCAR: clic en vacío → nueva barra.
+        // CLAMP (tarea 3): si el clic cae FUERA del hormigón, NO se coloca nada
+        // (mata "barras al aire"). El ghost ya avisó en rojo + not-allowed.
         if (ST.tool === 'colocar' && uv) {
+          if (!_dentroDelBoundary(plano, uv)) { _actualizarStatus('Fuera del hormigón: clic dentro del contorno para colocar.'); return; }
           var h2 = _clickHost(plano, uv);
           _colocarEnVista(plano, h2);
           return;
@@ -832,14 +1429,28 @@
   function _dragMover(plano, uv) {
     var dm = ST.dragMove; if (!dm) return;
     var c = ST.receta.componentes[dm.ci]; if (!c) return;
+    if (!dm.pushed) { _pushUndo(); dm.pushed = true; }   // snapshot en el 1er move
     var host = _clickHost(plano, uv);
     var dx = host.x - dm.startHost.x, dy = host.y - dm.startHost.y, dz = host.z - dm.startHost.z;
     var base = dm.startHint || {};
     c.pos_hint = c.pos_hint || {};
+    // CORRECCIÓN INTERNA (§INTERACCIÓN-2.0 · triple contabilidad de Y): un CABEZAL
+    // NO puede moverse en Y — la Y la manda el sistema de capas (distribuidorLayered)
+    // + el retranqueo por dependencias. Escribir pos_hint.y en un cabezal chocaría
+    // con las capas. Por eso, para cabezales, el arrastre solo toca X/Z (la Y queda
+    // gobernada por las capas). Estribos/trabas SÍ pueden ajustar Y (no son layered).
+    var esCabezal = (_rolDe(c.tipologia) === 'cabezal');
     // Solo mueve en los ejes que el plano controla.
-    if (plano === 'seccion') { c.pos_hint.z = (base.z || 0) + dz; c.pos_hint.y = (base.y || 0) + dy; }
-    else if (plano === 'largo') { c.pos_hint.x = (base.x || 0) + dx; c.pos_hint.y = (base.y || 0) + dy; }
-    else { c.pos_hint.x = (base.x || 0) + dx; c.pos_hint.z = (base.z || 0) + dz; }
+    if (plano === 'seccion') {
+      c.pos_hint.z = (base.z || 0) + dz;                         // ancho (Z) — siempre
+      if (!esCabezal) c.pos_hint.y = (base.y || 0) + dy;         // Y sólo si NO es cabezal
+    } else if (plano === 'largo') {
+      c.pos_hint.x = (base.x || 0) + dx;                         // largo (X) — siempre
+      if (!esCabezal) c.pos_hint.y = (base.y || 0) + dy;         // Y sólo si NO es cabezal
+    } else {
+      c.pos_hint.x = (base.x || 0) + dx;
+      c.pos_hint.z = (base.z || 0) + dz;
+    }
     _regenerarDiferido();
   }
 
@@ -884,8 +1495,11 @@
     }
     var from = ST.rangoTmp.from, to = host;
     ST.rangoTmp = null;
+    _pushUndo();   // snapshot antes de activar la distribución por rango
     c.distribucion = c.distribucion || {};
-    c.distribucion.modo = 'linear';
+    // La herramienta ↔ Rango define una DISTRIBUCIÓN lineal salvo que el componente
+    // ya esté en modo arreglo (ahí el rango es el "a lo largo" del arreglo 2D).
+    if (_modoDe(c) !== 'arreglo') { c.modo = 'lineal'; c.distribucion.modo = 'linear'; }
     c.distribucion.activa = true;
     c.distribucion.sep = c.distribucion.sep || (_rolDe(c.tipologia) === 'traba' ? 40 : 20);
     c.distribucion.rango = { from: from.x, to: to.x, sep: c.distribucion.sep };
@@ -1029,47 +1643,118 @@
     return row;
   }
 
+  // Panel de distribución = SELECTOR de modo (3 botones) + campos CONTEXTUALES
+  // según el modo (menú contextual, §0-11ter / §INTERACCIÓN-2.0). El "centrar vs
+  // repartir" del modo puntual es un control EXPLÍCITO (no truco de clics).
   function _distBox(c, ci, rol, d) {
+    var modo = _modoDe(c);
     var box = _div('te-modebox');
+
+    // --- cabecera: título + chip del modo activo ---
     var head = _div('te-mh');
-    var modoLabel = { layered: 'CAPAS', linear: 'LINEAL @', grid: 'ÁREA 2D', perimeter: 'PERÍMETRO', points: 'PUNTUAL' }[d.modo] || 'LINEAL @';
-    head.innerHTML = '<span>Distribución</span><span class="te-chip">' + modoLabel + '</span><span style="flex:1"></span>';
-    // check activar (para estribo/traba)
-    if (rol !== 'cabezal') {
-      var lab = document.createElement('label');
-      lab.style.cssText = 'display:inline-flex;align-items:center;gap:4px;font-size:10.5px;font-weight:600;color:var(--te-muted)';
-      var cbx = document.createElement('input'); cbx.type = 'checkbox'; cbx.style.width = 'auto'; cbx.checked = !!d.activa;
-      cbx.addEventListener('change', function () { d.activa = cbx.checked; if (d.activa && !d.rango) { var g = ST.receta.geometria; d.rango = { from: -g.largo / 2 + 4, to: g.largo / 2 - 4, sep: d.sep || 20 }; if (c.pos_hint) delete c.pos_hint.x; } _mut(ci); _renderPanel(); });
-      lab.appendChild(cbx); lab.appendChild(document.createTextNode('activar')); head.appendChild(lab);
-    }
+    var chip = { puntual: 'PUNTUAL', lineal: 'DISTRIBUCIÓN', arreglo: 'ARREGLO' }[modo] || 'PUNTUAL';
+    head.innerHTML = '<span>Colocación</span><span class="te-chip">' + chip + '</span><span style="flex:1"></span>';
     box.appendChild(head);
 
-    if (d.modo === 'layered') {
-      var g3 = _div('te-grid3');
-      g3.appendChild(_fld('N° capas', _input({ value: d.n_capas || 1, type: 'number' }, function (v) { d.n_capas = Math.max(1, Number(v) || 1); _mut(ci, true); })));
-      g3.appendChild(_fld('Barras/capa', _input({ value: d.barras_capa || 1, type: 'number' }, function (v) { d.barras_capa = Math.max(1, Number(v) || 1); _mut(ci, true); })));
-      g3.appendChild(_fld('Sep. capas cm', _input({ value: d.gap != null ? d.gap : 4, type: 'number' }, function (v) { d.gap = Number(v) || 0; _mut(ci); })));
-      box.appendChild(g3);
-    } else if (d.zonas && d.zonas.length && !d.rango && d.zonas.some(function (z) { return z.long > 0; })) {
-      // Distribución por ZONAS (semilla): @ editable por zona (confinamiento/central).
+    // --- los 3 BOTONCITOS DE MODO ---
+    var seg = _div('te-modeseg');
+    [['puntual', 'Puntual', 'Barras/capas hacia el núcleo'],
+     ['lineal', 'Distribución', 'Rango @ espaciamiento (ceil(dist/@)+1)'],
+     ['arreglo', 'Arreglo', 'Rango × capas (malla / trabas)']
+    ].forEach(function (m) {
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'te-modebtn' + (m[0] === modo ? ' on' : '');
+      b.textContent = m[1];
+      b.title = m[2];
+      b.addEventListener('click', function () {
+        if (_modoDe(c) === m[0]) return;
+        _pushUndo();
+        _setModoComp(c, m[0]);
+        _regenerar();
+        _renderPanel();   // re-render → campos contextuales del nuevo modo
+      });
+      seg.appendChild(b);
+    });
+    box.appendChild(seg);
+
+    // --- campos contextuales por modo ---
+    if (modo === 'puntual') _camposPuntual(box, c, ci, rol, d);
+    else if (modo === 'lineal') _camposLineal(box, c, ci, rol, d);
+    else _camposArreglo(box, c, ci, rol, d);
+
+    return box;
+  }
+
+  // PUNTUAL — cara (arriba, ya está en la ficha) + centrar/repartir + nº barras/capa
+  // + nº capas + espaciamiento (las capas se apilan hacia el núcleo).
+  function _camposPuntual(box, c, ci, rol, d) {
+    // centrar vs repartir: control EXPLÍCITO (reparte las barras/capa a lo ancho,
+    // o las centra). Se persiste en d.justify (dato para el motor/futuro).
+    var jRow = _div('te-row');
+    jRow.appendChild(_label('Disposición'));
+    jRow.appendChild(_radial([['centrar', 'Centrar'], ['repartir', 'Repartir']], d.justify || 'centrar', function (v) { d.justify = v; _mut(ci); }));
+    box.appendChild(jRow);
+
+    var g3 = _div('te-grid3');
+    g3.appendChild(_fld('Barras/capa', _input({ value: d.barras_capa || 1, type: 'number' }, function (v) { d.barras_capa = Math.max(1, Number(v) || 1); _mut(ci, true); })));
+    g3.appendChild(_fld('N° capas', _input({ value: d.n_capas || 1, type: 'number' }, function (v) { d.n_capas = Math.max(1, Number(v) || 1); _mut(ci, true); })));
+    g3.appendChild(_fld('Sep. capas cm', _input({ value: d.gap != null ? d.gap : 4, type: 'number' }, function (v) { d.gap = Number(v) || 0; _mut(ci); })));
+    box.appendChild(g3);
+    var note = _div('te-note'); note.textContent = 'Las capas se apilan desde la cara hacia el núcleo con la separación indicada.';
+    box.appendChild(note);
+  }
+
+  // LINEAL — rango (from/to) + espaciamiento @. cant = ceil(dist/@)+1.
+  function _camposLineal(box, c, ci, rol, d) {
+    // Si la semilla trae ZONAS (sin rango), se editan por zona (confinamiento).
+    if (d.zonas && d.zonas.length && !d.rango && d.zonas.some(function (z) { return z.long > 0; })) {
       d.zonas.forEach(function (z, zi) {
         var zr = _div('te-grid2');
         zr.appendChild(_fld('Zona ' + (zi + 1) + ' long', _input({ value: z.long, type: 'number' }, function (v) { z.long = Number(v) || 0; _mut(ci); })));
         zr.appendChild(_fld('@ sep cm', _input({ value: z.sep, type: 'number' }, function (v) { z.sep = Number(v) || 1; _mut(ci); })));
         box.appendChild(zr);
       });
-      var note0 = _div('te-note'); note0.textContent = 'Zonas de espaciamiento (extremos confinados / centro). Para redefinir por pantalla usa la herramienta ↔ Rango.';
+      var note0 = _div('te-note'); note0.textContent = 'Zonas de espaciamiento (extremos confinados / centro). Cambia a rango con la herramienta ↔ Rango.';
       box.appendChild(note0);
-    } else {
-      var g2 = _div('te-grid2');
-      g2.appendChild(_fld('@ sep cm', _input({ value: d.sep || 20, type: 'number' }, function (v) { d.sep = Number(v) || 20; if (d.rango) d.rango.sep = d.sep; _mut(ci); })));
-      var rangoTxt = d.rango ? (Math.round(d.rango.from) + ' → ' + Math.round(d.rango.to) + ' cm') : '(usa herramienta ↔ Rango)';
-      g2.appendChild(_fld('Rango', _static(rangoTxt)));
-      box.appendChild(g2);
-      var note = _div('te-note'); note.textContent = 'Activa la distribución y define el rango con 2 clics (herramienta ↔ Rango), o arrastra la flechita doble.';
-      box.appendChild(note);
+      return;
     }
-    return box;
+    var g2 = _div('te-grid2');
+    g2.appendChild(_fld('@ sep cm', _input({ value: d.sep || 20, type: 'number' }, function (v) { d.sep = Number(v) || 20; if (d.rango) d.rango.sep = d.sep; _mut(ci); })));
+    g2.appendChild(_fld('Rango', _rangoEditor(c, d, ci)));
+    box.appendChild(g2);
+    var note = _div('te-note'); note.textContent = 'Define el rango (from → to) por campos, con 2 clics (herramienta ↔ Rango) o arrastrando la flechita doble. cant = ceil(dist/@)+1.';
+    box.appendChild(note);
+  }
+
+  // ARREGLO — rango en un sentido + n_capas + sep_capas (rango × capas). El eje de
+  // profundidad de las capas lo fija el plano de trabajo (eje_capas).
+  function _camposArreglo(box, c, ci, rol, d) {
+    if (!d.rango) d.rango = _rangoDefault(d.sep || 20);
+    var g2 = _div('te-grid2');
+    g2.appendChild(_fld('@ sep (rango) cm', _input({ value: d.sep || 20, type: 'number' }, function (v) { d.sep = Number(v) || 20; if (d.rango) d.rango.sep = d.sep; _mut(ci); })));
+    g2.appendChild(_fld('Rango', _rangoEditor(c, d, ci)));
+    box.appendChild(g2);
+
+    var g3 = _div('te-grid3');
+    g3.appendChild(_fld('N° capas', _input({ value: d.n_capas || 2, type: 'number' }, function (v) { d.n_capas = Math.max(1, Number(v) || 1); _mut(ci); })));
+    g3.appendChild(_fld('Sep. capas cm', _input({ value: d.sep_capas != null ? d.sep_capas : 10, type: 'number' }, function (v) { d.sep_capas = Number(v) || 0; _mut(ci); })));
+    g3.appendChild(_fld('Prof. (capas)', _selectPairs([['x', 'largo'], ['y', 'alto'], ['z', 'ancho']], d.eje_capas || _ejeCapasDefault(), function (v) { d.eje_capas = v; _mut(ci); })));
+    box.appendChild(g3);
+    var note = _div('te-note'); note.textContent = 'Arreglo 2D = rango a lo largo × N capas separadas en profundidad. n_capas=1 equivale a la distribución lineal. El plano de trabajo activo sugiere la profundidad.';
+    box.appendChild(note);
+  }
+
+  // Editor compacto del rango (from/to en cm) — números editables.
+  function _rangoEditor(c, d, ci) {
+    var wrap = _div(''); wrap.style.cssText = 'display:flex;gap:4px;align-items:center';
+    if (!d.rango) { return _static('(usa ↔ Rango)'); }
+    var fi = _input({ value: Math.round(d.rango.from), type: 'number' }, function (v) { d.rango.from = Number(v); _mut(ci); });
+    var ti = _input({ value: Math.round(d.rango.to), type: 'number' }, function (v) { d.rango.to = Number(v); _mut(ci); });
+    fi.style.width = '52px'; ti.style.width = '52px';
+    var sep = document.createElement('span'); sep.textContent = '→'; sep.style.cssText = 'color:var(--te-muted);font-size:11px';
+    wrap.appendChild(fi); wrap.appendChild(sep); wrap.appendChild(ti);
+    return wrap;
   }
 
   // --- fábricas de UI reutilizables ---
@@ -1092,6 +1777,13 @@
     el.addEventListener('change', function () { onchange(el.value); });
     return el;
   }
+  // como _select pero con pares [valor, etiqueta] (valor persistido ≠ texto visible).
+  function _selectPairs(pairs, val, onchange) {
+    var el = document.createElement('select');
+    pairs.forEach(function (p) { var op = document.createElement('option'); op.value = p[0]; op.textContent = p[1]; if (p[0] === val) op.selected = true; el.appendChild(op); });
+    el.addEventListener('change', function () { onchange(el.value); });
+    return el;
+  }
   function _radial(pairs, val, onchange) {
     var r = _div('te-radial');
     pairs.forEach(function (p) {
@@ -1104,6 +1796,11 @@
   function _esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
 
   // Mutación de un componente → regenerar. redibujaPanel solo si cambia la ficha.
+  // (El snapshot de undo NO se toma aquí: los handlers de campo ya mutaron el
+  //  componente antes de llamar a _mut, así que un push aquí capturaría el estado
+  //  YA cambiado. El undo cubre las acciones estructurales — colocar/borrar/rotar/
+  //  duplicar/agregar/rango/mover/nodo/reordenar — donde el snapshot precede a la
+  //  mutación.)
   function _mut(ci, redibujaFicha) {
     _regenerar();
     if (redibujaFicha) _renderPanel();
@@ -1124,6 +1821,7 @@
 
   function _duplicar(ci) {
     var c = ST.receta.componentes[ci]; if (!c) return;
+    _pushUndo();
     var copia = JSON.parse(JSON.stringify(c));
     ST.receta.componentes.splice(ci + 1, 0, copia);
     ST.selCi = ci + 1;
@@ -1141,6 +1839,7 @@
       var from = Number(e.dataTransfer.getData('text/plain'));
       var to = ci;
       if (isNaN(from) || from === to) return;
+      _pushUndo();
       var arr = ST.receta.componentes;
       var m = arr.splice(from, 1)[0]; arr.splice(to, 0, m);
       ST.selCi = to;
@@ -1151,13 +1850,29 @@
   // ==========================================================================
   // RIBBON + HERRAMIENTAS
   // ==========================================================================
+
+  // "Cargar" = sellar figura+tipología+φ+contorno del ribbon → el ghost sigue el
+  // cursor y el clic coloca (§INTERACCIÓN-2.0 tarea 1). Se sella al elegir en el
+  // ribbon o al activar una herramienta de colocación.
+  function _sellarCargado() {
+    ST.cargado = { figura: ST.figura, tipologia: ST.tipologia, diam: Number(ST.diam), contorno: ST.contorno !== false };
+    _actualizarStatus();
+  }
+
+  // Soltar lo cargado (Esc / herramienta que no coloca) → sin ghost, deselecciona.
+  function _soltarCargado() {
+    ST.cargado = null;
+    _limpiarGhost();
+    _actualizarStatus();
+  }
+
   function _bindRibbon() {
     var fig = $('te_ribFigura');
-    if (fig && !fig._teBound) { fig._teBound = true; fig.addEventListener('change', function () { ST.figura = fig.value.trim().toUpperCase() || '103B'; _actualizarStatus(); }); ST.figura = fig.value.trim().toUpperCase() || ST.figura; }
+    if (fig && !fig._teBound) { fig._teBound = true; fig.addEventListener('change', function () { ST.figura = fig.value.trim().toUpperCase() || '103B'; if (_hayCargado()) _sellarCargado(); else _actualizarStatus(); }); ST.figura = fig.value.trim().toUpperCase() || ST.figura; }
     var dia = $('te_ribDiam');
-    if (dia && !dia._teBound) { dia._teBound = true; dia.addEventListener('change', function () { ST.diam = Number(dia.value) || 16; _actualizarStatus(); }); ST.diam = Number(dia.value) || ST.diam; }
+    if (dia && !dia._teBound) { dia._teBound = true; dia.addEventListener('change', function () { ST.diam = Number(dia.value) || 16; if (_hayCargado()) _sellarCargado(); else _actualizarStatus(); }); ST.diam = Number(dia.value) || ST.diam; }
     var con = $('te_ribContorno');
-    if (con && !con._teBound) { con._teBound = true; con.addEventListener('change', function () { ST.contorno = con.checked; }); ST.contorno = con.checked; }
+    if (con && !con._teBound) { con._teBound = true; con.addEventListener('change', function () { ST.contorno = con.checked; if (_hayCargado()) _sellarCargado(); }); ST.contorno = con.checked; }
 
     var tips = $('te_tipbtns');
     if (tips && !tips._teBound) {
@@ -1167,7 +1882,9 @@
           tips.querySelectorAll('.te-tipbtn').forEach(function (x) { x.classList.remove('on'); });
           b.classList.add('on');
           ST.tipologia = b.getAttribute('data-tip') || 'CBS';
-          _actualizarStatus();
+          // Elegir tipología "carga" la herramienta (si estás colocando/rango).
+          if (ST.tool === 'colocar' || ST.tool === 'rango') _sellarCargado();
+          else _actualizarStatus();
         });
       });
     }
@@ -1182,6 +1899,14 @@
         b.classList.add('on');
         ST.tool = b.getAttribute('data-tool');
         ST.rangoTmp = null;
+        // Al cambiar de herramienta se apaga el snap de cara (evita resaltados
+        // fantasma con Mover/Rango/Rotar); el ghost se redibuja en el próximo hover.
+        var caraPlano = ST.caraHi && ST.caraHi.plano;
+        ST.caraHi = null;
+        // Herramienta de colocación → carga el ghost; las demás lo sueltan.
+        if (ST.tool === 'colocar' || ST.tool === 'rango') _sellarCargado();
+        else _soltarCargado();
+        if (caraPlano) _redibujar2D(ST.ultimoOut);   // limpia la cara resaltada
         _setQuadCursor();
         _actualizarStatus();
       });
@@ -1198,14 +1923,26 @@
     if (del) del.addEventListener('click', function () { _borrarSeleccion(); });
     var add = $('te_addComp');
     if (add && !add._teBound) { add._teBound = true; add.addEventListener('click', function () { _agregarComponenteManual(); }); }
+
+    // Botón contextual "Voltear plano (R)" sobre la pieza seleccionada.
+    var flip = $('te_flipBtn');
+    if (flip && !flip._teBound) {
+      flip._teBound = true;
+      flip.addEventListener('click', function (e) { e.stopPropagation(); _voltearSeleccion(); });
+      // evitar que el mousedown burbujee a las vistas (no deseleccionar al clicarlo)
+      flip.addEventListener('mousedown', function (e) { e.stopPropagation(); });
+    }
   }
 
   function _agregarComponenteManual() {
+    _pushUndo();
     var rol = _rolDe(ST.tipologia);
+    var meta = _metaModular(ST.tipologia);
     var comp = {
       tipologia: ST.tipologia, figura: ST.figura, diam: Number(ST.diam), suf_tipo: '',
       cara: _caraDefault(ST.tipologia), recub_override: null,
       angulos: _figSpec(ST.figura).angulos.slice(),
+      modo: meta.modo, plano_pieza: meta.plano_pieza, arreglo: meta.arreglo,
       dims: _dimsDefault(ST.figura, rol, ST.contorno),
       distribucion: _distDefault(rol)
     };
@@ -1233,17 +1970,29 @@
       '<b style="color:' + _colDe(ST.tipologia) + '">' + _esc(ST.tipologia) + '</b> ø' + _esc(ST.diam) + selTxt;
   }
 
-  // Teclado: ESPACIO rota 90°, Supr/Backspace borra.
+  // Teclado: Ctrl+Z deshace · ESPACIO rota 90° · R voltea el plano de la pieza ·
+  // Supr/Backspace borra.
   function _bindTeclado() {
     if (ST._tecladoOk) return; ST._tecladoOk = true;
     document.addEventListener('keydown', function (e) {
       var bd = $('te_backdrop');
       if (!bd || !bd.classList.contains('on')) return;
-      // no capturar mientras se escribe en un input/select
+      // no capturar mientras se escribe en un input/select (deja el undo nativo del
+      // campo de texto y el tipeo normal)
       var tag = (e.target && e.target.tagName || '').toLowerCase();
       if (tag === 'input' || tag === 'select' || tag === 'textarea') return;
+      // Ctrl/Cmd+Z → deshacer (tarea 4). Shift+Ctrl+Z NO se usa (sin redo).
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'z' || e.key === 'Z') && !e.shiftKey) {
+        e.preventDefault(); _undo(); return;
+      }
       if (e.key === ' ' || e.code === 'Space') {
         if (ST.selCi >= 0) { e.preventDefault(); _rotarSeleccion(ST.ultimoPlano, 90); }
+      } else if (e.key === 'r' || e.key === 'R') {
+        // R → VOLTEAR PLANO DE LA PIEZA (§INTERACCIÓN-2.0). Ignorar combos con
+        // modificadores (Ctrl+R recargar, etc.).
+        if (!e.ctrlKey && !e.metaKey && !e.altKey && ST.selCi >= 0) {
+          e.preventDefault(); _voltearSeleccion();
+        }
       } else if (e.key === 'Delete' || e.key === 'Backspace') {
         if (ST.selCi >= 0) { e.preventDefault(); _borrarSeleccion(); }
       }
@@ -1348,6 +2097,14 @@
     _bindVistas();
     _bindTeclado();
     _setQuadCursor();
+    // Al redimensionar la ventana, el overlay de voltear se re-pega a la pieza.
+    if (!ST._resizeBtnBound) {
+      ST._resizeBtnBound = true;
+      global.addEventListener('resize', function () {
+        var bd = $('te_backdrop');
+        if (bd && bd.classList.contains('on')) _posicionarFlipBtn();
+      });
+    }
   }
 
   global.templateEditorAbrir = function () {
@@ -1362,6 +2119,10 @@
     });
     bd.classList.add('on');
     _bindUI();
+    // Undo limpio por sesión + sellar lo cargado (la herramienta por defecto es
+    // 'colocar' → el ghost queda listo para seguir el cursor de una).
+    ST.undoStack = [];
+    if (ST.tool === 'colocar' || ST.tool === 'rango') _sellarCargado(); else ST.cargado = null;
     _renderPanel();
     _regenerar();
     global.requestAnimationFrame(function () { global.requestAnimationFrame(function () {
@@ -1371,6 +2132,10 @@
 
   global.templateEditorCerrar = function () {
     var bd = $('te_backdrop'); if (bd) bd.classList.remove('on');
+    // limpiar estado transitorio de hover (snap de cara / ghost) y esconder overlay.
+    ST.caraHi = null;
+    _limpiarGhost();
+    var fb = $('te_flipBtn'); if (fb) fb.classList.remove('on');
   };
 
   global.templateEditorVerEn3D = function () { _iniciar3dEnVivo(); };
@@ -1380,14 +2145,25 @@
     var bd = $('te_backdrop');
     if (bd && e.target === bd) global.templateEditorCerrar();
   });
-  // Cerrar con Escape (si no hay un rango en curso)
+  // Escape (tarea 4): 1º cancela un rango en curso · 2º SUELTA lo cargado
+  // (deselecciona la herramienta → 'mover', mata el ghost) · 3º cierra el modal.
   document.addEventListener('keydown', function (e) {
     if (e.key !== 'Escape') return;
     var bd = $('te_backdrop');
-    if (bd && bd.classList.contains('on')) {
-      if (ST.rangoTmp) { ST.rangoTmp = null; _redibujar2D(ST.ultimoOut); _actualizarStatus(); return; }
-      global.templateEditorCerrar();
+    if (!bd || !bd.classList.contains('on')) return;
+    if (ST.rangoTmp) { ST.rangoTmp = null; _redibujar2D(ST.ultimoOut); _actualizarStatus(); return; }
+    if (_hayCargado()) {
+      // pasar a "mover" (herramienta que no coloca) y soltar el ghost
+      var ct = $('te_ctools');
+      if (ct) {
+        ct.querySelectorAll('.te-ctool[data-tool]').forEach(function (x) { x.classList.toggle('on', x.getAttribute('data-tool') === 'mover'); });
+      }
+      ST.tool = 'mover';
+      _soltarCargado();
+      _setQuadCursor();
+      return;
     }
+    global.templateEditorCerrar();
   });
 
   // Exponer para tests / depuración.
@@ -1397,7 +2173,20 @@
     _borrarSeleccion: _borrarSeleccion, _rangoClick: _rangoClick,
     _rolDe: _rolDe,
     boundaryDeVista: boundaryDeVista, _rectPlano: _rectPlano,   // P2/base task2
-    setPlanoActivo: _setPlanoActivo                             // P3 — 'seccion'|'largo'|'planta'|null
+    setPlanoActivo: _setPlanoActivo,                            // P3 — 'seccion'|'largo'|'planta'|null
+    // INTERACCIÓN-2.0 · ghost + grosor + clamp + undo
+    _pushUndo: _pushUndo, _undo: _undo,
+    _dentroDelBoundary: _dentroDelBoundary, _clampAlBoundary: _clampAlBoundary,
+    _sellarCargado: _sellarCargado, _soltarCargado: _soltarCargado,
+    _ghostForma: _ghostForma, _separarGanchosSeccion: _separarGanchosSeccion,
+    // INTERACCIÓN-2.0 · rotar plano de la pieza + snap de cara
+    rotarPlanoPieza: rotarPlanoPieza,                           // toggle plano_pieza.volteado + regenera
+    _compVolteado: _compVolteado,
+    _facesDeVista: _facesDeVista, _caraCercana: _caraCercana,   // snap de cara
+    _proyectorVolteado: _proyectorVolteado,
+    // INTERACCIÓN-2.0 · 3 modos de uso (puntual/lineal/arreglo)
+    _modoDe: _modoDe, _modoDefault: _modoDefault, _setModoComp: _setModoComp,
+    _metaModular: _metaModular
   };
 
 })(typeof window !== 'undefined' ? window : (typeof globalThis !== 'undefined' ? globalThis : this));

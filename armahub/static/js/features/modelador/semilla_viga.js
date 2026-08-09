@@ -21,6 +21,14 @@
 //                 Alarga el extremo indicado (valor fórmula '60*phi+1' u override).
 //   - depende_de: [{ comp_id, holgura }] | null. Retranqueo hacia el núcleo
 //                 respecto de otros componentes. NO se implementa aún (solo el DATO).
+//   - modo      : 'puntual'|'lineal'|'arreglo' — MODO DE USO, independiente de la
+//                 tipología (§INTERACCIÓN-2.0). Preset por tipología: cabezal/CB
+//                 -> 'puntual'; estribo/traba -> 'lineal'. Editable en otra tarea.
+//                 Solo DATO: NO cambia el despacho (sigue por distribucion.modo).
+//   - plano_pieza: { volteado:false } — plano de trabajo de la pieza (rotar 90°
+//                 después). volteado:false = comportamiento IDÉNTICO al actual.
+//   - arreglo   : { n_capas:1, sep_capas:20, rango:null } — params del modo arreglo.
+//                 n_capas:1 = una sola fila = igual que hoy. Lógica NO implementada.
 // Y a geometria: contorno = null (usa la caja rect actual; a futuro polígono).
 // =============================================================================
 (function (global) {
@@ -39,6 +47,8 @@
           tipologia: 'CBS', figura: '103B', diam: 16, suf_tipo: 'sup', cara: 'sup',
           recub_override: null, angulos: [45, 45],
           prioridad: null, empalme: null, depende_de: null,
+          modo: 'puntual', plano_pieza: { volteado: false },
+          arreglo: { n_capas: 1, sep_capas: 20, rango: null },
           dims: {
             A: { modo: 'fija', valor: 30 },
             B: { modo: 'auto' },
@@ -51,6 +61,8 @@
           tipologia: 'CBI', figura: '101A', diam: 18, suf_tipo: 'inf', cara: 'inf',
           recub_override: null, angulos: [],
           prioridad: null, empalme: null, depende_de: null,
+          modo: 'puntual', plano_pieza: { volteado: false },
+          arreglo: { n_capas: 1, sep_capas: 20, rango: null },
           dims: { A: { modo: 'auto' } },
           distribucion: { modo: 'layered', n_capas: 1, barras_capa: 4, gap: 0, sentido: 'nucleo' }
         },
@@ -59,6 +71,8 @@
           tipologia: 'ES', figura: '104D', diam: 8, suf_tipo: 'estribo', cara: 'lateral',
           recub_override: null, angulos: [135, 135],
           prioridad: null, empalme: null, depende_de: null,
+          modo: 'lineal', plano_pieza: { volteado: false },
+          arreglo: { n_capas: 1, sep_capas: 20, rango: null },
           dims: {
             A: { modo: 'auto' }, B: { modo: 'auto' },
             C: { modo: 'auto' }, D: { modo: 'auto' }
@@ -74,6 +88,8 @@
           tipologia: 'TRV', figura: '101A', diam: 8, suf_tipo: 'traba', cara: 'lateral',
           recub_override: null, angulos: [],
           prioridad: null, empalme: null, depende_de: null,
+          modo: 'lineal', plano_pieza: { volteado: false },
+          arreglo: { n_capas: 1, sep_capas: 20, rango: null },
           dims: { A: { modo: 'auto' } },
           distribucion: {
             modo: 'linear',

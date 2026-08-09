@@ -94,6 +94,15 @@
   #te_modal .te-modebox{border:1px solid var(--te-line);border-radius:8px;padding:8px 9px;background:var(--te-panel2);margin-bottom:8px}
   #te_modal .te-modebox .te-mh{font-size:10.5px;font-weight:700;color:var(--te-muted);margin-bottom:6px;display:flex;align-items:center;gap:6px}
   #te_modal .te-chip{font-size:9.5px;color:var(--te-chip-ink);background:var(--te-chip);border:1px solid var(--te-chip-b);border-radius:9px;padding:1px 6px;font-weight:600}
+  /* SELECTOR DE MODO DE COLOCACIÓN (3 botoncitos: Puntual / Distribución / Arreglo).
+     Control segmentado que ocupa el ancho del panel; el activo va en acero. Cambiarlo
+     re-renderiza los campos contextuales de abajo (menú contextual por modo). */
+  #te_modal .te-modeseg{display:grid;grid-template-columns:1fr 1fr 1fr;gap:0;border:1px solid var(--te-line);border-radius:7px;overflow:hidden;margin-bottom:8px;background:#fff}
+  #te_modal .te-modebtn{border:none;background:#fff;padding:6px 4px;font-size:11px;font-weight:700;color:var(--te-muted);cursor:pointer;letter-spacing:.2px}
+  #te_modal .te-modeseg .te-modebtn+.te-modebtn{border-left:1px solid var(--te-line)}
+  #te_modal .te-modebtn:hover{background:#f7fbf2;color:var(--te-acero-d)}
+  #te_modal .te-modebtn.on{background:var(--te-acero);color:#fff}
+  #te_modal .te-modebtn.on:hover{background:var(--te-acero-d);color:#fff}
   #te_modal .te-addcomp{width:100%;border:1px dashed var(--te-acero);color:var(--te-acero-d);background:#f7fbf2;border-radius:9px;padding:8px;font-size:12px;font-weight:600;cursor:pointer;margin-top:4px}
 
   /* ---- CENTRO: 4 cuadrantes ---- */
@@ -115,13 +124,40 @@
   #te_modal .te-barCBS{stroke:var(--te-cbs)}
   #te_modal .te-barCBI{stroke:var(--te-cbi)}
   #te_modal .te-barES{stroke:var(--te-es)}
-  /* Trazo TÉCNICO: líneas finas nítidas (butt/miter), NO "a mano". */
-  #te_modal .te-bar{fill:none;stroke-width:1.6;stroke-linecap:butt;stroke-linejoin:miter;vector-effect:non-scaling-stroke}
-  #te_modal .te-bar.sel{stroke-width:2.6}
+  /* Trazo GRUESO redondeado (calca la maqueta colocador.html: stroke ~3.2, round).
+     Se separa de vector-effect para que el grosor sea REAL (escala con el zoom),
+     como en la maqueta; así las barras se ven con cuerpo, no como pelos. */
+  #te_modal .te-bar{fill:none;stroke-width:3;stroke-linecap:round;stroke-linejoin:round}
+  #te_modal .te-bar.sel{stroke-width:3.6}
   /* Halo de selección: se dibuja DEBAJO de la barra (trazo ancho translúcido). */
-  #te_modal .te-bar-halo{fill:none;stroke:var(--te-acero);stroke-width:6;opacity:.35;stroke-linecap:round;stroke-linejoin:round}
-  #te_modal .te-ghostbar{fill:none;stroke:#8BC34A;stroke-width:1.8;stroke-dasharray:5 3;opacity:.9;stroke-linecap:butt}
-  #te_modal .te-gpt{fill:#8BC34A}
+  #te_modal .te-bar-halo{fill:none;stroke:var(--te-acero);stroke-width:7;opacity:.35;stroke-linecap:round;stroke-linejoin:round}
+  /* GHOST (previsualización que sigue el cursor). Grueso + punteado, como la maqueta. */
+  #te_modal .te-ghostbar{fill:none;stroke:#8BC34A;stroke-width:3;stroke-dasharray:4 3;opacity:.85;stroke-linecap:round;stroke-linejoin:round;pointer-events:none}
+  #te_modal .te-ghostpt{opacity:.9}
+  #te_modal .te-gpt{fill:#8BC34A;pointer-events:none}
+  /* BADGE de texto del ghost ("CBS ø16") pegado al cursor. */
+  #te_modal .te-ghostbadge{pointer-events:none}
+  #te_modal .te-ghostbadge-t{font:700 10px "Segoe UI",system-ui,sans-serif}
+  /* Cursor NO permitido cuando el ghost cae fuera del hormigón (clamp, tarea 3). */
+  #te_modal #te_quad.tool-colocar .te-vista.te-ghost-block:not(.d3),
+  #te_modal #te_quad.tool-rango   .te-vista.te-ghost-block:not(.d3){cursor:not-allowed}
+  /* SNAP DE CARA — cara del hormigón resaltada bajo el cursor (línea gruesa). El
+     color lo pone JS según la tipología activa; aquí el grosor y el glow. */
+  #te_modal .te-face-hi{fill:none;stroke-width:4.5;stroke-linecap:round;opacity:.95;pointer-events:none;
+    filter:drop-shadow(0 0 3px rgba(139,195,74,.55))}
+  /* BOTÓN CONTEXTUAL "Voltear plano (R)" — flota sobre la pieza SELECCIONADA en
+     los cuadrantes. Discreto pero descubrible: aparece solo con selección, crece
+     al hover, tooltip nativo. Posicionado por JS (_posicionarFlipBtn). */
+  #te_modal #te_flipBtn{position:absolute;z-index:6;display:none;align-items:center;justify-content:center;
+    width:30px;height:30px;border-radius:50%;border:1.5px solid var(--te-acero-d);
+    background:#fff;color:var(--te-acero-d);cursor:pointer;padding:0;
+    box-shadow:0 3px 10px rgba(20,40,10,.28);transition:transform .12s ease,background .12s ease,box-shadow .12s ease;
+    font-size:16px;line-height:1}
+  #te_modal #te_flipBtn.on{display:inline-flex}
+  #te_modal #te_flipBtn:hover{transform:scale(1.18);background:var(--te-acero);color:#fff;box-shadow:0 5px 16px rgba(20,40,10,.36)}
+  #te_modal #te_flipBtn:active{transform:scale(1.05)}
+  #te_modal #te_flipBtn.flipped{background:var(--te-azul-b);color:var(--te-azul);border-color:var(--te-azul)}
+  #te_modal #te_flipBtn.flipped:hover{background:var(--te-azul);color:#fff}
   /* NODOS de esquina del hormigón (arrastrables). */
   #te_modal .te-node{fill:#fff;stroke:var(--te-acero-d);stroke-width:1.4;cursor:move}
   #te_modal .te-node:hover{fill:var(--te-acero);stroke:var(--te-acero-d)}
@@ -289,6 +325,10 @@
             <div>Tu navegador no tiene WebGL disponible.<br>El 3D en vivo no se puede mostrar (las otras 3 vistas sí).</div>
           </div>
         </div>
+
+        <!-- Botón contextual "Voltear plano (R)": flota sobre la pieza seleccionada.
+             Lo posiciona/oculta template_editor.js (_posicionarFlipBtn). -->
+        <button id="te_flipBtn" title="Voltear plano (R)" aria-label="Voltear plano de la pieza (R)">🔄</button>
       </div>
 
     </div>
