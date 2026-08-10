@@ -127,16 +127,22 @@
       if (ejeC === 'z') return V(p.x, p.y, p.z + d);
       return V(p.x + d, p.y, p.z);   // 'x' (default): "/ /" a lo largo del longitudinal
     }
-    var pInicioGancho = base(h2 - g, -w2 + g);   // punta del gancho, esquina sup-izq
-    var pEsquina      = base(h2, -w2);           // esquina sup-izq (doblez del gancho)
+    // Estribo CERRADO: parte con gancho en la esquina sup-izq, recorre los 4 lados
+    // (izq↓, abajo→, der↑, arriba←) y VUELVE a la esquina sup-izq, cerrando el
+    // rectángulo; ahí sale el 2º gancho. El cierre "/ /" (esp) desplaza el tramo
+    // final + el 2º gancho en el eje de profundidad para que las 2 pasadas no se
+    // pisen (offset FUERA del plano, no en el plano). Antes saltaba de sup-der a
+    // sup-izq en diagonal → dejaba el lado superior sin recorrer (espiral abierta).
+    var pGancho1 = base(h2 - g, -w2 + g);   // punta gancho 1 (135° hacia el núcleo)
+    var pSupIzq  = base(h2, -w2);           // esquina sup-izq (doblez del gancho de inicio)
     return [
-      conCierre(pInicioGancho, 0),   // punta gancho 1 (hacia el núcleo, 135°)
-      conCierre(pEsquina, 0),        // esquina sup-izq
-      base(-h2, -w2),                // baja  (esquina inf-izq)
-      base(-h2, w2),                 // cruza abajo (esquina inf-der)
-      base(h2, w2),                  // sube der (esquina sup-der)
-      conCierre(pEsquina, esp),      // CIERRE: vuelve a la esquina sup-izq, +esp en profundidad
-      conCierre(pInicioGancho, esp)  // punta gancho 2 (paralela, offset en profundidad)
+      conCierre(pGancho1, 0),        // 1· punta gancho 1
+      conCierre(pSupIzq, 0),         // 2· esquina sup-izq
+      base(-h2, -w2),                // 3· baja lado izq → esquina inf-izq
+      base(-h2, w2),                 // 4· cruza abajo → esquina inf-der
+      base(h2, w2),                  // 5· sube lado der → esquina sup-der
+      conCierre(base(h2, -w2), esp), // 6· recorre lado superior → vuelve a sup-izq (cierra el rect), +esp
+      conCierre(pGancho1, esp)       // 7· punta gancho 2 (paralela, offset en profundidad)
     ];
   }
 
