@@ -25,6 +25,14 @@
 
   function V(x, y, z) { return { x: x, y: y, z: z }; }
 
+  // Motor geométrico (para medir la cresta del arco del gancho). Se resuelve EN EL
+  // MOMENTO (nunca se captura al cargar el módulo → bug histórico "0 barras"). Null
+  // si no está (fallback: gancho sin desplazar).
+  function _mg() {
+    return global.ModeladorMotorGeom ||
+      (typeof require !== 'undefined' ? (function () { try { return require('./motor_geom.js'); } catch (e) { return null; } })() : null);
+  }
+
   // Extensión libre del gancho tras el doblez (norma aprox): 6φ, mínimo ~7.5 cm.
   function extGancho(diamCm) { return Math.max(6 * diamCm, 7.5); }
 
@@ -150,9 +158,28 @@
     // la pata recta B (tramo esquina→nace-curva) se ESTIRA sola para conectar (se ve
     // más larga), y la curva+punta suben con ella. No hay "antena": B es justo ese
     // tramo que crece. Es SOLO visual (dims/peso salen del backend, no de estos puntos).
-    // dY = g (por ahora fijo; la fórmula para que el borde de la curva coincida con el
-    // borde del otro lado se define en un paso posterior).
-    var dY = g;
+    //
+    // MAGNITUD dY: tal que la CRESTA de la curva del gancho (borde exterior del arco)
+    // quede tangente al BORDE EXTERIOR del lado E (y = h2 + ½·diam). El radio del gancho
+    // es FIJO 4·diam (lo fuerza el render con radioRigido → no se deforma al subir). La
+    // cresta del EJE del arco debe quedar en Y = h2 (así +½diam = borde ext de E).
+    // Como la cresta sube 1:1 con dY, dY = h2 − cresta(dY=0). La cresta(0) se MIDE con
+    // el motor real (misma geometría que el render, radio fijo 4φ) → exacto, sin
+    // fórmula aproximada. Fallback (sin motor / en tests): 0 (gancho sin subir).
+    var dY = 0;
+    var MG = _mg();
+    if (MG && MG.analizarBarra) {
+      var probe = [
+        pGancho, pSupIzq, { x: xx, y: -h2, z: -w2 }, { x: xx, y: -h2, z: w2 },
+        { x: xx, y: h2, z: w2 }, pSupIzq, pGancho
+      ];
+      var an = MG.analizarBarra(probe, diamCm, { radioInterno: 4 * diamCm, radioRigido: true });
+      var db = (an.dobleces || [])[1];   // doblez del gancho (nace-curva, sin subir)
+      if (db) {
+        var crestaEje0 = Math.max(db.T1.y, db.T2.y, db.O.y + db.R);   // cresta del arco con dY=0
+        dY = Math.max(0, h2 - crestaEje0);
+      }
+    }
     var pNaceCurva = { x: pSupIzq.x, y: pSupIzq.y + dY, z: pSupIzq.z };   // donde nace la curva (subido)
     var pPunta1    = { x: pGancho.x, y: pGancho.y + dY, z: pGancho.z };   // punta del gancho (subida en bloque)
     return [

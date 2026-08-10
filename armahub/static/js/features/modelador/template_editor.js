@@ -428,7 +428,16 @@
     }
     (out.placements || []).forEach(function (pl) {
       var mat = _matDe(pl.tipologia);
-      var mesh = geom.barraSolida(pl.puntos, pl.diam, mat, { segmentosRadiales: 10 });
+      var opt = { segmentosRadiales: 10 };
+      // Estribo/traba: radio de doblado FIJO 4·diam y RÍGIDO (no se reduce por tramo
+      // corto) → el radio del gancho NO cambia al desplazarlo en bloque (bug: el motor
+      // lo achicaba al alargar la pata). Otras piezas usan el radio de norma por defecto.
+      var rol = _rolDe(pl.tipologia);
+      if (rol === 'estribo' || rol === 'traba') {
+        opt.radioInterno = 4 * pl.diam;
+        opt.radioRigido = true;
+      }
+      var mesh = geom.barraSolida(pl.puntos, pl.diam, mat, opt);
       if (mesh) ST.world.add(mesh);
     });
     ST.dist = g.largo * 1.15 + 160;
