@@ -300,7 +300,7 @@
         <!-- 1.1 arriba-izq: SECCIÓN / corte transversal (plano Y-Z: ancho×alto).
              Dibujo DINÁMICO desde placements — lo rellena _redibujar2D() en template_editor.js. -->
         <div class="te-vista" data-plano="seccion">
-          <div class="te-vtitle">SECCIÓN · corte transversal</div>
+          <div class="te-vtitle">SECCIÓN · YZ</div>
           <div class="te-vaxes">ancho →  ·  alto ↑</div>
           <div class="te-vhint">longitudinales = puntos · estribo = recorrido</div>
           <!-- render ORTOGRÁFICO del 3D (misma escena/calidad). El SVG queda encima
@@ -318,7 +318,7 @@
         <!-- 1.2 arriba-der: VISTA A LO LARGO (elevación, largo×alto).
              Dibujo DINÁMICO desde placements. -->
         <div class="te-vista" data-plano="largo">
-          <div class="te-vtitle">A LO LARGO · elevación</div>
+          <div class="te-vtitle">A LO LARGO · XY</div>
           <div class="te-vaxes">largo →  ·  alto ↑</div>
           <div class="te-vhint">cabezales = líneas · estribos = trazos verticales</div>
           <canvas class="te-vcanvas" data-plano="largo"></canvas>
@@ -332,7 +332,7 @@
         <!-- 2.1 abajo-izq: PLANTA (vista superior, largo×ancho).
              Dibujo DINÁMICO desde placements. -->
         <div class="te-vista" data-plano="planta">
-          <div class="te-vtitle">PLANTA · vista superior</div>
+          <div class="te-vtitle">PLANTA · XZ</div>
           <div class="te-vaxes">largo →  ·  ancho ↑</div>
           <canvas class="te-vcanvas" data-plano="planta"></canvas>
           <svg id="te_svgPlanta" class="te-vsvg" viewBox="0 0 620 260" preserveAspectRatio="xMidYMid meet"></svg>

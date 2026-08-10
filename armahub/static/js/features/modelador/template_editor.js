@@ -386,7 +386,11 @@
       ES: new THREE.MeshStandardMaterial({ color: TEMA.ES, metalness: 0.5, roughness: 0.5 }),
       TRV: new THREE.MeshStandardMaterial({ color: TEMA.TRV, metalness: 0.5, roughness: 0.5 }),
       LT: new THREE.MeshStandardMaterial({ color: TEMA.LT, metalness: 0.5, roughness: 0.5 }),
-      hormigon: new THREE.MeshStandardMaterial({ color: 0x9aa6b5, transparent: true, opacity: 0.14, roughness: 0.9, depthWrite: false })
+      // BUG 7: el hormigón es el VOLUMEN DE REFERENCIA y NO debe seguir la regla del
+      // cuchillo (si lo recortan los clipping planes, en algunas vistas la cara
+      // desaparece). clippingPlanes:[] hace que ESTE material ignore los planos de
+      // corte globales del renderer → la caja de hormigón se ve SIEMPRE completa.
+      hormigon: new THREE.MeshStandardMaterial({ color: 0x9aa6b5, transparent: true, opacity: 0.14, roughness: 0.9, depthWrite: false, clippingPlanes: [] })
     };
     // El 3D se orbita en el CUADRANTE 3D (la vista .d3), NO en el canvas te_cv: ese
     // canvas ahora cubre toda la grilla con pointer-events:none (para no tapar los
@@ -415,9 +419,11 @@
     var g = ST.receta.geometria;
     if (ST.verHormigon) {
       var box = new THREE.Mesh(new THREE.BoxGeometry(g.largo, g.alto, g.ancho), ST.materiales.hormigon);
+      // BUG 7: los EDGES de la caja también deben ignorar el cuchillo (clippingPlanes:[])
+      // para que el contorno del hormigón se vea completo en todas las vistas.
       var edges = new THREE.LineSegments(
         new THREE.EdgesGeometry(new THREE.BoxGeometry(g.largo, g.alto, g.ancho)),
-        new THREE.LineBasicMaterial({ color: 0x8a96a5 }));
+        new THREE.LineBasicMaterial({ color: 0x8a96a5, clippingPlanes: [] }));
       ST.world.add(box); ST.world.add(edges);
     }
     (out.placements || []).forEach(function (pl) {
@@ -455,18 +461,22 @@
     var W = Number(g[def.W]), H = Number(g[def.H]);   // tamaño real de la cara (cm)
     if (!(W > 0) || !(H > 0)) return;
 
-    // Plano visualizador MÁS GRANDE (sobresale del elemento) y color MÁS VISIBLE
-    // (como el canvas 3D del editor de figuras). Borde marcado para leerlo bien.
+    // Plano visualizador (BUG 3): antes quedaba DENTRO/tapado por el elemento (over 1.25
+    // apenas asomaba y el clip global lo comía). Ahora: (a) SOBRESALE claramente del
+    // volumen (over 1.6) para que su marco se lea SIEMPRE por fuera del hormigón; (b) su
+    // material lleva clippingPlanes:[] → NO lo recorta el cuchillo (si no, la banda lo
+    // partía); (c) borde grueso y color más sólido. Es un indicador de "por dónde pasa el
+    // corte", así que se ubica en o.cortePos (centro de la banda).
     var mat = new THREE.MeshBasicMaterial({
-      color: 0x2f80ed, transparent: true, opacity: 0.28,
-      side: THREE.DoubleSide, depthWrite: false
+      color: 0x2f80ed, transparent: true, opacity: 0.22,
+      side: THREE.DoubleSide, depthWrite: false, clippingPlanes: []
     });
-    var over = 1.25;   // 25% más grande que la cara del elemento
+    var over = 1.6;   // 60% más grande que la cara del elemento → marco visible por fuera
     var mesh = new THREE.Mesh(new THREE.PlaneGeometry(W * over, H * over), mat);
-    // borde del plano (más visible)
+    // borde del plano (marcado, sin recorte del cuchillo)
     var edge = new THREE.LineSegments(
       new THREE.EdgesGeometry(new THREE.PlaneGeometry(W * over, H * over)),
-      new THREE.LineBasicMaterial({ color: 0x1565c0 }));
+      new THREE.LineBasicMaterial({ color: 0x1565c0, clippingPlanes: [] }));
     mesh.add(edge);
     // Orientar según el eje de profundidad (normal del plano).
     if (def.depth === 'x')      mesh.rotation.y = Math.PI / 2;  // normal → X
@@ -552,6 +562,23 @@
   }
   function _defsPlanos() {
     return PLANOS_POR_ELEMENTO[_tipoElemento()] || PLANOS_POR_ELEMENTO.viga;
+  }
+
+  // BUG 8 — TÍTULOS por EJE. El nombre semántico ('SECCIÓN'/'A LO LARGO'/'PLANTA') es
+  // fijo por cuadrante, pero el EJE (YZ/XY/XZ) es universal y sale de PLANOS_POR_ELEMENTO
+  // (u,v del plano). Así, cuando se pueble muro/columna, el título sigue al elemento sin
+  // tocar el HTML. Se llama al abrir (y podría llamarse al cambiar de elemento).
+  var _TITULO_SEMANTICO = { seccion: 'SECCIÓN', largo: 'A LO LARGO', planta: 'PLANTA' };
+  function _actualizarTitulosVista() {
+    var defs = _defsPlanos() || {};
+    ['seccion', 'largo', 'planta'].forEach(function (plano) {
+      var def = defs[plano]; if (!def) return;
+      var vista = document.querySelector('#te_quad .te-vista[data-plano="' + plano + '"]');
+      var t = vista ? vista.querySelector('.te-vtitle') : null;
+      if (!t) return;
+      var eje = String(def.u || '').toUpperCase() + String(def.v || '').toUpperCase();
+      t.textContent = (_TITULO_SEMANTICO[plano] || plano.toUpperCase()) + ' · ' + eje;
+    });
   }
 
   // Proyector genérico: dado el def de un plano → función punto3D → {u,v}.
@@ -1554,7 +1581,11 @@
       var act = e.target && e.target.getAttribute && e.target.getAttribute('data-act');
       if (act === 'del') { e.stopPropagation(); ST.selCi = ci; _borrarSeleccion(); return; }
       if (act === 'dup') { e.stopPropagation(); _duplicar(ci); return; }
-      _seleccionar(ci);
+      // BUG 6B — el header es un TOGGLE: si el componente ya está seleccionado (abierto),
+      // volver a clicarlo lo PLIEGA (deselecciona). Antes solo seleccionaba, así que la
+      // única forma de plegar era clic-en-vacío en una vista (y en las densas nunca caías
+      // en vacío → "solo se pliega en XZ"). Ahora se pliega desde el panel en cualquier caso.
+      if (ST.selCi === ci) { _seleccionar(-1); } else { _seleccionar(ci); }
     });
     wrap.appendChild(ch);
 
@@ -2097,21 +2128,26 @@
     o.cam.position.set(dir.eye[0] * dist, dir.eye[1] * dist, dir.eye[2] * dist);
     o.cam.up.set(dir.up[0], dir.up[1], dir.up[2]);
     o.cam.lookAt(0, 0, 0);
-    // PLANO DE CORTE (rebanada): la cámara ortográfica sólo muestra una LONJA de
-    // profundidad. o.corte ∈ [0..1] mueve el plano frontal de la lonja desde la cara
-    // (0) hasta el centro (1); `far` deja ver todo lo que está DETRÁS de ese plano.
-    // Así lo que sobresale hacia la cámara delante del plano (la pata/gancho que
-    // tapaba) queda RECORTADO por el `near`. El plano 3D (P3) se dibuja a esta misma
-    // profundidad para que se vea qué se está cortando.
+    // PLANO DE CORTE: la cámara ortográfica ve todo el eje de profundidad (near/far
+    // amplios); el "corte" real lo hacen 2 clipping planes en _renderVistasOrto sobre una
+    // BANDA en profundidad. o.corte ∈ [0..1] posiciona el centro de la banda; el plano 3D
+    // (P3) se dibuja a o.cortePos para mostrar por dónde pasa el corte.
     var half = _espesorProfundidad(d) / 2;                 // semi-espesor del elemento (cm)
     var frac = (o.corte != null ? o.corte : 0.5);
-    // MODELO CUCHILLO: el corte es una rebanada de grosor FIJO y fino; el slider MUEVE
-    // su POSICIÓN a lo largo de la profundidad (de una cara a la otra). frac 0 = cara
-    // frontal (lado cámara), 1 = cara trasera, 0.5 = centro. o.cortePos = centro de la
-    // rebanada; o.corteGrosor = semigrosor fijo. Así ves "lo que un cuchillo cortaría"
-    // en ese plano, y te mueves a donde quieras. (Antes cambiaba el grosor = mal.)
-    o.corteGrosor = Math.max(2.5, half * 0.06);   // semigrosor fino fijo (~6% o mín 2.5cm)
-    o.cortePos = (half) - frac * (2 * half);      // de +half (frontal) a -half (trasera)
+    // MODELO CUCHILLO (rediseño BUG 2/5/6): el problema de raíz era una rebanada FINA
+    // fija (~2.5 cm) centrada → en cada vista la armadura vive en capas discretas y una
+    // lonja fina se las salta (PLANTA vacía al centro; círculos que aparecen/desaparecen;
+    // vistas en blanco al cambiar de modo en el panel). Solución: una BANDA GRUESA cuyo
+    // SEMI-GROSOR ES EL SEMI-ESPESOR COMPLETO del elemento. Con el slider al centro
+    // (frac 0.5 → cortePos 0) la banda [cortePos-grosor .. cortePos+grosor] cubre TODA la
+    // profundidad → se ve la jaula ENTERA en las 3 vistas (nunca vacía). El slider PELA
+    // desde una cara: al alejarse del centro, cortePos se corre y un lado queda recortado
+    // (peel de la cara frontal/trasera) para inspeccionar el otro. Los longitudinales,
+    // que corren a lo largo de X, siempre caen dentro de la banda en SECCIÓN → círculos
+    // ESTABLES. El hormigón queda fuera del clip (material clippingPlanes:[]), así que su
+    // volumen se ve completo siempre (BUG 7).
+    o.corteGrosor = Math.max(half, 5);            // semigrosor GENEROSO = todo el semi-espesor
+    o.cortePos = -frac * (2 * half) + half;       // frac 0.5 → 0 (centro); 0 → +half; 1 → -half
     // El corte lo hacen 2 CLIPPING PLANES en _renderVistasOrto; near/far amplios.
     o.cam.near = -6000; o.cam.far = 6000;
     o.cam.updateProjectionMatrix();
@@ -2163,10 +2199,11 @@
       var g = ST.receta ? ST.receta.geometria : {};
       var W = Number(g[def.W]) || 60, H = Number(g[def.H]) || 60;
       _encuadrarOrto(o, W, H, w / h);
-      // CLIPPING = REBANADA (cuchillo): dos planos perpendiculares al eje de profundidad
-      // que dejan ver una lonja [cortePos-grosor .. cortePos+grosor]. El slider MUEVE
-      // cortePos (posición del cuchillo); el grosor es fijo/fino. Corta a nivel de
-      // fragmento. Dos planos porque hay ganchos en ambos extremos del eje.
+      // CLIPPING = BANDA (cuchillo grueso, rediseño BUG 2/5/6): dos planos perpendiculares
+      // al eje de profundidad que dejan ver la banda [cortePos-grosor .. cortePos+grosor].
+      // El semigrosor es GENEROSO (todo el semi-espesor, ver _encuadrarOrto): al centro la
+      // banda cubre el elemento entero (jaula completa, nunca vacía); el slider PELA una
+      // cara. El hormigón NO lo tocan estos planos (su material lleva clippingPlanes:[]).
       var dep = def.depth;
       var ax = dep === 'x' ? 1 : 0, ay = dep === 'y' ? 1 : 0, az = dep === 'z' ? 1 : 0;
       var c = (o.cortePos != null ? o.cortePos : 0);
@@ -2204,22 +2241,37 @@
     ST.camera.lookAt(new THREE.Vector3().copy(ST.target).add(shift));
   }
 
+  // BUG 4 — PAN del 3D rotaba en vez de panear. Rediseño del reparto de botones con un
+  // ÚNICO estado 'mode' ('pan' | 'rot' | null) fijado en el mousedown, mutuamente
+  // exclusivo (antes había 2 flags drag/panning que podían quedar mal). Reparto:
+  //   · botón IZQUIERDO sin modificador            → ROTAR
+  //   · botón MEDIO, botón DERECHO, o SHIFT/ALT/CTRL+izq → PAN
+  // El mousedown captura el botón real (e.button) Y los modificadores del PROPIO evento
+  // (no de un mousemove posterior, que podía llegar sin shift y caer a rotar). El middle
+  // click además necesita preventDefault en 'mousedown' Y 'auxclick' para matar el
+  // autoscroll del navegador (que se tragaba los mousemove y hacía que "no paneara").
   function _bindOrbita(cv) {
-    var drag = false, panning = false, lx = 0, ly = 0;
-    cv.addEventListener('contextmenu', function (e) { e.preventDefault(); });
+    var mode = null, lx = 0, ly = 0;
+    cv.addEventListener('contextmenu', function (e) { e.preventDefault(); });   // botón der = pan, no menú
+    cv.addEventListener('auxclick', function (e) { if (e.button === 1) e.preventDefault(); });   // mata autoscroll medio
     cv.addEventListener('mousedown', function (e) {
       lx = e.clientX; ly = e.clientY;
-      if (e.button === 1 || e.button === 2 || e.shiftKey) { panning = true; e.preventDefault(); }
-      else drag = true;
+      // PAN si: botón medio (1) · botón derecho (2) · o izquierdo con shift/alt/ctrl.
+      var quierePan = (e.button === 1 || e.button === 2 || e.shiftKey || e.altKey || e.ctrlKey || e.metaKey);
+      mode = quierePan ? 'pan' : (e.button === 0 ? 'rot' : null);
+      if (mode) e.preventDefault();
     });
-    global.addEventListener('mouseup', function () { drag = false; panning = false; });
+    global.addEventListener('mouseup', function () { mode = null; });
     global.addEventListener('mousemove', function (e) {
+      if (!mode) return;
       var dx = e.clientX - lx, dy = e.clientY - ly;
-      if (panning) { ST.panX -= dx * ST.dist * 0.0011; ST.panY += dy * ST.dist * 0.0011; lx = e.clientX; ly = e.clientY; return; }
-      if (!drag) return;
-      ST.rotY -= dx * 0.008; ST.rotX += dy * 0.008;
-      ST.rotX = Math.max(-1.45, Math.min(1.45, ST.rotX));
       lx = e.clientX; ly = e.clientY;
+      if (mode === 'pan') {
+        ST.panX -= dx * ST.dist * 0.0011; ST.panY += dy * ST.dist * 0.0011;
+      } else {   // rot
+        ST.rotY -= dx * 0.008; ST.rotX += dy * 0.008;
+        ST.rotX = Math.max(-1.45, Math.min(1.45, ST.rotX));
+      }
     });
     cv.addEventListener('wheel', function (e) {
       e.preventDefault(); ST.dist *= (e.deltaY > 0 ? 1.1 : 0.9);
@@ -2323,6 +2375,7 @@
     _bindHerramientas();
     _bindVistas();
     _bindTeclado();
+    _actualizarTitulosVista();   // BUG 8: títulos con el eje (YZ/XY/XZ) del elemento activo
     _setQuadCursor();
     // Al redimensionar la ventana, el overlay de voltear se re-pega a la pieza.
     if (!ST._resizeBtnBound) {
