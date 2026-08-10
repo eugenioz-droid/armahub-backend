@@ -134,49 +134,23 @@
     var h2 = m.h2, w2 = m.w2;         // marco compartido con la traba (FIX: w2 usa recubLat)
     var xx = anchor.x || 0;
     var g = 0.7071 * (extGancho(diamCm) + diamCm);   // proyección diagonal gancho 135°
-    // Rectángulo perimetral 100% PLANAR (todos en x=xx): cierra exacto, fillets limpios.
-    var pSupIzq = { x: xx, y: h2, z: -w2 };           // esquina sup-izq (nacen los 2 ganchos)
-    var pPunta  = { x: xx, y: h2 - g, z: -w2 + g };   // punta del gancho (diagonal 135° al núcleo)
-
-    // OFFSET VISUAL de los 2 ganchos (regla del usuario 10-ago): las MEDIDAS no
-    // cambian — el largo/peso se calcula de las DIMS en el backend, NO de estos puntos
-    // (que son SOLO para dibujar). Aquí separamos visualmente las 2 patas del gancho
-    // que, geométricamente, nacen en el MISMO punto (P1) y se superponían. Cada gancho
-    // se desplaza ±½·diam PERPENDICULAR a su propia diagonal, EN EL PLANO Y-Z (no en
-    // profundidad). Magnitud = radio del tubo → los 2 tubos quedan tangentes (separados
-    // 1 diámetro), que es el desarrollo natural de la curva del doblez. Así las curvas
-    // de doblez en la esquina se ven coherentes y las 2 patas separadas, sin mover la
-    // magnitud geométrica (P1/esquinas del rectángulo intactos).
-    // MAGNITUD del offset (regla usuario 10-ago): = la CUERDA del radio de doblado del
-    // gancho (doblez 135° de norma), NO ½ diámetro (que era imperceptible). Cuerda =
-    // 2·Rc·sin(θ/2) con Rc=radio del eje en el doblez, θ=135°. Así la separación de la
-    // "V" es evidente y refleja el desarrollo real de la curva. Es SOLO capa visual
-    // (las dims/peso no cambian). El desplazamiento total entre ganchos = 2·offV.
-    var rTubo = diamCm / 2;
-    var radioInt = diamCm * (diamCm <= 1.6 ? 2 : 3.5);   // radio interno de norma (espejo motor_geom)
-    var Rc = radioInt + rTubo;                            // radio del eje en el doblez
-    var offV = Rc * Math.sin((135 * Math.PI / 180) / 2);   // ½ cuerda del doblez 135°
-    // DIRECCIÓN: tramo A (gancho 1) en (+Y,+Z); tramo F (gancho 2) en (−Y,−Z), igual y
-    // opuesto, a lo largo de la DIAGONAL Y-Z (= perpendicular al gancho, que va a 45°).
-    var ny = 1 / Math.SQRT2, nz = 1 / Math.SQRT2;   // diagonal unitaria (Y,Z)
-    // Solo se corre la PUNTA y el arranque del gancho (paralelo); la esquina del
-    // rectángulo (pSupIzq) queda intacta para cerrar el cuadro.
-    function gancho(sign) {
-      return {
-        punta:   { x: xx, y: pPunta.y  + sign * offV * ny, z: pPunta.z  + sign * offV * nz },
-        arranque:{ x: xx, y: pSupIzq.y + sign * offV * ny, z: pSupIzq.z + sign * offV * nz }
-      };
-    }
-    var g1 = gancho(+1), g2 = gancho(-1);
+    // 100% PLANAR, SIN NINGÚN OFFSET fuera de plano (decisión usuario 10-ago): el
+    // offset "/ /" del doble-gancho (esp) SE ELIMINÓ porque contaminaba el fillet de
+    // la esquina donde nace el 2º gancho (el toro entre un tramo en x=xx y otro en
+    // x=xx+esp se torcía → en la sección el lado superior/derecho aparecían corridos
+    // una distancia a/b). Ahora TODOS los puntos están en x=xx. Los 2 ganchos quedan
+    // superpuestos exactos (se separarán, si hace falta, en un paso posterior y sólo
+    // como truco visual cuando haya traslape real, sin tocar el rectángulo).
+    var pGancho1 = { x: xx, y: h2 - g, z: -w2 + g };   // punta gancho 1 (135° al núcleo)
+    var pSupIzq  = { x: xx, y: h2, z: -w2 };           // esquina sup-izq
     return [
-      g1.punta,                        // 0· punta gancho 1 (corrido +)
-      g1.arranque,                     // 1· arranque gancho 1 (corrido +) → entra al rectángulo
-      { x: xx, y: -h2, z: -w2 },       // 2· esquina inf-izq
-      { x: xx, y: -h2, z: w2 },        // 3· esquina inf-der
-      { x: xx, y: h2, z: w2 },         // 4· esquina sup-der
-      pSupIzq,                         // 5· CIERRE exacto en la esquina sup-izq REAL (planar)
-      g2.arranque,                     // 6· arranque gancho 2 (corrido −)
-      g2.punta                         // 7· punta gancho 2 (corrido −)
+      pGancho1,                        // 0· punta gancho 1
+      pSupIzq,                         // 1· esquina sup-izq (arranca el rectángulo)
+      { x: xx, y: -h2, z: -w2 },       // 2· baja lado izq → esquina inf-izq
+      { x: xx, y: -h2, z: w2 },        // 3· cruza abajo → esquina inf-der
+      { x: xx, y: h2, z: w2 },         // 4· sube lado der → esquina sup-der
+      pSupIzq,                         // 5· recorre lado superior → CIERRE exacto sup-izq
+      pGancho1                         // 6· punta gancho 2 (mismo plano; superpuesto al gancho 1)
     ];
   }
 

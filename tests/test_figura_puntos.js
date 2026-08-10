@@ -29,20 +29,15 @@ ok(Math.abs(ptsR[0].y + 26) < 1e-6 && Math.abs(ptsR[1].y + 26) < 1e-6, 'a la alt
 
 console.log('Estribo 104D perimetral (plano YZ):');
 var est = F.figuraAPuntos('104D', { A: 22, B: 52, C: 22, D: 52 }, host, { x: 10, recub: 3 }, { rol: 'estribo', diamCm: 0.8 });
-ok(est.length === 8, 'estribo = 8 puntos (2 ganchos con punta+arranque + 4 esquinas, offset visual) (=' + est.length + ')');
-ok(est.every(function (p) { return Math.abs(p.x - 10) < 2; }), 'todo el estribo PLANAR cerca de x=10 (plano YZ, sin offset de profundidad)');
+ok(est.length === 7, 'estribo = 7 puntos (2 ganchos + 4 esquinas + cierre) (=' + est.length + ')');
+ok(est.every(function (p) { return Math.abs(p.x - 10) < 2; }), 'todo el estribo cerca de x=10 (plano YZ + offset cierre)');
 // perímetro cerrado en YZ: alto útil = 60/2-3 = 27; ancho útil = 30/2-3 = 12.
-// Las esquinas del CUADRO son est[2..5] (est[0..1]=gancho1 corrido, est[6..7]=gancho2 corrido).
-ok(Math.abs(est[2].y + 27) < 1e-6 && Math.abs(est[5].y - 27) < 1e-6, 'esquinas inf/sup del cuadro a ±27');
+ok(Math.abs(est[1].y - 27) < 1e-6 && Math.abs(est[2].y + 27) < 1e-6, 'esquinas sup/inf a ±27');
 ok(Math.abs(est[2].z + 12) < 1e-6 && Math.abs(est[3].z - 12) < 1e-6, 'esquinas izq/der a ±12');
-// El rectángulo perimetral (est[2..5]) es PLANAR y cierra: est[5] es la esquina sup-izq
-// REAL (cierre), y est[4]→est[5] recorre el lado superior de vuelta a esa esquina.
-ok(Math.abs(est[5].y - 27) < 1e-6 && Math.abs(est[5].z + 12) < 1e-6,
-   'cierre del cuadro en la esquina sup-izq real (27,-12)');
-// OFFSET VISUAL de los ganchos (regla usuario): las 2 puntas de gancho (est[0], est[7])
-// separadas ~1 diámetro (0.8), en el plano Y-Z, sin mover las esquinas del cuadro.
-var sepG = Math.hypot(est[0].y - est[7].y, est[0].z - est[7].z);
-ok(sepG > 3 && sepG < 4.5, 'ganchos separados por la cuerda del doblez 135° (~3.7cm, offset visual) (=' + sepG.toFixed(2) + ')');
+// El rectángulo perimetral es PLANAR (cierre exacto): el vértice sup-izq del
+// cierre (pto 5) coincide EXACTO con el de inicio (pto 1) → misma X, cuadro cerrado.
+ok(Math.abs(est[5].x - est[1].x) < 1e-9 && Math.abs(est[5].y - est[1].y) < 1e-9 && Math.abs(est[5].z - est[1].z) < 1e-9,
+   'cierre del rectángulo EXACTO sobre la esquina de inicio (planar)');
 // Estribo 100% PLANAR (decisión usuario 10-ago): el offset "/ /" fuera de plano se
 // ELIMINÓ (contaminaba el fillet de la esquina del gancho → lados corridos en la
 // sección). Todos los puntos, incluidos los 2 ganchos, en el MISMO plano (misma X).

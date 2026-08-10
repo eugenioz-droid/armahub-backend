@@ -66,7 +66,7 @@ const compRango = {
 const plR = R.expandirComponente(compRango, host);
 // ceil(200/20)+1 = 11
 ok(plR.length === 11, 'rango 200cm @20 → 11 estribos (=' + plR.length + ')');
-ok(plR.every(function (p) { return p.puntos.length === 8; }), 'cada estribo = 8 puntos (offset visual de ganchos)');
+ok(plR.every(function (p) { return p.puntos.length === 7; }), 'cada estribo = 7 puntos');
 // primer estribo en x=-100, último en x=100 (a lo largo del eje X)
 ok(close(plR[0].puntos[0].x, -100, 0.01), '1er estribo en x=-100');
 ok(close(plR[plR.length - 1].puntos[0].x, 100, 0.01), 'último estribo en x=100');
