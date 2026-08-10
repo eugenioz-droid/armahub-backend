@@ -141,7 +141,8 @@
     var Rc = 2 * diamCm + diamCm / 2;                 // radio del EJE (2φ interno + rTubo, norma)
     var largoPata = Math.max(6 * diamCm, 7.5);        // pata del gancho (norma)
     var angDobl = 135 * Math.PI / 180;
-    var pataAntes = Rc;                               // tramo recto antes del arco
+    var pataAntes = Math.max(0.1, diamCm * 0.3);      // tramo recto MÍNIMO antes del arco
+                                                       // (antes = Rc = 2cm, se veía un borde recto largo)
     var pIni = { x: xx, y: esquina.y + dirLado.y * pataAntes, z: esquina.z + dirLado.z * pataAntes };
     // centro del arco: perpendicular a dirLado. signPerp + sentido se CALIBRAN por gancho
     // (según el lado por el que sale) para que la curva doble hacia el NÚCLEO.
