@@ -2324,12 +2324,17 @@
     var bd = $('te_backdrop');
     if (!bd || !bd.classList.contains('on')) return;
     _resize();
-    // grid solo en el 3D (molesta en las vistas planas): se oculta al pintar orto.
+    // grid + plano de corte P3 solo en el 3D: en las vistas orto MOLESTAN (el plano
+    // se ve de frente como un rectángulo azul tapando la sección; el grid ensucia).
+    // Se ocultan al pintar las orto y se re-muestran para el 3D. (Mismo patrón grid.)
     if (ST.grid) ST.grid.visible = true;
+    if (ST.planoMesh) ST.planoMesh.visible = true;
     _render3DQuad();
     if (ST.grid) ST.grid.visible = false;
+    if (ST.planoMesh) ST.planoMesh.visible = false;
     _renderVistasOrto();
     if (ST.grid) ST.grid.visible = true;
+    if (ST.planoMesh) ST.planoMesh.visible = true;
   }
 
   function _mostrarWebglMsg() {
