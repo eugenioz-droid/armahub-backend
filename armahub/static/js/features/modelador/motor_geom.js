@@ -78,11 +78,7 @@
       var R = Rc;
       var t = R * Math.tan(ang / 2);   // tangencia desde el vértice
       var tMax = 0.49 * Math.min(_dist(pts[i], pts[i - 1]), _dist(pts[i + 1], pts[i]));
-      // Por defecto se REDUCE el radio si la curva no cabe en el tramo (protección). Con
-      // opciones.radioRigido=true se respeta el radio fijo aunque el tramo sea corto
-      // (necesario p.ej. para el gancho del estribo desplazado, donde el radio de norma
-      // NO debe cambiar al mover el gancho). El usuario garantiza que los tramos alcanzan.
-      if (t > tMax && !opciones.radioRigido) { t = tMax; R = t / Math.tan(ang / 2); }   // reducir radio si no cabe
+      if (t > tMax) { t = tMax; R = t / Math.tan(ang / 2); }   // reducir radio si no cabe
       var T1 = _addS(pts[i], d1, -t);
       var T2 = _addS(pts[i], d2, t);
       var eje = _norm(_cross(d1, d2));
