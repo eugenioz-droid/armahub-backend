@@ -118,6 +118,12 @@
   #te_modal .te-vista.te-plano-on .te-vtitle{background:#2f80ed;color:#fff;border-color:#2f80ed}
   #te_modal .te-vtitle{position:absolute;top:8px;left:10px;z-index:3;font-size:11px;font-weight:700;color:#5b6a7d;background:rgba(255,255,255,.78);border:1px solid var(--te-line);border-radius:6px;padding:2px 8px;letter-spacing:.3px}
   #te_modal .te-vaxes{position:absolute;bottom:7px;left:10px;z-index:3;font-size:10px;color:#9aa4b0;font-family:monospace}
+  /* Gizmo de ejes: aclara QUÉ eje es horizontal (→), vertical (↑) y cuál sale hacia
+     ti (⊙). Colores X rojo / Y verde / Z azul. Fija esquina inf-izq del cuadrante. */
+  #te_modal .te-vgizmo{position:absolute;bottom:6px;left:10px;z-index:3;display:flex;flex-direction:column;
+    gap:1px;font-size:9.5px;font-weight:700;font-family:"Segoe UI",system-ui,monospace;
+    background:rgba(255,255,255,.7);border-radius:5px;padding:3px 6px;line-height:1.25;pointer-events:none}
+  #te_modal .te-vgizmo .te-gzax{white-space:nowrap}
   #te_modal .te-vista svg{width:100%;height:100%;display:block}
   #te_modal .te-vista canvas{width:100%;height:100%;display:block}
   /* Vistas 2D = render ORTOGRÁFICO del 3D (canvas de fondo) + SVG overlay encima.
@@ -301,7 +307,7 @@
              Dibujo DINÁMICO desde placements — lo rellena _redibujar2D() en template_editor.js. -->
         <div class="te-vista" data-plano="seccion">
           <div class="te-vtitle">SECCIÓN · YZ</div>
-          <div class="te-vaxes">ancho →  ·  alto ↑</div>
+          <div class="te-vgizmo"></div>
           <div class="te-vhint">longitudinales = puntos · estribo = recorrido</div>
           <!-- render ORTOGRÁFICO del 3D (misma escena/calidad). El SVG queda encima
                como overlay TRANSPARENTE solo para la interacción (ghost/handles/cotas). -->
@@ -319,7 +325,7 @@
              Dibujo DINÁMICO desde placements. -->
         <div class="te-vista" data-plano="largo">
           <div class="te-vtitle">A LO LARGO · XY</div>
-          <div class="te-vaxes">largo →  ·  alto ↑</div>
+          <div class="te-vgizmo"></div>
           <div class="te-vhint">cabezales = líneas · estribos = trazos verticales</div>
           <canvas class="te-vcanvas" data-plano="largo"></canvas>
           <svg id="te_svgLargo" class="te-vsvg" viewBox="0 0 620 300" preserveAspectRatio="xMidYMid meet"></svg>
@@ -333,7 +339,7 @@
              Dibujo DINÁMICO desde placements. -->
         <div class="te-vista" data-plano="planta">
           <div class="te-vtitle">PLANTA · XZ</div>
-          <div class="te-vaxes">largo →  ·  ancho ↑</div>
+          <div class="te-vgizmo"></div>
           <canvas class="te-vcanvas" data-plano="planta"></canvas>
           <svg id="te_svgPlanta" class="te-vsvg" viewBox="0 0 620 260" preserveAspectRatio="xMidYMid meet"></svg>
           <button class="te-vreset" data-plano="planta" title="Centrar vista">⟳</button>

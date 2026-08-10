@@ -582,15 +582,31 @@
     }
     return (a + b).toUpperCase();
   }
+  // Color estándar por eje (gizmo): X rojo, Y verde, Z azul.
+  var _EJE_COLOR = { x: '#e53935', y: '#43a047', z: '#1e88e5' };
+  var _EJE_NOMBRE = { x: 'largo', y: 'alto', z: 'ancho' };
+
   function _actualizarTitulosVista() {
     var defs = _defsPlanos() || {};
     ['seccion', 'largo', 'planta'].forEach(function (plano) {
       var def = defs[plano]; if (!def) return;
       var vista = document.querySelector('#te_quad .te-vista[data-plano="' + plano + '"]');
-      var t = vista ? vista.querySelector('.te-vtitle') : null;
-      if (!t) return;
-      var eje = _ejeCanonico(def.u, def.v);
-      t.textContent = (_TITULO_SEMANTICO[plano] || plano.toUpperCase()) + ' · ' + eje;
+      if (!vista) return;
+      var t = vista.querySelector('.te-vtitle');
+      if (t) {
+        var eje = _ejeCanonico(def.u, def.v);
+        t.textContent = (_TITULO_SEMANTICO[plano] || plano.toUpperCase()) + ' · ' + eje;
+      }
+      // GIZMO de ejes: muestra qué eje es HORIZONTAL (u→), VERTICAL (v↑) y cuál sale
+      // hacia ti (depth ⊙). Así el usuario y el sistema hablan del MISMO eje.
+      var gz = vista.querySelector('.te-vgizmo');
+      if (gz) {
+        var u = def.u, v = def.v, d = def.depth;
+        gz.innerHTML =
+          '<span class="te-gzax" style="color:' + _EJE_COLOR[u] + '">' + u.toUpperCase() + ' ' + _EJE_NOMBRE[u] + ' →</span>' +
+          '<span class="te-gzax" style="color:' + _EJE_COLOR[v] + '">' + v.toUpperCase() + ' ' + _EJE_NOMBRE[v] + ' ↑</span>' +
+          '<span class="te-gzax" style="color:' + _EJE_COLOR[d] + '">' + d.toUpperCase() + ' ' + _EJE_NOMBRE[d] + ' ⊙ (hacia ti)</span>';
+      }
     });
   }
 
