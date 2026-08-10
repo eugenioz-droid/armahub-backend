@@ -134,23 +134,36 @@
     var h2 = m.h2, w2 = m.w2;         // marco compartido con la traba (FIX: w2 usa recubLat)
     var xx = anchor.x || 0;
     var g = 0.7071 * (extGancho(diamCm) + diamCm);   // proyección diagonal gancho 135°
-    // 100% PLANAR, SIN NINGÚN OFFSET fuera de plano (decisión usuario 10-ago): el
-    // offset "/ /" del doble-gancho (esp) SE ELIMINÓ porque contaminaba el fillet de
-    // la esquina donde nace el 2º gancho (el toro entre un tramo en x=xx y otro en
-    // x=xx+esp se torcía → en la sección el lado superior/derecho aparecían corridos
-    // una distancia a/b). Ahora TODOS los puntos están en x=xx. Los 2 ganchos quedan
-    // superpuestos exactos (se separarán, si hace falta, en un paso posterior y sólo
-    // como truco visual cuando haya traslape real, sin tocar el rectángulo).
-    var pGancho1 = { x: xx, y: h2 - g, z: -w2 + g };   // punta gancho 1 (135° al núcleo)
-    var pSupIzq  = { x: xx, y: h2, z: -w2 };           // esquina sup-izq
+    var pGancho = { x: xx, y: h2 - g, z: -w2 + g };  // punta del gancho (135° al núcleo)
+    var pSupIzq = { x: xx, y: h2, z: -w2 };          // esquina sup-izq (nacen los ganchos)
+
+    // OFFSET VISUAL de UN gancho (regla usuario 10-ago): el gancho 1 se DESPLAZA EN
+    // BLOQUE hacia arriba (Y+) — su geometría (curva, ángulo, largo) NO cambia, sólo
+    // sube su posición. Magnitud dY tal que la parte más alta de la curva del gancho
+    // toque el BORDE EXTERIOR del lado superior E (y = h2 + ½·diam). Así el lado B del
+    // gancho se ve del mismo largo que su opuesto y la curva hace ESPEJO con la del
+    // vértice sup-der. Es SOLO capa visual (las dims/peso salen del backend, no de
+    // estos puntos). El gancho 2 queda en su sitio (superpuesto al rectángulo).
+    // DESPLAZAMIENTO EN BLOQUE del gancho 1 (regla usuario 10-ago): el gancho = curva
+    // + pata recta. Se sube +dY en Y SIN deformarlo. Truco: la ESQUINA del rectángulo
+    // (pSupIzq) se QUEDA abajo, y el punto donde NACE la curva del gancho sube +dY →
+    // la pata recta B (tramo esquina→nace-curva) se ESTIRA sola para conectar (se ve
+    // más larga), y la curva+punta suben con ella. No hay "antena": B es justo ese
+    // tramo que crece. Es SOLO visual (dims/peso salen del backend, no de estos puntos).
+    // dY = g (por ahora fijo; la fórmula para que el borde de la curva coincida con el
+    // borde del otro lado se define en un paso posterior).
+    var dY = g;
+    var pNaceCurva = { x: pSupIzq.x, y: pSupIzq.y + dY, z: pSupIzq.z };   // donde nace la curva (subido)
+    var pPunta1    = { x: pGancho.x, y: pGancho.y + dY, z: pGancho.z };   // punta del gancho (subida en bloque)
     return [
-      pGancho1,                        // 0· punta gancho 1
-      pSupIzq,                         // 1· esquina sup-izq (arranca el rectángulo)
-      { x: xx, y: -h2, z: -w2 },       // 2· baja lado izq → esquina inf-izq
-      { x: xx, y: -h2, z: w2 },        // 3· cruza abajo → esquina inf-der
-      { x: xx, y: h2, z: w2 },         // 4· sube lado der → esquina sup-der
-      pSupIzq,                         // 5· recorre lado superior → CIERRE exacto sup-izq
-      pGancho1                         // 6· punta gancho 2 (mismo plano; superpuesto al gancho 1)
+      pPunta1,                         // 0· punta gancho 1 (subida en bloque)
+      pNaceCurva,                      // 1· nace la curva del gancho (subido) → arriba de la pata B
+      pSupIzq,                         // 2· esquina sup-izq (abajo) → la pata B es el tramo 1→2, estirado
+      { x: xx, y: -h2, z: -w2 },       // 3· esquina inf-izq
+      { x: xx, y: -h2, z: w2 },        // 4· esquina inf-der
+      { x: xx, y: h2, z: w2 },         // 5· esquina sup-der
+      pSupIzq,                         // 6· CIERRE exacto sup-izq
+      pGancho                          // 7· punta gancho 2 (en su sitio original)
     ];
   }
 

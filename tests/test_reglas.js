@@ -39,7 +39,7 @@ plES.forEach(function (p) { porZona[p.meta.zona] = (porZona[p.meta.zona] || 0) +
 console.log('    placements por zona:', JSON.stringify(porZona), '· total', plES.length);
 ok(plES.length >= 40 && plES.length <= 50, 'total estribos plausible (' + plES.length + ')');
 ok(porZona[1] >= 1 && porZona[2] >= 1 && porZona[3] >= 1, 'las 3 zonas generan barras');
-ok(plES.every(function (p) { return p.puntos.length === 7; }), 'cada estribo = 7 puntos');
+ok(plES.every(function (p) { return p.puntos.length === 8; }), 'cada estribo = 8 puntos');
 ok(plES.every(function (p) { return p.figura === '104D' && p.tipologia === 'ES'; }), 'figura/tipología correctas');
 
 console.log('LAYERED — cabezal sup 2 capas × 3 barras:');
