@@ -569,6 +569,19 @@
   // (u,v del plano). Así, cuando se pueble muro/columna, el título sigue al elemento sin
   // tocar el HTML. Se llama al abrir (y podría llamarse al cambiar de elemento).
   var _TITULO_SEMANTICO = { seccion: 'SECCIÓN', largo: 'A LO LARGO', planta: 'PLANTA' };
+  // BUG 8b — el eje se etiqueta en ORDEN CANÓNICO X<Y<Z (no en el orden u,v del plano).
+  // Antes se concatenaba u+v tal cual → SECCIÓN daba 'ZY' (u=z, v=y), sobrescribiendo el
+  // 'YZ' del HTML. Ordenar los dos ejes del plano canónicamente da YZ/XY/XZ, que es cómo
+  // se nombran los planos (y coincide con el HTML). No cambia qué eje es horizontal/vertical
+  // en la vista (eso lo fija u,v); solo el TEXTO del título.
+  var _EJE_ORDEN = { x: 0, y: 1, z: 2 };
+  function _ejeCanonico(u, v) {
+    var a = String(u || '').toLowerCase(), b = String(v || '').toLowerCase();
+    if ((_EJE_ORDEN[b] != null ? _EJE_ORDEN[b] : 9) < (_EJE_ORDEN[a] != null ? _EJE_ORDEN[a] : 9)) {
+      var t = a; a = b; b = t;
+    }
+    return (a + b).toUpperCase();
+  }
   function _actualizarTitulosVista() {
     var defs = _defsPlanos() || {};
     ['seccion', 'largo', 'planta'].forEach(function (plano) {
@@ -576,7 +589,7 @@
       var vista = document.querySelector('#te_quad .te-vista[data-plano="' + plano + '"]');
       var t = vista ? vista.querySelector('.te-vtitle') : null;
       if (!t) return;
-      var eje = String(def.u || '').toUpperCase() + String(def.v || '').toUpperCase();
+      var eje = _ejeCanonico(def.u, def.v);
       t.textContent = (_TITULO_SEMANTICO[plano] || plano.toUpperCase()) + ' · ' + eje;
     });
   }
@@ -2111,6 +2124,70 @@
     return Number(g.ancho) || 30;   // z
   }
 
+  // ==========================================================================
+  // CUCHILLO / SLICES (rediseño CORTE) — posiciones candidatas del corte a lo
+  // largo del eje de PROFUNDIDAD de una vista.
+  //
+  // El "cuchillo" del usuario = lo que un corte real dejaría ver EN ESE plano:
+  // en SECCIÓN (depth=x) UN estribo, no los ~30 superpuestos. Para eso hay que
+  // saber DÓNDE están las barras que el plano cruza de canto (las "rebanadas").
+  //
+  // Una barra es una REBANADA para este eje si su extensión A LO LARGO del eje
+  // de profundidad es PEQUEÑA (vive casi en un solo valor de `depthEje`): un
+  // estribo/traba corre en YZ → su extensión en X es ~0 → es una rebanada para
+  // la SECCIÓN. Un longitudinal corre en X → extensión en X grande → NO es
+  // rebanada (lo cruza el cuchillo esté donde esté; se ve como punto estable).
+  //
+  // Devuelve { pos:[...], diam } — `pos` = centros (cm) de las rebanadas ordenados,
+  // `diam` = φ (cm) representativo para el grosor de la banda fina. Sin rebarbas:
+  // si no hay placements o ninguno es rebanada, pos=[] (el llamador usa banda
+  // gruesa → nunca vacía).
+  function _slicesEnProfundidad(depthEje) {
+    var out = { pos: [], diam: 1.6 };
+    var pls = (ST.ultimoOut && ST.ultimoOut.placements) || [];
+    if (!pls.length) return out;
+    var espesor = _espesorProfundidad(depthEje);
+    // umbral de "extensión pequeña": una barra cuenta como rebanada si su span en
+    // el eje de profundidad es < 15% del espesor del elemento (y en absoluto < 40cm).
+    // Así un estribo (span x ~0) entra y un longitudinal (span x ~= largo) no.
+    var umbral = Math.min(Math.max(espesor * 0.15, 8), 40);
+    var centros = [], diamMax = 0;
+    pls.forEach(function (pl) {
+      var pts = pl.puntos || [];
+      if (pts.length < 2) return;
+      var lo = Infinity, hi = -Infinity;
+      for (var i = 0; i < pts.length; i++) {
+        var c = pts[i][depthEje];
+        if (c < lo) lo = c; if (c > hi) hi = c;
+      }
+      if (!(hi - lo <= umbral)) return;          // no es rebanada (corre a lo largo del eje)
+      centros.push((lo + hi) / 2);
+      if (pl.diam > diamMax) diamMax = pl.diam;
+    });
+    if (!centros.length) return out;
+    centros.sort(function (a, b) { return a - b; });
+    // colapsar centros casi iguales (mismo estribo con varias barras) a 1
+    var uniq = [centros[0]];
+    for (var k = 1; k < centros.length; k++) {
+      if (Math.abs(centros[k] - uniq[uniq.length - 1]) > 0.5) uniq.push(centros[k]);
+    }
+    out.pos = uniq;
+    if (diamMax > 0) out.diam = diamMax;
+    return out;
+  }
+
+  // Rebanada MÁS CERCANA a una posición objetivo (cm) en un arreglo ordenado.
+  // Devuelve el valor del arreglo más próximo a `target` (o `target` si vacío).
+  function _sliceMasCercana(pos, target) {
+    if (!pos || !pos.length) return target;
+    var best = pos[0], bestD = Math.abs(pos[0] - target);
+    for (var i = 1; i < pos.length; i++) {
+      var d = Math.abs(pos[i] - target);
+      if (d < bestD) { bestD = d; best = pos[i]; }
+    }
+    return best;
+  }
+
   function _encuadrarOrto(o, W, H, aspect) {
     var THREE = global.THREE;
     var d = o.def.depth;
@@ -2134,20 +2211,43 @@
     // (P3) se dibuja a o.cortePos para mostrar por dónde pasa el corte.
     var half = _espesorProfundidad(d) / 2;                 // semi-espesor del elemento (cm)
     var frac = (o.corte != null ? o.corte : 0.5);
-    // MODELO CUCHILLO (rediseño BUG 2/5/6): el problema de raíz era una rebanada FINA
-    // fija (~2.5 cm) centrada → en cada vista la armadura vive en capas discretas y una
-    // lonja fina se las salta (PLANTA vacía al centro; círculos que aparecen/desaparecen;
-    // vistas en blanco al cambiar de modo en el panel). Solución: una BANDA GRUESA cuyo
-    // SEMI-GROSOR ES EL SEMI-ESPESOR COMPLETO del elemento. Con el slider al centro
-    // (frac 0.5 → cortePos 0) la banda [cortePos-grosor .. cortePos+grosor] cubre TODA la
-    // profundidad → se ve la jaula ENTERA en las 3 vistas (nunca vacía). El slider PELA
-    // desde una cara: al alejarse del centro, cortePos se corre y un lado queda recortado
-    // (peel de la cara frontal/trasera) para inspeccionar el otro. Los longitudinales,
-    // que corren a lo largo de X, siempre caen dentro de la banda en SECCIÓN → círculos
-    // ESTABLES. El hormigón queda fuera del clip (material clippingPlanes:[]), así que su
-    // volumen se ve completo siempre (BUG 7).
-    o.corteGrosor = Math.max(half, 5);            // semigrosor GENEROSO = todo el semi-espesor
-    o.cortePos = -frac * (2 * half) + half;       // frac 0.5 → 0 (centro); 0 → +half; 1 → -half
+    // MODELO CUCHILLO (rediseño CORTE) — el grosor de la banda se DESACOPLA por eje,
+    // porque las 3 vistas necesitan cosas OPUESTAS:
+    //
+    //  • SECCIÓN (depth=x): el usuario quiere "lo que un cuchillo cortaría" = UN estribo
+    //    limpio, no los ~30 superpuestos. La banda GRUESA anterior (semi-espesor completo)
+    //    dejaba pasar todos los estribos sobre YZ → rectángulos desfasados. Ahora: banda
+    //    FINA (φ del estribo + margen) que se AJUSTA (snap) a la rebanada más cercana a la
+    //    posición del slider → se aísla ese estribo. Los longitudinales corren en X, así
+    //    que cruzan CUALQUIER corte de sección → sus círculos se ven SIEMPRE (estables).
+    //    Si NO hay rebanadas (sin estribos), cae a banda gruesa → nunca vacía.
+    //
+    //  • A LO LARGO / PLANTA (depth=y/z): aquí una banda fina VACIARÍA la vista (la
+    //    armadura vive en capas discretas en y/z y una lonja fina se las salta). Se
+    //    mantiene la banda GRUESA (semi-espesor completo) → se ve la jaula ENTERA; el
+    //    slider PELA una cara al alejarse del centro. Longitudinales y estribos se ven
+    //    completos.
+    //
+    // El hormigón queda fuera del clip (material clippingPlanes:[]) → su volumen se ve
+    // completo siempre (BUG 7). El plano 3D (P3) se ubica en o.cortePos (centro real de
+    // la banda, ya con snap) → marca por dónde pasa el corte que se ve en 2D.
+    if (d === 'x') {
+      var slices = _slicesEnProfundidad(d);
+      var target = -frac * (2 * half) + half;     // frac→posición cruda en [-half..half]
+      if (slices.pos.length) {
+        // banda fina centrada en la rebanada (estribo) más cercana al slider.
+        o.cortePos = _sliceMasCercana(slices.pos, target);
+        o.corteGrosor = Math.max(slices.diam * 1.4, 1.2);   // ~1 barra de espesor
+      } else {
+        // sin estribos que aislar → banda gruesa (jaula entera, nunca vacía).
+        o.cortePos = target;
+        o.corteGrosor = Math.max(half, 5);
+      }
+    } else {
+      // y/z: banda gruesa (semi-espesor completo). frac 0.5 → 0 (centro); pela una cara.
+      o.corteGrosor = Math.max(half, 5);
+      o.cortePos = -frac * (2 * half) + half;
+    }
     // El corte lo hacen 2 CLIPPING PLANES en _renderVistasOrto; near/far amplios.
     o.cam.near = -6000; o.cam.far = 6000;
     o.cam.updateProjectionMatrix();

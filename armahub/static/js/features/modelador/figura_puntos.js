@@ -100,49 +100,69 @@
   // dims: {A,B,C,D} = perímetro (alto/ancho − recubrimientos). host + anchor
   // (recubrimiento del núcleo). Encuadra el rectángulo COMPLETO (alto útil × ancho
   // útil): recorre las 4 esquinas y VUELVE a la esquina de inicio (rectángulo
-  // cerrado), rematando con los 2 ganchos 135° superpuestos en esa esquina. Las
+  // cerrado), rematando con los 2 ganchos 135° que salen de esa esquina. Las
   // esquinas se redondean solas: el motor_geom mete un toro tangente en cada
   // vértice interior (radio de doblado de norma) → aquí basta con dar vértices
   // agudos separados.
-  //   El offset del cierre "/ /" (esp) separa las 2 pasadas del gancho a lo largo
-  //   del EJE DE PROFUNDIDAD del estribo — el eje perpendicular a su plano, que es
-  //   la dirección en que se distribuyen los estribos. Para la viga (plano YZ) ese
-  //   eje es X (default). `anchor.ejeCierre` ('x'|'y'|'z') lo reorienta si algún
-  //   elemento pusiera el estribo en otro plano de profundidad; ausente ⇒ X, o sea
-  //   comportamiento idéntico al anterior (viga-semilla intacta). El rectángulo en
-  //   sí sigue en YZ (Y=vertical h2, Z=horizontal w2): el "volteo" de la pieza es
-  //   un asunto del proyector de vista (projV), no de esta geometría.
+  //
+  //   FORMA DERIVADA DE LA FIGURA REAL (106A/104x = estribo cerrado con 2 ganchos):
+  //   la figura del catálogo NO trae curvas (la curva del codo es efecto del
+  //   render, motor_geom); su forma canónica es un RECTÁNGULO PERIMETRAL + 2
+  //   ganchos internos 135° (ángulos guardados [45,45] = interno 45 = giro 135 en
+  //   cada gancho; las 4 esquinas del rectángulo son 90° implícitas). En vez de
+  //   copiar dimensiones ABSTRACTAS del catálogo, la forma se ANCLA al marco de
+  //   hormigón (_marcoNucleo: h2=alto/2−recubV, w2=ancho/2−recubLat) → encuadra el
+  //   núcleo real dentro del recubrimiento (criterio del usuario).
+  //
+  //   REGLA DE ORO DEL CIERRE (fix del bug "esquina sup no cierra / ganchos
+  //   desfasados / un rectángulo por estribo"): el rectángulo perimetral es 100%
+  //   PLANAR — sus 4 aristas viven en la MISMA X (=anchor.x) → los 4 dobleces de
+  //   las esquinas salen con eje EXACTO (±1,0,0) (fillet en el plano YZ, esquina
+  //   cierra limpio). El offset "/ /" (esp) del doble-gancho se aplica ÚNICAMENTE a
+  //   la PUNTA LIBRE del 2º gancho (último punto), NUNCA a un vértice del
+  //   rectángulo. Antes el offset tocaba el vértice sup-izq del cierre → convertía
+  //   la arista superior en una RAMPA en X e inclinaba 2 fillets fuera de YZ, y en
+  //   la sección aparecían 2 aristas con misma (z,y) y distinto x (doble-línea).
+  //
+  //   El eje de profundidad (donde vive el "/ /") es X para la viga (plano YZ).
+  //   `anchor.ejeCierre` ('x'|'y'|'z') lo reorienta si algún elemento pusiera el
+  //   estribo en otro plano de profundidad; ausente ⇒ X (comportamiento por
+  //   defecto). El rectángulo en sí sigue en YZ (Y=vertical h2, Z=horizontal w2):
+  //   el "volteo" de la pieza es asunto del proyector de vista (projV).
   function _estriboPerimetral(figura, dims, host, anchor, diamCm) {
     var m = _marcoNucleo(host, anchor);
     var h2 = m.h2, w2 = m.w2;         // marco compartido con la traba (FIX: w2 usa recubLat)
     var xx = anchor.x || 0;
-    var esp = diamCm * 1.05;          // offset del cierre (por el espesor) → "/ /"
+    var esp = diamCm * 1.05;          // separación del doble-gancho "/ /" (por el espesor)
     var g = 0.7071 * (extGancho(diamCm) + diamCm);   // proyección diagonal gancho 135°
-    // Offset del cierre sobre el eje de profundidad (default X). conCierre(p,d)
-    // suma `d` sólo al eje elegido; los otros dos quedan en su valor de plano.
+    // El "/ /" vive SOLO en la punta del 2º gancho, sobre el eje de profundidad
+    // (default X). offEje(p,d) suma `d` sólo al eje elegido; los otros dos quedan
+    // en su valor de plano. NUNCA se aplica a un vértice del rectángulo.
     var ejeC = (anchor.ejeCierre || 'x');
     function base(y, z) { return { x: xx, y: y, z: z }; }
-    function conCierre(p, d) {
+    function offEje(p, d) {
       if (ejeC === 'y') return V(p.x, p.y + d, p.z);
       if (ejeC === 'z') return V(p.x, p.y, p.z + d);
       return V(p.x + d, p.y, p.z);   // 'x' (default): "/ /" a lo largo del longitudinal
     }
-    // Estribo CERRADO: parte con gancho en la esquina sup-izq, recorre los 4 lados
-    // (izq↓, abajo→, der↑, arriba←) y VUELVE a la esquina sup-izq, cerrando el
-    // rectángulo; ahí sale el 2º gancho. El cierre "/ /" (esp) desplaza el tramo
-    // final + el 2º gancho en el eje de profundidad para que las 2 pasadas no se
-    // pisen (offset FUERA del plano, no en el plano). Antes saltaba de sup-der a
-    // sup-izq en diagonal → dejaba el lado superior sin recorrer (espiral abierta).
+    // Estribo CERRADO y PLANAR: gancho1 entra por la esquina sup-izq, se recorren
+    // los 4 lados (izq↓, abajo→, der↑, arriba←) y se VUELVE al MISMO punto sup-izq
+    // (pto[5] == pto[1] en valor → rectángulo cerrado; motor_geom._limpiarPuntos
+    // sólo borra duplicados CONSECUTIVOS, y entre pto[1] y pto[5] hay 3 vértices, así
+    // que pto[5] se conserva y cierra el cuadro). Desde esa esquina sale el 2º
+    // gancho; su punta libre (pto[6]) lleva el offset "/ /" en profundidad — único
+    // tramo con drift en el eje de profundidad, que es justo donde debe verse el
+    // doble-gancho, no en el cuadro.
     var pGancho1 = base(h2 - g, -w2 + g);   // punta gancho 1 (135° hacia el núcleo)
-    var pSupIzq  = base(h2, -w2);           // esquina sup-izq (doblez del gancho de inicio)
+    var pSupIzq  = base(h2, -w2);           // esquina sup-izq (doblez de ambos ganchos)
     return [
-      conCierre(pGancho1, 0),        // 1· punta gancho 1
-      conCierre(pSupIzq, 0),         // 2· esquina sup-izq
-      base(-h2, -w2),                // 3· baja lado izq → esquina inf-izq
-      base(-h2, w2),                 // 4· cruza abajo → esquina inf-der
-      base(h2, w2),                  // 5· sube lado der → esquina sup-der
-      conCierre(base(h2, -w2), esp), // 6· recorre lado superior → vuelve a sup-izq (cierra el rect), +esp
-      conCierre(pGancho1, esp)       // 7· punta gancho 2 (paralela, offset en profundidad)
+      pGancho1,                      // 0· punta gancho 1 (135° hacia el núcleo)
+      pSupIzq,                       // 1· esquina sup-izq (arranca el rectángulo)
+      base(-h2, -w2),                // 2· baja lado izq → esquina inf-izq
+      base(-h2, w2),                 // 3· cruza abajo → esquina inf-der
+      base(h2, w2),                  // 4· sube lado der → esquina sup-der
+      pSupIzq,                       // 5· recorre lado superior → CIERRE exacto en sup-izq (planar)
+      offEje(pGancho1, esp)          // 6· punta gancho 2 (misma esquina; "/ /" SOLO en profundidad)
     ];
   }
 

@@ -34,8 +34,12 @@ ok(est.every(function (p) { return Math.abs(p.x - 10) < 2; }), 'todo el estribo 
 // perímetro cerrado en YZ: alto útil = 60/2-3 = 27; ancho útil = 30/2-3 = 12.
 ok(Math.abs(est[1].y - 27) < 1e-6 && Math.abs(est[2].y + 27) < 1e-6, 'esquinas sup/inf a ±27');
 ok(Math.abs(est[2].z + 12) < 1e-6 && Math.abs(est[3].z - 12) < 1e-6, 'esquinas izq/der a ±12');
-// El cierre "/ /" está separado en X por el espesor.
-ok(est[5].x > est[1].x, 'pasada de cierre separada en X (gancho "/ /")');
+// El rectángulo perimetral es PLANAR (cierre exacto): el vértice sup-izq del
+// cierre (pto 5) coincide EXACTO con el de inicio (pto 1) → misma X, cuadro cerrado.
+ok(Math.abs(est[5].x - est[1].x) < 1e-9 && Math.abs(est[5].y - est[1].y) < 1e-9 && Math.abs(est[5].z - est[1].z) < 1e-9,
+   'cierre del rectángulo EXACTO sobre la esquina de inicio (planar)');
+// La separación "/ /" del doble-gancho vive SOLO en la punta libre del 2º gancho.
+ok(est[6].x > est[0].x, 'punta del 2º gancho separada en X (doble-gancho "/ /")');
 
 console.log('Traba 101A (cara lateral):');
 var tr = F.figuraAPuntos('101A', { A: 54 }, host, { x: 10, z: 0, recub: 3 }, { rol: 'traba', diamCm: 0.8 });
