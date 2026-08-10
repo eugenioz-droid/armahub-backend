@@ -36,9 +36,21 @@ var h2t = 27, w2t = 12;
 function tieneEst(y, z) { return est.some(function (p) { return Math.abs(p.y - y) < 0.6 && Math.abs(p.z - z) < 0.6; }); }
 ok(est.length >= 15, 'estribo con arco explícito = polilínea densa (rect + gancho curvo) (=' + est.length + ')');
 ok(est.every(function (p) { return Math.abs(p.x - 10) < 2; }), 'todo el estribo cerca de x=10 (plano YZ)');
-// las 4 esquinas del CUADRO deben estar presentes (perímetro completo).
-ok(tieneEst(h2t, -w2t) && tieneEst(-h2t, -w2t) && tieneEst(-h2t, w2t) && tieneEst(h2t, w2t),
-   'las 4 esquinas del cuadro presentes (±27, ±12)');
+// 3 esquinas rectas del CUADRO en punta (el motor las redondea a 90°); la esquina
+// sup-izq NO es un vértice: la forman los DOS codos de 135° de los ganchos
+// (concéntricos, tangentes a sus lados) — como el estribo físico real.
+ok(tieneEst(-h2t, -w2t) && tieneEst(-h2t, w2t) && tieneEst(h2t, w2t),
+   '3 esquinas rectas presentes (inf-izq, inf-der, sup-der)');
+var dEsqSupIzq = Math.min.apply(null, est.map(function (p) { return Math.hypot(p.y - h2t, p.z + w2t); }));
+ok(dEsqSupIzq < 2.5, 'esquina sup-izq cubierta por los codos de los ganchos (dist ' + dEsqSupIzq.toFixed(2) + ')');
+// ganchos PARALELOS exactos (regla usuario): dirección de la pata A vs pata B.
+(function () {
+  var nn = est.length;
+  function dd(a, b) { var dy = b.y - a.y, dz = b.z - a.z, l = Math.hypot(dy, dz); return { y: dy / l, z: dz / l }; }
+  var dA = dd(est[0], est[1]), dB = dd(est[nn - 2], est[nn - 1]);
+  var ang = Math.acos(Math.max(-1, Math.min(1, Math.abs(dA.y * dB.y + dA.z * dB.z)))) * 180 / Math.PI;
+  ok(ang < 0.1, 'patas de los 2 ganchos PARALELAS (' + ang.toFixed(2) + '°)');
+})();
 // el estribo es 100% PLANAR (todos los puntos en la misma X, sin offset de profundidad).
 ok(est.every(function (p) { return Math.abs(p.x - est[0].x) < 1e-9; }),
    'estribo 100% planar: todos los puntos en la misma X');

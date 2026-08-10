@@ -96,128 +96,93 @@
     };
   }
 
-  // ---- ESTRIBO perimetral cerrado (plano YZ, a una X dada), gancho 135°.
-  // dims: {A,B,C,D} = perímetro (alto/ancho − recubrimientos). host + anchor
-  // (recubrimiento del núcleo). Encuadra el rectángulo COMPLETO (alto útil × ancho
-  // útil): recorre las 4 esquinas y VUELVE a la esquina de inicio (rectángulo
-  // cerrado), rematando con los 2 ganchos 135° que salen de esa esquina. Las
-  // esquinas se redondean solas: el motor_geom mete un toro tangente en cada
-  // vértice interior (radio de doblado de norma) → aquí basta con dar vértices
-  // agudos separados.
+  // ---- ESTRIBO perimetral cerrado (plano YZ, a una X dada), ganchos sísmicos 135°.
   //
-  //   FORMA DERIVADA DE LA FIGURA REAL (106A/104x = estribo cerrado con 2 ganchos):
-  //   la figura del catálogo NO trae curvas (la curva del codo es efecto del
-  //   render, motor_geom); su forma canónica es un RECTÁNGULO PERIMETRAL + 2
-  //   ganchos internos 135° (ángulos guardados [45,45] = interno 45 = giro 135 en
-  //   cada gancho; las 4 esquinas del rectángulo son 90° implícitas). En vez de
-  //   copiar dimensiones ABSTRACTAS del catálogo, la forma se ANCLA al marco de
-  //   hormigón (_marcoNucleo: h2=alto/2−recubV, w2=ancho/2−recubLat) → encuadra el
-  //   núcleo real dentro del recubrimiento (criterio del usuario).
+  // GEOMETRÍA DEL FIERRO REAL (la que resuelve "ganchos PARALELOS *y* codos de 135°",
+  // que parecía contradictorio pero no lo es — el error previo era la dirección de
+  // ENTRADA del 2º gancho):
   //
-  //   REGLA DE ORO DEL CIERRE (fix del bug "esquina sup no cierra / ganchos
-  //   desfasados / un rectángulo por estribo"): el rectángulo perimetral es 100%
-  //   PLANAR — sus 4 aristas viven en la MISMA X (=anchor.x) → los 4 dobleces de
-  //   las esquinas salen con eje EXACTO (±1,0,0) (fillet en el plano YZ, esquina
-  //   cierra limpio). El offset "/ /" (esp) del doble-gancho se aplica ÚNICAMENTE a
-  //   la PUNTA LIBRE del 2º gancho (último punto), NUNCA a un vértice del
-  //   rectángulo. Antes el offset tocaba el vértice sup-izq del cierre → convertía
-  //   la arista superior en una RAMPA en X e inclinaba 2 fillets fuera de YZ, y en
-  //   la sección aparecían 2 aristas con misma (z,y) y distinto x (doble-línea).
+  //   El fierro es UNA barra continua. Su recorrido:
+  //     punta gancho A → codo 135° → baja el lado IZQUIERDO → esquina inf-izq (90°)
+  //     → lado inferior → esquina inf-der (90°) → sube lado derecho → esquina
+  //     sup-der (90°) → lado SUPERIOR viajando hacia la IZQUIERDA (−Z) → codo 135°
+  //     → punta gancho B.
   //
-  //   El eje de profundidad (donde vive el "/ /") es X para la viga (plano YZ).
-  //   `anchor.ejeCierre` ('x'|'y'|'z') lo reorienta si algún elemento pusiera el
-  //   estribo en otro plano de profundidad; ausente ⇒ X (comportamiento por
-  //   defecto). El rectángulo en sí sigue en YZ (Y=vertical h2, Z=horizontal w2):
-  //   el "volteo" de la pieza es asunto del proyector de vista (projV).
-  // GANCHO con ARCO EXPLÍCITO (estándar BVBS): desde la esquina del rectángulo, una pata
-  // recta corta → ARCO (radio de norma, puntos densos) → pata del gancho hacia el núcleo.
-  // La curva es geometría PROPIA (no la deriva el motor recortando el codo, que para 135°
-  // se comía la pata y colapsaba). Signos CALIBRADOS: perp=−1, sentido=+1 → la punta
-  // apunta al núcleo y la cresta del arco toca el borde superior. Devuelve los puntos DEL
-  // GANCHO desde la esquina hasta la punta.
-  //   esquina : donde nace (una esquina del rectángulo, en x=xx).
-  //   dirLado : dirección del lado que baja desde la esquina (unitaria, {y,z}).
-  function _norm2(y, z) { var l = Math.hypot(y, z) || 1; return { y: y / l, z: z / l }; }
-  function Rc2(diamCm) { return 2 * diamCm + diamCm / 2; }   // radio del eje (norma)
-
-  // GANCHO con arco explícito, definido por su PATA FINAL. Ambos ganchos del estribo se
-  // construyen dando la MISMA dirección de pata final (`dirFin`, hacia el núcleo) → quedan
-  // PARALELOS. El gancho: viene por `dirEntra` (el lado del que nace), dobla 135° con un
-  // arco de radio de norma, y termina en `dirFin`. Se construye HACIA ATRÁS desde la
-  // punta: punta → pata recta (dirFin) → arco → punto de nacimiento sobre el lado.
-  //   nace   : punto sobre el lado del rectángulo de donde sale el gancho.
-  //   dirEntra: dirección UNITARIA del lado (desde `nace` hacia afuera del arco).
-  //   dirFin : dirección UNITARIA de la pata final del gancho (hacia el núcleo). Común a
-  //            los 2 ganchos → paralelos. El ángulo entre dirEntra y dirFin debe ser 135°.
-  // Devuelve [nace, ...arco..., punta].
-  function _ganchoArco(nace, dirEntra, dirFin, diamCm, largoPata, xx) {
-    var Rc = 2 * diamCm + diamCm / 2;                 // radio del EJE (norma)
-    // El arco conecta la dirección `dirEntra` con `dirFin`. Su centro O está a Rc de
-    // ambas tangentes. Punto de tangencia de entrada = `nace` (el arco arranca ahí).
-    // El giro va de dirEntra a dirFin; el ángulo barrido:
-    var angEntra = Math.atan2(dirEntra.z, dirEntra.y);
-    var angFin = Math.atan2(dirFin.z, dirFin.y);
-    var barrido = angFin - angEntra;
-    while (barrido > Math.PI) barrido -= 2 * Math.PI;
-    while (barrido < -Math.PI) barrido += 2 * Math.PI;
-    var sentido = barrido >= 0 ? 1 : -1;
-    // centro: perpendicular a dirEntra en `nace`, hacia el lado del giro.
-    var perp = { y: -sentido * dirEntra.z, z: sentido * dirEntra.y };
-    var O = { x: xx, y: nace.y + perp.y * Rc, z: nace.z + perp.z * Rc };
-    var ang0 = Math.atan2(nace.z - O.z, nace.y - O.y);   // ángulo del punto `nace` en el círculo
-    var n = Math.max(8, Math.ceil(Math.abs(barrido) / (Math.PI / 18)));
-    var arco = [];
-    for (var k = 1; k <= n; k++) {
-      var a = ang0 + barrido * (k / n);
-      arco.push({ x: xx, y: O.y + Rc * Math.cos(a), z: O.z + Rc * Math.sin(a) });
+  //   · El gancho A entra al codo viajando en diagonal (−45°: desde el núcleo hacia
+  //     la esquina) y sale bajando (−Y): giro de 135° exacto.
+  //   · El gancho B entra al codo viajando por el lado superior (−Z) y sale en la
+  //     diagonal al núcleo (135°): giro de 135° exacto.
+  //   · Ambas patas viven en la MISMA dirección de recta (la diagonal ±45° de la
+  //     esquina) → PARALELAS exactas (0.0°), con sentidos de viaje opuestos.
+  //
+  //   Los DOS codos comparten el CENTRO de la esquina redondeada estándar:
+  //     O = (h2−Rc, −w2+Rc), con Rc = radio del EJE = 2φ (radio interno de norma,
+  //     mandril 4φ de diámetro) + φ/2. Consecuencias automáticas:
+  //     · codo B tangente al lado SUPERIOR → su cresta (eje) toca y=h2 EXACTO, y el
+  //       borde exterior del codo coincide con el borde exterior del lado E (la
+  //       "regla de la cresta" del usuario, sin fórmula extra);
+  //     · codo A tangente al lado IZQUIERDO → toca z=−w2 exacto (simétrico);
+  //     · el vértice (h2,−w2) NO existe como punto: la esquina ES los dos codos
+  //       superpuestos, como en el estribo físico (el offset en profundidad para el
+  //       cruce real se hará en una etapa posterior).
+  //
+  //   Los codos son ARCOS EXPLÍCITOS (estándar BVBS "arch" para dobleces >90°):
+  //   se muestrean densos (~10°/punto) y el motor los dibuja liso; NO se deja que
+  //   el motor derive el fillet (para 135° su tangencia t=Rc·tan(67.5°) no cabe y
+  //   colapsaba el radio — causa raíz de 3 días de bugs). Las 3 esquinas de 90°
+  //   restantes sí van en punta: el fillet del motor las redondea bien (90° cabe).
+  //
+  //   SOLO CAPA VISUAL: el largo/peso sale de las DIMS en el backend
+  //   (largo_desde_lados + peso.py), jamás de estos puntos.
+  //
+  // Convención del arco: punto(θ) = O + Rc·(cosθ·Ŷ + sinθ·Ẑ), planar en x=xx.
+  //   θ=0 → +Y (arriba) · θ=−90° → −Z (izquierda). Viajando con θ DECRECIENTE la
+  //   tangente es (sinθ, −cosθ).
+  function _arcoYZ(O, Rc, thetaIni, thetaFin, xx, incluirInicio) {
+    var barrido = thetaFin - thetaIni;
+    var n = Math.max(8, Math.ceil(Math.abs(barrido) / (Math.PI / 18)));   // ~10°/punto
+    var out = [];
+    for (var k = (incluirInicio ? 0 : 1); k <= n; k++) {
+      var a = thetaIni + barrido * (k / n);
+      out.push({ x: xx, y: O.y + Rc * Math.cos(a), z: O.z + Rc * Math.sin(a) });
     }
-    // pata final: EXACTAMENTE en dirFin (no de puntos muestreados → dirección exacta).
-    var pFin = arco[arco.length - 1];
-    var punta = { x: xx, y: pFin.y + dirFin.y * largoPata, z: pFin.z + dirFin.z * largoPata };
-    return [nace].concat(arco).concat([punta]);
+    return out;
   }
 
   function _estriboPerimetral(figura, dims, host, anchor, diamCm) {
     var m = _marcoNucleo(host, anchor);
-    var h2 = m.h2, w2 = m.w2;         // marco compartido con la traba (FIX: w2 usa recubLat)
+    var h2 = m.h2, w2 = m.w2;          // marco compartido con la traba
     var xx = anchor.x || 0;
-    var pSupIzq = { x: xx, y: h2, z: -w2 };           // esquina sup-izq (nacen los ganchos)
+    var Rc = 2 * diamCm + diamCm / 2;  // radio del EJE del codo (norma: interno 2φ + φ/2)
+    var O = { x: xx, y: h2 - Rc, z: -w2 + Rc };   // centro común de ambos codos (esquina sup-izq)
+    var D = Math.SQRT1_2;              // 0.7071 (diagonal unitaria)
+    // Pata del gancho (norma 6φ mín 7.5cm), acotada al núcleo para no cruzar bordes.
+    var largoPata = Math.min(Math.max(6 * diamCm, 7.5), Math.hypot(2 * h2, 2 * w2) * 0.28);
+    var dirPata = { y: -D, z: D };     // diagonal hacia el núcleo (abajo-derecha) — COMÚN
 
-    // DIRECCIÓN FINAL COMÚN de los 2 ganchos (hacia el núcleo, diagonal −Y+Z) → quedan
-    // PARALELOS. Es la bisectriz de la esquina hacia adentro (135° en atan2(z,y)).
-    var dirFin = _norm2(-1, 1);                        // diagonal hacia el núcleo (abajo-derecha)
-    // Los 2 ganchos NACEN en puntos distintos de los lados que llegan a la esquina, para
-    // que no se pisen, pero ambos terminan en dirFin (paralelos). El ángulo entre el lado
-    // y dirFin es 135° en ambos (la esquina es de 90°, dirFin es su bisectriz exterior).
-    //  · g1 nace bajando por el lado izq (dirEntra −Y).
-    //  · g2 nace saliendo por el lado superior (dirEntra +Z).
-    // Un pequeño offset del punto de nacimiento evita que ambos arcos coincidan.
-    var offNace = Rc2(diamCm) * 0.6;
-    var naceG1 = { x: xx, y: h2 - offNace, z: -w2 };   // sobre el lado izq, un poco abajo
-    var naceG2 = { x: xx, y: h2, z: -w2 + offNace };   // sobre el lado sup, un poco a la derecha
-    // LARGO de la pata del gancho ACOTADO para que la punta NO se salga del rectángulo.
-    // La pata apunta al núcleo (dirFin, diagonal adentro). Se limita a norma (6φ, mín 7.5)
-    // PERO sin exceder ~40% de la diagonal útil del núcleo (así queda holgado adentro).
-    var diagUtil = Math.hypot(2 * h2, 2 * w2);
-    var largoPata = Math.min(Math.max(6 * diamCm, 7.5), diagUtil * 0.28);
-    var g1 = _ganchoArco(naceG1, { y: -1, z: 0 }, dirFin, diamCm, largoPata, xx);   // [nace, arco..., punta]
-    var g1Inv = g1.slice().reverse();                 // [punta1, ...arco, nace]
-    var g2 = _ganchoArco(naceG2, { y: 0, z: 1 }, dirFin, diamCm, largoPata, xx);
+    // GANCHO A (inicio del fierro): pata → codo [θ: 45° → −90°] → tangente al lado izq.
+    var pA = { x: xx, y: O.y + Rc * D, z: O.z + Rc * D };            // punto del arco en θ=45°
+    var puntaA = { x: xx, y: pA.y + dirPata.y * largoPata, z: pA.z + dirPata.z * largoPata };
+    var codoA = _arcoYZ(O, Rc, Math.PI / 4, -Math.PI / 2, xx, true); // incluye θ=45°, termina θ=−90°
 
-    // Polilínea del estribo, en orden continuo:
-    //  punta_g1 → arco1 → naceG1 (en el lado izq) → esquina sup-izq → recorre rectángulo
-    //  → vuelve a esquina (cierre) → naceG2 (en el lado sup) → arco2 → punta_g2.
-    // El rectángulo se recorre desde la esquina; naceG1 y naceG2 están sobre sus lados,
-    // así el trazo es continuo sin saltos.
-    var recorridoRect = [
-      pSupIzq,                         // esquina sup-izq (tras naceG1)
-      { x: xx, y: -h2, z: -w2 },       // inf-izq
-      { x: xx, y: -h2, z: w2 },        // inf-der
-      { x: xx, y: h2, z: w2 },         // sup-der
-      pSupIzq                          // CIERRE exacto sup-izq
-    ];
-    // g1Inv = [punta1 ... arco ... naceG1]; luego esquina+rect+cierre; luego naceG2 + arco2 + punta2.
-    return g1Inv.concat(recorridoRect).concat(g2);
+    // GANCHO B (fin del fierro): lado superior llega a T0 (θ=0) → codo [θ: 0 → −135°] → pata.
+    var T0 = { x: xx, y: h2, z: -w2 + Rc };                          // tangencia con lado superior
+    var codoB = _arcoYZ(O, Rc, 0, -3 * Math.PI / 4, xx, false);      // excluye θ=0 (T0 ya en la lista)
+    var pB = codoB[codoB.length - 1];                                // punto del arco en θ=−135°
+    var puntaB = { x: xx, y: pB.y + dirPata.y * largoPata, z: pB.z + dirPata.z * largoPata };
+
+    // POLILÍNEA continua (el codo A termina tangente en (h2−Rc,−w2) y sigue colineal
+    // bajando el lado izq → el motor no mete fillet ahí; ídem lado superior → T0):
+    return [puntaA]
+      .concat(codoA)                        // codo A completo (135°)
+      .concat([
+        { x: xx, y: -h2, z: -w2 },          // esquina inf-izq (90°, fillet del motor)
+        { x: xx, y: -h2, z: w2 },           // esquina inf-der (90°)
+        { x: xx, y: h2, z: w2 },            // esquina sup-der (90°)
+        T0                                  // fin del lado superior = tangencia del codo B
+      ])
+      .concat(codoB)                        // codo B completo (135°)
+      .concat([puntaB]);
   }
 
   // ---- TRABA vertical (101A típ.): cose las dos caras, gancho arriba/abajo.
