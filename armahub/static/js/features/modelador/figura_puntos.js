@@ -148,15 +148,17 @@
     // de doblez en la esquina se ven coherentes y las 2 patas separadas, sin mover la
     // magnitud geométrica (P1/esquinas del rectángulo intactos).
     var offV = diamCm / 2;                       // ½ diámetro (=radio del tubo)
-    var dy = pPunta.y - pSupIzq.y, dz = pPunta.z - pSupIzq.z;   // dirección del gancho
-    var L = Math.hypot(dy, dz) || 1;
-    var puy = -dz / L, puz = dy / L;             // perpendicular unitaria en Y-Z
-    // gancho 1 → un lado; gancho 2 → el opuesto. Solo se corre la PUNTA y el arranque
-    // del gancho (paralelo), NO la esquina del rectángulo (pSupIzq queda para cerrar).
+    // DIRECCIÓN del offset (regla usuario 10-ago): tramo A (gancho 1) se corre en
+    // (+Y,+Z); tramo F (gancho 2) en (−Y,−Z), igual y opuesto. Es un desplazamiento a
+    // lo largo de la DIAGONAL Y-Z (no perpendicular al gancho — eso lo torcía). Se
+    // normaliza para que la separación entre las 2 puntas sea ~1 diámetro.
+    var ny = 1 / Math.SQRT2, nz = 1 / Math.SQRT2;   // diagonal unitaria (Y,Z)
+    // Solo se corre la PUNTA y el arranque del gancho (paralelo); la esquina del
+    // rectángulo (pSupIzq) queda intacta para cerrar el cuadro.
     function gancho(sign) {
       return {
-        punta:   { x: xx, y: pPunta.y  + sign * offV * puy, z: pPunta.z  + sign * offV * puz },
-        arranque:{ x: xx, y: pSupIzq.y + sign * offV * puy, z: pSupIzq.z + sign * offV * puz }
+        punta:   { x: xx, y: pPunta.y  + sign * offV * ny, z: pPunta.z  + sign * offV * nz },
+        arranque:{ x: xx, y: pSupIzq.y + sign * offV * ny, z: pSupIzq.z + sign * offV * nz }
       };
     }
     var g1 = gancho(+1), g2 = gancho(-1);
