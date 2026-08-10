@@ -147,11 +147,17 @@
     // 1 diámetro), que es el desarrollo natural de la curva del doblez. Así las curvas
     // de doblez en la esquina se ven coherentes y las 2 patas separadas, sin mover la
     // magnitud geométrica (P1/esquinas del rectángulo intactos).
-    var offV = diamCm / 2;                       // ½ diámetro (=radio del tubo)
-    // DIRECCIÓN del offset (regla usuario 10-ago): tramo A (gancho 1) se corre en
-    // (+Y,+Z); tramo F (gancho 2) en (−Y,−Z), igual y opuesto. Es un desplazamiento a
-    // lo largo de la DIAGONAL Y-Z (no perpendicular al gancho — eso lo torcía). Se
-    // normaliza para que la separación entre las 2 puntas sea ~1 diámetro.
+    // MAGNITUD del offset (regla usuario 10-ago): = la CUERDA del radio de doblado del
+    // gancho (doblez 135° de norma), NO ½ diámetro (que era imperceptible). Cuerda =
+    // 2·Rc·sin(θ/2) con Rc=radio del eje en el doblez, θ=135°. Así la separación de la
+    // "V" es evidente y refleja el desarrollo real de la curva. Es SOLO capa visual
+    // (las dims/peso no cambian). El desplazamiento total entre ganchos = 2·offV.
+    var rTubo = diamCm / 2;
+    var radioInt = diamCm * (diamCm <= 1.6 ? 2 : 3.5);   // radio interno de norma (espejo motor_geom)
+    var Rc = radioInt + rTubo;                            // radio del eje en el doblez
+    var offV = Rc * Math.sin((135 * Math.PI / 180) / 2);   // ½ cuerda del doblez 135°
+    // DIRECCIÓN: tramo A (gancho 1) en (+Y,+Z); tramo F (gancho 2) en (−Y,−Z), igual y
+    // opuesto, a lo largo de la DIAGONAL Y-Z (= perpendicular al gancho, que va a 45°).
     var ny = 1 / Math.SQRT2, nz = 1 / Math.SQRT2;   // diagonal unitaria (Y,Z)
     // Solo se corre la PUNTA y el arranque del gancho (paralelo); la esquina del
     // rectángulo (pSupIzq) queda intacta para cerrar el cuadro.

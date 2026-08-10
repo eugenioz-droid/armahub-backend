@@ -42,7 +42,7 @@ ok(Math.abs(est[5].y - 27) < 1e-6 && Math.abs(est[5].z + 12) < 1e-6,
 // OFFSET VISUAL de los ganchos (regla usuario): las 2 puntas de gancho (est[0], est[7])
 // separadas ~1 diámetro (0.8), en el plano Y-Z, sin mover las esquinas del cuadro.
 var sepG = Math.hypot(est[0].y - est[7].y, est[0].z - est[7].z);
-ok(Math.abs(sepG - 0.8) < 0.05, 'ganchos separados ~1 diámetro por offset visual (=' + sepG.toFixed(2) + ')');
+ok(sepG > 3 && sepG < 4.5, 'ganchos separados por la cuerda del doblez 135° (~3.7cm, offset visual) (=' + sepG.toFixed(2) + ')');
 // Estribo 100% PLANAR (decisión usuario 10-ago): el offset "/ /" fuera de plano se
 // ELIMINÓ (contaminaba el fillet de la esquina del gancho → lados corridos en la
 // sección). Todos los puntos, incluidos los 2 ganchos, en el MISMO plano (misma X).
