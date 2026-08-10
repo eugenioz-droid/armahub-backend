@@ -133,36 +133,24 @@
     var m = _marcoNucleo(host, anchor);
     var h2 = m.h2, w2 = m.w2;         // marco compartido con la traba (FIX: w2 usa recubLat)
     var xx = anchor.x || 0;
-    var esp = diamCm * 1.05;          // separación del doble-gancho "/ /" (por el espesor)
     var g = 0.7071 * (extGancho(diamCm) + diamCm);   // proyección diagonal gancho 135°
-    // El "/ /" vive SOLO en la punta del 2º gancho, sobre el eje de profundidad
-    // (default X). offEje(p,d) suma `d` sólo al eje elegido; los otros dos quedan
-    // en su valor de plano. NUNCA se aplica a un vértice del rectángulo.
-    var ejeC = (anchor.ejeCierre || 'x');
-    function base(y, z) { return { x: xx, y: y, z: z }; }
-    function offEje(p, d) {
-      if (ejeC === 'y') return V(p.x, p.y + d, p.z);
-      if (ejeC === 'z') return V(p.x, p.y, p.z + d);
-      return V(p.x + d, p.y, p.z);   // 'x' (default): "/ /" a lo largo del longitudinal
-    }
-    // Estribo CERRADO y PLANAR: gancho1 entra por la esquina sup-izq, se recorren
-    // los 4 lados (izq↓, abajo→, der↑, arriba←) y se VUELVE al MISMO punto sup-izq
-    // (pto[5] == pto[1] en valor → rectángulo cerrado; motor_geom._limpiarPuntos
-    // sólo borra duplicados CONSECUTIVOS, y entre pto[1] y pto[5] hay 3 vértices, así
-    // que pto[5] se conserva y cierra el cuadro). Desde esa esquina sale el 2º
-    // gancho; su punta libre (pto[6]) lleva el offset "/ /" en profundidad — único
-    // tramo con drift en el eje de profundidad, que es justo donde debe verse el
-    // doble-gancho, no en el cuadro.
-    var pGancho1 = base(h2 - g, -w2 + g);   // punta gancho 1 (135° hacia el núcleo)
-    var pSupIzq  = base(h2, -w2);           // esquina sup-izq (doblez de ambos ganchos)
+    // 100% PLANAR, SIN NINGÚN OFFSET fuera de plano (decisión usuario 10-ago): el
+    // offset "/ /" del doble-gancho (esp) SE ELIMINÓ porque contaminaba el fillet de
+    // la esquina donde nace el 2º gancho (el toro entre un tramo en x=xx y otro en
+    // x=xx+esp se torcía → en la sección el lado superior/derecho aparecían corridos
+    // una distancia a/b). Ahora TODOS los puntos están en x=xx. Los 2 ganchos quedan
+    // superpuestos exactos (se separarán, si hace falta, en un paso posterior y sólo
+    // como truco visual cuando haya traslape real, sin tocar el rectángulo).
+    var pGancho1 = { x: xx, y: h2 - g, z: -w2 + g };   // punta gancho 1 (135° al núcleo)
+    var pSupIzq  = { x: xx, y: h2, z: -w2 };           // esquina sup-izq
     return [
-      pGancho1,                      // 0· punta gancho 1 (135° hacia el núcleo)
-      pSupIzq,                       // 1· esquina sup-izq (arranca el rectángulo)
-      base(-h2, -w2),                // 2· baja lado izq → esquina inf-izq
-      base(-h2, w2),                 // 3· cruza abajo → esquina inf-der
-      base(h2, w2),                  // 4· sube lado der → esquina sup-der
-      pSupIzq,                       // 5· recorre lado superior → CIERRE exacto en sup-izq (planar)
-      offEje(pGancho1, esp)          // 6· punta gancho 2 (misma esquina; "/ /" SOLO en profundidad)
+      pGancho1,                        // 0· punta gancho 1
+      pSupIzq,                         // 1· esquina sup-izq (arranca el rectángulo)
+      { x: xx, y: -h2, z: -w2 },       // 2· baja lado izq → esquina inf-izq
+      { x: xx, y: -h2, z: w2 },        // 3· cruza abajo → esquina inf-der
+      { x: xx, y: h2, z: w2 },         // 4· sube lado der → esquina sup-der
+      pSupIzq,                         // 5· recorre lado superior → CIERRE exacto sup-izq
+      pGancho1                         // 6· punta gancho 2 (mismo plano; superpuesto al gancho 1)
     ];
   }
 
