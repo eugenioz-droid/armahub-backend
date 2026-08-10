@@ -29,20 +29,22 @@ ok(Math.abs(ptsR[0].y + 26) < 1e-6 && Math.abs(ptsR[1].y + 26) < 1e-6, 'a la alt
 
 console.log('Estribo 104D perimetral (plano YZ):');
 var est = F.figuraAPuntos('104D', { A: 22, B: 52, C: 22, D: 52 }, host, { x: 10, recub: 3 }, { rol: 'estribo', diamCm: 0.8 });
-ok(est.length === 7, 'estribo = 7 puntos (2 ganchos + 4 esquinas + cierre) (=' + est.length + ')');
-ok(est.every(function (p) { return Math.abs(p.x - 10) < 2; }), 'todo el estribo cerca de x=10 (plano YZ + offset cierre)');
-// perímetro cerrado en YZ: alto útil = 60/2-3 = 27; ancho útil = 30/2-3 = 12.
-ok(Math.abs(est[1].y - 27) < 1e-6 && Math.abs(est[2].y + 27) < 1e-6, 'esquinas sup/inf a ±27');
-ok(Math.abs(est[2].z + 12) < 1e-6 && Math.abs(est[3].z - 12) < 1e-6, 'esquinas izq/der a ±12');
-// El rectángulo perimetral es PLANAR (cierre exacto): el vértice sup-izq del
-// cierre (pto 5) coincide EXACTO con el de inicio (pto 1) → misma X, cuadro cerrado.
-ok(Math.abs(est[5].x - est[1].x) < 1e-9 && Math.abs(est[5].y - est[1].y) < 1e-9 && Math.abs(est[5].z - est[1].z) < 1e-9,
-   'cierre del rectángulo EXACTO sobre la esquina de inicio (planar)');
-// Estribo 100% PLANAR (decisión usuario 10-ago): el offset "/ /" fuera de plano se
-// ELIMINÓ (contaminaba el fillet de la esquina del gancho → lados corridos en la
-// sección). Todos los puntos, incluidos los 2 ganchos, en el MISMO plano (misma X).
+// El GANCHO se dibuja con ARCO EXPLÍCITO (BVBS): el estribo pasa de 7 vértices a una
+// polilínea densa (recta + arco muestreado + pata). Se valida por CONTENIDO, no índices.
+// alto útil = 60/2-3 = 27; ancho útil = 30/2-3 = 12.
+var h2t = 27, w2t = 12;
+function tieneEst(y, z) { return est.some(function (p) { return Math.abs(p.y - y) < 0.6 && Math.abs(p.z - z) < 0.6; }); }
+ok(est.length >= 15, 'estribo con arco explícito = polilínea densa (rect + gancho curvo) (=' + est.length + ')');
+ok(est.every(function (p) { return Math.abs(p.x - 10) < 2; }), 'todo el estribo cerca de x=10 (plano YZ)');
+// las 4 esquinas del CUADRO deben estar presentes (perímetro completo).
+ok(tieneEst(h2t, -w2t) && tieneEst(-h2t, -w2t) && tieneEst(-h2t, w2t) && tieneEst(h2t, w2t),
+   'las 4 esquinas del cuadro presentes (±27, ±12)');
+// el estribo es 100% PLANAR (todos los puntos en la misma X, sin offset de profundidad).
 ok(est.every(function (p) { return Math.abs(p.x - est[0].x) < 1e-9; }),
-   'estribo 100% planar: todos los puntos en la misma X (sin offset fuera de plano)');
+   'estribo 100% planar: todos los puntos en la misma X');
+// la punta del gancho (est[0]) apunta al NÚCLEO (dentro del cuadro, no hacia afuera).
+ok(est[0].z > -w2t && est[0].z < w2t && est[0].y < h2t + 0.6,
+   'punta del gancho apunta al núcleo (dentro del recubrimiento)');
 
 console.log('Traba 101A (cara lateral):');
 var tr = F.figuraAPuntos('101A', { A: 54 }, host, { x: 10, z: 0, recub: 3 }, { rol: 'traba', diamCm: 0.8 });

@@ -129,29 +129,60 @@
   //   estribo en otro plano de profundidad; ausente ⇒ X (comportamiento por
   //   defecto). El rectángulo en sí sigue en YZ (Y=vertical h2, Z=horizontal w2):
   //   el "volteo" de la pieza es asunto del proyector de vista (projV).
+  // GANCHO con ARCO EXPLÍCITO (estándar BVBS): desde la esquina del rectángulo, una pata
+  // recta corta → ARCO (radio de norma, puntos densos) → pata del gancho hacia el núcleo.
+  // La curva es geometría PROPIA (no la deriva el motor recortando el codo, que para 135°
+  // se comía la pata y colapsaba). Signos CALIBRADOS: perp=−1, sentido=+1 → la punta
+  // apunta al núcleo y la cresta del arco toca el borde superior. Devuelve los puntos DEL
+  // GANCHO desde la esquina hasta la punta.
+  //   esquina : donde nace (una esquina del rectángulo, en x=xx).
+  //   dirLado : dirección del lado que baja desde la esquina (unitaria, {y,z}).
+  function _ganchoArco(esquina, dirLado, diamCm, xx) {
+    var Rc = 2 * diamCm + diamCm / 2;                 // radio del EJE (2φ interno + rTubo, norma)
+    var largoPata = Math.max(6 * diamCm, 7.5);        // pata del gancho (norma)
+    var angDobl = 135 * Math.PI / 180;
+    var pataAntes = Rc;                               // tramo recto antes del arco
+    var pIni = { x: xx, y: esquina.y + dirLado.y * pataAntes, z: esquina.z + dirLado.z * pataAntes };
+    // centro del arco: perpendicular a dirLado (perp=−1, calibrado hacia el núcleo).
+    var perp = { y: dirLado.z, z: -dirLado.y };       // (−(-dz), (dy)) con signPerp=−1
+    var O = { x: xx, y: pIni.y + perp.y * Rc, z: pIni.z + perp.z * Rc };
+    var ang0 = Math.atan2(pIni.z - O.z, pIni.y - O.y);
+    var n = Math.max(8, Math.ceil(angDobl / (Math.PI / 18)));   // ~10°/punto (curva lisa)
+    var arco = [];
+    for (var k = 0; k <= n; k++) {
+      var a = ang0 + angDobl * (k / n);               // sentido=+1
+      arco.push({ x: xx, y: O.y + Rc * Math.cos(a), z: O.z + Rc * Math.sin(a) });
+    }
+    // pata del gancho: tangente al final del arco.
+    var pFin = arco[arco.length - 1], pPrev = arco[arco.length - 2];
+    var dl = Math.hypot(pFin.y - pPrev.y, pFin.z - pPrev.z) || 1;
+    var punta = { x: xx, y: pFin.y + (pFin.y - pPrev.y) / dl * largoPata, z: pFin.z + (pFin.z - pPrev.z) / dl * largoPata };
+    return [esquina, pIni].concat(arco).concat([punta]);
+  }
+
   function _estriboPerimetral(figura, dims, host, anchor, diamCm) {
     var m = _marcoNucleo(host, anchor);
     var h2 = m.h2, w2 = m.w2;         // marco compartido con la traba (FIX: w2 usa recubLat)
     var xx = anchor.x || 0;
-    var g = 0.7071 * (extGancho(diamCm) + diamCm);   // proyección diagonal gancho 135°
-    // 100% PLANAR, SIN NINGÚN OFFSET fuera de plano (decisión usuario 10-ago): el
-    // offset "/ /" del doble-gancho (esp) SE ELIMINÓ porque contaminaba el fillet de
-    // la esquina donde nace el 2º gancho (el toro entre un tramo en x=xx y otro en
-    // x=xx+esp se torcía → en la sección el lado superior/derecho aparecían corridos
-    // una distancia a/b). Ahora TODOS los puntos están en x=xx. Los 2 ganchos quedan
-    // superpuestos exactos (se separarán, si hace falta, en un paso posterior y sólo
-    // como truco visual cuando haya traslape real, sin tocar el rectángulo).
-    var pGancho1 = { x: xx, y: h2 - g, z: -w2 + g };   // punta gancho 1 (135° al núcleo)
-    var pSupIzq  = { x: xx, y: h2, z: -w2 };           // esquina sup-izq
-    return [
-      pGancho1,                        // 0· punta gancho 1
-      pSupIzq,                         // 1· esquina sup-izq (arranca el rectángulo)
-      { x: xx, y: -h2, z: -w2 },       // 2· baja lado izq → esquina inf-izq
-      { x: xx, y: -h2, z: w2 },        // 3· cruza abajo → esquina inf-der
-      { x: xx, y: h2, z: w2 },         // 4· sube lado der → esquina sup-der
-      pSupIzq,                         // 5· recorre lado superior → CIERRE exacto sup-izq
-      pGancho1                         // 6· punta gancho 2 (mismo plano; superpuesto al gancho 1)
+    var pSupIzq = { x: xx, y: h2, z: -w2 };           // esquina sup-izq (nacen los ganchos)
+
+    // Gancho con arco explícito, arrancando en la esquina sup-izq, bajando por el lado
+    // izquierdo (dir −Y). Va DESDE la esquina → lo invierto para que la polilínea del
+    // estribo sea: punta_gancho → arco → esquina → rectángulo → cierre → gancho2.
+    var gancho = _ganchoArco(pSupIzq, { y: -1, z: 0 }, diamCm, xx);   // [esquina, pIni, arco..., punta]
+    var gInv = gancho.slice().reverse();              // [punta, ...arco, pIni, esquina]
+
+    // Rectángulo planar (cierra exacto). Sus 4 esquinas de 90° las redondea el motor
+    // (caben sin problema). Arranca en la esquina (último punto de gInv) y recorre.
+    var rect = [
+      { x: xx, y: -h2, z: -w2 },       // inf-izq
+      { x: xx, y: -h2, z: w2 },        // inf-der
+      { x: xx, y: h2, z: w2 },         // sup-der
+      pSupIzq                          // CIERRE exacto sup-izq
     ];
+    // gInv termina en pSupIzq (la esquina) → rect continúa desde ahí → cierra en pSupIzq
+    // → gancho 2 (la punta, superpuesta al gancho 1 por ahora: gInv[0]).
+    return gInv.concat(rect).concat([gInv[0]]);
   }
 
   // ---- TRABA vertical (101A típ.): cose las dos caras, gancho arriba/abajo.
