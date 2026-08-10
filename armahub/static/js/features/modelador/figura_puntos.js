@@ -137,31 +137,44 @@
   // GANCHO desde la esquina hasta la punta.
   //   esquina : donde nace (una esquina del rectángulo, en x=xx).
   //   dirLado : dirección del lado que baja desde la esquina (unitaria, {y,z}).
-  function _ganchoArco(esquina, dirLado, signPerp, sentido, diamCm, xx) {
-    var Rc = 2 * diamCm + diamCm / 2;                 // radio del EJE (2φ interno + rTubo, norma)
-    var largoPata = Math.max(6 * diamCm, 7.5);        // pata del gancho (norma)
-    var angDobl = 135 * Math.PI / 180;
-    var pataAntes = Math.max(0.1, diamCm * 0.3);      // tramo recto MÍNIMO antes del arco
-                                                       // (antes = Rc = 2cm, se veía un borde recto largo)
-    var pIni = { x: xx, y: esquina.y + dirLado.y * pataAntes, z: esquina.z + dirLado.z * pataAntes };
-    // centro del arco: perpendicular a dirLado. signPerp + sentido se CALIBRAN por gancho
-    // (según el lado por el que sale) para que la curva doble hacia el NÚCLEO.
-    var perp = { y: signPerp * (-dirLado.z), z: signPerp * (dirLado.y) };
-    var O = { x: xx, y: pIni.y + perp.y * Rc, z: pIni.z + perp.z * Rc };
-    var ang0 = Math.atan2(pIni.z - O.z, pIni.y - O.y);
-    var n = Math.max(8, Math.ceil(angDobl / (Math.PI / 18)));   // ~10°/punto (curva lisa)
+  function _norm2(y, z) { var l = Math.hypot(y, z) || 1; return { y: y / l, z: z / l }; }
+  function Rc2(diamCm) { return 2 * diamCm + diamCm / 2; }   // radio del eje (norma)
+
+  // GANCHO con arco explícito, definido por su PATA FINAL. Ambos ganchos del estribo se
+  // construyen dando la MISMA dirección de pata final (`dirFin`, hacia el núcleo) → quedan
+  // PARALELOS. El gancho: viene por `dirEntra` (el lado del que nace), dobla 135° con un
+  // arco de radio de norma, y termina en `dirFin`. Se construye HACIA ATRÁS desde la
+  // punta: punta → pata recta (dirFin) → arco → punto de nacimiento sobre el lado.
+  //   nace   : punto sobre el lado del rectángulo de donde sale el gancho.
+  //   dirEntra: dirección UNITARIA del lado (desde `nace` hacia afuera del arco).
+  //   dirFin : dirección UNITARIA de la pata final del gancho (hacia el núcleo). Común a
+  //            los 2 ganchos → paralelos. El ángulo entre dirEntra y dirFin debe ser 135°.
+  // Devuelve [nace, ...arco..., punta].
+  function _ganchoArco(nace, dirEntra, dirFin, diamCm, largoPata, xx) {
+    var Rc = 2 * diamCm + diamCm / 2;                 // radio del EJE (norma)
+    // El arco conecta la dirección `dirEntra` con `dirFin`. Su centro O está a Rc de
+    // ambas tangentes. Punto de tangencia de entrada = `nace` (el arco arranca ahí).
+    // El giro va de dirEntra a dirFin; el ángulo barrido:
+    var angEntra = Math.atan2(dirEntra.z, dirEntra.y);
+    var angFin = Math.atan2(dirFin.z, dirFin.y);
+    var barrido = angFin - angEntra;
+    while (barrido > Math.PI) barrido -= 2 * Math.PI;
+    while (barrido < -Math.PI) barrido += 2 * Math.PI;
+    var sentido = barrido >= 0 ? 1 : -1;
+    // centro: perpendicular a dirEntra en `nace`, hacia el lado del giro.
+    var perp = { y: -sentido * dirEntra.z, z: sentido * dirEntra.y };
+    var O = { x: xx, y: nace.y + perp.y * Rc, z: nace.z + perp.z * Rc };
+    var ang0 = Math.atan2(nace.z - O.z, nace.y - O.y);   // ángulo del punto `nace` en el círculo
+    var n = Math.max(8, Math.ceil(Math.abs(barrido) / (Math.PI / 18)));
     var arco = [];
-    // arranca en k=1: k=0 daría EXACTAMENTE pIni (ya está en la lista) → punto duplicado
-    // que el motor dibujaba como un tramo de largo 0 / barra superpuesta en el inicio.
     for (var k = 1; k <= n; k++) {
-      var a = ang0 + sentido * angDobl * (k / n);
+      var a = ang0 + barrido * (k / n);
       arco.push({ x: xx, y: O.y + Rc * Math.cos(a), z: O.z + Rc * Math.sin(a) });
     }
-    // pata del gancho: tangente al final del arco.
-    var pFin = arco[arco.length - 1], pPrev = arco[arco.length - 2];
-    var dl = Math.hypot(pFin.y - pPrev.y, pFin.z - pPrev.z) || 1;
-    var punta = { x: xx, y: pFin.y + (pFin.y - pPrev.y) / dl * largoPata, z: pFin.z + (pFin.z - pPrev.z) / dl * largoPata };
-    return [esquina, pIni].concat(arco).concat([punta]);
+    // pata final: EXACTAMENTE en dirFin (no de puntos muestreados → dirección exacta).
+    var pFin = arco[arco.length - 1];
+    var punta = { x: xx, y: pFin.y + dirFin.y * largoPata, z: pFin.z + dirFin.z * largoPata };
+    return [nace].concat(arco).concat([punta]);
   }
 
   function _estriboPerimetral(figura, dims, host, anchor, diamCm) {
@@ -170,30 +183,41 @@
     var xx = anchor.x || 0;
     var pSupIzq = { x: xx, y: h2, z: -w2 };           // esquina sup-izq (nacen los ganchos)
 
-    // DOS ganchos con arco explícito, ambos nacen en la esquina sup-izq:
-    //  · Gancho 1: baja por el lado IZQUIERDO (dir −Y) y dobla al núcleo.
-    //  · Gancho 2: sale por el lado SUPERIOR (dir +Z) y dobla al núcleo.
-    // Así son los 2 ganchos de un estribo real, abiertos hacia el núcleo desde la misma
-    // esquina, sin superponerse. Cada uno con su curva (arco explícito).
-    // signos CALIBRADOS por gancho (verificado numéricamente → punta al núcleo):
-    //  · g1 baja por −Y  → perp=−1, sentido=+1
-    //  · g2 sale por +Z  → perp=+1, sentido=−1
-    var g1 = _ganchoArco(pSupIzq, { y: -1, z: 0 }, -1, +1, diamCm, xx);   // [esquina, pIni, arco..., punta]
-    var g1Inv = g1.slice().reverse();                 // [punta1, ...arco, pIni, esquina]
-    var g2 = _ganchoArco(pSupIzq, { y: 0, z: 1 }, +1, -1, diamCm, xx);    // sale por el lado superior
+    // DIRECCIÓN FINAL COMÚN de los 2 ganchos (hacia el núcleo, diagonal −Y+Z) → quedan
+    // PARALELOS. Es la bisectriz de la esquina hacia adentro (135° en atan2(z,y)).
+    var dirFin = _norm2(-1, 1);                        // diagonal hacia el núcleo (abajo-derecha)
+    // Los 2 ganchos NACEN en puntos distintos de los lados que llegan a la esquina, para
+    // que no se pisen, pero ambos terminan en dirFin (paralelos). El ángulo entre el lado
+    // y dirFin es 135° en ambos (la esquina es de 90°, dirFin es su bisectriz exterior).
+    //  · g1 nace bajando por el lado izq (dirEntra −Y).
+    //  · g2 nace saliendo por el lado superior (dirEntra +Z).
+    // Un pequeño offset del punto de nacimiento evita que ambos arcos coincidan.
+    var offNace = Rc2(diamCm) * 0.6;
+    var naceG1 = { x: xx, y: h2 - offNace, z: -w2 };   // sobre el lado izq, un poco abajo
+    var naceG2 = { x: xx, y: h2, z: -w2 + offNace };   // sobre el lado sup, un poco a la derecha
+    // LARGO de la pata del gancho ACOTADO para que la punta NO se salga del rectángulo.
+    // La pata apunta al núcleo (dirFin, diagonal adentro). Se limita a norma (6φ, mín 7.5)
+    // PERO sin exceder ~40% de la diagonal útil del núcleo (así queda holgado adentro).
+    var diagUtil = Math.hypot(2 * h2, 2 * w2);
+    var largoPata = Math.min(Math.max(6 * diamCm, 7.5), diagUtil * 0.28);
+    var g1 = _ganchoArco(naceG1, { y: -1, z: 0 }, dirFin, diamCm, largoPata, xx);   // [nace, arco..., punta]
+    var g1Inv = g1.slice().reverse();                 // [punta1, ...arco, nace]
+    var g2 = _ganchoArco(naceG2, { y: 0, z: 1 }, dirFin, diamCm, largoPata, xx);
 
-    // Rectángulo planar (cierra exacto). Sus 4 esquinas de 90° las redondea el motor.
-    var rect = [
+    // Polilínea del estribo, en orden continuo:
+    //  punta_g1 → arco1 → naceG1 (en el lado izq) → esquina sup-izq → recorre rectángulo
+    //  → vuelve a esquina (cierre) → naceG2 (en el lado sup) → arco2 → punta_g2.
+    // El rectángulo se recorre desde la esquina; naceG1 y naceG2 están sobre sus lados,
+    // así el trazo es continuo sin saltos.
+    var recorridoRect = [
+      pSupIzq,                         // esquina sup-izq (tras naceG1)
       { x: xx, y: -h2, z: -w2 },       // inf-izq
       { x: xx, y: -h2, z: w2 },        // inf-der
       { x: xx, y: h2, z: w2 },         // sup-der
       pSupIzq                          // CIERRE exacto sup-izq
     ];
-    // Polilínea: punta_g1 → arco1 → esquina → rectángulo → cierre(esquina) → arco2 → punta_g2.
-    // g1Inv termina en la esquina; el rect arranca en inf-izq y cierra en la esquina;
-    // g2 arranca en la esquina (su [0]) → concateno g2 SIN su primer punto (la esquina,
-    // ya presente por el cierre) para no duplicar.
-    return g1Inv.concat(rect).concat(g2.slice(1));
+    // g1Inv = [punta1 ... arco ... naceG1]; luego esquina+rect+cierre; luego naceG2 + arco2 + punta2.
+    return g1Inv.concat(recorridoRect).concat(g2);
   }
 
   // ---- TRABA vertical (101A típ.): cose las dos caras, gancho arriba/abajo.
