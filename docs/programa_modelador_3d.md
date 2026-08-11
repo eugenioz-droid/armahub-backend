@@ -950,3 +950,201 @@ Lógica A (cara+capas panel), Lógica B (rango en vista según plano, rotación 
 (arreglo rango+capas por plano de trabajo), handles por-vista con color por eje, correcciones internas.
 NO entra: boundary visual de barra editable <-> offset (después), soportes de losa 3D (después), activar
 retranqueo/prioridad en arrastre (después).
+
+
+## §GAP-ANALYSIS-TE (10-ago) — Auditoría del Template Editor vs. este programa
+
+Producido por workflow (agentes de diagnóstico, read-only) contra el código en el commit del estribo
+resuelto (6bce693). ES LA LISTA DE TRABAJO VIGENTE del Template Editor: cada ítem tiene severidad
+(CRÍTICO/IMPORTANTE/DETALLE), la cita del doc que lo respalda y el archivo:línea. Los 5 agentes de
+implementación NO alcanzaron a correr (límite de sesión) — el workflow se reanuda con
+resumeFromRunId: wf_378b1aad-716.
+
+TITULARES (lo más grave descubierto, no estaba en el radar):
+- G7 CRÍTICO · La INTERACCIÓN 2D está MUERTA en modo ortográfico: `if (ST.ortoActivo) return;`
+  (template_editor.js ~1008) corta el dibujo de barras+hit-testing, nodos, flecha de rango y cotas.
+  En producción NO se puede seleccionar/mover una barra clicándola en las vistas; sólo desde el panel.
+  Es prerrequisito de casi todo lo demás.
+- G3/B3 CRÍTICO · Voltear plano (tecla R) es DECORATIVO: sólo cambia la proyección SVG, nunca llega
+  al motor; los distribuidores reparten SIEMPRE en X. Y _aplicarPostTransform rota en torno al ORIGEN
+  DEL HOST → por eso se pierde el anclaje al recubrimiento. El fix correcto es permutación de ejes
+  en el motor (reglas.js) para que el volteo sea geometría real y el recub se mantenga por
+  construcción, y luego eliminar _proyectorVolteado.
+- G2 CRÍTICO · Guardar/Abrir template SIN cablear (botones sin id ni handler; cero fetch en
+  template_editor.js) → el trabajo se pierde al recargar. Backend POST/GET /templates YA existe.
+- G1 CRÍTICO · Pantalla previa del sub-tab NO existe (nombre + estructura + dimensiones + lista de
+  guardados), contra la decisión cerrada de discovery.
+
+
+
+########## AGENTE 1 ##########
+DISEÑO UX — Pantalla previa del sub-tab Templates + flujos del modal (READ-ONLY, listo para implementar).
+
+=====================================================================
+1. PANTALLA PREVIA (reemplaza el contenido actual de #catSubTemplates en catalogo.html, líneas 235-256)
+=====================================================================
+Estructura: 2 cards apiladas dentro de #catSubTemplates (estilo plataforma: .card con border-top:3px solid #558B2F, títulos h3 color #558B2F, textos .muted 12px — igual que los otros sub-paneles del catálogo).
+
+CARD 1 — "🧱 Nuevo template"
+---------------------------------------------------------------
+| 🧱 Nuevo template                    [Colocador por proyecciones] |
+| Elige el elemento, define el hormigón y ponle nombre.            |
+|                                                                   |
+| ELEMENTO                                                          |
+| [🧱 MURO] [⬜ LOSA] [📏 VIGA] [🏛 COLUMNA] [🪨 FUNDACION] [📦 GEN] |
+|                                                                   |
+| DIMENSIONES DEL HORMIGÓN (cm)          RECUBRIMIENTOS (cm)        |
+| Largo [600]  Alto [60]  Ancho [30]     Sup [4] Inf [4] Lat [3]    |
+|                                                                   |
+| NOMBRE DEL TEMPLATE                                               |
+| [Viga fundación tipo A________________]  [🧱 Crear template]      |
+---------------------------------------------------------------
+
+(a) Selector de ELEMENTO — id contenedor: tplElemGrid. 6 botones-card en fila (flex-wrap), orden CANÓNICO: MURO · LOSA · VIGA · COLUMNA · FUNDACION · GEN. Cada botón: id tplElemBtn_MURO … tplElemBtn_GEN, data-elem="MURO", ~92px ancho, ícono arriba (emoji 20px) + nombre abajo (11px, font-weight:700). Íconos: MURO 🧱, LOSA ⬜, VIGA 📏, COLUMNA 🏛, FUNDACION 🪨, GEN 📦. Estado normal: border 1px solid #dbe1e8, fondo #fff. Seleccionado: border #558B2F, fondo #f7fbf2, color #33691e. Hover: border #8BC34A. Default al entrar: VIGA seleccionada (único elemento con máquina completa hoy). Click → repinta la sección de dimensiones (tplDims) con los campos del elemento y sus defaults, y pone foco en el primer campo de dimensión NO — foco queda donde está (no robar foco al explorar); solo al click en nombre.
+
+(b) DIMENSIONES — id contenedor: tplDims (se re-renderiza por elemento desde una tabla declarativa local TPL_DIMS_POR_ELEMENTO, espejo del espíritu de PLANOS_POR_ELEMENTO). Inputs type=number, width 70px, font-size 12px, label 10.5px .muted arriba. IDs genéricos por clave: tplDim_largo, tplDim_alto, tplDim_ancho, tplDim_recub_sup, tplDim_recub_inf, tplDim_recub_lat, tplDim_espesor, tplDim_b, tplDim_h, tplDim_recub (según elemento). Campos y defaults (cm):
+  · VIGA: Largo 600 · Alto 60 · Ancho 30 | Recub sup 4 · inf 4 · lat 3  (= semilla_viga.js:41, NO inventar otros)
+  · MURO: Largo 400 · Alto 250 · Espesor 20 | Recub caras 2.5 · bordes 3
+  · COLUMNA: Alto 300 · b 40 · h 40 | Recub 4
+  · LOSA: Largo 500 · Ancho 400 · Espesor 15 | Recub sup 2.5 · inf 2.5
+  · FUNDACION: Largo 300 · Ancho 100 · Alto 80 | Recub 5
+  · GEN: Largo 300 · Alto 100 · Ancho 100 | Recub 4
+Validación mínima (en input/change): dims > 0; recubrimientos ≥ 0 y (suma de recubs opuestos) < dimensión de esa cara (ej. sup+inf < alto). Campo inválido: border #c62828 + mensajito único bajo la grilla (id tplDimsErr, 10.5px, color #c62828): "Revisa las dimensiones marcadas." Vacío o inválido ⇒ Crear deshabilitado.
+
+(c) NOMBRE — input id tplNombre, placeholder "Nombre del template (ej. Viga fundación tipo A)", maxlength 80, width 100% máx 360px. trim() para validar. Enter en el input = click en Crear si está habilitado.
+
+(d) BOTÓN CREAR — id tplBtnCrear, texto "🧱 Crear template", estilo botón primario acero (background #8BC34A, hover #558B2F, color #fff, radius 8px, font-weight:700 — igual al botón actual línea 251-254). disabled si nombre vacío O dims inválidas (opacity .5, cursor default, title "Ponle nombre y revisa las dimensiones"). Click → templateEditorAbrir({ elemento, nombre, dims }) (extender la firma actual de template_editor.js:2511 que hoy no recibe args): construye ST.receta con geometria desde dims (SIEMPRE rectángulo de hormigón), componentes:[], y abre el modal ya configurado. Para VIGA con las dims-default puede seguir ofreciéndose la semilla NO — discovery manda hormigón listo y vacío de fierros; la semilla queda solo para tests.
+
+CARD 2 — "📂 Templates guardados"
+---------------------------------------------------------------
+| 📂 Templates guardados                          [n templates]     |
+|  NOMBRE                    TIPO      FECHA         CREADO POR     |
+|  Viga fundación tipo A     VIGA      07-08-2026    eugenio…  [Abrir] |
+|  Muro perimetral M1        MURO      05-08-2026    …         [Abrir] |
+---------------------------------------------------------------
+IDs: card tplGuardadosCard, contador tplGuardadosCount (span .muted 11px, "3 templates"), contenedor lista tplGuardadosLista. Al entrar al sub-tab (switchCatSubTab('templates') en catalogo/index.js:33 → llamar nueva función global tplCargarGuardados()): estado de carga "<div class='muted'>Cargando templates…</div>"; luego fetch GET /templates → tabla simple (mismo look de tablas del catálogo: filas 12px, header 10.5px uppercase .muted). Columnas: Nombre (bold) · Tipo (chip 10px uppercase con el color del elemento) · Fecha (dd-mm-aaaa desde ISO) · Creado por · botón "Abrir" (id-less, data-id={id}, estilo ghost: border 1px #dbe1e8, radius 7px, 11.5px). Click Abrir → GET /templates/{id} → templateEditorAbrir({ elemento: tipo.toUpperCase(), nombre, dims: params.geometria, receta: params, templateId: id }). Error de red: "<div class='muted'>No se pudieron cargar los templates. <a onclick=tplCargarGuardados()>Reintentar</a></div>". Estado vacío: "<div class='muted'>Aún no hay templates guardados. Crea el primero aquí arriba.</div>".
+
+=====================================================================
+2. DENTRO DEL MODAL (template_editor_modal.html + template_editor.js)
+=====================================================================
+· TÍTULO (te_titlebar, líneas 226-236): h1 → "Template Editor — Viga" (elemento capitalizado); .te-sub → "Construyendo: <b id=te_subNombre>{nombre}</b> · Catálogo › Templates". ELIMINAR el segmented .te-seg Viga/Muro/Columna (línea 233) — la estructura se elige FUERA del modal (discovery); en su lugar un badge estático id te_elemBadge (chip .te-chip con el nombre del elemento). Botón "📂 Abrir" (línea 234): onclick → si hay cambios sin guardar confirm("Hay cambios sin guardar. ¿Volver a la lista igual?"); si acepta (o no hay cambios) → templateEditorCerrar() y quedar en la pantalla previa (que ya lista los guardados — NO duplicar una mini-lista dentro del modal).
+· RIBBON TIPOLOGÍAS (te_tipbtns, líneas 256-262, hoy hardcodeado viga): renderizar dinámico desde espejo local TPL_TIPOLOGIAS (copia 1:1 de _TIPOLOGIAS_SEED, catalogo.py:99-114) según ST.elemento. Botón = <span class="te-tipbtn" data-tip="{codigo}" title="{nombre}"> con swatch .te-sw. Colores: mapa TPL_COLORES por código; viga conserva los existentes (CBS #1565c0, CBI #00897b, ES #e65100, TRV #7b1fa2, LT #607d8b); para el resto asignar por ROL para que el color signifique lo mismo en todos los elementos: principales/cabezales-mallas azul #1565c0 y teal #00897b (segunda capa/cara), estribos-confinamiento naranja #e65100, trabas púrpura #7b1fa2, soportes/reparticiones gris #607d8b, refuerzos índigo #5e35b1, n-capas variante clara del mismo tono. Si un elemento tiene >6 tipologías (LOSA tiene 9), el ribbon hace wrap (flex-wrap) — no scroll horizontal.
+· GUARDAR (footer, botón línea 392): darle id te_btnGuardar, onclick templateEditorGuardar(): POST /templates con body {nombre: ST.nombre, tipo: ST.elemento.toLowerCase(), params: ST.receta} — OJO: el campo del backend es "params", NO "receta" (modelador.py:45-49). Estados del botón: normal "💾 Guardar template" → durante fetch disabled + "Guardando…" → éxito "✓ Guardado" 1.5 s y volver a normal, marcar receta limpia (guardar hash) y refrescar la lista del tab (tplCargarGuardados()) → error: re-habilitar + mensajito rojo junto al footer (id te_saveErr, 11px): "No se pudo guardar: {detail}". Si el template vino de "Abrir" (tiene templateId) el POST crea una COPIA nueva (el backend no tiene PUT) — texto del botón en ese caso: "💾 Guardar como nuevo" (dejar PUT/versionado como pendiente).
+· Footer botón "✓ Usar en el despiece": queda como está (comportamiento pendiente en el doc §6, línea 416-418 — no diseñar aquí).
+
+=====================================================================
+3. FLUJO DE SALIDA
+=====================================================================
+Dirty-tracking simple: al abrir y tras cada guardado exitoso, ST._recetaGuardada = JSON.stringify(ST.receta); hayCambios() = JSON.stringify(ST.receta) !== ST._recetaGuardada. templateEditorCerrar() (js:2534) y el click en backdrop (js:2547) y el botón ✕ pasan todos por: if (hayCambios() && !confirm("Hay cambios sin guardar. ¿Cerrar igual?")) return; — confirm() nativo, coherente con la plataforma (mismo patrón ELIMINAR de lotes). Tecla Esc: mismo camino.
+
+=====================================================================
+4. SENSACIÓN "BIEN PENSADO"
+=====================================================================
+· Al abrir el sub-tab: VIGA preseleccionada con sus defaults ya puestos — un usuario puede escribir solo el nombre y crear en 2 acciones.
+· Cambiar de elemento NUNCA borra el nombre escrito; solo re-renderiza dims con defaults del nuevo elemento.
+· Foco inicial del modal: herramienta "mover" activa (como hoy); en la pantalla previa no se roba foco.
+· Textos cortos ya especificados arriba; todo en español; nada de párrafos largos (reemplazan los 2 párrafos introductorios actuales de las líneas 241-250).
+· El chip de tipo en la lista usa el mismo color del elemento para reconocimiento cruzado tab↔modal.
+
+ARCHIVOS A TOCAR EN LA IMPLEMENTACIÓN (para el merge del orquestador):
+· armahub/templates/tabs/catalogo.html — reemplazar interior de #catSubTemplates (líneas 235-256).
+· armahub/static/js/features/catalogo/index.js — switchCatSubTab: al entrar a 'templates' llamar tplCargarGuardados() (si existe).
+· armahub/static/js/features/modelador/template_editor.js — extender templateEditorAbrir(cfg), nuevo templateEditorGuardar(), render dinámico del ribbon, dirty-check en cerrar, espejo TPL_TIPOLOGIAS/TPL_COLORES/TPL_DIMS_POR_ELEMENTO (resolver deps DENTRO de funciones, regla 1).
+· armahub/templates/tabs/template_editor_modal.html — titlebar (quitar te-seg, badge + te_subNombre), id te_btnGuardar, ribbon vaciado para render dinámico.
+
+--- PENDIENTES ---
+1) Backend sin PUT /templates/{id}: "Guardar" sobre un template abierto crea copia — decidir si se agrega PUT (edición real) o se acepta "Guardar como nuevo". 2) Campo obra del POST: la pantalla previa diseñada no pide obra (queda null=general); confirmar si se quiere selector de obra. 3) Colores de tipologías no-viga: propuse mapa por rol — validar con el usuario los tonos exactos. 4) "Usar en el despiece" sigue pendiente de definición (doc §6). 5) MURO/LOSA/COLUMNA/FUNDACION/GEN: la pantalla previa ya los ofrece, pero la máquina del modal solo tiene VIGA poblada en PLANOS_POR_ELEMENTO — decidir si los otros 5 botones van deshabilitados con tooltip "Próximamente" o habilitados (recomiendo deshabilitados hasta poblar la tabla).
+
+########## AGENTE 2 ##########
+GAP-ANALYSIS Template Editor vs programa_modelador_3d.md (leído completo, 953 líneas) + TAREAS. Suite completa PASA (140.3 kg / 72 placements / 4 items).
+
+=== 1. DEFINICIONES DEL DISCOVERY NO IMPLEMENTADAS ===
+
+[CRÍTICO] G1 · Pantalla previa del sub-tab NO existe. Decisión cerrada ("La selección de ESTRUCTURA va FUERA del modal… se entra con el tipo elegido y el hormigón listo"; §0-7ter; §DISCOVERY-INTER 6 "el NOMBRE del template se define en el TAB antes de entrar"). catalogo.html:235-256 (catSubTemplates) = solo intro + botón "Abrir Template Editor". Falta: campo nombre, selección de estructura (orden canónico MURO·LOSA·VIGA·COLUMNA·FUNDACION·GEN), lista de templates guardados (GET /templates ya existe en modelador.py), rectángulo de hormigón inicial. Título del modal hardcode "Construyendo: Viga tipo Explora" (modal:230).
+
+[CRÍTICO] G2 · Guardar/Abrir template SIN cablear. Botones "💾 Guardar template" (modal:392), "📂 Abrir" (modal:234) y "✓ Usar en el despiece" (modal:393) NO tienen id ni handler. template_editor.js tiene CERO llamadas backend (grep /templates|fetch = solo panel_3d.js). El trabajo del usuario se pierde al recargar. Backend POST/GET /templates listo y sin consumidor desde este modal. (§0-4ter "guardar como template = corazón del diseño").
+
+[CRÍTICO] G3 · Voltear plano NO cambia la LÓGICA de distribución. §INTERACCIÓN-2.0: al voltear, el estribo "de canto + su RANGO (tanda hacia la profundidad)… habilita distribuir en el otro eje (fundación: cualquiera de los 2 ejes)". Implementado SOLO como cambio de proyección SVG (_proyectorVolteado, te.js:624) que además es INVISIBLE en modo orto (ver G7): distribuidorLinear/Arreglo distribuyen SIEMPRE en X (reglas.js:182-219 "a lo largo del eje X"; _rangoClick usa from.x/to.x te.js:1568; flecha rango solo en largo/planta te.js:1093). Presionar R hoy no produce ningún cambio visible ni funcional. El mecanismo modular clave del rediseño queda decorativo.
+
+[IMPORTANTE] G4 · Dims dinámicas desde el catálogo REAL (§0-6ter "leídos de figuras_catalogo.parciales"). te.js:104-112 FIG = espejo hardcode de 8 figuras; cualquier otra figura cae a {parciales:['A']} silenciosamente. datalist te_figs solo 6 opciones (modal:396). catalogo.py tiene 30+ figuras y GET del catálogo ya existe.
+
+[IMPORTANTE] G5 · Tipologías del ribbon hardcode VIGA (modal:256-262: CBS/CBI/ES/TRV/LT). §MURO/COLUMNA: "las tipologías disponibles (del catálogo por estructura)". catalogo.py:98-115 _TIPOLOGIAS_SEED las tiene todas. Tampoco se muestra el chip de modo preset en el botón (CSS .te-mode existe, modal:62, sin uso).
+
+[IMPORTANTE] G6 · PLANOS_POR_ELEMENTO solo viga (te.js:549-557, muro/columna = TODO comentado). Prerrequisito muro (P2, veredicto SÍ).
+
+[IMPORTANTE] G7bis · HANDLES según spec: "SOLO al seleccionar la pieza, color por eje X rojo/Y verde/Z azul, solo en la vista donde tienen sentido, atenuar otras vistas". Lo implementado (_dibujarNodos te.js:1106) son nodos PERMANENTES de las 4 esquinas del HORMIGÓN, un solo color, en las 3 vistas — y además muertos en modo orto (G7). No hay handles de la pieza.
+
+[IMPORTANTE] G8 · Empalme sin UI. Motor completo (reglas.js evalEmpalme:141, dims alargadas:426-436, tests pasan) pero el panel no tiene campo empalme (§E veredicto: "Incluye empalmes (A)").
+
+[DETALLE] G9 · Ghost en vista longitudinal no dibuja la "FORMA REAL de la barra" (§DISCOVERY-INTER 1): _ghostForma te.js:817 dibuja línea recta, sin patas de la figura.
+[DETALLE] G10 · Cotas: doc pide "indicar TRAMOS de estribo/distribución (zonas @)"; _dibujarCotas te.js:1068 solo acota W/H del hormigón (y está muerta en orto, G7).
+[DETALLE] G11 · Aristas del eje X (extremos) no anclables (_caraDeEje te.js:724 devuelve null) — limita fundación.
+[DETALLE] G12 · esArco (flag perf figura_puntos) no existe aún (frente perf, otro agente).
+
+=== 2. MAL IMPLEMENTADAS ===
+
+[CRÍTICO] B3-raíz · Rotación pierde el anclaje al recubrimiento (bug reportado). reglas.js:339-365 _aplicarPostTransform rota cada punto EN TORNO AL ORIGEN DEL HOST: una pieza anclada en cara sup (y=alto/2−recub) al rotar 90° se traslada a otra posición del volumen. §DISCOVERY-INTER 2 define rotar "en torno a la profundidad del plano… se ve girar de frente ___| → |___" = rotar sobre su propio centro/anclaje y RE-ANCLAR al recubrimiento. Fix: rotar respecto del centroide del placement (o del anchor) y re-aplicar el anchor de cara tras rotar.
+
+[CRÍTICO] G7 · Interacción 2D MUERTA en modo orto (Etapa A). te.js:1008 `if (ST.ortoActivo) return;` corta _dibujarVista2D ANTES de dibujar barras+hit(data-ci), nodos, flecha de rango, cotas y ghost de 1er clic de rango. ortoActivo=true apenas carga Three (te.js:401) → en producción: NO se puede seleccionar/mover una barra clicándola (mousedown busca data-ci/data-node/data-rango que ya no existen, te.js:1412-1462), nodos de redimensión desaparecidos, flechita ↔ desaparecida, toggle Cotas sin efecto. Solo queda seleccionar desde el panel izquierdo. Contradice §DISCOVERY-INTER 4 y 5 ("clic en una barra → se selecciona; mover y borrar desde la vista"). Es el gap estructural más grave: el hit-testing debe reconstruirse sobre el overlay SVG (los transforms SÍ se guardan, te.js:987) o por picking del render orto.
+
+[CRÍTICO] B1 · Slider de corte: modal:320,334,347 `<input type="range" min="0" max="100" value="50">` SIN step fino → 100 pasos; en sección (depth=x, viga 600) ≈6 cm/paso. Además _encuadrarOrto te.js:2250 snapea a la rebanada más cercana solo en depth=x; en largo/planta el paso grueso se siente directo.
+
+[CRÍTICO] B2 · Sección YZ: la banda fina de clipping (te.js:2250-2266 + _renderVistasOrto:2318-2338) corta los cilindros de los longitudinales SIN tapas y con MeshStandardMaterial single-sided (te.js:384-393) → los "círculos apagados/de otro color" son el interior/backface del cilindro cortado; en los extremos la banda cae sobre las patas de gancho del 103B → "aparecen patas". Fixes candidatos: side:DoubleSide o stencil caps para el corte, y/o excluir longitudinales del clip en sección (siempre cruzan el corte).
+
+[IMPORTANTE] G13 · Centrar/Repartir sin efecto. Panel escribe d.justify (te.js:1758-1764) pero distribuidorLayered (reglas.js:225-248) SIEMPRE reparte a lo ancho (z de −zHalf a +zHalf); justify no se lee. §INTERACCIÓN-2.0 A lo exige como "control EXPLÍCITO". Igual el "espaciamiento" de barras/capa del panel A no existe (solo gap entre capas).
+
+[IMPORTANTE] G14 · Check "tomar contorno" = dato muerto. te.js:143 escribe dims.__contorno=false y NADIE lo consume (grep único hit). El estribo colocado siempre toma el recubrimiento; con el check apagado el ghost dibuja al borde (te.js:831) pero el resultado real no cambia → ghost ≠ resultado. §DISCOVERY-INTER 1: "Recub=0 → la barra se ajusta al contorno".
+
+[IMPORTANTE] B4 · Gizmo = cuadro de texto. te.js:600-609 genera spans de texto ("X largo →…") en .te-vgizmo (modal:123). El usuario pide el triad de flechitas estándar de modelador (y el cuadrante 3D no tiene gizmo alguno).
+
+[DETALLE] G15 · _caraDefault sigue existiendo como fallback (te.js:1203-1206, adivina con host.y>=0) — aceptable como fallback, pero con el ghost muerto en vista largo para cabezales (línea a lo largo) el usuario no siempre pasó por una cara.
+
+=== 3. IMPLEMENTADO QUE EL DOC NO PEDÍA / MOLESTA ===
+
+[IMPORTANTE] X1 · Selector "Viga|Muro|Columna" DENTRO del modal (modal:233, te-seg) sin cablear: contradice la decisión "la selección de estructura va FUERA del modal" Y el orden canónico. Quitar cuando exista la pantalla previa.
+[IMPORTANTE] X2 · Botón "✓ Usar en el despiece" en el footer del Template Editor contradice el flujo D definitivo (§DISCOVERY-INTER-2.D: el Template Editor "SOLO crea/edita templates y los deja guardados. NADA más"; el uso va por Fabricator→Enfierrador). Debería ser solo Guardar.
+[DETALLE] X3 · Doble modelo de arreglo: comp.arreglo {n_capas,sep_capas,rango} (normalizado en reglas.js:100-106, semilla) NUNCA se usa — el panel y el motor usan distribucion.n_capas/sep_capas/eje_capas/rango. Dato duplicado que confundirá persistencia de templates.
+[DETALLE] X4 · Herramienta "⟳ Rotar" del toolbar (modal:279) no hace nada al clicar en vista (te.js:1459 comentario: "clic en vacío no hace nada") — solo cambia el cursor; la rotación real va por ESPACIO/+90°. Botón engañoso.
+
+=== 4. ESTADO REAL VERIFICADO ===
+· Modos puntual/lineal/arreglo: motor OK (distribuidorArreglo real, tests pasan; alternar modos conserva rango/@/capas via _setModoComp). Limitación: todo distribuye SOLO en X (G3).
+· Rotar plano (R + botón te_flipBtn): cableado (tecla R te.js:2066, botón flotante _posicionarFlipBtn) pero SIN efecto visible en modo orto y sin efecto lógico (G3).
+· Snap de cara: FUNCIONAL (highlight + pega ghost + manda la cara al colocar; solo herramienta Colocar).
+· Rango 2 clics: funcional (con clamp), pero sin feedback del 1er clic ni flechita en modo orto (G7).
+· Ctrl+Z: FUNCIONAL (pila 60, snapshot antes de mutar, sin redo — según alcance).
+· Ghost: FUNCIONAL (forma por rol, badge tipología+ø, clamp rojo not-allowed).
+· Panel contextual por modo: FUNCIONAL (3 botones + campos por modo).
+· Guardar/cargar template: NO cableado (verificado: cero fetch en template_editor.js; botones sin id).
+· Pantalla previa: NO existe (verificado catalogo.html:235-256).
+· Multi-elemento: solo viga (PLANOS_POR_ELEMENTO te.js:549; muro/columna TODO).
+· Tipologías ribbon: hardcode viga en HTML (modal:256-262).
+· Dependencias/prioridad/retranqueo: motor implementado (generar.js resolverDependencias:163-253), sin UI — CONFORME al alcance ("NO entra: activar retranqueo/prioridad en arrastre").
+· Backend modelador.py POST/GET /templates: existe, solo lo consume panel_3d.js (3D Template), no el Template Editor.
+
+--- PENDIENTES ---
+Para el orquestador, orden sugerido de ataque: (1) B1 slider paso fino (step + mapeo por cm) — trivial; (2) B2 corte: DoubleSide/caps o excluir longitudinales del clip en sección; (3) B3 rotación: rotar sobre centroide/anchor + re-anclar al recubrimiento (reglas.js _aplicarPostTransform); (4) B4 gizmo triad SVG; (5) G7 restaurar interacción sobre el overlay (hit-testing con los transforms ya guardados) — prerrequisito de casi todo lo demás; (6) G2 cablear Guardar/Abrir a modelador.py; (7) G1 pantalla previa del sub-tab (nombre+estructura+lista, orden canónico) y quitar el seg del modal + botón "Usar en el despiece" (X1/X2); (8) G3 distribución en eje según plano volteado; (9) G4/G5 leer figuras y tipologías del catálogo real; (10) G13/G14 justify y tomar-contorno funcionales o quitarlos. Decisión de usuario pendiente que el doc ya anota: mecánica exacta de "Usar en el despiece" (Enfierrador vs carga directa) — no bloquear por ella.
+
+########## AGENTE 3 ##########
+DIAGNÓSTICO READ-ONLY B1-B4 (no se editó ningún archivo).
+
+B1 — SLIDER YZ DISCRETO.
+Causa raíz: armahub/templates/tabs/template_editor_modal.html:320 (y 334/347): <input type=range class="te-vcut-r" min=0 max=100 value=50> SIN atributo step → step default = 1 (100 posiciones). Handler en template_editor.js:2119-2127: o.corte = Number(r.value)/100. En SECCIÓN·YZ el eje de profundidad es X = largo (PLANOS_POR_ELEMENTO.viga.seccion depth:'x', template_editor.js:551; _espesorProfundidad:2136-2141): 1 paso = 1% de 600 cm = 6 cm/paso. En A LO LARGO (depth=z, ancho 30) es 0.3 cm y en PLANTA (depth=y, alto 60) 0.6 cm — por eso solo YZ se siente grueso.
+Fix propuesto: agregar step="0.1" (0.6 cm en viga de 600; step="any" también sirve para arrastre continuo) a los 3 inputs .te-vcut-r (líneas 320, 334, 347). El handler ya es float-safe (divide por 100 y clampa); no requiere cambio JS. Nota: en sección el snap a rebanadas (_sliceMasCercana, 2197-2205) domina cuando hay estribos, pero el step fino es necesario para el caso sin estribos y para las otras vistas/elementos futuros con depth grande.
+
+B2 — LONGITUDINALES INVISIBLES / CÍRCULOS APAGADOS.
+Causa raíz (a) invisibilidad: en SECCIÓN la banda de corte son 2 clipping planes perpendiculares a X (template_editor.js:2318-2332) con semigrosor fino snapeado al estribo (2250-2261: corteGrosor = diam*1.4). Los longitudinales son CylinderGeometry a lo largo de X vistos EXACTAMENTE de punta por la cámara orto (eye [1,0,0], _ORTO_DIR:2089): la banda fina en el centro recorta AMBAS tapas del cilindro → queda un tubo abierto cuyo manto se ve de canto (0 px) y cuyo interior son back-faces (MeshStandardMaterial side=FrontSide default, líneas 384-388) → se culean → NO se pinta nada. El comentario de diseño (2238: "sus círculos se ven SIEMPRE") asume tapas que el clipping elimina.
+Causa raíz (b) extremos: al llevar el slider a un extremo la banda alcanza el FIN de la barra: la tapa +X (normal hacia la cámara) entra en la banda → círculo visible; pero la luz direccional principal dir(1,1.4,0.8) intensidad 0.7 (línea 380) da dot≈0.52 con la normal +X y con metalness 0.5 la componente ambiente se apaga → "círculos apagados/de otro color". En el extremo opuesto la tapa tiene normal -X (back-face, invisible) y lo que cruza la banda son las PATAS A/C del 103A (corren en Y) → "aparecen patas". Todo coincide con el reporte textual.
+Fix propuesto (2 partes, sin tocar el 3D perspectivo):
+ 1. NO clipear las barras que corren a lo largo del eje de profundidad de la vista: al construir cada mesh de barra guardar su span por eje en mesh.userData (ya existe el criterio exacto en _slicesEnProfundidad:2161-2192 — "no rebanada" = span en depth > umbral); en _renderVistasOrto, antes de render de cada vista, asignar los planos de clipping por MATERIAL LOCAL (renderer.localClippingEnabled ya está en true, línea 375) solo a los meshes "rebanada" para ese depth (requiere material por-mesh o clon por rol), dejando los longitudinales sin clip en esa vista → cilindro completo visto de punta = su tapa cercana se pinta como círculo correcto y estable. Restaurar renderer.clippingPlanes=[] global como hoy (2338).
+ 2. Luz frontal por vista orto: crear una DirectionalLight extra (p.ej. intensidad 0.5) que en _renderVistasOrto se posicione en el eye de cada vista (dir de _ORTO_DIR) con visible=true solo durante los 3 renders orto y visible=false antes del render perspectivo en _loop → las tapas/secciones se ven bien iluminadas sin alterar el 3D. (THREE resuelto dentro de la función — regla dura 1.)
+
+B3 — VOLTEAR PLANO PIERDE EL ANCLAJE AL RECUBRIMIENTO.
+Causa raíz: plano_pieza.volteado hoy es SOLO un cambio de proyección SVG, jamás llega al motor. Evidencia: rotarPlanoPieza (template_editor.js:1250-1258) solo togglea el flag y regenera; grep en reglas.js/generar.js/figura_puntos.js: el único uso es la normalización del campo (reglas.js:93-97); generar.js: 0 matches. _baseDeComponente (reglas.js:439+) y los distribuidores (distribuidorLinear:202-212 reparte SIEMPRE en X; distribuidorLayered:230-241 ancla SIEMPRE y=alto·cara sup/inf y z=ancho−recubLat) y _dims auto (reglas.js:403-425) están cableados a la orientación NO volteada. Consecuencias visibles: (1) la geometría 3D/orto no rota nunca (el doc §INTERACCIÓN-2.0 exige "cambia su proyección Y su lógica": distribuir en el otro eje); (2) el overlay SVG sí usa _proyectorVolteado (624-626) en el bbox (972-975), lo que INFLA el transform de la vista (un volteado en sección mete u=x∈[-300,300] contra hormigón de 30) → ST.transforms (987) queda desalineado del render orto (encuadre independiente en _encuadrarOrto:2207) → recub/ghost/botón flip descolocados; (3) al ARRASTRAR una pieza volteada, _pixelToUV→_clickHost→_dragMover (1183-1189, 1492-1517) invierten con el proyector NORMAL (u→def.u), escribiendo pos_hint en el eje equivocado → la pieza se despega físicamente del recubrimiento. Eso es "se pierde el fix al recubrimiento".
+Comportamiento correcto y fix: voltear debe ser un cambio REAL de geometría que conserve el anclaje: permutación de ejes por componente resuelta en el motor. Concreto: en reglas.js, si comp.plano_pieza.volteado, intercambiar el eje del plano de la figura con el eje de distribución (estribo: figura (z,y) repartida en x → figura (x,y) repartida en z), resolviendo dims 'auto' contra las dims del NUEVO plano (p.ej. lado = largo−2·recubExtremo en vez de ancho−2·recubLat) y el anchor contra el recub de las caras nuevas; los puntos generados salen ya rotados → todas las vistas (renders orto) lo muestran de canto/rotado y el recub se mantiene POR CONSTRUCCIÓN. Con volteado=false la ruta debe quedar byte-idéntica (protege test_generar 140.3 kg/72/4). Luego ELIMINAR _proyectorVolteado y sus 4 usos (624-626, 960/973/1017, 1290): con geometría real el proyector normal sirve para todo y desaparece el bbox inflado y el drag en eje equivocado. (Parche mínimo alternativo si el motor no se toca aún: excluir proyecciones volteadas del bbox 972-975 y usar la inversa (depth,v) en _clickHost/_dragMover para piezas volteadas — pero eso solo arregla el overlay, no cumple la semántica del doc.)
+
+B4 — GIZMO DE TEXTO → GIZMO GRÁFICO.
+Estado actual: .te-vgizmo es un div con 3 <span> de texto ("X largo →…") — CSS en template_editor_modal.html:121-126, divs en 310/328/342, contenido inyectado por _actualizarTitulosVista (template_editor.js:600-609, innerHTML). Además queda un .te-vaxes muerto (CSS línea 120, sin uso en HTML) — limpiar.
+Fix propuesto: (a) VISTAS ORTO (estático, las cámaras orto no rotan): en _actualizarTitulosVista reemplazar el innerHTML por un mini SVG inline (~46×46, esquina inf-izq): flecha horizontal color _EJE_COLOR[def.u] con letra u, flecha vertical color _EJE_COLOR[def.v] con letra v, y símbolo ⊙ (círculo con punto, "hacia ti") color _EJE_COLOR[def.depth]; ya existe _EJE_COLOR (586: X #e53935 / Y #43a047 / Z #1e88e5). Se genera una sola vez por vista al abrir/cambiar elemento — cero costo por frame. (b) VISTA 3D: gizmo tipo modelador — escena secundaria con 3 ArrowHelper (o AxesHelper + sprites de letras) y cámara propia cuya orientación copia la cámara perspectiva cada frame (gizmoCam.position = dirección de la cámara normalizada ×5, lookAt(0,0,0)); render al final de _loop en un viewport chico (~64×64 px) en la esquina del cuadrante 3D usando el MISMO renderer con setViewport+setScissor (patrón ya usado en _renderVistasOrto:2333-2335), con renderer.clippingPlanes=[] y clearDepth antes del pase. THREE resuelto dentro de la función (regla dura 1). CSS: reusar la posición de .te-vgizmo; en el cuadrante 3D solo reservar la esquina (el dibujo lo hace el renderer, no el DOM).
+
+--- PENDIENTES ---
+Para el implementador: (1) B2 parte 1 requiere decidir cómo pasar a clipping LOCAL por material (material por mesh o clones por rol) sin romper el pase perspectivo ni el hack del hormigón (clippingPlanes:[] — verificar empíricamente en r160 que el hormigón sigue exento al mover los planos de global a local). (2) B3 fix de raíz toca reglas.js (_baseDeComponente, distribuidores, dims auto): correr TODA la suite y garantizar ruta volteado=false byte-idéntica (140.3 kg / 72 placements / 4 items); definir permutación exacta también para cabezales y trabas, no solo estribos. (3) Existe un desalineamiento LATENTE adicional (fuera de alcance de B1-B4 pero relacionado): ST.transforms del overlay SVG (bbox+MARGIN, línea 978-987) se calcula independiente del encuadre de la cámara orto (_encuadrarOrto margen 1.18 + zoom/pan que el transform NO conoce) → el hit/ghost puede no coincidir con el render orto tras zoom/pan; conviene abordarlo cuando se toque B3. (4) B4 3D: presupuesto de un render extra por frame en _loop (mini viewport) — coordinar con el frente de performance de panel_3d.js.
