@@ -172,6 +172,92 @@
   }
 
   // ---------------------------------------------------------------------------
+  // VOLTEO DEL PLANO DE LA PIEZA (§INTERACCIÓN-2.0 · G3/B3) — GEOMETRÍA REAL.
+  // ---------------------------------------------------------------------------
+  // `comp.plano_pieza.volteado` NO es un truco de proyección: es una PERMUTACIÓN
+  // DE EJES del componente. Los distribuidores y figura_puntos trabajan siempre en
+  // un marco LOCAL canónico (x = eje de distribución/longitudinal, y = alto,
+  // z = profundidad de capas). Voltear = intercambiar ese eje longitudinal con el
+  // de profundidad:
+  //
+  //     x_local ↔ z_mundo     y_local = y_mundo     z_local ↔ x_mundo
+  //
+  //   · un ESTRIBO con figura en (z,y) repartido en x pasa a figura en (x,y)
+  //     repartido en z;
+  //   · un CABEZAL que corre en x y se reparte a lo ancho (z) pasa a correr en z
+  //     y repartirse a lo largo (x);
+  //   · una TRABA (vertical, cose las dos caras) sigue el mismo intercambio: su
+  //     posición a lo largo (x) pasa a ser a lo ancho (z) y viceversa.
+  //
+  // La receta para conseguirlo SIN duplicar distribuidores ni tocar figura_puntos:
+  // expandir el componente contra un HOST PERMUTADO (largo↔ancho, y con los
+  // recubrimientos que le corresponden a cada cara nueva) y devolver los puntos al
+  // mundo con la misma permutación. Consecuencias:
+  //   · las dims 'auto' se resuelven contra las dims del NUEVO plano
+  //     (estribo volteado: su lado horizontal = largo − 2·recub de extremo);
+  //   · el anchor se calcula contra el recubrimiento de las caras nuevas → EL
+  //     RECUBRIMIENTO SE MANTIENE POR CONSTRUCCIÓN (era el bug "se pierde el fix
+  //     al recubrimiento" al rotar);
+  //   · todas las vistas (que son renders 3D) lo muestran girado sin trucos.
+  // Con volteado=false la ruta es IDÉNTICA a la anterior (ni un objeto extra).
+  // ---------------------------------------------------------------------------
+  var _EJE_FLIP = { x: 'z', y: 'y', z: 'x' };
+
+  function estaVolteado(comp) {
+    return !!(comp && comp.plano_pieza && comp.plano_pieza.volteado);
+  }
+
+  // Eje del MUNDO a lo largo del cual REPARTE este componente (rango/zonas). Los
+  // distribuidores reparten sobre su x local; volteado, esa x local es la Z del
+  // mundo. Lo consume la UI (flecha de rango, arrastre del rango) para operar
+  // sobre el eje real y no siempre sobre X.
+  function ejeDistribucion(comp) {
+    return estaVolteado(comp) ? 'z' : 'x';
+  }
+
+  // Eje del MUNDO en el que se apilan las capas (layered/arreglo), dado el eje
+  // LOCAL declarado en la distribución (default 'z').
+  function ejeCapas(comp, ejeLocal) {
+    var e = (ejeLocal === 'x' || ejeLocal === 'y' || ejeLocal === 'z') ? ejeLocal : 'z';
+    return estaVolteado(comp) ? _EJE_FLIP[e] : e;
+  }
+
+  // Host con dims y recubrimientos permutados (marco local de la pieza volteada).
+  //   largo_local = ancho real   (la pieza corre a lo ancho)
+  //   ancho_local = largo real   (las capas entran a lo largo)
+  //   recub_lat_local = recubrimiento de las caras EXTREMAS reales. El motor no
+  //     tiene un `recub_ext` propio: usa el recub vertical como recub de extremo
+  //     (ver anchorBase.recubExtremo), así que se hereda ese mismo valor.
+  function _hostVolteado(host) {
+    var rSup = (host.recub_sup != null) ? Number(host.recub_sup) : 4;
+    return {
+      largo: Number(host.ancho), alto: Number(host.alto), ancho: Number(host.largo),
+      recub_sup: rSup,
+      recub_inf: (host.recub_inf != null) ? Number(host.recub_inf) : 4,
+      recub_lat: rSup
+    };
+  }
+
+  // Punto del marco LOCAL → mundo (y viceversa: la permutación es involutiva).
+  // Conserva el flag `esArco` (perf del motor geométrico: no re-filetear arcos).
+  function _voltearPunto(p) {
+    var q = { x: p.z, y: p.y, z: p.x };
+    if (p.esArco) q.esArco = true;
+    return q;
+  }
+
+  // cfg de distribución traducida al marco local: sólo el eje de capas (que el
+  // panel escribe en ejes del MUNDO) necesita permutarse. El rango vive en el eje
+  // de distribución del componente, que ES la x local por definición.
+  function _cfgLocal(dist) {
+    if (!dist || dist.eje_capas == null) return dist;
+    var c = {};
+    for (var k in dist) if (dist.hasOwnProperty(k)) c[k] = dist[k];
+    c.eje_capas = _EJE_FLIP[String(dist.eje_capas)] || dist.eje_capas;
+    return c;
+  }
+
+  // ---------------------------------------------------------------------------
   // DISTRIBUIDORES
   // ---------------------------------------------------------------------------
 
@@ -330,11 +416,21 @@
   // ---------------------------------------------------------------------------
   // POST-TRANSFORM (interacción del Template Editor) — OPCIONAL y ADITIVO.
   // Aplica a CADA placement, tras expandir, en este orden:
-  //   1) rotación comp.orient = {eje:'x'|'y'|'z', deg} en torno al ORIGEN del host
-  //      (rotar en el plano de una vista = girar 90° por defecto, §DISCOVERY-INTER 2).
-  //   2) traslación comp.pos_hint = {x?,y?,z?} (delta en cm; ejes ausentes = 0).
-  // Si el componente NO trae orient ni pos_hint, los placements salen IDÉNTICOS a
-  // antes → cero regresión (los tests headless no usan estos campos).
+  //   1) rotación comp.orient = {eje:'x'|'y'|'z', deg} SOBRE EL PROPIO CENTRO de
+  //      la pieza (§DISCOVERY-INTER 2: "se ve girar de frente ___| → |___").
+  //   2) RE-ANCLAJE al recubrimiento: si al girar la pieza se salió del marco útil
+  //      del hormigón, vuelve DENTRO (clamp por eje). Así la rotación "sigue
+  //      reconociendo los boundaries" en vez de despegar la pieza del recub.
+  //   3) traslación comp.pos_hint = {x?,y?,z?} (delta en cm; ejes ausentes = 0).
+  //
+  // PIVOTE (B3-raíz) — antes se rotaba EN TORNO AL ORIGEN DEL HOST, lo que
+  // TRASLADABA la pieza a otro punto del volumen y le hacía perder el anclaje al
+  // recubrimiento (bug reportado por el usuario). Ahora el pivote por defecto es
+  // el CENTRO DEL PROPIO PLACEMENT. `orient.pivot` permite pedir otro:
+  //   · 'propio' (o ausente) → centro del bounding box del placement (default);
+  //   · 'host'               → origen del host (comportamiento histórico, explícito);
+  //   · {x,y,z}              → punto fijo en coords del host.
+  // Sin orient ni pos_hint los placements salen IDÉNTICOS → cero regresión.
   // ---------------------------------------------------------------------------
   function _rotarPunto(p, eje, rad) {
     var c = Math.cos(rad), s = Math.sin(rad);
@@ -343,7 +439,63 @@
     return { x: p.x * c - p.y * s, y: p.x * s + p.y * c, z: p.z };   // 'z'
   }
 
-  function _aplicarPostTransform(placements, comp) {
+  // Bounding box de una polilínea: {min,max,c} por eje (null si no hay puntos).
+  function _bboxPuntos(pts) {
+    if (!pts || !pts.length) return null;
+    var mn = { x: Infinity, y: Infinity, z: Infinity };
+    var mx = { x: -Infinity, y: -Infinity, z: -Infinity };
+    for (var i = 0; i < pts.length; i++) {
+      var p = pts[i];
+      if (p.x < mn.x) mn.x = p.x; if (p.x > mx.x) mx.x = p.x;
+      if (p.y < mn.y) mn.y = p.y; if (p.y > mx.y) mx.y = p.y;
+      if (p.z < mn.z) mn.z = p.z; if (p.z > mx.z) mx.z = p.z;
+    }
+    if (!isFinite(mn.x) || !isFinite(mn.y) || !isFinite(mn.z)) return null;
+    return { min: mn, max: mx, c: { x: (mn.x + mx.x) / 2, y: (mn.y + mx.y) / 2, z: (mn.z + mx.z) / 2 } };
+  }
+
+  // MARCO ÚTIL del hormigón (dentro del recubrimiento), por eje del mundo.
+  function _marcoUtil(host) {
+    if (!host) return null;
+    var rS = (host.recub_sup != null) ? Number(host.recub_sup) : 4;
+    var rI = (host.recub_inf != null) ? Number(host.recub_inf) : 4;
+    var rL = (host.recub_lat != null) ? Number(host.recub_lat) : 3;
+    var L = Number(host.largo), A = Number(host.alto), W = Number(host.ancho);
+    if (!isFinite(L) || !isFinite(A) || !isFinite(W)) return null;
+    return {
+      x: { lo: -L / 2 + rS, hi: L / 2 - rS },     // extremos: el motor usa el recub vertical
+      y: { lo: -A / 2 + rI, hi: A / 2 - rS },
+      z: { lo: -W / 2 + rL, hi: W / 2 - rL }
+    };
+  }
+
+  // Delta que devuelve la pieza DENTRO del marco útil (0 si ya cabe donde está).
+  // Si en un eje la pieza es MÁS LARGA que el marco (p.ej. un estribo girado 90°
+  // en una viga angosta) no hay clamp posible → se CENTRA en ese eje.
+  function _deltaReanclaje(bb, marco) {
+    var d = { x: 0, y: 0, z: 0 };
+    if (!bb || !marco) return d;
+    ['x', 'y', 'z'].forEach(function (e) {
+      var f = marco[e], lo = bb.min[e], hi = bb.max[e];
+      if (!f || !(f.hi > f.lo)) return;
+      if ((hi - lo) > (f.hi - f.lo)) { d[e] = (f.lo + f.hi) / 2 - (lo + hi) / 2; return; }
+      if (lo < f.lo) d[e] = f.lo - lo;
+      else if (hi > f.hi) d[e] = f.hi - hi;
+    });
+    return d;
+  }
+
+  function _pivoteDeRotacion(pl, orient) {
+    var pv = orient && orient.pivot;
+    if (pv === 'host') return { x: 0, y: 0, z: 0 };
+    if (pv && typeof pv === 'object') {
+      return { x: Number(pv.x) || 0, y: Number(pv.y) || 0, z: Number(pv.z) || 0 };
+    }
+    var bb = _bboxPuntos(pl.puntos);
+    return bb ? bb.c : { x: 0, y: 0, z: 0 };
+  }
+
+  function _aplicarPostTransform(placements, comp, host) {
     var orient = comp.orient;
     var ph = comp.pos_hint;
     var tieneRot = orient && orient.deg && isFinite(orient.deg);
@@ -354,10 +506,22 @@
     var dx = (ph && ph.x != null) ? Number(ph.x) : 0;
     var dy = (ph && ph.y != null) ? Number(ph.y) : 0;
     var dz = (ph && ph.z != null) ? Number(ph.z) : 0;
+    // El re-anclaje sólo tiene sentido tras GIRAR y con un host conocido; el
+    // arrastre (pos_hint) NO se clampea aquí (el clamp de la UI ya lo gobierna).
+    var marco = (tieneRot && orient.pivot !== 'host') ? _marcoUtil(host) : null;
     placements.forEach(function (pl) {
-      pl.puntos = (pl.puntos || []).map(function (p) {
-        var q = tieneRot ? _rotarPunto(p, eje, rad) : { x: p.x, y: p.y, z: p.z };
-        return { x: q.x + dx, y: q.y + dy, z: q.z + dz };
+      var piv = tieneRot ? _pivoteDeRotacion(pl, orient) : null;
+      var pts = (pl.puntos || []).map(function (p) {
+        if (!tieneRot) return { x: p.x, y: p.y, z: p.z, esArco: p.esArco };
+        var q = _rotarPunto({ x: p.x - piv.x, y: p.y - piv.y, z: p.z - piv.z }, eje, rad);
+        return { x: q.x + piv.x, y: q.y + piv.y, z: q.z + piv.z, esArco: p.esArco };
+      });
+      // RE-ANCLAJE al recubrimiento (boundaries) + traslación del pos_hint.
+      var r = marco ? _deltaReanclaje(_bboxPuntos(pts), marco) : { x: 0, y: 0, z: 0 };
+      pl.puntos = pts.map(function (q) {
+        var o = { x: q.x + r.x + dx, y: q.y + r.y + dy, z: q.z + r.z + dz };
+        if (q.esArco) o.esArco = true;
+        return o;
       });
       if (tieneRot) pl.meta = _mezclarAnchor(pl.meta || {}, { orient_deg: Number(orient.deg), orient_eje: eje });
     });
@@ -370,7 +534,14 @@
   function expandirComponente(comp, host) {
     normalizarComponente(comp);   // rellena campos aditivos ausentes (defaults null)
     var dist = comp.distribucion || {};
-    var base = _baseDeComponente(comp, host);
+    // VOLTEO = permutación de ejes REAL: se expande contra el host permutado y se
+    // devuelven los puntos al mundo. volteado=false → ruta idéntica a la anterior.
+    var flip = estaVolteado(comp);
+    var hostEf = flip ? _hostVolteado(host) : host;
+    var base = flip
+      ? _baseDeComponente(comp, hostEf, { recubExtremo: (host.recub_lat != null ? Number(host.recub_lat) : 3) })
+      : _baseDeComponente(comp, host);
+    if (flip) dist = _cfgLocal(dist);
     var placements;
     // MODO DE USO del Template Editor (§0-11ter / §INTERACCIÓN-2.0): comp.modo =
     // 'puntual'|'lineal'|'arreglo' es el selector de ALTO NIVEL de los 3 botones
@@ -381,19 +552,31 @@
     // 'puntual'/'lineal' (nunca 'arreglo'), así que el switch queda intacto para
     // ella (cero regresión: 72 placements / 140.3 kg / 4 items).
     if (comp.modo === 'arreglo' || dist.modo === 'arreglo') {
-      placements = distribuidorArreglo(base, dist, host);
-      return _aplicarPostTransform(placements, comp);
+      placements = distribuidorArreglo(base, dist, hostEf);
+      if (flip) _voltearPlacements(placements);
+      return _aplicarPostTransform(placements, comp, host);
     }
     switch (dist.modo) {
-      case 'linear': placements = distribuidorLinear(base, dist, host); break;
-      case 'layered': placements = distribuidorLayered(base, dist, host); break;
-      case 'arreglo': placements = distribuidorArreglo(base, dist, host); break;
-      case 'grid': placements = distribuidorGrid(base, dist, host); break;
-      case 'perimeter': placements = distribuidorPerimeter(base, dist, host); break;
-      case 'points': placements = distribuidorPoints(base, dist, host); break;
+      case 'linear': placements = distribuidorLinear(base, dist, hostEf); break;
+      case 'layered': placements = distribuidorLayered(base, dist, hostEf); break;
+      case 'arreglo': placements = distribuidorArreglo(base, dist, hostEf); break;
+      case 'grid': placements = distribuidorGrid(base, dist, hostEf); break;
+      case 'perimeter': placements = distribuidorPerimeter(base, dist, hostEf); break;
+      case 'points': placements = distribuidorPoints(base, dist, hostEf); break;
       default: placements = [];
     }
-    return _aplicarPostTransform(placements, comp);
+    if (flip) _voltearPlacements(placements);
+    return _aplicarPostTransform(placements, comp, host);
+  }
+
+  // Devuelve al MUNDO los puntos de placements expandidos en el marco local
+  // volteado (permutación x↔z). Marca meta.volteado para trazabilidad.
+  function _voltearPlacements(placements) {
+    (placements || []).forEach(function (pl) {
+      pl.puntos = (pl.puntos || []).map(_voltearPunto);
+      pl.meta = _mezclarAnchor(pl.meta || {}, { volteado: true });
+    });
+    return placements;
   }
 
   // ---------------------------------------------------------------------------
@@ -436,7 +619,10 @@
     return dims;
   }
 
-  function _baseDeComponente(comp, host) {
+  // opts.recubExtremo: recubrimiento de las caras que cierran el eje LONGITUDINAL
+  // local. Sin opts vale el recub vertical (comportamiento histórico); con la pieza
+  // VOLTEADA el eje longitudinal local es la Z real, así que su recub es el lateral.
+  function _baseDeComponente(comp, host, opts) {
     comp._rol = comp._rol || _rolDeTipologia(comp.tipologia, comp.cara);
     var recub = (comp.recub_override != null) ? comp.recub_override
       : (comp.cara === 'inf' ? (host.recub_inf != null ? host.recub_inf : 4)
@@ -458,7 +644,7 @@
       anchorBase: {
         cara: comp.cara, recub: recub,
         recubLat: (host.recub_lat != null ? host.recub_lat : 3),
-        recubExtremo: recub,
+        recubExtremo: (opts && opts.recubExtremo != null) ? Number(opts.recubExtremo) : recub,
         empalme: (empExtremo && empValor > 0) ? { extremo: empExtremo, valor: empValor } : null
       }
     };
@@ -502,6 +688,11 @@
     redondeoCantidadZona: redondeoCantidadZona,
     evalEmpalme: evalEmpalme,
     expandirComponente: expandirComponente,
+    // VOLTEO (permutación de ejes real) — lo consulta la UI para saber sobre qué
+    // eje del MUNDO opera el rango/las capas de un componente.
+    estaVolteado: estaVolteado,
+    ejeDistribucion: ejeDistribucion,
+    ejeCapas: ejeCapas,
     distribuidorLinear: distribuidorLinear,
     distribuidorLayered: distribuidorLayered,
     distribuidorArreglo: distribuidorArreglo,

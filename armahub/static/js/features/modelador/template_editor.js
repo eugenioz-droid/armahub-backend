@@ -135,8 +135,9 @@
   }
 
   // ¿el componente ci está VOLTEADO? (plano_pieza.volteado). Campo ADITIVO: si el
-  // componente no lo trae, cuenta como false → proyección idéntica a la actual.
-  // (§INTERACCIÓN-2.0 · ROTAR PLANO DE LA PIEZA)
+  // componente no lo trae, cuenta como false → geometría idéntica a la actual.
+  // Sólo lo usa la UI (estado del botón de voltear); el efecto GEOMÉTRICO lo
+  // resuelve el motor por permutación de ejes (§INTERACCIÓN-2.0 · G3/B3).
   function _compVolteado(ci) {
     if (ci == null || ci < 0 || !ST.receta) return false;
     var c = ST.receta.componentes[ci];
@@ -217,10 +218,15 @@
     return _modoDefault(c.tipologia);
   }
 
-  // Rango por defecto (todo el largo útil) para modos que lo necesitan.
-  function _rangoDefault(sep) {
+  // Rango por defecto (toda la dimensión útil del EJE DE DISTRIBUCIÓN) para los modos
+  // que lo necesitan. `eje` = 'x' (normal) | 'z' (pieza volteada) | 'y'.
+  function _rangoDefault(sep, eje) {
     var g = ST.receta.geometria;
-    return { from: -g.largo / 2 + 4, to: g.largo / 2 - 4, sep: sep || 20 };
+    var dim, r;
+    if (eje === 'z') { dim = Number(g.ancho); r = (g.recub_lat != null ? Number(g.recub_lat) : 3); }
+    else if (eje === 'y') { dim = Number(g.alto); r = (g.recub_sup != null ? Number(g.recub_sup) : 4); }
+    else { dim = Number(g.largo); r = 4; }
+    return { from: -dim / 2 + r, to: dim / 2 - r, sep: sep || 20 };
   }
 
   // Eje de PROFUNDIDAD por defecto de las capas del arreglo = el eje "depth" del
@@ -239,6 +245,7 @@
     c.modo = modo;
     var d = c.distribucion = c.distribucion || {};
     var rol = _rolDe(c.tipologia);
+    var ejeD = _ejeDistDe(c);   // X, o Z si la pieza está volteada
     d.modo = MODO_A_DIST[modo];
     if (modo === 'puntual') {
       if (d.n_capas == null) d.n_capas = 1;
@@ -248,17 +255,17 @@
       if (d.justify == null) d.justify = 'centrar';
     } else if (modo === 'lineal') {
       if (d.sep == null) d.sep = (rol === 'traba') ? 40 : 20;
-      if (!d.rango) d.rango = _rangoDefault(d.sep);
+      if (!d.rango) d.rango = _rangoDefault(d.sep, ejeD);
       d.activa = true;
-      if (c.pos_hint) delete c.pos_hint.x;   // el rango la distribuye
+      if (c.pos_hint) delete c.pos_hint[ejeD];   // el rango la distribuye
     } else { // arreglo
       if (d.sep == null) d.sep = (rol === 'traba') ? 40 : 20;
-      if (!d.rango) d.rango = _rangoDefault(d.sep);
+      if (!d.rango) d.rango = _rangoDefault(d.sep, ejeD);
       if (d.n_capas == null) d.n_capas = 2;      // arreglo real ≥ 2 capas
       if (d.sep_capas == null) d.sep_capas = 10;
       if (d.eje_capas == null) d.eje_capas = _ejeCapasDefault();
       d.activa = true;
-      if (c.pos_hint) delete c.pos_hint.x;
+      if (c.pos_hint) delete c.pos_hint[ejeD];
     }
   }
 
@@ -772,22 +779,21 @@
   function _proyectorDe(def) {
     return function (p) { return { u: p[def.u], v: p[def.v] }; };
   }
-  // Proyector "de canto" (pieza VOLTEADA, §INTERACCIÓN-2.0 / ROTAR PLANO DE LA
-  // PIEZA): en vez del par (u,v) del plano, proyecta sobre (depth, v). Efecto en
-  // la vista: una figura que se dibujaba "de frente" (rectángulo cerrado, p.ej.
-  // estribo en SECCIÓN) COLAPSA a una línea a lo largo de su eje de profundidad
-  // → se ve "de canto" (línea vertical + su rango). Es un cambio de PROYECCIÓN
-  // (no toca la geometría 3D ni los kilos): el eje horizontal de la vista pasa a
-  // ser el `depth` del plano, conservando la vertical `v`.
-  function _proyectorVolteado(def) {
-    return function (p) { return { u: p[def.depth], v: p[def.v] }; };
+  // (G3/B3 — 11-ago) El "proyector de canto" (_proyectorVolteado) fue ELIMINADO: el
+  // volteo de la pieza dejó de ser un truco de proyección y es GEOMETRÍA REAL en el
+  // motor (reglas.js: permutación de ejes contra un host permutado). Los puntos ya
+  // llegan girados, así que TODAS las vistas usan el proyector normal del plano —
+  // eso también mata el bbox inflado del overlay y el arrastre en el eje equivocado.
+
+  // Eje del MUNDO a lo largo del cual REPARTE un componente ('x' normal, 'z' si la
+  // pieza está volteada). La autoridad es el motor; se resuelve DENTRO de la función
+  // (nunca capturado a nivel de módulo — regla dura 1).
+  function _ejeDistDe(c) {
+    var reglas = global.ModeladorReglas;
+    if (reglas && reglas.ejeDistribucion) return reglas.ejeDistribucion(c);
+    return (c && c.plano_pieza && c.plano_pieza.volteado) ? 'z' : 'x';
   }
-  // Devuelve el proyector correcto para un placement según si el componente que lo
-  // generó está volteado (meta.ci → ST.receta.componentes[ci].plano_pieza.volteado).
-  function _proyPlacement(def, projNormal, projVolteado, pl) {
-    var ci = (pl && pl.meta && pl.meta.ci != null) ? pl.meta.ci : -1;
-    return (_compVolteado(ci)) ? projVolteado : projNormal;
-  }
+
   // Proyector por clave de plano (usado por el hit-testing y el ghost de rango).
   function _proyDe(plano) {
     var def = (_defsPlanos() || {})[plano];
@@ -931,11 +937,29 @@
   // coloca (tarea 3, clamp). Usa boundaryDeVista/_dentroDelBoundary como reja.
   // ==========================================================================
 
+  // ==========================================================================
+  // TRANSFORM DEL OVERLAY (G7-alineación) — (u,v) del plano ↔ px del viewBox.
+  //
+  // El transform es AFÍN e ISÓTROPO:  X(u) = cu + ku·u   ·   Y(v) = cv + kv·v
+  // (ku/kv llevan el SIGNO: la cámara de SECCIÓN y la de PLANTA miran de forma que
+  // el eje u crece hacia la IZQUIERDA en pantalla; con un transform "siempre
+  // positivo" el hit-testing quedaba espejado respecto del render).
+  //   · En modo ORTO se DERIVA de la cámara ortográfica (que ya incluye zoom y pan)
+  //     → proyección, hit-testing y ghost coinciden con lo que se ve (_transformDesdeCamara).
+  //   · Sin 3D (fallback SVG plano) se deriva del bounding box, como antes.
+  // `s` = |ku| (px por cm) para el código que sólo necesita la magnitud.
+  // ==========================================================================
+  function _mkTransform(cu, ku, cv, kv) {
+    return { cu: cu, ku: ku, cv: cv, kv: kv, s: Math.abs(ku) || 1 };
+  }
+  function _tX(t, u) { return t.cu + t.ku * u; }
+  function _tY(t, v) { return t.cv + t.kv * v; }
+
   // (u,v) del plano → pixel del viewBox (inverso de _pixelToUV). Requiere transform.
   function _uvToPixel(plano, u, v) {
     var t = ST.transforms[plano];
     if (!t) return null;
-    return { px: t.offX + (u - t.minU) * t.s, py: t.offY + (t.maxV - v) * t.s };
+    return { px: _tX(t, u), py: _tY(t, v) };
   }
 
   // Capa <g> persistente para el ghost de un SVG (se crea una vez; siempre al final).
@@ -1108,96 +1132,166 @@
   // motor 3D (figura_puntos.js::_estriboPerimetral, `esp = diamCm*1.05` en X). Como
   // las vistas 2D ahora son el render 3D ortográfico, el estribo se ve correcto solo.
 
+  // Ejes de PANTALLA de una cámara ortográfica: con qué SIGNO crecen los ejes (u,v)
+  // del plano hacia la derecha / hacia arriba en el render. Se DERIVAN de _ORTO_DIR
+  // (la misma tabla que construye las cámaras), no se hardcodean.
+  //   camZ = eye · camY = up · camX = camY × camZ (base derecha de la cámara)
+  // Para SECCIÓN (depth x) y PLANTA (depth y) resulta su = −1: el eje u de la vista
+  // crece hacia la IZQUIERDA en el render. Ignorarlo era una de las causas del
+  // desalineamiento entre el overlay y lo que se ve.
+  var _EJE_IDX = { x: 0, y: 1, z: 2 };
+  function _signosPantalla(def) {
+    var dir = _ORTO_DIR[def.depth] || _ORTO_DIR.z;
+    var ez = dir.eye, ey = dir.up;
+    var ex = [
+      ey[1] * ez[2] - ey[2] * ez[1],
+      ey[2] * ez[0] - ey[0] * ez[2],
+      ey[0] * ez[1] - ey[1] * ez[0]
+    ];
+    return { su: ex[_EJE_IDX[def.u]] || 0, sv: ey[_EJE_IDX[def.v]] || 0 };
+  }
+
+  // G7-ALINEACIÓN — transform del overlay DERIVADO de la cámara ortográfica.
+  // El render orto usa _encuadrarOrto (margen 1.18 + zoom + pan) y pinta en el rect
+  // de la vista; el SVG tiene su propio viewBox con preserveAspectRatio="xMidYMid
+  // meet". Si el overlay se encuadra por su cuenta (bbox + margen propio), el
+  // hit-testing y el ghost quedan corridos — y peor tras zoom/pan, que el transform
+  // ni siquiera conocía. Aquí se recorre la cadena COMPLETA:
+  //   (u,v) cm → coords de cámara (signo por eje) → NDC → px del viewport (rect de
+  //   la vista) → px del viewBox del SVG (letterbox de xMidYMid meet).
+  // La cadena es AFÍN, así que basta evaluarla en (0,0), (1,0) y (0,1) para sacar
+  // sus coeficientes. Devuelve null si la vista/cámara aún no están listas.
+  function _transformDesdeCamara(plano, svg) {
+    var o = ST.orto && ST.orto[plano];
+    if (!o || !o.cam || !o.vista || !svg || !svg.getBoundingClientRect) return null;
+    var rv = o.vista.getBoundingClientRect();
+    var rs = svg.getBoundingClientRect();
+    if (!(rv.width > 1) || !(rv.height > 1) || !(rs.width > 1) || !(rs.height > 1)) return null;
+    var def = o.def; if (!def) return null;
+    var g = (ST.receta && ST.receta.geometria) || {};
+    var W = Number(g[def.W]) || 60, H = Number(g[def.H]) || 60;
+    // MISMO encuadre que el render (idempotente: sólo depende de zoom/pan/corte).
+    _encuadrarOrto(o, W, H, rv.width / rv.height);
+    var cam = o.cam;
+    var anchoCam = cam.right - cam.left, altoCam = cam.top - cam.bottom;
+    if (!(Math.abs(anchoCam) > 1e-9) || !(Math.abs(altoCam) > 1e-9)) return null;
+    var vb = (svg.getAttribute('viewBox') || '0 0 620 300').split(/\s+/).map(Number);
+    var VW = vb[2] || 620, VH = vb[3] || 300;
+    var esc = Math.min(rs.width / VW, rs.height / VH);
+    if (!(esc > 0)) return null;
+    var padX = (rs.width - VW * esc) / 2, padY = (rs.height - VH * esc) / 2;
+    var sg = _signosPantalla(def);
+    if (!sg.su || !sg.sv) return null;
+    function proyectar(u, v) {
+      // coords de cámara: camX·P = su·u y camY·P = sv·v (la posición de la cámara
+      // vive sobre el eje de profundidad → no aporta componente lateral).
+      var ndcX = (sg.su * u - (cam.left + cam.right) / 2) / (anchoCam / 2);
+      var ndcY = (sg.sv * v - (cam.bottom + cam.top) / 2) / (altoCam / 2);
+      var cliX = rv.left + (ndcX + 1) / 2 * rv.width;    // viewport = rect de la vista
+      var cliY = rv.top + (1 - ndcY) / 2 * rv.height;
+      return { px: (cliX - rs.left - padX) / esc, py: (cliY - rs.top - padY) / esc };
+    }
+    var p00 = proyectar(0, 0), p10 = proyectar(1, 0), p01 = proyectar(0, 1);
+    var ku = p10.px - p00.px, kv = p01.py - p00.py;
+    if (!isFinite(ku) || !isFinite(kv) || !ku || !kv) return null;
+    return _mkTransform(p00.px, ku, p00.py, kv);
+  }
+
   // Dibuja UN cuadrante 2D. Guarda su transform para el hit-testing inverso.
+  //
+  // MODO ORTO (producción): las barras SÓLIDAS y el hormigón los pinta el render 3D
+  // ortográfico que hay debajo. El SVG queda como OVERLAY, pero NO vacío: emite la
+  // geometría INVISIBLE de hit-testing (data-ci/data-hit), el halo de la selección,
+  // los nodos, la flecha de rango y las cotas. Antes cortaba con `return` antes de
+  // todo eso y la interacción 2D quedaba MUERTA (G7): no se podía seleccionar,
+  // mover ni borrar una barra clicándola.
   function _dibujarVista2D(svg, out, plano, geo) {
     if (!svg) return;
     while (svg.firstChild) svg.removeChild(svg.firstChild);
     var def = (_defsPlanos() || {})[plano];
     if (!def) { ST.transforms[plano] = null; return; }
-    var proj = _proyectorDe(def);            // normal (u,v)
-    var projV = _proyectorVolteado(def);     // "de canto" (depth,v) para piezas volteadas
+    var proj = _proyectorDe(def);            // proyector ÚNICO (el volteo ya es geometría real)
     var placements = (out && out.placements) || [];
-
-    // Bounding box en (u,v): hormigón + puntos proyectados (cada placement con el
-    // proyector que le toca según su pieza esté o no volteada).
-    var minU = Infinity, maxU = -Infinity, minV = Infinity, maxV = -Infinity;
-    function acc(u, v) {
-      if (u < minU) minU = u; if (u > maxU) maxU = u;
-      if (v < minV) minV = v; if (v > maxV) maxV = v;
-    }
+    var soloOverlay = !!ST.ortoActivo;       // el 3D pinta lo sólido; aquí sólo interacción
     var rect = geo ? boundaryDeVista(geo, plano, def) : null;
-    if (rect) { acc(-rect.W / 2, -rect.H / 2); acc(rect.W / 2, rect.H / 2); }
-    placements.forEach(function (pl) {
-      var pj = _proyPlacement(def, proj, projV, pl);
-      (pl.puntos || []).forEach(function (pt) { var q = pj(pt); if (isFinite(q.u) && isFinite(q.v)) acc(q.u, q.v); });
-    });
-    if (!isFinite(minU) || !isFinite(minV)) { ST.transforms[plano] = null; return; }
 
     var vb = (svg.getAttribute('viewBox') || '0 0 620 300').split(/\s+/).map(Number);
-    var VW = vb[2] || 620, VH = vb[3] || 300, MARGIN = 30;
-    var spanU = Math.max(maxU - minU, 1e-6), spanV = Math.max(maxV - minV, 1e-6);
-    var s = Math.min((VW - 2 * MARGIN) / spanU, (VH - 2 * MARGIN) / spanV);
-    var offX = (VW - spanU * s) / 2, offY = (VH - spanV * s) / 2;
-    function X(u) { return offX + (u - minU) * s; }
-    function Y(v) { return offY + (maxV - v) * s; }   // invertir eje vertical
+    var VW = vb[2] || 620, VH = vb[3] || 300;
 
-    // Persistir transform (para pixelToHost).
-    ST.transforms[plano] = { minU: minU, maxU: maxU, minV: minV, maxV: maxV, s: s, offX: offX, offY: offY };
+    // TRANSFORM — en modo orto se deriva de la cámara (alineación exacta con el
+    // render); si no hay 3D todavía, del bounding box proyectado (fallback SVG plano).
+    var t = soloOverlay ? _transformDesdeCamara(plano, svg) : null;
+    if (!t) {
+      var minU = Infinity, maxU = -Infinity, minV = Infinity, maxV = -Infinity;
+      var acc = function (u, v) {
+        if (u < minU) minU = u; if (u > maxU) maxU = u;
+        if (v < minV) minV = v; if (v > maxV) maxV = v;
+      };
+      if (rect) { acc(-rect.W / 2, -rect.H / 2); acc(rect.W / 2, rect.H / 2); }
+      placements.forEach(function (pl) {
+        (pl.puntos || []).forEach(function (pt) { var q = proj(pt); if (isFinite(q.u) && isFinite(q.v)) acc(q.u, q.v); });
+      });
+      if (!isFinite(minU) || !isFinite(minV)) { ST.transforms[plano] = null; return; }
+      var MARGIN = 30;
+      var spanU = Math.max(maxU - minU, 1e-6), spanV = Math.max(maxV - minV, 1e-6);
+      var s = Math.min((VW - 2 * MARGIN) / spanU, (VH - 2 * MARGIN) / spanV);
+      var offX = (VW - spanU * s) / 2, offY = (VH - spanV * s) / 2;
+      t = _mkTransform(offX - minU * s, s, offY + maxV * s, -s);
+    }
+    ST.transforms[plano] = t;
+    function X(u) { return _tX(t, u); }
+    function Y(v) { return _tY(t, v); }
 
-    // Hormigón + boundary de recubrimiento (en modo orto lo pinta el 3D; el SVG solo
-    // conserva el boundary de recubrimiento punteado como guía de interacción).
-    if (rect && !ST.ortoActivo) {
+    // Hormigón + boundary de recubrimiento (en modo orto lo pinta el 3D).
+    if (rect && !soloOverlay) {
       svg.appendChild(_svgEl('rect', {
         'class': 'te-horm', rx: 2,
-        x: X(-rect.W / 2), y: Y(rect.H / 2), width: rect.W * s, height: rect.H * s
+        x: Math.min(X(-rect.W / 2), X(rect.W / 2)), y: Math.min(Y(rect.H / 2), Y(-rect.H / 2)),
+        width: rect.W * t.s, height: rect.H * t.s
       }));
       if (rect.iW > 0 && rect.iH > 0) {
         svg.appendChild(_svgEl('rect', {
           'class': 'te-recub',
-          x: X(-rect.iW / 2), y: Y(rect.iH / 2), width: rect.iW * s, height: rect.iH * s
+          x: Math.min(X(-rect.iW / 2), X(rect.iW / 2)), y: Math.min(Y(rect.iH / 2), Y(-rect.iH / 2)),
+          width: rect.iW * t.s, height: rect.iH * t.s
         }));
       }
     }
 
-    // ETAPA A (render ortográfico): el 3D proyectado ya dibuja hormigón + barras con
-    // la calidad del 3D. El SVG queda como OVERLAY transparente solo para la
-    // interacción (ghost/handles/cotas). No re-dibujamos hormigón ni barras aquí.
-    // (El transform ya quedó guardado arriba para el hit-testing.)
-    if (ST.ortoActivo) return;
-
-    // Barras proyectadas (halo de selección DEBAJO; luego la barra).
+    // Barras: halo de selección + HIT invisible SIEMPRE; el trazo sólido sólo cuando
+    // el SVG es el que dibuja (sin render orto detrás).
     placements.forEach(function (pl) {
       var color = _colDe(pl.tipologia);
       var rol = _rolDe(pl.tipologia);
       var ci = (pl.meta && pl.meta.ci != null) ? pl.meta.ci : -1;
       var sel = (ci === ST.selCi && ST.selCi >= 0);
-      var volteado = _compVolteado(ci);
-      var pj = volteado ? projV : proj;
-      var pts = (pl.puntos || []).map(pj).filter(function (q) { return isFinite(q.u) && isFinite(q.v); });
+      var pts = (pl.puntos || []).map(proj).filter(function (q) { return isFinite(q.u) && isFinite(q.v); });
       if (!pts.length) return;
 
-      // Cabezal longitudinal en SECCIÓN → punto (círculo). Si está VOLTEADO se ve
-      // "de canto" (línea a lo largo de X): NO se colapsa a punto → cae al trazo.
-      if (plano === 'seccion' && rol === 'cabezal' && !volteado) {
+      // ¿La barra se ve DE PUNTA en esta vista? (su eje longitudinal es la
+      // profundidad del plano) → círculo, no polilínea. Criterio GEOMÉTRICO (sirve
+      // igual para piezas volteadas, cuyo eje longitudinal ya cambió de verdad).
+      if (rol === 'cabezal' && _ejeMayorSpan(pl.puntos) === def.depth) {
         var q0 = pts[0];
         if (sel) svg.appendChild(_svgEl('circle', { cx: X(q0.u), cy: Y(q0.v), r: 6.5, 'class': 'te-bar-halo' }));
-        // círculo visible (no interactivo) + hit generoso encima
-        svg.appendChild(_svgEl('circle', { cx: X(q0.u), cy: Y(q0.v), r: 4.2, fill: color, style: 'pointer-events:none' }));
+        if (!soloOverlay) {
+          svg.appendChild(_svgEl('circle', { cx: X(q0.u), cy: Y(q0.v), r: 4.2, fill: color, style: 'pointer-events:none' }));
+        }
+        // hit generoso (transparente) — es lo que hace clicable la barra
         svg.appendChild(_svgEl('circle', {
           cx: X(q0.u), cy: Y(q0.v), r: 7.5, fill: 'transparent',
           'data-ci': ci, 'data-hit': '1', style: 'cursor:pointer'
         }));
         return;
       }
-      // Estribo en SECCIÓN: separar los 2 ganchos ½·diam para que no se superpongan.
-      var dpts = pts;   // sin offset en-plano: el estribo cierra en la esquina (motor 3D)
-      var d = dpts.map(function (q, i) { return (i ? 'L' : 'M') + X(q.u).toFixed(1) + ',' + Y(q.v).toFixed(1); }).join(' ');
+      var d = pts.map(function (q, i) { return (i ? 'L' : 'M') + X(q.u).toFixed(1) + ',' + Y(q.v).toFixed(1); }).join(' ');
       if (sel) svg.appendChild(_svgEl('path', { 'class': 'te-bar-halo', d: d }));
-      // barra VISIBLE (técnica, fina, sin eventos)
-      svg.appendChild(_svgEl('path', {
-        'class': 'te-bar' + (sel ? ' sel' : ''), d: d, stroke: color, style: 'pointer-events:none',
-        opacity: (rol === 'estribo' && plano === 'planta') ? 0.6 : 1
-      }));
+      if (!soloOverlay) {
+        svg.appendChild(_svgEl('path', {
+          'class': 'te-bar' + (sel ? ' sel' : ''), d: d, stroke: color, style: 'pointer-events:none',
+          opacity: (rol === 'estribo' && plano === 'planta') ? 0.6 : 1
+        }));
+      }
       // trazo de HIT transparente ancho (facilita el clic sobre la línea fina)
       svg.appendChild(_svgEl('path', {
         d: d, fill: 'none', stroke: 'transparent', 'stroke-width': 9, 'stroke-linecap': 'round',
@@ -1206,22 +1300,42 @@
     });
 
     // Cotas (básico): extensión del hormigón en U y V.
-    if (ST.cotas && rect) _dibujarCotas(svg, rect, s, X, Y, plano);
+    if (ST.cotas && rect) _dibujarCotas(svg, rect, t.s, X, Y, plano);
 
-    // Ghost de rango en curso (1er clic puesto).
+    // Ghost de rango en curso (1er clic puesto): línea PERPENDICULAR al eje de
+    // distribución del componente, a la coordenada ya fijada.
     if (ST.rangoTmp && ST.rangoTmp.plano === plano && ST.rangoTmp.from != null) {
-      var xf = X(_proyU(plano, { x: ST.rangoTmp.from.x, y: ST.rangoTmp.from.y, z: ST.rangoTmp.from.z }));
-      svg.appendChild(_svgEl('line', { 'class': 'te-rango-line', x1: xf, y1: 6, x2: xf, y2: VH - 6 }));
+      var ejeT = _ejeDistDe(ST.receta && ST.receta.componentes[ST.rangoTmp.ci]);
+      var cT = ST.rangoTmp.from[ejeT];
+      if (cT != null && ejeT === def.u) {
+        svg.appendChild(_svgEl('line', { 'class': 'te-rango-line', x1: X(cT), y1: 6, x2: X(cT), y2: VH - 6 }));
+      } else if (cT != null && ejeT === def.v) {
+        svg.appendChild(_svgEl('line', { 'class': 'te-rango-line', x1: 6, y1: Y(cT), x2: VW - 6, y2: Y(cT) }));
+      }
     }
 
     // Flechita doble de RANGO para el componente seleccionado con distribución activa.
     _dibujarFlechaRango(svg, plano, X, Y, VW, VH);
 
-    // NODOS de esquina (arrastrables) — solo en vistas 2D.
+    // NODOS de esquina (arrastrables).
     if (rect) _dibujarNodos(svg, rect, X, Y, plano);
   }
 
-  function _proyU(plano, p) { return _proyDe(plano)(p).u; }
+  // Eje del mundo con MAYOR extensión de una polilínea = "por dónde corre" la barra.
+  function _ejeMayorSpan(pts) {
+    if (!pts || pts.length < 2) return null;
+    var lo = { x: Infinity, y: Infinity, z: Infinity }, hi = { x: -Infinity, y: -Infinity, z: -Infinity };
+    for (var i = 0; i < pts.length; i++) {
+      var p = pts[i];
+      if (p.x < lo.x) lo.x = p.x; if (p.x > hi.x) hi.x = p.x;
+      if (p.y < lo.y) lo.y = p.y; if (p.y > hi.y) hi.y = p.y;
+      if (p.z < lo.z) lo.z = p.z; if (p.z > hi.z) hi.z = p.z;
+    }
+    var mejor = 'x', span = hi.x - lo.x;
+    if (hi.y - lo.y > span) { mejor = 'y'; span = hi.y - lo.y; }
+    if (hi.z - lo.z > span) { mejor = 'z'; span = hi.z - lo.z; }
+    return mejor;
+  }
 
   function _dibujarCotas(svg, rect, s, X, Y, plano) {
     var y0 = Y(-rect.H / 2) + 14;
@@ -1231,14 +1345,22 @@
     svg.appendChild(_svgEl('line', { 'class': 'te-dimTick', x1: X(rect.W / 2), y1: y0 - 3, x2: X(rect.W / 2), y2: y0 + 3 }));
     var tW = _svgEl('text', { 'class': 'te-dim', x: X(0), y: y0 - 4, 'text-anchor': 'middle' });
     tW.textContent = Math.round(rect.W) + ' cm'; svg.appendChild(tW);
-    // cota vertical (alto de la vista)
-    var x0 = X(-rect.W / 2) - 12;
+    // cota vertical (alto de la vista) — al borde IZQUIERDO real (el eje u puede
+    // crecer hacia la izquierda en la cámara de sección/planta).
+    var x0 = Math.min(X(-rect.W / 2), X(rect.W / 2)) - 12;
     svg.appendChild(_svgEl('line', { 'class': 'te-dimL', x1: x0, y1: Y(-rect.H / 2), x2: x0, y2: Y(rect.H / 2) }));
     var tH = _svgEl('text', { 'class': 'te-dim', x: x0 - 2, y: Y(0), 'text-anchor': 'middle', transform: 'rotate(-90 ' + (x0 - 2) + ' ' + Y(0) + ')' });
     tH.textContent = Math.round(rect.H) + ' cm'; svg.appendChild(tH);
   }
 
-  // Flechita doble ↔ para desplazar la distribución del componente seleccionado.
+  // AJUSTADOR DE DISTRIBUCIÓN — flechita doble ↔ (o ↕) para desplazar el rango del
+  // componente seleccionado.
+  //
+  // El eje de reparto de un componente NO es siempre X: con la pieza volteada el
+  // motor reparte en Z (reglas.ejeDistribucion). La flecha se dibuja en las vistas
+  // donde ESE eje es VISIBLE — es decir, es el u o el v del plano (si es el `depth`,
+  // el rango apunta hacia el observador y no se puede ajustar ahí) — y usa la
+  // coordenada de ese eje, no X. Antes estaba cableada a largo/planta + rango.x.
   function _dibujarFlechaRango(svg, plano, X, Y, VW, VH) {
     if (ST.selCi < 0 || !ST.receta) return;
     var c = ST.receta.componentes[ST.selCi];
@@ -1246,18 +1368,29 @@
     // La flechita doble solo aplica al modelo por RANGO (2 clics). Las zonas de
     // la semilla se editan por campos, no con la flecha.
     var rango = c.distribucion.rango;
-    if (!rango || rango.from == null) return;
-    // La flecha vive en las vistas donde el eje X es horizontal (largo/planta).
-    if (plano !== 'largo' && plano !== 'planta') return;
-    var fromX = rango.from, toX = rango.to;
-    var xa = X(fromX), xb = X(toX), yy = 18;
-    svg.appendChild(_svgEl('line', { 'class': 'te-rango-line', x1: xa, y1: yy, x2: xb, y2: yy }));
-    // dos puntas de flecha
-    svg.appendChild(_svgEl('path', { 'class': 'te-rango-arrow', d: 'M' + (xa + 7) + ',' + (yy - 4) + ' L' + xa + ',' + yy + ' L' + (xa + 7) + ',' + (yy + 4) }));
-    svg.appendChild(_svgEl('path', { 'class': 'te-rango-arrow', d: 'M' + (xb - 7) + ',' + (yy - 4) + ' L' + xb + ',' + yy + ' L' + (xb - 7) + ',' + (yy + 4) }));
-    // zona de arrastre (mueve todo el rango)
-    var hit = _svgEl('rect', { 'class': 'te-rango-hit', x: Math.min(xa, xb), y: yy - 8, width: Math.abs(xb - xa) || 4, height: 16, 'data-rango': ST.selCi });
-    svg.appendChild(hit);
+    if (!rango || rango.from == null || rango.to == null) return;
+    var def = (_defsPlanos() || {})[plano]; if (!def) return;
+    var eje = _ejeDistDe(c);
+    if (eje !== def.u && eje !== def.v) return;   // eje de reparto = profundidad de esta vista
+    var attrs = { 'class': 'te-rango-hit', 'data-rango': ST.selCi, 'data-rango-eje': eje };
+    if (eje === def.u) {
+      var xa = X(rango.from), xb = X(rango.to), yy = 18;
+      svg.appendChild(_svgEl('line', { 'class': 'te-rango-line', x1: xa, y1: yy, x2: xb, y2: yy }));
+      svg.appendChild(_svgEl('path', { 'class': 'te-rango-arrow', d: 'M' + (xa + 7) + ',' + (yy - 4) + ' L' + xa + ',' + yy + ' L' + (xa + 7) + ',' + (yy + 4) }));
+      svg.appendChild(_svgEl('path', { 'class': 'te-rango-arrow', d: 'M' + (xb - 7) + ',' + (yy - 4) + ' L' + xb + ',' + yy + ' L' + (xb - 7) + ',' + (yy + 4) }));
+      attrs.x = Math.min(xa, xb); attrs.y = yy - 8;
+      attrs.width = Math.abs(xb - xa) || 4; attrs.height = 16;
+    } else {
+      // el eje de reparto es el VERTICAL de esta vista → flecha ↕ pegada al margen izq.
+      var ya = Y(rango.from), yb = Y(rango.to), xx = 18;
+      svg.appendChild(_svgEl('line', { 'class': 'te-rango-line', x1: xx, y1: ya, x2: xx, y2: yb }));
+      svg.appendChild(_svgEl('path', { 'class': 'te-rango-arrow', d: 'M' + (xx - 4) + ',' + (ya + 7) + ' L' + xx + ',' + ya + ' L' + (xx + 4) + ',' + (ya + 7) }));
+      svg.appendChild(_svgEl('path', { 'class': 'te-rango-arrow', d: 'M' + (xx - 4) + ',' + (yb - 7) + ' L' + xx + ',' + yb + ' L' + (xx + 4) + ',' + (yb - 7) }));
+      attrs.x = xx - 8; attrs.y = Math.min(ya, yb);
+      attrs.width = 16; attrs.height = Math.abs(yb - ya) || 4;
+      attrs.style = 'cursor:ns-resize';
+    }
+    svg.appendChild(_svgEl('rect', attrs));
   }
 
   // NODOS de las 4 esquinas del hormigón (arrastrables → redimensiona el elemento).
@@ -1306,10 +1439,8 @@
   // (u,v) del plano desde pixel del viewBox usando el transform guardado.
   function _pixelToUV(plano, px, py) {
     var t = ST.transforms[plano];
-    if (!t) return null;
-    var u = t.minU + (px - t.offX) / t.s;
-    var v = t.maxV - (py - t.offY) / t.s;
-    return { u: u, v: v };
+    if (!t || !t.ku || !t.kv) return null;
+    return { u: (px - t.cu) / t.ku, v: (py - t.cv) / t.kv };
   }
 
   // (u,v) del plano → punto host 3D (el eje ausente se deja en 0; el llamador lo ajusta).
@@ -1398,18 +1529,27 @@
   }
 
   // ==========================================================================
-  // ROTAR PLANO DE LA PIEZA (§INTERACCIÓN-2.0) — NO rota EN el plano; VOLTEA el
-  // plano de la pieza. Toggle de comp.plano_pieza.volteado + regenerar. El motor
-  // 3D y los kilos NO cambian (es un cambio de PROYECCIÓN): en las vistas 2D, la
-  // pieza volteada pasa de dibujarse "de frente" (rectángulo cerrado del estribo,
-  // círculo del cabezal) a "de canto" (línea vertical a lo largo de su eje de
-  // profundidad + su rango). Así se define su eje longitudinal / dirección de
-  // distribución con UN solo mecanismo (resuelve fundación y trabas).
+  // ROTAR PLANO DE LA PIEZA (§INTERACCIÓN-2.0 · G3/B3) — NO rota EN el plano;
+  // VOLTEA el plano de trabajo de la pieza. Desde 11-ago es GEOMETRÍA REAL: el
+  // motor (reglas.js) expande el componente con los ejes PERMUTADOS, así que la
+  // figura cambia de plano Y el reparto cambia de eje (x ↔ z), resolviendo las dims
+  // 'auto' y el anclaje contra el recubrimiento de las caras NUEVAS. Las 4 vistas
+  // (que son renders 3D) lo muestran girado sin ningún truco de proyección.
+  //
+  // El RANGO se expresa en el eje de distribución, así que al voltear hay que
+  // llevarlo al eje nuevo: se re-encuadra al tramo útil completo de ese eje
+  // (conservando el @sep). Si se dejara el rango viejo, un estribo repartido en
+  // ±296 (largo) pasaría a repartirse en ±296 de ANCHO — fuera del hormigón.
   function rotarPlanoPieza(comp) {
     if (!comp) return;
     comp.plano_pieza = comp.plano_pieza || { volteado: false };
     comp.plano_pieza.volteado = !comp.plano_pieza.volteado;
-    _regenerar();          // reproyecta las 4 vistas (2D leen plano_pieza por placement)
+    var d = comp.distribucion;
+    if (d && d.rango) {
+      var ejeN = _ejeDistDe(comp);
+      d.rango = _rangoDefault(d.rango.sep || d.sep || 20, ejeN);
+    }
+    _regenerar();          // el motor re-expande con los ejes permutados
     _renderPanel();
     _posicionarFlipBtn();  // el overlay sigue pegado a la pieza tras reproyectar
     _actualizarStatus();
@@ -1445,9 +1585,9 @@
     var t = ST.transforms[plano]; if (!t) return null;
     var def = (_defsPlanos() || {})[plano]; if (!def) return null;
     var out = ST.ultimoOut; if (!out || !out.placements) return null;
-    var pj = _compVolteado(ci) ? _proyectorVolteado(def) : _proyectorDe(def);
-    function X(u) { return t.offX + (u - t.minU) * t.s; }
-    function Y(v) { return t.offY + (t.maxV - v) * t.s; }
+    var pj = _proyectorDe(def);   // proyector único: el volteo ya es geometría real
+    function X(u) { return _tX(t, u); }
+    function Y(v) { return _tY(t, v); }
     var minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity, n = 0;
     out.placements.forEach(function (pl) {
       if (!pl.meta || pl.meta.ci !== ci) return;
@@ -1518,6 +1658,12 @@
     _renderPanel();
   }
 
+  // ROTAR la pieza en el plano de la vista (ESPACIO / botón +90° / campo de ángulo).
+  // El giro es SOBRE EL PROPIO CENTRO de cada barra y el motor la RE-ANCLA al
+  // recubrimiento después (reglas.js::_aplicarPostTransform, pivote 'propio' por
+  // defecto): antes se rotaba en torno al ORIGEN DEL HOST y la pieza se despegaba
+  // del recubrimiento (bug reportado). Aquí NO se escribe `pivot`: el default del
+  // motor ya es el correcto; 'host' queda como opción explícita para casos legacy.
   function _rotarSeleccion(plano, deltaDeg) {
     if (ST.selCi < 0 || !ST.receta) return;
     _pushUndo();
@@ -1577,7 +1723,7 @@
 
         // ¿tocó la flechita de RANGO?
         var tgtRango = evt.target && evt.target.getAttribute && evt.target.getAttribute('data-rango');
-        if (tgtRango != null) { evt.preventDefault(); _pushUndo(); ST.dragRango = { ci: Number(tgtRango), plano: plano, lastX: sp.px }; return; }
+        if (tgtRango != null) { evt.preventDefault(); _pushUndo(); ST.dragRango = { ci: Number(tgtRango), plano: plano, lastX: sp.px, lastY: sp.py }; return; }
 
         var uv = _pixelToUV(plano, sp.px, sp.py);
 
@@ -1688,13 +1834,23 @@
     _regenerarDiferido();
   }
 
+  // Arrastre del rango: se mueve sobre el EJE DE DISTRIBUCIÓN REAL del componente
+  // (X normal, Z si la pieza está volteada), sea ese eje el horizontal o el vertical
+  // de la vista. Los factores ku/kv llevan el signo del transform → el arrastre sigue
+  // al cursor también en las vistas cuya cámara mira "al revés".
   function _dragRangoMove(plano, sp) {
     var dr = ST.dragRango; if (!dr) return;
     var c = ST.receta.componentes[dr.ci]; if (!c || !c.distribucion) return;
     var t = ST.transforms[plano]; if (!t) return;
-    var duPx = sp.px - dr.lastX; dr.lastX = sp.px;
-    var dHost = duPx / t.s;   // px → cm en U (X para largo/planta)
-    var rango = c.distribucion.rango || { from: -ST.receta.geometria.largo / 2 + 4, to: ST.receta.geometria.largo / 2 - 4, sep: c.distribucion.sep || 20 };
+    var def = (_defsPlanos() || {})[plano]; if (!def) return;
+    var eje = _ejeDistDe(c);
+    var dHost;
+    if (eje === def.u) { dHost = (sp.px - dr.lastX) / t.ku; }
+    else if (eje === def.v) { dHost = (sp.py - dr.lastY) / t.kv; }
+    else return;
+    dr.lastX = sp.px; dr.lastY = sp.py;
+    if (!isFinite(dHost) || !dHost) return;
+    var rango = c.distribucion.rango || _rangoDefault(c.distribucion.sep, eje);
     rango.from += dHost; rango.to += dHost;
     c.distribucion.rango = rango;
     _regenerarDiferido();
@@ -1723,9 +1879,12 @@
     if (_modoDe(c) !== 'arreglo') { c.modo = 'lineal'; c.distribucion.modo = 'linear'; }
     c.distribucion.activa = true;
     c.distribucion.sep = c.distribucion.sep || (_rolDe(c.tipologia) === 'traba' ? 40 : 20);
-    c.distribucion.rango = { from: from.x, to: to.x, sep: c.distribucion.sep };
-    // La barra base ya no necesita pos_hint.x (el rango la distribuye).
-    if (c.pos_hint) delete c.pos_hint.x;
+    // El rango vive en el EJE DE DISTRIBUCIÓN del componente (X, o Z si está
+    // volteado), no siempre en X.
+    var ejeR = _ejeDistDe(c);
+    c.distribucion.rango = { from: from[ejeR], to: to[ejeR], sep: c.distribucion.sep };
+    // La barra base ya no necesita pos_hint en ese eje (el rango la distribuye).
+    if (c.pos_hint) delete c.pos_hint[ejeR];
     _regenerar();
     _renderPanel();
     _actualizarStatus();
@@ -1955,7 +2114,7 @@
   // ARREGLO — rango en un sentido + n_capas + sep_capas (rango × capas). El eje de
   // profundidad de las capas lo fija el plano de trabajo (eje_capas).
   function _camposArreglo(box, c, ci, rol, d) {
-    if (!d.rango) d.rango = _rangoDefault(d.sep || 20);
+    if (!d.rango) d.rango = _rangoDefault(d.sep || 20, _ejeDistDe(c));
     var g2 = _div('te-grid2');
     g2.appendChild(_fld('@ sep (rango) cm', _input({ value: d.sep || 20, type: 'number' }, function (v) { d.sep = Number(v) || 20; if (d.rango) d.rango.sep = d.sep; _mut(ci); })));
     g2.appendChild(_fld('Rango', _rangoEditor(c, d, ci)));
@@ -2270,7 +2429,8 @@
         var p = b.getAttribute('data-plano'), o = ST.orto && ST.orto[p];
         if (o) { o.zoom = 1; o.panU = 0; o.panV = 0; o.corte = 0.5; }
         var r = document.querySelector('.te-vcut-r[data-plano="' + p + '"]'); if (r) r.value = 50;
-        _marcarSucio();   // PERF: reset de vista → repintar
+        _marcarSucio();               // PERF: reset de vista → repintar
+        _sincronizarOverlayOrto();    // zoom/pan a cero → transforms del overlay nuevos
       });
     });
     // sliders de PLANO DE CORTE → o.corte (0..1). Mover el slider ACTIVA esa vista
@@ -2432,6 +2592,21 @@
   // Pan (arrastre) + zoom (rueda) por vista ortográfica. Sin orbitar. Se cablea en
   // el CONTENEDOR .te-vista (el canvas marcador no captura eventos; el SVG overlay
   // sí, pero pan/zoom usan botón medio + rueda, que el SVG deja pasar por burbujeo).
+  // G7-ALINEACIÓN — el overlay SVG deriva sus transforms de la cámara ortográfica,
+  // así que TODO cambio de cámara (pan / zoom / resize) obliga a re-emitirlo: si no,
+  // el hit-testing, los nodos y la flecha de rango quedan donde estaban ANTES del
+  // zoom. Throttle por rAF: como mucho un redibujo del overlay por frame.
+  function _sincronizarOverlayOrto() {
+    if (ST._overlayPend) return;
+    ST._overlayPend = true;
+    global.requestAnimationFrame(function () {
+      ST._overlayPend = false;
+      var bd = $('te_backdrop');
+      if (!bd || !bd.classList.contains('on')) return;
+      if (ST.ultimoOut) _redibujar2D(ST.ultimoOut);
+    });
+  }
+
   function _bindVistaOrto(plano) {
     var o = ST.orto[plano]; if (!o) return;
     var host = o.vista, panning = false, lx = 0, ly = 0;
@@ -2447,12 +2622,14 @@
       var kV = (o.cam.top - o.cam.bottom) / Math.max(r.height, 1);
       o.panU -= (e.clientX - lx) * kU; o.panV += (e.clientY - ly) * kV;
       lx = e.clientX; ly = e.clientY;
-      _marcarSucio();   // PERF: pan de una vista orto → repintar
+      _marcarSucio();               // PERF: pan de una vista orto → repintar
+      _sincronizarOverlayOrto();    // el overlay sigue a la cámara (hit/nodos/flecha)
     });
     host.addEventListener('wheel', function (e) {
       e.preventDefault(); o.zoom *= (e.deltaY > 0 ? 0.9 : 1.1);
       o.zoom = Math.max(0.15, Math.min(12, o.zoom));
       _marcarSucio();
+      _sincronizarOverlayOrto();
     }, { passive: false });
   }
 
@@ -2668,7 +2845,8 @@
       ST.renderer.setSize(w, h, false);
       ST.renderer.setPixelRatio(Math.min(2, global.devicePixelRatio || 1));
       ST._quadW = w; ST._quadH = h;
-      _marcarSucio();      // PERF (render-on-demand): un resize obliga a repintar
+      _marcarSucio();               // PERF (render-on-demand): un resize obliga a repintar
+      _sincronizarOverlayOrto();    // cambió el rect de las vistas → transforms nuevos
     }
   }
 
@@ -2942,7 +3120,9 @@
     rotarPlanoPieza: rotarPlanoPieza,                           // toggle plano_pieza.volteado + regenera
     _compVolteado: _compVolteado,
     _facesDeVista: _facesDeVista, _caraCercana: _caraCercana,   // snap de cara
-    _proyectorVolteado: _proyectorVolteado,
+    _ejeDistDe: _ejeDistDe,                                     // eje de reparto (x | z si volteada)
+    _transformDesdeCamara: _transformDesdeCamara,               // G7 — overlay ≡ cámara orto
+    _signosPantalla: _signosPantalla, _pixelToUV: _pixelToUV, _uvToPixel: _uvToPixel,
     // INTERACCIÓN-2.0 · 3 modos de uso (puntual/lineal/arreglo)
     _modoDe: _modoDe, _modoDefault: _modoDefault, _setModoComp: _setModoComp,
     _metaModular: _metaModular

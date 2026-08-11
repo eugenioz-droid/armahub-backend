@@ -51,11 +51,31 @@ function comp103(extra) {
   }, extra || {});
 }
 const plO0 = R.expandirComponente(comp103(), host);
-const plO90 = R.expandirComponente(comp103({ orient: { eje: 'x', deg: 90 } }), host);
+// (a) PIVOTE EXPLÍCITO 'host' = rotación en torno al ORIGEN (comportamiento histórico).
+const plO90h = R.expandirComponente(comp103({ orient: { eje: 'x', deg: 90, pivot: 'host' } }), host);
 // rotar 90° en X: (y,z) -> (-z, y). Tomamos la punta de la pata (primer punto).
-const a = plO0[0].puntos[0], b = plO90[0].puntos[0];
-ok(close(b.y, -a.z) && close(b.z, a.y) && close(b.x, a.x), 'rotación 90° X mapea (y,z)->(-z,y)');
-ok(plO90[0].meta && plO90[0].meta.orient_deg === 90, 'meta.orient_deg = 90 tras rotar');
+const a = plO0[0].puntos[0], b = plO90h[0].puntos[0];
+ok(close(b.y, -a.z) && close(b.z, a.y) && close(b.x, a.x), 'pivot host: 90° X mapea (y,z)->(-z,y)');
+ok(plO90h[0].meta && plO90h[0].meta.orient_deg === 90, 'meta.orient_deg = 90 tras rotar');
+
+// (b) B3-raíz — PIVOTE POR DEFECTO = centro de la PROPIA pieza + re-anclaje al
+// recubrimiento. La rotación NO puede despegar la pieza del marco útil (el bug
+// reportado: "roto barras de plano y se pierde el fix al recubrimiento").
+const plO90 = R.expandirComponente(comp103({ orient: { eje: 'x', deg: 90 } }), host);
+function bbox(pts) {
+  const mn = { x: Infinity, y: Infinity, z: Infinity }, mx = { x: -Infinity, y: -Infinity, z: -Infinity };
+  pts.forEach(p => ['x', 'y', 'z'].forEach(e => { if (p[e] < mn[e]) mn[e] = p[e]; if (p[e] > mx[e]) mx[e] = p[e]; }));
+  return { mn, mx };
+}
+const bb0 = bbox(plO0[0].puntos), bb90 = bbox(plO90[0].puntos);
+// el centro en el eje de giro (x) no se mueve; la pieza gira EN SU SITIO
+ok(close((bb90.mn.x + bb90.mx.x) / 2, (bb0.mn.x + bb0.mx.x) / 2, 1e-6), 'pivot propio: no traslada en el eje de giro');
+// la forma se conserva: el span en Y pasa a ser el span en Z y viceversa
+ok(close(bb90.mx.z - bb90.mn.z, bb0.mx.y - bb0.mn.y, 1e-6), 'pivot propio: el span Y pasa a Z (gira, no deforma)');
+// y queda DENTRO del marco útil del hormigón (o centrada si no cabe)
+const marcoZ = host.ancho / 2 - host.recub_lat;
+ok(bb90.mn.z >= -marcoZ - 1e-6 && bb90.mx.z <= marcoZ + 1e-6 ||
+   close((bb90.mn.z + bb90.mx.z) / 2, 0, 1e-6), 're-anclaje: la pieza girada respeta el recubrimiento');
 
 console.log('RANGO — distribución lineal por from/to:');
 const compRango = {
