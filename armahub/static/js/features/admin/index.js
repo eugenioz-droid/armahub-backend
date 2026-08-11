@@ -466,7 +466,13 @@ async function loadAuditLog(offset) {
     '<th style="padding:5px 6px;">ID</th>' +
     '</tr>' +
     data.logs.map(l => {
-      const fecha = l.fecha ? l.fecha.replace('T', ' ').substring(0, 19) : '';
+      // El backend guarda los timestamps en UTC. Antes se pintaba el ISO crudo
+      // (replace('T',' ')) → la auditoría mostraba 3-4 h de más. formatDateTime
+      // (shared/formatters.js) ya convierte a America/Santiago.
+      const fecha = l.fecha
+        ? ((typeof formatDateTime === 'function') ? formatDateTime(l.fecha)
+                                                 : l.fecha.replace('T', ' ').substring(0, 19))
+        : '';
       const color = accionColors[l.accion] || '#666';
       return '<tr style="border-bottom:1px solid #f0f0f0;">' +
         '<td style="padding:4px 6px; white-space:nowrap;" class="muted">' + fecha + '</td>' +

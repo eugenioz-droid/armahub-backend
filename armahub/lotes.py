@@ -370,7 +370,12 @@ def duplicar_lote(lote_id: int, body: LoteDuplicar, user=Depends(get_current_use
             except Exception:
                 pass
     _cache.invalidate("stats:", "landing:")
-    audit(email, "duplicar_lote", f"origen {lote_id} → {nuevo_id} · {n} barras", "lote", str(nuevo_id))
+    # El detalle lleva el nº POR OBRA (#N, el que ve el usuario en el histórico)
+    # además del id global: sin él, un registro de auditoría no era rastreable
+    # contra la pantalla de despieces.
+    audit(email, "duplicar_lote",
+          f"origen {lote_id} → {nuevo_id} (#{num_obra} en la obra) · {n} barras",
+          "lote", str(nuevo_id))
     return {"ok": True, "lote_id": nuevo_id, "num_obra": num_obra, "barras": n}
 
 
