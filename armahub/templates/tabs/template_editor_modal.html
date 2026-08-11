@@ -57,7 +57,12 @@
   /* El grupo BARRA sí puede wrappear por dentro (9 tipologías no caben siempre);
      el check "tomar contorno" es su PRIMER hijo, así que queda anclado igual. */
   #te_modal #te_ribbon .te-grp-barra{flex-wrap:wrap;row-gap:6px}
-  /* Campos chicos del grupo HORMIGÓN (cm) — escriben ST.receta.geometria. */
+  /* Campos chicos del grupo HORMIGÓN (cm) — escriben ST.receta.geometria.
+     El grupo va en DOS FILAS: dims arriba (largo/alto/ancho) y el RECUB ÚNICO
+     abajo (un solo campo que escribe recub_sup = recub_inf = recub_lat). */
+  #te_modal .te-grp-horm{align-items:center}
+  #te_modal .te-hormrows{display:flex;flex-direction:column;gap:5px}
+  #te_modal .te-hormrow{display:flex;align-items:center;gap:8px;flex-wrap:nowrap}
   #te_modal .te-geo{display:inline-flex;flex-direction:column;gap:2px}
   #te_modal .te-geo label{font-size:9.5px;color:var(--te-muted);font-weight:600;letter-spacing:.2px;white-space:nowrap}
   #te_modal .te-geo input{width:64px;border:1px solid var(--te-line);border-radius:6px;padding:4px 6px;font-size:12px}
@@ -125,6 +130,29 @@
   #te_modal .te-modebtn.on{background:var(--te-acero);color:#fff}
   #te_modal .te-modebtn.on:hover{background:var(--te-acero-d);color:#fff}
   #te_modal .te-addcomp{width:100%;border:1px dashed var(--te-acero);color:var(--te-acero-d);background:#f7fbf2;border-radius:9px;padding:8px;font-size:12px;font-weight:600;cursor:pointer;margin-top:4px}
+  /* JERARQUÍA por componente (select chico en el header, junto a ⧉/🗑).
+     OJO especificidad: la regla "#te_modal #te_side select{width:100%}" lleva DOS
+     ids, así que este selector también los repite (si no, el select saldría ancho). */
+  #te_modal #te_side .te-comp .te-ch select.te-jer{width:auto;flex:0 0 auto;font-size:10.5px;padding:1px 3px;
+    border:1px solid var(--te-line);border-radius:5px;background:#fff;color:var(--te-muted);cursor:pointer}
+  #te_modal #te_side .te-comp .te-ch select.te-jer:hover{color:var(--te-ink);border-color:var(--te-acero)}
+
+  /* ---- LISTADO DE BARRAS (despiece) — sección colapsable al fondo del panel ---- */
+  #te_modal .te-barras{margin-top:14px;border:1px solid var(--te-line);border-radius:9px;overflow:hidden;background:#fff}
+  #te_modal .te-barras-h{display:flex;align-items:center;gap:6px;width:100%;border:none;background:var(--te-panel2);
+    padding:7px 9px;font-size:11.5px;font-weight:700;color:var(--te-ink);cursor:pointer;text-align:left}
+  #te_modal .te-barras-h:hover{background:#eef3f7}
+  #te_modal .te-barras-ar{color:var(--te-muted);font-size:10px;transition:transform .12s}
+  #te_modal .te-barras.open .te-barras-ar{transform:rotate(90deg)}
+  #te_modal .te-barras-c{font-size:10.5px;font-weight:600;color:var(--te-muted)}
+  #te_modal .te-barras-b{display:none;padding:6px 8px 9px;border-top:1px solid var(--te-line);overflow-x:auto}
+  #te_modal .te-barras.open .te-barras-b{display:block}
+  #te_modal .te-btab{width:100%;border-collapse:collapse;font-size:11px}
+  #te_modal .te-btab th{text-align:left;font-weight:700;color:var(--te-muted);font-size:10px;
+    text-transform:uppercase;letter-spacing:.3px;padding:3px 5px;border-bottom:1px solid var(--te-line);white-space:nowrap}
+  #te_modal .te-btab td{padding:3px 5px;border-bottom:1px solid #f0f3f6;vertical-align:top}
+  #te_modal .te-btab td.te-bnum{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
+  #te_modal .te-btab tr:last-child td{border-bottom:none}
 
   /* ---- CENTRO: 4 cuadrantes ---- */
   #te_modal #te_quad{flex:1;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;gap:1px;background:var(--te-line);min-width:0;position:relative}
@@ -297,14 +325,20 @@
       <!-- GRUPO 1 — HORMIGÓN (cm). Los valores salen/entran a
            ST.receta.geometria y cada cambio válido regenera las 4 vistas
            (_bindGeometria en template_editor.js). -->
-      <div class="te-grp">
+      <div class="te-grp te-grp-horm">
         <span class="te-lbl">Hormigón</span>
-        <div class="te-geo"><label>Largo</label><input type="number" id="te_geoLargo" step="any" min="1" title="Largo del elemento (cm)"></div>
-        <div class="te-geo"><label>Alto</label><input type="number" id="te_geoAlto" step="any" min="1" title="Alto del elemento (cm)"></div>
-        <div class="te-geo"><label>Ancho</label><input type="number" id="te_geoAncho" step="any" min="1" title="Ancho del elemento (cm)"></div>
-        <div class="te-geo"><label>Recub sup</label><input type="number" id="te_geoRecubSup" step="any" min="0" title="Recubrimiento superior (cm)"></div>
-        <div class="te-geo"><label>Recub inf</label><input type="number" id="te_geoRecubInf" step="any" min="0" title="Recubrimiento inferior (cm)"></div>
-        <div class="te-geo"><label>Recub lat</label><input type="number" id="te_geoRecubLat" step="any" min="0" title="Recubrimiento lateral (cm)"></div>
+        <div class="te-hormrows">
+          <div class="te-hormrow">
+            <div class="te-geo"><label>Largo</label><input type="number" id="te_geoLargo" step="any" min="1" title="Largo del elemento (cm)"></div>
+            <div class="te-geo"><label>Alto</label><input type="number" id="te_geoAlto" step="any" min="1" title="Alto del elemento (cm)"></div>
+            <div class="te-geo"><label>Ancho</label><input type="number" id="te_geoAncho" step="any" min="1" title="Ancho del elemento (cm)"></div>
+          </div>
+          <!-- RECUB ÚNICO: un solo valor para sup/inf/lat (el ajuste fino por barra
+               sigue en "Recub. override" del panel izquierdo). -->
+          <div class="te-hormrow">
+            <div class="te-geo"><label>Recub (cm)</label><input type="number" id="te_geoRecub" step="any" min="0" value="2" title="Recubrimiento (cm) — se aplica arriba, abajo y a los lados"></div>
+          </div>
+        </div>
       </div>
       <div class="te-divv"></div>
       <!-- GRUPO 2 — BARRA: predefiniciones (contorno + figura + φ + tipología).
@@ -352,7 +386,10 @@
       <!-- "Colocar" y "Rango" ya NO son herramientas:
            · colocar  → botón "＋ Agregar barra" del ribbon (o "＋ Agregar componente")
            · rango    → flecha sobre la barra SELECCIONADA (arrastrarla la activa) -->
-      <button class="te-ctool" data-tool="rotar" title="Rotar (barra espaciadora)">⟳ Rotar</button>
+      <!-- ⟳ Rotar es una ACCIÓN, no una herramienta: gira 90° la selección en el
+           plano activo y NO cambia ST.tool (antes era data-tool="rotar", una
+           herramienta fantasma que nadie leía y que sacaba al editor de 'mover'). -->
+      <button class="te-ctool" id="te_btnRotar" title="Rotar 90° la barra seleccionada en el plano activo (barra espaciadora)">⟳ Rotar</button>
       <span class="te-divv"></span>
       <button class="te-ctool on" data-toggle="snap" title="Snap a grilla / caras / barras">🧲 Snap</button>
       <button class="te-ctool" data-toggle="cotas" title="Mostrar cotas de tramos">📐 Cotas</button>
@@ -375,6 +412,19 @@
 
         <button class="te-addcomp" id="te_addComp">＋ Agregar componente</button>
         <div class="te-note" style="margin-top:8px">＋ Agregar componente = mismo modo colocación que "＋ Agregar barra" del ribbon (Esc o clic derecho para salir). Selecciona una barra para editarla aquí; arrastra ⠿ para reordenar.</div>
+
+        <!-- LISTADO DE BARRAS (despiece agrupado) — colapsable, al fondo del panel.
+             Lo llena _renderBarras() desde ST.ultimoOut.barras (ya agrupadas por
+             figura+φ+marca+suf+dims en generar.js). -->
+        <div class="te-barras" id="te_barrasBox">
+          <button type="button" class="te-barras-h" id="te_barrasToggle" aria-expanded="false">
+            <span class="te-barras-ar">▸</span>
+            <span>📋 Barras</span>
+            <span class="te-sp" style="flex:1"></span>
+            <span class="te-barras-c" id="te_barrasCount">(0 ítems · 0 kg)</span>
+          </button>
+          <div class="te-barras-b" id="te_barrasBody"></div>
+        </div>
       </div>
 
       <!-- CENTRO: 4 CUADRANTES -->
@@ -471,8 +521,9 @@
       <div class="te-spacer"></div>
       <button class="te-btn ghost" onclick="templateEditorVerEn3D()">🧊 Ver en 3D</button>
       <span id="te_saveErr" style="font-size:11px;color:#c62828"></span>
-      <button class="te-btn ghost" id="te_btnGuardar" onclick="templateEditorGuardar()">💾 Guardar template</button>
-      <button class="te-btn primary">✓ Usar en el despiece</button>
+      <!-- Aquí sólo se GUARDA el template; el paso "usar en el despiece" vive fuera
+           del editor (no había handler: el botón no hacía nada). -->
+      <button class="te-btn primary" id="te_btnGuardar" onclick="templateEditorGuardar()">💾 Guardar template</button>
     </div>
 
     <datalist id="te_figs"><option value="101A"><option value="102A"><option value="103A"><option value="103B"><option value="104D"><option value="106A"></datalist>

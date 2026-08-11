@@ -353,6 +353,7 @@
     if (fi) fi.textContent = out.resumen.items;
     if (fb) fb.textContent = out.resumen.barras;
     if (fk) fk.textContent = _num(out.resumen.kg);
+    _renderBarras();   // listado de barras del panel (contador siempre; tabla si está abierto)
     _redibujar2D(out);
     // WARNING ANTI-COLAPSO: se evalúa SIEMPRE (aunque no haya WebGL) — el aviso es
     // sobre el tamaño del elemento, no sobre el 3D.
@@ -530,6 +531,11 @@
       mesh.userData.span = _spanDePuntos(pl.puntos);
       mesh.userData.matBase = mat;
       mesh.userData.ci = (pl.meta && pl.meta.ci != null) ? pl.meta.ci : -1;
+      // SECCIÓN LIMPIA: rol + eje por el que CORRE la barra, calculados UNA vez aquí
+      // (no por frame). Los usa _clipLocalPorVista para esconder del render las
+      // barras vistas DE PUNTA — el overlay ya las dibuja como círculo de sección.
+      mesh.userData.rol = _rolDe(pl.tipologia);
+      mesh.userData.ejeMayor = _ejeMayorSpan(pl.puntos);
       ST.barras3D.push(mesh);
       ST.world.add(mesh);
     });
@@ -1632,9 +1638,9 @@
   }
 
   // pos_hint: qué ejes fija el click. Estribo (perimetral) → su X (posición a lo
-  // largo). Cabezal → su Z (posición a lo ancho) si se clicó en sección/planta.
+  // largo). El CABEZAL no fija nada: se centra/reparte a lo ancho con sus propios
+  // controles (barras/capa + Centrar/Repartir), así que el clic sólo elige la CARA.
   function _posHintDeClick(plano, host, rol, cara) {
-    var g = ST.receta.geometria;
     var ph = {};
     if (rol === 'estribo' || rol === 'traba') {
       // el estribo se dibuja a una X; el click en largo/planta define esa X.
@@ -1642,8 +1648,9 @@
       if (rol === 'traba' && (plano === 'seccion' || plano === 'planta')) ph.z = host.z;
       return ph;
     }
-    // cabezal longitudinal: corre por X; el click define su Z (a lo ancho) y afina Y.
-    if (plano === 'seccion' || plano === 'planta') ph.z = host.z;
+    // Cabezal longitudinal: corre por X y queda CENTRADO a lo ancho. NO se toma la
+    // Z del clic (antes la barra nacía pegada donde cayó el cursor y la disposición
+    // "centrar/repartir" no podía recolocarla).
     return ph;
   }
 
@@ -1825,7 +1832,9 @@
   // del recubrimiento (bug reportado). Aquí NO se escribe `pivot`: el default del
   // motor ya es el correcto; 'host' queda como opción explícita para casos legacy.
   function _rotarSeleccion(plano, deltaDeg) {
-    if (ST.selCi < 0 || !ST.receta) return;
+    if (!ST.receta) return;
+    // Sin selección el botón parecía "roto" (igual que pasaba con Borrar): avisar.
+    if (ST.selCi < 0) { _actualizarStatus('Nada seleccionado: haz clic en una barra y vuelve a Rotar.'); return; }
     _pushUndo();
     var c = ST.receta.componentes[ST.selCi];
     var eje = EJE_ROT[plano] || 'x';
@@ -2073,6 +2082,54 @@
     _actualizarStatus();
   }
 
+  // ==========================================================================
+  // LISTADO DE BARRAS (despiece) — sección colapsable al fondo del panel izquierdo.
+  // Fuente: ST.ultimoOut.barras, que generar.js ya entrega AGRUPADO por
+  // figura+φ+marca+suf+dims+ángulos (agruparBarras) con `cant` = nº de barras
+  // idénticas y `_pesoEstimado` = kg del grupo. No se re-agrupa aquí: se pinta.
+  // ==========================================================================
+  function _bindBarras() {
+    var t = $('te_barrasToggle');
+    if (!t || t._teBound) return;
+    t._teBound = true;
+    t.addEventListener('click', function () {
+      var box = $('te_barrasBox'); if (!box) return;
+      var abierto = box.classList.toggle('open');
+      t.setAttribute('aria-expanded', abierto ? 'true' : 'false');
+      _renderBarras();   // la tabla se arma sólo cuando la sección está abierta
+    });
+  }
+
+  function _renderBarras() {
+    var box = $('te_barrasBox'); if (!box) return;
+    var out = ST.ultimoOut;
+    var barras = (out && out.barras) || [];
+    var res = (out && out.resumen) || {};
+    var cnt = $('te_barrasCount');
+    if (cnt) cnt.textContent = '(' + (res.items || 0) + ' ítems · ' + _num(res.kg || 0) + ' kg)';
+    var body = $('te_barrasBody'); if (!body) return;
+    if (!box.classList.contains('open')) { body.innerHTML = ''; return; }
+    if (!barras.length) { body.innerHTML = '<div class="te-note" style="margin:0">Todavía no hay barras.</div>'; return; }
+    var filas = barras.map(function (b) {
+      var dims = [];
+      LETRAS.forEach(function (L) {
+        var v = b['dim_' + L.toLowerCase()];
+        if (v != null && isFinite(Number(v))) dims.push(L + ' ' + _num(Math.round(Number(v) * 10) / 10));
+      });
+      var marca = (b.marca || '—') + (b.suf_tipo ? ('·' + b.suf_tipo) : '');
+      var cant = (Number(b.cant) || 0) * (Number(b.mult) || 1);
+      var kg = (b._pesoEstimado != null) ? _num(Math.round(b._pesoEstimado * 10) / 10) : '—';
+      return '<tr><td>' + _esc(marca) + '<br><span style="color:var(--te-muted)">' + _esc(b.figura || '') + '</span></td>' +
+        '<td class="te-bnum">' + _esc(b.diam) + '</td>' +
+        '<td>' + _esc(dims.join(' · ')) + '</td>' +
+        '<td class="te-bnum">' + cant + '</td>' +
+        '<td class="te-bnum">' + kg + '</td></tr>';
+    }).join('');
+    body.innerHTML = '<table class="te-btab"><thead><tr>' +
+      '<th>Marca</th><th>φ mm</th><th>Dims (cm)</th><th>Cant</th><th>kg</th>' +
+      '</tr></thead><tbody>' + filas + '</tbody></table>';
+  }
+
   function _compEl(c, ci) {
     var rol = _rolDe(c.tipologia);
     var col = _colDe(c.tipologia);
@@ -2091,6 +2148,11 @@
       '<span class="te-sp"></span>' +
       '<button class="te-mini" data-act="dup" title="Duplicar">⧉</button>' +
       '<button class="te-mini" data-act="del" title="Quitar">🗑</button>';
+    // JERARQUÍA (nivel vs recubrimiento) — se edita en el HEADER, junto a ⧉/🗑, para
+    // verla y cambiarla sin abrir el componente. 'auto' = sin dato (el motor aplica
+    // el default del rol: estribo 0, traba/cabezal 1). Los eventos del select NO
+    // burbujean al header (si no, elegir un nivel plegaría/desplegaría la ficha).
+    ch.insertBefore(_selJerarquia(c, ci), ch.querySelector('[data-act="dup"]'));
     ch.addEventListener('click', function (e) {
       var act = e.target && e.target.getAttribute && e.target.getAttribute('data-act');
       if (act === 'del') { e.stopPropagation(); ST.selCi = ci; _borrarSeleccion(); return; }
@@ -2109,6 +2171,32 @@
     // Drag-reorder básico
     _habilitarDrag(wrap, ci);
     return wrap;
+  }
+
+  // <select> de JERARQUÍA del componente (header). Escribe comp.jerarquia:
+  //   'auto' → se borra el campo (el motor usa el default por rol)
+  //   0,1,2… → nivel explícito (0 = pegado al recubrimiento).
+  function _selJerarquia(c, ci) {
+    var sel = document.createElement('select');
+    sel.className = 'te-jer';
+    sel.title = '0 = pegado al recubrimiento; 1,2… se apoyan por dentro de los niveles anteriores';
+    [['', 'auto'], ['0', '0'], ['1', '1'], ['2', '2'], ['3', '3']].forEach(function (o) {
+      var op = document.createElement('option');
+      op.value = o[0]; op.textContent = o[1];
+      sel.appendChild(op);
+    });
+    sel.value = (c.jerarquia == null) ? '' : String(c.jerarquia);
+    // el header es clicable (selecciona/pliega): el select se lo queda para él.
+    ['click', 'mousedown', 'dblclick'].forEach(function (ev) {
+      sel.addEventListener(ev, function (e) { e.stopPropagation(); });
+    });
+    sel.addEventListener('change', function (e) {
+      e.stopPropagation();
+      if (sel.value === '') delete c.jerarquia;
+      else c.jerarquia = Number(sel.value);
+      _mut(ci);
+    });
+    return sel;
   }
 
   function _compBody(c, ci, rol) {
@@ -2282,23 +2370,33 @@
     box.appendChild(note);
   }
 
-  // TOGGLE "capas anidadas" — sólo tiene sentido en ESTRIBOS con más de una capa:
-  // las capas interiores se achican hacia adentro (estribo dentro de estribo) en vez
-  // de repetirse iguales. Aquí sólo se escribe el dato (distribucion.anidar);
-  // quien lo consume es el motor.
+  // TOGGLE del anidado de CAPAS — visible SIEMPRE que haya más de una capa. El
+  // significado (y el default) dependen del rol, igual que en el motor:
+  //   · ESTRIBO  → anidar es el DEFAULT (las capas interiores se achican hacia
+  //                adentro). El check nace marcado; desmarcarlo escribe anidar=false.
+  //   · CABEZAL/otros → el ajuste de patas es OPT-IN: el check nace desmarcado y
+  //                sólo al marcarlo se escribe anidar=true (desmarcar borra el campo).
+  // Aquí sólo se escribe el dato (distribucion.anidar); quien lo consume es el motor.
   function _filaAnidar(box, c, ci, rol, d) {
-    if (rol !== 'estribo') return;
     if (!(Number(d.n_capas) > 1)) return;
-    if (d.anidar == null) d.anidar = true;   // default del campo
+    var esEstribo = (rol === 'estribo');
     var row = _div('te-fld');
     var lab = document.createElement('label');
     lab.style.cssText = 'display:flex;align-items:center;gap:6px;cursor:pointer';
     var chk = document.createElement('input');
-    chk.type = 'checkbox'; chk.checked = (d.anidar !== false);
+    chk.type = 'checkbox';
+    chk.checked = esEstribo ? (d.anidar !== false) : (d.anidar === true);
     chk.style.width = 'auto';
-    chk.addEventListener('change', function () { d.anidar = chk.checked; _mut(ci, true); });
+    chk.addEventListener('change', function () {
+      if (esEstribo) d.anidar = chk.checked;          // false = desactiva el default
+      else if (chk.checked) d.anidar = true;          // opt-in explícito
+      else delete d.anidar;                           // volver al default (sin ajuste)
+      _mut(ci, true);
+    });
     var txt = document.createElement('span');
-    txt.textContent = 'Capas anidadas (se achican hacia adentro)';
+    txt.textContent = esEstribo
+      ? 'Capas anidadas (se achican hacia adentro)'
+      : 'Ajustar medidas de capas (patas alineadas)';
     lab.appendChild(chk); lab.appendChild(txt);
     row.appendChild(lab);
     box.appendChild(row);
@@ -2497,18 +2595,20 @@
   }
 
   // ==========================================================================
-  // GRUPO "HORMIGÓN" DEL RIBBON — los 6 campos (cm) que antes vivían en la
-  // pantalla previa del tab. Leen/escriben ST.receta.geometria y regeneran.
+  // GRUPO "HORMIGÓN" DEL RIBBON — las dims (cm) que antes vivían en la pantalla
+  // previa del tab. Leen/escriben ST.receta.geometria y regeneran.
   // Validación mínima: dims > 0, recubs >= 0, recub_sup+recub_inf < alto y
   // 2·recub_lat < ancho. Si es inválido: borde rojo y NO se aplica.
+  //
+  // RECUB ÚNICO: un solo campo ("Recub (cm)") escribe los TRES recubrimientos
+  // (`ks`); el ajuste fino por barra sigue en "Recub. override" del panel.
   // ==========================================================================
+  var GEO_RECUB_DEF = 2;   // cm — lo que muestra el campo si la receta no trae recub
   var GEO_CAMPOS = [
     { id: 'te_geoLargo', k: 'largo', min: 1 },
     { id: 'te_geoAlto', k: 'alto', min: 1 },
     { id: 'te_geoAncho', k: 'ancho', min: 1 },
-    { id: 'te_geoRecubSup', k: 'recub_sup', min: 0 },
-    { id: 'te_geoRecubInf', k: 'recub_inf', min: 0 },
-    { id: 'te_geoRecubLat', k: 'recub_lat', min: 0 }
+    { id: 'te_geoRecub', k: 'recub_sup', ks: ['recub_sup', 'recub_inf', 'recub_lat'], min: 0, def: GEO_RECUB_DEF }
   ];
 
   // Vuelca ST.receta.geometria a los inputs (al abrir y tras arrastrar un nodo).
@@ -2517,6 +2617,7 @@
     GEO_CAMPOS.forEach(function (f) {
       var el = $(f.id); if (!el) return;
       var v = g[f.k];
+      if ((v == null || !isFinite(Number(v))) && f.def != null) v = f.def;
       el.value = (v == null || !isFinite(Number(v))) ? '' : String(Math.round(Number(v) * 100) / 100);
       el.classList.remove('bad');
     });
@@ -2558,7 +2659,7 @@
       recub_inf: (g.recub_inf != null ? g.recub_inf : 4),
       recub_lat: (g.recub_lat != null ? g.recub_lat : 3)
     };
-    cand[f.k] = v;
+    (f.ks || [f.k]).forEach(function (k) { cand[k] = v; });
     if (!isFinite(v) || v < f.min || !_geoValida(cand)) { el.classList.add('bad'); return null; }
     el.classList.remove('bad');
     return v;
@@ -2568,9 +2669,11 @@
     var v = _validarGeoCampo(f, el);
     if (v == null) return;
     var g = ST.receta.geometria;
-    if (Number(g[f.k]) === v) return;
+    var ks = f.ks || [f.k];
+    var cambia = ks.some(function (k) { return Number(g[k]) !== v; });
+    if (!cambia) return;
     _pushUndo();
-    g[f.k] = v;
+    ks.forEach(function (k) { g[k] = v; });
     // Mismo refresco que el arrastre de nodos: regenerar re-encuadra las cámaras
     // ortográficas (leen la geometría en cada frame) y redibuja los 4 cuadrantes.
     _regenerarDiferido();
@@ -2632,6 +2735,16 @@
     // si un día #te_ctools ya viniera marcado, el botón Borrar se quedaba sin listener.
     var del = $('te_btnBorrar');
     if (del && !del._teBound) { del._teBound = true; del.addEventListener('click', function () { _borrarSeleccion(); }); }
+
+    // ⟳ ROTAR = ACCIÓN sobre la selección, NO una herramienta (bug reportado: "roté
+    // y se borró un componente"). Antes era data-tool="rotar": el click sólo hacía
+    // ST.tool='rotar', un modo que NADIE lee. Efecto real: el editor salía de
+    // 'mover', y como el pick por proximidad y el deseleccionar-en-vacío del
+    // mousedown están gateados por ST.tool==='mover', la selección quedaba
+    // congelada en otra barra; el siguiente 🗑/Supr borraba la que no era.
+    // Ahora rota 90° en el plano activo y ST.tool se queda como estaba.
+    var rot = $('te_btnRotar');
+    if (rot && !rot._teBound) { rot._teBound = true; rot.addEventListener('click', function () { _rotarSeleccion(ST.ultimoPlano, 90); }); }
 
     // Los DOS botones "agregar" hacen lo mismo: entrar en modo colocación.
     var addRib = $('te_btnAgregarBarra');
@@ -2960,12 +3073,23 @@
   // hormigón y el plano P3 siguen exentos: su material ya lleva clippingPlanes:[].
   // ==========================================================================
 
+  // SECCIÓN LIMPIA — ¿esta barra se ve DE PUNTA en la vista cuyo eje de profundidad
+  // es `dep`? (cabezal cuyo eje longitudinal coincide con la profundidad). El corte
+  // le pasa por la curva del gancho y el render deja "muñones" feos; su
+  // representación correcta es el círculo de sección que ya pinta el overlay 2D.
+  function _esDePunta(mesh, dep) {
+    return !!dep && mesh.userData.rol === 'cabezal' && mesh.userData.ejeMayor === dep;
+  }
+
   // Aplica/retira los 2 planos de corte de una vista sobre los materiales de las barras.
   function _clipLocalPorVista(dep, planos) {
     var THREE = global.THREE;
     var barras = ST.barras3D || [];
     for (var i = 0; i < barras.length; i++) {
       var mesh = barras[i];
+      // visible=false SÓLO en el pase de esta vista orto; el pase 3D en perspectiva
+      // (planos=null) y las otras vistas las restauran.
+      mesh.visible = !(planos && _esDePunta(mesh, dep));
       var base = mesh.userData.matActivo || mesh.userData.matBase;
       if (!base) continue;
       if (planos) {
@@ -3333,6 +3457,7 @@
     _bindVistas();
     _bindTeclado();
     _bindWarnTamano();           // ✕ del banner anti-colapso
+    _bindBarras();               // sección colapsable "📋 Barras" (despiece)
     _actualizarTitulosVista();   // BUG 8: títulos + GIZMO gráfico de ejes por vista
     _setQuadCursor();
     // Al redimensionar la ventana, el overlay de voltear se re-pega a la pieza.
