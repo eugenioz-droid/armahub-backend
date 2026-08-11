@@ -834,9 +834,16 @@
   // pieza está volteada). La autoridad es el motor; se resuelve DENTRO de la función
   // (nunca capturado a nivel de módulo — regla dura 1).
   function _ejeDistDe(c) {
+    // El eje sobre el que se REPARTE depende del ROL: un estribo/traba se reparte
+    // A LO LARGO (x); un CABEZAL corre en x, así que repartirlo "a lo largo" lo
+    // apilaría sobre sí mismo — su reparto va A LO ANCHO (z). El volteo (x↔z)
+    // intercambia ambos casos. (Feedback: "me sale paralelo a la longitud de la
+    // barra; debiera mostrarse en el otro eje".)
+    var volteado = !!(c && c.plano_pieza && c.plano_pieza.volteado);
+    if (c && _rolDe(c.tipologia) === 'cabezal') return volteado ? 'x' : 'z';
     var reglas = global.ModeladorReglas;
     if (reglas && reglas.ejeDistribucion) return reglas.ejeDistribucion(c);
-    return (c && c.plano_pieza && c.plano_pieza.volteado) ? 'z' : 'x';
+    return volteado ? 'z' : 'x';
   }
 
   // Proyector por clave de plano (usado por el hit-testing y el ghost de rango).
@@ -1439,6 +1446,9 @@
     if (ST.selCi < 0 || !ST.receta) return;
     var c = ST.receta.componentes[ST.selCi];
     if (!c || !c.distribucion || !c.distribucion.activa) return;
+    // Modo PUNTUAL = una sola posición → jamás flecha de distribución (aunque
+    // quede un rango viejo guardado de un modo anterior).
+    if (_modoDe(c) === 'puntual') return;
     // La flechita doble solo aplica al modelo por RANGO (2 clics). Las zonas de
     // la semilla se editan por campos, no con la flecha.
     var rango = c.distribucion.rango;
@@ -1724,6 +1734,44 @@
     _actualizarStatus();
   }
 
+  // PICK por PROXIMIDAD (fallback del hit-testing por data-ci): barra más cercana
+  // al punto clicado (px,py en coords del viewBox), con tolerancia en píxeles.
+  // Cubre los casos donde el clic cae sobre el render 3D pero fuera de la geometría
+  // SVG de hit (p.ej. la barra vista de punta cuyo hit es un círculo chico), y
+  // cualquier elemento que se interponga como target del evento. Distancia
+  // punto→segmento sobre la polilínea proyectada de cada placement.
+  function _pickBarra(plano, px, py, tolPx) {
+    var out = ST.ultimoOut; if (!out || !out.placements) return -1;
+    var t = ST.transforms[plano]; if (!t) return -1;
+    var def = (_defsPlanos() || {})[plano]; if (!def) return -1;
+    var pj = _proyectorDe(def);
+    var tol = tolPx || 9, best = -1, bestD = tol;
+    function d2seg(ax, ay, bx, by) {
+      var vx = bx - ax, vy = by - ay, wx = px - ax, wy = py - ay;
+      var L2 = vx * vx + vy * vy;
+      var s = L2 ? Math.max(0, Math.min(1, (wx * vx + wy * vy) / L2)) : 0;
+      var dx = px - (ax + s * vx), dy = py - (ay + s * vy);
+      return Math.sqrt(dx * dx + dy * dy);
+    }
+    out.placements.forEach(function (pl) {
+      var ci = (pl.meta && pl.meta.ci != null) ? pl.meta.ci : -1;
+      if (ci < 0) return;
+      var pts = (pl.puntos || []).map(pj).filter(function (q) { return isFinite(q.u) && isFinite(q.v); });
+      if (!pts.length) return;
+      var xs = pts.map(function (q) { return _tX(t, q.u); });
+      var ys = pts.map(function (q) { return _tY(t, q.v); });
+      var d;
+      if (pts.length === 1) {
+        d = Math.sqrt((px - xs[0]) * (px - xs[0]) + (py - ys[0]) * (py - ys[0]));
+      } else {
+        d = Infinity;
+        for (var i = 1; i < xs.length; i++) d = Math.min(d, d2seg(xs[i - 1], ys[i - 1], xs[i], ys[i]));
+      }
+      if (d < bestD) { bestD = d; best = ci; }
+    });
+    return best;
+  }
+
   function _borrarSeleccion() {
     if (ST.selCi < 0 || !ST.receta) return;
     _pushUndo();
@@ -1836,8 +1884,19 @@
         }
 
         // Rotar: clic en vacío no hace nada; se rota con ESPACIO o botón.
-        // Mover en vacío: deseleccionar.
-        if (ST.tool === 'mover') { _seleccionar(-1); }
+        // Mover: pick por PROXIMIDAD (fallback del data-ci — cubre clics sobre el
+        // render 3D de la barra fuera de la geometría SVG de hit) y recién si no
+        // hay nada cerca, deseleccionar.
+        if (ST.tool === 'mover') {
+          var pk = _pickBarra(plano, sp.px, sp.py);
+          if (pk >= 0) {
+            _seleccionar(pk);
+            if (uv) ST.dragMove = { ci: pk, plano: plano, startHost: _clickHost(plano, uv), startHint: _clonHint(pk), pushed: false };
+            evt.preventDefault();
+            return;
+          }
+          _seleccionar(-1);
+        }
       });
 
     });
@@ -1957,7 +2016,7 @@
     // El rango vive en el EJE DE DISTRIBUCIÓN del componente (X, o Z si está
     // volteado), no siempre en X.
     var ejeR = _ejeDistDe(c);
-    c.distribucion.rango = { from: from[ejeR], to: to[ejeR], sep: c.distribucion.sep };
+    c.distribucion.rango = { from: from[ejeR], to: to[ejeR], sep: c.distribucion.sep, eje: ejeR };
     // La barra base ya no necesita pos_hint en ese eje (el rango la distribuye).
     if (c.pos_hint) delete c.pos_hint[ejeR];
     _regenerar();
@@ -2653,9 +2712,12 @@
         o.cortePos = _sliceMasCercana(slices.pos, target);
         o.corteGrosor = Math.max(slices.diam * 1.4, 1.2);   // ~1 barra de espesor
       } else {
-        // sin estribos que aislar → banda gruesa (jaula entera, nunca vacía).
+        // Sin estribos que aislar → banda FINA igual (modelo cuchillo total): los
+        // longitudinales cruzan el corte y se ven como su círculo; sus PATAS solo
+        // aparecen si el corte pasa por ellas. (Antes: banda gruesa = jaula entera
+        // → "la pata se ve siempre en la sección".)
         o.cortePos = target;
-        o.corteGrosor = Math.max(half, 5);
+        o.corteGrosor = 4;
       }
     } else {
       // y/z: banda gruesa (semi-espesor completo). frac 0.5 → 0 (centro); pela una cara.
@@ -3004,8 +3066,10 @@
     var y = full.height - ((r.top - full.top) + r.height) + pad;   // esquina INFERIOR
     // la cámara del gizmo copia la ORIENTACIÓN de la perspectiva (dirección desde el
     // target hacia la cámara), a distancia fija → mismo giro, tamaño constante.
+    // Distancia 4.4 (no 3.4): con fov 42 el half-extent a 3.4 era ~1.30 y las letras
+    // viven a 1.34·L → la Y/Z quedaban FUERA del frustum ("solo se ve la X").
     var dir = new THREE.Vector3().subVectors(ST.camera.position, ST.target).normalize();
-    gz.cam.position.copy(dir.multiplyScalar(3.4));
+    gz.cam.position.copy(dir.multiplyScalar(4.4));
     gz.cam.up.copy(ST.camera.up);
     gz.cam.lookAt(0, 0, 0);
     gz.cam.aspect = 1; gz.cam.updateProjectionMatrix();

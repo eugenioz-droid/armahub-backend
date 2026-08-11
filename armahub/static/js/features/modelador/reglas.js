@@ -273,11 +273,16 @@
       var rf = Math.min(Number(cfg.rango.from), Number(cfg.rango.to));
       var rt = Math.max(Number(cfg.rango.from), Number(cfg.rango.to));
       var sep = Number(cfg.sep || cfg.rango.sep || 20) || 20;
+      // Eje del reparto: 'x' (default, estribos a lo largo) o el que declare el
+      // rango — un CABEZAL corre en x, así que su rango reparte copias en 'z'
+      // (a lo ancho); repartirlo en x lo apilaría sobre sí mismo.
+      var ejeR = (cfg.rango.eje === 'y' || cfg.rango.eje === 'z') ? cfg.rango.eje : 'x';
       var nR = redondeoCantidadZona(rt - rf, sep);
       for (var ri = 0; ri < nR; ri++) {
         var xr = rf + ri * sep;
         if (xr > rt + 1e-6) break;
-        var anchorR = _mezclarAnchor(base.anchorBase, { x: xr });
+        var extraR = {}; extraR[ejeR] = xr;
+        var anchorR = _mezclarAnchor(base.anchorBase, extraR);
         var puntosR = _fp().figuraAPuntos(base.figura, base.dims, host, anchorR,
           { rol: base.rol || 'estribo', diamCm: base.diam });
         placements.push(_placement(base, puntosR, { rango: 1 }));
