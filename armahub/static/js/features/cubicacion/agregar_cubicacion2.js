@@ -441,8 +441,9 @@ function ac2Fila(b){
   h+='<td style="'+AC2_TDS+' text-align:right;"><select class="ac2cell ac2nav" data-col="diam" data-row="'+b._id+'" onchange="ac2SetBarra('+b._id+',\'diam\',this.value)" onkeydown="ac2NavKey(event,this)" style="font-size:11px; padding:1px 2px;'+(_dcol?' background:'+_dcol+'; color:'+ac2DiamTexto(b.diam)+'; font-weight:600;':'')+'">'+opd+'</select></td>';
   // Cant (unitaria) · Mult (multiplicador) · Cant.T (= cant×mult, SOLO LECTURA — no re-multiplica
   // el peso, que ya usa cant×mult; solo informa el total).
-  h+='<td style="'+AC2_TDS+' text-align:right;">'+ac2Inp(b._id,'cant',b.cant,40)+'</td>';
-  if (AC2.verMult) h+='<td style="'+AC2_TDS+' text-align:right;">'+ac2Inp(b._id,'mult',b.mult,40)+'</td>';
+  // 56px (= .ac2cell, como las dims): con 40 una cantidad de 3+ cifras se CORTABA.
+  h+='<td style="'+AC2_TDS+' text-align:right;">'+ac2Inp(b._id,'cant',b.cant,56)+'</td>';
+  if (AC2.verMult) h+='<td style="'+AC2_TDS+' text-align:right;">'+ac2Inp(b._id,'mult',b.mult,56)+'</td>';
   h+='<td id="ac2cantt_'+b._id+'" style="'+AC2_TDS+' text-align:right; color:#607d8b; font-weight:600;">'+ac2CantTotal(b)+'</td>';
   // Largo (calculado en vivo) — solo lectura, id para actualización granular.
   h+='<td id="ac2largo_'+b._id+'" style="'+AC2_TDS+' text-align:right; color:#1565c0; font-weight:600;">'+ac2Num(ac2Largo(b))+'</td>';
