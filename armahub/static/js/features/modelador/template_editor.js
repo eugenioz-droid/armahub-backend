@@ -4,7 +4,8 @@
 //
 // Esta entrega convierte los 3 cuadrantes 2D de SOLO-VISUALIZACIÓN a un
 // EDITOR INTERACTIVO (§DISCOVERY-INTERACCIÓN del programa):
-//   - COLOCAR: figura+tipología del ribbon → clic en una vista 2D → nace un
+//   - COLOCAR (modo): "＋ Agregar barra" (ribbon) / "＋ Agregar componente" (panel)
+//     entran en MODO COLOCACIÓN; figura+tipología del ribbon → clic en una vista 2D → nace un
 //     componente anclado a la cara clicada (estribo "toma contorno"; barra con
 //     lados se orienta según su figura). Se agrega a ST.receta.componentes y se
 //     regenera (las 4 vistas + el 3D se actualizan).
@@ -12,8 +13,9 @@
 //     (halo + panel izq); arrastrar la mueve; Supr/botón la borra.
 //   - ROTAR: ESPACIO (o herramienta Rotar) gira 90° en el plano de la vista;
 //     campo de ángulo exacto en el panel; se muestra el ángulo al seleccionar.
-//   - RANGO: herramienta Rango + 2 clics sobre el hormigón define la distribución
-//     lineal @; flechita doble para desplazarla; check para activar distribución.
+//   - RANGO: sin herramienta ni 2 clics. Con una barra SELECCIONADA se dibuja la
+//     flecha de rango en las vistas donde su eje de reparto es visible (gris si la
+//     distribución aún no está activa); arrastrarla la ACTIVA y la ajusta.
 //   - NODOS: cada esquina del hormigón con un nodo arrastrable (redimensiona el
 //     elemento); desplazamiento con medida en el panel (básico).
 //   - SNAP a grilla/caras/barras (toggle) · COTAS on/off (básico).
@@ -52,7 +54,6 @@
     selCi: -1,                 // índice del componente seleccionado (-1 = ninguno)
     ultimoPlano: 'largo',      // última vista tocada (define el eje de rotación)
     transforms: {},            // {plano: {minU,maxU,minV,maxV,s,offX,offY}}
-    rangoTmp: null,            // {ci, plano, from} mientras se definen los 2 clics
     dragMove: null,            // {ci, plano, startHost, startHint} durante mover
     dragNode: null,            // {plano, corner} durante arrastre de nodo
     dragRango: null,           // {ci} durante arrastre de la flechita doble
@@ -391,7 +392,7 @@
     ST.selCi = (snap.selCi != null) ? snap.selCi : -1;
     if (ST.selCi >= (ST.receta.componentes || []).length) ST.selCi = -1;
     // cualquier interacción a medio-hacer se cancela al deshacer
-    ST.rangoTmp = null; ST.dragMove = null; ST.dragNode = null; ST.dragRango = null;
+    ST.dragMove = null; ST.dragNode = null; ST.dragRango = null;
     _regenerar();
     _renderPanel();
     _actualizarStatus('Deshecho.');
@@ -1046,10 +1047,10 @@
     });
   }
 
-  // ¿Hay algo cargado para colocar? (ribbon con figura+tipología y herramienta de
-  // colocación activa). Es el gate del ghost y del clic-para-colocar.
+  // ¿Hay algo cargado para colocar? (ribbon con figura+tipología y MODO COLOCACIÓN
+  // activo). Es el gate del ghost y del clic-para-colocar.
   function _hayCargado() {
-    return !!ST.cargado && (ST.tool === 'colocar' || ST.tool === 'rango');
+    return !!ST.cargado && ST.tool === 'colocar';
   }
 
   // Puntos (u,v en host) de la FORMA del ghost para un plano, dada la tipología
@@ -1405,19 +1406,8 @@
     // Cotas (básico): extensión del hormigón en U y V.
     if (ST.cotas && rect) _dibujarCotas(svg, rect, t.s, X, Y, plano);
 
-    // Ghost de rango en curso (1er clic puesto): línea PERPENDICULAR al eje de
-    // distribución del componente, a la coordenada ya fijada.
-    if (ST.rangoTmp && ST.rangoTmp.plano === plano && ST.rangoTmp.from != null) {
-      var ejeT = _ejeDistDe(ST.receta && ST.receta.componentes[ST.rangoTmp.ci]);
-      var cT = ST.rangoTmp.from[ejeT];
-      if (cT != null && ejeT === def.u) {
-        svg.appendChild(_svgEl('line', { 'class': 'te-rango-line', x1: X(cT), y1: 6, x2: X(cT), y2: VH - 6 }));
-      } else if (cT != null && ejeT === def.v) {
-        svg.appendChild(_svgEl('line', { 'class': 'te-rango-line', x1: 6, y1: Y(cT), x2: VW - 6, y2: Y(cT) }));
-      }
-    }
-
-    // Flechita doble de RANGO para el componente seleccionado con distribución activa.
+    // Flecha de RANGO del componente seleccionado (real si la distribución está
+    // activa; "inactiva" en gris si todavía no lo está — arrastrarla la activa).
     _dibujarFlechaRango(svg, plano, X, Y, VW, VH);
 
     // NODOS de esquina (arrastrables).
@@ -1464,20 +1454,29 @@
   // donde ESE eje es VISIBLE — es decir, es el u o el v del plano (si es el `depth`,
   // el rango apunta hacia el observador y no se puede ajustar ahí) — y usa la
   // coordenada de ese eje, no X. Antes estaba cableada a largo/planta + rango.x.
+  //
+  // Se dibuja SIEMPRE que haya una barra seleccionada y su eje de reparto sea
+  // visible en esta vista (ya no hay herramienta "↔ Rango" de 2 clics):
+  //   · distribucion.activa  → flecha REAL (handles vivos, rango del componente).
+  //   · NO activa            → flecha "inactiva" (opacity .35) con el rango DEFAULT
+  //     del eje, SIN escribirlo en el componente. Arrastrarla (handle o tramo
+  //     central) ACTIVA la distribución — lo hace _dragRangoMove.
   function _dibujarFlechaRango(svg, plano, X, Y, VW, VH) {
     if (ST.selCi < 0 || !ST.receta) return;
     var c = ST.receta.componentes[ST.selCi];
-    if (!c || !c.distribucion || !c.distribucion.activa) return;
-    // Modo PUNTUAL = una sola posición → jamás flecha de distribución (aunque
-    // quede un rango viejo guardado de un modo anterior).
-    if (_modoDe(c) === 'puntual') return;
-    // La flechita doble solo aplica al modelo por RANGO (2 clics). Las zonas de
-    // la semilla se editan por campos, no con la flecha.
-    var rango = c.distribucion.rango;
-    if (!rango || rango.from == null || rango.to == null) return;
+    if (!c) return;
+    var d = c.distribucion || {};
     var def = (_defsPlanos() || {})[plano]; if (!def) return;
     var eje = _ejeDistDe(c);
-    if (eje !== def.u && eje !== def.v) return;   // eje de reparto = profundidad de esta vista
+    if (eje !== def.u && eje !== def.v) return;   // eje de reparto no visible en esta vista
+    var activa = !!d.activa;
+    // Las ZONAS de la semilla (confinamiento) se editan por campos, no con la flecha.
+    if (activa && !d.rango && d.zonas && d.zonas.length) return;
+    var rango = activa ? d.rango : _rangoDefault(d.sep, eje);   // preview: NO se escribe
+    if (!rango || rango.from == null || rango.to == null) return;
+    var g = _svgEl('g', activa ? {} : { opacity: 0.35, 'data-rango-preview': '1' });
+    svg.appendChild(g);
+    svg = g;   // todo lo que sigue cuelga del grupo (así la opacidad aplica a la flecha entera)
     var attrs = { 'class': 'te-rango-hit', 'data-rango': ST.selCi, 'data-rango-eje': eje };
     // handle cuadradito en cada EXTREMO (achica/agranda ESE extremo); el tramo del
     // medio desplaza el rango completo.
@@ -1808,7 +1807,10 @@
   }
 
   function _borrarSeleccion() {
-    if (ST.selCi < 0 || !ST.receta) return;
+    if (!ST.receta) return;
+    // Sin selección el botón parecía "roto" (no pasaba absolutamente nada): ahora lo
+    // dice en la barra de estado.
+    if (ST.selCi < 0) { _actualizarStatus('Nada seleccionado: haz clic en una barra y vuelve a Borrar.'); return; }
     _pushUndo();
     ST.receta.componentes.splice(ST.selCi, 1);
     ST.selCi = -1;
@@ -1872,7 +1874,16 @@
         if (ST.caraHi && ST.caraHi.plano === plano) ST.caraHi = null;
       });
 
+      // Clic DERECHO = cancelar el modo colocación (además de Esc). No abre el menú
+      // contextual del navegador dentro del cuadrante.
+      svg.addEventListener('contextmenu', function (evt) {
+        if (ST.tool !== 'colocar') return;
+        evt.preventDefault();
+        _salirModoColocacion();
+      });
+
       svg.addEventListener('mousedown', function (evt) {
+        if (evt.button === 2) return;             // el botón derecho lo maneja contextmenu
         ST.ultimoPlano = plano;
         var sp = _svgPoint(svg, evt); if (!sp) return;
 
@@ -1880,34 +1891,31 @@
         var tgtNode = evt.target && evt.target.getAttribute && evt.target.getAttribute('data-node');
         if (tgtNode) { evt.preventDefault(); _pushUndo(); ST.dragNode = { plano: plano, corner: tgtNode }; return; }
 
-        // ¿tocó la flechita de RANGO? (un handle de extremo achica/agranda ese
-        // extremo; el tramo del medio desplaza el rango completo)
+        // ¿tocó la flecha de RANGO? (un handle de extremo achica/agranda ese
+        // extremo; el tramo del medio desplaza el rango completo). Si la flecha era
+        // la PREVIEW inactiva, el arrastre ACTIVA la distribución (_dragRangoMove).
         var tgtRango = evt.target && evt.target.getAttribute && evt.target.getAttribute('data-rango');
         if (tgtRango != null) {
           evt.preventDefault(); _pushUndo();
           ST.dragRango = {
             ci: Number(tgtRango), plano: plano, lastX: sp.px, lastY: sp.py,
-            end: evt.target.getAttribute('data-rango-end') || null
+            end: evt.target.getAttribute('data-rango-end') || null,
+            eje: evt.target.getAttribute('data-rango-eje') || null
           };
           return;
         }
 
         var uv = _pixelToUV(plano, sp.px, sp.py);
 
-        // Herramienta RANGO: 2 clics. El clic se CLAMPEA al hormigón en vez de
-        // descartarse: definir el rango clicando "en los extremos" cae natural-
-        // mente 1-2px afuera y antes el clic se tragaba en silencio (el rango
-        // quedaba a medias → "considera la mitad / solo inicial y final").
-        if (ST.tool === 'rango') {
+        // MODO COLOCACIÓN: el clic COLOCA (aunque caiga encima de otra barra — es un
+        // modo explícito, no se "roba" el clic para seleccionar).
+        // CLAMP (tarea 3): si el clic cae FUERA del hormigón, NO se coloca nada
+        // (mata "barras al aire"). El ghost ya avisó en rojo + not-allowed.
+        if (ST.tool === 'colocar') {
           if (!uv) return;
-          var g = ST.receta.geometria, defR = (_defsPlanos() || {})[plano];
-          if (defR) {
-            var hu = Number(g[defR.W]) / 2, hv = Number(g[defR.H]) / 2;
-            if (isFinite(hu)) uv.u = Math.max(-hu, Math.min(hu, uv.u));
-            if (isFinite(hv)) uv.v = Math.max(-hv, Math.min(hv, uv.v));
-          }
-          var host = _clickHost(plano, uv);
-          _rangoClick(plano, host);
+          if (!_dentroDelBoundary(plano, uv)) { _actualizarStatus('Fuera del hormigón: clic dentro del contorno para colocar.'); return; }
+          evt.preventDefault();
+          _colocarEnVista(plano, _clickHost(plano, uv));
           return;
         }
 
@@ -1922,16 +1930,6 @@
             ST.dragMove = { ci: ci, plano: plano, startHost: _clickHost(plano, uv), startHint: _clonHint(ci), pushed: false };
           }
           evt.preventDefault();
-          return;
-        }
-
-        // Herramienta COLOCAR: clic en vacío → nueva barra.
-        // CLAMP (tarea 3): si el clic cae FUERA del hormigón, NO se coloca nada
-        // (mata "barras al aire"). El ghost ya avisó en rojo + not-allowed.
-        if (ST.tool === 'colocar' && uv) {
-          if (!_dentroDelBoundary(plano, uv)) { _actualizarStatus('Fuera del hormigón: clic dentro del contorno para colocar.'); return; }
-          var h2 = _clickHost(plano, uv);
-          _colocarEnVista(plano, h2);
           return;
         }
 
@@ -2017,6 +2015,7 @@
     if (plano === 'seccion') { g.ancho = newW; g.alto = newH; }
     else if (plano === 'largo') { g.largo = newW; g.alto = newH; }
     else { g.largo = newW; g.ancho = newH; }
+    _sincronizarRibbonGeo();   // los campos del ribbon siguen al arrastre
     _regenerarDiferido();
   }
 
@@ -2026,7 +2025,7 @@
   // al cursor también en las vistas cuya cámara mira "al revés".
   function _dragRangoMove(plano, sp) {
     var dr = ST.dragRango; if (!dr) return;
-    var c = ST.receta.componentes[dr.ci]; if (!c || !c.distribucion) return;
+    var c = ST.receta.componentes[dr.ci]; if (!c) return;
     var t = ST.transforms[plano]; if (!t) return;
     var def = (_defsPlanos() || {})[plano]; if (!def) return;
     var eje = _ejeDistDe(c);
@@ -2036,48 +2035,27 @@
     else return;
     dr.lastX = sp.px; dr.lastY = sp.py;
     if (!isFinite(dHost) || !dHost) return;
-    var rango = c.distribucion.rango || _rangoDefault(c.distribucion.sep, eje);
+    var d = c.distribucion = c.distribucion || {};
+    // PRIMER arrastre sobre la flecha "inactiva" (preview): ACTIVAR la distribución.
+    // Ese es el único gesto que la enciende (ya no hay herramienta ↔ Rango de 2 clics).
+    if (!d.activa) {
+      if (d.sep == null) d.sep = (_rolDe(c.tipologia) === 'traba') ? 40 : 20;
+      if (_modoDe(c) !== 'arreglo') { c.modo = 'lineal'; d.modo = 'linear'; }
+      d.activa = true;
+      d.rango = _rangoDefault(d.sep, eje);
+      // La barra base ya no necesita pos_hint en ese eje (el rango la distribuye).
+      if (c.pos_hint) delete c.pos_hint[eje];
+      // el mouseup global ya re-renderiza el panel → la ficha muestra el modo nuevo
+    }
+    var rango = d.rango || _rangoDefault(d.sep, eje);
     if (dr.end === 'from' || dr.end === 'to') {
       rango[dr.end] += dHost;               // handle de extremo → achica/agranda
     } else {
       rango.from += dHost; rango.to += dHost;   // tramo del medio → desplaza
     }
-    c.distribucion.rango = rango;
+    if (rango.eje == null) rango.eje = eje;
+    d.rango = rango;
     _regenerarDiferido();
-  }
-
-  // RANGO — 1er clic fija 'from', 2º clic fija 'to' y activa distribución lineal.
-  function _rangoClick(plano, host) {
-    if (ST.selCi < 0) {
-      // Si no hay selección, coloca primero una barra base con la tipología activa.
-      _colocarEnVista(plano, host);
-    }
-    var c = ST.receta.componentes[ST.selCi];
-    if (!c) return;
-    if (!ST.rangoTmp) {
-      ST.rangoTmp = { ci: ST.selCi, plano: plano, from: host };
-      _redibujar2D(ST.ultimoOut);
-      _actualizarStatus('Rango: clic el FIN de la distribución.');
-      return;
-    }
-    var from = ST.rangoTmp.from, to = host;
-    ST.rangoTmp = null;
-    _pushUndo();   // snapshot antes de activar la distribución por rango
-    c.distribucion = c.distribucion || {};
-    // La herramienta ↔ Rango define una DISTRIBUCIÓN lineal salvo que el componente
-    // ya esté en modo arreglo (ahí el rango es el "a lo largo" del arreglo 2D).
-    if (_modoDe(c) !== 'arreglo') { c.modo = 'lineal'; c.distribucion.modo = 'linear'; }
-    c.distribucion.activa = true;
-    c.distribucion.sep = c.distribucion.sep || (_rolDe(c.tipologia) === 'traba' ? 40 : 20);
-    // El rango vive en el EJE DE DISTRIBUCIÓN del componente (X, o Z si está
-    // volteado), no siempre en X.
-    var ejeR = _ejeDistDe(c);
-    c.distribucion.rango = { from: from[ejeR], to: to[ejeR], sep: c.distribucion.sep, eje: ejeR };
-    // La barra base ya no necesita pos_hint en ese eje (el rango la distribuye).
-    if (c.pos_hint) delete c.pos_hint[ejeR];
-    _regenerar();
-    _renderPanel();
-    _actualizarStatus();
   }
 
   // ==========================================================================
@@ -2299,8 +2277,31 @@
     g3.appendChild(_fld('N° capas', _input({ value: d.n_capas || 1, type: 'number' }, function (v) { d.n_capas = Math.max(1, Number(v) || 1); _mut(ci, true); })));
     g3.appendChild(_fld('Sep. capas cm', _input({ value: d.gap != null ? d.gap : 4, type: 'number' }, function (v) { d.gap = Number(v) || 0; _mut(ci); })));
     box.appendChild(g3);
+    _filaAnidar(box, c, ci, rol, d);
     var note = _div('te-note'); note.textContent = 'Las capas se apilan desde la cara hacia el núcleo con la separación indicada.';
     box.appendChild(note);
+  }
+
+  // TOGGLE "capas anidadas" — sólo tiene sentido en ESTRIBOS con más de una capa:
+  // las capas interiores se achican hacia adentro (estribo dentro de estribo) en vez
+  // de repetirse iguales. Aquí sólo se escribe el dato (distribucion.anidar);
+  // quien lo consume es el motor.
+  function _filaAnidar(box, c, ci, rol, d) {
+    if (rol !== 'estribo') return;
+    if (!(Number(d.n_capas) > 1)) return;
+    if (d.anidar == null) d.anidar = true;   // default del campo
+    var row = _div('te-fld');
+    var lab = document.createElement('label');
+    lab.style.cssText = 'display:flex;align-items:center;gap:6px;cursor:pointer';
+    var chk = document.createElement('input');
+    chk.type = 'checkbox'; chk.checked = (d.anidar !== false);
+    chk.style.width = 'auto';
+    chk.addEventListener('change', function () { d.anidar = chk.checked; _mut(ci, true); });
+    var txt = document.createElement('span');
+    txt.textContent = 'Capas anidadas (se achican hacia adentro)';
+    lab.appendChild(chk); lab.appendChild(txt);
+    row.appendChild(lab);
+    box.appendChild(row);
   }
 
   // LINEAL — rango (from/to) + espaciamiento @. cant = ceil(dist/@)+1.
@@ -2313,7 +2314,7 @@
         zr.appendChild(_fld('@ sep cm', _input({ value: z.sep, type: 'number' }, function (v) { z.sep = Number(v) || 1; _mut(ci); })));
         box.appendChild(zr);
       });
-      var note0 = _div('te-note'); note0.textContent = 'Zonas de espaciamiento (extremos confinados / centro). Cambia a rango con la herramienta ↔ Rango.';
+      var note0 = _div('te-note'); note0.textContent = 'Zonas de espaciamiento (extremos confinados / centro). Para pasar a rango, arrastra la flecha de rango sobre la barra seleccionada.';
       box.appendChild(note0);
       return;
     }
@@ -2321,7 +2322,7 @@
     g2.appendChild(_fld('@ sep cm', _input({ value: d.sep || 20, type: 'number' }, function (v) { d.sep = Number(v) || 20; if (d.rango) d.rango.sep = d.sep; _mut(ci); })));
     g2.appendChild(_fld('Rango', _rangoEditor(c, d, ci)));
     box.appendChild(g2);
-    var note = _div('te-note'); note.textContent = 'Define el rango (from → to) por campos, con 2 clics (herramienta ↔ Rango) o arrastrando la flechita doble. cant = ceil(dist/@)+1.';
+    var note = _div('te-note'); note.textContent = 'Define el rango (from → to) por campos o arrastrando la flecha doble en las vistas. cant = ceil(dist/@)+1.';
     box.appendChild(note);
   }
 
@@ -2339,6 +2340,7 @@
     g3.appendChild(_fld('Sep. capas cm', _input({ value: d.sep_capas != null ? d.sep_capas : 10, type: 'number' }, function (v) { d.sep_capas = Number(v) || 0; _mut(ci); })));
     g3.appendChild(_fld('Prof. (capas)', _selectPairs([['x', 'largo'], ['y', 'alto'], ['z', 'ancho']], d.eje_capas || _ejeCapasDefault(), function (v) { d.eje_capas = v; _mut(ci); })));
     box.appendChild(g3);
+    _filaAnidar(box, c, ci, rol, d);
     var note = _div('te-note'); note.textContent = 'Arreglo 2D = rango a lo largo × N capas separadas en profundidad. n_capas=1 equivale a la distribución lineal. El plano de trabajo activo sugiere la profundidad.';
     box.appendChild(note);
   }
@@ -2346,7 +2348,7 @@
   // Editor compacto del rango (from/to en cm) — números editables.
   function _rangoEditor(c, d, ci) {
     var wrap = _div(''); wrap.style.cssText = 'display:flex;gap:4px;align-items:center';
-    if (!d.rango) { return _static('(usa ↔ Rango)'); }
+    if (!d.rango) { return _static('(arrastra la flecha de rango)'); }
     var fi = _input({ value: Math.round(d.rango.from), type: 'number' }, function (v) { d.rango.from = Number(v); _mut(ci); });
     var ti = _input({ value: Math.round(d.rango.to), type: 'number' }, function (v) { d.rango.to = Number(v); _mut(ci); });
     fi.style.width = '52px'; ti.style.width = '52px';
@@ -2483,15 +2485,96 @@
         if (!b || b === tips) return;
         tips.querySelectorAll('.te-tipbtn').forEach(function (x) { x.classList.remove('on'); });
         b.classList.add('on');
+        // SELECTOR PURO: elegir tipología NO activa ninguna herramienta (colocar es
+        // siempre explícito, con "＋ Agregar barra"). Re-clicar la que ya estaba
+        // seleccionada es inocuo. Si el modo colocación está activo, sólo se
+        // actualiza lo cargado (el ghost cambia en el acto).
         ST.tipologia = b.getAttribute('data-tip') || 'CBS';
-        // Elegir una tipología es la señal explícita de "quiero colocar esto":
-        // si estamos en el estado neutro (Seleccionar), pasa a Colocar y carga el
-        // ghost. Si ya estaba en rango, respeta el rango. Esto hace que Seleccionar
-        // sea el estado por defecto real y colocar sea siempre intencional.
-        if (ST.tool !== 'colocar' && ST.tool !== 'rango') _activarHerramienta('colocar');
-        _sellarCargado();
+        if (_hayCargado()) _sellarCargado(); else _actualizarStatus();
       });
     }
+    _bindGeometria();
+  }
+
+  // ==========================================================================
+  // GRUPO "HORMIGÓN" DEL RIBBON — los 6 campos (cm) que antes vivían en la
+  // pantalla previa del tab. Leen/escriben ST.receta.geometria y regeneran.
+  // Validación mínima: dims > 0, recubs >= 0, recub_sup+recub_inf < alto y
+  // 2·recub_lat < ancho. Si es inválido: borde rojo y NO se aplica.
+  // ==========================================================================
+  var GEO_CAMPOS = [
+    { id: 'te_geoLargo', k: 'largo', min: 1 },
+    { id: 'te_geoAlto', k: 'alto', min: 1 },
+    { id: 'te_geoAncho', k: 'ancho', min: 1 },
+    { id: 'te_geoRecubSup', k: 'recub_sup', min: 0 },
+    { id: 'te_geoRecubInf', k: 'recub_inf', min: 0 },
+    { id: 'te_geoRecubLat', k: 'recub_lat', min: 0 }
+  ];
+
+  // Vuelca ST.receta.geometria a los inputs (al abrir y tras arrastrar un nodo).
+  function _sincronizarRibbonGeo() {
+    var g = (ST.receta && ST.receta.geometria) || {};
+    GEO_CAMPOS.forEach(function (f) {
+      var el = $(f.id); if (!el) return;
+      var v = g[f.k];
+      el.value = (v == null || !isFinite(Number(v))) ? '' : String(Math.round(Number(v) * 100) / 100);
+      el.classList.remove('bad');
+    });
+  }
+
+  // ¿El set de dimensiones propuesto es coherente? (no se aplica si no lo es)
+  function _geoValida(g) {
+    var largo = Number(g.largo), alto = Number(g.alto), ancho = Number(g.ancho);
+    var rs = Number(g.recub_sup), ri = Number(g.recub_inf), rl = Number(g.recub_lat);
+    if (!(largo > 0) || !(alto > 0) || !(ancho > 0)) return false;
+    if (!(rs >= 0) || !(ri >= 0) || !(rl >= 0)) return false;
+    if (rs + ri >= alto) return false;
+    if (2 * rl >= ancho) return false;
+    return true;
+  }
+
+  function _bindGeometria() {
+    GEO_CAMPOS.forEach(function (f) {
+      var el = $(f.id); if (!el || el._teBound) return;
+      el._teBound = true;
+      // 'change' (blur/Enter) APLICA; 'input' sólo pinta el borde rojo mientras se
+      // teclea (aplicar por tecla regeneraría con valores a medio escribir y
+      // ensuciaría el undo con un snapshot por dígito).
+      el.addEventListener('change', function () { _aplicarGeoDesdeRibbon(f, el); });
+      el.addEventListener('input', function () { _validarGeoCampo(f, el); });
+      el.addEventListener('keydown', function (ev) { if (ev.key === 'Enter') el.blur(); });
+    });
+  }
+
+  // Devuelve el valor del campo si es válido en el conjunto; si no, null (y marca).
+  function _validarGeoCampo(f, el) {
+    if (!ST.receta || !ST.receta.geometria) return null;
+    var g = ST.receta.geometria;
+    var v = parseFloat(el.value);
+    // candidato = geometría actual con este campo cambiado
+    var cand = {
+      largo: g.largo, alto: g.alto, ancho: g.ancho,
+      recub_sup: (g.recub_sup != null ? g.recub_sup : 4),
+      recub_inf: (g.recub_inf != null ? g.recub_inf : 4),
+      recub_lat: (g.recub_lat != null ? g.recub_lat : 3)
+    };
+    cand[f.k] = v;
+    if (!isFinite(v) || v < f.min || !_geoValida(cand)) { el.classList.add('bad'); return null; }
+    el.classList.remove('bad');
+    return v;
+  }
+
+  function _aplicarGeoDesdeRibbon(f, el) {
+    var v = _validarGeoCampo(f, el);
+    if (v == null) return;
+    var g = ST.receta.geometria;
+    if (Number(g[f.k]) === v) return;
+    _pushUndo();
+    g[f.k] = v;
+    // Mismo refresco que el arrastre de nodos: regenerar re-encuadra las cámaras
+    // ortográficas (leen la geometría en cada frame) y redibuja los 4 cuadrantes.
+    _regenerarDiferido();
+    _actualizarStatus();
   }
 
   // Activa una herramienta (marca el botón + setea ST.tool + carga/suelta el ghost).
@@ -2502,37 +2585,59 @@
       x.classList.toggle('on', x.getAttribute('data-tool') === tool);
     });
     ST.tool = tool;
-    ST.rangoTmp = null;
     // Al cambiar de herramienta se apaga el snap de cara (evita resaltados fantasma
-    // con Seleccionar/Rango/Rotar); el ghost se redibuja en el próximo hover.
+    // con Seleccionar/Rotar); el ghost se redibuja en el próximo hover.
     var caraPlano = ST.caraHi && ST.caraHi.plano;
     ST.caraHi = null;
-    // Herramienta de colocación → carga el ghost; las demás lo sueltan.
-    if (tool === 'colocar' || tool === 'rango') _sellarCargado();
+    // Modo colocación → carga el ghost; las demás herramientas lo sueltan.
+    if (tool === 'colocar') _sellarCargado();
     else _soltarCargado();
+    var btnAdd = $('te_btnAgregarBarra');
+    if (btnAdd) btnAdd.classList.toggle('on', tool === 'colocar');
     if (caraPlano) _redibujar2D(ST.ultimoOut);   // limpia la cara resaltada
     _setQuadCursor();
     _actualizarStatus();
   }
 
+  // MODO COLOCACIÓN — lo activan "＋ Agregar barra" (ribbon) y "＋ Agregar componente"
+  // (panel izq): el ghost sigue al cursor y el clic coloca. Se sale con Esc o con
+  // clic derecho sobre una vista. Sustituye a la vieja herramienta "Colocar" y al
+  // antiguo _agregarComponenteManual() (que agregaba al tiro, sin pasar por pantalla).
+  function _entrarModoColocacion() {
+    _activarHerramienta('colocar');
+    _actualizarStatus('Colocando ' + ST.tipologia + ' ' + ST.figura + ': clic en una vista · Esc o clic derecho para salir.');
+  }
+
+  function _salirModoColocacion() {
+    _activarHerramienta('mover');
+  }
+
   function _bindHerramientas() {
-    var ct = $('te_ctools'); if (!ct || ct._teBound) return;
-    ct._teBound = true;
-    ct.querySelectorAll('.te-ctool[data-tool]').forEach(function (b) {
-      b.addEventListener('click', function () { _activarHerramienta(b.getAttribute('data-tool')); });
-    });
-    ct.querySelectorAll('.te-ctool[data-toggle]').forEach(function (b) {
-      b.addEventListener('click', function () {
-        b.classList.toggle('on');
-        var t = b.getAttribute('data-toggle');
-        if (t === 'snap') ST.snap = b.classList.contains('on');
-        if (t === 'cotas') { ST.cotas = b.classList.contains('on'); _redibujar2D(ST.ultimoOut); }
+    var ct = $('te_ctools');
+    if (ct && !ct._teBound) {
+      ct._teBound = true;
+      ct.querySelectorAll('.te-ctool[data-tool]').forEach(function (b) {
+        b.addEventListener('click', function () { _activarHerramienta(b.getAttribute('data-tool')); });
       });
-    });
+      ct.querySelectorAll('.te-ctool[data-toggle]').forEach(function (b) {
+        b.addEventListener('click', function () {
+          b.classList.toggle('on');
+          var t = b.getAttribute('data-toggle');
+          if (t === 'snap') ST.snap = b.classList.contains('on');
+          if (t === 'cotas') { ST.cotas = b.classList.contains('on'); _redibujar2D(ST.ultimoOut); }
+        });
+      });
+    }
+    // OJO: los binds de abajo van FUERA del guard de #te_ctools y con guard PROPIO —
+    // si un día #te_ctools ya viniera marcado, el botón Borrar se quedaba sin listener.
     var del = $('te_btnBorrar');
-    if (del) del.addEventListener('click', function () { _borrarSeleccion(); });
+    if (del && !del._teBound) { del._teBound = true; del.addEventListener('click', function () { _borrarSeleccion(); }); }
+
+    // Los DOS botones "agregar" hacen lo mismo: entrar en modo colocación.
+    var addRib = $('te_btnAgregarBarra');
+    if (addRib && !addRib._teBound) { addRib._teBound = true; addRib.addEventListener('click', function () { _entrarModoColocacion(); }); }
     var add = $('te_addComp');
-    if (add && !add._teBound) { add._teBound = true; add.addEventListener('click', function () { _agregarComponenteManual(); }); }
+    if (add && !add._teBound) { add._teBound = true; add.addEventListener('click', function () { _entrarModoColocacion(); }); }
 
     // Botón contextual "Voltear plano (R)" sobre la pieza seleccionada.
     var flip = $('te_flipBtn');
@@ -2544,26 +2649,9 @@
     }
   }
 
-  function _agregarComponenteManual() {
-    _pushUndo();
-    var rol = _rolDe(ST.tipologia);
-    var meta = _metaModular(ST.tipologia);
-    var comp = {
-      tipologia: ST.tipologia, figura: ST.figura, diam: Number(ST.diam), suf_tipo: '',
-      cara: _caraDefault(ST.tipologia), recub_override: null,
-      angulos: _figSpec(ST.figura).angulos.slice(),
-      modo: meta.modo, plano_pieza: meta.plano_pieza, arreglo: meta.arreglo,
-      dims: _dimsDefault(ST.figura, rol, ST.contorno),
-      distribucion: _distDefault(rol)
-    };
-    ST.receta.componentes.push(comp);
-    ST.selCi = ST.receta.componentes.length - 1;
-    _regenerar(); _renderPanel();
-  }
-
   function _setQuadCursor() {
     var q = $('te_quad'); if (!q) return;
-    q.classList.remove('tool-colocar', 'tool-rango', 'tool-mover', 'tool-rotar');
+    q.classList.remove('tool-colocar', 'tool-mover', 'tool-rotar');
     q.classList.add('tool-' + ST.tool);
   }
 
@@ -3282,7 +3370,7 @@
       }
       if (!ST.receta.tipo) ST.receta.tipo = ST.elemento;
       ST.selCi = -1; ST.ultimoOut = null;
-      ST.rangoTmp = null; ST.dragMove = null; ST.dragNode = null; ST.dragRango = null;
+      ST.dragMove = null; ST.dragNode = null; ST.dragRango = null;
     } else {
       // Ruta vieja: semilla (solo para tests / compatibilidad).
       if (!ST.receta && d.semilla) ST.receta = d.semilla.semillaViga();
@@ -3303,11 +3391,13 @@
     _actualizarBtnGuardar();
     var se = $('te_saveErr'); if (se) se.textContent = '';
     _bindUI();
+    _sincronizarRibbonGeo();   // el grupo HORMIGÓN del ribbon refleja la receta
     _marcarSucio();     // PERF (render-on-demand): al abrir siempre hay que pintar
-    // Undo limpio por sesión + sellar lo cargado (la herramienta por defecto es
-    // 'colocar' → el ghost queda listo para seguir el cursor de una).
+    // Undo limpio por sesión. Se ABRE SIEMPRE en SELECCIONAR: colocar es un modo
+    // explícito ("＋ Agregar barra"), nunca el estado inicial.
     ST.undoStack = [];
-    if (ST.tool === 'colocar' || ST.tool === 'rango') _sellarCargado(); else ST.cargado = null;
+    ST.cargado = null;
+    _activarHerramienta('mover');
     _renderPanel();
     _regenerar();
     global.requestAnimationFrame(function () { global.requestAnimationFrame(function () {
@@ -3344,24 +3434,13 @@
     var bd = $('te_backdrop');
     if (bd && e.target === bd) global.templateEditorCerrar();
   });
-  // Escape (tarea 4): 1º cancela un rango en curso · 2º SUELTA lo cargado
-  // (deselecciona la herramienta → 'mover', mata el ghost) · 3º cierra el modal.
+  // Escape (tarea 4): 1º sale del MODO COLOCACIÓN (mata el ghost, vuelve a
+  // Seleccionar) · 2º cierra el modal.
   document.addEventListener('keydown', function (e) {
     if (e.key !== 'Escape') return;
     var bd = $('te_backdrop');
     if (!bd || !bd.classList.contains('on')) return;
-    if (ST.rangoTmp) { ST.rangoTmp = null; _redibujar2D(ST.ultimoOut); _actualizarStatus(); return; }
-    if (_hayCargado()) {
-      // pasar a "mover" (herramienta que no coloca) y soltar el ghost
-      var ct = $('te_ctools');
-      if (ct) {
-        ct.querySelectorAll('.te-ctool[data-tool]').forEach(function (x) { x.classList.toggle('on', x.getAttribute('data-tool') === 'mover'); });
-      }
-      ST.tool = 'mover';
-      _soltarCargado();
-      _setQuadCursor();
-      return;
-    }
+    if (ST.tool === 'colocar') { _salirModoColocacion(); return; }
     global.templateEditorCerrar();
   });
 
@@ -3544,27 +3623,17 @@
   // ==========================================================================
   var _tplElemSel = 'VIGA';   // elemento seleccionado (default: VIGA, único con máquina)
 
-  function _tplCampoHtml(def) {
-    return '<div style="display:flex; flex-direction:column; gap:2px;">' +
-      '<label class="muted" style="font-size:10.5px;">' + _esc(def.lbl) + '</label>' +
-      '<input type="number" id="tplDim_' + _esc(def.k) + '" value="' + def.def + '" step="any" oninput="tplValidar()"' +
-      ' style="width:70px; font-size:12px; border:1px solid #dbe1e8; border-radius:6px; padding:5px 7px;">' +
-      '</div>';
-  }
-
-  function _tplRenderDims(elem) {
-    var cont = $('tplDims'); if (!cont) return;
+  // Dimensiones POR DEFECTO del elemento (cm). La grilla de dims salió del tab: se
+  // aplican en silencio al crear y se editan DENTRO del modal (grupo HORMIGÓN del
+  // ribbon).
+  function _tplDimsDefault(elem) {
     var spec = TPL_DIMS_POR_ELEMENTO[elem] || TPL_DIMS_POR_ELEMENTO.VIGA;
-    var hdr = 'class="muted" style="font-size:10.5px; font-weight:700; letter-spacing:.5px; margin-bottom:5px;"';
-    cont.innerHTML =
-      '<div><div ' + hdr + '>DIMENSIONES DEL HORMIGÓN (cm)</div>' +
-        '<div style="display:flex; gap:10px; flex-wrap:wrap;">' + spec.dims.map(_tplCampoHtml).join('') + '</div></div>' +
-      '<div><div ' + hdr + '>RECUBRIMIENTOS (cm)</div>' +
-        '<div style="display:flex; gap:10px; flex-wrap:wrap;">' + spec.recubs.map(_tplCampoHtml).join('') + '</div></div>';
+    var dims = {};
+    spec.dims.concat(spec.recubs).forEach(function (d) { dims[d.k] = d.def; });
+    return dims;
   }
 
-  // Click en un botón de elemento. NUNCA borra el nombre escrito ni roba el foco;
-  // solo re-renderiza dims con los defaults del nuevo elemento.
+  // Click en un botón de elemento. NUNCA borra el nombre escrito ni roba el foco.
   global.tplSeleccionarElemento = function (elem) {
     elem = String(elem || '').toUpperCase();
     if (!TPL_DIMS_POR_ELEMENTO[elem]) return;
@@ -3573,52 +3642,28 @@
     if (grid) grid.querySelectorAll('button[data-elem]').forEach(function (b) {
       b.classList.toggle('on', b.getAttribute('data-elem') === elem);
     });
-    _tplRenderDims(elem);
     global.tplValidar();
   };
 
-  // Validación mínima (input/change): dims > 0; recubs >= 0; suma de recubs opuestos
-  // < dimensión de esa cara. Campo inválido: border #c62828 + mensajito único
-  // (tplDimsErr). Nombre vacío o dims inválidas ⇒ Crear deshabilitado.
+  // Validación de la card: sólo queda el NOMBRE (las dims se editan en el modal).
   global.tplValidar = function () {
-    var spec = TPL_DIMS_POR_ELEMENTO[_tplElemSel] || TPL_DIMS_POR_ELEMENTO.VIGA;
-    var vals = {}, bad = {};
-    function leer(def, esRecub) {
-      var inp = $('tplDim_' + def.k); if (!inp) return;
-      var v = parseFloat(inp.value);
-      vals[def.k] = v;
-      if (!isFinite(v) || (esRecub ? v < 0 : v <= 0)) bad[def.k] = true;
-    }
-    spec.dims.forEach(function (d) { leer(d, false); });
-    spec.recubs.forEach(function (r) { leer(r, true); });
-    (spec.checks || []).forEach(function (ch) {
-      var a = vals[ch[0]], b = vals[ch[1]], dim = vals[ch[2]];
-      if (isFinite(a) && isFinite(b) && isFinite(dim) && (a + b) >= dim) { bad[ch[0]] = true; bad[ch[1]] = true; }
-    });
-    spec.dims.concat(spec.recubs).forEach(function (d) {
-      var inp = $('tplDim_' + d.k);
-      if (inp) inp.style.borderColor = bad[d.k] ? '#c62828' : '#dbe1e8';
-    });
-    var hayBad = Object.keys(bad).length > 0;
-    var err = $('tplDimsErr'); if (err) err.style.display = hayBad ? '' : 'none';
     var nom = $('tplNombre');
     var nombreOk = !!(nom && nom.value.trim());
-    var btn = $('tplBtnCrear'); if (btn) btn.disabled = hayBad || !nombreOk;
-    return !hayBad;
+    var btn = $('tplBtnCrear'); if (btn) btn.disabled = !nombreOk;
+    return true;
   };
 
-  // Botón "🧱 Crear template" → abre el modal con el hormigón listo y CERO componentes.
+  // Botón "🧱 Crear template" → abre el modal con el hormigón listo (defaults del
+  // elemento) y CERO componentes.
   global.tplCrearTemplate = function () {
     var btn = $('tplBtnCrear'); if (btn && btn.disabled) return;
     if (!global.tplValidar()) return;
-    var spec = TPL_DIMS_POR_ELEMENTO[_tplElemSel] || TPL_DIMS_POR_ELEMENTO.VIGA;
-    var dims = {};
-    spec.dims.concat(spec.recubs).forEach(function (d) {
-      var inp = $('tplDim_' + d.k);
-      dims[d.k] = parseFloat(inp && inp.value);
-    });
     var nom = $('tplNombre');
-    global.templateEditorAbrir({ elemento: _tplElemSel, nombre: (nom ? nom.value.trim() : ''), dims: dims });
+    global.templateEditorAbrir({
+      elemento: _tplElemSel,
+      nombre: (nom ? nom.value.trim() : ''),
+      dims: _tplDimsDefault(_tplElemSel)
+    });
   };
 
   function _tplFecha(iso) {
@@ -3652,11 +3697,10 @@
       '</table>';
   }
 
-  // Al entrar al sub-tab (switchCatSubTab → aquí): render inicial de dims (una vez)
-  // + GET /templates para la lista de guardados.
+  // Al entrar al sub-tab (switchCatSubTab → aquí): estado del botón Crear + GET
+  // /templates para la lista de guardados.
   global.tplCargarGuardados = function () {
-    var dimsCont = $('tplDims');
-    if (dimsCont && !dimsCont._tplOk) { dimsCont._tplOk = true; _tplRenderDims(_tplElemSel); global.tplValidar(); }
+    global.tplValidar();
     var cont = $('tplGuardadosLista'); if (!cont) return;
     cont.innerHTML = '<div class="muted">Cargando templates…</div>';
     fetch(_tplUrl('/templates'), { headers: _tplHeaders(false) })
@@ -3699,7 +3743,8 @@
   global.TemplateEditor = {
     _st: ST, _regenerar: function () { _regenerar(); },
     _colocarEnVista: _colocarEnVista, _rotarSeleccion: _rotarSeleccion,
-    _borrarSeleccion: _borrarSeleccion, _rangoClick: _rangoClick,
+    _borrarSeleccion: _borrarSeleccion,
+    _entrarModoColocacion: _entrarModoColocacion, _salirModoColocacion: _salirModoColocacion,
     _rolDe: _rolDe,
     boundaryDeVista: boundaryDeVista, _rectPlano: _rectPlano,   // P2/base task2
     setPlanoActivo: _setPlanoActivo,                            // P3 — 'seccion'|'largo'|'planta'|null

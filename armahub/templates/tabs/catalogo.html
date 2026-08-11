@@ -248,7 +248,7 @@
           <h3 style="margin:0; color:#558B2F;">🧱 Nuevo template</h3>
           <span class="muted" style="font-size:11px;">Colocador por proyecciones</span>
         </div>
-        <p class="muted" style="font-size:12px; margin:0 0 12px 0;">Elige el elemento, define el hormigón y ponle nombre.</p>
+        <p class="muted" style="font-size:12px; margin:0 0 12px 0;">Elige el elemento y ponle nombre. Las dimensiones del hormigón se editan DENTRO del editor (ribbon), con los valores por defecto del elemento ya cargados.</p>
 
         <div class="muted" style="font-size:10.5px; font-weight:700; letter-spacing:.5px; margin-bottom:6px;">ELEMENTO</div>
         <!-- Orden CANÓNICO: MURO · LOSA · VIGA · COLUMNA · FUNDACION · GEN.
@@ -281,10 +281,9 @@
           </button>
         </div>
 
-        <!-- DIMENSIONES: lo re-renderiza _tplRenderDims() por elemento desde
-             TPL_DIMS_POR_ELEMENTO (template_editor.js). -->
-        <div id="tplDims" style="display:flex; gap:28px; flex-wrap:wrap;"></div>
-        <div id="tplDimsErr" style="display:none; font-size:10.5px; color:#c62828; margin-top:4px;">Revisa las dimensiones marcadas.</div>
+        <!-- Las DIMENSIONES ya no se piden aquí: al crear se aplican en silencio los
+             defaults del elemento (TPL_DIMS_POR_ELEMENTO, template_editor.js) y se
+             editan en el grupo HORMIGÓN del ribbon del modal. -->
 
         <div class="muted" style="font-size:10.5px; font-weight:700; letter-spacing:.5px; margin:14px 0 6px;">NOMBRE DEL TEMPLATE</div>
         <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
@@ -292,7 +291,7 @@
                  oninput="tplValidar()"
                  onkeydown="if(event.key==='Enter'){var b=document.getElementById('tplBtnCrear'); if(b &amp;&amp; !b.disabled) b.click();}"
                  style="flex:1; width:100%; max-width:360px; border:1px solid #dbe1e8; border-radius:7px; padding:7px 10px; font-size:13px;">
-          <button id="tplBtnCrear" onclick="tplCrearTemplate()" disabled title="Ponle nombre y revisa las dimensiones"
+          <button id="tplBtnCrear" onclick="tplCrearTemplate()" disabled title="Ponle nombre para crear el template"
                   style="font-size:13px; font-weight:700; padding:9px 18px; background:#8BC34A; color:#fff; border:none; border-radius:8px; cursor:pointer;">
             🧱 Crear template
           </button>

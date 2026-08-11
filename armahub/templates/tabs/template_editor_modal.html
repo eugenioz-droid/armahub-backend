@@ -47,9 +47,29 @@
   #te_modal .te-xbtn{border:1px solid var(--te-line);background:#fff;border-radius:8px;width:32px;height:30px;cursor:pointer;
     font-size:15px;color:var(--te-muted);display:inline-flex;align-items:center;justify-content:center;padding:0;line-height:1;flex-shrink:0}
 
-  /* ---- RIBBON: figura + tipologías ---- */
-  #te_modal #te_ribbon{display:flex;align-items:center;gap:14px;padding:9px 18px;border-bottom:1px solid var(--te-line);background:#fff}
-  #te_modal #te_ribbon .te-grp{display:flex;align-items:center;gap:8px}
+  /* ---- RIBBON: 1) hormigón · 2) predefiniciones de la barra · 3) agregar barra ----
+     Wrappea por GRUPOS (row-gap): cada .te-grp es indivisible, así el check
+     "tomar contorno" queda SIEMPRE pegado al inicio del grupo BARRA y no se
+     desplaza al cambiar el ancho de la ventana. */
+  #te_modal #te_ribbon{display:flex;align-items:center;gap:14px;padding:9px 18px;border-bottom:1px solid var(--te-line);background:#fff;
+    flex-wrap:wrap;row-gap:8px}
+  #te_modal #te_ribbon .te-grp{display:flex;align-items:center;gap:8px;flex-wrap:nowrap}
+  /* El grupo BARRA sí puede wrappear por dentro (9 tipologías no caben siempre);
+     el check "tomar contorno" es su PRIMER hijo, así que queda anclado igual. */
+  #te_modal #te_ribbon .te-grp-barra{flex-wrap:wrap;row-gap:6px}
+  /* Campos chicos del grupo HORMIGÓN (cm) — escriben ST.receta.geometria. */
+  #te_modal .te-geo{display:inline-flex;flex-direction:column;gap:2px}
+  #te_modal .te-geo label{font-size:9.5px;color:var(--te-muted);font-weight:600;letter-spacing:.2px;white-space:nowrap}
+  #te_modal .te-geo input{width:64px;border:1px solid var(--te-line);border-radius:6px;padding:4px 6px;font-size:12px}
+  #te_modal .te-geo input.bad{border-color:#c62828;background:#fff6f5}
+  /* Check "tomar contorno" ANCLADO al inicio del grupo BARRA (posición fija). */
+  #te_modal .te-contorno{display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--te-muted);
+    font-weight:600;white-space:nowrap;flex:0 0 auto}
+  #te_modal .te-contorno input{width:auto}
+  /* Botón primario "＋ Agregar barra" → MODO COLOCACIÓN (se marca .on mientras dura). */
+  #te_modal #te_btnAgregarBarra{white-space:nowrap}
+  #te_modal #te_btnAgregarBarra.on,
+  #te_modal #te_btnAgregarBarra.on:hover{background:var(--te-azul);box-shadow:0 0 0 3px rgba(21,101,192,.2)}
   #te_modal #te_ribbon .te-lbl{font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--te-muted)}
   #te_modal #te_ribbon .te-divv{width:1px;height:30px;background:var(--te-line)}
   #te_modal .te-figpick{display:inline-flex;align-items:center;gap:6px}
@@ -187,8 +207,7 @@
   #te_modal .te-ghostbadge{pointer-events:none}
   #te_modal .te-ghostbadge-t{font:700 10px "Segoe UI",system-ui,sans-serif}
   /* Cursor NO permitido cuando el ghost cae fuera del hormigón (clamp, tarea 3). */
-  #te_modal #te_quad.tool-colocar .te-vista.te-ghost-block:not(.d3),
-  #te_modal #te_quad.tool-rango   .te-vista.te-ghost-block:not(.d3){cursor:not-allowed}
+  #te_modal #te_quad.tool-colocar .te-vista.te-ghost-block:not(.d3){cursor:not-allowed}
   /* SNAP DE CARA — cara del hormigón resaltada bajo el cursor (línea gruesa). El
      color lo pone JS según la tipología activa; aquí el grosor y el glow. */
   #te_modal .te-face-hi{fill:none;stroke-width:2.4;stroke-linecap:round;opacity:.8;pointer-events:none;
@@ -221,8 +240,7 @@
   #te_modal .te-dimL{stroke:#b6c2d0;stroke-width:.8}
   #te_modal .te-dimTick{stroke:#b6c2d0;stroke-width:.8}
   /* Cursores por herramienta (sobre las 3 vistas 2D). */
-  #te_modal #te_quad.tool-colocar .te-vista:not(.d3),
-  #te_modal #te_quad.tool-rango   .te-vista:not(.d3){cursor:crosshair}
+  #te_modal #te_quad.tool-colocar .te-vista:not(.d3){cursor:crosshair}
   #te_modal #te_quad.tool-mover   .te-vista:not(.d3){cursor:default}
 
   /* barra de herramientas del colocador (aplica a las 4 vistas) */
@@ -273,35 +291,49 @@
       <button class="te-xbtn" onclick="templateEditorCerrar()">✕</button>
     </div>
 
-    <!-- RIBBON: elegir figura + tipología, luego trabajas en el canvas -->
+    <!-- RIBBON — orden de trabajo: 1) HORMIGÓN · 2) PREDEFINICIONES DE LA BARRA ·
+         3) botón AGREGAR BARRA (entra en modo colocación). -->
     <div id="te_ribbon">
+      <!-- GRUPO 1 — HORMIGÓN (cm). Los valores salen/entran a
+           ST.receta.geometria y cada cambio válido regenera las 4 vistas
+           (_bindGeometria en template_editor.js). -->
       <div class="te-grp">
+        <span class="te-lbl">Hormigón</span>
+        <div class="te-geo"><label>Largo</label><input type="number" id="te_geoLargo" step="any" min="1" title="Largo del elemento (cm)"></div>
+        <div class="te-geo"><label>Alto</label><input type="number" id="te_geoAlto" step="any" min="1" title="Alto del elemento (cm)"></div>
+        <div class="te-geo"><label>Ancho</label><input type="number" id="te_geoAncho" step="any" min="1" title="Ancho del elemento (cm)"></div>
+        <div class="te-geo"><label>Recub sup</label><input type="number" id="te_geoRecubSup" step="any" min="0" title="Recubrimiento superior (cm)"></div>
+        <div class="te-geo"><label>Recub inf</label><input type="number" id="te_geoRecubInf" step="any" min="0" title="Recubrimiento inferior (cm)"></div>
+        <div class="te-geo"><label>Recub lat</label><input type="number" id="te_geoRecubLat" step="any" min="0" title="Recubrimiento lateral (cm)"></div>
+      </div>
+      <div class="te-divv"></div>
+      <!-- GRUPO 2 — BARRA: predefiniciones (contorno + figura + φ + tipología).
+           Los botones de tipología son SELECTOR PURO (no activan herramientas). -->
+      <div class="te-grp te-grp-barra">
+        <label class="te-contorno" title="El estribo toma el contorno del hormigón">
+          <input type="checkbox" id="te_ribContorno" checked> tomar contorno
+        </label>
         <span class="te-lbl">Figura</span>
         <div class="te-figpick">
           <input id="te_ribFigura" value="103B" list="te_figs" placeholder="buscar figura…">
         </div>
-      </div>
-      <div class="te-divv"></div>
-      <div class="te-grp">
         <span class="te-lbl">φ mm</span>
         <select id="te_ribDiam" style="width:auto;padding:6px 8px;font-size:12px;border:1px solid var(--te-line);border-radius:7px">
           <option>8</option><option>10</option><option>12</option><option selected>16</option><option>18</option><option>22</option><option>25</option>
         </select>
-      </div>
-      <div class="te-divv"></div>
-      <div class="te-grp">
         <span class="te-lbl">Tipología</span>
         <!-- VACÍO a propósito: lo renderiza _renderRibbonTips() (template_editor.js)
              desde TPL_TIPOLOGIAS según ST.elemento (espejo de _TIPOLOGIAS_SEED). -->
         <div class="te-tipbtns" id="te_tipbtns"></div>
       </div>
-      <div class="te-grp" style="margin-left:8px">
-        <label style="display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--te-muted);font-weight:600">
-          <input type="checkbox" id="te_ribContorno" style="width:auto" checked> tomar contorno
-        </label>
+      <div class="te-divv"></div>
+      <!-- GRUPO 3 — MODO COLOCACIÓN (mismo efecto que "＋ Agregar componente" del panel) -->
+      <div class="te-grp">
+        <button type="button" class="te-btn primary" id="te_btnAgregarBarra"
+                title="Colocar la barra definida arriba: clic en una vista · Esc o clic derecho para salir">＋ Agregar barra</button>
       </div>
       <div class="te-spacer" style="flex:1"></div>
-      <span class="te-note" style="margin:0">Elige figura + tipología → clic en una vista para colocar.</span>
+      <span class="te-note" style="margin:0">Define el hormigón → figura, φ y tipología → ＋ Agregar barra y clic en una vista.</span>
     </div>
 
     <!-- WARNING ANTI-COLAPSO: lo muestra/oculta _actualizarWarnTamano() tras cada
@@ -317,8 +349,9 @@
     <div id="te_ctools">
       <span class="te-tlbl">Herramientas</span>
       <button class="te-ctool te-ctool-ico on" data-tool="mover" title="Seleccionar / mover (cursor neutro)" aria-label="Seleccionar"><svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor"><path d="M5 3l14 8-6 1.5 3.5 6-2.5 1.4-3.4-6L5 19V3z"/></svg></button>
-      <button class="te-ctool" data-tool="colocar" title="Colocar la figura de la tipología elegida">✋ Colocar</button>
-      <button class="te-ctool" data-tool="rango" title="Definir rango con 2 clics (distribución)">↔ Rango</button>
+      <!-- "Colocar" y "Rango" ya NO son herramientas:
+           · colocar  → botón "＋ Agregar barra" del ribbon (o "＋ Agregar componente")
+           · rango    → flecha sobre la barra SELECCIONADA (arrastrarla la activa) -->
       <button class="te-ctool" data-tool="rotar" title="Rotar (barra espaciadora)">⟳ Rotar</button>
       <span class="te-divv"></span>
       <button class="te-ctool on" data-toggle="snap" title="Snap a grilla / caras / barras">🧲 Snap</button>
@@ -341,7 +374,7 @@
         <div id="te_compList"></div>
 
         <button class="te-addcomp" id="te_addComp">＋ Agregar componente</button>
-        <div class="te-note" style="margin-top:8px">Elige figura+tipología arriba y haz clic en una vista para colocar. Selecciona una barra (o un componente) para editar aquí. Arrastra ⠿ para reordenar.</div>
+        <div class="te-note" style="margin-top:8px">＋ Agregar componente = mismo modo colocación que "＋ Agregar barra" del ribbon (Esc o clic derecho para salir). Selecciona una barra para editarla aquí; arrastra ⠿ para reordenar.</div>
       </div>
 
       <!-- CENTRO: 4 CUADRANTES -->
