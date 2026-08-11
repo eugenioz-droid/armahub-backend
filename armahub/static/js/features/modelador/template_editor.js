@@ -63,6 +63,11 @@
     // --- P3: plano de trabajo activo resaltado en el 3D ---
     //   'seccion' | 'largo' | 'planta' | null  (null = ninguno resaltado)
     planoActivo: null, planoMesh: null, elemento: 'viga',
+    // --- T2 (pantalla previa + guardar/abrir) ---
+    // nombre: nombre del template (se define en el TAB, antes de entrar al modal).
+    // templateId: id si vino de "Abrir" (el POST crea COPIA: no hay PUT).
+    // _recetaGuardada: JSON.stringify de la receta al abrir / tras guardar (dirty-tracking).
+    nombre: '', templateId: null, _recetaGuardada: null,
     // --- INTERACCIÓN-2.0 (esta entrega) ---
     // cargado: "sello" de lo que quedó cargado en el ribbon para colocar
     //   { figura, tipologia, diam, contorno } | null. Se setea al elegir
@@ -465,10 +470,12 @@
       if (n.material && n.material.userData && n.material.userData._propio && n.material.dispose) {
         n.material.dispose();
       }
-      // El CLON de material para el clipping por vista (B2) vive en userData, no
-      // necesariamente asignado a .material en este instante → disponerlo aparte.
+      // Los CLONES de material (clipping por vista B2 / selección resaltada) viven
+      // en userData, no necesariamente asignados a .material → disponerlos aparte.
       var clip = n.userData && n.userData.matClip;
       if (clip && clip.dispose) { clip.dispose(); n.userData.matClip = null; }
+      var msel = n.userData && n.userData.matSel;
+      if (msel && msel.dispose) { msel.dispose(); n.userData.matSel = null; }
     }
     if (obj.traverse) obj.traverse(limpiar); else limpiar(obj);
   }
@@ -517,11 +524,49 @@
       // por vista se aplica clonando ese material sólo cuando hace falta.
       mesh.userData.span = _spanDePuntos(pl.puntos);
       mesh.userData.matBase = mat;
+      mesh.userData.ci = (pl.meta && pl.meta.ci != null) ? pl.meta.ci : -1;
       ST.barras3D.push(mesh);
       ST.world.add(mesh);
     });
+    _resaltarSeleccion3D();    // selección sutil: leve emissive en la pieza activa
     ST.dist = g.largo * 1.15 + 160;
     _redibujarPlanoActivo();   // P3 — re-agregar el resaltado tras vaciar el world
+    ST.dirty = true;
+  }
+
+  // SELECCIÓN SUTIL en el render — la pieza seleccionada sube apenas de brillo
+  // (emissive) en el 3D y en las vistas orto; nada de halos gruesos. Se materializa
+  // igual que el clipping: un CLON del material base con emissive, cacheado en el
+  // mesh (userData.matSel). `matActivo` es lo que _clipLocalPorVista usa como base,
+  // así el realce compone con el corte sin combinatoria de clones.
+  function _resaltarSeleccion3D() {
+    var THREE = global.THREE;
+    if (!THREE) return;
+    var barras = ST.barras3D || [];
+    for (var i = 0; i < barras.length; i++) {
+      var mesh = barras[i];
+      var base = mesh.userData.matBase;
+      if (!base) continue;
+      var sel = (ST.selCi >= 0 && mesh.userData.ci === ST.selCi);
+      if (sel) {
+        var ms = mesh.userData.matSel;
+        if (!ms || ms.userData._base !== base) {
+          if (ms && ms.dispose) ms.dispose();
+          ms = base.clone();
+          ms.userData._propio = true;
+          ms.userData._base = base;
+          if (ms.emissive) ms.emissive = new THREE.Color(base.color).multiplyScalar(0.45);
+          mesh.userData.matSel = ms;
+        }
+        mesh.userData.matActivo = ms;
+      } else {
+        mesh.userData.matActivo = base;
+      }
+      // fuera de los pases orto el mesh luce el material activo directamente
+      if (!mesh.material || !mesh.material.clippingPlanes || !mesh.material.clippingPlanes.length) {
+        mesh.material = mesh.userData.matActivo;
+      }
+    }
     ST.dirty = true;
   }
 
@@ -1299,6 +1344,35 @@
       }));
     });
 
+    // BBOX punteado de la PIEZA seleccionada (todas sus barras juntas) + esquinitas
+    // — la marca de selección "de conjunto"; el realce por barra lo pone el render
+    // 3D (emissive) y el contorno fino .te-bar-halo. Estilo CAD, nada de halos.
+    if (ST.selCi >= 0) {
+      var bU0 = Infinity, bV0 = Infinity, bU1 = -Infinity, bV1 = -Infinity;
+      placements.forEach(function (pl) {
+        var ci = (pl.meta && pl.meta.ci != null) ? pl.meta.ci : -1;
+        if (ci !== ST.selCi) return;
+        (pl.puntos || []).forEach(function (p) {
+          var q = proj(p);
+          if (!isFinite(q.u) || !isFinite(q.v)) return;
+          if (q.u < bU0) bU0 = q.u; if (q.u > bU1) bU1 = q.u;
+          if (q.v < bV0) bV0 = q.v; if (q.v > bV1) bV1 = q.v;
+        });
+      });
+      if (isFinite(bU0)) {
+        var px0 = Math.min(X(bU0), X(bU1)) - 6, px1 = Math.max(X(bU0), X(bU1)) + 6;
+        var py0 = Math.min(Y(bV0), Y(bV1)) - 6, py1 = Math.max(Y(bV0), Y(bV1)) + 6;
+        svg.appendChild(_svgEl('rect', {
+          'class': 'te-sel-bbox', x: px0, y: py0, width: px1 - px0, height: py1 - py0
+        }));
+        [[px0, py0], [px1, py0], [px0, py1], [px1, py1]].forEach(function (e) {
+          svg.appendChild(_svgEl('rect', {
+            'class': 'te-sel-esq', x: e[0] - 2.5, y: e[1] - 2.5, width: 5, height: 5
+          }));
+        });
+      }
+    }
+
     // Cotas (básico): extensión del hormigón en U y V.
     if (ST.cotas && rect) _dibujarCotas(svg, rect, t.s, X, Y, plano);
 
@@ -1411,6 +1485,7 @@
 
   function _redibujar2D(out) {
     var geo = ST.receta && ST.receta.geometria;
+    _resaltarSeleccion3D();   // la selección cambió/persiste → sincronizar el realce 3D
     _dibujarVista2D($('te_svgSeccion'), out, 'seccion', geo);
     _dibujarVista2D($('te_svgLargo'),   out, 'largo',   geo);
     _dibujarVista2D($('te_svgPlanta'),  out, 'planta',  geo);
@@ -2258,21 +2333,24 @@
     var con = $('te_ribContorno');
     if (con && !con._teBound) { con._teBound = true; con.addEventListener('change', function () { ST.contorno = con.checked; if (_hayCargado()) _sellarCargado(); }); ST.contorno = con.checked; }
 
+    // DELEGACIÓN en el contenedor (no por botón): el ribbon se re-renderiza por
+    // elemento (_renderRibbonTips) y los listeners por-botón morirían con el innerHTML.
     var tips = $('te_tipbtns');
     if (tips && !tips._teBound) {
       tips._teBound = true;
-      tips.querySelectorAll('.te-tipbtn').forEach(function (b) {
-        b.addEventListener('click', function () {
-          tips.querySelectorAll('.te-tipbtn').forEach(function (x) { x.classList.remove('on'); });
-          b.classList.add('on');
-          ST.tipologia = b.getAttribute('data-tip') || 'CBS';
-          // Elegir una tipología es la señal explícita de "quiero colocar esto":
-          // si estamos en el estado neutro (Seleccionar), pasa a Colocar y carga el
-          // ghost. Si ya estaba en rango, respeta el rango. Esto hace que Seleccionar
-          // sea el estado por defecto real y colocar sea siempre intencional.
-          if (ST.tool !== 'colocar' && ST.tool !== 'rango') _activarHerramienta('colocar');
-          _sellarCargado();
-        });
+      tips.addEventListener('click', function (ev) {
+        var b = ev.target;
+        while (b && b !== tips && !(b.classList && b.classList.contains('te-tipbtn'))) b = b.parentNode;
+        if (!b || b === tips) return;
+        tips.querySelectorAll('.te-tipbtn').forEach(function (x) { x.classList.remove('on'); });
+        b.classList.add('on');
+        ST.tipologia = b.getAttribute('data-tip') || 'CBS';
+        // Elegir una tipología es la señal explícita de "quiero colocar esto":
+        // si estamos en el estado neutro (Seleccionar), pasa a Colocar y carga el
+        // ghost. Si ya estaba en rango, respeta el rango. Esto hace que Seleccionar
+        // sea el estado por defecto real y colocar sea siempre intencional.
+        if (ST.tool !== 'colocar' && ST.tool !== 'rango') _activarHerramienta('colocar');
+        _sellarCargado();
       });
     }
   }
@@ -2634,57 +2712,47 @@
   }
 
   // ==========================================================================
-  // B2·(a) — CLIPPING **LOCAL** POR VISTA (arregla "longitudinales invisibles").
+  // B2·(a) — CLIPPING **LOCAL** POR VISTA. El cuchillo corta TODO (feedback del
+  // usuario: "es una foto de ese corte, debiera verse solo lo que corta el plano").
   //
-  // Antes el corte se hacía con renderer.clippingPlanes (GLOBAL): la banda fina de la
-  // SECCIÓN recortaba TAMBIÉN las dos tapas del cilindro de un longitudinal visto de
-  // punta → quedaba un TUBO ABIERTO cuyo manto se ve de canto (0 px) y cuyo interior
-  // son back-faces (MeshStandardMaterial es FrontSide) → no se pintaba NADA. Ese era
-  // el "círculo apagado / barra invisible".
-  //
-  // Fix: el cuchillo sólo debe cortar lo que un cuchillo REAL corta — las barras que
-  // el plano atraviesa de canto ("rebanadas": estribos/trabas en SECCIÓN). Las que
-  // CORREN a lo largo del eje de profundidad cruzan el corte esté donde esté, así que
-  // se dejan SIN CLIP: su tapa cercana se ve entera y estable como un círculo sólido.
+  // Antes se dejaba a los LONGITUDINALES sin clip para que su tapa se viera como
+  // círculo sólido — pero eso hacía que sus PATAS/ganchos aparecieran SIEMPRE en la
+  // sección aunque el plano no las cortara. Ahora se clipea todo y el material del
+  // clip es DoubleSide: el corte de un cilindro muestra su pared interior (algo más
+  // oscura), que se lee como el círculo/sección de la barra. La luz frontal por
+  // vista (_luzOrto) mantiene la lectura pareja.
   //
   // Mecánica (three r160): con renderer.localClippingEnabled=true, los planos se
-  // asignan POR MATERIAL. Como los materiales son COMPARTIDOS por tipología, a las
-  // barras "rebanada" se les pone un CLON del material con clippingPlanes; a las demás
-  // se les restituye el material base (clippingPlanes vacío). El clon se cachea en el
-  // propio mesh (userData.matClip) → no se crea material por frame. El hormigón y el
-  // plano P3 siguen exentos: su material ya lleva clippingPlanes:[] y no se toca.
+  // asignan POR MATERIAL. Como los materiales son COMPARTIDOS por tipología, cada
+  // mesh usa un CLON con clippingPlanes cacheado en userData.matClip (no se crea
+  // material por frame). El "material base" puede ser matBase o matSel (selección
+  // resaltada, _resaltarSeleccion3D): el caché se invalida al cambiar (_base). El
+  // hormigón y el plano P3 siguen exentos: su material ya lleva clippingPlanes:[].
   // ==========================================================================
-
-  // ¿esta barra es una REBANADA para el eje de profundidad `dep`? Mismo criterio que
-  // _slicesEnProfundidad: span pequeño en ese eje = vive casi en un solo valor.
-  function _esRebanada(mesh, dep) {
-    var span = mesh.userData && mesh.userData.span;
-    if (!span) return true;                 // sin dato → comportarse como antes (clipear)
-    var espesor = _espesorProfundidad(dep);
-    var umbral = Math.min(Math.max(espesor * 0.15, 8), 40);
-    return span[dep] <= umbral;
-  }
 
   // Aplica/retira los 2 planos de corte de una vista sobre los materiales de las barras.
   function _clipLocalPorVista(dep, planos) {
+    var THREE = global.THREE;
     var barras = ST.barras3D || [];
     for (var i = 0; i < barras.length; i++) {
       var mesh = barras[i];
-      var base = mesh.userData.matBase;
+      var base = mesh.userData.matActivo || mesh.userData.matBase;
       if (!base) continue;
-      if (planos && _esRebanada(mesh, dep)) {
-        // clon cacheado del material compartido, con los planos de ESTA vista
+      if (planos) {
+        // clon cacheado del material activo, con los planos de ESTA vista
         var clip = mesh.userData.matClip;
         if (!clip || clip.userData._base !== base) {
+          if (clip && clip.dispose) clip.dispose();   // el activo cambió (selección)
           clip = base.clone();
           clip.userData._propio = true;    // creado al vuelo → dispose al vaciar el world
           clip.userData._base = base;
+          clip.side = THREE.DoubleSide;    // el interior del tubo cortado se ve (círculo)
           mesh.userData.matClip = clip;
         }
         clip.clippingPlanes = planos;
         mesh.material = clip;
       } else {
-        mesh.material = base;              // longitudinal (o pase 3D): SIN clip
+        mesh.material = base;              // pase 3D en perspectiva: SIN clip
       }
     }
   }
@@ -3043,17 +3111,51 @@
     }
   }
 
-  global.templateEditorAbrir = function () {
+  // T2 — templateEditorAbrir(cfg) con firma EXTENDIDA (§GAP-ANALYSIS-TE · AGENTE 1):
+  //   cfg = { elemento, nombre, dims, receta?, templateId? } | undefined.
+  //   · Con cfg (pantalla previa "Crear" / "Abrir"): hormigón listo desde dims y
+  //     CERO componentes (o la receta guardada si viene de "Abrir").
+  //   · SIN args (ruta vieja / tests): conserva el comportamiento actual con semilla.
+  global.templateEditorAbrir = function (cfg) {
     var bd = $('te_backdrop');
     if (!bd) { alert('El Template Editor aún se está cargando. Reintenta en un momento.'); return; }
     var d = _deps();
-    if (!ST.receta && d.semilla) ST.receta = d.semilla.semillaViga();
+    if (cfg && cfg.elemento) {
+      ST.elemento = String(cfg.elemento).toLowerCase();
+      ST.nombre = (cfg.nombre || '').trim();
+      ST.templateId = (cfg.templateId != null) ? cfg.templateId : null;
+      if (cfg.receta) {
+        // "Abrir": receta guardada (params del backend), clonada para no mutar la fuente.
+        ST.receta = JSON.parse(JSON.stringify(cfg.receta));
+      } else {
+        // "Crear": SIEMPRE rectángulo de hormigón desde dims + componentes vacíos.
+        var geo = {}, src = cfg.dims || {};
+        for (var k in src) if (src.hasOwnProperty(k)) geo[k] = Number(src[k]);
+        geo.contorno = null;
+        ST.receta = { tipo: ST.elemento, geometria: geo, componentes: [] };
+      }
+      if (!ST.receta.tipo) ST.receta.tipo = ST.elemento;
+      ST.selCi = -1; ST.ultimoOut = null;
+      ST.rangoTmp = null; ST.dragMove = null; ST.dragNode = null; ST.dragRango = null;
+    } else {
+      // Ruta vieja: semilla (solo para tests / compatibilidad).
+      if (!ST.receta && d.semilla) ST.receta = d.semilla.semillaViga();
+      ST.elemento = (ST.receta && ST.receta.tipo) || 'viga';
+      if (!ST.nombre) ST.nombre = 'Viga tipo Explora';
+      if (ST.templateId === undefined) ST.templateId = null;
+    }
     // Asegurar el flag de distribución en la semilla (estribo/traba ya distribuidos).
     (ST.receta.componentes || []).forEach(function (c) {
       var rol = _rolDe(c.tipologia);
       if (rol !== 'cabezal' && c.distribucion && c.distribucion.zonas && c.distribucion.activa == null) c.distribucion.activa = true;
     });
+    // Dirty-tracking: baseline al abrir (después de la normalización, que muta).
+    ST._recetaGuardada = JSON.stringify(ST.receta);
     bd.classList.add('on');
+    _actualizarTitulos();
+    _renderRibbonTips();
+    _actualizarBtnGuardar();
+    var se = $('te_saveErr'); if (se) se.textContent = '';
     _bindUI();
     _marcarSucio();     // PERF (render-on-demand): al abrir siempre hay que pintar
     // Undo limpio por sesión + sellar lo cargado (la herramienta por defecto es
@@ -3067,12 +3169,26 @@
     }); });
   };
 
-  global.templateEditorCerrar = function () {
+  // Cierre SIN confirm (interno): esconde el modal y limpia estado transitorio.
+  function _cerrarModal() {
     var bd = $('te_backdrop'); if (bd) bd.classList.remove('on');
     // limpiar estado transitorio de hover (snap de cara / ghost) y esconder overlay.
     ST.caraHi = null;
     _limpiarGhost();
     var fb = $('te_flipBtn'); if (fb) fb.classList.remove('on');
+  }
+
+  // T2 — dirty-check en TODAS las salidas (✕, backdrop, Esc pasan por aquí).
+  global.templateEditorCerrar = function () {
+    if (_hayCambiosSinGuardar() && !global.confirm('Hay cambios sin guardar. ¿Cerrar igual?')) return;
+    _cerrarModal();
+  };
+
+  // Botón "📂 Abrir" del titlebar: volver a la pantalla previa (que ya lista los
+  // guardados — no hay mini-lista dentro del modal). Confirm propio si hay cambios.
+  global.templateEditorVolverALista = function () {
+    if (_hayCambiosSinGuardar() && !global.confirm('Hay cambios sin guardar. ¿Volver a la lista igual?')) return;
+    _cerrarModal();
   };
 
   global.templateEditorVerEn3D = function () { _iniciar3dEnVivo(); };
@@ -3102,6 +3218,336 @@
     }
     global.templateEditorCerrar();
   });
+
+  // ==========================================================================
+  // T2 — PANTALLA PREVIA del sub-tab Templates + GUARDAR/ABRIR
+  // (§GAP-ANALYSIS-TE · bloque AGENTE 1 del programa_modelador_3d.md)
+  //
+  // Espejos locales (data pura, NO dependencias — regla 1: nada de módulos
+  // capturados a nivel de módulo; fetch/apiUrl/authHeaders se resuelven DENTRO
+  // de cada función porque los scripts cargan en paralelo):
+  //   TPL_TIPOLOGIAS        — copia 1:1 de _TIPOLOGIAS_SEED (catalogo.py:99-114).
+  //   TPL_COLORES           — color por código de tipología (por ROL: mismos tonos
+  //                           significan lo mismo en todos los elementos; viga
+  //                           conserva los existentes; n-capas = variante clara).
+  //   TPL_DIMS_POR_ELEMENTO — campos y defaults (cm) de la pantalla previa
+  //                           (espíritu de PLANOS_POR_ELEMENTO; VIGA = semilla_viga).
+  // ==========================================================================
+  var TPL_TIPOLOGIAS = {
+    MURO: [['MH', 'Malla Horizontal'], ['MV', 'Malla Vertical'], ['TR', 'Traba Muro'],
+           ['EC', 'Estribo Confinamiento'], ['TC', 'Traba Confinamiento'], ['CB', 'Cabezal']],
+    LOSA: [['Fi', 'Malla Inferior i'], ['Fs', 'Malla Inferior s'], ["F'i", 'Malla Superior i'],
+           ["F's", 'Malla Superior s'], ['F', 'Refuerzo o Suple Inferior'],
+           ["F'", 'Refuerzo o Suple Superior'], ['SP', 'Soporte Losa'], ['Rp', 'Reparticion'],
+           ['TRL', 'Traba Losa']],
+    VIGA: [['CBS', 'Cabezal Superior primera capa'], ['CBS2', 'Cabezal Superior segunda capa'],
+           ['CBSn', 'Cabezal Superior n capa'], ['CBI', 'Cabezal Inferior primera capa'],
+           ['CBI2', 'Cabezal Inferior segunda capa'], ['CBIn', 'Cabezal Inferior n capa'],
+           ['LT', 'Lateral'], ['ES', 'Estribo'], ['TRV', 'Traba Viga']],
+    COLUMNA: [['CB', 'Cabezal'], ['CB2', 'Cabezal 2'], ['CBn', 'Cabezal n'],
+              ['TRC', 'Traba Columna'], ['ESC', 'Estribo Columna']],
+    FUNDACION: [['Fi', 'Malla Inferior i'], ['Fs', 'Malla Inferior s'],
+                ["F'i", 'Malla Superior i'], ["F's", 'Malla Superior s'],
+                ['SPF', 'Soporte Fundacion'], ['TRF', 'Traba Fundacion']],
+    GEN: [['CB', 'Cabezal'], ['F', 'Refuerzo o Suple Inferior'], ["F'", 'Refuerzo o Suple Superior']]
+  };
+
+  var TPL_COLORES = {
+    // VIGA (conserva los existentes; n-capas = variante clara del mismo tono)
+    CBS: '#1565c0', CBS2: '#42a5f5', CBSn: '#64b5f6',
+    CBI: '#00897b', CBI2: '#26a69a', CBIn: '#4db6ac',
+    ES: '#e65100', TRV: '#7b1fa2', LT: '#607d8b',
+    // MURO (principales azul/teal · estribos naranja · trabas púrpura)
+    MH: '#1565c0', MV: '#00897b', TR: '#7b1fa2', EC: '#e65100', TC: '#7b1fa2', CB: '#1565c0',
+    // LOSA / FUNDACION (mallas inf azul/teal · sup variante clara · refuerzos índigo ·
+    // soportes/reparticiones gris · trabas púrpura)
+    Fi: '#1565c0', Fs: '#00897b', "F'i": '#42a5f5', "F's": '#26a69a',
+    F: '#5e35b1', "F'": '#7e57c2', SP: '#607d8b', Rp: '#607d8b', TRL: '#7b1fa2',
+    SPF: '#607d8b', TRF: '#7b1fa2',
+    // COLUMNA
+    CB2: '#42a5f5', CBn: '#64b5f6', TRC: '#7b1fa2', ESC: '#e65100'
+  };
+
+  // Color del ELEMENTO (chip de tipo en la lista + reconocimiento cruzado tab↔modal).
+  var TPL_ELEM_COLORES = {
+    MURO: '#795548', LOSA: '#607d8b', VIGA: '#558B2F',
+    COLUMNA: '#1565c0', FUNDACION: '#5d4037', GEN: '#616161'
+  };
+
+  // Campos y defaults (cm) por elemento. checks = [recubA, recubB, dim]: inválido
+  // si recubA + recubB >= dim (suma de recubs opuestos < dimensión de esa cara).
+  // VIGA calca semilla_viga.js:41 (NO inventar otros).
+  var TPL_DIMS_POR_ELEMENTO = {
+    VIGA: {
+      dims:   [{ k: 'largo', lbl: 'Largo', def: 600 }, { k: 'alto', lbl: 'Alto', def: 60 }, { k: 'ancho', lbl: 'Ancho', def: 30 }],
+      recubs: [{ k: 'recub_sup', lbl: 'Sup', def: 4 }, { k: 'recub_inf', lbl: 'Inf', def: 4 }, { k: 'recub_lat', lbl: 'Lat', def: 3 }],
+      checks: [['recub_sup', 'recub_inf', 'alto'], ['recub_lat', 'recub_lat', 'ancho']]
+    },
+    MURO: {
+      dims:   [{ k: 'largo', lbl: 'Largo', def: 400 }, { k: 'alto', lbl: 'Alto', def: 250 }, { k: 'espesor', lbl: 'Espesor', def: 20 }],
+      recubs: [{ k: 'recub_caras', lbl: 'Caras', def: 2.5 }, { k: 'recub_bordes', lbl: 'Bordes', def: 3 }],
+      checks: [['recub_caras', 'recub_caras', 'espesor'], ['recub_bordes', 'recub_bordes', 'alto']]
+    },
+    COLUMNA: {
+      dims:   [{ k: 'alto', lbl: 'Alto', def: 300 }, { k: 'b', lbl: 'b', def: 40 }, { k: 'h', lbl: 'h', def: 40 }],
+      recubs: [{ k: 'recub', lbl: 'Recub', def: 4 }],
+      checks: [['recub', 'recub', 'b'], ['recub', 'recub', 'h']]
+    },
+    LOSA: {
+      dims:   [{ k: 'largo', lbl: 'Largo', def: 500 }, { k: 'ancho', lbl: 'Ancho', def: 400 }, { k: 'espesor', lbl: 'Espesor', def: 15 }],
+      recubs: [{ k: 'recub_sup', lbl: 'Sup', def: 2.5 }, { k: 'recub_inf', lbl: 'Inf', def: 2.5 }],
+      checks: [['recub_sup', 'recub_inf', 'espesor']]
+    },
+    FUNDACION: {
+      dims:   [{ k: 'largo', lbl: 'Largo', def: 300 }, { k: 'ancho', lbl: 'Ancho', def: 100 }, { k: 'alto', lbl: 'Alto', def: 80 }],
+      recubs: [{ k: 'recub', lbl: 'Recub', def: 5 }],
+      checks: [['recub', 'recub', 'alto'], ['recub', 'recub', 'ancho']]
+    },
+    GEN: {
+      dims:   [{ k: 'largo', lbl: 'Largo', def: 300 }, { k: 'alto', lbl: 'Alto', def: 100 }, { k: 'ancho', lbl: 'Ancho', def: 100 }],
+      recubs: [{ k: 'recub', lbl: 'Recub', def: 4 }],
+      checks: [['recub', 'recub', 'alto'], ['recub', 'recub', 'ancho']]
+    }
+  };
+
+  function _capitalizar(s) { s = String(s || ''); return s.charAt(0).toUpperCase() + s.slice(1).toLowerCase(); }
+
+  // Headers de auth para los fetch — patrón de disenador.js (resuelto EN el momento).
+  function _tplHeaders(conJson) {
+    var h = conJson ? { 'Content-Type': 'application/json' } : {};
+    return Object.assign(h, (typeof global.authHeaders === 'function' ? global.authHeaders() : {}));
+  }
+  function _tplUrl(path) {
+    return (typeof global.apiUrl === 'function') ? global.apiUrl(path) : path;
+  }
+
+  // ---- Titlebar dinámico: h1 "Template Editor — Viga" + badge + nombre ----
+  function _actualizarTitulos() {
+    var el = (ST.elemento || 'viga');
+    var h1 = document.querySelector('#te_titlebar h1');
+    if (h1) h1.textContent = 'Template Editor — ' + _capitalizar(el);
+    var badge = $('te_elemBadge'); if (badge) badge.textContent = el.toUpperCase();
+    var sub = $('te_subNombre'); if (sub) sub.textContent = ST.nombre || '(sin nombre)';
+  }
+
+  // ---- Ribbon dinámico de tipologías por elemento (wrap si son >6) ----
+  function _renderRibbonTips() {
+    var cont = $('te_tipbtns'); if (!cont) return;
+    var lista = TPL_TIPOLOGIAS[(ST.elemento || 'viga').toUpperCase()] || TPL_TIPOLOGIAS.VIGA;
+    var codigos = lista.map(function (t) { return t[0]; });
+    if (codigos.indexOf(ST.tipologia) === -1) ST.tipologia = codigos[0];
+    cont.innerHTML = lista.map(function (t) {
+      var col = TPL_COLORES[t[0]] || '#607d8b';
+      return '<span class="te-tipbtn' + (t[0] === ST.tipologia ? ' on' : '') + '" data-tip="' + _esc(t[0]) +
+        '" title="' + _esc(t[1]) + '"><span class="te-sw" style="background:' + col + '"></span>' + _esc(t[0]) + '</span>';
+    }).join('');
+  }
+
+  // ---- Dirty-tracking ----
+  function _hayCambiosSinGuardar() {
+    if (!ST.receta || ST._recetaGuardada == null) return false;
+    try { return JSON.stringify(ST.receta) !== ST._recetaGuardada; } catch (e) { return false; }
+  }
+
+  // Texto/estado normal del botón Guardar. Si el template vino de "Abrir" (hay
+  // templateId), el POST crea COPIA (el backend no tiene PUT) → "Guardar como nuevo".
+  function _actualizarBtnGuardar() {
+    var b = $('te_btnGuardar'); if (!b) return;
+    b.disabled = false;
+    b.textContent = (ST.templateId != null) ? '💾 Guardar como nuevo' : '💾 Guardar template';
+  }
+
+  // ---- GUARDAR: POST /templates {nombre, tipo, params, obra:null} ----
+  // OJO: el campo del backend es "params" (NO "receta") — modelador.py:45-49.
+  global.templateEditorGuardar = function () {
+    var btn = $('te_btnGuardar');
+    var err = $('te_saveErr'); if (err) err.textContent = '';
+    if (!ST.receta || (btn && btn.disabled)) return;
+    if (btn) { btn.disabled = true; btn.textContent = 'Guardando…'; }
+    var body = {
+      nombre: (ST.nombre || '').trim(),
+      tipo: (ST.elemento || 'viga').toLowerCase(),
+      params: ST.receta,
+      obra: null
+    };
+    fetch(_tplUrl('/templates'), { method: 'POST', headers: _tplHeaders(true), body: JSON.stringify(body) })
+      .then(function (res) {
+        return res.json().catch(function () { return {}; }).then(function (data) {
+          if (!res.ok) throw new Error(data.detail || ('HTTP ' + res.status));
+          return data;
+        });
+      })
+      .then(function (data) {
+        // El editor pasa a apuntar a la copia recién creada (guardados siguientes
+        // también serán copias — no hay PUT, pendiente versionado real).
+        if (data && data.id != null) ST.templateId = data.id;
+        ST._recetaGuardada = JSON.stringify(ST.receta);
+        if (btn) btn.textContent = '✓ Guardado';
+        if (typeof global.tplCargarGuardados === 'function') global.tplCargarGuardados();
+        setTimeout(function () { _actualizarBtnGuardar(); }, 1500);
+      })
+      .catch(function (e) {
+        _actualizarBtnGuardar();
+        if (err) err.textContent = 'No se pudo guardar: ' + ((e && e.message) || 'error de red');
+      });
+  };
+
+  // ==========================================================================
+  // PANTALLA PREVIA (vive en tabs/catalogo.html · #catSubTemplates). Estos globals
+  // los llaman los onclick/oninput del HTML y switchCatSubTab (catalogo/index.js).
+  // ==========================================================================
+  var _tplElemSel = 'VIGA';   // elemento seleccionado (default: VIGA, único con máquina)
+
+  function _tplCampoHtml(def) {
+    return '<div style="display:flex; flex-direction:column; gap:2px;">' +
+      '<label class="muted" style="font-size:10.5px;">' + _esc(def.lbl) + '</label>' +
+      '<input type="number" id="tplDim_' + _esc(def.k) + '" value="' + def.def + '" step="any" oninput="tplValidar()"' +
+      ' style="width:70px; font-size:12px; border:1px solid #dbe1e8; border-radius:6px; padding:5px 7px;">' +
+      '</div>';
+  }
+
+  function _tplRenderDims(elem) {
+    var cont = $('tplDims'); if (!cont) return;
+    var spec = TPL_DIMS_POR_ELEMENTO[elem] || TPL_DIMS_POR_ELEMENTO.VIGA;
+    var hdr = 'class="muted" style="font-size:10.5px; font-weight:700; letter-spacing:.5px; margin-bottom:5px;"';
+    cont.innerHTML =
+      '<div><div ' + hdr + '>DIMENSIONES DEL HORMIGÓN (cm)</div>' +
+        '<div style="display:flex; gap:10px; flex-wrap:wrap;">' + spec.dims.map(_tplCampoHtml).join('') + '</div></div>' +
+      '<div><div ' + hdr + '>RECUBRIMIENTOS (cm)</div>' +
+        '<div style="display:flex; gap:10px; flex-wrap:wrap;">' + spec.recubs.map(_tplCampoHtml).join('') + '</div></div>';
+  }
+
+  // Click en un botón de elemento. NUNCA borra el nombre escrito ni roba el foco;
+  // solo re-renderiza dims con los defaults del nuevo elemento.
+  global.tplSeleccionarElemento = function (elem) {
+    elem = String(elem || '').toUpperCase();
+    if (!TPL_DIMS_POR_ELEMENTO[elem]) return;
+    _tplElemSel = elem;
+    var grid = $('tplElemGrid');
+    if (grid) grid.querySelectorAll('button[data-elem]').forEach(function (b) {
+      b.classList.toggle('on', b.getAttribute('data-elem') === elem);
+    });
+    _tplRenderDims(elem);
+    global.tplValidar();
+  };
+
+  // Validación mínima (input/change): dims > 0; recubs >= 0; suma de recubs opuestos
+  // < dimensión de esa cara. Campo inválido: border #c62828 + mensajito único
+  // (tplDimsErr). Nombre vacío o dims inválidas ⇒ Crear deshabilitado.
+  global.tplValidar = function () {
+    var spec = TPL_DIMS_POR_ELEMENTO[_tplElemSel] || TPL_DIMS_POR_ELEMENTO.VIGA;
+    var vals = {}, bad = {};
+    function leer(def, esRecub) {
+      var inp = $('tplDim_' + def.k); if (!inp) return;
+      var v = parseFloat(inp.value);
+      vals[def.k] = v;
+      if (!isFinite(v) || (esRecub ? v < 0 : v <= 0)) bad[def.k] = true;
+    }
+    spec.dims.forEach(function (d) { leer(d, false); });
+    spec.recubs.forEach(function (r) { leer(r, true); });
+    (spec.checks || []).forEach(function (ch) {
+      var a = vals[ch[0]], b = vals[ch[1]], dim = vals[ch[2]];
+      if (isFinite(a) && isFinite(b) && isFinite(dim) && (a + b) >= dim) { bad[ch[0]] = true; bad[ch[1]] = true; }
+    });
+    spec.dims.concat(spec.recubs).forEach(function (d) {
+      var inp = $('tplDim_' + d.k);
+      if (inp) inp.style.borderColor = bad[d.k] ? '#c62828' : '#dbe1e8';
+    });
+    var hayBad = Object.keys(bad).length > 0;
+    var err = $('tplDimsErr'); if (err) err.style.display = hayBad ? '' : 'none';
+    var nom = $('tplNombre');
+    var nombreOk = !!(nom && nom.value.trim());
+    var btn = $('tplBtnCrear'); if (btn) btn.disabled = hayBad || !nombreOk;
+    return !hayBad;
+  };
+
+  // Botón "🧱 Crear template" → abre el modal con el hormigón listo y CERO componentes.
+  global.tplCrearTemplate = function () {
+    var btn = $('tplBtnCrear'); if (btn && btn.disabled) return;
+    if (!global.tplValidar()) return;
+    var spec = TPL_DIMS_POR_ELEMENTO[_tplElemSel] || TPL_DIMS_POR_ELEMENTO.VIGA;
+    var dims = {};
+    spec.dims.concat(spec.recubs).forEach(function (d) {
+      var inp = $('tplDim_' + d.k);
+      dims[d.k] = parseFloat(inp && inp.value);
+    });
+    var nom = $('tplNombre');
+    global.templateEditorAbrir({ elemento: _tplElemSel, nombre: (nom ? nom.value.trim() : ''), dims: dims });
+  };
+
+  function _tplFecha(iso) {
+    var s = String(iso || '').slice(0, 10).split('-');
+    return (s.length === 3) ? (s[2] + '-' + s[1] + '-' + s[0]) : (iso || '—');
+  }
+
+  function _tplPintarLista(templates) {
+    var cont = $('tplGuardadosLista'); if (!cont) return;
+    var cnt = $('tplGuardadosCount');
+    if (cnt) cnt.textContent = templates.length + ' template' + (templates.length === 1 ? '' : 's');
+    if (!templates.length) {
+      cont.innerHTML = '<div class="muted">Aún no hay templates guardados. Crea el primero aquí arriba.</div>';
+      return;
+    }
+    var th = 'style="padding:5px 6px; font-size:10.5px; text-transform:uppercase; text-align:left;" class="muted"';
+    cont.innerHTML = '<table style="width:100%; font-size:12px; border-collapse:collapse;">' +
+      '<tr><th ' + th + '>Nombre</th><th ' + th + '>Tipo</th><th ' + th + '>Fecha</th><th ' + th + '>Creado por</th><th></th></tr>' +
+      templates.map(function (t) {
+        var tipo = String(t.tipo || '').toUpperCase();
+        var col = TPL_ELEM_COLORES[tipo] || '#607d8b';
+        return '<tr style="border-bottom:1px solid #eee;">' +
+          '<td style="padding:4px 6px; font-weight:700;">' + _esc(t.nombre) + '</td>' +
+          '<td style="padding:4px 6px;"><span style="font-size:10px; text-transform:uppercase; font-weight:700; color:#fff; background:' + col + '; border-radius:8px; padding:1px 7px;">' + _esc(tipo) + '</span></td>' +
+          '<td style="padding:4px 6px;">' + _esc(_tplFecha(t.fecha)) + '</td>' +
+          '<td style="padding:4px 6px;">' + _esc(t.creado_por || '—') + '</td>' +
+          '<td style="padding:4px 6px; text-align:right;"><button data-id="' + t.id + '" onclick="tplAbrirTemplate(this.getAttribute(\'data-id\'))"' +
+          ' style="border:1px solid #dbe1e8; background:#fff; border-radius:7px; font-size:11.5px; padding:4px 12px; cursor:pointer;">Abrir</button></td>' +
+          '</tr>';
+      }).join('') +
+      '</table>';
+  }
+
+  // Al entrar al sub-tab (switchCatSubTab → aquí): render inicial de dims (una vez)
+  // + GET /templates para la lista de guardados.
+  global.tplCargarGuardados = function () {
+    var dimsCont = $('tplDims');
+    if (dimsCont && !dimsCont._tplOk) { dimsCont._tplOk = true; _tplRenderDims(_tplElemSel); global.tplValidar(); }
+    var cont = $('tplGuardadosLista'); if (!cont) return;
+    cont.innerHTML = '<div class="muted">Cargando templates…</div>';
+    fetch(_tplUrl('/templates'), { headers: _tplHeaders(false) })
+      .then(function (res) {
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        return res.json();
+      })
+      .then(function (data) { _tplPintarLista((data && data.templates) || []); })
+      .catch(function () {
+        var cnt = $('tplGuardadosCount'); if (cnt) cnt.textContent = '';
+        cont.innerHTML = '<div class="muted">No se pudieron cargar los templates. ' +
+          '<a onclick=tplCargarGuardados() style="cursor:pointer; text-decoration:underline;">Reintentar</a></div>';
+      });
+  };
+
+  // Click "Abrir" en la lista → GET /templates/{id} → abre el modal con la receta.
+  global.tplAbrirTemplate = function (id) {
+    fetch(_tplUrl('/templates/' + encodeURIComponent(id)), { headers: _tplHeaders(false) })
+      .then(function (res) {
+        return res.json().catch(function () { return {}; }).then(function (data) {
+          if (!res.ok) throw new Error(data.detail || ('HTTP ' + res.status));
+          return data;
+        });
+      })
+      .then(function (t) {
+        global.templateEditorAbrir({
+          elemento: String(t.tipo || 'viga').toUpperCase(),
+          nombre: t.nombre || '',
+          dims: (t.params && t.params.geometria) || null,
+          receta: t.params,
+          templateId: t.id
+        });
+      })
+      .catch(function (e) {
+        alert('No se pudo abrir el template: ' + ((e && e.message) || 'error de red'));
+      });
+  };
 
   // Exponer para tests / depuración.
   global.TemplateEditor = {

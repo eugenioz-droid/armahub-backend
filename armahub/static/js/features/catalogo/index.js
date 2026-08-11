@@ -47,6 +47,9 @@
     if (sub === 'figuras') renderFigurasLista();
     else if (sub === 'tipologias') renderTipologiasLista();
     else if (sub === 'disenador' && typeof disenadorInit === 'function') disenadorInit(_figurasData);
+    // Pantalla previa de Templates (template_editor.js): carga la lista de guardados
+    // + pinta las dims por defecto. Guard "si existe": los scripts cargan en paralelo.
+    else if (sub === 'templates' && typeof tplCargarGuardados === 'function') tplCargarGuardados();
   }
 
   async function _cargarFiguras() {

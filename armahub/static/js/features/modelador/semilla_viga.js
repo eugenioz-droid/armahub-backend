@@ -44,7 +44,7 @@
       componentes: [
         {
           comp_id: 'CBS',
-          tipologia: 'CBS', figura: '103B', diam: 16, suf_tipo: 'sup', cara: 'sup',
+          tipologia: 'CBS', figura: '103B', diam: 16, suf_tipo: '', cara: 'sup',
           recub_override: null, angulos: [45, 45],
           prioridad: null, empalme: null, depende_de: null,
           modo: 'puntual', plano_pieza: { volteado: false },
@@ -58,7 +58,7 @@
         },
         {
           comp_id: 'CBI',
-          tipologia: 'CBI', figura: '101A', diam: 18, suf_tipo: 'inf', cara: 'inf',
+          tipologia: 'CBI', figura: '101A', diam: 18, suf_tipo: '', cara: 'inf',
           recub_override: null, angulos: [],
           prioridad: null, empalme: null, depende_de: null,
           modo: 'puntual', plano_pieza: { volteado: false },
@@ -68,7 +68,7 @@
         },
         {
           comp_id: 'ES',
-          tipologia: 'ES', figura: '104D', diam: 8, suf_tipo: 'estribo', cara: 'lateral',
+          tipologia: 'ES', figura: '104D', diam: 8, suf_tipo: '', cara: 'lateral',
           recub_override: null, angulos: [135, 135],
           prioridad: null, empalme: null, depende_de: null,
           modo: 'lineal', plano_pieza: { volteado: false },
@@ -85,7 +85,7 @@
         },
         {
           comp_id: 'TRV',
-          tipologia: 'TRV', figura: '101A', diam: 8, suf_tipo: 'traba', cara: 'lateral',
+          tipologia: 'TRV', figura: '101A', diam: 8, suf_tipo: '', cara: 'lateral',
           recub_override: null, angulos: [],
           prioridad: null, empalme: null, depende_de: null,
           modo: 'lineal', plano_pieza: { volteado: false },

@@ -53,7 +53,7 @@
   #te_modal #te_ribbon .te-divv{width:1px;height:30px;background:var(--te-line)}
   #te_modal .te-figpick{display:inline-flex;align-items:center;gap:6px}
   #te_modal .te-figpick input{border:1px solid var(--te-line);border-radius:7px;padding:6px 9px;font-size:13px;width:120px}
-  #te_modal .te-tipbtns{display:inline-flex;gap:5px}
+  #te_modal .te-tipbtns{display:inline-flex;gap:5px;flex-wrap:wrap}
   #te_modal .te-tipbtn{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--te-line);background:#fff;border-radius:8px;padding:6px 11px;font-size:12px;cursor:pointer;font-weight:600}
   #te_modal .te-tipbtn .te-sw{width:11px;height:11px;border-radius:3px}
   #te_modal .te-tipbtn:hover{border-color:var(--te-acero);background:#f7fbf2}
@@ -151,7 +151,14 @@
   #te_modal .te-vcut{position:absolute;right:6px;top:50%;transform:translateY(-50%);z-index:4;
     height:52%;display:flex;align-items:center;justify-content:center;opacity:.5;transition:opacity .15s}
   #te_modal .te-vista:hover .te-vcut,#te_modal .te-vista.te-plano-on .te-vcut{opacity:1}
-  #te_modal .te-vcut-r{writing-mode:vertical-lr;direction:rtl;width:16px;height:100%;cursor:pointer;accent-color:#2f80ed}
+  /* Slider FINO custom (el nativo se veía grueso): riel de 3px + thumb de 11px. */
+  #te_modal .te-vcut-r{writing-mode:vertical-lr;direction:rtl;width:14px;height:100%;cursor:pointer;
+    -webkit-appearance:none;appearance:none;background:transparent}
+  #te_modal .te-vcut-r::-webkit-slider-runnable-track{width:3px;background:#c9d2dc;border-radius:2px}
+  #te_modal .te-vcut-r::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:11px;height:11px;
+    border-radius:50%;background:#2f80ed;border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.3);margin-left:-4px}
+  #te_modal .te-vcut-r::-moz-range-track{width:3px;background:#c9d2dc;border-radius:2px}
+  #te_modal .te-vcut-r::-moz-range-thumb{width:11px;height:11px;border-radius:50%;background:#2f80ed;border:2px solid #fff}
   #te_modal .te-vhint{position:absolute;bottom:7px;right:10px;z-index:3;font-size:9.5px;color:#9aa4b0}
 
   #te_modal .te-horm{fill:var(--te-hormigon);opacity:.55;stroke:var(--te-hormigon-b);stroke-width:1.2}
@@ -164,8 +171,12 @@
      como en la maqueta; así las barras se ven con cuerpo, no como pelos. */
   #te_modal .te-bar{fill:none;stroke-width:3;stroke-linecap:round;stroke-linejoin:round}
   #te_modal .te-bar.sel{stroke-width:3.6}
-  /* Halo de selección: se dibuja DEBAJO de la barra (trazo ancho translúcido). */
-  #te_modal .te-bar-halo{fill:none;stroke:var(--te-acero);stroke-width:7;opacity:.35;stroke-linecap:round;stroke-linejoin:round}
+  /* Selección SUTIL (estilo CAD): contorno fino azul sobre la barra, nada de halos
+     gruesos. El realce principal lo pone el propio render 3D (leve emissive). */
+  #te_modal .te-bar-halo{fill:none;stroke:#2f80ed;stroke-width:1.6;opacity:.9;stroke-linecap:round;stroke-linejoin:round;pointer-events:none}
+  /* BBox punteado de la PIEZA seleccionada (todas sus barras) con esquinitas. */
+  #te_modal .te-sel-bbox{fill:none;stroke:#7d8da0;stroke-width:1;stroke-dasharray:4 3;pointer-events:none}
+  #te_modal .te-sel-esq{fill:#fff;stroke:#2f80ed;stroke-width:1.2;pointer-events:none}
   /* GHOST (previsualización que sigue el cursor). Grueso + punteado, como la maqueta. */
   #te_modal .te-ghostbar{fill:none;stroke:#8BC34A;stroke-width:3;stroke-dasharray:4 3;opacity:.85;stroke-linecap:round;stroke-linejoin:round;pointer-events:none}
   #te_modal .te-ghostpt{opacity:.9}
@@ -247,12 +258,14 @@
     <div id="te_titlebar">
       <div class="te-dot">📐</div>
       <div>
-        <h1>Template Editor — Colocador</h1>
-        <div class="te-sub">Construyendo: <b>Viga tipo Explora</b> · Configurador de herramientas › Templates</div>
+        <h1>Template Editor — Viga</h1>
+        <div class="te-sub">Construyendo: <b id="te_subNombre">Viga tipo Explora</b> · Catálogo › Templates</div>
       </div>
       <div class="te-spacer"></div>
-      <div class="te-seg"><button class="on">Viga</button><button>Muro</button><button>Columna</button></div>
-      <button class="te-btn ghost">📂 Abrir</button>
+      <!-- El elemento se elige FUERA del modal (pantalla previa del sub-tab Templates):
+           aquí solo un badge estático. Lo actualiza _actualizarTitulos() al abrir. -->
+      <span class="te-chip" id="te_elemBadge">VIGA</span>
+      <button class="te-btn ghost" onclick="templateEditorVolverALista()">📂 Abrir</button>
       <button class="te-xbtn" onclick="templateEditorCerrar()">✕</button>
     </div>
 
@@ -274,13 +287,9 @@
       <div class="te-divv"></div>
       <div class="te-grp">
         <span class="te-lbl">Tipología</span>
-        <div class="te-tipbtns" id="te_tipbtns">
-          <span class="te-tipbtn" data-tip="CBS"><span class="te-sw" style="background:var(--te-cbs)"></span>CBS</span>
-          <span class="te-tipbtn" data-tip="CBI"><span class="te-sw" style="background:var(--te-cbi)"></span>CBI</span>
-          <span class="te-tipbtn" data-tip="ES"><span class="te-sw" style="background:var(--te-es)"></span>ES</span>
-          <span class="te-tipbtn" data-tip="TRV"><span class="te-sw" style="background:var(--te-trv)"></span>TRV</span>
-          <span class="te-tipbtn" data-tip="LT"><span class="te-sw" style="background:#607d8b"></span>LT</span>
-        </div>
+        <!-- VACÍO a propósito: lo renderiza _renderRibbonTips() (template_editor.js)
+             desde TPL_TIPOLOGIAS según ST.elemento (espejo de _TIPOLOGIAS_SEED). -->
+        <div class="te-tipbtns" id="te_tipbtns"></div>
       </div>
       <div class="te-grp" style="margin-left:8px">
         <label style="display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--te-muted);font-weight:600">
@@ -423,7 +432,8 @@
       <span style="font-size:11.5px;color:var(--te-muted)">Componentes: <b id="te_footItems">3</b> · <b id="te_footBarras">77</b> barras · <b id="te_footKg">264,4</b> kg · el 3D se arma combinando las vistas</span>
       <div class="te-spacer"></div>
       <button class="te-btn ghost" onclick="templateEditorVerEn3D()">🧊 Ver en 3D</button>
-      <button class="te-btn ghost">💾 Guardar template</button>
+      <span id="te_saveErr" style="font-size:11px;color:#c62828"></span>
+      <button class="te-btn ghost" id="te_btnGuardar" onclick="templateEditorGuardar()">💾 Guardar template</button>
       <button class="te-btn primary">✓ Usar en el despiece</button>
     </div>
 

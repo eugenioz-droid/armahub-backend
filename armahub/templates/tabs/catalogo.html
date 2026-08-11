@@ -227,31 +227,85 @@
       </div>
     </div>
 
-    <!-- ===== Sub-panel: TEMPLATE EDITOR — Colocador por proyecciones ===== -->
-    <!-- Por ahora: intro breve + botón que ABRE el modal del colocador
-         (template_editor_modal.html). El flujo previo de cómo se ve/abre el
-         template todavía no está definido — se construirá después. El modal SÍ
-         está completo y calca la maqueta static/demo/colocador.html. -->
+    <!-- ===== Sub-panel: TEMPLATES — pantalla previa del Template Editor =====
+         (§GAP-ANALYSIS-TE · bloque AGENTE 1 del programa_modelador_3d.md)
+         2 cards: "Nuevo template" (elemento + dims del hormigón + nombre → abre el
+         modal con el hormigón listo y CERO componentes) y "Templates guardados"
+         (GET /templates → lista con botón Abrir). La lógica (tplSeleccionarElemento,
+         tplValidar, tplCrearTemplate, tplCargarGuardados, tplAbrirTemplate) vive en
+         static/js/features/modelador/template_editor.js. -->
+    <style>
+      #tplElemGrid button:not(:disabled):hover { border-color:#8BC34A !important; }
+      #tplElemGrid button.on { border-color:#558B2F !important; background:#f7fbf2 !important; color:#33691e; }
+      #tplElemGrid button:disabled { opacity:.5; cursor:default; }
+      #tplBtnCrear:not(:disabled):hover { background:#558B2F !important; }
+      #tplBtnCrear:disabled { opacity:.5; cursor:default; }
+    </style>
     <div id="catSubTemplates" style="display:none;">
+      <!-- CARD 1 — Nuevo template -->
       <div class="card" style="border-top:3px solid #558B2F;">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
-          <h3 style="margin:0; color:#558B2F;">🧱 Template Editor</h3>
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+          <h3 style="margin:0; color:#558B2F;">🧱 Nuevo template</h3>
           <span class="muted" style="font-size:11px;">Colocador por proyecciones</span>
         </div>
-        <p class="muted" style="font-size:12px; margin:0 0 12px 0;">
-          El <b>Colocador por proyecciones</b> arma un template de armado (viga, muro, columna)
-          colocando tipologías (CBS, CBI, ES, TRV, LT) sobre las cuatro proyecciones de la pieza:
-          sección, elevación a lo largo, planta y un 3D en vivo. Trabajas por proyecciones y el 3D se
-          arma solo combinándolas. Reusa el motor 3D del modelador.
-        </p>
-        <p class="muted" style="font-size:11.5px; margin:0 0 14px 0;">
-          El flujo de creación (cómo eliges la figura, cómo se abre cada template) todavía se está
-          definiendo. Por ahora puedes abrir el editor para revisar el layout de los cuatro cuadrantes.
-        </p>
-        <button onclick="templateEditorAbrir()"
-                style="font-size:13px; font-weight:700; padding:9px 18px; background:#8BC34A; color:#fff; border:none; border-radius:8px; cursor:pointer;">
-          🧱 Abrir Template Editor
-        </button>
+        <p class="muted" style="font-size:12px; margin:0 0 12px 0;">Elige el elemento, define el hormigón y ponle nombre.</p>
+
+        <div class="muted" style="font-size:10.5px; font-weight:700; letter-spacing:.5px; margin-bottom:6px;">ELEMENTO</div>
+        <!-- Orden CANÓNICO: MURO · LOSA · VIGA · COLUMNA · FUNDACION · GEN.
+             Solo VIGA tiene la máquina completa hoy → el resto va DESHABILITADO
+             con tooltip "Próximamente" (decisión del usuario). -->
+        <div id="tplElemGrid" style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:14px;">
+          <button id="tplElemBtn_MURO" data-elem="MURO" disabled title="Próximamente"
+                  style="width:92px; padding:8px 4px; border:1px solid #dbe1e8; background:#fff; border-radius:8px; cursor:pointer;">
+            <div style="font-size:20px;">🧱</div><div style="font-size:11px; font-weight:700;">MURO</div>
+          </button>
+          <button id="tplElemBtn_LOSA" data-elem="LOSA" disabled title="Próximamente"
+                  style="width:92px; padding:8px 4px; border:1px solid #dbe1e8; background:#fff; border-radius:8px; cursor:pointer;">
+            <div style="font-size:20px;">⬜</div><div style="font-size:11px; font-weight:700;">LOSA</div>
+          </button>
+          <button id="tplElemBtn_VIGA" data-elem="VIGA" class="on" onclick="tplSeleccionarElemento('VIGA')"
+                  style="width:92px; padding:8px 4px; border:1px solid #dbe1e8; background:#fff; border-radius:8px; cursor:pointer;">
+            <div style="font-size:20px;">📏</div><div style="font-size:11px; font-weight:700;">VIGA</div>
+          </button>
+          <button id="tplElemBtn_COLUMNA" data-elem="COLUMNA" disabled title="Próximamente"
+                  style="width:92px; padding:8px 4px; border:1px solid #dbe1e8; background:#fff; border-radius:8px; cursor:pointer;">
+            <div style="font-size:20px;">🏛</div><div style="font-size:11px; font-weight:700;">COLUMNA</div>
+          </button>
+          <button id="tplElemBtn_FUNDACION" data-elem="FUNDACION" disabled title="Próximamente"
+                  style="width:92px; padding:8px 4px; border:1px solid #dbe1e8; background:#fff; border-radius:8px; cursor:pointer;">
+            <div style="font-size:20px;">🪨</div><div style="font-size:11px; font-weight:700;">FUNDACION</div>
+          </button>
+          <button id="tplElemBtn_GEN" data-elem="GEN" disabled title="Próximamente"
+                  style="width:92px; padding:8px 4px; border:1px solid #dbe1e8; background:#fff; border-radius:8px; cursor:pointer;">
+            <div style="font-size:20px;">📦</div><div style="font-size:11px; font-weight:700;">GEN</div>
+          </button>
+        </div>
+
+        <!-- DIMENSIONES: lo re-renderiza _tplRenderDims() por elemento desde
+             TPL_DIMS_POR_ELEMENTO (template_editor.js). -->
+        <div id="tplDims" style="display:flex; gap:28px; flex-wrap:wrap;"></div>
+        <div id="tplDimsErr" style="display:none; font-size:10.5px; color:#c62828; margin-top:4px;">Revisa las dimensiones marcadas.</div>
+
+        <div class="muted" style="font-size:10.5px; font-weight:700; letter-spacing:.5px; margin:14px 0 6px;">NOMBRE DEL TEMPLATE</div>
+        <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+          <input id="tplNombre" maxlength="80" placeholder="Nombre del template (ej. Viga fundación tipo A)"
+                 oninput="tplValidar()"
+                 onkeydown="if(event.key==='Enter'){var b=document.getElementById('tplBtnCrear'); if(b &amp;&amp; !b.disabled) b.click();}"
+                 style="flex:1; width:100%; max-width:360px; border:1px solid #dbe1e8; border-radius:7px; padding:7px 10px; font-size:13px;">
+          <button id="tplBtnCrear" onclick="tplCrearTemplate()" disabled title="Ponle nombre y revisa las dimensiones"
+                  style="font-size:13px; font-weight:700; padding:9px 18px; background:#8BC34A; color:#fff; border:none; border-radius:8px; cursor:pointer;">
+            🧱 Crear template
+          </button>
+        </div>
+      </div>
+
+      <!-- CARD 2 — Templates guardados -->
+      <div class="card" id="tplGuardadosCard" style="border-top:3px solid #558B2F;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+          <h3 style="margin:0; color:#558B2F;">📂 Templates guardados</h3>
+          <span id="tplGuardadosCount" class="muted" style="font-size:11px;"></span>
+        </div>
+        <div id="tplGuardadosLista"><div class="muted">Cargando templates…</div></div>
       </div>
     </div>
   </div>
