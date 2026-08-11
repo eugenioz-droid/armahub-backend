@@ -85,14 +85,20 @@
   // marco sigue siendo cuadrado-coherente y los tests que sólo pasan `recub` no
   // cambian). Deriva h2/w2 en UN solo lugar para que estribo y traba compartan
   // EXACTAMENTE el mismo marco (misma altura, mismo ancho).
-  function _marcoNucleo(host, anchor) {
+  // JERARQUÍA (calculista): el recubrimiento es a la CARA EXTERIOR del fierro,
+  // no a su eje. El marco devuelve la posición del EJE: recub + φ/2 desde la
+  // cara de hormigón (así la superficie del estribo queda EXACTAMENTE al
+  // recubrimiento, no metida en él). `anchor.inset` (capas anidadas) achica el
+  // marco adicionalmente hacia adentro.
+  function _marcoNucleo(host, anchor, diamCm) {
     var recubV = anchor.recub != null ? anchor.recub : 3;
     var recubLat = anchor.recubLat != null ? anchor.recubLat : recubV;
+    var eje = (diamCm || 0) / 2 + (anchor.inset != null ? Number(anchor.inset) : 0);
     return {
       recubV: recubV,
       recubLat: recubLat,
-      h2: host.alto / 2 - recubV,
-      w2: host.ancho / 2 - recubLat
+      h2: host.alto / 2 - recubV - eje,
+      w2: host.ancho / 2 - recubLat - eje
     };
   }
 
@@ -160,7 +166,7 @@
   }
 
   function _estriboPerimetral(figura, dims, host, anchor, diamCm) {
-    var m = _marcoNucleo(host, anchor);
+    var m = _marcoNucleo(host, anchor, diamCm);   // eje = recub + φ/2 (+inset anidado)
     var h2 = m.h2, w2 = m.w2;          // marco compartido con la traba
     var xx = anchor.x || 0;
     var Rc = 2 * diamCm + diamCm / 2;  // radio del EJE del codo (norma: interno 2φ + φ/2)
@@ -201,7 +207,7 @@
   // de modo que su vertical va de +h2 a −h2 exactamente como el estribo (antes
   // podía derivar un h2 distinto y no coincidir en altura).
   function _traba(figura, dims, host, anchor, diamCm) {
-    var m = _marcoNucleo(host, anchor);
+    var m = _marcoNucleo(host, anchor, diamCm);   // eje = recub + φ/2, como el estribo
     var h2 = m.h2;                    // MISMO semialto que el estribo
     var xx = anchor.x || 0, zz = anchor.z || 0;
     var g = 0.7071 * (extGancho(diamCm) + diamCm);

@@ -282,6 +282,9 @@
         var xr = rf + ri * sep;
         if (xr > rt + 1e-6) break;
         var extraR = {}; extraR[ejeR] = xr;
+        // Un CABEZAL repartido necesita su Y de cara (el lineal nació para
+        // estribos, que ignoran anchor.y → los cabezales salían sin altura).
+        if ((base.rol || '') === 'cabezal' && extraR.y == null) extraR.y = _yBordeCabezal(base, host);
         var anchorR = _mezclarAnchor(base.anchorBase, extraR);
         var puntosR = _fp().figuraAPuntos(base.figura, base.dims, host, anchorR,
           { rol: base.rol || 'estribo', diamCm: base.diam });
@@ -313,23 +316,43 @@
   // cabezales (cara sup/inf). Reparte barras_capa a lo ancho (Z); cada capa se
   // retranquea hacia el núcleo por su índice (offset = capa_idx*(diam+gap)).
   // cfg: { n_capas, barras_capa, gap, sentido:'nucleo' }
+  // JERARQUÍA DE BARRAS: el recubrimiento es a la CARA del fierro más externo
+  // (el estribo, host.phi_est en cm). Un longitudinal se APOYA por dentro del
+  // estribo → su eje va a recub + φ_est + φ_propio/2 de la cara del hormigón.
+  function _insetJerarquia(base, host) {
+    if ((base.rol || 'cabezal') === 'estribo') return 0;   // el estribo se ancla solo
+    return (host && host.phi_est) ? Number(host.phi_est) : 0;
+  }
+
+  // Borde del eje de un longitudinal en Y según su cara (con jerarquía).
+  function _yBordeCabezal(base, host) {
+    var cara = (base.anchorBase && base.anchorBase.cara) || 'sup';
+    var recub = (base.anchorBase && base.anchorBase.recub != null) ? base.anchorBase.recub : 4;
+    var inset = recub + _insetJerarquia(base, host) + base.diam / 2;
+    return (cara === 'sup') ? (host.alto / 2 - inset) : (-host.alto / 2 + inset);
+  }
+
   function distribuidorLayered(base, cfg, host) {
     var placements = [];
     var nCapas = Math.max(1, (cfg && cfg.n_capas) || 1);
     var nBarras = Math.max(1, (cfg && cfg.barras_capa) || 1);
     var gap = (cfg && cfg.gap != null) ? cfg.gap : 0;
     var recubLat = (base.anchorBase && base.anchorBase.recubLat != null) ? base.anchorBase.recubLat : 3;
-    var zHalf = host.ancho / 2 - recubLat - base.diam / 2;
+    var zHalf = host.ancho / 2 - recubLat - _insetJerarquia(base, host) - base.diam / 2;
     var cara = (base.anchorBase && base.anchorBase.cara) || 'sup';
     var s = (cara === 'sup') ? -1 : 1;   // hacia el núcleo
-    var yBorde = (cara === 'sup')
-      ? (host.alto / 2 - (base.anchorBase.recub || 4) - base.diam / 2)
-      : (-host.alto / 2 + (base.anchorBase.recub || 4) + base.diam / 2);
+    var yBorde = _yBordeCabezal(base, host);
+    // CAPAS ANIDADAS (estribos/corchetes con n_capas>1): cada capa se ACHICA para
+    // anidar dentro de la anterior (inset = φ + gap por capa) en vez de apilarse
+    // desplazada. cfg.anidar === false lo desactiva (toggle de la UI).
+    var anida = (base.rol === 'estribo') && (!cfg || cfg.anidar !== false);
     for (var c = 0; c < nCapas; c++) {
       var y = yBorde + s * c * (base.diam + gap);   // retranqueo por capa
       for (var i = 0; i < nBarras; i++) {
         var z = (nBarras > 1) ? (-zHalf + (2 * zHalf) * (i / (nBarras - 1))) : 0;
-        var anchor = _mezclarAnchor(base.anchorBase, { y: y, z: z, cara: cara });
+        var extra = { y: y, z: z, cara: cara };
+        if (anida && c > 0) extra.inset = c * (base.diam + gap);
+        var anchor = _mezclarAnchor(base.anchorBase, extra);
         var puntos = _fp().figuraAPuntos(base.figura, base.dims, host, anchor,
           { rol: base.rol || 'cabezal', diamCm: base.diam });
         placements.push(_placement(base, puntos, { capa: c + 1, cara: cara }));
@@ -380,13 +403,21 @@
     // regresión). Con ≥2 capas SÍ se fija el plano de profundidad en TODAS las
     // capas (capa 1 en baseEje, no 'ausente') para que el arreglo sea consistente.
     var unaCapa = (nCapas === 1);
+    // ANIDADO (estribos/corchetes): las capas se achican hacia adentro en vez de
+    // desplazarse por eje_capas. cfg.anidar === false lo desactiva.
+    var anidaA = (base.rol === 'estribo') && (!cfg || cfg.anidar !== false);
     for (var c = 0; c < nCapas; c++) {
       var off = c * sepCapas;
       for (var ri = 0; ri < nR; ri++) {
         var xr = rf + ri * sep;
         if (xr > rt + 1e-6) break;
         var extra = { x: xr };
-        if (!unaCapa) extra[eje] = baseEje + off;
+        if (!unaCapa) {
+          // inset eje-a-eje por capa: la sep configurada, nunca menos que φ
+          // (dos estribos no pueden compartir plano).
+          if (anidaA) { if (c > 0) extra.inset = c * Math.max(sepCapas, base.diam); }
+          else extra[eje] = baseEje + off;
+        }
         var anchorA = _mezclarAnchor(base.anchorBase, extra);
         var puntosA = _fp().figuraAPuntos(base.figura, base.dims, host, anchorA,
           { rol: base.rol || 'estribo', diamCm: base.diam });
@@ -477,13 +508,20 @@
   // Delta que devuelve la pieza DENTRO del marco útil (0 si ya cabe donde está).
   // Si en un eje la pieza es MÁS LARGA que el marco (p.ej. un estribo girado 90°
   // en una viga angosta) no hay clamp posible → se CENTRA en ese eje.
-  function _deltaReanclaje(bb, marco) {
+  // siNoCabe: 'centrar' (default, rotación en el plano) | 'dejar' (spin axial:
+  // si el bbox no cabe en el marco, NO desplazar — centrar colapsaba las barras
+  // repartidas de una capa todas al mismo punto cuando sus ganchos girados
+  // excedían el ancho útil).
+  function _deltaReanclaje(bb, marco, siNoCabe) {
     var d = { x: 0, y: 0, z: 0 };
     if (!bb || !marco) return d;
     ['x', 'y', 'z'].forEach(function (e) {
       var f = marco[e], lo = bb.min[e], hi = bb.max[e];
       if (!f || !(f.hi > f.lo)) return;
-      if ((hi - lo) > (f.hi - f.lo)) { d[e] = (f.lo + f.hi) / 2 - (lo + hi) / 2; return; }
+      if ((hi - lo) > (f.hi - f.lo)) {
+        if (siNoCabe !== 'dejar') d[e] = (f.lo + f.hi) / 2 - (lo + hi) / 2;
+        return;
+      }
       if (lo < f.lo) d[e] = f.lo - lo;
       else if (hi > f.hi) d[e] = f.hi - hi;
     });
@@ -555,7 +593,9 @@
       });
       if (tieneSpin) pts = _girarSobreEjeBarra(pts, radSpin);
       // RE-ANCLAJE al recubrimiento (boundaries) + traslación del pos_hint.
-      var r = marco ? _deltaReanclaje(_bboxPuntos(pts), marco) : { x: 0, y: 0, z: 0 };
+      // Con SPIN: si el bbox girado no cabe, se DEJA (no centrar): centrar
+      // colapsaba las barras repartidas de la capa todas al mismo punto.
+      var r = marco ? _deltaReanclaje(_bboxPuntos(pts), marco, tieneSpin ? 'dejar' : 'centrar') : { x: 0, y: 0, z: 0 };
       pl.puntos = pts.map(function (q) {
         var o = { x: q.x + r.x + dx, y: q.y + r.y + dy, z: q.z + r.z + dz };
         if (q.esArco) o.esArco = true;
@@ -731,6 +771,8 @@
     estaVolteado: estaVolteado,
     ejeDistribucion: ejeDistribucion,
     ejeCapas: ejeCapas,
+    rolDeTipologia: _rolDeTipologia,   // jerarquía: generar calcula host.phi_est
+
     distribuidorLinear: distribuidorLinear,
     distribuidorLayered: distribuidorLayered,
     distribuidorArreglo: distribuidorArreglo,

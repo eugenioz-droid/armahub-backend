@@ -90,10 +90,13 @@ ok(esV.length === 5, 'rango 16cm @4 en Z → 5 estribos (=' + esV.length + ')');
 ok(dentroDelMarco(esV), 'todos los puntos DENTRO del marco de recubrimiento');
 ok(reparte(esV, 'z') && !reparte(esV, 'x'), 'reparte en Z (antes X)');
 ok(!reparte(esBase, 'z') && reparte(esBase, 'x'), 'la base sigue repartiendo en X');
-// la figura ahora vive en el plano (x,y): su lado horizontal = largo útil
+// la figura ahora vive en el plano (x,y): su lado horizontal = largo útil.
+// JERARQUÍA: el marco devuelve el EJE del estribo = recub + φ/2 (la SUPERFICIE
+// del fierro queda al recubrimiento) → los extremos del eje son útil − φ/2.
+const EJE_ES = 0.8 / 2;   // φ8 → 0.4 cm
 const sx = span(esV, 'x'), sy = span(esV, 'y');
-ok(close(sx.hi, MARCO.x, 0.01) && close(sx.lo, -MARCO.x, 0.01), 'lado horizontal = largo − 2·recub extremo (±' + MARCO.x + ')');
-ok(close(sy.hi, MARCO.y, 0.01) && close(sy.lo, -MARCO.y, 0.01), 'lado vertical = alto útil (±' + MARCO.y + ')');
+ok(close(sx.hi, MARCO.x - EJE_ES, 0.01) && close(sx.lo, -(MARCO.x - EJE_ES), 0.01), 'lado horizontal (eje) = largo útil − φ/2 (±' + (MARCO.x - EJE_ES) + ')');
+ok(close(sy.hi, MARCO.y - EJE_ES, 0.01) && close(sy.lo, -(MARCO.y - EJE_ES), 0.01), 'lado vertical (eje) = alto útil − φ/2 (±' + (MARCO.y - EJE_ES) + ')');
 ok(R.ejeDistribucion({ plano_pieza: { volteado: true } }) === 'z', 'ejeDistribucion volteado = z');
 ok(esV.every(pl => pl.meta && pl.meta.volteado === true), 'meta.volteado estampado');
 ok(esV[0].puntos.length === esBase[0].puntos.length, 'misma cantidad de puntos que la base (misma figura, otra orientación)');

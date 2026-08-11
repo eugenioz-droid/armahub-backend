@@ -252,6 +252,16 @@
     };
     var REGLAS = _reglas();
     if (!REGLAS) { console.error('[generar] ModeladorReglas no disponible aún'); return { placements: [], barras: [], resumen: { items: 0, barras: 0, kg: 0 } }; }
+    // JERARQUÍA DE BARRAS (dato cruzado): φ del estribo más grueso del elemento,
+    // en cm. El recubrimiento es a la CARA del fierro más externo (el estribo);
+    // los longitudinales se apoyan POR DENTRO del estribo → sus ejes se corren
+    // recub + φ_est + φ_propio/2. reglas/figura_puntos lo leen de host.phi_est.
+    var phiEst = 0;
+    (receta.componentes || []).forEach(function (comp) {
+      var rol = (REGLAS.rolDeTipologia ? REGLAS.rolDeTipologia(comp.tipologia, comp.cara) : '');
+      if (rol === 'estribo' && Number(comp.diam) / 10 > phiEst) phiEst = Number(comp.diam) / 10;
+    });
+    host.phi_est = phiEst;
     var placements = [];
     (receta.componentes || []).forEach(function (comp) {
       var pls = REGLAS.expandirComponente(comp, host);
