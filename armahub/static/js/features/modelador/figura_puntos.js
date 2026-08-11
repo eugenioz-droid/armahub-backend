@@ -220,6 +220,100 @@
     ];
   }
 
+  // ---------------------------------------------------------------------------
+  // ANIDADO GENERAL POR FIGURA — "la capa k es la MISMA figura con un INSET de
+  // polilínea δ hacia el interior".
+  // ---------------------------------------------------------------------------
+  // Regla ÚNICA (no hay casos particulares por tipología): al meter una figura
+  // DENTRO de otra, cada LADO se desplaza δ hacia el interior. Un lado se acorta
+  // δ por CADA lado vecino perpendicular que también se desplazó:
+  //
+  //   · figura CERRADA (104x, perímetro): todos los lados tienen 2 vecinos →
+  //     cada lado −2δ. La POSICIÓN la resuelve el marco (anchor.inset += δ), que
+  //     ya encoge el rectángulo útil; por eso anchorDelta = 0 y se devuelve
+  //     `inset: δ` para que el llamador lo sume al anchor.
+  //     (Hoy el marco ya se encogía pero las dims NO → el listado/corte mentía.)
+  //
+  //   · figura ABIERTA en U / corchete (103x con patas A y C): el lado central B
+  //     tiene 2 vecinos → B−2δ; las patas A y C son EXTREMOS (1 vecino) → −δ
+  //     cada una, de modo que sus PUNTAS quedan alineadas con las de la capa
+  //     exterior. La cadena entera se corre δ hacia el núcleo →
+  //     anchorDelta.y = sentido·δ. Un corchete DENTRO del otro, sin toparse.
+  //     (Con una sola pata — figura en L — B tiene 1 vecino → B−δ. Misma regla.)
+  //
+  //   · figura RECTA (101x, un solo lado, 0 vecinos): −0 → sin cambio. No hay
+  //     nada que anidar; el llamador aplica el retranqueo de capa normal.
+  //
+  // δ lo fija el distribuidor: k·(φ+gap) en layered, k·max(sep_capas,φ) en
+  // arreglo. Con gap=0 las capas quedan TOCÁNDOSE (lo que pidió el usuario).
+  //
+  // anidarFigura(figura, dims, delta, rol, opts) →
+  //   { dims, anchorDelta:{x,y,z}, inset, criterio, vecinos }
+  // NO muta `dims` (devuelve un clon cuando hay cambio).
+  //   opts.sentido: +1|−1 = hacia dónde está el núcleo en Y (cara inf = +1,
+  //   cara sup = −1). Default −1 (cara superior, el caso de la viga).
+  //   opts.cerrada: fuerza el criterio cerrado para figuras fuera de la serie 104.
+  var LADOS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I'];
+
+  // Lados REALES de la figura = las letras presentes en dims con valor > 0, en
+  // orden de recorrido (A→B→C…). Es la misma fuente que usa el backend para el
+  // largo (suma de lados), así que el ítem del listado no puede desincronizarse.
+  function _ladosDeDims(dims) {
+    var out = [];
+    for (var i = 0; i < LADOS.length; i++) {
+      var L = LADOS[i], v = dims ? Number(dims[L]) : NaN;
+      if (dims && dims[L] != null && isFinite(v) && v > 0) out.push(L);
+    }
+    return out;
+  }
+
+  function figuraCerrada(figura) {
+    return (figura || '').toUpperCase().indexOf('104') === 0;
+  }
+
+  function anidarFigura(figura, dims, delta, rol, opts) {
+    opts = opts || {};
+    var d = Number(delta) || 0;
+    var sentido = (opts.sentido === 1 || opts.sentido === -1) ? opts.sentido : -1;
+    var res = { dims: dims, anchorDelta: { x: 0, y: 0, z: 0 }, inset: 0, criterio: 'recta', vecinos: {} };
+    var lados = _ladosDeDims(dims);
+    var f = (figura || '').toUpperCase();
+    // El criterio lo manda la FIGURA; el rol sólo desempata cuando la figura no
+    // dice nada: un componente con rol 'estribo' se dibuja SIEMPRE como marco
+    // cerrado (_estriboPerimetral), así que su anidado es por inset de marco.
+    var abierta = (f.indexOf('103') === 0) && lados.length >= 2;   // U / corchete / L
+    var cerrada = !abierta && (opts.cerrada === true || figuraCerrada(f) || rol === 'estribo');
+    if (!(d > 0) || (!cerrada && lados.length < 2)) {
+      // recta (o δ nulo): no hay vecino perpendicular → nada que achicar.
+      return res;
+    }
+    if (cerrada && lados.length < 2) {
+      // marco sin dims utilizables (el perímetro lo deriva _marcoNucleo): igual
+      // hay que encogerlo δ, aunque no haya lados que ajustar.
+      res.criterio = 'cerrada'; res.inset = d;
+      return res;
+    }
+    var nd = {};
+    for (var k in dims) if (dims.hasOwnProperty(k)) nd[k] = dims[k];
+    for (var i = 0; i < lados.length; i++) {
+      var L = lados[i];
+      // vecinos perpendiculares del lado: cerrada = 2 siempre; abierta = 2 salvo
+      // los EXTREMOS de la cadena, que tienen 1.
+      var v = cerrada ? 2 : ((i === 0 || i === lados.length - 1) ? 1 : 2);
+      res.vecinos[L] = v;
+      nd[L] = Math.max(0, Number(nd[L]) - v * d);
+    }
+    res.dims = nd;
+    if (cerrada) {
+      res.criterio = 'cerrada';
+      res.inset = d;                       // el marco (anchor.inset) posiciona
+    } else {
+      res.criterio = 'abierta';
+      res.anchorDelta.y = sentido * d;     // la cadena se corre δ hacia el núcleo
+    }
+    return res;
+  }
+
   // ---- Despachador principal -------------------------------------------------
   // rol: 'cabezal' | 'estribo' | 'traba' (viene de la tipología del componente).
   // Devuelve la polilínea [{x,y,z}] en coordenadas del host (cm).
@@ -243,6 +337,10 @@
   var API = {
     figuraAPuntos: figuraAPuntos,
     extGancho: extGancho,
+    // ANIDADO: fuente ÚNICA del criterio "figura dentro de figura" (la usan
+    // distribuidorLayered/distribuidorArreglo de reglas.js).
+    anidarFigura: anidarFigura,
+    figuraCerrada: figuraCerrada,
     // exportados para tests / reuso
     _cabezalLongitudinal: _cabezalLongitudinal,
     _estriboPerimetral: _estriboPerimetral,

@@ -108,6 +108,37 @@
   }
 
   // ---------------------------------------------------------------------------
+  // JERARQUÍA DE BARRAS — NIVELES 1-BASED (+ 'no')
+  // ---------------------------------------------------------------------------
+  // comp.jerarquia = 'no' | 1 | 2 | 3 | 4
+  //   'no' → SIN jerarquía: la barra se pega al recubrimiento (inset 0) y NO
+  //          aporta su φ a la cadena (no empuja a nadie hacia adentro).
+  //   1    → nivel más EXTERNO: pegado al recubrimiento Y aporta su φ.
+  //   2    → se apoya por DENTRO del nivel 1 (inset = Σφ del nivel 1). Etc.
+  // Defaults por rol cuando el componente no declara nivel (campo ausente):
+  //   estribo → 1, traba → 2, cabezal → 2.
+  // MIGRACIÓN del viejo 0-based: cualquier número n ≥ 1 se lee como nivel
+  // 1-based tal cual, y 0 (o negativo) se lee como 1 — que es exactamente lo que
+  // significaba el viejo 0 ("pegado al recubrimiento y aporta φ").
+  var JER_DEFAULT_POR_ROL = { estribo: 1, traba: 2, cabezal: 2 };
+
+  // Nivel DECLARADO por el componente: 'no' | entero ≥ 1 | null (= no declara).
+  function nivelJerarquia(valor) {
+    if (valor === 'no' || valor === 'NO' || valor === false) return 'no';
+    if (valor == null || valor === '') return null;
+    var n = Number(valor);
+    if (!isFinite(n)) return null;
+    return (n < 1) ? 1 : Math.round(n);     // 0-based viejo: 0 → 1
+  }
+
+  // Nivel EFECTIVO (el que gobierna el ANCLAJE): declarado, o default por rol.
+  function nivelJerarquiaEfectivo(valor, rol) {
+    var n = nivelJerarquia(valor);
+    if (n != null) return n;
+    return JER_DEFAULT_POR_ROL[rol || 'cabezal'] || 2;
+  }
+
+  // ---------------------------------------------------------------------------
   // T0.5 — REDONDEO DE CANTIDAD (longitud ÷ @ → nº de barras)
   // ---------------------------------------------------------------------------
   // REDONDEO DE ESTRIBOS — ESPEJO EXACTO de ArmaPilot (verificado 08-ago contra el
@@ -277,10 +308,16 @@
       // rango — un CABEZAL corre en x, así que su rango reparte copias en 'z'
       // (a lo ancho); repartirlo en x lo apilaría sobre sí mismo.
       var ejeR = (cfg.rango.eje === 'y' || cfg.rango.eje === 'z') ? cfg.rango.eje : 'x';
+      // PASO REAL (no el nominal): el conteo ArmaPilot ceil(span/@)+1 CIERRA el
+      // intervalo, así que las nR barras se reparten equiespaciadas entre from y
+      // to con paso = span/(nR−1) ≤ @ ("cada @ o menos"). Avanzar con el @ NOMINAL
+      // hacía que el recorrido no alcanzara `to` y el bucle cortara antes:
+      // prometía nR barras y colocaba menos, dejando un hueco muerto en un extremo
+      // (span 24 @20 → nR=3 pero colocaba 2 en −12 y +8, con 4 cm muertos).
       var nR = redondeoCantidadZona(rt - rf, sep);
+      var pasoR = (nR > 1) ? (rt - rf) / (nR - 1) : 0;
       for (var ri = 0; ri < nR; ri++) {
-        var xr = rf + ri * sep;
-        if (xr > rt + 1e-6) break;
+        var xr = rf + ri * pasoR;
         var extraR = {}; extraR[ejeR] = xr;
         // Un CABEZAL repartido necesita su Y de cara (el lineal nació para
         // estribos, que ignoran anchor.y → los cabezales salían sin altura).
@@ -316,22 +353,56 @@
   // cabezales (cara sup/inf). Reparte barras_capa a lo ancho (Z); cada capa se
   // retranquea hacia el núcleo por su índice (offset = capa_idx*(diam+gap)).
   // cfg: { n_capas, barras_capa, gap, sentido:'nucleo' }
-  // JERARQUÍA DE BARRAS POR NIVEL: base.jerarquia = 0 (pegado al recubrimiento),
-  // 1, 2… (se apoya por dentro de los niveles anteriores). El inset EXTRA (además
+  // JERARQUÍA DE BARRAS POR NIVEL (1-BASED): el inset EXTRA de un nivel n (además
   // de recub y φ_propio/2, que pone el llamador) es la suma de los φ máximos de
-  // los niveles anteriores (host.jer_phi, lo calcula generar). Sin dato → compat
-  // con host.phi_est (estribo nivel 0 / resto nivel 1).
-  function _insetJerarquia(base, host) {
-    var nivel = (base.jerarquia != null && isFinite(base.jerarquia)) ? Number(base.jerarquia)
-      : ((base.rol || 'cabezal') === 'estribo' ? 0 : 1);
-    if (nivel <= 0) return 0;
+  // los niveles ANTERIORES: Σ host.jer_phi[1..n−1] (lo calcula generar, indexado
+  // 1-based y EXCLUYENDO los 'no'). Nivel 1 y 'no' → 0 (pegados al recubrimiento).
+  // Sin host.jer_phi (llamadas directas al motor en tests/UI) → compat con
+  // host.phi_est, el φ del nivel 1.
+  function _insetDeNivel(nivel, host) {
+    if (nivel === 'no' || nivel == null) return 0;
+    var n = Number(nivel);
+    if (!isFinite(n) || n <= 1) return 0;
     var phis = host && host.jer_phi;
     if (phis && phis.length) {
       var s = 0;
-      for (var i = 0; i < nivel && i < phis.length; i++) s += Number(phis[i]) || 0;
+      for (var i = 1; i < n && i < phis.length; i++) s += Number(phis[i]) || 0;
       return s;
     }
     return (host && host.phi_est) ? Number(host.phi_est) : 0;
+  }
+
+  // MARCO ÚTIL DEL NIVEL — FUENTE ÚNICA para (a) las dims 'auto' y (b) el inset
+  // de anclaje. Una barra de nivel n no se mide contra el hormigón sino contra el
+  // hueco que le dejan los niveles de más afuera:
+  //     dim_auto = dimensión_host − 2·(recub + Σφ de los niveles anteriores)
+  // Antes las dims 'auto' usaban SOLO el recubrimiento → una barra de nivel 2
+  // salía LARGA y atravesaba el estribo.
+  //
+  // `nivelOverride` permite pedir el marco de otro nivel. Los dos consumidores:
+  //   · _dimsEfectivas  → nivel DECLARADO por el componente (sin declaración la
+  //     dim se sigue midiendo al recubrimiento: el default por rol gobierna el
+  //     ANCLAJE, no el largo de corte de recetas que nunca declararon nivel);
+  //   · _insetJerarquia → nivel EFECTIVO (declarado o default por rol).
+  function marcoUtilNivel(base, host, nivelOverride) {
+    var nivel = (nivelOverride !== undefined) ? nivelOverride
+      : ((base && base.jerarquia !== undefined) ? base.jerarquia : null);
+    var insetJ = _insetDeNivel(nivel, host);
+    var recub = (host && host.recub_sup != null) ? Number(host.recub_sup) : 4;
+    var recubLat = (host && host.recub_lat != null) ? Number(host.recub_lat) : 3;
+    return {
+      nivel: nivel, insetJ: insetJ, recub: recub, recubLat: recubLat,
+      largoUtil: Number(host.largo) - 2 * (recub + insetJ),
+      altoUtil: Number(host.alto) - 2 * (recub + insetJ),
+      anchoUtil: Number(host.ancho) - 2 * (recubLat + insetJ)
+    };
+  }
+
+  function _insetJerarquia(base, host) {
+    var nivel = nivelJerarquiaEfectivo(
+      (base && base.jerarquia !== undefined) ? base.jerarquia : null,
+      (base && base.rol) || 'cabezal');
+    return marcoUtilNivel(base, host, nivel).insetJ;
   }
 
   // Borde del eje de un longitudinal en Y según su cara (con jerarquía).
@@ -353,36 +424,37 @@
     var s = (cara === 'sup') ? -1 : 1;   // hacia el núcleo
     var yBorde = _yBordeCabezal(base, host);
     // CAPAS ANIDADAS/AJUSTADAS (cfg.anidar !== false, toggle de la UI):
-    //  · estribo/corchete: cada capa se ACHICA (inset φ+gap) para anidar dentro
-    //    de la anterior en vez de apilarse desplazada;
-    //  · cabezal con patas (103x): la capa retranqueada ACORTA sus patas A/C en
-    //    el mismo offset → sus puntas quedan alineadas con las de la capa 1 y
-    //    sale como ÍTEM PROPIO en el listado (dims distintas → marca distinta).
-    // Estribo: anida por DEFAULT (anidar!==false). Cabezal: ajuste de patas es
-    // OPT-IN (anidar===true) — cambiaría dims/kg de recetas existentes si fuera
-    // default (la viga-semilla quedaría con 5 ítems en vez de 4).
+    // el CRITERIO (qué lados se achican, y si la capa se posiciona por inset de
+    // marco o corriendo la polilínea) lo decide UNA sola función, por FIGURA:
+    // figura_puntos.anidarFigura — "la capa k es la MISMA figura con un inset de
+    // polilínea δ_k = k·(φ+gap)". Aquí sólo se decide CUÁNDO aplica:
+    //   · estribo/figura cerrada → por DEFAULT (anidar !== false);
+    //   · figura abierta con patas (103x) → OPT-IN (anidar === true), porque
+    //     cambiaría dims/kg de recetas existentes si fuera default (la viga-semilla
+    //     quedaría con 5 ítems en vez de 4).
+    // Al anidar NO se aplica ADEMÁS el corrimiento de capa en Y (el inset / el
+    // anchorDelta de anidarFigura ya posicionan: evitar el doble desplazamiento).
     var anidaMarco = (!cfg || cfg.anidar !== false) && (base.rol === 'estribo');
-    var anidaPatas = (cfg && cfg.anidar === true) && (base.rol !== 'estribo') &&
+    var anidaFig = (cfg && cfg.anidar === true) && (base.rol !== 'estribo') &&
       ((base.dims && Number(base.dims.A) > 0) || (base.dims && Number(base.dims.C) > 0));
     for (var c = 0; c < nCapas; c++) {
-      var y = yBorde + s * c * (base.diam + gap);   // retranqueo por capa
-      var off = c * (base.diam + gap);
-      var dimsCapa = base.dims;
-      if (anidaPatas && c > 0) {
-        dimsCapa = {};
-        for (var dk in base.dims) if (base.dims.hasOwnProperty(dk)) dimsCapa[dk] = base.dims[dk];
-        if (Number(dimsCapa.A) > 0) dimsCapa.A = Math.max(base.diam * 2, Number(dimsCapa.A) - off);
-        if (Number(dimsCapa.C) > 0) dimsCapa.C = Math.max(base.diam * 2, Number(dimsCapa.C) - off);
-      }
+      var off = c * (base.diam + gap);              // δ de la capa
+      var an = (c > 0 && (anidaMarco || anidaFig))
+        ? _fp().anidarFigura(base.figura, base.dims, off, base.rol, { sentido: s })
+        : null;
+      var usaAn = !!(an && an.criterio !== 'recta');
+      var dimsCapa = usaAn ? an.dims : base.dims;
+      // Sin anidado: retranqueo de capa clásico. Con anidado: lo posiciona anidarFigura.
+      var y = usaAn ? (yBorde + an.anchorDelta.y) : (yBorde + s * off);
       for (var i = 0; i < nBarras; i++) {
         var z = (nBarras > 1) ? (-zHalf + (2 * zHalf) * (i / (nBarras - 1))) : 0;
         var extra = { y: y, z: z, cara: cara };
-        if (anidaMarco && c > 0) extra.inset = (base.anchorBase.inset || 0) + off;
+        if (usaAn && an.inset) extra.inset = (base.anchorBase.inset || 0) + an.inset;
         var anchor = _mezclarAnchor(base.anchorBase, extra);
         var puntos = _fp().figuraAPuntos(base.figura, dimsCapa, host, anchor,
           { rol: base.rol || 'cabezal', diamCm: base.diam });
         var pl = _placement(base, puntos, { capa: c + 1, cara: cara });
-        if (dimsCapa !== base.dims) pl.dims = dimsCapa;   // ítem propio en el listado
+        if (usaAn) pl.dims = _clonDims(dimsCapa);   // ítem propio en el listado
         placements.push(pl);
       }
     }
@@ -426,6 +498,7 @@
     // RESPECTO de donde ya está anclada la barra; ausente = 0, como el lineal).
     var baseEje = (base.anchorBase && base.anchorBase[eje] != null) ? Number(base.anchorBase[eje]) : 0;
     var nR = redondeoCantidadZona(rt - rf, sep);
+    var pasoR = (nR > 1) ? (rt - rf) / (nR - 1) : 0;   // paso REAL (ver distribuidorLinear)
     // 1 capa = distribución lineal pura: NO se toca el eje de profundidad, así el
     // anchor queda BYTE-A-BYTE igual al de distribuidorLinear (garantía de cero
     // regresión). Con ≥2 capas SÍ se fija el plano de profundidad en TODAS las
@@ -436,21 +509,32 @@
     var anidaA = (base.rol === 'estribo') && (!cfg || cfg.anidar !== false);
     for (var c = 0; c < nCapas; c++) {
       var off = c * sepCapas;
+      // δ de la capa anidada: la sep configurada, nunca menos que φ (dos estribos
+      // no pueden compartir plano). El CRITERIO de anidado (qué lados se achican,
+      // si la posición la da el inset o un corrimiento) lo decide anidarFigura.
+      var an = (anidaA && !unaCapa && c > 0)
+        ? _fp().anidarFigura(base.figura, base.dims, c * Math.max(sepCapas, base.diam), base.rol,
+          { sentido: ((base.anchorBase && base.anchorBase.cara) === 'inf') ? 1 : -1 })
+        : null;
+      var usaAn = !!(an && an.criterio !== 'recta');
+      var dimsCapaA = usaAn ? an.dims : base.dims;
       for (var ri = 0; ri < nR; ri++) {
-        var xr = rf + ri * sep;
-        if (xr > rt + 1e-6) break;
+        var xr = rf + ri * pasoR;
         var extra = { x: xr };
         if (!unaCapa) {
-          // inset eje-a-eje por capa: la sep configurada, nunca menos que φ
-          // (dos estribos no pueden compartir plano). Se SUMA al inset de
-          // jerarquía del anchor base (niveles > 0).
-          if (anidaA) { if (c > 0) extra.inset = (base.anchorBase.inset || 0) + c * Math.max(sepCapas, base.diam); }
-          else extra[eje] = baseEje + off;
+          if (usaAn) {
+            if (an.inset) extra.inset = (base.anchorBase.inset || 0) + an.inset;
+            if (an.anchorDelta.y) extra.y = ((base.anchorBase && base.anchorBase.y) || 0) + an.anchorDelta.y;
+          } else if (!anidaA) {
+            extra[eje] = baseEje + off;
+          }
         }
         var anchorA = _mezclarAnchor(base.anchorBase, extra);
-        var puntosA = _fp().figuraAPuntos(base.figura, base.dims, host, anchorA,
+        var puntosA = _fp().figuraAPuntos(base.figura, dimsCapaA, host, anchorA,
           { rol: base.rol || 'estribo', diamCm: base.diam });
-        placements.push(_placement(base, puntosA, unaCapa ? { rango: 1 } : { rango: 1, capa: c + 1 }));
+        var plA = _placement(base, puntosA, unaCapa ? { rango: 1 } : { rango: 1, capa: c + 1 });
+        if (usaAn) plA.dims = _clonDims(dimsCapaA);   // ítem propio (dims reales de corte)
+        placements.push(plA);
       }
     }
     return placements;
@@ -690,27 +774,28 @@
   // Helpers
   // ---------------------------------------------------------------------------
   // Resuelve las dims EFECTIVAS de un componente: cada dim 'auto' se deriva del
-  // host; 'fija' toma su valor. Para el MVP: en cabezal, B(auto)=largo−2·recub;
-  // en estribo, los lados del perímetro (auto)=alto/ancho−2·recub.
-  function _dimsEfectivas(comp, host) {
+  // MARCO ÚTIL DE SU NIVEL (marcoUtilNivel: host − 2·(recub + Σφ de los niveles
+  // anteriores)), no del hormigón pelado; 'fija' toma su valor.
+  //   cabezal → largoUtil (corre a lo largo del eje longitudinal local)
+  //   estribo → A/C = anchoUtil, B/D = altoUtil (el backend recalcula el largo)
+  //   traba   → altoUtil
+  // `nivel` (3er arg) = nivel DECLARADO; sin declarar, insetJ = 0 → idéntico a
+  // medir contra el recubrimiento (comportamiento histórico de las recetas).
+  function _dimsEfectivas(comp, host, nivel) {
     var dims = {};
     var g = comp.dims || {};
-    var recub = (host.recub_sup != null ? host.recub_sup : 4);
-    var recubLat = (host.recub_lat != null ? host.recub_lat : 3);
+    var mk = marcoUtilNivel(null, host, (nivel !== undefined) ? nivel : null);
     Object.keys(g).forEach(function (k) {
       var d = g[k];
       if (d && d.modo === 'fija') { dims[k] = Number(d.valor); return; }
-      // AUTO: deriva según rol + letra.
+      // AUTO: deriva según rol + letra, contra el marco útil del NIVEL.
       if (comp._rol === 'cabezal') {
-        // B = largo − 2·recub extremo (patas van fuera del tramo B)
-        dims[k] = host.largo - 2 * recub;
+        // B = largo útil − 2·recub extremo (patas van fuera del tramo B)
+        dims[k] = mk.largoUtil;
       } else if (comp._rol === 'estribo') {
-        // perímetro: A/C = alto útil; B/D = ancho útil (aprox — el backend recalcula largo)
-        var altoUtil = host.alto - 2 * recub;
-        var anchoUtil = host.ancho - 2 * recubLat;
-        dims[k] = (k === 'A' || k === 'C') ? anchoUtil : altoUtil;
+        dims[k] = (k === 'A' || k === 'C') ? mk.anchoUtil : mk.altoUtil;
       } else {
-        dims[k] = host.alto - 2 * recub;
+        dims[k] = mk.altoUtil;
       }
     });
     // EMPALME: alarga la dim LONGITUDINAL. La longitudinal es la que corre a lo
@@ -745,8 +830,11 @@
       tipologia: comp.tipologia, suf: comp.suf_tipo || '',
       comp_id: (comp.comp_id != null ? comp.comp_id : null),
       prioridad: comp.prioridad != null ? comp.prioridad : null,
-      jerarquia: (comp.jerarquia != null && isFinite(comp.jerarquia)) ? Number(comp.jerarquia) : null,
-      dims: _dimsEfectivas(comp, host),
+      // Nivel DECLARADO ('no' | 1,2,3… | null = auto → default por rol). Gobierna
+      // el anclaje (vía _insetJerarquia, que le aplica el default) y el marco útil
+      // de las dims 'auto' (sólo si está declarado).
+      jerarquia: nivelJerarquia(comp.jerarquia),
+      dims: _dimsEfectivas(comp, host, nivelJerarquia(comp.jerarquia)),
       angulos: comp.angulos || null,
       rol: comp._rol,
       anchorBase: {
@@ -769,6 +857,14 @@
     if (t === 'ES' || t === 'ESC' || t === 'EC') return 'estribo';
     if (t === 'TRV' || t === 'TR' || t === 'TC' || t === 'TRC' || t === 'TRL' || t === 'TRF') return 'traba';
     return 'cabezal';   // CBS/CBI/CB/LT/… longitudinales
+  }
+
+  // Clon plano de un mapa de dims (cada placement lleva las SUYAS: resolverDependencias
+  // acorta patas por barra y no puede contaminar a las hermanas de la misma capa).
+  function _clonDims(dims) {
+    var o = {};
+    for (var k in dims) if (dims.hasOwnProperty(k)) o[k] = dims[k];
+    return o;
   }
 
   function _mezclarAnchor(baseAnchor, extra) {
@@ -807,7 +903,12 @@
     estaVolteado: estaVolteado,
     ejeDistribucion: ejeDistribucion,
     ejeCapas: ejeCapas,
-    rolDeTipologia: _rolDeTipologia,   // jerarquía: generar calcula host.phi_est
+    rolDeTipologia: _rolDeTipologia,   // jerarquía: generar calcula host.jer_phi
+    // JERARQUÍA 1-BASED ('no' | 1..n) — generar.js arma host.jer_phi con esto.
+    nivelJerarquia: nivelJerarquia,
+    nivelJerarquiaEfectivo: nivelJerarquiaEfectivo,
+    JER_DEFAULT_POR_ROL: JER_DEFAULT_POR_ROL,
+    marcoUtilNivel: marcoUtilNivel,
 
     distribuidorLinear: distribuidorLinear,
     distribuidorLayered: distribuidorLayered,

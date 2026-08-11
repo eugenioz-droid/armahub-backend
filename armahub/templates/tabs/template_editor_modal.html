@@ -353,7 +353,9 @@
         </div>
         <span class="te-lbl">φ mm</span>
         <select id="te_ribDiam" style="width:auto;padding:6px 8px;font-size:12px;border:1px solid var(--te-line);border-radius:7px">
-          <option>8</option><option>10</option><option>12</option><option selected>16</option><option>18</option><option>22</option><option>25</option>
+          <!-- φ estándar (espejo de armahub/diametros.py: DIAM_ESTANDAR). Si cambian,
+               actualizar también TE_DIAMS en template_editor.js. -->
+          <option>8</option><option>10</option><option>12</option><option selected>16</option><option>18</option><option>22</option><option>25</option><option>28</option><option>32</option><option>36</option>
         </select>
         <span class="te-lbl">Tipología</span>
         <!-- VACÍO a propósito: lo renderiza _renderRibbonTips() (template_editor.js)

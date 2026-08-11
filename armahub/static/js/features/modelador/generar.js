@@ -252,23 +252,27 @@
     };
     var REGLAS = _reglas();
     if (!REGLAS) { console.error('[generar] ModeladorReglas no disponible aún'); return { placements: [], barras: [], resumen: { items: 0, barras: 0, kg: 0 } }; }
-    // JERARQUÍA DE BARRAS (dato cruzado, POR NIVEL): cada componente tiene un
-    // nivel de jerarquía (comp.jerarquia: 0,1,2…; default por rol: estribo 0,
-    // traba/cabezal 1). El recubrimiento es a la CARA del fierro de nivel 0;
-    // cada nivel siguiente se apoya POR DENTRO de los anteriores. host.jer_phi
-    // = [maxφ nivel0, maxφ nivel1, …] en cm; el inset de un comp de nivel n es
-    // recub + Σ jer_phi[0..n-1] + φ_propio/2 (reglas._insetJerarquia).
-    var jerPhi = [];
+    // JERARQUÍA DE BARRAS (dato cruzado, POR NIVEL 1-BASED): comp.jerarquia =
+    // 'no' | 1 | 2 | 3 | 4 (default por rol: estribo 1, traba/cabezal 2).
+    //   nivel 1 = pegado al recubrimiento Y aporta su φ a la cadena;
+    //   nivel n = se apoya POR DENTRO de los niveles anteriores;
+    //   'no'    = pegado al recubrimiento y NO aporta φ (no empuja a nadie).
+    // host.jer_phi queda indexado 1-BASED: jer_phi[1] = maxφ del nivel 1, etc.
+    // (el índice 0 existe pero vale 0: no hay nivel 0). El inset de un comp de
+    // nivel n es recub + Σ jer_phi[1..n−1] + φ_propio/2 (reglas.marcoUtilNivel).
+    var jerPhi = [0];
     (receta.componentes || []).forEach(function (comp) {
       var rol = (REGLAS.rolDeTipologia ? REGLAS.rolDeTipologia(comp.tipologia, comp.cara) : 'cabezal');
-      var nivel = (comp.jerarquia != null && isFinite(comp.jerarquia)) ? Number(comp.jerarquia)
-        : (rol === 'estribo' ? 0 : 1);
+      var nivel = REGLAS.nivelJerarquiaEfectivo
+        ? REGLAS.nivelJerarquiaEfectivo(comp.jerarquia, rol)
+        : (rol === 'estribo' ? 1 : 2);
+      if (nivel === 'no') return;                 // 'no' NO aporta φ a la cadena
       var phi = Number(comp.diam) / 10;
       if (!(jerPhi[nivel] >= phi)) jerPhi[nivel] = phi;
     });
     for (var jn = 0; jn < jerPhi.length; jn++) if (jerPhi[jn] == null) jerPhi[jn] = 0;
     host.jer_phi = jerPhi;
-    host.phi_est = jerPhi[0] || 0;   // compat: φ del nivel 0 (estribos)
+    host.phi_est = jerPhi[1] || 0;   // compat: φ del nivel 1 (estribos)
     var placements = [];
     (receta.componentes || []).forEach(function (comp) {
       var pls = REGLAS.expandirComponente(comp, host);

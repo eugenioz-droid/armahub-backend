@@ -119,6 +119,10 @@
     return TIP_ROL[t] || 'cabezal';   // CBS/CBI/LT/... = cabezal (longitudinal)
   }
 
+  // Diámetros estándar (mm) — espejo de armahub/diametros.py: DIAM_ESTANDAR.
+  // Alimenta los DOS selects de φ (ribbon y panel del componente): una sola lista.
+  var TE_DIAMS = [8, 10, 12, 16, 18, 22, 25, 28, 32, 36];
+
   // Espejo mínimo de parciales/ángulos del catálogo (mismas figuras que generar.js).
   var FIG = {
     '101A': { parciales: ['A'], angulos: [] },
@@ -1352,10 +1356,12 @@
           var dd = Math.abs((raw[si][def.depth] || 0) - (raw[si - 1][def.depth] || 0));
           if (dd > mejorDelta) { mejorDelta = dd; q0 = proj(raw[si]); }
         }
-        // Radio REAL de la barra en px (φ en mm → cm/2 → escala de la vista); el
-        // render 3D no puede pintar esta sección (el cilindro cortado de punta es un
-        // tubo de pared 0 px), así que el círculo lo pone SIEMPRE el overlay.
-        var rPx = Math.max(3, (Number(pl.diam) / 20) * Math.abs(t.s || 1));
+        // Radio REAL de la barra en px. OJO con las unidades: pl.diam YA viene en
+        // CENTÍMETROS (reglas.js lo convierte una sola vez: φ16 → 1.6) y t.s es
+        // px/cm → radio = diam/2 * s. Antes se dividía por 20 (se re-aplicaba el
+        // mm→cm) y el círculo salía 10× chico; el piso de 3 px lo tapaba dibujando
+        // todos los φ iguales. Piso 1.5 px: sólo actúa en zoom-out extremo.
+        var rPx = Math.max(1.5, (Number(pl.diam) / 2) * Math.abs(t.s || 1));
         if (sel) svg.appendChild(_svgEl('circle', { cx: X(q0.u), cy: Y(q0.v), r: rPx + 2.5, 'class': 'te-bar-halo' }));
         svg.appendChild(_svgEl('circle', { cx: X(q0.u), cy: Y(q0.v), r: rPx, fill: color, style: 'pointer-events:none' }));
         // hit generoso (transparente) — es lo que hace clicable la barra
@@ -1654,6 +1660,34 @@
     return ph;
   }
 
+  // Re-encuadra las ZONAS de espaciamiento (confinado/centro) al tramo útil del eje
+  // `eje`, repartiéndolas en PROPORCIÓN a como estaban y conservando cada @sep. Es
+  // el mismo criterio que se aplica al rango. Sin esto, al voltear una viga de 600
+  // las zonas (150/300/150) se siguen midiendo contra los 30 cm del ancho y el
+  // distribuidor corta el reparto casi entero.
+  function _reencuadrarZonas(d, eje) {
+    var zs = d && d.zonas;
+    if (!zs || !zs.length) return;
+    var g = ST.receta.geometria;
+    var dim = Number(eje === 'z' ? g.ancho : (eje === 'y' ? g.alto : g.largo));
+    // el motor consume las zonas entre ±dim/2 ∓ start_offset (mismo margen que el rango)
+    var rd = _rangoDefault(d.sep || 20, eje);
+    var start = isFinite(Number(d.start_offset)) ? Number(d.start_offset) : (dim - (rd.to - rd.from)) / 2;
+    var util = dim - 2 * start;
+    if (!isFinite(util) || util <= 0) return;
+    // zonas placeholder (todas long 0) = distribución por rango: no se tocan.
+    var total = zs.reduce(function (a, z) { return a + (Number(z.long) || 0); }, 0);
+    if (total <= 0) return;
+    var acum = 0;
+    for (var i = 0; i < zs.length; i++) {
+      var v = (i === zs.length - 1)
+        ? util - acum                                   // la última cierra exacto
+        : Math.round((Number(zs[i].long) || 0) / total * util);
+      zs[i].long = Math.max(0, v);
+      acum += zs[i].long;
+    }
+  }
+
   // ==========================================================================
   // ROTAR PLANO DE LA PIEZA (§INTERACCIÓN-2.0 · G3/B3) — NO rota EN el plano;
   // VOLTEA el plano de trabajo de la pieza. Desde 11-ago es GEOMETRÍA REAL: el
@@ -1662,18 +1696,21 @@
   // 'auto' y el anclaje contra el recubrimiento de las caras NUEVAS. Las 4 vistas
   // (que son renders 3D) lo muestran girado sin ningún truco de proyección.
   //
-  // El RANGO se expresa en el eje de distribución, así que al voltear hay que
-  // llevarlo al eje nuevo: se re-encuadra al tramo útil completo de ese eje
-  // (conservando el @sep). Si se dejara el rango viejo, un estribo repartido en
-  // ±296 (largo) pasaría a repartirse en ±296 de ANCHO — fuera del hormigón.
+  // El RANGO y las ZONAS se expresan en el eje de distribución, así que al voltear
+  // hay que llevarlos al eje nuevo: se re-encuadran al tramo útil completo de ese
+  // eje (conservando los @sep). Si se dejara el dato viejo, un estribo repartido en
+  // ±296 (largo) pasaría a repartirse en ±296 de ANCHO — fuera del hormigón — y las
+  // zonas (150/300/150 cm) se consumirían contra un marco de 30 cm: el distribuidor
+  // las trunca en silencio y "desaparecen" casi todas las barras.
   function rotarPlanoPieza(comp) {
     if (!comp) return;
     comp.plano_pieza = comp.plano_pieza || { volteado: false };
     comp.plano_pieza.volteado = !comp.plano_pieza.volteado;
     var d = comp.distribucion;
-    if (d && d.rango) {
+    if (d) {
       var ejeN = _ejeDistDe(comp);
-      d.rango = _rangoDefault(d.rango.sep || d.sep || 20, ejeN);
+      if (d.rango) d.rango = _rangoDefault(d.rango.sep || d.sep || 20, ejeN);
+      _reencuadrarZonas(d, ejeN);
     }
     _regenerar();          // el motor re-expande con los ejes permutados
     _renderPanel();
@@ -2173,27 +2210,33 @@
     return wrap;
   }
 
+  // Nivel de jerarquía por DEFECTO según el rol (mismo criterio que el motor):
+  // estribo = 1 (nivel exterior), traba y cabezal = 2 (se apoyan por dentro).
+  function _jerDefault(rol) { return (rol === 'estribo') ? 1 : 2; }
+
   // <select> de JERARQUÍA del componente (header). Escribe comp.jerarquia:
-  //   'auto' → se borra el campo (el motor usa el default por rol)
-  //   0,1,2… → nivel explícito (0 = pegado al recubrimiento).
+  //   'no'  → pegado al recubrimiento, NO participa de la jerarquía
+  //   1..4  → nivel (1 = exterior; 2+ se apoyan por dentro del anterior).
+  // No hay opción "auto": si el componente no trae el campo, se estampa el default
+  // por rol al renderizar el panel, de modo que lo que se ve es lo que hay.
   function _selJerarquia(c, ci) {
+    if (c.jerarquia == null) c.jerarquia = _jerDefault(_rolDe(c.tipologia));
     var sel = document.createElement('select');
     sel.className = 'te-jer';
-    sel.title = '0 = pegado al recubrimiento; 1,2… se apoyan por dentro de los niveles anteriores';
-    [['', 'auto'], ['0', '0'], ['1', '1'], ['2', '2'], ['3', '3']].forEach(function (o) {
+    sel.title = 'n/a = pegado al recubrimiento (no participa) · 1 = nivel exterior · 2+ se apoyan por dentro del anterior';
+    [['no', 'n/a'], ['1', '1'], ['2', '2'], ['3', '3'], ['4', '4']].forEach(function (o) {
       var op = document.createElement('option');
       op.value = o[0]; op.textContent = o[1];
       sel.appendChild(op);
     });
-    sel.value = (c.jerarquia == null) ? '' : String(c.jerarquia);
+    sel.value = String(c.jerarquia);
     // el header es clicable (selecciona/pliega): el select se lo queda para él.
     ['click', 'mousedown', 'dblclick'].forEach(function (ev) {
       sel.addEventListener(ev, function (e) { e.stopPropagation(); });
     });
     sel.addEventListener('change', function (e) {
       e.stopPropagation();
-      if (sel.value === '') delete c.jerarquia;
-      else c.jerarquia = Number(sel.value);
+      c.jerarquia = (sel.value === 'no') ? 'no' : Number(sel.value);
       _mut(ci);
     });
     return sel;
@@ -2207,7 +2250,7 @@
     // Identidad
     var idRow = _div('te-grid3');
     idRow.appendChild(_fld('Figura', _input({ value: c.figura, list: 'te_figs' }, function (v) { _setFigura(ci, v); })));
-    idRow.appendChild(_fld('φ mm', _select(['8', '10', '12', '16', '18', '22', '25'], String(c.diam), function (v) { c.diam = Number(v); _mut(ci); })));
+    idRow.appendChild(_fld('φ mm', _select(TE_DIAMS.map(String), String(c.diam), function (v) { c.diam = Number(v); _mut(ci); })));
     idRow.appendChild(_fld('Sufijo', _input({ value: c.suf_tipo || '', placeholder: 'sup / A…' }, function (v) { c.suf_tipo = v; _mut(ci, true); })));
     body.appendChild(idRow);
 
@@ -2568,7 +2611,20 @@
     var fig = $('te_ribFigura');
     if (fig && !fig._teBound) { fig._teBound = true; fig.addEventListener('change', function () { ST.figura = fig.value.trim().toUpperCase() || '103B'; if (_hayCargado()) _sellarCargado(); else _actualizarStatus(); }); ST.figura = fig.value.trim().toUpperCase() || ST.figura; }
     var dia = $('te_ribDiam');
-    if (dia && !dia._teBound) { dia._teBound = true; dia.addEventListener('change', function () { ST.diam = Number(dia.value) || 16; if (_hayCargado()) _sellarCargado(); else _actualizarStatus(); }); ST.diam = Number(dia.value) || ST.diam; }
+    if (dia && !dia._teBound) {
+      dia._teBound = true;
+      // La lista de φ la manda TE_DIAMS (una sola fuente para ribbon y panel).
+      var prev = Number(dia.value) || 16;
+      dia.innerHTML = '';
+      TE_DIAMS.forEach(function (d) {
+        var op = document.createElement('option');
+        op.value = String(d); op.textContent = String(d);
+        if (d === prev) op.selected = true;
+        dia.appendChild(op);
+      });
+      dia.addEventListener('change', function () { ST.diam = Number(dia.value) || 16; if (_hayCargado()) _sellarCargado(); else _actualizarStatus(); });
+      ST.diam = Number(dia.value) || ST.diam;
+    }
     var con = $('te_ribContorno');
     if (con && !con._teBound) { con._teBound = true; con.addEventListener('change', function () { ST.contorno = con.checked; if (_hayCargado()) _sellarCargado(); }); ST.contorno = con.checked; }
 
@@ -3073,10 +3129,11 @@
   // hormigón y el plano P3 siguen exentos: su material ya lleva clippingPlanes:[].
   // ==========================================================================
 
-  // SECCIÓN LIMPIA — ¿esta barra se ve DE PUNTA en la vista cuyo eje de profundidad
-  // es `dep`? (cabezal cuyo eje longitudinal coincide con la profundidad). El corte
-  // le pasa por la curva del gancho y el render deja "muñones" feos; su
-  // representación correcta es el círculo de sección que ya pinta el overlay 2D.
+  // ¿esta barra se ve DE PUNTA en la vista cuyo eje de profundidad es `dep`?
+  // (cabezal cuyo eje longitudinal coincide con la profundidad). El cuchillo le
+  // pasa por la curva del gancho y dejaba "muñones" partidos; ocultarla tampoco
+  // servía (se perdía el gancho). Se renderiza COMPLETA, SIN CLIP, en ese pase:
+  // se ve la pata entera y el overlay 2D le pone igual el círculo de sección.
   function _esDePunta(mesh, dep) {
     return !!dep && mesh.userData.rol === 'cabezal' && mesh.userData.ejeMayor === dep;
   }
@@ -3087,12 +3144,13 @@
     var barras = ST.barras3D || [];
     for (var i = 0; i < barras.length; i++) {
       var mesh = barras[i];
-      // visible=false SÓLO en el pase de esta vista orto; el pase 3D en perspectiva
-      // (planos=null) y las otras vistas las restauran.
-      mesh.visible = !(planos && _esDePunta(mesh, dep));
+      mesh.visible = true;
       var base = mesh.userData.matActivo || mesh.userData.matBase;
       if (!base) continue;
-      if (planos) {
+      // La barra vista de punta se pinta ENTERA (material base, sin planos de
+      // corte) sólo en ESTE pase; las demás vistas y el 3D la vuelven a tratar
+      // como cualquier otra.
+      if (planos && !_esDePunta(mesh, dep)) {
         // clon cacheado del material activo, con los planos de ESTA vista
         var clip = mesh.userData.matClip;
         if (!clip || clip.userData._base !== base) {
@@ -3106,7 +3164,7 @@
         clip.clippingPlanes = planos;
         mesh.material = clip;
       } else {
-        mesh.material = base;              // pase 3D en perspectiva: SIN clip
+        mesh.material = base;              // 3D en perspectiva o barra de punta: SIN clip
       }
     }
   }
