@@ -135,3 +135,25 @@ Proceso típico: cuestionario → reunión → observaciones → plan de remedia
 2. Igual con **"ejecuta M1"**. M0+M1 son 100% automáticas (salvo M1.10 que saltaré si no defines la columna).
 3. Las [DEF] se resuelven en UNA sesión de decisiones por fase (te llevo cuestionario cerrado, respondes, ejecuto).
 4. Las [ACCIÓN-USUARIO] te las recuerdo con instrucciones paso a paso cuando bloqueen una fase.
+
+---
+
+## COLA DE TAREAS PENDIENTES (bugs/mejoras reportados por el usuario)
+Se atienden cuando termine el foco actual (Template Editor). Orden = de llegada.
+
+### T1 · [BUG] Los comentarios no se guardan al crear una obra (sección Clientes)
+Reportado 10-ago. El usuario creó una obra y **los comentarios no quedaron guardados**.
+Investigar: el form de creación de obra en la sección de clientes (¿el campo comentarios se envía en
+el payload? ¿el endpoint lo persiste? ¿la columna existe en la tabla?). Revisar el POST de creación
+vs el de edición (puede que el de edición sí guarde y el de creación no — patrón habitual).
+Dejar un test o verificación que falle si vuelve a ocurrir.
+
+### T2 · [MEJORA] Columna "responsable que envía a validar" en Validación de reclamos
+Reportado 10-ago. En la sección de **validación de reclamos**, agregar una columna con el
+**responsable que envió el reclamo a validar** (p.ej. el cubicador).
+REGLA CLAVE: al pasar a la etapa siguiente (**admin de calidad**), esa columna debe SEGUIR mostrando
+**quien envió a revisar** — NO quien validó. Es decir: el dato se captura al momento del envío y se
+conserva; no se sobrescribe con el usuario de la etapa actual.
+CONDICIÓN DEL USUARIO: "si esto generara problemas, no lo hagas" → si el dato no está persistido hoy
+(no existe columna/registro de quién envió) y requiere migración + backfill de histórico, EVALUAR y
+consultar antes de implementar. Si el dato ya existe (audit_log o campo de estado), es directo.
