@@ -121,7 +121,8 @@
   /* B4 — GIZMO GRÁFICO de ejes (reemplaza el cuadro de texto anterior). Mini SVG de
      ~46×46 que dibuja: flecha horizontal = eje u de la vista, flecha vertical = eje v,
      y el símbolo ⊙ (círculo con punto) = eje de profundidad, "hacia ti". Colores
-     estándar de modelador X rojo / Y verde / Z azul (_EJE_COLOR en template_editor.js).
+     estándar por LETRA VISIBLE: X rojo / Y verde / Z azul (EJE_DISPLAY + _ejeColor en
+     template_editor.js; el eje interno x se rotula 'Y', el y 'Z' y el z 'X').
      Lo genera _actualizarTitulosVista UNA sola vez por vista → cero costo por frame.
      Va sobre la esquina inf-izq, DESPLAZADO a la derecha del botón "centrar vista". */
   #te_modal .te-vgizmo{position:absolute;bottom:4px;left:34px;z-index:3;width:46px;height:46px;
@@ -345,10 +346,11 @@
 
       <!-- CENTRO: 4 CUADRANTES -->
       <div id="te_quad">
-        <!-- 1.1 arriba-izq: SECCIÓN / corte transversal (plano Y-Z: ancho×alto).
+        <!-- 1.1 arriba-izq: SECCIÓN / corte transversal (ancho×alto = X-Z en las
+             letras VISIBLES; internamente z×y).
              Dibujo DINÁMICO desde placements — lo rellena _redibujar2D() en template_editor.js. -->
         <div class="te-vista" data-plano="seccion">
-          <div class="te-vtitle">SECCIÓN · YZ</div>
+          <div class="te-vtitle">SECCIÓN · XZ</div>
           <div class="te-vgizmo"></div>
           <div class="te-vhint">longitudinales = puntos · estribo = recorrido</div>
           <!-- render ORTOGRÁFICO del 3D (misma escena/calidad). El SVG queda encima
@@ -369,7 +371,7 @@
         <!-- 1.2 arriba-der: VISTA A LO LARGO (elevación, largo×alto).
              Dibujo DINÁMICO desde placements. -->
         <div class="te-vista" data-plano="largo">
-          <div class="te-vtitle">A LO LARGO · XY</div>
+          <div class="te-vtitle">A LO LARGO · YZ</div>
           <div class="te-vgizmo"></div>
           <div class="te-vhint">cabezales = líneas · estribos = trazos verticales</div>
           <canvas class="te-vcanvas" data-plano="largo"></canvas>
@@ -383,7 +385,7 @@
         <!-- 2.1 abajo-izq: PLANTA (vista superior, largo×ancho).
              Dibujo DINÁMICO desde placements. -->
         <div class="te-vista" data-plano="planta">
-          <div class="te-vtitle">PLANTA · XZ</div>
+          <div class="te-vtitle">PLANTA · YX</div>
           <div class="te-vgizmo"></div>
           <canvas class="te-vcanvas" data-plano="planta"></canvas>
           <svg id="te_svgPlanta" class="te-vsvg" viewBox="0 0 620 260" preserveAspectRatio="xMidYMid meet"></svg>

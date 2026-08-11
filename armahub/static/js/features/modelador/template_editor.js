@@ -743,25 +743,33 @@
   }
 
   // BUG 8 — TÍTULOS por EJE. El nombre semántico ('SECCIÓN'/'A LO LARGO'/'PLANTA') es
-  // fijo por cuadrante, pero el EJE (YZ/XY/XZ) es universal y sale de PLANOS_POR_ELEMENTO
-  // (u,v del plano). Así, cuando se pueble muro/columna, el título sigue al elemento sin
-  // tocar el HTML. Se llama al abrir (y podría llamarse al cambiar de elemento).
+  // fijo por cuadrante, pero el EJE sale de PLANOS_POR_ELEMENTO (u,v del plano). Así,
+  // cuando se pueble muro/columna, el título sigue al elemento sin tocar el HTML.
+  // Se llama al abrir (y podría llamarse al cambiar de elemento).
   var _TITULO_SEMANTICO = { seccion: 'SECCIÓN', largo: 'A LO LARGO', planta: 'PLANTA' };
-  // BUG 8b — el eje se etiqueta en ORDEN CANÓNICO X<Y<Z (no en el orden u,v del plano).
-  // Antes se concatenaba u+v tal cual → SECCIÓN daba 'ZY' (u=z, v=y), sobrescribiendo el
-  // 'YZ' del HTML. Ordenar los dos ejes del plano canónicamente da YZ/XY/XZ, que es cómo
-  // se nombran los planos (y coincide con el HTML). No cambia qué eje es horizontal/vertical
-  // en la vista (eso lo fija u,v); solo el TEXTO del título.
-  var _EJE_ORDEN = { x: 0, y: 1, z: 2 };
-  function _ejeCanonico(u, v) {
-    var a = String(u || '').toLowerCase(), b = String(v || '').toLowerCase();
-    if ((_EJE_ORDEN[b] != null ? _EJE_ORDEN[b] : 9) < (_EJE_ORDEN[a] != null ? _EJE_ORDEN[a] : 9)) {
-      var t = a; a = b; b = t;
-    }
-    return (a + b).toUpperCase();
-  }
-  // Color estándar por eje (gizmo): X rojo, Y verde, Z azul.
-  var _EJE_COLOR = { x: '#e53935', y: '#43a047', z: '#1e88e5' };
+
+  // ==========================================================================
+  // REETIQUETADO VISUAL DE EJES (solo DISPLAY — la geometría interna NO cambia)
+  // --------------------------------------------------------------------------
+  // El motor usa x=largo, y=alto (vertical), z=ancho. La convención de obra que
+  // usa el usuario nombra los ejes al revés: Z es la VERTICAL, Y el largo y X el
+  // ancho. Este mapa es la ÚNICA traducción interno→letra visible; nadie más
+  // debe imprimir una letra de eje a mano.
+  //   interno x (largo)   → 'Y'
+  //   interno y (alto)    → 'Z'
+  //   interno z (ancho)   → 'X'
+  // El COLOR sigue a la LETRA VISIBLE (X rojo / Y verde / Z azul), no al eje
+  // interno: la flecha del eje interno x se dibuja verde porque en pantalla
+  // se llama 'Y'.
+  var EJE_DISPLAY = { x: 'Y', y: 'Z', z: 'X' };
+  var _COLOR_LETRA = { X: '#e53935', Y: '#43a047', Z: '#1e88e5' };
+  // letra visible de un eje interno ('x'|'y'|'z')
+  function _ejeLetra(e) { return EJE_DISPLAY[String(e || '').toLowerCase()] || String(e || '').toUpperCase(); }
+  // color del eje interno = color de su letra visible
+  function _ejeColor(e) { return _COLOR_LETRA[_ejeLetra(e)] || '#607d8b'; }
+  // Rótulo del plano de una vista: letras visibles en el orden u (horizontal),
+  // v (vertical) de la vista → SECCIÓN 'XZ', A LO LARGO 'YZ', PLANTA 'YX'.
+  function _ejeRotulo(u, v) { return _ejeLetra(u) + _ejeLetra(v); }
   var _EJE_NOMBRE = { x: 'largo', y: 'alto', z: 'ancho' };
 
   function _actualizarTitulosVista() {
@@ -772,7 +780,7 @@
       if (!vista) return;
       var t = vista.querySelector('.te-vtitle');
       if (t) {
-        var eje = _ejeCanonico(def.u, def.v);
+        var eje = _ejeRotulo(def.u, def.v);
         t.textContent = (_TITULO_SEMANTICO[plano] || plano.toUpperCase()) + ' · ' + eje;
       }
       // B4·(a) — GIZMO GRÁFICO de ejes (antes: 3 líneas de texto). Mini SVG con el
@@ -783,9 +791,9 @@
         gz.innerHTML = _svgGizmoOrto(def);
         // el nombre semántico del eje queda en el tooltip (el dibujo lleva sólo la letra)
         gz.setAttribute('title',
-          def.u.toUpperCase() + ' = ' + _EJE_NOMBRE[def.u] + ' (horizontal) · ' +
-          def.v.toUpperCase() + ' = ' + _EJE_NOMBRE[def.v] + ' (vertical) · ' +
-          def.depth.toUpperCase() + ' = ' + _EJE_NOMBRE[def.depth] + ' (hacia ti)');
+          _ejeLetra(def.u) + ' = ' + _EJE_NOMBRE[def.u] + ' (horizontal) · ' +
+          _ejeLetra(def.v) + ' = ' + _EJE_NOMBRE[def.v] + ' (vertical) · ' +
+          _ejeLetra(def.depth) + ' = ' + _EJE_NOMBRE[def.depth] + ' (hacia ti)');
       }
     });
   }
@@ -794,14 +802,14 @@
   //   · flecha HORIZONTAL con la letra del eje u (horizontal de la vista);
   //   · flecha VERTICAL con la letra del eje v;
   //   · símbolo ⊙ (círculo con punto = "sale hacia ti") con la letra del eje depth.
-  // Colores _EJE_COLOR (X rojo / Y verde / Z azul). El origen del triad va en la
+  // Colores por LETRA VISIBLE (X rojo / Y verde / Z azul). El origen del triad va en la
   // esquina inf-izq del recuadro (7,39); las flechas miden 26 px.
   // Gizmo MINIMAL (pedido del usuario): SOLO los 2 ejes del plano, u→derecha y
   // v→arriba, letra en cada punta, colores X/Y/Z estándar. Sin marcador de
   // profundidad (queda en el tooltip) y sin volteos.
   function _svgGizmoOrto(def) {
     var u = String(def.u || 'x'), v = String(def.v || 'y');
-    var cu = _EJE_COLOR[u] || '#607d8b', cv = _EJE_COLOR[v] || '#607d8b';
+    var cu = _ejeColor(u), cv = _ejeColor(v);
     var ox = 9, oy = 37, L = 22;
     function flecha(x1, y1, x2, y2, color) {
       var dx = x2 - x1, dy = y2 - y1, m = Math.hypot(dx, dy) || 1;
@@ -815,9 +823,9 @@
     return '<svg viewBox="0 0 46 46" aria-hidden="true" style="font:700 9px \'Segoe UI\',system-ui,sans-serif">' +
       '<rect x="0" y="0" width="46" height="46" rx="8" fill="rgba(255,255,255,.85)" stroke="#dbe1e8"/>' +
       flecha(ox, oy, ox + L, oy, cu) +
-      '<text x="' + (ox + L + 3) + '" y="' + (oy + 3.5) + '" fill="' + cu + '">' + u.toUpperCase() + '</text>' +
+      '<text x="' + (ox + L + 3) + '" y="' + (oy + 3.5) + '" fill="' + cu + '">' + _ejeLetra(u) + '</text>' +
       flecha(ox, oy, ox, oy - L, cv) +
-      '<text x="' + (ox - 2) + '" y="' + (oy - L - 4) + '" fill="' + cv + '">' + v.toUpperCase() + '</text>' +
+      '<text x="' + (ox - 2) + '" y="' + (oy - L - 4) + '" fill="' + cv + '">' + _ejeLetra(v) + '</text>' +
       '</svg>';
   }
 
@@ -3090,10 +3098,12 @@
     var esc = new THREE.Scene();
     var cam = new THREE.PerspectiveCamera(42, 1, 0.1, 100);
     var L = 1;                                   // largo del eje en unidades del gizmo
+    // Las DIRECCIONES son las del mundo interno (x,y,z) y NO cambian; solo la
+    // letra y el color, que siguen al reetiquetado visual (EJE_DISPLAY).
     var ejes = [
-      { v: new THREE.Vector3(1, 0, 0), c: _EJE_COLOR.x, t: 'X' },
-      { v: new THREE.Vector3(0, 1, 0), c: _EJE_COLOR.y, t: 'Y' },
-      { v: new THREE.Vector3(0, 0, 1), c: _EJE_COLOR.z, t: 'Z' }
+      { v: new THREE.Vector3(1, 0, 0), c: _ejeColor('x'), t: _ejeLetra('x') },
+      { v: new THREE.Vector3(0, 1, 0), c: _ejeColor('y'), t: _ejeLetra('y') },
+      { v: new THREE.Vector3(0, 0, 1), c: _ejeColor('z'), t: _ejeLetra('z') }
     ];
     var origen = new THREE.Vector3(0, 0, 0);
     ejes.forEach(function (e) {
