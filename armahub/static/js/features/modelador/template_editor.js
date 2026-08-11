@@ -73,7 +73,21 @@
     ghost: null,
     // undoStack: pila de snapshots de la receta para Ctrl+Z. _pushUndo() ANTES de
     //   mutar; _undo() restaura el último snapshot.
-    undoStack: [], _undoMax: 60
+    undoStack: [], _undoMax: 60,
+    // --- PERF / VISTAS (frente B) ---
+    // dirty: render-on-demand. El loop sólo pinta si algo lo marcó (_marcarSucio).
+    dirty: true,
+    // barras3D: meshes de barra del último _redibujar, con userData.span (extensión
+    //   por eje) y userData.matBase/matClip → clipping LOCAL por vista (B2).
+    barras3D: [],
+    // luzFrontal: DirectionalLight extra que se coloca en el eye de cada vista orto
+    //   (sólo visible durante los 3 renders orto) para que las tapas/secciones no
+    //   salgan oscuras (B2·b).
+    luzFrontal: null,
+    // gizmo: { escena, cam } del triad de ejes del cuadrante 3D (B4·b).
+    gizmo: null,
+    // warnNivel/warnDescartado: banner anti-colapso (>350 / >800 barras).
+    warnNivel: null, warnDescartado: false
   };
 
   function $(id) { return document.getElementById(id); }
@@ -323,7 +337,11 @@
     if (fb) fb.textContent = out.resumen.barras;
     if (fk) fk.textContent = _num(out.resumen.kg);
     _redibujar2D(out);
+    // WARNING ANTI-COLAPSO: se evalúa SIEMPRE (aunque no haya WebGL) — el aviso es
+    // sobre el tamaño del elemento, no sobre el 3D.
+    _actualizarWarnTamano((out.placements || []).length);
     if (ST.threeCargado && ST.webglOk) _redibujar(out);
+    _marcarSucio();
   }
 
   // Regeneración diferida (para arrastres a 60fps sin recomputar de más).
@@ -399,6 +417,7 @@
     _initVistasOrto();     // 3 cámaras ortográficas (secciones 2D) sobre la MISMA escena
     ST.webglOk = true;
     ST.ortoActivo = true;  // las vistas 2D pasan a render orto; el SVG queda overlay
+    ST.dirty = true;       // PERF (render-on-demand): primer frame siempre se pinta
     _loop();
     return true;
   }
@@ -412,27 +431,125 @@
     return ST.materiales.LT;
   }
 
+  // PERF (F0·iii) — vaciar ST.world LIBERANDO la GPU. `remove()` sólo desengancha el
+  // objeto del grafo: la BufferGeometry sigue viva en memoria de video hasta que el GC
+  // de JS la suelta (y three NO libera buffers de WebGL por GC). Regenerar decenas de
+  // veces en una sesión acumulaba cientos de MB de geometrías huérfanas. Aquí se
+  // dispose()a la GEOMETRÍA de cada descendiente; los MATERIALES son COMPARTIDOS
+  // (ST.materiales) y se reutilizan → NO se disponen nunca (hacerlo dejaría el resto de
+  // las barras sin material). Excepción: los materiales creados al vuelo del plano P3,
+  // que se marcan con userData._propio.
+  function _vaciarWorld() {
+    // soltar YA las refs a meshes cuyas geometrías se van a disponer (si el loop
+    // pintara entre medio, _clipLocalPorVista tocaría meshes muertos).
+    ST.barras3D = [];
+    if (!ST.world) return;
+    while (ST.world.children.length) {
+      var obj = ST.world.children[0];
+      ST.world.remove(obj);
+      _disposeArbol(obj);
+    }
+  }
+
+  function _disposeArbol(obj) {
+    if (!obj) return;
+    function limpiar(n) {
+      if (n.geometry && n.geometry.dispose) n.geometry.dispose();
+      if (n.material && n.material.userData && n.material.userData._propio && n.material.dispose) {
+        n.material.dispose();
+      }
+      // El CLON de material para el clipping por vista (B2) vive en userData, no
+      // necesariamente asignado a .material en este instante → disponerlo aparte.
+      var clip = n.userData && n.userData.matClip;
+      if (clip && clip.dispose) { clip.dispose(); n.userData.matClip = null; }
+    }
+    if (obj.traverse) obj.traverse(limpiar); else limpiar(obj);
+  }
+
+  // B2·(a) — SPAN de una barra por eje. Un longitudinal corre a lo largo de X → su
+  // span en X es grande; un estribo vive en YZ → span X ≈ 0. Ese span es lo que
+  // decide, por VISTA, si la barra es una "rebanada" (la corta el cuchillo) o si
+  // CRUZA el corte de lado a lado (y entonces NO se debe clipear — ver
+  // _clipLocalPorVista). Mismo criterio que _slicesEnProfundidad, calculado una sola
+  // vez al construir la malla y guardado en mesh.userData.
+  function _spanDePuntos(pts) {
+    var s = { x: 0, y: 0, z: 0 };
+    if (!pts || pts.length < 2) return s;
+    var lo = { x: Infinity, y: Infinity, z: Infinity };
+    var hi = { x: -Infinity, y: -Infinity, z: -Infinity };
+    for (var i = 0; i < pts.length; i++) {
+      var p = pts[i];
+      if (p.x < lo.x) lo.x = p.x; if (p.x > hi.x) hi.x = p.x;
+      if (p.y < lo.y) lo.y = p.y; if (p.y > hi.y) hi.y = p.y;
+      if (p.z < lo.z) lo.z = p.z; if (p.z > hi.z) hi.z = p.z;
+    }
+    s.x = hi.x - lo.x; s.y = hi.y - lo.y; s.z = hi.z - lo.z;
+    return s;
+  }
+
   function _redibujar(out) {
     var THREE = global.THREE, geom = _deps().geom;
     if (!THREE || !ST.world || !geom) return;
-    while (ST.world.children.length) ST.world.remove(ST.world.children[0]);
+    _vaciarWorld();   // PERF: libera geometrías de la GPU y vacía ST.barras3D
     var g = ST.receta.geometria;
     if (ST.verHormigon) {
       var box = new THREE.Mesh(new THREE.BoxGeometry(g.largo, g.alto, g.ancho), ST.materiales.hormigon);
       // BUG 7: los EDGES de la caja también deben ignorar el cuchillo (clippingPlanes:[])
       // para que el contorno del hormigón se vea completo en todas las vistas.
+      var matEdges = new THREE.LineBasicMaterial({ color: 0x8a96a5, clippingPlanes: [] });
+      matEdges.userData._propio = true;    // creado al vuelo → se dispone al vaciar
       var edges = new THREE.LineSegments(
-        new THREE.EdgesGeometry(new THREE.BoxGeometry(g.largo, g.alto, g.ancho)),
-        new THREE.LineBasicMaterial({ color: 0x8a96a5, clippingPlanes: [] }));
+        new THREE.EdgesGeometry(new THREE.BoxGeometry(g.largo, g.alto, g.ancho)), matEdges);
       ST.world.add(box); ST.world.add(edges);
     }
     (out.placements || []).forEach(function (pl) {
       var mat = _matDe(pl.tipologia);
       var mesh = geom.barraSolida(pl.puntos, pl.diam, mat, { segmentosRadiales: 10 });
-      if (mesh) ST.world.add(mesh);
+      if (!mesh) return;
+      // B2·(a): guardar el span por eje + el material COMPARTIDO original. El clipping
+      // por vista se aplica clonando ese material sólo cuando hace falta.
+      mesh.userData.span = _spanDePuntos(pl.puntos);
+      mesh.userData.matBase = mat;
+      ST.barras3D.push(mesh);
+      ST.world.add(mesh);
     });
     ST.dist = g.largo * 1.15 + 160;
     _redibujarPlanoActivo();   // P3 — re-agregar el resaltado tras vaciar el world
+    ST.dirty = true;
+  }
+
+  // ==========================================================================
+  // WARNING ANTI-COLAPSO — aviso NO modal cuando el elemento se vuelve pesado.
+  // >350 barras = amarillo ("puede degradarse"), >800 = rojo ("considera dividirlo").
+  // NUNCA bloquea la operación. El usuario lo puede descartar con la ✕; si luego el
+  // recuento SUBE de nivel (amarillo→rojo) o baja y vuelve a subir, se muestra otra
+  // vez (el descarte se recuerda por NIVEL, no para siempre).
+  // ==========================================================================
+  var WARN_AMARILLO = 350, WARN_ROJO = 800;
+
+  function _actualizarWarnTamano(n) {
+    var el = $('te_bigwarn'), txt = $('te_bigwarnTxt');
+    if (!el || !txt) return;
+    var nivel = (n > WARN_ROJO) ? 'danger' : (n > WARN_AMARILLO ? 'warn' : null);
+    if (!nivel) { ST.warnNivel = null; el.classList.remove('on', 'warn', 'danger'); return; }
+    if (ST.warnNivel !== nivel) ST.warnDescartado = false;   // cambió de nivel → re-mostrar
+    ST.warnNivel = nivel;
+    txt.textContent = (nivel === 'danger')
+      ? 'Elemento muy grande (' + n + ' barras): considera dividirlo.'
+      : 'Elemento grande (' + n + ' barras): el rendimiento puede degradarse.';
+    el.classList.remove('warn', 'danger');
+    el.classList.add(nivel);
+    el.classList.toggle('on', !ST.warnDescartado);
+  }
+
+  function _bindWarnTamano() {
+    var x = $('te_bigwarnX');
+    if (!x || x._teOk) return;
+    x._teOk = true;
+    x.addEventListener('click', function () {
+      ST.warnDescartado = true;
+      var el = $('te_bigwarn'); if (el) el.classList.remove('on');
+    });
   }
 
   // ==========================================================================
@@ -450,10 +567,13 @@
   function _redibujarPlanoActivo() {
     var THREE = global.THREE;
     // Quitar el plano previo del world (idempotente aunque el world ya se vació).
-    if (ST.planoMesh && ST.world && ST.planoMesh.parent === ST.world) {
-      ST.world.remove(ST.planoMesh);
+    // PERF: además se dispone su geometría/material propios (se re-crean cada vez).
+    if (ST.planoMesh) {
+      if (ST.world && ST.planoMesh.parent === ST.world) ST.world.remove(ST.planoMesh);
+      _disposeArbol(ST.planoMesh);
     }
     ST.planoMesh = null;
+    ST.dirty = true;
     if (!THREE || !ST.world || !ST.planoActivo || !ST.receta) return;
     var def = (_defsPlanos() || {})[ST.planoActivo];
     if (!def || !def.depth) return;
@@ -471,12 +591,14 @@
       color: 0x2f80ed, transparent: true, opacity: 0.22,
       side: THREE.DoubleSide, depthWrite: false, clippingPlanes: []
     });
+    mat.userData._propio = true;   // PERF: material al vuelo → se dispone al vaciar el world
     var over = 1.6;   // 60% más grande que la cara del elemento → marco visible por fuera
     var mesh = new THREE.Mesh(new THREE.PlaneGeometry(W * over, H * over), mat);
     // borde del plano (marcado, sin recorte del cuchillo)
+    var matEdge = new THREE.LineBasicMaterial({ color: 0x1565c0, clippingPlanes: [] });
+    matEdge.userData._propio = true;
     var edge = new THREE.LineSegments(
-      new THREE.EdgesGeometry(new THREE.PlaneGeometry(W * over, H * over)),
-      new THREE.LineBasicMaterial({ color: 0x1565c0, clippingPlanes: [] }));
+      new THREE.EdgesGeometry(new THREE.PlaneGeometry(W * over, H * over)), matEdge);
     mesh.add(edge);
     // Orientar según el eje de profundidad (normal del plano).
     if (def.depth === 'x')      mesh.rotation.y = Math.PI / 2;  // normal → X
@@ -498,7 +620,7 @@
     if (plano !== 'seccion' && plano !== 'largo' && plano !== 'planta') plano = null;
     ST.planoActivo = (ST.planoActivo === plano) ? null : plano;
     _sincronizarResaltado2D();
-    _redibujarPlanoActivo();
+    _redibujarPlanoActivo();   // marca dirty
   }
 
   // Refleja el plano activo en las vistas 2D (borde azul del cuadrante).
@@ -597,17 +719,53 @@
         var eje = _ejeCanonico(def.u, def.v);
         t.textContent = (_TITULO_SEMANTICO[plano] || plano.toUpperCase()) + ' · ' + eje;
       }
-      // GIZMO de ejes: muestra qué eje es HORIZONTAL (u→), VERTICAL (v↑) y cuál sale
-      // hacia ti (depth ⊙). Así el usuario y el sistema hablan del MISMO eje.
+      // B4·(a) — GIZMO GRÁFICO de ejes (antes: 3 líneas de texto). Mini SVG con el
+      // triad estándar de modelador. Las cámaras ortográficas NO rotan, así que este
+      // gizmo es ESTÁTICO: se genera una vez por vista → cero costo por frame.
       var gz = vista.querySelector('.te-vgizmo');
       if (gz) {
-        var u = def.u, v = def.v, d = def.depth;
-        gz.innerHTML =
-          '<span class="te-gzax" style="color:' + _EJE_COLOR[u] + '">' + u.toUpperCase() + ' ' + _EJE_NOMBRE[u] + ' →</span>' +
-          '<span class="te-gzax" style="color:' + _EJE_COLOR[v] + '">' + v.toUpperCase() + ' ' + _EJE_NOMBRE[v] + ' ↑</span>' +
-          '<span class="te-gzax" style="color:' + _EJE_COLOR[d] + '">' + d.toUpperCase() + ' ' + _EJE_NOMBRE[d] + ' ⊙ (hacia ti)</span>';
+        gz.innerHTML = _svgGizmoOrto(def);
+        // el nombre semántico del eje queda en el tooltip (el dibujo lleva sólo la letra)
+        gz.setAttribute('title',
+          def.u.toUpperCase() + ' = ' + _EJE_NOMBRE[def.u] + ' (horizontal) · ' +
+          def.v.toUpperCase() + ' = ' + _EJE_NOMBRE[def.v] + ' (vertical) · ' +
+          def.depth.toUpperCase() + ' = ' + _EJE_NOMBRE[def.depth] + ' (hacia ti)');
       }
     });
+  }
+
+  // Mini SVG (46×46) del triad de ejes de una vista ortográfica:
+  //   · flecha HORIZONTAL con la letra del eje u (horizontal de la vista);
+  //   · flecha VERTICAL con la letra del eje v;
+  //   · símbolo ⊙ (círculo con punto = "sale hacia ti") con la letra del eje depth.
+  // Colores _EJE_COLOR (X rojo / Y verde / Z azul). El origen del triad va en la
+  // esquina inf-izq del recuadro (7,39); las flechas miden 26 px.
+  function _svgGizmoOrto(def) {
+    var u = String(def.u || 'x'), v = String(def.v || 'y'), d = String(def.depth || 'z');
+    var cu = _EJE_COLOR[u] || '#607d8b', cv = _EJE_COLOR[v] || '#607d8b', cd = _EJE_COLOR[d] || '#607d8b';
+    var ox = 7, oy = 39, L = 26;          // origen del triad + largo de flecha
+    function flecha(x1, y1, x2, y2, color) {
+      // línea + cabeza triangular en (x2,y2), orientada por el vector
+      var dx = x2 - x1, dy = y2 - y1, m = Math.hypot(dx, dy) || 1;
+      var ux = dx / m, uy = dy / m, px = -uy, py = ux, h = 5, w = 3;
+      var bx = x2 - ux * h, by = y2 - uy * h;
+      var pts = x2 + ',' + y2 + ' ' + (bx + px * w) + ',' + (by + py * w) + ' ' + (bx - px * w) + ',' + (by - py * w);
+      return '<line x1="' + x1 + '" y1="' + y1 + '" x2="' + bx + '" y2="' + by + '" stroke="' + color +
+             '" stroke-width="1.8" stroke-linecap="round"/>' +
+             '<polygon points="' + pts + '" fill="' + color + '"/>';
+    }
+    return '<svg viewBox="0 0 46 46" aria-hidden="true">' +
+      // fondo tenue para que el triad se lea sobre cualquier render
+      '<rect x="0" y="0" width="46" height="46" rx="6" fill="rgba(255,255,255,.72)"/>' +
+      flecha(ox, oy, ox + L, oy, cu) +
+      '<text class="te-gzt" x="' + (ox + L + 2) + '" y="' + (oy + 3.5) + '" fill="' + cu + '">' + u.toUpperCase() + '</text>' +
+      flecha(ox, oy, ox, oy - L, cv) +
+      '<text class="te-gzt" x="' + (ox - 4.5) + '" y="' + (oy - L - 3) + '" fill="' + cv + '">' + v.toUpperCase() + '</text>' +
+      // eje de profundidad: ⊙ (círculo con punto) = apunta hacia el observador
+      '<circle cx="' + (ox + 9) + '" cy="' + (oy - 9) + '" r="4.6" fill="none" stroke="' + cd + '" stroke-width="1.5"/>' +
+      '<circle cx="' + (ox + 9) + '" cy="' + (oy - 9) + '" r="1.5" fill="' + cd + '"/>' +
+      '<text class="te-gzt" x="' + (ox + 15) + '" y="' + (oy - 11) + '" fill="' + cd + '">' + d.toUpperCase() + '</text>' +
+      '</svg>';
   }
 
   // Proyector genérico: dado el def de un plano → función punto3D → {u,v}.
@@ -2112,6 +2270,7 @@
         var p = b.getAttribute('data-plano'), o = ST.orto && ST.orto[p];
         if (o) { o.zoom = 1; o.panU = 0; o.panV = 0; o.corte = 0.5; }
         var r = document.querySelector('.te-vcut-r[data-plano="' + p + '"]'); if (r) r.value = 50;
+        _marcarSucio();   // PERF: reset de vista → repintar
       });
     });
     // sliders de PLANO DE CORTE → o.corte (0..1). Mover el slider ACTIVA esa vista
@@ -2124,6 +2283,7 @@
         o.corte = Math.max(0, Math.min(1, Number(r.value) / 100));
         if (ST.planoActivo !== p) _setPlanoActivo(p);   // activar la vista al ajustar
         else _redibujarPlanoActivo();                    // mover el plano 3D con el corte
+        _marcarSucio();   // PERF: el corte cambió → repintar (B1: arrastre continuo)
       });
       r.addEventListener('mousedown', function (e) { e.stopPropagation(); });   // no dispara pan
     });
@@ -2287,11 +2447,90 @@
       var kV = (o.cam.top - o.cam.bottom) / Math.max(r.height, 1);
       o.panU -= (e.clientX - lx) * kU; o.panV += (e.clientY - ly) * kV;
       lx = e.clientX; ly = e.clientY;
+      _marcarSucio();   // PERF: pan de una vista orto → repintar
     });
     host.addEventListener('wheel', function (e) {
       e.preventDefault(); o.zoom *= (e.deltaY > 0 ? 0.9 : 1.1);
       o.zoom = Math.max(0.15, Math.min(12, o.zoom));
+      _marcarSucio();
     }, { passive: false });
+  }
+
+  // ==========================================================================
+  // B2·(a) — CLIPPING **LOCAL** POR VISTA (arregla "longitudinales invisibles").
+  //
+  // Antes el corte se hacía con renderer.clippingPlanes (GLOBAL): la banda fina de la
+  // SECCIÓN recortaba TAMBIÉN las dos tapas del cilindro de un longitudinal visto de
+  // punta → quedaba un TUBO ABIERTO cuyo manto se ve de canto (0 px) y cuyo interior
+  // son back-faces (MeshStandardMaterial es FrontSide) → no se pintaba NADA. Ese era
+  // el "círculo apagado / barra invisible".
+  //
+  // Fix: el cuchillo sólo debe cortar lo que un cuchillo REAL corta — las barras que
+  // el plano atraviesa de canto ("rebanadas": estribos/trabas en SECCIÓN). Las que
+  // CORREN a lo largo del eje de profundidad cruzan el corte esté donde esté, así que
+  // se dejan SIN CLIP: su tapa cercana se ve entera y estable como un círculo sólido.
+  //
+  // Mecánica (three r160): con renderer.localClippingEnabled=true, los planos se
+  // asignan POR MATERIAL. Como los materiales son COMPARTIDOS por tipología, a las
+  // barras "rebanada" se les pone un CLON del material con clippingPlanes; a las demás
+  // se les restituye el material base (clippingPlanes vacío). El clon se cachea en el
+  // propio mesh (userData.matClip) → no se crea material por frame. El hormigón y el
+  // plano P3 siguen exentos: su material ya lleva clippingPlanes:[] y no se toca.
+  // ==========================================================================
+
+  // ¿esta barra es una REBANADA para el eje de profundidad `dep`? Mismo criterio que
+  // _slicesEnProfundidad: span pequeño en ese eje = vive casi en un solo valor.
+  function _esRebanada(mesh, dep) {
+    var span = mesh.userData && mesh.userData.span;
+    if (!span) return true;                 // sin dato → comportarse como antes (clipear)
+    var espesor = _espesorProfundidad(dep);
+    var umbral = Math.min(Math.max(espesor * 0.15, 8), 40);
+    return span[dep] <= umbral;
+  }
+
+  // Aplica/retira los 2 planos de corte de una vista sobre los materiales de las barras.
+  function _clipLocalPorVista(dep, planos) {
+    var barras = ST.barras3D || [];
+    for (var i = 0; i < barras.length; i++) {
+      var mesh = barras[i];
+      var base = mesh.userData.matBase;
+      if (!base) continue;
+      if (planos && _esRebanada(mesh, dep)) {
+        // clon cacheado del material compartido, con los planos de ESTA vista
+        var clip = mesh.userData.matClip;
+        if (!clip || clip.userData._base !== base) {
+          clip = base.clone();
+          clip.userData._propio = true;    // creado al vuelo → dispose al vaciar el world
+          clip.userData._base = base;
+          mesh.userData.matClip = clip;
+        }
+        clip.clippingPlanes = planos;
+        mesh.material = clip;
+      } else {
+        mesh.material = base;              // longitudinal (o pase 3D): SIN clip
+      }
+    }
+  }
+
+  // B2·(b) — LUZ FRONTAL por vista ortográfica. La luz direccional principal de la
+  // escena viene de (1,1.4,0.8): contra la tapa de un longitudinal en SECCIÓN (normal
+  // +X) da un coseno pobre y, con metalness 0.5, el círculo salía OSCURO ("apagado /
+  // de otro color"). Esta luz extra se coloca en el EYE de la vista que se está
+  // pintando → las tapas y las secciones quedan parejas. Sólo está VISIBLE durante los
+  // 3 renders orto y se apaga para el pase perspectivo (mismo patrón que grid/planoMesh
+  // en _loop) → el 3D no cambia en nada.
+  function _luzOrto() {
+    var THREE = global.THREE;
+    if (!THREE || !ST.scene) return null;
+    if (!ST.luzFrontal) {
+      ST.luzFrontal = new THREE.DirectionalLight(0xffffff, 0.5);
+      ST.luzFrontal.visible = false;
+      ST.scene.add(ST.luzFrontal);
+      // el target de una DirectionalLight debe estar EN la escena para que su
+      // matrixWorld se actualice (si no, la luz apunta siempre a (0,0,0) del padre).
+      ST.scene.add(ST.luzFrontal.target);
+    }
+    return ST.luzFrontal;
   }
 
   // Renderiza las 3 vistas ortográficas con scissor sobre el MISMO renderer/canvas
@@ -2301,8 +2540,9 @@
     var THREE = global.THREE;
     if (!THREE || !ST.renderer || !ST.orto) return;
     var quad = $('te_quad'); if (!quad) return;
-    var qr = quad.getBoundingClientRect();
     var full = ST.renderer.domElement.getBoundingClientRect();
+    var luz = _luzOrto();
+    if (luz) luz.visible = true;
     Object.keys(ST.orto).forEach(function (plano) {
       var o = ST.orto[plano];
       var r = o.vista.getBoundingClientRect();
@@ -2315,11 +2555,11 @@
       var g = ST.receta ? ST.receta.geometria : {};
       var W = Number(g[def.W]) || 60, H = Number(g[def.H]) || 60;
       _encuadrarOrto(o, W, H, w / h);
-      // CLIPPING = BANDA (cuchillo grueso, rediseño BUG 2/5/6): dos planos perpendiculares
-      // al eje de profundidad que dejan ver la banda [cortePos-grosor .. cortePos+grosor].
-      // El semigrosor es GENEROSO (todo el semi-espesor, ver _encuadrarOrto): al centro la
-      // banda cubre el elemento entero (jaula completa, nunca vacía); el slider PELA una
-      // cara. El hormigón NO lo tocan estos planos (su material lleva clippingPlanes:[]).
+      // CLIPPING = BANDA (cuchillo, rediseño BUG 2/5/6): dos planos perpendiculares al
+      // eje de profundidad que dejan ver [cortePos-grosor .. cortePos+grosor]. En
+      // SECCIÓN la banda es FINA (aísla UN estribo); en las otras 2 es gruesa (jaula
+      // entera, el slider PELA una cara). Ahora se aplican LOCALMENTE (por material) y
+      // SÓLO a las barras "rebanada" — ver _clipLocalPorVista.
       var dep = def.depth;
       var ax = dep === 'x' ? 1 : 0, ay = dep === 'y' ? 1 : 0, az = dep === 'z' ? 1 : 0;
       var c = (o.cortePos != null ? o.cortePos : 0);
@@ -2329,12 +2569,24 @@
       o.clipA.set(new THREE.Vector3(ax, ay, az), gr - c);
       // conserva  coord <= c+gr   → normal -eje, constant = c+gr
       o.clipB.set(new THREE.Vector3(-ax, -ay, -az), c + gr);
-      ST.renderer.clippingPlanes = [o.clipA, o.clipB];
+      if (!o.clipPlanos) o.clipPlanos = [o.clipA, o.clipB];
+      _clipLocalPorVista(dep, o.clipPlanos);
+      // luz frontal en el EYE de ESTA vista (B2·b)
+      if (luz) {
+        var dir = _ORTO_DIR[dep] || _ORTO_DIR.z;
+        luz.position.set(dir.eye[0] * 1000, dir.eye[1] * 1000, dir.eye[2] * 1000);
+        luz.target.position.set(0, 0, 0);
+        luz.target.updateMatrixWorld();
+      }
+      ST.renderer.clippingPlanes = [];   // el corte ya NO es global: es por material
       ST.renderer.setViewport(x, y, w, h);
       ST.renderer.setScissor(x, y, w, h);
       ST.renderer.setScissorTest(true);
       ST.renderer.render(ST.scene, o.cam);
     });
+    // dejar la escena como la espera el pase 3D: sin clip en ningún material, luz apagada.
+    _clipLocalPorVista(null, null);
+    if (luz) luz.visible = false;
     ST.renderer.clippingPlanes = [];
     ST.renderer.setScissorTest(false);
   }
@@ -2388,10 +2640,12 @@
         ST.rotY -= dx * 0.008; ST.rotX += dy * 0.008;
         ST.rotX = Math.max(-1.45, Math.min(1.45, ST.rotX));
       }
+      _marcarSucio();   // PERF: la cámara 3D cambió → repintar
     });
     cv.addEventListener('wheel', function (e) {
       e.preventDefault(); ST.dist *= (e.deltaY > 0 ? 1.1 : 0.9);
       ST.dist = Math.max(120, Math.min(6000, ST.dist));
+      _marcarSucio();
     }, { passive: false });
   }
 
@@ -2414,6 +2668,7 @@
       ST.renderer.setSize(w, h, false);
       ST.renderer.setPixelRatio(Math.min(2, global.devicePixelRatio || 1));
       ST._quadW = w; ST._quadH = h;
+      _marcarSucio();      // PERF (render-on-demand): un resize obliga a repintar
     }
   }
 
@@ -2435,17 +2690,118 @@
     ST.renderer.setScissorTest(false);
   }
 
+  // ==========================================================================
+  // B4·(b) — GIZMO 3D tipo modelador (triad de ejes que SIGUE a la cámara).
+  //
+  // Escena secundaria mínima (3 ArrowHelper + letras como sprites) con su propia
+  // cámara, renderizada al FINAL del pase 3D en un viewport chico (~64×64) de la
+  // esquina inf-izq del cuadrante 3D, con el MISMO renderer (setViewport+setScissor,
+  // patrón ya usado por las vistas orto). La cámara del gizmo copia la ORIENTACIÓN de
+  // la cámara perspectiva (misma dirección, distancia fija) → el triad gira igual que
+  // el modelo. Antes del pase se limpia el DEPTH (clearDepth) para que el gizmo se
+  // dibuje ENCIMA del 3D, y se anulan los clippingPlanes.
+  // THREE se resuelve DENTRO de la función (regla dura 1).
+  // ==========================================================================
+  var GIZMO_PX = 64;
+
+  function _initGizmo3D() {
+    var THREE = global.THREE;
+    if (!THREE || ST.gizmo) return ST.gizmo;
+    var esc = new THREE.Scene();
+    var cam = new THREE.PerspectiveCamera(42, 1, 0.1, 100);
+    var L = 1;                                   // largo del eje en unidades del gizmo
+    var ejes = [
+      { v: new THREE.Vector3(1, 0, 0), c: _EJE_COLOR.x, t: 'X' },
+      { v: new THREE.Vector3(0, 1, 0), c: _EJE_COLOR.y, t: 'Y' },
+      { v: new THREE.Vector3(0, 0, 1), c: _EJE_COLOR.z, t: 'Z' }
+    ];
+    var origen = new THREE.Vector3(0, 0, 0);
+    ejes.forEach(function (e) {
+      esc.add(new THREE.ArrowHelper(e.v, origen, L, new THREE.Color(e.c).getHex(), 0.3, 0.18));
+      var sp = _spriteLetra(e.t, e.c);
+      if (sp) { sp.position.copy(e.v).multiplyScalar(L * 1.34); esc.add(sp); }
+    });
+    ST.gizmo = { escena: esc, cam: cam };
+    return ST.gizmo;
+  }
+
+  // Letra del eje como Sprite (canvas 64×64) — siempre mira a la cámara.
+  function _spriteLetra(txt, color) {
+    var THREE = global.THREE;
+    if (!THREE || !THREE.Sprite) return null;
+    var cv = document.createElement('canvas');
+    cv.width = 64; cv.height = 64;
+    var g2 = cv.getContext('2d');
+    g2.font = 'bold 46px "Segoe UI",system-ui,sans-serif';
+    g2.textAlign = 'center'; g2.textBaseline = 'middle';
+    g2.lineWidth = 6; g2.strokeStyle = 'rgba(255,255,255,.95)';
+    g2.strokeText(txt, 32, 34);
+    g2.fillStyle = color; g2.fillText(txt, 32, 34);
+    var tex = new THREE.CanvasTexture(cv);
+    var mat = new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true });
+    var sp = new THREE.Sprite(mat);
+    sp.scale.set(0.62, 0.62, 1);
+    return sp;
+  }
+
+  // Pinta el gizmo en la esquina inf-izq del cuadrante 3D (tras el pase 3D).
+  function _renderGizmo3D() {
+    var THREE = global.THREE;
+    if (!THREE || !ST.renderer || !ST.camera) return;
+    var gz = _initGizmo3D(); if (!gz) return;
+    var d3 = document.querySelector('#te_quad .te-vista.d3'); if (!d3) return;
+    var r = d3.getBoundingClientRect();
+    if (r.width < GIZMO_PX + 10 || r.height < GIZMO_PX + 10) return;
+    var full = ST.renderer.domElement.getBoundingClientRect();
+    var pad = 8;
+    var x = (r.left - full.left) + pad;
+    var y = full.height - ((r.top - full.top) + r.height) + pad;   // esquina INFERIOR
+    // la cámara del gizmo copia la ORIENTACIÓN de la perspectiva (dirección desde el
+    // target hacia la cámara), a distancia fija → mismo giro, tamaño constante.
+    var dir = new THREE.Vector3().subVectors(ST.camera.position, ST.target).normalize();
+    gz.cam.position.copy(dir.multiplyScalar(3.4));
+    gz.cam.up.copy(ST.camera.up);
+    gz.cam.lookAt(0, 0, 0);
+    gz.cam.aspect = 1; gz.cam.updateProjectionMatrix();
+    ST.renderer.clippingPlanes = [];              // el gizmo NUNCA se corta
+    ST.renderer.setViewport(x, y, GIZMO_PX, GIZMO_PX);
+    ST.renderer.setScissor(x, y, GIZMO_PX, GIZMO_PX);
+    ST.renderer.setScissorTest(true);
+    // autoClear OFF: el gizmo se COMPONE encima del 3D ya pintado (si se dejara en
+    // true, el pase borraría el color de ese rectángulo y el gizmo quedaría sobre un
+    // cuadrado de fondo). Sólo se limpia el DEPTH para que el triad no lo tape el 3D.
+    var auto = ST.renderer.autoClear;
+    ST.renderer.autoClear = false;
+    ST.renderer.clearDepth();
+    ST.renderer.render(gz.escena, gz.cam);
+    ST.renderer.autoClear = auto;
+    ST.renderer.setScissorTest(false);
+  }
+
+  // ==========================================================================
+  // PERF (F0·iv) — RENDER ON DEMAND.
+  // El loop pintaba 4 viewports (3 orto + 3D) a 60 fps SIEMPRE, aunque nada cambiara:
+  // con un elemento grande eso mantiene la GPU al 100% sin razón. Ahora sólo se
+  // repinta si algo lo pide: ST.dirty. Lo marcan cámara/pan/zoom/slider/selección/
+  // regeneración/resize (_marcarSucio). El rAF sigue corriendo (es barato) pero sin
+  // trabajo de GPU cuando la escena está quieta.
+  // ==========================================================================
+  function _marcarSucio() { ST.dirty = true; }
+
   function _loop() {
     ST.rafId = global.requestAnimationFrame(_loop);
     var bd = $('te_backdrop');
     if (!bd || !bd.classList.contains('on')) return;
-    _resize();
+    _resize();                       // marca dirty si el tamaño cambió
+    if (!ST.dirty) return;           // nada cambió → no gastar GPU
+    ST.dirty = false;
     // grid + plano de corte P3 solo en el 3D: en las vistas orto MOLESTAN (el plano
     // se ve de frente como un rectángulo azul tapando la sección; el grid ensucia).
     // Se ocultan al pintar las orto y se re-muestran para el 3D. (Mismo patrón grid.)
     if (ST.grid) ST.grid.visible = true;
     if (ST.planoMesh) ST.planoMesh.visible = true;
     _render3DQuad();
+    _renderGizmo3D();                // B4·b — triad de ejes sobre el cuadrante 3D
     if (ST.grid) ST.grid.visible = false;
     if (ST.planoMesh) ST.planoMesh.visible = false;
     _renderVistasOrto();
@@ -2496,7 +2852,8 @@
     _bindHerramientas();
     _bindVistas();
     _bindTeclado();
-    _actualizarTitulosVista();   // BUG 8: títulos con el eje (YZ/XY/XZ) del elemento activo
+    _bindWarnTamano();           // ✕ del banner anti-colapso
+    _actualizarTitulosVista();   // BUG 8: títulos + GIZMO gráfico de ejes por vista
     _setQuadCursor();
     // Al redimensionar la ventana, el overlay de voltear se re-pega a la pieza.
     if (!ST._resizeBtnBound) {
@@ -2520,6 +2877,7 @@
     });
     bd.classList.add('on');
     _bindUI();
+    _marcarSucio();     // PERF (render-on-demand): al abrir siempre hay que pintar
     // Undo limpio por sesión + sellar lo cargado (la herramienta por defecto es
     // 'colocar' → el ghost queda listo para seguir el cursor de una).
     ST.undoStack = [];

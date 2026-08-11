@@ -46,10 +46,14 @@
   function _dist(a, b) { return _len(_sub(a, b)); }
 
   // Limpia puntos duplicados consecutivos (tol²).
+  // PERF (F0·esArco): propaga el flag `esArco` del punto de entrada (lo pone
+  // figura_puntos._arcoYZ en los puntos MUESTREADOS de un arco). Es aditivo: si el
+  // punto no lo trae, queda undefined y todo se comporta como antes.
   function _limpiarPuntos(puntos) {
     var pts = [];
     for (var i = 0; i < puntos.length; i++) {
       var p = { x: +puntos[i].x, y: +puntos[i].y, z: +puntos[i].z };
+      if (puntos[i].esArco) p.esArco = true;
       if (!pts.length) { pts.push(p); continue; }
       var q = pts[pts.length - 1];
       var dd = (p.x - q.x) * (p.x - q.x) + (p.y - q.y) * (p.y - q.y) + (p.z - q.z) * (p.z - q.z);
@@ -70,7 +74,16 @@
     var i;
     for (i = 0; i < pts.length; i++) dobleces.push(null);
     if (pts.length < 2) return { pts: pts, dobleces: dobleces, Rc: Rc, rTubo: rTubo };
+    var sinArcos = !!opciones.sinFilletEnArcos || opciones.sinFilletEnArcos === undefined;
     for (i = 1; i < pts.length - 1; i++) {
+      // PERF (F0·esArco): un vértice que viene de un ARCO MUESTREADO (figura_puntos
+      // ._arcoYZ, ~10°/punto) YA describe la curva: meterle un toro tangente es
+      // redundante (era el ~60% de los triángulos del estribo) y además el arco
+      // muestreado tiene tramos cortísimos → el fillet se colapsaba a un radio
+      // minúsculo. Se unen con CUERDA (el cilindro recto del tramo). Forma visible
+      // idéntica. Con `opciones.sinFilletEnArcos:false` se recupera el comportamiento
+      // anterior (escape hatch para depurar).
+      if (sinArcos && pts[i].esArco) continue;
       var d1 = _norm(_sub(pts[i], pts[i - 1]));
       var d2 = _norm(_sub(pts[i + 1], pts[i]));
       var ang = Math.acos(_clamp(_dot(d1, d2), -1, 1));
@@ -145,11 +158,17 @@
     return salida;
   }
 
-  function _cilindroParte(a, b, rTubo, segRad) {
+  // PERF (F0): `openEnded` deja el cilindro SIN TAPAS. Se usa en los tramos
+  // INTERIORES de la polilínea (sus extremos quedan tapados por el toro del codo o
+  // por el tramo siguiente, así que las tapas nunca se ven): 2·segRad triángulos
+  // menos por tramo. En los EXTREMOS REALES de la barra la tapa SE CONSERVA — es
+  // justo lo que hace que un longitudinal visto de punta en la vista de SECCIÓN se
+  // lea como un CÍRCULO sólido (B2); sin ella se vería el interior (back-faces).
+  function _cilindroParte(a, b, rTubo, segRad, openEnded) {
     var THREE = _T();
     var largo = _dist(a, b);
     if (largo < 1e-6) return null;
-    var geo = new THREE.CylinderGeometry(rTubo, rTubo, largo, segRad, 1, false);
+    var geo = new THREE.CylinderGeometry(rTubo, rTubo, largo, segRad, 1, !!openEnded);
     var dir = _norm(_sub(b, a));
     var q = new THREE.Quaternion().setFromUnitVectors(
       new THREE.Vector3(0, 1, 0), new THREE.Vector3(dir.x, dir.y, dir.z));
@@ -174,7 +193,14 @@
     var cursor = pts[0];
     for (var i = 1; i < pts.length; i++) {
       var d = dobleces[i];
-      var recto = _cilindroParte(cursor, d ? d.T1 : pts[i], rTubo, segRad);
+      // TAPAS sólo en los extremos REALES de la barra (ver _cilindroParte):
+      //   · el tramo i=1 arranca en pts[0]  → tapa inicial;
+      //   · el tramo i=n-1 sin doblez termina en pts[n-1] → tapa final.
+      // El resto va openEnded (ahorro ~2·segRad triángulos por tramo).
+      var tapaIni = (i === 1);
+      var tapaFin = (i === pts.length - 1) && !d;
+      var openEnded = !(tapaIni || tapaFin);
+      var recto = _cilindroParte(cursor, d ? d.T1 : pts[i], rTubo, segRad, openEnded);
       if (recto) partes.push(recto);
       if (d) {
         var nSeg = Math.max(4, Math.ceil(d.ang / (Math.PI / 16)));   // ~11° por segmento

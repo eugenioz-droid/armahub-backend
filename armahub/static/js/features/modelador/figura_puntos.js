@@ -138,13 +138,23 @@
   // Convención del arco: punto(θ) = O + Rc·(cosθ·Ŷ + sinθ·Ẑ), planar en x=xx.
   //   θ=0 → +Y (arriba) · θ=−90° → −Z (izquierda). Viajando con θ DECRECIENTE la
   //   tangente es (sinθ, −cosθ).
+  // PERF (F0·esArco): cada punto del arco se marca con `esArco:true`. El motor
+  // geométrico (motor_geom.analizarBarra) NO le mete fillet-toro a un vértice que
+  // ya viene de un arco MUESTREADO: la curva ya está descrita por los puntos, así
+  // que basta unirlos con CUERDAS (cilindros). Antes, cada uno de los ~14 puntos
+  // por codo generaba además un toro de 8 segmentos → ~60% de los triángulos del
+  // estribo eran redundantes. La FORMA VISIBLE no cambia (el muestreo es de ~10°,
+  // la cuerda y el arco coinciden a menos de 0.4% del radio).
+  // Es un flag ADITIVO en el punto: si se pierde por el camino (algún .map que
+  // recree los puntos), el motor cae al comportamiento anterior — más lento pero
+  // idéntico visualmente. NUNCA cambia el largo/peso (los pone el backend por dims).
   function _arcoYZ(O, Rc, thetaIni, thetaFin, xx, incluirInicio) {
     var barrido = thetaFin - thetaIni;
     var n = Math.max(8, Math.ceil(Math.abs(barrido) / (Math.PI / 18)));   // ~10°/punto
     var out = [];
     for (var k = (incluirInicio ? 0 : 1); k <= n; k++) {
       var a = thetaIni + barrido * (k / n);
-      out.push({ x: xx, y: O.y + Rc * Math.cos(a), z: O.z + Rc * Math.sin(a) });
+      out.push({ x: xx, y: O.y + Rc * Math.cos(a), z: O.z + Rc * Math.sin(a), esArco: true });
     }
     return out;
   }

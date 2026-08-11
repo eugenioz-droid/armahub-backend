@@ -153,8 +153,18 @@
   }
 
   // Desplaza TODOS los puntos de un placement por (dx,dy,dz).
+  // PERF (F0·esArco): conserva el flag `esArco` del punto original. Ese flag lo pone
+  // figura_puntos._arcoYZ en los puntos MUESTREADOS de un arco y motor_geom lo usa
+  // para NO meter un fillet-toro redundante ahí. Recrear el punto sin él (esto era
+  // un .map que sólo copiaba x/y/z) hacía que un estribo RETRANQUEADO por prioridad
+  // perdiera la optimización y volviera a generar ~14 toros por codo. Es aditivo:
+  // no cambia ninguna coordenada.
   function _trasladar(pts, dx, dy, dz) {
-    return pts.map(function (p) { return { x: p.x + dx, y: p.y + dy, z: p.z + dz }; });
+    return pts.map(function (p) {
+      var q = { x: p.x + dx, y: p.y + dy, z: p.z + dz };
+      if (p.esArco) q.esArco = true;
+      return q;
+    });
   }
 
   // resolverDependencias(placements) → placements ajustados (in-place sobre copias).

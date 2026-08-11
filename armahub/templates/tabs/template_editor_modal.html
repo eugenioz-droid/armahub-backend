@@ -117,13 +117,19 @@
     border:2.5px solid #2f80ed;pointer-events:none;border-radius:2px}
   #te_modal .te-vista.te-plano-on .te-vtitle{background:#2f80ed;color:#fff;border-color:#2f80ed}
   #te_modal .te-vtitle{position:absolute;top:8px;left:10px;z-index:3;font-size:11px;font-weight:700;color:#5b6a7d;background:rgba(255,255,255,.78);border:1px solid var(--te-line);border-radius:6px;padding:2px 8px;letter-spacing:.3px}
-  #te_modal .te-vaxes{position:absolute;bottom:7px;left:10px;z-index:3;font-size:10px;color:#9aa4b0;font-family:monospace}
-  /* Gizmo de ejes: aclara QUÉ eje es horizontal (→), vertical (↑) y cuál sale hacia
-     ti (⊙). Colores X rojo / Y verde / Z azul. Fija esquina inf-izq del cuadrante. */
-  #te_modal .te-vgizmo{position:absolute;bottom:6px;left:10px;z-index:3;display:flex;flex-direction:column;
-    gap:1px;font-size:9.5px;font-weight:700;font-family:"Segoe UI",system-ui,monospace;
-    background:rgba(255,255,255,.7);border-radius:5px;padding:3px 6px;line-height:1.25;pointer-events:none}
-  #te_modal .te-vgizmo .te-gzax{white-space:nowrap}
+  /* B4 — GIZMO GRÁFICO de ejes (reemplaza el cuadro de texto anterior). Mini SVG de
+     ~46×46 que dibuja: flecha horizontal = eje u de la vista, flecha vertical = eje v,
+     y el símbolo ⊙ (círculo con punto) = eje de profundidad, "hacia ti". Colores
+     estándar de modelador X rojo / Y verde / Z azul (_EJE_COLOR en template_editor.js).
+     Lo genera _actualizarTitulosVista UNA sola vez por vista → cero costo por frame.
+     Va sobre la esquina inf-izq, DESPLAZADO a la derecha del botón "centrar vista". */
+  #te_modal .te-vgizmo{position:absolute;bottom:4px;left:34px;z-index:3;width:46px;height:46px;
+    pointer-events:none;line-height:0}
+  #te_modal .te-vgizmo svg{width:46px;height:46px;display:block;overflow:visible}
+  #te_modal .te-vgizmo .te-gzt{font:700 9px "Segoe UI",system-ui,sans-serif}
+  /* Esquina reservada para el gizmo 3D (lo pinta el RENDERER con su propio viewport,
+     no el DOM): sólo se documenta el tamaño para que nada se le encime. */
+  #te_modal .te-vista.d3 .te-vhint{right:78px}
   #te_modal .te-vista svg{width:100%;height:100%;display:block}
   #te_modal .te-vista canvas{width:100%;height:100%;display:block}
   /* Vistas 2D = render ORTOGRÁFICO del 3D (canvas de fondo) + SVG overlay encima.
@@ -217,6 +223,21 @@
   #te_modal #te_footer{display:flex;align-items:center;gap:10px;padding:9px 18px;border-top:1px solid var(--te-line);background:var(--te-panel2)}
   #te_modal #te_footer .te-spacer{flex:1}
   #te_modal .te-webglmsg{position:absolute;inset:0;display:none;align-items:center;justify-content:center;flex-direction:column;gap:6px;text-align:center;padding:20px;color:#5b6a7d;font-size:11.5px;z-index:4}
+
+  /* ---- WARNING ANTI-COLAPSO (elemento grande) ----
+     Banner NO modal y descartable, entre el ribbon y las herramientas. NUNCA bloquea
+     la operación: sólo avisa que el nº de barras puede degradar el rendimiento.
+     Dos niveles: .warn (amarillo, >350 barras) y .danger (rojo, >800). */
+  #te_modal #te_bigwarn{display:none;align-items:center;gap:9px;padding:7px 18px;font-size:11.5px;
+    font-weight:600;border-bottom:1px solid var(--te-line)}
+  #te_modal #te_bigwarn.on{display:flex}
+  #te_modal #te_bigwarn.warn{background:#fff8e1;color:#8a6100;border-bottom-color:#ffe0a3}
+  #te_modal #te_bigwarn.danger{background:#fdecea;color:#a5261c;border-bottom-color:#f5c2bd}
+  #te_modal #te_bigwarn .te-bwico{font-size:14px;line-height:1}
+  #te_modal #te_bigwarn .te-bwsp{flex:1}
+  #te_modal #te_bigwarn .te-bwx{border:none;background:transparent;cursor:pointer;font-size:14px;
+    line-height:1;color:inherit;opacity:.6;padding:2px 5px;border-radius:5px}
+  #te_modal #te_bigwarn .te-bwx:hover{opacity:1;background:rgba(0,0,0,.06)}
 </style>
 
 <div id="te_backdrop">
@@ -270,6 +291,15 @@
       <span class="te-note" style="margin:0">Elige figura + tipología → clic en una vista para colocar.</span>
     </div>
 
+    <!-- WARNING ANTI-COLAPSO: lo muestra/oculta _actualizarWarnTamano() tras cada
+         regeneración. Descartable con la ✕; no bloquea nada. -->
+    <div id="te_bigwarn">
+      <span class="te-bwico">⚠️</span>
+      <span id="te_bigwarnTxt"></span>
+      <span class="te-bwsp"></span>
+      <button class="te-bwx" id="te_bigwarnX" title="Ocultar aviso" aria-label="Ocultar aviso">✕</button>
+    </div>
+
     <!-- HERRAMIENTAS del colocador (aplican a las 4 vistas) -->
     <div id="te_ctools">
       <span class="te-tlbl">Herramientas</span>
@@ -316,8 +346,11 @@
           <button class="te-vreset" data-plano="seccion" title="Centrar vista">⟳</button>
           <!-- Slider de PLANO DE CORTE: desplaza la profundidad del corte de esta vista;
                el plano se muestra en el 3D moviéndose con él. -->
+          <!-- B1: step="any" → arrastre CONTINUO. Sin step, el default 1 = 1% del eje de
+               profundidad; en SECCIÓN (depth = largo = 600 cm) eso era 6 cm por paso y el
+               corte "saltaba". El handler ya divide por 100 y clampa (float-safe). -->
           <div class="te-vcut" title="Plano de corte (profundidad)">
-            <input type="range" class="te-vcut-r" data-plano="seccion" min="0" max="100" value="50">
+            <input type="range" class="te-vcut-r" data-plano="seccion" min="0" max="100" step="any" value="50">
           </div>
         </div>
 
@@ -331,7 +364,7 @@
           <svg id="te_svgLargo" class="te-vsvg" viewBox="0 0 620 300" preserveAspectRatio="xMidYMid meet"></svg>
           <button class="te-vreset" data-plano="largo" title="Centrar vista">⟳</button>
           <div class="te-vcut" title="Plano de corte (profundidad)">
-            <input type="range" class="te-vcut-r" data-plano="largo" min="0" max="100" value="50">
+            <input type="range" class="te-vcut-r" data-plano="largo" min="0" max="100" step="any" value="50">
           </div>
         </div>
 
@@ -344,15 +377,16 @@
           <svg id="te_svgPlanta" class="te-vsvg" viewBox="0 0 620 260" preserveAspectRatio="xMidYMid meet"></svg>
           <button class="te-vreset" data-plano="planta" title="Centrar vista">⟳</button>
           <div class="te-vcut" title="Plano de corte (profundidad)">
-            <input type="range" class="te-vcut-r" data-plano="planta" min="0" max="100" value="50">
+            <input type="range" class="te-vcut-r" data-plano="planta" min="0" max="100" step="any" value="50">
           </div>
         </div>
 
         <!-- 2.2 abajo-der: 3D EN VIVO (reusa el motor del modelador) -->
         <div class="te-vista d3">
           <div class="te-vtitle">3D · en vivo</div>
-          <div class="te-vaxes">arrastra = rotar</div>
-          <div class="te-vhint">motor del modelador · fondo claro</div>
+          <!-- El gizmo 3D (triad de ejes que sigue a la cámara) lo pinta el RENDERER en la
+               esquina inf-izq de este cuadrante (viewport propio, ver _renderGizmo3D). -->
+          <div class="te-vhint">arrastra = rotar · motor del modelador</div>
           <!-- canvas real (Three.js on-demand). Si no hay WebGL, se muestra el fallback SVG. -->
           <canvas id="te_cv" style="display:none;"></canvas>
           <!-- Placeholder SVG (visible hasta que carga Three.js; también fallback sin WebGL) -->

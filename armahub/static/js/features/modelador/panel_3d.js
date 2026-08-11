@@ -26,7 +26,10 @@
     verHormigon: true, tema: 'medio', ejeRot: 'libre',
     rotX: 0.62, rotY: 0.85, dist: 900, target: null, panX: 0, panY: 0,
     materiales: null, hormigonGroup: null, rafId: null, arrastre: null,
-    threeCargado: false, webglOk: null, resizeObs: null
+    threeCargado: false, webglOk: null, resizeObs: null,
+    // PERF (F0·iv) — render-on-demand: el loop sólo pinta si algo marcó dirty
+    // (_marcarSucio desde cámara/pan/zoom/resize/redibujo/tema/toolbar).
+    dirty: true, _vw: 0, _vh: 0
   };
 
   var COLORES_TIP = {   // swatches del panel (hex string) por tipología (rol)
@@ -417,16 +420,42 @@
     return ST.materiales.LT;
   }
 
+  // PERF (F0·iii) — vaciar el world LIBERANDO la GPU. `remove()` sólo desengancha el
+  // objeto del grafo; la BufferGeometry sigue ocupando memoria de video (three no
+  // libera buffers WebGL por GC). Regenerar muchas veces acumulaba geometrías
+  // huérfanas. Se dispone la GEOMETRÍA de cada descendiente; los MATERIALES son
+  // COMPARTIDOS (ST.materiales) → NUNCA se disponen. Los materiales creados al vuelo
+  // (edges del hormigón) se marcan con userData._propio y sí se disponen.
+  function _vaciarWorld() {
+    if (!ST.world) return;
+    while (ST.world.children.length) {
+      var obj = ST.world.children[0];
+      ST.world.remove(obj);
+      if (obj.traverse) {
+        obj.traverse(function (n) {
+          if (n.geometry && n.geometry.dispose) n.geometry.dispose();
+          if (n.material && n.material.userData && n.material.userData._propio && n.material.dispose) {
+            n.material.dispose();
+          }
+        });
+      } else if (obj.geometry && obj.geometry.dispose) {
+        obj.geometry.dispose();
+      }
+    }
+  }
+
   function _redibujar(out) {
     var THREE = global.THREE, geom = _deps().geom;
     if (!THREE || !ST.world) return;
-    while (ST.world.children.length) ST.world.remove(ST.world.children[0]);
+    _vaciarWorld();
     var g = ST.receta.geometria;
     // Hormigón
     if (ST.verHormigon) {
       var box = new THREE.Mesh(new THREE.BoxGeometry(g.largo, g.alto, g.ancho), ST.materiales.hormigon);
-      var edges = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(g.largo, g.alto, g.ancho)),
-        new THREE.LineBasicMaterial({ color: 0x3a4658 }));
+      var matEdges = new THREE.LineBasicMaterial({ color: 0x3a4658 });
+      matEdges.userData._propio = true;   // creado al vuelo → se dispone al vaciar
+      var edges = new THREE.LineSegments(
+        new THREE.EdgesGeometry(new THREE.BoxGeometry(g.largo, g.alto, g.ancho)), matEdges);
       ST.world.add(box); ST.world.add(edges);
     }
     // Barras: usa los PLACEMENTS (poses 3D) del último generar.
@@ -436,9 +465,10 @@
       if (mesh) ST.world.add(mesh);
     });
     _fit(g.largo);
+    ST.dirty = true;   // PERF (render-on-demand): la escena cambió → repintar
   }
 
-  function _fit(largo) { ST.dist = largo * 1.15 + 160; }
+  function _fit(largo) { ST.dist = largo * 1.15 + 160; ST.dirty = true; }
 
   function _aplicarTema(t) {
     var THREE = global.THREE, T = TEMAS[t] || TEMAS.medio;
@@ -450,6 +480,7 @@
     ST.materiales.ES.color.setHex(T.ES); ST.materiales.TRV.color.setHex(T.TRV);
     ST.materiales.LT.color.setHex(T.LT);
     ST.tema = t;
+    ST.dirty = true;   // PERF (render-on-demand): cambió fondo/colores → repintar
   }
 
   function _applyCam() {
@@ -479,16 +510,18 @@
     global.addEventListener('mouseup', function () { drag = false; panning = false; });
     global.addEventListener('mousemove', function (e) {
       var dx = e.clientX - lx, dy = e.clientY - ly;
-      if (panning) { ST.panX -= dx * ST.dist * 0.0011; ST.panY += dy * ST.dist * 0.0011; lx = e.clientX; ly = e.clientY; return; }
+      if (panning) { ST.panX -= dx * ST.dist * 0.0011; ST.panY += dy * ST.dist * 0.0011; lx = e.clientX; ly = e.clientY; _marcarSucio(); return; }
       if (!drag) return;
       if (ST.ejeRot === 'libre') { ST.rotY -= dx * 0.008; ST.rotX += dy * 0.008; }
       else if (ST.ejeRot === 'y') { ST.rotY -= dx * 0.008; }
       else if (ST.ejeRot === 'x') { ST.rotX += dy * 0.008; }
       else if (ST.ejeRot === 'z') { ST.rotY -= dx * 0.008; }
       ST.rotX = Math.max(-1.45, Math.min(1.45, ST.rotX)); lx = e.clientX; ly = e.clientY;
+      _marcarSucio();   // PERF: la cámara cambió → repintar
     });
     cv.addEventListener('wheel', function (e) {
       e.preventDefault(); ST.dist *= (e.deltaY > 0 ? 1.1 : 0.9); ST.dist = Math.max(120, Math.min(6000, ST.dist));
+      _marcarSucio();
     }, { passive: false });
   }
 
@@ -503,15 +536,29 @@
       if (st) { w = w || st.clientWidth; h = h || st.clientHeight; }
       if (!w) w = 640; if (!h) h = 420;
     }
+    // PERF: sólo re-dimensionar cuando el tamaño CAMBIÓ (setSize por frame era
+    // trabajo inútil) y marcar dirty para que el loop repinte ese frame.
+    if (ST._vw === w && ST._vh === h) return;
+    ST._vw = w; ST._vh = h;
     ST.renderer.setSize(w, h, false);
     ST.renderer.setPixelRatio(Math.min(2, global.devicePixelRatio || 1));
     if (ST.camera) { ST.camera.aspect = w / h; ST.camera.updateProjectionMatrix(); }
+    _marcarSucio();
   }
+
+  // PERF (F0·iv) — RENDER ON DEMAND. El loop renderizaba a 60 fps aunque la escena
+  // estuviera quieta (GPU al 100% sin razón con elementos grandes). Ahora sólo pinta
+  // si algo marcó ST.dirty: cámara/pan/zoom (_bindOrbita), resize, redibujo, tema,
+  // toolbar. El rAF sigue corriendo (es barato) pero sin trabajo de GPU.
+  function _marcarSucio() { ST.dirty = true; }
 
   function _loop() {
     ST.rafId = global.requestAnimationFrame(_loop);
     if (!$('m3d_backdrop') || !$('m3d_backdrop').classList.contains('on')) return;   // no renderizar cerrado
-    _resize(); _applyCam(); ST.renderer.render(ST.scene, ST.camera);
+    _resize();                 // marca dirty si el tamaño cambió
+    if (!ST.dirty) return;     // nada cambió → no gastar GPU
+    ST.dirty = false;
+    _applyCam(); ST.renderer.render(ST.scene, ST.camera);
   }
 
   // --------------------------------------------------------------------------
@@ -533,7 +580,7 @@
     // Anclar centro: la órbita ya gira alrededor del centro (0,0,0); el toggle lo
     // deja explícito (calca la maqueta). Cotas/Medir: aún no operativos (visual).
     var ta = $('m3d_tAncla');
-    if (ta) ta.onclick = function () { ta.classList.toggle('on'); if (ST.target) ST.target.set(0, 0, 0); ST.panX = 0; ST.panY = 0; };
+    if (ta) ta.onclick = function () { ta.classList.toggle('on'); if (ST.target) ST.target.set(0, 0, 0); ST.panX = 0; ST.panY = 0; _marcarSucio(); };
     var tc = $('m3d_tCotas'); if (tc) tc.onclick = function () { tc.classList.toggle('on'); };
     var tm = $('m3d_tMedir'); if (tm) tm.onclick = function () { tm.classList.toggle('on'); };
     // Inputs de geometría: enganchar una sola vez (evita listeners duplicados al
@@ -556,6 +603,7 @@
     if (!ctx.loteId) { alert('Primero crea o abre un despiece (con Obra, Ciclo y Eje) para cargar barras del Enfierrador 3D.'); return; }
     if (!ST.receta) ST.receta = d.semilla.semillaViga();
     var bd = $('m3d_backdrop'); bd.classList.add('on');
+    _marcarSucio();   // PERF (render-on-demand): al abrir siempre hay que pintar
     var sub = $('m3d_ctxSub');
     if (sub) sub.innerHTML = 'Despiece activo · <b>' + (ctx.sector || '—') + '</b> · Ciclo ' + (ctx.ciclo || '—') + ' · Eje ' + (ctx.eje || '—');
     // Poblar los inputs de geometría desde la receta.
