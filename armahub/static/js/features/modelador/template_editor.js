@@ -795,28 +795,32 @@
   function _svgGizmoOrto(def) {
     var u = String(def.u || 'x'), v = String(def.v || 'y'), d = String(def.depth || 'z');
     var cu = _EJE_COLOR[u] || '#607d8b', cv = _EJE_COLOR[v] || '#607d8b', cd = _EJE_COLOR[d] || '#607d8b';
-    var ox = 7, oy = 39, L = 26;          // origen del triad + largo de flecha
+    // DIRECCIÓN REAL EN PANTALLA: sección y planta miran con el eje u INVERTIDO
+    // (su = −1, el mismo hallazgo del overlay G7). El gizmo debe apuntar hacia
+    // donde crece el eje EN LA PANTALLA, no siempre a la derecha — si no, "los
+    // colores/dirección no calzan" con lo que se ve.
+    var sg = _signosPantalla(def) || { su: 1, sv: 1 };
+    var ox = (sg.su >= 0) ? 8 : 38, oy = 38, L = 24;   // origen según el sentido de u
     function flecha(x1, y1, x2, y2, color) {
-      // línea + cabeza triangular en (x2,y2), orientada por el vector
       var dx = x2 - x1, dy = y2 - y1, m = Math.hypot(dx, dy) || 1;
-      var ux = dx / m, uy = dy / m, px = -uy, py = ux, h = 5, w = 3;
+      var ux = dx / m, uy = dy / m, px = -uy, py = ux, h = 4.5, w = 2.6;
       var bx = x2 - ux * h, by = y2 - uy * h;
       var pts = x2 + ',' + y2 + ' ' + (bx + px * w) + ',' + (by + py * w) + ' ' + (bx - px * w) + ',' + (by - py * w);
       return '<line x1="' + x1 + '" y1="' + y1 + '" x2="' + bx + '" y2="' + by + '" stroke="' + color +
-             '" stroke-width="1.8" stroke-linecap="round"/>' +
+             '" stroke-width="1.6" stroke-linecap="round"/>' +
              '<polygon points="' + pts + '" fill="' + color + '"/>';
     }
-    return '<svg viewBox="0 0 46 46" aria-hidden="true">' +
-      // fondo tenue para que el triad se lea sobre cualquier render
-      '<rect x="0" y="0" width="46" height="46" rx="6" fill="rgba(255,255,255,.72)"/>' +
-      flecha(ox, oy, ox + L, oy, cu) +
-      '<text class="te-gzt" x="' + (ox + L + 2) + '" y="' + (oy + 3.5) + '" fill="' + cu + '">' + u.toUpperCase() + '</text>' +
+    var tipU = ox + sg.su * L;             // flecha u hacia donde crece en pantalla
+    var txU = tipU + (sg.su >= 0 ? 2.5 : -8);
+    return '<svg viewBox="0 0 46 46" aria-hidden="true" style="font:700 9px \'Segoe UI\',system-ui,sans-serif">' +
+      '<rect x="0" y="0" width="46" height="46" rx="8" fill="rgba(255,255,255,.85)" stroke="#dbe1e8"/>' +
+      flecha(ox, oy, tipU, oy, cu) +
+      '<text x="' + txU + '" y="' + (oy + 3.5) + '" fill="' + cu + '">' + u.toUpperCase() + '</text>' +
       flecha(ox, oy, ox, oy - L, cv) +
-      '<text class="te-gzt" x="' + (ox - 4.5) + '" y="' + (oy - L - 3) + '" fill="' + cv + '">' + v.toUpperCase() + '</text>' +
-      // eje de profundidad: ⊙ (círculo con punto) = apunta hacia el observador
-      '<circle cx="' + (ox + 9) + '" cy="' + (oy - 9) + '" r="4.6" fill="none" stroke="' + cd + '" stroke-width="1.5"/>' +
-      '<circle cx="' + (ox + 9) + '" cy="' + (oy - 9) + '" r="1.5" fill="' + cd + '"/>' +
-      '<text class="te-gzt" x="' + (ox + 15) + '" y="' + (oy - 11) + '" fill="' + cd + '">' + d.toUpperCase() + '</text>' +
+      '<text x="' + (ox - (sg.su >= 0 ? 0 : 6)) + '" y="' + (oy - L - 3) + '" fill="' + cv + '">' + v.toUpperCase() + '</text>' +
+      // eje de PROFUNDIDAD (sale hacia ti): letra chica y tenue en la esquina
+      // opuesta, sin el símbolo ⊙ (el detalle queda en el tooltip).
+      '<text x="' + (sg.su >= 0 ? 36 : 4) + '" y="12" fill="' + cd + '" opacity=".55" style="font-size:8px">' + d.toUpperCase() + '·⊙</text>' +
       '</svg>';
   }
 
@@ -1294,20 +1298,22 @@
     function X(u) { return _tX(t, u); }
     function Y(v) { return _tY(t, v); }
 
-    // Hormigón + boundary de recubrimiento (en modo orto lo pinta el 3D).
+    // Hormigón sólido: en modo orto lo pinta el 3D. El punteado del RECUBRIMIENTO
+    // sí va SIEMPRE en el overlay (el 3D no lo dibuja y el usuario lo necesita
+    // como guía de colocación).
     if (rect && !soloOverlay) {
       svg.appendChild(_svgEl('rect', {
         'class': 'te-horm', rx: 2,
         x: Math.min(X(-rect.W / 2), X(rect.W / 2)), y: Math.min(Y(rect.H / 2), Y(-rect.H / 2)),
         width: rect.W * t.s, height: rect.H * t.s
       }));
-      if (rect.iW > 0 && rect.iH > 0) {
-        svg.appendChild(_svgEl('rect', {
-          'class': 'te-recub',
-          x: Math.min(X(-rect.iW / 2), X(rect.iW / 2)), y: Math.min(Y(rect.iH / 2), Y(-rect.iH / 2)),
-          width: rect.iW * t.s, height: rect.iH * t.s
-        }));
-      }
+    }
+    if (rect && rect.iW > 0 && rect.iH > 0) {
+      svg.appendChild(_svgEl('rect', {
+        'class': 'te-recub',
+        x: Math.min(X(-rect.iW / 2), X(rect.iW / 2)), y: Math.min(Y(rect.iH / 2), Y(-rect.iH / 2)),
+        width: rect.iW * t.s, height: rect.iH * t.s
+      }));
     }
 
     // Barras: halo de selección + HIT invisible SIEMPRE; el trazo sólido sólo cuando
@@ -1324,14 +1330,25 @@
       // profundidad del plano) → círculo, no polilínea. Criterio GEOMÉTRICO (sirve
       // igual para piezas volteadas, cuyo eje longitudinal ya cambió de verdad).
       if (rol === 'cabezal' && _ejeMayorSpan(pl.puntos) === def.depth) {
-        var q0 = pts[0];
-        if (sel) svg.appendChild(_svgEl('circle', { cx: X(q0.u), cy: Y(q0.v), r: 6.5, 'class': 'te-bar-halo' }));
-        if (!soloOverlay) {
-          svg.appendChild(_svgEl('circle', { cx: X(q0.u), cy: Y(q0.v), r: 4.2, fill: color, style: 'pointer-events:none' }));
+        // Punto representativo = el TRAMO RECTO que corre en profundidad (el cuerpo
+        // de la barra), NO pts[0] (que es la punta del gancho → el círculo salía
+        // "abajo" mientras la barra iba arriba). Todos los puntos del tramo proyectan
+        // al mismo (u,v): tomamos el extremo del segmento con mayor delta en depth.
+        var q0 = pts[0], mejorDelta = -1;
+        var raw = pl.puntos || [];
+        for (var si = 1; si < raw.length; si++) {
+          var dd = Math.abs((raw[si][def.depth] || 0) - (raw[si - 1][def.depth] || 0));
+          if (dd > mejorDelta) { mejorDelta = dd; q0 = proj(raw[si]); }
         }
+        // Radio REAL de la barra en px (φ en mm → cm/2 → escala de la vista); el
+        // render 3D no puede pintar esta sección (el cilindro cortado de punta es un
+        // tubo de pared 0 px), así que el círculo lo pone SIEMPRE el overlay.
+        var rPx = Math.max(3, (Number(pl.diam) / 20) * Math.abs(t.s || 1));
+        if (sel) svg.appendChild(_svgEl('circle', { cx: X(q0.u), cy: Y(q0.v), r: rPx + 2.5, 'class': 'te-bar-halo' }));
+        svg.appendChild(_svgEl('circle', { cx: X(q0.u), cy: Y(q0.v), r: rPx, fill: color, style: 'pointer-events:none' }));
         // hit generoso (transparente) — es lo que hace clicable la barra
         svg.appendChild(_svgEl('circle', {
-          cx: X(q0.u), cy: Y(q0.v), r: 7.5, fill: 'transparent',
+          cx: X(q0.u), cy: Y(q0.v), r: Math.max(7.5, rPx + 3), fill: 'transparent',
           'data-ci': ci, 'data-hit': '1', style: 'cursor:pointer'
         }));
         return;
@@ -3010,7 +3027,7 @@
   // dibuje ENCIMA del 3D, y se anulan los clippingPlanes.
   // THREE se resuelve DENTRO de la función (regla dura 1).
   // ==========================================================================
-  var GIZMO_PX = 64;
+  var GIZMO_PX = 96;
 
   function _initGizmo3D() {
     var THREE = global.THREE;
