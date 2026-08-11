@@ -316,11 +316,21 @@
   // cabezales (cara sup/inf). Reparte barras_capa a lo ancho (Z); cada capa se
   // retranquea hacia el núcleo por su índice (offset = capa_idx*(diam+gap)).
   // cfg: { n_capas, barras_capa, gap, sentido:'nucleo' }
-  // JERARQUÍA DE BARRAS: el recubrimiento es a la CARA del fierro más externo
-  // (el estribo, host.phi_est en cm). Un longitudinal se APOYA por dentro del
-  // estribo → su eje va a recub + φ_est + φ_propio/2 de la cara del hormigón.
+  // JERARQUÍA DE BARRAS POR NIVEL: base.jerarquia = 0 (pegado al recubrimiento),
+  // 1, 2… (se apoya por dentro de los niveles anteriores). El inset EXTRA (además
+  // de recub y φ_propio/2, que pone el llamador) es la suma de los φ máximos de
+  // los niveles anteriores (host.jer_phi, lo calcula generar). Sin dato → compat
+  // con host.phi_est (estribo nivel 0 / resto nivel 1).
   function _insetJerarquia(base, host) {
-    if ((base.rol || 'cabezal') === 'estribo') return 0;   // el estribo se ancla solo
+    var nivel = (base.jerarquia != null && isFinite(base.jerarquia)) ? Number(base.jerarquia)
+      : ((base.rol || 'cabezal') === 'estribo' ? 0 : 1);
+    if (nivel <= 0) return 0;
+    var phis = host && host.jer_phi;
+    if (phis && phis.length) {
+      var s = 0;
+      for (var i = 0; i < nivel && i < phis.length; i++) s += Number(phis[i]) || 0;
+      return s;
+    }
     return (host && host.phi_est) ? Number(host.phi_est) : 0;
   }
 
@@ -342,20 +352,38 @@
     var cara = (base.anchorBase && base.anchorBase.cara) || 'sup';
     var s = (cara === 'sup') ? -1 : 1;   // hacia el núcleo
     var yBorde = _yBordeCabezal(base, host);
-    // CAPAS ANIDADAS (estribos/corchetes con n_capas>1): cada capa se ACHICA para
-    // anidar dentro de la anterior (inset = φ + gap por capa) en vez de apilarse
-    // desplazada. cfg.anidar === false lo desactiva (toggle de la UI).
-    var anida = (base.rol === 'estribo') && (!cfg || cfg.anidar !== false);
+    // CAPAS ANIDADAS/AJUSTADAS (cfg.anidar !== false, toggle de la UI):
+    //  · estribo/corchete: cada capa se ACHICA (inset φ+gap) para anidar dentro
+    //    de la anterior en vez de apilarse desplazada;
+    //  · cabezal con patas (103x): la capa retranqueada ACORTA sus patas A/C en
+    //    el mismo offset → sus puntas quedan alineadas con las de la capa 1 y
+    //    sale como ÍTEM PROPIO en el listado (dims distintas → marca distinta).
+    // Estribo: anida por DEFAULT (anidar!==false). Cabezal: ajuste de patas es
+    // OPT-IN (anidar===true) — cambiaría dims/kg de recetas existentes si fuera
+    // default (la viga-semilla quedaría con 5 ítems en vez de 4).
+    var anidaMarco = (!cfg || cfg.anidar !== false) && (base.rol === 'estribo');
+    var anidaPatas = (cfg && cfg.anidar === true) && (base.rol !== 'estribo') &&
+      ((base.dims && Number(base.dims.A) > 0) || (base.dims && Number(base.dims.C) > 0));
     for (var c = 0; c < nCapas; c++) {
       var y = yBorde + s * c * (base.diam + gap);   // retranqueo por capa
+      var off = c * (base.diam + gap);
+      var dimsCapa = base.dims;
+      if (anidaPatas && c > 0) {
+        dimsCapa = {};
+        for (var dk in base.dims) if (base.dims.hasOwnProperty(dk)) dimsCapa[dk] = base.dims[dk];
+        if (Number(dimsCapa.A) > 0) dimsCapa.A = Math.max(base.diam * 2, Number(dimsCapa.A) - off);
+        if (Number(dimsCapa.C) > 0) dimsCapa.C = Math.max(base.diam * 2, Number(dimsCapa.C) - off);
+      }
       for (var i = 0; i < nBarras; i++) {
         var z = (nBarras > 1) ? (-zHalf + (2 * zHalf) * (i / (nBarras - 1))) : 0;
         var extra = { y: y, z: z, cara: cara };
-        if (anida && c > 0) extra.inset = c * (base.diam + gap);
+        if (anidaMarco && c > 0) extra.inset = (base.anchorBase.inset || 0) + off;
         var anchor = _mezclarAnchor(base.anchorBase, extra);
-        var puntos = _fp().figuraAPuntos(base.figura, base.dims, host, anchor,
+        var puntos = _fp().figuraAPuntos(base.figura, dimsCapa, host, anchor,
           { rol: base.rol || 'cabezal', diamCm: base.diam });
-        placements.push(_placement(base, puntos, { capa: c + 1, cara: cara }));
+        var pl = _placement(base, puntos, { capa: c + 1, cara: cara });
+        if (dimsCapa !== base.dims) pl.dims = dimsCapa;   // ítem propio en el listado
+        placements.push(pl);
       }
     }
     return placements;
@@ -414,8 +442,9 @@
         var extra = { x: xr };
         if (!unaCapa) {
           // inset eje-a-eje por capa: la sep configurada, nunca menos que φ
-          // (dos estribos no pueden compartir plano).
-          if (anidaA) { if (c > 0) extra.inset = c * Math.max(sepCapas, base.diam); }
+          // (dos estribos no pueden compartir plano). Se SUMA al inset de
+          // jerarquía del anchor base (niveles > 0).
+          if (anidaA) { if (c > 0) extra.inset = (base.anchorBase.inset || 0) + c * Math.max(sepCapas, base.diam); }
           else extra[eje] = baseEje + off;
         }
         var anchorA = _mezclarAnchor(base.anchorBase, extra);
@@ -711,11 +740,12 @@
     // los cubre la dim alargada en _dimsEfectivas).
     var empExtremo = (comp.empalme && comp.empalme.extremo) || null;
     var empValor = empExtremo ? evalEmpalme(comp.empalme.valor, diamCm) : 0;
-    return {
+    var base = {
       figura: comp.figura, diam: diamCm,
       tipologia: comp.tipologia, suf: comp.suf_tipo || '',
       comp_id: (comp.comp_id != null ? comp.comp_id : null),
       prioridad: comp.prioridad != null ? comp.prioridad : null,
+      jerarquia: (comp.jerarquia != null && isFinite(comp.jerarquia)) ? Number(comp.jerarquia) : null,
       dims: _dimsEfectivas(comp, host),
       angulos: comp.angulos || null,
       rol: comp._rol,
@@ -726,6 +756,12 @@
         empalme: (empExtremo && empValor > 0) ? { extremo: empExtremo, valor: empValor } : null
       }
     };
+    // JERARQUÍA: los roles con marco (estribo/traba) reciben su inset de nivel
+    // por el anchor (el marco lo suma a recub + φ/2). Los cabezales lo resuelven
+    // en _yBordeCabezal/zHalf (no usan marco).
+    var insetJ = _insetJerarquia(base, host);
+    if (insetJ > 0 && (base.rol === 'estribo' || base.rol === 'traba')) base.anchorBase.inset = insetJ;
+    return base;
   }
 
   function _rolDeTipologia(tip, cara) {

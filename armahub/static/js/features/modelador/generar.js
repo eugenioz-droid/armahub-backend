@@ -252,16 +252,23 @@
     };
     var REGLAS = _reglas();
     if (!REGLAS) { console.error('[generar] ModeladorReglas no disponible aún'); return { placements: [], barras: [], resumen: { items: 0, barras: 0, kg: 0 } }; }
-    // JERARQUÍA DE BARRAS (dato cruzado): φ del estribo más grueso del elemento,
-    // en cm. El recubrimiento es a la CARA del fierro más externo (el estribo);
-    // los longitudinales se apoyan POR DENTRO del estribo → sus ejes se corren
-    // recub + φ_est + φ_propio/2. reglas/figura_puntos lo leen de host.phi_est.
-    var phiEst = 0;
+    // JERARQUÍA DE BARRAS (dato cruzado, POR NIVEL): cada componente tiene un
+    // nivel de jerarquía (comp.jerarquia: 0,1,2…; default por rol: estribo 0,
+    // traba/cabezal 1). El recubrimiento es a la CARA del fierro de nivel 0;
+    // cada nivel siguiente se apoya POR DENTRO de los anteriores. host.jer_phi
+    // = [maxφ nivel0, maxφ nivel1, …] en cm; el inset de un comp de nivel n es
+    // recub + Σ jer_phi[0..n-1] + φ_propio/2 (reglas._insetJerarquia).
+    var jerPhi = [];
     (receta.componentes || []).forEach(function (comp) {
-      var rol = (REGLAS.rolDeTipologia ? REGLAS.rolDeTipologia(comp.tipologia, comp.cara) : '');
-      if (rol === 'estribo' && Number(comp.diam) / 10 > phiEst) phiEst = Number(comp.diam) / 10;
+      var rol = (REGLAS.rolDeTipologia ? REGLAS.rolDeTipologia(comp.tipologia, comp.cara) : 'cabezal');
+      var nivel = (comp.jerarquia != null && isFinite(comp.jerarquia)) ? Number(comp.jerarquia)
+        : (rol === 'estribo' ? 0 : 1);
+      var phi = Number(comp.diam) / 10;
+      if (!(jerPhi[nivel] >= phi)) jerPhi[nivel] = phi;
     });
-    host.phi_est = phiEst;
+    for (var jn = 0; jn < jerPhi.length; jn++) if (jerPhi[jn] == null) jerPhi[jn] = 0;
+    host.jer_phi = jerPhi;
+    host.phi_est = jerPhi[0] || 0;   // compat: φ del nivel 0 (estribos)
     var placements = [];
     (receta.componentes || []).forEach(function (comp) {
       var pls = REGLAS.expandirComponente(comp, host);
