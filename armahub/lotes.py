@@ -297,11 +297,13 @@ def duplicar_lote(lote_id: int, body: LoteDuplicar, user=Depends(get_current_use
     with get_conn() as conn:
         with conn.cursor() as cur:
             _check_permiso(cur, user)
-            cur.execute("SELECT id_proyecto, estado, snap_barras FROM lotes WHERE id = %s", (lote_id,))
+            cur.execute("SELECT id_proyecto, estado, snap_barras, sector, estructura FROM lotes WHERE id = %s",
+                        (lote_id,))
             r = cur.fetchone()
             if not r:
                 raise HTTPException(status_code=404, detail="Lote origen no encontrado.")
             id_proyecto, estado_o, snap = r[0], r[1], r[2]
+            sector_o, estructura_o = r[3], r[4]
             campos = ["sector", "piso", "marca", "figura", "diam", "cant", "mult",
                       "dim_a", "dim_b", "dim_c", "dim_d", "dim_e", "dim_f", "dim_g", "dim_h", "dim_i",
                       "ang1", "ang2", "ang3", "ang4", "radio", "suf_tipo"]
@@ -309,8 +311,16 @@ def duplicar_lote(lote_id: int, body: LoteDuplicar, user=Depends(get_current_use
                 import json as _json
                 origen = snap if isinstance(snap, list) else (_json.loads(snap) if snap else [])
             else:
+                # TODAS las barras del despiece. ANTES se filtraba `AND origen = 'manual'`
+                # y eso PERDÍA barras en silencio: `origen` admite NULL (por eso el resto
+                # del código lo lee como COALESCE(origen,'csv')), y en SQL `NULL = 'manual'`
+                # NO es verdadero → esas barras quedaban fuera del duplicado. El usuario
+                # veía "duplicado (N barras)" con menos barras que el original, o un 400
+                # "no tiene barras que duplicar" en un despiece que sí las tenía.
+                # El filtro además era redundante: `lote_id` YA acota al despiece (las
+                # barras de CSV y de pedidos no pertenecen a ningún lote).
                 cur.execute("SELECT " + ", ".join(campos) +
-                            " FROM barras WHERE lote_id = %s AND origen = 'manual' ORDER BY id", (lote_id,))
+                            " FROM barras WHERE lote_id = %s ORDER BY id", (lote_id,))
                 origen = [dict(zip(campos, row)) for row in cur.fetchall()]
             if not origen:
                 raise HTTPException(status_code=400, detail="El lote origen no tiene barras que duplicar.")
@@ -320,10 +330,17 @@ def duplicar_lote(lote_id: int, body: LoteDuplicar, user=Depends(get_current_use
                     with conn.transaction():
                         cur.execute("SELECT COALESCE(MAX(num_obra), 0) + 1 FROM lotes WHERE id_proyecto = %s", (id_proyecto,))
                         num_obra = int(cur.fetchone()[0])
+                        # El lote nuevo nace con su CONTEXTO completo, igual que
+                        # crear_lote: sector/estructura heredados del origen y el
+                        # ciclo/eje elegidos. Antes quedaban NULL y el despiece
+                        # duplicado nacía sin contexto propio (el histórico lo
+                        # disimulaba con COALESCE(l.ciclo, MIN(b.ciclo))).
                         cur.execute(
-                            """INSERT INTO lotes (id_proyecto, tipo, estado, creado_por, creado_fecha, n_barras, num_obra)
-                               VALUES (%s, 'manual', 'borrador', %s, %s, 0, %s) RETURNING id""",
-                            (id_proyecto, email, _now_iso(), num_obra))
+                            """INSERT INTO lotes (id_proyecto, tipo, estado, creado_por, creado_fecha,
+                                                  n_barras, num_obra, ciclo, eje, sector, estructura)
+                               VALUES (%s, 'manual', 'borrador', %s, %s, 0, %s, %s, %s, %s, %s) RETURNING id""",
+                            (id_proyecto, email, _now_iso(), num_obra,
+                             ciclo, eje, sector_o, estructura_o))
                         nuevo_id = cur.fetchone()[0]
                     break
                 except UniqueViolation:
