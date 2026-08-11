@@ -231,7 +231,9 @@
     if (eje === 'z') { dim = Number(g.ancho); r = (g.recub_lat != null ? Number(g.recub_lat) : 3); }
     else if (eje === 'y') { dim = Number(g.alto); r = (g.recub_sup != null ? Number(g.recub_sup) : 4); }
     else { dim = Number(g.largo); r = 4; }
-    return { from: -dim / 2 + r, to: dim / 2 - r, sep: sep || 20 };
+    // `eje` SIEMPRE declarado: sin él, el distribuidor cae a X y un rango de
+    // cabezal (valores en Z, ±ancho/2) se interpretaba como X → 2 barras juntas.
+    return { from: -dim / 2 + r, to: dim / 2 - r, sep: sep || 20, eje: (eje === 'y' || eje === 'z') ? eje : 'x' };
   }
 
   // Eje de PROFUNDIDAD por defecto de las capas del arreglo = el eje "depth" del
@@ -261,11 +263,13 @@
     } else if (modo === 'lineal') {
       if (d.sep == null) d.sep = (rol === 'traba') ? 40 : 20;
       if (!d.rango) d.rango = _rangoDefault(d.sep, ejeD);
+      else if (d.rango.eje == null) d.rango.eje = ejeD;   // migrar rangos viejos sin eje
       d.activa = true;
       if (c.pos_hint) delete c.pos_hint[ejeD];   // el rango la distribuye
     } else { // arreglo
       if (d.sep == null) d.sep = (rol === 'traba') ? 40 : 20;
       if (!d.rango) d.rango = _rangoDefault(d.sep, ejeD);
+      else if (d.rango.eje == null) d.rango.eje = ejeD;
       if (d.n_capas == null) d.n_capas = 2;      // arreglo real ≥ 2 capas
       if (d.sep_capas == null) d.sep_capas = 10;
       if (d.eje_capas == null) d.eje_capas = _ejeCapasDefault();
@@ -792,15 +796,13 @@
   //   · símbolo ⊙ (círculo con punto = "sale hacia ti") con la letra del eje depth.
   // Colores _EJE_COLOR (X rojo / Y verde / Z azul). El origen del triad va en la
   // esquina inf-izq del recuadro (7,39); las flechas miden 26 px.
+  // Gizmo MINIMAL (pedido del usuario): SOLO los 2 ejes del plano, u→derecha y
+  // v→arriba, letra en cada punta, colores X/Y/Z estándar. Sin marcador de
+  // profundidad (queda en el tooltip) y sin volteos.
   function _svgGizmoOrto(def) {
-    var u = String(def.u || 'x'), v = String(def.v || 'y'), d = String(def.depth || 'z');
-    var cu = _EJE_COLOR[u] || '#607d8b', cv = _EJE_COLOR[v] || '#607d8b', cd = _EJE_COLOR[d] || '#607d8b';
-    // DIRECCIÓN REAL EN PANTALLA: sección y planta miran con el eje u INVERTIDO
-    // (su = −1, el mismo hallazgo del overlay G7). El gizmo debe apuntar hacia
-    // donde crece el eje EN LA PANTALLA, no siempre a la derecha — si no, "los
-    // colores/dirección no calzan" con lo que se ve.
-    var sg = _signosPantalla(def) || { su: 1, sv: 1 };
-    var ox = (sg.su >= 0) ? 8 : 38, oy = 38, L = 24;   // origen según el sentido de u
+    var u = String(def.u || 'x'), v = String(def.v || 'y');
+    var cu = _EJE_COLOR[u] || '#607d8b', cv = _EJE_COLOR[v] || '#607d8b';
+    var ox = 9, oy = 37, L = 22;
     function flecha(x1, y1, x2, y2, color) {
       var dx = x2 - x1, dy = y2 - y1, m = Math.hypot(dx, dy) || 1;
       var ux = dx / m, uy = dy / m, px = -uy, py = ux, h = 4.5, w = 2.6;
@@ -810,17 +812,12 @@
              '" stroke-width="1.6" stroke-linecap="round"/>' +
              '<polygon points="' + pts + '" fill="' + color + '"/>';
     }
-    var tipU = ox + sg.su * L;             // flecha u hacia donde crece en pantalla
-    var txU = tipU + (sg.su >= 0 ? 2.5 : -8);
     return '<svg viewBox="0 0 46 46" aria-hidden="true" style="font:700 9px \'Segoe UI\',system-ui,sans-serif">' +
       '<rect x="0" y="0" width="46" height="46" rx="8" fill="rgba(255,255,255,.85)" stroke="#dbe1e8"/>' +
-      flecha(ox, oy, tipU, oy, cu) +
-      '<text x="' + txU + '" y="' + (oy + 3.5) + '" fill="' + cu + '">' + u.toUpperCase() + '</text>' +
+      flecha(ox, oy, ox + L, oy, cu) +
+      '<text x="' + (ox + L + 3) + '" y="' + (oy + 3.5) + '" fill="' + cu + '">' + u.toUpperCase() + '</text>' +
       flecha(ox, oy, ox, oy - L, cv) +
-      '<text x="' + (ox - (sg.su >= 0 ? 0 : 6)) + '" y="' + (oy - L - 3) + '" fill="' + cv + '">' + v.toUpperCase() + '</text>' +
-      // eje de PROFUNDIDAD (sale hacia ti): letra chica y tenue en la esquina
-      // opuesta, sin el símbolo ⊙ (el detalle queda en el tooltip).
-      '<text x="' + (sg.su >= 0 ? 36 : 4) + '" y="12" fill="' + cd + '" opacity=".55" style="font-size:8px">' + d.toUpperCase() + '·⊙</text>' +
+      '<text x="' + (ox - 2) + '" y="' + (oy - L - 4) + '" fill="' + cv + '">' + v.toUpperCase() + '</text>' +
       '</svg>';
   }
 
@@ -1139,7 +1136,7 @@
     // Trazar la forma en pixeles.
     if (forma.tipo === 'point') {
       var pp = _uvToPixel(plano, forma.pts[0].u, forma.pts[0].v); if (!pp) return;
-      layer.appendChild(_svgEl('circle', { cx: pp.px.toFixed(1), cy: pp.py.toFixed(1), r: 4.6, fill: color, 'class': 'te-ghostpt', opacity: dentro ? 0.9 : 0.95 }));
+      layer.appendChild(_svgEl('circle', { cx: pp.px.toFixed(1), cy: pp.py.toFixed(1), r: 3.4, fill: color, 'class': 'te-ghostpt', opacity: dentro ? 0.85 : 0.9 }));
     } else {
       var d = forma.pts.map(function (q, i) { var p = _uvToPixel(plano, q.u, q.v); return (i ? 'L' : 'M') + p.px.toFixed(1) + ',' + p.py.toFixed(1); }).join(' ');
       if (forma.cerrar) d += ' Z';
@@ -1474,24 +1471,37 @@
     var eje = _ejeDistDe(c);
     if (eje !== def.u && eje !== def.v) return;   // eje de reparto = profundidad de esta vista
     var attrs = { 'class': 'te-rango-hit', 'data-rango': ST.selCi, 'data-rango-eje': eje };
+    // handle cuadradito en cada EXTREMO (achica/agranda ESE extremo); el tramo del
+    // medio desplaza el rango completo.
+    function handle(cx, cy, cual, cursor) {
+      svg.appendChild(_svgEl('rect', {
+        'class': 'te-rango-end', x: cx - 3.5, y: cy - 3.5, width: 7, height: 7,
+        'data-rango': ST.selCi, 'data-rango-end': cual, 'data-rango-eje': eje,
+        style: 'cursor:' + cursor
+      }));
+    }
     if (eje === def.u) {
       var xa = X(rango.from), xb = X(rango.to), yy = 18;
       svg.appendChild(_svgEl('line', { 'class': 'te-rango-line', x1: xa, y1: yy, x2: xb, y2: yy }));
       svg.appendChild(_svgEl('path', { 'class': 'te-rango-arrow', d: 'M' + (xa + 7) + ',' + (yy - 4) + ' L' + xa + ',' + yy + ' L' + (xa + 7) + ',' + (yy + 4) }));
       svg.appendChild(_svgEl('path', { 'class': 'te-rango-arrow', d: 'M' + (xb - 7) + ',' + (yy - 4) + ' L' + xb + ',' + yy + ' L' + (xb - 7) + ',' + (yy + 4) }));
-      attrs.x = Math.min(xa, xb); attrs.y = yy - 8;
-      attrs.width = Math.abs(xb - xa) || 4; attrs.height = 16;
+      attrs.x = Math.min(xa, xb) + 5; attrs.y = yy - 7;
+      attrs.width = Math.max(4, Math.abs(xb - xa) - 10); attrs.height = 14;
+      attrs.style = 'cursor:move';
+      svg.appendChild(_svgEl('rect', attrs));
+      handle(xa, yy, 'from', 'ew-resize'); handle(xb, yy, 'to', 'ew-resize');
     } else {
       // el eje de reparto es el VERTICAL de esta vista → flecha ↕ pegada al margen izq.
       var ya = Y(rango.from), yb = Y(rango.to), xx = 18;
       svg.appendChild(_svgEl('line', { 'class': 'te-rango-line', x1: xx, y1: ya, x2: xx, y2: yb }));
       svg.appendChild(_svgEl('path', { 'class': 'te-rango-arrow', d: 'M' + (xx - 4) + ',' + (ya + 7) + ' L' + xx + ',' + ya + ' L' + (xx + 4) + ',' + (ya + 7) }));
       svg.appendChild(_svgEl('path', { 'class': 'te-rango-arrow', d: 'M' + (xx - 4) + ',' + (yb - 7) + ' L' + xx + ',' + yb + ' L' + (xx + 4) + ',' + (yb - 7) }));
-      attrs.x = xx - 8; attrs.y = Math.min(ya, yb);
-      attrs.width = 16; attrs.height = Math.abs(yb - ya) || 4;
-      attrs.style = 'cursor:ns-resize';
+      attrs.x = xx - 7; attrs.y = Math.min(ya, yb) + 5;
+      attrs.width = 14; attrs.height = Math.max(4, Math.abs(yb - ya) - 10);
+      attrs.style = 'cursor:move';
+      svg.appendChild(_svgEl('rect', attrs));
+      handle(xx, ya, 'from', 'ns-resize'); handle(xx, yb, 'to', 'ns-resize');
     }
-    svg.appendChild(_svgEl('rect', attrs));
   }
 
   // NODOS de las 4 esquinas del hormigón (arrastrables → redimensiona el elemento).
@@ -1504,7 +1514,7 @@
     ];
     corners.forEach(function (k) {
       svg.appendChild(_svgEl('circle', {
-        'class': 'te-node', cx: X(k.u), cy: Y(k.v), r: 4.5,
+        'class': 'te-node', cx: X(k.u), cy: Y(k.v), r: 3.5,
         'data-node': k.c, 'data-plano': plano
       }));
     });
@@ -1809,7 +1819,8 @@
     _pushUndo();
     var c = ST.receta.componentes[ST.selCi];
     var eje = EJE_ROT[plano] || 'x';
-    if (!c.orient || c.orient.eje !== eje) c.orient = { eje: eje, deg: 0 };
+    c.orient = c.orient || {};
+    if (c.orient.eje !== eje) { c.orient.eje = eje; c.orient.deg = 0; }   // conserva spin
     c.orient.deg = ((c.orient.deg || 0) + deltaDeg) % 360;
     _regenerar();
     _renderPanel();
@@ -1861,16 +1872,32 @@
         var tgtNode = evt.target && evt.target.getAttribute && evt.target.getAttribute('data-node');
         if (tgtNode) { evt.preventDefault(); _pushUndo(); ST.dragNode = { plano: plano, corner: tgtNode }; return; }
 
-        // ¿tocó la flechita de RANGO?
+        // ¿tocó la flechita de RANGO? (un handle de extremo achica/agranda ese
+        // extremo; el tramo del medio desplaza el rango completo)
         var tgtRango = evt.target && evt.target.getAttribute && evt.target.getAttribute('data-rango');
-        if (tgtRango != null) { evt.preventDefault(); _pushUndo(); ST.dragRango = { ci: Number(tgtRango), plano: plano, lastX: sp.px, lastY: sp.py }; return; }
+        if (tgtRango != null) {
+          evt.preventDefault(); _pushUndo();
+          ST.dragRango = {
+            ci: Number(tgtRango), plano: plano, lastX: sp.px, lastY: sp.py,
+            end: evt.target.getAttribute('data-rango-end') || null
+          };
+          return;
+        }
 
         var uv = _pixelToUV(plano, sp.px, sp.py);
 
-        // Herramienta RANGO: 2 clics. Clamp: ambos clics dentro del hormigón.
+        // Herramienta RANGO: 2 clics. El clic se CLAMPEA al hormigón en vez de
+        // descartarse: definir el rango clicando "en los extremos" cae natural-
+        // mente 1-2px afuera y antes el clic se tragaba en silencio (el rango
+        // quedaba a medias → "considera la mitad / solo inicial y final").
         if (ST.tool === 'rango') {
           if (!uv) return;
-          if (!_dentroDelBoundary(plano, uv)) { _actualizarStatus('Fuera del hormigón: define el rango dentro del contorno.'); return; }
+          var g = ST.receta.geometria, defR = (_defsPlanos() || {})[plano];
+          if (defR) {
+            var hu = Number(g[defR.W]) / 2, hv = Number(g[defR.H]) / 2;
+            if (isFinite(hu)) uv.u = Math.max(-hu, Math.min(hu, uv.u));
+            if (isFinite(hv)) uv.v = Math.max(-hv, Math.min(hv, uv.v));
+          }
           var host = _clickHost(plano, uv);
           _rangoClick(plano, host);
           return;
@@ -2002,7 +2029,11 @@
     dr.lastX = sp.px; dr.lastY = sp.py;
     if (!isFinite(dHost) || !dHost) return;
     var rango = c.distribucion.rango || _rangoDefault(c.distribucion.sep, eje);
-    rango.from += dHost; rango.to += dHost;
+    if (dr.end === 'from' || dr.end === 'to') {
+      rango[dr.end] += dHost;               // handle de extremo → achica/agranda
+    } else {
+      rango.from += dHost; rango.to += dHost;   // tramo del medio → desplaza
+    }
     c.distribucion.rango = rango;
     _regenerarDiferido();
   }
@@ -2125,7 +2156,9 @@
     rotWrap.style.display = 'flex'; rotWrap.style.gap = '6px'; rotWrap.style.alignItems = 'center';
     var rotInp = _input({ value: (c.orient && c.orient.deg) ? c.orient.deg : 0, type: 'number' }, function (v) {
       var eje = EJE_ROT[ST.ultimoPlano] || (c.orient && c.orient.eje) || 'x';
-      c.orient = { eje: eje, deg: Number(v) || 0 }; _mut(ci);
+      c.orient = c.orient || {};
+      c.orient.eje = eje; c.orient.deg = Number(v) || 0;   // conserva spin/pivot
+      _mut(ci);
     });
     rotInp.style.width = '70px';
     var rot90 = document.createElement('button'); rot90.className = 'te-ctool'; rot90.textContent = '+90°'; rot90.style.padding = '3px 8px';
@@ -2133,6 +2166,28 @@
     rotWrap.appendChild(rotInp); rotWrap.appendChild(rot90);
     rotRow.appendChild(rotWrap);
     body.appendChild(rotRow);
+
+    // GIRO AXIAL — rota la barra sobre SU PROPIO EJE longitudinal (las patas
+    // giran alrededor del cuerpo: abajo → adentro → arriba…). Motor: orient.spin.
+    var spinRow = _div('te-row');
+    spinRow.appendChild(_label('Giro barra °'));
+    var spinWrap = _div('');
+    spinWrap.style.display = 'flex'; spinWrap.style.gap = '6px'; spinWrap.style.alignItems = 'center';
+    var spinInp = _input({ value: (c.orient && c.orient.spin) ? c.orient.spin : 0, type: 'number' }, function (v) {
+      c.orient = c.orient || {};
+      c.orient.spin = Number(v) || 0;
+      _mut(ci);
+    });
+    spinInp.style.width = '70px';
+    var spin90 = document.createElement('button'); spin90.className = 'te-ctool'; spin90.textContent = '+90°'; spin90.style.padding = '3px 8px';
+    spin90.addEventListener('click', function () {
+      c.orient = c.orient || {};
+      c.orient.spin = (((c.orient.spin || 0) + 90) % 360);
+      _mut(ci); _renderPanel();
+    });
+    spinWrap.appendChild(spinInp); spinWrap.appendChild(spin90);
+    spinRow.appendChild(spinWrap);
+    body.appendChild(spinRow);
 
     // Distribución
     body.appendChild(_distBox(c, ci, rol, d));

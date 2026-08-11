@@ -179,7 +179,7 @@
   #te_modal .te-sel-bbox{fill:none;stroke:#7d8da0;stroke-width:1;stroke-dasharray:4 3;pointer-events:none}
   #te_modal .te-sel-esq{fill:#fff;stroke:#2f80ed;stroke-width:1.2;pointer-events:none}
   /* GHOST (previsualización que sigue el cursor). Grueso + punteado, como la maqueta. */
-  #te_modal .te-ghostbar{fill:none;stroke:#8BC34A;stroke-width:3;stroke-dasharray:4 3;opacity:.85;stroke-linecap:round;stroke-linejoin:round;pointer-events:none}
+  #te_modal .te-ghostbar{fill:none;stroke:#8BC34A;stroke-width:1.8;stroke-dasharray:5 4;opacity:.75;stroke-linecap:round;stroke-linejoin:round;pointer-events:none}
   #te_modal .te-ghostpt{opacity:.9}
   #te_modal .te-gpt{fill:#8BC34A;pointer-events:none}
   /* BADGE de texto del ghost ("CBS ø16") pegado al cursor. */
@@ -190,7 +190,7 @@
   #te_modal #te_quad.tool-rango   .te-vista.te-ghost-block:not(.d3){cursor:not-allowed}
   /* SNAP DE CARA — cara del hormigón resaltada bajo el cursor (línea gruesa). El
      color lo pone JS según la tipología activa; aquí el grosor y el glow. */
-  #te_modal .te-face-hi{fill:none;stroke-width:4.5;stroke-linecap:round;opacity:.95;pointer-events:none;
+  #te_modal .te-face-hi{fill:none;stroke-width:2.4;stroke-linecap:round;opacity:.8;pointer-events:none;
     filter:drop-shadow(0 0 3px rgba(139,195,74,.55))}
   /* BOTÓN CONTEXTUAL "Voltear plano (R)" — flota sobre la pieza SELECCIONADA en
      los cuadrantes. Discreto pero descubrible: aparece solo con selección, crece
@@ -206,14 +206,16 @@
   #te_modal #te_flipBtn.flipped{background:var(--te-azul-b);color:var(--te-azul);border-color:var(--te-azul)}
   #te_modal #te_flipBtn.flipped:hover{background:var(--te-azul);color:#fff}
   /* NODOS de esquina del hormigón (arrastrables). */
-  #te_modal .te-node{fill:#fff;stroke:var(--te-acero-d);stroke-width:1.4;cursor:move}
-  #te_modal .te-node:hover{fill:var(--te-acero);stroke:var(--te-acero-d)}
+  #te_modal .te-node{fill:#fff;stroke:#7d8da0;stroke-width:1.1;cursor:move}
+  #te_modal .te-node:hover{fill:#2f80ed;stroke:#2f80ed}
   /* Marcador de SNAP (cruz fina donde engancha). */
   #te_modal .te-snap{stroke:var(--te-azul);stroke-width:1;opacity:.9}
   /* Flechita doble de RANGO (desplazamiento de la distribución). */
-  #te_modal .te-rango-line{stroke:var(--te-acero-d);stroke-width:1.2;stroke-dasharray:2 2}
-  #te_modal .te-rango-arrow{fill:none;stroke:var(--te-acero-d);stroke-width:1.6;cursor:ew-resize}
-  #te_modal .te-rango-hit{fill:rgba(139,195,74,.001);cursor:ew-resize}
+  #te_modal .te-rango-line{stroke:#2f80ed;stroke-width:1;stroke-dasharray:3 3;opacity:.85}
+  #te_modal .te-rango-arrow{fill:none;stroke:#2f80ed;stroke-width:1.3}
+  #te_modal .te-rango-hit{fill:rgba(47,128,237,.001)}
+  #te_modal .te-rango-end{fill:#fff;stroke:#2f80ed;stroke-width:1.2}
+  #te_modal .te-rango-end:hover{fill:#2f80ed}
   #te_modal .te-dim{fill:#607089;font:9px "Segoe UI",monospace}
   #te_modal .te-dimL{stroke:#b6c2d0;stroke-width:.8}
   #te_modal .te-dimTick{stroke:#b6c2d0;stroke-width:.8}

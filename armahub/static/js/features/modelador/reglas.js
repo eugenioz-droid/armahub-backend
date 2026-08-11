@@ -500,20 +500,52 @@
     return bb ? bb.c : { x: 0, y: 0, z: 0 };
   }
 
+  // GIRO AXIAL ("spin"): rota los puntos alrededor del EJE LONGITUDINAL de la
+  // propia barra (la dirección de su segmento más largo, anclada en su punto
+  // medio). El cuerpo de la barra queda donde estaba; las PATAS/ganchos giran a
+  // su alrededor (pata hacia abajo → hacia adentro → hacia arriba…). Rodrigues.
+  function _girarSobreEjeBarra(pts, rad) {
+    var mejor = 0, ia = -1;
+    for (var i = 1; i < pts.length; i++) {
+      var sx = pts[i].x - pts[i - 1].x, sy = pts[i].y - pts[i - 1].y, sz = pts[i].z - pts[i - 1].z;
+      var L2 = sx * sx + sy * sy + sz * sz;
+      if (L2 > mejor) { mejor = L2; ia = i; }
+    }
+    if (ia < 0 || !mejor) return pts;
+    var a = pts[ia - 1], b = pts[ia], m = Math.sqrt(mejor);
+    var ux = (b.x - a.x) / m, uy = (b.y - a.y) / m, uz = (b.z - a.z) / m;
+    var c = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, z: (a.z + b.z) / 2 };
+    var cos = Math.cos(rad), sen = Math.sin(rad);
+    return pts.map(function (p) {
+      var vx = p.x - c.x, vy = p.y - c.y, vz = p.z - c.z;
+      var kd = ux * vx + uy * vy + uz * vz;
+      var wx = uy * vz - uz * vy, wy = uz * vx - ux * vz, wz = ux * vy - uy * vx;
+      var o = {
+        x: c.x + vx * cos + wx * sen + ux * kd * (1 - cos),
+        y: c.y + vy * cos + wy * sen + uy * kd * (1 - cos),
+        z: c.z + vz * cos + wz * sen + uz * kd * (1 - cos)
+      };
+      if (p.esArco) o.esArco = true;
+      return o;
+    });
+  }
+
   function _aplicarPostTransform(placements, comp, host) {
     var orient = comp.orient;
     var ph = comp.pos_hint;
     var tieneRot = orient && orient.deg && isFinite(orient.deg);
+    var tieneSpin = orient && orient.spin && isFinite(orient.spin);
     var tieneTras = ph && (ph.x != null || ph.y != null || ph.z != null);
-    if (!tieneRot && !tieneTras) return placements;
+    if (!tieneRot && !tieneSpin && !tieneTras) return placements;
     var rad = tieneRot ? (Number(orient.deg) * Math.PI / 180) : 0;
+    var radSpin = tieneSpin ? (Number(orient.spin) * Math.PI / 180) : 0;
     var eje = (orient && orient.eje) || 'x';
     var dx = (ph && ph.x != null) ? Number(ph.x) : 0;
     var dy = (ph && ph.y != null) ? Number(ph.y) : 0;
     var dz = (ph && ph.z != null) ? Number(ph.z) : 0;
     // El re-anclaje sólo tiene sentido tras GIRAR y con un host conocido; el
     // arrastre (pos_hint) NO se clampea aquí (el clamp de la UI ya lo gobierna).
-    var marco = (tieneRot && orient.pivot !== 'host') ? _marcoUtil(host) : null;
+    var marco = ((tieneRot || tieneSpin) && (!orient || orient.pivot !== 'host')) ? _marcoUtil(host) : null;
     placements.forEach(function (pl) {
       var piv = tieneRot ? _pivoteDeRotacion(pl, orient) : null;
       var pts = (pl.puntos || []).map(function (p) {
@@ -521,6 +553,7 @@
         var q = _rotarPunto({ x: p.x - piv.x, y: p.y - piv.y, z: p.z - piv.z }, eje, rad);
         return { x: q.x + piv.x, y: q.y + piv.y, z: q.z + piv.z, esArco: p.esArco };
       });
+      if (tieneSpin) pts = _girarSobreEjeBarra(pts, radSpin);
       // RE-ANCLAJE al recubrimiento (boundaries) + traslación del pos_hint.
       var r = marco ? _deltaReanclaje(_bboxPuntos(pts), marco) : { x: 0, y: 0, z: 0 };
       pl.puntos = pts.map(function (q) {
