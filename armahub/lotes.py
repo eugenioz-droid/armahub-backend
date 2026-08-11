@@ -744,7 +744,12 @@ def listar_lotes(proyecto: str, user=Depends(get_current_user)):
                        CASE WHEN l.estado='eliminado' THEN l.snap_sector ELSE COALESCE(l.sector, MIN(b.sector)) END AS sector,
                        CASE WHEN l.estado='eliminado' THEN l.snap_ciclo  ELSE COALESCE(l.ciclo,  MIN(b.ciclo))  END AS ciclo,
                        CASE WHEN l.estado='eliminado' THEN l.snap_eje    ELSE COALESCE(l.eje,    MIN(b.eje))    END AS eje,
-                       l.num_obra, l.eliminado_por, l.eliminado_fecha, l.snap_barras
+                       l.num_obra, l.eliminado_por, l.eliminado_fecha, l.snap_barras,
+                       -- Ø PROMEDIO PONDERADO POR PESO (mismo criterio que el KPI de
+                       -- obra en barras.py): Σ(diam·peso)/Σ(peso). No es el promedio
+                       -- simple de diámetros — pondera por cuánto acero aporta cada uno.
+                       COALESCE(ROUND(CAST(SUM(b.diam * b.peso_total) /
+                                NULLIF(SUM(b.peso_total), 0) AS NUMERIC), 1), 0) AS diam_prom
                 FROM lotes l
                 LEFT JOIN barras b ON b.lote_id = l.id
                 WHERE l.id_proyecto = %s
@@ -758,7 +763,7 @@ def listar_lotes(proyecto: str, user=Depends(get_current_user)):
             )
             # Columnas: 0 id, 1 estado, 2 creado_por, 3 creado_fecha, 4 terminado_fecha, 5 n_items,
             # 6 n_barras(físicas), 7 kg, 8 sector, 9 ciclo, 10 eje, 11 num_obra, 12 eliminado_por,
-            # 13 eliminado_fecha, 14 snap_barras.
+            # 13 eliminado_fecha, 14 snap_barras, 15 diam_prom.
             import json as _json
             lotes = []
             for r in cur.fetchall():
@@ -782,6 +787,9 @@ def listar_lotes(proyecto: str, user=Depends(get_current_user)):
                     "terminado_fecha": r[4], "n_items": n_items, "n_barras": n_barras,
                     "kg": kg, "sector": r[8], "ciclo": r[9], "eje": r[10],
                     "num_obra": r[11], "eliminado_por": r[12], "eliminado_fecha": r[13],
+                    # KPIs del despiece. PPB/PPI se derivan en el front (kg/barras,
+                    # kg/items); el Ø prom viene ponderado por peso desde el SQL.
+                    "diam_prom": float(r[15] or 0),
                 })
     return {"ok": True, "lotes": lotes}
 

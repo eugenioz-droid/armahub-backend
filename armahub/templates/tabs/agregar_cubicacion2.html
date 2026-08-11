@@ -262,11 +262,16 @@
           <th style="text-align:right; padding:4px 8px;" title="Entradas / filas ingresadas">Items</th>
           <th style="text-align:right; padding:4px 8px;" title="Barras físicas = Σ (cantidad × multiplicador)">Barras</th>
           <th style="text-align:right; padding:4px 8px;">Kg</th>
+          <!-- KPIs del despiece (azul fuerte): Ø ponderado por peso · PPB = kg/barra
+               física · PPI = kg/item (entrada). Van antes de Creado. -->
+          <th style="text-align:right; padding:4px 8px; color:#0d47a1;" title="Diámetro promedio ponderado por peso: Σ(φ×kg)/Σkg">Ø prom</th>
+          <th style="text-align:right; padding:4px 8px; color:#0d47a1;" title="Peso Por Barra física = Kg / Barras">PPB</th>
+          <th style="text-align:right; padding:4px 8px; color:#0d47a1;" title="Peso Por Item (entrada/fila) = Kg / Items">PPI</th>
           <th style="text-align:left; padding:4px 8px;">Creado</th>
           <th style="padding:4px 8px;"></th>
         </tr></thead>
         <tbody id="ac2_lotesBody">
-          <tr><td colspan="8" style="padding:10px 8px; color:#90a4ae; font-style:italic; text-align:center;">Elige una obra para ver sus lotes.</td></tr>
+          <tr><td colspan="11" style="padding:10px 8px; color:#90a4ae; font-style:italic; text-align:center;">Elige una obra para ver sus lotes.</td></tr>
         </tbody>
       </table>
       <div class="muted" style="font-size:10px; margin-top:4px;">Terminado = solo lectura aquí. Corregir una barra → Bar Manager (preserva procedencia).</div>

@@ -1690,7 +1690,7 @@ async function ac2CargarLotes(){
   catch(e){ lotes=[]; }
   // Filtrar eliminados salvo que el checkbox esté marcado.
   if (!_ac2VerEliminados) lotes=lotes.filter(function(l){ return l.estado!=='eliminado'; });
-  if (!lotes.length){ tb.innerHTML='<tr><td colspan="8" style="padding:10px 8px; color:#90a4ae; font-style:italic; text-align:center;">'+(_ac2VerEliminados?'Esta obra aún no tiene despieces.':'Esta obra no tiene despieces activos.')+'</td></tr>'; return; }
+  if (!lotes.length){ tb.innerHTML='<tr><td colspan="11" style="padding:10px 8px; color:#90a4ae; font-style:italic; text-align:center;">'+(_ac2VerEliminados?'Esta obra aún no tiene despieces.':'Esta obra no tiene despieces activos.')+'</td></tr>'; return; }
   tb.innerHTML=lotes.map(function(l){
     var esta=(l.id===AC2.loteId);
     var eliminado=(l.estado==='eliminado');
@@ -1700,6 +1700,17 @@ async function ac2CargarLotes(){
         ? '<span style="background:#e8f5e9; color:#2e7d32; border:1px solid #a5d6a7; padding:1px 8px; border-radius:8px;">🏁 Terminado</span>'
         : '<span style="background:#fff3e0; color:#e65100; border:1px solid #ffb74d; padding:1px 8px; border-radius:8px;">🚩 En edición</span>');
     var fecha=(l.creado_fecha||'').slice(0,10);
+    // KPIs del despiece (azul fuerte). El Ø prom viene ponderado por peso desde el
+    // backend; PPB (kg/barra física) y PPI (kg/item) se derivan aquí — mismo criterio
+    // que el KPI de obra (barras.py). Sin datos → '—' (no 0, que se leería como dato).
+    var _kpiTd=function(txt,tit){ return '<td style="padding:6px 8px; text-align:right; color:#0d47a1; font-weight:600;" title="'+tit+'">'+txt+'</td>'; };
+    var _kg=Number(l.kg||0);
+    var _dp=Number(l.diam_prom||0);
+    var _ppb=(Number(l.n_barras)>0)?(_kg/Number(l.n_barras)):null;
+    var _ppi=(Number(l.n_items)>0)?(_kg/Number(l.n_items)):null;
+    var kpis=_kpiTd(_dp?ac2Num(_dp,1):'—','Ø promedio ponderado por peso')+
+             _kpiTd(_ppb!=null?ac2Num(_ppb,2):'—','Peso Por Barra física = Kg / Barras')+
+             _kpiTd(_ppi!=null?ac2Num(_ppi,2):'—','Peso Por Item = Kg / Items');
     // LÁPIDA (eliminado): fila en gris, CLICKEABLE para VER su contenido en solo-lectura (desde el
     // snapshot congelado). Muestra quién/cuándo lo eliminó.
     if (eliminado){
@@ -1711,6 +1722,7 @@ async function ac2CargarLotes(){
         '<td style="padding:6px 8px; text-align:right;" title="Items que tenía al eliminarse">'+(l.n_items||0)+'</td>'+
         '<td style="padding:6px 8px; text-align:right;" title="Barras que tenía al eliminarse">'+ac2Num(l.n_barras||0)+'</td>'+
         '<td style="padding:6px 8px; text-align:right;" title="Kg que tenía al eliminarse">'+ac2Num(l.kg,1)+'</td>'+
+        kpis+
         '<td style="padding:6px 8px;">'+ac2Esc(fecha)+'</td>'+
         '<td style="padding:6px 8px; text-align:right; white-space:nowrap; font-size:10px;">'+
           '<span onclick="event.stopPropagation(); ac2DuplicarLotePrompt('+l.id+','+(l.num_obra||l.id)+')" title="Duplicar este despiece en otro ciclo/eje" style="color:#1565c0; cursor:pointer; margin-right:10px;">⎘ duplicar</span>'+
@@ -1726,6 +1738,7 @@ async function ac2CargarLotes(){
       '<td style="padding:6px 8px; text-align:right;">'+(l.n_items||0)+'</td>'+
       '<td style="padding:6px 8px; text-align:right;">'+ac2Num(l.n_barras||0)+'</td>'+
       '<td style="padding:6px 8px; text-align:right;">'+ac2Num(l.kg,1)+'</td>'+
+      kpis+
       '<td style="padding:6px 8px; color:#888;">'+ac2Esc(fecha)+'</td>'+
       '<td style="padding:6px 8px; text-align:right; white-space:nowrap; font-size:11px;">'+
         '<span onclick="event.stopPropagation(); ac2DuplicarLotePrompt('+l.id+','+(l.num_obra||l.id)+')" title="Duplicar este despiece en otro ciclo/eje" style="color:#1565c0; cursor:pointer; margin-right:10px;">⎘ duplicar</span>'+
