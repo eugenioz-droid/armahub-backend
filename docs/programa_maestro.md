@@ -157,3 +157,24 @@ conserva; no se sobrescribe con el usuario de la etapa actual.
 CONDICIÓN DEL USUARIO: "si esto generara problemas, no lo hagas" → si el dato no está persistido hoy
 (no existe columna/registro de quién envió) y requiere migración + backfill de histórico, EVALUAR y
 consultar antes de implementar. Si el dato ya existe (audit_log o campo de estado), es directo.
+
+### T3 · [SEGURIDAD] Activar RLS en Supabase (warning "Table publicly accessible")
+Reportado 11-ago (correo de Supabase + Security Advisor: 37 tablas de `public` sin Row-Level
+Security). NO es algo que rompimos: es la condición del proyecto desde el inicio. Riesgo real HOY:
+bajo — ArmaHub solo usa la conexión Postgres directa (la API REST automática de Supabase no se usa
+y la llave `anon` no está publicada), pero la puerta existe sin candado.
+FIX (barato, no afecta al backend porque se conecta como dueño de las tablas y el dueño ignora RLS):
+pegar en el SQL Editor de Supabase:
+```sql
+DO $$
+DECLARE t record;
+BEGIN
+  FOR t IN SELECT tablename FROM pg_tables WHERE schemaname = 'public'
+  LOOP
+    EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY', t.tablename);
+  END LOOP;
+END $$;
+```
+Después: probar la web (login, listados, guardar barra). Revertir = mismo bloque con DISABLE.
+Hacerlo en un momento tranquilo (no mientras un cubicador trabaja) y ANTES de la reunión de
+infosec (~20-ago). Alternativa equivalente: Settings → API → quitar `public` de "Exposed schemas".
