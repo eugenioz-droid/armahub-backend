@@ -1204,3 +1204,71 @@ adversarial) cuando el usuario diga "avanza con la tanda N". No se mezclan tanda
 - Radios fijos al anidar estribos (codos interpenetrados) — arcos explícitos como el gancho.
 - PUT /templates (editar en vez de guardar-como-nuevo), ghost de pieza volteada, "tomar contorno".
 - Homologación visual con el enfierrador 3D (toggle hormigón, vista iso, órbita por eje, temas).
+
+## PROGRAMA DE TANDAS — ACTUALIZADO (13-ago, tras 3 auditorías read-only: TE / plataforma / integración)
+Tandas 1 (muro, DESPLEGADA) y 2 (catálogo real, EN CURSO) siguen como están. Lo de abajo REEMPLAZA
+a las viejas Tanda 3 y Tanda 4. Regla: BLOQUEA = no se abre a usuarios reales sin eso.
+HOTFIX de lote×template (origen='manual' en DELETE/eliminar/purgar/contexto/plano +
+template_instancia_id en BARRAS_COLUMNS): APLICADO 13-ago (commit 88d58a3).
+
+### TANDA 3 — NO PERDER TRABAJO (BLOQUEA · S/M)
+1. beforeunload + borrador en localStorage con "recuperar" al abrir (hoy F5 = template perdido).
+2. Capear el motor ANTES de generar: mínimo de @ (hoy acepta 0.1 → 6001 placements), techo de
+   n_capas y de placements totales (el warning anti-colapso avisa DESPUÉS de generar).
+3. _dragNodo pasa por _geoValida (hoy deja ancho < 2·recub_lat que el ribbon rechaza); _undo()
+   re-sincroniza el ribbon de HORMIGÓN (hoy el input queda mintiendo y el blur re-aplica).
+4. Falso "cambios sin guardar": sellar _recetaGuardada DESPUÉS del primer _regenerar (normaliza).
+
+### TANDA 4 — CICLO DE VIDA DEL TEMPLATE (BLOQUEA · M)
+1. PUT /templates/{id} + DELETE + nombre editable en la UI (hoy guardar = INSERT siempre con el
+   mismo nombre → biblioteca que solo crece).
+2. schema_version + updated_at/editado_por; normalizador de apertura que rellene lado/orientacion/
+   tramos/jerarquia en recetas guardadas viejas.
+3. PERMISOS DESALINEADOS (bloquea): el TE vive en Catálogo pero POST /templates exige área
+   cubicaciones → 403 al guardar tras diseñar todo. Y el GET lo lee cualquier autenticado
+   (incluido cliente externo). Unificar.
+4. obra real en templates (hoy null) + lista con filtro/buscador sin traer params completos.
+5. Validar la receta en POST/PUT (hoy se guarda un template que nunca podrá generar barras).
+6. CANDADO: congelar la escritura de templates del enfierrador MVP (usa dims numéricas contra el
+   {modo,valor} del TE en la MISMA tabla → dos shapes incompatibles conviviendo).
+
+### TANDA 5 — PARIDAD CON EL BACKEND DE BARRAS (BLOQUEA · S/M)
+Cualquiera de estos manda 400 de la tanda ENTERA al cargar al despiece:
+1. Pata en 0 (Math.max reglas.js) → _tiene_valor_real la lee vacía → slots_faltan.
+2. radio: null siempre, con figuras que lo exigen (201A) — y _revisarFiguraComp deja pasar
+   no-dibujables.
+3. Mapear el error del backend (barra_idx) de vuelta al comp_id y marcarlo en el panel.
+4. ang1..4 canónicos del catálogo vs el ángulo dibujado (BD desalineada con la geometría) +
+   validar signo/rango en backend (hoy pasan dims negativas).
+
+### TANDA 6 — OTRAS ESTRUCTURAS (M — puede salir después si urge abrir con viga/muro)
+COLUMNA (estribos en XZ repartidos en Y = tercera permutación; longitudinales de pie), LOSA
+(2 lechos), FUNDACIÓN y GEN (vistas + dims + tipologías). Prerrequisito: canonizar
+TPL_DIMS_POR_ELEMENTO (COLUMNA usa b/h/recub, LOSA espesor — claves que el motor no conoce).
+
+### TANDA 7 — INTEGRACIÓN CON EL ENFIERRADOR 3D (BLOQUEA el enfierrador · M/L)
+Después de 4 (hay qué editar/versionar), 5 (las barras entran sin 400) y 6 (templates de todos
+los elementos); antes del pulido.
+1. El enfierrador NACE de un template (hoy: semillaViga() hardcodeada + prompt() numerado);
+   selector real GET /templates; un solo shape de receta (el del TE).
+2. La instancia guarda Δ, no copia: elementos_template.params = {template_id, overrides} (hoy
+   template_id:null + receta entera clonada) + GET /elementos/instancia/{id} (hoy write-only) +
+   módulo front instancia.js (resolución template+Δ→receta) compartido.
+3. Trazabilidad de vuelta: template_instancia_id visible/filtrable en Bar Manager; ac2Payload
+   propaga origen (hoy lo pierde).
+4. Fix: panel_3d llama global.ac2CargarLote que NO existe (la grilla no refresca tras cargar).
+5. El enfierrador consume el catálogo real (datalist de 6 hardcodeadas) — hereda Tanda 2.
+DEF PENDIENTE (usuario): no existe entidad "elemento real de obra" con dims de hormigón (solo
+lotes.sector/piso/ciclo/eje); ¿tabla de elementos o se sigue tipeando a mano en la instancia?
+
+### TANDA 8 — BARRIDO DE USABILIDAD (S agrupada — post-apertura)
+_mut() sin undo (jerarquía/cara/φ/figura/@/rango/capas/anidar) · redo + botón de deshacer ·
+duplicar con offset (hoy copia exacta encima) · scrollIntoView del seleccionado · _compDesc con
+orientación/jerarquía/empalme · orientación en la ficha (no solo el botón flotante) · Esc =
+deseleccionar (hoy CIERRA el editor) · Ctrl+S / Ctrl+D / flechas nudge · "Ver en 3D" no-op.
+
+### TANDA 9 — PULIDO PRE-PRODUCCIÓN (cierre · L)
+Redondeo de dims (reglas con el usuario) · aviso al voltear cuando dims auto cambian drástico ·
+rotación deg que no cabe · radios fijos al anidar (codos interpenetrados) · ghost volteado ·
+"tomar contorno" · homologación visual con el enfierrador (toggle hormigón, vista iso, órbita
+por eje, temas).
