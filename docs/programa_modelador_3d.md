@@ -1148,3 +1148,59 @@ Fix propuesto: (a) VISTAS ORTO (estático, las cámaras orto no rotan): en _actu
 
 --- PENDIENTES ---
 Para el implementador: (1) B2 parte 1 requiere decidir cómo pasar a clipping LOCAL por material (material por mesh o clones por rol) sin romper el pase perspectivo ni el hack del hormigón (clippingPlanes:[] — verificar empíricamente en r160 que el hormigón sigue exento al mover los planos de global a local). (2) B3 fix de raíz toca reglas.js (_baseDeComponente, distribuidores, dims auto): correr TODA la suite y garantizar ruta volteado=false byte-idéntica (140.3 kg / 72 placements / 4 items); definir permutación exacta también para cabezales y trabas, no solo estribos. (3) Existe un desalineamiento LATENTE adicional (fuera de alcance de B1-B4 pero relacionado): ST.transforms del overlay SVG (bbox+MARGIN, línea 978-987) se calcula independiente del encuadre de la cámara orto (_encuadrarOrto margen 1.18 + zoom/pan que el transform NO conoce) → el hit/ghost puede no coincidir con el render orto tras zoom/pan; conviene abordarlo cuando se toque B3. (4) B4 3D: presupuesto de un render extra por frame en _loop (mini viewport) — coordinar con el frente de performance de panel_3d.js.
+
+## PROGRAMA DE TANDAS PRE-PRODUCCIÓN (12-ago) — Template Editor
+
+Modo de trabajo acordado: cada tanda se lanza como UN workflow (implementación + verificación
+adversarial) cuando el usuario diga "avanza con la tanda N". No se mezclan tandas.
+
+### ACLARACIONES BASE (dudas resueltas 12-ago)
+- Los 4 cuadrantes son CUATRO CÁMARAS SOBRE LA MISMA ESCENA 3D (una sola geometría, fuente única =
+  placements del motor). Nada se replica entre canvas. La limitación vertical NO es de vistas: es
+  que los CONSTRUCTORES de figuras solo generan barras corriendo en X (o Z vía volteo).
+- El catálogo real (63 figuras, GET /figuras-catalogo) EXISTE y define parciales/ángulos por figura.
+  El Template Editor NO lo consume: usa espejos hardcodeados (FIG=8 figuras en template_editor.js,
+  FIGURAS=5 en generar.js) — atajo del MVP. La "integración editor↔catálogo ya hecha" era del
+  DISEÑADOR de figuras (que escribe al catálogo), no de este editor (que debe leerlo). T7 = conectarlo.
+
+### TANDA 1 — MURO (motor de orientaciones + cara cortina + config muro)
+1. BUG cara LATERAL (reportado 12-ago): _yBordeCabezal solo distingue sup/inf → 'lateral' cae a la
+   rama inferior (reglas.js:639). Anclaje a CORTINA: cara lateral = pegado a la cara Z± con la pila
+   de 'lat' (recub_lat / recub_caras). Prerequisito muro y bug vivo en viga hoy.
+2. ORIENTACIÓN VERTICAL ("de pie"): generalizar el volteo (hoy permutación x↔z) a un set de
+   permutaciones: acostada (identidad), volteada (x↔z), de pie (x↔y). Pilas y recubrimientos
+   permutan igual que en el volteo (patrón ya probado). UI: el botón de voltear pasa a ciclar o a
+   un mini-selector de orientación de pieza.
+3. VISTAS/RIBBON POR ELEMENTO: PLANOS_POR_ELEMENTO.muro (elevación XY, sección YZ, planta XZ con
+   nombres de muro), grupo HORMIGÓN del ribbon renderizado por elemento (muro: largo/alto/espesor +
+   recub caras/bordes → mapean a host.ancho/recub_lat/…), pantalla previa habilita MURO.
+4. TIPOLOGÍAS MURO del seed (_TIPOLOGIAS_SEED) en el ribbon; malla = arreglo (rango×capas) en las
+   2 cortinas; trabas de muro cosen cortinas (ya existen como rol).
+5. Verificación adversarial: composición orientación × pilas × anidado × tramos en muro 400×250×20.
+
+### TANDA 2 — T7: CATÁLOGO REAL DE FIGURAS (contrato de datos)
+1. generar.js y template_editor.js consumen GET /figuras-catalogo al abrir (cache en memoria +
+   fallback al espejo actual si no hay red): parciales/ángulos reales → dims a las casillas
+   correctas, kg correcto, validar_geometria pasa. Se eliminan los espejos como fuente primaria.
+2. Campo FIGURA validado: datalist completo del catálogo; figura desconocida = borde rojo y no
+   coloca (hoy acepta cualquier texto y sale kg=0).
+3. Mapa figura→familia de dibujo (cabezal/estribo/traba) por metadatos del catálogo; figuras no
+   dibujables por el editor (espirales 105x etc.) quedan EXCLUIDAS del datalist con tooltip.
+4. Fix conexo: empalme solo en roles donde es real (cabezal); ocultarlo en estribo/traba (hoy suma
+   kg fantasma sin mover el dibujo).
+5. Auditoría matriz: 63 figuras × (dims auto, pilas, anidado, volteo, spin, empalme) con scripts.
+
+### TANDA 3 — OTRAS ESTRUCTURAS (tras 1 y 2)
+- COLUMNA: estribos en plano HORIZONTAL (XZ) repartidos en Y → tercera permutación del set de
+  orientaciones (sale del patrón de Tanda 1); longitudinales verticales (de pie, Tanda 1); vistas.
+- LOSA: muro acostado — mallas en 2 lechos (sup/inf), cabezales en X y Z ya existen; vistas + dims.
+- FUNDACIÓN y GEN: solo configuración (vistas + dims + tipologías); el motor ya alcanza.
+- Regla: si el motor de Tanda 1 quedó bien generalizado, esta tanda es ~pura configuración.
+
+### TANDA 4 — PULIDO PRE-PRODUCCIÓN (cierre)
+- Redondeo de dims (reglas de aproximación a definir con el usuario; hoy salen decimales sucios).
+- Aviso al voltear cuando las dims auto cambian drástico (estribo volteado en viga = barras 12 m).
+- Rotación deg que no cabe: comportamiento definido (hoy puede quedar fuera del hormigón).
+- Radios fijos al anidar estribos (codos interpenetrados) — arcos explícitos como el gancho.
+- PUT /templates (editar en vez de guardar-como-nuevo), ghost de pieza volteada, "tomar contorno".
+- Homologación visual con el enfierrador 3D (toggle hormigón, vista iso, órbita por eje, temas).
