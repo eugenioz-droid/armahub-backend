@@ -252,32 +252,76 @@
     };
     var REGLAS = _reglas();
     if (!REGLAS) { console.error('[generar] ModeladorReglas no disponible aún'); return { placements: [], barras: [], resumen: { items: 0, barras: 0, kg: 0 } }; }
-    // JERARQUÍA DE BARRAS (dato cruzado, POR NIVEL 1-BASED): comp.jerarquia =
-    // 'no' | 1 | 2 | 3 | 4 (default por rol: estribo 1, traba/cabezal 2).
-    //   nivel 1 = pegado al recubrimiento Y aporta su φ a la cadena;
-    //   nivel n = se apoya POR DENTRO de los niveles anteriores;
+    // -------------------------------------------------------------------------
+    // PILAS DE OCUPACIÓN POR CARA (jerarquía volumétrica) — DOS PASADAS POR NIVEL
+    // -------------------------------------------------------------------------
+    // comp.jerarquia = 'no' | 1 | 2 | 3 | 4 (default por rol: estribo 1,
+    // traba/cabezal 2).
+    //   nivel 1 = pegado al recubrimiento Y aporta su φ a las caras que toca;
+    //   nivel n = se apoya POR DENTRO de las pilas de las caras que toca;
     //   'no'    = pegado al recubrimiento y NO aporta φ (no empuja a nadie).
-    // host.jer_phi queda indexado 1-BASED: jer_phi[1] = maxφ del nivel 1, etc.
-    // (el índice 0 existe pero vale 0: no hay nivel 0). El inset de un comp de
-    // nivel n es recub + Σ jer_phi[1..n−1] + φ_propio/2 (reglas.marcoUtilNivel).
-    var jerPhi = [0];
-    (receta.componentes || []).forEach(function (comp) {
+    //
+    // host.jer_caras = { sup:[…], inf:[…], lat:[…], ext:[…] }, 1-BASED: el índice
+    // k guarda el φ MÁXIMO que el nivel k dejó en esa cara (el índice 0 existe
+    // pero vale 0: no hay nivel 0). profundidad(cara, n) = recub(cara) +
+    // Σ jer_caras[cara][1..n−1] (reglas.profundidadCara / marcoUtilNivel).
+    //
+    // El proceso va POR NIVEL ASCENDENTE porque el nivel k necesita las pilas ya
+    // cerradas de los niveles anteriores. Por cada nivel:
+    //   1) se expanden sus componentes contra las pilas ACTUALES;
+    //   2) de los placements FINALES (post-transform incluido) se DERIVAN los
+    //      contactos (reglas.carasOcupadas — geométrico, sin casos por figura);
+    //   3) se puebla jer_caras[cara][k] con el φ máximo que tocó esa cara.
+    // Los componentes del MISMO nivel ven la MISMA pila: no se empujan entre sí
+    // (límite documentado — el acomodo fino intra-nivel es del enfierrador).
+    var comps = receta.componentes || [];
+    var CARAS = REGLAS.CARAS || ['sup', 'inf', 'lat', 'ext'];
+    var jerCaras = {};
+    CARAS.forEach(function (F) { jerCaras[F] = [0]; });
+    host.jer_caras = jerCaras;
+
+    var plan = comps.map(function (comp, ci) {
       var rol = (REGLAS.rolDeTipologia ? REGLAS.rolDeTipologia(comp.tipologia, comp.cara) : 'cabezal');
       var nivel = REGLAS.nivelJerarquiaEfectivo
         ? REGLAS.nivelJerarquiaEfectivo(comp.jerarquia, rol)
         : (rol === 'estribo' ? 1 : 2);
-      if (nivel === 'no') return;                 // 'no' NO aporta φ a la cadena
-      var phi = Number(comp.diam) / 10;
-      if (!(jerPhi[nivel] >= phi)) jerPhi[nivel] = phi;
+      // 'no' = fuera de la cadena: se ancla al recubrimiento pelado (k 0) y no aporta.
+      return { comp: comp, ci: ci, nivel: nivel, k: (nivel === 'no') ? 0 : Number(nivel) };
     });
-    for (var jn = 0; jn < jerPhi.length; jn++) if (jerPhi[jn] == null) jerPhi[jn] = 0;
-    host.jer_phi = jerPhi;
-    host.phi_est = jerPhi[1] || 0;   // compat: φ del nivel 1 (estribos)
+    var niveles = [];
+    plan.forEach(function (p) { if (niveles.indexOf(p.k) === -1) niveles.push(p.k); });
+    niveles.sort(function (a, b) { return a - b; });
+
+    // Los placements se guardan POR COMPONENTE: el orden de PROCESO es por nivel,
+    // pero el orden de SALIDA sigue siendo el de receta.componentes (el etiquetado
+    // por ci del Template Editor y el orden de los ítems dependen de eso).
+    var porComp = new Array(comps.length);
+    niveles.forEach(function (k) {
+      var aporte = { sup: 0, inf: 0, lat: 0, ext: 0 };
+      plan.forEach(function (p) {
+        if (p.k !== k) return;
+        var pls = REGLAS.expandirComponente(p.comp, host);
+        pls.forEach(function (pl) {
+          pl.meta = pl.meta || {};
+          pl.meta.ci = p.ci;              // índice ORIGINAL (el etiquetado no rota)
+          if (k < 1) return;              // 'no' no aporta a ninguna pila
+          // El arrastre manual (pos_hint) se descuenta: mover una barra a mano no
+          // la cambia de cara en la cadena (conserva el aporte de su cara natural).
+          var caras = REGLAS.carasOcupadas
+            ? REGLAS.carasOcupadas(pl, host, k, p.comp && p.comp.pos_hint) : [];
+          caras.forEach(function (F) { if (pl.diam > aporte[F]) aporte[F] = pl.diam; });
+        });
+        porComp[p.ci] = pls;
+      });
+      if (k < 1) return;
+      CARAS.forEach(function (F) {
+        var arr = jerCaras[F];
+        while (arr.length <= k) arr.push(0);
+        arr[k] = aporte[F];
+      });
+    });
     var placements = [];
-    (receta.componentes || []).forEach(function (comp) {
-      var pls = REGLAS.expandirComponente(comp, host);
-      placements = placements.concat(pls);
-    });
+    porComp.forEach(function (pls) { if (pls && pls.length) placements = placements.concat(pls); });
     // ETAPA DE DEPENDENCIAS/RETRANQUEO — DESPUÉS de expandir. Aplica el offset al
     // anchor (traslada la barra completa hacia el núcleo) y acorta patas 103x.
     // Sin prioridades = no-op → generarViga base queda IDÉNTICA.

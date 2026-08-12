@@ -256,17 +256,33 @@
   // Host con dims y recubrimientos permutados (marco local de la pieza volteada).
   //   largo_local = ancho real   (la pieza corre a lo ancho)
   //   ancho_local = largo real   (las capas entran a lo largo)
-  //   recub_lat_local = recubrimiento de las caras EXTREMAS reales. El motor no
-  //     tiene un `recub_ext` propio: usa el recub vertical como recub de extremo
-  //     (ver anchorBase.recubExtremo), así que se hereda ese mismo valor.
+  //   RECUBRIMIENTOS: se permutan igual que las dims, cara por cara.
+  //     recub_lat_local = recub de las caras EXTREMAS reales (= host.recub_ext, y
+  //       sin él la convención recub_sup);
+  //     recub_ext_local = recub de las caras LATERALES reales (= host.recub_lat).
+  //     Permutar sólo uno de los dos dejaba las dims del eje longitudinal local
+  //     midiéndose contra el recubrimiento de otra cara.
+  //   PILAS: se permutan CON los ejes. Lo que en el mundo real ocupa los
+  //     EXTREMOS (x±) pasa a ser la cara lateral del marco local (que ahora corre
+  //     en Z) y viceversa: jer_caras_ef = { sup, inf, lat: ext, ext: lat }. Sin
+  //     esto, una pieza volteada se anclaba contra la pila equivocada (p.ej. un
+  //     corchete volteado se acortaba por el φ del estribo en unos extremos donde
+  //     el estribo no está).
   function _hostVolteado(host) {
     var rSup = (host.recub_sup != null) ? Number(host.recub_sup) : 4;
-    return {
+    var rExt = (host.recub_ext != null) ? Number(host.recub_ext) : rSup;
+    var h = {
       largo: Number(host.ancho), alto: Number(host.alto), ancho: Number(host.largo),
       recub_sup: rSup,
       recub_inf: (host.recub_inf != null) ? Number(host.recub_inf) : 4,
-      recub_lat: rSup
+      recub_lat: rExt,
+      recub_ext: (host.recub_lat != null) ? Number(host.recub_lat) : 3
     };
+    var jc = host.jer_caras;
+    if (jc) h.jer_caras = { sup: jc.sup, inf: jc.inf, lat: jc.ext, ext: jc.lat };
+    else if (host.jer_phi) h.jer_phi = host.jer_phi;   // compat: pila única legacy
+    if (host.phi_est != null) h.phi_est = host.phi_est;
+    return h;
   }
 
   // Punto del marco LOCAL → mundo (y viceversa: la permutación es involutiva).
@@ -277,14 +293,32 @@
     return q;
   }
 
-  // cfg de distribución traducida al marco local: sólo el eje de capas (que el
-  // panel escribe en ejes del MUNDO) necesita permutarse. El rango vive en el eje
-  // de distribución del componente, que ES la x local por definición.
+  // cfg de distribución traducida al marco local. TODO campo que nombre un EJE
+  // viaja en ejes del MUNDO (los escribe el panel: `_rangoDefault` estampa
+  // rango.eje = 'z' para un estribo volteado y 'x' para un cabezal volteado) y hay
+  // que traducirlo, no sólo `eje_capas`:
+  //   · eje_capas → eje de apilado de las capas;
+  //   · rango.eje → eje sobre el que REPARTE el distribuidor lineal/arreglo.
+  // Los VALORES (from/to) no cambian: la permutación intercambia las etiquetas de
+  // los ejes, no las coordenadas (x_local = z_mundo, mismo número).
+  // Sin traducir rango.eje, un estribo volteado repartía sobre un eje local que
+  // _estriboPerimetral ignora → las N barras quedaban TODAS en el mismo plano
+  // (colapso), y un cabezal volteado se repartía sobre su propio eje longitudinal
+  // dejando además su coordenada local sin definir.
   function _cfgLocal(dist) {
-    if (!dist || dist.eje_capas == null) return dist;
+    if (!dist) return dist;
+    var tieneCapas = (dist.eje_capas != null);
+    var tieneRango = !!(dist.rango && dist.rango.eje != null);
+    if (!tieneCapas && !tieneRango) return dist;
     var c = {};
     for (var k in dist) if (dist.hasOwnProperty(k)) c[k] = dist[k];
-    c.eje_capas = _EJE_FLIP[String(dist.eje_capas)] || dist.eje_capas;
+    if (tieneCapas) c.eje_capas = _EJE_FLIP[String(dist.eje_capas)] || dist.eje_capas;
+    if (tieneRango) {
+      var r = {};
+      for (var j in dist.rango) if (dist.rango.hasOwnProperty(j)) r[j] = dist.rango[j];
+      r.eje = _EJE_FLIP[String(dist.rango.eje)] || dist.rango.eje;
+      c.rango = r;                      // clon: NO se muta el rango de la receta
+    }
     return c;
   }
 
@@ -319,9 +353,10 @@
       for (var ri = 0; ri < nR; ri++) {
         var xr = rf + ri * pasoR;
         var extraR = {}; extraR[ejeR] = xr;
-        // Un CABEZAL repartido necesita su Y de cara (el lineal nació para
-        // estribos, que ignoran anchor.y → los cabezales salían sin altura).
-        if ((base.rol || '') === 'cabezal' && extraR.y == null) extraR.y = _yBordeCabezal(base, host);
+        // El distribuidor sólo fija el EJE QUE REPARTE; el resto de la pose sale
+        // del anchor base (que ya trae la Y de cara y la Z del cabezal). Antes se
+        // parcheaba aquí sólo la Y y sólo en este distribuidor: los otros dos
+        // (arreglo/points) seguían emitiendo puntos con coordenadas undefined.
         var anchorR = _mezclarAnchor(base.anchorBase, extraR);
         var puntosR = _fp().figuraAPuntos(base.figura, base.dims, host, anchorR,
           { rol: base.rol || 'estribo', diamCm: base.diam });
@@ -353,64 +388,137 @@
   // cabezales (cara sup/inf). Reparte barras_capa a lo ancho (Z); cada capa se
   // retranquea hacia el núcleo por su índice (offset = capa_idx*(diam+gap)).
   // cfg: { n_capas, barras_capa, gap, sentido:'nucleo' }
-  // JERARQUÍA DE BARRAS POR NIVEL (1-BASED): el inset EXTRA de un nivel n (además
-  // de recub y φ_propio/2, que pone el llamador) es la suma de los φ máximos de
-  // los niveles ANTERIORES: Σ host.jer_phi[1..n−1] (lo calcula generar, indexado
-  // 1-based y EXCLUYENDO los 'no'). Nivel 1 y 'no' → 0 (pegados al recubrimiento).
-  // Sin host.jer_phi (llamadas directas al motor en tests/UI) → compat con
-  // host.phi_est, el φ del nivel 1.
-  function _insetDeNivel(nivel, host) {
+  // ---------------------------------------------------------------------------
+  // PILAS DE OCUPACIÓN POR CARA (jerarquía VOLUMÉTRICA)
+  // ---------------------------------------------------------------------------
+  // Modelo mental del calculista: cada CARA del hormigón tiene una PILA de
+  // ocupación —  recubrimiento → φmax del nivel 1 → φmax del nivel 2 → … — y una
+  // barra se ancla contra la PROFUNDIDAD ACTUAL de las pilas de las caras QUE
+  // TOCA. Es un problema 1D por cara: nada de colisiones 3D.
+  //
+  //   host.jer_caras = { sup:[…], inf:[…], lat:[…], ext:[…] }
+  //     φmax POR NIVEL y POR CARA (cm), índice 1-BASED (jer_caras.sup[1] = φmax
+  //     del nivel 1 que ocupa la cara superior). Lo construye generar.js con dos
+  //     pasadas por nivel ascendente (expandir → derivar contactos → poblar).
+  //
+  //   profundidad(cara, nivel) = recub(cara) + Σ_{k<nivel} jer_caras[cara][k]
+  //
+  // CARAS: 'sup' (y+), 'inf' (y−), 'lat' (z±, pila SIMÉTRICA), 'ext' (x±, los
+  // extremos, pila SIMÉTRICA). Antes había UN inset escalar igual para las cuatro
+  // → un cabezal de nivel 2 se acortaba en los extremos por el φ de un estribo
+  // que NO ocupa los extremos (ver R7 del reporte).
+  //
+  // El recub de 'ext' (los extremos x±): el usuario no lo declara, así que por
+  // convención vale el recub VERTICAL (mismo criterio que anchorBase.recubExtremo
+  // y que _marcoUtilMundo). PERO es un valor POR CARA como los otros tres, no una
+  // constante: con la pieza VOLTEADA los extremos LOCALES son las caras laterales
+  // REALES, cuyo recub es recub_lat. Por eso el host lleva `recub_ext` explícito
+  // (lo permuta _hostVolteado) y sólo se cae a recub_sup cuando no viene.
+  // Sin él, un corchete volteado se medía con recub_sup en unas caras que están a
+  // recub_lat: su dim quedaba 2·(recub_sup − recub_lat) corta y la punta NO era
+  // tangente al estribo lateral.
+  function _recubDeCara(host, cara) {
+    if (cara === 'inf') return (host && host.recub_inf != null) ? Number(host.recub_inf) : 4;
+    if (cara === 'lat') return (host && host.recub_lat != null) ? Number(host.recub_lat) : 3;
+    if (cara === 'ext' && host && host.recub_ext != null) return Number(host.recub_ext);
+    return (host && host.recub_sup != null) ? Number(host.recub_sup) : 4;   // 'sup' y 'ext'
+  }
+
+  // Σ de los φmax que las capas ANTERIORES a `nivel` dejaron en la cara `cara`
+  // (SIN el recubrimiento). Nivel 1 y 'no' → 0 (pegados al recubrimiento).
+  //   · host.jer_caras → pilas por cara (el dato nuevo, lo pone generar.js).
+  //   · COMPAT: sin jer_caras, host.jer_phi es la pila ÚNICA legacy (la misma
+  //     para las 4 caras) y host.phi_est el φ del nivel 1. Lo usan las llamadas
+  //     directas al motor (Template Editor / tests) que nunca tuvieron el dato
+  //     por cara: para ellas el comportamiento no cambia.
+  function _sumaPila(host, cara, nivel) {
     if (nivel === 'no' || nivel == null) return 0;
     var n = Number(nivel);
     if (!isFinite(n) || n <= 1) return 0;
+    var s = 0, i;
+    var jc = host && host.jer_caras;
+    if (jc) {
+      var arr = jc[cara] || [];
+      for (i = 1; i < n && i < arr.length; i++) s += Number(arr[i]) || 0;
+      return s;
+    }
     var phis = host && host.jer_phi;
     if (phis && phis.length) {
-      var s = 0;
-      for (var i = 1; i < n && i < phis.length; i++) s += Number(phis[i]) || 0;
+      for (i = 1; i < n && i < phis.length; i++) s += Number(phis[i]) || 0;
       return s;
     }
     return (host && host.phi_est) ? Number(host.phi_est) : 0;
   }
 
-  // MARCO ÚTIL DEL NIVEL — FUENTE ÚNICA para (a) las dims 'auto' y (b) el inset
-  // de anclaje. Una barra de nivel n no se mide contra el hormigón sino contra el
-  // hueco que le dejan los niveles de más afuera:
-  //     dim_auto = dimensión_host − 2·(recub + Σφ de los niveles anteriores)
-  // Antes las dims 'auto' usaban SOLO el recubrimiento → una barra de nivel 2
-  // salía LARGA y atravesaba el estribo.
+  // Profundidad ocupada en `cara` justo ANTES de `nivel` (recub incluido).
+  // `recubBase` permite forzar el recubrimiento de esa cara (recub_override del
+  // componente); ausente → el del host.
+  function profundidadCara(host, cara, nivel, recubBase) {
+    var r = (recubBase != null) ? Number(recubBase) : _recubDeCara(host, cara);
+    return r + _sumaPila(host, cara, nivel);
+  }
+
+  // MARCO ÚTIL DEL NIVEL — FUENTE ÚNICA para (a) las dims 'auto' y (b) los
+  // anclajes. Una barra de nivel n no se mide contra el hormigón sino contra el
+  // hueco que le dejan las PILAS de las caras que cruza:
+  //     largoUtil = largo − 2·prof(ext)      (dim que cruza los extremos)
+  //     altoUtil  = alto − prof(sup) − prof(inf)
+  //     anchoUtil = ancho − 2·prof(lat)
   //
   // `nivelOverride` permite pedir el marco de otro nivel. Los dos consumidores:
   //   · _dimsEfectivas  → nivel DECLARADO por el componente (sin declaración la
   //     dim se sigue midiendo al recubrimiento: el default por rol gobierna el
   //     ANCLAJE, no el largo de corte de recetas que nunca declararon nivel);
-  //   · _insetJerarquia → nivel EFECTIVO (declarado o default por rol).
+  //   · _profNivel      → nivel EFECTIVO (declarado o default por rol).
+  // `prof` es el shape nuevo; `insetJ` se conserva (= profundidad extra de la
+  // cara superior) porque es el escalar que publicaba la API anterior.
   function marcoUtilNivel(base, host, nivelOverride) {
     var nivel = (nivelOverride !== undefined) ? nivelOverride
       : ((base && base.jerarquia !== undefined) ? base.jerarquia : null);
-    var insetJ = _insetDeNivel(nivel, host);
-    var recub = (host && host.recub_sup != null) ? Number(host.recub_sup) : 4;
-    var recubLat = (host && host.recub_lat != null) ? Number(host.recub_lat) : 3;
+    var prof = {
+      sup: profundidadCara(host, 'sup', nivel),
+      inf: profundidadCara(host, 'inf', nivel),
+      lat: profundidadCara(host, 'lat', nivel),
+      ext: profundidadCara(host, 'ext', nivel)
+    };
+    var recub = _recubDeCara(host, 'sup');
+    var recubLat = _recubDeCara(host, 'lat');
     return {
-      nivel: nivel, insetJ: insetJ, recub: recub, recubLat: recubLat,
-      largoUtil: Number(host.largo) - 2 * (recub + insetJ),
-      altoUtil: Number(host.alto) - 2 * (recub + insetJ),
-      anchoUtil: Number(host.ancho) - 2 * (recubLat + insetJ)
+      nivel: nivel, prof: prof,
+      insetJ: prof.sup - recub, recub: recub, recubLat: recubLat,
+      largoUtil: Number(host.largo) - 2 * prof.ext,
+      altoUtil: Number(host.alto) - prof.sup - prof.inf,
+      anchoUtil: Number(host.ancho) - 2 * prof.lat
     };
   }
 
-  function _insetJerarquia(base, host) {
-    var nivel = nivelJerarquiaEfectivo(
+  // Nivel EFECTIVO de una base (declarado o default por rol).
+  function _nivelDeBase(base) {
+    return nivelJerarquiaEfectivo(
       (base && base.jerarquia !== undefined) ? base.jerarquia : null,
       (base && base.rol) || 'cabezal');
-    return marcoUtilNivel(base, host, nivel).insetJ;
   }
 
-  // Borde del eje de un longitudinal en Y según su cara (con jerarquía).
+  // Profundidades POR CARA del nivel EFECTIVO de la pieza (recub incluido).
+  function _profNivel(base, host) {
+    return marcoUtilNivel(base, host, _nivelDeBase(base)).prof;
+  }
+
+  // Cara VERTICAL de referencia de un anclaje. Tiene que coincidir con el
+  // recubrimiento que ya elige _baseDeComponente para anchorBase.recub
+  // (recub_inf SÓLO para cara 'inf'; recub_sup para todo lo demás, incluida la
+  // cara 'lateral' de estribos y trabas), para que el recub y la pila salgan
+  // siempre de la MISMA cara.
+  function _caraVertical(cara) { return (cara === 'inf') ? 'inf' : 'sup'; }
+
+  // Borde del eje de un longitudinal en Y según su cara, contra la PILA de esa
+  // cara (no contra un inset global): prof(cara, nivel) + φ/2.
   function _yBordeCabezal(base, host) {
     var cara = (base.anchorBase && base.anchorBase.cara) || 'sup';
     var recub = (base.anchorBase && base.anchorBase.recub != null) ? base.anchorBase.recub : 4;
-    var inset = recub + _insetJerarquia(base, host) + base.diam / 2;
-    return (cara === 'sup') ? (host.alto / 2 - inset) : (-host.alto / 2 + inset);
+    var prof = profundidadCara(host, _caraVertical(cara), _nivelDeBase(base), recub);
+    return (cara === 'sup') ? (host.alto / 2 - prof - base.diam / 2)
+                            : (-host.alto / 2 + prof + base.diam / 2);
   }
 
   function distribuidorLayered(base, cfg, host) {
@@ -419,10 +527,14 @@
     var nBarras = Math.max(1, (cfg && cfg.barras_capa) || 1);
     var gap = (cfg && cfg.gap != null) ? cfg.gap : 0;
     var recubLat = (base.anchorBase && base.anchorBase.recubLat != null) ? base.anchorBase.recubLat : 3;
-    var zHalf = host.ancho / 2 - recubLat - _insetJerarquia(base, host) - base.diam / 2;
+    // El reparto a lo ancho se mide contra la PILA de la cara LATERAL de su nivel.
+    var zHalf = host.ancho / 2 - profundidadCara(host, 'lat', _nivelDeBase(base), recubLat) - base.diam / 2;
     var cara = (base.anchorBase && base.anchorBase.cara) || 'sup';
     var s = (cara === 'sup') ? -1 : 1;   // hacia el núcleo
     var yBorde = _yBordeCabezal(base, host);
+    // EJE DE LA CARA contra la que se anida: sup/inf entran en Y; una cara
+    // lateral entra en Z (antes el corrimiento del anidado iba SIEMPRE en Y).
+    var ejeAnid = (cara === 'lateral' || cara === 'lat') ? 'z' : 'y';
     // CAPAS ANIDADAS/AJUSTADAS (cfg.anidar !== false, toggle de la UI):
     // el CRITERIO (qué lados se achican, y si la capa se posiciona por inset de
     // marco o corriendo la polilínea) lo decide UNA sola función, por FIGURA:
@@ -440,7 +552,7 @@
     for (var c = 0; c < nCapas; c++) {
       var off = c * (base.diam + gap);              // δ de la capa
       var an = (c > 0 && (anidaMarco || anidaFig))
-        ? _fp().anidarFigura(base.figura, base.dims, off, base.rol, { sentido: s })
+        ? _fp().anidarFigura(base.figura, base.dims, off, base.rol, { sentido: s, eje: ejeAnid })
         : null;
       var usaAn = !!(an && an.criterio !== 'recta');
       var dimsCapa = usaAn ? an.dims : base.dims;
@@ -448,8 +560,16 @@
       var y = usaAn ? (yBorde + an.anchorDelta.y) : (yBorde + s * off);
       for (var i = 0; i < nBarras; i++) {
         var z = (nBarras > 1) ? (-zHalf + (2 * zHalf) * (i / (nBarras - 1))) : 0;
+        // Anidado contra una cara LATERAL: el núcleo está a un lado o al otro
+        // según de qué lado esté ESTA barra, así que el signo es por barra.
+        if (usaAn && ejeAnid === 'z') z += (z >= 0 ? -1 : 1) * (an.delta || 0);
         var extra = { y: y, z: z, cara: cara };
-        if (usaAn && an.inset) extra.inset = (base.anchorBase.inset || 0) + an.inset;
+        if (usaAn && an.inset) {
+          // Una figura CERRADA anidada se encoge δ por los cuatro lados: el δ
+          // entra en las tres pilas del marco (sup, inf y lat).
+          var ins = _insetsAnidados(base.anchorBase, an.inset);
+          extra.inset = ins.inset; extra.insetInf = ins.insetInf; extra.insetLat = ins.insetLat;
+        }
         var anchor = _mezclarAnchor(base.anchorBase, extra);
         var puntos = _fp().figuraAPuntos(base.figura, dimsCapa, host, anchor,
           { rol: base.rol || 'cabezal', diamCm: base.diam });
@@ -512,9 +632,11 @@
       // δ de la capa anidada: la sep configurada, nunca menos que φ (dos estribos
       // no pueden compartir plano). El CRITERIO de anidado (qué lados se achican,
       // si la posición la da el inset o un corrimiento) lo decide anidarFigura.
+      var caraA = (base.anchorBase && base.anchorBase.cara) || 'sup';
+      var ejeAnidA = (caraA === 'lateral' || caraA === 'lat') ? 'z' : 'y';
       var an = (anidaA && !unaCapa && c > 0)
         ? _fp().anidarFigura(base.figura, base.dims, c * Math.max(sepCapas, base.diam), base.rol,
-          { sentido: ((base.anchorBase && base.anchorBase.cara) === 'inf') ? 1 : -1 })
+          { sentido: (caraA === 'inf') ? 1 : -1, eje: ejeAnidA })
         : null;
       var usaAn = !!(an && an.criterio !== 'recta');
       var dimsCapaA = usaAn ? an.dims : base.dims;
@@ -523,8 +645,15 @@
         var extra = { x: xr };
         if (!unaCapa) {
           if (usaAn) {
-            if (an.inset) extra.inset = (base.anchorBase.inset || 0) + an.inset;
-            if (an.anchorDelta.y) extra.y = ((base.anchorBase && base.anchorBase.y) || 0) + an.anchorDelta.y;
+            if (an.inset) {
+              var insA = _insetsAnidados(base.anchorBase, an.inset);
+              extra.inset = insA.inset; extra.insetInf = insA.insetInf; extra.insetLat = insA.insetLat;
+            }
+            // El corrimiento del anidado va por el EJE DE LA CARA (y para
+            // sup/inf, z para lateral), no siempre en Y.
+            if (an.anchorDelta[an.eje]) {
+              extra[an.eje] = ((base.anchorBase && base.anchorBase[an.eje]) || 0) + an.anchorDelta[an.eje];
+            }
           } else if (!anidaA) {
             extra[eje] = baseEje + off;
           }
@@ -568,8 +697,9 @@
   //   1) rotación comp.orient = {eje:'x'|'y'|'z', deg} SOBRE EL PROPIO CENTRO de
   //      la pieza (§DISCOVERY-INTER 2: "se ve girar de frente ___| → |___").
   //   2) RE-ANCLAJE al recubrimiento: si al girar la pieza se salió del marco útil
-  //      del hormigón, vuelve DENTRO (clamp por eje). Así la rotación "sigue
-  //      reconociendo los boundaries" en vez de despegar la pieza del recub.
+  //      del hormigón, vuelve DENTRO (clamp por eje, RÍGIDO sobre el componente
+  //      completo). Así la rotación "sigue reconociendo los boundaries" en vez de
+  //      despegar la pieza del recub, y sin deformar el reparto de sus barras.
   //   3) traslación comp.pos_hint = {x?,y?,z?} (delta en cm; ejes ausentes = 0).
   //
   // PIVOTE (B3-raíz) — antes se rotaba EN TORNO AL ORIGEN DEL HOST, lo que
@@ -588,6 +718,23 @@
     return { x: p.x * c - p.y * s, y: p.x * s + p.y * c, z: p.z };   // 'z'
   }
 
+  // Bounding box que ENVUELVE varias polilíneas (el componente entero).
+  function _bboxLista(lista) {
+    var mn = { x: Infinity, y: Infinity, z: Infinity };
+    var mx = { x: -Infinity, y: -Infinity, z: -Infinity };
+    for (var i = 0; i < (lista || []).length; i++) {
+      var pts = lista[i] || [];
+      for (var k = 0; k < pts.length; k++) {
+        var p = pts[k];
+        if (p.x < mn.x) mn.x = p.x; if (p.x > mx.x) mx.x = p.x;
+        if (p.y < mn.y) mn.y = p.y; if (p.y > mx.y) mx.y = p.y;
+        if (p.z < mn.z) mn.z = p.z; if (p.z > mx.z) mx.z = p.z;
+      }
+    }
+    if (!isFinite(mn.x) || !isFinite(mn.y) || !isFinite(mn.z)) return null;
+    return { min: mn, max: mx, c: { x: (mn.x + mx.x) / 2, y: (mn.y + mx.y) / 2, z: (mn.z + mx.z) / 2 } };
+  }
+
   // Bounding box de una polilínea: {min,max,c} por eje (null si no hay puntos).
   function _bboxPuntos(pts) {
     if (!pts || !pts.length) return null;
@@ -603,38 +750,77 @@
     return { min: mn, max: mx, c: { x: (mn.x + mx.x) / 2, y: (mn.y + mx.y) / 2, z: (mn.z + mx.z) / 2 } };
   }
 
-  // MARCO ÚTIL del hormigón (dentro del recubrimiento), por eje del mundo.
-  function _marcoUtil(host) {
+  // MARCO ÚTIL DEL NIVEL, por eje del MUNDO — el hueco que le dejan a esta pieza
+  // las pilas de cada cara. Es el marco al que vuelve una pieza que se salió al
+  // ROTAR: una barra de nivel 2 vuelve a SU hueco, no al hormigón pelado (antes
+  // el re-anclaje la devolvía siempre al recubrimiento y la sacaba de su capa).
+  // Con nivel null/1 (o sin pilas) es EXACTAMENTE el marco de recubrimiento
+  // anterior.
+  function _marcoUtilMundo(host, nivel) {
     if (!host) return null;
-    var rS = (host.recub_sup != null) ? Number(host.recub_sup) : 4;
-    var rI = (host.recub_inf != null) ? Number(host.recub_inf) : 4;
-    var rL = (host.recub_lat != null) ? Number(host.recub_lat) : 3;
     var L = Number(host.largo), A = Number(host.alto), W = Number(host.ancho);
     if (!isFinite(L) || !isFinite(A) || !isFinite(W)) return null;
+    var pS = profundidadCara(host, 'sup', nivel);
+    var pI = profundidadCara(host, 'inf', nivel);
+    var pL = profundidadCara(host, 'lat', nivel);
+    var pE = profundidadCara(host, 'ext', nivel);
     return {
-      x: { lo: -L / 2 + rS, hi: L / 2 - rS },     // extremos: el motor usa el recub vertical
-      y: { lo: -A / 2 + rI, hi: A / 2 - rS },
-      z: { lo: -W / 2 + rL, hi: W / 2 - rL }
+      x: { lo: -L / 2 + pE, hi: L / 2 - pE },     // extremos: el motor usa el recub vertical
+      y: { lo: -A / 2 + pI, hi: A / 2 - pS },
+      z: { lo: -W / 2 + pL, hi: W / 2 - pL }
     };
   }
 
-  // Delta que devuelve la pieza DENTRO del marco útil (0 si ya cabe donde está).
-  // Si en un eje la pieza es MÁS LARGA que el marco (p.ej. un estribo girado 90°
-  // en una viga angosta) no hay clamp posible → se CENTRA en ese eje.
-  // siNoCabe: 'centrar' (default, rotación en el plano) | 'dejar' (spin axial:
-  // si el bbox no cabe en el marco, NO desplazar — centrar colapsaba las barras
-  // repartidas de una capa todas al mismo punto cuando sus ganchos girados
-  // excedían el ancho útil).
-  function _deltaReanclaje(bb, marco, siNoCabe) {
+  // CAJA del hormigón pelado (sin recubrimiento) por eje del mundo. Es el último
+  // límite físico: una barra puede quedar fuera de su capa, pero no del elemento.
+  function _cajaHost(host) {
+    if (!host) return null;
+    var L = Number(host.largo), A = Number(host.alto), W = Number(host.ancho);
+    if (!isFinite(L) || !isFinite(A) || !isFinite(W)) return null;
+    return {
+      x: { lo: -L / 2, hi: L / 2 },
+      y: { lo: -A / 2, hi: A / 2 },
+      z: { lo: -W / 2, hi: W / 2 }
+    };
+  }
+
+  // CASCADA DE MARCOS del re-anclaje, del más fino al más grueso:
+  //   1) el hueco de SU nivel (pilas incluidas) — donde debería estar;
+  //   2) el marco de RECUBRIMIENTO (nivel 1: sin pilas) — si la pieza girada ya no
+  //      cabe en su capa pero sí dentro del recubrimiento;
+  //   3) el HORMIGÓN pelado — último recurso para no dejarla fuera del elemento.
+  function _marcosReanclaje(host, nivel) {
+    var out = [];
+    var m = _marcoUtilMundo(host, nivel); if (m) out.push(m);
+    var r = _marcoUtilMundo(host, 1);     if (r) out.push(r);
+    var c = _cajaHost(host);              if (c) out.push(c);
+    return out.length ? out : null;
+  }
+
+  // Delta que devuelve la pieza DENTRO del primer marco de la cascada donde QUEPA
+  // (0 si ya cabe donde está). Si no cabe en NINGUNO — una pieza más grande que el
+  // elemento — se CENTRA en el marco de su nivel: no hay traslación que la meta
+  // entera, así que la que menos miente es la que reparte el excedente por igual
+  // a los dos lados.
+  //
+  // `bb` es el bbox del COMPONENTE ENTERO y el delta se aplica a todas sus barras
+  // (ver _aplicarPostTransform): el clamp barra-a-barra era la causa raíz del
+  // colapso — dos barras distintas que se pasaban del mismo lado aterrizaban
+  // PEGADAS a la misma pared, y centrarlas por separado las mandaba TODAS al
+  // mismo punto (una capa de 3 barras girada 90° se volvía una sola, con el
+  // resumen diciendo 3). Como traslación RÍGIDA, ninguna de las dos ramas puede
+  // fusionar barras.
+  function _deltaReanclaje(bb, marcos) {
     var d = { x: 0, y: 0, z: 0 };
-    if (!bb || !marco) return d;
+    if (!bb || !marcos || !marcos.length) return d;
     ['x', 'y', 'z'].forEach(function (e) {
-      var f = marco[e], lo = bb.min[e], hi = bb.max[e];
-      if (!f || !(f.hi > f.lo)) return;
-      if ((hi - lo) > (f.hi - f.lo)) {
-        if (siNoCabe !== 'dejar') d[e] = (f.lo + f.hi) / 2 - (lo + hi) / 2;
-        return;
+      var lo = bb.min[e], hi = bb.max[e], len = hi - lo;
+      var f = null;
+      for (var i = 0; i < marcos.length && !f; i++) {
+        var g = marcos[i] && marcos[i][e];
+        if (g && g.hi > g.lo && len <= (g.hi - g.lo)) f = g;
       }
+      if (!f) return;                       // no cabe en ninguno → se DEJA
       if (lo < f.lo) d[e] = f.lo - lo;
       else if (hi > f.hi) d[e] = f.hi - hi;
     });
@@ -696,20 +882,38 @@
     var dz = (ph && ph.z != null) ? Number(ph.z) : 0;
     // El re-anclaje sólo tiene sentido tras GIRAR y con un host conocido; el
     // arrastre (pos_hint) NO se clampea aquí (el clamp de la UI ya lo gobierna).
-    var marco = ((tieneRot || tieneSpin) && (!orient || orient.pivot !== 'host')) ? _marcoUtil(host) : null;
-    placements.forEach(function (pl) {
+    // El marco es EL DE SU NIVEL (con las pilas del host REAL: los placements ya
+    // volvieron al mundo, así que un componente volteado también se re-ancla
+    // contra las caras reales).
+    var nivelPT = nivelJerarquiaEfectivo(
+      (comp && comp.jerarquia !== undefined) ? nivelJerarquia(comp.jerarquia) : null,
+      (comp && comp._rol) || _rolDeTipologia(comp && comp.tipologia, comp && comp.cara));
+    var marcos = ((tieneRot || tieneSpin) && (!orient || orient.pivot !== 'host'))
+      ? _marcosReanclaje(host, nivelPT) : null;
+    // 1) GIRO de cada barra (rotación sobre su pivote + spin sobre su propio eje).
+    var giradas = placements.map(function (pl) {
       var piv = tieneRot ? _pivoteDeRotacion(pl, orient) : null;
       var pts = (pl.puntos || []).map(function (p) {
         if (!tieneRot) return { x: p.x, y: p.y, z: p.z, esArco: p.esArco };
         var q = _rotarPunto({ x: p.x - piv.x, y: p.y - piv.y, z: p.z - piv.z }, eje, rad);
         return { x: q.x + piv.x, y: q.y + piv.y, z: q.z + piv.z, esArco: p.esArco };
       });
-      if (tieneSpin) pts = _girarSobreEjeBarra(pts, radSpin);
-      // RE-ANCLAJE al recubrimiento (boundaries) + traslación del pos_hint.
-      // Con SPIN: si el bbox girado no cabe, se DEJA (no centrar): centrar
-      // colapsaba las barras repartidas de la capa todas al mismo punto.
-      var r = marco ? _deltaReanclaje(_bboxPuntos(pts), marco, tieneSpin ? 'dejar' : 'centrar') : { x: 0, y: 0, z: 0 };
-      pl.puntos = pts.map(function (q) {
+      return tieneSpin ? _girarSobreEjeBarra(pts, radSpin) : pts;
+    });
+    // 2) RE-ANCLAJE (boundaries): UN SOLO delta para TODO el componente, medido
+    //    sobre el bbox que envuelve a TODAS sus barras. El componente es un
+    //    CUERPO RÍGIDO: el usuario gira la pieza entera, así que volver adentro
+    //    tiene que ser una traslación rígida que conserva el reparto interno.
+    //    Clampeando barra por barra, dos barras distintas que se pasaban del
+    //    mismo lado aterrizaban PEGADAS a la misma pared → se superponían (una
+    //    capa de 3 barras con spin quedaba en 2). Una traslación rígida no puede
+    //    fusionar barras distintas: el defecto desaparece por construcción, no
+    //    por un caso especial. La cascada de marcos (nivel → recubrimiento →
+    //    hormigón) vale igual para rotación y para spin.
+    var r = marcos ? _deltaReanclaje(_bboxLista(giradas), marcos) : { x: 0, y: 0, z: 0 };
+    // 3) traslación final (re-anclaje + pos_hint).
+    placements.forEach(function (pl, i) {
+      pl.puntos = giradas[i].map(function (q) {
         var o = { x: q.x + r.x + dx, y: q.y + r.y + dy, z: q.z + r.z + dz };
         if (q.esArco) o.esArco = true;
         return o;
@@ -717,6 +921,58 @@
       if (tieneRot) pl.meta = _mezclarAnchor(pl.meta || {}, { orient_deg: Number(orient.deg), orient_eje: eje });
     });
     return placements;
+  }
+
+  // ---------------------------------------------------------------------------
+  // DERIVACIÓN DE CONTACTO — qué CARAS ocupa una barra (geométrica y general)
+  // ---------------------------------------------------------------------------
+  // Se DERIVA, no se declara: una barra ocupa la cara F si su bbox llega a la
+  // FRONTERA ACTUAL de la pila de F (la profundidad que hay ocupada en ese nivel)
+  // dentro de una tolerancia ε = φ/2 + 0.75 cm — φ/2 porque los puntos son el EJE
+  // de la barra y su superficie está φ/2 más afuera, + 0.75 cm de holgura de
+  // colocación. Una barra al centro no toca ninguna cara → no empuja a nadie.
+  //
+  // CARAS PAREADAS ('lat' = z±, 'ext' = x±): su pila es SIMÉTRICA (anchoUtil =
+  // ancho − 2·prof(lat)), así que sólo aporta la barra que bloquea LOS DOS lados.
+  // De ahí sale, sin un solo `if (figura === …)`, el comportamiento que pedía el
+  // calculista:
+  //   · un ESTRIBO (plano YZ a una X) toca UN solo extremo → NO ocupa 'ext': los
+  //     longitudinales pasan POR DENTRO del estribo, no se topan con él a lo
+  //     largo. Sí ocupa sup/inf/lat (encuadra las cuatro caras de la sección).
+  //   · un LONGITUDINAL que va de extremo a extremo SÍ ocupa 'ext' (los dos), y
+  //     ocupa la cara contra la que se apoya (sup o inf).
+  //   · un estribo VOLTEADO ocupa sup/inf/EXT y no 'lat' — sale solo, porque los
+  //     contactos se derivan en coordenadas del MUNDO, con los puntos ya
+  //     devueltos por la permutación.
+  // `posHint` (opcional) = el arrastre MANUAL {x,y,z} del componente. Se DESCUENTA
+  // antes de medir: una barra que el usuario arrastró conserva el aporte de su
+  // cara NATURAL (la del anclaje sin pos_hint). Decisión de producto: mover una
+  // barra a mano no la cambia de cara en la cadena. La ROTACIÓN sí cuenta (es una
+  // reorientación real de la pieza, no un ajuste de posición).
+  // Devuelve la lista de caras ocupadas ([] si no toca ninguna).
+  function carasOcupadas(pl, host, nivel, posHint) {
+    var bb = _bboxPuntos(pl && pl.puntos);
+    if (!bb || !host) return [];
+    if (posHint) {
+      var dx = (posHint.x != null) ? Number(posHint.x) : 0;
+      var dy = (posHint.y != null) ? Number(posHint.y) : 0;
+      var dz = (posHint.z != null) ? Number(posHint.z) : 0;
+      bb = {
+        min: { x: bb.min.x - dx, y: bb.min.y - dy, z: bb.min.z - dz },
+        max: { x: bb.max.x - dx, y: bb.max.y - dy, z: bb.max.z - dz }
+      };
+    }
+    var eps = (Number(pl.diam) || 0) / 2 + 0.75;
+    var fSup = Number(host.alto) / 2 - profundidadCara(host, 'sup', nivel);
+    var fInf = -Number(host.alto) / 2 + profundidadCara(host, 'inf', nivel);
+    var fLat = Number(host.ancho) / 2 - profundidadCara(host, 'lat', nivel);
+    var fExt = Number(host.largo) / 2 - profundidadCara(host, 'ext', nivel);
+    var out = [];
+    if (Math.abs(bb.max.y - fSup) <= eps) out.push('sup');
+    if (Math.abs(bb.min.y - fInf) <= eps) out.push('inf');
+    if (Math.abs(bb.max.z - fLat) <= eps && Math.abs(bb.min.z + fLat) <= eps) out.push('lat');
+    if (Math.abs(bb.max.x - fExt) <= eps && Math.abs(bb.min.x + fExt) <= eps) out.push('ext');
+    return out;
   }
 
   // ---------------------------------------------------------------------------
@@ -816,9 +1072,10 @@
   // VOLTEADA el eje longitudinal local es la Z real, así que su recub es el lateral.
   function _baseDeComponente(comp, host, opts) {
     comp._rol = comp._rol || _rolDeTipologia(comp.tipologia, comp.cara);
-    var recub = (comp.recub_override != null) ? comp.recub_override
-      : (comp.cara === 'inf' ? (host.recub_inf != null ? host.recub_inf : 4)
-                             : (host.recub_sup != null ? host.recub_sup : 4));
+    var rSup = _recubDeCara(host, 'sup');
+    var rInf = _recubDeCara(host, 'inf');
+    var ovr = (comp.recub_override != null) ? Number(comp.recub_override) : null;
+    var recub = (ovr != null) ? ovr : (comp.cara === 'inf' ? rInf : rSup);
     var diamCm = Number(comp.diam) / 10;   // mm → cm
     // Empalme resuelto (cm por extremo) para que figura_puntos asome la barra
     // fuera del hormigón en el lado indicado (dato geométrico; el largo/peso ya
@@ -831,7 +1088,7 @@
       comp_id: (comp.comp_id != null ? comp.comp_id : null),
       prioridad: comp.prioridad != null ? comp.prioridad : null,
       // Nivel DECLARADO ('no' | 1,2,3… | null = auto → default por rol). Gobierna
-      // el anclaje (vía _insetJerarquia, que le aplica el default) y el marco útil
+      // el anclaje (vía _profNivel, que le aplica el default) y el marco útil
       // de las dims 'auto' (sólo si está declarado).
       jerarquia: nivelJerarquia(comp.jerarquia),
       dims: _dimsEfectivas(comp, host, nivelJerarquia(comp.jerarquia)),
@@ -839,17 +1096,61 @@
       rol: comp._rol,
       anchorBase: {
         cara: comp.cara, recub: recub,
-        recubLat: (host.recub_lat != null ? host.recub_lat : 3),
-        recubExtremo: (opts && opts.recubExtremo != null) ? Number(opts.recubExtremo) : recub,
+        // El marco de estribo/traba abarca las DOS caras verticales, así que
+        // necesita el recub de CADA una: usar el de la cara del anchor arriba Y
+        // abajo dibujaba la pieza fuera del recub inferior cuando recub_sup ≠
+        // recub_inf (y carasOcupadas dejaba de detectar 'inf').
+        recubSup: (ovr != null) ? ovr : rSup,
+        recubInf: (ovr != null) ? ovr : rInf,
+        recubLat: _recubDeCara(host, 'lat'),
+        recubExtremo: (opts && opts.recubExtremo != null) ? Number(opts.recubExtremo)
+          : (ovr != null ? ovr : _recubDeCara(host, 'ext')),
+        // POSE NATURAL del anclaje (el distribuidor sólo OVERRIDEA los ejes que
+        // reparte). Sin ella, un distribuidor que no fija un eje dejaba el anchor
+        // incompleto y la polilínea salía con coordenadas undefined → NaN al
+        // sumarle el pos_hint (rompía 3D/2D/hit-testing).
+        x: 0,
         empalme: (empExtremo && empValor > 0) ? { extremo: empExtremo, valor: empValor } : null
       }
     };
-    // JERARQUÍA: los roles con marco (estribo/traba) reciben su inset de nivel
-    // por el anchor (el marco lo suma a recub + φ/2). Los cabezales lo resuelven
-    // en _yBordeCabezal/zHalf (no usan marco).
-    var insetJ = _insetJerarquia(base, host);
-    if (insetJ > 0 && (base.rol === 'estribo' || base.rol === 'traba')) base.anchorBase.inset = insetJ;
+    // Un longitudinal vive a la ALTURA de su cara y, por defecto, al centro del
+    // ancho. Estribo/traba derivan su pose del marco (no leen anchor.y/z).
+    if (base.rol === 'cabezal') {
+      base.anchorBase.y = _yBordeCabezal(base, host);
+      base.anchorBase.z = 0;
+    }
+    // JERARQUÍA: los roles con marco (estribo/traba) reciben su profundidad de
+    // nivel por el anchor (el marco la suma a recub + φ/2). Son TRES pilas, una
+    // por frontera del marco — sup, inf y lat — porque las tres son
+    // INDEPENDIENTES: un nivel 2 con φ16 arriba y φ18 abajo deja huecos distintos.
+    // (Antes se mandaba una sola pila vertical, la de la cara del anchor, para
+    // arriba Y abajo: la figura se dibujaba con un desfase de pilaSup − pilaInf
+    // respecto de su propia dim declarada.) Los cabezales lo resuelven en
+    // _yBordeCabezal/zHalf (no usan marco).
+    // Se escriben LAS TRES o NINGUNA: _marcoNucleo cae de insetInf/insetLat a
+    // inset cuando faltan, así que dejar una sola daría un marco equivocado.
+    if (base.rol === 'estribo' || base.rol === 'traba') {
+      var nivelEf = _nivelDeBase(base);
+      var insetS = _sumaPila(host, 'sup', nivelEf);
+      var insetI = _sumaPila(host, 'inf', nivelEf);
+      var insetL = _sumaPila(host, 'lat', nivelEf);
+      if (insetS > 0 || insetI > 0 || insetL > 0) {
+        base.anchorBase.inset = insetS;
+        base.anchorBase.insetInf = insetI;
+        base.anchorBase.insetLat = insetL;
+      }
+    }
     return base;
+  }
+
+  // Insets de una CAPA ANIDADA: la figura cerrada se encoge δ por los CUATRO
+  // lados, así que δ entra en las tres pilas del marco (sup, inf, lat) partiendo
+  // de las del anchor base. Fuente única para layered y arreglo.
+  function _insetsAnidados(anchorBase, d) {
+    var i0 = Number(anchorBase.inset) || 0;
+    var iI = (anchorBase.insetInf != null) ? Number(anchorBase.insetInf) : i0;
+    var iL = (anchorBase.insetLat != null) ? Number(anchorBase.insetLat) : i0;
+    return { inset: i0 + d, insetInf: iI + d, insetLat: iL + d };
   }
 
   function _rolDeTipologia(tip, cara) {
@@ -909,6 +1210,10 @@
     nivelJerarquiaEfectivo: nivelJerarquiaEfectivo,
     JER_DEFAULT_POR_ROL: JER_DEFAULT_POR_ROL,
     marcoUtilNivel: marcoUtilNivel,
+    // PILAS DE OCUPACIÓN POR CARA — generar.js las construye con esto.
+    CARAS: ['sup', 'inf', 'lat', 'ext'],
+    profundidadCara: profundidadCara,
+    carasOcupadas: carasOcupadas,
 
     distribuidorLinear: distribuidorLinear,
     distribuidorLayered: distribuidorLayered,

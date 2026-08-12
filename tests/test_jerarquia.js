@@ -2,9 +2,15 @@
 // el reparto REAL del rango. Fija cuatro contratos del motor:
 //
 //   J1 · DIMS AUTO POR NIVEL — una dim 'auto' se mide contra el MARCO ÚTIL DE SU
-//        NIVEL (host − 2·(recub + Σφ de los niveles anteriores)), no contra el
-//        hormigón pelado. Un cabezal de nivel 2 tras un estribo φ8 mide
-//        600 − 2·(4 + 0.8) = 590.4 (antes 592 → atravesaba el estribo).
+//        NIVEL, y ese marco sale de las PILAS DE OCUPACIÓN POR CARA: cada dim se
+//        mide contra las caras QUE CRUZA (largo → ext/ext, alto → sup/inf,
+//        ancho → lat/lat). Un estribo ocupa sup/inf/lat pero NO los extremos
+//        (los longitudinales pasan por dentro de él), así que:
+//          · traba nivel 2 (cruza sup/inf): 60 − 2·(4 + 0.8) = 50.4 — el estribo
+//            SÍ la empuja;
+//          · cabezal nivel 2 (cruza ext/ext): 600 − 2·4 = 592 — el estribo NO la
+//            empuja. Con el inset escalar anterior daba 590.4, restando un φ8 en
+//            unos extremos donde el estribo no está.
 //   J2 · jerarquia:'no' — la barra se pega al recubrimiento (inset 0) y NO aporta
 //        su φ a la cadena (los niveles siguientes no se corren hacia adentro).
 //   J3 · ANIDADO — anidarFigura es el criterio ÚNICO por figura:
@@ -78,14 +84,18 @@ function receta(jerES) {
 }
 function dimsDe(out, marca) { return out.barras.filter(function (b) { return b.marca === marca; })[0]; }
 
-console.log('\nJ1 — DIMS AUTO POR NIVEL (marco útil del nivel, no del hormigón):');
+console.log('\nJ1 — DIMS AUTO POR NIVEL (marco útil del nivel, pila POR CARA):');
 const oJ = G.generarViga(receta(1), {});
 const cb2 = dimsDe(oJ, 'CBS'), tr2 = dimsDe(oJ, 'TRV'), es1 = dimsDe(oJ, 'ES');
-ok(close(cb2.dim_b, 600 - 2 * (4 + PHI_ES)), 'cabezal nivel 2: B auto = largo − 2·(recub + φ1) = 590.4 (=' + cb2.dim_b + ')');
-ok(close(tr2.dim_a, 60 - 2 * (4 + PHI_ES)), 'traba nivel 2: A auto = alto − 2·(recub + φ1) = 50.4 (=' + tr2.dim_a + ')');
+// El cabezal se mide entre los EXTREMOS (x±) y el estribo NO ocupa esa cara:
+// cada estribo es un plano YZ que toca UN solo extremo, y el longitudinal pasa
+// POR DENTRO del estribo. Su largo lo limita sólo el recubrimiento de extremo.
+ok(close(cb2.dim_b, 600 - 2 * 4), 'cabezal nivel 2: B auto = largo − 2·recubExtremo = 592, SIN φ1 (el estribo no ocupa extremos) (=' + cb2.dim_b + ')');
+// La traba cruza sup e inf, caras que el estribo SÍ ocupa → ahí sí la empuja.
+ok(close(tr2.dim_a, 60 - 2 * (4 + PHI_ES)), 'traba nivel 2: A auto = alto − prof(sup) − prof(inf) = 50.4 (=' + tr2.dim_a + ')');
 ok(close(es1.dim_a, 30 - 2 * 3) && close(es1.dim_b, 60 - 2 * 4),
   'estribo nivel 1 (más externo, Σφ previos = 0): sigue al recubrimiento (24 / 52)');
-ok(cb2.dim_b < 600 - 2 * 4, 'la barra de nivel 2 YA NO sale larga (ya no atraviesa el estribo)');
+ok(tr2.dim_a < 60 - 2 * 4, 'la barra de nivel 2 que SÍ cruza al estribo se acorta (no lo atraviesa)');
 // La misma cuenta, vía la función centralizada (fuente única para dims y anclajes).
 const mk = R.marcoUtilNivel({ jerarquia: 2, rol: 'cabezal' }, { largo: 600, alto: 60, ancho: 30, recub_sup: 4, recub_lat: 3, jer_phi: [0, PHI_ES] });
 ok(close(mk.insetJ, PHI_ES) && close(mk.largoUtil, 590.4) && close(mk.altoUtil, 50.4) && close(mk.anchoUtil, 30 - 2 * (3 + PHI_ES)),

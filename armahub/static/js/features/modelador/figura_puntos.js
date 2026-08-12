@@ -33,8 +33,15 @@
   // dims: {A, B, C} de la figura (A,C = patas del gancho; B = tramo largo). Si la
   // figura no usa gancho (101A = solo A recto) se dibuja recta.
   // sentidoGancho: -1 = gancho hacia abajo (barras superiores), +1 = hacia arriba.
+  // CONVENCIÓN DE ANCHOR (la misma que _estriboPerimetral/_traba usan para `x`):
+  // un eje ausente en el anchor = CENTRO del host en ese eje. Antes y/z se leían
+  // crudos y un anchor sin `y` producía puntos con y:undefined (y NaN al sumarles
+  // el pos_hint). El origen del dato está en reglas._baseDeComponente, que ahora
+  // publica la POSE NATURAL del anclaje (y de la cara, z al centro); esto es sólo
+  // la convención del módulo, coherente entre los tres constructores.
   function _cabezalLongitudinal(figura, dims, host, anchor, diamCm) {
-    var y = anchor.y, z = anchor.z;
+    var y = (anchor.y != null && isFinite(anchor.y)) ? Number(anchor.y) : 0;
+    var z = (anchor.z != null && isFinite(anchor.z)) ? Number(anchor.z) : 0;
     var s = (anchor.cara === 'sup') ? -1 : 1;   // gancho hacia el núcleo
     var f = (figura || '').toUpperCase();
     // Empalme: cuánto asoma FUERA del hormigón y por qué extremo (dato de
@@ -76,8 +83,9 @@
 
   // ---- MARCO de recubrimiento del núcleo (compartido estribo/traba) ----------
   // El estribo y la traba encuadran el MISMO rectángulo útil dentro del hormigón:
-  //   semialto  h2 = alto/2  − recub VERTICAL  (recub sup/inf, típ. 4 cm)
-  //   semiancho w2 = ancho/2 − recub LATERAL   (recub_lat, típ. 3 cm)
+  //   borde sup ySup = +alto/2 − recub SUPERIOR    (recub_sup, típ. 4 cm)
+  //   borde inf yInf = −alto/2 + recub INFERIOR    (recub_inf, típ. 4 cm)
+  //   semiancho  w2  =  ancho/2 − recub LATERAL    (recub_lat, típ. 3 cm)
   // El recub vertical y el lateral son DISTINTOS; usarlos cruzados dejaba un lado
   // corto (bug: el estribo no encuadraba el perímetro y la traba no coincidía con
   // el estribo). anchor.recub = recub vertical; anchor.recubLat = recub lateral
@@ -88,17 +96,42 @@
   // JERARQUÍA (calculista): el recubrimiento es a la CARA EXTERIOR del fierro,
   // no a su eje. El marco devuelve la posición del EJE: recub + φ/2 desde la
   // cara de hormigón (así la superficie del estribo queda EXACTAMENTE al
-  // recubrimiento, no metida en él). `anchor.inset` (capas anidadas) achica el
-  // marco adicionalmente hacia adentro.
+  // recubrimiento, no metida en él).
+  //
+  // PILAS DE OCUPACIÓN POR CARA: el marco ya NO se encoge con UN inset escalar, y
+  // TAMPOCO es un rectángulo simétrico respecto del centro del host. Cada cara
+  // tiene su propia PILA (recub → φmax nivel 1 → φmax nivel 2 → …) y su propio
+  // recubrimiento, así que las CUATRO fronteras se calculan por separado:
+  //   · anchor.recubSup / anchor.recubInf → recub de cada cara vertical (si faltan
+  //     caen a `anchor.recub`, que es lo que había: un solo recub vertical).
+  //   · anchor.inset    → profundidad extra (sin recub) de la cara SUPERIOR.
+  //   · anchor.insetInf → ídem cara INFERIOR (si falta cae a `inset`).
+  //   · anchor.insetLat → ídem caras LATERALES (z±, pila simétrica; cae a `inset`).
+  // Devuelve las fronteras del EJE del fierro: ySup / yInf (ya NO ±h2) y ±w2.
+  // Un marco simétrico (mismo recub y misma pila arriba y abajo) da exactamente
+  // ySup = −yInf = el h2 anterior → llamadas directas al motor sin cambios.
+  //
+  // POR QUÉ: `altoUtil` (la dim que se lista y se corta) vale
+  // alto − prof(sup) − prof(inf), con las dos caras INDEPENDIENTES. Dibujar el
+  // marco con un solo escalar vertical hacía que la figura midiera
+  // alto − 2·prof(sup): el estribo/la traba se dibujaban con un desfase de
+  // (pilaSup − pilaInf) respecto de la dim declarada, y la pieza no se apoyaba en
+  // su propia pila inferior (largo de corte y kg equivocados, no un tema visual).
   function _marcoNucleo(host, anchor, diamCm) {
-    var recubV = anchor.recub != null ? anchor.recub : 3;
-    var recubLat = anchor.recubLat != null ? anchor.recubLat : recubV;
-    var eje = (diamCm || 0) / 2 + (anchor.inset != null ? Number(anchor.inset) : 0);
+    var recubV = anchor.recub != null ? Number(anchor.recub) : 3;
+    var recubSup = anchor.recubSup != null ? Number(anchor.recubSup) : recubV;
+    var recubInf = anchor.recubInf != null ? Number(anchor.recubInf) : recubV;
+    var recubLat = anchor.recubLat != null ? Number(anchor.recubLat) : recubV;
+    var insetSup = (anchor.inset != null) ? Number(anchor.inset) : 0;
+    var insetInf = (anchor.insetInf != null) ? Number(anchor.insetInf) : insetSup;
+    var insetLat = (anchor.insetLat != null) ? Number(anchor.insetLat) : insetSup;
+    var r = (diamCm || 0) / 2;      // recub = a la CARA del fierro → eje = +φ/2
     return {
       recubV: recubV,
       recubLat: recubLat,
-      h2: host.alto / 2 - recubV - eje,
-      w2: host.ancho / 2 - recubLat - eje
+      ySup: host.alto / 2 - recubSup - r - insetSup,
+      yInf: -host.alto / 2 + recubInf + r + insetInf,
+      w2: host.ancho / 2 - recubLat - r - insetLat
     };
   }
 
@@ -167,13 +200,15 @@
 
   function _estriboPerimetral(figura, dims, host, anchor, diamCm) {
     var m = _marcoNucleo(host, anchor, diamCm);   // eje = recub + φ/2 (+inset anidado)
-    var h2 = m.h2, w2 = m.w2;          // marco compartido con la traba
+    // Marco compartido con la traba. ySup/yInf son INDEPENDIENTES (pilas y recubs
+    // distintos arriba y abajo): el marco no está centrado en y=0.
+    var ySup = m.ySup, yInf = m.yInf, w2 = m.w2;
     var xx = anchor.x || 0;
     var Rc = 2 * diamCm + diamCm / 2;  // radio del EJE del codo (norma: interno 2φ + φ/2)
-    var O = { x: xx, y: h2 - Rc, z: -w2 + Rc };   // centro común de ambos codos (esquina sup-izq)
+    var O = { x: xx, y: ySup - Rc, z: -w2 + Rc };  // centro común de ambos codos (esquina sup-izq)
     var D = Math.SQRT1_2;              // 0.7071 (diagonal unitaria)
     // Pata del gancho (norma 6φ mín 7.5cm), acotada al núcleo para no cruzar bordes.
-    var largoPata = Math.min(Math.max(6 * diamCm, 7.5), Math.hypot(2 * h2, 2 * w2) * 0.28);
+    var largoPata = Math.min(Math.max(6 * diamCm, 7.5), Math.hypot(ySup - yInf, 2 * w2) * 0.28);
     var dirPata = { y: -D, z: D };     // diagonal hacia el núcleo (abajo-derecha) — COMÚN
 
     // GANCHO A (inicio del fierro): pata → codo [θ: 45° → −90°] → tangente al lado izq.
@@ -182,7 +217,7 @@
     var codoA = _arcoYZ(O, Rc, Math.PI / 4, -Math.PI / 2, xx, true); // incluye θ=45°, termina θ=−90°
 
     // GANCHO B (fin del fierro): lado superior llega a T0 (θ=0) → codo [θ: 0 → −135°] → pata.
-    var T0 = { x: xx, y: h2, z: -w2 + Rc };                          // tangencia con lado superior
+    var T0 = { x: xx, y: ySup, z: -w2 + Rc };                        // tangencia con lado superior
     var codoB = _arcoYZ(O, Rc, 0, -3 * Math.PI / 4, xx, false);      // excluye θ=0 (T0 ya en la lista)
     var pB = codoB[codoB.length - 1];                                // punto del arco en θ=−135°
     var puntaB = { x: xx, y: pB.y + dirPata.y * largoPata, z: pB.z + dirPata.z * largoPata };
@@ -192,9 +227,9 @@
     return [puntaA]
       .concat(codoA)                        // codo A completo (135°)
       .concat([
-        { x: xx, y: -h2, z: -w2 },          // esquina inf-izq (90°, fillet del motor)
-        { x: xx, y: -h2, z: w2 },           // esquina inf-der (90°)
-        { x: xx, y: h2, z: w2 },            // esquina sup-der (90°)
+        { x: xx, y: yInf, z: -w2 },         // esquina inf-izq (90°, fillet del motor)
+        { x: xx, y: yInf, z: w2 },          // esquina inf-der (90°)
+        { x: xx, y: ySup, z: w2 },          // esquina sup-der (90°)
         T0                                  // fin del lado superior = tangencia del codo B
       ])
       .concat(codoB)                        // codo B completo (135°)
@@ -208,15 +243,15 @@
   // podía derivar un h2 distinto y no coincidir en altura).
   function _traba(figura, dims, host, anchor, diamCm) {
     var m = _marcoNucleo(host, anchor, diamCm);   // eje = recub + φ/2, como el estribo
-    var h2 = m.h2;                    // MISMO semialto que el estribo
+    var ySup = m.ySup, yInf = m.yInf;  // MISMAS fronteras que el estribo (marco único)
     var xx = anchor.x || 0, zz = anchor.z || 0;
     var g = 0.7071 * (extGancho(diamCm) + diamCm);
     // gancho 135° arriba (diagonal hacia el núcleo) + gancho 90° abajo.
     return [
-      V(xx, h2 - g, zz - g),   // punta gancho 135° arriba
-      V(xx, h2, zz),           // doblez arriba (a la altura del estribo)
-      V(xx, -h2, zz),          // baja al fondo (a la altura del estribo)
-      V(xx, -h2, zz - extGancho(diamCm))   // pie gancho 90° abajo
+      V(xx, ySup - g, zz - g), // punta gancho 135° arriba
+      V(xx, ySup, zz),         // doblez arriba (a la altura del estribo)
+      V(xx, yInf, zz),         // baja al fondo (a la altura del estribo)
+      V(xx, yInf, zz - extGancho(diamCm))   // pie gancho 90° abajo
     ];
   }
 
@@ -248,11 +283,19 @@
   // arreglo. Con gap=0 las capas quedan TOCÁNDOSE (lo que pidió el usuario).
   //
   // anidarFigura(figura, dims, delta, rol, opts) →
-  //   { dims, anchorDelta:{x,y,z}, inset, criterio, vecinos }
+  //   { dims, anchorDelta:{x,y,z}, eje, delta, inset, criterio, vecinos }
   // NO muta `dims` (devuelve un clon cuando hay cambio).
-  //   opts.sentido: +1|−1 = hacia dónde está el núcleo en Y (cara inf = +1,
-  //   cara sup = −1). Default −1 (cara superior, el caso de la viga).
+  //   opts.sentido: +1|−1 = hacia dónde está el NÚCLEO en el eje de la cara
+  //   (cara inf = +1, cara sup = −1; lateral z+ = −1, z− = +1). Default −1.
+  //   opts.eje: 'x'|'y'|'z' = EJE DE LA CARA contra la que se anida. La capa
+  //   anidada entra hacia el núcleo POR EL EJE DE SU CARA: un corchete de cara
+  //   sup/inf se mete en Y; uno de cara lateral, en Z. Default 'y' (el caso de
+  //   la viga). Antes estaba FIJO en Y, lo que metía una capa lateral en la
+  //   dirección equivocada.
   //   opts.cerrada: fuerza el criterio cerrado para figuras fuera de la serie 104.
+  // `delta` (δ efectivo) y `eje` se devuelven para que el llamador pueda aplicar
+  // el corrimiento con el signo que corresponda a CADA barra (en una cara
+  // lateral el núcleo está a un lado u otro según el z de la barra).
   var LADOS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I'];
 
   // Lados REALES de la figura = las letras presentes en dims con valor > 0, en
@@ -275,7 +318,11 @@
     opts = opts || {};
     var d = Number(delta) || 0;
     var sentido = (opts.sentido === 1 || opts.sentido === -1) ? opts.sentido : -1;
-    var res = { dims: dims, anchorDelta: { x: 0, y: 0, z: 0 }, inset: 0, criterio: 'recta', vecinos: {} };
+    var eje = (opts.eje === 'x' || opts.eje === 'z') ? opts.eje : 'y';
+    var res = {
+      dims: dims, anchorDelta: { x: 0, y: 0, z: 0 },
+      eje: eje, delta: d, inset: 0, criterio: 'recta', vecinos: {}
+    };
     var lados = _ladosDeDims(dims);
     var f = (figura || '').toUpperCase();
     // El criterio lo manda la FIGURA; el rol sólo desempata cuando la figura no
@@ -309,7 +356,9 @@
       res.inset = d;                       // el marco (anchor.inset) posiciona
     } else {
       res.criterio = 'abierta';
-      res.anchorDelta.y = sentido * d;     // la cadena se corre δ hacia el núcleo
+      // la cadena se corre δ hacia el núcleo POR EL EJE DE SU CARA (y para
+      // sup/inf, z para lateral): antes iba siempre en Y.
+      res.anchorDelta[eje] = sentido * d;
     }
     return res;
   }

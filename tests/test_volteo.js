@@ -109,7 +109,12 @@ ok(dentroDelMarco(cbV), 'todos los puntos DENTRO del marco de recubrimiento');
 // la barra corre a lo ancho (Z) en vez de a lo largo (X)
 const cbSpanZ = span([cbV[0]], 'z').len, cbSpanX = span([cbV[0]], 'x').len;
 ok(cbSpanZ > cbSpanX, 'la barra corre en Z (span z=' + cbSpanZ.toFixed(1) + ' > span x=' + cbSpanX.toFixed(1) + ')');
-ok(close(cbSpanZ, host.ancho - 2 * host.recub_sup, 0.01), 'largo de la barra = ancho − 2·recub (dim auto del NUEVO plano)');
+// Los EXTREMOS de la barra volteada son las caras LATERALES reales → su
+// recubrimiento es recub_lat (3), no el vertical (4): 30 − 2·3 = 24. Antes daba
+// 22 porque el motor medía la cara 'ext' local con recub_sup aunque la
+// permutación ya hubiera cambiado de cara.
+ok(close(cbSpanZ, host.ancho - 2 * host.recub_lat, 0.01),
+  'largo de la barra = ancho − 2·recub_lat (recub de la cara que ahora cierra la barra) (=' + cbSpanZ.toFixed(1) + ')');
 ok(reparte(cbV, 'x') && !reparte(cbV, 'z'), 'las barras de la capa se reparten en X (antes Z)');
 ok(reparte(cbBase, 'z') && !reparte(cbBase, 'x'), 'la base sigue repartiendo las barras en Z');
 // sigue pegado a la cara superior: su Y máxima es la misma que sin voltear
