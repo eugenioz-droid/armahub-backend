@@ -47,9 +47,17 @@
     // Empalme: cuánto asoma FUERA del hormigón y por qué extremo (dato de
     // trazabilidad; la dim ya viene alargada, aquí sólo se orienta el excedente
     // al extremo indicado en vez de repartirlo simétrico). eIni/eFin en X.
+    // Δ INDEPENDIENTE POR EXTREMO: `ini`/`fin` traen los dos valores YA resueltos
+    // (reglas._empalmePorExtremo). No son lo mismo ni tienen por qué serlo — una
+    // barra empalma 40φ contra la columna de un lado y asoma 15 cm del otro —, así
+    // que el asome de cada punta se lee de SU número. El shape antiguo
+    // {extremo, valor} sigue funcionando idéntico (fallback de abajo).
     var emp = anchor.empalme || null;
     var eIni = 0, eFin = 0;
-    if (emp && emp.valor > 0) {
+    if (emp && (emp.ini != null || emp.fin != null)) {
+      eIni = Number(emp.ini) || 0;
+      eFin = Number(emp.fin) || 0;
+    } else if (emp && emp.valor > 0) {
       if (emp.extremo === 'inicio') eIni = emp.valor;
       else if (emp.extremo === 'fin') eFin = emp.valor;
       else if (emp.extremo === 'ambos') { eIni = emp.valor; eFin = emp.valor; }

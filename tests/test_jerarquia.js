@@ -189,6 +189,14 @@ console.log('\nJ3d — δ del ANIDADO = k·φ, SIN gap (el gap es del apilado):'
 // sumaba al δ del anidado, así que la capa 2 se iba φ+gap adentro y se achicaba
 // 2·(φ+gap). Anidar es fierro CONTRA fierro: δ = φ y nada más. El gap sigue
 // mandando —intacto— en el apilado que NO anida.
+//
+// ACTUALIZADO 12-ago (decisión del usuario): en el APILADO el gap pasó a ser la
+// distancia EJE A EJE, o sea δ = k·gap y NO k·(φ+gap). Antes el usuario escribía
+// 1 y las capas se separaban 1+φ: «al poner 1 está sumando esa magnitud
+// adicional». El número configurado es ahora el que se acota en el plano. Este
+// test fijaba la aritmética vieja (5.6 = φ+gap) y por eso cambia a 4.0 = gap; el
+// ANIDADO no se movió (sigue en φ) y las DIMS/kg de nadie cambian: sólo la
+// POSICIÓN de las capas ≥2 del apilado.
 function capasCorchete(anidar, gap) {
   return R.expandirComponente({
     tipologia: 'CBS', figura: '103B', diam: 16, cara: 'sup', angulos: [45, 45],
@@ -203,9 +211,15 @@ ok(close(anGap[0].puntos[1].y - anGap[1].puntos[1].y, 1.6, 1e-6),
 ok(close(anGap[1].dims.B, anGap[0].dims.B - 2 * 1.6),
   'y se achica 2·φ = 3.2, no 2·(φ+gap) = 11.2 (=' + anGap[1].dims.B + ')');
 const apGap = capasCorchete(false, 4);
-ok(close(apGap[0].puntos[1].y - apGap[1].puntos[1].y, 1.6 + 4, 1e-6) &&
+ok(close(apGap[0].puntos[1].y - apGap[1].puntos[1].y, 4, 1e-6) &&
   close(apGap[1].dims.B, apGap[0].dims.B),
-  'SIN anidar el gap manda igual que siempre: capa 2 a φ+gap = 5.6 y sin achicar dims');
+  'SIN anidar el gap es EJE A EJE: capa 2 a exactamente 4 (no 5.6 = φ+gap) y sin achicar dims (=' +
+  (apGap[0].puntos[1].y - apGap[1].puntos[1].y).toFixed(4) + ')');
+// gap 0 → ejes SUPERPUESTOS, sin clamp: el motor no inventa una separación mínima.
+const apCero = capasCorchete(false, 0);
+ok(close(apCero[0].puntos[1].y - apCero[1].puntos[1].y, 0, 1e-9),
+  'gap 0 → las dos capas comparten eje (dato honesto, sin clamp a φ) (=' +
+  (apCero[0].puntos[1].y - apCero[1].puntos[1].y) + ')');
 
 // ===========================================================================
 console.log('\nJ4 — RANGO con PASO REAL (conteo == recorrido):');

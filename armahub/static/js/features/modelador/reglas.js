@@ -169,6 +169,9 @@
   // NOTA: el efecto sobre las dims es idéntico para 'inicio'/'fin'/'ambos' salvo
   // el multiplicador (ambos = 2×); el LADO geométrico donde asoma lo resuelve
   // figura_puntos con anchor.empalme (dato de trazabilidad, no cambia el peso).
+  // ADEMÁS acepta el shape { inicio, fin } con un Δ INDEPENDIENTE por extremo
+  // (ver _empalmePorExtremo): la dim longitudinal suma LOS DOS y cada punta asoma
+  // lo suyo.
   function evalEmpalme(valor, diamCm) {
     if (valor == null) return 0;
     if (typeof valor === 'number') return isFinite(valor) ? valor : 0;
@@ -192,14 +195,42 @@
     return 0;   // no se pudo interpretar → sin empalme (documentado)
   }
 
+  // Δ POR EXTREMO — fuente ÚNICA del empalme resuelto (cm) de cada punta.
+  // ---------------------------------------------------------------------------
+  // DOS SHAPES, mismo resultado (el nuevo es ADITIVO; el viejo no se toca):
+  //   · VIEJO: { extremo:'inicio'|'fin'|'ambos', valor }  — un solo valor, y
+  //     'ambos' lo aplica IGUAL a las dos puntas.
+  //   · NUEVO: { inicio: v1, fin: v2 }  — Δ INDEPENDIENTE por extremo, porque en
+  //     obra casi nunca son iguales: una barra empalma 40φ contra la columna de un
+  //     lado y asoma 15 cm de arranque del otro. Con el shape viejo había que
+  //     elegir entre 'ambos' (mentira simétrica) o partir el componente en dos.
+  //     Cada valor es número (cm) o fórmula ('40*phi', '60*phi+1'), y los dos se
+  //     evalúan con el MISMO parser (evalEmpalme).
+  // Se distingue por presencia de las claves inicio/fin, no por un flag de versión:
+  // una receta vieja no las tiene y cae exacto en la rama de siempre.
+  // Devuelve {ini, fin} en cm (0 = ese extremo no se alarga).
+  function _empalmePorExtremo(comp, diamCm) {
+    var e = comp && comp.empalme;
+    if (!e) return { ini: 0, fin: 0 };
+    if (e.inicio != null || e.fin != null) {          // shape NUEVO (por extremo)
+      var vi = evalEmpalme(e.inicio, diamCm);
+      var vf = evalEmpalme(e.fin, diamCm);
+      return { ini: vi > 0 ? vi : 0, fin: vf > 0 ? vf : 0 };
+    }
+    if (!e.extremo) return { ini: 0, fin: 0 };        // shape VIEJO
+    var v = evalEmpalme(e.valor, diamCm);
+    if (v <= 0) return { ini: 0, fin: 0 };
+    if (e.extremo === 'inicio') return { ini: v, fin: 0 };
+    if (e.extremo === 'fin') return { ini: 0, fin: v };
+    if (e.extremo === 'ambos') return { ini: v, fin: v };
+    return { ini: 0, fin: 0 };
+  }
+
   // Devuelve el largo (cm) que aporta el empalme TOTAL de un componente (suma de
   // extremos alargados) para poder sumarlo a la dim longitudinal.
   function _empalmeTotalCm(comp, diamCm) {
-    var e = comp && comp.empalme;
-    if (!e || !e.extremo) return 0;
-    var v = evalEmpalme(e.valor, diamCm);
-    if (v <= 0) return 0;
-    return (e.extremo === 'ambos') ? 2 * v : v;
+    var e = _empalmePorExtremo(comp, diamCm);
+    return e.ini + e.fin;
   }
 
   // ---------------------------------------------------------------------------
@@ -323,6 +354,97 @@
   }
 
   // ---------------------------------------------------------------------------
+  // POSICIONES DE UN RANGO  (fuente ÚNICA para linear y arreglo)
+  // ---------------------------------------------------------------------------
+  // Un RANGO reparte entre dos coordenadas absolutas del host (from/to, cm) y
+  // admite DOS formas:
+  //
+  //  A) @ ÚNICO  (rango.sep / cfg.sep) — lo de siempre. nR = ceil(span/@)+1 barras
+  //     equiespaciadas con PASO REAL span/(nR−1) ≤ @ ("cada @ o menos"): el
+  //     recorrido CIERRA en `to` (avanzar con el @ nominal dejaba un hueco muerto
+  //     en un extremo, ver historia abajo).
+  //
+  //  B) TRAMOS  (rango.tramos = [{long, sep}, …]) — un solo componente con varias
+  //     separaciones: el caso real del calculista es UN estribo @10 / @20 / @10.
+  //     Antes había que declarar TRES componentes (o usar `zonas`, que arranca
+  //     del recubrimiento y no del rango que el usuario arrastró en pantalla).
+  //     Se consume tramo a tramo DESDE `from`:
+  //       · cada tramo cuenta con el MISMO criterio que las zonas —
+  //         redondeoCantidadZona(long, sep) = ceil(long/sep)+1 — y coloca esas n
+  //         barras equiespaciadas dentro de SU tramo, con paso real ≤ su @;
+  //       · la barra de UNIÓN no se duplica: la última de un tramo cae EXACTAMENTE
+  //         donde la primera del siguiente (por construcción, porque cada tramo
+  //         cierra su propio intervalo) y se emite UNA sola vez. (Ojo: `zonas`
+  //         SÍ duplica esa barra desde siempre — avanza con el @ nominal —, y eso
+  //         NO se toca acá: la viga-semilla depende de ese conteo.)
+  //       · todo se CLAMPEA a `to`: un tramo que se pasa se corta ahí y los
+  //         siguientes no se colocan;
+  //       · si los tramos NO cubren el rango, el ÚLTIMO @ CONTINÚA hasta `to`
+  //         (el usuario declara la zona de confinamiento y el resto se rellena).
+  //     Sin `tramos` la rama A queda idéntica → cero regresión.
+  //
+  // Devuelve un array de coordenadas (cm, sobre el eje que reparte), ordenado y
+  // sin duplicados.
+  var _EPS_POS = 1e-6;
+
+  function _pushPos(arr, x) {
+    if (arr.length && Math.abs(arr[arr.length - 1] - x) <= _EPS_POS) return;  // unión: 1 sola barra
+    arr.push(x);
+  }
+
+  // n barras equiespaciadas en [a, b] con paso real ≤ sep, clampeadas a `tope`.
+  function _repartirTramo(arr, a, b, sep, tope) {
+    var span = b - a;
+    var n = redondeoCantidadZona(span, sep);
+    var paso = (n > 1) ? span / (n - 1) : 0;
+    for (var i = 0; i < n; i++) {
+      var x = a + i * paso;
+      if (x > tope + _EPS_POS) break;
+      _pushPos(arr, x);
+    }
+  }
+
+  function posicionesRango(rango, sepDefault) {
+    var rf = Math.min(Number(rango.from), Number(rango.to));
+    var rt = Math.max(Number(rango.from), Number(rango.to));
+    var sep = Number(sepDefault || rango.sep || 20) || 20;
+    var tramos = (rango.tramos && rango.tramos.length) ? rango.tramos : null;
+    var pos = [];
+    if (!tramos) {                       // A) @ único — comportamiento histórico
+      _repartirTramo(pos, rf, rt, sep, rt);
+      return pos;
+    }
+    // B) tramos encadenados desde `from`. DIRECCIÓN: los tramos se anclan en el
+    // `from` REAL del usuario (hallazgo del verificador: normalizar con min/max
+    // ponía el 1er tramo siempre a la izquierda — un arrastre derecha→izquierda
+    // dejaba el @10 en el extremo equivocado, en silencio). Si from > to se
+    // reparte en el espejo y se reflejan las posiciones al final.
+    var invertido = Number(rango.from) > Number(rango.to);
+    var cur = rf;
+    var ultSep = sep;                    // el @ que CONTINÚA si los tramos no llegan
+    for (var t = 0; t < tramos.length && cur < rt - _EPS_POS; t++) {
+      var tr = tramos[t] || {};
+      var lt = Number(tr.long) || 0;
+      var st = Number(tr.sep) || 0;
+      if (st > 0) ultSep = st;
+      if (lt <= 0) continue;             // tramo sin largo = no consume nada
+      var fin = Math.min(cur + lt, rt);  // CLAMP al rango
+      _repartirTramo(pos, cur, fin, ultSep, rt);
+      cur = fin;
+    }
+    // COLA: los tramos no cubrieron el rango → el último @ sigue hasta `to`.
+    if (cur < rt - _EPS_POS) _repartirTramo(pos, cur, rt, ultSep, rt);
+    // Caso borde: tramos = [{long:0}] y nada colocado → al menos la barra de `from`.
+    if (!pos.length) _pushPos(pos, rf);
+    // Reflejo para el rango invertido: el 1er tramo queda pegado al `from` real.
+    if (invertido) {
+      var cen = (rf + rt) / 2;
+      pos = pos.map(function (p) { return 2 * cen - p; }).reverse();
+    }
+    return pos;
+  }
+
+  // ---------------------------------------------------------------------------
   // DISTRIBUIDORES
   // ---------------------------------------------------------------------------
 
@@ -335,9 +457,6 @@
     // RANGO (Template Editor): distribución @sep entre 2 X absolutas (from/to en
     // cm host), en vez de zonas. ADITIVO: solo si cfg.rango está presente.
     if (cfg && cfg.rango && cfg.rango.from != null && cfg.rango.to != null) {
-      var rf = Math.min(Number(cfg.rango.from), Number(cfg.rango.to));
-      var rt = Math.max(Number(cfg.rango.from), Number(cfg.rango.to));
-      var sep = Number(cfg.sep || cfg.rango.sep || 20) || 20;
       // Eje del reparto: 'x' (default, estribos a lo largo) o el que declare el
       // rango — un CABEZAL corre en x, así que su rango reparte copias en 'z'
       // (a lo ancho); repartirlo en x lo apilaría sobre sí mismo.
@@ -348,10 +467,10 @@
       // hacía que el recorrido no alcanzara `to` y el bucle cortara antes:
       // prometía nR barras y colocaba menos, dejando un hueco muerto en un extremo
       // (span 24 @20 → nR=3 pero colocaba 2 en −12 y +8, con 4 cm muertos).
-      var nR = redondeoCantidadZona(rt - rf, sep);
-      var pasoR = (nR > 1) ? (rt - rf) / (nR - 1) : 0;
-      for (var ri = 0; ri < nR; ri++) {
-        var xr = rf + ri * pasoR;
+      // Con rango.tramos el reparto es por TRAMOS (@10/@20/@10) — misma función.
+      var posR = posicionesRango(cfg.rango, cfg.sep);
+      for (var ri = 0; ri < posR.length; ri++) {
+        var xr = posR[ri];
         var extraR = {}; extraR[ejeR] = xr;
         // El distribuidor sólo fija el EJE QUE REPARTE; el resto de la pose sale
         // del anchor base (que ya trae la Y de cara y la Z del cabezal). Antes se
@@ -386,7 +505,7 @@
 
   // LAYERED — n_capas × barras_capa, apiladas hacia el núcleo con gap. Usado por
   // cabezales (cara sup/inf). Reparte barras_capa a lo ancho (Z); cada capa se
-  // retranquea hacia el núcleo por su índice (offset = capa_idx*(diam+gap)).
+  // retranquea hacia el núcleo por su índice (offset = capa_idx*gap, EJE A EJE).
   // cfg: { n_capas, barras_capa, gap, sentido:'nucleo' }
   // ---------------------------------------------------------------------------
   // PILAS DE OCUPACIÓN POR CARA (jerarquía VOLUMÉTRICA)
@@ -554,9 +673,19 @@
       // pantalla: con φ+gap «los ajustes fueron mucho más que la medida correcta»):
       //   · ANIDADO   → δ = k·φ_propio, SIN gap: la capa de adentro va FIERRO
       //     CONTRA FIERRO con la de afuera (tangente). El gap no pinta aquí.
-      //   · APILADO sin anidar → δ = k·(φ+gap): ahí sí manda el gap, que es la
-      //     separación libre que el usuario pide entre capas.
-      var offApil = c * (base.diam + gap);          // δ del APILADO (usa el gap)
+      //   · APILADO sin anidar → δ = k·gap.
+      //
+      // SEPARACIÓN DE CAPAS = DISTANCIA EJE A EJE (decisión del usuario, 12-ago).
+      // Antes el apilado usaba δ = k·(φ+gap), o sea el gap era la LUZ LIBRE entre
+      // superficies y el motor le sumaba el diámetro por su cuenta: «al poner 1
+      // está sumando esa magnitud adicional» — el usuario escribía 1 y las capas
+      // se separaban 1+φ. Ahora el número que se configura ES la separación de
+      // EJES, que es como se acota en el plano y como el usuario lo lee:
+      //   gap = 0  → los dos ejes SUPERPUESTOS (las barras se pisan). NO se
+      //   clampea a φ ni a nada: es un dato honesto y el usuario lo VE en el 3D y
+      //   decide. Un clamp escondería que la receta pide algo imposible.
+      // El ANIDADO no cambia (δ = k·φ ya era correcto: fierro contra fierro).
+      var offApil = c * gap;                        // δ del APILADO (eje a eje)
       var offAnid = c * base.diam;                  // δ del ANIDADO (φ propio)
       var an = (c > 0 && (anidaMarco || anidaFig))
         ? _fp().anidarFigura(base.figura, base.dims, offAnid, base.rol, { sentido: s, eje: ejeAnid })
@@ -594,10 +723,13 @@
   // Cubre malla/trabas sin necesitar el distribuidorGrid stub (§0-11ter: "Grid").
   //
   // cfg: {
-  //   rango: {from, to, sep},   // igual que distribuidorLinear (X absolutas, cm host)
+  //   rango: {from, to, sep, tramos?},  // igual que distribuidorLinear (X absolutas,
+  //                             //   cm host); `tramos` = [{long,sep}] opcional
   //   sep,                      // @ del rango (alias de rango.sep)
   //   n_capas,                  // nº de filas paralelas (default 1)
-  //   sep_capas,                // separación entre capas, cm (default 0)
+  //   sep_capas,                // separación EJE A EJE entre capas, cm (default 0;
+  //                             //   0 = ejes superpuestos, sin clamp — igual que el
+  //                             //   `gap` de layered, ver ahí el porqué)
   //   eje_capas                 // 'x'|'y'|'z' — profundidad de las capas. Lo fija el
   //                             //   PLANO DE TRABAJO (si trabajas en XY → 'z'). Default
   //                             //   'z' (ancho de la viga: la 2ª cortina "hacia dentro").
@@ -614,9 +746,6 @@
     // Sin rango válido no hay a lo largo qué distribuir → [] (coherente con el
     // resto de distribuidores cuando su cfg no aplica; el llamador ya validó modo).
     if (!rango || rango.from == null || rango.to == null) return placements;
-    var rf = Math.min(Number(rango.from), Number(rango.to));
-    var rt = Math.max(Number(rango.from), Number(rango.to));
-    var sep = Number((cfg && cfg.sep) || rango.sep || 20) || 20;
     var nCapas = Math.max(1, (cfg && Number(cfg.n_capas)) || 1);
     var sepCapas = (cfg && cfg.sep_capas != null) ? Number(cfg.sep_capas) : 0;
     var eje = (cfg && cfg.eje_capas) || 'z';
@@ -624,8 +753,10 @@
     // Coordenada base del eje de profundidad en el anchor (para offsetear las capas
     // RESPECTO de donde ya está anclada la barra; ausente = 0, como el lineal).
     var baseEje = (base.anchorBase && base.anchorBase[eje] != null) ? Number(base.anchorBase[eje]) : 0;
-    var nR = redondeoCantidadZona(rt - rf, sep);
-    var pasoR = (nR > 1) ? (rt - rf) / (nR - 1) : 0;   // paso REAL (ver distribuidorLinear)
+    // MISMA fuente que distribuidorLinear (paso real + tramos): si el arreglo
+    // calculara sus X por su cuenta, la garantía "n_capas=1 == lineal puro" se
+    // rompería en cuanto una de las dos ramas cambiara (p.ej. al aceptar tramos).
+    var posA = posicionesRango(rango, cfg && cfg.sep);
     // 1 capa = distribución lineal pura: NO se toca el eje de profundidad, así el
     // anchor queda BYTE-A-BYTE igual al de distribuidorLinear (garantía de cero
     // regresión). Con ≥2 capas SÍ se fija el plano de profundidad en TODAS las
@@ -635,7 +766,9 @@
     // desplazarse por eje_capas. cfg.anidar === false lo desactiva.
     var anidaA = (base.rol === 'estribo') && (!cfg || cfg.anidar !== false);
     for (var c = 0; c < nCapas; c++) {
-      var off = c * sepCapas;                       // δ del APILADO (usa sep_capas)
+      // δ del APILADO = k·sep_capas, EJE A EJE (misma semántica que el `gap` de
+      // layered: el número configurado ES la distancia entre ejes, sin sumarle φ).
+      var off = c * sepCapas;
       // δ de la capa ANIDADA = k·φ_propio, SIN sep_capas (misma corrección que en
       // layered: anidar = fierro contra fierro; sep_capas es la separación del
       // apilado que NO anida). El CRITERIO (qué lados se achican, si la posición
@@ -648,9 +781,15 @@
         : null;
       var usaAn = !!(an && an.criterio !== 'recta');
       var dimsCapaA = usaAn ? an.dims : base.dims;
-      for (var ri = 0; ri < nR; ri++) {
-        var xr = rf + ri * pasoR;
-        var extra = { x: xr };
+      for (var ri = 0; ri < posA.length; ri++) {
+        var xr = posA[ri];
+        // EJE DEL RANGO respetado (hallazgo del verificador: aquí se hardcodeaba
+        // {x: xr} — un cabezal en modo Arreglo con rango.eje 'z', que es lo que
+        // escribe la UI, superponía TODAS las barras en un punto). Mismo criterio
+        // que distribuidorLinear; el cabezal recibe además su Y de cara.
+        var ejeRA = (cfg && cfg.rango && (cfg.rango.eje === 'y' || cfg.rango.eje === 'z')) ? cfg.rango.eje : 'x';
+        var extra = {}; extra[ejeRA] = xr;
+        if ((base.rol || '') === 'cabezal' && extra.y == null) extra.y = _yBordeCabezal(base, host);
         if (!unaCapa) {
           if (usaAn) {
             if (an.inset) {
@@ -708,6 +847,8 @@
   //      del hormigón, vuelve DENTRO (clamp por eje, RÍGIDO sobre el componente
   //      completo). Así la rotación "sigue reconociendo los boundaries" en vez de
   //      despegar la pieza del recub, y sin deformar el reparto de sus barras.
+  //      SOLO con `orient.deg`: un `orient.spin` suelto (patas direccionales) NO
+  //      re-ancla nada — la barra queda clavada (ver _aplicarPostTransform).
   //   3) traslación comp.pos_hint = {x?,y?,z?} (delta en cm; ejes ausentes = 0).
   //
   // PIVOTE (B3-raíz) — antes se rotaba EN TORNO AL ORIGEN DEL HOST, lo que
@@ -893,10 +1034,24 @@
     // El marco es EL DE SU NIVEL (con las pilas del host REAL: los placements ya
     // volvieron al mundo, así que un componente volteado también se re-ancla
     // contra las caras reales).
+    //
+    // SPIN SOLO (sin `deg`) → CERO RE-ANCLAJE (decisión del usuario, 12-ago).
+    // El spin es una herramienta de PATAS DIRECCIONALES: "quiero el gancho hacia
+    // adentro / hacia arriba", con la barra QUIETA donde está. Girar las patas
+    // agranda el bbox por el lado al que ahora apuntan, y el re-anclaje leía ese
+    // bbox más ancho como "se salió" y TRASLADABA la barra entera → «igual mueve
+    // de posición el segmento C». Mover la barra por cambiarle la dirección de una
+    // pata es justo lo que el usuario NO pidió.
+    //   · Sin `deg`: la barra queda CLAVADA. Si la pata asoma del recubrimiento,
+    //     asoma: es un dato honesto, se ve en el 3D y el usuario decide (acortar
+    //     la pata, mover la barra a mano o dejarla). Esconderlo con una traslación
+    //     automática era mentirle sobre dónde está el fierro.
+    //   · Con `deg` (rotación real de la pieza, con o sin spin): el flujo NO
+    //     cambia — ahí sí el usuario reorientó la PIEZA y el marco manda.
     var nivelPT = nivelJerarquiaEfectivo(
       (comp && comp.jerarquia !== undefined) ? nivelJerarquia(comp.jerarquia) : null,
       (comp && comp._rol) || _rolDeTipologia(comp && comp.tipologia, comp && comp.cara));
-    var marcos = ((tieneRot || tieneSpin) && (!orient || orient.pivot !== 'host'))
+    var marcos = (tieneRot && (!orient || orient.pivot !== 'host'))
       ? _marcosReanclaje(host, nivelPT) : null;
     // 1) GIRO de cada barra (rotación sobre su pivote + spin sobre su propio eje).
     var giradas = placements.map(function (pl) {
@@ -1202,11 +1357,15 @@
     var ovr = (comp.recub_override != null) ? Number(comp.recub_override) : null;
     var recub = (ovr != null) ? ovr : (comp.cara === 'inf' ? rInf : rSup);
     var diamCm = Number(comp.diam) / 10;   // mm → cm
-    // Empalme resuelto (cm por extremo) para que figura_puntos asome la barra
-    // fuera del hormigón en el lado indicado (dato geométrico; el largo/peso ya
-    // los cubre la dim alargada en _dimsEfectivas).
-    var empExtremo = (comp.empalme && comp.empalme.extremo) || null;
-    var empValor = empExtremo ? evalEmpalme(comp.empalme.valor, diamCm) : 0;
+    // Empalme resuelto (cm POR EXTREMO, independientes) para que figura_puntos
+    // asome la barra fuera del hormigón lo suyo en cada punta (dato geométrico; el
+    // largo/peso ya los cubre la dim alargada en _dimsEfectivas).
+    var empEx = _empalmePorExtremo(comp, diamCm);
+    var empHay = (empEx.ini > 0 || empEx.fin > 0);
+    // `extremo` se DERIVA de los dos Δ (trazabilidad y compat con lectores viejos
+    // del anchor); los números que manda figura_puntos son ini/fin.
+    var empExtremo = !empHay ? null
+      : (empEx.ini > 0 ? (empEx.fin > 0 ? 'ambos' : 'inicio') : 'fin');
     var base = {
       figura: comp.figura, diam: diamCm,
       tipologia: comp.tipologia, suf: comp.suf_tipo || '',
@@ -1235,7 +1394,9 @@
         // incompleto y la polilínea salía con coordenadas undefined → NaN al
         // sumarle el pos_hint (rompía 3D/2D/hit-testing).
         x: 0,
-        empalme: (empExtremo && empValor > 0) ? { extremo: empExtremo, valor: empValor } : null
+        empalme: empHay
+          ? { extremo: empExtremo, valor: Math.max(empEx.ini, empEx.fin), ini: empEx.ini, fin: empEx.fin }
+          : null
       }
     };
     // Un longitudinal vive a la ALTURA de su cara y, por defecto, al centro del
@@ -1322,6 +1483,10 @@
     modoDefaultDeTipologia: modoDefaultDeTipologia,
     TIPOLOGIA_MODO_DEFAULT: TIPOLOGIA_MODO_DEFAULT,
     redondeoCantidadZona: redondeoCantidadZona,
+    // Posiciones (cm) que un RANGO genera — con @ único o con tramos [{long,sep}].
+    // Es la MISMA función que usan linear y arreglo: la UI puede previsualizar el
+    // conteo sin re-implementar el redondeo (y sin poder desincronizarse de él).
+    posicionesRango: posicionesRango,
     evalEmpalme: evalEmpalme,
     expandirComponente: expandirComponente,
     // VOLTEO (permutación de ejes real) — lo consulta la UI para saber sobre qué

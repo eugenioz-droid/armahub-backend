@@ -206,7 +206,8 @@
   #te_modal .te-vcut-r{writing-mode:vertical-lr;direction:rtl;width:14px;height:auto;cursor:pointer;
     flex:1 1 auto;min-height:0;margin:0;
     -webkit-appearance:none;appearance:none;background:transparent}
-  /* Mini-check IMÁN / LIBRE bajo el slider de corte (sólo SECCIÓN). Discreto: se lee
+  /* Mini-check IMÁN / LIBRE bajo el slider de corte (en LAS 3 VISTAS: el estado es
+     GLOBAL, así que se puede tocar desde donde estés mirando). Discreto: se lee
      al hover del cuadrante, igual que el slider. */
   #te_modal .te-vcut-iman{flex:0 0 auto;display:flex;flex-direction:column;align-items:center;gap:1px;
     cursor:pointer;font-size:8.5px;font-weight:600;color:#7d8da0;line-height:1;user-select:none}
@@ -220,7 +221,10 @@
   #te_modal .te-vhint{position:absolute;bottom:7px;right:10px;z-index:3;font-size:9.5px;color:#9aa4b0}
 
   #te_modal .te-horm{fill:var(--te-hormigon);opacity:.55;stroke:var(--te-hormigon-b);stroke-width:1.2}
-  #te_modal .te-recub{fill:none;stroke:#9fb0c2;stroke-width:1;stroke-dasharray:5 4}
+  /* RECUBRIMIENTO — línea de referencia que el usuario usa para colocar. Va en trazo
+     OSCURO casi negro (#263238): el gris azulado anterior se perdía sobre el render
+     del hormigón. Mismo punteado, apenas más grueso. */
+  #te_modal .te-recub{fill:none;stroke:#263238;stroke-width:1.2;stroke-dasharray:5 4}
   #te_modal .te-barCBS{stroke:var(--te-cbs)}
   #te_modal .te-barCBI{stroke:var(--te-cbi)}
   #te_modal .te-barES{stroke:var(--te-es)}
@@ -275,6 +279,29 @@
   #te_modal .te-rango-hit{fill:rgba(85,139,47,.001)}
   #te_modal .te-rango-end{fill:#fff;stroke:var(--te-acero-d);stroke-width:1.2}
   #te_modal .te-rango-end:hover{fill:var(--te-acero-d)}
+  /* TRAMOS (multi-@) sobre la flecha de rango: un DIVISOR arrastrable en cada límite
+     entre tramos contiguos + una etiqueta "@N" clicable por tramo (abre un input
+     inline). Mismo verde acero de la flecha — es la misma pieza de UI. */
+  #te_modal .te-rango-div{stroke:var(--te-acero-d);stroke-width:1.4}
+  #te_modal .te-rango-divhit{fill:rgba(85,139,47,.001)}
+  #te_modal .te-rango-at{fill:var(--te-acero-d);font:700 9px "Segoe UI",system-ui,sans-serif;
+    cursor:pointer;user-select:none}
+  #te_modal .te-rango-at:hover{fill:#33691E}
+  #te_modal .te-rango-atbg{fill:#fff;opacity:.85;stroke:var(--te-acero-d);stroke-width:.6;cursor:pointer}
+  /* Input inline que abre el clic sobre "@N" (HTML flotante sobre el cuadrante). */
+  #te_modal .te-atedit{position:absolute;z-index:8;width:48px;padding:1px 3px;font-size:10px;
+    border:1px solid var(--te-acero-d);border-radius:4px;background:#fff;color:var(--te-ink);
+    text-align:center;box-shadow:0 2px 6px rgba(20,40,10,.25)}
+  /* Editor de TRAMOS del panel (una fila por tramo: largo cm + @ cm + ×). */
+  #te_modal .te-tramo{display:grid;grid-template-columns:1fr 1fr 22px;gap:5px;align-items:end;margin-bottom:5px}
+  #te_modal .te-tramo .te-fld{margin-bottom:0}
+  #te_modal .te-tramo-x{border:1px solid var(--te-line);background:#fff;border-radius:6px;
+    height:25px;line-height:1;cursor:pointer;color:#c0392b;font-weight:700;font-size:12px;padding:0}
+  #te_modal .te-tramo-x:hover{background:#fdecea;border-color:#c0392b}
+  #te_modal .te-tramo-x:disabled{opacity:.3;cursor:default}
+  #te_modal .te-tramo-add{border:1px dashed var(--te-line);background:#fff;border-radius:6px;
+    padding:4px 9px;font-size:11px;font-weight:600;color:var(--te-acero-d);cursor:pointer}
+  #te_modal .te-tramo-add:hover{background:#f7fbf2;border-color:var(--te-acero)}
   #te_modal .te-dim{fill:#607089;font:9px "Segoe UI",monospace}
   #te_modal .te-dimL{stroke:#b6c2d0;stroke-width:.8}
   #te_modal .te-dimTick{stroke:#b6c2d0;stroke-width:.8}
@@ -399,10 +426,9 @@
       <!-- "Colocar" y "Rango" ya NO son herramientas:
            · colocar  → botón "＋ Agregar barra" del ribbon (o "＋ Agregar componente")
            · rango    → flecha sobre la barra SELECCIONADA (arrastrarla la activa) -->
-      <!-- ⟳ Rotar es una ACCIÓN, no una herramienta: gira 90° la selección en el
-           plano activo y NO cambia ST.tool (antes era data-tool="rotar", una
-           herramienta fantasma que nadie leía y que sacaba al editor de 'mover'). -->
-      <button class="te-ctool" id="te_btnRotar" title="Rotar 90° la barra seleccionada en el plano activo (barra espaciadora)">⟳ Rotar</button>
+      <!-- "⟳ Rotar" SE ELIMINÓ del ribbon (decisión del usuario): duplicaba el botón
+           "+90°" de la fila "Rotación °" del panel del componente. La acción sigue
+           existiendo en el panel y con la BARRA ESPACIADORA. -->
       <span class="te-divv"></span>
       <button class="te-ctool on" data-toggle="snap" title="Snap a grilla / caras / barras">🧲 Snap</button>
       <button class="te-ctool" data-toggle="cotas" title="Mostrar cotas de tramos">📐 Cotas</button>
@@ -461,9 +487,9 @@
                corte "saltaba". El handler ya divide por 100 y clampa (float-safe). -->
           <div class="te-vcut" title="Plano de corte (profundidad)">
             <input type="range" class="te-vcut-r" data-plano="seccion" min="0" max="100" step="any" value="50">
-            <!-- IMÁN / LIBRE: sólo la SECCIÓN hace snap a rebanadas (las otras vistas
-                 usan banda gruesa y no tienen a qué pegarse), así que el check vive
-                 acá. El estado que escribe es GLOBAL (ST.corteIman), en memoria. -->
+            <!-- IMÁN / LIBRE: el estado es GLOBAL (ST.corteIman, en memoria) y el check
+                 está en LAS 3 VISTAS (los 3 se sincronizan solos, _cablearVistasOrto).
+                 Antes vivía sólo acá y había que volver a la sección para tocarlo. -->
             <label class="te-vcut-iman" title="Imán: el corte salta a donde hay piezas">
               <input type="checkbox" id="te_corteIman" checked><span>imán</span>
             </label>
@@ -481,6 +507,9 @@
           <button class="te-vreset" data-plano="largo" title="Centrar vista">⟳</button>
           <div class="te-vcut" title="Plano de corte (profundidad)">
             <input type="range" class="te-vcut-r" data-plano="largo" min="0" max="100" step="any" value="50">
+            <label class="te-vcut-iman" title="Imán: el corte salta a donde hay piezas">
+              <input type="checkbox" id="te_corteIman_largo" checked><span>imán</span>
+            </label>
           </div>
         </div>
 
@@ -494,6 +523,9 @@
           <button class="te-vreset" data-plano="planta" title="Centrar vista">⟳</button>
           <div class="te-vcut" title="Plano de corte (profundidad)">
             <input type="range" class="te-vcut-r" data-plano="planta" min="0" max="100" step="any" value="50">
+            <label class="te-vcut-iman" title="Imán: el corte salta a donde hay piezas">
+              <input type="checkbox" id="te_corteIman_planta" checked><span>imán</span>
+            </label>
           </div>
         </div>
 

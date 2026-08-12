@@ -11,11 +11,17 @@
 //     regenera (las 4 vistas + el 3D se actualizan).
 //   - SELECCIONAR / MOVER / BORRAR: clic en una barra dibujada la selecciona
 //     (halo + panel izq); arrastrar la mueve; Supr/botón la borra.
-//   - ROTAR: ESPACIO (o herramienta Rotar) gira 90° en el plano de la vista;
-//     campo de ángulo exacto en el panel; se muestra el ángulo al seleccionar.
+//   - ROTAR: ESPACIO (o el botón +90° de la fila "Rotación °" del panel) gira 90° en
+//     el plano de la vista; campo de ángulo exacto; se muestra el ángulo al seleccionar.
+//     El botón "⟳ Rotar" del ribbon se eliminó (duplicaba el del panel).
+//   - PATAS: segmented ↓ → ↑ ← en el panel = orient.spin (gira SÓLO las patas; la
+//     barra no se mueve). Sólo en figuras con pata y roles que no son estribo/traba.
 //   - RANGO: sin herramienta ni 2 clics. Con una barra SELECCIONADA se dibuja la
 //     flecha de rango en las vistas donde su eje de reparto es visible (gris si la
-//     distribución aún no está activa); arrastrarla la ACTIVA y la ajusta.
+//     distribución aún no está activa); arrastrarla la ACTIVA y la ajusta. Sus handles
+//     de extremo SNAPean a las caras del eje. Si el reparto tiene varios TRAMOS
+//     (rango.tramos = [{long,sep}]) la flecha muestra un divisor arrastrable por
+//     límite y una etiqueta "@N" clicable por tramo (input inline).
 //   - NODOS: cada esquina del hormigón con un nodo arrastrable (redimensiona el
 //     elemento); desplazamiento con medida en el panel (básico).
 //   - SNAP a grilla/caras/barras (toggle) · COTAS on/off (básico).
@@ -141,6 +147,28 @@
   };
   function _figSpec(fig) { return FIG[(fig || '').toUpperCase()] || { parciales: ['A'], angulos: [] }; }
 
+  // ¿Qué EXTREMOS del componente llevan PATA (gancho)? Convención del catálogo, la
+  // misma que usa _dimsDefault: en un cabezal A = pata del extremo inicial, C = pata
+  // del extremo final, B = el cuerpo. De ahí:
+  //   · 101x (un solo parcial) → barra RECTA: ningún extremo con pata.
+  //   · 102x (A,B)             → sólo el extremo inicial (no existe C).
+  //   · 103x/104x/106x (A,B,C…)→ los dos.
+  // Una dim en 'fija' aporta pata si su valor es > 0; en 'auto' la deriva el motor y
+  // cuenta como pata presente. Lo consumen el control "Patas" (orient.spin) y los
+  // campos Δ de extremo libre (comp.empalme), que sólo aplican donde NO hay pata.
+  function _patasDe(c) {
+    var P = _figSpec(c && c.figura).parciales || [];
+    if (P.length < 2) return { inicio: false, fin: false };
+    function hay(L) {
+      if (P.indexOf(L) < 0) return false;
+      var d = (c.dims || {})[L];
+      if (!d) return true;
+      if (d.modo === 'fija') return (Number(d.valor) || 0) > 0;
+      return true;
+    }
+    return { inicio: hay('A'), fin: hay('C') };
+  }
+
   // Cara por defecto según tipología (para colocar).
   function _caraDefault(tip) {
     var t = (tip || '').toUpperCase();
@@ -244,6 +272,113 @@
     // `eje` SIEMPRE declarado: sin él, el distribuidor cae a X y un rango de
     // cabezal (valores en Z, ±ancho/2) se interpretaba como X → 2 barras juntas.
     return { from: -dim / 2 + r, to: dim / 2 - r, sep: sep || 20, eje: (eje === 'y' || eje === 'z') ? eje : 'x' };
+  }
+
+  // ==========================================================================
+  // TRAMOS DEL RANGO (reparto multi-@) — contrato del motor:
+  //     cfg.rango.tramos = [{long, sep}, ...]
+  // Largos y @ en cm, en orden desde rango.from hacia rango.to; su suma cubre el
+  // rango completo. UN SOLO tramo = el comportamiento de siempre, y en ese caso NO se
+  // escribe `tramos`: manda el @ simple (d.sep), que se mantiene como atajo del panel.
+  // Los tramos SUBDIVIDEN el rango; el largo total lo siguen mandando sus handles.
+  // ==========================================================================
+  function _rangoLong(d) {
+    var r = d && d.rango;
+    if (!r || r.from == null || r.to == null) return 0;
+    return Math.abs(Number(r.to) - Number(r.from));
+  }
+
+  // Reencaja una lista de tramos en `total` recalculando por LÍMITES acumulados y
+  // clampándolos: un rango que se achicó no deja tramos negativos ni suma sobrante, y
+  // uno que creció se lo entrega al último. Devuelve una lista NUEVA (no muta).
+  function _ajustarTramos(arr, total) {
+    if (!arr || !arr.length) return [{ long: total, sep: 20 }];
+    var acc = 0, out = [];
+    for (var i = 0; i < arr.length; i++) {
+      var ini = Math.min(acc, total);
+      var fin = (i === arr.length - 1) ? total : Math.min(acc + arr[i].long, total);
+      out.push({ long: Math.max(0, fin - ini), sep: arr[i].sep });
+      acc += arr[i].long;
+    }
+    return out;
+  }
+
+  // Tramos NORMALIZADOS al largo actual del rango. No escribe nada: es la lectura que
+  // usan tanto el editor del panel como el dibujo de la flecha.
+  function _tramosDe(d) {
+    var total = _rangoLong(d);
+    var sepBase = Math.max(1, Number(d && d.sep) || 20);
+    var t = (d && d.rango && d.rango.tramos) || null;
+    if (!t || !t.length) return [{ long: total, sep: sepBase }];
+    return _ajustarTramos(t.map(function (x) {
+      return { long: Math.max(0, Number(x && x.long) || 0), sep: Math.max(1, Number(x && x.sep) || sepBase) };
+    }), total);
+  }
+
+  // Escribe los tramos. Con 1 solo tramo se BORRA `tramos` y se vuelve al shape simple
+  // (d.sep) → el motor toma exactamente el camino de siempre.
+  function _setTramos(d, arr) {
+    d.rango = d.rango || {};
+    if (!arr || arr.length <= 1) {
+      var s = Math.max(1, (arr && arr[0] && Number(arr[0].sep)) || Number(d.sep) || 20);
+      delete d.rango.tramos;
+      d.sep = s; d.rango.sep = s;
+      return;
+    }
+    d.rango.tramos = arr.map(function (x) {
+      return { long: Math.round((Number(x.long) || 0) * 10) / 10, sep: Math.max(1, Number(x.sep) || 20) };
+    });
+    d.sep = d.rango.tramos[0].sep;      // el @ simple queda como espejo del 1er tramo
+    d.rango.sep = d.sep;
+  }
+
+  // El rango cambió de largo (handles, campos from/to) → los tramos se renormalizan
+  // para seguir cubriéndolo. Sin esto, el motor leería longs viejos que ya no suman.
+  function _syncTramos(d) {
+    if (d && d.rango && d.rango.tramos && d.rango.tramos.length > 1) _setTramos(d, _tramosDe(d));
+  }
+
+  // Mueve el LÍMITE entre el tramo i y su vecino: el PAR conserva su largo total, así
+  // que los demás tramos no se enteran. Es la misma operación para el campo "Largo i"
+  // del panel y para el divisor arrastrable de la flecha.
+  function _setLongTramo(d, i, nuevo) {
+    var a = _tramosDe(d);
+    if (!a[i]) return;
+    var j = (i + 1 < a.length) ? i + 1 : i - 1;
+    if (j < 0) return;                       // 1 solo tramo: su largo lo manda el rango
+    var par = a[i].long + a[j].long;
+    var v = Math.max(0, Math.min(par, Number(nuevo) || 0));
+    a[i].long = v; a[j].long = par - v;
+    _setTramos(d, a);
+  }
+
+  // Mueve el divisor k (límite entre el tramo k-1 y el k) a `off` cm desde rango.from.
+  function _moverDivisor(d, k, off) {
+    var a = _tramosDe(d);
+    if (k < 1 || k >= a.length) return;
+    var ini = 0;
+    for (var i = 0; i < k - 1; i++) ini += a[i].long;
+    _setLongTramo(d, k - 1, off - ini);
+  }
+
+  // "+ Tramo": parte el ÚLTIMO en dos mitades con el mismo @ (el rango no cambia).
+  function _addTramo(d) {
+    var a = _tramosDe(d);
+    var last = a[a.length - 1];
+    var mitad = last.long / 2;
+    last.long = mitad;
+    a.push({ long: mitad, sep: last.sep });
+    _setTramos(d, a);
+  }
+
+  // "×": borra el tramo i y su largo se lo queda el vecino (el rango no cambia).
+  function _delTramo(d, i) {
+    var a = _tramosDe(d);
+    if (a.length <= 1 || !a[i]) return;
+    var j = (i > 0) ? i - 1 : 1;
+    a[j].long += a[i].long;
+    a.splice(i, 1);
+    _setTramos(d, a);
   }
 
   // Eje de PROFUNDIDAD por defecto de las capas del arreglo = el eje "depth" del
@@ -1521,6 +1656,7 @@
       attrs.style = 'cursor:move';
       svg.appendChild(_svgEl('rect', attrs));
       handle(xa, yy, 'from', 'ew-resize'); handle(xb, yy, 'to', 'ew-resize');
+      if (activa) _dibujarTramosRango(svg, d, rango, true, X, yy, plano);
     } else {
       // el eje de reparto es el VERTICAL de esta vista → flecha ↕ pegada al margen izq.
       var ya = Y(rango.from), yb = Y(rango.to), xx = TE_RANGO_OFF_H;
@@ -1532,7 +1668,126 @@
       attrs.style = 'cursor:move';
       svg.appendChild(_svgEl('rect', attrs));
       handle(xx, ya, 'from', 'ns-resize'); handle(xx, yb, 'to', 'ns-resize');
+      if (activa) _dibujarTramosRango(svg, d, rango, false, Y, xx, plano);
     }
+  }
+
+  // TRAMOS SOBRE LA FLECHA (punto 4b) — por cada límite interno un DIVISOR arrastrable
+  // (mueve el límite entre los dos tramos contiguos) y por cada tramo una etiqueta
+  // "@N" CLICABLE que abre un input inline para editar ese @ sin ir al panel.
+  // `P` proyecta la coordenada del eje de reparto a px; `fija` es la coordenada
+  // perpendicular (la línea de la flecha). Se dibuja DESPUÉS del rect de arrastre y de
+  // los handles → queda encima y se puede clicar.
+  function _dibujarTramosRango(svg, d, rango, horiz, P, fija, plano) {
+    var arr = _tramosDe(d);
+    if (!arr.length) return;
+    var sgn = (Number(rango.to) >= Number(rango.from)) ? 1 : -1;
+    var acc = Number(rango.from);
+    for (var i = 0; i < arr.length; i++) {
+      var a = acc, b = acc + sgn * arr[i].long;
+      if (i > 0) {                                   // divisor: sólo en límites INTERNOS
+        var pd = P(a);
+        _divisorTramo(svg, i, horiz ? pd : fija, horiz ? fija : pd, horiz, plano);
+      }
+      var pm = P((a + b) / 2);
+      _etiquetaAt(svg, arr[i].sep, i, horiz ? pm : fija, horiz ? fija : pm, horiz, plano);
+      acc = b;
+    }
+  }
+
+  function _divisorTramo(svg, idx, x, y, horiz, plano) {
+    var L = 6;
+    svg.appendChild(_svgEl('line', {
+      'class': 'te-rango-div',
+      x1: horiz ? x : x - L, y1: horiz ? y - L : y,
+      x2: horiz ? x : x + L, y2: horiz ? y + L : y
+    }));
+    svg.appendChild(_svgEl('rect', {
+      'class': 'te-rango-divhit',
+      x: (horiz ? x - 4 : x - L - 2), y: (horiz ? y - L - 2 : y - 4),
+      width: (horiz ? 8 : 2 * L + 4), height: (horiz ? 2 * L + 4 : 8),
+      'data-rango-div': idx, 'data-plano': plano,
+      style: 'cursor:' + (horiz ? 'ew-resize' : 'ns-resize')
+    }));
+  }
+
+  function _etiquetaAt(svg, sep, idx, x, y, horiz, plano) {
+    var txt = '@' + (Math.round(Number(sep) * 10) / 10);
+    var w = txt.length * 5.1 + 6, h = 11;
+    // La etiqueta va DEBAJO de la flecha horizontal (arriba está la .te-vtitle de la
+    // vista, que llega hasta ~27 del viewBox y se la comería) y a la DERECHA de la
+    // vertical. Se dibuja después del rect de arrastre → queda clicable.
+    var bx = horiz ? (x - w / 2) : (x + 6);
+    var by = horiz ? (y + 6) : (y - h / 2);
+    svg.appendChild(_svgEl('rect', {
+      'class': 'te-rango-atbg', x: bx, y: by, width: w, height: h, rx: 2,
+      'data-rango-at': idx, 'data-plano': plano
+    }));
+    var t = _svgEl('text', {
+      'class': 'te-rango-at', x: bx + w / 2, y: by + h - 3, 'text-anchor': 'middle',
+      'data-rango-at': idx, 'data-plano': plano
+    });
+    t.textContent = txt;
+    svg.appendChild(t);
+  }
+
+  // INPUT INLINE del "@N" — un <input> HTML flotando sobre el cuadrante (la .te-vista
+  // es position:relative), no un <foreignObject>: así hereda el estilo del modal, el
+  // foco y el teclado sin rarezas de SVG. Se confirma con Enter o al perder el foco;
+  // Esc cancela. Sólo edita el @ de ESE tramo: el resto del reparto no se toca.
+  var _atEditEl = null;
+  function _cerrarEditorAt() {
+    var el = _atEditEl; _atEditEl = null;
+    if (el && el.parentNode) el.parentNode.removeChild(el);
+  }
+  function _abrirEditorAt(plano, svg, idx, evt) {
+    _cerrarEditorAt();
+    if (ST.selCi < 0 || !ST.receta) return;
+    var c = ST.receta.componentes[ST.selCi]; if (!c) return;
+    var d = c.distribucion || {}; if (!d.rango) return;
+    var arr = _tramosDe(d); if (!arr[idx]) return;
+    var vista = svg.closest ? svg.closest('.te-vista') : null; if (!vista) return;
+    var rv = vista.getBoundingClientRect();
+    var inp = document.createElement('input');
+    inp.type = 'number'; inp.className = 'te-atedit'; inp.value = arr[idx].sep;
+    inp.title = 'Espaciamiento del tramo ' + (idx + 1) + ' (cm)';
+    inp.style.left = Math.max(2, Math.round(evt.clientX - rv.left - 24)) + 'px';
+    inp.style.top = Math.max(2, Math.round(evt.clientY - rv.top - 9)) + 'px';
+    var cerrado = false;
+    function cerrar(guardar) {
+      if (cerrado) return; cerrado = true;
+      var v = Number(inp.value);
+      _cerrarEditorAt();
+      if (!guardar || !isFinite(v) || v <= 0) return;
+      var a = _tramosDe(d);
+      if (!a[idx] || a[idx].sep === v) return;
+      _pushUndo();
+      a[idx].sep = v;
+      _setTramos(d, a);
+      _regenerar(); _renderPanel();
+    }
+    inp.addEventListener('keydown', function (e) {
+      e.stopPropagation();                       // Supr/Esc del editor no borran la barra
+      if (e.key === 'Enter') { e.preventDefault(); cerrar(true); }
+      else if (e.key === 'Escape') { e.preventDefault(); cerrar(false); }
+    });
+    inp.addEventListener('blur', function () { cerrar(true); });
+    ['mousedown', 'click', 'wheel'].forEach(function (ev) {
+      inp.addEventListener(ev, function (e) { e.stopPropagation(); });   // no pan/zoom del cuadrante
+    });
+    vista.appendChild(inp);
+    _atEditEl = inp;
+    inp.focus(); inp.select();
+  }
+
+  // Coordenada HOST bajo el cursor MEDIDA SOBRE EL EJE DE REPARTO (absoluta, no delta).
+  // La usan el snap de los handles del rango y el arrastre de los divisores de tramo.
+  function _hostEnEje(plano, sp, eje) {
+    var uv = _pixelToUV(plano, sp.px, sp.py); if (!uv) return null;
+    var def = (_defsPlanos() || {})[plano]; if (!def) return null;
+    if (eje === def.u) return uv.u;
+    if (eje === def.v) return uv.v;
+    return null;
   }
 
   // NODOS de las 4 esquinas del hormigón (arrastrables → redimensiona el elemento).
@@ -1959,6 +2214,22 @@
         var tgtNode = evt.target && evt.target.getAttribute && evt.target.getAttribute('data-node');
         if (tgtNode) { evt.preventDefault(); _pushUndo(); ST.dragNode = { plano: plano, corner: tgtNode }; return; }
 
+        // ¿tocó la etiqueta "@N" de un tramo? → input inline (no arrastra nada).
+        var tgtAt = evt.target && evt.target.getAttribute && evt.target.getAttribute('data-rango-at');
+        if (tgtAt != null) { evt.preventDefault(); _abrirEditorAt(plano, svg, Number(tgtAt), evt); return; }
+
+        // ¿tocó un DIVISOR de tramo? → arrastra el límite entre dos tramos contiguos
+        // (el par conserva su largo total; el rango no cambia).
+        var tgtDiv = evt.target && evt.target.getAttribute && evt.target.getAttribute('data-rango-div');
+        if (tgtDiv != null) {
+          evt.preventDefault(); _pushUndo();
+          ST.dragRango = {
+            ci: ST.selCi, plano: plano, lastX: sp.px, lastY: sp.py,
+            end: null, div: Number(tgtDiv), eje: null
+          };
+          return;
+        }
+
         // ¿tocó la flecha de RANGO? (un handle de extremo achica/agranda ese
         // extremo; el tramo del medio desplaza el rango completo). Si la flecha era
         // la PREVIEW inactiva, el arrastre ACTIVA la distribución (_dragRangoMove).
@@ -2116,13 +2387,36 @@
       // el mouseup global ya re-renderiza el panel → la ficha muestra el modo nuevo
     }
     var rango = d.rango || _rangoDefault(d.sep, eje);
+    if (dr.div != null) {
+      // DIVISOR de tramo: mueve el límite entre dos tramos contiguos. Trabaja con la
+      // coordenada ABSOLUTA bajo el cursor (no con el delta) para poder SNAPear a las
+      // caras del eje igual que los handles.
+      d.rango = rango;
+      var hd = _hostEnEje(plano, sp, eje);
+      if (hd == null) return;
+      hd = _snapValor(hd, _facesEje(eje));
+      var sgn = (Number(rango.to) >= Number(rango.from)) ? 1 : -1;
+      _moverDivisor(d, dr.div, sgn * (hd - rango.from));
+      _regenerarDiferido();
+      return;
+    }
     if (dr.end === 'from' || dr.end === 'to') {
-      rango[dr.end] += dHost;               // handle de extremo → achica/agranda
+      // SNAP A NODOS (punto 4c) — el handle de extremo ya no se ajusta "al ojo": la
+      // coordenada bajo el cursor se pega a las caras del eje (bordes del hormigón,
+      // líneas de recubrimiento, centro) y a la grilla, igual que al colocar. `grab`
+      // conserva el desfase con que se agarró el handle → no salta al cursor.
+      var hv = _hostEnEje(plano, sp, eje);
+      if (hv == null) { rango[dr.end] += dHost; }
+      else {
+        if (dr.grab == null) dr.grab = hv - rango[dr.end];
+        rango[dr.end] = _snapValor(hv - dr.grab, _facesEje(eje));
+      }
     } else {
       rango.from += dHost; rango.to += dHost;   // tramo del medio → desplaza
     }
     if (rango.eje == null) rango.eje = eje;
     d.rango = rango;
+    _syncTramos(d);   // el rango cambió de largo → los tramos se reencajan dentro
     _regenerarDiferido();
   }
 
@@ -2309,27 +2603,30 @@
     rotRow.appendChild(rotWrap);
     body.appendChild(rotRow);
 
-    // GIRO AXIAL — rota la barra sobre SU PROPIO EJE longitudinal (las patas
-    // giran alrededor del cuerpo: abajo → adentro → arriba…). Motor: orient.spin.
-    var spinRow = _div('te-row');
-    spinRow.appendChild(_label('Giro barra °'));
-    var spinWrap = _div('');
-    spinWrap.style.display = 'flex'; spinWrap.style.gap = '6px'; spinWrap.style.alignItems = 'center';
-    var spinInp = _input({ value: (c.orient && c.orient.spin) ? c.orient.spin : 0, type: 'number' }, function (v) {
-      c.orient = c.orient || {};
-      c.orient.spin = Number(v) || 0;
-      _mut(ci);
-    });
-    spinInp.style.width = '70px';
-    var spin90 = document.createElement('button'); spin90.className = 'te-ctool'; spin90.textContent = '+90°'; spin90.style.padding = '3px 8px';
-    spin90.addEventListener('click', function () {
-      c.orient = c.orient || {};
-      c.orient.spin = (((c.orient.spin || 0) + 90) % 360);
-      _mut(ci); _renderPanel();
-    });
-    spinWrap.appendChild(spinInp); spinWrap.appendChild(spin90);
-    spinRow.appendChild(spinWrap);
-    body.appendChild(spinRow);
+    // PATAS — hacia dónde apuntan los ganchos. Es orient.spin (0/90/180/270): el motor
+    // gira SÓLO las patas alrededor del eje longitudinal, la barra NO se mueve de su
+    // sitio. Reemplaza la fila "Giro barra °" (número libre + botón +90°): un ángulo
+    // en grados no describe nada que el usuario pueda ver, la dirección de la pata sí.
+    // Sólo aparece si la figura TIENE patas y el rol no es estribo/traba (esos son
+    // marcos cerrados: no hay dirección de pata que elegir).
+    var patas = _patasDe(c);
+    if (rol !== 'estribo' && rol !== 'traba' && (patas.inicio || patas.fin)) {
+      var spinRow = _div('te-row');
+      spinRow.appendChild(_label('Patas'));
+      var spinNow = ((((Number(c.orient && c.orient.spin) || 0) % 360) + 360) % 360);
+      var spinSeg = _radial([['0', '↓'], ['90', '→'], ['180', '↑'], ['270', '←']], String(spinNow), function (v) {
+        _pushUndo();
+        c.orient = c.orient || {};
+        c.orient.spin = Number(v) || 0;
+        _mut(ci, true);   // redibuja la ficha → el botón activo sigue al valor
+      });
+      spinSeg.title = 'Dirección de las patas (la barra no se mueve)';
+      spinRow.appendChild(spinSeg);
+      body.appendChild(spinRow);
+    }
+
+    // Δ de EXTREMO LIBRE (empalme) — sólo en los extremos SIN pata.
+    _filasEmpalme(body, c, ci, rol, patas);
 
     // Distribución
     body.appendChild(_distBox(c, ci, rol, d));
@@ -2351,6 +2648,71 @@
     var note = _div('te-note'); note.textContent = 'Dim en Auto se derivan del elemento (largo/alto/ancho − recub). Fija = valor manual.';
     body.appendChild(note);
     return body;
+  }
+
+  // ==========================================================================
+  // Δ DE EXTREMO LIBRE (comp.empalme) — punto 5.
+  // ==========================================================================
+  // Un extremo CON pata ya define su remate; uno LIBRE (barra que muere recta) necesita
+  // decir cuánto se prolonga más allá del tramo: el traslapo con la barra vecina. Se
+  // escribe en comp.empalme con el shape NUEVO del motor {inicio, fin} en cm (el motor
+  // sigue aceptando el shape viejo — un número suelto = el mismo Δ en los dos extremos —
+  // que aquí se migra la primera vez que se edita).
+  function _empalmeDe(c) {
+    var e = c && c.empalme;
+    if (e && typeof e === 'object') return e;
+    var n = Number(e);
+    return (isFinite(n) && n) ? { inicio: n, fin: n } : {};   // migración del shape viejo
+  }
+  function _setEmpalme(c, cual, val) {
+    var e = _empalmeDe(c);
+    var out = { inicio: e.inicio, fin: e.fin };
+    if (val == null || !isFinite(val) || val === 0) delete out[cual];
+    else out[cual] = val;
+    if (out.inicio == null) delete out.inicio;
+    if (out.fin == null) delete out.fin;
+    if (out.inicio == null && out.fin == null) delete c.empalme;   // sin Δ → sin campo
+    else c.empalme = out;
+  }
+  // n·φ en cm (φ del componente viene en mm): 40φ con φ16 → 64 cm.
+  function _nPhi(c, n) { return Math.round((Number(c && c.diam) || 0) * n) / 10; }
+
+  function _filasEmpalme(body, c, ci, rol, patas) {
+    if (rol !== 'cabezal') return;                    // estribo/traba: marco cerrado
+    var libres = [];
+    if (!patas.inicio) libres.push(['inicio', 'Δ inicio cm']);
+    if (!patas.fin) libres.push(['fin', 'Δ fin cm']);
+    if (!libres.length) return;                       // los dos extremos rematan en pata
+    var g = _div(libres.length > 1 ? 'te-grid2' : '');
+    libres.forEach(function (p) {
+      var cual = p[0];
+      var wrap = _div(''); wrap.style.cssText = 'display:flex;gap:4px;align-items:center';
+      var val = _empalmeDe(c)[cual];
+      var inp = _input({ value: (val != null ? val : ''), placeholder: '0', type: 'number' }, function (v) {
+        _setEmpalme(c, cual, (v === '' ? null : Number(v)));
+        _mut(ci);
+      });
+      inp.style.width = '56px';
+      wrap.appendChild(inp);
+      [40, 60].forEach(function (n) {
+        var b = document.createElement('button');
+        b.className = 'te-ctool';
+        b.style.cssText = 'padding:2px 6px;font-size:10px;font-weight:700';
+        b.textContent = n + 'φ';
+        b.title = n + ' diámetros · φ' + (c.diam || '?') + ' → ' + _nPhi(c, n) + ' cm';
+        b.addEventListener('click', function () {
+          _pushUndo();
+          _setEmpalme(c, cual, _nPhi(c, n));
+          _mut(ci, true);                             // el campo tiene que mostrar el valor nuevo
+        });
+        wrap.appendChild(b);
+      });
+      g.appendChild(_fld(p[1], wrap));
+    });
+    body.appendChild(g);
+    var note = _div('te-note');
+    note.textContent = 'Δ = prolongación del extremo libre (traslapo). Sólo se ofrece donde el tramo no remata en pata.';
+    body.appendChild(note);
   }
 
   function _dimRow(c, ci, L) {
@@ -2431,7 +2793,9 @@
     var g3 = _div('te-grid3');
     g3.appendChild(_fld('Barras/capa', _input({ value: d.barras_capa || 1, type: 'number' }, function (v) { d.barras_capa = Math.max(1, Number(v) || 1); _mut(ci, true); })));
     g3.appendChild(_fld('N° capas', _input({ value: d.n_capas || 1, type: 'number' }, function (v) { d.n_capas = Math.max(1, Number(v) || 1); _mut(ci, true); })));
-    g3.appendChild(_fld('Sep. capas cm', _input({ value: d.gap != null ? d.gap : 4, type: 'number' }, function (v) { d.gap = Number(v) || 0; _mut(ci); })));
+    // gap = separación entre capas. Contrato nuevo del motor: es EJE A EJE (antes se
+    // leía como luz libre) → el label lo dice para que el usuario no dude.
+    g3.appendChild(_fld('Sep. capas cm (eje a eje)', _input({ value: d.gap != null ? d.gap : 4, type: 'number' }, function (v) { d.gap = Number(v) || 0; _mut(ci); })));
     box.appendChild(g3);
     _filaAnidar(box, c, ci, rol, d);
     var note = _div('te-note'); note.textContent = 'Las capas se apilan desde la cara hacia el núcleo con la separación indicada.';
@@ -2465,7 +2829,7 @@
     var txt = document.createElement('span');
     txt.textContent = esEstribo
       ? 'Capas anidadas (se achican hacia adentro)'
-      : 'Ajustar capas anidadas (B se achica, patas iguales)';
+      : 'Ajustar capas anidadas';
     lab.appendChild(chk); lab.appendChild(txt);
     row.appendChild(lab);
     box.appendChild(row);
@@ -2485,10 +2849,14 @@
       box.appendChild(note0);
       return;
     }
-    var g2 = _div('te-grid2');
-    g2.appendChild(_fld('@ sep cm', _input({ value: d.sep || 20, type: 'number' }, function (v) { d.sep = Number(v) || 20; if (d.rango) d.rango.sep = d.sep; _mut(ci); })));
+    // Con VARIOS tramos el @ simple ya no describe nada (cada tramo tiene el suyo) →
+    // se esconde y manda el editor de tramos. Con uno solo se mantiene como atajo.
+    var multi = _tramosDe(d).length > 1;
+    var g2 = _div(multi ? '' : 'te-grid2');
+    if (!multi) g2.appendChild(_fld('@ sep cm', _input({ value: d.sep || 20, type: 'number' }, function (v) { d.sep = Number(v) || 20; if (d.rango) d.rango.sep = d.sep; _mut(ci); })));
     g2.appendChild(_fld('Rango', _rangoEditor(c, d, ci)));
     box.appendChild(g2);
+    _tramosEditor(box, d, ci);
     var note = _div('te-note'); note.textContent = 'Define el rango (from → to) por campos o arrastrando la flecha doble en las vistas. cant = ceil(dist/@)+1.';
     box.appendChild(note);
   }
@@ -2497,14 +2865,16 @@
   // profundidad de las capas lo fija el plano de trabajo (eje_capas).
   function _camposArreglo(box, c, ci, rol, d) {
     if (!d.rango) d.rango = _rangoDefault(d.sep || 20, _ejeDistDe(c));
-    var g2 = _div('te-grid2');
-    g2.appendChild(_fld('@ sep (rango) cm', _input({ value: d.sep || 20, type: 'number' }, function (v) { d.sep = Number(v) || 20; if (d.rango) d.rango.sep = d.sep; _mut(ci); })));
+    var multi = _tramosDe(d).length > 1;
+    var g2 = _div(multi ? '' : 'te-grid2');
+    if (!multi) g2.appendChild(_fld('@ sep (rango) cm', _input({ value: d.sep || 20, type: 'number' }, function (v) { d.sep = Number(v) || 20; if (d.rango) d.rango.sep = d.sep; _mut(ci); })));
     g2.appendChild(_fld('Rango', _rangoEditor(c, d, ci)));
     box.appendChild(g2);
+    _tramosEditor(box, d, ci);
 
     var g3 = _div('te-grid3');
     g3.appendChild(_fld('N° capas', _input({ value: d.n_capas || 2, type: 'number' }, function (v) { d.n_capas = Math.max(1, Number(v) || 1); _mut(ci); })));
-    g3.appendChild(_fld('Sep. capas cm', _input({ value: d.sep_capas != null ? d.sep_capas : 10, type: 'number' }, function (v) { d.sep_capas = Number(v) || 0; _mut(ci); })));
+    g3.appendChild(_fld('Sep. capas cm (eje a eje)', _input({ value: d.sep_capas != null ? d.sep_capas : 10, type: 'number' }, function (v) { d.sep_capas = Number(v) || 0; _mut(ci); })));
     g3.appendChild(_fld('Prof. (capas)', _selectPairs([['x', 'largo'], ['y', 'alto'], ['z', 'ancho']], d.eje_capas || _ejeCapasDefault(), function (v) { d.eje_capas = v; _mut(ci); })));
     box.appendChild(g3);
     _filaAnidar(box, c, ci, rol, d);
@@ -2512,12 +2882,56 @@
     box.appendChild(note);
   }
 
+  // EDITOR DE TRAMOS del panel (punto 4a) — una fila por tramo: largo cm + @ cm + ×,
+  // y "+ Tramo" al final. Con un solo tramo no hay filas (el @ simple de arriba es el
+  // atajo) pero sí el "+ Tramo", que es la puerta de entrada al reparto multi-@.
+  function _tramosEditor(box, d, ci) {
+    if (!d.rango) return;                       // sin rango no hay nada que subdividir
+    var arr = _tramosDe(d);
+    if (arr.length > 1) {
+      var head = _div('te-note');
+      head.style.marginTop = '2px';
+      head.textContent = 'Tramos (desde el inicio del rango). Cambiar un largo mueve su límite: el vecino compensa.';
+      box.appendChild(head);
+      arr.forEach(function (t, i) {
+        var row = _div('te-tramo');
+        row.appendChild(_fld('Largo ' + (i + 1) + ' cm', _input({ value: Math.round(t.long * 10) / 10, type: 'number' }, function (v) {
+          _pushUndo(); _setLongTramo(d, i, Number(v) || 0); _mut(ci, true);
+        })));
+        row.appendChild(_fld('@ ' + (i + 1) + ' cm', _input({ value: t.sep, type: 'number' }, function (v) {
+          _pushUndo();
+          var a = _tramosDe(d); a[i].sep = Math.max(1, Number(v) || 1); _setTramos(d, a);
+          _mut(ci, true);
+        })));
+        var x = document.createElement('button');
+        x.type = 'button'; x.className = 'te-tramo-x'; x.textContent = '×';
+        x.title = 'Quitar este tramo (su largo pasa al vecino)';
+        x.addEventListener('click', function () { _pushUndo(); _delTramo(d, i); _mut(ci, true); });
+        row.appendChild(x);
+        box.appendChild(row);
+      });
+    }
+    var add = document.createElement('button');
+    add.type = 'button'; add.className = 'te-tramo-add'; add.textContent = '＋ Tramo';
+    add.title = 'Divide el rango en tramos con espaciamiento propio (parte el último en dos)';
+    add.addEventListener('click', function () { _pushUndo(); _addTramo(d); _mut(ci, true); });
+    box.appendChild(add);
+  }
+
   // Editor compacto del rango (from/to en cm) — números editables.
   function _rangoEditor(c, d, ci) {
     var wrap = _div(''); wrap.style.cssText = 'display:flex;gap:4px;align-items:center';
     if (!d.rango) { return _static('(arrastra la flecha de rango)'); }
-    var fi = _input({ value: Math.round(d.rango.from), type: 'number' }, function (v) { d.rango.from = Number(v); _mut(ci); });
-    var ti = _input({ value: Math.round(d.rango.to), type: 'number' }, function (v) { d.rango.to = Number(v); _mut(ci); });
+    // Cambiar from/to reencaja los TRAMOS (si los hay) y sólo entonces redibuja la
+    // ficha — si no, un re-render en cada campo le robaría el foco al usuario.
+    function _setExtremo(k, v) {
+      d.rango[k] = Number(v);
+      var hayTramos = !!(d.rango.tramos && d.rango.tramos.length > 1);
+      _syncTramos(d);
+      _mut(ci, hayTramos);
+    }
+    var fi = _input({ value: Math.round(d.rango.from), type: 'number' }, function (v) { _setExtremo('from', v); });
+    var ti = _input({ value: Math.round(d.rango.to), type: 'number' }, function (v) { _setExtremo('to', v); });
     fi.style.width = '52px'; ti.style.width = '52px';
     var sep = document.createElement('span'); sep.textContent = '→'; sep.style.cssText = 'color:var(--te-muted);font-size:11px';
     wrap.appendChild(fi); wrap.appendChild(sep); wrap.appendChild(ti);
@@ -2818,15 +3232,9 @@
     var del = $('te_btnBorrar');
     if (del && !del._teBound) { del._teBound = true; del.addEventListener('click', function () { _borrarSeleccion(); }); }
 
-    // ⟳ ROTAR = ACCIÓN sobre la selección, NO una herramienta (bug reportado: "roté
-    // y se borró un componente"). Antes era data-tool="rotar": el click sólo hacía
-    // ST.tool='rotar', un modo que NADIE lee. Efecto real: el editor salía de
-    // 'mover', y como el pick por proximidad y el deseleccionar-en-vacío del
-    // mousedown están gateados por ST.tool==='mover', la selección quedaba
-    // congelada en otra barra; el siguiente 🗑/Supr borraba la que no era.
-    // Ahora rota 90° en el plano activo y ST.tool se queda como estaba.
-    var rot = $('te_btnRotar');
-    if (rot && !rot._teBound) { rot._teBound = true; rot.addEventListener('click', function () { _rotarSeleccion(ST.ultimoPlano, 90); }); }
+    // El botón "⟳ Rotar" del ribbon SE ELIMINÓ (decisión del usuario): duplicaba el
+    // "+90°" de la fila "Rotación °" del panel del componente. La acción sigue viva
+    // en el panel y con la BARRA ESPACIADORA (_rotarSeleccion), que no se tocó.
 
     // Los DOS botones "agregar" hacen lo mismo: entrar en modo colocación.
     var addRib = $('te_btnAgregarBarra');
@@ -2947,9 +3355,12 @@
       });
       r.addEventListener('mousedown', function (e) { e.stopPropagation(); });   // no dispara pan
     });
-    // Check IMÁN / LIBRE del corte (global, sólo en memoria: ST.corteIman).
-    var iman = $('te_corteIman');
-    if (iman) {
+    // Check IMÁN / LIBRE del corte — hay UNO POR VISTA (sección, largo y planta) pero
+    // el estado es UNO SOLO y global (ST.corteIman, sólo en memoria): tocar cualquiera
+    // de los 3 los mueve a los 3. Antes vivía sólo en la sección y había que volver a
+    // ese cuadrante para cambiar el modo.
+    var imanes = Array.prototype.slice.call(document.querySelectorAll('#te_quad .te-vcut-iman input'));
+    imanes.forEach(function (iman) {
       iman.checked = ST.corteIman !== false;
       ['click', 'mousedown'].forEach(function (ev) {
         iman.addEventListener(ev, function (e) { e.stopPropagation(); });   // no dispara pan/selección
@@ -2957,10 +3368,11 @@
       iman.addEventListener('change', function (e) {
         e.stopPropagation();
         ST.corteIman = iman.checked;
+        imanes.forEach(function (o) { o.checked = ST.corteIman; });   // los 3 sincronizados
         _marcarSucio();               // el encuadre del corte cambia → repintar
         _redibujarPlanoActivo();      // y mover el plano 3D a la nueva posición
       });
-    }
+    });
   }
 
   // Encuadra la cámara ortográfica del plano al bounding del elemento + un margen,
@@ -3175,14 +3587,14 @@
   // hormigón y el plano P3 siguen exentos: su material ya lleva clippingPlanes:[].
   // ==========================================================================
 
-  // ¿esta barra se ve DE PUNTA en la vista cuyo eje de profundidad es `dep`?
-  // (cabezal cuyo eje longitudinal coincide con la profundidad). El cuchillo le
-  // pasa por la curva del gancho y dejaba "muñones" partidos; ocultarla tampoco
-  // servía (se perdía el gancho). Se renderiza COMPLETA, SIN CLIP, en ese pase:
-  // se ve la pata entera y el overlay 2D le pone igual el círculo de sección.
-  function _esDePunta(mesh, dep) {
-    return !!dep && mesh.userData.rol === 'cabezal' && mesh.userData.ejeMayor === dep;
-  }
+  // PATAS DE PUNTA — SIN EXCEPCIÓN (bug "me volvieron a aparecer las patas en todos
+  // los cortes"). Existía un caso especial (_esDePunta) que renderizaba la barra vista
+  // DE PUNTA con su material BASE, sin planos: eso le devolvía el gancho ENTERO en
+  // TODAS las secciones, cortara el plano por él o no. Se eliminó: la barra de punta
+  // se clipea con la banda como todo lo demás, así que el gancho aparece SÓLO cuando
+  // el corte pasa por él (y puede verse un muñón parcial: es exactamente lo que el
+  // cuchillo corta). Su marca de sección permanente es el CÍRCULO del overlay 2D
+  // (_dibujarVista2D), que no depende del clip.
 
   // Aplica/retira los 2 planos de corte de una vista sobre los materiales de las barras.
   function _clipLocalPorVista(dep, planos) {
@@ -3193,10 +3605,7 @@
       mesh.visible = true;
       var base = mesh.userData.matActivo || mesh.userData.matBase;
       if (!base) continue;
-      // La barra vista de punta se pinta ENTERA (material base, sin planos de
-      // corte) sólo en ESTE pase; las demás vistas y el 3D la vuelven a tratar
-      // como cualquier otra.
-      if (planos && !_esDePunta(mesh, dep)) {
+      if (planos) {
         // clon cacheado del material activo, con los planos de ESTA vista
         var clip = mesh.userData.matClip;
         if (!clip || clip.userData._base !== base) {
@@ -3210,7 +3619,7 @@
         clip.clippingPlanes = planos;
         mesh.material = clip;
       } else {
-        mesh.material = base;              // 3D en perspectiva o barra de punta: SIN clip
+        mesh.material = base;              // pase 3D en perspectiva: SIN clip
       }
     }
   }
