@@ -252,10 +252,12 @@
 
         <div class="muted" style="font-size:10.5px; font-weight:700; letter-spacing:.5px; margin-bottom:6px;">ELEMENTO</div>
         <!-- Orden CANÓNICO: MURO · LOSA · VIGA · COLUMNA · FUNDACION · GEN.
-             Solo VIGA tiene la máquina completa hoy → el resto va DESHABILITADO
-             con tooltip "Próximamente" (decisión del usuario). -->
+             VIGA y MURO ya tienen máquina (vistas, dims y tipologías propias) →
+             habilitados. El resto sigue DESHABILITADO con tooltip "Próximamente"
+             (decisión del usuario). -->
         <div id="tplElemGrid" style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:14px;">
-          <button id="tplElemBtn_MURO" data-elem="MURO" disabled title="Próximamente"
+          <button id="tplElemBtn_MURO" data-elem="MURO" onclick="tplSeleccionarElemento('MURO')"
+                  title="Muro: largo × alto × espesor · mallas en las 2 cortinas"
                   style="width:92px; padding:8px 4px; border:1px solid #dbe1e8; background:#fff; border-radius:8px; cursor:pointer;">
             <div style="font-size:20px;">🧱</div><div style="font-size:11px; font-weight:700;">MURO</div>
           </button>

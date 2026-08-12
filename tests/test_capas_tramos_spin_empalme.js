@@ -169,7 +169,7 @@ ok(eq(xTr, [0, 10, 20, 40, 60]), 'estribo con tramos → x = 0/10/20/40/60 (=' +
 ok(eq(xsEstribo({ from: 0, to: 60, sep: 20, eje: 'x' }), [0, 20, 40, 60]), 'el mismo componente SIN tramos: @20 parejo');
 
 console.log('\nT2g — VOLTEADO: los tramos reparten sobre el eje permutado (z), no sobre x:');
-// _cfgLocal traduce rango.eje ('z' del mundo → 'x' local) y _voltearPunto devuelve
+// _cfgLocal traduce rango.eje ('z' del mundo → 'x' local) y _permPunto devuelve
 // los puntos al mundo: las MISMAS 5 posiciones, pero en Z.
 const zTr = R.expandirComponente({
   tipologia: 'ES', figura: '104D', diam: 8, cara: 'lateral', angulos: [135, 135],

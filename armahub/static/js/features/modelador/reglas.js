@@ -74,8 +74,16 @@
   //   modo       : 'puntual'|'lineal'|'arreglo' — MODO DE USO, independiente de la
   //                tipología. Default = preset de la tipología. Solo DATO: NO cambia
   //                el despacho actual (expandirComponente sigue usando distribucion.modo).
-  //   plano_pieza: { volteado:false } — plano de trabajo propio de la pieza (rotar
-  //                90° después). Default volteado:false = comportamiento IDÉNTICO.
+  //   plano_pieza: { volteado:false } — plano de trabajo propio de la pieza.
+  //                Default volteado:false = comportamiento IDÉNTICO. Admite además
+  //                `orientacion: 'acostada'|'volteada'|'de_pie'` (ver
+  //                orientacionPieza): si viene, GANA sobre `volteado`. NO se
+  //                rellena por default a propósito — estampar 'acostada' dejaría
+  //                sordo al toggle `volteado` del Template Editor.
+  //   lado       : 1 | −1 — LADO de la cara CORTINA (z+ / z−) de un longitudinal
+  //                lateral. Default 1. Es un dato PROPIO (lo escribe el clic al
+  //                colocar y el toggle del panel), NUNCA se deduce de pos_hint:
+  //                mezclarlos hacía saltar la barra al cruzar z = 0 arrastrando.
   //   arreglo    : { n_capas:1, sep_capas:20, rango:null } — params del modo arreglo
   //                (rango en un sentido + N capas con espaciamiento). Default
   //                n_capas:1 = una sola fila = igual que hoy. Solo DATO: la lógica de
@@ -90,6 +98,9 @@
     if (!('depende_de' in comp)) comp.depende_de = null;
     // Modo de uso (preset por tipología; editable en otra tarea).
     if (comp.modo == null) comp.modo = modoDefaultDeTipologia(comp.tipologia);
+    // LADO de la cara CORTINA (z+ = 1 / z− = −1). Es un DATO PROPIO del componente,
+    // no algo que se deduzca del arrastre: ver _baseDeComponente.
+    if (comp.lado !== 1 && comp.lado !== -1) comp.lado = (Number(comp.lado) < 0) ? -1 : 1;
     // Plano de trabajo de la pieza. Rellena idempotente sin pisar `volteado`.
     if (!comp.plano_pieza || typeof comp.plano_pieza !== 'object') {
       comp.plano_pieza = { volteado: false };
@@ -234,13 +245,28 @@
   }
 
   // ---------------------------------------------------------------------------
-  // VOLTEO DEL PLANO DE LA PIEZA (§INTERACCIÓN-2.0 · G3/B3) — GEOMETRÍA REAL.
+  // ORIENTACIÓN DE LA PIEZA (§INTERACCIÓN-2.0 · G3/B3) — GEOMETRÍA REAL.
   // ---------------------------------------------------------------------------
-  // `comp.plano_pieza.volteado` NO es un truco de proyección: es una PERMUTACIÓN
-  // DE EJES del componente. Los distribuidores y figura_puntos trabajan siempre en
-  // un marco LOCAL canónico (x = eje de distribución/longitudinal, y = alto,
-  // z = profundidad de capas). Voltear = intercambiar ese eje longitudinal con el
-  // de profundidad:
+  // `comp.plano_pieza.orientacion` NO es un truco de proyección: es una
+  // PERMUTACIÓN DE EJES del componente. Los distribuidores y figura_puntos
+  // trabajan siempre en un marco LOCAL canónico (x = eje de distribución/
+  // longitudinal, y = alto, z = profundidad de capas) y la orientación dice cómo
+  // se monta ese marco local sobre el mundo:
+  //
+  //   'acostada' (default) → identidad. La pieza corre a lo LARGO (x).
+  //   'volteada'           → x_local ↔ z_mundo (y_local = y). La pieza corre a lo
+  //                          ANCHO: estribos de canto, corchetes en sección.
+  //   'de_pie'             → x_local ↔ y_mundo (z_local = z). La pieza corre en
+  //                          VERTICAL: longitudinales de muro/columna, mallas de
+  //                          cortina. Es la que faltaba para el muro (TANDA 1).
+  //
+  // Las tres son TRANSPOSICIONES (involutivas): la misma tabla traduce local→mundo
+  // y mundo→local, así que no hay una segunda tabla que se pueda desincronizar.
+  // Todo lo que sigue está parametrizado por esa tabla — host (dims), recubrimientos,
+  // pilas jer_caras, rango.eje/eje_capas, puntos, y la restitución del centro — para
+  // que agregar una orientación sea agregar UNA fila, no duplicar el mecanismo.
+  //
+  // Ejemplo de la permutación x↔z ('volteada'):
   //
   //     x_local ↔ z_mundo     y_local = y_mundo     z_local ↔ x_mundo
   //
@@ -261,65 +287,124 @@
   //     RECUBRIMIENTO SE MANTIENE POR CONSTRUCCIÓN (era el bug "se pierde el fix
   //     al recubrimiento" al rotar);
   //   · todas las vistas (que son renders 3D) lo muestran girado sin trucos.
-  // Con volteado=false la ruta es IDÉNTICA a la anterior (ni un objeto extra).
+  // Con 'acostada' la ruta es IDÉNTICA a la anterior (ni un objeto extra).
   // ---------------------------------------------------------------------------
-  var _EJE_FLIP = { x: 'z', y: 'y', z: 'x' };
+  // Tabla: eje LOCAL → eje del MUNDO (y, por ser transposición, también al revés).
+  var ORIENTACIONES = {
+    acostada: null,                             // identidad (sin permutación)
+    volteada: { x: 'z', y: 'y', z: 'x' },       // x↔z
+    de_pie: { x: 'y', y: 'x', z: 'z' }          // x↔y
+  };
+
+  // ORIENTACIÓN EFECTIVA del componente.
+  // COMPAT: `plano_pieza.volteado:true` ≡ 'volteada' (es lo que sigue escribiendo
+  // el botón de voltear del Template Editor). `orientacion` explícita GANA cuando
+  // está presente. normalizarComponente NO la estampa a propósito: si rellenara
+  // 'acostada' por default, un toggle posterior de `volteado` quedaría ignorado.
+  // CONTRATO DEL VALOR (fix 12-ago, hallazgo C): el motor NORMALIZA lo que lee
+  // (minúsculas + trim) en vez de comparar el literal. La UI escribe con
+  // toLowerCase, pero una receta que llegue de un JSON externo con 'DE_PIE' o
+  // ' volteada' caía silenciosamente en 'acostada' — la pieza salía en otro plano
+  // sin un solo error. Las claves de ORIENTACIONES son la fuente única.
+  function orientacionPieza(comp) {
+    var pp = comp && comp.plano_pieza;
+    if (!pp) return 'acostada';
+    var o = pp.orientacion;
+    if (o != null) {
+      var k = String(o).toLowerCase().trim();
+      if (ORIENTACIONES.hasOwnProperty(k)) return k;
+    }
+    return pp.volteado ? 'volteada' : 'acostada';
+  }
+
+  // Permutación (tabla) de un componente. null = acostada (ruta sin permutar).
+  function _permDe(comp) {
+    return ORIENTACIONES[orientacionPieza(comp)] || null;
+  }
 
   function estaVolteado(comp) {
-    return !!(comp && comp.plano_pieza && comp.plano_pieza.volteado);
+    return orientacionPieza(comp) === 'volteada';
   }
 
   // Eje del MUNDO a lo largo del cual REPARTE este componente (rango/zonas). Los
-  // distribuidores reparten sobre su x local; volteado, esa x local es la Z del
-  // mundo. Lo consume la UI (flecha de rango, arrastre del rango) para operar
-  // sobre el eje real y no siempre sobre X.
+  // distribuidores reparten sobre su x local; la orientación dice qué eje del
+  // mundo es esa x local (volteada → z, de pie → y). Lo consume la UI (flecha de
+  // rango, arrastre del rango) para operar sobre el eje real y no siempre sobre X.
   function ejeDistribucion(comp) {
-    return estaVolteado(comp) ? 'z' : 'x';
+    var P = _permDe(comp);
+    return P ? P.x : 'x';
   }
 
   // Eje del MUNDO en el que se apilan las capas (layered/arreglo), dado el eje
   // LOCAL declarado en la distribución (default 'z').
   function ejeCapas(comp, ejeLocal) {
     var e = (ejeLocal === 'x' || ejeLocal === 'y' || ejeLocal === 'z') ? ejeLocal : 'z';
-    return estaVolteado(comp) ? _EJE_FLIP[e] : e;
+    var P = _permDe(comp);
+    return P ? P[e] : e;
   }
 
-  // Host con dims y recubrimientos permutados (marco local de la pieza volteada).
-  //   largo_local = ancho real   (la pieza corre a lo ancho)
-  //   ancho_local = largo real   (las capas entran a lo largo)
-  //   RECUBRIMIENTOS: se permutan igual que las dims, cara por cara.
-  //     recub_lat_local = recub de las caras EXTREMAS reales (= host.recub_ext, y
-  //       sin él la convención recub_sup);
-  //     recub_ext_local = recub de las caras LATERALES reales (= host.recub_lat).
-  //     Permutar sólo uno de los dos dejaba las dims del eje longitudinal local
-  //     midiéndose contra el recubrimiento de otra cara.
-  //   PILAS: se permutan CON los ejes. Lo que en el mundo real ocupa los
-  //     EXTREMOS (x±) pasa a ser la cara lateral del marco local (que ahora corre
-  //     en Z) y viceversa: jer_caras_ef = { sup, inf, lat: ext, ext: lat }. Sin
-  //     esto, una pieza volteada se anclaba contra la pila equivocada (p.ej. un
-  //     corchete volteado se acortaba por el φ del estribo en unos extremos donde
-  //     el estribo no está).
-  function _hostVolteado(host) {
-    var rSup = (host.recub_sup != null) ? Number(host.recub_sup) : 4;
-    var rExt = (host.recub_ext != null) ? Number(host.recub_ext) : rSup;
+  // --- Host PERMUTADO (marco local de la pieza) ------------------------------
+  // Cada eje del mundo tiene sus caras: x → 'ext' (par simétrico), y → 'sup'/'inf'
+  // (INDEPENDIENTES), z → 'lat' (par simétrico). Permutar el host es reescribir
+  // dims, recubrimientos y PILAS cara por cara siguiendo la tabla de la orientación.
+  // Sin esto la pieza se anclaba contra la pila/recub equivocados (p.ej. un
+  // corchete volteado se acortaba por el φ de un estribo que NO ocupa los extremos).
+  function _dimDeEje(host, e) {
+    return Number(e === 'x' ? host.largo : (e === 'y' ? host.alto : host.ancho));
+  }
+
+  // Recubrimiento SIMÉTRICO de un eje del mundo (el que cierra ese eje por los dos
+  // lados). El eje Y es el único con dos caras distintas: cuando pasa a ser un eje
+  // simétrico del marco local (orientación 'de_pie') se toma el MAYOR de sup/inf —
+  // la barra no puede violar ninguno de los dos recubrimientos. Documentado como
+  // límite: con recub_sup ≠ recub_inf una pieza de pie queda centrada contra el
+  // recubrimiento más exigente (para el muro típico son iguales).
+  function _recubDeEje(host, e) {
+    if (e === 'x') return _recubDeCara(host, 'ext');
+    if (e === 'z') return _recubDeCara(host, 'lat');
+    return Math.max(_recubDeCara(host, 'sup'), _recubDeCara(host, 'inf'));
+  }
+
+  // Pila (φmax por nivel) de un eje del mundo, con el mismo criterio simétrico.
+  function _pilaDeEje(jc, e) {
+    if (!jc) return null;
+    if (e === 'x') return jc.ext;
+    if (e === 'z') return jc.lat;
+    var a = jc.sup || [], b = jc.inf || [], out = [];
+    for (var i = 0; i < Math.max(a.length, b.length); i++) {
+      out.push(Math.max(Number(a[i]) || 0, Number(b[i]) || 0));
+    }
+    return out;
+  }
+
+  function _hostPermutado(host, P) {
     var h = {
-      largo: Number(host.ancho), alto: Number(host.alto), ancho: Number(host.largo),
-      recub_sup: rSup,
-      recub_inf: (host.recub_inf != null) ? Number(host.recub_inf) : 4,
-      recub_lat: rExt,
-      recub_ext: (host.recub_lat != null) ? Number(host.recub_lat) : 3
+      largo: _dimDeEje(host, P.x), alto: _dimDeEje(host, P.y), ancho: _dimDeEje(host, P.z),
+      // Las caras verticales LOCALES (sup/inf) sólo siguen siendo independientes
+      // si el eje y del mundo sigue siendo el y local; si no, heredan el par
+      // simétrico del eje que ocupa ese lugar.
+      recub_sup: (P.y === 'y') ? _recubDeCara(host, 'sup') : _recubDeEje(host, P.y),
+      recub_inf: (P.y === 'y') ? _recubDeCara(host, 'inf') : _recubDeEje(host, P.y),
+      recub_lat: _recubDeEje(host, P.z),
+      recub_ext: _recubDeEje(host, P.x)
     };
     var jc = host.jer_caras;
-    if (jc) h.jer_caras = { sup: jc.sup, inf: jc.inf, lat: jc.ext, ext: jc.lat };
-    else if (host.jer_phi) h.jer_phi = host.jer_phi;   // compat: pila única legacy
+    if (jc) {
+      h.jer_caras = {
+        sup: (P.y === 'y') ? jc.sup : _pilaDeEje(jc, P.y),
+        inf: (P.y === 'y') ? jc.inf : _pilaDeEje(jc, P.y),
+        lat: _pilaDeEje(jc, P.z),
+        ext: _pilaDeEje(jc, P.x)
+      };
+    } else if (host.jer_phi) h.jer_phi = host.jer_phi;   // compat: pila única legacy
     if (host.phi_est != null) h.phi_est = host.phi_est;
     return h;
   }
 
   // Punto del marco LOCAL → mundo (y viceversa: la permutación es involutiva).
   // Conserva el flag `esArco` (perf del motor geométrico: no re-filetear arcos).
-  function _voltearPunto(p) {
-    var q = { x: p.z, y: p.y, z: p.x };
+  function _permPunto(p, P) {
+    var q = { x: p[P.x], y: p[P.y], z: p[P.z] };
     if (p.esArco) q.esArco = true;
     return q;
   }
@@ -336,18 +421,18 @@
   // _estriboPerimetral ignora → las N barras quedaban TODAS en el mismo plano
   // (colapso), y un cabezal volteado se repartía sobre su propio eje longitudinal
   // dejando además su coordenada local sin definir.
-  function _cfgLocal(dist) {
-    if (!dist) return dist;
+  function _cfgLocal(dist, P) {
+    if (!dist || !P) return dist;
     var tieneCapas = (dist.eje_capas != null);
     var tieneRango = !!(dist.rango && dist.rango.eje != null);
     if (!tieneCapas && !tieneRango) return dist;
     var c = {};
     for (var k in dist) if (dist.hasOwnProperty(k)) c[k] = dist[k];
-    if (tieneCapas) c.eje_capas = _EJE_FLIP[String(dist.eje_capas)] || dist.eje_capas;
+    if (tieneCapas) c.eje_capas = P[String(dist.eje_capas)] || dist.eje_capas;
     if (tieneRango) {
       var r = {};
       for (var j in dist.rango) if (dist.rango.hasOwnProperty(j)) r[j] = dist.rango[j];
-      r.eje = _EJE_FLIP[String(dist.rango.eje)] || dist.rango.eje;
+      r.eje = P[String(dist.rango.eje)] || dist.rango.eje;
       c.rango = r;                      // clon: NO se muta el rango de la receta
     }
     return c;
@@ -532,7 +617,7 @@
   // y que _marcoUtilMundo). PERO es un valor POR CARA como los otros tres, no una
   // constante: con la pieza VOLTEADA los extremos LOCALES son las caras laterales
   // REALES, cuyo recub es recub_lat. Por eso el host lleva `recub_ext` explícito
-  // (lo permuta _hostVolteado) y sólo se cae a recub_sup cuando no viene.
+  // (lo permuta _hostPermutado) y sólo se cae a recub_sup cuando no viene.
   // Sin él, un corchete volteado se medía con recub_sup en unas caras que están a
   // recub_lat: su dim quedaba 2·(recub_sup − recub_lat) corta y la punta NO era
   // tangente al estribo lateral.
@@ -623,87 +708,152 @@
     return marcoUtilNivel(base, host, _nivelDeBase(base)).prof;
   }
 
-  // Cara VERTICAL de referencia de un anclaje. Tiene que coincidir con el
-  // recubrimiento que ya elige _baseDeComponente para anchorBase.recub
-  // (recub_inf SÓLO para cara 'inf'; recub_sup para todo lo demás, incluida la
-  // cara 'lateral' de estribos y trabas), para que el recub y la pila salgan
-  // siempre de la MISMA cara.
-  function _caraVertical(cara) { return (cara === 'inf') ? 'inf' : 'sup'; }
+  // CARA DEL HORMIGÓN contra la que se apoya un longitudinal, según la `cara`
+  // declarada por el componente. 'lateral' (o 'lat') = cara CORTINA (z±): es una
+  // cara de primera clase, no un alias de 'sup'.
+  // OJO: estribo/traba también declaran cara 'lateral' por convención de la
+  // receta, pero derivan su pose del MARCO (no de esta función): sólo la usan los
+  // cabezales (ver _marcoCara / _baseDeComponente).
+  function _caraAncla(cara) {
+    if (cara === 'inf') return 'inf';
+    if (cara === 'lateral' || cara === 'lat') return 'lat';
+    return 'sup';
+  }
 
-  // Borde del eje de un longitudinal en Y según su cara, contra la PILA de esa
-  // cara (no contra un inset global): prof(cara, nivel) + φ/2.
-  function _yBordeCabezal(base, host) {
-    var cara = (base.anchorBase && base.anchorBase.cara) || 'sup';
-    var recub = (base.anchorBase && base.anchorBase.recub != null) ? base.anchorBase.recub : 4;
-    var prof = profundidadCara(host, _caraVertical(cara), _nivelDeBase(base), recub);
-    return (cara === 'sup') ? (host.alto / 2 - prof - base.diam / 2)
-                            : (-host.alto / 2 + prof + base.diam / 2);
+  // ---------------------------------------------------------------------------
+  // MARCO DE CARA — FUENTE ÚNICA del anclaje de un longitudinal (§TANDA 1).
+  // ---------------------------------------------------------------------------
+  // Un cabezal se PEGA a una cara y REPARTE su capa a lo ancho de esa cara. Las
+  // dos cosas salen del mismo marco, y son el ESPEJO exacto entre sí con los ejes
+  // intercambiados:
+  //
+  //     cara sup/inf → se pega en Y (±alto/2 ∓ prof(sup|inf) ∓ φ/2)
+  //                    reparte en Z (entre las pilas laterales)
+  //     cara lateral → se pega en Z (±ancho/2 ∓ prof(lat)   ∓ φ/2)   ← CORTINA
+  //                    reparte en Y (entre las pilas sup e inf)
+  //
+  // Antes esto era _yBordeCabezal, que sólo distinguía sup/inf: una barra
+  // 'lateral' caía en la rama de abajo y ATERRIZABA EN LA CARA INFERIOR (bug
+  // reportado 12-ago) — y el muro no tenía cómo anclar sus cortinas.
+  //
+  // Devuelve:
+  //   eje        : eje de la NORMAL de la cara ('y' o 'z') — donde se pega y por
+  //                donde entran las capas.
+  //   ancla      : coordenada del EJE de la barra en ese eje (recub + pila + φ/2).
+  //   sentido    : ±1 hacia el NÚCLEO (por donde se apilan las capas).
+  //   ejeReparto : eje sobre el que se reparten las barras de la capa.
+  //   lo / hi    : extremos ÚTILES del reparto (ejes de la 1ª y la última barra).
+  //                Es un RANGO, no un semiancho: las pilas sup e inf son
+  //                independientes, así que el reparto en Y no está centrado en 0.
+  //
+  // El LADO de la cara lateral (z+ o z−) lo decide `base.ladoCara`, que sale de
+  // `comp.lado` (1 | −1, default 1) — NO del arrastre. El `sentido` devuelto es
+  // −lado, o sea la normal hacia el núcleo: con eso figura_puntos espeja las patas
+  // del gancho sin un solo `if` de lado.
+  function _marcoCara(base, host) {
+    var cara = _caraAncla(base.anchorBase && base.anchorBase.cara);
+    // SÓLO UN LONGITUDINAL se apoya en una cara CORTINA. Estribo y traba declaran
+    // cara 'lateral' por convención de la receta pero encuadran el marco de núcleo
+    // (derivan su pose de él y sólo leen x/z del anchor), así que para ellos la
+    // cara lateral se lee como la vertical de siempre → su reparto sigue yendo a
+    // lo ancho (Z), como antes de que la cortina existiera.
+    if (base.rol !== 'cabezal' && cara === 'lat') cara = 'sup';
+    var nivel = _nivelDeBase(base);
+    var r = (Number(base.diam) || 0) / 2;
+    var ab = base.anchorBase || {};
+    // El recub del anchor (recub_override incluido) manda SOBRE SU PROPIA cara.
+    var rAnc = (ab.recub != null) ? Number(ab.recub) : null;
+    var rLat = (cara === 'lat') ? rAnc : ((ab.recubLat != null) ? Number(ab.recubLat) : null);
+    var pSup = profundidadCara(host, 'sup', nivel, (cara === 'sup') ? rAnc : null);
+    var pInf = profundidadCara(host, 'inf', nivel, (cara === 'inf') ? rAnc : null);
+    var pLat = profundidadCara(host, 'lat', nivel, rLat);
+    var yHi = Number(host.alto) / 2 - pSup - r;
+    var yLo = -Number(host.alto) / 2 + pInf + r;
+    var zHi = Number(host.ancho) / 2 - pLat - r;
+    if (cara === 'lat') {
+      var lado = (base.ladoCara === -1) ? -1 : 1;
+      return { eje: 'z', ancla: lado * zHi, sentido: -lado, ejeReparto: 'y', lo: yLo, hi: yHi };
+    }
+    if (cara === 'inf') {
+      return { eje: 'y', ancla: yLo, sentido: 1, ejeReparto: 'z', lo: -zHi, hi: zHi };
+    }
+    return { eje: 'y', ancla: yHi, sentido: -1, ejeReparto: 'z', lo: -zHi, hi: zHi };
+  }
+
+  // Coordenada de la barra i de una capa de n sobre el eje de reparto del marco.
+  // n = 1 → CENTRO del rango útil (con pilas simétricas es exactamente 0, o sea
+  // lo mismo que hacía el `z = 0` de antes).
+  function _posReparto(mc, i, n) {
+    return (n > 1) ? (mc.lo + (mc.hi - mc.lo) * (i / (n - 1))) : ((mc.lo + mc.hi) / 2);
   }
 
   function distribuidorLayered(base, cfg, host) {
     var placements = [];
     var nCapas = Math.max(1, (cfg && cfg.n_capas) || 1);
     var nBarras = Math.max(1, (cfg && cfg.barras_capa) || 1);
-    var gap = (cfg && cfg.gap != null) ? cfg.gap : 0;
-    var recubLat = (base.anchorBase && base.anchorBase.recubLat != null) ? base.anchorBase.recubLat : 3;
-    // El reparto a lo ancho se mide contra la PILA de la cara LATERAL de su nivel.
-    var zHalf = host.ancho / 2 - profundidadCara(host, 'lat', _nivelDeBase(base), recubLat) - base.diam / 2;
+    var gap = (cfg && cfg.gap != null) ? Number(cfg.gap) : 0;
     var cara = (base.anchorBase && base.anchorBase.cara) || 'sup';
-    var s = (cara === 'sup') ? -1 : 1;   // hacia el núcleo
-    var yBorde = _yBordeCabezal(base, host);
-    // EJE DE LA CARA contra la que se anida: sup/inf entran en Y; una cara
-    // lateral entra en Z (antes el corrimiento del anidado iba SIEMPRE en Y).
-    var ejeAnid = (cara === 'lateral' || cara === 'lat') ? 'z' : 'y';
-    // CAPAS ANIDADAS/AJUSTADAS (cfg.anidar !== false, toggle de la UI):
-    // el CRITERIO (qué lados se achican, y si la capa se posiciona por inset de
-    // marco o corriendo la polilínea) lo decide UNA sola función, por FIGURA:
-    // figura_puntos.anidarFigura — "la capa k es la MISMA figura corrida δ_k =
-    // k·φ hacia el núcleo". Aquí sólo se decide CUÁNDO aplica:
+    // MARCO DE CARA: dónde se pega (eje/ancla/sentido) y por dónde reparte la capa.
+    // Vale igual para sup, inf y LATERAL (cortina): una sola función, sin ramas.
+    var mc = _marcoCara(base, host);
+    // CAPAS ANIDADAS (cfg.anidar !== false, toggle de la UI). El anidado v3 SOLO
+    // ajusta DIMS (y, en las cerradas, encoge el marco): la POSICIÓN es siempre
+    // k·gap. Aquí sólo se decide CUÁNDO aplica:
     //   · estribo/figura cerrada → por DEFAULT (anidar !== false);
     //   · figura abierta con patas (103x) → OPT-IN (anidar === true), porque
     //     cambiaría dims/kg de recetas existentes si fuera default (la viga-semilla
     //     quedaría con 5 ítems en vez de 4).
-    // Al anidar NO se aplica ADEMÁS el corrimiento de capa en Y (el inset / el
-    // anchorDelta de anidarFigura ya posicionan: evitar el doble desplazamiento).
     var anidaMarco = (!cfg || cfg.anidar !== false) && (base.rol === 'estribo');
     var anidaFig = (cfg && cfg.anidar === true) && (base.rol !== 'estribo') &&
       ((base.dims && Number(base.dims.A) > 0) || (base.dims && Number(base.dims.C) > 0));
     for (var c = 0; c < nCapas; c++) {
-      // DOS δ DISTINTOS, y no es lo mismo (corrección del usuario probando en
-      // pantalla: con φ+gap «los ajustes fueron mucho más que la medida correcta»):
-      //   · ANIDADO   → δ = k·φ_propio, SIN gap: la capa de adentro va FIERRO
-      //     CONTRA FIERRO con la de afuera (tangente). El gap no pinta aquí.
-      //   · APILADO sin anidar → δ = k·gap.
-      //
-      // SEPARACIÓN DE CAPAS = DISTANCIA EJE A EJE (decisión del usuario, 12-ago).
-      // Antes el apilado usaba δ = k·(φ+gap), o sea el gap era la LUZ LIBRE entre
-      // superficies y el motor le sumaba el diámetro por su cuenta: «al poner 1
-      // está sumando esa magnitud adicional» — el usuario escribía 1 y las capas
-      // se separaban 1+φ. Ahora el número que se configura ES la separación de
-      // EJES, que es como se acota en el plano y como el usuario lo lee:
-      //   gap = 0  → los dos ejes SUPERPUESTOS (las barras se pisan). NO se
-      //   clampea a φ ni a nada: es un dato honesto y el usuario lo VE en el 3D y
-      //   decide. Un clamp escondería que la receta pide algo imposible.
-      // El ANIDADO no cambia (δ = k·φ ya era correcto: fierro contra fierro).
-      var offApil = c * gap;                        // δ del APILADO (eje a eje)
-      var offAnid = c * base.diam;                  // δ del ANIDADO (φ propio)
+      // POSICIÓN DE LA CAPA = k·gap, EJE A EJE, SIEMPRE (con o sin anidar).
+      // CORRECCIÓN DEL USUARIO (12-ago): «el espaciamiento se lo damos con este
+      // campo y debe mandar; al ajustar capas anidadas no debe considerar esta
+      // altura, debe ajustar SOLO la medida de B». Antes, con anidar activo, la
+      // posición la imponía el anidado (k·φ) y el campo del usuario no movía nada
+      // — ese era el bug «el espaciamiento para CBI está fijo».
+      //   gap = 0 → ejes SUPERPUESTOS, sin clamp: dato honesto, el usuario lo ve
+      //   en el 3D y decide. Un clamp escondería que la receta pide algo imposible.
+      var offPos = c * gap;                         // separación EJE A EJE
+      // δ de DIMS del anidado = k·φ_propio (holgura lateral contra el fierro de la
+      // capa de afuera). En las CERRADAS manda el campo Sep (anillos concéntricos
+      // separados k·gap), y por eso viaja aparte en opts.sep.
       var an = (c > 0 && (anidaMarco || anidaFig))
-        ? _fp().anidarFigura(base.figura, base.dims, offAnid, base.rol, { sentido: s, eje: ejeAnid })
+        ? _fp().anidarFigura(base.figura, base.dims, c * base.diam, base.rol, { sep: offPos })
         : null;
       var usaAn = !!(an && an.criterio !== 'recta');
       var dimsCapa = usaAn ? an.dims : base.dims;
-      // Sin anidado: retranqueo de capa clásico. Con anidado: lo posiciona anidarFigura.
-      var y = usaAn ? (yBorde + an.anchorDelta.y) : (yBorde + s * offApil);
+      // CAPA QUE NO CABE → NO SE GENERA (hallazgo A). El inset k·gap dejó alguna
+      // dim ≤ 0: dibujarla (o mandarla con dim_a = 0, que el backend rechaza) sería
+      // inventar una barra imposible. Se omite y queda el aviso a la vista.
+      if (usaAn && an.cabe === false) {
+        _avisar(base, _avisoCapa(c, offPos, an.motivo));
+        continue;
+      }
+      // Una figura CERRADA anidada se encoge δ por los cuatro lados: el δ entra en
+      // las tres pilas del marco (sup, inf y lat). Es POR CAPA (no por barra).
+      var ins = (usaAn && an.inset) ? _insetsAnidados(base.anchorBase, an.inset) : null;
+      if (ins) {
+        // …y con insets suficientemente grandes el marco se cruza consigo mismo
+        // (ySup ≤ yInf o w2 ≤ 0): tampoco existe esa capa.
+        var mrc = _fp().marcoNucleoCabe(host, _mezclarAnchor(base.anchorBase,
+          { inset: ins.inset, insetInf: ins.insetInf, insetLat: ins.insetLat }), base.diam);
+        if (!mrc.cabe) {
+          _avisar(base, _avisoCapa(c, offPos, 'marco ' +
+            (Math.round(mrc.alto * 100) / 100) + '×' + (Math.round(mrc.ancho * 100) / 100)));
+          continue;
+        }
+      }
+      // La capa entra hacia el núcleo por la NORMAL de su cara (Y en sup/inf,
+      // Z en lateral). Una figura CERRADA no usa esta coordenada: la posiciona su
+      // inset de marco (anillo concéntrico), que ya vale k·gap.
+      var coordCara = mc.ancla + mc.sentido * offPos;
       for (var i = 0; i < nBarras; i++) {
-        var z = (nBarras > 1) ? (-zHalf + (2 * zHalf) * (i / (nBarras - 1))) : 0;
-        // Anidado contra una cara LATERAL: el núcleo está a un lado o al otro
-        // según de qué lado esté ESTA barra, así que el signo es por barra.
-        if (usaAn && ejeAnid === 'z') z += (z >= 0 ? -1 : 1) * (an.delta || 0);
-        var extra = { y: y, z: z, cara: cara };
-        if (usaAn && an.inset) {
-          // Una figura CERRADA anidada se encoge δ por los cuatro lados: el δ
-          // entra en las tres pilas del marco (sup, inf y lat).
-          var ins = _insetsAnidados(base.anchorBase, an.inset);
+        var extra = { cara: cara };
+        extra[mc.eje] = coordCara;
+        extra[mc.ejeReparto] = _posReparto(mc, i, nBarras);
+        if (ins) {
           extra.inset = ins.inset; extra.insetInf = ins.insetInf; extra.insetLat = ins.insetLat;
         }
         var anchor = _mezclarAnchor(base.anchorBase, extra);
@@ -762,47 +912,77 @@
     // regresión). Con ≥2 capas SÍ se fija el plano de profundidad en TODAS las
     // capas (capa 1 en baseEje, no 'ausente') para que el arreglo sea consistente.
     var unaCapa = (nCapas === 1);
-    // ANIDADO (estribos/corchetes): las capas se achican hacia adentro en vez de
-    // desplazarse por eje_capas. cfg.anidar === false lo desactiva.
-    var anidaA = (base.rol === 'estribo') && (!cfg || cfg.anidar !== false);
+    // ANIDADO — MISMO criterio que en layered (una sola regla para los dos
+    // distribuidores; antes el arreglo sólo anidaba figuras cerradas y una malla
+    // de corchetes en 2 cortinas salía con las dos capas del mismo largo):
+    //   · CERRADA (estribo) → por default: anillos concéntricos separados
+    //     k·sep_capas (cfg.anidar === false lo desactiva);
+    //   · ABIERTA con patas → OPT-IN (cfg.anidar === true): ajusta SOLO dims.
+    var anidaCerr = (base.rol === 'estribo') && (!cfg || cfg.anidar !== false);
+    var anidaAb = (cfg && cfg.anidar === true) && (base.rol !== 'estribo') &&
+      ((base.dims && Number(base.dims.A) > 0) || (base.dims && Number(base.dims.C) > 0));
+    // SENTIDO del apilado: si las capas entran por la NORMAL de la cara del
+    // longitudinal (p.ej. las 2 cortinas de un muro, eje_capas 'z' con la barra
+    // pegada a la cara z+), van hacia el NÚCLEO; si no, en el sentido positivo del
+    // eje, como siempre (una viga con capas en 'z' y la barra en cara sup).
+    //
+    // CAMBIO DE COMPORTAMIENTO DOCUMENTADO (verificador, Tanda 1) — INTENCIONAL:
+    // un cabezal en cara SUP con eje_capas 'y' antes apilaba en +Y (sentido
+    // positivo del eje) y las capas 2, 3… salían HACIA ARRIBA, atravesando el
+    // recubrimiento superior. Ahora, como 'y' ES el eje de su marco de cara,
+    // toma mcA.sentido = −1 y las capas bajan HACIA EL NÚCLEO, que es lo que hace
+    // un fierro real (la cara sup ya está ocupada por la capa 1). Lo mismo, en
+    // espejo, en cara INF (+1) y en la cortina lateral (−lado).
+    // Cuando eje_capas NO es el eje de la cara (p.ej. cara sup con capas en 'z'),
+    // se conserva el sentido positivo de siempre → esos casos no cambian.
+    var mcA = (base.rol === 'cabezal') ? _marcoCara(base, host) : null;
+    var sentCapas = (mcA && eje === mcA.eje) ? mcA.sentido : 1;
     for (var c = 0; c < nCapas; c++) {
       // δ del APILADO = k·sep_capas, EJE A EJE (misma semántica que el `gap` de
       // layered: el número configurado ES la distancia entre ejes, sin sumarle φ).
       var off = c * sepCapas;
-      // δ de la capa ANIDADA = k·φ_propio, SIN sep_capas (misma corrección que en
-      // layered: anidar = fierro contra fierro; sep_capas es la separación del
-      // apilado que NO anida). El CRITERIO (qué lados se achican, si la posición
-      // la da el inset o un corrimiento) lo decide anidarFigura.
-      var caraA = (base.anchorBase && base.anchorBase.cara) || 'sup';
-      var ejeAnidA = (caraA === 'lateral' || caraA === 'lat') ? 'z' : 'y';
-      var an = (anidaA && !unaCapa && c > 0)
-        ? _fp().anidarFigura(base.figura, base.dims, c * base.diam, base.rol,
-          { sentido: (caraA === 'inf') ? 1 : -1, eje: ejeAnidA })
+      // δ de DIMS del anidado = k·φ_propio; la separación entre MARCOS (anillos
+      // concéntricos) la manda sep_capas → viaja en opts.sep (v3: el campo del
+      // usuario manda la posición también con anidar activo).
+      var an = ((anidaCerr || anidaAb) && !unaCapa && c > 0)
+        ? _fp().anidarFigura(base.figura, base.dims, c * base.diam, base.rol, { sep: off })
         : null;
       var usaAn = !!(an && an.criterio !== 'recta');
       var dimsCapaA = usaAn ? an.dims : base.dims;
+      // MISMO criterio que layered (hallazgo A): la capa cuyo inset deja dims ≤ 0
+      // — o cruza el marco del anillo — NO se genera; se omite con aviso.
+      if (usaAn && an.cabe === false) {
+        _avisar(base, _avisoCapa(c, off, an.motivo));
+        continue;
+      }
+      var insA = (usaAn && an.inset) ? _insetsAnidados(base.anchorBase, an.inset) : null;
+      if (insA) {
+        var mrcA = _fp().marcoNucleoCabe(host, _mezclarAnchor(base.anchorBase,
+          { inset: insA.inset, insetInf: insA.insetInf, insetLat: insA.insetLat }), base.diam);
+        if (!mrcA.cabe) {
+          _avisar(base, _avisoCapa(c, off, 'marco ' +
+            (Math.round(mrcA.alto * 100) / 100) + '×' + (Math.round(mrcA.ancho * 100) / 100)));
+          continue;
+        }
+      }
       for (var ri = 0; ri < posA.length; ri++) {
         var xr = posA[ri];
         // EJE DEL RANGO respetado (hallazgo del verificador: aquí se hardcodeaba
         // {x: xr} — un cabezal en modo Arreglo con rango.eje 'z', que es lo que
         // escribe la UI, superponía TODAS las barras en un punto). Mismo criterio
-        // que distribuidorLinear; el cabezal recibe además su Y de cara.
+        // que distribuidorLinear; el resto de la pose (cara/reparto) ya viene en
+        // anchorBase (la POSE NATURAL que publica _baseDeComponente).
         var ejeRA = (cfg && cfg.rango && (cfg.rango.eje === 'y' || cfg.rango.eje === 'z')) ? cfg.rango.eje : 'x';
         var extra = {}; extra[ejeRA] = xr;
-        if ((base.rol || '') === 'cabezal' && extra.y == null) extra.y = _yBordeCabezal(base, host);
         if (!unaCapa) {
-          if (usaAn) {
-            if (an.inset) {
-              var insA = _insetsAnidados(base.anchorBase, an.inset);
-              extra.inset = insA.inset; extra.insetInf = insA.insetInf; extra.insetLat = insA.insetLat;
-            }
-            // El corrimiento del anidado va por el EJE DE LA CARA (y para
-            // sup/inf, z para lateral), no siempre en Y.
-            if (an.anchorDelta[an.eje]) {
-              extra[an.eje] = ((base.anchorBase && base.anchorBase[an.eje]) || 0) + an.anchorDelta[an.eje];
-            }
-          } else if (!anidaA) {
-            extra[eje] = baseEje + off;
+          if (insA) {
+            // CERRADA: el inset (= k·sep_capas) ES la posición del anillo (ya
+            // calculado y VERIFICADO arriba, una vez por capa).
+            extra.inset = insA.inset; extra.insetInf = insA.insetInf; extra.insetLat = insA.insetLat;
+          } else if (!anidaCerr) {
+            // TODO LO DEMÁS (incluida la figura ABIERTA anidada, que sólo ajusta
+            // dims): la posición la manda sep_capas, eje a eje.
+            extra[eje] = baseEje + sentCapas * off;
           }
         }
         var anchorA = _mezclarAnchor(base.anchorBase, extra);
@@ -1168,20 +1348,29 @@
   function expandirComponente(comp, host) {
     normalizarComponente(comp);   // rellena campos aditivos ausentes (defaults null)
     var dist = comp.distribucion || {};
-    // VOLTEO = permutación de ejes REAL: se expande contra el host permutado y se
-    // devuelven los puntos al mundo. volteado=false → ruta idéntica a la anterior.
-    var flip = estaVolteado(comp);
-    if (!flip) return _aplicarPostTransform(_despachar(comp, _baseDeComponente(comp, host), dist, host), comp, host);
-    var hostEf = _hostVolteado(host);
-    var base = _baseDeComponente(comp, hostEf,
-      { recubExtremo: (host.recub_lat != null ? Number(host.recub_lat) : 3) });
-    var placements = _despachar(comp, base, _cfgLocal(dist), hostEf);
-    // REFERENCIA para restituir el centro: LA MISMA PIEZA SIN VOLTEAR, o sea lo
-    // que el usuario tenía en pantalla justo antes de apretar el botón. Se expande
+    // ORIENTACIÓN = permutación de ejes REAL: se expande contra el host permutado
+    // y se devuelven los puntos al mundo. 'acostada' → ruta idéntica a la anterior.
+    var P = _permDe(comp);
+    if (!P) {
+      var baseAc = _baseDeComponente(comp, host);
+      var plsAc = _despachar(comp, baseAc, dist, host);
+      _cosecharAvisos(comp, baseAc);   // capas omitidas → visibles en la UI
+      return _aplicarPostTransform(plsAc, comp, host);
+    }
+    var hostEf = _hostPermutado(host, P);
+    // recubExtremo = el recub de las caras del MUNDO que ahora cierran el eje
+    // longitudinal local (volteada → las laterales; de pie → las de borde).
+    var base = _baseDeComponente(comp, hostEf, { recubExtremo: _recubDeEje(host, P.x) });
+    var placements = _despachar(comp, base, _cfgLocal(dist, P), hostEf);
+    // Los avisos SON los de la expansión REAL (la permutada), no los de `ref`:
+    // la referencia acostada es un cálculo auxiliar que no se dibuja.
+    _cosecharAvisos(comp, base);
+    // REFERENCIA para restituir el centro: LA MISMA PIEZA ACOSTADA, o sea lo que
+    // el usuario tenía en pantalla justo antes de apretar el botón. Se expande
     // en crudo (sin post-transform: orient/pos_hint se aplican después e igual a
-    // las dos). Sólo se paga en componentes volteados.
+    // las dos). Sólo se paga en componentes reorientados.
     var ref = _despachar(comp, _baseDeComponente(comp, host), dist, host);
-    _voltearPlacements(placements);
+    _permutarPlacements(placements, P, orientacionPieza(comp));
     _restituirCentroVolteo(placements, ref, comp, host);
     return _aplicarPostTransform(placements, comp, host);
   }
@@ -1249,11 +1438,14 @@
   }
 
   // Devuelve al MUNDO los puntos de placements expandidos en el marco local
-  // volteado (permutación x↔z). Marca meta.volteado para trazabilidad.
-  function _voltearPlacements(placements) {
+  // permutado. Marca meta.orientacion (y meta.volteado cuando es la x↔z, que es
+  // lo que ya leían la UI y los tests) para trazabilidad.
+  function _permutarPlacements(placements, P, nombre) {
     (placements || []).forEach(function (pl) {
-      pl.puntos = (pl.puntos || []).map(_voltearPunto);
-      pl.meta = _mezclarAnchor(pl.meta || {}, { volteado: true });
+      pl.puntos = (pl.puntos || []).map(function (p) { return _permPunto(p, P); });
+      var m = { orientacion: nombre };
+      if (nombre === 'volteada') m.volteado = true;
+      pl.meta = _mezclarAnchor(pl.meta || {}, m);
     });
     return placements;
   }
@@ -1354,8 +1546,16 @@
     comp._rol = comp._rol || _rolDeTipologia(comp.tipologia, comp.cara);
     var rSup = _recubDeCara(host, 'sup');
     var rInf = _recubDeCara(host, 'inf');
+    var rLat = _recubDeCara(host, 'lat');
     var ovr = (comp.recub_override != null) ? Number(comp.recub_override) : null;
-    var recub = (ovr != null) ? ovr : (comp.cara === 'inf' ? rInf : rSup);
+    // RECUB DE LA CARA DEL ANCLAJE. Un longitudinal de cara LATERAL (cortina) se
+    // mide contra recub_lat, no contra el vertical. Estribo/traba declaran cara
+    // 'lateral' por convención de la receta pero encuadran el marco entero (y
+    // reciben recubSup/recubInf/recubLat por separado): para ellos no cambia nada.
+    var caraAnc = _caraAncla(comp.cara);
+    var recub = (ovr != null) ? ovr
+      : ((comp._rol === 'cabezal' && caraAnc === 'lat') ? rLat
+        : (caraAnc === 'inf' ? rInf : rSup));
     var diamCm = Number(comp.diam) / 10;   // mm → cm
     // Empalme resuelto (cm POR EXTREMO, independientes) para que figura_puntos
     // asome la barra fuera del hormigón lo suyo en cada punta (dato geométrico; el
@@ -1378,6 +1578,9 @@
       dims: _dimsEfectivas(comp, host, nivelJerarquia(comp.jerarquia)),
       angulos: comp.angulos || null,
       rol: comp._rol,
+      // Lo que el motor NO pudo generar (capas anidadas omitidas). Lo llena
+      // _avisar desde los distribuidores; expandirComponente lo pasa al comp.
+      avisos: [],
       anchorBase: {
         cara: comp.cara, recub: recub,
         // El marco de estribo/traba abarca las DOS caras verticales, así que
@@ -1399,11 +1602,28 @@
           : null
       }
     };
-    // Un longitudinal vive a la ALTURA de su cara y, por defecto, al centro del
-    // ancho. Estribo/traba derivan su pose del marco (no leen anchor.y/z).
+    // Un longitudinal vive PEGADO A SU CARA y, por defecto, al centro del reparto
+    // de esa cara. Las dos coordenadas salen del MARCO DE CARA (fuente única, vale
+    // igual para sup/inf y para la cara CORTINA lateral). Estribo/traba derivan su
+    // pose del marco de núcleo (no leen anchor.y/z).
     if (base.rol === 'cabezal') {
-      base.anchorBase.y = _yBordeCabezal(base, host);
-      base.anchorBase.z = 0;
+      // LADO de la cara lateral (z+ / z−) = DATO PROPIO del componente (`comp.lado`,
+      // 1 | −1, default 1). Sólo pinta en cara lateral; las patas se espejan solas
+      // porque _marcoCara devuelve `sentido = −lado` (la normal hacia el núcleo).
+      //
+      // ANTES lo elegía el SIGNO de pos_hint.z, y eso era un doble movimiento: el
+      // pos_hint decidía el lado Y ADEMÁS se sumaba entero en _aplicarPostTransform.
+      // Como la UI escribe pos_hint como delta ACUMULADO del arrastre, al cruzar
+      // z = 0 arrastrando la barra SALTABA 2·zHi (22.4 cm en una viga de 30 con
+      // recub 3 y φ16) porque el ancla se iba al otro lado a mitad del gesto.
+      // Ahora pos_hint es TRASLACIÓN PURA y continua: no participa en la elección.
+      base.ladoCara = (Number(comp.lado) < 0) ? -1 : 1;
+      var mc = _marcoCara(base, host);
+      base.anchorBase[mc.eje] = mc.ancla;
+      base.anchorBase[mc.ejeReparto] = _posReparto(mc, 0, 1);
+      // NORMAL de la cara: por ahí salen las patas del gancho (figura_puntos).
+      base.anchorBase.ejeCara = mc.eje;
+      base.anchorBase.sentidoCara = mc.sentido;
     }
     // JERARQUÍA: los roles con marco (estribo/traba) reciben su profundidad de
     // nivel por el anchor (el marco la suma a recub + φ/2). Son TRES pilas, una
@@ -1412,7 +1632,7 @@
     // (Antes se mandaba una sola pila vertical, la de la cara del anchor, para
     // arriba Y abajo: la figura se dibujaba con un desfase de pilaSup − pilaInf
     // respecto de su propia dim declarada.) Los cabezales lo resuelven en
-    // _yBordeCabezal/zHalf (no usan marco).
+    // _marcoCara (no usan marco de núcleo).
     // Se escriben LAS TRES o NINGUNA: _marcoNucleo cae de insetInf/insetLat a
     // inset cuando faltan, así que dejar una sola daría un marco equivocado.
     if (base.rol === 'estribo' || base.rol === 'traba') {
@@ -1432,6 +1652,40 @@
   // Insets de una CAPA ANIDADA: la figura cerrada se encoge δ por los CUATRO
   // lados, así que δ entra en las tres pilas del marco (sup, inf, lat) partiendo
   // de las del anchor base. Fuente única para layered y arreglo.
+  // ---------------------------------------------------------------------------
+  // AVISOS DEL COMPONENTE — lo que el motor decidió NO generar, y por qué.
+  // ---------------------------------------------------------------------------
+  // Regla del proyecto: nada de defensas que enmascaren un dato imposible. Cuando
+  // una capa anidada no cabe (dims ≤ 0 o marco cruzado) NO se dibuja ni se manda
+  // con ceros: se OMITE y queda escrita aquí, y la UI la muestra en la barra de
+  // estado. Se acumulan en `base.avisos` (el distribuidor no ve el comp) y
+  // expandirComponente los cosecha en `comp._avisos`.
+  //
+  // NO ENUMERABLE a propósito: `comp` se serializa entero al guardar el template
+  // (params) y se compara con JSON.stringify para el dirty-tracking del editor.
+  // Un campo derivado y volátil no puede ensuciar la receta ni viajar al backend.
+  function _avisar(base, msg) {
+    if (!base || !msg) return;
+    var a = base.avisos || (base.avisos = []);
+    if (a.indexOf(msg) < 0) a.push(msg);
+  }
+
+  function _cosecharAvisos(comp, base) {
+    if (!comp) return;
+    var lista = (base && base.avisos) ? base.avisos.slice() : [];
+    try {
+      Object.defineProperty(comp, '_avisos',
+        { value: lista, enumerable: false, writable: true, configurable: true });
+    } catch (e) { comp._avisos = lista; }
+  }
+
+  // Texto del aviso de una capa omitida. Formato ÚNICO (layered y arreglo):
+  //   "Capa 3 anidada no cabe (Sep 20): omitida — dim A = -6"
+  function _avisoCapa(c, sep, motivo) {
+    return 'Capa ' + (c + 1) + ' anidada no cabe (Sep ' + (Math.round(Number(sep) * 100) / 100) +
+      '): omitida' + (motivo ? ' — ' + motivo : '');
+  }
+
   function _insetsAnidados(anchorBase, d) {
     var i0 = Number(anchorBase.inset) || 0;
     var iI = (anchorBase.insetInf != null) ? Number(anchorBase.insetInf) : i0;
@@ -1489,9 +1743,12 @@
     posicionesRango: posicionesRango,
     evalEmpalme: evalEmpalme,
     expandirComponente: expandirComponente,
-    // VOLTEO (permutación de ejes real) — lo consulta la UI para saber sobre qué
-    // eje del MUNDO opera el rango/las capas de un componente.
+    // ORIENTACIÓN DE LA PIEZA (permutación de ejes real) — lo consulta la UI para
+    // saber sobre qué eje del MUNDO opera el rango/las capas de un componente.
+    // 'acostada' | 'volteada' (x↔z) | 'de_pie' (x↔y); `volteado:true` = 'volteada'.
     estaVolteado: estaVolteado,
+    orientacionPieza: orientacionPieza,
+    ORIENTACIONES: Object.keys(ORIENTACIONES),
     ejeDistribucion: ejeDistribucion,
     ejeCapas: ejeCapas,
     rolDeTipologia: _rolDeTipologia,   // jerarquía: generar calcula host.jer_phi

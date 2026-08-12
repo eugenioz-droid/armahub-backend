@@ -177,14 +177,62 @@
     return 'lateral';   // ES/TRV/LT
   }
 
-  // ¿el componente ci está VOLTEADO? (plano_pieza.volteado). Campo ADITIVO: si el
-  // componente no lo trae, cuenta como false → geometría idéntica a la actual.
-  // Sólo lo usa la UI (estado del botón de voltear); el efecto GEOMÉTRICO lo
-  // resuelve el motor por permutación de ejes (§INTERACCIÓN-2.0 · G3/B3).
+  // ==========================================================================
+  // ORIENTACIÓN DE LA PIEZA (contrato nuevo del motor, 12-ago)
+  //   plano_pieza.orientacion = 'acostada' | 'volteada' | 'de_pie'
+  // El campo viejo `volteado:true` sigue valiendo como 'volteada' (compat), y al
+  // escribir se mantienen LOS DOS sincronizados: `orientacion` es la fuente y
+  // `volteado` su reflejo booleano, para que ninguna ruta que aún lea el campo
+  // viejo vea un estado distinto del que muestra la UI.
+  //
+  // Cada orientación es una PERMUTACIÓN de ejes del mundo (la misma que aplica el
+  // motor a dims, pilas y recubrimientos):
+  //   acostada = identidad · volteada = x↔z · de pie = x↔y
+  // ==========================================================================
+  var _ORIENTACIONES = ['acostada', 'volteada', 'de_pie'];
+  var _ORIENT_LABEL = { acostada: 'acostada', volteada: 'volteada', de_pie: 'de pie' };
+  var _ORIENT_PERM = {
+    acostada: { x: 'x', y: 'y', z: 'z' },
+    volteada: { x: 'z', y: 'y', z: 'x' },
+    de_pie:   { x: 'y', y: 'x', z: 'z' }
+  };
+
+  // Orientación de un COMPONENTE (objeto). Prioriza el campo nuevo; sin él,
+  // traduce el booleano viejo. Cualquier valor desconocido → 'acostada'.
+  function _orientacionDe(c) {
+    var pp = (c && c.plano_pieza) || {};
+    var o = String(pp.orientacion || '').toLowerCase();
+    if (_ORIENTACIONES.indexOf(o) >= 0) return o;
+    return pp.volteado ? 'volteada' : 'acostada';
+  }
+  function _permOrientacion(c) { return _ORIENT_PERM[_orientacionDe(c)] || _ORIENT_PERM.acostada; }
+
+  // Escribe la orientación en el componente (los dos campos sincronizados).
+  function _setOrientacion(comp, ori) {
+    if (!comp) return;
+    if (_ORIENTACIONES.indexOf(ori) < 0) ori = 'acostada';
+    comp.plano_pieza = comp.plano_pieza || {};
+    comp.plano_pieza.orientacion = ori;
+    comp.plano_pieza.volteado = (ori === 'volteada');   // compat con el campo viejo
+  }
+
+  // Siguiente orientación del ciclo del botón: acostada → volteada → de pie → …
+  function _orientacionSiguiente(ori) {
+    var i = _ORIENTACIONES.indexOf(ori);
+    return _ORIENTACIONES[(i < 0 ? 0 : i + 1) % _ORIENTACIONES.length];
+  }
+
+  // ¿el componente ci está VOLTEADO? (orientación 'volteada'). Sólo lo usa la UI
+  // (estado del botón); el efecto GEOMÉTRICO lo resuelve el motor por permutación
+  // de ejes (§INTERACCIÓN-2.0 · G3/B3).
   function _compVolteado(ci) {
     if (ci == null || ci < 0 || !ST.receta) return false;
-    var c = ST.receta.componentes[ci];
-    return !!(c && c.plano_pieza && c.plano_pieza.volteado);
+    return _orientacionDe(ST.receta.componentes[ci]) === 'volteada';
+  }
+  // Orientación del componente ci (para el botón/estado de la UI).
+  function _compOrientacion(ci) {
+    if (ci == null || ci < 0 || !ST.receta) return 'acostada';
+    return _orientacionDe(ST.receta.componentes[ci]);
   }
 
   // dims por defecto para una figura recién colocada. Estribo con "tomar contorno"
@@ -244,7 +292,7 @@
   function _metaModular(tip) {
     return {
       modo: _modoDefault(tip),
-      plano_pieza: { volteado: false },
+      plano_pieza: { orientacion: 'acostada', volteado: false },
       arreglo: { n_capas: 1, sep_capas: 20, rango: null }
     };
   }
@@ -875,14 +923,26 @@
   //
   // NOTA: las CLAVES internas de plano se mantienen ('seccion'/'largo'/'planta')
   // para no cambiar el comportamiento visual actual ni el cableado de _redibujar2D.
+  // MURO — MISMO sistema de coords del host que la viga (la geometría se guarda con
+  // las claves canónicas: largo · alto · ancho=ESPESOR), así que los ejes de los 3
+  // planos son idénticos; lo que cambia es QUÉ RECUBRIMIENTO recorta cada lado:
+  //   recub_lat = recub de las CARAS del muro (las dos caras Z±, donde van las cortinas)
+  //   recub_sup = recub_inf = recub de los BORDES (arriba/abajo y extremos del largo)
+  //   elevación (clave 'largo')  = largo × alto     → bordes en las dos direcciones
+  //   sección  (clave 'seccion') = espesor × alto   → caras en horizontal, bordes en vertical
+  //   planta   (clave 'planta')  = largo × espesor  → bordes en horizontal, caras en vertical
   var PLANOS_POR_ELEMENTO = {
     viga: {
       seccion: { u: 'z', v: 'y', depth: 'x', W: 'ancho', H: 'alto',  recub: { W: 'lat', H: 'supinf' } },
       largo:   { u: 'x', v: 'y', depth: 'z', W: 'largo', H: 'alto',  recub: { W: 'lat', H: 'supinf' } },
       planta:  { u: 'x', v: 'z', depth: 'y', W: 'largo', H: 'ancho', recub: { W: 'lat', H: 'lat' } }
+    },
+    muro: {
+      seccion: { u: 'z', v: 'y', depth: 'x', W: 'ancho', H: 'alto',  recub: { W: 'lat', H: 'supinf' } },
+      largo:   { u: 'x', v: 'y', depth: 'z', W: 'largo', H: 'alto',  recub: { W: 'supinf', H: 'supinf' } },
+      planta:  { u: 'x', v: 'z', depth: 'y', W: 'largo', H: 'ancho', recub: { W: 'supinf', H: 'lat' } }
     }
-    // muro: { seccion: {...}, largo: {...}, planta: {...} },      // TODO P2: poblar
-    // columna: { seccion: {...}, largo: {...}, planta: {...} }    // TODO P2: poblar
+    // columna: { seccion: {...}, largo: {...}, planta: {...} }    // TODO tanda 3
   };
 
   // Elemento activo (por ahora fijo 'viga'; muro/columna cambian solo esta clave).
@@ -894,10 +954,16 @@
   }
 
   // BUG 8 — TÍTULOS por EJE. El nombre semántico ('SECCIÓN'/'A LO LARGO'/'PLANTA') es
-  // fijo por cuadrante, pero el EJE sale de PLANOS_POR_ELEMENTO (u,v del plano). Así,
-  // cuando se pueble muro/columna, el título sigue al elemento sin tocar el HTML.
-  // Se llama al abrir (y podría llamarse al cambiar de elemento).
-  var _TITULO_SEMANTICO = { seccion: 'SECCIÓN', largo: 'A LO LARGO', planta: 'PLANTA' };
+  // fijo por cuadrante PERO depende del ELEMENTO (en un muro la vista larga es la
+  // ELEVACIÓN), y el EJE sale de PLANOS_POR_ELEMENTO (u,v del plano). Así el título
+  // sigue al elemento sin tocar el HTML. Se llama al abrir y al cambiar de elemento.
+  var _TITULO_POR_ELEMENTO = {
+    viga: { seccion: 'SECCIÓN', largo: 'A LO LARGO', planta: 'PLANTA' },
+    muro: { seccion: 'SECCIÓN', largo: 'ELEVACIÓN',  planta: 'PLANTA' }
+  };
+  function _titulosSemanticos() {
+    return _TITULO_POR_ELEMENTO[_tipoElemento()] || _TITULO_POR_ELEMENTO.viga;
+  }
 
   // ==========================================================================
   // REETIQUETADO VISUAL DE EJES (solo DISPLAY — la geometría interna NO cambia)
@@ -925,6 +991,7 @@
 
   function _actualizarTitulosVista() {
     var defs = _defsPlanos() || {};
+    var TIT = _titulosSemanticos();
     ['seccion', 'largo', 'planta'].forEach(function (plano) {
       var def = defs[plano]; if (!def) return;
       var vista = document.querySelector('#te_quad .te-vista[data-plano="' + plano + '"]');
@@ -932,7 +999,7 @@
       var t = vista.querySelector('.te-vtitle');
       if (t) {
         var eje = _ejeRotulo(def.u, def.v);
-        t.textContent = (_TITULO_SEMANTICO[plano] || plano.toUpperCase()) + ' · ' + eje;
+        t.textContent = (TIT[plano] || plano.toUpperCase()) + ' · ' + eje;
       }
       // B4·(a) — GIZMO GRÁFICO de ejes (antes: 3 líneas de texto). Mini SVG con el
       // triad estándar de modelador. Las cámaras ortográficas NO rotan, así que este
@@ -990,20 +1057,26 @@
   // llegan girados, así que TODAS las vistas usan el proyector normal del plano —
   // eso también mata el bbox inflado del overlay y el arrastre en el eje equivocado.
 
-  // Eje del MUNDO a lo largo del cual REPARTE un componente ('x' normal, 'z' si la
-  // pieza está volteada). La autoridad es el motor; se resuelve DENTRO de la función
-  // (nunca capturado a nivel de módulo — regla dura 1).
+  // Eje del MUNDO a lo largo del cual REPARTE un componente. La autoridad es el
+  // motor; se resuelve DENTRO de la función (nunca capturado a nivel de módulo —
+  // regla dura 1).
   function _ejeDistDe(c) {
-    // El eje sobre el que se REPARTE depende del ROL: un estribo/traba se reparte
-    // A LO LARGO (x); un CABEZAL corre en x, así que repartirlo "a lo largo" lo
-    // apilaría sobre sí mismo — su reparto va A LO ANCHO (z). El volteo (x↔z)
-    // intercambia ambos casos. (Feedback: "me sale paralelo a la longitud de la
-    // barra; debiera mostrarse en el otro eje".)
-    var volteado = !!(c && c.plano_pieza && c.plano_pieza.volteado);
-    if (c && _rolDe(c.tipologia) === 'cabezal') return volteado ? 'x' : 'z';
+    // El eje sobre el que se REPARTE depende del ROL y de la CARA:
+    //   · estribo/traba          → a lo largo (x);
+    //   · cabezal sup/inf        → corre en x y se apila hacia el núcleo en Y, así
+    //     que el reparto de la capa va A LO ANCHO (z);
+    //   · cabezal LATERAL        → ancla a la CORTINA Z (las capas entran en Z hacia
+    //     el núcleo), así que el reparto de la capa va EN ALTURA (y). Repartirlo en
+    //     z lo apilaría contra su propia dirección de capas.
+    // Sobre ese eje BASE se aplica la permutación de la orientación de la pieza
+    // (acostada = identidad · volteada = x↔z · de pie = x↔y).
+    if (c && _rolDe(c.tipologia) === 'cabezal') {
+      var base = (c.cara === 'lateral') ? 'y' : 'z';
+      return _permOrientacion(c)[base] || base;
+    }
     var reglas = global.ModeladorReglas;
     if (reglas && reglas.ejeDistribucion) return reglas.ejeDistribucion(c);
-    return volteado ? 'z' : 'x';
+    return _permOrientacion(c).x;
   }
 
   // Proyector por clave de plano (usado por el hit-testing y el ghost de rango).
@@ -1153,9 +1226,10 @@
   // TRANSFORM DEL OVERLAY (G7-alineación) — (u,v) del plano ↔ px del viewBox.
   //
   // El transform es AFÍN e ISÓTROPO:  X(u) = cu + ku·u   ·   Y(v) = cv + kv·v
-  // (ku/kv llevan el SIGNO: la cámara de SECCIÓN y la de PLANTA miran de forma que
-  // el eje u crece hacia la IZQUIERDA en pantalla; con un transform "siempre
-  // positivo" el hit-testing quedaba espejado respecto del render).
+  // (ku/kv llevan el SIGNO de la cámara: con un transform "siempre positivo" el
+  // hit-testing quedaba espejado respecto del render. Hoy las 3 cámaras van con
+  // u→derecha (ku>0) y v→arriba (kv<0, porque el eje Y del SVG baja), pero el signo
+  // se sigue LEYENDO de la cámara: nadie lo hardcodea.)
   //   · En modo ORTO se DERIVA de la cámara ortográfica (que ya incluye zoom y pan)
   //     → proyección, hit-testing y ghost coinciden con lo que se ve (_transformDesdeCamara).
   //   · Sin 3D (fallback SVG plano) se deriva del bounding box, como antes.
@@ -1348,9 +1422,9 @@
   // del plano hacia la derecha / hacia arriba en el render. Se DERIVAN de _ORTO_DIR
   // (la misma tabla que construye las cámaras), no se hardcodean.
   //   camZ = eye · camY = up · camX = camY × camZ (base derecha de la cámara)
-  // Para SECCIÓN (depth x) y PLANTA (depth y) resulta su = −1: el eje u de la vista
-  // crece hacia la IZQUIERDA en el render. Ignorarlo era una de las causas del
-  // desalineamiento entre el overlay y lo que se ve.
+  // Desde el 12-ago las 3 cámaras están orientadas igual (su=+1, sv=+1), pero esta
+  // función SIGUE derivando el signo de la tabla: el overlay se alinea con lo que se
+  // ve aunque mañana una vista se mire desde el otro lado.
   var _EJE_IDX = { x: 0, y: 1, z: 2 };
   function _signosPantalla(def) {
     var dir = _ORTO_DIR[def.depth] || _ORTO_DIR.z;
@@ -1590,8 +1664,9 @@
     svg.appendChild(_svgEl('line', { 'class': 'te-dimTick', x1: X(rect.W / 2), y1: y0 - 3, x2: X(rect.W / 2), y2: y0 + 3 }));
     var tW = _svgEl('text', { 'class': 'te-dim', x: X(0), y: y0 - 4, 'text-anchor': 'middle' });
     tW.textContent = Math.round(rect.W) + ' cm'; svg.appendChild(tW);
-    // cota vertical (alto de la vista) — al borde IZQUIERDO real (el eje u puede
-    // crecer hacia la izquierda en la cámara de sección/planta).
+    // cota vertical (alto de la vista) — al borde IZQUIERDO real. Hoy las 3 cámaras
+    // van con u→derecha, pero se sigue tomando el mínimo: el borde se calcula, no se
+    // asume (si mañana una vista se mira desde el otro lado, la cota no se cruza).
     var x0 = Math.min(X(-rect.W / 2), X(rect.W / 2)) - 12;
     svg.appendChild(_svgEl('line', { 'class': 'te-dimL', x1: x0, y1: Y(-rect.H / 2), x2: x0, y2: Y(rect.H / 2) }));
     var tH = _svgEl('text', { 'class': 'te-dim', x: x0 - 2, y: Y(0), 'text-anchor': 'middle', transform: 'rotate(-90 ' + (x0 - 2) + ' ' + Y(0) + ')' });
@@ -1899,7 +1974,11 @@
       angulos: _figSpec(ST.figura).angulos.slice(),
       modo: meta.modo, plano_pieza: meta.plano_pieza, arreglo: meta.arreglo,
       dims: _dimsDefault(ST.figura, rol, ST.contorno),
-      distribucion: _distDefault(rol)
+      distribucion: _distDefault(rol),
+      // LADO de la cara CORTINA (z+ / z−). Lo elige el CLIC (dónde puso la barra el
+      // usuario), no el arrastre posterior: pos_hint es traslación pura. Sólo
+      // significa algo con cara 'lateral'; en las demás queda en su default (1).
+      lado: (cara === 'lateral' && Number(host.z) < 0) ? -1 : 1
     };
     // DISTRIBUCIÓN AL COLOCAR — un ESTRIBO o TRABA nace ya REPARTIDO (modo lineal,
     // activa, rango útil default de SU eje de reparto), no como 1 barra suelta: el
@@ -1966,26 +2045,29 @@
   }
 
   // ==========================================================================
-  // ROTAR PLANO DE LA PIEZA (§INTERACCIÓN-2.0 · G3/B3) — NO rota EN el plano;
-  // VOLTEA el plano de trabajo de la pieza. Desde 11-ago es GEOMETRÍA REAL: el
+  // ORIENTAR LA PIEZA (§INTERACCIÓN-2.0 · G3/B3 · TANDA 1) — NO rota EN el plano;
+  // cambia el PLANO DE TRABAJO de la pieza. Desde 11-ago es GEOMETRÍA REAL: el
   // motor (reglas.js) expande el componente con los ejes PERMUTADOS, así que la
-  // figura cambia de plano Y el reparto cambia de eje (x ↔ z), resolviendo las dims
-  // 'auto' y el anclaje contra el recubrimiento de las caras NUEVAS. Las 4 vistas
-  // (que son renders 3D) lo muestran girado sin ningún truco de proyección.
+  // figura cambia de plano Y el reparto cambia de eje, resolviendo las dims 'auto'
+  // y el anclaje contra el recubrimiento de las caras NUEVAS. Las 4 vistas (que son
+  // renders 3D) lo muestran girado sin ningún truco de proyección.
   //
-  // El RANGO y las ZONAS se expresan en el eje de distribución, así que al voltear
-  // hay que llevarlos al eje nuevo: se re-encuadran al tramo útil completo de ese
-  // eje (conservando los @sep). Si se dejara el dato viejo, un estribo repartido en
-  // ±296 (largo) pasaría a repartirse en ±296 de ANCHO — fuera del hormigón — y las
-  // zonas (150/300/150 cm) se consumirían contra un marco de 30 cm: el distribuidor
-  // las trunca en silencio y "desaparecen" casi todas las barras.
-  function rotarPlanoPieza(comp) {
+  // Desde el 12-ago hay TRES orientaciones (acostada / volteada / de pie) y el botón
+  // las CICLA. `ori` fija una en concreto; sin argumento avanza a la siguiente.
+  //
+  // El RANGO y las ZONAS se expresan en el eje de distribución, así que al cambiar
+  // de orientación hay que llevarlos al eje NUEVO (el que salga de _ejeDistDe con la
+  // orientación destino, sea x, z o y): se re-encuadran al tramo útil completo de
+  // ese eje (conservando los @sep). Si se dejara el dato viejo, un estribo repartido
+  // en ±296 (largo) pasaría a repartirse en ±296 de ANCHO — fuera del hormigón — y
+  // las zonas (150/300/150 cm) se consumirían contra un marco de 30 cm: el
+  // distribuidor las trunca en silencio y "desaparecen" casi todas las barras.
+  function rotarPlanoPieza(comp, ori) {
     if (!comp) return;
-    comp.plano_pieza = comp.plano_pieza || { volteado: false };
-    comp.plano_pieza.volteado = !comp.plano_pieza.volteado;
+    _setOrientacion(comp, ori || _orientacionSiguiente(_orientacionDe(comp)));
     var d = comp.distribucion;
     if (d) {
-      var ejeN = _ejeDistDe(comp);
+      var ejeN = _ejeDistDe(comp);   // eje de reparto YA con la orientación nueva
       if (d.rango) d.rango = _rangoDefault(d.rango.sep || d.sep || 20, ejeN);
       _reencuadrarZonas(d, ejeN);
     }
@@ -1995,8 +2077,8 @@
     _actualizarStatus();
   }
 
-  // Voltear el plano de la pieza SELECCIONADA (lo llaman la tecla 'R' y el botón
-  // contextual que flota sobre la barra seleccionada). Snapshot para Ctrl+Z.
+  // Cambiar la orientación de la pieza SELECCIONADA (lo llaman la tecla 'R' y el
+  // botón contextual que flota sobre la barra seleccionada). Snapshot para Ctrl+Z.
   function _voltearSeleccion() {
     if (ST.selCi < 0 || !ST.receta) return;
     _pushUndo();
@@ -2074,7 +2156,25 @@
     btn.style.left = left + 'px';
     btn.style.top = top + 'px';
     btn.classList.add('on');
-    btn.classList.toggle('flipped', _compVolteado(ST.selCi));
+    _pintarFlipBtn(btn, _compOrientacion(ST.selCi));
+  }
+
+  // Icono / tooltip / clase del botón según la ORIENTACIÓN actual de la pieza. El
+  // botón CICLA (acostada → volteada → de pie → acostada), así que muestra el estado
+  // presente y anuncia el siguiente.
+  // Notación de obra, legible a 30 px: ↔ corre a lo largo (acostada) · ⊗ corre hacia
+  // el fondo, se ve de canto (volteada) · ↕ corre en vertical (de pie).
+  var _ORIENT_ICONO = { acostada: '↔', volteada: '⊗', de_pie: '↕' };
+  function _pintarFlipBtn(btn, ori) {
+    if (!btn) return;
+    var sig = _orientacionSiguiente(ori);
+    btn.textContent = _ORIENT_ICONO[ori] || '🔄';
+    var t = 'Orientación: ' + (_ORIENT_LABEL[ori] || ori) + ' — clic: ' + (_ORIENT_LABEL[sig] || sig) + ' (R)';
+    btn.title = t;
+    btn.setAttribute('aria-label', t);
+    btn.setAttribute('data-ori', ori);
+    btn.classList.toggle('flipped', ori === 'volteada');
+    btn.classList.toggle('depie', ori === 'de_pie');
   }
 
   // (El etiquetado ci de cada placement se hace en _regenerar → _etiquetarCi.)
@@ -2576,8 +2676,26 @@
     // Cara / anclaje (radial)
     var caraRow = _div('te-row');
     caraRow.appendChild(_label('Cara / anclaje'));
-    caraRow.appendChild(_radial([['sup', 'Superior'], ['inf', 'Inferior'], ['lateral', 'Lateral']], c.cara, function (v) { c.cara = v; _mut(ci); }));
+    caraRow.appendChild(_radial([['sup', 'Superior'], ['inf', 'Inferior'], ['lateral', 'Lateral']], c.cara, function (v) { c.cara = v; _mut(ci, true); }));
     body.appendChild(caraRow);
+
+    // LADO de la cara CORTINA — sólo para un LONGITUDINAL lateral (estribo/traba
+    // encuadran el núcleo entero: no tienen lado que elegir). Escribe comp.lado
+    // (1 | −1), que es lo ÚNICO que el motor mira para anclar la cortina; el
+    // arrastre (pos_hint) ya no cambia de cara.
+    if (rol === 'cabezal' && c.cara === 'lateral') {
+      if (c.lado !== 1 && c.lado !== -1) c.lado = 1;
+      var ladoRow = _div('te-row');
+      ladoRow.appendChild(_label('Lado'));
+      var ladoSeg = _radial([['1', '+Z'], ['-1', '−Z']], String(c.lado), function (v) {
+        _pushUndo();
+        c.lado = (Number(v) < 0) ? -1 : 1;
+        _mut(ci, true);   // redibuja la ficha → el botón activo sigue al valor
+      });
+      ladoSeg.title = 'Cara cortina contra la que se apoya (+Z / −Z). El arrastre no la cambia.';
+      ladoRow.appendChild(ladoSeg);
+      body.appendChild(ladoRow);
+    }
 
     // Recub override
     var recRow = _div('te-row');
@@ -2795,7 +2913,8 @@
     g3.appendChild(_fld('N° capas', _input({ value: d.n_capas || 1, type: 'number' }, function (v) { d.n_capas = Math.max(1, Number(v) || 1); _mut(ci, true); })));
     // gap = separación entre capas. Contrato nuevo del motor: es EJE A EJE (antes se
     // leía como luz libre) → el label lo dice para que el usuario no dude.
-    g3.appendChild(_fld('Sep. capas cm (eje a eje)', _input({ value: d.gap != null ? d.gap : 4, type: 'number' }, function (v) { d.gap = Number(v) || 0; _mut(ci); })));
+    g3.appendChild(_fld('Sep. ejes cm', _input({ value: d.gap != null ? d.gap : 4, type: 'number' }, function (v) { d.gap = Number(v) || 0; _mut(ci); }),
+      'Separación entre ejes de capas (eje a eje)'));
     box.appendChild(g3);
     _filaAnidar(box, c, ci, rol, d);
     var note = _div('te-note'); note.textContent = 'Las capas se apilan desde la cara hacia el núcleo con la separación indicada.';
@@ -2874,7 +2993,8 @@
 
     var g3 = _div('te-grid3');
     g3.appendChild(_fld('N° capas', _input({ value: d.n_capas || 2, type: 'number' }, function (v) { d.n_capas = Math.max(1, Number(v) || 1); _mut(ci); })));
-    g3.appendChild(_fld('Sep. capas cm (eje a eje)', _input({ value: d.sep_capas != null ? d.sep_capas : 10, type: 'number' }, function (v) { d.sep_capas = Number(v) || 0; _mut(ci); })));
+    g3.appendChild(_fld('Sep. ejes cm', _input({ value: d.sep_capas != null ? d.sep_capas : 10, type: 'number' }, function (v) { d.sep_capas = Number(v) || 0; _mut(ci); }),
+      'Separación entre ejes de capas (eje a eje)'));
     g3.appendChild(_fld('Prof. (capas)', _selectPairs([['x', 'largo'], ['y', 'alto'], ['z', 'ancho']], d.eje_capas || _ejeCapasDefault(), function (v) { d.eje_capas = v; _mut(ci); })));
     box.appendChild(g3);
     _filaAnidar(box, c, ci, rol, d);
@@ -2941,7 +3061,15 @@
   // --- fábricas de UI reutilizables ---
   function _div(cls) { var d = document.createElement('div'); if (cls) d.className = cls; return d; }
   function _label(t) { var l = document.createElement('label'); l.textContent = t; return l; }
-  function _fld(labelText, inputEl) { var f = _div('te-fld'); f.appendChild(_label(labelText)); f.appendChild(inputEl); return f; }
+  // `title` opcional: el label queda CORTO (no empuja la columna de la grilla) y la
+  // explicación larga vive en el tooltip del campo entero.
+  function _fld(labelText, inputEl, title) {
+    var f = _div('te-fld');
+    var l = _label(labelText);
+    if (title) { l.title = title; f.title = title; }
+    f.appendChild(l); f.appendChild(inputEl);
+    return f;
+  }
   function _static(txt) { var s = document.createElement('div'); s.textContent = txt; s.style.cssText = 'font-size:11px;color:var(--te-muted);padding:4px 0'; return s; }
   function _input(attrs, onchange) {
     var el = document.createElement('input');
@@ -3096,21 +3224,63 @@
   // Validación mínima: dims > 0, recubs >= 0, recub_sup+recub_inf < alto y
   // 2·recub_lat < ancho. Si es inválido: borde rojo y NO se aplica.
   //
-  // RECUB ÚNICO: un solo campo ("Recub (cm)") escribe los TRES recubrimientos
-  // (`ks`); el ajuste fino por barra sigue en "Recub. override" del panel.
+  // POR ELEMENTO (TANDA 1): la geometría se guarda SIEMPRE con las claves canónicas
+  // (largo/alto/ancho/recub_sup/recub_inf/recub_lat) — son las que leen el motor y
+  // las vistas — pero cada elemento las MUESTRA con su nombre de obra:
+  //   VIGA: Largo · Alto · Ancho + "Recub (cm)" ÚNICO (escribe los 3 → como estaba).
+  //   MURO: Largo · Alto · ESPESOR(=ancho) + "Recub caras"(=recub_lat) y
+  //         "Recub bordes"(=recub_sup+recub_inf, un solo campo para los dos).
+  // Un campo con `ks` escribe varias claves; el ajuste fino por barra sigue en
+  // "Recub. override" del panel.
   // ==========================================================================
   var GEO_RECUB_DEF = 2;   // cm — lo que muestra el campo si la receta no trae recub
-  var GEO_CAMPOS = [
-    { id: 'te_geoLargo', k: 'largo', min: 1 },
-    { id: 'te_geoAlto', k: 'alto', min: 1 },
-    { id: 'te_geoAncho', k: 'ancho', min: 1 },
-    { id: 'te_geoRecub', k: 'recub_sup', ks: ['recub_sup', 'recub_inf', 'recub_lat'], min: 0, def: GEO_RECUB_DEF }
-  ];
+  var GEO_CAMPOS_POR_ELEMENTO = {
+    viga: [
+      { id: 'te_geoLargo', k: 'largo', lbl: 'Largo', min: 1, title: 'Largo del elemento (cm)' },
+      { id: 'te_geoAlto', k: 'alto', lbl: 'Alto', min: 1, title: 'Alto del elemento (cm)' },
+      { id: 'te_geoAncho', k: 'ancho', lbl: 'Ancho', min: 1, title: 'Ancho del elemento (cm)' },
+      { id: 'te_geoRecub', k: 'recub_sup', ks: ['recub_sup', 'recub_inf', 'recub_lat'], lbl: 'Recub (cm)',
+        min: 0, def: GEO_RECUB_DEF, fila: 2, title: 'Recubrimiento (cm) — se aplica arriba, abajo y a los lados' }
+    ],
+    muro: [
+      { id: 'te_geoLargo', k: 'largo', lbl: 'Largo', min: 1, title: 'Largo del muro (cm)' },
+      { id: 'te_geoAlto', k: 'alto', lbl: 'Alto', min: 1, title: 'Alto del muro (cm)' },
+      { id: 'te_geoAncho', k: 'ancho', lbl: 'Espesor', min: 1, title: 'Espesor del muro (cm) — geometria.ancho' },
+      { id: 'te_geoRecubCaras', k: 'recub_lat', lbl: 'Recub caras', min: 0, fila: 2,
+        title: 'Recubrimiento de las CARAS del muro (cm) — donde se anclan las cortinas' },
+      { id: 'te_geoRecubBordes', k: 'recub_sup', ks: ['recub_sup', 'recub_inf'], lbl: 'Recub bordes', min: 0, fila: 2,
+        title: 'Recubrimiento de los BORDES del muro (cm) — arriba, abajo y extremos' }
+    ]
+  };
+  function _geoCampos() {
+    return GEO_CAMPOS_POR_ELEMENTO[_tipoElemento()] || GEO_CAMPOS_POR_ELEMENTO.viga;
+  }
+
+  // Dibuja los campos del grupo HORMIGÓN según el elemento activo y los cablea.
+  // Se re-renderiza al abrir (el elemento puede cambiar entre aperturas), igual que
+  // el ribbon de tipologías: por eso el binding va DESPUÉS, sobre los inputs nuevos.
+  function _renderRibbonGeo() {
+    var cont = $('te_hormRows'); if (!cont) return;
+    var campos = _geoCampos();
+    var filas = {};
+    campos.forEach(function (f) {
+      var n = f.fila || 1;
+      (filas[n] = filas[n] || []).push(f);
+    });
+    cont.innerHTML = Object.keys(filas).sort().map(function (n) {
+      return '<div class="te-hormrow">' + filas[n].map(function (f) {
+        return '<div class="te-geo"><label for="' + f.id + '">' + _esc(f.lbl) + '</label>' +
+          '<input type="number" id="' + f.id + '" step="any" min="' + (f.min || 0) + '"' +
+          ' title="' + _esc(f.title || f.lbl) + '"></div>';
+      }).join('') + '</div>';
+    }).join('');
+    _bindGeometria();
+  }
 
   // Vuelca ST.receta.geometria a los inputs (al abrir y tras arrastrar un nodo).
   function _sincronizarRibbonGeo() {
     var g = (ST.receta && ST.receta.geometria) || {};
-    GEO_CAMPOS.forEach(function (f) {
+    _geoCampos().forEach(function (f) {
       var el = $(f.id); if (!el) return;
       var v = g[f.k];
       if ((v == null || !isFinite(Number(v))) && f.def != null) v = f.def;
@@ -3131,7 +3301,7 @@
   }
 
   function _bindGeometria() {
-    GEO_CAMPOS.forEach(function (f) {
+    _geoCampos().forEach(function (f) {
       var el = $(f.id); if (!el || el._teBound) return;
       el._teBound = true;
       // 'change' (blur/Enter) APLICA; 'input' sólo pinta el borde rojo mientras se
@@ -3261,14 +3431,23 @@
   function _actualizarStatus(msg) {
     var s = $('te_ctoolsStatus'); if (!s) return;
     if (msg) { s.innerHTML = '<b style="color:var(--te-acero-d)">' + _esc(msg) + '</b>'; return; }
-    var selTxt = '';
+    var selTxt = '', avisoTxt = '';
     if (ST.selCi >= 0 && ST.receta.componentes[ST.selCi]) {
       var c = ST.receta.componentes[ST.selCi];
       var ang = (c.orient && c.orient.deg) ? (' · ' + c.orient.deg + '°') : '';
       selTxt = ' · sel: <b>' + _esc(c.tipologia + ' ' + c.figura) + ang + '</b>';
+      // AVISOS DEL MOTOR (comp._avisos): lo que NO se generó y por qué — hoy, capas
+      // anidadas que no caben (dims ≤ 0 con ese Sep). Se muestran en ROJO junto a
+      // la selección: antes esas capas salían con dims aplastadas a 0 (payload que
+      // el backend rechaza) y con el bbox fuera del hormigón, en SILENCIO.
+      var av = c._avisos;
+      if (av && av.length) {
+        avisoTxt = ' · <b style="color:#c62828">⚠ ' + _esc(av.join(' · ')) + '</b>';
+      }
     }
     s.innerHTML = 'Herramienta: <b>' + _esc(ST.tool) + '</b> · figura <b>' + _esc(ST.figura) + '</b> · ' +
-      '<b style="color:' + _colDe(ST.tipologia) + '">' + _esc(ST.tipologia) + '</b> ø' + _esc(ST.diam) + selTxt;
+      '<b style="color:' + _colDe(ST.tipologia) + '">' + _esc(ST.tipologia) + '</b> ø' + _esc(ST.diam) +
+      selTxt + avisoTxt;
   }
 
   // Teclado: Ctrl+Z deshace · ESPACIO rota 90° · R voltea el plano de la pieza ·
@@ -3310,11 +3489,38 @@
   // La dirección de cada cámara sale de la MISMA tabla PLANOS_POR_ELEMENTO (eje de
   // profundidad `depth`): la cámara mira A LO LARGO de ese eje, con `up` = eje v.
   // ==========================================================================
+  // ORIENTACIÓN COHERENTE DE LAS 3 VISTAS (bug 12-ago: "en PLANTA la línea de
+  // distribución y el componente salen intercambiados respecto de A LO LARGO").
+  // Causa: las cámaras de SECCIÓN y PLANTA quedaban con su = −1 (el eje u del plano
+  // crecía hacia la IZQUIERDA), así que el MISMO eje interno x se veía a la derecha
+  // en 'largo' y a la izquierda en 'planta' → las dos vistas eran espejo una de otra.
+  // Regla nueva (exigida por el usuario y ya dibujada por el gizmo): en las TRES
+  // vistas el eje u crece a la DERECHA y el v hacia ARRIBA → su=+1 y sv=+1.
+  //
+  // Con camX = up × eye (base derecha de la cámara), para que camX = +u hay que
+  // mirar desde el lado que hace (u, v, hacia-el-observador) una terna DERECHA:
+  //   sección (u=z, v=y): z × y = −x  → eye = −X (antes +X: mirror horizontal)
+  //   planta  (u=x, v=z): x × z = −y  → eye = −Y (antes +Y: mirror horizontal)
+  //   largo   (u=x, v=y): x × y = +z  → eye = +Z (ya estaba bien; no cambia)
+  // Sólo se ESPEJA la horizontal: la vertical de cada vista se mantiene como estaba
+  // (sv seguía siendo +1 en las tres). La banda de corte es simétrica y la luz sale
+  // del propio eye, así que ambas siguen a la cámara sin tocar nada más.
   var _ORTO_DIR = {   // depth → posición de cámara (unitaria) y up, en ejes de mundo
-    x: { eye: [1, 0, 0], up: [0, 1, 0] },   // sección: mira por +X (ve el plano YZ)
-    y: { eye: [0, 1, 0], up: [0, 0, 1] },   // planta:  mira por +Y (ve el plano XZ)
-    z: { eye: [0, 0, 1], up: [0, 1, 0] }    // largo:   mira por +Z (ve el plano XY)
+    x: { eye: [-1, 0, 0], up: [0, 1, 0] },  // sección: mira hacia +X (ve el plano ZY, z→derecha)
+    y: { eye: [0, -1, 0], up: [0, 0, 1] },  // planta:  mira hacia +Y (ve el plano XZ, x→derecha)
+    z: { eye: [0, 0, 1], up: [0, 1, 0] }    // largo:   mira hacia −Z (ve el plano XY, x→derecha)
   };
+
+  // Las cámaras orto se crean UNA vez (_initVistasOrto) pero el `def` de cada plano
+  // depende del ELEMENTO (PLANOS_POR_ELEMENTO). Al abrir un template de otro tipo
+  // hay que refrescarlo o el encuadre/overlay seguiría usando el del anterior.
+  function _refrescarDefsOrto() {
+    if (!ST.orto) return;
+    var defs = _defsPlanos() || {};
+    Object.keys(ST.orto).forEach(function (p) {
+      if (ST.orto[p] && defs[p]) ST.orto[p].def = defs[p];
+    });
+  }
 
   function _initVistasOrto() {
     var THREE = global.THREE;
@@ -3473,6 +3679,16 @@
     // (P3) se dibuja a o.cortePos para mostrar por dónde pasa el corte.
     var half = _espesorProfundidad(d) / 2;                 // semi-espesor del elemento (cm)
     var frac = (o.corte != null ? o.corte : 0.5);
+    // SENTIDO DEL CORTE — DERIVADO DE LA CÁMARA, no hardcodeado (hallazgo D).
+    // La fórmula cruda `cortePos = −frac·2·half + half` hace que el extremo ALTO del
+    // slider (frac 1 → cortePos −half) pele la cara +eje. Eso pela la cara CERCANA
+    // sólo si el observador está en +eje. Al invertir las cámaras de SECCIÓN
+    // (eye −X) y PLANTA (eye −Y) el slider quedó pelando por el lado CONTRARIO al
+    // de antes en esas dos vistas, mientras ELEVACIÓN (eye +Z) seguía igual.
+    // Con el signo del eye en el eje de profundidad, las 3 vistas se comportan
+    // igual otra vez: arriba del slider = se pela la cara que mira al observador.
+    var eyeProf = (dir && dir.eye) ? dir.eye[_EJE_IDX[d]] : 1;
+    if (eyeProf < 0) frac = 1 - frac;
     // MODELO CUCHILLO (rediseño CORTE) — el grosor de la banda se DESACOPLA por eje,
     // porque las 3 vistas necesitan cosas OPUESTAS:
     //
@@ -4029,6 +4245,11 @@
     _actualizarBtnGuardar();
     var se = $('te_saveErr'); if (se) se.textContent = '';
     _bindUI();
+    // El ELEMENTO puede cambiar entre aperturas (viga → muro): las 3 cosas que
+    // dependen de él se rehacen aquí, no en _bindUI (que corre una sola vez).
+    _renderRibbonGeo();        // campos del grupo HORMIGÓN de ESTE elemento
+    _refrescarDefsOrto();      // cada cámara orto vuelve a leer el def de su plano
+    _actualizarTitulosVista(); // títulos (SECCIÓN/ELEVACIÓN/PLANTA) + gizmo de ejes
     _sincronizarRibbonGeo();   // el grupo HORMIGÓN del ribbon refleja la receta
     _marcarSucio();     // PERF (render-on-demand): al abrir siempre hay que pintar
     // Undo limpio por sesión. Se ABRE SIEMPRE en SELECCIONAR: colocar es un modo
@@ -4146,10 +4367,15 @@
       recubs: [{ k: 'recub_sup', lbl: 'Sup', def: 4 }, { k: 'recub_inf', lbl: 'Inf', def: 4 }, { k: 'recub_lat', lbl: 'Lat', def: 3 }],
       checks: [['recub_sup', 'recub_inf', 'alto'], ['recub_lat', 'recub_lat', 'ancho']]
     },
+    // MURO — se guarda con las claves CANÓNICAS de la geometría (las únicas que el
+    // motor y las vistas conocen), sólo que se LLAMAN distinto en la UI:
+    //   ancho = ESPESOR · recub_lat = recub de CARAS · recub_sup/inf = recub de BORDES.
+    // El "Recub bordes" escribe los dos (ks) porque arriba y abajo son el mismo borde.
     MURO: {
-      dims:   [{ k: 'largo', lbl: 'Largo', def: 400 }, { k: 'alto', lbl: 'Alto', def: 250 }, { k: 'espesor', lbl: 'Espesor', def: 20 }],
-      recubs: [{ k: 'recub_caras', lbl: 'Caras', def: 2.5 }, { k: 'recub_bordes', lbl: 'Bordes', def: 3 }],
-      checks: [['recub_caras', 'recub_caras', 'espesor'], ['recub_bordes', 'recub_bordes', 'alto']]
+      dims:   [{ k: 'largo', lbl: 'Largo', def: 400 }, { k: 'alto', lbl: 'Alto', def: 250 }, { k: 'ancho', lbl: 'Espesor', def: 20 }],
+      recubs: [{ k: 'recub_lat', lbl: 'Caras', def: 2.5 },
+               { k: 'recub_sup', ks: ['recub_sup', 'recub_inf'], lbl: 'Bordes', def: 3 }],
+      checks: [['recub_lat', 'recub_lat', 'ancho'], ['recub_sup', 'recub_inf', 'alto']]
     },
     COLUMNA: {
       dims:   [{ k: 'alto', lbl: 'Alto', def: 300 }, { k: 'b', lbl: 'b', def: 40 }, { k: 'h', lbl: 'h', def: 40 }],
@@ -4264,10 +4490,14 @@
   // Dimensiones POR DEFECTO del elemento (cm). La grilla de dims salió del tab: se
   // aplican en silencio al crear y se editan DENTRO del modal (grupo HORMIGÓN del
   // ribbon).
+  // Un campo puede escribir VARIAS claves de la geometría (d.ks: el "Recub bordes"
+  // del muro = recub_sup + recub_inf). Sin ks, escribe la suya.
   function _tplDimsDefault(elem) {
-    var spec = TPL_DIMS_POR_ELEMENTO[elem] || TPL_DIMS_POR_ELEMENTO.VIGA;
+    var spec = TPL_DIMS_POR_ELEMENTO[String(elem || '').toUpperCase()] || TPL_DIMS_POR_ELEMENTO.VIGA;
     var dims = {};
-    spec.dims.concat(spec.recubs).forEach(function (d) { dims[d.k] = d.def; });
+    spec.dims.concat(spec.recubs).forEach(function (d) {
+      (d.ks || [d.k]).forEach(function (k) { dims[k] = d.def; });
+    });
     return dims;
   }
 
@@ -4391,9 +4621,10 @@
     _dentroDelBoundary: _dentroDelBoundary, _clampAlBoundary: _clampAlBoundary,
     _sellarCargado: _sellarCargado, _soltarCargado: _soltarCargado,
     _ghostForma: _ghostForma,
-    // INTERACCIÓN-2.0 · rotar plano de la pieza + snap de cara
-    rotarPlanoPieza: rotarPlanoPieza,                           // toggle plano_pieza.volteado + regenera
-    _compVolteado: _compVolteado,
+    // INTERACCIÓN-2.0 · orientación de la pieza + snap de cara
+    rotarPlanoPieza: rotarPlanoPieza,                           // cicla (o fija) la orientación + regenera
+    _compVolteado: _compVolteado, _compOrientacion: _compOrientacion,
+    _orientacionDe: _orientacionDe, _orientacionSiguiente: _orientacionSiguiente,
     _facesDeVista: _facesDeVista, _caraCercana: _caraCercana,   // snap de cara
     _ejeDistDe: _ejeDistDe,                                     // eje de reparto (x | z si volteada)
     _transformDesdeCamara: _transformDesdeCamara,               // G7 — overlay ≡ cámara orto

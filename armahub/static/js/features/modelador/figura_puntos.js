@@ -29,20 +29,39 @@
   function extGancho(diamCm) { return Math.max(6 * diamCm, 7.5); }
 
   // ---- CABEZAL / longitudinal: barra a lo largo de X, con ganchos en extremos.
-  // host: {largo, alto, ancho}. anchor: {cara:'sup'|'inf', y, z, recubExtremo}.
+  // host: {largo, alto, ancho}. anchor: {cara:'sup'|'inf'|'lateral', y, z,
+  // recubExtremo, ejeCara, sentidoCara}.
   // dims: {A, B, C} de la figura (A,C = patas del gancho; B = tramo largo). Si la
   // figura no usa gancho (101A = solo A recto) se dibuja recta.
-  // sentidoGancho: -1 = gancho hacia abajo (barras superiores), +1 = hacia arriba.
   // CONVENCIÓN DE ANCHOR (la misma que _estriboPerimetral/_traba usan para `x`):
   // un eje ausente en el anchor = CENTRO del host en ese eje. Antes y/z se leían
   // crudos y un anchor sin `y` producía puntos con y:undefined (y NaN al sumarles
   // el pos_hint). El origen del dato está en reglas._baseDeComponente, que ahora
   // publica la POSE NATURAL del anclaje (y de la cara, z al centro); esto es sólo
   // la convención del módulo, coherente entre los tres constructores.
+  //
+  // EJE DE LA CARA (CARA CORTINA) — las patas del gancho salen SIEMPRE por la
+  // NORMAL de la cara contra la que se apoya la barra, hacia el núcleo:
+  //   · cara sup/inf → normal = Y (patas en ±Y, como siempre);
+  //   · cara lateral → normal = Z (patas en ±Z: la barra es una cortina pegada a
+  //     la cara Z± de un muro/viga y sus ganchos entran hacia adentro EN Z).
+  // Antes el sentido era `(cara === 'sup') ? -1 : 1` SOBRE Y y punto: una barra
+  // 'lateral' doblaba sus patas hacia arriba en Y, o sea contra una cara que no
+  // es la suya. `anchor.ejeCara`/`anchor.sentidoCara` los publica
+  // reglas._marcoCara (fuente única del anclaje por cara); si faltan se cae al
+  // comportamiento histórico (Y, con el signo de sup/inf) → cero regresión.
   function _cabezalLongitudinal(figura, dims, host, anchor, diamCm) {
     var y = (anchor.y != null && isFinite(anchor.y)) ? Number(anchor.y) : 0;
     var z = (anchor.z != null && isFinite(anchor.z)) ? Number(anchor.z) : 0;
-    var s = (anchor.cara === 'sup') ? -1 : 1;   // gancho hacia el núcleo
+    var ejeC = (anchor.ejeCara === 'z') ? 'z' : 'y';        // normal de la cara
+    var s = (anchor.sentidoCara === 1 || anchor.sentidoCara === -1)
+      ? anchor.sentidoCara
+      : ((anchor.cara === 'sup') ? -1 : 1);                 // gancho hacia el núcleo
+    // Punto del cabezal: x sobre el eje longitudinal; la pata (largo `p`) sale por
+    // la normal de la cara. p = 0 → punto del tramo.
+    function P(x, p) {
+      return (ejeC === 'z') ? V(x, y, z + s * p) : V(x, y + s * p, z);
+    }
     var f = (figura || '').toUpperCase();
     // Empalme: cuánto asoma FUERA del hormigón y por qué extremo (dato de
     // trazabilidad; la dim ya viene alargada, aquí sólo se orienta el excedente
@@ -70,7 +89,7 @@
       // el empalme sobresaliendo por su extremo.
       var lBase = largoRecto - eIni - eFin;
       var xi = -lBase / 2 - eIni, xf = lBase / 2 + eFin;
-      return [V(xi, y, z), V(xf, y, z)];
+      return [P(xi, 0), P(xf, 0)];
     }
     var largoTramo = (dims.B != null) ? dims.B : (host.largo - 2 * (anchor.recubExtremo || 0));
     // El empalme del tramo largo se reparte al extremo indicado sobre B.
@@ -79,13 +98,13 @@
     var A = (dims.A != null) ? dims.A : 0;
     var C = (dims.C != null) ? dims.C : 0;
     // 102x / recta sin patas → segmento simple.
-    if (!A && !C) return [V(x0, y, z), V(x1, y, z)];
+    if (!A && !C) return [P(x0, 0), P(x1, 0)];
     // 103x: pata A (inicio) + tramo B + pata C (fin), ganchos hacia el núcleo (90°).
     var pts = [];
-    if (A) pts.push(V(x0, y + s * A, z));
-    pts.push(V(x0, y, z));
-    pts.push(V(x1, y, z));
-    if (C) pts.push(V(x1, y + s * C, z));
+    if (A) pts.push(P(x0, A));
+    pts.push(P(x0, 0));
+    pts.push(P(x1, 0));
+    if (C) pts.push(P(x1, C));
     return pts;
   }
 
@@ -141,6 +160,18 @@
       yInf: -host.alto / 2 + recubInf + r + insetInf,
       w2: host.ancho / 2 - recubLat - r - insetLat
     };
+  }
+
+  // ¿CABE el marco de núcleo que produce este anchor? (hallazgo A del verificador)
+  // Un anillo anidado se posiciona con insets crecientes (k·Sep en las TRES pilas):
+  // pasado cierto k el marco se cruza consigo mismo y ySup ≤ yInf (o w2 ≤ 0), o sea
+  // el estribo "interior" está FUERA del hormigón, con lados de largo negativo.
+  // Devuelve las dos medidas del marco para que el llamador avise con números.
+  //   alto = ySup − yInf   ·   ancho = 2·w2   ·   cabe = las dos > 0
+  function marcoNucleoCabe(host, anchor, diamCm) {
+    var m = _marcoNucleo(host, anchor || {}, diamCm);
+    var alto = m.ySup - m.yInf, ancho = 2 * m.w2;
+    return { cabe: (alto > 0 && ancho > 0), alto: alto, ancho: ancho };
   }
 
   // ---- ESTRIBO perimetral cerrado (plano YZ, a una X dada), ganchos sísmicos 135°.
@@ -264,62 +295,69 @@
   }
 
   // ---------------------------------------------------------------------------
-  // ANIDADO GENERAL POR FIGURA — "la capa k es la MISMA figura con un INSET de
-  // polilínea δ hacia el interior".
+  // ANIDADO POR FIGURA — v3 (CORRECCIÓN CONCEPTUAL DEL USUARIO, 12-ago)
   // ---------------------------------------------------------------------------
-  // Regla ÚNICA (no hay casos particulares por tipología): al meter una figura
-  // DENTRO de otra, la figura entera se TRASLADA δ hacia el interior y sólo se
-  // acortan los lados a los que la capa exterior les estorba el paso:
+  // «El espaciamiento se lo damos con este campo y debe mandar. Al ajustar capas
+  //  anidadas no debe considerar esta altura: debe ajustar SOLO la medida de B.»
   //
-  //   · figura CERRADA (104x, perímetro): todos los lados tienen 2 vecinos →
-  //     cada lado −2δ. La POSICIÓN la resuelve el marco (anchor.inset += δ), que
-  //     ya encoge el rectángulo útil; por eso anchorDelta = 0 y se devuelve
-  //     `inset: δ` para que el llamador lo sume al anchor.
-  //     (Hoy el marco ya se encogía pero las dims NO → el listado/corte mentía.)
+  // De ahí salen DOS responsabilidades SEPARADAS, que antes estaban mezcladas:
   //
-  //   · figura ABIERTA en U / corchete (103x con patas A y C): SOLO el TRAMO B
-  //     se acorta (−δ por cada pata vecina → −2δ en la U, −δ en la L) y la cadena
-  //     entera se corre δ hacia el núcleo (anchorDelta[eje] = sentido·δ).
-  //     LAS PATAS NO SE TOCAN.
-  //     CORRECCIÓN DEL USUARIO (probando en pantalla) — antes las patas se
-  //     acortaban δ para que sus PUNTAS quedaran alineadas con las de la capa
-  //     exterior: «asumiste que las patas deben alinearse con las de la capa de
-  //     afuera, y eso no es correcto». La capa de adentro es la MISMA barra
-  //     doblada igual, corrida hacia el núcleo: sus puntas bajan δ más, y punto.
-  //     El PORQUÉ geométrico de que B sí se acorte: el tramo de la capa interior
-  //     viaja δ por dentro, o sea DENTRO del alto que ocupan las patas de la capa
-  //     exterior, así que cada extremo suyo tiene que retirarse δ para no chocar
-  //     con esa pata. Las patas, en cambio, cuelgan hacia el núcleo: no tienen
-  //     nada delante que las obligue a acortarse.
+  //   POSICIÓN de la capa k → NO es asunto del anidado. La manda SIEMPRE el campo
+  //     Sep (gap / sep_capas), eje a eje: k·gap hacia el núcleo, con o sin anidar.
+  //     Por eso esta función YA NO devuelve `anchorDelta` (el corrimiento que
+  //     metía en las figuras abiertas): el llamador posiciona.
+  //     Ese corrimiento era justo el bug «el espaciamiento para CBI está fijo»:
+  //     con anidar activo el campo del usuario no movía nada.
   //
-  //   · figura RECTA (101x, un solo lado, 0 vecinos): −0 → sin cambio. No hay
-  //     nada que anidar; el llamador aplica el retranqueo de capa normal.
+  //   DIMS de la capa k → SÍ es asunto del anidado, y es puramente TOPOLÓGICO:
+  //     un lado se achica 2δ si tiene DOS VECINOS PERPENDICULARES en la cadena;
+  //     si tiene menos (una punta libre), queda INTACTO.
   //
-  // PATA vs TRAMO en una cadena abierta: los lados alternan orientación y la
-  // convención de la familia 103x (la misma que dibuja _cabezalLongitudinal) es
-  // A = pata, B = tramo, C = pata → índices PARES = patas (⊥ a la cara),
-  // IMPARES = tramos (∥ a la cara). No hace falta mirar la figura: sale del
-  // orden de recorrido.
+  //       · CERRADA (104x, perímetro): la cadena CIERRA, así que TODO lado tiene
+  //         2 vecinos → todos −2δ. Y la capa k es un ANILLO CONCÉNTRICO: su marco
+  //         se encoge δ por lado (`inset: δ`), que es lo que además la posiciona.
+  //         Aquí δ = k·gap: el campo Sep manda la separación ENTRE MARCOS.
+  //       · ABIERTA (103x, U / corchete): los lados INTERIORES tienen 2 vecinos
+  //         → −2δ; los lados EXTREMO (las patas, con punta libre) quedan
+  //         INTACTOS. Aquí δ = k·φ_PROPIO: es una holgura LATERAL contra fierro,
+  //         no una separación configurable.
+  //       · RECTA (101x, un solo lado, 0 vecinos): sin cambio.
   //
-  // δ lo fija el distribuidor y vale k·φ_PROPIO, SIN gap ni sep_capas: dos capas
-  // anidadas quedan FIERRO CONTRA FIERRO (tangentes). El gap/sep_capas es del
-  // APILADO sin anidar. CORRECCIÓN DEL USUARIO: con φ+gap «los ajustes fueron
-  // mucho más que la medida correcta».
+  // POR QUÉ la regla de vecinos generaliza (lo pidió el usuario explícitamente):
+  //   La capa de adentro es LA MISMA barra doblada igual, corrida hacia el núcleo.
+  //   Un lado con 2 vecinos está encajonado: al viajar por dentro, sus DOS
+  //   extremos entran en el corredor que ocupan los lados vecinos de la capa de
+  //   AFUERA (que quedaron δ hacia afuera), así que tiene que retirarse δ en cada
+  //   punta → −2δ. Un lado EXTREMO tiene una punta LIBRE: no hay nada delante que
+  //   lo obligue a acortarse, y en su otra punta simplemente acompaña al vecino
+  //   que ya se retiró (el retiro de esa esquina se contabiliza UNA vez, en el
+  //   lado que sí está encajonado). En un 103 el interior es B; en otra figura
+  //   será otra letra — y en una cerrada son todas, porque al cerrar la cadena
+  //   ningún lado tiene punta libre. Nunca hay que mirar el NOMBRE de la figura.
+  //   CORRECCIÓN PREVIA DEL USUARIO que esto conserva: «asumiste que las patas
+  //   deben alinearse con las de la capa de afuera, y eso no es correcto».
   //
   // anidarFigura(figura, dims, delta, rol, opts) →
-  //   { dims, anchorDelta:{x,y,z}, eje, delta, inset, criterio, vecinos }
+  //   { dims, delta, inset, criterio, vecinos, cabe, motivo }
   // NO muta `dims` (devuelve un clon cuando hay cambio).
-  //   opts.sentido: +1|−1 = hacia dónde está el NÚCLEO en el eje de la cara
-  //   (cara inf = +1, cara sup = −1; lateral z+ = −1, z− = +1). Default −1.
-  //   opts.eje: 'x'|'y'|'z' = EJE DE LA CARA contra la que se anida. La capa
-  //   anidada entra hacia el núcleo POR EL EJE DE SU CARA: un corchete de cara
-  //   sup/inf se mete en Y; uno de cara lateral, en Z. Default 'y' (el caso de
-  //   la viga). Antes estaba FIJO en Y, lo que metía una capa lateral en la
-  //   dirección equivocada.
+  //   delta    : δ de DIMS de esta capa = k·φ_propio (lo usa la figura ABIERTA).
+  //   opts.sep : δ del MARCO de esta capa = k·gap (lo usa la CERRADA). Ausente →
+  //              cae a `delta` (llamadas directas de tests que no separan los dos).
   //   opts.cerrada: fuerza el criterio cerrado para figuras fuera de la serie 104.
-  // `delta` (δ efectivo) y `eje` se devuelven para que el llamador pueda aplicar
-  // el corrimiento con el signo que corresponda a CADA barra (en una cara
-  // lateral el núcleo está a un lado u otro según el z de la barra).
+  //
+  // CABE (fix 12-ago, hallazgo A del verificador) — el inset k·Sep puede dejar la
+  // capa SIN geometría: un estribo 24×52 con Sep 10 llega a la capa 3 con dims
+  // 4/32, y con Sep 20 a 0/12 (dim_a = 0, que el backend RECHAZA), con el bbox ya
+  // fuera del hormigón y TODO en silencio. Antes eso lo tapaba un
+  // `Math.max(0, dim − 2·k·Sep)`: la dim se aplastaba a 0 y la barra imposible se
+  // dibujaba y se mandaba igual. Ahora NO hay clamp: la resta se guarda tal cual
+  // (puede salir negativa) y `cabe:false` + `motivo` le dicen al llamador que esa
+  // capa NO existe → no se genera ni se lista, y se registra un aviso visible.
+  //   · dim ≤ 0 en cualquier lado encajonado → no cabe.
+  //   · el marco del ANILLO (cerrada) lo comprueba el llamador con
+  //     `marcoNucleoCabe`, que necesita el host (aquí no se conoce).
+  // Bbox fuera del hormigón con dims > 0 NO es "no cabe": eso se genera tal cual
+  // (dato honesto y VISIBLE en el 3D; el usuario decide).
   var LADOS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I'];
 
   // Lados REALES de la figura = las letras presentes en dims con valor > 0, en
@@ -340,13 +378,9 @@
 
   function anidarFigura(figura, dims, delta, rol, opts) {
     opts = opts || {};
-    var d = Number(delta) || 0;
-    var sentido = (opts.sentido === 1 || opts.sentido === -1) ? opts.sentido : -1;
-    var eje = (opts.eje === 'x' || opts.eje === 'z') ? opts.eje : 'y';
-    var res = {
-      dims: dims, anchorDelta: { x: 0, y: 0, z: 0 },
-      eje: eje, delta: d, inset: 0, criterio: 'recta', vecinos: {}
-    };
+    var dDim = Number(delta) || 0;                                   // δ de dims (k·φ)
+    var dSep = (opts.sep != null && isFinite(opts.sep)) ? Number(opts.sep) : dDim;  // δ del marco (k·gap)
+    var res = { dims: dims, delta: 0, inset: 0, criterio: 'recta', vecinos: {}, cabe: true, motivo: null };
     var lados = _ladosDeDims(dims);
     var f = (figura || '').toUpperCase();
     // El criterio lo manda la FIGURA; el rol sólo desempata cuando la figura no
@@ -354,8 +388,15 @@
     // cerrado (_estriboPerimetral), así que su anidado es por inset de marco.
     var abierta = (f.indexOf('103') === 0) && lados.length >= 2;   // U / corchete / L
     var cerrada = !abierta && (opts.cerrada === true || figuraCerrada(f) || rol === 'estribo');
+    // δ EFECTIVO: la cerrada se anida con la separación entre marcos (el campo del
+    // usuario); la abierta, con su propio φ (holgura contra el fierro de afuera).
+    var d = cerrada ? dSep : dDim;
+    res.delta = d;
     if (!(d > 0) || (!cerrada && lados.length < 2)) {
-      // recta (o δ nulo): no hay vecino perpendicular → nada que achicar.
+      // recta (o δ nulo): no hay vecino perpendicular → nada que achicar. δ nulo
+      // en una cerrada = marcos superpuestos: dato honesto, sin clamp (igual que
+      // el gap 0 del apilado).
+      res.delta = 0;
       return res;
     }
     if (cerrada && lados.length < 2) {
@@ -368,30 +409,27 @@
     for (var k in dims) if (dims.hasOwnProperty(k)) nd[k] = dims[k];
     for (var i = 0; i < lados.length; i++) {
       var L = lados[i];
-      // δ que se le resta al lado: cerrada = 2 siempre (2 vecinos perpendiculares);
-      // abierta = las PATAS (índice par) no se tocan y el TRAMO se acorta δ por
-      // cada pata vecina (2 en la U, 1 en la L).
-      var v;
-      if (cerrada) {
-        v = 2;
-      } else if (i % 2 === 0) {
-        v = 0;                                   // PATA: intacta (ver cabecera)
-      } else {
-        v = (i > 0 ? 1 : 0) + (i < lados.length - 1 ? 1 : 0);
-      }
+      // VECINOS PERPENDICULARES del lado en la cadena. En una figura CERRADA la
+      // cadena da la vuelta → todo lado tiene 2. En una ABIERTA los extremos
+      // tienen 1 (su otra punta es libre) y el resto 2.
+      var v = cerrada ? 2 : ((i > 0 ? 1 : 0) + (i < lados.length - 1 ? 1 : 0));
       res.vecinos[L] = v;
-      if (v) nd[L] = Math.max(0, Number(nd[L]) - v * d);
+      // REGLA ÚNICA: encajonado (2 vecinos) → −2δ; con punta libre → INTACTO.
+      // SIN CLAMP: si la resta deja ≤ 0, la capa NO CABE (el llamador la omite).
+      if (v === 2) {
+        var nuevo = Number(nd[L]) - 2 * d;
+        nd[L] = nuevo;
+        if (!(nuevo > 0) && res.cabe) {
+          res.cabe = false;
+          res.motivo = 'dim ' + L + ' = ' + (Math.round(nuevo * 100) / 100);
+        }
+      }
     }
     res.dims = nd;
-    if (cerrada) {
-      res.criterio = 'cerrada';
-      res.inset = d;                       // el marco (anchor.inset) posiciona
-    } else {
-      res.criterio = 'abierta';
-      // la cadena se corre δ hacia el núcleo POR EL EJE DE SU CARA (y para
-      // sup/inf, z para lateral): antes iba siempre en Y.
-      res.anchorDelta[eje] = sentido * d;
-    }
+    res.criterio = cerrada ? 'cerrada' : 'abierta';
+    // Sólo la CERRADA posiciona: su marco se encoge δ por lado (anillo concéntrico).
+    // La ABIERTA no mueve nada: la posición de la capa la manda el campo Sep.
+    if (cerrada) res.inset = d;
     return res;
   }
 
@@ -422,6 +460,9 @@
     // distribuidorLayered/distribuidorArreglo de reglas.js).
     anidarFigura: anidarFigura,
     figuraCerrada: figuraCerrada,
+    // ¿el marco del anillo anidado sigue existiendo con estos insets? (lo consulta
+    // reglas.js antes de generar una capa cerrada: si no cabe, la omite y avisa).
+    marcoNucleoCabe: marcoNucleoCabe,
     // exportados para tests / reuso
     _cabezalLongitudinal: _cabezalLongitudinal,
     _estriboPerimetral: _estriboPerimetral,

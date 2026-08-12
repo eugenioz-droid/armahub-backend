@@ -356,9 +356,20 @@
     };
   }
 
+  // El generador NO es de vigas: el host es una CAJA (largo/alto/ancho + recub por
+  // cara) y todo lo específico del elemento vive en la receta (qué componentes, con
+  // qué cara, orientación y distribución). Un MURO 400×250×20 entra tal cual —
+  // largo→x, alto→y, espesor→ancho(z), recub_caras→recub_lat, recub_bordes→
+  // recub_sup/inf — y sale con sus cortinas, su malla y sus trabas
+  // (tests/test_muro_orientaciones.js). `generarElemento` es el MISMO generador con
+  // el nombre honesto; `generarViga` se conserva porque lo llaman el editor y los
+  // tests.
+  var generarElemento = generarViga;
+
   var API = {
     FIGURAS: FIGURAS,
     generarViga: generarViga,
+    generarElemento: generarElemento,
     resolverDependencias: resolverDependencias,
     placementABarra: placementABarra,
     agruparBarras: agruparBarras,

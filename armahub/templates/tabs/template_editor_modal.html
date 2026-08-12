@@ -109,8 +109,11 @@
   #te_modal .te-fld{display:flex;flex-direction:column;gap:2px;margin-bottom:7px}
   #te_modal .te-fld label{font-size:10.5px;color:var(--te-muted);font-weight:600}
   #te_modal #te_side input,#te_modal #te_side select{border:1px solid var(--te-line);border-radius:6px;padding:4px 7px;font-size:12px;width:100%}
-  #te_modal .te-grid2{display:grid;grid-template-columns:1fr 1fr;gap:7px}
-  #te_modal .te-grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:7px}
+  /* minmax(0,1fr): columnas EXACTAMENTE iguales. Con `1fr` (= minmax(auto,1fr)) un
+     label largo impone su min-content y ROBA ancho a las otras columnas (el campo se
+     desplaza). Los labels además quedan cortos y la explicación va en el title. */
+  #te_modal .te-grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}
+  #te_modal .te-grid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px}
   #te_modal .te-row{display:grid;grid-template-columns:96px 1fr;gap:8px;align-items:center;margin-bottom:6px}
   #te_modal .te-row label{font-size:11px;color:var(--te-muted);font-weight:600}
   #te_modal .te-radial{display:inline-flex;border:1px solid var(--te-line);border-radius:7px;overflow:hidden}
@@ -252,9 +255,11 @@
      color lo pone JS según la tipología activa; aquí el grosor y el glow. */
   #te_modal .te-face-hi{fill:none;stroke-width:2.4;stroke-linecap:round;opacity:.8;pointer-events:none;
     filter:drop-shadow(0 0 3px rgba(139,195,74,.55))}
-  /* BOTÓN CONTEXTUAL "Voltear plano (R)" — flota sobre la pieza SELECCIONADA en
-     los cuadrantes. Discreto pero descubrible: aparece solo con selección, crece
-     al hover, tooltip nativo. Posicionado por JS (_posicionarFlipBtn). */
+  /* BOTÓN CONTEXTUAL DE ORIENTACIÓN (R) — flota sobre la pieza SELECCIONADA en los
+     cuadrantes y CICLA acostada → volteada → de pie. Discreto pero descubrible:
+     aparece solo con selección, crece al hover, tooltip nativo con el estado.
+     Posicionado por JS (_posicionarFlipBtn) y pintado por _pintarFlipBtn: la clase
+     .flipped marca 'volteada' y .depie marca 'de pie'. */
   #te_modal #te_flipBtn{position:absolute;z-index:6;display:none;align-items:center;justify-content:center;
     width:30px;height:30px;border-radius:50%;border:1.5px solid var(--te-acero-d);
     background:#fff;color:var(--te-acero-d);cursor:pointer;padding:0;
@@ -265,6 +270,8 @@
   #te_modal #te_flipBtn:active{transform:scale(1.05)}
   #te_modal #te_flipBtn.flipped{background:var(--te-azul-b);color:var(--te-azul);border-color:var(--te-azul)}
   #te_modal #te_flipBtn.flipped:hover{background:var(--te-azul);color:#fff}
+  #te_modal #te_flipBtn.depie{background:#fff3e0;color:var(--te-es);border-color:var(--te-es)}
+  #te_modal #te_flipBtn.depie:hover{background:var(--te-es);color:#fff}
   /* NODOS de esquina del hormigón (arrastrables). */
   #te_modal .te-node{fill:#fff;stroke:#7d8da0;stroke-width:1.1;cursor:move}
   #te_modal .te-node:hover{fill:#2f80ed;stroke:#2f80ed}
@@ -365,18 +372,12 @@
            (_bindGeometria en template_editor.js). -->
       <div class="te-grp te-grp-horm">
         <span class="te-lbl">Hormigón</span>
-        <div class="te-hormrows">
-          <div class="te-hormrow">
-            <div class="te-geo"><label>Largo</label><input type="number" id="te_geoLargo" step="any" min="1" title="Largo del elemento (cm)"></div>
-            <div class="te-geo"><label>Alto</label><input type="number" id="te_geoAlto" step="any" min="1" title="Alto del elemento (cm)"></div>
-            <div class="te-geo"><label>Ancho</label><input type="number" id="te_geoAncho" step="any" min="1" title="Ancho del elemento (cm)"></div>
-          </div>
-          <!-- RECUB ÚNICO: un solo valor para sup/inf/lat (el ajuste fino por barra
-               sigue en "Recub. override" del panel izquierdo). -->
-          <div class="te-hormrow">
-            <div class="te-geo"><label>Recub (cm)</label><input type="number" id="te_geoRecub" step="any" min="0" value="2" title="Recubrimiento (cm) — se aplica arriba, abajo y a los lados"></div>
-          </div>
-        </div>
+        <!-- VACÍO a propósito: los campos los renderiza _renderRibbonGeo()
+             (template_editor.js) desde GEO_CAMPOS_POR_ELEMENTO según ST.elemento.
+             VIGA = Largo/Alto/Ancho + "Recub (cm)" único (sup/inf/lat).
+             MURO = Largo/Alto/Espesor + "Recub caras" y "Recub bordes".
+             Todos escriben las claves CANÓNICAS de ST.receta.geometria. -->
+        <div class="te-hormrows" id="te_hormRows"></div>
       </div>
       <div class="te-divv"></div>
       <!-- GRUPO 2 — BARRA: predefiniciones (contorno + figura + φ + tipología).
@@ -559,9 +560,12 @@
           </div>
         </div>
 
-        <!-- Botón contextual "Voltear plano (R)": flota sobre la pieza seleccionada.
-             Lo posiciona/oculta template_editor.js (_posicionarFlipBtn). -->
-        <button id="te_flipBtn" title="Voltear plano (R)" aria-label="Voltear plano de la pieza (R)">🔄</button>
+        <!-- Botón contextual de ORIENTACIÓN DE LA PIEZA (R): flota sobre la pieza
+             seleccionada y CICLA acostada → volteada → de pie. El icono y el tooltip
+             muestran el estado actual; los pinta _pintarFlipBtn (template_editor.js),
+             que también posiciona/oculta el botón (_posicionarFlipBtn). -->
+        <button id="te_flipBtn" title="Orientación: acostada — clic: volteada (R)"
+                aria-label="Orientación de la pieza (R)">↔</button>
       </div>
 
     </div>

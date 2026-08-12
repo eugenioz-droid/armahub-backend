@@ -99,26 +99,32 @@ ok(close(maxE(semilla.placements.filter(p => p.tipologia === 'TRV')[0], 'y'), 24
 // Estribo φ8 nivel 1 → pilas tras el nivel 1: sup=inf=lat=0.8, ext=0 (un estribo
 // es un plano YZ: toca UN solo extremo, y la pila de 'ext' es simétrica → no la
 // ocupa; los longitudinales le pasan POR DENTRO).
-// Corchete 103B φ16 nivel 2, cara sup, 2 capas anidadas (δ = φ = 1.6, sin gap):
+// Corchete 103B φ16 nivel 2, cara sup, 2 capas anidadas con Sep 1.6 (fierro
+// contra fierro):
 //   prof(sup,2) = 4 + 0.8 = 4.8   → eje del tramo: 30 − 4.8 − 0.8 = 24.4
 //   eje del estribo arriba:         30 − 4   − 0.4 = 25.6
 //   separación de ejes = 25.6 − 24.4 = 1.2 = φest/2 + φ/2 = 0.4 + 0.8  → TANGENTE
 //   prof(ext,2) = 4 + 0 = 4       → B auto = 600 − 2·4 = 592 (los extremos de la
 //     viga son HORMIGÓN PELADO: el estribo no ocupa esa cara → no se resta φ/2)
-//   capa 2 (anidada, δ=1.6): B − 2δ = 588.8; PATAS INTACTAS (30/30);
-//     la pieza entera baja δ → tramo y = 24.4 − 1.6 = 22.8 y las puntas bajan con
-//     ella (−5.6 → −7.2).
-// SEMÁNTICA CORREGIDA POR EL USUARIO probando en pantalla: antes las patas salían
-// 28.4 (−δ) para que las PUNTAS quedaran alineadas con las de la capa exterior.
-// «Asumiste que las patas deben alinearse con las de la capa de afuera, y eso no
-// es correcto»: la capa de adentro es la MISMA barra doblada igual, corrida δ.
+//   capa 2: la POSICIÓN la manda el campo Sep (1.6) → tramo y = 24.4 − 1.6 = 22.8
+//     y las puntas bajan con ella (−5.6 → −7.2); las DIMS las ajusta el anidado,
+//     y eso es independiente del Sep: B − 2·φ = 588.8, PATAS INTACTAS (30/30).
+// SEMÁNTICA CORREGIDA POR EL USUARIO (12-ago): «el espaciamiento se lo damos con
+// este campo y debe mandar; al ajustar capas anidadas no debe considerar esta
+// altura: debe ajustar SOLO la medida de B». Antes el anidado posicionaba solo
+// (k·φ) y el campo del usuario no movía nada. Se conserva la corrección anterior:
+// «asumiste que las patas deben alinearse con las de la capa de afuera, y eso no
+// es correcto».
 console.log('\nA — CASO DE ACEPTACIÓN: corchete doble anidado contra el estribo:');
-function corchete(volteado) {
+function corchete(volteado, gap) {
   return {
     comp_id: 'CO', tipologia: 'CBS', figura: '103B', diam: 16, cara: 'sup',
     jerarquia: 2, angulos: [45, 45], plano_pieza: { volteado: !!volteado },
     dims: { A: { modo: 'fija', valor: 30 }, B: { modo: 'auto' }, C: { modo: 'fija', valor: 30 } },
-    distribucion: { modo: 'layered', n_capas: 2, barras_capa: 1, gap: 0, anidar: true }
+    distribucion: {
+      modo: 'layered', n_capas: 2, barras_capa: 1,
+      gap: (gap != null ? gap : 1.6), anidar: true
+    }
   };
 }
 const oA = run([estribo(), corchete(false)]);
@@ -132,10 +138,16 @@ ok(close(co[0].puntos[1].y, 24.4), 'capa 1: eje del tramo = 30 − (4 + 0.8) −
 ok(close(maxE(esA, 'y') - co[0].puntos[1].y, PHI_ES / 2 + 1.6 / 2),
   'capa 1 TANGENTE al estribo: separación de ejes = φest/2 + φ/2 = 1.2');
 ok(close(co[1].dims.B, 588.8) && close(co[1].dims.A, 30) && close(co[1].dims.C, 30),
-  'capa 2 anidada: B − 2δ = 588.8 (δ = φ = 1.6) y PATAS INTACTAS 30/30 (antes 28.4)');
-ok(close(co[1].puntos[1].y, 22.8), 'capa 2 más adentro: 24.4 − 1.6 = 22.8 (=' + co[1].puntos[1].y + ')');
+  'capa 2 anidada: B − 2·φ = 588.8 y PATAS INTACTAS 30/30 (antes 28.4)');
+ok(close(co[1].puntos[1].y, 22.8), 'capa 2 más adentro: 24.4 − Sep(1.6) = 22.8 (=' + co[1].puntos[1].y + ')');
 ok(close(co[0].puntos[0].y, -5.6) && close(co[1].puntos[0].y, -7.2),
-  'las PUNTAS bajan δ con la pieza: −5.6 y −7.2 (NO se alinean) (=' + co[1].puntos[0].y + ')');
+  'las PUNTAS bajan con la pieza: −5.6 y −7.2 (NO se alinean) (=' + co[1].puntos[0].y + ')');
+// El campo Sep manda la POSICIÓN también acá, y el ajuste de dims no lo mira:
+// con Sep 5 la capa 2 baja 5 y sigue midiendo B − 2·φ.
+const coSep5 = plsDe(run([estribo(), corchete(false, 5)]), 'CO');
+ok(close(coSep5[1].puntos[1].y, 24.4 - 5) && close(coSep5[1].dims.B, 588.8),
+  'con Sep 5: capa 2 a 19.4 (el campo manda) y B sigue en 588.8 (el anidado sólo ajusta dims) (=' +
+  coSep5[1].puntos[1].y + ' / ' + coSep5[1].dims.B + ')');
 
 // --- el MISMO corchete, VOLTEADO -------------------------------------------
 // Voltear = permutar ejes (x local ↔ z mundo) contra un host permutado
@@ -158,7 +170,7 @@ ok(close(co[0].puntos[0].y, -5.6) && close(co[1].puntos[0].y, -7.2),
 //   0.8 DENTRO del estribo: «el corchete muerde el estribo».
 //   prof_ef(sup,2) = 4 + 0.8 = 4.8 → eje del tramo = 24.4: SIGUE TANGENTE al
 //     estribo (1.2 de separación) en su nuevo plano.
-//   capa 2: B − 2δ = 20.8 − 3.2 = 17.6; patas 30 (intactas); y = 22.8.
+//   capa 2: B − 2·φ = 20.8 − 3.2 = 17.6; patas 30 (intactas); y = 24.4 − Sep = 22.8.
 // El tramo ahora corre en Z (de −10.4 a +10.4), no en X.
 console.log('\nA2 — el MISMO corchete VOLTEADO (marco, pilas y recubs permutados):');
 const oAv = run([estribo(), corchete(true)]);
@@ -177,9 +189,9 @@ ok(close(maxE(unaDe(oAv, 'ES'), 'z') - maxE(cov[0], 'z'), PHI_ES / 2 + 1.6 / 2),
   'volteado: punta y pierna del estribo TANGENTES (separación de ejes = 0.4 + 0.8 = 1.2)');
 ok(close(maxE(cov[0], 'x'), 0) && close(minE(cov[0], 'x'), 0), 'volteado: ya no corre en X');
 ok(close(cov[1].dims.B, 17.6) && close(cov[1].dims.A, 30),
-  'volteado capa 2 anidada: B − 2δ = 20.8 − 3.2 = 17.6, patas intactas 30');
+  'volteado capa 2 anidada: B − 2·φ = 20.8 − 3.2 = 17.6, patas intactas 30');
 ok(close(cov[1].puntos[1].y, 22.8) && close(cov[1].puntos[0].y, -7.2),
-  'volteado capa 2: y = 22.8 y la punta baja δ con la pieza (−7.2)');
+  'volteado capa 2: y = 24.4 − Sep = 22.8 y la punta baja con la pieza (−7.2)');
 
 // ===========================================================================
 // B · el estribo NO ocupa los extremos (CAMBIO DE COMPORTAMIENTO INTENCIONAL).
