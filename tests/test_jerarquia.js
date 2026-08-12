@@ -15,11 +15,17 @@
 //        su φ a la cadena (los niveles siguientes no se corren hacia adentro).
 //   J3 · ANIDADO — anidarFigura es el criterio ÚNICO por figura:
 //        cerrada (104x) → todos los lados −2δ + inset de marco;
-//        abierta/corchete (103x) → B−2δ, patas −δ y polilínea δ al núcleo
-//        (las PUNTAS quedan alineadas con la capa exterior);
+//        abierta/corchete (103x) → SOLO el tramo B −2δ, LAS PATAS INTACTAS, y la
+//        polilínea entera δ hacia el núcleo;
 //        recta (101x) → sin cambio.
+//        δ = k·φ_PROPIO, SIN gap (el gap es del apilado que NO anida).
 //        El estribo anidado sale con las dims de capa ACHICADAS (el listado/corte
 //        no puede mentir).
+//        SEMÁNTICA CORREGIDA POR EL USUARIO probando en pantalla (antes las patas
+//        se acortaban δ para alinear las puntas, y δ valía φ+gap):
+//          · «asumiste que las patas deben alinearse con las de la capa de afuera,
+//             y eso no es correcto»;
+//          · con φ+gap «los ajustes fueron mucho más que la medida correcta».
 //   J4 · RANGO — el reparto usa el PASO REAL span/(n−1), no el @ nominal: span 24
 //        @20 → 3 barras en −12 / 0 / +12 (antes 2, en −12 y +8, con 4 cm muertos).
 //
@@ -135,25 +141,31 @@ ok(anCerr.dims !== undefined && anCerr.anchorDelta.y === 0, 'cerrada: sin corrim
 const anAb = FP.anidarFigura('103B', { A: 30, B: 592, C: 30 }, 1.6, 'cabezal', { sentido: -1 });
 ok(anAb.criterio === 'abierta', '103x con 2 patas → criterio abierta (corchete)');
 ok(close(anAb.dims.B, 592 - 2 * 1.6), 'corchete: B − 2δ = 588.8 (=' + anAb.dims.B + ')');
-ok(close(anAb.dims.A, 30 - 1.6) && close(anAb.dims.C, 30 - 1.6), 'corchete: patas A y C − δ (1 vecino cada una)');
+// CAMBIO DE SEMÁNTICA (usuario): antes A y C salían 28.4 (−δ) para que las puntas
+// quedaran alineadas con las de la capa exterior. «Asumiste que las patas deben
+// alinearse con las de la capa de afuera, y eso no es correcto»: la capa de
+// adentro es la MISMA barra doblada igual, sólo corrida δ hacia el núcleo.
+ok(close(anAb.dims.A, 30) && close(anAb.dims.C, 30),
+  'corchete: LAS PATAS NO SE TOCAN (30 / 30, antes 28.4) (=' + anAb.dims.A + '/' + anAb.dims.C + ')');
 ok(close(anAb.anchorDelta.y, -1.6), 'corchete: la polilínea se corre δ hacia el núcleo (anchorDelta.y = s·δ)');
 const anL = FP.anidarFigura('103A', { A: 20, B: 100 }, 1, 'cabezal');
-ok(close(anL.dims.A, 19) && close(anL.dims.B, 99), 'figura en L (1 pata): B − δ (misma regla: δ por vecino)');
+ok(close(anL.dims.A, 20) && close(anL.dims.B, 99),
+  'figura en L: pata intacta (20) y el tramo −δ por su ÚNICA pata vecina (99)');
 const anRec = FP.anidarFigura('101A', { A: 592 }, 1.6, 'cabezal');
 ok(anRec.criterio === 'recta' && anRec.dims.A === 592, '101x recta → sin cambio (nada que anidar)');
 
-console.log('\nJ3b — corchete ANIDADO en el distribuidor (puntas alineadas):');
+console.log('\nJ3b — corchete ANIDADO en el distribuidor (la pieza entera entra δ):');
 const plCor = R.expandirComponente({
   tipologia: 'CBS', figura: '103B', diam: 16, cara: 'sup', angulos: [45, 45],
   dims: { A: { modo: 'fija', valor: 30 }, B: { modo: 'auto' }, C: { modo: 'fija', valor: 30 } },
   distribucion: { modo: 'layered', n_capas: 2, barras_capa: 1, gap: 0, anidar: true }
 }, host);
 ok(plCor.length === 2, '2 capas → 2 placements');
-ok(close(plCor[1].dims.B, plCor[0].dims.B - 2 * 1.6) && close(plCor[1].dims.A, plCor[0].dims.A - 1.6),
-  'la capa 2 estampa SUS dims (B−2δ, patas −δ) → ítem propio en el listado');
-ok(close(plCor[0].puntos[0].y, plCor[1].puntos[0].y, 1e-6) &&
-  close(plCor[0].puntos[3].y, plCor[1].puntos[3].y, 1e-6),
-  'las PUNTAS de las patas quedan alineadas con las de la capa exterior');
+ok(close(plCor[1].dims.B, plCor[0].dims.B - 2 * 1.6) && close(plCor[1].dims.A, plCor[0].dims.A),
+  'la capa 2 estampa SUS dims: B−2δ y las PATAS IGUALES (=' + plCor[1].dims.B + ' / ' + plCor[1].dims.A + ')');
+ok(close(plCor[1].puntos[0].y, plCor[0].puntos[0].y - 1.6, 1e-6) &&
+  close(plCor[1].puntos[3].y, plCor[0].puntos[3].y - 1.6, 1e-6),
+  'las PUNTAS de la capa 2 bajan δ con toda la pieza (NO se alinean con la capa exterior)');
 ok(close(plCor[1].puntos[1].y, plCor[0].puntos[1].y - 1.6, 1e-6),
   'el tramo B de la capa 2 va δ (=φ, gap 0) hacia el núcleo: un corchete DENTRO del otro, sin toparse');
 
@@ -171,6 +183,29 @@ function maxEje(pl, e) { return Math.max.apply(null, pl.puntos.map(function (q) 
 ok(close(maxEje(plEs[1], 'y'), maxEje(plEs[0], 'y') - 0.8, 1e-6) &&
   close(maxEje(plEs[1], 'z'), maxEje(plEs[0], 'z') - 0.8, 1e-6),
   'y el marco real se encoge δ por lado (la geometría acompaña a las dims)');
+
+console.log('\nJ3d — δ del ANIDADO = k·φ, SIN gap (el gap es del apilado):');
+// «los ajustes fueron mucho más que la medida correcta» (usuario): el gap se
+// sumaba al δ del anidado, así que la capa 2 se iba φ+gap adentro y se achicaba
+// 2·(φ+gap). Anidar es fierro CONTRA fierro: δ = φ y nada más. El gap sigue
+// mandando —intacto— en el apilado que NO anida.
+function capasCorchete(anidar, gap) {
+  return R.expandirComponente({
+    tipologia: 'CBS', figura: '103B', diam: 16, cara: 'sup', angulos: [45, 45],
+    dims: { A: { modo: 'fija', valor: 30 }, B: { modo: 'auto' }, C: { modo: 'fija', valor: 30 } },
+    distribucion: { modo: 'layered', n_capas: 2, barras_capa: 1, gap: gap, anidar: anidar }
+  }, host);
+}
+const anGap = capasCorchete(true, 4);
+ok(close(anGap[0].puntos[1].y - anGap[1].puntos[1].y, 1.6, 1e-6),
+  'ANIDADO con gap 4: la capa 2 igual entra 1.6 = φ (antes 5.6 = φ+gap) (=' +
+  (anGap[0].puntos[1].y - anGap[1].puntos[1].y).toFixed(4) + ')');
+ok(close(anGap[1].dims.B, anGap[0].dims.B - 2 * 1.6),
+  'y se achica 2·φ = 3.2, no 2·(φ+gap) = 11.2 (=' + anGap[1].dims.B + ')');
+const apGap = capasCorchete(false, 4);
+ok(close(apGap[0].puntos[1].y - apGap[1].puntos[1].y, 1.6 + 4, 1e-6) &&
+  close(apGap[1].dims.B, apGap[0].dims.B),
+  'SIN anidar el gap manda igual que siempre: capa 2 a φ+gap = 5.6 y sin achicar dims');
 
 // ===========================================================================
 console.log('\nJ4 — RANGO con PASO REAL (conteo == recorrido):');

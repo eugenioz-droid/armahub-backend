@@ -538,8 +538,8 @@
     // CAPAS ANIDADAS/AJUSTADAS (cfg.anidar !== false, toggle de la UI):
     // el CRITERIO (qué lados se achican, y si la capa se posiciona por inset de
     // marco o corriendo la polilínea) lo decide UNA sola función, por FIGURA:
-    // figura_puntos.anidarFigura — "la capa k es la MISMA figura con un inset de
-    // polilínea δ_k = k·(φ+gap)". Aquí sólo se decide CUÁNDO aplica:
+    // figura_puntos.anidarFigura — "la capa k es la MISMA figura corrida δ_k =
+    // k·φ hacia el núcleo". Aquí sólo se decide CUÁNDO aplica:
     //   · estribo/figura cerrada → por DEFAULT (anidar !== false);
     //   · figura abierta con patas (103x) → OPT-IN (anidar === true), porque
     //     cambiaría dims/kg de recetas existentes si fuera default (la viga-semilla
@@ -550,14 +550,21 @@
     var anidaFig = (cfg && cfg.anidar === true) && (base.rol !== 'estribo') &&
       ((base.dims && Number(base.dims.A) > 0) || (base.dims && Number(base.dims.C) > 0));
     for (var c = 0; c < nCapas; c++) {
-      var off = c * (base.diam + gap);              // δ de la capa
+      // DOS δ DISTINTOS, y no es lo mismo (corrección del usuario probando en
+      // pantalla: con φ+gap «los ajustes fueron mucho más que la medida correcta»):
+      //   · ANIDADO   → δ = k·φ_propio, SIN gap: la capa de adentro va FIERRO
+      //     CONTRA FIERRO con la de afuera (tangente). El gap no pinta aquí.
+      //   · APILADO sin anidar → δ = k·(φ+gap): ahí sí manda el gap, que es la
+      //     separación libre que el usuario pide entre capas.
+      var offApil = c * (base.diam + gap);          // δ del APILADO (usa el gap)
+      var offAnid = c * base.diam;                  // δ del ANIDADO (φ propio)
       var an = (c > 0 && (anidaMarco || anidaFig))
-        ? _fp().anidarFigura(base.figura, base.dims, off, base.rol, { sentido: s, eje: ejeAnid })
+        ? _fp().anidarFigura(base.figura, base.dims, offAnid, base.rol, { sentido: s, eje: ejeAnid })
         : null;
       var usaAn = !!(an && an.criterio !== 'recta');
       var dimsCapa = usaAn ? an.dims : base.dims;
       // Sin anidado: retranqueo de capa clásico. Con anidado: lo posiciona anidarFigura.
-      var y = usaAn ? (yBorde + an.anchorDelta.y) : (yBorde + s * off);
+      var y = usaAn ? (yBorde + an.anchorDelta.y) : (yBorde + s * offApil);
       for (var i = 0; i < nBarras; i++) {
         var z = (nBarras > 1) ? (-zHalf + (2 * zHalf) * (i / (nBarras - 1))) : 0;
         // Anidado contra una cara LATERAL: el núcleo está a un lado o al otro
@@ -628,14 +635,15 @@
     // desplazarse por eje_capas. cfg.anidar === false lo desactiva.
     var anidaA = (base.rol === 'estribo') && (!cfg || cfg.anidar !== false);
     for (var c = 0; c < nCapas; c++) {
-      var off = c * sepCapas;
-      // δ de la capa anidada: la sep configurada, nunca menos que φ (dos estribos
-      // no pueden compartir plano). El CRITERIO de anidado (qué lados se achican,
-      // si la posición la da el inset o un corrimiento) lo decide anidarFigura.
+      var off = c * sepCapas;                       // δ del APILADO (usa sep_capas)
+      // δ de la capa ANIDADA = k·φ_propio, SIN sep_capas (misma corrección que en
+      // layered: anidar = fierro contra fierro; sep_capas es la separación del
+      // apilado que NO anida). El CRITERIO (qué lados se achican, si la posición
+      // la da el inset o un corrimiento) lo decide anidarFigura.
       var caraA = (base.anchorBase && base.anchorBase.cara) || 'sup';
       var ejeAnidA = (caraA === 'lateral' || caraA === 'lat') ? 'z' : 'y';
       var an = (anidaA && !unaCapa && c > 0)
-        ? _fp().anidarFigura(base.figura, base.dims, c * Math.max(sepCapas, base.diam), base.rol,
+        ? _fp().anidarFigura(base.figura, base.dims, c * base.diam, base.rol,
           { sentido: (caraA === 'inf') ? 1 : -1, eje: ejeAnidA })
         : null;
       var usaAn = !!(an && an.criterio !== 'recta');
@@ -978,42 +986,111 @@
   // ---------------------------------------------------------------------------
   // EXPANSOR: despacha por comp.distribucion.modo
   // ---------------------------------------------------------------------------
+  // Despacho puro (sin volteo ni post-transform): comp/base/cfg/host YA vienen en
+  // el marco en el que hay que expandir. Único lugar donde se elige distribuidor.
+  //
+  // MODO DE USO del Template Editor (§0-11ter / §INTERACCIÓN-2.0): comp.modo =
+  // 'puntual'|'lineal'|'arreglo' es el selector de ALTO NIVEL de los 3 botones
+  // del panel. Solo 'arreglo' necesita despacho propio (rango × capas);
+  // 'puntual'/'lineal' se materializan en dist.modo ('layered'/'linear') por el
+  // panel y caen al switch de abajo. IMPRESCINDIBLE: solo se ramifica con el
+  // valor EXPLÍCITO 'arreglo'. El preset por tipología de la viga-semilla es
+  // 'puntual'/'lineal' (nunca 'arreglo'), así que el switch queda intacto para
+  // ella (cero regresión: 72 placements / 140.3 kg / 4 items).
+  function _despachar(comp, base, dist, host) {
+    if (comp.modo === 'arreglo' || dist.modo === 'arreglo') return distribuidorArreglo(base, dist, host);
+    switch (dist.modo) {
+      case 'linear': return distribuidorLinear(base, dist, host);
+      case 'layered': return distribuidorLayered(base, dist, host);
+      case 'arreglo': return distribuidorArreglo(base, dist, host);
+      case 'grid': return distribuidorGrid(base, dist, host);
+      case 'perimeter': return distribuidorPerimeter(base, dist, host);
+      case 'points': return distribuidorPoints(base, dist, host);
+      default: return [];
+    }
+  }
+
   function expandirComponente(comp, host) {
     normalizarComponente(comp);   // rellena campos aditivos ausentes (defaults null)
     var dist = comp.distribucion || {};
     // VOLTEO = permutación de ejes REAL: se expande contra el host permutado y se
     // devuelven los puntos al mundo. volteado=false → ruta idéntica a la anterior.
     var flip = estaVolteado(comp);
-    var hostEf = flip ? _hostVolteado(host) : host;
-    var base = flip
-      ? _baseDeComponente(comp, hostEf, { recubExtremo: (host.recub_lat != null ? Number(host.recub_lat) : 3) })
-      : _baseDeComponente(comp, host);
-    if (flip) dist = _cfgLocal(dist);
-    var placements;
-    // MODO DE USO del Template Editor (§0-11ter / §INTERACCIÓN-2.0): comp.modo =
-    // 'puntual'|'lineal'|'arreglo' es el selector de ALTO NIVEL de los 3 botones
-    // del panel. Solo 'arreglo' necesita despacho propio (rango × capas);
-    // 'puntual'/'lineal' se materializan en dist.modo ('layered'/'linear') por el
-    // panel y caen al switch de abajo. IMPRESCINDIBLE: solo se ramifica con el
-    // valor EXPLÍCITO 'arreglo'. El preset por tipología de la viga-semilla es
-    // 'puntual'/'lineal' (nunca 'arreglo'), así que el switch queda intacto para
-    // ella (cero regresión: 72 placements / 140.3 kg / 4 items).
-    if (comp.modo === 'arreglo' || dist.modo === 'arreglo') {
-      placements = distribuidorArreglo(base, dist, hostEf);
-      if (flip) _voltearPlacements(placements);
-      return _aplicarPostTransform(placements, comp, host);
-    }
-    switch (dist.modo) {
-      case 'linear': placements = distribuidorLinear(base, dist, hostEf); break;
-      case 'layered': placements = distribuidorLayered(base, dist, hostEf); break;
-      case 'arreglo': placements = distribuidorArreglo(base, dist, hostEf); break;
-      case 'grid': placements = distribuidorGrid(base, dist, hostEf); break;
-      case 'perimeter': placements = distribuidorPerimeter(base, dist, hostEf); break;
-      case 'points': placements = distribuidorPoints(base, dist, hostEf); break;
-      default: placements = [];
-    }
-    if (flip) _voltearPlacements(placements);
+    if (!flip) return _aplicarPostTransform(_despachar(comp, _baseDeComponente(comp, host), dist, host), comp, host);
+    var hostEf = _hostVolteado(host);
+    var base = _baseDeComponente(comp, hostEf,
+      { recubExtremo: (host.recub_lat != null ? Number(host.recub_lat) : 3) });
+    var placements = _despachar(comp, base, _cfgLocal(dist), hostEf);
+    // REFERENCIA para restituir el centro: LA MISMA PIEZA SIN VOLTEAR, o sea lo
+    // que el usuario tenía en pantalla justo antes de apretar el botón. Se expande
+    // en crudo (sin post-transform: orient/pos_hint se aplican después e igual a
+    // las dos). Sólo se paga en componentes volteados.
+    var ref = _despachar(comp, _baseDeComponente(comp, host), dist, host);
+    _voltearPlacements(placements);
+    _restituirCentroVolteo(placements, ref, comp, host);
     return _aplicarPostTransform(placements, comp, host);
+  }
+
+  // ---------------------------------------------------------------------------
+  // VOLTEO — RESTITUCIÓN DEL CENTRO ("al rotar la pieza se va al centro")
+  // ---------------------------------------------------------------------------
+  // La permutación x↔z no sólo reorienta la pieza: también le cambia la POSICIÓN,
+  // porque su coordenada a lo largo pasa a salir de su coordenada a lo ancho (y al
+  // revés). Una traba/estribo que estaba en x = 150 aparecía en x ≈ 0, o sea en
+  // MITAD del elemento, y una que estaba centrada se iba fuera del hormigón. El
+  // usuario lo reportó como "al rotar la pieza se va al centro".
+  //
+  // Criterio (del usuario): la pieza volteada conserva su CENTRO en cada eje del
+  // mundo DONDE AHORA ES PUNTUAL — donde no se extiende, o sea donde su posición
+  // es un dato y no un recorrido. "Puntual" = span < 30% de la dimensión del host
+  // en ese eje. Los ejes donde la pieza AHORA SE EXTIENDE no se restituyen: ahí la
+  // pieza ya no "está en un punto", su lugar lo define su propia geometría (el
+  // ejemplo del usuario: el x de un estribo volteado que ahora envuelve el largo).
+  //
+  // Va en el MOTOR y no en la UI a propósito: es geometría determinista, la ven
+  // igual el 3D, el 2D, el listado y los tests. Y es una traslación RÍGIDA del
+  // componente entero (mismo criterio que el re-anclaje tras rotar): no puede
+  // deformar el reparto interno ni fusionar barras.
+  //
+  // Después de restituir se CLAMPEA al marco de su nivel (cascada nivel →
+  // recubrimiento → hormigón, la misma de la rotación) y sólo en los ejes
+  // restituidos: los otros quedan exactamente como los dejó la permutación.
+  var UMBRAL_PUNTUAL = 0.30;
+
+  function _restituirCentroVolteo(placements, ref, comp, host) {
+    if (!placements || !placements.length || !ref || !ref.length || !host) return placements;
+    var bb = _bboxLista(placements.map(function (p) { return p.puntos; }));
+    var bbRef = _bboxLista(ref.map(function (p) { return p.puntos; }));
+    if (!bb || !bbRef) return placements;
+    var dimHost = { x: Number(host.largo), y: Number(host.alto), z: Number(host.ancho) };
+    var d = { x: 0, y: 0, z: 0 }, restituye = false;
+    ['x', 'y', 'z'].forEach(function (e) {
+      if (!isFinite(dimHost[e]) || dimHost[e] <= 0) return;
+      if ((bb.max[e] - bb.min[e]) >= UMBRAL_PUNTUAL * dimHost[e]) return;   // se EXTIENDE
+      d[e] = bbRef.c[e] - bb.c[e];
+      if (d[e]) restituye = true;
+    });
+    if (!restituye) return placements;
+    // Clamp al marco de SU nivel, sobre el bbox YA restituido y sólo en los ejes
+    // que se movieron (los demás no se tocan: no es un re-anclaje general).
+    var nivel = nivelJerarquiaEfectivo(
+      (comp && comp.jerarquia !== undefined) ? nivelJerarquia(comp.jerarquia) : null,
+      (comp && comp._rol) || _rolDeTipologia(comp && comp.tipologia, comp && comp.cara));
+    var movido = {
+      min: { x: bb.min.x + d.x, y: bb.min.y + d.y, z: bb.min.z + d.z },
+      max: { x: bb.max.x + d.x, y: bb.max.y + d.y, z: bb.max.z + d.z }
+    };
+    var cl = _deltaReanclaje(movido, _marcosReanclaje(host, nivel));
+    ['x', 'y', 'z'].forEach(function (e) { if (d[e]) d[e] += cl[e]; });
+    placements.forEach(function (pl) {
+      pl.puntos = (pl.puntos || []).map(function (p) {
+        var q = { x: p.x + d.x, y: p.y + d.y, z: p.z + d.z };
+        if (p.esArco) q.esArco = true;
+        return q;
+      });
+      pl.meta = _mezclarAnchor(pl.meta || {}, { volteo_centro: true });
+    });
+    return placements;
   }
 
   // Devuelve al MUNDO los puntos de placements expandidos en el marco local
@@ -1054,17 +1131,65 @@
         dims[k] = mk.altoUtil;
       }
     });
+    // -------------------------------------------------------------------------
+    // MEDIO DIÁMETRO CONTRA FIERRO ("el corchete muerde el estribo")
+    // -------------------------------------------------------------------------
+    // Las dims de la familia CABEZAL son de EJE A EJE (la polilínea que dibuja
+    // _cabezalLongitudinal es el EJE de la barra), pero el marco útil del nivel
+    // devuelve la CARA de lo que hay al lado. Contra hormigón la cuenta cierra:
+    // el recubrimiento se mide a la cara del fierro y el doblez de la pata cae
+    // justo ahí. Contra FIERRO no: la pata de la capa de adentro terminaba
+    // EXACTAMENTE en el eje del estribo, o sea METIDA φ_propio/2 dentro de él
+    // ("el corchete muerde el estribo").
+    //
+    // Regla: si la dim 'auto' se resuelve contra una cara CUYA PILA TIENE BARRAS
+    // (Σφ de los niveles anteriores > 0 → hay fierro, no hormigón pelado), se
+    // resta ADEMÁS φ_propio/2 por cada EXTREMO DEL TRAMO QUE TERMINA EN PATA
+    // (A > 0 / C > 0). Un extremo recto (101A, o un 102A sin su pata) no dobla
+    // contra nada: no resta.
+    //
+    // Deja los ejes TANGENTES, que es la condición física: separación de ejes =
+    // φ_vecino/2 + φ_propio/2. Caso del usuario (viga 600×60×30, recub 4/4/3,
+    // estribo φ8 nivel 1 + corchete-U φ16 nivel 2 en sección):
+    //     B = 30 − 2·(3 + 0.8) − 2·(1.6/2) = 22.4 − 1.6 = 20.8
+    //     punta del corchete z = ±10.4 · eje de la pierna del estribo z = ±11.6
+    //     separación = 1.2 = φest/2 + φ/2  → TANGENTE, ya no lo muerde.
+    // CONTRA HORMIGÓN PELADO NO RESTA NADA: la pila de los extremos de una viga
+    // está vacía (el estribo es un plano YZ, no ocupa 'ext'), así que la
+    // viga-semilla no se mueve ni un decimal (140.3 kg / 72 barras / 4 ítems).
+    var f = (comp.figura || '').toUpperCase();
+    var lado = _ladoLongitudinal(f, dims);
+    if (comp._rol === 'cabezal') {
+      var decl = g[lado];
+      var esAuto = !!(decl && decl.modo !== 'fija');
+      // La dim longitudinal de un cabezal se mide entre los EXTREMOS (cara 'ext'):
+      // esa es la pila que hay que mirar.
+      var hayFierro = _sumaPila(host, 'ext', (nivel !== undefined) ? nivel : null) > 0;
+      if (esAuto && hayFierro && dims[lado] != null) {
+        var nPatas = ((lado !== 'A' && Number(dims.A) > 0) ? 1 : 0) +
+          ((lado !== 'C' && Number(dims.C) > 0) ? 1 : 0);
+        if (nPatas) {
+          dims[lado] = Math.max(0, Number(dims[lado]) - nPatas * (Number(comp.diam) / 10) / 2);
+        }
+      }
+    }
     // EMPALME: alarga la dim LONGITUDINAL. La longitudinal es la que corre a lo
     // largo del eje de colocación: en 101A es A (barra recta); en 10x con tramo
     // (102/103/104) es B (tramo largo). Se aplica DESPUÉS del auto/fija para que
     // el override numérico del usuario también reciba el empalme.
     var empTot = _empalmeTotalCm(comp, Number(comp.diam) / 10);
     if (empTot > 0) {
-      var f = (comp.figura || '').toUpperCase();
-      var lado = (f.indexOf('101') === 0) ? 'A' : (dims.B != null ? 'B' : 'A');
       if (dims[lado] != null) dims[lado] = Number(dims[lado]) + empTot;
     }
     return dims;
+  }
+
+  // Lado LONGITUDINAL de una figura: el que corre a lo largo del eje de
+  // colocación. En 101x es A (barra recta); en 10x con tramo (102/103/104) es B.
+  // Fuente única del empalme y del medio-diámetro contra fierro.
+  function _ladoLongitudinal(figura, dims) {
+    var f = (figura || '').toUpperCase();
+    return (f.indexOf('101') === 0) ? 'A' : (dims && dims.B != null ? 'B' : 'A');
   }
 
   // opts.recubExtremo: recubrimiento de las caras que cierran el eje LONGITUDINAL

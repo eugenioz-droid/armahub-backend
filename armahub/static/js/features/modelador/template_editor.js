@@ -93,7 +93,12 @@
     // gizmo: { escena, cam } del triad de ejes del cuadrante 3D (B4·b).
     gizmo: null,
     // warnNivel/warnDescartado: banner anti-colapso (>350 / >800 barras).
-    warnNivel: null, warnDescartado: false
+    warnNivel: null, warnDescartado: false,
+    // corteIman: modo del slider de corte. true (default) = IMÁN — el corte salta a
+    //   la rebanada con piezas más cercana (_sliceMasCercana). false = LIBRE — el
+    //   corte es CONTINUO, se queda donde lo dejó el slider. Es GLOBAL (una sola
+    //   preferencia para el editor) y vive SOLO en memoria: no se guarda en la receta.
+    corteIman: true
   };
 
   function $(id) { return document.getElementById(id); }
@@ -1473,6 +1478,13 @@
   //   · NO activa            → flecha "inactiva" (opacity .35) con el rango DEFAULT
   //     del eje, SIN escribirlo en el componente. Arrastrarla (handle o tramo
   //     central) ACTIVA la distribución — lo hace _dragRangoMove.
+  // OFFSETS de la flecha de rango dentro del viewBox del overlay SVG.
+  //   V (flecha horizontal ↔): baja hasta 34 para NO toparse con la etiqueta de la
+  //     vista (.te-vtitle: top 8px + ~19px de alto ⇒ ocupa hasta ~27).
+  //   H (flecha vertical ↕): 30 para despegarla del borde izquierdo (antes 18).
+  var TE_RANGO_OFF_V = 34;
+  var TE_RANGO_OFF_H = 30;
+
   function _dibujarFlechaRango(svg, plano, X, Y, VW, VH) {
     if (ST.selCi < 0 || !ST.receta) return;
     var c = ST.receta.componentes[ST.selCi];
@@ -1500,7 +1512,7 @@
       }));
     }
     if (eje === def.u) {
-      var xa = X(rango.from), xb = X(rango.to), yy = 18;
+      var xa = X(rango.from), xb = X(rango.to), yy = TE_RANGO_OFF_V;
       svg.appendChild(_svgEl('line', { 'class': 'te-rango-line', x1: xa, y1: yy, x2: xb, y2: yy }));
       svg.appendChild(_svgEl('path', { 'class': 'te-rango-arrow', d: 'M' + (xa + 7) + ',' + (yy - 4) + ' L' + xa + ',' + yy + ' L' + (xa + 7) + ',' + (yy + 4) }));
       svg.appendChild(_svgEl('path', { 'class': 'te-rango-arrow', d: 'M' + (xb - 7) + ',' + (yy - 4) + ' L' + xb + ',' + yy + ' L' + (xb - 7) + ',' + (yy + 4) }));
@@ -1511,7 +1523,7 @@
       handle(xa, yy, 'from', 'ew-resize'); handle(xb, yy, 'to', 'ew-resize');
     } else {
       // el eje de reparto es el VERTICAL de esta vista → flecha ↕ pegada al margen izq.
-      var ya = Y(rango.from), yb = Y(rango.to), xx = 18;
+      var ya = Y(rango.from), yb = Y(rango.to), xx = TE_RANGO_OFF_H;
       svg.appendChild(_svgEl('line', { 'class': 'te-rango-line', x1: xx, y1: ya, x2: xx, y2: yb }));
       svg.appendChild(_svgEl('path', { 'class': 'te-rango-arrow', d: 'M' + (xx - 4) + ',' + (ya + 7) + ' L' + xx + ',' + ya + ' L' + (xx + 4) + ',' + (ya + 7) }));
       svg.appendChild(_svgEl('path', { 'class': 'te-rango-arrow', d: 'M' + (xx - 4) + ',' + (yb - 7) + ' L' + xx + ',' + yb + ' L' + (xx + 4) + ',' + (yb - 7) }));
@@ -1634,6 +1646,16 @@
       dims: _dimsDefault(ST.figura, rol, ST.contorno),
       distribucion: _distDefault(rol)
     };
+    // DISTRIBUCIÓN AL COLOCAR — un ESTRIBO o TRABA nace ya REPARTIDO (modo lineal,
+    // activa, rango útil default de SU eje de reparto), no como 1 barra suelta: el
+    // usuario nunca quiere un estribo solo, y así la flecha con handles aparece de
+    // inmediato al quedar seleccionado y la distribución se ajusta arrastrándola.
+    // El CABEZAL sigue naciendo puntual (su reparto son capas, no un rango).
+    if (rol === 'estribo' || rol === 'traba') {
+      comp.distribucion.modo = 'linear';
+      comp.distribucion.activa = true;
+      comp.distribucion.rango = _rangoDefault(comp.distribucion.sep, _ejeDistDe(comp));
+    }
     // pos_hint desde el click (los ejes que el plano define). El motor ancla por
     // cara y offset; el pos_hint corre la barra al punto clicado en los ejes libres.
     comp.pos_hint = _posHintDeClick(plano, host, rol, cara);
@@ -2216,7 +2238,7 @@
 
   // <select> de JERARQUÍA del componente (header). Escribe comp.jerarquia:
   //   'no'  → pegado al recubrimiento, NO participa de la jerarquía
-  //   1..4  → nivel (1 = exterior; 2+ se apoyan por dentro del anterior).
+  //   1..9  → nivel (1 = exterior; 2+ se apoyan por dentro del anterior).
   // No hay opción "auto": si el componente no trae el campo, se estampa el default
   // por rol al renderizar el panel, de modo que lo que se ve es lo que hay.
   function _selJerarquia(c, ci) {
@@ -2224,7 +2246,10 @@
     var sel = document.createElement('select');
     sel.className = 'te-jer';
     sel.title = 'n/a = pegado al recubrimiento (no participa) · 1 = nivel exterior · 2+ se apoyan por dentro del anterior';
-    [['no', 'n/a'], ['1', '1'], ['2', '2'], ['3', '3'], ['4', '4']].forEach(function (o) {
+    // n/a + niveles 1..9 (antes llegaba a 4; el anidado real puede encadenar más).
+    var opts = [['no', 'n/a']];
+    for (var nj = 1; nj <= 9; nj++) opts.push([String(nj), String(nj)]);
+    opts.forEach(function (o) {
       var op = document.createElement('option');
       op.value = o[0]; op.textContent = o[1];
       sel.appendChild(op);
@@ -2417,8 +2442,9 @@
   // significado (y el default) dependen del rol, igual que en el motor:
   //   · ESTRIBO  → anidar es el DEFAULT (las capas interiores se achican hacia
   //                adentro). El check nace marcado; desmarcarlo escribe anidar=false.
-  //   · CABEZAL/otros → el ajuste de patas es OPT-IN: el check nace desmarcado y
-  //                sólo al marcarlo se escribe anidar=true (desmarcar borra el campo).
+  //   · CABEZAL/otros → el anidado es OPT-IN: el check nace desmarcado y sólo al
+  //                marcarlo se escribe anidar=true (desmarcar borra el campo). La
+  //                semántica actual NO alinea patas: achica B y desplaza la capa.
   // Aquí sólo se escribe el dato (distribucion.anidar); quien lo consume es el motor.
   function _filaAnidar(box, c, ci, rol, d) {
     if (!(Number(d.n_capas) > 1)) return;
@@ -2439,7 +2465,7 @@
     var txt = document.createElement('span');
     txt.textContent = esEstribo
       ? 'Capas anidadas (se achican hacia adentro)'
-      : 'Ajustar medidas de capas (patas alineadas)';
+      : 'Ajustar capas anidadas (B se achica, patas iguales)';
     lab.appendChild(chk); lab.appendChild(txt);
     row.appendChild(lab);
     box.appendChild(row);
@@ -2921,6 +2947,20 @@
       });
       r.addEventListener('mousedown', function (e) { e.stopPropagation(); });   // no dispara pan
     });
+    // Check IMÁN / LIBRE del corte (global, sólo en memoria: ST.corteIman).
+    var iman = $('te_corteIman');
+    if (iman) {
+      iman.checked = ST.corteIman !== false;
+      ['click', 'mousedown'].forEach(function (ev) {
+        iman.addEventListener(ev, function (e) { e.stopPropagation(); });   // no dispara pan/selección
+      });
+      iman.addEventListener('change', function (e) {
+        e.stopPropagation();
+        ST.corteIman = iman.checked;
+        _marcarSucio();               // el encuadre del corte cambia → repintar
+        _redibujarPlanoActivo();      // y mover el plano 3D a la nueva posición
+      });
+    }
   }
 
   // Encuadra la cámara ortográfica del plano al bounding del elemento + un margen,
@@ -3044,7 +3084,13 @@
     if (d === 'x') {
       var slices = _slicesEnProfundidad(d);
       var target = -frac * (2 * half) + half;     // frac→posición cruda en [-half..half]
-      if (slices.pos.length) {
+      // MODO LIBRE (ST.corteIman === false): sin snap. El corte se queda EXACTO donde
+      // lo dejó el slider aunque ahí no haya ninguna pieza (permite cortar entre
+      // estribos). La banda sigue siendo fina: es un cuchillo, no una lonja.
+      if (!ST.corteIman) {
+        o.cortePos = target;
+        o.corteGrosor = slices.diam > 0 ? Math.max(slices.diam * 1.4, 1.2) : 4;
+      } else if (slices.pos.length) {
         // banda fina centrada en la rebanada (estribo) más cercana al slider.
         o.cortePos = _sliceMasCercana(slices.pos, target);
         o.corteGrosor = Math.max(slices.diam * 1.4, 1.2);   // ~1 barra de espesor

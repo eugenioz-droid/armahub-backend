@@ -260,8 +260,8 @@
   // polilínea δ hacia el interior".
   // ---------------------------------------------------------------------------
   // Regla ÚNICA (no hay casos particulares por tipología): al meter una figura
-  // DENTRO de otra, cada LADO se desplaza δ hacia el interior. Un lado se acorta
-  // δ por CADA lado vecino perpendicular que también se desplazó:
+  // DENTRO de otra, la figura entera se TRASLADA δ hacia el interior y sólo se
+  // acortan los lados a los que la capa exterior les estorba el paso:
   //
   //   · figura CERRADA (104x, perímetro): todos los lados tienen 2 vecinos →
   //     cada lado −2δ. La POSICIÓN la resuelve el marco (anchor.inset += δ), que
@@ -269,18 +269,34 @@
   //     `inset: δ` para que el llamador lo sume al anchor.
   //     (Hoy el marco ya se encogía pero las dims NO → el listado/corte mentía.)
   //
-  //   · figura ABIERTA en U / corchete (103x con patas A y C): el lado central B
-  //     tiene 2 vecinos → B−2δ; las patas A y C son EXTREMOS (1 vecino) → −δ
-  //     cada una, de modo que sus PUNTAS quedan alineadas con las de la capa
-  //     exterior. La cadena entera se corre δ hacia el núcleo →
-  //     anchorDelta.y = sentido·δ. Un corchete DENTRO del otro, sin toparse.
-  //     (Con una sola pata — figura en L — B tiene 1 vecino → B−δ. Misma regla.)
+  //   · figura ABIERTA en U / corchete (103x con patas A y C): SOLO el TRAMO B
+  //     se acorta (−δ por cada pata vecina → −2δ en la U, −δ en la L) y la cadena
+  //     entera se corre δ hacia el núcleo (anchorDelta[eje] = sentido·δ).
+  //     LAS PATAS NO SE TOCAN.
+  //     CORRECCIÓN DEL USUARIO (probando en pantalla) — antes las patas se
+  //     acortaban δ para que sus PUNTAS quedaran alineadas con las de la capa
+  //     exterior: «asumiste que las patas deben alinearse con las de la capa de
+  //     afuera, y eso no es correcto». La capa de adentro es la MISMA barra
+  //     doblada igual, corrida hacia el núcleo: sus puntas bajan δ más, y punto.
+  //     El PORQUÉ geométrico de que B sí se acorte: el tramo de la capa interior
+  //     viaja δ por dentro, o sea DENTRO del alto que ocupan las patas de la capa
+  //     exterior, así que cada extremo suyo tiene que retirarse δ para no chocar
+  //     con esa pata. Las patas, en cambio, cuelgan hacia el núcleo: no tienen
+  //     nada delante que las obligue a acortarse.
   //
   //   · figura RECTA (101x, un solo lado, 0 vecinos): −0 → sin cambio. No hay
   //     nada que anidar; el llamador aplica el retranqueo de capa normal.
   //
-  // δ lo fija el distribuidor: k·(φ+gap) en layered, k·max(sep_capas,φ) en
-  // arreglo. Con gap=0 las capas quedan TOCÁNDOSE (lo que pidió el usuario).
+  // PATA vs TRAMO en una cadena abierta: los lados alternan orientación y la
+  // convención de la familia 103x (la misma que dibuja _cabezalLongitudinal) es
+  // A = pata, B = tramo, C = pata → índices PARES = patas (⊥ a la cara),
+  // IMPARES = tramos (∥ a la cara). No hace falta mirar la figura: sale del
+  // orden de recorrido.
+  //
+  // δ lo fija el distribuidor y vale k·φ_PROPIO, SIN gap ni sep_capas: dos capas
+  // anidadas quedan FIERRO CONTRA FIERRO (tangentes). El gap/sep_capas es del
+  // APILADO sin anidar. CORRECCIÓN DEL USUARIO: con φ+gap «los ajustes fueron
+  // mucho más que la medida correcta».
   //
   // anidarFigura(figura, dims, delta, rol, opts) →
   //   { dims, anchorDelta:{x,y,z}, eje, delta, inset, criterio, vecinos }
@@ -344,11 +360,19 @@
     for (var k in dims) if (dims.hasOwnProperty(k)) nd[k] = dims[k];
     for (var i = 0; i < lados.length; i++) {
       var L = lados[i];
-      // vecinos perpendiculares del lado: cerrada = 2 siempre; abierta = 2 salvo
-      // los EXTREMOS de la cadena, que tienen 1.
-      var v = cerrada ? 2 : ((i === 0 || i === lados.length - 1) ? 1 : 2);
+      // δ que se le resta al lado: cerrada = 2 siempre (2 vecinos perpendiculares);
+      // abierta = las PATAS (índice par) no se tocan y el TRAMO se acorta δ por
+      // cada pata vecina (2 en la U, 1 en la L).
+      var v;
+      if (cerrada) {
+        v = 2;
+      } else if (i % 2 === 0) {
+        v = 0;                                   // PATA: intacta (ver cabecera)
+      } else {
+        v = (i > 0 ? 1 : 0) + (i < lados.length - 1 ? 1 : 0);
+      }
       res.vecinos[L] = v;
-      nd[L] = Math.max(0, Number(nd[L]) - v * d);
+      if (v) nd[L] = Math.max(0, Number(nd[L]) - v * d);
     }
     res.dims = nd;
     if (cerrada) {
