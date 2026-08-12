@@ -937,10 +937,14 @@
       largo:   { u: 'x', v: 'y', depth: 'z', W: 'largo', H: 'alto',  recub: { W: 'lat', H: 'supinf' } },
       planta:  { u: 'x', v: 'z', depth: 'y', W: 'largo', H: 'ancho', recub: { W: 'lat', H: 'lat' } }
     },
+    // MURO (corrección del usuario 12-ago): el CORTE HORIZONTAL (largo×espesor) es
+    // EL plano de trabajo del muro — ahí viven las 2 cortinas y las trabas — y por
+    // eso va al PRIMER cuadrante como SECCIÓN. El canto (espesor×alto) pasa al
+    // tercer cuadrante como ELEVACIÓN·XZ (elevación lateral).
     muro: {
-      seccion: { u: 'z', v: 'y', depth: 'x', W: 'ancho', H: 'alto',  recub: { W: 'lat', H: 'supinf' } },
+      seccion: { u: 'x', v: 'z', depth: 'y', W: 'largo', H: 'ancho', recub: { W: 'supinf', H: 'lat' } },
       largo:   { u: 'x', v: 'y', depth: 'z', W: 'largo', H: 'alto',  recub: { W: 'supinf', H: 'supinf' } },
-      planta:  { u: 'x', v: 'z', depth: 'y', W: 'largo', H: 'ancho', recub: { W: 'supinf', H: 'lat' } }
+      planta:  { u: 'z', v: 'y', depth: 'x', W: 'ancho', H: 'alto',  recub: { W: 'lat', H: 'supinf' } }
     }
     // columna: { seccion: {...}, largo: {...}, planta: {...} }    // TODO tanda 3
   };
@@ -959,7 +963,9 @@
   // sigue al elemento sin tocar el HTML. Se llama al abrir y al cambiar de elemento.
   var _TITULO_POR_ELEMENTO = {
     viga: { seccion: 'SECCIÓN', largo: 'A LO LARGO', planta: 'PLANTA' },
-    muro: { seccion: 'SECCIÓN', largo: 'ELEVACIÓN',  planta: 'PLANTA' }
+    // muro: la "planta" ES la sección del muro (corte horizontal, cuadrante 1);
+    // el canto es una segunda elevación (se distinguen por las letras de eje).
+    muro: { seccion: 'SECCIÓN', largo: 'ELEVACIÓN',  planta: 'ELEVACIÓN' }
   };
   function _titulosSemanticos() {
     return _TITULO_POR_ELEMENTO[_tipoElemento()] || _TITULO_POR_ELEMENTO.viga;
