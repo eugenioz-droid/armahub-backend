@@ -341,6 +341,16 @@
         'modelador-motor-geom',
         '[ArmaHub] No se pudo cargar modelador/motor_geom.js'
       ),
+      // Catálogo de figuras (espejo estático + actualizar() desde GET
+      // /figuras-catalogo). Lo consume el Template Editor como fuente ÚNICA de
+      // parciales/ángulos/radio; se registra en window.ModeladorCatalogoFiguras.
+      loadScript(
+        'script[data-armahub-feature="modelador-catalogo-figuras"]',
+        '/static/js/features/modelador/catalogo_figuras.js' + suffix,
+        'armahubFeature',
+        'modelador-catalogo-figuras',
+        '[ArmaHub] No se pudo cargar modelador/catalogo_figuras.js'
+      ),
       loadScript(
         'script[data-armahub-feature="modelador-figura-puntos"]',
         '/static/js/features/modelador/figura_puntos.js' + suffix,

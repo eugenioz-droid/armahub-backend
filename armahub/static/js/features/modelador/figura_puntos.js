@@ -9,11 +9,14 @@
 //   Y = alto                       → [-alto/2, +alto/2]  (sup = +, inf = -)
 //   Z = ancho                      → [-ancho/2, +ancho/2]
 //
-// El MVP resuelve las figuras de la viga-semilla de forma PARAMÉTRICA a partir
-// de sus parciales/ángulos (no necesita leer geometria JSON del catálogo, que
-// puede no existir para estas figuras). Diseñado como un conjunto de
-// "constructores por rol" (cabezal longitudinal / estribo perimetral / traba)
-// despachados por la figura + tipología. Escala a más figuras agregando casos.
+// Las figuras se resuelven de forma PARAMÉTRICA a partir de sus parciales/
+// ángulos del CATÁLOGO (catalogo_figuras.js), no de la geometria JSON (que
+// puede no existir). Son cuatro "constructores por familia" — recta / cabezal
+// longitudinal con patas / estribo perimetral / traba — y la familia se DERIVA
+// del rol de la tipología y del nº de lados de la figura (familiaDeDibujo), sin
+// una lista de casos por código. Lo que estos constructores no saben trazar
+// honestamente (espirales con radio, cadenas de 5+ tramos) se declara NO
+// DIBUJABLE con motivo (dibujabilidad/noDibujables) en vez de aproximarse.
 //
 // NOTA de convención: los ángulos del catálogo (45/135) describen el gancho; el
 // motor de render usa el giro real. Aquí se dibuja la forma con ganchos a 45°/90°
@@ -24,6 +27,127 @@
   'use strict';
 
   function V(x, y, z) { return { x: x, y: y, z: z }; }
+
+  // Resolver el CATÁLOGO en el momento de usarlo (scripts en paralelo en el
+  // navegador: catalogo_figuras.js puede cargar DESPUÉS que este archivo). Misma
+  // regla que _reglas() en generar.js y _fp() en reglas.js.
+  function _cat() {
+    return global.ModeladorCatalogoFiguras ||
+      (typeof require !== 'undefined' ? require('./catalogo_figuras.js') : null);
+  }
+
+  // Spec del catálogo (parciales/ángulos/radio) o null si la figura NO existe.
+  function _spec(figura) {
+    var c = _cat();
+    return c ? c.get(figura) : null;
+  }
+
+  // ---------------------------------------------------------------------------
+  // QUÉ SABE DIBUJAR EL EDITOR — POR REGLA, NO POR LISTA (TANDA 2 · T7.3)
+  // ---------------------------------------------------------------------------
+  // Los constructores de este módulo trazan exactamente cuatro formas:
+  //   · RECTA            — 1 lado (101x).
+  //   · CABEZAL con patas— 2 o 3 lados: L (A+B) o U (A+B+C), patas hacia el núcleo.
+  //   · ESTRIBO cerrado  — marco perimetral con ganchos sísmicos (4 lados A–D).
+  //   · TRABA            — vertical que cose las dos caras, gancho arriba/abajo.
+  // Todo lo que no entra ahí NO se dibuja: se EXCLUYE con motivo en vez de
+  // pintar una mentira (una 105x de 5 tramos dibujada como U es una figura que
+  // no existe, y el usuario no tiene cómo darse cuenta).
+  //
+  // La regla se evalúa contra el catálogo VIGENTE (espejo estático o data fresca
+  // del backend), así que una figura nueva se clasifica sola: no hay lista negra
+  // escrita a mano que se pueda quedar vieja.
+  var MAX_LADOS_DIBUJABLES = 4;
+
+  // ¿La figura es un PERÍMETRO CERRADO? Criterio del catálogo: 4 lados A–D y sin
+  // radio (la serie 104x completa). Es lo que dibuja _estriboPerimetral: un marco
+  // que cierra. Sin catálogo cargado cae al criterio histórico (prefijo '104').
+  function _esPerimetro(spec, figura) {
+    if (!spec) return (figura || '').toUpperCase().indexOf('104') === 0;
+    return !spec.radio && spec.parciales.length === MAX_LADOS_DIBUJABLES;
+  }
+
+  // dibujabilidad(figura) → { dibujable, familia, lados, motivo }
+  //   familia: 'recta' | 'cabezal' | 'estribo' (la de DIBUJO por defecto; con un
+  //   rol declarado manda familiaDeDibujo). motivo: por qué se excluye.
+  function dibujabilidad(figura) {
+    var f = (figura || '').toUpperCase();
+    var spec = _spec(f);
+    if (!spec) {
+      return { dibujable: false, familia: null, lados: 0,
+        motivo: 'no está en el catálogo de figuras' };
+    }
+    var n = spec.parciales.length;
+    if (spec.radio) {
+      return { dibujable: false, familia: null, lados: n,
+        motivo: 'usa radio (hélice/espiral): el editor sólo traza tramos rectos con codos' };
+    }
+    if (n === 0) {
+      return { dibujable: false, familia: null, lados: 0,
+        motivo: 'sin parciales en el catálogo: no hay lados que dibujar' };
+    }
+    if (n > MAX_LADOS_DIBUJABLES) {
+      return { dibujable: false, familia: null, lados: n,
+        motivo: n + ' tramos: el editor traza hasta ' + MAX_LADOS_DIBUJABLES +
+          ' (recta, L, U y marco cerrado)' };
+    }
+    return {
+      dibujable: true, lados: n, motivo: null,
+      familia: (n === MAX_LADOS_DIBUJABLES) ? 'estribo' : (n === 1 ? 'recta' : 'cabezal')
+    };
+  }
+
+  // Lista negra viva. DOS FORMAS, misma verdad (la UI usa las dos):
+  //   noDibujables()        → { codigo: motivo } de todo el catálogo cargado.
+  //   noDibujables(codigo)  → motivo (string) o null si esa figura SÍ se dibuja.
+  function noDibujables(codigo) {
+    if (codigo != null && String(codigo).trim() !== '') {
+      var d1 = dibujabilidad(codigo);
+      return d1.dibujable ? null : d1.motivo;
+    }
+    var c = _cat(), out = {};
+    if (!c) return out;
+    c.codigos().forEach(function (cod) {
+      var d = dibujabilidad(cod);
+      if (!d.dibujable) out[cod] = d.motivo;
+    });
+    return out;
+  }
+
+  // ¿Un solo lado? (barra recta). Sin catálogo cae al criterio histórico '101x'.
+  function _esRecta(figura) {
+    var f = (figura || '').toUpperCase();
+    var spec = _spec(f);
+    return spec ? (spec.parciales.length === 1) : (f.indexOf('101') === 0);
+  }
+
+  // FAMILIA DE DIBUJO efectiva = qué constructor traza esta barra.
+  // 1) El ROL de la tipología MANDA: un componente ES/EC se dibuja como marco
+  //    cerrado y un TR* como traba, sea cual sea su figura (es la PIEZA la que
+  //    define la forma de colocación, no el código de figura). Un rol 'cabezal'
+  //    también manda: se traza como longitudinal aunque la figura sea de 4 lados
+  //    (esa discordancia la AVISA generar.js — dibujar un marco a media altura
+  //    de la viga sería peor que avisar).
+  // 2) SIN rol declarado, lo dice la figura: perímetro de 4 lados → estribo;
+  //    1 lado → recta; 2–3 lados → cabezal con patas (A y/o C).
+  function familiaDeDibujo(figura, rol) {
+    if (rol === 'estribo') return 'estribo';
+    if (rol === 'traba') return 'traba';
+    var f = (figura || '').toUpperCase();
+    if (!rol && _esPerimetro(_spec(f), f)) return 'estribo';
+    return _esRecta(f) ? 'recta' : 'cabezal';
+  }
+
+  // ¿Qué EXTREMOS llevan pata (gancho)? Convención del catálogo: A = pata del
+  // extremo inicial, C = pata del final, B = cuerpo. Derivado de los parciales
+  // REALES (101x no tiene ninguna; 102x sólo la inicial; 103x/104x las dos).
+  // Lo consume la UI (control "Patas" y los Δ de extremo libre).
+  function patasDeFigura(figura) {
+    var spec = _spec(figura);
+    var P = spec ? spec.parciales : [];
+    if (P.length < 2) return { inicio: false, fin: false };
+    return { inicio: P.indexOf('A') >= 0, fin: P.indexOf('C') >= 0 };
+  }
 
   // Extensión libre del gancho tras el doblez (norma aprox): 6φ, mínimo ~7.5 cm.
   function extGancho(diamCm) { return Math.max(6 * diamCm, 7.5); }
@@ -81,8 +205,10 @@
       else if (emp.extremo === 'fin') eFin = emp.valor;
       else if (emp.extremo === 'ambos') { eIni = emp.valor; eFin = emp.valor; }
     }
-    // 101A (una sola dim A): barra RECTA de largo A (no hay patas de gancho).
-    if (f.indexOf('101') === 0) {
+    // UN SOLO LADO (101A y cualquier figura de 1 parcial): barra RECTA de largo A
+    // — no hay patas de gancho. El criterio sale del catálogo (nº de parciales),
+    // no del prefijo del código.
+    if (_esRecta(f)) {
       var largoRecto = (dims.A != null) ? dims.A : (host.largo - 2 * (anchor.recubExtremo || 0));
       // El excedente de empalme (eIni+eFin) ya está DENTRO de largoRecto (dim
       // alargada). Se ubica el segmento asimétrico: la mitad "base" centrada y
@@ -372,8 +498,13 @@
     return out;
   }
 
+  // ¿La cadena de lados CIERRA? Se deriva del catálogo (4 lados A–D sin radio =
+  // perímetro), no del prefijo del código: una figura nueva de 4 lados anida como
+  // anillo concéntrico sin tocar esta función. Sobre el catálogo actual da
+  // exactamente la serie 104x, o sea lo mismo que el criterio anterior.
   function figuraCerrada(figura) {
-    return (figura || '').toUpperCase().indexOf('104') === 0;
+    var f = (figura || '').toUpperCase();
+    return _esPerimetro(_spec(f), f);
   }
 
   function anidarFigura(figura, dims, delta, rol, opts) {
@@ -383,11 +514,15 @@
     var res = { dims: dims, delta: 0, inset: 0, criterio: 'recta', vecinos: {}, cabe: true, motivo: null };
     var lados = _ladosDeDims(dims);
     var f = (figura || '').toUpperCase();
-    // El criterio lo manda la FIGURA; el rol sólo desempata cuando la figura no
-    // dice nada: un componente con rol 'estribo' se dibuja SIEMPRE como marco
-    // cerrado (_estriboPerimetral), así que su anidado es por inset de marco.
-    var abierta = (f.indexOf('103') === 0) && lados.length >= 2;   // U / corchete / L
-    var cerrada = !abierta && (opts.cerrada === true || figuraCerrada(f) || rol === 'estribo');
+    // CRITERIO: manda la FORMA QUE SE DIBUJA, no el código de la figura.
+    // Un componente con rol 'estribo' se traza SIEMPRE como marco cerrado
+    // (_estriboPerimetral) → su anidado es por inset de marco, aunque su figura
+    // sea de 3 lados (103E/103H son estribos en el catálogo: MURO-EC, VIGA-ES).
+    // Antes eso se decidía por el prefijo '103'/'104' del código y esos dos casos
+    // se anidaban como corchete abierto mientras se dibujaban como anillo.
+    // ABIERTA = cualquier cadena de 2+ lados que no cierra (L, U, poligonal).
+    var cerrada = (opts.cerrada === true) || (rol === 'estribo') || figuraCerrada(f);
+    var abierta = !cerrada && lados.length >= 2;   // U / corchete / L
     // δ EFECTIVO: la cerrada se anida con la separación entre marcos (el campo del
     // usuario); la abierta, con su propio φ (holgura contra el fierro de afuera).
     var d = cerrada ? dSep : dDim;
@@ -440,22 +575,31 @@
     opts = opts || {};
     var diamCm = opts.diamCm != null ? opts.diamCm : 1.0;
     var rol = opts.rol || _rolPorFigura(figura, anchor);
-    if (rol === 'estribo') return _estriboPerimetral(figura, dims, host, anchor, diamCm);
-    if (rol === 'traba') return _traba(figura, dims, host, anchor, diamCm);
-    return _cabezalLongitudinal(figura, dims, host, anchor, diamCm);
+    var familia = familiaDeDibujo(figura, rol);
+    if (familia === 'estribo') return _estriboPerimetral(figura, dims, host, anchor, diamCm);
+    if (familia === 'traba') return _traba(figura, dims, host, anchor, diamCm);
+    return _cabezalLongitudinal(figura, dims, host, anchor, diamCm);   // recta | cabezal
   }
 
-  // Heurística de rol si la tipología no lo dice: figuras 104* cerradas = estribo.
+  // Rol cuando la tipología no lo dice: cara lateral = traba; figura de perímetro
+  // cerrado (4 lados del catálogo) = estribo; el resto longitudinal.
   function _rolPorFigura(figura, anchor) {
-    var f = (figura || '').toUpperCase();
     if (anchor && anchor.cara === 'lateral') return 'traba';
-    if (f.charAt(0) === '1' && f.charAt(1) === '0' && f.charAt(2) === '4') return 'estribo';
-    return 'cabezal';
+    var f = (figura || '').toUpperCase();
+    return _esPerimetro(_spec(f), f) ? 'estribo' : 'cabezal';
   }
 
   var API = {
     figuraAPuntos: figuraAPuntos,
     extGancho: extGancho,
+    // CLASIFICACIÓN DE DIBUJO (fuente única; se evalúa contra el catálogo vigente).
+    // La UI usa `noDibujables()` para EXCLUIR figuras del selector con su motivo,
+    // y `familiaDeDibujo`/`patasDeFigura` para armar los controles del componente.
+    dibujabilidad: dibujabilidad,
+    noDibujables: noDibujables,
+    familiaDeDibujo: familiaDeDibujo,
+    patasDeFigura: patasDeFigura,
+    MAX_LADOS_DIBUJABLES: MAX_LADOS_DIBUJABLES,
     // ANIDADO: fuente ÚNICA del criterio "figura dentro de figura" (la usan
     // distribuidorLayered/distribuidorArreglo de reglas.js).
     anidarFigura: anidarFigura,

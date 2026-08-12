@@ -104,7 +104,11 @@
     //   la rebanada con piezas más cercana (_sliceMasCercana). false = LIBRE — el
     //   corte es CONTINUO, se queda donde lo dejó el slider. Es GLOBAL (una sola
     //   preferencia para el editor) y vive SOLO en memoria: no se guarda en la receta.
-    corteIman: true
+    corteIman: true,
+    // _catPedido: ya se pidió el catálogo real de figuras (GET /figuras-catalogo) en
+    //   esta sesión de página. Se pide UNA vez; si el fetch falla vuelve a false para
+    //   reintentar la próxima vez que se abra el editor.
+    _catPedido: false
   };
 
   function $(id) { return document.getElementById(id); }
@@ -134,18 +138,133 @@
   // Alimenta los DOS selects de φ (ribbon y panel del componente): una sola lista.
   var TE_DIAMS = [8, 10, 12, 16, 18, 22, 25, 28, 32, 36];
 
-  // Espejo mínimo de parciales/ángulos del catálogo (mismas figuras que generar.js).
-  var FIG = {
-    '101A': { parciales: ['A'], angulos: [] },
-    '102A': { parciales: ['A', 'B'], angulos: [] },
-    '102B': { parciales: ['A', 'B'], angulos: [] },
-    '103A': { parciales: ['A', 'B', 'C'], angulos: [] },
-    '103B': { parciales: ['A', 'B', 'C'], angulos: [45, 45] },
-    '103D': { parciales: ['A', 'B', 'C'], angulos: [45, 45] },
-    '104D': { parciales: ['A', 'B', 'C', 'D'], angulos: [135, 135] },
-    '106A': { parciales: ['A', 'B', 'C', 'D'], angulos: [135, 135] }
-  };
-  function _figSpec(fig) { return FIG[(fig || '').toUpperCase()] || { parciales: ['A'], angulos: [] }; }
+  // ==========================================================================
+  // CATÁLOGO DE FIGURAS — FUENTE ÚNICA
+  // Los parciales/ángulos/radio de una figura salen del catálogo REAL
+  // (armahub/catalogo.py · GET /figuras-catalogo), publicado por
+  // features/modelador/catalogo_figuras.js como
+  //   global.ModeladorCatalogoFiguras = { FIGURAS, noDibujables, actualizar(data) }
+  // y se resuelve EN EL MOMENTO de usar (nunca capturado a nivel de módulo: los
+  // scripts cargan en paralelo).
+  //
+  // Aquí vivía un espejo local `FIG` de 8 figuras que además MENTÍA (106A con 4
+  // parciales cuando el catálogo le da 6: A..F) y que mandaba cualquier código
+  // desconocido al default {parciales:['A']} — o sea: se tipeaba basura en el
+  // campo Figura, nacía una barra "recta" fantasma y salía con kg = 0 sin un solo
+  // aviso. El espejo MURIÓ: lo que no está en el catálogo no se coloca.
+  // ==========================================================================
+  function _cat() { return global.ModeladorCatalogoFiguras || null; }
+  function _figKey(f) { return String(f == null ? '' : f).trim().toUpperCase(); }
+
+  // Mapa codigo → {parciales, angulos, radio, descripcion}. El módulo puede
+  // publicar FIGURAS como mapa por código o como la lista cruda del endpoint;
+  // las dos se leen igual (se indexa por `codigo`).
+  function _figuras() {
+    var c = _cat(), F = c && c.FIGURAS;
+    if (!F) return {};
+    if (!Array.isArray(F)) return F;
+    var out = {};
+    F.forEach(function (f) { if (f && f.codigo) out[_figKey(f.codigo)] = f; });
+    return out;
+  }
+  function _catListo() { return Object.keys(_figuras()).length > 0; }
+  function _figDef(fig) { return _figuras()[_figKey(fig)] || null; }
+
+  // Motivo por el que una figura EXISTENTE no se puede dibujar en este editor
+  // (lo publica el módulo del catálogo). null = dibujable. Se aceptan las tres
+  // formas razonables del contrato: función, lista de códigos o mapa
+  // codigo → motivo (el motivo, si viene, es lo que se muestra en el tooltip).
+  function _motivoNoDibujable(fig) {
+    var c = _cat(), nd = c && c.noDibujables;
+    if (!nd) return null;
+    var k = _figKey(fig), v;
+    if (typeof nd === 'function') v = nd(k);
+    else if (Array.isArray(nd)) v = (nd.indexOf(k) >= 0);
+    else v = nd[k];
+    if (!v) return null;
+    return (typeof v === 'string') ? v : 'el motor no la dibuja';
+  }
+
+  // Códigos DIBUJABLES, ordenados: es lo que alimenta el datalist compartido.
+  function _figsDibujables() {
+    var F = _figuras();
+    return Object.keys(F).filter(function (k) { return !_motivoNoDibujable(k); }).sort();
+  }
+
+  // Error de una figura tipeada, o null si sirve. Sin catálogo cargado NO se
+  // inventa un veredicto (no hay contra qué validar): eso se avisa aparte.
+  function _figError(fig) {
+    var k = _figKey(fig);
+    if (!k) return 'falta la figura';
+    if (!_catListo()) return null;
+    if (!_figDef(k)) return 'figura ' + k + ' no existe en el catálogo';
+    var m = _motivoNoDibujable(k);
+    if (m) return 'figura ' + k + ' no es dibujable aquí (' + m + ')';
+    return null;
+  }
+
+  // Tooltip informativo de una figura del catálogo (lados + ángulos + radio).
+  function _figTitle(fig) {
+    var d = _figDef(fig); if (!d) return '';
+    var lados = (d.parciales || []).join('');
+    var ang = (d.angulos || []).length ? ' · α ' + d.angulos.join('/') + '°' : '';
+    return _figKey(fig) + (d.descripcion ? ' — ' + d.descripcion : '') +
+      (lados ? ' · lados ' + lados : '') + ang + (d.radio ? ' · con radio' : '');
+  }
+
+  // spec de dibujo de una figura: SIEMPRE del catálogo. Una figura desconocida no
+  // se disfraza de barra recta — devuelve parciales vacíos y la ficha la marca en
+  // rojo (antes se la tragaba en silencio y salía con kg = 0).
+  function _figSpec(fig) {
+    var d = _figDef(fig);
+    if (!d) return { parciales: [], angulos: [], radio: false };
+    return {
+      parciales: (d.parciales || []).slice(),
+      angulos: (d.angulos || []).slice(),
+      radio: !!d.radio
+    };
+  }
+
+  // Rellena el datalist ÚNICO (#te_figs) que comparten el campo Figura del ribbon
+  // y el de la ficha del componente, con TODAS las figuras DIBUJABLES del catálogo
+  // (las no dibujables se excluyen: ofrecerlas sería ofrecer un error).
+  function _refrescarFigDatalist() {
+    var dl = $('te_figs'); if (!dl) return;
+    var F = _figuras(), html = '';
+    _figsDibujables().forEach(function (k) {
+      var d = F[k] || {};
+      var lbl = (d.descripcion ? d.descripcion + ' · ' : '') + (d.parciales || []).join('');
+      html += '<option value="' + _esc(k) + '"' + (lbl ? ' label="' + _esc(lbl) + '"' : '') + '>';
+    });
+    dl.innerHTML = html;
+  }
+
+  // Catálogo REAL al abrir el editor: GET /figuras-catalogo → actualizar(data).
+  // El módulo del catálogo trae un espejo estático para arrancar; esto lo
+  // REEMPLAZA por lo que hay en la BD. Si la red falla manda el espejo y NO se
+  // muestra error (el editor sigue usable con lo conocido), pero se rearma el
+  // flag para reintentar en la próxima apertura. fetch/apiUrl/authHeaders se
+  // resuelven DENTRO (patrón de templateEditorGuardar).
+  function _cargarCatalogoFiguras() {
+    var c = _cat();
+    if (!c || typeof c.actualizar !== 'function' || ST._catPedido) {
+      _refrescarFigDatalist(); _validarFiguraRibbon(false); return;
+    }
+    ST._catPedido = true;
+    fetch(_tplUrl('/figuras-catalogo'), { headers: _tplHeaders(false) })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (data) {
+        if (data) c.actualizar(data);
+        _refrescarFigDatalist();
+        _validarFiguraRibbon(false);
+        var bd = $('te_backdrop');
+        if (bd && bd.classList.contains('on')) _renderPanel();   // la ficha re-lee parciales
+      }, function () {
+        ST._catPedido = false;                                   // reintenta al reabrir
+        _refrescarFigDatalist();
+        _validarFiguraRibbon(false);
+      });
+  }
 
   // ¿Qué EXTREMOS del componente llevan PATA (gancho)? Convención del catálogo, la
   // misma que usa _dimsDefault: en un cabezal A = pata del extremo inicial, C = pata
@@ -1960,6 +2079,11 @@
   // COLOCAR — clic en una vista crea un componente anclado.
   // ==========================================================================
   function _colocarEnVista(plano, host) {
+    // GATE DE FIGURA: el clic coloca por ST.tool, no por ST.cargado, así que la
+    // última palabra la tiene el catálogo. Una figura inexistente o no dibujable NO
+    // nace: antes se colaba como "recta" con parciales inventados y kg = 0.
+    var errFig = _figError(ST.figura);
+    if (errFig) { _actualizarStatus(errFig); return; }
     _pushUndo();   // snapshot ANTES de mutar (tarea 1: _pushUndo antes de colocar)
     var rol = _rolDe(ST.tipologia);
     // CARA por SNAP DE CARA (elegida VIENDO): si hay una cara resaltada bajo el
@@ -2674,10 +2798,20 @@
 
     // Identidad
     var idRow = _div('te-grid3');
-    idRow.appendChild(_fld('Figura', _input({ value: c.figura, list: 'te_figs' }, function (v) { _setFigura(ci, v); })));
+    idRow.appendChild(_fld('Figura', _figInputComp(c, ci)));
     idRow.appendChild(_fld('φ mm', _select(TE_DIAMS.map(String), String(c.diam), function (v) { c.diam = Number(v); _mut(ci); })));
     idRow.appendChild(_fld('Sufijo', _input({ value: c.suf_tipo || '', placeholder: 'sup / A…' }, function (v) { c.suf_tipo = v; _mut(ci, true); })));
     body.appendChild(idRow);
+
+    // La figura GUARDADA puede no estar en el catálogo (receta vieja, figura dada de
+    // baja): se dice en la ficha, porque esa barra no se dibuja ni pesa.
+    var errFig = _figError(c.figura);
+    if (errFig) {
+      var nErr = _div('te-note');
+      nErr.style.color = '#c62828';
+      nErr.textContent = '⚠ ' + errFig + ' — esta barra no se dibuja ni pesa hasta corregirla.';
+      body.appendChild(nErr);
+    }
 
     // Cara / anclaje (radial)
     var caraRow = _div('te-row');
@@ -2769,9 +2903,41 @@
       });
       body.appendChild(angRow);
     }
+    // FIGURA CON RADIO (catálogo: radio = true, p.ej. 201A). Se DICE, no se ofrece un
+    // campo: generar.js escribe `radio: null` fijo en la BarraPayload, así que un
+    // input aquí sería un valor que el usuario edita y que nunca llega al backend.
+    if (spec.radio) {
+      var nRad = _div('te-note');
+      nRad.style.color = '#c62828';
+      nRad.textContent = '⚠ Figura con RADIO: el editor todavía no lo edita y el payload lo manda en null.';
+      body.appendChild(nRad);
+    }
     var note = _div('te-note'); note.textContent = 'Dim en Auto se derivan del elemento (largo/alto/ancho − recub). Fija = valor manual.';
     body.appendChild(note);
     return body;
+  }
+
+  // Campo FIGURA de la ficha, validado contra el catálogo: una figura que no existe
+  // o no es dibujable NO se aplica al componente (borde rojo + motivo en el status).
+  function _figInputComp(c, ci) {
+    var inp = _input({ value: c.figura || '', list: 'te_figs', placeholder: 'buscar figura…' }, function (v) {
+      var k = _figKey(v);
+      var err = _figError(k);
+      if (err) { inp.classList.add('bad'); inp.title = err; _actualizarStatus(err); return; }
+      inp.classList.remove('bad'); inp.title = _figTitle(k);
+      _setFigura(ci, k);
+    });
+    inp.addEventListener('input', function () {
+      var v = inp.value.trim();
+      if (!v) { inp.classList.remove('bad'); inp.title = ''; return; }   // a medio tipear
+      var err = _figError(v);
+      inp.classList.toggle('bad', !!err);
+      inp.title = err || _figTitle(v);
+    });
+    var err0 = _figError(c.figura);
+    if (err0) { inp.classList.add('bad'); inp.title = err0; }
+    else inp.title = _figTitle(c.figura);
+    return inp;
   }
 
   // ==========================================================================
@@ -3170,8 +3336,26 @@
   // cursor y el clic coloca (§INTERACCIÓN-2.0 tarea 1). Se sella al elegir en el
   // ribbon o al activar una herramienta de colocación.
   function _sellarCargado() {
+    // Nada se carga con una figura que el catálogo no reconoce: sin esto el ghost
+    // seguía al cursor y el clic paría una barra fantasma (kg = 0).
+    var err = _figError(ST.figura);
+    if (err) { ST.cargado = null; _limpiarGhost(); _actualizarStatus(err); return; }
     ST.cargado = { figura: ST.figura, tipologia: ST.tipologia, diam: Number(ST.diam), contorno: ST.contorno !== false };
     _actualizarStatus();
+  }
+
+  // Valida el campo Figura del RIBBON contra el catálogo: pinta el borde rojo, deja
+  // el motivo en el tooltip y (con `conStatus`) en la barra de estado. Devuelve
+  // true sólo si la figura sirve para colocar.
+  function _validarFiguraRibbon(conStatus) {
+    var el = $('te_ribFigura'); if (!el) return true;
+    var v = el.value.trim();
+    if (!v) { el.classList.remove('bad'); el.title = ''; return false; }
+    var err = _figError(v);
+    el.classList.toggle('bad', !!err);
+    el.title = err || _figTitle(v);
+    if (err && conStatus) _actualizarStatus(err);
+    return !err;
   }
 
   // Soltar lo cargado (Esc / herramienta que no coloca) → sin ghost, deselecciona.
@@ -3182,8 +3366,21 @@
   }
 
   function _bindRibbon() {
+    // FIGURA del ribbon — VALIDADA contra el catálogo. 'input' sólo pinta el borde
+    // mientras se teclea; 'change' (blur/Enter) APLICA, y si la figura no existe o
+    // no es dibujable NO se aplica: ST.figura conserva la última válida y el status
+    // dice por qué. Antes era texto libre: cualquier cosa entraba y salía kg = 0.
     var fig = $('te_ribFigura');
-    if (fig && !fig._teBound) { fig._teBound = true; fig.addEventListener('change', function () { ST.figura = fig.value.trim().toUpperCase() || '103B'; if (_hayCargado()) _sellarCargado(); else _actualizarStatus(); }); ST.figura = fig.value.trim().toUpperCase() || ST.figura; }
+    if (fig && !fig._teBound) {
+      fig._teBound = true;
+      fig.addEventListener('input', function () { _validarFiguraRibbon(false); });
+      fig.addEventListener('change', function () {
+        if (!_validarFiguraRibbon(true)) return;
+        ST.figura = _figKey(fig.value);
+        if (_hayCargado()) _sellarCargado(); else _actualizarStatus();
+      });
+      if (_figKey(fig.value)) ST.figura = _figKey(fig.value);
+    }
     var dia = $('te_ribDiam');
     if (dia && !dia._teBound) {
       dia._teBound = true;
@@ -3380,6 +3577,9 @@
   // antiguo _agregarComponenteManual() (que agregaba al tiro, sin pasar por pantalla).
   function _entrarModoColocacion() {
     _activarHerramienta('colocar');
+    // Sin sello (figura que el catálogo no acepta) _sellarCargado ya dejó el motivo
+    // en el status: no se pisa con el mensaje de "Colocando…".
+    if (!ST.cargado) return;
     _actualizarStatus('Colocando ' + ST.tipologia + ' ' + ST.figura + ': clic en una vista · Esc o clic derecho para salir.');
   }
 
@@ -4251,6 +4451,10 @@
     _actualizarBtnGuardar();
     var se = $('te_saveErr'); if (se) se.textContent = '';
     _bindUI();
+    // CATÁLOGO DE FIGURAS: pide el real (GET /figuras-catalogo) y refresca el
+    // datalist + la validación del campo Figura. Es asíncrono: hasta que llegue
+    // manda el espejo estático del módulo, y si la red falla se queda con él.
+    _cargarCatalogoFiguras();
     // El ELEMENTO puede cambiar entre aperturas (viga → muro): las 3 cosas que
     // dependen de él se rehacen aquí, no en _bindUI (que corre una sola vez).
     _renderRibbonGeo();        // campos del grupo HORMIGÓN de ESTE elemento
@@ -4637,7 +4841,13 @@
     _signosPantalla: _signosPantalla, _pixelToUV: _pixelToUV, _uvToPixel: _uvToPixel,
     // INTERACCIÓN-2.0 · 3 modos de uso (puntual/lineal/arreglo)
     _modoDe: _modoDe, _modoDefault: _modoDefault, _setModoComp: _setModoComp,
-    _metaModular: _metaModular
+    _metaModular: _metaModular,
+    // CATÁLOGO DE FIGURAS (fuente única = ModeladorCatalogoFiguras)
+    _figSpec: _figSpec, _figError: _figError, _figsDibujables: _figsDibujables,
+    _motivoNoDibujable: _motivoNoDibujable,
+    _cargarCatalogoFiguras: _cargarCatalogoFiguras, _refrescarFigDatalist: _refrescarFigDatalist,
+    // ficha del componente (el panel de dims dinámico sale de los parciales del catálogo)
+    _compBody: _compBody
   };
 
 })(typeof window !== 'undefined' ? window : (typeof globalThis !== 'undefined' ? globalThis : this));

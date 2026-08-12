@@ -1,0 +1,383 @@
+// =============================================================================
+// Test headless (Node) del CATÁLOGO REAL DE FIGURAS (TANDA 2 · T7).
+// -----------------------------------------------------------------------------
+// Qué fija este test (y qué bug evita que vuelva):
+//
+//   A. ESPEJO = CATÁLOGO. catalogo_figuras.js tiene las 63 figuras de
+//      armahub/catalogo.py con SUS parciales/ángulos/radio. Se compara contra el
+//      .py leído desde JS (sin depender de python) y, si python está disponible,
+//      se corre además `gen_catalogo_figuras.py --check`.
+//      Bug que evita: los espejos a mano (5 figuras en generar.js, 8 en el
+//      editor) y encima MAL — 106A figuraba con 4 parciales y ángulos 135/135
+//      cuando el catálogo dice 6 parciales A–F con 45/45.
+//
+//   B. TODA figura dibujable genera payload VÁLIDO: llena EXACTAMENTE los slots
+//      de sus parciales (resto null), sus ángulos, y kg > 0.
+//      Bug que evita: dibujar una 102B salía en el 3D pero el payload iba con
+//      todas las dims en null → 0 kg y rechazo de validar_geometria.
+//
+//   C. Figura DESCONOCIDA → aviso en comp._avisos y CERO barras (no un payload
+//      con nulls silenciosos).
+//
+//   D. EMPALME sólo donde es real: en estribo/traba se ignora y se avisa (antes
+//      sumaba kg fantasma sin mover el dibujo).
+//
+//   E. La viga-semilla no se mueve: 4 ítems / 72 barras / 140.3 kg.
+//
+// Correr con: node tests/test_catalogo_figuras.js
+// =============================================================================
+
+const path = require('path');
+const fs = require('fs');
+const { execFileSync } = require('child_process');
+
+const RAIZ = path.join(__dirname, '..');
+const base = path.join(RAIZ, 'armahub', 'static', 'js', 'features', 'modelador');
+global.ModeladorCatalogoFiguras = require(path.join(base, 'catalogo_figuras.js'));
+global.ModeladorFiguraPuntos = require(path.join(base, 'figura_puntos.js'));
+require(path.join(base, 'motor_geom.js'));
+global.ModeladorReglas = require(path.join(base, 'reglas.js'));
+const G = require(path.join(base, 'generar.js'));
+const S = require(path.join(base, 'semilla_viga.js'));
+const CAT = global.ModeladorCatalogoFiguras;
+const FP = global.ModeladorFiguraPuntos;
+
+let fallos = 0;
+function ok(c, m) { if (!c) { console.error('  ✗ ' + m); fallos++; } else { console.log('  ✓ ' + m); } }
+const r1 = (n) => Math.round(n * 10) / 10;
+
+// ---------------------------------------------------------------------------
+// A. EL ESPEJO COINCIDE CON armahub/catalogo.py
+// ---------------------------------------------------------------------------
+console.log('A — espejo estático vs armahub/catalogo.py:');
+
+// Lectura del seed desde JS (independiente de python): el bloque
+// `_FIGURAS_SEED = [ ("101A", ["A"], [], False), … ]`.
+function seedDesdePy() {
+  const py = fs.readFileSync(path.join(RAIZ, 'armahub', 'catalogo.py'), 'utf8');
+  const ini = py.indexOf('_FIGURAS_SEED = [');
+  const fin = py.indexOf('\n]', ini);
+  if (ini < 0 || fin < 0) throw new Error('no se encontró _FIGURAS_SEED en catalogo.py');
+  const bloque = py.slice(ini, fin);
+  const re = /\("([^"]+)",\s*\[([^\]]*)\],\s*\[([^\]]*)\],\s*(True|False)\)/g;
+  const out = {};
+  let m;
+  while ((m = re.exec(bloque)) !== null) {
+    const letras = m[2].split(',').map(s => s.trim().replace(/"/g, '')).filter(Boolean);
+    const angs = m[3].split(',').map(s => s.trim()).filter(Boolean).map(Number);
+    out[m[1]] = { parciales: letras, angulos: angs, radio: m[4] === 'True' };
+  }
+  return out;
+}
+
+const SEED = seedDesdePy();
+const nSeed = Object.keys(SEED).length;
+ok(nSeed === 63, 'catalogo.py declara 63 figuras (=' + nSeed + ')');
+ok(CAT.codigos().length === nSeed, 'el espejo tiene las mismas ' + nSeed + ' figuras (=' + CAT.codigos().length + ')');
+
+let difs = [];
+Object.keys(SEED).forEach(function (cod) {
+  const a = SEED[cod], b = CAT.get(cod);
+  if (!b) { difs.push(cod + ': falta en el espejo'); return; }
+  if (a.parciales.join('') !== b.parciales.join('')) difs.push(cod + ': parciales ' + b.parciales + ' ≠ ' + a.parciales);
+  if (a.angulos.join(',') !== b.angulos.join(',')) difs.push(cod + ': ángulos ' + b.angulos + ' ≠ ' + a.angulos);
+  if (a.radio !== b.radio) difs.push(cod + ': radio ' + b.radio + ' ≠ ' + a.radio);
+});
+ok(difs.length === 0, 'parciales/ángulos/radio IDÉNTICOS figura por figura' + (difs.length ? ' — ' + difs.slice(0, 3).join(' · ') : ''));
+
+// Las tres que estaban MAL en los espejos a mano (regresión histórica).
+const f106 = CAT.get('106A');
+ok(f106 && f106.parciales.join('') === 'ABCDEF' && f106.angulos.join(',') === '45,45',
+  '106A: 6 parciales A–F y ángulos 45/45 (el espejo viejo decía 4 parciales y 135/135)');
+ok(CAT.get('102B').angulos.join(',') === '135', '102B: ángulo 135 (el espejo viejo decía sin ángulos)');
+ok(CAT.get('103D').angulos.join(',') === '135', '103D: UN ángulo 135 (el espejo viejo decía 45/45)');
+ok(CAT.get('201A').radio === true && CAT.get('201A').parciales.join('') === 'BGH',
+  '201A: usa radio y parciales B/G/H (única con radio del catálogo)');
+ok(CAT.get('104d') !== null && CAT.get(' 104D ') !== null, 'get() normaliza mayúsculas/espacios');
+ok(CAT.get('ZZZZ') === null, 'get() de una figura inexistente devuelve null (no un spec vacío)');
+
+// Verificación cruzada con el generador (si hay python).
+let py = null;
+for (const cmd of ['python', 'py', 'python3']) {
+  try { execFileSync(cmd, ['--version'], { stdio: 'ignore' }); py = cmd; break; } catch (e) { /* siguiente */ }
+}
+if (py) {
+  let salida = '', okGen = true;
+  try {
+    salida = execFileSync(py, [path.join('tests', 'gen_catalogo_figuras.py'), '--check'],
+      { cwd: RAIZ, encoding: 'utf8' });
+  } catch (e) { okGen = false; salida = (e.stdout || '') + (e.stderr || ''); }
+  ok(okGen, 'gen_catalogo_figuras.py --check: el .js está al día — ' + salida.trim().split('\n')[0]);
+} else {
+  console.log('  · python no disponible: se omite gen_catalogo_figuras.py --check (la comparación JS ya cubrió la data)');
+}
+
+// ---------------------------------------------------------------------------
+// B. QUÉ SE DIBUJA Y QUÉ NO (regla, no lista)
+// ---------------------------------------------------------------------------
+console.log('\nB — dibujables vs excluidas (por regla sobre el catálogo):');
+const noDib = CAT.noDibujables();
+const dib = CAT.dibujables();
+ok(dib.length + Object.keys(noDib).length === nSeed, 'toda figura queda clasificada (dibujable o excluida con motivo)');
+ok(Object.keys(noDib).every(c => !!noDib[c]), 'TODA excluida trae motivo escrito');
+ok(noDib['201A'] && /radio/.test(noDib['201A']), '201A excluida por radio (hélice/espiral)');
+ok(noDib['105A'] && /5 tramos/.test(noDib['105A']), '105A excluida: 5 tramos');
+ok(noDib['106A'] && /6 tramos/.test(noDib['106A']), '106A excluida: 6 tramos');
+ok(!noDib['104D'] && !noDib['103B'] && !noDib['101A'], 'las de 1–4 lados NO se excluyen (101A/103B/104D)');
+ok(CAT.noDibujables('104D') === null && typeof CAT.noDibujables('105A') === 'string',
+  'noDibujables(codigo) responde por UNA figura: null si se dibuja, motivo si no');
+ok(Object.keys(CAT.noDibujables()).length === Object.keys(noDib).length,
+  'noDibujables() sin argumento sigue devolviendo el mapa completo');
+ok(FP.familiaDeDibujo('104D', 'estribo') === 'estribo' && FP.familiaDeDibujo('101A', 'traba') === 'traba',
+  'el ROL de la tipología manda la familia de dibujo');
+ok(FP.familiaDeDibujo('104A', null) === 'estribo' && FP.familiaDeDibujo('101A', null) === 'recta' &&
+  FP.familiaDeDibujo('103A', null) === 'cabezal',
+  'sin rol la familia sale del nº de lados: 4 → estribo, 1 → recta, 2–3 → cabezal');
+ok(FP.patasDeFigura('101A').inicio === false && FP.patasDeFigura('102A').fin === false &&
+  FP.patasDeFigura('103B').inicio === true && FP.patasDeFigura('103B').fin === true,
+  'patas derivadas de los parciales: 101A ninguna, 102A sólo inicial, 103B las dos');
+
+// ---------------------------------------------------------------------------
+// C. CADA FIGURA DIBUJABLE PRODUCE UN PAYLOAD VÁLIDO
+// ---------------------------------------------------------------------------
+console.log('\nC — payload válido para las ' + dib.length + ' figuras dibujables:');
+const LETRAS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I'];
+
+// validar_geometria del backend, pero leyendo el catálogo (no una tabla a mano).
+function validarSlots(b) {
+  const spec = CAT.get(b.figura);
+  if (!spec) return 'figura desconocida ' + b.figura;
+  for (const L of LETRAS) {
+    const col = 'dim_' + L.toLowerCase();
+    const usa = spec.parciales.indexOf(L) !== -1;
+    const tiene = b[col] != null && b[col] !== 0;
+    if (usa && !tiene) return 'falta ' + col + ' en ' + b.figura;
+    if (!usa && tiene) return 'sobra ' + col + ' en ' + b.figura;
+  }
+  for (let i = 0; i < 4; i++) {
+    const usa = i < spec.angulos.length;
+    const tiene = b['ang' + (i + 1)] != null && b['ang' + (i + 1)] !== 0;
+    if (usa && !tiene) return 'falta ang' + (i + 1) + ' en ' + b.figura;
+    if (!usa && tiene) return 'sobra ang' + (i + 1) + ' en ' + b.figura;
+    if (usa && b['ang' + (i + 1)] !== spec.angulos[i]) {
+      return 'ang' + (i + 1) + ' = ' + b['ang' + (i + 1)] + ' ≠ ' + spec.angulos[i] + ' en ' + b.figura;
+    }
+  }
+  const tieneR = b.radio != null && b.radio !== 0;
+  if (spec.radio && !tieneR) return 'falta radio en ' + b.figura;
+  if (!spec.radio && tieneR) return 'sobra radio en ' + b.figura;
+  return null;
+}
+
+const GEO = { largo: 600, ancho: 30, alto: 60, recub_sup: 4, recub_inf: 4, recub_lat: 3 };
+const CTX = { sector: 'S1', ciclo: 'C1', piso: 'P1', eje: 'E1' };
+
+// Componente de prueba para una figura: la tipología sale de la FAMILIA (estribo
+// → ES; el resto → CBS), y las dims declaran EXACTAMENTE los parciales de la
+// figura — el lado longitudinal en 'auto' y los demás fijos (como una receta real).
+function componenteDe(fig) {
+  const spec = CAT.get(fig);
+  const fam = FP.dibujabilidad(fig).familia;
+  const esEstribo = fam === 'estribo';
+  const largoL = spec.parciales.indexOf('B') >= 0 ? 'B' : spec.parciales[0];
+  const dims = {};
+  spec.parciales.forEach(function (L) {
+    dims[L] = (esEstribo || L === largoL) ? { modo: 'auto' } : { modo: 'fija', valor: 30 };
+  });
+  return {
+    comp_id: fig, tipologia: esEstribo ? 'ES' : 'CBS', figura: fig,
+    diam: esEstribo ? 8 : 16, suf_tipo: '', cara: esEstribo ? 'lateral' : 'sup',
+    dims: dims,
+    distribucion: esEstribo
+      ? { modo: 'linear', zonas: [{ long: 600, sep: 50 }], start_offset: 4 }
+      : { modo: 'layered', n_capas: 1, barras_capa: 2, gap: 0, sentido: 'nucleo' }
+  };
+}
+
+const matriz = [];
+let errSlots = null, sinBarras = null, sinKg = null, conAviso = [];
+dib.forEach(function (fig) {
+  const comp = componenteDe(fig);
+  const out = G.generarViga({ tipo: 'viga', geometria: GEO, componentes: [comp] }, CTX);
+  const b = out.barras[0];
+  if (!b) { if (!sinBarras) sinBarras = fig; return; }
+  const e = validarSlots(b);
+  if (e && !errSlots) errSlots = e;
+  if (!(out.resumen.kg > 0) && !sinKg) sinKg = fig + ' → ' + out.resumen.kg + ' kg';
+  if (comp._avisos && comp._avisos.length) conAviso.push(fig + ': ' + comp._avisos[0]);
+  matriz.push({
+    figura: fig, familia: FP.dibujabilidad(fig).familia, lados: CAT.get(fig).parciales.length,
+    dims: LETRAS.filter(L => b['dim_' + L.toLowerCase()] != null).join(''),
+    angs: [b.ang1, b.ang2, b.ang3, b.ang4].filter(a => a != null).join('/'),
+    kg: r1(out.resumen.kg)
+  });
+});
+ok(matriz.length === dib.length, 'las ' + dib.length + ' dibujables generan barras (' + matriz.length + ')');
+ok(!sinBarras, 'ninguna dibujable se queda sin payload' + (sinBarras ? ' — ' + sinBarras : ''));
+ok(!errSlots, 'todas pasan validar_geometria (slots y ángulos exactos)' + (errSlots ? ' — ' + errSlots : ''));
+ok(!sinKg, 'todas con kg > 0' + (sinKg ? ' — ' + sinKg : ''));
+ok(matriz.every(m => m.dims.length === m.lados), 'nº de casillas dim llenas = nº de parciales, figura por figura');
+ok(conAviso.length === 0, 'ninguna dibujable deja avisos' + (conAviso.length ? ' — ' + conAviso[0] : ''));
+
+// 106A: el editor NO la dibuja → NO genera barra (semántica corregida tras los
+// hallazgos D1/D2 del verificador de la Tanda 2: dejar pasar el payload de las
+// no-dibujables producía radio:null que el backend rechaza (201A) y kg fantasma
+// con dims auto (105A: 29.6 m / 46.7 kg que validar_geometria ACEPTABA). La
+// ficha de la UI promete "no se dibuja ni pesa hasta corregirla" — el motor
+// ahora cumple esa promesa. El ESPEJO de la figura sigue correcto (sección A:
+// 6 parciales, ang 45/45); habilitarla de verdad = darle familia de dibujo
+// (tanda de figuras avanzadas).
+console.log('\nC2 — 106A (no dibujable) NO genera barra y avisa:');
+const comp106 = {
+  comp_id: '106A', tipologia: 'CBS', figura: '106A', diam: 16, cara: 'sup', suf_tipo: '',
+  dims: {
+    A: { modo: 'fija', valor: 30 }, B: { modo: 'auto' }, C: { modo: 'fija', valor: 30 },
+    D: { modo: 'fija', valor: 25 }, E: { modo: 'fija', valor: 25 }, F: { modo: 'fija', valor: 20 }
+  },
+  distribucion: { modo: 'layered', n_capas: 1, barras_capa: 2, gap: 0, sentido: 'nucleo' }
+};
+const out106 = G.generarViga({ tipo: 'viga', geometria: GEO, componentes: [comp106] }, CTX);
+ok(out106.barras.length === 0, '106A NO genera barra (=' + out106.barras.length + ')');
+ok(out106.resumen.kg === 0, '106A no pesa (=' + out106.resumen.kg + ' kg — nada de kg fantasma)');
+ok((out106.placements || []).every(pl => pl._sinPayload),
+  'sus placements van marcados _sinPayload (el 3D puede insinuarla, el despiece no)');
+ok((comp106._avisos || []).some(a => /no la soporta/.test(a)),
+  'y deja aviso claro (=' + (comp106._avisos || [])[0] + ')');
+
+// ---------------------------------------------------------------------------
+// D. FIGURA DESCONOCIDA → AVISO Y CERO PAYLOAD
+// ---------------------------------------------------------------------------
+console.log('\nD — figura fuera del catálogo:');
+const compX = {
+  comp_id: 'X', tipologia: 'CBS', figura: '999Z', diam: 16, cara: 'sup', suf_tipo: '',
+  dims: { A: { modo: 'fija', valor: 30 }, B: { modo: 'auto' } },
+  distribucion: { modo: 'layered', n_capas: 1, barras_capa: 3, gap: 0, sentido: 'nucleo' }
+};
+const outX = G.generarViga({ tipo: 'viga', geometria: GEO, componentes: [compX] }, CTX);
+ok(outX.barras.length === 0, 'no genera NINGUNA barra (antes salían con dims null y 0 kg)');
+ok(outX.resumen.kg === 0 && outX.resumen.items === 0, 'resumen en cero (nada que cargar al despiece)');
+ok(outX.placements.length > 0, 'pero los placements existen: se ve en el 3D que algo se colocó');
+ok((compX._avisos || []).some(a => /999Z/.test(a) && /catálogo/.test(a)),
+  'aviso en comp._avisos nombrando la figura (=' + (compX._avisos || [])[0] + ')');
+ok(Object.keys(compX).indexOf('_avisos') < 0, '_avisos NO es enumerable (no ensucia la receta que se guarda)');
+ok(G.placementABarra({ figura: '999Z', diam: 1.6, dims: {}, puntos: [] }, {}) === null,
+  'placementABarra devuelve null para figura desconocida (no un payload de nulls)');
+
+// Figura de 4 lados colocada como cabezal: se dibuja lo que se puede y se DICE.
+const compD = {
+  comp_id: 'D', tipologia: 'CBS', figura: '104A', diam: 16, cara: 'sup', suf_tipo: '',
+  dims: {
+    A: { modo: 'fija', valor: 30 }, B: { modo: 'auto' },
+    C: { modo: 'fija', valor: 30 }, D: { modo: 'fija', valor: 20 }
+  },
+  distribucion: { modo: 'layered', n_capas: 1, barras_capa: 2, gap: 0, sentido: 'nucleo' }
+};
+const outD = G.generarViga({ tipo: 'viga', geometria: GEO, componentes: [compD] }, CTX);
+ok(outD.barras.length === 1 && outD.barras[0].dim_d === 20,
+  '104A como cabezal: la barra sale igual y lleva su lado D (=' + (outD.barras[0] || {}).dim_d + ')');
+ok((compD._avisos || []).some(a => /D no se traza/.test(a)),
+  'con aviso de que el lado D no se dibuja (=' + (compD._avisos || [])[0] + ')');
+
+// ---------------------------------------------------------------------------
+// E. EMPALME SOLO DONDE ES REAL (kg fantasma en estribo/traba)
+// ---------------------------------------------------------------------------
+console.log('\nE — empalme: se ignora en estribo/traba y se avisa:');
+function estribo(empalme) {
+  return {
+    comp_id: 'ES', tipologia: 'ES', figura: '104D', diam: 8, cara: 'lateral', suf_tipo: '',
+    empalme: empalme || null,
+    dims: { A: { modo: 'auto' }, B: { modo: 'auto' }, C: { modo: 'auto' }, D: { modo: 'auto' } },
+    distribucion: { modo: 'linear', zonas: [{ long: 600, sep: 50 }], start_offset: 4 }
+  };
+}
+const esBase = estribo(null), esEmp = estribo({ extremo: 'ambos', valor: 50 });
+const oBase = G.generarViga({ tipo: 'viga', geometria: GEO, componentes: [esBase] }, CTX);
+const oEmp = G.generarViga({ tipo: 'viga', geometria: GEO, componentes: [esEmp] }, CTX);
+ok(oBase.resumen.kg === oEmp.resumen.kg,
+  'estribo con empalme 50 pesa IGUAL que sin empalme (' + oEmp.resumen.kg + ' kg): no hay kg fantasma');
+ok(oBase.barras[0].dim_b === oEmp.barras[0].dim_b, 'y su dim B no se alarga (=' + oEmp.barras[0].dim_b + ')');
+ok((esEmp._avisos || []).some(a => /[Ee]mpalme ignorado/.test(a)),
+  'con aviso explícito (=' + (esEmp._avisos || [])[0] + ')');
+
+function traba(empalme) {
+  return {
+    comp_id: 'TRV', tipologia: 'TRV', figura: '101A', diam: 8, cara: 'lateral', suf_tipo: '',
+    empalme: empalme || null, dims: { A: { modo: 'auto' } },
+    distribucion: { modo: 'linear', zonas: [{ long: 600, sep: 100 }], start_offset: 4 }
+  };
+}
+const tEmp = traba({ inicio: 20, fin: 30 });
+const oT = G.generarViga({ tipo: 'viga', geometria: GEO, componentes: [tEmp] }, CTX);
+const oTBase = G.generarViga({ tipo: 'viga', geometria: GEO, componentes: [traba(null)] }, CTX);
+ok(oT.barras[0].dim_a === oTBase.barras[0].dim_a, 'traba: dim A idéntica con y sin empalme (=' + oT.barras[0].dim_a + ')');
+
+// El cabezal SÍ empalma (no se rompió lo que funcionaba).
+function cabezal(empalme) {
+  return {
+    comp_id: 'CBI', tipologia: 'CBI', figura: '101A', diam: 18, cara: 'inf', suf_tipo: '',
+    empalme: empalme || null, dims: { A: { modo: 'fija', valor: 500 } },
+    distribucion: { modo: 'layered', n_capas: 1, barras_capa: 2, gap: 0, sentido: 'nucleo' }
+  };
+}
+const cEmp = G.generarViga({ tipo: 'viga', geometria: GEO, componentes: [cabezal({ extremo: 'fin', valor: 50 })] }, CTX);
+ok(cEmp.barras[0].dim_a === 550, 'cabezal: el empalme SIGUE alargando (500 + 50 = ' + cEmp.barras[0].dim_a + ')');
+
+// ---------------------------------------------------------------------------
+// F. DATA FRESCA DEL BACKEND (lo que la UI llama tras el GET)
+// ---------------------------------------------------------------------------
+console.log('\nF — actualizar() con la respuesta de GET /figuras-catalogo:');
+const respaldo = CAT.codigos().map(c => JSON.parse(JSON.stringify(CAT.get(c))));
+const vacio = CAT.actualizar({ figuras: [] });
+ok(vacio.ok === false && CAT.codigos().length === nSeed,
+  'respuesta VACÍA no pisa nada: se conserva el espejo estático (' + CAT.codigos().length + ')');
+const fresco = CAT.actualizar({
+  figuras: [
+    { codigo: '101A', parciales: ['A'], angulos: [], radio: false, descripcion: 'Barra recta' },
+    { codigo: '777X', parciales: ['A', 'B', 'C'], angulos: [90, 90], radio: false, descripcion: 'Figura nueva' }
+  ]
+});
+ok(fresco.ok === true && CAT.codigos().length === 2, 'data fresca REEMPLAZA el catálogo (2 figuras)');
+ok(CAT.esFresco() === true, 'esFresco() marca que la data viene del backend');
+ok(CAT.get('777X') !== null && G.FIGURAS['777X'] !== undefined,
+  'una figura NUEVA del backend queda disponible para el motor sin tocar código');
+const out777 = G.generarViga({
+  tipo: 'viga', geometria: GEO, componentes: [{
+    comp_id: '777X', tipologia: 'CBS', figura: '777X', diam: 16, cara: 'sup', suf_tipo: '',
+    dims: { A: { modo: 'fija', valor: 30 }, B: { modo: 'auto' }, C: { modo: 'fija', valor: 30 } },
+    distribucion: { modo: 'layered', n_capas: 1, barras_capa: 2, gap: 0, sentido: 'nucleo' }
+  }]
+}, CTX);
+ok(out777.barras.length === 1 && out777.barras[0].ang1 === 90 && out777.barras[0].ang2 === 90 &&
+  out777.resumen.kg > 0, 'y genera payload correcto con SUS ángulos (90/90) y kg > 0');
+ok(CAT.get('104D') === null && G.generarViga({
+  tipo: 'viga', geometria: GEO, componentes: [estribo(null)]
+}, CTX).barras.length === 0, 'una figura que el backend YA NO tiene pasa a ser desconocida (sin payload)');
+// Restaurar el espejo para no contaminar lo que sigue.
+CAT.actualizar({ figuras: respaldo });
+ok(CAT.codigos().length === nSeed, 'restaurado el espejo (' + CAT.codigos().length + ' figuras)');
+
+// ---------------------------------------------------------------------------
+// G. VIGA-SEMILLA INTACTA
+// ---------------------------------------------------------------------------
+console.log('\nG — viga-semilla sin mover un decimal:');
+const semilla = G.generarViga(S.semillaViga(), CTX);
+ok(semilla.resumen.items === 4, 'items = 4 (=' + semilla.resumen.items + ')');
+ok(semilla.resumen.barras === 72, 'barras = 72 (=' + semilla.resumen.barras + ')');
+ok(r1(semilla.resumen.kg) === 140.3, 'kg = 140.3 (=' + semilla.resumen.kg + ')');
+ok(semilla.barras.every(b => !validarSlots(b)), 'sus 4 ítems pasan validar_geometria contra el catálogo real');
+
+// ---------------------------------------------------------------------------
+// MATRIZ RESUMIDA
+// ---------------------------------------------------------------------------
+console.log('\nMATRIZ — ' + dib.length + ' dibujables / ' + Object.keys(noDib).length + ' excluidas:');
+const porFamilia = {};
+matriz.forEach(m => { porFamilia[m.familia] = (porFamilia[m.familia] || 0) + 1; });
+Object.keys(porFamilia).forEach(f => console.log('  · ' + f + ': ' + porFamilia[f] + ' figuras'));
+const motivos = {};
+Object.keys(noDib).forEach(c => { motivos[noDib[c]] = (motivos[noDib[c]] || 0) + 1; });
+Object.keys(motivos).forEach(m => console.log('  · EXCLUIDAS (' + motivos[m] + '): ' + m));
+console.log('  muestra: ' + matriz.slice(0, 6).map(m =>
+  m.figura + '[' + m.dims + (m.angs ? ' ' + m.angs + '°' : '') + ' ' + m.kg + 'kg]').join('  '));
+
+if (fallos) { console.error('\nFALLARON ' + fallos + ' aserciones'); process.exit(1); }
+console.log('\nOK — catálogo real de figuras (63) end-to-end.');

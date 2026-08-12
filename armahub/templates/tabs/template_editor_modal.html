@@ -67,6 +67,10 @@
   #te_modal .te-geo label{font-size:9.5px;color:var(--te-muted);font-weight:600;letter-spacing:.2px;white-space:nowrap}
   #te_modal .te-geo input{width:64px;border:1px solid var(--te-line);border-radius:6px;padding:4px 6px;font-size:12px}
   #te_modal .te-geo input.bad{border-color:#c62828;background:#fff6f5}
+  /* Campo inválido en GENERAL (no sólo el grupo hormigón): hoy lo usa el campo
+     FIGURA del ribbon y el de la ficha del componente cuando el código tipeado no
+     existe en el catálogo o no es dibujable aquí. */
+  #te_modal input.bad{border-color:#c62828;background:#fff6f5}
   /* Check "tomar contorno" ANCLADO al inicio del grupo BARRA (posición fija). */
   #te_modal .te-contorno{display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--te-muted);
     font-weight:600;white-space:nowrap;flex:0 0 auto}
@@ -581,6 +585,12 @@
       <button class="te-btn primary" id="te_btnGuardar" onclick="templateEditorGuardar()">💾 Guardar template</button>
     </div>
 
-    <datalist id="te_figs"><option value="101A"><option value="102A"><option value="103A"><option value="103B"><option value="104D"><option value="106A"></datalist>
+    <!-- Datalist ÚNICO del campo FIGURA (lo comparten el ribbon y la ficha del
+         componente del panel derecho). VACÍO a propósito: lo rellena
+         _refrescarFigDatalist() (template_editor.js) con TODAS las figuras
+         DIBUJABLES del catálogo real (ModeladorCatalogoFiguras, alimentado por
+         GET /figuras-catalogo). Antes había 6 códigos escritos a mano aquí: la
+         lista mentía y el campo aceptaba igual cualquier texto. -->
+    <datalist id="te_figs"></datalist>
   </div>
 </div>

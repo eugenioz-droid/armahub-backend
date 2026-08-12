@@ -27,17 +27,29 @@
       (typeof require !== 'undefined' ? require('./reglas.js') : null);
   }
 
-  // Espejo del catálogo (armahub/catalogo.py _FIGURAS_SEED) SOLO para las figuras
-  // de la viga-semilla. Se usa para saber QUÉ slots llenar (parciales/ángulos) y
-  // así pasar validar_geometria. Si en el futuro se leen del backend, reemplazar
-  // esta tabla por el GET /figuras-catalogo.
-  var FIGURAS = {
-    '101A': { parciales: ['A'], angulos: [], radio: false },
-    '102A': { parciales: ['A', 'B'], angulos: [], radio: false },
-    '103A': { parciales: ['A', 'B', 'C'], angulos: [], radio: false },
-    '103B': { parciales: ['A', 'B', 'C'], angulos: [45, 45], radio: false },
-    '104D': { parciales: ['A', 'B', 'C', 'D'], angulos: [135, 135], radio: false }
-  };
+  // CATÁLOGO DE FIGURAS — fuente ÚNICA de parciales/ángulos/radio.
+  // ---------------------------------------------------------------------------
+  // Antes acá vivía una tablita a mano con 5 figuras (las de la viga-semilla).
+  // El catálogo real tiene 63: dibujar cualquier otra salía en el 3D pero el
+  // payload iba con TODAS las dims en null → 0 kg y validar_geometria la
+  // rechazaba, en silencio. Ahora se resuelve contra catalogo_figuras.js (espejo
+  // generado desde armahub/catalogo.py), que la UI refresca con la data real del
+  // GET /figuras-catalogo llamando a ModeladorCatalogoFiguras.actualizar(data).
+  //
+  // Resolución EN EL MOMENTO DE USAR (no al cargar el módulo): en el navegador
+  // los scripts se cargan en PARALELO — capturarlo aquí daría null para siempre.
+  function _cat() {
+    return global.ModeladorCatalogoFiguras ||
+      (typeof require !== 'undefined' ? require('./catalogo_figuras.js') : null);
+  }
+
+  // Spec de una figura, o null si NO está en el catálogo. NO se inventa un spec
+  // vacío: una figura desconocida tiene que doler (aviso + sin payload), no
+  // producir una barra con dims null y 0 kg.
+  function specFigura(figura) {
+    var c = _cat();
+    return c ? c.get(figura) : null;
+  }
 
   var LETRAS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I'];
 
@@ -50,7 +62,7 @@
   // Largo estimado = suma de los lados (dims) que la figura USA (espejo de
   // largo_desde_lados; el radio no suma). SOLO para stats — el backend recalcula.
   function largoEstimado(figura, dimsLetras) {
-    var spec = FIGURAS[figura];
+    var spec = specFigura(figura);
     if (!spec) return null;
     var total = 0;
     for (var i = 0; i < spec.parciales.length; i++) {
@@ -64,8 +76,13 @@
   // Convierte un placement (dims por letra) a la BarraPayload del backend.
   // marca = tipología (+ el suf viaja aparte en suf_tipo, como en ac2Payload).
   // Llena SOLO los slots que la figura usa; el resto va null.
+  //
+  // FIGURA DESCONOCIDA → devuelve null (NO una barra con todo en null). El
+  // llamador lo convierte en aviso visible. Antes se caía a un spec vacío y salía
+  // un payload de 0 kg que el backend rechazaba sin que nadie supiera por qué.
   function placementABarra(pl, ctx) {
-    var spec = FIGURAS[pl.figura] || { parciales: [], angulos: [], radio: false };
+    var spec = specFigura(pl.figura);
+    if (!spec) return null;
     var diamMm = Math.round(pl.diam * 10);   // cm → mm (diámetro estándar)
     var b = {
       // Ubicación: del contexto del lote (AC2), no de la receta.
@@ -102,6 +119,76 @@
     return [b.figura, b.diam, b.marca, b.suf_tipo,
       b.dim_a, b.dim_b, b.dim_c, b.dim_d, b.dim_e, b.dim_f, b.dim_g, b.dim_h, b.dim_i,
       b.ang1, b.ang2, b.ang3, b.ang4].join('|');
+  }
+
+  // ---------------------------------------------------------------------------
+  // AVISOS DE FIGURA (contrato del motor: lo que NO se puede hacer, se DICE)
+  // ---------------------------------------------------------------------------
+  // Mismo canal que usa reglas.js para las capas anidadas que no caben:
+  // `comp._avisos` (no enumerable, para no ensuciar la receta que se guarda ni el
+  // dirty-tracking del editor). La UI lo muestra en la barra de estado.
+  function _avisarComp(comp, msg) {
+    if (!comp || !msg) return;
+    var a = comp._avisos;
+    if (Object.prototype.toString.call(a) === '[object Array]') {
+      if (a.indexOf(msg) < 0) a.push(msg);
+      return;
+    }
+    try {
+      Object.defineProperty(comp, '_avisos',
+        { value: [msg], enumerable: false, writable: true, configurable: true });
+    } catch (e) { comp._avisos = [msg]; }
+  }
+
+  function _fp() {
+    return global.ModeladorFiguraPuntos ||
+      (typeof require !== 'undefined' ? require('./figura_puntos.js') : null);
+  }
+
+  // Cuántos lados TRAZA de verdad el constructor de cada familia de dibujo.
+  var LADOS_TRAZADOS = { recta: 1, cabezal: 3, traba: 3, estribo: 4 };
+
+  // Revisa la figura de un componente contra el catálogo y contra lo que el
+  // editor sabe dibujar. Devuelve false cuando NO se debe generar payload.
+  // Tres situaciones, tres avisos distintos (ninguna se tapa):
+  //   1. la figura NO está en el catálogo → sin barra (sería un payload con todas
+  //      las dims en null, 0 kg y rechazo del backend);
+  //   2. está pero el editor no la sabe dibujar (espiral con radio, 5+ tramos) →
+  //      la barra SÍ sale y sus dims/kg son correctos; el 3D es aproximado;
+  //   3. la figura tiene más lados de los que traza el constructor de su rol
+  //      (una figura de 4 lados colocada como cabezal) → se dice qué lados no se
+  //      dibujan, y las dims igual viajan completas al payload.
+  function _revisarFiguraComp(comp, rol) {
+    var fig = (comp && comp.figura) || '';
+    var spec = specFigura(fig);
+    if (!spec) {
+      _avisarComp(comp, 'Figura ' + (fig || '(vacía)') + ' no está en el catálogo: ' +
+        'no se genera barra para este componente.');
+      return false;
+    }
+    var fp = _fp();
+    if (!fp || !fp.dibujabilidad) return true;
+    var d = fp.dibujabilidad(fig);
+    if (!d.dibujable) {
+      // NO DIBUJABLE = SIN PAYLOAD (hallazgo del verificador D1/D2): dejarla pasar
+      // generaba barras que el editor no puede garantizar — 201A salía con
+      // radio:null (400 del backend) y una 105A con dims auto salía de 29.6 m y
+      // 46.7 kg FANTASMA que validar_geometria aceptaba. La ficha dice "no se
+      // dibuja ni pesa hasta corregirla": ahora el motor cumple esa promesa.
+      _avisarComp(comp, 'Figura ' + fig + ': el editor no la soporta (' + d.motivo +
+        ') — no se genera barra para este componente.');
+      return false;
+    }
+    var fam = fp.familiaDeDibujo ? fp.familiaDeDibujo(fig, rol) : 'cabezal';
+    var trazados = LADOS_TRAZADOS[fam] || 3;
+    var n = spec.parciales.length;
+    if (n > trazados) {
+      var sinTrazar = spec.parciales.slice(trazados);
+      _avisarComp(comp, 'Figura ' + fig + ' colocada como ' + (rol || 'cabezal') +
+        ': se dibujan ' + trazados + ' de sus ' + n + ' lados (' + sinTrazar.join('/') +
+        ' no se traza' + (sinTrazar.length > 1 ? 'n' : '') + '). Las dims viajan completas.');
+    }
+    return true;
   }
 
   function agruparBarras(barras) {
@@ -218,24 +305,31 @@
     return placements;
   }
 
-  // Acorta las patas A y/o C de un placement 103x en `off` cm y recalcula la
-  // geometría de esos ganchos (el resto queda igual). Recta (101A) no tiene patas.
+  // Acorta las patas (A al inicio, C al final) de un placement retranqueado en
+  // `off` cm y refleja el acortamiento en la polilínea. QUÉ EXTREMOS TIENEN PATA
+  // lo dice el CATÁLOGO (parciales de la figura), no el prefijo del código: antes
+  // era una lista '103x/104x' que dejaba fuera, por ejemplo, la 102x — que tiene
+  // pata inicial y también hay que acortarla. Una recta (1 parcial) no tiene
+  // ninguna y se sale sin tocar nada.
   function _acortarPatas(pl, off) {
-    var f = (pl.figura || '').toUpperCase();
-    if (f.indexOf('103') !== 0 && f.indexOf('104') !== 0) return;   // sólo figuras con patas
-    if (pl.dims && pl.dims.A != null) pl.dims.A = Math.max(0, Number(pl.dims.A) - off);
-    if (pl.dims && pl.dims.C != null) pl.dims.C = Math.max(0, Number(pl.dims.C) - off);
-    // Reflejar el acortamiento en la polilínea: los puntos de gancho (primero y
-    // último cuando hay patas) se acercan `off` hacia el tramo (en Y).
+    var fp = _fp();
+    var patas = (fp && fp.patasDeFigura) ? fp.patasDeFigura(pl.figura) : null;
+    if (!patas || (!patas.inicio && !patas.fin)) return;
+    if (patas.inicio && pl.dims && pl.dims.A != null) pl.dims.A = Math.max(0, Number(pl.dims.A) - off);
+    if (patas.fin && pl.dims && pl.dims.C != null) pl.dims.C = Math.max(0, Number(pl.dims.C) - off);
+    // Polilínea: el punto de gancho (primero / último) se acerca `off` al tramo
+    // en Y. Patrón del cabezal con dos patas = [pataA, x0, x1, pataC].
     var pts = pl.puntos;
-    if (!pts || pts.length < 4) return;   // patrón 103x = [pataA, x0, x1, pataC]
-    var first = pts[0], second = pts[1];
-    var last = pts[pts.length - 1], prev = pts[pts.length - 2];
-    // La pata va de `second` a `first` en Y; acortarla = mover `first` hacia `second`.
-    var dirA = Math.sign(first.y - second.y) || 0;
-    first.y -= dirA * off;
-    var dirC = Math.sign(last.y - prev.y) || 0;
-    last.y -= dirC * off;
+    if (!pts || pts.length < 3) return;
+    if (patas.inicio) {
+      var first = pts[0], second = pts[1];
+      // La pata va de `second` a `first` en Y; acortarla = mover `first` hacia `second`.
+      first.y -= (Math.sign(first.y - second.y) || 0) * off;
+    }
+    if (patas.fin) {
+      var last = pts[pts.length - 1], prev = pts[pts.length - 2];
+      last.y -= (Math.sign(last.y - prev.y) || 0) * off;
+    }
   }
 
   // generarViga(receta) → { placements, barras, resumen }
@@ -286,7 +380,7 @@
         ? REGLAS.nivelJerarquiaEfectivo(comp.jerarquia, rol)
         : (rol === 'estribo' ? 1 : 2);
       // 'no' = fuera de la cadena: se ancla al recubrimiento pelado (k 0) y no aporta.
-      return { comp: comp, ci: ci, nivel: nivel, k: (nivel === 'no') ? 0 : Number(nivel) };
+      return { comp: comp, ci: ci, rol: rol, nivel: nivel, k: (nivel === 'no') ? 0 : Number(nivel) };
     });
     var niveles = [];
     plan.forEach(function (p) { if (niveles.indexOf(p.k) === -1) niveles.push(p.k); });
@@ -323,11 +417,27 @@
     var placements = [];
     porComp.forEach(function (pls) { if (pls && pls.length) placements = placements.concat(pls); });
     // ETAPA DE DEPENDENCIAS/RETRANQUEO — DESPUÉS de expandir. Aplica el offset al
-    // anchor (traslada la barra completa hacia el núcleo) y acorta patas 103x.
+    // anchor (traslada la barra completa hacia el núcleo) y acorta las patas que
+    // la figura declare en el catálogo.
     // Sin prioridades = no-op → generarViga base queda IDÉNTICA.
     resolverDependencias(placements);
-    // Barras SIN agrupar (1 por placement) — el shape del backend.
-    var barrasSueltas = placements.map(function (pl) { return placementABarra(pl, ctx); });
+    // FIGURA vs CATÁLOGO — una revisión por COMPONENTE (no por barra: el aviso es
+    // del componente y se repetiría 40 veces). Un componente con figura fuera del
+    // catálogo NO aporta barras: se dibuja en el 3D (lo que el motor sepa) pero
+    // no ensucia el despiece con un payload de 0 kg.
+    var barrasSueltas = [];
+    plan.forEach(function (p) {
+      var pls = porComp[p.ci];
+      if (!pls || !pls.length) return;
+      if (!_revisarFiguraComp(p.comp, p.rol)) {
+        pls.forEach(function (pl) { pl._sinPayload = true; });
+        return;
+      }
+      pls.forEach(function (pl) {
+        var b = placementABarra(pl, ctx);
+        if (b) barrasSueltas.push(b); else pl._sinPayload = true;
+      });
+    });
     // Barras AGRUPADAS por item/etiqueta (cant = N) — lo que se carga al despiece.
     var barras = agruparBarras(barrasSueltas);
 
@@ -367,7 +477,10 @@
   var generarElemento = generarViga;
 
   var API = {
-    FIGURAS: FIGURAS,
+    // Spec de UNA figura del catálogo vigente (null si no existe). Es lo que hay
+    // que usar; `FIGURAS` queda como acceso al mapa completo por compatibilidad
+    // (lo lee panel_3d.js) y ahora son las 63 del catálogo, no 5 a mano.
+    specFigura: specFigura,
     generarViga: generarViga,
     generarElemento: generarElemento,
     resolverDependencias: resolverDependencias,
@@ -376,6 +489,16 @@
     pesoUnitarioEstimado: pesoUnitarioEstimado,
     largoEstimado: largoEstimado
   };
+
+  // FIGURAS: mapa completo del catálogo VIGENTE. Getter (no una copia) para que
+  // siga siendo la verdad después de ModeladorCatalogoFiguras.actualizar(data) y
+  // aunque catalogo_figuras.js cargue después que este archivo.
+  try {
+    Object.defineProperty(API, 'FIGURAS', {
+      enumerable: true,
+      get: function () { var c = _cat(); return c ? c.FIGURAS : {}; }
+    });
+  } catch (e) { API.FIGURAS = (_cat() || {}).FIGURAS || {}; }
 
   global.ModeladorGenerar = API;
   if (typeof module !== 'undefined' && module.exports) module.exports = API;

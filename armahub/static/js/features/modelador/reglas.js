@@ -29,6 +29,13 @@
       (typeof require !== 'undefined' ? require('./figura_puntos.js') : null);
   }
 
+  // Catálogo de figuras (parciales/ángulos/radio) — misma regla de resolución
+  // tardía. Es la fuente de qué lado es el longitudinal de cada figura.
+  function _cat() {
+    return global.ModeladorCatalogoFiguras ||
+      (typeof require !== 'undefined' ? require('./catalogo_figuras.js') : null);
+  }
+
   // ---------------------------------------------------------------------------
   // MODO DE USO DE LA BARRA (§INTERACCIÓN-2.0 · PRINCIPIO RECTOR)
   // ---------------------------------------------------------------------------
@@ -1465,13 +1472,22 @@
     var dims = {};
     var g = comp.dims || {};
     var mk = marcoUtilNivel(null, host, (nivel !== undefined) ? nivel : null);
+    // Lado LONGITUDINAL del cabezal (B en 10x con patas, A en 101/102): es el
+    // ÚNICO que se estira al largo útil. Las PATAS en 'auto' toman la extensión
+    // de gancho NORMATIVA (6φ, mín 7.5 — la misma regla del motor), NO el largo
+    // útil: antes una 105A/106A con todo en auto salía 592+592+… = 29.6 m y
+    // 46.7 kg FANTASMA que validar_geometria aceptaba (hallazgo D2 del
+    // verificador de la Tanda 2).
+    var ladoLong = _ladoLongitudinal(comp.figura, g);
+    var fpD = _fp();
+    var ganchoAuto = (fpD && fpD.extGancho) ? fpD.extGancho(Number(comp.diam) / 10)
+      : Math.max(6 * Number(comp.diam) / 10, 7.5);
     Object.keys(g).forEach(function (k) {
       var d = g[k];
       if (d && d.modo === 'fija') { dims[k] = Number(d.valor); return; }
       // AUTO: deriva según rol + letra, contra el marco útil del NIVEL.
       if (comp._rol === 'cabezal') {
-        // B = largo útil − 2·recub extremo (patas van fuera del tramo B)
-        dims[k] = mk.largoUtil;
+        dims[k] = (k === ladoLong) ? mk.largoUtil : ganchoAuto;
       } else if (comp._rol === 'estribo') {
         dims[k] = (k === 'A' || k === 'C') ? mk.anchoUtil : mk.altoUtil;
       } else {
@@ -1524,18 +1540,31 @@
     // largo del eje de colocación: en 101A es A (barra recta); en 10x con tramo
     // (102/103/104) es B (tramo largo). Se aplica DESPUÉS del auto/fija para que
     // el override numérico del usuario también reciba el empalme.
-    var empTot = _empalmeTotalCm(comp, Number(comp.diam) / 10);
-    if (empTot > 0) {
-      if (dims[lado] != null) dims[lado] = Number(dims[lado]) + empTot;
+    //
+    // SÓLO EN ROL CABEZAL (TANDA 2 · T7.4). Un estribo o una traba no se empalman:
+    // son piezas cerradas/cosidas cuyo largo lo fija el marco del hormigón. Con el
+    // campo activo igual sumaban centímetros a su dim longitudinal — kg FANTASMA:
+    // el dibujo no se movía ni un milímetro (los constructores de estribo/traba no
+    // leen anchor.empalme) pero el listado pesaba de más. Se IGNORA y se avisa
+    // (_baseDeComponente), en vez de sumar en silencio.
+    if (comp._rol === 'cabezal') {
+      var empTot = _empalmeTotalCm(comp, Number(comp.diam) / 10);
+      if (empTot > 0 && dims[lado] != null) dims[lado] = Number(dims[lado]) + empTot;
     }
     return dims;
   }
 
   // Lado LONGITUDINAL de una figura: el que corre a lo largo del eje de
-  // colocación. En 101x es A (barra recta); en 10x con tramo (102/103/104) es B.
-  // Fuente única del empalme y del medio-diámetro contra fierro.
+  // colocación. Sale del CATÁLOGO: si la figura declara un lado 'B' ése es el
+  // tramo largo (102/103/104…); si no (figuras de un solo parcial, 101x) es su
+  // único lado. Fuente única del empalme y del medio-diámetro contra fierro.
   function _ladoLongitudinal(figura, dims) {
-    var f = (figura || '').toUpperCase();
+    var cat = _cat();
+    var spec = cat ? cat.get(figura) : null;
+    if (spec && spec.parciales.length) {
+      return (spec.parciales.indexOf('B') >= 0) ? 'B' : spec.parciales[0];
+    }
+    var f = (figura || '').toUpperCase();   // sin catálogo: criterio histórico
     return (f.indexOf('101') === 0) ? 'A' : (dims && dims.B != null ? 'B' : 'A');
   }
 
@@ -1561,6 +1590,12 @@
     // asome la barra fuera del hormigón lo suyo en cada punta (dato geométrico; el
     // largo/peso ya los cubre la dim alargada en _dimsEfectivas).
     var empEx = _empalmePorExtremo(comp, diamCm);
+    // EMPALME SÓLO DONDE ES REAL (T7.4): el rol cabezal (longitudinal) es el
+    // único que empalma. En estribo/traba el campo sumaba largo al listado sin
+    // mover el dibujo — kg fantasma. Acá se anula el dato geométrico; la dim ya
+    // no lo suma (_dimsEfectivas) y el aviso queda escrito abajo.
+    var empIgnorado = (comp._rol !== 'cabezal') && (empEx.ini > 0 || empEx.fin > 0);
+    if (empIgnorado) empEx = { ini: 0, fin: 0 };
     var empHay = (empEx.ini > 0 || empEx.fin > 0);
     // `extremo` se DERIVA de los dos Δ (trazabilidad y compat con lectores viejos
     // del anchor); los números que manda figura_puntos son ini/fin.
@@ -1602,6 +1637,10 @@
           : null
       }
     };
+    if (empIgnorado) {
+      _avisar(base, 'Empalme ignorado en ' + (comp.tipologia || base.rol) +
+        ': un ' + base.rol + ' no se empalma (sumaba kg sin mover el dibujo).');
+    }
     // Un longitudinal vive PEGADO A SU CARA y, por defecto, al centro del reparto
     // de esa cara. Las dos coordenadas salen del MARCO DE CARA (fuente única, vale
     // igual para sup/inf y para la cara CORTINA lateral). Estribo/traba derivan su
