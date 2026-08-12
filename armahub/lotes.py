@@ -226,11 +226,11 @@ def reasignar_contexto(lote_id: int, body: LoteContexto, user=Depends(get_curren
                 raise HTTPException(status_code=409,
                                     detail="Solo se puede reasignar ciclo/eje mientras el despiece está en edición (no terminado ni eliminado).")
             # Sectores tocados (antes y con el nuevo ciclo) para marcar 'modificado'.
-            cur.execute("SELECT DISTINCT sector, piso, ciclo FROM barras WHERE lote_id = %s AND origen='manual'", (lote_id,))
+            cur.execute("SELECT DISTINCT sector, piso, ciclo FROM barras WHERE lote_id = %s", (lote_id,))
             sectores = cur.fetchall()
             cur.execute(
                 "UPDATE barras SET ciclo=%s, eje=%s, editado_por=%s, editado_fecha=%s "
-                "WHERE lote_id=%s AND origen='manual'",
+                "WHERE lote_id=%s",
                 (ciclo, eje, email, _now_iso(), lote_id))
             n = cur.rowcount
             # Sincronizar la ubicación del LOTE (para el histórico, aunque no tenga barras).
@@ -271,7 +271,7 @@ def fijar_plano(lote_id: int, body: LotePlano, user=Depends(get_current_user)):
             cur.execute("UPDATE lotes SET plano=%s WHERE id=%s", (plano or None, lote_id))
             cur.execute(
                 "UPDATE barras SET nombre_plano=%s, editado_por=%s, editado_fecha=%s "
-                "WHERE lote_id=%s AND origen='manual'",
+                "WHERE lote_id=%s",
                 (plano or None, email, _now_iso(), lote_id))
             n = cur.rowcount
     audit(email, "fijar_plano_lote", f"lote {lote_id} → {plano or '(vacío)'} ({n} barras)", "lote", str(lote_id))
@@ -591,7 +591,8 @@ def agregar_barras(lote_id: int, body: BarrasBatch, user=Depends(get_current_use
 def eliminar_barra_lote(lote_id: int, barra_id: int, user=Depends(get_current_user)):
     """Borra UNA barra ya guardada de un lote (cuando el usuario la quita de la grilla). Sin esto,
     quitar una barra guardada solo la sacaba del front y quedaba huérfana en BD → 'terminar' la
-    contaba como no revisada. Solo barras origen='manual' de un lote NO terminado."""
+    contaba como no revisada. Barras de CUALQUIER origen del lote (manual o template:
+    las del enfierrador daban 404 con el filtro viejo origen='manual') de un lote NO terminado."""
     email = user.get("email", "?")
     with get_conn() as conn:
         with conn.cursor() as cur:
@@ -603,12 +604,12 @@ def eliminar_barra_lote(lote_id: int, barra_id: int, user=Depends(get_current_us
             if r[0] == "terminada":
                 raise HTTPException(status_code=409, detail="El lote está terminado; edita las barras desde el Bar Manager.")
             cur.execute(
-                "SELECT sector, piso, ciclo FROM barras WHERE id = %s AND lote_id = %s AND origen = 'manual'",
+                "SELECT sector, piso, ciclo FROM barras WHERE id = %s AND lote_id = %s",
                 (barra_id, lote_id))
             b = cur.fetchone()
             if not b:
                 raise HTTPException(status_code=404, detail="Barra no encontrada en este lote.")
-            cur.execute("DELETE FROM barras WHERE id = %s AND lote_id = %s AND origen = 'manual'", (barra_id, lote_id))
+            cur.execute("DELETE FROM barras WHERE id = %s AND lote_id = %s", (barra_id, lote_id))
             cur.execute("UPDATE lotes SET n_barras = (SELECT COUNT(*) FROM barras WHERE lote_id = %s) WHERE id = %s",
                         (lote_id, lote_id))
             cur.execute("SELECT id_proyecto FROM lotes WHERE id = %s", (lote_id,))
@@ -629,7 +630,9 @@ def eliminar_lote(lote_id: int, user=Depends(get_current_user)):
     + snapshot del resumen + quién/cuándo) para trazabilidad en el histórico de la obra. El número
     de lote (num_obra) NO se reusa. Aplica a cualquier estado, INCLUSO terminado
     (diseno_editor_cubicacion.md §150-168). Confirmación (escribir ELIMINAR) se valida en el front.
-    Solo toca barras origen='manual' de ESTE lote (nunca CSV)."""
+    Toca TODAS las barras de ESTE lote (manual y template; el filtro viejo origen='manual'
+    dejaba las barras del enfierrador HUERFANAS apuntando a la lapida). Las de CSV no
+    pertenecen a lotes, asi que siguen intactas por construccion."""
     email = user.get("email", "?")
     with get_conn() as conn:
         with conn.cursor() as cur:
@@ -643,14 +646,14 @@ def eliminar_lote(lote_id: int, user=Depends(get_current_user)):
                 raise HTTPException(status_code=409, detail="El lote ya fue eliminado.")
             # Sectores afectados ANTES de borrar (para marcarlos 'modificado' tras el borrado).
             cur.execute(
-                "SELECT DISTINCT sector, piso, ciclo FROM barras WHERE lote_id = %s AND origen = 'manual'",
+                "SELECT DISTINCT sector, piso, ciclo FROM barras WHERE lote_id = %s",
                 (lote_id,),
             )
             sectores_tocados = cur.fetchall()
             # Snapshot del resumen ANTES de borrar las barras (para la lápida del histórico).
             cur.execute(
                 """SELECT COUNT(*), COALESCE(SUM(peso_total),0), MIN(sector), MIN(ciclo), MIN(eje)
-                   FROM barras WHERE lote_id = %s AND origen = 'manual'""", (lote_id,))
+                   FROM barras WHERE lote_id = %s""", (lote_id,))
             s = cur.fetchone()
             snap_n, snap_kg, snap_sec, snap_cic, snap_eje = int(s[0]), float(s[1] or 0), s[2], s[3], s[4]
             # DESPIECE VACÍO (0 barras): NO se lapida (no hay data que preservar → sería una lápida
@@ -668,12 +671,12 @@ def eliminar_lote(lote_id: int, user=Depends(get_current_user)):
                                 "dim_a", "dim_b", "dim_c", "dim_d", "dim_e", "dim_f", "dim_g", "dim_h", "dim_i",
                                 "ang1", "ang2", "ang3", "ang4", "radio", "revisada", "suf_tipo"]
                 cur.execute("SELECT " + ", ".join(_snap_campos) +
-                            " FROM barras WHERE lote_id = %s AND origen = 'manual' ORDER BY id", (lote_id,))
+                            " FROM barras WHERE lote_id = %s ORDER BY id", (lote_id,))
                 snap_barras = [dict(zip(_snap_campos, row)) for row in cur.fetchall()]
                 import json as _json
                 snap_barras_json = _json.dumps(snap_barras, default=str)
                 # Borrar las barras (solo manuales — invariante de canales) y dejar el lote como LÁPIDA.
-                cur.execute("DELETE FROM barras WHERE lote_id = %s AND origen = 'manual'", (lote_id,))
+                cur.execute("DELETE FROM barras WHERE lote_id = %s", (lote_id,))
                 n_barras = cur.rowcount
                 cur.execute(
                     """UPDATE lotes SET estado='eliminado', n_barras=0,
@@ -715,9 +718,9 @@ def purgar_lote(lote_id: int, user=Depends(get_current_user)):
                 raise HTTPException(status_code=404, detail="Despiece no encontrado.")
             id_proyecto, num_purgado = r[0], r[1]
             # Sectores tocados (por si quedaban barras) para marcarlos modificados tras purgar.
-            cur.execute("SELECT DISTINCT sector, piso, ciclo FROM barras WHERE lote_id = %s AND origen='manual'", (lote_id,))
+            cur.execute("SELECT DISTINCT sector, piso, ciclo FROM barras WHERE lote_id = %s", (lote_id,))
             sectores = cur.fetchall()
-            cur.execute("DELETE FROM barras WHERE lote_id = %s AND origen = 'manual'", (lote_id,))
+            cur.execute("DELETE FROM barras WHERE lote_id = %s", (lote_id,))
             n = cur.rowcount
             cur.execute("DELETE FROM lotes WHERE id = %s", (lote_id,))
             # RENUMERAR EN CASCADA (solo en la purga admin, acción muy eventual): todos los despieces

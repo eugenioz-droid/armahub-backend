@@ -84,6 +84,7 @@ BARRAS_COLUMNS = [
     "diam","largo_total","mult","cant","cant_total",
     "peso_unitario","peso_total","version_mod","version_exp","fecha_carga",
     "origen","import_id",
+    "template_instancia_id",  # trazabilidad enfierrador/TE (migración 104; sin esto el BM no la veía)
     "marca","figura",
     "dim_a","dim_b","dim_c","dim_d","dim_e","dim_f","dim_g","dim_h","dim_i",
     "ang1","ang2","ang3","ang4","radio",
