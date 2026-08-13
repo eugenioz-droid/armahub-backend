@@ -2437,6 +2437,10 @@
 
       svg.addEventListener('mousedown', function (evt) {
         if (evt.button === 2) return;             // el botón derecho lo maneja contextmenu
+        // El botón MEDIO es del PAN: aquí se filtra completo — antes caía a la
+        // lógica de selección/colocación (un middle-click en modo colocar PONÍA
+        // una barra) y peleaba con el arrastre del pan ("no agarra a la primera").
+        if (evt.button === 1) return;
         ST.ultimoPlano = plano;
         var sp = _svgPoint(svg, evt); if (!sp) return;
 
@@ -3967,6 +3971,10 @@
   function _bindVistaOrto(plano) {
     var o = ST.orto[plano]; if (!o) return;
     var host = o.vista, panning = false, lx = 0, ly = 0;
+    // "El pan no agarra a la primera": el AUTOSCROLL de Windows se comía el botón
+    // medio de forma intermitente (el cuadrante 3D ya lo mataba con auxclick; las
+    // vistas 2D no). Mismo remedio aquí.
+    host.addEventListener('auxclick', function (e) { if (e.button === 1) e.preventDefault(); });
     host.addEventListener('mousedown', function (e) {
       // pan con botón medio o shift (el clic izq queda para la interacción SVG)
       if (e.button === 1 || e.shiftKey) { panning = true; lx = e.clientX; ly = e.clientY; e.preventDefault(); }
