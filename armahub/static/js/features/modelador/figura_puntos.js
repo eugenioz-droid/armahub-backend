@@ -215,6 +215,7 @@
     var esCadena = (n >= MAX_LADOS_DIBUJABLES) && !!tramosDeFigura(f);
     if (rol === 'estribo') {
       if (esMarco) return 'estribo';
+      if (esRomboSeccion(f)) return 'rombo';   // 106A y familia: el marco manda
       if (esCadena) return 'cadena';
       return 'estribo';
     }
@@ -260,7 +261,7 @@
   function esPiezaDeSeccion(figura, rol) {
     if (rol !== 'estribo' && rol !== 'traba') return false;
     var fam = familiaDeDibujo(figura, rol);
-    return fam === 'estribo' || fam === 'traba' || fam === 'cadena';
+    return fam === 'estribo' || fam === 'rombo' || fam === 'traba' || fam === 'cadena';
   }
 
   // ---------------------------------------------------------------------------
@@ -1435,6 +1436,112 @@
     return (anchor && anchor.espejo) ? _espejarEje(out, 'z', 0) : out;
   }
 
+  // ---------------------------------------------------------------------------
+  // ROMBO DE SECCIÓN (106A y familia) — EL MARCO MANDA LA FORMA (fix 13-ago)
+  // ---------------------------------------------------------------------------
+  // Un estribo rombo con "tomar contorno" se ajusta al recubrimiento igual que
+  // el 104D: sus 4 PUNTAS van a los puntos MEDIOS de los 4 lados del marco de
+  // núcleo (tocando recub arriba, abajo y en los dos costados) y las dims/largo
+  // SE DERIVAN de esa geometría — la figura no le pregunta a las dims dónde
+  // dibujarse, exactamente la filosofía de _estriboPerimetral.
+  //
+  // POR QUÉ EXISTE: como cadena genérica el rombo quedaba a la deriva — todo su
+  // cuerpo es DIAGONAL y la regla "diagonal en auto = gancho normativo" (correcta
+  // para patas) lo dejaba como un mini-rombo de 9.6 por lado flotando al centro
+  // (reporte del usuario 13-ago: "destruiste al estribo"). Con ángulos FIJOS del
+  // catálogo (45°) además es IMPOSIBLE inscribirlo a un marco no cuadrado: los
+  // ángulos reales del rombo salen del marco (aSa hace lo mismo).
+  //
+  // ¿QUÉ FIGURA ES UN ROMBO? Criterio topológico, sin lista por código: cadena
+  // ABIERTA cuyos lados INTERIORES son todos DIAGONALES y cuyo trazo con lados
+  // iguales CIERRA (los giros suman la vuelta completa). 106A: A/F ganchos
+  // terminales + B..E el cuerpo cerrado ✓. Un zigzag 105x no cierra → NO entra.
+  function esRomboSeccion(figura) {
+    var f = (figura || '').toUpperCase();
+    var tr = tramosDeFigura(f);
+    if (!tr || tr.tramos.length < 5) return false;
+    // Direcciones ABSOLUTAS del trazo (contra los ejes del marco, la misma
+    // lectura de ejesCadenaSeccion — acá en línea para no recursar con
+    // familiaDeDibujo): los lados INTERIORES tienen que ser TODOS diagonales.
+    var heading = 0, interiores = 0, i, t, g, a;
+    for (i = 0; i < tr.tramos.length; i++) {
+      t = tr.tramos[i];
+      if (!t || t.lado == null) return false;
+      if (i > 0) {
+        g = Number(t.giro) || 0;
+        if (t.sentido === 'der') g = -g;
+        heading += g;
+      }
+      if (i === 0 || i === tr.tramos.length - 1) continue;   // terminales = ganchos
+      a = ((heading % 180) + 180) % 180;
+      if (a < 1e-6 || Math.abs(a - 180) < 1e-6 || Math.abs(a - 90) < 1e-6) return false;
+      interiores++;
+    }
+    if (interiores < 3) return false;
+    // ¿el CUERPO cierra con lados iguales? (giros del cuerpo suman 360°)
+    var d = {};
+    for (i = 0; i < tr.tramos.length; i++) {
+      t = tr.tramos[i];
+      d[t.lado] = (i === 0 || i === tr.tramos.length - 1) ? 1e-9 : 1;
+    }
+    var c = _cadena2D(tr.tramos, d, 1e-9);
+    return _cadenaCierra(c.pts);
+  }
+
+  // Traza el rombo pegado al marco. Ganchos: dos patas que salen de la punta
+  // SUPERIOR hacia el interior, tangentes a sus codos (>90° → arco explícito de
+  // _conGanchosRadio, cuya cresta queda DESPLAZADA AL INTERIOR: nada asoma).
+  function _romboPerimetral(figura, dims, host, anchor, diamCm) {
+    var m = _marcoNucleo(host, anchor, diamCm);
+    var xx = anchor.x || 0;
+    var yMid = (m.ySup + m.yInf) / 2;
+    // vértices = puntos medios de los 4 lados del marco (eje del fierro AL marco:
+    // la superficie del codo queda exactamente al recubrimiento, como el 104D).
+    var pTop = { u: 0, v: m.ySup }, pDer = { u: m.w2, v: yMid };
+    var pInf = { u: 0, v: m.yInf }, pIzq = { u: -m.w2, v: yMid };
+    var g = extGancho(diamCm);
+    // patas del gancho: cuelgan de la punta superior siguiendo los lados
+    // (prolongación hacia adentro) — el pase de ganchos las curva con radio.
+    var dIn1 = _unit2(pIzq.u - pTop.u, pIzq.v - pTop.v);   // hacia abajo-izq
+    var dIn2 = _unit2(pDer.u - pTop.u, pDer.v - pTop.v);   // hacia abajo-der
+    // VÉRTICES TEÓRICOS EN EL MARCO — la convención del 104D: la polilínea (el
+    // dato) toca el marco EXACTO en las 4 puntas y las dims se listan a vértice
+    // teórico (como aSa); el redondeo del doblez lo pone el motor al dibujar
+    // (una barra doblada nunca alcanza el vértice teórico — eso no es un bug,
+    // es la física del doblado, igual que en las esquinas del 104D).
+    // Cada pata ENVUELVE la punta superior: llega por un lado y cuelga
+    // prolongando el otro hacia el interior.
+    var cadena = [
+      { u: pTop.u + dIn1.u * g, v: pTop.v + dIn1.v * g },  // punta gancho A (interior)
+      pTop, pDer, pInf, pIzq, { u: pTop.u, v: pTop.v },    // el contorno completo
+      { u: pTop.u + dIn2.u * g, v: pTop.v + dIn2.v * g }   // punta gancho B (interior)
+    ];
+    var out = cadena.map(function (p) { return V(xx, p.v, p.u); });
+    return (anchor && anchor.espejo) ? _espejarEje(out, 'z', 0) : out;
+  }
+  function _unit2(u, v) { var L = Math.hypot(u, v) || 1; return { u: u / L, v: v / L }; }
+
+  // Dims REALES del rombo, derivadas del marco EXTERIOR (mismo criterio que el
+  // 104D, que lista anchoUtil/altoUtil): lado = hipotenusa de las semidiagonales
+  // exteriores; ganchos terminales = extensión normativa. Lo consume reglas
+  // (_dimsEfectivas) para que el LISTADO diga lo que se dibuja.
+  function dimsRombo(figura, anchoUtilExt, altoUtilExt, diamCm) {
+    var f = (figura || '').toUpperCase();
+    var tr = tramosDeFigura(f);
+    if (!tr) return null;
+    var lado = Math.hypot(anchoUtilExt / 2, altoUtilExt / 2);
+    var g = extGancho(diamCm);
+    var out = {}, i, t;
+    for (i = 0; i < tr.tramos.length; i++) {
+      t = tr.tramos[i];
+      if (t.lado == null) continue;
+      out[t.lado] = (i === 0 || i === tr.tramos.length - 1)
+        ? Math.round(g * 10) / 10
+        : Math.round(lado * 10) / 10;
+    }
+    return out;
+  }
+
   // Reflexión de una polilínea sobre el plano `eje = c` (conserva `esArco`).
   function _espejarEje(pts, eje, c) {
     return pts.map(function (p) {
@@ -1601,8 +1708,9 @@
         return res;
       }
     }
+    var famEst = (rol === 'estribo') ? familiaDeDibujo(f, 'estribo') : null;
     var cerrada = (opts.cerrada === true) || figuraCerrada(f) ||
-      (rol === 'estribo' && familiaDeDibujo(f, 'estribo') === 'estribo');
+      famEst === 'estribo' || famEst === 'rombo';   // el rombo anida como anillo
     var abierta = !cerrada && lados.length >= 2;   // U / corchete / L
     // δ EFECTIVO: la cerrada se anida con la separación entre marcos (el campo del
     // usuario); la abierta, con su propio φ (holgura contra el fierro de afuera).
@@ -1658,6 +1766,7 @@
     var rol = opts.rol || _rolPorFigura(figura, anchor);
     var familia = familiaDeDibujo(figura, rol);
     if (familia === 'estribo') return _estriboPerimetral(figura, dims, host, anchor, diamCm);
+    if (familia === 'rombo') return _romboPerimetral(figura, dims, host, anchor, diamCm);
     if (familia === 'traba') return _traba(figura, dims, host, anchor, diamCm);
     if (familia === 'cadena') return _cadenaGenerica(figura, dims, host, anchor, diamCm, rol);
     return _cabezalLongitudinal(figura, dims, host, anchor, diamCm);   // recta | cabezal
@@ -1721,6 +1830,8 @@
     _conGanchosRadio: _conGanchosRadio,   // ganchos terminales >90° con radio (tests)
     ejesCadenaLong: ejesCadenaLong,           // clasificación u/v/d relativa al dominante
     autoProfundidadLong: autoProfundidadLong, // 'v' en auto → profundidad útil exacta
+    esRomboSeccion: esRomboSeccion,           // ¿cuerpo diagonal que cierra? (106A)
+    dimsRombo: dimsRombo,                     // dims derivadas del marco (listado)
     _traba: _traba,
     _cadenaGenerica: _cadenaGenerica
   };

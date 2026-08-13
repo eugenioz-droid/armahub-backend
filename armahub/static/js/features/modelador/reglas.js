@@ -2123,7 +2123,15 @@
         autoProf = fpD.autoProfundidadLong(comp.figura, baseLong, profUtil, phiL);
       }
     }
+    // ROMBO DE SECCIÓN (106A y familia, fix 13-ago): el MARCO manda la forma —
+    // el trazado va pegado al recubrimiento (como el 104D) y las dims que se
+    // LISTAN se derivan de esa geometría (medir = dibujar).
+    var dimsRomboVals = (comp._rol === 'estribo' && fpD && fpD.esRomboSeccion &&
+      fpD.esRomboSeccion(comp.figura) && fpD.dimsRombo)
+      ? fpD.dimsRombo(comp.figura, mk.anchoUtil, mk.altoUtil, Number(comp.diam) / 10 || 0)
+      : null;
     function autoDeLado(k) {
+      if (dimsRomboVals && dimsRomboVals[k] != null) return dimsRomboVals[k];
       if (ejesSec) {
         var e = ejesSec[k];
         if (e === 'u') return autoSec.u;
