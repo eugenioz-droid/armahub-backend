@@ -1347,7 +1347,8 @@
       // capa de afuera). En las CERRADAS manda el campo Sep (anillos concéntricos
       // separados k·gap), y por eso viaja aparte en opts.sep.
       var an = (c > 0 && (anidaSeccion || anidaFig))
-        ? _fp().anidarFigura(base.figura, base.dims, c * base.diam, base.rol, { sep: offPos })
+        ? _fp().anidarFigura(base.figura, base.dims, c * base.diam, base.rol,
+          { sep: offPos, diamCm: base.diam })
         : null;
       var usaAn = !!(an && an.criterio !== 'recta');
       var dimsCapa = usaAn ? an.dims : base.dims;
@@ -1493,7 +1494,8 @@
       // concéntricos) la manda sep_capas → viaja en opts.sep (v3: el campo del
       // usuario manda la posición también con anidar activo).
       var an = ((anidaCerr || anidaAb) && !unaCapa && c > 0)
-        ? _fp().anidarFigura(base.figura, base.dims, c * base.diam, base.rol, { sep: off })
+        ? _fp().anidarFigura(base.figura, base.dims, c * base.diam, base.rol,
+          { sep: off, diamCm: base.diam })
         : null;
       var usaAn = !!(an && an.criterio !== 'recta');
       var dimsCapaA = usaAn ? an.dims : base.dims;
@@ -2078,7 +2080,7 @@
       // traza —, y ahora las dos piezas de sección tienen un solo recubrimiento.
       var phiSec = Number(comp.diam) / 10 || 0;
       autoSec = fpD.autosCadenaSeccion(comp.figura, baseSec, ejesSec,
-        { u: mk.anchoUtil - phiSec, v: mk.altoUtil - phiSec });
+        { u: mk.anchoUtil - phiSec, v: mk.altoUtil - phiSec }, phiSec);
     }
     function autoDeLado(k) {
       if (ejesSec) {
@@ -2114,7 +2116,9 @@
         // ≤ 0, el valor va tal cual (dato honesto: la figura no cabe y se VE;
         // el backend además la rechaza) — nada de clamps.
         var fpS = _fp();
-        var sob = (fpS && fpS.sobresCadena) ? fpS.sobresCadena(comp.figura, dims, ladoLong) : { ini: 0, fin: 0 };
+        var sob = (fpS && fpS.sobresCadena)
+          ? fpS.sobresCadena(comp.figura, dims, ladoLong, Number(comp.diam) / 10 || 0)
+          : { ini: 0, fin: 0 };
         dims[ladoLong] = mk.largoUtil - (sob.ini || 0) - (sob.fin || 0);
       } else {
         dims[ladoLong] = autoDeLado(ladoLong);

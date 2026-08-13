@@ -405,6 +405,83 @@
   }
 
   // ---------------------------------------------------------------------------
+  // GANCHOS CON RADIO — la receta del estribo, GENERALIZADA (Tanda V)
+  // ---------------------------------------------------------------------------
+  // Un doblez TERMINAL de más de 90° (el gancho sísmico de 135°, o cualquier
+  // retorno) no puede dibujarlo el fillet del motor: su tangencia
+  // t = R·tan(g/2) supera el largo de la pata y el motor COLAPSA el radio (la
+  // misma causa raíz que costó 3 días en el estribo). La solución probada del
+  // estribo se aplica acá a CUALQUIER cadena abierta:
+  //   · el arco es tangente al CUERPO con retranqueo R desde el vértice → su
+  //     CRESTA toca EXACTO la línea del vértice y nunca la pasa («regla de la
+  //     cresta»: el dibujo queda DENTRO de la envolvente de vértices, así que
+  //     autos / extensiones / sobres —que miden la cadena de vértices— siguen
+  //     siendo cotas válidas y ninguna receta se mueve);
+  //   · la PATA cuelga COMPLETA, tangente a la salida del arco (no se come,
+  //     que es lo otro que hace el fillet inscrito cuando no cabe).
+  // Aplica SOLO a los dobleces de los EXTREMOS de una cadena ABIERTA (los
+  // ganchos). Los interiores y los ≤ 90° quedan como están: el fillet inscrito
+  // del motor los redondea bien y con los mismos endpoints. R = 2φ + φ/2, el
+  // MISMO radio de eje del estribo (norma: mandril interno 2φ).
+  // SOLO CAPA VISUAL: largo/peso salen de las dims en el backend, nunca de acá.
+  function _ganchoFinal2D(pts, R0, sinClamp) {
+    var n = pts.length;
+    if (n < 3 || !(R0 > 0)) return pts;
+    var i = n - 2;                                   // último vértice interior
+    var A = pts[i - 1], V0 = pts[i], B = pts[i + 1];
+    var d1u = V0.u - A.u, d1v = V0.v - A.v;
+    var L1 = Math.hypot(d1u, d1v);
+    var d2u = B.u - V0.u, d2v = B.v - V0.v;
+    var L2 = Math.hypot(d2u, d2v);
+    if (!(L1 > 1e-9) || !(L2 > 1e-9)) return pts;
+    d1u /= L1; d1v /= L1; d2u /= L2; d2v /= L2;
+    var dot = Math.max(-1, Math.min(1, d1u * d2u + d1v * d2v));
+    var giro = Math.acos(dot);                       // 0..π (cuánto se desvía)
+    if (giro <= Math.PI / 2 + 0.009) return pts;     // ≤ 90°: fillet del motor
+    var s = (d1u * d2v - d1v * d2u) >= 0 ? 1 : -1;   // hacia dónde dobla
+    // `sinClamp` = radio de NORMA constante, lo usa la capa de MEDICIÓN: con R
+    // dependiente del largo del cuerpo la cuenta afín de los solvers dejaría de
+    // ser afín. El dibujo sí clampa (un cuerpo más corto que R no se come).
+    var R = sinClamp ? R0 : Math.min(R0, 0.49 * L1);
+    // Tangencia en el cuerpo, retranqueo R desde el vértice (regla de la cresta).
+    var T1 = { u: V0.u - d1u * R, v: V0.v - d1v * R };
+    var O = { u: T1.u - d1v * s * R, v: T1.v + d1u * s * R };  // centro del arco
+    var th0 = Math.atan2(T1.v - O.v, T1.u - O.u);
+    var out = pts.slice(0, i);                       // el cuerpo, hasta A
+    // Muestreo ~10°/punto en DOS tramos: [0°, 90°] y [90°, giro]. El punto de
+    // barrido 90° es LA CRESTA (donde el arco toca la línea del vértice, o sea
+    // donde la pieza SE APOYA en su marco/pila): tiene que estar EXACTO en la
+    // lista, no aproximado por el muestreo — la jerarquía de caras mide ahí.
+    var g1 = Math.PI / 2, g2 = giro - g1;
+    var n1 = Math.max(4, Math.ceil(g1 / (Math.PI / 18)));
+    var n2 = Math.max(4, Math.ceil(g2 / (Math.PI / 18)));
+    var k;
+    for (k = 0; k <= n1; k++) {
+      var a1 = th0 + s * g1 * (k / n1);
+      out.push({ u: O.u + R * Math.cos(a1), v: O.v + R * Math.sin(a1), esArco: true });
+    }
+    for (k = 1; k <= n2; k++) {
+      var a2 = th0 + s * (g1 + g2 * (k / n2));
+      out.push({ u: O.u + R * Math.cos(a2), v: O.v + R * Math.sin(a2), esArco: true });
+    }
+    // La pata, ÍNTEGRA, tangente a la salida (la salida del arco ES d2: girar d1
+    // en s·giro devuelve exactamente la dirección del trazo de vértices).
+    var q = out[out.length - 1];
+    out.push({ u: q.u + d2u * L2, v: q.v + d2v * L2 });
+    return out;
+  }
+  function _rev2D(pts) { return pts.slice().reverse(); }
+  function _conGanchosRadio(pts, diamCm, cerrada, sinClamp) {
+    if (!pts || pts.length < 3 || cerrada) return pts;
+    var R = 2 * diamCm + diamCm / 2;   // radio del EJE del codo (= estribo)
+    if (!(R > 0)) return pts;
+    // Extremo final directo; extremo inicial procesado en REVERSA, para que el
+    // "cuerpo" del algoritmo sea siempre el lado interior y la pata la que
+    // cuelga (en el gancho inicial la pata es el PRIMER tramo).
+    return _rev2D(_ganchoFinal2D(_rev2D(_ganchoFinal2D(pts, R, sinClamp)), R, sinClamp));
+  }
+
+  // ---------------------------------------------------------------------------
   // DERIVACIÓN DE TRAMOS — para las figuras del SEED (geometría vacía)
   // ---------------------------------------------------------------------------
   // Las 63 figuras sembradas por catalogo.py no traen `geometria`: sólo parciales
@@ -530,11 +607,18 @@
     return { pts: out, iLong: iL };
   }
 
-  function _normalizarCadena(c, anchor, tramos, ladoL) {
+  function _normalizarCadena(c, anchor, tramos, ladoL, diamCm) {
     var i;
     var or = _orientarCadena(c, tramos, ladoL);
     var out = or.pts, iL = or.iLong;
     var cerrada = _cadenaCierra(out);
+    // GANCHOS CON RADIO (Tanda V) — ANTES de centrar: la pata de un gancho >90°
+    // cuelga del arco desplazada, así que el bbox REAL de la pieza es el del
+    // trazo arqueado. Centrar el de vértices y arquear después dejaba la pieza
+    // corrida (la reserva de sobres —que ya mide con arcos— y el centrado leían
+    // dos bboxes distintos). La orientación sí corre antes: necesita el índice
+    // tramo↔punto, que el pase de ganchos rompe.
+    out = _conGanchosRadio(out, diamCm, cerrada);
     var emp = cerrada ? { ini: 0, fin: 0 } : _empalmeDeAnchor(anchor);
     // CENTRADO POR BBOX, no por el tramo longitudinal: con puntas inclinadas los
     // SOBRES son asimétricos y centrar B dejaba la cadena corrida (la reserva del
@@ -573,8 +657,14 @@
       return _cadenaSeccion(c, host, anchor, diamCm);
     }
     var pw = _planoTrabajo(host, anchor);
-    var nrm = _normalizarCadena(c, anchor, tr.tramos, ladoL);
-    return nrm.pts.map(function (p) { return pw.P(p.u, p.v); });
+    // Los ganchos con radio entran DENTRO de la normalización (tras orientar,
+    // antes de centrar): el bbox que se centra es el del trazo arqueado.
+    var nrm = _normalizarCadena(c, anchor, tr.tramos, ladoL, diamCm);
+    return nrm.pts.map(function (p) {
+      var q = pw.P(p.u, p.v);
+      if (p.esArco) q.esArco = true;
+      return q;
+    });
   }
 
   // ---- CADENA EN LA SECCIÓN (rol estribo/traba) ------------------------------
@@ -623,7 +713,12 @@
   // sigue moviendo la pieza, porque llega como coordenada y se respeta tal cual.
   function _cadenaSeccion(c, host, anchor, diamCm) {
     var m = _marcoNucleo(host, anchor, diamCm);
-    var pts = c.pts, i;
+    // GANCHOS CON RADIO (Tanda V), ANTES del centrado: el 'auto', la extensión y
+    // el anidado ya miden el trazo ARQUEADO (la pata del gancho >90° cuelga del
+    // arco desplazada), así que el bbox que se centra en el marco tiene que ser
+    // ese mismo — centrar el de vértices dejaba la pieza corrida ~R y la punta
+    // invadía el recubrimiento que el solver acababa de prometer.
+    var pts = _conGanchosRadio(c.pts, diamCm, _cadenaCierra(c.pts)), i;
     var minU = Infinity, maxU = -Infinity, minV = Infinity, maxV = -Infinity;
     for (i = 0; i < pts.length; i++) {
       if (pts[i].u < minU) minU = pts[i].u;
@@ -641,7 +736,9 @@
     var cy = (anchor && anchor.y != null && isFinite(anchor.y)) ? Number(anchor.y) : yc;
     var cz = (anchor && anchor.z != null && isFinite(anchor.z)) ? Number(anchor.z) : 0;
     return pts.map(function (p) {
-      return V(xx, cy + (p.v - cv), cz + mu * (p.u - cu));
+      var q = V(xx, cy + (p.v - cv), cz + mu * (p.u - cu));
+      if (p.esArco) q.esArco = true;
+      return q;
     });
   }
 
@@ -723,27 +820,42 @@
   // imposible; el backend además rechaza la dim).
   //   dimsBase = lados YA resueltos (los 'fija' y las diagonales, que son patas).
   //   ejes     = salida de ejesCadenaSeccion   ·   util = { u: ancho, v: alto }.
-  function autosCadenaSeccion(figura, dimsBase, ejes, util) {
+  function autosCadenaSeccion(figura, dimsBase, ejes, util, diamCm) {
     var tr = tramosDeFigura((figura || '').toUpperCase());
     if (!tr || !ejes) return { u: util.u, v: util.v };
     // Coordenadas del trazo sobre `eje` con TODOS los lados auto de ese eje en t.
     // Los del otro eje quedan en 0: corren perpendicular y no mueven esta cuenta
     // (las diagonales, que sí mueven las dos, vienen resueltas en dimsBase).
+    // CON GANCHOS DE RADIO (Tanda V): el trazo que se hace caber es el DIBUJADO
+    // (arcos incluidos). Sigue siendo afín en t: las direcciones salen de los
+    // GIROS y el radio es constante (sin clamp), así que cada punto del arco es
+    // el vértice (afín) más un desplazamiento fijo.
     function coords(eje, t) {
       var d = {}, k;
       for (k in dimsBase) {
         if (Object.prototype.hasOwnProperty.call(dimsBase, k)) d[k] = dimsBase[k];
       }
       for (k in ejes) {
-        if (Object.prototype.hasOwnProperty.call(ejes, k) && ejes[k] === eje && d[k] == null) d[k] = t;
+        if (!Object.prototype.hasOwnProperty.call(ejes, k) || d[k] != null) continue;
+        // Los autos del eje MEDIDO valen t. Los del OTRO eje valen 1, NO 0: sobre
+        // esta coordenada no mueven nada (corren perpendicular), pero con largo 0
+        // degeneran su tramo y el pase de ganchos NO vería ese doblez — el arco
+        // aparecería en el dibujo real y no en este modelo (medido: el auto
+        // resolvía 24 y el trazo real ocupaba 25.99, un radio entero más).
+        d[k] = (ejes[k] === eje) ? t : 1;
       }
-      var c = _cadena2D(tr.tramos, d, 0), out = [], i;
-      for (i = 0; i < c.pts.length; i++) out.push((eje === 'u') ? c.pts[i].u : c.pts[i].v);
+      var c = _cadena2D(tr.tramos, d, 0);
+      var pts = _conGanchosRadio(c.pts, diamCm || 0, _cadenaCierra(c.pts), true);
+      var out = [], i;
+      for (i = 0; i < pts.length; i++) out.push((eje === 'u') ? pts[i].u : pts[i].v);
       return out;
     }
     function resolver(eje, ut) {
-      var a = coords(eje, 0), c1 = coords(eje, 1), b = [], i;
-      for (i = 0; i < a.length; i++) b.push(c1[i] - a[i]);
+      // Se muestrea en t = 1 y t = 2 (NUNCA en t = 0: un lado auto de largo 0
+      // degenera su tramo y el pase de ganchos no vería el doblez en esa muestra
+      // — las dos listas quedarían desalineadas). a se reconstruye por afinidad.
+      var c1 = coords(eje, 1), c2 = coords(eje, 2), a = [], b = [], i;
+      for (i = 0; i < c1.length; i++) { b.push(c2[i] - c1[i]); a.push(c1[i] - b[i]); }
       var iv = _intervaloCabe(a, b, ut);
       // Sin cota superior no hay lados auto en ese eje (nadie pregunta por su
       // valor) → se devuelve el útil, como antes.
@@ -813,13 +925,16 @@
   // figura no puede encoger ahí. No es un clamp — la pieza sigue centrada en su
   // marco y se ve tal cual; lo que no se hace es inventarle un encogimiento.
   // Devuelve null si la figura no es una cadena de sección.
-  function insetCadenaSeccion(figura, dims, delta, rol) {
+  function insetCadenaSeccion(figura, dims, delta, rol, diamCm) {
     var f = (figura || '').toUpperCase();
     var tr = tramosDeFigura(f);
     var ejes = ejesCadenaSeccion(f, rol || 'estribo');
     if (!tr || !ejes) return null;
     var d = Number(delta) || 0, k;
     // Coordenadas del trazo sobre `eje` con TODOS sus lados retirados `s`.
+    // CON GANCHOS DE RADIO (Tanda V): misma regla que el 'auto' — la extensión
+    // que se encoge 2δ es la del trazo DIBUJADO (arcos incluidos, radio sin
+    // clamp). Afín en s por la misma razón (direcciones de los giros, R fijo).
     function coords(eje, s) {
       var dd = {}, kk;
       for (kk in dims) if (Object.prototype.hasOwnProperty.call(dims, kk)) dd[kk] = dims[kk];
@@ -828,15 +943,20 @@
           dd[kk] = Number(dims[kk]) - s;
         }
       }
-      var c = _cadena2D(tr.tramos, dd, 0), out = [], i;
-      for (i = 0; i < c.pts.length; i++) out.push((eje === 'u') ? c.pts[i].u : c.pts[i].v);
+      var c = _cadena2D(tr.tramos, dd, 0);
+      var pts = _conGanchosRadio(c.pts, diamCm || 0, _cadenaCierra(c.pts), true);
+      var out = [], i;
+      for (i = 0; i < pts.length; i++) out.push((eje === 'u') ? pts[i].u : pts[i].v);
       return out;
     }
     function retiro(eje) {
-      var a = coords(eje, 0), c1 = coords(eje, 1), b = [], i;
+      // Muestras en s = 0 (dims reales, tramos vivos) y s = −1 (los lados CRECEN:
+      // jamás degeneran un tramo, cosa que s = +1 sí puede hacer con un lado de
+      // 1 cm — y un tramo degenerado saltaría el gancho en UNA de las muestras).
+      var a = coords(eje, 0), cm1 = coords(eje, -1), b = [], i;
       var mx = -Infinity, mn = Infinity;
       for (i = 0; i < a.length; i++) {
-        b.push(c1[i] - a[i]);
+        b.push(a[i] - cm1[i]);
         if (a[i] > mx) mx = a[i];
         if (a[i] < mn) mn = a[i];
       }
@@ -875,12 +995,17 @@
     var tr = tramosDeFigura((figura || '').toUpperCase());
     if (!tr) return null;
     var c = _cadena2D(tr.tramos, dims, extGancho(diamCm));
+    // CON GANCHOS DE RADIO (Tanda V): se mide lo que se DIBUJA. La pata de un
+    // gancho >90° cuelga del arco desplazada hacia el lado del giro — medir la
+    // cadena de vértices reservaba de menos y la punta invadía el recubrimiento.
+    // Radio SIN clamp: cota ≥ que el dibujo (que sí clampa en cuerpos cortos).
+    var pts = _conGanchosRadio(c.pts, diamCm, _cadenaCierra(c.pts), true);
     var minU = Infinity, maxU = -Infinity, minV = Infinity, maxV = -Infinity, i;
-    for (i = 0; i < c.pts.length; i++) {
-      if (c.pts[i].u < minU) minU = c.pts[i].u;
-      if (c.pts[i].u > maxU) maxU = c.pts[i].u;
-      if (c.pts[i].v < minV) minV = c.pts[i].v;
-      if (c.pts[i].v > maxV) maxV = c.pts[i].v;
+    for (i = 0; i < pts.length; i++) {
+      if (pts[i].u < minU) minU = pts[i].u;
+      if (pts[i].u > maxU) maxU = pts[i].u;
+      if (pts[i].v < minV) minV = pts[i].v;
+      if (pts[i].v > maxV) maxV = pts[i].v;
     }
     return { u: maxU - minU, v: maxV - minV };
   }
@@ -918,7 +1043,7 @@
   // la luz libre completa y lo centraba sin descontar esas proyecciones (el
   // cabezal de 90° nunca lo sufrió: su proyección horizontal es 0).
   // Devuelve { ini, fin } en cm (0/0 si no es cadena abierta con longitudinal).
-  function sobresCadena(figura, dims, ladoLPref) {
+  function sobresCadena(figura, dims, ladoLPref, diamCm) {
     var f = (figura || '').toUpperCase();
     if (familiaDeDibujo(f, null) !== 'cadena') return { ini: 0, fin: 0 };
     var tr = tramosDeFigura(f);
@@ -936,14 +1061,19 @@
       if (tr.tramos[i].lado === ladoL) { iL = i; break; }
     }
     if (iL < 0) return { ini: 0, fin: 0 };
-    // marco girado: el longitudinal corre en +u
+    // marco girado: el longitudinal corre en +u. El marco (a, ang, extremo b) se
+    // toma de la cadena de VÉRTICES (los índices tramo↔punto valen ahí)…
     var a = c.pts[iL], b = c.pts[iL + 1];
     var ang = Math.atan2(b.v - a.v, b.u - a.u);
     var cos = Math.cos(-ang), sin = Math.sin(-ang);
     function ux(p) { return (p.u - a.u) * cos - (p.v - a.v) * sin; }
+    // …y lo que asoma se mide sobre el trazo DIBUJADO (ganchos con radio, Tanda
+    // V): la punta de un gancho >90° cuelga del arco desplazada, y reservar los
+    // sobres de la cadena de vértices dejaba esa punta fuera de la reserva.
+    var pts = _conGanchosRadio(c.pts, diamCm || 0, _cadenaCierra(c.pts), true);
     var minU = 0, maxU = ux(b);
-    for (var k = 0; k < c.pts.length; k++) {
-      var u = ux(c.pts[k]);
+    for (var k = 0; k < pts.length; k++) {
+      var u = ux(pts[k]);
       if (u < minU) minU = u;
       if (u > maxU) maxU = u;
     }
@@ -1218,12 +1348,21 @@
     var xx = anchor.x || 0, zz = anchor.z || 0;
     var g = 0.7071 * (extGancho(diamCm) + diamCm);
     // gancho 135° arriba (diagonal hacia el núcleo) + gancho 90° abajo.
-    var out = [
-      V(xx, ySup - g, zz - g), // punta gancho 135° arriba
-      V(xx, ySup, zz),         // doblez arriba (a la altura del estribo)
-      V(xx, yInf, zz),         // baja al fondo (a la altura del estribo)
-      V(xx, yInf, zz - extGancho(diamCm))   // pie gancho 90° abajo
-    ];
+    // El trazo se arma en el plano de la sección (u = z, v = y) y pasa por
+    // GANCHOS CON RADIO: el 135° de arriba es un doblez terminal — el pase lo
+    // procesa en reversa (cuerpo = la vertical), su cresta toca y = ySup EXACTO
+    // y la punta cuelga tangente; el pie de 90° queda en punta (fillet motor).
+    var pts2 = _conGanchosRadio([
+      { u: zz - g, v: ySup - g },              // punta gancho 135° arriba
+      { u: zz, v: ySup },                      // doblez arriba (altura del estribo)
+      { u: zz, v: yInf },                      // baja al fondo (altura del estribo)
+      { u: zz - extGancho(diamCm), v: yInf }   // pie gancho 90° abajo
+    ], diamCm, false);
+    var out = pts2.map(function (p) {
+      var q = V(xx, p.v, p.u);
+      if (p.esArco) q.esArco = true;
+      return q;
+    });
     // ESPEJO: los dos ganchos salen hacia −Z; espejados salen hacia +Z. La
     // reflexión es sobre el PROPIO eje de la traba (zz), no sobre z = 0: la pieza
     // no se mueve, sólo cambia de mano.
@@ -1347,7 +1486,7 @@
     // puntas libres son patas de gancho y sus quiebres no son de 90°.
     if ((rol === 'estribo' || rol === 'traba') && familiaDeDibujo(f, rol) === 'cadena') {
       if (!(dSep > 0)) { res.delta = 0; return res; }   // δ nulo = marcos superpuestos
-      var sec = insetCadenaSeccion(f, dims, dSep, rol);
+      var sec = insetCadenaSeccion(f, dims, dSep, rol, opts.diamCm);
       if (sec) {
         res.delta = dSep; res.inset = dSep; res.criterio = 'seccion';
         res.dims = sec.dims; res.cabe = sec.cabe; res.motivo = sec.motivo;
@@ -1471,6 +1610,7 @@
     // exportados para tests / reuso
     _cabezalLongitudinal: _cabezalLongitudinal,
     _estriboPerimetral: _estriboPerimetral,
+    _conGanchosRadio: _conGanchosRadio,   // ganchos terminales >90° con radio (tests)
     _traba: _traba,
     _cadenaGenerica: _cadenaGenerica
   };

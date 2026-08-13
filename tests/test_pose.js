@@ -815,7 +815,11 @@ ok(close(lim(es305[0], 'z').hi - lim(es305[0], 'z').lo, 24) &&
     const ejes = FP.ejesCadenaSeccion(f, 'estribo');
     const base = {};
     Object.keys(ejes).forEach(k => { if (ejes[k] === 'd') base[k] = gancho; });
-    const t = FP.autosCadenaSeccion(f, base, ejes, util);
+    // TANDA V: el diámetro viaja también al solver — el 'auto' hace caber el
+    // trazo CON sus ganchos de radio, que es el que la extensión mide y el que
+    // se dibuja. Sin él, el solver modelaba la cadena de vértices y "resolver =
+    // dibujar" se rompía por un radio entero en las figuras con gancho >90°.
+    const t = FP.autosCadenaSeccion(f, base, ejes, util, 0.8);
     const dims = {};
     Object.keys(ejes).forEach(k => { dims[k] = (ejes[k] === 'd') ? gancho : t[ejes[k]]; });
     const ext = FP.extensionCadenaSeccion(f, dims, 0.8);

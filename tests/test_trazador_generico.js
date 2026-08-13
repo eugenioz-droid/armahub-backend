@@ -402,9 +402,19 @@ ok(rescatadas.length === 25, '25 figuras de 5–6 lados pasan de EXCLUIDAS a dib
     })] }, CTX);
     const b = out.barras[0];
     const n = CAT.get(fig).parciales.length;
-    if (!b || !(out.resumen.kg > 0) || out.placements[0].puntos.length !== n + 1) malas.push(fig);
+    // TANDA V: un gancho terminal >90° reemplaza su VÉRTICE por un ARCO
+    // muestreado (racha de puntos esArco). "Dibuja todos sus lados" ahora es:
+    // vértices rectos + una racha de arco por gancho = los n+1 de la cadena.
+    // (Sin ganchos >90° no hay rachas y la cuenta es la de antes: n+1 exacto.)
+    const pts = out.placements[0].puntos;
+    let rectos = 0, rachas = 0;
+    pts.forEach((p, i) => {
+      if (!p.esArco) rectos++;
+      else if (!i || !pts[i - 1].esArco) rachas++;
+    });
+    if (!b || !(out.resumen.kg > 0) || (rectos + rachas) !== n + 1) malas.push(fig);
   });
-  ok(malas.length === 0, 'las 25 generan barra, pesan y dibujan todos sus lados' +
+  ok(malas.length === 0, 'las 25 generan barra, pesan y dibujan todos sus lados (ganchos >90° en arco)' +
     (malas.length ? ' — fallan ' + malas.join(',') : ''));
 })();
 

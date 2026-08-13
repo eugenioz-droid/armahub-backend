@@ -1292,6 +1292,22 @@ a HEAD (md5) · barrido 992 combinaciones (62 figs × ES/TRV × capas 1-4 × gap
 hormigón · autos 62 figuras 0 rompen marco · suite 19/19. Guard: tests/test_pose.js (P1-P8 + 41
 figuras × linear/layered × 1-3 capas).
 
+### TANDA V — GANCHOS CON RADIO (EJECUTADA 13-ago, directa sin workflow, tras Tanda P)
+La receta del estribo, generalizada: todo doblez TERMINAL >90° (gancho sísmico 135°, retornos)
+de una cadena abierta —y el de la traba— se dibuja como ARCO explícito muestreado (esArco,
+R = 2φ + φ/2, el mismo del estribo), en vez del fillet inscrito del motor que colapsaba el radio
+y se comía la pata. Regla de la cresta: arco tangente al CUERPO con retranqueo R → la cresta toca
+EXACTO la línea del vértice (ahí se apoya; la jerarquía mide ahí) y la PATA cuelga ÍNTEGRA
+tangente. Los dobleces ≤90° e interiores siguen con el fillet del motor (los redondea bien).
+MEDIR = DIBUJAR hasta el final: extensión, autos, inset (anidado) y sobres miden el trazo
+ARQUEADO (afín en t: direcciones de los giros + radio constante sin clamp; muestras t=1/t=2 y
+lados perpendiculares en 1 para no degenerar tramos), y el centrado usa el bbox arqueado.
+Sin esto la punta del gancho invadía el recubrimiento hasta 2.8 cm (25 figuras) — el trazo real
+de la barra doblada SIEMPRE invadió eso; hoy el auto lo reserva. SOLO CAPA VISUAL para el
+despiece: dims/kg/export intactos (semilla: barras idénticas, sólo los 15 placements TRV mueven).
+Verificado: suite 19/19 · barrido 992 combinaciones 0 fuera · recub efectivo cadena 4.00/3.00
+exacto en φ8/16/32 · cresta de la traba = ySup exacto.
+
 ### DEF PENDIENTE (usuario) — convención de la columna `angulos` del catálogo (hallazgo Tanda F)
 El verificador demostró que la columna tiene DOS escritores con convenciones complementarias:
 - El SEED (63 figuras, a mano) la usa como GIRO/doblez (104D=[135,135] es el gancho sísmico 135°,

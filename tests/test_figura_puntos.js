@@ -60,8 +60,24 @@ ok(est[0].z > -w2t && est[0].z < w2t && est[0].y < h2t + 0.6,
 
 console.log('Traba 101A (cara lateral):');
 var tr = F.figuraAPuntos('101A', { A: 54 }, host, { x: 10, z: 0, recub: 3 }, { rol: 'traba', diamCm: 0.8 });
-ok(tr.length === 4, 'traba = 4 puntos (gancho 135 + vertical + gancho 90)');
-ok(tr[1].y > tr[2].y, 'baja de arriba a abajo');
+// TANDA V: el gancho sísmico de 135° ya no es un vértice en punta — es un ARCO
+// muestreado (puntos esArco) con radio de norma, como el del estribo. El pie de
+// 90° sigue en punta (lo redondea el fillet del motor). La cuenta: el vértice
+// del doblez Y la punta vieja se reemplazan (la punta nueva cuelga del arco):
+// quedan 3 rectos (punta, fondo, pie) + 1 racha de arco = los 4 de la cadena.
+var trArco = tr.filter(function (p) { return p.esArco; });
+var trRect = tr.filter(function (p) { return !p.esArco; });
+ok(trRect.length === 3 && trArco.length >= 8,
+  'traba = 3 puntos rectos + gancho 135 en ARCO (rectos=' + trRect.length + ' arco=' + trArco.length + ')');
+// la CRESTA del arco toca EXACTO la altura del estribo — alto/2 − recub − φ/2 =
+// 30 − 3 − 0.4 = 26.6 (regla de la cresta: ahí se APOYA, la jerarquía mide ahí):
+var trMaxY = Math.max.apply(null, tr.map(function (p) { return p.y; }));
+ok(Math.abs(trMaxY - 26.6) < 1e-9 && trArco.some(function (p) { return Math.abs(p.y - trMaxY) < 1e-9; }),
+  'la cresta del arco toca EXACTO ySup = 26.6 (=' + trMaxY + ')');
+ok(tr[0].y < trMaxY, 'la punta del gancho cuelga bajo la cresta');
+// la vertical baja desde la TANGENCIA del arco (su punto más bajo) al fondo:
+var trTang = Math.min.apply(null, trArco.map(function (p) { return p.y; }));
+ok(trTang > trRect[1].y, 'baja de arriba (tangencia del arco) a abajo (fondo)');
 
 console.log('Coherencia con el motor (sin NaN, dobleces):');
 var an = M.analizarBarra(est, 0.8);
