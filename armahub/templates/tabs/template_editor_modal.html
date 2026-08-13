@@ -348,6 +348,22 @@
   #te_modal #te_bigwarn .te-bwx{border:none;background:transparent;cursor:pointer;font-size:14px;
     line-height:1;color:inherit;opacity:.6;padding:2px 5px;border-radius:5px}
   #te_modal #te_bigwarn .te-bwx:hover{opacity:1;background:rgba(0,0,0,.06)}
+
+  /* ---- BORRADOR SIN GUARDAR (TANDA 3 · no perder trabajo) ----
+     Barra DISCRETA bajo el título. Sólo aparece al ABRIR el editor si quedó un
+     borrador de menos de 48 h distinto de lo que se está abriendo (F5 / cierre del
+     navegador con cambios). Dos acciones: Recuperar (lo carga como receta activa) y
+     Descartar (borra la clave). La muestra/oculta template_editor.js. */
+  #te_modal #te_borrador{display:none;align-items:center;gap:9px;padding:6px 18px;font-size:11.5px;
+    font-weight:600;background:var(--te-chip);color:var(--te-chip-ink);border-bottom:1px solid var(--te-chip-b)}
+  #te_modal #te_borrador.on{display:flex}
+  #te_modal #te_borrador .te-brico{font-size:13px;line-height:1}
+  #te_modal #te_borrador .te-brsp{flex:1}
+  #te_modal #te_borrador button{border:1px solid var(--te-chip-b);background:#fff;border-radius:7px;
+    padding:3px 11px;font-size:11px;font-weight:700;color:var(--te-chip-ink);cursor:pointer}
+  #te_modal #te_borrador button:hover{background:var(--te-acero);color:#fff;border-color:var(--te-acero)}
+  #te_modal #te_borrador button.te-brghost{color:var(--te-muted);border-color:var(--te-line)}
+  #te_modal #te_borrador button.te-brghost:hover{background:#eef2f6;color:var(--te-ink);border-color:var(--te-line)}
 </style>
 
 <div id="te_backdrop">
@@ -366,6 +382,17 @@
       <span class="te-chip" id="te_elemBadge">VIGA</span>
       <button class="te-btn ghost" onclick="templateEditorVolverALista()">📂 Abrir</button>
       <button class="te-xbtn" onclick="templateEditorCerrar()">✕</button>
+    </div>
+
+    <!-- BORRADOR SIN GUARDAR: lo muestra _ofrecerBorrador() al ABRIR el editor si
+         quedó trabajo de una sesión anterior (F5 / cierre con cambios). Los dos
+         botones los cablea _bindBorrador() en template_editor.js. -->
+    <div id="te_borrador">
+      <span class="te-brico">💾</span>
+      <span id="te_borradorTxt"></span>
+      <span class="te-brsp"></span>
+      <button type="button" id="te_borradorOk" title="Cargar el borrador como receta activa">Recuperar</button>
+      <button type="button" class="te-brghost" id="te_borradorNo" title="Borrar el borrador guardado">Descartar</button>
     </div>
 
     <!-- RIBBON — orden de trabajo: 1) HORMIGÓN · 2) PREDEFINICIONES DE LA BARRA ·

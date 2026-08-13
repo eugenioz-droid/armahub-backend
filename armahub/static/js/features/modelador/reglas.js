@@ -486,21 +486,83 @@
   // sin duplicados.
   var _EPS_POS = 1e-6;
 
+  // ---------------------------------------------------------------------------
+  // CAPEO ANTES DE GENERAR — freno de mano, NO una defensa que enmascara
+  // ---------------------------------------------------------------------------
+  // El motor acepta cualquier @ y cualquier n_capas: un @ 0.1 en un rango de 600
+  // pedía 6001 placements (× nº de capas) y el navegador se congelaba ANTES de
+  // que el warning anti-colapso — que se emite DESPUÉS de generar — llegara a
+  // verse. Con esto el distribuidor DEJA DE EMITIR al llegar al techo y escribe
+  // el porqué en comp._avisos (el mismo canal no enumerable de las capas
+  // omitidas): el dato NO se esconde ni se "arregla" solo — queda a la vista,
+  // con el número que lo causó, para que el usuario corrija el @ o el rango.
+  //
+  // Los topes son POR COMPONENTE (un template con 10 componentes normales no los
+  // roza ni de lejos: la viga-semilla entera son 72 barras) y valen para las tres
+  // fuentes de explosión: posiciones de un rango/tramos, zonas encadenadas y el
+  // producto rango × capas de layered/arreglo.
+  var TOPE_PLACEMENTS_COMP = 2000;   // barras emitidas por UN componente
+  var TOPE_CAPAS_COMP = 200;         // n_capas de layered/arreglo
+
+  // Marca de truncado que viaja con el array de posiciones (NO enumerable: las
+  // posiciones se serializan/copian y una marca derivada no puede ensuciarlas).
+  // La lee el distribuidor, que es quien tiene el `base` donde vive el aviso.
+  function _marcarTope(arr, sep) {
+    var info = { n: arr.length, sep: Number(sep) };
+    try {
+      Object.defineProperty(arr, '_tope',
+        { value: info, enumerable: false, writable: true, configurable: true });
+    } catch (e) { /* array sellado: el tope igual frenó el bucle */ }
+    return arr;
+  }
+
+  function _num(x) {
+    var n = Number(x);
+    return isFinite(n) ? (Math.round(n * 1000) / 1000) : null;
+  }
+
+  // Texto ÚNICO del tope de barras (lo emiten linear, arreglo y layered).
+  function _avisoTope(sep) {
+    var s = _num(sep);
+    return 'distribución truncada en ' + TOPE_PLACEMENTS_COMP + ' barras: revisa el @' +
+      (s != null && s > 0 ? ' (' + s + ' cm)' : '') + ' o el rango';
+  }
+
+  // Texto ÚNICO del tope de capas (layered y arreglo).
+  function _avisoTopeCapas(pedidas) {
+    return 'capas truncadas en ' + TOPE_CAPAS_COMP + ' (la receta pide ' +
+      (_num(pedidas) != null ? _num(pedidas) : '?') + '): revisa el nº de capas';
+  }
+
+  // n_capas efectivo + aviso si la receta pedía más que el techo duro.
+  function _capasCapeadas(base, nPedidas) {
+    var n = Math.max(1, Number(nPedidas) || 1);
+    if (n <= TOPE_CAPAS_COMP) return n;
+    _avisar(base, _avisoTopeCapas(nPedidas));
+    return TOPE_CAPAS_COMP;
+  }
+
   function _pushPos(arr, x) {
     if (arr.length && Math.abs(arr[arr.length - 1] - x) <= _EPS_POS) return;  // unión: 1 sola barra
     arr.push(x);
   }
 
   // n barras equiespaciadas en [a, b] con paso real ≤ sep, clampeadas a `tope`.
+  // Devuelve false si se alcanzó TOPE_PLACEMENTS_COMP (y deja la marca en `arr`):
+  // el llamador debe dejar de repartir tramos.
   function _repartirTramo(arr, a, b, sep, tope) {
     var span = b - a;
     var n = redondeoCantidadZona(span, sep);
     var paso = (n > 1) ? span / (n - 1) : 0;
     for (var i = 0; i < n; i++) {
+      // TECHO: se comprueba ANTES de calcular la posición, así un @ de 0.1 (o de
+      // 1e-9) no llega nunca a iterar sus 6001 — ni sus 6e11 — vueltas.
+      if (arr.length >= TOPE_PLACEMENTS_COMP) { _marcarTope(arr, sep); return false; }
       var x = a + i * paso;
       if (x > tope + _EPS_POS) break;
       _pushPos(arr, x);
     }
+    return true;
   }
 
   function posicionesRango(rango, sepDefault) {
@@ -510,7 +572,7 @@
     var tramos = (rango.tramos && rango.tramos.length) ? rango.tramos : null;
     var pos = [];
     if (!tramos) {                       // A) @ único — comportamiento histórico
-      _repartirTramo(pos, rf, rt, sep, rt);
+      _repartirTramo(pos, rf, rt, sep, rt);   // (puede marcar pos._tope y frenar)
       return pos;
     }
     // B) tramos encadenados desde `from`. DIRECCIÓN: los tramos se anclan en el
@@ -521,6 +583,7 @@
     var invertido = Number(rango.from) > Number(rango.to);
     var cur = rf;
     var ultSep = sep;                    // el @ que CONTINÚA si los tramos no llegan
+    var truncado = false;
     for (var t = 0; t < tramos.length && cur < rt - _EPS_POS; t++) {
       var tr = tramos[t] || {};
       var lt = Number(tr.long) || 0;
@@ -528,17 +591,21 @@
       if (st > 0) ultSep = st;
       if (lt <= 0) continue;             // tramo sin largo = no consume nada
       var fin = Math.min(cur + lt, rt);  // CLAMP al rango
-      _repartirTramo(pos, cur, fin, ultSep, rt);
+      // Un tramo con @ imposible frena TODA la cadena: los siguientes no se
+      // colocan (el reparto ya no representa la receta y hay que corregirla).
+      if (!_repartirTramo(pos, cur, fin, ultSep, rt)) { truncado = true; break; }
       cur = fin;
     }
     // COLA: los tramos no cubrieron el rango → el último @ sigue hasta `to`.
-    if (cur < rt - _EPS_POS) _repartirTramo(pos, cur, rt, ultSep, rt);
+    if (!truncado && cur < rt - _EPS_POS && !_repartirTramo(pos, cur, rt, ultSep, rt)) truncado = true;
     // Caso borde: tramos = [{long:0}] y nada colocado → al menos la barra de `from`.
     if (!pos.length) _pushPos(pos, rf);
     // Reflejo para el rango invertido: el 1er tramo queda pegado al `from` real.
     if (invertido) {
       var cen = (rf + rt) / 2;
+      var marca = pos._tope;             // map+reverse hacen array NUEVO: la marca no viaja sola
       pos = pos.map(function (p) { return 2 * cen - p; }).reverse();
+      if (marca) _marcarTope(pos, marca.sep);
     }
     return pos;
   }
@@ -568,6 +635,9 @@
       // (span 24 @20 → nR=3 pero colocaba 2 en −12 y +8, con 4 cm muertos).
       // Con rango.tramos el reparto es por TRAMOS (@10/@20/@10) — misma función.
       var posR = posicionesRango(cfg.rango, cfg.sep);
+      // El reparto se capó (@ minúsculo o rango gigante): la barra de estado lo
+      // dice con el número que lo causó. No se "corrige" el @ por detrás.
+      if (posR._tope) _avisar(base, _avisoTope(posR._tope.sep));
       for (var ri = 0; ri < posR.length; ri++) {
         var xr = posR[ri];
         var extraR = {}; extraR[ejeR] = xr;
@@ -590,6 +660,11 @@
       var z = zonas[zi];
       var n = redondeoCantidadZona(z.long, z.sep);
       for (var k = 0; k < n; k++) {
+        // MISMO techo que el rango: una zona con @ 0.1 pedía miles de estribos.
+        if (placements.length >= TOPE_PLACEMENTS_COMP) {
+          _avisar(base, _avisoTope(z.sep));
+          return placements;
+        }
         var xx = xcur + k * (Number(z.sep) || 0);
         if (xx > x1 + 1e-6) break;
         var anchor = _mezclarAnchor(base.anchorBase, { x: xx });
@@ -803,7 +878,9 @@
 
   function distribuidorLayered(base, cfg, host) {
     var placements = [];
-    var nCapas = Math.max(1, (cfg && cfg.n_capas) || 1);
+    // TECHO DURO de capas (200) y, más abajo, de placements (2000): un
+    // n_capas de 10000 × barras_capa congelaba el navegador antes de dibujar.
+    var nCapas = _capasCapeadas(base, (cfg && cfg.n_capas) || 1);
     var nBarras = Math.max(1, (cfg && cfg.barras_capa) || 1);
     var gap = (cfg && cfg.gap != null) ? Number(cfg.gap) : 0;
     var cara = (base.anchorBase && base.anchorBase.cara) || 'sup';
@@ -864,6 +941,12 @@
       // inset de marco (anillo concéntrico), que ya vale k·gap.
       var coordCara = mc.ancla + mc.sentido * offPos;
       for (var i = 0; i < nBarras; i++) {
+        // TECHO de barras del componente (capas × barras_capa). Acá no hay @:
+        // el aviso sale sin cifra (el mismo texto, sin el "(x cm)").
+        if (placements.length >= TOPE_PLACEMENTS_COMP) {
+          _avisar(base, _avisoTope(null));
+          return placements;
+        }
         var extra = { cara: cara };
         extra[mc.eje] = coordCara;
         extra[mc.ejeReparto] = _posReparto(mc, i, nBarras);
@@ -910,7 +993,8 @@
     // Sin rango válido no hay a lo largo qué distribuir → [] (coherente con el
     // resto de distribuidores cuando su cfg no aplica; el llamador ya validó modo).
     if (!rango || rango.from == null || rango.to == null) return placements;
-    var nCapas = Math.max(1, (cfg && Number(cfg.n_capas)) || 1);
+    // TECHO DURO de capas (200) — mismo criterio que layered.
+    var nCapas = _capasCapeadas(base, (cfg && Number(cfg.n_capas)) || 1);
     var sepCapas = (cfg && cfg.sep_capas != null) ? Number(cfg.sep_capas) : 0;
     var eje = (cfg && cfg.eje_capas) || 'z';
     if (eje !== 'x' && eje !== 'y' && eje !== 'z') eje = 'z';
@@ -921,6 +1005,10 @@
     // calculara sus X por su cuenta, la garantía "n_capas=1 == lineal puro" se
     // rompería en cuanto una de las dos ramas cambiara (p.ej. al aceptar tramos).
     var posA = posicionesRango(rango, cfg && cfg.sep);
+    // El reparto a lo largo ya viene capado por posicionesRango (misma fuente que
+    // el lineal): sólo hay que decirlo. Las capas suman encima → el techo de
+    // placements de más abajo corta el producto rango × capas.
+    if (posA._tope) _avisar(base, _avisoTope(posA._tope.sep));
     // 1 capa = distribución lineal pura: NO se toca el eje de profundidad, así el
     // anchor queda BYTE-A-BYTE igual al de distribuidorLinear (garantía de cero
     // regresión). Con ≥2 capas SÍ se fija el plano de profundidad en TODAS las
@@ -980,6 +1068,12 @@
         }
       }
       for (var ri = 0; ri < posA.length; ri++) {
+        // TECHO del producto rango × capas (un rango de 200 con 50 capas son
+        // 10 000 barras). Corta los DOS bucles: nada más se emite.
+        if (placements.length >= TOPE_PLACEMENTS_COMP) {
+          _avisar(base, _avisoTope((cfg && cfg.sep) || (rango && rango.sep)));
+          return placements;
+        }
         var xr = posA[ri];
         // EJE DEL RANGO respetado (hallazgo del verificador: aquí se hardcodeaba
         // {x: xr} — un cabezal en modo Arreglo con rango.eje 'z', que es lo que
@@ -1821,6 +1915,10 @@
     // Es la MISMA función que usan linear y arreglo: la UI puede previsualizar el
     // conteo sin re-implementar el redondeo (y sin poder desincronizarse de él).
     posicionesRango: posicionesRango,
+    // TECHOS DE GENERACIÓN (por componente). Expuestos para que la UI pueda
+    // advertir con el MISMO número que aplica el motor (nunca uno propio).
+    TOPE_PLACEMENTS_COMP: TOPE_PLACEMENTS_COMP,
+    TOPE_CAPAS_COMP: TOPE_CAPAS_COMP,
     evalEmpalme: evalEmpalme,
     expandirComponente: expandirComponente,
     // ORIENTACIÓN DE LA PIEZA (permutación de ejes real) — lo consulta la UI para

@@ -48,6 +48,12 @@
 
   var GRID_SNAP = 5;   // cm — paso de snap a grilla
 
+  // Mínimo razonable del espaciamiento @ (cm). Es el CAPEO DE UI (§TANDA 3 · punto 2):
+  // los inputs de @ lo llevan en min= y rechazan en rojo cualquier valor menor, y los
+  // clamps internos de tramos lo usan como piso (antes era 1: un 0.6 tecleado se
+  // convertía en 1 sin decir nada). El motor tiene su propio tope aparte.
+  var SEP_MIN = 0.5;
+
   var ST = {
     receta: null, ultimoOut: null,
     scene: null, camera: null, renderer: null, world: null, grid: null,
@@ -258,7 +264,16 @@
         _refrescarFigDatalist();
         _validarFiguraRibbon(false);
         var bd = $('te_backdrop');
-        if (bd && bd.classList.contains('on')) _renderPanel();   // la ficha re-lee parciales
+        if (bd && bd.classList.contains('on')) {
+          // Este re-render es NORMALIZACIÓN, no edición del usuario: la ficha re-lee
+          // los parciales del catálogo real y de paso rellena dims/rango que faltaban
+          // en la receta. Si el template estaba LIMPIO, se re-sella el baseline — si
+          // no, la llegada (asíncrona) del catálogo dejaba el editor "sucio" solo,
+          // y cerrar sin tocar nada preguntaba por cambios que nadie hizo.
+          var limpio = !_hayCambiosSinGuardar();
+          _renderPanel();
+          if (limpio && ST.receta) ST._recetaGuardada = JSON.stringify(ST.receta);
+        }
       }, function () {
         ST._catPedido = false;                                   // reintenta al reabrir
         _refrescarFigDatalist();
@@ -479,11 +494,11 @@
   // usan tanto el editor del panel como el dibujo de la flecha.
   function _tramosDe(d) {
     var total = _rangoLong(d);
-    var sepBase = Math.max(1, Number(d && d.sep) || 20);
+    var sepBase = Math.max(SEP_MIN, Number(d && d.sep) || 20);
     var t = (d && d.rango && d.rango.tramos) || null;
     if (!t || !t.length) return [{ long: total, sep: sepBase }];
     return _ajustarTramos(t.map(function (x) {
-      return { long: Math.max(0, Number(x && x.long) || 0), sep: Math.max(1, Number(x && x.sep) || sepBase) };
+      return { long: Math.max(0, Number(x && x.long) || 0), sep: Math.max(SEP_MIN, Number(x && x.sep) || sepBase) };
     }), total);
   }
 
@@ -492,13 +507,13 @@
   function _setTramos(d, arr) {
     d.rango = d.rango || {};
     if (!arr || arr.length <= 1) {
-      var s = Math.max(1, (arr && arr[0] && Number(arr[0].sep)) || Number(d.sep) || 20);
+      var s = Math.max(SEP_MIN, (arr && arr[0] && Number(arr[0].sep)) || Number(d.sep) || 20);
       delete d.rango.tramos;
       d.sep = s; d.rango.sep = s;
       return;
     }
     d.rango.tramos = arr.map(function (x) {
-      return { long: Math.round((Number(x.long) || 0) * 10) / 10, sep: Math.max(1, Number(x.sep) || 20) };
+      return { long: Math.round((Number(x.long) || 0) * 10) / 10, sep: Math.max(SEP_MIN, Number(x.sep) || 20) };
     });
     d.sep = d.rango.tramos[0].sep;      // el @ simple queda como espejo del 1er tramo
     d.rango.sep = d.sep;
@@ -676,6 +691,9 @@
     _actualizarWarnTamano((out.placements || []).length);
     if (ST.threeCargado && ST.webglOk) _redibujar(out);
     _marcarSucio();
+    // NO PERDER TRABAJO: autoguardado del borrador (throttled; no hace nada con el
+    // modal cerrado). Va al final: se guarda lo que YA quedó regenerado/normalizado.
+    _programarBorrador();
   }
 
   // Regeneración diferida (para arrastres a 60fps sin recomputar de más).
@@ -710,9 +728,169 @@
     if (ST.selCi >= (ST.receta.componentes || []).length) ST.selCi = -1;
     // cualquier interacción a medio-hacer se cancela al deshacer
     ST.dragMove = null; ST.dragNode = null; ST.dragRango = null;
+    // El ribbon de HORMIGÓN es la ÚNICA parte de la UI que guarda copia de la receta
+    // (los inputs con las dims): si no se re-sincroniza, tras deshacer un cambio de
+    // dims el input sigue mostrando el valor viejo y el siguiente blur lo RE-APLICA
+    // (el cambio "vuelve" solo). Todo lo demás se repinta desde la receta.
+    _sincronizarRibbonGeo();
     _regenerar();
     _renderPanel();
     _actualizarStatus('Deshecho.');
+  }
+
+  // ==========================================================================
+  // BORRADOR AUTOMÁTICO (TANDA 3 · NO PERDER TRABAJO)
+  // Tras cada regeneración (throttle ~2 s) se guarda en localStorage el estado de
+  // trabajo {nombre, elemento, receta, ts}. Al ABRIR el editor, si hay borrador
+  // reciente (< 48 h) y DISTINTO de lo que se va a abrir, se ofrece recuperarlo en
+  // una barra discreta arriba del modal. Guardar con éxito lo borra.
+  //   · La receta se serializa con JSON.stringify NORMAL: los avisos del motor
+  //     (comp._avisos) son NO enumerables y por eso no viajan al borrador.
+  //   · NUNCA se escribe con el modal cerrado (_modalAbierto() lo corta).
+  //   · SÓLO se escribe si HAY CAMBIOS SIN GUARDAR: el borrador guarda trabajo que
+  //     todavía no está en el servidor. Escribir el estado recién abierto (idéntico
+  //     al guardado) no protege nada Y pisa el borrador de la sesión anterior —
+  //     _regenerar() corre al abrir, así que la escritura llegaba milisegundos
+  //     después de ofrecer "Recuperar" y el botón devolvía lo que ya estaba abierto
+  //     (y abrir/cerrar un template limpio dejaba un borrador fantasma).
+  //   · localStorage puede faltar o estar lleno (modo privado / quota): todo va en
+  //     try/catch — el borrador es best-effort y jamás rompe el editor.
+  // ==========================================================================
+  var BORRADOR_KEY = 'te_borrador';
+  var BORRADOR_TTL = 48 * 60 * 60 * 1000;   // 48 h — más viejo que eso se descarta
+  var BORRADOR_MS = 2000;                   // throttle del autoguardado
+  var _borrTimer = null, _borrUltimo = 0, _borrRecuperando = false;
+  // Borrador que la barra está OFRECIENDO ahora mismo (copia en memoria). La clave
+  // de localStorage es UNA sola y la comparte el autoguardado en vivo: si el usuario
+  // deja la barra puesta y sigue editando, la clave pasa a ser su trabajo actual.
+  // [Recuperar] debe entregar EXACTAMENTE lo que la barra prometió, no lo que quedó
+  // en la clave — de ahí esta copia.
+  var _borrOfrecido = null;
+
+  function _modalAbierto() {
+    var bd = $('te_backdrop');
+    return !!(bd && bd.classList.contains('on'));
+  }
+
+  function _ls() {
+    try { return global.localStorage || null; } catch (e) { return null; }
+  }
+
+  function _guardarBorradorAhora() {
+    if (_borrTimer) { global.clearTimeout(_borrTimer); _borrTimer = null; }
+    if (!ST.receta || !_modalAbierto()) return;
+    // Nada que proteger = no se toca la clave (ver cabecera del bloque). Es el ÚNICO
+    // escritor, así que la regla vale para el throttle, para el cierre del modal y
+    // para el beforeunload por igual.
+    if (!_hayCambiosSinGuardar()) return;
+    var ls = _ls(); if (!ls) return;
+    try {
+      ls.setItem(BORRADOR_KEY, JSON.stringify({
+        nombre: ST.nombre || '',
+        elemento: ST.elemento || 'viga',
+        templateId: (ST.templateId != null) ? ST.templateId : null,
+        receta: ST.receta,
+        ts: Date.now()
+      }));
+      _borrUltimo = Date.now();
+    } catch (e) { /* quota / modo privado: se sigue trabajando sin borrador */ }
+  }
+
+  // Throttle: como mucho una escritura cada BORRADOR_MS, pero SIEMPRE hay una final
+  // (el timer pendiente escribe el último estado tras el arrastre).
+  function _programarBorrador() {
+    if (!ST.receta || !_modalAbierto()) return;
+    if (!_hayCambiosSinGuardar()) return;   // ni siquiera se agenda (idem _guardarBorradorAhora)
+    if (_borrTimer) return;
+    var espera = Math.max(0, BORRADOR_MS - (Date.now() - _borrUltimo));
+    _borrTimer = global.setTimeout(function () {
+      _borrTimer = null;
+      _guardarBorradorAhora();
+    }, espera);
+  }
+
+  function _borrarBorrador() {
+    if (_borrTimer) { global.clearTimeout(_borrTimer); _borrTimer = null; }
+    var ls = _ls(); if (!ls) return;
+    try { ls.removeItem(BORRADOR_KEY); } catch (e) { /* nada que hacer */ }
+  }
+
+  function _leerBorrador() {
+    var ls = _ls(); if (!ls) return null;
+    var raw;
+    try { raw = ls.getItem(BORRADOR_KEY); } catch (e) { return null; }
+    if (!raw) return null;
+    var b;
+    try { b = JSON.parse(raw); } catch (e) { _borrarBorrador(); return null; }
+    if (!b || !b.receta || !b.ts) return null;
+    if (!(Date.now() - Number(b.ts) < BORRADOR_TTL)) { _borrarBorrador(); return null; }
+    return b;
+  }
+
+  function _haceTexto(ts) {
+    var min = Math.floor((Date.now() - Number(ts)) / 60000);
+    if (!isFinite(min) || min < 1) return 'hace menos de 1 min';
+    if (min < 60) return 'hace ' + min + ' min';
+    return 'hace ' + Math.floor(min / 60) + ' h';
+  }
+
+  function _ocultarBarraBorrador() {
+    _borrOfrecido = null;                   // sin barra no hay oferta viva
+    var bar = $('te_borrador'); if (bar) bar.classList.remove('on');
+  }
+
+  // Al ABRIR: ¿quedó un borrador reciente y DISTINTO de lo que se acaba de cargar?
+  // Se compara contra ST._recetaGuardada, que ya está sellado DESPUÉS de la primera
+  // regeneración (receta normalizada) — si no, cualquier apertura mostraría la barra.
+  function _ofrecerBorrador() {
+    _ocultarBarraBorrador();
+    if (_borrRecuperando) return;                 // recuperar no se re-ofrece a sí mismo
+    var b = _leerBorrador(); if (!b) return;
+    var s;
+    try { s = JSON.stringify(b.receta); } catch (e) { return; }
+    if (s === ST._recetaGuardada) return;         // es lo mismo que ya está abierto
+    var bar = $('te_borrador'); if (!bar) return;
+    var txt = $('te_borradorTxt');
+    if (txt) {
+      txt.textContent = 'Hay un borrador sin guardar de "' + (b.nombre || 'sin nombre') +
+        '" (' + _haceTexto(b.ts) + ')';
+    }
+    _borrOfrecido = b;                            // lo que la barra promete entregar
+    bar.classList.add('on');
+  }
+
+  function _bindBorrador() {
+    var ok = $('te_borradorOk'), no = $('te_borradorNo');
+    if (ok && !ok._teBound) {
+      ok._teBound = true;
+      ok.addEventListener('click', function () {
+        var b = _borrOfrecido || _leerBorrador();
+        _ocultarBarraBorrador();
+        if (!b) return;
+        // Recuperar = cargarlo como receta activa por el MISMO camino que "Abrir".
+        // La clave NO se borra: el autoguardado la reescribe con lo mismo y sigue
+        // siendo la red de seguridad si vuelve a caerse el navegador.
+        _borrRecuperando = true;
+        try {
+          global.templateEditorAbrir({
+            elemento: b.elemento || ST.elemento || 'viga',
+            nombre: b.nombre || '',
+            dims: (b.receta && b.receta.geometria) || null,
+            receta: b.receta,
+            templateId: (b.templateId != null) ? b.templateId : null
+          });
+        } finally { _borrRecuperando = false; }
+        _actualizarStatus('Borrador recuperado.');
+      });
+    }
+    if (no && !no._teBound) {
+      no._teBound = true;
+      no.addEventListener('click', function () {
+        _borrarBorrador();
+        _ocultarBarraBorrador();
+        _actualizarStatus('Borrador descartado.');
+      });
+    }
   }
 
   function _initEscena() {
@@ -2048,15 +2226,26 @@
     var rv = vista.getBoundingClientRect();
     var inp = document.createElement('input');
     inp.type = 'number'; inp.className = 'te-atedit'; inp.value = arr[idx].sep;
-    inp.title = 'Espaciamiento del tramo ' + (idx + 1) + ' (cm)';
+    inp.min = SEP_MIN; inp.step = 'any';   // capeo del @ también en el editor inline
+    inp.title = 'Espaciamiento del tramo ' + (idx + 1) + ' (cm, mínimo ' + SEP_MIN + ')';
     inp.style.left = Math.max(2, Math.round(evt.clientX - rv.left - 24)) + 'px';
     inp.style.top = Math.max(2, Math.round(evt.clientY - rv.top - 9)) + 'px';
     var cerrado = false;
+    // ¿el valor tecleado pasa el capeo del @? Si no: borde rojo + status y NO se aplica.
+    function _sepOk() {
+      var v = Number(inp.value);
+      if (isFinite(v) && v >= SEP_MIN) { inp.classList.remove('bad'); return true; }
+      inp.classList.add('bad');
+      _actualizarStatus('@ mínimo ' + SEP_MIN + ' cm: valor rechazado.');
+      return false;
+    }
     function cerrar(guardar) {
-      if (cerrado) return; cerrado = true;
+      if (cerrado) return;
+      if (guardar && !_sepOk()) guardar = false;   // se cierra igual (no atrapa el foco)
+      cerrado = true;
       var v = Number(inp.value);
       _cerrarEditorAt();
-      if (!guardar || !isFinite(v) || v <= 0) return;
+      if (!guardar) return;
       var a = _tramosDe(d);
       if (!a[idx] || a[idx].sep === v) return;
       _pushUndo();
@@ -2066,7 +2255,8 @@
     }
     inp.addEventListener('keydown', function (e) {
       e.stopPropagation();                       // Supr/Esc del editor no borran la barra
-      if (e.key === 'Enter') { e.preventDefault(); cerrar(true); }
+      // Enter con un @ inválido NO cierra: marca en rojo y deja corregir en el sitio.
+      if (e.key === 'Enter') { e.preventDefault(); if (_sepOk()) cerrar(true); }
       else if (e.key === 'Escape') { e.preventDefault(); cerrar(false); }
     });
     inp.addEventListener('blur', function () { cerrar(true); });
@@ -2576,7 +2766,19 @@
 
         // ¿tocó un NODO?
         var tgtNode = evt.target && evt.target.getAttribute && evt.target.getAttribute('data-node');
-        if (tgtNode) { evt.preventDefault(); _pushUndo(); ST.dragNode = { plano: plano, corner: tgtNode }; return; }
+        if (tgtNode) {
+          evt.preventDefault(); _pushUndo();
+          // geo0 = SNAPSHOT de las dims al iniciar el arrastre. Durante el arrastre se
+          // permite pasar por geometrías inválidas (fluidez); al SOLTAR, si la final no
+          // pasa _geoValida, se revierte a esto (_soltarNodo). undoLen identifica el
+          // snapshot que acaba de apilar este mousedown (para no dejar un undo muerto).
+          ST.dragNode = {
+            plano: plano, corner: tgtNode,
+            geo0: JSON.parse(JSON.stringify(ST.receta.geometria || {})),
+            undoLen: ST.undoStack.length
+          };
+          return;
+        }
 
         // ¿tocó la etiqueta "@N" de un tramo? → input inline (no arrastra nada).
         var tgtAt = evt.target && evt.target.getAttribute && evt.target.getAttribute('data-rango-at');
@@ -2670,7 +2872,10 @@
         else if (ST.dragRango) { _dragRangoMove(plano, sp); }
       });
       global.addEventListener('mouseup', function () {
-        if (ST.dragMove || ST.dragNode || ST.dragRango) { ST.dragMove = null; ST.dragNode = null; ST.dragRango = null; _renderPanel(); }
+        if (!(ST.dragMove || ST.dragNode || ST.dragRango)) return;
+        if (ST.dragNode) _soltarNodo();     // la geometría se valida AL SOLTAR
+        ST.dragMove = null; ST.dragNode = null; ST.dragRango = null;
+        _renderPanel();
       });
     }
   }
@@ -2720,6 +2925,26 @@
     else { g.largo = newW; g.ancho = newH; }
     _sincronizarRibbonGeo();   // los campos del ribbon siguen al arrastre
     _regenerarDiferido();
+  }
+
+  // FIN del arrastre de nodo: el nodo pasa por la MISMA validación que el ribbon
+  // (_geoValida). Durante el arrastre se deja pasar cualquier valor (fluidez), pero
+  // al soltar una geometría imposible (ancho ≤ 2·recub_lat, alto ≤ recub sup+inf,
+  // dim ≤ 0) se REVIERTE al snapshot previo al drag y se dice por qué. Antes el nodo
+  // dejaba dims que el ribbon rechazaba: el editor quedaba en un estado que ninguna
+  // otra vía podía producir.
+  function _soltarNodo() {
+    var dn = ST.dragNode;
+    if (!dn || !dn.geo0 || !ST.receta || !ST.receta.geometria) return;
+    if (_geoValida(_geoConDefaults(ST.receta.geometria))) return;
+    var motivo = _motivoGeoInvalida(_geoConDefaults(ST.receta.geometria));
+    ST.receta.geometria = dn.geo0;
+    // El snapshot que apiló el mousedown ya no describe ningún cambio → se saca (si
+    // no, el primer Ctrl+Z "no haría nada" visible).
+    if (dn.undoLen != null && ST.undoStack.length === dn.undoLen) ST.undoStack.pop();
+    _sincronizarRibbonGeo();
+    _regenerar();
+    _actualizarStatus('Tamaño rechazado (' + motivo + '): se restauró el anterior.');
   }
 
   // Arrastre del rango: se mueve sobre el EJE DE DISTRIBUCIÓN REAL del componente
@@ -3267,7 +3492,7 @@
       d.zonas.forEach(function (z, zi) {
         var zr = _div('te-grid2');
         zr.appendChild(_fld('Zona ' + (zi + 1) + ' long', _input({ value: z.long, type: 'number' }, function (v) { z.long = Number(v) || 0; _mut(ci); })));
-        zr.appendChild(_fld('@ sep cm', _input({ value: z.sep, type: 'number' }, function (v) { z.sep = Number(v) || 1; _mut(ci); })));
+        zr.appendChild(_fld('@ sep cm', _inputSep(z.sep, function (v) { z.sep = v; _mut(ci); })));
         box.appendChild(zr);
       });
       var note0 = _div('te-note'); note0.textContent = 'Zonas de espaciamiento (extremos confinados / centro). Para pasar a rango, arrastra la flecha de rango sobre la barra seleccionada.';
@@ -3278,7 +3503,7 @@
     // se esconde y manda el editor de tramos. Con uno solo se mantiene como atajo.
     var multi = _tramosDe(d).length > 1;
     var g2 = _div(multi ? '' : 'te-grid2');
-    if (!multi) g2.appendChild(_fld('@ sep cm', _input({ value: d.sep || 20, type: 'number' }, function (v) { d.sep = Number(v) || 20; if (d.rango) d.rango.sep = d.sep; _mut(ci); })));
+    if (!multi) g2.appendChild(_fld('@ sep cm', _inputSep(d.sep || 20, function (v) { d.sep = v; if (d.rango) d.rango.sep = d.sep; _mut(ci); })));
     g2.appendChild(_fld('Rango', _rangoEditor(c, d, ci)));
     box.appendChild(g2);
     _tramosEditor(box, d, ci);
@@ -3292,7 +3517,7 @@
     if (!d.rango) d.rango = _rangoDefault(d.sep || 20, _ejeDistDe(c));
     var multi = _tramosDe(d).length > 1;
     var g2 = _div(multi ? '' : 'te-grid2');
-    if (!multi) g2.appendChild(_fld('@ sep (rango) cm', _input({ value: d.sep || 20, type: 'number' }, function (v) { d.sep = Number(v) || 20; if (d.rango) d.rango.sep = d.sep; _mut(ci); })));
+    if (!multi) g2.appendChild(_fld('@ sep (rango) cm', _inputSep(d.sep || 20, function (v) { d.sep = v; if (d.rango) d.rango.sep = d.sep; _mut(ci); })));
     g2.appendChild(_fld('Rango', _rangoEditor(c, d, ci)));
     box.appendChild(g2);
     _tramosEditor(box, d, ci);
@@ -3324,9 +3549,9 @@
         row.appendChild(_fld('Largo ' + (i + 1) + ' cm', _input({ value: Math.round(t.long * 10) / 10, type: 'number' }, function (v) {
           _pushUndo(); _setLongTramo(d, i, Number(v) || 0); _mut(ci, true);
         })));
-        row.appendChild(_fld('@ ' + (i + 1) + ' cm', _input({ value: t.sep, type: 'number' }, function (v) {
+        row.appendChild(_fld('@ ' + (i + 1) + ' cm', _inputSep(t.sep, function (v) {
           _pushUndo();
-          var a = _tramosDe(d); a[i].sep = Math.max(1, Number(v) || 1); _setTramos(d, a);
+          var a = _tramosDe(d); a[i].sep = v; _setTramos(d, a);
           _mut(ci, true);
         })));
         var x = document.createElement('button');
@@ -3382,8 +3607,39 @@
     if (attrs.type) el.type = attrs.type;
     if (attrs.list) el.setAttribute('list', attrs.list);
     if (attrs.placeholder) el.placeholder = attrs.placeholder;
+    if (attrs.min != null) el.setAttribute('min', attrs.min);
+    if (attrs.step != null) el.setAttribute('step', attrs.step);
+    if (attrs.title) el.title = attrs.title;
     el.value = (attrs.value != null ? attrs.value : '');
     el.addEventListener('change', function () { onchange(el.value); });
+    return el;
+  }
+
+  // ==========================================================================
+  // CAPEO UI DEL @ (TANDA 3 · punto 2) — GUANTE, no la defensa de fondo.
+  // Un @ de 0.1 cm en un rango de 600 cm son 6001 placements: el navegador se cae
+  // ANTES de que el aviso anti-colapso alcance a decir nada. El motor además trunca
+  // el @ por su cuenta; esto es lo que ve el usuario: min= en el input (las flechitas
+  // no bajan de SEP_MIN) y RECHAZO explícito con borde rojo si igual teclea menos.
+  // Rechazar = no se aplica nada (el dato viejo queda intacto). SEP_MIN vive arriba,
+  // junto a GRID_SNAP, porque también es el piso de los clamps de tramos.
+  // ==========================================================================
+  function _inputSep(valor, aplicar) {
+    var el = _input({
+      value: valor, type: 'number', min: SEP_MIN, step: 'any',
+      title: 'Espaciamiento en cm (mínimo ' + SEP_MIN + ' cm)'
+    }, function (v) {
+      var n = Number(v);
+      if (!isFinite(n) || n < SEP_MIN) {
+        el.classList.add('bad');
+        el.title = '@ mínimo ' + SEP_MIN + ' cm — valor rechazado';
+        _actualizarStatus('@ mínimo ' + SEP_MIN + ' cm: valor rechazado.');
+        return;
+      }
+      el.classList.remove('bad');
+      el.title = 'Espaciamiento en cm (mínimo ' + SEP_MIN + ' cm)';
+      aplicar(n);
+    });
     return el;
   }
   function _select(opts, val, onchange) {
@@ -3626,6 +3882,18 @@
     });
   }
 
+  // Geometría COMPLETA para validar: una receta vieja puede no traer recubs y sin
+  // ellos _geoValida daría NaN → "inválida" siempre. Mismos defaults que _hostDeReceta.
+  function _geoConDefaults(g) {
+    g = g || {};
+    return {
+      largo: g.largo, alto: g.alto, ancho: g.ancho,
+      recub_sup: (g.recub_sup != null ? g.recub_sup : 4),
+      recub_inf: (g.recub_inf != null ? g.recub_inf : 4),
+      recub_lat: (g.recub_lat != null ? g.recub_lat : 3)
+    };
+  }
+
   // ¿El set de dimensiones propuesto es coherente? (no se aplica si no lo es)
   function _geoValida(g) {
     var largo = Number(g.largo), alto = Number(g.alto), ancho = Number(g.ancho);
@@ -3635,6 +3903,18 @@
     if (rs + ri >= alto) return false;
     if (2 * rl >= ancho) return false;
     return true;
+  }
+
+  // Motivo legible de por qué _geoValida dijo que no (mismo orden de chequeos). Lo
+  // usa el arrastre de nodo para decir QUÉ se rechazó al revertir.
+  function _motivoGeoInvalida(g) {
+    var largo = Number(g.largo), alto = Number(g.alto), ancho = Number(g.ancho);
+    var rs = Number(g.recub_sup), ri = Number(g.recub_inf), rl = Number(g.recub_lat);
+    if (!(largo > 0) || !(alto > 0) || !(ancho > 0)) return 'dimensión ≤ 0';
+    if (!(rs >= 0) || !(ri >= 0) || !(rl >= 0)) return 'recubrimiento negativo';
+    if (rs + ri >= alto) return 'alto ≤ recub sup + recub inf';
+    if (2 * rl >= ancho) return 'ancho ≤ 2·recub lateral';
+    return 'geometría inválida';
   }
 
   function _bindGeometria() {
@@ -3656,12 +3936,7 @@
     var g = ST.receta.geometria;
     var v = parseFloat(el.value);
     // candidato = geometría actual con este campo cambiado
-    var cand = {
-      largo: g.largo, alto: g.alto, ancho: g.ancho,
-      recub_sup: (g.recub_sup != null ? g.recub_sup : 4),
-      recub_inf: (g.recub_inf != null ? g.recub_inf : 4),
-      recub_lat: (g.recub_lat != null ? g.recub_lat : 3)
-    };
+    var cand = _geoConDefaults(g);
     (f.ks || [f.k]).forEach(function (k) { cand[k] = v; });
     if (!isFinite(v) || v < f.min || !_geoValida(cand)) { el.classList.add('bad'); return null; }
     el.classList.remove('bad');
@@ -4530,6 +4805,7 @@
     _bindVistas();
     _bindTeclado();
     _bindWarnTamano();           // ✕ del banner anti-colapso
+    _bindBorrador();             // [Recuperar] / [Descartar] de la barra de borrador
     _bindBarras();               // sección colapsable "📋 Barras" (despiece)
     _actualizarTitulosVista();   // BUG 8: títulos + GIZMO gráfico de ejes por vista
     _setQuadCursor();
@@ -4581,8 +4857,13 @@
       var rol = _rolDe(c.tipologia);
       if (rol !== 'cabezal' && c.distribucion && c.distribucion.zonas && c.distribucion.activa == null) c.distribucion.activa = true;
     });
-    // Dirty-tracking: baseline al abrir (después de la normalización, que muta).
-    ST._recetaGuardada = JSON.stringify(ST.receta);
+    // Dirty-tracking: el baseline NO se puede sellar aquí. _regenerar() (más abajo)
+    // NORMALIZA la receta al generar — rellena sep/zonas/rango/activa —, así que un
+    // sello previo quedaba distinto del estado real y abrir+cerrar SIN TOCAR NADA
+    // preguntaba "hay cambios sin guardar". Se sella DESPUÉS de la 1ª regeneración.
+    // Mientras tanto queda en null = "no hay nada que comparar" (sin falsos dirty).
+    ST._recetaGuardada = null;
+    _ocultarBarraBorrador();
     bd.classList.add('on');
     _actualizarTitulos();
     _renderRibbonTips();
@@ -4607,6 +4888,11 @@
     _activarHerramienta('mover');
     _renderPanel();
     _regenerar();
+    // AHORA sí: la receta ya pasó por el motor (normalizada) → este es el estado
+    // "recién abierto" contra el que se comparan los cambios del usuario.
+    ST._recetaGuardada = JSON.stringify(ST.receta);
+    // ¿Quedó un borrador sin guardar de una sesión anterior? Se ofrece recuperarlo.
+    _ofrecerBorrador();
     global.requestAnimationFrame(function () { global.requestAnimationFrame(function () {
       _iniciar3dEnVivo();
     }); });
@@ -4614,6 +4900,12 @@
 
   // Cierre SIN confirm (interno): esconde el modal y limpia estado transitorio.
   function _cerrarModal() {
+    // Si se cierra con cambios sin guardar, el borrador se vuelca AHORA (el throttle
+    // podía tener hasta 2 s en vuelo y con el modal cerrado ya no escribe): la próxima
+    // apertura ofrece recuperarlos. Descartar sigue estando a un clic en la barra.
+    // Sin cambios no escribe nada (la guarda vive dentro de _guardarBorradorAhora).
+    _guardarBorradorAhora();
+    _ocultarBarraBorrador();
     var bd = $('te_backdrop'); if (bd) bd.classList.remove('on');
     // limpiar estado transitorio de hover (snap de cara / ghost) y esconder overlay.
     ST.caraHi = null;
@@ -4649,6 +4941,19 @@
     if (!bd || !bd.classList.contains('on')) return;
     if (ST.tool === 'colocar') { _salirModoColocacion(); return; }
     global.templateEditorCerrar();
+  });
+
+  // NO PERDER TRABAJO (a) — F5 / cerrar pestaña / navegar con el editor ABIERTO y
+  // cambios sin guardar dispara el confirm NATIVO del navegador. Se registra UNA sola
+  // vez (aquí, junto a los otros listeners globales del módulo) y con el modal cerrado
+  // sale de inmediato. Antes de avisar VUELCA el borrador: si el usuario confirma la
+  // salida, lo último que hizo queda igual en localStorage.
+  global.addEventListener('beforeunload', function (e) {
+    if (!_modalAbierto() || !_hayCambiosSinGuardar()) return;
+    _guardarBorradorAhora();
+    e.preventDefault();
+    e.returnValue = '';   // Chrome/Safari sólo muestran el diálogo si se setea esto
+    return '';
   });
 
   // ==========================================================================
@@ -4819,6 +5124,11 @@
         // también serán copias — no hay PUT, pendiente versionado real).
         if (data && data.id != null) ST.templateId = data.id;
         ST._recetaGuardada = JSON.stringify(ST.receta);
+        // Guardado con ÉXITO = el trabajo ya está en el servidor: el borrador local
+        // deja de tener sentido (si sobreviviera, la próxima apertura ofrecería
+        // "recuperar" algo idéntico a lo guardado).
+        _borrarBorrador();
+        _ocultarBarraBorrador();
         if (btn) btn.textContent = '✓ Guardado';
         if (typeof global.tplCargarGuardados === 'function') global.tplCargarGuardados();
         setTimeout(function () { _actualizarBtnGuardar(); }, 1500);
@@ -4966,6 +5276,13 @@
     setPlanoActivo: _setPlanoActivo,                            // P3 — 'seccion'|'largo'|'planta'|null
     // INTERACCIÓN-2.0 · ghost + grosor + clamp + undo
     _pushUndo: _pushUndo, _undo: _undo,
+    // TANDA 3 · no perder trabajo + capeo del @ + geometría válida al soltar el nodo
+    _hayCambiosSinGuardar: _hayCambiosSinGuardar,
+    _guardarBorradorAhora: _guardarBorradorAhora, _programarBorrador: _programarBorrador,
+    _leerBorrador: _leerBorrador,
+    _borrarBorrador: _borrarBorrador, _ofrecerBorrador: _ofrecerBorrador,
+    _soltarNodo: _soltarNodo, _geoValida: _geoValida, _geoConDefaults: _geoConDefaults,
+    _motivoGeoInvalida: _motivoGeoInvalida, SEP_MIN: SEP_MIN,
     _dentroDelBoundary: _dentroDelBoundary, _clampAlBoundary: _clampAlBoundary,
     _sellarCargado: _sellarCargado, _soltarCargado: _soltarCargado,
     _ghostForma: _ghostForma,
