@@ -501,13 +501,18 @@ def agregar_barras(lote_id: int, body: BarrasBatch, user=Depends(get_current_use
     with get_conn() as conn:
         with conn.cursor() as cur:
             _check_permiso(cur, user)
-            cur.execute("SELECT id_proyecto, estado FROM lotes WHERE id = %s", (lote_id,))
+            cur.execute("SELECT id_proyecto, estado, plano FROM lotes WHERE id = %s", (lote_id,))
             r = cur.fetchone()
             if not r:
                 raise HTTPException(status_code=404, detail="Lote no encontrado.")
             id_proyecto, estado_lote = r[0], r[1]
             if estado_lote == "terminada":
                 raise HTTPException(status_code=409, detail="El lote está terminado; edita las barras desde el Bar Manager.")
+            # PLANO DEL DESPIECE = dato del LOTE (fuente única). El front no lo manda
+            # por barra, así que toda barra agregada DESPUÉS de fijar el plano entraba
+            # con nombre_plano NULL y la columna PLANO del export salía en blanco
+            # (fijar_plano solo estampa las barras que YA existen). Ahora se hereda.
+            plano_lote = (r[2] or "").strip() or None
             factor = _factor_peso(cur, id_proyecto)
             now = _now_iso()
             sectores_tocados = set()
@@ -571,7 +576,8 @@ def agregar_barras(lote_id: int, body: BarrasBatch, user=Depends(get_current_use
                                %s,%s,%s,%s,%s,%s,%s,%s,%s, %s,%s,%s,%s,%s,
                                %s,%s,%s,%s,
                                %s, %s, NULL, %s, 'borrador', %s, %s, %s, %s) RETURNING id""",
-                    (idu, id_proyecto, b.sector, b.piso, b.ciclo, b.eje, b.nombre_plano, b.diam, largo,
+                    (idu, id_proyecto, b.sector, b.piso, b.ciclo, b.eje,
+                     ((b.nombre_plano or "").strip() or plano_lote), b.diam, largo,
                      b.mult, b.cant, cant_total, peso_u, peso_t, b.marca, b.figura, cod_prod,
                      b.dim_a, b.dim_b, b.dim_c, b.dim_d, b.dim_e, b.dim_f, b.dim_g, b.dim_h, b.dim_i,
                      b.ang1, b.ang2, b.ang3, b.ang4, b.radio,
