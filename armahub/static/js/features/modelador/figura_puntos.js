@@ -195,18 +195,92 @@
   //    histórico (traza 3 lados y AVISA del cuarto) se conserva tal cual. El
   //    trazador genérico entra sólo donde hoy no hay dibujo fiel, no a rebarajar
   //    lo que ya funciona.
+  //
+  // FIX 305A (TANDA P) — LA FIGURA MANDA EL TRAZADO. El rol 'estribo' YA NO fuerza
+  // el marco cerrado a cualquier figura: sólo cuando la figura ES un marco (4 lados
+  // cerrables, _esPerimetro). Una CADENA de 4+ lados que no cierra —la 305A de 5
+  // tramos, la 104B con sus quiebres de 45°— colocada con tipología ES se dibujaba
+  // como un rectángulo con ganchos: una figura que NO EXISTE, y sin un solo aviso.
+  // Ahora se traza como cadena, EN EL PLANO DE LA SECCIÓN (⊥ al rumbo), que es el
+  // plano de trabajo que le corresponde a una pieza de sección: el ROL sigue
+  // mandando el anclaje, el reparto y el preset — sólo deja de mandar el TRAZO.
+  // Las figuras de 1–3 lados con rol estribo (103E/103H = MURO-EC / VIGA-ES del
+  // catálogo) conservan su ruta histórica: el constructor de marco es el que las
+  // dibuja desde siempre y no hay cadena de 4+ que las reemplace.
   function familiaDeDibujo(figura, rol) {
-    if (rol === 'estribo') return 'estribo';
-    if (rol === 'traba') return 'traba';
     var f = (figura || '').toUpperCase();
     var spec = _spec(f);
     var n = spec ? spec.parciales.length : 0;
-    if (_esPerimetro(spec, f) && (!spec || n === MAX_LADOS_DIBUJABLES)) {
-      return rol ? 'cabezal' : 'estribo';
+    var esMarco = _esPerimetro(spec, f) && (!spec || n === MAX_LADOS_DIBUJABLES);
+    var esCadena = (n >= MAX_LADOS_DIBUJABLES) && !!tramosDeFigura(f);
+    if (rol === 'estribo') {
+      if (esMarco) return 'estribo';
+      if (esCadena) return 'cadena';
+      return 'estribo';
     }
+    if (rol === 'traba') return 'traba';
+    if (esMarco) return rol ? 'cabezal' : 'estribo';
     if (_esRecta(f)) return 'recta';
-    if (n >= MAX_LADOS_DIBUJABLES && tramosDeFigura(f)) return 'cadena';
+    if (esCadena) return 'cadena';
     return 'cabezal';
+  }
+
+  // ¿ES UNA PIEZA DE SECCIÓN? — CONCEPTO ÚNICO (TANDA P · defecto F1).
+  // ---------------------------------------------------------------------------
+  // Una pieza de sección es la que vive en el plano ⊥ al rumbo y ENCUADRA el marco
+  // de núcleo: las tres que despacha `figuraAPuntos` a `_estriboPerimetral`,
+  // `_traba` y `_cadenaSeccion`. Es EXACTAMENTE el criterio del despacho (ver el
+  // `if (rol === 'estribo' || rol === 'traba')` de `_cadenaGenerica`), escrito una
+  // sola vez para que nadie tenga que reconstruirlo.
+  //
+  // POR QUÉ HACE FALTA (defecto F1): reglas.js decidía el ANIDADO preguntando
+  // «¿se dibuja como marco CERRADO?» (`_dibujaMarcoCerrado`). Esa pregunta separa
+  // el estribo de la cadena, pero la que gobierna el anidado es OTRA: «¿esta pieza
+  // encuadra la sección?». Con la primera, una CADENA de sección respondía "no" →
+  // no anidaba → el k·gap entero se iba a la POSICIÓN y la pieza se TRASLADABA por
+  // la normal: capa 3 de una 305A φ10 con gap 3 salía 2 cm fuera del hormigón,
+  // dims idénticas en las tres capas y sin un solo aviso. Es la misma causa raíz
+  // que N1/N1b (coordenadas de cabezal aplicadas a una pieza que encuadra la
+  // sección), ahora en el eje de la NORMAL.
+  //
+  // La FORMA (marco / cadena / traba) sigue decidiendo CÓMO encoge cada una — eso
+  // vive en `anidarFigura` —; lo que se unifica acá es el SI: una pieza de sección
+  // anida SIEMPRE, nunca se traslada.
+  function esPiezaDeSeccion(figura, rol) {
+    if (rol !== 'estribo' && rol !== 'traba') return false;
+    var fam = familiaDeDibujo(figura, rol);
+    return fam === 'estribo' || fam === 'traba' || fam === 'cadena';
+  }
+
+  // ---------------------------------------------------------------------------
+  // LADO DOMINANTE — CASCADA DETERMINISTA (TANDA P · decisión del usuario)
+  // ---------------------------------------------------------------------------
+  // El lado dominante es el que SE ESTIRA (auto-largo) y el que recibe el EMPALME;
+  // los demás son patas/retornos que cuelgan de él. Se decide así, en este orden:
+  //   1º spec.lado_dominante — lo que declare el catálogo (o geometria.lado_dominante,
+  //      que es el campo que va a poblar el Diseñador de figuras);
+  //   2º 'B' si la figura declara ese parcial (la convención del catálogo: A = pata
+  //      inicial, C = pata final, B = CUERPO);
+  //   3º el PRIMER parcial (figuras de un solo lado, o series que no usan B).
+  //
+  // EL "MÁS LARGO MEDIDO" DESAPARECE COMO CRITERIO. Dependía de las dims DEL
+  // MOMENTO: la misma figura cambiaba de lado dominante al editar una pata, y con
+  // él cambiaban la dim que el auto estira y la que recibe el empalme — sin que
+  // nada en la pantalla lo explicara. Ahora el lado dominante es una propiedad de
+  // la FIGURA, no de sus medidas: es estable, es el mismo en el motor, en la ficha
+  // del componente y en el listado, y el catálogo puede sobreescribirlo por figura.
+  function ladoDominanteFigura(figura) {
+    var spec = _spec(figura);
+    if (!spec) return null;
+    var P = spec.parciales || [];
+    var decl = spec.lado_dominante ||
+      (spec.geometria && spec.geometria.lado_dominante) || null;
+    if (decl) {
+      var d = String(decl).toUpperCase().trim();
+      if (P.indexOf(d) >= 0) return d;
+    }
+    if (!P.length) return null;
+    return (P.indexOf('B') >= 0) ? 'B' : P[0];
   }
 
   // ¿Qué EXTREMOS llevan pata (gancho)? Convención del catálogo: A = pata del
@@ -235,6 +309,19 @@
   // MISMO anclaje. Consecuencia buscada: una cadena y un cabezal se posan igual, y
   // toda la maquinaria de arriba (pilas por cara, capas, volteo/de_pie/spin,
   // rangos, anidado) los trata igual sin enterarse de que hay un constructor nuevo.
+  // ESPEJO (TANDA P) — `anchor.espejo` invierte el eje U del plano de trabajo, o
+  // sea el eje EN EL PLANO DE LA FIGURA que NO es la normal de la cara. Es la
+  // reflexión que cambia la QUIRALIDAD de la pieza sin tocar ni una dim y sin
+  // moverla de sitio (el trazado ya está centrado en u = 0):
+  //   · cadena / cabezal con patas → su plano es (L, N) y U = L: la figura se
+  //     espeja de punta a punta (la pata que estaba al inicio queda al final).
+  //   · estribo / traba            → su plano es (N, B) y U = B: los ganchos
+  //     cambian de esquina.
+  // EN EL MARCO (L, N, B) esto ES el "flip de la binormal" del modelo de pose: las
+  // dos descripciones (invertir L o invertir B) se diferencian en un giro de 180°
+  // en torno a N, que la pose NO distingue (mismo cara/lado/rumbo). Se elige, en
+  // cada familia, la que refleja el TRAZO: la figura de una cadena es PLANA en B,
+  // así que reflejarla en B la dejaría idéntica — sería un control muerto.
   function _planoTrabajo(host, anchor) {
     var y = (anchor.y != null && isFinite(anchor.y)) ? Number(anchor.y) : 0;
     var z = (anchor.z != null && isFinite(anchor.z)) ? Number(anchor.z) : 0;
@@ -242,9 +329,13 @@
     var s = (anchor.sentidoCara === 1 || anchor.sentidoCara === -1)
       ? anchor.sentidoCara
       : ((anchor.cara === 'sup') ? -1 : 1);                 // doblez hacia el núcleo
+    var mu = anchor.espejo ? -1 : 1;                        // espejo = flip del eje U
     return {
-      ejeCara: ejeC, sentido: s,
-      P: function (u, v) { return (ejeC === 'z') ? V(u, y, z + s * v) : V(u, y + s * v, z); }
+      ejeCara: ejeC, sentido: s, espejo: (mu < 0),
+      P: function (u, v) {
+        var uu = mu * u;
+        return (ejeC === 'z') ? V(uu, y, z + s * v) : V(uu, y + s * v, z);
+      }
     };
   }
 
@@ -406,10 +497,26 @@
   //     empalme asomando por el extremo que corresponda (idéntico al cabezal).
   // Una cadena CERRADA no se empalma ni se estira (como el estribo): su largo lo
   // fija el contorno.
-  function _normalizarCadena(c, anchor) {
+  // ORIENTACIÓN de la cadena en su plano: deja el LADO DOMINANTE sobre +u y la
+  // figura doblando hacia +v (el núcleo). Fuente ÚNICA para las dos poses de una
+  // cadena (la longitudinal del cabezal y la de SECCIÓN del estribo).
+  //
+  // EL LADO QUE VA A LO LARGO ES EL DOMINANTE, NO EL MÁS LARGO (TANDA P): tiene que
+  // ser EL MISMO que el que el auto-largo estira y el que recibe el empalme
+  // (reglas._ladoLongitudinal → ladoLongitudinalCadena), o el dibujo pone a lo largo
+  // de la pieza un lado distinto del que se está midiendo contra el hormigón.
+  function _orientarCadena(c, tramos, ladoL) {
     var pts = c.pts, largos = c.largos, i;
-    var iL = 0;
-    for (i = 1; i < largos.length; i++) if (largos[i] > largos[iL] + 1e-9) iL = i;
+    var iL = -1;
+    if (ladoL && tramos) {
+      for (i = 0; i < tramos.length && i < largos.length; i++) {
+        if (tramos[i] && tramos[i].lado === ladoL) { iL = i; break; }
+      }
+    }
+    if (iL < 0) {                       // sin lado dominante utilizable: el mayor
+      iL = 0;
+      for (i = 1; i < largos.length; i++) if (largos[i] > largos[iL] + 1e-9) iL = i;
+    }
     var a = pts[iL], b = pts[iL + 1];
     var ang = Math.atan2(b.v - a.v, b.u - a.u);
     var co = Math.cos(-ang), si = Math.sin(-ang);
@@ -420,6 +527,13 @@
     var sv = 0;
     for (i = 0; i < out.length; i++) sv += out[i].v;
     if (sv < -1e-9) for (i = 0; i < out.length; i++) out[i].v = -out[i].v;
+    return { pts: out, iLong: iL };
+  }
+
+  function _normalizarCadena(c, anchor, tramos, ladoL) {
+    var i;
+    var or = _orientarCadena(c, tramos, ladoL);
+    var out = or.pts, iL = or.iLong;
     var cerrada = _cadenaCierra(out);
     var emp = cerrada ? { ini: 0, fin: 0 } : _empalmeDeAnchor(anchor);
     // CENTRADO POR BBOX, no por el tramo longitudinal: con puntas inclinadas los
@@ -442,45 +556,357 @@
   // Produce puntos como cualquier otro constructor (misma firma, mismo plano,
   // mismas coordenadas de host) → pilas / capas / anidado / volteo / de_pie /
   // spin / rangos funcionan sin tocar nada de esa maquinaria.
-  function _cadenaGenerica(figura, dims, host, anchor, diamCm) {
+  function _cadenaGenerica(figura, dims, host, anchor, diamCm, rol) {
     var tr = tramosDeFigura(figura);
     // Sin tramos no hay cadena: red de seguridad (dibujabilidad ya la excluyó),
     // nunca un dibujo inventado.
     if (!tr) return _cabezalLongitudinal(figura, dims, host, anchor, diamCm);
-    var pw = _planoTrabajo(host, anchor);
     // Un lado sin dimensión toma la extensión de gancho normativa (6φ, mín 7.5),
     // la MISMA que usa reglas.js para las patas en 'auto'.
     var c = _cadena2D(tr.tramos, dims, extGancho(diamCm));
-    var nrm = _normalizarCadena(c, anchor);
+    var ladoL = ladoDominanteFigura(figura);
+    // PLANO DE TRABAJO SEGÚN EL ROL (fix 305A): una pieza de SECCIÓN (estribo /
+    // traba) vive en el plano ⊥ al rumbo, no en el longitudinal. Es el mismo plano
+    // (y,z) del marco de núcleo que ya usan _estriboPerimetral y _traba: la cadena
+    // entra ahí sin inventar un sistema nuevo.
+    if (rol === 'estribo' || rol === 'traba') {
+      return _cadenaSeccion(c, host, anchor, diamCm);
+    }
+    var pw = _planoTrabajo(host, anchor);
+    var nrm = _normalizarCadena(c, anchor, tr.tramos, ladoL);
     return nrm.pts.map(function (p) { return pw.P(p.u, p.v); });
+  }
+
+  // ---- CADENA EN LA SECCIÓN (rol estribo/traba) ------------------------------
+  // La cadena se traza en el plano de la SECCIÓN del marco local — u = z (ancho),
+  // v = y (alto) — a la x del anchor, y su bbox queda CENTRADO en el marco de
+  // núcleo (el mismo que encuadran el estribo y la traba: recub + φ/2 + pilas).
+  //
+  // FRAME NATIVO — ACÁ NO SE LLAMA A _orientarCadena (fix del verificador · D1).
+  // _orientarCadena existe para el plano LONGITUDINAL, donde hay UN eje con
+  // significado (el largo del host) y hay que dejarle encima el lado que el
+  // auto-largo estira y que recibe el empalme (el DOMINANTE). En la SECCIÓN hay
+  // DOS ejes con significado —ancho y alto— y ninguno es "el longitudinal": girar
+  // la cadena para poner el dominante sobre +u TRANSPONÍA la figura. El síntoma
+  // medido: una 305A/105A con todo en 'auto' en viga 600×60×30 resolvía B = alto
+  // útil = 52 y lo dibujaba contra el ANCHO (30) → 11 cm de fierro fuera del
+  // hormigón; una 104B, 19.5 cm.
+  //
+  // El frame nativo de la cadena YA ES el del la sección: `_cadena2D` arranca en
+  // el origen con el primer tramo hacia +u y gira desde ahí, o sea la MISMA
+  // lectura con la que el catálogo dibuja la figura en 2D y con la que
+  // `ejesCadenaSeccion` le dice a reglas.js contra qué mide cada lado (u = ancho,
+  // v = alto). Una sola convención para MEDIR y para DIBUJAR: si se separan,
+  // vuelven a divergir.
+  //
+  // Si con dims fijas la figura no cabe en su marco, asoma — dato honesto y
+  // visible, sin clamps.
+  // El ESPEJO invierte u (los ganchos cambian de esquina): mismo criterio que el
+  // plano de trabajo longitudinal (ver _planoTrabajo) y que `_estriboPerimetral`.
+  //
+  // anchor.y / anchor.z SON COORDENADAS ABSOLUTAS DEL HOST (regresión N1). Una
+  // versión anterior de esta función las sumaba como DESPLAZAMIENTOS respecto del
+  // centro del marco, y eso es doble conteo: quien las escribe (reglas._marcoCara →
+  // distribuidorLayered, el eje de un rango, distribuidorPoints) pone la coordenada
+  // del host, no un delta. Medido: una 305A φ10 en la viga 600×60×30 con
+  // distribución 'layered' recibía y = 25.5 (el ancla de la cara superior) y salía
+  // dibujada en y ∈ [−0.5, 51.5] — 21.5 cm de fierro FUERA de una viga que llega a
+  // y = 30. Con 'linear' el anchor no trae y/z, valen 0 y el bug era invisible.
+  //
+  // La convención es la MISMA que ya usan los otros dos constructores de sección —
+  // la única que hay en el módulo:
+  //   · `_traba`              → `zz = anchor.z`, la coordenada donde va la traba;
+  //   · `_estriboPerimetral`  → sin y/z propios: su lugar lo fija el marco de núcleo.
+  // O sea: si el anchor trae la coordenada, ESA es la posición del centro de la
+  // pieza; si no la trae, la pieza se centra en su marco (la pose natural). Nada se
+  // suma dos veces y un reparto real (rango en y/z, capas de un arreglo, points)
+  // sigue moviendo la pieza, porque llega como coordenada y se respeta tal cual.
+  function _cadenaSeccion(c, host, anchor, diamCm) {
+    var m = _marcoNucleo(host, anchor, diamCm);
+    var pts = c.pts, i;
+    var minU = Infinity, maxU = -Infinity, minV = Infinity, maxV = -Infinity;
+    for (i = 0; i < pts.length; i++) {
+      if (pts[i].u < minU) minU = pts[i].u;
+      if (pts[i].u > maxU) maxU = pts[i].u;
+      if (pts[i].v < minV) minV = pts[i].v;
+      if (pts[i].v > maxV) maxV = pts[i].v;
+    }
+    var cu = (minU + maxU) / 2, cv = (minV + maxV) / 2;
+    var yc = (m.ySup + m.yInf) / 2;                 // centro del marco (no es 0: las
+    var xx = (anchor && anchor.x) || 0;             // pilas sup/inf son independientes)
+    var mu = (anchor && anchor.espejo) ? -1 : 1;
+    // POSE NATURAL = centrada en el marco de núcleo (y = su centro · z = 0, que es
+    // su centro por construcción: w2 es un semiancho). El anchor la SUSTITUYE, no la
+    // corre.
+    var cy = (anchor && anchor.y != null && isFinite(anchor.y)) ? Number(anchor.y) : yc;
+    var cz = (anchor && anchor.z != null && isFinite(anchor.z)) ? Number(anchor.z) : 0;
+    return pts.map(function (p) {
+      return V(xx, cy + (p.v - cv), cz + mu * (p.u - cu));
+    });
+  }
+
+  // EJES DE LOS LADOS DE UNA CADENA DE SECCIÓN — contra qué mide cada lado.
+  // ---------------------------------------------------------------------------
+  // Una pieza de sección se dibuja en el plano (u = ancho, v = alto) del marco de
+  // núcleo. Cada tramo corre en una dirección FIJA de ese plano, que sale de los
+  // giros de la figura (no de sus medidas): con ella se sabe contra qué mide.
+  //   'u' → el tramo es HORIZONTAL en la sección  → su 'auto' es el ANCHO útil.
+  //   'v' → el tramo es VERTICAL                  → su 'auto' es el ALTO útil.
+  //   'd' → DIAGONAL: no mide ni el ancho ni el alto (es una pata/quiebre) → su
+  //         'auto' es la extensión de gancho normativa, la misma de las patas del
+  //         cabezal.
+  //
+  // POR QUÉ EXISTE (fix del verificador · D1): reglas.js repartía el 'auto' POR
+  // LETRA (A/C = ancho, el resto = alto). Esa es la lectura del RECTÁNGULO de 4
+  // lados y sólo coincide con el dibujo por casualidad. En una 305A de 5 tramos la
+  // letra E caía en "el resto" y se resolvía al ALTO (52) siendo un tramo
+  // HORIZONTAL: la figura salía 52 de ancho en una viga de 30. Medir y dibujar
+  // tienen que leer la MISMA cosa, y esa cosa es el TRAZO.
+  //
+  // Devuelve null cuando la figura NO se dibuja como cadena con ese rol (un marco
+  // 104D con rol estribo lo traza `_estriboPerimetral`, cuyo rectángulo SÍ es
+  // A/C = ancho, B/D = alto): ahí la regla por letra es la correcta y sigue.
+  function ejesCadenaSeccion(figura, rol) {
+    var f = (figura || '').toUpperCase();
+    if (familiaDeDibujo(f, rol || 'estribo') !== 'cadena') return null;
+    var tr = tramosDeFigura(f);
+    if (!tr) return null;
+    var heading = 0, out = {}, i, t, g, a;
+    for (i = 0; i < tr.tramos.length; i++) {
+      t = tr.tramos[i];
+      if (i > 0) {
+        g = Number(t.giro) || 0;
+        if (t.sentido === 'der') g = -g;      // misma convención que _cadena2D
+        heading += g;
+      }
+      a = ((heading % 180) + 180) % 180;       // dirección, sin sentido (0..180)
+      if (t.lado != null && out[t.lado] == null) {
+        out[t.lado] = (Math.abs(a) < 1e-6 || Math.abs(a - 180) < 1e-6) ? 'u'
+          : ((Math.abs(a - 90) < 1e-6) ? 'v' : 'd');
+      }
+    }
+    return out;
+  }
+
+  // AUTO de una cadena de SECCIÓN: cuánto tiene que medir cada lado 'auto' para
+  // que la figura ENTERA quepa en el marco útil. Es la contraparte, en el plano de
+  // la sección, de lo que `sobresCadena` hace en el longitudinal: allá el
+  // auto-largo RESERVA la proyección de las puntas inclinadas sobre el eje de la
+  // pieza; acá se reserva la de los QUIEBRES sobre cada eje de la sección.
+  // Sin esto una 104B resolvía sus DOS tramos horizontales al ancho útil completo
+  // (24) y el quiebre de 45° asomaba 5.3 cm más: la figura se metía 2.65 cm en el
+  // recubrimiento por lado — la misma fuga que el hallazgo de la Tanda F, en el
+  // otro eje.
+  //
+  // CÓMO SE RESUELVE (y por qué NO con una recta de dos puntos — regresión N2).
+  // Todos los lados 'auto' de un eje valen lo MISMO (t), y el rumbo de cada tramo
+  // sale de los GIROS (no de las medidas), así que CADA PUNTO del trazo es AFÍN en
+  // t:  c_k(t) = a_k + b_k·t,  con a_k = c_k(0) y b_k = c_k(1) − c_k(0).
+  // Pero la EXTENSIÓN no es afín: extent(t) = máx_k c_k(t) − mín_k c_k(t) es un
+  // máximo de rectas menos un mínimo de rectas — lineal A TROZOS y convexa. El
+  // punto que fija cada extremo del bbox CAMBIA con t (una diagonal manda mientras
+  // el lado auto es corto, y el lado auto manda después), y ahí la recta que pasa
+  // por t = 0 y t = 1 deja de valer: medido con útil {u:24, v:52}, la 104C resolvía
+  // u = 24 y dibujaba 29.30, la 105I dibujaba 42.70, la 106A 48.00 (el doble), y la
+  // 105C fallaba también en v (resolvía 52, dibujaba 57.30). 16 de las 36 cadenas de
+  // sección del catálogo rompían el marco útil por esta causa.
+  //
+  // Se resuelve EXACTO, sin muestreo ni iteración: "la figura cabe" es
+  //     c_i(t) − c_j(t) ≤ útil   para TODO par (i, j)
+  // o sea (b_i − b_j)·t ≤ útil − (a_i − a_j). Los pares con b_i > b_j son COTAS
+  // SUPERIORES de t y el resultado es la más chica: el mayor t cuyo trazo entero
+  // cabe en el marco. Con todos los b iguales no hay lados auto en ese eje (nadie
+  // pregunta por su valor) → se devuelve el útil, como antes.
+  // Si ni con t = 0 cabe (dims 'fija' que no entran en el marco), la cota sale
+  // negativa y se devuelve negativa: la figura NO cabe y tiene que VERSE — el mismo
+  // criterio que el resto del módulo (nada de clamps que escondan una receta
+  // imposible; el backend además rechaza la dim).
+  //   dimsBase = lados YA resueltos (los 'fija' y las diagonales, que son patas).
+  //   ejes     = salida de ejesCadenaSeccion   ·   util = { u: ancho, v: alto }.
+  function autosCadenaSeccion(figura, dimsBase, ejes, util) {
+    var tr = tramosDeFigura((figura || '').toUpperCase());
+    if (!tr || !ejes) return { u: util.u, v: util.v };
+    // Coordenadas del trazo sobre `eje` con TODOS los lados auto de ese eje en t.
+    // Los del otro eje quedan en 0: corren perpendicular y no mueven esta cuenta
+    // (las diagonales, que sí mueven las dos, vienen resueltas en dimsBase).
+    function coords(eje, t) {
+      var d = {}, k;
+      for (k in dimsBase) {
+        if (Object.prototype.hasOwnProperty.call(dimsBase, k)) d[k] = dimsBase[k];
+      }
+      for (k in ejes) {
+        if (Object.prototype.hasOwnProperty.call(ejes, k) && ejes[k] === eje && d[k] == null) d[k] = t;
+      }
+      var c = _cadena2D(tr.tramos, d, 0), out = [], i;
+      for (i = 0; i < c.pts.length; i++) out.push((eje === 'u') ? c.pts[i].u : c.pts[i].v);
+      return out;
+    }
+    function resolver(eje, ut) {
+      var a = coords(eje, 0), c1 = coords(eje, 1), b = [], i;
+      for (i = 0; i < a.length; i++) b.push(c1[i] - a[i]);
+      var iv = _intervaloCabe(a, b, ut);
+      // Sin cota superior no hay lados auto en ese eje (nadie pregunta por su
+      // valor) → se devuelve el útil, como antes.
+      return iv.acotaSup ? iv.hi : ut;
+    }
+    return { u: resolver('u', util.u), v: resolver('v', util.v) };
+  }
+
+  // INTERVALO EXACTO de un parámetro AFÍN que hace CABER un trazo — la cuenta que
+  // comparten el 'auto' de la cadena de sección y su ANIDADO (defecto F1).
+  // ---------------------------------------------------------------------------
+  // Si cada punto del trazo es afín en un parámetro p —c_k(p) = a_k + b_k·p, que es
+  // el caso siempre que los rumbos salgan de los GIROS y no de las medidas—,
+  // entonces «el trazo cabe en `objetivo`» es
+  //     c_i(p) − c_j(p) ≤ objetivo   para TODO par (i, j)
+  // o sea (b_i − b_j)·p ≤ objetivo − (a_i − a_j): una SEMIRRECTA por par. La
+  // intersección de semirrectas en 1D es un INTERVALO [lo, hi], y en sus dos
+  // extremos la extensión vale EXACTAMENTE `objetivo` (el par que manda queda
+  // tenso). Nada de muestreo ni iteración: los dos usos leen el extremo que les
+  // toca.
+  //   · el 'auto' quiere el trazo MÁS GRANDE que cabe   → hi (cota superior);
+  //   · el anidado quiere el RETIRO MÍNIMO que lo hace  → lo (cota inferior).
+  // acotaSup / acotaInf dicen si ese extremo existe: sin pares que lo acoten, el
+  // parámetro NO mueve la extensión en ese eje (p.ej. un eje en el que la cadena
+  // sólo tiene diagonales) y el llamador decide qué significa eso.
+  function _intervaloCabe(a, b, objetivo) {
+    var lo = -Infinity, hi = Infinity, acotaSup = false, acotaInf = false, i, j, db, c;
+    for (i = 0; i < a.length; i++) {
+      for (j = 0; j < a.length; j++) {
+        db = b[i] - b[j];
+        if (db > 1e-9) {
+          acotaSup = true;
+          c = (objetivo - (a[i] - a[j])) / db;
+          if (c < hi) hi = c;
+        } else if (db < -1e-9) {
+          acotaInf = true;
+          c = (objetivo - (a[i] - a[j])) / db;   // db < 0 → la desigualdad se da vuelta
+          if (c > lo) lo = c;
+        }
+      }
+    }
+    return { lo: lo, hi: hi, acotaSup: acotaSup, acotaInf: acotaInf };
+  }
+
+  // ANIDADO DE UNA CADENA DE SECCIÓN — cuánto se ACORTA cada lado para que la
+  // figura entre δ por lado (defecto F1).
+  // ---------------------------------------------------------------------------
+  // Anidar una pieza de sección es meterla en un marco de núcleo δ más chico por
+  // lado. En el marco cerrado eso ya está resuelto y es trivial: sus esquinas son
+  // de 90°, así que cada lado se acorta 2δ y el anillo queda concéntrico. En una
+  // CADENA no: sus lados se cortan a 45°, hay diagonales que son PATAS (no miden
+  // el marco) y hay puntas libres, así que «−2δ por lado encajonado» —el criterio
+  // topológico de la figura ABIERTA— NO produce un anillo concéntrico. Medido
+  // sobre las 36 cadenas del catálogo: las 36 fallaban, la extensión encogía 0,
+  // 4.24 u 8.49 en vez de 6 y en 8 figuras (105A/105D/105E/305A…) CRECÍA 6 cm.
+  //
+  // LO QUE SÍ ES EL ANIDADO, con una sola regla: los lados que MIDEN un eje de la
+  // sección ('u' = ancho, 'v' = alto) se retiran TODOS lo mismo —igual que los
+  // cuatro lados del anillo— y las DIAGONALES (patas/ganchos, eje 'd') quedan
+  // intactas, porque su largo es normativo y no mide el marco. Cuánto es ese
+  // retiro no se supone: se RESUELVE, con la misma cuenta exacta del 'auto'
+  // (_intervaloCabe), pidiendo que la extensión del trazo baje EXACTAMENTE 2δ.
+  // Sobre un rectángulo de 4 lados la cuenta devuelve retiro = 2δ, o sea el
+  // criterio del anillo es su caso particular: una sola regla, dos familias.
+  //
+  // Si un eje no tiene lados que lo midan (todo diagonales), su retiro es 0: esa
+  // figura no puede encoger ahí. No es un clamp — la pieza sigue centrada en su
+  // marco y se ve tal cual; lo que no se hace es inventarle un encogimiento.
+  // Devuelve null si la figura no es una cadena de sección.
+  function insetCadenaSeccion(figura, dims, delta, rol) {
+    var f = (figura || '').toUpperCase();
+    var tr = tramosDeFigura(f);
+    var ejes = ejesCadenaSeccion(f, rol || 'estribo');
+    if (!tr || !ejes) return null;
+    var d = Number(delta) || 0, k;
+    // Coordenadas del trazo sobre `eje` con TODOS sus lados retirados `s`.
+    function coords(eje, s) {
+      var dd = {}, kk;
+      for (kk in dims) if (Object.prototype.hasOwnProperty.call(dims, kk)) dd[kk] = dims[kk];
+      for (kk in ejes) {
+        if (Object.prototype.hasOwnProperty.call(ejes, kk) && ejes[kk] === eje) {
+          dd[kk] = Number(dims[kk]) - s;
+        }
+      }
+      var c = _cadena2D(tr.tramos, dd, 0), out = [], i;
+      for (i = 0; i < c.pts.length; i++) out.push((eje === 'u') ? c.pts[i].u : c.pts[i].v);
+      return out;
+    }
+    function retiro(eje) {
+      var a = coords(eje, 0), c1 = coords(eje, 1), b = [], i;
+      var mx = -Infinity, mn = Infinity;
+      for (i = 0; i < a.length; i++) {
+        b.push(c1[i] - a[i]);
+        if (a[i] > mx) mx = a[i];
+        if (a[i] < mn) mn = a[i];
+      }
+      var iv = _intervaloCabe(a, b, (mx - mn) - 2 * d);
+      // Sin cota inferior el retiro no achica este eje (sólo diagonales); y si el
+      // intervalo es vacío, la extensión pedida no la alcanza NINGÚN retiro.
+      if (!iv.acotaInf || !(iv.lo > 0) || iv.lo > iv.hi + 1e-9) return 0;
+      return iv.lo;
+    }
+    var s = { u: retiro('u'), v: retiro('v') };
+    var nd = {}, cabe = true, motivo = null;
+    for (k in dims) if (Object.prototype.hasOwnProperty.call(dims, k)) nd[k] = dims[k];
+    for (k in ejes) {
+      if (!Object.prototype.hasOwnProperty.call(ejes, k)) continue;
+      if (ejes[k] !== 'u' && ejes[k] !== 'v') continue;
+      var nuevo = Number(dims[k]) - s[ejes[k]];
+      nd[k] = nuevo;
+      // SIN CLAMP (mismo criterio que la cerrada): si el retiro deja el lado en
+      // cero o negativo, esa capa NO EXISTE y el llamador la omite con aviso.
+      if (!(nuevo > 0) && cabe) {
+        cabe = false;
+        motivo = 'dim ' + k + ' = ' + (Math.round(nuevo * 100) / 100);
+      }
+    }
+    return { dims: nd, retiro: s, cabe: cabe, motivo: motivo };
+  }
+
+  // EXTENSIÓN de una cadena de SECCIÓN en su propio plano, con las dims YA
+  // resueltas: { u: ancho que ocupa, v: alto que ocupa }, en cm de eje a eje.
+  // Es EL MISMO trazo que dibuja `_cadenaSeccion` (misma función, mismas dims,
+  // mismo fallback de gancho), así que quien tenga que reservarle sitio mide lo que
+  // se va a dibujar y no una aproximación. Lo consume el reparto de reglas.js: una
+  // capa reparte EJES de barra sobre un rango que ya viene descontado el φ/2 de la
+  // barra, y una cadena de sección no es un punto en ese eje — ocupa `u`.
+  function extensionCadenaSeccion(figura, dims, diamCm) {
+    var tr = tramosDeFigura((figura || '').toUpperCase());
+    if (!tr) return null;
+    var c = _cadena2D(tr.tramos, dims, extGancho(diamCm));
+    var minU = Infinity, maxU = -Infinity, minV = Infinity, maxV = -Infinity, i;
+    for (i = 0; i < c.pts.length; i++) {
+      if (c.pts[i].u < minU) minU = c.pts[i].u;
+      if (c.pts[i].u > maxU) maxU = c.pts[i].u;
+      if (c.pts[i].v < minV) minV = c.pts[i].v;
+      if (c.pts[i].v > maxV) maxV = c.pts[i].v;
+    }
+    return { u: maxU - minU, v: maxV - minV };
   }
 
   // LADO LONGITUDINAL de una cadena (el que corre a lo largo de la pieza y por lo
   // tanto recibe el auto-largo y el empalme). Contrato de 3 valores:
   //   undefined → la figura NO es cadena: que el llamador use su regla de siempre.
   //   null      → cadena CERRADA: no hay lado que estirar (como el estribo).
-  //   'A'…'I'   → el lado de MAYOR dimensión resuelta.
-  // Con las dims todavía en 'auto' no hay tamaños que comparar: se responde con la
-  // regla histórica (B si la figura la declara, si no el primer parcial), que es
-  // exactamente lo que hacía reglas._ladoLongitudinal. El override fino por figura
-  // (marcar a mano cuál lado es el longitudinal) vendrá del Diseñador como un
-  // campo de `geometria`; hasta entonces manda el mayor.
+  //   'A'…'I'   → el LADO DOMINANTE de la figura (ladoDominanteFigura).
+  //
+  // CAMBIO TANDA P: antes devolvía el lado de MAYOR dimensión RESUELTA. Ese
+  // criterio dependía de las dims del momento — editar una pata podía cambiar cuál
+  // lado se estira con el auto y cuál recibe el empalme, en silencio. Ahora manda
+  // la cascada determinista de la FIGURA (catálogo → 'B' → primer parcial).
+  // Lo único que sigue dependiendo de las dims es si la cadena CIERRA (topología).
   function ladoLongitudinalCadena(figura, dims) {
     var f = (figura || '').toUpperCase();
     var spec = _spec(f);
     if (!spec || familiaDeDibujo(f, null) !== 'cadena') return undefined;
     var tr = tramosDeFigura(f);
     if (!tr) return undefined;
-    var num = _dimsNumericas(dims);
-    var hayNum = Object.keys(num).length > 0;
     // Con dims sin resolver el trazado es TOPOLÓGICO (todos los lados = 1): sirve
     // igual para saber si la cadena cierra, que es lo único que se decide sin dims.
-    var c = _cadena2D(tr.tramos, num, 1);
+    var c = _cadena2D(tr.tramos, _dimsNumericas(dims), 1);
     if (_cadenaCierra(c.pts)) return null;
-    if (!hayNum) return (spec.parciales.indexOf('B') >= 0) ? 'B' : spec.parciales[0];
-    var iL = 0;
-    for (var i = 1; i < c.largos.length; i++) if (c.largos[i] > c.largos[iL] + 1e-9) iL = i;
-    return tr.tramos[iL].lado;
+    return ladoDominanteFigura(f);
   }
 
   // SOBRES de una cadena: cuánto ASOMAN los extremos MÁS ALLÁ del lado
@@ -755,7 +1181,7 @@
 
     // POLILÍNEA continua (el codo A termina tangente en (h2−Rc,−w2) y sigue colineal
     // bajando el lado izq → el motor no mete fillet ahí; ídem lado superior → T0):
-    return [puntaA]
+    var out = [puntaA]
       .concat(codoA)                        // codo A completo (135°)
       .concat([
         { x: xx, y: yInf, z: -w2 },         // esquina inf-izq (90°, fillet del motor)
@@ -765,6 +1191,20 @@
       ])
       .concat(codoB)                        // codo B completo (135°)
       .concat([puntaB]);
+    // ESPEJO (TANDA P): el marco es simétrico en Z salvo por los GANCHOS, que viven
+    // en la esquina sup-IZQ. Invertir el eje U del plano de sección (= Z) los pasa a
+    // la sup-DER. No cambia ni una dim: es la misma barra colocada al revés.
+    return (anchor && anchor.espejo) ? _espejarEje(out, 'z', 0) : out;
+  }
+
+  // Reflexión de una polilínea sobre el plano `eje = c` (conserva `esArco`).
+  function _espejarEje(pts, eje, c) {
+    return pts.map(function (p) {
+      var q = { x: p.x, y: p.y, z: p.z };
+      q[eje] = 2 * c - p[eje];
+      if (p.esArco) q.esArco = true;
+      return q;
+    });
   }
 
   // ---- TRABA vertical (101A típ.): cose las dos caras, gancho arriba/abajo.
@@ -778,12 +1218,16 @@
     var xx = anchor.x || 0, zz = anchor.z || 0;
     var g = 0.7071 * (extGancho(diamCm) + diamCm);
     // gancho 135° arriba (diagonal hacia el núcleo) + gancho 90° abajo.
-    return [
+    var out = [
       V(xx, ySup - g, zz - g), // punta gancho 135° arriba
       V(xx, ySup, zz),         // doblez arriba (a la altura del estribo)
       V(xx, yInf, zz),         // baja al fondo (a la altura del estribo)
       V(xx, yInf, zz - extGancho(diamCm))   // pie gancho 90° abajo
     ];
+    // ESPEJO: los dos ganchos salen hacia −Z; espejados salen hacia +Z. La
+    // reflexión es sobre el PROPIO eje de la traba (zz), no sobre z = 0: la pieza
+    // no se mueve, sólo cambia de mano.
+    return (anchor && anchor.espejo) ? _espejarEje(out, 'z', zz) : out;
   }
 
   // ---------------------------------------------------------------------------
@@ -887,7 +1331,31 @@
     // Antes eso se decidía por el prefijo '103'/'104' del código y esos dos casos
     // se anidaban como corchete abierto mientras se dibujaban como anillo.
     // ABIERTA = cualquier cadena de 2+ lados que no cierra (L, U, poligonal).
-    var cerrada = (opts.cerrada === true) || (rol === 'estribo') || figuraCerrada(f);
+    // TANDA P: el rol 'estribo' ya no implica marco cerrado por sí solo — con el fix
+    // 305A una cadena colocada como ES se TRAZA como cadena, así que su anidado
+    // tiene que ser el de una figura ABIERTA (ajusta dims) y no el de un anillo
+    // concéntrico. La pregunta correcta sigue siendo la misma de siempre: ¿qué
+    // FORMA se dibuja? → familiaDeDibujo, que es quien lo decide.
+    // PIEZA DE SECCIÓN QUE SE TRAZA COMO CADENA (defecto F1) — anida como anillo,
+    // no como corchete. Encuadra la sección igual que el estribo, así que su capa k
+    // es un ANILLO CONCÉNTRICO: marco δ más chico por lado (`inset`) y lados
+    // retirados lo que haga falta para que la figura entre ahí (insetCadenaSeccion,
+    // que sobre un rectángulo devuelve el −2δ de la cerrada). δ = k·gap: el campo
+    // Sep manda la separación entre marcos, igual que en la cerrada.
+    // ANTES caía en la rama ABIERTA (o directamente en ninguna, porque el llamador
+    // sólo anidaba lo que se dibuja como marco) y el corchete no le sirve: sus
+    // puntas libres son patas de gancho y sus quiebres no son de 90°.
+    if ((rol === 'estribo' || rol === 'traba') && familiaDeDibujo(f, rol) === 'cadena') {
+      if (!(dSep > 0)) { res.delta = 0; return res; }   // δ nulo = marcos superpuestos
+      var sec = insetCadenaSeccion(f, dims, dSep, rol);
+      if (sec) {
+        res.delta = dSep; res.inset = dSep; res.criterio = 'seccion';
+        res.dims = sec.dims; res.cabe = sec.cabe; res.motivo = sec.motivo;
+        return res;
+      }
+    }
+    var cerrada = (opts.cerrada === true) || figuraCerrada(f) ||
+      (rol === 'estribo' && familiaDeDibujo(f, 'estribo') === 'estribo');
     var abierta = !cerrada && lados.length >= 2;   // U / corchete / L
     // δ EFECTIVO: la cerrada se anida con la separación entre marcos (el campo del
     // usuario); la abierta, con su propio φ (holgura contra el fierro de afuera).
@@ -944,7 +1412,7 @@
     var familia = familiaDeDibujo(figura, rol);
     if (familia === 'estribo') return _estriboPerimetral(figura, dims, host, anchor, diamCm);
     if (familia === 'traba') return _traba(figura, dims, host, anchor, diamCm);
-    if (familia === 'cadena') return _cadenaGenerica(figura, dims, host, anchor, diamCm);
+    if (familia === 'cadena') return _cadenaGenerica(figura, dims, host, anchor, diamCm, rol);
     return _cabezalLongitudinal(figura, dims, host, anchor, diamCm);   // recta | cabezal
   }
 
@@ -965,6 +1433,9 @@
     dibujabilidad: dibujabilidad,
     noDibujables: noDibujables,
     familiaDeDibujo: familiaDeDibujo,
+    // ¿La pieza ENCUADRA la sección? (estribo / traba / cadena de sección). Es el
+    // criterio ÚNICO del anidado: una pieza de sección anida, nunca se traslada.
+    esPiezaDeSeccion: esPiezaDeSeccion,
     patasDeFigura: patasDeFigura,
     MAX_LADOS_DIBUJABLES: MAX_LADOS_DIBUJABLES,
     // CADENAS (trazador genérico). La convención de tramos es la del Diseñador de
@@ -975,6 +1446,20 @@
     // Lado longitudinal de una CADENA (undefined = no es cadena → regla del
     // llamador; null = cadena cerrada, sin auto-largo). Lo consulta reglas.js.
     ladoLongitudinalCadena: ladoLongitudinalCadena,
+    // Eje contra el que mide cada lado de una cadena de SECCIÓN (u = ancho ·
+    // v = alto · d = diagonal). Fuente ÚNICA del 'auto' de reglas._dimsEfectivas
+    // y del trazo de _cadenaSeccion: las dos leen el mismo trazo.
+    ejesCadenaSeccion: ejesCadenaSeccion,
+    autosCadenaSeccion: autosCadenaSeccion,   // reserva de los quiebres (ver sobresCadena)
+    // Cuánto OCUPA la cadena de sección ya dibujada (u = ancho · v = alto): lo que
+    // el reparto de una capa tiene que descontar para colocar su CENTRO.
+    extensionCadenaSeccion: extensionCadenaSeccion,
+    // Retiro de los lados de una cadena de sección para anidarla δ por lado (el
+    // −2δ del anillo, resuelto exacto para lados que no se cortan a 90°).
+    insetCadenaSeccion: insetCadenaSeccion,
+    // LADO DOMINANTE de una figura (cascada catálogo → 'B' → 1er parcial). Fuente
+    // ÚNICA: la usan reglas._ladoLongitudinal, el trazador de cadenas y la ficha.
+    ladoDominanteFigura: ladoDominanteFigura,
     sobresCadena: sobresCadena,   // reserva del auto-largo (puntas inclinadas)
     // ANIDADO: fuente ÚNICA del criterio "figura dentro de figura" (la usan
     // distribuidorLayered/distribuidorArreglo de reglas.js).

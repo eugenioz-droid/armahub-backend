@@ -303,6 +303,24 @@
     return { inicio: hay('A'), fin: hay('C') };
   }
 
+  // LADO DOMINANTE de una figura = el parcial que SE ESTIRA/ANCLA contra el elemento
+  // (el cuerpo de la barra: el que resuelve 'auto' contra el hormigón − recubrimiento).
+  // Los demás son patas/retornos que cuelgan de él. La autoridad es el MOTOR
+  // (reglas.ladoDominante), resuelta en el momento; sin ella vale la convención del
+  // catálogo que ya usa _patasDe: A = pata inicial, C = pata final, B = CUERPO.
+  // Devuelve la letra del parcial (o null si la figura no tiene parciales).
+  function _ladoDominante(c) {
+    var reglas = global.ModeladorReglas;
+    if (reglas && reglas.ladoDominante) {
+      var L = reglas.ladoDominante(c);
+      if (L) return String(L).toUpperCase();
+    }
+    var P = _figSpec(c && c.figura).parciales || [];
+    if (!P.length) return null;
+    if (P.length === 1) return P[0];
+    return (P.indexOf('B') >= 0) ? 'B' : P[0];
+  }
+
   // Cara por defecto según tipología (para colocar).
   function _caraDefault(tip) {
     var t = (tip || '').toUpperCase();
@@ -324,7 +342,6 @@
   //   acostada = identidad · volteada = x↔z · de pie = x↔y
   // ==========================================================================
   var _ORIENTACIONES = ['acostada', 'volteada', 'de_pie'];
-  var _ORIENT_LABEL = { acostada: 'acostada', volteada: 'volteada', de_pie: 'de pie' };
   var _ORIENT_PERM = {
     acostada: { x: 'x', y: 'y', z: 'z' },
     volteada: { x: 'z', y: 'y', z: 'x' },
@@ -354,6 +371,156 @@
   function _orientacionSiguiente(ori) {
     var i = _ORIENTACIONES.indexOf(ori);
     return _ORIENTACIONES[(i < 0 ? 0 : i + 1) % _ORIENTACIONES.length];
+  }
+
+  // ==========================================================================
+  // POSE CANÓNICA (TANDA P) — UN SOLO MODELO PARA LA ORIENTACIÓN DE UNA PIEZA.
+  //
+  // Hasta hoy la pose vivía repartida en CUATRO mecanismos que no se hablaban:
+  // `cara` (sup/inf/lateral) + `lado` (±1) + `plano_pieza.orientacion`
+  // (acostada/volteada/de_pie) + `orient.deg` con su EJE_ROT por vista. Cada
+  // elemento nuevo multiplicaba los casos especiales.
+  //
+  // El modelo único es:
+  //     pose = { cara, lado, rumbo, espejo }
+  //   · cara   : 'sup'|'inf'|'lateral'|'extremo' — la cara del hormigón contra la
+  //              que se ancla. Con su `lado` (±1) son las 6 caras de la caja
+  //              (sup/inf ya llevan el signo EN EL NOMBRE; lateral y extremo lo
+  //              llevan en `lado`).
+  //   · rumbo  : eje del MUNDO ('x'|'y'|'z') a lo largo del cual corre la pieza.
+  //              Sólo puede ser uno de los DOS ejes ⊥ a la normal de la cara.
+  //   · espejo : bool — la misma pose reflejada (los ganchos cierran al otro lado).
+  // 6 caras × 2 rumbos = las 24 orientaciones de una caja, + espejo.
+  //
+  // COMPATIBILIDAD: `pose` es la fuente, y al escribirla se ESPEJAN los campos
+  // viejos (cara / lado / plano_pieza.orientacion), porque el rumbo es exactamente
+  // la permutación que ya aplicaba el motor: x=acostada · z=volteada · y=de pie.
+  // Así ninguna ruta que aún lea el campo viejo ve un estado distinto del que
+  // muestra la UI (misma regla que _setOrientacion).
+  // ==========================================================================
+  var _CARAS_POSE = ['sup', 'inf', 'lateral', 'extremo'];
+  // Normal de cada cara (el eje del mundo al que la cara mira).
+  var _NORMAL_DE_CARA = { sup: 'y', inf: 'y', lateral: 'z', extremo: 'x' };
+  // Caras cuyo SIGNO no va en el nombre y por eso lo llevan en `lado` (±1):
+  // sup/inf ya dicen de qué lado del eje Y están; lateral y extremo, no.
+  var _CARA_CON_LADO = { lateral: true, extremo: true };
+  // rumbo ↔ orientación vieja (la permutación de ejes que ya aplica el motor).
+  var _RUMBO_A_ORIENT = { x: 'acostada', z: 'volteada', y: 'de_pie' };
+  var _ORIENT_A_RUMBO = { acostada: 'x', volteada: 'z', de_pie: 'y' };
+  var _EJES_MUNDO = ['x', 'y', 'z'];
+
+  // Los dos ejes ⊥ a la normal de la cara = los rumbos POSIBLES de esa cara.
+  function _rumbosDeCara(cara) {
+    var n = _NORMAL_DE_CARA[cara] || 'y';
+    return _EJES_MUNDO.filter(function (e) { return e !== n; });
+  }
+  function _rumboValido(cara, rumbo) { return _rumbosDeCara(cara).indexOf(rumbo) >= 0; }
+  // Rumbo por defecto de una cara: el largo (x) si es ⊥ a ella; si no, el primero.
+  function _rumboDefaultDeCara(cara) {
+    var r = _rumbosDeCara(cara);
+    return (r.indexOf('x') >= 0) ? 'x' : r[0];
+  }
+
+  // POSE de un componente. Prioriza `comp.pose`; sin ella hay que DERIVARLA de los
+  // campos viejos — y esa derivación la hace el MOTOR (reglas.poseDe), no la UI.
+  // Devuelve SIEMPRE un objeto nuevo (no una ref al componente): quien quiera
+  // cambiar la pose escribe con _setPose.
+  //
+  // POR QUÉ EL MOTOR Y NO ACÁ (defecto D2 del verificador). El `cara` de los campos
+  // viejos es la cara del MARCO LOCAL de la pieza, no la del mundo: para saber
+  // contra qué cara del hormigón queda apoyada hay que COMPONERLA con la
+  // permutación de la orientación (acostada = identidad · volteada = x↔z · de pie
+  // = x↔y). Esta función leía `cara` como si ya fuera del mundo y, cuando el rumbo
+  // que salía de la orientación no era válido para esa cara, lo DESCARTABA en
+  // silencio. Divergía del motor en 6 de las 18 combinaciones:
+  //     cara 'sup'     + de_pie   → UI {sup,x}      · motor {extremo,+1,y}
+  //     cara 'inf'     + de_pie   → UI {inf,x}      · motor {extremo,−1,y}
+  //     cara 'lateral' + volteada → UI {lateral,x}  · motor {extremo,±1,z}
+  // Con eso, una receta guardada con el botón azul viejo mostraba en la ficha una
+  // pose que la pieza NO tenía (dibujada contra el testero) y el botón R le pasaba
+  // a rotarPose90 la pose equivocada y ESCRIBÍA el resultado: la pieza saltaba de
+  // testero a testero y R×4 ya no restituía — el estado original quedaba fuera de
+  // la órbita y se perdía sin aviso.
+  //
+  // La regla general: el que DIBUJA es el dueño de la traducción. La UI la
+  // consulta; no la reimplementa.
+  function _poseDe(c) {
+    var reglas = global.ModeladorReglas;
+    var base = c;
+    // Sin `pose` NI `cara` no hay nada que traducir: la cara de partida la pone el
+    // default de la TIPOLOGÍA, que es dato de la UI (el motor no lo puede adivinar).
+    // Se arma un objeto aparte para no escribir nada en el componente.
+    if (!(c && c.pose) && _CARAS_POSE.indexOf(c && c.cara) < 0) {
+      base = {
+        pose: null, cara: _caraDefault(c && c.tipologia),
+        lado: (c && c.lado), plano_pieza: (c && c.plano_pieza), espejo: (c && c.espejo)
+      };
+    }
+    if (reglas && typeof reglas.poseDe === 'function') return reglas.poseDe(base);
+    // Sin motor no hay traducción posible de los campos viejos (y sin motor no hay
+    // dibujo tampoco): se lee la pose CANÓNICA tal cual, que es lo único que no
+    // requiere componer nada. Inventar acá la traducción es lo que causó el D2.
+    var p = (base && base.pose) || {};
+    var cara = (_CARAS_POSE.indexOf(p.cara) >= 0) ? p.cara : _caraDefault(c && c.tipologia);
+    var rumbo = (_EJES_MUNDO.indexOf(p.rumbo) >= 0) ? p.rumbo : _rumboDefaultDeCara(cara);
+    if (!_rumboValido(cara, rumbo)) rumbo = _rumboDefaultDeCara(cara);
+    return {
+      cara: cara, lado: (Number(p.lado) < 0) ? -1 : 1,
+      rumbo: rumbo, espejo: !!p.espejo
+    };
+  }
+
+  // Escribe la pose en el componente + ESPEJA los campos viejos (contrato de compat).
+  function _setPose(comp, pose) {
+    if (!comp || !pose) return;
+    var cara = (_CARAS_POSE.indexOf(pose.cara) >= 0) ? pose.cara : _caraDefault(comp.tipologia);
+    var rumbo = (_EJES_MUNDO.indexOf(pose.rumbo) >= 0) ? pose.rumbo : _rumboDefaultDeCara(cara);
+    if (!_rumboValido(cara, rumbo)) rumbo = _rumboDefaultDeCara(cara);
+    // sup/inf llevan el signo EN EL NOMBRE: su `lado` no significa nada y se
+    // normaliza a 1 (si no, quedaría un −1 fantasma que nadie muestra ni edita).
+    var lado = (_CARA_CON_LADO[cara] && Number(pose.lado) < 0) ? -1 : 1;
+    comp.pose = { cara: cara, lado: lado, rumbo: rumbo, espejo: !!pose.espejo };
+    comp.cara = cara;                                        // campo viejo (motor + fichas)
+    comp.lado = lado;                                        // campo viejo (cara cortina)
+    _setOrientacion(comp, _RUMBO_A_ORIENT[rumbo] || 'acostada');   // plano_pieza (compat)
+  }
+
+  // Texto compacto de la pose para la ficha / tooltips: "cara sup · corre en largo (Y)".
+  // La LETRA del eje sale siempre de _ejeLetra (única traducción interno→visible).
+  var _CARA_TXT = { sup: 'cara sup', inf: 'cara inf', lateral: 'cara lateral', extremo: 'extremo' };
+  function _poseTexto(p) {
+    if (!p) return '';
+    var t = _CARA_TXT[p.cara] || ('cara ' + p.cara);
+    if (p.cara === 'lateral' || p.cara === 'extremo') t += (p.lado < 0 ? ' −' : ' +');
+    t += ' · corre en ' + (_EJE_NOMBRE[p.rumbo] || p.rumbo) + ' (' + _ejeLetra(p.rumbo) + ')';
+    if (p.espejo) t += ' · espejada';
+    return t;
+  }
+
+  // POSE POR DEFECTO de una tipología — la AUTORIDAD es el motor (tabla
+  // POSES_DEFAULT por elemento×tipología, o la función poseDefault), resuelta EN EL
+  // MOMENTO (nunca capturada a nivel de módulo: los scripts cargan en paralelo).
+  // Devuelve null si el motor todavía no la publica → el llamador cae a los
+  // defaults dispersos de siempre (_caraDefault + _metaModular).
+  function _poseDefaultMotor(tip) {
+    var reglas = global.ModeladorReglas;
+    if (!reglas) return null;
+    var elem = _tipoElemento();
+    var p = null;
+    if (typeof reglas.poseDefault === 'function') p = reglas.poseDefault(elem, tip);
+    if (!p && reglas.POSES_DEFAULT) {
+      var porElem = reglas.POSES_DEFAULT[elem] || reglas.POSES_DEFAULT[String(elem || '').toUpperCase()];
+      if (porElem) p = porElem[String(tip || '').toUpperCase()] || porElem[tip] || null;
+    }
+    return p || null;
+  }
+  // Pose inicial de una tipología: la del motor si existe; si no, la que sale de los
+  // defaults viejos (cara por tipología + orientación de _metaModular).
+  function _poseDefault(tip, meta) {
+    var m = _poseDefaultMotor(tip);
+    if (m) return _poseDe({ tipologia: tip, pose: m });
+    var ori = (meta && meta.plano_pieza && meta.plano_pieza.orientacion) || 'acostada';
+    return _poseDe({ tipologia: tip, cara: _caraDefault(tip), lado: 1, plano_pieza: { orientacion: ori } });
   }
 
   // ¿el componente ci está VOLTEADO? (orientación 'volteada'). Sólo lo usa la UI
@@ -614,7 +781,11 @@
   function _compDesc(c) {
     var d = c.distribucion || {};
     var modo = _modoDe(c);
-    var caraTxt = (c.cara === 'inf' ? 'inferior' : (c.cara === 'sup' ? 'superior' : 'lateral'));
+    // La cara sale de la POSE (que incluye 'extremo'): con el mapa viejo de 3 casos,
+    // un componente en el testero se describía como "lateral".
+    var p = _poseDe(c);
+    var caraTxt = { sup: 'superior', inf: 'inferior', lateral: 'lateral', extremo: 'extremo' }[p.cara] || p.cara;
+    if (p.espejo) caraTxt += ' esp.';
     if (modo === 'arreglo') {
       return caraTxt + ' · arreglo ' + (d.n_capas || 2) + '×@' + (d.sep || 20) + ' · ø' + c.diam;
     }
@@ -1369,18 +1540,21 @@
   // motor; se resuelve DENTRO de la función (nunca capturado a nivel de módulo —
   // regla dura 1).
   function _ejeDistDe(c) {
-    // El eje sobre el que se REPARTE depende del ROL y de la CARA:
-    //   · estribo/traba          → a lo largo (x);
-    //   · cabezal sup/inf        → corre en x y se apila hacia el núcleo en Y, así
-    //     que el reparto de la capa va A LO ANCHO (z);
-    //   · cabezal LATERAL        → ancla a la CORTINA Z (las capas entran en Z hacia
-    //     el núcleo), así que el reparto de la capa va EN ALTURA (y). Repartirlo en
-    //     z lo apilaría contra su propia dirección de capas.
-    // Sobre ese eje BASE se aplica la permutación de la orientación de la pieza
-    // (acostada = identidad · volteada = x↔z · de pie = x↔y).
+    // El eje sobre el que se REPARTE un CABEZAL sale ENTERO de su POSE, sin tablas
+    // caso-a-caso: las capas se apilan hacia el núcleo por la NORMAL de la cara y la
+    // barra corre por el RUMBO, así que el reparto de la capa sólo puede ir por el
+    // TERCER eje (el que no es ninguno de esos dos).
+    //   sup/inf (normal y) + rumbo x → reparte en z  (a lo ancho)
+    //   lateral (normal z) + rumbo x → reparte en y  (en altura)
+    //   extremo (normal x) + rumbo y → reparte en z
+    // Es la MISMA tabla que salía antes de "base z|y + permutación de orientación"
+    // (acostada = identidad · volteada = x↔z · de pie = x↔y), pero derivada del
+    // modelo único en vez de escrita a mano — y por eso cubre 'extremo' gratis.
     if (c && _rolDe(c.tipologia) === 'cabezal') {
-      var base = (c.cara === 'lateral') ? 'y' : 'z';
-      return _permOrientacion(c)[base] || base;
+      var p = _poseDe(c);
+      var normal = _NORMAL_DE_CARA[p.cara] || 'y';
+      var terceros = _EJES_MUNDO.filter(function (e) { return e !== normal && e !== p.rumbo; });
+      return terceros[0] || 'z';
     }
     var reglas = global.ModeladorReglas;
     if (reglas && reglas.ejeDistribucion) return reglas.ejeDistribucion(c);
@@ -1474,14 +1648,21 @@
   // SNAP DE CARA (§INTERACCIÓN-2.0 · elegir la cara VIENDO) — reemplaza la
   // adivinación _caraDefault(host.y>=0). Cada vista muestra el rectángulo del
   // hormigón; sus 4 aristas son las CARAS. Mapeamos cada arista al eje del mundo
-  // que representa → cara colocable (sup/inf = eje Y; lateral = eje Z). Las
-  // aristas del eje X (extremos del elemento) NO son caras de anclaje en el MVP.
+  // que representa → cara colocable: sup/inf = eje Y · lateral = eje Z ·
+  // EXTREMO = eje X (los TESTEROS del elemento).
+  //
+  // TANDA P — las aristas del eje X ya NO devuelven null. Antes eran "no se ancla
+  // ahí por ahora" y por eso los testeros del muro no se podían seleccionar: la
+  // cara 'extremo' existe en el modelo de pose (con su lado ±) y el motor la
+  // acepta, así que las 4 aristas de las 3 vistas son colocables.
   // ==========================================================================
-  // eje del mundo + signo → cara colocable (o null si no aplica al MVP viga).
+  // eje del mundo + signo → cara colocable. El SIGNO lo lleva la propia cara en
+  // sup/inf; en lateral/extremo lo lleva `lado` (lo resuelve _compDesdeClick con
+  // el f.sign de la arista clicada).
   function _caraDeEje(eje, sign) {
     if (eje === 'y') return sign > 0 ? 'sup' : 'inf';
     if (eje === 'z') return 'lateral';
-    return null;   // eje 'x' = extremos del elemento (no se ancla ahí por ahora)
+    return 'extremo';   // eje 'x' = testeros del elemento
   }
 
   // Las 4 aristas del rectángulo de hormigón de una vista, con su cara mapeada.
@@ -1504,14 +1685,15 @@
   }
 
   // Cara del hormigón MÁS CERCANA al cursor (uv en coords del plano), dentro de un
-  // umbral en cm. Solo caras colocables (cara != null). null si ninguna cerca.
+  // umbral en cm. null si ninguna cerca. Las CUATRO aristas son colocables desde la
+  // TANDA P (las del eje x son la cara 'extremo'), así que ya no hay aristas que
+  // saltarse.
   function _caraCercana(plano, uv) {
     if (!uv) return null;
     var faces = _facesDeVista(plano);
     var umbral = 9;   // cm — banda de captura de la cara (generosa, como el snap)
     var best = null, bestD = umbral;
     faces.forEach(function (f) {
-      if (!f.cara) return;                 // aristas no-colocables (extremos X)
       var d = (f.orient === 'h') ? Math.abs(uv.v - f.pos) : Math.abs(uv.u - f.pos);
       // exigir que el cursor esté DENTRO del tramo de la arista (con holgura).
       var along = (f.orient === 'h') ? uv.u : uv.v;
@@ -1746,7 +1928,12 @@
     // ghost se PEGA a ella (el usuario ve a qué cara va antes de clicar). Solo con la
     // herramienta Colocar; con Rango el rango se define libre dentro del contorno.
     var f = (ST.tool === 'colocar') ? _caraCercana(plano, uvRaw) : null;
-    ST.caraHi = f ? { plano: plano, cara: f.cara, edge: f.edge, orient: f.orient, pos: f.pos, a: f.a, b: f.b } : null;
+    // axis/sign viajan con la cara resaltada: son lo que _compDesdeClick necesita
+    // para derivar el LADO (± de la cara) y el ESPEJO del borde clicado.
+    ST.caraHi = f ? {
+      plano: plano, cara: f.cara, edge: f.edge, orient: f.orient,
+      axis: f.axis, sign: f.sign, pos: f.pos, a: f.a, b: f.b
+    } : null;
 
     var dentro = _dentroDelBoundary(plano, uvRaw);
     // Fuera del hormigón: pegar la forma al borde válido (clamp) y pintar en rojo.
@@ -2376,35 +2563,66 @@
   // NO muta ST ni la receta: devuelve el componente suelto.
   function _compDesdeClick(plano, host, sel) {
     var rol = _rolDe(sel.tipologia);
-    // CARA por SNAP DE CARA (elegida VIENDO): si hay una cara resaltada bajo el
-    // cursor en esta vista, esa manda. Reemplaza la adivinación host.y>=0.
-    var cara;
-    if (ST.caraHi && ST.caraHi.plano === plano && ST.caraHi.cara) {
-      cara = ST.caraHi.cara;
-    } else {
-      cara = _caraDefault(sel.tipologia);
-      // El fallback por altura del click SOLO aplica a tipologías cuya cara
-      // default es sup/inf (CBS/CBI de viga). Antes PISABA la cara 'lateral' de
-      // las mallas de muro (MH/MV): colocadas en la elevación caían a sup/inf y
-      // el reparto se iba al ESPESOR (±7 cm → 2 barras) en vez de la ALTURA
-      // (hallazgo del verificador de la Tanda F).
-      if (rol === 'cabezal' && cara !== 'lateral' && (plano === 'seccion' || plano === 'largo')) {
-        cara = (host.y >= 0) ? 'sup' : 'inf';   // fallback si el cursor no tocó una cara
-      }
-    }
     var meta = _metaModular(sel.tipologia);
+    // POSE INICIAL — la manda la TABLA DEL MOTOR (POSES_DEFAULT por elemento ×
+    // tipología). Los defaults dispersos de la UI (_caraDefault + la orientación de
+    // _metaModular) quedan SÓLO como fallback mientras el motor no publique la tabla.
+    var pose = _poseDefault(sel.tipologia, meta);
+    var deTabla = !!_poseDefaultMotor(sel.tipologia);
+
+    // EL BORDE CLICADO MANDA (§colocación con borde): la arista resaltada bajo el
+    // cursor define la CARA y —cuando esa cara no lleva el signo en el nombre— su
+    // LADO, con el signo del borde. Y NADA MÁS.
+    //
+    // EL ESPEJO NO SE TOCA ACÁ (defecto D3 del verificador). El comentario viejo
+    // prometía "los 2 ganchos por esquina" y hacía justo lo contrario, porque
+    // `lado` y `espejo` NO son el mismo giro:
+    //   · `lado = −1` ya pone la barra en la CORTINA opuesta, con su gancho
+    //     doblando hacia el núcleo (la normal de la cara cambia de signo).
+    //   · `espejo` refleja el eje LONGITUDINAL de la pieza: manda el gancho al otro
+    //     EXTREMO del muro.
+    // Medido en un muro 400×250×20 con una MH 102A (un solo gancho), vista sección:
+    //     borde +z            → punta del gancho en x = −197
+    //     borde −z CON espejo → punta del gancho en x = +197   ← esquina OPUESTA
+    //     borde −z sin espejo → punta del gancho en x = −197   ← LA MISMA esquina
+    // O sea: sin el espejo las dos cortinas cierran su gancho en la MISMA esquina,
+    // que es exactamente la regla de obra que se buscaba. Con figuras simétricas
+    // (una 103B con A = C) el espejo es un no-op geométrico, y por eso el doble
+    // volteo pasaba desapercibido hasta encontrarse una figura de un solo gancho.
+    // El espejo sigue siendo un control EXPLÍCITO del usuario (botón de la ficha):
+    // acoplarlo al borde le quitaba el control sin decírselo.
+    var f = (ST.caraHi && ST.caraHi.plano === plano && ST.caraHi.cara) ? ST.caraHi : null;
+    if (f) {
+      pose.cara = f.cara;
+      if (_CARA_CON_LADO[f.cara] && f.axis === _NORMAL_DE_CARA[f.cara]) {
+        pose.lado = (f.sign < 0) ? -1 : 1;
+      }
+      if (!_rumboValido(pose.cara, pose.rumbo)) pose.rumbo = _rumboDefaultDeCara(pose.cara);
+    } else if (!deTabla && rol === 'cabezal' && pose.cara !== 'lateral' && (plano === 'seccion' || plano === 'largo')) {
+      // FALLBACK por altura del click (sólo sin tabla del motor y sin borde tocado).
+      // Aplica SOLO a tipologías cuya cara default es sup/inf (CBS/CBI de viga):
+      // antes PISABA la cara 'lateral' de las mallas de muro (MH/MV), que colocadas
+      // en la elevación caían a sup/inf y repartían en el ESPESOR (±7 cm → 2 barras)
+      // en vez de la ALTURA (hallazgo del verificador de la Tanda F).
+      pose.cara = (host.y >= 0) ? 'sup' : 'inf';
+    }
+    // LADO de la cara CORTINA cuando el clic NO tocó un borde: lo elige DÓNDE puso la
+    // barra el usuario (no el arrastre posterior: pos_hint es traslación pura).
+    if (!f && pose.cara === 'lateral' && Number(host.z) < 0) pose.lado = -1;
+    if (!f && pose.cara === 'extremo' && Number(host.x) < 0) pose.lado = -1;
+
     var comp = {
       tipologia: sel.tipologia, figura: sel.figura, diam: Number(sel.diam), suf_tipo: '',
-      cara: cara, recub_override: null,
+      recub_override: null,
       angulos: _figSpec(sel.figura).angulos.slice(),
       modo: meta.modo, plano_pieza: meta.plano_pieza, arreglo: meta.arreglo,
       dims: _dimsDefault(sel.figura, rol, sel.contorno),
-      distribucion: _distDefault(rol),
-      // LADO de la cara CORTINA (z+ / z−). Lo elige el CLIC (dónde puso la barra el
-      // usuario), no el arrastre posterior: pos_hint es traslación pura. Sólo
-      // significa algo con cara 'lateral'; en las demás queda en su default (1).
-      lado: (cara === 'lateral' && Number(host.z) < 0) ? -1 : 1
+      distribucion: _distDefault(rol)
     };
+    // POSE canónica + espejo de los campos viejos (cara / lado / plano_pieza): el
+    // resto de esta función (y el motor) ya leen el estado NUEVO.
+    _setPose(comp, pose);
+    var cara = comp.cara;
     // DISTRIBUCIÓN AL NACER — LA DECIDE EL MODO, NO EL ROL.
     // Una barra cuyo MODO default es 'lineal' nace ya REPARTIDA (distribución
     // activa + rango útil de SU eje), no como 1 barra suelta: nadie quiere un
@@ -2512,28 +2730,96 @@
   // en ±296 (largo) pasaría a repartirse en ±296 de ANCHO — fuera del hormigón — y
   // las zonas (150/300/150 cm) se consumirían contra un marco de 30 cm: el
   // distribuidor las trunca en silencio y "desaparecen" casi todas las barras.
+  // Lleva el RANGO y las ZONAS al eje de reparto que corresponde a la pose ACTUAL
+  // del componente. `ejeAntes` (opcional) = el eje que tenía antes del cambio: si no
+  // cambió, no se toca nada (una rotación de 180° no debe borrar el rango que el
+  // usuario ajustó a mano). Sin `ejeAntes` se re-encuadra siempre.
+  function _reencuadrarReparto(comp, ejeAntes) {
+    var d = comp && comp.distribucion;
+    if (!d) return;
+    var ejeN = _ejeDistDe(comp);
+    if (ejeAntes && ejeAntes === ejeN) return;
+    if (d.rango) d.rango = _rangoDefault(d.rango.sep || d.sep || 20, ejeN);
+    _reencuadrarZonas(d, ejeN);
+  }
+
   function rotarPlanoPieza(comp, ori) {
     if (!comp) return;
     _setOrientacion(comp, ori || _orientacionSiguiente(_orientacionDe(comp)));
-    var d = comp.distribucion;
-    if (d) {
-      var ejeN = _ejeDistDe(comp);   // eje de reparto YA con la orientación nueva
-      if (d.rango) d.rango = _rangoDefault(d.rango.sep || d.sep || 20, ejeN);
-      _reencuadrarZonas(d, ejeN);
+    // la orientación es el RUMBO en el modelo de pose: mantener las dos caras del
+    // mismo dato sincronizadas (si no, la ficha mostraría la pose vieja).
+    if (comp.pose) {
+      var pr = _poseDe(comp);
+      pr.rumbo = _ORIENT_A_RUMBO[_orientacionDe(comp)] || pr.rumbo;
+      _setPose(comp, pr);
     }
+    _reencuadrarReparto(comp);   // eje de reparto YA con la orientación nueva
     _regenerar();          // el motor re-expande con los ejes permutados
     _renderPanel();
     _posicionarFlipBtn();  // el overlay sigue pegado a la pieza tras reproyectar
     _actualizarStatus();
   }
 
-  // Cambiar la orientación de la pieza SELECCIONADA (lo llaman la tecla 'R' y el
-  // botón contextual que flota sobre la barra seleccionada). Snapshot para Ctrl+Z.
-  function _voltearSeleccion() {
-    if (ST.selCi < 0 || !ST.receta) return;
-    _pushUndo();
-    rotarPlanoPieza(ST.receta.componentes[ST.selCi]);
+  // ==========================================================================
+  // ROTAR-EN-VISTA (TANDA P) — "girar de acuerdo a lo que se ve".
+  //
+  // UNA SOLA SEMÁNTICA para el giro grueso: la pieza gira 90° alrededor del eje de
+  // PROFUNDIDAD de la vista donde el usuario está trabajando (el eje que sale de la
+  // pantalla), que es exactamente lo que uno espera al mirar un plano y decir "gírala".
+  // Sustituye al ciclo de 3 orientaciones del botón azul (acostada→volteada→de pie),
+  // que era un ciclo ciego y no tenía nada que ver con la vista.
+  //
+  // La autoridad del giro es el MOTOR: reglas.rotarPose90(pose, ejeMundo) devuelve la
+  // pose de las 24 (la tabla vive en un solo sitio). Se resuelve EN EL MOMENTO;
+  // mientras el motor no la publique se cae al ciclo de orientaciones de siempre,
+  // para que el control nunca quede muerto.
+  //
+  // El eje de profundidad sale de PLANOS_POR_ELEMENTO (def.depth), no de una tabla
+  // aparte: en un muro la "sección" es otro plano que en una viga y el giro tiene que
+  // seguir a la vista, no al nombre del cuadrante.
+  // ==========================================================================
+  function _ejeProfundidadDeVista(plano) {
+    var def = (_defsPlanos() || {})[plano];
+    return (def && def.depth) || EJE_ROT[plano] || 'x';
   }
+  // Vista ACTIVA = la resaltada (P3) o, si no hay ninguna, la última tocada.
+  function _vistaActiva() {
+    var p = ST.planoActivo || ST.ultimoPlano || 'largo';
+    return (_defsPlanos() || {})[p] ? p : 'largo';
+  }
+
+  // Gira 90° la pose de `comp` en la vista `plano`. Devuelve true si giró con el
+  // modelo de pose (motor), false si cayó al ciclo viejo.
+  function rotarPoseEnVista(comp, plano) {
+    if (!comp) return false;
+    var reglas = global.ModeladorReglas;
+    var eje = _ejeProfundidadDeVista(plano);
+    var nueva = (reglas && reglas.rotarPose90) ? reglas.rotarPose90(_poseDe(comp), eje) : null;
+    if (!nueva) {
+      // motor sin rotarPose90 todavía → ciclo de orientaciones (comportamiento previo)
+      rotarPlanoPieza(comp);
+      return false;
+    }
+    var ejeAntes = _ejeDistDe(comp);
+    _setPose(comp, nueva);
+    _reencuadrarReparto(comp, ejeAntes);
+    _regenerar();
+    _renderPanel();
+    _posicionarFlipBtn();
+    _actualizarStatus();
+    return true;
+  }
+
+  // Girar la pieza SELECCIONADA en la vista activa (tecla R y botón contextual).
+  // Snapshot para Ctrl+Z.
+  function _rotarPoseSeleccion(plano) {
+    if (!ST.receta) return;
+    if (ST.selCi < 0) { _actualizarStatus('Nada seleccionado: haz clic en una barra y vuelve a girar (R).'); return; }
+    _pushUndo();
+    rotarPoseEnVista(ST.receta.componentes[ST.selCi], plano || _vistaActiva());
+  }
+  // (El viejo _voltearSeleccion — ciclar acostada/volteada/de pie — MURIÓ: el botón
+  //  flotante y la tecla R llaman los dos a _rotarPoseSeleccion. Una sola semántica.)
 
   // --------------------------------------------------------------------------
   // BOTÓN CONTEXTUAL "Voltear plano (R)" — flota junto a la pieza seleccionada.
@@ -2606,25 +2892,29 @@
     btn.style.left = left + 'px';
     btn.style.top = top + 'px';
     btn.classList.add('on');
-    _pintarFlipBtn(btn, _compOrientacion(ST.selCi));
+    _pintarFlipBtn(btn, ST.receta.componentes[ST.selCi]);
   }
 
-  // Icono / tooltip / clase del botón según la ORIENTACIÓN actual de la pieza. El
-  // botón CICLA (acostada → volteada → de pie → acostada), así que muestra el estado
-  // presente y anuncia el siguiente.
-  // Notación de obra, legible a 30 px: ↔ corre a lo largo (acostada) · ⊗ corre hacia
-  // el fondo, se ve de canto (volteada) · ↕ corre en vertical (de pie).
-  var _ORIENT_ICONO = { acostada: '↔', volteada: '⊗', de_pie: '↕' };
-  function _pintarFlipBtn(btn, ori) {
-    if (!btn) return;
-    var sig = _orientacionSiguiente(ori);
-    btn.textContent = _ORIENT_ICONO[ori] || '🔄';
-    var t = 'Orientación: ' + (_ORIENT_LABEL[ori] || ori) + ' — clic: ' + (_ORIENT_LABEL[sig] || sig) + ' (R)';
+  // Icono / tooltip / clase del botón de GIRO. El botón ya NO cicla orientaciones:
+  // gira 90° EN LA VISTA ACTIVA (una sola semántica, la misma que la tecla R). El
+  // ICONO sigue mostrando el estado — el RUMBO de la pieza, o sea hacia dónde corre —
+  // para que el usuario vea en qué quedó sin abrir la ficha.
+  // Notación de obra, legible a 30 px: ↔ corre a lo largo · ⊗ corre hacia el fondo
+  // (se ve de canto) · ↕ corre en vertical.
+  var _RUMBO_ICONO = { x: '↔', z: '⊗', y: '↕' };
+  function _pintarFlipBtn(btn, comp) {
+    if (!btn || !comp) return;
+    var p = _poseDe(comp);
+    var vista = _vistaActiva();
+    var nomVista = (_titulosSemanticos() || {})[vista] || vista;
+    btn.textContent = _RUMBO_ICONO[p.rumbo] || '⟲';
+    var t = 'Girar 90° en ' + nomVista + ' (R) — ' + _poseTexto(p);
     btn.title = t;
     btn.setAttribute('aria-label', t);
-    btn.setAttribute('data-ori', ori);
-    btn.classList.toggle('flipped', ori === 'volteada');
-    btn.classList.toggle('depie', ori === 'de_pie');
+    btn.setAttribute('data-rumbo', p.rumbo);
+    btn.classList.toggle('flipped', p.rumbo === 'z');
+    btn.classList.toggle('depie', p.rumbo === 'y');
+    btn.classList.toggle('espejo', !!p.espejo);
   }
 
   // (El etiquetado ci de cada placement se hace en _regenerar → _etiquetarCi.)
@@ -2761,6 +3051,12 @@
         // lógica de selección/colocación (un middle-click en modo colocar PONÍA
         // una barra) y peleaba con el arrastre del pan ("no agarra a la primera").
         if (evt.button === 1) return;
+        // SHIFT+arrastre TAMBIÉN es PAN de la vista (_bindVistaOrto, en el contenedor
+        // .te-vista). Mismo problema que el botón medio: los dos handlers se disputaban
+        // el mismo mousedown, así que el pan con shift "no agarraba" (y en modo colocar
+        // dejaba una barra suelta al empezar a panear). El pan vive en el contenedor;
+        // aquí sólo hay que soltarle el evento.
+        if (evt.shiftKey) return;
         ST.ultimoPlano = plano;
         var sp = _svgPoint(svg, evt); if (!sp) return;
 
@@ -3172,29 +3468,97 @@
       body.appendChild(nErr);
     }
 
-    // Cara / anclaje (radial)
+    // ------------------------------------------------------------------
+    // POSE (TANDA P) — cara + lado + rumbo + espejo, el modelo único. La ficha
+    // ESCRIBE siempre con _setPose (que espeja los campos viejos), nunca campo a
+    // campo: así la ficha, el botón de giro y el motor no pueden divergir.
+    // ------------------------------------------------------------------
+    var pose = _poseDe(c);
+
+    // Cara / anclaje (radial) — 4 caras: las dos del eje vertical (sup/inf), la
+    // LATERAL (cortinas) y el EXTREMO (testeros del elemento), que antes no se podía
+    // elegir ni clicando el borde.
     var caraRow = _div('te-row');
     caraRow.appendChild(_label('Cara / anclaje'));
-    caraRow.appendChild(_radial([['sup', 'Superior'], ['inf', 'Inferior'], ['lateral', 'Lateral']], c.cara, function (v) { c.cara = v; _mut(ci, true); }));
+    caraRow.appendChild(_radial(
+      [['sup', 'Superior'], ['inf', 'Inferior'], ['lateral', 'Lateral'], ['extremo', 'Extremo']],
+      pose.cara,
+      function (v) {
+        if (v === pose.cara) return;
+        _pushUndo();
+        var ejeAntes = _ejeDistDe(c);
+        var p = _poseDe(c);
+        p.cara = v;
+        // el rumbo tiene que seguir siendo ⊥ a la cara nueva; si no lo es, cae al
+        // rumbo por defecto de esa cara (el largo cuando es posible).
+        if (!_rumboValido(v, p.rumbo)) p.rumbo = _rumboDefaultDeCara(v);
+        if (v !== 'lateral' && v !== 'extremo') p.lado = 1;   // sup/inf ya llevan el signo
+        _setPose(c, p);
+        _reencuadrarReparto(c, ejeAntes);   // la cara puede cambiar el eje de reparto
+        _mut(ci, true);
+      }
+    ));
     body.appendChild(caraRow);
 
-    // LADO de la cara CORTINA — sólo para un LONGITUDINAL lateral (estribo/traba
-    // encuadran el núcleo entero: no tienen lado que elegir). Escribe comp.lado
-    // (1 | −1), que es lo ÚNICO que el motor mira para anclar la cortina; el
-    // arrastre (pos_hint) ya no cambia de cara.
-    if (rol === 'cabezal' && c.cara === 'lateral') {
-      if (c.lado !== 1 && c.lado !== -1) c.lado = 1;
+    // LADO de la cara — sólo lo tienen las caras cuyo signo NO va en el nombre:
+    // LATERAL (cortina +Z/−Z) y EXTREMO (testero inicio/fin). Escribe comp.lado
+    // (1 | −1), que es lo que el motor mira para anclar; el arrastre (pos_hint) no
+    // lo cambia. Los estribos/trabas laterales encuadran el núcleo entero (no tienen
+    // lado que elegir), pero en un EXTREMO sí lo tienen.
+    var mostrarLado = _CARA_CON_LADO[pose.cara] && (pose.cara === 'extremo' || rol === 'cabezal');
+    if (mostrarLado) {
+      var esExtremo = (pose.cara === 'extremo');
       var ladoRow = _div('te-row');
       ladoRow.appendChild(_label('Lado'));
-      var ladoSeg = _radial([['1', '+Z'], ['-1', '−Z']], String(c.lado), function (v) {
-        _pushUndo();
-        c.lado = (Number(v) < 0) ? -1 : 1;
-        _mut(ci, true);   // redibuja la ficha → el botón activo sigue al valor
-      });
-      ladoSeg.title = 'Cara cortina contra la que se apoya (+Z / −Z). El arrastre no la cambia.';
+      var ladoSeg = _radial(
+        esExtremo ? [['1', 'Fin +'], ['-1', 'Inicio −']] : [['1', '+Z'], ['-1', '−Z']],
+        String(pose.lado),
+        function (v) {
+          _pushUndo();
+          var p = _poseDe(c);
+          p.lado = (Number(v) < 0) ? -1 : 1;
+          _setPose(c, p);
+          _mut(ci, true);   // redibuja la ficha → el botón activo sigue al valor
+        }
+      );
+      ladoSeg.title = esExtremo
+        ? 'Testero contra el que se ancla: Fin (+' + _ejeLetra('x') + ') o Inicio (−' + _ejeLetra('x') + ').'
+        : 'Cara cortina contra la que se apoya (+Z / −Z). El arrastre no la cambia.';
       ladoRow.appendChild(ladoSeg);
       body.appendChild(ladoRow);
     }
+
+    // INDICADOR COMPACTO DE POSE + toggle ESPEJO. El texto dice de un vistazo dónde
+    // está anclada y hacia dónde corre; el espejo refleja la misma pose (los ganchos
+    // cierran al otro lado) sin tocar cara ni rumbo.
+    // ESPEJO ES TAMBIÉN LA MEDIA VUELTA (ver _signoLong en reglas.js): en una pieza
+    // PLANA, reflejarla en su plano y girarla 180° sobre su normal son lo mismo, así
+    // que este bit es el SENTIDO del rumbo — el que completa las 24 orientaciones. Por
+    // eso R lo enciende y lo apaga solo al pasar por la media vuelta: no es que el
+    // botón se mueva "por su cuenta", es la pose girando entera.
+    var poseRow = _div('te-row');
+    poseRow.appendChild(_label('Pose'));
+    var poseWrap = _div('');
+    poseWrap.style.cssText = 'display:flex;gap:8px;align-items:center;flex-wrap:wrap';
+    var poseTxt = document.createElement('span');
+    poseTxt.className = 'te-posetxt';
+    poseTxt.textContent = _poseTexto(pose);
+    poseTxt.title = 'Cara de anclaje · eje por el que corre la pieza · espejo. Gira 90° en la vista activa con R.';
+    var espSeg = _radial([['no', 'Normal'], ['si', 'Espejo']], pose.espejo ? 'si' : 'no', function (v) {
+      var quiere = (v === 'si');
+      if (quiere === _poseDe(c).espejo) return;
+      _pushUndo();
+      var p = _poseDe(c);
+      p.espejo = quiere;
+      _setPose(c, p);
+      _mut(ci, true);
+    });
+    espSeg.title = 'Espejo: la MISMA pose dada vuelta sobre su eje de anclaje ' +
+      '(el gancho cierra al otro lado). Girando con R también se pasa por acá.';
+    poseWrap.appendChild(poseTxt);
+    poseWrap.appendChild(espSeg);
+    poseRow.appendChild(poseWrap);
+    body.appendChild(poseRow);
 
     // Recub override
     var recRow = _div('te-row');
@@ -3248,10 +3612,13 @@
     // Distribución
     body.appendChild(_distBox(c, ci, rol, d));
 
-    // Dimensiones dinámicas de la figura (Fija/Auto por dim)
+    // Dimensiones dinámicas de la figura (Fija/Auto por dim). El LADO DOMINANTE va
+    // MARCADO: es el que se estira/ancla contra el elemento, y saber cuál es explica
+    // por qué al girar la pieza cambia ESE y no los otros.
     c.dims = c.dims || {};
+    var dom = _ladoDominante(c);
     spec.parciales.forEach(function (L) {
-      body.appendChild(_dimRow(c, ci, L));
+      body.appendChild(_dimRow(c, ci, L, dom));
     });
     if (spec.angulos.length) {
       var angRow = _div('te-grid2');
@@ -3364,11 +3731,17 @@
     body.appendChild(note);
   }
 
-  function _dimRow(c, ci, L) {
+  function _dimRow(c, ci, L, dom) {
     var d = c.dims[L] || { modo: 'auto' };
     c.dims[L] = d;
     var row = _div('te-row');
-    row.appendChild(_label(L));
+    var lbl = _label(L);
+    if (dom && L === dom) {
+      lbl.className = 'te-dim-dom';
+      lbl.title = 'lado dominante: se estira/ancla';
+      row.title = 'lado dominante: se estira/ancla';
+    }
+    row.appendChild(lbl);
     var wrap = _div(''); wrap.style.display = 'flex'; wrap.style.gap = '6px'; wrap.style.alignItems = 'center';
     var inp = _input({ value: (d.modo === 'fija' && d.valor != null) ? d.valor : '', placeholder: (d.modo === 'auto' ? 'auto' : ''), type: 'number' }, function (v) {
       d.modo = 'fija'; d.valor = Number(v); _mut(ci);
@@ -3454,15 +3827,21 @@
 
   // TOGGLE del anidado de CAPAS — visible SIEMPRE que haya más de una capa. El
   // significado (y el default) dependen del rol, igual que en el motor:
-  //   · ESTRIBO  → anidar es el DEFAULT (las capas interiores se achican hacia
-  //                adentro). El check nace marcado; desmarcarlo escribe anidar=false.
+  //   · PIEZA DE SECCIÓN (estribo Y TRABA) → anidar es el DEFAULT (las capas
+  //                interiores se achican hacia adentro). El check nace marcado;
+  //                desmarcarlo escribe anidar=false.
   //   · CABEZAL/otros → el anidado es OPT-IN: el check nace desmarcado y sólo al
   //                marcarlo se escribe anidar=true (desmarcar borra el campo). La
   //                semántica actual NO alinea patas: achica B y desplaza la capa.
+  // LA TRABA ENTRA CON EL ESTRIBO (defecto F1): el motor las trata a las dos como
+  // piezas de sección —encuadran el mismo marco de núcleo y anidan por default—, así
+  // que el check tiene que decir lo mismo que hace el motor. Cuando esto miraba sólo
+  // `rol === 'estribo'`, una traba de 2+ capas mostraba el toggle apagado mientras el
+  // motor anidaba: el usuario leía un estado que no era el suyo.
   // Aquí sólo se escribe el dato (distribucion.anidar); quien lo consume es el motor.
   function _filaAnidar(box, c, ci, rol, d) {
     if (!(Number(d.n_capas) > 1)) return;
-    var esEstribo = (rol === 'estribo');
+    var esEstribo = (rol === 'estribo' || rol === 'traba');
     var row = _div('te-fld');
     var lab = document.createElement('label');
     lab.style.cssText = 'display:flex;align-items:center;gap:6px;cursor:pointer';
@@ -4027,11 +4406,12 @@
     var add = $('te_addComp');
     if (add && !add._teBound) { add._teBound = true; add.addEventListener('click', function () { _entrarModoColocacion(); }); }
 
-    // Botón contextual "Voltear plano (R)" sobre la pieza seleccionada.
+    // Botón contextual "Girar 90° en esta vista (R)" sobre la pieza seleccionada.
+    // MISMA acción que la tecla R (una sola semántica de giro grueso).
     var flip = $('te_flipBtn');
     if (flip && !flip._teBound) {
       flip._teBound = true;
-      flip.addEventListener('click', function (e) { e.stopPropagation(); _voltearSeleccion(); });
+      flip.addEventListener('click', function (e) { e.stopPropagation(); _rotarPoseSeleccion(_vistaActiva()); });
       // evitar que el mousedown burbujee a las vistas (no deseleccionar al clicarlo)
       flip.addEventListener('mousedown', function (e) { e.stopPropagation(); });
     }
@@ -4065,8 +4445,8 @@
       selTxt + avisoTxt;
   }
 
-  // Teclado: Ctrl+Z deshace · ESPACIO rota 90° · R voltea el plano de la pieza ·
-  // Supr/Backspace borra.
+  // Teclado: Ctrl+Z deshace · ESPACIO rota el ángulo fino 90° · R gira la pieza 90°
+  // EN LA VISTA ACTIVA (rotar-en-vista, TANDA P) · Supr/Backspace borra.
   function _bindTeclado() {
     if (ST._tecladoOk) return; ST._tecladoOk = true;
     document.addEventListener('keydown', function (e) {
@@ -4083,10 +4463,11 @@
       if (e.key === ' ' || e.code === 'Space') {
         if (ST.selCi >= 0) { e.preventDefault(); _rotarSeleccion(ST.ultimoPlano, 90); }
       } else if (e.key === 'r' || e.key === 'R') {
-        // R → VOLTEAR PLANO DE LA PIEZA (§INTERACCIÓN-2.0). Ignorar combos con
-        // modificadores (Ctrl+R recargar, etc.).
+        // R → GIRAR 90° EN LA VISTA ACTIVA (TANDA P · rotar-en-vista): la pieza gira
+        // alrededor del eje que sale de la pantalla en la vista donde se está
+        // trabajando. Ignorar combos con modificadores (Ctrl+R recargar, etc.).
         if (!e.ctrlKey && !e.metaKey && !e.altKey && ST.selCi >= 0) {
-          e.preventDefault(); _voltearSeleccion();
+          e.preventDefault(); _rotarPoseSeleccion(_vistaActiva());
         }
       } else if (e.key === 'Delete' || e.key === 'Backspace') {
         if (ST.selCi >= 0) { e.preventDefault(); _borrarSeleccion(); }
@@ -4556,11 +4937,57 @@
     ST.camera.lookAt(new THREE.Vector3().copy(ST.target).add(shift));
   }
 
+  // CENTRO (en coords de mundo) del ELEMENTO SELECCIONADO: bbox de TODOS sus
+  // placements. Sin selección (o sin geometría todavía) devuelve el centro de la
+  // escena — el host está centrado en el origen.
+  function _centroSeleccion3D() {
+    var out = ST.ultimoOut;
+    if (ST.selCi < 0 || !out || !out.placements) return { x: 0, y: 0, z: 0 };
+    var lo = { x: Infinity, y: Infinity, z: Infinity }, hi = { x: -Infinity, y: -Infinity, z: -Infinity }, n = 0;
+    out.placements.forEach(function (pl) {
+      if (!pl.meta || pl.meta.ci !== ST.selCi) return;
+      (pl.puntos || []).forEach(function (p) {
+        if (!p || !isFinite(p.x) || !isFinite(p.y) || !isFinite(p.z)) return;
+        if (p.x < lo.x) lo.x = p.x; if (p.x > hi.x) hi.x = p.x;
+        if (p.y < lo.y) lo.y = p.y; if (p.y > hi.y) hi.y = p.y;
+        if (p.z < lo.z) lo.z = p.z; if (p.z > hi.z) hi.z = p.z;
+        n++;
+      });
+    });
+    if (!n) return { x: 0, y: 0, z: 0 };
+    return { x: (lo.x + hi.x) / 2, y: (lo.y + hi.y) / 2, z: (lo.z + hi.z) / 2 };
+  }
+
+  // Mueve el PIVOTE de la órbita al punto `p` SIN mover el ojo: se reconstruyen
+  // dist/rotX/rotY desde la posición actual de la cámara respecto del pivote nuevo y
+  // se anula el pan (que es un desplazamiento del par ojo/mira, ya absorbido en la
+  // esfera nueva). La cámara queda EXACTAMENTE donde estaba y sólo cambia hacia dónde
+  // mira: a partir de ahí el arrastre orbita en torno a `p`.
+  function _pivotarEn(p) {
+    var THREE = global.THREE;
+    if (!THREE || !ST.camera || !ST.target || !p) return;
+    _applyCam();   // la posición de la cámara refleja el estado actual (dist/rot/pan)
+    var ex = ST.camera.position.x, ey = ST.camera.position.y, ez = ST.camera.position.z;
+    var dx = ex - p.x, dy = ey - p.y, dz = ez - p.z;
+    var dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+    if (!(dist > 1)) return;   // ojo encima del pivote: no hay esfera que derivar
+    ST.target.set(p.x, p.y, p.z);
+    ST.panX = 0; ST.panY = 0;
+    ST.dist = Math.max(120, Math.min(6000, dist));
+    ST.rotX = Math.max(-1.45, Math.min(1.45, Math.asin(dy / dist)));
+    ST.rotY = Math.atan2(dx, dz);
+    _marcarSucio();
+  }
+
   // BUG 4 — PAN del 3D rotaba en vez de panear. Rediseño del reparto de botones con un
   // ÚNICO estado 'mode' ('pan' | 'rot' | null) fijado en el mousedown, mutuamente
   // exclusivo (antes había 2 flags drag/panning que podían quedar mal). Reparto:
-  //   · botón IZQUIERDO sin modificador            → ROTAR
-  //   · botón MEDIO, botón DERECHO, o SHIFT/ALT/CTRL+izq → PAN
+  //   · botón IZQUIERDO sin modificador     → ROTAR (órbita en torno al centro de escena)
+  //   · CTRL/⌘ + izquierdo                  → ORBITAR EN TORNO A LA SELECCIÓN (TANDA P):
+  //       el pivote salta al centro del bbox del elemento seleccionado (sin selección,
+  //       al centro de la escena) y desde ahí gira. Antes CTRL caía a PAN, que ya está
+  //       cubierto por botón medio/derecho y shift/alt.
+  //   · botón MEDIO, botón DERECHO, o SHIFT/ALT+izq → PAN
   // El mousedown captura el botón real (e.button) Y los modificadores del PROPIO evento
   // (no de un mousemove posterior, que podía llegar sin shift y caer a rotar). El middle
   // click además necesita preventDefault en 'mousedown' Y 'auxclick' para matar el
@@ -4571,9 +4998,12 @@
     cv.addEventListener('auxclick', function (e) { if (e.button === 1) e.preventDefault(); });   // mata autoscroll medio
     cv.addEventListener('mousedown', function (e) {
       lx = e.clientX; ly = e.clientY;
-      // PAN si: botón medio (1) · botón derecho (2) · o izquierdo con shift/alt/ctrl.
-      var quierePan = (e.button === 1 || e.button === 2 || e.shiftKey || e.altKey || e.ctrlKey || e.metaKey);
-      mode = quierePan ? 'pan' : (e.button === 0 ? 'rot' : null);
+      // ÓRBITA EN TORNO A LA SELECCIÓN: ctrl/⌘ + izquierdo (sin shift/alt, que son pan).
+      var quiereOrbitaSel = (e.button === 0 && (e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey);
+      // PAN si: botón medio (1) · botón derecho (2) · o izquierdo con shift/alt.
+      var quierePan = (e.button === 1 || e.button === 2 || e.shiftKey || e.altKey);
+      if (quiereOrbitaSel) { _pivotarEn(_centroSeleccion3D()); mode = 'rot'; }
+      else mode = quierePan ? 'pan' : (e.button === 0 ? 'rot' : null);
       if (mode) e.preventDefault();
     });
     global.addEventListener('mouseup', function () { mode = null; });
@@ -5290,10 +5720,21 @@
     // (el MISMO que crea el clic) — para poder comparar ghost ≡ barra colocada.
     _ghostPlacement: _ghostPlacement, _ghostFormaBasica: _ghostFormaBasica,
     _compDesdeClick: _compDesdeClick,
+    // TANDA P · POSE CANÓNICA {cara, lado, rumbo, espejo} + rotar-en-vista
+    _poseDe: _poseDe, _setPose: _setPose, _poseTexto: _poseTexto,
+    _poseDefault: _poseDefault, _poseDefaultMotor: _poseDefaultMotor,
+    _rumbosDeCara: _rumbosDeCara, _rumboValido: _rumboValido, _rumboDefaultDeCara: _rumboDefaultDeCara,
+    rotarPoseEnVista: rotarPoseEnVista,                         // gira 90° en el eje de profundidad de la vista
+    _rotarPoseSeleccion: _rotarPoseSeleccion, _vistaActiva: _vistaActiva,
+    _ejeProfundidadDeVista: _ejeProfundidadDeVista,
+    _reencuadrarReparto: _reencuadrarReparto,
+    _ladoDominante: _ladoDominante,                             // parcial que se estira/ancla
+    _centroSeleccion3D: _centroSeleccion3D, _pivotarEn: _pivotarEn,   // órbita en torno a la selección
     // INTERACCIÓN-2.0 · orientación de la pieza + snap de cara
     rotarPlanoPieza: rotarPlanoPieza,                           // cicla (o fija) la orientación + regenera
     _compVolteado: _compVolteado, _compOrientacion: _compOrientacion,
     _orientacionDe: _orientacionDe, _orientacionSiguiente: _orientacionSiguiente,
+    _caraDeEje: _caraDeEje,
     _facesDeVista: _facesDeVista, _caraCercana: _caraCercana,   // snap de cara
     _ejeDistDe: _ejeDistDe,                                     // eje de reparto (x | z si volteada)
     _transformDesdeCamara: _transformDesdeCamara,               // G7 — overlay ≡ cámara orto

@@ -122,8 +122,16 @@ ok(FP.familiaDeDibujo('101A', null) === 'recta' && FP.familiaDeDibujo('102A', nu
    FP.familiaDeDibujo('103B', null) === 'cabezal' && FP.familiaDeDibujo('104D', null) === 'estribo',
   '1 lado → recta · 2-3 → cabezal · marco de 4 → estribo (sin cambios)');
 ok(FP.familiaDeDibujo('104D', 'estribo') === 'estribo' && FP.familiaDeDibujo('105A', 'traba') === 'traba' &&
-   FP.familiaDeDibujo('104B', 'estribo') === 'estribo',
-  'el ROL sigue mandando sobre la familia (estribo/traba)');
+   FP.familiaDeDibujo('103E', 'estribo') === 'estribo',
+  'el ROL sigue mandando sobre la familia cuando la FIGURA es un marco (104D) o no ' +
+  'tiene cadena que la reemplace (103E, el EC de 3 lados del catálogo)');
+// CAMBIO TANDA P (fix 305A) — el rol 'estribo' YA NO fuerza el marco cerrado sobre
+// una figura que NO es un marco: la 104B (4 lados con quiebres de 45°) colocada con
+// tipología ES se dibujaba como rectángulo con ganchos, o sea una figura que no
+// existe. Ahora se traza como cadena (en el plano de la SECCIÓN, ver E3); el rol
+// sigue mandando anclaje, reparto y preset.
+ok(FP.familiaDeDibujo('104B', 'estribo') === 'cadena',
+  '104B con rol estribo → cadena (la FIGURA manda el trazado, no el rol)');
 (function () {
   // El estribo real, con sus arcos calibrados, no cambió ni un punto.
   const est = FP.figuraAPuntos('104D', { A: 22, B: 52, C: 22, D: 52 }, HOST, { x: 10, recub: 3 },

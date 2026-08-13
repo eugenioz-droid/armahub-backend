@@ -129,6 +129,20 @@
       if (!('sep_capas' in comp.arreglo)) comp.arreglo.sep_capas = 20;
       if (!('rango' in comp.arreglo)) comp.arreglo.rango = null;
     }
+    // POSE CANÓNICA (TANDA P). Si el componente trae `pose` se NORMALIZA in place
+    // (cara/rumbo válidos y ⊥); si no, se DERIVA de los campos viejos y se publica
+    // en `comp._pose` — NO enumerable, recalculado en cada pasada, para que no
+    // ensucie la receta que se guarda ni deje sorda a la UI vieja (ver poseDe).
+    if (comp.pose && typeof comp.pose === 'object') {
+      var pn = normalizarPose(comp.pose);
+      comp.pose.cara = pn.cara; comp.pose.lado = pn.lado;
+      comp.pose.rumbo = pn.rumbo; comp.pose.espejo = pn.espejo;
+    }
+    var pEf = poseDe(comp);
+    try {
+      Object.defineProperty(comp, '_pose',
+        { value: pEf, enumerable: false, writable: true, configurable: true });
+    } catch (e) { /* objeto sellado: poseDe(comp) sigue dando la misma pose */ }
     return comp;
   }
 
@@ -320,7 +334,7 @@
   // toLowerCase, pero una receta que llegue de un JSON externo con 'DE_PIE' o
   // ' volteada' caía silenciosamente en 'acostada' — la pieza salía en otro plano
   // sin un solo error. Las claves de ORIENTACIONES son la fuente única.
-  function orientacionPieza(comp) {
+  function _orientacionLegacy(comp) {
     var pp = comp && comp.plano_pieza;
     if (!pp) return 'acostada';
     var o = pp.orientacion;
@@ -331,22 +345,352 @@
     return pp.volteado ? 'volteada' : 'acostada';
   }
 
-  // Permutación (tabla) de un componente. null = acostada (ruta sin permutar).
+  // ===========================================================================
+  // POSE — MODELO ÚNICO DE ORIENTACIÓN (TANDA P)
+  // ===========================================================================
+  // Hasta acá la POSE de una pieza vivía repartida en CUATRO mecanismos que no se
+  // hablaban entre sí:
+  //   (1) `cara` sup/inf/lateral      — contra qué cara se apoya;
+  //   (2) `lado` ±1                   — de qué lado, sólo para la cara cortina;
+  //   (3) `plano_pieza.orientacion`   — acostada / volteada / de_pie (permutación);
+  //   (4) `orient.deg` + un EJE_ROT por vista en la UI.
+  // Cada elemento nuevo obligaba a un caso especial más (derivaciones por rol,
+  // fallbacks, tablas por vista), porque la MISMA información —cómo está parada la
+  // pieza— se expresaba de tres formas distintas según quién preguntara.
+  //
+  // La POSE las unifica en UN dato:
+  //
+  //     pose = { cara, lado, rumbo, espejo }
+  //
+  //   cara   : 'sup' | 'inf' | 'lateral' | 'extremo'  → el EJE de la normal:
+  //            sup/inf = y · lateral = z (cortinas) · extremo = x (los testeros).
+  //   lado   : 1 | −1 → el SIGNO de esa normal. En sup/inf es inerte (la cara ya
+  //            trae el signo); manda en 'lateral' y en 'extremo'.
+  //   rumbo  : 'x'|'y'|'z' → el eje LONGITUDINAL de la pieza, OBLIGATORIAMENTE ⊥ a
+  //            la normal (los 2 ejes que quedan). Si llega uno paralelo se
+  //            NORMALIZA al default de esa cara en vez de aceptarlo (no existe una
+  //            pieza que corra en la dirección en que se apoya).
+  //   espejo : bool → la reflexión que cambia la QUIRALIDAD sin tocar dims.
+  //
+  // 6 caras × 2 rumbos × 2 espejo = 24 = las orientaciones de una caja.
+  //
+  // DE LA POSE SE DERIVA TODO (derivarPose, una sola función):
+  //   N = normal (cara+lado) · L = longitudinal (rumbo) · B = L×N (binormal, marco
+  //   dextrógiro) · P = permutación LOCAL→MUNDO · caraLocal/ladoLocal.
+  //
+  // POR QUÉ LA PERMUTACIÓN SÓLO DEPENDE DEL RUMBO — y la cara viaja aparte:
+  // el marco LOCAL en el que trabajan los distribuidores y los constructores es
+  // (x = eje que la pieza recorre o a lo largo del cual se repite, y = alto,
+  // z = ancho). La CARA no elige ese marco: elige, DENTRO de él, cuál de los dos
+  // ejes de la sección es la normal (y± = sup/inf, z± = lateral) — que es
+  // exactamente el "roll" de las 24. Por eso P = transposición (x ↔ rumbo), las
+  // MISMAS tres tablas de siempre (acostada/volteada/de_pie), y toda la maquinaria
+  // dura que ya permuta host, recubrimientos, PILAS por cara, rango.eje, eje_capas
+  // y puntos se REUSA tal cual: generalizar de 3 permutaciones a las 24 poses no
+  // agrega un solo caso especial, sólo cambia de dónde salen `caraLocal` y `P`.
+  //
+  // CARA 'extremo' SALE GRATIS de ahí: pose { cara:'extremo', lado:+1, rumbo:'y' }
+  // → P = x↔y y caraLocal = 'sup', o sea la pieza se ancla contra la cara local
+  // superior de un host cuyo "alto" local es el LARGO real y cuyo recubrimiento
+  // local superior es `recub_ext` (con su pila `jer_caras.ext`). Un cabezal de
+  // borde de muro —corre en Y, pegado al testero— es esa pose y nada más.
+  //
+  // COMPATIBILIDAD: los campos viejos se siguen aceptando PARA SIEMPRE. `poseDe`
+  // los traduce (cara LOCAL + orientación → cara del MUNDO) y la traducción es
+  // EXACTA: para cualquier receta existente el `P` y el `caraLocal` derivados son
+  // los mismos de antes, así que los placements salen BYTE-IDÉNTICOS.
+  // ---------------------------------------------------------------------------
+  var CARAS_POSE = ['sup', 'inf', 'lateral', 'extremo'];
+  var EJES_MUNDO = ['x', 'y', 'z'];
+  // Eje del MUNDO al que mira cada cara (el eje de su normal).
+  var EJE_DE_CARA = { sup: 'y', inf: 'y', lateral: 'z', extremo: 'x' };
+  // rumbo ↔ etiqueta de orientación vieja. Es la MISMA permutación: la etiqueta
+  // sobrevive porque la escriben las recetas guardadas y la lee la UI.
+  var RUMBO_A_ORIENT = { x: 'acostada', z: 'volteada', y: 'de_pie' };
+  var ORIENT_A_RUMBO = { acostada: 'x', volteada: 'z', de_pie: 'y' };
+  // Permutación LOCAL→MUNDO por rumbo = transposición (x ↔ rumbo). Involutiva:
+  // la misma tabla traduce en los dos sentidos (por eso no hay una 2ª tabla que
+  // se pueda desincronizar). null = identidad → ruta sin permutar.
+  var PERM_POR_RUMBO = { x: null, z: ORIENTACIONES.volteada, y: ORIENTACIONES.de_pie };
+
+  function _caraCanon(c) {
+    var k = String(c == null ? '' : c).toLowerCase().trim();
+    if (k === 'lat') k = 'lateral';
+    if (k === 'ext') k = 'extremo';
+    return (CARAS_POSE.indexOf(k) >= 0) ? k : null;
+  }
+  function _ejeCanon(e) {
+    var k = String(e == null ? '' : e).toLowerCase().trim();
+    return (EJES_MUNDO.indexOf(k) >= 0) ? k : null;
+  }
+  // Los DOS ejes ⊥ a la normal de una cara = los rumbos POSIBLES de esa cara.
+  function rumbosDeCara(cara) {
+    var n = EJE_DE_CARA[_caraCanon(cara) || 'sup'];
+    return EJES_MUNDO.filter(function (e) { return e !== n; });
+  }
+  // Rumbo por defecto: el LARGO (x) si es ⊥ a la cara; si no, el primero que quede
+  // (cara 'extremo' → 'y': un cabezal de borde corre en alto, que es lo natural).
+  function _rumboDefaultDeCara(cara) {
+    var r = rumbosDeCara(cara);
+    return (r.indexOf('x') >= 0) ? 'x' : r[0];
+  }
+  // SIGNO de la normal. En sup/inf lo trae la cara; en lateral/extremo, `lado`.
+  function _signoCara(cara, lado) {
+    if (cara === 'sup') return 1;
+    if (cara === 'inf') return -1;
+    return (Number(lado) < 0) ? -1 : 1;
+  }
+
+  // Pose CANÓNICA (siempre un objeto nuevo, nunca una referencia al componente).
+  // CANÓNICA de verdad: `lado` se fuerza al signo que la cara YA implica en sup/inf
+  // (+1 / −1). Aceptar `{cara:'inf', lado:1}` dejaba DOS representaciones del mismo
+  // estado, y con dos representaciones el giro de 90° dejaba de ser una operación
+  // cerrada (girar 4 veces devolvía la pose equivalente pero no la MISMA). En
+  // 'lateral' y 'extremo' el lado sí es el dato que elige la cara del par.
+  function normalizarPose(pose) {
+    var p = pose || {};
+    var cara = _caraCanon(p.cara) || 'sup';
+    var lado = _signoCara(cara, p.lado);
+    var rumbo = _ejeCanon(p.rumbo);
+    if (!rumbo || rumbosDeCara(cara).indexOf(rumbo) < 0) rumbo = _rumboDefaultDeCara(cara);
+    return { cara: cara, lado: lado, rumbo: rumbo, espejo: !!p.espejo };
+  }
+
+  // Producto vectorial de dos ejes unitarios con signo → { eje, s }.
+  var _CROSS = { xy: 'z', yz: 'x', zx: 'y' };
+  function _cruz(a, b) {
+    if (!a || !b || a.eje === b.eje) return null;
+    var e = _CROSS[a.eje + b.eje];
+    if (e) return { eje: e, s: a.s * b.s };
+    return { eje: _CROSS[b.eje + a.eje], s: -a.s * b.s };
+  }
+
+  // EL SIGNO DEL LONGITUDINAL LO LLEVA `espejo` (defecto D4 del verificador).
+  // ---------------------------------------------------------------------------
+  // Las orientaciones de una caja son 24 = 6 normales × 4 longitudinales ⊥ a ella
+  // CON SIGNO. El rumbo es un eje SIN signo, así que cara+lado+rumbo sólo enumera
+  // 6 × 2 = 12: falta exactamente el bit del SENTIDO de L. Ese bit ya existe y se
+  // llama `espejo`.
+  //
+  // POR QUÉ SON LA MISMA COSA — y no dos controles distintos. Girar la pieza 180°
+  // en torno a su NORMAL manda L → −L y B → −B, dejando N quieta. Las piezas que
+  // este motor dibuja son PLANAS:
+  //   · cadena / cabezal con patas → su plano es (L, N). El giro de 180° le
+  //     invierte L y le deja N: dentro de su propio plano eso es exactamente
+  //     u → −u, que es lo que hace `anchor.espejo` en _planoTrabajo.
+  //   · estribo / traba            → su plano es (N, B). El mismo giro le invierte
+  //     B: otra vez u → −u, lo que hace `anchor.espejo` en _cadenaSeccion /
+  //     _estriboPerimetral (los ganchos cambian de esquina).
+  // En una figura plana el "reflejo" y el "medio giro" NO son distinguibles, así
+  // que UN bit alcanza y sobra para cerrar el grupo: 6 caras × 2 rumbos × 2 =
+  // las 24 orientaciones, sin agregar un campo nuevo a la receta.
+  //
+  // CONSECUENCIA MEDIDA de no hacerlo (lo que corrige este cambio): con L siempre
+  // en +1, girar 90° en torno a la propia normal sólo alternaba DOS estados (el
+  // giro de 180° era indistinguible de la identidad) → 24 de las 72 órbitas de
+  // rotarPose90 tenían orden 2 y la tecla R nunca alcanzaba media vuelta; y
+  // derivarPose publicaba L (y con ella B = L×N) con el signo cambiado en 12 de
+  // los 36 giros.
+  //
+  // NO MUEVE UNA SOLA RECETA: `espejo` false ⇒ L.s = +1, que es lo que valía antes,
+  // y las recetas viejas no traen espejo. El resto del motor tampoco cambia, porque
+  // la permutación P y la caraLocal dependen del EJE del rumbo, no de su signo.
+  function _signoLong(p) { return p.espejo ? -1 : 1; }
+
+  // LA función: de la pose sale todo lo demás.
+  //   N/L/B      : ejes del MUNDO con signo (marco dextrógiro (L, N, B), B = L×N —
+  //                el orden que reproduce la identidad: cara sup + rumbo x → +z).
+  //   P          : permutación local→mundo (null = identidad).
+  //   caraLocal  : 'sup'|'inf'|'lateral' — la cara EN EL MARCO LOCAL, que es lo que
+  //                consumen _marcoCara / figura_puntos (ahí no cambió nada).
+  //   ladoLocal  : signo de esa cara local.
+  //   orientacion: la etiqueta vieja equivalente (trazabilidad y compat de la UI).
+  function derivarPose(pose) {
+    var p = normalizarPose(pose);
+    var ejeN = EJE_DE_CARA[p.cara];
+    var sN = _signoCara(p.cara, p.lado);
+    var N = { eje: ejeN, s: sN };
+    var L = { eje: p.rumbo, s: _signoLong(p) };
+    var P = PERM_POR_RUMBO[p.rumbo] || null;
+    var ejeLocalY = P ? P.y : 'y';
+    var caraLocal = (ejeN === ejeLocalY) ? ((sN > 0) ? 'sup' : 'inf') : 'lateral';
+    return {
+      pose: p, N: N, L: L, B: _cruz(L, N), P: P,
+      caraLocal: caraLocal, ladoLocal: sN,
+      orientacion: RUMBO_A_ORIENT[p.rumbo] || 'acostada'
+    };
+  }
+
+  // POSE DE UN COMPONENTE. `comp.pose` MANDA cuando está; si no, se DERIVA de los
+  // campos viejos — y esa derivación es el contrato de compatibilidad:
+  //   cara LOCAL (sup/inf = local y± · lateral = local z±) + permutación de la
+  //   orientación → cara del MUNDO. Ejemplos, que son los que ya usan las recetas:
+  //     cara sup     + acostada → sup       (identidad)
+  //     cara lateral + acostada → lateral   (identidad)
+  //     cara sup     + volteada → sup       (x↔z: la cara local y sigue siendo y)
+  //     cara lateral + volteada → extremo   (x↔z: la cara local z pasa a ser x)
+  //     cara sup     + de_pie   → extremo   (x↔y: la cara local y pasa a ser x)
+  //     cara lateral + de_pie   → lateral   (x↔y: la cara local z sigue siendo z)
+  // NO se estampa la pose derivada dentro de `comp` como campo enumerable A
+  // PROPÓSITO — es la misma razón ya documentada para `orientacion`: si se
+  // rellenara, un cambio posterior de `cara`/`volteado` quedaría ignorado (el dato
+  // viejo dejaría de tener efecto sin que nada lo diga). Se publica en `comp._pose`
+  // (NO enumerable: no ensucia la receta que se guarda ni el dirty-tracking) y se
+  // recalcula en cada normalizarComponente, así que nunca queda vieja.
+  function poseDe(comp) {
+    var p = comp && comp.pose;
+    if (p && typeof p === 'object' && (_caraCanon(p.cara) || _ejeCanon(p.rumbo))) {
+      return normalizarPose(p);
+    }
+    var ori = _orientacionLegacy(comp);
+    var caraDecl = _caraCanon(comp && comp.cara);
+    var rumbo = ORIENT_A_RUMBO[ori] || 'x';
+    // 'extremo' NO existe en el vocabulario viejo: si aparece en `comp.cara` es
+    // vocabulario de POSE escrito en el campo viejo (lo hace el editor al espejar
+    // la pose), y ahí `cara` YA es del mundo.
+    if (caraDecl === 'extremo') {
+      return normalizarPose({ cara: 'extremo', lado: comp.lado, rumbo: rumbo, espejo: comp.espejo });
+    }
+    var P = ORIENTACIONES[ori] || null;
+    var ejeLocal = (caraDecl === 'lateral') ? 'z' : 'y';
+    var sLocal = (caraDecl === 'inf') ? -1
+      : ((caraDecl === 'lateral') ? ((Number(comp && comp.lado) < 0) ? -1 : 1) : 1);
+    var ejeMundo = P ? P[ejeLocal] : ejeLocal;
+    var cara = (ejeMundo === 'y') ? ((sLocal > 0) ? 'sup' : 'inf')
+      : ((ejeMundo === 'z') ? 'lateral' : 'extremo');
+    return normalizarPose({ cara: cara, lado: sLocal, rumbo: rumbo, espejo: comp && comp.espejo });
+  }
+
+  // ---------------------------------------------------------------------------
+  // ROTAR-EN-VISTA — la operación que faltaba (TANDA P · §4)
+  // ---------------------------------------------------------------------------
+  // rotarPose90(pose, ejeMundo) = la pieza gira 90° alrededor de un eje del MUNDO
+  // (el de profundidad de la vista en la que el usuario está mirando: "gírala según
+  // lo que veo"). Es una operación CERRADA en el grupo de las 24 —gira N y L, que
+  // siguen siendo ejes con signo y siguen siendo ⊥— y aplicarla 4 veces devuelve la
+  // pose EXACTA de partida.
+  // Caras, pilas, recubrimientos y eje de reparto NO se tocan: se RE-DERIVAN solos,
+  // porque todos salen de la pose. `orient.deg` queda para los ángulos finos.
+  //
+  // EL SIGNO DE L SE ESCRIBE DE VUELTA EN `espejo` (defecto D4 del verificador; el
+  // porqué está arriba, en _signoLong). Antes se giraba L y se TIRABA su signo,
+  // conservando el `espejo` de entrada: el giro dejaba de ser una rotación y pasaba
+  // a ser una proyección sobre 12 estados. Cuatro giros seguían "volviendo al
+  // origen" —por eso el test no lo veía— pero en 24 de las 72 órbitas volvían en
+  // DOS pasos: girar en torno a la propia normal alternaba dos poses y la media
+  // vuelta era inalcanzable con la tecla R.
+  var _ROT90 = {
+    x: { x: { eje: 'x', s: 1 }, y: { eje: 'z', s: 1 }, z: { eje: 'y', s: -1 } },
+    y: { y: { eje: 'y', s: 1 }, z: { eje: 'x', s: 1 }, x: { eje: 'z', s: -1 } },
+    z: { z: { eje: 'z', s: 1 }, x: { eje: 'y', s: 1 }, y: { eje: 'x', s: -1 } }
+  };
+  function _rotarEje(v, ejeVista) {
+    var t = _ROT90[ejeVista];
+    if (!t || !v) return v;
+    var r = t[v.eje];
+    return { eje: r.eje, s: v.s * r.s };
+  }
+  function rotarPose90(pose, ejeVista) {
+    var d = derivarPose(pose);
+    var e = _ejeCanon(ejeVista);
+    if (!e) return d.pose;
+    var N2 = _rotarEje(d.N, e);
+    var L2 = _rotarEje(d.L, e);
+    var cara2 = (N2.eje === 'y') ? ((N2.s > 0) ? 'sup' : 'inf')
+      : ((N2.eje === 'z') ? 'lateral' : 'extremo');
+    return normalizarPose({ cara: cara2, lado: N2.s, rumbo: L2.eje, espejo: (L2.s < 0) });
+  }
+
+  // ---------------------------------------------------------------------------
+  // POSES POR DEFECTO — TABLA DE DATOS (elemento × tipología), no código.
+  // ---------------------------------------------------------------------------
+  // Es lo que se coloca al crear un componente: la pose que un enfierrador daría
+  // por obvia. Que sea DATO importa: agregar un elemento o una tipología nueva es
+  // agregar una fila, y la UI la consume tal cual (no re-implementa defaults).
+  //   VIGA  → exactamente lo de hoy (cara sup/inf/lateral, todo corriendo en X).
+  //   MURO  → largo = x · alto = y · espesor = z:
+  //           · MH  malla horizontal, cortina que corre a lo LARGO      → lateral, x
+  //           · MV  malla vertical, la misma cortina DE PIE             → lateral, y
+  //           · EC  estribo/amarra: su MARCO va en el plano HORIZONTAL
+  //                 (x,z) repartido en altura → rumbo Y. Es la pose de_pie
+  //                 del estribo; con la default vieja (rumbo x) el marco salía
+  //                 VERTICAL, que es el bug reportado.
+  //           · TC/TR trabas que COSEN las dos cortinas: corren en el espesor → z.
+  //           · CB  cabezal de borde: corre en alto, pegado al TESTERO  → extremo, y
+  var POSES_DEFAULT = {
+    VIGA: {
+      CBS: { cara: 'sup', lado: 1, rumbo: 'x' },
+      CBS2: { cara: 'sup', lado: 1, rumbo: 'x' },
+      CBSN: { cara: 'sup', lado: 1, rumbo: 'x' },
+      CBI: { cara: 'inf', lado: -1, rumbo: 'x' },
+      CBI2: { cara: 'inf', lado: -1, rumbo: 'x' },
+      CBIN: { cara: 'inf', lado: -1, rumbo: 'x' },
+      LT: { cara: 'lateral', lado: 1, rumbo: 'x' },
+      ES: { cara: 'lateral', lado: 1, rumbo: 'x' },
+      TRV: { cara: 'lateral', lado: 1, rumbo: 'x' }
+    },
+    MURO: {
+      MH: { cara: 'lateral', lado: 1, rumbo: 'x' },
+      MV: { cara: 'lateral', lado: 1, rumbo: 'y' },
+      MA: { cara: 'lateral', lado: 1, rumbo: 'x' },
+      EC: { cara: 'lateral', lado: 1, rumbo: 'y' },
+      TC: { cara: 'extremo', lado: 1, rumbo: 'z' },
+      TR: { cara: 'extremo', lado: 1, rumbo: 'z' },
+      TM: { cara: 'extremo', lado: 1, rumbo: 'z' },
+      CB: { cara: 'extremo', lado: 1, rumbo: 'y' }
+    },
+    COLUMNA: {
+      CB: { cara: 'lateral', lado: 1, rumbo: 'y' },
+      CB2: { cara: 'lateral', lado: 1, rumbo: 'y' },
+      CBN: { cara: 'lateral', lado: 1, rumbo: 'y' },
+      ESC: { cara: 'lateral', lado: 1, rumbo: 'y' },
+      TRC: { cara: 'extremo', lado: 1, rumbo: 'z' }
+    },
+    LOSA: {
+      FI: { cara: 'inf', lado: -1, rumbo: 'x' },
+      FS: { cara: 'inf', lado: -1, rumbo: 'z' },
+      "F'I": { cara: 'sup', lado: 1, rumbo: 'x' },
+      "F'S": { cara: 'sup', lado: 1, rumbo: 'z' },
+      F: { cara: 'inf', lado: -1, rumbo: 'x' },
+      "F'": { cara: 'sup', lado: 1, rumbo: 'x' },
+      RP: { cara: 'inf', lado: -1, rumbo: 'z' },
+      SP: { cara: 'inf', lado: -1, rumbo: 'x' },
+      TRL: { cara: 'lateral', lado: 1, rumbo: 'x' }
+    }
+  };
+
+  // Pose default de (elemento, tipología) — null si la tabla no la conoce (el
+  // llamador cae a sus defaults de siempre; no se inventa una pose).
+  function poseDefault(elemento, tipologia) {
+    var e = String(elemento == null ? '' : elemento).toUpperCase().trim();
+    var t = String(tipologia == null ? '' : tipologia).toUpperCase().trim();
+    var tabla = POSES_DEFAULT[e];
+    if (!tabla || !Object.prototype.hasOwnProperty.call(tabla, t)) return null;
+    return normalizarPose(tabla[t]);
+  }
+
+  // Permutación (tabla) de un componente. null = identidad (ruta sin permutar).
   function _permDe(comp) {
-    return ORIENTACIONES[orientacionPieza(comp)] || null;
+    return derivarPose(poseDe(comp)).P;
+  }
+
+  // Etiqueta de orientación del componente ('acostada'|'volteada'|'de_pie'). Sale
+  // de la POSE (fuente única), así que un componente con pose nueva y otro con los
+  // campos viejos equivalentes reportan lo mismo.
+  function orientacionPieza(comp) {
+    return derivarPose(poseDe(comp)).orientacion;
   }
 
   function estaVolteado(comp) {
     return orientacionPieza(comp) === 'volteada';
   }
 
-  // Eje del MUNDO a lo largo del cual REPARTE este componente (rango/zonas). Los
-  // distribuidores reparten sobre su x local; la orientación dice qué eje del
-  // mundo es esa x local (volteada → z, de pie → y). Lo consume la UI (flecha de
-  // rango, arrastre del rango) para operar sobre el eje real y no siempre sobre X.
+  // Eje del MUNDO a lo largo del cual REPARTE este componente (rango/zonas) = el
+  // RUMBO de su pose. Los distribuidores reparten sobre su x local y la permutación
+  // dice qué eje del mundo es esa x local. Lo consume la UI (flecha de rango,
+  // arrastre del rango) para operar sobre el eje real y no siempre sobre X.
   function ejeDistribucion(comp) {
-    var P = _permDe(comp);
-    return P ? P.x : 'x';
+    return poseDe(comp).rumbo;
   }
 
   // Eje del MUNDO en el que se apilan las capas (layered/arreglo), dado el eje
@@ -841,11 +1185,11 @@
   // del gancho sin un solo `if` de lado.
   function _marcoCara(base, host) {
     var cara = _caraAncla(base.anchorBase && base.anchorBase.cara);
-    // SÓLO UN LONGITUDINAL se apoya en una cara CORTINA. Estribo y traba declaran
-    // cara 'lateral' por convención de la receta pero encuadran el marco de núcleo
-    // (derivan su pose de él y sólo leen x/z del anchor), así que para ellos la
-    // cara lateral se lee como la vertical de siempre → su reparto sigue yendo a
-    // lo ancho (Z), como antes de que la cortina existiera.
+    // SÓLO UN LONGITUDINAL se apoya en una cara CORTINA. Estribo, traba y cadena de
+    // sección declaran cara 'lateral' por convención de la receta pero encuadran el
+    // marco de núcleo, así que para ellos la cara lateral se lee como la vertical de
+    // siempre → su reparto sigue yendo a lo ancho (Z), como antes de que la cortina
+    // existiera.
     if (base.rol !== 'cabezal' && cara === 'lat') cara = 'sup';
     var nivel = _nivelDeBase(base);
     var r = (Number(base.diam) || 0) / 2;
@@ -863,10 +1207,23 @@
       var lado = (base.ladoCara === -1) ? -1 : 1;
       return { eje: 'z', ancla: lado * zHi, sentido: -lado, ejeReparto: 'y', lo: yLo, hi: yHi };
     }
+    // ANCLA DE UNA PIEZA DE SECCIÓN = EL CENTRO DE SU MARCO, NO EL BORDE DE UNA CARA
+    // (regresión N1). Un cabezal se PEGA a la cara y por eso su ancla es el borde;
+    // un estribo/traba/cadena de sección ENCUADRA el marco de núcleo, así que su
+    // pose natural en el eje vertical es el CENTRO de ese marco. Publicar el borde
+    // era inocuo mientras los únicos lectores lo ignoraban (_estriboPerimetral y
+    // _traba derivan todo del marco), pero es un dato FALSO: la cadena de sección lo
+    // leyó —como debía, es la coordenada del anchor— y se dibujó pegada al borde
+    // superior, medio metro de fierro fuera del hormigón en los casos volteados.
+    // (yLo + yHi)/2 ES el centro del marco de núcleo por construcción: las dos
+    // fronteras salen de profundidadCara = recub + Σpilas, exactamente lo que
+    // figura_puntos._marcoNucleo suma como recub + inset. Una sola cuenta, dos
+    // lecturas que no pueden divergir.
+    var yC = (yLo + yHi) / 2;
     if (cara === 'inf') {
-      return { eje: 'y', ancla: yLo, sentido: 1, ejeReparto: 'z', lo: -zHi, hi: zHi };
+      return { eje: 'y', ancla: (base.rol === 'cabezal') ? yLo : yC, sentido: 1, ejeReparto: 'z', lo: -zHi, hi: zHi };
     }
-    return { eje: 'y', ancla: yHi, sentido: -1, ejeReparto: 'z', lo: -zHi, hi: zHi };
+    return { eje: 'y', ancla: (base.rol === 'cabezal') ? yHi : yC, sentido: -1, ejeReparto: 'z', lo: -zHi, hi: zHi };
   }
 
   // Coordenada de la barra i de una capa de n sobre el eje de reparto del marco.
@@ -874,6 +1231,71 @@
   // lo mismo que hacía el `z = 0` de antes).
   function _posReparto(mc, i, n) {
     return (n > 1) ? (mc.lo + (mc.hi - mc.lo) * (i / (n - 1))) : ((mc.lo + mc.hi) / 2);
+  }
+
+  // RANGO DE REPARTO DE UNA PIEZA QUE NO ES UN PUNTO EN ESE EJE.
+  // ---------------------------------------------------------------------------
+  // `_marcoCara` devuelve lo/hi para el EJE DE UNA BARRA: por eso ya viene con el
+  // φ/2 descontado (una barra ocupa φ y su eje no puede pegarse al recub). Una
+  // CADENA DE SECCIÓN ocupa un ANCHO entero en ese mismo eje, así que la regla es
+  // la misma con su propia medida: el rango de su CENTRO es lo/hi descontado su
+  // semiancho. Las dos rutas de referencia salen como casos límite, sin un solo if
+  // de familia:
+  //   · cadena que ocupa el marco entero (el 'auto' la estira hasta el útil) → el
+  //     rango colapsa al centro y las N copias caen en el mismo sitio: es
+  //     EXACTAMENTE lo que hace el estribo perimetral, que no lee el reparto;
+  //   · cadena angosta (dims fijas chicas) → se reparte como las trabas.
+  // SIN ESTO, con `barras_capa` ≥ 2 una cadena de sección de ancho completo se
+  // colocaba centrada en lo/hi (los bordes del marco) y salía media pieza fuera del
+  // hormigón: 8.4 cm en la viga 600×60×30 acostada y 291.4 cm volteada (donde el
+  // "ancho" del marco local es el LARGO de la viga). Es la misma causa raíz que el
+  // ancla de cara: coordenadas pensadas para un cabezal aplicadas a una pieza que
+  // encuadra la sección.
+  // El estribo (marco cerrado) y la traba NO pasan por acá: su ruta de dibujo no
+  // lee este rango de la misma forma y su reparto queda igual que siempre.
+  function _repartoDePieza(base, mc) {
+    if (base.rol === 'cabezal') return mc;
+    var fp = _fp();
+    if (!fp || !fp.extensionCadenaSeccion || !fp.familiaDeDibujo) return mc;
+    if (fp.familiaDeDibujo(base.figura, base.rol) !== 'cadena') return mc;
+    var ext = fp.extensionCadenaSeccion(base.figura, base.dims, base.diam);
+    if (!ext || !(ext.u > 0)) return mc;
+    var h = ext.u / 2;      // el eje de reparto de una pieza de sección ES su eje u
+    var lo = mc.lo + h, hi = mc.hi - h;
+    // RANGO VACÍO = la pieza es MÁS ANCHA que el marco (dims fijas que no caben):
+    // no hay dónde repartirla, así que las copias van todas al centro del marco.
+    // No es un clamp que tape nada — la pieza sigue asomando lo suyo, que es su
+    // propio exceso de ancho; lo que no se hace es INVENTAR un reparto que las
+    // separaría aún más (con el rango dado vuelta las copias se alejaban una de
+    // otra y salía MÁS fierro fuera que sin repartir).
+    if (lo > hi) { lo = hi = (mc.lo + mc.hi) / 2; }
+    return { eje: mc.eje, ancla: mc.ancla, sentido: mc.sentido, ejeReparto: mc.ejeReparto,
+      lo: lo, hi: hi };
+  }
+
+  // ¿ESTA pieza se DIBUJA como marco cerrado? Es la pregunta que gobierna el
+  // anidado (anillo concéntrico vs. ajuste de dims), y la responde el módulo que
+  // dibuja — no el rol. Antes bastaba con `rol === 'estribo'` porque el rol forzaba
+  // el marco SIEMPRE; con el fix 305A ya no (una cadena colocada como ES se traza
+  // como cadena), así que preguntar por el rol daría un anidado que no corresponde
+  // al dibujo. Sin figura_puntos cargado se cae al criterio histórico.
+  function _dibujaMarcoCerrado(base) {
+    var fp = _fp();
+    if (!fp || !fp.familiaDeDibujo) return base.rol === 'estribo';
+    return fp.familiaDeDibujo(base.figura, base.rol) === 'estribo';
+  }
+
+  // ¿Esta pieza ENCUADRA LA SECCIÓN? — la pregunta que gobierna el anidado de las
+  // capas (defecto F1). NO es la misma que `_dibujaMarcoCerrado`: esa separa el
+  // estribo de la cadena (y sirve para decidir CÓMO se traza), pero el estribo, la
+  // traba y la cadena de sección son las TRES la misma clase de pieza —encuadran el
+  // marco de núcleo— y las tres tienen que anidar sus capas hacia adentro en vez de
+  // trasladarse por la normal. Fuente única en figura_puntos (esPiezaDeSeccion), que
+  // es donde vive el despacho de los tres constructores.
+  function _esPiezaDeSeccion(base) {
+    var fp = _fp();
+    if (!fp || !fp.esPiezaDeSeccion) return base.rol === 'estribo' || base.rol === 'traba';
+    return fp.esPiezaDeSeccion(base.figura, base.rol);
   }
 
   function distribuidorLayered(base, cfg, host) {
@@ -886,7 +1308,10 @@
     var cara = (base.anchorBase && base.anchorBase.cara) || 'sup';
     // MARCO DE CARA: dónde se pega (eje/ancla/sentido) y por dónde reparte la capa.
     // Vale igual para sup, inf y LATERAL (cortina): una sola función, sin ramas.
-    var mc = _marcoCara(base, host);
+    // …y el rango del reparto descuenta lo que OCUPA la pieza en ese eje (ver
+    // _repartoDePieza): para un cabezal es el φ/2 de siempre, para una cadena de
+    // sección su ancho entero.
+    var mc = _repartoDePieza(base, _marcoCara(base, host));
     // CAPAS ANIDADAS (cfg.anidar !== false, toggle de la UI). El anidado v3 SOLO
     // ajusta DIMS (y, en las cerradas, encoge el marco): la POSICIÓN es siempre
     // k·gap. Aquí sólo se decide CUÁNDO aplica:
@@ -894,8 +1319,19 @@
     //   · figura abierta con patas (103x) → OPT-IN (anidar === true), porque
     //     cambiaría dims/kg de recetas existentes si fuera default (la viga-semilla
     //     quedaría con 5 ítems en vez de 4).
-    var anidaMarco = (!cfg || cfg.anidar !== false) && (base.rol === 'estribo');
-    var anidaFig = (cfg && cfg.anidar === true) && (base.rol !== 'estribo') &&
+    // QUIÉN ANIDA: la PIEZA DE SECCIÓN (defecto F1), no "el que se dibuja como marco
+    // cerrado". Estribo, traba y cadena de sección encuadran el mismo marco de
+    // núcleo y las tres anidan por DEFAULT; cómo encoge cada una es asunto de
+    // anidarFigura (anillo −2δ / retiro resuelto de la cadena). Una figura ABIERTA
+    // LONGITUDINAL (103x en un cabezal) sigue siendo OPT-IN, porque cambiaría
+    // dims/kg de recetas existentes si fuera default (la viga-semilla quedaría con
+    // 5 ítems en vez de 4).
+    // ANTES la pregunta era `_dibujaMarcoCerrado` y la cadena de sección contestaba
+    // "no": no anidaba, y el k·gap entero se iba a la POSICIÓN (más abajo), o sea la
+    // pieza se TRASLADABA por la normal hasta salirse del hormigón.
+    var seccion = _esPiezaDeSeccion(base);
+    var anidaSeccion = (!cfg || cfg.anidar !== false) && seccion;
+    var anidaFig = (cfg && cfg.anidar === true) && !seccion &&
       ((base.dims && Number(base.dims.A) > 0) || (base.dims && Number(base.dims.C) > 0));
     for (var c = 0; c < nCapas; c++) {
       // POSICIÓN DE LA CAPA = k·gap, EJE A EJE, SIEMPRE (con o sin anidar).
@@ -910,7 +1346,7 @@
       // δ de DIMS del anidado = k·φ_propio (holgura lateral contra el fierro de la
       // capa de afuera). En las CERRADAS manda el campo Sep (anillos concéntricos
       // separados k·gap), y por eso viaja aparte en opts.sep.
-      var an = (c > 0 && (anidaMarco || anidaFig))
+      var an = (c > 0 && (anidaSeccion || anidaFig))
         ? _fp().anidarFigura(base.figura, base.dims, c * base.diam, base.rol, { sep: offPos })
         : null;
       var usaAn = !!(an && an.criterio !== 'recta');
@@ -936,10 +1372,19 @@
           continue;
         }
       }
-      // La capa entra hacia el núcleo por la NORMAL de su cara (Y en sup/inf,
-      // Z en lateral). Una figura CERRADA no usa esta coordenada: la posiciona su
-      // inset de marco (anillo concéntrico), que ya vale k·gap.
-      var coordCara = mc.ancla + mc.sentido * offPos;
+      // La capa de un LONGITUDINAL entra hacia el núcleo por la NORMAL de su cara
+      // (Y en sup/inf, Z en lateral): ahí el k·gap ES la posición.
+      //
+      // UNA PIEZA DE SECCIÓN NO SE MUEVE POR LA NORMAL (defecto F1): su capa k es un
+      // anillo concéntrico y su k·gap ya viajó al INSET del marco (arriba). Sumarlo
+      // TAMBIÉN acá es doble conteo — y era doble conteo silencioso mientras los
+      // únicos lectores lo ignoraban (_estriboPerimetral y _traba derivan su pose
+      // del marco): la cadena de sección lo leyó —como debía, es la coordenada de su
+      // centro— y se fue trasladando gap a gap fuera del hormigón. Misma lección que
+      // N1: una coordenada FALSA no es inocua porque hoy nadie la mire.
+      // Con `anidar:false` la pieza de sección tampoco se mueve — sus capas quedan
+      // superpuestas, exactamente lo que ya hacía el estribo en ese caso.
+      var coordCara = mc.ancla + mc.sentido * (seccion ? 0 : offPos);
       for (var i = 0; i < nBarras; i++) {
         // TECHO de barras del componente (capas × barras_capa). Acá no hay @:
         // el aviso sale sin cifra (el mismo texto, sin el "(x cm)").
@@ -1020,8 +1465,9 @@
     //   · CERRADA (estribo) → por default: anillos concéntricos separados
     //     k·sep_capas (cfg.anidar === false lo desactiva);
     //   · ABIERTA con patas → OPT-IN (cfg.anidar === true): ajusta SOLO dims.
-    var anidaCerr = (base.rol === 'estribo') && (!cfg || cfg.anidar !== false);
-    var anidaAb = (cfg && cfg.anidar === true) && (base.rol !== 'estribo') &&
+    var marcoA = _dibujaMarcoCerrado(base);          // (fix 305A: manda el DIBUJO)
+    var anidaCerr = marcoA && (!cfg || cfg.anidar !== false);
+    var anidaAb = (cfg && cfg.anidar === true) && !marcoA &&
       ((base.dims && Number(base.dims.A) > 0) || (base.dims && Number(base.dims.C) > 0));
     // SENTIDO del apilado: si las capas entran por la NORMAL de la cara del
     // longitudinal (p.ej. las 2 cortinas de un muro, eje_capas 'z' con la barra
@@ -1479,7 +1925,16 @@
     // las dos). Sólo se paga en componentes reorientados.
     var ref = _despachar(comp, _baseDeComponente(comp, host), dist, host);
     _permutarPlacements(placements, P, orientacionPieza(comp));
-    _restituirCentroVolteo(placements, ref, comp, host);
+    // EJE DE ANCLAJE: el de la NORMAL de la cara, y SÓLO cuando la pieza se apoya
+    // de verdad contra una cara (rol cabezal: su coordenada en ese eje la DERIVA
+    // _marcoCara del recubrimiento + las pilas). Ahí la posición no es un dato
+    // libre que haya que conservar al girar: es el anclaje, y restituirlo al centro
+    // lo destruía — un cabezal de borde (cara 'extremo') salía pegado al testero y
+    // la restitución lo devolvía al medio del elemento. Estribo/traba NO tienen eje
+    // de anclaje (encuadran el marco de núcleo, no una cara), así que para ellos la
+    // restitución sigue exactamente como estaba.
+    var ejeAncla = (base.rol === 'cabezal') ? derivarPose(poseDe(comp)).N.eje : null;
+    _restituirCentroVolteo(placements, ref, comp, host, ejeAncla);
     return _aplicarPostTransform(placements, comp, host);
   }
 
@@ -1509,7 +1964,7 @@
   // restituidos: los otros quedan exactamente como los dejó la permutación.
   var UMBRAL_PUNTUAL = 0.30;
 
-  function _restituirCentroVolteo(placements, ref, comp, host) {
+  function _restituirCentroVolteo(placements, ref, comp, host, ejeAncla) {
     if (!placements || !placements.length || !ref || !ref.length || !host) return placements;
     var bb = _bboxLista(placements.map(function (p) { return p.puntos; }));
     var bbRef = _bboxLista(ref.map(function (p) { return p.puntos; }));
@@ -1518,6 +1973,7 @@
     var d = { x: 0, y: 0, z: 0 }, restituye = false;
     ['x', 'y', 'z'].forEach(function (e) {
       if (!isFinite(dimHost[e]) || dimHost[e] <= 0) return;
+      if (e === ejeAncla) return;                                           // se ANCLA (ver expandirComponente)
       if ((bb.max[e] - bb.min[e]) >= UMBRAL_PUNTUAL * dimHost[e]) return;   // se EXTIENDE
       d[e] = bbRef.c[e] - bb.c[e];
       if (d[e]) restituye = true;
@@ -1583,6 +2039,57 @@
     var fpD = _fp();
     var ganchoAuto = (fpD && fpD.extGancho) ? fpD.extGancho(Number(comp.diam) / 10)
       : Math.max(6 * Number(comp.diam) / 10, 7.5);
+    // EL 'AUTO' DE UNA PIEZA DE SECCIÓN LO DECIDE EL TRAZO, NO LA LETRA.
+    // A/C = ancho, B/D = alto es la lectura del RECTÁNGULO de 4 lados y vale para
+    // las figuras que dibuja `_estriboPerimetral`. Para las que se trazan como
+    // CADENA (305A de 5 tramos, 104B con quiebres de 45°) la letra no dice nada:
+    // `ejesCadenaSeccion` devuelve, tramo por tramo, si corre en el ANCHO ('u'),
+    // en el ALTO ('v') o en diagonal ('d' → pata, extensión de gancho). Es el
+    // MISMO trazo que dibuja figura_puntos._cadenaSeccion — medir y dibujar no
+    // pueden leer dos cosas distintas (hallazgo D1 del verificador: la 305A se
+    // medía contra el alto y se dibujaba contra el ancho, 11 cm fuera del
+    // hormigón). null = no es cadena de sección → sigue la regla por letra.
+    var ejesSec = (fpD && fpD.ejesCadenaSeccion &&
+      (comp._rol === 'estribo' || comp._rol === 'traba'))
+      ? fpD.ejesCadenaSeccion(comp.figura, comp._rol) : null;
+    // Y el valor de ese 'auto' RESERVA los quiebres, igual que el auto-largo del
+    // longitudinal reserva los sobres de las puntas (fpD.sobresCadena).
+    var autoSec = null;
+    if (ejesSec) {
+      var baseSec = {};
+      Object.keys(g).forEach(function (k) {
+        var d = g[k];
+        if (d && d.modo === 'fija') baseSec[k] = Number(d.valor);
+        else if (ejesSec[k] === 'd') baseSec[k] = ganchoAuto;   // diagonal = pata
+      });
+      // …CONTRA EL MARCO DE NÚCLEO, NO CONTRA LA LUZ LIBRE (defecto F2).
+      // El recubrimiento se mide a la CARA del fierro: por eso el eje de una pieza
+      // de sección va a recub + φ/2, que es exactamente lo que hace el estribo
+      // (figura_puntos._marcoNucleo descuenta φ/2 en las tres fronteras) y lo que el
+      // usuario validó cuando se calibró el estribo. La cadena de sección resolvía
+      // su 'auto' contra la medida LIBRE (anchoUtil × altoUtil) y después se DIBUJA
+      // como EJE: su cara quedaba φ/2 metida en el recubrimiento y dos piezas de
+      // sección vecinas daban recubrimientos distintos — medido en la viga
+      // 600×60×30 (4/4/3): φ8 cadena 3.60/2.60 vs estribo 4.00/3.00; φ32 cadena
+      // 2.40/1.40 vs estribo 4.00/3.00.
+      // El marco de núcleo eje-a-eje es (anchoUtil − φ) × (altoUtil − φ): la MISMA
+      // cuenta que _marcoNucleo (2·w2 y ySup−yInf), leída desde acá. Medir y dibujar
+      // siguen siendo lo mismo — el 'auto' resuelve el EJE y el eje es lo que se
+      // traza —, y ahora las dos piezas de sección tienen un solo recubrimiento.
+      var phiSec = Number(comp.diam) / 10 || 0;
+      autoSec = fpD.autosCadenaSeccion(comp.figura, baseSec, ejesSec,
+        { u: mk.anchoUtil - phiSec, v: mk.altoUtil - phiSec });
+    }
+    function autoDeLado(k) {
+      if (ejesSec) {
+        var e = ejesSec[k];
+        if (e === 'u') return autoSec.u;
+        if (e === 'v') return autoSec.v;
+        if (e === 'd') return ganchoAuto;
+      }
+      if (comp._rol === 'estribo') return (k === 'A' || k === 'C') ? mk.anchoUtil : mk.altoUtil;
+      return mk.altoUtil;
+    }
     // DOS PASADAS: el longitudinal se resuelve AL FINAL porque su reserva (los
     // SOBRES de las puntas inclinadas) depende de las dims de los DEMÁS lados
     // ya resueltos — en una sola pasada la B se calculaba antes que la C y la
@@ -1594,10 +2101,8 @@
       // AUTO: deriva según rol + letra, contra el marco útil del NIVEL.
       if (comp._rol === 'cabezal') {
         dims[k] = ganchoAuto;
-      } else if (comp._rol === 'estribo') {
-        dims[k] = (k === 'A' || k === 'C') ? mk.anchoUtil : mk.altoUtil;
       } else {
-        dims[k] = mk.altoUtil;
+        dims[k] = autoDeLado(k);
       }
     });
     if (ladoLong != null && g[ladoLong] && g[ladoLong].modo !== 'fija' && dims[ladoLong] == null) {
@@ -1611,10 +2116,8 @@
         var fpS = _fp();
         var sob = (fpS && fpS.sobresCadena) ? fpS.sobresCadena(comp.figura, dims, ladoLong) : { ini: 0, fin: 0 };
         dims[ladoLong] = mk.largoUtil - (sob.ini || 0) - (sob.fin || 0);
-      } else if (comp._rol === 'estribo') {
-        dims[ladoLong] = (ladoLong === 'A' || ladoLong === 'C') ? mk.anchoUtil : mk.altoUtil;
       } else {
-        dims[ladoLong] = mk.altoUtil;
+        dims[ladoLong] = autoDeLado(ladoLong);
       }
     }
     // -------------------------------------------------------------------------
@@ -1677,15 +2180,22 @@
     return dims;
   }
 
-  // Lado LONGITUDINAL de una figura: el que corre a lo largo del eje de
-  // colocación. Sale del CATÁLOGO: si la figura declara un lado 'B' ése es el
-  // tramo largo (102/103/104…); si no (figuras de un solo parcial, 101x) es su
-  // único lado. Fuente única del empalme y del medio-diámetro contra fierro.
+  // LADO DOMINANTE / LONGITUDINAL de una figura: el que corre a lo largo del eje de
+  // colocación, o sea el que el 'auto' estira contra el hormigón y el que recibe el
+  // EMPALME. Los demás son patas/retornos que cuelgan de él.
+  //
+  // CASCADA DETERMINISTA (TANDA P · decisión del usuario) — la resuelve
+  // figura_puntos.ladoDominanteFigura, que es fuente ÚNICA para el motor, el
+  // trazador de cadenas y la ficha del componente:
+  //   1º spec.lado_dominante del catálogo (lo poblará el Diseñador de figuras)
+  //   2º 'B' si la figura declara ese parcial
+  //   3º el primer parcial
+  // El "lado más largo MEDIDO" DESAPARECE como criterio (era lo que usaban las
+  // cadenas): dependía de las dims del momento, así que editar una pata podía
+  // mover en silencio la dim que se estira y la que se empalma.
   function _ladoLongitudinal(figura, dims) {
-    // CADENAS (trazador genérico): lo decide el que la traza, para que la dim que
-    // se estira sea la MISMA que el dibujo pone a lo largo de la pieza — el lado
-    // de mayor dimensión. Contrato de 3 valores (ver figura_puntos):
-    //   undefined = no es cadena → sigue la regla histórica de abajo;
+    // CADENAS (trazador genérico): contrato de 3 valores (ver figura_puntos):
+    //   undefined = no es cadena → sigue la cascada de abajo;
     //   null      = cadena CERRADA → no hay lado que estirar (como el estribo):
     //               ni auto-largo ni empalme (dims[null] no existe y los dos
     //               bloques que la usan preguntan por != null).
@@ -1693,6 +2203,10 @@
     if (fpL && fpL.ladoLongitudinalCadena) {
       var rL = fpL.ladoLongitudinalCadena(figura, dims);
       if (rL !== undefined) return rL;
+    }
+    if (fpL && fpL.ladoDominanteFigura) {
+      var rD = fpL.ladoDominanteFigura(figura);
+      if (rD) return rD;
     }
     var cat = _cat();
     var spec = cat ? cat.get(figura) : null;
@@ -1703,11 +2217,27 @@
     return (f.indexOf('101') === 0) ? 'A' : (dims && dims.B != null ? 'B' : 'A');
   }
 
+  // LADO DOMINANTE de un componente (o de un código de figura suelto) — lo que la
+  // ficha del Template Editor MARCA para que se vea cuál dim se estira al girar la
+  // pieza. Devuelve la letra, o null si la figura no tiene lado que estirar (cadena
+  // CERRADA) o no está en el catálogo.
+  function ladoDominante(comp) {
+    if (!comp) return null;
+    if (typeof comp === 'string') return _ladoLongitudinal(comp, null);
+    return _ladoLongitudinal(comp.figura, comp.dims);
+  }
+
   // opts.recubExtremo: recubrimiento de las caras que cierran el eje LONGITUDINAL
   // local. Sin opts vale el recub vertical (comportamiento histórico); con la pieza
   // VOLTEADA el eje longitudinal local es la Z real, así que su recub es el lateral.
   function _baseDeComponente(comp, host, opts) {
     comp._rol = comp._rol || _rolDeTipologia(comp.tipologia, comp.cara);
+    // POSE → cara/lado EN EL MARCO LOCAL. Es el ÚNICO punto donde la pose entra al
+    // resto del motor: de acá para abajo todo sigue siendo exactamente lo que era
+    // (marco de cara, pilas, plano de trabajo), sólo que la cara local ya no se lee
+    // cruda del componente sino que se DERIVA de la pose (que para una receta vieja
+    // devuelve el mismo valor que tenía el campo).
+    var pz = derivarPose(poseDe(comp));
     var rSup = _recubDeCara(host, 'sup');
     var rInf = _recubDeCara(host, 'inf');
     var rLat = _recubDeCara(host, 'lat');
@@ -1716,7 +2246,7 @@
     // mide contra recub_lat, no contra el vertical. Estribo/traba declaran cara
     // 'lateral' por convención de la receta pero encuadran el marco entero (y
     // reciben recubSup/recubInf/recubLat por separado): para ellos no cambia nada.
-    var caraAnc = _caraAncla(comp.cara);
+    var caraAnc = _caraAncla(pz.caraLocal);
     var recub = (ovr != null) ? ovr
       : ((comp._rol === 'cabezal' && caraAnc === 'lat') ? rLat
         : (caraAnc === 'inf' ? rInf : rSup));
@@ -1752,7 +2282,11 @@
       // _avisar desde los distribuidores; expandirComponente lo pasa al comp.
       avisos: [],
       anchorBase: {
-        cara: comp.cara, recub: recub,
+        cara: pz.caraLocal, recub: recub,
+        // ESPEJO de la pose: lo consume figura_puntos invirtiendo el eje U del
+        // plano de trabajo de la figura (ver _planoTrabajo). Sólo viaja cuando es
+        // true → el anchor de una receta sin espejo queda idéntico al de siempre.
+        espejo: pz.pose.espejo || undefined,
         // El marco de estribo/traba abarca las DOS caras verticales, así que
         // necesita el recub de CADA una: usar el de la cara del anchor arriba Y
         // abajo dibujaba la pieza fuera del recub inferior cuando recub_sup ≠
@@ -1778,8 +2312,13 @@
     }
     // Un longitudinal vive PEGADO A SU CARA y, por defecto, al centro del reparto
     // de esa cara. Las dos coordenadas salen del MARCO DE CARA (fuente única, vale
-    // igual para sup/inf y para la cara CORTINA lateral). Estribo/traba derivan su
-    // pose del marco de núcleo (no leen anchor.y/z).
+    // igual para sup/inf y para la cara CORTINA lateral).
+    // Una pieza de SECCIÓN no se pega a ninguna cara: su pose natural es el CENTRO
+    // de su marco de núcleo, y por eso el anchorBase no le escribe y/z — sin
+    // coordenada, cada constructor de sección se centra en su marco
+    // (figura_puntos._estriboPerimetral / _traba / _cadenaSeccion). Lo que sí le
+    // escriben los distribuidores es la coordenada del REPARTO, y ésa la respetan
+    // los tres tal cual: son coordenadas del host, nunca desplazamientos.
     if (base.rol === 'cabezal') {
       // LADO de la cara lateral (z+ / z−) = DATO PROPIO del componente (`comp.lado`,
       // 1 | −1, default 1). Sólo pinta en cara lateral; las patas se espejan solas
@@ -1791,7 +2330,9 @@
       // z = 0 arrastrando la barra SALTABA 2·zHi (22.4 cm en una viga de 30 con
       // recub 3 y φ16) porque el ancla se iba al otro lado a mitad del gesto.
       // Ahora pos_hint es TRASLACIÓN PURA y continua: no participa en la elección.
-      base.ladoCara = (Number(comp.lado) < 0) ? -1 : 1;
+      // TANDA P: el lado sale de la POSE (pose.lado → signo de la normal), que para
+      // una receta vieja es exactamente `comp.lado`.
+      base.ladoCara = pz.ladoLocal;
       var mc = _marcoCara(base, host);
       base.anchorBase[mc.eje] = mc.ancla;
       base.anchorBase[mc.ejeReparto] = _posReparto(mc, 0, 1);
@@ -1929,6 +2470,23 @@
     ORIENTACIONES: Object.keys(ORIENTACIONES),
     ejeDistribucion: ejeDistribucion,
     ejeCapas: ejeCapas,
+    // -------------------------------------------------------------------------
+    // POSE (TANDA P) — modelo ÚNICO de orientación. La UI (Template Editor) opera
+    // SOBRE ESTO: lee la pose de un componente, la gira con rotarPose90 y la
+    // escribe; caras/pilas/reparto/dims se re-derivan solos.
+    // -------------------------------------------------------------------------
+    CARAS_POSE: CARAS_POSE,
+    EJES_MUNDO: EJES_MUNDO,
+    EJE_DE_CARA: EJE_DE_CARA,
+    rumbosDeCara: rumbosDeCara,        // los 2 rumbos posibles de una cara (⊥ N)
+    normalizarPose: normalizarPose,    // pose canónica (cara/lado/rumbo/espejo)
+    derivarPose: derivarPose,          // → { N, L, B, P, caraLocal, ladoLocal, orientacion }
+    poseDe: poseDe,                    // pose EFECTIVA de un comp (pose > campos viejos)
+    rotarPose90: rotarPose90,          // giro de 90° en un eje del MUNDO (cerrado en las 24)
+    POSES_DEFAULT: POSES_DEFAULT,      // tabla de DATOS elemento × tipología
+    poseDefault: poseDefault,
+    // Lado que se ESTIRA/ancla (cascada catálogo → 'B' → 1er parcial).
+    ladoDominante: ladoDominante,
     rolDeTipologia: _rolDeTipologia,   // jerarquía: generar calcula host.jer_phi
     // JERARQUÍA 1-BASED ('no' | 1..n) — generar.js arma host.jer_phi con esto.
     nivelJerarquia: nivelJerarquia,

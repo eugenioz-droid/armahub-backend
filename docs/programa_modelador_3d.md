@@ -1273,6 +1273,25 @@ rotación deg que no cabe · radios fijos al anidar (codos interpenetrados) · g
 "tomar contorno" · homologación visual con el enfierrador (toggle hormigón, vista iso, órbita
 por eje, temas).
 
+### TANDA P — MODELO DE POSE (EJECUTADA 13-ago, entre Tanda 3 y Tanda 4)
+pose = {cara: sup|inf|lateral|extremo, lado ±, rumbo, espejo} = las 24 orientaciones de una caja;
+UNIFICA cara/lado/plano_pieza.orientacion/volteado (que se derivan y quedan compat byte-idéntica).
+`espejo` ≡ signo del longitudinal L (piezas planas: reflejo = media vuelta → un solo bit cierra el
+grupo sin campo nuevo en la receta). rotarPose90(pose, ejeVista) = giro cerrado en las 24 (tecla R
+gira en el eje de profundidad de la vista activa). POSES_DEFAULT por elemento × tipología (dato).
+Convergió tras 5 rondas de verificación adversarial (D1-D5 → N1/N1b/N2 → F1/F2):
+- D1 cadena de sección transpuesta/fuera · D2 _poseDe sin traducción local→mundo · D3 espejo=doble
+  volteo · D4 rumbo sin signo (media vuelta inalcanzable) · D5 88/435 recetas viejas se mueven,
+  TODAS intencionales (pose/anclaje/ladoDominante; las "peores" eran dims fijas).
+- N1/N1b anchor absoluto sumado como delta + reparto sin descontar semiancho (raíz: _marcoCara
+  publicaba cara ancla, dato falso) · N2 solver de autos lineal 2-puntos → piecewise.
+- F1 capas de cadenas de sección TRASLADABAN en vez de anidar (inset concéntrico unificado con el
+  marco) · F2 cadena dibujada sin φ/2 (recub efectivo ahora = al del estribo).
+Verificación final: órbitas D4 72/72 de orden 4 (24 poses válidas × 3 ejes) · semilla byte-idéntica
+a HEAD (md5) · barrido 992 combinaciones (62 figs × ES/TRV × capas 1-4 × gap) = 0 fuera del
+hormigón · autos 62 figuras 0 rompen marco · suite 19/19. Guard: tests/test_pose.js (P1-P8 + 41
+figuras × linear/layered × 1-3 capas).
+
 ### DEF PENDIENTE (usuario) — convención de la columna `angulos` del catálogo (hallazgo Tanda F)
 El verificador demostró que la columna tiene DOS escritores con convenciones complementarias:
 - El SEED (63 figuras, a mano) la usa como GIRO/doblez (104D=[135,135] es el gancho sísmico 135°,

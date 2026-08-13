@@ -124,6 +124,13 @@
   #te_modal .te-radial button{border:none;background:#fff;padding:5px 9px;font-size:11px;color:var(--te-muted);cursor:pointer;font-weight:600}
   #te_modal .te-radial button+button{border-left:1px solid var(--te-line)}
   #te_modal .te-radial button.on{background:var(--te-azul-b);color:var(--te-azul)}
+  /* LADO DOMINANTE de la figura (TANDA P): la letra del parcial que se estira/ancla
+     contra el elemento va DESTACADA en la lista de dims (el resto son patas que
+     cuelgan de él). Tooltip: "lado dominante: se estira/ancla". */
+  #te_modal .te-row label.te-dim-dom{color:var(--te-azul);font-weight:800;
+    border-bottom:2px solid var(--te-azul);width:fit-content;cursor:help}
+  /* INDICADOR COMPACTO DE POSE ("cara sup · corre en largo (Y) · espejada"). */
+  #te_modal .te-posetxt{font-size:10.5px;color:var(--te-muted);font-weight:600;letter-spacing:.1px}
   #te_modal .te-modebox{border:1px solid var(--te-line);border-radius:8px;padding:8px 9px;background:var(--te-panel2);margin-bottom:8px}
   #te_modal .te-modebox .te-mh{font-size:10.5px;font-weight:700;color:var(--te-muted);margin-bottom:6px;display:flex;align-items:center;gap:6px}
   #te_modal .te-chip{font-size:9.5px;color:var(--te-chip-ink);background:var(--te-chip);border:1px solid var(--te-chip-b);border-radius:9px;padding:1px 6px;font-weight:600}
@@ -259,11 +266,13 @@
      color lo pone JS según la tipología activa; aquí el grosor y el glow. */
   #te_modal .te-face-hi{fill:none;stroke-width:2.4;stroke-linecap:round;opacity:.8;pointer-events:none;
     filter:drop-shadow(0 0 3px rgba(139,195,74,.55))}
-  /* BOTÓN CONTEXTUAL DE ORIENTACIÓN (R) — flota sobre la pieza SELECCIONADA en los
-     cuadrantes y CICLA acostada → volteada → de pie. Discreto pero descubrible:
-     aparece solo con selección, crece al hover, tooltip nativo con el estado.
-     Posicionado por JS (_posicionarFlipBtn) y pintado por _pintarFlipBtn: la clase
-     .flipped marca 'volteada' y .depie marca 'de pie'. */
+  /* BOTÓN CONTEXTUAL DE GIRO (R) — flota sobre la pieza SELECCIONADA en los
+     cuadrantes y la gira 90° EN LA VISTA ACTIVA (TANDA P · rotar-en-vista; ya no
+     cicla orientaciones: una sola semántica, la misma que la tecla R). Discreto pero
+     descubrible: aparece solo con selección, crece al hover, tooltip nativo con la
+     pose actual. Posicionado por JS (_posicionarFlipBtn) y pintado por
+     _pintarFlipBtn, que muestra el RUMBO de la pieza: .flipped = corre hacia el
+     fondo (⊗) · .depie = corre en vertical (↕) · .espejo = pose espejada. */
   #te_modal #te_flipBtn{position:absolute;z-index:6;display:none;align-items:center;justify-content:center;
     width:30px;height:30px;border-radius:50%;border:1.5px solid var(--te-acero-d);
     background:#fff;color:var(--te-acero-d);cursor:pointer;padding:0;
@@ -276,6 +285,8 @@
   #te_modal #te_flipBtn.flipped:hover{background:var(--te-azul);color:#fff}
   #te_modal #te_flipBtn.depie{background:#fff3e0;color:var(--te-es);border-color:var(--te-es)}
   #te_modal #te_flipBtn.depie:hover{background:var(--te-es);color:#fff}
+  /* Pose ESPEJADA: mismo color, borde punteado (se lee como "reflejada"). */
+  #te_modal #te_flipBtn.espejo{border-style:dashed}
   /* NODOS de esquina del hormigón (arrastrables). */
   #te_modal .te-node{fill:#fff;stroke:#7d8da0;stroke-width:1.1;cursor:move}
   #te_modal .te-node:hover{fill:#2f80ed;stroke:#2f80ed}
@@ -506,7 +517,11 @@
         <div class="te-vista" data-plano="seccion">
           <div class="te-vtitle">SECCIÓN · XZ</div>
           <div class="te-vgizmo"></div>
-          <div class="te-vhint">longitudinales = puntos · estribo = recorrido</div>
+          <!-- AYUDA POR PANTALLA — se mantiene (decisión del usuario) con la semántica
+               NUEVA del giro: R gira la pieza 90° EN ESTA VISTA (ya no cicla
+               orientaciones), y el borde clicado elige la CARA y su LADO al colocar
+               (el espejo NO: es un control explícito de la ficha — ver D3). -->
+          <div class="te-vhint">longitudinales = puntos · R = girar 90° en esta vista</div>
           <!-- render ORTOGRÁFICO del 3D (misma escena/calidad). El SVG queda encima
                como overlay TRANSPARENTE solo para la interacción (ghost/handles/cotas). -->
           <canvas class="te-vcanvas" data-plano="seccion"></canvas>
@@ -533,7 +548,7 @@
         <div class="te-vista" data-plano="largo">
           <div class="te-vtitle">A LO LARGO · YZ</div>
           <div class="te-vgizmo"></div>
-          <div class="te-vhint">cabezales = líneas · estribos = trazos verticales</div>
+          <div class="te-vhint">clic en un borde = cara y lado · R = girar 90° en esta vista</div>
           <canvas class="te-vcanvas" data-plano="largo"></canvas>
           <svg id="te_svgLargo" class="te-vsvg" viewBox="0 0 620 300" preserveAspectRatio="xMidYMid meet"></svg>
           <button class="te-vreset" data-plano="largo" title="Centrar vista">⟳</button>
@@ -550,6 +565,7 @@
         <div class="te-vista" data-plano="planta">
           <div class="te-vtitle">PLANTA · YX</div>
           <div class="te-vgizmo"></div>
+          <div class="te-vhint">shift+arrastre = pan · R = girar 90° en esta vista</div>
           <canvas class="te-vcanvas" data-plano="planta"></canvas>
           <svg id="te_svgPlanta" class="te-vsvg" viewBox="0 0 620 260" preserveAspectRatio="xMidYMid meet"></svg>
           <button class="te-vreset" data-plano="planta" title="Centrar vista">⟳</button>
@@ -566,7 +582,7 @@
           <div class="te-vtitle">3D · en vivo</div>
           <!-- El gizmo 3D (triad de ejes que sigue a la cámara) lo pinta el RENDERER en la
                esquina inf-izq de este cuadrante (viewport propio, ver _renderGizmo3D). -->
-          <div class="te-vhint">arrastra = rotar · motor del modelador</div>
+          <div class="te-vhint">arrastra = rotar · ctrl+arrastre = orbitar la selección · medio/der = pan</div>
           <!-- canvas real (Three.js on-demand). Si no hay WebGL, se muestra el fallback SVG. -->
           <canvas id="te_cv" style="display:none;"></canvas>
           <!-- Placeholder SVG (visible hasta que carga Three.js; también fallback sin WebGL) -->
@@ -591,12 +607,14 @@
           </div>
         </div>
 
-        <!-- Botón contextual de ORIENTACIÓN DE LA PIEZA (R): flota sobre la pieza
-             seleccionada y CICLA acostada → volteada → de pie. El icono y el tooltip
-             muestran el estado actual; los pinta _pintarFlipBtn (template_editor.js),
-             que también posiciona/oculta el botón (_posicionarFlipBtn). -->
-        <button id="te_flipBtn" title="Orientación: acostada — clic: volteada (R)"
-                aria-label="Orientación de la pieza (R)">↔</button>
+        <!-- Botón contextual de GIRO EN LA VISTA (R): flota sobre la pieza
+             seleccionada y la gira 90° alrededor del eje de profundidad de la vista
+             ACTIVA (lo que el usuario está viendo). El icono muestra el RUMBO actual
+             (↔ a lo largo · ⊗ hacia el fondo · ↕ en vertical) y el tooltip la pose
+             completa; los pinta _pintarFlipBtn (template_editor.js), que también
+             posiciona/oculta el botón (_posicionarFlipBtn). -->
+        <button id="te_flipBtn" title="Girar 90° en la vista activa (R)"
+                aria-label="Girar la pieza 90° en la vista activa (R)">↔</button>
       </div>
 
     </div>
