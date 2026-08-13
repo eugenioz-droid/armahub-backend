@@ -304,9 +304,14 @@ def duplicar_lote(lote_id: int, body: LoteDuplicar, user=Depends(get_current_use
                 raise HTTPException(status_code=404, detail="Lote origen no encontrado.")
             id_proyecto, estado_o, snap = r[0], r[1], r[2]
             sector_o, estructura_o = r[3], r[4]
+            # nombre_plano/origen/template_instancia_id TAMBIÉN viajan (hallazgo de
+            # auditoría: el duplicado los perdía → columna PLANO del export en
+            # blanco y trazabilidad de template cortada — "algunas cosas no
+            # quedaron bien guardadas").
             campos = ["sector", "piso", "marca", "figura", "diam", "cant", "mult",
                       "dim_a", "dim_b", "dim_c", "dim_d", "dim_e", "dim_f", "dim_g", "dim_h", "dim_i",
-                      "ang1", "ang2", "ang3", "ang4", "radio", "suf_tipo"]
+                      "ang1", "ang2", "ang3", "ang4", "radio", "suf_tipo",
+                      "nombre_plano", "origen", "template_instancia_id"]
             if estado_o == "eliminado":
                 import json as _json
                 origen = snap if isinstance(snap, list) else (_json.loads(snap) if snap else [])
@@ -361,22 +366,31 @@ def duplicar_lote(lote_id: int, body: LoteDuplicar, user=Depends(get_current_use
                 peso_t = (peso_u * cant_total) if (peso_u is not None) else None
                 idu = _id_unico_manual()
                 cod_prod = cod_prod_de_diam(b.get("diam"))
+                # nombre_plano viaja (antes se perdía → columna PLANO del export en
+                # blanco); origen se HEREDA (antes 'manual' fijo: una barra de
+                # template duplicada perdía su clase) y template_instancia_id
+                # conserva la trazabilidad de la receta.
                 cur.execute(
                     """INSERT INTO barras
                        (id_unico, id_proyecto, sector, piso, ciclo, eje, diam, largo_total,
                         mult, cant, cant_total, peso_unitario, peso_total, marca, figura, cod_proyecto,
                         dim_a, dim_b, dim_c, dim_d, dim_e, dim_f, dim_g, dim_h, dim_i,
-                        ang1, ang2, ang3, ang4, radio, suf_tipo,
-                        origen, import_id, lote_id, estado, fecha_carga, creado_por, editado_por, editado_fecha)
+                        ang1, ang2, ang3, ang4, radio, suf_tipo, nombre_plano,
+                        origen, template_instancia_id,
+                        import_id, lote_id, estado, fecha_carga, creado_por, editado_por, editado_fecha)
                        VALUES (%s,%s,%s,%s,%s,%s,%s,%s, %s,%s,%s,%s,%s,%s,%s,%s,
-                               %s,%s,%s,%s,%s,%s,%s,%s,%s, %s,%s,%s,%s,%s,%s,
-                               'manual', NULL, %s, 'borrador', %s, %s, %s, %s)""",
+                               %s,%s,%s,%s,%s,%s,%s,%s,%s, %s,%s,%s,%s,%s,%s,%s,
+                               %s, %s,
+                               NULL, %s, 'borrador', %s, %s, %s, %s)""",
                     (idu, id_proyecto, b.get("sector"), b.get("piso"), ciclo, eje, b.get("diam"), largo,
                      b.get("mult"), b.get("cant"), cant_total, peso_u, peso_t, b.get("marca"), b.get("figura"), cod_prod,
                      b.get("dim_a"), b.get("dim_b"), b.get("dim_c"), b.get("dim_d"), b.get("dim_e"),
                      b.get("dim_f"), b.get("dim_g"), b.get("dim_h"), b.get("dim_i"),
                      b.get("ang1"), b.get("ang2"), b.get("ang3"), b.get("ang4"), b.get("radio"),
                      ((b.get("suf_tipo") or "").strip() or None),
+                     ((b.get("nombre_plano") or "").strip() or None),
+                     (b.get("origen") or "manual"),
+                     b.get("template_instancia_id"),
                      nuevo_id, now, email, email, now))   # creado_por = quien duplica
                 n += 1
             cur.execute("UPDATE lotes SET n_barras = %s WHERE id = %s", (n, nuevo_id))
@@ -667,9 +681,13 @@ def eliminar_lote(lote_id: int, user=Depends(get_current_user)):
             else:
                 # Snapshot del DETALLE completo de las barras (para poder VERLAS luego en solo-lectura).
                 # Mismos campos que ver_lote, así el front reconstruye la grilla igual.
+                # nombre_plano/origen/template_instancia_id también al snapshot: sin
+                # ellos, duplicar DESDE una lápida los perdía aunque el duplicado
+                # normal ya los copie (misma auditoría del incidente del export).
                 _snap_campos = ["id", "sector", "piso", "ciclo", "eje", "marca", "figura", "diam", "cant", "mult",
                                 "dim_a", "dim_b", "dim_c", "dim_d", "dim_e", "dim_f", "dim_g", "dim_h", "dim_i",
-                                "ang1", "ang2", "ang3", "ang4", "radio", "revisada", "suf_tipo"]
+                                "ang1", "ang2", "ang3", "ang4", "radio", "revisada", "suf_tipo",
+                                "nombre_plano", "origen", "template_instancia_id"]
                 cur.execute("SELECT " + ", ".join(_snap_campos) +
                             " FROM barras WHERE lote_id = %s ORDER BY id", (lote_id,))
                 snap_barras = [dict(zip(_snap_campos, row)) for row in cur.fetchall()]

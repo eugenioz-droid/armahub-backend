@@ -85,6 +85,11 @@ BARRAS_COLUMNS = [
     "peso_unitario","peso_total","version_mod","version_exp","fecha_carga",
     "origen","import_id",
     "template_instancia_id",  # trazabilidad enfierrador/TE (migración 104; sin esto el BM no la veía)
+    # cod_proyecto (PROD) y suf_tipo eran CAMPOS CIEGOS: la BD los tenía, el export
+    # los escribía, pero el Bar Manager no los recibía → la columna Suf salía
+    # siempre vacía y el PROD desalineado era invisible (incidente "diámetros
+    # diferentes"). Read-only en pantalla; el PROD se deriva del diámetro.
+    "cod_proyecto","suf_tipo",
     "marca","figura",
     "dim_a","dim_b","dim_c","dim_d","dim_e","dim_f","dim_g","dim_h","dim_i",
     "ang1","ang2","ang3","ang4","radio",
@@ -1589,6 +1594,28 @@ def _editar_barra_impl(barra_id: int, body: BarraUpdate, user):
                     sets.append(f"{f} = %s"); params.append(campos[f])
                     cambios.append(f"{f}: {barra[f]}→{campos[f]}")
 
+            # FUENTE ÚNICA DE VERDAD DEL DIÁMETRO (incidente "el export salió con
+            # diámetros diferentes"): cod_proyecto (PROD) ES el diámetro codificado
+            # (diametros.py) y el export lo escribe como columna independiente de
+            # Ømm. Este PATCH actualizaba diam y dejaba el PROD viejo → la planilla
+            # salía con Ømm=nuevo y PROD=código del diámetro anterior, y aSa Studio
+            # produce por el PROD. Igual que al crear/duplicar/importar: se DERIVA.
+            if "diam" in campos:
+                from .diametros import cod_prod_de_diam
+                nuevo_cod = cod_prod_de_diam(campos["diam"])
+                sets.append("cod_proyecto = %s"); params.append(nuevo_cod)
+                cambios.append(f"cod_proyecto: →{nuevo_cod or '(sin código)'}")
+
+            # COHERENCIA cant/mult → cant_total (el sync inverso ya existía abajo):
+            # editar cant o mult por API sin mandar cant_total dejaba cant×mult ≠
+            # cant_total y el peso_total viejo.
+            if "cant_total" not in campos and ("cant" in campos or "mult" in campos):
+                nuevo_ct = float(campos.get("cant", barra["cant"]) or 0) * float(campos.get("mult", barra["mult"]) or 1)
+                if nuevo_ct != barra["cant_total"]:
+                    sets.append("cant_total = %s"); params.append(nuevo_ct)
+                    cambios.append(f"cant_total: {barra['cant_total']}→{nuevo_ct}")
+                    cant_total = nuevo_ct
+
             # nombre_plano: texto libre editable (nombre del plano). Vacío → NULL.
             if "nombre_plano" in campos:
                 np_val = (campos["nombre_plano"] or "").strip()[:120] or None
@@ -1651,9 +1678,16 @@ def _editar_barra_impl(barra_id: int, body: BarraUpdate, user):
                         sets.append(f"{c} = %s"); params.append(val)
                         cambios.append(f"{c}: {barra[c]}→{val}")
 
-            # Recalcular peso si cambió diam, cant_total o el largo (por geometría).
-            if any(k in campos for k in ("diam", "cant_total")) or toca_geom:
+            # Recalcular peso si cambió diam, cant/mult/cant_total o el largo (por
+            # geometría). CON EL FACTOR DE PESO DE LA OBRA (incidente: aquí se usaba
+            # el peso teórico puro mientras crear/duplicar aplican
+            # teorico×(1+factor/100) → una barra corregida en el BM quedaba con
+            # peso de otra escala que sus hermanas y el export mezclaba fórmulas).
+            if any(k in campos for k in ("diam", "cant", "mult", "cant_total")) or toca_geom:
                 peso_unitario, _ = _calcular_peso(diam, largo)
+                if peso_unitario is not None:
+                    from .lotes import _factor_peso
+                    peso_unitario = peso_unitario * (1 + _factor_peso(cur, barra["id_proyecto"]) / 100.0)
                 peso_total = (peso_unitario * cant_total) if (peso_unitario is not None and cant_total is not None) else None
                 sets.append("peso_unitario = %s"); params.append(peso_unitario)
                 sets.append("peso_total = %s"); params.append(peso_total)
