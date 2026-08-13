@@ -121,10 +121,16 @@ const dib = CAT.dibujables();
 ok(dib.length + Object.keys(noDib).length === nSeed, 'toda figura queda clasificada (dibujable o excluida con motivo)');
 ok(Object.keys(noDib).every(c => !!noDib[c]), 'TODA excluida trae motivo escrito');
 ok(noDib['201A'] && /radio/.test(noDib['201A']), '201A excluida por radio (hélice/espiral)');
-ok(noDib['105A'] && /5 tramos/.test(noDib['105A']), '105A excluida: 5 tramos');
-ok(noDib['106A'] && /6 tramos/.test(noDib['106A']), '106A excluida: 6 tramos');
+// El TRAZADOR GENÉRICO DE CADENAS (12-ago) rescató a las de 5+ tramos: dejaron de
+// excluirse por nº de lados y ahora se trazan enteras (familia 'cadena'). El
+// criterio que queda es el RADIO, que sigue sin trazarse (y se dice por qué).
+ok(!noDib['105A'] && !noDib['106A'], '105A/106A YA NO se excluyen: las traza la cadena genérica');
+ok(FP.dibujabilidad('105A').familia === 'cadena' && FP.dibujabilidad('106A').familia === 'cadena',
+  'y su familia de dibujo es la cadena genérica');
+ok(Object.keys(noDib).length === 1, 'la única excluida del catálogo es la de radio (=' +
+  Object.keys(noDib).join(',') + ')');
 ok(!noDib['104D'] && !noDib['103B'] && !noDib['101A'], 'las de 1–4 lados NO se excluyen (101A/103B/104D)');
-ok(CAT.noDibujables('104D') === null && typeof CAT.noDibujables('105A') === 'string',
+ok(CAT.noDibujables('104D') === null && typeof CAT.noDibujables('201A') === 'string',
   'noDibujables(codigo) responde por UNA figura: null si se dibuja, motivo si no');
 ok(Object.keys(CAT.noDibujables()).length === Object.keys(noDib).length,
   'noDibujables() sin argumento sigue devolviendo el mapa completo');
@@ -219,15 +225,31 @@ ok(!sinKg, 'todas con kg > 0' + (sinKg ? ' — ' + sinKg : ''));
 ok(matriz.every(m => m.dims.length === m.lados), 'nº de casillas dim llenas = nº de parciales, figura por figura');
 ok(conAviso.length === 0, 'ninguna dibujable deja avisos' + (conAviso.length ? ' — ' + conAviso[0] : ''));
 
-// 106A: el editor NO la dibuja → NO genera barra (semántica corregida tras los
-// hallazgos D1/D2 del verificador de la Tanda 2: dejar pasar el payload de las
-// no-dibujables producía radio:null que el backend rechaza (201A) y kg fantasma
-// con dims auto (105A: 29.6 m / 46.7 kg que validar_geometria ACEPTABA). La
-// ficha de la UI promete "no se dibuja ni pesa hasta corregirla" — el motor
-// ahora cumple esa promesa. El ESPEJO de la figura sigue correcto (sección A:
-// 6 parciales, ang 45/45); habilitarla de verdad = darle familia de dibujo
-// (tanda de figuras avanzadas).
-console.log('\nC2 — 106A (no dibujable) NO genera barra y avisa:');
+// NO DIBUJABLE → NO genera barra (semántica corregida tras los hallazgos D1/D2
+// del verificador de la Tanda 2: dejar pasar el payload de las no-dibujables
+// producía radio:null que el backend rechaza y kg fantasma con dims auto — 29.6 m
+// y 46.7 kg que validar_geometria ACEPTABA). La ficha de la UI promete "no se
+// dibuja ni pesa hasta corregirla" y el motor cumple esa promesa.
+// El caso testigo es ahora 201A (radio): 105A/106A pasaron a dibujarse con el
+// trazador genérico de cadenas, así que ya no sirven de ejemplo de excluida.
+console.log('\nC2 — 201A (no dibujable: usa radio) NO genera barra y avisa:');
+const comp201 = {
+  comp_id: '201A', tipologia: 'CBS', figura: '201A', diam: 16, cara: 'sup', suf_tipo: '',
+  dims: {
+    B: { modo: 'auto' }, G: { modo: 'fija', valor: 30 }, H: { modo: 'fija', valor: 25 }
+  },
+  distribucion: { modo: 'layered', n_capas: 1, barras_capa: 2, gap: 0, sentido: 'nucleo' }
+};
+const out201 = G.generarViga({ tipo: 'viga', geometria: GEO, componentes: [comp201] }, CTX);
+ok(out201.barras.length === 0, '201A NO genera barra (=' + out201.barras.length + ')');
+ok(out201.resumen.kg === 0, '201A no pesa (=' + out201.resumen.kg + ' kg — nada de kg fantasma)');
+ok((out201.placements || []).every(pl => pl._sinPayload),
+  'sus placements van marcados _sinPayload (el 3D puede insinuarla, el despiece no)');
+ok((comp201._avisos || []).some(a => /no la soporta/.test(a) && /radio/.test(a)),
+  'y deja aviso claro con el motivo (=' + (comp201._avisos || [])[0] + ')');
+
+// 106A (6 lados) SÍ genera barra ahora: la cadena genérica la traza entera.
+console.log('\nC2b — 106A (rescatada por la cadena genérica) genera barra completa:');
 const comp106 = {
   comp_id: '106A', tipologia: 'CBS', figura: '106A', diam: 16, cara: 'sup', suf_tipo: '',
   dims: {
@@ -237,12 +259,13 @@ const comp106 = {
   distribucion: { modo: 'layered', n_capas: 1, barras_capa: 2, gap: 0, sentido: 'nucleo' }
 };
 const out106 = G.generarViga({ tipo: 'viga', geometria: GEO, componentes: [comp106] }, CTX);
-ok(out106.barras.length === 0, '106A NO genera barra (=' + out106.barras.length + ')');
-ok(out106.resumen.kg === 0, '106A no pesa (=' + out106.resumen.kg + ' kg — nada de kg fantasma)');
-ok((out106.placements || []).every(pl => pl._sinPayload),
-  'sus placements van marcados _sinPayload (el 3D puede insinuarla, el despiece no)');
-ok((comp106._avisos || []).some(a => /no la soporta/.test(a)),
-  'y deja aviso claro (=' + (comp106._avisos || [])[0] + ')');
+ok(out106.barras.length === 1 && out106.resumen.kg > 0,
+  '106A genera barra y pesa (=' + out106.resumen.kg + ' kg)');
+ok(out106.placements.every(pl => pl.puntos.length === 7),
+  'con sus 6 lados dibujados (7 puntos, =' + (out106.placements[0] || {}).puntos.length + ')');
+ok(!validarSlots(out106.barras[0]), '106A pasa validar_geometria: 6 dims + ang1/ang2' +
+  (validarSlots(out106.barras[0]) ? ' — ' + validarSlots(out106.barras[0]) : ''));
+ok(!(comp106._avisos && comp106._avisos.length), 'y sin avisos pendientes');
 
 // ---------------------------------------------------------------------------
 // D. FIGURA DESCONOCIDA → AVISO Y CERO PAYLOAD

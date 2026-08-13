@@ -55,6 +55,13 @@
     // Estribos / trabas de confinamiento → LINEAL
     ES: 'lineal', ESC: 'lineal', EC: 'lineal',
     TRV: 'lineal', TR: 'lineal', TC: 'lineal', TRC: 'lineal', TRL: 'lineal', TRF: 'lineal',
+    // MALLAS DE MURO (MH = Malla Horizontal, MV = Malla Vertical — los códigos
+    // REALES del catálogo, TIPOLOGIAS.MURO) → LINEAL, no 'arreglo'. Decisión
+    // explícita del usuario: una malla de muro se coloca como DISTRIBUCIÓN (una
+    // barra repetida @sep a lo largo de un rango), que es lo que el calculista
+    // dicta ("MH φ8 @20"); el 'arreglo' (rango × N capas) es otro caso de uso.
+    // Sin esta línea caían al fallback por rol → 'puntual' (una barra suelta).
+    MH: 'lineal', MV: 'lineal',
     // Mallas / trabas de muro → ARREGLO (rango + N capas)
     MA: 'arreglo', MALLA: 'arreglo', TM: 'arreglo', TRM: 'arreglo'
   };
@@ -1482,18 +1489,40 @@
     var fpD = _fp();
     var ganchoAuto = (fpD && fpD.extGancho) ? fpD.extGancho(Number(comp.diam) / 10)
       : Math.max(6 * Number(comp.diam) / 10, 7.5);
+    // DOS PASADAS: el longitudinal se resuelve AL FINAL porque su reserva (los
+    // SOBRES de las puntas inclinadas) depende de las dims de los DEMÁS lados
+    // ya resueltos — en una sola pasada la B se calculaba antes que la C y la
+    // reserva del extremo final salía con un largo placebo.
     Object.keys(g).forEach(function (k) {
       var d = g[k];
       if (d && d.modo === 'fija') { dims[k] = Number(d.valor); return; }
+      if (k === ladoLong) return;   // 2ª pasada
       // AUTO: deriva según rol + letra, contra el marco útil del NIVEL.
       if (comp._rol === 'cabezal') {
-        dims[k] = (k === ladoLong) ? mk.largoUtil : ganchoAuto;
+        dims[k] = ganchoAuto;
       } else if (comp._rol === 'estribo') {
         dims[k] = (k === 'A' || k === 'C') ? mk.anchoUtil : mk.altoUtil;
       } else {
         dims[k] = mk.altoUtil;
       }
     });
+    if (ladoLong != null && g[ladoLong] && g[ladoLong].modo !== 'fija' && dims[ladoLong] == null) {
+      if (comp._rol === 'cabezal') {
+        // El LONGITUDINAL de una CADENA reserva los SOBRES de sus extremos
+        // (proyección horizontal de las puntas inclinadas — hallazgo del
+        // verificador de la Tanda F: 19/36 cadenas con doblez de 45° salían del
+        // hormigón pata·cos45 − recub por lado). Si la reserva deja el largo
+        // ≤ 0, el valor va tal cual (dato honesto: la figura no cabe y se VE;
+        // el backend además la rechaza) — nada de clamps.
+        var fpS = _fp();
+        var sob = (fpS && fpS.sobresCadena) ? fpS.sobresCadena(comp.figura, dims, ladoLong) : { ini: 0, fin: 0 };
+        dims[ladoLong] = mk.largoUtil - (sob.ini || 0) - (sob.fin || 0);
+      } else if (comp._rol === 'estribo') {
+        dims[ladoLong] = (ladoLong === 'A' || ladoLong === 'C') ? mk.anchoUtil : mk.altoUtil;
+      } else {
+        dims[ladoLong] = mk.altoUtil;
+      }
+    }
     // -------------------------------------------------------------------------
     // MEDIO DIÁMETRO CONTRA FIERRO ("el corchete muerde el estribo")
     // -------------------------------------------------------------------------
@@ -1559,6 +1588,18 @@
   // tramo largo (102/103/104…); si no (figuras de un solo parcial, 101x) es su
   // único lado. Fuente única del empalme y del medio-diámetro contra fierro.
   function _ladoLongitudinal(figura, dims) {
+    // CADENAS (trazador genérico): lo decide el que la traza, para que la dim que
+    // se estira sea la MISMA que el dibujo pone a lo largo de la pieza — el lado
+    // de mayor dimensión. Contrato de 3 valores (ver figura_puntos):
+    //   undefined = no es cadena → sigue la regla histórica de abajo;
+    //   null      = cadena CERRADA → no hay lado que estirar (como el estribo):
+    //               ni auto-largo ni empalme (dims[null] no existe y los dos
+    //               bloques que la usan preguntan por != null).
+    var fpL = _fp();
+    if (fpL && fpL.ladoLongitudinalCadena) {
+      var rL = fpL.ladoLongitudinalCadena(figura, dims);
+      if (rL !== undefined) return rL;
+    }
     var cat = _cat();
     var spec = cat ? cat.get(figura) : null;
     if (spec && spec.parciales.length) {

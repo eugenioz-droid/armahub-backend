@@ -57,14 +57,56 @@
   // La regla se evalúa contra el catálogo VIGENTE (espejo estático o data fresca
   // del backend), así que una figura nueva se clasifica sola: no hay lista negra
   // escrita a mano que se pueda quedar vieja.
+  //
+  // TRAZADOR GENÉRICO DE CADENAS (12-ago) — QUINTA FORMA, ADITIVA. Lo que no entra
+  // en las cuatro de arriba YA NO se excluye si se puede describir como una CADENA
+  // de tramos rectos: `_cadenaGenerica` la traza en el MISMO plano de trabajo del
+  // cabezal (ver _planoTrabajo). Los cuatro constructores especializados NO se
+  // tocan: una 101x/102x/103x sigue saliendo del cabezal y un estribo del marco
+  // con sus arcos calibrados. El genérico entra SOLO donde antes no había dibujo
+  // fiel (5+ tramos, y las 4 lados que no son marco cerrado — la 104B del usuario,
+  // que se dibujaba como estribo siendo una cadena abierta con quiebres de 45°).
   var MAX_LADOS_DIBUJABLES = 4;
 
-  // ¿La figura es un PERÍMETRO CERRADO? Criterio del catálogo: 4 lados A–D y sin
-  // radio (la serie 104x completa). Es lo que dibuja _estriboPerimetral: un marco
-  // que cierra. Sin catálogo cargado cae al criterio histórico (prefijo '104').
+  // Ángulo con que el catálogo describe el GANCHO SÍSMICO (el doblez del estribo).
+  // Es el único ángulo compatible con un marco CERRADO: cualquier otro valor
+  // listado (45° = quiebre/pata inclinada) describe una cadena que NO cierra.
+  var ANG_GANCHO = 135;
+
+  // ¿La figura es un PERÍMETRO CERRADO (lo que dibuja _estriboPerimetral: un marco
+  // de 4 lados con sus dos ganchos)? Tres fuentes, en orden de autoridad:
+  //   1. GEOMETRÍA DIBUJADA en el diseñador (spec.geometria.puntos): manda el
+  //      dibujo — cierra si su polilínea vuelve al punto de partida. Es un dato
+  //      independiente de las dims, así que se puede consultar sin conocerlas.
+  //   2. CATÁLOGO: 4 lados A–D, sin radio, y con TODOS sus ángulos listados = 135
+  //      (ganchos) o ninguno (rectángulo puro). Ese es el marco que el constructor
+  //      de estribo sabe trazar: 104A/104D/104O/104P siguen entrando por acá.
+  //      Un 45° en la lista (104B/104C/104H…) NO es un marco: es una cadena
+  //      abierta con quiebres, y dibujarla como estribo era pintar una mentira.
+  //   3. Sin catálogo cargado: criterio histórico (prefijo '104').
   function _esPerimetro(spec, figura) {
     if (!spec) return (figura || '').toUpperCase().indexOf('104') === 0;
-    return !spec.radio && spec.parciales.length === MAX_LADOS_DIBUJABLES;
+    var geo = spec.geometria;
+    if (geo && geo.puntos && geo.puntos.length >= 3) return _puntosCierran(geo.puntos);
+    if (spec.radio) return false;
+    if (spec.parciales.length !== MAX_LADOS_DIBUJABLES) return false;
+    var A = spec.angulos || [];
+    for (var i = 0; i < A.length; i++) if (Number(A[i]) !== ANG_GANCHO) return false;
+    return true;
+  }
+
+  // ¿Una polilínea vuelve a su punto de partida? (tolerancia relativa al recorrido,
+  // así vale igual en cm que en px de la grilla del diseñador).
+  function _puntosCierran(pts) {
+    if (!pts || pts.length < 4) return false;   // menos de 3 lados no cierra contorno
+    var L = 0, i;
+    for (i = 1; i < pts.length; i++) {
+      L += Math.hypot(Number(pts[i].x) - Number(pts[i - 1].x), Number(pts[i].y) - Number(pts[i - 1].y));
+    }
+    if (!(L > 0)) return false;
+    var d = Math.hypot(Number(pts[pts.length - 1].x) - Number(pts[0].x),
+      Number(pts[pts.length - 1].y) - Number(pts[0].y));
+    return d <= Math.max(1e-9, 1e-6 * L);
   }
 
   // dibujabilidad(figura) → { dibujable, familia, lados, motivo }
@@ -86,15 +128,26 @@
       return { dibujable: false, familia: null, lados: 0,
         motivo: 'sin parciales en el catálogo: no hay lados que dibujar' };
     }
+    // FAMILIA POR DEFECTO (sin rol declarado). Las cuatro de siempre salen igual
+    // que antes; 'cadena' es la quinta, y es la que amplía la dibujabilidad.
+    var fam = familiaDeDibujo(f, null);
+    if (fam === 'cadena') {
+      // La cadena existe por construcción: familiaDeDibujo sólo devuelve 'cadena'
+      // cuando hay tramos (dibujados o derivados). Lo que sí queda por decidir es
+      // si esos tramos son TRAZABLES: un arco no lo es.
+      var tr = tramosDeFigura(f);
+      if (tr.arco) {
+        return { dibujable: false, familia: null, lados: n,
+          motivo: 'tiene tramos en ARCO: el trazador genérico sólo une tramos rectos' };
+      }
+      return { dibujable: true, familia: 'cadena', lados: n, motivo: null, fuente: tr.fuente };
+    }
     if (n > MAX_LADOS_DIBUJABLES) {
       return { dibujable: false, familia: null, lados: n,
         motivo: n + ' tramos: el editor traza hasta ' + MAX_LADOS_DIBUJABLES +
           ' (recta, L, U y marco cerrado)' };
     }
-    return {
-      dibujable: true, lados: n, motivo: null,
-      familia: (n === MAX_LADOS_DIBUJABLES) ? 'estribo' : (n === 1 ? 'recta' : 'cabezal')
-    };
+    return { dibujable: true, lados: n, motivo: null, familia: fam };
   }
 
   // Lista negra viva. DOS FORMAS, misma verdad (la UI usa las dos):
@@ -130,12 +183,30 @@
   //    de la viga sería peor que avisar).
   // 2) SIN rol declarado, lo dice la figura: perímetro de 4 lados → estribo;
   //    1 lado → recta; 2–3 lados → cabezal con patas (A y/o C).
+  // 3) 4+ lados que NO son MARCO CERRADO → 'cadena' (trazador genérico). Incluye
+  //    el caso con rol 'cabezal': una cadena SE TRAZA COMO LONGITUDINAL (vive en
+  //    el mismo plano de trabajo), sólo que con TODOS sus lados en vez de los 3
+  //    que traza el cabezal. Por eso el rol cabezal ya no fuerza el constructor de
+  //    3 lados sobre una 104B: antes dibujaba una U y avisaba "D no se traza";
+  //    ahora sale entera y el aviso desaparece porque ya no hay deuda.
+  //    EXCEPCIÓN DELIBERADA — el MARCO CERRADO DE 4 LADOS (104A/104D/104O/104P…)
+  //    NO pasa por el genérico ni siquiera con rol 'cabezal': ese marco ya tiene
+  //    constructor propio y calibrado, y con rol cabezal el comportamiento
+  //    histórico (traza 3 lados y AVISA del cuarto) se conserva tal cual. El
+  //    trazador genérico entra sólo donde hoy no hay dibujo fiel, no a rebarajar
+  //    lo que ya funciona.
   function familiaDeDibujo(figura, rol) {
     if (rol === 'estribo') return 'estribo';
     if (rol === 'traba') return 'traba';
     var f = (figura || '').toUpperCase();
-    if (!rol && _esPerimetro(_spec(f), f)) return 'estribo';
-    return _esRecta(f) ? 'recta' : 'cabezal';
+    var spec = _spec(f);
+    var n = spec ? spec.parciales.length : 0;
+    if (_esPerimetro(spec, f) && (!spec || n === MAX_LADOS_DIBUJABLES)) {
+      return rol ? 'cabezal' : 'estribo';
+    }
+    if (_esRecta(f)) return 'recta';
+    if (n >= MAX_LADOS_DIBUJABLES && tramosDeFigura(f)) return 'cadena';
+    return 'cabezal';
   }
 
   // ¿Qué EXTREMOS llevan pata (gancho)? Convención del catálogo: A = pata del
@@ -151,6 +222,321 @@
 
   // Extensión libre del gancho tras el doblez (norma aprox): 6φ, mínimo ~7.5 cm.
   function extGancho(diamCm) { return Math.max(6 * diamCm, 7.5); }
+
+  // ---------------------------------------------------------------------------
+  // PLANO DE TRABAJO DE LA PIEZA — FUENTE ÚNICA DEL ANCLAJE LONGITUDINAL
+  // ---------------------------------------------------------------------------
+  // (u, v) → 3D del host:
+  //   u = eje LONGITUDINAL del host (X).
+  //   v = NORMAL DE LA CARA hacia el NÚCLEO: Y en caras sup/inf, Z en cara lateral
+  //       (cortina), con el signo que publica reglas._marcoCara.
+  // Es EXACTAMENTE el mapeo que _cabezalLongitudinal tenía adentro — extraído sin
+  // cambiar un signo — para que el trazador genérico entre al MISMO plano con el
+  // MISMO anclaje. Consecuencia buscada: una cadena y un cabezal se posan igual, y
+  // toda la maquinaria de arriba (pilas por cara, capas, volteo/de_pie/spin,
+  // rangos, anidado) los trata igual sin enterarse de que hay un constructor nuevo.
+  function _planoTrabajo(host, anchor) {
+    var y = (anchor.y != null && isFinite(anchor.y)) ? Number(anchor.y) : 0;
+    var z = (anchor.z != null && isFinite(anchor.z)) ? Number(anchor.z) : 0;
+    var ejeC = (anchor.ejeCara === 'z') ? 'z' : 'y';        // normal de la cara
+    var s = (anchor.sentidoCara === 1 || anchor.sentidoCara === -1)
+      ? anchor.sentidoCara
+      : ((anchor.cara === 'sup') ? -1 : 1);                 // doblez hacia el núcleo
+    return {
+      ejeCara: ejeC, sentido: s,
+      P: function (u, v) { return (ejeC === 'z') ? V(u, y, z + s * v) : V(u, y + s * v, z); }
+    };
+  }
+
+  // Empalme resuelto POR EXTREMO (cm que asoman fuera del hormigón, en u).
+  // Δ INDEPENDIENTE POR EXTREMO: `ini`/`fin` traen los dos valores YA resueltos
+  // (reglas._empalmePorExtremo). No son lo mismo ni tienen por qué serlo — una
+  // barra empalma 40φ contra la columna de un lado y asoma 15 cm del otro —, así
+  // que el asome de cada punta se lee de SU número. El shape antiguo
+  // {extremo, valor} sigue funcionando idéntico (fallback de abajo).
+  function _empalmeDeAnchor(anchor) {
+    var emp = (anchor && anchor.empalme) || null;
+    var eIni = 0, eFin = 0;
+    if (emp && (emp.ini != null || emp.fin != null)) {
+      eIni = Number(emp.ini) || 0;
+      eFin = Number(emp.fin) || 0;
+    } else if (emp && emp.valor > 0) {
+      if (emp.extremo === 'inicio') eIni = emp.valor;
+      else if (emp.extremo === 'fin') eFin = emp.valor;
+      else if (emp.extremo === 'ambos') { eIni = emp.valor; eFin = emp.valor; }
+    }
+    return { ini: eIni, fin: eFin };
+  }
+
+  // ===========================================================================
+  // CADENAS: TRAMOS → POLILÍNEA (TRAZADOR GENÉRICO)
+  // ===========================================================================
+  // LA CONVENCIÓN NO SE INVENTA ACÁ. Es la MISMA que ya consume la plataforma en
+  // 2D (disenador.js::geometriaAPuntos, que usan el Diseñador de figuras, el
+  // catálogo, Bar Manager y Agregar Cubicación 2):
+  //
+  //   tramos = [{ lado:'A', giro:0, sentido:null }, { lado:'B', giro:90, sentido:'izq' }, …]
+  //   · lado    → la letra cuya dimensión (dim_a..dim_i) da el LARGO del tramo.
+  //   · giro    → grados que gira el rumbo ANTES de trazar ese tramo (0 = seguir recto).
+  //   · sentido → 'izq' (+) | 'der' (−) — el SIGNO del giro.
+  //   El primer tramo NO gira: define el eje de la figura.
+  //
+  // Trazar la cadena aquí con otra regla habría creado una convención paralela: la
+  // misma figura se vería de una forma en la caluga del catálogo y de otra en el
+  // modelador. Por eso este trazado es línea por línea el de geometriaAPuntos, y
+  // el (x,y) de allá es el (u,v) del plano de trabajo de acá.
+  function _largoLado(dims, lado, fallback) {
+    var v = (dims && lado != null) ? Number(dims[lado]) : NaN;
+    return (isFinite(v) && v > 0) ? v : fallback;
+  }
+
+  // Traza la cadena en el plano (u,v) local. Devuelve puntos + largo de cada tramo.
+  function _cadena2D(tramos, dims, fallbackLargo) {
+    var pts = [{ u: 0, v: 0 }], largos = [], heading = 0;
+    for (var i = 0; i < tramos.length; i++) {
+      var t = tramos[i];
+      if (i > 0) {
+        var g = Number(t.giro) || 0;
+        if (t.sentido === 'der') g = -g;        // convención: izq = +, der = −
+        heading += g;
+      }
+      var L = _largoLado(dims, t.lado, fallbackLargo);
+      largos.push(L);
+      var rad = heading * Math.PI / 180;
+      var last = pts[pts.length - 1];
+      pts.push({ u: last.u + L * Math.cos(rad), v: last.v + L * Math.sin(rad) });
+    }
+    return { pts: pts, largos: largos };
+  }
+
+  function _cadenaCierra(pts) {
+    return _puntosCierran(pts.map(function (p) { return { x: p.u, y: p.v }; }));
+  }
+
+  // ---------------------------------------------------------------------------
+  // DERIVACIÓN DE TRAMOS — para las figuras del SEED (geometría vacía)
+  // ---------------------------------------------------------------------------
+  // Las 63 figuras sembradas por catalogo.py no traen `geometria`: sólo parciales
+  // y ángulos. La cadena se DERIVA de esos dos datos con la convención de las
+  // familias conocidas (la que ya usan recta/cabezal/estribo):
+  //
+  //   1 lado  → recta.
+  //   2 lados → L: el único doblez lleva el ángulo listado (o 90 si no hay).
+  //   3 lados → U: los ángulos listados van en los DOS dobleces (los dos son
+  //             extremos), 90 si no hay.
+  //   4+      → cadena: los ángulos LISTADOS van en los dobleces EXTREMOS
+  //             (ang1 en el primero, ang2 en el último) y los INTERMEDIOS son 90.
+  //             Es la generalización directa del corchete: los quiebres del medio
+  //             son de escuadra y los especiales están en las puntas (105x/106x
+  //             del catálogo aSa).
+  //   Todos los dobleces giran para el MISMO lado (cadena coherente, como la U).
+  //
+  // EL ÁNGULO DEL CATÁLOGO ES EL GIRO (cuánto se desvía la barra de seguir recta),
+  // no el ángulo interno: es la misma lectura con la que _estriboPerimetral traza
+  // el gancho sísmico de 135° de las 104D/103E/103H, y la que hace que un 45°
+  // listado sea una pata inclinada (doblez a 45°). Si una figura del seed resulta
+  // no ser así, la salida NO es tocar esta regla: es DIBUJARLA en el Diseñador de
+  // figuras — su `geometria` manda sobre la derivación (ver tramosDeFigura).
+  function derivarTramos(figura) {
+    var spec = _spec(figura);
+    if (!spec) return null;
+    var P = spec.parciales || [];
+    if (!P.length) return null;
+    var A = (spec.angulos || []).map(Number).filter(isFinite);
+    var n = P.length, dobleces = n - 1, i;
+    var giros = [];
+    for (i = 0; i < dobleces; i++) giros.push(90);
+    if (dobleces >= 1 && A.length >= 1) giros[0] = A[0];                      // extremo inicial
+    if (dobleces >= 2 && A.length >= 2) giros[dobleces - 1] = A[1];           // extremo final
+    // 3+ ángulos listados (ninguna figura del seed llega): se van colocando hacia
+    // adentro desde el segundo doblez, en orden, sin pisar el extremo final.
+    for (i = 2; i < A.length && (i - 1) < dobleces - 1; i++) giros[i - 1] = A[i];
+    var tramos = [{ lado: P[0], giro: 0, sentido: null }];
+    for (i = 1; i < n; i++) tramos.push({ lado: P[i], giro: giros[i - 1], sentido: 'izq' });
+    return tramos;
+  }
+
+  // TRAMOS EFECTIVOS de una figura, con la PRIORIDAD DE FUENTES del diseño:
+  //   1. `geometria.tramos` DIBUJADA en el Diseñador de figuras (llega por
+  //      GET /figuras-catalogo → catalogo.actualizar): manda siempre, es lo que el
+  //      usuario dibujó y lo que ya se ve en 2D en el catálogo y en Cubicación.
+  //   2. DERIVACIÓN desde parciales + ángulos (las 63 del seed, sin geometría).
+  //   3. null → la figura se EXCLUYE con motivo (dibujabilidad), no se aproxima.
+  // Devuelve { tramos, fuente:'disenador'|'derivado', arco:bool }.
+  function tramosDeFigura(figura) {
+    var spec = _spec(figura);
+    if (!spec) return null;
+    var geo = spec.geometria;
+    var t = (geo && geo.tramos && geo.tramos.length) ? geo.tramos : null;
+    var fuente = 'disenador';
+    if (!t) { t = derivarTramos(figura); fuente = 'derivado'; }
+    if (!t || !t.length) return null;
+    var arco = false;
+    for (var i = 0; i < t.length; i++) {
+      if (t[i] && (t[i].tipo === 'arco' || Number(t[i].radio) > 0)) { arco = true; break; }
+    }
+    return { tramos: t, fuente: fuente, arco: arco };
+  }
+
+  // Dims NUMÉRICAS de un mapa que puede venir resuelto ({A:30}) o sin resolver
+  // ({A:{modo:'auto'}}): sólo pasan los números > 0.
+  function _dimsNumericas(dims) {
+    var out = {}, k, v;
+    for (k in dims) {
+      if (!Object.prototype.hasOwnProperty.call(dims, k)) continue;
+      v = Number(dims[k]);
+      if (isFinite(v) && v > 0) out[k] = v;
+    }
+    return out;
+  }
+
+  // ---------------------------------------------------------------------------
+  // NORMALIZACIÓN: la cadena trazada → POSE en el plano de trabajo
+  // ---------------------------------------------------------------------------
+  // La cadena se traza en su propio sistema (arranca en el origen hacia +u). Para
+  // que se pose como cualquier otra barra hay que decidir tres cosas, y las tres
+  // salen de lo que YA hacen los constructores especializados:
+  //   · QUÉ LADO va a lo largo de la pieza → el de MAYOR dimensión resuelta (en un
+  //     cabezal es B, el tramo largo; en una recta es su único lado). Se rota la
+  //     cadena para dejarlo sobre +u.
+  //   · HACIA DÓNDE dobla → hacia el NÚCLEO (+v), igual que las patas del gancho:
+  //     si la cadena quedó doblando hacia afuera se espeja sobre su lado
+  //     longitudinal (la figura es la misma, colocada por el otro lado).
+  //   · DÓNDE queda en u → el lado longitudinal CENTRADO, con el excedente de
+  //     empalme asomando por el extremo que corresponda (idéntico al cabezal).
+  // Una cadena CERRADA no se empalma ni se estira (como el estribo): su largo lo
+  // fija el contorno.
+  function _normalizarCadena(c, anchor) {
+    var pts = c.pts, largos = c.largos, i;
+    var iL = 0;
+    for (i = 1; i < largos.length; i++) if (largos[i] > largos[iL] + 1e-9) iL = i;
+    var a = pts[iL], b = pts[iL + 1];
+    var ang = Math.atan2(b.v - a.v, b.u - a.u);
+    var co = Math.cos(-ang), si = Math.sin(-ang);
+    var out = pts.map(function (p) {
+      var du = p.u - a.u, dv = p.v - a.v;
+      return { u: du * co - dv * si, v: du * si + dv * co };
+    });
+    var sv = 0;
+    for (i = 0; i < out.length; i++) sv += out[i].v;
+    if (sv < -1e-9) for (i = 0; i < out.length; i++) out[i].v = -out[i].v;
+    var cerrada = _cadenaCierra(out);
+    var emp = cerrada ? { ini: 0, fin: 0 } : _empalmeDeAnchor(anchor);
+    // CENTRADO POR BBOX, no por el tramo longitudinal: con puntas inclinadas los
+    // SOBRES son asimétricos y centrar B dejaba la cadena corrida (la reserva del
+    // auto-largo cerraba el ancho total pero el conjunto asomaba ini/2 por un
+    // lado — la fuga residual del hallazgo del verificador). El empalme sigue
+    // sesgando el conjunto hacia su extremo, como en el cabezal.
+    var minU = Infinity, maxU = -Infinity;
+    for (i = 0; i < out.length; i++) {
+      if (out[i].u < minU) minU = out[i].u;
+      if (out[i].u > maxU) maxU = out[i].u;
+    }
+    var anchoTotal = (maxU - minU) - emp.ini - emp.fin;
+    var u0 = -anchoTotal / 2 - emp.ini - minU;  // el BBOX (sin empalmes) queda centrado
+    for (i = 0; i < out.length; i++) out[i].u += u0;
+    return { pts: out, cerrada: cerrada, iLong: iL, lado: null };
+  }
+
+  // ---- CADENA GENÉRICA: cualquier figura descrita por tramos rectos ----------
+  // Produce puntos como cualquier otro constructor (misma firma, mismo plano,
+  // mismas coordenadas de host) → pilas / capas / anidado / volteo / de_pie /
+  // spin / rangos funcionan sin tocar nada de esa maquinaria.
+  function _cadenaGenerica(figura, dims, host, anchor, diamCm) {
+    var tr = tramosDeFigura(figura);
+    // Sin tramos no hay cadena: red de seguridad (dibujabilidad ya la excluyó),
+    // nunca un dibujo inventado.
+    if (!tr) return _cabezalLongitudinal(figura, dims, host, anchor, diamCm);
+    var pw = _planoTrabajo(host, anchor);
+    // Un lado sin dimensión toma la extensión de gancho normativa (6φ, mín 7.5),
+    // la MISMA que usa reglas.js para las patas en 'auto'.
+    var c = _cadena2D(tr.tramos, dims, extGancho(diamCm));
+    var nrm = _normalizarCadena(c, anchor);
+    return nrm.pts.map(function (p) { return pw.P(p.u, p.v); });
+  }
+
+  // LADO LONGITUDINAL de una cadena (el que corre a lo largo de la pieza y por lo
+  // tanto recibe el auto-largo y el empalme). Contrato de 3 valores:
+  //   undefined → la figura NO es cadena: que el llamador use su regla de siempre.
+  //   null      → cadena CERRADA: no hay lado que estirar (como el estribo).
+  //   'A'…'I'   → el lado de MAYOR dimensión resuelta.
+  // Con las dims todavía en 'auto' no hay tamaños que comparar: se responde con la
+  // regla histórica (B si la figura la declara, si no el primer parcial), que es
+  // exactamente lo que hacía reglas._ladoLongitudinal. El override fino por figura
+  // (marcar a mano cuál lado es el longitudinal) vendrá del Diseñador como un
+  // campo de `geometria`; hasta entonces manda el mayor.
+  function ladoLongitudinalCadena(figura, dims) {
+    var f = (figura || '').toUpperCase();
+    var spec = _spec(f);
+    if (!spec || familiaDeDibujo(f, null) !== 'cadena') return undefined;
+    var tr = tramosDeFigura(f);
+    if (!tr) return undefined;
+    var num = _dimsNumericas(dims);
+    var hayNum = Object.keys(num).length > 0;
+    // Con dims sin resolver el trazado es TOPOLÓGICO (todos los lados = 1): sirve
+    // igual para saber si la cadena cierra, que es lo único que se decide sin dims.
+    var c = _cadena2D(tr.tramos, num, 1);
+    if (_cadenaCierra(c.pts)) return null;
+    if (!hayNum) return (spec.parciales.indexOf('B') >= 0) ? 'B' : spec.parciales[0];
+    var iL = 0;
+    for (var i = 1; i < c.largos.length; i++) if (c.largos[i] > c.largos[iL] + 1e-9) iL = i;
+    return tr.tramos[iL].lado;
+  }
+
+  // SOBRES de una cadena: cuánto ASOMAN los extremos MÁS ALLÁ del lado
+  // longitudinal, medidos sobre el propio eje longitudinal (proyección
+  // horizontal de las puntas inclinadas). Es lo que el auto-largo debe
+  // RESERVAR — hallazgo del verificador de la Tanda F: 19 de las 36 cadenas
+  // del catálogo (primer doblez ≠ 90°) salían del hormigón EXACTAMENTE
+  // pata·cos(45°) − recub por lado, porque el auto resolvía el longitudinal a
+  // la luz libre completa y lo centraba sin descontar esas proyecciones (el
+  // cabezal de 90° nunca lo sufrió: su proyección horizontal es 0).
+  // Devuelve { ini, fin } en cm (0/0 si no es cadena abierta con longitudinal).
+  function sobresCadena(figura, dims, ladoLPref) {
+    var f = (figura || '').toUpperCase();
+    if (familiaDeDibujo(f, null) !== 'cadena') return { ini: 0, fin: 0 };
+    var tr = tramosDeFigura(f);
+    if (!tr) return { ini: 0, fin: 0 };
+    // ladoLPref: el llamador (reglas) YA sabe cuál es el longitudinal — con las
+    // dims a medio resolver, recalcularlo aquí elegiría una pata por ser "la
+    // mayor resuelta".
+    var ladoL = (ladoLPref !== undefined) ? ladoLPref : ladoLongitudinalCadena(f, dims);
+    if (ladoL == null) return { ini: 0, fin: 0 };      // cerrada → sin auto-largo
+    var num = _dimsNumericas(dims);
+    num[ladoL] = 1000;                                  // placeholder: los sobres no dependen de él
+    var c = _cadena2D(tr.tramos, num, 10);
+    var iL = -1;
+    for (var i = 0; i < tr.tramos.length; i++) {
+      if (tr.tramos[i].lado === ladoL) { iL = i; break; }
+    }
+    if (iL < 0) return { ini: 0, fin: 0 };
+    // marco girado: el longitudinal corre en +u
+    var a = c.pts[iL], b = c.pts[iL + 1];
+    var ang = Math.atan2(b.v - a.v, b.u - a.u);
+    var cos = Math.cos(-ang), sin = Math.sin(-ang);
+    function ux(p) { return (p.u - a.u) * cos - (p.v - a.v) * sin; }
+    var minU = 0, maxU = ux(b);
+    for (var k = 0; k < c.pts.length; k++) {
+      var u = ux(c.pts[k]);
+      if (u < minU) minU = u;
+      if (u > maxU) maxU = u;
+    }
+    return { ini: Math.max(0, -minU), fin: Math.max(0, maxU - ux(b)) };
+  }
+
+  // Radiografía de la cadena de una figura (para tests, avisos y la UI):
+  // { fuente, tramos, giros, cerrada, ladoLong }.
+  function cadenaInfo(figura, dims) {
+    var tr = tramosDeFigura(figura);
+    if (!tr) return null;
+    var c = _cadena2D(tr.tramos, _dimsNumericas(dims), 1);
+    return {
+      fuente: tr.fuente, arco: tr.arco, tramos: tr.tramos,
+      giros: tr.tramos.map(function (t) { return Number(t.giro) || 0; }),
+      cerrada: _cadenaCierra(c.pts),
+      ladoLong: ladoLongitudinalCadena(figura, dims)
+    };
+  }
 
   // ---- CABEZAL / longitudinal: barra a lo largo de X, con ganchos en extremos.
   // host: {largo, alto, ancho}. anchor: {cara:'sup'|'inf'|'lateral', y, z,
@@ -175,36 +561,16 @@
   // reglas._marcoCara (fuente única del anclaje por cara); si faltan se cae al
   // comportamiento histórico (Y, con el signo de sup/inf) → cero regresión.
   function _cabezalLongitudinal(figura, dims, host, anchor, diamCm) {
-    var y = (anchor.y != null && isFinite(anchor.y)) ? Number(anchor.y) : 0;
-    var z = (anchor.z != null && isFinite(anchor.z)) ? Number(anchor.z) : 0;
-    var ejeC = (anchor.ejeCara === 'z') ? 'z' : 'y';        // normal de la cara
-    var s = (anchor.sentidoCara === 1 || anchor.sentidoCara === -1)
-      ? anchor.sentidoCara
-      : ((anchor.cara === 'sup') ? -1 : 1);                 // gancho hacia el núcleo
     // Punto del cabezal: x sobre el eje longitudinal; la pata (largo `p`) sale por
-    // la normal de la cara. p = 0 → punto del tramo.
-    function P(x, p) {
-      return (ejeC === 'z') ? V(x, y, z + s * p) : V(x, y + s * p, z);
-    }
+    // la normal de la cara. p = 0 → punto del tramo. El mapeo vive en
+    // _planoTrabajo (FUENTE ÚNICA, compartida con el trazador de cadenas).
+    var P = _planoTrabajo(host, anchor).P;
     var f = (figura || '').toUpperCase();
     // Empalme: cuánto asoma FUERA del hormigón y por qué extremo (dato de
     // trazabilidad; la dim ya viene alargada, aquí sólo se orienta el excedente
     // al extremo indicado en vez de repartirlo simétrico). eIni/eFin en X.
-    // Δ INDEPENDIENTE POR EXTREMO: `ini`/`fin` traen los dos valores YA resueltos
-    // (reglas._empalmePorExtremo). No son lo mismo ni tienen por qué serlo — una
-    // barra empalma 40φ contra la columna de un lado y asoma 15 cm del otro —, así
-    // que el asome de cada punta se lee de SU número. El shape antiguo
-    // {extremo, valor} sigue funcionando idéntico (fallback de abajo).
-    var emp = anchor.empalme || null;
-    var eIni = 0, eFin = 0;
-    if (emp && (emp.ini != null || emp.fin != null)) {
-      eIni = Number(emp.ini) || 0;
-      eFin = Number(emp.fin) || 0;
-    } else if (emp && emp.valor > 0) {
-      if (emp.extremo === 'inicio') eIni = emp.valor;
-      else if (emp.extremo === 'fin') eFin = emp.valor;
-      else if (emp.extremo === 'ambos') { eIni = emp.valor; eFin = emp.valor; }
-    }
+    var _e = _empalmeDeAnchor(anchor);
+    var eIni = _e.ini, eFin = _e.fin;
     // UN SOLO LADO (101A y cualquier figura de 1 parcial): barra RECTA de largo A
     // — no hay patas de gancho. El criterio sale del catálogo (nº de parciales),
     // no del prefijo del código.
@@ -578,6 +944,7 @@
     var familia = familiaDeDibujo(figura, rol);
     if (familia === 'estribo') return _estriboPerimetral(figura, dims, host, anchor, diamCm);
     if (familia === 'traba') return _traba(figura, dims, host, anchor, diamCm);
+    if (familia === 'cadena') return _cadenaGenerica(figura, dims, host, anchor, diamCm);
     return _cabezalLongitudinal(figura, dims, host, anchor, diamCm);   // recta | cabezal
   }
 
@@ -600,6 +967,15 @@
     familiaDeDibujo: familiaDeDibujo,
     patasDeFigura: patasDeFigura,
     MAX_LADOS_DIBUJABLES: MAX_LADOS_DIBUJABLES,
+    // CADENAS (trazador genérico). La convención de tramos es la del Diseñador de
+    // figuras (disenador.js): geometria dibujada > derivación > exclusión.
+    derivarTramos: derivarTramos,
+    tramosDeFigura: tramosDeFigura,
+    cadenaInfo: cadenaInfo,
+    // Lado longitudinal de una CADENA (undefined = no es cadena → regla del
+    // llamador; null = cadena cerrada, sin auto-largo). Lo consulta reglas.js.
+    ladoLongitudinalCadena: ladoLongitudinalCadena,
+    sobresCadena: sobresCadena,   // reserva del auto-largo (puntas inclinadas)
     // ANIDADO: fuente ÚNICA del criterio "figura dentro de figura" (la usan
     // distribuidorLayered/distribuidorArreglo de reglas.js).
     anidarFigura: anidarFigura,
@@ -610,7 +986,8 @@
     // exportados para tests / reuso
     _cabezalLongitudinal: _cabezalLongitudinal,
     _estriboPerimetral: _estriboPerimetral,
-    _traba: _traba
+    _traba: _traba,
+    _cadenaGenerica: _cadenaGenerica
   };
 
   global.ModeladorFiguraPuntos = API;

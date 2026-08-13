@@ -409,9 +409,14 @@
   // `modo` es el preset de la tipología. Se copia al crear cada componente para
   // que todo consumidor vea el mismo shape (el motor igual lo normaliza).
   function _metaModular(tip) {
+    // MV (Malla Vertical de muro) nace DE PIE: sus barras corren en la altura.
+    // El resto nace acostada como siempre.
+    var t = (tip || '').toUpperCase();
+    var dePie = (t === 'MV');
     return {
       modo: _modoDefault(tip),
-      plano_pieza: { orientacion: 'acostada', volteado: false },
+      plano_pieza: dePie ? { orientacion: 'de_pie', volteado: false }
+                         : { orientacion: 'acostada', volteado: false },
       arreglo: { n_capas: 1, sep_capas: 20, rango: null }
     };
   }
@@ -1402,12 +1407,102 @@
     return !!ST.cargado && ST.tool === 'colocar';
   }
 
-  // Puntos (u,v en host) de la FORMA del ghost para un plano, dada la tipología
-  // cargada. Devuelve { tipo:'rect'|'line'|'point', pts:[{u,v}], cerrar:bool } o null.
-  // Calca la lógica con que se DIBUJAN las barras reales (estribo=recinto de recub;
-  // cabezal=punto en sección / línea a lo largo). Ancla en (u,v) del cursor los
-  // ejes libres; el resto sale del hormigón.
+  // Tolerancia (cm) con la que el ghost decide que dos puntos proyectados son EL
+  // MISMO: la usa para saber si una polilínea CIERRA (vuelve a su origen). Es de
+  // DIBUJO (sub-milimétrica a escala de obra).
+  var GHOST_PT_TOL = 0.5;
+
+  // BARRA REAL que va a nacer de este clic — el PLACEMENT del motor (o null).
+  //
+  // Es LA MISMA FUENTE que el trazador, no una imitación: se arma el componente
+  // que crearía este clic (_compDesdeClick — literalmente el que va a nacer, sin
+  // apagarle nada) y se le pide al MOTOR su expansión (reglas.expandirComponente,
+  // el mismo camino por el que _etiquetarCi casa placements con componentes). Así
+  // el ghost hereda GRATIS todo lo que el motor sepa dibujar: ganchos, patas,
+  // codos, arcos y las figuras que la dibujabilidad AMPLIADA rescate (las que
+  // traen geometria.tramos del diseñador). No hay una sola forma cableada acá que
+  // pueda quedar vieja cuando el motor aprenda una figura nueva.
+  //
+  // De un componente que nace REPARTIDO (modo lineal) el motor devuelve N barras;
+  // el ghost muestra UNA: la más cercana al cursor. No la primera del reparto, que
+  // puede quedar en la otra punta de la pieza — el ghost debe estar donde el
+  // usuario está mirando, y sigue siendo una barra REAL del resultado.
+  //
+  // null = no hay con qué (motor ausente, figura que el catálogo no acepta,
+  // expansión vacía) → el llamador cae al ghost básico.
+  function _ghostPlacement(plano, uv) {
+    var d = _deps();
+    if (!d.reglas || !d.reglas.expandirComponente || !ST.receta || !ST.cargado) return null;
+    if (_figError(ST.cargado.figura)) return null;
+    var pls;
+    try {
+      pls = d.reglas.expandirComponente(
+        _compDesdeClick(plano, _clickHost(plano, uv), ST.cargado), _hostDeReceta());
+    } catch (e) { return null; }
+    if (!pls || !pls.length) return null;
+    var proy = _proyDe(plano), mejor = null, mejorD = Infinity;
+    for (var i = 0; i < pls.length; i++) {
+      var pp = pls[i] && pls[i].puntos;
+      if (!pp || pp.length < 2) continue;
+      var su = 0, sv = 0, n = 0;
+      for (var k = 0; k < pp.length; k++) {
+        var q = proy(pp[k]);
+        if (!q || !isFinite(q.u) || !isFinite(q.v)) { n = 0; break; }
+        su += q.u; sv += q.v; n++;
+      }
+      if (!n) continue;
+      var du = su / n - uv.u, dv = sv / n - uv.v, dd = du * du + dv * dv;
+      if (dd < mejorD) { mejorD = dd; mejor = pls[i]; }
+    }
+    return mejor;
+  }
+
+  // FORMA del ghost para un plano → { tipo:'poly'|'rect'|'line'|'point', pts:[{u,v}],
+  // cerrar:bool } o null. Primero la barra REAL (_ghostPlacement) proyectada al
+  // plano; si no hay, el esquema básico de siempre (_ghostFormaBasica).
   function _ghostForma(plano, uv) {
+    var pl = _ghostPlacement(plano, uv);
+    if (!pl) return _ghostFormaBasica(plano, uv);
+    var def = (_defsPlanos() || {})[plano];
+    var proy = _proyDe(plano);
+    var raw = pl.puntos;
+
+    // BARRA VISTA DE PUNTA → círculo, no polilínea. Se reproduce EL CRITERIO Y EL
+    // PUNTO REPRESENTATIVO EXACTOS de _dibujarVista2D (rol cabezal + eje mayor ==
+    // profundidad del plano; punto = extremo del segmento que más corre en
+    // profundidad, NO raw[0], que es la punta del gancho). Si el ghost usara su
+    // propio criterio, en SECCIÓN pintaría la pata de 15 cm donde la barra colocada
+    // dibuja un punto: el ghost volvería a mentir, por otro lado.
+    if (def && _rolDe(pl.tipologia) === 'cabezal' && _ejeMayorSpan(raw) === def.depth) {
+      var q0 = proy(raw[0]), mejorDelta = -1;
+      for (var si = 1; si < raw.length; si++) {
+        var dd = Math.abs((raw[si][def.depth] || 0) - (raw[si - 1][def.depth] || 0));
+        if (dd > mejorDelta) { mejorDelta = dd; q0 = proy(raw[si]); }
+      }
+      if (isFinite(q0.u) && isFinite(q0.v)) return { tipo: 'point', pts: [{ u: q0.u, v: q0.v }] };
+    }
+
+    var pts = [];
+    for (var i = 0; i < raw.length; i++) {
+      var q = proy(raw[i]);
+      if (isFinite(q.u) && isFinite(q.v)) pts.push({ u: q.u, v: q.v });
+    }
+    if (pts.length < 2) return _ghostFormaBasica(plano, uv);
+    // Una figura CERRADA (marco de estribo, o cualquier polilínea que vuelva a su
+    // origen) no tiene extremos libres: se cierra el path y no se le ponen puntas.
+    var a = pts[0], b = pts[pts.length - 1];
+    return {
+      tipo: 'poly', pts: pts,
+      cerrar: (Math.abs(a.u - b.u) < GHOST_PT_TOL && Math.abs(a.v - b.v) < GHOST_PT_TOL)
+    };
+  }
+
+  // FALLBACK — esquema geométrico del ghost cuando la barra REAL no se puede
+  // calcular (motor no cargado todavía, o figura que el motor no dibuja). No es la
+  // forma de la figura: es el RECINTO que va a ocupar (estribo = marco al
+  // recubrimiento; cabezal = punto en sección / línea a lo largo). Ancla en (u,v)
+  // del cursor los ejes libres; el resto sale del hormigón.
+  function _ghostFormaBasica(plano, uv) {
     var geo = ST.receta && ST.receta.geometria; if (!geo) return null;
     var rol = _rolDe(ST.cargado.tipologia);
     var b = boundaryDeVista(geo, plano, (_defsPlanos() || {})[plano]);
@@ -1499,8 +1594,11 @@
       var d = forma.pts.map(function (q, i) { var p = _uvToPixel(plano, q.u, q.v); return (i ? 'L' : 'M') + p.px.toFixed(1) + ',' + p.py.toFixed(1); }).join(' ');
       if (forma.cerrar) d += ' Z';
       layer.appendChild(_svgEl('path', { 'class': 'te-ghostbar', d: d, stroke: color }));
-      // puntas en los extremos (como la maqueta: circulitos .te-gpt en los vértices)
-      var ends = forma.tipo === 'line' ? [forma.pts[0], forma.pts[forma.pts.length - 1]] : [];
+      // Puntas en los extremos (circulitos .te-gpt, como la maqueta). Marca los
+      // EXTREMOS LIBRES de la barra: una forma CERRADA (marco de estribo, o una
+      // polilínea real que vuelve a su origen) no tiene extremos que marcar.
+      var ends = (!forma.cerrar && forma.pts.length > 1)
+        ? [forma.pts[0], forma.pts[forma.pts.length - 1]] : [];
       ends.forEach(function (q) { var p = _uvToPixel(plano, q.u, q.v); layer.appendChild(_svgEl('circle', { cx: p.px.toFixed(1), cy: p.py.toFixed(1), r: 3, 'class': 'te-gpt', fill: color })); });
     }
 
@@ -2078,6 +2176,73 @@
   // ==========================================================================
   // COLOCAR — clic en una vista crea un componente anclado.
   // ==========================================================================
+  // COMPONENTE QUE NACE DE UN CLIC — FUENTE ÚNICA, sin efectos.
+  // La usan los DOS lados de la misma acción: el GHOST (para previsualizar la
+  // barra REAL bajo el cursor) y _colocarEnVista (para crearla). Que sea la MISMA
+  // función es lo que impide que el preview mienta: construidos por separado, el
+  // ghost y la barra colocada volverían a divergir al primer cambio de defaults.
+  // `sel` = { tipologia, figura, diam, contorno } — el ribbon (ST.*) al colocar,
+  // ST.cargado al previsualizar (son lo mismo: los sella _sellarCargado).
+  // NO muta ST ni la receta: devuelve el componente suelto.
+  function _compDesdeClick(plano, host, sel) {
+    var rol = _rolDe(sel.tipologia);
+    // CARA por SNAP DE CARA (elegida VIENDO): si hay una cara resaltada bajo el
+    // cursor en esta vista, esa manda. Reemplaza la adivinación host.y>=0.
+    var cara;
+    if (ST.caraHi && ST.caraHi.plano === plano && ST.caraHi.cara) {
+      cara = ST.caraHi.cara;
+    } else {
+      cara = _caraDefault(sel.tipologia);
+      // El fallback por altura del click SOLO aplica a tipologías cuya cara
+      // default es sup/inf (CBS/CBI de viga). Antes PISABA la cara 'lateral' de
+      // las mallas de muro (MH/MV): colocadas en la elevación caían a sup/inf y
+      // el reparto se iba al ESPESOR (±7 cm → 2 barras) en vez de la ALTURA
+      // (hallazgo del verificador de la Tanda F).
+      if (rol === 'cabezal' && cara !== 'lateral' && (plano === 'seccion' || plano === 'largo')) {
+        cara = (host.y >= 0) ? 'sup' : 'inf';   // fallback si el cursor no tocó una cara
+      }
+    }
+    var meta = _metaModular(sel.tipologia);
+    var comp = {
+      tipologia: sel.tipologia, figura: sel.figura, diam: Number(sel.diam), suf_tipo: '',
+      cara: cara, recub_override: null,
+      angulos: _figSpec(sel.figura).angulos.slice(),
+      modo: meta.modo, plano_pieza: meta.plano_pieza, arreglo: meta.arreglo,
+      dims: _dimsDefault(sel.figura, rol, sel.contorno),
+      distribucion: _distDefault(rol),
+      // LADO de la cara CORTINA (z+ / z−). Lo elige el CLIC (dónde puso la barra el
+      // usuario), no el arrastre posterior: pos_hint es traslación pura. Sólo
+      // significa algo con cara 'lateral'; en las demás queda en su default (1).
+      lado: (cara === 'lateral' && Number(host.z) < 0) ? -1 : 1
+    };
+    // DISTRIBUCIÓN AL NACER — LA DECIDE EL MODO, NO EL ROL.
+    // Una barra cuyo MODO default es 'lineal' nace ya REPARTIDA (distribución
+    // activa + rango útil de SU eje), no como 1 barra suelta: nadie quiere un
+    // estribo solo ni una malla de un fierro, y así la flecha con handles aparece
+    // de inmediato al quedar seleccionada y el reparto se ajusta arrastrándola.
+    // Antes la condición era `rol === 'estribo' || rol === 'traba'`, o sea una
+    // segunda tabla de tipologías escrita acá: las tipologías nuevas que el motor
+    // presetea en 'lineal' (MH/MV de muro) nacían puntuales aunque el motor dijera
+    // lo contrario. Ahora la autoridad es una sola: modoDefaultDeTipologia.
+    // Los cabezales (CB*/LT preset 'puntual') no entran acá: su reparto son capas.
+    if (meta.modo === 'lineal') {
+      var d = comp.distribucion;
+      // _distDefault(rol) ya devuelve la forma lineal para estribo/traba (esta
+      // rama es idempotente en ellos); un rol cabezal con preset lineal llega con
+      // la forma layered y hay que completarle los campos que el rango necesita.
+      d.modo = MODO_A_DIST.lineal;
+      if (!(Number(d.sep) > 0)) d.sep = 20;
+      if (!Array.isArray(d.zonas) || !d.zonas.length) d.zonas = [{ long: 0, sep: d.sep }];
+      if (!(Number(d.start_offset) >= 0)) d.start_offset = 4;
+      d.activa = true;
+      d.rango = _rangoDefault(d.sep, _ejeDistDe(comp));
+    }
+    // pos_hint desde el click (los ejes que el plano define). El motor ancla por
+    // cara y offset; el pos_hint corre la barra al punto clicado en los ejes libres.
+    comp.pos_hint = _posHintDeClick(plano, host, rol, cara);
+    return comp;
+  }
+
   function _colocarEnVista(plano, host) {
     // GATE DE FIGURA: el clic coloca por ST.tool, no por ST.cargado, así que la
     // última palabra la tiene el catálogo. Una figura inexistente o no dibujable NO
@@ -2085,44 +2250,9 @@
     var errFig = _figError(ST.figura);
     if (errFig) { _actualizarStatus(errFig); return; }
     _pushUndo();   // snapshot ANTES de mutar (tarea 1: _pushUndo antes de colocar)
-    var rol = _rolDe(ST.tipologia);
-    // CARA por SNAP DE CARA (elegida VIENDO): si hay una cara resaltada bajo el
-    // cursor en esta vista, esa manda. Reemplaza la adivinación host.y>=0.
-    var cara;
-    if (ST.caraHi && ST.caraHi.plano === plano && ST.caraHi.cara) {
-      cara = ST.caraHi.cara;
-    } else {
-      cara = _caraDefault(ST.tipologia);
-      if (rol === 'cabezal' && (plano === 'seccion' || plano === 'largo')) {
-        cara = (host.y >= 0) ? 'sup' : 'inf';   // fallback si el cursor no tocó una cara
-      }
-    }
-    var meta = _metaModular(ST.tipologia);
-    var comp = {
-      tipologia: ST.tipologia, figura: ST.figura, diam: Number(ST.diam), suf_tipo: '',
-      cara: cara, recub_override: null,
-      angulos: _figSpec(ST.figura).angulos.slice(),
-      modo: meta.modo, plano_pieza: meta.plano_pieza, arreglo: meta.arreglo,
-      dims: _dimsDefault(ST.figura, rol, ST.contorno),
-      distribucion: _distDefault(rol),
-      // LADO de la cara CORTINA (z+ / z−). Lo elige el CLIC (dónde puso la barra el
-      // usuario), no el arrastre posterior: pos_hint es traslación pura. Sólo
-      // significa algo con cara 'lateral'; en las demás queda en su default (1).
-      lado: (cara === 'lateral' && Number(host.z) < 0) ? -1 : 1
-    };
-    // DISTRIBUCIÓN AL COLOCAR — un ESTRIBO o TRABA nace ya REPARTIDO (modo lineal,
-    // activa, rango útil default de SU eje de reparto), no como 1 barra suelta: el
-    // usuario nunca quiere un estribo solo, y así la flecha con handles aparece de
-    // inmediato al quedar seleccionado y la distribución se ajusta arrastrándola.
-    // El CABEZAL sigue naciendo puntual (su reparto son capas, no un rango).
-    if (rol === 'estribo' || rol === 'traba') {
-      comp.distribucion.modo = 'linear';
-      comp.distribucion.activa = true;
-      comp.distribucion.rango = _rangoDefault(comp.distribucion.sep, _ejeDistDe(comp));
-    }
-    // pos_hint desde el click (los ejes que el plano define). El motor ancla por
-    // cara y offset; el pos_hint corre la barra al punto clicado en los ejes libres.
-    comp.pos_hint = _posHintDeClick(plano, host, rol, cara);
+    var comp = _compDesdeClick(plano, host, {
+      tipologia: ST.tipologia, figura: ST.figura, diam: ST.diam, contorno: ST.contorno
+    });
     ST.receta.componentes.push(comp);
     ST.selCi = ST.receta.componentes.length - 1;
     _regenerar();
@@ -4839,6 +4969,10 @@
     _dentroDelBoundary: _dentroDelBoundary, _clampAlBoundary: _clampAlBoundary,
     _sellarCargado: _sellarCargado, _soltarCargado: _soltarCargado,
     _ghostForma: _ghostForma,
+    // Ghost con la FORMA REAL: la polilínea proyectada y el componente de preview
+    // (el MISMO que crea el clic) — para poder comparar ghost ≡ barra colocada.
+    _ghostPlacement: _ghostPlacement, _ghostFormaBasica: _ghostFormaBasica,
+    _compDesdeClick: _compDesdeClick,
     // INTERACCIÓN-2.0 · orientación de la pieza + snap de cara
     rotarPlanoPieza: rotarPlanoPieza,                           // cicla (o fija) la orientación + regenera
     _compVolteado: _compVolteado, _compOrientacion: _compOrientacion,

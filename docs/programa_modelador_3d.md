@@ -1272,3 +1272,13 @@ Redondeo de dims (reglas con el usuario) · aviso al voltear cuando dims auto ca
 rotación deg que no cabe · radios fijos al anidar (codos interpenetrados) · ghost volteado ·
 "tomar contorno" · homologación visual con el enfierrador (toggle hormigón, vista iso, órbita
 por eje, temas).
+
+### DEF PENDIENTE (usuario) — convención de la columna `angulos` del catálogo (hallazgo Tanda F)
+El verificador demostró que la columna tiene DOS escritores con convenciones complementarias:
+- El SEED (63 figuras, a mano) la usa como GIRO/doblez (104D=[135,135] es el gancho sísmico 135°,
+  y así la traza _estriboPerimetral desde siempre). El trazador genérico la lee IGUAL.
+- El DISEÑADOR de figuras guarda 180−giro ("ángulos INTERNOS, convención aSa", disenador.js:1373).
+HOY es inerte: las figuras del diseñador traen geometria.tramos (que MANDA sobre la derivación),
+así que la lectura giro solo toca al seed, que es giro. PERO la columna queda mixta según el autor.
+DEF: ¿unificamos a GIRO (el diseñador deja de convertir; migrar sus figuras existentes) o a INTERNO
+(migrar el seed y la lectura)? Afecta también cómo aSa interpreta ang1..4 en el export.

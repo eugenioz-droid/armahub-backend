@@ -146,6 +146,8 @@
   }
 
   // Cuántos lados TRAZA de verdad el constructor de cada familia de dibujo.
+  // 'cadena' (trazador genérico) no está en la tabla porque traza TODOS los lados
+  // de la figura, sean 4 o 9: su cuota es n, no una constante (ver _revisarFiguraComp).
   var LADOS_TRAZADOS = { recta: 1, cabezal: 3, traba: 3, estribo: 4 };
 
   // Revisa la figura de un componente contra el catálogo y contra lo que el
@@ -180,8 +182,8 @@
       return false;
     }
     var fam = fp.familiaDeDibujo ? fp.familiaDeDibujo(fig, rol) : 'cabezal';
-    var trazados = LADOS_TRAZADOS[fam] || 3;
     var n = spec.parciales.length;
+    var trazados = (fam === 'cadena') ? n : (LADOS_TRAZADOS[fam] || 3);
     if (n > trazados) {
       var sinTrazar = spec.parciales.slice(trazados);
       _avisarComp(comp, 'Figura ' + fig + ' colocada como ' + (rol || 'cabezal') +
