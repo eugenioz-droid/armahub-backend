@@ -1370,12 +1370,26 @@
   //   A LO LARGO = elevación        → plano X-Y (u=x, v=y)
   //   PLANTA   = vista superior     → plano X-Z (u=x, v=z)
   // ==========================================================================
-  // Colores 2D por tipología. Las de MURO tienen los suyos (antes caían TODAS al
-  // gris del rol cabezal y no se distinguían); EC/TC/TR siguen cayendo por rol a
-  // ES/TRV (naranja/morado), que es su familia.
+  // PALETA ÚNICA por tipología — TODOS los elementos, UNA tabla (feedback
+  // 13-ago: había DOS paletas — esta y TPL_COLORES de los chips del ribbon — y
+  // el muro quedó con los valores invertidos entre chip y barra). Los chips
+  // (TPL_COLORES) son un ALIAS de esta misma tabla, ver su declaración.
+  // Criterio: mismos tonos = mismo significado en todos los elementos
+  // (principales azul/teal · estribos naranja · trabas púrpura · n-capas claro).
   var COL2D = {
-    CBS: '#1565c0', CBI: '#00897b', ES: '#e65100', TRV: '#7b1fa2', LT: '#607d8b',
-    MH: '#00897b', MV: '#1565c0', MA: '#3949ab', CB: '#283593'
+    // VIGA
+    CBS: '#1565c0', CBS2: '#42a5f5', CBSn: '#64b5f6',
+    CBI: '#00897b', CBI2: '#26a69a', CBIn: '#4db6ac',
+    ES: '#e65100', TRV: '#7b1fa2', LT: '#607d8b',
+    // MURO
+    MH: '#1565c0', MV: '#00897b', MA: '#3949ab', TR: '#7b1fa2',
+    EC: '#e65100', TC: '#7b1fa2', CB: '#1565c0',
+    // LOSA / FUNDACION
+    Fi: '#1565c0', Fs: '#00897b', "F'i": '#42a5f5', "F's": '#26a69a',
+    F: '#5e35b1', "F'": '#7e57c2', SP: '#607d8b', Rp: '#607d8b', TRL: '#7b1fa2',
+    SPF: '#607d8b', TRF: '#7b1fa2',
+    // COLUMNA
+    CB2: '#42a5f5', CBn: '#64b5f6', TRC: '#7b1fa2', ESC: '#e65100'
   };
   var SVG_NS = 'http://www.w3.org/2000/svg';
   // Eje de rotación perpendicular al plano de cada vista (para rotar 90° "de frente").
@@ -5436,21 +5450,9 @@
     GEN: [['CB', 'Cabezal'], ['F', 'Refuerzo o Suple Inferior'], ["F'", 'Refuerzo o Suple Superior']]
   };
 
-  var TPL_COLORES = {
-    // VIGA (conserva los existentes; n-capas = variante clara del mismo tono)
-    CBS: '#1565c0', CBS2: '#42a5f5', CBSn: '#64b5f6',
-    CBI: '#00897b', CBI2: '#26a69a', CBIn: '#4db6ac',
-    ES: '#e65100', TRV: '#7b1fa2', LT: '#607d8b',
-    // MURO (principales azul/teal · estribos naranja · trabas púrpura)
-    MH: '#1565c0', MV: '#00897b', TR: '#7b1fa2', EC: '#e65100', TC: '#7b1fa2', CB: '#1565c0',
-    // LOSA / FUNDACION (mallas inf azul/teal · sup variante clara · refuerzos índigo ·
-    // soportes/reparticiones gris · trabas púrpura)
-    Fi: '#1565c0', Fs: '#00897b', "F'i": '#42a5f5', "F's": '#26a69a',
-    F: '#5e35b1', "F'": '#7e57c2', SP: '#607d8b', Rp: '#607d8b', TRL: '#7b1fa2',
-    SPF: '#607d8b', TRF: '#7b1fa2',
-    // COLUMNA
-    CB2: '#42a5f5', CBn: '#64b5f6', TRC: '#7b1fa2', ESC: '#e65100'
-  };
+  // ALIAS de la paleta única (ver COL2D): chips del ribbon, barras 2D y
+  // materiales 3D leen LA MISMA tabla — no puede volver a divergir.
+  var TPL_COLORES = COL2D;
 
   // Color del ELEMENTO (chip de tipo en la lista + reconocimiento cruzado tab↔modal).
   var TPL_ELEM_COLORES = {
