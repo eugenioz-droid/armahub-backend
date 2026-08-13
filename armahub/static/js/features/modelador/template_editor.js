@@ -41,10 +41,8 @@
   var THREE_CDN = 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js';
 
   // Tema CLARO del 3D del cuadrante (calca --canvas3d / colores de la maqueta).
-  var TEMA = {
-    bg: 0xd8dee7, g1: 0xb4bdc9, g2: 0xc6cdd6,
-    CBS: 0x1565c0, CBI: 0x00897b, ES: 0xe65100, TRV: 0x7b1fa2, LT: 0x455a64
-  };
+  // Los colores por tipología viven en COL2D (fuente única 2D + 3D).
+  var TEMA = { bg: 0xd8dee7, g1: 0xb4bdc9, g2: 0xc6cdd6 };
 
   var GRID_SNAP = 5;   // cm — paso de snap a grilla
 
@@ -539,12 +537,17 @@
   // dims por defecto para una figura recién colocada. Estribo con "tomar contorno"
   // → todas auto (se ajustan al recubrimiento; recub 0 = al borde). Cabezal con
   // lados → B auto (largo − recub), patas A/C fijas.
-  function _dimsDefault(fig, rol, contorno) {
+  function _dimsDefault(fig, rol, contorno, diamMm) {
     var spec = _figSpec(fig);
     var dims = {};
+    // Pata por defecto del cabezal = EXTENSIÓN DE GANCHO NORMATIVA (6φ, mín
+    // 7.5 cm — la misma regla del motor). Antes era un 15 fijo sin origen, que en
+    // un muro de 20 dejaba la pieza más profunda que el propio espesor (feedback
+    // del usuario 13-ago). Cuando se defina la tabla normativa por φ, entra acá.
+    var gancho = Math.round(Math.max(6 * (Number(diamMm) / 10 || 0), 7.5) * 10) / 10;
     spec.parciales.forEach(function (L) {
       if (rol === 'estribo') { dims[L] = { modo: 'auto' }; return; }
-      if (rol === 'cabezal' && (L === 'A' || L === 'C')) { dims[L] = { modo: 'fija', valor: 15 }; return; }
+      if (rol === 'cabezal' && (L === 'A' || L === 'C')) { dims[L] = { modo: 'fija', valor: gancho }; return; }
       dims[L] = { modo: 'auto' };
     });
     if (rol === 'estribo' && contorno === false) dims.__contorno = false;
@@ -1081,18 +1084,18 @@
     var dir = new THREE.DirectionalLight(0xffffff, 0.7); dir.position.set(1, 1.4, 0.8); ST.scene.add(dir);
     var dir2 = new THREE.DirectionalLight(0xbcd4ff, 0.3); dir2.position.set(-1, -0.4, -0.7); ST.scene.add(dir2);
     ST.grid = new THREE.GridHelper(1400, 28, TEMA.g1, TEMA.g2); ST.grid.position.y = -1; ST.scene.add(ST.grid);
-    ST.materiales = {
-      CBS: new THREE.MeshStandardMaterial({ color: TEMA.CBS, metalness: 0.5, roughness: 0.5 }),
-      CBI: new THREE.MeshStandardMaterial({ color: TEMA.CBI, metalness: 0.5, roughness: 0.5 }),
-      ES: new THREE.MeshStandardMaterial({ color: TEMA.ES, metalness: 0.5, roughness: 0.5 }),
-      TRV: new THREE.MeshStandardMaterial({ color: TEMA.TRV, metalness: 0.5, roughness: 0.5 }),
-      LT: new THREE.MeshStandardMaterial({ color: TEMA.LT, metalness: 0.5, roughness: 0.5 }),
-      // BUG 7: el hormigón es el VOLUMEN DE REFERENCIA y NO debe seguir la regla del
-      // cuchillo (si lo recortan los clipping planes, en algunas vistas la cara
-      // desaparece). clippingPlanes:[] hace que ESTE material ignore los planos de
-      // corte globales del renderer → la caja de hormigón se ve SIEMPRE completa.
-      hormigon: new THREE.MeshStandardMaterial({ color: 0x9aa6b5, transparent: true, opacity: 0.14, roughness: 0.9, depthWrite: false, clippingPlanes: [] })
-    };
+    // Un material por tipología, desde COL2D (FUENTE ÚNICA de colores: 2D y 3D
+    // leen la misma tabla — antes el 3D tenía sus 5 claves de viga duplicadas en
+    // TEMA y toda tipología de MURO caía al gris del fallback).
+    ST.materiales = {};
+    Object.keys(COL2D).forEach(function (k) {
+      ST.materiales[k] = new THREE.MeshStandardMaterial({ color: new THREE.Color(COL2D[k]), metalness: 0.5, roughness: 0.5 });
+    });
+    // BUG 7: el hormigón es el VOLUMEN DE REFERENCIA y NO debe seguir la regla del
+    // cuchillo (si lo recortan los clipping planes, en algunas vistas la cara
+    // desaparece). clippingPlanes:[] hace que ESTE material ignore los planos de
+    // corte globales del renderer → la caja de hormigón se ve SIEMPRE completa.
+    ST.materiales.hormigon = new THREE.MeshStandardMaterial({ color: 0x9aa6b5, transparent: true, opacity: 0.14, roughness: 0.9, depthWrite: false, clippingPlanes: [] });
     // El 3D se orbita en el CUADRANTE 3D (la vista .d3), NO en el canvas te_cv: ese
     // canvas ahora cubre toda la grilla con pointer-events:none (para no tapar los
     // overlays de las vistas 2D), así que los eventos del 3D los captura su cuadrante.
@@ -1367,7 +1370,13 @@
   //   A LO LARGO = elevación        → plano X-Y (u=x, v=y)
   //   PLANTA   = vista superior     → plano X-Z (u=x, v=z)
   // ==========================================================================
-  var COL2D = { CBS: '#1565c0', CBI: '#00897b', ES: '#e65100', TRV: '#7b1fa2', LT: '#607d8b' };
+  // Colores 2D por tipología. Las de MURO tienen los suyos (antes caían TODAS al
+  // gris del rol cabezal y no se distinguían); EC/TC/TR siguen cayendo por rol a
+  // ES/TRV (naranja/morado), que es su familia.
+  var COL2D = {
+    CBS: '#1565c0', CBI: '#00897b', ES: '#e65100', TRV: '#7b1fa2', LT: '#607d8b',
+    MH: '#00897b', MV: '#1565c0', MA: '#3949ab', CB: '#283593'
+  };
   var SVG_NS = 'http://www.w3.org/2000/svg';
   // Eje de rotación perpendicular al plano de cada vista (para rotar 90° "de frente").
   var EJE_ROT = { seccion: 'x', largo: 'z', planta: 'y' };
@@ -2616,7 +2625,7 @@
       recub_override: null,
       angulos: _figSpec(sel.figura).angulos.slice(),
       modo: meta.modo, plano_pieza: meta.plano_pieza, arreglo: meta.arreglo,
-      dims: _dimsDefault(sel.figura, rol, sel.contorno),
+      dims: _dimsDefault(sel.figura, rol, sel.contorno, sel.diam),
       distribucion: _distDefault(rol)
     };
     // POSE canónica + espejo de los campos viejos (cara / lado / plano_pieza): el

@@ -121,10 +121,17 @@ console.log('\nA2 — el genérico NO desplaza a los constructores especializado
 ok(FP.familiaDeDibujo('101A', null) === 'recta' && FP.familiaDeDibujo('102A', null) === 'cabezal' &&
    FP.familiaDeDibujo('103B', null) === 'cabezal' && FP.familiaDeDibujo('104D', null) === 'estribo',
   '1 lado → recta · 2-3 → cabezal · marco de 4 → estribo (sin cambios)');
-ok(FP.familiaDeDibujo('104D', 'estribo') === 'estribo' && FP.familiaDeDibujo('105A', 'traba') === 'traba' &&
+ok(FP.familiaDeDibujo('104D', 'estribo') === 'estribo' && FP.familiaDeDibujo('104D', 'traba') === 'estribo' &&
    FP.familiaDeDibujo('103E', 'estribo') === 'estribo',
-  'el ROL sigue mandando sobre la familia cuando la FIGURA es un marco (104D) o no ' +
-  'tiene cadena que la reemplace (103E, el EC de 3 lados del catálogo)');
+  'el ROL sigue mandando sobre la familia cuando la FIGURA es un marco (104D, con ' +
+  'CUALQUIER rol de sección) o no tiene cadena que la reemplace (103E con rol estribo)');
+// FEEDBACK 13-ago — la TRABA con figura de 3+ lados también se traza como CADENA
+// (mismo criterio que el 305A del estribo): `_traba` dibuja una única forma fija
+// que sólo aproxima 101x/102x; con una 104B la ignoraba y el 'auto' resolvía las
+// 4 dims al alto útil (medido: TC 104B del muro = 244×4, dibujada plana).
+ok(FP.familiaDeDibujo('105A', 'traba') === 'cadena' && FP.familiaDeDibujo('104B', 'traba') === 'cadena' &&
+   FP.familiaDeDibujo('101A', 'traba') === 'traba' && FP.familiaDeDibujo('102A', 'traba') === 'traba',
+  'traba: 3+ lados → cadena de sección · 101x/102x → la forma clásica');
 // CAMBIO TANDA P (fix 305A) — el rol 'estribo' YA NO fuerza el marco cerrado sobre
 // una figura que NO es un marco: la 104B (4 lados con quiebres de 45°) colocada con
 // tipología ES se dibujaba como rectángulo con ganchos, o sea una figura que no

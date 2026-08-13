@@ -218,7 +218,18 @@
       if (esCadena) return 'cadena';
       return 'estribo';
     }
-    if (rol === 'traba') return 'traba';
+    // TRABA CON FIGURA DE 3+ LADOS → CADENA DE SECCIÓN (feedback 13-ago, mismo
+    // criterio que el fix 305A del estribo): `_traba` dibuja UNA forma fija
+    // (vertical + gancho 135/90) que aproxima bien las 101x/102x — con una
+    // 103A/104A/104B la IGNORABA por completo y encima el 'auto' mandaba TODAS
+    // las dims al alto útil (medido: una TC 104B en el muro resolvía 244×4 y se
+    // dibujaba plana). Como cadena entra por ejesCadenaSeccion/autos, contra el
+    // marco de SU pose, igual que el estribo-cadena.
+    if (rol === 'traba') {
+      if (esMarco) return 'estribo';   // un marco cerrado se dibuja como marco
+      if (n >= 3 && !!tramosDeFigura(f)) return 'cadena';
+      return 'traba';                  // 101x/102x: la forma clásica les calza
+    }
     if (esMarco) return rol ? 'cabezal' : 'estribo';
     if (_esRecta(f)) return 'recta';
     if (esCadena) return 'cadena';

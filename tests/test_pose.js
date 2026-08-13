@@ -564,8 +564,13 @@ ok(R.poseDefault('muro', 'MH').cara === 'lateral' && R.poseDefault('muro', 'MH')
   'MURO/MH: malla horizontal = cortina que corre a lo LARGO (lateral, rumbo x)');
 ok(R.poseDefault('muro', 'MV').cara === 'lateral' && R.poseDefault('muro', 'MV').rumbo === 'y',
   'MURO/MV: la misma cortina DE PIE (lateral, rumbo y)');
-ok(R.poseDefault('muro', 'TR').cara === 'extremo' && R.poseDefault('muro', 'TR').rumbo === 'z',
-  'MURO/TR: la traba COSE las dos cortinas → corre en el espesor (rumbo z)');
+// FEEDBACK 13-ago: la pose vieja {extremo, rumbo z} era IMPOSIBLE — el plano de
+// una pieza de sección es ⊥ a su rumbo, así que rumbo z dejaba el plano ⊥ al
+// espesor que la traba debe CRUZAR (TC 104B resolvía 244×4 y se dibujaba plana).
+// Cuerpo en el espesor ⇒ el plano CONTIENE z ⇒ rumbo y: la MISMA sección
+// horizontal del EC al que acompaña, repartida en la altura.
+ok(R.poseDefault('muro', 'TR').cara === 'lateral' && R.poseDefault('muro', 'TR').rumbo === 'y',
+  'MURO/TR: cose las caras z± en la sección horizontal del EC (lateral, rumbo y)');
 ok(R.poseDefault('muro', 'CB').cara === 'extremo' && R.poseDefault('muro', 'CB').rumbo === 'y',
   'MURO/CB: cabezal de borde = pegado al TESTERO, corriendo en alto (extremo, rumbo y)');
 ok(R.poseDefault('viga', 'XXX') === null && R.poseDefault('OTRA', 'CBS') === null,

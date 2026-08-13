@@ -634,9 +634,16 @@
       MV: { cara: 'lateral', lado: 1, rumbo: 'y' },
       MA: { cara: 'lateral', lado: 1, rumbo: 'x' },
       EC: { cara: 'lateral', lado: 1, rumbo: 'y' },
-      TC: { cara: 'extremo', lado: 1, rumbo: 'z' },
-      TR: { cara: 'extremo', lado: 1, rumbo: 'z' },
-      TM: { cara: 'extremo', lado: 1, rumbo: 'z' },
+      // TC/TR/TM cosen las dos CARAS del muro (z±): su cuerpo corre EN el
+      // espesor, así que su plano tiene que CONTENER z — el plano de una pieza
+      // de sección es ⊥ a su rumbo, o sea rumbo 'y' (sección horizontal, la
+      // MISMA del EC al que acompañan) y se reparten en la altura, que es lo que
+      // el rumbo también manda. La pose vieja {extremo, rumbo z} era imposible:
+      // dejaba el plano de la pieza ⊥ al espesor que debía cruzar (medido: TC
+      // 104B resolvía sus 4 dims al alto útil 244 y se dibujaba plana).
+      TC: { cara: 'lateral', lado: 1, rumbo: 'y' },
+      TR: { cara: 'lateral', lado: 1, rumbo: 'y' },
+      TM: { cara: 'lateral', lado: 1, rumbo: 'y' },
       CB: { cara: 'extremo', lado: 1, rumbo: 'y' }
     },
     COLUMNA: {
