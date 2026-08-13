@@ -1021,6 +1021,93 @@
     return { u: maxU - minU, v: maxV - minV };
   }
 
+  // ==========================================================================
+  // AUTO UNIVERSAL POR DIRECCIÓN-EN-POSE (feedback de raíz 13-ago)
+  // ==========================================================================
+  // El 'auto' de un lado NO depende de la letra ni del rol: depende de QUÉ CRUZA
+  // su dirección en la pose actual. Para las piezas de sección eso ya existe
+  // (ejesCadenaSeccion). Esto es el ESPEJO para la pieza LONGITUDINAL (rol
+  // cabezal): los lados se clasifican RELATIVO AL DOMINANTE (que el dibujo pone
+  // a lo largo, +u):
+  //   'u' → corre a lo largo (el dominante; un retorno paralelo NO mide nada)
+  //   'v' → PERPENDICULAR al largo: cruza la PROFUNDIDAD hacia el núcleo (en un
+  //         muro, el espesor). Su 'auto' es la profundidad útil — la fórmula
+  //         universal del estribo (espesor − recubs, eje a eje), no el gancho.
+  //   'd' → diagonal: pata/gancho inclinado → extensión de gancho normativa.
+  // Antes TODO lado no-longitudinal caía al gancho: en la viga coincide (patas
+  // cortas), en el muro no — la pata que cruza el espesor quedaba 9.6 fija o
+  // se pasaba de largo, y "cambiar todo a auto no cambiaba nada" (medido:
+  // MH 104B φ16 en muro de 20: profundidad dibujada 16.4 en un núcleo de 14.2).
+  function ejesCadenaLong(figura) {
+    var f = (figura || '').toUpperCase();
+    var tr = tramosDeFigura(f);
+    if (!tr) return null;
+    var ladoDom = ladoDominanteFigura(f);
+    var heading = 0, hDom = null, i, t, g;
+    var hs = [];
+    for (i = 0; i < tr.tramos.length; i++) {
+      t = tr.tramos[i];
+      if (i > 0) {
+        g = Number(t.giro) || 0;
+        if (t.sentido === 'der') g = -g;      // misma convención que _cadena2D
+        heading += g;
+      }
+      hs.push(heading);
+      if (t.lado === ladoDom && hDom == null) hDom = heading;
+    }
+    if (hDom == null) hDom = hs[0] || 0;
+    var out = {};
+    for (i = 0; i < tr.tramos.length; i++) {
+      t = tr.tramos[i];
+      if (t.lado == null || out[t.lado] != null) continue;
+      var a = (((hs[i] - hDom) % 180) + 180) % 180;   // dirección relativa, sin sentido
+      out[t.lado] = (a < 1e-6 || Math.abs(a - 180) < 1e-6) ? 'u'
+        : (Math.abs(a - 90) < 1e-6 ? 'v' : 'd');
+    }
+    return out;
+  }
+
+  // Cuánto debe medir cada lado 'v' en auto para que la PROFUNDIDAD del trazo
+  // (⊥ al dominante) quepa EXACTO en `utilV` (eje a eje). La misma cuenta exacta
+  // del 'auto' de sección (_intervaloCabe sobre el trazo ARQUEADO, afín en t),
+  // medida en el marco del DOMINANTE: se rota el trazo para dejarlo sobre +u —
+  // que es lo que hace el dibujo (_orientarCadena) — y se acota la extensión v.
+  function autoProfundidadLong(figura, dimsBase, utilV, diamCm) {
+    var f = (figura || '').toUpperCase();
+    var tr = tramosDeFigura(f);
+    var ejes = ejesCadenaLong(f);
+    if (!tr || !ejes) return null;
+    var ladoDom = ladoDominanteFigura(f);
+    var iL = -1, i;
+    for (i = 0; i < tr.tramos.length; i++) {
+      if (tr.tramos[i].lado === ladoDom) { iL = i; break; }
+    }
+    if (iL < 0) return null;
+    function coordsV(t) {
+      var d = {}, k;
+      for (k in dimsBase) if (Object.prototype.hasOwnProperty.call(dimsBase, k)) d[k] = dimsBase[k];
+      for (k in ejes) {
+        if (!Object.prototype.hasOwnProperty.call(ejes, k) || d[k] != null) continue;
+        d[k] = (ejes[k] === 'v') ? t : 1;   // 1 > 0: un tramo degenerado saltaría su gancho
+      }
+      var c = _cadena2D(tr.tramos, d, 0);
+      var a2 = c.pts[iL], b2 = c.pts[iL + 1];
+      var ang = Math.atan2(b2.v - a2.v, b2.u - a2.u);
+      var co = Math.cos(-ang), si = Math.sin(-ang);
+      var rot = c.pts.map(function (p) {
+        return { u: (p.u - a2.u) * co - (p.v - a2.v) * si, v: (p.u - a2.u) * si + (p.v - a2.v) * co };
+      });
+      var pts = _conGanchosRadio(rot, diamCm || 0, _cadenaCierra(rot), true);
+      var out = [];
+      for (var j = 0; j < pts.length; j++) out.push(pts[j].v);
+      return out;
+    }
+    var c1 = coordsV(1), c2 = coordsV(2), a = [], b = [];
+    for (i = 0; i < c1.length; i++) { b.push(c2[i] - c1[i]); a.push(c1[i] - b[i]); }
+    var iv = _intervaloCabe(a, b, utilV);
+    return iv.acotaSup ? iv.hi : utilV;
+  }
+
   // LADO LONGITUDINAL de una cadena (el que corre a lo largo de la pieza y por lo
   // tanto recibe el auto-largo y el empalme). Contrato de 3 valores:
   //   undefined → la figura NO es cadena: que el llamador use su regla de siempre.
@@ -1088,7 +1175,17 @@
       if (u < minU) minU = u;
       if (u > maxU) maxU = u;
     }
-    return { ini: Math.max(0, -minU), fin: Math.max(0, maxU - ux(b)) };
+    // MEDIO DIÁMETRO EN EL EXTREMO CON DOBLEZ (feedback de raíz 13-ago). El eje
+    // del doblez llegaba JUSTO al recub de extremo y la SUPERFICIE del codo lo
+    // pasaba φ/2 ("hiciste llegar el eje al recubrimiento"): la cresta del
+    // gancho debe quedar EN LÍNEA con el recub, o sea el eje a recub + φ/2 — la
+    // misma regla del estribo. Una punta RECTA no descuenta nada: la barra
+    // termina plana y su cara axial ES la punta (101A intacta).
+    var rphi = (diamCm || 0) / 2;
+    return {
+      ini: Math.max(0, -minU) + (iL > 0 ? rphi : 0),
+      fin: Math.max(0, maxU - ux(b)) + (iL < tr.tramos.length - 1 ? rphi : 0)
+    };
   }
 
   // Radiografía de la cadena de una figura (para tests, avisos y la UI):
@@ -1622,6 +1719,8 @@
     _cabezalLongitudinal: _cabezalLongitudinal,
     _estriboPerimetral: _estriboPerimetral,
     _conGanchosRadio: _conGanchosRadio,   // ganchos terminales >90° con radio (tests)
+    ejesCadenaLong: ejesCadenaLong,           // clasificación u/v/d relativa al dominante
+    autoProfundidadLong: autoProfundidadLong, // 'v' en auto → profundidad útil exacta
     _traba: _traba,
     _cadenaGenerica: _cadenaGenerica
   };

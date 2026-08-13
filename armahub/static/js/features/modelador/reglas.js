@@ -2089,6 +2089,40 @@
       autoSec = fpD.autosCadenaSeccion(comp.figura, baseSec, ejesSec,
         { u: mk.anchoUtil - phiSec, v: mk.altoUtil - phiSec }, phiSec);
     }
+    // AUTO UNIVERSAL DEL LONGITUDINAL (feedback de raíz 13-ago): el lado de un
+    // cabezal que corre PERPENDICULAR al dominante cruza la PROFUNDIDAD de la
+    // pieza (en un muro, el espesor): su 'auto' es la profundidad ÚTIL eje a
+    // eje — la fórmula del estribo —, no el gancho. Diagonales y retornos
+    // paralelos siguen al gancho normativo. Es la misma cuenta exacta del
+    // 'auto' de sección (fpD.autoProfundidadLong reusa _intervaloCabe sobre el
+    // trazo arqueado), medida en el marco del dominante.
+    var ejesLong = null, autoProf = null;
+    if (comp._rol === 'cabezal' && fpD && fpD.ejesCadenaLong) {
+      ejesLong = fpD.ejesCadenaLong(comp.figura);
+      var tieneV = false, kk;
+      if (ejesLong) {
+        for (kk in ejesLong) {
+          if (Object.prototype.hasOwnProperty.call(ejesLong, kk) && ejesLong[kk] === 'v' &&
+              g[kk] && g[kk].modo !== 'fija') { tieneV = true; break; }
+        }
+      }
+      if (tieneV && fpD.autoProfundidadLong) {
+        var baseLong = {};
+        Object.keys(g).forEach(function (k2) {
+          var d2 = g[k2];
+          if (d2 && d2.modo === 'fija') baseLong[k2] = Number(d2.valor);
+          else if (k2 === ladoLong) baseLong[k2] = 1000;         // placeholder: sólo mueve u
+          else if (ejesLong[k2] !== 'v') baseLong[k2] = ganchoAuto;
+        });
+        // Profundidad útil de la POSE: de la cara de anclaje a la opuesta, entre
+        // pilas (marcoUtilNivel), eje a eje (−φ). caraLocal lateral = local z
+        // (anchoUtil, p.ej. el espesor del muro); sup/inf = local y (altoUtil).
+        var phiL = Number(comp.diam) / 10 || 0;
+        var caraL = derivarPose(poseDe(comp)).caraLocal;
+        var profUtil = ((caraL === 'lateral') ? mk.anchoUtil : mk.altoUtil) - phiL;
+        autoProf = fpD.autoProfundidadLong(comp.figura, baseLong, profUtil, phiL);
+      }
+    }
     function autoDeLado(k) {
       if (ejesSec) {
         var e = ejesSec[k];
@@ -2107,9 +2141,10 @@
       var d = g[k];
       if (d && d.modo === 'fija') { dims[k] = Number(d.valor); return; }
       if (k === ladoLong) return;   // 2ª pasada
-      // AUTO: deriva según rol + letra, contra el marco útil del NIVEL.
+      // AUTO: deriva según la DIRECCIÓN del lado en la pose (regla universal);
+      // sin clasificación (figura sin tramos), cae al gancho de siempre.
       if (comp._rol === 'cabezal') {
-        dims[k] = ganchoAuto;
+        dims[k] = (ejesLong && ejesLong[k] === 'v' && autoProf != null) ? autoProf : ganchoAuto;
       } else {
         dims[k] = autoDeLado(k);
       }
