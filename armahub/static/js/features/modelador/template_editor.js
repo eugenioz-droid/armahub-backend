@@ -5012,7 +5012,15 @@
       // PAN si: botón medio (1) · botón derecho (2) · o izquierdo con shift/alt.
       var quierePan = (e.button === 1 || e.button === 2 || e.shiftKey || e.altKey);
       if (quiereOrbitaSel) { _pivotarEn(_centroSeleccion3D()); mode = 'rot'; }
-      else mode = quierePan ? 'pan' : (e.button === 0 ? 'rot' : null);
+      else if (e.button === 0 && !quierePan) {
+        // FEEDBACK 13-ago: el pivote de un ctrl+click anterior QUEDABA PEGADO y
+        // el arrastre normal seguía orbitando la selección vieja. El arrastre
+        // SIN modificador re-pivotea SIEMPRE al centro de la escena (la cámara
+        // no salta — _pivotarEn sólo cambia en torno a qué gira).
+        _pivotarEn({ x: 0, y: 0, z: 0 });
+        mode = 'rot';
+      }
+      else mode = quierePan ? 'pan' : null;
       if (mode) e.preventDefault();
     });
     global.addEventListener('mouseup', function () { mode = null; });
