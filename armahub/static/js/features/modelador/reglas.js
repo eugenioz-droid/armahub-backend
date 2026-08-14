@@ -1682,6 +1682,39 @@
     return P ? P[m] : m;
   }
 
+  // GIRO DE UNA TRABA-CADENA (regla de ingreso, 14-ago): «el lado que cruza lo
+  // dicta la colocación; lo demás actúa como gancho». El criterio es GEOMÉTRICO
+  // puro sobre la clasificación canónica del trazo (ejesCadenaSeccion): una
+  // traba JAMÁS tiene un lado auto corriendo por el alto local — si el canónico
+  // deja alguno ahí (la 103B/102A «verticales», la TC 104B plana de 13-ago), o
+  // no deja NINGUNO en el cruce (la 101A recta de la viga), el trazo completo
+  // gira 90° en su plano y las dims se leen post-giro: lados del cruce miden el
+  // cruce (útil, convención del estribo), el resto es gancho normativo. El
+  // dominante-cascada NO participa: inventa 'B' en figuras que no lo declaran
+  // (la 104B) y giraría trabas que ya calzan.
+  function _giroTraba(comp) {
+    if ((comp && comp._rol) !== 'traba') return null;
+    var fp = _fp();
+    if (!fp || !fp.ejesCadenaSeccion) return null;
+    var ejes = fp.ejesCadenaSeccion(comp.figura, 'traba', _angOvr(comp));
+    if (!ejes) return null;
+    var cruceCanon = (_cruceLocalTraba(comp) === 'z') ? 'u' : 'v';
+    var noCruce = (cruceCanon === 'u') ? 'v' : 'u';
+    var letras = Object.keys(ejes);
+    var g = _dimsDecl(comp);
+    // ¿algún lado AUTO clasificado al eje que NO es el cruce? una traba jamás
+    // corre por el alto local: eso era la 103B/102A vertical y la TC 104B «plana».
+    // También gira si NINGÚN lado cae al cruce (la 101A recta de la viga).
+    var idxMal = -1, idxCruce = -1;
+    for (var i = 0; i < letras.length; i++) {
+      var L = letras[i], auto = !(g[L] && g[L].modo === 'fija');
+      if (ejes[L] === noCruce && auto && idxMal < 0) idxMal = i;
+      if (ejes[L] === cruceCanon && idxCruce < 0) idxCruce = i;
+    }
+    if (idxMal < 0 && idxCruce >= 0) return null;          // canónico calza: intacto
+    var idxG = (idxMal >= 0) ? idxMal : 0;
+    return { idx: idxG, letra: letras[idxG], eje: cruceCanon, noCruce: noCruce, ejes: ejes, letras: letras };
+  }
   // Nivel EFECTIVO de una base (declarado o default por rol).
   function _nivelDeBase(base) {
     return nivelJerarquiaEfectivo(
@@ -3045,7 +3078,8 @@
     // pueden leer dos cosas distintas (hallazgo D1 del verificador: la 305A se
     // medía contra el alto y se dibujaba contra el ancho, 11 cm fuera del
     // hormigón). null = no es cadena de sección → sigue la regla por letra.
-    var ejesSec = (fpD && fpD.ejesCadenaSeccion &&
+    var giroT = _giroTraba(comp);
+    var ejesSec = (fpD && fpD.ejesCadenaSeccion && !giroT &&
       (comp._rol === 'estribo' || comp._rol === 'traba'))
       ? fpD.ejesCadenaSeccion(comp.figura, comp._rol, angOvr) : null;
     // Y el valor de ese 'auto' RESERVA los quiebres, igual que el auto-largo del
@@ -3132,6 +3166,10 @@
         if (e === 'd') return ganchoAuto;
       }
       if (comp._rol === 'estribo') return (k === 'A' || k === 'C') ? mk.anchoUtil : mk.altoUtil;
+      // TRABA GIRADA: post-giro, los lados que estaban en el eje equivocado
+      // pasan al CRUCE y miden su útil; todo lo demás actúa como gancho.
+      if (giroT) return (giroT.ejes[k] === giroT.noCruce)
+        ? _utilPorEje(mk, _cruceLocalTraba(comp)) : ganchoAuto;
       // TRABA: cruza el eje que dicta su POSE, leído en LOCAL (_cruceLocalTraba).
       // OJO: `mk` viene del host YA PERMUTADO por la pose (todo este resolver
       // trabaja en el marco local — por eso el estribo de arriba lee ancho/alto
@@ -3740,6 +3778,19 @@
       // con rumbo y cruzaba el "alto local" = el LARGO del muro, 395 cm medidos).
       // Se resuelve acá (pose) y viaja en el anchor: figura_puntos no conoce poses.
       base.anchorBase.cruceLocal = _cruceLocalTraba(comp);
+      var gT = _giroTraba(comp);
+      if (gT) {
+        base.anchorBase.orientarA = { idx: gT.idx, eje: gT.eje };
+        base.anchorBase.domIdx = gT.idx;
+        base.anchorBase.encogerDom = Number(comp.diam) / 10 || 0;
+        // "el lado que cruza calza con el borde": la cara local viaja para que
+        // el constructor ancle el lado del cruce cuando corre paralelo a ella
+        // (si la cruza, queda centrado de cara a cara).
+        var dpT = derivarPose(poseDe(comp));
+        base.anchorBase.anclarCara = (dpT.caraLocal === 'lateral')
+          ? { eje: 'u', s: (dpT.ladoLocal < 0 ? -1 : 1) }
+          : { eje: 'v', s: (dpT.caraLocal === 'inf' ? -1 : 1) };
+      }
     }
     if (base.rol === 'estribo' || base.rol === 'traba') {
       var nivelEf = _nivelDeBase(base);

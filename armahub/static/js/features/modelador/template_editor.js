@@ -2430,7 +2430,10 @@
     var vista = svg.closest ? svg.closest('.te-vista') : null;
     if (vista) vista.classList.toggle('te-ghost-block', !dentro);
 
-    var color = dentro ? _colDe(ST.cargado.tipologia) : '#d32f2f';
+    // GHOST MAGENTA (14-ago): el color de la tipología se confundía con las
+    // barras ya puestas y se veía tenue; el preview debe GRITAR dónde va a caer.
+    // Rojo se mantiene para "fuera del hormigón".
+    var color = dentro ? '#d500f9' : '#d32f2f';
     // resaltado de la cara (bajo el trazo del ghost).
     if (f && dentro) _dibujarCaraHiEnCapa(layer, plano, f, _colDe(ST.cargado.tipologia));
     // PIEZA CERRADA (deseable del usuario 14-ago): al colocar un estribo/marco,

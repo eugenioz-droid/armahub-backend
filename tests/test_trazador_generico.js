@@ -154,9 +154,13 @@ ok(FP.familiaDeDibujo('104D', 'estribo') === 'estribo' && FP.familiaDeDibujo('10
 // (mismo criterio que el 305A del estribo): `_traba` dibuja una única forma fija
 // que sólo aproxima 101x/102x; con una 104B la ignoraba y el 'auto' resolvía las
 // 4 dims al alto útil (medido: TC 104B del muro = 244×4, dibujada plana).
+// ASSERT CAMBIADO (14-ago): la «forma clásica» de 101x/102x era la forma FIJA
+// que ignoraba el trazo real (una 102A se veía como 103C) y dibujaba ganchos que
+// no se facturaban. Hoy TODA figura con tramos es cadena; el giro por regla
+// geométrica (_giroTraba) la orienta al cruce.
 ok(FP.familiaDeDibujo('105A', 'traba') === 'cadena' && FP.familiaDeDibujo('104B', 'traba') === 'cadena' &&
-   FP.familiaDeDibujo('101A', 'traba') === 'traba' && FP.familiaDeDibujo('102A', 'traba') === 'traba',
-  'traba: 3+ lados → cadena de sección · 101x/102x → la forma clásica');
+   FP.familiaDeDibujo('101A', 'traba') === 'cadena' && FP.familiaDeDibujo('102A', 'traba') === 'cadena',
+  'traba: TODA figura con tramos dibuja SU trazo (cadena) — la forma fija murió');
 // CAMBIO TANDA P (fix 305A) — el rol 'estribo' YA NO fuerza el marco cerrado sobre
 // una figura que NO es un marco: la 104B (4 lados con quiebres de 45°) colocada con
 // tipología ES se dibujaba como rectángulo con ganchos, o sea una figura que no

@@ -263,8 +263,14 @@
     // marco de SU pose, igual que el estribo-cadena.
     if (rol === 'traba') {
       if (esMarco || esEstriboConGanchos(f)) return 'estribo';   // marco cerrado (con o sin ganchos declarados) se dibuja como marco
-      if (n >= 3 && tieneTramos) return 'cadena';
-      return 'traba';                  // 101x/102x: la forma clásica les calza
+      // FIN DE LA FORMA FIJA (14-ago): antes 101x/102x caían en `_traba`, que
+      // dibuja SIEMPRE "cuerpo + gancho 135 + gancho 90" ignorando el trazo real
+      // — el usuario puso una 102A y vio "una 103C", y los ganchos dibujados ni
+      // se facturaban. TODA figura con tramos derivables dibuja SU trazo como
+      // cadena de sección (la 101A recta incluida: un tramo). `_traba` queda solo
+      // como fallback para figuras sin tramos (hoy: ninguna del catálogo).
+      if (tieneTramos) return 'cadena';
+      return 'traba';
     }
     // CERRADA = MARCO, gane quien gane el rol (fix 14-ago): antes `rol ? 'cabezal'
     // : 'estribo'` dejaba que la tipología pisara la topología — una 106A bajo MH
@@ -1397,7 +1403,41 @@
     // arco desplazada), así que el bbox que se centra en el marco tiene que ser
     // ese mismo — centrar el de vértices dejaba la pieza corrida ~R y la punta
     // invadía el recubrimiento que el solver acababa de prometer.
-    var pts = _conGanchosRadio(c.pts, diamCm, _cadenaCierra(c.pts)), i;
+    var rawPts = c.pts;
+    // ORIENTAR AL DOMINANTE (anchor.orientarA = {idx, eje}, lo decide reglas
+    // desde la pose): la regla del usuario es que el DOMINANTE cruza/corre por
+    // el eje que dicta la colocación; si el trazo canónico lo trae en otra
+    // dirección (la 103B lo trae a 45° por sus dobleces), el trazo COMPLETO gira
+    // en su plano hasta dejarlo paralelo al eje pedido — misma figura, girada.
+    // Rotación mínima (±90° máx): el espejo/lado deciden la mano, no esta vuelta.
+    if (anchor && anchor.orientarA && rawPts.length > anchor.orientarA.idx + 1) {
+      var iD = anchor.orientarA.idx;
+      var angD = Math.atan2(rawPts[iD + 1].v - rawPts[iD].v, rawPts[iD + 1].u - rawPts[iD].u);
+      var rotD = ((anchor.orientarA.eje === 'v') ? Math.PI / 2 : 0) - angD;
+      while (rotD > Math.PI / 2) rotD -= Math.PI;
+      while (rotD <= -Math.PI / 2) rotD += Math.PI;
+      if (Math.abs(rotD) > 1e-9) {
+        var cRo = Math.cos(rotD), sRo = Math.sin(rotD);
+        rawPts = rawPts.map(function (p) { return { u: p.u * cRo - p.v * sRo, v: p.u * sRo + p.v * cRo }; });
+      }
+    }
+    // CONVENCIÓN DEL ESTRIBO para el CRUCE (14-ago): la dim del dominante es
+    // ÚTIL (cara a cara del marco; es lo que se corta y lo que ya congelaba la
+    // semilla TRV = 50.4) y el TRAZO va EJE A EJE (−φ/2 por punta: la cara del
+    // fierro queda en la línea de recub). anchor.encogerDom = φ: el dominante se
+    // encoge simétrico y sus dos bloques vecinos lo acompañan hacia adentro.
+    if (anchor && anchor.encogerDom > 0 && anchor.domIdx != null &&
+        rawPts.length > anchor.domIdx + 1) {
+      var iE = anchor.domIdx;
+      var duE = rawPts[iE + 1].u - rawPts[iE].u, dvE = rawPts[iE + 1].v - rawPts[iE].v;
+      var lenE = Math.sqrt(duE * duE + dvE * dvE) || 1;
+      var exE = (duE / lenE) * (anchor.encogerDom / 2), eyE = (dvE / lenE) * (anchor.encogerDom / 2);
+      rawPts = rawPts.map(function (p2, k) {
+        return (k <= iE) ? { u: p2.u + exE, v: p2.v + eyE }
+                         : { u: p2.u - exE, v: p2.v - eyE };
+      });
+    }
+    var pts = _conGanchosRadio(rawPts, diamCm, _cadenaCierra(rawPts)), i;
     var minU = Infinity, maxU = -Infinity, minV = Infinity, maxV = -Infinity;
     for (i = 0; i < pts.length; i++) {
       if (pts[i].u < minU) minU = pts[i].u;
@@ -1414,6 +1454,47 @@
     // corre.
     var cy = (anchor && anchor.y != null && isFinite(anchor.y)) ? Number(anchor.y) : yc;
     var cz = (anchor && anchor.z != null && isFinite(anchor.z)) ? Number(anchor.z) : 0;
+    // "EL DOMINANTE CALZA CON EL LADO SELECCIONADO" (regla del usuario, 14-ago):
+    // si el dominante corre PARALELO a la cara clickeada (anchor.anclarCara =
+    // {eje:'u'|'v', s:±1} + anchor.domIdx), la pieza no se centra en ese eje: el
+    // dominante se APOYA en esa cara (eje a eje contra el marco) y el resto del
+    // trazo cuelga hacia el núcleo — clic abajo = barra abajo con patas arriba.
+    // Un dominante que CRUZA la cara (va de cara a cara) se queda centrado.
+    var coordExplicita = (anchor && anchor.anclarCara && anchor.anclarCara.eje === 'v')
+      ? (anchor && anchor.y != null && isFinite(anchor.y))
+      : (anchor && anchor.z != null && isFinite(anchor.z));
+    if (anchor && anchor.anclarCara && anchor.domIdx != null && !coordExplicita &&
+        rawPts.length > anchor.domIdx + 1) {
+      // (si el distribuidor ya escribió la coordenada —capas del layered, reparto—
+      // esa posición MANDA: el ancla es solo para la pieza recién clickeada.)
+      var aC = anchor.anclarCara;
+      var e0 = rawPts[anchor.domIdx], e1 = rawPts[anchor.domIdx + 1];
+      var dNorm = (aC.eje === 'v') ? Math.abs(e1.v - e0.v) : Math.abs(e1.u - e0.u);
+      var dLen = Math.max(Math.abs(e1.u - e0.u), Math.abs(e1.v - e0.v), 1e-9);
+      if (dNorm < 0.05 * dLen) {                       // paralelo a la cara
+        var caraCoord = (aC.eje === 'v') ? (aC.s > 0 ? m.ySup : m.yInf)
+                                         : (aC.s > 0 ? m.w2 : -m.w2);
+        var domCoord = (aC.eje === 'v') ? (e0.v + e1.v) / 2 : (e0.u + e1.u) / 2;
+        // el resto del trazo debe quedar HACIA EL NÚCLEO: si cuelga hacia afuera,
+        // se refleja sobre la línea del dominante (cambia la mano, no la posición)
+        var haciaFuera = 0, haciaDentro = 0;
+        pts.forEach(function (p) {
+          var d = ((aC.eje === 'v') ? p.v : p.u) - domCoord;
+          if (d * aC.s > 1e-9) haciaFuera += Math.abs(d); else haciaDentro += Math.abs(d);
+        });
+        if (haciaFuera > haciaDentro) {
+          pts = pts.map(function (p) {
+            var q = (aC.eje === 'v') ? { u: p.u, v: 2 * domCoord - p.v }
+                                     : { u: 2 * domCoord - p.u, v: p.v };
+            if (p.esArco) q.esArco = true;
+            return q;
+          });
+        }
+        // anclar: el eje del dominante queda EN la línea del marco de esa cara
+        if (aC.eje === 'v') { cv = domCoord; cy = caraCoord; }
+        else { cu = domCoord; cz = caraCoord; }
+      }
+    }
     return pts.map(function (p) {
       var q = V(xx, cy + (p.v - cv), cz + mu * (p.u - cu));
       if (p.esArco) q.esArco = true;

@@ -206,10 +206,11 @@ console.log('\nB — el tramo que el preview destaca ES el lado dominante');
 // ================================== C · familias sin mapeo → no se destaca nada
 console.log('\nC — sin mapeo fiable no se destaca nada (mejor eso que el lado equivocado)');
 {
+  // (14-ago) La 101A-TRV salió de esta lista: la forma fija murió y su trazo
+  // real SÍ es su cadena (una recta = su parcial A), así que el dominante mapea.
   [['104D', 'ES', 'marco de estribo: dibuja 4 lados'],
    ['103E', 'ES', 'marco de estribo con 3 parciales: el trazo no es su cadena'],
-   ['106A', 'ES', 'rombo: constructor propio'],
-   ['101A', 'TRV', 'traba: forma fija con gancho que no está en los parciales']
+   ['106A', 'ES', 'rombo: constructor propio']
   ].forEach(([fig, tip, porque]) => {
     const c = comp(fig, tip);
     c.diam = 8;

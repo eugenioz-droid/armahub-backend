@@ -59,25 +59,18 @@ ok(est[0].z > -w2t && est[0].z < w2t && est[0].y < h2t + 0.6,
    'punta del gancho apunta al núcleo (dentro del recubrimiento)');
 
 console.log('Traba 101A (cara lateral):');
+// ASSERTS CAMBIADOS (14-ago): aquí se congelaba la FORMA FIJA (cuerpo + gancho
+// 135 en arco + pie 90) — ganchos que la 101A NO declara y que jamás se
+// facturaron (el corte lleva solo la dim A). La regla del usuario: la figura se
+// dibuja COMO SE DIBUJÓ. Una 101A es una RECTA: dos puntos, sin arcos, cruzando
+// el marco de su plano; quien quiera ganchos usa una figura que los tenga.
 var tr = F.figuraAPuntos('101A', { A: 54 }, host, { x: 10, z: 0, recub: 3 }, { rol: 'traba', diamCm: 0.8 });
-// TANDA V: el gancho sísmico de 135° ya no es un vértice en punta — es un ARCO
-// muestreado (puntos esArco) con radio de norma, como el del estribo. El pie de
-// 90° sigue en punta (lo redondea el fillet del motor). La cuenta: el vértice
-// del doblez Y la punta vieja se reemplazan (la punta nueva cuelga del arco):
-// quedan 3 rectos (punta, fondo, pie) + 1 racha de arco = los 4 de la cadena.
 var trArco = tr.filter(function (p) { return p.esArco; });
 var trRect = tr.filter(function (p) { return !p.esArco; });
-ok(trRect.length === 3 && trArco.length >= 8,
-  'traba = 3 puntos rectos + gancho 135 en ARCO (rectos=' + trRect.length + ' arco=' + trArco.length + ')');
-// la CRESTA del arco toca EXACTO la altura del estribo — alto/2 − recub − φ/2 =
-// 30 − 3 − 0.4 = 26.6 (regla de la cresta: ahí se APOYA, la jerarquía mide ahí):
-var trMaxY = Math.max.apply(null, tr.map(function (p) { return p.y; }));
-ok(Math.abs(trMaxY - 26.6) < 1e-9 && trArco.some(function (p) { return Math.abs(p.y - trMaxY) < 1e-9; }),
-  'la cresta del arco toca EXACTO ySup = 26.6 (=' + trMaxY + ')');
-ok(tr[0].y < trMaxY, 'la punta del gancho cuelga bajo la cresta');
-// la vertical baja desde la TANGENCIA del arco (su punto más bajo) al fondo:
-var trTang = Math.min.apply(null, trArco.map(function (p) { return p.y; }));
-ok(trTang > trRect[1].y, 'baja de arriba (tangencia del arco) a abajo (fondo)');
+ok(trRect.length === 2 && trArco.length === 0,
+  'traba 101A = SU trazo real: una recta de 2 puntos, sin ganchos fantasma (rectos=' + trRect.length + ' arco=' + trArco.length + ')');
+ok(tr.every(function (p) { return Math.abs(p.x - tr[0].x) < 1e-9; }),
+  '100% planar: todos los puntos en la misma X');
 
 console.log('Coherencia con el motor (sin NaN, dobleces):');
 var an = M.analizarBarra(est, 0.8);

@@ -138,8 +138,12 @@ ok(CAT.noDibujables('104D') === null && typeof CAT.noDibujables('201A') === 'str
   'noDibujables(codigo) responde por UNA figura: null si se dibuja, motivo si no');
 ok(Object.keys(CAT.noDibujables()).length === Object.keys(noDib).length,
   'noDibujables() sin argumento sigue devolviendo el mapa completo');
-ok(FP.familiaDeDibujo('104D', 'estribo') === 'estribo' && FP.familiaDeDibujo('101A', 'traba') === 'traba',
-  'el ROL de la tipología manda la familia de dibujo');
+// ASSERT CAMBIADO (14-ago): decía «el ROL manda la familia» y la 101A-traba
+// devolvía la FORMA FIJA. La regla del usuario es la contraria: la FIGURA se
+// dibuja como se dibujó — toda figura con tramos derivables es cadena (la 101A
+// recta incluida); la forma fija murió con sus ganchos fantasma no facturados.
+ok(FP.familiaDeDibujo('104D', 'estribo') === 'estribo' && FP.familiaDeDibujo('101A', 'traba') === 'cadena',
+  'la FIGURA manda la familia: marco cerrado → estribo · 101A → su trazo real (cadena)');
 // MIGRACIÓN CABEZAL → TRAZADOR: sin rol, una figura de 2–3 lados ya NO cae en el
 // constructor de cabezal sino en el trazador genérico. Razón física: el cabezal
 // dibuja los dos dobleces a 90° FIJOS e ignora los ángulos del catálogo — una
