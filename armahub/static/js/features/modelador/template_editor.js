@@ -1874,7 +1874,16 @@
     // Es la MISMA tabla que salía antes de "base z|y + permutación de orientación"
     // (acostada = identidad · volteada = x↔z · de pie = x↔y), pero derivada del
     // modelo único en vez de escrita a mano — y por eso cubre 'extremo' gratis.
-    if (c && _rolDe(c.tipologia) === 'cabezal') {
+    // LA TOPOLOGÍA MANDA TAMBIÉN ACÁ (bug 14-ago·3, el mismo de la colocación):
+    // un estribo puesto con una tipología de malla activa tiene rol UI 'cabezal'
+    // y este branch le repartía por el TERCER eje (la flecha @20 aparecía
+    // corriendo DENTRO de su propia sección). Una figura cerrada es pieza de
+    // sección: su reparto es su RUMBO (la normal de su plano), decida lo que
+    // decida el chip de tipología — igual que el motor en _baseDeComponente.
+    var fpE = global.ModeladorFiguraPuntos;
+    var esSeccionTopo = !!(c && fpE && fpE.familiaDeDibujo &&
+      fpE.familiaDeDibujo(c.figura, null) === 'estribo');
+    if (c && !esSeccionTopo && _rolDe(c.tipologia) === 'cabezal') {
       var p = _poseDe(c);
       var normal = _NORMAL_DE_CARA[p.cara] || 'y';
       var terceros = _EJES_MUNDO.filter(function (e) { return e !== normal && e !== p.rumbo; });
@@ -4980,7 +4989,20 @@
     var fig = $('te_ribFigura');
     if (fig && !fig._teBound) {
       fig._teBound = true;
-      fig.addEventListener('input', function () { _validarFiguraRibbon(false); });
+      // LA FIGURA SE APLICA MIENTRAS SE ESCRIBE (bug 14-ago·4): solo se aplicaba
+      // en 'change' (al salir del campo) — el usuario tipeaba 103C y clickeaba
+      // DIRECTO a la vista, y se colocaba la figura ANTERIOR (su estribo). Si lo
+      // tipeado es una figura válida del catálogo, ST.figura la toma al instante;
+      // lo inválido no pisa nada (el clic ya lo bloquea el gate de figura/φ).
+      fig.addEventListener('input', function () {
+        if (_validarFiguraRibbon(false)) {
+          var kf = _figKey(fig.value);
+          if (kf && !_figError(kf)) {
+            ST.figura = kf;
+            if (_hayCargado()) _sellarCargado();
+          }
+        }
+      });
       fig.addEventListener('change', function () {
         if (!_validarFiguraRibbon(true)) return;
         ST.figura = _figKey(fig.value);
