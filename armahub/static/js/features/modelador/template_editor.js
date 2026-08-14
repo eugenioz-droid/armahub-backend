@@ -475,6 +475,15 @@
   // catálogo que ya usa _patasDe: A = pata inicial, C = pata final, B = CUERPO.
   // Devuelve la letra del parcial (o null si la figura no tiene parciales).
   function _ladoDominante(c) {
+    // Un CONTORNO CERRADO (estribo/marco/rombo) NO tiene lado dominante: nada se
+    // estira a un largo ni recibe empalme — el marco manda. La ficha marcaba "B"
+    // igual (fallback de convención) y el usuario lo leyó como un dato editable
+    // que no existe (14-ago). Para esas familias: null (la ficha no marca nada).
+    var fpDom = global.ModeladorFiguraPuntos;
+    if (c && fpDom && fpDom.familiaDeDibujo) {
+      var famDom = fpDom.familiaDeDibujo(c.figura, _rolDe(c.tipologia));
+      if (famDom === 'estribo' || famDom === 'rombo') return null;
+    }
     var reglas = global.ModeladorReglas;
     if (reglas && reglas.ladoDominante) {
       var L = reglas.ladoDominante(c);
@@ -3224,7 +3233,16 @@
     var d = comp && comp.distribucion;
     if (!d) return;
     var ejeN = _ejeDistDe(comp);
-    if (ejeAntes && ejeAntes === ejeN) return;
+    // REGLA (usuario 14-ago): el reparto vive en la NORMAL del plano de la pieza
+    // — distribuir dentro del plano de desarrollo de la barra es apilar copias
+    // sobre el mismo dibujo. Antes esto sólo reencuadraba si el eje "de antes"
+    // difería del nuevo: si el RANGO ya venía en un eje equivocado (receta
+    // guardada vieja, o una rotación que no pasó por acá), se quedaba mal para
+    // siempre. Ahora se compara contra el eje REAL del rango: idempotente y
+    // autocorrectivo — cualquier rotación deja el reparto en el rumbo nuevo.
+    var rangoMal = !!(d.rango && d.rango.eje && d.rango.eje !== ejeN);
+    if (!rangoMal && ejeAntes && ejeAntes === ejeN) return;
+    if (!rangoMal && !ejeAntes) return;   // sin cambio de eje ni rango torcido
     if (d.rango) d.rango = _rangoDefault(d.rango.sep || d.sep || 20, ejeN);
     _reencuadrarZonas(d, ejeN);
   }
