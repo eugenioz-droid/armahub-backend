@@ -5659,39 +5659,34 @@
     });
   }
 
-  // ZOOM DE RUEDA — CONTROL, NO VELOCIDAD (4ª vuelta, la buena).
-  // Historia: (1) factor proporcional a deltaY → cada mouse reporta distinto;
-  // (2) un paso fijo por ventana de 55 ms → seguía avanzando de más porque la
-  // rueda libre manda eventos durante casi un segundo; (3) bajar el paso a 1.05
-  // → «se corrigió, pero ahora se mueve gráficamente lento». El usuario puso el
-  // dedo en la llaga: «el problema era de CONTROL, no de velocidad — un clic de
-  // giro avanzaba muchos clics».
-  // Regla final: cada evento mueve un poco y se ve AL TIRO (respuesta inmediata,
-  // nada de compuertas que aten el dibujo), pero dentro de una ventana corta sólo
-  // CUENTAN los primeros N eventos — la cola de la ráfaga (o de la rueda libre
-  // girando sola) se descarta. Así un gesto vale como mucho ×1.15 por más eventos
-  // que mande el mouse, y girar sostenido sigue haciendo zoom continuo (~×2/s).
-  // Perillas: _ZOOM_EV = cuánto mueve cada evento · _ZOOM_TOPE = cuántos cuentan
-  // por ventana · _ZOOM_VENT = largo de la ventana.
-  var _ZOOM_EV = 1.035;       // zoom por evento que cuenta
-  var _ZOOM_TOPE = 4;         // eventos que pesan COMPLETO por ventana (después, saturación)
-  var _ZOOM_VENT = 200;       // ms de la ventana
-  var _zVentIni = 0, _zVentN = 0;
+  // ZOOM DE RUEDA — GESTO ACOTADO, LA INERCIA NO CUENTA (6ª vuelta, con el
+  // diagnóstico correcto del usuario: «dejaba de girar y se seguía moviendo el
+  // zoom»). La rueda es LIBRE: al soltarla sigue girando sola un buen rato y
+  // mandando eventos, así que el zoom seguía avanzando sin que nadie la tocara.
+  // Las vueltas anteriores atacaron el síntoma equivocado (velocidad, ventanas,
+  // saturación) y ninguna cortaba la inercia.
+  // Regla final: un GESTO = todos los eventos separados por menos de _ZOOM_GAP.
+  // Un gesto mueve como máximo _ZOOM_MAX pasos y de ahí NO SE MUEVE MÁS por más
+  // que la rueda siga girando sola. Para volver a hacer zoom hay que soltar y
+  // tocar de nuevo (una pausa > _ZOOM_GAP), que es exactamente lo que hace la
+  // mano. Cambiar de sentido también abre un gesto nuevo (corregir es inmediato).
+  // Perillas: _ZOOM_EV = cuánto mueve cada paso · _ZOOM_MAX = pasos por gesto ·
+  // _ZOOM_GAP = silencio que separa un gesto del siguiente.
+  var _ZOOM_EV = 1.04;        // zoom por paso
+  var _ZOOM_MAX = 6;          // pasos por gesto (tope ≈ ×1.27)
+  var _ZOOM_GAP = 150;        // ms de silencio que cierran el gesto
+  var _zUlt = 0, _zPasos = 0, _zSigno = 0;
   function _factorZoomRueda(e) {
     var d = Number(e.deltaY) || 0;
     if (!d) return 1;
     var t = Date.now();
-    if (t - _zVentIni > _ZOOM_VENT) { _zVentIni = t; _zVentN = 0; }   // ventana nueva
-    _zVentN++;
-    // SATURACIÓN SUAVE, NO TOPE DURO (5ª vuelta: «queda con un lag»). Cortar en
-    // seco pasados N eventos dejaba la rueda MUERTA el resto de la ráfaga: el
-    // usuario seguía girando y no pasaba nada hasta la ventana siguiente — eso
-    // es el lag. Ahora los eventos de la cola siguen moviendo, pero pesando cada
-    // vez menos (1, 1, 1, 1, ½, ⅓, ¼…): el movimiento nunca se corta y la suma
-    // crece como un logaritmo, así que una ráfaga larga no dispara el zoom.
-    var peso = 1 / (1 + Math.max(0, _zVentN - _ZOOM_TOPE));
-    var paso = Math.pow(_ZOOM_EV, peso);
-    return (d > 0) ? paso : (1 / paso);
+    var sg = (d > 0) ? 1 : -1;
+    // gesto NUEVO: hubo silencio, o el usuario invirtió el sentido (corrigiendo)
+    if (t - _zUlt > _ZOOM_GAP || sg !== _zSigno) { _zPasos = 0; _zSigno = sg; }
+    _zUlt = t;
+    if (_zPasos >= _ZOOM_MAX) return 1;   // el resto es la rueda girando sola
+    _zPasos++;
+    return (sg > 0) ? _ZOOM_EV : (1 / _ZOOM_EV);
   }
 
   function _bindVistaOrto(plano) {
