@@ -59,7 +59,8 @@
     rotX: 0.55, rotY: 0.9, dist: 900, target: null, panX: 0, panY: 0,
     threeCargado: false, webglOk: null, rafId: null, verHormigon: true,
     // --- Estado de interacción 2D ---
-    figura: '103B', tipologia: 'CBS', diam: 16, contorno: true,
+    // figura y φ parten VACÍOS (pedido 13-ago): el usuario elige antes de colocar.
+    figura: '', tipologia: 'CBS', diam: null, contorno: true,
     tool: 'mover', snap: true, cotas: false,   // arranca en SELECCIONAR (flechita), no colocando
     selCi: -1,                 // índice del componente seleccionado (-1 = ninguno)
     ultimoPlano: 'largo',      // última vista tocada (define el eje de rotación)
@@ -2629,6 +2630,9 @@
     // barra el usuario (no el arrastre posterior: pos_hint es traslación pura).
     if (!f && pose.cara === 'lateral' && Number(host.z) < 0) pose.lado = -1;
     if (!f && pose.cara === 'extremo' && Number(host.x) < 0) pose.lado = -1;
+    // ESPEJO DEL PREVISUALIZADOR (ESPACIO en colocación, pedido 13-ago): se aplica
+    // acá para que el GHOST ya se vea reflejado y la barra se inserte igual.
+    if (ST.espejoColoc) pose.espejo = !pose.espejo;
 
     var comp = {
       tipologia: sel.tipologia, figura: sel.figura, diam: Number(sel.diam), suf_tipo: '',
@@ -3547,6 +3551,13 @@
       body.appendChild(ladoRow);
     }
 
+    // Recub override — SUBE antes del kit de rotaciones (pedido 13-ago: Rotación,
+    // Pose/Espejo —y la rotación de plano cuando vuelva— quedan AGRUPADAS abajo).
+    var recRow = _div('te-row');
+    recRow.appendChild(_label('Recub. override'));
+    recRow.appendChild(_input({ value: (c.recub_override != null ? c.recub_override : ''), placeholder: 'global cm' }, function (v) { c.recub_override = (v === '' ? null : Number(v)); _mut(ci); }));
+    body.appendChild(recRow);
+
     // INDICADOR COMPACTO DE POSE + toggle ESPEJO. El texto dice de un vistazo dónde
     // está anclada y hacia dónde corre; el espejo refleja la misma pose (los ganchos
     // cierran al otro lado) sin tocar cara ni rumbo.
@@ -3577,13 +3588,6 @@
     poseWrap.appendChild(poseTxt);
     poseWrap.appendChild(espSeg);
     poseRow.appendChild(poseWrap);
-    body.appendChild(poseRow);
-
-    // Recub override
-    var recRow = _div('te-row');
-    recRow.appendChild(_label('Recub. override'));
-    recRow.appendChild(_input({ value: (c.recub_override != null ? c.recub_override : ''), placeholder: 'global cm' }, function (v) { c.recub_override = (v === '' ? null : Number(v)); _mut(ci); }));
-    body.appendChild(recRow);
 
     // Rotación (ángulo exacto + botón 90°)
     var rotRow = _div('te-row');
@@ -3602,6 +3606,9 @@
     rotWrap.appendChild(rotInp); rotWrap.appendChild(rot90);
     rotRow.appendChild(rotWrap);
     body.appendChild(rotRow);
+    // La fila Pose (espejo) va PEGADA a Rotación: el kit de orientar la pieza
+    // queda junto (Rotación° · Pose/Espejo · y la rotación de plano cuando vuelva).
+    body.appendChild(poseRow);
 
     // PATAS — hacia dónde apuntan los ganchos. Es orient.spin (0/90/180/270): el motor
     // gira SÓLO las patas alrededor del eje longitudinal, la barra NO se mueve de su
@@ -4124,8 +4131,11 @@
   // cursor y el clic coloca (§INTERACCIÓN-2.0 tarea 1). Se sella al elegir en el
   // ribbon o al activar una herramienta de colocación.
   function _sellarCargado() {
-    // Nada se carga con una figura que el catálogo no reconoce: sin esto el ghost
-    // seguía al cursor y el clic paría una barra fantasma (kg = 0).
+    // Nada se carga sin figura NI sin φ (parten vacíos, pedido 13-ago) ni con una
+    // figura que el catálogo no reconoce: sin esto el ghost seguía al cursor y el
+    // clic paría una barra fantasma (kg = 0).
+    if (!ST.figura) { ST.cargado = null; _limpiarGhost(); _actualizarStatus('Elige una FIGURA para colocar.'); return; }
+    if (!Number(ST.diam)) { ST.cargado = null; _limpiarGhost(); _actualizarStatus('Elige el diámetro φ para colocar.'); return; }
     var err = _figError(ST.figura);
     if (err) { ST.cargado = null; _limpiarGhost(); _actualizarStatus(err); return; }
     ST.cargado = { figura: ST.figura, tipologia: ST.tipologia, diam: Number(ST.diam), contorno: ST.contorno !== false };
@@ -4173,16 +4183,18 @@
     if (dia && !dia._teBound) {
       dia._teBound = true;
       // La lista de φ la manda TE_DIAMS (una sola fuente para ribbon y panel).
-      var prev = Number(dia.value) || 16;
+      // PARTE VACÍO (pedido 13-ago): el usuario elige el φ antes de colocar.
       dia.innerHTML = '';
+      var ph = document.createElement('option');
+      ph.value = ''; ph.textContent = 'φ…'; ph.selected = true;
+      dia.appendChild(ph);
       TE_DIAMS.forEach(function (d) {
         var op = document.createElement('option');
         op.value = String(d); op.textContent = String(d);
-        if (d === prev) op.selected = true;
         dia.appendChild(op);
       });
-      dia.addEventListener('change', function () { ST.diam = Number(dia.value) || 16; if (_hayCargado()) _sellarCargado(); else _actualizarStatus(); });
-      ST.diam = Number(dia.value) || ST.diam;
+      dia.addEventListener('change', function () { ST.diam = Number(dia.value) || null; if (_hayCargado()) _sellarCargado(); else _actualizarStatus(); });
+      ST.diam = Number(dia.value) || null;
     }
     var con = $('te_ribContorno');
     if (con && !con._teBound) { con._teBound = true; con.addEventListener('change', function () { ST.contorno = con.checked; if (_hayCargado()) _sellarCargado(); }); ST.contorno = con.checked; }
@@ -4383,11 +4395,13 @@
   // clic derecho sobre una vista. Sustituye a la vieja herramienta "Colocar" y al
   // antiguo _agregarComponenteManual() (que agregaba al tiro, sin pasar por pantalla).
   function _entrarModoColocacion() {
+    _sellarCargado();   // re-valida figura/φ y deja el motivo en el status si falta algo
     _activarHerramienta('colocar');
-    // Sin sello (figura que el catálogo no acepta) _sellarCargado ya dejó el motivo
-    // en el status: no se pisa con el mensaje de "Colocando…".
+    // Sin sello (figura vacía/inválida o φ vacío) el status ya dice por qué.
     if (!ST.cargado) return;
-    _actualizarStatus('Colocando ' + ST.tipologia + ' ' + ST.figura + ': clic en una vista · Esc o clic derecho para salir.');
+    ST.espejoColoc = false;   // el previsualizador parte en Normal
+    _actualizarStatus('Colocando ' + ST.tipologia + ' ' + ST.figura +
+      ': clic en una vista · ESPACIO alterna Normal/Espejo · Esc o clic derecho para salir.');
   }
 
   function _salirModoColocacion() {
@@ -4480,7 +4494,17 @@
         e.preventDefault(); _undo(); return;
       }
       if (e.key === ' ' || e.code === 'Space') {
-        if (ST.selCi >= 0) { e.preventDefault(); _rotarSeleccion(ST.ultimoPlano, 90); }
+        // EN COLOCACIÓN (pedido 13-ago): ESPACIO alterna Normal/Espejo del
+        // previsualizador — la barra se inserta con esa mano (el ghost pasa por
+        // _compDesdeClick, así que el reflejo SE VE antes de clicar). Con una
+        // pieza seleccionada, espacio sigue rotando como siempre.
+        if (ST.tool === 'colocar' && ST.cargado) {
+          e.preventDefault();
+          ST.espejoColoc = !ST.espejoColoc;
+          _actualizarStatus('Colocando ' + ST.tipologia + ' ' + ST.figura +
+            (ST.espejoColoc ? ' · ESPEJO' : ' · Normal') + ' — ESPACIO alterna, clic coloca.');
+          if (ST.ultimoOut) _redibujar2D(ST.ultimoOut);
+        } else if (ST.selCi >= 0) { e.preventDefault(); _rotarSeleccion(ST.ultimoPlano, 90); }
       } else if (e.key === 'r' || e.key === 'R') {
         // R → GIRAR 90° EN LA VISTA ACTIVA (TANDA P · rotar-en-vista): la pieza gira
         // alrededor del eje que sale de la pantalla en la vista donde se está
