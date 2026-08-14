@@ -2412,6 +2412,31 @@
     var color = dentro ? _colDe(ST.cargado.tipologia) : '#d32f2f';
     // resaltado de la cara (bajo el trazo del ghost).
     if (f && dentro) _dibujarCaraHiEnCapa(layer, plano, f, _colDe(ST.cargado.tipologia));
+    // PIEZA CERRADA (deseable del usuario 14-ago): al colocar un estribo/marco,
+    // la ayuda marca LOS CUATRO BORDES del hormigón de la vista — la pieza no se
+    // ancla a UNA cara, abraza el contorno completo. Se lee de inmediato qué va
+    // a pasar al clicar.
+    if (dentro) (function () {
+      var fpG = global.ModeladorFiguraPuntos;
+      if (!fpG || !fpG.familiaDeDibujo) return;
+      var famG = fpG.familiaDeDibujo(ST.cargado.figura, _rolDe(ST.cargado.tipologia));
+      if (famG !== 'estribo' && famG !== 'rombo') return;
+      var geoG = ST.receta && ST.receta.geometria;
+      var bG = geoG ? boundaryDeVista(geoG, plano, (_defsPlanos() || {})[plano]) : null;
+      if (!bG || !(bG.W > 0) || !(bG.H > 0)) return;
+      var esq = [
+        { u: -bG.W / 2, v: -bG.H / 2 }, { u: bG.W / 2, v: -bG.H / 2 },
+        { u: bG.W / 2, v: bG.H / 2 }, { u: -bG.W / 2, v: bG.H / 2 }
+      ];
+      var dR = esq.map(function (q, i) {
+        var p = _uvToPixel(plano, q.u, q.v);
+        return (i ? 'L' : 'M') + p.px.toFixed(1) + ',' + p.py.toFixed(1);
+      }).join(' ') + ' Z';
+      layer.appendChild(_svgEl('path', {
+        d: dR, fill: 'none', stroke: _colDe(ST.cargado.tipologia),
+        'stroke-width': '2.5', 'stroke-dasharray': '7 4', opacity: '0.55'
+      }));
+    })();
     var forma = _ghostForma(plano, uv);
     if (!forma) return;
 
@@ -3096,6 +3121,43 @@
     // barra el usuario (no el arrastre posterior: pos_hint es traslación pura).
     if (!f && pose.cara === 'lateral' && Number(host.z) < 0) pose.lado = -1;
     if (!f && pose.cara === 'extremo' && Number(host.x) < 0) pose.lado = -1;
+
+    // ==========================================================================
+    // COLOCACIÓN POR VISTA (regla CONFIRMADA por el usuario, 14-ago): la pieza
+    // nace EN el plano de la vista donde se hace clic — universal para cualquier
+    // barra, con los autos re-derivándose solos contra la pose resultante.
+    //   · Una pieza de SECCIÓN (estribo/traba/marco) vive ⊥ a su rumbo, así que
+    //     su rumbo = la PROFUNDIDAD de la vista (el eje que sale de la pantalla).
+    //     Antes el estribo tomaba la pose default de la tabla y podía aparecer
+    //     "de canto" en otra vista (la 106A clickeada en la sección del muro
+    //     aparecía en la elevación XZ).
+    //   · Una LONGITUDINAL corre DENTRO de la vista: si su rumbo default es la
+    //     profundidad (se vería de punta), pasa al eje horizontal de la vista
+    //     (o al vertical si la cara no admite el horizontal).
+    // El borde clickeado sigue mandando cara/lado: sus aristas viven EN el plano
+    // de la vista, así que nunca choca con el rumbo elegido acá.
+    var defV = (_defsPlanos() || {})[plano] || null;
+    if (defV) {
+      if (rol === 'estribo' || rol === 'traba') {
+        if (_NORMAL_DE_CARA[pose.cara] === defV.depth) {
+          // la cara default quedó ∥ al plano de la pieza: elegir una cara VÁLIDA
+          // (normal dentro del plano de la vista), priorizando el borde clickeado
+          var cands = [f && f.cara, 'lateral', 'sup', 'extremo'];
+          for (var c9 = 0; c9 < cands.length; c9++) {
+            var cc = cands[c9];
+            if (cc && _NORMAL_DE_CARA[cc] && _NORMAL_DE_CARA[cc] !== defV.depth) { pose.cara = cc; break; }
+          }
+        }
+        pose.rumbo = defV.depth;
+      } else if (pose.rumbo === defV.depth) {
+        var candsR = [defV.u, defV.v];
+        for (var c8 = 0; c8 < candsR.length; c8++) {
+          if (_rumboValido(pose.cara, candsR[c8])) { pose.rumbo = candsR[c8]; break; }
+        }
+      }
+      if (!_rumboValido(pose.cara, pose.rumbo)) pose.rumbo = _rumboDefaultDeCara(pose.cara);
+    }
+
     // ESPEJO DEL PREVISUALIZADOR (ESPACIO en colocación, pedido 13-ago): se aplica
     // acá para que el GHOST ya se vea reflejado y la barra se inserte igual.
     if (ST.espejoColoc) pose.espejo = !pose.espejo;
@@ -3136,7 +3198,7 @@
     }
     // pos_hint desde el click (los ejes que el plano define). El motor ancla por
     // cara y offset; el pos_hint corre la barra al punto clicado en los ejes libres.
-    comp.pos_hint = _posHintDeClick(plano, host, rol, cara);
+    comp.pos_hint = _posHintDeClick(plano, host, rol, cara, _poseDe(comp));
     return comp;
   }
 
@@ -3165,11 +3227,18 @@
   // pos_hint: qué ejes fija el click. Estribo (perimetral) → su X (posición a lo
   // largo). El CABEZAL no fija nada: se centra/reparte a lo ancho con sus propios
   // controles (barras/capa + Centrar/Repartir), así que el clic sólo elige la CARA.
-  function _posHintDeClick(plano, host, rol, cara) {
+  function _posHintDeClick(plano, host, rol, cara, pose) {
     var ph = {};
     if (rol === 'estribo' || rol === 'traba') {
-      // el estribo se dibuja a una X; el click en largo/planta define esa X.
-      if (plano === 'largo' || plano === 'planta') ph.x = host.x;
+      // COLOCACIÓN POR VISTA (14-ago): el clic fija la coordenada A LO LARGO del
+      // RUMBO de la pieza cuando ese eje es VISIBLE en la vista (u o v). En su
+      // propia vista de sección el rumbo es la profundidad (no clickeable): la
+      // pieza nace con el reparto default. Antes esto era la tabla fija del
+      // estribo de viga ("el click en largo/planta define esa X"), que es el
+      // caso particular rumbo = x.
+      var dv = (_defsPlanos() || {})[plano] || null;
+      var ru = pose && pose.rumbo;
+      if (dv && ru && (ru === dv.u || ru === dv.v)) ph[ru] = host[ru];
       if (rol === 'traba' && (plano === 'seccion' || plano === 'planta')) ph.z = host.z;
       return ph;
     }
