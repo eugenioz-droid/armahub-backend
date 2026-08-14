@@ -125,9 +125,12 @@ ok(noDib['201A'] && /radio/.test(noDib['201A']), '201A excluida por radio (héli
 // El TRAZADOR GENÉRICO DE CADENAS (12-ago) rescató a las de 5+ tramos: dejaron de
 // excluirse por nº de lados y ahora se trazan enteras (familia 'cadena'). El
 // criterio que queda es el RADIO, que sigue sin trazarse (y se dice por qué).
-ok(!noDib['105A'] && !noDib['106A'], '105A/106A YA NO se excluyen: las traza la cadena genérica');
-ok(FP.dibujabilidad('105A').familia === 'cadena' && FP.dibujabilidad('106A').familia === 'cadena',
-  'y su familia de dibujo es la cadena genérica');
+ok(!noDib['105A'] && !noDib['106A'], '105A/106A YA NO se excluyen (cadena y estribo respectivamente)');
+// CORRECCIÓN 14-ago: la 106A NUNCA fue una cadena — es el ESTRIBO rectangular
+// con sus ganchos declarados como parciales (A/F). El 13-ago se clasificó mal
+// («rombo») y este assert congeló esa lectura. Familia real: estribo (marco).
+ok(FP.dibujabilidad('105A').familia === 'cadena' && FP.dibujabilidad('106A').familia === 'estribo',
+  '105A = cadena · 106A = ESTRIBO con ganchos declarados (el marco manda)');
 ok(Object.keys(noDib).length === 1, 'la única excluida del catálogo es la de radio (=' +
   Object.keys(noDib).join(',') + ')');
 ok(!noDib['104D'] && !noDib['103B'] && !noDib['101A'], 'las de 1–4 lados NO se excluyen (101A/103B/104D)');
@@ -257,7 +260,7 @@ ok((comp201._avisos || []).some(a => /no la soporta/.test(a) && /radio/.test(a))
   'y deja aviso claro con el motivo (=' + (comp201._avisos || [])[0] + ')');
 
 // 106A (6 lados) SÍ genera barra ahora: la cadena genérica la traza entera.
-console.log('\nC2b — 106A (rescatada por la cadena genérica) genera barra completa:');
+console.log('\nC2b — 106A (estribo con ganchos declarados) genera barra completa:');
 const comp106 = {
   comp_id: '106A', tipologia: 'CBS', figura: '106A', diam: 16, cara: 'sup', suf_tipo: '',
   dims: {
@@ -269,8 +272,10 @@ const comp106 = {
 const out106 = G.generarViga({ tipo: 'viga', geometria: GEO, componentes: [comp106] }, CTX);
 ok(out106.barras.length === 1 && out106.resumen.kg > 0,
   '106A genera barra y pesa (=' + out106.resumen.kg + ' kg)');
-ok(out106.placements.every(pl => pl.puntos.length === 7),
-  'con sus 6 lados dibujados (7 puntos, =' + (out106.placements[0] || {}).puntos.length + ')');
+// El marco dibuja los 6 lados: 4 de cuerpo + 2 ganchos con codos en ARCO
+// muestreado (~35 puntos, no 7): se verifica que la polilínea es de marco.
+ok(out106.placements.every(pl => pl.puntos.length > 7),
+  'polilínea de marco con codos en arco (>7 puntos, =' + (out106.placements[0] || {}).puntos.length + ')');
 ok(!validarSlots(out106.barras[0]), '106A pasa validar_geometria: 6 dims + ang1/ang2' +
   (validarSlots(out106.barras[0]) ? ' — ' + validarSlots(out106.barras[0]) : ''));
 ok(!(comp106._avisos && comp106._avisos.length), 'y sin avisos pendientes');

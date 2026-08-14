@@ -2800,9 +2800,9 @@
     // ROMBO DE SECCIÓN (106A y familia, fix 13-ago): el MARCO manda la forma —
     // el trazado va pegado al recubrimiento (como el 104D) y las dims que se
     // LISTAN se derivan de esa geometría (medir = dibujar).
-    var dimsRomboVals = (comp._rol === 'estribo' && fpD && fpD.esRomboSeccion &&
-      fpD.esRomboSeccion(comp.figura) && fpD.dimsRombo)
-      ? fpD.dimsRombo(comp.figura, mk.anchoUtil, mk.altoUtil, Number(comp.diam) / 10 || 0)
+    var dimsRomboVals = (comp._rol === 'estribo' && fpD && fpD.esEstriboConGanchos &&
+      fpD.esEstriboConGanchos(comp.figura) && fpD.dimsEstriboGanchos)
+      ? fpD.dimsEstriboGanchos(comp.figura, mk.anchoUtil, mk.altoUtil, Number(comp.diam) / 10 || 0)
       : null;
     function autoDeLado(k) {
       if (dimsRomboVals && dimsRomboVals[k] != null) return dimsRomboVals[k];
@@ -2960,7 +2960,7 @@
     var rolTip = _rolDeTipologia(comp.tipologia, comp.cara);
     if (rolTip === 'cabezal') {
       var fpR = _fp();
-      if (fpR && ((fpR.esRomboSeccion && fpR.esRomboSeccion(comp.figura)) ||
+      if (fpR && ((fpR.esEstriboConGanchos && fpR.esEstriboConGanchos(comp.figura)) ||
         (fpR.familiaDeDibujo && fpR.familiaDeDibujo(comp.figura, null) === 'estribo'))) {
         rolTip = 'estribo';
       }

@@ -184,6 +184,13 @@
     var fam = fp.familiaDeDibujo ? fp.familiaDeDibujo(fig, rol) : 'cabezal';
     var n = spec.parciales.length;
     var trazados = (fam === 'cadena') ? n : (LADOS_TRAZADOS[fam] || 3);
+    // ESTRIBO CON GANCHOS DECLARADOS (106x, corrección 14-ago): sus 6 letras SÍ
+    // se dibujan todas — 4 de cuerpo por el marco + 2 ganchos por los codos del
+    // propio _estriboPerimetral. Y da igual el rol DECLARADO (una 106A puesta
+    // como CBS): _baseDeComponente lo fuerza a estribo por topología, así que
+    // avisar "colocada como cabezal: se dibujan 3 de 6" describiría un dibujo
+    // que no existe.
+    if (fp.esEstriboConGanchos && fp.esEstriboConGanchos(fig)) { fam = 'estribo'; trazados = n; }
     if (n > trazados) {
       var sinTrazar = spec.parciales.slice(trazados);
       _avisarComp(comp, 'Figura ' + fig + ' colocada como ' + (rol || 'cabezal') +

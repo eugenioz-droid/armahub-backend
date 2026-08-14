@@ -403,9 +403,11 @@ ok(dib.length + Object.keys(noDib).length === nSeed, 'toda figura sigue clasific
 // del catálogo (la 103C, que declara un doblez de 45°, salía con la MISMA
 // polilínea que la 103A). Las otras dos familias no se mueven: 1 recta (no hay
 // doblez que honrar) y 10 marcos cerrados (constructor propio con arcos).
-ok(porFamilia.cadena === 51, 'el trazador genérico se hace cargo de 51 figuras (=' + porFamilia.cadena + ')');
-ok(porFamilia.recta === 1 && porFamilia.estribo === 10 && !porFamilia.cabezal,
-  'y ya no queda NINGUNA figura del catálogo en la familia cabezal (1 recta + 10 marcos + 51 cadenas = 62) (=' +
+// CORRECCIÓN 14-ago: las 4 figuras 106x salieron de la cadena — son ESTRIBOS
+// con ganchos declarados (el marco manda), no cadenas. 51 − 4 = 47.
+ok(porFamilia.cadena === 47, 'el trazador genérico se hace cargo de 47 figuras (=' + porFamilia.cadena + ')');
+ok(porFamilia.recta === 1 && porFamilia.estribo === 14 && !porFamilia.cabezal,
+  'y ya no queda NINGUNA figura del catálogo en la familia cabezal (1 recta + 14 estribos + 47 cadenas = 62) (=' +
   JSON.stringify(porFamilia) + ')');
 ok(Object.keys(noDib).length === 1 && noDib['201A'] && /radio/.test(noDib['201A']),
   'sólo queda excluida 201A, y por RADIO (hélice/espiral) — motivo claro');
@@ -430,7 +432,8 @@ ok(!noDib['105A'] && !noDib['106A'] && !noDib['305A'],
 // El rescate real contra el criterio ANTERIOR (>4 lados o marco falso):
 const rescatadas = CAT.codigos().filter(c => FP.dibujabilidad(c).familia === 'cadena' &&
   CAT.get(c).parciales.length > FP.MAX_LADOS_DIBUJABLES);
-ok(rescatadas.length === 25, '25 figuras de 5–6 lados pasan de EXCLUIDAS a dibujables (=' +
+// 25 rescatadas − las 4 106x que ahora van por MARCO = 21 siguen por la cadena.
+ok(rescatadas.length === 21, '21 figuras de 5–6 lados dibujables por la CADENA (las 106x van por marco) (=' +
   rescatadas.length + ')');
 
 // Cada rescatada produce payload válido y kg > 0 (no hay dibujo sin despiece).

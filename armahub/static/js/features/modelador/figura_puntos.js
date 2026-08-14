@@ -143,6 +143,13 @@
       return { dibujable: true, familia: 'cadena', lados: n, motivo: null, fuente: tr.fuente };
     }
     if (n > MAX_LADOS_DIBUJABLES) {
+      // ESTRIBO CON GANCHOS DECLARADOS (106x, corrección 14-ago): 6 letras pero
+      // el mismo marco de siempre — lo dibuja _estriboPerimetral, no el trazador.
+      // Sin esta rama, re-clasificarlas como 'estribo' las dejaba EXCLUIDAS por
+      // el umbral de lados (generaban 0 kg) siendo perfectamente dibujables.
+      if (fam === 'estribo') {
+        return { dibujable: true, familia: 'estribo', lados: n, motivo: null };
+      }
       return { dibujable: false, familia: null, lados: n,
         motivo: n + ' tramos: el editor traza hasta ' + MAX_LADOS_DIBUJABLES +
           ' (recta, L, U y marco cerrado)' };
@@ -239,7 +246,11 @@
     var esCadenaLong = (n >= MIN_LADOS_CADENA_LONG) && tieneTramos;
     if (rol === 'estribo') {
       if (esMarco) return 'estribo';
-      if (esRomboSeccion(f)) return 'rombo';   // 106A y familia: el marco manda
+      // 106A y familia (correccion 14-ago): estribo rectangular con sus GANCHOS
+      // declarados como parciales -> el MARCO manda, como el 104D y como era
+      // antes de la Tanda P ("el estribo estaba bien en vigas").
+      if (esEstriboConGanchos(f)) return 'estribo';
+      if (esRomboSeccion(f)) return 'rombo';   // hoy: ninguna figura (ver stub)
       if (esCadenaSeccion) return 'cadena';
       return 'estribo';
     }
@@ -251,11 +262,11 @@
     // dibujaba plana). Como cadena entra por ejesCadenaSeccion/autos, contra el
     // marco de SU pose, igual que el estribo-cadena.
     if (rol === 'traba') {
-      if (esMarco) return 'estribo';   // un marco cerrado se dibuja como marco
+      if (esMarco || esEstriboConGanchos(f)) return 'estribo';   // marco cerrado (con o sin ganchos declarados) se dibuja como marco
       if (n >= 3 && tieneTramos) return 'cadena';
       return 'traba';                  // 101x/102x: la forma clásica les calza
     }
-    if (esMarco) return rol ? 'cabezal' : 'estribo';
+    if (esMarco || esEstriboConGanchos(f)) return rol ? 'cabezal' : 'estribo';
     if (_esRecta(f)) return 'recta';
     if (esCadenaLong) return 'cadena';
     // Sólo queda lo que NO tiene tramos trazables (figura fuera del catálogo, o
@@ -1567,36 +1578,41 @@
   // ABIERTA cuyos lados INTERIORES son todos DIAGONALES y cuyo trazo con lados
   // iguales CIERRA (los giros suman la vuelta completa). 106A: A/F ganchos
   // terminales + B..E el cuerpo cerrado ✓. Un zigzag 105x no cierra → NO entra.
-  function esRomboSeccion(figura) {
+  // ESTRIBO CON GANCHOS DECLARADOS (la 106A y familia) — CORRECCIÓN 14-ago.
+  // ---------------------------------------------------------------------------
+  // Una figura de 5+ lados cuyo CUERPO INTERIOR es un RECTÁNGULO (todos los
+  // giros interiores de 90°, 4 lados de cuerpo) con los lados TERMINALES como
+  // ganchos ES el estribo de siempre: 104D lo describe con 4 letras (los ganchos
+  // implícitos) y 106A con 6 (ganchos A y F declarados como parciales). Se
+  // dibuja con _estriboPerimetral — el marco manda — igual que antes de la
+  // Tanda P, que es como el usuario lo validó.
+  // AYER esta figura se clasificó mal como "rombo": su trazado derivado parte
+  // con el gancho de 45°, eso INCLINA todo el cuerpo en el sistema del trazo y
+  // los lados del rectángulo salían "diagonales". Se inventó una figura que el
+  // catálogo no tiene ("la 106A nunca fue un rombo" — el usuario). El cuerpo se
+  // clasifica ahora RELATIVO A SÍ MISMO (sus giros), no al heading absoluto.
+  function esEstriboConGanchos(figura) {
     var f = (figura || '').toUpperCase();
     var tr = tramosDeFigura(f);
     if (!tr || tr.tramos.length < 5) return false;
-    // Direcciones ABSOLUTAS del trazo (contra los ejes del marco, la misma
-    // lectura de ejesCadenaSeccion — acá en línea para no recursar con
-    // familiaDeDibujo): los lados INTERIORES tienen que ser TODOS diagonales.
-    var heading = 0, interiores = 0, i, t, g, a;
-    for (i = 0; i < tr.tramos.length; i++) {
+    var n = tr.tramos.length, i, t, g;
+    if (n - 2 !== 4) return false;               // cuerpo de 4 lados exactos
+    for (i = 1; i < n - 1; i++) {
       t = tr.tramos[i];
       if (!t || t.lado == null) return false;
-      if (i > 0) {
-        g = Number(t.giro) || 0;
-        if (t.sentido === 'der') g = -g;
-        heading += g;
+      if (i > 1) {                                // giros INTERNOS del cuerpo
+        g = Math.abs(Number(t.giro) || 0);
+        if (Math.abs(g - 90) > 1e-6) return false;   // rectángulo: todos 90°
       }
-      if (i === 0 || i === tr.tramos.length - 1) continue;   // terminales = ganchos
-      a = ((heading % 180) + 180) % 180;
-      if (a < 1e-6 || Math.abs(a - 180) < 1e-6 || Math.abs(a - 90) < 1e-6) return false;
-      interiores++;
     }
-    if (interiores < 3) return false;
-    // ¿el CUERPO cierra con lados iguales? (giros del cuerpo suman 360°)
-    var d = {};
-    for (i = 0; i < tr.tramos.length; i++) {
-      t = tr.tramos[i];
-      d[t.lado] = (i === 0 || i === tr.tramos.length - 1) ? 1e-9 : 1;
-    }
-    var c = _cadena2D(tr.tramos, d, 1e-9);
-    return _cadenaCierra(c.pts);
+    return true;
+  }
+
+  // (Sin uso hoy: quedó de la clasificación equivocada del 14-ago. Se conserva
+  // la función por si el catálogo incorpora algún día un rombo REAL, pero
+  // ninguna figura actual la activa.)
+  function esRomboSeccion(figura) {
+    return false;
   }
 
   // Traza el rombo pegado al marco. Ganchos: dos patas que salen de la punta
@@ -1649,6 +1665,30 @@
       out[t.lado] = (i === 0 || i === tr.tramos.length - 1)
         ? Math.round(g * 10) / 10
         : Math.round(lado * 10) / 10;
+    }
+    return out;
+  }
+
+  // Dims REALES de un estribo CON GANCHOS DECLARADOS (106A y familia), derivadas
+  // del marco EXTERIOR — el listado dice lo que _estriboPerimetral dibuja. El
+  // recorrido del marco es: gancho A → baja el lado IZQUIERDO (alto) → inferior
+  // (ancho) → sube el derecho (alto) → superior (ancho) → gancho F. O sea:
+  //   primer y último parcial = gancho normativo (6φ, mín 7.5)
+  //   lados del cuerpo, EN ORDEN: alto, ancho, alto, ancho.
+  function dimsEstriboGanchos(figura, anchoUtilExt, altoUtilExt, diamCm) {
+    var f = (figura || '').toUpperCase();
+    var tr = tramosDeFigura(f);
+    if (!tr) return null;
+    var g = Math.round(extGancho(diamCm) * 10) / 10;
+    var n = tr.tramos.length, out = {}, i, t, kCuerpo = 0;
+    for (i = 0; i < n; i++) {
+      t = tr.tramos[i];
+      if (t.lado == null) continue;
+      if (i === 0 || i === n - 1) { out[t.lado] = g; continue; }
+      out[t.lado] = (kCuerpo % 2 === 0)
+        ? Math.round(altoUtilExt * 100) / 100
+        : Math.round(anchoUtilExt * 100) / 100;
+      kCuerpo++;
     }
     return out;
   }
@@ -1970,6 +2010,8 @@
     _conGanchosRadio: _conGanchosRadio,   // ganchos terminales >90° con radio (tests)
     ejesCadenaLong: ejesCadenaLong,           // clasificación u/v/d relativa al dominante
     autoProfundidadLong: autoProfundidadLong, // 'v' en auto → profundidad útil exacta
+    esEstriboConGanchos: esEstriboConGanchos, // 106A: marco + ganchos declarados
+    dimsEstriboGanchos: dimsEstriboGanchos,   // sus dims listadas = lo que se dibuja
     esRomboSeccion: esRomboSeccion,           // ¿cuerpo diagonal que cierra? (106A)
     dimsRombo: dimsRombo,                     // dims derivadas del marco (listado)
     _traba: _traba,
