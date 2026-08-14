@@ -2379,38 +2379,49 @@
   // aviso lo emite quien conoce el marco (reglas._repartoDePieza).
   function _traba(figura, dims, host, anchor, diamCm) {
     var m = _marcoNucleo(host, anchor, diamCm);   // eje = recub + φ/2, como el estribo
-    var ySup = m.ySup, yInf = m.yInf;  // MISMAS fronteras que el estribo (marco único)
-    var xx = anchor.x || 0, zz = anchor.z || 0;
+    // EJE LOCAL QUE CRUZA (fix 14-ago): 'y' = el alto del marco (comportamiento de
+    // siempre: la traba de la viga cose sup↔inf) o 'z' = el ancho del marco (la
+    // traba del muro en la sección horizontal cose las dos cortinas del espesor).
+    // Lo decide reglas (_cruceLocalTraba, desde la pose) y viaja en el anchor:
+    // este constructor no conoce poses. Sin el dato → 'y', byte-idéntico a antes.
+    // El trazo es UNO SOLO, armado en (a = coordenada del cruce, b = transversal):
+    // gancho 135° arriba (diagonal hacia el núcleo) + gancho 90° abajo, con
+    // GANCHOS CON RADIO (el 135° es doblez terminal: cresta toca aSup EXACTO y la
+    // punta cuelga tangente; el pie de 90° queda en punta, fillet motor). Se arma
+    // en b = 0 y se CENTRA después sobre el bbox ARQUEADO — mismo criterio que
+    // _cadenaSeccion.
+    var cruce = (anchor && anchor.cruceLocal === 'z') ? 'z' : 'y';
+    var aSup = (cruce === 'y') ? m.ySup : m.w2;
+    var aInf = (cruce === 'y') ? m.yInf : -m.w2;
+    var xx = anchor.x || 0;
+    // transversal: el eje del plano que NO cruza (z si cruza y — el caso viga —,
+    // y si cruza z). Su coordenada viene del anchor (reparto/clic); la del cruce
+    // NO se lee: la traba va de cara a cara por definición.
+    var tt = (cruce === 'y') ? (anchor.z || 0) : (anchor.y || 0);
     var g = 0.7071 * (extGancho(diamCm) + diamCm);
-    // gancho 135° arriba (diagonal hacia el núcleo) + gancho 90° abajo.
-    // El trazo se arma en el plano de la sección (u = z, v = y) y pasa por
-    // GANCHOS CON RADIO: el 135° de arriba es un doblez terminal — el pase lo
-    // procesa en reversa (cuerpo = la vertical), su cresta toca y = ySup EXACTO
-    // y la punta cuelga tangente; el pie de 90° queda en punta (fillet motor).
-    // Se arma en u = 0 y se CENTRA después: el bbox que se centra es el ARQUEADO
-    // (la punta del 135° cuelga del arco desplazada), el mismo criterio con el que
-    // _cadenaSeccion centra el suyo.
     var pts2 = _conGanchosRadio([
-      { u: -g, v: ySup - g },                  // punta gancho 135° arriba
-      { u: 0, v: ySup },                       // doblez arriba (altura del estribo)
-      { u: 0, v: yInf },                       // baja al fondo (altura del estribo)
-      { u: -extGancho(diamCm), v: yInf }       // pie gancho 90° abajo
+      { u: -g, v: aSup - g },                  // punta gancho 135° arriba
+      { u: 0, v: aSup },                       // doblez arriba (cara a cara)
+      { u: 0, v: aInf },                       // baja a la otra cara
+      { u: -extGancho(diamCm), v: aInf }       // pie gancho 90° abajo
     ], diamCm, false);
     var minU = Infinity, maxU = -Infinity, i;
     for (i = 0; i < pts2.length; i++) {
       if (pts2[i].u < minU) minU = pts2[i].u;
       if (pts2[i].u > maxU) maxU = pts2[i].u;
     }
-    var du = zz - (minU + maxU) / 2;             // el CENTRO del bbox va a zz
+    var du = tt - (minU + maxU) / 2;             // el CENTRO del bbox va a la transversal
     var out = pts2.map(function (p) {
-      var q = V(xx, p.v, p.u + du);
+      // (a,b) → (v,u) locales: cruzando 'y' es la identidad de siempre; cruzando
+      // 'z' el MISMO trazo gira 90° en su plano (v del trazo pasa a u local).
+      var q = (cruce === 'y') ? V(xx, p.v, p.u + du) : V(xx, p.u + du, p.v);
       if (p.esArco) q.esArco = true;
       return q;
     });
-    // ESPEJO: los dos ganchos salen hacia −Z; espejados salen hacia +Z. La
-    // reflexión es sobre el PROPIO eje de la traba (zz), no sobre z = 0: la pieza
-    // no se mueve, sólo cambia de mano.
-    return (anchor && anchor.espejo) ? _espejarEje(out, 'z', zz) : out;
+    // ESPEJO: reflexión sobre el PROPIO eje transversal de la traba (la pieza no
+    // se mueve, cambia de mano) — el eje depende de qué cruza.
+    return (anchor && anchor.espejo)
+      ? _espejarEje(out, (cruce === 'y') ? 'z' : 'y', tt) : out;
   }
 
   // ---------------------------------------------------------------------------

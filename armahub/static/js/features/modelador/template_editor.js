@@ -3193,8 +3193,14 @@
       // elevación XZ. El motor ya fuerza el rol por topología; acá se pregunta lo
       // mismo ANTES de elegir el rumbo).
       var fpV = global.ModeladorFiguraPuntos;
-      var esSeccionV = (rol === 'estribo' || rol === 'traba') ||
-        !!(fpV && fpV.familiaDeDibujo && fpV.familiaDeDibujo(sel.figura, null) === 'estribo');
+      // UNA SOLA AUTORIDAD (regla del usuario, 14-ago): decide la FAMILIA DE
+      // DIBUJO de la pieza (cómo se traza), nunca la tipología a mano. Estribo,
+      // marco y traba viven EN el plano de la vista (su rumbo es la normal /
+      // el reparto); todo lo demás corre DENTRO del plano. Antes había un
+      // `rol === 'estribo' || rol === 'traba'` acá — la segunda tabla en
+      // paralelo que ya costó el estribo bajo tipología MV y la traba flotando.
+      var famV = (fpV && fpV.familiaDeDibujo) ? fpV.familiaDeDibujo(sel.figura, rol) : null;
+      var esSeccionV = (famV === 'estribo' || famV === 'traba' || famV === 'rombo');
       if (esSeccionV) {
         if (_NORMAL_DE_CARA[pose.cara] === defV.depth) {
           // la cara default quedó ∥ al plano de la pieza: elegir una cara VÁLIDA
@@ -3206,10 +3212,21 @@
           }
         }
         pose.rumbo = defV.depth;
-      } else if (pose.rumbo === defV.depth) {
+      } else {
+        // Pieza ABIERTA: corre DENTRO del plano de la vista, "como se dibujó".
+        // Si el clic fue en un BORDE, el dominante corre PARALELO a ese borde
+        // (borde de arriba → ____ con las patas hacia abajo — regla del usuario);
+        // sin borde, u y luego v. Antes solo se corregía cuando el rumbo default
+        // apuntaba a la profundidad: un default en-plano pero perpendicular al
+        // borde clickeado se quedaba como estaba.
         var candsR = [defV.u, defV.v];
-        for (var c8 = 0; c8 < candsR.length; c8++) {
-          if (_rumboValido(pose.cara, candsR[c8])) { pose.rumbo = candsR[c8]; break; }
+        var nBorde = (f && f.cara) ? _NORMAL_DE_CARA[f.cara] : null;
+        if (nBorde === defV.u) candsR = [defV.v, defV.u];        // borde vertical → corre en v
+        else if (nBorde === defV.v) candsR = [defV.u, defV.v];   // borde horizontal → corre en u
+        if (pose.rumbo === defV.depth || nBorde) {
+          for (var c8 = 0; c8 < candsR.length; c8++) {
+            if (_rumboValido(pose.cara, candsR[c8])) { pose.rumbo = candsR[c8]; break; }
+          }
         }
       }
       if (!_rumboValido(pose.cara, pose.rumbo)) pose.rumbo = _rumboDefaultDeCara(pose.cara);
@@ -5630,7 +5647,26 @@
         var c = pts[i][depthEje];
         if (c < lo) lo = c; if (c > hi) hi = c;
       }
-      if (!(hi - lo <= umbral)) return;          // no es rebanada (corre a lo largo del eje)
+      if (!(hi - lo <= umbral)) {
+        // NO es rebanada: corre A LO LARGO del eje. Pero sus PATAS/QUIEBRES sí son
+        // cortes que valen (fix 14-ago, reporte: «al llegar al extremo, si tiene
+        // pata debo verla» — el imán solo conocía estribos y el corte nunca
+        // alcanzaba la pata del cabezal). Un tramo cuya dirección se DESVÍA del
+        // eje de profundidad (|Δprof| < desvío lateral) es pata o quiebre: su zona
+        // en profundidad entra como candidata del imán, puramente geométrico —
+        // sin rol ni tipología.
+        var ejes3 = ['x', 'y', 'z'].filter(function (e) { return e !== depthEje; });
+        for (var j = 1; j < pts.length; j++) {
+          var dp = Math.abs(pts[j][depthEje] - pts[j - 1][depthEje]);
+          var dl = Math.max(Math.abs(pts[j][ejes3[0]] - pts[j - 1][ejes3[0]]),
+                            Math.abs(pts[j][ejes3[1]] - pts[j - 1][ejes3[1]]));
+          if (dl > dp && dl > 0.5) {
+            centros.push((pts[j][depthEje] + pts[j - 1][depthEje]) / 2);
+            if (pl.diam > diamMax) diamMax = pl.diam;
+          }
+        }
+        return;
+      }
       centros.push((lo + hi) / 2);
       if (pl.diam > diamMax) diamMax = pl.diam;
     });

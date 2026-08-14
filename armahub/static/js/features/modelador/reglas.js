@@ -1642,6 +1642,46 @@
     };
   }
 
+  // ---------------------------------------------------------------------------
+  // EJE QUE CRUZA UNA TRABA — derivado de la POSE, no de una tabla por elemento.
+  // ---------------------------------------------------------------------------
+  // La traba cose dos capas enfrentadas DENTRO de su plano de dibujo (el ⊥ a su
+  // rumbo). Cuál de los dos ejes del plano cruza:
+  //   · si solo UNO de ellos es transversal al elemento (≠ 'x', el eje del largo),
+  //     es ese: una traba nunca corre a lo largo del elemento. Muro, traba en la
+  //     sección horizontal (rumbo y, plano x·z) → cruza z, el ESPESOR. Antes esto
+  //     estaba cableado a altoUtil (herencia de la viga) y la traba del muro salía
+  //     cruzando el ALTO (245 cm medidos) — "la pieza es cualquier cosa".
+  //   · si los DOS son transversales (rumbo x: plano y·z, el caso viga), cruza
+  //     'y' — el ALTO local, el invariante de SIEMPRE de la traba (la de la viga
+  //     cose el alto sea cual sea la cara que declare su receta; medido: meter la
+  //     cara en esta decisión cambiaba 4 combinaciones legacy del barrido). Si
+  //     algún día una traba deba cruzar el ancho con rumbo x, será una decisión
+  //     nueva del usuario, no un default.
+  function _ejeCruceTraba(comp) {
+    var pose = poseDe(comp);
+    var ru = (pose && pose.rumbo) || 'x';
+    var plano = ['x', 'y', 'z'].filter(function (e) { return e !== ru; });
+    var trans = plano.filter(function (e) { return e !== 'x'; });
+    return (trans.length === 1) ? trans[0] : 'y';
+  }
+  // Medida ÚTIL del marco a lo largo de un eje de mundo (la cuenta de
+  // marcoUtilNivel, leída por eje — fuente única para quien resuelva por pose).
+  function _utilPorEje(mk, eje) {
+    if (eje === 'x') return mk.largoUtil;
+    if (eje === 'z') return mk.anchoUtil;
+    return mk.altoUtil;
+  }
+
+  // Eje de cruce de la traba en LOCAL (la tabla es involutiva: sirve mundo→local).
+  // El resto del resolver de sección NO necesita traducción: el host llega YA
+  // permutado por la pose (los 'auto' del estribo eran pose-aware desde antes).
+  function _cruceLocalTraba(comp) {
+    var P = PERM_POR_RUMBO[poseDe(comp).rumbo] || null;
+    var m = _ejeCruceTraba(comp);
+    return P ? P[m] : m;
+  }
+
   // Nivel EFECTIVO de una base (declarado o default por rol).
   function _nivelDeBase(base) {
     return nivelJerarquiaEfectivo(
@@ -2952,7 +2992,7 @@
   // anteriores)), no del hormigón pelado; 'fija' toma su valor.
   //   cabezal → largoUtil (corre a lo largo del eje longitudinal local)
   //   estribo → A/C = anchoUtil, B/D = altoUtil (el backend recalcula el largo)
-  //   traba   → altoUtil
+  //   traba   → el eje que cruza según su pose (_ejeCruceTraba); viga = altoUtil
   // `nivel` (3er arg) = nivel DECLARADO; sin declarar, insetJ = 0 → idéntico a
   // medir contra el recubrimiento (comportamiento histórico de las recetas).
   // `profConsumida` (cm) = lo que la CAPA de esta copia ya se metió hacia el núcleo
@@ -3092,7 +3132,13 @@
         if (e === 'd') return ganchoAuto;
       }
       if (comp._rol === 'estribo') return (k === 'A' || k === 'C') ? mk.anchoUtil : mk.altoUtil;
-      return mk.altoUtil;
+      // TRABA: cruza el eje que dicta su POSE, leído en LOCAL (_cruceLocalTraba).
+      // OJO: `mk` viene del host YA PERMUTADO por la pose (todo este resolver
+      // trabaja en el marco local — por eso el estribo de arriba lee ancho/alto
+      // "de mundo" y es pose-aware igual). El único que elegía MAL su eje local
+      // era la traba: siempre el alto local, aunque su pose dijera cruzar el
+      // espesor. Medido antes/después: muro rumbo y 394 (largo) → 15 (espesor).
+      return _utilPorEje(mk, _cruceLocalTraba(comp));
     }
     // DOS PASADAS: el longitudinal se resuelve AL FINAL porque su reserva (los
     // SOBRES de las puntas inclinadas) depende de las dims de los DEMÁS lados
@@ -3689,6 +3735,12 @@
     // _marcoCara (no usan marco de núcleo).
     // Se escriben LAS TRES o NINGUNA: _marcoNucleo cae de insetInf/insetLat a
     // inset cuando faltan, así que dejar una sola daría un marco equivocado.
+    if (base.rol === 'traba') {
+      // El constructor de la traba necesita saber QUÉ eje local cruza (fix 14-ago:
+      // con rumbo y cruzaba el "alto local" = el LARGO del muro, 395 cm medidos).
+      // Se resuelve acá (pose) y viaja en el anchor: figura_puntos no conoce poses.
+      base.anchorBase.cruceLocal = _cruceLocalTraba(comp);
+    }
     if (base.rol === 'estribo' || base.rol === 'traba') {
       var nivelEf = _nivelDeBase(base);
       var insetS = _sumaPila(host, 'sup', nivelEf);

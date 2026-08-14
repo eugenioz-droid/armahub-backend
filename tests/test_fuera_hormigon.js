@@ -134,15 +134,23 @@ console.log('\nB — traba: su bbox se centra en el anchor, no cuelga de él:');
   ok(Math.max(Math.abs(z.lo), Math.abs(z.hi)) + 0.8 <= 10 + 1e-9,
     f + ': todos los puntos con |z| + φ/2 ≤ 10 — dentro del hormigón (antes: 5.55 cm fuera)');
 });
-// …y la OCUPACIÓN sí es la misma en los tres hosts (6φ es normativo), pero ahora
-// lo que cambia con el host es DÓNDE cae y si CABE: en el muro no cabe en el
-// marco útil (14.75 > 13.4) y eso se DICE.
+// ASSERT CAMBIADO (14-ago) POR UNA RAZÓN FÍSICA, no para que pase. Antes acá se
+// exigía el aviso «no cabe ni una vez»: la traba del muro cruzaba el eje local
+// EQUIVOCADO (siempre el alto local) y sus GANCHOS quedaban atravesados en el
+// espesor — 14.75 cm de ocupación contra 13.4 útiles. Con el cruce correcto
+// (_cruceLocalTraba: la traba va de cortina a cortina) el cuerpo llena el
+// espesor POR CONSTRUCCIÓN (cresta en la línea de recub, cara del fierro a
+// ±8.3 ≤ 10) y los ganchos corren A LO LARGO del muro, donde sobra sitio: una
+// traba φ16 en un muro de 20 con recub 2.5 CABE, que es lo que se fabrica.
 {
   const cM = comp('101A', 'TC', { cara: 'lateral', lado: 1, rumbo: 'y' }, 16);
-  R.expandirComponente(cM, MURO);
-  ok(avisos(cM).some(a => /no cabe ni una vez/.test(a)),
-    'y el muro de 20 avisa: la traba φ16 ocupa 14.75 y el marco útil da 13.4 (=' +
+  const plM = R.expandirComponente(cM, MURO)[0];
+  const zM = lim(plM, 'z');
+  ok(!avisos(cM).length,
+    'la traba φ16 del muro de 20 CABE cruzando el espesor (sin avisos: ' +
     JSON.stringify(avisos(cM)) + ')');
+  ok(Math.max(Math.abs(zM.lo), Math.abs(zM.hi)) + 0.8 <= 10 + 1e-9,
+    'y su cara queda dentro: |z|max + φ/2 = ' + r2(Math.max(Math.abs(zM.lo), Math.abs(zM.hi)) + 0.8) + ' ≤ 10');
   const cV = comp('101A', 'TRV', { cara: 'lateral', lado: 1, rumbo: 'x' }, 16);
   const plV = R.expandirComponente(cV, VIGA60)[0];
   ok(avisos(cV).length === 0 && fueraDeHormigon(plV, VIGA60, 1.6).fuera <= 1e-9,
