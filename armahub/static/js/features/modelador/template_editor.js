@@ -3199,8 +3199,17 @@
       // el reparto); todo lo demás corre DENTRO del plano. Antes había un
       // `rol === 'estribo' || rol === 'traba'` acá — la segunda tabla en
       // paralelo que ya costó el estribo bajo tipología MV y la traba flotando.
-      var famV = (fpV && fpV.familiaDeDibujo) ? fpV.familiaDeDibujo(sel.figura, rol) : null;
-      var esSeccionV = (famV === 'estribo' || famV === 'traba' || famV === 'rombo');
+      // (fix del fix, mismo 14-ago): la primera versión le pasaba el ROL a la
+      // clasificación y familiaDeDibujo('106A', 'cabezal') contesta 'cabezal' —
+      // la tipología PISABA a la topología y el estribo bajo MH caía al camino
+      // de las abiertas (regresión reportada al minuto). La autoridad es DOBLE
+      // y en este orden: la TOPOLOGÍA pura (cerrada = sección, venga la
+      // tipología que venga — familiaDeDibujo con rol null, como el motor en
+      // _baseDeComponente) O el rol de sección con su figura dibujable
+      // (esPiezaDeSeccion: traba/estribo con 101x/103x/305A… = cadena/traba).
+      var esSeccionV = !!(fpV &&
+        ((fpV.familiaDeDibujo && fpV.familiaDeDibujo(sel.figura, null) === 'estribo') ||
+         (fpV.esPiezaDeSeccion && fpV.esPiezaDeSeccion(sel.figura, rol))));
       if (esSeccionV) {
         if (_NORMAL_DE_CARA[pose.cara] === defV.depth) {
           // la cara default quedó ∥ al plano de la pieza: elegir una cara VÁLIDA
