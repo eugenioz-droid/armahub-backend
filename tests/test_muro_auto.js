@@ -72,6 +72,53 @@ console.log('MH 103A φ16 (patas de 90°) TODO AUTO — el clásico también obe
     'A = C = espesor útil eje a eje = 15 − φ = 13.4 (la fórmula universal) (=' + r2(pl.dims.A) + ')');
 }
 
+// GUARDA DE LA MIGRACIÓN CABEZAL → TRAZADOR (bug reportado por el usuario: «una
+// 103C se dibuja idéntica a una 103A, sin su gancho»). La 103C declara UN solo
+// ángulo (45°) en el catálogo: su pata inicial es DIAGONAL y la final sigue a 90°.
+// El constructor de cabezal dibujaba las dos a 90° fijas, así que en el muro salía
+// byte-idéntica a la 103A de arriba — misma figura para dos códigos distintos, y
+// sin un solo aviso. Ahora cada pata obedece a SU dirección en la pose:
+//   A diagonal ('d') → gancho normativo 6φ = 9.6, trazado a 45°
+//   C ⊥ al dominante ('v') → cruza el espesor útil eje a eje = 13.4, a 90°
+// La figura queda ASIMÉTRICA, que es lo que el código dice que es.
+console.log('MH 103C φ16 (un solo gancho a 45°) — YA NO se dibuja como una 103A:');
+{
+  const p103A = unaPieza({
+    tipologia: 'MH', figura: '103A', diam: 16, cara: 'lateral',
+    pose: { cara: 'lateral', lado: 1, rumbo: 'x' },
+    dims: autoDims(['A', 'B', 'C']), distribucion: distY
+  });
+  const pl = unaPieza({
+    tipologia: 'MH', figura: '103C', diam: 16, cara: 'lateral',
+    pose: { cara: 'lateral', lado: 1, rumbo: 'x' },
+    dims: autoDims(['A', 'B', 'C']), distribucion: distY
+  });
+  ok(!!pl, 'genera placement');
+  const mismo = pl.puntos.length === p103A.puntos.length && pl.puntos.every((p, i) =>
+    close(p.x, p103A.puntos[i].x) && close(p.y, p103A.puntos[i].y) && close(p.z, p103A.puntos[i].z));
+  ok(!mismo, 'su polilínea NO coincide con la de la 103A (el bug reportado)');
+  ok(close(pl.dims.A, 9.6, 1e-6) && close(pl.dims.C, 13.4, 1e-6),
+    'A (diagonal) = gancho 9.6 y C (⊥) = espesor útil 13.4: cada pata según SU dirección (=' +
+    r2(pl.dims.A) + ' / ' + r2(pl.dims.C) + ')');
+  // Giro real de cada doblez sobre la polilínea 3D (no depende del sistema local).
+  const giro = (a, b, c) => {
+    const u = { x: b.x - a.x, y: b.y - a.y, z: b.z - a.z };
+    const v = { x: c.x - b.x, y: c.y - b.y, z: c.z - b.z };
+    const lu = Math.hypot(u.x, u.y, u.z), lv = Math.hypot(v.x, v.y, v.z);
+    return Math.acos(Math.max(-1, Math.min(1, (u.x * v.x + u.y * v.y + u.z * v.z) / (lu * lv)))) * 180 / Math.PI;
+  };
+  ok(close(giro(pl.puntos[0], pl.puntos[1], pl.puntos[2]), 45, 1e-6) &&
+     close(giro(pl.puntos[1], pl.puntos[2], pl.puntos[3]), 90, 1e-6),
+    'y los dobleces DIBUJADOS son 45° / 90°, los del catálogo (=' +
+    r2(giro(pl.puntos[0], pl.puntos[1], pl.puntos[2])) + '° / ' +
+    r2(giro(pl.puntos[1], pl.puntos[2], pl.puntos[3])) + '°)');
+  const x = lim(pl, 'x'), z = lim(pl, 'z');
+  ok(close(x.hi, 196.2, 1e-6) && close(x.lo, -196.2, 1e-6),
+    'sigue cerrando contra el recub de borde por los dos extremos (x = ±196.2)');
+  ok(z.hi <= 6.7 + 1e-6 && z.lo >= -6.7 - 1e-6,
+    'y no saca fierro por el espesor: z ∈ [' + r2(z.lo) + ', ' + r2(z.hi) + '] ⊆ ±6.7');
+}
+
 console.log('MH 103B φ16 (patas 45°) TODO AUTO — la diagonal sigue al gancho:');
 {
   const pl = unaPieza({

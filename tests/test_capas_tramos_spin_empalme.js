@@ -47,12 +47,26 @@ function eq(a, b) { return JSON.stringify(a) === JSON.stringify(b); }
 const host = { largo: 600, ancho: 30, alto: 60, recub_sup: 4, recub_inf: 4, recub_lat: 3 };
 
 // ===========================================================================
-console.log('R0 — CERO REGRESIÓN: la viga-semilla no se mueve en items/barras/kg:');
+console.log('R0 — la viga-semilla: items/barras intactos, kg re-derivado:');
 // Las POSICIONES de las capas ≥2 del CBS sí cambian (5.6 → 4 cm), pero las dims
-// no, así que el listado, el conteo y los kilos son los mismos.
+// no, así que el listado y el conteo son los mismos.
+//
+// 140.2 → 136.1 kg POR LA MIGRACIÓN CABEZAL → TRAZADOR. El CBS de la semilla es
+// una 103B y el catálogo le declara dobleces de 45°/45°. El constructor de
+// cabezal los IGNORABA (dibujaba las dos patas a 90°), así que el auto-largo
+// resolvía B = largoUtil = 592 sin reservar nada. Honrando los 45° del catálogo,
+// cada pata de 30 cm PROYECTA 30·cos45 = 21.2132 cm sobre el propio eje
+// longitudinal de la barra, y la cresta del codo tiene que quedar EN LÍNEA con el
+// recub de extremo (eje a recub + φ/2 = +0.8). Reserva por punta = 22.0132:
+//     B = 592 − 2·22.0132 = 547.974   (con 592 la pieza asomaba 21.2 cm fuera del
+//                                      hormigón por CADA extremo)
+//     largo CBS = 30 + 547.974 + 30 = 607.974  (antes 652)
+//     6 barras φ16: 61.745 → 57.575 kg   ⇒  140.2 − 4.17 = 136.1
+// Las otras tres piezas no se mueven ni un decimal (CBI 101A recta, ES 104D
+// marco cerrado, TRV 101A recta): siguen 72 barras y 4 ítems.
 const semilla = G.generarViga(S.semillaViga(), {});
-ok(semilla.resumen.items === 4 && semilla.resumen.barras === 72 && semilla.resumen.kg === 140.2,
-  'semilla = {items:4, barras:72, kg:140.2} (=' + JSON.stringify(semilla.resumen) + ')');
+ok(semilla.resumen.items === 4 && semilla.resumen.barras === 72 && semilla.resumen.kg === 136.1,
+  'semilla = {items:4, barras:72, kg:136.1} (=' + JSON.stringify(semilla.resumen) + ')');
 
 // ===========================================================================
 // T1 · SEPARACIÓN DE CAPAS = EJE A EJE
@@ -227,14 +241,26 @@ ok(eq(centroCuerpo(ptsSpin), centroCuerpo(ptsBase)),
 ok(close(ptsSpin[1].x, ptsBase[1].x) && close(ptsSpin[2].x, ptsBase[2].x) &&
   close(ptsSpin[1].y, ptsBase[1].y) && close(ptsSpin[1].z, ptsBase[1].z),
   'los DOS extremos del cuerpo quedan clavados (no sólo el punto medio)');
+// MIGRACIÓN CABEZAL → TRAZADOR: la pata de una 103B baja 20·sin45, no 20.
+// El cabezal dibujaba las dos patas PERPENDICULARES al cuerpo (90° fijos), así
+// que los 20 cm de la pata caían enteros sobre la normal de la cara y el spin los
+// llevaba enteros a −Z (z = −20). Honrando el 45° que declara el catálogo, la
+// pata avanza 20·cos45 = 14.1421 a lo largo de la barra y sólo 20·sin45 = 14.1421
+// cruza hacia el núcleo: el spin gira ESA componente (la ⊥ al eje del giro), y la
+// longitudinal se queda en x. Por eso z = −14.1421 y no −20. La pata mide lo
+// mismo (20): lo que cambió es su DIRECCIÓN, que es justo lo que el cabezal
+// ignoraba.
+const PROY45_20 = r6(20 * Math.SQRT1_2);   // 14.142136 — proyección de la pata de 20 a 45°
 const zPatas = [r6(ptsSpin[0].z), r6(ptsSpin[3].z)];
-ok(eq(zPatas, [-20, -20]), 'las PATAS sí giran: pasan de −Y a −Z (z = −20) (=' + JSON.stringify(zPatas) + ')');
+ok(eq(zPatas, [-PROY45_20, -PROY45_20]),
+  'las PATAS sí giran: pasan de −Y a −Z (z = −20·sin45 = −' + PROY45_20 + ') (=' +
+  JSON.stringify(zPatas) + ')');
 ok(zPatas[0] < -(host.ancho / 2 - host.recub_lat),
-  'la pata ASOMA del recubrimiento lateral (−20 < −12) y se deja asomar: dato honesto, no se esconde con una traslación');
+  'la pata ASOMA del recubrimiento lateral (−14.14 < −12) y se deja asomar: dato honesto, no se esconde con una traslación');
 // El signo del spin manda: −90 manda las patas al otro lado, la barra igual quieta.
 const ptsSpinNeg = corchete({ eje: 'x', spin: -90 });
-ok(eq(centroCuerpo(ptsSpinNeg), centroCuerpo(ptsBase)) && r6(ptsSpinNeg[0].z) === 20,
-  'spin −90 → patas a +Z (z = 20) y el cuerpo sigue clavado');
+ok(eq(centroCuerpo(ptsSpinNeg), centroCuerpo(ptsBase)) && r6(ptsSpinNeg[0].z) === PROY45_20,
+  'spin −90 → patas a +Z (z = +' + PROY45_20 + ') y el cuerpo sigue clavado');
 
 console.log('\nT3b — con `deg` (rotación real de la pieza) el re-anclaje SIGUE actuando:');
 // deg 90 en x (pivote = centro propio) + spin 90: el bbox termina en y ∈ [15.2, 35.2],
@@ -307,7 +333,18 @@ const pl103 = R.expandirComponente({
 ok(r6(pl103.dims.B) === 430, 'el empalme suma a B (el tramo largo), no a las patas (=' + pl103.dims.B + ')');
 ok(r6(pl103.dims.A) === 30 && r6(pl103.dims.C) === 30, 'las patas A y C quedan intactas (30 / 30)');
 ok(r6(pl103.puntos[1].x) === -210 && r6(pl103.puntos[2].x) === 220, 'el tramo B asoma 10 / 20 (x = −210 / 220)');
-ok(r6(pl103.puntos[0].x) === -210 && r6(pl103.puntos[3].x) === 220, 'y las patas acompañan a su extremo');
+// MIGRACIÓN CABEZAL → TRAZADOR: la PUNTA de cada pata ya no comparte la x de su
+// esquina. Con las patas a 90° (lo que dibujaba el cabezal) la punta caía en
+// vertical sobre el codo y su x era la misma; honrando los 45° del catálogo la
+// pata AVANZA 30·cos45 = 21.2132 hacia afuera mientras baja. Lo que el assert
+// protege es lo mismo de antes —que la punta viaja PEGADA a su esquina cuando el
+// empalme corre el tramo— así que se mide contra la esquina, no contra un número
+// absoluto: punta = codo ∓ 21.2132.
+const PROY45_30 = 30 * Math.SQRT1_2;   // 21.213203 — proyección de la pata de 30 a 45°
+ok(close(pl103.puntos[0].x, pl103.puntos[1].x - PROY45_30) &&
+   close(pl103.puntos[3].x, pl103.puntos[2].x + PROY45_30),
+  'y las patas acompañan a su extremo, abiertas los 21.2132 del doblez de 45° (=' +
+  r6(pl103.puntos[0].x) + ' / ' + r6(pl103.puntos[3].x) + ')');
 
 if (fallos) { console.error('\nFALLARON ' + fallos + ' aserciones'); process.exit(1); }
 console.log('\nOK — capas eje a eje + tramos en el rango + spin sin deriva + Δ por extremo.');

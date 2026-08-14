@@ -113,8 +113,18 @@ ok(cbSpanZ > cbSpanX, 'la barra corre en Z (span z=' + cbSpanZ.toFixed(1) + ' > 
 // recubrimiento es recub_lat (3), no el vertical (4): 30 − 2·3 = 24. Antes daba
 // 22 porque el motor medía la cara 'ext' local con recub_sup aunque la
 // permutación ya hubiera cambiado de cara.
-ok(close(cbSpanZ, host.ancho - 2 * host.recub_lat, 0.01),
-  'largo de la barra = ancho − 2·recub_lat (recub de la cara que ahora cierra la barra) (=' + cbSpanZ.toFixed(1) + ')');
+//
+// MIGRACIÓN CABEZAL → TRAZADOR: el marco sigue siendo 24 (eso es lo que protege el
+// assert), pero lo que se mide acá es el SPAN DEL EJE de la barra, y el eje ya no
+// llega hasta el marco: la CRESTA del codo es la que tiene que quedar en línea con
+// el recubrimiento, así que el eje se retira φ/2 = 0.8 por punta → span = 24 − 1.6
+// = 22.4. Es EXACTAMENTE la misma regla con la que dos líneas más arriba se mide el
+// estribo volteado (MARCO − EJE_ES por lado): con el cabezal migrado al trazador
+// las dos familias miden igual. Antes el cabezal llevaba el eje hasta el marco y la
+// superficie del codo se metía φ/2 dentro del recubrimiento.
+const EJE_CB = 1.6 / 2;   // φ16 → 0.8 cm
+ok(close(cbSpanZ, host.ancho - 2 * host.recub_lat - 2 * EJE_CB, 0.01),
+  'span del EJE = ancho − 2·recub_lat − 2·(φ/2) = 22.4 (la cresta del codo queda al recub) (=' + cbSpanZ.toFixed(1) + ')');
 ok(reparte(cbV, 'x') && !reparte(cbV, 'z'), 'las barras de la capa se reparten en X (antes Z)');
 ok(reparte(cbBase, 'z') && !reparte(cbBase, 'x'), 'la base sigue repartiendo las barras en Z');
 // sigue pegado a la cara superior: su Y máxima es la misma que sin voltear

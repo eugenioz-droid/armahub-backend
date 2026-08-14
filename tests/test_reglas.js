@@ -58,7 +58,15 @@ ok(capa1.length === 3 && capa2.length === 3, '3 barras por capa');
 var y1 = capa1[0].puntos[1].y, y2 = capa2[0].puntos[1].y;
 ok(y2 < y1, 'capa 2 apilada hacia el núcleo (y2 < y1)');
 ok(plCBS.every(function (p) { return p.puntos.length === 4; }), 'cada cabezal 103B = 4 puntos');
-ok(Math.abs(plCBS[0].dims.B - (600 - 8)) < 1e-6, 'B auto = largo − 2·recub = 592');
+// MIGRACIÓN CABEZAL → TRAZADOR: el marco útil sigue siendo 600 − 2·4 = 592 (eso
+// es lo que mide el 'auto'), pero ahora se le RESERVA lo que las patas de 45° de
+// la 103B ocupan sobre ese mismo eje: 30·cos45 = 21.2132 de proyección + φ/2 = 0.8
+// para que la cresta del codo quede en línea con el recub de extremo → 22.0132 por
+// punta. Antes el cabezal dibujaba las patas a 90° (proyección 0) y con B = 592 la
+// pieza asomaba 21.2 cm FUERA del hormigón por cada extremo.
+var RESERVA_45 = 30 * Math.SQRT1_2 + 1.6 / 2;   // 22.013203
+ok(Math.abs(plCBS[0].dims.B - (600 - 8 - 2 * RESERVA_45)) < 1e-6,
+  'B auto = largo − 2·recub − reserva de las patas a 45° = 547.974 (=' + plCBS[0].dims.B + ')');
 
 console.log('CABEZAL inferior 101A recto 1 capa × 4:');
 var compCBI = {

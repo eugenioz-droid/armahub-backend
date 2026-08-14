@@ -22,7 +22,8 @@
 //   D. EMPALME sólo donde es real: en estribo/traba se ignora y se avisa (antes
 //      sumaba kg fantasma sin mover el dibujo).
 //
-//   E. La viga-semilla no se mueve: 4 ítems / 72 barras / 140.2 kg.
+//   E. La viga-semilla: 4 ítems / 72 barras / 136.1 kg (los kg bajaron de 140.2
+//      al migrar el cabezal al trazador — ver la nota en la sección G).
 //
 // Correr con: node tests/test_catalogo_figuras.js
 // =============================================================================
@@ -136,9 +137,16 @@ ok(Object.keys(CAT.noDibujables()).length === Object.keys(noDib).length,
   'noDibujables() sin argumento sigue devolviendo el mapa completo');
 ok(FP.familiaDeDibujo('104D', 'estribo') === 'estribo' && FP.familiaDeDibujo('101A', 'traba') === 'traba',
   'el ROL de la tipología manda la familia de dibujo');
+// MIGRACIÓN CABEZAL → TRAZADOR: sin rol, una figura de 2–3 lados ya NO cae en el
+// constructor de cabezal sino en el trazador genérico. Razón física: el cabezal
+// dibuja los dos dobleces a 90° FIJOS e ignora los ángulos del catálogo — una
+// 103C (45/90) salía con la MISMA polilínea que una 103A (90/90), o sea sin su
+// gancho. El resto de la cascada no se mueve: 1 lado sigue siendo recta (no tiene
+// doblez que honrar) y el marco cerrado de 4 sigue siendo estribo (tiene su
+// constructor calibrado con arcos).
 ok(FP.familiaDeDibujo('104A', null) === 'estribo' && FP.familiaDeDibujo('101A', null) === 'recta' &&
-  FP.familiaDeDibujo('103A', null) === 'cabezal',
-  'sin rol la familia sale del nº de lados: 4 → estribo, 1 → recta, 2–3 → cabezal');
+  FP.familiaDeDibujo('103A', null) === 'cadena',
+  'sin rol la familia sale del nº de lados: 4 (marco) → estribo, 1 → recta, 2+ → cadena');
 ok(FP.patasDeFigura('101A').inicio === false && FP.patasDeFigura('102A').fin === false &&
   FP.patasDeFigura('103B').inicio === true && FP.patasDeFigura('103B').fin === true,
   'patas derivadas de los parciales: 101A ninguna, 102A sólo inicial, 103B las dos');
@@ -382,11 +390,18 @@ ok(CAT.codigos().length === nSeed, 'restaurado el espejo (' + CAT.codigos().leng
 // ---------------------------------------------------------------------------
 // G. VIGA-SEMILLA INTACTA
 // ---------------------------------------------------------------------------
-console.log('\nG — viga-semilla sin mover un decimal:');
+console.log('\nG — viga-semilla: mismo listado, kg re-derivado:');
+// 140.2 → 136.1 kg POR LA MIGRACIÓN CABEZAL → TRAZADOR. El CBS es una 103B con
+// dobleces de 45°/45° en el catálogo, que el constructor de cabezal ignoraba. Al
+// honrarlos, cada pata de 30 proyecta 30·cos45 = 21.2132 sobre el eje de la barra
+// y la cresta del codo se retira φ/2 = 0.8 del recub de extremo, así que el
+// auto-largo RESERVA 22.0132 por punta: B = 592 − 44.0264 = 547.974 (con 592 la
+// pieza asomaba 21.2 cm fuera del hormigón por cada extremo). 6 barras φ16:
+// 61.745 → 57.575 kg. Ítems y barras no se mueven — sólo cambia una dim.
 const semilla = G.generarViga(S.semillaViga(), CTX);
 ok(semilla.resumen.items === 4, 'items = 4 (=' + semilla.resumen.items + ')');
 ok(semilla.resumen.barras === 72, 'barras = 72 (=' + semilla.resumen.barras + ')');
-ok(r1(semilla.resumen.kg) === 140.2, 'kg = 140.2 (=' + semilla.resumen.kg + ')');
+ok(r1(semilla.resumen.kg) === 136.1, 'kg = 136.1 (=' + semilla.resumen.kg + ')');
 ok(semilla.barras.every(b => !validarSlots(b)), 'sus 4 ítems pasan validar_geometria contra el catálogo real');
 
 // ---------------------------------------------------------------------------

@@ -51,10 +51,22 @@ const viga = { largo: 600, alto: 60, ancho: 30, recub_sup: 4, recub_inf: 4, recu
 // Cabezal 103B φ16 (φ = 1.6), cara lateral, 2 capas × 3 barras, Sep 5, patas 10.
 //   z de la capa 1 = ancho/2 − recub_lat − φ/2 = 15 − 3 − 0.8 = 11.2
 //   z de la capa 2 = 11.2 − Sep = 6.2                (hacia el NÚCLEO)
-//   patas: salen en −Z (al núcleo) → la punta llega a 11.2 − 10 = 1.2
+//   patas: salen en −Z (al núcleo) → la punta llega a 11.2 − 10·sin45 = 4.1289
 //   reparto de la capa en Y = alto útil: ±(30 − 4 − 0.8) = ±25.2, y la del medio 0
+//
+// MIGRACIÓN CABEZAL → TRAZADOR: la punta de la pata ya NO llega a 11.2 − 10 = 1.2.
+// El constructor de cabezal dibujaba las patas PERPENDICULARES a la cara (90°
+// fijos), así que los 10 cm de pata cruzaban enteros hacia el núcleo. La 103B
+// declara dobleces de 45° en el catálogo: la pata mide lo mismo (10) pero sólo
+// 10·sin45 = 7.0711 cruza en Z — los otros 7.0711 corren a lo largo de la barra
+// (en X). Por eso la punta queda en 11.2 − 7.0711 = 4.1289. Lo que estos asserts
+// protegen (QUÉ cara, qué SIGNO, que el arrastre sea traslación pura y no un
+// cambio de lado) no cambia: sólo se mide la penetración real de la pata.
+//
 // ANTES: cara 'lateral' caía en la rama `else` de _yBordeCabezal y la barra se
 // anclaba en y = −25.2, o sea PEGADA A LA CARA INFERIOR, con z = 0 (al centro).
+// r3 para comparar con lim(), que también redondea a 3 decimales.
+const PATA_Z_45 = r3(10 * Math.SQRT1_2);   // 7.071 — lo que cruza en Z una pata de 10 a 45°
 console.log('L1 — CARA LATERAL = cara CORTINA (espejo de sup/inf con Y↔Z):');
 function cabLateral(extra) {
   return Object.assign({
@@ -68,8 +80,8 @@ const c1 = pl1.filter(p => p.meta.capa === 1), c2 = pl1.filter(p => p.meta.capa 
 ok(pl1.length === 6 && c1.length === 3, '2 capas × 3 barras = 6 placements');
 ok(c1.every(p => close(lim(p, 'z').hi, 11.2)),
   'capa 1 PEGADA a la cara Z+: eje z = ancho/2 − recub_lat − φ/2 = 11.2 (=' + lim(c1[0], 'z').hi + ')');
-ok(c1.every(p => close(lim(p, 'z').lo, 1.2)),
-  'las patas salen por la NORMAL de la cara (−Z, al núcleo): punta en 11.2 − 10 = 1.2 (=' + lim(c1[0], 'z').lo + ')');
+ok(c1.every(p => close(lim(p, 'z').lo, 11.2 - PATA_Z_45)),
+  'las patas salen por la NORMAL de la cara (−Z, al núcleo): punta en 11.2 − 10·sin45 = 4.129 (=' + lim(c1[0], 'z').lo + ')');
 ok(c2.every(p => close(lim(p, 'z').hi, 11.2 - 5)),
   'capa 2 entra hacia el núcleo EN Z: 11.2 − Sep = 6.2 (=' + lim(c2[0], 'z').hi + ')');
 ok(JSON.stringify(unicos(c1, 'y')) === JSON.stringify([-25.2, 0, 25.2]),
@@ -80,15 +92,15 @@ ok(!pl1.some(p => close(centro(p, 'y'), -25.2) && close(centro(p, 'z'), 0)),
 // PROPIO del componente (`comp.lado` = 1 | −1, default 1), NO el signo de
 // pos_hint.z. Antes el pos_hint elegía el lado Y ADEMÁS se sumaba entero, así que
 // arrastrando y cruzando z = 0 la barra pegaba un salto de 2·11.2 = 22.4 cm.
-//   lado −1 → eje en −11.2, patas hacia +Z → z ∈ [−11.2, −1.2]
+//   lado −1 → eje en −11.2, patas hacia +Z → z ∈ [−11.2, −4.1289]
 const plNeg = R.expandirComponente(cabLateral({ lado: -1 }), viga);
-ok(close(lim(plNeg[0], 'z').lo, -11.2) && close(lim(plNeg[0], 'z').hi, -1.2),
-  'comp.lado = −1 → cortina de −Z (eje −11.2, patas hacia +Z) (=' +
+ok(close(lim(plNeg[0], 'z').lo, -11.2) && close(lim(plNeg[0], 'z').hi, -(11.2 - PATA_Z_45)),
+  'comp.lado = −1 → cortina de −Z (eje −11.2, patas hacia +Z hasta −4.129) (=' +
   JSON.stringify(lim(plNeg[0], 'z')) + ')');
 // pos_hint = TRASLACIÓN PURA: con lado +1 (default) un arrastre a z negativo NO
-// cambia de cara, sólo corre la barra: [1.2, 11.2] − 1 = [0.2, 10.2].
+// cambia de cara, sólo corre la barra: [4.1289, 11.2] − 1 = [3.1289, 10.2].
 const plHint = R.expandirComponente(cabLateral({ pos_hint: { z: -1 } }), viga);
-ok(close(lim(plHint[0], 'z').lo, 0.2) && close(lim(plHint[0], 'z').hi, 10.2),
+ok(close(lim(plHint[0], 'z').lo, 11.2 - PATA_Z_45 - 1) && close(lim(plHint[0], 'z').hi, 10.2),
   'pos_hint.z NO elige lado: traslada la cortina +Z 1 cm (=' +
   JSON.stringify(lim(plHint[0], 'z')) + ')');
 // CONTINUIDAD AL CRUZAR z = 0 ARRASTRANDO (el salto de 22.4 cm): la UI escribe
@@ -101,7 +113,7 @@ ok(close(zA.hi - zB.hi, 1) && close(zA.lo - zB.lo, 1),
   r3(zA.hi - zB.hi) + ')');
 // Y el lado NO se toca por arrastrar: sigue siendo la cortina +Z (patas al núcleo,
 // o sea hacia −Z: el punto más bajo en z es la punta de la pata).
-ok(close(zB.hi, 11.2 - 12) && close(zB.lo, 1.2 - 12),
+ok(close(zB.hi, 11.2 - 12) && close(zB.lo, 11.2 - PATA_Z_45 - 12),
   'el arrastre no cambia el lado: sigue anclada a +Z, sólo trasladada (=' +
   JSON.stringify(zB) + ')');
 // El recubrimiento de la cara lateral es recub_lat (3), NO el vertical (4): antes
@@ -345,10 +357,19 @@ ok(close(xsT[1] - xsT[0], 10, 0.01) && close(xsT[8] - xsT[7], 260 / 11, 0.01),
   'los tramos se respetan sobre el eje REAL (X): @10 en el borde y paso real 260/11 al centro (=' +
   r3(xsT[1] - xsT[0]) + ' / ' + r3(xsT[8] - xsT[7]) + ')');
 const capaT1 = mvT.filter(p => p.meta.capa === 1), capaT2 = mvT.filter(p => p.meta.capa === 2);
-ok(close(capaT1[0].dims.B, 244) && close(capaT1[0].dims.A, 5),
-  'la dim auto de pie se mide contra los BORDES (244) y las patas quedan fijas (=' + capaT1[0].dims.B + ')');
-ok(close(capaT2[0].dims.B, 242) && close(capaT2[0].dims.A, 5),
-  'anidado × de pie: la capa 2 ajusta SOLO B (−2·φ = 242) y no toca las patas (=' + capaT2[0].dims.B + ')');
+// MIGRACIÓN CABEZAL → TRAZADOR: el marco de bordes SIGUE siendo 244 (eso es lo que
+// este assert protege: de pie se mide contra los BORDES del muro, no contra las
+// caras), pero ahora el auto-largo RESERVA lo que ocupan las patas de 45° de la
+// 103B sobre ese mismo eje. Por punta: 5·cos45 (proyección de la pata) + φ/2 = 0.5
+// (la cresta del codo tiene que quedar en línea con el recub de borde) = 4.0355.
+//   B = 244 − 2·4.0355 = 235.9289
+// Con 244 la barra medía el marco entero y encima le colgaban dos patas que
+// avanzaban 3.54 cm más: asomaba fuera del muro por los dos bordes.
+const RESERVA_MA = 2 * (5 * Math.SQRT1_2 + 0.5);   // 8.0711
+ok(close(capaT1[0].dims.B, 244 - RESERVA_MA) && close(capaT1[0].dims.A, 5),
+  'la dim auto de pie se mide contra los BORDES (244) menos la reserva de sus 45° = 235.929, y las patas quedan fijas (=' + capaT1[0].dims.B + ')');
+ok(close(capaT2[0].dims.B, 244 - RESERVA_MA - 2 * 1.0) && close(capaT2[0].dims.A, 5),
+  'anidado × de pie: la capa 2 ajusta SOLO B (−2·φ = 233.929) y no toca las patas (=' + capaT2[0].dims.B + ')');
 ok(close(lim(capaT1[0], 'z').hi, Z_CORTINA) && close(lim(capaT2[0], 'z').hi, Z_CORTINA - 1),
   'y la posición la puso sep_capas (1 cm hacia el núcleo), no el anidado (=' +
   lim(capaT1[0], 'z').hi + ' / ' + lim(capaT2[0], 'z').hi + ')');

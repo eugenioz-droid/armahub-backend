@@ -13,7 +13,8 @@
 //   D. RESCATE: cuántas de las excluidas vuelven a ser dibujables (y las que no,
 //      con motivo).
 //   E. MH/MV nacen en modo DISTRIBUCIÓN ('lineal').
-//   F. SEMILLA INTACTA: 140.2 kg / 72 barras / 4 ítems.
+//   F. SEMILLA: 72 barras / 4 ítems y 136.1 kg (bajó de 140.2 al migrar el cabezal
+//      al trazador — el CBS 103B pasa a honrar sus 45°; ver la nota de F).
 //
 // Correr con: node tests/test_trazador_generico.js
 
@@ -118,9 +119,33 @@ PILOTO.forEach(function (cs) {
 })();
 
 console.log('\nA2 — el genérico NO desplaza a los constructores especializados:');
-ok(FP.familiaDeDibujo('101A', null) === 'recta' && FP.familiaDeDibujo('102A', null) === 'cabezal' &&
-   FP.familiaDeDibujo('103B', null) === 'cabezal' && FP.familiaDeDibujo('104D', null) === 'estribo',
-  '1 lado → recta · 2-3 → cabezal · marco de 4 → estribo (sin cambios)');
+// MIGRACIÓN CABEZAL → TRAZADOR: las de 2–3 lados SÍ pasaron al genérico, y esa es
+// la tarea. El motivo está medido justo arriba, en el piloto A: el constructor de
+// cabezal dibuja los dobleces a 90° FIJOS, así que la 103B salía sin sus 45° y la
+// 103C salía byte-idéntica a una 103A, sin su gancho. El piloto también prueba lo
+// otro: para las figuras SIN ángulos declarados (101A/102A/103A) las dos rutas dan
+// la MISMA polilínea, así que migrar no cambia el dibujo donde ya era correcto.
+// Lo que NO se movió —y es lo que este assert sigue protegiendo— son los otros dos
+// constructores especializados: la RECTA de 1 lado y el MARCO CERRADO de 4.
+ok(FP.familiaDeDibujo('101A', null) === 'recta' && FP.familiaDeDibujo('102A', null) === 'cadena' &&
+   FP.familiaDeDibujo('103B', null) === 'cadena' && FP.familiaDeDibujo('104D', null) === 'estribo',
+  '1 lado → recta · 2-3 → cadena (migradas) · marco de 4 → estribo (sin cambios)');
+// LA 103C ES EL CASO QUE REPORTÓ EL USUARIO: «una 103C se dibuja idéntica a una
+// 103A, sin su gancho». El catálogo le declara un doblez de 45° (ang1) y el otro
+// queda en 90 por derivación; el cabezal los pisaba con 90/90.
+(function () {
+  const dims = { A: 30, B: 592, C: 30 };
+  const a103 = FP.figuraAPuntos('103A', dims, HOST, ANCH, { rol: 'cabezal', diamCm: 1.6 });
+  const c103 = FP.figuraAPuntos('103C', dims, HOST, ANCH, { rol: 'cabezal', diamCm: 1.6 });
+  ok(!eqPts(a103, c103, 1e-6),
+    '103C ya NO se dibuja igual que una 103A (el bug reportado: mismo trazo para dos figuras distintas)');
+  const gA = girosDe(a103), gC = girosDe(c103);
+  ok(gA.every(a => Math.abs(a - 90) < 1e-6),
+    '103A: sus dos dobleces son de 90° (=' + gA.map(a => a.toFixed(0)).join('/') + '°)');
+  ok(Math.abs(gC[0] - 45) < 1e-6 && Math.abs(gC[1] - 90) < 1e-6,
+    '103C: el gancho de 45° que declara el catálogo SÍ se dibuja, y el otro extremo sigue a 90° (=' +
+    gC.map(a => a.toFixed(0)).join('/') + '°)');
+})();
 ok(FP.familiaDeDibujo('104D', 'estribo') === 'estribo' && FP.familiaDeDibujo('104D', 'traba') === 'estribo' &&
    FP.familiaDeDibujo('103E', 'estribo') === 'estribo',
   'el ROL sigue mandando sobre la familia cuando la FIGURA es un marco (104D, con ' +
@@ -373,7 +398,15 @@ console.log('  · catálogo: ' + nSeed + ' figuras → ' + dib.length + ' dibuja
 console.log('  · por familia: ' + JSON.stringify(porFamilia));
 console.log('  · excluidas: ' + JSON.stringify(noDib));
 ok(dib.length + Object.keys(noDib).length === nSeed, 'toda figura sigue clasificada (dibujable o con motivo)');
-ok(porFamilia.cadena === 36, 'el trazador genérico se hace cargo de 36 figuras (=' + porFamilia.cadena + ')');
+// MIGRACIÓN CABEZAL → TRAZADOR: 36 → 51. Las 15 que entran son las de 2–3 lados
+// que antes dibujaba el constructor de cabezal a 90° fijos, ignorando los ángulos
+// del catálogo (la 103C, que declara un doblez de 45°, salía con la MISMA
+// polilínea que la 103A). Las otras dos familias no se mueven: 1 recta (no hay
+// doblez que honrar) y 10 marcos cerrados (constructor propio con arcos).
+ok(porFamilia.cadena === 51, 'el trazador genérico se hace cargo de 51 figuras (=' + porFamilia.cadena + ')');
+ok(porFamilia.recta === 1 && porFamilia.estribo === 10 && !porFamilia.cabezal,
+  'y ya no queda NINGUNA figura del catálogo en la familia cabezal (1 recta + 10 marcos + 51 cadenas = 62) (=' +
+  JSON.stringify(porFamilia) + ')');
 ok(Object.keys(noDib).length === 1 && noDib['201A'] && /radio/.test(noDib['201A']),
   'sólo queda excluida 201A, y por RADIO (hélice/espiral) — motivo claro');
 ok(!noDib['105A'] && !noDib['106A'] && !noDib['305A'],
@@ -443,10 +476,23 @@ ok(R.modoDefaultDeTipologia('ES') === 'lineal' && R.modoDefaultDeTipologia('CBS'
 // ---------------------------------------------------------------------------
 // F. SEMILLA INTACTA
 // ---------------------------------------------------------------------------
-console.log('\nF — viga-semilla (cero regresión):');
+console.log('\nF — viga-semilla (listado intacto, kg re-derivado):');
+// MIGRACIÓN CABEZAL → TRAZADOR: 140.2 → 136.1 kg. Su CBS es una 103B, y el
+// catálogo le declara dobleces de 45°/45° que el cabezal ignoraba. Honrándolos,
+// cada pata de 30 proyecta 30·cos45 = 21.2132 sobre el eje del cuerpo y la cresta
+// del codo se retira φ/2 = 0.8 del recub de extremo, así que el auto-largo reserva
+// 22.0132 por punta: B = 592 − 44.0264 = 547.974 y el largo del CBS 652 → 607.974
+// (6 barras φ16: 61.745 → 57.575 kg). Con B = 592 la barra medía el largo útil
+// entero y encima le colgaban dos patas que avanzaban 21.2 cm más: asomaba fuera
+// del hormigón por los dos extremos. Ítems y barras no se mueven.
 const semilla = G.generarViga(S.semillaViga(), CTX);
-ok(semilla.resumen.items === 4 && semilla.resumen.barras === 72 && semilla.resumen.kg === 140.2,
-  'semilla = {items:4, barras:72, kg:140.2} (=' + JSON.stringify(semilla.resumen) + ')');
+ok(semilla.resumen.items === 4 && semilla.resumen.barras === 72 && semilla.resumen.kg === 136.1,
+  'semilla = {items:4, barras:72, kg:136.1} (=' + JSON.stringify(semilla.resumen) + ')');
+const cbs = semilla.barras.filter(b => b.marca === 'CBS')[0];
+ok(cbs && Math.abs(cbs.dim_b - (592 - 2 * (30 * Math.SQRT1_2 + 0.8))) < 1e-6 &&
+   cbs.dim_a === 30 && cbs.dim_c === 30,
+  'y el número que se movió es UNO: B del CBS = 592 − 2·22.0132 = 547.974, patas 30/30 intactas (=' +
+  (cbs || {}).dim_b + ')');
 
 console.log(fallos === 0 ? '\nTODO OK' : '\n' + fallos + ' FALLO(S)');
 process.exit(fallos ? 1 : 0);

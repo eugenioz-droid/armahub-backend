@@ -182,8 +182,9 @@
   //    (esa discordancia la AVISA generar.js — dibujar un marco a media altura
   //    de la viga sería peor que avisar).
   // 2) SIN rol declarado, lo dice la figura: perímetro de 4 lados → estribo;
-  //    1 lado → recta; 2–3 lados → cabezal con patas (A y/o C).
-  // 3) 4+ lados que NO son MARCO CERRADO → 'cadena' (trazador genérico). Incluye
+  //    1 lado → recta; 2+ lados → 'cadena' (el cabezal con patas dejó de ser la
+  //    ruta normal — ver MIGRACIÓN CABEZAL → TRAZADOR más abajo).
+  // 3) 2+ lados que NO son MARCO CERRADO → 'cadena' (trazador genérico). Incluye
   //    el caso con rol 'cabezal': una cadena SE TRAZA COMO LONGITUDINAL (vive en
   //    el mismo plano de trabajo), sólo que con TODOS sus lados en vez de los 3
   //    que traza el cabezal. Por eso el rol cabezal ya no fuerza el constructor de
@@ -207,16 +208,39 @@
   // Las figuras de 1–3 lados con rol estribo (103E/103H = MURO-EC / VIGA-ES del
   // catálogo) conservan su ruta histórica: el constructor de marco es el que las
   // dibuja desde siempre y no hay cadena de 4+ que las reemplace.
+  //
+  // MIGRACIÓN CABEZAL → TRAZADOR (tanda de hoy): el umbral de la cadena
+  // LONGITUDINAL baja a 2 lados. `_cabezalLongitudinal` dibuja las patas a 90°
+  // FIJAS y no lee los ángulos del catálogo: una 103C (ang 45/90) salía IDÉNTICA
+  // a una 103A (90/90) — la misma polilínea, byte por byte —, o sea el editor
+  // pintaba una figura que no es la que dice el código. El trazador genérico sí
+  // los honra (derivarTramos lee spec.angulos), y para las figuras que el cabezal
+  // sí dibujaba bien (ángulos rectos) produce EXACTAMENTE los mismos puntos: eso
+  // es lo que fija el piloto de convención de tests/test_trazador_generico.js
+  // (101A/102A/103A byte-idénticas por las dos rutas). Así que migrar no es
+  // "otro dibujo": es el MISMO dibujo donde ya era correcto, y el correcto donde
+  // el cabezal mentía.
+  // Lo que NO cambia: 1 lado (recta, sin dobleces que honrar) y el MARCO CERRADO
+  // de 4 lados (constructor propio calibrado, con sus arcos de gancho sísmico).
+  var MIN_LADOS_CADENA_LONG = 2;
   function familiaDeDibujo(figura, rol) {
     var f = (figura || '').toUpperCase();
     var spec = _spec(f);
     var n = spec ? spec.parciales.length : 0;
     var esMarco = _esPerimetro(spec, f) && (!spec || n === MAX_LADOS_DIBUJABLES);
-    var esCadena = (n >= MAX_LADOS_DIBUJABLES) && !!tramosDeFigura(f);
+    var tieneTramos = !!tramosDeFigura(f);
+    // DOS UMBRALES, DOS PLANOS DE TRABAJO. La cadena de SECCIÓN (rol estribo)
+    // sigue pidiendo 4+ lados: ahí el constructor de marco no "miente" con las
+    // 1–3 lados (103E/103H son ganchos de 135° que el marco traza con su arco
+    // calibrado), y bajarle el umbral cambiaría el ANCLAJE de esas piezas, no
+    // sólo su trazo. La cadena LONGITUDINAL (rol cabezal / sin rol) entra desde
+    // 2 lados, que es donde aparece el primer doblez con ángulo de catálogo.
+    var esCadenaSeccion = (n >= MAX_LADOS_DIBUJABLES) && tieneTramos;
+    var esCadenaLong = (n >= MIN_LADOS_CADENA_LONG) && tieneTramos;
     if (rol === 'estribo') {
       if (esMarco) return 'estribo';
       if (esRomboSeccion(f)) return 'rombo';   // 106A y familia: el marco manda
-      if (esCadena) return 'cadena';
+      if (esCadenaSeccion) return 'cadena';
       return 'estribo';
     }
     // TRABA CON FIGURA DE 3+ LADOS → CADENA DE SECCIÓN (feedback 13-ago, mismo
@@ -228,19 +252,15 @@
     // marco de SU pose, igual que el estribo-cadena.
     if (rol === 'traba') {
       if (esMarco) return 'estribo';   // un marco cerrado se dibuja como marco
-      if (n >= 3 && !!tramosDeFigura(f)) return 'cadena';
+      if (n >= 3 && tieneTramos) return 'cadena';
       return 'traba';                  // 101x/102x: la forma clásica les calza
     }
     if (esMarco) return rol ? 'cabezal' : 'estribo';
     if (_esRecta(f)) return 'recta';
-    if (esCadena) return 'cadena';
-    // PENDIENTE (migración cabezal→trazador, medida 13-ago): este constructor
-    // dibuja las patas a 90° FIJAS e ignora los ángulos del catálogo (una 103C
-    // sale como 103A, sin su gancho). Bajar el umbral de cadena a 2 lados lo
-    // arregla PERO mueve 10 guards (B auto reserva las proyecciones de las
-    // patas inclinadas, spin, testeros, anidado de pie) y cambia el dibujo de
-    // recetas guardadas con dims fijas → va como pasada propia con toda la
-    // re-derivación, no como un cambio de una línea.
+    if (esCadenaLong) return 'cadena';
+    // Sólo queda lo que NO tiene tramos trazables (figura fuera del catálogo, o
+    // con `geometria` en arco): el cabezal clásico es la red de seguridad, nunca
+    // la ruta normal. Ver la nota de MIGRACIÓN arriba.
     return 'cabezal';
   }
 
@@ -490,10 +510,42 @@
     return out;
   }
   function _rev2D(pts) { return pts.slice().reverse(); }
-  function _conGanchosRadio(pts, diamCm, cerrada, sinClamp) {
+  // `iCuerpo` = índice del TRAMO que hace de CUERPO cuando la cadena tiene UN SOLO
+  // doblez (3 puntos). Ver el porqué justo abajo; el resto de los casos lo ignora.
+  //
+  // CUERPO vs PATA CON UN SOLO DOBLEZ (defecto bloqueante medido 13-ago).
+  // ---------------------------------------------------------------------------
+  // `_ganchoFinal2D` NO es simétrico y no puede serlo: retranquea R sobre el
+  // CUERPO (que se queda donde está) y cuelga la PATA COMPLETA desde la salida
+  // del arco (que por lo tanto se DESPLAZA R respecto de la cadena de vértices).
+  // Con 4+ puntos la elección es obvia y la hacen los dos pases: el directo toma
+  // como cuerpo el tramo INTERIOR del extremo final y el inverso el del inicial.
+  // Con exactamente 3 puntos (2 tramos) NO HAY tramo interior: los dos lados son
+  // terminales y el único doblez lo consume el primer pase que llegue — el
+  // directo, que se queda con el PRIMER tramo como cuerpo. Cuando el lado
+  // DOMINANTE es el segundo (una 102B: A = gancho de 135°, B = cuerpo), el
+  // dominante pasaba a ser "la pata" y salía desplazado R = 2φ + φ/2 respecto de
+  // su anclaje: el eje de la barra larga quedaba 2.5·φ POR ENCIMA del
+  // recubrimiento. MEDIDO en viga 600×60×30 rec 4, CBS 102B todo auto, pose
+  // default: ancla y = 25.2 y la barra dibujada en y = 29.2 (φ16, 4.0 = 2.5·φ)
+  // → la CARA del fierro justo en y = 30, o sea recubrimiento CERO; con φ32,
+  // 4.0 cm FUERA del hormigón, y en el muro de 20 hasta 5.5 cm fuera, sin un
+  // solo aviso y facturando la barra.
+  // El cuerpo tiene que ser el DOMINANTE: es el lado que se ancla contra la cara,
+  // el que el auto-largo estira y el que recibe el empalme — o sea el que NO
+  // puede moverse. Lo sabe el llamador (que acaba de orientar la cadena), no esta
+  // función: por eso viaja como parámetro y no se adivina por largos.
+  function _conGanchosRadio(pts, diamCm, cerrada, sinClamp, iCuerpo) {
     if (!pts || pts.length < 3 || cerrada) return pts;
     var R = 2 * diamCm + diamCm / 2;   // radio del EJE del codo (= estribo)
     if (!(R > 0)) return pts;
+    // UN SOLO DOBLEZ con el dominante al FINAL → sólo el pase INVERSO (ahí el
+    // cuerpo es el 2º tramo y la pata el 1º). El pase directo posterior sería un
+    // no-op (el último vértice interior ya es un punto de arco, giro ≈ 10°), así
+    // que se omite en vez de dejarlo por simetría.
+    if (pts.length === 3 && iCuerpo === 1) {
+      return _rev2D(_ganchoFinal2D(_rev2D(pts), R, sinClamp));
+    }
     // Extremo final directo; extremo inicial procesado en REVERSA, para que el
     // "cuerpo" del algoritmo sea siempre el lado interior y la pata la que
     // cuelga (en el gancho inicial la pata es el PRIMER tramo).
@@ -637,7 +689,10 @@
     // corrida (la reserva de sobres —que ya mide con arcos— y el centrado leían
     // dos bboxes distintos). La orientación sí corre antes: necesita el índice
     // tramo↔punto, que el pase de ganchos rompe.
-    out = _conGanchosRadio(out, diamCm, cerrada);
+    // iL = índice del tramo DOMINANTE (el que _orientarCadena acaba de dejar sobre
+    // +u y en v = 0): con un solo doblez es el que tiene que hacer de CUERPO para
+    // no despegarse de su anclaje (ver la nota de _conGanchosRadio).
+    out = _conGanchosRadio(out, diamCm, cerrada, false, iL);
     var emp = cerrada ? { ini: 0, fin: 0 } : _empalmeDeAnchor(anchor);
     // CENTRADO POR BBOX, no por el tramo longitudinal: con puntas inclinadas los
     // SOBRES son asimétricos y centrar B dejaba la cadena corrida (la reserva del
@@ -1105,7 +1160,7 @@
       var rot = c.pts.map(function (p) {
         return { u: (p.u - a2.u) * co - (p.v - a2.v) * si, v: (p.u - a2.u) * si + (p.v - a2.v) * co };
       });
-      var pts = _conGanchosRadio(rot, diamCm || 0, _cadenaCierra(rot), true);
+      var pts = _conGanchosRadio(rot, diamCm || 0, _cadenaCierra(rot), true, iL);
       var out = [];
       for (var j = 0; j < pts.length; j++) out.push(pts[j].v);
       return out;
@@ -1176,7 +1231,7 @@
     // …y lo que asoma se mide sobre el trazo DIBUJADO (ganchos con radio, Tanda
     // V): la punta de un gancho >90° cuelga del arco desplazada, y reservar los
     // sobres de la cadena de vértices dejaba esa punta fuera de la reserva.
-    var pts = _conGanchosRadio(c.pts, diamCm || 0, _cadenaCierra(c.pts), true);
+    var pts = _conGanchosRadio(c.pts, diamCm || 0, _cadenaCierra(c.pts), true, iL);
     var minU = 0, maxU = ux(b);
     for (var k = 0; k < pts.length; k++) {
       var u = ux(pts[k]);
@@ -1326,16 +1381,62 @@
     };
   }
 
+  // CUÁNTO PUEDE MEDIR LA PATA DEL GANCHO SÍSMICO EN ESTE MARCO.
+  // ---------------------------------------------------------------------------
+  // El gancho de 135° del estribo entra en DIAGONAL (45°) al núcleo desde la
+  // esquina sup-izq. Antes de la pata, el CODO ya consume Rc·(1+√2/2) sobre el eje
+  // Z y Rc·(1−√2/2) sobre el Y (ver `_estriboPerimetral`: el arco es tangente al
+  // lado superior y al izquierdo, así que su barrido gasta esas dos cantidades
+  // medidas desde la esquina). Lo que queda es el sitio REAL que tiene la pata, y
+  // como viaja a 45° gasta largoPata·√2/2 en cada eje.
+  //
+  // POR QUÉ NO SIRVE EL CRITERIO ANTERIOR (defecto grave medido 13-ago). La pata
+  // se acotaba con `hypot(alto, ancho)·0.28`, o sea contra la DIAGONAL del marco.
+  // La diagonal la domina el lado LARGO, así que en un marco alto y angosto no
+  // acotaba nada: la pata salía entera y la punta cruzaba el marco por el lado
+  // opuesto. Como el desarrollo del gancho es una constante (Rc(1+D) + pata·D) y
+  // arranca en −w2, el anillo ANIDADO —cuyo w2 encoge k·gap por capa— iba
+  // ENSANCHÁNDOSE hacia afuera capa a capa: MEDIDO en muro 400×250×20 rec 2.5,
+  // EC 104D φ16, 3 capas gap 3 → z ∈ [−6.70, 6.92] / [−3.70, 9.92] / [−0.70,
+  // 12.92]: mismo span (13.62) en las tres, dims A 15 → 9 → 3, y la capa 3 con el
+  // eje 2.92 cm FUERA del hormigón. Y en viga 600×60×30 con 4 capas el span en z
+  // hacía 22.4 → 16.4 → 13.62 → 13.30: dejaba de encoger y el anillo ni siquiera
+  // quedaba centrado. Un anillo anidado NO PUEDE ensanchar: acotando la pata
+  // contra el sitio que realmente hay, la punta toca como mucho el lado opuesto y
+  // el bbox de la capa k+1 queda contenido en el de la capa k, por construcción.
+  //
+  // Esto NO es un clamp que tape un dato del usuario: `largoPata` es geometría
+  // DERIVADA (norma 6φ mín 7.5) y sólo visual — el largo y los kg salen de las
+  // dims A–D en el backend. Cuando ni el CODO cabe (room ≤ 0) no hay pata que
+  // dibujar y el anillo deja de ser un estribo: eso lo detecta el llamador
+  // comparando el bbox de la capa con el de la anterior (reglas.distribuidorLayered),
+  // que es el dato físico —«un anillo anidado no puede ensanchar»— y no una
+  // tolerancia inventada acá.
+  var _D45 = Math.SQRT1_2;
+  function _pataGancho(m, diamCm) {
+    var Rc = 2 * diamCm + diamCm / 2;
+    var roomZ = 2 * m.w2 - Rc * (1 + _D45);            // de la salida del codo al lado opuesto
+    var roomY = (m.ySup - m.yInf) - Rc * (1 - _D45);
+    var sitio = Math.min(roomZ, roomY) / _D45;         // la pata viaja a 45°
+    return { max: sitio, norma: Math.max(6 * diamCm, 7.5) };
+  }
+
   // ¿CABE el marco de núcleo que produce este anchor? (hallazgo A del verificador)
   // Un anillo anidado se posiciona con insets crecientes (k·Sep en las TRES pilas):
   // pasado cierto k el marco se cruza consigo mismo y ySup ≤ yInf (o w2 ≤ 0), o sea
   // el estribo "interior" está FUERA del hormigón, con lados de largo negativo.
   // Devuelve las dos medidas del marco para que el llamador avise con números.
   //   alto = ySup − yInf   ·   ancho = 2·w2   ·   cabe = las dos > 0
+  // `pataMax`/`pataNorma` viajan como INFORMACIÓN (cuánto sitio deja el marco para
+  // la pata del gancho vs. cuánto pide la norma); NO entran en `cabe`: un marco
+  // estrecho todavía es un anillo real mientras no ensanche al de afuera, y eso lo
+  // decide el llamador con los bboxes.
   function marcoNucleoCabe(host, anchor, diamCm) {
     var m = _marcoNucleo(host, anchor || {}, diamCm);
     var alto = m.ySup - m.yInf, ancho = 2 * m.w2;
-    return { cabe: (alto > 0 && ancho > 0), alto: alto, ancho: ancho };
+    var p = _pataGancho(m, diamCm || 0);
+    return { cabe: (alto > 0 && ancho > 0), alto: alto, ancho: ancho,
+      pataMax: p.max, pataNorma: p.norma };
   }
 
   // ---- ESTRIBO perimetral cerrado (plano YZ, a una X dada), ganchos sísmicos 135°.
@@ -1410,8 +1511,11 @@
     var Rc = 2 * diamCm + diamCm / 2;  // radio del EJE del codo (norma: interno 2φ + φ/2)
     var O = { x: xx, y: ySup - Rc, z: -w2 + Rc };  // centro común de ambos codos (esquina sup-izq)
     var D = Math.SQRT1_2;              // 0.7071 (diagonal unitaria)
-    // Pata del gancho (norma 6φ mín 7.5cm), acotada al núcleo para no cruzar bordes.
-    var largoPata = Math.min(Math.max(6 * diamCm, 7.5), Math.hypot(ySup - yInf, 2 * w2) * 0.28);
+    // Pata del gancho (norma 6φ mín 7.5cm), acotada al SITIO REAL que deja el marco
+    // después del codo (ver _pataGancho): la pata viaja a 45° hacia el núcleo, así
+    // que su tope lo fija el lado del marco que primero se le acaba, no la diagonal.
+    var pg = _pataGancho(m, diamCm);
+    var largoPata = Math.max(0, Math.min(pg.norma, pg.max));
     var dirPata = { y: -D, z: D };     // diagonal hacia el núcleo (abajo-derecha) — COMÚN
 
     // GANCHO A (inicio del fierro): pata → codo [θ: 45° → −90°] → tangente al lado izq.
@@ -1564,6 +1668,26 @@
   // TERMINA donde termina el estribo: usa el MISMO marco (_marcoNucleo → mismo h2),
   // de modo que su vertical va de +h2 a −h2 exactamente como el estribo (antes
   // podía derivar un h2 distinto y no coincidir en altura).
+  //
+  // anchor.z ES EL CENTRO DE LA PIEZA, NO EL EJE DE SU VERTICAL (defecto
+  // bloqueante medido 13-ago). La traba se armaba con la vertical EN zz y TODO su
+  // desarrollo hacia −u: los dos ganchos (135° arriba con su arco, 90° abajo)
+  // colgaban de ahí, así que la pieza ocupaba [zz − 14.75, zz] con φ16 — un ancho
+  // que NO dependía del host (idéntico en viga de 30, viga de 60 y muro de 20) y
+  // que arrancaba pegado a su coordenada de reparto en vez de estar encuadrado.
+  // MEDIDO: muro 400×250×20 rec 2.5, TC 101A φ16 con su pose default y 1 barra
+  // (zz = 0, el centro del núcleo) → el trazo iba de z = 0 a z = −14.748, o sea el
+  // EJE 4.748 cm más allá de la cara del hormigón (z = −10) y la CARA del fierro
+  // 5.548 cm. En la viga 600×60×30 el mismo trazo sobrevivía por 0.25 cm de
+  // margen, no por diseño.
+  // La convención del módulo ya estaba escrita en `_cadenaSeccion`: «si el anchor
+  // trae la coordenada, ESA es la posición del CENTRO de la pieza; si no la trae,
+  // la pieza se centra en su marco». La traba es la tercera pieza de sección y
+  // tiene que leerla igual — si no, el reparto (que sí mueve el centro) y el
+  // dibujo hablan de dos puntos distintos.
+  // NO se acorta el gancho para que quepa: 6φ (mín 7.5) es NORMATIVO. Si la pieza
+  // resulta más ancha que su marco, asoma centrada —dato honesto y simétrico— y el
+  // aviso lo emite quien conoce el marco (reglas._repartoDePieza).
   function _traba(figura, dims, host, anchor, diamCm) {
     var m = _marcoNucleo(host, anchor, diamCm);   // eje = recub + φ/2, como el estribo
     var ySup = m.ySup, yInf = m.yInf;  // MISMAS fronteras que el estribo (marco único)
@@ -1574,14 +1698,23 @@
     // GANCHOS CON RADIO: el 135° de arriba es un doblez terminal — el pase lo
     // procesa en reversa (cuerpo = la vertical), su cresta toca y = ySup EXACTO
     // y la punta cuelga tangente; el pie de 90° queda en punta (fillet motor).
+    // Se arma en u = 0 y se CENTRA después: el bbox que se centra es el ARQUEADO
+    // (la punta del 135° cuelga del arco desplazada), el mismo criterio con el que
+    // _cadenaSeccion centra el suyo.
     var pts2 = _conGanchosRadio([
-      { u: zz - g, v: ySup - g },              // punta gancho 135° arriba
-      { u: zz, v: ySup },                      // doblez arriba (altura del estribo)
-      { u: zz, v: yInf },                      // baja al fondo (altura del estribo)
-      { u: zz - extGancho(diamCm), v: yInf }   // pie gancho 90° abajo
+      { u: -g, v: ySup - g },                  // punta gancho 135° arriba
+      { u: 0, v: ySup },                       // doblez arriba (altura del estribo)
+      { u: 0, v: yInf },                       // baja al fondo (altura del estribo)
+      { u: -extGancho(diamCm), v: yInf }       // pie gancho 90° abajo
     ], diamCm, false);
+    var minU = Infinity, maxU = -Infinity, i;
+    for (i = 0; i < pts2.length; i++) {
+      if (pts2[i].u < minU) minU = pts2[i].u;
+      if (pts2[i].u > maxU) maxU = pts2[i].u;
+    }
+    var du = zz - (minU + maxU) / 2;             // el CENTRO del bbox va a zz
     var out = pts2.map(function (p) {
-      var q = V(xx, p.v, p.u);
+      var q = V(xx, p.v, p.u + du);
       if (p.esArco) q.esArco = true;
       return q;
     });

@@ -14,7 +14,8 @@
 //   P3 · n_capas tiene techo duro TOPE_CAPAS_COMP (200) en layered y en arreglo,
 //        con su propio aviso.
 //   P4 · UN USO NORMAL (46 barras, capas de verdad) NO roza ningún tope y NO
-//        genera ningún aviso — y la viga-semilla sigue en 140.2 kg / 72 / 4.
+//        genera ningún aviso — y la viga-semilla sigue en 72 barras / 4 ítems
+//        (136.1 kg tras migrar el cabezal al trazador; ver la nota en P4c).
 //
 // Correr con: node tests/test_topes_generacion.js
 
@@ -207,15 +208,29 @@ const cNorm2 = {
 const plNorm2 = R.expandirComponente(cNorm2, host);
 ok(plNorm2.length === 12, '12 placements (3×4) (=' + plNorm2.length + ')');
 ok(avisos(cNorm2).length === 0, 'sin avisos');
-const cNorm3 = compRango({ from: 0, to: 600, tramos: [{ long: 100, sep: 10 }, { long: 400, sep: 20 }] });
+// FIXTURE CORREGIDO (13-ago): el rango iba de x = 0 a x = 600 sobre una viga que
+// va de −300 a +300, o sea la mitad de los estribos caían FUERA del hormigón (el
+// último, 300 cm fuera). Como "uso normal" no lo era: el motor ahora avisa cuando
+// una barra sale del elemento, y este caso salía. El rango pasa a cubrir la viga de
+// verdad y arranca en el RECUBRIMIENTO (−296 → 296, igual que el start_offset 4 de
+// la viga-semilla), que es lo que este bloque quiso decir siempre: ejercitar tramos
+// normales sin rozar NINGÚN tope. Con el borde EXACTO (±300) el aviso también
+// saldría, y con razón: el eje del estribo en la cara deja medio φ al aire.
+const cNorm3 = compRango({ from: -296, to: 296, tramos: [{ long: 100, sep: 10 }, { long: 400, sep: 20 }] });
 const plNorm3 = R.expandirComponente(cNorm3, host);
 ok(avisos(cNorm3).length === 0, 'tramos @10/@20 en 600: sin avisos (=' + plNorm3.length + ' barras)');
 ok(plNorm3.length < TOPE, 'y muy por debajo del tope');
 
-console.log('\nP4c — CERO REGRESIÓN: la viga-semilla intacta:');
+console.log('\nP4c — la viga-semilla: ningún tope tocado, kg re-derivado:');
+// Lo que este test protege es el CONTEO (4 ítems / 72 barras: ningún tope de
+// generación se roza) y eso no se mueve. Los kg bajan 140.2 → 136.1 por la
+// MIGRACIÓN CABEZAL → TRAZADOR: el CBS es una 103B con dobleces de 45°/45° que el
+// constructor de cabezal ignoraba, y al honrarlos el auto-largo reserva la
+// proyección de cada pata (30·cos45 = 21.2132) más el φ/2 de la cresta del codo →
+// B = 592 − 2·22.0132 = 547.974. Es una sola dim: no cambia ni un conteo.
 const semilla = G.generarViga(S.semillaViga(), {});
-ok(semilla.resumen.items === 4 && semilla.resumen.barras === 72 && semilla.resumen.kg === 140.2,
-  'semilla = {items:4, barras:72, kg:140.2} (=' + JSON.stringify(semilla.resumen) + ')');
+ok(semilla.resumen.items === 4 && semilla.resumen.barras === 72 && semilla.resumen.kg === 136.1,
+  'semilla = {items:4, barras:72, kg:136.1} (=' + JSON.stringify(semilla.resumen) + ')');
 ok(eq(R.posicionesRango({ from: -12, to: 12, sep: 20 }).map(function (v) { return Math.round(v * 1e6) / 1e6; }),
   [-12, 0, 12]), 'el reparto de siempre (paso real) no se movió');
 

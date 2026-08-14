@@ -35,7 +35,7 @@
 
 const path = require('path');
 const base = path.join(__dirname, '..', 'armahub', 'static', 'js', 'features', 'modelador');
-global.ModeladorFiguraPuntos = require(path.join(base, 'figura_puntos.js'));
+const FP = global.ModeladorFiguraPuntos = require(path.join(base, 'figura_puntos.js'));
 require(path.join(base, 'motor_geom.js'));
 const R = global.ModeladorReglas = require(path.join(base, 'reglas.js'));
 const G = require(path.join(base, 'generar.js'));
@@ -73,10 +73,19 @@ function recto(id, tip, cara, diam, jer) {
 }
 
 // ===========================================================================
-console.log('R1 — CERO REGRESIÓN: la viga-semilla no se mueve:');
+console.log('R1 — la viga-semilla: pilas y listado intactos, kg re-derivado:');
+// Las PILAS (que es lo que este archivo protege) no se mueven: los ejes de abajo
+// —estribo 25.6, CBS 24.4, z ±10.4, traba 24.8— siguen exactos. Los kg bajan
+// 140.2 → 136.1 por la MIGRACIÓN CABEZAL → TRAZADOR: el CBS es una 103B con
+// dobleces de 45°/45° declarados en el catálogo que el constructor de cabezal
+// ignoraba (los dibujaba a 90°). Honrándolos, cada pata de 30 proyecta
+// 30·cos45 = 21.2132 sobre el eje del cuerpo y la cresta del codo se retira
+// φ/2 = 0.8 del recub de extremo → B = 592 − 2·22.0132 = 547.974, y las 6 barras
+// φ16 del CBS pasan de 61.745 a 57.575 kg. Con B = 592 la pieza asomaba 21.2 cm
+// FUERA del hormigón por cada extremo.
 const semilla = G.generarViga(S.semillaViga(), {});
-ok(semilla.resumen.items === 4 && semilla.resumen.barras === 72 && semilla.resumen.kg === 140.2,
-  'semilla = {items:4, barras:72, kg:140.2} (=' + JSON.stringify(semilla.resumen) + ')');
+ok(semilla.resumen.items === 4 && semilla.resumen.barras === 72 && semilla.resumen.kg === 136.1,
+  'semilla = {items:4, barras:72, kg:136.1} (=' + JSON.stringify(semilla.resumen) + ')');
 // Ejes verificados: con estribo φ8 nivel 1 + cabezales/traba nivel 2 (default por rol)
 // las pilas quedan sup/inf/lat = 0.8 y ext = 0, así que TODOS los anclajes de la
 // semilla dan el mismo número que con el inset escalar anterior.
@@ -116,10 +125,21 @@ ok(close(maxE(semilla.placements.filter(p => p.tipologia === 'TRV')[0], 'y'), 24
 // «asumiste que las patas deben alinearse con las de la capa de afuera, y eso no
 // es correcto».
 console.log('\nA — CASO DE ACEPTACIÓN: corchete doble anidado contra el estribo:');
-function corchete(volteado, gap) {
+// LA FIGURA DEL FIXTURE ES 103A, NO 103B (MIGRACIÓN CABEZAL → TRAZADOR).
+// Todos los números de esta sección y de la G están calculados a mano para un
+// corchete-U de patas RECTAS: «el tramo corre en Z de −10.4 a +10.4», «la punta
+// del corchete z = ±10.4», «prof(sup,2) → eje del tramo 24.4 y la punta 30 cm más
+// abajo, en −5.6». Eso es una U de 90°, o sea una 103A. El fixture decía 103B
+// —que el catálogo declara con dobleces de 45°— y salía igual porque el
+// constructor de cabezal IGNORABA los ángulos y dibujaba las dos patas a 90°: la
+// etiqueta 103B nunca describió lo que este test mide. Con el cabezal migrado al
+// trazador la figura ya manda de verdad, así que el fixture pasa a decir lo que
+// siempre quiso decir. El caso 103B (patas a 45°) no se pierde: tiene su propia
+// guarda en A3, donde se comprueba que NO CABE y que el dato negativo se ve.
+function corchete(volteado, gap, figura) {
   return {
-    comp_id: 'CO', tipologia: 'CBS', figura: '103B', diam: 16, cara: 'sup',
-    jerarquia: 2, angulos: [45, 45], plano_pieza: { volteado: !!volteado },
+    comp_id: 'CO', tipologia: 'CBS', figura: figura || '103A', diam: 16, cara: 'sup',
+    jerarquia: 2, plano_pieza: { volteado: !!volteado },
     dims: { A: { modo: 'fija', valor: 30 }, B: { modo: 'auto' }, C: { modo: 'fija', valor: 30 } },
     distribucion: {
       modo: 'layered', n_capas: 2, barras_capa: 1,
@@ -127,26 +147,32 @@ function corchete(volteado, gap) {
     }
   };
 }
+// MEDIO DIÁMETRO DE LA CRESTA (feedback de raíz 13-ago, ahora universal): un
+// extremo que TERMINA EN DOBLEZ retira su eje φ/2 del borde contra el que se mide,
+// para que la CRESTA del codo —no el eje— quede en línea con el recubrimiento. Es
+// la misma regla del estribo. Un extremo RECTO (101A) no dobla contra nada y no
+// retira nada. La 103A dobla en sus DOS extremos → 2·φ/2 = φ = 1.6.
+const CRESTA_2 = 1.6;   // φ16: φ/2 por cada uno de los dos extremos con pata
 const oA = run([estribo(), corchete(false)]);
 const co = plsDe(oA, 'CO');
 const esA = unaDe(oA, 'ES');
 ok(co.length === 2, '2 capas → 2 placements');
 ok(close(maxE(esA, 'y'), 25.6), 'estribo nivel 1 al recubrimiento: eje y = 25.6');
-ok(close(co[0].dims.B, 592) && close(co[0].dims.A, 30),
-  'capa 1: B auto = 600 − 2·recubExtremo = 592 (=' + co[0].dims.B + ')');
+ok(close(co[0].dims.B, 592 - CRESTA_2) && close(co[0].dims.A, 30),
+  'capa 1: B auto = 600 − 2·recubExtremo − 2·(φ/2 de cresta) = 590.4 (=' + co[0].dims.B + ')');
 ok(close(co[0].puntos[1].y, 24.4), 'capa 1: eje del tramo = 30 − (4 + 0.8) − 0.8 = 24.4 (=' + co[0].puntos[1].y + ')');
 ok(close(maxE(esA, 'y') - co[0].puntos[1].y, PHI_ES / 2 + 1.6 / 2),
   'capa 1 TANGENTE al estribo: separación de ejes = φest/2 + φ/2 = 1.2');
-ok(close(co[1].dims.B, 588.8) && close(co[1].dims.A, 30) && close(co[1].dims.C, 30),
-  'capa 2 anidada: B − 2·φ = 588.8 y PATAS INTACTAS 30/30 (antes 28.4)');
+ok(close(co[1].dims.B, 592 - CRESTA_2 - 3.2) && close(co[1].dims.A, 30) && close(co[1].dims.C, 30),
+  'capa 2 anidada: B − 2·φ = 587.2 y PATAS INTACTAS 30/30 (antes 28.4)');
 ok(close(co[1].puntos[1].y, 22.8), 'capa 2 más adentro: 24.4 − Sep(1.6) = 22.8 (=' + co[1].puntos[1].y + ')');
 ok(close(co[0].puntos[0].y, -5.6) && close(co[1].puntos[0].y, -7.2),
   'las PUNTAS bajan con la pieza: −5.6 y −7.2 (NO se alinean) (=' + co[1].puntos[0].y + ')');
 // El campo Sep manda la POSICIÓN también acá, y el ajuste de dims no lo mira:
 // con Sep 5 la capa 2 baja 5 y sigue midiendo B − 2·φ.
 const coSep5 = plsDe(run([estribo(), corchete(false, 5)]), 'CO');
-ok(close(coSep5[1].puntos[1].y, 24.4 - 5) && close(coSep5[1].dims.B, 588.8),
-  'con Sep 5: capa 2 a 19.4 (el campo manda) y B sigue en 588.8 (el anidado sólo ajusta dims) (=' +
+ok(close(coSep5[1].puntos[1].y, 24.4 - 5) && close(coSep5[1].dims.B, 592 - CRESTA_2 - 3.2),
+  'con Sep 5: capa 2 a 19.4 (el campo manda) y B sigue en 587.2 (el anidado sólo ajusta dims) (=' +
   coSep5[1].puntos[1].y + ' / ' + coSep5[1].dims.B + ')');
 
 // --- el MISMO corchete, VOLTEADO -------------------------------------------
@@ -192,6 +218,50 @@ ok(close(cov[1].dims.B, 17.6) && close(cov[1].dims.A, 30),
   'volteado capa 2 anidada: B − 2·φ = 20.8 − 3.2 = 17.6, patas intactas 30');
 ok(close(cov[1].puntos[1].y, 22.8) && close(cov[1].puntos[0].y, -7.2),
   'volteado capa 2: y = 24.4 − Sep = 22.8 y la punta baja con la pieza (−7.2)');
+
+// ===========================================================================
+// A3 · EL MISMO CORCHETE PERO 103B (patas a 45°) VOLTEADO: NO CABE, Y SE VE.
+// ===========================================================================
+// Guarda nueva de la migración cabezal → trazador, y guarda de la regla «nada de
+// clamps». Volteado, el largo local del corchete es el ANCHO de la viga: marco
+// útil = 30 − 2·(recub_lat 3 + φest 0.8) = 22.4. Una 103B con patas de 30 a 45°
+// necesita, sólo en proyección de sus dos patas, 2·30·cos45 = 42.43 cm sobre ese
+// mismo eje — casi el DOBLE de lo que hay —, más 2·(φ/2) de cresta:
+//     B = 22.4 − 2·(21.2132 + 0.8) = −21.6264
+// La figura NO CABE y el número negativo tiene que VIAJAR tal cual: es el dato que
+// le dice al usuario cuánto le falta.
+//
+// DE DÓNDE SALE EL NEGATIVO (corregido 13-ago tras medirlo). Este comentario decía
+// que el −21.626 lo destapaba haber sacado un `Math.max(0, …)` de
+// reglas._dimsEfectivas. FALSO, y la medición es directa: quien emite el negativo
+// es `figura_puntos.sobresCadena`, que reserva 21.2132 (= 30·cos45, la proyección
+// de la pata) + 0.8 (= φ/2 de cresta) = 22.0132 POR PUNTA sobre un marco de 22.4
+// → 22.4 − 2·22.0132 = −21.6264, exactamente lo que se asierta abajo. El bloque
+// del "medio diámetro" de reglas.js NI SIQUIERA SE EJECUTABA en este caso
+// (familiaDeDibujo('103B', null) === 'cadena', y el bloque estaba acotado con
+// `!esCadenaMD`); se comprobó restaurando el clamp textualmente: las 22 suites en
+// verde y este mismo número idéntico. Ese bloque ya no existe — era código muerto
+// para todo el catálogo, ver la nota de la sección G.
+// (Con las patas a 90° del cabezal viejo la proyección era 0 y el problema no se
+// veía: la pieza "cabía" dibujada de una forma que no es la suya.)
+const covB = plsDe(run([estribo(), corchete(true, null, '103B')]), 'CO');
+const B_103B_VOLT = 22.4 - 2 * (30 * Math.SQRT1_2 + 0.8);   // −21.6264
+ok(close(covB[0].dims.B, B_103B_VOLT),
+  'una 103B (patas 30 a 45°) volteada NO cabe en el ancho: B = −21.626 y el negativo VIAJA, sin clamp a 0 (=' +
+  covB[0].dims.B + ')');
+ok(covB[0].dims.A === 30 && covB[0].dims.C === 30,
+  'y las patas siguen midiendo lo que el usuario fijó (30/30): no se "acomoda" nada para que quepa');
+// Y la CAUSA, medida en su fuente: sobresCadena reserva 22.0132 por punta.
+const SOB_103B = FP.sobresCadena('103B', { A: 30, B: 22.4, C: 30 }, 'B', 1.6);
+ok(close(SOB_103B.ini, 30 * Math.SQRT1_2 + 0.8, 1e-9) && close(SOB_103B.fin, 30 * Math.SQRT1_2 + 0.8, 1e-6),
+  'el negativo lo emite sobresCadena: 30·cos45 + φ/2 = 22.0132 por punta (=' +
+  JSON.stringify(SOB_103B) + ')');
+// Y el bloque del "medio diámetro" NO participaba: la 103B se dibuja como CADENA,
+// y ese bloque estaba acotado con `!esCadenaMD`. Se deja escrito como guarda: si
+// alguien vuelve a atribuirle este número, este assert lo desmiente.
+ok(FP.familiaDeDibujo('103B', null) === 'cadena',
+  "la 103B es familia 'cadena': el bloque del medio diámetro nunca la tocó (=" +
+  FP.familiaDeDibujo('103B', null) + ')');
 
 // ===========================================================================
 // B · el estribo NO ocupa los extremos (CAMBIO DE COMPORTAMIENTO INTENCIONAL).
@@ -343,16 +413,33 @@ ok(close(unaDe(oF, 'A2').puntos[0].y, 24.4),
   'y el nivel 2 igual ve la pila del estribo declarado DESPUÉS que él (y = 24.4)');
 
 // ===========================================================================
-// G · MEDIO DIÁMETRO CONTRA FIERRO — "el corchete muerde el estribo".
+// G · MEDIO DIÁMETRO EN TODO EXTREMO CON DOBLEZ — "el corchete muerde el estribo".
 // ===========================================================================
 // Las dims del cabezal son de EJE A EJE, pero el marco útil devuelve la CARA de
-// lo que hay al lado. Contra HORMIGÓN la cuenta cierra sola (el recubrimiento se
-// mide a la cara del fierro). Contra FIERRO no: la pata terminaba EXACTAMENTE en
-// el eje del estribo, o sea metida φ_propio/2 dentro de él.
-// Regla: si la pila de la cara contra la que se resuelve la dim 'auto' TIENE
-// BARRAS, se resta además φ_propio/2 por cada extremo del tramo QUE TERMINA EN
-// PATA. Un extremo recto (101A) no dobla contra nada → no resta.
-console.log('\nG — medio diámetro SOLO contra fierro (nunca contra hormigón pelado):');
+// lo que hay al lado (hormigón o fierro). La pata terminaba EXACTAMENTE en esa
+// cara, o sea con su propia SUPERFICIE metida φ_propio/2 más allá: contra el
+// estribo eso es «el corchete muerde el estribo», y contra hormigón es la barra
+// invadiendo el recubrimiento.
+//
+// REGLA (universal desde el feedback de raíz del 13-ago, y CORREGIDA en la
+// migración cabezal → trazador): se retira φ_propio/2 por cada extremo QUE TERMINA
+// EN DOBLEZ, contra fierro Y contra hormigón, para que la CRESTA del codo quede en
+// línea con el borde. Lo que discrimina es la FORMA del extremo, no qué hay al
+// lado. Un extremo RECTO (101A) no dobla contra nada → no retira nada (G3).
+//
+// ANTES el motor lo aplicaba SÓLO contra fierro, desde reglas._dimsEfectivas. Con
+// el cabezal migrado, figura_puntos.sobresCadena ya reserva ese mismo φ/2 en todo
+// extremo con pata, así que el bloque de reglas pasó a restarlo DOS VECES: medido
+// en G1, B daba 17.2 en vez de 18.8 y la punta quedaba a 2.0 del eje de la pierna
+// del estribo (SEPARADA 0.8) en vez de a los 1.2 de la tangencia.
+// EL BLOQUE DE reglas.js YA NO EXISTE (13-ago). Se dijo que quedaba «vivo sólo
+// para el marco cerrado con rol cabezal»; se midió y era falso: un marco cerrado
+// nunca llega ahí con rol cabezal (_baseDeComponente le re-deriva el rol a
+// 'estribo' por topología), y barriendo las 62 figuras del catálogo la única que
+// alcanzaba el bloque era la 101A con nPatas = 0, o sea restando nada. Todos los
+// números de esta sección —los de abajo— salen de sobresCadena, y son los mismos
+// con el bloque puesto o quitado.
+console.log('\nG — medio diámetro en TODO extremo con doblez (recto no descuenta):');
 // G1 · el caso que midió el usuario en pantalla, con recub ÚNICO 4 (recub_lat 4):
 //   marco = 30 − 2·(4 + 0.8) = 20.4 → B = 20.4 − 2·0.8 = 18.8
 //   punta z = ±9.4 · eje de la pierna del estribo z = ±(15 − 4 − 0.4) = ±10.6
@@ -363,19 +450,26 @@ const coG4 = plsDe(oG4, 'CO')[0], esG4 = unaDe(oG4, 'ES');
 ok(close(coG4.dims.B, 18.8), 'recub único 4: B = 30 − 2·(4 + 0.8) − 2·(φ/2) = 18.8 (=' + coG4.dims.B + ')');
 ok(close(maxE(esG4, 'z') - maxE(coG4, 'z'), PHI_ES / 2 + 0.8),
   'y la punta queda TANGENTE a la pierna del estribo (1.2 de eje a eje), sin morderlo');
-// G2 · contra HORMIGÓN PELADO no se resta NADA: los extremos de la viga son la
-// cara 'ext', y el estribo (plano YZ) no la ocupa → la pila está vacía.
-ok(close(unaDe(oA, 'CO').dims.B, 592),
-  'el MISMO corchete sin voltear mide contra hormigón pelado: 592 EXACTO, sin φ/2 (=' + unaDe(oA, 'CO').dims.B + ')');
+// G2 · contra HORMIGÓN PELADO la cuenta es la MISMA: los extremos de la viga son
+// la cara 'ext' y el estribo (plano YZ) no la ocupa, así que la pila está vacía y
+// NO aparece ningún φ8 — pero los dos extremos igual doblan, y su cresta también
+// tiene que quedar en línea con el recubrimiento de extremo:
+//   B = 600 − 2·4 − 2·(φ/2) = 590.4   (el φ del estribo NO está en esta cuenta)
+// El 592 de antes dejaba el eje del codo justo en el recub y su superficie 0.8
+// DENTRO de él. La discriminación real la hace G3: recto vs con doblez.
+ok(close(unaDe(oA, 'CO').dims.B, 592 - CRESTA_2),
+  'el MISMO corchete sin voltear, contra hormigón pelado: 590.4 = 592 − 2·(φ/2), sin rastro del φ8 del estribo (=' + unaDe(oA, 'CO').dims.B + ')');
 // G3 · un extremo RECTO no resta aunque haya fierro: 101A no tiene patas.
 const rectoV = recto('RV', 'CBS', 'sup', 16, 2); rectoV.plano_pieza = { volteado: true };
 const oG3 = run([estribo(), rectoV]);
 ok(close(unaDe(oG3, 'RV').dims.A, 30 - 2 * (3 + PHI_ES)),
   'volteada y contra el estribo, pero RECTA (101A): 22.4 sin descuento de φ/2 (=' + unaDe(oG3, 'RV').dims.A + ')');
-// G4 · y la viga-semilla, que se mide contra hormigón pelado en los extremos, no
-// se mueve NI UN DECIMAL (la garantía de no-regresión de toda esta tarea).
-ok(semilla.resumen.kg === 140.2 && semilla.resumen.barras === 72 && semilla.resumen.items === 4,
-  'la viga-semilla sigue BYTE-IDÉNTICA: 140.2 kg / 72 barras / 4 ítems');
+// G4 · y la viga-semilla conserva su LISTADO (4 ítems / 72 barras: ninguna pila
+// cambió de cara ni de nivel). Los kg bajan 140.2 → 136.1 por la migración
+// cabezal → trazador: su CBS es una 103B de 45°/45° y el auto-largo pasa a
+// reservar 30·cos45 + φ/2 = 22.0132 por punta (ver la nota de R1).
+ok(semilla.resumen.kg === 136.1 && semilla.resumen.barras === 72 && semilla.resumen.items === 4,
+  'la viga-semilla: 136.1 kg / 72 barras / 4 ítems');
 
 // ===========================================================================
 // H · VOLTEO — la pieza CONSERVA SU CENTRO donde ahora es puntual.

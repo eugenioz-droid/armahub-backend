@@ -23,7 +23,8 @@
 //   P5 · POSES POR DEFECTO del muro (el estribo/amarra con MARCO HORIZONTAL).
 //   P6 · FIX 305A — una cadena colocada con tipología ES se traza como cadena.
 //   P7 · LADO DOMINANTE — cascada determinista (catálogo → 'B' → 1er parcial).
-//   P8 · VIGA-SEMILLA intacta (140.2 kg / 72 barras / 4 ítems).
+//   P8 · VIGA-SEMILLA (72 barras / 4 ítems; 136.1 kg tras migrar el cabezal al
+//        trazador — ver la nota en P8).
 //
 // Correr con: node tests/test_pose.js
 // =============================================================================
@@ -230,9 +231,22 @@ console.log('\nP1c — recetas viejas que se MUEVEN a propósito (anclaje al tes
     dims: { A: { modo: 'fija', valor: 30 }, B: { modo: 'auto' }, C: { modo: 'fija', valor: 30 } },
     distribucion: { modo: 'layered', n_capas: 2, barras_capa: 3, gap: 4, sentido: 'nucleo' }
   });
-  ok(cbs.n === 6 && close(cbs.x.lo, 265.2) && close(cbs.x.hi, 295.2) &&
-    cbs.dims === JSON.stringify({ A: 30, C: 30, B: 52 }),
-    'CBS 103B sup+de_pie: x [−13,17] → [265.2,295.2] (pegada al testero +X) · 6 barras y dims INTACTAS (=' +
+  // MIGRACIÓN CABEZAL → TRAZADOR: lo que este assert protege es el ANCLAJE (la
+  // pieza queda pegada al testero +X en 295.2, no arrastrada al centro) y eso no se
+  // mueve. Lo que sí cambia son las dos medidas que dependían de dibujar las patas
+  // a 90°:
+  //   · x.lo: la pata de 30 corre por la NORMAL de la cara (aquí, X) y con 45° sólo
+  //     cruza 30·cos45 = 21.2132 → punta en 295.2 − 21.2132 = 273.987, no 265.2.
+  //   · B: el auto se mide contra el mismo marco de siempre (alto útil 52) pero
+  //     ahora RESERVA lo que las patas ocupan sobre el eje del cuerpo: 21.2132 de
+  //     proyección + φ/2 = 0.8 de la cresta del codo, por punta → B = 52 − 44.0264
+  //     = 7.9736. Es una 103B de patas de 30 metida en 52 cm de alto útil: casi
+  //     todo el material se lo llevan las patas, y eso ahora se VE en la dim.
+  const RESERVA_CBS = 30 * Math.SQRT1_2 + 1.6 / 2;   // 22.013203 por punta
+  ok(cbs.n === 6 && close(cbs.x.lo, r3(295.2 - 30 * Math.SQRT1_2)) && close(cbs.x.hi, 295.2) &&
+    close(JSON.parse(cbs.dims).B, 52 - 2 * RESERVA_CBS) &&
+    JSON.parse(cbs.dims).A === 30 && JSON.parse(cbs.dims).C === 30,
+    'CBS 103B sup+de_pie: pegada al testero +X (x.hi 295.2, punta 273.987) · 6 barras · patas 30/30 y B = 52 − 2·22.0132 = 7.974 (=' +
     JSON.stringify(cbs.x) + ' ' + cbs.dims + ')');
   const cbi = mide({
     tipologia: 'CBI', figura: '101A', diam: 18, cara: 'inf', plano_pieza: { orientacion: 'de_pie' },
@@ -262,8 +276,14 @@ console.log('\nP1c — recetas viejas que se MUEVEN a propósito (anclaje al tes
     dims: { A: { modo: 'fija', valor: 30 }, B: { modo: 'auto' }, C: { modo: 'fija', valor: 30 } },
     distribucion: { modo: 'layered', n_capas: 2, barras_capa: 3, gap: 4, sentido: 'nucleo' }
   });
-  ok(close(acostada.x.lo, -296) && close(acostada.x.hi, 296),
-    '…y la MISMA receta acostada sigue de borde a borde, intacta (=' + JSON.stringify(acostada.x) + ')');
+  // Sigue de borde a borde y sigue SIMÉTRICA (que es lo que este assert protege:
+  // la restitución de centro no la tocó). El ±296 pasa a ±295.2 por la migración:
+  // con las patas a 45° el extremo del trazo ya no es el vértice del codo sino su
+  // CRESTA, que tiene que quedar EN LÍNEA con el recub de extremo → el eje se
+  // retira φ/2 = 0.8 (295.2 = 300 − 4 − 0.8). Con ±296 el eje llegaba justo al
+  // recubrimiento y la superficie del codo se metía 0.8 dentro de él.
+  ok(close(acostada.x.lo, -295.2) && close(acostada.x.hi, 295.2),
+    '…y la MISMA receta acostada sigue de borde a borde y simétrica (=' + JSON.stringify(acostada.x) + ')');
 })();
 
 // ===========================================================================
@@ -367,9 +387,16 @@ ok(POSES_24.length === 24,
     vistos.add(JSON.stringify(b.puntos));
     patas.push(r3(b.puntos[0].x) + '/' + r3(b.puntos[0].z));
   }
-  ok(vistos.size === 4 && patas[1] === '296/0',
+  // MIGRACIÓN CABEZAL → TRAZADOR: ±296 → ±295.6. La 102A tiene UNA pata (extremo
+  // inicial), así que el auto-largo reserva φ/2 = 0.8 SÓLO en ese extremo —la
+  // cresta del codo tiene que quedar en línea con el recub, la punta recta del
+  // otro extremo no dobla contra nada— y B pasa de 592 a 591.2. La cadena se centra
+  // por BBOX (convención ya vigente para todo el trazador), así que esos 0.8 se
+  // reparten 0.4 y 0.4: ±295.6. Lo que el assert protege —que la MEDIA VUELTA
+  // existe y lleva la pata de un testero al otro— es exactamente lo mismo.
+  ok(vistos.size === 4 && patas[1] === '295.6/0',
     'girando en torno a su normal la 102A pasa por 4 barras distintas y la MEDIA VUELTA ' +
-    'lleva la pata de x=−296 a x=+296 (=' + patas.join(' · ') + ')');
+    'lleva la pata de x=−295.6 a x=+295.6 (=' + patas.join(' · ') + ')');
   ok(JSON.stringify(barra102(p).puntos) === ini,
     '…y la 4ª devuelve la barra BYTE-IDÉNTICA a la de partida');
 })();
@@ -484,7 +511,11 @@ const n102 = R.expandirComponente(cab({ figura: '102A', dims: dims102, distribuc
 const e102 = R.expandirComponente(cab({
   figura: '102A', pose: { cara: 'sup', lado: 1, rumbo: 'x', espejo: true }, dims: dims102, distribucion: dist1
 }), viga)[0];
-ok(close(n102.puntos[0].x, -296) && close(e102.puntos[0].x, 296),
+// ±296 → ±295.6 por la migración cabezal → trazador: la 102A reserva φ/2 = 0.8 en
+// su ÚNICO extremo con doblez (la cresta del codo al recub) y el centrado por bbox
+// reparte esa reserva a los dos lados. El espejo, que es lo que se mide acá, no
+// cambia: la pata sigue saltando de un testero al otro.
+ok(close(n102.puntos[0].x, -295.6) && close(e102.puntos[0].x, 295.6),
   '102A: la pata pasa del extremo −X al +X (=' + r3(n102.puntos[0].x) + ' → ' + r3(e102.puntos[0].x) + ')');
 ok(JSON.stringify(n102.dims) === JSON.stringify(e102.dims),
   'y las dims NO cambian: es la MISMA barra (=' + JSON.stringify(e102.dims) + ')');
@@ -919,10 +950,15 @@ ok(FP.ladoLongitudinalCadena('104A', { A: 20, B: 50, C: 20, D: 50 }) === undefin
 // ===========================================================================
 // P8 · VIGA-SEMILLA INTACTA
 // ===========================================================================
-console.log('\nP8 — cero regresión sobre la viga-semilla:');
+console.log('\nP8 — la viga-semilla: poses intactas, kg re-derivado:');
+// Ninguno de los cambios de POSE de este archivo toca la semilla (sus 4
+// componentes son 'acostada'). Los kg bajan 140.2 → 136.1 por la MIGRACIÓN
+// CABEZAL → TRAZADOR: el CBS es una 103B con dobleces de 45°/45° declarados en el
+// catálogo, y al honrarlos el auto-largo reserva 30·cos45 + φ/2 = 22.0132 por
+// punta → B = 592 − 44.0264 = 547.974.
 const sem = G.generarViga(SEM.semillaViga(), {});
-ok(sem.resumen.items === 4 && sem.resumen.barras === 72 && close(sem.resumen.kg, 140.2, 0.05),
-  'semilla = {items:4, barras:72, kg:140.2} (=' + JSON.stringify(sem.resumen) + ')');
+ok(sem.resumen.items === 4 && sem.resumen.barras === 72 && close(sem.resumen.kg, 136.1, 0.05),
+  'semilla = {items:4, barras:72, kg:136.1} (=' + JSON.stringify(sem.resumen) + ')');
 
 if (fallos) { console.error('\nFALLARON ' + fallos + ' aserciones'); process.exit(1); }
 console.log('\nOK — modelo de POSE (24 orientaciones + espejo) pasa.');
