@@ -318,7 +318,13 @@ ok(Object.keys(compX).indexOf('_avisos') < 0, '_avisos NO es enumerable (no ensu
 ok(G.placementABarra({ figura: '999Z', diam: 1.6, dims: {}, puntos: [] }, {}) === null,
   'placementABarra devuelve null para figura desconocida (no un payload de nulls)');
 
-// Figura de 4 lados colocada como cabezal: se dibuja lo que se puede y se DICE.
+// ASSERT CAMBIADO (14-ago) POR UNA RAZÓN DE FONDO, no para que pase: una figura
+// CERRADA (104A) es pieza de sección VENGA LA TIPOLOGÍA QUE VENGA — la topología
+// no se negocia. Antes familiaDeDibujo dejaba que el rol 'cabezal' la clasificara
+// como corchete ("ruta histórica": 3 lados + aviso del 4º), la misma inconsistencia
+// que hizo aterrizar la 106A bajo MH en el plano equivocado. Ahora el marco manda
+// también aquí: la barra sale con TODAS sus dims al despiece y el aviso es el del
+// marco (las dims fijas no mueven el trazo; para eso está el Δ).
 const compD = {
   comp_id: 'D', tipologia: 'CBS', figura: '104A', diam: 16, cara: 'sup', suf_tipo: '',
   dims: {
@@ -330,8 +336,8 @@ const compD = {
 const outD = G.generarViga({ tipo: 'viga', geometria: GEO, componentes: [compD] }, CTX);
 ok(outD.barras.length === 1 && outD.barras[0].dim_d === 20,
   '104A como cabezal: la barra sale igual y lleva su lado D (=' + (outD.barras[0] || {}).dim_d + ')');
-ok((compD._avisos || []).some(a => /D no se traza/.test(a)),
-  'con aviso de que el lado D no se dibuja (=' + (compD._avisos || [])[0] + ')');
+ok((compD._avisos || []).some(a => /marco lo fija el HORMIG/.test(a)),
+  'con el aviso del MARCO (las dims fijas viajan al corte; el trazo lo fija el hormigón) (=' + (compD._avisos || [])[0] + ')');
 
 // ---------------------------------------------------------------------------
 // E. EMPALME SOLO DONDE ES REAL (kg fantasma en estribo/traba)

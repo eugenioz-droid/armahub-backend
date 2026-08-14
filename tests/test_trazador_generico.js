@@ -170,10 +170,14 @@ ok(FP.familiaDeDibujo('104B', 'estribo') === 'cadena',
     { rol: 'estribo', diamCm: 0.8 });
   ok(est.length >= 15 && est.some(p => p.esArco), 'el estribo 104D sigue saliendo del marco con arcos explícitos');
 })();
-// El MARCO CERRADO de 4 lados NO se le entrega al genérico ni con rol cabezal: ese
-// caso ya tenía constructor y aviso propios y se conserva igual (cero regresión).
-ok(FP.familiaDeDibujo('104A', 'cabezal') === 'cabezal' && FP.familiaDeDibujo('104D', 'cabezal') === 'cabezal',
-  'un marco de 4 lados con rol cabezal conserva su ruta histórica (cabezal + aviso del 4º lado)');
+// ASSERT CAMBIADO (14-ago): la "ruta histórica" (marco bajo rol cabezal dibujado
+// como corchete de 3 lados) ERA la tipología pisando a la topología — la misma
+// inconsistencia que mandó la 106A bajo MH al plano equivocado. La regla del
+// usuario no se negocia: CERRADA = marco, venga el rol que venga, y esta función
+// tiene que contestar lo mismo con o sin rol (el motor ya re-derivaba el rol por
+// topología; ahora el clasificador dice lo mismo para TODOS los llamadores).
+ok(FP.familiaDeDibujo('104A', 'cabezal') === 'estribo' && FP.familiaDeDibujo('104D', 'cabezal') === 'estribo',
+  'un marco de 4 lados es MARCO también bajo rol cabezal (la topología no se negocia)');
 ok(FP.familiaDeDibujo('104B', 'cabezal') === 'cadena',
   'y la cadena abierta de 4 lados sí va al genérico, con o sin rol');
 

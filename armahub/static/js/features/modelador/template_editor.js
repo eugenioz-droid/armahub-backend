@@ -3334,7 +3334,11 @@
       var dv = (_defsPlanos() || {})[plano] || null;
       var ru = pose && pose.rumbo;
       if (dv && ru && (ru === dv.u || ru === dv.v)) ph[ru] = host[ru];
-      if (rol === 'traba' && (plano === 'seccion' || plano === 'planta')) ph.z = host.z;
+      // (14-ago) Aquí vivía un `ph.z = host.z` SOLO para rol traba — la regla por
+      // tipología que dejaba la traba del muro flotando fuera del hormigón: el
+      // click cerca de la cortina la trasladaba 10 cm en z cuando el marco ya la
+      // centra cruzando el espesor. El click elige CARA y LADO; la posición en el
+      // plano la manda el anclaje — igual para todas las piezas de sección.
       return ph;
     }
     // Cabezal longitudinal: corre por X y queda CENTRADO a lo ancho. NO se toma la
@@ -5656,26 +5660,11 @@
         var c = pts[i][depthEje];
         if (c < lo) lo = c; if (c > hi) hi = c;
       }
-      if (!(hi - lo <= umbral)) {
-        // NO es rebanada: corre A LO LARGO del eje. Pero sus PATAS/QUIEBRES sí son
-        // cortes que valen (fix 14-ago, reporte: «al llegar al extremo, si tiene
-        // pata debo verla» — el imán solo conocía estribos y el corte nunca
-        // alcanzaba la pata del cabezal). Un tramo cuya dirección se DESVÍA del
-        // eje de profundidad (|Δprof| < desvío lateral) es pata o quiebre: su zona
-        // en profundidad entra como candidata del imán, puramente geométrico —
-        // sin rol ni tipología.
-        var ejes3 = ['x', 'y', 'z'].filter(function (e) { return e !== depthEje; });
-        for (var j = 1; j < pts.length; j++) {
-          var dp = Math.abs(pts[j][depthEje] - pts[j - 1][depthEje]);
-          var dl = Math.max(Math.abs(pts[j][ejes3[0]] - pts[j - 1][ejes3[0]]),
-                            Math.abs(pts[j][ejes3[1]] - pts[j - 1][ejes3[1]]));
-          if (dl > dp && dl > 0.5) {
-            centros.push((pts[j][depthEje] + pts[j - 1][depthEje]) / 2);
-            if (pl.diam > diamMax) diamMax = pl.diam;
-          }
-        }
-        return;
-      }
+      if (!(hi - lo <= umbral)) return;          // no es rebanada (corre a lo largo del eje)
+      // (14-ago: aquí hubo un intento de sumar las ZONAS DE PATA como candidatas
+      // del imán — competían con las rebanadas y el corte se imantaba lejos de
+      // las barras: "se apagan". REVERTIDO; ver la pata queda para el modo libre
+      // del imán o un diseño posterior.)
       centros.push((lo + hi) / 2);
       if (pl.diam > diamMax) diamMax = pl.diam;
     });

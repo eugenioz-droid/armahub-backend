@@ -266,7 +266,13 @@
       if (n >= 3 && tieneTramos) return 'cadena';
       return 'traba';                  // 101x/102x: la forma clásica les calza
     }
-    if (esMarco || esEstriboConGanchos(f)) return rol ? 'cabezal' : 'estribo';
+    // CERRADA = MARCO, gane quien gane el rol (fix 14-ago): antes `rol ? 'cabezal'
+    // : 'estribo'` dejaba que la tipología pisara la topología — una 106A bajo MH
+    // se clasificaba 'cabezal' para todo llamador que pasara el rol, y de ahí
+    // salió la regresión de colocación de la mañana. La topología no se negocia:
+    // el motor ya re-deriva el rol por topología (_baseDeComponente) y esta
+    // función tiene que contestar lo mismo con o sin rol.
+    if (esMarco || esEstriboConGanchos(f)) return 'estribo';
     if (_esRecta(f)) return 'recta';
     if (esCadenaLong) return 'cadena';
     // Sólo queda lo que NO tiene tramos trazables (figura fuera del catálogo, o
