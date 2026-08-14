@@ -1308,6 +1308,80 @@ despiece: dims/kg/export intactos (semilla: barras idénticas, sólo los 15 plac
 Verificado: suite 19/19 · barrido 992 combinaciones 0 fuera · recub efectivo cadena 4.00/3.00
 exacto en φ8/16/32 · cresta de la traba = ySup exacto.
 
+## PROGRAMA NOCTURNO 13→14-ago — INSTRUCCIONES PARA LA SESIÓN QUE EJECUTA (Opus)
+El usuario está sin créditos de Fable: esta sección es el handoff completo. Ejecutar los 3
+workflows EN ORDEN (cada uno: implementador + verificador ADVERSARIAL + corrector condicional).
+Objetivo: mañana el usuario prueba los 3 ejecutados y verdes.
+
+REGLAS OBLIGATORIAS (del usuario, no negociables):
+- Suite completa (21 tests, `node tests/test_*.js` con Node portable
+  C:\Users\ezalazar\Tools\node\node-v24.16.0-win-x64\node.exe) VERDE antes de CADA push.
+- Un commit por tema, mensajes en español, SIN Co-Authored-By. Push directo a main y verificar
+  el deploy en Render con curl-poll (grep de un string nuevo en el archivo servido).
+- Verificación adversarial en cada workflow; el orquestador verifica personalmente ANTES de push.
+- NO tocar armahub/export.py. NO crear .md nuevos (documentar AQUÍ). NO AskUserQuestion.
+- NO tocar: botón de empalme (idea del usuario, se revisa con él), traba clásica de muro,
+  gancho normativo por φ, convención `angulos`, colocación-por-vista, columna/losa (el usuario
+  NO quiere empezar columna sin terminar el muro).
+
+### W1 · MOTOR — POSICIONAMIENTO 2/2 (primero: contiene un BUG activo)
+1. BUG CARA EXTREMO del cabezal (reproducido, activo en prod): MV 103C φ8 en muro 400×250×20
+   (recub 2.5), pose {cara:'extremo', lado:1, rumbo:'y'} (sale de rotar la MV con +90 en la
+   vista sección) → dims C resuelve 394.2 y el dibujo da x=[−590.2, −196]: ancla al testero
+   EQUIVOCADO (lado +1 debería ser +X) y la pata crece HACIA AFUERA (390 cm fuera del
+   hormigón). Zona: reglas._marcoCara / figura_puntos._planoTrabajo para caraLocal derivada de
+   pose extremo (rol cabezal). La pata debe entrar hacia el NÚCLEO desde el testero del lado.
+   (El C=394 en sí es la regla de profundidad — correcta pero contra el largo; con el anclaje
+   bien, la pieza queda dentro. No capar la regla.)
+2. BATERÍA DE ROTACIONES (test nuevo tests/test_rotaciones.js): para viga Y muro, un componente
+   por rol (cabezal 103C con dims auto · estribo 104D · cadena 104B), aplicar rotarPose90 en
+   los 3 ejes × 4 pasos: tras CADA paso, expandir y asertar 0 fierro fuera del hormigón (cara
+   del fierro, ±φ/2) y que R×4 devuelve la pose EXACTA. Es el guard que faltó hoy.
+3. MIGRACIÓN CABEZAL→TRAZADOR (el 103C del usuario sin su gancho): en
+   figura_puntos.familiaDeDibujo está el comentario "PENDIENTE (migración cabezal→trazador)"
+   con el cambio exacto (umbral de cadena a n≥2 para 102x/103x; rectas y marcos quedan).
+   MEDIDO hoy al probarlo: mueve 10 archivos de tests con cambios SEMÁNTICOS legítimos que hay
+   que re-derivar a mano (no sed): B auto ahora reserva las proyecciones de patas inclinadas
+   (semilla CBS 103B 45°: B 592→548, kg 140.2→136.1 — es lo FÍSICAMENTE correcto, documentarlo
+   en el commit); spin de patas sobre cadenas; testeros de_pie; anidado de pie; L1 del muro
+   (pata 45° → punta en 11.2−10·cos45=4.13, no 1.2). Piloto de convención (test_trazador·A)
+   garantiza 101A/102A/103A byte-idénticos. COMPAT: recetas guardadas con dims FIJAS cambian
+   de dibujo (patas ahora con su ángulo real) — dejar dicho en el resumen al usuario.
+4. Verificación W1: suite verde + test_rotaciones + test_muro_auto + test_rombo + semilla
+   (resumen nuevo documentado) + repro del punto 1 con FUERA=0.0.
+
+### W2 · EDITOR COHERENTE + SELECTOR DE ELEMENTO
+1. VALIDACIÓN figura↔tipología: el campo FIGURA del ribbon y de la ficha valida contra
+   FIGURAS_POR_TIPOLOGIA (catalogo_figuras.js); figura no listada → borde rojo + aviso en
+   status con el motivo y la lista permitida (así un 106A bajo MH ya no entra en silencio;
+   el motor igual lo protege por topología, esto es la capa UI).
+2. RESALTAR EL LADO DOMINANTE EN EL PREVIEW (mérito confirmado por el usuario): en el ghost,
+   el tramo del lado dominante en un trazo más grueso/color destacado — se entiende qué lado
+   "corre" antes de clicar. Y CONTROL del lado dominante en la ficha: un selector chico junto
+   a las dims (letra dominante; escribe comp.lado_dominante que el motor ya respeta en la
+   cascada ladoDominanteFigura → spec.lado_dominante primero).
+3. FICHA POR FAMILIA: contorno (marco/rombo) oculta Patas/empalme y muestra "contorno";
+   trazado muestra el kit completo. familiaDeDibujo ya lo dice.
+4. SELECTOR DE ELEMENTO DENTRO DEL EDITOR (pedido explícito: "sacarlos del tab"): un select
+   Viga/Muro/... en el header del editor que cambie ST.elemento y re-renderice ribbon
+   (_renderRibbonTips), panel de hormigón (TPL_DIMS_POR_ELEMENTO) y vistas (_defsPlanos +
+   _actualizarTitulos). Todo ya es data-driven; al cambiar con componentes colocados, avisar
+   que la receta se conserva pero las poses default no se re-estampan. El tab Templates deja
+   de necesitar un editor por elemento.
+5. Verificación W2: --check de sintaxis, suite verde, y probar headless lo que se pueda
+   (validación es UI: revisar con esprima/lectura adversarial).
+
+### W3 · CICLO DE VIDA DEL TEMPLATE (la TANDA 4 de este doc, sección más arriba)
+Seguir la especificación de "TANDA 4 — CICLO DE VIDA DEL TEMPLATE (BLOQUEA · M)" tal como
+está escrita arriba (editar/versionar sin duplicar, permisos, abrir-sin-clonar). Backend +
+front. Verificación: tests de API (pytest si hay harness) + suite JS verde.
+
+### AL TERMINAR LA NOCHE
+Resumen al usuario: qué entró por workflow, commits, qué cambió de números (semilla) y la
+guía de prueba de mañana en 6-8 líneas. Pendientes que esperan SU decisión (sin tocar):
+botón de empalme por lado · traba clásica de muro · gancho normativo por φ · convención
+`angulos` · colocación por vista · jerarquía NA sí/no · repros de pan-que-rota y cambio-de-φ.
+
 ### DEF PENDIENTE (usuario) — convención de la columna `angulos` del catálogo (hallazgo Tanda F)
 El verificador demostró que la columna tiene DOS escritores con convenciones complementarias:
 - El SEED (63 figuras, a mano) la usa como GIRO/doblez (104D=[135,135] es el gancho sísmico 135°,
