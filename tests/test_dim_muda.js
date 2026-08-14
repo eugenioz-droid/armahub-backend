@@ -1,0 +1,334 @@
+// =============================================================================
+// MEDIR = DIBUJAR, PARA LA DIMENSIÓN — test headless (Node)
+// =============================================================================
+// El motor ya tenía cerrado el simétrico de esto para el ÁNGULO: `trazoLeeAngulos`
+// declara en qué figuras el control mueve el dibujo, y reglas emite «el ángulo
+// viaja al despiece pero NO mueve el trazo 3D» cuando no. Para la DIMENSIÓN ese
+// simétrico NO EXISTÍA, y el agujero se medía así (barrido de las 63 figuras del
+// catálogo × todos sus lados × roles ES/CBS, Δ +5 en cada uno = 518 casos con
+// efecto sobre el corte):
+//
+//        ANTES        456 coherentes · 0 desiguales · 62 MUDAS · 0 avisos
+//        AHORA        472 coherentes · 0 desiguales · 46 MUDAS · 46 avisos
+//
+// "MUDA" = el largo de corte sube 5.00 cm, los kg suben con él y la polilínea 3D
+// no se mueve 0.000. Las 62 eran de dos clases distintas y por eso hay dos fixes:
+//
+//   1) EL GANCHO DECLARADO (16 casos: 106A/B/C/D × lados A y F × roles ES y CBS).
+//      El estribo con ganchos declarados lista dim A = dim F = extGancho() y
+//      dibujaba la pata con esa misma constante recalculada DENTRO de
+//      `_estriboPerimetral`. Coincidían mientras nadie las tocara. MEDIDO en la
+//      106A rol estribo φ8: dim_a 7.5 → 12.5, largo 167 → 172, kg 138.8 → 139.8 y
+//      el perímetro dibujado 169.213659 → 169.213659, o sea 0.000000. Ahora la
+//      pata declarada llega al trazador por `anchor.ganchoDim` y el dibujo crece
+//      exactamente lo mismo que el corte. NO SE ARREGLÓ CON UN AVISO: acá el 3D
+//      SÍ puede decir la verdad, y la clase de fix correcta es que la diga.
+//
+//   2) LA FIGURA QUE NO SE DIBUJA DE SUS DIMS (46 casos: 101A, 102x, 103x y 201A
+//      con rol ES). Una figura ABIERTA con rol de sección cae en el constructor
+//      de MARCO, que traza el rectángulo del hormigón y no mira las dims — ahí NO
+//      hay número que corregir: la dim, el largo y los kg son correctos (es lo
+//      que se corta) y el que miente es el 3D. Divergencia PREEXISTENTE, la misma
+//      antes y después de la tanda Δ: una 103B-ES con dims FIJAS 80/80/80 dibuja
+//      el mismo perímetro que con las auto 24/52/24. Lo que faltaba era decirlo, y
+//      eso es lo que ahora hace `_avisarDimsMudas`.
+//
+// QUÉ PROTEGE, en orden:
+//   A. CERO REGRESIÓN: la viga-semilla en {items:4, barras:72, kg:136.1} con sus
+//      dims exactas, y el trazo de una 106A sin Δ clavado en su perímetro de
+//      siempre (la pata declarada sólo viaja cuando el usuario la escribe).
+//   B. Δ EN UN GANCHO: el trazo crece EXACTAMENTE lo que crece el corte, en las 4
+//      figuras 106x, por los dos ganchos y en los dos roles.
+//   C. SIN CLAMP: un Δ que saca el gancho del hormigón se dibuja igual y lo dice
+//      el aviso de siempre — no se recorta la pata para que quepa.
+//   D. Δ EN UN LADO MUDO: la dim y los kg suben (dato correcto) y sale el aviso.
+//   E. DIM FIJA sobre un lado del marco: también avisa (el marco lo fija el
+//      hormigón), y el Δ sobre ese mismo lado NO avisa porque sí lo mueve.
+//   F. EL BARRIDO COMPLETO: en las 63 figuras del catálogo no queda ni UN caso en
+//      que el corte suba sin que el trazo se mueva o el motor lo avise.
+//
+// Correr con: node tests/test_dim_muda.js
+
+'use strict';
+const path = require('path');
+const BASE = path.join(__dirname, '..', 'armahub', 'static', 'js', 'features', 'modelador');
+
+const CAT = require(path.join(BASE, 'catalogo_figuras.js'));
+const FP = require(path.join(BASE, 'figura_puntos.js'));
+const R = require(path.join(BASE, 'reglas.js'));
+const G = require(path.join(BASE, 'generar.js'));
+const S = require(path.join(BASE, 'semilla_viga.js'));
+
+let fallos = 0;
+function ok(c, m) { if (!c) { console.error('  ✗ ' + m); fallos++; } else { console.log('  ✓ ' + m); } }
+function casi(a, b, tol, m) { ok(Math.abs(Number(a) - Number(b)) <= tol, m + ' (' + a + ' vs ' + b + ')'); }
+
+const HOST = { largo: 600, alto: 60, ancho: 30, recub_sup: 4, recub_inf: 4, recub_lat: 3 };
+
+// Componente con TODAS las dims en 'auto' — el caso donde el motor decide y donde
+// una divergencia entre lo que mide y lo que dibuja no la tapa ningún número
+// escrito a mano.
+function comp(fig, tip, mut) {
+  const sp = CAT.get(fig) || {};
+  const dims = {};
+  (sp.parciales || []).forEach(p => { dims[p] = { modo: 'auto' }; });
+  const esSeccion = (tip === 'ES' || tip === 'TRV');
+  const c = {
+    comp_id: 'X', jerarquia: esSeccion ? 1 : 2,
+    tipologia: tip, figura: fig, diam: esSeccion ? 8 : 16, suf_tipo: '',
+    cara: esSeccion ? 'lateral' : 'sup',
+    recub_override: null, angulos: [], prioridad: null, empalme: null, depende_de: null,
+    modo: esSeccion ? 'lineal' : 'puntual', plano_pieza: { volteado: false },
+    arreglo: { n_capas: 1, sep_capas: 20, rango: null },
+    dims: dims,
+    distribucion: esSeccion
+      ? { modo: 'linear', zonas: [{ long: 600, sep: 200 }], start_offset: 4 }
+      : { modo: 'layered', n_capas: 1, barras_capa: 1, gap: 0, sentido: 'nucleo' }
+  };
+  if (mut) mut(c);
+  return c;
+}
+// Largo DIBUJADO de la polilínea (lo que el 3D muestra) — la otra mitad de la
+// comparación: enfrente va la suma de las dims, que es lo que se corta.
+function perimetro(pts) {
+  let s = 0;
+  for (let i = 1; i < pts.length; i++) {
+    s += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y, pts[i].z - pts[i - 1].z);
+  }
+  return s;
+}
+function sumaDims(d) { let s = 0; for (const k in d) if (d[k] != null) s += Number(d[k]); return s; }
+function avisosDe(c) { return c._avisos || []; }
+// Los avisos de "fierro fuera del hormigón" y de reparto NO cuentan como respuesta
+// a este problema: hablan de OTRA cosa (la barra no cabe), y una receta puede
+// dispararlos con el trazo perfectamente sincronizado con sus dims.
+function avisosDelTrazo(c) {
+  return avisosDe(c).filter(a => /trazo 3D|sale del marco/.test(a));
+}
+
+// ==================================================== A · CERO REGRESIÓN
+console.log('A — sin dims escritas a mano, el motor da EXACTAMENTE lo de siempre');
+{
+  const res = G.generarViga(S.semillaViga(), {});
+  ok(res.resumen.items === 4 && res.resumen.barras === 72 && res.resumen.kg === 136.1,
+    'viga-semilla en {items:4, barras:72, kg:136.1} — la referencia viva');
+  const firma = res.barras.map(b => [b.figura, b.cant, b.dim_a, b.dim_b, b.dim_c, b.dim_d].join('|')).join(' ; ');
+  ok(firma === [
+    '103B|6|30|547.9735931288072|30|', '101A|4|592|||',
+    '104D|47|24|52|24|52', '101A|15|50.400000000000006|||'
+  ].join(' ; '), 'las 4 barras salen con las MISMAS dims que antes de esta corrección');
+  // Y la semilla no estrena NI UN aviso. Sus dims 'auto' las resolvió el motor
+  // contra el hormigón, así que medir y dibujar salen del mismo sitio y no hay
+  // nada que decir; y sus dos dims FIJAS (las patas A/C del cabezal 103B) están en
+  // una figura que se dibuja tramo a tramo, o sea sí mueven el trazo. Un aviso acá
+  // sería RUIDO, y el ruido mata el canal: si esta corrección avisara de más, la
+  // receta de referencia del proyecto sería la primera en ensuciarse.
+  const recS = S.semillaViga();
+  recS.componentes.forEach(c => R.expandirComponente(c, recS.geometria));
+  const ruido = recS.componentes.filter(c => (c._avisos || []).length)
+    .map(c => c.comp_id + ': ' + JSON.stringify(c._avisos));
+  ok(ruido.length === 0, 'los 4 componentes de la semilla se expanden sin un solo aviso (=' +
+    JSON.stringify(ruido) + ')');
+
+  // EL GANCHO SIN TOCAR SIGUE SIENDO EL NORMATIVO, AL BIT. La dim derivada vale
+  // round(extGancho·10)/10 y la pata del trazo vale extGancho: dos números que
+  // difieren en el último bit del flotante. Si el canal `ganchoDim` viajara
+  // siempre, TODAS las 106x del catálogo se moverían ~1e-15 sin que nadie lo
+  // pidiera. Por eso sólo viaja lo que el usuario escribió, y por eso este
+  // perímetro tiene que ser el de siempre, exacto.
+  const pl = R.expandirComponente(comp('106A', 'ES'), HOST);
+  casi(perimetro(pl[0].puntos), 169.21365909, 1e-6,
+    '106A ES con todo en auto: perímetro dibujado intacto');
+  casi(pl[0].dims.A, 7.5, 1e-9, 'y su gancho A sigue siendo la pata normativa (6φ mín 7.5)');
+}
+
+// ============================================ B · Δ EN UN GANCHO → EL TRAZO CRECE
+console.log('\nB — Δ en un gancho declarado: el dibujo crece lo mismo que el corte');
+{
+  // El caso del hallazgo, con sus números medidos: 106A rol estribo φ8 en la
+  // viga-semilla. dim_a 7.5 → 12.5 · largo 167 → 172 · kg 138.8 → 139.8. Eso ya
+  // estaba bien (el despiece nunca estuvo corrupto); lo que estaba mal es que el
+  // perímetro dibujado se quedaba en 169.213659.
+  function semilla106(delta) {
+    const rec = S.semillaViga();
+    const es = rec.componentes[2];
+    es.figura = '106A';
+    es.dims = { A: { modo: 'auto' }, B: { modo: 'auto' }, C: { modo: 'auto' },
+      D: { modo: 'auto' }, E: { modo: 'auto' }, F: { modo: 'auto' } };
+    if (delta != null) es.dims.A.delta = delta;
+    const out = G.generarViga(rec, {});
+    return { out: out, barra: out.barras.find(b => b.figura === '106A') };
+  }
+  const s0 = semilla106(null), s5 = semilla106(5);
+  casi(s0.barra.dim_a, 7.5, 1e-9, 'sin Δ: dim_a = 7.5 (gancho normativo φ8)');
+  casi(s5.barra.dim_a, 12.5, 1e-9, 'con Δ +5: dim_a = 12.5');
+  casi(s0.barra._largoEstimado, 167, 1e-9, 'largo de corte sin Δ = 167 cm');
+  casi(s5.barra._largoEstimado, 172, 1e-9, 'largo de corte con Δ = 172 cm (+5, como debe)');
+  casi(s0.out.resumen.kg, 138.8, 0.05, 'kg sin Δ = 138.8');
+  casi(s5.out.resumen.kg, 139.8, 0.05, 'kg con Δ = 139.8');
+
+  // LO QUE ESTE TEST EXISTE PARA VIGILAR: el trazo. Antes 169.213659 → 169.213659.
+  const p0 = perimetro(R.expandirComponente(comp('106A', 'ES'), HOST)[0].puntos);
+  const p5 = perimetro(R.expandirComponente(comp('106A', 'ES', c => { c.dims.A.delta = 5; }), HOST)[0].puntos);
+  casi(p5 - p0, 5, 1e-9, '106A ES ΔA +5: la polilínea 3D crece 5.000000 cm (era 0.000000)');
+
+  // Y no es un caso suelto: las CUATRO figuras 106x, sus DOS ganchos y los DOS
+  // roles. Son las 16 combinaciones que el barrido marcaba mudas.
+  let sincronizadas = 0;
+  ['106A', '106B', '106C', '106D'].forEach(f => {
+    ['ES', 'CBS'].forEach(t => {
+      ['A', 'F'].forEach(L => {
+        const a = R.expandirComponente(comp(f, t), HOST);
+        const cB = comp(f, t, c => { c.dims[L].delta = 5; });
+        const b = R.expandirComponente(cB, HOST);
+        const dCorte = sumaDims(b[0].dims) - sumaDims(a[0].dims);
+        const dTrazo = perimetro(b[0].puntos) - perimetro(a[0].puntos);
+        if (Math.abs(dCorte - 5) < 1e-9 && Math.abs(dTrazo - 5) < 1e-9) sincronizadas++;
+        else console.error('    ' + f + ' ' + t + ' Δ' + L + ': corte +' + dCorte.toFixed(3) +
+          ' vs trazo +' + dTrazo.toFixed(3));
+      });
+    });
+  });
+  ok(sincronizadas === 16,
+    'las 16 combinaciones 106x × {A,F} × {ES,CBS} mueven trazo y corte lo mismo (=' +
+    sincronizadas + '/16)');
+
+  // LOS DOS GANCHOS SON INDEPENDIENTES: A y F son dos dims distintas del catálogo
+  // y el trazador dibuja dos patas distintas. Si compartieran largo (como antes,
+  // que era UNA constante para las dos), un Δ en A movería también la punta de F.
+  const solaA = R.expandirComponente(comp('106A', 'ES', c => { c.dims.A.delta = 5; }), HOST)[0];
+  const ambas = R.expandirComponente(comp('106A', 'ES', c => { c.dims.A.delta = 5; c.dims.F.delta = 5; }), HOST)[0];
+  casi(perimetro(ambas.puntos) - perimetro(solaA.puntos), 5, 1e-9,
+    'Δ en F suma su propio 5 (las dos patas son independientes, no una constante común)');
+}
+
+// ================================================ C · SIN CLAMP AL GANCHO
+console.log('\nC — un gancho que no cabe se dibuja igual y se avisa (nada de recortarlo)');
+{
+  // La pata NORMATIVA sí se acota al sitio real del marco, y con razón: es un
+  // número que eligió el motor y un anillo anidado no puede ensanchar. Pero una
+  // medida que ESCRIBIÓ el usuario no se recorta ni a la norma ni al hormigón —
+  // recortarla dibujaría un estribo que cabe mintiendo sobre la barra que se corta.
+  const c = comp('106A', 'ES', x => { x.dims.A.delta = 60; });
+  const pl = R.expandirComponente(c, HOST);
+  const p0 = perimetro(R.expandirComponente(comp('106A', 'ES'), HOST)[0].puntos);
+  casi(perimetro(pl[0].puntos) - p0, 60, 1e-9,
+    'Δ +60 en el gancho: el trazo crece los 60 enteros, sin tope');
+  ok(avisosDe(c).some(a => /FUERA del hormig/.test(a)),
+    'y el aviso de fierro fuera del hormigón lo dice, medido sobre esos puntos (=' +
+    JSON.stringify(avisosDe(c).filter(a => /FUERA/.test(a))) + ')');
+}
+
+// ==================================== D · Δ EN UN LADO MUDO → DATO BUENO + AVISO
+console.log('\nD — Δ en un lado que el trazo no lee: el dato es correcto y se AVISA');
+{
+  // Una 103B (figura ABIERTA de 3 lados) forzada a rol de sección cae en el
+  // constructor de MARCO, que traza el rectángulo del hormigón sin mirar las dims.
+  // Acá NO hay número que corregir: 24+57+24 es lo que se corta y lo que pesa. El
+  // fix es que el motor deje de callarse que el 3D muestra otra cosa.
+  const a = R.expandirComponente(comp('103B', 'ES'), HOST);
+  const cD = comp('103B', 'ES', c => { c.dims.B.delta = 5; });
+  const b = R.expandirComponente(cD, HOST);
+  casi(b[0].dims.B, a[0].dims.B + 5, 1e-9, '103B ES: la dim B sube el Δ (el corte es correcto)');
+  casi(perimetro(b[0].puntos), perimetro(a[0].puntos), 1e-9,
+    'el trazo NO se mueve — y eso es lo que el motor tiene que confesar, no tapar');
+  ok(avisosDelTrazo(cD).length === 1 && /NO mueve el trazo 3D/.test(avisosDelTrazo(cD)[0]),
+    'sale UN aviso que lo dice con la letra y el número (=' + JSON.stringify(avisosDelTrazo(cD)) + ')');
+
+  // UN AVISO POR SITUACIÓN, NO UNO POR LADO: tres lados mudos son EL MISMO
+  // problema. Repetir el texto tres veces entierra los avisos que sí son distintos.
+  const c3 = comp('103B', 'ES', c => { c.dims.A.delta = 5; c.dims.B.delta = 5; c.dims.C.delta = 5; });
+  R.expandirComponente(c3, HOST);
+  ok(avisosDelTrazo(c3).length === 1 && /A = 29 · B = 57 · C = 29/.test(avisosDelTrazo(c3)[0]),
+    'los 3 lados mudos salen en UN solo aviso, en orden alfabético (=' +
+    JSON.stringify(avisosDelTrazo(c3)) + ')');
+}
+
+// ======================= E · DIM FIJA SOBRE EL MARCO: TAMBIÉN AVISA; EL Δ NO
+console.log('\nE — el marco lo fija el hormigón: una dim fija tampoco lo mueve, y se dice');
+{
+  // 104D como estribo: A/C llevan el ancho del marco y B/D el alto. El Δ SÍ los
+  // mueve (crece el marco, `anchor.marcoDelta`); una medida FIJA no, porque el
+  // marco sale del recubrimiento y las pilas, no de un número escrito. Las dos
+  // cosas son ciertas a la vez y por eso el aviso distingue.
+  const cFija = comp('104D', 'ES', c => { c.dims.B = { modo: 'fija', valor: 80 }; });
+  R.expandirComponente(cFija, HOST);
+  ok(avisosDelTrazo(cFija).length === 1 && /marco lo fija el HORMIGÓN/.test(avisosDelTrazo(cFija)[0]),
+    'dim B fija en 80: avisa que el trazo sale del marco (=' + JSON.stringify(avisosDelTrazo(cFija)) + ')');
+
+  const a = R.expandirComponente(comp('104D', 'ES'), HOST);
+  const cDelta = comp('104D', 'ES', c => { c.dims.B.delta = 5; });
+  const b = R.expandirComponente(cDelta, HOST);
+  ok(avisosDelTrazo(cDelta).length === 0,
+    'el Δ sobre ese MISMO lado no avisa nada: sí crece el marco (=' +
+    JSON.stringify(avisosDelTrazo(cDelta)) + ')');
+  // Δ +5 en B se replica en su par espejo D (los dos miden el alto): el corte sube
+  // 10 y el marco sube 5 de alto → el rectángulo dibujado crece 5 por arriba y por
+  // abajo repartido, o sea +10 de perímetro. Corte y trazo, el mismo número.
+  casi(perimetro(b[0].puntos) - perimetro(a[0].puntos),
+    sumaDims(b[0].dims) - sumaDims(a[0].dims), 1e-9,
+    'y el trazo crece exactamente lo que crece el corte (par espejo B↔D incluido)');
+}
+
+// ================================== F · BARRIDO COMPLETO: NI UN CASO EN SILENCIO
+console.log('\nF — barrido de las 63 figuras: cero Δ que suba el corte sin mover ni avisar');
+{
+  let coherentes = 0, desiguales = 0, mudasConAviso = 0, mudasEnSilencio = [];
+  CAT.codigos().forEach(cod => {
+    const sp = CAT.get(cod);
+    if (!sp) return;
+    ['ES', 'CBS'].forEach(tip => {
+      (sp.parciales || []).forEach(L => {
+        let a, b;
+        const cB = comp(cod, tip, c => { c.dims[L].delta = 5; });
+        try { a = R.expandirComponente(comp(cod, tip), HOST); b = R.expandirComponente(cB, HOST); }
+        catch (e) { return; }
+        if (!a.length || !b.length) return;
+        const dCorte = sumaDims(b[0].dims) - sumaDims(a[0].dims);
+        if (Math.abs(dCorte) < 1e-9) return;          // el Δ no llegó a la dim: otro test
+        const dTrazo = perimetro(b[0].puntos) - perimetro(a[0].puntos);
+        if (Math.abs(dTrazo) < 1e-6) {
+          if (avisosDelTrazo(cB).length) mudasConAviso++;
+          else mudasEnSilencio.push(cod + ' ' + tip + ' Δ' + L);
+        } else if (Math.abs(dTrazo - dCorte) > 1e-6) {
+          desiguales++;
+          console.error('    DESIGUAL ' + cod + ' ' + tip + ' Δ' + L +
+            ': corte +' + dCorte.toFixed(3) + ' vs trazo +' + dTrazo.toFixed(3));
+        } else coherentes++;
+      });
+    });
+  });
+  console.log('    coherentes=' + coherentes + ' · desiguales=' + desiguales +
+    ' · mudas CON aviso=' + mudasConAviso + ' · mudas EN SILENCIO=' + mudasEnSilencio.length);
+  ok(desiguales === 0, 'ningún Δ mueve el trazo una cantidad distinta de la del corte');
+  ok(mudasEnSilencio.length === 0,
+    'ningún Δ sube el corte sin mover el trazo Y sin avisar (=' +
+    JSON.stringify(mudasEnSilencio.slice(0, 6)) + ')');
+  // NÚMEROS EXACTOS DEL BARRIDO — son el "antes/después" del hallazgo y valen como
+  // guard: si una figura nueva o un cambio de clasificación mueve el reparto entre
+  // coherentes y mudas, este assert lo caza y obliga a explicar por qué.
+  ok(coherentes === 472, 'coherentes = 472 (eran 456: los 16 ganchos 106x se sumaron) =' + coherentes);
+  ok(mudasConAviso === 46, 'mudas = 46, TODAS con aviso (eran 62 con 0 avisos) =' + mudasConAviso);
+}
+
+// ============================== G · CONTRATO DE `canalDelTrazo` (fuente única)
+console.log('\nG — canalDelTrazo: por dónde entra al dibujo la medida de cada lado');
+{
+  ok(FP.canalDelTrazo('103B', 'cabezal', 'B') === 'dims',
+    'cadena longitudinal → dims (la polilínea se construye tramo a tramo)');
+  ok(FP.canalDelTrazo('106A', 'estribo', 'A') === 'gancho' &&
+     FP.canalDelTrazo('106A', 'estribo', 'F') === 'gancho',
+    '106A: A y F son GANCHOS declarados → llegan enteros por anchor.ganchoDim');
+  ok(FP.canalDelTrazo('106A', 'estribo', 'B') === 'marco' &&
+     FP.canalDelTrazo('106A', 'estribo', 'C') === 'marco',
+    '106A: B..E llevan medida del MARCO → sólo el Δ los mueve');
+  ok(FP.canalDelTrazo('103B', 'estribo', 'B') === null,
+    '103B con rol de sección: ninguna ruta — el marco se dibuja sin mirar sus dims');
+  ok(JSON.stringify(FP.ganchosTerminales('106A', 'estribo')) === '{"ini":"A","fin":"F"}',
+    'ganchosTerminales lee las letras de los tramos, no una tabla por código');
+  ok(FP.ganchosTerminales('104D', 'estribo') === null,
+    'y la 104D no declara ganchos (los suyos son implícitos): null, no una letra inventada');
+}
+
+console.log(fallos === 0 ? '\nTODO OK' : '\n' + fallos + ' FALLO(S)');
+process.exit(fallos === 0 ? 0 : 1);

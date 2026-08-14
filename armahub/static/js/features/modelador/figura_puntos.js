@@ -319,10 +319,36 @@
   // nada en la pantalla lo explicara. Ahora el lado dominante es una propiedad de
   // la FIGURA, no de sus medidas: es estable, es el mismo en el motor, en la ficha
   // del componente y en el listado, y el catálogo puede sobreescribirlo por figura.
-  function ladoDominanteFigura(figura) {
+  //
+  // 0º — OVERRIDE POR COMPONENTE (2º parámetro, `comp.lado_dominante`), TANDA Δ.
+  // ---------------------------------------------------------------------------
+  // Hasta hoy la cascada sólo miraba el CATÁLOGO: el campo `comp.lado_dominante`
+  // que la ficha del Template Editor ya escribía NO LO LEÍA NADIE (evidencia
+  // medida el 14-ago: un 103A con lado_dominante:'C' resolvía las mismas dims y
+  // dibujaba los mismos puntos, byte por byte). O sea que el usuario podía elegir
+  // el lado y la elección no llegaba al motor. Ahora manda, con MÁXIMA prioridad
+  // y una validación que no se puede saltar (validarLadoDominante):
+  //   · un GANCHO (tramo TERMINAL de la cadena) no puede ser dominante — es la
+  //     pata que cuelga, no el cuerpo que se ancla contra el hormigón;
+  //   · un lado DIAGONAL tampoco — ponerlo a lo largo saca la pieza de su plano
+  //     de trabajo, que es geometría que el editor hoy no aborda;
+  //   · un CONTORNO CERRADO no tiene dominante que elegir (su largo lo fija el
+  //     marco, no un lado).
+  // Un override inválido se IGNORA y cae a la cascada de siempre (nunca se
+  // "acomoda" a algo parecido). El AVISO lo emite quien conoce el componente
+  // —reglas._baseDeComponente—, porque acá no hay canal de avisos.
+  //
+  // El override es OPCIONAL en la firma a propósito: `ladoDominanteFigura(fig)`
+  // sigue devolviendo exactamente lo de antes, así que ninguna de las rutas que
+  // no lo conocen cambia de resultado.
+  function ladoDominanteFigura(figura, override) {
     var spec = _spec(figura);
     if (!spec) return null;
     var P = spec.parciales || [];
+    if (override != null && String(override).trim() !== '') {
+      var v = validarLadoDominante(figura, override);
+      if (v.ok) return v.lado;
+    }
     var decl = spec.lado_dominante ||
       (spec.geometria && spec.geometria.lado_dominante) || null;
     if (decl) {
@@ -331,6 +357,315 @@
     }
     if (!P.length) return null;
     return (P.indexOf('B') >= 0) ? 'B' : P[0];
+  }
+
+  // ¿La figura es un CONTORNO CERRADO? Los tres criterios ya viven en el módulo y
+  // acá se leen JUNTOS porque para el lado dominante significan lo mismo: no hay
+  // ningún lado que corra "a lo largo" de la pieza — el largo lo fija el marco.
+  //   · marco de 4 lados (_esPerimetro: 104A/104D/104O/104P…);
+  //   · estribo con sus GANCHOS declarados (esEstriboConGanchos: 106A y familia);
+  //   · cualquier cadena cuyo trazo TOPOLÓGICO (todos los lados = 1) vuelve al
+  //     punto de partida — el mismo test que usa ladoLongitudinalCadena para
+  //     devolver null.
+  function _figuraEsContornoCerrado(figura) {
+    var f = (figura || '').toUpperCase();
+    var spec = _spec(f);
+    if (!spec) return false;
+    if (esEstriboConGanchos(f)) return true;
+    if (_esPerimetro(spec, f) && spec.parciales.length === MAX_LADOS_DIBUJABLES) return true;
+    var tr = tramosDeFigura(f);
+    if (!tr) return false;
+    return _cadenaCierra(_cadena2D(tr.tramos, {}, 1).pts);
+  }
+
+  // ¿Puede el lado `letra` ser el DOMINANTE de esta figura?
+  // → { ok, lado, motivo }. `motivo` es texto de usuario (va al aviso tal cual).
+  // La referencia para clasificar DIAGONAL es la cascada SIN override
+  // (ejesCadenaLong → ladoDominanteFigura(f) pelado): así no hay recursión y la
+  // pregunta «¿este lado es una diagonal?» tiene una respuesta estable, la misma
+  // que ya usa el 'auto' universal por dirección-en-pose.
+  function validarLadoDominante(figura, letra) {
+    var f = (figura || '').toUpperCase();
+    var spec = _spec(f);
+    var d = String(letra == null ? '' : letra).toUpperCase().trim();
+    if (!spec) {
+      return { ok: false, lado: null, motivo: 'la figura no está en el catálogo' };
+    }
+    if (!d || (spec.parciales || []).indexOf(d) < 0) {
+      return { ok: false, lado: null,
+        motivo: 'la figura ' + spec.codigo + ' no tiene el lado ' + (d || '(vacío)') };
+    }
+    if (_figuraEsContornoCerrado(f)) {
+      return { ok: false, lado: null,
+        motivo: 'la figura ' + spec.codigo + ' es un contorno CERRADO y no tiene lado dominante' };
+    }
+    var tr = tramosDeFigura(f);
+    if (!tr) {
+      return { ok: false, lado: null,
+        motivo: 'la figura ' + spec.codigo + ' no se describe como cadena de tramos' };
+    }
+    var n = tr.tramos.length, i, iL = -1;
+    for (i = 0; i < n; i++) if (tr.tramos[i] && tr.tramos[i].lado === d) { iL = i; break; }
+    if (iL < 0) {
+      return { ok: false, lado: null,
+        motivo: 'el lado ' + d + ' no aparece en el trazo de ' + spec.codigo };
+    }
+    // GANCHO = tramo TERMINAL de la cadena (la pata que cuelga del cuerpo).
+    // DOS EXCEPCIONES, las dos por la misma razón —que no quede la figura sin
+    // ningún lado— y las dos ya escritas en el módulo:
+    //   · n === 1 (101x recta): su único lado ES la barra, no un gancho.
+    //   · n === 2 (102x: gancho + cuerpo): los DOS tramos son terminales, así que
+    //     "terminal" no distingue nada. La respuesta del módulo para este caso ya
+    //     existe y está medida — ver la nota de _conGanchosRadio (iCuerpo): con un
+    //     solo doblez el CUERPO es el DOMINANTE y el otro es la pata. Se lee de
+    //     ahí en vez de inventar un segundo criterio que se pueda desincronizar
+    //     del trazado (si divergen, la barra se dibuja despegada de su anclaje:
+    //     ese bug costó φ32 → 4 cm fuera del hormigón).
+    if (n === 2) {
+      if (d !== ladoDominanteFigura(f)) {
+        return { ok: false, lado: null,
+          motivo: 'el lado ' + d + ' es el GANCHO de ' + spec.codigo + ' (el cuerpo es el otro tramo)' };
+      }
+    } else if (n > 2 && (iL === 0 || iL === n - 1)) {
+      return { ok: false, lado: null,
+        motivo: 'el lado ' + d + ' es un GANCHO (tramo terminal de la cadena)' };
+    }
+    var ejes = ejesCadenaLong(f);
+    if (ejes && ejes[d] === 'd') {
+      return { ok: false, lado: null,
+        motivo: 'el lado ' + d + ' es DIAGONAL: ponerlo a lo largo sacaría la pieza de su plano' };
+    }
+    return { ok: true, lado: d, motivo: null };
+  }
+
+  // Qué lados PUEDE elegir el usuario como dominante (la UI hace un botón por
+  // letra y deshabilita las que no están acá). Lista vacía = esta figura no
+  // admite elección (contorno cerrado, o todos sus lados son ganchos/diagonales).
+  function ladosDominantesElegibles(figura) {
+    var spec = _spec(figura);
+    if (!spec) return [];
+    var P = spec.parciales || [], out = [];
+    for (var i = 0; i < P.length; i++) {
+      if (validarLadoDominante(figura, P[i]).ok) out.push(P[i]);
+    }
+    return out;
+  }
+
+  // ---------------------------------------------------------------------------
+  // PARES ESPEJO — LOS LADOS SIMÉTRICOS SE MUEVEN EN BLOQUE (definición del usuario)
+  // ---------------------------------------------------------------------------
+  // En una figura CERRADA los lados opuestos son LA MISMA MEDIDA vista dos veces:
+  // el alto de un estribo lo miden B y D, el ancho lo miden C y E. Estirar uno solo
+  // no produce "un estribo un poco más alto": produce una figura que NO CIERRA —
+  // un cuadrilátero abierto que el taller no puede doblar. Por eso un Δ en un lado
+  // se REPLICA en su par: es la única forma de que el contorno siga existiendo.
+  //
+  // SE DERIVA DE LA GEOMETRÍA, NO DE UNA TABLA POR CÓDIGO. Una tabla '106A → B/D'
+  // se queda vieja en cuanto el catálogo incorpora una figura nueva (y el catálogo
+  // es data del backend, no código). Acá el par sale del TRAZO CERRADO: en un
+  // contorno de n lados, el lado i y el lado i+n/2 son los opuestos, y se emparejan
+  // si además corren ANTIPARALELOS (heading a 180°), que es lo que significa
+  // "lados simétricos" en un polígono cerrado.
+  //
+  // TRES CONTORNOS, UNA REGLA (y por qué el cuerpo se recorta en cada uno):
+  //   · MARCO de 4 lados (_esPerimetro: 104A/104D/104O/104P…): el rectángulo lo
+  //     CERTIFICA _esPerimetro y lo dibuja _estriboPerimetral, que lista A/C =
+  //     ancho y B/D = alto. Acá NO se miran headings: el catálogo describe la
+  //     104D listando sólo los ángulos de sus GANCHOS (135/135), así que su cadena
+  //     DERIVADA no es el rectángulo que se dibuja — preguntarle a esa cadena daría
+  //     una respuesta sobre una figura que no existe. La autoridad es _esPerimetro.
+  //   · ESTRIBO CON GANCHOS DECLARADOS (106A): el cuerpo son los tramos INTERIORES
+  //     (se descartan el primero y el último, que son los ganchos) y sus headings sí
+  //     describen el rectángulo — leídos RELATIVOS A SÍ MISMOS, exactamente como los
+  //     lee esEstriboConGanchos (el gancho inicial de 45° inclina el heading
+  //     absoluto y haría ver "diagonales" los lados del rectángulo).
+  //   · CADENA CERRADA genérica: todos sus lados son cuerpo.
+  // Una figura ABIERTA (103x, 104B, 105x…) no tiene pares: su Δ actúa solo en su
+  // lado, que es lo correcto — ahí no hay contorno que romper.
+  //
+  // Devuelve { lado: par } en los DOS sentidos ({B:'D', D:'B'}), o {} si no hay.
+  function paresEspejoFigura(figura) {
+    var f = (figura || '').toUpperCase();
+    var spec = _spec(f);
+    if (!spec) return {};
+    var P = spec.parciales || [];
+    var cuerpo = null, hs = null, certificado = false, tr;
+    if (_esPerimetro(spec, f) && P.length === MAX_LADOS_DIBUJABLES) {
+      cuerpo = P.slice();                      // rectángulo certificado (ver arriba)
+      certificado = true;
+    } else if (esEstriboConGanchos(f)) {
+      tr = tramosDeFigura(f);
+      if (!tr) return {};
+      cuerpo = tr.tramos.slice(1, -1).map(function (t) { return t && t.lado; });
+      hs = _headingsTramos(tr.tramos, 1, tr.tramos.length - 1);
+    } else {
+      tr = tramosDeFigura(f);
+      if (!tr) return {};
+      if (!_cadenaCierra(_cadena2D(tr.tramos, {}, 1).pts)) return {};   // abierta: sin pares
+      cuerpo = tr.tramos.map(function (t) { return t && t.lado; });
+      hs = _headingsTramos(tr.tramos, 0, tr.tramos.length);
+    }
+    var n = cuerpo.length;
+    if (n < 4 || n % 2 !== 0) return {};        // sin lados opuestos que emparejar
+    var m = n / 2, pares = {}, j, a, b, da;
+    for (j = 0; j < m; j++) {
+      a = cuerpo[j]; b = cuerpo[j + m];
+      if (a == null || b == null || a === b) continue;
+      if (!certificado) {
+        da = (((hs[j + m] - hs[j]) % 360) + 360) % 360;
+        if (Math.abs(da - 180) > 1e-6) continue;   // no corre antiparalelo: no es su par
+      }
+      pares[a] = b; pares[b] = a;
+    }
+    return pares;
+  }
+
+  // ---------------------------------------------------------------------------
+  // QUÉ MEDIDA DEL MARCO LLEVA CADA LADO — sólo piezas de sección DIBUJADAS DEL MARCO
+  // ---------------------------------------------------------------------------
+  // → { LETRA: 'u'|'v' }  ('u' = ancho, 'v' = alto), o null si esta figura no se
+  // dibuja del marco. Lo consume reglas para convertir un Δ por dimensión en el
+  // crecimiento del marco (ver _marcoNucleo): sin esto el Δ movería la dim y no
+  // el trazo.
+  //
+  // NO ES UNA TABLA NUEVA: se le PREGUNTA a la misma autoridad que produce las
+  // dims, para que no pueda desincronizarse de ellas.
+  //   · CADENA DE SECCIÓN (305A, 104B) → null y no por olvido: esas se dibujan
+  //     CON SUS DIMS (_cadenaSeccion), así que el Δ ya les llega por el trazo y
+  //     crecerles el marco lo contaría dos veces.
+  //   · ESTRIBO CON GANCHOS DECLARADOS (106x) → se PERTURBA `dimsEstriboGanchos`
+  //     (+10 en ancho y +10 en alto por separado) y se mira qué lado se movió con
+  //     cuál. Es exactamente la función que reglas usa para listar esas dims, así
+  //     que la respuesta es la suya, no una copia. MEDIDO: B/D siguen al alto y
+  //     C/E al ancho, y los ganchos A/F no siguen a ninguno (son la extensión
+  //     normativa) → un Δ en un gancho no agranda el marco, que es lo correcto.
+  //   · RECTÁNGULO DE 4 LADOS (104x) → A/C = ancho, B/D = alto. Es la MISMA
+  //     lectura que hace reglas._dimsEfectivas (`autoDeLado`) y la que dibuja
+  //     _estriboPerimetral; si una de las dos cambiara, el test de coherencia
+  //     (dim crece == trazo crece) lo caza.
+  function ejesMarcoSeccion(figura, rol) {
+    var f = (figura || '').toUpperCase();
+    var spec = _spec(f);
+    if (!spec) return null;
+    var fam = familiaDeDibujo(f, rol || 'estribo');
+    var P = spec.parciales || [], out = {}, i;
+    // TRABA: su vertical va de ySup a yInf, o sea TODA ella mide el ALTO del marco
+    // (ver _traba: «usa el MISMO marco que el estribo»). Coincide con lo que hace
+    // reglas._dimsEfectivas, que para una traba devuelve mk.altoUtil en todos sus
+    // lados. MEDIDO antes de esta corrección: TRV 101A de la semilla con Δ +6 daba
+    // dim A 50.4 → 56.4 y el trazo clavado en 49.6 de alto — el mismo defecto del
+    // estribo, en la otra pieza que se dibuja del marco.
+    if (fam === 'traba') {
+      for (i = 0; i < P.length; i++) out[P[i]] = 'v';
+      return out;
+    }
+    if (fam !== 'estribo') return null;
+    if (esEstriboConGanchos(f)) {
+      var b = dimsEstriboGanchos(f, 24, 52, 0.8);
+      var du = dimsEstriboGanchos(f, 34, 52, 0.8);
+      var dv = dimsEstriboGanchos(f, 24, 62, 0.8);
+      if (!b || !du || !dv) return null;
+      for (i = 0; i < P.length; i++) {
+        var L = P[i];
+        if (b[L] == null) continue;
+        if (Math.abs(du[L] - b[L]) > 1e-9) out[L] = 'u';
+        else if (Math.abs(dv[L] - b[L]) > 1e-9) out[L] = 'v';
+      }
+      return out;
+    }
+    if (_esPerimetro(spec, f) && P.length === MAX_LADOS_DIBUJABLES) {
+      out.A = 'u'; out.C = 'u'; out.B = 'v'; out.D = 'v';
+      return out;
+    }
+    return null;
+  }
+
+  // Headings acumulados de los tramos [i0, i1), con el PRIMERO del rango como 0°
+  // (lectura relativa al propio cuerpo). Misma convención de giro/sentido que
+  // _cadena2D — una sola forma de recorrer la cadena en todo el módulo.
+  function _headingsTramos(tramos, i0, i1) {
+    var h = 0, out = [], i, g;
+    for (i = i0; i < i1; i++) {
+      if (i > i0) {
+        g = Number(tramos[i].giro) || 0;
+        if (tramos[i].sentido === 'der') g = -g;
+        h += g;
+      }
+      out.push(h);
+    }
+    return out;
+  }
+
+  // ---------------------------------------------------------------------------
+  // GANCHOS TERMINALES DE UN MARCO CERRADO — QUÉ LETRA DIBUJA CADA PATA
+  // ---------------------------------------------------------------------------
+  // → { ini: LETRA, fin: LETRA } de los dos ganchos que `_estriboPerimetral`
+  // traza (el del INICIO del fierro y el del FIN), o null si esta figura no los
+  // declara como parciales.
+  //
+  // POR QUÉ EXISTE (defecto medido 14-ago). El estribo con ganchos DECLARADOS
+  // (106A y familia: A y F son los ganchos, B–E el rectángulo) listaba dim A =
+  // dim F = extGancho() y dibujaba la pata con la MISMA constante calculada
+  // aparte dentro de `_estriboPerimetral`. Mientras nadie tocara esas dims las
+  // dos cuentas coincidían por casualidad; en cuanto el usuario escribía una
+  // medida (o un Δ) el corte crecía y el trazo no se movía: MEDIDO en la 106A
+  // rol estribo φ8, dim_a 7.5 → 12.5, largo 167 → 172, kg 138.8 → 139.8, y el
+  // perímetro dibujado 169.213659 → 169.213659 (0.000000 de diferencia). Con esta
+  // función `_estriboPerimetral` puede leer el largo que el usuario PIDIÓ para
+  // cada pata, así que medir y dibujar vuelven a salir del mismo número.
+  //
+  // `ini`/`fin` siguen el orden de los TRAMOS (el primero y el último), que es el
+  // mismo con el que el trazador recorre la figura: gancho A = inicio del fierro,
+  // gancho B del trazo = último parcial. El espejo de la pose invierte el eje U
+  // de la sección DESPUÉS, así que no cambia quién es quién.
+  function ganchosTerminales(figura, rol) {
+    var f = (figura || '').toUpperCase();
+    if (familiaDeDibujo(f, rol || 'estribo') !== 'estribo') return null;
+    if (!esEstriboConGanchos(f)) return null;     // 104x: ganchos IMPLÍCITOS, sin dim propia
+    var tr = tramosDeFigura(f);
+    if (!tr || tr.tramos.length < 5) return null;
+    var a = tr.tramos[0], b = tr.tramos[tr.tramos.length - 1];
+    if (!a || !b || a.lado == null || b.lado == null) return null;
+    return { ini: a.lado, fin: b.lado };
+  }
+
+  // ---------------------------------------------------------------------------
+  // ¿POR DÓNDE LLEGA AL TRAZO LA MEDIDA DE ESTE LADO? — el simétrico del ángulo
+  // ---------------------------------------------------------------------------
+  // → 'dims' | 'marco' | 'gancho' | null.
+  //
+  // El motor ya declaraba, para el ÁNGULO, en qué figuras el control mueve el
+  // dibujo y en cuáles es mudo (`trazoLeeAngulos`), y reglas.js lo AVISA. Para la
+  // DIMENSIÓN ese simétrico no existía, y por eso una medida escrita en un lado
+  // que el trazo no lee subía el largo de corte y los kg sin mover la polilínea ni
+  // decir una palabra: MEDIDO sobre las 63 figuras × sus lados × roles ES/CBS, 62
+  // de 518 combinaciones con Δ quedaban MUDAS —el corte subía 5.00 y el dibujo
+  // 0.000— con 0 avisos.
+  //
+  // NO ES UN BOOLEANO, y eso no es una complicación gratuita: la dim tiene TRES
+  // rutas distintas hacia el dibujo y cada una acepta cosas distintas.
+  //   · 'dims'   → cadena / recta / cabezal: la polilínea se construye TRAMO A
+  //     TRAMO con las dims, así que CUALQUIER medida de ese lado la mueve.
+  //   · 'gancho' → pata terminal DECLARADA de un marco cerrado (106x A y F): llega
+  //     entera por `anchor.ganchoDim`, o sea también acepta cualquier medida.
+  //   · 'marco'  → lado que lleva una medida del MARCO DE NÚCLEO (104x A/C/B/D,
+  //     106x B..E, todos los de la traba). El marco NO sale de las dims: lo fija el
+  //     hormigón (recubrimiento + pilas) — «el marco manda la forma», fix 13-ago.
+  //     Ahí sólo entra el Δ (por `anchor.marcoDelta`, que es un CRECIMIENTO); una
+  //     medida FIJA se lista y se corta, pero el trazo sigue saliendo del hormigón.
+  //   · null     → ninguna ruta: esa dim no toca el dibujo de ninguna forma.
+  // Quién puede usar cada ruta lo decide reglas.js, que es quien sabe si el usuario
+  // escribió una medida fija o un Δ.
+  function canalDelTrazo(figura, rol, lado) {
+    var f = (figura || '').toUpperCase();
+    var L = String(lado == null ? '' : lado).toUpperCase();
+    var fam = familiaDeDibujo(f, rol || null);
+    if (fam !== 'estribo' && fam !== 'traba' && fam !== 'rombo') return 'dims';
+    var g = ganchosTerminales(f, rol);
+    if (g && (g.ini === L || g.fin === L)) return 'gancho';
+    var ejes = ejesMarcoSeccion(f, rol);
+    if (ejes && (ejes[L] === 'u' || ejes[L] === 'v')) return 'marco';
+    return null;
   }
 
   // ¿Qué EXTREMOS llevan pata (gancho)? Convención del catálogo: A = pata del
@@ -406,6 +741,25 @@
       else if (emp.extremo === 'fin') eFin = emp.valor;
       else if (emp.extremo === 'ambos') { eIni = emp.valor; eFin = emp.valor; }
     }
+    // Δ POR DIMENSIÓN, EXTREMO DEL DESARROLLO (`anchor.delta = {ini, fin}`).
+    // -------------------------------------------------------------------------
+    // El Δ del lado DOMINANTE ya viene sumado a la dim (o sea el trazo YA es más
+    // largo): lo que falta decidir es POR QUÉ PUNTA creció. Sin esto el centrado
+    // reparte el Δ mitad y mitad — que es la respuesta a una pregunta que el
+    // usuario no hizo: él dijo "extiende ESTE extremo", no "ensancha la barra
+    // simétricamente".
+    // Va por el MISMO canal que el empalme y no por uno nuevo a propósito: el
+    // empalme es exactamente el mismo problema (largo extra que asoma por una
+    // punta concreta) y su sesgo está calibrado desde hace tandas
+    // (_normalizarCadena centra el bbox MENOS ini/fin, _cabezalLongitudinal hace
+    // lo propio). Un segundo mecanismo paralelo se desincronizaría del primero.
+    // Se suman en vez de sustituirse: una barra puede empalmar Y llevar Δ.
+    // Lo que NO comparten es el aviso: reglas._avisarFueraDelHormigon sigue dando
+    // holgura sólo por `empalme` — un Δ que saca la barra del hormigón TIENE que
+    // avisar, porque no es un asome normativo sino una medida que el usuario
+    // escribió y puede haberse pasado.
+    var dl = (anchor && anchor.delta) || null;
+    if (dl) { eIni += Number(dl.ini) || 0; eFin += Number(dl.fin) || 0; }
     return { ini: eIni, fin: eFin };
   }
 
@@ -563,6 +917,224 @@
     return _rev2D(_ganchoFinal2D(_rev2D(_ganchoFinal2D(pts, R, sinClamp)), R, sinClamp));
   }
 
+  // ===========================================================================
+  // ÁNGULO POR BARRA — EL CATÁLOGO SUGIERE, EL COMPONENTE DECIDE
+  // ===========================================================================
+  // Definición del usuario, textual: «el catálogo define un ángulo SUGERIDO; cuando
+  // creamos algo, ese ángulo viene por defecto; si lo modificamos, ESE es el nuevo
+  // valor. No debo girar el ángulo, sólo desplazarme entre los rangos (0-90 /
+  // 90-180). No hay ángulo negativo — ahí ya es otra figura. Sólo debo ver variar la
+  // POSICIÓN del gancho. El largo total debe seguir siendo el mismo.»
+  //
+  // De ahí salen las tres reglas de este bloque, y ninguna es una interpretación:
+  //
+  //  1. EL LARGO NO SE TOCA. El ángulo entra como GIRO en `_cadena2D`, que decide la
+  //     DIRECCIÓN del tramo; el LARGO de cada tramo lo sigue dando su dim. Por
+  //     construcción, mover un ángulo no puede cambiar ni un lado ni el largo de
+  //     corte ni los kg: mueve la punta, no la barra. (Con dims 'auto' sí cambian,
+  //     y debe ser así: el 'auto' es una respuesta al hormigón y la figura cambió de
+  //     forma. Lo que se conserva siempre es que dims y trazo salgan del MISMO
+  //     número — que es lo único que este motor no puede permitirse romper.)
+  //
+  //  2. EL RANGO ES EL DE SU PROPIO DOBLEZ. El valor del catálogo es el que MANDA el
+  //     rango: si nace ≤ 90° se mueve en (0, 90]; si nace > 90° se mueve en [90,
+  //     180). Fuera de ahí NO se aproxima ni se recorta: se IGNORA (queda el del
+  //     catálogo) y se AVISA, porque cruzar el rango es otra figura — un gancho de
+  //     135° convertido en un quiebre de 45° deja de cerrar el estribo, y eso no es
+  //     "el mismo fierro un poco distinto".
+  //     Los extremos abiertos (0 y 180) tampoco entran: 0 = el tramo sigue recto (no
+  //     hay doblez) y 180 = la pata se pliega sobre el cuerpo. Los dos describen una
+  //     figura que no existe en el catálogo.
+  //
+  //  3. QUÉ ÁNGULO ES EL 1/2/3/4 LO DICE EL CATÁLOGO, NO ESTE MÓDULO. El mapa
+  //     slot → doblez se LEE de la misma fuente que produjo la lista de ángulos:
+  //       · figura del SEED (sin geometría) → la colocación de `derivarTramos`
+  //         (α1 en el primer doblez, α2 en el último, el resto hacia adentro);
+  //       · figura DIBUJADA en el Diseñador → el mismo filtro con que el diseñador
+  //         escribió la lista (los dobleces ESPECIALES, ≠90 y ≠0, en orden de
+  //         trazado).
+  //     Inventar un orden acá pondría el α del gancho sobre una esquina de 90°.
+  //
+  // LA IDENTIDAD DE LA FIGURA NO LA MUEVE EL ÁNGULO POR BARRA — y es deliberado.
+  // ---------------------------------------------------------------------------
+  // Quién dibuja la figura (`familiaDeDibujo`), si es un contorno CERRADO
+  // (`_esPerimetro`, `esEstriboConGanchos`), cuáles son sus pares espejo y qué lados
+  // son elegibles como dominante SE SIGUEN LEYENDO DEL CATÁLOGO, con los ángulos del
+  // catálogo. El override sólo entra donde se produce GEOMETRÍA (el trazo y todo lo
+  // que se mide sobre él). Por eso las funciones de identidad llaman a
+  // `tramosDeFigura(f)` pelado y las de geometría le pasan el override.
+  // El motivo es el enunciado del propio usuario: mientras el ángulo se mueva DENTRO
+  // de su rango sigue siendo LA MISMA figura. Si la identidad siguiera al override,
+  // bajar un gancho de 135° a 130° convertiría un estribo en una cadena abierta —
+  // otro constructor, otro anclaje, otro reparto— por mover un control fino.
+  //
+  // DÓNDE NO MUEVE NADA (y hay que decirlo): el marco cerrado (`_estriboPerimetral`),
+  // el rombo y la traba clásica NO leen ángulos — su forma la manda el MARCO de
+  // núcleo y su gancho es el arco sísmico calibrado. Un override ahí es mudo, así que
+  // `trazoLeeAngulos` lo declara y reglas.js lo AVISA en vez de dejar al usuario
+  // moviendo un número que no mueve la barra.
+  function angulosCatalogo(figura) {
+    var spec = _spec(figura);
+    if (!spec) return null;
+    return (spec.angulos || []).map(Number);
+  }
+
+  // Mapa slot de ángulo → índice de DOBLEZ (0 = el primer doblez de la cadena), o
+  // -1 si ese slot no cae en ningún doblez. Lo consume la UI para decir "α2 es este
+  // vértice" y lo consume `_aplicarAngDibujo` para colocar el override.
+  //
+  // COLOCACIÓN DEL SEED: es EXACTAMENTE la de `derivarTramos` (α1 en el primer
+  // doblez, α2 en el último, α3+ hacia adentro desde el segundo). Se escribe una
+  // sola vez acá y derivarTramos ya no la duplica: si alguna vez cambia, cambian las
+  // dos a la vez o ninguna.
+  function _mapaAngSeed(dobleces, nAng) {
+    var m = [], i;
+    for (i = 0; i < nAng; i++) m.push(-1);
+    if (dobleces >= 1 && nAng >= 1) m[0] = 0;
+    if (dobleces >= 2 && nAng >= 2) m[1] = dobleces - 1;
+    for (i = 2; i < nAng && (i - 1) < dobleces - 1; i++) m[i] = i - 1;
+    return m;
+  }
+
+  // COLOCACIÓN DE UNA FIGURA DIBUJADA: el diseñador guarda en `angulos` sólo los
+  // dobleces ESPECIALES (giro ≠ 90 y ≠ 0), en orden de trazado — ver
+  // disenador.js::_guardarFigura. Se lee el mismo filtro para saber a qué vértice
+  // corresponde cada α.
+  function _mapaAngDibujo(tramos, nAng) {
+    var m = [], i, g;
+    for (i = 1; i < tramos.length; i++) {
+      g = Math.abs(Number(tramos[i] && tramos[i].giro) || 0);
+      if (g !== 90 && g !== 0) m.push(i - 1);
+    }
+    while (m.length < nAng) m.push(-1);
+    return m.slice(0, Math.max(nAng, 0));
+  }
+
+  function mapaAngulosFigura(figura) {
+    var spec = _spec(figura);
+    if (!spec) return null;
+    var nAng = (spec.angulos || []).length;
+    var geo = spec.geometria;
+    var t = (geo && geo.tramos && geo.tramos.length) ? geo.tramos : null;
+    if (t) return _mapaAngDibujo(t, nAng);
+    return _mapaAngSeed((spec.parciales || []).length - 1, nAng);
+  }
+
+  // Rango en el que puede moverse el ángulo `i` de esta figura → {lo, hi} o null.
+  // Lo fija el valor del CATÁLOGO (el sugerido): es SU doblez el que tiene rango.
+  function rangoAngulo(figura, i) {
+    var cat = angulosCatalogo(figura);
+    if (!cat) return null;
+    var k = Number(i);
+    if (!(k >= 0) || k >= cat.length) return null;
+    var base = Number(cat[k]);
+    if (!(base > 0) || !(base < 180)) return null;
+    return (base <= 90) ? { lo: 0, hi: 90 } : { lo: 90, hi: 180 };
+  }
+
+  // ¿Puede el ángulo `i` de esta figura valer `valor`?
+  //   { ok, valor, base, motivo, vacio }
+  // `vacio` = el slot no trae override (null / '' ) → NO es un error y NO avisa:
+  // es el caso normal de una receta que sólo toca uno de sus ángulos.
+  // `motivo` es texto de usuario: reglas.js lo pega tal cual en el aviso.
+  function validarAngulo(figura, i, valor) {
+    var spec = _spec(figura);
+    var vacio = (valor == null || valor === '');
+    var k = Number(i);
+    if (!spec) {
+      return { ok: false, valor: null, base: null, vacio: vacio,
+        motivo: vacio ? null : 'la figura no está en el catálogo' };
+    }
+    var cat = angulosCatalogo(figura) || [];
+    var base = (k >= 0 && k < cat.length) ? Number(cat[k]) : null;
+    if (vacio) return { ok: false, valor: null, base: base, vacio: true, motivo: null };
+    if (base == null) {
+      return { ok: false, valor: null, base: null, vacio: false,
+        motivo: 'la figura ' + spec.codigo + ' declara ' + cat.length + ' ángulo' +
+          (cat.length === 1 ? '' : 's') + ': no existe el ' + (k + 1) };
+    }
+    var v = Number(valor);
+    if (!isFinite(v)) {
+      return { ok: false, valor: null, base: base, vacio: false,
+        motivo: '"' + valor + '" no es un número' };
+    }
+    var r = rangoAngulo(figura, k);
+    if (!r) {
+      return { ok: false, valor: null, base: base, vacio: false,
+        motivo: 'el ángulo ' + (k + 1) + ' del catálogo vale ' + base + '°, que no ' +
+          'describe un doblez: no hay rango en el que moverlo' };
+    }
+    // Extremos ABIERTOS: 0 = sin doblez, 180 = la pata plegada sobre el cuerpo.
+    // El 90 es la frontera y pertenece a los dos rangos (es un doblez legítimo en
+    // cualquiera de ellos).
+    var dentro = (r.lo === 0) ? (v > 0 && v <= 90) : (v >= 90 && v < 180);
+    if (!dentro) {
+      return { ok: false, valor: null, base: base, vacio: false,
+        motivo: v + '° se sale del rango de su doblez (' + r.lo + '–' + r.hi +
+          '°, el que le da su ángulo de catálogo ' + base + '°): cambiar de rango ' +
+          'sería otra figura' };
+    }
+    return { ok: true, valor: v, base: base, vacio: false, motivo: null };
+  }
+
+  // Ángulos EFECTIVOS de una barra = los del catálogo con los overrides VÁLIDOS
+  // aplicados. Siempre devuelve un array del LARGO DEL CATÁLOGO: es lo que viaja a
+  // ang1..ang4 del despiece y lo que consume la derivación de tramos, así que no
+  // puede tener más ni menos slots que la figura.
+  // Sin override (null, [] o todo vacío) devuelve el catálogo tal cual → todo lo que
+  // dependa de esto queda BYTE-IDÉNTICO a antes de esta tanda.
+  function angulosEfectivos(figura, ovr) {
+    var cat = angulosCatalogo(figura);
+    if (!cat) return [];
+    var out = cat.slice();
+    if (!ovr || !ovr.length) return out;
+    for (var i = 0; i < ovr.length && i < out.length; i++) {
+      var v = validarAngulo(figura, i, ovr[i]);
+      if (v.ok) out[i] = v.valor;
+    }
+    return out;
+  }
+
+  // ¿Hay algún override que CAMBIE algo respecto del catálogo? Fuente única para
+  // que reglas.js decida si el anchor/las medidas estrenan el canal del override:
+  // sin cambio efectivo, ni se escribe (y la ruta queda la de siempre).
+  function angulosCambian(figura, ovr) {
+    var cat = angulosCatalogo(figura);
+    if (!cat || !ovr || !ovr.length) return false;
+    var ef = angulosEfectivos(figura, ovr);
+    for (var i = 0; i < cat.length; i++) if (Number(ef[i]) !== Number(cat[i])) return true;
+    return false;
+  }
+
+  // ¿El TRAZO de esta figura lee los ángulos? Sólo la cadena genérica los honra: el
+  // marco cerrado, el rombo y la traba clásica derivan su forma del MARCO de núcleo
+  // y su gancho es el arco sísmico calibrado. Un override en esas familias mueve la
+  // dim (si el usuario también toca la dim) pero NO el dibujo, y eso hay que decirlo
+  // — es exactamente la clase de defecto (medir ≠ dibujar) que este motor persigue.
+  function trazoLeeAngulos(figura, rol) {
+    return familiaDeDibujo(figura, rol || null) === 'cadena';
+  }
+
+  // Aplica el override sobre unos tramos DIBUJADOS (los del Diseñador): clona y
+  // reescribe el `giro` del doblez que le toca a cada slot, conservando el
+  // `sentido` (el override mueve la MAGNITUD del doblez, no la mano de la figura).
+  function _aplicarAngDibujo(figura, tramos, ovr) {
+    var mapa = mapaAngulosFigura(figura);
+    if (!mapa || !mapa.length) return tramos;
+    var out = null, i, d, v;
+    for (i = 0; i < ovr.length && i < mapa.length; i++) {
+      d = mapa[i];
+      if (!(d >= 0) || (d + 1) >= tramos.length) continue;
+      v = validarAngulo(figura, i, ovr[i]);
+      if (!v.ok) continue;
+      if (!out) out = tramos.map(function (t) {
+        return { lado: t.lado, giro: t.giro, sentido: t.sentido, tipo: t.tipo, radio: t.radio };
+      });
+      out[d + 1].giro = v.valor;
+    }
+    return out || tramos;
+  }
+
   // ---------------------------------------------------------------------------
   // DERIVACIÓN DE TRAMOS — para las figuras del SEED (geometría vacía)
   // ---------------------------------------------------------------------------
@@ -587,20 +1159,21 @@
   // listado sea una pata inclinada (doblez a 45°). Si una figura del seed resulta
   // no ser así, la salida NO es tocar esta regla: es DIBUJARLA en el Diseñador de
   // figuras — su `geometria` manda sobre la derivación (ver tramosDeFigura).
-  function derivarTramos(figura) {
+  // `angOvr` (2º arg, opcional) = los ángulos POR BARRA del componente. Entra por el
+  // mismo sitio que los del catálogo —la lista `A`— y no por una rama aparte: así el
+  // mapa slot → doblez es literalmente el mismo (_mapaAngSeed lo describe), y un
+  // override sin cambios efectivos produce la MISMA cadena, tramo por tramo.
+  function derivarTramos(figura, angOvr) {
     var spec = _spec(figura);
     if (!spec) return null;
     var P = spec.parciales || [];
     if (!P.length) return null;
-    var A = (spec.angulos || []).map(Number).filter(isFinite);
+    var A = angulosEfectivos(figura, angOvr).filter(isFinite);
     var n = P.length, dobleces = n - 1, i;
     var giros = [];
     for (i = 0; i < dobleces; i++) giros.push(90);
-    if (dobleces >= 1 && A.length >= 1) giros[0] = A[0];                      // extremo inicial
-    if (dobleces >= 2 && A.length >= 2) giros[dobleces - 1] = A[1];           // extremo final
-    // 3+ ángulos listados (ninguna figura del seed llega): se van colocando hacia
-    // adentro desde el segundo doblez, en orden, sin pisar el extremo final.
-    for (i = 2; i < A.length && (i - 1) < dobleces - 1; i++) giros[i - 1] = A[i];
+    var mapa = _mapaAngSeed(dobleces, A.length);
+    for (i = 0; i < A.length; i++) if (mapa[i] >= 0) giros[mapa[i]] = A[i];
     var tramos = [{ lado: P[0], giro: 0, sentido: null }];
     for (i = 1; i < n; i++) tramos.push({ lado: P[i], giro: giros[i - 1], sentido: 'izq' });
     return tramos;
@@ -613,13 +1186,20 @@
   //   2. DERIVACIÓN desde parciales + ángulos (las 63 del seed, sin geometría).
   //   3. null → la figura se EXCLUYE con motivo (dibujabilidad), no se aproxima.
   // Devuelve { tramos, fuente:'disenador'|'derivado', arco:bool }.
-  function tramosDeFigura(figura) {
+  // `angOvr` (2º arg, opcional) = los ángulos POR BARRA. Se aplica en las DOS rutas
+  // y por eso está acá y no dentro de `derivarTramos`: una figura DIBUJADA en el
+  // Diseñador manda con sus tramos, y sin este paso el ángulo del componente sería
+  // mudo justo en las figuras que el usuario dibujó a mano (que son las que más va a
+  // querer ajustar). El mapa slot → doblez de esa ruta lo da `mapaAngulosFigura`,
+  // leído del mismo filtro con el que el diseñador escribió la lista.
+  function tramosDeFigura(figura, angOvr) {
     var spec = _spec(figura);
     if (!spec) return null;
     var geo = spec.geometria;
     var t = (geo && geo.tramos && geo.tramos.length) ? geo.tramos : null;
     var fuente = 'disenador';
-    if (!t) { t = derivarTramos(figura); fuente = 'derivado'; }
+    if (!t) { t = derivarTramos(figura, angOvr); fuente = 'derivado'; }
+    else if (angOvr && angOvr.length) t = _aplicarAngDibujo(figura, t, angOvr);
     if (!t || !t.length) return null;
     var arco = false;
     for (var i = 0; i < t.length; i++) {
@@ -726,14 +1306,22 @@
   // mismas coordenadas de host) → pilas / capas / anidado / volteo / de_pie /
   // spin / rangos funcionan sin tocar nada de esa maquinaria.
   function _cadenaGenerica(figura, dims, host, anchor, diamCm, rol) {
-    var tr = tramosDeFigura(figura);
+    // ÁNGULO POR BARRA: viaja en el anchor (`anchor.angulos`), igual que el lado
+    // dominante elegido y por la misma razón — reglas.js lo escribe YA VALIDADO y
+    // es el MISMO valor con el que acaba de resolver las dims, así que el dibujo y
+    // la medida no pueden divergir. Ausente = catálogo, ruta idéntica a la de antes.
+    var tr = tramosDeFigura(figura, anchor && anchor.angulos);
     // Sin tramos no hay cadena: red de seguridad (dibujabilidad ya la excluyó),
     // nunca un dibujo inventado.
     if (!tr) return _cabezalLongitudinal(figura, dims, host, anchor, diamCm);
     // Un lado sin dimensión toma la extensión de gancho normativa (6φ, mín 7.5),
     // la MISMA que usa reglas.js para las patas en 'auto'.
     var c = _cadena2D(tr.tramos, dims, extGancho(diamCm));
-    var ladoL = ladoDominanteFigura(figura);
+    // DIBUJO Y MEDIDA, EL MISMO DOMINANTE. El override del componente viaja en el
+    // anchor (reglas._baseDeComponente lo escribe YA VALIDADO): si el trazador
+    // leyera la cascada pelada mientras reglas._dimsEfectivas estira el lado
+    // elegido, la barra se dibujaría con un dominante y se mediría con otro.
+    var ladoL = ladoDominanteFigura(figura, anchor && anchor.ladoDominante);
     // PLANO DE TRABAJO SEGÚN EL ROL (fix 305A): una pieza de SECCIÓN (estribo /
     // traba) vive en el plano ⊥ al rumbo, no en el longitudinal. Es el mismo plano
     // (y,z) del marco de núcleo que ya usan _estriboPerimetral y _traba: la cadena
@@ -848,10 +1436,15 @@
   // Devuelve null cuando la figura NO se dibuja como cadena con ese rol (un marco
   // 104D con rol estribo lo traza `_estriboPerimetral`, cuyo rectángulo SÍ es
   // A/C = ancho, B/D = alto): ahí la regla por letra es la correcta y sigue.
-  function ejesCadenaSeccion(figura, rol) {
+  // `angOvr` (3er arg, opcional): la dirección de cada tramo sale de los GIROS, así
+  // que si el componente movió un ángulo esta clasificación TIENE que moverse con
+  // él — si no, el 'auto' mediría contra la dimensión equivocada del hormigón (el
+  // defecto D1, 11 cm de fierro fuera). `familiaDeDibujo` sigue leyendo el catálogo:
+  // QUIÉN dibuja la figura es identidad, no geometría.
+  function ejesCadenaSeccion(figura, rol, angOvr) {
     var f = (figura || '').toUpperCase();
     if (familiaDeDibujo(f, rol || 'estribo') !== 'cadena') return null;
-    var tr = tramosDeFigura(f);
+    var tr = tramosDeFigura(f, angOvr);
     if (!tr) return null;
     var heading = 0, out = {}, i, t, g, a;
     for (i = 0; i < tr.tramos.length; i++) {
@@ -905,8 +1498,8 @@
   // imposible; el backend además rechaza la dim).
   //   dimsBase = lados YA resueltos (los 'fija' y las diagonales, que son patas).
   //   ejes     = salida de ejesCadenaSeccion   ·   util = { u: ancho, v: alto }.
-  function autosCadenaSeccion(figura, dimsBase, ejes, util, diamCm) {
-    var tr = tramosDeFigura((figura || '').toUpperCase());
+  function autosCadenaSeccion(figura, dimsBase, ejes, util, diamCm, angOvr) {
+    var tr = tramosDeFigura((figura || '').toUpperCase(), angOvr);
     if (!tr || !ejes) return { u: util.u, v: util.v };
     // Coordenadas del trazo sobre `eje` con TODOS los lados auto de ese eje en t.
     // Los del otro eje quedan en 0: corren perpendicular y no mueven esta cuenta
@@ -1010,10 +1603,10 @@
   // figura no puede encoger ahí. No es un clamp — la pieza sigue centrada en su
   // marco y se ve tal cual; lo que no se hace es inventarle un encogimiento.
   // Devuelve null si la figura no es una cadena de sección.
-  function insetCadenaSeccion(figura, dims, delta, rol, diamCm) {
+  function insetCadenaSeccion(figura, dims, delta, rol, diamCm, angOvr) {
     var f = (figura || '').toUpperCase();
-    var tr = tramosDeFigura(f);
-    var ejes = ejesCadenaSeccion(f, rol || 'estribo');
+    var tr = tramosDeFigura(f, angOvr);
+    var ejes = ejesCadenaSeccion(f, rol || 'estribo', angOvr);
     if (!tr || !ejes) return null;
     var d = Number(delta) || 0, k;
     // Coordenadas del trazo sobre `eje` con TODOS sus lados retirados `s`.
@@ -1076,8 +1669,8 @@
   // se va a dibujar y no una aproximación. Lo consume el reparto de reglas.js: una
   // capa reparte EJES de barra sobre un rango que ya viene descontado el φ/2 de la
   // barra, y una cadena de sección no es un punto en ese eje — ocupa `u`.
-  function extensionCadenaSeccion(figura, dims, diamCm) {
-    var tr = tramosDeFigura((figura || '').toUpperCase());
+  function extensionCadenaSeccion(figura, dims, diamCm, angOvr) {
+    var tr = tramosDeFigura((figura || '').toUpperCase(), angOvr);
     if (!tr) return null;
     var c = _cadena2D(tr.tramos, dims, extGancho(diamCm));
     // CON GANCHOS DE RADIO (Tanda V): se mide lo que se DIBUJA. La pata de un
@@ -1112,11 +1705,16 @@
   // cortas), en el muro no — la pata que cruza el espesor quedaba 9.6 fija o
   // se pasaba de largo, y "cambiar todo a auto no cambiaba nada" (medido:
   // MH 104B φ16 en muro de 20: profundidad dibujada 16.4 en un núcleo de 14.2).
-  function ejesCadenaLong(figura) {
+  // `ladoDomOvr` (opcional) = el dominante ELEGIDO por el componente. La
+  // clasificación u/v/d es RELATIVA al dominante, así que si el usuario cambia el
+  // dominante cambian los ejes de todos los demás lados: leerla con la cascada
+  // pelada mientras el resto del motor usa el elegido daría un 'auto' medido
+  // contra la dimensión equivocada del hormigón.
+  function ejesCadenaLong(figura, ladoDomOvr, angOvr) {
     var f = (figura || '').toUpperCase();
-    var tr = tramosDeFigura(f);
+    var tr = tramosDeFigura(f, angOvr);
     if (!tr) return null;
-    var ladoDom = ladoDominanteFigura(f);
+    var ladoDom = ladoDominanteFigura(f, ladoDomOvr);
     var heading = 0, hDom = null, i, t, g;
     var hs = [];
     for (i = 0; i < tr.tramos.length; i++) {
@@ -1146,12 +1744,12 @@
   // del 'auto' de sección (_intervaloCabe sobre el trazo ARQUEADO, afín en t),
   // medida en el marco del DOMINANTE: se rota el trazo para dejarlo sobre +u —
   // que es lo que hace el dibujo (_orientarCadena) — y se acota la extensión v.
-  function autoProfundidadLong(figura, dimsBase, utilV, diamCm) {
+  function autoProfundidadLong(figura, dimsBase, utilV, diamCm, ladoDomOvr, angOvr) {
     var f = (figura || '').toUpperCase();
-    var tr = tramosDeFigura(f);
-    var ejes = ejesCadenaLong(f);
+    var tr = tramosDeFigura(f, angOvr);
+    var ejes = ejesCadenaLong(f, ladoDomOvr, angOvr);
     if (!tr || !ejes) return null;
-    var ladoDom = ladoDominanteFigura(f);
+    var ladoDom = ladoDominanteFigura(f, ladoDomOvr);
     var iL = -1, i;
     for (i = 0; i < tr.tramos.length; i++) {
       if (tr.tramos[i].lado === ladoDom) { iL = i; break; }
@@ -1193,7 +1791,11 @@
   // lado se estira con el auto y cuál recibe el empalme, en silencio. Ahora manda
   // la cascada determinista de la FIGURA (catálogo → 'B' → primer parcial).
   // Lo único que sigue dependiendo de las dims es si la cadena CIERRA (topología).
-  function ladoLongitudinalCadena(figura, dims) {
+  // `ladoDomOvr` (opcional) = el dominante ELEGIDO por el componente. Sólo puede
+  // cambiar la RESPUESTA 'A'…'I': una cadena CERRADA sigue devolviendo null aunque
+  // la receta traiga un override (no hay lado que estirar, y el override ya lo
+  // rechaza validarLadoDominante por contorno cerrado).
+  function ladoLongitudinalCadena(figura, dims, ladoDomOvr) {
     var f = (figura || '').toUpperCase();
     var spec = _spec(f);
     if (!spec || familiaDeDibujo(f, null) !== 'cadena') return undefined;
@@ -1203,7 +1805,7 @@
     // igual para saber si la cadena cierra, que es lo único que se decide sin dims.
     var c = _cadena2D(tr.tramos, _dimsNumericas(dims), 1);
     if (_cadenaCierra(c.pts)) return null;
-    return ladoDominanteFigura(f);
+    return ladoDominanteFigura(f, ladoDomOvr);
   }
 
   // SOBRES de una cadena: cuánto ASOMAN los extremos MÁS ALLÁ del lado
@@ -1215,10 +1817,10 @@
   // la luz libre completa y lo centraba sin descontar esas proyecciones (el
   // cabezal de 90° nunca lo sufrió: su proyección horizontal es 0).
   // Devuelve { ini, fin } en cm (0/0 si no es cadena abierta con longitudinal).
-  function sobresCadena(figura, dims, ladoLPref, diamCm) {
+  function sobresCadena(figura, dims, ladoLPref, diamCm, angOvr) {
     var f = (figura || '').toUpperCase();
     if (familiaDeDibujo(f, null) !== 'cadena') return { ini: 0, fin: 0 };
-    var tr = tramosDeFigura(f);
+    var tr = tramosDeFigura(f, angOvr);
     if (!tr) return { ini: 0, fin: 0 };
     // ladoLPref: el llamador (reglas) YA sabe cuál es el longitudinal — con las
     // dims a medio resolver, recalcularlo aquí elegiría una pata por ser "la
@@ -1264,8 +1866,8 @@
 
   // Radiografía de la cadena de una figura (para tests, avisos y la UI):
   // { fuente, tramos, giros, cerrada, ladoLong }.
-  function cadenaInfo(figura, dims) {
-    var tr = tramosDeFigura(figura);
+  function cadenaInfo(figura, dims, angOvr) {
+    var tr = tramosDeFigura(figura, angOvr);
     if (!tr) return null;
     var c = _cadena2D(tr.tramos, _dimsNumericas(dims), 1);
     return {
@@ -1383,12 +1985,37 @@
     var insetInf = (anchor.insetInf != null) ? Number(anchor.insetInf) : insetSup;
     var insetLat = (anchor.insetLat != null) ? Number(anchor.insetLat) : insetSup;
     var r = (diamCm || 0) / 2;      // recub = a la CARA del fierro → eje = +φ/2
+    // Δ POR DIMENSIÓN EN UNA PIEZA DE SECCIÓN (`anchor.marcoDelta = {alto,ancho}`).
+    // -------------------------------------------------------------------------
+    // Una pieza de sección CERRADA (104x, 106x) NO se dibuja con sus dims: su forma
+    // la manda el MARCO ("el marco manda la forma", fix 13-ago) y las dims que se
+    // listan se DERIVAN de él. Por eso un Δ que sólo sumara a la dim movía el largo
+    // de corte y los kg y dejaba el trazo 3D EXACTAMENTE donde estaba — MEDIDO en
+    // la viga-semilla: ES 104D con Δ +5 en B daba dims B/D 52 → 57 y perímetro
+    // dibujado 169.2137 en los dos casos (0.0000 de diferencia). Eso es medir una
+    // cosa y dibujar otra, que es el defecto que esta tanda existe para impedir.
+    // Ahora el Δ CRECE EL MARCO, así que la dim derivada y el trazo salen del mismo
+    // número por construcción y no pueden divergir.
+    //
+    // CRECE SIMÉTRICO (mitad por lado) y no es una elección estética: en un contorno
+    // cerrado el Δ va siempre en PAREJA (B con D miden los dos el alto), o sea el
+    // lado que mide `alto` pasa a medir `alto+Δ` — el marco entero se agranda Δ y
+    // sigue centrado en su eje. Por eso mismo un contorno cerrado no lee `extremo`:
+    // ahí no hay una punta por la que crecer.
+    //
+    // SIN TOPE CONTRA EL HORMIGÓN (regla del proyecto). Si el Δ saca el estribo del
+    // elemento, el marco sale del elemento y SE VE: el aviso lo da quien compara la
+    // pieza con el hormigón, no un clamp acá que dibujaría un estribo que cabe
+    // mintiendo sobre la barra que se va a cortar.
+    var dM = anchor.marcoDelta || null;
+    var dAlto = dM ? (Number(dM.alto) || 0) / 2 : 0;
+    var dAncho = dM ? (Number(dM.ancho) || 0) / 2 : 0;
     return {
       recubV: recubV,
       recubLat: recubLat,
-      ySup: host.alto / 2 - recubSup - r - insetSup,
-      yInf: -host.alto / 2 + recubInf + r + insetInf,
-      w2: host.ancho / 2 - recubLat - r - insetLat
+      ySup: host.alto / 2 - recubSup - r - insetSup + dAlto,
+      yInf: -host.alto / 2 + recubInf + r + insetInf - dAlto,
+      w2: host.ancho / 2 - recubLat - r - insetLat + dAncho
     };
   }
 
@@ -1527,18 +2154,40 @@
     // que su tope lo fija el lado del marco que primero se le acaba, no la diagonal.
     var pg = _pataGancho(m, diamCm);
     var largoPata = Math.max(0, Math.min(pg.norma, pg.max));
+    // LARGO QUE EL USUARIO PIDIÓ PARA CADA PATA (`anchor.ganchoDim = {ini, fin}`).
+    // -------------------------------------------------------------------------
+    // El largo de arriba es geometría DERIVADA: la norma (6φ mín 7.5) acotada al
+    // sitio real del marco. Vale mientras nadie declare esa pata — y en el estribo
+    // con ganchos DECLARADOS (106x: A y F son parciales con su propia dim) el
+    // usuario SÍ puede declararla, escribiendo una medida fija o un Δ. Hasta acá
+    // esa medida iba al despiece y el dibujo seguía con la constante: MEDIDO en la
+    // 106A rol estribo φ8 con Δ +5 en A → dim_a 7.5 → 12.5, largo de corte 167 →
+    // 172, kg 138.8 → 139.8 y el perímetro dibujado 169.213659 → 169.213659, o sea
+    // 0.000000 de movimiento. Ahora la pata declarada manda sobre la derivada.
+    //
+    // SIN TOPE (regla del proyecto). El `pg.max` acota la pata NORMATIVA porque es
+    // un número que eligió el motor y porque un anillo anidado no puede ensanchar;
+    // una medida que escribió el usuario NO se recorta ni a la norma ni al marco:
+    // si no cabe, la barra asoma y se ve, y lo dicen los canales de siempre (el
+    // aviso de fierro fuera del hormigón, medido sobre estos mismos puntos, y el
+    // control de bbox del anidado en reglas.distribuidorLayered). Recortarla acá
+    // dibujaría un estribo que cabe mintiendo sobre la barra que se va a cortar.
+    // Ausente (el caso normal) → `largoPata` tal cual, trazo byte-idéntico.
+    var gd = anchor.ganchoDim || null;
+    var pataA = (gd && gd.ini != null) ? Math.max(0, Number(gd.ini)) : largoPata;
+    var pataB = (gd && gd.fin != null) ? Math.max(0, Number(gd.fin)) : largoPata;
     var dirPata = { y: -D, z: D };     // diagonal hacia el núcleo (abajo-derecha) — COMÚN
 
     // GANCHO A (inicio del fierro): pata → codo [θ: 45° → −90°] → tangente al lado izq.
     var pA = { x: xx, y: O.y + Rc * D, z: O.z + Rc * D };            // punto del arco en θ=45°
-    var puntaA = { x: xx, y: pA.y + dirPata.y * largoPata, z: pA.z + dirPata.z * largoPata };
+    var puntaA = { x: xx, y: pA.y + dirPata.y * pataA, z: pA.z + dirPata.z * pataA };
     var codoA = _arcoYZ(O, Rc, Math.PI / 4, -Math.PI / 2, xx, true); // incluye θ=45°, termina θ=−90°
 
     // GANCHO B (fin del fierro): lado superior llega a T0 (θ=0) → codo [θ: 0 → −135°] → pata.
     var T0 = { x: xx, y: ySup, z: -w2 + Rc };                        // tangencia con lado superior
     var codoB = _arcoYZ(O, Rc, 0, -3 * Math.PI / 4, xx, false);      // excluye θ=0 (T0 ya en la lista)
     var pB = codoB[codoB.length - 1];                                // punto del arco en θ=−135°
-    var puntaB = { x: xx, y: pB.y + dirPata.y * largoPata, z: pB.z + dirPata.z * largoPata };
+    var puntaB = { x: xx, y: pB.y + dirPata.y * pataB, z: pB.z + dirPata.z * pataB };
 
     // POLILÍNEA continua (el codo A termina tangente en (h2−Rc,−w2) y sigue colineal
     // bajando el lado izq → el motor no mete fillet ahí; ídem lado superior → T0):
@@ -1881,7 +2530,10 @@
     // puntas libres son patas de gancho y sus quiebres no son de 90°.
     if ((rol === 'estribo' || rol === 'traba') && familiaDeDibujo(f, rol) === 'cadena') {
       if (!(dSep > 0)) { res.delta = 0; return res; }   // δ nulo = marcos superpuestos
-      var sec = insetCadenaSeccion(f, dims, dSep, rol, opts.diamCm);
+      // opts.angulos = el ángulo POR BARRA del componente: el retiro se resuelve
+      // sobre el MISMO trazo que se va a dibujar (si leyera el del catálogo, la capa
+      // anidada encogería según una figura que no es la que está en pantalla).
+      var sec = insetCadenaSeccion(f, dims, dSep, rol, opts.diamCm, opts.angulos);
       if (sec) {
         res.delta = dSep; res.inset = dSep; res.criterio = 'seccion';
         res.dims = sec.dims; res.cabe = sec.cabe; res.motivo = sec.motivo;
@@ -1993,10 +2645,45 @@
     // Retiro de los lados de una cadena de sección para anidarla δ por lado (el
     // −2δ del anillo, resuelto exacto para lados que no se cortan a 90°).
     insetCadenaSeccion: insetCadenaSeccion,
-    // LADO DOMINANTE de una figura (cascada catálogo → 'B' → 1er parcial). Fuente
-    // ÚNICA: la usan reglas._ladoLongitudinal, el trazador de cadenas y la ficha.
+    // LADO DOMINANTE de una figura (override del componente → cascada catálogo →
+    // 'B' → 1er parcial). Fuente ÚNICA: la usan reglas._ladoLongitudinal, el
+    // trazador de cadenas y la ficha.
     ladoDominanteFigura: ladoDominanteFigura,
+    // ¿Puede este lado ser el dominante? → {ok, lado, motivo}. El motivo es texto
+    // de usuario: reglas lo pega tal cual en el aviso cuando ignora un override.
+    validarLadoDominante: validarLadoDominante,
+    // Letras que la UI puede ofrecer como dominante (las demás van deshabilitadas).
+    ladosDominantesElegibles: ladosDominantesElegibles,
+    // PARES ESPEJO: { lado: su par } derivado del contorno CERRADO. Un Δ en un lado
+    // se replica en su par o la figura deja de cerrar. La UI lo usa para mostrar
+    // que los dos se mueven juntos.
+    paresEspejoFigura: paresEspejoFigura,
+    // { LETRA:'u'|'v' } para las piezas de sección que se dibujan DEL MARCO: qué
+    // medida del marco lleva cada lado. reglas lo usa para que un Δ crezca el marco
+    // (si sólo creciera la dim, el trazo 3D se quedaría quieto).
+    ejesMarcoSeccion: ejesMarcoSeccion,
+    // { ini, fin } = las LETRAS de las dos patas que dibuja el marco cerrado con
+    // ganchos declarados (106x). reglas manda su medida por `anchor.ganchoDim`,
+    // que es lo que hace que una pata escrita a mano mueva el trazo y no sólo el
+    // largo de corte. null = esta figura no declara sus ganchos (104x, 105x…).
+    ganchosTerminales: ganchosTerminales,
+    // ¿Por dónde llega la medida de ESTE lado al dibujo? 'dims' | 'marco' |
+    // 'gancho' | null. Simétrico de `trazoLeeAngulos`: null (y 'marco' con una
+    // medida fija) = el trazo lo manda el marco de núcleo y la dim sólo viaja al
+    // despiece — reglas lo AVISA en vez de dejar que el 3D mienta en silencio.
+    canalDelTrazo: canalDelTrazo,
     sobresCadena: sobresCadena,   // reserva del auto-largo (puntas inclinadas)
+    // ÁNGULO POR BARRA (el catálogo sugiere, el componente decide). La UI arma el
+    // control con esto: `rangoAngulo` le da los topes del slider, `mapaAngulosFigura`
+    // le dice qué vértice mueve cada α, `validarAngulo` le da el motivo listo para
+    // mostrar y `trazoLeeAngulos` si en esta figura el control mueve el dibujo.
+    angulosCatalogo: angulosCatalogo,     // los SUGERIDOS (el default de la ficha)
+    angulosEfectivos: angulosEfectivos,   // catálogo + overrides VÁLIDOS (→ ang1..ang4)
+    angulosCambian: angulosCambian,       // ¿el override cambia algo? (si no, ruta de siempre)
+    mapaAngulosFigura: mapaAngulosFigura, // slot α → índice de doblez (−1 = ninguno)
+    rangoAngulo: rangoAngulo,             // { lo, hi } del doblez de ese α
+    validarAngulo: validarAngulo,         // { ok, valor, base, motivo, vacio }
+    trazoLeeAngulos: trazoLeeAngulos,     // false = el marco manda la forma (α mudo)
     // ANIDADO: fuente ÚNICA del criterio "figura dentro de figura" (la usan
     // distribuidorLayered/distribuidorArreglo de reglas.js).
     anidarFigura: anidarFigura,

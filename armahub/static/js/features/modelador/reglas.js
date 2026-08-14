@@ -235,7 +235,45 @@
 
   // UNA dim declarada → {modo:'fija',valor} | {modo:'auto'} | null (= no se puede
   // canonizar: se deja EXACTAMENTE como vino y el llamador ya avisó).
+  //
+  // Δ POR DIMENSIÓN (14-ago) — el shape crece a
+  //   { modo, valor, delta:number|null, extremo:'ini'|'fin' }
+  // y `_dimCanon` lo PRESERVA en la vista canónica en vez de recortarlo. Sin esto
+  // el Δ moría acá: `_dimsEfectivas` lee la CANÓNICA, no `comp.dims` crudo, así
+  // que un campo que no se copie simplemente no existe para el motor (es la misma
+  // causa por la que un número plano del enfierrador se resolvía como 'auto').
+  // delta ausente / null / 0 = no se escribe ningún campo → la dim canónica queda
+  // BYTE-IDÉNTICA a la de antes de esta tanda.
   function _dimCanon(letra, decl, mig) {
+    var res = _dimCanonModo(letra, decl, mig);
+    return (res && typeof res === 'object') ? _deltaCanon(letra, decl, res, mig) : res;
+  }
+
+  // Δ de UNA dim → se agrega al objeto canónico `out` (y se devuelve `out`).
+  // El Δ es INDEPENDIENTE del modo: se puede extender tanto un lado 'auto' (que el
+  // motor resolvió contra el hormigón) como uno 'fija' (que escribió el usuario).
+  // Un Δ ilegible NO se adivina ni se pone en 0 en silencio: se avisa y se ignora.
+  function _deltaCanon(letra, decl, out, mig) {
+    if (!decl || typeof decl !== 'object') return out;
+    if (decl.delta == null || decl.delta === '') return out;
+    var d = _numFinito(decl.delta);
+    if (d == null) {
+      _problema(mig, 'La dim ' + letra + ' trae Δ "' + decl.delta + '", que no es un ' +
+        'número: se ignora (el lado queda con su medida resuelta).');
+      return out;
+    }
+    if (d === 0) return out;              // Δ 0 = sin Δ: nada que escribir
+    out.delta = d;
+    // EXTREMO por el que se DESARROLLA el cambio. Default 'fin' porque es el
+    // sentido natural del trazado: `_cadena2D` recorre la figura del primer tramo
+    // al último, o sea alargar un lado empuja el vértice de LLEGADA y el resto de
+    // la cadena lo acompaña. 'ini' es la lectura espejo (empuja el de SALIDA).
+    var ex = String(decl.extremo == null ? '' : decl.extremo).toLowerCase().trim();
+    out.extremo = (ex === 'ini' || ex === 'inicio') ? 'ini' : 'fin';
+    return out;
+  }
+
+  function _dimCanonModo(letra, decl, mig) {
     if (typeof decl === 'number' || typeof decl === 'string') {
       // SHAPE DEL ENFIERRADOR: la dim es el número pelado. Hasta acá caía en la
       // rama 'auto' de _dimsEfectivas (`decl.modo` no existe en un número) y el
@@ -401,6 +439,84 @@
   function jerarquiaDe(comp) {
     if (comp && comp._jerarquia) return comp._jerarquia;
     return _jerarquiaCanon(comp, null);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Δ POR DIMENSIÓN, EFECTIVOS — CON LOS PARES ESPEJO YA REPLICADOS
+  // ---------------------------------------------------------------------------
+  // Fuente ÚNICA del Δ de cada lado: la consultan _dimsEfectivas (que lo suma al
+  // largo) y _baseDeComponente (que decide por qué punta asoma). La UI la lee para
+  // pintar el par que se mueve junto.
+  //
+  // PARES ESPEJO: en una figura CERRADA los lados opuestos miden LO MISMO —el alto
+  // de un estribo lo miden B y D—, así que un Δ en uno solo no da "un estribo más
+  // alto": da un cuadrilátero que NO CIERRA, una barra que el taller no puede
+  // doblar. Por eso el Δ se REPLICA en el par. Quién es el par de quién lo deriva
+  // figura_puntos.paresEspejoFigura de la GEOMETRÍA del contorno, no una tabla por
+  // código de figura (el catálogo es data del backend: una tabla se quedaría vieja
+  // en cuanto entre una figura nueva).
+  //
+  // EL Δ EXPLÍCITO GANA. Si el usuario escribió Δ en los DOS lados del par, se
+  // respetan los dos tal cual: la réplica es una AYUDA para el caso normal, no una
+  // regla que pise lo que el usuario escribió a mano (aunque el resultado no
+  // cierre — eso es dato honesto y se ve).
+  // Devuelve { LETRA: { delta, extremo, origen:'propio'|'espejo', de } }.
+  function _deltasEfectivos(comp) {
+    var g = _dimsDecl(comp), out = {}, k, d;
+    for (k in g) {
+      if (!Object.prototype.hasOwnProperty.call(g, k)) continue;
+      d = g[k];
+      if (!d || typeof d !== 'object' || !d.delta) continue;
+      out[k] = { delta: Number(d.delta), extremo: (d.extremo === 'ini') ? 'ini' : 'fin',
+        origen: 'propio', de: null };
+    }
+    var fp = _fp();
+    var pares = (fp && fp.paresEspejoFigura) ? fp.paresEspejoFigura(comp && comp.figura) : null;
+    if (!pares) return out;
+    // Snapshot de las claves PROPIAS: la réplica no puede encadenarse (si B copia a
+    // D, D no puede volver a copiar a B y duplicar el efecto).
+    Object.keys(out).forEach(function (L) {
+      var P = pares[L];
+      if (!P || out[P]) return;          // sin par, o el par ya trae el SUYO
+      out[P] = { delta: out[L].delta, extremo: out[L].extremo, origen: 'espejo', de: L };
+    });
+    return out;
+  }
+
+  // ---------------------------------------------------------------------------
+  // ÁNGULO POR BARRA — comp.angulos MANDA sobre el catálogo
+  // ---------------------------------------------------------------------------
+  // `comp.angulos` es un campo que la receta YA traía (la viga-semilla lo escribe
+  // desde su primera versión) y que hasta hoy NO LEÍA NADIE: el trazado derivaba los
+  // giros de `spec.angulos` y generar.js escribía ang1..ang4 desde el spec también.
+  // O sea que el ángulo del componente era decorativo — se guardaba y no llegaba ni
+  // al dibujo ni al despiece.
+  //
+  // Devuelve el array EFECTIVO (catálogo + overrides válidos) SÓLO cuando cambia
+  // algo, y null cuando no. Ese null es lo que garantiza la no-regresión: sin cambio
+  // efectivo no se escribe el canal y todas las rutas quedan las de siempre, byte por
+  // byte (la semilla declara exactamente los ángulos de su catálogo, así que sigue
+  // valiendo null). El aviso de un override inválido lo emite _baseDeComponente una
+  // sola vez por componente, no esta función — que se llama por cada capa y por cada
+  // re-resolución de dims (mismo criterio que _domElegido).
+  function _angOvr(comp) {
+    var fp = _fp();
+    if (!fp || !fp.angulosCambian || !comp) return null;
+    if (!fp.angulosCambian(comp.figura, comp.angulos)) return null;
+    return fp.angulosEfectivos(comp.figura, comp.angulos);
+  }
+
+  // LADO DOMINANTE ELEGIDO por el componente, YA VALIDADO (o null si no hay
+  // elección o la que hay no sirve). Sin canal de avisos a propósito: el aviso lo
+  // emite _baseDeComponente una sola vez por componente — si lo emitiera esta
+  // función saldría repetido por cada capa y cada re-resolución de dims.
+  function _domElegido(comp) {
+    var v = comp && comp.lado_dominante;
+    if (v == null || String(v).trim() === '') return null;
+    var fp = _fp();
+    if (!fp || !fp.validarLadoDominante) return null;
+    var r = fp.validarLadoDominante(comp.figura, v);
+    return r.ok ? r.lado : null;
   }
 
   function normalizarComponente(comp) {
@@ -1171,21 +1287,32 @@
   // _estriboPerimetral ignora → las N barras quedaban TODAS en el mismo plano
   // (colapso), y un cabezal volteado se repartía sobre su propio eje longitudinal
   // dejando además su coordenada local sin definir.
+  // `rango2` (la 2ª línea de distribución del ARREGLO POR ÁREA) viaja por el MISMO
+  // camino que `rango`: su `eje` también se declara en ejes del MUNDO y también hay
+  // que traducirlo. Sin esto, un arreglo por área en una pieza volteada repartiría su
+  // segunda línea sobre el eje de antes de girar — el mismo defecto que ya costó el
+  // colapso de las N barras en un plano cuando `rango.eje` no se traducía.
   function _cfgLocal(dist, P) {
     if (!dist || !P) return dist;
     var tieneCapas = (dist.eje_capas != null);
     var tieneRango = !!(dist.rango && dist.rango.eje != null);
-    if (!tieneCapas && !tieneRango) return dist;
+    var tieneRango2 = !!(dist.rango2 && dist.rango2.eje != null);
+    if (!tieneCapas && !tieneRango && !tieneRango2) return dist;
     var c = {};
     for (var k in dist) if (dist.hasOwnProperty(k)) c[k] = dist[k];
     if (tieneCapas) c.eje_capas = P[String(dist.eje_capas)] || dist.eje_capas;
-    if (tieneRango) {
-      var r = {};
-      for (var j in dist.rango) if (dist.rango.hasOwnProperty(j)) r[j] = dist.rango[j];
-      r.eje = P[String(dist.rango.eje)] || dist.rango.eje;
-      c.rango = r;                      // clon: NO se muta el rango de la receta
-    }
+    if (tieneRango) c.rango = _rangoLocal(dist.rango, P);
+    if (tieneRango2) c.rango2 = _rangoLocal(dist.rango2, P);
     return c;
+  }
+
+  // Clon de un rango con su `eje` traducido al marco local. CLON: la receta del
+  // usuario no se muta nunca (el dirty-tracking del editor la compara entera).
+  function _rangoLocal(rango, P) {
+    var r = {};
+    for (var j in rango) if (rango.hasOwnProperty(j)) r[j] = rango[j];
+    r.eje = P[String(rango.eje)] || rango.eje;
+    return r;
   }
 
   // ---------------------------------------------------------------------------
@@ -1776,9 +1903,16 @@
   // Eje LOCAL sobre el que el rango puede repartir; null = es el eje de la NORMAL de
   // la cara en la que un cabezal SE APOYA (tiene pata), y esa coordenada no es un
   // dato libre: la fija el recubrimiento + las pilas (_marcoCara).
-  function _ejeRangoReparto(base, cfg, host) {
-    var decl = cfg && cfg.rango && cfg.rango.eje;
-    var eje = (decl === 'y' || decl === 'z') ? decl : 'x';
+  // `campo` (4º arg) = 'rango' (default, lo de siempre) o 'rango2' (la 2ª línea de
+  // distribución del arreglo por área). Es el MISMO criterio para las dos: el eje se
+  // declara en la receta y sólo se rechaza cuando es el de la cara contra la que un
+  // cabezal se apoya.
+  function _ejeRangoReparto(base, cfg, host, campo) {
+    var cual = campo || 'rango';
+    var r = cfg && cfg[cual];
+    var decl = r && r.eje;
+    var eje = (decl === 'y' || decl === 'z') ? decl
+      : ((cual === 'rango2' && decl !== 'x') ? _ejeLibreArreglo(base, cfg, host) : 'x');
     // Sólo un cabezal se apoya CONTRA una cara. Estribo/traba/cadena de sección
     // encuadran el marco de núcleo: no tienen eje de anclaje que proteger y su
     // reparto sigue exactamente como estaba.
@@ -1787,6 +1921,30 @@
     // ¿Tiene PATA sobre ese eje? Sin desarrollo la pieza es plana en la cara y su
     // profundidad sigue siendo un dato libre (101A de malla / traba recta).
     return (_spanEnEje(base, host, eje) > _EPS_POS) ? null : eje;
+  }
+
+  // EJE POR DEFECTO DE LA 2ª LÍNEA — «nunca el eje del desarrollo de la barra».
+  // ---------------------------------------------------------------------------
+  // La receta normalmente lo declara (el editor lo escribe al colocar la figura: «los
+  // ejes deben salir de DONDE ingresamos la figura»). Cuando no viene, se ELIGE
+  // MIDIENDO la pieza, no preguntándole su familia — el mismo criterio que
+  // `_repartoDePieza` y `_ejeRangoReparto`: de los dos ejes que quedan libres tras el
+  // primer rango, se toma aquel sobre el que la pieza MENOS se desarrolla, o sea el
+  // que su cuerpo NO recorre. Repartir a lo largo del propio desarrollo de la barra
+  // sería apilar copias una encima de otra, que es exactamente lo que este motor
+  // aprendió a no hacer (ver la nota de `rango.eje` del cabezal).
+  // Empate (una pieza que ocupa lo mismo en los dos): manda el orden x → y → z, que
+  // es el mismo con el que el resto del archivo recorre los ejes.
+  function _ejeLibreArreglo(base, cfg, host) {
+    var eje1 = _ejeRangoReparto(base, cfg, host, 'rango');
+    var cand = ['x', 'y', 'z'].filter(function (e) { return e !== eje1; });
+    if (!cand.length) return 'z';
+    var mejor = cand[0], mejorSpan = Infinity, i, s;
+    for (i = 0; i < cand.length; i++) {
+      s = _spanEnEje(base, host, cand[i]);
+      if (s < mejorSpan - _EPS_POS) { mejorSpan = s; mejor = cand[i]; }
+    }
+    return mejor;
   }
 
   // POSICIONES QUE REPARTE UN RANGO — fuente ÚNICA de linear y arreglo.
@@ -1798,14 +1956,25 @@
   // El aviso apunta a los DOS controles que sí mueven una barra por el eje de su
   // cara sin despegarla: el LADO de la cara (testero/cortina opuesta) y las CAPAS,
   // que entran hacia el núcleo con el sentido que publica _marcoCara.
-  function _rangoReparto(base, cfg, host) {
-    var eje = _ejeRangoReparto(base, cfg, host);
+  // `campo` (4º arg) = 'rango' (default) o 'rango2' (2ª línea del arreglo por área).
+  function _rangoReparto(base, cfg, host, campo) {
+    var cual = campo || 'rango';
+    var eje = _ejeRangoReparto(base, cfg, host, cual);
+    var etiq = (cual === 'rango2') ? '2º rango' : 'Rango';
     if (!eje) {
-      _avisar(base, 'Rango ignorado: pide repartir por el eje de la CARA contra la que se ' +
+      _avisar(base, etiq + ' ignorado: pide repartir por el eje de la CARA contra la que se ' +
         'ancla esta barra, y ahí la posición la fija el recubrimiento, no el rango. Se generó ' +
         '1 barra en su anclaje: para llevarla al otro lado usa el Lado de la cara, y para ' +
         'duplicarla hacia adentro usa las capas.');
       return { eje: null, pos: [null] };
+    }
+    if (cual === 'rango2') {
+      // El @ del 2º rango es el SUYO (`rango2.sep`), nunca el `cfg.sep` del primero:
+      // son dos líneas independientes y mezclarlos daría una malla con el paso de la
+      // otra dirección sin que nada lo dijera.
+      var pos2 = posicionesRango(cfg.rango2, undefined);
+      if (pos2._tope) _avisar(base, _avisoTope(pos2._tope.sep));
+      return { eje: eje, pos: pos2 };
     }
     // PASO REAL (no el nominal): el conteo ArmaPilot ceil(span/@)+1 CIERRA el
     // intervalo, así que las nR barras se reparten equiespaciadas entre from y to
@@ -1910,7 +2079,7 @@
       // inset del marco) y su encogimiento lo resuelve anidarFigura.
       var dimsBase = base.dims;
       if (!seccion && offPos > 0 && base._comp) {
-        var dRe = _dimsEfectivas(base._comp, host, base.jerarquia, offPos);
+        var dRe = _dimsEfectivas(base._comp, host, base.jerarquia, offPos, base.avisos);
         if (dRe) dimsBase = dRe;
       }
       // δ de DIMS del anidado = k·φ_propio (holgura lateral contra el fierro de la
@@ -1918,7 +2087,7 @@
       // separados k·gap), y por eso viaja aparte en opts.sep.
       var an = (c > 0 && (anidaSeccion || anidaFig))
         ? _fp().anidarFigura(base.figura, dimsBase, c * base.diam, base.rol,
-          { sep: offPos, diamCm: base.diam })
+          { sep: offPos, diamCm: base.diam, angulos: base.anchorBase && base.anchorBase.angulos })
         : null;
       var usaAn = !!(an && an.criterio !== 'recta');
       var dimsCapa = usaAn ? an.dims : dimsBase;
@@ -2118,6 +2287,14 @@
     // componente, no de cada copia.
     var rrA = _rangoReparto(base, cfg, host);
     var ejeRA = rrA.eje, posA = rrA.pos;
+    // ARREGLO POR ÁREA — la 2ª línea de distribución (ver _arregloPorArea). ADITIVO:
+    // sólo entra si la receta trae `rango2` con from/to. Sin él, todo lo de abajo
+    // queda EXACTAMENTE como estaba (es la garantía de compatibilidad: hay recetas
+    // guardadas y tests que dependen de n_capas/sep_capas/eje_capas).
+    if (cfg && cfg.rango2 && cfg.rango2.from != null && cfg.rango2.to != null) {
+      var area = _arregloPorArea(base, cfg, host, rrA);
+      if (area) return area;
+    }
     // 1 capa = distribución lineal pura: NO se toca el eje de profundidad, así el
     // anchor queda BYTE-A-BYTE igual al de distribuidorLinear (garantía de cero
     // regresión). Con ≥2 capas SÍ se fija el plano de profundidad en TODAS las
@@ -2158,7 +2335,7 @@
       // usuario manda la posición también con anidar activo).
       var an = ((anidaCerr || anidaAb) && !unaCapa && c > 0)
         ? _fp().anidarFigura(base.figura, base.dims, c * base.diam, base.rol,
-          { sep: off, diamCm: base.diam })
+          { sep: off, diamCm: base.diam, angulos: base.anchorBase && base.anchorBase.angulos })
         : null;
       var usaAn = !!(an && an.criterio !== 'recta');
       var dimsCapaA = usaAn ? an.dims : base.dims;
@@ -2205,6 +2382,90 @@
         var plA = _placement(base, puntosA, unaCapa ? { rango: 1 } : { rango: 1, capa: c + 1 });
         if (usaAn) plA.dims = _clonDims(dimsCapaA);   // ítem propio (dims reales de corte)
         placements.push(plA);
+      }
+    }
+    return placements;
+  }
+
+  // ---------------------------------------------------------------------------
+  // ARREGLO POR ÁREA — DOS LÍNEAS DE DISTRIBUCIÓN (definición del usuario, 14-ago)
+  // ---------------------------------------------------------------------------
+  // «Es casi como distribución pero aparece una segunda línea de distribución a lo
+  //  largo del otro plano; los ejes deben salir de DONDE ingresamos la figura; misma
+  //  lógica de snaps y con posibilidad de agregar tramos.»
+  //
+  // CONTRATO (lo que construye el editor):
+  //   distribucion = { modo:'arreglo',
+  //                    rango:  { eje, from, to, sep, tramos? },   // 1ª línea
+  //                    rango2: { eje, from, to, sep, tramos? } }  // 2ª línea
+  // Los dos `eje` se declaran en ejes del MUNDO y `_cfgLocal` los traduce al marco
+  // local de la pose, igual que siempre. `from`/`to` son coordenadas absolutas del
+  // host (cm) y `tramos` funciona en LAS DOS líneas, con el MISMO redondeo y el
+  // MISMO criterio de paso real: las dos salen de `posicionesRango`, que es la única
+  // función que sabe repartir un rango en este motor. No se reimplementa nada —
+  // reimplementarlo era la vía por la que la garantía "n_capas=1 == lineal puro" se
+  // rompió antes.
+  //
+  // CON QUÉ RESUELVE LOS TRES CASOS DEL USUARIO:
+  //   · TRABA CLÁSICA DE MURO      → altura × largo (las dos líneas en el plano de la
+  //     cortina; la barra cose el espesor, que es el eje que NO se reparte);
+  //   · TRABA DE CONFINAMIENTO     → lo mismo, con tramos en la línea de la altura;
+  //   · ESTRIBO DE CONFINAMIENTO   → 1-3 "columnas" cargadas a un costado: la 2ª
+  //     línea con 2 o 3 posiciones juntas en un extremo de su rango, que es
+  //     exactamente lo que hace el `from/to/@` cuando el tramo es corto.
+  //
+  // POR QUÉ NO ES "OTRA CAPA": las capas (n_capas/sep_capas) son una PROFUNDIDAD con
+  // ANIDADO — la capa k es un anillo concéntrico que encoge. La 2ª línea NO encoge
+  // nada: es la misma barra TRASLADADA a otra coordenada, como la 1ª. Por eso acá no
+  // entra `anidarFigura` y por eso, si la receta trae las dos cosas, las capas se
+  // IGNORAN con aviso en vez de multiplicarse en silencio (rango × rango2 × capas es
+  // un volumen, no lo que el usuario pidió).
+  //
+  // LOS DOS EJES SON DISTINTOS, O NO HAY ÁREA. Si el 2º rango apunta al mismo eje
+  // que el 1º, no hay segunda dirección: son dos repartos sobre la misma línea y el
+  // resultado sería N×M barras superpuestas. Se ignora el 2º con aviso y el
+  // componente sigue por la ruta clásica (n_capas/sep_capas), que es lo que la
+  // receta también trae.
+  //
+  // FIERRO FUERA DEL HORMIGÓN: `from`/`to` son los CENTROS de las barras y la pieza
+  // ocupa su propio ancho en cada eje. No se clampa ninguna posición —eso escondería
+  // una receta imposible detrás de una barra de aspecto normal—: si la pieza asoma,
+  // `_avisarFueraDelHormigon` lo dice con el eje y los centímetros, medido sobre los
+  // puntos finales. Un solo canal, el de siempre.
+  // Devuelve null cuando el 2º rango no aplica (el llamador sigue por la ruta clásica).
+  function _arregloPorArea(base, cfg, host, rr1) {
+    var rr2 = _rangoReparto(base, cfg, host, 'rango2');
+    if (rr2.eje && rr1.eje && rr2.eje === rr1.eje) {
+      _avisar(base, '2º rango ignorado: reparte por el MISMO eje (' + rr2.eje +
+        ') que el primero, así que no hay una segunda dirección — serían barras una ' +
+        'encima de otra. Elige el otro eje del plano.');
+      return null;
+    }
+    var nCapasPed = (cfg && Number(cfg.n_capas)) || 1;
+    if (nCapasPed > 1) {
+      _avisar(base, 'Capas ignoradas: con un 2º rango la segunda línea de distribución ' +
+        'ya es el arreglo por área (n_capas = ' + nCapasPed + ' describiría una tercera ' +
+        'dirección). Se reparte rango × 2º rango.');
+    }
+    var placements = [], i, j;
+    for (j = 0; j < rr2.pos.length; j++) {
+      for (i = 0; i < rr1.pos.length; i++) {
+        // MISMO techo que el resto del motor: el producto de las dos líneas explota
+        // igual de rápido que rango × capas (un 400@10 por un 250@10 son 10 400
+        // barras). Corta los DOS bucles y deja el porqué a la vista.
+        if (placements.length >= TOPE_PLACEMENTS_COMP) {
+          _avisar(base, _avisoTope((cfg.rango && cfg.rango.sep) || (cfg && cfg.sep)));
+          return placements;
+        }
+        var extra = {};
+        if (rr1.eje) extra[rr1.eje] = rr1.pos[i];
+        if (rr2.eje) extra[rr2.eje] = rr2.pos[j];
+        var anchor = _mezclarAnchor(base.anchorBase, extra);
+        var puntos = _fp().figuraAPuntos(base.figura, base.dims, host, anchor,
+          { rol: base.rol || 'estribo', diamCm: base.diam });
+        // `fila` = la posición en la 2ª línea. NO se llama `capa` a propósito: una
+        // capa implica anidado/profundidad y acá no hay ninguno de los dos.
+        placements.push(_placement(base, puntos, { rango: i + 1, fila: j + 1 }));
       }
     }
     return placements;
@@ -2698,7 +2959,10 @@
   // por la normal de su cara. Sólo lo pasa distribuidorLayered para las capas k>0
   // de una pieza LONGITUDINAL; ver ahí el porqué (el 'auto' de un lado ⊥ mide
   // desde donde la pieza ESTÁ, y la capa k no está donde la capa 1).
-  function _dimsEfectivas(comp, host, nivel, profConsumida) {
+  // `avisos` (5º arg, opcional) = lista donde escribir lo que el Δ deje imposible.
+  // Es la MISMA lista de `base.avisos` que ya cosecha expandirComponente: el Δ no
+  // estrena canal.
+  function _dimsEfectivas(comp, host, nivel, profConsumida, avisos) {
     var dims = {};
     // DECLARACIÓN CANÓNICA, no `comp.dims` crudo: acá entran recetas del Template
     // Editor ({modo,valor}) y del ENFIERRADOR (número plano), y las dos tienen que
@@ -2712,7 +2976,22 @@
     // útil: antes una 105A/106A con todo en auto salía 592+592+… = 29.6 m y
     // 46.7 kg FANTASMA que validar_geometria aceptaba (hallazgo D2 del
     // verificador de la Tanda 2).
-    var ladoLong = _ladoLongitudinal(comp.figura, g);
+    // DOMINANTE ELEGIDO por el componente (validado). Se resuelve UNA vez y se pasa
+    // a TODOS los caminos que preguntan por el dominante: el que estira el auto
+    // (_ladoLongitudinal), el que clasifica u/v/d (ejesCadenaLong), el que resuelve
+    // la profundidad (autoProfundidadLong) y el que dibuja (anchorBase.ladoDominante).
+    // Si uno solo se lo saltara, la barra se mediría con un dominante y se dibujaría
+    // con otro — que es exactamente el defecto D1 que ya costó 11 cm de fierro fuera
+    // del hormigón cuando medir y dibujar leyeron dos trazos distintos.
+    var domOvr = _domElegido(comp);
+    // ÁNGULO POR BARRA — se resuelve UNA vez y va a TODAS las medidas que dependen
+    // de la DIRECCIÓN de los tramos (la clasificación u/v/d, el 'auto' de sección,
+    // la profundidad del longitudinal, los sobres) y al anchor que dibuja. El motivo
+    // es el mismo que el del dominante elegido: si una sola de esas rutas leyera el
+    // ángulo del catálogo mientras el resto usa el del componente, la barra se
+    // mediría con una figura y se dibujaría con otra.
+    var angOvr = _angOvr(comp);
+    var ladoLong = _ladoLongitudinal(comp.figura, g, domOvr);
     var fpD = _fp();
     var ganchoAuto = (fpD && fpD.extGancho) ? fpD.extGancho(Number(comp.diam) / 10)
       : Math.max(6 * Number(comp.diam) / 10, 7.5);
@@ -2728,7 +3007,7 @@
     // hormigón). null = no es cadena de sección → sigue la regla por letra.
     var ejesSec = (fpD && fpD.ejesCadenaSeccion &&
       (comp._rol === 'estribo' || comp._rol === 'traba'))
-      ? fpD.ejesCadenaSeccion(comp.figura, comp._rol) : null;
+      ? fpD.ejesCadenaSeccion(comp.figura, comp._rol, angOvr) : null;
     // Y el valor de ese 'auto' RESERVA los quiebres, igual que el auto-largo del
     // longitudinal reserva los sobres de las puntas (fpD.sobresCadena).
     var autoSec = null;
@@ -2755,7 +3034,7 @@
       // traza —, y ahora las dos piezas de sección tienen un solo recubrimiento.
       var phiSec = Number(comp.diam) / 10 || 0;
       autoSec = fpD.autosCadenaSeccion(comp.figura, baseSec, ejesSec,
-        { u: mk.anchoUtil - phiSec, v: mk.altoUtil - phiSec }, phiSec);
+        { u: mk.anchoUtil - phiSec, v: mk.altoUtil - phiSec }, phiSec, angOvr);
     }
     // AUTO UNIVERSAL DEL LONGITUDINAL (feedback de raíz 13-ago): el lado de un
     // cabezal que corre PERPENDICULAR al dominante cruza la PROFUNDIDAD de la
@@ -2766,7 +3045,7 @@
     // trazo arqueado), medida en el marco del dominante.
     var ejesLong = null, autoProf = null;
     if (comp._rol === 'cabezal' && fpD && fpD.ejesCadenaLong) {
-      ejesLong = fpD.ejesCadenaLong(comp.figura);
+      ejesLong = fpD.ejesCadenaLong(comp.figura, domOvr, angOvr);
       var tieneV = false, kk;
       if (ejesLong) {
         for (kk in ejesLong) {
@@ -2794,7 +3073,7 @@
         // otro lado — el usuario no fijó esa medida, la eligió el motor.
         var profUtil = ((caraL === 'lateral') ? mk.anchoUtil : mk.altoUtil) - phiL -
           (Number(profConsumida) || 0);
-        autoProf = fpD.autoProfundidadLong(comp.figura, baseLong, profUtil, phiL);
+        autoProf = fpD.autoProfundidadLong(comp.figura, baseLong, profUtil, phiL, domOvr, angOvr);
       }
     }
     // ROMBO DE SECCIÓN (106A y familia, fix 13-ago): el MARCO manda la forma —
@@ -2841,7 +3120,7 @@
         // el backend además la rechaza) — nada de clamps.
         var fpS = _fp();
         var sob = (fpS && fpS.sobresCadena)
-          ? fpS.sobresCadena(comp.figura, dims, ladoLong, Number(comp.diam) / 10 || 0)
+          ? fpS.sobresCadena(comp.figura, dims, ladoLong, Number(comp.diam) / 10 || 0, angOvr)
           : { ini: 0, fin: 0 };
         dims[ladoLong] = mk.largoUtil - (sob.ini || 0) - (sob.fin || 0);
       } else {
@@ -2891,13 +3170,234 @@
     // Se re-consulta con las dims YA RESUELTAS (no con las declaradas): para una
     // cadena, `_ladoLongitudinal` decide con ellas si la figura CIERRA, y una
     // cerrada devuelve null = no hay lado que empalmar.
-    var lado = _ladoLongitudinal((comp.figura || '').toUpperCase(), dims);
+    var lado = _ladoLongitudinal((comp.figura || '').toUpperCase(), dims, domOvr);
     if (comp._rol === 'cabezal') {
       var empTot = _empalmeTotalCm(comp, Number(comp.diam) / 10);
       if (empTot > 0 && dims[lado] != null) dims[lado] = Number(dims[lado]) + empTot;
     }
+    // -------------------------------------------------------------------------
+    // Δ POR DIMENSIÓN — SE APLICA AL FINAL, SOBRE EL LARGO YA RESUELTO
+    // -------------------------------------------------------------------------
+    // El Δ es lo ÚLTIMO que pasa, y es deliberado: es un ajuste sobre la medida —
+    // «este lado, el que sea que te haya dado, 12 cm más» —, no una entrada del
+    // solver. Si entrara antes, un +2 cm podría re-decidir TOPOLOGÍA (si la cadena
+    // cierra, y por lo tanto qué lado es el longitudinal y cuál recibe el empalme)
+    // y el usuario vería moverse cosas que no tocó. Después del empalme por la
+    // misma razón: los dos son largo extra y se SUMAN, ninguno reemplaza al otro.
+    //
+    // EL Δ VIAJA AL DESPIECE POR CONSTRUCCIÓN. `dims` es lo que va al placement, y
+    // generar.js copia `pl.dims[L]` a `dim_a..dim_i` tal cual y estima el largo
+    // como suma de lados: no hace falta —ni se debe— agregarle una rama que sepa
+    // del Δ. El largo de corte y los kg lo incluyen porque el Δ ES parte de la dim.
+    //
+    // SIN CLAMP (regla del proyecto). Un Δ negativo que deja el lado en 0 o menos
+    // NO se aplasta a 0: se deja el número tal cual —para que se VEA en la ficha y
+    // en el 3D— y se AVISA. Aplastarlo escondería una receta imposible detrás de
+    // una barra de aspecto normal, que es exactamente el patrón que trajo los
+    // defectos de las tandas anteriores.
+    var deltas = _deltasEfectivos(comp), kD, antes;
+    for (kD in deltas) {
+      if (!Object.prototype.hasOwnProperty.call(deltas, kD)) continue;
+      if (dims[kD] == null) continue;        // lado que esta figura no resuelve
+      antes = Number(dims[kD]);
+      dims[kD] = antes + deltas[kD].delta;
+      if (!(dims[kD] > 0)) {
+        _avisarEn(avisos, 'Δ ' + _num2(deltas[kD].delta) + ' cm en el lado ' + kD +
+          (deltas[kD].origen === 'espejo' ? ' (espejo de ' + deltas[kD].de + ')' : '') +
+          ': lo deja en ' + _num2(dims[kD]) + ' cm (medía ' + _num2(antes) + '). ' +
+          'Se genera igual —el dato tiene que verse— pero esa barra no es construible.');
+      }
+    }
     return dims;
   }
+
+  // Número corto para los textos de aviso (2 decimales, sin ceros de relleno).
+  function _num2(v) { return Math.round(Number(v) * 100) / 100; }
+
+  // Δ del lado DOMINANTE de una pieza longitudinal → {ini, fin} en cm, o null.
+  // `dims` son las dims YA RESUELTAS: con ellas _ladoLongitudinal sabe si la cadena
+  // cierra (una cerrada devuelve null y no hay dominante que sesgar).
+  function _deltaDelDominante(comp, dims, domOvr) {
+    if (!comp || comp._rol !== 'cabezal') return null;
+    var L = _ladoLongitudinal((comp.figura || '').toUpperCase(), dims, domOvr);
+    if (L == null) return null;
+    var d = _deltasEfectivos(comp)[L];
+    if (!d || !d.delta) return null;
+    return (d.extremo === 'ini') ? { ini: d.delta, fin: 0 } : { ini: 0, fin: d.delta };
+  }
+
+  // Δ DE UNA PIEZA DE SECCIÓN → CUÁNTO CRECE SU MARCO ({alto, ancho} en cm, o null).
+  // ---------------------------------------------------------------------------
+  // Una pieza de sección CERRADA no se dibuja con sus dims: su forma la manda el
+  // marco de núcleo y las dims se DERIVAN de él. Un Δ que sólo sumara a la dim
+  // movía el largo de corte y los kg y dejaba el trazo 3D quieto — MEDIDO en la
+  // viga-semilla: ES 104D con Δ +5 en B daba dims 52 → 57 y perímetro dibujado
+  // 169.2137 en los dos casos. Traduciendo el Δ a crecimiento del MARCO, la dim
+  // derivada y el trazo vuelven a salir del mismo número.
+  //
+  // CADA EJE CRECE UNA VEZ, NO UNA POR LADO. El alto de un estribo lo miden B y D
+  // —el mismo alto visto dos veces—, así que un Δ de +5 replicado en el par es un
+  // marco 5 cm más alto, no 10. Por eso se toma el Δ del eje, no la suma: sumarlos
+  // doblaría el crecimiento y el perímetro dibujado dejaría de coincidir con el
+  // largo de corte (que sí sube 10, porque son dos lados de 5 más cada uno).
+  function _deltaMarcoSeccion(comp, avisos) {
+    if (!comp || (comp._rol !== 'estribo' && comp._rol !== 'traba')) return null;
+    var fp = _fp();
+    if (!fp || !fp.ejesMarcoSeccion) return null;
+    var ejes = fp.ejesMarcoSeccion(comp.figura, comp._rol);
+    if (!ejes) return null;                       // se dibuja con sus dims: nada que crecer
+    var deltas = _deltasEfectivos(comp), acc = { u: null, v: null }, k, e;
+    for (k in deltas) {
+      if (!Object.prototype.hasOwnProperty.call(deltas, k)) continue;
+      e = ejes[k];
+      if (e !== 'u' && e !== 'v') continue;       // gancho: no lleva medida del marco
+      if (acc[e] == null) { acc[e] = deltas[k].delta; continue; }
+      if (Math.abs(acc[e] - deltas[k].delta) > 1e-9) {
+        // Los dos lados que miden LA MISMA medida del marco piden Δ distintos. El
+        // trazo del marco es un rectángulo: no existe un rectángulo cuyos dos lados
+        // opuestos midan cosas distintas, así que se dibuja el MAYOR (la envolvente
+        // real de la barra) y se avisa. Las dims NO se tocan: cada una conserva el
+        // número que escribió el usuario, que es lo que se corta.
+        _avisarEn(avisos, 'Δ distintos en los dos lados que miden el mismo ' +
+          (e === 'u' ? 'ancho' : 'alto') + ' (' + _num2(acc[e]) + ' y ' +
+          _num2(deltas[k].delta) + ' cm): el contorno no cierra. Se dibuja el mayor; ' +
+          'el largo de corte respeta cada lado tal como se escribió.');
+        acc[e] = Math.max(acc[e], deltas[k].delta);
+      }
+    }
+    if (acc.u == null && acc.v == null) return null;
+    return { ancho: acc.u || 0, alto: acc.v || 0 };
+  }
+
+  // ---------------------------------------------------------------------------
+  // LADOS CON MEDIDA EXPRESADA POR EL USUARIO → { LETRA: 'fija' | 'delta' }
+  // ---------------------------------------------------------------------------
+  // Un lado en 'auto' SIN Δ no lo escribió nadie: lo resolvió el motor contra el
+  // hormigón, así que el trazo y la dim salen del mismo sitio por construcción y
+  // no hay nada que avisar. Los otros dos casos SÍ son una petición del usuario y
+  // por lo tanto sí pueden quedar mudos si el trazo no los lee:
+  //   'fija'  = escribió el número (dims[L] = {modo:'fija', valor});
+  //   'delta' = escribió un Δ sobre la medida que resolvió el motor (incluido el
+  //             replicado en el par espejo — es el mismo movimiento del contorno).
+  // Un lado con las dos cosas cuenta como 'fija': es la petición más fuerte y es
+  // la que decide qué aviso corresponde (la del Δ ya está cubierta por la fija).
+  function _ladosExpresados(comp) {
+    var g = _dimsDecl(comp), out = {}, k, d;
+    for (k in g) {
+      if (!Object.prototype.hasOwnProperty.call(g, k)) continue;
+      d = g[k];
+      if (d && typeof d === 'object' && d.modo === 'fija') out[k] = 'fija';
+    }
+    var del = _deltasEfectivos(comp);
+    for (k in del) {
+      if (!Object.prototype.hasOwnProperty.call(del, k)) continue;
+      if (!out[k]) out[k] = 'delta';
+    }
+    return out;
+  }
+
+  // ---------------------------------------------------------------------------
+  // GANCHO DECLARADO DE UN MARCO CERRADO → SU LARGO DIBUJADO ({ini, fin}, o null)
+  // ---------------------------------------------------------------------------
+  // El estribo con ganchos DECLARADOS (106x: A y F son parciales con dim propia)
+  // listaba esas dos dims y dibujaba la pata con la constante normativa calculada
+  // aparte dentro de `_estriboPerimetral`. Coincidían mientras nadie las tocara;
+  // en cuanto el usuario escribía una medida o un Δ, el corte y los kg subían y el
+  // trazo se quedaba quieto. MEDIDO en la 106A rol estribo φ8 con Δ +5 en A:
+  // dim_a 7.5 → 12.5, largo 167 → 172, kg 138.8 → 139.8 y el perímetro dibujado
+  // 169.213659 → 169.213659, o sea 0.000000 de movimiento y 0 avisos. Es el mismo
+  // agujero que `marcoDelta` tapó para los lados del rectángulo, en la otra mitad
+  // de la figura.
+  //
+  // SÓLO VIAJA LO QUE EL USUARIO EXPRESÓ. Con la pata en 'auto' y sin Δ no se
+  // escribe el canal y `_estriboPerimetral` sigue con su pata normativa acotada al
+  // marco, byte por byte: es lo que garantiza que ninguna receta de hoy se mueva
+  // (la dim derivada vale `round(extGancho·10)/10` y la del trazo `extGancho`, dos
+  // números que difieren en el último bit del flotante — mandarla siempre habría
+  // movido el trazo ~1e-15 en todas las 106x del catálogo).
+  function _ganchoDimSeccion(comp, dims) {
+    if (!comp || (comp._rol !== 'estribo' && comp._rol !== 'traba')) return null;
+    var fp = _fp();
+    if (!fp || !fp.ganchosTerminales) return null;
+    var g = fp.ganchosTerminales(comp.figura, comp._rol);
+    if (!g) return null;
+    var expr = _ladosExpresados(comp), out = null;
+    if (expr[g.ini] && dims[g.ini] != null) { out = out || {}; out.ini = Number(dims[g.ini]); }
+    if (expr[g.fin] && dims[g.fin] != null) { out = out || {}; out.fin = Number(dims[g.fin]); }
+    return out;
+  }
+
+  // ---------------------------------------------------------------------------
+  // MEDIDAS QUE NO MUEVEN EL TRAZO → SE AVISAN (nunca se callan)
+  // ---------------------------------------------------------------------------
+  // Cierra el hueco simétrico del que ya existía para el ángulo. Para el ángulo el
+  // motor dice «la figura se dibuja desde el MARCO de la sección, así que el ángulo
+  // viaja al despiece pero NO mueve el trazo 3D»; para la DIMENSIÓN no lo decía
+  // nadie, y una medida escrita en un lado que el trazo no lee subía el largo de
+  // corte y los kg en silencio (MEDIDO: 62 combinaciones figura × lado × rol del
+  // catálogo, 0 avisos).
+  //
+  // NO SE TOCA EL DATO: la dim, el largo de corte y los kg ya son correctos —lo
+  // que el usuario pidió es lo que se corta—. El que miente es el 3D, y lo que
+  // faltaba es que lo dijera. Tampoco se "arregla" el trazo forzando el marco a la
+  // dim: el marco lo fija el hormigón por decisión de producto («el marco manda la
+  // forma»), y cambiarlo acá movería estribos que hoy encuadran bien.
+  //
+  // DOS SITUACIONES DISTINTAS, DOS AVISOS:
+  //   · canal null   → esa dim no entra al dibujo por ninguna ruta. Es el caso de
+  //     una figura ABIERTA a la que se le puso rol de sección (una 103B como ES):
+  //     el trazo sale del marco entero y las dims nunca mandaron nada. Divergencia
+  //     PREEXISTENTE —verificada idéntica antes de esta tanda: 103B-ES con dims
+  //     fijas 80/80/80 dibuja el mismo perímetro 169.7671 que con las auto
+  //     24/52/24— que ahora al menos se ve.
+  //   · canal 'marco' + medida FIJA → el lado sí lleva una medida del marco, pero
+  //     el marco no se fija con un número: se fija con el hormigón. El Δ sí lo
+  //     mueve (crece el marco), y el aviso lo dice para que el usuario tenga a mano
+  //     el control que sí funciona.
+  //
+  // UN AVISO POR SITUACIÓN, NO UNO POR LADO: un estribo con las 4 dims fijas tiene
+  // UN problema (el marco no sale de las dims), no cuatro. Repetir el mismo texto
+  // cuatro veces con otra letra entierra los avisos que sí son distintos —el de
+  // fierro fuera del hormigón, el de la capa que no cabe— en la misma lista.
+  function _avisarDimsMudas(comp, dims, avisos) {
+    var fp = _fp();
+    if (!fp || !fp.canalDelTrazo || !comp || !dims) return;
+    var expr = _ladosExpresados(comp), k, canal;
+    var fijos = [], mudos = [];
+    // Orden ALFABÉTICO de las letras, no el de iteración del objeto: el mismo
+    // componente tiene que dar el mismo texto siempre (el aviso se compara para
+    // deduplicar y el usuario lo lee dos veces seguidas).
+    var letras = Object.keys(expr).sort();
+    for (var i = 0; i < letras.length; i++) {
+      k = letras[i];
+      if (dims[k] == null) continue;             // lado que esta figura no resuelve
+      canal = fp.canalDelTrazo(comp.figura, comp._rol, k);
+      if (canal === 'dims' || canal === 'gancho') continue;
+      if (canal === 'marco') {
+        if (expr[k] !== 'fija') continue;        // el Δ SÍ crece el marco (marcoDelta)
+        fijos.push(k + ' = ' + _num2(dims[k]));
+        continue;
+      }
+      mudos.push(k + ' = ' + _num2(dims[k]));
+    }
+    if (fijos.length) {
+      _avisarEn(avisos, _plural(fijos.length, 'Lado', 'Lados') + ' ' + fijos.join(' · ') +
+        ' cm: en la ' + comp.figura + ' como pieza de sección el marco lo fija el ' +
+        'HORMIGÓN (recubrimiento + pilas), no ' + _plural(fijos.length, 'esa dim', 'esas dims') +
+        '. La medida viaja al despiece —largo de corte y kg— pero el trazo 3D sale del ' +
+        'marco; para mover el dibujo usa el Δ, que sí lo hace crecer.');
+    }
+    if (mudos.length) {
+      _avisarEn(avisos, _plural(mudos.length, 'Lado', 'Lados') + ' ' + mudos.join(' · ') +
+        ' cm: la ' + comp.figura + ' con rol de sección se dibuja desde el MARCO de ' +
+        'núcleo y ' + _plural(mudos.length, 'ese lado no lleva', 'esos lados no llevan') +
+        ' ninguna medida suya, así que ' + _plural(mudos.length, 'viaja', 'viajan') +
+        ' al despiece —largo de corte y kg— pero NO ' +
+        _plural(mudos.length, 'mueve', 'mueven') + ' el trazo 3D.');
+    }
+  }
+
+  function _plural(n, uno, varios) { return (n === 1) ? uno : varios; }
 
   // LADO DOMINANTE / LONGITUDINAL de una figura: el que corre a lo largo del eje de
   // colocación, o sea el que el 'auto' estira contra el hormigón y el que recibe el
@@ -2912,7 +3412,11 @@
   // El "lado más largo MEDIDO" DESAPARECE como criterio (era lo que usaban las
   // cadenas): dependía de las dims del momento, así que editar una pata podía
   // mover en silencio la dim que se estira y la que se empalma.
-  function _ladoLongitudinal(figura, dims) {
+  // `domOvr` (3er arg, opcional) = el lado que ELIGIÓ el componente
+  // (comp.lado_dominante), YA validado por _domElegido. Entra con prioridad máxima,
+  // por delante del catálogo. Ausente (o inválido, que _domElegido convierte en
+  // null) → la cascada de siempre, sin un solo cambio de resultado.
+  function _ladoLongitudinal(figura, dims, domOvr) {
     // CADENAS (trazador genérico): contrato de 3 valores (ver figura_puntos):
     //   undefined = no es cadena → sigue la cascada de abajo;
     //   null      = cadena CERRADA → no hay lado que estirar (como el estribo):
@@ -2920,11 +3424,11 @@
     //               bloques que la usan preguntan por != null).
     var fpL = _fp();
     if (fpL && fpL.ladoLongitudinalCadena) {
-      var rL = fpL.ladoLongitudinalCadena(figura, dims);
+      var rL = fpL.ladoLongitudinalCadena(figura, dims, domOvr);
       if (rL !== undefined) return rL;
     }
     if (fpL && fpL.ladoDominanteFigura) {
-      var rD = fpL.ladoDominanteFigura(figura);
+      var rD = fpL.ladoDominanteFigura(figura, domOvr);
       if (rD) return rD;
     }
     var cat = _cat();
@@ -2940,10 +3444,12 @@
   // ficha del Template Editor MARCA para que se vea cuál dim se estira al girar la
   // pieza. Devuelve la letra, o null si la figura no tiene lado que estirar (cadena
   // CERRADA) o no está en el catálogo.
+  // Con un COMPONENTE respeta su `lado_dominante` (validado); con un código de
+  // figura suelto no hay componente del que leerlo y manda la cascada.
   function ladoDominante(comp) {
     if (!comp) return null;
     if (typeof comp === 'string') return _ladoLongitudinal(comp, null);
-    return _ladoLongitudinal(comp.figura, comp.dims);
+    return _ladoLongitudinal(comp.figura, comp.dims, _domElegido(comp));
   }
 
   // opts.recubExtremo: recubrimiento de las caras que cierran el eje LONGITUDINAL
@@ -3005,6 +3511,47 @@
     // del anchor); los números que manda figura_puntos son ini/fin.
     var empExtremo = !empHay ? null
       : (empEx.ini > 0 ? (empEx.fin > 0 ? 'ambos' : 'inicio') : 'fin');
+    // AVISOS de esta pasada. Se crea ANTES del literal `base` porque las dims —que
+    // se resuelven dentro del propio literal— ya pueden tener algo que decir (un Δ
+    // que deja un lado en cero). Después es la misma lista de siempre: `base.avisos`
+    // la apunta y expandirComponente la cosecha en comp._avisos.
+    var avisosBase = [];
+    // LADO DOMINANTE ELEGIDO POR EL USUARIO (comp.lado_dominante) — se valida UNA
+    // vez acá y desde acá se reparte. Un valor que no sirve NO se aproxima ni se
+    // corrige a algo parecido: se IGNORA (manda la figura) y se dice por qué, con
+    // el motivo que da figura_puntos.validarLadoDominante.
+    var fpDom = _fp();
+    var domElegido = _domElegido(comp);
+    if (comp.lado_dominante != null && String(comp.lado_dominante).trim() !== '' &&
+        !domElegido && fpDom && fpDom.validarLadoDominante) {
+      var vDom = fpDom.validarLadoDominante(comp.figura, comp.lado_dominante);
+      _avisarEn(avisosBase, 'Lado dominante ' + String(comp.lado_dominante).toUpperCase() +
+        ' ignorado: ' + vDom.motivo + '. Manda el de la figura (' +
+        (fpDom.ladoDominanteFigura(comp.figura) || '—') + ').');
+    }
+    // ÁNGULO POR BARRA — se valida UNA vez acá (mismo sitio y mismo criterio que el
+    // lado dominante) y desde acá viaja al trazado. Un valor fuera del rango de SU
+    // doblez NO se recorta al tope ni se aproxima: se ignora —queda el del
+    // catálogo— y se dice por qué, con el motivo que da figura_puntos.validarAngulo.
+    var angEfectivos = _angOvr(comp);
+    if (fpDom && fpDom.validarAngulo && comp.angulos && comp.angulos.length) {
+      for (var iA = 0; iA < comp.angulos.length; iA++) {
+        var vA = fpDom.validarAngulo(comp.figura, iA, comp.angulos[iA]);
+        if (vA.ok || vA.vacio || !vA.motivo) continue;
+        _avisarEn(avisosBase, 'Ángulo ' + (iA + 1) + ' ignorado: ' + vA.motivo +
+          '. Manda el del catálogo' + (vA.base != null ? ' (' + vA.base + '°)' : '') + '.');
+      }
+    }
+    // …y un override que el TRAZO no puede honrar tampoco se calla. El marco cerrado,
+    // el rombo y la traba clásica derivan su forma del MARCO de núcleo (su gancho es
+    // el arco sísmico calibrado), así que ahí el ángulo mueve el dato del despiece
+    // pero NO la barra dibujada. Decirlo es la mitad que faltaba de "medir = dibujar".
+    if (angEfectivos && fpDom && fpDom.trazoLeeAngulos &&
+        !fpDom.trazoLeeAngulos(comp.figura, comp._rol)) {
+      _avisarEn(avisosBase, 'Ángulo del componente: la figura ' + comp.figura +
+        ' se dibuja desde el MARCO de la sección (su gancho es el arco de norma), ' +
+        'así que el ángulo viaja al despiece pero NO mueve el trazo 3D.');
+    }
     var base = {
       figura: comp.figura, diam: diamCm,
       // RECETA VIVA: el componente y el host contra los que se resolvieron las
@@ -3020,14 +3567,22 @@
       // el anclaje (vía _profNivel, que le aplica el default) y el marco útil
       // de las dims 'auto' (sólo si está declarado).
       jerarquia: nivelJerarquia(comp.jerarquia),
-      dims: _dimsEfectivas(comp, host, nivelJerarquia(comp.jerarquia)),
+      dims: _dimsEfectivas(comp, host, nivelJerarquia(comp.jerarquia), undefined, avisosBase),
       angulos: comp.angulos || null,
       rol: comp._rol,
       // Lo que el motor NO pudo generar (capas anidadas omitidas). Lo llena
       // _avisar desde los distribuidores; expandirComponente lo pasa al comp.
-      avisos: [],
+      avisos: avisosBase,
       anchorBase: {
         cara: pz.caraLocal, recub: recub,
+        // DOMINANTE ELEGIDO → al TRAZADOR. Es el mismo valor con el que se acaban
+        // de resolver las dims, así que dibujo y medida no pueden divergir.
+        // undefined cuando no hay elección: el anchor queda como el de siempre.
+        ladoDominante: domElegido || undefined,
+        // ÁNGULOS EFECTIVOS → al TRAZADOR (y, desde acá, al anidado de las capas).
+        // Sólo viaja cuando CAMBIA algo respecto del catálogo: sin override el
+        // anchor queda byte-idéntico al de antes de esta tanda.
+        angulos: angEfectivos || undefined,
         // ESPEJO de la pose: lo consume figura_puntos invirtiendo el eje U del
         // plano de trabajo de la figura (ver _planoTrabajo). Sólo viaja cuando es
         // true → el anchor de una receta sin espejo queda idéntico al de siempre.
@@ -3055,6 +3610,45 @@
       _avisar(base, 'Empalme ignorado en ' + (comp.tipologia || base.rol) +
         ': un ' + base.rol + ' no se empalma (sumaba kg sin mover el dibujo).');
     }
+    // -------------------------------------------------------------------------
+    // Δ DEL DOMINANTE → POR QUÉ PUNTA ASOMA (anchorBase.delta)
+    // -------------------------------------------------------------------------
+    // La dim del lado dominante YA trae el Δ sumado, así que el trazo ya es más
+    // largo. Lo que queda por decir es hacia dónde creció, y sólo hay un sitio del
+    // motor donde una pieza NO se centra a ciegas: el sesgo por extremo del
+    // longitudinal (figura_puntos._empalmeDeAnchor → _normalizarCadena /
+    // _cabezalLongitudinal). Sin esto el Δ se repartiría mitad y mitad, que es
+    // responder otra pregunta.
+    //
+    // SÓLO EL LONGITUDINAL Y SÓLO SU DOMINANTE, y no por pereza:
+    //   · una pieza de SECCIÓN (estribo / traba / cadena de sección) se centra en
+    //     su marco de núcleo por construcción y no lee este canal — pero es que
+    //     además NO LO NECESITA: sus figuras son contornos CERRADOS, donde el Δ va
+    //     siempre en PAREJA (B con D, C con E) y el crecimiento es simétrico por
+    //     definición. Un 'extremo' ahí describiría un movimiento que no existe.
+    //   · un Δ en una PATA desplaza la punta libre de esa pata; el resto de la
+    //     cadena la acompaña y el bbox se re-centra igual que hoy. La punta se
+    //     mueve — que es lo que el usuario pidió — pero el conjunto no se sesga.
+    var dlDom = _deltaDelDominante(comp, base.dims, domElegido);
+    if (dlDom) base.anchorBase.delta = dlDom;
+    // …y el mismo Δ en una pieza de SECCIÓN crece su MARCO (que es lo que la
+    // dibuja). Es el otro extremo del mismo problema que `anchorBase.delta`
+    // resuelve para el longitudinal: allá el Δ ya estaba en el trazo y sólo
+    // faltaba por qué punta asomaba; acá el trazo no viene de las dims, así que
+    // el Δ tiene que entrar por el marco o el dibujo no se entera.
+    var dlMarco = _deltaMarcoSeccion(comp, base.avisos);
+    if (dlMarco) base.anchorBase.marcoDelta = dlMarco;
+    // …y en la OTRA mitad de esa misma figura —los ganchos declarados de la 106x—
+    // la medida llega entera, no como crecimiento: la pata es un largo, no un lado
+    // del rectángulo. Sin este canal el gancho era la última dim del motor que
+    // subía el corte y los kg sin mover un milímetro el dibujo.
+    var gDim = _ganchoDimSeccion(comp, base.dims);
+    if (gDim) base.anchorBase.ganchoDim = gDim;
+    // Y lo que NINGÚN canal puede llevar al trazo se DICE. Es el simétrico del
+    // aviso que este mismo bloque ya emite para el ángulo: el dato del despiece es
+    // correcto, el que miente es el 3D, y callarlo es la clase de defecto que esta
+    // tanda existe para cerrar.
+    _avisarDimsMudas(comp, base.dims, base.avisos);
     // Un longitudinal vive PEGADO A SU CARA y, por defecto, al centro del reparto
     // de esa cara. Las dos coordenadas salen del MARCO DE CARA (fuente única, vale
     // igual para sup/inf y para la cara CORTINA lateral).
@@ -3126,8 +3720,14 @@
   // Un campo derivado y volátil no puede ensuciar la receta ni viajar al backend.
   function _avisar(base, msg) {
     if (!base || !msg) return;
-    var a = base.avisos || (base.avisos = []);
-    if (a.indexOf(msg) < 0) a.push(msg);
+    _avisarEn(base.avisos || (base.avisos = []), msg);
+  }
+
+  // Mismo canal, pero contra la LISTA directa: lo usan los que se ejecutan antes de
+  // que exista `base` (las dims se resuelven DENTRO del literal que lo construye).
+  function _avisarEn(lista, msg) {
+    if (!lista || !msg) return;
+    if (lista.indexOf(msg) < 0) lista.push(msg);
   }
 
   function _cosecharAvisos(comp, base) {
@@ -3243,8 +3843,15 @@
     rotarPose90: rotarPose90,          // giro de 90° en un eje del MUNDO (cerrado en las 24)
     POSES_DEFAULT: POSES_DEFAULT,      // tabla de DATOS elemento × tipología
     poseDefault: poseDefault,
-    // Lado que se ESTIRA/ancla (cascada catálogo → 'B' → 1er parcial).
+    // Lado que se ESTIRA/ancla (elección del componente → cascada catálogo → 'B'
+    // → 1er parcial). Con un comp respeta su `lado_dominante` si es válido.
     ladoDominante: ladoDominante,
+    // Δ POR DIMENSIÓN, ya con los PARES ESPEJO replicados:
+    //   { LETRA: { delta, extremo:'ini'|'fin', origen:'propio'|'espejo', de } }
+    // Fuente única para el motor y para la UI (que pinta el par que se mueve junto).
+    deltasDeComponente: _deltasEfectivos,
+    // Elección de dominante del componente, YA validada (null = no hay o no sirve).
+    ladoDominanteElegido: _domElegido,
     rolDeTipologia: _rolDeTipologia,   // jerarquía: generar calcula host.jer_phi
     // JERARQUÍA 1-BASED ('no' | 1..n) — generar.js arma host.jer_phi con esto.
     nivelJerarquia: nivelJerarquia,

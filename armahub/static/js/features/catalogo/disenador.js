@@ -307,9 +307,31 @@
   var SNAP_ANG = 45;             // snap de ángulo (grados) — ángulos limpios
   var LETRAS = 'ABCDEFGHI'.split('');
 
-  // El sistema (aSa) pide el ÁNGULO INTERNO del vértice (el suplementario del
-  // giro/desviación que el motor calcula). interno = 180 − giro. 90 queda 90.
-  function _anguloInterno(giro) { return 180 - (Number(giro) || 0); }
+  // ---------------------------------------------------------------------------
+  // UNA SOLA CONVENCIÓN DE ÁNGULO: EL GIRO (corrección 14-ago)
+  // ---------------------------------------------------------------------------
+  // Acá había DOS convenciones para la misma cosa y eso era el bug:
+  //   · el SEED del catálogo (armahub/catalogo.py::_FIGURAS_SEED) y el TRAZADOR del
+  //     modelador (figura_puntos.derivarTramos / _cadena2D) usan el GIRO — cuánto se
+  //     desvía la barra de seguir recta. Por eso la 104D lista [135, 135]: el gancho
+  //     sísmico gira 135°;
+  //   · este diseñador guardaba el SUPLEMENTARIO (180 − giro, "ángulo interno,
+  //     convención aSa"). O sea que una figura DIBUJADA acá quedaba con el valor
+  //     invertido respecto de una figura SEMBRADA: el mismo gancho sísmico se
+  //     guardaba como 45 en vez de 135, y el quiebre de 45° como 135.
+  // Con dos definiciones no hay forma de leer el número: el modelador lo interpreta
+  // como giro (dibuja una figura que no es) y el despiece lo factura como venga.
+  // Se unifica en el GIRO, que es el que ya usan el seed, el trazador y el propio
+  // panel de esta pantalla (la columna "Ángulo prev." siempre mostró `t.giro`).
+  //
+  // 90° es punto fijo (180 − 90 = 90), así que las figuras de esquinas rectas no se
+  // ven afectadas ni antes ni ahora. Las que sí cambian son las que tienen ángulos
+  // ESPECIALES, que son justamente las que se listan (ver _guardarFigura: sólo se
+  // guardan los ≠90 y ≠0).
+  // LAS YA GUARDADAS NO SE TOCAN DESDE ACÁ (no hay acceso a la base): se detectan
+  // porque su `angulos[k]` es el SUPLEMENTARIO del giro del k-ésimo doblez especial
+  // de su `geometria.tramos` (angulos[k] + giro_k === 180).
+  function _giroDesdeInterno(interno) { return 180 - (Number(interno) || 0); }
 
   // Construye el atributo `d` de un <path> desde puntos, usando L (línea) para
   // segmentos rectos y A (arco) para curvos. tipos/radios son paralelos a los
@@ -1237,8 +1259,11 @@
     var geo = _puntosAGeometria();
     var largos = _largos();
     var ladosUsados = geo.tramos.map(function(t) { return t.lado; });
-    // Ángulos INTERNOS (convención aSa) de cada vértice, para el panel.
-    var angulos = geo.tramos.filter(function(t, i) { return i > 0; }).map(function(t) { return _anguloInterno(t.giro); });
+    // Ángulos de cada vértice, para el panel: el GIRO, que es lo que se GUARDA y lo
+    // que el trazador lee (una sola convención — ver _giroDesdeInterno). Antes el
+    // panel mostraba el suplementario y la tabla de al lado el giro: dos números
+    // distintos para el mismo vértice, en la misma pantalla.
+    var angulos = geo.tramos.filter(function(t, i) { return i > 0; }).map(function(t) { return Number(t.giro) || 0; });
 
     var html = '<div style="font-weight:700; color:#00695c; margin-bottom:8px;">Parámetros de la figura</div>';
     html += '<table style="width:100%; font-size:12px; border-collapse:collapse;">';
@@ -1368,9 +1393,12 @@
       radio = pe.radio;
     } else {
       parciales = geo.tramos.map(function(t) { return t.lado; }).filter(function(L){ return L; });
-      // Convención aSa: solo los ángulos ESPECIALES (≠90 y ≠0) van a `angulos` (90° implícito).
+      // Sólo los ángulos ESPECIALES (≠90 y ≠0) van a `angulos` (el 90° es implícito,
+      // convención aSa) — y van como GIRO, la ÚNICA convención (ver _giroDesdeInterno).
+      // El orden de esta lista ES el mapa α1..α4 → vértice que lee el modelador
+      // (figura_puntos._mapaAngDibujo replica exactamente este filtro).
       angulos = geo.tramos.filter(function(t) { return t.tipo !== 'arco' && t.giro !== 90 && t.giro !== 0; })
-                          .map(function(t) { return _anguloInterno(t.giro); });
+                          .map(function(t) { return Number(t.giro) || 0; });
       radio = false;
     }
     if (angulos.length > 4) {
@@ -1426,11 +1454,15 @@
       parciales = pe.parciales; angulos = pe.angulos; radio = pe.radio;
       geo.etiquetas_manda = true;
     } else {
-      // Sin etiquetas manuales: derivar los ÁNGULOS INTERNOS reales de la geometría 3D
-      // (criterio aSa, homologado con el 2D). Antes guardaba [] → el catálogo 3D no
-      // registraba ángulos. El radio se marca si hay algún tramo arco.
+      // Sin etiquetas manuales: derivar los ángulos reales de la geometría 3D,
+      // homologado con el 2D. `disenador3dValoresAngulos` mide el ángulo INTERNO
+      // entre los dos tramos del vértice (es lo que da el arcocoseno de sus
+      // direcciones), así que acá se convierte al GIRO — la única convención que se
+      // guarda (ver _giroDesdeInterno). Sin esta conversión el 3D seguiría escribiendo
+      // el suplementario y la unificación quedaría a medias.
       parciales = geo.parciales || [];
-      angulos = (typeof disenador3dValoresAngulos === 'function') ? disenador3dValoresAngulos() : [];
+      angulos = ((typeof disenador3dValoresAngulos === 'function') ? disenador3dValoresAngulos() : [])
+                  .map(_giroDesdeInterno);
       radio = (geo.tramos || []).some(function(t) { return t.tipo === 'arco'; });
     }
     if (angulos.length > 4) {

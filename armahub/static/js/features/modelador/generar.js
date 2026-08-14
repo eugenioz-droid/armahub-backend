@@ -105,9 +105,19 @@
       var col = 'dim_' + L.toLowerCase();
       b[col] = (spec.parciales.indexOf(L) !== -1 && pl.dims[L] != null) ? Number(pl.dims[L]) : null;
     });
-    // ang1..ang4: los ángulos de la figura (convención del catálogo).
+    // ang1..ang4: los ángulos EFECTIVOS de ESTA barra (convención del catálogo = el
+    // GIRO del doblez). El catálogo SUGIERE y el componente decide: `pl.angulos` es
+    // lo que la receta escribió y figura_puntos.angulosEfectivos aplica los que están
+    // dentro del rango de su doblez (los demás quedan en el valor del catálogo).
+    // Se resuelve ACÁ y no en el motor a propósito: es la MISMA función que consume
+    // el trazador (derivarTramos), así que el ángulo que se factura y el que se
+    // dibuja no pueden ser dos números distintos. Sin `pl.angulos` —o sin overrides
+    // válidos— devuelve el catálogo tal cual y el payload queda byte-idéntico.
+    var fpA = _fp();
+    var angEf = (fpA && fpA.angulosEfectivos)
+      ? fpA.angulosEfectivos(pl.figura, pl.angulos) : spec.angulos;
     for (var a = 0; a < 4; a++) {
-      b['ang' + (a + 1)] = (a < spec.angulos.length) ? Number(spec.angulos[a]) : null;
+      b['ang' + (a + 1)] = (a < angEf.length) ? Number(angEf[a]) : null;
     }
     return b;
   }

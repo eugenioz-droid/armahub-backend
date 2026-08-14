@@ -278,7 +278,26 @@ ok(out106.placements.every(pl => pl.puntos.length > 7),
   'polilínea de marco con codos en arco (>7 puntos, =' + (out106.placements[0] || {}).puntos.length + ')');
 ok(!validarSlots(out106.barras[0]), '106A pasa validar_geometria: 6 dims + ang1/ang2' +
   (validarSlots(out106.barras[0]) ? ' — ' + validarSlots(out106.barras[0]) : ''));
-ok(!(comp106._avisos && comp106._avisos.length), 'y sin avisos pendientes');
+// AVISOS — ASSERT CAMBIADO (14-ago) POR UNA RAZÓN FÍSICA, no para que pase.
+// Antes acá decía «y sin avisos pendientes», y era verdad sólo porque el motor NO
+// dibujaba lo que esta receta dice. Sus dims fijas describen un rectángulo de
+// 30×25 con ganchos de 30 y 20 cm; lo que se dibujaba era el MARCO del hormigón
+// (52 alto × 24 ancho) con las dos patas en la constante normativa 9.6 — o sea el
+// 3D mostraba una barra que no es la que se corta, y no decía una palabra. Ahora:
+//   · los ganchos A/F se dibujan CON LA MEDIDA ESCRITA (30 y 20 cm). Por eso la
+//     pieza pasa a ocupar 28.04 cm de z en un núcleo de 22.4 y asoma 2.64 cm: lo
+//     dice el aviso de fierro fuera del hormigón, medido sobre estos mismos puntos.
+//     Ese fierro asomaba igual antes — la receta pide un gancho de 30 cm en una
+//     viga de 30 de ancho —, sólo que el dibujo lo tapaba.
+//   · las dims C/D/E del rectángulo NO mandan el marco (lo fija recub + pilas), y
+//     eso también se dice ahora en vez de dibujar otra cosa en silencio.
+// Lo que este bloque cuida NO cambia y sigue arriba: la 106A genera su barra,
+// pesa, sale con polilínea de marco y pasa validar_geometria.
+ok((comp106._avisos || []).some(a => /marco lo fija el HORMIGÓN/.test(a)),
+  'avisa que sus dims fijas no mandan el marco (el 3D dejó de mentir en silencio)');
+ok(!(comp106._avisos || []).some(a => /no la soporta|omitid/i.test(a)),
+  'y ningún aviso es un rechazo: la figura se genera entera (=' +
+  JSON.stringify(comp106._avisos) + ')');
 
 // ---------------------------------------------------------------------------
 // D. FIGURA DESCONOCIDA → AVISO Y CERO PAYLOAD

@@ -317,7 +317,14 @@ const cMarco = {
   distribucion: { modo: 'layered', n_capas: 3, barras_capa: 1, gap: 10 }
 };
 const plMarco = R.expandirComponente(cMarco, host);
-ok(plMarco.length === 2 && /marco 11\.2×-16\.8/.test((cMarco._avisos || [])[0] || ''),
+// `.some` EN VEZ DE `[0]` (14-ago) — razón física, no acomodo: este componente
+// tiene DOS problemas distintos y ahora el motor los dice los dos. El primero es
+// que sus dims fijas de 200 cm no mandan el marco (lo fija el hormigón: 11.2 de
+// alto), divergencia que antes se dibujaba en silencio; el segundo, el que este
+// assert vigila, es la capa 3 que no cabe. El aviso de las dims sale primero
+// porque se emite al resolverlas, o sea antes de repartir las capas. Lo que se
+// verifica sigue siendo lo mismo: la capa omitida se reporta CON SU MARCO cruzado.
+ok(plMarco.length === 2 && (cMarco._avisos || []).some(a => /marco 11\.2×-16\.8/.test(a)),
   'dims > 0 pero MARCO cruzado (11.2×−16.8) → capa omitida con aviso (=' +
   plMarco.length + ' placements · ' + JSON.stringify(cMarco._avisos) + ')');
 // 4) Mismo criterio en el distribuidor ARREGLO (una sola regla para los dos).

@@ -19,10 +19,16 @@
 //      (marco de estribo, rombo, traba) devuelven null: ahí el trazo no es la
 //      cadena de tramos de la figura (un 103E con rol estribo dibuja 4 lados
 //      teniendo 3 parciales) y no hay mapeo que derivar.
-//   D. EVIDENCIA de que el MOTOR todavía NO lee comp.lado_dominante: un
-//      componente con lado_dominante:'C' resuelve el mismo lado y dibuja los
-//      MISMOS puntos que sin el campo. Es lo que la ficha dice en ámbar; si algún
-//      día se cablea el motor, este bloque falla y hay que actualizar el texto.
+//   D. comp.lado_dominante YA LO LEE EL MOTOR (tanda Δ, 14-ago) — y la C de un
+//      103A SIGUE sin cambiar nada, ahora por una razón FÍSICA en vez de por un
+//      cable que faltaba: en una 103A los tramos son A(gancho) → B(cuerpo) →
+//      C(gancho), o sea C es un tramo TERMINAL. Un gancho no puede ser el lado
+//      que se ancla contra el hormigón y se estira con el 'auto' — es la pata que
+//      cuelga —, así que el motor lo IGNORA, cae a la cascada (B) y lo AVISA. Los
+//      números de este bloque son los mismos de antes; lo que cambió es que ahora
+//      hay un aviso que lo explica, y eso también se fija acá.
+//      La elección que SÍ manda (un lado interior no diagonal) y el resto del
+//      contrato viven en tests/test_delta_dominante.js, bloques F y G.
 //
 // Correr con: node tests/test_lado_dominante.js
 
@@ -223,21 +229,28 @@ console.log('\nC — sin mapeo fiable no se destaca nada (mejor eso que el lado 
   }
 }
 
-// ============================ D · el motor todavía NO lee comp.lado_dominante
-console.log('\nD — evidencia: comp.lado_dominante NO lo lee el motor (todavía)');
+// ================== D · el motor lee comp.lado_dominante, y un GANCHO lo rechaza
+console.log('\nD — comp.lado_dominante lo lee el motor; la C de una 103A es un gancho');
 {
   const base = comp('103A', 'CBS');
   const conElec = comp('103A', 'CBS', { lado_dominante: 'C' });
   ok(R.ladoDominante(base) === 'B', 'sin elección el motor resuelve B');
   ok(R.ladoDominante(conElec) === 'B',
-    'con lado_dominante:"C" el motor SIGUE resolviendo B (no lee el campo)');
+    'con lado_dominante:"C" resuelve B igual: C es el GANCHO final de la 103A, no su cuerpo');
+  ok(!FP.validarLadoDominante('103A', 'C').ok &&
+    FP.validarLadoDominante('103A', 'C').motivo.indexOf('GANCHO') > 0,
+    'y el motivo lo dice: ' + JSON.stringify(FP.validarLadoDominante('103A', 'C').motivo));
   const a = primerPlacement(base), b = primerPlacement(conElec);
   ok(JSON.stringify(a.pl.dims) === JSON.stringify(b.pl.dims),
     'las dims resueltas no cambian (el auto estira el mismo lado)');
   ok(JSON.stringify(a.pl.puntos) === JSON.stringify(b.pl.puntos),
-    'los puntos dibujados son idénticos (la elección no mueve el dibujo)');
-  // La ficha por eso lo dice en ámbar; acá se fija que el helper de la UI lee y
-  // escribe el campo, y que 'auto' lo borra.
+    'los puntos dibujados son idénticos (una elección rechazada no mueve el dibujo)');
+  // Lo que SÍ cambió respecto de antes: ya no es silencio. Rechazar sin decirlo
+  // dejaba al usuario mirando un botón marcado que no hacía nada.
+  ok((conElec._avisos || []).some(a2 => a2.indexOf('Lado dominante C ignorado') === 0),
+    'y queda el aviso de por qué se ignoró (antes se descartaba en silencio)');
+  // Acá se fija además que el helper de la UI lee y escribe el campo, y que
+  // 'auto' lo borra.
   const c = comp('103A', 'CBS');
   ok(TE._ladoDomElegido(c) === null, 'sin campo → sin elección');
   TE._setLadoDominante(c, 'c');
