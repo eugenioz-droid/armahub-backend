@@ -5659,18 +5659,28 @@
     });
   }
 
-  // ZOOM DE RUEDA PROPORCIONAL AL DELTA REAL (fix 14-ago): los handlers hacían
-  // ×1.1 fijo POR EVENTO, y los mouse de rueda libre / alta resolución disparan
-  // VARIOS eventos por muesca (con deltas chicos) — un solo clic de rueda
-  // multiplicaba varias veces y el zoom saltaba. Con el factor exponencial
-  // sobre deltaY normalizado, N eventos chicos suman EXACTAMENTE lo mismo que
-  // una muesca clásica de 120px (≈ ×1.11), venga el mouse que venga.
+  // ZOOM DE RUEDA INDEPENDIENTE DEL MOUSE (fix 14-ago, 2ª vuelta).
+  // 1ª vuelta: factor proporcional a deltaY normalizado. Seguía mal, y la razón la
+  // dijo el usuario: «al final no puede depender del mouse del usuario». Los mouse
+  // modernos NO reportan lo mismo por muesca — unos mandan 100, otros 120, otros
+  // 300+, y los de rueda libre/alta resolución parten UNA muesca en varios eventos
+  // seguidos (o repiten el delta completo). Cualquier fórmula que CONFÍE en la
+  // magnitud reportada se comporta distinto en cada equipo.
+  // Regla nueva: la rueda dice DIRECCIÓN, no cantidad. Un gesto = UN paso fijo
+  // (×1.12), con una ventana de 55 ms que absorbe la ráfaga de eventos que el
+  // driver manda por una sola muesca. Girar rápido sigue haciendo zoom rápido
+  // (hasta ~18 pasos/s), pero un clic de rueda es siempre un paso, en cualquier
+  // mouse y en cualquier navegador.
+  var _ZOOM_PASO = 1.12;      // cuánto zoom por muesca (la sensación de siempre)
+  var _ZOOM_MS = 55;          // ventana que colapsa la ráfaga del driver
+  var _zoomUlt = 0;
   function _factorZoomRueda(e) {
     var d = Number(e.deltaY) || 0;
-    if (e.deltaMode === 1) d *= 16;         // líneas → px (Firefox y otros)
-    else if (e.deltaMode === 2) d *= 120;   // páginas → px
-    d = Math.max(-240, Math.min(240, d));   // un gesto no salta más que ~2 muescas
-    return Math.exp(d * 0.00088);           // 120px ≈ ×1.11 (la sensación de siempre)
+    if (!d) return 1;
+    var ahora = Date.now();
+    if (ahora - _zoomUlt < _ZOOM_MS) return 1;   // misma muesca: ya se contó
+    _zoomUlt = ahora;
+    return (d > 0) ? _ZOOM_PASO : (1 / _ZOOM_PASO);
   }
 
   function _bindVistaOrto(plano) {
