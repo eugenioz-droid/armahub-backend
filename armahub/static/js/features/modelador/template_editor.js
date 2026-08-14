@@ -288,33 +288,15 @@
   // Devuelve null cuando la figura ni siquiera existe en el catálogo: ese caso
   // ya lo canta _figError y dos mensajes encima del mismo campo confunden.
   function _figAvisoTipologia(fig, elem, tip) {
-    var k = _figKey(fig);
-    if (!k || !_catListo() || !_figDef(k)) return null;
-    // TABLA INCOMPLETA ≠ USUARIO EQUIVOCADO (medido 14-ago). FIGURAS_POR_TIPOLOGIA
-    // sólo ubica 16 de las 62 figuras dibujables: 106A (el rombo), 104B (la cadena
-    // de sección), 305A y otras 43 no aparecen en NINGUNA tipología. Comparar
-    // contra esa tabla marcaba en ámbar trabajo perfectamente legítimo —
-    // exactamente las figuras que los tests del repo usan como caso normal.
-    // Si el catálogo no sabe a qué tipologías pertenece la figura, no hay regla
-    // que aplicar: callarse. El aviso queda para el caso que sí se quería cazar
-    // (la figura está clasificada y esta tipología no es una de las suyas).
-    var cat = _cat();
-    if (cat && typeof cat.tipologiasDeFigura === 'function' &&
-        !cat.tipologiasDeFigura(k).length) return null;
-    var lista = _figsDeTipologia(elem, tip);
-    if (!lista.length || lista.indexOf(k) >= 0) return null;
-    var tipTxt = String(tip == null ? '' : tip).trim();
-    var nom = _nombreTipologia(elem, tip);
-    var muestra = lista.slice(0, _FIGS_EN_AVISO).join(', ');
-    var resto = lista.length - _FIGS_EN_AVISO;
-    if (resto > 0) muestra += ' (+' + resto + ' más)';
-    return {
-      figura: k, tip: tipTxt, admite: lista,
-      texto: 'La figura ' + k + ' no corresponde a la tipología ' + tipTxt +
-        (nom ? ' (' + nom + ')' : '') + '. ' + tipTxt + ' admite: ' + muestra +
-        '. Se puede colocar igual, pero revisa la tipología o la figura.',
-      corto: k + ' no es de ' + tipTxt + ' · ' + tipTxt + ' admite ' + muestra
-    };
+    // AVISO RETIRADO (regla del usuario, 14-ago): «cualquier barra puede ser
+    // cualquier cosa — esa debiera ser la regla». La tabla figura↔tipología es
+    // una SUGERENCIA (ordena el datalist con las figuras típicas primero), no
+    // una validación: marcó en ámbar una 103C bajo MV que es perfectamente
+    // legítima («eso es falso»). Cuando exista la sección de configuración de
+    // sugeridas en el tab, este canal puede volver COMO dato configurable —
+    // por eso la función queda (los llamadores ya la manejan en null) en vez
+    // de borrarse con sus seis puntos de enganche.
+    return null;
   }
 
   // ==========================================================================
@@ -2451,7 +2433,9 @@
       // dominante se repinta encima, grueso y opaco: así se lee de un vistazo cuál
       // es el lado que va a correr a lo largo de la pieza ANTES de clicar.
       layer.appendChild(_svgEl('path', {
-        'class': 'te-ghostbar' + (forma.dom ? ' te-atenuado' : ''), d: d, stroke: color
+        // El ghost YA NO se atenúa cuando hay dominante (feedback 14-ago: "la
+        // verde es muy poco notoria"): el marcador corto señala solo.
+        'class': 'te-ghostbar', d: d, stroke: color
       }));
       if (forma.dom) _dibujarGhostDominante(layer, plano, forma, color);
       // Puntas en los extremos (circulitos .te-gpt, como la maqueta). Marca los
@@ -2475,12 +2459,37 @@
   // Repinta el TRAMO DOMINANTE encima del trazo atenuado. Nunca inventa puntos:
   // recorre el mismo `forma.pts` entre los índices que derivó _tramoDominanteEnTrazo.
   function _dibujarGhostDominante(layer, plano, forma, color) {
-    var d = '', i, p;
+    // MARCADOR CORTO (feedback 14-ago): repintar el tramo dominante ENTERO
+    // tapaba el ghost ("las líneas azules tapan la verde"). Señalar cuál lado
+    // corre no necesita más que un guion grueso y breve CENTRADO en ese tramo:
+    // se toma la polilínea del dominante, se mide en píxeles y se dibuja sólo
+    // el 25% central (acotado entre 16 y 44 px).
+    var pts = [], i, p, L = 0;
     for (i = forma.dom.i0; i <= forma.dom.i1 && i < forma.pts.length; i++) {
       p = _uvToPixel(plano, forma.pts[i].u, forma.pts[i].v);
-      d += (i === forma.dom.i0 ? 'M' : ' L') + p.px.toFixed(1) + ',' + p.py.toFixed(1);
+      if (!p) return;
+      if (pts.length) L += Math.hypot(p.px - pts[pts.length - 1].px, p.py - pts[pts.length - 1].py);
+      pts.push(p);
     }
-    layer.appendChild(_svgEl('path', { 'class': 'te-ghostdom', d: d, stroke: color }));
+    if (pts.length < 2 || !(L > 4)) return;
+    var largoMarca = Math.max(16, Math.min(44, L * 0.25));
+    var ini = (L - largoMarca) / 2, fin = ini + largoMarca;
+    var d = '', acc = 0;
+    for (i = 1; i < pts.length; i++) {
+      var a = pts[i - 1], b = pts[i];
+      var seg = Math.hypot(b.px - a.px, b.py - a.py);
+      if (!(seg > 0)) continue;
+      var s0 = Math.max(ini, acc), s1 = Math.min(fin, acc + seg);
+      if (s1 > s0) {
+        var t0 = (s0 - acc) / seg, t1 = (s1 - acc) / seg;
+        var x0 = a.px + (b.px - a.px) * t0, y0 = a.py + (b.py - a.py) * t0;
+        var x1 = a.px + (b.px - a.px) * t1, y1 = a.py + (b.py - a.py) * t1;
+        d += (d ? ' M' : 'M') + x0.toFixed(1) + ',' + y0.toFixed(1) + ' L' + x1.toFixed(1) + ',' + y1.toFixed(1);
+      }
+      acc += seg;
+      if (acc > fin) break;
+    }
+    if (d) layer.appendChild(_svgEl('path', { 'class': 'te-ghostdom', d: d, stroke: color }));
   }
 
   // Badge flotante junto al cursor. Se ancla arriba-derecha del puntero y se voltea
@@ -3138,7 +3147,16 @@
     // de la vista, así que nunca choca con el rumbo elegido acá.
     var defV = (_defsPlanos() || {})[plano] || null;
     if (defV) {
-      if (rol === 'estribo' || rol === 'traba') {
+      // "PIEZA DE SECCIÓN" LO DECIDE TAMBIÉN LA TOPOLOGÍA, no sólo la tipología
+      // (bug 14-ago·2: un estribo 104D colocado con la tipología MV activa tenía
+      // rol UI 'cabezal' → esta regla lo trataba como longitudinal y le metía el
+      // rumbo DENTRO de la vista: clickeado en la sección aparecía en la
+      // elevación XZ. El motor ya fuerza el rol por topología; acá se pregunta lo
+      // mismo ANTES de elegir el rumbo).
+      var fpV = global.ModeladorFiguraPuntos;
+      var esSeccionV = (rol === 'estribo' || rol === 'traba') ||
+        !!(fpV && fpV.familiaDeDibujo && fpV.familiaDeDibujo(sel.figura, null) === 'estribo');
+      if (esSeccionV) {
         if (_NORMAL_DE_CARA[pose.cara] === defV.depth) {
           // la cara default quedó ∥ al plano de la pieza: elegir una cara VÁLIDA
           // (normal dentro del plano de la vista), priorizando el borde clickeado
