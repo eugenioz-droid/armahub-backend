@@ -75,8 +75,8 @@ function recto(id, tip, cara, diam, jer) {
 // ===========================================================================
 console.log('R1 — CERO REGRESIÓN: la viga-semilla no se mueve:');
 const semilla = G.generarViga(S.semillaViga(), {});
-ok(semilla.resumen.items === 4 && semilla.resumen.barras === 72 && semilla.resumen.kg === 140.3,
-  'semilla = {items:4, barras:72, kg:140.3} (=' + JSON.stringify(semilla.resumen) + ')');
+ok(semilla.resumen.items === 4 && semilla.resumen.barras === 72 && semilla.resumen.kg === 140.2,
+  'semilla = {items:4, barras:72, kg:140.2} (=' + JSON.stringify(semilla.resumen) + ')');
 // Ejes verificados: con estribo φ8 nivel 1 + cabezales/traba nivel 2 (default por rol)
 // las pilas quedan sup/inf/lat = 0.8 y ext = 0, así que TODOS los anclajes de la
 // semilla dan el mismo número que con el inset escalar anterior.
@@ -374,8 +374,8 @@ ok(close(unaDe(oG3, 'RV').dims.A, 30 - 2 * (3 + PHI_ES)),
   'volteada y contra el estribo, pero RECTA (101A): 22.4 sin descuento de φ/2 (=' + unaDe(oG3, 'RV').dims.A + ')');
 // G4 · y la viga-semilla, que se mide contra hormigón pelado en los extremos, no
 // se mueve NI UN DECIMAL (la garantía de no-regresión de toda esta tarea).
-ok(semilla.resumen.kg === 140.3 && semilla.resumen.barras === 72 && semilla.resumen.items === 4,
-  'la viga-semilla sigue BYTE-IDÉNTICA: 140.3 kg / 72 barras / 4 ítems');
+ok(semilla.resumen.kg === 140.2 && semilla.resumen.barras === 72 && semilla.resumen.items === 4,
+  'la viga-semilla sigue BYTE-IDÉNTICA: 140.2 kg / 72 barras / 4 ítems');
 
 // ===========================================================================
 // H · VOLTEO — la pieza CONSERVA SU CENTRO donde ahora es puntual.

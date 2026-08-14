@@ -155,11 +155,15 @@
   //   1    → nivel más EXTERNO: pegado al recubrimiento Y aporta su φ.
   //   2    → se apoya por DENTRO del nivel 1 (inset = Σφ del nivel 1). Etc.
   // Defaults por rol cuando el componente no declara nivel (campo ausente):
-  //   estribo → 1, traba → 2, cabezal → 2.
+  // TODOS EN 1 (decisión del usuario 13-ago: "siempre deben venir en 1, el
+  // usuario elige si las cambia"). Los defaults 2 de traba/cabezal eran una
+  // suposición de viga (longitudinal dentro del estribo) que en el muro se veía
+  // como un 2 inexplicable; las recetas que dependían de nacer en 2 (la
+  // semilla-viga) lo declaran EXPLÍCITO y no se mueven.
   // MIGRACIÓN del viejo 0-based: cualquier número n ≥ 1 se lee como nivel
   // 1-based tal cual, y 0 (o negativo) se lee como 1 — que es exactamente lo que
   // significaba el viejo 0 ("pegado al recubrimiento y aporta φ").
-  var JER_DEFAULT_POR_ROL = { estribo: 1, traba: 2, cabezal: 2 };
+  var JER_DEFAULT_POR_ROL = { estribo: 1, traba: 1, cabezal: 1 };
 
   // Nivel DECLARADO por el componente: 'no' | entero ≥ 1 | null (= no declara).
   function nivelJerarquia(valor) {

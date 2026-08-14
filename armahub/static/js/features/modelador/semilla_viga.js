@@ -43,7 +43,7 @@
       },
       componentes: [
         {
-          comp_id: 'CBS',
+          comp_id: 'CBS', jerarquia: 2,
           tipologia: 'CBS', figura: '103B', diam: 16, suf_tipo: '', cara: 'sup',
           recub_override: null, angulos: [45, 45],
           prioridad: null, empalme: null, depende_de: null,
@@ -57,7 +57,7 @@
           distribucion: { modo: 'layered', n_capas: 2, barras_capa: 3, gap: 4, sentido: 'nucleo' }
         },
         {
-          comp_id: 'CBI',
+          comp_id: 'CBI', jerarquia: 2,
           tipologia: 'CBI', figura: '101A', diam: 18, suf_tipo: '', cara: 'inf',
           recub_override: null, angulos: [],
           prioridad: null, empalme: null, depende_de: null,
@@ -84,7 +84,7 @@
           }
         },
         {
-          comp_id: 'TRV',
+          comp_id: 'TRV', jerarquia: 2,
           tipologia: 'TRV', figura: '101A', diam: 8, suf_tipo: '', cara: 'lateral',
           recub_override: null, angulos: [],
           prioridad: null, empalme: null, depende_de: null,

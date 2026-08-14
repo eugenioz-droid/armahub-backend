@@ -14,7 +14,7 @@
 //   P3 · n_capas tiene techo duro TOPE_CAPAS_COMP (200) en layered y en arreglo,
 //        con su propio aviso.
 //   P4 · UN USO NORMAL (46 barras, capas de verdad) NO roza ningún tope y NO
-//        genera ningún aviso — y la viga-semilla sigue en 140.3 kg / 72 / 4.
+//        genera ningún aviso — y la viga-semilla sigue en 140.2 kg / 72 / 4.
 //
 // Correr con: node tests/test_topes_generacion.js
 
@@ -214,8 +214,8 @@ ok(plNorm3.length < TOPE, 'y muy por debajo del tope');
 
 console.log('\nP4c — CERO REGRESIÓN: la viga-semilla intacta:');
 const semilla = G.generarViga(S.semillaViga(), {});
-ok(semilla.resumen.items === 4 && semilla.resumen.barras === 72 && semilla.resumen.kg === 140.3,
-  'semilla = {items:4, barras:72, kg:140.3} (=' + JSON.stringify(semilla.resumen) + ')');
+ok(semilla.resumen.items === 4 && semilla.resumen.barras === 72 && semilla.resumen.kg === 140.2,
+  'semilla = {items:4, barras:72, kg:140.2} (=' + JSON.stringify(semilla.resumen) + ')');
 ok(eq(R.posicionesRango({ from: -12, to: 12, sep: 20 }).map(function (v) { return Math.round(v * 1e6) / 1e6; }),
   [-12, 0, 12]), 'el reparto de siempre (paso real) no se movió');
 

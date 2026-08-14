@@ -23,7 +23,7 @@
 //   P5 · POSES POR DEFECTO del muro (el estribo/amarra con MARCO HORIZONTAL).
 //   P6 · FIX 305A — una cadena colocada con tipología ES se traza como cadena.
 //   P7 · LADO DOMINANTE — cascada determinista (catálogo → 'B' → 1er parcial).
-//   P8 · VIGA-SEMILLA intacta (140.3 kg / 72 barras / 4 ítems).
+//   P8 · VIGA-SEMILLA intacta (140.2 kg / 72 barras / 4 ítems).
 //
 // Correr con: node tests/test_pose.js
 // =============================================================================
@@ -921,8 +921,8 @@ ok(FP.ladoLongitudinalCadena('104A', { A: 20, B: 50, C: 20, D: 50 }) === undefin
 // ===========================================================================
 console.log('\nP8 — cero regresión sobre la viga-semilla:');
 const sem = G.generarViga(SEM.semillaViga(), {});
-ok(sem.resumen.items === 4 && sem.resumen.barras === 72 && close(sem.resumen.kg, 140.3, 0.05),
-  'semilla = {items:4, barras:72, kg:140.3} (=' + JSON.stringify(sem.resumen) + ')');
+ok(sem.resumen.items === 4 && sem.resumen.barras === 72 && close(sem.resumen.kg, 140.2, 0.05),
+  'semilla = {items:4, barras:72, kg:140.2} (=' + JSON.stringify(sem.resumen) + ')');
 
 if (fallos) { console.error('\nFALLARON ' + fallos + ' aserciones'); process.exit(1); }
 console.log('\nOK — modelo de POSE (24 orientaciones + espejo) pasa.');

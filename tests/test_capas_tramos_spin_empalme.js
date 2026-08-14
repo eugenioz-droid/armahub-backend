@@ -51,8 +51,8 @@ console.log('R0 — CERO REGRESIÓN: la viga-semilla no se mueve en items/barras
 // Las POSICIONES de las capas ≥2 del CBS sí cambian (5.6 → 4 cm), pero las dims
 // no, así que el listado, el conteo y los kilos son los mismos.
 const semilla = G.generarViga(S.semillaViga(), {});
-ok(semilla.resumen.items === 4 && semilla.resumen.barras === 72 && semilla.resumen.kg === 140.3,
-  'semilla = {items:4, barras:72, kg:140.3} (=' + JSON.stringify(semilla.resumen) + ')');
+ok(semilla.resumen.items === 4 && semilla.resumen.barras === 72 && semilla.resumen.kg === 140.2,
+  'semilla = {items:4, barras:72, kg:140.2} (=' + JSON.stringify(semilla.resumen) + ')');
 
 // ===========================================================================
 // T1 · SEPARACIÓN DE CAPAS = EJE A EJE

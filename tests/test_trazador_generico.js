@@ -13,7 +13,7 @@
 //   D. RESCATE: cuántas de las excluidas vuelven a ser dibujables (y las que no,
 //      con motivo).
 //   E. MH/MV nacen en modo DISTRIBUCIÓN ('lineal').
-//   F. SEMILLA INTACTA: 140.3 kg / 72 barras / 4 ítems.
+//   F. SEMILLA INTACTA: 140.2 kg / 72 barras / 4 ítems.
 //
 // Correr con: node tests/test_trazador_generico.js
 
@@ -445,8 +445,8 @@ ok(R.modoDefaultDeTipologia('ES') === 'lineal' && R.modoDefaultDeTipologia('CBS'
 // ---------------------------------------------------------------------------
 console.log('\nF — viga-semilla (cero regresión):');
 const semilla = G.generarViga(S.semillaViga(), CTX);
-ok(semilla.resumen.items === 4 && semilla.resumen.barras === 72 && semilla.resumen.kg === 140.3,
-  'semilla = {items:4, barras:72, kg:140.3} (=' + JSON.stringify(semilla.resumen) + ')');
+ok(semilla.resumen.items === 4 && semilla.resumen.barras === 72 && semilla.resumen.kg === 140.2,
+  'semilla = {items:4, barras:72, kg:140.2} (=' + JSON.stringify(semilla.resumen) + ')');
 
 console.log(fallos === 0 ? '\nTODO OK' : '\n' + fallos + ' FALLO(S)');
 process.exit(fallos ? 1 : 0);

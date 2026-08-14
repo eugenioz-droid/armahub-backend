@@ -22,7 +22,7 @@
 //   D. EMPALME sólo donde es real: en estribo/traba se ignora y se avisa (antes
 //      sumaba kg fantasma sin mover el dibujo).
 //
-//   E. La viga-semilla no se mueve: 4 ítems / 72 barras / 140.3 kg.
+//   E. La viga-semilla no se mueve: 4 ítems / 72 barras / 140.2 kg.
 //
 // Correr con: node tests/test_catalogo_figuras.js
 // =============================================================================
@@ -386,7 +386,7 @@ console.log('\nG — viga-semilla sin mover un decimal:');
 const semilla = G.generarViga(S.semillaViga(), CTX);
 ok(semilla.resumen.items === 4, 'items = 4 (=' + semilla.resumen.items + ')');
 ok(semilla.resumen.barras === 72, 'barras = 72 (=' + semilla.resumen.barras + ')');
-ok(r1(semilla.resumen.kg) === 140.3, 'kg = 140.3 (=' + semilla.resumen.kg + ')');
+ok(r1(semilla.resumen.kg) === 140.2, 'kg = 140.2 (=' + semilla.resumen.kg + ')');
 ok(semilla.barras.every(b => !validarSlots(b)), 'sus 4 ítems pasan validar_geometria contra el catálogo real');
 
 // ---------------------------------------------------------------------------

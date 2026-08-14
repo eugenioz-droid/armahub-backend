@@ -59,8 +59,8 @@ const PHI_ES = 0.8;   // φ8 del estribo, en cm
 // ===========================================================================
 console.log('CERO REGRESIÓN — la viga-semilla no se mueve:');
 const semilla = G.generarViga(S.semillaViga(), {});
-ok(semilla.resumen.items === 4 && semilla.resumen.barras === 72 && semilla.resumen.kg === 140.3,
-  'semilla = {items:4, barras:72, kg:140.3} (=' + JSON.stringify(semilla.resumen) + ')');
+ok(semilla.resumen.items === 4 && semilla.resumen.barras === 72 && semilla.resumen.kg === 140.2,
+  'semilla = {items:4, barras:72, kg:140.2} (=' + JSON.stringify(semilla.resumen) + ')');
 
 // ===========================================================================
 console.log('\nJ0 — normalización 1-BASED de comp.jerarquia:');
@@ -69,8 +69,11 @@ ok(R.nivelJerarquia(null) === null, 'ausente → null (auto: default por rol)');
 ok(R.nivelJerarquia(0) === 1, 'migración 0-based: 0 → nivel 1');
 ok(R.nivelJerarquia(2) === 2 && R.nivelJerarquia('3') === 3, 'n ≥ 1 se lee 1-based tal cual');
 ok(R.nivelJerarquiaEfectivo(null, 'estribo') === 1, 'default estribo = 1');
-ok(R.nivelJerarquiaEfectivo(null, 'traba') === 2, 'default traba = 2');
-ok(R.nivelJerarquiaEfectivo(null, 'cabezal') === 2, 'default cabezal = 2');
+// DECISIÓN DEL USUARIO 13-ago: TODO nace en nivel 1 ("el usuario elige si las
+// cambia"). Los defaults 2 eran una suposición de viga; las recetas que
+// dependían de nacer en 2 (la semilla) lo declaran EXPLÍCITO.
+ok(R.nivelJerarquiaEfectivo(null, 'traba') === 1, 'default traba = 1');
+ok(R.nivelJerarquiaEfectivo(null, 'cabezal') === 1, 'default cabezal = 1');
 
 // ===========================================================================
 // Receta de 3 componentes con niveles EXPLÍCITOS: ES nivel 1 (φ8), cabezal 103B

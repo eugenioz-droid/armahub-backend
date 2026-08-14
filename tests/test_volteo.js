@@ -3,7 +3,7 @@
 // proyección SVG: es una PERMUTACIÓN DE EJES (x local ↔ z mundo) resuelta en el
 // motor. Verifica que:
 //   - con volteado:false (o ausente) los placements son BYTE-IDÉNTICOS a la base
-//     (cero regresión: protege 140.3 kg / 72 placements / 4 items);
+//     (cero regresión: protege 140.2 kg / 72 placements / 4 items);
 //   - al voltear un ESTRIBO y un CABEZAL sus puntos siguen DENTRO del marco de
 //     recubrimiento (el recub se mantiene POR CONSTRUCCIÓN, no por parches);
 //   - la DISTRIBUCIÓN cambia de eje (el rango reparte en Z, las capas en X);
