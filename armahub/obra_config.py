@@ -74,10 +74,22 @@ def _proyecto_existe(cur, id_proyecto: str) -> bool:
 
 
 def _check_permiso_editar(cur, id_proyecto: str, user: dict):
-    """ESCRIBIR requiere el permiso de editar la OBRA (mismo guard que PATCH /proyectos)."""
-    from .barras import _puede_editar_proyecto
-    if not _puede_editar_proyecto(cur, id_proyecto, user):
-        raise HTTPException(status_code=403, detail="No tienes permiso para configurar esta obra.")
+    """ESCRIBIR la config de la obra (pisos, ciclos, factores).
+
+    DOS CAMINOS, unidos (fix 14-ago): quien puede editar la OBRA (admin o
+    asignado a ESE proyecto en proyecto_usuarios) O quien CUBICA — un miembro
+    del área 'cubicaciones', que es exactamente el rol que agrega los pisos y
+    ciclos con los que después despieza.
+    Por qué: el guard era sólo el primero, así que un cubicador que trabajaba la
+    obra sin estar en proyecto_usuarios recibía 403 al agregar un piso — no podía
+    hacer su trabajo. Es la MISMA función que ya lo habilita a editar barras en
+    el Bar Manager (_puede_editar_barras), no un criterio nuevo."""
+    from .barras import _puede_editar_proyecto, _puede_editar_barras
+    if _puede_editar_proyecto(cur, id_proyecto, user):
+        return
+    if _puede_editar_barras(cur, user):
+        return
+    raise HTTPException(status_code=403, detail="No tienes permiso para configurar esta obra.")
 
 
 def _factor_peso(cur, id_proyecto: str) -> float:
