@@ -159,8 +159,8 @@ ok(FP.familiaDeDibujo('104D', 'estribo') === 'estribo' && FP.familiaDeDibujo('10
 // no se facturaban. Hoy TODA figura con tramos es cadena; el giro por regla
 // geométrica (_giroTraba) la orienta al cruce.
 ok(FP.familiaDeDibujo('105A', 'traba') === 'cadena' && FP.familiaDeDibujo('104B', 'traba') === 'cadena' &&
-   FP.familiaDeDibujo('101A', 'traba') === 'cadena' && FP.familiaDeDibujo('102A', 'traba') === 'cadena',
-  'traba: TODA figura con tramos dibuja SU trazo (cadena) — la forma fija murió');
+   FP.familiaDeDibujo('101A', 'traba') === 'recta' && FP.familiaDeDibujo('102A', 'traba') === 'cadena',
+  'traba: TODA figura dibuja SU trazo (101A = recta, resto cadena) — el rol traba murió');
 // CAMBIO TANDA P (fix 305A) — el rol 'estribo' YA NO fuerza el marco cerrado sobre
 // una figura que NO es un marco: la 104B (4 lados con quiebres de 45°) colocada con
 // tipología ES se dibujaba como rectángulo con ganchos, o sea una figura que no

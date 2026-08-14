@@ -155,10 +155,13 @@ function trabaY(jer) {
   const pl = o.placements.filter(function (p) { return p.tipologia === 'TRV'; })[0];
   return Math.max.apply(null, pl.puntos.map(function (q) { return q.y; }));
 }
-ok(close(trabaY('no'), 60 / 2 - 4 - 0.8 / 2, 1e-6),
-  "traba 'no': su eje queda a recub + φ/2 = 25.6 (pegada al recubrimiento) (=" + trabaY('no') + ')');
-ok(close(trabaY(2), 60 / 2 - 4 - PHI_ES - 0.8 / 2, 1e-6),
-  'traba nivel 2: se apoya por dentro del estribo → 24.8 (=' + trabaY(2) + ')');
+// (14-ago, Modelo A) la traba es un LONGITUDINAL de_pie: su punta llega a la
+// LÍNEA ÚTIL de su nivel (convención del longitudinal, como el CBS a ±296), ya
+// no al eje-a-eje −φ/2 de la convención de sección.
+ok(close(trabaY('no'), 60 / 2 - 4, 1e-6),
+  "traba 'no': su punta llega a la línea útil = 26 (=" + trabaY('no') + ')');
+ok(close(trabaY(2), 60 / 2 - 4 - PHI_ES, 1e-6),
+  'traba nivel 2: útil por dentro del estribo → 25.2 (=' + trabaY(2) + ')');
 ok(close(trabaY(1), trabaY('no'), 1e-6), "nivel 1 y 'no' comparten posición (ambos al recub); difieren en si aportan φ");
 
 // ===========================================================================

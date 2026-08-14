@@ -254,24 +254,9 @@
       if (esCadenaSeccion) return 'cadena';
       return 'estribo';
     }
-    // TRABA CON FIGURA DE 3+ LADOS → CADENA DE SECCIÓN (feedback 13-ago, mismo
-    // criterio que el fix 305A del estribo): `_traba` dibuja UNA forma fija
-    // (vertical + gancho 135/90) que aproxima bien las 101x/102x — con una
-    // 103A/104A/104B la IGNORABA por completo y encima el 'auto' mandaba TODAS
-    // las dims al alto útil (medido: una TC 104B en el muro resolvía 244×4 y se
-    // dibujaba plana). Como cadena entra por ejesCadenaSeccion/autos, contra el
-    // marco de SU pose, igual que el estribo-cadena.
-    if (rol === 'traba') {
-      if (esMarco || esEstriboConGanchos(f)) return 'estribo';   // marco cerrado (con o sin ganchos declarados) se dibuja como marco
-      // FIN DE LA FORMA FIJA (14-ago): antes 101x/102x caían en `_traba`, que
-      // dibuja SIEMPRE "cuerpo + gancho 135 + gancho 90" ignorando el trazo real
-      // — el usuario puso una 102A y vio "una 103C", y los ganchos dibujados ni
-      // se facturaban. TODA figura con tramos derivables dibuja SU trazo como
-      // cadena de sección (la 101A recta incluida: un tramo). `_traba` queda solo
-      // como fallback para figuras sin tramos (hoy: ninguna del catálogo).
-      if (tieneTramos) return 'cadena';
-      return 'traba';
-    }
+    // (14-ago, Modelo A) El bloque `rol === 'traba'` MURIÓ: una figura abierta
+    // bajo TR/TC/TRV es un longitudinal más y cae al camino general de abajo —
+    // se dibuja como se dibujó, y el cruce es girar la pieza, no una familia.
     // CERRADA = MARCO, gane quien gane el rol (fix 14-ago): antes `rol ? 'cabezal'
     // : 'estribo'` dejaba que la tipología pisara la topología — una 106A bajo MH
     // se clasificaba 'cabezal' para todo llamador que pasara el rol, y de ahí
@@ -309,9 +294,9 @@
   // vive en `anidarFigura` —; lo que se unifica acá es el SI: una pieza de sección
   // anida SIEMPRE, nunca se traslada.
   function esPiezaDeSeccion(figura, rol) {
-    if (rol !== 'estribo' && rol !== 'traba') return false;
+    if (rol !== 'estribo') return false;
     var fam = familiaDeDibujo(figura, rol);
-    return fam === 'estribo' || fam === 'rombo' || fam === 'traba' || fam === 'cadena';
+    return fam === 'estribo' || fam === 'rombo' || fam === 'cadena';
   }
 
   // ---------------------------------------------------------------------------
@@ -567,10 +552,6 @@
     // lados. MEDIDO antes de esta corrección: TRV 101A de la semilla con Δ +6 daba
     // dim A 50.4 → 56.4 y el trazo clavado en 49.6 de alto — el mismo defecto del
     // estribo, en la otra pieza que se dibuja del marco.
-    if (fam === 'traba') {
-      for (i = 0; i < P.length; i++) out[P[i]] = 'v';
-      return out;
-    }
     if (fam !== 'estribo') return null;
     if (esEstriboConGanchos(f)) {
       var b = dimsEstriboGanchos(f, 24, 52, 0.8);
@@ -1338,7 +1319,7 @@
     // traba) vive en el plano ⊥ al rumbo, no en el longitudinal. Es el mismo plano
     // (y,z) del marco de núcleo que ya usan _estriboPerimetral y _traba: la cadena
     // entra ahí sin inventar un sistema nuevo.
-    if (rol === 'estribo' || rol === 'traba') {
+    if (rol === 'estribo') {   // (Modelo A: la traba ya no es pieza de sección)
       return _cadenaSeccion(c, host, anchor, diamCm);
     }
     var pw = _planoTrabajo(host, anchor);
@@ -1404,39 +1385,6 @@
     // ese mismo — centrar el de vértices dejaba la pieza corrida ~R y la punta
     // invadía el recubrimiento que el solver acababa de prometer.
     var rawPts = c.pts;
-    // ORIENTAR AL DOMINANTE (anchor.orientarA = {idx, eje}, lo decide reglas
-    // desde la pose): la regla del usuario es que el DOMINANTE cruza/corre por
-    // el eje que dicta la colocación; si el trazo canónico lo trae en otra
-    // dirección (la 103B lo trae a 45° por sus dobleces), el trazo COMPLETO gira
-    // en su plano hasta dejarlo paralelo al eje pedido — misma figura, girada.
-    // Rotación mínima (±90° máx): el espejo/lado deciden la mano, no esta vuelta.
-    if (anchor && anchor.orientarA && rawPts.length > anchor.orientarA.idx + 1) {
-      var iD = anchor.orientarA.idx;
-      var angD = Math.atan2(rawPts[iD + 1].v - rawPts[iD].v, rawPts[iD + 1].u - rawPts[iD].u);
-      var rotD = ((anchor.orientarA.eje === 'v') ? Math.PI / 2 : 0) - angD;
-      while (rotD > Math.PI / 2) rotD -= Math.PI;
-      while (rotD <= -Math.PI / 2) rotD += Math.PI;
-      if (Math.abs(rotD) > 1e-9) {
-        var cRo = Math.cos(rotD), sRo = Math.sin(rotD);
-        rawPts = rawPts.map(function (p) { return { u: p.u * cRo - p.v * sRo, v: p.u * sRo + p.v * cRo }; });
-      }
-    }
-    // CONVENCIÓN DEL ESTRIBO para el CRUCE (14-ago): la dim del dominante es
-    // ÚTIL (cara a cara del marco; es lo que se corta y lo que ya congelaba la
-    // semilla TRV = 50.4) y el TRAZO va EJE A EJE (−φ/2 por punta: la cara del
-    // fierro queda en la línea de recub). anchor.encogerDom = φ: el dominante se
-    // encoge simétrico y sus dos bloques vecinos lo acompañan hacia adentro.
-    if (anchor && anchor.encogerDom > 0 && anchor.domIdx != null &&
-        rawPts.length > anchor.domIdx + 1) {
-      var iE = anchor.domIdx;
-      var duE = rawPts[iE + 1].u - rawPts[iE].u, dvE = rawPts[iE + 1].v - rawPts[iE].v;
-      var lenE = Math.sqrt(duE * duE + dvE * dvE) || 1;
-      var exE = (duE / lenE) * (anchor.encogerDom / 2), eyE = (dvE / lenE) * (anchor.encogerDom / 2);
-      rawPts = rawPts.map(function (p2, k) {
-        return (k <= iE) ? { u: p2.u + exE, v: p2.v + eyE }
-                         : { u: p2.u - exE, v: p2.v - eyE };
-      });
-    }
     var pts = _conGanchosRadio(rawPts, diamCm, _cadenaCierra(rawPts)), i;
     var minU = Infinity, maxU = -Infinity, minV = Infinity, maxV = -Infinity;
     for (i = 0; i < pts.length; i++) {
@@ -1460,41 +1408,6 @@
     // dominante se APOYA en esa cara (eje a eje contra el marco) y el resto del
     // trazo cuelga hacia el núcleo — clic abajo = barra abajo con patas arriba.
     // Un dominante que CRUZA la cara (va de cara a cara) se queda centrado.
-    var coordExplicita = (anchor && anchor.anclarCara && anchor.anclarCara.eje === 'v')
-      ? (anchor && anchor.y != null && isFinite(anchor.y))
-      : (anchor && anchor.z != null && isFinite(anchor.z));
-    if (anchor && anchor.anclarCara && anchor.domIdx != null && !coordExplicita &&
-        rawPts.length > anchor.domIdx + 1) {
-      // (si el distribuidor ya escribió la coordenada —capas del layered, reparto—
-      // esa posición MANDA: el ancla es solo para la pieza recién clickeada.)
-      var aC = anchor.anclarCara;
-      var e0 = rawPts[anchor.domIdx], e1 = rawPts[anchor.domIdx + 1];
-      var dNorm = (aC.eje === 'v') ? Math.abs(e1.v - e0.v) : Math.abs(e1.u - e0.u);
-      var dLen = Math.max(Math.abs(e1.u - e0.u), Math.abs(e1.v - e0.v), 1e-9);
-      if (dNorm < 0.05 * dLen) {                       // paralelo a la cara
-        var caraCoord = (aC.eje === 'v') ? (aC.s > 0 ? m.ySup : m.yInf)
-                                         : (aC.s > 0 ? m.w2 : -m.w2);
-        var domCoord = (aC.eje === 'v') ? (e0.v + e1.v) / 2 : (e0.u + e1.u) / 2;
-        // el resto del trazo debe quedar HACIA EL NÚCLEO: si cuelga hacia afuera,
-        // se refleja sobre la línea del dominante (cambia la mano, no la posición)
-        var haciaFuera = 0, haciaDentro = 0;
-        pts.forEach(function (p) {
-          var d = ((aC.eje === 'v') ? p.v : p.u) - domCoord;
-          if (d * aC.s > 1e-9) haciaFuera += Math.abs(d); else haciaDentro += Math.abs(d);
-        });
-        if (haciaFuera > haciaDentro) {
-          pts = pts.map(function (p) {
-            var q = (aC.eje === 'v') ? { u: p.u, v: 2 * domCoord - p.v }
-                                     : { u: 2 * domCoord - p.u, v: p.v };
-            if (p.esArco) q.esArco = true;
-            return q;
-          });
-        }
-        // anclar: el eje del dominante queda EN la línea del marco de esa cara
-        if (aC.eje === 'v') { cv = domCoord; cy = caraCoord; }
-        else { cu = domCoord; cz = caraCoord; }
-      }
-    }
     return pts.map(function (p) {
       var q = V(xx, cy + (p.v - cv), cz + mu * (p.u - cu));
       if (p.esArco) q.esArco = true;
@@ -2464,52 +2377,9 @@
   // NO se acorta el gancho para que quepa: 6φ (mín 7.5) es NORMATIVO. Si la pieza
   // resulta más ancha que su marco, asoma centrada —dato honesto y simétrico— y el
   // aviso lo emite quien conoce el marco (reglas._repartoDePieza).
-  function _traba(figura, dims, host, anchor, diamCm) {
-    var m = _marcoNucleo(host, anchor, diamCm);   // eje = recub + φ/2, como el estribo
-    // EJE LOCAL QUE CRUZA (fix 14-ago): 'y' = el alto del marco (comportamiento de
-    // siempre: la traba de la viga cose sup↔inf) o 'z' = el ancho del marco (la
-    // traba del muro en la sección horizontal cose las dos cortinas del espesor).
-    // Lo decide reglas (_cruceLocalTraba, desde la pose) y viaja en el anchor:
-    // este constructor no conoce poses. Sin el dato → 'y', byte-idéntico a antes.
-    // El trazo es UNO SOLO, armado en (a = coordenada del cruce, b = transversal):
-    // gancho 135° arriba (diagonal hacia el núcleo) + gancho 90° abajo, con
-    // GANCHOS CON RADIO (el 135° es doblez terminal: cresta toca aSup EXACTO y la
-    // punta cuelga tangente; el pie de 90° queda en punta, fillet motor). Se arma
-    // en b = 0 y se CENTRA después sobre el bbox ARQUEADO — mismo criterio que
-    // _cadenaSeccion.
-    var cruce = (anchor && anchor.cruceLocal === 'z') ? 'z' : 'y';
-    var aSup = (cruce === 'y') ? m.ySup : m.w2;
-    var aInf = (cruce === 'y') ? m.yInf : -m.w2;
-    var xx = anchor.x || 0;
-    // transversal: el eje del plano que NO cruza (z si cruza y — el caso viga —,
-    // y si cruza z). Su coordenada viene del anchor (reparto/clic); la del cruce
-    // NO se lee: la traba va de cara a cara por definición.
-    var tt = (cruce === 'y') ? (anchor.z || 0) : (anchor.y || 0);
-    var g = 0.7071 * (extGancho(diamCm) + diamCm);
-    var pts2 = _conGanchosRadio([
-      { u: -g, v: aSup - g },                  // punta gancho 135° arriba
-      { u: 0, v: aSup },                       // doblez arriba (cara a cara)
-      { u: 0, v: aInf },                       // baja a la otra cara
-      { u: -extGancho(diamCm), v: aInf }       // pie gancho 90° abajo
-    ], diamCm, false);
-    var minU = Infinity, maxU = -Infinity, i;
-    for (i = 0; i < pts2.length; i++) {
-      if (pts2[i].u < minU) minU = pts2[i].u;
-      if (pts2[i].u > maxU) maxU = pts2[i].u;
-    }
-    var du = tt - (minU + maxU) / 2;             // el CENTRO del bbox va a la transversal
-    var out = pts2.map(function (p) {
-      // (a,b) → (v,u) locales: cruzando 'y' es la identidad de siempre; cruzando
-      // 'z' el MISMO trazo gira 90° en su plano (v del trazo pasa a u local).
-      var q = (cruce === 'y') ? V(xx, p.v, p.u + du) : V(xx, p.u + du, p.v);
-      if (p.esArco) q.esArco = true;
-      return q;
-    });
-    // ESPEJO: reflexión sobre el PROPIO eje transversal de la traba (la pieza no
-    // se mueve, cambia de mano) — el eje depende de qué cruza.
-    return (anchor && anchor.espejo)
-      ? _espejarEje(out, (cruce === 'y') ? 'z' : 'y', tt) : out;
-  }
+  // (14-ago, Modelo A) `_traba` — la FORMA FIJA — fue eliminado: dibujaba una
+  // figura que no era la del catálogo, con ganchos que no se facturaban. Toda
+  // figura abierta se dibuja con SU trazo por los constructores longitudinales.
 
   // ---------------------------------------------------------------------------
   // ANIDADO POR FIGURA — v3 (CORRECCIÓN CONCEPTUAL DEL USUARIO, 12-ago)
@@ -2626,7 +2496,7 @@
     // ANTES caía en la rama ABIERTA (o directamente en ninguna, porque el llamador
     // sólo anidaba lo que se dibuja como marco) y el corchete no le sirve: sus
     // puntas libres son patas de gancho y sus quiebres no son de 90°.
-    if ((rol === 'estribo' || rol === 'traba') && familiaDeDibujo(f, rol) === 'cadena') {
+    if (rol === 'estribo' && familiaDeDibujo(f, rol) === 'cadena') {
       if (!(dSep > 0)) { res.delta = 0; return res; }   // δ nulo = marcos superpuestos
       // opts.angulos = el ángulo POR BARRA del componente: el retiro se resuelve
       // sobre el MISMO trazo que se va a dibujar (si leyera el del catálogo, la capa
@@ -2697,15 +2567,13 @@
     var familia = familiaDeDibujo(figura, rol);
     if (familia === 'estribo') return _estriboPerimetral(figura, dims, host, anchor, diamCm);
     if (familia === 'rombo') return _romboPerimetral(figura, dims, host, anchor, diamCm);
-    if (familia === 'traba') return _traba(figura, dims, host, anchor, diamCm);
     if (familia === 'cadena') return _cadenaGenerica(figura, dims, host, anchor, diamCm, rol);
     return _cabezalLongitudinal(figura, dims, host, anchor, diamCm);   // recta | cabezal
   }
 
-  // Rol cuando la tipología no lo dice: cara lateral = traba; figura de perímetro
-  // cerrado (4 lados del catálogo) = estribo; el resto longitudinal.
+  // Rol cuando la tipología no lo dice: perímetro cerrado = estribo; el resto
+  // longitudinal. (Modelo A 14-ago: «cara lateral = traba» murió con el rol.)
   function _rolPorFigura(figura, anchor) {
-    if (anchor && anchor.cara === 'lateral') return 'traba';
     var f = (figura || '').toUpperCase();
     return _esPerimetro(_spec(f), f) ? 'estribo' : 'cabezal';
   }
@@ -2799,7 +2667,6 @@
     dimsEstriboGanchos: dimsEstriboGanchos,   // sus dims listadas = lo que se dibuja
     esRomboSeccion: esRomboSeccion,           // ¿cuerpo diagonal que cierra? (106A)
     dimsRombo: dimsRombo,                     // dims derivadas del marco (listado)
-    _traba: _traba,
     _cadenaGenerica: _cadenaGenerica
   };
 

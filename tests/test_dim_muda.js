@@ -112,10 +112,12 @@ console.log('A — sin dims escritas a mano, el motor da EXACTAMENTE lo de siemp
   const res = G.generarViga(S.semillaViga(), {});
   ok(res.resumen.items === 4 && res.resumen.barras === 72 && res.resumen.kg === 136.1,
     'viga-semilla en {items:4, barras:72, kg:136.1} — la referencia viva');
+  // (14-ago, Modelo A) la TRV es un longitudinal de_pie: mismo 50.4, pero la
+  // aritmética llega por resta directa del largo útil local — sin cola flotante.
   const firma = res.barras.map(b => [b.figura, b.cant, b.dim_a, b.dim_b, b.dim_c, b.dim_d].join('|')).join(' ; ');
   ok(firma === [
     '103B|6|30|547.9735931288072|30|', '101A|4|592|||',
-    '104D|47|24|52|24|52', '101A|15|50.400000000000006|||'
+    '104D|47|24|52|24|52', '101A|15|50.4|||'
   ].join(' ; '), 'las 4 barras salen con las MISMAS dims que antes de esta corrección');
   // Y la semilla no estrena NI UN aviso. Sus dims 'auto' las resolvió el motor
   // contra el hormigón, así que medir y dibujar salen del mismo sitio y no hay

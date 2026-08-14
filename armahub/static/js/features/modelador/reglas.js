@@ -520,6 +520,50 @@
   }
 
   function normalizarComponente(comp) {
+    // MIGRACIÓN TRABAS (14-ago, Modelo A): el rol 'traba' murió en el motor — una
+    // figura ABIERTA bajo TR/TC/TRV es un longitudinal y su dominante ESTIRA por
+    // donde corre. Las recetas viejas no traen pose (rumbo x implícito): tal
+    // cual, una TRV que cruzaba el alto pasaría a estirarse al LARGO (592 cm).
+    // Se les escribe la pose que preserva su geometría de siempre: de_pie
+    // (rumbo y, cruza el alto). Idempotente: solo sin pose ni orientación.
+    if (comp && !comp.pose &&
+        _rolDeTipologia(comp.tipologia, comp.cara) === 'traba') {
+      var fpM = _fp();
+      var cerradaM = !!(fpM && fpM.familiaDeDibujo &&
+        fpM.familiaDeDibujo(comp.figura, null) === 'estribo');
+      var oriM = comp.plano_pieza || {};
+      if (!cerradaM && !oriM.volteado && comp.orientacion == null) {
+        comp.pose = { cara: comp.cara || 'lateral', lado: (Number(comp.lado) < 0 ? -1 : 1),
+          rumbo: 'y', espejo: !!comp.espejo };
+        // …y sus ZONAS (que marchan por el x LOCAL, correcto para la pieza
+        // acostada de antes) se convierten a RANGO con tramos en el eje MUNDO x:
+        // mismo formato {long, sep}, mismas posiciones, pero pose-aware — sin
+        // esto la traba de_pie repartía sus zonas contra el ALTO (medido:
+        // semilla {4,59,133.5} en vez de {4,72,136.1}).
+        var dz = comp.distribucion;
+        // …un rango legado SIN eje marchaba por el x local: para la traba ahora
+        // de_pie eso sería la ALTURA. Su intención era el largo del elemento.
+        if (dz && dz.rango && !dz.rango.eje) dz.rango.eje = 'x';
+        if (dz && (dz.modo === 'linear' || dz.modo === 'lineal') && dz.zonas && dz.zonas.length && !dz.rango) {
+          var largoZ = 0;
+          for (var zi2 = 0; zi2 < dz.zonas.length; zi2++) largoZ += Number(dz.zonas[zi2].long) || 0;
+          var st2 = Number(dz.start_offset) || 0;
+          var from2 = -largoZ / 2 + st2;
+          var sep2 = Number(dz.zonas[0].sep) || 20;
+          if (dz.zonas.length === 1) {
+            // conversión EXACTA: las zonas colocan en from + k·sep MIENTRAS quepan
+            // dentro del elemento (el borde capa); el rango cierra su intervalo.
+            // `to` = la ÚLTIMA posición legada REAL, así salen las mismas barras.
+            var topeZ = largoZ / 2 - st2;
+            var nZ = Math.max(1, Math.floor((topeZ - from2) / sep2 + 1e-9) + 1);
+            dz.rango = { eje: 'x', from: from2, to: from2 + (nZ - 1) * sep2, sep: sep2 };
+          } else {
+            dz.rango = { eje: 'x', from: from2, to: largoZ / 2 - st2, sep: sep2, tramos: dz.zonas };
+          }
+        }
+      }
+    }
+
     if (!comp || typeof comp !== 'object') return comp;
     if (!('comp_id' in comp)) comp.comp_id = null;
     if (!('prioridad' in comp)) comp.prioridad = null;
@@ -1642,79 +1686,6 @@
     };
   }
 
-  // ---------------------------------------------------------------------------
-  // EJE QUE CRUZA UNA TRABA — derivado de la POSE, no de una tabla por elemento.
-  // ---------------------------------------------------------------------------
-  // La traba cose dos capas enfrentadas DENTRO de su plano de dibujo (el ⊥ a su
-  // rumbo). Cuál de los dos ejes del plano cruza:
-  //   · si solo UNO de ellos es transversal al elemento (≠ 'x', el eje del largo),
-  //     es ese: una traba nunca corre a lo largo del elemento. Muro, traba en la
-  //     sección horizontal (rumbo y, plano x·z) → cruza z, el ESPESOR. Antes esto
-  //     estaba cableado a altoUtil (herencia de la viga) y la traba del muro salía
-  //     cruzando el ALTO (245 cm medidos) — "la pieza es cualquier cosa".
-  //   · si los DOS son transversales (rumbo x: plano y·z, el caso viga), cruza
-  //     'y' — el ALTO local, el invariante de SIEMPRE de la traba (la de la viga
-  //     cose el alto sea cual sea la cara que declare su receta; medido: meter la
-  //     cara en esta decisión cambiaba 4 combinaciones legacy del barrido). Si
-  //     algún día una traba deba cruzar el ancho con rumbo x, será una decisión
-  //     nueva del usuario, no un default.
-  function _ejeCruceTraba(comp) {
-    var pose = poseDe(comp);
-    var ru = (pose && pose.rumbo) || 'x';
-    var plano = ['x', 'y', 'z'].filter(function (e) { return e !== ru; });
-    var trans = plano.filter(function (e) { return e !== 'x'; });
-    return (trans.length === 1) ? trans[0] : 'y';
-  }
-  // Medida ÚTIL del marco a lo largo de un eje de mundo (la cuenta de
-  // marcoUtilNivel, leída por eje — fuente única para quien resuelva por pose).
-  function _utilPorEje(mk, eje) {
-    if (eje === 'x') return mk.largoUtil;
-    if (eje === 'z') return mk.anchoUtil;
-    return mk.altoUtil;
-  }
-
-  // Eje de cruce de la traba en LOCAL (la tabla es involutiva: sirve mundo→local).
-  // El resto del resolver de sección NO necesita traducción: el host llega YA
-  // permutado por la pose (los 'auto' del estribo eran pose-aware desde antes).
-  function _cruceLocalTraba(comp) {
-    var P = PERM_POR_RUMBO[poseDe(comp).rumbo] || null;
-    var m = _ejeCruceTraba(comp);
-    return P ? P[m] : m;
-  }
-
-  // GIRO DE UNA TRABA-CADENA (regla de ingreso, 14-ago): «el lado que cruza lo
-  // dicta la colocación; lo demás actúa como gancho». El criterio es GEOMÉTRICO
-  // puro sobre la clasificación canónica del trazo (ejesCadenaSeccion): una
-  // traba JAMÁS tiene un lado auto corriendo por el alto local — si el canónico
-  // deja alguno ahí (la 103B/102A «verticales», la TC 104B plana de 13-ago), o
-  // no deja NINGUNO en el cruce (la 101A recta de la viga), el trazo completo
-  // gira 90° en su plano y las dims se leen post-giro: lados del cruce miden el
-  // cruce (útil, convención del estribo), el resto es gancho normativo. El
-  // dominante-cascada NO participa: inventa 'B' en figuras que no lo declaran
-  // (la 104B) y giraría trabas que ya calzan.
-  function _giroTraba(comp) {
-    if ((comp && comp._rol) !== 'traba') return null;
-    var fp = _fp();
-    if (!fp || !fp.ejesCadenaSeccion) return null;
-    var ejes = fp.ejesCadenaSeccion(comp.figura, 'traba', _angOvr(comp));
-    if (!ejes) return null;
-    var cruceCanon = (_cruceLocalTraba(comp) === 'z') ? 'u' : 'v';
-    var noCruce = (cruceCanon === 'u') ? 'v' : 'u';
-    var letras = Object.keys(ejes);
-    var g = _dimsDecl(comp);
-    // ¿algún lado AUTO clasificado al eje que NO es el cruce? una traba jamás
-    // corre por el alto local: eso era la 103B/102A vertical y la TC 104B «plana».
-    // También gira si NINGÚN lado cae al cruce (la 101A recta de la viga).
-    var idxMal = -1, idxCruce = -1;
-    for (var i = 0; i < letras.length; i++) {
-      var L = letras[i], auto = !(g[L] && g[L].modo === 'fija');
-      if (ejes[L] === noCruce && auto && idxMal < 0) idxMal = i;
-      if (ejes[L] === cruceCanon && idxCruce < 0) idxCruce = i;
-    }
-    if (idxMal < 0 && idxCruce >= 0) return null;          // canónico calza: intacto
-    var idxG = (idxMal >= 0) ? idxMal : 0;
-    return { idx: idxG, letra: letras[idxG], eje: cruceCanon, noCruce: noCruce, ejes: ejes, letras: letras };
-  }
   // Nivel EFECTIVO de una base (declarado o default por rol).
   function _nivelDeBase(base) {
     return nivelJerarquiaEfectivo(
@@ -3025,7 +2996,7 @@
   // anteriores)), no del hormigón pelado; 'fija' toma su valor.
   //   cabezal → largoUtil (corre a lo largo del eje longitudinal local)
   //   estribo → A/C = anchoUtil, B/D = altoUtil (el backend recalcula el largo)
-  //   traba   → el eje que cruza según su pose (_ejeCruceTraba); viga = altoUtil
+  //   (el rol traba murió en el motor: una traba es un longitudinal más)
   // `nivel` (3er arg) = nivel DECLARADO; sin declarar, insetJ = 0 → idéntico a
   // medir contra el recubrimiento (comportamiento histórico de las recetas).
   // `profConsumida` (cm) = lo que la CAPA de esta copia ya se metió hacia el núcleo
@@ -3078,9 +3049,7 @@
     // pueden leer dos cosas distintas (hallazgo D1 del verificador: la 305A se
     // medía contra el alto y se dibujaba contra el ancho, 11 cm fuera del
     // hormigón). null = no es cadena de sección → sigue la regla por letra.
-    var giroT = _giroTraba(comp);
-    var ejesSec = (fpD && fpD.ejesCadenaSeccion && !giroT &&
-      (comp._rol === 'estribo' || comp._rol === 'traba'))
+    var ejesSec = (fpD && fpD.ejesCadenaSeccion && comp._rol === 'estribo')
       ? fpD.ejesCadenaSeccion(comp.figura, comp._rol, angOvr) : null;
     // Y el valor de ese 'auto' RESERVA los quiebres, igual que el auto-largo del
     // longitudinal reserva los sobres de las puntas (fpD.sobresCadena).
@@ -3166,17 +3135,7 @@
         if (e === 'd') return ganchoAuto;
       }
       if (comp._rol === 'estribo') return (k === 'A' || k === 'C') ? mk.anchoUtil : mk.altoUtil;
-      // TRABA GIRADA: post-giro, los lados que estaban en el eje equivocado
-      // pasan al CRUCE y miden su útil; todo lo demás actúa como gancho.
-      if (giroT) return (giroT.ejes[k] === giroT.noCruce)
-        ? _utilPorEje(mk, _cruceLocalTraba(comp)) : ganchoAuto;
-      // TRABA: cruza el eje que dicta su POSE, leído en LOCAL (_cruceLocalTraba).
-      // OJO: `mk` viene del host YA PERMUTADO por la pose (todo este resolver
-      // trabaja en el marco local — por eso el estribo de arriba lee ancho/alto
-      // "de mundo" y es pose-aware igual). El único que elegía MAL su eje local
-      // era la traba: siempre el alto local, aunque su pose dijera cruzar el
-      // espesor. Medido antes/después: muro rumbo y 394 (largo) → 15 (espesor).
-      return _utilPorEje(mk, _cruceLocalTraba(comp));
+      return mk.altoUtil;   // (sin rol traba en el motor, acá solo llega el estribo)
     }
     // DOS PASADAS: el longitudinal se resuelve AL FINAL porque su reserva (los
     // SOBRES de las puntas inclinadas) depende de las dims de los DEMÁS lados
@@ -3548,6 +3507,16 @@
     // Se RE-DERIVA en cada pasada (no se cachea): la figura puede cambiar en la
     // ficha y un rol pegado dibujaría la figura nueva con el tren de la vieja.
     var rolTip = _rolDeTipologia(comp.tipologia, comp.cara);
+    // EL ROL 'TRABA' MURIÓ EN EL MOTOR (regla final del usuario, 14-ago): «toda
+    // figura entra con su forma de catálogo; el plano de entrada, el dominante y
+    // el borde dan control absoluto; si dejas reglas, el control se pierde». Una
+    // figura ABIERTA bajo TR/TC/TRV es un longitudinal más: se dibuja como se
+    // dibujó y su AUTO se resuelve por la DIRECCIÓN de cada lado en la pose (el
+    // universal del 13-ago). El cruce de la traba ya no es una regla: es girar
+    // la pieza (ESPACIO) hasta que su dominante corra por el eje que cruza. La
+    // tipología conserva solo presets (color, @sep, modo, nivel). Las recetas
+    // viejas migran en el normalizador (pose de_pie) para no estirarse al largo.
+    if (rolTip === 'traba') rolTip = 'cabezal';
     if (rolTip === 'cabezal') {
       var fpR = _fp();
       if (fpR && ((fpR.esEstriboConGanchos && fpR.esEstriboConGanchos(comp.figura)) ||
@@ -3773,26 +3742,7 @@
     // _marcoCara (no usan marco de núcleo).
     // Se escriben LAS TRES o NINGUNA: _marcoNucleo cae de insetInf/insetLat a
     // inset cuando faltan, así que dejar una sola daría un marco equivocado.
-    if (base.rol === 'traba') {
-      // El constructor de la traba necesita saber QUÉ eje local cruza (fix 14-ago:
-      // con rumbo y cruzaba el "alto local" = el LARGO del muro, 395 cm medidos).
-      // Se resuelve acá (pose) y viaja en el anchor: figura_puntos no conoce poses.
-      base.anchorBase.cruceLocal = _cruceLocalTraba(comp);
-      var gT = _giroTraba(comp);
-      if (gT) {
-        base.anchorBase.orientarA = { idx: gT.idx, eje: gT.eje };
-        base.anchorBase.domIdx = gT.idx;
-        base.anchorBase.encogerDom = Number(comp.diam) / 10 || 0;
-        // "el lado que cruza calza con el borde": la cara local viaja para que
-        // el constructor ancle el lado del cruce cuando corre paralelo a ella
-        // (si la cruza, queda centrado de cara a cara).
-        var dpT = derivarPose(poseDe(comp));
-        base.anchorBase.anclarCara = (dpT.caraLocal === 'lateral')
-          ? { eje: 'u', s: (dpT.ladoLocal < 0 ? -1 : 1) }
-          : { eje: 'v', s: (dpT.caraLocal === 'inf' ? -1 : 1) };
-      }
-    }
-    if (base.rol === 'estribo' || base.rol === 'traba') {
+    if (base.rol === 'estribo') {
       var nivelEf = _nivelDeBase(base);
       var insetS = _sumaPila(host, 'sup', nivelEf);
       var insetI = _sumaPila(host, 'inf', nivelEf);

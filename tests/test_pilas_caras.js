@@ -99,8 +99,9 @@ ok(close(ejeY('CBS'), 24.4, 1e-9), 'CBS φ16 nivel 2: y = 30 − (4 + 0.8) − 0
 const cbsZ = semilla.placements.filter(p => p.tipologia === 'CBS').map(p => Math.round(p.puntos[1].z * 1e4) / 1e4);
 ok(Math.max.apply(null, cbsZ) === 10.4 && Math.min.apply(null, cbsZ) === -10.4,
   'CBS φ16 nivel 2: z = ±(15 − (3 + 0.8) − 0.8) = ±10.4');
-ok(close(maxE(semilla.placements.filter(p => p.tipologia === 'TRV')[0], 'y'), 24.8, 1e-9),
-  'traba φ8 nivel 2: y = 30 − (4 + 0.8) − 0.4 = 24.8');
+// (14-ago, Modelo A) longitudinal de_pie: punta en la línea útil del nivel.
+ok(close(maxE(semilla.placements.filter(p => p.tipologia === 'TRV')[0], 'y'), 25.2, 1e-9),
+  'traba φ8 nivel 2: y = 30 − (4 + 0.8) = 25.2 (punta en la línea útil)');
 
 // ===========================================================================
 // A · CASO DE ACEPTACIÓN — corchete doble ANIDADO pegado al estribo.

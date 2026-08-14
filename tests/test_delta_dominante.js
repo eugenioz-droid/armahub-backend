@@ -104,10 +104,12 @@ console.log('A — sin Δ y sin elección, el motor da EXACTAMENTE lo de siempre
     'viga-semilla en {items:4, barras:72, kg:136.1} — la referencia viva');
   // Las dims completas (con su cola de flotante): si el Δ tocara algo cuando NO
   // está declarado, acá se vería aunque los kg redondeados no se movieran.
+  // (14-ago, Modelo A) la TRV es un longitudinal de_pie: mismo 50.4, pero la
+  // aritmética llega por resta directa del largo útil local — sin cola flotante.
   const firma = res.barras.map(b => [b.figura, b.cant, b.dim_a, b.dim_b, b.dim_c, b.dim_d].join('|')).join(' ; ');
   ok(firma === [
     '103B|6|30|547.9735931288072|30|', '101A|4|592|||',
-    '104D|47|24|52|24|52', '101A|15|50.400000000000006|||'
+    '104D|47|24|52|24|52', '101A|15|50.4|||'
   ].join(' ; '), 'las 4 barras salen con las MISMAS dims que antes de la tanda Δ');
 
   // Δ = 0 y Δ = null son "sin Δ": no basta con que el número no cambie, la dim

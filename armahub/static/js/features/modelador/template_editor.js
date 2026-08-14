@@ -2353,7 +2353,7 @@
     var iW = rect.iW > 0 ? rect.iW : rect.W, iH = rect.iH > 0 ? rect.iH : rect.H;
     var contorno = (ST.cargado.contorno !== false);
 
-    if (rol === 'estribo' || rol === 'traba') {
+    if (rol === 'estribo') {
       // Estribo/traba "toma contorno": rectángulo al recubrimiento (o al borde si
       // contorno=false / recub 0). En SECCIÓN se ve el recinto completo; en las
       // vistas donde X es horizontal se ve como un trazo vertical a la X del cursor.
@@ -3210,9 +3210,12 @@
       // tipología que venga — familiaDeDibujo con rol null, como el motor en
       // _baseDeComponente) O el rol de sección con su figura dibujable
       // (esPiezaDeSeccion: traba/estribo con 101x/103x/305A… = cadena/traba).
+      // (Modelo A, 14-ago): la TRABA ya no entra como pieza de sección — toda
+      // figura abierta entra COMO SE DIBUJÓ y se gira con ESPACIO. Sección =
+      // topología cerrada, o rol estribo con figura de sección (305A/104B-ES).
       var esSeccionV = !!(fpV &&
         ((fpV.familiaDeDibujo && fpV.familiaDeDibujo(sel.figura, null) === 'estribo') ||
-         (fpV.esPiezaDeSeccion && fpV.esPiezaDeSeccion(sel.figura, rol))));
+         (rol === 'estribo' && fpV.esPiezaDeSeccion && fpV.esPiezaDeSeccion(sel.figura, 'estribo'))));
       if (esSeccionV) {
         if (_NORMAL_DE_CARA[pose.cara] === defV.depth) {
           // la cara default quedó ∥ al plano de la pieza: elegir una cara VÁLIDA
