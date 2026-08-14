@@ -234,6 +234,13 @@
     if (esMarco) return rol ? 'cabezal' : 'estribo';
     if (_esRecta(f)) return 'recta';
     if (esCadena) return 'cadena';
+    // PENDIENTE (migración cabezal→trazador, medida 13-ago): este constructor
+    // dibuja las patas a 90° FIJAS e ignora los ángulos del catálogo (una 103C
+    // sale como 103A, sin su gancho). Bajar el umbral de cadena a 2 lados lo
+    // arregla PERO mueve 10 guards (B auto reserva las proyecciones de las
+    // patas inclinadas, spin, testeros, anidado de pie) y cambia el dibujo de
+    // recetas guardadas con dims fijas → va como pasada propia con toda la
+    // re-derivación, no como un cambio de una línea.
     return 'cabezal';
   }
 

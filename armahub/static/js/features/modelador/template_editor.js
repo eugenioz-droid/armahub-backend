@@ -1940,6 +1940,9 @@
   function _dibujarGhost(plano, svg, sp) {
     var layer = _ghostLayer(svg); if (!layer) return;
     while (layer.firstChild) layer.removeChild(layer.firstChild);
+    // Última posición del ghost: ESPACIO (espejo) redibuja AQUÍ mismo, sin
+    // esperar al próximo mousemove (antes el preview desaparecía hasta mover).
+    ST._ghostUlt = { plano: plano, svg: svg, sp: sp };
     if (!_hayCargado()) { ST.ghost = null; ST.caraHi = null; return; }
     var uvRaw = _pixelToUV(plano, sp.px, sp.py);
     if (!uvRaw) { ST.ghost = null; ST.caraHi = null; return; }
@@ -2841,6 +2844,26 @@
     _pushUndo();
     rotarPoseEnVista(ST.receta.componentes[ST.selCi], plano || _vistaActiva());
   }
+
+  // ROTAR DE PLANO (restaurada 13-ago): giro de POSE de la selección en torno a
+  // un EJE del mundo dado — el VERTICAL de la vista activa ("como una puerta"):
+  // la pieza pasa de estar de frente a estar colocada en PROFUNDIDAD. Por ser de
+  // pose, dims/anclaje/reparto se re-derivan igual que con R.
+  function _rotarPoseSeleccionEje(eje) {
+    if (!ST.receta) return;
+    if (ST.selCi < 0) { _actualizarStatus('Nada seleccionado: haz clic en una barra y vuelve a girar.'); return; }
+    var comp = ST.receta.componentes[ST.selCi];
+    var reglas = global.ModeladorReglas;
+    if (!comp || !reglas || !reglas.rotarPose90) return;
+    _pushUndo();
+    var ejeAntes = _ejeDistDe(comp);
+    _setPose(comp, reglas.rotarPose90(_poseDe(comp), eje));
+    _reencuadrarReparto(comp, ejeAntes);
+    _regenerar();
+    _renderPanel();
+    _posicionarFlipBtn();
+    _actualizarStatus();
+  }
   // (El viejo _voltearSeleccion — ciclar acostada/volteada/de pie — MURIÓ: el botón
   //  flotante y la tecla R llaman los dos a _rotarPoseSeleccion. Una sola semántica.)
 
@@ -3014,7 +3037,10 @@
     if (ST.selCi < 0) { _actualizarStatus('Nada seleccionado: haz clic en una barra y vuelve a Rotar.'); return; }
     _pushUndo();
     var c = ST.receta.componentes[ST.selCi];
-    var eje = EJE_ROT[plano] || 'x';
+    // Eje = profundidad de la vista SEGÚN EL ELEMENTO (13-ago): EJE_ROT era la
+    // tabla fija de la viga y en el muro este giro salía del plano ("la barra
+    // queda saliendo").
+    var eje = _ejeProfundidadDeVista(plano);
     c.orient = c.orient || {};
     if (c.orient.eje !== eje) { c.orient.eje = eje; c.orient.deg = 0; }   // conserva spin
     c.orient.deg = ((c.orient.deg || 0) + deltaDeg) % 360;
@@ -3434,9 +3460,12 @@
     return wrap;
   }
 
-  // Nivel de jerarquía por DEFECTO según el rol (mismo criterio que el motor):
-  // estribo = 1 (nivel exterior), traba y cabezal = 2 (se apoyan por dentro).
-  function _jerDefault(rol) { return (rol === 'estribo') ? 1 : 2; }
+  // Nivel de jerarquía por DEFECTO — SIEMPRE 1 (decisión del usuario 13-ago:
+  // "siempre deben venir en 1, el usuario elige si las cambia"). Espejo del
+  // default del motor (JER_DEFAULT_POR_ROL, también todo en 1). Esta función
+  // era una TABLA DUPLICADA con el criterio viejo (traba/cabezal = 2) y por eso
+  // el select seguía mostrando 2 después de corregir el motor.
+  function _jerDefault(rol) { return 1; }
 
   // <select> de JERARQUÍA del componente (header). Escribe comp.jerarquia:
   //   'no'  → pegado al recubrimiento, NO participa de la jerarquía
@@ -3595,15 +3624,31 @@
     var rotWrap = _div('');
     rotWrap.style.display = 'flex'; rotWrap.style.gap = '6px'; rotWrap.style.alignItems = 'center';
     var rotInp = _input({ value: (c.orient && c.orient.deg) ? c.orient.deg : 0, type: 'number' }, function (v) {
-      var eje = EJE_ROT[ST.ultimoPlano] || (c.orient && c.orient.eje) || 'x';
+      // eje = profundidad de la vista activa SEGÚN EL ELEMENTO (no la tabla viga)
+      var eje = _ejeProfundidadDeVista(ST.ultimoPlano) || (c.orient && c.orient.eje) || 'x';
       c.orient = c.orient || {};
       c.orient.eje = eje; c.orient.deg = Number(v) || 0;   // conserva spin/pivot
       _mut(ci);
     });
     rotInp.style.width = '70px';
+    // +90° = giro de POSE en la vista activa (13-ago): re-deriva dims contra lo
+    // nuevo que cruzan, re-ancla a la cara y re-reparte. Antes era rotación
+    // RÍGIDA en grados (la pieza giraba tal cual y se salía del hormigón); los
+    // grados del input quedan SOLO para inclinar (barras a 45°).
     var rot90 = document.createElement('button'); rot90.className = 'te-ctool'; rot90.textContent = '+90°'; rot90.style.padding = '3px 8px';
-    rot90.addEventListener('click', function () { _rotarSeleccion(ST.ultimoPlano, 90); });
-    rotWrap.appendChild(rotInp); rotWrap.appendChild(rot90);
+    rot90.title = 'Girar 90° en la vista activa (pose): se reajusta a recubrimientos y reparto. Igual que R.';
+    rot90.addEventListener('click', function () { _rotarPoseSeleccion(_vistaActiva()); });
+    // ROTAR DE PLANO (restaurada, 13-ago): manda la pieza a PROFUNDIDAD — gira
+    // 90° en torno al eje VERTICAL de la vista activa (como una puerta). También
+    // es giro de POSE: respeta recubrimientos y dims del hormigón.
+    var rotPlano = document.createElement('button'); rotPlano.className = 'te-ctool'; rotPlano.textContent = 'Plano 90°'; rotPlano.style.padding = '3px 8px';
+    rotPlano.title = 'Rotar DE PLANO: la pieza pasa a estar colocada en profundidad (gira en el eje vertical de la vista).';
+    rotPlano.addEventListener('click', function () {
+      var defs = _defsPlanos();
+      var d = defs[_vistaActiva()] || defs.seccion;
+      _rotarPoseSeleccionEje(d.v);
+    });
+    rotWrap.appendChild(rotInp); rotWrap.appendChild(rot90); rotWrap.appendChild(rotPlano);
     rotRow.appendChild(rotWrap);
     body.appendChild(rotRow);
     // La fila Pose (espejo) va PEGADA a Rotación: el kit de orientar la pieza
@@ -4503,8 +4548,15 @@
           ST.espejoColoc = !ST.espejoColoc;
           _actualizarStatus('Colocando ' + ST.tipologia + ' ' + ST.figura +
             (ST.espejoColoc ? ' · ESPEJO' : ' · Normal') + ' — ESPACIO alterna, clic coloca.');
-          if (ST.ultimoOut) _redibujar2D(ST.ultimoOut);
-        } else if (ST.selCi >= 0) { e.preventDefault(); _rotarSeleccion(ST.ultimoPlano, 90); }
+          // redibujar el ghost EN SU SITIO (sin esperar el próximo mousemove)
+          var gu = ST._ghostUlt;
+          if (gu && gu.plano && gu.svg && gu.sp) _dibujarGhost(gu.plano, gu.svg, gu.sp);
+        } else if (ST.selCi >= 0) {
+          // Con pieza seleccionada, ESPACIO también es giro de POSE (13-ago: todo
+          // giro de 90° re-deriva dims/anclaje/reparto; los grados quedan para
+          // inclinar). Misma acción que R y que el +90° de la ficha.
+          e.preventDefault(); _rotarPoseSeleccion(_vistaActiva());
+        }
       } else if (e.key === 'r' || e.key === 'R') {
         // R → GIRAR 90° EN LA VISTA ACTIVA (TANDA P · rotar-en-vista): la pieza gira
         // alrededor del eje que sale de la pantalla en la vista donde se está
