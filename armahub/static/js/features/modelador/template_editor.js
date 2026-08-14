@@ -208,6 +208,135 @@
     return null;
   }
 
+  // ==========================================================================
+  // FIGURA vs TIPOLOGÍA — el catálogo no sólo dice qué figuras EXISTEN, también
+  // dice cuáles admite cada tipología (FIGURAS_POR_TIPOLOGIA: 'MURO-MH' →
+  // 101A/102A/102B/102C/103A/103G). Hasta acá el campo Figura se validaba sólo
+  // contra el catálogo COMPLETO: se podía tipear 106A estando en MH (malla
+  // horizontal), el editor lo tragaba en silencio y la barra entraba por el
+  // pipeline equivocado (se dibujaba cualquier cosa). El motor ya se protege por
+  // topología; ACÁ es donde el usuario tiene que ENTERARSE.
+  //
+  // NO BLOQUEA: una figura del catálogo ajena a la tipología se puede colocar
+  // igual (el usuario puede tener una razón: refuerzo especial, catálogo que va
+  // atrás de la obra). Es un AVISO fuerte — borde ámbar + tooltip + barra de
+  // estado. Lo que SÍ sigue impidiendo colocar es una figura que no existe en el
+  // catálogo o que el editor no dibuja (eso es _figError, no se toca).
+  // ==========================================================================
+  function _figsPorTipologia() {
+    var c = _cat();
+    return (c && c.FIGURAS_POR_TIPOLOGIA) || {};
+  }
+
+  // Clave 'ELEMENTO-TIPOLOGIA' comparable. Las claves del catálogo vienen con
+  // mayúsculas y minúsculas mezcladas (Fi, F's, CBSn) y algunas con apóstrofe
+  // (LOSA-F'i): se compara TODO en mayúsculas y el apóstrofe se conserva porque
+  // es parte del código de la tipología, no ruido.
+  function _tipKey(elem, tip) { return _figKey(elem) + '-' + _figKey(tip); }
+
+  // Figuras que el catálogo asocia a una tipología, EN EL ORDEN del catálogo
+  // (primero las más usadas). [] = esa combinación elemento-tipología no está
+  // declarada: no hay contra qué comparar, así que no se avisa nada (avisar sin
+  // fuente sería inventar una regla).
+  function _figsDeTipologia(elem, tip) {
+    var M = _figsPorTipologia(), k = _tipKey(elem, tip), key;
+    for (key in M) {
+      if (!Object.prototype.hasOwnProperty.call(M, key)) continue;
+      if (_figKey(key) === k) return (M[key] || []).map(_figKey);
+    }
+    return [];
+  }
+
+  // Figuras admitidas por la tipología ACTIVA del ribbon (elemento del template
+  // + botón de tipología seleccionado).
+  function _figsDeTipologiaActiva() {
+    return _figsDeTipologia(_tipoElemento(), ST.tipologia);
+  }
+
+  // Nombre de obra de una tipología ('MH' → 'Malla Horizontal'), para que el
+  // aviso hable en el vocabulario del usuario y no en códigos. El ELEMENTO se
+  // pasa (no se lee de ST): el mismo código de tipología significa cosas
+  // distintas según el elemento — 'CB' es Cabezal en muro y en columna, pero
+  // 'F' es Refuerzo Inferior en losa y no existe en viga.
+  function _nombreTipologia(elem, tip) {
+    var lista = TPL_TIPOLOGIAS[_figKey(elem)] || [];
+    for (var i = 0; i < lista.length; i++) {
+      if (_figKey(lista[i][0]) === _figKey(tip)) return lista[i][1];
+    }
+    return '';
+  }
+
+  var _FIGS_EN_AVISO = 6;   // cuántas figuras admitidas se nombran (no abrumar)
+
+  // ¿La figura tipeada es AJENA a la tipología? null = nada que decir. Si hay
+  // algo que decir devuelve { figura, tip, admite, texto, corto }:
+  //   texto = tooltip completo · corto = lo que cabe en la barra de estado.
+  // Devuelve null cuando la figura ni siquiera existe en el catálogo: ese caso
+  // ya lo canta _figError y dos mensajes encima del mismo campo confunden.
+  function _figAvisoTipologia(fig, elem, tip) {
+    var k = _figKey(fig);
+    if (!k || !_catListo() || !_figDef(k)) return null;
+    // TABLA INCOMPLETA ≠ USUARIO EQUIVOCADO (medido 14-ago). FIGURAS_POR_TIPOLOGIA
+    // sólo ubica 16 de las 62 figuras dibujables: 106A (el rombo), 104B (la cadena
+    // de sección), 305A y otras 43 no aparecen en NINGUNA tipología. Comparar
+    // contra esa tabla marcaba en ámbar trabajo perfectamente legítimo —
+    // exactamente las figuras que los tests del repo usan como caso normal.
+    // Si el catálogo no sabe a qué tipologías pertenece la figura, no hay regla
+    // que aplicar: callarse. El aviso queda para el caso que sí se quería cazar
+    // (la figura está clasificada y esta tipología no es una de las suyas).
+    var cat = _cat();
+    if (cat && typeof cat.tipologiasDeFigura === 'function' &&
+        !cat.tipologiasDeFigura(k).length) return null;
+    var lista = _figsDeTipologia(elem, tip);
+    if (!lista.length || lista.indexOf(k) >= 0) return null;
+    var tipTxt = String(tip == null ? '' : tip).trim();
+    var nom = _nombreTipologia(elem, tip);
+    var muestra = lista.slice(0, _FIGS_EN_AVISO).join(', ');
+    var resto = lista.length - _FIGS_EN_AVISO;
+    if (resto > 0) muestra += ' (+' + resto + ' más)';
+    return {
+      figura: k, tip: tipTxt, admite: lista,
+      texto: 'La figura ' + k + ' no corresponde a la tipología ' + tipTxt +
+        (nom ? ' (' + nom + ')' : '') + '. ' + tipTxt + ' admite: ' + muestra +
+        '. Se puede colocar igual, pero revisa la tipología o la figura.',
+      corto: k + ' no es de ' + tipTxt + ' · ' + tipTxt + ' admite ' + muestra
+    };
+  }
+
+  // ==========================================================================
+  // TIPOLOGÍA HUÉRFANA — la barra es de OTRO elemento
+  // ==========================================================================
+  // Cambiar de elemento (Viga → Muro) conserva las barras colocadas, y con ellas
+  // su tipología: una CBS (cabezal de viga) dentro de un muro. _cambiarElemento
+  // lo NOMBRA una vez en la barra de estado, pero ese mensaje lo pisa el primer
+  // clic (_actualizarStatus() sin argumento) y el usuario se queda con barras
+  // huérfanas sin saber cuáles. Esto es la marca PERMANENTE.
+  //
+  // Es un chequeo aparte de _figAvisoTipologia a propósito: aquel compara
+  // FIGURA vs TIPOLOGÍA contra el catálogo, y el catálogo no tiene ninguna
+  // entrada 'MURO-CBS' que consultar (la combinación no existe: ese es el
+  // problema). La fuente acá es TPL_TIPOLOGIAS, que es la lista de tipologías
+  // que el elemento ofrece en el ribbon — la misma que el usuario ve.
+  //
+  // null = nada que decir. Si hay algo: { tip, elem, admite, texto }.
+  function _tipAjenaAlElemento(c, elem) {
+    var tip = String((c && c.tipologia) || '').trim();
+    if (!tip) return null;
+    var may = _figKey(elem || _tipoElemento());
+    var lista = TPL_TIPOLOGIAS[may];
+    // Elemento sin lista de tipologías: no hay contra qué comparar (avisar sin
+    // fuente sería inventar una regla).
+    if (!lista || !lista.length) return null;
+    var codigos = lista.map(function (t) { return t[0]; });
+    if (codigos.map(_figKey).indexOf(_figKey(tip)) >= 0) return null;
+    return {
+      tip: tip, elem: may, admite: codigos,
+      texto: 'Esta barra es ' + tip + ' y este template es un ' + may +
+        ': ' + tip + ' no es una tipología de ' + may + '. Elige una de ' +
+        codigos.join(', ') + '.'
+    };
+  }
+
   // Tooltip informativo de una figura del catálogo (lados + ángulos + radio).
   function _figTitle(fig) {
     var d = _figDef(fig); if (!d) return '';
@@ -233,14 +362,27 @@
   // Rellena el datalist ÚNICO (#te_figs) que comparten el campo Figura del ribbon
   // y el de la ficha del componente, con TODAS las figuras DIBUJABLES del catálogo
   // (las no dibujables se excluyen: ofrecerlas sería ofrecer un error).
+  //
+  // ORDEN: PRIMERO las de la tipología ACTIVA (en el orden del catálogo, que pone
+  // adelante las más usadas) y con la tipología en la etiqueta; después el resto.
+  // El resto NO se saca: el usuario puede buscar cualquier figura, sólo que la
+  // lista deja de empezar por 63 códigos que no vienen al caso. Hay que llamarlo
+  // al cambiar de tipología o de elemento (la lista de arriba cambia).
   function _refrescarFigDatalist() {
     var dl = $('te_figs'); if (!dl) return;
     var F = _figuras(), html = '';
-    _figsDibujables().forEach(function (k) {
+    var dib = _figsDibujables();
+    var tipTxt = String(ST.tipologia == null ? '' : ST.tipologia).trim();
+    // Sólo las de la tipología que además el editor sabe dibujar.
+    var deTip = _figsDeTipologiaActiva().filter(function (k) { return dib.indexOf(k) >= 0; });
+    var resto = dib.filter(function (k) { return deTip.indexOf(k) < 0; });
+    function opt(k, prefijo) {
       var d = F[k] || {};
-      var lbl = (d.descripcion ? d.descripcion + ' · ' : '') + (d.parciales || []).join('');
-      html += '<option value="' + _esc(k) + '"' + (lbl ? ' label="' + _esc(lbl) + '"' : '') + '>';
-    });
+      var lbl = prefijo + (d.descripcion ? d.descripcion + ' · ' : '') + (d.parciales || []).join('');
+      return '<option value="' + _esc(k) + '"' + (lbl ? ' label="' + _esc(lbl) + '"' : '') + '>';
+    }
+    deTip.forEach(function (k) { html += opt(k, tipTxt ? tipTxt + ' · ' : ''); });
+    resto.forEach(function (k) { html += opt(k, ''); });
     dl.innerHTML = html;
   }
 
@@ -318,6 +460,46 @@
     if (!P.length) return null;
     if (P.length === 1) return P[0];
     return (P.indexOf('B') >= 0) ? 'B' : P[0];
+  }
+
+  // LADO DOMINANTE tal como lo resuelve el MOTOR para una barra concreta, SIN el
+  // fallback de convención de _ladoDominante. La diferencia importa en el preview:
+  // para una figura CERRADA el motor contesta null ("no hay lado que estirar ni
+  // que empalmar") y el fallback igual devolvería 'B' — destacar ese B sería
+  // pintar un lado dominante que el motor no reconoce.
+  function _ladoDomMotor(figura, dims) {
+    var reglas = global.ModeladorReglas;
+    if (!reglas || !reglas.ladoDominante) return null;
+    var L = reglas.ladoDominante({ figura: figura, dims: dims });
+    return L ? String(L).toUpperCase() : null;
+  }
+
+  // ==========================================================================
+  // LADO DOMINANTE ELEGIDO POR EL USUARIO — comp.lado_dominante
+  // ==========================================================================
+  // Hoy el dominante lo decide una cascada del motor (figura_puntos
+  // .ladoDominanteFigura: lo declarado en el catálogo → el lado B → el primer
+  // parcial). El usuario pidió poder cambiarlo por barra, y este es el campo
+  // donde queda escrito.
+  //
+  // IMPORTANTE (medido 14-ago, ver la nota de _filaLadoDominante): el motor
+  // TODAVÍA NO LEE este campo — reglas.ladoDominante → _ladoLongitudinal sólo
+  // consulta la figura, nunca el componente. El dato se guarda igual (es la mitad
+  // del trabajo y la receta lo persiste tal cual), y la ficha lo DICE en vez de
+  // dejar creer que ya manda.
+  function _ladoDomElegido(c) {
+    var v = c && c.lado_dominante;
+    v = String(v == null ? '' : v).trim().toUpperCase();
+    return v || null;
+  }
+  // Escribe la elección, o la BORRA con null ('auto' = vuelve a la cascada). Un
+  // lado que la figura no tiene no se escribe: sería un dato imposible de honrar.
+  function _setLadoDominante(c, L) {
+    if (!c) return;
+    var k = String(L == null ? '' : L).trim().toUpperCase();
+    if (!k) { delete c.lado_dominante; return; }
+    if ((_figSpec(c.figura).parciales || []).indexOf(k) < 0) return;
+    c.lado_dominante = k;
   }
 
   // Cara por defecto según tipología (para colocar).
@@ -899,6 +1081,20 @@
     if (ST.selCi >= (ST.receta.componentes || []).length) ST.selCi = -1;
     // cualquier interacción a medio-hacer se cancela al deshacer
     ST.dragMove = null; ST.dragNode = null; ST.dragRango = null;
+    // EL ELEMENTO VIAJA EN LA RECETA (receta.tipo) desde que se puede cambiar dentro
+    // del editor: deshacer un cambio de elemento tiene que devolver TAMBIÉN el
+    // ribbon, el hormigón y las 3 vistas. Si no, la receta vuelve a viga y la
+    // pantalla se queda en muro (chips, campos y cámaras del elemento equivocado).
+    var tipoSnap = String(ST.receta.tipo || ST.elemento || 'viga').toLowerCase();
+    if (tipoSnap !== String(ST.elemento || '').toLowerCase()) {
+      ST.elemento = tipoSnap;
+      _renderElemSel();
+      _actualizarTitulos();
+      _renderRibbonTips();
+      _renderRibbonGeo();
+      _refrescarDefsOrto();
+      _actualizarTitulosVista();
+    }
     // El ribbon de HORMIGÓN es la ÚNICA parte de la UI que guarda copia de la receta
     // (los inputs con las dims): si no se re-sincroniza, tras deshacer un cambio de
     // dims el input sigue mostrando el valor viejo y el siguiente blur lo RE-APLICA
@@ -1792,6 +1988,102 @@
   // DIBUJO (sub-milimétrica a escala de obra).
   var GHOST_PT_TOL = 0.5;
 
+  // ==========================================================================
+  // EL LADO DOMINANTE, DENTRO DEL TRAZO DIBUJADO
+  // ==========================================================================
+  // Para poder DESTACAR en el preview el lado que va a correr a lo largo de la
+  // pieza hay que saber qué pedazo de la polilínea es ese lado. No sirve suponer
+  // que "el tramo i son los puntos i,i+1":
+  //
+  //   · un gancho de más de 90° se dibuja como ARCO MUESTREADO (~10° por punto,
+  //     marcados con esArco), así que UN vértice de la figura puede ocupar 15
+  //     puntos de la lista;
+  //   · dos ganchos seguidos dejan sus arcos PEGADOS (una 103E: puntos 1..15 y
+  //     16..30), o sea "un run de esArco = un vértice" tampoco alcanza: entre los
+  //     dos runs está justo el CUERPO, que es el tramo que estamos buscando.
+  //
+  // El mapeo se deriva así: un vértice de la cadena es un punto suelto, o un grupo
+  // de puntos de arco consecutivos Y PEGADOS. "Pegados" tiene una cota dura: la
+  // cuerda de un muestreo de 10° sobre el radio del codo (R = 2.5·φ) mide
+  // 0.17·R ≈ 0.44·φ, mientras que el tramo más corto que la figura puede traer es
+  // la extensión de gancho normativa (6·φ). El corte va en 1.5·φ, entre medio.
+  //
+  // Y hay DOS REDES DE SEGURIDAD, porque destacar el lado equivocado es peor que
+  // no destacar nada:
+  //   1. sólo se intenta con las familias de dibujo donde el trazo ES la cadena de
+  //      tramos de la figura (recta / cadena). El marco de estribo, el rombo y la
+  //      traba tienen constructores propios — dibujan 4 lados para una figura de 3,
+  //      o un gancho fijo que no está en los parciales — y ahí no hay mapeo;
+  //   2. si al agrupar no salen EXACTAMENTE tramos+1 vértices, se devuelve null.
+  // ==========================================================================
+  // El MÓDULO figura_puntos (no "los puntos de una figura"): se resuelve en el
+  // momento, como _cat()/_deps(), porque los scripts cargan en paralelo.
+  function _figPuntos() { return global.ModeladorFiguraPuntos || null; }
+
+  // Familias de dibujo en las que la polilínea es, punto por punto, la cadena de
+  // tramos que declara la figura (ver figura_puntos.familiaDeDibujo).
+  var GHOST_FAM_MAPEABLE = { recta: true, cadena: true };
+
+  // FAMILIA DE DIBUJO REAL de un componente: 'recta'|'cabezal'|'cadena'|'estribo'|
+  // 'rombo'|'traba' (o null si no se puede saber). Se pregunta con el rol EFECTIVO
+  // (comp._rol, el que el motor estampó en la última pasada) y no con el que sugiere
+  // la tipología: reglas.js manda a 'estribo' cualquier figura de marco o rombo
+  // aunque el chip diga CBS, y esa barra se dibuja como contorno cerrado.
+  function _familiaDibujo(c) {
+    var fp = _figPuntos();
+    if (!fp || !fp.familiaDeDibujo || !c || !c.figura) return null;
+    return fp.familiaDeDibujo(c.figura, (c._rol || _rolDe(c.tipologia)) || null);
+  }
+
+  // ¿Esta barra se dibuja como CONTORNO CERRADO (marco de estribo / rombo)? El
+  // marco manda la forma —se encuadra contra el recubrimiento— así que no hay
+  // dirección de pata que elegir ni extremo libre que prolongar.
+  function _esContornoCerrado(c) {
+    var fam = _familiaDibujo(c);
+    return fam === 'estribo' || fam === 'rombo';
+  }
+
+  function _dist3(a, b) {
+    return Math.sqrt((a.x - b.x) * (a.x - b.x) + (a.y - b.y) * (a.y - b.y) + (a.z - b.z) * (a.z - b.z));
+  }
+
+  // Rango [i0, i1] de índices de `puntos` que ocupa el LADO DOMINANTE, o null si
+  // el mapeo no se pudo derivar con certeza. `rol` es el rol EFECTIVO con el que
+  // el motor dibujó la barra (comp._rol), no el que sugiere la tipología: la
+  // topología de la figura puede mandar a un 106A al pipeline de sección aunque el
+  // chip diga MH, y entonces la familia de dibujo es otra.
+  function _tramoDominanteEnTrazo(figura, rol, puntos, diamCm, ladoDom) {
+    var fp = _figPuntos();
+    if (!fp || !fp.tramosDeFigura || !fp.familiaDeDibujo) return null;
+    if (!ladoDom || !puntos || puntos.length < 2) return null;
+    if (!GHOST_FAM_MAPEABLE[fp.familiaDeDibujo(figura, rol || null)]) return null;
+    var tr = fp.tramosDeFigura(figura);
+    if (!tr || !tr.tramos || !tr.tramos.length) return null;
+    var i, iDom = -1;
+    for (i = 0; i < tr.tramos.length; i++) {
+      if (tr.tramos[i] && String(tr.tramos[i].lado || '').toUpperCase() === ladoDom) { iDom = i; break; }
+    }
+    if (iDom < 0) return null;
+    // Agrupar los puntos en VÉRTICES (suelto | grupo de arco pegado).
+    var maxCuerda = 1.5 * (Number(diamCm) || 0);
+    if (!(maxCuerda > 0)) return null;              // sin φ no hay cota: no se adivina
+    var verts = [];
+    i = 0;
+    while (i < puntos.length) {
+      if (!puntos[i] || !puntos[i].esArco) { verts.push([i, i]); i++; continue; }
+      var j = i;
+      while (j + 1 < puntos.length && puntos[j + 1].esArco &&
+        _dist3(puntos[j], puntos[j + 1]) <= maxCuerda) j++;
+      verts.push([i, j]); i = j + 1;
+    }
+    if (verts.length !== tr.tramos.length + 1) return null;
+    // El tramo va del FINAL del vértice que lo abre al PRINCIPIO del que lo cierra:
+    // así el resaltado cubre el trecho recto y no se mete dentro de los codos.
+    var a = verts[iDom][1], b = verts[iDom + 1][0];
+    if (!(b > a)) return null;
+    return { i0: a, i1: b };
+  }
+
   // BARRA REAL que va a nacer de este clic — el PLACEMENT del motor (o null).
   //
   // Es LA MISMA FUENTE que el trazador, no una imitación: se arma el componente
@@ -1814,10 +2106,13 @@
     var d = _deps();
     if (!d.reglas || !d.reglas.expandirComponente || !ST.receta || !ST.cargado) return null;
     if (_figError(ST.cargado.figura)) return null;
-    var pls;
+    // `comp` se declara afuera del try (lo necesita el rol efectivo, abajo) pero se
+    // CONSTRUYE adentro: armar el componente del clic también puede reventar, y esa
+    // caída ya estaba cubierta — el ghost cae al esquema básico en vez de romperse.
+    var pls, comp = null;
     try {
-      pls = d.reglas.expandirComponente(
-        _compDesdeClick(plano, _clickHost(plano, uv), ST.cargado), _hostDeReceta());
+      comp = _compDesdeClick(plano, _clickHost(plano, uv), ST.cargado);
+      pls = d.reglas.expandirComponente(comp, _hostDeReceta());
     } catch (e) { return null; }
     if (!pls || !pls.length) return null;
     var proy = _proyDe(plano), mejor = null, mejorD = Infinity;
@@ -1834,12 +2129,19 @@
       var du = su / n - uv.u, dv = sv / n - uv.v, dd = du * du + dv * dv;
       if (dd < mejorD) { mejorD = dd; mejor = pls[i]; }
     }
+    // ROL EFECTIVO con el que el motor acaba de dibujar (lo escribe
+    // _baseDeComponente en el componente). La tipología PROPONE el rol y la
+    // topología de la figura manda, así que re-derivarlo acá podría leer una
+    // familia de dibujo distinta de la que se dibujó — y con ella un mapeo de
+    // tramos equivocado. El placement no lo trae, el componente sí.
+    if (mejor) mejor._rolUI = (comp && comp._rol) || null;
     return mejor;
   }
 
   // FORMA del ghost para un plano → { tipo:'poly'|'rect'|'line'|'point', pts:[{u,v}],
-  // cerrar:bool } o null. Primero la barra REAL (_ghostPlacement) proyectada al
-  // plano; si no hay, el esquema básico de siempre (_ghostFormaBasica).
+  // cerrar:bool, dom:{i0,i1}|null, domLado:'B'|null } o null. Primero la barra REAL
+  // (_ghostPlacement) proyectada al plano; si no hay, el esquema básico de siempre
+  // (_ghostFormaBasica). `dom` = índices DENTRO de `pts` del lado dominante.
   function _ghostForma(plano, uv) {
     var pl = _ghostPlacement(plano, uv);
     if (!pl) return _ghostFormaBasica(plano, uv);
@@ -1862,18 +2164,31 @@
       if (isFinite(q0.u) && isFinite(q0.v)) return { tipo: 'point', pts: [{ u: q0.u, v: q0.v }] };
     }
 
-    var pts = [];
+    // `src` guarda de qué punto del trazo 3D salió cada punto proyectado: la
+    // proyección DESCARTA los no finitos, así que los índices de los dos arreglos
+    // no coinciden y el rango del lado dominante hay que traducirlo.
+    var pts = [], src = [];
     for (var i = 0; i < raw.length; i++) {
       var q = proy(raw[i]);
-      if (isFinite(q.u) && isFinite(q.v)) pts.push({ u: q.u, v: q.v });
+      if (isFinite(q.u) && isFinite(q.v)) { pts.push({ u: q.u, v: q.v }); src.push(i); }
     }
     if (pts.length < 2) return _ghostFormaBasica(plano, uv);
     // Una figura CERRADA (marco de estribo, o cualquier polilínea que vuelva a su
     // origen) no tiene extremos libres: se cierra el path y no se le ponen puntas.
     var a = pts[0], b = pts[pts.length - 1];
+    // LADO DOMINANTE: la letra que resuelve el MOTOR para esta barra y su tramo
+    // dentro del trazo. Cualquiera de los dos en null ⇒ no se destaca nada.
+    var ladoDom = _ladoDomMotor(pl.figura, pl.dims);
+    var rng = _tramoDominanteEnTrazo(pl.figura, pl._rolUI, raw, Number(pl.diam) || 0, ladoDom);
+    var dom = null;
+    if (rng) {
+      var d0 = src.indexOf(rng.i0), d1 = src.indexOf(rng.i1);
+      if (d0 >= 0 && d1 > d0) dom = { i0: d0, i1: d1 };
+    }
     return {
       tipo: 'poly', pts: pts,
-      cerrar: (Math.abs(a.u - b.u) < GHOST_PT_TOL && Math.abs(a.v - b.v) < GHOST_PT_TOL)
+      cerrar: (Math.abs(a.u - b.u) < GHOST_PT_TOL && Math.abs(a.v - b.v) < GHOST_PT_TOL),
+      dom: dom, domLado: dom ? ladoDom : null
     };
   }
 
@@ -1981,7 +2296,13 @@
     } else {
       var d = forma.pts.map(function (q, i) { var p = _uvToPixel(plano, q.u, q.v); return (i ? 'L' : 'M') + p.px.toFixed(1) + ',' + p.py.toFixed(1); }).join(' ');
       if (forma.cerrar) d += ' Z';
-      layer.appendChild(_svgEl('path', { 'class': 'te-ghostbar', d: d, stroke: color }));
+      // Con lado dominante identificado el trazo entero va ATENUADO y el tramo
+      // dominante se repinta encima, grueso y opaco: así se lee de un vistazo cuál
+      // es el lado que va a correr a lo largo de la pieza ANTES de clicar.
+      layer.appendChild(_svgEl('path', {
+        'class': 'te-ghostbar' + (forma.dom ? ' te-atenuado' : ''), d: d, stroke: color
+      }));
+      if (forma.dom) _dibujarGhostDominante(layer, plano, forma, color);
       // Puntas en los extremos (circulitos .te-gpt, como la maqueta). Marca los
       // EXTREMOS LIBRES de la barra: una forma CERRADA (marco de estribo, o una
       // polilínea real que vuelve a su origen) no tiene extremos que marcar.
@@ -1991,8 +2312,24 @@
     }
 
     // BADGE de texto "CBS ø16" pegado al cursor (fondo + texto), desplazado para no
-    // quedar bajo el puntero.
-    _dibujarGhostBadge(layer, sp.px, sp.py, ST.cargado.tipologia + ' ø' + ST.cargado.diam, color, sp.VW, sp.VH, dentro);
+    // quedar bajo el puntero. Cuando hay tramo destacado el badge NOMBRA el lado
+    // ("· lado B"): el trazo grueso dice dónde, el badge dice cuál — sin eso el
+    // resaltado es una raya gruesa sin nombre.
+    _dibujarGhostBadge(layer, sp.px, sp.py,
+      ST.cargado.tipologia + ' ø' + ST.cargado.diam +
+      (forma.domLado ? ' · lado ' + forma.domLado : ''),
+      color, sp.VW, sp.VH, dentro);
+  }
+
+  // Repinta el TRAMO DOMINANTE encima del trazo atenuado. Nunca inventa puntos:
+  // recorre el mismo `forma.pts` entre los índices que derivó _tramoDominanteEnTrazo.
+  function _dibujarGhostDominante(layer, plano, forma, color) {
+    var d = '', i, p;
+    for (i = forma.dom.i0; i <= forma.dom.i1 && i < forma.pts.length; i++) {
+      p = _uvToPixel(plano, forma.pts[i].u, forma.pts[i].v);
+      d += (i === forma.dom.i0 ? 'M' : ' L') + p.px.toFixed(1) + ',' + p.py.toFixed(1);
+    }
+    layer.appendChild(_svgEl('path', { 'class': 'te-ghostdom', d: d, stroke: color }));
   }
 
   // Badge flotante junto al cursor. Se ancla arriba-derecha del puntero y se voltea
@@ -3425,12 +3762,20 @@
     wrap.className = 'te-comp' + (sel ? ' open sel' : '');
     wrap.setAttribute('data-ci', ci);
 
+    // TIPOLOGÍA HUÉRFANA — se marca EN LA FILA, no sólo dentro de la ficha: el
+    // usuario cierra las fichas y mira la lista, y ahí es donde tiene que ver
+    // CUÁL de sus barras quedó con la tipología de otro elemento.
+    var ajena = _tipAjenaAlElemento(c);
+    if (ajena) wrap.style.borderLeft = '3px solid #e65100';
+
     // Cabecera
     var ch = document.createElement('div'); ch.className = 'te-ch';
     ch.innerHTML =
       '<span class="te-drag" title="Arrastrar para reordenar">⠿</span>' +
       '<span class="te-sw" style="background:' + col + '"></span>' +
-      '<div><div class="te-nm">' + _esc(c.tipologia) + ' · ' + _esc(c.figura) + '</div>' +
+      '<div><div class="te-nm">' +
+      (ajena ? '<span style="color:#e65100" title="' + _esc(ajena.texto) + '">⚠ </span>' : '') +
+      _esc(c.tipologia) + ' · ' + _esc(c.figura) + '</div>' +
       '<div class="te-de">' + _esc(_compDesc(c)) + '</div></div>' +
       '<span class="te-sp"></span>' +
       '<button class="te-mini" data-act="dup" title="Duplicar">⧉</button>' +
@@ -3502,6 +3847,11 @@
     var body = document.createElement('div'); body.className = 'te-cbody';
     var spec = _figSpec(c.figura);
     var d = c.distribucion || {};
+    // FICHA POR FAMILIA: la barra que se dibuja como CONTORNO CERRADO no tiene
+    // patas que apuntar ni extremo libre que empalmar (el marco manda la forma).
+    // Los controles no se ofrecen — y, sobre todo, se DICE por qué: hasta acá
+    // simplemente no aparecían y la ficha quedaba muda.
+    var cerrado = _esContornoCerrado(c);
 
     // Identidad
     var idRow = _div('te-grid3');
@@ -3509,6 +3859,37 @@
     idRow.appendChild(_fld('φ mm', _select(TE_DIAMS.map(String), String(c.diam), function (v) { c.diam = Number(v); _mut(ci); })));
     idRow.appendChild(_fld('Sufijo', _input({ value: c.suf_tipo || '', placeholder: 'sup / A…' }, function (v) { c.suf_tipo = v; _mut(ci, true); })));
     body.appendChild(idRow);
+
+    // TIPOLOGÍA HUÉRFANA (ver _tipAjenaAlElemento) — esta barra quedó con la
+    // tipología de otro elemento, típicamente tras cambiar Viga → Muro. El aviso
+    // de la barra de estado dura hasta el primer clic; esta nota NO se va hasta
+    // que se arregle, y trae el arreglo puesto: la tipología no se podía cambiar
+    // en ninguna parte (se elegía al colocar), así que la única salida era borrar
+    // la barra y volver a colocarla perdiendo su pose.
+    var avTipAj = _tipAjenaAlElemento(c);
+    if (avTipAj) {
+      var nTipAj = _div('te-note');
+      nTipAj.style.color = '#e65100';
+      nTipAj.textContent = '⚠ ' + avTipAj.texto +
+        ' Cambiarla acá no mueve la barra: su cara, su giro y su posición quedan donde están.';
+      body.appendChild(nTipAj);
+
+      var tipRow = _div('te-row');
+      tipRow.appendChild(_label('Tipología'));
+      // La opción actual va PRIMERO y marcada, aunque sea la ajena: el select
+      // tiene que mostrar lo que la barra tiene hoy, no un valor que nadie eligió.
+      var pares = [[avTipAj.tip, avTipAj.tip + ' (de otro elemento)']];
+      TPL_TIPOLOGIAS[avTipAj.elem].forEach(function (t) { pares.push([t[0], t[0] + ' — ' + t[1]]); });
+      var selTipAj = _selectPairs(pares, avTipAj.tip, function (v) {
+        if (v === c.tipologia) return;
+        _pushUndo();
+        c.tipologia = v;
+        _mut(ci, true);   // re-render: cambia el color, el rol y desaparece esta nota
+      });
+      selTipAj.title = 'Tipología de esta barra dentro del ' + avTipAj.elem;
+      tipRow.appendChild(selTipAj);
+      body.appendChild(tipRow);
+    }
 
     // La figura GUARDADA puede no estar en el catálogo (receta vieja, figura dada de
     // baja): se dice en la ficha, porque esa barra no se dibuja ni pesa.
@@ -3518,6 +3899,18 @@
       nErr.style.color = '#c62828';
       nErr.textContent = '⚠ ' + errFig + ' — esta barra no se dibuja ni pesa hasta corregirla.';
       body.appendChild(nErr);
+    } else {
+      // La figura EXISTE pero puede no ser de la tipología de esta barra (se
+      // tipeó a mano, o se cambió la tipología después). La barra se dibuja y
+      // pesa igual — por eso es ÁMBAR y no rojo — pero hay que decirlo acá, que
+      // es donde el usuario mira cuando algo salió distinto de lo que esperaba.
+      var avFig = _figAvisoTipologia(c.figura, _tipoElemento(), c.tipologia);
+      if (avFig) {
+        var nAv = _div('te-note');
+        nAv.style.color = '#e65100';
+        nAv.textContent = '⚠ ' + avFig.texto;
+        body.appendChild(nAv);
+      }
     }
 
     // ------------------------------------------------------------------
@@ -3662,7 +4055,7 @@
     // Sólo aparece si la figura TIENE patas y el rol no es estribo/traba (esos son
     // marcos cerrados: no hay dirección de pata que elegir).
     var patas = _patasDe(c);
-    if (rol !== 'estribo' && rol !== 'traba' && (patas.inicio || patas.fin)) {
+    if (!cerrado && rol !== 'estribo' && rol !== 'traba' && (patas.inicio || patas.fin)) {
       var spinRow = _div('te-row');
       spinRow.appendChild(_label('Patas'));
       var spinNow = ((((Number(c.orient && c.orient.spin) || 0) % 360) + 360) % 360);
@@ -3678,7 +4071,23 @@
     }
 
     // Δ de EXTREMO LIBRE (empalme) — sólo en los extremos SIN pata.
-    _filasEmpalme(body, c, ci, rol, patas);
+    _filasEmpalme(body, c, ci, rol, patas, cerrado);
+
+    // …y por qué esta ficha trae menos controles que otra (ver `cerrado` arriba).
+    if (cerrado) {
+      var nCer = _div('te-note');
+      nCer.textContent = 'Contorno cerrado: el marco manda la forma y se ajusta al recubrimiento ' +
+        'del hormigón. Por eso no lleva patas ni Δ de empalme — el largo sale del contorno.';
+      body.appendChild(nCer);
+    } else if (rol === 'estribo' || rol === 'traba') {
+      // Pieza de sección ABIERTA (una cadena de sección, p.ej. una TC 104B): el
+      // marco no la cierra, pero el motor sigue ignorando el Δ de empalme en
+      // estribos y trabas (reglas.js · empIgnorado), así que tampoco se ofrece.
+      var nSec = _div('te-note');
+      nSec.textContent = 'Pieza de sección: se encuadra contra el recubrimiento del núcleo. ' +
+        'El Δ de empalme no se ofrece porque el motor sólo lo aplica a las barras longitudinales.';
+      body.appendChild(nSec);
+    }
 
     // Distribución
     body.appendChild(_distBox(c, ci, rol, d));
@@ -3688,17 +4097,47 @@
     // por qué al girar la pieza cambia ESE y no los otros.
     c.dims = c.dims || {};
     var dom = _ladoDominante(c);
+    // …y DICHO en texto, junto a las dims, que es de lo que habla (cuál de estas
+    // letras corre a lo largo). Con un solo parcial es obvio y no se repite —
+    // salvo que la receta traiga un lado_dominante guardado, que sí hay que avisar.
+    if (spec.parciales.length > 1 || _ladoDomElegido(c)) _filaLadoDominante(body, c, ci, spec, dom);
     spec.parciales.forEach(function (L) {
       body.appendChild(_dimRow(c, ci, L, dom));
     });
+    // ÁNGULOS — SOLO LECTURA (hallazgo del 14-ago). La ficha dejaba TECLEAR α por
+    // componente y nadie lo consumía: el trazado lee spec.angulos DEL CATÁLOGO
+    // (figura_puntos.js:93 y :584) y generar.js escribe ang1..ang4 también del
+    // catálogo (generar.js:110). Mientras el cabezal dibujaba 90° fijos daba lo
+    // mismo; desde que el dibujo depende del ángulo, el campo prometía un control
+    // que el motor ignora. Se muestra el ángulo QUE MANDA y se dice de dónde sale.
+    // Cablear el motor es otra tanda (toca también el export): acá se miente menos.
     if (spec.angulos.length) {
       var angRow = _div('te-grid2');
       spec.angulos.forEach(function (a, i) {
-        angRow.appendChild(_fld('α' + (i + 1) + ' (°)', _input({ value: (c.angulos && c.angulos[i] != null) ? c.angulos[i] : a, type: 'number' }, function (v) {
-          c.angulos = c.angulos || spec.angulos.slice(); c.angulos[i] = Number(v); _mut(ci);
-        })));
+        var inpA = _input({ value: a, type: 'number' }, function () {});
+        inpA.readOnly = true;
+        inpA.disabled = true;   // además de readOnly: que ni las flechitas sugieran que se edita
+        inpA.title = 'α' + (i + 1) + ' = ' + a + '° · lo define la figura ' +
+          (c.figura || '') + ' en el catálogo, no la barra.';
+        angRow.appendChild(_fld('α' + (i + 1) + ' (°)', inpA));
       });
       body.appendChild(angRow);
+      var nAng = _div('te-note');
+      nAng.textContent = 'Los ángulos los define la FIGURA (catálogo): acá se muestran, no se editan. ' +
+        'Si necesitas otro ángulo, dibuja esa figura en el Diseñador de figuras y úsala.';
+      body.appendChild(nAng);
+      // Receta vieja con ángulos tecleados a mano: el dato está guardado pero el
+      // dibujo y el despiece nunca lo usaron. Se dice, no se borra a escondidas.
+      var angRec = (c.angulos || []).filter(function (v, i2) {
+        return v != null && Number(v) !== Number(spec.angulos[i2]);
+      });
+      if (angRec.length) {
+        var nAngW = _div('te-note'); nAngW.style.color = '#e65100';
+        nAngW.textContent = '⚠ Esta barra tiene ángulos guardados (' + (c.angulos || []).join('/') +
+          '°) distintos de los de la figura (' + spec.angulos.join('/') + '°). Manda la figura: ' +
+          'el dibujo y el despiece siempre usaron los del catálogo.';
+        body.appendChild(nAngW);
+      }
     }
     // FIGURA CON RADIO (catálogo: radio = true, p.ej. 201A). Se DICE, no se ofrece un
     // campo: generar.js escribe `radio: null` fijo en la BarraPayload, así que un
@@ -3716,24 +4155,36 @@
 
   // Campo FIGURA de la ficha, validado contra el catálogo: una figura que no existe
   // o no es dibujable NO se aplica al componente (borde rojo + motivo en el status).
+  // Los mismos DOS niveles que el ribbon: rojo = no se aplica · ámbar = se aplica
+  // pero la figura no es de la tipología de ESTA barra (c.tipologia, no la del
+  // ribbon: en la ficha se está mirando una barra concreta).
   function _figInputComp(c, ci) {
+    function _pintar(el, v) {
+      var av = _figAvisoTipologia(v, _tipoElemento(), c.tipologia);
+      el.classList.toggle('warn', !!av);
+      el.title = av ? av.texto : _figTitle(v);
+      return av;
+    }
     var inp = _input({ value: c.figura || '', list: 'te_figs', placeholder: 'buscar figura…' }, function (v) {
       var k = _figKey(v);
       var err = _figError(k);
-      if (err) { inp.classList.add('bad'); inp.title = err; _actualizarStatus(err); return; }
-      inp.classList.remove('bad'); inp.title = _figTitle(k);
+      if (err) { inp.classList.add('bad'); inp.classList.remove('warn'); inp.title = err; _actualizarStatus(err); return; }
+      inp.classList.remove('bad');
+      var av = _pintar(inp, k);
       _setFigura(ci, k);
+      if (av) _actualizarStatus(av.texto);   // el borde ámbar es discreto: el aviso también se DICE
     });
     inp.addEventListener('input', function () {
       var v = inp.value.trim();
-      if (!v) { inp.classList.remove('bad'); inp.title = ''; return; }   // a medio tipear
+      if (!v) { inp.classList.remove('bad'); inp.classList.remove('warn'); inp.title = ''; return; }   // a medio tipear
       var err = _figError(v);
       inp.classList.toggle('bad', !!err);
-      inp.title = err || _figTitle(v);
+      if (err) { inp.classList.remove('warn'); inp.title = err; return; }
+      _pintar(inp, v);
     });
     var err0 = _figError(c.figura);
     if (err0) { inp.classList.add('bad'); inp.title = err0; }
-    else inp.title = _figTitle(c.figura);
+    else _pintar(inp, c.figura);
     return inp;
   }
 
@@ -3764,8 +4215,13 @@
   // n·φ en cm (φ del componente viene en mm): 40φ con φ16 → 64 cm.
   function _nPhi(c, n) { return Math.round((Number(c && c.diam) || 0) * n) / 10; }
 
-  function _filasEmpalme(body, c, ci, rol, patas) {
-    if (rol !== 'cabezal') return;                    // estribo/traba: marco cerrado
+  function _filasEmpalme(body, c, ci, rol, patas, cerrado) {
+    // CONTORNO CERRADO aunque la tipología diga cabezal: reglas.js re-deriva el rol
+    // a 'estribo' cuando la figura es un marco o un rombo (una 106A puesta en MH),
+    // y ahí el motor ignora el Δ (empIgnorado). Ofrecerlo sería prometer kg que no
+    // se van a sumar.
+    if (cerrado) return;
+    if (rol !== 'cabezal') return;                    // estribo/traba: pieza de sección
     var libres = [];
     if (!patas.inicio) libres.push(['inicio', 'Δ inicio cm']);
     if (!patas.fin) libres.push(['fin', 'Δ fin cm']);
@@ -3800,6 +4256,49 @@
     var note = _div('te-note');
     note.textContent = 'Δ = prolongación del extremo libre (traslapo). Sólo se ofrece donde el tramo no remata en pata.';
     body.appendChild(note);
+  }
+
+  // ==========================================================================
+  // FILA "LADO DOMINANTE" — SOLO LECTURA (mismo criterio que los ángulos)
+  // ==========================================================================
+  // Acá hubo un selector de letras + botón `auto` que escribía comp.lado_dominante.
+  // Se sacó por el MISMO motivo por el que se deshabilitó el campo α: el motor NO
+  // lee ese campo (comprobado 14-ago, tests/test_lado_dominante.js bloque D).
+  // reglas.ladoDominante(comp) delega en _ladoLongitudinal(comp.figura, comp.dims)
+  // → figura_puntos.ladoDominanteFigura, que sólo mira el catálogo
+  // (spec.lado_dominante / geometria.lado_dominante) y nunca el componente.
+  //
+  // Y no era sólo cosmético: cada clic gastaba un slot de Ctrl+Z y ensuciaba la
+  // receta (_hayCambiosSinGuardar compara el JSON), así que el editor pedía guardar
+  // por un cambio que no cambiaba nada — ni el dibujo, ni el largo, ni el despiece.
+  // Un control que promete y no cumple es peor que no tenerlo.
+  //
+  // Queda la LÍNEA INFORMATIVA (cuál es el dominante y de dónde sale), que es lo
+  // que explica por qué al girar la pieza se estira ESE lado y no los otros. Cuando
+  // el motor lea comp.lado_dominante (otra tanda: toca reglas._ladoLongitudinal y el
+  // export), el selector vuelve — _setLadoDominante ya está escrito y probado.
+  function _filaLadoDominante(body, c, ci, spec, efectivo) {
+    var n = _div('te-note');
+    n.textContent = efectivo
+      ? ('Dominante: ' + efectivo + ' — lo define la figura ' + (c.figura || '') +
+        ' en el catálogo. Es el lado que corre a lo largo de la pieza: el que Auto ' +
+        'estira contra el hormigón y el que recibe el empalme.')
+      : 'Esta figura cierra sobre sí misma: no tiene un lado que se estire ni que se empalme.';
+    body.appendChild(n);
+
+    // RECETA VIEJA que ya trae el campo (se guardó cuando el selector existía). No
+    // se borra a escondidas: se dice que está ahí y que hoy no manda nada.
+    var elegido = _ladoDomElegido(c);
+    if (elegido) {
+      var nw = _div('te-note'); nw.style.color = '#e65100';
+      nw.textContent = '⚠ Esta barra tiene guardado lado dominante ' + elegido +
+        (spec.parciales.indexOf(elegido) < 0
+          ? ' y la figura ' + (c.figura || '') + ' ni siquiera tiene ese lado'
+          : '') +
+        '. No cambia nada: el lado dominante sale del catálogo de la figura (' +
+        (efectivo || '—') + '). El dato queda guardado tal cual, no se borra solo.';
+      body.appendChild(nw);
+    }
   }
 
   function _dimRow(c, ci, L, dom) {
@@ -4137,6 +4636,11 @@
     var nd = {};
     spec.parciales.forEach(function (L) { nd[L] = (c.dims && c.dims[L]) ? c.dims[L] : { modo: 'auto' }; });
     c.dims = nd;
+    // …y el LADO DOMINANTE elegido: si la figura nueva no tiene esa letra, el campo
+    // queda apuntando a un lado que no existe. Se borra ACÁ, en el origen del
+    // cambio, en vez de dejar el dato roto y taparlo después al leerlo.
+    var ld = _ladoDomElegido(c);
+    if (ld && spec.parciales.indexOf(ld) < 0) delete c.lado_dominante;
     _regenerar(); _renderPanel();
   }
 
@@ -4187,18 +4691,31 @@
     _actualizarStatus();
   }
 
-  // Valida el campo Figura del RIBBON contra el catálogo: pinta el borde rojo, deja
-  // el motivo en el tooltip y (con `conStatus`) en la barra de estado. Devuelve
-  // true sólo si la figura sirve para colocar.
+  // Valida el campo Figura del RIBBON. DOS niveles, distintos a propósito:
+  //   · ERROR (borde ROJO): la figura no existe en el catálogo o el editor no la
+  //     dibuja → NO se aplica y NO se coloca (devuelve false).
+  //   · AVISO (borde ÁMBAR): la figura existe pero NO es de la tipología activa
+  //     (el agujero de 106A en MH) → sí se aplica y sí se coloca (devuelve true),
+  //     pero queda marcada, con el detalle en el tooltip y en la barra de estado.
+  // El aviso de la barra de estado no se escribe acá: lo recalcula
+  // _actualizarStatus() desde ST.figura/ST.tipologia, así no se borra cuando el
+  // llamador refresca el estado ni se queda pegado si el usuario corrige.
   function _validarFiguraRibbon(conStatus) {
     var el = $('te_ribFigura'); if (!el) return true;
     var v = el.value.trim();
-    if (!v) { el.classList.remove('bad'); el.title = ''; return false; }
+    if (!v) { el.classList.remove('bad'); el.classList.remove('warn'); el.title = ''; return false; }
     var err = _figError(v);
     el.classList.toggle('bad', !!err);
-    el.title = err || _figTitle(v);
-    if (err && conStatus) _actualizarStatus(err);
-    return !err;
+    if (err) {
+      el.classList.remove('warn');
+      el.title = err;
+      if (conStatus) _actualizarStatus(err);
+      return false;
+    }
+    var av = _figAvisoTipologia(v, _tipoElemento(), ST.tipologia);
+    el.classList.toggle('warn', !!av);
+    el.title = av ? av.texto : _figTitle(v);
+    return true;
   }
 
   // Soltar lo cargado (Esc / herramienta que no coloca) → sin ghost, deselecciona.
@@ -4260,6 +4777,12 @@
         // seleccionada es inocuo. Si el modo colocación está activo, sólo se
         // actualiza lo cargado (el ghost cambia en el acto).
         ST.tipologia = b.getAttribute('data-tip') || 'CBS';
+        // Cambiar de tipología cambia el juego de figuras admitidas: se reordena
+        // el datalist (las de la nueva tipología primero) y se RE-VALIDA la
+        // figura YA escrita — la que era correcta en CBS puede ser ajena a ES, y
+        // el usuario tiene que verlo en el acto, no cuando la barra sale rara.
+        _refrescarFigDatalist();
+        _validarFiguraRibbon(false);
         if (_hayCargado()) _sellarCargado(); else _actualizarStatus();
       });
     }
@@ -4518,9 +5041,15 @@
         avisoTxt = ' · <b style="color:#c62828">⚠ ' + _esc(av.join(' · ')) + '</b>';
       }
     }
+    // AVISO FIGURA vs TIPOLOGÍA — se RECALCULA acá (no se guarda en ST) para que
+    // aparezca y desaparezca solo: basta corregir la figura o la tipología para
+    // que la línea vuelva a estar limpia. Ámbar = aviso (se puede colocar), a
+    // diferencia del rojo de los avisos del motor, que son cosas que NO salieron.
+    var avTip = _figAvisoTipologia(ST.figura, _tipoElemento(), ST.tipologia);
+    var tipTxt = avTip ? (' · <b style="color:#e65100">⚠ ' + _esc(avTip.corto) + '</b>') : '';
     s.innerHTML = 'Herramienta: <b>' + _esc(ST.tool) + '</b> · figura <b>' + _esc(ST.figura) + '</b> · ' +
       '<b style="color:' + _colDe(ST.tipologia) + '">' + _esc(ST.tipologia) + '</b> ø' + _esc(ST.diam) +
-      selTxt + avisoTxt;
+      tipTxt + selTxt + avisoTxt;
   }
 
   // Teclado: Ctrl+Z deshace · ESPACIO rota el ángulo fino 90° · R gira la pieza 90°
@@ -5333,6 +5862,7 @@
     if (ST._uiOk) return;
     var root = $('te_modal'); if (!root) return;
     ST._uiOk = true;
+    _bindElemSel();              // selector de ELEMENTO del titlebar
     _bindRibbon();
     _bindHerramientas();
     _bindVistas();
@@ -5399,6 +5929,7 @@
     _ocultarBarraBorrador();
     bd.classList.add('on');
     _actualizarTitulos();
+    _renderElemSel();   // el selector del titlebar apunta al elemento de ESTE template
     _renderRibbonTips();
     _actualizarBtnGuardar();
     var se = $('te_saveErr'); if (se) se.textContent = '';
@@ -5606,6 +6137,140 @@
       return '<span class="te-tipbtn' + (t[0] === ST.tipologia ? ' on' : '') + '" data-tip="' + _esc(t[0]) +
         '" title="' + _esc(t[1]) + '"><span class="te-sw" style="background:' + col + '"></span>' + _esc(t[0]) + '</span>';
     }).join('');
+    // Cambiar de ELEMENTO cambia las tipologías (y arriba pudo reasignarse
+    // ST.tipologia): el datalist y el campo Figura tienen que seguirlas, si no el
+    // ribbon queda ofreciendo y validando contra la tipología del elemento anterior.
+    _refrescarFigDatalist();
+    _validarFiguraRibbon(false);
+  }
+
+  // ==========================================================================
+  // SELECTOR DE ELEMENTO DENTRO DEL EDITOR
+  // --------------------------------------------------------------------------
+  // Antes el elemento se fijaba FUERA (pantalla previa del sub-tab) y para pasar
+  // de viga a muro había que cerrar, crear otro template y volver a colocar todo.
+  // Ahora se cambia acá y el editor rehace lo que depende del elemento.
+  //
+  // QUÉ ELEMENTOS SE OFRECEN: los que tienen los DATOS COMPLETOS, y eso se
+  // PREGUNTA a las tablas, no se mantiene una lista aparte que se desincroniza:
+  //   · PLANOS_POR_ELEMENTO        → las 3 vistas (u/v/depth de cada cuadrante)
+  //   · GEO_CAMPOS_POR_ELEMENTO    → los campos del grupo HORMIGÓN del ribbon
+  //   · TPL_TIPOLOGIAS             → los chips de tipología
+  //   · TPL_DIMS_POR_ELEMENTO      → los defaults (cm) de esas dims
+  // Hoy dan VIGA y MURO. Los demás salen DESHABILITADOS con "(próximamente)": a
+  // medias sería peor que no estar (el usuario dijo explícitamente que no quiere
+  // empezar columna sin terminar el muro).
+  // ==========================================================================
+  function _elementoConDatos(elem) {
+    var min = String(elem || '').toLowerCase();
+    var may = _figKey(elem);
+    return !!(PLANOS_POR_ELEMENTO[min] && GEO_CAMPOS_POR_ELEMENTO[min] &&
+      TPL_TIPOLOGIAS[may] && TPL_DIMS_POR_ELEMENTO[may]);
+  }
+
+  // Pinta las opciones del <select> del titlebar y lo deja apuntando al elemento
+  // activo. El ORDEN sale de TPL_DIMS_POR_ELEMENTO (VIGA y MURO primero, que son
+  // los que se pueden usar). El elemento ACTIVO nunca se deshabilita aunque le
+  // falten datos: se puede abrir un template guardado de un tipo todavía
+  // incompleto, y dejarlo bloqueado ahí sería encerrar al usuario.
+  function _renderElemSel() {
+    var sel = $('te_elemSel'); if (!sel) return;
+    var act = _figKey(_tipoElemento());
+    sel.innerHTML = Object.keys(TPL_DIMS_POR_ELEMENTO).map(function (k) {
+      var listo = _elementoConDatos(k);
+      return '<option value="' + _esc(k) + '"' +
+        ((listo || k === act) ? '' : ' disabled') + (k === act ? ' selected' : '') + '>' +
+        _esc(_capitalizar(k)) + (listo ? '' : ' (próximamente)') + '</option>';
+    }).join('');
+    sel.value = act;
+  }
+
+  // El listener va UNA vez sobre el <select> (no sobre las <option>, que mueren en
+  // cada _renderElemSel): patrón _teBound del resto del módulo.
+  function _bindElemSel() {
+    var sel = $('te_elemSel'); if (!sel || sel._teBound) return;
+    sel._teBound = true;
+    sel.addEventListener('change', function () {
+      _cambiarElemento(sel.value);
+      // SOLTAR EL FOCO. El teclado del editor (Ctrl+Z, R, ESPACIO, Supr) se
+      // ignora mientras el foco está en un input/select (_bindTeclado), y el
+      // <select> nativo no tiene undo propio: si el foco se quedaba acá, el
+      // reflejo "me equivoqué de elemento → Ctrl+Z" no disparaba nada.
+      if (sel.blur) sel.blur();
+    });
+  }
+
+  // Cambio de elemento. NO borra la receta: las barras ya colocadas se quedan con
+  // su figura, su φ y su posición. Lo que NO se hace es re-estampar las poses por
+  // defecto del elemento nuevo (eso pisaría el trabajo del usuario), así que se
+  // DICE en la barra de estado en vez de dejarlo pasar en silencio.
+  function _cambiarElemento(elem) {
+    var may = _figKey(elem), min = may.toLowerCase();
+    if (!may || !TPL_DIMS_POR_ELEMENTO[may]) { _renderElemSel(); return; }
+    if (min === String(_tipoElemento()).toLowerCase()) return;
+    if (!_elementoConDatos(may)) {
+      // El <option> ya viene disabled; esto cubre el cambio por código.
+      _renderElemSel();
+      _actualizarStatus(_capitalizar(may) + ' todavía no está disponible en el editor.');
+      return;
+    }
+    _pushUndo();
+    ST.elemento = min;
+    if (ST.receta) {
+      ST.receta.tipo = min;
+      // DIMS QUE EL ELEMENTO NUEVO PIDE Y LA RECETA NO TRAE (o trae vacías): se
+      // rellenan con los defaults de ESE elemento. Sin ellas el motor genera NaN
+      // y las vistas salen en blanco. Sólo se toca lo que FALTA: un largo o un
+      // recubrimiento que el usuario ya escribió se respeta.
+      var g = ST.receta.geometria = ST.receta.geometria || {};
+      var defs = _tplDimsDefault(may);
+      Object.keys(defs).forEach(function (k) {
+        if (!isFinite(Number(g[k]))) g[k] = defs[k];
+      });
+    }
+    var comps = (ST.receta && ST.receta.componentes) || [];
+    // Tipologías que quedaron huérfanas: la barra sigue existiendo y dibujándose,
+    // pero su tipología es de otro elemento (una CBS dentro de un muro). No se
+    // toca el dato — se nombra, que es lo que el usuario necesita para arreglarlo.
+    var codigos = (TPL_TIPOLOGIAS[may] || []).map(function (t) { return _figKey(t[0]); });
+    var ajenas = [];
+    comps.forEach(function (c) {
+      var t = _figKey(c.tipologia);
+      if (t && codigos.indexOf(t) < 0 && ajenas.indexOf(c.tipologia) < 0) ajenas.push(c.tipologia);
+    });
+
+    // Todo lo que es data-driven por elemento se rehace acá (el mismo juego que
+    // corre templateEditorAbrir cuando el elemento cambia entre aperturas).
+    _renderElemSel();
+    _actualizarTitulos();      // h1 + badge
+    _renderRibbonTips();       // chips de tipología (+ datalist y re-validación de Figura)
+    _renderRibbonGeo();        // campos del grupo HORMIGÓN de ESTE elemento
+    _sincronizarRibbonGeo();   // …con los valores de la receta
+    _refrescarDefsOrto();      // cada cámara orto vuelve a leer el def de su plano
+    _actualizarTitulosVista(); // títulos de las 3 vistas + gizmo de ejes
+    if (_hayCargado()) _sellarCargado();
+    _renderPanel();
+    _regenerar();
+    _marcarSucio();
+
+    // El mensaje va AL FINAL: _renderPanel/_regenerar/_sellarCargado llaman a
+    // _actualizarStatus() sin argumento y se lo comerían.
+    var msg = 'Elemento: ' + may + '.';
+    if (comps.length) {
+      msg += ' Se conservan las ' + comps.length + ' barra' + (comps.length === 1 ? '' : 's') +
+        ' colocada' + (comps.length === 1 ? '' : 's') + ' con su posición: las poses por defecto ' +
+        'del ' + min + ' NO se vuelven a estampar.';
+      // El mensaje del status lo pisa el primer clic (cualquier _actualizarStatus()
+      // sin argumento): lo que QUEDA es la marca ámbar de _tipAjenaAlElemento en la
+      // lista y en la ficha. Acá se dice dónde mirar, no se confía en este texto.
+      if (ajenas.length) {
+        msg += ' Revisa la tipología de ' + ajenas.join(', ') + ' (no es de ' + may +
+          '): quedan marcadas en ámbar en la lista de barras.';
+      }
+    } else {
+      msg += ' Hormigón, tipologías y vistas actualizados.';
+    }
+    _actualizarStatus(msg);
   }
 
   // ---- Dirty-tracking ----
@@ -5822,6 +6487,11 @@
     _ejeProfundidadDeVista: _ejeProfundidadDeVista,
     _reencuadrarReparto: _reencuadrarReparto,
     _ladoDominante: _ladoDominante,                             // parcial que se estira/ancla
+    // LADO DOMINANTE: verlo en el preview (tramo destacado) y elegirlo en la ficha
+    _ladoDomMotor: _ladoDomMotor,                               // el del MOTOR, sin fallback
+    _ladoDomElegido: _ladoDomElegido, _setLadoDominante: _setLadoDominante,
+    _tramoDominanteEnTrazo: _tramoDominanteEnTrazo,             // rango [i0,i1] en el trazo
+    _filaLadoDominante: _filaLadoDominante,
     _centroSeleccion3D: _centroSeleccion3D, _pivotarEn: _pivotarEn,   // órbita en torno a la selección
     // INTERACCIÓN-2.0 · orientación de la pieza + snap de cara
     rotarPlanoPieza: rotarPlanoPieza,                           // cicla (o fija) la orientación + regenera
@@ -5839,6 +6509,17 @@
     _figSpec: _figSpec, _figError: _figError, _figsDibujables: _figsDibujables,
     _motivoNoDibujable: _motivoNoDibujable,
     _cargarCatalogoFiguras: _cargarCatalogoFiguras, _refrescarFigDatalist: _refrescarFigDatalist,
+    // FIGURA vs TIPOLOGÍA (aviso, no bloqueo)
+    _figsDeTipologia: _figsDeTipologia, _figsDeTipologiaActiva: _figsDeTipologiaActiva,
+    _figAvisoTipologia: _figAvisoTipologia, _validarFiguraRibbon: _validarFiguraRibbon,
+    _actualizarStatus: _actualizarStatus,   // la barra de estado lleva el aviso
+    // TIPOLOGÍA vs ELEMENTO (marca PERSISTENTE: sobrevive al primer clic)
+    _tipAjenaAlElemento: _tipAjenaAlElemento,
+    // SELECTOR DE ELEMENTO dentro del editor (viga ⇄ muro sin salir ni recrear)
+    _elementoConDatos: _elementoConDatos, _renderElemSel: _renderElemSel,
+    _bindElemSel: _bindElemSel, _cambiarElemento: _cambiarElemento,
+    // FICHA POR FAMILIA (contorno cerrado ⇒ sin patas ni empalme)
+    _familiaDibujo: _familiaDibujo, _esContornoCerrado: _esContornoCerrado,
     // ficha del componente (el panel de dims dinámico sale de los parciales del catálogo)
     _compBody: _compBody
   };

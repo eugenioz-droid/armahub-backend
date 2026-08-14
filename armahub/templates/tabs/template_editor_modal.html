@@ -36,6 +36,15 @@
   #te_modal #te_titlebar h1{font-size:15px;font-weight:600;margin:0}
   #te_modal #te_titlebar .te-sub{font-size:11.5px;color:var(--te-muted)}
   #te_modal #te_titlebar .te-spacer{flex:1}
+  /* SELECTOR DE ELEMENTO (viga / muro / …) — vive DENTRO del editor: cambiar de
+     elemento ya no obliga a salir a la pantalla previa y crear otro template.
+     Las opciones las renderiza _renderElemSel(); las que no tienen datos completos
+     salen deshabilitadas ("próximamente") y el navegador ya las pinta en gris. */
+  #te_modal .te-elemsel{display:inline-flex;align-items:center;gap:6px;font-size:10.5px;
+    font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--te-muted)}
+  #te_modal #te_elemSel{border:1px solid var(--te-line);background:#fff;border-radius:8px;
+    padding:5px 8px;font-size:12px;font-weight:700;color:var(--te-ink);cursor:pointer;text-transform:none;letter-spacing:0}
+  #te_modal #te_elemSel option:disabled{color:#9aa4b0}
   #te_modal .te-seg{display:inline-flex;border:1px solid var(--te-line);border-radius:8px;overflow:hidden}
   #te_modal .te-seg button{border:none;background:#fff;padding:6px 13px;font-size:12px;color:var(--te-muted);cursor:pointer;font-weight:600}
   #te_modal .te-seg button+button{border-left:1px solid var(--te-line)}
@@ -71,6 +80,11 @@
      FIGURA del ribbon y el de la ficha del componente cuando el código tipeado no
      existe en el catálogo o no es dibujable aquí. */
   #te_modal input.bad{border-color:#c62828;background:#fff6f5}
+  /* AVISO (ámbar), distinto del error (rojo): el valor SÍ se aplica pero hay que
+     mirarlo. Hoy lo usa el campo FIGURA — ribbon y ficha — cuando la figura existe
+     en el catálogo pero NO es de la tipología activa (p.ej. 106A estando en MH):
+     se puede colocar igual, pero casi siempre es un error de tipeo. */
+  #te_modal input.warn{border-color:#e65100;background:#fff8ef}
   /* Check "tomar contorno" ANCLADO al inicio del grupo BARRA (posición fija). */
   #te_modal .te-contorno{display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--te-muted);
     font-weight:600;white-space:nowrap;flex:0 0 auto}
@@ -255,6 +269,17 @@
   #te_modal .te-sel-esq{fill:#fff;stroke:#2f80ed;stroke-width:1.2;pointer-events:none}
   /* GHOST (previsualización que sigue el cursor). Grueso + punteado, como la maqueta. */
   #te_modal .te-ghostbar{fill:none;stroke:#8BC34A;stroke-width:1.8;stroke-dasharray:5 4;opacity:.75;stroke-linecap:round;stroke-linejoin:round;pointer-events:none}
+  /* LADO DOMINANTE EN EL PREVIEW: el tramo que va a correr a lo largo de la pieza
+     —el que Auto estira y el que recibe el empalme— se repinta ENCIMA del trazo,
+     grueso, continuo y opaco; el resto del ghost queda atenuado (.te-atenuado).
+     Así se ve QUÉ lado va a correr antes de clicar. El color lo pone JS (el de la
+     tipología); acá sólo el peso. Si el editor no puede mapear el tramo con
+     certeza no se pinta ninguna de las dos clases y el ghost queda como siempre. */
+  #te_modal .te-ghostbar.te-atenuado{opacity:.4}
+  /* Mismo punteado que el ghost (sigue siendo un PREVIEW, no una barra colocada):
+     lo que separa al lado dominante es el grosor y la opacidad, no otra textura. */
+  #te_modal .te-ghostdom{fill:none;stroke-width:3.6;stroke-dasharray:5 4;opacity:1;
+    stroke-linecap:round;stroke-linejoin:round;pointer-events:none}
   #te_modal .te-ghostpt{opacity:.9}
   #te_modal .te-gpt{fill:#8BC34A;pointer-events:none}
   /* BADGE de texto del ghost ("CBS ø16") pegado al cursor. */
@@ -388,8 +413,18 @@
         <div class="te-sub">Construyendo: <b id="te_subNombre">Viga tipo Explora</b> · Catálogo › Templates</div>
       </div>
       <div class="te-spacer"></div>
-      <!-- El elemento se elige FUERA del modal (pantalla previa del sub-tab Templates):
-           aquí solo un badge estático. Lo actualiza _actualizarTitulos() al abrir. -->
+      <!-- ELEMENTO — se elige AQUÍ DENTRO (pedido del usuario: antes había que salir
+           a la pantalla previa y crear otro template para pasar de viga a muro).
+           VACÍO a propósito: las opciones las renderiza _renderElemSel()
+           (template_editor.js) desde TPL_DIMS_POR_ELEMENTO, y deshabilita los
+           elementos sin datos completos (vistas + campos de hormigón + tipologías).
+           El badge de al lado queda como identidad de color (mismo tono que la
+           lista de templates guardados); lo actualiza _actualizarTitulos(). -->
+      <label class="te-elemsel" for="te_elemSel"
+             title="Elemento del template. Al cambiarlo se rehacen tipologías, hormigón y las 3 vistas. Las barras ya colocadas se conservan.">
+        Elemento
+        <select id="te_elemSel"></select>
+      </label>
       <span class="te-chip" id="te_elemBadge">VIGA</span>
       <button class="te-btn ghost" onclick="templateEditorVolverALista()">📂 Abrir</button>
       <button class="te-xbtn" onclick="templateEditorCerrar()">✕</button>
