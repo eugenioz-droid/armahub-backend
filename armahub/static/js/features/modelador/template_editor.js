@@ -3240,7 +3240,19 @@
     // (sin preview ni borde) y nacían barras con ø0: invisibles en el 3D (radio
     // cero, sólo se veía el contorno azul al seleccionarlas) y con 0 kg en el
     // listado. El clic exige lo MISMO que el sello: figura Y diámetro.
-    if (!ST.figura || !Number(ST.diam)) { _sellarCargado(); return; }
+    if (!ST.figura || !Number(ST.diam)) {
+      _sellarCargado();   // deja el motivo en la barra de estado
+      // AYUDA VISIBLE (pedido 14-ago): el clic sin figura/φ parecía "no hacer
+      // nada" — el mensaje del status pasaba piola. El campo FALTANTE parpadea
+      // en rojo y recibe el foco: el ojo va directo a lo que hay que llenar.
+      var faltante = !ST.figura ? $('te_ribFigura') : $('te_ribDiam');
+      if (faltante) {
+        faltante.classList.add('bad');
+        try { faltante.focus(); } catch (e) { }
+        setTimeout(function () { faltante.classList.remove('bad'); }, 1600);
+      }
+      return;
+    }
     _pushUndo();   // snapshot ANTES de mutar (tarea 1: _pushUndo antes de colocar)
     var comp = _compDesdeClick(plano, host, {
       tipologia: ST.tipologia, figura: ST.figura, diam: ST.diam, contorno: ST.contorno
