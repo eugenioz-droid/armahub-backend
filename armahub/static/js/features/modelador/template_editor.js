@@ -5659,6 +5659,20 @@
     });
   }
 
+  // ZOOM DE RUEDA PROPORCIONAL AL DELTA REAL (fix 14-ago): los handlers hacían
+  // ×1.1 fijo POR EVENTO, y los mouse de rueda libre / alta resolución disparan
+  // VARIOS eventos por muesca (con deltas chicos) — un solo clic de rueda
+  // multiplicaba varias veces y el zoom saltaba. Con el factor exponencial
+  // sobre deltaY normalizado, N eventos chicos suman EXACTAMENTE lo mismo que
+  // una muesca clásica de 120px (≈ ×1.11), venga el mouse que venga.
+  function _factorZoomRueda(e) {
+    var d = Number(e.deltaY) || 0;
+    if (e.deltaMode === 1) d *= 16;         // líneas → px (Firefox y otros)
+    else if (e.deltaMode === 2) d *= 120;   // páginas → px
+    d = Math.max(-240, Math.min(240, d));   // un gesto no salta más que ~2 muescas
+    return Math.exp(d * 0.00088);           // 120px ≈ ×1.11 (la sensación de siempre)
+  }
+
   function _bindVistaOrto(plano) {
     var o = ST.orto[plano]; if (!o) return;
     var host = o.vista, panning = false, lx = 0, ly = 0;
@@ -5682,7 +5696,7 @@
       _sincronizarOverlayOrto();    // el overlay sigue a la cámara (hit/nodos/flecha)
     });
     host.addEventListener('wheel', function (e) {
-      e.preventDefault(); o.zoom *= (e.deltaY > 0 ? 0.9 : 1.1);
+      e.preventDefault(); o.zoom /= _factorZoomRueda(e);
       o.zoom = Math.max(0.15, Math.min(12, o.zoom));
       _marcarSucio();
       _sincronizarOverlayOrto();
@@ -5933,7 +5947,7 @@
       _marcarSucio();   // PERF: la cámara 3D cambió → repintar
     });
     cv.addEventListener('wheel', function (e) {
-      e.preventDefault(); ST.dist *= (e.deltaY > 0 ? 1.1 : 0.9);
+      e.preventDefault(); ST.dist *= _factorZoomRueda(e);
       ST.dist = Math.max(120, Math.min(6000, ST.dist));
       _marcarSucio();
     }, { passive: false });
