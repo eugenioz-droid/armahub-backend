@@ -5674,7 +5674,7 @@
   // Perillas: _ZOOM_EV = cuánto mueve cada evento · _ZOOM_TOPE = cuántos cuentan
   // por ventana · _ZOOM_VENT = largo de la ventana.
   var _ZOOM_EV = 1.035;       // zoom por evento que cuenta
-  var _ZOOM_TOPE = 4;         // máximo de eventos que cuentan por ventana
+  var _ZOOM_TOPE = 4;         // eventos que pesan COMPLETO por ventana (después, saturación)
   var _ZOOM_VENT = 200;       // ms de la ventana
   var _zVentIni = 0, _zVentN = 0;
   function _factorZoomRueda(e) {
@@ -5682,9 +5682,16 @@
     if (!d) return 1;
     var t = Date.now();
     if (t - _zVentIni > _ZOOM_VENT) { _zVentIni = t; _zVentN = 0; }   // ventana nueva
-    if (_zVentN >= _ZOOM_TOPE) return 1;   // cola de la ráfaga: ya se contó el gesto
     _zVentN++;
-    return (d > 0) ? _ZOOM_EV : (1 / _ZOOM_EV);
+    // SATURACIÓN SUAVE, NO TOPE DURO (5ª vuelta: «queda con un lag»). Cortar en
+    // seco pasados N eventos dejaba la rueda MUERTA el resto de la ráfaga: el
+    // usuario seguía girando y no pasaba nada hasta la ventana siguiente — eso
+    // es el lag. Ahora los eventos de la cola siguen moviendo, pero pesando cada
+    // vez menos (1, 1, 1, 1, ½, ⅓, ¼…): el movimiento nunca se corta y la suma
+    // crece como un logaritmo, así que una ráfaga larga no dispara el zoom.
+    var peso = 1 / (1 + Math.max(0, _zVentN - _ZOOM_TOPE));
+    var paso = Math.pow(_ZOOM_EV, peso);
+    return (d > 0) ? paso : (1 / paso);
   }
 
   function _bindVistaOrto(plano) {
