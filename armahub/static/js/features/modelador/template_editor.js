@@ -5659,36 +5659,32 @@
     });
   }
 
-  // ZOOM DE RUEDA INDEPENDIENTE DEL MOUSE (fix 14-ago, 2ª vuelta).
-  // 1ª vuelta: factor proporcional a deltaY normalizado. Seguía mal, y la razón la
-  // dijo el usuario: «al final no puede depender del mouse del usuario». Los mouse
-  // modernos NO reportan lo mismo por muesca — unos mandan 100, otros 120, otros
-  // 300+, y los de rueda libre/alta resolución parten UNA muesca en varios eventos
-  // seguidos (o repiten el delta completo). Cualquier fórmula que CONFÍE en la
-  // magnitud reportada se comporta distinto en cada equipo.
-  // Regla nueva: la rueda dice DIRECCIÓN, no cantidad. Un gesto = UN paso fijo
-  // (×1.12), con una ventana de 55 ms que absorbe la ráfaga de eventos que el
-  // driver manda por una sola muesca. Girar rápido sigue haciendo zoom rápido
-  // (hasta ~18 pasos/s), pero un clic de rueda es siempre un paso, en cualquier
-  // mouse y en cualquier navegador.
-  // 3ª vuelta: el usuario reporta que sigue avanzando de más («un poco menos,
-  // pero mal»). Diagnóstico: rueda LIBRE (sin trinquete) — un flick la deja
-  // girando de verdad y manda eventos durante casi un segundo, así que ninguna
-  // ventana de tiempo los colapsa: hay que bajar la VELOCIDAD del zoom.
-  // Con estos números el techo es ~14 pasos/s ≈ ×2 por segundo de giro continuo
-  // (antes ×6.4/s), y un clic suelto mueve un 5% — suave y predecible.
-  // Los dos valores son la perilla: subir _ZOOM_PASO = más zoom por gesto,
-  // bajar _ZOOM_MS = más rápido al girar sostenido.
-  var _ZOOM_PASO = 1.05;      // cuánto zoom por gesto
-  var _ZOOM_MS = 70;          // ventana mínima entre pasos
-  var _zoomUlt = 0;
+  // ZOOM DE RUEDA — CONTROL, NO VELOCIDAD (4ª vuelta, la buena).
+  // Historia: (1) factor proporcional a deltaY → cada mouse reporta distinto;
+  // (2) un paso fijo por ventana de 55 ms → seguía avanzando de más porque la
+  // rueda libre manda eventos durante casi un segundo; (3) bajar el paso a 1.05
+  // → «se corrigió, pero ahora se mueve gráficamente lento». El usuario puso el
+  // dedo en la llaga: «el problema era de CONTROL, no de velocidad — un clic de
+  // giro avanzaba muchos clics».
+  // Regla final: cada evento mueve un poco y se ve AL TIRO (respuesta inmediata,
+  // nada de compuertas que aten el dibujo), pero dentro de una ventana corta sólo
+  // CUENTAN los primeros N eventos — la cola de la ráfaga (o de la rueda libre
+  // girando sola) se descarta. Así un gesto vale como mucho ×1.15 por más eventos
+  // que mande el mouse, y girar sostenido sigue haciendo zoom continuo (~×2/s).
+  // Perillas: _ZOOM_EV = cuánto mueve cada evento · _ZOOM_TOPE = cuántos cuentan
+  // por ventana · _ZOOM_VENT = largo de la ventana.
+  var _ZOOM_EV = 1.035;       // zoom por evento que cuenta
+  var _ZOOM_TOPE = 4;         // máximo de eventos que cuentan por ventana
+  var _ZOOM_VENT = 200;       // ms de la ventana
+  var _zVentIni = 0, _zVentN = 0;
   function _factorZoomRueda(e) {
     var d = Number(e.deltaY) || 0;
     if (!d) return 1;
-    var ahora = Date.now();
-    if (ahora - _zoomUlt < _ZOOM_MS) return 1;   // misma muesca: ya se contó
-    _zoomUlt = ahora;
-    return (d > 0) ? _ZOOM_PASO : (1 / _ZOOM_PASO);
+    var t = Date.now();
+    if (t - _zVentIni > _ZOOM_VENT) { _zVentIni = t; _zVentN = 0; }   // ventana nueva
+    if (_zVentN >= _ZOOM_TOPE) return 1;   // cola de la ráfaga: ya se contó el gesto
+    _zVentN++;
+    return (d > 0) ? _ZOOM_EV : (1 / _ZOOM_EV);
   }
 
   function _bindVistaOrto(plano) {
