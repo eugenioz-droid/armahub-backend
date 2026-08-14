@@ -5671,8 +5671,16 @@
   // driver manda por una sola muesca. Girar rápido sigue haciendo zoom rápido
   // (hasta ~18 pasos/s), pero un clic de rueda es siempre un paso, en cualquier
   // mouse y en cualquier navegador.
-  var _ZOOM_PASO = 1.12;      // cuánto zoom por muesca (la sensación de siempre)
-  var _ZOOM_MS = 55;          // ventana que colapsa la ráfaga del driver
+  // 3ª vuelta: el usuario reporta que sigue avanzando de más («un poco menos,
+  // pero mal»). Diagnóstico: rueda LIBRE (sin trinquete) — un flick la deja
+  // girando de verdad y manda eventos durante casi un segundo, así que ninguna
+  // ventana de tiempo los colapsa: hay que bajar la VELOCIDAD del zoom.
+  // Con estos números el techo es ~14 pasos/s ≈ ×2 por segundo de giro continuo
+  // (antes ×6.4/s), y un clic suelto mueve un 5% — suave y predecible.
+  // Los dos valores son la perilla: subir _ZOOM_PASO = más zoom por gesto,
+  // bajar _ZOOM_MS = más rápido al girar sostenido.
+  var _ZOOM_PASO = 1.05;      // cuánto zoom por gesto
+  var _ZOOM_MS = 70;          // ventana mínima entre pasos
   var _zoomUlt = 0;
   function _factorZoomRueda(e) {
     var d = Number(e.deltaY) || 0;
