@@ -2285,7 +2285,22 @@
   // local. Sin opts vale el recub vertical (comportamiento histórico); con la pieza
   // VOLTEADA el eje longitudinal local es la Z real, así que su recub es el lateral.
   function _baseDeComponente(comp, host, opts) {
-    comp._rol = comp._rol || _rolDeTipologia(comp.tipologia, comp.cara);
+    // ROL DE USO. La tipología lo propone… y la TOPOLOGÍA de la figura manda
+    // (definición 13-ago): una figura CERRADA (marco 104x, rombo 106A) es una
+    // pieza de SECCIÓN venga el chip que venga — encuadra el marco, no "corre".
+    // Un 106A escrito estando en MH entraba al pipeline de CORTINA: defaults de
+    // cabezal, su lado B tratado como longitudinal y un dibujo sin sentido.
+    // Se RE-DERIVA en cada pasada (no se cachea): la figura puede cambiar en la
+    // ficha y un rol pegado dibujaría la figura nueva con el tren de la vieja.
+    var rolTip = _rolDeTipologia(comp.tipologia, comp.cara);
+    if (rolTip === 'cabezal') {
+      var fpR = _fp();
+      if (fpR && ((fpR.esRomboSeccion && fpR.esRomboSeccion(comp.figura)) ||
+        (fpR.familiaDeDibujo && fpR.familiaDeDibujo(comp.figura, null) === 'estribo'))) {
+        rolTip = 'estribo';
+      }
+    }
+    comp._rol = rolTip;
     // POSE → cara/lado EN EL MARCO LOCAL. Es el ÚNICO punto donde la pose entra al
     // resto del motor: de acá para abajo todo sigue siendo exactamente lo que era
     // (marco de cara, pilas, plano de trabajo), sólo que la cara local ya no se lee
