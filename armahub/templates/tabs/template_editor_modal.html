@@ -162,6 +162,17 @@
   #te_modal .te-modebox{border:1px solid var(--te-line);border-radius:8px;padding:8px 9px;background:var(--te-panel2);margin-bottom:8px}
   #te_modal .te-modebox .te-mh{font-size:10.5px;font-weight:700;color:var(--te-muted);margin-bottom:6px;display:flex;align-items:center;gap:6px}
   #te_modal .te-chip{font-size:9.5px;color:var(--te-chip-ink);background:var(--te-chip);border:1px solid var(--te-chip-b);border-radius:9px;padding:1px 6px;font-weight:600}
+  /* LETRAS-BOTÓN DEL DOMINANTE (tanda 14-ago): 'auto' + una letra por lado.
+     .on = elegido · .manda = el que el motor resuelve HOY (borde azul, como el
+     marcado de _dimRow) · disabled = gancho/diagonal, con el motivo en el title. */
+  #te_modal .te-dombtn{border:1px solid var(--te-line);background:#fff;border-radius:6px;
+    min-width:26px;padding:3px 7px;font-size:11px;font-weight:800;color:var(--te-muted);cursor:pointer}
+  #te_modal .te-dombtn:hover:not(:disabled){background:#f7fbf2;color:var(--te-acero-d)}
+  #te_modal .te-dombtn.manda{border-color:var(--te-azul);color:var(--te-azul)}
+  #te_modal .te-dombtn.on{background:var(--te-azul);border-color:var(--te-azul);color:#fff}
+  #te_modal .te-dombtn:disabled{opacity:.38;cursor:not-allowed;text-decoration:line-through}
+  /* PICKER DE COLOR POR BARRA (D9): compacto, a la altura de los inputs. */
+  #te_modal input.te-color{width:44px;height:24px;padding:1px 2px;border:1px solid var(--te-line);border-radius:6px;background:#fff;cursor:pointer}
   /* SELECTOR DE MODO DE COLOCACIÓN (3 botoncitos: Puntual / Distribución / Arreglo).
      Control segmentado que ocupa el ancho del panel; el activo va en acero. Cambiarlo
      re-renderiza los campos contextuales de abajo (menú contextual por modo). */

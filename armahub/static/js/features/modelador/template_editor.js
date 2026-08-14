@@ -492,16 +492,12 @@
   // ==========================================================================
   // LADO DOMINANTE ELEGIDO POR EL USUARIO — comp.lado_dominante
   // ==========================================================================
-  // Hoy el dominante lo decide una cascada del motor (figura_puntos
-  // .ladoDominanteFigura: lo declarado en el catálogo → el lado B → el primer
-  // parcial). El usuario pidió poder cambiarlo por barra, y este es el campo
-  // donde queda escrito.
-  //
-  // IMPORTANTE (medido 14-ago, ver la nota de _filaLadoDominante): el motor
-  // TODAVÍA NO LEE este campo — reglas.ladoDominante → _ladoLongitudinal sólo
-  // consulta la figura, nunca el componente. El dato se guarda igual (es la mitad
-  // del trabajo y la receta lo persiste tal cual), y la ficha lo DICE en vez de
-  // dejar creer que ya manda.
+  // El dominante lo decide el MOTOR: la elección del componente (este campo) con
+  // máxima prioridad, y si no viene —o es inválida: gancho, diagonal, contorno
+  // cerrado, lado inexistente— la cascada del catálogo (ladoDominanteFigura).
+  // Desde WF1 (14-ago) reglas.ladoDominante SÍ lee comp.lado_dominante y lo pasa
+  // por validarLadoDominante; una elección inválida se ignora CON AVISO. La ficha
+  // ofrece las letras como botones (_filaLadoDominante) y marca la que manda.
   function _ladoDomElegido(c) {
     var v = c && c.lado_dominante;
     v = String(v == null ? '' : v).trim().toUpperCase();
@@ -1492,7 +1488,7 @@
       ST.world.add(box); ST.world.add(edges);
     }
     (out.placements || []).forEach(function (pl) {
-      var mat = _matDe(pl.tipologia);
+      var mat = _matDeComp(pl);   // color por barra: override de la receta o el de su tipología
       var mesh = geom.barraSolida(pl.puntos, pl.diam, mat, { segmentosRadiales: 10 });
       if (!mesh) return;
       // B2·(a): guardar el span por eje + el material COMPARTIDO original. El clipping
@@ -1907,6 +1903,40 @@
     if (rol === 'estribo') return COL2D.ES;
     if (rol === 'traba') return COL2D.TRV;
     return COL2D.LT;
+  }
+
+  // COLOR POR BARRA (tanda 14-ago). La tipología da el DEFAULT (COL2D) y el
+  // componente puede pisarlo con c.color (#rrggbb), que viaja EN LA RECETA — el
+  // template se ve igual donde se abra. Fuente única para 2D, 3D, swatch de la
+  // lista y el picker de la ficha. Un valor ilegible se ignora (cae al default).
+  function _hexCompValido(c) {
+    var v = c && c.color;
+    if (typeof v !== 'string') return null;
+    v = v.trim().toLowerCase();
+    return /^#[0-9a-f]{6}$/.test(v) ? v : null;
+  }
+  function _colorComp(c) {
+    return _hexCompValido(c) || _colDe(c && c.tipologia);
+  }
+  // Componente de un placement (por meta.ci) — para que 2D/3D resuelvan el color.
+  function _compDePl(pl) {
+    var ci = (pl && pl.meta && pl.meta.ci != null) ? pl.meta.ci : -1;
+    var comps = (ST.receta && ST.receta.componentes) || [];
+    return (ci >= 0 && comps[ci]) ? comps[ci] : null;
+  }
+  // Material 3D del placement: el compartido de su tipología, o —con override—
+  // uno por color, cacheado por hex (mismos parámetros que los de COL2D; el
+  // realce de selección y el clipping clonan de matBase, así que componen igual).
+  function _matDeComp(pl) {
+    var hex = _hexCompValido(_compDePl(pl));
+    if (!hex) return _matDe(pl.tipologia);
+    var THREE = global.THREE;
+    ST.materialesColor = ST.materialesColor || {};
+    if (!ST.materialesColor[hex]) {
+      ST.materialesColor[hex] = new THREE.MeshStandardMaterial({
+        color: new THREE.Color(hex), metalness: 0.5, roughness: 0.5 });
+    }
+    return ST.materialesColor[hex];
   }
 
   function _svgEl(tag, attrs) {
@@ -2666,7 +2696,7 @@
     // Barras: halo de selección + HIT invisible SIEMPRE; el trazo sólido sólo cuando
     // el SVG es el que dibuja (sin render orto detrás).
     placements.forEach(function (pl) {
-      var color = _colDe(pl.tipologia);
+      var color = _colorComp(_compDePl(pl) || { tipologia: pl.tipologia });
       var rol = _rolDe(pl.tipologia);
       var ci = (pl.meta && pl.meta.ci != null) ? pl.meta.ci : -1;
       var sel = (ci === ST.selCi && ST.selCi >= 0);
@@ -4009,7 +4039,7 @@
 
   function _compEl(c, ci) {
     var rol = _rolDe(c.tipologia);
-    var col = _colDe(c.tipologia);
+    var col = _colorComp(c);   // el swatch muestra el color REAL de la barra (override incluido)
     var sel = (ci === ST.selCi);
     var wrap = document.createElement('div');
     wrap.className = 'te-comp' + (sel ? ' open sel' : '');
@@ -4351,6 +4381,29 @@
       body.appendChild(nSec);
     }
 
+    // COLOR DE LA BARRA — default el de su tipología (COL2D), editable por
+    // componente y guardado en la receta (D9 del usuario: "colores por defecto
+    // pero se pueden cambiar en el componente"). Se aplica en 'change' (al cerrar
+    // el picker), no en 'input': cada cambio regenera motor+3D y el arrastre del
+    // picker dispara decenas por segundo.
+    var rowCol = _div('te-row');
+    rowCol.appendChild(_label('Color'));
+    var wCol = _div(''); wCol.style.display = 'flex'; wCol.style.gap = '6px'; wCol.style.alignItems = 'center';
+    var inCol = document.createElement('input');
+    inCol.type = 'color'; inCol.value = _colorComp(c); inCol.className = 'te-color';
+    inCol.title = 'Color de esta barra en el editor (default: el de su tipología ' + _colDe(c.tipologia) + ')';
+    inCol.addEventListener('change', function () { c.color = inCol.value; _mut(ci); });
+    wCol.appendChild(inCol);
+    if (_hexCompValido(c)) {
+      var bColAuto = document.createElement('button');
+      bColAuto.type = 'button'; bColAuto.className = 'te-mini'; bColAuto.textContent = 'auto';
+      bColAuto.title = 'Volver al color de la tipología (' + _colDe(c.tipologia) + ')';
+      bColAuto.onclick = function () { delete c.color; _mut(ci); };
+      wCol.appendChild(bColAuto);
+    }
+    rowCol.appendChild(wCol);
+    body.appendChild(rowCol);
+
     // Distribución
     body.appendChild(_distBox(c, ci, rol, d));
 
@@ -4366,40 +4419,55 @@
     spec.parciales.forEach(function (L) {
       body.appendChild(_dimRow(c, ci, L, dom));
     });
-    // ÁNGULOS — SOLO LECTURA (hallazgo del 14-ago). La ficha dejaba TECLEAR α por
-    // componente y nadie lo consumía: el trazado lee spec.angulos DEL CATÁLOGO
-    // (figura_puntos.js:93 y :584) y generar.js escribe ang1..ang4 también del
-    // catálogo (generar.js:110). Mientras el cabezal dibujaba 90° fijos daba lo
-    // mismo; desde que el dibujo depende del ángulo, el campo prometía un control
-    // que el motor ignora. Se muestra el ángulo QUE MANDA y se dice de dónde sale.
-    // Cablear el motor es otra tanda (toca también el export): acá se miente menos.
+    // ÁNGULOS EDITABLES POR BARRA (tanda 14-ago; el motor los consume desde WF1:
+    // el trazado Y generar.js pasan por figura_puntos.angulosEfectivos, así que el
+    // que se dibuja y el que se factura son EL MISMO número). Regla del usuario:
+    // el catálogo SUGIERE (default), la barra decide; el ángulo se desplaza DENTRO
+    // del rango de su doblez (≤90 se mueve en 0–90, >90 en 90–180 — cambiar de
+    // rango sería otra figura); sólo varía la posición del gancho, el largo total
+    // no cambia. Un valor fuera de rango se guarda tal cual (dato honesto) pero el
+    // motor lo ignora con aviso — acá se pinta .bad y se dice el motivo al tiro.
     if (spec.angulos.length) {
       var angRow = _div('te-grid2');
+      var fpAng = global.ModeladorFiguraPuntos || {};
+      var nAngMsg = _div('te-note');   // mensaje vivo de validación (uno para todos)
       spec.angulos.forEach(function (a, i) {
-        var inpA = _input({ value: a, type: 'number' }, function () {});
-        inpA.readOnly = true;
-        inpA.disabled = true;   // además de readOnly: que ni las flechitas sugieran que se edita
-        inpA.title = 'α' + (i + 1) + ' = ' + a + '° · lo define la figura ' +
-          (c.figura || '') + ' en el catálogo, no la barra.';
+        var rg = fpAng.rangoAngulo ? fpAng.rangoAngulo(c.figura, i) : null;
+        var ovr = (c.angulos && c.angulos[i] != null && c.angulos[i] !== '') ? c.angulos[i] : null;
+        var inpA = _input({
+          value: (ovr != null ? ovr : a), type: 'number',
+          placeholder: String(a)
+        }, function (v) {
+          c.angulos = c.angulos || [];
+          // vacío o el valor del catálogo = SIN override (la receta no estrena el canal)
+          var lim = String(v == null ? '' : v).trim();
+          c.angulos[i] = (lim === '' || Number(lim) === Number(a)) ? null : Number(lim);
+          _mut(ci);
+        });
+        if (rg) {
+          inpA.min = rg.lo; inpA.max = rg.hi;
+          inpA.title = 'α' + (i + 1) + ' · catálogo ' + a + '° · se mueve en ' + rg.lo + '–' + rg.hi +
+            '° (el rango de su doblez). Sólo cambia la posición del gancho; el largo no.';
+        } else {
+          // sin rango (0/180 en el catálogo): no describe un doblez → no se edita
+          inpA.readOnly = true; inpA.disabled = true;
+          inpA.title = 'α' + (i + 1) + ' = ' + a + '° · no describe un doblez: no hay rango en el que moverlo.';
+        }
+        // validación viva: pinta el campo y dice el motivo (el mismo texto del motor)
+        if (ovr != null && fpAng.validarAngulo) {
+          var vv = fpAng.validarAngulo(c.figura, i, ovr);
+          if (!vv.ok && !vv.vacio) {
+            inpA.classList.add('bad');
+            nAngMsg.style.color = '#e65100';
+            nAngMsg.textContent = '⚠ α' + (i + 1) + ': ' + vv.motivo + '. El motor usa el del catálogo (' + a + '°) y avisa.';
+          }
+        }
         angRow.appendChild(_fld('α' + (i + 1) + ' (°)', inpA));
       });
       body.appendChild(angRow);
-      var nAng = _div('te-note');
-      nAng.textContent = 'Los ángulos los define la FIGURA (catálogo): acá se muestran, no se editan. ' +
-        'Si necesitas otro ángulo, dibuja esa figura en el Diseñador de figuras y úsala.';
-      body.appendChild(nAng);
-      // Receta vieja con ángulos tecleados a mano: el dato está guardado pero el
-      // dibujo y el despiece nunca lo usaron. Se dice, no se borra a escondidas.
-      var angRec = (c.angulos || []).filter(function (v, i2) {
-        return v != null && Number(v) !== Number(spec.angulos[i2]);
-      });
-      if (angRec.length) {
-        var nAngW = _div('te-note'); nAngW.style.color = '#e65100';
-        nAngW.textContent = '⚠ Esta barra tiene ángulos guardados (' + (c.angulos || []).join('/') +
-          '°) distintos de los de la figura (' + spec.angulos.join('/') + '°). Manda la figura: ' +
-          'el dibujo y el despiece siempre usaron los del catálogo.';
-        body.appendChild(nAngW);
-      }
+      if (!nAngMsg.textContent) nAngMsg.textContent =
+        'Catálogo = valor por defecto. Editarlo desplaza el gancho dentro del rango de su doblez; el largo total no cambia.';
+      body.appendChild(nAngMsg);
     }
     // FIGURA CON RADIO (catálogo: radio = true, p.ej. 201A). Se DICE, no se ofrece un
     // campo: generar.js escribe `radio: null` fijo en la BarraPayload, así que un
@@ -4539,28 +4607,58 @@
   // que explica por qué al girar la pieza se estira ESE lado y no los otros. Cuando
   // el motor lea comp.lado_dominante (otra tanda: toca reglas._ladoLongitudinal y el
   // export), el selector vuelve — _setLadoDominante ya está escrito y probado.
+  // DOMINANTE ELEGIBLE (tanda 14-ago, con el motor ya cableado por WF1): las letras
+  // de la figura se muestran como BOTONES. Elegible → se puede elegir; gancho o
+  // diagonal → deshabilitado CON EL MOTIVO en el title (regla del usuario: "nunca
+  // un gancho"); contorno cerrado → sin botones (no hay lado que estirar). El botón
+  // AUTO vuelve a la cascada del catálogo. El marcado azul de _dimRow sigue mostrando
+  // el que MANDA de verdad (reglas.ladoDominante), elegido o heredado — así si el
+  // motor ignora una elección inválida guardada, se VE que no mandó.
   function _filaLadoDominante(body, c, ci, spec, efectivo) {
-    var n = _div('te-note');
-    n.textContent = efectivo
-      ? ('Dominante: ' + efectivo + ' — lo define la figura ' + (c.figura || '') +
-        ' en el catálogo. Es el lado que corre a lo largo de la pieza: el que Auto ' +
-        'estira contra el hormigón y el que recibe el empalme.')
-      : 'Esta figura cierra sobre sí misma: no tiene un lado que se estire ni que se empalme.';
-    body.appendChild(n);
-
-    // RECETA VIEJA que ya trae el campo (se guardó cuando el selector existía). No
-    // se borra a escondidas: se dice que está ahí y que hoy no manda nada.
-    var elegido = _ladoDomElegido(c);
-    if (elegido) {
-      var nw = _div('te-note'); nw.style.color = '#e65100';
-      nw.textContent = '⚠ Esta barra tiene guardado lado dominante ' + elegido +
-        (spec.parciales.indexOf(elegido) < 0
-          ? ' y la figura ' + (c.figura || '') + ' ni siquiera tiene ese lado'
-          : '') +
-        '. No cambia nada: el lado dominante sale del catálogo de la figura (' +
-        (efectivo || '—') + '). El dato queda guardado tal cual, no se borra solo.';
-      body.appendChild(nw);
+    var fp = global.ModeladorFiguraPuntos || {};
+    var elegibles = (fp.ladosDominantesElegibles ? fp.ladosDominantesElegibles(c.figura) : []) || [];
+    if (!elegibles.length) {
+      var n0 = _div('te-note');
+      n0.textContent = 'Esta figura cierra sobre sí misma: no tiene un lado que se estire ni que se empalme.';
+      body.appendChild(n0);
+      return;
     }
+    var elegido = _ladoDomElegido(c);
+    var row = _div('te-row');
+    row.appendChild(_label('Dominante'));
+    var wrap = _div(''); wrap.style.display = 'flex'; wrap.style.gap = '4px'; wrap.style.flexWrap = 'wrap';
+    // AUTO = sin elección (cascada del catálogo). Activo cuando no hay elegido.
+    var bAuto = document.createElement('button');
+    bAuto.type = 'button'; bAuto.className = 'te-dombtn' + (elegido ? '' : ' on');
+    bAuto.textContent = 'auto';
+    bAuto.title = 'La figura decide (catálogo): hoy manda ' + (efectivo || '—');
+    bAuto.onclick = function () { _setLadoDominante(c, null); _mut(ci); };
+    wrap.appendChild(bAuto);
+    spec.parciales.forEach(function (L) {
+      var b = document.createElement('button');
+      b.type = 'button';
+      var ok = elegibles.indexOf(L) >= 0;
+      b.className = 'te-dombtn' + (elegido === L ? ' on' : '') + (L === efectivo ? ' manda' : '');
+      b.textContent = L;
+      if (ok) {
+        b.title = (L === efectivo ? 'Manda ahora. ' : '') + 'Elegir ' + L + ' como lado dominante';
+        b.onclick = function () { _setLadoDominante(c, L); _mut(ci); };
+      } else {
+        b.disabled = true;
+        var vr = fp.validarLadoDominante ? fp.validarLadoDominante(c.figura, L) : null;
+        b.title = (vr && vr.motivo) ? vr.motivo : 'Este lado no puede ser dominante';
+      }
+      wrap.appendChild(b);
+    });
+    row.appendChild(wrap);
+    body.appendChild(row);
+    var n = _div('te-note');
+    n.textContent = 'El dominante es el lado que corre a lo largo: el que Auto estira contra el hormigón y el que recibe el empalme.' +
+      (elegido && elegido !== efectivo
+        ? ' ⚠ La elección ' + elegido + ' no está mandando (el motor la ignoró y avisa): manda ' + (efectivo || '—') + '.'
+        : '');
+    if (elegido && elegido !== efectivo) n.style.color = '#e65100';
+    body.appendChild(n);
   }
 
   function _dimRow(c, ci, L, dom) {
@@ -5434,7 +5532,10 @@
       var canvas = vista ? vista.querySelector('.te-vcanvas') : null;
       if (!vista || !canvas) return;
       var cam = new THREE.OrthographicCamera(-100, 100, 100, -100, -6000, 6000);
-      ST.orto[plano] = { cam: cam, canvas: canvas, vista: vista, def: def, zoom: 1, panU: 0, panV: 0, corte: 0.5 };
+      // `plano` = clave SEMÁNTICA de la vista ('seccion'/'largo'/'planta'). Viaja en el
+      // estado porque el CUCHILLO se decide por semántica, no por eje (fix 14-ago): la
+      // sección de la viga corta en x y la del muro en y — cablear el eje rompía al muro.
+      ST.orto[plano] = { cam: cam, canvas: canvas, vista: vista, def: def, plano: plano, zoom: 1, panU: 0, panV: 0, corte: 0.5 };
       _bindVistaOrto(plano);
     });
     // botones de reset (pan/zoom/corte)
@@ -5610,7 +5711,16 @@
     // El hormigón queda fuera del clip (material clippingPlanes:[]) → su volumen se ve
     // completo siempre (BUG 7). El plano 3D (P3) se ubica en o.cortePos (centro real de
     // la banda, ya con snap) → marca por dónde pasa el corte que se ve en 2D.
-    if (d === 'x') {
+    // REGRESIÓN DEL CUCHILLO (fix 14-ago, reporte del usuario en el muro): esto
+    // decidía con `d === 'x'` — el eje de profundidad de la sección DE LA VIGA.
+    // En el muro la sección corta en profundidad Y (corte horizontal), así que caía
+    // a banda gruesa y "se veía la profundidad completa, con las patas de los
+    // cabezales"; y peor, la ELEVACIÓN del canto (depth x en muro) recibía el
+    // cuchillo fino y quedaba casi vacía. La regla correcta es SEMÁNTICA: el
+    // cuadrante SECCIÓN es el que corta como cuchillo, en el eje que le toque a
+    // cada elemento (PLANOS_POR_ELEMENTO). Para la viga (seccion.depth='x') el
+    // comportamiento es idéntico al de siempre.
+    if (o.plano === 'seccion') {
       var slices = _slicesEnProfundidad(d);
       var target = -frac * (2 * half) + half;     // frac→posición cruda en [-half..half]
       // MODO LIBRE (ST.corteIman === false): sin snap. El corte se queda EXACTO donde
@@ -5632,7 +5742,8 @@
         o.corteGrosor = 4;
       }
     } else {
-      // y/z: banda gruesa (semi-espesor completo). frac 0.5 → 0 (centro); pela una cara.
+      // elevaciones/planta (el eje depende del elemento): banda gruesa (semi-espesor
+      // completo) — se ve la jaula entera; frac 0.5 → 0 (centro); el slider pela una cara.
       o.corteGrosor = Math.max(half, 5);
       o.cortePos = -frac * (2 * half) + half;
     }
