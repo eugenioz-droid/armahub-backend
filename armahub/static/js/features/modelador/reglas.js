@@ -1961,6 +1961,17 @@
     // encuadran el marco de núcleo: no tienen eje de anclaje que proteger y su
     // reparto sigue exactamente como estaba.
     if (base.rol !== 'cabezal') return eje;
+    // EJE DEL PROPIO DESARROLLO (local x): un rango ahí es legítimo cuando la
+    // pieza es CORTA (suples repartidos a lo largo, con o sin traslapo). El caso
+    // degenerado es la pieza que DESARROLLA prácticamente todo el eje (dominante
+    // estirado al útil): cada copia cae encima de la anterior — medido 14-ago:
+    // traba volteada legacy con rango sin eje → 3 barras idénticas encimadas en
+    // silencio. Ahí: null → 1 barra + aviso, como el guard de la cara.
+    if (eje === 'x') {
+      var dimX = Number(host.largo);
+      if (isFinite(dimX) && dimX > 0 && _spanEnEje(base, host, 'x') >= 0.9 * dimX) return null;
+      return eje;
+    }
     if (eje !== _marcoCara(base, host).eje) return eje;   // otro eje: nada que decidir
     // ¿Tiene PATA sobre ese eje? Sin desarrollo la pieza es plana en la cara y su
     // profundidad sigue siendo un dato libre (101A de malla / traba recta).
@@ -2902,7 +2913,8 @@
     // de anclaje (encuadran el marco de núcleo, no una cara), así que para ellos la
     // restitución sigue exactamente como estaba.
     var ejeAncla = (base.rol === 'cabezal') ? derivarPose(poseDe(comp)).N.eje : null;
-    _restituirCentroVolteo(placements, ref, comp, host, ejeAncla);
+    var ejeRango = (dist && dist.rango && dist.rango.eje) || null;   // eje MUNDO del reparto
+    _restituirCentroVolteo(placements, ref, comp, host, ejeAncla, ejeRango);
     var fin = _aplicarPostTransform(placements, comp, host);
     // Los avisos SON los de la expansión REAL (la permutada), no los de `ref`:
     // la referencia acostada es un cálculo auxiliar que no se dibuja. Y el chequeo
@@ -2938,7 +2950,7 @@
   // restituidos: los otros quedan exactamente como los dejó la permutación.
   var UMBRAL_PUNTUAL = 0.30;
 
-  function _restituirCentroVolteo(placements, ref, comp, host, ejeAncla) {
+  function _restituirCentroVolteo(placements, ref, comp, host, ejeAncla, ejeRango) {
     if (!placements || !placements.length || !ref || !ref.length || !host) return placements;
     var bb = _bboxLista(placements.map(function (p) { return p.puntos; }));
     var bbRef = _bboxLista(ref.map(function (p) { return p.puntos; }));
@@ -2948,6 +2960,10 @@
     ['x', 'y', 'z'].forEach(function (e) {
       if (!isFinite(dimHost[e]) || dimHost[e] <= 0) return;
       if (e === ejeAncla) return;                                           // se ANCLA (ver expandirComponente)
+      // …y el eje del RANGO tampoco: ahí la posición es un DATO del reparto
+      // (medido 14-ago: una traba de_pie repartida en x=100..200 aterrizaba en
+      // −50..50 porque la restitución la devolvía al centro de la referencia).
+      if (e === ejeRango) return;
       if ((bb.max[e] - bb.min[e]) >= UMBRAL_PUNTUAL * dimHost[e]) return;   // se EXTIENDE
       d[e] = bbRef.c[e] - bb.c[e];
       if (d[e]) restituye = true;
