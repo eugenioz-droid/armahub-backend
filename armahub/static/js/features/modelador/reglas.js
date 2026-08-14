@@ -104,6 +104,305 @@
   //                arreglo/rotación NO está implementada aún (otras tareas).
   // normalizarComponente NO clona ni pisa lo que ya venga: solo RELLENA lo ausente
   // con su default, para que todo consumidor vea el mismo shape. Idempotente.
+  //
+  // ===========================================================================
+  // NORMALIZADOR DE APERTURA — QUE UNA RECETA VIEJA ABRA COMPLETA
+  // ===========================================================================
+  // El motor fue GANANDO campos (pose, tramos del rango, modo de uso, niveles de
+  // jerarquía 1-based, dims {modo,valor}) y las recetas guardadas hace semanas no
+  // los traen. Hasta acá cada consumidor los derivaba SOBRE LA MARCHA y cada uno a
+  // su manera: `_dimsEfectivas` leía `comp.dims` crudo (y una dim escrita como
+  // NÚMERO PLANO —el shape del enfierrador— caía en la rama 'auto', o sea el valor
+  // que el usuario había fijado se PERDÍA en silencio); `expandirComponente` leía
+  // `comp.distribucion` crudo (sin `modo` no despacha a ningún distribuidor y el
+  // componente sale con CERO barras, sin decir por qué); y la jerarquía la
+  // recalculaba cada llamador con su propio default.
+  //
+  // Acá se cierra en UN punto: normalizarComponente es el normalizador COMPLETO.
+  // Todo componente pasa por él (expandirComponente lo llama primero), así que
+  // después de él el motor ve SIEMPRE el mismo shape, venga la receta de cuando
+  // venga.
+  //
+  // TRES REGLAS, y ninguna se salta:
+  //
+  // 1) NO SE INVENTA NADA. Cada campo que falta se DERIVA de lo que la receta YA
+  //    decía (la tipología, la figura, la cara vieja, la forma de la distribución)
+  //    o no se deriva. Lo que no se puede derivar honestamente se DEJA COMO ESTÁ y
+  //    se MARCA — nunca se rellena con un valor plausible (regla de oro del
+  //    proyecto: una defensa que enmascara convierte un dato malo en un dibujo
+  //    creíble y equivocado).
+  //
+  // 2) NO SE REESCRIBE LA RECETA. La vista canónica se PUBLICA en campos NO
+  //    enumerables (`_dims`, `_dist`, `_jerarquia`, `_pose`, `_migracion`),
+  //    recalculados en cada pasada. Tres motivos, los tres medidos:
+  //      · el ENFIERRADOR MVP guarda en la MISMA tabla templates_catalogo con otro
+  //        shape (dims numéricas planas). Convertirlas a {modo,valor} dentro de la
+  //        receta haría que abrir su template en el Template Editor y guardarlo
+  //        se lo rompiera. Entenderlo no obliga a reescribirlo;
+  //      · la receta se serializa entera al guardar (params) y se compara con
+  //        JSON.stringify para el dirty-tracking: un campo derivado la ensuciaría y
+  //        el editor pediría guardar por algo que el usuario no tocó;
+  //      · un campo derivado ESTAMPADO deja sordo al campo viejo del que salió (es
+  //        la razón, ya documentada abajo, por la que `orientacion` y `pose`
+  //        tampoco se estampan): al recalcularse en cada pasada, cambiar el campo
+  //        viejo sigue teniendo efecto.
+  //    Los ÚNICOS campos enumerables que se rellenan son los que ya se rellenaban
+  //    antes de esta tanda (comp_id / prioridad / empalme / depende_de / modo /
+  //    lado / plano_pieza / arreglo): son defaults INERTES y la UI y los tests
+  //    dependen de que estén.
+  //
+  // 3) IDEMPOTENTE POR CONSTRUCCIÓN. La vista canónica no se lee de sí misma: se
+  //    recalcula siempre desde la declaración enumerable, así que aplicarlo dos
+  //    veces da exactamente lo mismo (lo verifica tests/test_normalizador.js
+  //    comparando el JSON de la receta y el de los placements).
+  //
+  // TABLA — campo ausente → de dónde se deriva:
+  //   comp_id/prioridad/empalme/depende_de → null (no participan)
+  //   modo            → preset por TIPOLOGÍA (TIPOLOGIA_MODO_DEFAULT, o el rol)
+  //   lado            → +1 (z+), y −1 sólo si el valor declarado es negativo
+  //   plano_pieza     → { volteado:false }; `orientacion` NO se estampa
+  //   arreglo         → { n_capas:1, sep_capas:20, rango:null }
+  //   pose            → de CARA + ORIENTACIÓN viejas (poseDe: cara local +
+  //                     permutación → cara del mundo). Publicada en `_pose`.
+  //   jerarquia       → nivel DECLARADO canonizado (0-based viejo: 0 → 1) o, sin
+  //                     declarar, el default del ROL (JER_DEFAULT_POR_ROL = 1 desde
+  //                     el 13-ago). Publicada en `_jerarquia` {declarada,efectiva,rol}
+  //   dims.X          → número plano (enfierrador) → {modo:'fija',valor}
+  //                     {valor} sin modo            → {modo:'fija',valor}
+  //                     parcial de la figura sin declarar → {modo:'auto'}
+  //                     (sólo con la figura EN el catálogo: sin spec no hay de dónde)
+  //   distribucion.modo → 'linear' si trae zonas · 'layered' si trae capas · si no,
+  //                     el MODO DE USO del componente (puntual→layered,
+  //                     lineal→linear, arreglo→arreglo), que es la misma
+  //                     materialización que hace el panel
+  //   rango.tramos    → NO se deriva: sin tramos el rango es de @ ÚNICO (rama A de
+  //                     posicionesRango), que es lo que la receta vieja quería
+  //   rango.eje       → NO se deriva: ausente significa "el eje que la pieza
+  //                     recorre" (la x LOCAL) y eso ya lo resuelve la permutación
+  //                     de la pose. Estamparlo como eje del MUNDO lo congelaría y
+  //                     al girar la pieza el rango apuntaría al eje de antes.
+  //
+  // LO QUE NO SE PUEDE DERIVAR SE DICE (`_migracion.avisos` → `comp._avisos`, que
+  // es el canal que la barra de estado del editor ya muestra en rojo):
+  //   · figura que el catálogo vigente YA NO TIENE → marcada `figura_desconocida`;
+  //     el motor no puede completar sus dims ni su lado dominante;
+  //   · dim que dice 'fija' sin valor numérico, o que no es un número;
+  //   · dim que la figura no usa (la receta cambió de figura y quedó huérfana);
+  //   · componente sin distribución, o con una que no coloca ninguna barra;
+  //   · orientación / rumbo escritos con un valor que no existe.
+  // Lo RUTINARIO (un default que se aplica porque el campo nunca se declaró) NO va
+  // por ahí: va a `_migracion.derivados`, que es trazabilidad, no una alarma.
+  // ---------------------------------------------------------------------------
+
+  // Publica un campo DERIVADO: no enumerable (no ensucia la receta que se guarda ni
+  // el dirty-tracking) y reescribible (se recalcula en cada pasada).
+  function _publicar(comp, nombre, valor) {
+    try {
+      Object.defineProperty(comp, nombre,
+        { value: valor, enumerable: false, writable: true, configurable: true });
+    } catch (e) {
+      try { comp[nombre] = valor; } catch (e2) { /* objeto sellado: se usa el devuelto */ }
+    }
+    return valor;
+  }
+
+  function _migracionNueva() {
+    return { derivados: [], avisos: [], figura_desconocida: false };
+  }
+  // Trazabilidad de una derivación RUTINARIA (no es un problema: es "de dónde salió").
+  function _derivado(mig, campo, de) {
+    if (!mig) return;
+    var t = campo + ' ← ' + de;
+    if (mig.derivados.indexOf(t) < 0) mig.derivados.push(t);
+  }
+  // Lo que NO se pudo derivar: viaja a comp._avisos y la UI lo muestra.
+  function _problema(mig, msg) {
+    if (!mig || !msg) return;
+    if (mig.avisos.indexOf(msg) < 0) mig.avisos.push(msg);
+  }
+
+  function _numFinito(v) {
+    if (v == null || v === '') return null;
+    var n = Number(v);
+    return isFinite(n) ? n : null;
+  }
+
+  // Spec de la figura del componente (null = no está en el catálogo vigente).
+  function _specDe(comp) {
+    var cat = _cat();
+    return cat ? cat.get(comp && comp.figura) : null;
+  }
+
+  // UNA dim declarada → {modo:'fija',valor} | {modo:'auto'} | null (= no se puede
+  // canonizar: se deja EXACTAMENTE como vino y el llamador ya avisó).
+  function _dimCanon(letra, decl, mig) {
+    if (typeof decl === 'number' || typeof decl === 'string') {
+      // SHAPE DEL ENFIERRADOR: la dim es el número pelado. Hasta acá caía en la
+      // rama 'auto' de _dimsEfectivas (`decl.modo` no existe en un número) y el
+      // valor que el usuario había fijado se perdía sin un solo aviso — medido:
+      // un 103B con dims {A:30,B:500,C:30} resolvía A = C = 9.6 (el gancho
+      // normativo) y B contra el largo útil.
+      var n = _numFinito(decl);
+      if (n != null) {
+        _derivado(mig, 'dims.' + letra, 'número plano ' + n + ' → {modo:fija}');
+        return { modo: 'fija', valor: n };
+      }
+      _problema(mig, 'La dim ' + letra + ' vale "' + decl + '", que no es un número: ' +
+        'el motor no puede resolverla y la deja como está.');
+      return null;
+    }
+    if (!decl || typeof decl !== 'object') return null;
+    var modo = String(decl.modo == null ? '' : decl.modo).toLowerCase().trim();
+    var val = _numFinito(decl.valor);
+    if (modo === 'auto') return { modo: 'auto' };
+    if (modo === 'fija') {
+      if (val != null) return { modo: 'fija', valor: val };
+      // 'fija' sin número NO se convierte a 'auto': el usuario pidió una medida
+      // concreta y el motor no sabe cuál. Inventarle el auto sería dibujar una
+      // barra que nadie pidió con un largo que nadie eligió.
+      _problema(mig, 'La dim ' + letra + ' está en Fija pero no tiene valor: ' +
+        'no se puede derivar (elige un valor o ponla en Auto).');
+      return null;
+    }
+    if (val != null) {                       // {valor: 30} sin modo
+      _derivado(mig, 'dims.' + letra, 'valor ' + val + ' sin modo → {modo:fija}');
+      return { modo: 'fija', valor: val };
+    }
+    return { modo: 'auto' };                 // sin modo y sin valor = auto (lo de siempre)
+  }
+
+  // Mapa de dims CANÓNICO del componente. Lo consume _dimsEfectivas.
+  function _dimsCanon(comp, mig) {
+    var g = (comp && comp.dims && typeof comp.dims === 'object') ? comp.dims : {};
+    var out = {}, k;
+    for (k in g) {
+      if (!Object.prototype.hasOwnProperty.call(g, k)) continue;
+      // DIM DECLARADA EN NULL = dim NO declarada. No se copia a la vista canónica:
+      // así cae en el default 'auto' del bucle de parciales de más abajo (con su
+      // línea en `derivados`). Antes el null viajaba TAL CUAL y el lado salía
+      // AUSENTE del placement — medido: una 103B con dims.B = null generaba la barra
+      // con {A, C} y sin B, que es exactamente el payload que el despiece rechaza.
+      if (g[k] == null) continue;
+      var c = _dimCanon(k, g[k], mig);
+      out[k] = (c != null) ? c : g[k];       // lo indescifrable viaja TAL CUAL
+    }
+    var spec = _specDe(comp);
+    if (!spec) return out;                   // sin catálogo no hay de dónde derivar
+    var i, L;
+    // Parciales que la FIGURA usa y la receta no declara: sin ellos _dimsEfectivas
+    // ni siquiera los recorre → el payload va con dim_x = null (el backend lo
+    // rechaza) y el trazado se dibuja con el lado en NaN. 'auto' es el default
+    // documentado de una dim y es lo que escribe el editor al elegir la figura.
+    for (i = 0; i < spec.parciales.length; i++) {
+      L = spec.parciales[i];
+      if (Object.prototype.hasOwnProperty.call(out, L)) continue;
+      out[L] = { modo: 'auto' };
+      _derivado(mig, 'dims.' + L, 'parcial de ' + spec.codigo + ' sin declarar → {modo:auto}');
+    }
+    // …y al revés: dims que la figura NO usa (la receta cambió de figura y quedó la
+    // letra huérfana). No se borran —son dato del usuario— pero se dicen: no se
+    // dibujan ni viajan al despiece (generar.js sólo escribe los parciales del spec).
+    for (k in out) {
+      if (!Object.prototype.hasOwnProperty.call(out, k)) continue;
+      if (spec.parciales.indexOf(k) < 0) {
+        _problema(mig, 'La receta trae la dim ' + k + ', que la figura ' + spec.codigo +
+          ' no usa: no se dibuja ni viaja al despiece.');
+      }
+    }
+    return out;
+  }
+
+  // MODO DE USO → modo de DISTRIBUCIÓN. Es la misma materialización que hace el
+  // panel (ver _despachar): 'puntual' se coloca en capas, 'lineal' se reparte a lo
+  // largo, 'arreglo' es rango × capas.
+  var MODO_A_DIST = { puntual: 'layered', lineal: 'linear', arreglo: 'arreglo' };
+  var MODOS_DIST = ['linear', 'layered', 'arreglo', 'grid', 'perimeter', 'points'];
+
+  // Distribución CANÓNICA. Devuelve el MISMO objeto cuando ya lo está (caso normal:
+  // ni una copia por pasada); un clon superficial cuando hay que completar `modo`.
+  function _distCanon(comp, mig) {
+    var d = comp && comp.distribucion;
+    if (!d || typeof d !== 'object') {
+      _problema(mig, 'Este componente no declara distribución: el motor no sabe ' +
+        'cuántas barras colocar ni dónde, así que no genera ninguna.');
+      return {};
+    }
+    var modo = String(d.modo == null ? '' : d.modo).toLowerCase().trim();
+    var conocido = (MODOS_DIST.indexOf(modo) >= 0);
+    var out = d;
+    if (!conocido || modo !== d.modo) {
+      out = {};
+      for (var k in d) if (Object.prototype.hasOwnProperty.call(d, k)) out[k] = d[k];
+      if (conocido) {
+        out.modo = modo;                     // 'LINEAR' / ' linear ' escritos a mano
+        _derivado(mig, 'distribucion.modo', '"' + d.modo + '" normalizado a ' + modo);
+      } else {
+        // De la FORMA de la distribución (lo que la receta ya decía) y, si no dice
+        // nada, del MODO DE USO del componente. Sin esto el switch de _despachar
+        // cae en `default` y el componente sale con CERO barras, en silencio.
+        var der = (d.zonas && d.zonas.length) ? 'linear'
+          : ((d.n_capas != null || d.barras_capa != null) ? 'layered'
+            : (MODO_A_DIST[comp.modo] || null));
+        if (der) {
+          out.modo = der;
+          _derivado(mig, 'distribucion.modo', (d.modo == null ? 'ausente' : '"' + d.modo + '"') +
+            ' → ' + der + ((d.zonas && d.zonas.length) ? ' (trae zonas)'
+              : ((d.n_capas != null || d.barras_capa != null) ? ' (trae capas)'
+                : ' (modo de uso ' + comp.modo + ')')));
+        } else {
+          _problema(mig, 'La distribución no dice de qué modo se coloca la barra ' +
+            'y no hay de dónde deducirlo: este componente no genera barras.');
+        }
+      }
+    }
+    // Un reparto que no reparte NADA: se dice acá, en la apertura, en vez de dejar
+    // al usuario contando cero barras sin motivo.
+    if (out.modo === 'linear' && !(out.zonas && out.zonas.length)) {
+      if (!out.rango) {
+        _problema(mig, 'La distribución lineal no trae ni zonas ni rango: no coloca ' +
+          'ninguna barra.');
+      } else if (out.rango.from == null || out.rango.to == null) {
+        _problema(mig, 'El rango no dice desde/hasta: no coloca ninguna barra.');
+      }
+    }
+    return out;
+  }
+
+  // Jerarquía CANÓNICA: { declarada, efectiva, rol }. `declarada` es lo que gobierna
+  // las dims 'auto' (sin declarar se siguen midiendo al recubrimiento) y `efectiva`
+  // lo que gobierna el ANCLAJE — la MISMA distinción de siempre, ahora resuelta en
+  // un solo sitio en vez de en cada llamador.
+  function _jerarquiaCanon(comp, mig) {
+    var rol = _rolDeTipologia(comp && comp.tipologia, comp && comp.cara);
+    var decl = nivelJerarquia(comp && comp.jerarquia);
+    var ef = nivelJerarquiaEfectivo(comp && comp.jerarquia, rol);
+    if (decl == null) {
+      // OJO — el default CAMBIÓ el 13-ago (traba/cabezal nacían en 2). Una receta
+      // que no declara nivel se abre HOY en 1: es una decisión del usuario, no un
+      // olvido, así que no se resucita el 2 viejo. Queda anotado de dónde salió.
+      _derivado(mig, 'jerarquia', 'no declarada → nivel ' + ef + ' (default del rol ' + rol + ')');
+    } else if (comp.jerarquia !== decl && decl !== 'no') {
+      _derivado(mig, 'jerarquia', 'nivel ' + comp.jerarquia + ' (0-based viejo) → ' + decl);
+    }
+    return { declarada: decl, efectiva: ef, rol: rol };
+  }
+
+  // Vistas canónicas para los consumidores. Si el componente ya pasó por el
+  // normalizador se usa lo publicado; si no, se calcula al vuelo (misma cuenta, sin
+  // marcas) para que ninguna ruta dependa del ORDEN de las llamadas.
+  function _dimsDecl(comp) {
+    if (comp && comp._dims) return comp._dims;
+    return _dimsCanon(comp, null);
+  }
+  function _distDe(comp) {
+    if (comp && comp._dist) return comp._dist;
+    return _distCanon(comp, null);
+  }
+  function jerarquiaDe(comp) {
+    if (comp && comp._jerarquia) return comp._jerarquia;
+    return _jerarquiaCanon(comp, null);
+  }
+
   function normalizarComponente(comp) {
     if (!comp || typeof comp !== 'object') return comp;
     if (!('comp_id' in comp)) comp.comp_id = null;
@@ -129,21 +428,103 @@
       if (!('sep_capas' in comp.arreglo)) comp.arreglo.sep_capas = 20;
       if (!('rango' in comp.arreglo)) comp.arreglo.rango = null;
     }
+    // Canal de MIGRACIÓN de esta pasada. Se crea de CERO cada vez (nunca se lee el
+    // de la pasada anterior): por eso normalizar dos veces da lo mismo y por eso una
+    // marca desaparece sola en cuanto el usuario arregla el dato.
+    var mig = _migracionNueva();
+    // FIGURA que el catálogo vigente ya no tiene. No explota —el componente se sigue
+    // abriendo y dibujando lo que el motor sepa— pero queda MARCADO: sin spec no hay
+    // parciales de dónde derivar dims ni lado dominante, y generar.js no emitirá
+    // barra. Es exactamente el caso "la receta se guardó con una figura que después
+    // se sacó del catálogo".
+    if (_cat() && !_specDe(comp)) {
+      mig.figura_desconocida = true;
+      _problema(mig, 'Figura ' + (comp.figura ? comp.figura : '(vacía)') + ': no está en el ' +
+        'catálogo vigente. La receta la conserva, pero el motor no puede completar ' +
+        'sus dims ni su lado dominante y no se genera barra.');
+    }
     // POSE CANÓNICA (TANDA P). Si el componente trae `pose` se NORMALIZA in place
     // (cara/rumbo válidos y ⊥); si no, se DERIVA de los campos viejos y se publica
     // en `comp._pose` — NO enumerable, recalculado en cada pasada, para que no
     // ensucie la receta que se guarda ni deje sorda a la UI vieja (ver poseDe).
-    if (comp.pose && typeof comp.pose === 'object') {
+    if (comp.pose && typeof comp.pose === 'object' &&
+      (_caraCanon(comp.pose.cara) || _ejeCanon(comp.pose.rumbo))) {
+      // SÓLO si la pose DICE algo. Antes se canonizaba cualquier objeto, y una
+      // `pose:{}` (o una con basura) se rellenaba con el default sup/x — que
+      // ENTIERRA los campos viejos: poseDe cae a `cara`/`orientacion` justo cuando
+      // la pose no sirve, y a la pasada siguiente ya se encontraba una pose válida
+      // inventada. Medido: {cara:'inf', pose:{}} abría en la cara SUPERIOR.
       var pn = normalizarPose(comp.pose);
+      // AVISO DE RUMBO PARALELO — tiene que sobrevivir a NORMALIZAR DOS VECES.
+      // La pose se canoniza IN PLACE (contrato viejo, ver más abajo), así que si el
+      // aviso se calculara sólo comparando contra `comp.pose.rumbo` viviría UNA sola
+      // pasada… y el editor normaliza DOS antes de leer los avisos
+      // (normalizarReceta al abrir → _regenerar → expandirComponente → normalizar de
+      // nuevo → recién ahí _avisarMigracion). Medido: el usuario NUNCA veía este
+      // aviso, pero su receta SÍ quedaba reescrita (rumbo 'y' → 'x') en silencio.
+      // Por eso el rumbo que el usuario DECLARÓ se RECUERDA en una marca no
+      // enumerable sobre la propia pose: no viaja al JSON que se guarda (ni ensucia
+      // el dirty-tracking) y se vuelve a decir en cada pasada mientras la pose siga
+      // siendo la que se corrigió. Si la pose cambia (otra cara u otro rumbo), la
+      // marca se borra: la corrección de antes ya no es cierta.
+      var declarado = _ejeCanon(comp.pose.rumbo);
+      var marca = comp.pose._rumboCorregido || null;
+      if (declarado && declarado !== pn.rumbo) {
+        marca = { de: comp.pose.rumbo, a: pn.rumbo, cara: pn.cara };   // 1ª pasada
+        _publicar(comp.pose, '_rumboCorregido', marca);
+      } else if (marca && (marca.a !== pn.rumbo || marca.cara !== pn.cara)) {
+        marca = null;
+        _publicar(comp.pose, '_rumboCorregido', null);
+      }
+      if (marca) {
+        _problema(mig, 'La pose declara rumbo "' + marca.de + '", que es paralelo a la ' +
+          'cara ' + marca.cara + ' (una pieza no corre en la dirección en la que se apoya): ' +
+          'se usa el rumbo ' + marca.a + '.');
+      }
       comp.pose.cara = pn.cara; comp.pose.lado = pn.lado;
       comp.pose.rumbo = pn.rumbo; comp.pose.espejo = pn.espejo;
+    } else if (comp.pose && typeof comp.pose === 'object') {
+      _derivado(mig, 'pose', 'la pose guardada no dice cara ni rumbo → se usan los ' +
+        'campos viejos (cara/plano_pieza)');
+    } else {
+      _derivado(mig, 'pose', 'cara "' + (comp.cara || 'sup') + '" + orientación ' +
+        _orientacionLegacy(comp));
+    }
+    // ORIENTACIÓN escrita con un valor que no existe: hoy cae en silencio al
+    // `volteado` (o a 'acostada') y la pieza aparece en otro plano sin un error.
+    var ppO = comp.plano_pieza && comp.plano_pieza.orientacion;
+    if (ppO != null && !ORIENTACIONES.hasOwnProperty(String(ppO).toLowerCase().trim())) {
+      _problema(mig, 'plano_pieza.orientacion "' + ppO + '" no existe (acostada | volteada | ' +
+        'de_pie): se usa ' + _orientacionLegacy(comp) + '.');
     }
     var pEf = poseDe(comp);
-    try {
-      Object.defineProperty(comp, '_pose',
-        { value: pEf, enumerable: false, writable: true, configurable: true });
-    } catch (e) { /* objeto sellado: poseDe(comp) sigue dando la misma pose */ }
+    _publicar(comp, '_pose', pEf);
+    // VISTAS CANÓNICAS — el shape que el motor de HOY espera, derivado de lo que la
+    // receta ya decía. Se publican no enumerables (ver la nota de arriba: el
+    // enfierrador guarda otro shape en la misma tabla y no se le toca la receta).
+    _publicar(comp, '_jerarquia', _jerarquiaCanon(comp, mig));
+    _publicar(comp, '_dims', _dimsCanon(comp, mig));
+    _publicar(comp, '_dist', _distCanon(comp, mig));
+    _publicar(comp, '_migracion', mig);
     return comp;
+  }
+
+  // Normaliza la receta ENTERA (lo que hace falta al ABRIR un template guardado).
+  // Devuelve la MISMA receta (no clona: el editor trabaja sobre su objeto) para que
+  // el llamador pueda encadenar. Los avisos de cada componente quedan en su
+  // `_migracion` / `_avisos`.
+  function normalizarReceta(receta) {
+    if (!receta || typeof receta !== 'object') return receta;
+    var comps = receta.componentes;
+    if (Object.prototype.toString.call(comps) === '[object Array]') {
+      for (var i = 0; i < comps.length; i++) normalizarComponente(comps[i]);
+    }
+    return receta;
+  }
+
+  // Lo que el normalizador derivó y lo que no pudo, de un componente ya normalizado.
+  function migracionDe(comp) {
+    return (comp && comp._migracion) ? comp._migracion : null;
   }
 
   // ---------------------------------------------------------------------------
@@ -2179,8 +2560,10 @@
   }
 
   function expandirComponente(comp, host) {
-    normalizarComponente(comp);   // rellena campos aditivos ausentes (defaults null)
-    var dist = comp.distribucion || {};
+    normalizarComponente(comp);   // normalizador COMPLETO: deja la vista canónica
+    // Distribución CANÓNICA (con el `modo` derivado cuando la receta vieja no lo
+    // traía): sin esto el switch de _despachar cae en `default` → 0 barras mudas.
+    var dist = _distDe(comp);
     // ORIENTACIÓN = permutación de ejes REAL: se expande contra el host permutado
     // y se devuelven los puntos al mundo. 'acostada' → ruta idéntica a la anterior.
     var P = _permDe(comp);
@@ -2317,7 +2700,11 @@
   // desde donde la pieza ESTÁ, y la capa k no está donde la capa 1).
   function _dimsEfectivas(comp, host, nivel, profConsumida) {
     var dims = {};
-    var g = comp.dims || {};
+    // DECLARACIÓN CANÓNICA, no `comp.dims` crudo: acá entran recetas del Template
+    // Editor ({modo,valor}) y del ENFIERRADOR (número plano), y las dos tienen que
+    // leerse igual. Antes un número plano no matcheaba `d.modo === 'fija'` y la dim
+    // fijada por el usuario se resolvía como 'auto' — el valor se perdía en silencio.
+    var g = _dimsDecl(comp);
     var mk = marcoUtilNivel(null, host, (nivel !== undefined) ? nivel : null);
     // Lado LONGITUDINAL del cabezal (B en 10x con patas, A en 101/102): es el
     // ÚNICO que se estira al largo útil. Las PATAS en 'auto' toman la extensión
@@ -2578,7 +2965,12 @@
         rolTip = 'estribo';
       }
     }
-    comp._rol = rolTip;
+    // NO ENUMERABLE (mismo criterio que _pose/_avisos/_dims): el rol es DERIVADO y
+    // se re-deriva en cada pasada, pero con la asignación normal viajaba dentro de
+    // `params` al guardar el template y ensuciaba el dirty-tracking del editor (que
+    // compara la receta con JSON.stringify). Los lectores —el editor y los tests—
+    // lo leen igual: la enumerabilidad no cambia el acceso.
+    _publicar(comp, '_rol', rolTip);
     // POSE → cara/lado EN EL MARCO LOCAL. Es el ÚNICO punto donde la pose entra al
     // resto del motor: de acá para abajo todo sigue siendo exactamente lo que era
     // (marco de cara, pilas, plano de trabajo), sólo que la cara local ya no se lee
@@ -2740,7 +3132,12 @@
 
   function _cosecharAvisos(comp, base) {
     if (!comp) return;
-    var lista = (base && base.avisos) ? base.avisos.slice() : [];
+    // Los avisos del NORMALIZADOR (lo que no se pudo derivar al abrir la receta)
+    // salen PRIMERO: son la causa de lo que venga después. Van por el mismo canal
+    // para no tener dos sitios donde mirar — la barra de estado del editor ya lee
+    // comp._avisos, así que una receta vieja rota se explica sola sin tocar la UI.
+    var lista = (comp._migracion && comp._migracion.avisos) ? comp._migracion.avisos.slice() : [];
+    lista = lista.concat((base && base.avisos) ? base.avisos : []);
     try {
       Object.defineProperty(comp, '_avisos',
         { value: lista, enumerable: false, writable: true, configurable: true });
@@ -2801,7 +3198,15 @@
   }
 
   var API = {
+    // NORMALIZADOR DE APERTURA — punto ÚNICO por el que pasa todo componente.
+    // Deja la vista canónica en campos NO enumerables (_pose/_jerarquia/_dims/
+    // _dist/_migracion) sin reescribir la receta guardada. Idempotente.
     normalizarComponente: normalizarComponente,
+    normalizarReceta: normalizarReceta,    // la receta entera (al abrir un template)
+    migracionDe: migracionDe,              // { derivados, avisos, figura_desconocida }
+    dimsDeclaradas: _dimsDecl,             // dims canónicas ({modo,valor} por letra)
+    distribucionDe: _distDe,               // distribución canónica (modo resuelto)
+    jerarquiaDe: jerarquiaDe,              // { declarada, efectiva, rol }
     modoDefaultDeTipologia: modoDefaultDeTipologia,
     TIPOLOGIA_MODO_DEFAULT: TIPOLOGIA_MODO_DEFAULT,
     redondeoCantidadZona: redondeoCantidadZona,

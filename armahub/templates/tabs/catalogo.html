@@ -232,7 +232,8 @@
          2 cards: "Nuevo template" (elemento + dims del hormigón + nombre → abre el
          modal con el hormigón listo y CERO componentes) y "Templates guardados"
          (GET /templates → lista con botón Abrir). La lógica (tplSeleccionarElemento,
-         tplValidar, tplCrearTemplate, tplCargarGuardados, tplAbrirTemplate) vive en
+         tplValidar, tplCrearTemplate, tplCargarGuardados, tplAbrirTemplate,
+         tplEliminarTemplate, tplFiltrarGuardados, tplLimpiarFiltros) vive en
          static/js/features/modelador/template_editor.js. -->
     <style>
       #tplElemGrid button:not(:disabled):hover { border-color:#8BC34A !important; }
@@ -300,12 +301,36 @@
         </div>
       </div>
 
-      <!-- CARD 2 — Templates guardados -->
+      <!-- CARD 2 — Templates guardados (BIBLIOTECA).
+           Lista LIVIANA (GET /templates sin `params`) con buscador por nombre y
+           filtro por elemento: los dos los resuelve el BACKEND (?nombre= / ?tipo=).
+           Cada fila: Abrir (GET /templates/{id} → modal) y 🗑 Eliminar (DELETE, con
+           confirmación que nombra el template; si responde 409 el template está en
+           uso y NO se borra). La lógica vive en template_editor.js. -->
       <div class="card" id="tplGuardadosCard" style="border-top:3px solid #558B2F;">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
           <h3 style="margin:0; color:#558B2F;">📂 Templates guardados</h3>
           <span id="tplGuardadosCount" class="muted" style="font-size:11px;"></span>
         </div>
+
+        <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:10px;">
+          <input id="tplBuscar" maxlength="80" placeholder="🔎 Buscar por nombre…"
+                 oninput="tplFiltrarGuardados()"
+                 style="flex:1; min-width:180px; max-width:280px; border:1px solid #dbe1e8; border-radius:7px; padding:6px 10px; font-size:12.5px;">
+          <!-- VACÍO a propósito: las opciones las renderiza _tplRenderFiltroTipo()
+               desde TPL_DIMS_POR_ELEMENTO (misma tabla que el selector del editor). -->
+          <select id="tplFiltroTipo" onchange="tplFiltrarGuardados()"
+                  style="border:1px solid #dbe1e8; border-radius:7px; padding:6px 8px; font-size:12.5px; cursor:pointer;"></select>
+          <button onclick="tplLimpiarFiltros()" title="Limpiar búsqueda y filtro"
+                  style="border:1px solid #dbe1e8; background:#fff; border-radius:7px; font-size:12px; padding:6px 12px; cursor:pointer;">Limpiar</button>
+          <button onclick="tplCargarGuardados()" title="Volver a cargar la lista"
+                  style="border:1px solid #dbe1e8; background:#fff; border-radius:7px; font-size:12px; padding:6px 12px; cursor:pointer;">↻</button>
+        </div>
+
+        <!-- Resultado de eliminar / abrir: verde si salió, rojo con el motivo del
+             backend si no (409 = en uso, 403 = sin permiso). Lo pinta _tplMsg(). -->
+        <div id="tplGuardadosMsg" style="display:none; font-size:12px; border-radius:7px; padding:7px 10px; margin-bottom:10px;"></div>
+
         <div id="tplGuardadosLista"><div class="muted">Cargando templates…</div></div>
       </div>
     </div>

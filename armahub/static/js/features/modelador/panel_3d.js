@@ -19,6 +19,12 @@
 
   var ST = {
     receta: null,        // receta viva (se muta al ajustar el panel)
+    // De QUÉ template salió la receta viva (id de templates_catalogo) o null si es la
+    // semilla / algo armado a mano. Viaja en POST /elementos/instancia como
+    // template_id: sin él la traza nacía SIEMPRE en NULL y el 409 que protege el
+    // DELETE ("este template ya generó barras") no se disparaba nunca, porque no
+    // había una sola fila que apuntara a un template.
+    templateId: null,
     ultimoOut: null,     // salida de generarViga (barras + resumen)
     piso: null,          // piso (floor) del elemento — se pide al cargar (AC2 no tiene piso global)
     // three
@@ -663,6 +669,9 @@
     // Vuelve a la viga-semilla original (avisa que descarta ajustes).
     if (!confirm('Regenerar vuelve a la viga base y descarta los ajustes del panel. ¿Continuar?')) return;
     ST.receta = _deps().semilla.semillaViga();
+    // La receta ya no es la del template que estuviera cargado: la traza no debe
+    // seguir diciendo que estas barras salieron de él.
+    ST.templateId = null;
     $('m3d_largo').value = ST.receta.geometria.largo;
     $('m3d_ancho').value = ST.receta.geometria.ancho;
     $('m3d_alto').value = ST.receta.geometria.alto;
@@ -689,7 +698,10 @@
     // Traza opcional: guardar la receta como instancia (elementos_template) para template_instancia_id.
     var instId = null;
     try {
-      var ri = await _post('/elementos/instancia', { lote_id: ctx.loteId, template_id: null, params: ST.receta });
+      // template_id = el template del que salió esta receta (o null si se armó a
+      // mano). Es la única fila que registra "estas barras vienen de este template",
+      // y es la que hace real el 409 del DELETE.
+      var ri = await _post('/elementos/instancia', { lote_id: ctx.loteId, template_id: ST.templateId, params: ST.receta });
       if (ri && ri.ok && ri.id) instId = ri.id;
     } catch (e) { /* la traza es opcional; seguimos sin ella */ }
     // Armar las barras con el shape del backend (ya lo trae generar), estampando piso/template/origen.
@@ -724,8 +736,17 @@
     nombre = nombre.trim(); if (!nombre) { alert('El nombre es obligatorio.'); return; }
     try {
       var r = await _post('/templates', { nombre: nombre, tipo: 'viga', params: ST.receta, obra: ctx.proyecto });
-      if (r && r.ok) alert('💾 Template "' + nombre + '" guardado.');
-      else alert('No se pudo guardar el template.');
+      if (r && r.ok) {
+        // Desde acá la receta viva ES la de ese template: lo que se cargue al
+        // despiece queda trazado contra él.
+        if (r.id != null) ST.templateId = r.id;
+        alert('💾 Template "' + nombre + '" guardado.');
+      } else {
+        // El backend explica POR QUÉ (422 con la receta que no genera barras, 403…);
+        // tragarse el motivo dejaba al usuario sin nada que corregir.
+        var d = r && r.detail;
+        alert('No se pudo guardar el template' + (d ? ': ' + (d.msg || (typeof d === 'string' ? d : JSON.stringify(d))) : '') + '.');
+      }
     } catch (e) { alert('Error de red al guardar el template.'); }
   };
 
@@ -740,7 +761,14 @@
       if (sel == null) return;
       var idx = parseInt(sel, 10) - 1;
       if (isNaN(idx) || !tpls[idx]) { alert('Selección inválida.'); return; }
-      ST.receta = tpls[idx].params;
+      // GET /templates ya NO devuelve la receta completa (la lista solo sirve para
+      // ELEGIR): la receta se pide por id al template elegido.
+      var det = await _get('/templates/' + encodeURIComponent(tpls[idx].id));
+      if (!det || !det.params || !det.params.geometria) { alert('No se pudo abrir el template elegido.'); return; }
+      ST.receta = det.params;
+      // De acá sale la traza: las barras que se carguen al despiece con esta receta
+      // quedan apuntando a ESTE template (elementos_template.template_id).
+      ST.templateId = (det.id != null) ? det.id : tpls[idx].id;
       $('m3d_largo').value = ST.receta.geometria.largo;
       $('m3d_ancho').value = ST.receta.geometria.ancho;
       $('m3d_alto').value = ST.receta.geometria.alto;

@@ -34,8 +34,15 @@
   #te_modal #te_titlebar{display:flex;align-items:center;gap:12px;padding:10px 18px;border-bottom:1px solid var(--te-line);background:var(--te-panel2)}
   #te_modal #te_titlebar .te-dot{width:26px;height:26px;border-radius:7px;background:var(--te-acero);display:flex;align-items:center;justify-content:center;font-size:15px}
   #te_modal #te_titlebar h1{font-size:15px;font-weight:600;margin:0}
-  #te_modal #te_titlebar .te-sub{font-size:11.5px;color:var(--te-muted)}
+  #te_modal #te_titlebar .te-sub{font-size:11.5px;color:var(--te-muted);display:flex;align-items:center;gap:6px}
   #te_modal #te_titlebar .te-spacer{flex:1}
+  /* NOMBRE del template: input que se ve como texto hasta que se lo toca (el
+     título no debe parecer un formulario, pero tiene que INVITAR a editarse). */
+  #te_modal #te_nombre{border:1px solid transparent;background:transparent;border-radius:6px;
+    padding:2px 6px;font-size:12.5px;font-weight:700;color:var(--te-ink);width:230px;max-width:34vw}
+  #te_modal #te_nombre:hover{border-color:var(--te-line);background:#fff}
+  #te_modal #te_nombre:focus{border-color:var(--te-acero);background:#fff;outline:none}
+  #te_modal #te_nombre::placeholder{font-weight:400;color:var(--te-muted)}
   /* SELECTOR DE ELEMENTO (viga / muro / …) — vive DENTRO del editor: cambiar de
      elemento ya no obliga a salir a la pantalla previa y crear otro template.
      Las opciones las renderiza _renderElemSel(); las que no tienen datos completos
@@ -53,6 +60,10 @@
   #te_modal .te-btn.primary{background:var(--te-acero);color:#fff}
   #te_modal .te-btn.primary:hover{background:var(--te-acero-d)}
   #te_modal .te-btn.ghost{background:#eef2f6;color:#37474f;border:1px solid var(--te-line)}
+  /* Botón de guardar APAGADO = no hay cambios que guardar (template abierto de la
+     biblioteca y receta idéntica a la del servidor). Se ve, pero no invita. */
+  #te_modal .te-btn:disabled{opacity:.45;cursor:default}
+  #te_modal .te-btn.primary:disabled:hover{background:var(--te-acero)}
   #te_modal .te-xbtn{border:1px solid var(--te-line);background:#fff;border-radius:8px;width:32px;height:30px;cursor:pointer;
     font-size:15px;color:var(--te-muted);display:inline-flex;align-items:center;justify-content:center;padding:0;line-height:1;flex-shrink:0}
 
@@ -410,7 +421,15 @@
       <div class="te-dot">📐</div>
       <div>
         <h1>Template Editor — Viga</h1>
-        <div class="te-sub">Construyendo: <b id="te_subNombre">Viga tipo Explora</b> · Catálogo › Templates</div>
+        <!-- NOMBRE EDITABLE. Antes era un <b> con el nombre que venía de la pantalla
+             previa: no se podía corregir ni una falta de ortografía sin crear otro
+             template. Ahora escribe ST.nombre en vivo (_bindNombre) y el
+             dirty-tracking lo mira, así que renombrar ya activa "Guardar". -->
+        <div class="te-sub">Nombre:
+          <input id="te_nombre" class="te-nombre" maxlength="80" placeholder="Nombre del template"
+                 title="Nombre con el que se guarda el template (editable)">
+          <span id="te_subRuta">· nuevo · Catálogo › Templates</span>
+        </div>
       </div>
       <div class="te-spacer"></div>
       <!-- ELEMENTO — se elige AQUÍ DENTRO (pedido del usuario: antes había que salir
@@ -659,9 +678,19 @@
       <span style="font-size:11.5px;color:var(--te-muted)">Componentes: <b id="te_footItems">3</b> · <b id="te_footBarras">77</b> barras · <b id="te_footKg">264,4</b> kg · el 3D se arma combinando las vistas</span>
       <div class="te-spacer"></div>
       <button class="te-btn ghost" onclick="templateEditorVerEn3D()">🧊 Ver en 3D</button>
-      <span id="te_saveErr" style="font-size:11px;color:#c62828"></span>
+      <span id="te_saveErr" style="font-size:11px;color:#c62828;flex:0 1 auto;max-width:520px;line-height:1.3;text-align:right"></span>
       <!-- Aquí sólo se GUARDA el template; el paso "usar en el despiece" vive fuera
-           del editor (no había handler: el botón no hacía nada). -->
+           del editor (no había handler: el botón no hacía nada).
+           DOS botones, y el texto del primero DICE cuál de las dos cosas hace
+           (_actualizarBtnGuardar):
+             · template abierto desde la biblioteca → "Guardar cambios" = PUT
+               (lo actualiza; ya no hay que acumular copias con el mismo nombre)
+               y aparece "Guardar como nuevo" = POST para duplicarlo a propósito.
+             · template nuevo → "Guardar template" = POST, y el de al lado se
+               esconde (no hay nada de qué hacer una copia todavía). -->
+      <button class="te-btn ghost" id="te_btnGuardarNuevo" style="display:none"
+              onclick="templateEditorGuardarComoNuevo()"
+              title="Crea una COPIA nueva en la biblioteca y deja el original intacto">🧬 Guardar como nuevo</button>
       <button class="te-btn primary" id="te_btnGuardar" onclick="templateEditorGuardar()">💾 Guardar template</button>
     </div>
 

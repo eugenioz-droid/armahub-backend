@@ -76,10 +76,24 @@
     //   'seccion' | 'largo' | 'planta' | null  (null = ninguno resaltado)
     planoActivo: null, planoMesh: null, elemento: 'viga',
     // --- T2 (pantalla previa + guardar/abrir) ---
-    // nombre: nombre del template (se define en el TAB, antes de entrar al modal).
-    // templateId: id si vino de "Abrir" (el POST crea COPIA: no hay PUT).
-    // _recetaGuardada: JSON.stringify de la receta al abrir / tras guardar (dirty-tracking).
-    nombre: '', templateId: null, _recetaGuardada: null,
+    // nombre: nombre del template. Se propone en el TAB al crear y se EDITA aquí
+    //   dentro (input del titlebar): antes no había forma de renombrar nada.
+    // templateId: id si el template vino de la biblioteca ("Abrir"). Con id →
+    //   "Guardar" hace PUT (lo actualiza); sin id → POST (lo crea).
+    // obra: obra del template guardado (id_proyecto) — se conserva al duplicar con
+    //   "Guardar como nuevo". El editor NUNCA la elige (crea templates generales),
+    //   pero un template del Enfierrador sí la trae y la copia debe quedar en la
+    //   misma obra, no mudarse a "general".
+    // puedeModificar: lo dice el BACKEND (GET /templates/{id}.puede_modificar = su
+    //   autor o un admin). Si es false el PUT daría 403 seguro: el editor ofrece
+    //   "Guardar como nuevo" en vez de mandar una escritura condenada.
+    // _recetaGuardada / _nombreGuardado: estado sellado al abrir y tras guardar
+    //   (dirty-tracking). El NOMBRE va aparte porque no vive en la receta y
+    //   renombrar TAMBIÉN es un cambio sin guardar.
+    // _guardando: hay un POST/PUT en vuelo (el botón muestra "Guardando…" y
+    //   ninguna regeneración puede pisarle el texto).
+    nombre: '', templateId: null, obra: null, puedeModificar: true,
+    _recetaGuardada: null, _nombreGuardado: null, _guardando: false,
     // --- INTERACCIÓN-2.0 (esta entrega) ---
     // cargado: "sello" de lo que quedó cargado en el ribbon para colocar
     //   { figura, tipologia, diam, contorno } | null. Se setea al elegir
@@ -412,8 +426,18 @@
           // no, la llegada (asíncrona) del catálogo dejaba el editor "sucio" solo,
           // y cerrar sin tocar nada preguntaba por cambios que nadie hizo.
           var limpio = !_hayCambiosSinGuardar();
+          // El catálogo REAL puede tener figuras que el espejo estático no tenía (o
+          // al revés): las marcas de "figura desconocida" se recalculan con el
+          // catálogo vigente antes de repintar, si no la lista queda acusando
+          // figuras que sí existen.
+          _normalizarRecetaViva();
           _renderPanel();
           if (limpio && ST.receta) ST._recetaGuardada = JSON.stringify(ST.receta);
+          // El aviso de apertura se calculó con el espejo estático; el catálogo REAL
+          // es el que manda. Se vuelve a decir con él: puede APARECER (figura que el
+          // espejo tenía y la BD ya no) o RETIRARSE (al revés). Sin esto, la lista de
+          // barras y la barra de estado contaban cosas distintas.
+          _avisarMigracion();
         }
       }, function () {
         ST._catPedido = false;                                   // reintenta al reabrir
@@ -1027,6 +1051,86 @@
     });
   }
 
+  // ==========================================================================
+  // NORMALIZADOR DE APERTURA (reglas.normalizarReceta) — recetas VIEJAS
+  // --------------------------------------------------------------------------
+  // Un template guardado hace meses no tiene los campos que el motor de hoy lee
+  // (dims {modo,valor}, distribucion.modo, pose…). El normalizador los DERIVA de
+  // lo que la receta ya decía y publica la vista canónica en campos NO enumerables
+  // (_dims/_dist/_pose/_jerarquia/_migracion): no reescribe la receta —el
+  // Enfierrador guarda otro shape en la misma tabla y su lector no se toca— y por
+  // eso tampoco ensucia el dirty-tracking (JSON.stringify no ve lo no enumerable).
+  // Es idempotente: se puede llamar todas las veces que haga falta.
+  // ==========================================================================
+  function _normalizarRecetaViva() {
+    var d = _deps();
+    if (!ST.receta || !d.reglas || typeof d.reglas.normalizarReceta !== 'function') return;
+    try { d.reglas.normalizarReceta(ST.receta); } catch (e) { /* nunca romper la apertura */ }
+  }
+
+  // Lo que el normalizador derivó/no pudo, de UN componente ({derivados, avisos,
+  // figura_desconocida} | null). Se pregunta a reglas.js: el editor no mantiene su
+  // propia copia del criterio.
+  function _migracionDe(c) {
+    var d = _deps();
+    if (!d.reglas || typeof d.reglas.migracionDe !== 'function') return null;
+    return d.reglas.migracionDe(c);
+  }
+
+  // Aviso de migración que está EN PANTALLA ahora mismo (o null). Se recuerda para
+  // poder RETIRARLO: el aviso de apertura se calcula con el espejo estático del
+  // catálogo, y el catálogo REAL llega después (fetch asíncrono). Si el real SÍ tiene
+  // la figura, el aviso era falso y hay que sacarlo — pero sólo si sigue siendo el
+  // texto visible: en cuanto el usuario hace algo, la barra de estado es suya y no se
+  // le pisa.
+  var _avisoMigVisible = null;
+
+  function _statusDice(txt) {
+    var s = $('te_ctoolsStatus');
+    return !!(s && txt && String(s.textContent || '').indexOf(txt) >= 0);
+  }
+
+  // Lo que el normalizador NO pudo derivar (comp._migracion.avisos) resumido para
+  // la barra de estado al abrir. Lo RUTINARIO (defaults aplicados) no se muestra:
+  // es trazabilidad, no una alarma — ver la cabecera de reglas.js.
+  // Se llama DOS veces: al abrir (con el espejo estático) y cuando llega el catálogo
+  // real, que es el que manda. Por eso tiene que saber tanto poner el aviso como
+  // quitarlo.
+  function _avisarMigracion() {
+    if (!ST.receta) return;
+    var comps = ST.receta.componentes || [];
+    var figs = [], nAvisos = 0;
+    comps.forEach(function (c) {
+      var m = _migracionDe(c);
+      if (!m) return;
+      if (m.figura_desconocida && figs.indexOf(c.figura) < 0) figs.push(c.figura || '(vacía)');
+      nAvisos += (m.avisos || []).length;
+    });
+    if (!nAvisos) {
+      // Ya no queda nada que avisar (típico: el catálogo real SÍ tenía la figura que
+      // el espejo estático no conocía). Se retira el aviso propio y la barra vuelve a
+      // su línea normal, en vez de dejar una alarma roja por algo que no pasa.
+      if (_avisoMigVisible && _statusDice(_avisoMigVisible)) {
+        _avisoMigVisible = null;
+        _actualizarStatus();
+      }
+      _avisoMigVisible = null;
+      return;
+    }
+    var msg = '';
+    if (figs.length) {
+      // Es el caso GRAVE: sin figura en el catálogo no se genera barra. Se nombran
+      // las figuras para que el usuario sepa exactamente qué corregir.
+      msg = 'Este template usa ' + (figs.length === 1 ? 'una figura que ya no está' : 'figuras que ya no están') +
+        ' en el catálogo (' + figs.join(', ') + '): esas barras no se generan. ' +
+        'Están marcadas en rojo en la lista de barras.';
+    } else {
+      msg = 'Al abrir quedaron ' + nAvisos + ' aviso(s) en las barras: selecciónalas para ver el motivo.';
+    }
+    _avisoMigVisible = msg;
+    _actualizarStatus(msg);
+  }
+
   function _regenerar() {
     var d = _deps();
     if (!d.gen || !ST.receta) return;
@@ -1044,6 +1148,10 @@
     _actualizarWarnTamano((out.placements || []).length);
     if (ST.threeCargado && ST.webglOk) _redibujar(out);
     _marcarSucio();
+    // El botón de guardar refleja si HAY algo que guardar (con un template abierto
+    // se apaga cuando no hay cambios). Cada regeneración es un cambio potencial, así
+    // que el estado se recalcula aquí y no en veinte llamadores sueltos.
+    _actualizarBtnGuardar();
     // NO PERDER TRABAJO: autoguardado del borrador (throttled; no hace nada con el
     // modal cerrado). Va al final: se guarda lo que YA quedó regenerado/normalizado.
     _programarBorrador();
@@ -1156,6 +1264,11 @@
         nombre: ST.nombre || '',
         elemento: ST.elemento || 'viga',
         templateId: (ST.templateId != null) ? ST.templateId : null,
+        // Viajan con el borrador para que al recuperarlo el botón de guardar diga
+        // la verdad: sin esto, un borrador de un template AJENO volvía diciendo
+        // "Guardar cambios" y el PUT terminaba en 403.
+        obra: (ST.obra != null) ? ST.obra : null,
+        puedeModificar: (ST.puedeModificar !== false),
         receta: ST.receta,
         ts: Date.now()
       }));
@@ -1244,7 +1357,11 @@
             nombre: b.nombre || '',
             dims: (b.receta && b.receta.geometria) || null,
             receta: b.receta,
-            templateId: (b.templateId != null) ? b.templateId : null
+            templateId: (b.templateId != null) ? b.templateId : null,
+            obra: (b.obra != null) ? b.obra : null,
+            // Borradores anteriores a este campo: se asume que sí (el backend
+            // sigue siendo el que manda, y responde 403 con el motivo).
+            puedeModificar: (b.puedeModificar !== false)
           });
         } finally { _borrRecuperando = false; }
         _actualizarStatus('Borrador recuperado.');
@@ -3768,12 +3885,21 @@
     var ajena = _tipAjenaAlElemento(c);
     if (ajena) wrap.style.borderLeft = '3px solid #e65100';
 
+    // FIGURA QUE EL CATÁLOGO YA NO TIENE (la marca el normalizador de apertura al
+    // abrir un template viejo). Es más grave que la tipología ajena —de esta barra
+    // NO sale nada— así que va en ROJO y pisa la marca ámbar.
+    var mig = _migracionDe(c);
+    var sinFig = !!(mig && mig.figura_desconocida);
+    if (sinFig) wrap.style.borderLeft = '3px solid #c62828';
+
     // Cabecera
     var ch = document.createElement('div'); ch.className = 'te-ch';
     ch.innerHTML =
       '<span class="te-drag" title="Arrastrar para reordenar">⠿</span>' +
       '<span class="te-sw" style="background:' + col + '"></span>' +
       '<div><div class="te-nm">' +
+      (sinFig ? '<span style="color:#c62828" title="La figura ' + _esc(c.figura || '') +
+        ' no está en el catálogo vigente: esta barra no se genera.">⛔ </span>' : '') +
       (ajena ? '<span style="color:#e65100" title="' + _esc(ajena.texto) + '">⚠ </span>' : '') +
       _esc(c.tipologia) + ' · ' + _esc(c.figura) + '</div>' +
       '<div class="te-de">' + _esc(_compDesc(c)) + '</div></div>' +
@@ -4313,7 +4439,9 @@
     }
     row.appendChild(lbl);
     var wrap = _div(''); wrap.style.display = 'flex'; wrap.style.gap = '6px'; wrap.style.alignItems = 'center';
-    var inp = _input({ value: (d.modo === 'fija' && d.valor != null) ? d.valor : '', placeholder: (d.modo === 'auto' ? 'auto' : ''), type: 'number' }, function (v) {
+    // El placeholder DICE qué falta: en Fija sin valor el campo ya no llega con un 0
+    // inventado, así que tiene que verse que ahí va una medida escrita por el usuario.
+    var inp = _input({ value: (d.modo === 'fija' && d.valor != null) ? d.valor : '', placeholder: (d.modo === 'auto' ? 'auto' : 'medida'), type: 'number' }, function (v) {
       d.modo = 'fija'; d.valor = Number(v); _mut(ci);
     });
     if (d.modo === 'auto') inp.disabled = true;
@@ -4321,7 +4449,11 @@
     tog.textContent = (d.modo === 'fija') ? 'Fija' : 'Auto';
     tog.addEventListener('click', function () {
       d.modo = (d.modo === 'fija') ? 'auto' : 'fija';
-      if (d.modo === 'fija' && d.valor == null) d.valor = 0;
+      // El toggle NO inventa un valor. Antes ponía 0 al pasar a «Fija» (hay que pasar
+      // por Fija para que el input se habilite y se pueda escribir), o sea: un CLIC
+      // escribía en la receta una medida que el usuario no puso — un lado de 0 cm que
+      // el motor dibuja igual. Sin valor el input arranca VACÍO, que es exactamente lo
+      // que el usuario ve: "acá falta la medida" (y reglas.js ya lo avisa en rojo).
       _mut(ci); _renderPanel();
     });
     wrap.appendChild(inp); wrap.appendChild(tog);
@@ -5863,6 +5995,7 @@
     var root = $('te_modal'); if (!root) return;
     ST._uiOk = true;
     _bindElemSel();              // selector de ELEMENTO del titlebar
+    _bindNombre();               // campo NOMBRE editable del titlebar
     _bindRibbon();
     _bindHerramientas();
     _bindVistas();
@@ -5883,7 +6016,8 @@
   }
 
   // T2 — templateEditorAbrir(cfg) con firma EXTENDIDA (§GAP-ANALYSIS-TE · AGENTE 1):
-  //   cfg = { elemento, nombre, dims, receta?, templateId? } | undefined.
+  //   cfg = { elemento, nombre, dims, receta?, templateId?, obra?, puedeModificar? }
+  //         | undefined.
   //   · Con cfg (pantalla previa "Crear" / "Abrir"): hormigón listo desde dims y
   //     CERO componentes (o la receta guardada si viene de "Abrir").
   //   · SIN args (ruta vieja / tests): conserva el comportamiento actual con semilla.
@@ -5895,9 +6029,19 @@
       ST.elemento = String(cfg.elemento).toLowerCase();
       ST.nombre = (cfg.nombre || '').trim();
       ST.templateId = (cfg.templateId != null) ? cfg.templateId : null;
+      ST.obra = (cfg.obra != null) ? cfg.obra : null;
+      // Sin dato explícito se asume que SÍ (un template nuevo es de quien lo crea);
+      // el backend manda el valor real al abrir uno de la biblioteca.
+      ST.puedeModificar = (cfg.puedeModificar === false) ? false : true;
       if (cfg.receta) {
         // "Abrir": receta guardada (params del backend), clonada para no mutar la fuente.
         ST.receta = JSON.parse(JSON.stringify(cfg.receta));
+        // NORMALIZADOR DE APERTURA (reglas.normalizarReceta): deja cada componente
+        // con la vista canónica que el motor de hoy espera, DERIVADA de lo que la
+        // receta ya decía, y marca lo que no se pudo derivar (figura que el catálogo
+        // ya no tiene, dims sin medida…). Va ANTES del primer _renderPanel para que
+        // la lista de barras ya nazca con las marcas puestas.
+        _normalizarRecetaViva();
       } else {
         // "Crear": SIEMPRE rectángulo de hormigón desde dims + componentes vacíos.
         var geo = {}, src = cfg.dims || {};
@@ -5926,6 +6070,8 @@
     // preguntaba "hay cambios sin guardar". Se sella DESPUÉS de la 1ª regeneración.
     // Mientras tanto queda en null = "no hay nada que comparar" (sin falsos dirty).
     ST._recetaGuardada = null;
+    ST._nombreGuardado = null;
+    ST._guardando = false;    // una apertura cancela cualquier "Guardando…" colgado
     _ocultarBarraBorrador();
     bd.classList.add('on');
     _actualizarTitulos();
@@ -5954,7 +6100,12 @@
     _regenerar();
     // AHORA sí: la receta ya pasó por el motor (normalizada) → este es el estado
     // "recién abierto" contra el que se comparan los cambios del usuario.
-    ST._recetaGuardada = JSON.stringify(ST.receta);
+    _sellarGuardado();
+    _actualizarBtnGuardar();   // recién ahora se sabe si hay algo que guardar
+    // LO QUE EL NORMALIZADOR NO PUDO DERIVAR se dice al abrir (figura que el
+    // catálogo ya no tiene, dim sin medida…). Va después del sello para no
+    // confundirse con un cambio del usuario, y antes de la barra de borrador.
+    _avisarMigracion();
     // ¿Quedó un borrador sin guardar de una sesión anterior? Se ofrece recuperarlo.
     _ofrecerBorrador();
     global.requestAnimationFrame(function () { global.requestAnimationFrame(function () {
@@ -5988,6 +6139,9 @@
   global.templateEditorVolverALista = function () {
     if (_hayCambiosSinGuardar() && !global.confirm('Hay cambios sin guardar. ¿Volver a la lista igual?')) return;
     _cerrarModal();
+    // La biblioteca se re-pide al volver: si se guardó (o se renombró) en esta
+    // sesión, la lista de atrás tiene los datos viejos hasta que alguien la toque.
+    if (typeof global.tplCargarGuardados === 'function') global.tplCargarGuardados();
   };
 
   global.templateEditorVerEn3D = function () { _iniciar3dEnVivo(); };
@@ -6118,12 +6272,47 @@
   }
 
   // ---- Titlebar dinámico: h1 "Template Editor — Viga" + badge + nombre ----
+  // El NOMBRE es un input EDITABLE (antes venía fijo desde la pantalla previa y no
+  // había forma de corregirlo: para renombrar había que crear otro template).
   function _actualizarTitulos() {
     var el = (ST.elemento || 'viga');
     var h1 = document.querySelector('#te_titlebar h1');
     if (h1) h1.textContent = 'Template Editor — ' + _capitalizar(el);
     var badge = $('te_elemBadge'); if (badge) badge.textContent = el.toUpperCase();
-    var sub = $('te_subNombre'); if (sub) sub.textContent = ST.nombre || '(sin nombre)';
+    var inp = $('te_nombre');
+    // Con el foco DENTRO no se pisa: el usuario está escribiendo (y le borraría el
+    // cursor a mitad de palabra). El campo ya es la fuente de ST.nombre.
+    if (inp && document.activeElement !== inp) inp.value = ST.nombre || '';
+    // Sufijo informativo: si el template vino de la biblioteca se dice, para que
+    // "Guardar cambios" no sorprenda a nadie.
+    var ruta = $('te_subRuta');
+    if (ruta) {
+      ruta.textContent = (ST.templateId != null)
+        ? ('· biblioteca #' + ST.templateId + (ST.puedeModificar === false ? ' (de otro usuario)' : ''))
+        : '· nuevo · Catálogo › Templates';
+    }
+  }
+
+  // Campo NOMBRE del titlebar. Escribe ST.nombre en vivo (el dirty-tracking lo
+  // mira) y no toca la receta: el nombre es columna propia del template.
+  function _bindNombre() {
+    var inp = $('te_nombre'); if (!inp || inp._teBound) return;
+    inp._teBound = true;
+    inp.addEventListener('input', function () {
+      ST.nombre = inp.value;      // SIN trim en vivo: el usuario escribe espacios entre palabras
+      _actualizarBtnGuardar();    // renombrar YA es un cambio guardable
+      _programarBorrador();       // …y el borrador también lo protege
+    });
+    // Enter no envía nada (no hay form): sólo confirma y suelta el foco, así el
+    // teclado del editor (Ctrl+Z, R, ESPACIO) vuelve a funcionar.
+    inp.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' && inp.blur) inp.blur();
+    });
+    inp.addEventListener('blur', function () {
+      ST.nombre = _nombreLimpio();
+      inp.value = ST.nombre;
+      _actualizarBtnGuardar();
+    });
   }
 
   // ---- Ribbon dinámico de tipologías por elemento (wrap si son >6) ----
@@ -6274,57 +6463,193 @@
   }
 
   // ---- Dirty-tracking ----
+  // Hay dos cosas que se guardan: la RECETA y el NOMBRE. El nombre no vive dentro
+  // de la receta (es columna propia de templates_catalogo), así que renombrar no
+  // movía el JSON y el editor decía "sin cambios" con un nombre nuevo escrito:
+  // cerrar no preguntaba, el borrador no lo protegía y el botón quedaba apagado.
   function _hayCambiosSinGuardar() {
     if (!ST.receta || ST._recetaGuardada == null) return false;
+    if (ST._nombreGuardado != null && _nombreLimpio() !== ST._nombreGuardado) return true;
     try { return JSON.stringify(ST.receta) !== ST._recetaGuardada; } catch (e) { return false; }
   }
 
-  // Texto/estado normal del botón Guardar. Si el template vino de "Abrir" (hay
-  // templateId), el POST crea COPIA (el backend no tiene PUT) → "Guardar como nuevo".
-  function _actualizarBtnGuardar() {
-    var b = $('te_btnGuardar'); if (!b) return;
-    b.disabled = false;
-    b.textContent = (ST.templateId != null) ? '💾 Guardar como nuevo' : '💾 Guardar template';
+  function _nombreLimpio() { return String(ST.nombre == null ? '' : ST.nombre).trim(); }
+
+  // Sella el estado "esto ya está en el servidor" (al abrir y tras cada guardado
+  // con éxito). Los dos campos van JUNTOS: sellar uno solo deja al otro mintiendo.
+  // Tras guardar se sella lo que SE ENVIÓ, no lo que hay en pantalla: si el usuario
+  // siguió editando mientras la petición estaba en vuelo, esos cambios NO están en
+  // el servidor y tienen que seguir contando como pendientes.
+  function _sellarGuardado(recetaJson, nombre) {
+    if (recetaJson == null) {
+      try { recetaJson = JSON.stringify(ST.receta); } catch (e) { recetaJson = null; }
+    }
+    ST._recetaGuardada = recetaJson;
+    ST._nombreGuardado = (nombre != null) ? String(nombre) : _nombreLimpio();
   }
 
-  // ---- GUARDAR: POST /templates {nombre, tipo, params, obra:null} ----
-  // OJO: el campo del backend es "params" (NO "receta") — modelador.py:45-49.
-  global.templateEditorGuardar = function () {
+  // ¿"Guardar" sobrescribe el template abierto (PUT) o crea uno nuevo (POST)?
+  // Sobrescribe sólo si vino de la biblioteca Y el backend dijo que este usuario
+  // puede modificarlo. Sin lo segundo el PUT sería un 403 garantizado: en ese caso
+  // el único guardado honesto es una copia propia.
+  function _puedeSobrescribir() {
+    return (ST.templateId != null) && (ST.puedeModificar !== false);
+  }
+
+  // Texto/estado de los DOS botones de guardado. Lo que el botón DICE es lo que
+  // hace: "Guardar cambios" = PUT sobre el template abierto · "Guardar template" =
+  // POST (uno nuevo). "Guardar como nuevo" (POST) sólo aparece con un template
+  // abierto — antes era el único botón que había, y por eso la biblioteca se
+  // llenaba de copias con el mismo nombre.
+  function _actualizarBtnGuardar() {
+    if (ST._guardando) return;   // hay una escritura en vuelo: no pisar "Guardando…"
+    var b = $('te_btnGuardar');
+    var nuevo = $('te_btnGuardarNuevo');
+    var abierto = (ST.templateId != null);
+    if (nuevo) nuevo.style.display = abierto ? '' : 'none';
+    if (!b) return;
+    if (_puedeSobrescribir()) {
+      var hay = _hayCambiosSinGuardar();
+      b.textContent = '💾 Guardar cambios';
+      // Sin cambios no hay nada que mandar: el botón se apaga en vez de repetir un
+      // PUT idéntico (y así se VE que el trabajo ya está guardado).
+      b.disabled = !hay;
+      b.title = hay
+        ? ('Actualiza «' + _nombreLimpio() + '» en la biblioteca (no crea una copia).')
+        : 'No hay cambios que guardar.';
+    } else {
+      b.disabled = false;
+      b.textContent = '💾 Guardar template';
+      b.title = abierto
+        ? 'Este template es de otro usuario: se guarda como una copia tuya.'
+        : 'Crea el template en la biblioteca.';
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // ERRORES DEL BACKEND EN CASTELLANO
+  // ---------------------------------------------------------------------------
+  // modelador.py ya responde `detail` en castellano y ACCIONABLE (el 422 dice qué
+  // barra y qué le falta; el 409 dice cuántas instancias usan el template): cuando
+  // viene, se muestra TAL CUAL. El mapa de abajo es para cuando NO viene detail
+  // (500, proxy, HTML de error, sesión caída) — antes eso salía como "HTTP 422"
+  // pelado, que no le dice nada a nadie.
+  function _msgHttp(status) {
+    if (status === 401) return 'Tu sesión expiró. Vuelve a entrar a ArmaHub.';
+    if (status === 403) return 'No tienes permiso para hacer esto. Pídelo a un administrador.';
+    if (status === 404) return 'El template ya no existe (alguien lo eliminó).';
+    if (status === 409) return 'El template está en uso y no se puede eliminar.';
+    if (status === 422) return 'La receta no es válida: revisa figuras, diámetros y lados.';
+    if (status >= 500) return 'El servidor falló. Reintenta en un momento.';
+    return 'Error inesperado (HTTP ' + status + ').';
+  }
+
+  // fetch con el error ya traducido. Rechaza con un Error que lleva `.status` para
+  // que el llamador pueda distinguir los casos que necesitan otra acción (404 al
+  // actualizar → ofrecer copia; 409 al eliminar → NO borrar).
+  function _tplFetch(path, opts) {
+    return fetch(_tplUrl(path), opts || {}).then(function (res) {
+      return res.json().catch(function () { return {}; }).then(function (data) {
+        if (res.ok) return data;
+        var e = new Error((data && data.detail) ? String(data.detail) : _msgHttp(res.status));
+        e.status = res.status;
+        throw e;
+      });
+    }, function () {
+      var e = new Error('No hay conexión con el servidor. Revisa tu red y reintenta.');
+      e.status = 0;
+      throw e;
+    });
+  }
+
+  // ---- GUARDAR ----
+  //   actualizar = true  → PUT  /templates/{id}   (sobrescribe el abierto)
+  //   actualizar = false → POST /templates        (crea uno nuevo)
+  // OJO: el campo del backend es "params" (NO "receta") — modelador.py.
+  function _guardarTemplate(actualizar) {
     var btn = $('te_btnGuardar');
     var err = $('te_saveErr'); if (err) err.textContent = '';
-    if (!ST.receta || (btn && btn.disabled)) return;
+    if (!ST.receta || ST._guardando) return;
+    var nombre = _nombreLimpio();
+    if (!nombre) {
+      // El backend lo rechaza con 400, pero el arreglo está ACÁ: el campo del
+      // titlebar. Se enfoca en vez de mandar una petición que ya sabemos que falla.
+      if (err) err.textContent = 'Ponle un nombre al template (arriba, en el título).';
+      var inp = $('te_nombre'); if (inp && inp.focus) { inp.focus(); if (inp.select) inp.select(); }
+      return;
+    }
+    ST._guardando = true;
     if (btn) { btn.disabled = true; btn.textContent = 'Guardando…'; }
-    var body = {
-      nombre: (ST.nombre || '').trim(),
-      tipo: (ST.elemento || 'viga').toLowerCase(),
-      params: ST.receta,
-      obra: null
-    };
-    fetch(_tplUrl('/templates'), { method: 'POST', headers: _tplHeaders(true), body: JSON.stringify(body) })
-      .then(function (res) {
-        return res.json().catch(function () { return {}; }).then(function (data) {
-          if (!res.ok) throw new Error(data.detail || ('HTTP ' + res.status));
-          return data;
-        });
-      })
+    var nuevoBtn = $('te_btnGuardarNuevo'); if (nuevoBtn) nuevoBtn.disabled = true;
+
+    var body = { nombre: nombre, tipo: (ST.elemento || 'viga').toLowerCase(), params: ST.receta };
+    var path = '/templates', metodo = 'POST';
+    if (actualizar) {
+      path = '/templates/' + encodeURIComponent(ST.templateId);
+      metodo = 'PUT';
+      // `obra` NO se manda: el PUT sólo escribe los campos que VIENEN (no
+      // destructivo), y el editor no elige obra. Mandar null aquí MUDARÍA a
+      // "general" un template que el Enfierrador creó colgado de una obra.
+    } else {
+      // Copia: se queda en la MISMA obra que el original (null = general, que es lo
+      // que crea siempre el editor). Mover la copia a otra obra no lo pidió nadie.
+      body.obra = (ST.obra != null) ? ST.obra : null;
+    }
+
+    // Foto EXACTA de lo que se manda: es lo que quedará en el servidor y por lo
+    // tanto lo que se sella como "guardado" (ver _sellarGuardado).
+    var enviado = null;
+    try { enviado = JSON.stringify(ST.receta); } catch (e) { enviado = null; }
+
+    _tplFetch(path, { method: metodo, headers: _tplHeaders(true), body: JSON.stringify(body) })
       .then(function (data) {
-        // El editor pasa a apuntar a la copia recién creada (guardados siguientes
-        // también serán copias — no hay PUT, pendiente versionado real).
-        if (data && data.id != null) ST.templateId = data.id;
-        ST._recetaGuardada = JSON.stringify(ST.receta);
+        if (!actualizar && data && data.id != null) {
+          // A partir de aquí el editor APUNTA al template recién creado: el próximo
+          // "Guardar" lo actualiza en vez de fabricar otra copia.
+          ST.templateId = data.id;
+          ST.puedeModificar = true;            // lo acaba de crear este usuario
+          if (data.obra !== undefined) ST.obra = data.obra;
+        }
+        _sellarGuardado(enviado, nombre);
         // Guardado con ÉXITO = el trabajo ya está en el servidor: el borrador local
         // deja de tener sentido (si sobreviviera, la próxima apertura ofrecería
         // "recuperar" algo idéntico a lo guardado).
         _borrarBorrador();
         _ocultarBarraBorrador();
-        if (btn) btn.textContent = '✓ Guardado';
+        ST._guardando = false;
+        if (btn) btn.textContent = actualizar ? '✓ Actualizado' : '✓ Guardado';
+        if (nuevoBtn) nuevoBtn.disabled = false;
+        _actualizarTitulos();                  // el titlebar muestra el nombre ya guardado
         if (typeof global.tplCargarGuardados === 'function') global.tplCargarGuardados();
         setTimeout(function () { _actualizarBtnGuardar(); }, 1500);
       })
       .catch(function (e) {
+        ST._guardando = false;
+        if (nuevoBtn) nuevoBtn.disabled = false;
+        var msg = (e && e.message) || 'error desconocido';
+        // El template desapareció mientras se editaba (otro usuario lo eliminó):
+        // el trabajo NO se pierde — se le dice al usuario el camino para salvarlo.
+        if (actualizar && e && e.status === 404) {
+          ST.templateId = null;                // ya no hay a quién sobrescribir
+          msg += ' Tu trabajo sigue aquí: usa «Guardar template» para crearlo de nuevo.';
+        }
         _actualizarBtnGuardar();
-        if (err) err.textContent = 'No se pudo guardar: ' + ((e && e.message) || 'error de red');
+        if (err) { err.textContent = 'No se pudo guardar: ' + msg; err.title = msg; }
       });
+  }
+
+  // "Guardar" = lo que diga el botón: actualiza el abierto o crea uno nuevo.
+  global.templateEditorGuardar = function () {
+    var btn = $('te_btnGuardar');
+    if (btn && btn.disabled) return;
+    _guardarTemplate(_puedeSobrescribir());
+  };
+
+  // "Guardar como nuevo" = SIEMPRE una copia (POST), aunque haya template abierto.
+  global.templateEditorGuardarComoNuevo = function () {
+    var btn = $('te_btnGuardarNuevo');
+    if (btn && btn.disabled) return;
+    _guardarTemplate(false);
   };
 
   // ==========================================================================
@@ -6385,71 +6710,190 @@
     return (s.length === 3) ? (s[2] + '-' + s[1] + '-' + s[0]) : (iso || '—');
   }
 
+  // ==========================================================================
+  // BIBLIOTECA DE TEMPLATES (card "Templates guardados")
+  // --------------------------------------------------------------------------
+  // La lista usa el GET LIVIANO (sin `params`: la receta completa pesa cientos de
+  // KB por template y la lista sólo sirve para ELEGIR). La receta se pide con
+  // GET /templates/{id} recién al abrir.
+  // Los filtros los resuelve el BACKEND (?nombre= contiene · ?tipo=) — no se
+  // filtra una copia local que se desincroniza en cuanto alguien guarda algo.
+  // ==========================================================================
+  var _tplLista = [];          // última lista pintada (para nombrar en el confirm de borrado)
+  var _tplFiltroTimer = null;  // debounce del buscador (no una petición por tecla)
+
+  function _tplPorId(id) {
+    for (var i = 0; i < _tplLista.length; i++) {
+      if (String(_tplLista[i].id) === String(id)) return _tplLista[i];
+    }
+    return null;
+  }
+
+  // Mensaje bajo el título de la card: verde (hecho) o rojo (no se pudo).
+  function _tplMsg(texto, error) {
+    var box = $('tplGuardadosMsg'); if (!box) return;
+    if (!texto) { box.style.display = 'none'; box.textContent = ''; return; }
+    box.style.display = 'block';
+    box.style.color = error ? '#c62828' : '#33691e';
+    box.style.background = error ? '#fff6f5' : '#f7fbf2';
+    box.style.border = '1px solid ' + (error ? '#f3c6c2' : '#d7e8c2');
+    box.textContent = texto;
+  }
+
+  // Opciones del filtro de ELEMENTO. Salen de TPL_DIMS_POR_ELEMENTO (la misma
+  // tabla que ofrece el selector del editor): una lista escrita a mano en el HTML
+  // se desincroniza en cuanto se agregue un elemento.
+  function _tplRenderFiltroTipo() {
+    var sel = $('tplFiltroTipo'); if (!sel || sel._teBound) return;
+    sel._teBound = true;
+    sel.innerHTML = '<option value="">Todos los elementos</option>' +
+      Object.keys(TPL_DIMS_POR_ELEMENTO).map(function (k) {
+        // value en MINÚSCULA: así se guarda `tipo` en templates_catalogo.
+        return '<option value="' + _esc(k.toLowerCase()) + '">' + _esc(_capitalizar(k)) + '</option>';
+      }).join('');
+  }
+
   function _tplPintarLista(templates) {
     var cont = $('tplGuardadosLista'); if (!cont) return;
+    _tplLista = templates || [];
     var cnt = $('tplGuardadosCount');
     if (cnt) cnt.textContent = templates.length + ' template' + (templates.length === 1 ? '' : 's');
     if (!templates.length) {
-      cont.innerHTML = '<div class="muted">Aún no hay templates guardados. Crea el primero aquí arriba.</div>';
+      cont.innerHTML = _tplHayFiltro()
+        ? '<div class="muted">Ningún template coincide con la búsqueda.</div>'
+        : '<div class="muted">Aún no hay templates guardados. Crea el primero aquí arriba.</div>';
       return;
     }
     var th = 'style="padding:5px 6px; font-size:10.5px; text-transform:uppercase; text-align:left;" class="muted"';
+    var btnCss = 'border:1px solid #dbe1e8; background:#fff; border-radius:7px; font-size:11.5px; padding:4px 12px; cursor:pointer;';
     cont.innerHTML = '<table style="width:100%; font-size:12px; border-collapse:collapse;">' +
-      '<tr><th ' + th + '>Nombre</th><th ' + th + '>Tipo</th><th ' + th + '>Fecha</th><th ' + th + '>Creado por</th><th></th></tr>' +
+      '<tr><th ' + th + '>Nombre</th><th ' + th + '>Tipo</th><th ' + th + '>Obra</th>' +
+      '<th ' + th + '>Última edición</th><th ' + th + '>Creado por</th><th></th></tr>' +
       templates.map(function (t) {
         var tipo = String(t.tipo || '').toUpperCase();
         var col = TPL_ELEM_COLORES[tipo] || '#607d8b';
+        var n = Number(t.n_componentes || 0);
+        // updated_at sólo existe desde la migración 105: en los templates viejos se
+        // muestra la fecha de creación (no se inventa una edición que no hubo).
+        var edit = t.updated_at || t.fecha;
+        var quien = t.editado_por || t.creado_por || '';
+        var puedo = (t.puede_modificar !== false);
         return '<tr style="border-bottom:1px solid #eee;">' +
-          '<td style="padding:4px 6px; font-weight:700;">' + _esc(t.nombre) + '</td>' +
+          '<td style="padding:4px 6px; font-weight:700;">' + _esc(t.nombre) +
+            '<div class="muted" style="font-weight:400; font-size:10.5px;">' + n + ' barra' + (n === 1 ? '' : 's') + '</div></td>' +
           '<td style="padding:4px 6px;"><span style="font-size:10px; text-transform:uppercase; font-weight:700; color:#fff; background:' + col + '; border-radius:8px; padding:1px 7px;">' + _esc(tipo) + '</span></td>' +
-          '<td style="padding:4px 6px;">' + _esc(_tplFecha(t.fecha)) + '</td>' +
+          '<td style="padding:4px 6px;">' + _esc(t.obra_nombre || (t.obra ? t.obra : 'General')) + '</td>' +
+          '<td style="padding:4px 6px;">' + _esc(_tplFecha(edit)) +
+            (quien ? '<div class="muted" style="font-size:10.5px;">' + _esc(quien) + '</div>' : '') + '</td>' +
           '<td style="padding:4px 6px;">' + _esc(t.creado_por || '—') + '</td>' +
-          '<td style="padding:4px 6px; text-align:right;"><button data-id="' + t.id + '" onclick="tplAbrirTemplate(this.getAttribute(\'data-id\'))"' +
-          ' style="border:1px solid #dbe1e8; background:#fff; border-radius:7px; font-size:11.5px; padding:4px 12px; cursor:pointer;">Abrir</button></td>' +
-          '</tr>';
+          '<td style="padding:4px 6px; text-align:right; white-space:nowrap;">' +
+            '<button data-id="' + _esc(t.id) + '" onclick="tplAbrirTemplate(this.getAttribute(\'data-id\'))"' +
+            ' style="' + btnCss + '">Abrir</button> ' +
+            // Eliminar sólo a quien el BACKEND dijo que puede (puede_modificar): un
+            // botón que siempre termina en 403 no es un botón, es una trampa.
+            '<button data-id="' + _esc(t.id) + '"' + (puedo ? '' : ' disabled') +
+            ' onclick="tplEliminarTemplate(this.getAttribute(\'data-id\'))"' +
+            ' title="' + (puedo ? 'Eliminar este template' : 'Sólo su autor (o un administrador) puede eliminarlo') + '"' +
+            ' style="' + btnCss + (puedo ? ' color:#c62828;' : ' opacity:.4; cursor:default;') + '">🗑</button>' +
+          '</td></tr>';
       }).join('') +
       '</table>';
   }
 
-  // Al entrar al sub-tab (switchCatSubTab → aquí): estado del botón Crear + GET
-  // /templates para la lista de guardados.
+  function _tplHayFiltro() {
+    var b = $('tplBuscar'), s = $('tplFiltroTipo');
+    return !!((b && b.value && b.value.trim()) || (s && s.value));
+  }
+
+  // Al entrar al sub-tab (switchCatSubTab → aquí), tras guardar y tras eliminar:
+  // GET /templates con los filtros puestos.
   global.tplCargarGuardados = function () {
     global.tplValidar();
+    _tplRenderFiltroTipo();
     var cont = $('tplGuardadosLista'); if (!cont) return;
+    var b = $('tplBuscar'), s = $('tplFiltroTipo');
+    var q = [];
+    if (b && b.value && b.value.trim()) q.push('nombre=' + encodeURIComponent(b.value.trim()));
+    if (s && s.value) q.push('tipo=' + encodeURIComponent(s.value));
     cont.innerHTML = '<div class="muted">Cargando templates…</div>';
-    fetch(_tplUrl('/templates'), { headers: _tplHeaders(false) })
-      .then(function (res) {
-        if (!res.ok) throw new Error('HTTP ' + res.status);
-        return res.json();
-      })
+    _tplFetch('/templates' + (q.length ? ('?' + q.join('&')) : ''), { headers: _tplHeaders(false) })
       .then(function (data) { _tplPintarLista((data && data.templates) || []); })
-      .catch(function () {
+      .catch(function (e) {
         var cnt = $('tplGuardadosCount'); if (cnt) cnt.textContent = '';
-        cont.innerHTML = '<div class="muted">No se pudieron cargar los templates. ' +
-          '<a onclick=tplCargarGuardados() style="cursor:pointer; text-decoration:underline;">Reintentar</a></div>';
+        _tplLista = [];
+        cont.innerHTML = '<div class="muted">' + _esc((e && e.message) || 'No se pudieron cargar los templates.') +
+          ' <a onclick=tplCargarGuardados() style="cursor:pointer; text-decoration:underline;">Reintentar</a></div>';
       });
+  };
+
+  // Buscador y filtro: se recarga desde el servidor con un respiro de 250 ms para
+  // no disparar una petición por tecla.
+  global.tplFiltrarGuardados = function () {
+    if (_tplFiltroTimer) global.clearTimeout(_tplFiltroTimer);
+    _tplFiltroTimer = global.setTimeout(function () {
+      _tplFiltroTimer = null;
+      global.tplCargarGuardados();
+    }, 250);
+  };
+
+  global.tplLimpiarFiltros = function () {
+    var b = $('tplBuscar'); if (b) b.value = '';
+    var s = $('tplFiltroTipo'); if (s) s.value = '';
+    global.tplCargarGuardados();
   };
 
   // Click "Abrir" en la lista → GET /templates/{id} → abre el modal con la receta.
   global.tplAbrirTemplate = function (id) {
-    fetch(_tplUrl('/templates/' + encodeURIComponent(id)), { headers: _tplHeaders(false) })
-      .then(function (res) {
-        return res.json().catch(function () { return {}; }).then(function (data) {
-          if (!res.ok) throw new Error(data.detail || ('HTTP ' + res.status));
-          return data;
-        });
-      })
+    _tplMsg('');
+    _tplFetch('/templates/' + encodeURIComponent(id), { headers: _tplHeaders(false) })
       .then(function (t) {
         global.templateEditorAbrir({
           elemento: String(t.tipo || 'viga').toUpperCase(),
           nombre: t.nombre || '',
           dims: (t.params && t.params.geometria) || null,
           receta: t.params,
-          templateId: t.id
+          templateId: t.id,
+          obra: (t.obra != null) ? t.obra : null,
+          // Lo decide el backend (autor o admin). Con false, "Guardar" ofrece copia
+          // en vez de mandar un PUT que ya sabemos que va a dar 403.
+          puedeModificar: (t.puede_modificar !== false)
         });
       })
       .catch(function (e) {
-        alert('No se pudo abrir el template: ' + ((e && e.message) || 'error de red'));
+        var msg = (e && e.message) || 'No se pudo abrir el template.';
+        if (e && e.status === 404) msg += ' Actualiza la lista.';
+        _tplMsg('No se pudo abrir el template: ' + msg, true);
+      });
+  };
+
+  // Eliminar desde la lista. Confirmación que NOMBRA el template (un "¿Eliminar?"
+  // pelado sobre una tabla es una ruleta) y 409 tratado como lo que es: el
+  // template está en uso, NO se borra y se dice cuántos elementos lo usan.
+  global.tplEliminarTemplate = function (id) {
+    var t = _tplPorId(id);
+    var nombre = (t && t.nombre) ? t.nombre : ('#' + id);
+    _tplMsg('');
+    var texto = 'Eliminar el template «' + nombre + '»' +
+      (t && t.tipo ? (' (' + String(t.tipo).toUpperCase() + ')') : '') + '.\n\n' +
+      'Se borra de la biblioteca y no se puede deshacer.\n' +
+      'Las barras ya cargadas a un lote NO se tocan.';
+    if (!global.confirm(texto)) return;
+    _tplFetch('/templates/' + encodeURIComponent(id), { method: 'DELETE', headers: _tplHeaders(false) })
+      .then(function () {
+        // Si el editor tenía ABIERTO ese template, deja de apuntar a un id que ya no
+        // existe: el próximo "Guardar" lo crea de nuevo en vez de dar 404.
+        if (ST.templateId != null && String(ST.templateId) === String(id)) {
+          ST.templateId = null;
+          ST.puedeModificar = true;
+          _actualizarTitulos();
+          _actualizarBtnGuardar();
+        }
+        _tplMsg('Template «' + nombre + '» eliminado.');
+        global.tplCargarGuardados();
+      })
+      .catch(function (e) {
+        // 409 = tiene instancias: el detail del backend ya dice CUÁNTAS. No se borra.
+        _tplMsg((e && e.message) || 'No se pudo eliminar el template.', true);
       });
   };
 
@@ -6464,6 +6908,12 @@
     setPlanoActivo: _setPlanoActivo,                            // P3 — 'seccion'|'largo'|'planta'|null
     // INTERACCIÓN-2.0 · ghost + grosor + clamp + undo
     _pushUndo: _pushUndo, _undo: _undo,
+    // CICLO DE VIDA DEL TEMPLATE (guardar/actualizar/eliminar + normalizador)
+    _actualizarBtnGuardar: _actualizarBtnGuardar, _puedeSobrescribir: _puedeSobrescribir,
+    _guardarTemplate: _guardarTemplate, _sellarGuardado: _sellarGuardado,
+    _msgHttp: _msgHttp, _nombreLimpio: _nombreLimpio,
+    _normalizarRecetaViva: _normalizarRecetaViva, _avisarMigracion: _avisarMigracion,
+    _migracionDe: _migracionDe,
     // TANDA 3 · no perder trabajo + capeo del @ + geometría válida al soltar el nodo
     _hayCambiosSinGuardar: _hayCambiosSinGuardar,
     _guardarBorradorAhora: _guardarBorradorAhora, _programarBorrador: _programarBorrador,
