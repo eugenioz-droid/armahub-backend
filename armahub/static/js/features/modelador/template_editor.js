@@ -3137,6 +3137,12 @@
     // nace: antes se colaba como "recta" con parciales inventados y kg = 0.
     var errFig = _figError(ST.figura);
     if (errFig) { _actualizarStatus(errFig); return; }
+    // GATE DE φ (bug 14-ago): figura y φ parten VACÍOS, y el sello ya bloqueaba el
+    // GHOST sin φ… pero esta ruta colocaba igual — el usuario clicaba "a ciegas"
+    // (sin preview ni borde) y nacían barras con ø0: invisibles en el 3D (radio
+    // cero, sólo se veía el contorno azul al seleccionarlas) y con 0 kg en el
+    // listado. El clic exige lo MISMO que el sello: figura Y diámetro.
+    if (!ST.figura || !Number(ST.diam)) { _sellarCargado(); return; }
     _pushUndo();   // snapshot ANTES de mutar (tarea 1: _pushUndo antes de colocar)
     var comp = _compDesdeClick(plano, host, {
       tipologia: ST.tipologia, figura: ST.figura, diam: ST.diam, contorno: ST.contorno
@@ -3820,6 +3826,10 @@
     ST.receta.componentes.forEach(function (c, ci) {
       cont.appendChild(_compEl(c, ci));
     });
+    // El selector de elemento se habilita/deshabilita según haya barras: hay que
+    // refrescarlo con cada mutación (colocar la 1ª barra lo bloquea; borrar la
+    // última lo libera).
+    _renderElemSel();
     _actualizarStatus();
   }
 
@@ -6372,6 +6382,16 @@
         _esc(_capitalizar(k)) + (listo ? '' : ' (próximamente)') + '</option>';
     }).join('');
     sel.value = act;
+    // CON BARRAS COLOCADAS EL ELEMENTO NO SE CAMBIA (decisión del usuario 14-ago:
+    // "si ya tengo barras no es razonable que cambie de tipo de elemento"). Las
+    // poses/tipologías de una viga no significan lo mismo en un muro y el cambio
+    // a receta poblada terminaba en error. El selector se DESHABILITA con el
+    // porqué en el tooltip; el flujo más orgánico se definirá con el usuario.
+    var conBarras = !!(ST.receta && ST.receta.componentes && ST.receta.componentes.length);
+    sel.disabled = conBarras;
+    sel.title = conBarras
+      ? 'El elemento se elige con la receta vacía: elimina las barras colocadas para cambiarlo.'
+      : 'Tipo de elemento de hormigón de este template.';
   }
 
   // El listener va UNA vez sobre el <select> (no sobre las <option>, que mueren en
