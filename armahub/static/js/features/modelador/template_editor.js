@@ -537,19 +537,15 @@
   // dims por defecto para una figura recién colocada. Estribo con "tomar contorno"
   // → todas auto (se ajustan al recubrimiento; recub 0 = al borde). Cabezal con
   // lados → B auto (largo − recub), patas A/C fijas.
-  function _dimsDefault(fig, rol, contorno, diamMm) {
+  function _dimsDefault(fig, rol, contorno) {
     var spec = _figSpec(fig);
     var dims = {};
-    // Pata por defecto del cabezal = EXTENSIÓN DE GANCHO NORMATIVA (6φ, mín
-    // 7.5 cm — la misma regla del motor). Antes era un 15 fijo sin origen, que en
-    // un muro de 20 dejaba la pieza más profunda que el propio espesor (feedback
-    // del usuario 13-ago). Cuando se defina la tabla normativa por φ, entra acá.
-    var gancho = Math.round(Math.max(6 * (Number(diamMm) / 10 || 0), 7.5) * 10) / 10;
-    spec.parciales.forEach(function (L) {
-      if (rol === 'estribo') { dims[L] = { modo: 'auto' }; return; }
-      if (rol === 'cabezal' && (L === 'A' || L === 'C')) { dims[L] = { modo: 'fija', valor: gancho }; return; }
-      dims[L] = { modo: 'auto' };
-    });
+    // TODO EN AUTO, para todos los roles (pedido del usuario 13-ago, tras el
+    // AUTO universal): cada lado se ancla solo a lo que su dirección cruza
+    // (diagonal → gancho normativo · perpendicular → profundidad útil · a lo
+    // largo → largo útil). Los defaults fijos anteriores (15 y luego el gancho)
+    // eran muletas de cuando las patas en auto no se anclaban a nada.
+    spec.parciales.forEach(function (L) { dims[L] = { modo: 'auto' }; });
     if (rol === 'estribo' && contorno === false) dims.__contorno = false;
     return dims;
   }
@@ -2639,7 +2635,7 @@
       recub_override: null,
       angulos: _figSpec(sel.figura).angulos.slice(),
       modo: meta.modo, plano_pieza: meta.plano_pieza, arreglo: meta.arreglo,
-      dims: _dimsDefault(sel.figura, rol, sel.contorno, sel.diam),
+      dims: _dimsDefault(sel.figura, rol, sel.contorno),
       distribucion: _distDefault(rol)
     };
     // POSE canónica + espejo de los campos viejos (cara / lado / plano_pieza): el
@@ -5473,10 +5469,12 @@
     // motor y las vistas conocen), sólo que se LLAMAN distinto en la UI:
     //   ancho = ESPESOR · recub_lat = recub de CARAS · recub_sup/inf = recub de BORDES.
     // El "Recub bordes" escribe los dos (ks) porque arriba y abajo son el mismo borde.
+    // MURO: UN solo recubrimiento (pedido del usuario 13-ago) — escribe caras y
+    // bordes con el mismo valor. Independizar recubrimientos por cara queda como
+    // opción futura, fuera de alcance por ahora.
     MURO: {
       dims:   [{ k: 'largo', lbl: 'Largo', def: 400 }, { k: 'alto', lbl: 'Alto', def: 250 }, { k: 'ancho', lbl: 'Espesor', def: 20 }],
-      recubs: [{ k: 'recub_lat', lbl: 'Caras', def: 2.5 },
-               { k: 'recub_sup', ks: ['recub_sup', 'recub_inf'], lbl: 'Bordes', def: 3 }],
+      recubs: [{ k: 'recub_lat', ks: ['recub_lat', 'recub_sup', 'recub_inf'], lbl: 'Recub', def: 2.5 }],
       checks: [['recub_lat', 'recub_lat', 'ancho'], ['recub_sup', 'recub_inf', 'alto']]
     },
     COLUMNA: {
