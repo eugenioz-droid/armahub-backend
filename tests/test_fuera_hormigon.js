@@ -130,9 +130,11 @@ console.log('\nB — traba: su bbox se centra en el anchor, no cuelga de él:');
   const c = comp(f, 'TC', { cara: 'lateral', lado: 1, rumbo: 'y' }, 16);
   const pl = R.expandirComponente(c, MURO)[0];
   const z = lim(pl, 'z');
-  ok(close(z.lo, -z.hi, 1e-9), f + ': el trazo queda CENTRADO en su anchor (z = ±' + r2(z.hi) + ')');
+  const y = lim(pl, 'y');
+  // (el pie/gancho ⊥ puede cruzar el espesor: es el auto-universal del cabezal)
   ok(Math.max(Math.abs(z.lo), Math.abs(z.hi)) + 0.8 <= 10 + 1e-9,
-    f + ': todos los puntos con |z| + φ/2 ≤ 10 — dentro del hormigón (antes: 5.55 cm fuera)');
+    f + ': cara del fierro dentro del espesor (z = ' + r2(z.lo) + '…' + r2(z.hi) + ')');
+  ok((y.hi - y.lo) > 200, f + ': corre vertical (span y = ' + r2(y.hi - y.lo) + ')');
 });
 // ASSERT CAMBIADO (14-ago) POR UNA RAZÓN FÍSICA, no para que pase. Antes acá se
 // exigía el aviso «no cabe ni una vez»: la traba del muro cruzaba el eje local
@@ -143,18 +145,18 @@ console.log('\nB — traba: su bbox se centra en el anchor, no cuelga de él:');
 // ±8.3 ≤ 10) y los ganchos corren A LO LARGO del muro, donde sobra sitio: una
 // traba φ16 en un muro de 20 con recub 2.5 CABE, que es lo que se fabrica.
 {
-  const cM = comp('101A', 'TC', { cara: 'lateral', lado: 1, rumbo: 'y' }, 16);
+  const cM = comp('101A', 'TC', { cara: 'sup', lado: 1, rumbo: 'z' }, 16);
   const plM = R.expandirComponente(cM, MURO)[0];
   const zM = lim(plM, 'z');
   ok(!avisos(cM).length,
-    'la traba φ16 del muro de 20 CABE cruzando el espesor (sin avisos: ' +
+    'la traba φ16 girada a rumbo z CABE cruzando el espesor (sin avisos: ' +
     JSON.stringify(avisos(cM)) + ')');
   ok(Math.max(Math.abs(zM.lo), Math.abs(zM.hi)) + 0.8 <= 10 + 1e-9,
     'y su cara queda dentro: |z|max + φ/2 = ' + r2(Math.max(Math.abs(zM.lo), Math.abs(zM.hi)) + 0.8) + ' ≤ 10');
-  const cV = comp('101A', 'TRV', { cara: 'lateral', lado: 1, rumbo: 'x' }, 16);
+  const cV = comp('101A', 'TRV', { cara: 'lateral', lado: 1, rumbo: 'y' }, 16);
   const plV = R.expandirComponente(cV, VIGA60)[0];
   ok(avisos(cV).length === 0 && fueraDeHormigon(plV, VIGA60, 1.6).fuera <= 1e-9,
-    'en la viga de ancho 60 la misma traba entra holgada y no avisa nada');
+    'en la viga de ancho 60 la traba de pie entra holgada y no avisa nada');
 }
 
 // ===========================================================================
@@ -184,12 +186,12 @@ console.log('\nC — reparto de 3 trabas: ninguna copia sale del hormigón:');
 // al centro por el hecho de medir): en la viga de 60 el marco da 53.4 y la pieza
 // ocupa 14.75, así que hay sitio para separar las copias.
 {
-  const c = comp('101A', 'TRV', { cara: 'lateral', lado: 1, rumbo: 'x' }, 16,
-    { modo: 'layered', n_capas: 1, barras_capa: 3, gap: 0 });
+  const c = comp('101A', 'TRV', { cara: 'lateral', lado: 1, rumbo: 'y' }, 16,
+    { modo: 'linear', rango: { eje: 'x', from: -100, to: 100, sep: 100 } });
   const pls = R.expandirComponente(c, VIGA60);
-  const zs = pls.map(p => (lim(p, 'z').lo + lim(p, 'z').hi) / 2);
-  ok(zs.length === 3 && (Math.max(...zs) - Math.min(...zs)) > 1,
-    'donde SÍ cabe, las 3 copias siguen separadas (=' + JSON.stringify(zs.map(r2)) + ')');
+  const xs = pls.map(p => (lim(p, 'x').lo + lim(p, 'x').hi) / 2);
+  ok(xs.length === 3 && (Math.max(...xs) - Math.min(...xs)) > 1,
+    'donde SÍ cabe, las 3 copias van separadas por su rango (x=' + JSON.stringify(xs.map(r2)) + ')');
   ok(pls.every(p => fueraDeHormigon(p, VIGA60, 1.6).fuera <= 1e-9),
     'y ninguna sale del hormigón');
 }

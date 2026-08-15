@@ -69,8 +69,10 @@ var trArco = tr.filter(function (p) { return p.esArco; });
 var trRect = tr.filter(function (p) { return !p.esArco; });
 ok(trRect.length === 2 && trArco.length === 0,
   'traba 101A = SU trazo real: una recta de 2 puntos, sin ganchos fantasma (rectos=' + trRect.length + ' arco=' + trArco.length + ')');
-ok(tr.every(function (p) { return Math.abs(p.x - tr[0].x) < 1e-9; }),
-  '100% planar: todos los puntos en la misma X');
+// (Modelo A) la 101A-traba es un LONGITUDINAL: corre por su rumbo (x local),
+// así que la constante es su altura/ancho, no la X.
+ok(tr.every(function (p) { return Math.abs(p.y - tr[0].y) < 1e-9 && Math.abs(p.z - tr[0].z) < 1e-9; }),
+  'recta pura: y y z constantes, corre en x');
 
 console.log('Coherencia con el motor (sin NaN, dobleces):');
 var an = M.analizarBarra(est, 0.8);

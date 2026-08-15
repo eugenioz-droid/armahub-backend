@@ -37,23 +37,34 @@ function span(b, e) { return b[e][1] - b[e][0]; }
 var MURO = { largo: 400, alto: 250, ancho: 20, recub_sup: 2.5, recub_inf: 2.5, recub_lat: 2.5 };
 var VIGA = { largo: 600, alto: 60, ancho: 30, recub_sup: 4, recub_inf: 4, recub_lat: 3 };
 
-console.log('— TRABA del muro colocada en la sección horizontal (rumbo y) —');
-var tr = { tipologia: 'TR', figura: '101A', diam: 0.8,
+console.log('— MODELO A: la traba es un longitudinal — entra COMO SE DIBUJÓ —');
+// (reescrito 14-ago) El cruce automático murió con el rol traba: con rumbo y la
+// 101A corre VERTICAL (como se dibuja una recta de pie), y para CRUZAR el
+// espesor la pose corre en z (girada con ESPACIO o clickeando el borde corto).
+var trV = { tipologia: 'TR', figura: '101A', diam: 0.8,
   pose: { cara: 'lateral', lado: 1, rumbo: 'y' },
+  dims: { A: { modo: 'auto' } },
+  distribucion: { modo: 'lineal', rango: { eje: 'x', from: -100, to: 100, sep: 20 } } };
+var plsV = R.expandirComponente(trV, MURO);
+ok(plsV.length === 11, 'repartida a lo largo (11 barras): n=' + plsV.length);
+var bV = bbox(plsV[0].puntos);
+ok(span(bV, 'y') > 240 && span(bV, 'y') < 250,
+  'con rumbo y corre VERTICAL, como se dibujó (span y=' + span(bV, 'y').toFixed(1) + ')');
+ok(bV.z[0] >= 0 && bV.z[1] <= 10, 'pegada a la cortina de su lado (z=' +
+  bV.z[0].toFixed(1) + '..' + bV.z[1].toFixed(1) + ')');
+ok(!(trV._avisos && trV._avisos.length), 'sin avisos: ' + JSON.stringify(trV._avisos || []));
+var tr = { tipologia: 'TR', figura: '101A', diam: 0.8,
+  pose: { cara: 'sup', lado: 1, rumbo: 'z' },
   dims: { A: { modo: 'auto' } },
   distribucion: { modo: 'lineal', rango: { eje: 'y', from: -100, to: 100, sep: 20 } } };
 var plsTr = R.expandirComponente(tr, MURO);
-ok(plsTr.length === 11, 'se reparte en la altura (11 barras): n=' + plsTr.length);
+ok(plsTr.length === 11, 'girada a rumbo z: se reparte en la altura (11): n=' + plsTr.length);
 var bTr = bbox(plsTr[0].puntos);
-// CRUZA EL ESPESOR: el cuerpo va de cortina a cortina (±(10−recub)=±7.5 la
-// cresta), jamás el largo (395) ni el alto (245) — el bug medía 245 y luego 395.
 ok(span(bTr, 'z') > 12 && span(bTr, 'z') <= 16,
-  'cruza el ESPESOR (span z=' + span(bTr, 'z').toFixed(1) + ', esperado ~15)');
-ok(span(bTr, 'x') < 10, 'los ganchos quedan chicos en x (span=' + span(bTr, 'x').toFixed(1) + ')');
-ok(bTr.z[0] >= -10 && bTr.z[1] <= 10, 'DENTRO del hormigón en z (' +
+  'y CRUZA el espesor (span z=' + span(bTr, 'z').toFixed(1) + ', ~15)');
+ok(bTr.z[0] >= -10 && bTr.z[1] <= 10, 'dentro del hormigón (' +
   bTr.z[0].toFixed(1) + '..' + bTr.z[1].toFixed(1) + ')');
 ok(!(tr._avisos && tr._avisos.length), 'sin avisos: ' + JSON.stringify(tr._avisos || []));
-// la dim listada y el trazo hablan del MISMO cruce (medir = dibujar)
 var dimA = plsTr[0].dims && Number(plsTr[0].dims.A);
 ok(dimA > 12 && dimA <= 16, 'dim A ~ espesor útil (' + dimA + ')');
 

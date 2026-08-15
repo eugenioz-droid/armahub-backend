@@ -65,7 +65,8 @@ function comp(tip, fig, dist, rumbo, dimsFijas, diam) {
     cara: 'lateral', recub_override: null, angulos: [], prioridad: null, empalme: null,
     depende_de: null, modo: 'arreglo', plano_pieza: { volteado: false },
     arreglo: { n_capas: 1, sep_capas: 20, rango: null }, dims: dims, distribucion: dist,
-    pose: { cara: 'lateral', lado: 1, rumbo: rumbo || 'y' }
+    pose: (rumbo === 'z') ? { cara: 'sup', lado: 1, rumbo: 'z' }
+                          : { cara: 'lateral', lado: 1, rumbo: rumbo || 'y' }
   };
 }
 // CENTRO de una barra en un eje (su posición de reparto: es la coordenada que el
@@ -83,70 +84,62 @@ function extremos(pls, e) {
   return [m, M];
 }
 function fuera(c) { return (c._avisos || []).filter(a => a.indexOf('Fierro FUERA') === 0); }
+function casiNum(a, b) { return Math.abs(a - b) < 1e-6; }
 
 // ==================================================== A · COMPATIBILIDAD
 console.log('A — sin rango2 el arreglo clásico no se mueve');
 {
   const rango = { eje: 'x', from: -190, to: 190, sep: 95 };
-  const cA = comp('TR', '103D', { modo: 'arreglo', rango: rango, n_capas: 1 }, 'y');
-  const cL = comp('TR', '103D', { modo: 'linear', rango: rango }, 'y');
+  const cA = comp('EC', '305A', { modo: 'arreglo', rango: rango, n_capas: 1 }, 'y', { A: 14, B: 30, C: 14, D: 30, E: 14 }, 8);
+  const cL = comp('EC', '305A', { modo: 'linear', rango: rango }, 'y', { A: 14, B: 30, C: 14, D: 30, E: 14 }, 8);
   const a = R.expandirComponente(cA, MURO), l = R.expandirComponente(cL, MURO);
   ok(a.length === 5 && l.length === 5, 'n_capas = 1: 5 barras, las mismas que el lineal puro');
   ok(JSON.stringify(a.map(p => p.puntos)) === JSON.stringify(l.map(p => p.puntos)),
     'y los puntos son IDÉNTICOS byte a byte (la garantía "arreglo(1 capa) == lineal")');
 
-  const c3 = comp('TR', '103D', { modo: 'arreglo', rango: rango, n_capas: 3, sep_capas: 4, eje_capas: 'z' }, 'y');
+  // (Modelo A) las capas hacia el núcleo tienen sentido en una pieza ANCLADA a
+  // una cara: la traba vertical (rumbo y, pegada a su cortina) se apila @4.
+  const c3 = comp('TR', '101A', { modo: 'arreglo', rango: rango, n_capas: 3, sep_capas: 4, eje_capas: 'z' }, 'y');
   const p3 = R.expandirComponente(c3, MURO);
   ok(p3.length === 15, 'n_capas = 3: 5 × 3 = 15 barras');
-  ok(JSON.stringify(centros(p3, 'z')) === JSON.stringify([0, 4, 8]),
-    'las 3 capas siguen apilándose @4 en su eje: z = 0 / 4 / 8');
+  const cz = centros(p3, 'z');
+  ok(cz.length === 3 && casiNum(cz[1] - cz[0], 4) && casiNum(cz[2] - cz[1], 4),
+    'las 3 capas se apilan @4 hacia el núcleo (z = ' + JSON.stringify(cz) + ')');
 }
 
 // ============================================= B · TRABA CLÁSICA DE MURO
 console.log('\nB — traba clásica de muro: altura × largo');
 {
-  // LA PIEZA. Una traba de muro COSE las dos cortinas: su cuerpo cruza el ESPESOR y
-  // su huella en la cara del muro es mínima. En la pose {lateral, rumbo y} el plano
-  // de la pieza es el horizontal (largo × espesor), que es la pose que el motor ya
-  // trae por defecto para TR/TC de muro. La 103D (A/B/C con dos ganchos de 135°) se
-  // traza como cadena de sección y su lado 'u' se resuelve al espesor útil.
-  const dist = {
+  // (Modelo A, 14-ago) La traba es un LONGITUDINAL: para COSER las cortinas
+  // corre en z (pose {sup, rumbo z} — girada con ESPACIO desde como se dibuja).
+  // La 102B (cuerpo + gancho 135) es la grapa real: su cuerpo B se estira al
+  // espesor útil y su gancho A queda normativo. La ALTURA son CAPAS hacia el
+  // núcleo desde su cara sup (la lógica cabezal de siempre); el LARGO, su rango.
+  const c = comp('TR', '102B', {
     modo: 'arreglo',
-    rango:  { eje: 'x', from: -190, to: 190, sep: 95 },     // a lo LARGO
-    rango2: { eje: 'y', from: -115, to: 115, sep: 115 }     // en ALTURA
-  };
-  const c = comp('TR', '103D', dist, 'y');
+    rango: { eje: 'x', from: -190, to: 190, sep: 95 },
+    n_capas: 3, sep_capas: 115, eje_capas: 'y'
+  }, 'z', null, 12.5);
   const pls = R.expandirComponente(c, MURO);
-
-  // CUENTA: cada línea cuenta con el criterio ArmaPilot de siempre,
-  // ceil(span/@)+1 — 380/95 → 5 · 230/115 → 3 — y el arreglo es su PRODUCTO.
   ok(pls.length === 15, '5 posiciones a lo largo × 3 en altura = 15 trabas (' + pls.length + ')');
   ok(JSON.stringify(centros(pls, 'x')) === JSON.stringify([-190, -95, 0, 95, 190]),
     'a lo largo: −190 / −95 / 0 / 95 / 190 (paso real 95, cerrando el intervalo)');
-  ok(JSON.stringify(centros(pls, 'y')) === JSON.stringify([-115, 0, 115]),
-    'en altura: −115 / 0 / 115');
-  // …y las 15 son 15 barras DISTINTAS, no una repetida en el mismo sitio.
+  const cy = centros(pls, 'y');
+  ok(cy.length === 3 && casiNum(cy[1] - cy[0], 115) && casiNum(cy[2] - cy[1], 115),
+    'en altura: 3 capas @115 (y = ' + JSON.stringify(cy) + ')');
   const sitios = new Set(pls.map(p => centro(p, 'x') + '|' + centro(p, 'y')));
   ok(sitios.size === 15, 'las 15 caen en 15 sitios distintos del plano del muro');
-
-  // LA BARRA CRUZA EL ESPESOR: su span en z es el espesor útil EJE A EJE
-  // (20 − 2·2.5 − φ = 14.0), o sea la traba llega a las dos cortinas.
+  // LA BARRA CRUZA EL ESPESOR: cuerpo B al espesor útil, gancho A normativo.
   const z = extremos(pls, 'z');
-  casi(z[1] - z[0], 14, 1e-9, 'cada traba cruza el espesor útil eje a eje (14 cm)');
-  ok(pls[0].dims.A > 11 && pls[0].dims.B === 7.5 && pls[0].dims.C === 7.5,
-    'su lado dominante mide el espesor y sus dos ganchos el mínimo normativo (7.5 = 6φ mín)');
-
-  // 0 FIERRO FUERA DEL HORMIGÓN.
+  ok(z[1] - z[0] > 12 && z[1] - z[0] <= 16,
+    'cada traba cruza el espesor (span z = ' + (z[1] - z[0]).toFixed(2) + ')');
+  ok(pls[0].dims.B > 12 && pls[0].dims.A === 7.5,
+    'su cuerpo mide el espesor y su gancho el mínimo normativo (B=' + pls[0].dims.B + ', A=' + pls[0].dims.A + ')');
   ok(fuera(c).length === 0, 'ninguna de las 15 se sale del hormigón: ' + JSON.stringify(fuera(c)));
   const x = extremos(pls, 'x'), y = extremos(pls, 'y');
   ok(x[0] > -200 && x[1] < 200 && y[0] >= -125 && y[1] <= 125 && z[0] > -10 && z[1] < 10,
     'bbox dentro del muro: x[' + x[0].toFixed(1) + ',' + x[1].toFixed(1) + '] y[' +
     y[0].toFixed(1) + ',' + y[1].toFixed(1) + '] z[' + z[0].toFixed(1) + ',' + z[1].toFixed(1) + ']');
-
-  // Trazabilidad: la 2ª línea NO se llama "capa" — no hay anidado ni profundidad,
-  // es la misma barra trasladada.
-  ok(pls[0].meta.fila === 1 && pls[14].meta.fila === 3 && pls[14].meta.capa === undefined,
-    'la meta numera `fila` (la 2ª línea) y no estrena una `capa` que no existe');
 }
 
 // ================================ C · ESTRIBO DE CONFINAMIENTO, 2 Y 3 COLUMNAS
@@ -191,9 +184,10 @@ console.log('\nC — estribo de confinamiento en 2 y 3 columnas cargadas a un co
 // ==================================================== D · TRAMOS EN AMBOS EJES
 console.log('\nD — tramos (zonas con @ distinto) en LAS DOS líneas');
 {
-  const r1 = { eje: 'x', from: -190, to: 190, sep: 95, tramos: [{ long: 100, sep: 50 }, { long: 200, sep: 100 }] };
+  // (305A ocupa 30 cm en x: el rango parte donde la pieza CABE, como en el bloque C)
+  const r1 = { eje: 'x', from: -184.6, to: 184.6, sep: 95, tramos: [{ long: 100, sep: 50 }, { long: 200, sep: 100 }] };
   const r2 = { eje: 'y', from: -115, to: 115, sep: 115, tramos: [{ long: 60, sep: 30 }] };
-  const c = comp('TR', '103D', { modo: 'arreglo', rango: r1, rango2: r2 }, 'y');
+  const c = comp('EC', '305A', { modo: 'arreglo', rango: r1, rango2: r2 }, 'y', { A: 14, B: 30, C: 14, D: 30, E: 14 }, 8);
   const pls = R.expandirComponente(c, MURO);
 
   // EL GUARD FUERTE: las posiciones tienen que ser EXACTAMENTE las de
@@ -249,7 +243,7 @@ console.log('\nE — la pieza ocupa su ancho también en el 2º eje, y si no cab
 // ================================================================ F · GUARDAS
 console.log('\nF — guardas: dos rangos no son un área si apuntan al mismo eje');
 {
-  const c = comp('TR', '103D', {
+  const c = comp('EC', '305A', {
     modo: 'arreglo',
     rango:  { eje: 'x', from: -190, to: 190, sep: 190 },
     rango2: { eje: 'x', from: -100, to: 100, sep: 100 }
@@ -260,7 +254,7 @@ console.log('\nF — guardas: dos rangos no son un área si apuntan al mismo eje
     '…con el aviso de que no hay segunda dirección: ' +
     JSON.stringify((c._avisos || []).filter(a => a.indexOf('2º rango') === 0)[0]));
 
-  const c2 = comp('TR', '103D', {
+  const c2 = comp('EC', '305A', {
     modo: 'arreglo', n_capas: 3, sep_capas: 5, eje_capas: 'z',
     rango:  { eje: 'x', from: -190, to: 190, sep: 190 },
     rango2: { eje: 'y', from: -100, to: 100, sep: 100 }
@@ -276,7 +270,7 @@ console.log('\nF — guardas: dos rangos no son un área si apuntan al mismo eje
 // ============================================================ G · TECHO DURO
 console.log('\nG — el producto de las dos líneas se corta en el mismo techo de siempre');
 {
-  const c = comp('TR', '103D', {
+  const c = comp('EC', '305A', {
     modo: 'arreglo',
     rango:  { eje: 'x', from: -190, to: 190, sep: 5 },
     rango2: { eje: 'y', from: -115, to: 115, sep: 3 }
@@ -301,7 +295,7 @@ console.log('\nH — los ejes del arreglo se declaran en el MUNDO y los traduce 
     rango2: { eje: 'y', from: -100, to: 100, sep: 100 }
   });
   ['y', 'x'].forEach(rumbo => {
-    const c = comp('TR', '103D', dist(), rumbo);
+    const c = comp('EC', '305A', dist(), rumbo);
     const pls = R.expandirComponente(c, MURO);
     ok(JSON.stringify(centros(pls, 'x')) === JSON.stringify([-150, 0, 150]),
       'rumbo ' + rumbo + ': la 1ª línea reparte en el eje x del MUNDO');
@@ -313,7 +307,7 @@ console.log('\nH — los ejes del arreglo se declaran en el MUNDO y los traduce 
   // Sin `eje` declarado en el 2º rango, se ELIGE MIDIENDO la pieza: de los dos ejes
   // libres, aquel sobre el que su cuerpo NO se desarrolla (repartir a lo largo del
   // propio desarrollo apilaría copias una encima de otra).
-  const cSin = comp('TR', '103D', {
+  const cSin = comp('EC', '305A', {
     modo: 'arreglo',
     rango:  { eje: 'x', from: -150, to: 150, sep: 150 },
     rango2: { from: -100, to: 100, sep: 100 }

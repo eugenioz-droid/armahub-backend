@@ -374,7 +374,11 @@ function traba(empalme) {
 const tEmp = traba({ inicio: 20, fin: 30 });
 const oT = G.generarViga({ tipo: 'viga', geometria: GEO, componentes: [tEmp] }, CTX);
 const oTBase = G.generarViga({ tipo: 'viga', geometria: GEO, componentes: [traba(null)] }, CTX);
-ok(oT.barras[0].dim_a === oTBase.barras[0].dim_a, 'traba: dim A idéntica con y sin empalme (=' + oT.barras[0].dim_a + ')');
+// ASSERT INVERTIDO (14-ago, Modelo A): la traba ES un longitudinal — si el
+// usuario declara empalme, se aplica a su dominante como en cualquier barra
+// (antes el rol la excluía; el rol murió). 52 + 20 + 30 = 102.
+ok(oT.barras[0].dim_a === oTBase.barras[0].dim_a + 50,
+  'traba-longitudinal: el empalme declarado SÍ se aplica (+50 → ' + oT.barras[0].dim_a + ')');
 
 // El cabezal SÍ empalma (no se rompió lo que funcionaba).
 function cabezal(empalme) {

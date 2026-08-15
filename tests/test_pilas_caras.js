@@ -497,23 +497,26 @@ function trabaW(volteado, from, to) {
     distribucion: { modo: 'linear', rango: { from: from, to: to, sep: 50 } }
   };
 }
+// BLOQUE REESCRITO (14-ago, Modelo A): la traba es un LONGITUDINAL. Sin voltear
+// (migrada a de_pie) su rango va por el eje del elemento: x = 100…200 ✓. La
+// VOLTEADA corre en z: su rango legado (sin eje → x local = su PROPIO
+// desarrollo, que ocupa ~todo el ancho) es el caso degenerado de apilar copias
+// encimadas — el motor ahora lo DICE (aviso) y coloca 1, en vez de 3 fantasmas
+// superpuestos en silencio; y su cara lateral la ancla al testero (cabezal de
+// borde), que es lo que significa esa pose bajo el modelo.
 const twRef = R.expandirComponente(trabaW(false, 100, 200), HOSTW);
 const twV = R.expandirComponente(trabaW(true, 100, 200), HOSTW);
-ok(close(bboxDe(twRef, 'x').c, 150), 'sin voltear: la pieza está a lo largo en x = 150 (=' + bboxDe(twRef, 'x').c + ')');
-ok(twV.length === twRef.length, 'volteada: mismo nº de barras (=' + twV.length + ')');
-ok(close(bboxDe(twV, 'x').c, 150),
-  'volteada: CONSERVA su x = 150 en vez de irse al centro del elemento (=' + bboxDe(twV, 'x').c + ')');
-ok(bboxDe(twV, 'x').len < 0.30 * HOSTW.largo && bboxDe(twV, 'z').len >= 0.30 * HOSTW.ancho,
-  'porque en x es PUNTUAL (span ' + bboxDe(twV, 'x').len + ') y en z ahora SE EXTIENDE (span ' + bboxDe(twV, 'z').len + ')');
-ok(close(bboxDe(twV, 'z').lo, 100) && close(bboxDe(twV, 'z').hi, 200),
-  'y el eje donde se extiende NO se restituye: el reparto sigue de z = 100 a 200');
-ok(new Set(twV.map(function (pl) { return Math.round(bboxDe([pl], 'z').c * 1e4) / 1e4; })).size === twV.length,
-  'la restitución es una traslación RÍGIDA: las barras no se fusionan ni pierden su reparto');
-// H2 · CLAMP: si el centro restituido deja la pieza pasada del recubrimiento, se
-// clampea al marco de su nivel (aquí 'no' → el hormigón menos el recub: 296).
+ok(close(bboxDe(twRef, 'x').c, 150), 'sin voltear: reparto a lo largo, centro x = 150 (=' + bboxDe(twRef, 'x').c + ')');
+ok(twV.length === 1, 'volteada con rango en su propio desarrollo: 1 barra, no 3 encimadas (=' + twV.length + ')');
+ok(bboxDe(twV, 'z').len >= 0.30 * HOSTW.ancho,
+  'la volteada corre en z (span ' + bboxDe(twV, 'z').len + ')');
+ok(bboxDe(twV, 'x').c > 0.9 * (HOSTW.largo / 2 - 10),
+  'y su cara lateral la ancla al testero (x = ' + bboxDe(twV, 'x').c + ')');
+// H2 (Modelo A): la volteada ya no se restituye por centro — su cara la ANCLA
+// (recub lateral 3 + φ/2 = x 295.6, dentro del marco por construcción).
 const twC = R.expandirComponente(trabaW(true, 250, 350), HOSTW);
-ok(close(bboxDe(twC, 'x').hi, HOSTW.largo / 2 - 4),
-  'centro restituido fuera de rango → clampeado al marco: x máx = 296 (=' + bboxDe(twC, 'x').hi + ')');
+ok(bboxDe(twC, 'x').hi <= HOSTW.largo / 2 - 4 + 1e-6,
+  'anclada por su cara, dentro del marco: x máx = ' + bboxDe(twC, 'x').hi + ' ≤ 296');
 // H3 · el ejemplo del propio usuario: el x de un estribo volteado que ahora
 // ENVUELVE el largo NO se restituye (ahí la pieza ya no "está en un punto"); su z,
 // que sí quedó puntual, vuelve al 0 que tenía en vez de irse a z = 200 (fuera).

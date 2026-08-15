@@ -1975,6 +1975,10 @@
     if (eje !== _marcoCara(base, host).eje) return eje;   // otro eje: nada que decidir
     // ¿Tiene PATA sobre ese eje? Sin desarrollo la pieza es plana en la cara y su
     // profundidad sigue siendo un dato libre (101A de malla / traba recta).
+    // (Se intentó un umbral relativo el 14-ago para el 2º rango en altura de una
+    // traba que cruza con gancho — rompía el diseño W1 de test_rotaciones. La
+    // salida correcta es la POSE: una pieza que cruza se reparte con cara
+    // 'extremo', puntual en ambos ejes del reparto, y este guard ni se entera.)
     return (_spanEnEje(base, host, eje) > _EPS_POS) ? null : eje;
   }
 
