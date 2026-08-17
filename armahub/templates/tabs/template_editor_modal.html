@@ -202,8 +202,10 @@
     stroke:#fff;stroke-width:3px;stroke-linejoin:round}
   /* Fila de ángulos: tantas columnas como ángulos declare la figura (2 anchos, 4 caben). */
   #te_modal .te-angrow{display:grid;gap:8px;margin-bottom:6px}
-  /* Δ heredado del lado espejo: se ve que está, pero que no lo escribió este lado. */
-  #te_modal input.te-delta.te-delta-esp::placeholder{color:var(--te-azul);opacity:.75;font-style:italic}
+  /* Δ heredado del lado espejo: BLOQUEADO y en azul — es la misma medida que su
+     par, y en un contorno cerrado no pueden ser dos números distintos. */
+  #te_modal input.te-delta.te-delta-esp{color:var(--te-azul);font-weight:700;
+    background:#f4f8fd;border-color:#c9dcf0;font-style:italic;opacity:1;-webkit-text-fill-color:var(--te-azul)}
   #te_modal .te-deltadir{border:1px solid var(--te-line);background:#fff;border-radius:6px;
     width:24px;padding:2px 0;font-size:11px;color:var(--te-muted);cursor:pointer}
   #te_modal .te-deltadir:hover{background:#f7fbf2;color:var(--te-acero-d)}

@@ -4811,9 +4811,10 @@
     var dEf = (R && R.deltasDeComponente) ? (R.deltasDeComponente(c) || {}) : {};
     var info = dEf[L] || null;
     var propio = (d.delta != null && d.delta !== '');
+    var esEspejo = !!(info && info.origen === 'espejo' && !propio);
     var inDelta = _input({
-      value: propio ? d.delta : '',
-      placeholder: (info && info.origen === 'espejo') ? String(info.delta) : 'Δ',
+      value: esEspejo ? info.delta : (propio ? d.delta : ''),
+      placeholder: 'Δ',
       type: 'number'
     }, function (v) {
       var t = String(v == null ? '' : v).trim();
@@ -4821,12 +4822,19 @@
       _mut(ci);
     });
     inDelta.className = 'te-delta';
-    inDelta.title = (info && info.origen === 'espejo')
-      ? ('Δ ' + info.delta + ' cm heredado del lado espejo ' + info.de +
-         ' (en un contorno cerrado los lados opuestos miden lo mismo). ' +
-         'Escribe un valor acá para fijar este lado aparte.')
-      : 'Δ de este lado en cm: se suma al largo de corte y a los kg. Negativo acorta.';
-    if (info && info.origen === 'espejo' && !propio) inDelta.classList.add('te-delta-esp');
+    if (esEspejo) {
+      // LADO ESPEJO: BLOQUEADO y con LA MISMA MEDIDA EN AZUL (pedido del usuario).
+      // En un contorno cerrado los lados opuestos miden lo mismo — dejar el campo
+      // editable invitaba a escribir dos números que no pueden coexistir (el marco
+      // es un rectángulo). Se muestra el valor heredado, no un placeholder: lo que
+      // se ve es lo que se corta.
+      inDelta.disabled = true;
+      inDelta.classList.add('te-delta-esp');
+      inDelta.title = 'Δ ' + info.delta + ' cm — este lado mide lo mismo que ' + info.de +
+        ' (contorno cerrado): su Δ se replica solo. Para cambiarlo, edita el lado ' + info.de + '.';
+    } else {
+      inDelta.title = 'Δ de este lado en cm: se suma al largo de corte y a los kg. Negativo acorta.';
+    }
     var lblD = document.createElement('span');
     lblD.className = 'te-deltalbl'; lblD.textContent = 'Δ';
     lblD.title = 'Prolongación de este lado (traslapo). Se suma al largo de corte y a los kg.';
@@ -4837,16 +4845,26 @@
     // ofrece — ahí el Δ va en pareja y el marco crece SIMÉTRICO (el motor ignora
     // `extremo`), así que un control que no hace nada sería una mentira.
     var pares = (fp.paresEspejoFigura ? fp.paresEspejoFigura(c.figura) : null) || {};
-    if (!Object.keys(pares).length) {
-      var ext = (d.extremo === 'ini') ? 'ini' : 'fin';
+    var cerrada = !!Object.keys(pares).length;
+    // FLECHA DE DIRECCIÓN — en las abiertas es de 2 estados (por qué punta crece) y
+    // en las CERRADAS de 3, con el CENTRO por defecto: un contorno cerrado crecía
+    // siempre simétrico y el usuario necesita acortar el estribo y CARGARLO a un
+    // costado (estribo de confinamiento). El largo de corte es el mismo en los
+    // tres; lo que cambia es dónde queda la barra.
+    if (!esEspejo) {
+      var ext = (d.extremo === 'ini') ? 'ini' : (d.extremo === 'fin' ? 'fin' : (cerrada ? 'centro' : 'fin'));
       var flecha = document.createElement('button');
       flecha.type = 'button'; flecha.className = 'te-deltadir';
-      flecha.textContent = (ext === 'fin') ? '→' : '←';
-      flecha.title = (ext === 'fin')
-        ? 'Crece/acorta por el FINAL del lado (el inicio queda quieto). Clic para invertir.'
-        : 'Crece/acorta por el INICIO del lado (el final queda quieto). Clic para invertir.';
+      flecha.textContent = (ext === 'fin') ? '→' : (ext === 'ini' ? '←' : '↔');
+      flecha.title = (ext === 'centro')
+        ? 'Crece/acorta CENTRADO (mitad por cada borde). Clic para cargarlo a un lado.'
+        : (ext === 'fin'
+          ? 'Crece/acorta por el borde FINAL' + (cerrada ? ' (el opuesto queda quieto)' : ' (el inicio queda quieto)') + '. Clic para cambiar.'
+          : 'Crece/acorta por el borde INICIAL' + (cerrada ? ' (el opuesto queda quieto)' : ' (el final queda quieto)') + '. Clic para cambiar.');
       flecha.onclick = function () {
-        d.extremo = (ext === 'fin') ? 'ini' : 'fin';
+        // cerradas: centro → fin → ini → centro · abiertas: fin ↔ ini
+        if (cerrada) d.extremo = (ext === 'centro') ? 'fin' : (ext === 'fin' ? 'ini' : 'centro');
+        else d.extremo = (ext === 'fin') ? 'ini' : 'fin';
         _mut(ci); _renderPanel();
       };
       wrap.appendChild(flecha);

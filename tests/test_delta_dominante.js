@@ -460,5 +460,40 @@ console.log('\nH — pieza de sección: el Δ mueve la dim Y el trazo, en la mis
   }
 }
 
+
+// ============================================================================
+// DIRECCIÓN DEL Δ EN UN CONTORNO CERRADO (15-ago) — estribo de confinamiento
+// ----------------------------------------------------------------------------
+// Un contorno cerrado crecía SIEMPRE simétrico. Para un estribo de confinamiento
+// hay que acortarlo y CARGARLO a un costado, así que `extremo` gana un tercer
+// valor: 'centro' (default, lo de siempre) · 'fin' (al borde +) · 'ini' (al −).
+// El largo de corte es el MISMO en los tres: lo que cambia es dónde queda.
+(function () {
+  console.log('\nI — Δ del marco cerrado: centro / fin / ini');
+  const MURO = { largo: 400, alto: 250, ancho: 20, recub_sup: 2.5, recub_inf: 2.5, recub_lat: 2.5 };
+  function corrida(ext) {
+    const dims = {};
+    (CAT.get('106A').parciales || []).forEach(L => { dims[L] = { modo: 'auto' }; });
+    if (ext) dims.B = { modo: 'auto', delta: -100, extremo: ext };
+    const c = { comp_id: 'X', tipologia: 'EC', figura: '106A', diam: 8, dims: dims,
+      pose: { cara: 'lateral', lado: 1, rumbo: 'y' },
+      distribucion: { modo: 'linear', rango: { eje: 'y', from: 0, to: 0, sep: 50 } } };
+    const pls = R.expandirComponente(c, MURO);
+    let lo = Infinity, hi = -Infinity;
+    ((pls[0] || {}).puntos || []).forEach(q => { lo = Math.min(lo, q.x); hi = Math.max(hi, q.x); });
+    return { lo: Math.round(lo * 10) / 10, hi: Math.round(hi * 10) / 10,
+      largo: Math.round((hi - lo) * 10) / 10, dimB: pls[0] && pls[0].dims.B };
+  }
+  const base = corrida(null), cen = corrida('centro'), fin = corrida('fin'), ini = corrida('ini');
+  ok(base.largo > 390, 'sin Δ el marco llena el largo útil (' + base.largo + ')');
+  ok(cen.largo === fin.largo && fin.largo === ini.largo && cen.largo < base.largo - 90,
+    'los tres acortan LO MISMO (' + cen.largo + ' vs ' + base.largo + ')');
+  ok(Math.abs(cen.lo + cen.hi) < 1, 'centro: simétrico (' + cen.lo + '…' + cen.hi + ')');
+  ok(fin.lo === base.lo && fin.hi < base.hi, 'fin: se come el borde + (' + fin.lo + '…' + fin.hi + ')');
+  ok(ini.hi === base.hi && ini.lo > base.lo, 'ini: se come el borde − (' + ini.lo + '…' + ini.hi + ')');
+  ok(cen.dimB === fin.dimB && fin.dimB === ini.dimB,
+    'y la dim que se corta es la misma en los tres (' + cen.dimB + ')');
+})();
+
 console.log(fallos ? '\nFALLOS: ' + fallos : '\nTODO OK');
 process.exitCode = fallos ? 1 : 0;

@@ -2008,14 +2008,29 @@
     // pieza con el hormigón, no un clamp acá que dibujaría un estribo que cabe
     // mintiendo sobre la barra que se va a cortar.
     var dM = anchor.marcoDelta || null;
-    var dAlto = dM ? (Number(dM.alto) || 0) / 2 : 0;
-    var dAncho = dM ? (Number(dM.ancho) || 0) / 2 : 0;
+    var dAlto = dM ? (Number(dM.alto) || 0) : 0;
+    var dAncho = dM ? (Number(dM.ancho) || 0) : 0;
+    // HACIA DÓNDE crece (15-ago): 0 = centrado (mitad por borde, lo de siempre) ·
+    // +1 = todo por el borde POSITIVO · −1 = todo por el negativo. Es lo que
+    // permite acortar un estribo y CARGARLO a un costado en vez de encogerlo
+    // simétrico; el largo de corte es el mismo, cambia dónde queda la barra.
+    var dirA = dM ? (Number(dM.altoDir) || 0) : 0;
+    var dirW = dM ? (Number(dM.anchoDir) || 0) : 0;
+    var aSup = (dirA > 0) ? dAlto : (dirA < 0 ? 0 : dAlto / 2);
+    var aInf = (dirA < 0) ? dAlto : (dirA > 0 ? 0 : dAlto / 2);
+    var wPos = (dirW > 0) ? dAncho : (dirW < 0 ? 0 : dAncho / 2);
+    var wNeg = (dirW < 0) ? dAncho : (dirW > 0 ? 0 : dAncho / 2);
+    var w2Base = host.ancho / 2 - recubLat - r - insetLat;
     return {
       recubV: recubV,
       recubLat: recubLat,
-      ySup: host.alto / 2 - recubSup - r - insetSup + dAlto,
-      yInf: -host.alto / 2 + recubInf + r + insetInf - dAlto,
-      w2: host.ancho / 2 - recubLat - r - insetLat + dAncho
+      ySup: host.alto / 2 - recubSup - r - insetSup + aSup,
+      yInf: -host.alto / 2 + recubInf + r + insetInf - aInf,
+      // w2 sigue siendo el SEMIANCHO (compatibilidad con quien lo lee suelto);
+      // wPos/wNeg son los bordes reales cuando el crecimiento va a un lado.
+      w2: w2Base + (dAncho / 2),
+      w2Pos: w2Base + wPos,
+      w2Neg: -(w2Base + wNeg)
     };
   }
 
@@ -2144,10 +2159,14 @@
     var m = _marcoNucleo(host, anchor, diamCm);   // eje = recub + φ/2 (+inset anidado)
     // Marco compartido con la traba. ySup/yInf son INDEPENDIENTES (pilas y recubs
     // distintos arriba y abajo): el marco no está centrado en y=0.
+    // Bordes REALES del marco en el ancho: con el Δ cargado a un lado ya no son
+    // ±w2 (w2 sigue siendo el semiancho para quien lo lea suelto).
     var ySup = m.ySup, yInf = m.yInf, w2 = m.w2;
+    var wPos = (m.w2Pos != null) ? m.w2Pos : w2;
+    var wNeg = (m.w2Neg != null) ? m.w2Neg : -w2;
     var xx = anchor.x || 0;
     var Rc = 2 * diamCm + diamCm / 2;  // radio del EJE del codo (norma: interno 2φ + φ/2)
-    var O = { x: xx, y: ySup - Rc, z: -w2 + Rc };  // centro común de ambos codos (esquina sup-izq)
+    var O = { x: xx, y: ySup - Rc, z: wNeg + Rc };  // centro común de ambos codos (esquina sup-izq)
     var D = Math.SQRT1_2;              // 0.7071 (diagonal unitaria)
     // Pata del gancho (norma 6φ mín 7.5cm), acotada al SITIO REAL que deja el marco
     // después del codo (ver _pataGancho): la pata viaja a 45° hacia el núcleo, así
@@ -2184,7 +2203,7 @@
     var codoA = _arcoYZ(O, Rc, Math.PI / 4, -Math.PI / 2, xx, true); // incluye θ=45°, termina θ=−90°
 
     // GANCHO B (fin del fierro): lado superior llega a T0 (θ=0) → codo [θ: 0 → −135°] → pata.
-    var T0 = { x: xx, y: ySup, z: -w2 + Rc };                        // tangencia con lado superior
+    var T0 = { x: xx, y: ySup, z: wNeg + Rc };                       // tangencia con lado superior
     var codoB = _arcoYZ(O, Rc, 0, -3 * Math.PI / 4, xx, false);      // excluye θ=0 (T0 ya en la lista)
     var pB = codoB[codoB.length - 1];                                // punto del arco en θ=−135°
     var puntaB = { x: xx, y: pB.y + dirPata.y * pataB, z: pB.z + dirPata.z * pataB };
@@ -2194,9 +2213,9 @@
     var out = [puntaA]
       .concat(codoA)                        // codo A completo (135°)
       .concat([
-        { x: xx, y: yInf, z: -w2 },         // esquina inf-izq (90°, fillet del motor)
-        { x: xx, y: yInf, z: w2 },          // esquina inf-der (90°)
-        { x: xx, y: ySup, z: w2 },          // esquina sup-der (90°)
+        { x: xx, y: yInf, z: wNeg },        // esquina inf-izq (90°, fillet del motor)
+        { x: xx, y: yInf, z: wPos },        // esquina inf-der (90°)
+        { x: xx, y: ySup, z: wPos },        // esquina sup-der (90°)
         T0                                  // fin del lado superior = tangencia del codo B
       ])
       .concat(codoB)                        // codo B completo (135°)

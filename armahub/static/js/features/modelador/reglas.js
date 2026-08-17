@@ -269,7 +269,12 @@
     // al último, o sea alargar un lado empuja el vértice de LLEGADA y el resto de
     // la cadena lo acompaña. 'ini' es la lectura espejo (empuja el de SALIDA).
     var ex = String(decl.extremo == null ? '' : decl.extremo).toLowerCase().trim();
-    out.extremo = (ex === 'ini' || ex === 'inicio') ? 'ini' : 'fin';
+    // 'centro' es un valor de PRIMERA CLASE (15-ago): en un contorno CERRADO el Δ
+    // crece simétrico salvo que el usuario lo cargue a un borde, así que hay tres
+    // estados y no dos. En una figura abierta 'centro' no significa nada y el
+    // consumidor lo lee como el default de siempre ('fin').
+    out.extremo = (ex === 'ini' || ex === 'inicio') ? 'ini'
+      : (ex === 'centro' ? 'centro' : 'fin');
     return out;
   }
 
@@ -467,7 +472,7 @@
       if (!Object.prototype.hasOwnProperty.call(g, k)) continue;
       d = g[k];
       if (!d || typeof d !== 'object' || !d.delta) continue;
-      out[k] = { delta: Number(d.delta), extremo: (d.extremo === 'ini') ? 'ini' : 'fin',
+      out[k] = { delta: Number(d.delta), extremo: (d.extremo === 'ini') ? 'ini' : (d.extremo === 'centro' ? 'centro' : 'fin'),
         origen: 'propio', de: null };
     }
     var fp = _fp();
@@ -3397,6 +3402,19 @@
     var ejes = fp.ejesMarcoSeccion(comp.figura, comp._rol);
     if (!ejes) return null;                       // se dibuja con sus dims: nada que crecer
     var deltas = _deltasEfectivos(comp), acc = { u: null, v: null }, k, e;
+    // HACIA DÓNDE crece/acorta el marco (pedido 15-ago). Por defecto CENTRADO —el
+    // contorno cerrado crecía siempre simétrico—, pero un estribo de confinamiento
+    // se acorta y se CARGA A UN LADO. La dirección la da el `extremo` de la dim
+    // que trae el Δ: 'ini' = hacia el borde negativo del eje · 'fin' = hacia el
+    // positivo · cualquier otra cosa (o nada) = centrado, como antes.
+    var dir = { u: 0, v: 0 };
+    for (k in deltas) {
+      if (!Object.prototype.hasOwnProperty.call(deltas, k)) continue;
+      e = ejes[k];
+      if (e !== 'u' && e !== 'v') continue;
+      if (deltas[k].origen !== 'propio') continue;      // la réplica no vota
+      dir[e] = (deltas[k].extremo === 'ini') ? -1 : (deltas[k].extremo === 'fin' ? 1 : 0);
+    }
     for (k in deltas) {
       if (!Object.prototype.hasOwnProperty.call(deltas, k)) continue;
       e = ejes[k];
@@ -3416,7 +3434,7 @@
       }
     }
     if (acc.u == null && acc.v == null) return null;
-    return { ancho: acc.u || 0, alto: acc.v || 0 };
+    return { ancho: acc.u || 0, alto: acc.v || 0, anchoDir: dir.u, altoDir: dir.v };
   }
 
   // ---------------------------------------------------------------------------
