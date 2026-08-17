@@ -4070,6 +4070,7 @@
     }
     if (rango.eje == null) rango.eje = eje;
     d[cual] = rango;
+    _syncN(d, cual, true);                  // arrastraste: N sigue al largo nuevo
     if (cual === 'rango') _syncTramos(d);   // los tramos viven en la 1ª línea
     _sincronizarOverlayOrto();              // repinta la cota viva del borde
     _regenerarDiferido();
@@ -5018,7 +5019,7 @@
     // se esconde y manda el editor de tramos. Con uno solo se mantiene como atajo.
     var multi = _tramosDe(d).length > 1;
     var g2 = _div(multi ? '' : 'te-grid2');
-    if (!multi) g2.appendChild(_fld('@ sep cm', _inputSep(d.sep || 20, function (v) { d.sep = v; if (d.rango) d.rango.sep = d.sep; _mut(ci); })));
+    if (!multi) g2.appendChild(_fld('@ sep cm', _inputSep(d.sep || 20, function (v) { d.sep = v; if (d.rango) d.rango.sep = d.sep; _syncN(d, 'rango'); _mut(ci, true); })));
     g2.appendChild(_fld('Rango', _rangoEditor(c, d, ci)));
     box.appendChild(g2);
     _tramosEditor(box, d, ci);
@@ -5032,7 +5033,7 @@
     if (!d.rango) d.rango = _rangoDefault(d.sep || 20, _ejeDistDe(c));
     var multi = _tramosDe(d).length > 1;
     var g2 = _div(multi ? '' : 'te-grid2');
-    if (!multi) g2.appendChild(_fld('@ sep (rango) cm', _inputSep(d.sep || 20, function (v) { d.sep = v; if (d.rango) d.rango.sep = d.sep; _mut(ci); })));
+    if (!multi) g2.appendChild(_fld('@ sep (rango) cm', _inputSep(d.sep || 20, function (v) { d.sep = v; if (d.rango) d.rango.sep = d.sep; _syncN(d, 'rango'); _mut(ci, true); })));
     g2.appendChild(_fld('Rango', _rangoEditor(c, d, ci)));
     box.appendChild(g2);
     _tramosEditor(box, d, ci);
@@ -5062,7 +5063,7 @@
       if (!d.rango2) d.rango2 = _rango2Default(c, d);
       var g2b = _div('te-grid2');
       g2b.appendChild(_fld('@ sep (2ª) cm', _inputSep(d.rango2.sep || 20, function (v) {
-        d.rango2.sep = v; _mut(ci);
+        d.rango2.sep = v; _syncN(d, 'rango2'); _mut(ci, true);
       }), 'Espaciamiento de la SEGUNDA línea (la del otro eje)'));
       g2b.appendChild(_fld('Eje 2ª línea', _selectPairs([['x', 'largo'], ['y', 'alto'], ['z', 'ancho']],
         d.rango2.eje || _rango2Default(c, d).eje, function (v) {
@@ -5137,6 +5138,22 @@
   // `campo` (4º arg): 'rango' (default, la 1ª línea) o 'rango2' (la 2ª del arreglo
   // por área). Es el MISMO editor para las dos — si la 2ª tuviera el suyo propio,
   // cualquier arreglo posterior (tramos, snap, arrastre) quedaría a medias en una.
+  // Mantiene coherentes `n`, `to` y `@` de una línea expresada por CANTIDAD.
+  // Se llama cuando cambia el @ (el extremo se recalcula: N manda) y desde el
+  // arrastre (ahí manda el gesto: N se recalcula del largo nuevo).
+  function _syncN(d, cual, desdeArrastre) {
+    var r = d && d[cual];
+    if (!r || r.n == null) return;
+    var sep = Number(r.sep) || Number(d.sep) || 20;
+    if (desdeArrastre) {
+      var span = Math.abs(Number(r.to) - Number(r.from));
+      r.n = Math.max(1, Math.round(span / sep) + 1);
+      return;
+    }
+    var sgn = (Number(r.to) >= Number(r.from)) ? 1 : -1;
+    r.to = Number(r.from) + sgn * (Math.max(1, Math.round(Number(r.n))) - 1) * sep;
+  }
+
   function _rangoEditor(c, d, ci, campo) {
     var cual = (campo === 'rango2') ? 'rango2' : 'rango';
     var wrap = _div(''); wrap.style.cssText = 'display:flex;gap:4px;align-items:center';
@@ -5149,11 +5166,56 @@
       if (cual === 'rango') _syncTramos(d);
       _mut(ci, hayTramos);
     }
-    var fi = _input({ value: Math.round(d[cual].from), type: 'number' }, function (v) { _setExtremo('from', v); });
-    var ti = _input({ value: Math.round(d[cual].to), type: 'number' }, function (v) { _setExtremo('to', v); });
-    fi.style.width = '52px'; ti.style.width = '52px';
-    var sep = document.createElement('span'); sep.textContent = '→'; sep.style.cssText = 'color:var(--te-muted);font-size:11px';
-    wrap.appendChild(fi); wrap.appendChild(sep); wrap.appendChild(ti);
+    // ============================================================
+    // TOGGLE «hasta dónde» ⇄ «cuántas» (pedido 15-ago)
+    // ------------------------------------------------------------
+    // El rango siempre fue from → to, y para poner "3 columnas @15 desde el borde"
+    // había que calcular el `to` a mano. Ahora cada línea decide cómo se expresa:
+    //   →N  (cantidad): escribes CUÁNTAS y el `to` sale de from + (N−1)·@.
+    //   →   (extremos): lo de siempre.
+    // Es AZÚCAR DE UI: la receta sigue guardando from/to/sep, así que el motor, el
+    // despiece y los templates ya guardados no se enteran. Lo único que se persiste
+    // de más es `n`, para que al reabrir la línea siga expresada como la dejaste
+    // (el motor ignora los campos que no conoce).
+    var r = d[cual];
+    var porCantidad = (r.n != null && Number(r.n) > 0);
+    function _sepDe() { return Number(r.sep) || Number(d.sep) || 20; }
+    function _nDeRango() {
+      var span = Math.abs(Number(r.to) - Number(r.from));
+      return Math.max(1, Math.round(span / _sepDe()) + 1);
+    }
+    function _aplicarN(n) {
+      n = Math.max(1, Math.round(Number(n) || 1));
+      r.n = n;
+      var sgn = (Number(r.to) >= Number(r.from)) ? 1 : -1;
+      r.to = Number(r.from) + sgn * (n - 1) * _sepDe();
+      if (cual === 'rango') _syncTramos(d);
+      _mut(ci, true);
+    }
+    var fi = _input({ value: Math.round(r.from), type: 'number' }, function (v) {
+      // en modo cantidad el `from` es el ANCLA: mover el borde arrastra el grupo
+      // entero conservando N (que es justo lo que uno espera al cargarlo a un lado).
+      if (porCantidad) { r.from = Number(v); _aplicarN(r.n); } else { _setExtremo('from', v); }
+    });
+    fi.style.width = '52px';
+    var segundo = porCantidad
+      ? _input({ value: _nDeRango(), type: 'number', min: 1 }, function (v) { _aplicarN(v); })
+      : _input({ value: Math.round(r.to), type: 'number' }, function (v) { _setExtremo('to', v); });
+    segundo.style.width = '52px';
+    segundo.title = porCantidad
+      ? 'CUÁNTAS barras. El extremo se calcula solo: desde ' + Math.round(r.from) + ' cada ' + _sepDe() + ' cm.'
+      : 'Hasta dónde llega el rango (cm). La cantidad la calcula el motor: ceil(dist/@)+1.';
+    var tog = document.createElement('button');
+    tog.type = 'button'; tog.className = 'te-rmodo' + (porCantidad ? ' on' : '');
+    tog.textContent = porCantidad ? 'N' : '→';
+    tog.title = porCantidad
+      ? 'Expresado por CANTIDAD (N barras desde el inicio, cada @). Clic para volver a extremos.'
+      : 'Expresado por EXTREMOS (desde → hasta). Clic para escribir la CANTIDAD y que el extremo se calcule.';
+    tog.onclick = function () {
+      if (porCantidad) { delete r.n; _mut(ci, true); }
+      else { _aplicarN(_nDeRango()); }
+    };
+    wrap.appendChild(fi); wrap.appendChild(tog); wrap.appendChild(segundo);
     return wrap;
   }
 
