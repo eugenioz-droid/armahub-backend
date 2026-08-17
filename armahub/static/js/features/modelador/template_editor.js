@@ -4035,39 +4035,68 @@
     }
     var b0 = _bboxUVdePls(expandir(null), plano);
     if (!b0) { _actualizarStatus('No se pudo medir la pieza en esta vista.'); return; }
-    var span0 = (eje === 'u') ? (b0.u1 - b0.u0) : (b0.v1 - b0.v0);
+    // EL PAR ESPEJO ES UNA SOLA PERILLA (fix 17-ago, «pasado la mitad se
+    // bloquea»). B y D miden LA MISMA medida del marco: escribir Δ propio en los
+    // DOS dispara la regla del motor «Δ distintos en el par → se dibuja el
+    // mayor», y el sondeo sobre el par de un lado ya arrastrado no medía el
+    // efecto de +5 sino el salto del conflicto (~40 cm de borde por cm de Δ):
+    // ganaba el par, el drag escribía el lado equivocado y el estribo quedaba
+    // trabado/saltando. Por eso: todo candidato se PLIEGA al lado del par que
+    // ya trae Δ propio, y el par jamás recibe un Δ nuevo desde el tirador.
+    var fpM = global.ModeladorFiguraPuntos || {};
+    var pares = (fpM.paresEspejoFigura ? fpM.paresEspejoFigura(c.figura) : null) || {};
+    function deltaPropioDe(L) {
+      var d = c.dims && c.dims[L];
+      return (d && typeof d === 'object' && d.delta) ? d : null;
+    }
+    function plegarAlKnob(L) {
+      if (deltaPropioDe(L)) return L;
+      var P = pares[L];
+      return (P && deltaPropioDe(P)) ? P : L;
+    }
     // candidatos: primero los lados que YA traen Δ propio (arrastrar continúa lo
-    // escrito en vez de pelearlo), después el resto de los lados de la figura.
+    // escrito en vez de pelearlo), después el resto de los lados de la figura —
+    // cada uno PLEGADO a su knob y sin duplicados.
     var spec = _figSpec(c.figura);
     var lados = [];
-    Object.keys(c.dims || {}).forEach(function (L) {
-      var d = c.dims[L];
-      if (d && typeof d === 'object' && d.delta) lados.push(L);
-    });
-    ((spec && spec.parciales) || Object.keys(c.dims || {})).forEach(function (L) {
-      if (lados.indexOf(L) < 0) lados.push(L);
-    });
+    function agregar(L) { L = plegarAlKnob(L); if (lados.indexOf(L) < 0) lados.push(L); }
+    Object.keys(c.dims || {}).forEach(function (L) { if (deltaPropioDe(L)) agregar(L); });
+    ((spec && spec.parciales) || Object.keys(c.dims || {})).forEach(agregar);
     var mejor = null;
     lados.forEach(function (L) {
+      var dEx = deltaPropioDe(L);
+      var extEx = dEx ? ((dEx.extremo === 'ini') ? 'ini' : (dEx.extremo === 'centro' ? 'centro' : 'fin')) : null;
       ['fin', 'ini'].forEach(function (E) {
+        // LÍNEA BASE POR CANDIDATO: si el lado ya acumula Δ con OTRO extremo,
+        // compararlo contra el estado actual mediría el volteo del acumulado
+        // (todo el Δ cambia de borde), no el efecto de +5. Se rebasa: la base
+        // de ese candidato es el MISMO Δ ya recolocado en el extremo E.
+        var b0E = b0;
+        if (dEx && extEx !== E) {
+          b0E = _bboxUVdePls(expandir({ L: L, delta: 0, extremo: E }), plano);
+          if (!b0E) return;
+        }
+        var span0E = (eje === 'u') ? (b0E.u1 - b0E.u0) : (b0E.v1 - b0E.v0);
         var b1 = _bboxUVdePls(expandir({ L: L, delta: PROBE, extremo: E }), plano);
         if (!b1) return;
         var span1 = (eje === 'u') ? (b1.u1 - b1.u0) : (b1.v1 - b1.v0);
-        if (Math.abs(span1 - span0) < 0.25 * PROBE) return;   // no manda en este eje
+        if (Math.abs(span1 - span0E) < 0.25 * PROBE) return;   // no manda en este eje
         // cuánto salió hacia AFUERA el borde agarrado, y cuánto el opuesto
         var mAg, mOp;
         if (eje === 'u') {
-          mAg = (ladoUV === '+') ? (b1.u1 - b0.u1) : -(b1.u0 - b0.u0);
-          mOp = (ladoUV === '+') ? -(b1.u0 - b0.u0) : (b1.u1 - b0.u1);
+          mAg = (ladoUV === '+') ? (b1.u1 - b0E.u1) : -(b1.u0 - b0E.u0);
+          mOp = (ladoUV === '+') ? -(b1.u0 - b0E.u0) : (b1.u1 - b0E.u1);
         } else {
-          mAg = (ladoUV === '+') ? (b1.v1 - b0.v1) : -(b1.v0 - b0.v0);
-          mOp = (ladoUV === '+') ? -(b1.v0 - b0.v0) : (b1.v1 - b0.v1);
+          mAg = (ladoUV === '+') ? (b1.v1 - b0E.v1) : -(b1.v0 - b0E.v0);
+          mOp = (ladoUV === '+') ? -(b1.v0 - b0E.v0) : (b1.v1 - b0E.v1);
         }
         if (mAg < 0.1 * PROBE) return;   // ese extremo crece hacia el otro lado
         var cand = {
           L: L, extremo: E,
           ratio: mAg / PROBE,                                  // cm de borde por cm de Δ
-          score: (mAg - Math.max(0, mOp)) / PROBE              // 1 = solo ese borde se mueve
+          // 1 = solo ese borde se mueve; continuar el extremo YA escrito gana
+          // los empates (cambiar de extremo recoloca el acumulado = salto)
+          score: (mAg - Math.max(0, mOp)) / PROBE + ((dEx && extEx === E) ? 0.05 : 0)
         };
         if (!mejor || cand.score > mejor.score + 1e-9 ||
             (Math.abs(cand.score - mejor.score) <= 1e-9 && cand.ratio > mejor.ratio)) mejor = cand;

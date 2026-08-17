@@ -191,7 +191,12 @@
      input {width:100%}` (DOS ids). Cualquier ancho de esta fila tiene que
      escribirse con los dos ids o pierde y el campo se estira al 100% — que es
      exactamente lo que empujó la fila fuera del panel el 15-ago. */
-  #te_modal #te_side input.te-delta{width:44px;text-align:right;flex:0 0 auto}
+  #te_modal #te_side input.te-delta{width:52px;text-align:right;flex:0 0 auto;padding:3px 4px}
+  /* las flechitas del input number COMÍAN el espacio interior del campo y
+     tapaban el valor («el field tapa los números, aunque hay espacio») */
+  #te_modal input[type=number]::-webkit-inner-spin-button,
+  #te_modal input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
+  #te_modal input[type=number]{-moz-appearance:textfield;appearance:textfield}
   /* NADA de la fila se comprime (flex-shrink:0): con el shrink por defecto los
      controles de la derecha —la flecha entre ellos— se estrujaban hasta
      desaparecer cuando la fila no alcanzaba. Ahora el que no cabe se ve igual. */
