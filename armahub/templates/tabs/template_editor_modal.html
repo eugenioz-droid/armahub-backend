@@ -175,13 +175,23 @@
   #te_modal input.te-color{width:44px;height:24px;padding:1px 2px;border:1px solid var(--te-line);border-radius:6px;background:#fff;cursor:pointer}
   /* FILA DE DIMENSIÓN (rediseño 15-ago): la LETRA es el botón radial del dominante
      y a la derecha entran el Δ del lado y su flecha de extremo. Todo en un renglón. */
+  /* La fila de dims usa una columna ANGOSTA para la letra: los 96 px del label
+     genérico eran espacio muerto que ahora ocupa el Δ y sus atajos. */
+  #te_modal .te-row.te-dimrow{grid-template-columns:30px 1fr;gap:6px}
   #te_modal .te-dimletra{border:1px solid var(--te-line);background:#fff;border-radius:6px;
-    min-width:24px;padding:2px 6px;font-size:11px;font-weight:800;color:var(--te-muted);cursor:pointer}
+    width:28px;padding:2px 0;font-size:11px;font-weight:800;color:var(--te-muted);
+    cursor:pointer;justify-self:start;text-align:center}
   #te_modal .te-dimletra:hover:not(:disabled){background:#f7fbf2;color:var(--te-acero-d)}
   #te_modal .te-dimletra.manda{border-color:var(--te-azul);color:var(--te-azul)}
   #te_modal .te-dimletra.on{background:var(--te-azul);border-color:var(--te-azul);color:#fff}
-  #te_modal .te-dimletra:disabled{opacity:.38;cursor:not-allowed;text-decoration:line-through}
-  #te_modal input.te-delta{width:46px;text-align:right}
+  /* Bloqueado = GRIS (no tachado): dice "no aplica" sin gritar "error". */
+  #te_modal .te-dimletra:disabled{background:#f2f4f6;border-color:#e3e7ea;color:#b6bec6;cursor:not-allowed}
+  #te_modal .te-deltalbl{font-size:11px;font-weight:700;color:var(--te-muted);margin-left:2px}
+  #te_modal input.te-delta{width:44px;text-align:right}
+  /* Atajos de traslapo (rescatados del empalme retirado). */
+  #te_modal .te-phibtn{border:1px solid var(--te-line);background:#fff;border-radius:6px;
+    padding:2px 5px;font-size:10px;font-weight:700;color:var(--te-muted);cursor:pointer}
+  #te_modal .te-phibtn:hover{background:#f7fbf2;color:var(--te-acero-d)}
   /* Δ heredado del lado espejo: se ve que está, pero que no lo escribió este lado. */
   #te_modal input.te-delta.te-delta-esp::placeholder{color:var(--te-azul);opacity:.75;font-style:italic}
   #te_modal .te-deltadir{border:1px solid var(--te-line);background:#fff;border-radius:6px;

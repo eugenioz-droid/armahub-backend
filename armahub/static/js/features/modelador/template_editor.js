@@ -4584,47 +4584,42 @@
   // n·φ en cm (φ del componente viene en mm): 40φ con φ16 → 64 cm.
   function _nPhi(c, n) { return Math.round((Number(c && c.diam) || 0) * n) / 10; }
 
+  // EMPALME — FILA RETIRADA (15-ago, pedido del usuario: "queda redundante").
+  // Era el MISMO concepto que el Δ por lado (prolongar el extremo libre para el
+  // traslapo) en un campo aparte y sólo para el lado longitudinal; sus atajos
+  // 40φ/60φ se rescataron y viven ahora junto al Δ de CADA lado (_dimRow).
+  // Un `empalme` YA GUARDADO no se borra ni se migra a escondidas —el motor lo
+  // sigue aplicando y sería fierro que cambia solo—: se DICE que está y se
+  // ofrece pasarlo al Δ del lado que lo recibe.
   function _filasEmpalme(body, c, ci, rol, patas, cerrado) {
-    // CONTORNO CERRADO aunque la tipología diga cabezal: reglas.js re-deriva el rol
-    // a 'estribo' cuando la figura es un marco o un rombo (una 106A puesta en MH),
-    // y ahí el motor ignora el Δ (empIgnorado). Ofrecerlo sería prometer kg que no
-    // se van a sumar.
-    if (cerrado) return;
-    if (rol !== 'cabezal') return;                    // estribo/traba: pieza de sección
-    var libres = [];
-    if (!patas.inicio) libres.push(['inicio', 'Δ inicio cm']);
-    if (!patas.fin) libres.push(['fin', 'Δ fin cm']);
-    if (!libres.length) return;                       // los dos extremos rematan en pata
-    var g = _div(libres.length > 1 ? 'te-grid2' : '');
-    libres.forEach(function (p) {
-      var cual = p[0];
-      var wrap = _div(''); wrap.style.cssText = 'display:flex;gap:4px;align-items:center';
-      var val = _empalmeDe(c)[cual];
-      var inp = _input({ value: (val != null ? val : ''), placeholder: '0', type: 'number' }, function (v) {
-        _setEmpalme(c, cual, (v === '' ? null : Number(v)));
-        _mut(ci);
-      });
-      inp.style.width = '56px';
-      wrap.appendChild(inp);
-      [40, 60].forEach(function (n) {
-        var b = document.createElement('button');
-        b.className = 'te-ctool';
-        b.style.cssText = 'padding:2px 6px;font-size:10px;font-weight:700';
-        b.textContent = n + 'φ';
-        b.title = n + ' diámetros · φ' + (c.diam || '?') + ' → ' + _nPhi(c, n) + ' cm';
-        b.addEventListener('click', function () {
-          _pushUndo();
-          _setEmpalme(c, cual, _nPhi(c, n));
-          _mut(ci, true);                             // el campo tiene que mostrar el valor nuevo
-        });
-        wrap.appendChild(b);
-      });
-      g.appendChild(_fld(p[1], wrap));
-    });
-    body.appendChild(g);
-    var note = _div('te-note');
-    note.textContent = 'Δ = prolongación del extremo libre (traslapo). Sólo se ofrece donde el tramo no remata en pata.';
-    body.appendChild(note);
+    var e = _empalmeDe(c);
+    var total = (Number(e.inicio) || 0) + (Number(e.fin) || 0);
+    if (!total) return;
+    var n = _div('te-note');
+    n.style.color = '#e65100';
+    n.textContent = '⚠ Esta barra tiene un empalme guardado (' +
+      (e.inicio ? 'inicio ' + e.inicio + ' cm' : '') +
+      (e.inicio && e.fin ? ' · ' : '') +
+      (e.fin ? 'fin ' + e.fin + ' cm' : '') +
+      '). El campo se retiró: ahora el traslapo se pone con el Δ de cada lado. ' +
+      'El motor sigue aplicando este valor hasta que lo pases.';
+    body.appendChild(n);
+    var dom = _ladoDominante(c);
+    if (!dom || !c.dims || !c.dims[dom]) return;
+    var b = document.createElement('button');
+    b.type = 'button'; b.className = 'te-ctool';
+    b.textContent = 'Pasar los ' + total + ' cm al Δ del lado ' + dom;
+    b.title = 'Suma el empalme al Δ del lado dominante y limpia el campo viejo. ' +
+      'El largo de corte no cambia.';
+    b.onclick = function () {
+      _pushUndo();
+      var d0 = c.dims[dom];
+      d0.delta = (Number(d0.delta) || 0) + total;
+      if (e.inicio && !e.fin) d0.extremo = 'ini';
+      _setEmpalme(c, 'inicio', null); _setEmpalme(c, 'fin', null);
+      _mut(ci, true); _renderPanel();
+    };
+    body.appendChild(b);
   }
 
   // ==========================================================================
@@ -4679,7 +4674,9 @@
   function _dimRow(c, ci, L, dom) {
     var d = c.dims[L] || { modo: 'auto' };
     c.dims[L] = d;
-    var row = _div('te-row');
+    // `te-dimrow`: columna de la letra ANGOSTA (la genérica son 96 px de label y
+    // aquí sólo va una letra) — ese ancho es justo el que necesita el Δ.
+    var row = _div('te-row te-dimrow');
     var fp = global.ModeladorFiguraPuntos || {};
     var elegibles = (fp.ladosDominantesElegibles ? fp.ladosDominantesElegibles(c.figura) : []) || [];
     var elegido = _ladoDomElegido(c);
@@ -4698,7 +4695,10 @@
         lbl.onclick = function () {
           // segundo clic sobre el elegido = volver a la cascada del catálogo
           _setLadoDominante(c, (elegido === L) ? null : L);
-          _mut(ci);
+          // RE-RENDER (fix del reporte): sin esto la letra nueva no se pintaba —
+          // el color de TODAS las letras depende de cuál está elegida y cuál
+          // manda, así que hay que repintar la ficha, no sólo este botón.
+          _mut(ci); _renderPanel();
         };
       } else {
         lbl.disabled = true;
@@ -4755,6 +4755,10 @@
          'Escribe un valor acá para fijar este lado aparte.')
       : 'Δ de este lado en cm: se suma al largo de corte y a los kg. Negativo acorta.';
     if (info && info.origen === 'espejo' && !propio) inDelta.classList.add('te-delta-esp');
+    var lblD = document.createElement('span');
+    lblD.className = 'te-deltalbl'; lblD.textContent = 'Δ';
+    lblD.title = 'Prolongación de este lado (traslapo). Se suma al largo de corte y a los kg.';
+    wrap.appendChild(lblD);
     wrap.appendChild(inDelta);
 
     // FLECHA: por qué punta crece o se acorta. En un contorno CERRADO no se
@@ -4775,6 +4779,19 @@
       };
       wrap.appendChild(flecha);
     }
+
+    // ATAJOS 40φ / 60φ — rescatados de la fila de EMPALME, que se retiró por
+    // redundante (era el mismo concepto —prolongar el extremo libre— en otro
+    // campo y sólo para el lado longitudinal). Acá sirven para CUALQUIER lado.
+    [40, 60].forEach(function (nPhi) {
+      var b = document.createElement('button');
+      b.type = 'button'; b.className = 'te-phibtn';
+      b.textContent = nPhi + 'φ';
+      var cm = _nPhi(c, nPhi);
+      b.title = nPhi + ' diámetros · φ' + (c.diam || '?') + ' → ' + cm + ' cm';
+      b.onclick = function () { _pushUndo(); d.delta = cm; _mut(ci, true); _renderPanel(); };
+      wrap.appendChild(b);
+    });
     row.appendChild(wrap);
     return row;
   }
