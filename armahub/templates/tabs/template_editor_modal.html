@@ -212,8 +212,9 @@
     background:#eaf2fb;box-shadow:inset 0 0 0 1px var(--te-azul)}
   /* Tiradores del HORMIGÓN: ámbar y huecos, para no confundirlos con los handles
      azules de la barra seleccionada (se estaban agarrando unos por otros). */
-  #te_modal .te-node-h{fill:#fff;stroke:#e65100;stroke-width:1.4}
-  #te_modal .te-node-h:hover{fill:#ffe9d6;stroke:#bf360c}
+  /* tirador del MARCO DE LA BARRA seleccionada: azul como su bbox (es SU perilla) */
+  #te_modal .te-mh{fill:#fff;stroke:#2f80ed;stroke-width:1.3}
+  #te_modal .te-mh:hover{fill:#2f80ed}
   /* Toggle del rango: «→» hasta dónde · «N» cuántas. Uno por línea. */
   #te_modal #te_side .te-rmodo{border:1px solid var(--te-line);background:#fff;border-radius:6px;
     width:24px;padding:2px 0;font-size:11px;font-weight:800;color:var(--te-muted);cursor:pointer;flex:0 0 auto}
@@ -406,8 +407,6 @@
   /* Pose ESPEJADA: mismo color, borde punteado (se lee como "reflejada"). */
   #te_modal #te_flipBtn.espejo{border-style:dashed}
   /* NODOS de esquina del hormigón (arrastrables). */
-  #te_modal .te-node{fill:#fff;stroke:#7d8da0;stroke-width:1.1;cursor:move}
-  #te_modal .te-node:hover{fill:#2f80ed;stroke:#2f80ed}
   /* Marcador de SNAP (cruz fina donde engancha). */
   #te_modal .te-snap{stroke:var(--te-azul);stroke-width:1;opacity:.9}
   /* Flechita doble de RANGO (desplazamiento de la distribución).

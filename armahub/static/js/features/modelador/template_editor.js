@@ -66,7 +66,7 @@
     ultimoPlano: 'largo',      // última vista tocada (define el eje de rotación)
     transforms: {},            // {plano: {minU,maxU,minV,maxV,s,offX,offY}}
     dragMove: null,            // {ci, plano, startHost, startHint} durante mover
-    dragNode: null,            // {plano, corner} durante arrastre de nodo
+    dragMarco: null,           // arrastre del marco de la barra (ver _iniciarDragMarco)
     dragRango: null,           // {ci} durante arrastre de la flechita doble
     // --- Snap de CARA (§INTERACCIÓN-2.0) — elegir la cara VIENDO ---
     caraHi: null,              // {plano, cara, edge, orient, pos, a, b} cara resaltada bajo el cursor
@@ -1191,7 +1191,7 @@
     ST.selCi = (snap.selCi != null) ? snap.selCi : -1;
     if (ST.selCi >= (ST.receta.componentes || []).length) ST.selCi = -1;
     // cualquier interacción a medio-hacer se cancela al deshacer
-    ST.dragMove = null; ST.dragNode = null; ST.dragRango = null;
+    ST.dragMove = null; ST.dragMarco = null; ST.dragRango = null;
     // EL ELEMENTO VIAJA EN LA RECETA (receta.tipo) desde que se puede cambiar dentro
     // del editor: deshacer un cambio de elemento tiene que devolver TAMBIÉN el
     // ribbon, el hormigón y las 3 vistas. Si no, la receta vuelve a viga y la
@@ -2781,6 +2781,29 @@
             'class': 'te-sel-esq', x: e[0] - 2.5, y: e[1] - 2.5, width: 5, height: 5
           }));
         });
+        // TIRADORES DEL MARCO DE LA BARRA (17-ago): uno por borde, en TODA vista.
+        // Arrastrar un borde ESTIRA/ACHICA la pieza escribiendo el Δ del lado que
+        // corresponde (con su extremo): el tirador y el campo Δ de la ficha son
+        // la misma perilla. QUÉ lado y con qué signo NO sale de ninguna tabla:
+        // se SONDEA con el motor al agarrar (_iniciarDragMarco) — genérico para
+        // cualquier figura, sin ramas. data-mlado es el signo del borde EN EJES
+        // DE LA VISTA (+ = borde de mayor u/v), no en pantalla: X/Y pueden ir
+        // invertidos según la cámara y el drag se calcula en uv.
+        var uDer = (X(bU1) >= X(bU0));    // ¿bU1 es el borde derecho en pantalla?
+        var vArr = (Y(bV1) <= Y(bV0));    // ¿bV1 es el borde de arriba? (px menor)
+        [
+          { x: px1, y: (py0 + py1) / 2, eje: 'u', ml: uDer ? '+' : '-', cur: 'ew-resize' },
+          { x: px0, y: (py0 + py1) / 2, eje: 'u', ml: uDer ? '-' : '+', cur: 'ew-resize' },
+          { x: (px0 + px1) / 2, y: py0, eje: 'v', ml: vArr ? '+' : '-', cur: 'ns-resize' },
+          { x: (px0 + px1) / 2, y: py1, eje: 'v', ml: vArr ? '-' : '+', cur: 'ns-resize' }
+        ].forEach(function (h) {
+          svg.appendChild(_svgEl('rect', {
+            'class': 'te-mh', x: h.x - 3.5, y: h.y - 3.5, width: 7, height: 7, rx: 1.5,
+            'data-marco': h.eje, 'data-mlado': h.ml,
+            style: 'cursor:' + h.cur
+          })).appendChild(_svgEl('title', {})).textContent =
+            'Estira/achica la barra: escribe el Δ del lado correspondiente (se suma al largo de corte).';
+        });
       }
     }
 
@@ -2791,8 +2814,6 @@
     // activa; "inactiva" en gris si todavía no lo está — arrastrarla la activa).
     _dibujarFlechaRango(svg, plano, X, Y, VW, VH);
 
-    // NODOS de esquina (arrastrables).
-    if (rect) _dibujarNodos(svg, rect, X, Y, plano);
   }
 
   // Eje del mundo con MAYOR extensión de una polilínea = "por dónde corre" la barra.
@@ -3081,38 +3102,9 @@
   // dimensión horizontal y el de arriba SOLO la vertical. El elemento sigue
   // centrado en el origen —así está definida la geometría—, así que la cara
   // opuesta acompaña; lo que se elige es QUÉ MEDIDA se toca, no qué borde.
-  function _dibujarNodos(svg, rect, X, Y, plano) {
-    // SOLO SIN SELECCIÓN (15-ago): con una barra seleccionada el usuario está
-    // manipulando LA BARRA, y estos tiradores se le cruzaban bajo el cursor
-    // («me sigue agarrando el elemento de hormigón»). Para redimensionar el
-    // hormigón: Esc (deseleccionar) y aparecen — o los campos del ribbon.
-    if (ST.selCi >= 0) return;
-    var lados = [
-      { u: rect.W / 2, v: 0, eje: 'u', cur: 'ew-resize' },
-      { u: -rect.W / 2, v: 0, eje: 'u', cur: 'ew-resize' },
-      { u: 0, v: rect.H / 2, eje: 'v', cur: 'ns-resize' },
-      { u: 0, v: -rect.H / 2, eje: 'v', cur: 'ns-resize' }
-    ];
-    // QUÉ DIMENSIÓN toca cada tirador: SALE DE LA DEFINICIÓN DE LA VISTA
-    // (def.W/def.H de PLANOS_POR_ELEMENTO), no de una tabla aparte. La tabla
-    // anterior estaba cableada a las vistas de la VIGA: en el MURO la sección
-    // muestra largo×espesor y el tirador escribía 'ancho'/'alto' — la dimensión
-    // de OTRA vista. Por eso «edita en todas las vistas menos la actual».
-    var defN = (_defsPlanos() || {})[plano] || {};
-    var quePasa = { u: defN.W || 'ancho', v: defN.H || 'alto' };
-    lados.forEach(function (k) {
-      // `te-node-h`: son del HORMIGÓN, no de la barra. Se pintan distinto a los
-      // handles de la selección para que no se confundan al agarrarlos (era el
-      // reporte: 'me sigue agarrando el elemento de hormigón').
-      svg.appendChild(_svgEl('rect', {
-        'class': 'te-node te-node-h', x: X(k.u) - 3.5, y: Y(k.v) - 3.5, width: 7, height: 7, rx: 2,
-        'data-node': k.eje, 'data-plano': plano,
-        style: 'cursor:' + k.cur
-      })).appendChild(_svgEl('title', {})).textContent =
-        'HORMIGÓN — arrastra para cambiar el ' + quePasa[k.eje] + ' del elemento';
-    });
-  }
-
+  // (Los tiradores del HORMIGÓN murieron el 17-ago a pedido del usuario: las
+  //  medidas del elemento se escriben exactas en el ribbon. El tirador que queda
+  //  es el del MARCO DE LA BARRA seleccionada — ver _iniciarDragMarco.)
   function _redibujar2D(out) {
     var geo = ST.receta && ST.receta.geometria;
     _resaltarSeleccion3D();   // la selección cambió/persiste → sincronizar el realce 3D
@@ -3808,7 +3800,7 @@
       // GHOST (tarea 1) — sigue el cursor mientras haya algo cargado. No regenera:
       // dibuja en la capa dedicada. Si hay un arrastre en curso, no interfiere.
       svg.addEventListener('mousemove', function (evt) {
-        if (ST.dragMove || ST.dragNode || ST.dragRango) return;
+        if (ST.dragMove || ST.dragMarco || ST.dragRango) return;
         if (!_hayCargado()) { if (ST.ghost) _limpiarGhost(); return; }
         var sp = _svgPoint(svg, evt); if (!sp) return;
         ST.ultimoPlano = plano;
@@ -3844,19 +3836,13 @@
         ST.ultimoPlano = plano;
         var sp = _svgPoint(svg, evt); if (!sp) return;
 
-        // ¿tocó un NODO?
-        var tgtNode = evt.target && evt.target.getAttribute && evt.target.getAttribute('data-node');
-        if (tgtNode) {
-          evt.preventDefault(); _pushUndo();
-          // geo0 = SNAPSHOT de las dims al iniciar el arrastre. Durante el arrastre se
-          // permite pasar por geometrías inválidas (fluidez); al SOLTAR, si la final no
-          // pasa _geoValida, se revierte a esto (_soltarNodo). undoLen identifica el
-          // snapshot que acaba de apilar este mousedown (para no dejar un undo muerto).
-          ST.dragNode = {
-            plano: plano, corner: tgtNode,
-            geo0: JSON.parse(JSON.stringify(ST.receta.geometria || {})),
-            undoLen: ST.undoStack.length
-          };
+        // ¿tocó un TIRADOR DEL MARCO de la barra seleccionada?
+        var tgtMarco = evt.target && evt.target.getAttribute && evt.target.getAttribute('data-marco');
+        if (tgtMarco && ST.selCi >= 0) {
+          evt.preventDefault();
+          var uvM = _pixelToUV(plano, sp.px, sp.py);
+          if (uvM) _iniciarDragMarco(plano, ST.selCi, tgtMarco,
+            evt.target.getAttribute('data-mlado') || '+', uvM);
           return;
         }
 
@@ -3945,20 +3931,19 @@
     if (!ST._dragBound) {
       ST._dragBound = true;
       global.addEventListener('mousemove', function (evt) {
-        var drag = ST.dragMove || ST.dragNode || ST.dragRango;
+        var drag = ST.dragMove || ST.dragMarco || ST.dragRango;
         if (!drag) return;
         var plano = drag.plano;
         var svg = $(SVG_ID[plano]); if (!svg) return;
         var sp = _svgPoint(svg, evt); if (!sp) return;
         var uv = _pixelToUV(plano, sp.px, sp.py);
         if (ST.dragMove && uv) { _dragMover(plano, uv); }
-        else if (ST.dragNode) { _dragNodo(plano, uv, sp); }
+        else if (ST.dragMarco) { _dragMarcoMove(plano, uv); }
         else if (ST.dragRango) { _dragRangoMove(plano, sp); }
       });
       global.addEventListener('mouseup', function () {
-        if (!(ST.dragMove || ST.dragNode || ST.dragRango)) return;
-        if (ST.dragNode) _soltarNodo();     // la geometría se valida AL SOLTAR
-        ST.dragMove = null; ST.dragNode = null; ST.dragRango = null;
+        if (!(ST.dragMove || ST.dragMarco || ST.dragRango)) return;
+        ST.dragMove = null; ST.dragMarco = null; ST.dragRango = null;
         _renderPanel();
       });
     }
@@ -3997,59 +3982,129 @@
     _regenerarDiferido();
   }
 
-  function _dragNodo(plano, uv, sp) {
-    if (!uv) return;
-    var g = ST.receta.geometria;
-    // El nodo redimensiona la dimensión del plano llevando la cara a |coord|·2.
-    // seccion: U=ancho, V=alto · largo: U=largo, V=alto · planta: U=largo, V=ancho
-    // SOLO la dimensión del tirador que se agarró (ver _dibujarNodos), y MEDIDA
-    // CONTRA LA CARA OPUESTA — no como |coord|·2 (fix 15-ago: 'se hace mierda el
-    // elemento'). El elemento está CENTRADO por definición, así que con |coord|·2
-    // arrastrar un borde hacia el centro traía el opuesto a su encuentro y la
-    // dimensión colapsaba a cero de golpe. Midiendo contra la cara opuesta el
-    // arrastre es 1:1 con el borde que agarraste y cruzar el centro no aplasta
-    // nada: en el peor caso se llega al mínimo.
-    var dn0 = ST.dragNode || {};
-    var eje = dn0.corner || 'u';
-    // misma fuente que _dibujarNodos: la DEF de la vista (nada de tablas aparte)
-    var defD = (_defsPlanos() || {})[plano] || {};
-    var cual = (eje === 'v') ? (defD.H || 'alto') : (defD.W || 'ancho');
-    var coord = (eje === 'v') ? Number(uv.v) : Number(uv.u);
-    var previo = Number((dn0.geo0 || g)[cual]) || 0;
-    // el borde agarrado es el del SIGNO de donde se tomó; la cara opuesta está en
-    // −signo·previo/2 y la medida nueva es la distancia del cursor a esa cara.
-    if (dn0.signo == null) dn0.signo = (coord >= 0) ? 1 : -1;
-    var nuevo = Math.abs(coord - (-dn0.signo * previo / 2));
-    // MÍNIMO CONSTRUIBLE: por debajo del recubrimiento de las dos caras la pieza
-    // no existe, y dejarla llegar a 0 es lo que producía la línea aplastada.
-    var minima = (cual === 'alto')
-      ? (Number(g.recub_sup || 4) + Number(g.recub_inf || 4) + GRID_SNAP)
-      : (cual === 'ancho' ? 2 * Number(g.recub_lat || 3) + GRID_SNAP
-                          : 2 * GRID_SNAP);   // largo: sin recub que lo acote
-    nuevo = Math.max(minima, Math.round(nuevo / GRID_SNAP) * GRID_SNAP);
-    g[cual] = nuevo;
-    _sincronizarRibbonGeo();   // los campos del ribbon siguen al arrastre
-    _regenerarDiferido();
+  // ==========================================================================
+  // TIRADOR DEL MARCO DE LA BARRA (17-ago) — arrastrar un borde del bbox de la
+  // pieza seleccionada ESTIRA/ACHICA la pieza escribiendo el Δ del lado que
+  // corresponde. GENÉRICO para cualquier figura y cualquier vista: qué lado
+  // manda en ese borde, con qué extremo y a qué razón se mueve NO sale de
+  // ninguna tabla — se SONDEA con el motor al agarrar: se expande un clon con
+  // +5 cm de Δ en cada lado candidato y se mide qué borde del bbox se movió.
+  // El lado cuyo Δ mueve el borde agarrado (y deja quieto el opuesto) gana; si
+  // el crecimiento es simétrico (el motor centra) igual sirve, con razón 0.5.
+  // Así el tirador y el campo Δ de la ficha son la MISMA perilla (conversan).
+  // ==========================================================================
+  // bbox de UN SOLO placement (el primero). No se une la distribución completa a
+  // propósito: la FORMA es idéntica en todas las copias, y si el n de placements
+  // cambiara entre la expansión base y la sondeada (medido en headless: 5 → 1),
+  // el bbox unión mediría el reparto y no la pieza — el sondeo daría falsos NO.
+  function _bboxUVdePls(pls, plano) {
+    var pj = _proyDe(plano);
+    var pl = (pls && pls.length) ? pls[0] : null;
+    if (!pl) return null;
+    var b = { u0: Infinity, u1: -Infinity, v0: Infinity, v1: -Infinity };
+    (pl.puntos || []).forEach(function (pt) {
+      var q = pj(pt);
+      if (!isFinite(q.u) || !isFinite(q.v)) return;
+      if (q.u < b.u0) b.u0 = q.u; if (q.u > b.u1) b.u1 = q.u;
+      if (q.v < b.v0) b.v0 = q.v; if (q.v > b.v1) b.v1 = q.v;
+    });
+    return isFinite(b.u0) ? b : null;
   }
 
-  // FIN del arrastre de nodo: el nodo pasa por la MISMA validación que el ribbon
-  // (_geoValida). Durante el arrastre se deja pasar cualquier valor (fluidez), pero
-  // al soltar una geometría imposible (ancho ≤ 2·recub_lat, alto ≤ recub sup+inf,
-  // dim ≤ 0) se REVIERTE al snapshot previo al drag y se dice por qué. Antes el nodo
-  // dejaba dims que el ribbon rechazaba: el editor quedaba en un estado que ninguna
-  // otra vía podía producir.
-  function _soltarNodo() {
-    var dn = ST.dragNode;
-    if (!dn || !dn.geo0 || !ST.receta || !ST.receta.geometria) return;
-    if (_geoValida(_geoConDefaults(ST.receta.geometria))) return;
-    var motivo = _motivoGeoInvalida(_geoConDefaults(ST.receta.geometria));
-    ST.receta.geometria = dn.geo0;
-    // El snapshot que apiló el mousedown ya no describe ningún cambio → se saca (si
-    // no, el primer Ctrl+Z "no haría nada" visible).
-    if (dn.undoLen != null && ST.undoStack.length === dn.undoLen) ST.undoStack.pop();
-    _sincronizarRibbonGeo();
-    _regenerar();
-    _actualizarStatus('Tamaño rechazado (' + motivo + '): se restauró el anterior.');
+  function _iniciarDragMarco(plano, ci, eje, ladoUV, uv0) {
+    var c = ST.receta.componentes[ci]; if (!c) return;
+    var R = global.ModeladorReglas, host = ST.receta && ST.receta.geometria;
+    if (!R || !R.expandirComponente || !host) return;
+    var PROBE = 5;   // cm del sondeo: grande contra redondeos, chico contra avisos
+    // expande un CLON (sin campos runtime _*) con un Δ extra opcional en un lado
+    function expandir(mod) {
+      var clon = JSON.parse(JSON.stringify(c, function (k, val) {
+        return (String(k).charAt(0) === '_') ? undefined : val;
+      }));
+      if (mod) {
+        clon.dims = clon.dims || {};
+        var d = clon.dims[mod.L];
+        if (!d || typeof d !== 'object') {
+          d = clon.dims[mod.L] = (d != null && isFinite(Number(d)))
+            ? { modo: 'fija', valor: Number(d) } : { modo: 'auto' };
+        }
+        d.delta = (Number(d.delta) || 0) + mod.delta;
+        d.extremo = mod.extremo;
+      }
+      try { return R.expandirComponente(clon, host) || []; } catch (e) { return []; }
+    }
+    var b0 = _bboxUVdePls(expandir(null), plano);
+    if (!b0) { _actualizarStatus('No se pudo medir la pieza en esta vista.'); return; }
+    var span0 = (eje === 'u') ? (b0.u1 - b0.u0) : (b0.v1 - b0.v0);
+    // candidatos: primero los lados que YA traen Δ propio (arrastrar continúa lo
+    // escrito en vez de pelearlo), después el resto de los lados de la figura.
+    var spec = _figSpec(c.figura);
+    var lados = [];
+    Object.keys(c.dims || {}).forEach(function (L) {
+      var d = c.dims[L];
+      if (d && typeof d === 'object' && d.delta) lados.push(L);
+    });
+    ((spec && spec.parciales) || Object.keys(c.dims || {})).forEach(function (L) {
+      if (lados.indexOf(L) < 0) lados.push(L);
+    });
+    var mejor = null;
+    lados.forEach(function (L) {
+      ['fin', 'ini'].forEach(function (E) {
+        var b1 = _bboxUVdePls(expandir({ L: L, delta: PROBE, extremo: E }), plano);
+        if (!b1) return;
+        var span1 = (eje === 'u') ? (b1.u1 - b1.u0) : (b1.v1 - b1.v0);
+        if (Math.abs(span1 - span0) < 0.25 * PROBE) return;   // no manda en este eje
+        // cuánto salió hacia AFUERA el borde agarrado, y cuánto el opuesto
+        var mAg, mOp;
+        if (eje === 'u') {
+          mAg = (ladoUV === '+') ? (b1.u1 - b0.u1) : -(b1.u0 - b0.u0);
+          mOp = (ladoUV === '+') ? -(b1.u0 - b0.u0) : (b1.u1 - b0.u1);
+        } else {
+          mAg = (ladoUV === '+') ? (b1.v1 - b0.v1) : -(b1.v0 - b0.v0);
+          mOp = (ladoUV === '+') ? -(b1.v0 - b0.v0) : (b1.v1 - b0.v1);
+        }
+        if (mAg < 0.1 * PROBE) return;   // ese extremo crece hacia el otro lado
+        var cand = {
+          L: L, extremo: E,
+          ratio: mAg / PROBE,                                  // cm de borde por cm de Δ
+          score: (mAg - Math.max(0, mOp)) / PROBE              // 1 = solo ese borde se mueve
+        };
+        if (!mejor || cand.score > mejor.score + 1e-9 ||
+            (Math.abs(cand.score - mejor.score) <= 1e-9 && cand.ratio > mejor.ratio)) mejor = cand;
+      });
+    });
+    if (!mejor) {
+      _actualizarStatus('Ningún lado de la ' + (c.figura || 'figura') + ' mueve ese borde en esta vista.');
+      return;
+    }
+    var d0 = (c.dims && c.dims[mejor.L] && typeof c.dims[mejor.L] === 'object')
+      ? (Number(c.dims[mejor.L].delta) || 0) : 0;
+    ST.dragMarco = {
+      plano: plano, ci: ci, eje: eje, ladoUV: ladoUV,
+      L: mejor.L, extremo: mejor.extremo, ratio: mejor.ratio || 1,
+      delta0: d0, uv0: uv0, pushed: false
+    };
+  }
+
+  function _dragMarcoMove(plano, uv) {
+    var dm = ST.dragMarco; if (!dm || !uv) return;
+    var c = ST.receta.componentes[dm.ci]; if (!c) return;
+    if (!dm.pushed) { _pushUndo(); dm.pushed = true; }   // snapshot en el 1er move real
+    var mov = (dm.eje === 'u') ? (uv.u - dm.uv0.u) : (uv.v - dm.uv0.v);
+    var afuera = (dm.ladoUV === '+') ? mov : -mov;       // + = agrandar la pieza
+    var delta = Math.round((dm.delta0 + afuera / (dm.ratio || 1)) * 2) / 2;   // paso 0.5 cm
+    c.dims = c.dims || {};
+    var d = c.dims[dm.L];
+    if (!d || typeof d !== 'object') {
+      d = c.dims[dm.L] = (d != null && isFinite(Number(d)))
+        ? { modo: 'fija', valor: Number(d) } : { modo: 'auto' };
+    }
+    // misma escritura que el campo Δ de la ficha: 0 = sin Δ (se borra la clave)
+    if (!delta) { delete d.delta; }
+    else { d.delta = delta; d.extremo = dm.extremo; }
+    _actualizarStatus('Δ ' + dm.L + ' = ' + delta + ' cm (' +
+      (dm.extremo === 'ini' ? '← ini' : 'fin →') + ') — se suma al largo de corte.');
+    _regenerarDiferido();
   }
 
   // Arrastre del rango: se mueve sobre el EJE DE DISTRIBUCIÓN REAL del componente
@@ -6721,7 +6776,7 @@
       }
       if (!ST.receta.tipo) ST.receta.tipo = ST.elemento;
       ST.selCi = -1; ST.ultimoOut = null;
-      ST.dragMove = null; ST.dragNode = null; ST.dragRango = null;
+      ST.dragMove = null; ST.dragMarco = null; ST.dragRango = null;
     } else {
       // Ruta vieja: semilla (solo para tests / compatibilidad).
       if (!ST.receta && d.semilla) ST.receta = d.semilla.semillaViga();
@@ -7597,12 +7652,12 @@
     _msgHttp: _msgHttp, _nombreLimpio: _nombreLimpio,
     _normalizarRecetaViva: _normalizarRecetaViva, _avisarMigracion: _avisarMigracion,
     _migracionDe: _migracionDe,
-    // TANDA 3 · no perder trabajo + capeo del @ + geometría válida al soltar el nodo
+    // TANDA 3 · no perder trabajo + capeo del @
     _hayCambiosSinGuardar: _hayCambiosSinGuardar,
     _guardarBorradorAhora: _guardarBorradorAhora, _programarBorrador: _programarBorrador,
     _leerBorrador: _leerBorrador,
     _borrarBorrador: _borrarBorrador, _ofrecerBorrador: _ofrecerBorrador,
-    _soltarNodo: _soltarNodo, _geoValida: _geoValida, _geoConDefaults: _geoConDefaults,
+    _geoValida: _geoValida, _geoConDefaults: _geoConDefaults,
     _motivoGeoInvalida: _motivoGeoInvalida, SEP_MIN: SEP_MIN,
     _dentroDelBoundary: _dentroDelBoundary, _clampAlBoundary: _clampAlBoundary,
     _sellarCargado: _sellarCargado, _soltarCargado: _soltarCargado,
