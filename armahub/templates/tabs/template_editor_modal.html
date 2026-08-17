@@ -198,9 +198,18 @@
   #te_modal #te_side .te-dimrow input,#te_modal #te_side .te-dimrow button{flex:0 0 auto}
   #te_modal #te_side .te-dimrow input[type=number]:not(.te-delta){width:56px;min-width:0}
   /* Candado Fija/Auto — reemplaza al botón de texto y libera ~45 px. */
+  /* CANDADO con COLOR (15-ago): de reojo los dos emojis se confundían. Abierto
+     (AUTO, lo deriva el elemento) = verde · cerrado (FIJA, lo escribió el
+     usuario) = ámbar, que es el color que este editor usa para "dato tuyo". */
   #te_modal .te-lock{border:1px solid var(--te-line);background:#fff;border-radius:6px;
     width:26px;padding:2px 0;font-size:12px;line-height:1;cursor:pointer}
   #te_modal .te-lock:hover{background:#f7fbf2}
+  #te_modal .te-lock.abierto{border-color:#9ccc65;background:#f3faec}
+  #te_modal .te-lock.cerrado{border-color:#e65100;background:#fff4e8}
+  /* El lado DOMINANTE se pinta de verdad: relleno azul suave + borde, para que se
+     vea de un vistazo cuál manda aunque no esté elegido a mano. */
+  #te_modal .te-dimletra.manda{border-color:var(--te-azul);color:var(--te-azul);
+    background:#eaf2fb;box-shadow:inset 0 0 0 1px var(--te-azul)}
   /* Toggle del rango: «→» hasta dónde · «N» cuántas. Uno por línea. */
   #te_modal #te_side .te-rmodo{border:1px solid var(--te-line);background:#fff;border-radius:6px;
     width:24px;padding:2px 0;font-size:11px;font-weight:800;color:var(--te-muted);cursor:pointer;flex:0 0 auto}

@@ -3073,18 +3073,33 @@
   }
 
   // NODOS de las 4 esquinas del hormigón (arrastrables → redimensiona el elemento).
+  // TIRADORES DEL HORMIGÓN — UNO POR CARA, UNA DIMENSIÓN CADA UNO (fix 15-ago).
+  // Antes eran las 4 ESQUINAS y cada una redimensionaba LAS DOS dimensiones del
+  // plano a la vez: el usuario agarraba una punta y le cambiaban el ancho y el
+  // alto juntos («se edita en un patrón que no entiendo, parece que en ambos
+  // ejes»). Con un tirador por cara, agarrar el lado derecho cambia SOLO la
+  // dimensión horizontal y el de arriba SOLO la vertical. El elemento sigue
+  // centrado en el origen —así está definida la geometría—, así que la cara
+  // opuesta acompaña; lo que se elige es QUÉ MEDIDA se toca, no qué borde.
   function _dibujarNodos(svg, rect, X, Y, plano) {
-    var corners = [
-      { u: -rect.W / 2, v: rect.H / 2, c: 'tl' },
-      { u: rect.W / 2, v: rect.H / 2, c: 'tr' },
-      { u: rect.W / 2, v: -rect.H / 2, c: 'br' },
-      { u: -rect.W / 2, v: -rect.H / 2, c: 'bl' }
+    var lados = [
+      { u: rect.W / 2, v: 0, eje: 'u', cur: 'ew-resize' },
+      { u: -rect.W / 2, v: 0, eje: 'u', cur: 'ew-resize' },
+      { u: 0, v: rect.H / 2, eje: 'v', cur: 'ns-resize' },
+      { u: 0, v: -rect.H / 2, eje: 'v', cur: 'ns-resize' }
     ];
-    corners.forEach(function (k) {
-      svg.appendChild(_svgEl('circle', {
-        'class': 'te-node', cx: X(k.u), cy: Y(k.v), r: 3.5,
-        'data-node': k.c, 'data-plano': plano
-      }));
+    var quePasa = {
+      seccion: { u: 'ancho', v: 'alto' },
+      largo: { u: 'largo', v: 'alto' },
+      planta: { u: 'largo', v: 'ancho' }
+    }[plano] || { u: 'ancho', v: 'alto' };
+    lados.forEach(function (k) {
+      svg.appendChild(_svgEl('rect', {
+        'class': 'te-node', x: X(k.u) - 4, y: Y(k.v) - 4, width: 8, height: 8, rx: 2,
+        'data-node': k.eje, 'data-plano': plano,
+        style: 'cursor:' + k.cur
+      })).appendChild(_svgEl('title', {})).textContent =
+        'Arrastra para cambiar el ' + quePasa[k.eje] + ' del elemento';
     });
   }
 
@@ -3964,11 +3979,17 @@
     var g = ST.receta.geometria;
     // El nodo redimensiona la dimensión del plano llevando la cara a |coord|·2.
     // seccion: U=ancho, V=alto · largo: U=largo, V=alto · planta: U=largo, V=ancho
-    var newW = Math.max(GRID_SNAP, Math.round(Math.abs(uv.u) * 2 / GRID_SNAP) * GRID_SNAP);
-    var newH = Math.max(GRID_SNAP, Math.round(Math.abs(uv.v) * 2 / GRID_SNAP) * GRID_SNAP);
-    if (plano === 'seccion') { g.ancho = newW; g.alto = newH; }
-    else if (plano === 'largo') { g.largo = newW; g.alto = newH; }
-    else { g.largo = newW; g.ancho = newH; }
+    // SOLO la dimensión del tirador que se agarró (ver _dibujarNodos).
+    var eje = (ST.dragNode && ST.dragNode.corner) || 'u';
+    var nuevo = (eje === 'v')
+      ? Math.max(GRID_SNAP, Math.round(Math.abs(uv.v) * 2 / GRID_SNAP) * GRID_SNAP)
+      : Math.max(GRID_SNAP, Math.round(Math.abs(uv.u) * 2 / GRID_SNAP) * GRID_SNAP);
+    var campo = {
+      seccion: { u: 'ancho', v: 'alto' },
+      largo: { u: 'largo', v: 'alto' },
+      planta: { u: 'largo', v: 'ancho' }
+    }[plano] || { u: 'ancho', v: 'alto' };
+    g[campo[eje]] = nuevo;
     _sincronizarRibbonGeo();   // los campos del ribbon siguen al arrastre
     _regenerarDiferido();
   }
@@ -4796,7 +4817,8 @@
     // ~45 px y en el flex los controles de la derecha se COMPRIMÍAN hasta
     // desaparecer — por eso la flecha "no se veía". Cerrado = medida FIJA (la
     // escribe el usuario) · abierto = AUTO (la deriva el elemento).
-    var tog = document.createElement('button'); tog.className = 'te-lock';
+    var tog = document.createElement('button');
+    tog.className = 'te-lock ' + ((d.modo === 'fija') ? 'cerrado' : 'abierto');
     tog.textContent = (d.modo === 'fija') ? '🔒' : '🔓';
     tog.title = (d.modo === 'fija')
       ? 'Medida FIJA (la escribes tú). Clic para volver a Auto.'
