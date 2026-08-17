@@ -182,12 +182,15 @@
   }
 
   // FAMILIA DE DIBUJO efectiva = qué constructor traza esta barra.
-  // 1) El ROL de la tipología MANDA: un componente ES/EC se dibuja como marco
-  //    cerrado y un TR* como traba, sea cual sea su figura (es la PIEZA la que
-  //    define la forma de colocación, no el código de figura). Un rol 'cabezal'
-  //    también manda: se traza como longitudinal aunque la figura sea de 4 lados
-  //    (esa discordancia la AVISA generar.js — dibujar un marco a media altura
-  //    de la viga sería peor que avisar).
+  // 1) LA TOPOLOGÍA MANDA (Modelo A, 14-ago): una figura CERRADA se dibuja como
+  //    MARCO venga el rol que venga — ver abajo `if (esMarco ||
+  //    esEstriboConGanchos(f)) return 'estribo';`. El rol sólo elige entre las
+  //    rutas de una figura ABIERTA (sección vs longitudinal).
+  //    (Aquí decía lo contrario: «el ROL de la tipología MANDA… un TR* como traba,
+  //    sea cual sea su figura», y que un rol 'cabezal' forzaba el trazado
+  //    longitudinal de un marco de 4 lados «y esa discordancia la AVISA
+  //    generar.js». Las dos cosas las derogó el Modelo A: la familia 'traba' no
+  //    existe y el marco cerrado ya no se parte en 3 lados con aviso.)
   // 2) SIN rol declarado, lo dice la figura: perímetro de 4 lados → estribo;
   //    1 lado → recta; 2+ lados → 'cadena' (el cabezal con patas dejó de ser la
   //    ruta normal — ver MIGRACIÓN CABEZAL → TRAZADOR más abajo).
@@ -197,12 +200,10 @@
   //    que traza el cabezal. Por eso el rol cabezal ya no fuerza el constructor de
   //    3 lados sobre una 104B: antes dibujaba una U y avisaba "D no se traza";
   //    ahora sale entera y el aviso desaparece porque ya no hay deuda.
-  //    EXCEPCIÓN DELIBERADA — el MARCO CERRADO DE 4 LADOS (104A/104D/104O/104P…)
-  //    NO pasa por el genérico ni siquiera con rol 'cabezal': ese marco ya tiene
-  //    constructor propio y calibrado, y con rol cabezal el comportamiento
-  //    histórico (traza 3 lados y AVISA del cuarto) se conserva tal cual. El
-  //    trazador genérico entra sólo donde hoy no hay dibujo fiel, no a rebarajar
-  //    lo que ya funciona.
+  //    EL MARCO CERRADO DE 4 LADOS (104A/104D/104O/104P…) no pasa por el
+  //    genérico: tiene constructor propio y calibrado. (Antes esto decía que con
+  //    rol 'cabezal' se conservaba «el comportamiento histórico: traza 3 lados y
+  //    AVISA del cuarto» — eso murió con el Modelo A: el marco es marco siempre.)
   //
   // FIX 305A (TANDA P) — LA FIGURA MANDA EL TRAZADO. El rol 'estribo' YA NO fuerza
   // el marco cerrado a cualquier figura: sólo cuando la figura ES un marco (4 lados
@@ -250,7 +251,6 @@
       // declarados como parciales -> el MARCO manda, como el 104D y como era
       // antes de la Tanda P ("el estribo estaba bien en vigas").
       if (esEstriboConGanchos(f)) return 'estribo';
-      if (esRomboSeccion(f)) return 'rombo';   // hoy: ninguna figura (ver stub)
       if (esCadenaSeccion) return 'cadena';
       return 'estribo';
     }
@@ -653,7 +653,7 @@
     var f = (figura || '').toUpperCase();
     var L = String(lado == null ? '' : lado).toUpperCase();
     var fam = familiaDeDibujo(f, rol || null);
-    if (fam !== 'estribo' && fam !== 'traba' && fam !== 'rombo') return 'dims';
+    if (fam !== 'estribo') return 'dims';   // (las familias 'traba' y 'rombo' murieron)
     var g = ganchosTerminales(f, rol);
     if (g && (g.ini === L || g.fin === L)) return 'gancho';
     var ejes = ejesMarcoSeccion(f, rol);
@@ -1402,12 +1402,6 @@
     // corre.
     var cy = (anchor && anchor.y != null && isFinite(anchor.y)) ? Number(anchor.y) : yc;
     var cz = (anchor && anchor.z != null && isFinite(anchor.z)) ? Number(anchor.z) : 0;
-    // "EL DOMINANTE CALZA CON EL LADO SELECCIONADO" (regla del usuario, 14-ago):
-    // si el dominante corre PARALELO a la cara clickeada (anchor.anclarCara =
-    // {eje:'u'|'v', s:±1} + anchor.domIdx), la pieza no se centra en ese eje: el
-    // dominante se APOYA en esa cara (eje a eje contra el marco) y el resto del
-    // trazo cuelga hacia el núcleo — clic abajo = barra abajo con patas arriba.
-    // Un dominante que CRUZA la cara (va de cara a cara) se queda centrado.
     return pts.map(function (p) {
       var q = V(xx, cy + (p.v - cv), cz + mu * (p.u - cu));
       if (p.esArco) q.esArco = true;
@@ -2257,67 +2251,14 @@
     return true;
   }
 
-  // (Sin uso hoy: quedó de la clasificación equivocada del 14-ago. Se conserva
-  // la función por si el catálogo incorpora algún día un rombo REAL, pero
-  // ninguna figura actual la activa.)
-  function esRomboSeccion(figura) {
-    return false;
-  }
-
-  // Traza el rombo pegado al marco. Ganchos: dos patas que salen de la punta
-  // SUPERIOR hacia el interior, tangentes a sus codos (>90° → arco explícito de
-  // _conGanchosRadio, cuya cresta queda DESPLAZADA AL INTERIOR: nada asoma).
-  function _romboPerimetral(figura, dims, host, anchor, diamCm) {
-    var m = _marcoNucleo(host, anchor, diamCm);
-    var xx = anchor.x || 0;
-    var yMid = (m.ySup + m.yInf) / 2;
-    // vértices = puntos medios de los 4 lados del marco (eje del fierro AL marco:
-    // la superficie del codo queda exactamente al recubrimiento, como el 104D).
-    var pTop = { u: 0, v: m.ySup }, pDer = { u: m.w2, v: yMid };
-    var pInf = { u: 0, v: m.yInf }, pIzq = { u: -m.w2, v: yMid };
-    var g = extGancho(diamCm);
-    // patas del gancho: cuelgan de la punta superior siguiendo los lados
-    // (prolongación hacia adentro) — el pase de ganchos las curva con radio.
-    var dIn1 = _unit2(pIzq.u - pTop.u, pIzq.v - pTop.v);   // hacia abajo-izq
-    var dIn2 = _unit2(pDer.u - pTop.u, pDer.v - pTop.v);   // hacia abajo-der
-    // VÉRTICES TEÓRICOS EN EL MARCO — la convención del 104D: la polilínea (el
-    // dato) toca el marco EXACTO en las 4 puntas y las dims se listan a vértice
-    // teórico (como aSa); el redondeo del doblez lo pone el motor al dibujar
-    // (una barra doblada nunca alcanza el vértice teórico — eso no es un bug,
-    // es la física del doblado, igual que en las esquinas del 104D).
-    // Cada pata ENVUELVE la punta superior: llega por un lado y cuelga
-    // prolongando el otro hacia el interior.
-    var cadena = [
-      { u: pTop.u + dIn1.u * g, v: pTop.v + dIn1.v * g },  // punta gancho A (interior)
-      pTop, pDer, pInf, pIzq, { u: pTop.u, v: pTop.v },    // el contorno completo
-      { u: pTop.u + dIn2.u * g, v: pTop.v + dIn2.v * g }   // punta gancho B (interior)
-    ];
-    var out = cadena.map(function (p) { return V(xx, p.v, p.u); });
-    return (anchor && anchor.espejo) ? _espejarEje(out, 'z', 0) : out;
-  }
-  function _unit2(u, v) { var L = Math.hypot(u, v) || 1; return { u: u / L, v: v / L }; }
-
-  // Dims REALES del rombo, derivadas del marco EXTERIOR (mismo criterio que el
-  // 104D, que lista anchoUtil/altoUtil): lado = hipotenusa de las semidiagonales
-  // exteriores; ganchos terminales = extensión normativa. Lo consume reglas
-  // (_dimsEfectivas) para que el LISTADO diga lo que se dibuja.
-  function dimsRombo(figura, anchoUtilExt, altoUtilExt, diamCm) {
-    var f = (figura || '').toUpperCase();
-    var tr = tramosDeFigura(f);
-    if (!tr) return null;
-    var lado = Math.hypot(anchoUtilExt / 2, altoUtilExt / 2);
-    var g = extGancho(diamCm);
-    var out = {}, i, t;
-    for (i = 0; i < tr.tramos.length; i++) {
-      t = tr.tramos[i];
-      if (t.lado == null) continue;
-      out[t.lado] = (i === 0 || i === tr.tramos.length - 1)
-        ? Math.round(g * 10) / 10
-        : Math.round(lado * 10) / 10;
-    }
-    return out;
-  }
-
+  // (15-ago) FAMILIA 'rombo' RETIRADA. Vivían aquí `esRomboSeccion` (un
+  // `return false` literal, resto de la clasificación equivocada del 14-ago),
+  // `_romboPerimetral`, `_unit2` y `dimsRombo`. Al ser ese stub el ÚNICO productor
+  // de la familia, nada en el repo podía ver fam === 'rombo': las cuatro eran
+  // inalcanzables, y el comentario de `dimsRombo` afirmaba un consumidor
+  // (reglas._dimsEfectivas) que en realidad usa `dimsEstriboGanchos`. Si algún día
+  // el catálogo trae un rombo REAL, entra por el trazador genérico como cualquier
+  // otra figura — que es justo el punto del Modelo A.
   // Dims REALES de un estribo CON GANCHOS DECLARADOS (106A y familia), derivadas
   // del marco EXTERIOR — el listado dice lo que _estriboPerimetral dibuja. El
   // recorrido del marco es: gancho A → baja el lado IZQUIERDO (alto) → inferior
@@ -2566,7 +2507,6 @@
     var rol = opts.rol || _rolPorFigura(figura, anchor);
     var familia = familiaDeDibujo(figura, rol);
     if (familia === 'estribo') return _estriboPerimetral(figura, dims, host, anchor, diamCm);
-    if (familia === 'rombo') return _romboPerimetral(figura, dims, host, anchor, diamCm);
     if (familia === 'cadena') return _cadenaGenerica(figura, dims, host, anchor, diamCm, rol);
     return _cabezalLongitudinal(figura, dims, host, anchor, diamCm);   // recta | cabezal
   }
@@ -2665,8 +2605,6 @@
     autoProfundidadLong: autoProfundidadLong, // 'v' en auto → profundidad útil exacta
     esEstriboConGanchos: esEstriboConGanchos, // 106A: marco + ganchos declarados
     dimsEstriboGanchos: dimsEstriboGanchos,   // sus dims listadas = lo que se dibuja
-    esRomboSeccion: esRomboSeccion,           // ¿cuerpo diagonal que cierra? (106A)
-    dimsRombo: dimsRombo,                     // dims derivadas del marco (listado)
     _cadenaGenerica: _cadenaGenerica
   };
 

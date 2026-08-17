@@ -42,7 +42,11 @@ ok(FP.esEstriboConGanchos('106A') === true, '106A ES un estribo con ganchos decl
 ok(FP.esEstriboConGanchos('104D') === false, '104D no lo necesita (sus ganchos son implícitos)');
 ok(FP.esEstriboConGanchos('105A') === false, '105A (zigzag) NO lo es');
 ok(FP.esEstriboConGanchos('104B') === false, '104B (cadena abierta de 4) NO lo es');
-ok(FP.esRomboSeccion('106A') === false, 'y el "rombo" quedó MUERTO: ninguna figura del catálogo lo es');
+// (15-ago) `esRomboSeccion` se RETIRÓ: era un `return false` literal y el único
+// productor de la familia 'rombo', así que nada podía verla. El guard equivalente
+// —y más fuerte— es que la 106A se clasifica como ESTRIBO, que es lo que se
+// verifica arriba y abajo en este mismo archivo.
+ok(FP.familiaDeDibujo('106A', null) === 'estribo', 'y el "rombo" quedó MUERTO: la 106A es un estribo');
 ok(FP.familiaDeDibujo('106A', 'estribo') === 'estribo', 'familia de dibujo = ESTRIBO (el marco manda)');
 ok(FP.familiaDeDibujo('106A', null) === 'estribo', 'también sin rol (fuerza pieza de sección por topología)');
 

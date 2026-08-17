@@ -704,7 +704,9 @@
   // MIGRACIÓN del viejo 0-based: cualquier número n ≥ 1 se lee como nivel
   // 1-based tal cual, y 0 (o negativo) se lee como 1 — que es exactamente lo que
   // significaba el viejo 0 ("pegado al recubrimiento y aporta φ").
-  var JER_DEFAULT_POR_ROL = { estribo: 1, traba: 1, cabezal: 1 };
+  // (el nivel de partida es 1 para todos; la tabla por rol quedó constante y su
+  // entrada 'traba' era resto del rol muerto — ver rolDeComponente)
+  var JER_DEFAULT_POR_ROL = { estribo: 1, cabezal: 1 };
 
   // Nivel DECLARADO por el componente: 'no' | entero ≥ 1 | null (= no declara).
   function nivelJerarquia(valor) {
@@ -719,7 +721,7 @@
   function nivelJerarquiaEfectivo(valor, rol) {
     var n = nivelJerarquia(valor);
     if (n != null) return n;
-    return JER_DEFAULT_POR_ROL[rol || 'cabezal'] || 2;
+    return JER_DEFAULT_POR_ROL[rol || 'cabezal'] || 1;
   }
 
   // ---------------------------------------------------------------------------
@@ -2127,7 +2129,7 @@
   // es donde vive el despacho de los tres constructores.
   function _esPiezaDeSeccion(base) {
     var fp = _fp();
-    if (!fp || !fp.esPiezaDeSeccion) return base.rol === 'estribo' || base.rol === 'traba';
+    if (!fp || !fp.esPiezaDeSeccion) return base.rol === 'estribo';
     return fp.esPiezaDeSeccion(base.figura, base.rol);
   }
 
@@ -3361,7 +3363,7 @@
   // doblaría el crecimiento y el perímetro dibujado dejaría de coincidir con el
   // largo de corte (que sí sube 10, porque son dos lados de 5 más cada uno).
   function _deltaMarcoSeccion(comp, avisos) {
-    if (!comp || (comp._rol !== 'estribo' && comp._rol !== 'traba')) return null;
+    if (!comp || comp._rol !== 'estribo') return null;
     var fp = _fp();
     if (!fp || !fp.ejesMarcoSeccion) return null;
     var ejes = fp.ejesMarcoSeccion(comp.figura, comp._rol);
@@ -3436,7 +3438,7 @@
   // números que difieren en el último bit del flotante — mandarla siempre habría
   // movido el trazo ~1e-15 en todas las 106x del catálogo).
   function _ganchoDimSeccion(comp, dims) {
-    if (!comp || (comp._rol !== 'estribo' && comp._rol !== 'traba')) return null;
+    if (!comp || comp._rol !== 'estribo') return null;
     var fp = _fp();
     if (!fp || !fp.ganchosTerminales) return null;
     var g = fp.ganchosTerminales(comp.figura, comp._rol);
@@ -3905,7 +3907,10 @@
     return { inset: i0 + d, insetInf: iI + d, insetLat: iL + d };
   }
 
-  function _rolDeTipologia(tip, cara) {
+  // (el 2º parámetro `cara` se retiró el 15-ago: era el resto de la regla
+  //  "cara lateral = traba", que murió con el rol. Los llamadores que lo
+  //  pasaban quedan compatibles: JS ignora los argumentos extra.)
+  function _rolDeTipologia(tip) {
     var t = (tip || '').toUpperCase();
     if (t === 'ES' || t === 'ESC' || t === 'EC') return 'estribo';
     if (t === 'TRV' || t === 'TR' || t === 'TC' || t === 'TRC' || t === 'TRL' || t === 'TRF') return 'traba';

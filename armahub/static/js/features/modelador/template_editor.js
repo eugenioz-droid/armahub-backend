@@ -296,15 +296,10 @@
   // pasa (no se lee de ST): el mismo código de tipología significa cosas
   // distintas según el elemento — 'CB' es Cabezal en muro y en columna, pero
   // 'F' es Refuerzo Inferior en losa y no existe en viga.
-  function _nombreTipologia(elem, tip) {
-    var lista = TPL_TIPOLOGIAS[_figKey(elem)] || [];
-    for (var i = 0; i < lista.length; i++) {
-      if (_figKey(lista[i][0]) === _figKey(tip)) return lista[i][1];
-    }
-    return '';
-  }
+  // (15-ago) `_nombreTipologia` RETIRADA junto con _FIGS_EN_AVISO: eran el
+  // traductor 'MH'→'Malla Horizontal' y el tope de nombres del aviso figura↔tipología
+  // que se retiró el 14-ago (la tabla sugiere, no avisa). Cero llamadores.
 
-  var _FIGS_EN_AVISO = 6;   // cuántas figuras admitidas se nombran (no abrumar)
 
   // ¿La figura tipeada es AJENA a la tipología? null = nada que decir. Si hay
   // algo que decir devuelve { figura, tip, admite, texto, corto }:
@@ -739,18 +734,9 @@
     return _poseDe({ tipologia: tip, cara: _caraDefault(tip), lado: 1, plano_pieza: { orientacion: ori } });
   }
 
-  // ¿el componente ci está VOLTEADO? (orientación 'volteada'). Sólo lo usa la UI
-  // (estado del botón); el efecto GEOMÉTRICO lo resuelve el motor por permutación
-  // de ejes (§INTERACCIÓN-2.0 · G3/B3).
-  function _compVolteado(ci) {
-    if (ci == null || ci < 0 || !ST.receta) return false;
-    return _orientacionDe(ST.receta.componentes[ci]) === 'volteada';
-  }
-  // Orientación del componente ci (para el botón/estado de la UI).
-  function _compOrientacion(ci) {
-    if (ci == null || ci < 0 || !ST.receta) return 'acostada';
-    return _orientacionDe(ST.receta.componentes[ci]);
-  }
+  // (15-ago) `_compVolteado` y `_compOrientacion` RETIRADAS: sólo alimentaban el
+  // estado del viejo botón de voltear, que murió cuando el volteo y la tecla R
+  // pasaron a ser una sola operación (_rotarPoseSeleccion). Cero llamadores.
 
   // dims por defecto para una figura recién colocada. Estribo con "tomar contorno"
   // → todas auto (se ajustan al recubrimiento; recub 0 = al borde). Cabezal con
@@ -1525,8 +1511,6 @@
       // SECCIÓN LIMPIA: rol + eje por el que CORRE la barra, calculados UNA vez aquí
       // (no por frame). Los usa _clipLocalPorVista para esconder del render las
       // barras vistas DE PUNTA — el overlay ya las dibuja como círculo de sección.
-      mesh.userData.rol = _rolComp(pl);
-      mesh.userData.ejeMayor = _ejeMayorSpan(pl.puntos);
       ST.barras3D.push(mesh);
       ST.world.add(mesh);
     });
@@ -7305,7 +7289,6 @@
     _centroSeleccion3D: _centroSeleccion3D, _pivotarEn: _pivotarEn,   // órbita en torno a la selección
     // INTERACCIÓN-2.0 · orientación de la pieza + snap de cara
     rotarPlanoPieza: rotarPlanoPieza,                           // cicla (o fija) la orientación + regenera
-    _compVolteado: _compVolteado, _compOrientacion: _compOrientacion,
     _orientacionDe: _orientacionDe, _orientacionSiguiente: _orientacionSiguiente,
     _caraDeEje: _caraDeEje,
     _facesDeVista: _facesDeVista, _caraCercana: _caraCercana,   // snap de cara

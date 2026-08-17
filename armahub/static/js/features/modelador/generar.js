@@ -158,7 +158,8 @@
   // Cuántos lados TRAZA de verdad el constructor de cada familia de dibujo.
   // 'cadena' (trazador genérico) no está en la tabla porque traza TODOS los lados
   // de la figura, sean 4 o 9: su cuota es n, no una constante (ver _revisarFiguraComp).
-  var LADOS_TRAZADOS = { recta: 1, cabezal: 3, traba: 3, estribo: 4 };
+  // ('traba' salió: familiaDeDibujo ya no puede devolverla — Modelo A)
+  var LADOS_TRAZADOS = { recta: 1, cabezal: 3, estribo: 4 };
 
   // Revisa la figura de un componente contra el catálogo y contra lo que el
   // editor sabe dibujar. Devuelve false cuando NO se debe generar payload.
