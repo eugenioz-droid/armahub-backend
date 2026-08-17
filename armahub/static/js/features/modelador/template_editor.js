@@ -3094,12 +3094,15 @@
       planta: { u: 'largo', v: 'ancho' }
     }[plano] || { u: 'ancho', v: 'alto' };
     lados.forEach(function (k) {
+      // `te-node-h`: son del HORMIGÓN, no de la barra. Se pintan distinto a los
+      // handles de la selección para que no se confundan al agarrarlos (era el
+      // reporte: 'me sigue agarrando el elemento de hormigón').
       svg.appendChild(_svgEl('rect', {
-        'class': 'te-node', x: X(k.u) - 4, y: Y(k.v) - 4, width: 8, height: 8, rx: 2,
+        'class': 'te-node te-node-h', x: X(k.u) - 3.5, y: Y(k.v) - 3.5, width: 7, height: 7, rx: 2,
         'data-node': k.eje, 'data-plano': plano,
         style: 'cursor:' + k.cur
       })).appendChild(_svgEl('title', {})).textContent =
-        'Arrastra para cambiar el ' + quePasa[k.eje] + ' del elemento';
+        'HORMIGÓN — arrastra para cambiar el ' + quePasa[k.eje] + ' del elemento';
     });
   }
 
@@ -3979,17 +3982,34 @@
     var g = ST.receta.geometria;
     // El nodo redimensiona la dimensión del plano llevando la cara a |coord|·2.
     // seccion: U=ancho, V=alto · largo: U=largo, V=alto · planta: U=largo, V=ancho
-    // SOLO la dimensión del tirador que se agarró (ver _dibujarNodos).
-    var eje = (ST.dragNode && ST.dragNode.corner) || 'u';
-    var nuevo = (eje === 'v')
-      ? Math.max(GRID_SNAP, Math.round(Math.abs(uv.v) * 2 / GRID_SNAP) * GRID_SNAP)
-      : Math.max(GRID_SNAP, Math.round(Math.abs(uv.u) * 2 / GRID_SNAP) * GRID_SNAP);
+    // SOLO la dimensión del tirador que se agarró (ver _dibujarNodos), y MEDIDA
+    // CONTRA LA CARA OPUESTA — no como |coord|·2 (fix 15-ago: 'se hace mierda el
+    // elemento'). El elemento está CENTRADO por definición, así que con |coord|·2
+    // arrastrar un borde hacia el centro traía el opuesto a su encuentro y la
+    // dimensión colapsaba a cero de golpe. Midiendo contra la cara opuesta el
+    // arrastre es 1:1 con el borde que agarraste y cruzar el centro no aplasta
+    // nada: en el peor caso se llega al mínimo.
+    var dn0 = ST.dragNode || {};
+    var eje = dn0.corner || 'u';
     var campo = {
       seccion: { u: 'ancho', v: 'alto' },
       largo: { u: 'largo', v: 'alto' },
       planta: { u: 'largo', v: 'ancho' }
     }[plano] || { u: 'ancho', v: 'alto' };
-    g[campo[eje]] = nuevo;
+    var cual = campo[eje];
+    var coord = (eje === 'v') ? Number(uv.v) : Number(uv.u);
+    var previo = Number((dn0.geo0 || g)[cual]) || 0;
+    // el borde agarrado es el del SIGNO de donde se tomó; la cara opuesta está en
+    // −signo·previo/2 y la medida nueva es la distancia del cursor a esa cara.
+    if (dn0.signo == null) dn0.signo = (coord >= 0) ? 1 : -1;
+    var nuevo = Math.abs(coord - (-dn0.signo * previo / 2));
+    // MÍNIMO CONSTRUIBLE: por debajo del recubrimiento de las dos caras la pieza
+    // no existe, y dejarla llegar a 0 es lo que producía la línea aplastada.
+    var minima = (cual === 'alto')
+      ? (Number(g.recub_sup || 4) + Number(g.recub_inf || 4) + GRID_SNAP)
+      : (2 * Number(g.recub_lat || 3) + GRID_SNAP);
+    nuevo = Math.max(minima, Math.round(nuevo / GRID_SNAP) * GRID_SNAP);
+    g[cual] = nuevo;
     _sincronizarRibbonGeo();   // los campos del ribbon siguen al arrastre
     _regenerarDiferido();
   }

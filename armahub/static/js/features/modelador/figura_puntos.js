@@ -392,10 +392,13 @@
       return { ok: false, lado: null,
         motivo: 'la figura ' + spec.codigo + ' no tiene el lado ' + (d || '(vacío)') };
     }
-    if (_figuraEsContornoCerrado(f)) {
-      return { ok: false, lado: null,
-        motivo: 'la figura ' + spec.codigo + ' es un contorno CERRADO y no tiene lado dominante' };
-    }
+    // (15-ago) Aquí había un corte: «contorno CERRADO → no tiene lado dominante».
+    // Era una regla MÍA, no del usuario, y no se sostiene: en una figura cerrada el
+    // lado dominante SÍ significa algo —es el lado donde ARRANCAN LOS GANCHOS—, y
+    // medido, ninguna otra vía lo controla (cambiar cara/lado de la pose deja el
+    // marco y la punta del gancho idénticos; el espejo sólo alcanza 2 de las 4
+    // esquinas). Se quita el corte y se deja que decidan las reglas de siempre:
+    // un gancho no puede ser dominante, una diagonal tampoco.
     var tr = tramosDeFigura(f);
     if (!tr) {
       return { ok: false, lado: null,
@@ -424,13 +427,28 @@
           motivo: 'el lado ' + d + ' es el GANCHO de ' + spec.codigo + ' (el cuerpo es el otro tramo)' };
       }
     } else if (n > 2 && (iL === 0 || iL === n - 1)) {
-      return { ok: false, lado: null,
-        motivo: 'el lado ' + d + ' es un GANCHO (tramo terminal de la cadena)' };
+      // «terminal = gancho» vale en una cadena ABIERTA. En un contorno CERRADO el
+      // trazo vuelve sobre sí mismo, así que el primero y el último son lados del
+      // cuerpo como cualquier otro (un 104D no tiene ganchos declarados). Ahí los
+      // ganchos son los que la figura DECLARA (106x: A y F).
+      var cerradoV = _figuraEsContornoCerrado(f);
+      var gT = cerradoV ? ganchosTerminales(f, 'estribo') : null;
+      var esGancho = cerradoV ? !!(gT && (gT.ini === d || gT.fin === d)) : true;
+      if (esGancho) {
+        return { ok: false, lado: null,
+          motivo: 'el lado ' + d + ' es un GANCHO' + (cerradoV ? ' declarado de ' + spec.codigo : ' (tramo terminal de la cadena)') };
+      }
     }
-    var ejes = ejesCadenaLong(f);
-    if (ejes && ejes[d] === 'd') {
-      return { ok: false, lado: null,
-        motivo: 'el lado ' + d + ' es DIAGONAL: ponerlo a lo largo sacaría la pieza de su plano' };
+    if (!_figuraEsContornoCerrado(f)) {
+      // Sólo en una figura ABIERTA: ahí el dominante es el lado que CORRE a lo
+      // largo, y una diagonal sacaría la pieza de su plano. En una cerrada el
+      // dominante no estira nada —dice dónde arrancan los ganchos—, así que una
+      // diagonal (el cuerpo de un rombo lo es entero) es una elección válida.
+      var ejes = ejesCadenaLong(f);
+      if (ejes && ejes[d] === 'd') {
+        return { ok: false, lado: null,
+          motivo: 'el lado ' + d + ' es DIAGONAL: ponerlo a lo largo sacaría la pieza de su plano' };
+      }
     }
     return { ok: true, lado: d, motivo: null };
   }

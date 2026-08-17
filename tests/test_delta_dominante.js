@@ -243,10 +243,17 @@ console.log('\nF — comp.lado_dominante manda, y dibujo y medida usan EL MISMO'
     '105A: elegibles B/C/D (A y E son los ganchos terminales)');
   ok(JSON.stringify(FP.ladosDominantesElegibles('104B')) === JSON.stringify(['B', 'C']),
     '104B: elegibles B/C');
-  ok(JSON.stringify(FP.ladosDominantesElegibles('104D')) === '[]',
-    '104D es un contorno CERRADO: no tiene dominante que elegir');
-  ok(JSON.stringify(FP.ladosDominantesElegibles('106A')) === '[]',
-    '106A tampoco (contorno cerrado con sus ganchos declarados)');
+  // ASSERTS INVERTIDOS (15-ago) POR CORRECCIÓN DEL USUARIO: «lo de que la figura
+  // cerrada no tiene dominante no lo definí yo. Puede perfectamente tener un
+  // dominante y eso regiría la posición de los ganchos». Y se comprobó midiendo
+  // que ninguna otra vía lo controla: cambiar cara/lado de la pose deja el marco
+  // y la punta del gancho IDÉNTICOS, y el espejo sólo alcanza 2 de las 4
+  // esquinas. Así que en una cerrada los lados del CUERPO son elegibles; los
+  // ganchos DECLARADOS (106x: A y F) no.
+  ok(JSON.stringify(FP.ladosDominantesElegibles('104D')) === JSON.stringify(['A', 'B', 'C', 'D']),
+    '104D (cerrado sin ganchos declarados): sus 4 lados son elegibles');
+  ok(JSON.stringify(FP.ladosDominantesElegibles('106A')) === JSON.stringify(['B', 'C', 'D', 'E']),
+    '106A: elegibles los 4 del cuerpo; A y F son los ganchos declarados');
 
   // 105A tiene 5 tramos rectos sin gancho >90°, o sea la polilínea tiene un
   // segmento por tramo: el segmento i ES el lado i. Eso permite comparar lo que
@@ -297,13 +304,13 @@ console.log('\nG — un gancho o una diagonal como dominante se ignoran con avis
       '…y queda UN aviso que dice que es un gancho: ' + JSON.stringify(av[0] || null));
   });
 
-  // CONTORNO CERRADO — un 104D no tiene dominante que elegir.
+  // CONTORNO CERRADO — ahora SÍ acepta dominante (ver arriba): no debe avisar.
   {
     const c = comp('104D', 'ES', { lado_dominante: 'B' });
     expandir(c);
     const av = (c._avisos || []).filter(a => a.indexOf('Lado dominante') === 0);
-    ok(av.length === 1 && av[0].indexOf('CERRADO') > 0,
-      '104D con dominante B → aviso de contorno cerrado: ' + JSON.stringify(av[0] || null));
+    ok(av.length === 0,
+      '104D con dominante B: se acepta, sin aviso (' + JSON.stringify(av) + ')');
   }
 
   // DIAGONAL — el catálogo de hoy no tiene ninguna figura con un lado INTERIOR
