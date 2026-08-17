@@ -516,7 +516,7 @@
   // cerrado, lado inexistente— la cascada del catálogo (ladoDominanteFigura).
   // Desde WF1 (14-ago) reglas.ladoDominante SÍ lee comp.lado_dominante y lo pasa
   // por validarLadoDominante; una elección inválida se ignora CON AVISO. La ficha
-  // ofrece las letras como botones (_filaLadoDominante) y marca la que manda.
+  // ofrece la LETRA de cada dim como botón radial (_dimRow) y marca la que manda.
   function _ladoDomElegido(c) {
     var v = c && c.lado_dominante;
     v = String(v == null ? '' : v).trim().toUpperCase();
@@ -4452,7 +4452,9 @@
     // …y DICHO en texto, junto a las dims, que es de lo que habla (cuál de estas
     // letras corre a lo largo). Con un solo parcial es obvio y no se repite —
     // salvo que la receta traiga un lado_dominante guardado, que sí hay que avisar.
-    if (spec.parciales.length > 1 || _ladoDomElegido(c)) _filaLadoDominante(body, c, ci, spec, dom);
+    // (15-ago) La fila "Dominante" separada murió: la LETRA de cada dim ES ahora
+    // su botón radial (ver _dimRow). Sólo queda la nota, y sólo cuando aporta.
+    _notaLadoDominante(body, c, spec, dom);
     spec.parciales.forEach(function (L) {
       body.appendChild(_dimRow(c, ci, L, dom));
     });
@@ -4651,47 +4653,23 @@
   // AUTO vuelve a la cascada del catálogo. El marcado azul de _dimRow sigue mostrando
   // el que MANDA de verdad (reglas.ladoDominante), elegido o heredado — así si el
   // motor ignora una elección inválida guardada, se VE que no mandó.
-  function _filaLadoDominante(body, c, ci, spec, efectivo) {
+  // Nota del dominante. Los BOTONES viven en las letras de cada dim (_dimRow);
+  // acá sólo queda lo que esas letras no pueden decir: qué significa el dominante
+  // y —si el usuario eligió uno que el motor descartó— que no está mandando.
+  function _notaLadoDominante(body, c, spec, efectivo) {
     var fp = global.ModeladorFiguraPuntos || {};
     var elegibles = (fp.ladosDominantesElegibles ? fp.ladosDominantesElegibles(c.figura) : []) || [];
+    var n = _div('te-note');
     if (!elegibles.length) {
-      var n0 = _div('te-note');
-      n0.textContent = 'Esta figura cierra sobre sí misma: no tiene un lado que se estire ni que se empalme.';
-      body.appendChild(n0);
+      n.textContent = 'Esta figura cierra sobre sí misma: no tiene un lado que se estire ni que se empalme. ' +
+        'El Δ de un lado se replica en su espejo y el marco crece simétrico.';
+      body.appendChild(n);
       return;
     }
     var elegido = _ladoDomElegido(c);
-    var row = _div('te-row');
-    row.appendChild(_label('Dominante'));
-    var wrap = _div(''); wrap.style.display = 'flex'; wrap.style.gap = '4px'; wrap.style.flexWrap = 'wrap';
-    // AUTO = sin elección (cascada del catálogo). Activo cuando no hay elegido.
-    var bAuto = document.createElement('button');
-    bAuto.type = 'button'; bAuto.className = 'te-dombtn' + (elegido ? '' : ' on');
-    bAuto.textContent = 'auto';
-    bAuto.title = 'La figura decide (catálogo): hoy manda ' + (efectivo || '—');
-    bAuto.onclick = function () { _setLadoDominante(c, null); _mut(ci); };
-    wrap.appendChild(bAuto);
-    spec.parciales.forEach(function (L) {
-      var b = document.createElement('button');
-      b.type = 'button';
-      var ok = elegibles.indexOf(L) >= 0;
-      b.className = 'te-dombtn' + (elegido === L ? ' on' : '') + (L === efectivo ? ' manda' : '');
-      b.textContent = L;
-      if (ok) {
-        b.title = (L === efectivo ? 'Manda ahora. ' : '') + 'Elegir ' + L + ' como lado dominante';
-        b.onclick = function () { _setLadoDominante(c, L); _mut(ci); };
-      } else {
-        b.disabled = true;
-        var vr = fp.validarLadoDominante ? fp.validarLadoDominante(c.figura, L) : null;
-        b.title = (vr && vr.motivo) ? vr.motivo : 'Este lado no puede ser dominante';
-      }
-      wrap.appendChild(b);
-    });
-    row.appendChild(wrap);
-    body.appendChild(row);
-    var n = _div('te-note');
-    n.textContent = 'El dominante es el lado que corre a lo largo: el que Auto estira contra el hormigón y el que recibe el empalme.' +
-      (elegido && elegido !== efectivo
+    n.textContent = 'Clic en una letra = ese lado es el DOMINANTE (el que corre a lo largo: el que Auto ' +
+      'estira contra el hormigón y el que recibe el empalme). Δ = cuánto se suma a ese lado.' +
+      ((elegido && elegido !== efectivo)
         ? ' ⚠ La elección ' + elegido + ' no está mandando (el motor la ignoró y avisa): manda ' + (efectivo || '—') + '.'
         : '');
     if (elegido && elegido !== efectivo) n.style.color = '#e65100';
@@ -4702,14 +4680,37 @@
     var d = c.dims[L] || { modo: 'auto' };
     c.dims[L] = d;
     var row = _div('te-row');
-    var lbl = _label(L);
-    if (dom && L === dom) {
-      lbl.className = 'te-dim-dom';
-      lbl.title = 'lado dominante: se estira/ancla';
-      row.title = 'lado dominante: se estira/ancla';
+    var fp = global.ModeladorFiguraPuntos || {};
+    var elegibles = (fp.ladosDominantesElegibles ? fp.ladosDominantesElegibles(c.figura) : []) || [];
+    var elegido = _ladoDomElegido(c);
+
+    // --- LA LETRA = BOTÓN RADIAL DEL DOMINANTE -------------------------------
+    var lbl;
+    if (elegibles.length) {
+      lbl = document.createElement('button');
+      lbl.type = 'button';
+      lbl.textContent = L;
+      var puede = elegibles.indexOf(L) >= 0;
+      lbl.className = 'te-dimletra' + (elegido === L ? ' on' : '') + (L === dom ? ' manda' : '');
+      if (puede) {
+        lbl.title = (L === dom ? 'Manda ahora. ' : '') +
+          'Elegir ' + L + ' como lado dominante (clic de nuevo = volver a automático)';
+        lbl.onclick = function () {
+          // segundo clic sobre el elegido = volver a la cascada del catálogo
+          _setLadoDominante(c, (elegido === L) ? null : L);
+          _mut(ci);
+        };
+      } else {
+        lbl.disabled = true;
+        var vr = fp.validarLadoDominante ? fp.validarLadoDominante(c.figura, L) : null;
+        lbl.title = (vr && vr.motivo) ? vr.motivo : 'Este lado no puede ser dominante';
+      }
+    } else {
+      // contorno cerrado: no hay lado que estirar, la letra es solo etiqueta
+      lbl = _label(L);
     }
     row.appendChild(lbl);
-    var wrap = _div(''); wrap.style.display = 'flex'; wrap.style.gap = '6px'; wrap.style.alignItems = 'center';
+    var wrap = _div(''); wrap.style.display = 'flex'; wrap.style.gap = '4px'; wrap.style.alignItems = 'center';
     // El placeholder DICE qué falta: en Fija sin valor el campo ya no llega con un 0
     // inventado, así que tiene que verse que ahí va una medida escrita por el usuario.
     var inp = _input({ value: (d.modo === 'fija' && d.valor != null) ? d.valor : '', placeholder: (d.modo === 'auto' ? 'auto' : 'medida'), type: 'number' }, function (v) {
@@ -4728,6 +4729,52 @@
       _mut(ci); _renderPanel();
     });
     wrap.appendChild(inp); wrap.appendChild(tog);
+
+    // --- Δ DE ESTE LADO + POR QUÉ PUNTA ---------------------------------------
+    // El motor ya lo consume entero (suma al largo de corte y a los kg, y en una
+    // figura CERRADA lo replica en el lado espejo). Acá sólo se escribe y se
+    // MUESTRA de dónde viene: si el Δ de este lado llegó por réplica, el campo lo
+    // dice en vez de aparecer vacío mintiendo.
+    var R = global.ModeladorReglas;
+    var dEf = (R && R.deltasDeComponente) ? (R.deltasDeComponente(c) || {}) : {};
+    var info = dEf[L] || null;
+    var propio = (d.delta != null && d.delta !== '');
+    var inDelta = _input({
+      value: propio ? d.delta : '',
+      placeholder: (info && info.origen === 'espejo') ? String(info.delta) : 'Δ',
+      type: 'number'
+    }, function (v) {
+      var t = String(v == null ? '' : v).trim();
+      if (t === '' || Number(t) === 0) { delete d.delta; } else { d.delta = Number(t); }
+      _mut(ci);
+    });
+    inDelta.className = 'te-delta';
+    inDelta.title = (info && info.origen === 'espejo')
+      ? ('Δ ' + info.delta + ' cm heredado del lado espejo ' + info.de +
+         ' (en un contorno cerrado los lados opuestos miden lo mismo). ' +
+         'Escribe un valor acá para fijar este lado aparte.')
+      : 'Δ de este lado en cm: se suma al largo de corte y a los kg. Negativo acorta.';
+    if (info && info.origen === 'espejo' && !propio) inDelta.classList.add('te-delta-esp');
+    wrap.appendChild(inDelta);
+
+    // FLECHA: por qué punta crece o se acorta. En un contorno CERRADO no se
+    // ofrece — ahí el Δ va en pareja y el marco crece SIMÉTRICO (el motor ignora
+    // `extremo`), así que un control que no hace nada sería una mentira.
+    var pares = (fp.paresEspejoFigura ? fp.paresEspejoFigura(c.figura) : null) || {};
+    if (!Object.keys(pares).length) {
+      var ext = (d.extremo === 'ini') ? 'ini' : 'fin';
+      var flecha = document.createElement('button');
+      flecha.type = 'button'; flecha.className = 'te-deltadir';
+      flecha.textContent = (ext === 'fin') ? '→' : '←';
+      flecha.title = (ext === 'fin')
+        ? 'Crece/acorta por el FINAL del lado (el inicio queda quieto). Clic para invertir.'
+        : 'Crece/acorta por el INICIO del lado (el final queda quieto). Clic para invertir.';
+      flecha.onclick = function () {
+        d.extremo = (ext === 'fin') ? 'ini' : 'fin';
+        _mut(ci); _renderPanel();
+      };
+      wrap.appendChild(flecha);
+    }
     row.appendChild(wrap);
     return row;
   }
@@ -4874,15 +4921,64 @@
     box.appendChild(g2);
     _tramosEditor(box, d, ci);
 
-    var g3 = _div('te-grid3');
-    g3.appendChild(_fld('N° capas', _input({ value: d.n_capas || 2, type: 'number' }, function (v) { d.n_capas = Math.max(1, Number(v) || 1); _mut(ci); })));
-    g3.appendChild(_fld('Sep. ejes cm', _input({ value: d.sep_capas != null ? d.sep_capas : 10, type: 'number' }, function (v) { d.sep_capas = Number(v) || 0; _mut(ci); }),
-      'Separación entre ejes de capas (eje a eje)'));
-    g3.appendChild(_fld('Prof. (capas)', _selectPairs([['x', 'largo'], ['y', 'alto'], ['z', 'ancho']], d.eje_capas || _ejeCapasDefault(), function (v) { d.eje_capas = v; _mut(ci); })));
-    box.appendChild(g3);
+    // --- 2ª LÍNEA DE DISTRIBUCIÓN (rango2) -----------------------------------
+    // El ARREGLO es un reparto por ÁREA: dos líneas, cada una con su eje, su
+    // rango y su @ (y sus tramos). El motor lo consume desde la tanda del arreglo
+    // por área y PREFIERE `rango2` cuando está; sin él cae a las capas legadas
+    // (n_capas/sep_capas/eje_capas), que es lo único que esta UI ofrecía.
+    // Una receta VIEJA con capas se respeta tal cual —convertirla sola movería
+    // barras sin permiso—: se muestran sus campos con el botón para pasarla.
+    var legadoCapas = (!d.rango2 && Number(d.n_capas) > 1);
+    if (legadoCapas) {
+      var g3 = _div('te-grid3');
+      g3.appendChild(_fld('N° capas', _input({ value: d.n_capas || 2, type: 'number' }, function (v) { d.n_capas = Math.max(1, Number(v) || 1); _mut(ci); })));
+      g3.appendChild(_fld('Sep. ejes cm', _input({ value: d.sep_capas != null ? d.sep_capas : 10, type: 'number' }, function (v) { d.sep_capas = Number(v) || 0; _mut(ci); }),
+        'Separación entre ejes de capas (eje a eje)'));
+      g3.appendChild(_fld('Prof. (capas)', _selectPairs([['x', 'largo'], ['y', 'alto'], ['z', 'ancho']], d.eje_capas || _ejeCapasDefault(), function (v) { d.eje_capas = v; _mut(ci); })));
+      box.appendChild(g3);
+      var conv = document.createElement('button');
+      conv.type = 'button'; conv.className = 'te-ctool'; conv.textContent = 'Convertir a 2ª línea de distribución';
+      conv.title = 'Pasa estas capas a un segundo rango (from → to con su @), que es la forma nueva: ' +
+        'se puede arrastrar, admite tramos y no está atada a la profundidad.';
+      conv.onclick = function () { d.rango2 = _rango2Default(c, d); _mut(ci); _renderPanel(); };
+      box.appendChild(conv);
+    } else {
+      if (!d.rango2) d.rango2 = _rango2Default(c, d);
+      var g2b = _div('te-grid2');
+      g2b.appendChild(_fld('@ sep (2ª) cm', _inputSep(d.rango2.sep || 20, function (v) {
+        d.rango2.sep = v; _mut(ci);
+      }), 'Espaciamiento de la SEGUNDA línea (la del otro eje)'));
+      g2b.appendChild(_fld('Eje 2ª línea', _selectPairs([['x', 'largo'], ['y', 'alto'], ['z', 'ancho']],
+        d.rango2.eje || _rango2Default(c, d).eje, function (v) {
+          d.rango2.eje = v;
+          var r0 = _rangoDefault(d.rango2.sep || 20, v);
+          d.rango2.from = r0.from; d.rango2.to = r0.to;   // re-encuadra al elemento
+          _mut(ci); _renderPanel();
+        })));
+      box.appendChild(g2b);
+      var g2c = _div('te-grid2');
+      g2c.appendChild(_fld('Rango 2ª', _rangoEditor(c, d, ci, 'rango2')));
+      box.appendChild(g2c);
+    }
     _filaAnidar(box, c, ci, rol, d);
-    var note = _div('te-note'); note.textContent = 'Arreglo 2D = rango a lo largo × N capas separadas en profundidad. n_capas=1 equivale a la distribución lineal. El plano de trabajo activo sugiere la profundidad.';
+    var note = _div('te-note');
+    note.textContent = legadoCapas
+      ? 'Arreglo con CAPAS (forma antigua): rango a lo largo × N capas en profundidad. Convertir la deja como dos líneas de distribución.'
+      : 'Arreglo por ÁREA: dos líneas de distribución, cada una con su eje, su rango y su @. ' +
+        'La cantidad es el producto de las dos. Es lo que reparte trabas de muro, de confinamiento y estribos de confinamiento.';
     box.appendChild(note);
+  }
+
+  // Default de la 2ª línea: el eje que NO usa la 1ª y que NO es el desarrollo de
+  // la pieza (el motor decide igual si la receta no lo declara; acá se propone
+  // uno CONCRETO para que el usuario vea el rango encuadrado desde el principio).
+  function _rango2Default(c, d) {
+    var e1 = (d.rango && d.rango.eje) || 'x';
+    var eDes = _ejeDistDe(c);          // por donde reparte la 1ª (normal del plano)
+    var libres = ['x', 'y', 'z'].filter(function (e) { return e !== e1 && e !== eDes; });
+    var eje = libres[0] || ['x', 'y', 'z'].filter(function (e) { return e !== e1; })[0] || 'y';
+    var base = _rangoDefault(d.sep || 20, eje);
+    return { eje: eje, from: base.from, to: base.to, sep: base.sep };
   }
 
   // EDITOR DE TRAMOS del panel (punto 4a) — una fila por tramo: largo cm + @ cm + ×,
@@ -4922,19 +5018,23 @@
   }
 
   // Editor compacto del rango (from/to en cm) — números editables.
-  function _rangoEditor(c, d, ci) {
+  // `campo` (4º arg): 'rango' (default, la 1ª línea) o 'rango2' (la 2ª del arreglo
+  // por área). Es el MISMO editor para las dos — si la 2ª tuviera el suyo propio,
+  // cualquier arreglo posterior (tramos, snap, arrastre) quedaría a medias en una.
+  function _rangoEditor(c, d, ci, campo) {
+    var cual = (campo === 'rango2') ? 'rango2' : 'rango';
     var wrap = _div(''); wrap.style.cssText = 'display:flex;gap:4px;align-items:center';
-    if (!d.rango) { return _static('(arrastra la flecha de rango)'); }
+    if (!d[cual]) { return _static('(arrastra la flecha de rango)'); }
     // Cambiar from/to reencaja los TRAMOS (si los hay) y sólo entonces redibuja la
     // ficha — si no, un re-render en cada campo le robaría el foco al usuario.
     function _setExtremo(k, v) {
-      d.rango[k] = Number(v);
-      var hayTramos = !!(d.rango.tramos && d.rango.tramos.length > 1);
-      _syncTramos(d);
+      d[cual][k] = Number(v);
+      var hayTramos = !!(d[cual].tramos && d[cual].tramos.length > 1);
+      if (cual === 'rango') _syncTramos(d);
       _mut(ci, hayTramos);
     }
-    var fi = _input({ value: Math.round(d.rango.from), type: 'number' }, function (v) { _setExtremo('from', v); });
-    var ti = _input({ value: Math.round(d.rango.to), type: 'number' }, function (v) { _setExtremo('to', v); });
+    var fi = _input({ value: Math.round(d[cual].from), type: 'number' }, function (v) { _setExtremo('from', v); });
+    var ti = _input({ value: Math.round(d[cual].to), type: 'number' }, function (v) { _setExtremo('to', v); });
     fi.style.width = '52px'; ti.style.width = '52px';
     var sep = document.createElement('span'); sep.textContent = '→'; sep.style.cssText = 'color:var(--te-muted);font-size:11px';
     wrap.appendChild(fi); wrap.appendChild(sep); wrap.appendChild(ti);
@@ -7285,7 +7385,6 @@
     _ladoDomMotor: _ladoDomMotor,                               // el del MOTOR, sin fallback
     _ladoDomElegido: _ladoDomElegido, _setLadoDominante: _setLadoDominante,
     _tramoDominanteEnTrazo: _tramoDominanteEnTrazo,             // rango [i0,i1] en el trazo
-    _filaLadoDominante: _filaLadoDominante,
     _centroSeleccion3D: _centroSeleccion3D, _pivotarEn: _pivotarEn,   // órbita en torno a la selección
     // INTERACCIÓN-2.0 · orientación de la pieza + snap de cara
     rotarPlanoPieza: rotarPlanoPieza,                           // cicla (o fija) la orientación + regenera

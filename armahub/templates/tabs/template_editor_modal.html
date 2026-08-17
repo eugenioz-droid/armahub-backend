@@ -173,6 +173,20 @@
   #te_modal .te-dombtn:disabled{opacity:.38;cursor:not-allowed;text-decoration:line-through}
   /* PICKER DE COLOR POR BARRA (D9): compacto, a la altura de los inputs. */
   #te_modal input.te-color{width:44px;height:24px;padding:1px 2px;border:1px solid var(--te-line);border-radius:6px;background:#fff;cursor:pointer}
+  /* FILA DE DIMENSIÓN (rediseño 15-ago): la LETRA es el botón radial del dominante
+     y a la derecha entran el Δ del lado y su flecha de extremo. Todo en un renglón. */
+  #te_modal .te-dimletra{border:1px solid var(--te-line);background:#fff;border-radius:6px;
+    min-width:24px;padding:2px 6px;font-size:11px;font-weight:800;color:var(--te-muted);cursor:pointer}
+  #te_modal .te-dimletra:hover:not(:disabled){background:#f7fbf2;color:var(--te-acero-d)}
+  #te_modal .te-dimletra.manda{border-color:var(--te-azul);color:var(--te-azul)}
+  #te_modal .te-dimletra.on{background:var(--te-azul);border-color:var(--te-azul);color:#fff}
+  #te_modal .te-dimletra:disabled{opacity:.38;cursor:not-allowed;text-decoration:line-through}
+  #te_modal input.te-delta{width:46px;text-align:right}
+  /* Δ heredado del lado espejo: se ve que está, pero que no lo escribió este lado. */
+  #te_modal input.te-delta.te-delta-esp::placeholder{color:var(--te-azul);opacity:.75;font-style:italic}
+  #te_modal .te-deltadir{border:1px solid var(--te-line);background:#fff;border-radius:6px;
+    width:24px;padding:2px 0;font-size:11px;color:var(--te-muted);cursor:pointer}
+  #te_modal .te-deltadir:hover{background:#f7fbf2;color:var(--te-acero-d)}
   /* SELECTOR DE MODO DE COLOCACIÓN (3 botoncitos: Puntual / Distribución / Arreglo).
      Control segmentado que ocupa el ancho del panel; el activo va en acero. Cambiarlo
      re-renderiza los campos contextuales de abajo (menú contextual por modo). */
