@@ -3082,17 +3082,24 @@
   // centrado en el origen —así está definida la geometría—, así que la cara
   // opuesta acompaña; lo que se elige es QUÉ MEDIDA se toca, no qué borde.
   function _dibujarNodos(svg, rect, X, Y, plano) {
+    // SOLO SIN SELECCIÓN (15-ago): con una barra seleccionada el usuario está
+    // manipulando LA BARRA, y estos tiradores se le cruzaban bajo el cursor
+    // («me sigue agarrando el elemento de hormigón»). Para redimensionar el
+    // hormigón: Esc (deseleccionar) y aparecen — o los campos del ribbon.
+    if (ST.selCi >= 0) return;
     var lados = [
       { u: rect.W / 2, v: 0, eje: 'u', cur: 'ew-resize' },
       { u: -rect.W / 2, v: 0, eje: 'u', cur: 'ew-resize' },
       { u: 0, v: rect.H / 2, eje: 'v', cur: 'ns-resize' },
       { u: 0, v: -rect.H / 2, eje: 'v', cur: 'ns-resize' }
     ];
-    var quePasa = {
-      seccion: { u: 'ancho', v: 'alto' },
-      largo: { u: 'largo', v: 'alto' },
-      planta: { u: 'largo', v: 'ancho' }
-    }[plano] || { u: 'ancho', v: 'alto' };
+    // QUÉ DIMENSIÓN toca cada tirador: SALE DE LA DEFINICIÓN DE LA VISTA
+    // (def.W/def.H de PLANOS_POR_ELEMENTO), no de una tabla aparte. La tabla
+    // anterior estaba cableada a las vistas de la VIGA: en el MURO la sección
+    // muestra largo×espesor y el tirador escribía 'ancho'/'alto' — la dimensión
+    // de OTRA vista. Por eso «edita en todas las vistas menos la actual».
+    var defN = (_defsPlanos() || {})[plano] || {};
+    var quePasa = { u: defN.W || 'ancho', v: defN.H || 'alto' };
     lados.forEach(function (k) {
       // `te-node-h`: son del HORMIGÓN, no de la barra. Se pintan distinto a los
       // handles de la selección para que no se confundan al agarrarlos (era el
@@ -3579,6 +3586,19 @@
     _posicionarFlipBtn();
     _actualizarStatus();
   }
+  // ESPACIO con selección (17-ago): girar la pieza EN SU PROPIO PLANO. El eje es
+  // la normal del plano de la pieza (motor.normalDePieza, la misma medición del
+  // reparto): un estribo gira sin salirse de su plano, da igual qué vista esté
+  // activa. Si el motor no puede medirla, cae al giro por vista (como R).
+  function _rotarEnPlanoPropio() {
+    if (!ST.receta || ST.selCi < 0) { _rotarPoseSeleccion(_vistaActiva()); return; }
+    var comp = ST.receta.componentes[ST.selCi];
+    var reglas = global.ModeladorReglas;
+    var eje = (reglas && reglas.normalDePieza) ? reglas.normalDePieza(comp, ST.receta.geometria) : null;
+    if (eje !== 'x' && eje !== 'y' && eje !== 'z') { _rotarPoseSeleccion(_vistaActiva()); return; }
+    _rotarPoseSeleccionEje(eje);
+  }
+
   // (El viejo _voltearSeleccion — ciclar acostada/volteada/de pie — MURIÓ: el botón
   //  flotante y la tecla R llaman los dos a _rotarPoseSeleccion. Una sola semántica.)
 
@@ -3991,12 +4011,9 @@
     // nada: en el peor caso se llega al mínimo.
     var dn0 = ST.dragNode || {};
     var eje = dn0.corner || 'u';
-    var campo = {
-      seccion: { u: 'ancho', v: 'alto' },
-      largo: { u: 'largo', v: 'alto' },
-      planta: { u: 'largo', v: 'ancho' }
-    }[plano] || { u: 'ancho', v: 'alto' };
-    var cual = campo[eje];
+    // misma fuente que _dibujarNodos: la DEF de la vista (nada de tablas aparte)
+    var defD = (_defsPlanos() || {})[plano] || {};
+    var cual = (eje === 'v') ? (defD.H || 'alto') : (defD.W || 'ancho');
     var coord = (eje === 'v') ? Number(uv.v) : Number(uv.u);
     var previo = Number((dn0.geo0 || g)[cual]) || 0;
     // el borde agarrado es el del SIGNO de donde se tomó; la cara opuesta está en
@@ -4007,7 +4024,8 @@
     // no existe, y dejarla llegar a 0 es lo que producía la línea aplastada.
     var minima = (cual === 'alto')
       ? (Number(g.recub_sup || 4) + Number(g.recub_inf || 4) + GRID_SNAP)
-      : (2 * Number(g.recub_lat || 3) + GRID_SNAP);
+      : (cual === 'ancho' ? 2 * Number(g.recub_lat || 3) + GRID_SNAP
+                          : 2 * GRID_SNAP);   // largo: sin recub que lo acote
     nuevo = Math.max(minima, Math.round(nuevo / GRID_SNAP) * GRID_SNAP);
     g[cual] = nuevo;
     _sincronizarRibbonGeo();   // los campos del ribbon siguen al arrastre
@@ -5817,10 +5835,11 @@
           var gu = ST._ghostUlt;
           if (gu && gu.plano && gu.svg && gu.sp) _dibujarGhost(gu.plano, gu.svg, gu.sp);
         } else if (ST.selCi >= 0) {
-          // Con pieza seleccionada, ESPACIO también es giro de POSE (13-ago: todo
-          // giro de 90° re-deriva dims/anclaje/reparto; los grados quedan para
-          // inclinar). Misma acción que R y que el +90° de la ficha.
-          e.preventDefault(); _rotarPoseSeleccion(_vistaActiva());
+          // Con pieza seleccionada, ESPACIO gira EN EL PLANO DE LA PROPIA PIEZA
+          // (17-ago): el eje de giro es la normal del plano de la pieza medida
+          // por el motor, no la profundidad de la vista activa — con otra vista
+          // activa, ESPACIO sacaba al estribo de su plano. R queda POR VISTA.
+          e.preventDefault(); _rotarEnPlanoPropio();
         }
       } else if (e.key === 'r' || e.key === 'R') {
         // R → GIRAR 90° EN LA VISTA ACTIVA (TANDA P · rotar-en-vista): la pieza gira

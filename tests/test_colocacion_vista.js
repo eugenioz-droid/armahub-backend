@@ -141,6 +141,36 @@ console.log('— MISMA FIGURA, CUALQUIER TIPOLOGÍA: resultado idéntico (15-ago
     'y se reparte de verdad (6 barras, sin avisos): ' + firmas[0]);
 })();
 
+console.log('— ESPACIO gira EN EL PLANO PROPIO (17-ago) —');
+// El eje de ESPACIO es la normal del plano de la PIEZA (normalDePieza), no la
+// profundidad de la vista activa: girar alrededor de esa normal debe DEJAR a la
+// pieza en su plano, giro tras giro, para cualquier pose de entrada. Si este
+// guard se rompe, ESPACIO volvió a sacar al estribo de su plano (reporte del
+// usuario: "con la rotación cambia la pieza del plano").
+(function () {
+  var POSES = [
+    { postura: 'acostada', rumbo: 'y' },
+    { postura: 'volteada', rumbo: 'z' },
+    { postura: 'de_pie', rumbo: 'x' },
+    { postura: 'de_pie', rumbo: 'y' }
+  ];
+  ['104D', '106A'].forEach(function (fig) {
+    POSES.forEach(function (pose) {
+      var c = { comp_id: 'G', tipologia: 'EC', figura: fig, diam: 1.0,
+        pose: { postura: pose.postura, rumbo: pose.rumbo }, dims: {} };
+      var eje = R.normalDePieza(c, MURO);
+      var estable = true, cc = c;
+      for (var i = 0; i < 4 && estable; i++) {
+        var nueva = R.rotarPose90((R.poseDe ? R.poseDe(cc) : cc.pose), eje);
+        cc = { comp_id: 'G', tipologia: 'EC', figura: fig, diam: 1.0, pose: nueva, dims: {} };
+        if (R.normalDePieza(cc, MURO) !== eje) estable = false;
+      }
+      ok(estable, fig + ' ' + pose.postura + '/' + pose.rumbo +
+        ': 4 ESPACIOs sin salir del plano (normal ' + eje + ')');
+    });
+  });
+})();
+
 console.log('— la SEMILLA no se movió —');
 var G = require(path.join(base, 'generar.js'));
 var S = require(path.join(base, 'semilla_viga.js'));

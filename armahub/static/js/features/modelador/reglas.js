@@ -1271,36 +1271,63 @@
   //
   // `host` es opcional sólo por compatibilidad de firma: sin él no se puede
   // trazar y se cae a la lectura del campo (lo que hacía antes).
-  function ejeDistribucion(comp, host) {
-    var pose = poseDe(comp);
-    if (!host || !comp || !comp.figura) return pose.rumbo;
-    // Se mide en el MARCO LOCAL de la pieza (que es donde el trazador dibuja) y
-    // el resultado se devuelve al MUNDO con la misma permutación involutiva que
-    // usa todo el motor. Sin esa vuelta, una cerrada de pie reportaba el eje de
-    // una acostada (medido: 104D rumbo y → 'x' en vez de 'y').
+  // Medición compartida por ejeDistribucion y normalDePieza: ejes LOCALES en los
+  // que la pieza NO se desarrolla, trazándola en su marco local (que es donde el
+  // trazador dibuja) con el host PERMUTADO; el llamador vuelve al MUNDO con
+  // aMundo (la misma permutación involutiva de todo el motor — sin esa vuelta,
+  // una cerrada de pie reportaba el eje de una acostada: 104D rumbo y → 'x').
+  // "No se desarrolla" = menos del 2% de su propia extensión mayor (el φ y los
+  // arcos dejan micro-espesor; un lado real nunca baja de ahí). null si no se
+  // pudo trazar o la pieza no tiene extensión.
+  function _ejesSinDesarrollo(comp, host) {
+    if (!host || !comp || !comp.figura) return null;
     var P = _permDe(comp);
     var hostEf = P ? _hostPermutado(host, P) : host;   // sin permutación, el host va tal cual
     var base;
-    try { base = _baseDeComponente(comp, hostEf); } catch (e) { return pose.rumbo; }
+    try { base = _baseDeComponente(comp, hostEf); } catch (e) { return null; }
     var spans = {
       x: _spanEnEje(base, hostEf, 'x'),
       y: _spanEnEje(base, hostEf, 'y'),
       z: _spanEnEje(base, hostEf, 'z')
     };
     var mayor = Math.max(spans.x, spans.y, spans.z);
-    if (!(mayor > 0)) return pose.rumbo;
-    var aMundo = function (ejeLocal) { return P ? P[ejeLocal] : ejeLocal; };
-    // "no se desarrolla" = menos del 2% de su propia extensión mayor (el φ y los
-    // arcos dejan micro-espesor; un lado real nunca baja de ahí).
-    var planos = ['x', 'y', 'z'].filter(function (e) { return spans[e] <= 0.02 * mayor; });
-    if (planos.length === 1) return aMundo(planos[0]);             // pieza plana: su normal
-    if (planos.length === 2) {                                     // recta: manda su cara
+    if (!(mayor > 0)) return null;
+    return {
+      planos: ['x', 'y', 'z'].filter(function (e) { return spans[e] <= 0.02 * mayor; }),
+      aMundo: function (ejeLocal) { return P ? P[ejeLocal] : ejeLocal; }
+    };
+  }
+
+  function ejeDistribucion(comp, host) {
+    var pose = poseDe(comp);
+    var m = _ejesSinDesarrollo(comp, host);
+    if (!m) return pose.rumbo;
+    if (m.planos.length === 1) return m.aMundo(m.planos[0]);       // pieza plana: su normal
+    if (m.planos.length === 2) {                                   // recta: manda su cara
       var caraLocal = derivarPose(pose).caraLocal;                 // 'sup'|'inf'|'lateral'
       var normalLocal = (caraLocal === 'lateral') ? 'z' : 'y';
-      var libres = planos.filter(function (e) { return e !== normalLocal; });
-      return aMundo(libres[0] || planos[0]);
+      var libres = m.planos.filter(function (e) { return e !== normalLocal; });
+      return m.aMundo(libres[0] || m.planos[0]);
     }
     return pose.rumbo;   // pieza que ocupa volumen en los 3 ejes: no hay plano que leer
+  }
+
+  // Normal del PLANO DE LA PIEZA en ejes del MUNDO (misma medición que
+  // ejeDistribucion). Pieza plana → la normal medida de su plano; RECTA → la
+  // normal de la CARA donde está apoyada; volumétrica → rumbo declarado.
+  // La usa ESPACIO en el editor para girar la pieza EN SU PROPIO PLANO: antes
+  // ESPACIO giraba con el eje de la VISTA ACTIVA y, con otra vista activa,
+  // sacaba al estribo de su plano (reporte 17-ago).
+  function normalDePieza(comp, host) {
+    var pose = poseDe(comp);
+    var m = _ejesSinDesarrollo(comp, host);
+    if (!m) return pose.rumbo;
+    if (m.planos.length === 1) return m.aMundo(m.planos[0]);
+    if (m.planos.length === 2) {
+      var caraLocal = derivarPose(pose).caraLocal;
+      return m.aMundo(caraLocal === 'lateral' ? 'z' : 'y');
+    }
+    return pose.rumbo;
   }
 
   // Eje del MUNDO en el que se apilan las capas (layered/arreglo), dado el eje
@@ -4025,6 +4052,7 @@
     orientacionPieza: orientacionPieza,
     ORIENTACIONES: Object.keys(ORIENTACIONES),
     ejeDistribucion: ejeDistribucion,
+    normalDePieza: normalDePieza,   // normal del plano de la pieza (ESPACIO = girar en su plano)
     ejeCapas: ejeCapas,
     // -------------------------------------------------------------------------
     // POSE (TANDA P) — modelo ÚNICO de orientación. La UI (Template Editor) opera
