@@ -3850,6 +3850,9 @@
             eje: evt.target.getAttribute('data-rango-eje') || null,
             cual: evt.target.getAttribute('data-rango-cual') || 'rango'
           };
+          // repintar YA: la cota viva al borde sólo se dibuja mientras hay
+          // arrastre, y sin esto aparecía recién al primer movimiento.
+          _sincronizarOverlayOrto();
           return;
         }
 
@@ -4047,7 +4050,23 @@
         rango[dr.end] = _snapValor(hv - dr.grab, _facesEje(eje));
       }
     } else {
-      rango.from += dHost; rango.to += dHost;   // tramo del medio → desplaza
+      // TRAMO DEL MEDIO → DESPLAZA EL RANGO ENTERO. Antes iba con el delta crudo y
+      // el snap se PERDÍA apenas se arrastraba (el usuario: "cuando desplazamos la
+      // línea verde se pierde el snap inicial"): los extremos snapeaban al agarrar
+      // y después flotaban. Ahora se snapea el extremo que va ADELANTE del gesto
+      // (el que el usuario está mirando) contra las mismas caras que usan los
+      // handles, y el otro lo acompaña RÍGIDO: el largo del rango no cambia.
+      var largoR = Number(rango.to) - Number(rango.from);
+      var hm = _hostEnEje(plano, sp, eje);
+      if (hm == null) { rango.from += dHost; rango.to += dHost; }
+      else {
+        var haciaFin = (dHost > 0) === (largoR >= 0);
+        var guia = haciaFin ? 'to' : 'from';
+        if (dr.grabMid == null) dr.grabMid = hm - Number(rango[guia]);
+        var nuevo = _snapValor(hm - dr.grabMid, _facesEje(eje));
+        if (guia === 'to') { rango.to = nuevo; rango.from = nuevo - largoR; }
+        else { rango.from = nuevo; rango.to = nuevo + largoR; }
+      }
     }
     if (rango.eje == null) rango.eje = eje;
     d[cual] = rango;
@@ -4516,7 +4535,11 @@
     // no cambia. Un valor fuera de rango se guarda tal cual (dato honesto) pero el
     // motor lo ignora con aviso — acá se pinta .bad y se dice el motivo al tiro.
     if (spec.angulos.length) {
-      var angRow = _div('te-grid2');
+      // TODOS LOS ÁNGULOS EN UNA FILA (pedido 15-ago): con la grilla de 2 columnas
+      // una figura de 4 ángulos ocupaba dos renglones. Ahora la fila tiene tantas
+      // columnas como ángulos declare la figura — 2 quedan anchos, 4 caben igual.
+      var angRow = _div('te-angrow');
+      angRow.style.gridTemplateColumns = 'repeat(' + spec.angulos.length + ', 1fr)';
       var fpAng = global.ModeladorFiguraPuntos || {};
       var nAngMsg = _div('te-note');   // mensaje vivo de validación (uno para todos)
       spec.angulos.forEach(function (a, i) {

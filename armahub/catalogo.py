@@ -166,8 +166,26 @@ def seed_catalogo(cur) -> dict:
     # Figuras
     for codigo, parciales, angulos, radio in _FIGURAS_SEED:
         cur.execute(
+            # RECONCILIACIÓN DE FIGURAS NUNCA DIBUJADAS (15-ago). Antes era
+            # `DO NOTHING`: una fila sembrada con una versión vieja del seed se
+            # quedaba vieja PARA SIEMPRE. Caso real: la 106A quedó con 3 parciales
+            # en producción mientras el seed declara sus 6 (A-F), y la ficha del
+            # editor —que muestra los parciales que dice el catálogo— sólo ofrecía
+            # A, B y C: la figura era ineditable en sus otros 3 lados.
+            # SOLO se reconcilia lo que NADIE dibujó: `geometria IS NULL` marca
+            # las filas que nunca pasaron por el Diseñador (que sí escribe
+            # parciales/ángulos junto con su geometría). Así una figura que el
+            # usuario dibujó jamás se pisa con la semilla.
             """INSERT INTO figuras_catalogo (codigo, parciales, angulos, radio)
-               VALUES (%s, %s, %s, %s) ON CONFLICT (codigo) DO NOTHING""",
+               VALUES (%s, %s, %s, %s)
+               ON CONFLICT (codigo) DO UPDATE SET
+                   parciales = EXCLUDED.parciales,
+                   angulos   = EXCLUDED.angulos,
+                   radio     = EXCLUDED.radio
+               WHERE figuras_catalogo.geometria IS NULL
+                 AND (figuras_catalogo.parciales IS DISTINCT FROM EXCLUDED.parciales
+                      OR figuras_catalogo.angulos IS DISTINCT FROM EXCLUDED.angulos
+                      OR figuras_catalogo.radio   IS DISTINCT FROM EXCLUDED.radio)""",
             (codigo, parciales, angulos, radio),
         )
         n_fig += cur.rowcount
