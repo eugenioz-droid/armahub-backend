@@ -192,6 +192,14 @@
   #te_modal .te-phibtn{border:1px solid var(--te-line);background:#fff;border-radius:6px;
     padding:2px 5px;font-size:10px;font-weight:700;color:var(--te-muted);cursor:pointer}
   #te_modal .te-phibtn:hover{background:#f7fbf2;color:var(--te-acero-d)}
+  /* 2ª LÍNEA DE DISTRIBUCIÓN DEL ARREGLO — mismo dibujo, otro color, para no
+     tener que adivinar cuál flecha reparte por cuál eje. */
+  #te_modal .te-rango-line.te-r2{stroke:#7b1fa2}
+  #te_modal .te-rango-arrow.te-r2{stroke:#7b1fa2;fill:none}
+  #te_modal .te-rango-end.te-r2{fill:#fff;stroke:#7b1fa2}
+  /* Cota viva al borde mientras se arrastra una línea de reparto. */
+  #te_modal .te-rango-cota{font-size:10px;font-weight:700;fill:#33691e;paint-order:stroke;
+    stroke:#fff;stroke-width:3px;stroke-linejoin:round}
   /* Δ heredado del lado espejo: se ve que está, pero que no lo escribió este lado. */
   #te_modal input.te-delta.te-delta-esp::placeholder{color:var(--te-azul);opacity:.75;font-style:italic}
   #te_modal .te-deltadir{border:1px solid var(--te-line);background:#fff;border-radius:6px;

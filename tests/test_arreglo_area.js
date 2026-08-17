@@ -319,5 +319,43 @@ console.log('\nH — los ejes del arreglo se declaran en el MUNDO y los traduce 
     '…y el eje del desarrollo de la barra queda sin repartir, como debe');
 }
 
+// ============================================================================
+// F · LA 2ª LÍNEA PUEDE REPARTIR POR EL EJE DE LA CARA (fix 15-ago)
+// ----------------------------------------------------------------------------
+// El guard del eje de cara protege la línea PRINCIPAL (ahí la coordenada la fija
+// el recubrimiento). Pero una barra CORRE por un eje, así que de los dos que le
+// quedan UNO ES SIEMPRE el de su cara: con el guard puesto, el arreglo por área
+// no podía existir en NINGUNA figura abierta — la traba de muro pedía 5×3 y
+// entregaba 5 con «2º rango ignorado». Declarar la 2ª línea ES decir "no te
+// ancles ahí, repártete" (lo mismo que hacían las capas, con rango y arrastrable).
+console.log('\nF — traba de muro: 5 a lo largo × 3 en altura, cruzando el espesor');
+{
+  const sp = CAT.get('102B');
+  const dims = {};
+  (sp.parciales || []).forEach(L => { dims[L] = { modo: 'auto' }; });
+  const c = {
+    comp_id: 'TM', jerarquia: 1, tipologia: 'TR', figura: '102B', diam: 8, suf_tipo: '',
+    cara: 'sup', recub_override: null, angulos: [], prioridad: null, empalme: null,
+    depende_de: null, modo: 'arreglo', plano_pieza: { volteado: false },
+    arreglo: { n_capas: 1, sep_capas: 20, rango: null }, dims: dims,
+    pose: { cara: 'sup', lado: 1, rumbo: 'z' },
+    distribucion: {
+      modo: 'arreglo',
+      rango:  { eje: 'x', from: -190, to: 190, sep: 95 },
+      rango2: { eje: 'y', from: -115, to: 115, sep: 115 }
+    }
+  };
+  const pls = R.expandirComponente(c, MURO);
+  ok(pls.length === 15, '5 × 3 = 15 trabas (' + pls.length + ')');
+  ok(JSON.stringify(centros(pls, 'x')) === JSON.stringify([-190, -95, 0, 95, 190]),
+    'a lo largo: ' + JSON.stringify(centros(pls, 'x')));
+  ok(centros(pls, 'y').length === 3, 'en altura: 3 filas (' + JSON.stringify(centros(pls, 'y')) + ')');
+  const z = extremos(pls, 'z');
+  ok(z[1] - z[0] > 12 && z[1] - z[0] <= 16,
+    'cada traba CRUZA el espesor (span z = ' + (z[1] - z[0]).toFixed(2) + ')');
+  ok(fuera(c).length === 0 && (c._avisos || []).length === 0,
+    'sin avisos y 0 fierro fuera: ' + JSON.stringify(c._avisos || []));
+}
+
 console.log(fallos ? '\nFALLOS: ' + fallos : '\nTODO OK');
 process.exitCode = fallos ? 1 : 0;

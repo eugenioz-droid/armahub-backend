@@ -974,9 +974,13 @@
       if (d.sep == null) d.sep = _sepDefault(c.tipologia);
       if (!d.rango) d.rango = _rangoDefault(d.sep, ejeD);
       else if (d.rango.eje == null) d.rango.eje = ejeD;
-      if (d.n_capas == null) d.n_capas = 2;      // arreglo real ≥ 2 capas
-      if (d.sep_capas == null) d.sep_capas = 10;
-      if (d.eje_capas == null) d.eje_capas = _ejeCapasDefault();
+      // ARREGLO = DOS LÍNEAS DE DISTRIBUCIÓN (fix 15-ago). Antes esto estrenaba
+      // las CAPAS legadas (n_capas/sep_capas/eje_capas) y el panel —que muestra
+      // la forma vieja mientras existan— nunca llegaba a ofrecer la 2ª línea:
+      // el usuario elegía «Arreglo» y "no pasaba nada", seguía viendo un rango.
+      // Ahora el modo estrena `rango2`, que es lo que el motor prefiere; las
+      // capas sólo sobreviven en recetas que YA venían con ellas.
+      if (!d.rango2 && !(Number(d.n_capas) > 1)) d.rango2 = _rango2Default(c, d);
       d.activa = true;
       if (c.pos_hint) delete c.pos_hint[ejeD];
     }
@@ -2852,50 +2856,90 @@
     if (!c) return;
     var d = c.distribucion || {};
     var def = (_defsPlanos() || {})[plano]; if (!def) return;
-    var eje = _ejeDistDe(c);
-    if (eje !== def.u && eje !== def.v) return;   // eje de reparto no visible en esta vista
     var activa = !!d.activa;
     // Las ZONAS de la semilla (confinamiento) se editan por campos, no con la flecha.
     if (activa && !d.rango && d.zonas && d.zonas.length) return;
-    var rango = activa ? d.rango : _rangoDefault(d.sep, eje);   // preview: NO se escribe
-    if (!rango || rango.from == null || rango.to == null) return;
-    var g = _svgEl('g', activa ? {} : { opacity: 0.35, 'data-rango-preview': '1' });
-    svg.appendChild(g);
-    svg = g;   // todo lo que sigue cuelga del grupo (así la opacidad aplica a la flecha entera)
-    var attrs = { 'class': 'te-rango-hit', 'data-rango': ST.selCi, 'data-rango-eje': eje };
-    // handle cuadradito en cada EXTREMO (achica/agranda ESE extremo); el tramo del
-    // medio desplaza el rango completo.
-    function handle(cx, cy, cual, cursor) {
-      svg.appendChild(_svgEl('rect', {
-        'class': 'te-rango-end', x: cx - 3.5, y: cy - 3.5, width: 7, height: 7,
-        'data-rango': ST.selCi, 'data-rango-end': cual, 'data-rango-eje': eje,
-        style: 'cursor:' + cursor
-      }));
+
+    // LAS DOS LÍNEAS (15-ago). El ARREGLO reparte por ÁREA: cada línea tiene su
+    // eje, su rango y su @, y CADA UNA se dibuja en la vista que la contiene —
+    // por eso el usuario ve dos flechas en el plano que muestra los dos ejes, y
+    // una sola en los otros dos. La 2ª va en su propio color (clase te-r2) para
+    // que no haya que adivinar cuál es cuál.
+    var lineas = [{ cual: 'rango', eje: (d.rango && d.rango.eje) || _ejeDistDe(c), r: activa ? d.rango : _rangoDefault(d.sep, _ejeDistDe(c)) }];
+    if (_modoDe(c) === 'arreglo' && d.rango2 && d.rango2.from != null && d.rango2.to != null) {
+      lineas.push({ cual: 'rango2', eje: d.rango2.eje || 'y', r: d.rango2, segunda: true });
     }
-    if (eje === def.u) {
-      var xa = X(rango.from), xb = X(rango.to), yy = TE_RANGO_OFF_V;
-      svg.appendChild(_svgEl('line', { 'class': 'te-rango-line', x1: xa, y1: yy, x2: xb, y2: yy }));
-      svg.appendChild(_svgEl('path', { 'class': 'te-rango-arrow', d: 'M' + (xa + 7) + ',' + (yy - 4) + ' L' + xa + ',' + yy + ' L' + (xa + 7) + ',' + (yy + 4) }));
-      svg.appendChild(_svgEl('path', { 'class': 'te-rango-arrow', d: 'M' + (xb - 7) + ',' + (yy - 4) + ' L' + xb + ',' + yy + ' L' + (xb - 7) + ',' + (yy + 4) }));
-      attrs.x = Math.min(xa, xb) + 5; attrs.y = yy - 7;
-      attrs.width = Math.max(4, Math.abs(xb - xa) - 10); attrs.height = 14;
-      attrs.style = 'cursor:move';
-      svg.appendChild(_svgEl('rect', attrs));
-      handle(xa, yy, 'from', 'ew-resize'); handle(xb, yy, 'to', 'ew-resize');
-      if (activa) _dibujarTramosRango(svg, d, rango, true, X, yy, plano);
-    } else {
-      // el eje de reparto es el VERTICAL de esta vista → flecha ↕ pegada al margen izq.
-      var ya = Y(rango.from), yb = Y(rango.to), xx = TE_RANGO_OFF_H;
-      svg.appendChild(_svgEl('line', { 'class': 'te-rango-line', x1: xx, y1: ya, x2: xx, y2: yb }));
-      svg.appendChild(_svgEl('path', { 'class': 'te-rango-arrow', d: 'M' + (xx - 4) + ',' + (ya + 7) + ' L' + xx + ',' + ya + ' L' + (xx + 4) + ',' + (ya + 7) }));
-      svg.appendChild(_svgEl('path', { 'class': 'te-rango-arrow', d: 'M' + (xx - 4) + ',' + (yb - 7) + ' L' + xx + ',' + yb + ' L' + (xx + 4) + ',' + (yb - 7) }));
-      attrs.x = xx - 7; attrs.y = Math.min(ya, yb) + 5;
-      attrs.width = 14; attrs.height = Math.max(4, Math.abs(yb - ya) - 10);
-      attrs.style = 'cursor:move';
-      svg.appendChild(_svgEl('rect', attrs));
-      handle(xx, ya, 'from', 'ns-resize'); handle(xx, yb, 'to', 'ns-resize');
-      if (activa) _dibujarTramosRango(svg, d, rango, false, Y, xx, plano);
-    }
+
+    lineas.forEach(function (L) {
+      var eje = L.eje, rango = L.r;
+      if (eje !== def.u && eje !== def.v) return;   // este eje no se ve en esta vista
+      if (!rango || rango.from == null || rango.to == null) return;
+      var gAttrs = activa ? {} : { opacity: 0.35, 'data-rango-preview': '1' };
+      var g = _svgEl('g', gAttrs);
+      svg.appendChild(g);
+      var sfx = L.segunda ? ' te-r2' : '';
+      var attrs = { 'class': 'te-rango-hit', 'data-rango': ST.selCi, 'data-rango-eje': eje, 'data-rango-cual': L.cual };
+      function handle(cx, cy, cualEnd, cursor) {
+        g.appendChild(_svgEl('rect', {
+          'class': 'te-rango-end' + sfx, x: cx - 3.5, y: cy - 3.5, width: 7, height: 7,
+          'data-rango': ST.selCi, 'data-rango-end': cualEnd, 'data-rango-eje': eje,
+          'data-rango-cual': L.cual, style: 'cursor:' + cursor
+        }));
+      }
+      if (eje === def.u) {
+        // la 2ª línea horizontal se separa un poco para no pisar a la 1ª cuando
+        // las dos caen en el mismo eje de la vista.
+        var yy = TE_RANGO_OFF_V + (L.segunda ? 16 : 0);
+        var xa = X(rango.from), xb = X(rango.to);
+        g.appendChild(_svgEl('line', { 'class': 'te-rango-line' + sfx, x1: xa, y1: yy, x2: xb, y2: yy }));
+        g.appendChild(_svgEl('path', { 'class': 'te-rango-arrow' + sfx, d: 'M' + (xa + 7) + ',' + (yy - 4) + ' L' + xa + ',' + yy + ' L' + (xa + 7) + ',' + (yy + 4) }));
+        g.appendChild(_svgEl('path', { 'class': 'te-rango-arrow' + sfx, d: 'M' + (xb - 7) + ',' + (yy - 4) + ' L' + xb + ',' + yy + ' L' + (xb - 7) + ',' + (yy + 4) }));
+        attrs.x = Math.min(xa, xb) + 5; attrs.y = yy - 7;
+        attrs.width = Math.max(4, Math.abs(xb - xa) - 10); attrs.height = 14;
+        attrs.style = 'cursor:move';
+        g.appendChild(_svgEl('rect', attrs));
+        handle(xa, yy, 'from', 'ew-resize'); handle(xb, yy, 'to', 'ew-resize');
+        if (activa && !L.segunda) _dibujarTramosRango(g, d, rango, true, X, yy, plano);
+      } else {
+        var xx = TE_RANGO_OFF_H + (L.segunda ? 16 : 0);
+        var ya = Y(rango.from), yb = Y(rango.to);
+        g.appendChild(_svgEl('line', { 'class': 'te-rango-line' + sfx, x1: xx, y1: ya, x2: xx, y2: yb }));
+        g.appendChild(_svgEl('path', { 'class': 'te-rango-arrow' + sfx, d: 'M' + (xx - 4) + ',' + (ya + 7) + ' L' + xx + ',' + ya + ' L' + (xx + 4) + ',' + (ya + 7) }));
+        g.appendChild(_svgEl('path', { 'class': 'te-rango-arrow' + sfx, d: 'M' + (xx - 4) + ',' + (yb - 7) + ' L' + xx + ',' + yb + ' L' + (xx + 4) + ',' + (yb - 7) }));
+        attrs.x = xx - 7; attrs.y = Math.min(ya, yb) + 5;
+        attrs.width = 14; attrs.height = Math.max(4, Math.abs(yb - ya) - 10);
+        attrs.style = 'cursor:move';
+        g.appendChild(_svgEl('rect', attrs));
+        handle(xx, ya, 'from', 'ns-resize'); handle(xx, yb, 'to', 'ns-resize');
+        if (activa && !L.segunda) _dibujarTramosRango(g, d, rango, false, Y, xx, plano);
+      }
+      // COTA VIVA AL BORDE (pedido 15-ago): mientras se arrastra ESTA línea, cada
+      // extremo dice a cuánto quedó del borde del elemento en su eje. Es la
+      // pregunta real del usuario ("¿cuánto me falta para el borde?") y sin ella
+      // hay que soltar, mirar el campo y volver a agarrar.
+      if (ST.dragRango && ST.dragRango.ci === ST.selCi && ST.dragRango.cual === L.cual) {
+        var lim = _facesEje(eje), bordes = [];
+        for (var q = 0; q < lim.length; q++) bordes.push(Number(lim[q]));
+        if (bordes.length) {
+          var bMin = Math.min.apply(null, bordes), bMax = Math.max.apply(null, bordes);
+          var dIni = Math.abs(Number(rango.from) - bMin), dFin = Math.abs(bMax - Number(rango.to));
+          var horiz = (eje === def.u);
+          var yTxt = horiz ? (TE_RANGO_OFF_V + (L.segunda ? 16 : 0) - 10) : 0;
+          function cota(px, py, txt) {
+            var t = _svgEl('text', { 'class': 'te-rango-cota', x: px, y: py, 'text-anchor': 'middle' });
+            t.textContent = txt; g.appendChild(t);
+          }
+          if (horiz) {
+            cota(X(rango.from), yTxt, Math.round(dIni) + '');
+            cota(X(rango.to), yTxt, Math.round(dFin) + '');
+          } else {
+            var xT = TE_RANGO_OFF_H + (L.segunda ? 16 : 0) + 16;
+            cota(xT, Y(rango.from) + 3, Math.round(dIni) + '');
+            cota(xT, Y(rango.to) + 3, Math.round(dFin) + '');
+          }
+        }
+      }
+    });
   }
 
   // TRAMOS SOBRE LA FLECHA (punto 4b) — por cada límite interno un DIVISOR arrastrable
@@ -3803,7 +3847,8 @@
           ST.dragRango = {
             ci: Number(tgtRango), plano: plano, lastX: sp.px, lastY: sp.py,
             end: evt.target.getAttribute('data-rango-end') || null,
-            eje: evt.target.getAttribute('data-rango-eje') || null
+            eje: evt.target.getAttribute('data-rango-eje') || null,
+            cual: evt.target.getAttribute('data-rango-cual') || 'rango'
           };
           return;
         }
@@ -3954,7 +3999,10 @@
     var c = ST.receta.componentes[dr.ci]; if (!c) return;
     var t = ST.transforms[plano]; if (!t) return;
     var def = (_defsPlanos() || {})[plano]; if (!def) return;
-    var eje = _ejeDistDe(c);
+    // QUÉ LÍNEA se está arrastrando (1ª o la 2ª del arreglo): viene del elemento
+    // que se agarró. Sin esto, mover la 2ª flecha reescribía el rango de la 1ª.
+    var cual = dr.cual || 'rango';
+    var eje = dr.eje || _ejeDistDe(c);
     var dHost;
     if (eje === def.u) { dHost = (sp.px - dr.lastX) / t.ku; }
     else if (eje === def.v) { dHost = (sp.py - dr.lastY) / t.kv; }
@@ -3964,7 +4012,7 @@
     var d = c.distribucion = c.distribucion || {};
     // PRIMER arrastre sobre la flecha "inactiva" (preview): ACTIVAR la distribución.
     // Ese es el único gesto que la enciende (ya no hay herramienta ↔ Rango de 2 clics).
-    if (!d.activa) {
+    if (!d.activa && cual === 'rango') {
       if (d.sep == null) d.sep = _sepDefault(c.tipologia);
       if (_modoDe(c) !== 'arreglo') { c.modo = 'lineal'; d.modo = 'linear'; }
       d.activa = true;
@@ -3973,12 +4021,12 @@
       if (c.pos_hint) delete c.pos_hint[eje];
       // el mouseup global ya re-renderiza el panel → la ficha muestra el modo nuevo
     }
-    var rango = d.rango || _rangoDefault(d.sep, eje);
+    var rango = d[cual] || _rangoDefault(d.sep, eje);
     if (dr.div != null) {
       // DIVISOR de tramo: mueve el límite entre dos tramos contiguos. Trabaja con la
       // coordenada ABSOLUTA bajo el cursor (no con el delta) para poder SNAPear a las
       // caras del eje igual que los handles.
-      d.rango = rango;
+      d[cual] = rango;
       var hd = _hostEnEje(plano, sp, eje);
       if (hd == null) return;
       hd = _snapValor(hd, _facesEje(eje));
@@ -4002,8 +4050,9 @@
       rango.from += dHost; rango.to += dHost;   // tramo del medio → desplaza
     }
     if (rango.eje == null) rango.eje = eje;
-    d.rango = rango;
-    _syncTramos(d);   // el rango cambió de largo → los tramos se reencajan dentro
+    d[cual] = rango;
+    if (cual === 'rango') _syncTramos(d);   // los tramos viven en la 1ª línea
+    _sincronizarOverlayOrto();              // repinta la cota viva del borde
     _regenerarDiferido();
   }
 

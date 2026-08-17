@@ -2026,6 +2026,16 @@
       return eje;
     }
     if (eje !== _marcoCara(base, host).eje) return eje;   // otro eje: nada que decidir
+    // LA 2ª LÍNEA DEL ARREGLO SÍ PUEDE REPARTIR POR EL EJE DE LA CARA (15-ago).
+    // El guard de abajo protege la línea PRINCIPAL: ahí la coordenada contra la
+    // cara la fija el recubrimiento y un rango la pelearía. Pero un ARREGLO POR
+    // ÁREA declara DOS ejes a propósito, y como la barra ya corre por uno, de los
+    // dos que quedan UNO ES SIEMPRE el de su cara: con el guard puesto, el área
+    // no podía existir en ninguna figura abierta (medido: traba de muro pedía
+    // 5×3 y entregaba 5 con "2º rango ignorado"). Cuando el usuario declara esa
+    // 2ª línea está diciendo justamente "no te ancles ahí, repártete" — que es
+    // lo mismo que hacían las CAPAS, sólo que con rango y arrastrable.
+    if (cual === 'rango2') return eje;
     // ¿Tiene PATA sobre ese eje? Sin desarrollo la pieza es plana en la cara y su
     // profundidad sigue siendo un dato libre (101A de malla / traba recta).
     // (Se intentó un umbral relativo el 14-ago para el 2º rango en altura de una
