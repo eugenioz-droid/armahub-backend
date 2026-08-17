@@ -111,6 +111,34 @@ ok(d2 && Math.abs(Number(d2.A) - 15) < 1 || Math.abs(Number(d2.B) - 15) < 1,
 ok(d2 && Number(d2.B) > 300,
   'la otra dim llena el largo útil del plano (B=' + (d2 && d2.B) + ', esperado ~394)');
 
+console.log('— MISMA FIGURA, CUALQUIER TIPOLOGÍA: resultado idéntico (15-ago) —');
+// El bug que cerró este guard: el EJE DE REPARTO salía del rumbo para todo lo que
+// no fuera rol 'cabezal', así que una 103C bajo TR/TC pedía su rango sobre su
+// PROPIO eje → el motor rechazaba el rango y colocaba 1 barra, mientras la misma
+// figura bajo MH/MV se repartía bien. La regla vive ahora en reglas.ejeDistribucion
+// y decide por TOPOLOGÍA (cerrada = rumbo · abierta = tercer eje).
+(function () {
+  var poseC = { cara: 'lateral', lado: 1, rumbo: 'x' };
+  var specC = global.ModeladorCatalogoFiguras.get('103C');
+  var firmas = ['MH', 'MV', 'TR', 'TC'].map(function (tip) {
+    var dims = {};
+    (specC.parciales || []).forEach(function (L) { dims[L] = { modo: 'auto' }; });
+    var c = { comp_id: 'X', tipologia: tip, figura: '103C', diam: 0.8,
+      pose: { cara: poseC.cara, lado: poseC.lado, rumbo: poseC.rumbo }, dims: dims,
+      distribucion: { modo: 'linear', rango: { eje: R.ejeDistribucion({ figura: '103C', pose: poseC }),
+        from: -100, to: 100, sep: 40 } } };
+    var pls = R.expandirComponente(c, MURO);
+    return tip + ':' + pls.length + '|' + JSON.stringify(pls[0] && pls[0].dims) +
+      '|av' + ((c._avisos || []).length);
+  });
+  var todasIguales = firmas.every(function (f) {
+    return f.split(':')[1] === firmas[0].split(':')[1];
+  });
+  ok(todasIguales, 'la 103C entra IGUAL bajo MH/MV/TR/TC: ' + JSON.stringify(firmas));
+  ok(firmas[0].indexOf(':6|') > 0 && firmas[0].indexOf('av0') > 0,
+    'y se reparte de verdad (6 barras, sin avisos): ' + firmas[0]);
+})();
+
 console.log('— la SEMILLA no se movió —');
 var G = require(path.join(base, 'generar.js'));
 var S = require(path.join(base, 'semilla_viga.js'));

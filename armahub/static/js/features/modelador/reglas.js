@@ -1241,8 +1241,30 @@
   // RUMBO de su pose. Los distribuidores reparten sobre su x local y la permutación
   // dice qué eje del mundo es esa x local. Lo consume la UI (flecha de rango,
   // arrastre del rango) para operar sobre el eje real y no siempre sobre X.
+  // EJE SOBRE EL QUE SE REPARTE LA PIEZA — por TOPOLOGÍA, no por rol (fix 15-ago).
+  // Dos casos, y la figura decide cuál:
+  //   · PIEZA DE SECCIÓN (contorno cerrado): su plano es ⊥ al rumbo, así que las
+  //     copias se alinean por el RUMBO (un estribo se reparte a lo largo del
+  //     elemento). Es lo que esta función devolvía SIEMPRE.
+  //   · LONGITUDINAL (figura abierta: cabezal, malla, traba del Modelo A): la
+  //     barra CORRE por el rumbo — repartir ahí es apilar copias sobre sí misma.
+  //     Va por el TERCER eje: ni la normal de su cara (por ahí entran las capas)
+  //     ni su rumbo.
+  // Antes esto devolvía el rumbo para todos y el EDITOR corregía el caso
+  // longitudinal… sólo si el rol de la tipología era 'cabezal'. Con el Modelo A
+  // (una traba es longitudinal) una 103C bajo TR pedía su rango sobre su propio
+  // eje: el motor lo rechazaba y colocaba 1 barra — misma figura, distinto
+  // resultado según el chip. La regla vive ACÁ, una sola vez, para todos.
+  var _NORMAL_CARA_MUNDO = { sup: 'y', inf: 'y', lateral: 'z', extremo: 'x' };
   function ejeDistribucion(comp) {
-    return poseDe(comp).rumbo;
+    var pose = poseDe(comp);
+    var fp = _fp();
+    var cerrada = !!(comp && fp && fp.familiaDeDibujo &&
+      fp.familiaDeDibujo(comp.figura, null) === 'estribo');
+    if (cerrada || !comp || !comp.figura) return pose.rumbo;
+    var normal = _NORMAL_CARA_MUNDO[pose.cara] || 'y';
+    var terceros = ['x', 'y', 'z'].filter(function (e) { return e !== normal && e !== pose.rumbo; });
+    return terceros[0] || pose.rumbo;
   }
 
   // Eje del MUNDO en el que se apilan las capas (layered/arreglo), dado el eje
@@ -1969,7 +1991,7 @@
     // silencio. Ahí: null → 1 barra + aviso, como el guard de la cara.
     if (eje === 'x') {
       var dimX = Number(host.largo);
-      if (isFinite(dimX) && dimX > 0 && _spanEnEje(base, host, 'x') >= 0.9 * dimX) return null;
+      if (isFinite(dimX) && dimX > 0 && _spanEnEje(base, host, 'x') >= 0.9 * dimX) return '__propio';
       return eje;
     }
     if (eje !== _marcoCara(base, host).eje) return eje;   // otro eje: nada que decidir
@@ -2020,6 +2042,12 @@
     var cual = campo || 'rango';
     var eje = _ejeRangoReparto(base, cfg, host, cual);
     var etiq = (cual === 'rango2') ? '2º rango' : 'Rango';
+    if (eje === '__propio') {
+      _avisar(base, etiq + ' ignorado: pide repartir a lo largo de la PROPIA barra, y ahí las ' +
+        'copias caerían una encima de otra. Se generó 1 barra: para repartirla, elige un rango ' +
+        'en otro eje (o gira la pieza con ESPACIO para que corra por donde quieres repartir).');
+      return { eje: null, pos: [null] };
+    }
     if (!eje) {
       _avisar(base, etiq + ' ignorado: pide repartir por el eje de la CARA contra la que se ' +
         'ancla esta barra, y ahí la posición la fija el recubrimiento, no el rango. Se generó ' +
