@@ -125,8 +125,10 @@ console.log('— MISMA FIGURA, CUALQUIER TIPOLOGÍA: resultado idéntico (15-ago
     (specC.parciales || []).forEach(function (L) { dims[L] = { modo: 'auto' }; });
     var c = { comp_id: 'X', tipologia: tip, figura: '103C', diam: 0.8,
       pose: { cara: poseC.cara, lado: poseC.lado, rumbo: poseC.rumbo }, dims: dims,
-      distribucion: { modo: 'linear', rango: { eje: R.ejeDistribucion({ figura: '103C', pose: poseC }),
-        from: -100, to: 100, sep: 40 } } };
+      distribucion: { modo: 'linear', rango: { from: -100, to: 100, sep: 40 } } };
+    // el eje se pide con el componente COMPLETO, como hace el editor: la normal
+    // del plano se MIDE trazando la pieza, y sin dims no hay trazo que medir.
+    c.distribucion.rango.eje = R.ejeDistribucion(c, MURO);
     var pls = R.expandirComponente(c, MURO);
     return tip + ':' + pls.length + '|' + JSON.stringify(pls[0] && pls[0].dims) +
       '|av' + ((c._avisos || []).length);

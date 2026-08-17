@@ -1875,7 +1875,9 @@
     // 103C bajo TR pedía su rango sobre su propio eje y el motor colocaba 1 barra.
     // La regla es UNA y vive en el motor (reglas.ejeDistribucion, por topología).
     var reglas = global.ModeladorReglas;
-    if (reglas && reglas.ejeDistribucion) return reglas.ejeDistribucion(c);
+    // Se le pasa el HORMIGÓN para que el motor MIDA el plano de la pieza en vez
+    // de deducirlo del campo `rumbo` (ver la nota de ejeDistribucion).
+    if (reglas && reglas.ejeDistribucion) return reglas.ejeDistribucion(c, ST.receta && ST.receta.geometria);
     return _permOrientacion(c).x;
   }
 

@@ -1241,30 +1241,59 @@
   // RUMBO de su pose. Los distribuidores reparten sobre su x local y la permutación
   // dice qué eje del mundo es esa x local. Lo consume la UI (flecha de rango,
   // arrastre del rango) para operar sobre el eje real y no siempre sobre X.
-  // EJE SOBRE EL QUE SE REPARTE LA PIEZA — por TOPOLOGÍA, no por rol (fix 15-ago).
-  // Dos casos, y la figura decide cuál:
-  //   · PIEZA DE SECCIÓN (contorno cerrado): su plano es ⊥ al rumbo, así que las
-  //     copias se alinean por el RUMBO (un estribo se reparte a lo largo del
-  //     elemento). Es lo que esta función devolvía SIEMPRE.
-  //   · LONGITUDINAL (figura abierta: cabezal, malla, traba del Modelo A): la
-  //     barra CORRE por el rumbo — repartir ahí es apilar copias sobre sí misma.
-  //     Va por el TERCER eje: ni la normal de su cara (por ahí entran las capas)
-  //     ni su rumbo.
-  // Antes esto devolvía el rumbo para todos y el EDITOR corregía el caso
-  // longitudinal… sólo si el rol de la tipología era 'cabezal'. Con el Modelo A
-  // (una traba es longitudinal) una 103C bajo TR pedía su rango sobre su propio
-  // eje: el motor lo rechazaba y colocaba 1 barra — misma figura, distinto
-  // resultado según el chip. La regla vive ACÁ, una sola vez, para todos.
-  var _NORMAL_CARA_MUNDO = { sup: 'y', inf: 'y', lateral: 'z', extremo: 'x' };
-  function ejeDistribucion(comp) {
+  // ==========================================================================
+  // EJE DE REPARTO = LA NORMAL DEL PLANO DE LA PIEZA — MEDIDA, no deducida.
+  // ==========================================================================
+  // REGLA (del usuario, una sola para todo): «la barra entra en el plano de la
+  // vista donde clickeas y el reparto va por la NORMAL de ese plano» — nunca
+  // dentro del plano, porque ahí las copias caerían una encima de otra.
+  //
+  // POR QUÉ SE MIDE Y NO SE DEDUCE (15-ago). El campo `rumbo` de la pose está
+  // SOBRECARGADO: en una figura cerrada guarda la normal de su plano y en una
+  // abierta la dirección en que la barra CORRE. Leer la regla desde ese campo
+  // obliga a preguntar "¿cerrada o abierta?", y ese `if` ya mordió dos veces
+  // (una 103C bajo TR pedía su rango sobre su propio eje → 1 sola barra). Acá se
+  // TRAZA la pieza una vez y se mira en qué eje NO se desarrolla: ese es su plano
+  // y esa es su normal. Sin topología, sin tipología, y vale igual para figuras
+  // diagonales o ya rotadas — es geometría, no una tabla.
+  //
+  // BARRA RECTA: no tiene plano propio (dos ejes con desarrollo nulo). Ahí manda
+  // el otro dato de su pose: la NORMAL DE SU CARA es por donde entran las capas,
+  // así que el reparto va por el eje que queda. (Es el mismo resultado que daba
+  // la regla del "tercer eje", ahora como consecuencia y no como caso aparte.)
+  //
+  // `host` es opcional sólo por compatibilidad de firma: sin él no se puede
+  // trazar y se cae a la lectura del campo (lo que hacía antes).
+  function ejeDistribucion(comp, host) {
     var pose = poseDe(comp);
-    var fp = _fp();
-    var cerrada = !!(comp && fp && fp.familiaDeDibujo &&
-      fp.familiaDeDibujo(comp.figura, null) === 'estribo');
-    if (cerrada || !comp || !comp.figura) return pose.rumbo;
-    var normal = _NORMAL_CARA_MUNDO[pose.cara] || 'y';
-    var terceros = ['x', 'y', 'z'].filter(function (e) { return e !== normal && e !== pose.rumbo; });
-    return terceros[0] || pose.rumbo;
+    if (!host || !comp || !comp.figura) return pose.rumbo;
+    // Se mide en el MARCO LOCAL de la pieza (que es donde el trazador dibuja) y
+    // el resultado se devuelve al MUNDO con la misma permutación involutiva que
+    // usa todo el motor. Sin esa vuelta, una cerrada de pie reportaba el eje de
+    // una acostada (medido: 104D rumbo y → 'x' en vez de 'y').
+    var P = _permDe(comp);
+    var hostEf = P ? _hostPermutado(host, P) : host;   // sin permutación, el host va tal cual
+    var base;
+    try { base = _baseDeComponente(comp, hostEf); } catch (e) { return pose.rumbo; }
+    var spans = {
+      x: _spanEnEje(base, hostEf, 'x'),
+      y: _spanEnEje(base, hostEf, 'y'),
+      z: _spanEnEje(base, hostEf, 'z')
+    };
+    var mayor = Math.max(spans.x, spans.y, spans.z);
+    if (!(mayor > 0)) return pose.rumbo;
+    var aMundo = function (ejeLocal) { return P ? P[ejeLocal] : ejeLocal; };
+    // "no se desarrolla" = menos del 2% de su propia extensión mayor (el φ y los
+    // arcos dejan micro-espesor; un lado real nunca baja de ahí).
+    var planos = ['x', 'y', 'z'].filter(function (e) { return spans[e] <= 0.02 * mayor; });
+    if (planos.length === 1) return aMundo(planos[0]);             // pieza plana: su normal
+    if (planos.length === 2) {                                     // recta: manda su cara
+      var caraLocal = derivarPose(pose).caraLocal;                 // 'sup'|'inf'|'lateral'
+      var normalLocal = (caraLocal === 'lateral') ? 'z' : 'y';
+      var libres = planos.filter(function (e) { return e !== normalLocal; });
+      return aMundo(libres[0] || planos[0]);
+    }
+    return pose.rumbo;   // pieza que ocupa volumen en los 3 ejes: no hay plano que leer
   }
 
   // Eje del MUNDO en el que se apilan las capas (layered/arreglo), dado el eje
