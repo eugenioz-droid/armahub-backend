@@ -38,9 +38,18 @@
     dirty: true, _vw: 0, _vh: 0
   };
 
-  var COLORES_TIP = {   // swatches del panel (hex string) por tipología (rol)
-    CBS: '#1565c0', CBI: '#00897b', ES: '#e65100', TRV: '#7b1fa2', LT: '#455a64'
+  // SWATCHES del panel — MISMA paleta que el editor (COL2D). Esta tabla tenía 5
+  // claves propias y ya había divergido (LT #455a64 vs #607d8b) y no conocía
+  // NINGUNA tipología de muro/losa/columna: todas caían al gris del fallback.
+  // Si el editor no está cargado se usa este mínimo, ya alineado con él.
+  var COLORES_TIP_FALLBACK = {
+    CBS: '#1565c0', CBI: '#00897b', ES: '#e65100', TRV: '#7b1fa2', LT: '#607d8b'
   };
+  function _colorTip(tip) {
+    var te = global.TemplateEditor;
+    if (te && te.colorDeTipologia) return te.colorDeTipologia(tip);
+    return COLORES_TIP_FALLBACK[String(tip || '').toUpperCase()] || null;
+  }
   var TEMAS = {
     oscuro: { bg: 0x14171c, g1: 0x2a3340, g2: 0x222a34, CBS: 0x4d9bff, CBI: 0x2fd6c4, ES: 0xff8c42, TRV: 0xc07bff, LT: 0x90a4ae },
     medio: { bg: 0x2b3242, g1: 0x4a5568, g2: 0x3a4353, CBS: 0x3f7fd0, CBI: 0x26a69a, ES: 0xef7d3a, TRV: 0xa56bd0, LT: 0x78909c },
@@ -92,18 +101,21 @@
   // --------------------------------------------------------------------------
   // Panel: render de componentes desde la receta
   // --------------------------------------------------------------------------
+  // ROL — lo pregunta al MOTOR (consolidación 15-ago). Este panel tenía su propia
+  // tabla, y ya había DIVERGIDO de las otras dos: clasificaba por prefijo 'TR', así
+  // que una TC salía 'cabezal' (texto y color equivocados) y seguía emitiendo un
+  // rol 'traba' que el motor mató con el Modelo A. La autoridad es una sola.
   function _rolDe(comp) {
-    var t = (comp.tipologia || '').toUpperCase();
-    if (t === 'ES' || t === 'ESC' || t === 'EC') return 'estribo';
-    if (t.indexOf('TR') === 0) return 'traba';
+    var reglas = global.ModeladorReglas;
+    if (comp && reglas && reglas.rolDeComponente) return reglas.rolDeComponente(comp);
     return 'cabezal';
   }
 
   // Texto descriptivo (el ".cap" de cada componente en la maqueta).
   function _capTexto(comp) {
     var rol = _rolDe(comp);
+    // (el rol 'traba' murió con el Modelo A: el motor nunca lo devuelve)
     if (rol === 'estribo') return 'Estribo cerrado con gancho. Espaciamiento por zonas a lo largo de la viga.';
-    if (rol === 'traba') return 'Traba que cose las caras. Distribuida por zonas a lo largo de la viga.';
     return 'Un componente = N capas iguales o distintas (capas iguales → 1 etiqueta / 1 tanda).';
   }
 
@@ -113,7 +125,7 @@
     $('m3d_compCount').textContent = comps.length;
     var html = '';
     comps.forEach(function (comp, idx) {
-      var col = COLORES_TIP[comp.tipologia] || COLORES_TIP[_rolDe(comp) === 'estribo' ? 'ES' : 'LT'] || '#607d8b';
+      var col = _colorTip(comp.tipologia) || _colorTip(_rolDe(comp) === 'estribo' ? 'ES' : 'LT') || '#607d8b';
       var dist = comp.distribucion || {};
       var meta = 'ø' + comp.diam + ' · fig ' + comp.figura + ' · ';
       if (dist.modo === 'layered') meta += (dist.n_capas || 1) + ((dist.n_capas || 1) === 1 ? ' capa' : ' capas');

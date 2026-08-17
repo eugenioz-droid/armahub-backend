@@ -144,13 +144,37 @@
   // ==========================================================================
   // MODELO — helpers sobre ST.receta
   // ==========================================================================
-  var TIP_ROL = {
-    ES: 'estribo', ESC: 'estribo', EC: 'estribo',
-    TRV: 'traba', TR: 'traba', TC: 'traba', TRC: 'traba', TRL: 'traba', TRF: 'traba'
-  };
+  // ROL — SIN TABLA PROPIA (consolidación 15-ago). La UI tenía aquí su copia de
+  // la tabla tipología→rol, con 'traba' vivo, mientras el motor lo había matado
+  // (Modelo A). De esa divergencia salieron 4 defectos MEDIDOS: el clic que
+  // desplazaba una TR 146 cm fuera del hormigón, el check "anidar" pintado sobre
+  // un motor que ya no anida, y el empalme y las Patas ocultos en barras a las
+  // que el motor SÍ se los aplica. Ahora la autoridad es una sola.
+  //
+  //   _rolComp(c)  → el rol que MANDA para ESE componente (topología incluida).
+  //                  Es lo que hay que usar siempre que exista el componente.
+  //   _rolDe(tip)  → sólo para cuando NO hay componente (el ribbon antes de
+  //                  colocar, un chip suelto): pregunta por la tipología pelada.
+  function _rolComp(c) {
+    var reglas = global.ModeladorReglas;
+    if (c && reglas && reglas.rolDeComponente) return reglas.rolDeComponente(c);
+    return _rolDe(c && c.tipologia);
+  }
   function _rolDe(t) {
-    t = (t || '').toUpperCase();
-    return TIP_ROL[t] || 'cabezal';   // CBS/CBI/LT/... = cabezal (longitudinal)
+    var reglas = global.ModeladorReglas;
+    if (reglas && reglas.rolDeComponente) return reglas.rolDeComponente({ tipologia: t });
+    return 'cabezal';
+  }
+
+  // @sep DE PARTIDA por tipología — PRESET, no regla: es el número con el que
+  // nace el campo y el usuario lo cambia. Vivía escrito CINCO veces (y el motor
+  // no lo conocía, así que su propio default caía a 20 igual para una traba).
+  // Una tabla, un default. Que sea por tipología es legítimo: es un valor de
+  // arranque, no una decisión de geometría.
+  var SEP_POR_TIPOLOGIA = { TRV: 40, TR: 40, TC: 40, TRC: 40, TRL: 40, TRF: 40 };
+  var SEP_DEFAULT = 20;
+  function _sepDefault(tip) {
+    return SEP_POR_TIPOLOGIA[String(tip || '').toUpperCase()] || SEP_DEFAULT;
   }
 
   // Diámetros estándar (mm) — espejo de armahub/diametros.py: DIAM_ESTANDAR.
@@ -463,7 +487,7 @@
     // que no existe (14-ago). Para esas familias: null (la ficha no marca nada).
     var fpDom = global.ModeladorFiguraPuntos;
     if (c && fpDom && fpDom.familiaDeDibujo) {
-      var famDom = fpDom.familiaDeDibujo(c.figura, _rolDe(c.tipologia));
+      var famDom = fpDom.familiaDeDibujo(c.figura, _rolComp(c));
       if (famDom === 'estribo' || famDom === 'rombo') return null;
     }
     var reglas = global.ModeladorReglas;
@@ -744,15 +768,17 @@
     return dims;
   }
 
-  // Distribución por defecto según rol.
-  function _distDefault(rol) {
-    if (rol === 'estribo') {
-      return { modo: 'linear', activa: false, sep: 20, zonas: [{ long: 0, sep: 20 }], start_offset: 4 };
+  // Distribución de PARTIDA. El MODO lo decide el preset de la tipología
+  // (modoDefaultDeTipologia, autoridad del motor) y el @ sale de _sepDefault:
+  // dos presets, ninguna regla. Antes ramificaba por el rol —incluido 'traba',
+  // que el motor ya no emite—, así que una figura abierta bajo TR nacía por una
+  // rama muerta.
+  function _distDefault(tip) {
+    if (_modoDefault(tip) === 'puntual') {
+      return { modo: 'layered', n_capas: 1, barras_capa: 1, gap: 4, sentido: 'nucleo', justify: 'centrar' };
     }
-    if (rol === 'traba') {
-      return { modo: 'linear', activa: false, sep: 40, zonas: [{ long: 0, sep: 40 }], start_offset: 4 };
-    }
-    return { modo: 'layered', n_capas: 1, barras_capa: 1, gap: 4, sentido: 'nucleo', justify: 'centrar' };
+    var sp = _sepDefault(tip);
+    return { modo: 'linear', activa: false, sep: sp, zonas: [{ long: 0, sep: sp }], start_offset: 4 };
   }
 
   // ==========================================================================
@@ -775,8 +801,8 @@
   function _modoDefault(tip) {
     var reglas = global.ModeladorReglas;
     if (reglas && reglas.modoDefaultDeTipologia) return reglas.modoDefaultDeTipologia(tip);
-    var rol = _rolDe(tip);
-    return (rol === 'estribo' || rol === 'traba') ? 'lineal' : 'puntual';
+    // Fallback (motor no cargado): estribos y trabas nacen repartidos.
+    return (_rolDe(tip) === 'estribo' || _sepDefault(tip) !== SEP_DEFAULT) ? 'lineal' : 'puntual';
   }
 
   // Metadata modular ADITIVA de un componente nuevo (§INTERACCIÓN-2.0). Defaults
@@ -943,7 +969,7 @@
     if (!MODO_A_DIST[modo]) return;
     c.modo = modo;
     var d = c.distribucion = c.distribucion || {};
-    var rol = _rolDe(c.tipologia);
+    var rol = _rolComp(c);
     var ejeD = _ejeDistDe(c);   // X, o Z si la pieza está volteada
     d.modo = MODO_A_DIST[modo];
     if (modo === 'puntual') {
@@ -953,13 +979,13 @@
       if (d.sentido == null) d.sentido = 'nucleo';
       if (d.justify == null) d.justify = 'centrar';
     } else if (modo === 'lineal') {
-      if (d.sep == null) d.sep = (rol === 'traba') ? 40 : 20;
+      if (d.sep == null) d.sep = _sepDefault(c.tipologia);
       if (!d.rango) d.rango = _rangoDefault(d.sep, ejeD);
       else if (d.rango.eje == null) d.rango.eje = ejeD;   // migrar rangos viejos sin eje
       d.activa = true;
       if (c.pos_hint) delete c.pos_hint[ejeD];   // el rango la distribuye
     } else { // arreglo
-      if (d.sep == null) d.sep = (rol === 'traba') ? 40 : 20;
+      if (d.sep == null) d.sep = _sepDefault(c.tipologia);
       if (!d.rango) d.rango = _rangoDefault(d.sep, ejeD);
       else if (d.rango.eje == null) d.rango.eje = ejeD;
       if (d.n_capas == null) d.n_capas = 2;      // arreglo real ≥ 2 capas
@@ -1499,7 +1525,7 @@
       // SECCIÓN LIMPIA: rol + eje por el que CORRE la barra, calculados UNA vez aquí
       // (no por frame). Los usa _clipLocalPorVista para esconder del render las
       // barras vistas DE PUNTA — el overlay ya las dibuja como círculo de sección.
-      mesh.userData.rol = _rolDe(pl.tipologia);
+      mesh.userData.rol = _rolComp(pl);
       mesh.userData.ejeMayor = _ejeMayorSpan(pl.puntos);
       ST.barras3D.push(mesh);
       ST.world.add(mesh);
@@ -2170,7 +2196,7 @@
   function _familiaDibujo(c) {
     var fp = _figPuntos();
     if (!fp || !fp.familiaDeDibujo || !c || !c.figura) return null;
-    return fp.familiaDeDibujo(c.figura, (c._rol || _rolDe(c.tipologia)) || null);
+    return fp.familiaDeDibujo(c.figura, _rolComp(c) || null);
   }
 
   // ¿Esta barra se dibuja como CONTORNO CERRADO (marco de estribo / rombo)? El
@@ -2293,7 +2319,7 @@
     // profundidad, NO raw[0], que es la punta del gancho). Si el ghost usara su
     // propio criterio, en SECCIÓN pintaría la pata de 15 cm donde la barra colocada
     // dibuja un punto: el ghost volvería a mentir, por otro lado.
-    if (def && _rolDe(pl.tipologia) === 'cabezal' && _ejeMayorSpan(raw) === def.depth) {
+    if (def && _rolComp(pl) === 'cabezal' && _ejeMayorSpan(raw) === def.depth) {
       var q0 = proy(raw[0]), mejorDelta = -1;
       for (var si = 1; si < raw.length; si++) {
         var dd = Math.abs((raw[si][def.depth] || 0) - (raw[si - 1][def.depth] || 0));
@@ -2337,7 +2363,7 @@
   // del cursor los ejes libres; el resto sale del hormigón.
   function _ghostFormaBasica(plano, uv) {
     var geo = ST.receta && ST.receta.geometria; if (!geo) return null;
-    var rol = _rolDe(ST.cargado.tipologia);
+    var rol = _rolComp(ST.cargado);
     var b = boundaryDeVista(geo, plano, (_defsPlanos() || {})[plano]);
     if (!b) return null;
     var rect = _rectPlano(geo, plano);          // W/H exteriores + iW/iH útiles (recub)
@@ -2434,7 +2460,7 @@
     if (dentro) (function () {
       var fpG = global.ModeladorFiguraPuntos;
       if (!fpG || !fpG.familiaDeDibujo) return;
-      var famG = fpG.familiaDeDibujo(ST.cargado.figura, _rolDe(ST.cargado.tipologia));
+      var famG = fpG.familiaDeDibujo(ST.cargado.figura, _rolComp(ST.cargado));
       if (famG !== 'estribo' && famG !== 'rombo') return;
       var geoG = ST.receta && ST.receta.geometria;
       var bG = geoG ? boundaryDeVista(geoG, plano, (_defsPlanos() || {})[plano]) : null;
@@ -2691,7 +2717,7 @@
     // el SVG es el que dibuja (sin render orto detrás).
     placements.forEach(function (pl) {
       var color = _colorComp(_compDePl(pl) || { tipologia: pl.tipologia });
-      var rol = _rolDe(pl.tipologia);
+      var rol = _rolComp(pl);
       var ci = (pl.meta && pl.meta.ci != null) ? pl.meta.ci : -1;
       var sel = (ci === ST.selCi && ST.selCi >= 0);
       var pts = (pl.puntos || []).map(proj).filter(function (q) { return isFinite(q.u) && isFinite(q.v); });
@@ -3115,7 +3141,7 @@
   // ST.cargado al previsualizar (son lo mismo: los sella _sellarCargado).
   // NO muta ST ni la receta: devuelve el componente suelto.
   function _compDesdeClick(plano, host, sel) {
-    var rol = _rolDe(sel.tipologia);
+    var rol = _rolComp(sel);
     var meta = _metaModular(sel.tipologia);
     // POSE INICIAL — la manda la TABLA DEL MOTOR (POSES_DEFAULT por elemento ×
     // tipología). Los defaults dispersos de la UI (_caraDefault + la orientación de
@@ -3248,7 +3274,7 @@
       angulos: _figSpec(sel.figura).angulos.slice(),
       modo: meta.modo, plano_pieza: meta.plano_pieza, arreglo: meta.arreglo,
       dims: _dimsDefault(sel.figura, rol, sel.contorno),
-      distribucion: _distDefault(rol)
+      distribucion: _distDefault(sel.tipologia)
     };
     // POSE canónica + espejo de los campos viejos (cara / lado / plano_pieza): el
     // resto de esta función (y el motor) ya leen el estado NUEVO.
@@ -3266,7 +3292,7 @@
     // Los cabezales (CB*/LT preset 'puntual') no entran acá: su reparto son capas.
     if (meta.modo === 'lineal') {
       var d = comp.distribucion;
-      // _distDefault(rol) ya devuelve la forma lineal para estribo/traba (esta
+      // _distDefault(tipologia) ya devuelve la forma lineal cuando corresponde (esta
       // rama es idempotente en ellos); un rol cabezal con preset lineal llega con
       // la forma layered y hay que completarle los campos que el rango necesita.
       d.modo = MODO_A_DIST.lineal;
@@ -3886,7 +3912,7 @@
     // + el retranqueo por dependencias. Escribir pos_hint.y en un cabezal chocaría
     // con las capas. Por eso, para cabezales, el arrastre solo toca X/Z (la Y queda
     // gobernada por las capas). Estribos/trabas SÍ pueden ajustar Y (no son layered).
-    var esCabezal = (_rolDe(c.tipologia) === 'cabezal');
+    var esCabezal = (_rolComp(c) === 'cabezal');
     // Solo mueve en los ejes que el plano controla.
     if (plano === 'seccion') {
       c.pos_hint.z = (base.z || 0) + dz;                         // ancho (Z) — siempre
@@ -3955,7 +3981,7 @@
     // PRIMER arrastre sobre la flecha "inactiva" (preview): ACTIVAR la distribución.
     // Ese es el único gesto que la enciende (ya no hay herramienta ↔ Rango de 2 clics).
     if (!d.activa) {
-      if (d.sep == null) d.sep = (_rolDe(c.tipologia) === 'traba') ? 40 : 20;
+      if (d.sep == null) d.sep = _sepDefault(c.tipologia);
       if (_modoDe(c) !== 'arreglo') { c.modo = 'lineal'; d.modo = 'linear'; }
       d.activa = true;
       d.rango = _rangoDefault(d.sep, eje);
@@ -4065,7 +4091,7 @@
   }
 
   function _compEl(c, ci) {
-    var rol = _rolDe(c.tipologia);
+    var rol = _rolComp(c);
     var col = _colorComp(c);   // el swatch muestra el color REAL de la barra (override incluido)
     var sel = (ci === ST.selCi);
     var wrap = document.createElement('div');
@@ -4137,7 +4163,7 @@
   // No hay opción "auto": si el componente no trae el campo, se estampa el default
   // por rol al renderizar el panel, de modo que lo que se ve es lo que hay.
   function _selJerarquia(c, ci) {
-    if (c.jerarquia == null) c.jerarquia = _jerDefault(_rolDe(c.tipologia));
+    if (c.jerarquia == null) c.jerarquia = _jerDefault(_rolComp(c));
     var sel = document.createElement('select');
     sel.className = 'te-jer';
     sel.title = 'n/a = pegado al recubrimiento (no participa) · 1 = nivel exterior · 2+ se apoyan por dentro del anterior';
@@ -6382,7 +6408,7 @@
     }
     // Asegurar el flag de distribución en la semilla (estribo/traba ya distribuidos).
     (ST.receta.componentes || []).forEach(function (c) {
-      var rol = _rolDe(c.tipologia);
+      var rol = _rolComp(c);
       if (rol !== 'cabezal' && c.distribucion && c.distribucion.zonas && c.distribucion.activa == null) c.distribucion.activa = true;
     });
     // Dirty-tracking: el baseline NO se puede sellar aquí. _regenerar() (más abajo)
@@ -7234,7 +7260,10 @@
     _colocarEnVista: _colocarEnVista, _rotarSeleccion: _rotarSeleccion,
     _borrarSeleccion: _borrarSeleccion,
     _entrarModoColocacion: _entrarModoColocacion, _salirModoColocacion: _salirModoColocacion,
-    _rolDe: _rolDe,
+    _rolDe: _rolDe, _rolComp: _rolComp,
+    // PALETA ÚNICA — la consume panel_3d, que tenía su propia tabla ya divergida
+    // (LT distinto y sin ninguna tipología de muro/losa/columna).
+    colorDeTipologia: _colDe,
     boundaryDeVista: boundaryDeVista, _rectPlano: _rectPlano,   // P2/base task2
     setPlanoActivo: _setPlanoActivo,                            // P3 — 'seccion'|'largo'|'planta'|null
     // INTERACCIÓN-2.0 · ghost + grosor + clamp + undo

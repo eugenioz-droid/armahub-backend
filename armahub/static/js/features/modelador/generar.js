@@ -394,7 +394,12 @@
     host.jer_caras = jerCaras;
 
     var plan = comps.map(function (comp, ci) {
-      var rol = (REGLAS.rolDeTipologia ? REGLAS.rolDeTipologia(comp.tipologia, comp.cara) : 'cabezal');
+      // EL ROL QUE MANDA (topología sobre tipología), el MISMO que usa el motor
+      // al expandir. Con `rolDeTipologia` a secas, un 106A escrito bajo MH
+      // planificaba su nivel como cabezal y se expandía como estribo: dos jerarquías
+      // para la misma barra, y la pila de recubrimientos salía de la equivocada.
+      var rol = (REGLAS.rolDeComponente ? REGLAS.rolDeComponente(comp)
+        : (REGLAS.rolDeTipologia ? REGLAS.rolDeTipologia(comp.tipologia, comp.cara) : 'cabezal'));
       var nivel = REGLAS.nivelJerarquiaEfectivo
         ? REGLAS.nivelJerarquiaEfectivo(comp.jerarquia, rol)
         : (rol === 'estribo' ? 1 : 2);

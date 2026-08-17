@@ -3572,6 +3572,40 @@
     return _ladoLongitudinal(comp.figura, comp.dims, _domElegido(comp));
   }
 
+  // ==========================================================================
+  // ROL DE UN COMPONENTE — FUENTE ÚNICA (consolidación 15-ago)
+  // ==========================================================================
+  // La tipología PROPONE y la TOPOLOGÍA de la figura MANDA:
+  //   · figura CERRADA (marco 104x, 106x con ganchos) → 'estribo' (pieza de
+  //     sección), venga el chip que venga. Un 106A escrito bajo MH entraba al
+  //     pipeline de cortina y salía sin sentido.
+  //   · 'traba' NO EXISTE (Modelo A, 14-ago): «toda figura entra con su forma de
+  //     catálogo; el plano de entrada, el dominante y el borde dan control
+  //     absoluto; si dejas reglas, el control se pierde». Una figura ABIERTA bajo
+  //     TR/TC/TRV es un longitudinal más; el cruce se logra girando la pieza.
+  //   · el resto → 'cabezal' (longitudinal).
+  // Se RE-DERIVA en cada pasada (no se cachea): la figura puede cambiar en la
+  // ficha y un rol pegado dibujaría la figura nueva con el tren de la vieja.
+  //
+  // ESTÁ EXPORTADA a propósito: la UI tenía su PROPIA tabla tipología→rol (con
+  // 'traba' vivo) y de ahí salieron 4 defectos medidos el 15-ago — el clic que
+  // desplazaba una TR 146 cm fuera del hormigón, el check "anidar" pintado sobre
+  // un motor que ya no anida, y el empalme y las Patas ocultos en barras a las
+  // que el motor SÍ se los aplica. Una sola tabla, un solo lugar.
+  function rolDeComponente(comp) {
+    if (!comp) return 'cabezal';
+    var rol = _rolDeTipologia(comp.tipologia, comp.cara);
+    if (rol === 'traba') rol = 'cabezal';
+    if (rol === 'cabezal') {
+      var fpR = _fp();
+      if (fpR && ((fpR.esEstriboConGanchos && fpR.esEstriboConGanchos(comp.figura)) ||
+        (fpR.familiaDeDibujo && fpR.familiaDeDibujo(comp.figura, null) === 'estribo'))) {
+        rol = 'estribo';
+      }
+    }
+    return rol;
+  }
+
   // opts.recubExtremo: recubrimiento de las caras que cierran el eje LONGITUDINAL
   // local. Sin opts vale el recub vertical (comportamiento histórico); con la pieza
   // VOLTEADA el eje longitudinal local es la Z real, así que su recub es el lateral.
@@ -3583,24 +3617,7 @@
     // cabezal, su lado B tratado como longitudinal y un dibujo sin sentido.
     // Se RE-DERIVA en cada pasada (no se cachea): la figura puede cambiar en la
     // ficha y un rol pegado dibujaría la figura nueva con el tren de la vieja.
-    var rolTip = _rolDeTipologia(comp.tipologia, comp.cara);
-    // EL ROL 'TRABA' MURIÓ EN EL MOTOR (regla final del usuario, 14-ago): «toda
-    // figura entra con su forma de catálogo; el plano de entrada, el dominante y
-    // el borde dan control absoluto; si dejas reglas, el control se pierde». Una
-    // figura ABIERTA bajo TR/TC/TRV es un longitudinal más: se dibuja como se
-    // dibujó y su AUTO se resuelve por la DIRECCIÓN de cada lado en la pose (el
-    // universal del 13-ago). El cruce de la traba ya no es una regla: es girar
-    // la pieza (ESPACIO) hasta que su dominante corra por el eje que cruza. La
-    // tipología conserva solo presets (color, @sep, modo, nivel). Las recetas
-    // viejas migran en el normalizador (pose de_pie) para no estirarse al largo.
-    if (rolTip === 'traba') rolTip = 'cabezal';
-    if (rolTip === 'cabezal') {
-      var fpR = _fp();
-      if (fpR && ((fpR.esEstriboConGanchos && fpR.esEstriboConGanchos(comp.figura)) ||
-        (fpR.familiaDeDibujo && fpR.familiaDeDibujo(comp.figura, null) === 'estribo'))) {
-        rolTip = 'estribo';
-      }
-    }
+    var rolTip = rolDeComponente(comp);
     // NO ENUMERABLE (mismo criterio que _pose/_avisos/_dims): el rol es DERIVADO y
     // se re-deriva en cada pasada, pero con la asignación normal viajaba dentro de
     // `params` al guardar el template y ensuciaba el dirty-tracking del editor (que
@@ -3983,6 +4000,9 @@
     // Elección de dominante del componente, YA validada (null = no hay o no sirve).
     ladoDominanteElegido: _domElegido,
     rolDeTipologia: _rolDeTipologia,   // jerarquía: generar calcula host.jer_phi
+    // ROL DE UN COMPONENTE — el que MANDA (topología sobre tipología). La UI y
+    // generar.js consumen ESTE, no una tabla propia: ver su nota.
+    rolDeComponente: rolDeComponente,
     // JERARQUÍA 1-BASED ('no' | 1..n) — generar.js arma host.jer_phi con esto.
     nivelJerarquia: nivelJerarquia,
     nivelJerarquiaEfectivo: nivelJerarquiaEfectivo,
