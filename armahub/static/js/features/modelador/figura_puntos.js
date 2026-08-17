@@ -591,6 +591,21 @@
     return null;
   }
 
+  // LADOS DEL MARCO EN ORDEN DE CADENA (los del catálogo, sin los ganchos):
+  // 104D → [A,B,C,D] · 106A → [B,C,D,E]. Es la lista que recorre la esquina de
+  // los ganchos (ver _estriboPerimetral): elegir el lado i-ésimo como dominante
+  // pone los ganchos en la esquina i-ésima del marco (sup-izq → sup-der →
+  // inf-der → inf-izq). La lee también el editor para que ESPACIO avance al
+  // siguiente. No es tabla nueva: parciales del catálogo ∩ ejesMarcoSeccion.
+  function ladosMarcoOrdenados(figura, rol) {
+    var ejes = ejesMarcoSeccion(figura, rol);
+    if (!ejes) return null;
+    var spec = _spec((figura || '').toUpperCase());
+    return ((spec && spec.parciales) || []).filter(function (L) {
+      return ejes[L] === 'u' || ejes[L] === 'v';
+    });
+  }
+
   // Headings acumulados de los tramos [i0, i1), con el PRIMERO del rango como 0°
   // (lectura relativa al propio cuerpo). Misma convención de giro/sentido que
   // _cadena2D — una sola forma de recorrer la cadena en todo el módulo.
@@ -2238,10 +2253,30 @@
       ])
       .concat(codoB)                        // codo B completo (135°)
       .concat([puntaB]);
-    // ESPEJO (TANDA P): el marco es simétrico en Z salvo por los GANCHOS, que viven
-    // en la esquina sup-IZQ. Invertir el eje U del plano de sección (= Z) los pasa a
-    // la sup-DER. No cambia ni una dim: es la misma barra colocada al revés.
-    return (anchor && anchor.espejo) ? _espejarEje(out, 'z', 0) : out;
+    // GANCHOS EN LA ESQUINA DEL LADO DOMINANTE (17-ago). En un contorno cerrado
+    // el dominante no estira nada (el marco manda la forma): lo que SÍ decide es
+    // DÓNDE CIERRAN LOS GANCHOS — regla del usuario: «puede perfectamente tener
+    // un dominante y eso regiría la posición de los ganchos». El lado i-ésimo de
+    // la cadena (ladosMarcoOrdenados) manda los ganchos a la esquina i-ésima,
+    // por REFLEXIONES SOBRE EL CENTRO DEL MARCO: la caja queda EXACTAMENTE igual
+    // (mismas medidas, mismo largo de corte — un espejo no cambia longitudes),
+    // solo los ganchos cambian de esquina. Sin elección (o con el primer lado)
+    // no hay reflexión: byte-idéntico a lo de siempre.
+    var zc = (wNeg + wPos) / 2, yc = (yInf + ySup) / 2;
+    var domL = anchor && anchor.ladoDominante;
+    if (domL) {
+      var orden = ladosMarcoOrdenados(figura, 'estribo') || [];
+      var idx = orden.length === 4 ? orden.indexOf(String(domL).toUpperCase()) : -1;
+      if (idx === 1 || idx === 2) out = _espejarEje(out, 'z', zc);   // sup-der / inf-der
+      if (idx === 2 || idx === 3) out = _espejarEje(out, 'y', yc);   // inf-der / inf-izq
+    }
+    // ESPEJO (TANDA P): el marco es simétrico salvo por los GANCHOS — espejarlo
+    // los pasa a la esquina opuesta del mismo lado. Se refleja sobre el CENTRO
+    // REAL del marco (zc), no sobre z=0: con un Δ cargado a un lado (extremo
+    // fin/ini) el marco ya no está centrado y espejar sobre 0 MOVÍA la caja
+    // entera; sobre zc la caja queda quieta y solo cambian los ganchos. Sin Δ
+    // direccional zc = 0 y es byte-idéntico a lo de siempre.
+    return (anchor && anchor.espejo) ? _espejarEje(out, 'z', zc) : out;
   }
 
   // ---------------------------------------------------------------------------
@@ -2611,6 +2646,7 @@
     // medida del marco lleva cada lado. reglas lo usa para que un Δ crezca el marco
     // (si sólo creciera la dim, el trazo 3D se quedaría quieto).
     ejesMarcoSeccion: ejesMarcoSeccion,
+    ladosMarcoOrdenados: ladosMarcoOrdenados,
     // { ini, fin } = las LETRAS de las dos patas que dibuja el marco cerrado con
     // ganchos declarados (106x). reglas manda su medida por `anchor.ganchoDim`,
     // que es lo que hace que una pata escrita a mano mueva el trazo y no sólo el

@@ -502,5 +502,58 @@ console.log('\nH — pieza de sección: el Δ mueve la dim Y el trazo, en la mis
     'y la dim que se corta es la misma en los tres (' + cen.dimB + ')');
 })();
 
+// ---------------------------------------------------------------------------
+// J) EL DOMINANTE DE UN MARCO CERRADO MUEVE LA ESQUINA DE LOS GANCHOS (17-ago)
+// ---------------------------------------------------------------------------
+// La caja no se toca (mismo bbox, mismas dims -> mismo corte); lo unico que
+// cambia es en que esquina cierran los ganchos. Sin eleccion = primer lado de
+// la cadena, byte-identico a lo de siempre.
+console.log('— J) dominante en marco cerrado = esquina de los ganchos —');
+(function () {
+  var VIGA_J = { largo: 600, alto: 60, ancho: 30, recub_sup: 4, recub_inf: 4, recub_lat: 3 };
+  function mkJ(dom) {
+    var spec = global.ModeladorCatalogoFiguras.get('104D'), dims = {};
+    (spec.parciales || []).forEach(function (L) { dims[L] = { modo: 'auto' }; });
+    var c = { comp_id: 'J', tipologia: 'ES', figura: '104D', diam: 1.0,
+      pose: { postura: 'de_pie', rumbo: 'x' }, dims: dims, angulos: (spec.angulos || []).slice(),
+      distribucion: { modo: 'linear', rango: { from: -50, to: 50, sep: 25 } } };
+    if (dom) c.lado_dominante = dom;
+    c.distribucion.rango.eje = R.ejeDistribucion(c, VIGA_J);
+    return c;
+  }
+  function ptsJ(dom) {
+    var pls = R.expandirComponente(mkJ(dom), VIGA_J) || [];
+    return (pls[0] && pls[0].puntos) || [];
+  }
+  function bbJ(pts) {
+    var b = { y0: Infinity, y1: -Infinity, z0: Infinity, z1: -Infinity };
+    pts.forEach(function (q) {
+      if (q.y < b.y0) b.y0 = q.y; if (q.y > b.y1) b.y1 = q.y;
+      if (q.z < b.z0) b.z0 = q.z; if (q.z > b.z1) b.z1 = q.z;
+    });
+    return b;
+  }
+  var orden = global.ModeladorFiguraPuntos.ladosMarcoOrdenados('104D', 'estribo');
+  ok(JSON.stringify(orden) === JSON.stringify(['A', 'B', 'C', 'D']),
+    'ladosMarcoOrdenados(104D) = [A,B,C,D]: ' + JSON.stringify(orden));
+  var sinDom = ptsJ(null), conPrimero = ptsJ(orden[0]);
+  ok(JSON.stringify(sinDom) === JSON.stringify(conPrimero),
+    'sin eleccion == primer lado (byte-identico, cero regresion)');
+  var b0 = bbJ(sinDom), esquinas = {}, todasIguales = true;
+  orden.forEach(function (L) {
+    var pts = ptsJ(L), b = bbJ(pts);
+    ['y0', 'y1', 'z0', 'z1'].forEach(function (k) {
+      if (Math.abs(b[k] - b0[k]) > 1e-9) todasIguales = false;
+    });
+    var punta = pts[0];   // puntaA: la punta del gancho de inicio
+    esquinas[L] = Math.round(punta.y * 100) / 100 + ',' + Math.round(punta.z * 100) / 100;
+  });
+  ok(todasIguales, 'las 4 elecciones dejan LA MISMA caja (bbox identico)');
+  var distintas = {};
+  Object.keys(esquinas).forEach(function (L) { distintas[esquinas[L]] = 1; });
+  ok(Object.keys(distintas).length === 4,
+    'la punta del gancho visita 4 esquinas distintas: ' + JSON.stringify(esquinas));
+})();
+
 console.log(fallos ? '\nFALLOS: ' + fallos : '\nTODO OK');
 process.exitCode = fallos ? 1 : 0;

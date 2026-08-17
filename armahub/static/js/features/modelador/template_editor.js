@@ -3585,6 +3585,23 @@
   function _rotarEnPlanoPropio() {
     if (!ST.receta || ST.selCi < 0) { _rotarPoseSeleccion(_vistaActiva()); return; }
     var comp = ST.receta.componentes[ST.selCi];
+    // PIEZA DE MARCO (estribo cerrado): girar la pose no mueve NADA visible — el
+    // marco se re-deriva del hormigón siempre alineado a los ejes. Lo que SÍ
+    // gira en un estribo son sus GANCHOS de esquina, y esos los manda el lado
+    // dominante (reporte 17-ago: «los ganchos del estribo no rotan con
+    // espacio»). ESPACIO avanza el dominante al siguiente lado del marco: los
+    // ganchos recorren las 4 esquinas, la caja no se toca.
+    var fpR = global.ModeladorFiguraPuntos || {};
+    var ordenM = fpR.ladosMarcoOrdenados ? fpR.ladosMarcoOrdenados(comp.figura, _rolComp(comp)) : null;
+    if (ordenM && ordenM.length === 4) {
+      _pushUndo();
+      var cur = _ladoDomElegido(comp) || ordenM[0];
+      var sig = ordenM[(ordenM.indexOf(cur) + 1) % 4];
+      comp.lado_dominante = sig;
+      _mut(ST.selCi, true);
+      _actualizarStatus('Ganchos → lado ' + sig + ' (ESPACIO sigue girándolos; la caja no cambia).');
+      return;
+    }
     var reglas = global.ModeladorReglas;
     var eje = (reglas && reglas.normalDePieza) ? reglas.normalDePieza(comp, ST.receta.geometria) : null;
     if (eje !== 'x' && eje !== 'y' && eje !== 'z') { _rotarPoseSeleccion(_vistaActiva()); return; }
@@ -4661,12 +4678,20 @@
     // por qué al girar la pieza cambia ESE y no los otros.
     c.dims = c.dims || {};
     var dom = _ladoDominante(c);
+    // PIEZA DE MARCO: el «dominante» no es el lado que se estira (no existe en un
+    // cerrado) sino EL LADO DONDE CIERRAN LOS GANCHOS. Siempre hay uno vigente
+    // (sin elección manda el primero de la cadena) y se pinta: antes la 106A no
+    // traía ninguna letra marcada («tampoco viene el B marcado como dominante»).
+    var fpDom = global.ModeladorFiguraPuntos || {};
+    var ordenDom = fpDom.ladosMarcoOrdenados ? fpDom.ladosMarcoOrdenados(c.figura, _rolComp(c)) : null;
+    var esMarcoDom = !!(ordenDom && ordenDom.length === 4);
+    if (esMarcoDom) dom = _ladoDomElegido(c) || ordenDom[0];
     // …y DICHO en texto, junto a las dims, que es de lo que habla (cuál de estas
     // letras corre a lo largo). Con un solo parcial es obvio y no se repite —
     // salvo que la receta traiga un lado_dominante guardado, que sí hay que avisar.
     // (15-ago) La fila "Dominante" separada murió: la LETRA de cada dim ES ahora
     // su botón radial (ver _dimRow). Sólo queda la nota, y sólo cuando aporta.
-    _notaLadoDominante(body, c, spec, dom);
+    _notaLadoDominante(body, c, spec, dom, esMarcoDom);
     spec.parciales.forEach(function (L) {
       body.appendChild(_dimRow(c, ci, L, dom));
     });
@@ -4867,10 +4892,19 @@
   // Nota del dominante. Los BOTONES viven en las letras de cada dim (_dimRow);
   // acá sólo queda lo que esas letras no pueden decir: qué significa el dominante
   // y —si el usuario eligió uno que el motor descartó— que no está mandando.
-  function _notaLadoDominante(body, c, spec, efectivo) {
+  function _notaLadoDominante(body, c, spec, efectivo, esMarco) {
     var fp = global.ModeladorFiguraPuntos || {};
     var elegibles = (fp.ladosDominantesElegibles ? fp.ladosDominantesElegibles(c.figura) : []) || [];
     var n = _div('te-note');
+    // PIEZA DE MARCO: acá el dominante SÍ manda (mueve la esquina de los
+    // ganchos), así que el aviso rojo de «el motor la ignoró» ya no corresponde
+    // (reporte 17-ago: «me tira un texto grande en rojo que no sé si sirve»).
+    if (esMarco) {
+      n.textContent = 'Contorno cerrado: la letra elegida manda DÓNDE CIERRAN LOS GANCHOS ' +
+        '(ESPACIO también los gira de esquina). El Δ de un lado se replica en su espejo.';
+      body.appendChild(n);
+      return;
+    }
     if (!elegibles.length) {
       n.textContent = 'Esta figura cierra sobre sí misma: no tiene un lado que se estire ni que se empalme. ' +
         'El Δ de un lado se replica en su espejo y el marco crece simétrico.';
