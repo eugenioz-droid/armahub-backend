@@ -187,18 +187,22 @@
   /* Bloqueado = GRIS (no tachado): dice "no aplica" sin gritar "error". */
   #te_modal .te-dimletra:disabled{background:#f2f4f6;border-color:#e3e7ea;color:#b6bec6;cursor:not-allowed}
   #te_modal .te-deltalbl{font-size:11px;font-weight:700;color:var(--te-muted);margin-left:2px;flex:0 0 auto}
-  #te_modal input.te-delta{width:44px;text-align:right;flex:0 0 auto}
+  /* OJO CON LA ESPECIFICIDAD: la regla base de la ficha es `#te_modal #te_side
+     input {width:100%}` (DOS ids). Cualquier ancho de esta fila tiene que
+     escribirse con los dos ids o pierde y el campo se estira al 100% — que es
+     exactamente lo que empujó la fila fuera del panel el 15-ago. */
+  #te_modal #te_side input.te-delta{width:44px;text-align:right;flex:0 0 auto}
   /* NADA de la fila se comprime (flex-shrink:0): con el shrink por defecto los
      controles de la derecha —la flecha entre ellos— se estrujaban hasta
      desaparecer cuando la fila no alcanzaba. Ahora el que no cabe se ve igual. */
-  #te_modal .te-dimrow input,#te_modal .te-dimrow button{flex:0 0 auto}
-  #te_modal .te-dimrow input[type=number]:not(.te-delta){width:56px;min-width:0}
+  #te_modal #te_side .te-dimrow input,#te_modal #te_side .te-dimrow button{flex:0 0 auto}
+  #te_modal #te_side .te-dimrow input[type=number]:not(.te-delta){width:56px;min-width:0}
   /* Candado Fija/Auto — reemplaza al botón de texto y libera ~45 px. */
   #te_modal .te-lock{border:1px solid var(--te-line);background:#fff;border-radius:6px;
     width:26px;padding:2px 0;font-size:12px;line-height:1;cursor:pointer}
   #te_modal .te-lock:hover{background:#f7fbf2}
   /* Toggle del rango: «→» hasta dónde · «N» cuántas. Uno por línea. */
-  #te_modal .te-rmodo{border:1px solid var(--te-line);background:#fff;border-radius:6px;
+  #te_modal #te_side .te-rmodo{border:1px solid var(--te-line);background:#fff;border-radius:6px;
     width:24px;padding:2px 0;font-size:11px;font-weight:800;color:var(--te-muted);cursor:pointer;flex:0 0 auto}
   #te_modal .te-rmodo:hover{background:#f7fbf2;color:var(--te-acero-d)}
   #te_modal .te-rmodo.on{background:var(--te-azul);border-color:var(--te-azul);color:#fff}
