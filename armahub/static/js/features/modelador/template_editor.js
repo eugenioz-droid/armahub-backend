@@ -4754,13 +4754,16 @@
     var elegido = _ladoDomElegido(c);
 
     // --- LA LETRA = BOTÓN RADIAL DEL DOMINANTE -------------------------------
-    var lbl;
-    if (elegibles.length) {
-      lbl = document.createElement('button');
-      lbl.type = 'button';
-      lbl.textContent = L;
-      var puede = elegibles.indexOf(L) >= 0;
-      lbl.className = 'te-dimletra' + (elegido === L ? ' on' : '') + (L === dom ? ' manda' : '');
+    // La letra es SIEMPRE un botón (15-ago): antes, en un contorno cerrado —donde
+    // no hay dominante que elegir— caía a una etiqueta suelta y la fila se veía
+    // distinta según la figura. Ahora se ve igual siempre y el bloqueo se dice
+    // con el gris, que es el mismo idioma que el resto de la fila.
+    var lbl = document.createElement('button');
+    lbl.type = 'button';
+    lbl.textContent = L;
+    var puede = elegibles.indexOf(L) >= 0;
+    lbl.className = 'te-dimletra' + (elegido === L ? ' on' : '') + (L === dom ? ' manda' : '');
+    {
       if (puede) {
         lbl.title = (L === dom ? 'Manda ahora. ' : '') +
           'Elegir ' + L + ' como lado dominante (clic de nuevo = volver a automático)';
@@ -4775,11 +4778,10 @@
       } else {
         lbl.disabled = true;
         var vr = fp.validarLadoDominante ? fp.validarLadoDominante(c.figura, L) : null;
-        lbl.title = (vr && vr.motivo) ? vr.motivo : 'Este lado no puede ser dominante';
+        lbl.title = (!elegibles.length)
+          ? 'Esta figura cierra sobre sí misma: no tiene lado dominante que elegir.'
+          : ((vr && vr.motivo) ? vr.motivo : 'Este lado no puede ser dominante');
       }
-    } else {
-      // contorno cerrado: no hay lado que estirar, la letra es solo etiqueta
-      lbl = _label(L);
     }
     row.appendChild(lbl);
     var wrap = _div(''); wrap.style.display = 'flex'; wrap.style.gap = '4px'; wrap.style.alignItems = 'center';
@@ -4789,8 +4791,15 @@
       d.modo = 'fija'; d.valor = Number(v); _mut(ci);
     });
     if (d.modo === 'auto') inp.disabled = true;
-    var tog = document.createElement('button'); tog.className = 'te-ctool'; tog.style.padding = '3px 8px';
-    tog.textContent = (d.modo === 'fija') ? 'Fija' : 'Auto';
+    // CANDADO en vez de "Fija/Auto" (idea del usuario, 15-ago): el texto se comía
+    // ~45 px y en el flex los controles de la derecha se COMPRIMÍAN hasta
+    // desaparecer — por eso la flecha "no se veía". Cerrado = medida FIJA (la
+    // escribe el usuario) · abierto = AUTO (la deriva el elemento).
+    var tog = document.createElement('button'); tog.className = 'te-lock';
+    tog.textContent = (d.modo === 'fija') ? '🔒' : '🔓';
+    tog.title = (d.modo === 'fija')
+      ? 'Medida FIJA (la escribes tú). Clic para volver a Auto.'
+      : 'Medida AUTO (la deriva el elemento: largo/alto/ancho − recub). Clic para fijarla.';
     tog.addEventListener('click', function () {
       d.modo = (d.modo === 'fija') ? 'auto' : 'fija';
       // El toggle NO inventa un valor. Antes ponía 0 al pasar a «Fija» (hay que pasar
