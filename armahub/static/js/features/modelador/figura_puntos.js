@@ -775,7 +775,13 @@
   // el (x,y) de allá es el (u,v) del plano de trabajo de acá.
   function _largoLado(dims, lado, fallback) {
     var v = (dims && lado != null) ? Number(dims[lado]) : NaN;
-    return (isFinite(v) && v > 0) ? v : fallback;
+    // El fallback (extensión de gancho normativa) es SOLO para un lado SIN
+    // dimensión. Un lado RESUELTO en 0 o negativo se dibuja TAL CUAL (15-ago):
+    // la condición vieja `v > 0` se lo tragaba y el 3D mostraba un gancho de
+    // 9.6 cm donde el despiece facturaba −5 — la regla del proyecto es la
+    // contraria: «se deja el número tal cual, para que se VEA» (el trazo
+    // colapsa o se invierte, y el aviso de reglas dice por qué).
+    return isFinite(v) ? v : fallback;
   }
 
   // Traza la cadena en el plano (u,v) local. Devuelve puntos + largo de cada tramo.

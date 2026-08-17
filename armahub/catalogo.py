@@ -290,10 +290,24 @@ def validar_geometria(cur, codigo_figura: str, valores: dict) -> dict:
     usa_radio = fig["radio"]
     slots_faltan, slots_sobran = [], []
 
-    # Dims
+    # Dims. NEGATIVAS (15-ago): una medida negativa NO es una barra real — antes
+    # pasaba (_tiene_valor_real(-452) es True porque solo pregunta ≠ 0) y aguas
+    # abajo largo_desde_lados la sumaba tal cual: quedaban barras con largo y PESO
+    # NEGATIVOS insertadas en el despiece (medido: Δ −1000 en un lado auto →
+    # dim_b −452, kg −12.4, todo con 200). El editor puede DIBUJAR el negativo
+    # (dato honesto, con aviso); persistirlo en la facturación, jamás.
+    slots_negativos = []
     for letra, dim_col in _SLOT_A_DIM.items():
         usa = letra in usados
-        tiene = _tiene_valor_real(valores.get(dim_col))
+        v = valores.get(dim_col)
+        tiene = _tiene_valor_real(v)
+        if tiene:
+            try:
+                if float(str(v).strip()) < 0:
+                    slots_negativos.append(dim_col)
+                    continue
+            except (ValueError, TypeError):
+                pass
         if usa and not tiene:
             slots_faltan.append(dim_col)
         elif not usa and tiene:
@@ -323,11 +337,17 @@ def validar_geometria(cur, codigo_figura: str, valores: dict) -> dict:
         return "radio"
 
     errores = []
+    if slots_negativos:
+        errores.append("Medida NEGATIVA en " + ", ".join(_lbl(s) for s in slots_negativos) +
+                       ": una barra no puede tener un lado negativo (revisa el Δ o la medida).")
     if slots_faltan:
         errores.append("Falta(n): " + ", ".join(_lbl(s) for s in slots_faltan) + ".")
     if slots_sobran:
         errores.append("Sobra(n) para la figura " + codigo_figura + " — déjalo(s) vacío(s): "
                        + ", ".join(_lbl(s) for s in slots_sobran) + ".")
+    # los negativos también van en slots_faltan para que el front los RESALTE
+    # (misma columna, mismo mecanismo de pintado que un slot ausente).
+    slots_faltan = slots_negativos + slots_faltan
 
     return {"ok": len(errores) == 0, "errores": errores,
             "slots_sobran": slots_sobran, "slots_faltan": slots_faltan}

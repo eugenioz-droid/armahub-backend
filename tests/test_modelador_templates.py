@@ -570,20 +570,27 @@ def t_lo_que_hoy_SI_se_guarda():
     r = receta_editor(); r["componentes"][1]["figura"] = "104D"   # nació 101A con dims {A: auto}
     guarda("cambiar la figura sin reconciliar dims sigue guardando (flujo del Enfierrador)", r)
 
-    # 3) {modo:'fija', valor:0}: lo que escribía el propio toggle «Fija» del editor.
-    #    Un 0 es DATO del usuario, no un hueco.
-    r = receta_editor(); r["componentes"][0]["dims"]["A"] = {"modo": "fija", "valor": 0}
-    guarda("un lado en «fija» con 0 se guarda (es un dato, no un hueco)", r)
+    # 3-4) ASSERTS INVERTIDOS (15-ago): aquí se congelaba «un 0 es DATO, no un
+    #    hueco» — pero el DESPIECE (catalogo._tiene_valor_real) trata el 0 como
+    #    slot FALTANTE: el template guardaba con 200 y al cargarlo el lote ENTERO
+    #    rebotaba con 400 (hallazgo confirmado de la revisión). Los dos backends
+    #    dicen ahora lo mismo: 0 en un parcial USADO se rechaza AL GUARDAR, con
+    #    mensaje que explica el porqué, en los dos shapes.
+    def rechaza0(msg, params, user=MIEMBRO):
+        e = http(crear_template, TemplateCrear(nombre=msg[:40], tipo="viga", params=params), user=user)
+        check(msg, e is not None and e.status_code == 422 and "0" in str(e.detail), e and e.detail)
 
-    # 4) Lo mismo en el shape PLANO del Enfierrador.
+    r = receta_editor(); r["componentes"][0]["dims"]["A"] = {"modo": "fija", "valor": 0}
+    rechaza0("un lado en «fija» con 0 se RECHAZA al guardar (el despiece lo trata como faltante)", r)
+
     r = receta_enfierrador(); r["componentes"][0]["dims"]["C"] = 0
-    guarda("shape plano con un lado en 0 se guarda", r, user=CUBICADOR)
+    rechaza0("shape plano con un lado usado en 0 se RECHAZA igual", r, user=CUBICADOR)
 
     # 5) Un lado declarado en null = no declarado (el front lo resuelve como 'auto').
     r = receta_editor(); r["componentes"][0]["dims"]["B"] = None
     guarda("un lado en null se guarda (el normalizador lo resuelve como 'auto')", r)
 
-    check("y los 5 quedaron guardados de verdad", len(STORE["templates"]) == 5, len(STORE["templates"]))
+    check("y los 3 válidos quedaron guardados de verdad", len(STORE["templates"]) == 3, len(STORE["templates"]))
 
     # El PUT valida IGUAL que el POST: un template ya guardado con cualquiera de estos
     # estados tiene que poder seguir editándose (era el otro lado del bloqueo).

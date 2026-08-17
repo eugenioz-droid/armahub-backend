@@ -3249,6 +3249,24 @@
         dims[ladoLong] = autoDeLado(ladoLong);
       }
     }
+    // AVISO UNIVERSAL DEL LADO ≤ 0 (15-ago). El único aviso de "no construible"
+    // vivía DENTRO del bucle del Δ: una fija negativa, o un AUTO que resuelve
+    // negativo por la pose (medido: 103B girada en una viga angosta → B = −20.03),
+    // llegaban MUDOS al payload — kg negativos sin una palabra. Acá se barre el
+    // RESULTADO, venga de donde venga; si el Δ ya avisó de ese lado (su mensaje
+    // nombra «lado X»), no se repite.
+    if (avisos) {
+      Object.keys(dims).forEach(function (kNeg) {
+        var vNeg = Number(dims[kNeg]);
+        if (!isFinite(vNeg) || vNeg > 0) return;
+        var ya = avisos.some(function (a) { return String(a).indexOf('lado ' + kNeg) >= 0; });
+        if (!ya) {
+          avisos.push('El lado ' + kNeg + ' queda en ' + (Math.round(vNeg * 100) / 100) +
+            ' cm: esa barra no es construible (revisa la medida, el Δ o la pose). ' +
+            'El despiece la va a rechazar.');
+        }
+      });
+    }
     // -------------------------------------------------------------------------
     // MEDIO DIÁMETRO CONTRA FIERRO — BLOQUE RETIRADO (13-ago), Y POR QUÉ
     // -------------------------------------------------------------------------

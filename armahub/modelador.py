@@ -175,10 +175,12 @@ def _schema_de_params(params) -> int:
 #   · se rechaza el HUECO: la dim declarada en «fija» SIN número, o con algo que no
 #     es número. Ahí el motor no tiene qué dibujar y reglas.js se niega —a propósito—
 #     a inventarle un 'auto' (el usuario pidió una medida concreta).
-#   · se rechaza el imposible: una medida NEGATIVA.
-#   · NO se rechaza el 0: es un DATO del usuario (en la convención del proyecto un
-#     lado en 0 es "ese lado no se usa"), y rechazarlo bloqueaba guardar templates
-#     que hoy se guardan — incluidos los ya guardados con un lado en 0.
+#   · se rechaza el imposible: una medida NEGATIVA, y una «fija» cuyo Δ la deja
+#     negativa (las dos cifras están acá: se sabe AL GUARDAR, no al cargar).
+#   · se rechaza el 0 en modo «fija» (cambio 15-ago): antes se aceptaba con la
+#     teoría «0 = ese lado no se usa», pero el DESPIECE (catalogo._tiene_valor_real)
+#     trata el 0 como slot faltante — el template guardaba con 200 y el lote entero
+#     rebotaba con 400 al cargarlo. Los dos backends dicen ahora lo mismo.
 #   · NO se rechaza el parcial que la receta no declara: ver la nota del bucle.
 # Esta validación NIEGA UN GUARDADO, y un guardado negado es trabajo perdido: sólo
 # frena lo que de verdad deja la receta ingenerable, nunca lo que está a medio
@@ -264,6 +266,14 @@ def _validar_receta(cur, params) -> list:
             if isinstance(d, dict):
                 # Shape Template Editor. 'auto' lo resuelve el motor con el hormigón;
                 # solo 'fija' obliga a traer la medida escrita por el usuario.
+                # El Δ (delta) se valida en los dos modos: declarado pero ilegible es
+                # un hueco, igual que una fija sin medida.
+                delta = None
+                if d.get("delta") not in (None, "", 0):
+                    delta = _num(d.get("delta"))
+                    if delta is None:
+                        errores.append(
+                            f"La {etq} tiene un Δ en el lado {L} que no es un número.")
                 if str(d.get("modo") or "").strip().lower() == "fija":
                     v = _num(d.get("valor"))
                     if v is None:
@@ -272,13 +282,37 @@ def _validar_receta(cur, params) -> list:
                             f"escribe la medida o deja el lado en «auto».")
                     elif v < 0:
                         errores.append(f"La {etq} tiene el lado {L} en negativo ({v:g}).")
+                    elif v == 0:
+                        # (15-ago) El 0 se RECHAZA: este validador decía «0 = ese lado
+                        # no se usa» mientras el despiece (catalogo._tiene_valor_real)
+                        # trata 0 como SLOT FALTANTE — el template se guardaba con 200
+                        # y al cargarlo el lote ENTERO rebotaba con 400. Los dos
+                        # backends tienen que decir lo mismo, y la autoridad es el
+                        # despiece (es quien factura). «Ese lado no se usa» se dice
+                        # con la figura correcta, no con un 0.
+                        errores.append(
+                            f"La {etq} tiene el lado {L} en 0: el despiece trata el 0 "
+                            f"como lado faltante y rechazaría el lote completo. Si ese "
+                            f"lado no existe, usa la figura que corresponde.")
+                    elif delta is not None and (v + delta) < 0:
+                        # las DOS cifras son del usuario y están acá: si su suma es
+                        # negativa la barra es imposible y se sabe AL GUARDAR.
+                        errores.append(
+                            f"La {etq} queda con el lado {L} en {v + delta:g} "
+                            f"(medida {v:g} con Δ {delta:g}): una barra no puede "
+                            f"tener un lado negativo.")
             else:
-                # Shape Enfierrador: número plano.
+                # Shape Enfierrador: número plano. El 0 en un parcial USADO se
+                # rechaza por lo mismo que en el shape del editor (ver arriba).
                 v = _num(d)
                 if v is None:
                     errores.append(f"La {etq} tiene el lado {L} sin medida.")
                 elif v < 0:
                     errores.append(f"La {etq} tiene el lado {L} en negativo ({v:g}).")
+                elif v == 0:
+                    errores.append(
+                        f"La {etq} tiene el lado {L} en 0: el despiece trata el 0 "
+                        f"como lado faltante y rechazaría el lote completo.")
 
     return errores
 

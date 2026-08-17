@@ -332,5 +332,30 @@ console.log('\nG — canalDelTrazo: por dónde entra al dibujo la medida de cada
     'y la 104D no declara ganchos (los suyos son implícitos): null, no una letra inventada');
 }
 
+
+// ============================================================================
+// AVISO UNIVERSAL DEL LADO <= 0 + DIBUJO HONESTO (15-ago, del informe de revisión)
+// ----------------------------------------------------------------------------
+// Antes el único aviso de "no construible" vivía en el bucle del Δ: una FIJA
+// negativa llegaba MUDA al payload y el 3D dibujaba un gancho normativo de 9.6
+// donde se facturaba −5 (el fallback de _largoLado se tragaba el negativo).
+// Ahora: aviso venga de donde venga el ≤ 0, y el trazo usa el número TAL CUAL.
+(function () {
+  console.log('\nG — lado fijo NEGATIVO: aviso universal y dibujo honesto');
+  const cN = { tipologia: 'CBS', figura: '103B', diam: 1.6,
+    pose: { cara: 'sup', lado: 1, rumbo: 'x' },
+    dims: { A: { modo: 'fija', valor: 30 }, B: { modo: 'fija', valor: -5 }, C: { modo: 'fija', valor: 30 } },
+    distribucion: { modo: 'layered', n_capas: 1, barras_capa: 1, gap: 0 } };
+  const pN = R.expandirComponente(cN, { largo: 600, alto: 60, ancho: 30, recub_sup: 4, recub_inf: 4, recub_lat: 3 });
+  ok((cN._avisos || []).some(a => a.indexOf('lado B') >= 0 && a.indexOf('no es construible') >= 0),
+    'la fija −5 AVISA (antes: mudo): ' + JSON.stringify((cN._avisos || [])[0] || ''));
+  let lenN = 0; const ptsN = pN[0].puntos || [];
+  for (let i = 1; i < ptsN.length; i++) {
+    lenN += Math.hypot(ptsN[i].x - ptsN[i - 1].x, ptsN[i].y - ptsN[i - 1].y, ptsN[i].z - ptsN[i - 1].z);
+  }
+  ok(lenN < 69, 'y el trazo usa el −5 tal cual, sin gancho fantasma de 9.6 (largo ' +
+    (Math.round(lenN * 10) / 10) + ', antes 69.6)');
+})();
+
 console.log(fallos === 0 ? '\nTODO OK' : '\n' + fallos + ' FALLO(S)');
 process.exit(fallos === 0 ? 0 : 1);

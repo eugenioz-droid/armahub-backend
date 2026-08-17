@@ -208,6 +208,17 @@
         ': se dibujan ' + trazados + ' de sus ' + n + ' lados (' + sinTrazar.join('/') +
         ' no se traza' + (sinTrazar.length > 1 ? 'n' : '') + '). Las dims viajan completas.');
     }
+    // …Y EL OTRO SENTIDO (15-ago): el chequeo era unilateral. Una figura de 1-3
+    // lados bajo rol ESTRIBO se dibuja como MARCO COMPLETO (familia estribo) y el
+    // payload factura solo los lados que la figura declara — medido: 101A como ES
+    // dibujaba 169 cm y facturaba 24, en silencio. El dibujo miente al revés:
+    // ahora también se DICE.
+    if (fam === 'estribo' && n < 4 && !(fp.esEstriboConGanchos && fp.esEstriboConGanchos(fig))) {
+      _avisarComp(comp, 'Figura ' + fig + ' (' + n + ' lado' + (n > 1 ? 's' : '') +
+        ') colocada como estribo: el 3D dibuja el MARCO completo pero el despiece ' +
+        'factura solo lo que la figura declara (' + spec.parciales.join('/') +
+        '). Usa una figura de marco (104x/106x) o revisa la tipología.');
+    }
     return true;
   }
 
