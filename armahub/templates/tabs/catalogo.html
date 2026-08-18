@@ -233,7 +233,8 @@
            1) "Configuración" — 4 botones que abren, cada uno, un modal con su tabla
               (figuras por tipología · reglas de largos · recubrimientos · por figura).
               Las tablas viven en static/js/features/catalogo/config_modelador.js y
-              HOY SÓLO MUESTRAN: no guardan y el editor no lee de ellas.
+              GUARDAN en modelador_config (GET/PUT /modelador/config). El Template Editor
+              lee la misma config por features/modelador/config.js.
            2) "Gestor de templates" — crear (nombre → abre el modal con el hormigón
               listo y CERO componentes), buscar, ordenar y abrir los guardados
               (GET /templates). La lógica (tplValidar, tplCrearTemplate,
@@ -265,8 +266,10 @@
           Cuatro tablas con los valores de partida del modelador: qué figura, φ y separación trae cada
           tipología, cómo se calculan los largos del gancho, con qué recubrimiento nace cada elemento y
           qué lado de cada figura queda fijo.
-          <b>Todavía no se guardan</b>: esta iteración sólo los muestra (los campos van apagados);
-          poder editarlos y que el editor los lea es la iteración siguiente.
+          Lo que guardes aquí decide con qué nacen las barras <b>nuevas</b> del editor; un template ya
+          guardado no cambia. Dos cosas siguen sin cablear y cada tabla lo dice: la <b>regla de largos</b>
+          se guarda pero el motor todavía no la lee, y el <b>redondeo</b> y los <b>lados fijos por
+          figura</b> no existen en el motor.
         </p>
         <div style="display:flex; flex-wrap:wrap; gap:8px;">
           <button class="tplCfgBtn" onclick="cfgModAbrir('tipologias')">

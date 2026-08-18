@@ -351,6 +351,16 @@
         'modelador-catalogo-figuras',
         '[ArmaHub] No se pudo cargar modelador/catalogo_figuras.js'
       ),
+      // Configuración GLOBAL del modelador (GET/PUT /modelador/config): con qué
+      // figura, φ, @sep, modo y recubrimiento nace cada barra. La leen el Template
+      // Editor (al colocar) y la pantalla de configuración del Catálogo (la edita).
+      loadScript(
+        'script[data-armahub-feature="modelador-config"]',
+        '/static/js/features/modelador/config.js' + suffix,
+        'armahubFeature',
+        'modelador-config',
+        '[ArmaHub] No se pudo cargar modelador/config.js'
+      ),
       loadScript(
         'script[data-armahub-feature="modelador-figura-puntos"]',
         '/static/js/features/modelador/figura_puntos.js' + suffix,

@@ -237,7 +237,15 @@
   // arranque, no una decisión de geometría.
   var SEP_POR_TIPOLOGIA = { TRV: 40, TR: 40, TC: 40, TRC: 40, TRL: 40, TRF: 40 };
   var SEP_DEFAULT = 20;
+  // Desde el cableado de la pantalla de Configuración (Catálogo › Templates) el
+  // número lo manda la CONFIG GUARDADA; la tabla de arriba queda como FALLBACK para
+  // cuando la config no llegó (red caída, primera vez, tests headless). Sin fallback
+  // el editor quedaría inutilizable por un GET que falla, y la tabla es justamente el
+  // valor con el que la config nace.
   function _sepDefault(tip) {
+    var cfg = global.ModeladorConfig;
+    var v = (cfg && cfg.sep) ? cfg.sep(_tipoElemento(), tip) : null;
+    if (v != null) return v;
     return SEP_POR_TIPOLOGIA[String(tip || '').toUpperCase()] || SEP_DEFAULT;
   }
 
@@ -341,6 +349,14 @@
   // declarada: no hay contra qué comparar, así que no se avisa nada (avisar sin
   // fuente sería inventar una regla).
   function _figsDeTipologia(elem, tip) {
+    // SUGERIDAS CONFIGURABLES (Catálogo › Templates › Configuración). La lista que
+    // manda es la GUARDADA; el catálogo (tipologia_figuras) queda como fallback —
+    // es de donde la config nace, así que sin config el buscador ofrece lo mismo
+    // que ofrecía antes. Una lista VACÍA configurada es un dato válido y distinto
+    // de "no hay config": el llamador ya trata [] como "muestra el catálogo entero".
+    var cfg = global.ModeladorConfig;
+    var deCfg = (cfg && cfg.figuras) ? cfg.figuras(elem, tip) : null;
+    if (deCfg) return deCfg;
     var M = _figsPorTipologia(), k = _tipKey(elem, tip), key;
     for (key in M) {
       if (!Object.prototype.hasOwnProperty.call(M, key)) continue;
@@ -530,6 +546,27 @@
         _refrescarFigDatalist();
         _validarFiguraRibbon(false);
       });
+  }
+
+  // CONFIGURACIÓN DEL MODELADOR al abrir (GET /modelador/config vía ModeladorConfig).
+  // De ahí salen los valores de partida: figura y φ del ribbon, @ sep, modo de
+  // colocación, sugeridas del buscador y recubrimientos del elemento.
+  //
+  // ASÍNCRONO Y SIN BLOQUEAR: mientras no llegue, cada consumidor usa su constante de
+  // siempre (ver _sepDefault / _modoDefault / _figsDeTipologia / _tplDimsDefault), o
+  // sea que el editor abre y funciona igual que antes. Cuando llega se re-prellena el
+  // ribbon y se reordena el buscador; NO se toca la receta — la config decide con qué
+  // NACEN las barras nuevas, nunca reescribe un template ya guardado.
+  // El módulo memoiza el pedido, así que llamarlo en cada apertura no repite el GET.
+  function _cargarConfigModelador() {
+    var cfg = global.ModeladorConfig;
+    if (!cfg || typeof cfg.cargar !== 'function') return;
+    cfg.cargar().then(function () {
+      if (!cfg.cargada()) return;   // sin config: se sigue con las constantes, sin ruido
+      _prellenarRibbonDesdeConfig(false);
+      _refrescarFigDatalist();
+      _validarFiguraRibbon(false);
+    });
   }
 
   // ¿Qué EXTREMOS del componente llevan PATA (gancho)? Convención del catálogo, la
@@ -870,6 +907,12 @@
   // (nunca capturado a nivel de módulo: los scripts cargan en paralelo). Fallback
   // por ROL si el motor no está: estribo/traba → 'lineal'; el resto → 'puntual'.
   function _modoDefault(tip) {
+    // La CONFIG GUARDADA manda sobre el preset del motor: es lo que el usuario dejó
+    // escrito en la pantalla de Configuración para ESTE elemento + tipología (el
+    // preset del motor sólo conoce la tipología pelada). Sin config, todo sigue igual.
+    var cfg = global.ModeladorConfig;
+    var m = (cfg && cfg.modo) ? cfg.modo(_tipoElemento(), tip) : null;
+    if (m) return m;
     var reglas = global.ModeladorReglas;
     if (reglas && reglas.modoDefaultDeTipologia) return reglas.modoDefaultDeTipologia(tip);
     // Fallback (motor no cargado): estribos y trabas nacen repartidos.
@@ -5880,6 +5923,49 @@
     return true;
   }
 
+  // ==========================================================================
+  // PRELLENADO DEL RIBBON DESDE LA CONFIGURACIÓN (figura y φ de partida)
+  // ==========================================================================
+  // El ribbon nacía con Figura VACÍA y φ sin elegir, así que el primer clic no
+  // colocaba nada hasta que el usuario llenaba los dos campos a mano — cada vez, para
+  // cada tipología. Con la config cableada, elegir una tipología trae SU figura y SU
+  // φ (Catálogo › Templates › Configuración › Figuras por tipología).
+  //
+  // `forzar` distingue los dos gestos:
+  //   true  → el usuario ELIGIÓ una tipología: es un cambio de intención, se prellena
+  //           aunque hubiera algo escrito (si no, seguiría colocando lo anterior).
+  //   false → apertura / cambio de elemento: sólo se rellena lo que está VACÍO, para
+  //           no pisar lo que el usuario venía usando.
+  // Una tipología sin figura o sin φ configurados NO se inventa: ese campo queda como
+  // estaba y el gate de colocación sigue pidiéndolo, igual que hoy.
+  function _prellenarRibbonDesdeConfig(forzar) {
+    var cfg = global.ModeladorConfig;
+    if (!cfg || !cfg.cargada || !cfg.cargada()) return;
+    var elem = _tipoElemento(), tip = ST.tipologia;
+
+    var fig = $('te_ribFigura');
+    var figCfg = cfg.figuraDefault(elem, tip);
+    if (fig && figCfg && (forzar || !String(fig.value || '').trim())) {
+      // Sólo si el editor sabe dibujarla: prellenar con una figura que el catálogo
+      // vigente no acepta dejaría el campo en rojo apenas se abre.
+      if (!_figError(figCfg)) {
+        fig.value = figCfg;
+        ST.figura = figCfg;
+      }
+    }
+
+    var dia = $('te_ribDiam');
+    var diamCfg = cfg.diamDefault(elem, tip);
+    if (dia && diamCfg && (forzar || !String(dia.value || '').trim())) {
+      // El <select> arranca en el placeholder 'φ…'; asignarle un φ que no está en
+      // TE_DIAMS lo dejaría en blanco, así que se comprueba contra la lista.
+      if (TE_DIAMS.indexOf(Number(diamCfg)) >= 0) {
+        dia.value = String(diamCfg);
+        ST.diam = Number(diamCfg);
+      }
+    }
+  }
+
   // Soltar lo cargado (Esc / herramienta que no coloca) → sin ghost, deselecciona.
   function _soltarCargado() {
     ST.cargado = null;
@@ -5955,6 +6041,10 @@
         // seleccionada es inocuo. Si el modo colocación está activo, sólo se
         // actualiza lo cargado (el ghost cambia en el acto).
         ST.tipologia = b.getAttribute('data-tip') || 'CBS';
+        // FIGURA y φ DE PARTIDA de la tipología recién elegida (config del catálogo).
+        // Va ANTES de refrescar el datalist y de re-validar para que esas dos cosas
+        // trabajen sobre el valor nuevo y no sobre el que quedó del clic anterior.
+        _prellenarRibbonDesdeConfig(true);
         // Cambiar de tipología cambia el juego de figuras admitidas: se reordena
         // el datalist (las de la nueva tipología primero) y se RE-VALIDA la
         // figura YA escrita — la que era correcta en CBS puede ser ajena a ES, y
@@ -7502,6 +7592,9 @@
     // datalist + la validación del campo Figura. Es asíncrono: hasta que llegue
     // manda el espejo estático del módulo, y si la red falla se queda con él.
     _cargarCatalogoFiguras();
+    // CONFIGURACIÓN (figura/φ de partida, @sep, modo, sugeridas, recubrimientos).
+    // Mismo trato que el catálogo: asíncrona, y hasta que llegue mandan las constantes.
+    _cargarConfigModelador();
     // El ELEMENTO puede cambiar entre aperturas (viga → muro): las 3 cosas que
     // dependen de él se rehacen aquí, no en _bindUI (que corre una sola vez).
     _renderRibbonGeo();        // campos del grupo HORMIGÓN de ESTE elemento
@@ -7751,6 +7844,9 @@
     // Cambiar de ELEMENTO cambia las tipologías (y arriba pudo reasignarse
     // ST.tipologia): el datalist y el campo Figura tienen que seguirlas, si no el
     // ribbon queda ofreciendo y validando contra la tipología del elemento anterior.
+    // El prellenado va sin forzar: acá el usuario no eligió tipología, así que sólo
+    // se rellena lo que está vacío (apertura del editor / cambio de elemento).
+    _prellenarRibbonDesdeConfig(false);
     _refrescarFigDatalist();
     _validarFiguraRibbon(false);
   }
@@ -8100,11 +8196,25 @@
   // Un campo puede escribir VARIAS claves de la geometría (d.ks: el "Recub bordes"
   // del muro = recub_sup + recub_inf). Sin ks, escribe la suya.
   function _tplDimsDefault(elem) {
-    var spec = TPL_DIMS_POR_ELEMENTO[String(elem || '').toUpperCase()] || TPL_DIMS_POR_ELEMENTO.VIGA;
+    var may = String(elem || '').toUpperCase();
+    var spec = TPL_DIMS_POR_ELEMENTO[may] || TPL_DIMS_POR_ELEMENTO.VIGA;
     var dims = {};
     spec.dims.concat(spec.recubs).forEach(function (d) {
       (d.ks || [d.k]).forEach(function (k) { dims[k] = d.def; });
     });
+    // RECUBRIMIENTOS DE LA CONFIG (Catálogo › Templates › Configuración). Sólo pisan
+    // las claves de recubrimiento; el largo/alto/ancho de partida siguen saliendo de
+    // TPL_DIMS_POR_ELEMENTO (esa tabla no es configurable todavía). Sin config no
+    // pasa nada: quedan los defaults de siempre.
+    var cfg = global.ModeladorConfig;
+    var recubs = (cfg && cfg.recubrimientos) ? cfg.recubrimientos(may) : null;
+    if (recubs) {
+      spec.recubs.forEach(function (d) {
+        var v = Number(recubs[d.k]);
+        if (!isFinite(v)) return;
+        (d.ks || [d.k]).forEach(function (k) { dims[k] = v; });
+      });
+    }
     return dims;
   }
 
