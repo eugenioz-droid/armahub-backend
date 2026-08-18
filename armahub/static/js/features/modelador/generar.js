@@ -437,8 +437,13 @@
           if (k < 1) return;              // 'no' no aporta a ninguna pila
           // El arrastre manual (pos_hint) se descuenta: mover una barra a mano no
           // la cambia de cara en la cadena (conserva el aporte de su cara natural).
+          // Se descuenta el hint RESUELTO contra este host (anclaje por distancia al
+          // borde): si se restara el valor guardado, la barra de un template abierto
+          // en otra medida se descontaría un delta que el motor ya no aplicó.
+          var phC = (REGLAS.posHintResuelto && p.comp)
+            ? REGLAS.posHintResuelto(p.comp, host) : (p.comp && p.comp.pos_hint);
           var caras = REGLAS.carasOcupadas
-            ? REGLAS.carasOcupadas(pl, host, k, p.comp && p.comp.pos_hint) : [];
+            ? REGLAS.carasOcupadas(pl, host, k, phC) : [];
           caras.forEach(function (F) { if (pl.diam > aporte[F]) aporte[F] = pl.diam; });
         });
         porComp[p.ci] = pls;

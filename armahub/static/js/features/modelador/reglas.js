@@ -684,6 +684,12 @@
     if (Object.prototype.toString.call(comps) === '[object Array]') {
       for (var i = 0; i < comps.length; i++) normalizarComponente(comps[i]);
     }
+    // ANCLAJE: la receta trae from/to (y pos_hint) en coordenadas absolutas. Se les
+    // deriva su ancla contra la geometría CON LA QUE ABRE — nunca contra otra —, así
+    // que el template no cambia ni de forma ni de kilos al abrirlo. Va DESPUÉS de
+    // normalizarComponente porque ahí es donde una traba vieja convierte sus `zonas`
+    // en el `rango` que hay que anclar.
+    reanclarReceta(receta);
     return receta;
   }
 
@@ -1445,6 +1451,342 @@
   }
 
   // ---------------------------------------------------------------------------
+  // ANCLAJE POR DISTANCIA AL BORDE — la receta guarda la INTENCIÓN, no la coordenada
+  // ---------------------------------------------------------------------------
+  // POR QUÉ (medido 18-ago sobre un estribo recogido 40 cm de cada borde en una
+  // viga de 600): al cambiar el hormigón, la distribución NO se movía.
+  //   · viga 600 → 27 estribos, 40 cm de cada borde (lo dibujado);
+  //   · viga 800 → 27 estribos, pero 140 cm de cada borde (el rango se quedó
+  //     CONGELADO en ±260);
+  //   · viga 400 → 27 estribos con 60 cm de fierro FUERA del hormigón por lado.
+  // La causa: `rango.from/to` (y `pos_hint`) eran COORDENADAS ABSOLUTAS del host.
+  // Las dims en `auto` sí seguían al hormigón porque declaran intención y el motor
+  // las resuelve en cada generación; las posiciones nunca recibieron ese trato. Y un
+  // template existe justamente para aplicarse a elementos de OTRAS medidas.
+  //
+  // LA REGLA (única, sin controles nuevos en el panel): la posición en la que está
+  // el punto ES el ancla. Cada punto guarda su DISTANCIA a la REFERENCIA MÁS CERCANA
+  // de su eje y el motor resuelve la coordenada contra el host en cada generación.
+  //
+  // TRES REFERENCIAS, no dos: los dos bordes (−dim/2 y +dim/2) y el CENTRO. El
+  // centro no es un capricho: es la 3ª referencia que el propio editor ya ofrece al
+  // colocar (`_facesEje` snapea a −dim/2, 0 y +dim/2), y sin él una barra dejada en
+  // la mitad del vano —el caso más común de `pos_hint`, porque el snap la pega a 0—
+  // quedaría anclada a 300 cm de un borde y se iría a 100 cm del centro en cuanto la
+  // viga pasara de 600 a 800. Con las tres, "al medio" sigue al medio y "a 4 cm del
+  // borde" sigue a 4 cm del borde, sin ningún control nuevo que explicar.
+  // EMPATE: manda `centro` (la referencia estable) y entre los dos bordes, `min`.
+  //
+  // SHAPE (persistido en la receta, una sola fuente de verdad):
+  //   rango.ancla   = { ini:{ref:'min'|'centro'|'max', d}, fin:{…} }   (d en cm)
+  //   comp.pos_ancla = { x:{ref,d}, y:{…}, z:{…} }   (sólo los ejes con hint)
+  // `from`/`to` y `pos_hint` SIGUEN existiendo y siguen siendo lo que el panel
+  // muestra y edita, pero pasan a ser el valor DERIVADO: quien los escribe (arrastre
+  // de handles, campos del rango, _syncN, _rangoDefault) re-deriva el ancla contra el
+  // host actual por UN helper único (`anclarRango` / `anclarPosHint`), y quien los
+  // lee para dibujar los recibe ya resueltos (`reanclarReceta`).
+  //
+  // MIGRACIÓN SIN MOVIMIENTO: una receta vieja no trae `ancla`. Se DERIVA de su
+  // propio from/to contra el host CON EL QUE ABRE, así que resolverla devuelve
+  // exactamente las mismas coordenadas → misma forma y mismos kilos. Es criterio de
+  // aceptación, no un deseo (lo congela tests/test_anclaje_distribucion.js).
+  var _EPS_ANCLA = 1e-6;
+
+  // 6 decimales: el ida y vuelta coord → ancla → coord tiene que ser exacto a la
+  // tolerancia con la que trabaja el reparto (_EPS_POS), no arrastrar ruido binario
+  // que el dirty-tracking del editor leería como "cambió".
+  function _r6(v) { return Math.round(Number(v) * 1e6) / 1e6; }
+
+  // Dimensión del host sobre un eje (del marco en el que se está expandiendo).
+  function _dimEje(host, eje) {
+    if (!host) return NaN;
+    if (eje === 'y') return Number(host.alto);
+    if (eje === 'z') return Number(host.ancho);
+    return Number(host.largo);
+  }
+
+  // Recubrimiento del BORDE 'min' (−dim/2) o 'max' (+dim/2) de un eje. Se pregunta a
+  // `_recubDeCara`, que es la fuente única del recub por cara: en Y los dos bordes
+  // son caras DISTINTAS (inf/sup) y pueden tener recubrimientos distintos.
+  function _recubBordeEje(host, eje, ref) {
+    if (eje === 'y') return _recubDeCara(host, (ref === 'min') ? 'inf' : 'sup');
+    if (eje === 'z') return _recubDeCara(host, 'lat');
+    return _recubDeCara(host, 'ext');
+  }
+
+  // COORDENADA → ANCLA. Devuelve { ref, d } con la referencia más cercana.
+  function anclaDeCoord(coord, dim) {
+    var c = Number(coord);
+    if (!isFinite(c)) return null;
+    var D = Number(dim);
+    if (!isFinite(D) || D <= 0) return { ref: 'centro', d: _r6(c) };
+    var dCen = Math.abs(c), dMin = Math.abs(c + D / 2), dMax = Math.abs(D / 2 - c);
+    var ref = 'centro', mejor = dCen;
+    if (dMin < mejor - _EPS_ANCLA) { ref = 'min'; mejor = dMin; }
+    if (dMax < mejor - _EPS_ANCLA) { ref = 'max'; mejor = dMax; }
+    if (ref === 'min') return { ref: 'min', d: _r6(c + D / 2) };
+    if (ref === 'max') return { ref: 'max', d: _r6(D / 2 - c) };
+    return { ref: 'centro', d: _r6(c) };
+  }
+
+  // ANCLA → COORDENADA contra un host de dimensión `dim`.
+  function coordDeAncla(a, dim) {
+    if (!a || a.ref == null) return null;
+    var D = Number(dim), d = Number(a.d) || 0;
+    if (!isFinite(D)) return null;
+    if (a.ref === 'min') return -D / 2 + d;
+    if (a.ref === 'max') return D / 2 - d;
+    return d;                                   // 'centro'
+  }
+
+  function _anclaValida(a) {
+    return !!(a && (a.ref === 'min' || a.ref === 'max' || a.ref === 'centro') &&
+      isFinite(Number(a.d)));
+  }
+
+  // ¿El rango ya declara su intención? (los dos extremos anclados)
+  function _tieneAncla(rango) {
+    var a = rango && rango.ancla;
+    return !!(a && _anclaValida(a.ini) && _anclaValida(a.fin));
+  }
+
+  // ESCRITURA DEL ANCLA — helper ÚNICO. Todo el que escriba from/to pasa por acá: la
+  // fórmula no se reparte en cinco sitios (arrastre de handles, campos del panel,
+  // _syncN, _rangoDefault…). Idempotente; `forzar` re-deriva aunque ya hubiera ancla
+  // (eso es lo que hace una edición del usuario: mueve la INTENCIÓN, no sólo el
+  // número). MUTA el rango y devuelve el mismo objeto.
+  function anclarRango(rango, host, eje, forzar) {
+    if (!rango || rango.from == null || rango.to == null) return rango;
+    if (!forzar && _tieneAncla(rango)) return rango;
+    var D = _dimEje(host, eje || rango.eje || 'x');
+    if (!isFinite(D) || D <= 0) return rango;
+    var ini = anclaDeCoord(rango.from, D), fin = anclaDeCoord(rango.to, D);
+    if (!ini || !fin) return rango;
+    rango.ancla = { ini: ini, fin: fin };
+    return rango;
+  }
+
+  // TRAMO ELÁSTICO — el del MEDIO absorbe el cambio de largo del elemento.
+  // POR QUÉ: los tramos se encadenan desde `from` y la cola elástica quedaba AL
+  // FINAL, así que en un @10/@20/@10 al alargar la viga el confinamiento del extremo
+  // lejano se quedaba FLOTANDO en la mitad del vano. El confinamiento es un dato del
+  // EXTREMO: sus centímetros van pegados a su punta y quien tiene que estirarse es el
+  // tramo central. Con nº PAR de tramos (dos "del medio") la diferencia se reparte
+  // entre esos dos. Con UN solo tramo no hay medio → queda el comportamiento de
+  // siempre (la cola del @ que continúa hasta `to`).
+  // Devuelve una lista NUEVA (no muta) o la misma cuando no hay nada que absorber.
+  function _tramosElasticos(tramos, diff, avisos) {
+    var n = (tramos && tramos.length) || 0;
+    if (n < 2 || !isFinite(diff) || Math.abs(diff) <= _EPS_POS) return tramos;
+    var out = tramos.map(function (t) { return { long: Number(t.long) || 0, sep: t.sep }; });
+    var idx = (n % 2) ? [(n - 1) / 2] : [n / 2 - 1, n / 2];
+    var cuota = diff / idx.length, sobra = 0, i, v;
+    for (i = 0; i < idx.length; i++) {
+      v = out[idx[i]].long + cuota;
+      if (v < 0) { sobra += v; v = 0; }
+      out[idx[i]].long = _r6(v);
+    }
+    if (sobra < -_EPS_POS && avisos) {
+      avisos.push('El elemento se achicó ' + _num(-sobra) + ' cm más de lo que el tramo central ' +
+        'puede absorber: los tramos del extremo se recortan contra el fin del rango.');
+    }
+    return out;
+  }
+
+  // RESOLUCIÓN DEL RANGO contra un host. NO muta el rango.
+  //   → { from, to, tramos, clamp, avisos:[] }
+  // Sin `ancla` devuelve el rango tal cual (recetas que nunca pasaron por el
+  // normalizador y llamadas directas a posicionesRango: cero cambio de conducta).
+  //
+  // TOPE = EL BORDE DEL HORMIGÓN. Al achicar, las dos distancias pueden comerse el
+  // elemento y CRUZARSE. Ahí manda el hormigón: cada extremo cae en SU borde útil
+  // (borde ∓ recubrimiento del eje), nunca se cruzan ni asoman fuera. El tope NO
+  // reescribe el ancla —los 40 cm declarados quedan intactos y reaparecen solos al
+  // volver a agrandar—: el clampeo ocurre sólo AL RESOLVER, y SE AVISA con el número
+  // que lo causó (mismo canal `_avisar`/`comp._avisos` que lee la barra de estado).
+  function resolverRango(rango, host, eje) {
+    var out = {
+      from: Number(rango && rango.from), to: Number(rango && rango.to),
+      tramos: (rango && rango.tramos && rango.tramos.length) ? rango.tramos : null,
+      clamp: false, avisos: []
+    };
+    if (!_tieneAncla(rango)) return out;
+    var ej = eje || rango.eje || 'x';
+    var D = _dimEje(host, ej);
+    if (!isFinite(D) || D <= 0) return out;
+    var fr = coordDeAncla(rango.ancla.ini, D), to = coordDeAncla(rango.ancla.fin, D);
+    // Bordes: el del HORMIGÓN (±D/2) y el ÚTIL (±D/2 ∓ recub). Un elemento cuyo
+    // recubrimiento se come el eje entero no tiene borde útil: ahí manda el hormigón.
+    var loU = -D / 2 + _recubBordeEje(host, ej, 'min');
+    var hiU = D / 2 - _recubBordeEje(host, ej, 'max');
+    if (!(loU < hiU)) { loU = -D / 2; hiU = D / 2; }
+    var sgn = (Number(rango.to) >= Number(rango.from)) ? 1 : -1;
+    var bordeDe = function (a) {
+      if (a.ref === 'min') return loU;
+      if (a.ref === 'max') return hiU;
+      return Math.max(loU, Math.min(hiU, 0));
+    };
+    if ((to - fr) * sgn < -_EPS_POS) {
+      // COLISIÓN: las dos distancias no caben en el elemento. Cada extremo a SU borde.
+      out.avisos.push('El elemento no da para las distancias a borde declaradas (' +
+        _num(rango.ancla.ini.d) + ' y ' + _num(rango.ancla.fin.d) + ' cm sobre el eje ' + ej +
+        ', que mide ' + _num(D) + ' cm): la distribución se topa en los bordes del hormigón. ' +
+        'El anclaje NO se tocó — vuelve solo al agrandar el elemento.');
+      fr = bordeDe(rango.ancla.ini); to = bordeDe(rango.ancla.fin);
+      out.clamp = true;
+    } else if (Math.abs(fr - Number(rango.from)) > _EPS_POS ||
+               Math.abs(to - Number(rango.to)) > _EPS_POS) {
+      // Un extremo que se pasa del HORMIGÓN sin llegar a cruzarse con el otro: cae en
+      // su borde útil, y se dice con el número.
+      // SÓLO SI EL ANCLAJE LO MOVIÓ (el `else if` de arriba). Un rango que el usuario
+      // ya tenía fuera del hormigón a SU geometría es dato suyo y no se toca: taparlo
+      // acá cambiaría de forma un template al abrirlo (medido: test_jerarquia J4
+      // reparte de −100 a 100 en un ancho de 30 a propósito, y el aviso de "fierro
+      // fuera del hormigón" ya dice lo que hay que decir). El tope es para lo que el
+      // anclaje mueve, no para reescribir la receta de nadie.
+      var fueraFr = (fr < -D / 2 - _EPS_POS || fr > D / 2 + _EPS_POS);
+      var fueraTo = (to < -D / 2 - _EPS_POS || to > D / 2 + _EPS_POS);
+      if (fueraFr || fueraTo) {
+        out.avisos.push('La distribución pedía llegar a ' + _num(fueraFr ? fr : to) +
+          ' cm sobre el eje ' + ej + ', fuera del hormigón (' + _num(D) +
+          ' cm): ese extremo se topó en el borde útil. El anclaje NO se tocó.');
+        if (fueraFr) fr = bordeDe(rango.ancla.ini);
+        if (fueraTo) to = bordeDe(rango.ancla.fin);
+        out.clamp = true;
+      }
+    }
+    out.from = _r6(fr); out.to = _r6(to);
+    // TRAMOS: la diferencia de largo respecto del span DECLARADO en la receta la
+    // absorbe el tramo del medio. Cuando la receta ya viene resuelta contra este
+    // mismo host (el caso normal en el editor, que reancla en cada regeneración) la
+    // diferencia es 0 y los tramos no se tocan.
+    var spanDecl = Math.abs(Number(rango.to) - Number(rango.from));
+    var spanRes = Math.abs(out.to - out.from);
+    if (out.tramos && isFinite(spanDecl)) {
+      out.tramos = _tramosElasticos(out.tramos, spanRes - spanDecl, out.avisos);
+    }
+    return out;
+  }
+
+  // Rango LISTO PARA REPARTIR: el MISMO objeto cuando la resolución no cambió nada
+  // (cero copias en el caso normal) y un clon superficial con from/to/tramos
+  // resueltos cuando sí. La receta del usuario NUNCA se muta acá.
+  function _rangoResuelto(rango, res) {
+    var trOrig = (rango.tramos && rango.tramos.length) ? rango.tramos : null;
+    if (!res || (res.from === Number(rango.from) && res.to === Number(rango.to) &&
+                 res.tramos === trOrig)) return rango;
+    var r = {};
+    for (var k in rango) if (rango.hasOwnProperty(k)) r[k] = rango[k];
+    r.from = res.from; r.to = res.to;
+    if (res.tramos) r.tramos = res.tramos;
+    return r;
+  }
+
+  // POS_HINT — el arrastre manual de una barra es UN PUNTO más, así que se ancla con
+  // la MISMA regla. Medido: una barra arrastrada a 50 cm del testero en una viga de
+  // 600 se quedaba en su x absoluta y aparecía a 150 cm del testero al pasar la viga
+  // a 800. El hint es la coordenada del MUNDO que el editor escribe desde el clic
+  // (`_posHintDeClick`: ph[rumbo] = host[rumbo]), así que anclarlo es anclar la
+  // posición que el usuario ve.
+  // NO se clampea (igual que hoy, ver la nota de _aplicarPostTransform): una barra
+  // que asoma se VE y el aviso de "fierro fuera del hormigón" ya lo dice con sus
+  // centímetros. Moverla sola sería mentir sobre dónde está el fierro.
+  var _EJES_HINT = ['x', 'y', 'z'];
+
+  function anclarPosHint(comp, host, forzar) {
+    var ph = comp && comp.pos_hint;
+    if (!ph || typeof ph !== 'object') return comp;
+    var pa = (comp.pos_ancla && typeof comp.pos_ancla === 'object') ? comp.pos_ancla : null;
+    for (var i = 0; i < _EJES_HINT.length; i++) {
+      var e = _EJES_HINT[i];
+      if (ph[e] == null || !isFinite(Number(ph[e]))) continue;
+      if (!forzar && pa && _anclaValida(pa[e])) continue;
+      var a = anclaDeCoord(ph[e], _dimEje(host, e));
+      if (!a) continue;
+      if (!pa) pa = comp.pos_ancla = {};
+      pa[e] = a;
+    }
+    return comp;
+  }
+
+  // { x, y, z } ya resueltos contra el host (los ejes sin hint valen 0, como hoy).
+  // `_hay` = el componente tiene traslación (lo mira _aplicarPostTransform).
+  function posHintResuelto(comp, host) {
+    var ph = (comp && comp.pos_hint) || null;
+    var pa = (comp && comp.pos_ancla) || null;
+    var out = { x: 0, y: 0, z: 0, _hay: false };
+    for (var i = 0; i < _EJES_HINT.length; i++) {
+      var e = _EJES_HINT[i];
+      if (!ph || ph[e] == null || !isFinite(Number(ph[e]))) continue;
+      out._hay = true;
+      var v = Number(ph[e]);
+      if (pa && _anclaValida(pa[e])) {
+        var c = coordDeAncla(pa[e], _dimEje(host, e));
+        if (c != null && isFinite(c)) v = _r6(c);
+      }
+      out[e] = v;
+    }
+    return out;
+  }
+
+  // Host desde la `geometria` de una receta — MISMOS defaults que generar.js (que es
+  // quien lo arma para generar de verdad). Lo usan reanclarReceta y el normalizador
+  // de apertura, que trabajan con la RECETA y no con el host ya armado.
+  function _hostDeGeometria(geo) {
+    geo = geo || {};
+    var h = {
+      largo: Number(geo.largo), alto: Number(geo.alto), ancho: Number(geo.ancho),
+      recub_sup: geo.recub_sup != null ? Number(geo.recub_sup) : 4,
+      recub_inf: geo.recub_inf != null ? Number(geo.recub_inf) : 4,
+      recub_lat: geo.recub_lat != null ? Number(geo.recub_lat) : 3
+    };
+    if (geo.recub_ext != null) h.recub_ext = Number(geo.recub_ext);
+    return h;
+  }
+
+  // REANCLAR LA RECETA — (1) estampa el ancla que falte (derivada del from/to que la
+  // receta ya traía, contra SU propia geometría: migración sin movimiento) y (2)
+  // reescribe from/to/tramos/pos_hint con el valor DERIVADO del ancla, para que lo
+  // que el panel muestra y lo que el motor reparte sean el MISMO número.
+  // Idempotente: llamarla dos veces seguidas no mueve nada. El editor la llama en
+  // cada regeneración, que es el único sitio por el que pasan todos los cambios.
+  function reanclarReceta(receta) {
+    if (!receta || typeof receta !== 'object') return receta;
+    var comps = receta.componentes;
+    if (Object.prototype.toString.call(comps) !== '[object Array]') return receta;
+    var host = _hostDeGeometria(receta.geometria);
+    if (!(host.largo > 0) || !(host.alto > 0) || !(host.ancho > 0)) return receta;
+    for (var i = 0; i < comps.length; i++) {
+      var c = comps[i];
+      if (!c || typeof c !== 'object') continue;
+      var d = c.distribucion;
+      if (d && typeof d === 'object') {
+        _reanclarUno(d.rango, host, 'x');
+        _reanclarUno(d.rango2, host, 'y');
+      }
+      anclarPosHint(c, host, false);
+      var ph = c.pos_hint;
+      if (ph && typeof ph === 'object') {
+        var res = posHintResuelto(c, host);
+        for (var k = 0; k < _EJES_HINT.length; k++) {
+          var e = _EJES_HINT[k];
+          if (ph[e] != null && isFinite(Number(ph[e]))) ph[e] = res[e];
+        }
+      }
+    }
+    return receta;
+  }
+
+  function _reanclarUno(rango, host, ejeDefault) {
+    if (!rango || rango.from == null || rango.to == null) return;
+    var eje = rango.eje || ejeDefault;
+    anclarRango(rango, host, eje, false);
+    var res = resolverRango(rango, host, eje);
+    rango.from = res.from; rango.to = res.to;
+    if (res.tramos && rango.tramos) rango.tramos = res.tramos;
+  }
+
+  // ---------------------------------------------------------------------------
   // POSICIONES DE UN RANGO  (fuente ÚNICA para linear y arreglo)
   // ---------------------------------------------------------------------------
   // Un RANGO reparte entre dos coordenadas absolutas del host (from/to, cm) y
@@ -1638,6 +1980,25 @@
       }
       return placements;
     }
+    // ZONAS — SIN ANCLAJE, a propósito (18-ago). Se anclan el `rango` y el `rango2`,
+    // no las zonas, y esto es una LIMITACIÓN CONOCIDA, no un olvido:
+    //   · el editor de HOY no emite zonas de verdad para un componente nuevo: nacen
+    //     con `zonas:[{long:0}]` de relleno y con `rango` (la rama de arriba, que
+    //     corta antes de llegar acá). Zonas con largo real sólo quedan en la
+    //     viga-semilla y en recetas guardadas de antes del rango;
+    //   · y sus conteos NO se pueden conservar si se las reencuadra. Medido sobre la
+    //     semilla (150@10 / 300@20 / 150@10, start 4) en su viga de 600:
+    //       hoy                              → 47 estribos (el último en x = 294)
+    //       con el tramo del medio elástico  → 48 estribos  ← cambia a geometría fija
+    //       reencuadradas en proporción      → 47 pero el último en 288  ← también
+    //     La causa es que las zonas avanzan con el @ NOMINAL y duplican la barra de
+    //     unión (ver la nota de posicionesRango): cualquier cambio de sus largos
+    //     mueve dónde corta el clamp del borde. Tocarlas rompería «a geometría fija,
+    //     los conteos de la semilla no pueden cambiar».
+    // Consecuencia a la vista: una receta que todavía reparta por zonas sigue pegada
+    // al borde de partida (no sigue al hormigón). La salida es convertirla a
+    // rango+tramos —que sí se anclan y ya tienen el tramo elástico—, y eso es una
+    // decisión de producto (cambia conteos), no algo que se pueda hacer por detrás.
     var zonas = (cfg && cfg.zonas) || [];
     var start = (cfg && cfg.start_offset) || (base.anchorBase && base.anchorBase.recubExtremo) || 0;
     var xcur = -host.largo / 2 + start;   // arranca tras el recubrimiento
@@ -2111,6 +2472,24 @@
   // cara sin despegarla: el LADO de la cara (testero/cortina opuesta) y las CAPAS,
   // que entran hacia el núcleo con el sentido que publica _marcoCara.
   // `campo` (4º arg) = 'rango' (default) o 'rango2' (2ª línea del arreglo por área).
+  //
+  // EL RANGO SE RESUELVE CONTRA EL HOST — ver «ANCLAJE POR DISTANCIA AL BORDE».
+  // Acá, que es donde por fin se sabe sobre QUÉ EJE reparte de verdad, el rango:
+  //   1) se ANCLA si todavía no lo estaba (receta vieja / llamada directa al motor):
+  //      el ancla se deriva de su propio from/to contra ESTE host, así que resolverlo
+  //      devuelve las mismas coordenadas y no se mueve ni un milímetro;
+  //   2) se RESUELVE: from/to salen del ancla, el tramo del medio absorbe el cambio
+  //      de largo y lo que no cabe se topa en el borde útil CON AVISO.
+  // El clon lo hace `_rangoResuelto` sólo cuando algo cambió: la receta del usuario
+  // no se muta y en el caso normal no se paga ni una copia.
+  function _rangoContraHost(base, rango, host, eje) {
+    if (!rango) return rango;
+    anclarRango(rango, host, eje, false);
+    var res = resolverRango(rango, host, eje);
+    for (var i = 0; i < res.avisos.length; i++) _avisar(base, res.avisos[i]);
+    return _rangoResuelto(rango, res);
+  }
+
   function _rangoReparto(base, cfg, host, campo) {
     var cual = campo || 'rango';
     var eje = _ejeRangoReparto(base, cfg, host, cual);
@@ -2132,7 +2511,7 @@
       // El @ del 2º rango es el SUYO (`rango2.sep`), nunca el `cfg.sep` del primero:
       // son dos líneas independientes y mezclarlos daría una malla con el paso de la
       // otra dirección sin que nada lo dijera.
-      var pos2 = posicionesRango(cfg.rango2, undefined);
+      var pos2 = posicionesRango(_rangoContraHost(base, cfg.rango2, host, eje), undefined);
       if (pos2._tope) _avisar(base, _avisoTope(pos2._tope.sep));
       return { eje: eje, pos: pos2 };
     }
@@ -2143,7 +2522,7 @@
     // barras y colocaba menos, dejando un hueco muerto en un extremo (span 24 @20 →
     // nR=3 pero colocaba 2 en −12 y +8, con 4 cm muertos).
     // Con rango.tramos el reparto es por TRAMOS (@10/@20/@10) — misma función.
-    var pos = posicionesRango(cfg.rango, cfg.sep);
+    var pos = posicionesRango(_rangoContraHost(base, cfg.rango, host, eje), cfg.sep);
     // El reparto se capó (@ minúsculo o rango gigante): la barra de estado lo dice
     // con el número que lo causó. No se "corrige" el @ por detrás.
     if (pos._tope) _avisar(base, _avisoTope(pos._tope.sep));
@@ -2833,17 +3212,21 @@
 
   function _aplicarPostTransform(placements, comp, host) {
     var orient = comp.orient;
-    var ph = comp.pos_hint;
     var tieneRot = orient && orient.deg && isFinite(orient.deg);
     var tieneSpin = orient && orient.spin && isFinite(orient.spin);
-    var tieneTras = ph && (ph.x != null || ph.y != null || ph.z != null);
+    // TRASLACIÓN ANCLADA (ver «ANCLAJE POR DISTANCIA AL BORDE»): el hint se ancla
+    // contra ESTE host si todavía no lo estaba —derivado de su propio valor, así que
+    // una receta abierta con su geometría original no se mueve— y se resuelve. Sin
+    // esto la barra arrastrada se quedaba en su x ABSOLUTA: 50 cm del testero en una
+    // viga de 600 pasaban a ser 150 cm al llevarla a 800.
+    anclarPosHint(comp, host, false);
+    var phR = posHintResuelto(comp, host);
+    var tieneTras = phR._hay;
     if (!tieneRot && !tieneSpin && !tieneTras) return placements;
     var rad = tieneRot ? (Number(orient.deg) * Math.PI / 180) : 0;
     var radSpin = tieneSpin ? (Number(orient.spin) * Math.PI / 180) : 0;
     var eje = (orient && orient.eje) || 'x';
-    var dx = (ph && ph.x != null) ? Number(ph.x) : 0;
-    var dy = (ph && ph.y != null) ? Number(ph.y) : 0;
-    var dz = (ph && ph.z != null) ? Number(ph.z) : 0;
+    var dx = phR.x, dy = phR.y, dz = phR.z;
     // El re-anclaje sólo tiene sentido tras GIRAR y con un host conocido; el
     // arrastre (pos_hint) NO se clampea aquí (el clamp de la UI ya lo gobierna).
     // El marco es EL DE SU NIVEL (con las pilas del host REAL: los placements ya
@@ -4046,6 +4429,19 @@
     // _dist/_migracion) sin reescribir la receta guardada. Idempotente.
     normalizarComponente: normalizarComponente,
     normalizarReceta: normalizarReceta,    // la receta entera (al abrir un template)
+    // -------------------------------------------------------------------------
+    // ANCLAJE POR DISTANCIA AL BORDE — la posición es INTENCIÓN, no coordenada.
+    // La UI escribe from/to y pos_hint SIEMPRE por acá (helper único: la fórmula
+    // del "borde más cercano" no puede quedar repartida en cinco sitios) y lee la
+    // coordenada ya resuelta contra el hormigón de HOY.
+    // -------------------------------------------------------------------------
+    anclaDeCoord: anclaDeCoord,        // coordenada → { ref:'min'|'centro'|'max', d }
+    coordDeAncla: coordDeAncla,        // ancla + dimensión → coordenada
+    anclarRango: anclarRango,          // (rango, host, eje, forzar) — escribe rango.ancla
+    resolverRango: resolverRango,      // (rango, host, eje) → {from,to,tramos,clamp,avisos}
+    anclarPosHint: anclarPosHint,      // (comp, host, forzar) — escribe comp.pos_ancla
+    posHintResuelto: posHintResuelto,  // (comp, host) → {x,y,z} ya resueltos
+    reanclarReceta: reanclarReceta,    // receta entera: ancla lo que falte + re-deriva
     migracionDe: migracionDe,              // { derivados, avisos, figura_desconocida }
     dimsDeclaradas: _dimsDecl,             // dims canónicas ({modo,valor} por letra)
     distribucionDe: _distDe,               // distribución canónica (modo resuelto)

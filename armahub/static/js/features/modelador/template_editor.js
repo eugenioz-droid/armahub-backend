@@ -129,7 +129,21 @@
     return _clampDist((Number(largo) * 1.15 + 160) * k);
   }
 
-  var GRID_SNAP = 5;   // cm — paso de snap a grilla
+  // PASO DEL ARRASTRE (cm) — la resolución con la que se mueve TODO lo arrastrable
+  // del editor: los handles del rango, el divisor de tramos y la barra que se arrastra
+  // (todos pasan por _snapValor, vía _clickHost o vía _hostEnEje). Era 5 y se llamaba
+  // GRID_SNAP, que confundía: no tiene nada que ver con la grilla que se DIBUJA (su
+  // paso es 1‑2‑5 adaptativo, _pasoGrilla2D) — es el redondeo del gesto.
+  // 18-ago: 5 → 1 cm (pedido del usuario). Con paso 5 no se podía dejar un estribo a
+  // 4 cm del borde, que es justo la medida que se usa todo el tiempo.
+  var PASO_ARRASTRE_CM = 1;
+
+  // Radio del IMÁN A LAS CARAS (bordes del hormigón, líneas de recubrimiento, centro)
+  // en cm. Con el paso de 5 el imán efectivo era ~2.5 (más allá ganaba el múltiplo de
+  // 5 más cercano, ver _snapValor de antes), así que 2 conserva el gesto de siempre.
+  // NO puede volver a los 6 cm nominales de entonces: con paso 1 se tragaría todas las
+  // posiciones entre 1 y 6 cm de una cara — justo el rango que el usuario necesita.
+  var SNAP_CARA_CM = 2;
 
   // Mínimo razonable del espaciamiento @ (cm). Es el CAPEO DE UI (§TANDA 3 · punto 2):
   // los inputs de @ lo llevan en min= y rechazan en rojo cualquier valor menor, y los
@@ -976,6 +990,33 @@
     return _modoDefault(c.tipologia);
   }
 
+  // ==========================================================================
+  // ANCLAJE DE LA POSICIÓN (18-ago) — helper ÚNICO de escritura
+  // --------------------------------------------------------------------------
+  // La receta guarda la INTENCIÓN («este punto va a 40 cm del borde»), no la
+  // coordenada resuelta: sin eso, cambiar el hormigón dejaba la distribución
+  // congelada donde se dibujó (medido: viga 600 → 800 dejaba los estribos a 140 cm
+  // de cada borde en vez de a 40; a 400 sacaba 60 cm de fierro fuera del hormigón).
+  // La fórmula vive UNA sola vez, en reglas.js (`anclarRango` / `anclarPosHint`), y
+  // TODOS los sitios de la UI que escriben from/to o pos_hint pasan por acá: si la
+  // cuenta se repartiera entre el arrastre, los campos del panel, _syncN y
+  // _rangoDefault, la primera divergencia volvería a congelar el rango en silencio.
+  // `forzar` = una edición del usuario mueve la INTENCIÓN, no sólo el número.
+  // ==========================================================================
+  function _anclarRangoUI(rango, eje) {
+    var d = _deps();
+    if (!rango || !d.reglas || typeof d.reglas.anclarRango !== 'function') return rango;
+    try { d.reglas.anclarRango(rango, _hostDeReceta(), eje || rango.eje || 'x', true); } catch (e) { /* nunca romper la edición */ }
+    return rango;
+  }
+
+  function _anclarHintUI(comp) {
+    var d = _deps();
+    if (!comp || !d.reglas || typeof d.reglas.anclarPosHint !== 'function') return comp;
+    try { d.reglas.anclarPosHint(comp, _hostDeReceta(), true); } catch (e) { /* idem */ }
+    return comp;
+  }
+
   // Rango por defecto (toda la dimensión útil del EJE DE DISTRIBUCIÓN) para los modos
   // que lo necesitan. `eje` = 'x' (normal) | 'z' (pieza volteada) | 'y'.
   function _rangoDefault(sep, eje) {
@@ -986,7 +1027,8 @@
     else { dim = Number(g.largo); r = 4; }
     // `eje` SIEMPRE declarado: sin él, el distribuidor cae a X y un rango de
     // cabezal (valores en Z, ±ancho/2) se interpretaba como X → 2 barras juntas.
-    return { from: -dim / 2 + r, to: dim / 2 - r, sep: sep || 20, eje: (eje === 'y' || eje === 'z') ? eje : 'x' };
+    var rg = { from: -dim / 2 + r, to: dim / 2 - r, sep: sep || 20, eje: (eje === 'y' || eje === 'z') ? eje : 'x' };
+    return _anclarRangoUI(rg, rg.eje);   // nace anclado a los bordes (r cm de cada uno)
   }
 
   // ==========================================================================
@@ -1321,6 +1363,17 @@
   function _regenerar() {
     var d = _deps();
     if (!d.gen || !ST.receta) return;
+    // REANCLAR ANTES DE GENERAR — punto ÚNICO. Toda mutación de la receta termina
+    // acá, así que este es el sitio donde las posiciones (rango.from/to, tramos,
+    // pos_hint) se re-derivan de su ancla contra el hormigón de AHORA: cambiar el
+    // largo de la viga mueve la distribución con él, y el panel muestra el mismo
+    // número que el motor reparte. Estampa el ancla que falte a partir del from/to
+    // que la receta ya traía, contra SU propia geometría → una receta vieja abierta
+    // no se mueve ni un milímetro. Es idempotente (llamarla en cada regeneración no
+    // acumula nada) y va ANTES del sello del dirty-tracking, que se toma tras la 1ª.
+    if (d.reglas && typeof d.reglas.reanclarReceta === 'function') {
+      try { d.reglas.reanclarReceta(ST.receta); } catch (e) { /* nunca romper el render */ }
+    }
     var out = d.gen.generarViga(ST.receta, {});
     _etiquetarCi(out);
     ST.ultimoOut = out;
@@ -2402,33 +2455,66 @@
   // legibles y cada 5 va una más marcada (la "decena" de la escala elegida).
   var GRID2D_PASOS = [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000];
   var GRID2D_MIN_PX = 14;
+  // Techo de líneas por cuadrante (verticales + horizontales juntas). Al tocarlo el
+  // paso SUBE: la grilla nunca se apaga por ser muchas, porque una grilla que
+  // desaparece al alejarse es justo el agujero que se vino a tapar.
+  var GRID2D_MAX_LINEAS = 400;
   function _pasoGrilla2D(pxPorCm) {
     for (var i = 0; i < GRID2D_PASOS.length; i++) {
       if (GRID2D_PASOS[i] * pxPorCm >= GRID2D_MIN_PX) return GRID2D_PASOS[i];
     }
     return GRID2D_PASOS[GRID2D_PASOS.length - 1];
   }
+  // Siguiente paso de la escala; agotada la tabla sigue por décadas. SIEMPRE devuelve
+  // algo mayor: es lo que garantiza que el bucle del techo termine.
+  function _subirPaso1_2_5(paso) {
+    for (var i = 0; i < GRID2D_PASOS.length; i++) { if (GRID2D_PASOS[i] > paso) return GRID2D_PASOS[i]; }
+    return paso * 10;
+  }
+  function _nLineasGrilla2D(ru, rv, paso) {
+    return Math.max(0, Math.floor(ru.hi / paso) - Math.ceil(ru.lo / paso) + 1) +
+           Math.max(0, Math.floor(rv.hi / paso) - Math.ceil(rv.lo / paso) + 1);
+  }
+  // EL VIEWBOX NO ES EL CUADRANTE. Los overlays llevan preserveAspectRatio="xMidYMid
+  // meet" con un viewBox de proporción FIJA (360×300, 620×300, 620×260), así que el
+  // viewBox entra centrado y sobran dos franjas —una a cada lado del eje que sobra—
+  // que el render orto de abajo sí pinta. Recorrer de 0..VW/0..VH dibujaba la grilla
+  // sólo sobre ese parche y dejaba las franjas en blanco: ése era el corte.
+  // Acá se devuelve el rect del ELEMENTO en unidades del viewBox (en el eje que sobra
+  // da x0<0 y x1>VW). Ese excedente SE VE: el root <svg> recorta en el borde del
+  // ELEMENTO, no en el viewBox. Es la misma cuenta de letterbox que ya hace
+  // _transformDesdeCamara con padX/padY, sólo que devuelta al revés.
+  function _rectElementoEnViewBox(svg, VW, VH) {
+    var r = (svg && svg.getBoundingClientRect) ? svg.getBoundingClientRect() : null;
+    var esc = r ? Math.min(r.width / VW, r.height / VH) : 0;
+    if (!(esc > 0)) return { x0: 0, y0: 0, x1: VW, y1: VH };   // sin medida todavía: el viewBox
+    var w = r.width / esc, h = r.height / esc;
+    return { x0: (VW - w) / 2, y0: (VH - h) / 2, x1: (VW + w) / 2, y1: (VH + h) / 2 };
+  }
   // Emite la grilla como DOS <path> (fina y marcada) en vez de N <line>: son 2 nodos
   // por vista en lugar de ~90, y esto se re-emite en cada redibujo.
   function _dibujarGrilla2D(svg, t, VW, VH) {
     if (!svg || !t || !(t.s > 0) || !t.ku || !t.kv) return;
-    var paso = _pasoGrilla2D(t.s);
-    function rango(c, k, largoPx) {
-      var a = (0 - c) / k, b = (largoPx - c) / k;
+    var R = _rectElementoEnViewBox(svg, VW, VH);
+    function rango(c, k, p0, p1) {
+      var a = (p0 - c) / k, b = (p1 - c) / k;
       return { lo: Math.min(a, b), hi: Math.max(a, b) };
     }
-    var ru = rango(t.cu, t.ku, VW), rv = rango(t.cv, t.kv, VH);
+    var ru = rango(t.cu, t.ku, R.x0, R.x1), rv = rango(t.cv, t.kv, R.y0, R.y1);
+    var paso = _pasoGrilla2D(t.s);
+    while (_nLineasGrilla2D(ru, rv, paso) > GRID2D_MAX_LINEAS) paso = _subirPaso1_2_5(paso);
+    var x0 = R.x0.toFixed(1), x1 = R.x1.toFixed(1), y0 = R.y0.toFixed(1), y1 = R.y1.toFixed(1);
     var dFina = '', dMarcada = '';
     var i0 = Math.ceil(ru.lo / paso), i1 = Math.floor(ru.hi / paso);
     for (var i = i0; i <= i1; i++) {
       var x = _tX(t, i * paso).toFixed(1);
-      var seg = 'M' + x + ',0 L' + x + ',' + VH + ' ';
+      var seg = 'M' + x + ',' + y0 + ' L' + x + ',' + y1 + ' ';
       if (i % 5 === 0) dMarcada += seg; else dFina += seg;
     }
     var j0 = Math.ceil(rv.lo / paso), j1 = Math.floor(rv.hi / paso);
     for (var j = j0; j <= j1; j++) {
       var y = _tY(t, j * paso).toFixed(1);
-      var segH = 'M0,' + y + ' L' + VW + ',' + y + ' ';
+      var segH = 'M' + x0 + ',' + y + ' L' + x1 + ',' + y + ' ';
       if (j % 5 === 0) dMarcada += segH; else dFina += segH;
     }
     if (dFina) svg.appendChild(_svgEl('path', { 'class': 'te-grid2d', d: dFina }));
@@ -3490,15 +3576,20 @@
     return { x: u, y: 0, z: v };   // planta
   }
 
-  // Snap de un valor host al grid o a las caras del hormigón (si snap activo).
+  // Snap de un valor host a las CARAS del hormigón o, si no hay ninguna cerca, al
+  // PASO DEL ARRASTRE (si snap activo).
+  // ORDEN: primero la cara, después el paso. Antes los dos competían por distancia y
+  // eso funcionaba sólo porque el paso era GRUESO (5 cm): al bajarlo a 1 el candidato
+  // del paso queda SIEMPRE a ≤0.5 cm y le ganaría a cualquier cara, o sea que el
+  // "snap a nodos" del punto 4c (bordes, recubrimiento, centro) habría muerto en
+  // silencio. Con la cara resuelta primero, el imán sigue vivo y el paso sólo manda
+  // donde no hay nada a lo que pegarse.
   function _snapValor(val, faces) {
     if (!ST.snap) return val;
-    var best = val, bestD = 6;   // umbral de snap en cm
+    var best = null, bestD = SNAP_CARA_CM;
     (faces || []).forEach(function (f) { var dd = Math.abs(val - f); if (dd < bestD) { bestD = dd; best = f; } });
-    // grilla
-    var g = Math.round(val / GRID_SNAP) * GRID_SNAP;
-    if (Math.abs(val - g) < bestD) best = g;
-    return best;
+    if (best != null) return best;
+    return Math.round(val / PASO_ARRASTRE_CM) * PASO_ARRASTRE_CM;
   }
 
   function _facesEje(eje) {
@@ -4345,6 +4436,11 @@
       c.pos_hint.x = (base.x || 0) + dx;
       c.pos_hint.z = (base.z || 0) + dz;
     }
+    // DONDE LA SOLTASTE ES EL ANCLA: el hint se guarda como distancia a la referencia
+    // más cercana de su eje (borde − / centro / borde +), no como coordenada fija.
+    // Sin esto, la barra arrastrada a 50 cm del testero aparecía a 150 cm del testero
+    // en cuanto la viga pasaba de 600 a 800.
+    _anclarHintUI(c);
     _regenerarDiferido();
   }
 
@@ -4579,6 +4675,9 @@
     }
     if (rango.eje == null) rango.eje = eje;
     d[cual] = rango;
+    // ARRASTRASTE = MOVISTE LA INTENCIÓN: el ancla se re-deriva del punto donde
+    // quedó el handle (borde más cercano), no sólo su coordenada.
+    _anclarRangoUI(rango, eje);
     _syncN(d, cual, true);                  // arrastraste: N sigue al largo nuevo
     if (cual === 'rango') _syncTramos(d);   // los tramos viven en la 1ª línea
     _sincronizarOverlayOrto();              // repinta la cota viva del borde
@@ -5759,7 +5858,8 @@
     var libres = ['x', 'y', 'z'].filter(function (e) { return e !== e1 && e !== eDes; });
     var eje = libres[0] || ['x', 'y', 'z'].filter(function (e) { return e !== e1; })[0] || 'y';
     var base = _rangoDefault(d.sep || 20, eje);
-    return { eje: eje, from: base.from, to: base.to, sep: base.sep };
+    // El ancla viaja con el rango: la 2ª línea también sigue al hormigón.
+    return _anclarRangoUI({ eje: eje, from: base.from, to: base.to, sep: base.sep }, eje);
   }
 
   // EDITOR DE TRAMOS del panel (punto 4a) — una fila por tramo: largo cm + @ cm + ×,
@@ -5816,6 +5916,7 @@
     }
     var sgn = (Number(r.to) >= Number(r.from)) ? 1 : -1;
     r.to = Number(r.from) + sgn * (Math.max(1, Math.round(Number(r.n))) - 1) * sep;
+    _anclarRangoUI(r, r.eje);   // el `to` se movió → su ancla también (helper único)
   }
 
   function _rangoEditor(c, d, ci, campo) {
@@ -5826,6 +5927,7 @@
     // ficha — si no, un re-render en cada campo le robaría el foco al usuario.
     function _setExtremo(k, v) {
       d[cual][k] = Number(v);
+      _anclarRangoUI(d[cual], d[cual].eje);   // el número que escribió el usuario ES el ancla
       var hayTramos = !!(d[cual].tramos && d[cual].tramos.length > 1);
       if (cual === 'rango') _syncTramos(d);
       _mut(ci, hayTramos);
@@ -5853,6 +5955,7 @@
       r.n = n;
       var sgn = (Number(r.to) >= Number(r.from)) ? 1 : -1;
       r.to = Number(r.from) + sgn * (n - 1) * _sepDe();
+      _anclarRangoUI(r, r.eje);               // el `to` calculado por N también se ancla
       if (cual === 'rango') _syncTramos(d);
       _mut(ci, true);
     }
@@ -5925,7 +6028,7 @@
   // el @ por su cuenta; esto es lo que ve el usuario: min= en el input (las flechitas
   // no bajan de SEP_MIN) y RECHAZO explícito con borde rojo si igual teclea menos.
   // Rechazar = no se aplica nada (el dato viejo queda intacto). SEP_MIN vive arriba,
-  // junto a GRID_SNAP, porque también es el piso de los clamps de tramos.
+  // junto a PASO_ARRASTRE_CM, porque también es el piso de los clamps de tramos.
   // ==========================================================================
   function _inputSep(valor, aplicar) {
     var el = _input({
@@ -8862,6 +8965,8 @@
     _zoomAlCursor: _zoomAlCursor,                                 // zoom que clava el punto bajo el cursor
     _compDesc: _compDesc, _coloresDeReceta: _coloresDeReceta,     // línea del componente + archivador de colores
     _pasoGrilla2D: _pasoGrilla2D, _aplicarTema3D: _aplicarTema3D, // grilla 2D + tema de los 4 cuadrantes
+    _rectElementoEnViewBox: _rectElementoEnViewBox,               // letterbox del overlay: rect del elemento en unidades del viewBox
+    _subirPaso1_2_5: _subirPaso1_2_5, _nLineasGrilla2D: _nLineasGrilla2D,
     _ST: ST,                                                      // estado (lo usan los tests headless)
     // INTERACCIÓN-2.0 · orientación de la pieza + snap de cara
     rotarPlanoPieza: rotarPlanoPieza,                           // cicla (o fija) la orientación + regenera

@@ -435,10 +435,9 @@
      líneas). Arranca a la izquierda de la lupa (right:34px) y crece hacia la
      izquierda, así no pisa el título del cuadrante (arriba-izq) ni el gizmo de ejes
      (abajo-izq, que lo pinta el renderer).
-     Lo que hizo que la fila QUEPA es el radial de FONDO en símbolos (●/◐/○ =
-     oscuro/medio/claro): con las palabras "Oscuro Medio Claro" la barra medía ~150 px
-     más y en un cuadrante angosto se metía debajo del título. Los grupos siguen
-     siendo .te-3drow para no perder los pares etiqueta+radial al envolver. */
+     Desde el 18-ago la fila es aún más corta: el radial de FONDO se mudó a #te_ctools
+     (es global, no del 3D). Los grupos siguen siendo .te-3drow para no perder los
+     pares etiqueta+radial al envolver. */
   #te_modal .te-3dtools{position:absolute;right:34px;top:6px;z-index:3;display:flex;flex-direction:row;
     align-items:center;justify-content:flex-end;gap:9px;flex-wrap:nowrap}
   #te_modal .te-3drow{display:flex;align-items:center;gap:4px;flex:0 0 auto}
@@ -451,10 +450,12 @@
      Va con DOS ids a propósito: `.te-3dtools button.on` de una sola clase también
      pintaría al 🧊 del hormigón, que nace con class="on" y usa .off para apagarse. */
   #te_modal .te-3dtools #te_3dAnclar.on{background:var(--te-acero);color:#fff;border-color:var(--te-acero)}
-  /* Radiales del 3D (eje de giro / fondo). OJO ESPECIFICIDAD: la regla de arriba
+  /* Radial de EJE del 3D. OJO ESPECIFICIDAD: la regla de arriba
      (`#te_modal .te-3dtools button`) fija 24×24 px; ésta la gana porque suma la clase
      .te-3dseg — si se escribiera con una sola clase, los botones de texto saldrían
-     cuadrados y recortados. */
+     cuadrados y recortados.
+     .te-3dlbl y .te-3dseg van SIN el ancestro .te-3dtools a propósito: el radial de
+     FONDO los reusa desde #te_ctools, que está fuera del cuadrante 3D. */
   #te_modal .te-3dlbl{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:#8d9aab}
   #te_modal .te-3dseg{display:inline-flex;border:1px solid var(--te-line);border-radius:6px;overflow:hidden;
     background:rgba(255,255,255,.92)}
@@ -463,9 +464,19 @@
   #te_modal .te-3dtools .te-3dseg button+button{border-left:1px solid var(--te-line)}
   #te_modal .te-3dtools .te-3dseg button:hover{background:#f2f7ea;color:var(--te-acero-d);border-color:var(--te-line)}
   #te_modal .te-3dtools .te-3dseg button.on{background:var(--te-acero);color:#fff}
-  /* Radial de FONDO: sus etiquetas son símbolos (●◐○), que a 10 px se leen como
-     puntitos. Dos ids para ganarle a la regla de arriba (1 id + 2 clases). */
-  #te_modal .te-3dtools #te_3dTema button{font-size:13px;padding:0 6px;line-height:1}
+  /* RADIAL DE FONDO — vive en #te_ctools (fila de arriba), fuera de .te-3dtools, así
+     que NINGUNA de las reglas de botón de esa barra le llega y trae acá su propio
+     juego. Alto 24 px = el mismo de los .te-ctool de la fila (padding 5px + 11.5px de
+     texto), para que no quede ni desalineado ni apretado entre ellos. Sus etiquetas
+     son símbolos (●◐○), que a 10 px se leerían como puntitos: van a 13. */
+  #te_modal #te_ctools #te_3dTema{flex:0 0 auto;background:#fff;border-radius:7px}
+  #te_modal #te_ctools .te-3dlbl{flex:0 0 auto}
+  #te_modal #te_ctools #te_3dTema button{width:auto;height:24px;padding:0 8px;border:none;border-radius:0;
+    background:transparent;color:var(--te-muted);font-size:13px;line-height:1;cursor:pointer;
+    display:flex;align-items:center;justify-content:center}
+  #te_modal #te_ctools #te_3dTema button+button{border-left:1px solid var(--te-line)}
+  #te_modal #te_ctools #te_3dTema button:hover{background:#f2f7ea;color:var(--te-acero-d)}
+  #te_modal #te_ctools #te_3dTema button.on{background:var(--te-acero);color:#fff}
   /* Cuadro RESUMEN flotante del 3D (items · barras · peso). Abajo-derecha: la
      esquina inf-izq es del gizmo de ejes y el borde inferior derecho lo usa la
      ayuda (.te-vhint), que va más abajo. */
@@ -792,6 +803,17 @@
               title="Mostrar u ocultar el listado de barras a crear">📋 Barras</button>
       <span style="flex:1"></span>
       <span id="te_ctoolsStatus" style="font-size:10.5px;color:#9aa4b0">Tipología activa: <b style="color:var(--te-cbs)">CBS</b> · figura 103B</span>
+      <!-- FONDO (●◐○ = oscuro/medio/claro). VIVE ACÁ, en el extremo opuesto al botón
+           de barras, y no en la barra del cuadrante 3D: desde el 18-ago pinta LOS 4
+           CUADRANTES (fondo, grilla 2D y la inversión de los trazos del overlay), así
+           que meterlo entre las herramientas del 3D mentía sobre su alcance. Es una
+           MUDANZA: mismo id, mismas tres opciones y el mismo handler de
+           template_editor.js, que lo busca por id ($('te_3dTema')). -->
+      <span class="te-divv"></span>
+      <span class="te-3dlbl">fondo</span>
+      <span class="te-3dseg" id="te_3dTema" title="Fondo y grilla de LOS 4 CUADRANTES — 3D y los tres planos (no cambia el color de las barras)">
+        <button type="button" data-tema="oscuro" title="Fondo oscuro">●</button><button type="button" data-tema="medio" title="Fondo medio">◐</button><button type="button" class="on" data-tema="claro" title="Fondo claro">○</button>
+      </span>
     </div>
 
     <div id="te_body">
@@ -910,11 +932,11 @@
                  sola en cada clic (antes el reset accidental hacía de "volver").
                · 🧊 hormigón: ST.verHormigon existía desde siempre SIN botón que lo
                  tocara — la función estaba escrita y no se podía usar.
-               A la derecha, dos radiales portados del Enfierrador: EJE de rotación y
-               FONDO. El FONDO es GLOBAL (18-ago): pinta los 4 cuadrantes, no sólo el 3D,
-               y con él viaja la grilla y la inversión de los trazos del overlay 2D
-               (variables --te-ov-* del CSS). Sigue sin tocar NUNCA el color de las barras.
-               Vive en esta barra por estar donde ya estaban los otros radiales.
+               A la derecha, el radial de EJE de rotación (portado del Enfierrador).
+               EL RADIAL DE FONDO YA NO ESTÁ ACÁ (18-ago): se fue a #te_ctools, la fila
+               de arriba. Es GLOBAL —pinta los 4 cuadrantes, y con él viajan la grilla
+               2D y la inversión de los trazos del overlay (variables --te-ov-*)—, así
+               que dentro de la barra del 3D mentía sobre su alcance.
                TODO va en UNA FILA arriba (18-ago) — ver .te-3dtools en el CSS.
                EJE SIN "LIBRE" (18-ago): eran 4 botones y el cuarto sobraba, porque
                volver a clicar el activo YA lo apaga. Ahora son 3 (X/Y/Z) y NINGUNO
@@ -931,12 +953,6 @@
               <span class="te-3dlbl">eje</span>
               <span class="te-3dseg" id="te_3dEjes" title="Restringe el arrastre a un eje — letras del gizmo, Z = vertical (ninguno activo = giro libre; clic en el activo lo apaga)">
                 <button type="button" data-eje="x">X</button><button type="button" data-eje="y">Y</button><button type="button" data-eje="z">Z</button>
-              </span>
-            </div>
-            <div class="te-3drow">
-              <span class="te-3dlbl">fondo</span>
-              <span class="te-3dseg" id="te_3dTema" title="Fondo y grilla de LOS 4 CUADRANTES — 3D y los tres planos (no cambia el color de las barras)">
-                <button type="button" data-tema="oscuro" title="Fondo oscuro">●</button><button type="button" data-tema="medio" title="Fondo medio">◐</button><button type="button" class="on" data-tema="claro" title="Fondo claro">○</button>
               </span>
             </div>
           </div>
