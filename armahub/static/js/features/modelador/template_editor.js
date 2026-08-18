@@ -1519,7 +1519,18 @@
       ST.world.add(mesh);
     });
     _resaltarSeleccion3D();    // selección sutil: leve emissive en la pieza activa
-    ST.dist = g.largo * 1.15 + 160;
+    // ENCUADRE INICIAL, NO EN CADA REDIBUJO (bug 17-ago: «roto el muro en el 3D y
+    // al hacer clic me resetea la imagen»). Esta función corre en CADA regeneración
+    // —colocar una barra, seleccionar, arrastrar un tirador—, así que reponer la
+    // distancia acá devolvía la cámara al zoom por defecto y borraba el encuadre
+    // que el usuario acababa de buscar. Ahora se encuadra sólo cuando cambia el
+    // ELEMENTO (sus medidas): abrir otro template o editar el hormigón. Mientras el
+    // elemento sea el mismo, la cámara es del usuario.
+    var firmaEnc = [g.largo, g.alto, g.ancho].join('|');
+    if (ST._encuadreFirma !== firmaEnc) {
+      ST._encuadreFirma = firmaEnc;
+      ST.dist = g.largo * 1.15 + 160;
+    }
     _redibujarPlanoActivo();   // P3 — re-agregar el resaltado tras vaciar el world
     ST.dirty = true;
   }
@@ -6557,10 +6568,14 @@
       if (quiereOrbitaSel) { _pivotarEn(_centroSeleccion3D()); mode = 'rot'; }
       else if (e.button === 0 && !quierePan) {
         // FEEDBACK 13-ago: el pivote de un ctrl+click anterior QUEDABA PEGADO y
-        // el arrastre normal seguía orbitando la selección vieja. El arrastre
-        // SIN modificador re-pivotea SIEMPRE al centro de la escena (la cámara
-        // no salta — _pivotarEn sólo cambia en torno a qué gira).
-        _pivotarEn({ x: 0, y: 0, z: 0 });
+        // el arrastre normal seguía orbitando la selección vieja → se re-pivotea
+        // al centro de la escena.
+        // …PERO SÓLO SI HACE FALTA (bug 17-ago, la otra mitad del «me resetea la
+        // imagen»): _pivotarEn ANULA el pan, y el pan es parte del encuadre que el
+        // usuario buscó. Cuando el pivote ya es el centro de la escena no hay nada
+        // que restituir, así que tocarlo sólo servía para re-apuntar la cámara al
+        // origen y saltar la imagen en cada clic.
+        if (ST.target.x || ST.target.y || ST.target.z) _pivotarEn({ x: 0, y: 0, z: 0 });
         mode = 'rot';
       }
       else mode = quierePan ? 'pan' : null;

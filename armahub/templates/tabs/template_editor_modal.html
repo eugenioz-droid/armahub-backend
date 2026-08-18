@@ -281,7 +281,12 @@
   #te_modal .te-btab tr:last-child td{border-bottom:none}
 
   /* ---- CENTRO: 4 cuadrantes ---- */
-  #te_modal #te_quad{flex:1;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;gap:1px;background:var(--te-line);min-width:0;position:relative}
+  /* El 3D (cuadrante inferior derecho) es 20% más grande que la mitad exacta y CRECE
+     HACIA LA ESQUINA SUPERIOR IZQUIERDA (pedido 17-ago): 2fr/3fr = 40%/60%, o sea
+     0.5 → 0.6 en cada dirección. Los tres planos ceden ese pedazo en proporción.
+     El renderer 3D dibuja los 4 cuadrantes por viewport leyendo el rect de cada uno,
+     así que la proporción nueva la toma solo (no hay medidas duplicadas en JS). */
+  #te_modal #te_quad{flex:1;display:grid;grid-template-columns:2fr 3fr;grid-template-rows:2fr 3fr;gap:1px;background:var(--te-line);min-width:0;position:relative}
   #te_modal .te-vista{background:var(--te-canvas);position:relative;overflow:hidden;cursor:pointer}
   #te_modal .te-vista.d3{background:var(--te-canvas3d);cursor:default}
   /* P3 — cuadrante 2D cuyo plano de trabajo está ACTIVO (resaltado en el 3D).
