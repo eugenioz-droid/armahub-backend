@@ -383,13 +383,26 @@
   // El resto NO se saca: el usuario puede buscar cualquier figura, sólo que la
   // lista deja de empezar por 63 códigos que no vienen al caso. Hay que llamarlo
   // al cambiar de tipología o de elemento (la lista de arriba cambia).
-  function _refrescarFigDatalist() {
+  // PREFILTRO DENTRO DEL FILTRO DE TEXTO (pedido 17-ago). Antes la lista SIEMPRE
+  // traía las 69 figuras (sólo ordenadas con las de la tipología primero), así que
+  // abrirla era encarar el catálogo entero. Ahora:
+  //   · campo VACÍO (recién abierto) → sólo las SUGERIDAS de esa tipología;
+  //   · en cuanto el usuario escribe → el catálogo COMPLETO, sugeridas primero.
+  // La tabla de sugeridas no es nueva: es la que ya vive en el catálogo
+  // (FIGURAS_POR_TIPOLOGIA, clave ELEMENTO-TIPOLOGÍA) y que la pantalla de
+  // configuración va a editar. Si una tipología no tiene sugeridas, se muestra
+  // el catálogo completo — una lista vacía sería peor que una larga.
+  // `tip` opcional: la ficha de un componente pregunta por LA SUYA, no por la del
+  // ribbon (pueden ser distintas si se seleccionó una barra de otra tipología).
+  function _refrescarFigDatalist(soloSugeridas, tip) {
     var dl = $('te_figs'); if (!dl) return;
     var F = _figuras(), html = '';
     var dib = _figsDibujables();
-    var tipTxt = String(ST.tipologia == null ? '' : ST.tipologia).trim();
+    var tipUsar = (tip == null) ? ST.tipologia : tip;
+    var tipTxt = String(tipUsar == null ? '' : tipUsar).trim();
     // Sólo las de la tipología que además el editor sabe dibujar.
-    var deTip = _figsDeTipologiaActiva().filter(function (k) { return dib.indexOf(k) >= 0; });
+    var deTip = _figsDeTipologia(_tipoElemento(), tipUsar)
+      .filter(function (k) { return dib.indexOf(k) >= 0; });
     var resto = dib.filter(function (k) { return deTip.indexOf(k) < 0; });
     function opt(k, prefijo) {
       var d = F[k] || {};
@@ -397,8 +410,16 @@
       return '<option value="' + _esc(k) + '"' + (lbl ? ' label="' + _esc(lbl) + '"' : '') + '>';
     }
     deTip.forEach(function (k) { html += opt(k, tipTxt ? tipTxt + ' · ' : ''); });
-    resto.forEach(function (k) { html += opt(k, ''); });
+    if (!(soloSugeridas && deTip.length)) resto.forEach(function (k) { html += opt(k, ''); });
     dl.innerHTML = html;
+  }
+
+  // Deja la lista del campo `el` en el estado que toca según lo que haya escrito:
+  // vacío = sugeridas · con texto = catálogo completo. Se llama en focus y en cada
+  // tecla, que son los dos momentos en que el desplegable se vuelve a abrir.
+  function _syncFigDatalist(el, tip) {
+    if (!el) return;
+    _refrescarFigDatalist(!String(el.value || '').trim(), tip);
   }
 
   // Catálogo REAL al abrir el editor: GET /figuras-catalogo → actualizar(data).
@@ -4795,7 +4816,10 @@
       _setFigura(ci, k);
       if (av) _actualizarStatus(av.texto);   // el borde ámbar es discreto: el aviso también se DICE
     });
+    // prefiltro: al abrirlo, sólo las sugeridas de LA TIPOLOGÍA DE ESTA BARRA
+    inp.addEventListener('focus', function () { _syncFigDatalist(inp, c.tipologia); });
     inp.addEventListener('input', function () {
+      _syncFigDatalist(inp, c.tipologia);   // al escribir se abre a todo el catálogo
       var v = inp.value.trim();
       if (!v) { inp.classList.remove('bad'); inp.classList.remove('warn'); inp.title = ''; return; }   // a medio tipear
       var err = _figError(v);
@@ -5616,7 +5640,10 @@
       // DIRECTO a la vista, y se colocaba la figura ANTERIOR (su estribo). Si lo
       // tipeado es una figura válida del catálogo, ST.figura la toma al instante;
       // lo inválido no pisa nada (el clic ya lo bloquea el gate de figura/φ).
+      // prefiltro: vacío = sugeridas de la tipología activa · con texto = todo el catálogo
+      fig.addEventListener('focus', function () { _syncFigDatalist(fig); });
       fig.addEventListener('input', function () {
+        _syncFigDatalist(fig);
         if (_validarFiguraRibbon(false)) {
           var kf = _figKey(fig.value);
           if (kf && !_figError(kf)) {
