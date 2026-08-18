@@ -6,6 +6,13 @@ paso). Maquetas de referencia visual (calzar con ellas): `static/demo/template3d
 el que se implementa) y `static/demo/rebar3d.html` (render sólido validado). NO implementar el Colocador
 (`colocador.html`) en este MVP — es 2ª entrega.
 
+> **NOTA 18-ago (leer antes de usar este guion):** el "3D Template" de este documento es lo que hoy se
+> llama **Enfierrador 3D** (`panel_3d.js`) — es la herramienta que **carga barras reales al despiece**.
+> El **Template Editor** (`template_editor.js`) **NO** carga barras: solo crea/edita templates, y nada
+> de lo que hace queda almacenado como barra. Reparto de roles, orden de trabajo (primero pulir el
+> Template Editor, después homologar el Enfierrador), pesos y configuración: ver
+> `docs/programa_modelador_3d.md` §DEF-18ago.
+
 ## Reglas de ejecución (OBLIGATORIAS)
 - **Idempotencia BD:** solo migraciones nuevas `armahub/migrations/NNN_*.sql` idempotentes (CREATE TABLE
   IF NOT EXISTS; columnas con DO $$ … EXCEPTION WHEN duplicate_column …). NUNCA tocar/borrar datos.
@@ -237,11 +244,20 @@ lo traza `_estriboPerimetral` desde siempre), y el exportador a aSa lo manda **t
 sin convertir (`export.py:139-144`). La columna está **MIXTA**: solo las figuras dibujadas en el
 DISEÑADOR antes del 14-ago quedaron en INTERNO por la migración 085 (`disenador.js` guardaba 180−giro)
 y nadie las reconcilió — se detectan porque `angulos[k] + giro_k = 180`. Esas filas son inertes para el
-render (traen `geometria.tramos`, que manda sobre la derivación), pero NO para el export. **La decisión
+render (traen `geometria.tramos`, que manda sobre la derivación), pero NO para el export. ~~**La decisión
 de convención sigue PENDIENTE del usuario** (unificar a GIRO o a INTERNO); el modo de cerrarla es
-contrastar un CSV real de aSa: si el operador espera 135 o 45. Ver la DEF al final de
-`docs/programa_modelador_3d.md`. Mientras no se cierre: al persistir ang1..4, copiar el criterio de
-ac2Payload — no reinventar.
+contrastar un CSV real de aSa: si el operador espera 135 o 45.~~
+
+**CERRADA POR EL USUARIO EL 18-ago — el número es el ÁNGULO DEL VÉRTICE.** Lo que se guarda en
+`angulos` y se exporta a aSa (`ang1..4`) es el **ángulo del vértice**: el que queda **entre los dos
+tramos de fierro** que llegan al doblez. En la **102B es 135**. El **"recorrido del doblado"** (cuánto
+se desvía el tramo respecto de seguir recto) es **180 − ese número** = 45 en la 102B, y **no se
+guarda**. Donde arriba se lee "GIRO del doblez", **léase ángulo del vértice**: el número almacenado no
+cambia, cambia cómo se le nombra. **Los valores del catálogo están BIEN** → no hay migración de datos
+ni conversión que agregar al export (aSa recibe el número tal cual). Lo único mal es el **rotulado del
+Diseñador de figuras** (muestra 45 donde debería mostrar 135); se arregla **más adelante**. Detalle en
+`docs/programa_modelador_3d.md` §DEF-18ago punto 5. Sigue valiendo la regla de arriba: copiar el
+criterio de ac2Payload, no reinventar.
 
 **Catálogo (catalogo.py):** `get_figura(cur,codigo)→{parciales,angulos,radio}`. `figuras_catalogo.geometria`
 JSONB `{dim,tramos:[{lado,giro,sentido}]}` (para render). Tipologías VIGA: CBS/CBS2/CBSn/CBI/CBI2/CBIn/

@@ -944,7 +944,8 @@ Es una entidad de referencia propia (como Clientes/Calculistas), no un apéndice
 ### 4A.2 Modelo (portado de `typology_catalog.py` de ArmaPilot)
 
 - **Figura:** `codigo` (ej. 105A), `parciales` (slots dim que usa, ej. A,B,C,D,E), `angulos`
-  (lista, ej. 45,135 — **convención: es el GIRO del doblez**, ver 4A.4), `radio` (bool),
+  (lista, ej. 45,135 — **convención CERRADA 18-ago: es el ÁNGULO DEL VÉRTICE**, el que queda entre los
+  dos tramos de fierro; ver 4A.4), `radio` (bool),
   descripción. Mapea directo a los slots de la barra (A→dim_a...). Fuente: `FIGURE_CATALOG`.
 - **Tipología / tipo de estructura:** MURO/LOSA/VIGA/COLUMNA/FUNDACION/GEN → tipos (MH, MV,
   Fi, ES, CB...). Fuente: `TIPOS_*`.
@@ -963,6 +964,21 @@ Es una entidad de referencia propia (como Clientes/Calculistas), no un apéndice
   define cómo su formato se mapea al catálogo Armacero (integración 1-a-1). El resultado
   siempre queda homologado al Armacero.
 
+**Tab de templates del Catálogo — rediseño DEFINIDO 18-ago** (detalle en
+`docs/programa_modelador_3d.md` §DEF-18ago puntos 1 y 6):
+- La tarjeta **"Nuevo template"** pasa a ser **"Configuración"** — se van los botones de tipo de
+  elemento y quedan **4 botones que abren modales**: *Figuras por tipología* · *Reglas de largos* ·
+  *Recubrimientos* · *Por figura*. Esa configuración **aplica al Template Editor**; la configuración
+  por obra (Enfierrador) queda **en standby**.
+- Debajo, el **Gestor de templates**: nombre + **Crear template**, **buscador**, y **lista clickeable**
+  ordenable **por tipo de elemento** con **toggle a fecha**, con **KPIs referenciales** (peso estimado,
+  diámetro promedio y los típicos).
+- **Reparto de roles (cerrado):** el **Template Editor** (aquí, en Catálogo) **solo crea templates** —
+  nada de lo que hace queda almacenado como barra. El **Enfierrador 3D** (desde el Fabricator) llama un
+  template, **crea las barras reales** del despiece (las que ve el Bar Manager) y guarda la instancia
+  del elemento como algo **único de esa obra**. Los pesos que muestran ambas herramientas son
+  **aproximados**; el peso definitivo lo asigna el backend al crear la barra en el despiece.
+
 ### 4A.4 Diseñador de figuras (IMPLEMENTADO — `disenador.js`)
 
 Sub-tab "🎨 Diseñador". El usuario **dibuja la figura por clicks** en un lienzo con grilla;
@@ -973,16 +989,24 @@ por nombre — dibujar con el nombre del catálogo pega la geometría a esa figu
 figuras dibujadas (editar/borrar). Etiquetas α1/α2… en los vértices (convención aSa: 90° no
 cuenta como α, solo los especiales van a `angulos`).
 
-**Convención del campo `angulos` (verificado 17-ago):** guarda el **GIRO del doblez**, no el ángulo
-interno del vértice — un gancho sísmico se anota **135**, y así lo traza el motor. El **export aSa lo
-manda tal cual** (`ang1..4` → `"<135"`, sin convertir: `export.py`). **OJO — la columna está MIXTA:**
-las figuras dibujadas en el Diseñador **antes del 14-ago** quedaron en ángulo INTERNO (migración 085,
-que guardaba 180−giro) y nadie las reconcilió; se detectan porque `angulos[k] + giro_k = 180`. El SVG
-del catálogo no las delata (dibuja desde `geometria.puntos`), pero el **trazador del modelador sí usa
-`angulos` como giro** (`figura_puntos.js:1208-1210`), así que una fila mixta se dibuja distinta ahí **y**
-exporta el número equivocado a aSa. **Decisión de
-convención pendiente del usuario** (unificar a GIRO o a INTERNO) — se cierra contrastando un CSV real
-de aSa. Detalle en `docs/programa_modelador_3d.md`.
+**Convención del campo `angulos` — CERRADA POR EL USUARIO EL 18-ago: es el ÁNGULO DEL VÉRTICE.** El
+número que se guarda en `angulos` y que se **exporta a aSa** (`ang1..4` → `"<135"`, sin convertir:
+`export.py`) es el ángulo que queda **entre los dos tramos de fierro** que concurren en el doblez: en
+la **102B es 135**. El **"recorrido del doblado"** (cuánto se desvía el tramo respecto de seguir recto)
+es **180 − ese número** = 45 en la 102B, y **no se guarda**. **Los valores del catálogo están BIEN:** no
+hay migración de datos ni conversión que agregar al export.
+- **Lo que está MAL ROTULADO es el Diseñador de figuras:** muestra "Ángulo prev. 45°" y "α1=45" para la
+  102B cuando debería mostrar **135** (la tabla del catálogo sí muestra 135). Es la ETIQUETA, no el
+  dato. **Se arregla más adelante** — pendiente anotado, no en la iteración actual.
+- *Redacción anterior (17-ago), corregida por lo de arriba:* se describía la columna como "el GIRO del
+  doblez" y la convención como pendiente ("¿aSa espera 135 o 45?"). El número almacenado no cambia;
+  cambiaba el nombre. La duda queda **cerrada: 135, el ángulo del vértice**.
+- **Detalle histórico que sigue en pie:** las figuras dibujadas en el Diseñador **antes del 14-ago**
+  quedaron con el complemento por la migración 085 (guardaba 180−giro) y nadie las reconcilió; se
+  detectan porque `angulos[k] + giro_k = 180`. El SVG del catálogo no las delata (dibuja desde
+  `geometria.puntos`), pero el trazador del modelador sí lee `angulos` (`figura_puntos.js:1208-1210`) y
+  el export manda ese número a aSa. Revisarlas queda **pendiente sin urgencia**.
+Detalle en `docs/programa_modelador_3d.md` §DEF-18ago punto 5.
 
 **Modelo de geometría** (campo `geometria` JSONB de `figuras_catalogo`):
 ```

@@ -4,6 +4,9 @@
 lo que quedó construido y los hallazgos de la ejecución.
 **Lo ÚLTIMO ejecutado está AL FINAL del documento: TANDA DEL 17-ago** (tirador del marco, giro en el
 plano de la pieza, rango legible, 3D que no se resetea) + hallazgos verificados + lo que viene.
+**Lo ÚLTIMO decidido está en la última sección: §DEF-18ago** — reparto de roles Template Editor vs.
+Enfierrador, orden de trabajo, pesos, configuración, **convención del ángulo (CERRADA)**, tab del
+catálogo e interacción 3D. Esa sección MANDA sobre lo que digan las secciones anteriores.
 
 ## §IMPL — Estado de implementación (MVP F0+F1, ejecutado de corrido)
 
@@ -1411,6 +1414,14 @@ manda tal cual (`export.py:139-144`, "<135"); las figuras del Diseñador anterio
 en INTERNO por la migración 085 y nadie las reconcilió. La DEF sigue abierta y ahora tiene un modo
 de cerrarla: contrastar con un CSV real de aSa qué espera el operador (135 o 45).
 
+→ **CERRADA POR EL USUARIO EL 18-ago — ver §DEF-18ago punto 5.** El número que se guarda en `angulos`
+y que se exporta a aSa es el **ÁNGULO DEL VÉRTICE** (el que queda entre los dos tramos de fierro): en
+la 102B es **135**. El "recorrido del doblado" es 180 − ese número (45 en la 102B) y NO se guarda.
+**Los valores del catálogo están BIEN** (no hay migración de datos ni conversión en el export). Donde
+arriba se lee "GIRO", léase **ángulo del vértice**: el número no cambia, cambia cómo se le nombra. Lo
+único mal es el **rotulado del Diseñador de figuras** (muestra 45 donde debería mostrar 135), y eso se
+arregla **más adelante**, no ahora.
+
 ## TANDA DEL 17-ago — TIRADOR DEL MARCO, GIRO EN EL PLANO Y RANGO LEGIBLE (EJECUTADA)
 
 Commits `c089763` → `88936c9`, todo desplegado. Suite verde en cada push (31 tests JS + 3 py) y
@@ -1458,7 +1469,12 @@ barrido de la semilla con **md5 idéntico** — nada de esto movió kilos ni lar
   aSa lo manda **tal cual** como "<135", sin convertir (`export.py:139-144`). **PERO la columna está
   MIXTA:** las figuras dibujadas en el Diseñador antes del 14-ago quedaron en INTERNO por la
   migración 085 y nadie las reconcilió (se detectan porque `angulos[k] + giro_k = 180`).
-  **DEF pendiente del usuario:** confirmar contra un CSV real de aSa si el operador espera 135 o 45.
+  ~~**DEF pendiente del usuario:** confirmar contra un CSV real de aSa si el operador espera 135 o 45.~~
+  → **CERRADO 18-ago (§DEF-18ago punto 5): el número guardado/exportado es el ÁNGULO DEL VÉRTICE
+  (135 en la 102B); el recorrido del doblado es 180 − ese número (45). Los valores del catálogo están
+  BIEN y aSa recibe el número tal cual. Lo mal rotulado es el Diseñador de figuras, y se arregla
+  después.** Queda como detalle abierto (no urgente) revisar, ya con la convención nombrada, si las
+  filas del Diseñador anteriores al 14-ago guardaron el ángulo del vértice o su complemento.
 - **El ciclo guardar / abrir / listar / borrar del Template Editor YA ESTÁ** implementado y con
   tests (`tests/test_te_biblioteca.js`, `tests/test_modelador_templates.py`). El §GAP-ANALYSIS-TE
   del 10-ago decía lo contrario: quedó corregido en su lugar.
@@ -1466,6 +1482,10 @@ barrido de la semilla con **md5 idéntico** — nada de esto movió kilos ni lar
   guardar → crea plantilla nueva cada vez, nunca actualiza. Refuerza la TANDA 7.
 - **El Template Editor no tiene salida al despiece;** el Enfierrador es lo único que carga barras al
   lote. Sigue siendo la costura pendiente entre las dos herramientas (TANDA 7 / X2).
+  → **Matizado 18-ago (§DEF-18ago punto 1): que el Template Editor NO tenga salida al despiece es lo
+  CORRECTO, no un hueco** — el TE solo fabrica templates y nada de lo que hace queda como barra. La
+  costura pendiente es del lado del **Enfierrador** (botón "cargar al despiece" + guardado de la
+  instancia única por obra), y es una **etapa posterior**.
 
 ### LO QUE VIENE (no son prioridades nuevas: es lo ya comprometido que queda abierto)
 1. **Etapa 2 restante del editor:** cotas por lado con **letra + valor** · **flujo de entrada**
@@ -1476,3 +1496,169 @@ barrido de la semilla con **md5 idéntico** — nada de esto movió kilos ni lar
 3. **Unificación con el Enfierrador:** un solo shape de receta, selector real de templates (fin del
    `?tipo=viga`), actualizar en vez de POST-siempre, y la salida al despiece. Es la **TANDA 7** de
    este documento, ahora con las tres piezas medidas.
+
+> **Reordenado el 18-ago:** los puntos 1 y 2 van AHORA (pulido del Template Editor); el punto 3 pasa a
+> **etapa posterior**. Ver §DEF-18ago, "PRÓXIMOS PASOS".
+
+---
+
+## §DEF-18ago — REPARTO DE ROLES, ORDEN, PESOS, CONFIGURACIÓN, ÁNGULO, TAB E INTERACCIÓN (CERRADAS)
+
+Definiciones del usuario del **18-ago**. Todo lo de esta sección es **DEFINICIÓN CERRADA** salvo lo
+que se marca explícitamente como *pendiente* o *en standby*. Manda sobre lo escrito antes en este
+documento.
+
+**Nota de terminología:** el **Enfierrador 3D** es la herramienta que este documento llamó al principio
+"3D Template" (`panel_3d.js`, el modal que se abre desde el Fabricator y carga barras al lote). El
+**Template Editor** es `template_editor.js`, en la caluga de Catálogo. Son dos herramientas distintas.
+
+### 1. REPARTO DE ROLES — CERRADO
+
+- **Template Editor = fábrica de TEMPLATES.** Crea y edita los templates que después llama el
+  Enfierrador. **NO crea barras reales ni muros reales:** nada de lo que se hace ahí queda almacenado
+  como barra. Lo único que persiste es la RECETA del template.
+- **Enfierrador 3D = fábrica de BARRAS REALES.** Llama un template y **transforma sus barras en barras
+  reales**, que se almacenan en el despiece y que el **Bar Manager muestra**. Además debe almacenar esa
+  **instancia de muro (o del elemento que sea) como algo ÚNICO para la obra en cuestión**: la instancia
+  pertenece a la obra, no al catálogo.
+- **DESEABLE, NO objetivo principal:** un **visualizador** de ese modelo 3D **desde el Bar Manager**, o
+  un listado en otro lado para que **el cliente** pueda verlo. Queda **modular y para después** — no
+  entra en el alcance actual; solo no hay que cerrarle la puerta en el diseño.
+- **Consecuencia sobre lo escrito el 17-ago:** que el Template Editor no tenga "cargar al despiece"
+  **es lo correcto**, no una carencia. La costura pendiente es del lado del Enfierrador.
+
+### 2. ORDEN DE TRABAJO — CERRADO
+
+1. **PRIMERO: terminar de PULIR el Template Editor.** El usuario quiere ir probándolo, así que el foco
+   está en dejarlo usable de punta a punta.
+2. **DESPUÉS, ETAPA POSTERIOR Y SEPARADA: homologar el Enfierrador** para que tome **el mismo motor del
+   Template Editor**, agregándole (a) el botón **"cargar al despiece"** y (b) el **guardado de la
+   instancia** única de la obra.
+   **Expectativa explícita: eso es sobre todo CABLEADO, no un editor nuevo.** Si al abordarlo aparece
+   "hay que rehacer el editor", es señal de que algo se desvió del motor común y hay que corregir esa
+   desviación, no construir una segunda herramienta.
+
+→ Esto **reordena la TANDA 7** (integración con el Enfierrador): sigue vigente tal como está
+especificada, pero se ejecuta **después** del pulido del Template Editor.
+
+### 3. PESOS — CERRADO
+
+- El **Template Editor y el Enfierrador muestran valores APROXIMADOS**, según el criterio que se les
+  dé por configuración. Son cifras referenciales (dimensionar, comparar, KPIs), no cifras de despiece.
+- El **peso DEFINITIVO se asigna cuando se crea la barra en el despiece** (lo calcula el backend:
+  `peso_unitario_kg` × factor de peso de la obra). La barra sigue siendo la única fuente de verdad.
+- El **Enfierrador SÍ debería reconocer el factor de peso de la obra** — entre otras cosas porque una
+  posibilidad es que **el Enfierrador lo usen clientes**, y lo que ven tiene que cuadrar con su obra.
+- El Template Editor no tiene obra asociada (regla del PISO/genérico, §IMPL): su estimación es genérica
+  por definición y no debe presentarse como definitiva.
+
+### 4. CONFIGURACIÓN — AHORA para el Template Editor; la de obra EN STANDBY
+
+- La **pantalla de configuración se implementa AHORA y aplica al Template Editor.** La maqueta visual
+  ya existe (`armahub/static/demo/config_modelador.html`, punto 10 de la tanda del 17-ago); lo que
+  falta es cablearla. Con ella se cierra el 6φ vs 10φ del gancho (deja de estar clavado en el código y
+  pasa a ser dato de configuración).
+- **Cómo trabaja la configuración en el Enfierrador queda EN STANDBY, explícitamente**, y se ve cuando
+  se aborde el Enfierrador: **la obra tiene su propia configuración**, y mezclar las dos cosas en una
+  misma iteración es justo lo que se quiere evitar.
+
+### 5. CONVENCIÓN DEL ÁNGULO — CERRADA POR EL USUARIO
+
+- El número que se guarda en **`figuras_catalogo.angulos`** y que se **exporta a aSa** (`ang1..4`) es el
+  **ÁNGULO DEL VÉRTICE**: el ángulo que queda **entre los dos tramos de fierro** que concurren en ese
+  doblez. Para la figura **102B ese valor es 135°**.
+- El **"recorrido del doblado"** (cuánto se desvía el tramo respecto de seguir recto) es
+  **180 − ese número**, o sea **45° para la 102B**. Es un derivado; **no se guarda**.
+- **Los valores del catálogo están BIEN.** No hay migración de datos que hacer ni conversión que meter
+  en el export: aSa recibe el ángulo del vértice tal cual.
+- Donde este documento (y los otros) escribieron el 17-ago que la columna guarda "el **GIRO** del
+  doblez", **léase ÁNGULO DEL VÉRTICE**. El número almacenado no cambia; cambia el nombre correcto de
+  lo que ese número significa. La pregunta "¿aSa espera 135 o 45?" queda **cerrada: 135**.
+- **Lo que está MAL ROTULADO es el Diseñador de figuras:** en pantalla muestra "Ángulo prev. 45°" y
+  "α1=45" para la 102B, cuando debería mostrar **135** (la tabla del catálogo sí muestra 135 — o sea,
+  el dato está bien y la etiqueta está mal).
+- **PENDIENTE (no ahora):** corregir ese rotulado en el Diseñador. Y, ya con la convención nombrada,
+  revisar sin urgencia si las figuras dibujadas en el Diseñador **antes del 14-ago** quedaron con el
+  ángulo del vértice o con su complemento.
+
+#### 5.b MEDICIÓN DEL 18-ago — EL TRAZADOR NO SIGUE ESTA CONVENCIÓN (decisión pendiente)
+
+Cerrada la convención, se **midió** (ejecutando el motor, no leyendo el código) qué vértice dibuja de
+verdad cada figura. Resultado:
+
+- En **43 de las 49** figuras con ángulo declarado, el vértice DIBUJADO es exactamente
+  **180 − el valor del catálogo**. Verificado dos veces y por separado: la **102C** (catálogo 45) se
+  dibuja con vértice **135**, y la **103B** (catálogo 45,45) con **135,135**.
+- O sea que, con la convención ya cerrada, **el modelador dibuja la 102B y la 102C intercambiadas**
+  respecto de lo que dice su ficha: toma el número como *recorrido del doblado*, no como vértice.
+  No es un descuido: `figura_puntos.js` (~1188) lo declara así desde el 14-ago y hay dos tests que lo
+  congelan.
+- **Los ESTRIBOS no están afectados:** su gancho lo dibuja `_estriboPerimetral` con 135° de recorrido
+  escritos a mano (que es lo físicamente correcto para un gancho sísmico) y **nunca lee `angulos`**.
+  Pero **la detección** de "marco cerrado" (`_esPerimetro`) sí exige que el ángulo del catálogo valga
+  135: medido, si se cambia ese dato a 45 el estribo deja de reconocerse y se dibuja deforme
+  (lados 24/52/24/52 → 17,9/7,5/7,5/17,9). **Por eso el arreglo NO puede ser tocar el dato del
+  catálogo: hay que cambiar la interpretación.**
+- **Arreglo mínimo:** una línea (`figura_puntos.js:1208`, leer `180 − A[i]`). **Riesgo medio-alto
+  porque MUEVE KILOS:** medido en la viga-semilla, el tramo B de una 103B pasa de **548 a 590 cm
+  (+7 %)**. Arrastra además tres cosas que hay que tocar juntas o queda a medias: el rango de
+  `validarAngulo`, el escritor del Diseñador y los dos tests que hoy congelan la convención contraria.
+- **URGENTE E INDEPENDIENTE:** desde el **14-ago el Diseñador GUARDA el recorrido del doblado**
+  (`disenador.js` `_giroDesdeInterno`, ~334/~1400/~1464). Una 102B redibujada hoy quedaría con
+  `angulos = [45]` contra el 135 de la semilla, y ese 45 es el que viajaría a aSa. Es una llave
+  abierta que corrompe el catálogo figura por figura: conviene cerrarla **haya o no decisión** sobre
+  el trazador.
+- **DECISIÓN PENDIENTE DEL USUARIO:** alinear el trazador a la convención (y asumir el cambio de
+  kilos de lo ya generado por el modelador), o dejar el trazador como está y aceptar que el dibujo
+  del modelador no corresponde a la ficha del catálogo.
+
+### 6. TAB DEL CATÁLOGO — DEFINICIÓN DE UI CERRADA
+
+La tarjeta **"Nuevo template"** (`catalogo.html`, CARD 1) se transforma en **"Configuración"**:
+
+- **Fuera los botones de tipo de elemento** de esa tarjeta.
+- Quedan **cuatro botones**, cada uno abre un **modal**:
+  1. **Figuras por tipología**
+  2. **Reglas de largos**
+  3. **Recubrimientos**
+  4. **Por figura**
+  (Son las 4 pestañas de la maqueta `config_modelador.html`; la 4ª, que ahí se llamó "Por barra",
+  pasa a llamarse **"Por figura"**.)
+- **Debajo va el GESTOR DE TEMPLATES:**
+  - campo de **nombre + botón "Crear template"**;
+  - **buscador**;
+  - **lista clickeable**, **ordenable por tipo de elemento** con **toggle a fecha**;
+  - con **KPIs referenciales** por template: **peso estimado**, **diámetro promedio** y los típicos
+    (referenciales, punto 3 de esta sección).
+
+### 7. INTERACCIÓN 3D — CERRADO
+
+- **Ctrl deja de re-pivotear.** El re-pivoteo se percibía como un **reset** de la vista. Ctrl pasa a ser
+  un **modificador de PRECISIÓN de la rotación** (giro fino).
+- **Orbitar en torno a la selección pasa a un BOTÓN propio** (acción explícita, no un modificador
+  escondido en una tecla).
+- **Se traen del Enfierrador al Template Editor** (ya existen allá; es homologación, no invención):
+  - **selector de tema**;
+  - **restricción de giro por eje**, con vuelta a **"Libre"** al reclickear el mismo eje;
+  - **cuadro resumen flotante**;
+  - **listado de barras completo**, con **botón para mostrarlo/ocultarlo**;
+  - **señalizador de la barra seleccionada**.
+
+### PRÓXIMOS PASOS (en este orden)
+
+1. **Configuración del modelador cableada al Template Editor** — los 4 modales desde la tarjeta
+   "Configuración". Cierra el gancho 6φ vs 10φ. *(La configuración por obra del Enfierrador: standby.)*
+2. **Tab del catálogo** — tarjeta "Configuración" + Gestor de templates (nombre+crear, buscador, lista
+   ordenable por tipo con toggle a fecha, KPIs referenciales).
+3. **Interacción 3D del Template Editor** — Ctrl = precisión, botón de órbita a la selección, y lo
+   traído del Enfierrador (tema, giro por eje, resumen flotante, listado de barras, señalizador).
+4. **Resto de la etapa 2 del editor, ya comprometido** — cotas por lado con letra + valor · flujo de
+   entrada (lista → Nuevo / Abrir) · tab de figuras sugeridas.
+5. **(Etapa posterior) Homologar el Enfierrador al motor del Template Editor** — TANDA 7: un solo shape
+   de receta, selector real de templates (fin del `?tipo=viga`), actualizar en vez de POST-siempre,
+   **botón "cargar al despiece"**, **guardado de la instancia única por obra** y **factor de peso de la
+   obra**. Aquí se retoma la configuración por obra. Debe ser cableado, no un editor nuevo.
+6. **(Deseable, modular, después)** Visualizador del modelo 3D desde el Bar Manager / listado para que
+   el cliente lo vea.
+7. **(No ahora)** Rotulado del Diseñador de figuras: mostrar el **ángulo del vértice** (135 en la 102B),
+   no el recorrido del doblado.
