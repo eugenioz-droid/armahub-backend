@@ -228,9 +228,20 @@ para aceptar `origen` y `template_instancia_id` OPCIONALES en el body (default '
 en el INSERT en vez de los literales. Extender el modelo `BarraManual` con esos campos opcionales.
 NO cambiar el comportamiento por defecto (barras manuales siguen igual).
 
-**Ángulos — convención aSa:** ángulo INTERNO del vértice = 180 − giro (mig.085). El motor de render usa
+**Ángulos — convención aSa:** ~~ángulo INTERNO del vértice = 180 − giro (mig.085)~~. El motor de render usa
 el giro real; al PERSISTIR ang1..4 se guarda la convención que ya usa el catálogo/ingreso manual (mismo
 criterio que ac2Payload — copiarlo, no reinventar).
+**CORREGIDO 17-ago — esto ES FALSO para las figuras del seed.** Lo medido: `figuras_catalogo.angulos`
+guarda hoy el **GIRO del doblez**, no el interno (104D = [135,135] es el gancho sísmico de 135°, y así
+lo traza `_estriboPerimetral` desde siempre), y el exportador a aSa lo manda **tal cual** como "<135"
+sin convertir (`export.py:139-144`). La columna está **MIXTA**: solo las figuras dibujadas en el
+DISEÑADOR antes del 14-ago quedaron en INTERNO por la migración 085 (`disenador.js` guardaba 180−giro)
+y nadie las reconcilió — se detectan porque `angulos[k] + giro_k = 180`. Esas filas son inertes para el
+render (traen `geometria.tramos`, que manda sobre la derivación), pero NO para el export. **La decisión
+de convención sigue PENDIENTE del usuario** (unificar a GIRO o a INTERNO); el modo de cerrarla es
+contrastar un CSV real de aSa: si el operador espera 135 o 45. Ver la DEF al final de
+`docs/programa_modelador_3d.md`. Mientras no se cierre: al persistir ang1..4, copiar el criterio de
+ac2Payload — no reinventar.
 
 **Catálogo (catalogo.py):** `get_figura(cur,codigo)→{parciales,angulos,radio}`. `figuras_catalogo.geometria`
 JSONB `{dim,tramos:[{lado,giro,sentido}]}` (para render). Tipologías VIGA: CBS/CBS2/CBSn/CBI/CBI2/CBIn/

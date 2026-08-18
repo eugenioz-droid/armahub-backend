@@ -6089,6 +6089,36 @@
         _sincronizarOverlayOrto();    // zoom/pan a cero → transforms del overlay nuevos
       });
     });
+    // HERRAMIENTAS DEL 3D (17-ago) — ver la nota del HTML.
+    var b3r = $('te_3dReset');
+    if (b3r && !b3r._teBound) {
+      b3r._teBound = true;
+      b3r.addEventListener('click', function (e) {
+        e.stopPropagation();
+        // mismos valores con que nace la cámara (ST inicial) + el encuadre del
+        // elemento actual: es "volver al punto de partida", no un encuadre nuevo.
+        ST.rotX = 0.55; ST.rotY = 0.9; ST.panX = 0; ST.panY = 0;
+        if (ST.target && ST.target.set) ST.target.set(0, 0, 0);
+        var gg = ST.receta && ST.receta.geometria;
+        if (gg && isFinite(Number(gg.largo))) ST.dist = Number(gg.largo) * 1.15 + 160;
+        _marcarSucio();
+        _actualizarStatus('3D recentrado.');
+      });
+    }
+    var b3h = $('te_3dHormigon');
+    if (b3h && !b3h._teBound) {
+      b3h._teBound = true;
+      b3h.addEventListener('click', function (e) {
+        e.stopPropagation();
+        ST.verHormigon = !ST.verHormigon;
+        b3h.classList.toggle('off', !ST.verHormigon);
+        // el sólido del hormigón se arma en _redibujar: basta rearmar el world
+        // (no hace falta re-expandir la receta, que es lo caro).
+        if (ST.ultimoOut) _redibujar(ST.ultimoOut);
+        _marcarSucio();
+        _actualizarStatus(ST.verHormigon ? 'Hormigón visible.' : 'Hormigón oculto (solo las barras).');
+      });
+    }
     // sliders de PLANO DE CORTE → o.corte (0..1). Mover el slider ACTIVA esa vista
     // (highlight del cuadrante + plano en el 3D a esa profundidad).
     Array.prototype.forEach.call(document.querySelectorAll('#te_quad .te-vcut-r'), function (r) {

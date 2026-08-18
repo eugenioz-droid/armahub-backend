@@ -944,8 +944,8 @@ Es una entidad de referencia propia (como Clientes/Calculistas), no un apéndice
 ### 4A.2 Modelo (portado de `typology_catalog.py` de ArmaPilot)
 
 - **Figura:** `codigo` (ej. 105A), `parciales` (slots dim que usa, ej. A,B,C,D,E), `angulos`
-  (lista, ej. 45,135), `radio` (bool), descripción. Mapea directo a los slots de la barra
-  (A→dim_a...). Fuente: `FIGURE_CATALOG`.
+  (lista, ej. 45,135 — **convención: es el GIRO del doblez**, ver 4A.4), `radio` (bool),
+  descripción. Mapea directo a los slots de la barra (A→dim_a...). Fuente: `FIGURE_CATALOG`.
 - **Tipología / tipo de estructura:** MURO/LOSA/VIGA/COLUMNA/FUNDACION/GEN → tipos (MH, MV,
   Fi, ES, CB...). Fuente: `TIPOS_*`.
 - **Relación tipología → figuras aplicables:** qué figuras valen para cada tipología. Fuente:

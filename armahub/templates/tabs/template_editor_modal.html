@@ -327,6 +327,13 @@
     border:1px solid var(--te-line);background:rgba(255,255,255,.9);border-radius:6px;cursor:pointer;
     font-size:13px;color:var(--te-muted);line-height:1;padding:0;display:flex;align-items:center;justify-content:center}
   #te_modal .te-vreset:hover{color:var(--te-ink);border-color:var(--te-acero)}
+  /* Herramientas del cuadrante 3D: arriba-derecha (la esquina inf-izq es del gizmo). */
+  #te_modal .te-3dtools{position:absolute;right:6px;top:6px;z-index:3;display:flex;gap:4px}
+  #te_modal .te-3dtools button{width:24px;height:24px;border:1px solid var(--te-line);border-radius:6px;
+    background:rgba(255,255,255,.92);color:var(--te-muted);font-size:13px;line-height:1;cursor:pointer;
+    display:flex;align-items:center;justify-content:center;padding:0}
+  #te_modal .te-3dtools button:hover{color:var(--te-ink);border-color:var(--te-acero)}
+  #te_modal .te-3dtools button.off{opacity:.45}
   /* Slider de PLANO DE CORTE — vertical, borde derecho del cuadrante. Discreto;
      resalta al pasar el mouse. Controla la profundidad del corte de esa vista. */
   #te_modal .te-vcut{position:absolute;right:6px;top:50%;transform:translateY(-50%);z-index:4;
@@ -728,6 +735,16 @@
           <!-- El gizmo 3D (triad de ejes que sigue a la cámara) lo pinta el RENDERER en la
                esquina inf-izq de este cuadrante (viewport propio, ver _renderGizmo3D). -->
           <div class="te-vhint">arrastra = rotar · ctrl+arrastre = orbitar la selección · medio/der = pan</div>
+          <!-- Herramientas del 3D (17-ago). Van arriba-derecha porque la esquina
+               inf-izq la ocupa el gizmo de ejes que pinta el renderer.
+               · ⟳ recentrar: hace falta desde que la cámara dejó de re-encuadrarse
+                 sola en cada clic (antes el reset accidental hacía de "volver").
+               · 🧊 hormigón: ST.verHormigon existía desde siempre SIN botón que lo
+                 tocara — la función estaba escrita y no se podía usar. -->
+          <div class="te-3dtools">
+            <button id="te_3dReset" type="button" title="Recentrar el 3D (giro, zoom y encuadre)">⟳</button>
+            <button id="te_3dHormigon" type="button" class="on" title="Mostrar u ocultar el hormigón">🧊</button>
+          </div>
           <!-- canvas real (Three.js on-demand). Si no hay WebGL, se muestra el fallback SVG. -->
           <canvas id="te_cv" style="display:none;"></canvas>
           <!-- Placeholder SVG (visible hasta que carga Three.js; también fallback sin WebGL) -->

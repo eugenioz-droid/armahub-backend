@@ -2,6 +2,8 @@
 
 **Estado:** DISEÑO + **MVP F0/F1 IMPLEMENTADO** (08-ago-2026). Documento fuente. Ver §IMPL abajo para
 lo que quedó construido y los hallazgos de la ejecución.
+**Lo ÚLTIMO ejecutado está AL FINAL del documento: TANDA DEL 17-ago** (tirador del marco, giro en el
+plano de la pieza, rango legible, 3D que no se resetea) + hallazgos verificados + lo que viene.
 
 ## §IMPL — Estado de implementación (MVP F0+F1, ejecutado de corrido)
 
@@ -960,6 +962,11 @@ resuelto (6bce693). ES LA LISTA DE TRABAJO VIGENTE del Template Editor: cada ít
 implementación NO alcanzaron a correr (límite de sesión) — el workflow se reanuda con
 resumeFromRunId: wf_378b1aad-716.
 
+> **LEER CON FECHA (nota 17-ago):** esta auditoría es del 10-ago y se conserva completa como
+> historia. **G1 (pantalla previa) y G2 (guardar/abrir) están HECHOS** — ver las correcciones
+> marcadas dentro del texto y la TANDA DEL 17-ago al final del documento. El resto de los ítems
+> hay que leerlos contra las tandas posteriores (P, V, 13→14-ago, 17-ago), no como estado actual.
+
 TITULARES (lo más grave descubierto, no estaba en el radar):
 - G7 CRÍTICO · La INTERACCIÓN 2D está MUERTA en modo ortográfico: `if (ST.ortoActivo) return;`
   (template_editor.js ~1008) corta el dibujo de barras+hit-testing, nodos, flecha de rango y cotas.
@@ -1063,6 +1070,11 @@ GAP-ANALYSIS Template Editor vs programa_modelador_3d.md (leído completo, 953 l
 [CRÍTICO] G1 · Pantalla previa del sub-tab NO existe. Decisión cerrada ("La selección de ESTRUCTURA va FUERA del modal… se entra con el tipo elegido y el hormigón listo"; §0-7ter; §DISCOVERY-INTER 6 "el NOMBRE del template se define en el TAB antes de entrar"). catalogo.html:235-256 (catSubTemplates) = solo intro + botón "Abrir Template Editor". Falta: campo nombre, selección de estructura (orden canónico MURO·LOSA·VIGA·COLUMNA·FUNDACION·GEN), lista de templates guardados (GET /templates ya existe en modelador.py), rectángulo de hormigón inicial. Título del modal hardcode "Construyendo: Viga tipo Explora" (modal:230).
 
 [CRÍTICO] G2 · Guardar/Abrir template SIN cablear. Botones "💾 Guardar template" (modal:392), "📂 Abrir" (modal:234) y "✓ Usar en el despiece" (modal:393) NO tienen id ni handler. template_editor.js tiene CERO llamadas backend (grep /templates|fetch = solo panel_3d.js). El trabajo del usuario se pierde al recargar. Backend POST/GET /templates listo y sin consumidor desde este modal. (§0-4ter "guardar como template = corazón del diseño").
+> **CORRECCIÓN (17-ago) — G2 RESUELTO, este párrafo describe el pasado.** El ciclo completo
+> guardar / abrir / listar / borrar está implementado y probado: `template_editor.js` tiene su
+> propio cliente `_tplFetch` (:7398) con POST/PUT (:7452), GET lista (:7667), GET uno (:7696) y
+> DELETE (:7729). Guards: `tests/test_te_biblioteca.js` y `tests/test_modelador_templates.py`.
+> Lo que SÍ sigue abierto de esta familia es la salida al despiece (X2 / TANDA 7).
 
 [CRÍTICO] G3 · Voltear plano NO cambia la LÓGICA de distribución. §INTERACCIÓN-2.0: al voltear, el estribo "de canto + su RANGO (tanda hacia la profundidad)… habilita distribuir en el otro eje (fundación: cualquiera de los 2 ejes)". Implementado SOLO como cambio de proyección SVG (_proyectorVolteado, te.js:624) que además es INVISIBLE en modo orto (ver G7): distribuidorLinear/Arreglo distribuyen SIEMPRE en X (reglas.js:182-219 "a lo largo del eje X"; _rangoClick usa from.x/to.x te.js:1568; flecha rango solo en largo/planta te.js:1093). Presionar R hoy no produce ningún cambio visible ni funcional. El mecanismo modular clave del rediseño queda decorativo.
 
@@ -1115,7 +1127,10 @@ GAP-ANALYSIS Template Editor vs programa_modelador_3d.md (leído completo, 953 l
 · Ghost: FUNCIONAL (forma por rol, badge tipología+ø, clamp rojo not-allowed).
 · Panel contextual por modo: FUNCIONAL (3 botones + campos por modo).
 · Guardar/cargar template: NO cableado (verificado: cero fetch en template_editor.js; botones sin id).
+  → **FALSO HOY (17-ago): está CABLEADO y con tests.** Ver la corrección del G2 más arriba.
 · Pantalla previa: NO existe (verificado catalogo.html:235-256).
+  → **FALSO HOY (17-ago): EXISTE** (catalogo.html: `tplNombre`, `tplBtnCrear`, card
+  `tplGuardadosCard` con la lista de guardados).
 · Multi-elemento: solo viga (PLANOS_POR_ELEMENTO te.js:549; muro/columna TODO).
 · Tipologías ribbon: hardcode viga en HTML (modal:256-262).
 · Dependencias/prioridad/retranqueo: motor implementado (generar.js resolverDependencias:163-253), sin UI — CONFORME al alcance ("NO entra: activar retranqueo/prioridad en arrastre").
@@ -1391,3 +1406,73 @@ HOY es inerte: las figuras del diseñador traen geometria.tramos (que MANDA sobr
 así que la lectura giro solo toca al seed, que es giro. PERO la columna queda mixta según el autor.
 DEF: ¿unificamos a GIRO (el diseñador deja de convertir; migrar sus figuras existentes) o a INTERNO
 (migrar el seed y la lectura)? Afecta también cómo aSa interpreta ang1..4 en el export.
+→ **Medido el 17-ago (ver la tanda de abajo):** la convención que MANDA hoy es GIRO y el export la
+manda tal cual (`export.py:139-144`, "<135"); las figuras del Diseñador anteriores al 14-ago quedaron
+en INTERNO por la migración 085 y nadie las reconcilió. La DEF sigue abierta y ahora tiene un modo
+de cerrarla: contrastar con un CSV real de aSa qué espera el operador (135 o 45).
+
+## TANDA DEL 17-ago — TIRADOR DEL MARCO, GIRO EN EL PLANO Y RANGO LEGIBLE (EJECUTADA)
+
+Commits `c089763` → `88936c9`, todo desplegado. Suite verde en cada push (31 tests JS + 3 py) y
+barrido de la semilla con **md5 idéntico** — nada de esto movió kilos ni largos de corte.
+
+**MOTOR / INTERACCIÓN**
+1. **Fuera los tiradores del HORMIGÓN; el tirador es del MARCO DE LA BARRA.** Arrastrar un borde del
+   bbox de la barra seleccionada escribe el Δ del lado correspondiente. Es **genérico por SONDEO con
+   el motor** (se le pregunta a la geometría cómo responde), no hay tablas por figura. El par espejo
+   (B/D) es **UNA sola perilla** — se acabó el arrastre que se trababa a la mitad.
+2. **ESPACIO gira la pieza EN SU PROPIO PLANO** (`motor.normalDePieza`). En piezas de marco cerrado
+   ESPACIO avanza el lado dominante, y con eso los **ganchos giran de esquina en esquina**. La tecla
+   R sigue siendo el giro por VISTA (son dos giros distintos y ahora se distinguen).
+3. **El lado dominante de una figura CERRADA manda de verdad:** decide en qué esquina cierran los
+   ganchos (reflexiones sobre el centro del marco). La caja y el largo de corte NO cambian.
+4. **`_estriboPerimetral` respeta las coordenadas del reparto:** las columnas del 2º rango del
+   arreglo ya no salen apiladas una encima de otra.
+5. **`_restituirCentroVolteo` exime los ejes con Δ direccional y el eje del 2º rango:** el estribo
+   achicado y cargado a un lado ya no se vuelve solo al medio.
+
+**UI**
+6. **Rango en dos campos limpios** (dónde va la primera barra / dónde la última) + un botón que los
+   convierte en una sola celda de **CANTIDAD DE COLUMNAS**. Murió el desplegable "Eje 2ª línea": el
+   eje se deriva solo.
+7. **Bug del 3D:** la cámara **ya no se resetea al hacer clic** — el encuadre solo se rehace si
+   cambian las medidas del elemento, y el pan dejó de anularse en cada clic.
+8. **El cuadrante 3D pasó a 60%×60% de la grilla** (2fr/3fr): 20% más grande, creciendo hacia la
+   esquina superior izquierda.
+9. **Buscador de figuras:** abre mostrando **solo las SUGERIDAS de la tipología** y se abre al
+   catálogo completo en cuanto el usuario escribe (prefiltro dentro del filtro de texto). Usa
+   `FIGURAS_POR_TIPOLOGIA`, que ya existía.
+10. **Maqueta visual (SIN lógica) de la pantalla de Configuración** en
+    `armahub/static/demo/config_modelador.html`, con 4 pestañas: **Tipologías** (figura por defecto,
+    sugeridas, φ, @, colocación) · **Reglas de largos** (modos Fabricación / NCh 211 / Custom por
+    rango de diámetro) · **Recubrimientos por defecto** · **Por barra** (qué lado nace auto y cuál
+    fijo).
+
+### HALLAZGOS VERIFICADOS EL 17-ago (quedan escritos; algunos esperan decisión del usuario)
+- **El gancho está clavado en 6φ (mínimo 7,5 cm)** en `figura_puntos.js:709` (`extGancho`) **y
+  DUPLICADO** en `reglas.js:3179-3180`, mientras que `obra_config.factor_extremo` (migración 092)
+  trae **10φ** y es lo que usa Agregar Cubicación. → **La misma barra sale con patas y kilos
+  distintos según dónde se cree.** Es exactamente lo que viene a cerrar la pestaña "Reglas de
+  largos" de la Configuración (punto 10).
+- **`figuras_catalogo.angulos` guarda el GIRO del doblez** (gancho sísmico = 135) y el exportador a
+  aSa lo manda **tal cual** como "<135", sin convertir (`export.py:139-144`). **PERO la columna está
+  MIXTA:** las figuras dibujadas en el Diseñador antes del 14-ago quedaron en INTERNO por la
+  migración 085 y nadie las reconcilió (se detectan porque `angulos[k] + giro_k = 180`).
+  **DEF pendiente del usuario:** confirmar contra un CSV real de aSa si el operador espera 135 o 45.
+- **El ciclo guardar / abrir / listar / borrar del Template Editor YA ESTÁ** implementado y con
+  tests (`tests/test_te_biblioteca.js`, `tests/test_modelador_templates.py`). El §GAP-ANALYSIS-TE
+  del 10-ago decía lo contrario: quedó corregido en su lugar.
+- **El Enfierrador filtra `?tipo=viga` HARDCODEADO** (`panel_3d.js:768`) y **siempre hace POST** al
+  guardar → crea plantilla nueva cada vez, nunca actualiza. Refuerza la TANDA 7.
+- **El Template Editor no tiene salida al despiece;** el Enfierrador es lo único que carga barras al
+  lote. Sigue siendo la costura pendiente entre las dos herramientas (TANDA 7 / X2).
+
+### LO QUE VIENE (no son prioridades nuevas: es lo ya comprometido que queda abierto)
+1. **Etapa 2 restante del editor:** cotas por lado con **letra + valor** · **flujo de entrada**
+   (lista → Nuevo / Abrir) · **tab de figuras sugeridas**.
+2. **Pantalla de CONFIGURACIÓN del modelador:** la maqueta visual ya está hecha (punto 10); falta
+   cablearla. Con ella se cierra el 6φ vs 10φ del hallazgo de arriba (el gancho deja de estar
+   clavado en el código y pasa a ser dato de configuración).
+3. **Unificación con el Enfierrador:** un solo shape de receta, selector real de templates (fin del
+   `?tipo=viga`), actualizar en vez de POST-siempre, y la salida al despiece. Es la **TANDA 7** de
+   este documento, ahora con las tres piezas medidas.
