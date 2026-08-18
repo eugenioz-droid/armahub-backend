@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Maqueta · Configuración del Modelador</title>
+<!--
+  MAQUETA VISUAL — SIN LÓGICA (17-ago). Igual que /static/demo/rebar3d.html, esto
+  es una página suelta para MIRAR y comentar: no guarda, no lee la base, no toca
+  el editor. Los valores mostrados son los que HOY están escritos en el código,
+  para que se vea de qué se está hablando:
+    · separaciones      template_editor.js:174-178  (20 general · 40 trabas)
+    · modo colocación   reglas.js:51-67             (TIPOLOGIA_MODO_DEFAULT)
+    · figuras sugeridas catalogo_figuras.js:120-159 (FIGURAS_POR_TIPOLOGIA)
+    · recubrimientos    template_editor.js:7019-7054
+    · gancho            figura_puntos.js:709 (6φ mín 7.5) vs obra_config 10φ
+  Cuando el diseño esté aprobado, esta pantalla se implementa de verdad EDITANDO
+  esas mismas fuentes (no creando una nueva).
+-->
+<style>
+  :root{
+    --ln:#e3e8ef; --mut:#6b7a8d; --tx:#1f2a37; --bg:#f5f7fa; --card:#fff;
+    --acc:#2f80ed; --ok:#2e7d32; --warn:#e65100; --chip:#eef3fb;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--tx);
+       font:13px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+  header{background:var(--card);border-bottom:1px solid var(--ln);padding:14px 20px}
+  header h1{margin:0;font-size:17px}
+  header p{margin:4px 0 0;color:var(--mut);font-size:12px;max-width:900px}
+  .maqueta{display:inline-block;background:#fff3e0;color:var(--warn);border:1px solid #ffcc80;
+           border-radius:99px;padding:2px 10px;font-size:11px;font-weight:700;margin-left:8px}
+  .tabs{display:flex;gap:2px;padding:0 20px;background:var(--card);border-bottom:1px solid var(--ln)}
+  .tabs button{border:0;background:transparent;padding:10px 14px;font:inherit;color:var(--mut);
+               cursor:pointer;border-bottom:2px solid transparent}
+  .tabs button.on{color:var(--acc);border-bottom-color:var(--acc);font-weight:600}
+  main{padding:18px 20px 60px}
+  section{display:none}
+  section.on{display:block}
+  .card{background:var(--card);border:1px solid var(--ln);border-radius:10px;padding:14px 16px;
+        margin-bottom:16px;max-width:1180px}
+  .card h2{margin:0 0 3px;font-size:14px}
+  .card .sub{color:var(--mut);font-size:12px;margin:0 0 12px}
+  table{width:100%;border-collapse:collapse}
+  th,td{text-align:left;padding:7px 9px;border-bottom:1px solid var(--ln);vertical-align:middle}
+  th{font-size:11px;text-transform:uppercase;letter-spacing:.03em;color:var(--mut);font-weight:600}
+  td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
+  tbody tr:hover{background:#fafcff}
+  input,select{font:inherit;border:1px solid var(--ln);border-radius:6px;padding:4px 6px;background:#fff;
+               color:inherit;width:100%}
+  input.w70{width:70px}
+  .chip{display:inline-block;background:var(--chip);border:1px solid #d6e4f7;border-radius:99px;
+        padding:1px 8px;font-size:11px;margin:1px 2px 1px 0;color:#2b4a72}
+  .chip.def{background:#e8f5e9;border-color:#c8e6c9;color:var(--ok);font-weight:600}
+  .elem{font-weight:700;font-size:12px;color:#fff;border-radius:5px;padding:1px 7px;display:inline-block}
+  .nota{background:#fff8e1;border:1px solid #ffe082;border-radius:8px;padding:9px 11px;color:#6d4c00;
+        font-size:12px;margin:0 0 14px;max-width:1180px}
+  .nota b{color:#4e3600}
+  .modos{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap}
+  .modos label{display:flex;gap:7px;align-items:flex-start;border:1px solid var(--ln);border-radius:9px;
+               padding:9px 12px;background:#fff;cursor:pointer;flex:1;min-width:230px}
+  .modos label.on{border-color:var(--acc);box-shadow:0 0 0 2px rgba(47,128,237,.12)}
+  .modos .t{font-weight:600;display:block}
+  .modos .d{color:var(--mut);font-size:11px;display:block;margin-top:2px}
+  .pie{color:var(--mut);font-size:11px;margin-top:10px}
+  .ro{background:#f7f9fc;color:var(--mut)}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Configuración del Modelador <span class="maqueta">MAQUETA · no guarda nada</span></h1>
+  <p>Cuatro tablas para definir con qué nacen las cosas. Los valores que se ven son los que
+     hoy están escritos en el código, para poder discutir sobre algo concreto. Nada de esto
+     se guarda todavía: es para mirar la forma y decir qué falta o qué sobra.</p>
+</header>
+
+<div class="tabs">
+  <button class="on" data-t="tip">Tipologías</button>
+  <button data-t="largos">Reglas de largos</button>
+  <button data-t="recub">Recubrimientos</button>
+  <button data-t="barra">Por barra</button>
+</div>
+
+<main>
+
+<!-- ===================== 1 · TIPOLOGÍAS ===================== -->
+<section id="tip" class="on">
+  <div class="nota">
+    La clave real es <b>elemento + tipología</b>, no la tipología sola: una <b>ES</b> de viga y
+    una <b>EC</b> de muro son filas distintas. Así está la tabla que ya existe en la base, y
+    esta pantalla debería editar <b>esa</b>, no crear otra.
+  </div>
+
+  <div class="card">
+    <h2>Viga</h2>
+    <p class="sub">La <b>figura por defecto</b> es la que se coloca de un clic. Las <b>sugeridas</b>
+       son las que aparecen al abrir el buscador; escribiendo se llega a cualquiera del catálogo.</p>
+    <table>
+      <thead><tr>
+        <th style="width:210px">Tipología</th>
+        <th style="width:120px">Figura por defecto</th>
+        <th>Figuras sugeridas</th>
+        <th class="num" style="width:70px">φ mm</th>
+        <th class="num" style="width:80px">@ sep cm</th>
+        <th style="width:120px">Colocación</th>
+      </tr></thead>
+      <tbody>
+        <tr>
+          <td><b>CBS</b> · Cabezal Superior</td>
+          <td><select><option>103B</option><option>101A</option><option>102A</option></select></td>
+          <td><span class="chip def">103B</span><span class="chip">101A</span><span class="chip">102A</span><span class="chip">102B</span><span class="chip">102C</span><span class="chip">103A</span><span class="chip">103C</span><span class="chip">103D</span></td>
+          <td class="num"><input class="w70" value="16"></td>
+          <td class="num"><input class="w70" value="20"></td>
+          <td><select><option>Puntual</option><option>Distribución</option><option>Arreglo</option></select></td>
+        </tr>
+        <tr>
+          <td><b>CBI</b> · Cabezal Inferior</td>
+          <td><select><option>103B</option><option>101A</option></select></td>
+          <td><span class="chip def">103B</span><span class="chip">101A</span><span class="chip">102A</span><span class="chip">102B</span><span class="chip">102C</span><span class="chip">103A</span><span class="chip">103C</span><span class="chip">103D</span></td>
+          <td class="num"><input class="w70" value="18"></td>
+          <td class="num"><input class="w70" value="20"></td>
+          <td><select><option>Puntual</option><option>Distribución</option><option>Arreglo</option></select></td>
+        </tr>
+        <tr>
+          <td><b>ES</b> · Estribo</td>
+          <td><select><option>104D</option><option>103E</option><option>103H</option></select></td>
+          <td><span class="chip def">104D</span><span class="chip">103H</span><span class="chip">103E</span><span class="chip">104O</span><span class="chip">104P</span></td>
+          <td class="num"><input class="w70" value="8"></td>
+          <td class="num"><input class="w70" value="20"></td>
+          <td><select><option selected>Distribución</option><option>Puntual</option><option>Arreglo</option></select></td>
+        </tr>
+        <tr>
+          <td><b>TRV</b> · Traba Viga</td>
+          <td><select><option>101A</option><option>102A</option></select></td>
+          <td><span class="chip def">101A</span><span class="chip">102A</span></td>
+          <td class="num"><input class="w70" value="8"></td>
+          <td class="num"><input class="w70" value="40"></td>
+          <td><select><option selected>Distribución</option><option>Puntual</option><option>Arreglo</option></select></td>
+        </tr>
+        <tr>
+          <td><b>LT</b> · Lateral</td>
+          <td><select><option>101A</option></select></td>
+          <td><span class="chip def">101A</span><span class="chip">102A</span><span class="chip">103A</span></td>
+          <td class="num"><input class="w70" value="12"></td>
+          <td class="num"><input class="w70" value="20"></td>
+          <td><select><option selected>Puntual</option><option>Distribución</option><option>Arreglo</option></select></td>
+        </tr>
+      </tbody>
+    </table>
+    <p class="pie">Faltan en esta maqueta CBS2 / CBSn / CBI2 / CBIn (las capas 2 y n), que siguen la misma fila.</p>
+  </div>
+
+  <div class="card">
+    <h2>Muro</h2>
+    <p class="sub">Mismas columnas. Ojo que las mallas de muro se colocan como distribución
+       («MH φ8 @20»), no como arreglo.</p>
+    <table>
+      <thead><tr>
+        <th style="width:210px">Tipología</th>
+        <th style="width:120px">Figura por defecto</th>
+        <th>Figuras sugeridas</th>
+        <th class="num" style="width:70px">φ mm</th>
+        <th class="num" style="width:80px">@ sep cm</th>
+        <th style="width:120px">Colocación</th>
+      </tr></thead>
+      <tbody>
+        <tr>
+          <td><b>MH</b> · Malla Horizontal</td>
+          <td><select><option>101A</option><option>102A</option></select></td>
+          <td><span class="chip def">101A</span><span class="chip">102A</span><span class="chip">102B</span><span class="chip">102C</span><span class="chip">103A</span><span class="chip">103G</span></td>
+          <td class="num"><input class="w70" value="8"></td>
+          <td class="num"><input class="w70" value="20"></td>
+          <td><select><option selected>Distribución</option><option>Puntual</option><option>Arreglo</option></select></td>
+        </tr>
+        <tr>
+          <td><b>MV</b> · Malla Vertical</td>
+          <td><select><option>101A</option><option>102A</option></select></td>
+          <td><span class="chip def">101A</span><span class="chip">102A</span><span class="chip">102B</span><span class="chip">102C</span><span class="chip">103A</span><span class="chip">103G</span></td>
+          <td class="num"><input class="w70" value="8"></td>
+          <td class="num"><input class="w70" value="20"></td>
+          <td><select><option selected>Distribución</option><option>Puntual</option><option>Arreglo</option></select></td>
+        </tr>
+        <tr>
+          <td><b>EC</b> · Estribo Confinamiento</td>
+          <td><select><option>106A</option><option>104D</option></select></td>
+          <td><span class="chip def">104D</span><span class="chip">103H</span><span class="chip">103E</span><span class="chip">104O</span><span class="chip">104P</span></td>
+          <td class="num"><input class="w70" value="8"></td>
+          <td class="num"><input class="w70" value="15"></td>
+          <td><select><option selected>Arreglo</option><option>Distribución</option><option>Puntual</option></select></td>
+        </tr>
+        <tr>
+          <td><b>TR</b> · Traba Muro</td>
+          <td><select><option>101A</option><option>104A</option></select></td>
+          <td><span class="chip def">101A</span><span class="chip">102A</span><span class="chip">103A</span><span class="chip">104A</span></td>
+          <td class="num"><input class="w70" value="8"></td>
+          <td class="num"><input class="w70" value="40"></td>
+          <td><select><option selected>Arreglo</option><option>Distribución</option><option>Puntual</option></select></td>
+        </tr>
+        <tr>
+          <td><b>TC</b> · Traba Confinamiento</td>
+          <td><select><option>101A</option></select></td>
+          <td><span class="chip def">101A</span><span class="chip">102A</span><span class="chip">102B</span><span class="chip">102C</span></td>
+          <td class="num"><input class="w70" value="8"></td>
+          <td class="num"><input class="w70" value="40"></td>
+          <td><select><option selected>Distribución</option><option>Arreglo</option><option>Puntual</option></select></td>
+        </tr>
+        <tr>
+          <td><b>CB</b> · Cabezal</td>
+          <td><select><option>101A</option><option>103B</option></select></td>
+          <td><span class="chip def">101A</span><span class="chip">102A</span><span class="chip">102B</span><span class="chip">102C</span><span class="chip">103A</span><span class="chip">103B</span></td>
+          <td class="num"><input class="w70" value="16"></td>
+          <td class="num"><input class="w70" value="20"></td>
+          <td><select><option selected>Puntual</option><option>Distribución</option><option>Arreglo</option></select></td>
+        </tr>
+      </tbody>
+    </table>
+    <p class="pie">Losa, Columna, Fundación y Genérico tendrían su propia tarjeta, con las mismas columnas.</p>
+  </div>
+</section>
+
+<!-- ===================== 2 · REGLAS DE LARGOS ===================== -->
+<section id="largos">
+  <div class="nota">
+    Hoy el modelador tiene el gancho fijo en <b>6 × φ (mínimo 7,5 cm)</b>, mientras que la
+    configuración por obra que ya existe trae <b>10 × φ</b> y la usa el creador de barras.
+    La misma barra sale con patas distintas según dónde se cree. Esto lo arregla elegir un modo
+    y que <b>todos</b> lo lean.
+  </div>
+
+  <div class="card">
+    <h2>Modo de norma</h2>
+    <p class="sub">El modo fija los largos que dependen de la norma. Solo «Custom» es editable;
+       los otros dos vienen definidos y sirven para saber con qué criterio se armó cada cosa.</p>
+    <div class="modos">
+      <label class="on"><input type="radio" name="modo" checked>
+        <span><span class="t">Fabricación</span>
+        <span class="d">Lo que hace el taller: pata = 10 × φ, parejo para todos los diámetros.</span></span></label>
+      <label><input type="radio" name="modo">
+        <span><span class="t">NCh 211</span>
+        <span class="d">Según norma, sobre todo para el gancho sísmico. Los valores cambian por rango de diámetro.</span></span></label>
+      <label><input type="radio" name="modo">
+        <span><span class="t">Custom</span>
+        <span class="d">Tú defines la tabla. Se usa cuando la especificación del proyecto manda otra cosa.</span></span></label>
+    </div>
+
+    <table>
+      <thead><tr>
+        <th style="width:150px">Diámetro</th>
+        <th class="num" style="width:150px">Pata del gancho (× φ)</th>
+        <th class="num" style="width:150px">Mínimo absoluto (cm)</th>
+        <th class="num" style="width:150px">Ángulo gancho sísmico</th>
+        <th>Comentario</th>
+      </tr></thead>
+      <tbody>
+        <tr><td>φ 8 – 16</td>
+            <td class="num"><input class="w70 ro" value="10" readonly></td>
+            <td class="num"><input class="w70 ro" value="7.5" readonly></td>
+            <td class="num"><input class="w70 ro" value="135°" readonly></td>
+            <td class="pie" style="margin:0">Estribos y trabas</td></tr>
+        <tr><td>φ 18 – 25</td>
+            <td class="num"><input class="w70 ro" value="10" readonly></td>
+            <td class="num"><input class="w70 ro" value="7.5" readonly></td>
+            <td class="num"><input class="w70 ro" value="135°" readonly></td>
+            <td class="pie" style="margin:0">Cabezales</td></tr>
+        <tr><td>φ 28 – 36</td>
+            <td class="num"><input class="w70 ro" value="10" readonly></td>
+            <td class="num"><input class="w70 ro" value="7.5" readonly></td>
+            <td class="num"><input class="w70 ro" value="135°" readonly></td>
+            <td class="pie" style="margin:0">Barras gruesas</td></tr>
+      </tbody>
+    </table>
+    <p class="pie">En «Fabricación» y «NCh 211» los campos están apagados a propósito: se ven para
+       saber con qué se está trabajando, pero no se editan. En «Custom» se encienden.</p>
+  </div>
+
+  <div class="card">
+    <h2>Redondeo del corte</h2>
+    <p class="sub">Las barras no se cortan con decimales.</p>
+    <table>
+      <tbody>
+        <tr><td style="width:340px">Redondear las medidas a</td>
+            <td style="width:160px"><select><option>Centímetro entero</option><option>Medio centímetro</option><option>No redondear</option></select></td>
+            <td class="pie" style="margin:0">Se aplica lado por lado, y el largo total es la suma de los lados ya redondeados.</td></tr>
+        <tr><td>Dónde se aplica</td>
+            <td><select><option>Solo al cargar al despiece</option><option>También en la plantilla</option></select></td>
+            <td class="pie" style="margin:0">La plantilla es una receta: si se redondea ahí, el número se vuelve a calcular después contra otro hormigón.</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ===================== 3 · RECUBRIMIENTOS ===================== -->
+<section id="recub">
+  <div class="card">
+    <h2>Recubrimientos por defecto</h2>
+    <p class="sub">Con qué recubrimiento nace cada tipo de elemento. Se puede cambiar en cada
+       elemento; esto es solo el valor de partida.</p>
+    <table>
+      <thead><tr>
+        <th style="width:170px">Elemento</th>
+        <th class="num" style="width:120px">Superior cm</th>
+        <th class="num" style="width:120px">Inferior cm</th>
+        <th class="num" style="width:120px">Lateral cm</th>
+        <th>Comentario</th>
+      </tr></thead>
+      <tbody>
+        <tr><td><span class="elem" style="background:#558B2F">VIGA</span></td>
+            <td class="num"><input class="w70" value="4"></td><td class="num"><input class="w70" value="4"></td>
+            <td class="num"><input class="w70" value="3"></td><td class="pie" style="margin:0">Valor actual del código</td></tr>
+        <tr><td><span class="elem" style="background:#795548">MURO</span></td>
+            <td class="num"><input class="w70" value="2.5"></td><td class="num"><input class="w70" value="2.5"></td>
+            <td class="num"><input class="w70" value="2.5"></td><td class="pie" style="margin:0"></td></tr>
+        <tr><td><span class="elem" style="background:#1565c0">COLUMNA</span></td>
+            <td class="num"><input class="w70" value="4"></td><td class="num"><input class="w70" value="4"></td>
+            <td class="num"><input class="w70" value="4"></td><td class="pie" style="margin:0"></td></tr>
+        <tr><td><span class="elem" style="background:#607d8b">LOSA</span></td>
+            <td class="num"><input class="w70" value="2.5"></td><td class="num"><input class="w70" value="2.5"></td>
+            <td class="num"><input class="w70" value="2.5"></td><td class="pie" style="margin:0"></td></tr>
+        <tr><td><span class="elem" style="background:#5d4037">FUNDACIÓN</span></td>
+            <td class="num"><input class="w70" value="5"></td><td class="num"><input class="w70" value="5"></td>
+            <td class="num"><input class="w70" value="5"></td><td class="pie" style="margin:0">Contra terreno</td></tr>
+        <tr><td><span class="elem" style="background:#616161">GENÉRICO</span></td>
+            <td class="num"><input class="w70" value="3"></td><td class="num"><input class="w70" value="3"></td>
+            <td class="num"><input class="w70" value="3"></td><td class="pie" style="margin:0"></td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ===================== 4 · POR BARRA ===================== -->
+<section id="barra">
+  <div class="nota">
+    Lo único que se presetea por barra es <b>qué lado nace en automático y cuál en fijo</b>.
+    Automático = el motor lo estira contra el hormigón. Fijo = lo escribe el usuario.
+  </div>
+
+  <div class="card">
+    <h2>Cómo nace cada lado</h2>
+    <p class="sub">Por familia de figura. Hoy todos los lados nacen en automático, sin excepción.</p>
+    <table>
+      <thead><tr>
+        <th style="width:230px">Familia de figura</th>
+        <th style="width:260px">Lados en automático</th>
+        <th style="width:260px">Lados fijos</th>
+        <th>Por qué</th>
+      </tr></thead>
+      <tbody>
+        <tr><td><b>Barra recta</b> · 101A</td>
+            <td><span class="chip def">A</span></td><td class="pie" style="margin:0">—</td>
+            <td class="pie" style="margin:0">El largo lo da el elemento</td></tr>
+        <tr><td><b>Con una pata</b> · 102x</td>
+            <td><span class="chip def">B</span></td><td><span class="chip">A</span></td>
+            <td class="pie" style="margin:0">La pata es normativa; el cuerpo se estira</td></tr>
+        <tr><td><b>Con dos patas</b> · 103x</td>
+            <td><span class="chip def">B</span></td><td><span class="chip">A</span><span class="chip">C</span></td>
+            <td class="pie" style="margin:0">Igual, por los dos extremos</td></tr>
+        <tr><td><b>Estribo cerrado</b> · 104x</td>
+            <td><span class="chip def">A</span><span class="chip def">B</span><span class="chip def">C</span><span class="chip def">D</span></td>
+            <td class="pie" style="margin:0">—</td>
+            <td class="pie" style="margin:0">El marco se ajusta al hormigón completo</td></tr>
+        <tr><td><b>Estribo con ganchos</b> · 106x</td>
+            <td><span class="chip def">B</span><span class="chip def">C</span><span class="chip def">D</span><span class="chip def">E</span></td>
+            <td><span class="chip">A</span><span class="chip">F</span></td>
+            <td class="pie" style="margin:0">A y F son los ganchos declarados</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+</main>
+
+<script>
+  // Lo único con lógica de la maqueta: cambiar de pestaña. Nada más hace nada.
+  document.querySelectorAll('.tabs button').forEach(function (b) {
+    b.addEventListener('click', function () {
+      document.querySelectorAll('.tabs button').forEach(function (x) { x.classList.remove('on'); });
+      document.querySelectorAll('main section').forEach(function (s) { s.classList.remove('on'); });
+      b.classList.add('on');
+      var s = document.getElementById(b.dataset.t);
+      if (s) s.classList.add('on');
+    });
+  });
+  document.querySelectorAll('.modos label').forEach(function (l) {
+    l.addEventListener('click', function () {
+      document.querySelectorAll('.modos label').forEach(function (x) { x.classList.remove('on'); });
+      l.classList.add('on');
+    });
+  });
+</script>
+</body>
+</html>
