@@ -5239,21 +5239,20 @@
       box.appendChild(conv);
     } else {
       if (!d.rango2) d.rango2 = _rango2Default(c, d);
+      // EJE DE LA 2ª LÍNEA: AUTOMÁTICO (pedido 17-ago — «hay espacio para
+      // mejora ahí»). Es el único eje que queda: el plano de la pieza tiene
+      // dos, la 1ª línea reparte por la normal, así que la 2ª corre por el
+      // otro eje del plano. Un desplegable ofrecía elegir entre 3 ejes de los
+      // cuales 2 estaban mal — se deriva y se DICE en el label.
+      if (!d.rango2.eje) d.rango2.eje = _rango2Default(c, d).eje;
+      var nomEje2 = ({ x: 'largo', y: 'alto', z: 'ancho' })[d.rango2.eje] || d.rango2.eje;
       var g2b = _div('te-grid2');
       g2b.appendChild(_fld('@ sep (2ª) cm', _inputSep(d.rango2.sep || 20, function (v) {
         d.rango2.sep = v; _syncN(d, 'rango2'); _mut(ci, true);
-      }), 'Espaciamiento de la SEGUNDA línea (la del otro eje)'));
-      g2b.appendChild(_fld('Eje 2ª línea', _selectPairs([['x', 'largo'], ['y', 'alto'], ['z', 'ancho']],
-        d.rango2.eje || _rango2Default(c, d).eje, function (v) {
-          d.rango2.eje = v;
-          var r0 = _rangoDefault(d.rango2.sep || 20, v);
-          d.rango2.from = r0.from; d.rango2.to = r0.to;   // re-encuadra al elemento
-          _mut(ci); _renderPanel();
-        })));
+      }), 'Espaciamiento de la SEGUNDA línea (la del eje ' + nomEje2 + ')'));
+      g2b.appendChild(_fld('Rango 2ª · ' + nomEje2, _rangoEditor(c, d, ci, 'rango2'),
+        'La 2ª línea corre por el ' + nomEje2 + ' (automático: el otro eje del plano de la pieza).'));
       box.appendChild(g2b);
-      var g2c = _div('te-grid2');
-      g2c.appendChild(_fld('Rango 2ª', _rangoEditor(c, d, ci, 'rango2')));
-      box.appendChild(g2c);
     }
     _filaAnidar(box, c, ci, rol, d);
     var note = _div('te-note');
@@ -5370,30 +5369,39 @@
       if (cual === 'rango') _syncTramos(d);
       _mut(ci, true);
     }
-    var fi = _input({ value: Math.round(r.from), type: 'number' }, function (v) {
-      // en modo cantidad el `from` es el ANCLA: mover el borde arrastra el grupo
-      // entero conservando N (que es justo lo que uno espera al cargarlo a un lado).
-      if (porCantidad) { r.from = Number(v); _aplicarN(r.n); } else { _setExtremo('from', v); }
-    });
-    fi.style.width = '52px';
-    var segundo = porCantidad
-      ? _input({ value: _nDeRango(), type: 'number', min: 1 }, function (v) { _aplicarN(v); })
-      : _input({ value: Math.round(r.to), type: 'number' }, function (v) { _setExtremo('to', v); });
-    segundo.style.width = '52px';
-    segundo.title = porCantidad
-      ? 'CUÁNTAS barras. El extremo se calcula solo: desde ' + Math.round(r.from) + ' cada ' + _sepDe() + ' cm.'
-      : 'Hasta dónde llega el rango (cm). La cantidad la calcula el motor: ceil(dist/@)+1.';
+    // DOS CAMPOS LIMPIOS + TOGGLE A LA DERECHA (pedido 17-ago: «elimina esa
+    // flechita entre campos... deja solo los 2 campos» + «a la derecha un botón
+    // que elimine el rango y deje una celda con la cantidad de columnas»).
+    //   · extremos: [dónde la PRIMERA] [dónde la ÚLTIMA]  (cm desde el centro
+    //     del elemento, sobre el eje de esta línea)
+    //   · cantidad: una sola celda [cuántas] — el grupo parte del mismo inicio
+    //     y el final se calcula solo (from + (N−1)·@).
     var tog = document.createElement('button');
     tog.type = 'button'; tog.className = 'te-rmodo' + (porCantidad ? ' on' : '');
-    tog.textContent = porCantidad ? 'N' : '→';
+    tog.textContent = '▥';
     tog.title = porCantidad
-      ? 'Expresado por CANTIDAD (N barras desde el inicio, cada @). Clic para volver a extremos.'
-      : 'Expresado por EXTREMOS (desde → hasta). Clic para escribir la CANTIDAD y que el extremo se calcule.';
+      ? 'Expresado por CANTIDAD de columnas. Clic para volver a extremos (desde → hasta en cm).'
+      : 'Expresar por CANTIDAD DE COLUMNAS: deja una sola celda con cuántas van (cada @, desde el mismo inicio).';
     tog.onclick = function () {
       if (porCantidad) { delete r.n; _mut(ci, true); }
       else { _aplicarN(_nDeRango()); }
     };
-    wrap.appendChild(fi); wrap.appendChild(tog); wrap.appendChild(segundo);
+    if (porCantidad) {
+      var nn = _input({ value: _nDeRango(), type: 'number', min: 1 }, function (v) { _aplicarN(v); });
+      nn.style.width = '52px';
+      nn.title = 'CUÁNTAS columnas. Parten en ' + Math.round(r.from) + ' cm, cada ' + _sepDe() +
+        ' cm; el final se calcula solo.';
+      wrap.appendChild(nn);
+    } else {
+      var fi = _input({ value: Math.round(r.from), type: 'number' }, function (v) { _setExtremo('from', v); });
+      fi.style.width = '52px';
+      fi.title = 'Dónde va la PRIMERA barra de esta línea (cm desde el centro del elemento, sobre su eje).';
+      var ff = _input({ value: Math.round(r.to), type: 'number' }, function (v) { _setExtremo('to', v); });
+      ff.style.width = '52px';
+      ff.title = 'Dónde va la ÚLTIMA barra (cm). La cantidad la calcula el motor: ceil(dist/@)+1.';
+      wrap.appendChild(fi); wrap.appendChild(ff);
+    }
+    wrap.appendChild(tog);
     return wrap;
   }
 

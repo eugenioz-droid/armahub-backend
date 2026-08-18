@@ -357,5 +357,35 @@ console.log('\nF — traba de muro: 5 a lo largo × 3 en altura, cruzando el esp
     'sin avisos y 0 fierro fuera: ' + JSON.stringify(c._avisos || []));
 }
 
+// ---------------------------------------------------------------------------
+// G) LAS COLUMNAS DE UN ARREGLO DE ESTRIBOS SE REPARTEN DE VERDAD (17-ago)
+// ---------------------------------------------------------------------------
+// _estriboPerimetral ignoraba la coordenada del reparto: fila 1 y fila 2
+// salian con bbox identico (columnas apiladas). Ahora cada fila se centra en
+// su coordenada del rango2. Sin rango2 nada cambia (byte-identico).
+console.log('— G) columnas del arreglo de estribos repartidas —');
+(function () {
+  var VIGA_G = { largo: 600, alto: 60, ancho: 30, recub_sup: 4, recub_inf: 4, recub_lat: 3 };
+  var spec = global.ModeladorCatalogoFiguras.get('104D'), dims = {};
+  (spec.parciales || []).forEach(function (L) { dims[L] = { modo: 'auto' }; });
+  var c = { comp_id: 'G', tipologia: 'ES', figura: '104D', diam: 1.0,
+    pose: { postura: 'de_pie', rumbo: 'x' }, dims: dims, angulos: (spec.angulos || []).slice(),
+    distribucion: { modo: 'arreglo', sep: 50, activa: true,
+      rango: { from: -50, to: 50, sep: 50 },
+      rango2: { from: -8, to: 8, sep: 16, eje: 'z' } } };
+  c.distribucion.rango.eje = R.ejeDistribucion(c, VIGA_G);
+  var pls = R.expandirComponente(c, VIGA_G) || [];
+  ok(pls.length === 6, 'arreglo 3×2 = 6 placements: ' + pls.length);
+  function czDe(pl) {
+    var lo = Infinity, hi = -Infinity;
+    (pl.puntos || []).forEach(function (q) { if (q.z < lo) lo = q.z; if (q.z > hi) hi = q.z; });
+    return Math.round((lo + hi) / 2 * 100) / 100;
+  }
+  var porFila = {};
+  pls.forEach(function (pl) { porFila[pl.meta.fila] = czDe(pl); });
+  ok(porFila[1] === -8 && porFila[2] === 8,
+    'cada fila centrada en su coordenada del 2º rango (-8 y 8): ' + JSON.stringify(porFila));
+})();
+
 console.log(fallos ? '\nFALLOS: ' + fallos : '\nTODO OK');
 process.exitCode = fallos ? 1 : 0;

@@ -2276,7 +2276,24 @@
     // fin/ini) el marco ya no está centrado y espejar sobre 0 MOVÍA la caja
     // entera; sobre zc la caja queda quieta y solo cambian los ganchos. Sin Δ
     // direccional zc = 0 y es byte-idéntico a lo de siempre.
-    return (anchor && anchor.espejo) ? _espejarEje(out, 'z', zc) : out;
+    if (anchor && anchor.espejo) out = _espejarEje(out, 'z', zc);
+    // COORDENADAS DEL REPARTO (17-ago). La convención del módulo — «si el
+    // anchor trae la coordenada, ESA es la posición del centro de la pieza» —
+    // la respetaban _traba y _cadenaSeccion pero NO este constructor: la 2ª
+    // línea del arreglo escribía su coordenada y el estribo la ignoraba, así
+    // que las «columnas» de un arreglo de estribos salían TODAS APILADAS en el
+    // mismo sitio (medido: fila 1 y fila 2 con bbox idéntico) y la caja
+    // aparecía donde el marco quisiera, no donde el rango dice. Con
+    // coordenada, la caja se CENTRA ahí; sin ella, queda donde el marco manda
+    // (incluido el Δ cargado a un lado) — byte-idéntico a lo de siempre.
+    var ty = (anchor && anchor.y != null && isFinite(anchor.y)) ? Number(anchor.y) - yc : 0;
+    var tz = (anchor && anchor.z != null && isFinite(anchor.z)) ? Number(anchor.z) - zc : 0;
+    if (ty || tz) out = out.map(function (pq) {
+      var q = { x: pq.x, y: pq.y + ty, z: pq.z + tz };
+      if (pq.esArco) q.esArco = true;
+      return q;
+    });
+    return out;
   }
 
   // ---------------------------------------------------------------------------
