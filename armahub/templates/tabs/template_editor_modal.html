@@ -294,6 +294,14 @@
      Casarlas por esos campos sería una adivinanza que acertaría casi siempre y
      mentiría cuando dos componentes coinciden. La barra seleccionada se identifica
      en la ficha flotante del 3D, que sí tiene el componente.) */
+  /* FILA DE TOTAL (18-ago) — cierra la tabla con el nº de barras y los kg. Va en
+     <tfoot> y no como una <tr> más del cuerpo para que el hover de fila no la pinte y
+     para poder pegarla abajo: con la tabla scrolleando dentro de .te-barras-b, el
+     total tiene que quedar a la vista aunque estés mirando la fila 40.
+     Fondo propio + borde grueso arriba = se lee como resumen, no como un dato más. */
+  #te_modal .te-btab tfoot td{padding:5px 10px;background:#e6ecf3;font-weight:700;color:var(--te-ink);
+    border-top:2px solid #b7c3d0;position:sticky;bottom:0;white-space:nowrap}
+  #te_modal .te-btab tfoot .te-btot{text-transform:uppercase;letter-spacing:.5px;font-size:10.5px;color:var(--te-muted)}
   #te_modal .te-btab .te-btip{font-weight:700}
   #te_modal .te-btab .te-bsuf{color:var(--te-acero-d);font-size:10.5px}
   #te_modal .te-barras-vacio{padding:10px;font-size:11px;color:var(--te-muted)}
@@ -345,11 +353,34 @@
     border:1px solid var(--te-line);background:rgba(255,255,255,.9);border-radius:6px;cursor:pointer;
     font-size:13px;color:var(--te-muted);line-height:1;padding:0;display:flex;align-items:center;justify-content:center}
   #te_modal .te-vreset:hover{color:var(--te-ink);border-color:var(--te-acero)}
-  /* Herramientas del cuadrante 3D: arriba-derecha (la esquina inf-izq es del gizmo).
-     Va en COLUMNA alineada a la derecha: la fila de iconos arriba y debajo los dos
-     radiales (eje / fondo), que son más anchos y no caben en la misma línea. */
-  #te_modal .te-3dtools{position:absolute;right:6px;top:6px;z-index:3;display:flex;flex-direction:column;align-items:flex-end;gap:4px}
-  #te_modal .te-3drow{display:flex;align-items:center;gap:4px}
+  /* LUPA — agranda ESE cuadrante a toda la grilla y vuelve a los 4 al re-pulsarla o
+     con Esc (18-ago). Va arriba-derecha en los 4 cuadrantes, el mismo sitio siempre;
+     en el 3D las herramientas se corrieron a right:34px para dejarle el hueco.
+     El truco de layout es no tocar la grilla: los otros 3 cuadrantes se OCULTAN y el
+     elegido pasa a ocupar las 2 filas × 2 columnas. Así #te_quad no cambia de tamaño
+     —el canvas del renderer lo cubre entero y no hay que redimensionarlo— y como el
+     renderer pinta cada cuadrante leyendo su rect por frame, los viewports se ajustan
+     solos; los ocultos miden 0 y se saltan. Lo único que hay que re-emitir a mano es
+     el overlay SVG (ver _maximizarVista). */
+  #te_modal .te-vzoom{position:absolute;right:6px;top:6px;z-index:6;width:24px;height:24px;
+    border:1px solid var(--te-line);background:rgba(255,255,255,.92);border-radius:6px;cursor:pointer;
+    font-size:12px;color:var(--te-muted);line-height:1;padding:0;display:flex;align-items:center;justify-content:center}
+  #te_modal .te-vzoom:hover{color:var(--te-ink);border-color:var(--te-acero)}
+  #te_modal .te-vzoom.on{background:var(--te-acero);border-color:var(--te-acero);color:#fff}
+  #te_modal #te_quad.te-maxon .te-vista{display:none}
+  #te_modal #te_quad.te-maxon .te-vista.te-max{display:block;grid-column:1/-1;grid-row:1/-1}
+  /* Herramientas del cuadrante 3D: UNA SOLA FILA pegada a la parte superior (pedido
+     18-ago; antes iban apiladas en columna por el costado derecho y ocupaban tres
+     líneas). Arranca a la izquierda de la lupa (right:34px) y crece hacia la
+     izquierda, así no pisa el título del cuadrante (arriba-izq) ni el gizmo de ejes
+     (abajo-izq, que lo pinta el renderer).
+     Lo que hizo que la fila QUEPA es el radial de FONDO en símbolos (●/◐/○ =
+     oscuro/medio/claro): con las palabras "Oscuro Medio Claro" la barra medía ~150 px
+     más y en un cuadrante angosto se metía debajo del título. Los grupos siguen
+     siendo .te-3drow para no perder los pares etiqueta+radial al envolver. */
+  #te_modal .te-3dtools{position:absolute;right:34px;top:6px;z-index:3;display:flex;flex-direction:row;
+    align-items:center;justify-content:flex-end;gap:9px;flex-wrap:nowrap}
+  #te_modal .te-3drow{display:flex;align-items:center;gap:4px;flex:0 0 auto}
   #te_modal .te-3dtools button{width:24px;height:24px;border:1px solid var(--te-line);border-radius:6px;
     background:rgba(255,255,255,.92);color:var(--te-muted);font-size:13px;line-height:1;cursor:pointer;
     display:flex;align-items:center;justify-content:center;padding:0}
@@ -367,6 +398,9 @@
   #te_modal .te-3dtools .te-3dseg button+button{border-left:1px solid var(--te-line)}
   #te_modal .te-3dtools .te-3dseg button:hover{background:#f2f7ea;color:var(--te-acero-d);border-color:var(--te-line)}
   #te_modal .te-3dtools .te-3dseg button.on{background:var(--te-acero);color:#fff}
+  /* Radial de FONDO: sus etiquetas son símbolos (●◐○), que a 10 px se leen como
+     puntitos. Dos ids para ganarle a la regla de arriba (1 id + 2 clases). */
+  #te_modal .te-3dtools #te_3dTema button{font-size:13px;padding:0 6px;line-height:1}
   /* Cuadro RESUMEN flotante del 3D (items · barras · peso). Abajo-derecha: la
      esquina inf-izq es del gizmo de ejes y el borde inferior derecho lo usa la
      ayuda (.te-vhint), que va más abajo. */
@@ -421,9 +455,13 @@
      como en la maqueta; así las barras se ven con cuerpo, no como pelos. */
   #te_modal .te-bar{fill:none;stroke-width:3;stroke-linecap:round;stroke-linejoin:round}
   #te_modal .te-bar.sel{stroke-width:3.6}
-  /* Selección SUTIL (estilo CAD): contorno fino azul sobre la barra, nada de halos
-     gruesos. El realce principal lo pone el propio render 3D (leve emissive). */
-  #te_modal .te-bar-halo{fill:none;stroke:#2f80ed;stroke-width:1.6;opacity:.9;stroke-linecap:round;stroke-linejoin:round;pointer-events:none}
+  /* Selección estilo CAD: contorno fino sobre la barra, nada de halos gruesos. La
+     marca principal la pone el propio render 3D pintando la pieza de SEL_COLOR. */
+  /* Contorno fino de la barra SELECCIONADA en el overlay 2D. Magenta = el mismo
+     SEL_COLOR con que el render 3D pinta la pieza seleccionada (template_editor.js):
+     una sola marca de selección en los 4 cuadrantes. Antes era el azul #2f80ed, que
+     acá es OTRA cosa — el borde del cuadrante con el plano de trabajo activo. */
+  #te_modal .te-bar-halo{fill:none;stroke:#ff00b8;stroke-width:1.6;opacity:.95;stroke-linecap:round;stroke-linejoin:round;pointer-events:none}
   /* BBox punteado de la PIEZA seleccionada (todas sus barras) con esquinitas. */
   #te_modal .te-sel-bbox{fill:none;stroke:#7d8da0;stroke-width:1;stroke-dasharray:4 3;pointer-events:none}
   #te_modal .te-sel-esq{fill:#fff;stroke:#2f80ed;stroke-width:1.2;pointer-events:none}
@@ -721,6 +759,8 @@
         <div class="te-vista" data-plano="seccion">
           <div class="te-vtitle">SECCIÓN · XZ</div>
           <div class="te-vgizmo"></div>
+          <!-- LUPA: maximiza este cuadrante (Esc o segundo clic = volver a los 4). -->
+          <button type="button" class="te-vzoom" title="Agrandar este cuadrante">🔍</button>
           <!-- AYUDA POR PANTALLA — se mantiene (decisión del usuario) con la semántica
                NUEVA del giro: R gira la pieza 90° EN ESTA VISTA (ya no cicla
                orientaciones), y el borde clicado elige la CARA y su LADO al colocar
@@ -752,6 +792,7 @@
         <div class="te-vista" data-plano="largo">
           <div class="te-vtitle">A LO LARGO · YZ</div>
           <div class="te-vgizmo"></div>
+          <button type="button" class="te-vzoom" title="Agrandar este cuadrante">🔍</button>
           <div class="te-vhint">clic en un borde = cara y lado · R = girar 90° en esta vista</div>
           <canvas class="te-vcanvas" data-plano="largo"></canvas>
           <svg id="te_svgLargo" class="te-vsvg" viewBox="0 0 620 300" preserveAspectRatio="xMidYMid meet"></svg>
@@ -769,6 +810,7 @@
         <div class="te-vista" data-plano="planta">
           <div class="te-vtitle">PLANTA · YX</div>
           <div class="te-vgizmo"></div>
+          <button type="button" class="te-vzoom" title="Agrandar este cuadrante">🔍</button>
           <div class="te-vhint">shift+arrastre = pan · R = girar 90° en esta vista</div>
           <canvas class="te-vcanvas" data-plano="planta"></canvas>
           <svg id="te_svgPlanta" class="te-vsvg" viewBox="0 0 620 260" preserveAspectRatio="xMidYMid meet"></svg>
@@ -784,22 +826,31 @@
         <!-- 2.2 abajo-der: 3D EN VIVO (reusa el motor del modelador) -->
         <div class="te-vista d3">
           <div class="te-vtitle">3D · en vivo</div>
+          <!-- LUPA del 3D: mismo botón y mismo sitio que en las 3 vistas 2D. Por eso
+               .te-3dtools se corrió a right:34px, para no encimarse con ella. -->
+          <button type="button" class="te-vzoom" title="Agrandar este cuadrante">🔍</button>
           <!-- El gizmo 3D (triad de ejes que sigue a la cámara) lo pinta el RENDERER en la
                esquina inf-izq de este cuadrante (viewport propio, ver _renderGizmo3D). -->
-          <div class="te-vhint">arrastra = rotar · ctrl+arrastre = rotación fina · medio/der = pan · 🎯 = anclar el giro en la selección</div>
+          <div class="te-vhint">arrastra = rotar · ctrl+arrastre = girar en torno a la selección · rueda = zoom al cursor · medio/der = pan · 🎯 = anclar el giro</div>
           <!-- Herramientas del 3D (17-ago). Van arriba-derecha porque la esquina
                inf-izq la ocupa el gizmo de ejes que pinta el renderer.
-               · 🎯 anclar: mueve el PIVOTE de la órbita al centro de la barra
-                 seleccionada. Antes esto era ctrl+arrastre, y como re-pivotear anula
-                 el pan se veía como un reset de la imagen; ahora es un acto explícito
-                 (y el ctrl quedó libre para la rotación fina).
+               · 🎯 anclar: deja el PIVOTE de la órbita PERMANENTEMENTE en la barra
+                 seleccionada y la centra en pantalla TRASLADANDO la cámara (se lee
+                 como "la cámara camina hasta la pieza"). El ctrl+arrastre hace lo
+                 mismo pero prestado —sólo mientras dura el gesto— y sin mover la
+                 imagen; el botón es para dejarlo fijo.
                · ⟳ recentrar: hace falta desde que la cámara dejó de re-encuadrarse
                  sola en cada clic (antes el reset accidental hacía de "volver").
                · 🧊 hormigón: ST.verHormigon existía desde siempre SIN botón que lo
                  tocara — la función estaba escrita y no se podía usar.
-               Debajo, dos radiales portados del Enfierrador: EJE de rotación
-               (Libre/X/Y/Z, y volver a clicar el activo devuelve a Libre) y FONDO
-               (tema del 3D: sólo fondo y grilla, NUNCA el color de las barras). -->
+               A la derecha, dos radiales portados del Enfierrador: EJE de rotación y
+               FONDO (tema del 3D: sólo fondo y grilla, NUNCA el color de las barras).
+               TODO va en UNA FILA arriba (18-ago) — ver .te-3dtools en el CSS.
+               EJE SIN "LIBRE" (18-ago): eran 4 botones y el cuarto sobraba, porque
+               volver a clicar el activo YA lo apaga. Ahora son 3 (X/Y/Z) y NINGUNO
+               activo = rotación libre, que es como arranca (ST.ejeRot = 'libre').
+               El handler no cambió: sigue mandando 'libre' al des-seleccionar, y como
+               ningún botón lleva data-eje="libre", ninguno queda encendido. -->
           <div class="te-3dtools">
             <div class="te-3drow">
               <button id="te_3dAnclar" type="button" title="Anclar el punto de giro en la barra seleccionada">🎯</button>
@@ -808,14 +859,14 @@
             </div>
             <div class="te-3drow">
               <span class="te-3dlbl">eje</span>
-              <span class="te-3dseg" id="te_3dEjes" title="Restringe el arrastre a un eje — letras del gizmo, Z = vertical (clic en el activo = Libre)">
-                <button type="button" class="on" data-eje="libre">Libre</button><button type="button" data-eje="x">X</button><button type="button" data-eje="y">Y</button><button type="button" data-eje="z">Z</button>
+              <span class="te-3dseg" id="te_3dEjes" title="Restringe el arrastre a un eje — letras del gizmo, Z = vertical (ninguno activo = giro libre; clic en el activo lo apaga)">
+                <button type="button" data-eje="x">X</button><button type="button" data-eje="y">Y</button><button type="button" data-eje="z">Z</button>
               </span>
             </div>
             <div class="te-3drow">
               <span class="te-3dlbl">fondo</span>
               <span class="te-3dseg" id="te_3dTema" title="Fondo y grilla del 3D (no cambia el color de las barras)">
-                <button type="button" data-tema="oscuro">Oscuro</button><button type="button" data-tema="medio">Medio</button><button type="button" class="on" data-tema="claro">Claro</button>
+                <button type="button" data-tema="oscuro" title="Fondo oscuro">●</button><button type="button" data-tema="medio" title="Fondo medio">◐</button><button type="button" class="on" data-tema="claro" title="Fondo claro">○</button>
               </span>
             </div>
           </div>

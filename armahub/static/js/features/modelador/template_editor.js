@@ -62,11 +62,46 @@
   // ACABADO PBR de las barras — ver la nota larga en _initEscena: sin envMap, el
   // metalness se cobra el color y no devuelve reflejo. Una sola constante para que
   // los materiales por tipología y los de color propio no puedan divergir.
-  var MAT_METALNESS = 0.1;
+  var MAT_METALNESS = 0;      // 0.1 → 0: ese 10% también se perdía (misma causa, sin envMap)
   var MAT_ROUGHNESS = 0.42;
+  // EMISIÓN PROPIA de la barra, como fracción de su color (18-ago, «al soltarla se
+  // oscurece»). CUENTA MEDIDA, no un número a ojo: three r160 pinta con luces físicas
+  // (useLegacyLights=false), o sea que la contribución difusa de cada luz se divide
+  // por π. Con el ambiente 0.85 y la direccional 0.7 de esta escena, una cara bien
+  // iluminada llega a (0.85+0.7)/π ≈ 0.49 del color pintado: por eso el #e65100 se
+  // veía café y el usuario sólo veía el color REAL mientras la barra estaba
+  // seleccionada — el realce viejo le sumaba emissive = 0.45·color, y eso era
+  // justamente lo que faltaba. Esos 0.45 se mudan al material BASE (0.45 emitido +
+  // ~0.49 de luz ≈ el hex elegido) y la selección se marca de otra forma (SEL_COLOR).
+  var MAT_EMISSIVE = 0.45;
+  // COLOR DESIGNADO DE LA SELECCIÓN — la marca ya NO es "aclarar la barra" (eso era
+  // lo que hacía ver bien el color y confundía las dos cosas). Magenta porque es el
+  // único tono fuerte que NO usa COL2D (azules, teals, naranja, morados y gris) y
+  // porque contrasta con los TRES fondos del selector: oscuro #14171c, medio #2b3242
+  // y claro #d8dee7. Va con emisión ALTA para que se lea igual de fuerte en los tres
+  // y para que siga distinguiéndose aunque el usuario le ponga magenta a un
+  // componente. El color verdadero de la pieza sigue a la vista en el swatch de la
+  // ficha flotante (#te_selcard) y en la lista de componentes.
+  var SEL_COLOR = '#ff00b8';
+  var SEL_EMISSIVE = 0.55;
 
-  // Divisor de la sensibilidad de la órbita 3D con CTRL/⌘ apretado ("rotación fina").
-  var SENS_FINA = 4;
+  // ---- CÁMARA DEL CUADRANTE 3D: campo visual y TECHO DE ACERCAMIENTO ----
+  // FOV3D es el ángulo vertical de la perspectiva. Lo que entra de alto en pantalla
+  // es 2·dist·tan(FOV/2) ≈ 0,688·dist, así que la DISTANCIA MÍNIMA es lo que fija
+  // cuánto se puede acercar el ojo. Con el mínimo viejo (120) la ventana más chica
+  // medía 83 cm: una barra φ16 (1,6 cm) ocupaba ~7 px y era imposible mirarle el
+  // gancho. Con 15 la ventana baja a ~10 cm, que es el detalle de un doblez.
+  // near sigue en 1 (ver _initEscena): con el ojo a 15 no recorta nada útil.
+  // UNA SOLA CONSTANTE Y UN SOLO CLAMP: el mínimo estaba escrito en cuatro sitios
+  // (_pivotarEn, la rueda) y los otros dos —encuadre automático y botón ⟳— ni
+  // siquiera pasaban por él.
+  var FOV3D = 38;
+  var DIST_MIN = 15, DIST_MAX = 6000;
+  function _clampDist(d) {
+    d = Number(d);
+    if (!isFinite(d)) return DIST_MIN;
+    return Math.max(DIST_MIN, Math.min(DIST_MAX, d));
+  }
 
   var GRID_SNAP = 5;   // cm — paso de snap a grilla
 
@@ -1036,8 +1071,25 @@
     }
   }
 
+  // CUÁNTAS BARRAS SALEN DE UN COMPONENTE — se cuentan los placements que el motor le
+  // atribuyó (meta.ci lo estampa _etiquetarCi). Es la MISMA fuente que usa la ficha
+  // flotante de la selección, a propósito: con dos conteos distintos la lista y el
+  // señalizador podrían decir números diferentes de la misma barra.
+  // Devuelve null si todavía no se generó nada (no hay número que dar, y 0 sería
+  // mentira). NO recalcula ni re-expande la receta: sólo recorre lo ya calculado.
+  function _nBarrasComp(ci) {
+    var pls = (ST.ultimoOut && ST.ultimoOut.placements) || null;
+    if (!pls || ci == null || ci < 0) return null;
+    var n = 0;
+    for (var i = 0; i < pls.length; i++) {
+      var m = pls[i].meta;
+      if (m && m.ci === ci) n++;
+    }
+    return n;
+  }
+
   // Nombre corto legible del componente (para el panel).
-  function _compDesc(c) {
+  function _compDesc(c, ci) {
     var d = c.distribucion || {};
     var modo = _modoDe(c);
     // La cara sale de la POSE (que incluye 'extremo'): con el mapa viejo de 3 casos,
@@ -1045,15 +1097,21 @@
     var p = _poseDe(c);
     var caraTxt = { sup: 'superior', inf: 'inferior', lateral: 'lateral', extremo: 'extremo' }[p.cara] || p.cara;
     if (p.espejo) caraTxt += ' esp.';
+    // CANTIDAD DE BARRAS (18-ago) — entre el espaciamiento y el ø, en la misma línea y
+    // con la misma letra que el resto: es un dato más de la descripción, no una
+    // insignia. Un 0 SÍ se muestra: si el componente no está generando nada (figura
+    // fuera del catálogo, rango vacío) ese cero es exactamente lo que hay que ver.
+    var nb = _nBarrasComp(ci);
+    var nbTxt = (nb == null) ? '' : (' · ' + nb + (nb === 1 ? ' barra' : ' barras'));
     if (modo === 'arreglo') {
-      return caraTxt + ' · arreglo ' + (d.n_capas || 2) + '×@' + (d.sep || 20) + ' · ø' + c.diam;
+      return caraTxt + ' · arreglo ' + (d.n_capas || 2) + '×@' + (d.sep || 20) + nbTxt + ' · ø' + c.diam;
     }
     if (modo === 'puntual') {
       var nc = d.n_capas || 1;
-      return caraTxt + ' · ' + nc + ' capa' + (nc > 1 ? 's' : '') + '×' + (d.barras_capa || 1) + ' · ø' + c.diam;
+      return caraTxt + ' · ' + nc + ' capa' + (nc > 1 ? 's' : '') + '×' + (d.barras_capa || 1) + nbTxt + ' · ø' + c.diam;
     }
     // lineal
-    return caraTxt + ' · lineal @' + (d.sep || 20) + ' · ø' + c.diam;
+    return caraTxt + ' · lineal @' + (d.sep || 20) + nbTxt + ' · ø' + c.diam;
   }
 
   // ==========================================================================
@@ -1199,6 +1257,7 @@
     if (sk) sk.textContent = _num(out.resumen.kg) + ' kg';
     _renderBarras();     // listado de barras (subtítulo siempre; tabla si está visible)
     _pintarFichaSel();   // ficha flotante de la barra seleccionada (la receta cambió)
+    _refrescarDescComps();   // "· N barras ·" de cada fila del panel (depende de ESTE out)
     _redibujar2D(out);
     // WARNING ANTI-COLAPSO: se evalúa SIEMPRE (aunque no haya WebGL) — el aviso es
     // sobre el tamaño del elemento, no sobre el 3D.
@@ -1440,7 +1499,10 @@
     if (!cv) return false;
     ST.scene = new THREE.Scene();
     ST.scene.background = new THREE.Color((TEMAS3D[ST.tema3d] || TEMAS3D.claro).bg);
-    ST.camera = new THREE.PerspectiveCamera(38, 1, 1, 8000);
+    // El FOV sale de la constante porque el zoom-hacia-el-cursor necesita el MISMO
+    // ángulo para saber cuánto mundo cabe en pantalla (si se desincronizan, el punto
+    // bajo el cursor deja de quedar clavado).
+    ST.camera = new THREE.PerspectiveCamera(FOV3D, 1, 1, 8000);
     try {
       ST.renderer = new THREE.WebGLRenderer({ canvas: cv, antialias: true });
       ST.renderer.localClippingEnabled = true;   // habilita el plano de corte de las vistas orto
@@ -1455,16 +1517,23 @@
     // Un material por tipología, desde COL2D (FUENTE ÚNICA de colores: 2D y 3D
     // leen la misma tabla — antes el 3D tenía sus 5 claves de viga duplicadas en
     // TEMA y toda tipología de MURO caía al gris del fallback).
-    // METALNESS BAJO — POR QUÉ (17-ago, "un rojo se ve café"): en el modelo PBR de
+    // METALNESS CERO — POR QUÉ (17-ago, "un rojo se ve café"): en el modelo PBR de
     // MeshStandardMaterial, `metalness` es la FRACCIÓN del color que deja de ser
     // difusa y pasa a ser reflejo especular teñido. Esta escena NO tiene envMap, así
     // que ese reflejo no encuentra nada que reflejar y se pinta NEGRO: con 0.5 la
     // mitad del color pintado se perdía y toda la paleta salía oscura y desaturada
     // (el usuario elige un color en la ficha y ve otro). El acero se sugiere con el
     // BRILLO (roughness), no comprando metalness que aquí no se puede pagar.
+    // EMISSIVE DEL PROPIO COLOR (18-ago) — el metalness sólo era la mitad del
+    // problema: aun con 0, el reparto físico de luces de three deja la barra en ~0.49
+    // del hex (ver MAT_EMISSIVE). El emissive repone el resto SIN inventar una luz
+    // nueva que también bañaría al hormigón y a las vistas orto, y deja intacto el
+    // relieve (la parte difusa sigue variando por cara, así que la barra no se aplana).
     ST.materiales = {};
     Object.keys(COL2D).forEach(function (k) {
-      ST.materiales[k] = new THREE.MeshStandardMaterial({ color: new THREE.Color(COL2D[k]), metalness: MAT_METALNESS, roughness: MAT_ROUGHNESS });
+      ST.materiales[k] = new THREE.MeshStandardMaterial({
+        color: new THREE.Color(COL2D[k]), metalness: MAT_METALNESS, roughness: MAT_ROUGHNESS,
+        emissive: new THREE.Color(COL2D[k]), emissiveIntensity: MAT_EMISSIVE });
     });
     // BUG 7: el hormigón es el VOLUMEN DE REFERENCIA y NO debe seguir la regla del
     // cuchillo (si lo recortan los clipping planes, en algunas vistas la cara
@@ -1606,7 +1675,7 @@
       ST.barras3D.push(mesh);
       ST.world.add(mesh);
     });
-    _resaltarSeleccion3D();    // selección sutil: leve emissive en la pieza activa
+    _resaltarSeleccion3D();    // marca de selección: la pieza activa va en SEL_COLOR
     // ENCUADRE INICIAL, NO EN CADA REDIBUJO (bug 17-ago: «roto el muro en el 3D y
     // al hacer clic me resetea la imagen»). Esta función corre en CADA regeneración
     // —colocar una barra, seleccionar, arrastrar un tirador—, así que reponer la
@@ -1617,17 +1686,24 @@
     var firmaEnc = [g.largo, g.alto, g.ancho].join('|');
     if (ST._encuadreFirma !== firmaEnc) {
       ST._encuadreFirma = firmaEnc;
-      ST.dist = g.largo * 1.15 + 160;
+      ST.dist = _clampDist(g.largo * 1.15 + 160);   // mismo clamp que la rueda: uno solo
     }
     _redibujarPlanoActivo();   // P3 — re-agregar el resaltado tras vaciar el world
     ST.dirty = true;
   }
 
-  // SELECCIÓN SUTIL en el render — la pieza seleccionada sube apenas de brillo
-  // (emissive) en el 3D y en las vistas orto; nada de halos gruesos. Se materializa
-  // igual que el clipping: un CLON del material base con emissive, cacheado en el
+  // MARCA DE SELECCIÓN — COLOR DESIGNADO, ya no "aclarar" (18-ago).
+  // Antes esto clonaba el material y le subía el emissive al 45% del PROPIO color. El
+  // efecto secundario era el bug que reportó el usuario: como el material base estaba
+  // apagado (ver MAT_EMISSIVE), esa subida era justo lo que hacía que el color se
+  // viera BIEN, así que seleccionar "arreglaba" el color y soltar lo "oscurecía" —
+  // el realce estaba haciendo de corrección de brillo y no de marca.
+  // Ahora: el color correcto vive en el material base y la selección PINTA la pieza
+  // del color designado SEL_COLOR (magenta, alto emissive) — se distingue a la
+  // primera sobre los tres fondos y no se puede confundir con "está más clara".
+  // Se materializa igual que el clipping: un CLON del material base, cacheado en el
   // mesh (userData.matSel). `matActivo` es lo que _clipLocalPorVista usa como base,
-  // así el realce compone con el corte sin combinatoria de clones.
+  // así la marca compone con el corte sin combinatoria de clones.
   function _resaltarSeleccion3D() {
     var THREE = global.THREE;
     if (!THREE) return;
@@ -1644,7 +1720,8 @@
           ms = base.clone();
           ms.userData._propio = true;
           ms.userData._base = base;
-          if (ms.emissive) ms.emissive = new THREE.Color(base.color).multiplyScalar(0.45);
+          ms.color = new THREE.Color(SEL_COLOR);
+          if (ms.emissive) { ms.emissive = new THREE.Color(SEL_COLOR); ms.emissiveIntensity = SEL_EMISSIVE; }
           mesh.userData.matSel = ms;
         }
         mesh.userData.matActivo = ms;
@@ -2037,8 +2114,12 @@
     var THREE = global.THREE;
     ST.materialesColor = ST.materialesColor || {};
     if (!ST.materialesColor[hex]) {
+      // MISMA receta que los de COL2D (incluida la emisión del propio color): si acá
+      // faltara el emissive, la barra con color propio se vería apagada y la de
+      // tipología no — el usuario compararía dos rojos distintos en la misma escena.
       ST.materialesColor[hex] = new THREE.MeshStandardMaterial({
-        color: new THREE.Color(hex), metalness: MAT_METALNESS, roughness: MAT_ROUGHNESS });
+        color: new THREE.Color(hex), metalness: MAT_METALNESS, roughness: MAT_ROUGHNESS,
+        emissive: new THREE.Color(hex), emissiveIntensity: MAT_EMISSIVE });
     }
     return ST.materialesColor[hex];
   }
@@ -2856,7 +2937,8 @@
 
     // BBOX punteado de la PIEZA seleccionada (todas sus barras juntas) + esquinitas
     // — la marca de selección "de conjunto"; el realce por barra lo pone el render
-    // 3D (emissive) y el contorno fino .te-bar-halo. Estilo CAD, nada de halos.
+    // 3D (SEL_COLOR) y el contorno fino .te-bar-halo, que usa ESE MISMO magenta para
+    // que 2D y 3D digan lo mismo. Estilo CAD, nada de halos.
     if (ST.selCi >= 0) {
       var bU0 = Infinity, bV0 = Infinity, bU1 = -Infinity, bV1 = -Infinity;
       placements.forEach(function (pl) {
@@ -3762,6 +3844,12 @@
     // ordenar: la última tocada primero (empate → la de mayor área de bbox).
     var mejor = null, mejorPlano = null, mejorScore = -1;
     planos.forEach(function (p) {
+      // CUADRANTE OCULTO POR LA LUPA (18-ago): su SVG mide 0×0, así que el bbox se
+      // proyecta a coordenadas sin sentido y el botón terminaba clampeado en la
+      // esquina de la grilla, encima del cuadrante que el usuario está mirando.
+      // Con el 3D maximizado no queda ninguna vista 2D y el botón se esconde entero,
+      // que es lo correcto: gira "en la vista activa" y no hay vista donde apuntar.
+      var sv = $(SVG_ID[p]); if (!sv || sv.clientWidth < 2) return;
       var bb = _bboxCompEnPlano(ST.selCi, p); if (!bb) return;
       var area = Math.max(1, (bb.maxX - bb.minX)) * Math.max(1, (bb.maxY - bb.minY));
       var score = area + (p === ST.ultimoPlano ? 1e9 : 0);   // preferir la última vista tocada
@@ -4357,6 +4445,23 @@
     _pintarFichaSel();
   }
 
+  // Refresca SÓLO la línea de descripción de cada componente YA pintado (cara ·
+  // reparto · N barras · ø). Hace falta porque la CANTIDAD DE BARRAS no sale de la
+  // receta sino del último generado: tocar un @, mover un rango o cambiar el hormigón
+  // la mueve sin que el panel se re-arme. Y llamar a _renderPanel desde _regenerar NO
+  // es opción: re-arma toda la ficha y le mata el foco al input que el usuario está
+  // tecleando (por eso _mut sólo la re-arma cuando cambia la FORMA de la ficha).
+  function _refrescarDescComps() {
+    var cont = $('te_compList'); if (!cont || !ST.receta) return;
+    var comps = ST.receta.componentes || [];
+    Array.prototype.forEach.call(cont.querySelectorAll('.te-comp'), function (el) {
+      var ci = Number(el.getAttribute('data-ci'));
+      var c = comps[ci]; if (!c) return;
+      var de = el.querySelector('.te-de'); if (!de) return;
+      de.textContent = _compDesc(c, ci);
+    });
+  }
+
   // ==========================================================================
   // LISTADO DE BARRAS (despiece) — franja mostrable/ocultable al pie de los
   // cuadrantes, con las MISMAS columnas del "Barras a crear" del Enfierrador.
@@ -4434,12 +4539,23 @@
         '<td class="te-bnum">' + largo + '</td>' +
         '<td class="te-bnum">' + kg + '</td></tr>';
     }).join('');
+    // FILA DE TOTAL — sale del MISMO `out.resumen` que el subtítulo vivo de arriba, no
+    // de sumar las filas pintadas: si se sumara acá, el día que el listado filtre o
+    // pagine (o que una fila caiga por una figura sin catálogo) el pie diría un número
+    // y el encabezado otro, y no habría forma de saber cuál miente.
+    // Reparto de las 13 columnas: 3 para el rótulo · 1 = Cant · 8 vacías · 1 = Kg,
+    // así los dos números caen JUSTO bajo su columna.
+    var tot = '<tr>' +
+      '<td colspan="3" class="te-btot">Total' + (res.items ? ' · ' + res.items + ' items' : '') + '</td>' +
+      '<td class="te-bnum">' + (res.barras || 0) + '</td>' +
+      '<td colspan="8"></td>' +
+      '<td class="te-bnum">' + _num(res.kg || 0) + '</td></tr>';
     body.innerHTML = '<table class="te-btab"><thead><tr>' +
       '<th>Tip.</th><th>Figura</th><th class="te-bnum">φ</th><th class="te-bnum">Cant</th>' +
       '<th class="te-bnum">A</th><th class="te-bnum">B</th><th class="te-bnum">C</th><th class="te-bnum">D</th>' +
       '<th class="te-bnum">α1</th><th class="te-bnum">α2</th><th class="te-bnum">R</th>' +
       '<th class="te-bnum">Largo</th><th class="te-bnum">Kg</th>' +
-      '</tr></thead><tbody>' + filas + '</tbody></table>';
+      '</tr></thead><tbody>' + filas + '</tbody><tfoot>' + tot + '</tfoot></table>';
   }
 
   // ==========================================================================
@@ -4457,13 +4573,11 @@
     var d = c.distribucion || {};
     var p = _poseDe(c);
     var caraTxt = { sup: 'superior', inf: 'inferior', lateral: 'lateral', extremo: 'extremo' }[p.cara] || p.cara;
-    // CANTIDAD REAL en el elemento = placements que el motor le atribuyó a ESTE
-    // componente (meta.ci lo estampa _etiquetarCi). Es un conteo sobre datos ya
-    // calculados: ni se re-expande la receta ni se agrupa nada.
-    var n = 0;
-    ((ST.ultimoOut && ST.ultimoOut.placements) || []).forEach(function (pl) {
-      if (pl.meta && pl.meta.ci === ST.selCi) n++;
-    });
+    // CANTIDAD REAL en el elemento — el MISMO _nBarrasComp que usa la lista de
+    // componentes (antes este conteo estaba escrito otra vez acá: dos copias de la
+    // misma cuenta que podían divergir al primer cambio).
+    var n = _nBarrasComp(ST.selCi);
+    if (n == null) n = 0;
     var modo = _modoDe(c);
     var repTxt;
     if (modo === 'arreglo') repTxt = 'arreglo ' + (d.n_capas || 2) + ' capas · @' + (d.sep || 20) + ' cm';
@@ -4512,7 +4626,7 @@
         ' no está en el catálogo vigente: esta barra no se genera.">⛔ </span>' : '') +
       (ajena ? '<span style="color:#e65100" title="' + _esc(ajena.texto) + '">⚠ </span>' : '') +
       _esc(c.tipologia) + ' · ' + _esc(c.figura) + '</div>' +
-      '<div class="te-de">' + _esc(_compDesc(c)) + '</div></div>' +
+      '<div class="te-de">' + _esc(_compDesc(c, ci)) + '</div></div>' +
       '<span class="te-sp"></span>' +
       '<button class="te-mini" data-act="dup" title="Duplicar">⧉</button>' +
       '<button class="te-mini" data-act="del" title="Quitar">🗑</button>';
@@ -6246,7 +6360,7 @@
         ST.rotX = 0.55; ST.rotY = 0.9; ST.panX = 0; ST.panY = 0;
         if (ST.target && ST.target.set) ST.target.set(0, 0, 0);
         var gg = ST.receta && ST.receta.geometria;
-        if (gg && isFinite(Number(gg.largo))) ST.dist = Number(gg.largo) * 1.15 + 160;
+        if (gg && isFinite(Number(gg.largo))) ST.dist = _clampDist(Number(gg.largo) * 1.15 + 160);
         _marcarSucio();
         _actualizarStatus('3D recentrado.');
       });
@@ -6265,9 +6379,10 @@
         _actualizarStatus(ST.verHormigon ? 'Hormigón visible.' : 'Hormigón oculto (solo las barras).');
       });
     }
-    // 🎯 ANCLAR EL GIRO EN LA SELECCIÓN. Es la función que ANTES hacía ctrl+arrastre
-    // (ver la nota de _bindOrbita): mover el pivote es un ACTO, no un modificador —
-    // como _pivotarEn anula el pan, hacerlo sin querer se leía como un reset.
+    // 🎯 ANCLAR EL GIRO EN LA SELECCIÓN — PERMANENTE, y con la pieza CENTRADA en
+    // pantalla. Es lo que distingue este botón del ctrl+arrastre (que presta el pivote
+    // mientras dura el gesto y no mueve la imagen ni un píxel): acá el usuario pidió
+    // explícitamente ir a la pieza, así que _pivotarEn TRASLADA la cámara hasta ella.
     var b3a = $('te_3dAnclar');
     if (b3a && !b3a._teBound) {
       b3a._teBound = true;
@@ -6275,12 +6390,15 @@
         e.stopPropagation();
         if (ST.selCi < 0) { _actualizarStatus('Nada seleccionado: elige una barra y vuelve a 🎯 para anclar el giro en ella.'); return; }
         _pivotarEn(_centroSeleccion3D());
-        _actualizarStatus('Giro anclado en la barra seleccionada (⟳ lo devuelve al centro).');
+        _actualizarStatus('Giro anclado en la barra seleccionada y centrada en pantalla (⟳ lo devuelve al centro).');
       });
     }
-    // EJE DE ROTACIÓN (Libre/X/Y/Z) — radial portado del Enfierrador. REGLA EXTRA
-    // pedida acá: clicar el que YA está activo devuelve a "Libre" (toggle), así se
-    // sale de la restricción sin tener que apuntar al botón de al lado.
+    // EJE DE ROTACIÓN (X/Y/Z) — radial portado del Enfierrador. Allá había un cuarto
+    // botón "Libre"; acá SOBRA (18-ago) porque clicar el que ya está activo lo apaga:
+    // NINGUNO encendido ES el estado libre, y es como arranca el editor.
+    // 'libre' sigue siendo el valor interno de ST.ejeRot (lo lee _bindOrbita), sólo
+    // que ya no tiene botón: al des-seleccionar, ningún data-eje coincide y el radial
+    // queda entero apagado.
     var ejes = $('te_3dEjes');
     if (ejes && !ejes._teBound) {
       ejes._teBound = true;
@@ -6549,23 +6667,52 @@
   // que la rueda siga girando sola. Para volver a hacer zoom hay que soltar y
   // tocar de nuevo (una pausa > _ZOOM_GAP), que es exactamente lo que hace la
   // mano. Cambiar de sentido también abre un gesto nuevo (corregir es inmediato).
-  // Perillas: _ZOOM_EV = cuánto mueve cada paso · _ZOOM_MAX = pasos por gesto ·
-  // _ZOOM_GAP = silencio que separa un gesto del siguiente.
-  var _ZOOM_EV = 1.04;        // zoom por paso
-  var _ZOOM_MAX = 6;          // pasos por gesto (tope ≈ ×1.27)
+  // Perillas: _ZOOM_PASO = cuánto mueve UN click de rueda · _ZOOM_EV_MAX = clicks
+  // que se le aceptan a UN evento · _ZOOM_GESTO = cuánto puede cambiar el zoom un
+  // gesto entero · _ZOOM_GAP = silencio que separa un gesto del siguiente.
+  //
+  // RE-ESCALADO (18-ago) — «hacer zoom es muy lento; agrandar algo considerablemente
+  // me toma mucho tiempo». Medido: del encuadre de una viga al mínimo eran ~50 clicks
+  // repartidos en 9 gestos. Tres causas, todas de la vuelta anterior:
+  //   1) se ignoraba deltaMode y la MAGNITUD de deltaY (sólo se miraba el signo), así
+  //      que un evento de 400 px valía lo mismo que uno de 10;
+  //   2) el paso era 1.04 (4% por click);
+  //   3) el tope del gesto se contaba en PASOS (6 × 4% = ×1.27), o sea que el gesto
+  //      se agotaba antes de que la imagen cambiara de forma perceptible.
+  // Ahora deltaY se normaliza a CLICKS (píxeles/100 · líneas/3 · páginas×1), el paso
+  // es 12% por click y el tope del gesto se mide en ZOOM ACUMULADO (×5), que es lo
+  // que el usuario percibe. El tope POR EVENTO sigue siendo el blindaje contra el
+  // mouse que manda un delta gigante de una sola vez: se re-escaló a 3 clicks, no se
+  // eliminó (era el bug original: un giro producía un zoom descontrolado).
+  var _ZOOM_PASO = 1.12;      // zoom por click de rueda
+  var _ZOOM_EV_MAX = 3;       // clicks que se le aceptan como máximo a UN evento
+  var _ZOOM_GESTO = 5;        // un gesto no cambia el zoom más de ×5 (ni ÷5)
   var _ZOOM_GAP = 150;        // ms de silencio que cierran el gesto
-  var _zUlt = 0, _zPasos = 0, _zSigno = 0;
+  var _zUlt = 0, _zAcum = 1, _zSigno = 0;
   function _factorZoomRueda(e) {
     var d = Number(e.deltaY) || 0;
     if (!d) return 1;
+    // deltaY viene en la unidad que diga deltaMode: 0 = píxeles (≈100 por click de
+    // rueda), 1 = líneas (3 por click), 2 = páginas (1 por click). Sin esto un mismo
+    // giro movía distinto según el navegador y el trackpad no tenía finura.
+    var m = Number(e.deltaMode) || 0;
+    var clicks = (m === 1) ? (d / 3) : (m === 2 ? d : (d / 100));
+    var sg = (clicks > 0) ? 1 : -1;
+    clicks = Math.min(Math.abs(clicks), _ZOOM_EV_MAX);
+    if (!(clicks > 0)) return 1;
     var t = Date.now();
-    var sg = (d > 0) ? 1 : -1;
     // gesto NUEVO: hubo silencio, o el usuario invirtió el sentido (corrigiendo)
-    if (t - _zUlt > _ZOOM_GAP || sg !== _zSigno) { _zPasos = 0; _zSigno = sg; }
+    if (t - _zUlt > _ZOOM_GAP || sg !== _zSigno) { _zAcum = 1; _zSigno = sg; }
     _zUlt = t;
-    if (_zPasos >= _ZOOM_MAX) return 1;   // el resto es la rueda girando sola
-    _zPasos++;
-    return (sg > 0) ? _ZOOM_EV : (1 / _ZOOM_EV);
+    var f = Math.pow(_ZOOM_PASO, sg * clicks);
+    // TOPE DEL GESTO: lo que ya se movió en este gesto + lo que pide este evento no
+    // puede pasar de ×_ZOOM_GESTO. Pasado el tope se devuelve 1 y la rueda que sigue
+    // girando sola no mueve nada hasta que la mano vuelva a tocarla.
+    var acum = _zAcum * f;
+    if (acum > _ZOOM_GESTO) { f = _ZOOM_GESTO / _zAcum; acum = _ZOOM_GESTO; }
+    else if (acum < 1 / _ZOOM_GESTO) { f = (1 / _ZOOM_GESTO) / _zAcum; acum = 1 / _ZOOM_GESTO; }
+    _zAcum = acum;
+    return (f > 0 && isFinite(f)) ? f : 1;
   }
 
   function _bindVistaOrto(plano) {
@@ -6752,6 +6899,12 @@
     ST.camera.up.set(0, 1, 0);
     ST.camera.position.set(cx + ST.target.x, cy + ST.target.y, cz + ST.target.z);
     ST.camera.lookAt(ST.target);
+    // lookAt sólo escribe el quaternion: `matrix` se recompone en el render, o sea
+    // que sin esto las columnas de abajo son las del FRAME ANTERIOR. Con el pan solo
+    // se notaba como un fotograma de retraso al panear mientras se rota, pero
+    // _pivotarEnSinMover necesita la base EXACTA de este instante (si la base está
+    // vieja, "cambiar el pivote sin mover un píxel" mueve píxeles).
+    ST.camera.updateMatrix();
     var right = new THREE.Vector3().setFromMatrixColumn(ST.camera.matrix, 0);
     var up = new THREE.Vector3().setFromMatrixColumn(ST.camera.matrix, 1);
     var shift = right.multiplyScalar(ST.panX).add(up.multiplyScalar(ST.panY));
@@ -6780,44 +6933,88 @@
     return { x: (lo.x + hi.x) / 2, y: (lo.y + hi.y) / 2, z: (lo.z + hi.z) / 2 };
   }
 
-  // Mueve el PIVOTE de la órbita al punto `p` SIN mover el ojo: se reconstruyen
-  // dist/rotX/rotY desde la posición actual de la cámara respecto del pivote nuevo y
-  // se anula el pan (que es un desplazamiento del par ojo/mira, ya absorbido en la
-  // esfera nueva). La cámara queda EXACTAMENTE donde estaba y sólo cambia hacia dónde
-  // mira: a partir de ahí el arrastre orbita en torno a `p`.
+  // ANCLAR EL GIRO EN `p` (botón 🎯) — TRASLADANDO LA CÁMARA, no re-apuntándola.
+  // Conserva rotX/rotY/dist y suelta el pan: el ojo y la mira se mueven JUNTOS hasta
+  // que `p` queda al centro de la pantalla, con la misma dirección de vista y el mismo
+  // zoom. Es un movimiento grande y a propósito (el usuario lo pidió con un botón) y
+  // se lee como "la cámara camina hasta la pieza"; re-apuntar sin mover el ojo —lo que
+  // hacía antes— se leía como un salto, porque la escena entera giraba de golpe.
+  // Para cambiar el pivote SIN mover un solo píxel está _pivotarEnSinMover.
   function _pivotarEn(p) {
-    var THREE = global.THREE;
-    if (!THREE || !ST.camera || !ST.target || !p) return;
-    _applyCam();   // la posición de la cámara refleja el estado actual (dist/rot/pan)
-    var ex = ST.camera.position.x, ey = ST.camera.position.y, ez = ST.camera.position.z;
-    var dx = ex - p.x, dy = ey - p.y, dz = ez - p.z;
-    var dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
-    if (!(dist > 1)) return;   // ojo encima del pivote: no hay esfera que derivar
+    if (!ST.camera || !ST.target || !p) return;
+    if (!isFinite(p.x) || !isFinite(p.y) || !isFinite(p.z)) return;
     ST.target.set(p.x, p.y, p.z);
     ST.panX = 0; ST.panY = 0;
-    ST.dist = Math.max(120, Math.min(6000, dist));
-    ST.rotX = Math.max(-1.45, Math.min(1.45, Math.asin(dy / dist)));
-    ST.rotY = Math.atan2(dx, dz);
     _marcarSucio();
+  }
+
+  // CAMBIA EL PIVOTE A `p` SIN MOVER UN SOLO PÍXEL. Es la pieza que faltaba: la
+  // versión vieja de ctrl+arrastre re-apuntaba la cámara al punto nuevo (target.set +
+  // lookAt) y encima anulaba el pan, así que si la barra no estaba justo al centro la
+  // imagen SALTABA — por eso se había quitado el ctrl orbitando la selección.
+  // Acá el ojo y la dirección de vista se dejan intactos y sólo se reparte el estado:
+  // la distancia nueva es la PROYECCIÓN de `p` sobre el eje de vista (o sea, el plano
+  // de `p`), y lo que `p` está corrido respecto del centro de la pantalla —la sombra,
+  // el componente perpendicular a la vista— se guarda tal cual en el pan. Como
+  // _applyCam reconstruye el ojo como target + dist·atrás + pan, la suma vuelve a dar
+  // exactamente el mismo ojo. Devuelve false si no pudo (p detrás del ojo).
+  function _pivotarEnSinMover(p) {
+    var THREE = global.THREE;
+    if (!THREE || !ST.camera || !ST.target || !p) return false;
+    if (!isFinite(p.x) || !isFinite(p.y) || !isFinite(p.z)) return false;
+    _applyCam();   // deja cámara y matriz exactamente como se están viendo
+    var m = ST.camera.matrix;
+    var right = new THREE.Vector3().setFromMatrixColumn(m, 0).normalize();
+    var up = new THREE.Vector3().setFromMatrixColumn(m, 1).normalize();
+    // la columna 2 es el +Z de la cámara, que apunta HACIA ATRÁS: la vista es su opuesto
+    var v = new THREE.Vector3().setFromMatrixColumn(m, 2).normalize().multiplyScalar(-1);
+    var w = new THREE.Vector3(ST.camera.position.x - p.x, ST.camera.position.y - p.y, ST.camera.position.z - p.z);
+    var wv = w.dot(v);
+    var distN = -wv;
+    if (!(distN > 0)) return false;   // p está detrás de la cámara: no hay pivote posible
+    var sombra = new THREE.Vector3().copy(w).addScaledVector(v, -wv);
+    ST.target.set(p.x, p.y, p.z);
+    ST.dist = _clampDist(distN);
+    ST.rotX = Math.max(-1.45, Math.min(1.45, Math.asin(-v.y)));
+    ST.rotY = Math.atan2(-v.x, -v.z);
+    ST.panX = sombra.dot(right);
+    ST.panY = sombra.dot(up);
+    _marcarSucio();
+    return true;
+  }
+
+  // ABSORBE EL PAN DENTRO DEL PIVOTE — invisible, y evita de raíz el enganche del
+  // zoom-hacia-el-cursor: ese zoom hace crecer el pan, y como el pivote se queda
+  // donde estaba (a menudo el origen), termina fuera de pantalla; al rotar, la escena
+  // "se va volando" porque gira en torno a un punto que no se ve. Mover el pivote al
+  // punto que está AL CENTRO DE LA PANTALLA (a la distancia actual) deja el pan en
+  // cero sin mover la imagen: el giro siempre es en torno a lo que se está mirando.
+  function _absorberPanEnTarget() {
+    var THREE = global.THREE;
+    if (!THREE || !ST.camera || !ST.target) return;
+    if (!ST.panX && !ST.panY) return;
+    _applyCam();
+    var v = new THREE.Vector3().setFromMatrixColumn(ST.camera.matrix, 2).normalize().multiplyScalar(-1);
+    _pivotarEnSinMover(new THREE.Vector3().copy(ST.camera.position).addScaledVector(v, ST.dist));
   }
 
   // BUG 4 — PAN del 3D rotaba en vez de panear. Rediseño del reparto de botones con un
   // ÚNICO estado 'mode' ('pan' | 'rot' | null) fijado en el mousedown, mutuamente
   // exclusivo (antes había 2 flags drag/panning que podían quedar mal). Reparto:
   //   · botón IZQUIERDO sin modificador     → ROTAR (órbita en torno al pivote actual)
-  //   · CTRL/⌘ + izquierdo                  → ROTAR FINO (misma rotación, sensibilidad
-  //       dividida por SENS_FINA). NADA MÁS: no toca el pivote ni el pan.
+  //   · CTRL/⌘ + izquierdo                  → ROTAR EN TORNO A LA PIEZA SELECCIONADA
   //   · botón MEDIO, botón DERECHO, o SHIFT/ALT+izq → PAN
   //
-  // POR QUÉ CAMBIÓ EL CTRL (17-ago). Antes ctrl+arrastre RE-PIVOTEABA en el centro de
-  // la selección, y _pivotarEn anula el pan: al usuario le saltaba la imagen y lo leía
-  // como un reset ("el Ctrl nunca fue para eso, la idea era tener un controlador
-  // adicional que permitiera mejorar la rotación"). El re-pivoteo no se perdió: pasó a
-  // ser una acción EXPLÍCITA, el botón 🎯 del cuadrante 3D (te_3dAnclar) — que es donde
-  // se entiende, porque mover el punto de giro es un acto, no un modificador.
-  // Con eso el pivote sólo cambia cuando alguien lo pide (🎯 o ⟳ recentrar), así que
-  // TAMPOCO hace falta el re-pivoteo automático al centro que llevaba el arrastre
-  // normal: se quitó, y con él la otra mitad del «me resetea la imagen».
+  // EL CTRL, TERCERA VUELTA (18-ago). Originalmente ctrl+arrastre orbitaba la barra
+  // seleccionada (que es lo que hace Revit y lo que el usuario quiere). Se quitó
+  // porque «reseteaba la imagen», y en la vuelta anterior el ctrl pasó a ser una
+  // "rotación fina" — que no era el problema: el usuario dijo explícitamente que la
+  // velocidad no le molestaba. La causa real del salto era _pivotarEn, que re-apuntaba
+  // la cámara al punto nuevo y anulaba el pan. Con _pivotarEnSinMover el pivote cambia
+  // sin mover un píxel, así que el ctrl vuelve a hacer lo que tenía que hacer.
+  // Y es un MODIFICADOR de verdad: al apretarlo se guarda el pivote anterior y al
+  // soltarlo (o al terminar el arrastre) se restaura, también sin salto — no queda
+  // estado pegado. Anclar el giro PERMANENTEMENTE sigue siendo el botón 🎯.
   //
   // El mousedown captura el botón real (e.button) Y los modificadores del PROPIO evento
   // (no de un mousemove posterior, que podía llegar sin shift y caer a rotar). El middle
@@ -6825,17 +7022,34 @@
   // autoscroll del navegador (que se tragaba los mousemove y hacía que "no paneara").
   function _bindOrbita(cv) {
     var mode = null, lx = 0, ly = 0;
+    // Estado del MODIFICADOR ctrl mientras dura el arrastre: si está activo y cuál era
+    // el pivote antes de secuestrarlo (para devolverlo al soltar).
+    var ctrlOn = false, pivotePrev = null, ctrlAviso = false;
+    // Suelta el pivote prestado al ctrl. Va sin salto, igual que al tomarlo.
+    function _soltarPivoteCtrl() {
+      ctrlAviso = false;
+      if (!ctrlOn) return;
+      ctrlOn = false;
+      if (pivotePrev) _pivotarEnSinMover(pivotePrev);
+      pivotePrev = null;
+    }
     cv.addEventListener('contextmenu', function (e) { e.preventDefault(); });   // botón der = pan, no menú
     cv.addEventListener('auxclick', function (e) { if (e.button === 1) e.preventDefault(); });   // mata autoscroll medio
     cv.addEventListener('mousedown', function (e) {
       lx = e.clientX; ly = e.clientY;
       // PAN si: botón medio (1) · botón derecho (2) · o izquierdo con shift/alt.
       var quierePan = (e.button === 1 || e.button === 2 || e.shiftKey || e.altKey);
-      if (e.button === 0 && !quierePan) mode = 'rot';   // con o sin ctrl: rotar (fino con ctrl)
+      if (e.button === 0 && !quierePan) mode = 'rot';   // con o sin ctrl: rotar
       else mode = quierePan ? 'pan' : null;
       if (mode) e.preventDefault();
     });
-    global.addEventListener('mouseup', function () { mode = null; });
+    global.addEventListener('mouseup', function () {
+      _soltarPivoteCtrl();
+      // Fin de un gesto de PAN: el pivote vuelve a lo que quedó al centro (ver
+      // _absorberPanEnTarget). Sin esto el giro siguiente sale volando.
+      if (mode === 'pan') _absorberPanEnTarget();
+      mode = null;
+    });
     global.addEventListener('mousemove', function (e) {
       if (!mode) return;
       var dx = e.clientX - lx, dy = e.clientY - ly;
@@ -6844,9 +7058,24 @@
         ST.panX -= dx * ST.dist * 0.0011; ST.panY += dy * ST.dist * 0.0011;
       } else {   // rot
         // El modificador se lee del PROPIO mousemove (no del mousedown) para poder
-        // afinar A MITAD del gesto: se encuadra grueso y se remata con ctrl apretado
-        // sin soltar el botón.
-        var k = 0.008 / ((e.ctrlKey || e.metaKey) ? SENS_FINA : 1);
+        // apretarlo y soltarlo A MITAD del gesto: se encuadra girando en torno al
+        // centro y se remata girando en torno a la pieza, sin soltar el botón.
+        var conCtrl = !!(e.ctrlKey || e.metaKey);
+        if (!conCtrl) _soltarPivoteCtrl();
+        else if (!ctrlOn) {
+          if (ST.selCi < 0) {
+            // Sin selección no hay en torno a qué girar: se rota normal y se dice UNA
+            // vez (el mousemove llega decenas de veces por segundo).
+            if (!ctrlAviso) {
+              ctrlAviso = true;
+              _actualizarStatus('Ctrl gira en torno a la pieza seleccionada: no hay ninguna, se gira en torno al centro.');
+            }
+          } else {
+            var prev = { x: ST.target.x, y: ST.target.y, z: ST.target.z };
+            if (_pivotarEnSinMover(_centroSeleccion3D())) { ctrlOn = true; pivotePrev = prev; }
+          }
+        }
+        var k = 0.008;
         // EJE DE GIRO restringido (portado del Enfierrador): con un eje elegido el
         // arrastre sólo mueve ESA rotación; el otro grado de libertad queda quieto.
         // LAS LETRAS SON LAS VISIBLES DE ESTE EDITOR (EJE_DISPLAY): acá la vertical
@@ -6869,11 +7098,101 @@
       }
       _marcarSucio();   // PERF: la cámara 3D cambió → repintar
     });
+    // ZOOM HACIA EL CURSOR — antes el zoom iba siempre al centro del cuadrante, así
+    // que al acercarse el detalle que se estaba mirando se salía de cuadro y había que
+    // panear a mano. Se resuelve con el PAN que ya existe, sin raycasting: _applyCam
+    // desplaza la cámara con panX·derecha + panY·arriba, que es exactamente el plano
+    // de pantalla, así que basta con corregir el pan en la fracción que el punto bajo
+    // el cursor se movería. u/v son ese punto en unidades de mundo sobre el plano del
+    // pivote (lo que entra en pantalla a la distancia vieja).
+    var _absTimer = null;
     cv.addEventListener('wheel', function (e) {
-      e.preventDefault(); ST.dist *= _factorZoomRueda(e);
-      ST.dist = Math.max(120, Math.min(6000, ST.dist));
+      e.preventDefault();
+      var d0 = ST.dist;
+      ST.dist = _clampDist(ST.dist * _factorZoomRueda(e));
+      var r = cv.getBoundingClientRect();
+      if (r.width > 1 && r.height > 1 && d0 > 0) {
+        var halfH = d0 * Math.tan(FOV3D * Math.PI / 360);
+        var halfW = halfH * (r.width / r.height);
+        var u = ((e.clientX - r.left) / r.width * 2 - 1) * halfW;
+        var v = -((e.clientY - r.top) / r.height * 2 - 1) * halfH;
+        // f se calcula DESPUÉS del clamp: con el factor pedido (y no el aplicado) la
+        // imagen deriva de a poco cada vez que se llega a un tope.
+        var f = ST.dist / d0;
+        ST.panX += u * (1 - f);
+        ST.panY += v * (1 - f);
+      }
+      // Fin del gesto de rueda = mismo silencio que usa _factorZoomRueda. Ahí el pan
+      // acumulado se absorbe en el pivote (ver _absorberPanEnTarget).
+      if (_absTimer) global.clearTimeout(_absTimer);
+      _absTimer = global.setTimeout(function () { _absTimer = null; _absorberPanEnTarget(); }, _ZOOM_GAP);
       _marcarSucio();
     }, { passive: false });
+  }
+
+  // ==========================================================================
+  // LUPA — MAXIMIZAR UN CUADRANTE (18-ago). Vale para los 4 (el 3D y las 3 orto).
+  //
+  // El layout lo hace SOLO el CSS (#te_quad.te-maxon): los otros 3 cuadrantes se
+  // ocultan y el elegido ocupa las 2 filas × 2 columnas. #te_quad NO cambia de
+  // tamaño, así que el canvas del renderer —que lo cubre entero— tampoco: _resize
+  // no tiene nada que hacer y no se le pide nada.
+  //
+  // Lo que sí cambia son los RECTS de las vistas, y ahí hay dos mundos distintos:
+  //   · el RENDER (3D y las 3 orto) lee el rect de cada .te-vista por frame
+  //     (_render3DQuad / _renderVistasOrto), así que se adapta solo; los cuadrantes
+  //     ocultos miden 0 y sus pases se saltan con el `if (w < 2 || h < 2)` que ya
+  //     estaba.
+  //   · el OVERLAY SVG NO: su transform sale de la cámara orto encuadrada con el
+  //     ASPECTO del cuadrante (_transformDesdeCamara → _encuadrarOrto). Maximizar
+  //     cambia ese aspecto de golpe, y sin re-emitirlo el hit-testing, los nodos y
+  //     la flecha de rango quedan corridos respecto de lo que se ve dibujado.
+  //     Por eso el _sincronizarOverlayOrto() del final: es obligatorio, no cosmético.
+  // ==========================================================================
+  function _vistaMaximizada() {
+    var quad = $('te_quad');
+    return quad ? quad.querySelector('.te-vista.te-max') : null;
+  }
+
+  // vista = el .te-vista a maximizar · null (o la que ya estaba) = volver a los 4.
+  function _maximizarVista(vista) {
+    var quad = $('te_quad'); if (!quad) return;
+    var destino = (vista && vista !== _vistaMaximizada()) ? vista : null;
+    Array.prototype.forEach.call(quad.querySelectorAll('.te-vista'), function (v) {
+      var esta = (v === destino);
+      v.classList.toggle('te-max', esta);
+      var b = v.querySelector('.te-vzoom');
+      if (!b) return;
+      b.classList.toggle('on', esta);
+      // 🔍 = agrandar · ⤡ = volver. La flecha diagonal en vez de otro emoji porque el
+      // estado ya lo canta el fondo verde (.on) y hace falta un icono que se LEA como
+      // "encoger", no como una segunda lupa.
+      b.textContent = esta ? '⤡' : '🔍';
+      b.title = esta ? 'Volver a los 4 cuadrantes (Esc)' : 'Agrandar este cuadrante';
+    });
+    quad.classList.toggle('te-maxon', !!destino);
+    _marcarSucio();               // render-on-demand: los viewports cambiaron de rect
+    _sincronizarOverlayOrto();    // …y el overlay SVG hay que recalcularlo (ver la nota)
+    _actualizarStatus(destino
+      ? 'Cuadrante agrandado — la lupa o Esc vuelven a los 4.'
+      : 'De vuelta a los 4 cuadrantes.');
+  }
+
+  function _bindLupas() {
+    var quad = $('te_quad'); if (!quad) return;
+    Array.prototype.forEach.call(quad.querySelectorAll('.te-vzoom'), function (b) {
+      if (b._teBound) return;
+      b._teBound = true;
+      // El botón es HERMANO del SVG overlay y vive dentro del .te-vista, que es donde
+      // se cablean el pan de las orto y la órbita del 3D: sin cortar el mousedown, un
+      // clic en la lupa arrancaba un arrastre de cámara.
+      b.addEventListener('mousedown', function (e) { e.stopPropagation(); });
+      b.addEventListener('click', function (e) {
+        e.stopPropagation(); e.preventDefault();
+        var v = b.parentNode;
+        _maximizarVista((v && v.classList.contains('te-vista')) ? v : null);
+      });
+    });
   }
 
   // El canvas del renderer cubre TODA la grilla te_quad (para pintar los 4
@@ -7101,6 +7420,7 @@
     _bindWarnTamano();           // ✕ del banner anti-colapso
     _bindBorrador();             // [Recuperar] / [Descartar] de la barra de borrador
     _bindBarras();               // sección colapsable "📋 Barras" (despiece)
+    _bindLupas();                // 🔍 por cuadrante — maximizar / volver a los 4
     _actualizarTitulosVista();   // BUG 8: títulos + GIZMO gráfico de ejes por vista
     _setQuadCursor();
     // Al redimensionar la ventana, el overlay de voltear se re-pega a la pieza.
@@ -7249,12 +7569,16 @@
     var bd = $('te_backdrop');
     if (bd && e.target === bd) global.templateEditorCerrar();
   });
-  // Escape (tarea 4): 1º sale del MODO COLOCACIÓN (mata el ghost, vuelve a
-  // Seleccionar) · 2º cierra el modal.
+  // Escape — se deshace de lo más superficial a lo más profundo: 1º deshace la
+  // MAXIMIZACIÓN de un cuadrante (18-ago) · 2º sale del MODO COLOCACIÓN (mata el
+  // ghost, vuelve a Seleccionar) · 3º cierra el modal. La lupa va primero a propósito:
+  // con un cuadrante agrandado, el reflejo es apretar Esc para volver a los 4, y si
+  // eso cerrara el editor el usuario perdería la pantalla por querer salir del zoom.
   document.addEventListener('keydown', function (e) {
     if (e.key !== 'Escape') return;
     var bd = $('te_backdrop');
     if (!bd || !bd.classList.contains('on')) return;
+    if (_vistaMaximizada()) { _maximizarVista(null); return; }
     if (ST.tool === 'colocar') { _salirModoColocacion(); return; }
     global.templateEditorCerrar();
   });
@@ -8128,6 +8452,8 @@
     _ladoDomElegido: _ladoDomElegido, _setLadoDominante: _setLadoDominante,
     _tramoDominanteEnTrazo: _tramoDominanteEnTrazo,             // rango [i0,i1] en el trazo
     _centroSeleccion3D: _centroSeleccion3D, _pivotarEn: _pivotarEn,   // órbita en torno a la selección
+    _pivotarEnSinMover: _pivotarEnSinMover, _absorberPanEnTarget: _absorberPanEnTarget,
+    _factorZoomRueda: _factorZoomRueda, _clampDist: _clampDist,   // zoom de rueda + techo de acercamiento
     // INTERACCIÓN-2.0 · orientación de la pieza + snap de cara
     rotarPlanoPieza: rotarPlanoPieza,                           // cicla (o fija) la orientación + regenera
     _orientacionDe: _orientacionDe, _orientacionSiguiente: _orientacionSiguiente,
