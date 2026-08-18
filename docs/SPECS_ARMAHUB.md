@@ -973,6 +973,17 @@ por nombre — dibujar con el nombre del catálogo pega la geometría a esa figu
 figuras dibujadas (editar/borrar). Etiquetas α1/α2… en los vértices (convención aSa: 90° no
 cuenta como α, solo los especiales van a `angulos`).
 
+**Convención del campo `angulos` (verificado 17-ago):** guarda el **GIRO del doblez**, no el ángulo
+interno del vértice — un gancho sísmico se anota **135**, y así lo traza el motor. El **export aSa lo
+manda tal cual** (`ang1..4` → `"<135"`, sin convertir: `export.py`). **OJO — la columna está MIXTA:**
+las figuras dibujadas en el Diseñador **antes del 14-ago** quedaron en ángulo INTERNO (migración 085,
+que guardaba 180−giro) y nadie las reconcilió; se detectan porque `angulos[k] + giro_k = 180`. El SVG
+del catálogo no las delata (dibuja desde `geometria.puntos`), pero el **trazador del modelador sí usa
+`angulos` como giro** (`figura_puntos.js:1208-1210`), así que una fila mixta se dibuja distinta ahí **y**
+exporta el número equivocado a aSa. **Decisión de
+convención pendiente del usuario** (unificar a GIRO o a INTERNO) — se cierra contrastando un CSV real
+de aSa. Detalle en `docs/programa_modelador_3d.md`.
+
 **Modelo de geometría** (campo `geometria` JSONB de `figuras_catalogo`):
 ```
 { dim:"2D"|"3D",
