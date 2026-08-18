@@ -4442,6 +4442,7 @@
     anclarPosHint: anclarPosHint,      // (comp, host, forzar) — escribe comp.pos_ancla
     posHintResuelto: posHintResuelto,  // (comp, host) → {x,y,z} ya resueltos
     reanclarReceta: reanclarReceta,    // receta entera: ancla lo que falte + re-deriva
+    tramosElasticos: _tramosElasticos, // (tramos, diff, avisos?) → el MEDIO absorbe
     migracionDe: migracionDe,              // { derivados, avisos, figura_desconocida }
     dimsDeclaradas: _dimsDecl,             // dims canónicas ({modo,valor} por letra)
     distribucionDe: _distDe,               // distribución canónica (modo resuelto)

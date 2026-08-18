@@ -1050,6 +1050,18 @@
   // uno que creció se lo entrega al último. Devuelve una lista NUEVA (no muta).
   function _ajustarTramos(arr, total) {
     if (!arr || !arr.length) return [{ long: total, sep: 20 }];
+    // EL SOBRANTE LO ABSORBE EL TRAMO DEL MEDIO, igual que al cambiar el hormigón
+    // (18-ago). Antes esta función se lo daba al ÚLTIMO —el bucle de abajo cierra el
+    // último en `total`—, así que arrastrar el handle del rango y agrandar el elemento
+    // repartían distinto: el confinamiento del extremo lejano se quedaba flotando en
+    // el vano. Es UNA sola regla y vive en el motor (reglas._tramosElasticos), no
+    // duplicada acá: con nº par de tramos reparte entre los dos del medio.
+    var R = global.ModeladorReglas;
+    if (R && R.tramosElasticos) {
+      var suma = 0;
+      for (var s = 0; s < arr.length; s++) suma += Number(arr[s].long) || 0;
+      arr = R.tramosElasticos(arr, total - suma, null);
+    }
     var acc = 0, out = [];
     for (var i = 0; i < arr.length; i++) {
       var ini = Math.min(acc, total);
@@ -4583,7 +4595,10 @@
     if (!dm.pushed) { _pushUndo(); dm.pushed = true; }   // snapshot en el 1er move real
     var mov = (dm.eje === 'u') ? (uv.u - dm.uv0.u) : (uv.v - dm.uv0.v);
     var afuera = (dm.ladoUV === '+') ? mov : -mov;       // + = agrandar la pieza
-    var delta = Math.round((dm.delta0 + afuera / (dm.ratio || 1)) * 2) / 2;   // paso 0.5 cm
+    // PASO 1 cm, el mismo del resto de los arrastres: era 0.5 y el usuario lo corrigió
+    // el 18-ago — «no fabricamos al milímetro, fabricamos al centímetro».
+    var pasoT = PASO_ARRASTRE_CM;
+    var delta = Math.round((dm.delta0 + afuera / (dm.ratio || 1)) / pasoT) * pasoT;
     c.dims = c.dims || {};
     var d = c.dims[dm.L];
     if (!d || typeof d !== 'object') {
