@@ -68,9 +68,20 @@
   // que se dibujaba como estribo siendo una cadena abierta con quiebres de 45°).
   var MAX_LADOS_DIBUJABLES = 4;
 
-  // Ángulo con que el catálogo describe el GANCHO SÍSMICO (el doblez del estribo).
-  // Es el único ángulo compatible con un marco CERRADO: cualquier otro valor
-  // listado (45° = quiebre/pata inclinada) describe una cadena que NO cierra.
+  // Valor con que el CATÁLOGO marca el GANCHO SÍSMICO (el doblez del estribo).
+  // Es el único valor compatible con un marco CERRADO: cualquier otro listado
+  // (45°) describe una cadena que NO cierra.
+  //
+  // OJO — ES UN MARCADOR DE LA FICHA, NO UNA ENTRADA DEL DIBUJO (18-ago). Desde que
+  // el número del catálogo se lee como ÁNGULO DEL VÉRTICE (ver `_giroDeVertice`),
+  // este 135 NO es "el recorrido del gancho": es literalmente el número que las
+  // 104x/106x traen escrito en `figuras_catalogo.angulos` y con el que se las
+  // identifica. El gancho de verdad lo traza `_estriboPerimetral`, que nunca lee
+  // `angulos` y lleva su arco sísmico calibrado escrito a mano.
+  // NO "CORREGIR" ESTE 135 A 45 (medido): con 45 el marco deja de reconocerse, la
+  // 104D se cae a la cadena genérica y sus lados pasan de 24/52/24/52 a
+  // 17,9/7,5/7,5/17,9 — un estribo deforme. Se cambió la INTERPRETACIÓN del dato,
+  // no el dato.
   var ANG_GANCHO = 135;
 
   // ¿La figura es un PERÍMETRO CERRADO (lo que dibuja _estriboPerimetral: un marco
@@ -960,8 +971,9 @@
   //
   // De ahí salen las tres reglas de este bloque, y ninguna es una interpretación:
   //
-  //  1. EL LARGO NO SE TOCA. El ángulo entra como GIRO en `_cadena2D`, que decide la
-  //     DIRECCIÓN del tramo; el LARGO de cada tramo lo sigue dando su dim. Por
+  //  1. EL LARGO NO SE TOCA. El ángulo entra —traducido a GIRO por `_giroDeVertice`—
+  //     en `_cadena2D`, que decide la DIRECCIÓN del tramo; el LARGO de cada tramo lo
+  //     sigue dando su dim. Por
   //     construcción, mover un ángulo no puede cambiar ni un lado ni el largo de
   //     corte ni los kg: mueve la punta, no la barra. (Con dims 'auto' sí cambian,
   //     y debe ser así: el 'auto' es una respuesta al hormigón y la figura cambió de
@@ -971,12 +983,15 @@
   //  2. EL RANGO ES EL DE SU PROPIO DOBLEZ. El valor del catálogo es el que MANDA el
   //     rango: si nace ≤ 90° se mueve en (0, 90]; si nace > 90° se mueve en [90,
   //     180). Fuera de ahí NO se aproxima ni se recorta: se IGNORA (queda el del
-  //     catálogo) y se AVISA, porque cruzar el rango es otra figura — un gancho de
-  //     135° convertido en un quiebre de 45° deja de cerrar el estribo, y eso no es
-  //     "el mismo fierro un poco distinto".
-  //     Los extremos abiertos (0 y 180) tampoco entran: 0 = el tramo sigue recto (no
-  //     hay doblez) y 180 = la pata se pliega sobre el cuerpo. Los dos describen una
-  //     figura que no existe en el catálogo.
+  //     catálogo) y se AVISA, porque cruzar el rango es otra figura — un vértice
+  //     abierto de 135° convertido en un vértice cerrado de 45° es un gancho
+  //     replegado, y eso no es "el mismo fierro un poco distinto".
+  //     Los extremos abiertos (0 y 180) tampoco entran, y con la convención de
+  //     VÉRTICE (18-ago) son estos: vértice 180° = el tramo sigue recto (no hay
+  //     doblez) y vértice 0° = la pata se pliega sobre el cuerpo. Los dos describen
+  //     una figura que no existe en el catálogo. (Leído como recorrido eran los
+  //     mismos dos números al revés — por eso la CUENTA del rango no cambia: el
+  //     corte en 90° es su propio espejo. Ver `rangoAngulo`.)
   //
   //  3. QUÉ ÁNGULO ES EL 1/2/3/4 LO DICE EL CATÁLOGO, NO ESTE MÓDULO. El mapa
   //     slot → doblez se LEE de la misma fuente que produjo la lista de ángulos:
@@ -1005,6 +1020,51 @@
   // núcleo y su gancho es el arco sísmico calibrado. Un override ahí es mudo, así que
   // `trazoLeeAngulos` lo declara y reglas.js lo AVISA en vez de dejar al usuario
   // moviendo un número que no mueve la barra.
+  // ===========================================================================
+  // QUÉ NÚMERO ES EL ÁNGULO: EL DEL VÉRTICE (convención CERRADA POR EL USUARIO,
+  // 18-ago-2026)
+  // ===========================================================================
+  // `figuras_catalogo.angulos` —y por lo tanto ang1..ang4 del despiece, que es lo
+  // que viaja a aSa— es el ÁNGULO DEL VÉRTICE: el que queda ENTRE LOS DOS TRAMOS DE
+  // FIERRO que concurren en el doblez. NO es el recorrido del doblado.
+  //
+  //     vértice = 180 − recorrido        recorrido = 180 − vértice
+  //
+  // El caso que fija la convención es la 102B: su ficha dice 135°, y esos 135° son
+  // los que se miden ENTRE la pata y el cuerpo; el recorrido del doblado —cuánto se
+  // desvía el tramo respecto de seguir recto— es 180 − 135 = 45°.
+  //
+  // POR QUÉ ESTA NOTA REEMPLAZA A LA ANTERIOR. Hasta el 17-ago este módulo declaraba
+  // lo contrario («EL ÁNGULO DEL CATÁLOGO ES EL GIRO») y metía el número del catálogo
+  // DIRECTO como `giro` de `_cadena2D`. Medido sobre el trazo con producto punto: en
+  // las 40 figuras de familia 'cadena' que declaran ángulo, el vértice DIBUJADO
+  // salía exactamente 180 − el de la ficha (la 102C, ficha 45, se dibujaba con
+  // vértice 135; la 103B, ficha 45/45, con 135/135). O sea que la 102B y la 102C
+  // salían INTERCAMBIADAS respecto de su propia ficha. La decisión del usuario es
+  // que el dato del catálogo está BIEN y lo que estaba mal era la LECTURA: se cambia
+  // la interpretación, NO el dato.
+  //
+  // DÓNDE SE TRADUCE, Y EN UN SOLO SITIO: `_giroDeVertice`. Todo lo que alimenta el
+  // trazador (`derivarTramos` para las figuras del seed, `_aplicarAngDibujo` para
+  // las dibujadas en el Diseñador) pasa por ahí. Aguas abajo, `tramos[i].giro` sigue
+  // siendo el RECORRIDO —es la convención de `_cadena2D` y la de
+  // `disenador.js::geometriaAPuntos`, y no se toca— así que los solvers que leen
+  // giros (ejesCadenaSeccion, ejesCadenaLong, autoProfundidadLong, sobresCadena…)
+  // siguieron correctos sin cambiar una línea: leen el trazo, no la ficha.
+  //
+  // LO QUE NO SE TOCA (medido, no supuesto):
+  //   · el DATO del catálogo. `_esPerimetro` reconoce el marco cerrado exigiendo que
+  //     todos los ángulos listados valgan 135 (ANG_GANCHO). Si se "corrigiera" el
+  //     dato a 45 el estribo dejaría de reconocerse y se dibujaría deforme (sus
+  //     lados pasan de 24/52/24/52 a 17,9/7,5/7,5/17,9). El 135 de una 104D es un
+  //     MARCADOR de identidad en la ficha, no una entrada del dibujo;
+  //   · el trazo del marco cerrado. `_estriboPerimetral` nunca lee `angulos`: su
+  //     gancho es el arco sísmico calibrado de 135° de RECORRIDO, escrito a mano ahí.
+  //     104D / 104B(rol estribo) / 106A quedan byte-idénticas antes y después.
+  function _giroDeVertice(v) {
+    return 180 - (Number(v) || 0);
+  }
+
   function angulosCatalogo(figura) {
     var spec = _spec(figura);
     if (!spec) return null;
@@ -1028,10 +1088,16 @@
     return m;
   }
 
-  // COLOCACIÓN DE UNA FIGURA DIBUJADA: el diseñador guarda en `angulos` sólo los
-  // dobleces ESPECIALES (giro ≠ 90 y ≠ 0), en orden de trazado — ver
-  // disenador.js::_guardarFigura. Se lee el mismo filtro para saber a qué vértice
-  // corresponde cada α.
+  // COLOCACIÓN DE UNA FIGURA DIBUJADA: el diseñador lista en `angulos` sólo los
+  // dobleces ESPECIALES, en orden de trazado — ver disenador.js::_guardarFigura. Se
+  // lee el mismo filtro para saber a qué vértice corresponde cada α.
+  // EL FILTRO SE HACE SOBRE EL `giro` (≠ 90 y ≠ 0) A PROPÓSITO, aunque desde el
+  // 18-ago el VALOR guardado sea el ángulo del VÉRTICE: `tramos[i].giro` es la
+  // convención del TRAZADO y no cambió, y los dos filtros seleccionan exactamente
+  // los mismos dobleces (giro ∉ {0,90} ⟺ vértice ∉ {180,90}). El diseñador filtra
+  // igual — por giro — y traduce sólo el valor, así que las dos listas quedan en el
+  // mismo orden. Si alguna vez divergieran, el α del gancho caería sobre una
+  // esquina de 90°.
   function _mapaAngDibujo(tramos, nAng) {
     var m = [], i, g;
     for (i = 1; i < tramos.length; i++) {
@@ -1054,6 +1120,26 @@
 
   // Rango en el que puede moverse el ángulo `i` de esta figura → {lo, hi} o null.
   // Lo fija el valor del CATÁLOGO (el sugerido): es SU doblez el que tiene rango.
+  //
+  // LECTURA (18-ago): `base` y el valor que se compara contra el rango son ÁNGULOS
+  // DE VÉRTICE (ver `_giroDeVertice`). Las dos familias físicas son:
+  //   · VÉRTICE ABIERTO, (90, 180)  → recorrido (0, 90): quiebre suave / pata
+  //     inclinada. Lo que el catálogo lista como 135 (102B, 103D, 105F…).
+  //   · VÉRTICE CERRADO, (0, 90)    → recorrido (90, 180): gancho replegado sobre
+  //     el cuerpo. Lo que el catálogo lista como 45 (102C, 103B, 105B…).
+  // Un override sólo se mueve DENTRO de la familia con la que nace: pasar de un
+  // vértice de 135° a uno de 45° no es afinar un control, es plegar la pata sobre
+  // la barra — otra figura.
+  //
+  // LA CUENTA NO CAMBIÓ AL CAMBIAR LA CONVENCIÓN, Y ES A PROPÓSITO: el corte en 90°
+  // es su propio espejo (180 − 90 = 90), así que la partición {(0,90], [90,180)} es
+  // la MISMA leída como vértice o como recorrido, y `base` sale del mismo dato del
+  // catálogo en los dos casos. Consecuencia buscada: NINGÚN override ya guardado en
+  // una receta se queda fuera de rango en silencio — el rango que lo aceptaba antes
+  // lo sigue aceptando. Lo que sí cambia es lo que ese número DIBUJA (un 110 guardado
+  // para una 102B dibujaba antes un recorrido de 110° y ahora un vértice de 110°, o
+  // sea un recorrido de 70°), y eso es exactamente el cambio pedido: es la misma
+  // reinterpretación que reciben los valores del catálogo.
   function rangoAngulo(figura, i) {
     var cat = angulosCatalogo(figura);
     if (!cat) return null;
@@ -1096,15 +1182,16 @@
         motivo: 'el ángulo ' + (k + 1) + ' del catálogo vale ' + base + '°, que no ' +
           'describe un doblez: no hay rango en el que moverlo' };
     }
-    // Extremos ABIERTOS: 0 = sin doblez, 180 = la pata plegada sobre el cuerpo.
-    // El 90 es la frontera y pertenece a los dos rangos (es un doblez legítimo en
-    // cualquiera de ellos).
+    // Extremos ABIERTOS, leídos como VÉRTICE (18-ago): vértice 180° = el tramo sigue
+    // recto (no hay doblez) y vértice 0° = la pata queda plegada sobre el cuerpo.
+    // Los dos son degenerados y quedan fuera. El 90 es la frontera y pertenece a los
+    // dos rangos (es un doblez legítimo en cualquiera de ellos).
     var dentro = (r.lo === 0) ? (v > 0 && v <= 90) : (v >= 90 && v < 180);
     if (!dentro) {
       return { ok: false, valor: null, base: base, vacio: false,
         motivo: v + '° se sale del rango de su doblez (' + r.lo + '–' + r.hi +
-          '°, el que le da su ángulo de catálogo ' + base + '°): cambiar de rango ' +
-          'sería otra figura' };
+          '°, el que le da el ángulo de vértice ' + base + '° del catálogo): ' +
+          'cambiar de rango sería otra figura' };
     }
     return { ok: true, valor: v, base: base, vacio: false, motivo: null };
   }
@@ -1150,6 +1237,9 @@
   // Aplica el override sobre unos tramos DIBUJADOS (los del Diseñador): clona y
   // reescribe el `giro` del doblez que le toca a cada slot, conservando el
   // `sentido` (el override mueve la MAGNITUD del doblez, no la mano de la figura).
+  // El override viene en la convención del catálogo (VÉRTICE) y `tramos[i].giro` es
+  // el RECORRIDO, así que se traduce con `_giroDeVertice` — el mismo paso que hace
+  // `derivarTramos` para las figuras del seed.
   function _aplicarAngDibujo(figura, tramos, ovr) {
     var mapa = mapaAngulosFigura(figura);
     if (!mapa || !mapa.length) return tramos;
@@ -1162,7 +1252,7 @@
       if (!out) out = tramos.map(function (t) {
         return { lado: t.lado, giro: t.giro, sentido: t.sentido, tipo: t.tipo, radio: t.radio };
       });
-      out[d + 1].giro = v.valor;
+      out[d + 1].giro = _giroDeVertice(v.valor);
     }
     return out || tramos;
   }
@@ -1185,12 +1275,21 @@
   //             del catálogo aSa).
   //   Todos los dobleces giran para el MISMO lado (cadena coherente, como la U).
   //
-  // EL ÁNGULO DEL CATÁLOGO ES EL GIRO (cuánto se desvía la barra de seguir recta),
-  // no el ángulo interno: es la misma lectura con la que _estriboPerimetral traza
-  // el gancho sísmico de 135° de las 104D/103E/103H, y la que hace que un 45°
-  // listado sea una pata inclinada (doblez a 45°). Si una figura del seed resulta
-  // no ser así, la salida NO es tocar esta regla: es DIBUJARLA en el Diseñador de
-  // figuras — su `geometria` manda sobre la derivación (ver tramosDeFigura).
+  // EL ÁNGULO DEL CATÁLOGO ES EL DEL VÉRTICE (el que queda ENTRE los dos tramos de
+  // fierro que concurren en el doblez), no el recorrido del doblado. Convención
+  // CERRADA POR EL USUARIO el 18-ago-2026 y documentada en extenso arriba, en
+  // `_giroDeVertice`: una 102B lista 135° porque 135° es lo que se mide entre su
+  // pata y su cuerpo, y el recorrido de ese doblez es 180 − 135 = 45°.
+  // Por eso la traducción a `giro` (que es la magnitud que consume `_cadena2D`, y
+  // ésa SÍ es el recorrido) se hace acá con `_giroDeVertice` y no antes: la lista
+  // `A` es del catálogo y se lee con la convención del catálogo.
+  // ANTES (hasta el 17-ago) esta línea metía A[i] directo como giro, y por eso el
+  // vértice DIBUJADO salía 180 − el de la ficha en las 40 figuras de cadena con
+  // ángulo declarado: la 102B y la 102C se dibujaban intercambiadas. El dato del
+  // catálogo NO se toca (ver `_esPerimetro`/ANG_GANCHO): lo que cambia es la
+  // lectura. Si una figura del seed resulta no ser así, la salida NO es tocar esta
+  // regla: es DIBUJARLA en el Diseñador de figuras — su `geometria` manda sobre la
+  // derivación (ver tramosDeFigura).
   // `angOvr` (2º arg, opcional) = los ángulos POR BARRA del componente. Entra por el
   // mismo sitio que los del catálogo —la lista `A`— y no por una rama aparte: así el
   // mapa slot → doblez es literalmente el mismo (_mapaAngSeed lo describe), y un
@@ -1205,7 +1304,7 @@
     var giros = [];
     for (i = 0; i < dobleces; i++) giros.push(90);
     var mapa = _mapaAngSeed(dobleces, A.length);
-    for (i = 0; i < A.length; i++) if (mapa[i] >= 0) giros[mapa[i]] = A[i];
+    for (i = 0; i < A.length; i++) if (mapa[i] >= 0) giros[mapa[i]] = _giroDeVertice(A[i]);
     var tramos = [{ lado: P[0], giro: 0, sentido: null }];
     for (i = 1; i < n; i++) tramos.push({ lado: P[i], giro: giros[i - 1], sentido: 'izq' });
     return tramos;

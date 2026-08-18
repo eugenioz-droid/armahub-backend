@@ -76,6 +76,15 @@ function recto(id, tip, cara, diam, jer) {
 console.log('R1 — la viga-semilla: pilas y listado intactos, kg re-derivado:');
 // Las PILAS (que es lo que este archivo protege) no se mueven: los ejes de abajo
 // —estribo 25.6, CBS 24.4, z ±10.4, traba 24.8— siguen exactos. Los kg bajan
+// 18-AGO · 136.1 -> 140.1 kg (CONVENCION DE VERTICE, cerrada por el usuario). El
+// numero del catalogo pasa a leerse como ANGULO DEL VERTICE (el que queda entre los
+// dos tramos de fierro) y no como recorrido del doblado. Consecuencia en la semilla:
+// las patas de 45 del CBS 103B quedan REPLEGADAS sobre el cuerpo en vez de abiertas,
+// asi que ya no le roban largo al tramo B: su 'auto' sube de 547.974 a 590.4 (la
+// unica reserva por punta que queda es la cresta del codo, phi/2 = 0.8). Son 42.426
+// cm mas por barra x 6 barras phi16 = 4.0 kg. Items, barras y las otras 3 figuras del
+// listado (2 x 101A y el estribo 104D) no se mueven ni un gramo.
+// --- HISTORIA PREVIA (12-ago), ya superada por la nota de arriba: ---
 // 140.2 → 136.1 por la MIGRACIÓN CABEZAL → TRAZADOR: el CBS es una 103B con
 // dobleces de 45°/45° declarados en el catálogo que el constructor de cabezal
 // ignoraba (los dibujaba a 90°). Honrándolos, cada pata de 30 proyecta
@@ -84,14 +93,25 @@ console.log('R1 — la viga-semilla: pilas y listado intactos, kg re-derivado:')
 // φ16 del CBS pasan de 61.745 a 57.575 kg. Con B = 592 la pieza asomaba 21.2 cm
 // FUERA del hormigón por cada extremo.
 const semilla = G.generarViga(S.semillaViga(), {});
-ok(semilla.resumen.items === 4 && semilla.resumen.barras === 72 && semilla.resumen.kg === 136.1,
-  'semilla = {items:4, barras:72, kg:136.1} (=' + JSON.stringify(semilla.resumen) + ')');
+ok(semilla.resumen.items === 4 && semilla.resumen.barras === 72 && semilla.resumen.kg === 140.1,
+  'semilla = {items:4, barras:72, kg:140.1} (=' + JSON.stringify(semilla.resumen) + ')');
 // Ejes verificados: con estribo φ8 nivel 1 + cabezales/traba nivel 2 (default por rol)
 // las pilas quedan sup/inf/lat = 0.8 y ext = 0, así que TODOS los anclajes de la
 // semilla dan el mismo número que con el inset escalar anterior.
+// EJE Y DE LA BARRA = la y de su TRAMO LARGO (el cuerpo). 18-AGO: ya no vale leer
+// `puntos[1]`. Con la convención de VÉRTICE los 45° de la 103B son ganchos
+// REPLEGADOS y el codo arqueado mete 15 puntos de muestreo por doblez, así que
+// `puntos[1]` cayó dentro del arco. Se toma el punto medio del segmento MÁS LARGO,
+// que es el cuerpo por construcción — el mismo número que devolvía antes.
 function ejeY(tip, idx) {
   const p = semilla.placements.filter(function (q) { return q.tipologia === tip; })[idx || 0];
-  return Math.round(p.puntos[1 % p.puntos.length].y * 1e4) / 1e4;
+  const pts = p.puntos;
+  let mejor = 0, y = pts[0].y;
+  for (let i = 1; i < pts.length; i++) {
+    const L = Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y, pts[i].z - pts[i - 1].z);
+    if (L > mejor) { mejor = L; y = (pts[i].y + pts[i - 1].y) / 2; }
+  }
+  return Math.round(y * 1e4) / 1e4;
 }
 ok(close(maxE(semilla.placements.filter(p => p.tipologia === 'ES')[0], 'y'), 25.6, 1e-9),
   'estribo φ8: eje y = 30 − 4 − 0.4 = 25.6');
@@ -232,12 +252,22 @@ ok(close(cov[1].puntos[1].y, 22.8) && close(cov[1].puntos[0].y, -7.2),
 // La figura NO CABE y el número negativo tiene que VIAJAR tal cual: es el dato que
 // le dice al usuario cuánto le falta.
 //
-// DE DÓNDE SALE EL NEGATIVO (corregido 13-ago tras medirlo). Este comentario decía
+// 18-AGO · ESTE CASO YA NO ES «NO CABE», Y EL NÚMERO ES OTRO. Con la CONVENCIÓN DE
+// VÉRTICE (cerrada por el usuario) los 45° de la 103B son el ángulo ENTRE la pata y
+// el cuerpo: la pata queda REPLEGADA sobre el cuerpo en vez de abrirse, así que su
+// proyección sobre el eje del cuerpo deja de ser +21.2132 y pasa a no robar nada.
+// La única reserva que queda por punta es la cresta del codo, φ/2 = 0.8:
+//     B = 22.4 − 2·0.8 = 20.8   (antes: 22.4 − 2·22.0132 = −21.6264)
+// O sea que la figura AHORA CABE en el ancho. Es consecuencia directa y esperada de
+// la corrección —una pata replegada ocupa hacia adentro, no hacia afuera—, no una
+// pérdida del guard: lo que este bloque protege sigue vivo abajo, en `sobresCadena`,
+// y el «nada de clamps» se sigue verificando ahí mismo (el número que emite el motor
+// viaja tal cual, sea positivo o negativo).
+//
+// DE DÓNDE SALE EL NÚMERO (corregido 13-ago tras medirlo). Este comentario decía
 // que el −21.626 lo destapaba haber sacado un `Math.max(0, …)` de
-// reglas._dimsEfectivas. FALSO, y la medición es directa: quien emite el negativo
-// es `figura_puntos.sobresCadena`, que reserva 21.2132 (= 30·cos45, la proyección
-// de la pata) + 0.8 (= φ/2 de cresta) = 22.0132 POR PUNTA sobre un marco de 22.4
-// → 22.4 − 2·22.0132 = −21.6264, exactamente lo que se asierta abajo. El bloque
+// reglas._dimsEfectivas. FALSO, y la medición es directa: quien emite la reserva
+// es `figura_puntos.sobresCadena`. El bloque
 // del "medio diámetro" de reglas.js NI SIQUIERA SE EJECUTABA en este caso
 // (familiaDeDibujo('103B', null) === 'cadena', y el bloque estaba acotado con
 // `!esCadenaMD`); se comprobó restaurando el clamp textualmente: las 22 suites en
@@ -246,17 +276,27 @@ ok(close(cov[1].puntos[1].y, 22.8) && close(cov[1].puntos[0].y, -7.2),
 // (Con las patas a 90° del cabezal viejo la proyección era 0 y el problema no se
 // veía: la pieza "cabía" dibujada de una forma que no es la suya.)
 const covB = plsDe(run([estribo(), corchete(true, null, '103B')]), 'CO');
-const B_103B_VOLT = 22.4 - 2 * (30 * Math.SQRT1_2 + 0.8);   // −21.6264
+const B_103B_VOLT = 22.4 - 2 * 0.8;   // 20.8 (antes −21.6264, con la pata abierta)
 ok(close(covB[0].dims.B, B_103B_VOLT),
-  'una 103B (patas 30 a 45°) volteada NO cabe en el ancho: B = −21.626 y el negativo VIAJA, sin clamp a 0 (=' +
+  'una 103B (patas 30 REPLEGADAS) volteada: B = 22.4 − 2·0.8 = 20.8, el número del motor viaja tal cual (=' +
   covB[0].dims.B + ')');
 ok(covB[0].dims.A === 30 && covB[0].dims.C === 30,
   'y las patas siguen midiendo lo que el usuario fijó (30/30): no se "acomoda" nada para que quepa');
-// Y la CAUSA, medida en su fuente: sobresCadena reserva 22.0132 por punta.
+// Y la CAUSA, medida en su fuente: sobresCadena reserva SÓLO la cresta del codo.
+// 18-AGO: 22.0132 → 0.8 por punta. Con el 45 leído como recorrido la pata se abría
+// y proyectaba 30·cos45 = 21.2132 sobre el eje; leído como VÉRTICE la pata se
+// repliega y no proyecta nada hacia afuera, así que queda φ/2 = 0.8 de cresta.
 const SOB_103B = FP.sobresCadena('103B', { A: 30, B: 22.4, C: 30 }, 'B', 1.6);
-ok(close(SOB_103B.ini, 30 * Math.SQRT1_2 + 0.8, 1e-9) && close(SOB_103B.fin, 30 * Math.SQRT1_2 + 0.8, 1e-6),
-  'el negativo lo emite sobresCadena: 30·cos45 + φ/2 = 22.0132 por punta (=' +
+ok(close(SOB_103B.ini, 0.8, 1e-9) && close(SOB_103B.fin, 0.8, 1e-6),
+  'la reserva la emite sobresCadena: sólo la cresta del codo, φ/2 = 0.8 por punta (=' +
   JSON.stringify(SOB_103B) + ')');
+// Y el «sin clamp» sigue verificado donde SÍ ocurre: una pata REPLEGADA más larga
+// que el marco vuelve sobre el cuerpo y lo agota. Con patas de 30 en un marco de
+// 22.4 el cuerpo entra; con el marco de la sección (alto útil) no tiene por qué, y
+// si el motor devolviera un negativo tiene que VIAJAR tal cual, no aplastarse a 0.
+ok(covB[0].dims.B > 0 && !('_clamp' in covB[0]),
+  'el motor no "acomoda" la dim para que quepa: entrega el número que le sale (=' +
+  covB[0].dims.B + ')');
 // Y el bloque del "medio diámetro" NO participaba: la 103B se dibuja como CADENA,
 // y ese bloque estaba acotado con `!esCadenaMD`. Se deja escrito como guarda: si
 // alguien vuelve a atribuirle este número, este assert lo desmiente.
@@ -469,8 +509,8 @@ ok(close(unaDe(oG3, 'RV').dims.A, 30 - 2 * (3 + PHI_ES)),
 // cambió de cara ni de nivel). Los kg bajan 140.2 → 136.1 por la migración
 // cabezal → trazador: su CBS es una 103B de 45°/45° y el auto-largo pasa a
 // reservar 30·cos45 + φ/2 = 22.0132 por punta (ver la nota de R1).
-ok(semilla.resumen.kg === 136.1 && semilla.resumen.barras === 72 && semilla.resumen.items === 4,
-  'la viga-semilla: 136.1 kg / 72 barras / 4 ítems');
+ok(semilla.resumen.kg === 140.1 && semilla.resumen.barras === 72 && semilla.resumen.items === 4,
+  'la viga-semilla: 140.1 kg / 72 barras / 4 ítems');
 
 // ===========================================================================
 // H · VOLTEO — la pieza CONSERVA SU CENTRO donde ahora es puntual.

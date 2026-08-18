@@ -22,7 +22,7 @@
 //   D. EMPALME sólo donde es real: en estribo/traba se ignora y se avisa (antes
 //      sumaba kg fantasma sin mover el dibujo).
 //
-//   E. La viga-semilla: 4 ítems / 72 barras / 136.1 kg (los kg bajaron de 140.2
+//   E. La viga-semilla: 4 ítems / 72 barras / 140.1 kg (bajaron de 140.2 a 136.1
 //      al migrar el cabezal al trazador — ver la nota en la sección G).
 //
 // Correr con: node tests/test_catalogo_figuras.js
@@ -429,6 +429,15 @@ ok(CAT.codigos().length === nSeed, 'restaurado el espejo (' + CAT.codigos().leng
 // G. VIGA-SEMILLA INTACTA
 // ---------------------------------------------------------------------------
 console.log('\nG — viga-semilla: mismo listado, kg re-derivado:');
+// 18-AGO · 136.1 -> 140.1 kg (CONVENCION DE VERTICE, cerrada por el usuario). El
+// numero del catalogo pasa a leerse como ANGULO DEL VERTICE (el que queda entre los
+// dos tramos de fierro) y no como recorrido del doblado. Consecuencia en la semilla:
+// las patas de 45 del CBS 103B quedan REPLEGADAS sobre el cuerpo en vez de abiertas,
+// asi que ya no le roban largo al tramo B: su 'auto' sube de 547.974 a 590.4 (la
+// unica reserva por punta que queda es la cresta del codo, phi/2 = 0.8). Son 42.426
+// cm mas por barra x 6 barras phi16 = 4.0 kg. Items, barras y las otras 3 figuras del
+// listado (2 x 101A y el estribo 104D) no se mueven ni un gramo.
+// --- HISTORIA PREVIA (12-ago), ya superada por la nota de arriba: ---
 // 140.2 → 136.1 kg POR LA MIGRACIÓN CABEZAL → TRAZADOR. El CBS es una 103B con
 // dobleces de 45°/45° en el catálogo, que el constructor de cabezal ignoraba. Al
 // honrarlos, cada pata de 30 proyecta 30·cos45 = 21.2132 sobre el eje de la barra
@@ -439,7 +448,7 @@ console.log('\nG — viga-semilla: mismo listado, kg re-derivado:');
 const semilla = G.generarViga(S.semillaViga(), CTX);
 ok(semilla.resumen.items === 4, 'items = 4 (=' + semilla.resumen.items + ')');
 ok(semilla.resumen.barras === 72, 'barras = 72 (=' + semilla.resumen.barras + ')');
-ok(r1(semilla.resumen.kg) === 136.1, 'kg = 136.1 (=' + semilla.resumen.kg + ')');
+ok(r1(semilla.resumen.kg) === 140.1, 'kg = 140.1 (=' + semilla.resumen.kg + ')');
 ok(semilla.barras.every(b => !validarSlots(b)), 'sus 4 ítems pasan validar_geometria contra el catálogo real');
 
 // ---------------------------------------------------------------------------

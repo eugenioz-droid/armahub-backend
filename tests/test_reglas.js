@@ -57,16 +57,35 @@ ok(capa1.length === 3 && capa2.length === 3, '3 barras por capa');
 // capa 2 más hacia el núcleo (menor Y que capa 1, cara sup).
 var y1 = capa1[0].puntos[1].y, y2 = capa2[0].puntos[1].y;
 ok(y2 < y1, 'capa 2 apilada hacia el núcleo (y2 < y1)');
-ok(plCBS.every(function (p) { return p.puntos.length === 4; }), 'cada cabezal 103B = 4 puntos');
-// MIGRACIÓN CABEZAL → TRAZADOR: el marco útil sigue siendo 600 − 2·4 = 592 (eso
-// es lo que mide el 'auto'), pero ahora se le RESERVA lo que las patas de 45° de
-// la 103B ocupan sobre ese mismo eje: 30·cos45 = 21.2132 de proyección + φ/2 = 0.8
-// para que la cresta del codo quede en línea con el recub de extremo → 22.0132 por
-// punta. Antes el cabezal dibujaba las patas a 90° (proyección 0) y con B = 592 la
-// pieza asomaba 21.2 cm FUERA del hormigón por cada extremo.
-var RESERVA_45 = 30 * Math.SQRT1_2 + 1.6 / 2;   // 22.013203
-ok(Math.abs(plCBS[0].dims.B - (600 - 8 - 2 * RESERVA_45)) < 1e-6,
-  'B auto = largo − 2·recub − reserva de las patas a 45° = 547.974 (=' + plCBS[0].dims.B + ')');
+// 18-AGO · 4 → 32 PUNTOS. Con la CONVENCIÓN DE VÉRTICE (cerrada por el usuario) los
+// 45° de la 103B son el ángulo ENTRE la pata y el cuerpo, o sea un gancho REPLEGADO
+// de 135° de recorrido, y un recorrido > 90° se dibuja con el arco calibrado: 15
+// puntos de muestreo por codo × 2 codos + los 2 extremos = 32. Lo que se protege es
+// que la figura tenga sus 3 LADOS, así que se cuentan lados (tramos rectos), no
+// puntos. Antes, con el 45 leído como recorrido, no había codo y eran 4 puntos.
+function ladosDe(pts) {                       // codos arqueados colapsados
+  var n = 0, R = 2 * 1.6 + 1.6 / 2;           // radio de eje del codo con φ16 = 4
+  for (var i = 1; i < pts.length; i++) {
+    var L = Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y, pts[i].z - pts[i - 1].z);
+    if (L <= 1e-9) continue;
+    if (pts[i - 1].esArco && pts[i].esArco && L < R) continue;
+    n++;
+  }
+  return n;
+}
+ok(plCBS.every(function (p) { return ladosDe(p.puntos) === 3; }),
+  'cada cabezal 103B = 3 lados dibujados (=' + ladosDe(plCBS[0].puntos) + ')');
+// El marco útil sigue siendo 600 − 2·4 = 592 (eso es lo que mide el 'auto'), y se le
+// RESERVA lo que la figura ocupa sobre ese mismo eje.
+// 18-AGO · LA RESERVA CAE DE 22.0132 A 0.8 POR PUNTA. Con el 45° leído como
+// RECORRIDO la pata se abría y avanzaba 30·cos45 = 21.2132 sobre el eje del cuerpo
+// (+ φ/2 = 0.8 de cresta). Leído como VÉRTICE la pata queda REPLEGADA: vuelve sobre
+// el cuerpo y no le roba ni un centímetro al eje, así que lo único que se reserva es
+// la cresta del codo, φ/2 = 0.8, para que quede en línea con el recub de extremo.
+// B = 592 − 1.6 = 590.4. Medido en `figura_puntos.sobresCadena` → {ini:0.8, fin:0.8}.
+var RESERVA_CRESTA = 1.6 / 2;   // 0.8 (antes 22.013203)
+ok(Math.abs(plCBS[0].dims.B - (600 - 8 - 2 * RESERVA_CRESTA)) < 1e-6,
+  'B auto = largo − 2·recub − reserva de la cresta del codo = 590.4 (=' + plCBS[0].dims.B + ')');
 
 console.log('CABEZAL inferior 101A recto 1 capa × 4:');
 var compCBI = {

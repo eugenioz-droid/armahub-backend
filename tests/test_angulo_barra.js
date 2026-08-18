@@ -12,14 +12,22 @@
 //   doblez (0–90 si nace ≤90; 90–180 si nace >90): cruzar el rango es otra figura, así
 //   que se ignora con aviso en vez de aproximar.
 //
-//   UNA SOLA CONVENCIÓN — el ángulo ES el GIRO (cuánto se desvía la barra de seguir
-//   recta), que es lo que ya usaban el seed del catálogo y el trazador. El Diseñador
-//   de figuras guardaba el SUPLEMENTARIO (180 − giro) y eso hacía que una figura
-//   dibujada quedara con el valor invertido respecto de una sembrada.
+//   UNA SOLA CONVENCIÓN — el ángulo ES el DEL VÉRTICE: el que queda ENTRE LOS DOS
+//   TRAMOS DE FIERRO que concurren en el doblez. NO es el recorrido del doblado
+//   (vértice = 180 − recorrido). Convención CERRADA POR EL USUARIO el 18-ago-2026.
+//   El caso que la fija es la 102B: su ficha dice 135° y ésos son los grados que se
+//   miden entre la pata y el cuerpo; el recorrido de ese doblez es 180 − 135 = 45°.
+//   HASTA EL 17-AGO ESTE ARCHIVO CONGELABA LA LECTURA CONTRARIA («el ángulo ES el
+//   GIRO»). Medido sobre el trazo: las 40 figuras de familia 'cadena' con ángulo
+//   declarado se dibujaban con el vértice en 180 − el de su ficha, o sea la 102B y
+//   la 102C salían INTERCAMBIADAS. Se corrigió la LECTURA del trazador
+//   (figura_puntos::_giroDeVertice) y el escritor del Diseñador; el DATO del
+//   catálogo no se tocó. Todos los valores esperados marcados «18-ago» de este
+//   archivo son ese cambio, y están MEDIDOS, no supuestos.
 //
 // QUÉ PROTEGE, en orden:
 //   A. SIN override = comportamiento de hoy, byte por byte (viga-semilla
-//      {items:4, barras:72, kg:136.1} y sus 4 ítems con sus ángulos).
+//      {items:4, barras:72, kg:140.1} y sus 4 ítems con sus ángulos).
 //   B. CONGELA EL ÁNGULO POR BARRA: con dims FIJAS, mover el ángulo mueve la punta
 //      del gancho y NO mueve ni una dim ni el largo de la polilínea.
 //   C. RANGO: fuera del rango de su doblez se ignora, cae al catálogo y avisa.
@@ -28,8 +36,8 @@
 //      dos salen del MISMO número (el lado dibujado mide su dim resuelta).
 //   F. DONDE EL TRAZO NO LEE ÁNGULOS (marco cerrado / traba clásica) se AVISA en vez
 //      de dejar al usuario moviendo un control mudo.
-//   G. CONVENCIÓN ÚNICA: el ángulo del catálogo ES el giro que aplica el trazador, y
-//      el escritor del Diseñador ya no guarda el suplementario.
+//   G. CONVENCIÓN ÚNICA: el ángulo del catálogo es el VÉRTICE, el trazador lo
+//      traduce a giro (180 − vértice) y el escritor del Diseñador guarda el vértice.
 //
 // Correr con: node tests/test_angulo_barra.js
 
@@ -76,6 +84,38 @@ function largoPoli(p) {
   }
   return L;
 }
+function sumaDims(d) { let s = 0; for (const k in d) s += Number(d[k]); return s; }
+
+// ---------------------------------------------------------------------------
+// MEDIR VÉRTICES SOBRE UN TRAZO QUE PUEDE LLEVAR CODOS ARQUEADOS (18-ago)
+// ---------------------------------------------------------------------------
+// Un doblez de más de 90° de RECORRIDO lo dibuja `_conGanchosRadio` con el arco
+// calibrado: donde había un vértice quedan ~15 puntos marcados `esArco`. Medir el
+// ángulo entre puntos consecutivos ahí devuelve el paso del muestreo (~10°), no el
+// doblez. Con la convención de VÉRTICE ese caso es TODA figura cuyo ángulo de ficha
+// sea < 90° (una 103C, una 105B…), o sea justo las que este archivo mide.
+// `segsRectos` colapsa cada corrida de arco quedándose con los tramos RECTOS
+// (cuerpo y pata), y `verticesDe` mide entre esos tramos — que es la definición
+// del ángulo del vértice, y es exacta: la pata cuelga tangente a la salida del arco.
+function segsRectos(pts) {
+  const s = [];
+  for (let i = 1; i < pts.length; i++) {
+    if (pts[i - 1].esArco && pts[i].esArco) continue;        // cuerda interna del codo
+    const d = { x: pts[i].x - pts[i - 1].x, y: pts[i].y - pts[i - 1].y, z: pts[i].z - pts[i - 1].z };
+    const L = Math.hypot(d.x, d.y, d.z);
+    if (L > 1e-9) s.push({ d, L });
+  }
+  return s;
+}
+function verticesDe(pts) {
+  const s = segsRectos(pts), o = [];
+  for (let i = 1; i < s.length; i++) {
+    const a = s[i - 1], b = s[i];
+    const c = (a.d.x * b.d.x + a.d.y * b.d.y + a.d.z * b.d.z) / (a.L * b.L);
+    o.push(Math.acos(Math.max(-1, Math.min(1, -c))) * 180 / Math.PI);   // 180 − recorrido
+  }
+  return o;
+}
 function semilla(mut) {
   const rec = S.semillaViga();
   if (mut) mut(rec);
@@ -86,8 +126,14 @@ function semilla(mut) {
 console.log('A — sin override efectivo el motor da EXACTAMENTE lo de siempre');
 {
   const { res } = semilla();
-  ok(res.resumen.items === 4 && res.resumen.barras === 72 && res.resumen.kg === 136.1,
-    'viga-semilla en {items:4, barras:72, kg:136.1} — la referencia viva');
+  // 140.1 kg, MEDIDO el 18-ago (antes 136.1). La convención de VÉRTICE cerrada por
+  // el usuario cambia lo que dibuja el CBS 103B de la semilla: sus 45° de ficha
+  // pasan de ser el recorrido a ser el vértice, o sea de patas abiertas a patas
+  // REPLEGADAS sobre el cuerpo. Replegadas ya no le roban largo al tramo B, así que
+  // su 'auto' sube de 547.974 a 590.4 cm y esos 42.4 cm × 6 barras φ16 pesan 4.0 kg.
+  // Las otras tres barras (2 × 101A y el estribo 104D) no se mueven ni un gramo.
+  ok(res.resumen.items === 4 && res.resumen.barras === 72 && res.resumen.kg === 140.1,
+    'viga-semilla en {items:4, barras:72, kg:140.1} — la referencia viva');
   const firma = res.barras.map(b => [b.figura, b.cant, b.ang1, b.ang2].join('|')).join(' ; ');
   ok(firma === ['103B|6|45|45', '101A|4||', '104D|47|135|135', '101A|15||'].join(' ; '),
     'los ang1..ang4 del despiece salen con los mismos valores que antes de la tanda');
@@ -120,20 +166,40 @@ console.log('\nB — con dims FIJAS, mover el ángulo mueve la punta y NADA más
   // hormigón y la figura cambió de forma (eso lo cubre el bloque E).
   //
   // 103C: parciales A/B/C, el catálogo lista UN ángulo (45°) y `mapaAngulosFigura`
-  // dice que gobierna el PRIMER doblez. Los dos dobleces quedan ≤ 90°, así que el
-  // trazo NO lleva arcos (`_conGanchosRadio` sólo actúa sobre dobleces > 90°) y la
-  // polilínea es la cadena de vértices: su largo es la suma de las dims, EXACTA.
+  // dice que gobierna el PRIMER doblez.
+  //
+  // QUÉ CAMBIÓ ACÁ EL 18-AGO. Con la convención de VÉRTICE, ese 45° de ficha es el
+  // ángulo ENTRE la pata y el cuerpo: un gancho REPLEGADO, de 180 − 45 = 135° de
+  // recorrido. Y un recorrido > 90° lo dibuja `_conGanchosRadio` con el arco
+  // calibrado, así que la polilínea DEJA de ser la cadena de vértices: el cuerpo se
+  // retranquea R = 2.5·φ = 4 cm (regla de la cresta) y el codo barre R·recorrido.
+  // Antes, con la lectura contraria, este mismo caso era un quiebre de 45° de
+  // recorrido —sin arco— y por eso el número congelado era 540 exacto. El invariante
+  // del bloque NO cambia (mover el ángulo no toca ni una dim ni el largo de corte);
+  // lo que cambia es que hay que medirlo sobre las dims y sobre los tramos RECTOS,
+  // no sobre la suma cruda de puntos.
   ok(JSON.stringify(FP.mapaAngulosFigura('103C')) === '[0]',
     '103C: su único α gobierna el primer doblez (mapa leído del catálogo, no inventado)');
   const DIMS = { A: 20, B: 500, C: 20 };
   const base = expandir(comp('103C', null, DIMS))[0];
-  const L0 = largoPoli(base.puntos);
-  casi(L0, 540, 1e-9, 'con el ángulo del catálogo la polilínea mide A+B+C = 540 cm');
+  casi(sumaDims(base.dims), 540, 1e-9, 'el LARGO DE CORTE es A+B+C = 540 cm');
+  casi(largoPoli(base.puntos), 545.413577, 1e-5,
+    '…y con el gancho replegado de ficha el DIBUJO mide 545.413577 (540 con el codo arqueado)');
+  const R_CODO = 4;   // 2·φ + φ/2 con φ16 — el radio de eje de `_conGanchosRadio`
 
   let puntas = [];
   [10, 30, 45, 60, 90].forEach(a => {
     const pl = expandir(comp('103C', [a], DIMS))[0];
-    casi(largoPoli(pl.puntos), 540, 1e-9, 'α1 = ' + a + '°: la polilínea sigue midiendo 540 cm');
+    // Los TRES lados siguen dibujados con su medida: A y C completos y B retranqueado
+    // el radio del codo. Es más fuerte que el viejo «la polilínea mide 540»: fija
+    // lado por lado en vez de fijar sólo la suma. Con α = 90 no hay codo (recorrido
+    // 90 = el fillet del motor) y B sale entero — por eso la excepción explícita.
+    const esp = (a === 90) ? [20, 500, 20] : [20, 500 - R_CODO, 20];
+    const s = segsRectos(pl.puntos).map(x => x.L);
+    ok(s.length === 3 && s.every((v, i) => Math.abs(v - esp[i]) < 1e-6),
+      'α1 = ' + a + '°: los 3 lados DIBUJADOS miden ' + esp.join('/') + ' (=' +
+      s.map(v => v.toFixed(3)).join('/') + ')');
+    casi(sumaDims(pl.dims), 540, 1e-9, 'α1 = ' + a + '°: el largo de corte sigue siendo 540 cm');
     ok(JSON.stringify(pl.dims) === JSON.stringify(base.dims),
       'α1 = ' + a + '°: las dims no se mueven (' + JSON.stringify(pl.dims) + ')');
     puntas.push(pl.puntos[0].x.toFixed(4) + ',' + pl.puntos[0].y.toFixed(4));
@@ -141,32 +207,65 @@ console.log('\nB — con dims FIJAS, mover el ángulo mueve la punta y NADA más
   ok(new Set(puntas).size === 5,
     'las 5 posiciones de la PUNTA del gancho son distintas: ' + JSON.stringify(puntas));
 
-  // Y la geometría es la del doblez, no una aproximación: la pata A de 20 cm sale
-  // del vértice a exactamente α grados del cuerpo.
+  // EL ARCO DE UN DOBLEZ MÁS ABIERTO BARRE MENOS — física del doblado, no un error.
+  // (Este assert vivía abajo, sobre la 102B; con la convención de vértice la 102B ya
+  // no lleva arco —su ficha de 135° es un recorrido de 45°— y quien lo lleva es la
+  // 103C. Es el mismo assert, medido donde ahora ocurre el fenómeno.)
+  ok(largoPoli(expandir(comp('103C', [60], DIMS))[0].puntos) <
+     largoPoli(expandir(comp('103C', [45], DIMS))[0].puntos),
+    '103C: con α = 60° la polilínea es más corta que con α = 45° (el codo barre menos): ' +
+    largoPoli(expandir(comp('103C', [45], DIMS))[0].puntos).toFixed(4) + ' → ' +
+    largoPoli(expandir(comp('103C', [60], DIMS))[0].puntos).toFixed(4));
+
+  // Y la geometría es la del doblez, no una aproximación: el VÉRTICE entre la pata A
+  // y el cuerpo B mide exactamente el α declarado. Se mide con `verticesDe`, que
+  // colapsa el codo arqueado — medir entre puntos consecutivos daría el paso del
+  // muestreo del arco (~10°), que es lo que hacía la versión vieja de este assert
+  // cuando el trazo no llevaba arco.
   [30, 60].forEach(a => {
     const p = expandir(comp('103C', [a], DIMS))[0].puntos;
-    const dx = p[1].x - p[0].x, dy = p[1].y - p[0].y;       // pata A (punta → vértice)
-    const dbx = p[2].x - p[1].x, dby = p[2].y - p[1].y;     // cuerpo B
-    const giro = Math.acos((dx * dbx + dy * dby) / (Math.hypot(dx, dy) * Math.hypot(dbx, dby)));
-    casi(giro * 180 / Math.PI, a, 1e-6, 'α1 = ' + a + '°: el doblez REAL entre A y B mide ' + a + '°');
-    casi(Math.hypot(dx, dy), 20, 1e-9, '…y la pata A sigue midiendo sus 20 cm');
+    const v = verticesDe(p);
+    casi(v[0], a, 1e-6, 'α1 = ' + a + '°: el VÉRTICE REAL entre A y B mide ' + a + '°');
+    casi(v[1], 90, 1e-6, '…y el otro doblez sigue siendo el de escuadra');
+    casi(segsRectos(p)[0].L, 20, 1e-9, '…y la pata A sigue midiendo sus 20 cm');
   });
 
-  // GANCHO > 90° (102B, catálogo 135°): acá el trazo SÍ lleva arco explícito, y el
-  // arco de un doblez más cerrado es más corto — eso es física del doblado, no un
-  // error. Lo que NO puede moverse es el dato que se corta: las dims y el largo del
-  // despiece, que salen de la suma de lados.
+  // VÉRTICE > 90° (102B, catálogo 135°): es la otra familia, la del quiebre suave.
+  // Con la convención de vértice su recorrido es 180 − 135 = 45°, o sea ≤ 90°, así
+  // que el trazo NO lleva arco explícito y la polilínea SÍ es la cadena de vértices:
+  // mide A+B EXACTO en todo su rango. (Antes de la corrección era al revés: la 102B
+  // era la que llevaba arco y por eso su largo dibujado se movía con el ángulo.)
   {
     const d2 = { A: 20, B: 500 };
     const a0 = expandir(comp('102B', null, d2))[0];
     const a1 = expandir(comp('102B', [110], d2))[0];
     ok(JSON.stringify(a0.dims) === JSON.stringify(a1.dims),
-      '102B: bajar el gancho de 135° a 110° no toca las dims (' + JSON.stringify(a1.dims) + ')');
+      '102B: bajar el vértice de 135° a 110° no toca las dims (' + JSON.stringify(a1.dims) + ')');
     ok(Math.abs(a1.puntos[0].x - a0.puntos[0].x) > 1,
       '…pero la punta del gancho se mueve (' + a0.puntos[0].x.toFixed(2) + ' → ' + a1.puntos[0].x.toFixed(2) + ')');
-    ok(largoPoli(a1.puntos) < largoPoli(a0.puntos),
-      '…y la polilínea DIBUJADA es un poco más corta porque el arco del codo barre menos: ' +
-      largoPoli(a0.puntos).toFixed(4) + ' → ' + largoPoli(a1.puntos).toFixed(4));
+    casi(largoPoli(a0.puntos), 520, 1e-9, '…y sin arco la polilínea mide A+B = 520 cm exactos');
+    casi(largoPoli(a1.puntos), 520, 1e-9, '…los mismos 520 con el vértice en 110° (el largo NO se mueve)');
+    casi(verticesDe(a0.puntos)[0], 135, 1e-9, '…y el vértice dibujado es el 135° de la ficha');
+    casi(verticesDe(a1.puntos)[0], 110, 1e-9, '…y con override, los 110° pedidos');
+  }
+
+  // LA FAMILIA DEL VÉRTICE ABIERTO, BARRIDA ENTERA (103D, ficha 135°, rango 90–180).
+  // Es la sucesora directa del viejo «la polilínea sigue midiendo 540 cm»: ahí el
+  // barrido de 103C no llevaba arco y podía exigir el largo EXACTO en cada α. Con la
+  // convención de vértice esa condición la cumple la familia > 90°, así que el
+  // assert exacto se conserva — sólo cambia la figura sobre la que se mide.
+  {
+    const base135 = expandir(comp('103D', null, DIMS))[0];
+    ok(JSON.stringify(FP.rangoAngulo('103D', 0)) === JSON.stringify({ lo: 90, hi: 180 }),
+      '103D nace en 135° → su rango es 90–180');
+    [90, 110, 135, 150, 170].forEach(a => {
+      const pl = expandir(comp('103D', [a], DIMS))[0];
+      ok(pl.puntos.length === 4, 'α1 = ' + a + '°: 4 puntos, sin codo arqueado (=' + pl.puntos.length + ')');
+      casi(largoPoli(pl.puntos), 540, 1e-9, 'α1 = ' + a + '°: la polilínea mide A+B+C = 540 cm EXACTOS');
+      casi(verticesDe(pl.puntos)[0], a, 1e-6, 'α1 = ' + a + '°: el vértice dibujado ES el declarado');
+      ok(JSON.stringify(pl.dims) === JSON.stringify(base135.dims),
+        'α1 = ' + a + '°: las dims no se mueven (' + JSON.stringify(pl.dims) + ')');
+    });
   }
 }
 
@@ -205,6 +304,42 @@ console.log('\nC — el ángulo se mueve dentro del rango de SU doblez, y no má
     ok((c._avisos || []).some(a => a.indexOf('Ángulo 2') === 0 && a.indexOf('no existe el 2') > 0),
       '103C con un α2: se avisa que la figura declara 1 solo ángulo');
   }
+
+  // -------------------------------------------------------------------------
+  // NINGÚN OVERRIDE YA GUARDADO SE CAE DEL RANGO AL CAMBIAR LA CONVENCIÓN
+  // -------------------------------------------------------------------------
+  // El rango lo fija el valor del CATÁLOGO, que NO cambió ni un dígito, y el corte
+  // está en 90°, que es su propio espejo (180 − 90 = 90). Por lo tanto la partición
+  // {(0,90], [90,180)} es la MISMA leída como vértice o como recorrido: todo valor
+  // que una receta guardada tenía por válido lo sigue teniendo, y ninguno queda
+  // fuera de rango en silencio. Lo que sí cambia es lo que ese número DIBUJA (un 110
+  // guardado para una 102B dibujaba antes un recorrido de 110° y ahora un vértice de
+  // 110°, o sea un recorrido de 70°) — la misma reinterpretación que reciben los
+  // valores del catálogo, que es exactamente el cambio pedido.
+  // Se comprueba ENUMERANDO el catálogo entero, slot por slot y grado por grado, en
+  // vez de razonarlo: si alguien estrecha el rango, esto falla.
+  {
+    let slots = 0, malRango = [], malAceptados = [];
+    CAT.codigos().forEach(f => {
+      const cat = FP.angulosCatalogo(f) || [];
+      cat.forEach((base, i) => {
+        slots++;
+        const esperado = (base <= 90) ? { lo: 0, hi: 90 } : { lo: 90, hi: 180 };
+        if (JSON.stringify(FP.rangoAngulo(f, i)) !== JSON.stringify(esperado)) malRango.push(f + '/α' + (i + 1));
+        for (let v = 0; v <= 180; v++) {
+          const debe = (esperado.lo === 0) ? (v > 0 && v <= 90) : (v >= 90 && v < 180);
+          if (FP.validarAngulo(f, i, v).ok !== debe) { malAceptados.push(f + '/α' + (i + 1) + '=' + v); break; }
+        }
+      });
+    });
+    ok(slots === 75 && malRango.length === 0,
+      'los ' + slots + ' slots de ángulo del catálogo tienen el rango de SU doblez (' +
+      (malRango.length ? malRango.join(',') : 'ninguna discrepancia') + ')');
+    ok(malAceptados.length === 0,
+      'y aceptan EXACTAMENTE (0,90] o [90,180) según su valor de ficha: ningún override ' +
+      'guardado se cae del rango con la convención nueva (' +
+      (malAceptados.length ? malAceptados.join(',') : 'ninguna discrepancia') + ')');
+  }
 }
 
 // ================================================= D · EL ÁNGULO VIAJA AL DESPIECE
@@ -242,15 +377,19 @@ console.log('\nE — con dims AUTO el ángulo cambia dims y trazo, y los dos van
   // tramos rectos sin gancho > 90°, o sea un SEGMENTO por tramo, así que el lado i
   // dibujado se puede comparar con su dim resuelta sin ninguna heurística.
   const TR = FP.tramosDeFigura('105A').tramos.map(t => t.lado);
-  const segs = pts => {
-    const o = [];
-    for (let i = 1; i < pts.length; i++) {
-      o.push(Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y, pts[i].z - pts[i - 1].z));
-    }
-    return o;
-  };
+  const segs = pts => segsRectos(pts).map(s => s.L);
   // La 105A no lista ángulos, así que se prueba con la 105B (lista uno, en el 1er
   // doblez) — misma topología de 5 tramos rectos.
+  //
+  // 18-AGO: con la convención de VÉRTICE, un α < 90 en la 105B es un gancho
+  // REPLEGADO (recorrido 180 − α > 90°) y el trazo lo dibuja con el codo arqueado.
+  // Por eso el conteo «un segmento por tramo» se hace sobre `segsRectos` (que
+  // colapsa el codo) y no sobre puntos crudos, y por eso el lado que hace de CUERPO
+  // del gancho sale retranqueado exactamente R = 2·φ + φ/2 = 4 cm con φ16: es la
+  // REGLA DE LA CRESTA de `_ganchoFinal2D`, no una pérdida de precisión — el arco
+  // toca la línea del vértice y la pata cuelga íntegra. Antes de la corrección el α
+  // de la 105B era un quiebre suave, no llevaba codo, y los 5 lados salían clavados.
+  const R_CODO = 4;
   const anteriores = [];
   [45, 70, 90].forEach(a => {
     const c = comp('105B', [a], null);
@@ -258,10 +397,18 @@ console.log('\nE — con dims AUTO el ángulo cambia dims y trazo, y los dos van
     const s = segs(pl.puntos);
     const tramos = FP.tramosDeFigura('105B', [a]).tramos.map(t => t.lado);
     ok(s.length === tramos.length, '105B/α=' + a + ': un segmento por tramo (' + s.length + ')');
+    // El cuerpo del gancho de la 105B es su lado B (el α gobierna el doblez A–B y la
+    // pata es A, que cuelga completa). Sin codo (α = 90) no hay retranqueo.
+    const retranq = (a === 90) ? {} : { B: R_CODO };
     tramos.forEach((L, i) => {
-      casi(s[i], pl.dims[L], 0.01,
-        '105B/α=' + a + ': el lado ' + L + ' DIBUJADO mide su dim RESUELTA (' + pl.dims[L].toFixed(2) + ')');
+      const esp = pl.dims[L] - (retranq[L] || 0);
+      casi(s[i], esp, 0.01,
+        '105B/α=' + a + ': el lado ' + L + ' DIBUJADO mide su dim RESUELTA' +
+        (retranq[L] ? ' menos el radio del codo' : '') + ' (' + esp.toFixed(2) + ')');
     });
+    // Y el vértice DIBUJADO es el pedido: medir y dibujar salen del mismo número.
+    casi(verticesDe(pl.puntos)[0], a, 1e-6,
+      '105B/α=' + a + ': el VÉRTICE dibujado del primer doblez es el α declarado');
     ok(!(c._avisos || []).some(x => /FUERA/.test(x)),
       '105B/α=' + a + ': 0 fierro fuera del hormigón (el auto se resolvió con ESTE ángulo)');
     anteriores.push(JSON.stringify(pl.dims));
@@ -293,18 +440,36 @@ console.log('\nF — el marco cerrado no lee ángulos: se avisa en vez de callar
 }
 
 // ================================================== G · UNA SOLA CONVENCIÓN
-console.log('\nG — el ángulo del catálogo ES el giro (una sola convención)');
+console.log('\nG — el ángulo del catálogo es el del VÉRTICE (una sola convención)');
 {
-  // 1) LO QUE EL MOTOR HACE CON EL NÚMERO. El trazador aplica el ángulo listado como
-  //    GIRO del doblez que le toca. Si alguien volviera a guardar el suplementario,
-  //    esto falla en el primer assert.
+  // 1) LO QUE EL MOTOR HACE CON EL NÚMERO. El ángulo listado es el del VÉRTICE, y el
+  //    trazador lo traduce a GIRO (= recorrido del doblado) con `_giroDeVertice`:
+  //    giro = 180 − vértice. Este assert es el que congela la convención: si alguien
+  //    volviera a meter el número de la ficha directo como giro, falla acá.
+  //    LOS VALORES ESPERADOS SE INVIRTIERON EL 18-AGO respecto de la versión previa
+  //    de este archivo (135→45 y 45→135). El número viejo describía la lectura
+  //    contraria, la que dibujaba la 102B y la 102C intercambiadas; el dato del
+  //    catálogo no cambió ni un dígito.
   const t104 = FP.tramosDeFigura('104D').tramos;
   ok(JSON.stringify(FP.mapaAngulosFigura('104D')) === '[0,2]',
     '104D: sus dos α gobiernan el 1er y el último doblez');
-  ok(Number(t104[1].giro) === 135 && Number(t104[3].giro) === 135,
-    '104D: el 135° del catálogo entra como GIRO de 135° (el gancho sísmico), no como su suplemento');
+  ok(Number(t104[1].giro) === 45 && Number(t104[3].giro) === 45,
+    '104D: el 135° de VÉRTICE del catálogo entra como GIRO de 45° (180 − 135)');
   const t103 = FP.tramosDeFigura('103C').tramos;
-  ok(Number(t103[1].giro) === 45, '103C: el 45° del catálogo entra como giro de 45° (quiebre)');
+  ok(Number(t103[1].giro) === 135,
+    '103C: el 45° de VÉRTICE del catálogo entra como giro de 135° (gancho replegado)');
+  // Y al revés, sobre el trazo: el vértice DIBUJADO es el de la ficha. Es la
+  // medición que motivó la corrección, hecha con producto punto sobre los tramos
+  // rectos (`verticesDe`), no leyendo el modelo.
+  {
+    const D = { A: 20, B: 500, C: 20 };
+    casi(verticesDe(expandir(comp('103C', null, D))[0].puntos)[0], 45, 1e-6,
+      '103C: el vértice DIBUJADO mide los 45° de su ficha (antes medía 135°)');
+    casi(verticesDe(expandir(comp('102B', null, { A: 20, B: 500 }))[0].puntos)[0], 135, 1e-6,
+      '102B: el vértice DIBUJADO mide los 135° de su ficha (antes medía 45°)');
+    casi(verticesDe(expandir(comp('102C', null, { A: 20, B: 500 }))[0].puntos)[0], 45, 1e-6,
+      '102C: el vértice DIBUJADO mide los 45° de su ficha — 102B y 102C ya NO salen intercambiadas');
+  }
 
   // 2) CUÁNTO COSTABA LA DIVERGENCIA. Con los ángulos invertidos (la convención
   //    vieja del Diseñador), 14 de las 63 figuras del catálogo CAMBIAN de
@@ -325,16 +490,28 @@ console.log('\nG — el ángulo del catálogo ES el giro (una sola convención)'
 
   // 3) EL ESCRITOR. El Diseñador de figuras es código de navegador (usa DOM/fetch) y
   //    no se puede cargar acá, así que se revisa su FUENTE: es el guard de que no
-  //    vuelvan a convivir dos convenciones. Lo que importa es que el suplementario ya
-  //    no se use al GUARDAR — sólo para traducir la medición interna del editor 3D.
+  //    vuelvan a convivir dos convenciones. Lo que importa es que lo que se GUARDA
+  //    sea el ÁNGULO DEL VÉRTICE por los dos caminos (2D y 3D).
+  //    18-AGO: estos tres asserts describían la convención contraria (guardar el
+  //    recorrido). Se invierten, no se quitan: siguen siendo el guard, apuntando al
+  //    otro lado.
   const src = fs.readFileSync(path.join(__dirname, '..', 'armahub', 'static', 'js',
     'features', 'catalogo', 'disenador.js'), 'utf8');
-  ok(src.indexOf('_anguloInterno') < 0,
-    'disenador.js ya no tiene _anguloInterno: no queda ningún escritor del suplementario');
-  ok(/t\.giro !== 90 && t\.giro !== 0[\s\S]{0,120}Number\(t\.giro\)/.test(src),
-    'el guardado 2D escribe el GIRO de cada doblez especial');
-  ok(/disenador3dValoresAngulos\(\) : \[\]\)\s*\n\s*\.map\(_giroDesdeInterno\)/.test(src),
-    'el guardado 3D convierte la medición interna a GIRO antes de guardar');
+  ok(src.indexOf('_anguloInterno') < 0 && src.indexOf('_giroDesdeInterno') < 0,
+    'disenador.js no tiene ni _anguloInterno ni _giroDesdeInterno: no queda ningún escritor del recorrido');
+  ok(/function _verticeDesdeGiro\(giro\) \{ return 180 - \(Number\(giro\) \|\| 0\); \}/.test(src),
+    'la traducción vértice ↔ recorrido vive en UNA sola función (_verticeDesdeGiro)');
+  ok(/t\.giro !== 90 && t\.giro !== 0[\s\S]{0,240}_verticeDesdeGiro\(t\.giro\)/.test(src),
+    'el guardado 2D filtra por el giro del tramo pero ESCRIBE el ángulo del vértice');
+  ok(/disenador3dValoresAngulos\(\) : \[\]\);/.test(src) &&
+     !/disenador3dValoresAngulos[\s\S]{0,80}\.map\(/.test(src),
+    'el guardado 3D escribe TAL CUAL lo que mide el editor 3D (que ya es el vértice): sin conversión');
+  // Y el rótulo de pantalla no puede desmentir al archivo: el α que muestra el panel
+  // sale del mismo _verticeDesdeGiro que el que se guarda.
+  ok(/var angulos = geo\.tramos\.filter\([\s\S]{0,80}_verticeDesdeGiro\(t\.giro\)/.test(src),
+    'el panel rotula α con el MISMO número que se guarda (ángulo del vértice)');
+  ok(/angulos\.filter\(function\(v\) \{ return v !== 90 && v !== 180; \}\)/.test(src),
+    'y el filtro de "especiales" del rótulo es el de la lectura de vértice (≠90 y ≠180)');
 }
 
 console.log(fallos ? '\nFALLOS: ' + fallos : '\nTODO OK');

@@ -23,7 +23,7 @@
 //   P5 · POSES POR DEFECTO del muro (el estribo/amarra con MARCO HORIZONTAL).
 //   P6 · FIX 305A — una cadena colocada con tipología ES se traza como cadena.
 //   P7 · LADO DOMINANTE — cascada determinista (catálogo → 'B' → 1er parcial).
-//   P8 · VIGA-SEMILLA (72 barras / 4 ítems; 136.1 kg tras migrar el cabezal al
+//   P8 · VIGA-SEMILLA (72 barras / 4 ítems; 140.1 kg con la convención de vértice
 //        trazador — ver la nota en P8).
 //
 // Correr con: node tests/test_pose.js
@@ -242,11 +242,26 @@ console.log('\nP1c — recetas viejas que se MUEVEN a propósito (anclaje al tes
   //     proyección + φ/2 = 0.8 de la cresta del codo, por punta → B = 52 − 44.0264
   //     = 7.9736. Es una 103B de patas de 30 metida en 52 cm de alto útil: casi
   //     todo el material se lo llevan las patas, y eso ahora se VE en la dim.
-  const RESERVA_CBS = 30 * Math.SQRT1_2 + 1.6 / 2;   // 22.013203 por punta
-  ok(cbs.n === 6 && close(cbs.x.lo, r3(295.2 - 30 * Math.SQRT1_2)) && close(cbs.x.hi, 295.2) &&
+  // 18-AGO · CONVENCIÓN DE VÉRTICE (cerrada por el usuario). Los 45° de la 103B son
+  // el ángulo ENTRE la pata y el cuerpo, o sea la pata queda REPLEGADA (recorrido
+  // 135°) en vez de abierta. Dos consecuencias medidas, y las dos son el cambio
+  // pedido:
+  //   · B: la pata replegada NO avanza sobre el eje del cuerpo —vuelve sobre él—, así
+  //     que la reserva por punta cae de 22.0132 (21.2132 de proyección + 0.8 de
+  //     cresta) a sólo la cresta, φ/2 = 0.8 → B = 52 − 1.6 = 50.4, no 7.974. La
+  //     103B de patas de 30 en 52 cm de alto útil ya no se come casi todo el cuerpo.
+  //   · x.lo: la punta ya no cae a 30·cos45 del testero. El doblez pasó a 135° de
+  //     recorrido, o sea lo dibuja el codo arqueado: la pata cuelga tangente a la
+  //     salida del arco, desplazada R = 2·φ + φ/2 = 4 cm respecto de la cadena de
+  //     vértices. Alcance = 30·sin45 + R·(1 + cos45) = 21.2132 + 6.8284 = 28.0416
+  //     → punta en 295.2 − 28.0416 = 267.158 (antes 273.987).
+  const RESERVA_CBS = 1.6 / 2;                       // 0.8 por punta (antes 22.013203)
+  const R_CODO_CBS = 2 * 1.6 + 1.6 / 2;              // 4.0 con φ16
+  const ALCANCE_PATA = 30 * Math.SQRT1_2 + R_CODO_CBS * (1 + Math.SQRT1_2);   // 28.0416
+  ok(cbs.n === 6 && close(cbs.x.lo, r3(295.2 - ALCANCE_PATA)) && close(cbs.x.hi, 295.2) &&
     close(JSON.parse(cbs.dims).B, 52 - 2 * RESERVA_CBS) &&
     JSON.parse(cbs.dims).A === 30 && JSON.parse(cbs.dims).C === 30,
-    'CBS 103B sup+de_pie: pegada al testero +X (x.hi 295.2, punta 273.987) · 6 barras · patas 30/30 y B = 52 − 2·22.0132 = 7.974 (=' +
+    'CBS 103B sup+de_pie: pegada al testero +X (x.hi 295.2, punta 267.158) · 6 barras · patas 30/30 y B = 52 − 2·0.8 = 50.4 (=' +
     JSON.stringify(cbs.x) + ' ' + cbs.dims + ')');
   const cbi = mide({
     tipologia: 'CBI', figura: '101A', diam: 18, cara: 'inf', plano_pieza: { orientacion: 'de_pie' },
@@ -952,13 +967,22 @@ ok(FP.ladoLongitudinalCadena('104A', { A: 20, B: 50, C: 20, D: 50 }) === undefin
 // ===========================================================================
 console.log('\nP8 — la viga-semilla: poses intactas, kg re-derivado:');
 // Ninguno de los cambios de POSE de este archivo toca la semilla (sus 4
+// 18-AGO · 136.1 -> 140.1 kg (CONVENCION DE VERTICE, cerrada por el usuario). El
+// numero del catalogo pasa a leerse como ANGULO DEL VERTICE (el que queda entre los
+// dos tramos de fierro) y no como recorrido del doblado. Consecuencia en la semilla:
+// las patas de 45 del CBS 103B quedan REPLEGADAS sobre el cuerpo en vez de abiertas,
+// asi que ya no le roban largo al tramo B: su 'auto' sube de 547.974 a 590.4 (la
+// unica reserva por punta que queda es la cresta del codo, phi/2 = 0.8). Son 42.426
+// cm mas por barra x 6 barras phi16 = 4.0 kg. Items, barras y las otras 3 figuras del
+// listado (2 x 101A y el estribo 104D) no se mueven ni un gramo.
+// --- HISTORIA PREVIA (12-ago), ya superada por la nota de arriba: ---
 // componentes son 'acostada'). Los kg bajan 140.2 → 136.1 por la MIGRACIÓN
 // CABEZAL → TRAZADOR: el CBS es una 103B con dobleces de 45°/45° declarados en el
 // catálogo, y al honrarlos el auto-largo reserva 30·cos45 + φ/2 = 22.0132 por
 // punta → B = 592 − 44.0264 = 547.974.
 const sem = G.generarViga(SEM.semillaViga(), {});
-ok(sem.resumen.items === 4 && sem.resumen.barras === 72 && close(sem.resumen.kg, 136.1, 0.05),
-  'semilla = {items:4, barras:72, kg:136.1} (=' + JSON.stringify(sem.resumen) + ')');
+ok(sem.resumen.items === 4 && sem.resumen.barras === 72 && close(sem.resumen.kg, 140.1, 0.05),
+  'semilla = {items:4, barras:72, kg:140.1} (=' + JSON.stringify(sem.resumen) + ')');
 
 if (fallos) { console.error('\nFALLARON ' + fallos + ' aserciones'); process.exit(1); }
 console.log('\nOK — modelo de POSE (24 orientaciones + espejo) pasa.');

@@ -49,8 +49,14 @@ console.log('MH 104B φ16 TODO AUTO (el caso reportado por el usuario):');
   // núcleo eje a eje en el espesor: ±(10 − 2.5 − 0.8) = ±6.7 → recub 2.5 EXACTO
   // por las DOS caras (antes: profundidad 16.4 en un núcleo de 14.2, 0.49 FUERA
   // del hormigón por la cara opuesta).
-  ok(close(z.hi, 6.7, 1e-6) && z.lo >= -6.7 - 1e-6,
-    'la profundidad se ajusta al espesor útil: z ∈ [' + r2(z.lo) + ', ' + r2(z.hi) + '] ⊆ ±6.7');
+  // 18-AGO · el CUERPO sigue cerrando contra el núcleo (z.hi = 6.7); lo que se pasa
+  // 0.216652 es la PUNTA del gancho A, que en 'auto' vale el 6φ normativo y con la
+  // convención de VÉRTICE queda replegado colgando de la salida del arco. Explicado
+  // en detalle en el bloque de la 103C, más abajo (mismo número exacto). El fierro
+  // sigue DENTRO del hormigón: cara del fierro en −7.72 contra la del muro en −10.
+  ok(close(z.hi, 6.7, 1e-6) && close(z.lo, -6.916652224137049, 1e-9),
+    'la profundidad se ajusta al espesor útil: z ∈ [' + r2(z.lo) + ', ' + r2(z.hi) +
+    '] (cuerpo en 6.7, punta del gancho replegado en −6.916652)');
   // largo: eje del doblez a recub_borde + φ/2 → ±196.2 (la CRESTA del doblez en
   // línea con el recub; antes el eje llegaba a ±197 y la superficie lo invadía).
   ok(close(x.hi, 196.2, 1e-6) && close(x.lo, -196.2, 1e-6),
@@ -100,23 +106,54 @@ console.log('MH 103C φ16 (un solo gancho a 45°) — YA NO se dibuja como una 1
   ok(close(pl.dims.A, 9.6, 1e-6) && close(pl.dims.C, 13.4, 1e-6),
     'A (diagonal) = gancho 9.6 y C (⊥) = espesor útil 13.4: cada pata según SU dirección (=' +
     r2(pl.dims.A) + ' / ' + r2(pl.dims.C) + ')');
-  // Giro real de cada doblez sobre la polilínea 3D (no depende del sistema local).
-  const giro = (a, b, c) => {
-    const u = { x: b.x - a.x, y: b.y - a.y, z: b.z - a.z };
-    const v = { x: c.x - b.x, y: c.y - b.y, z: c.z - b.z };
-    const lu = Math.hypot(u.x, u.y, u.z), lv = Math.hypot(v.x, v.y, v.z);
-    return Math.acos(Math.max(-1, Math.min(1, (u.x * v.x + u.y * v.y + u.z * v.z) / (lu * lv)))) * 180 / Math.PI;
+  // ÁNGULO DEL VÉRTICE de cada doblez (18-ago: es el número que declara el catálogo).
+  // Se mide sobre los tramos RECTOS: con la convención de vértice el 45° de la 103C
+  // es un gancho REPLEGADO (135° de recorrido) y ese doblez lo dibuja el codo
+  // arqueado, así que puntos[0..3] caen dentro del muestreo del arco y medir entre
+  // puntos consecutivos daba el paso del muestreo (4.5° / 9°), no la figura.
+  const vertices = pts => {
+    const RC = 4, s = [];                                   // radio del codo con φ16
+    for (let i = 1; i < pts.length; i++) {
+      const d = { x: pts[i].x - pts[i-1].x, y: pts[i].y - pts[i-1].y, z: pts[i].z - pts[i-1].z };
+      const L = Math.hypot(d.x, d.y, d.z);
+      if (!(L > 1e-9)) continue;
+      if (pts[i-1].esArco && pts[i].esArco && L < RC) continue;
+      s.push({ d, L });
+    }
+    const o = [];
+    for (let i = 1; i < s.length; i++) {
+      const a = s[i-1], b = s[i];
+      const c = (a.d.x*b.d.x + a.d.y*b.d.y + a.d.z*b.d.z) / (a.L*b.L);
+      o.push(Math.acos(Math.max(-1, Math.min(1, -c))) * 180 / Math.PI);
+    }
+    return o;
   };
-  ok(close(giro(pl.puntos[0], pl.puntos[1], pl.puntos[2]), 45, 1e-6) &&
-     close(giro(pl.puntos[1], pl.puntos[2], pl.puntos[3]), 90, 1e-6),
-    'y los dobleces DIBUJADOS son 45° / 90°, los del catálogo (=' +
-    r2(giro(pl.puntos[0], pl.puntos[1], pl.puntos[2])) + '° / ' +
-    r2(giro(pl.puntos[1], pl.puntos[2], pl.puntos[3])) + '°)');
+  const vv = vertices(pl.puntos);
+  ok(vv.length === 2 && close(vv[0], 45, 1e-6) && close(vv[1], 90, 1e-6),
+    'y los VÉRTICES DIBUJADOS son 45° / 90°, los del catálogo (=' +
+    vv.map(v => r2(v)).join('° / ') + '°)');
   const x = lim(pl, 'x'), z = lim(pl, 'z');
   ok(close(x.hi, 196.2, 1e-6) && close(x.lo, -196.2, 1e-6),
     'sigue cerrando contra el recub de borde por los dos extremos (x = ±196.2)');
-  ok(z.hi <= 6.7 + 1e-6 && z.lo >= -6.7 - 1e-6,
-    'y no saca fierro por el espesor: z ∈ [' + r2(z.lo) + ', ' + r2(z.hi) + '] ⊆ ±6.7');
+  // 18-AGO · z.lo pasa de −6.7 a −6.916652 y hay que decir POR QUÉ, porque es una
+  // pérdida de recubrimiento (0.2167 cm en esa cara) y no un redondeo:
+  //   · el lado A es DIAGONAL ('d'), o sea su 'auto' es el GANCHO NORMATIVO 6φ = 9.6
+  //     y no se negocia contra el espesor (la misma regla que documenta el bloque
+  //     del 105F en tests/test_fuera_hormigon.js);
+  //   · con la convención de VÉRTICE ese gancho pasa a ser REPLEGADO (135° de
+  //     recorrido), lo dibuja `_ganchoFinal2D` y la pata cuelga COMPLETA desde la
+  //     SALIDA DEL ARCO — que está desplazada R respecto de la cadena de vértices.
+  //     Salida del arco en z = −0.128427, más 9.6·sin45 = 6.788225 → −6.916652.
+  // El fierro SIGUE DENTRO DEL HORMIGÓN con holgura (la cara del fierro queda en
+  // −7.72 contra la cara del muro en −10), que es lo que este assert protegía; lo
+  // que se estrecha es el recubrimiento nominal de esa cara. Se congela el número
+  // EXACTO en vez de una cota floja para que cualquier movimiento futuro se vea.
+  ok(close(z.hi, 6.7, 1e-6) && close(z.lo, -6.916652224137049, 1e-9),
+    'el cuerpo cierra contra el núcleo (z.hi = 6.7) y la punta del gancho replegado ' +
+    'llega a −6.916652 (=' + r2(z.lo) + ', ' + r2(z.hi) + ')');
+  ok(Math.abs(z.lo) + 1.6 / 2 <= muro.ancho / 2 - 1e-9 && Math.abs(z.hi) + 1.6 / 2 <= muro.ancho / 2,
+    '…y no saca fierro por el espesor: la cara del fierro queda en ' +
+    r2(Math.abs(z.lo) + 0.8) + ' ⊆ ' + (muro.ancho / 2));
 }
 
 console.log('MH 103B φ16 (patas 45°) TODO AUTO — la diagonal sigue al gancho:');

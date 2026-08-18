@@ -34,7 +34,7 @@
 //      eso es lo que ahora hace `_avisarDimsMudas`.
 //
 // QUÉ PROTEGE, en orden:
-//   A. CERO REGRESIÓN: la viga-semilla en {items:4, barras:72, kg:136.1} con sus
+//   A. CERO REGRESIÓN: la viga-semilla en {items:4, barras:72, kg:140.1} con sus
 //      dims exactas, y el trazo de una 106A sin Δ clavado en su perímetro de
 //      siempre (la pata declarada sólo viaja cuando el usuario la escribe).
 //   B. Δ EN UN GANCHO: el trazo crece EXACTAMENTE lo que crece el corte, en las 4
@@ -110,13 +110,18 @@ function avisosDelTrazo(c) {
 console.log('A — sin dims escritas a mano, el motor da EXACTAMENTE lo de siempre');
 {
   const res = G.generarViga(S.semillaViga(), {});
-  ok(res.resumen.items === 4 && res.resumen.barras === 72 && res.resumen.kg === 136.1,
-    'viga-semilla en {items:4, barras:72, kg:136.1} — la referencia viva');
+  ok(res.resumen.items === 4 && res.resumen.barras === 72 && res.resumen.kg === 140.1,
+    'viga-semilla en {items:4, barras:72, kg:140.1} — la referencia viva');
   // (14-ago, Modelo A) la TRV es un longitudinal de_pie: mismo 50.4, pero la
   // aritmética llega por resta directa del largo útil local — sin cola flotante.
   const firma = res.barras.map(b => [b.figura, b.cant, b.dim_a, b.dim_b, b.dim_c, b.dim_d].join('|')).join(' ; ');
+  // 18-AGO · el ÚNICO número que se movió es el B del CBS: 547.9735931288072 → 590.4.
+  // Con la CONVENCIÓN DE VÉRTICE (cerrada por el usuario) los 45° de la 103B son el
+  // ángulo ENTRE la pata y el cuerpo: patas REPLEGADAS en vez de abiertas, o sea que
+  // dejan de robarle largo al tramo B. Las otras tres barras quedan idénticas dígito a
+  // dígito, cola de flotante incluida.
   ok(firma === [
-    '103B|6|30|547.9735931288072|30|', '101A|4|592|||',
+    '103B|6|30|590.4000000000001|30|', '101A|4|592|||',
     '104D|47|24|52|24|52', '101A|15|50.4|||'
   ].join(' ; '), 'las 4 barras salen con las MISMAS dims que antes de esta corrección');
   // Y la semilla no estrena NI UN aviso. Sus dims 'auto' las resolvió el motor
@@ -148,7 +153,8 @@ console.log('A — sin dims escritas a mano, el motor da EXACTAMENTE lo de siemp
 console.log('\nB — Δ en un gancho declarado: el dibujo crece lo mismo que el corte');
 {
   // El caso del hallazgo, con sus números medidos: 106A rol estribo φ8 en la
-  // viga-semilla. dim_a 7.5 → 12.5 · largo 167 → 172 · kg 138.8 → 139.8. Eso ya
+  // viga-semilla. dim_a 7.5 → 12.5 · largo 167 → 172 · kg 142.8 → 143.8 (18-ago: los dos
+  // totales subieron 4.0 kg con la convención de vértice; el Δ entre ellos es el mismo). Eso ya
   // estaba bien (el despiece nunca estuvo corrupto); lo que estaba mal es que el
   // perímetro dibujado se quedaba en 169.213659.
   function semilla106(delta) {
@@ -166,8 +172,11 @@ console.log('\nB — Δ en un gancho declarado: el dibujo crece lo mismo que el 
   casi(s5.barra.dim_a, 12.5, 1e-9, 'con Δ +5: dim_a = 12.5');
   casi(s0.barra._largoEstimado, 167, 1e-9, 'largo de corte sin Δ = 167 cm');
   casi(s5.barra._largoEstimado, 172, 1e-9, 'largo de corte con Δ = 172 cm (+5, como debe)');
-  casi(s0.out.resumen.kg, 138.8, 0.05, 'kg sin Δ = 138.8');
-  casi(s5.out.resumen.kg, 139.8, 0.05, 'kg con Δ = 139.8');
+  // 18-AGO: la base de la semilla pasó de 136.1 a 140.1 (convención de vértice, ver
+  // bloque A), así que estos dos totales suben los mismos 4.0 kg: 138.8 → 142.8 y
+  // 139.8 → 143.8. El Δ que mide el bloque (+1.0 kg entre uno y otro) no se mueve.
+  casi(s0.out.resumen.kg, 142.8, 0.05, 'kg sin Δ = 142.8');
+  casi(s5.out.resumen.kg, 143.8, 0.05, 'kg con Δ = 143.8');
 
   // LO QUE ESTE TEST EXISTE PARA VIGILAR: el trazo. Antes 169.213659 → 169.213659.
   const p0 = perimetro(R.expandirComponente(comp('106A', 'ES'), HOST)[0].puntos);

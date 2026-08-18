@@ -19,7 +19,7 @@
 //
 // QUÉ PROTEGE, en orden:
 //   A. Δ AUSENTE = COMPORTAMIENTO DE HOY, byte por byte (la viga-semilla en
-//      {items:4, barras:72, kg:136.1} y las dims de sus 4 ítems con toda su cola
+//      {items:4, barras:72, kg:140.1} y las dims de sus 4 ítems con toda su cola
 //      de flotante).
 //   B. El Δ suma al LARGO y a los KG, y lo hace por la dim (no por una rama
 //      aparte en generar.js).
@@ -100,15 +100,21 @@ function semilla(mut) {
 console.log('A — sin Δ y sin elección, el motor da EXACTAMENTE lo de siempre');
 {
   const { res } = semilla();
-  ok(res.resumen.items === 4 && res.resumen.barras === 72 && res.resumen.kg === 136.1,
-    'viga-semilla en {items:4, barras:72, kg:136.1} — la referencia viva');
+  ok(res.resumen.items === 4 && res.resumen.barras === 72 && res.resumen.kg === 140.1,
+    'viga-semilla en {items:4, barras:72, kg:140.1} — la referencia viva');
   // Las dims completas (con su cola de flotante): si el Δ tocara algo cuando NO
   // está declarado, acá se vería aunque los kg redondeados no se movieran.
   // (14-ago, Modelo A) la TRV es un longitudinal de_pie: mismo 50.4, pero la
   // aritmética llega por resta directa del largo útil local — sin cola flotante.
   const firma = res.barras.map(b => [b.figura, b.cant, b.dim_a, b.dim_b, b.dim_c, b.dim_d].join('|')).join(' ; ');
+  // 18-AGO · el ÚNICO número que se movió es el B del CBS: 547.9735931288072 → 590.4.
+  // Con la CONVENCIÓN DE VÉRTICE (cerrada por el usuario) los 45° de la 103B son el
+  // ángulo ENTRE la pata y el cuerpo, o sea patas REPLEGADAS en vez de abiertas: ya no
+  // le roban largo al tramo B y su 'auto' sube. Las otras tres barras quedan
+  // idénticas dígito a dígito, incluida la cola de flotante — que es justo lo que este
+  // assert vigila.
   ok(firma === [
-    '103B|6|30|547.9735931288072|30|', '101A|4|592|||',
+    '103B|6|30|590.4000000000001|30|', '101A|4|592|||',
     '104D|47|24|52|24|52', '101A|15|50.4|||'
   ].join(' ; '), 'las 4 barras salen con las MISMAS dims que antes de la tanda Δ');
 
@@ -136,8 +142,11 @@ console.log('\nB — el Δ viaja al despiece dentro de la dim (largo de corte y 
   const b0 = base.res.barras[0], b1 = conD.res.barras[0];
   casi(b1.dim_b, b0.dim_b + 12, 1e-9, 'CBS 103B: dim_b sube exactamente el Δ (+12)');
   casi(b1._largoEstimado, b0._largoEstimado + 12, 1e-9, 'el largo de corte sube 12 cm');
-  // 6 barras φ16 × 12 cm = 6 · 7850 · π · (16/2000)² · 0.12 = 1.1355 kg → 137.2
-  casi(conD.res.resumen.kg, 137.2, 0.05, 'los kg suben lo que pesan 6 barras φ16 × 12 cm');
+  // 6 barras φ16 × 12 cm = 6 · 7850 · π · (16/2000)² · 0.12 = 1.1355 kg.
+  // 18-AGO: la base pasó de 136.1 a 140.1 (convención de vértice, ver bloque A), así que
+  // el total con Δ pasa de 137.2 a 141.2. Lo que este assert mide —el INCREMENTO de
+  // 1.1355 kg— no se mueve.
+  casi(conD.res.resumen.kg, 141.2, 0.05, 'los kg suben lo que pesan 6 barras φ16 × 12 cm');
   ok(b1.dim_a === b0.dim_a && b1.dim_c === b0.dim_c,
     'las patas A y C no se mueven: el Δ es de UN lado, no un escalado');
   // Un Δ en una PATA también viaja (no es un privilegio del dominante).

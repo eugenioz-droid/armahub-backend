@@ -51,6 +51,15 @@ console.log('R0 — la viga-semilla: items/barras intactos, kg re-derivado:');
 // Las POSICIONES de las capas ≥2 del CBS sí cambian (5.6 → 4 cm), pero las dims
 // no, así que el listado y el conteo son los mismos.
 //
+// 18-AGO · 136.1 -> 140.1 kg (CONVENCION DE VERTICE, cerrada por el usuario). El
+// numero del catalogo pasa a leerse como ANGULO DEL VERTICE (el que queda entre los
+// dos tramos de fierro) y no como recorrido del doblado. Consecuencia en la semilla:
+// las patas de 45 del CBS 103B quedan REPLEGADAS sobre el cuerpo en vez de abiertas,
+// asi que ya no le roban largo al tramo B: su 'auto' sube de 547.974 a 590.4 (la
+// unica reserva por punta que queda es la cresta del codo, phi/2 = 0.8). Son 42.426
+// cm mas por barra x 6 barras phi16 = 4.0 kg. Items, barras y las otras 3 figuras del
+// listado (2 x 101A y el estribo 104D) no se mueven ni un gramo.
+// --- HISTORIA PREVIA (12-ago), ya superada por la nota de arriba: ---
 // 140.2 → 136.1 kg POR LA MIGRACIÓN CABEZAL → TRAZADOR. El CBS de la semilla es
 // una 103B y el catálogo le declara dobleces de 45°/45°. El constructor de
 // cabezal los IGNORABA (dibujaba las dos patas a 90°), así que el auto-largo
@@ -65,8 +74,35 @@ console.log('R0 — la viga-semilla: items/barras intactos, kg re-derivado:');
 // Las otras tres piezas no se mueven ni un decimal (CBI 101A recta, ES 104D
 // marco cerrado, TRV 101A recta): siguen 72 barras y 4 ítems.
 const semilla = G.generarViga(S.semillaViga(), {});
-ok(semilla.resumen.items === 4 && semilla.resumen.barras === 72 && semilla.resumen.kg === 136.1,
-  'semilla = {items:4, barras:72, kg:136.1} (=' + JSON.stringify(semilla.resumen) + ')');
+ok(semilla.resumen.items === 4 && semilla.resumen.barras === 72 && semilla.resumen.kg === 140.1,
+  'semilla = {items:4, barras:72, kg:140.1} (=' + JSON.stringify(semilla.resumen) + ')');
+
+
+// ---------------------------------------------------------------------------
+// EL CUERPO DE LA BARRA, SIN DEPENDER DE ÍNDICES (18-ago)
+// ---------------------------------------------------------------------------
+// Con la CONVENCIÓN DE VÉRTICE (cerrada por el usuario) los 45° que declara la 103B
+// son el ángulo ENTRE la pata y el cuerpo, o sea ganchos REPLEGADOS de 135° de
+// RECORRIDO. Un recorrido > 90° lo dibuja `_ganchoFinal2D` con el arco calibrado, así
+// que la polilínea de una 103B pasa de 4 puntos a 32 y `puntos[1]` / `puntos[2]` ya
+// no son las esquinas del tramo largo: caen dentro del muestreo del codo.
+// Estos helpers localizan el CUERPO por geometría (el segmento más largo, que es el
+// tramo B por construcción en todos los casos de este archivo) y las PUNTAS por
+// posición (primer y último punto, que siempre son los extremos libres del fierro).
+// Devuelven exactamente los mismos números que `puntos[1..2]` devolvía antes.
+const R_CODO = 2 * 1.6 + 1.6 / 2;          // radio de eje del codo con phi16 = 4.0 cm
+function iCuerpo(pts) {
+  let mejor = -1, idx = 0;
+  for (let i = 1; i < pts.length; i++) {
+    const L = Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y, pts[i].z - pts[i - 1].z);
+    if (L > mejor) { mejor = L; idx = i - 1; }
+  }
+  return idx;                               // el cuerpo va de pts[idx] a pts[idx+1]
+}
+function cuerpoIni(pts) { return pts[iCuerpo(pts)]; }
+function cuerpoFin(pts) { return pts[iCuerpo(pts) + 1]; }
+function punta0(pts) { return pts[0]; }
+function puntaN(pts) { return pts[pts.length - 1]; }
 
 // ===========================================================================
 // T1 · SEPARACIÓN DE CAPAS = EJE A EJE
@@ -82,7 +118,7 @@ function capas(gap, n) {
     tipologia: 'CBS', figura: '103B', diam: 16, cara: 'sup', angulos: [45, 45],
     dims: { A: { modo: 'fija', valor: 30 }, B: { modo: 'fija', valor: 400 }, C: { modo: 'fija', valor: 30 } },
     distribucion: { modo: 'layered', n_capas: n, barras_capa: 1, gap: gap }
-  }, host).map(function (p) { return r6(p.puntos[1].y); });   // y del tramo largo
+  }, host).map(function (p) { return r6(cuerpoIni(p.puntos).y); });   // y del tramo largo
 }
 const y5 = capas(5, 3);
 ok(eq(y5, [25.2, 20.2, 15.2]),
@@ -228,39 +264,46 @@ function corchete(orient) {
     distribucion: { modo: 'points', positions: [{ z: 0 }] }
   }, host)[0].puntos;
 }
-// Centro del CUERPO de la barra = punto medio del tramo largo (puntos 1 y 2),
-// que es justo el eje del spin: tiene que quedar EXACTAMENTE igual.
+// Centro del CUERPO de la barra = punto medio del tramo largo, que es justo el eje
+// del spin: tiene que quedar EXACTAMENTE igual. (18-ago: el tramo largo se localiza
+// con `iCuerpo`, no con los índices 1 y 2 — ver la nota de los helpers.)
 function centroCuerpo(pts) {
-  return { x: r6((pts[1].x + pts[2].x) / 2), y: r6((pts[1].y + pts[2].y) / 2), z: r6((pts[1].z + pts[2].z) / 2) };
+  const a = cuerpoIni(pts), b = cuerpoFin(pts);
+  return { x: r6((a.x + b.x) / 2), y: r6((a.y + b.y) / 2), z: r6((a.z + b.z) / 2) };
 }
 const ptsBase = corchete(null);
 const ptsSpin = corchete({ eje: 'x', spin: 90 });
 ok(eq(centroCuerpo(ptsBase), { x: 0, y: 25.2, z: 0 }), 'sin spin: cuerpo en (0, 25.2, 0)');
 ok(eq(centroCuerpo(ptsSpin), centroCuerpo(ptsBase)),
   'con spin 90 el centro de la barra es IDÉNTICO — cero deriva (=' + JSON.stringify(centroCuerpo(ptsSpin)) + ')');
-ok(close(ptsSpin[1].x, ptsBase[1].x) && close(ptsSpin[2].x, ptsBase[2].x) &&
-  close(ptsSpin[1].y, ptsBase[1].y) && close(ptsSpin[1].z, ptsBase[1].z),
+ok(close(cuerpoIni(ptsSpin).x, cuerpoIni(ptsBase).x) && close(cuerpoFin(ptsSpin).x, cuerpoFin(ptsBase).x) &&
+  close(cuerpoIni(ptsSpin).y, cuerpoIni(ptsBase).y) && close(cuerpoIni(ptsSpin).z, cuerpoIni(ptsBase).z),
   'los DOS extremos del cuerpo quedan clavados (no sólo el punto medio)');
-// MIGRACIÓN CABEZAL → TRAZADOR: la pata de una 103B baja 20·sin45, no 20.
+// MIGRACIÓN CABEZAL → TRAZADOR: la pata de una 103B ya no baja sus 20 cm enteros.
 // El cabezal dibujaba las dos patas PERPENDICULARES al cuerpo (90° fijos), así
-// que los 20 cm de la pata caían enteros sobre la normal de la cara y el spin los
-// llevaba enteros a −Z (z = −20). Honrando el 45° que declara el catálogo, la
-// pata avanza 20·cos45 = 14.1421 a lo largo de la barra y sólo 20·sin45 = 14.1421
-// cruza hacia el núcleo: el spin gira ESA componente (la ⊥ al eje del giro), y la
-// longitudinal se queda en x. Por eso z = −14.1421 y no −20. La pata mide lo
-// mismo (20): lo que cambió es su DIRECCIÓN, que es justo lo que el cabezal
-// ignoraba.
-const PROY45_20 = r6(20 * Math.SQRT1_2);   // 14.142136 — proyección de la pata de 20 a 45°
-const zPatas = [r6(ptsSpin[0].z), r6(ptsSpin[3].z)];
-ok(eq(zPatas, [-PROY45_20, -PROY45_20]),
-  'las PATAS sí giran: pasan de −Y a −Z (z = −20·sin45 = −' + PROY45_20 + ') (=' +
+// que los 20 cm caían enteros sobre la normal de la cara y el spin los llevaba
+// enteros a −Z (z = −20).
+// 18-AGO · CONVENCIÓN DE VÉRTICE: la penetración pasa de 14.1421 a 20.9706. El 45°
+// de la ficha es ahora el ángulo ENTRE la pata y el cuerpo, o sea un gancho
+// REPLEGADO de 135° de recorrido, y eso suma dos cosas:
+//   · la pata cruza 20·sin45 = 14.1421 en la normal, igual que antes;
+//   · pero un recorrido > 90° lo dibuja `_ganchoFinal2D` y la pata cuelga COMPLETA
+//     desde la SALIDA DEL ARCO, desplazada R·(1 + cos45) = 4·1.70711 = 6.8284.
+//   -> 14.1421 + 6.8284 = 20.9706.
+// La pata sigue midiendo lo mismo (20): lo que cambió es su DIRECCIÓN y el arranque.
+// Las PUNTAS se leen con punta0/puntaN, no con los índices 0 y 3: con el codo
+// arqueado el punto 3 cae dentro del muestreo del arco (medía −5.816).
+const PENETRA_20 = r6(20 * Math.SQRT1_2 + R_CODO * (1 + Math.SQRT1_2));   // 20.970563
+const zPatas = [r6(punta0(ptsSpin).z), r6(puntaN(ptsSpin).z)];
+ok(eq(zPatas, [-PENETRA_20, -PENETRA_20]),
+  'las PATAS sí giran: pasan de −Y a −Z (z = −' + PENETRA_20 + ') (=' +
   JSON.stringify(zPatas) + ')');
 ok(zPatas[0] < -(host.ancho / 2 - host.recub_lat),
-  'la pata ASOMA del recubrimiento lateral (−14.14 < −12) y se deja asomar: dato honesto, no se esconde con una traslación');
+  'la pata ASOMA del recubrimiento lateral (−20.97 < −12) y se deja asomar: dato honesto, no se esconde con una traslación');
 // El signo del spin manda: −90 manda las patas al otro lado, la barra igual quieta.
 const ptsSpinNeg = corchete({ eje: 'x', spin: -90 });
-ok(eq(centroCuerpo(ptsSpinNeg), centroCuerpo(ptsBase)) && r6(ptsSpinNeg[0].z) === PROY45_20,
-  'spin −90 → patas a +Z (z = +' + PROY45_20 + ') y el cuerpo sigue clavado');
+ok(eq(centroCuerpo(ptsSpinNeg), centroCuerpo(ptsBase)) && r6(punta0(ptsSpinNeg).z) === PENETRA_20,
+  'spin −90 → patas a +Z (z = +' + PENETRA_20 + ') y el cuerpo sigue clavado');
 
 console.log('\nT3b — con `deg` (rotación real de la pieza) el re-anclaje SIGUE actuando:');
 // deg 90 en x (pivote = centro propio) + spin 90: el bbox termina en y ∈ [15.2, 35.2],
@@ -324,6 +367,9 @@ console.log('\nT4d — sobre el TRAMO LARGO (B) de una figura con patas (103B):'
 // 103B φ16, A = C = 30 (patas), B fija = 400, empalme {inicio:10, fin:20}
 //   dim B = 400 + 30 = 430; tramo base = 400 → x ∈ [−200, 200]
 //   x0 = −200 − 10 = −210   ·   x1 = 200 + 20 = 220 (las patas viajan con su punta)
+// 18-AGO: el tramo DIBUJADO queda retranqueado el radio del codo por cada punta
+// (regla de la cresta), o sea de −206 a +216; la ENVOLVENTE del vértice sigue en
+// −210 / +220, que es lo que el empalme corrió.
 const pl103 = R.expandirComponente({
   tipologia: 'CBS', figura: '103B', diam: 16, cara: 'sup', angulos: [45, 45],
   empalme: { inicio: 10, fin: 20 },
@@ -332,19 +378,25 @@ const pl103 = R.expandirComponente({
 }, host)[0];
 ok(r6(pl103.dims.B) === 430, 'el empalme suma a B (el tramo largo), no a las patas (=' + pl103.dims.B + ')');
 ok(r6(pl103.dims.A) === 30 && r6(pl103.dims.C) === 30, 'las patas A y C quedan intactas (30 / 30)');
-ok(r6(pl103.puntos[1].x) === -210 && r6(pl103.puntos[2].x) === 220, 'el tramo B asoma 10 / 20 (x = −210 / 220)');
+ok(r6(cuerpoIni(pl103.puntos).x) === r6(-210 + R_CODO) && r6(cuerpoFin(pl103.puntos).x) === r6(220 - R_CODO),
+  'el tramo B asoma 10 / 20 (vértices en x = −210 / 220; dibujado −206 / 216 por la cresta del codo) (=' +
+  r6(cuerpoIni(pl103.puntos).x) + ' / ' + r6(cuerpoFin(pl103.puntos).x) + ')');
 // MIGRACIÓN CABEZAL → TRAZADOR: la PUNTA de cada pata ya no comparte la x de su
 // esquina. Con las patas a 90° (lo que dibujaba el cabezal) la punta caía en
-// vertical sobre el codo y su x era la misma; honrando los 45° del catálogo la
-// pata AVANZA 30·cos45 = 21.2132 hacia afuera mientras baja. Lo que el assert
-// protege es lo mismo de antes —que la punta viaja PEGADA a su esquina cuando el
-// empalme corre el tramo— así que se mide contra la esquina, no contra un número
-// absoluto: punta = codo ∓ 21.2132.
-const PROY45_30 = 30 * Math.SQRT1_2;   // 21.213203 — proyección de la pata de 30 a 45°
-ok(close(pl103.puntos[0].x, pl103.puntos[1].x - PROY45_30) &&
-   close(pl103.puntos[3].x, pl103.puntos[2].x + PROY45_30),
-  'y las patas acompañan a su extremo, abiertas los 21.2132 del doblez de 45° (=' +
-  r6(pl103.puntos[0].x) + ' / ' + r6(pl103.puntos[3].x) + ')');
+// vertical sobre el codo y su x era la misma.
+// 18-AGO · CONVENCIÓN DE VÉRTICE: la pata ya no se abre HACIA AFUERA sino que se
+// REPLIEGA HACIA ADENTRO (el 45° de la ficha es el ángulo entre pata y cuerpo, o sea
+// 135° de recorrido). Arranca en la salida del arco, R·cos45 más allá del extremo
+// dibujado del cuerpo, y avanza 30·cos45 de vuelta sobre él:
+//     punta = extremoDibujadoDelCuerpo ± (30 − R)·cos45     (signo: hacia ADENTRO)
+// Lo que el assert protege es lo mismo de antes —que la punta viaja PEGADA a su
+// esquina cuando el empalme corre el tramo—, así que se sigue midiendo contra la
+// esquina y no contra un número absoluto; lo que cambió es el signo y el brazo.
+const BRAZO_PATA = (30 - R_CODO) * Math.SQRT1_2;   // 18.384776
+ok(close(punta0(pl103.puntos).x, cuerpoIni(pl103.puntos).x + BRAZO_PATA) &&
+   close(puntaN(pl103.puntos).x, cuerpoFin(pl103.puntos).x - BRAZO_PATA),
+  'y las patas acompañan a su extremo, REPLEGADAS los 18.3848 sobre el cuerpo (=' +
+  r6(punta0(pl103.puntos).x) + ' / ' + r6(puntaN(pl103.puntos).x) + ')');
 
 if (fallos) { console.error('\nFALLARON ' + fallos + ' aserciones'); process.exit(1); }
 console.log('\nOK — capas eje a eje + tramos en el rango + spin sin deriva + Δ por extremo.');

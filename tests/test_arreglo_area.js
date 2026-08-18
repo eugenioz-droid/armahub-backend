@@ -133,8 +133,21 @@ console.log('\nB — traba clásica de muro: altura × largo');
   const z = extremos(pls, 'z');
   ok(z[1] - z[0] > 12 && z[1] - z[0] <= 16,
     'cada traba cruza el espesor (span z = ' + (z[1] - z[0]).toFixed(2) + ')');
-  ok(pls[0].dims.B > 12 && pls[0].dims.A === 7.5,
-    'su cuerpo mide el espesor y su gancho el mínimo normativo (B=' + pls[0].dims.B + ', A=' + pls[0].dims.A + ')');
+  // 18-AGO · CONVENCIÓN DE VÉRTICE (cerrada por el usuario): B pasa de 13.125 a
+  // 9.0717 y hay que decir por qué. Los 135° que la ficha de la 102B declara son
+  // ahora el ángulo ENTRE el gancho y el cuerpo, o sea un quiebre ABIERTO de 45° de
+  // RECORRIDO — antes se leía al revés (gancho replegado de 135° de recorrido).
+  // Un gancho abierto AVANZA sobre el eje del cuerpo en vez de volver sobre él:
+  //     sobresCadena pasa de 0.625 (sólo φ/2 de cresta) a
+  //     7.5·cos45 + φ/2 = 5.3033 + 0.625 = 5.9283 por punta
+  // y el 'auto' de B se encoge lo mismo para que la pieza siga cruzando el espesor
+  // útil SIN salirse — que es lo que este bloque protege y sigue verde arriba
+  // (span z entre 12 y 16, y `fuera(c)` vacío). O sea: el cuerpo ya no vale por sí
+  // solo el espesor, lo cruzan el cuerpo MÁS la proyección de su gancho, y los dos
+  // números salen del MISMO ángulo. El gancho sigue siendo el mínimo normativo.
+  ok(Math.abs(pls[0].dims.B - 9.0717) < 1e-3 && pls[0].dims.A === 7.5,
+    'cuerpo + proyección del gancho cruzan el espesor, con el gancho en el mínimo ' +
+    'normativo (B=' + pls[0].dims.B + ', A=' + pls[0].dims.A + ')');
   ok(fuera(c).length === 0, 'ninguna de las 15 se sale del hormigón: ' + JSON.stringify(fuera(c)));
   const x = extremos(pls, 'x'), y = extremos(pls, 'y');
   ok(x[0] > -200 && x[1] < 200 && y[0] >= -125 && y[1] <= 125 && z[0] > -10 && z[1] < 10,

@@ -56,25 +56,37 @@ function close(a, b, t) { return Math.abs(a - b) < (t || 1e-6); }
 const host = { largo: 600, alto: 60, ancho: 30, recub_sup: 4, recub_inf: 4, recub_lat: 3 };
 const PHI_ES = 0.8;   // φ8 del estribo, en cm
 
-// RESERVA PROPIA de una 103B φ16 con patas de 30 (MIGRACIÓN CABEZAL → TRAZADOR).
-// El catálogo le declara dobleces de 45°/45°; el constructor de cabezal los
-// ignoraba (patas a 90° = proyección horizontal 0) y por eso el auto-largo daba el
-// largo útil pelado. Honrándolos, cada pata AVANZA 30·cos45 = 21.2132 sobre el eje
-// de la barra, y además la CRESTA del codo tiene que quedar en línea con el recub
-// de extremo → el eje se retira φ/2 = 0.8. Reserva = 22.0132 por punta.
+// RESERVA PROPIA de una 103B φ16 con patas de 30.
+// 18-AGO · 22.0132 → 0.8 POR PUNTA (CONVENCIÓN DE VÉRTICE, cerrada por el usuario).
+// El catálogo le declara 45°/45°. Leídos como RECORRIDO —la lectura vieja— cada pata
+// se ABRÍA y avanzaba 30·cos45 = 21.2132 sobre el eje de la barra, y con la cresta
+// del codo la reserva era 21.2132 + φ/2 = 22.0132. Leídos como ÁNGULO DEL VÉRTICE
+// —la convención cerrada el 18-ago— esa misma pata queda REPLEGADA sobre el cuerpo:
+// no avanza nada sobre el eje, vuelve sobre él. Lo único que sigue reservándose es la
+// CRESTA del codo, que tiene que quedar en línea con el recub de extremo → φ/2 = 0.8.
+// (Medido en `figura_puntos.sobresCadena`: {ini: 0.8, fin: 0.8}.)
 // OJO: esta reserva es de la FIGURA, no de la pila — nada que ver con el φ del
 // estribo, que es justo lo que estos asserts protegen.
-const RESERVA_103B_30_PHI16 = 30 * Math.SQRT1_2 + 1.6 / 2;   // 22.013203
+const RESERVA_103B_30_PHI16 = 1.6 / 2;   // 0.8 (antes 22.013203)
 
 // ===========================================================================
 console.log('CERO REGRESIÓN — la viga-semilla: mismo listado, kg re-derivado:');
+// 18-AGO · 136.1 -> 140.1 kg (CONVENCION DE VERTICE, cerrada por el usuario). El
+// numero del catalogo pasa a leerse como ANGULO DEL VERTICE (el que queda entre los
+// dos tramos de fierro) y no como recorrido del doblado. Consecuencia en la semilla:
+// las patas de 45 del CBS 103B quedan REPLEGADAS sobre el cuerpo en vez de abiertas,
+// asi que ya no le roban largo al tramo B: su 'auto' sube de 547.974 a 590.4 (la
+// unica reserva por punta que queda es la cresta del codo, phi/2 = 0.8). Son 42.426
+// cm mas por barra x 6 barras phi16 = 4.0 kg. Items, barras y las otras 3 figuras del
+// listado (2 x 101A y el estribo 104D) no se mueven ni un gramo.
+// --- HISTORIA PREVIA (12-ago), ya superada por la nota de arriba: ---
 // 140.2 → 136.1: el CBS (103B, patas de 30) pasa de B = 592 a
 // 592 − 2·22.0132 = 547.974 y sus 6 barras φ16 de 61.745 a 57.575 kg. Con 592 la
 // pieza asomaba 21.2 cm FUERA del hormigón por cada extremo (la proyección de la
 // pata a 45° que el cabezal no dibujaba). Ítems y barras no se mueven.
 const semilla = G.generarViga(S.semillaViga(), {});
-ok(semilla.resumen.items === 4 && semilla.resumen.barras === 72 && semilla.resumen.kg === 136.1,
-  'semilla = {items:4, barras:72, kg:136.1} (=' + JSON.stringify(semilla.resumen) + ')');
+ok(semilla.resumen.items === 4 && semilla.resumen.barras === 72 && semilla.resumen.kg === 140.1,
+  'semilla = {items:4, barras:72, kg:140.1} (=' + JSON.stringify(semilla.resumen) + ')');
 
 // ===========================================================================
 console.log('\nJ0 — normalización 1-BASED de comp.jerarquia:');
@@ -126,7 +138,7 @@ const cb2 = dimsDe(oJ, 'CBS'), tr2 = dimsDe(oJ, 'TRV'), es1 = dimsDe(oJ, 'ES');
 // (Lo que se protege acá es que NO aparezca el φ del estribo en la cuenta. Lo que
 // sí se descuenta es la reserva de la PROPIA figura — ver RESERVA_103B_30_PHI16.)
 ok(close(cb2.dim_b, 600 - 2 * 4 - 2 * RESERVA_103B_30_PHI16),
-  'cabezal nivel 2: B auto = largo − 2·recubExtremo − su propia reserva de 45° = 547.974, SIN φ1 (el estribo no ocupa extremos) (=' + cb2.dim_b + ')');
+  'cabezal nivel 2: B auto = largo − 2·recubExtremo − su propia reserva de cresta = 590.4, SIN φ1 (el estribo no ocupa extremos) (=' + cb2.dim_b + ')');
 // La traba cruza sup e inf, caras que el estribo SÍ ocupa → ahí sí la empuja.
 ok(close(tr2.dim_a, 60 - 2 * (4 + PHI_ES)), 'traba nivel 2: A auto = alto − prof(sup) − prof(inf) = 50.4 (=' + tr2.dim_a + ')');
 ok(close(es1.dim_a, 30 - 2 * 3) && close(es1.dim_b, 60 - 2 * 4),

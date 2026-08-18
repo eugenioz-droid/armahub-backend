@@ -308,30 +308,45 @@
   var LETRAS = 'ABCDEFGHI'.split('');
 
   // ---------------------------------------------------------------------------
-  // UNA SOLA CONVENCIÓN DE ÁNGULO: EL GIRO (corrección 14-ago)
+  // UNA SOLA CONVENCIÓN DE ÁNGULO: EL DEL VÉRTICE (18-ago-2026)
   // ---------------------------------------------------------------------------
-  // Acá había DOS convenciones para la misma cosa y eso era el bug:
-  //   · el SEED del catálogo (armahub/catalogo.py::_FIGURAS_SEED) y el TRAZADOR del
-  //     modelador (figura_puntos.derivarTramos / _cadena2D) usan el GIRO — cuánto se
-  //     desvía la barra de seguir recta. Por eso la 104D lista [135, 135]: el gancho
-  //     sísmico gira 135°;
-  //   · este diseñador guardaba el SUPLEMENTARIO (180 − giro, "ángulo interno,
-  //     convención aSa"). O sea que una figura DIBUJADA acá quedaba con el valor
-  //     invertido respecto de una figura SEMBRADA: el mismo gancho sísmico se
-  //     guardaba como 45 en vez de 135, y el quiebre de 45° como 135.
-  // Con dos definiciones no hay forma de leer el número: el modelador lo interpreta
-  // como giro (dibuja una figura que no es) y el despiece lo factura como venga.
-  // Se unifica en el GIRO, que es el que ya usan el seed, el trazador y el propio
-  // panel de esta pantalla (la columna "Ángulo prev." siempre mostró `t.giro`).
+  // Lo que se GUARDA en `figuras_catalogo.angulos` —y por lo tanto lo que viaja a
+  // ang1..ang4 y a aSa— es el ÁNGULO DEL VÉRTICE: el que queda ENTRE LOS DOS TRAMOS
+  // DE FIERRO que concurren en el doblez. NO es el recorrido del doblado.
+  //
+  //     vértice = 180 − recorrido        recorrido = 180 − vértice
+  //
+  // La 102B lista 135° porque 135° es lo que se mide entre su pata y su cuerpo; el
+  // recorrido de ese doblez es 180 − 135 = 45°. Convención CERRADA POR EL USUARIO.
+  //
+  // HISTORIA, PORQUE ESTE ARCHIVO YA SE EQUIVOCÓ DOS VECES EN LA MISMA LÍNEA:
+  //   · hasta el 13-ago guardaba el "ángulo interno" (= el vértice) y el trazador
+  //     leía recorrido → figura dibujada ≠ figura sembrada;
+  //   · el 14-ago se unificó al revés, en el RECORRIDO, para alinearse con el
+  //     trazador. Quedó coherente pero con la lectura contraria a la ficha: una
+  //     102B redibujada acá se guardaba con 45 contra el 135 de su semilla, y ese
+  //     45 viajaba a aSa;
+  //   · el 18-ago el usuario cierra la convención en el VÉRTICE y se corrige el
+  //     TRAZADOR (figura_puntos.js::_giroDeVertice), no el dato. Este archivo vuelve
+  //     a guardar el vértice — que es, además, lo que el editor 3D ya mide
+  //     directamente (`disenador3dValoresAngulos` devuelve el ángulo entre los dos
+  //     tramos del vértice) y por eso ese camino ya no convierte nada.
   //
   // 90° es punto fijo (180 − 90 = 90), así que las figuras de esquinas rectas no se
   // ven afectadas ni antes ni ahora. Las que sí cambian son las que tienen ángulos
   // ESPECIALES, que son justamente las que se listan (ver _guardarFigura: sólo se
   // guardan los ≠90 y ≠0).
-  // LAS YA GUARDADAS NO SE TOCAN DESDE ACÁ (no hay acceso a la base): se detectan
-  // porque su `angulos[k]` es el SUPLEMENTARIO del giro del k-ésimo doblez especial
-  // de su `geometria.tramos` (angulos[k] + giro_k === 180).
-  function _giroDesdeInterno(interno) { return 180 - (Number(interno) || 0); }
+  // LAS YA GUARDADAS NO SE TOCAN DESDE ACÁ (no hay acceso a la base). Las que
+  // quedaron escritas con la convención del 14-ago se reconocen porque su
+  // `angulos[k]` es el SUPLEMENTARIO del vértice del k-ésimo doblez especial de su
+  // `geometria.tramos`; para ésas manda igual `geometria` (figura_puntos
+  // ::tramosDeFigura prioriza los tramos dibujados sobre la lista de ángulos), así
+  // que el DIBUJO sale bien y lo que queda desalineado es sólo el número facturado.
+  //
+  // `geometria.tramos[i].giro` SIGUE SIENDO EL RECORRIDO y no se toca: es la
+  // convención del trazado (ver la cabecera del archivo y _cadena2D en el modelador).
+  // La traducción entre las dos vive en esta única función.
+  function _verticeDesdeGiro(giro) { return 180 - (Number(giro) || 0); }
 
   // Construye el atributo `d` de un <path> desde puntos, usando L (línea) para
   // segmentos rectos y A (arco) para curvos. tipos/radios son paralelos a los
@@ -1259,15 +1274,18 @@
     var geo = _puntosAGeometria();
     var largos = _largos();
     var ladosUsados = geo.tramos.map(function(t) { return t.lado; });
-    // Ángulos de cada vértice, para el panel: el GIRO, que es lo que se GUARDA y lo
-    // que el trazador lee (una sola convención — ver _giroDesdeInterno). Antes el
-    // panel mostraba el suplementario y la tabla de al lado el giro: dos números
-    // distintos para el mismo vértice, en la misma pantalla.
-    var angulos = geo.tramos.filter(function(t, i) { return i > 0; }).map(function(t) { return Number(t.giro) || 0; });
+    // Ángulos de cada vértice, para el rótulo α del panel: el ÁNGULO DEL VÉRTICE,
+    // que es lo que se GUARDA y lo que viaja a aSa (ver _verticeDesdeGiro). Tiene
+    // que ser el MISMO número que el guardado: si el rótulo dijera 45 y la ficha
+    // guardara 135, la pantalla estaría desmintiendo al archivo.
+    // La tabla de al lado muestra el GIRO (el recorrido del doblado) y por eso su
+    // encabezado dice "Giro prev.": son dos lecturas del mismo vértice y están
+    // rotuladas distinto A PROPÓSITO — suman 180.
+    var angulos = geo.tramos.filter(function(t, i) { return i > 0; }).map(function(t) { return _verticeDesdeGiro(t.giro); });
 
     var html = '<div style="font-weight:700; color:#00695c; margin-bottom:8px;">Parámetros de la figura</div>';
     html += '<table style="width:100%; font-size:12px; border-collapse:collapse;">';
-    html += '<tr style="color:#666; text-align:left;"><th style="padding:2px 4px;">Lado</th><th style="padding:2px 4px;">Largo (grilla)</th><th style="padding:2px 4px;">Ángulo prev.</th></tr>';
+    html += '<tr style="color:#666; text-align:left;"><th style="padding:2px 4px;">Lado</th><th style="padding:2px 4px;">Largo (grilla)</th><th style="padding:2px 4px;" title="Recorrido del doblado antes de trazar este lado. El ángulo del VÉRTICE (el que se guarda) es su suplementario: 180 − giro.">Giro prev.</th></tr>';
     geo.tramos.forEach(function(t, i) {
       html += '<tr style="border-top:1px solid #eee;">' +
         '<td style="padding:2px 4px;"><input value="' + t.lado + '" maxlength="2" onchange="disenadorSetLetra(' + i + ', this.value)" style="width:34px; font-weight:700; color:#00695c; text-align:center; font-size:12px;" /></td>' +
@@ -1277,9 +1295,14 @@
     });
     html += '</table>';
     // Ángulos como α (solo especiales ≠90; los 90° son implícitos, convención aSa).
-    var especiales = angulos.filter(function(g) { return g !== 90 && g !== 0; });
+    // ESPECIALES leídos como VÉRTICE (18-ago): el implícito de esquina recta sigue
+    // siendo 90 y el "sin doblez" ahora es 180 (vértice llano), no 0. Es el mismo
+    // conjunto de dobleces que selecciona _guardarFigura filtrando por giro∉{0,90}:
+    // los dos filtros tienen que elegir los MISMOS vértices y en el mismo orden, o
+    // el α que se rotula en pantalla no sería el α que se guarda.
+    var especiales = angulos.filter(function(v) { return v !== 90 && v !== 180; });
     var alfaTxt = especiales.length
-      ? especiales.map(function(g, k) { return 'α' + (k + 1) + '=' + g + '°'; }).join(', ')
+      ? especiales.map(function(v, k) { return 'α' + (k + 1) + '=' + v + '°'; }).join(', ')
       : '— (todos 90° o rectos)';
     // Radio: hay curva → la figura tiene radio (o etiqueta R/radio/diámetro/arco).
     var hayRadio = _tiposSeg.some(function(t) { return t === 'arco'; }) || REG().parametros(_etiquetas).radio;
@@ -1394,11 +1417,15 @@
     } else {
       parciales = geo.tramos.map(function(t) { return t.lado; }).filter(function(L){ return L; });
       // Sólo los ángulos ESPECIALES (≠90 y ≠0) van a `angulos` (el 90° es implícito,
-      // convención aSa) — y van como GIRO, la ÚNICA convención (ver _giroDesdeInterno).
-      // El orden de esta lista ES el mapa α1..α4 → vértice que lee el modelador
+      // convención aSa) — y van como ÁNGULO DEL VÉRTICE, la ÚNICA convención
+      // (ver _verticeDesdeGiro). El FILTRO se hace sobre el `giro` del tramo porque
+      // es donde vive el dato del trazado; el VALOR guardado es su suplementario.
+      // Filtrar sobre el giro y sobre el vértice selecciona exactamente los mismos
+      // dobleces (giro∉{0,90} ⟺ vértice∉{180,90}), así que el orden de esta lista
+      // sigue siendo el mapa α1..α4 → vértice que lee el modelador
       // (figura_puntos._mapaAngDibujo replica exactamente este filtro).
       angulos = geo.tramos.filter(function(t) { return t.tipo !== 'arco' && t.giro !== 90 && t.giro !== 0; })
-                          .map(function(t) { return Number(t.giro) || 0; });
+                          .map(function(t) { return _verticeDesdeGiro(t.giro); });
       radio = false;
     }
     if (angulos.length > 4) {
@@ -1455,14 +1482,14 @@
       geo.etiquetas_manda = true;
     } else {
       // Sin etiquetas manuales: derivar los ángulos reales de la geometría 3D,
-      // homologado con el 2D. `disenador3dValoresAngulos` mide el ángulo INTERNO
-      // entre los dos tramos del vértice (es lo que da el arcocoseno de sus
-      // direcciones), así que acá se convierte al GIRO — la única convención que se
-      // guarda (ver _giroDesdeInterno). Sin esta conversión el 3D seguiría escribiendo
-      // el suplementario y la unificación quedaría a medias.
+      // homologado con el 2D. `disenador3dValoresAngulos` mide con arcocoseno el
+      // ángulo entre los dos tramos que concurren en el vértice — o sea EXACTAMENTE
+      // el ÁNGULO DEL VÉRTICE, que es la convención que se guarda (18-ago, ver
+      // _verticeDesdeGiro). Por eso acá NO se convierte nada: el `.map(...)` que
+      // había (pasar al recorrido) era el paso de la convención vieja y sacarlo es
+      // lo que alinea este camino con el 2D y con la ficha del catálogo.
       parciales = geo.parciales || [];
-      angulos = ((typeof disenador3dValoresAngulos === 'function') ? disenador3dValoresAngulos() : [])
-                  .map(_giroDesdeInterno);
+      angulos = ((typeof disenador3dValoresAngulos === 'function') ? disenador3dValoresAngulos() : []);
       radio = (geo.tramos || []).some(function(t) { return t.tipo === 'arco'; });
     }
     if (angulos.length > 4) {

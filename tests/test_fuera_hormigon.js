@@ -272,17 +272,37 @@ console.log('\nE — capas de un longitudinal: el auto se re-resuelve por capa:'
 }
 // Cuando lo que ocupa la profundidad NO es un 'auto' sino el GANCHO NORMATIVO
 // (6φ, que no es negociable), la capa no puede encoger: la barra se dibuja igual
-// —dato honesto, la regla del módulo— pero AHORA SE DICE. MEDIDO: 105F φ16 en el
-// muro ocupa 13.62 en el espesor por su gancho de 135°, así que la capa 3 acaba
-// con 3.72 cm de fierro fuera.
+// —dato honesto, la regla del módulo— pero AHORA SE DICE. MEDIDO: la figura φ16 en
+// el muro ocupa 13.62 en el espesor por su gancho replegado, así que la capa 3
+// acaba con 3.72 cm de fierro fuera.
+//
+// 18-AGO · LA FIGURA DE ESTE CASO PASA DE 105F A 105B, con el MISMO número (3.717).
+// Con la convención de VÉRTICE cerrada por el usuario, el gancho que se repliega
+// —el que ocupa profundidad— es el de ficha 45°, no el de ficha 135°: la 105F
+// (ficha 135) pasa a tener un quiebre suave de 45° de recorrido y ahora CABE, y su
+// contraparte de misma topología, la 105B (ficha 45, 5 tramos), es la que no cabe.
+// El fenómeno no desapareció, cambió de figura: medido sobre el catálogo entero en
+// este mismo escenario, las 24 figuras que sacan fierro son exactamente las de
+// ficha 45 y todas con su aviso (antes eran las 24 de ficha 135, con el mismo
+// 3.717). El assert es el mismo, apuntando a la figura donde el caso ocurre.
 {
-  const c = comp('105F', 'MH', { cara: 'lateral', lado: 1, rumbo: 'x' }, 16,
+  const c = comp('105B', 'MH', { cara: 'lateral', lado: 1, rumbo: 'x' }, 16,
     { modo: 'layered', n_capas: 3, barras_capa: 1, gap: 3 });
   const pls = R.expandirComponente(c, MURO);
   const peor = Math.max.apply(null, pls.map(p => fueraDeHormigon(p, MURO, 1.6).fuera));
   ok(peor > 0 && avisos(c).some(a => /Fierro FUERA del hormigón/.test(a)),
-    'la 105F no puede encoger su gancho: sale ' + r2(peor) + ' cm y el motor lo DICE (=' +
+    'la 105B no puede encoger su gancho: sale ' + r2(peor) + ' cm y el motor lo DICE (=' +
     JSON.stringify(avisos(c)) + ')');
+  // Y la contraparte: la 105F, que era la que no cabía con la lectura vieja, ahora
+  // cabe y NO avisa. Se deja escrito para que el intercambio quede documentado con
+  // sus dos mitades y no parezca que se perdió cobertura.
+  const cF = comp('105F', 'MH', { cara: 'lateral', lado: 1, rumbo: 'x' }, 16,
+    { modo: 'layered', n_capas: 3, barras_capa: 1, gap: 3 });
+  const plsF = R.expandirComponente(cF, MURO);
+  const peorF = Math.max.apply(null, plsF.map(p => fueraDeHormigon(p, MURO, 1.6).fuera));
+  ok(peorF <= 1e-6 && avisos(cF).length === 0,
+    'y la 105F (ficha 135° = quiebre suave) ahora CABE: 0 cm fuera y sin avisos (=' +
+    r2(peorF) + ' / ' + JSON.stringify(avisos(cF)) + ')');
 }
 
 // ===========================================================================

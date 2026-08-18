@@ -56,17 +56,25 @@ const viga = { largo: 600, alto: 60, ancho: 30, recub_sup: 4, recub_inf: 4, recu
 //
 // MIGRACIÓN CABEZAL → TRAZADOR: la punta de la pata ya NO llega a 11.2 − 10 = 1.2.
 // El constructor de cabezal dibujaba las patas PERPENDICULARES a la cara (90°
-// fijos), así que los 10 cm de pata cruzaban enteros hacia el núcleo. La 103B
-// declara dobleces de 45° en el catálogo: la pata mide lo mismo (10) pero sólo
-// 10·sin45 = 7.0711 cruza en Z — los otros 7.0711 corren a lo largo de la barra
-// (en X). Por eso la punta queda en 11.2 − 7.0711 = 4.1289. Lo que estos asserts
-// protegen (QUÉ cara, qué SIGNO, que el arrastre sea traslación pura y no un
-// cambio de lado) no cambia: sólo se mide la penetración real de la pata.
+// fijos), así que los 10 cm de pata cruzaban enteros hacia el núcleo.
+//
+// 18-AGO · CONVENCIÓN DE VÉRTICE (cerrada por el usuario) — la penetración pasa de
+// 7.071 a 13.899. Los 45° que declara la 103B son ahora el ángulo ENTRE la pata y el
+// cuerpo, o sea un gancho REPLEGADO de 135° de RECORRIDO. Dos efectos que se suman:
+//   · la pata sigue midiendo 10 y cruzando 10·sin45 = 7.0711 en Z;
+//   · pero un recorrido > 90° lo dibuja `_ganchoFinal2D` con el arco calibrado, y la
+//     pata cuelga COMPLETA desde la SALIDA DEL ARCO, que está desplazada respecto de
+//     la cadena de vértices: R·(1 + cos45) = 4·1.70711 = 6.8284 más.
+//   → penetración total = 7.0711 + 6.8284 = 13.8995 y la punta queda en
+//     11.2 − 13.8995 = −2.6995 (antes 4.1289 con la lectura de recorrido).
+// Lo que estos asserts protegen (QUÉ cara, qué SIGNO, que el arrastre sea traslación
+// pura y no un cambio de lado) no cambia: sólo se mide la penetración real.
 //
 // ANTES: cara 'lateral' caía en la rama `else` de _yBordeCabezal y la barra se
 // anclaba en y = −25.2, o sea PEGADA A LA CARA INFERIOR, con z = 0 (al centro).
 // r3 para comparar con lim(), que también redondea a 3 decimales.
-const PATA_Z_45 = r3(10 * Math.SQRT1_2);   // 7.071 — lo que cruza en Z una pata de 10 a 45°
+const R_CODO_16 = 2 * 1.6 + 1.6 / 2;                                    // 4.0 con φ16
+const PATA_Z_45 = r3(10 * Math.SQRT1_2 + R_CODO_16 * (1 + Math.SQRT1_2));  // 13.899
 console.log('L1 — CARA LATERAL = cara CORTINA (espejo de sup/inf con Y↔Z):');
 function cabLateral(extra) {
   return Object.assign({
@@ -81,7 +89,7 @@ ok(pl1.length === 6 && c1.length === 3, '2 capas × 3 barras = 6 placements');
 ok(c1.every(p => close(lim(p, 'z').hi, 11.2)),
   'capa 1 PEGADA a la cara Z+: eje z = ancho/2 − recub_lat − φ/2 = 11.2 (=' + lim(c1[0], 'z').hi + ')');
 ok(c1.every(p => close(lim(p, 'z').lo, 11.2 - PATA_Z_45)),
-  'las patas salen por la NORMAL de la cara (−Z, al núcleo): punta en 11.2 − 10·sin45 = 4.129 (=' + lim(c1[0], 'z').lo + ')');
+  'las patas salen por la NORMAL de la cara (−Z, al núcleo): punta en 11.2 − 13.899 = −2.699 (=' + lim(c1[0], 'z').lo + ')');
 ok(c2.every(p => close(lim(p, 'z').hi, 11.2 - 5)),
   'capa 2 entra hacia el núcleo EN Z: 11.2 − Sep = 6.2 (=' + lim(c2[0], 'z').hi + ')');
 ok(JSON.stringify(unicos(c1, 'y')) === JSON.stringify([-25.2, 0, 25.2]),
@@ -95,7 +103,7 @@ ok(!pl1.some(p => close(centro(p, 'y'), -25.2) && close(centro(p, 'z'), 0)),
 //   lado −1 → eje en −11.2, patas hacia +Z → z ∈ [−11.2, −4.1289]
 const plNeg = R.expandirComponente(cabLateral({ lado: -1 }), viga);
 ok(close(lim(plNeg[0], 'z').lo, -11.2) && close(lim(plNeg[0], 'z').hi, -(11.2 - PATA_Z_45)),
-  'comp.lado = −1 → cortina de −Z (eje −11.2, patas hacia +Z hasta −4.129) (=' +
+  'comp.lado = −1 → cortina de −Z (eje −11.2, patas hacia +Z hasta 2.699) (=' +
   JSON.stringify(lim(plNeg[0], 'z')) + ')');
 // pos_hint = TRASLACIÓN PURA: con lado +1 (default) un arrastre a z negativo NO
 // cambia de cara, sólo corre la barra: [4.1289, 11.2] − 1 = [3.1289, 10.2].
@@ -357,19 +365,21 @@ ok(close(xsT[1] - xsT[0], 10, 0.01) && close(xsT[8] - xsT[7], 260 / 11, 0.01),
   'los tramos se respetan sobre el eje REAL (X): @10 en el borde y paso real 260/11 al centro (=' +
   r3(xsT[1] - xsT[0]) + ' / ' + r3(xsT[8] - xsT[7]) + ')');
 const capaT1 = mvT.filter(p => p.meta.capa === 1), capaT2 = mvT.filter(p => p.meta.capa === 2);
-// MIGRACIÓN CABEZAL → TRAZADOR: el marco de bordes SIGUE siendo 244 (eso es lo que
-// este assert protege: de pie se mide contra los BORDES del muro, no contra las
-// caras), pero ahora el auto-largo RESERVA lo que ocupan las patas de 45° de la
-// 103B sobre ese mismo eje. Por punta: 5·cos45 (proyección de la pata) + φ/2 = 0.5
-// (la cresta del codo tiene que quedar en línea con el recub de borde) = 4.0355.
-//   B = 244 − 2·4.0355 = 235.9289
-// Con 244 la barra medía el marco entero y encima le colgaban dos patas que
-// avanzaban 3.54 cm más: asomaba fuera del muro por los dos bordes.
-const RESERVA_MA = 2 * (5 * Math.SQRT1_2 + 0.5);   // 8.0711
+// El marco de bordes SIGUE siendo 244 (eso es lo que este assert protege: de pie se
+// mide contra los BORDES del muro, no contra las caras); lo que cambia es cuánto le
+// reserva el auto-largo a las patas de la 103B sobre ese mismo eje.
+// 18-AGO · LA RESERVA CAE DE 4.0355 A 0.5 POR PUNTA (convención de VÉRTICE). Con el
+// 45 leído como RECORRIDO la pata se ABRÍA y avanzaba 5·cos45 = 3.5355 sobre el eje
+// del cuerpo, más φ/2 = 0.5 de cresta → 4.0355. Leído como VÉRTICE la pata queda
+// REPLEGADA sobre el cuerpo: no avanza nada sobre el eje, así que lo único que se
+// reserva es la CRESTA del codo, φ/2 = 0.5, para que quede en línea con el recub de
+// borde.
+//   B = 244 − 2·0.5 = 243   (antes 244 − 2·4.0355 = 235.9289)
+const RESERVA_MA = 2 * 0.5;   // 1.0 (antes 8.0711)
 ok(close(capaT1[0].dims.B, 244 - RESERVA_MA) && close(capaT1[0].dims.A, 5),
-  'la dim auto de pie se mide contra los BORDES (244) menos la reserva de sus 45° = 235.929, y las patas quedan fijas (=' + capaT1[0].dims.B + ')');
+  'la dim auto de pie se mide contra los BORDES (244) menos la reserva de la cresta = 243, y las patas quedan fijas (=' + capaT1[0].dims.B + ')');
 ok(close(capaT2[0].dims.B, 244 - RESERVA_MA - 2 * 1.0) && close(capaT2[0].dims.A, 5),
-  'anidado × de pie: la capa 2 ajusta SOLO B (−2·φ = 233.929) y no toca las patas (=' + capaT2[0].dims.B + ')');
+  'anidado × de pie: la capa 2 ajusta SOLO B (−2·φ = 241) y no toca las patas (=' + capaT2[0].dims.B + ')');
 ok(close(lim(capaT1[0], 'z').hi, Z_CORTINA) && close(lim(capaT2[0], 'z').hi, Z_CORTINA - 1),
   'y la posición la puso sep_capas (1 cm hacia el núcleo), no el anidado (=' +
   lim(capaT1[0], 'z').hi + ' / ' + lim(capaT2[0], 'z').hi + ')');

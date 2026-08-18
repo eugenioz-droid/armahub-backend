@@ -13,8 +13,16 @@
 //   D. RESCATE: cuántas de las excluidas vuelven a ser dibujables (y las que no,
 //      con motivo).
 //   E. MH/MV nacen en modo DISTRIBUCIÓN ('lineal').
-//   F. SEMILLA: 72 barras / 4 ítems y 136.1 kg (bajó de 140.2 al migrar el cabezal
-//      al trazador — el CBS 103B pasa a honrar sus 45°; ver la nota de F).
+//   F. SEMILLA: 72 barras / 4 ítems y 140.1 kg (bajó de 140.2 a 136.1 al migrar el
+//      cabezal al trazador y volvió a 140.1 el 18-ago, cuando el 45° de la 103B pasó
+//      a leerse como ÁNGULO DEL VÉRTICE y sus patas quedaron replegadas; ver F).
+//
+// CONVENCIÓN DE ÁNGULO (18-ago-2026, cerrada por el usuario): el número del catálogo
+// es el ÁNGULO DEL VÉRTICE —el que queda ENTRE los dos tramos de fierro— y el
+// trazador lo traduce a giro con 180 − vértice. Antes se metía directo como giro y
+// las 40 figuras de cadena con ángulo declarado se dibujaban con el vértice
+// invertido (la 102B y la 102C salían intercambiadas). Todos los valores esperados
+// marcados «18-ago» en este archivo son esa corrección, medidos.
 //
 // Correr con: node tests/test_trazador_generico.js
 
@@ -48,27 +56,52 @@ function eqPts(a, b, tol) {
 function fmt(pts) {
   return pts.map(p => '(' + p.x.toFixed(1) + ',' + p.y.toFixed(1) + ',' + p.z.toFixed(1) + ')').join(' ');
 }
-// Ángulos de GIRO de una polilínea 3D (cuánto se desvía de seguir recta en cada
-// vértice). Sirve para verificar los dobleces sin depender del sistema local.
-function girosDe(pts) {
+// ---------------------------------------------------------------------------
+// LEER UN TRAZO QUE PUEDE LLEVAR CODOS ARQUEADOS (18-ago)
+// ---------------------------------------------------------------------------
+// Con la convención de VÉRTICE, el 45° de ficha de una 103B/104B/105C es el ángulo
+// ENTRE la pata y el cuerpo: un gancho REPLEGADO, de 180 − 45 = 135° de RECORRIDO.
+// Un recorrido > 90° lo dibuja `_conGanchosRadio` con el arco calibrado, así que
+// donde había un vértice quedan ~15 puntos marcados `esArco`. Contar puntos o medir
+// entre puntos consecutivos ahí devuelve el muestreo del arco (~10°), no la figura.
+// `segsRectos` colapsa cada codo y deja los tramos RECTOS — un tramo por lado.
+//
+// POR QUÉ EL CORTE POR LARGO Y NO SÓLO POR EL FLAG: en una cadena con DOS ganchos
+// (una 103B) el cuerpo va del punto de tangencia de un codo al del otro, así que
+// sus dos extremos están marcados `esArco` y son adyacentes en el array. Se separa
+// por tamaño: una cuerda del muestreo mide 2·R·sin(5°) ≈ 0.09·R y nunca llega a R,
+// mientras que un LADO de fierro más corto que el radio de su propio codo no es una
+// figura que el catálogo pueda expresar.
+const RCODO = d => 2 * d + d / 2;      // radio de eje del codo (= `_conGanchosRadio`)
+function segsRectos(pts, R) {
   const out = [];
-  for (let i = 1; i < pts.length - 1; i++) {
-    const a = { x: pts[i].x - pts[i - 1].x, y: pts[i].y - pts[i - 1].y, z: pts[i].z - pts[i - 1].z };
-    const b = { x: pts[i + 1].x - pts[i].x, y: pts[i + 1].y - pts[i].y, z: pts[i + 1].z - pts[i].z };
-    const la = Math.hypot(a.x, a.y, a.z), lb = Math.hypot(b.x, b.y, b.z);
-    const c = (a.x * b.x + a.y * b.y + a.z * b.z) / (la * lb);
+  for (let i = 1; i < pts.length; i++) {
+    const d = { x: pts[i].x - pts[i - 1].x, y: pts[i].y - pts[i - 1].y, z: pts[i].z - pts[i - 1].z };
+    const L = Math.hypot(d.x, d.y, d.z);
+    if (!(L > 1e-9)) continue;
+    if (pts[i - 1].esArco && pts[i].esArco && L < (R || Infinity)) continue;
+    out.push({ d, L });
+  }
+  return out;
+}
+// Nº de LADOS realmente dibujados (sustituye a `puntos.length - 1`, que con codos
+// arqueados cuenta las cuerdas del muestreo).
+function ladosDe(pts, R) { return segsRectos(pts, R).length; }
+// Ángulos de GIRO (recorrido: cuánto se desvía de seguir recta en cada doblez).
+function girosDe(pts, R) {
+  const s = segsRectos(pts, R), out = [];
+  for (let i = 1; i < s.length; i++) {
+    const a = s[i - 1], b = s[i];
+    const c = (a.d.x * b.d.x + a.d.y * b.d.y + a.d.z * b.d.z) / (a.L * b.L);
     out.push(Math.acos(Math.max(-1, Math.min(1, c))) * 180 / Math.PI);
   }
   return out;
 }
-// Largo de cada tramo de la polilínea.
-function largosDe(pts) {
-  const out = [];
-  for (let i = 1; i < pts.length; i++) {
-    out.push(Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y, pts[i].z - pts[i - 1].z));
-  }
-  return out;
-}
+// Ángulos del VÉRTICE (entre los dos tramos de fierro) = 180 − giro. ES el número
+// que declara el catálogo (convención cerrada por el usuario el 18-ago).
+function verticesDe(pts, R) { return girosDe(pts, R).map(g => 180 - g); }
+// Largo de cada LADO de la polilínea (codos colapsados).
+function largosDe(pts, R) { return segsRectos(pts, R).map(s => s.L); }
 
 // ---------------------------------------------------------------------------
 // A. PILOTO DE CONVENCIÓN — la derivación reproduce los constructores de hoy
@@ -105,17 +138,39 @@ PILOTO.forEach(function (cs) {
   specB.angulos = angsB;
   ok(eqPts(esp, genSinAng), '103B sin sus ángulos: cadena derivada IDÉNTICA al constructor');
   // (b) con los ángulos del catálogo: el tramo largo NO se mueve.
-  ok(gen.length === 4 && Math.abs(gen[1].x + 296) < 1e-9 && Math.abs(gen[2].x - 296) < 1e-9,
-    '103B: tramo B centrado en ±296 igual que el cabezal');
-  const lg = largosDe(gen);
-  ok(Math.abs(lg[0] - 30) < 1e-9 && Math.abs(lg[1] - 592) < 1e-9 && Math.abs(lg[2] - 30) < 1e-9,
-    '103B: los 3 lados miden A=30 · B=592 · C=30 (=' + lg.map(v => v.toFixed(1)).join('/') + ')');
-  ok(gen[0].y < gen[1].y && gen[3].y < gen[2].y,
-    '103B: las dos patas doblan hacia el NÚCLEO (cara sup → hacia abajo)');
-  const gg = girosDe(gen);
-  ok(gg.every(a => Math.abs(a - 45) < 1e-6),
-    '103B: los dobleces valen los 45° que declara el catálogo, no 90 (=' +
-    gg.map(a => a.toFixed(0)).join('/') + '°) — el cabezal los ignoraba');
+  //
+  // NÚMEROS ACTUALIZADOS EL 18-AGO (convención de VÉRTICE cerrada por el usuario).
+  // Los 45° de la ficha de la 103B pasan de ser el RECORRIDO a ser el VÉRTICE, o sea
+  // sus patas pasan de abrirse a 45° a REPLEGARSE (recorrido 135°). Un recorrido
+  // > 90° lo dibuja `_conGanchosRadio` con el arco calibrado, así que:
+  //   · la polilínea deja de tener 4 puntos y pasa a tener 32 (30 son el muestreo de
+  //     los dos codos) → se cuentan LADOS con `ladosDe`, no puntos;
+  //   · el cuerpo B se retranquea R = 2.5·φ = 4 cm por cada codo (regla de la
+  //     cresta: el arco toca la línea del vértice y la pata cuelga íntegra), así que
+  //     el tramo recto va de −292 a +292 en vez de ±296 — pero la ENVOLVENTE de la
+  //     figura sigue siendo ±296, que es lo que este assert protege (que el tramo
+  //     largo no se corra).
+  // Los valores viejos (4 puntos, B = 592 dibujado, ±296) describían la lectura
+  // contraria, en la que el 45 era el recorrido y no había codo que dibujar.
+  const RC = RCODO(1.6);                                  // = 4 cm con φ16
+  ok(ladosDe(gen, RC) === 3, '103B: la cadena trae sus 3 lados (=' + ladosDe(gen, RC) + ')');
+  const xs = gen.map(p => p.x);
+  ok(Math.abs(Math.min(...xs) + 296) < 1e-9 && Math.abs(Math.max(...xs) - 296) < 1e-9,
+    '103B: la envolvente sigue en ±296, igual que el cabezal (la cresta del codo la toca)');
+  const lg = largosDe(gen, RC);
+  ok(Math.abs(lg[0] - 30) < 1e-9 && Math.abs(lg[1] - (592 - 2 * RC)) < 1e-9 && Math.abs(lg[2] - 30) < 1e-9,
+    '103B: patas A=30 · C=30 enteras y cuerpo B = 592 − 2·R = ' + (592 - 2 * RC) +
+    ' (=' + lg.map(v => v.toFixed(1)).join('/') + ')');
+  const rectos = segsRectos(gen, RC);
+  ok(gen[0].y < 26 && gen[gen.length - 1].y < 26,
+    '103B: las dos patas doblan hacia el NÚCLEO (cara sup → puntas por debajo de y=26: ' +
+    gen[0].y.toFixed(2) + ' / ' + gen[gen.length - 1].y.toFixed(2) + ')');
+  const vv = verticesDe(gen, RC);
+  ok(vv.length === 2 && vv.every(a => Math.abs(a - 45) < 1e-6),
+    '103B: los VÉRTICES dibujados valen los 45° que declara el catálogo, no 90 (=' +
+    vv.map(a => a.toFixed(0)).join('/') + '°) — el cabezal los ignoraba');
+  ok(girosDe(gen, RC).every(a => Math.abs(a - 135) < 1e-6),
+    '…lo que en RECORRIDO del doblado son 135° (180 − 45): las dos lecturas del mismo doblez');
 })();
 
 console.log('\nA2 — el genérico NO desplaza a los constructores especializados:');
@@ -139,7 +194,10 @@ ok(FP.familiaDeDibujo('101A', null) === 'recta' && FP.familiaDeDibujo('102A', nu
   const c103 = FP.figuraAPuntos('103C', dims, HOST, ANCH, { rol: 'cabezal', diamCm: 1.6 });
   ok(!eqPts(a103, c103, 1e-6),
     '103C ya NO se dibuja igual que una 103A (el bug reportado: mismo trazo para dos figuras distintas)');
-  const gA = girosDe(a103), gC = girosDe(c103);
+  // Se miden VÉRTICES (18-ago): es el número que declara el catálogo. El de la 103C
+  // sigue siendo 45; lo que cambió es que ahora ese 45 es el ángulo entre la pata y
+  // el cuerpo (antes se dibujaba con vértice 135 y aquí se leía como giro de 45).
+  const gA = verticesDe(a103, RCODO(1.6)), gC = verticesDe(c103, RCODO(1.6));
   ok(gA.every(a => Math.abs(a - 90) < 1e-6),
     '103A: sus dos dobleces son de 90° (=' + gA.map(a => a.toFixed(0)).join('/') + '°)');
   ok(Math.abs(gC[0] - 45) < 1e-6 && Math.abs(gC[1] - 90) < 1e-6,
@@ -194,28 +252,36 @@ ok(FP.familiaDeDibujo('104B', null) === 'cadena',
   FP.familiaDeDibujo('104B', null) + ')');
 (function () {
   const dims = { A: 30, B: 592, C: 30, D: 40 };
+  const RC = RCODO(1.6);                                  // = 4 cm con φ16
   const pts = FP.figuraAPuntos('104B', dims, HOST, ANCH, { rol: 'cabezal', diamCm: 1.6 });
-  ok(pts.length === 5, '104B traza sus 4 lados (5 puntos, =' + pts.length + ')');
-  const lg = largosDe(pts);
-  ok(Math.abs(lg[0] - 30) < 1e-9 && Math.abs(lg[1] - 592) < 1e-9 &&
-     Math.abs(lg[2] - 30) < 1e-9 && Math.abs(lg[3] - 40) < 1e-9,
-    'los 4 lados miden A/B/C/D del catálogo (=' + lg.map(v => v.toFixed(0)).join('/') + ')');
-  const gg = girosDe(pts);
+  // 18-AGO · CONVENCIÓN DE VÉRTICE: los 45° de la 104B ahora son el ángulo ENTRE los
+  // tramos, o sea dos ganchos REPLEGADOS (recorrido 135°) en vez de dos quiebres
+  // abiertos. Los dos codos entran con arco explícito, así que la polilínea pasa de
+  // 5 puntos a 33 y los lados se cuentan con `ladosDe`. Los CUERPOS de cada gancho
+  // (B para el primero, C para el segundo) salen retranqueados R = 2.5·φ = 4 cm por
+  // la regla de la cresta; las PATAS (A y D) cuelgan enteras.
+  ok(ladosDe(pts, RC) === 4, '104B traza sus 4 lados (=' + ladosDe(pts, RC) + ')');
+  const lg = largosDe(pts, RC);
+  ok(Math.abs(lg[0] - 30) < 1e-9 && Math.abs(lg[1] - (592 - RC)) < 1e-9 &&
+     Math.abs(lg[2] - (30 - RC)) < 1e-9 && Math.abs(lg[3] - 40) < 1e-9,
+    'los 4 lados miden A/B/C/D del catálogo, con los dos CUERPOS retranqueados el ' +
+    'radio del codo (30/' + (592 - RC) + '/' + (30 - RC) + '/40 =' + lg.map(v => v.toFixed(0)).join('/') + ')');
+  const gg = verticesDe(pts, RC);
   ok(Math.abs(gg[0] - 45) < 1e-6 && Math.abs(gg[2] - 45) < 1e-6,
-    '45° en los DOS dobleces EXTREMOS (=' + gg[0].toFixed(0) + '° / ' + gg[2].toFixed(0) + '°)');
+    '45° de VÉRTICE en los DOS dobleces EXTREMOS (=' + gg[0].toFixed(0) + '° / ' + gg[2].toFixed(0) + '°)');
   ok(Math.abs(gg[1] - 90) < 1e-6, '90° en el doblez INTERMEDIO (=' + gg[1].toFixed(0) + '°)');
   // CENTRADO POR BBOX (fix del reparo B del verificador): la PIEZA COMPLETA queda
-  // centrada, no el tramo B — con la pata A inclinada a 45° el sobre inicial es
-  // 30·cos45 = 21.213 y el final 0 (C sale perpendicular y D vuelve hacia atrás),
-  // así que el bbox mide 592+21.213 = 613.213 y B corre de −285.393 a +306.607.
-  // (Con dims FIJAS que exceden la luz libre, la pieza asoma PAREJO por ambos
-  // lados — dato honesto; el auto-largo sí reserva los sobres y cabe exacto.)
-  const bbIni = 30 * Math.SQRT1_2;                       // 21.2132…
-  const bbMitad = (592 + bbIni) / 2;                     // 306.6066…
+  // centrada, no el tramo B. 18-AGO: con las patas REPLEGADAS ya no sobresalen por
+  // las puntas —vuelven sobre el cuerpo— así que el bbox deja de valer 592+21.213 y
+  // pasa a ser el cuerpo pelado: ±296. Eso es exactamente lo que se buscaba con la
+  // corrección (una pata replegada no le roba largo a la barra), y es la misma razón
+  // por la que el 'auto' del CBS de la semilla sube de 547.974 a 590.4.
+  const bbMitad = 592 / 2;                               // 296
   const xsTodos = pts.map(p => p.x);
   ok(Math.abs(Math.min(...xsTodos) + bbMitad) < 1e-6 && Math.abs(Math.max(...xsTodos) - bbMitad) < 1e-6,
     'la PIEZA COMPLETA queda centrada (bbox ±' + bbMitad.toFixed(3) + ', no el tramo B)');
-  ok(Math.abs((pts[2].x - pts[1].x) - 592) < 1e-9, 'B sigue midiendo 592');
+  ok(Math.abs(lg[1] - (592 - RC)) < 1e-9,
+    'B sigue midiendo 592 menos el retranqueo de su codo (=' + lg[1].toFixed(3) + ')');
   ok(pts.every(p => p.y <= 26 + 1e-9), 'toda la figura dobla hacia el núcleo (cara sup: y ≤ 26)');
   const inf = FP.cadenaInfo('104B', dims);
   ok(inf.fuente === 'derivado' && inf.cerrada === false && inf.ladoLong === 'B',
@@ -270,7 +336,9 @@ function compCadena(fig, extra) {
   const out = G.generarViga({ tipo: 'viga', geometria: GEO, componentes: [compCadena(fig)] }, CTX);
   const nl = CAT.get(fig).parciales.length;
   ok(out.placements.length === 6, fig + ': 2 capas × 3 barras = 6 placements (=' + out.placements.length + ')');
-  ok(out.placements.every(p => p.puntos.length === nl + 1),
+  // Lados DIBUJADOS, no puntos (18-ago): con la convención de vértice los 45° de la
+  // 104B/105C son ganchos replegados y el codo arqueado mete ~15 puntos por doblez.
+  ok(out.placements.every(p => ladosDe(p.puntos, RCODO(1.6)) === nl),
     fig + ': cada barra trae sus ' + nl + ' lados dibujados');
   ok(out.barras.length > 0 && out.resumen.kg > 0,
     fig + ': genera payload con kg > 0 (=' + out.resumen.kg + ' kg)');
@@ -315,9 +383,11 @@ function compCadena(fig, extra) {
   const volt = puntosDe({ plano_pieza: { volteado: true } });
   const pie = puntosDe({ plano_pieza: { orientacion: 'de_pie' } });
   ok(plano.length === 1 && volt.length === 1 && pie.length === 1, 'las 3 orientaciones colocan la barra');
-  ok(volt[0].puntos.length === 6 && pie[0].puntos.length === 6,
-    'volteada y de pie conservan los 5 lados (6 puntos)');
-  const lp = largosDe(plano[0].puntos), lv = largosDe(volt[0].puntos), lpie = largosDe(pie[0].puntos);
+  // 18-ago: lados DIBUJADOS en vez de puntos (los ganchos replegados traen codo).
+  ok(ladosDe(volt[0].puntos, RCODO(1.6)) === 5 && ladosDe(pie[0].puntos, RCODO(1.6)) === 5,
+    'volteada y de pie conservan los 5 lados');
+  const lp = largosDe(plano[0].puntos, RCODO(1.6)), lv = largosDe(volt[0].puntos, RCODO(1.6)),
+        lpie = largosDe(pie[0].puntos, RCODO(1.6));
   ok(lp.length === lv.length && lp.every((v, i) => Math.abs(v - lv[i]) < 1e-6),
     'el VOLTEO no cambia los largos de los lados, sólo el plano (' + lp.map(v => v.toFixed(0)).join('/') + ')');
   ok(lpie.every((v, i) => Math.abs(v - lp[i]) < 1e-6), 'DE PIE tampoco cambia los largos');
@@ -325,14 +395,14 @@ function compCadena(fig, extra) {
   ok(!eqPts(plano[0].puntos, pie[0].puntos, 1e-6), 'de pie también cambia la pose');
   // SPIN: giro de la barra sobre su propio eje longitudinal (patas direccionales).
   const spin = puntosDe({ orient: { eje: 'x', spin: 90 } });
-  const ls = largosDe(spin[0].puntos);
+  const ls = largosDe(spin[0].puntos, RCODO(1.6));
   ok(ls.every((v, i) => Math.abs(v - lp[i]) < 1e-6), 'el SPIN tampoco cambia los largos');
   ok(!eqPts(plano[0].puntos, spin[0].puntos, 1e-6), 'y sí gira la figura');
   // RANGO: un longitudinal reparte sus copias a lo ANCHO (eje z); la cadena se
   // copia igual que cualquier otra barra.
   const rango = puntosDe({ distribucion: { modo: 'linear', rango: { from: -10, to: 10, eje: 'z' }, sep: 5 } });
   ok(rango.length === 5, 'rango −10→10 @5 en z coloca 5 copias de la cadena (=' + rango.length + ')');
-  ok(rango.every(p => p.puntos.length === 6), 'las 5 copias traen los 5 lados');
+  ok(rango.every(p => ladosDe(p.puntos, RCODO(1.6)) === 5), 'las 5 copias traen los 5 lados');
   ok(rango.every((p, i) => Math.abs(p.puntos[0].z - (-10 + i * 5)) < 1e-6),
     'y quedan repartidas @5 exactos en z');
 })();
@@ -488,21 +558,27 @@ ok(R.modoDefaultDeTipologia('ES') === 'lineal' && R.modoDefaultDeTipologia('CBS'
 // F. SEMILLA INTACTA
 // ---------------------------------------------------------------------------
 console.log('\nF — viga-semilla (listado intacto, kg re-derivado):');
-// MIGRACIÓN CABEZAL → TRAZADOR: 140.2 → 136.1 kg. Su CBS es una 103B, y el
-// catálogo le declara dobleces de 45°/45° que el cabezal ignoraba. Honrándolos,
-// cada pata de 30 proyecta 30·cos45 = 21.2132 sobre el eje del cuerpo y la cresta
-// del codo se retira φ/2 = 0.8 del recub de extremo, así que el auto-largo reserva
-// 22.0132 por punta: B = 592 − 44.0264 = 547.974 y el largo del CBS 652 → 607.974
-// (6 barras φ16: 61.745 → 57.575 kg). Con B = 592 la barra medía el largo útil
-// entero y encima le colgaban dos patas que avanzaban 21.2 cm más: asomaba fuera
-// del hormigón por los dos extremos. Ítems y barras no se mueven.
+// HISTORIA DEL NÚMERO, EN DOS SALTOS:
+//   · 140.2 → 136.1 (12-ago, migración cabezal → trazador). El CBS de la semilla es
+//     una 103B y el catálogo le declara 45°/45°, que el cabezal ignoraba. Leídos
+//     como RECORRIDO, cada pata de 30 se abría y proyectaba 30·cos45 = 21.2132 sobre
+//     el eje del cuerpo, más φ/2 = 0.8 de la cresta del codo: el auto-largo reservaba
+//     22.0132 por punta y B bajaba a 592 − 44.0264 = 547.974.
+//   · 136.1 → 140.1 (18-ago, CONVENCIÓN DE VÉRTICE cerrada por el usuario). Esos
+//     mismos 45° son ahora el ángulo ENTRE la pata y el cuerpo, o sea patas
+//     REPLEGADAS (recorrido 135°). Una pata replegada NO avanza sobre el eje del
+//     cuerpo —vuelve sobre él—, así que la única reserva que queda por punta es la
+//     cresta del codo, φ/2 = 0.8: B = 592 − 1.6 = 590.4. Son 42.426 cm más de fierro
+//     por barra × 6 barras φ16 = 4.0 kg, y por eso 136.1 → 140.1.
+// Ítems y barras no se mueven en ninguno de los dos saltos, y las otras tres barras
+// del listado (2 × 101A y el estribo 104D) quedan idénticas al gramo.
 const semilla = G.generarViga(S.semillaViga(), CTX);
-ok(semilla.resumen.items === 4 && semilla.resumen.barras === 72 && semilla.resumen.kg === 136.1,
-  'semilla = {items:4, barras:72, kg:136.1} (=' + JSON.stringify(semilla.resumen) + ')');
+ok(semilla.resumen.items === 4 && semilla.resumen.barras === 72 && semilla.resumen.kg === 140.1,
+  'semilla = {items:4, barras:72, kg:140.1} (=' + JSON.stringify(semilla.resumen) + ')');
 const cbs = semilla.barras.filter(b => b.marca === 'CBS')[0];
-ok(cbs && Math.abs(cbs.dim_b - (592 - 2 * (30 * Math.SQRT1_2 + 0.8))) < 1e-6 &&
+ok(cbs && Math.abs(cbs.dim_b - (592 - 2 * 0.8)) < 1e-6 &&
    cbs.dim_a === 30 && cbs.dim_c === 30,
-  'y el número que se movió es UNO: B del CBS = 592 − 2·22.0132 = 547.974, patas 30/30 intactas (=' +
+  'y el número que se movió es UNO: B del CBS = 592 − 2·0.8 = 590.4, patas 30/30 intactas (=' +
   (cbs || {}).dim_b + ')');
 
 console.log(fallos === 0 ? '\nTODO OK' : '\n' + fallos + ' FALLO(S)');

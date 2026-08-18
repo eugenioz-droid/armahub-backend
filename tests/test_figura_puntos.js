@@ -16,10 +16,22 @@ const host = { largo: 600, alto: 60, ancho: 30 };
 console.log('Cabezal 103B (A=30, B=592, C=30) cara sup:');
 var anchor = { cara: 'sup', y: 26, z: 0, recubExtremo: 4 };
 var pts = F.figuraAPuntos('103B', { A: 30, B: 592, C: 30 }, host, anchor, { rol: 'cabezal', diamCm: 1.6 });
-ok(pts.length === 4, '4 puntos (pata A + 2 del tramo + pata C) (=' + pts.length + ')');
-ok(Math.abs(pts[1].x - (-296)) < 1e-6 && Math.abs(pts[2].x - 296) < 1e-6, 'tramo B centrado (±296)');
-ok(pts[0].y < pts[1].y, 'pata inicial va hacia el núcleo (abajo, cara sup)');
-ok(Math.abs(pts[1].y - 26) < 1e-6, 'tramo a la altura del anchor (y=26)');
+// 18-AGO · CONVENCIÓN DE VÉRTICE (cerrada por el usuario): los 45°/45° que el
+// catálogo declara para la 103B son el ángulo ENTRE la pata y el cuerpo, o sea dos
+// ganchos REPLEGADOS (180 − 45 = 135° de recorrido). Un recorrido > 90° se dibuja
+// con el ARCO calibrado, así que la polilínea pasa de 4 puntos a 32 (15 de muestreo
+// por codo) y el cuerpo se retranquea R = 2·φ + φ/2 = 4 cm por punta (regla de la
+// cresta: el arco TOCA la línea del vértice ±296 y no la pasa).
+// Los valores viejos (4 puntos, tramo de −296 a +296) describían la lectura
+// contraria, en la que el 45 era el recorrido y no había codo que dibujar.
+var R_CODO = 2 * 1.6 + 1.6 / 2;                                  // 4 cm con φ16
+ok(pts.length === 32, '32 puntos (2 patas + 2 codos arqueados de 15) (=' + pts.length + ')');
+ok(Math.abs(Math.min.apply(null, pts.map(p => p.x)) + 296) < 1e-6 &&
+   Math.abs(Math.max.apply(null, pts.map(p => p.x)) - 296) < 1e-6,
+  'la envolvente sigue en ±296: la CRESTA del codo toca la línea del vértice');
+ok(pts[0].y < 26, 'pata inicial va hacia el núcleo (abajo, cara sup): y = ' + pts[0].y.toFixed(3));
+ok(Math.abs(Math.max.apply(null, pts.map(p => p.y)) - 26) < 1e-6,
+  'el tramo largo sigue a la altura del anchor (y = 26)');
 
 console.log('Cabezal 101A recto (solo A = largo) cara inf:');
 var ptsR = F.figuraAPuntos('101A', { A: 592 }, host, { cara: 'inf', y: -26, z: 0 }, { rol: 'cabezal', diamCm: 1.8 });

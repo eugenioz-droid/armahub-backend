@@ -15,7 +15,7 @@
 //        con su propio aviso.
 //   P4 · UN USO NORMAL (46 barras, capas de verdad) NO roza ningún tope y NO
 //        genera ningún aviso — y la viga-semilla sigue en 72 barras / 4 ítems
-//        (136.1 kg tras migrar el cabezal al trazador; ver la nota en P4c).
+//        (140.1 kg con la convención de vértice del 18-ago; ver la nota en P4c).
 //
 // Correr con: node tests/test_topes_generacion.js
 
@@ -223,14 +223,23 @@ ok(plNorm3.length < TOPE, 'y muy por debajo del tope');
 
 console.log('\nP4c — la viga-semilla: ningún tope tocado, kg re-derivado:');
 // Lo que este test protege es el CONTEO (4 ítems / 72 barras: ningún tope de
+// 18-AGO · 136.1 -> 140.1 kg (CONVENCION DE VERTICE, cerrada por el usuario). El
+// numero del catalogo pasa a leerse como ANGULO DEL VERTICE (el que queda entre los
+// dos tramos de fierro) y no como recorrido del doblado. Consecuencia en la semilla:
+// las patas de 45 del CBS 103B quedan REPLEGADAS sobre el cuerpo en vez de abiertas,
+// asi que ya no le roban largo al tramo B: su 'auto' sube de 547.974 a 590.4 (la
+// unica reserva por punta que queda es la cresta del codo, phi/2 = 0.8). Son 42.426
+// cm mas por barra x 6 barras phi16 = 4.0 kg. Items, barras y las otras 3 figuras del
+// listado (2 x 101A y el estribo 104D) no se mueven ni un gramo.
+// --- HISTORIA PREVIA (12-ago), ya superada por la nota de arriba: ---
 // generación se roza) y eso no se mueve. Los kg bajan 140.2 → 136.1 por la
 // MIGRACIÓN CABEZAL → TRAZADOR: el CBS es una 103B con dobleces de 45°/45° que el
 // constructor de cabezal ignoraba, y al honrarlos el auto-largo reserva la
 // proyección de cada pata (30·cos45 = 21.2132) más el φ/2 de la cresta del codo →
 // B = 592 − 2·22.0132 = 547.974. Es una sola dim: no cambia ni un conteo.
 const semilla = G.generarViga(S.semillaViga(), {});
-ok(semilla.resumen.items === 4 && semilla.resumen.barras === 72 && semilla.resumen.kg === 136.1,
-  'semilla = {items:4, barras:72, kg:136.1} (=' + JSON.stringify(semilla.resumen) + ')');
+ok(semilla.resumen.items === 4 && semilla.resumen.barras === 72 && semilla.resumen.kg === 140.1,
+  'semilla = {items:4, barras:72, kg:140.1} (=' + JSON.stringify(semilla.resumen) + ')');
 ok(eq(R.posicionesRango({ from: -12, to: 12, sep: 20 }).map(function (v) { return Math.round(v * 1e6) / 1e6; }),
   [-12, 0, 12]), 'el reparto de siempre (paso real) no se movió');
 

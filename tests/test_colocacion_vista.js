@@ -176,8 +176,8 @@ var G = require(path.join(base, 'generar.js'));
 var S = require(path.join(base, 'semilla_viga.js'));
 var out = G.generarViga(S.semillaViga(), { sector: 'V', ciclo: 'C1', piso: 'P1', eje: 'E1' });
 ok(out.resumen.items === 4 && out.resumen.barras === 72 &&
-  Math.abs(out.resumen.kg - 136.1) < 0.05,
-  'semilla {4, 72, 136.1}: ' + JSON.stringify(out.resumen));
+  Math.abs(out.resumen.kg - 140.1) < 0.05,
+  'semilla {4, 72, 140.1}: ' + JSON.stringify(out.resumen));
 
 if (fallas) { console.log('\n' + fallas + ' FALLA(S)'); process.exit(1); }
 console.log('\nTODO OK');

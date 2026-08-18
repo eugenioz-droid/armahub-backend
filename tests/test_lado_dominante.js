@@ -157,10 +157,21 @@ console.log('\nB — el tramo que el preview destaca ES el lado dominante');
 {
   // [figura, tipología, tolerancia en cm]. La tolerancia cubre el RETRANQUEO del
   // gancho con radio: el cuerpo entra tangente al arco, o sea pierde R = 2.5·φ por
-  // cada extremo que remate en gancho >90° (φ16 → 4 cm por gancho).
+  // cada extremo que remate en gancho de más de 90° de RECORRIDO (φ16 → 4 cm por
+  // gancho).
+  //
+  // 18-AGO · LAS TOLERANCIAS SE INTERCAMBIAN (convención de VÉRTICE, cerrada por el
+  // usuario). El número del catálogo pasa a leerse como ángulo del VÉRTICE, así que
+  // QUIÉN lleva gancho arqueado se da vuelta:
+  //   · las de ficha 45 (103B, 104B) son ahora vértices CERRADOS = 135° de recorrido
+  //     → SÍ llevan codo. La 103B lo lleva en sus dos puntas (8.0 medidos) y la 104B
+  //     en una sola (el otro codo cae sobre la C, 4.0 medidos);
+  //   · las de ficha 135 (102B, 103E) son ahora vértices ABIERTOS = 45° de recorrido
+  //     → NO llevan codo y su cuerpo mide exacto.
+  // Es el mismo assert con los papeles cambiados: ninguna figura sale de la lista.
   [['101A', 'CBS', 0.1], ['102A', 'CBS', 0.1], ['103A', 'CBS', 0.1],
-   ['103B', 'CBS', 0.1], ['104B', 'CBS', 0.1],
-   ['102B', 'CBS', 4.5], ['103E', 'CBS', 8.5]].forEach(([fig, tip, tol]) => {
+   ['102B', 'CBS', 0.1], ['103E', 'CBS', 0.1],
+   ['104B', 'CBS', 4.5], ['103B', 'CBS', 8.5]].forEach(([fig, tip, tol]) => {
     const c = comp(fig, tip);
     const r = primerPlacement(c);
     if (!r) { ok(false, fig + ' ' + tip + ': el motor no devolvió placements'); return; }
@@ -191,15 +202,18 @@ console.log('\nB — el tramo que el preview destaca ES el lado dominante');
       '101A (recta): el lado dominante es la barra entera');
   }
 
-  // 103E con rol CABEZAL: DOS ganchos de 135°, o sea dos grupos de arco PEGADOS en
-  // la lista con el cuerpo justo entre ellos. Es el caso que rompe "un run de
-  // esArco = un vértice".
+  // DOS GANCHOS SEGUIDOS: dos grupos de arco PEGADOS en la lista con el cuerpo justo
+  // entre ellos. Es el caso que rompe "un run de esArco = un vértice".
+  // 18-AGO: la figura que lo representa pasa de la 103E a la 103B. Con la convención
+  // de VÉRTICE el codo arqueado lo llevan las de ficha 45 (vértice cerrado = 135° de
+  // recorrido), no las de ficha 135. La 103B declara 45/45, o sea gancho en las dos
+  // puntas: exactamente la topología que este assert quiere.
   {
-    const r = primerPlacement(comp('103E', 'CBS'));
-    const rng = TE._tramoDominanteEnTrazo('103E', r.rol, r.pl.puntos, r.pl.diam, 'B');
+    const r = primerPlacement(comp('103B', 'CBS'));
+    const rng = TE._tramoDominanteEnTrazo('103B', r.rol, r.pl.puntos, r.pl.diam, 'B');
     ok(rng && r.pl.puntos[rng.i0].esArco && r.pl.puntos[rng.i1].esArco,
-      '103E: el cuerpo va DE un punto de arco A otro (los dos grupos están pegados)');
-    ok(rng && (rng.i1 - rng.i0) === 1, '103E: el cuerpo es un solo segmento recto');
+      '103B: el cuerpo va DE un punto de arco A otro (los dos grupos están pegados)');
+    ok(rng && (rng.i1 - rng.i0) === 1, '103B: el cuerpo es un solo segmento recto');
   }
 }
 

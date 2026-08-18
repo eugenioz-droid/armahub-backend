@@ -31,7 +31,7 @@
 //        se inventa, se avisa.
 //   N5 · FIGURA QUE YA NO EXISTE — no explota: queda MARCADA (_migracion +
 //        comp._avisos, no enumerables) y no se genera barra.
-//   N6 · VIGA-SEMILLA — la referencia viva sigue en {items:4, barras:72, kg:136.1}
+//   N6 · VIGA-SEMILLA — la referencia viva sigue en {items:4, barras:72, kg:140.1}
 //        antes y después de normalizar (dos veces).
 //
 // Correr con: node tests/test_normalizador.js
@@ -387,7 +387,7 @@ console.log('\nN6 — VIGA-SEMILLA: la referencia viva NO se mueve');
 (function () {
   const r = SEM.semillaViga();
   const antes = G.generarViga(clon(r), {});
-  ok(antes.items !== 0 && J(antes.resumen) === J({ items: 4, barras: 72, kg: 136.1 }),
+  ok(antes.items !== 0 && J(antes.resumen) === J({ items: 4, barras: 72, kg: 140.1 }),
     'semilla intacta: ' + J(antes.resumen));
   // …y normalizarla (dos veces) tampoco la mueve.
   R.normalizarReceta(r); R.normalizarReceta(r);
