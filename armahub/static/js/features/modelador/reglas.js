@@ -3061,6 +3061,23 @@
     var bbRef = _bboxLista(ref.map(function (p) { return p.puntos; }));
     if (!bb || !bbRef) return placements;
     var dimHost = { x: Number(host.largo), y: Number(host.alto), z: Number(host.ancho) };
+    // MÁS POSICIONES QUE SON UN DATO (17-ago), hermanas del eje del rango:
+    //   · el eje de la 2ª LÍNEA del arreglo — su coordenada la puso el reparto;
+    //   · los ejes donde el Δ del marco viene CARGADO A UN LADO (extremo
+    //     fin/ini): el usuario dijo «achícalo y déjalo en ese costado». Un
+    //     estribo así achicado quedaba «puntual» (span < 30% del host) y la
+    //     restitución lo devolvía al medio deshaciendo el gesto (reporte:
+    //     «si uso distribución me tira la barra al medio»). Con Δ centrado o
+    //     sin Δ direccional nada cambia (byte-idéntico).
+    var esDato = { x: false, y: false, z: false };
+    var dist2 = comp && comp.distribucion;
+    if (dist2 && dist2.rango2 && dist2.rango2.eje) esDato[dist2.rango2.eje] = true;
+    var dlDir = _deltaMarcoSeccion(comp, []);
+    if (dlDir && (dlDir.altoDir || dlDir.anchoDir)) {
+      var PD = _permDe(comp);
+      if (dlDir.altoDir) esDato[PD ? PD.y : 'y'] = true;
+      if (dlDir.anchoDir) esDato[PD ? PD.z : 'z'] = true;
+    }
     var d = { x: 0, y: 0, z: 0 }, restituye = false;
     ['x', 'y', 'z'].forEach(function (e) {
       if (!isFinite(dimHost[e]) || dimHost[e] <= 0) return;
@@ -3069,6 +3086,7 @@
       // (medido 14-ago: una traba de_pie repartida en x=100..200 aterrizaba en
       // −50..50 porque la restitución la devolvía al centro de la referencia).
       if (e === ejeRango) return;
+      if (esDato[e]) return;                                                // posición = dato del usuario
       if ((bb.max[e] - bb.min[e]) >= UMBRAL_PUNTUAL * dimHost[e]) return;   // se EXTIENDE
       d[e] = bbRef.c[e] - bb.c[e];
       if (d[e]) restituye = true;

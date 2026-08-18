@@ -387,5 +387,41 @@ console.log('— G) columnas del arreglo de estribos repartidas —');
     'cada fila centrada en su coordenada del 2º rango (-8 y 8): ' + JSON.stringify(porFila));
 })();
 
+// ---------------------------------------------------------------------------
+// H) EL ESTRIBO ACHICADO Y CARGADO A UN LADO NO VUELVE AL MEDIO (17-ago)
+// ---------------------------------------------------------------------------
+// _restituirCentroVolteo consideraba «puntual» (span < 30% del host) al
+// estribo achicado con extremo fin/ini y le restituia el centro: en modo
+// Distribucion la pieza saltaba al medio del muro. El eje con delta
+// direccional es un DATO del usuario y no se restituye.
+console.log('— H) delta direccional sobrevive a la restitucion del volteo —');
+(function () {
+  var MURO_H = { largo: 400, alto: 250, ancho: 20, recub_sup: 2.5, recub_inf: 2.5, recub_lat: 2.5 };
+  function mkH(delta, extremo) {
+    var c = { comp_id: 'H', tipologia: 'EC', figura: '104D', diam: 0.8,
+      pose: { cara: 'lateral', lado: 1, rumbo: 'y' },
+      dims: { A: { modo: 'auto' }, B: { modo: 'auto' }, C: { modo: 'auto' }, D: { modo: 'auto' } },
+      distribucion: { modo: 'lineal', rango: { eje: 'y', from: 0, to: 0, sep: 50 } } };
+    if (delta) c.dims.B = { modo: 'auto', delta: delta, extremo: extremo };
+    return c;
+  }
+  function bxH(c) {
+    var pls = R.expandirComponente(c, MURO_H) || [];
+    var lo = Infinity, hi = -Infinity;
+    (pls[0] && pls[0].puntos || []).forEach(function (q) { if (q.x < lo) lo = q.x; if (q.x > hi) hi = q.x; });
+    return { lo: Math.round(lo * 10) / 10, hi: Math.round(hi * 10) / 10 };
+  }
+  var b0 = bxH(mkH());
+  ok(b0.lo === -197.5 && b0.hi === 197.5, 'base llena el largo util: ' + JSON.stringify(b0));
+  // -300 deja la pieza en span 95 < 120 (30% de 400): antes la restitucion la centraba
+  var bf = bxH(mkH(-300, 'fin'));
+  ok(bf.lo === -197.5, 'fin -300 sigue PEGADO al borde -197.5: ' + JSON.stringify(bf));
+  var bi = bxH(mkH(-300, 'ini'));
+  ok(bi.hi === 197.5, 'ini -300 sigue pegado al borde +197.5: ' + JSON.stringify(bi));
+  // con crecimiento CENTRADO la restitucion sigue operando como siempre
+  var bc = bxH(mkH(-300, 'centro'));
+  ok(Math.abs(bc.lo + bc.hi) < 0.2, 'centro -300 queda centrado (como siempre): ' + JSON.stringify(bc));
+})();
+
 console.log(fallos ? '\nFALLOS: ' + fallos : '\nTODO OK');
 process.exitCode = fallos ? 1 : 0;
