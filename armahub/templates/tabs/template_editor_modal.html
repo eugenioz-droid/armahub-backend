@@ -19,7 +19,9 @@
     --te-bg:#eef1f4; --te-ink:#1f2937; --te-muted:#64748b; --te-line:#dbe1e8;
     --te-panel:#ffffff; --te-panel2:#f6f8fa;
     --te-acero:#8BC34A; --te-acero-d:#558B2F; --te-azul:#1565c0; --te-azul-b:#e3f2fd;
-    --te-canvas:#eef2f6; --te-canvas3d:#d8dee7; --te-hormigon:#c9d2dc; --te-hormigon-b:#8a96a5;
+    /* --te-canvas3d = TEMAS3D.claro.bg de template_editor.js. Desde que el fondo es
+       global lo usan los 4 cuadrantes (via --te-ov-lienzo), no sólo el 3D. */
+    --te-canvas3d:#d8dee7; --te-hormigon:#c9d2dc; --te-hormigon-b:#8a96a5;
     --te-chip:#eef5e6; --te-chip-ink:#33691e; --te-chip-b:#c5e1a5;
     --te-cbs:#1565c0; --te-cbi:#00897b; --te-es:#e65100; --te-trv:#7b1fa2; --te-mall:#5e35b1;
   }
@@ -130,6 +132,12 @@
   #te_modal .te-comp.sel{border-color:var(--te-acero);box-shadow:0 0 0 2px rgba(139,195,74,.15)}
   #te_modal .te-comp .te-ch{display:flex;align-items:center;gap:8px;padding:7px 9px;cursor:pointer;background:var(--te-panel2)}
   #te_modal .te-comp .te-sw{width:12px;height:12px;border-radius:3px;flex-shrink:0}
+  /* MARCA DE ESPEJO junto al swatch. Existe porque la línea de descripción dejó de
+     decir la cara (y con ella el " esp."): sin esto, dos componentes que sólo
+     difieren en el espejo quedan con la fila idéntica. Icono y no palabra: el pedido
+     era JUSTAMENTE sacarle texto a la línea. */
+  #te_modal .te-comp .te-espm{flex-shrink:0;font-size:11px;line-height:1;color:var(--te-trv);
+    font-weight:700;margin-left:-4px;cursor:help}
   #te_modal .te-comp .te-nm{font-weight:700;font-size:12.5px}
   #te_modal .te-comp .te-de{font-size:10.5px;color:var(--te-muted)}
   #te_modal .te-comp .te-drag{cursor:grab;color:#b6c0cc;margin-right:2px}
@@ -173,6 +181,17 @@
   #te_modal .te-dombtn:disabled{opacity:.38;cursor:not-allowed;text-decoration:line-through}
   /* PICKER DE COLOR POR BARRA (D9): compacto, a la altura de los inputs. */
   #te_modal input.te-color{width:44px;height:24px;padding:1px 2px;border:1px solid var(--te-line);border-radius:6px;background:#fff;cursor:pointer}
+  /* ARCHIVADOR DE COLORES DEL TEMPLATE — muestras de los colores que ya están en uso
+     en la receta abierta (las arma _coloresDeReceta). El picker de al lado inventa
+     colores; esto los REPITE, que es lo que no se podía hacer con un picker cromático.
+     OJO ANCHOS: la regla base `#te_modal #te_side input{width:100%}` lleva DOS ids,
+     así que cualquier medida nueva de este lado también los lleva — si no, gana ella.
+     Aquí son <button>, pero se escriben con los dos ids igual para que la próxima
+     regla genérica del panel no se los coma. */
+  #te_modal #te_side .te-colsws{display:flex;flex-wrap:wrap;gap:4px;align-items:center;flex:1 1 100%}
+  #te_modal #te_side .te-colsw{width:16px;height:16px;flex:0 0 auto;padding:0;border-radius:4px;
+    border:1px solid rgba(15,20,28,.28);cursor:pointer;line-height:0}
+  #te_modal #te_side .te-colsw:hover{transform:scale(1.18);border-color:var(--te-ink)}
   /* FILA DE DIMENSIÓN (rediseño 15-ago): la LETRA es el botón radial del dominante
      y a la derecha entran el Δ del lado y su flecha de extremo. Todo en un renglón. */
   /* La fila de dims usa una columna ANGOSTA para la letra: los 96 px del label
@@ -313,8 +332,50 @@
      El renderer 3D dibuja los 4 cuadrantes por viewport leyendo el rect de cada uno,
      así que la proporción nueva la toma solo (no hay medidas duplicadas en JS). */
   #te_modal #te_quad{flex:1;display:grid;grid-template-columns:2fr 3fr;grid-template-rows:2fr 3fr;gap:1px;background:var(--te-line);min-width:0;position:relative}
-  #te_modal .te-vista{background:var(--te-canvas);position:relative;overflow:hidden;cursor:pointer}
-  #te_modal .te-vista.d3{background:var(--te-canvas3d);cursor:default}
+  /* ---- TEMA DE FONDO DE LOS 4 CUADRANTES (radial ●◐○) ----
+     El fondo lo pinta WebGL (scene.background, uno solo para los 4 viewports); lo que
+     vive acá es TODO LO QUE VA ENCIMA: los trazos del overlay SVG de las vistas 2D y
+     su grilla. Antes el radial sólo movía el 3D justamente porque estos trazos están
+     pensados para fondo claro (cotas grises, recubrimiento casi negro, textos
+     oscuros) y sobre negro desaparecían. Ahora cada uno sale de una variable y el
+     tema las reasigna, así que oscurecer el fondo ACLARA el dibujo en vez de
+     esconderlo. La clase la pone _marcarTemaEnQuad en template_editor.js.
+     El tema CLARO es el default y no necesita bloque: es el juego de siempre. */
+  #te_modal #te_quad{
+    --te-ov-recub:#263238;      /* punteado del recubrimiento */
+    --te-ov-dim:#607089;        /* texto de las cotas */
+    --te-ov-dimL:#b6c2d0;       /* líneas y ticks de cota */
+    --te-ov-bbox:#7d8da0;       /* bbox punteado de la selección */
+    --te-ov-rango:#558B2F;      /* flecha de rango + tramos (verde acero oscuro) */
+    --te-ov-grid:rgba(15,20,28,.10);
+    --te-ov-grid-m:rgba(15,20,28,.20);
+    --te-ov-chip-bg:rgba(255,255,255,.78);   /* fondo de título/etiquetas flotantes */
+    --te-ov-chip-ink:#5b6a7d;
+    --te-ov-hint:#9aa4b0;
+    --te-ov-lienzo:var(--te-canvas3d);   /* = TEMAS3D.claro.bg: el DOM y el clear de WebGL, el mismo gris */
+  }
+  #te_modal #te_quad.te-tema-medio{
+    --te-ov-recub:#c7d2de; --te-ov-dim:#b9c6d6; --te-ov-dimL:#6c7a8d; --te-ov-bbox:#93a3b6;
+    --te-ov-rango:#a5d76a;
+    --te-ov-grid:rgba(226,236,248,.13); --te-ov-grid-m:rgba(226,236,248,.26);
+    --te-ov-chip-bg:rgba(20,26,34,.72); --te-ov-chip-ink:#c3cfdd; --te-ov-hint:#8695a8;
+    --te-ov-lienzo:#2b3242;
+  }
+  #te_modal #te_quad.te-tema-oscuro{
+    --te-ov-recub:#d3dde8; --te-ov-dim:#c3d0e0; --te-ov-dimL:#5d6b7d; --te-ov-bbox:#8d9cb0;
+    --te-ov-rango:#b4e178;
+    --te-ov-grid:rgba(226,236,248,.11); --te-ov-grid-m:rgba(226,236,248,.24);
+    --te-ov-chip-bg:rgba(10,13,18,.78); --te-ov-chip-ink:#c9d5e3; --te-ov-hint:#7d8b9d;
+    --te-ov-lienzo:#14171c;
+  }
+  /* GRILLA de las vistas 2D — la emite _dibujarGrilla2D como dos <path> (fina y
+     marcada cada 5 pasos). vector-effect para que el grosor NO escale con el zoom:
+     es una referencia, no geometría del elemento. */
+  #te_modal .te-grid2d{fill:none;stroke:var(--te-ov-grid);stroke-width:1;
+    vector-effect:non-scaling-stroke;pointer-events:none;shape-rendering:crispEdges}
+  #te_modal .te-grid2d-m{stroke:var(--te-ov-grid-m)}
+  #te_modal .te-vista{background:var(--te-ov-lienzo);position:relative;overflow:hidden;cursor:pointer}
+  #te_modal .te-vista.d3{background:var(--te-ov-lienzo);cursor:default}
   /* P3 — cuadrante 2D cuyo plano de trabajo está ACTIVO (resaltado en el 3D).
      Se alterna con doble clic en el cuadrante (ver _bindVistas en template_editor.js). */
   /* Borde del cuadrante activo en las 4 CARAS: un pseudo-elemento absoluto con
@@ -322,7 +383,7 @@
   #te_modal .te-vista.te-plano-on::after{content:'';position:absolute;inset:0;z-index:5;
     border:2.5px solid #2f80ed;pointer-events:none;border-radius:2px}
   #te_modal .te-vista.te-plano-on .te-vtitle{background:#2f80ed;color:#fff;border-color:#2f80ed}
-  #te_modal .te-vtitle{position:absolute;top:8px;left:10px;z-index:3;font-size:11px;font-weight:700;color:#5b6a7d;background:rgba(255,255,255,.78);border:1px solid var(--te-line);border-radius:6px;padding:2px 8px;letter-spacing:.3px}
+  #te_modal .te-vtitle{position:absolute;top:8px;left:10px;z-index:3;font-size:11px;font-weight:700;color:var(--te-ov-chip-ink);background:var(--te-ov-chip-bg);border:1px solid var(--te-line);border-radius:6px;padding:2px 8px;letter-spacing:.3px}
   /* B4 — GIZMO GRÁFICO de ejes (reemplaza el cuadro de texto anterior). Mini SVG de
      ~46×46 que dibuja: flecha horizontal = eje u de la vista, flecha vertical = eje v,
      y el símbolo ⊙ (círculo con punto) = eje de profundidad, "hacia ti". Colores
@@ -386,6 +447,10 @@
     display:flex;align-items:center;justify-content:center;padding:0}
   #te_modal .te-3dtools button:hover{color:var(--te-ink);border-color:var(--te-acero)}
   #te_modal .te-3dtools button.off{opacity:.45}
+  /* 🎯 ENCENDIDO = ancla puesta (el giro orbita la pieza aunque no sostengas ctrl).
+     Va con DOS ids a propósito: `.te-3dtools button.on` de una sola clase también
+     pintaría al 🧊 del hormigón, que nace con class="on" y usa .off para apagarse. */
+  #te_modal .te-3dtools #te_3dAnclar.on{background:var(--te-acero);color:#fff;border-color:var(--te-acero)}
   /* Radiales del 3D (eje de giro / fondo). OJO ESPECIFICIDAD: la regla de arriba
      (`#te_modal .te-3dtools button`) fija 24×24 px; ésta la gana porque suma la clase
      .te-3dseg — si se escribiera con una sola clase, los botones de texto saldrían
@@ -432,7 +497,7 @@
      GLOBAL, así que se puede tocar desde donde estés mirando). Discreto: se lee
      al hover del cuadrante, igual que el slider. */
   #te_modal .te-vcut-iman{flex:0 0 auto;display:flex;flex-direction:column;align-items:center;gap:1px;
-    cursor:pointer;font-size:8.5px;font-weight:600;color:#7d8da0;line-height:1;user-select:none}
+    cursor:pointer;font-size:8.5px;font-weight:600;color:var(--te-ov-bbox);line-height:1;user-select:none}
   #te_modal .te-vcut-iman input{width:11px;height:11px;margin:0;cursor:pointer;accent-color:#2f80ed}
   #te_modal .te-vcut-iman span{letter-spacing:.2px}
   #te_modal .te-vcut-r::-webkit-slider-runnable-track{width:3px;background:#c9d2dc;border-radius:2px}
@@ -440,13 +505,13 @@
     border-radius:50%;background:#2f80ed;border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.3);margin-left:-4px}
   #te_modal .te-vcut-r::-moz-range-track{width:3px;background:#c9d2dc;border-radius:2px}
   #te_modal .te-vcut-r::-moz-range-thumb{width:11px;height:11px;border-radius:50%;background:#2f80ed;border:2px solid #fff}
-  #te_modal .te-vhint{position:absolute;bottom:7px;right:10px;z-index:3;font-size:9.5px;color:#9aa4b0}
+  #te_modal .te-vhint{position:absolute;bottom:7px;right:10px;z-index:3;font-size:9.5px;color:var(--te-ov-hint)}
 
   #te_modal .te-horm{fill:var(--te-hormigon);opacity:.55;stroke:var(--te-hormigon-b);stroke-width:1.2}
   /* RECUBRIMIENTO — línea de referencia que el usuario usa para colocar. Va en trazo
      OSCURO casi negro (#263238): el gris azulado anterior se perdía sobre el render
      del hormigón. Mismo punteado, apenas más grueso. */
-  #te_modal .te-recub{fill:none;stroke:#263238;stroke-width:1.2;stroke-dasharray:5 4}
+  #te_modal .te-recub{fill:none;stroke:var(--te-ov-recub);stroke-width:1.2;stroke-dasharray:5 4}
   #te_modal .te-barCBS{stroke:var(--te-cbs)}
   #te_modal .te-barCBI{stroke:var(--te-cbi)}
   #te_modal .te-barES{stroke:var(--te-es)}
@@ -463,7 +528,7 @@
      acá es OTRA cosa — el borde del cuadrante con el plano de trabajo activo. */
   #te_modal .te-bar-halo{fill:none;stroke:#ff00b8;stroke-width:1.6;opacity:.95;stroke-linecap:round;stroke-linejoin:round;pointer-events:none}
   /* BBox punteado de la PIEZA seleccionada (todas sus barras) con esquinitas. */
-  #te_modal .te-sel-bbox{fill:none;stroke:#7d8da0;stroke-width:1;stroke-dasharray:4 3;pointer-events:none}
+  #te_modal .te-sel-bbox{fill:none;stroke:var(--te-ov-bbox);stroke-width:1;stroke-dasharray:4 3;pointer-events:none}
   #te_modal .te-sel-esq{fill:#fff;stroke:#2f80ed;stroke-width:1.2;pointer-events:none}
   /* GHOST (previsualización que sigue el cursor). Grueso + punteado, como la maqueta. */
   /* GHOST en MAGENTA (pedido 14-ago: el verde se veía demasiado tenue) + un pelo más grueso. */
@@ -518,20 +583,20 @@
      VERDE ACERO (var(--te-acero-d) #558B2F) — es el color histórico de la flecha; el
      rediseño azul la confundía con la selección/el slider de corte. El preview
      inactivo sigue distinguiéndose por su opacity (la pone el JS en el <g>). */
-  #te_modal .te-rango-line{stroke:var(--te-acero-d);stroke-width:1;stroke-dasharray:3 3;opacity:.85}
-  #te_modal .te-rango-arrow{fill:none;stroke:var(--te-acero-d);stroke-width:1.3}
+  #te_modal .te-rango-line{stroke:var(--te-ov-rango);stroke-width:1;stroke-dasharray:3 3;opacity:.85}
+  #te_modal .te-rango-arrow{fill:none;stroke:var(--te-ov-rango);stroke-width:1.3}
   #te_modal .te-rango-hit{fill:rgba(85,139,47,.001)}
-  #te_modal .te-rango-end{fill:#fff;stroke:var(--te-acero-d);stroke-width:1.2}
-  #te_modal .te-rango-end:hover{fill:var(--te-acero-d)}
+  #te_modal .te-rango-end{fill:#fff;stroke:var(--te-ov-rango);stroke-width:1.2}
+  #te_modal .te-rango-end:hover{fill:var(--te-ov-rango)}
   /* TRAMOS (multi-@) sobre la flecha de rango: un DIVISOR arrastrable en cada límite
      entre tramos contiguos + una etiqueta "@N" clicable por tramo (abre un input
      inline). Mismo verde acero de la flecha — es la misma pieza de UI. */
-  #te_modal .te-rango-div{stroke:var(--te-acero-d);stroke-width:1.4}
+  #te_modal .te-rango-div{stroke:var(--te-ov-rango);stroke-width:1.4}
   #te_modal .te-rango-divhit{fill:rgba(85,139,47,.001)}
-  #te_modal .te-rango-at{fill:var(--te-acero-d);font:700 9px "Segoe UI",system-ui,sans-serif;
+  #te_modal .te-rango-at{fill:var(--te-ov-rango);font:700 9px "Segoe UI",system-ui,sans-serif;
     cursor:pointer;user-select:none}
   #te_modal .te-rango-at:hover{fill:#33691E}
-  #te_modal .te-rango-atbg{fill:#fff;opacity:.85;stroke:var(--te-acero-d);stroke-width:.6;cursor:pointer}
+  #te_modal .te-rango-atbg{fill:#fff;opacity:.85;stroke:var(--te-ov-rango);stroke-width:.6;cursor:pointer}
   /* Input inline que abre el clic sobre "@N" (HTML flotante sobre el cuadrante). */
   #te_modal .te-atedit{position:absolute;z-index:8;width:48px;padding:1px 3px;font-size:10px;
     border:1px solid var(--te-acero-d);border-radius:4px;background:#fff;color:var(--te-ink);
@@ -546,9 +611,9 @@
   #te_modal .te-tramo-add{border:1px dashed var(--te-line);background:#fff;border-radius:6px;
     padding:4px 9px;font-size:11px;font-weight:600;color:var(--te-acero-d);cursor:pointer}
   #te_modal .te-tramo-add:hover{background:#f7fbf2;border-color:var(--te-acero)}
-  #te_modal .te-dim{fill:#607089;font:9px "Segoe UI",monospace}
-  #te_modal .te-dimL{stroke:#b6c2d0;stroke-width:.8}
-  #te_modal .te-dimTick{stroke:#b6c2d0;stroke-width:.8}
+  #te_modal .te-dim{fill:var(--te-ov-dim);font:9px "Segoe UI",monospace}
+  #te_modal .te-dimL{stroke:var(--te-ov-dimL);stroke-width:.8}
+  #te_modal .te-dimTick{stroke:var(--te-ov-dimL);stroke-width:.8}
   /* Cursores por herramienta (sobre las 3 vistas 2D). */
   #te_modal #te_quad.tool-colocar .te-vista:not(.d3){cursor:crosshair}
   #te_modal #te_quad.tool-mover   .te-vista:not(.d3){cursor:default}
@@ -831,20 +896,25 @@
           <button type="button" class="te-vzoom" title="Agrandar este cuadrante">🔍</button>
           <!-- El gizmo 3D (triad de ejes que sigue a la cámara) lo pinta el RENDERER en la
                esquina inf-izq de este cuadrante (viewport propio, ver _renderGizmo3D). -->
-          <div class="te-vhint">arrastra = rotar · ctrl+arrastre = girar en torno a la selección · rueda = zoom al cursor · medio/der = pan · 🎯 = anclar el giro</div>
+          <div class="te-vhint">arrastra = rotar · ctrl+arrastre = girar en torno a la selección · rueda = zoom al cursor · medio/der = pan · 🎯 = dejarlo anclado</div>
           <!-- Herramientas del 3D (17-ago). Van arriba-derecha porque la esquina
                inf-izq la ocupa el gizmo de ejes que pinta el renderer.
-               · 🎯 anclar: deja el PIVOTE de la órbita PERMANENTEMENTE en la barra
-                 seleccionada y la centra en pantalla TRASLADANDO la cámara (se lee
-                 como "la cámara camina hasta la pieza"). El ctrl+arrastre hace lo
-                 mismo pero prestado —sólo mientras dura el gesto— y sin mover la
-                 imagen; el botón es para dejarlo fijo.
+               · 🎯 anclar: INTERRUPTOR (18-ago). Encendido, TODO arrastre de giro orbita
+                 rígidamente el centro de la barra seleccionada —sin sostener ctrl— y ni el
+                 pan ni la rueda lo sueltan. Al encenderlo centra la pieza TRASLADANDO la
+                 cámara (se lee como "la cámara camina hasta la pieza"), nunca
+                 re-apuntándola. Antes era un disparo suelto y el ancla se perdía en el
+                 primer pan: _absorberPanEnTarget devuelve el pivote al centro de la
+                 pantalla. El ctrl+arrastre hace lo mismo, sólo mientras dura el gesto.
                · ⟳ recentrar: hace falta desde que la cámara dejó de re-encuadrarse
                  sola en cada clic (antes el reset accidental hacía de "volver").
                · 🧊 hormigón: ST.verHormigon existía desde siempre SIN botón que lo
                  tocara — la función estaba escrita y no se podía usar.
                A la derecha, dos radiales portados del Enfierrador: EJE de rotación y
-               FONDO (tema del 3D: sólo fondo y grilla, NUNCA el color de las barras).
+               FONDO. El FONDO es GLOBAL (18-ago): pinta los 4 cuadrantes, no sólo el 3D,
+               y con él viaja la grilla y la inversión de los trazos del overlay 2D
+               (variables --te-ov-* del CSS). Sigue sin tocar NUNCA el color de las barras.
+               Vive en esta barra por estar donde ya estaban los otros radiales.
                TODO va en UNA FILA arriba (18-ago) — ver .te-3dtools en el CSS.
                EJE SIN "LIBRE" (18-ago): eran 4 botones y el cuarto sobraba, porque
                volver a clicar el activo YA lo apaga. Ahora son 3 (X/Y/Z) y NINGUNO
@@ -853,7 +923,7 @@
                ningún botón lleva data-eje="libre", ninguno queda encendido. -->
           <div class="te-3dtools">
             <div class="te-3drow">
-              <button id="te_3dAnclar" type="button" title="Anclar el punto de giro en la barra seleccionada">🎯</button>
+              <button id="te_3dAnclar" type="button" title="Anclar el giro en la barra seleccionada (interruptor: vuelve a pulsarlo para soltarlo)">🎯</button>
               <button id="te_3dReset" type="button" title="Recentrar el 3D (giro, zoom y encuadre)">⟳</button>
               <button id="te_3dHormigon" type="button" class="on" title="Mostrar u ocultar el hormigón">🧊</button>
             </div>
@@ -865,7 +935,7 @@
             </div>
             <div class="te-3drow">
               <span class="te-3dlbl">fondo</span>
-              <span class="te-3dseg" id="te_3dTema" title="Fondo y grilla del 3D (no cambia el color de las barras)">
+              <span class="te-3dseg" id="te_3dTema" title="Fondo y grilla de LOS 4 CUADRANTES — 3D y los tres planos (no cambia el color de las barras)">
                 <button type="button" data-tema="oscuro" title="Fondo oscuro">●</button><button type="button" data-tema="medio" title="Fondo medio">◐</button><button type="button" class="on" data-tema="claro" title="Fondo claro">○</button>
               </span>
             </div>

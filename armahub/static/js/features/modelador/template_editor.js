@@ -44,20 +44,24 @@
   // para que la escena y el selector de fondo no tengan dos tablas que puedan
   // divergir. Los colores por tipología viven en COL2D, fuente única 2D + 3D.)
 
-  // TEMAS DEL 3D (portados del Enfierrador, panel_3d.js TEMAS). SÓLO fondo y grilla:
-  // el color de cada barra es DATO DEL USUARIO (tipología o color propio del
+  // TEMAS DEL FONDO (portados del Enfierrador, panel_3d.js TEMAS). SÓLO fondo y
+  // grilla: el color de cada barra es DATO DEL USUARIO (tipología o color propio del
   // componente) y el tema no lo pisa — allá sí lo hacía, y cambiar de fondo te
   // cambiaba el color de las barras que habías elegido.
+  //
+  // AHORA SON LOS 4 CUADRANTES (18-ago, pedido del usuario). Antes el fondo se
+  // aplicaba POR PASE: el 3D con su tema y las 3 vistas 2D fijas en BG_ORTO. La razón
+  // de aquello era buena —los overlays SVG (cotas, recubrimiento, handles, textos)
+  // estaban dibujados para fondo claro y sobre negro se perdían—, así que el fondo no
+  // se soltó a secas: el tema ahora también marca #te_quad con la clase te-tema-*, y
+  // el CSS reasigna con ella las variables --te-ov-* de TODOS los trazos del overlay.
+  // Los trazos claros/oscuros se invierten con el fondo, no se dejan a la suerte.
   var TEMAS3D = {
     oscuro: { bg: 0x14171c, g1: 0x2a3340, g2: 0x222a34 },
     medio: { bg: 0x2b3242, g1: 0x4a5568, g2: 0x3a4353 },
     claro: { bg: 0xd8dee7, g1: 0xb4bdc9, g2: 0xc6cdd6 }
   };
-  // Fondo FIJO de las 3 vistas ortográficas. Se pinta con el MISMO `scene.background`
-  // que el cuadrante 3D (un solo renderer, viewports con scissor), así que sin esto
-  // elegir el tema "oscuro" ennegrecía también las 2D — donde los overlays SVG (cotas,
-  // recubrimiento en #263238, handles) están dibujados para fondo claro.
-  var BG_ORTO = 0xd8dee7;
+  function _tema3D() { return TEMAS3D[ST.tema3d] || TEMAS3D.claro; }
 
   // ACABADO PBR de las barras — ver la nota larga en _initEscena: sin envMap, el
   // metalness se cobra el color y no devuelve reflejo. Una sola constante para que
@@ -95,12 +99,34 @@
   // UNA SOLA CONSTANTE Y UN SOLO CLAMP: el mínimo estaba escrito en cuatro sitios
   // (_pivotarEn, la rueda) y los otros dos —encuadre automático y botón ⟳— ni
   // siquiera pasaban por él.
-  var FOV3D = 38;
+  //
+  // 38° → 25° (18-ago, «la viga cambia de orientación al panear»). NO era un bug de
+  // la pose ni del pan: es DISTORSIÓN DE PERSPECTIVA. Con un lente abierto los rayos
+  // que llegan al borde del cuadro entran con mucho ángulo respecto del eje óptico,
+  // así que la misma pieza se ve DESDE OTRO LADO cuando está en el borde y no en el
+  // centro (el edificio inclinado del gran angular). El ángulo entre el rayo del
+  // borde y el eje es FOV/2: pasa de 19° a 12,5°, o sea que la "vuelta" que la pieza
+  // parece dar al cruzar la pantalla se reduce a dos tercios, y el resultado se lee
+  // más como dibujo técnico (una ortográfica sería 0°, pero perdería la profundidad).
+  var FOV3D = 25;
   var DIST_MIN = 15, DIST_MAX = 6000;
   function _clampDist(d) {
     d = Number(d);
     if (!isFinite(d)) return DIST_MIN;
     return Math.max(DIST_MIN, Math.min(DIST_MAX, d));
+  }
+
+  // ENCUADRE AUTOMÁTICO — cuánta distancia hace falta para que el elemento entre.
+  // La fórmula (largo·1.15 + 160) se calibró A OJO con la ventana de un FOV de 38°,
+  // y lo que entra de alto en pantalla es 2·dist·tan(FOV/2): al cerrar el lente la
+  // MISMA distancia muestra menos y el elemento salía recortado. Se re-escala por la
+  // razón de tangentes, que es exactamente el factor que deja el tamaño en pantalla
+  // idéntico; así el número calibrado deja de depender del FOV elegido.
+  // Estaba escrita DOS VECES (encuadre inicial y botón ⟳) — ahora una sola.
+  var FOV_CALIB = 38;
+  function _distEncuadre(largo) {
+    var k = Math.tan(FOV_CALIB * Math.PI / 360) / Math.tan(FOV3D * Math.PI / 360);
+    return _clampDist((Number(largo) * 1.15 + 160) * k);
   }
 
   var GRID_SNAP = 5;   // cm — paso de snap a grilla
@@ -121,7 +147,9 @@
     //   (no viaja en la receta: es preferencia de mirada, no dato del template).
     // ejeRot: 'libre' | 'x' | 'y' | 'z' — restringe el arrastre de la órbita a un
     //   solo eje (portado del Enfierrador).
-    tema3d: 'claro', ejeRot: 'libre',
+    // anclado: 🎯 encendido — TODO arrastre de giro orbita rígidamente el centro de
+    //   la selección, sin tener que sostener ctrl, y ni el pan ni el zoom lo sueltan.
+    tema3d: 'claro', ejeRot: 'libre', anclado: false,
     // --- Estado de interacción 2D ---
     // figura y φ parten VACÍOS (pedido 13-ago): el usuario elige antes de colocar.
     figura: '', tipologia: 'CBS', diam: null, contorno: true,
@@ -1132,29 +1160,34 @@
   }
 
   // Nombre corto legible del componente (para el panel).
+  //
+  // SIN LA CARA (18-ago, pedido del usuario: «los textos "lateral esp." y "lateral" no
+  // me dan información y me ensucian»). La cara sigue estando donde sirve —la ficha
+  // flotante de la selección y el control de Pose de la ficha del componente—; acá
+  // sólo ocupaba el principio de todas las líneas.
+  // Y "barras" pasó a "un" (unidades): es la misma cifra en un tercio del ancho.
+  // OJO — EFECTO COLATERAL A LA VISTA: sin la cara, dos componentes que sólo se
+  // diferencian en el ESPEJO quedan con la línea idéntica (el caso de las dos MH 104B
+  // del reporte). El estado de espejo se marca ahora al lado del swatch de la cabecera
+  // con un icono, no con texto (ver _compEl).
   function _compDesc(c, ci) {
     var d = c.distribucion || {};
     var modo = _modoDe(c);
-    // La cara sale de la POSE (que incluye 'extremo'): con el mapa viejo de 3 casos,
-    // un componente en el testero se describía como "lateral".
-    var p = _poseDe(c);
-    var caraTxt = { sup: 'superior', inf: 'inferior', lateral: 'lateral', extremo: 'extremo' }[p.cara] || p.cara;
-    if (p.espejo) caraTxt += ' esp.';
     // CANTIDAD DE BARRAS (18-ago) — entre el espaciamiento y el ø, en la misma línea y
     // con la misma letra que el resto: es un dato más de la descripción, no una
     // insignia. Un 0 SÍ se muestra: si el componente no está generando nada (figura
     // fuera del catálogo, rango vacío) ese cero es exactamente lo que hay que ver.
     var nb = _nBarrasComp(ci);
-    var nbTxt = (nb == null) ? '' : (' · ' + nb + (nb === 1 ? ' barra' : ' barras'));
+    var nbTxt = (nb == null) ? '' : (nb + ' un · ');
     if (modo === 'arreglo') {
-      return caraTxt + ' · arreglo ' + (d.n_capas || 2) + '×@' + (d.sep || 20) + nbTxt + ' · ø' + c.diam;
+      return 'arreglo ' + (d.n_capas || 2) + '×@' + (d.sep || 20) + ' · ' + nbTxt + 'ø' + c.diam;
     }
     if (modo === 'puntual') {
       var nc = d.n_capas || 1;
-      return caraTxt + ' · ' + nc + ' capa' + (nc > 1 ? 's' : '') + '×' + (d.barras_capa || 1) + nbTxt + ' · ø' + c.diam;
+      return nc + ' capa' + (nc > 1 ? 's' : '') + '×' + (d.barras_capa || 1) + ' · ' + nbTxt + 'ø' + c.diam;
     }
     // lineal
-    return caraTxt + ' · lineal @' + (d.sep || 20) + nbTxt + ' · ø' + c.diam;
+    return 'lineal @' + (d.sep || 20) + ' · ' + nbTxt + 'ø' + c.diam;
   }
 
   // ==========================================================================
@@ -1541,7 +1574,7 @@
     var cv = $('te_cv');
     if (!cv) return false;
     ST.scene = new THREE.Scene();
-    ST.scene.background = new THREE.Color((TEMAS3D[ST.tema3d] || TEMAS3D.claro).bg);
+    ST.scene.background = new THREE.Color(_tema3D().bg);
     // El FOV sale de la constante porque el zoom-hacia-el-cursor necesita el MISMO
     // ángulo para saber cuánto mundo cabe en pantalla (si se desincronizan, el punto
     // bajo el cursor deja de quedar clavado).
@@ -1555,7 +1588,7 @@
     ST.scene.add(new THREE.AmbientLight(0xffffff, 0.85));
     var dir = new THREE.DirectionalLight(0xffffff, 0.7); dir.position.set(1, 1.4, 0.8); ST.scene.add(dir);
     var dir2 = new THREE.DirectionalLight(0xbcd4ff, 0.3); dir2.position.set(-1, -0.4, -0.7); ST.scene.add(dir2);
-    var T0 = TEMAS3D[ST.tema3d] || TEMAS3D.claro;
+    var T0 = _tema3D();
     ST.grid = new THREE.GridHelper(1400, 28, T0.g1, T0.g2); ST.grid.position.y = -1; ST.scene.add(ST.grid);
     // Un material por tipología, desde COL2D (FUENTE ÚNICA de colores: 2D y 3D
     // leen la misma tabla — antes el 3D tenía sus 5 claves de viga duplicadas en
@@ -1595,18 +1628,22 @@
     return true;
   }
 
-  // TEMA del cuadrante 3D (oscuro / medio / claro) — portado del Enfierrador.
+  // TEMA DE LOS 4 CUADRANTES (oscuro / medio / claro) — portado del Enfierrador.
   // SÓLO fondo y grilla. Allá el tema también reescribía el color de CBS/CBI/ES/…,
   // y eso acá sería pisar un dato del usuario: la tipología (o el color propio del
   // componente, c.color) define el color de la barra y viaja EN LA RECETA — cambiar
   // el fondo no puede repintarle las barras.
-  // El fondo se aplica en el pase de render (_render3DQuad), no aquí, porque el
-  // MISMO scene.background lo comparten las 3 vistas ortográficas — que se quedan
-  // siempre en BG_ORTO.
+  // El fondo de la escena se aplica en los pases de render (uno solo compartido); acá
+  // se cambian la GridHelper del 3D y la CLASE de #te_quad, que es de la que cuelgan
+  // los colores del overlay SVG y de la grilla de las vistas 2D.
   function _aplicarTema3D(t) {
     var THREE = global.THREE;
     var T = TEMAS3D[t] || TEMAS3D.claro;
     ST.tema3d = TEMAS3D[t] ? t : 'claro';
+    _marcarTemaEnQuad();
+    // Los trazos del overlay 2D cuelgan del tema (variables --te-ov-*), pero además
+    // la GRILLA de fondo de las 2D se emite en el propio SVG: hay que reemitirla.
+    if (ST.ultimoOut) _redibujar2D(ST.ultimoOut);
     if (!THREE || !ST.scene) return;
     if (ST.grid) {
       ST.scene.remove(ST.grid);
@@ -1619,6 +1656,25 @@
     ST.grid.position.y = -1;
     ST.scene.add(ST.grid);
     _marcarSucio();
+  }
+
+  // Apaga el ancla 🎯 (estado + botón). Está aparte porque la apagan dos caminos:
+  // el propio botón y la apertura de otro template (donde la selección se pierde).
+  function _soltarAncla() {
+    ST.anclado = false;
+    var b = $('te_3dAnclar');
+    if (b) b.classList.remove('on');
+  }
+
+  // Marca el tema vigente EN EL DOM: de esta clase cuelgan las variables --te-ov-*
+  // (colores de todo lo que dibuja el overlay SVG de las vistas 2D) y el color de su
+  // grilla de fondo. Es lo que evita que oscurecer el fondo deje texto oscuro sobre
+  // oscuro. Se llama también al abrir el modal, no sólo al tocar el radial.
+  function _marcarTemaEnQuad() {
+    var quad = $('te_quad'); if (!quad) return;
+    ['oscuro', 'medio', 'claro'].forEach(function (k) {
+      quad.classList.toggle('te-tema-' + k, ST.tema3d === k);
+    });
   }
 
   function _matDe(tip) {
@@ -1729,7 +1785,7 @@
     var firmaEnc = [g.largo, g.alto, g.ancho].join('|');
     if (ST._encuadreFirma !== firmaEnc) {
       ST._encuadreFirma = firmaEnc;
-      ST.dist = _clampDist(g.largo * 1.15 + 160);   // mismo clamp que la rueda: uno solo
+      ST.dist = _distEncuadre(g.largo);   // mismo clamp que la rueda: uno solo
     }
     _redibujarPlanoActivo();   // P3 — re-agregar el resaltado tras vaciar el world
     ST.dirty = true;
@@ -2142,6 +2198,23 @@
   function _colorComp(c) {
     return _hexCompValido(c) || _colDe(c && c.tipologia);
   }
+  // ARCHIVADOR DE COLORES DEL TEMPLATE — los colores que YA están en uso en la receta
+  // abierta, sin repetidos y en el orden de los componentes.
+  // POR QUÉ: el selector de color es un picker cromático. Al elegir un color a mano
+  // para una barra no queda forma de volver a acertarlo en otra — hay que recordar el
+  // hex. Esto NO es un dato nuevo: se LEE de los componentes en cada repintado, así
+  // que no se guarda nada en la receta y al abrir otro template la fila cambia sola.
+  // Se toma el color EFECTIVO (_colorComp), que es el que el usuario ve en el swatch
+  // y en el 3D; el de la tipología cuenta igual que el elegido a mano.
+  function _coloresDeReceta() {
+    var comps = (ST.receta && ST.receta.componentes) || [];
+    var out = [];
+    for (var i = 0; i < comps.length; i++) {
+      var hex = String(_colorComp(comps[i]) || '').trim().toLowerCase();
+      if (/^#[0-9a-f]{6}$/.test(hex) && out.indexOf(hex) < 0) out.push(hex);
+    }
+    return out;
+  }
   // Componente de un placement (por meta.ci) — para que 2D/3D resuelvan el color.
   function _compDePl(pl) {
     var ci = (pl && pl.meta && pl.meta.ci != null) ? pl.meta.ci : -1;
@@ -2318,6 +2391,48 @@
   // ==========================================================================
   function _mkTransform(cu, ku, cv, kv) {
     return { cu: cu, ku: ku, cv: cv, kv: kv, s: Math.abs(ku) || 1 };
+  }
+
+  // GRILLA DE FONDO DE LAS VISTAS 2D (18-ago, va con el selector de fondo).
+  // El 3D siempre tuvo su GridHelper; las 2D no tenían NINGUNA referencia de escala,
+  // y sobre un fondo oscuro un cuadrante sin barras queda liso.
+  // El paso NO es fijo en cm: con un paso fijo la grilla se vuelve una mancha al
+  // alejarse y desaparece al acercarse. Se elige el primero de la escala 1-2-5 cuya
+  // separación EN PANTALLA llegue a GRID2D_MIN_PX, así que siempre se ven líneas
+  // legibles y cada 5 va una más marcada (la "decena" de la escala elegida).
+  var GRID2D_PASOS = [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000];
+  var GRID2D_MIN_PX = 14;
+  function _pasoGrilla2D(pxPorCm) {
+    for (var i = 0; i < GRID2D_PASOS.length; i++) {
+      if (GRID2D_PASOS[i] * pxPorCm >= GRID2D_MIN_PX) return GRID2D_PASOS[i];
+    }
+    return GRID2D_PASOS[GRID2D_PASOS.length - 1];
+  }
+  // Emite la grilla como DOS <path> (fina y marcada) en vez de N <line>: son 2 nodos
+  // por vista en lugar de ~90, y esto se re-emite en cada redibujo.
+  function _dibujarGrilla2D(svg, t, VW, VH) {
+    if (!svg || !t || !(t.s > 0) || !t.ku || !t.kv) return;
+    var paso = _pasoGrilla2D(t.s);
+    function rango(c, k, largoPx) {
+      var a = (0 - c) / k, b = (largoPx - c) / k;
+      return { lo: Math.min(a, b), hi: Math.max(a, b) };
+    }
+    var ru = rango(t.cu, t.ku, VW), rv = rango(t.cv, t.kv, VH);
+    var dFina = '', dMarcada = '';
+    var i0 = Math.ceil(ru.lo / paso), i1 = Math.floor(ru.hi / paso);
+    for (var i = i0; i <= i1; i++) {
+      var x = _tX(t, i * paso).toFixed(1);
+      var seg = 'M' + x + ',0 L' + x + ',' + VH + ' ';
+      if (i % 5 === 0) dMarcada += seg; else dFina += seg;
+    }
+    var j0 = Math.ceil(rv.lo / paso), j1 = Math.floor(rv.hi / paso);
+    for (var j = j0; j <= j1; j++) {
+      var y = _tY(t, j * paso).toFixed(1);
+      var segH = 'M0,' + y + ' L' + VW + ',' + y + ' ';
+      if (j % 5 === 0) dMarcada += segH; else dFina += segH;
+    }
+    if (dFina) svg.appendChild(_svgEl('path', { 'class': 'te-grid2d', d: dFina }));
+    if (dMarcada) svg.appendChild(_svgEl('path', { 'class': 'te-grid2d te-grid2d-m', d: dMarcada }));
   }
   function _tX(t, u) { return t.cu + t.ku * u; }
   function _tY(t, v) { return t.cv + t.kv * v; }
@@ -2905,6 +3020,10 @@
     ST.transforms[plano] = t;
     function X(u) { return _tX(t, u); }
     function Y(v) { return _tY(t, v); }
+
+    // GRILLA DE FONDO — lo PRIMERO que se emite: es fondo, tiene que quedar debajo de
+    // todo lo demás (el SVG no tiene z-index, manda el orden del documento).
+    _dibujarGrilla2D(svg, t, VW, VH);
 
     // Hormigón sólido: en modo orto lo pinta el 3D. El punteado del RECUBRIMIENTO
     // sí va SIEMPRE en el overlay (el 3D no lo dibuja y el usuario lo necesita
@@ -4659,11 +4778,19 @@
     var sinFig = !!(mig && mig.figura_desconocida);
     if (sinFig) wrap.style.borderLeft = '3px solid #c62828';
 
+    // MARCA DE ESPEJO — pegada al swatch y SÓLO si la pose está espejada.
+    // Es la contrapartida de haberle sacado la cara a _compDesc: sin ella, dos
+    // componentes iguales que sólo difieren en el espejo (las dos MH 104B del reporte)
+    // quedan indistinguibles en la lista. Va como icono y no como palabra a propósito:
+    // el usuario pidió menos texto en la línea.
+    var esp = _poseDe(c).espejo
+      ? '<span class="te-espm" title="Pose espejada (el gancho cierra al otro lado)">⇋</span>' : '';
+
     // Cabecera
     var ch = document.createElement('div'); ch.className = 'te-ch';
     ch.innerHTML =
       '<span class="te-drag" title="Arrastrar para reordenar">⠿</span>' +
-      '<span class="te-sw" style="background:' + col + '"></span>' +
+      '<span class="te-sw" style="background:' + col + '"></span>' + esp +
       '<div><div class="te-nm">' +
       (sinFig ? '<span style="color:#c62828" title="La figura ' + _esc(c.figura || '') +
         ' no está en el catálogo vigente: esta barra no se genera.">⛔ </span>' : '') +
@@ -4990,6 +5117,7 @@
     var rowCol = _div('te-row');
     rowCol.appendChild(_label('Color'));
     var wCol = _div(''); wCol.style.display = 'flex'; wCol.style.gap = '6px'; wCol.style.alignItems = 'center';
+    wCol.style.flexWrap = 'wrap';   // la fila de colores usados baja de línea, no desborda
     var inCol = document.createElement('input');
     inCol.type = 'color'; inCol.value = _colorComp(c); inCol.className = 'te-color';
     inCol.title = 'Color de esta barra en el editor (default: el de su tipología ' + _colDe(c.tipologia) + ')';
@@ -5001,6 +5129,27 @@
       bColAuto.title = 'Volver al color de la tipología (' + _colDe(c.tipologia) + ')';
       bColAuto.onclick = function () { delete c.color; _mut(ci); };
       wCol.appendChild(bColAuto);
+    }
+    // COLORES YA USADOS EN ESTE TEMPLATE — un clic los repite en esta barra.
+    // Sale de _coloresDeReceta (lectura de la receta abierta, sin dato nuevo que
+    // guardar); el picker de arriba sigue siendo el que inventa colores.
+    // Se salta el color que ESTA barra ya tiene: ofrecerlo sería un botón que no hace
+    // nada. Si no queda ninguno (template de un solo color), no se dibuja la fila.
+    var actual = String(_colorComp(c)).toLowerCase();
+    var usados = _coloresDeReceta().filter(function (h) { return h !== actual; });
+    if (usados.length) {
+      var wSw = _div('te-colsws');
+      wSw.title = 'Colores ya usados en este template — clic para aplicarlo a esta barra';
+      usados.forEach(function (hex) {
+        var b = document.createElement('button');
+        b.type = 'button'; b.className = 'te-colsw';
+        b.style.background = hex;
+        b.title = 'Usar ' + hex;
+        b.setAttribute('aria-label', 'Usar ' + hex);
+        b.onclick = function () { c.color = hex; _mut(ci, true); };
+        wSw.appendChild(b);
+      });
+      wCol.appendChild(wSw);
     }
     rowCol.appendChild(wCol);
     body.appendChild(rowCol);
@@ -6450,7 +6599,7 @@
         ST.rotX = 0.55; ST.rotY = 0.9; ST.panX = 0; ST.panY = 0;
         if (ST.target && ST.target.set) ST.target.set(0, 0, 0);
         var gg = ST.receta && ST.receta.geometria;
-        if (gg && isFinite(Number(gg.largo))) ST.dist = _clampDist(Number(gg.largo) * 1.15 + 160);
+        if (gg && isFinite(Number(gg.largo))) ST.dist = _distEncuadre(gg.largo);
         _marcarSucio();
         _actualizarStatus('3D recentrado.');
       });
@@ -6469,18 +6618,33 @@
         _actualizarStatus(ST.verHormigon ? 'Hormigón visible.' : 'Hormigón oculto (solo las barras).');
       });
     }
-    // 🎯 ANCLAR EL GIRO EN LA SELECCIÓN — PERMANENTE, y con la pieza CENTRADA en
-    // pantalla. Es lo que distingue este botón del ctrl+arrastre (que presta el pivote
-    // mientras dura el gesto y no mueve la imagen ni un píxel): acá el usuario pidió
-    // explícitamente ir a la pieza, así que _pivotarEn TRASLADA la cámara hasta ella.
+    // 🎯 ANCLAR EL GIRO EN LA SELECCIÓN — INTERRUPTOR, no acción de una vez.
+    // Antes era un disparo suelto: _pivotarEn centraba la pieza (traslación pura del
+    // ojo y la mira, eso ya estaba bien) y dejaba el pivote en ella… hasta el primer
+    // pan o la primera rueda, que terminan llamando a _absorberPanEnTarget y mueven el
+    // pivote al punto que quedó AL CENTRO DE LA PANTALLA. Medido: basta un pan para
+    // que el "ancla" deje de estar en la pieza. De ahí que el usuario dijera que el
+    // botón "sólo rota levemente": el ancla se soltaba sola.
+    // Ahora ENCENDIDO significa que todo arrastre de giro orbita rígidamente el centro
+    // de la pieza, y que el pan y la rueda ya no absorben el pivote. Se apaga
+    // volviendo a pulsarlo.
     var b3a = $('te_3dAnclar');
     if (b3a && !b3a._teBound) {
       b3a._teBound = true;
       b3a.addEventListener('click', function (e) {
         e.stopPropagation();
+        if (ST.anclado) {
+          _soltarAncla();
+          _actualizarStatus('Ancla suelta: el giro vuelve al centro de la pantalla.');
+          return;
+        }
         if (ST.selCi < 0) { _actualizarStatus('Nada seleccionado: elige una barra y vuelve a 🎯 para anclar el giro en ella.'); return; }
+        ST.anclado = true;
+        b3a.classList.add('on');
+        // Centrar la pieza es TRASLACIÓN pura (ojo y mira se mueven juntos, misma
+        // dirección y mismo zoom): re-apuntar sin mover el ojo se leería como un salto.
         _pivotarEn(_centroSeleccion3D());
-        _actualizarStatus('Giro anclado en la barra seleccionada y centrada en pantalla (⟳ lo devuelve al centro).');
+        _actualizarStatus('Giro anclado en la barra seleccionada: arrastra y la escena gira a su alrededor (🎯 otra vez lo suelta).');
       });
     }
     // EJE DE ROTACIÓN (X/Y/Z) — radial portado del Enfierrador. Allá había un cuarto
@@ -6505,8 +6669,11 @@
         });
       });
     }
-    // TEMA del 3D (fondo + grilla). NO toca los materiales: el color de cada barra
-    // es dato del usuario (tipología o color propio del componente).
+    // TEMA (fondo + grilla) de LOS 4 CUADRANTES. NO toca los materiales: el color de
+    // cada barra es dato del usuario (tipología o color propio del componente).
+    // La marca en el DOM se repone en cada apertura del modal: #te_quad puede venir
+    // sin clase (primera vez) y el tema vive en memoria entre aperturas.
+    _marcarTemaEnQuad();
     var tema = $('te_3dTema');
     if (tema && !tema._teBound) {
       tema._teBound = true;
@@ -6922,12 +7089,13 @@
     if (!THREE || !ST.renderer || !ST.orto) return;
     var quad = $('te_quad'); if (!quad) return;
     var full = ST.renderer.domElement.getBoundingClientRect();
-    // FONDO FIJO de las 2D. Los 4 cuadrantes salen del MISMO renderer y de la MISMA
-    // escena, así que el `scene.background` es uno solo: sin fijarlo acá, elegir el
-    // tema "oscuro" del 3D ennegrecía también las tres vistas ortográficas, donde
-    // los overlays SVG (cotas, recubrimiento #263238, handles) están hechos para
-    // fondo claro. El tema del 3D se aplica en su propio pase (_render3DQuad).
-    _fondoEscena(BG_ORTO);
+    // FONDO DE LAS 2D = EL MISMO TEMA QUE EL 3D (18-ago). Los 4 cuadrantes salen del
+    // MISMO renderer y de la MISMA escena, así que `scene.background` es uno solo y el
+    // fondo se sigue fijando POR PASE — pero ahora con el mismo valor. Lo que antes
+    // obligaba a dejar las 2D siempre claras (los overlays SVG dibujados para fondo
+    // claro) lo resuelve el CSS: _aplicarTema3D marca #te_quad con te-tema-* y las
+    // variables --te-ov-* invierten cotas, recubrimiento, handles y textos.
+    _fondoEscena(_tema3D().bg);
     var luz = _luzOrto();
     if (luz) luz.visible = true;
     Object.keys(ST.orto).forEach(function (plano) {
@@ -7051,26 +7219,123 @@
   function _pivotarEnSinMover(p) {
     var THREE = global.THREE;
     if (!THREE || !ST.camera || !ST.target || !p) return false;
-    if (!isFinite(p.x) || !isFinite(p.y) || !isFinite(p.z)) return false;
     _applyCam();   // deja cámara y matriz exactamente como se están viendo
+    var est = _estadoCamara(); if (!est) return false;
+    return _fijarCamDesdeOjo(est.eye, est.v, p);
+  }
+
+  // ESTADO REAL de la cámara de este instante: ojo y dirección de vista. Sale de la
+  // MATRIZ (no de rotX/rotY), que es lo único que incluye el pan — y el pan forma
+  // parte de hacia dónde se está mirando.
+  // Requiere que _applyCam() ya haya corrido en este mismo tick (la matriz se
+  // recompone ahí; leerla antes devuelve la del frame anterior).
+  function _estadoCamara() {
+    var THREE = global.THREE;
+    if (!THREE || !ST.camera) return null;
     var m = ST.camera.matrix;
-    var right = new THREE.Vector3().setFromMatrixColumn(m, 0).normalize();
-    var up = new THREE.Vector3().setFromMatrixColumn(m, 1).normalize();
     // la columna 2 es el +Z de la cámara, que apunta HACIA ATRÁS: la vista es su opuesto
     var v = new THREE.Vector3().setFromMatrixColumn(m, 2).normalize().multiplyScalar(-1);
-    var w = new THREE.Vector3(ST.camera.position.x - p.x, ST.camera.position.y - p.y, ST.camera.position.z - p.z);
-    var wv = w.dot(v);
+    if (!isFinite(v.x) || !isFinite(v.y) || !isFinite(v.z)) return null;
+    return { eye: new THREE.Vector3().copy(ST.camera.position), v: v };
+  }
+
+  // ESCRIBE UN PAR (ojo, dirección de vista) EN LA PARAMETRIZACIÓN DE ST, pivotando
+  // en `p`. Es la conversión inversa de _applyCam y la usan LOS DOS caminos que
+  // mueven la cámara "a mano" (_pivotarEnSinMover y el ctrl+arrastre rígido): estaba
+  // escrita dentro de _pivotarEnSinMover y duplicarla habría dejado dos álgebras que
+  // pueden divergir al primer cambio de _applyCam.
+  //   dist = proyección de (ojo − p) sobre el eje de vista  → el plano de p
+  //   pan  = la SOMBRA (lo que queda perpendicular a la vista) en la base de pantalla
+  // Como _applyCam reconstruye ojo = p + dist·atrás + right·panX + up·panY y la
+  // sombra vive justo en el plano {right, up}, la suma devuelve EXACTAMENTE el mismo
+  // ojo y la misma dirección. Devuelve false si p queda detrás del ojo.
+  // La base {right, up, atrás} se recalcula desde los ÁNGULOS YA CLAMPEADOS —no desde
+  // la matriz vieja— porque es la base que _applyCam va a usar: tomarla de la matriz
+  // anterior mete un error justo cuando la elevación toca el tope.
+  function _fijarCamDesdeOjo(eye, v, p) {
+    var THREE = global.THREE;
+    if (!THREE || !ST.target || !eye || !v || !p) return false;
+    if (!isFinite(p.x) || !isFinite(p.y) || !isFinite(p.z)) return false;
+    var rotX = Math.max(-1.45, Math.min(1.45, Math.asin(-v.y)));
+    var rotY = Math.atan2(-v.x, -v.z);
+    // MISMA fórmula que _applyCam para el vector "hacia atrás" (ojo − mira).
+    var atras = new THREE.Vector3(
+      Math.cos(rotX) * Math.sin(rotY), Math.sin(rotX), Math.cos(rotX) * Math.cos(rotY));
+    var vE = new THREE.Vector3().copy(atras).multiplyScalar(-1);
+    // three arma la base de un lookAt con x = normalize(up_mundo × atrás), y = atrás × x.
+    var right = new THREE.Vector3().crossVectors(new THREE.Vector3(0, 1, 0), atras);
+    if (!(right.length() > 1e-9)) return false;   // mirando justo al cenit: base degenerada
+    right.normalize();
+    var up = new THREE.Vector3().crossVectors(atras, right).normalize();
+    var w = new THREE.Vector3(eye.x - p.x, eye.y - p.y, eye.z - p.z);
+    var wv = w.dot(vE);
     var distN = -wv;
     if (!(distN > 0)) return false;   // p está detrás de la cámara: no hay pivote posible
-    var sombra = new THREE.Vector3().copy(w).addScaledVector(v, -wv);
+    var sombra = new THREE.Vector3().copy(w).addScaledVector(vE, -wv);
     ST.target.set(p.x, p.y, p.z);
     ST.dist = _clampDist(distN);
-    ST.rotX = Math.max(-1.45, Math.min(1.45, Math.asin(-v.y)));
-    ST.rotY = Math.atan2(-v.x, -v.z);
+    ST.rotX = rotX;
+    ST.rotY = rotY;
     ST.panX = sombra.dot(right);
     ST.panY = sombra.dot(up);
     _marcarSucio();
     return true;
+  }
+
+  // GIRO RÍGIDO DE LA CÁMARA ALREDEDOR DE `p`.
+  //
+  // LO QUE SE MIDIÓ (18-ago, síntoma «no siento ni veo diferencia alguna al usar
+  // CTRL»). Se sospechaba que el pan formaba parte del pivote —o sea que rotX/rotY
+  // girarían en torno a `target + shift`, el centro de la pantalla— y que por eso
+  // _pivotarEnSinMover no cambiaba nada. ES FALSO, y se comprobó proyectando puntos:
+  // rotar rotX/rotY deja `target` CLAVADO (0,000000 px en 60 pasos) y mueve
+  // `target + shift` 639 px. La razón es que `right` sólo depende de rotY y `up` sale
+  // de right×atrás, así que al mover los ángulos el trío {atrás, right, up} gira
+  // ENTERO: el ojo (target + dist·atrás + right·panX + up·panY) y la dirección de
+  // vista giran con la MISMA rotación en torno a target. El pivote efectivo ES target.
+  //
+  // La causa real del síntoma es otra, y también está medida: tras cada pan o rueda
+  // corre _absorberPanEnTarget, que deja `target` = el punto que está AL CENTRO DE LA
+  // PANTALLA. Con la pieza cerca del centro —que es como uno la mira— girar en torno
+  // al centro y girar en torno a la pieza difieren 13 px en todo el gesto: son
+  // indistinguibles. Sólo con la pieza lejos del centro se separan (490 px).
+  //
+  // Entonces, ¿por qué esta función y no seguir tocando los ángulos? Porque hace lo
+  // mismo con menos estado y sin los tres flancos del camino viejo:
+  //   · no secuestra `target` ni tiene que devolverlo al soltar (no queda estado pegado),
+  //   · no reescribe `ST.dist` a mitad del gesto —_pivotarEnSinMover lo hacía, y con eso
+  //     cambiaba de golpe la velocidad del pan y podía morder el clamp—,
+  //   · topea la elevación en el INCREMENTO, así que el giro sigue siendo rígido
+  //     también cuando se llega al tope (el clamp de después descolocaba la pieza).
+  // Gira la cámara COMO CUERPO RÍGIDO (ojo y dirección de vista con la MISMA rotación)
+  // y recién después descompone el resultado: la proyección de p queda clavada en
+  // pantalla (verificado: 0,000000 px) y es la escena la que gira a su alrededor.
+  //   dAz = incremento de ACIMUT   → giro alrededor del eje vertical del MUNDO,
+  //         que es el mismo eje que mueve rotY.
+  //   dEl = incremento de ELEVACIÓN → giro alrededor del `right` de la cámara, que es
+  //         el mismo eje que mueve rotX. El signo va invertido porque rotar `atrás`
+  //         alrededor de +right BAJA el ojo (comprobado con rotY = 0: R_x(α) manda
+  //         (0,0,1) a (0,−sinα,cosα), y rotX pide +sin).
+  // La elevación se topea ANTES de rotar (no después, en la descomposición): topearla
+  // después rompería la rigidez justo en el tope y la pieza se movería.
+  function _orbitarRigidoEnTorno(p, dAz, dEl) {
+    var THREE = global.THREE;
+    if (!THREE || !ST.camera || !p) return false;
+    if (!isFinite(p.x) || !isFinite(p.y) || !isFinite(p.z)) return false;
+    _applyCam();   // matriz de ESTE instante (ver _estadoCamara)
+    var est = _estadoCamara(); if (!est) return false;
+    var elevAct = Math.asin(Math.max(-1, Math.min(1, -est.v.y)));
+    dEl = Math.max(-1.45 - elevAct, Math.min(1.45 - elevAct, dEl || 0));
+    dAz = dAz || 0;
+    if (!dAz && !dEl) return true;
+    var qAz = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), dAz);
+    var right = new THREE.Vector3().setFromMatrixColumn(ST.camera.matrix, 0).normalize().applyQuaternion(qAz);
+    var qEl = new THREE.Quaternion().setFromAxisAngle(right, -dEl);
+    var q = qEl.multiply(qAz);   // primero el acimut, después la elevación
+    var eye = new THREE.Vector3(est.eye.x - p.x, est.eye.y - p.y, est.eye.z - p.z)
+      .applyQuaternion(q).add(new THREE.Vector3(p.x, p.y, p.z));
+    var v = new THREE.Vector3().copy(est.v).applyQuaternion(q).normalize();
+    return _fijarCamDesdeOjo(eye, v, p);
   }
 
   // ABSORBE EL PAN DENTRO DEL PIVOTE — invisible, y evita de raíz el enganche del
@@ -7088,6 +7353,35 @@
     _pivotarEnSinMover(new THREE.Vector3().copy(ST.camera.position).addScaledVector(v, ST.dist));
   }
 
+  // ZOOM HACIA EL CURSOR — antes el zoom iba siempre al centro del cuadrante, así
+  // que al acercarse el detalle que se estaba mirando se salía de cuadro y había que
+  // panear a mano. Se resuelve con el PAN que ya existe, sin raycasting: _applyCam
+  // desplaza la cámara con panX·derecha + panY·arriba, que es exactamente el plano
+  // de pantalla, así que basta con corregir el pan en la fracción que el punto bajo
+  // el cursor se movería. u/v son ese punto en unidades de mundo sobre el plano del
+  // pivote (lo que entra en pantalla a la distancia vieja).
+  //
+  // EL FOV ENTRA ACÁ (y por eso sale de la constante, no de un 38 escrito a mano):
+  // lo que entra de alto a la distancia d0 es 2·d0·tan(FOV/2). Si este ángulo y el de
+  // la PerspectiveCamera se desincronizan, el punto bajo el cursor deja de quedar
+  // clavado y la imagen deriva en cada rueda.
+  // fx/fy = cursor DENTRO del cuadrante en [0..1] (0,0 = arriba-izq) · aspect = w/h.
+  // Salió del handler de la rueda para poder verificarlo numéricamente sin DOM.
+  function _zoomAlCursor(factor, fx, fy, aspect) {
+    var d0 = ST.dist;
+    ST.dist = _clampDist(ST.dist * factor);
+    if (!(d0 > 0) || !(aspect > 0) || !isFinite(fx) || !isFinite(fy)) return;
+    var halfH = d0 * Math.tan(FOV3D * Math.PI / 360);
+    var halfW = halfH * aspect;
+    var u = (fx * 2 - 1) * halfW;
+    var v = -(fy * 2 - 1) * halfH;
+    // f se calcula DESPUÉS del clamp: con el factor pedido (y no el aplicado) la
+    // imagen deriva de a poco cada vez que se llega a un tope.
+    var f = ST.dist / d0;
+    ST.panX += u * (1 - f);
+    ST.panY += v * (1 - f);
+  }
+
   // BUG 4 — PAN del 3D rotaba en vez de panear. Rediseño del reparto de botones con un
   // ÚNICO estado 'mode' ('pan' | 'rot' | null) fijado en el mousedown, mutuamente
   // exclusivo (antes había 2 flags drag/panning que podían quedar mal). Reparto:
@@ -7095,16 +7389,20 @@
   //   · CTRL/⌘ + izquierdo                  → ROTAR EN TORNO A LA PIEZA SELECCIONADA
   //   · botón MEDIO, botón DERECHO, o SHIFT/ALT+izq → PAN
   //
-  // EL CTRL, TERCERA VUELTA (18-ago). Originalmente ctrl+arrastre orbitaba la barra
-  // seleccionada (que es lo que hace Revit y lo que el usuario quiere). Se quitó
-  // porque «reseteaba la imagen», y en la vuelta anterior el ctrl pasó a ser una
-  // "rotación fina" — que no era el problema: el usuario dijo explícitamente que la
-  // velocidad no le molestaba. La causa real del salto era _pivotarEn, que re-apuntaba
-  // la cámara al punto nuevo y anulaba el pan. Con _pivotarEnSinMover el pivote cambia
-  // sin mover un píxel, así que el ctrl vuelve a hacer lo que tenía que hacer.
-  // Y es un MODIFICADOR de verdad: al apretarlo se guarda el pivote anterior y al
-  // soltarlo (o al terminar el arrastre) se restaura, también sin salto — no queda
-  // estado pegado. Anclar el giro PERMANENTEMENTE sigue siendo el botón 🎯.
+  // EL CTRL, CUARTA VUELTA (18-ago), por «no siento ni veo diferencia alguna al usar
+  // CTRL». La causa MEDIDA no es que el giro estuviera mal (no lo estaba: la pieza ya
+  // quedaba clavada), sino que sin ctrl se gira en torno a lo que está AL CENTRO DE LA
+  // PANTALLA y la pieza que uno mira suele estar justo ahí — los dos movimientos
+  // difieren 13 px en un gesto completo. La nota larga de _orbitarRigidoEnTorno tiene
+  // los números. Dos cambios, entonces:
+  //   · el giro pasa por _orbitarRigidoEnTorno (misma trayectoria, menos estado: ya no
+  //     hay pivote que "prestar" y devolver, ni reescritura de ST.dist a mitad del
+  //     gesto). Soltar el ctrl a mitad tampoco puede dar salto: lo que queda escrito
+  //     es el estado real de la cámara.
+  //   · el pivote SE QUEDA en la pieza al terminar el gesto en vez de volver al que
+  //     había: si pediste girar en torno a la barra, el arrastre siguiente sigue ahí.
+  // Y para que la diferencia se vea SIEMPRE está 🎯, que ancla de forma permanente
+  // (ver su handler: antes el ancla se soltaba sola en el primer pan o rueda).
   //
   // El mousedown captura el botón real (e.button) Y los modificadores del PROPIO evento
   // (no de un mousemove posterior, que podía llegar sin shift y caer a rotar). El middle
@@ -7112,17 +7410,9 @@
   // autoscroll del navegador (que se tragaba los mousemove y hacía que "no paneara").
   function _bindOrbita(cv) {
     var mode = null, lx = 0, ly = 0;
-    // Estado del MODIFICADOR ctrl mientras dura el arrastre: si está activo y cuál era
-    // el pivote antes de secuestrarlo (para devolverlo al soltar).
-    var ctrlOn = false, pivotePrev = null, ctrlAviso = false;
-    // Suelta el pivote prestado al ctrl. Va sin salto, igual que al tomarlo.
-    function _soltarPivoteCtrl() {
-      ctrlAviso = false;
-      if (!ctrlOn) return;
-      ctrlOn = false;
-      if (pivotePrev) _pivotarEnSinMover(pivotePrev);
-      pivotePrev = null;
-    }
+    // El aviso de "ctrl sin selección" se dice UNA vez por gesto (el mousemove llega
+    // decenas de veces por segundo); se rearma al soltar el botón.
+    var ctrlAviso = false;
     cv.addEventListener('contextmenu', function (e) { e.preventDefault(); });   // botón der = pan, no menú
     cv.addEventListener('auxclick', function (e) { if (e.button === 1) e.preventDefault(); });   // mata autoscroll medio
     cv.addEventListener('mousedown', function (e) {
@@ -7134,10 +7424,12 @@
       if (mode) e.preventDefault();
     });
     global.addEventListener('mouseup', function () {
-      _soltarPivoteCtrl();
+      ctrlAviso = false;
       // Fin de un gesto de PAN: el pivote vuelve a lo que quedó al centro (ver
       // _absorberPanEnTarget). Sin esto el giro siguiente sale volando.
-      if (mode === 'pan') _absorberPanEnTarget();
+      // OJO: NO se absorbe tras un gesto anclado/ctrl — absorber mueve el pivote al
+      // centro de la pantalla, que es justo lo que el ancla NO quiere.
+      if (mode === 'pan' && !ST.anclado) _absorberPanEnTarget();
       mode = null;
     });
     global.addEventListener('mousemove', function (e) {
@@ -7147,24 +7439,6 @@
       if (mode === 'pan') {
         ST.panX -= dx * ST.dist * 0.0011; ST.panY += dy * ST.dist * 0.0011;
       } else {   // rot
-        // El modificador se lee del PROPIO mousemove (no del mousedown) para poder
-        // apretarlo y soltarlo A MITAD del gesto: se encuadra girando en torno al
-        // centro y se remata girando en torno a la pieza, sin soltar el botón.
-        var conCtrl = !!(e.ctrlKey || e.metaKey);
-        if (!conCtrl) _soltarPivoteCtrl();
-        else if (!ctrlOn) {
-          if (ST.selCi < 0) {
-            // Sin selección no hay en torno a qué girar: se rota normal y se dice UNA
-            // vez (el mousemove llega decenas de veces por segundo).
-            if (!ctrlAviso) {
-              ctrlAviso = true;
-              _actualizarStatus('Ctrl gira en torno a la pieza seleccionada: no hay ninguna, se gira en torno al centro.');
-            }
-          } else {
-            var prev = { x: ST.target.x, y: ST.target.y, z: ST.target.z };
-            if (_pivotarEnSinMover(_centroSeleccion3D())) { ctrlOn = true; pivotePrev = prev; }
-          }
-        }
         var k = 0.008;
         // EJE DE GIRO restringido (portado del Enfierrador): con un eje elegido el
         // arrastre sólo mueve ESA rotación; el otro grado de libertad queda quieto.
@@ -7181,41 +7455,53 @@
         //       (el Enfierrador tiene la misma limitación: allá 'z' hacía lo mismo
         //       que 'y'). Un giro exacto por eje pediría cambiar el modelo de cámara.
         var eje = ST.ejeRot || 'libre';
-        if (eje === 'libre') { ST.rotY -= dx * k; ST.rotX += dy * k; }
-        else if (eje === 'z') { ST.rotY -= dx * k; }
-        else { ST.rotX += dy * k; }
-        ST.rotX = Math.max(-1.45, Math.min(1.45, ST.rotX));
+        // Incremento del gesto ANTES de decidir cómo aplicarlo: los dos caminos
+        // (ángulos y giro rígido) usan EXACTAMENTE el mismo delta, así que el ctrl
+        // no cambia la velocidad — sólo el centro de giro.
+        var dAz = (eje === 'libre' || eje === 'z') ? -dx * k : 0;
+        var dEl = (eje === 'z') ? 0 : dy * k;
+        // El modificador se lee del PROPIO mousemove (no del mousedown) para poder
+        // apretarlo y soltarlo A MITAD del gesto: se encuadra girando en torno al
+        // centro y se remata girando en torno a la pieza, sin soltar el botón.
+        // 🎯 (ST.anclado) hace lo mismo pero PERMANENTE, sin tener que sostener ctrl.
+        var quiereEnPieza = (!!(e.ctrlKey || e.metaKey) || !!ST.anclado);
+        if (quiereEnPieza && ST.selCi < 0) {
+          // Sin selección no hay en torno a qué girar: se rota normal y se avisa.
+          if (!ctrlAviso) {
+            ctrlAviso = true;
+            _actualizarStatus('El giro en torno a la pieza necesita una barra seleccionada: no hay ninguna, se gira en torno al centro.');
+          }
+          quiereEnPieza = false;
+        }
+        // GIRO RÍGIDO alrededor del centro de la pieza (ver _orbitarRigidoEnTorno).
+        // Si no se puede (la pieza quedó detrás del ojo) cae al giro normal en vez de
+        // dejar el arrastre muerto.
+        if (!quiereEnPieza || !_orbitarRigidoEnTorno(_centroSeleccion3D(), dAz, dEl)) {
+          ST.rotY += dAz;
+          ST.rotX += dEl;
+          ST.rotX = Math.max(-1.45, Math.min(1.45, ST.rotX));
+        }
       }
       _marcarSucio();   // PERF: la cámara 3D cambió → repintar
     });
-    // ZOOM HACIA EL CURSOR — antes el zoom iba siempre al centro del cuadrante, así
-    // que al acercarse el detalle que se estaba mirando se salía de cuadro y había que
-    // panear a mano. Se resuelve con el PAN que ya existe, sin raycasting: _applyCam
-    // desplaza la cámara con panX·derecha + panY·arriba, que es exactamente el plano
-    // de pantalla, así que basta con corregir el pan en la fracción que el punto bajo
-    // el cursor se movería. u/v son ese punto en unidades de mundo sobre el plano del
-    // pivote (lo que entra en pantalla a la distancia vieja).
+    // ZOOM HACIA EL CURSOR — la matemática vive en _zoomAlCursor (arriba); acá sólo
+    // se traduce el evento a fracciones del cuadrante.
     var _absTimer = null;
     cv.addEventListener('wheel', function (e) {
       e.preventDefault();
-      var d0 = ST.dist;
-      ST.dist = _clampDist(ST.dist * _factorZoomRueda(e));
       var r = cv.getBoundingClientRect();
-      if (r.width > 1 && r.height > 1 && d0 > 0) {
-        var halfH = d0 * Math.tan(FOV3D * Math.PI / 360);
-        var halfW = halfH * (r.width / r.height);
-        var u = ((e.clientX - r.left) / r.width * 2 - 1) * halfW;
-        var v = -((e.clientY - r.top) / r.height * 2 - 1) * halfH;
-        // f se calcula DESPUÉS del clamp: con el factor pedido (y no el aplicado) la
-        // imagen deriva de a poco cada vez que se llega a un tope.
-        var f = ST.dist / d0;
-        ST.panX += u * (1 - f);
-        ST.panY += v * (1 - f);
-      }
+      var hayRect = (r.width > 1 && r.height > 1);
+      _zoomAlCursor(_factorZoomRueda(e),
+        hayRect ? (e.clientX - r.left) / r.width : 0.5,
+        hayRect ? (e.clientY - r.top) / r.height : 0.5,
+        hayRect ? (r.width / r.height) : 0);
       // Fin del gesto de rueda = mismo silencio que usa _factorZoomRueda. Ahí el pan
-      // acumulado se absorbe en el pivote (ver _absorberPanEnTarget).
+      // acumulado se absorbe en el pivote (ver _absorberPanEnTarget) — salvo con el
+      // ancla 🎯 puesta: absorber lleva el pivote al centro de la pantalla y eso
+      // desharía el ancla en el primer zoom, que es justo lo que hacía que "anclar"
+      // no se notara.
       if (_absTimer) global.clearTimeout(_absTimer);
-      _absTimer = global.setTimeout(function () { _absTimer = null; _absorberPanEnTarget(); }, _ZOOM_GAP);
+      _absTimer = global.setTimeout(function () { _absTimer = null; if (!ST.anclado) _absorberPanEnTarget(); }, _ZOOM_GAP);
       _marcarSucio();
     }, { passive: false });
   }
@@ -7321,9 +7607,10 @@
   }
 
   function _render3DQuad() {
-    // El TEMA (fondo del 3D) se aplica en ESTE pase: la escena es una sola y las
-    // vistas 2D la pintan con BG_ORTO — ver la nota de _renderVistasOrto.
-    _fondoEscena((TEMAS3D[ST.tema3d] || TEMAS3D.claro).bg);
+    // El TEMA se aplica en ESTE pase porque la escena es UNA sola y su background lo
+    // comparten los 4 viewports: cada pase lo fija antes de dibujar. Desde el 18-ago
+    // el valor es el mismo en los cuatro — ver la nota de _renderVistasOrto.
+    _fondoEscena(_tema3D().bg);
     var d3 = document.querySelector('#te_quad .te-vista.d3');
     if (!d3) { _applyCam(); ST.renderer.render(ST.scene, ST.camera); return; }
     var r = d3.getBoundingClientRect();
@@ -7560,6 +7847,10 @@
       if (!ST.receta.tipo) ST.receta.tipo = ST.elemento;
       ST.selCi = -1; ST.ultimoOut = null;
       ST.dragMove = null; ST.dragMarco = null; ST.dragRango = null;
+      // El ancla 🎯 muere con la selección: apuntaba a una barra de OTRO template.
+      // Dejarla encendida haría que el primer arrastre avisara "no hay nada
+      // seleccionado" sin que el usuario hubiera pedido nada.
+      _soltarAncla();
     } else {
       // Ruta vieja: semilla (solo para tests / compatibilidad).
       if (!ST.receta && d.semilla) ST.receta = d.semilla.semillaViga();
@@ -8563,7 +8854,15 @@
     _tramoDominanteEnTrazo: _tramoDominanteEnTrazo,             // rango [i0,i1] en el trazo
     _centroSeleccion3D: _centroSeleccion3D, _pivotarEn: _pivotarEn,   // órbita en torno a la selección
     _pivotarEnSinMover: _pivotarEnSinMover, _absorberPanEnTarget: _absorberPanEnTarget,
+    // GIRO RÍGIDO en torno a la pieza (ctrl / 🎯) + su descomposición inversa
+    _orbitarRigidoEnTorno: _orbitarRigidoEnTorno, _fijarCamDesdeOjo: _fijarCamDesdeOjo,
+    _estadoCamara: _estadoCamara, _applyCam: _applyCam,
     _factorZoomRueda: _factorZoomRueda, _clampDist: _clampDist,   // zoom de rueda + techo de acercamiento
+    FOV3D: FOV3D, _distEncuadre: _distEncuadre,                   // lente + encuadre automático
+    _zoomAlCursor: _zoomAlCursor,                                 // zoom que clava el punto bajo el cursor
+    _compDesc: _compDesc, _coloresDeReceta: _coloresDeReceta,     // línea del componente + archivador de colores
+    _pasoGrilla2D: _pasoGrilla2D, _aplicarTema3D: _aplicarTema3D, // grilla 2D + tema de los 4 cuadrantes
+    _ST: ST,                                                      // estado (lo usan los tests headless)
     // INTERACCIÓN-2.0 · orientación de la pieza + snap de cara
     rotarPlanoPieza: rotarPlanoPieza,                           // cicla (o fija) la orientación + regenera
     _orientacionDe: _orientacionDe, _orientacionSiguiente: _orientacionSiguiente,
