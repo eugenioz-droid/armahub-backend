@@ -263,22 +263,40 @@
     border:1px solid var(--te-line);border-radius:5px;background:#fff;color:var(--te-muted);cursor:pointer}
   #te_modal #te_side .te-comp .te-ch select.te-jer:hover{color:var(--te-ink);border-color:var(--te-acero)}
 
-  /* ---- LISTADO DE BARRAS (despiece) — sección colapsable al fondo del panel ---- */
-  #te_modal .te-barras{margin-top:14px;border:1px solid var(--te-line);border-radius:9px;overflow:hidden;background:#fff}
-  #te_modal .te-barras-h{display:flex;align-items:center;gap:6px;width:100%;border:none;background:var(--te-panel2);
-    padding:7px 9px;font-size:11.5px;font-weight:700;color:var(--te-ink);cursor:pointer;text-align:left}
-  #te_modal .te-barras-h:hover{background:#eef3f7}
-  #te_modal .te-barras-ar{color:var(--te-muted);font-size:10px;transition:transform .12s}
-  #te_modal .te-barras.open .te-barras-ar{transform:rotate(90deg)}
-  #te_modal .te-barras-c{font-size:10.5px;font-weight:600;color:var(--te-muted)}
-  #te_modal .te-barras-b{display:none;padding:6px 8px 9px;border-top:1px solid var(--te-line);overflow-x:auto}
-  #te_modal .te-barras.open .te-barras-b{display:block}
-  #te_modal .te-btab{width:100%;border-collapse:collapse;font-size:11px}
-  #te_modal .te-btab th{text-align:left;font-weight:700;color:var(--te-muted);font-size:10px;
-    text-transform:uppercase;letter-spacing:.3px;padding:3px 5px;border-bottom:1px solid var(--te-line);white-space:nowrap}
-  #te_modal .te-btab td{padding:3px 5px;border-bottom:1px solid #f0f3f6;vertical-align:top}
-  #te_modal .te-btab td.te-bnum{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
-  #te_modal .te-btab tr:last-child td{border-bottom:none}
+  /* ---- LISTADO DE BARRAS (despiece) — franja al pie de los 4 cuadrantes ----
+     Overlay absoluto sobre #te_quad (que es position:relative): al mostrarse NO
+     re-maqueta la grilla, así que abrir/cerrar el listado no dispara el resize de
+     los 4 viewports del renderer. Se muestra con .open (lo pone _bindBarras). */
+  #te_modal #te_quad .te-barras{position:absolute;left:0;right:0;bottom:0;z-index:7;display:none;
+    background:#fff;border-top:1px solid #c2ccd7;box-shadow:0 -6px 18px rgba(15,20,28,.14)}
+  #te_modal #te_quad .te-barras.open{display:block}
+  #te_modal .te-barras-h{display:flex;align-items:center;gap:8px;padding:5px 10px;background:var(--te-panel2);
+    border-bottom:1px solid var(--te-line);font-size:11px;font-weight:700;text-transform:uppercase;
+    letter-spacing:.5px;color:var(--te-muted)}
+  /* Subtítulo VIVO ("5 items · 77 barras · 264,4 kg · se actualiza en vivo"), igual
+     que el del Enfierrador: en minúscula y sin tracking, para que se lea como frase
+     y no como otro encabezado. */
+  #te_modal .te-barras-c{font-size:10.5px;font-weight:600;text-transform:none;letter-spacing:0;color:#9aa4b0}
+  #te_modal .te-barras-x{border:1px solid var(--te-line);background:#fff;border-radius:6px;width:22px;height:20px;
+    cursor:pointer;font-size:11px;color:var(--te-muted);line-height:1;padding:0}
+  #te_modal .te-barras-x:hover{color:var(--te-ink);border-color:var(--te-acero)}
+  /* Alto ACOTADO (como el .tb del Enfierrador): la franja no puede comerse los
+     cuadrantes, la tabla scrollea por dentro. */
+  #te_modal .te-barras-b{max-height:34vh;overflow:auto}
+  #te_modal .te-btab{width:100%;border-collapse:collapse;font-size:11.5px}
+  #te_modal .te-btab th{text-align:left;font-weight:600;color:var(--te-muted);font-size:10.5px;
+    padding:4px 10px;background:#eef1f4;position:sticky;top:0;white-space:nowrap;z-index:1}
+  #te_modal .te-btab td{padding:4px 10px;border-top:1px solid var(--te-line);vertical-align:top;white-space:nowrap}
+  #te_modal .te-btab th.te-bnum,#te_modal .te-btab td.te-bnum{text-align:right;font-variant-numeric:tabular-nums}
+  #te_modal .te-btab tbody tr:hover td{background:#eef7ff}
+  /* (No hay resaltado de "la fila seleccionada": generar.js AGRUPA las barras por
+     figura+φ+marca+suf+dims y la fila resultante no guarda de qué componente salió.
+     Casarlas por esos campos sería una adivinanza que acertaría casi siempre y
+     mentiría cuando dos componentes coinciden. La barra seleccionada se identifica
+     en la ficha flotante del 3D, que sí tiene el componente.) */
+  #te_modal .te-btab .te-btip{font-weight:700}
+  #te_modal .te-btab .te-bsuf{color:var(--te-acero-d);font-size:10.5px}
+  #te_modal .te-barras-vacio{padding:10px;font-size:11px;color:var(--te-muted)}
 
   /* ---- CENTRO: 4 cuadrantes ---- */
   /* El 3D (cuadrante inferior derecho) es 20% más grande que la mitad exacta y CRECE
@@ -327,13 +345,45 @@
     border:1px solid var(--te-line);background:rgba(255,255,255,.9);border-radius:6px;cursor:pointer;
     font-size:13px;color:var(--te-muted);line-height:1;padding:0;display:flex;align-items:center;justify-content:center}
   #te_modal .te-vreset:hover{color:var(--te-ink);border-color:var(--te-acero)}
-  /* Herramientas del cuadrante 3D: arriba-derecha (la esquina inf-izq es del gizmo). */
-  #te_modal .te-3dtools{position:absolute;right:6px;top:6px;z-index:3;display:flex;gap:4px}
+  /* Herramientas del cuadrante 3D: arriba-derecha (la esquina inf-izq es del gizmo).
+     Va en COLUMNA alineada a la derecha: la fila de iconos arriba y debajo los dos
+     radiales (eje / fondo), que son más anchos y no caben en la misma línea. */
+  #te_modal .te-3dtools{position:absolute;right:6px;top:6px;z-index:3;display:flex;flex-direction:column;align-items:flex-end;gap:4px}
+  #te_modal .te-3drow{display:flex;align-items:center;gap:4px}
   #te_modal .te-3dtools button{width:24px;height:24px;border:1px solid var(--te-line);border-radius:6px;
     background:rgba(255,255,255,.92);color:var(--te-muted);font-size:13px;line-height:1;cursor:pointer;
     display:flex;align-items:center;justify-content:center;padding:0}
   #te_modal .te-3dtools button:hover{color:var(--te-ink);border-color:var(--te-acero)}
   #te_modal .te-3dtools button.off{opacity:.45}
+  /* Radiales del 3D (eje de giro / fondo). OJO ESPECIFICIDAD: la regla de arriba
+     (`#te_modal .te-3dtools button`) fija 24×24 px; ésta la gana porque suma la clase
+     .te-3dseg — si se escribiera con una sola clase, los botones de texto saldrían
+     cuadrados y recortados. */
+  #te_modal .te-3dlbl{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:#8d9aab}
+  #te_modal .te-3dseg{display:inline-flex;border:1px solid var(--te-line);border-radius:6px;overflow:hidden;
+    background:rgba(255,255,255,.92)}
+  #te_modal .te-3dtools .te-3dseg button{width:auto;height:20px;padding:0 7px;border:none;border-radius:0;
+    font-size:10px;font-weight:700;letter-spacing:.2px;background:transparent;color:var(--te-muted)}
+  #te_modal .te-3dtools .te-3dseg button+button{border-left:1px solid var(--te-line)}
+  #te_modal .te-3dtools .te-3dseg button:hover{background:#f2f7ea;color:var(--te-acero-d);border-color:var(--te-line)}
+  #te_modal .te-3dtools .te-3dseg button.on{background:var(--te-acero);color:#fff}
+  /* Cuadro RESUMEN flotante del 3D (items · barras · peso). Abajo-derecha: la
+     esquina inf-izq es del gizmo de ejes y el borde inferior derecho lo usa la
+     ayuda (.te-vhint), que va más abajo. */
+  #te_modal #te_3dstats{position:absolute;right:8px;bottom:26px;z-index:3;display:flex;gap:12px;
+    background:rgba(255,255,255,.9);border:1px solid var(--te-line);border-radius:8px;padding:5px 10px;
+    font-size:11px;color:var(--te-muted);box-shadow:0 2px 8px rgba(15,20,28,.12)}
+  #te_modal #te_3dstats b{color:var(--te-ink);font-weight:700}
+  #te_modal #te_3dstats .te-kg b{color:var(--te-acero-d);font-size:12.5px}
+  /* FICHA de la barra seleccionada — flotante arriba-izquierda, bajo el título del
+     cuadrante. No captura eventos (el arrastre del 3D pasa por debajo). */
+  #te_modal #te_selcard{position:absolute;left:10px;top:34px;z-index:3;pointer-events:none;
+    background:rgba(20,26,34,.92);border:1px solid #2f3947;border-radius:8px;padding:7px 10px;
+    font-size:11px;line-height:1.5;color:#dbe3ec;box-shadow:0 8px 24px rgba(0,0,0,.35);max-width:250px}
+  #te_modal #te_selcard .te-sct{font-weight:700;color:#fff;display:flex;align-items:center;gap:6px}
+  #te_modal #te_selcard .te-scsw{width:9px;height:9px;border-radius:2px;flex:0 0 auto}
+  #te_modal #te_selcard .te-scr{color:#93a2b3}
+  #te_modal #te_selcard b{color:var(--te-acero)}
   /* Slider de PLANO DE CORTE — vertical, borde derecho del cuadrante. Discreto;
      resalta al pasar el mouse. Controla la profundidad del corte de esa vista. */
   #te_modal .te-vcut{position:absolute;right:6px;top:50%;transform:translateY(-50%);z-index:4;
@@ -629,6 +679,14 @@
       <button class="te-ctool" data-toggle="cotas" title="Mostrar cotas de tramos">📐 Cotas</button>
       <span class="te-divv"></span>
       <button class="te-ctool" id="te_btnBorrar" title="Borrar la barra seleccionada (Supr)">🗑 Borrar</button>
+      <span class="te-divv"></span>
+      <!-- MOSTRAR/OCULTAR el listado de barras. Vive ACÁ y no junto a la tabla
+           (pedido explícito: "un botón que la muestre y la oculte apareciendo siempre
+           en el mismo lugar"): la barra de herramientas es fija, mientras que el fondo
+           del panel izquierdo —donde estaba el desplegable— se mueve con el scroll y
+           con cuántos componentes haya. -->
+      <button class="te-ctool" id="te_barrasToggle" aria-expanded="false"
+              title="Mostrar u ocultar el listado de barras a crear">📋 Barras</button>
       <span style="flex:1"></span>
       <span id="te_ctoolsStatus" style="font-size:10.5px;color:#9aa4b0">Tipología activa: <b style="color:var(--te-cbs)">CBS</b> · figura 103B</span>
     </div>
@@ -647,18 +705,12 @@
         <button class="te-addcomp" id="te_addComp">＋ Agregar componente</button>
         <div class="te-note" style="margin-top:8px">＋ Agregar componente = mismo modo colocación que "＋ Agregar barra" del ribbon (Esc o clic derecho para salir). Selecciona una barra para editarla aquí; arrastra ⠿ para reordenar.</div>
 
-        <!-- LISTADO DE BARRAS (despiece agrupado) — colapsable, al fondo del panel.
-             Lo llena _renderBarras() desde ST.ultimoOut.barras (ya agrupadas por
-             figura+φ+marca+suf+dims en generar.js). -->
-        <div class="te-barras" id="te_barrasBox">
-          <button type="button" class="te-barras-h" id="te_barrasToggle" aria-expanded="false">
-            <span class="te-barras-ar">▸</span>
-            <span>📋 Barras</span>
-            <span class="te-sp" style="flex:1"></span>
-            <span class="te-barras-c" id="te_barrasCount">(0 ítems · 0 kg)</span>
-          </button>
-          <div class="te-barras-b" id="te_barrasBody"></div>
-        </div>
+        <!-- El LISTADO DE BARRAS vivía acá (desplegable de 5 columnas al fondo del
+             panel). Se mudó al pie de los cuadrantes: con las 13 columnas del
+             despiece real (figura, φ, cant, A/B/C/D, α1/α2, R, largo, kg) no cabe en
+             360 px sin scroll horizontal, y el botón que lo abre pasó a la barra de
+             herramientas para estar SIEMPRE en el mismo lugar. -->
+
       </div>
 
       <!-- CENTRO: 4 CUADRANTES -->
@@ -734,17 +786,52 @@
           <div class="te-vtitle">3D · en vivo</div>
           <!-- El gizmo 3D (triad de ejes que sigue a la cámara) lo pinta el RENDERER en la
                esquina inf-izq de este cuadrante (viewport propio, ver _renderGizmo3D). -->
-          <div class="te-vhint">arrastra = rotar · ctrl+arrastre = orbitar la selección · medio/der = pan</div>
+          <div class="te-vhint">arrastra = rotar · ctrl+arrastre = rotación fina · medio/der = pan · 🎯 = anclar el giro en la selección</div>
           <!-- Herramientas del 3D (17-ago). Van arriba-derecha porque la esquina
                inf-izq la ocupa el gizmo de ejes que pinta el renderer.
+               · 🎯 anclar: mueve el PIVOTE de la órbita al centro de la barra
+                 seleccionada. Antes esto era ctrl+arrastre, y como re-pivotear anula
+                 el pan se veía como un reset de la imagen; ahora es un acto explícito
+                 (y el ctrl quedó libre para la rotación fina).
                · ⟳ recentrar: hace falta desde que la cámara dejó de re-encuadrarse
                  sola en cada clic (antes el reset accidental hacía de "volver").
                · 🧊 hormigón: ST.verHormigon existía desde siempre SIN botón que lo
-                 tocara — la función estaba escrita y no se podía usar. -->
+                 tocara — la función estaba escrita y no se podía usar.
+               Debajo, dos radiales portados del Enfierrador: EJE de rotación
+               (Libre/X/Y/Z, y volver a clicar el activo devuelve a Libre) y FONDO
+               (tema del 3D: sólo fondo y grilla, NUNCA el color de las barras). -->
           <div class="te-3dtools">
-            <button id="te_3dReset" type="button" title="Recentrar el 3D (giro, zoom y encuadre)">⟳</button>
-            <button id="te_3dHormigon" type="button" class="on" title="Mostrar u ocultar el hormigón">🧊</button>
+            <div class="te-3drow">
+              <button id="te_3dAnclar" type="button" title="Anclar el punto de giro en la barra seleccionada">🎯</button>
+              <button id="te_3dReset" type="button" title="Recentrar el 3D (giro, zoom y encuadre)">⟳</button>
+              <button id="te_3dHormigon" type="button" class="on" title="Mostrar u ocultar el hormigón">🧊</button>
+            </div>
+            <div class="te-3drow">
+              <span class="te-3dlbl">eje</span>
+              <span class="te-3dseg" id="te_3dEjes" title="Restringe el arrastre a un eje — letras del gizmo, Z = vertical (clic en el activo = Libre)">
+                <button type="button" class="on" data-eje="libre">Libre</button><button type="button" data-eje="x">X</button><button type="button" data-eje="y">Y</button><button type="button" data-eje="z">Z</button>
+              </span>
+            </div>
+            <div class="te-3drow">
+              <span class="te-3dlbl">fondo</span>
+              <span class="te-3dseg" id="te_3dTema" title="Fondo y grilla del 3D (no cambia el color de las barras)">
+                <button type="button" data-tema="oscuro">Oscuro</button><button type="button" data-tema="medio">Medio</button><button type="button" class="on" data-tema="claro">Claro</button>
+              </span>
+            </div>
           </div>
+          <!-- CUADRO RESUMEN flotante (portado del Enfierrador, #m3d_stats): los mismos
+               números que ya calculaba el footer, pero DONDE se está mirando. El peso
+               va destacado porque es el dato que el usuario busca. Lo llena _regenerar. -->
+          <div id="te_3dstats">
+            <span>Items: <b id="te_stItems">0</b></span>
+            <span>Barras: <b id="te_stBarras">0</b></span>
+            <span class="te-kg">Peso: <b id="te_stKg">0 kg</b></span>
+          </div>
+          <!-- FICHA DE LA BARRA SELECCIONADA (portada de la maqueta template3d.html).
+               Es DOM puro y se repinta SÓLO al cambiar la selección o la receta
+               (_pintarFichaSel desde _renderPanel/_regenerar): nunca por frame, así que
+               no toca el presupuesto del render. Oculta si no hay selección. -->
+          <div id="te_selcard" style="display:none"></div>
           <!-- canvas real (Three.js on-demand). Si no hay WebGL, se muestra el fallback SVG. -->
           <canvas id="te_cv" style="display:none;"></canvas>
           <!-- Placeholder SVG (visible hasta que carga Three.js; también fallback sin WebGL) -->
@@ -777,13 +864,33 @@
              posiciona/oculta el botón (_posicionarFlipBtn). -->
         <button id="te_flipBtn" title="Girar 90° en la vista activa (R)"
                 aria-label="Girar la pieza 90° en la vista activa (R)">↔</button>
+
+        <!-- LISTADO DE BARRAS (despiece agrupado) — franja al pie de los cuadrantes,
+             calcando el "Barras a crear" del Enfierrador (#m3d_resumen): mismas
+             columnas y mismo subtítulo vivo. Va como OVERLAY absoluto y no como una
+             fila más del layout a propósito: si empujara la grilla, abrir/cerrar el
+             listado re-dimensionaría los 4 viewports del renderer en cada clic.
+             Lo llena _renderBarras() desde ST.ultimoOut.barras (ya agrupadas por
+             figura+φ+marca+suf+dims en generar.js). -->
+        <div class="te-barras" id="te_barrasBox">
+          <div class="te-barras-h">
+            <span>📋 Barras a crear</span>
+            <span class="te-barras-c" id="te_barrasCount">se actualiza en vivo</span>
+            <span style="flex:1"></span>
+            <button type="button" class="te-barras-x" id="te_barrasCerrar" title="Ocultar el listado" aria-label="Ocultar el listado">✕</button>
+          </div>
+          <div class="te-barras-b" id="te_barrasBody"></div>
+        </div>
       </div>
 
     </div>
 
     <!-- FOOTER -->
     <div id="te_footer">
-      <span style="font-size:11.5px;color:var(--te-muted)">Componentes: <b id="te_footItems">3</b> · <b id="te_footBarras">77</b> barras · <b id="te_footKg">264,4</b> kg · el 3D se arma combinando las vistas</span>
+      <!-- Los números (items · barras · kg) se fueron al cuadro flotante sobre el 3D
+           (#te_3dstats): estaban duplicados y acá, al pie de todo, es donde menos se
+           miran. El footer queda con la nota de cómo se arma el 3D. -->
+      <span style="font-size:11.5px;color:var(--te-muted)">El 3D se arma combinando las vistas · el despiece va en 📋 Barras</span>
       <div class="te-spacer"></div>
       <button class="te-btn ghost" onclick="templateEditorVerEn3D()">🧊 Ver en 3D</button>
       <span id="te_saveErr" style="font-size:11px;color:#c62828;flex:0 1 auto;max-width:520px;line-height:1.3;text-align:right"></span>

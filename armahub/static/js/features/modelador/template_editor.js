@@ -40,9 +40,33 @@
 
   var THREE_CDN = 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js';
 
-  // Tema CLARO del 3D del cuadrante (calca --canvas3d / colores de la maqueta).
-  // Los colores por tipología viven en COL2D (fuente única 2D + 3D).
-  var TEMA = { bg: 0xd8dee7, g1: 0xb4bdc9, g2: 0xc6cdd6 };
+  // (Acá vivía TEMA = el único tema del 3D, el claro. Se fusionó con TEMAS3D.claro
+  // para que la escena y el selector de fondo no tengan dos tablas que puedan
+  // divergir. Los colores por tipología viven en COL2D, fuente única 2D + 3D.)
+
+  // TEMAS DEL 3D (portados del Enfierrador, panel_3d.js TEMAS). SÓLO fondo y grilla:
+  // el color de cada barra es DATO DEL USUARIO (tipología o color propio del
+  // componente) y el tema no lo pisa — allá sí lo hacía, y cambiar de fondo te
+  // cambiaba el color de las barras que habías elegido.
+  var TEMAS3D = {
+    oscuro: { bg: 0x14171c, g1: 0x2a3340, g2: 0x222a34 },
+    medio: { bg: 0x2b3242, g1: 0x4a5568, g2: 0x3a4353 },
+    claro: { bg: 0xd8dee7, g1: 0xb4bdc9, g2: 0xc6cdd6 }
+  };
+  // Fondo FIJO de las 3 vistas ortográficas. Se pinta con el MISMO `scene.background`
+  // que el cuadrante 3D (un solo renderer, viewports con scissor), así que sin esto
+  // elegir el tema "oscuro" ennegrecía también las 2D — donde los overlays SVG (cotas,
+  // recubrimiento en #263238, handles) están dibujados para fondo claro.
+  var BG_ORTO = 0xd8dee7;
+
+  // ACABADO PBR de las barras — ver la nota larga en _initEscena: sin envMap, el
+  // metalness se cobra el color y no devuelve reflejo. Una sola constante para que
+  // los materiales por tipología y los de color propio no puedan divergir.
+  var MAT_METALNESS = 0.1;
+  var MAT_ROUGHNESS = 0.42;
+
+  // Divisor de la sensibilidad de la órbita 3D con CTRL/⌘ apretado ("rotación fina").
+  var SENS_FINA = 4;
 
   var GRID_SNAP = 5;   // cm — paso de snap a grilla
 
@@ -58,6 +82,11 @@
     materiales: null,
     rotX: 0.55, rotY: 0.9, dist: 900, target: null, panX: 0, panY: 0,
     threeCargado: false, webglOk: null, rafId: null, verHormigon: true,
+    // tema3d: clave de TEMAS3D — fondo y grilla del cuadrante 3D. Sólo memoria
+    //   (no viaja en la receta: es preferencia de mirada, no dato del template).
+    // ejeRot: 'libre' | 'x' | 'y' | 'z' — restringe el arrastre de la órbita a un
+    //   solo eje (portado del Enfierrador).
+    tema3d: 'claro', ejeRot: 'libre',
     // --- Estado de interacción 2D ---
     // figura y φ parten VACÍOS (pedido 13-ago): el usuario elige antes de colocar.
     figura: '', tipologia: 'CBS', diam: null, contorno: true,
@@ -1161,11 +1190,15 @@
     var out = d.gen.generarViga(ST.receta, {});
     _etiquetarCi(out);
     ST.ultimoOut = out;
-    var fi = $('te_footItems'), fb = $('te_footBarras'), fk = $('te_footKg');
-    if (fi) fi.textContent = out.resumen.items;
-    if (fb) fb.textContent = out.resumen.barras;
-    if (fk) fk.textContent = _num(out.resumen.kg);
-    _renderBarras();   // listado de barras del panel (contador siempre; tabla si está abierto)
+    // Items · barras · peso: van al CUADRO FLOTANTE sobre el 3D (te_3dstats). Estaban
+    // en la última línea del footer, lejos de donde se mira; el footer ya no los
+    // repite (un solo lugar para el mismo número).
+    var si = $('te_stItems'), sb = $('te_stBarras'), sk = $('te_stKg');
+    if (si) si.textContent = out.resumen.items;
+    if (sb) sb.textContent = out.resumen.barras;
+    if (sk) sk.textContent = _num(out.resumen.kg) + ' kg';
+    _renderBarras();     // listado de barras (subtítulo siempre; tabla si está visible)
+    _pintarFichaSel();   // ficha flotante de la barra seleccionada (la receta cambió)
     _redibujar2D(out);
     // WARNING ANTI-COLAPSO: se evalúa SIEMPRE (aunque no haya WebGL) — el aviso es
     // sobre el tamaño del elemento, no sobre el 3D.
@@ -1406,7 +1439,7 @@
     var cv = $('te_cv');
     if (!cv) return false;
     ST.scene = new THREE.Scene();
-    ST.scene.background = new THREE.Color(TEMA.bg);
+    ST.scene.background = new THREE.Color((TEMAS3D[ST.tema3d] || TEMAS3D.claro).bg);
     ST.camera = new THREE.PerspectiveCamera(38, 1, 1, 8000);
     try {
       ST.renderer = new THREE.WebGLRenderer({ canvas: cv, antialias: true });
@@ -1417,13 +1450,21 @@
     ST.scene.add(new THREE.AmbientLight(0xffffff, 0.85));
     var dir = new THREE.DirectionalLight(0xffffff, 0.7); dir.position.set(1, 1.4, 0.8); ST.scene.add(dir);
     var dir2 = new THREE.DirectionalLight(0xbcd4ff, 0.3); dir2.position.set(-1, -0.4, -0.7); ST.scene.add(dir2);
-    ST.grid = new THREE.GridHelper(1400, 28, TEMA.g1, TEMA.g2); ST.grid.position.y = -1; ST.scene.add(ST.grid);
+    var T0 = TEMAS3D[ST.tema3d] || TEMAS3D.claro;
+    ST.grid = new THREE.GridHelper(1400, 28, T0.g1, T0.g2); ST.grid.position.y = -1; ST.scene.add(ST.grid);
     // Un material por tipología, desde COL2D (FUENTE ÚNICA de colores: 2D y 3D
     // leen la misma tabla — antes el 3D tenía sus 5 claves de viga duplicadas en
     // TEMA y toda tipología de MURO caía al gris del fallback).
+    // METALNESS BAJO — POR QUÉ (17-ago, "un rojo se ve café"): en el modelo PBR de
+    // MeshStandardMaterial, `metalness` es la FRACCIÓN del color que deja de ser
+    // difusa y pasa a ser reflejo especular teñido. Esta escena NO tiene envMap, así
+    // que ese reflejo no encuentra nada que reflejar y se pinta NEGRO: con 0.5 la
+    // mitad del color pintado se perdía y toda la paleta salía oscura y desaturada
+    // (el usuario elige un color en la ficha y ve otro). El acero se sugiere con el
+    // BRILLO (roughness), no comprando metalness que aquí no se puede pagar.
     ST.materiales = {};
     Object.keys(COL2D).forEach(function (k) {
-      ST.materiales[k] = new THREE.MeshStandardMaterial({ color: new THREE.Color(COL2D[k]), metalness: 0.5, roughness: 0.5 });
+      ST.materiales[k] = new THREE.MeshStandardMaterial({ color: new THREE.Color(COL2D[k]), metalness: MAT_METALNESS, roughness: MAT_ROUGHNESS });
     });
     // BUG 7: el hormigón es el VOLUMEN DE REFERENCIA y NO debe seguir la regla del
     // cuchillo (si lo recortan los clipping planes, en algunas vistas la cara
@@ -1440,6 +1481,32 @@
     ST.dirty = true;       // PERF (render-on-demand): primer frame siempre se pinta
     _loop();
     return true;
+  }
+
+  // TEMA del cuadrante 3D (oscuro / medio / claro) — portado del Enfierrador.
+  // SÓLO fondo y grilla. Allá el tema también reescribía el color de CBS/CBI/ES/…,
+  // y eso acá sería pisar un dato del usuario: la tipología (o el color propio del
+  // componente, c.color) define el color de la barra y viaja EN LA RECETA — cambiar
+  // el fondo no puede repintarle las barras.
+  // El fondo se aplica en el pase de render (_render3DQuad), no aquí, porque el
+  // MISMO scene.background lo comparten las 3 vistas ortográficas — que se quedan
+  // siempre en BG_ORTO.
+  function _aplicarTema3D(t) {
+    var THREE = global.THREE;
+    var T = TEMAS3D[t] || TEMAS3D.claro;
+    ST.tema3d = TEMAS3D[t] ? t : 'claro';
+    if (!THREE || !ST.scene) return;
+    if (ST.grid) {
+      ST.scene.remove(ST.grid);
+      // La GridHelper vieja hay que soltarla A MANO: three no libera buffers de WebGL
+      // por GC (misma razón que el dispose de _vaciarWorld).
+      if (ST.grid.geometry && ST.grid.geometry.dispose) ST.grid.geometry.dispose();
+      if (ST.grid.material && ST.grid.material.dispose) ST.grid.material.dispose();
+    }
+    ST.grid = new THREE.GridHelper(1400, 28, T.g1, T.g2);
+    ST.grid.position.y = -1;
+    ST.scene.add(ST.grid);
+    _marcarSucio();
   }
 
   function _matDe(tip) {
@@ -1971,7 +2038,7 @@
     ST.materialesColor = ST.materialesColor || {};
     if (!ST.materialesColor[hex]) {
       ST.materialesColor[hex] = new THREE.MeshStandardMaterial({
-        color: new THREE.Color(hex), metalness: 0.5, roughness: 0.5 });
+        color: new THREE.Color(hex), metalness: MAT_METALNESS, roughness: MAT_ROUGHNESS });
     }
     return ST.materialesColor[hex];
   }
@@ -4285,24 +4352,51 @@
     // última lo libera).
     _renderElemSel();
     _actualizarStatus();
+    // La ficha flotante del 3D muestra la SELECCIÓN: se repinta acá porque este es
+    // el punto por el que pasa todo cambio de selección (_seleccionar → _renderPanel).
+    _pintarFichaSel();
   }
 
   // ==========================================================================
-  // LISTADO DE BARRAS (despiece) — sección colapsable al fondo del panel izquierdo.
+  // LISTADO DE BARRAS (despiece) — franja mostrable/ocultable al pie de los
+  // cuadrantes, con las MISMAS columnas del "Barras a crear" del Enfierrador.
   // Fuente: ST.ultimoOut.barras, que generar.js ya entrega AGRUPADO por
   // figura+φ+marca+suf+dims+ángulos (agruparBarras) con `cant` = nº de barras
-  // idénticas y `_pesoEstimado` = kg del grupo. No se re-agrupa aquí: se pinta.
+  // idénticas y `_pesoEstimado` = kg del grupo. No se re-agrupa ni se recalcula
+  // NADA aquí: se pinta lo que el motor ya dijo.
   // ==========================================================================
   function _bindBarras() {
+    // El botón que MUESTRA/OCULTA vive en la barra de herramientas (lugar fijo) y el
+    // ✕ de la franja hace lo mismo desde donde el usuario está mirando; los dos pasan
+    // por _mostrarBarras para que el estado del botón y el de la franja no diverjan.
     var t = $('te_barrasToggle');
-    if (!t || t._teBound) return;
-    t._teBound = true;
-    t.addEventListener('click', function () {
-      var box = $('te_barrasBox'); if (!box) return;
-      var abierto = box.classList.toggle('open');
-      t.setAttribute('aria-expanded', abierto ? 'true' : 'false');
-      _renderBarras();   // la tabla se arma sólo cuando la sección está abierta
-    });
+    if (t && !t._teBound) {
+      t._teBound = true;
+      t.addEventListener('click', function () {
+        var box = $('te_barrasBox');
+        _mostrarBarras(!(box && box.classList.contains('open')));
+      });
+    }
+    var x = $('te_barrasCerrar');
+    if (x && !x._teBound) {
+      x._teBound = true;
+      x.addEventListener('click', function (e) { e.stopPropagation(); _mostrarBarras(false); });
+    }
+  }
+
+  function _mostrarBarras(ver) {
+    var box = $('te_barrasBox'); if (!box) return;
+    box.classList.toggle('open', !!ver);
+    var t = $('te_barrasToggle');
+    if (t) { t.classList.toggle('on', !!ver); t.setAttribute('aria-expanded', ver ? 'true' : 'false'); }
+    _renderBarras();   // la tabla se arma sólo cuando la franja está visible
+  }
+
+  // Celda numérica: '—' cuando el motor no dio el dato (una figura sin ese parcial,
+  // sin ángulo o sin radio). Calca el _cel() del Enfierrador.
+  function _cel(v) {
+    if (v == null || v === '' || !isFinite(Number(v))) return '—';
+    return _num(Math.round(Number(v) * 10) / 10);
   }
 
   function _renderBarras() {
@@ -4310,29 +4404,81 @@
     var out = ST.ultimoOut;
     var barras = (out && out.barras) || [];
     var res = (out && out.resumen) || {};
+    // SUBTÍTULO VIVO — el mismo texto del Enfierrador. Se refresca SIEMPRE (aunque la
+    // franja esté oculta) porque cuesta nada y así al abrirla ya está al día.
     var cnt = $('te_barrasCount');
-    if (cnt) cnt.textContent = '(' + (res.items || 0) + ' ítems · ' + _num(res.kg || 0) + ' kg)';
+    if (cnt) {
+      cnt.textContent = (res.items || 0) + ' items · ' + (res.barras || 0) + ' barras · ' +
+        _num(res.kg || 0) + ' kg · se actualiza en vivo';
+    }
     var body = $('te_barrasBody'); if (!body) return;
     if (!box.classList.contains('open')) { body.innerHTML = ''; return; }
-    if (!barras.length) { body.innerHTML = '<div class="te-note" style="margin:0">Todavía no hay barras.</div>'; return; }
+    if (!barras.length) { body.innerHTML = '<div class="te-barras-vacio">Todavía no hay barras.</div>'; return; }
     var filas = barras.map(function (b) {
-      var dims = [];
-      LETRAS.forEach(function (L) {
-        var v = b['dim_' + L.toLowerCase()];
-        if (v != null && isFinite(Number(v))) dims.push(L + ' ' + _num(Math.round(Number(v) * 10) / 10));
-      });
-      var marca = (b.marca || '—') + (b.suf_tipo ? ('·' + b.suf_tipo) : '');
+      // cant × mult = barras reales del item (mult es el multiplicador de etiqueta).
       var cant = (Number(b.cant) || 0) * (Number(b.mult) || 1);
       var kg = (b._pesoEstimado != null) ? _num(Math.round(b._pesoEstimado * 10) / 10) : '—';
-      return '<tr><td>' + _esc(marca) + '<br><span style="color:var(--te-muted)">' + _esc(b.figura || '') + '</span></td>' +
+      var largo = (b._largoEstimado != null) ? _num(Math.round(b._largoEstimado)) : '—';
+      return '<tr><td><span class="te-btip">' + _esc(b.marca || '—') + '</span>' +
+        (b.suf_tipo ? ' <span class="te-bsuf">' + _esc(b.suf_tipo) + '</span>' : '') + '</td>' +
+        '<td>' + _esc(b.figura || '') + '</td>' +
         '<td class="te-bnum">' + _esc(b.diam) + '</td>' +
-        '<td>' + _esc(dims.join(' · ')) + '</td>' +
         '<td class="te-bnum">' + cant + '</td>' +
+        '<td class="te-bnum">' + _cel(b.dim_a) + '</td>' +
+        '<td class="te-bnum">' + _cel(b.dim_b) + '</td>' +
+        '<td class="te-bnum">' + _cel(b.dim_c) + '</td>' +
+        '<td class="te-bnum">' + _cel(b.dim_d) + '</td>' +
+        '<td class="te-bnum">' + _cel(b.ang1) + '</td>' +
+        '<td class="te-bnum">' + _cel(b.ang2) + '</td>' +
+        '<td class="te-bnum">' + _cel(b.radio) + '</td>' +
+        '<td class="te-bnum">' + largo + '</td>' +
         '<td class="te-bnum">' + kg + '</td></tr>';
     }).join('');
     body.innerHTML = '<table class="te-btab"><thead><tr>' +
-      '<th>Marca</th><th>φ mm</th><th>Dims (cm)</th><th>Cant</th><th>kg</th>' +
+      '<th>Tip.</th><th>Figura</th><th class="te-bnum">φ</th><th class="te-bnum">Cant</th>' +
+      '<th class="te-bnum">A</th><th class="te-bnum">B</th><th class="te-bnum">C</th><th class="te-bnum">D</th>' +
+      '<th class="te-bnum">α1</th><th class="te-bnum">α2</th><th class="te-bnum">R</th>' +
+      '<th class="te-bnum">Largo</th><th class="te-bnum">Kg</th>' +
       '</tr></thead><tbody>' + filas + '</tbody></table>';
+  }
+
+  // ==========================================================================
+  // FICHA FLOTANTE DE LA BARRA SELECCIONADA (portada de la maqueta template3d.html)
+  // --------------------------------------------------------------------------
+  // Es DOM, no render: se repinta SÓLO desde _renderPanel (cambió la selección) y
+  // _regenerar (cambió la receta). NUNCA por frame y sin pedirle nada al motor —
+  // todos los datos ya están en el componente y en el ST.ultimoOut vigente, así que
+  // no toca el presupuesto del 3D (que es render-on-demand).
+  // ==========================================================================
+  function _pintarFichaSel() {
+    var card = $('te_selcard'); if (!card) return;
+    var c = (ST.selCi >= 0 && ST.receta && ST.receta.componentes) ? ST.receta.componentes[ST.selCi] : null;
+    if (!c) { card.style.display = 'none'; card.innerHTML = ''; return; }
+    var d = c.distribucion || {};
+    var p = _poseDe(c);
+    var caraTxt = { sup: 'superior', inf: 'inferior', lateral: 'lateral', extremo: 'extremo' }[p.cara] || p.cara;
+    // CANTIDAD REAL en el elemento = placements que el motor le atribuyó a ESTE
+    // componente (meta.ci lo estampa _etiquetarCi). Es un conteo sobre datos ya
+    // calculados: ni se re-expande la receta ni se agrupa nada.
+    var n = 0;
+    ((ST.ultimoOut && ST.ultimoOut.placements) || []).forEach(function (pl) {
+      if (pl.meta && pl.meta.ci === ST.selCi) n++;
+    });
+    var modo = _modoDe(c);
+    var repTxt;
+    if (modo === 'arreglo') repTxt = 'arreglo ' + (d.n_capas || 2) + ' capas · @' + (d.sep || 20) + ' cm';
+    else if (modo === 'puntual') repTxt = (d.n_capas || 1) + ' capa(s) × ' + (d.barras_capa || 1) + ' por capa';
+    else repTxt = 'lineal @' + (d.sep || 20) + ' cm';
+    var ang = (c.orient && c.orient.deg) ? (' · girada ' + c.orient.deg + '°') : '';
+    var filas =
+      '<div class="te-sct"><span class="te-scsw" style="background:' + _colorComp(c) + '"></span>' +
+      _esc(_rolComp(c) === 'estribo' ? 'Estribo' : 'Barra') + ' · ' + _esc(c.tipologia || '') + '</div>' +
+      '<div class="te-scr">Figura <b>' + _esc(c.figura || '—') + '</b> · ø<b>' + _esc(c.diam) + '</b></div>' +
+      '<div class="te-scr">Cara ' + _esc(caraTxt) + (p.espejo ? ' (esp.)' : '') + _esc(ang) + '</div>' +
+      '<div class="te-scr">' + _esc(repTxt) + '</div>' +
+      '<div class="te-scr">Cantidad en el elemento: <b>' + n + '</b></div>';
+    card.innerHTML = filas;
+    card.style.display = '';
   }
 
   function _compEl(c, ci) {
@@ -6119,6 +6265,54 @@
         _actualizarStatus(ST.verHormigon ? 'Hormigón visible.' : 'Hormigón oculto (solo las barras).');
       });
     }
+    // 🎯 ANCLAR EL GIRO EN LA SELECCIÓN. Es la función que ANTES hacía ctrl+arrastre
+    // (ver la nota de _bindOrbita): mover el pivote es un ACTO, no un modificador —
+    // como _pivotarEn anula el pan, hacerlo sin querer se leía como un reset.
+    var b3a = $('te_3dAnclar');
+    if (b3a && !b3a._teBound) {
+      b3a._teBound = true;
+      b3a.addEventListener('click', function (e) {
+        e.stopPropagation();
+        if (ST.selCi < 0) { _actualizarStatus('Nada seleccionado: elige una barra y vuelve a 🎯 para anclar el giro en ella.'); return; }
+        _pivotarEn(_centroSeleccion3D());
+        _actualizarStatus('Giro anclado en la barra seleccionada (⟳ lo devuelve al centro).');
+      });
+    }
+    // EJE DE ROTACIÓN (Libre/X/Y/Z) — radial portado del Enfierrador. REGLA EXTRA
+    // pedida acá: clicar el que YA está activo devuelve a "Libre" (toggle), así se
+    // sale de la restricción sin tener que apuntar al botón de al lado.
+    var ejes = $('te_3dEjes');
+    if (ejes && !ejes._teBound) {
+      ejes._teBound = true;
+      ejes.querySelectorAll('button').forEach(function (bt) {
+        bt.addEventListener('click', function (e) {
+          e.stopPropagation();
+          var eje = bt.getAttribute('data-eje');
+          if (eje === ST.ejeRot) eje = 'libre';               // toggle: el activo suelta
+          ST.ejeRot = eje;
+          ejes.querySelectorAll('button').forEach(function (x) {
+            x.classList.toggle('on', x.getAttribute('data-eje') === eje);
+          });
+          _actualizarStatus(eje === 'libre' ? 'Rotación libre.' : ('Rotación restringida al eje ' + eje.toUpperCase() + '.'));
+        });
+      });
+    }
+    // TEMA del 3D (fondo + grilla). NO toca los materiales: el color de cada barra
+    // es dato del usuario (tipología o color propio del componente).
+    var tema = $('te_3dTema');
+    if (tema && !tema._teBound) {
+      tema._teBound = true;
+      tema.querySelectorAll('button').forEach(function (bt) {
+        bt.addEventListener('click', function (e) {
+          e.stopPropagation();
+          var t = bt.getAttribute('data-tema');
+          _aplicarTema3D(t);
+          tema.querySelectorAll('button').forEach(function (x) {
+            x.classList.toggle('on', x.getAttribute('data-tema') === t);
+          });
+        });
+      });
+    }
     // sliders de PLANO DE CORTE → o.corte (0..1). Mover el slider ACTIVA esa vista
     // (highlight del cuadrante + plano en el 3D a esa profundidad).
     Array.prototype.forEach.call(document.querySelectorAll('#te_quad .te-vcut-r'), function (r) {
@@ -6462,8 +6656,10 @@
 
   // B2·(b) — LUZ FRONTAL por vista ortográfica. La luz direccional principal de la
   // escena viene de (1,1.4,0.8): contra la tapa de un longitudinal en SECCIÓN (normal
-  // +X) da un coseno pobre y, con metalness 0.5, el círculo salía OSCURO ("apagado /
-  // de otro color"). Esta luz extra se coloca en el EYE de la vista que se está
+  // +X) da un coseno pobre y, con el metalness 0.5 que tenían los materiales por
+  // entonces, el círculo salía OSCURO ("apagado / de otro color"). El metalness ya
+  // bajó a MAT_METALNESS, pero el coseno pobre sigue igual y esta luz sigue haciendo
+  // falta. Esta luz extra se coloca en el EYE de la vista que se está
   // pintando → las tapas y las secciones quedan parejas. Sólo está VISIBLE durante los
   // 3 renders orto y se apaga para el pase perspectivo (mismo patrón que grid/planoMesh
   // en _loop) → el 3D no cambia en nada.
@@ -6489,6 +6685,12 @@
     if (!THREE || !ST.renderer || !ST.orto) return;
     var quad = $('te_quad'); if (!quad) return;
     var full = ST.renderer.domElement.getBoundingClientRect();
+    // FONDO FIJO de las 2D. Los 4 cuadrantes salen del MISMO renderer y de la MISMA
+    // escena, así que el `scene.background` es uno solo: sin fijarlo acá, elegir el
+    // tema "oscuro" del 3D ennegrecía también las tres vistas ortográficas, donde
+    // los overlays SVG (cotas, recubrimiento #263238, handles) están hechos para
+    // fondo claro. El tema del 3D se aplica en su propio pase (_render3DQuad).
+    _fondoEscena(BG_ORTO);
     var luz = _luzOrto();
     if (luz) luz.visible = true;
     Object.keys(ST.orto).forEach(function (plano) {
@@ -6602,12 +6804,21 @@
   // BUG 4 — PAN del 3D rotaba en vez de panear. Rediseño del reparto de botones con un
   // ÚNICO estado 'mode' ('pan' | 'rot' | null) fijado en el mousedown, mutuamente
   // exclusivo (antes había 2 flags drag/panning que podían quedar mal). Reparto:
-  //   · botón IZQUIERDO sin modificador     → ROTAR (órbita en torno al centro de escena)
-  //   · CTRL/⌘ + izquierdo                  → ORBITAR EN TORNO A LA SELECCIÓN (TANDA P):
-  //       el pivote salta al centro del bbox del elemento seleccionado (sin selección,
-  //       al centro de la escena) y desde ahí gira. Antes CTRL caía a PAN, que ya está
-  //       cubierto por botón medio/derecho y shift/alt.
+  //   · botón IZQUIERDO sin modificador     → ROTAR (órbita en torno al pivote actual)
+  //   · CTRL/⌘ + izquierdo                  → ROTAR FINO (misma rotación, sensibilidad
+  //       dividida por SENS_FINA). NADA MÁS: no toca el pivote ni el pan.
   //   · botón MEDIO, botón DERECHO, o SHIFT/ALT+izq → PAN
+  //
+  // POR QUÉ CAMBIÓ EL CTRL (17-ago). Antes ctrl+arrastre RE-PIVOTEABA en el centro de
+  // la selección, y _pivotarEn anula el pan: al usuario le saltaba la imagen y lo leía
+  // como un reset ("el Ctrl nunca fue para eso, la idea era tener un controlador
+  // adicional que permitiera mejorar la rotación"). El re-pivoteo no se perdió: pasó a
+  // ser una acción EXPLÍCITA, el botón 🎯 del cuadrante 3D (te_3dAnclar) — que es donde
+  // se entiende, porque mover el punto de giro es un acto, no un modificador.
+  // Con eso el pivote sólo cambia cuando alguien lo pide (🎯 o ⟳ recentrar), así que
+  // TAMPOCO hace falta el re-pivoteo automático al centro que llevaba el arrastre
+  // normal: se quitó, y con él la otra mitad del «me resetea la imagen».
+  //
   // El mousedown captura el botón real (e.button) Y los modificadores del PROPIO evento
   // (no de un mousemove posterior, que podía llegar sin shift y caer a rotar). El middle
   // click además necesita preventDefault en 'mousedown' Y 'auxclick' para matar el
@@ -6618,23 +6829,9 @@
     cv.addEventListener('auxclick', function (e) { if (e.button === 1) e.preventDefault(); });   // mata autoscroll medio
     cv.addEventListener('mousedown', function (e) {
       lx = e.clientX; ly = e.clientY;
-      // ÓRBITA EN TORNO A LA SELECCIÓN: ctrl/⌘ + izquierdo (sin shift/alt, que son pan).
-      var quiereOrbitaSel = (e.button === 0 && (e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey);
       // PAN si: botón medio (1) · botón derecho (2) · o izquierdo con shift/alt.
       var quierePan = (e.button === 1 || e.button === 2 || e.shiftKey || e.altKey);
-      if (quiereOrbitaSel) { _pivotarEn(_centroSeleccion3D()); mode = 'rot'; }
-      else if (e.button === 0 && !quierePan) {
-        // FEEDBACK 13-ago: el pivote de un ctrl+click anterior QUEDABA PEGADO y
-        // el arrastre normal seguía orbitando la selección vieja → se re-pivotea
-        // al centro de la escena.
-        // …PERO SÓLO SI HACE FALTA (bug 17-ago, la otra mitad del «me resetea la
-        // imagen»): _pivotarEn ANULA el pan, y el pan es parte del encuadre que el
-        // usuario buscó. Cuando el pivote ya es el centro de la escena no hay nada
-        // que restituir, así que tocarlo sólo servía para re-apuntar la cámara al
-        // origen y saltar la imagen en cada clic.
-        if (ST.target.x || ST.target.y || ST.target.z) _pivotarEn({ x: 0, y: 0, z: 0 });
-        mode = 'rot';
-      }
+      if (e.button === 0 && !quierePan) mode = 'rot';   // con o sin ctrl: rotar (fino con ctrl)
       else mode = quierePan ? 'pan' : null;
       if (mode) e.preventDefault();
     });
@@ -6646,7 +6843,28 @@
       if (mode === 'pan') {
         ST.panX -= dx * ST.dist * 0.0011; ST.panY += dy * ST.dist * 0.0011;
       } else {   // rot
-        ST.rotY -= dx * 0.008; ST.rotX += dy * 0.008;
+        // El modificador se lee del PROPIO mousemove (no del mousedown) para poder
+        // afinar A MITAD del gesto: se encuadra grueso y se remata con ctrl apretado
+        // sin soltar el botón.
+        var k = 0.008 / ((e.ctrlKey || e.metaKey) ? SENS_FINA : 1);
+        // EJE DE GIRO restringido (portado del Enfierrador): con un eje elegido el
+        // arrastre sólo mueve ESA rotación; el otro grado de libertad queda quieto.
+        // LAS LETRAS SON LAS VISIBLES DE ESTE EDITOR (EJE_DISPLAY): acá la vertical
+        // se rotula 'Z' —igual que en el gizmo y en los títulos de las vistas—, no
+        // 'Y' como en el Enfierrador. Copiar sus letras tal cual habría puesto el
+        // radial a contradecir al gizmo que está tres centímetros más abajo.
+        //   Z → sólo ACIMUT (ST.rotY). Restricción EXACTA: la cámara gira alrededor
+        //       del eje vertical del mundo.
+        //   X / Y → sólo ELEVACIÓN (ST.rotX). Es una aproximación, y hay que decirlo:
+        //       la elevación gira alrededor del vector "derecha" de la cámara, que
+        //       coincide con un eje horizontal del mundo sólo en ciertos acimuts.
+        //       Esta órbita tiene 2 grados de libertad (rotX/rotY) y no da para más
+        //       (el Enfierrador tiene la misma limitación: allá 'z' hacía lo mismo
+        //       que 'y'). Un giro exacto por eje pediría cambiar el modelo de cámara.
+        var eje = ST.ejeRot || 'libre';
+        if (eje === 'libre') { ST.rotY -= dx * k; ST.rotX += dy * k; }
+        else if (eje === 'z') { ST.rotY -= dx * k; }
+        else { ST.rotX += dy * k; }
         ST.rotX = Math.max(-1.45, Math.min(1.45, ST.rotX));
       }
       _marcarSucio();   // PERF: la cámara 3D cambió → repintar
@@ -6684,7 +6902,19 @@
 
   // Renderiza el cuadrante 3D (perspectiva) en SU rectángulo con scissor. El resto
   // del canvas grande lo pintan las vistas ortográficas.
+  // Color de fondo de la escena, reutilizando el THREE.Color que ya existe (crear uno
+  // nuevo por frame sería basura para el GC en un loop que puede pintar a 60 fps).
+  function _fondoEscena(hex) {
+    var THREE = global.THREE;
+    if (!THREE || !ST.scene) return;
+    if (ST.scene.background && ST.scene.background.isColor) ST.scene.background.setHex(hex);
+    else ST.scene.background = new THREE.Color(hex);
+  }
+
   function _render3DQuad() {
+    // El TEMA (fondo del 3D) se aplica en ESTE pase: la escena es una sola y las
+    // vistas 2D la pintan con BG_ORTO — ver la nota de _renderVistasOrto.
+    _fondoEscena((TEMAS3D[ST.tema3d] || TEMAS3D.claro).bg);
     var d3 = document.querySelector('#te_quad .te-vista.d3');
     if (!d3) { _applyCam(); ST.renderer.render(ST.scene, ST.camera); return; }
     var r = d3.getBoundingClientRect();
@@ -7534,7 +7764,11 @@
   // PANTALLA PREVIA (vive en tabs/catalogo.html · #catSubTemplates). Estos globals
   // los llaman los onclick/oninput del HTML y switchCatSubTab (catalogo/index.js).
   // ==========================================================================
-  var _tplElemSel = 'VIGA';   // elemento seleccionado (default: VIGA, único con máquina)
+  // Elemento con el que NACE un template nuevo. Ya no se elige en el tab (los 6
+  // botones se sacaron): el selector de elemento vive DENTRO del editor y permite
+  // cambiar viga ⇄ muro sin salir ni recrear (_cambiarElemento). VIGA porque es el
+  // que trae semilla y era el que ya venía marcado por defecto en el tab.
+  var TPL_ELEM_INICIAL = 'VIGA';
 
   // Dimensiones POR DEFECTO del elemento (cm). La grilla de dims salió del tab: se
   // aplican en silencio al crear y se editan DENTRO del modal (grupo HORMIGÓN del
@@ -7549,18 +7783,6 @@
     });
     return dims;
   }
-
-  // Click en un botón de elemento. NUNCA borra el nombre escrito ni roba el foco.
-  global.tplSeleccionarElemento = function (elem) {
-    elem = String(elem || '').toUpperCase();
-    if (!TPL_DIMS_POR_ELEMENTO[elem]) return;
-    _tplElemSel = elem;
-    var grid = $('tplElemGrid');
-    if (grid) grid.querySelectorAll('button[data-elem]').forEach(function (b) {
-      b.classList.toggle('on', b.getAttribute('data-elem') === elem);
-    });
-    global.tplValidar();
-  };
 
   // Validación de la card: sólo queda el NOMBRE (las dims se editan en el modal).
   global.tplValidar = function () {
@@ -7577,9 +7799,9 @@
     if (!global.tplValidar()) return;
     var nom = $('tplNombre');
     global.templateEditorAbrir({
-      elemento: _tplElemSel,
+      elemento: TPL_ELEM_INICIAL,
       nombre: (nom ? nom.value.trim() : ''),
-      dims: _tplDimsDefault(_tplElemSel)
+      dims: _tplDimsDefault(TPL_ELEM_INICIAL)
     });
   };
 
@@ -7631,39 +7853,111 @@
       }).join('');
   }
 
+  // ---------------------------------------------------------------------------
+  // ORDEN DE LA BIBLIOTECA (toggle de la card)
+  // ---------------------------------------------------------------------------
+  // El backend devuelve la lista por id DESC (lo último creado arriba), que no
+  // ayuda a encontrar nada cuando hay 30 templates. Se reordena ACÁ y no en el
+  // servidor porque la lista completa ya está en el navegador: pedirla de nuevo
+  // sólo para cambiar el orden sería un viaje al servidor por un click.
+  //   'elemento' (default) — agrupa por tipo, en el orden canónico del tab, y
+  //                          dentro de cada tipo por nombre.
+  //   'fecha'              — lo editado más recientemente arriba.
+  var TPL_ORDEN_ELEM = ['MURO', 'LOSA', 'VIGA', 'COLUMNA', 'FUNDACION', 'GEN'];
+  var _tplOrden = 'elemento';
+
+  function _tplOrdenar(lista) {
+    var copia = (lista || []).slice();   // slice: no se reordena el array del llamador
+    if (_tplOrden === 'fecha') {
+      // La MISMA fecha que muestra la columna "Última edición": updated_at, o la de
+      // creación en los templates anteriores a la migración 105. Son ISO, así que
+      // comparar como texto ya ordena bien.
+      copia.sort(function (a, b) {
+        return String(b.updated_at || b.fecha || '').localeCompare(String(a.updated_at || a.fecha || ''));
+      });
+      return copia;
+    }
+    copia.sort(function (a, b) {
+      var ia = TPL_ORDEN_ELEM.indexOf(String(a.tipo || '').toUpperCase());
+      var ib = TPL_ORDEN_ELEM.indexOf(String(b.tipo || '').toUpperCase());
+      // Un tipo que no esté en la lista canónica va al FINAL: con el -1 crudo de
+      // indexOf se iría arriba de todo, que es justo donde no se le busca.
+      if (ia < 0) ia = TPL_ORDEN_ELEM.length;
+      if (ib < 0) ib = TPL_ORDEN_ELEM.length;
+      if (ia !== ib) return ia - ib;
+      return String(a.nombre || '').localeCompare(String(b.nombre || ''), 'es', { sensitivity: 'base' });
+    });
+    return copia;
+  }
+
+  // Qué botón del toggle se ve activo. Se pinta desde _tplOrden (y no al hacer
+  // click) para que no pueda quedar marcado uno y aplicado el otro.
+  function _tplPintarOrden() {
+    [['elemento', 'tplOrdenElemento'], ['fecha', 'tplOrdenFecha']].forEach(function (par) {
+      var b = $(par[1]);
+      if (b && b.classList) b.classList.toggle('on', _tplOrden === par[0]);
+    });
+  }
+
+  global.tplSetOrden = function (orden) {
+    _tplOrden = (orden === 'fecha') ? 'fecha' : 'elemento';
+    _tplPintarLista(_tplLista);   // la lista ya está en memoria: no se vuelve a pedir
+  };
+
+  // KPI de una fila. `valor` null/undefined = el backend NO manda ese dato: se
+  // pinta un guion, NO un 0 ni una estimación calculada de la nada. Un 0 haría
+  // creer que el template está vacío y un número inventado es peor todavía.
+  function _tplKpi(valor, sufijo) {
+    if (valor == null || valor === '') {
+      return '<span class="muted" title="El backend todavía no manda este dato en GET /templates">—</span>';
+    }
+    return _esc(valor) + (sufijo ? ' <span class="muted" style="font-size:10px;">' + _esc(sufijo) + '</span>' : '');
+  }
+
   function _tplPintarLista(templates) {
     var cont = $('tplGuardadosLista'); if (!cont) return;
     _tplLista = templates || [];
+    _tplPintarOrden();
     var cnt = $('tplGuardadosCount');
-    if (cnt) cnt.textContent = templates.length + ' template' + (templates.length === 1 ? '' : 's');
-    if (!templates.length) {
+    if (cnt) cnt.textContent = _tplLista.length + ' template' + (_tplLista.length === 1 ? '' : 's');
+    if (!_tplLista.length) {
       cont.innerHTML = _tplHayFiltro()
         ? '<div class="muted">Ningún template coincide con la búsqueda.</div>'
         : '<div class="muted">Aún no hay templates guardados. Crea el primero aquí arriba.</div>';
       return;
     }
     var th = 'style="padding:5px 6px; font-size:10.5px; text-transform:uppercase; text-align:left;" class="muted"';
+    var thN = 'style="padding:5px 6px; font-size:10.5px; text-transform:uppercase; text-align:right;" class="muted"';
+    var tdN = 'style="padding:4px 6px; text-align:right; font-variant-numeric:tabular-nums;"';
     var btnCss = 'border:1px solid #dbe1e8; background:#fff; border-radius:7px; font-size:11.5px; padding:4px 12px; cursor:pointer;';
     cont.innerHTML = '<table style="width:100%; font-size:12px; border-collapse:collapse;">' +
-      '<tr><th ' + th + '>Nombre</th><th ' + th + '>Tipo</th><th ' + th + '>Obra</th>' +
-      '<th ' + th + '>Última edición</th><th ' + th + '>Creado por</th><th></th></tr>' +
-      templates.map(function (t) {
+      '<tr><th ' + th + '>Nombre</th><th ' + th + '>Tipo</th>' +
+      '<th ' + thN + '>Comp.</th><th ' + thN + '>Barras</th><th ' + thN + '>Peso est.</th><th ' + thN + '>φ prom</th>' +
+      '<th ' + th + '>Obra</th><th ' + th + '>Última edición</th><th></th></tr>' +
+      _tplOrdenar(_tplLista).map(function (t) {
         var tipo = String(t.tipo || '').toUpperCase();
         var col = TPL_ELEM_COLORES[tipo] || '#607d8b';
-        var n = Number(t.n_componentes || 0);
         // updated_at sólo existe desde la migración 105: en los templates viejos se
         // muestra la fecha de creación (no se inventa una edición que no hubo).
         var edit = t.updated_at || t.fecha;
         var quien = t.editado_por || t.creado_por || '';
         var puedo = (t.puede_modificar !== false);
+        // n_componentes es LO ÚNICO que manda el GET liviano. Antes esta cifra se
+        // rotulaba "N barras", que es falso: un componente en distribución genera
+        // muchas barras. Las tres KPI que faltan van en '—' hasta que el backend
+        // las mande (n_barras, kg estimados y φ promedio de la receta).
+        var comps = (t.n_componentes == null) ? null : Number(t.n_componentes);
         return '<tr style="border-bottom:1px solid #eee;">' +
           '<td style="padding:4px 6px; font-weight:700;">' + _esc(t.nombre) +
-            '<div class="muted" style="font-weight:400; font-size:10.5px;">' + n + ' barra' + (n === 1 ? '' : 's') + '</div></td>' +
+            (t.creado_por ? '<div class="muted" style="font-weight:400; font-size:10.5px;">' + _esc(t.creado_por) + '</div>' : '') + '</td>' +
           '<td style="padding:4px 6px;"><span style="font-size:10px; text-transform:uppercase; font-weight:700; color:#fff; background:' + col + '; border-radius:8px; padding:1px 7px;">' + _esc(tipo) + '</span></td>' +
+          '<td ' + tdN + '>' + _tplKpi(comps) + '</td>' +
+          '<td ' + tdN + '>' + _tplKpi(t.n_barras) + '</td>' +
+          '<td ' + tdN + '>' + _tplKpi(t.kg_estimado, 'kg') + '</td>' +
+          '<td ' + tdN + '>' + _tplKpi(t.diam_promedio, 'mm') + '</td>' +
           '<td style="padding:4px 6px;">' + _esc(t.obra_nombre || (t.obra ? t.obra : 'General')) + '</td>' +
           '<td style="padding:4px 6px;">' + _esc(_tplFecha(edit)) +
             (quien ? '<div class="muted" style="font-size:10.5px;">' + _esc(quien) + '</div>' : '') + '</td>' +
-          '<td style="padding:4px 6px;">' + _esc(t.creado_por || '—') + '</td>' +
           '<td style="padding:4px 6px; text-align:right; white-space:nowrap;">' +
             '<button data-id="' + _esc(t.id) + '" onclick="tplAbrirTemplate(this.getAttribute(\'data-id\'))"' +
             ' style="' + btnCss + '">Abrir</button> ' +
@@ -7675,7 +7969,13 @@
             ' style="' + btnCss + (puedo ? ' color:#c62828;' : ' opacity:.4; cursor:default;') + '">🗑</button>' +
           '</td></tr>';
       }).join('') +
-      '</table>';
+      '</table>' +
+      // Pendiente A LA VISTA, no escondido en un comentario: mientras GET /templates
+      // no traiga estos tres campos, las columnas quedan en '—'.
+      '<div class="muted" style="font-size:10.5px; margin-top:8px;">Barras, peso estimado y φ promedio ' +
+      'salen en «—» porque <b>GET /templates todavía no los manda</b>: la lista es liviana y sólo trae ' +
+      'el número de componentes. Los pesos, cuando lleguen, son <b>estimados</b> (dependen del hormigón ' +
+      'contra el que se genere el template).</div>';
   }
 
   function _tplHayFiltro() {
@@ -7688,6 +7988,9 @@
   global.tplCargarGuardados = function () {
     global.tplValidar();
     _tplRenderFiltroTipo();
+    // El toggle de orden se pinta ya, antes del fetch: si no, al entrar al sub-tab
+    // los dos botones se ven apagados hasta que responda el servidor.
+    _tplPintarOrden();
     var cont = $('tplGuardadosLista'); if (!cont) return;
     var b = $('tplBuscar'), s = $('tplFiltroTipo');
     var q = [];
@@ -7777,6 +8080,8 @@
 
   // Exponer para tests / depuración.
   global.TemplateEditor = {
+    // GESTOR DE TEMPLATES (card del tab): orden de la biblioteca y KPI de la fila.
+    _tplOrdenar: _tplOrdenar, _tplKpi: _tplKpi, _tplPintarLista: _tplPintarLista,
     _st: ST, _regenerar: function () { _regenerar(); },
     _colocarEnVista: _colocarEnVista, _rotarSeleccion: _rotarSeleccion,
     _borrarSeleccion: _borrarSeleccion,
