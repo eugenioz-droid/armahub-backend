@@ -27,6 +27,9 @@
 //        elementos lo usan.
 //   L8 · Abrir un template cuya figura ya no está en el catálogo lo marca
 //        (normalizador) y lo dice, en vez de abrir en silencio algo que no genera.
+//  L10 · Gestor de templates: el orden (elemento / fecha) se aplica SIN volver a
+//        pedir la lista, y las KPI que el backend NO manda salen como "—" (nunca
+//        un 0 ni un número estimado por el front).
 //
 // Corre el template_editor.js REAL sobre un mini-DOM (no hay jsdom en el proyecto),
 // igual que tests/test_te_borrador.js. Correr con: node tests/test_te_biblioteca.js
@@ -471,6 +474,58 @@ function abrirDeBiblioteca(w, extra) {
     // estado normal (timer de 1,5 s): ahí tiene que quedar ENCENDIDO, no apagado.
     w._correrTimers();
     ok(w._el('te_btnGuardar').disabled === false, 'y el botón vuelve encendido para mandarlo');
+  }
+
+  // ============================================================== L10
+  console.log('\nL10 — gestor: orden por elemento/fecha y KPI que el backend no manda');
+  {
+    const w = sesion();
+    // Tres templates a propósito DESORDENADOS respecto de los dos criterios, para
+    // que el test falle si alguien deja de ordenar y devuelve el orden del backend.
+    w._responder = () => ({
+      status: 200,
+      body: {
+        ok: true, templates: [
+          { id: 1, nombre: 'Viga eje 3', tipo: 'viga', fecha: '2026-01-01T10:00:00',
+            updated_at: '2026-08-01T10:00:00', creado_por: 'eu@x.cl', n_componentes: 3, puede_modificar: true },
+          { id: 2, nombre: 'Muro cortina', tipo: 'muro', fecha: '2026-02-01T10:00:00',
+            updated_at: '2026-03-01T10:00:00', creado_por: 'eu@x.cl', n_componentes: 5, puede_modificar: true },
+          { id: 3, nombre: 'Losa tipo', tipo: 'losa', fecha: '2026-08-15T10:00:00',
+            creado_por: 'eu@x.cl', n_componentes: 2, puede_modificar: true }
+        ]
+      }
+    });
+    w.tplCargarGuardados();
+    await tick(); await tick();
+
+    const orden = (lista) => w.TemplateEditor._tplOrdenar(lista).map(t => t.nombre);
+    const lista = [
+      { nombre: 'Viga eje 3', tipo: 'viga', updated_at: '2026-08-01T10:00:00' },
+      { nombre: 'Muro cortina', tipo: 'muro', updated_at: '2026-03-01T10:00:00' },
+      { nombre: 'Losa tipo', tipo: 'losa', fecha: '2026-08-15T10:00:00' }
+    ];
+    // Por defecto manda el orden CANÓNICO de elemento (muro · losa · viga …), no el
+    // orden de llegada del backend (id DESC).
+    ok(orden(lista).join('|') === 'Muro cortina|Losa tipo|Viga eje 3',
+      'ordena por elemento en el orden canónico (muro, losa, viga)');
+
+    const llamadasAntes = w._llamadas.length;
+    w.tplSetOrden('fecha');
+    ok(w._llamadas.length === llamadasAntes, 'cambiar el orden NO vuelve a pedir la lista al backend');
+    ok(orden(lista).join('|') === 'Losa tipo|Viga eje 3|Muro cortina',
+      'por fecha usa updated_at, o la de creación si el template es viejo');
+    ok(w._el('tplOrdenFecha').classList.contains('on') &&
+       !w._el('tplOrdenElemento').classList.contains('on'), 'el toggle marca el orden aplicado');
+
+    // KPI: el GET liviano sólo trae n_componentes. Barras, kilos y φ NO vienen del
+    // backend: tienen que salir como guion, jamás como 0 ni como cifra calculada acá.
+    const kpi = w.TemplateEditor._tplKpi;
+    ok(kpi(undefined).indexOf('—') >= 0, 'un dato que el backend no manda se pinta "—"');
+    ok(kpi(0) === '0', 'pero un 0 REAL se pinta 0 (no se confunde con "falta el dato")');
+    const html = w._el('tplGuardadosLista').innerHTML;
+    ok((html.match(/—/g) || []).length >= 9, 'las 3 KPI sin cablear salen en "—" en las 3 filas');
+    ok(/GET \/templates todavía no los manda/.test(html),
+      'y la tabla DICE que faltan en el backend, en vez de disimularlo');
   }
 
   console.log(fallos ? '\nFALLOS: ' + fallos : '\nTODO OK');

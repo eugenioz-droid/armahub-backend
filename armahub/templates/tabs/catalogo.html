@@ -229,67 +229,82 @@
 
     <!-- ===== Sub-panel: TEMPLATES — pantalla previa del Template Editor =====
          (§GAP-ANALYSIS-TE · bloque AGENTE 1 del programa_modelador_3d.md)
-         2 cards: "Nuevo template" (elemento + dims del hormigón + nombre → abre el
-         modal con el hormigón listo y CERO componentes) y "Templates guardados"
-         (GET /templates → lista con botón Abrir). La lógica (tplSeleccionarElemento,
-         tplValidar, tplCrearTemplate, tplCargarGuardados, tplAbrirTemplate,
-         tplEliminarTemplate, tplFiltrarGuardados, tplLimpiarFiltros) vive en
-         static/js/features/modelador/template_editor.js. -->
+         2 cards:
+           1) "Configuración" — 4 botones que abren, cada uno, un modal con su tabla
+              (figuras por tipología · reglas de largos · recubrimientos · por figura).
+              Las tablas viven en static/js/features/catalogo/config_modelador.js y
+              HOY SÓLO MUESTRAN: no guardan y el editor no lee de ellas.
+           2) "Gestor de templates" — crear (nombre → abre el modal con el hormigón
+              listo y CERO componentes), buscar, ordenar y abrir los guardados
+              (GET /templates). La lógica (tplValidar, tplCrearTemplate,
+              tplCargarGuardados, tplSetOrden, tplAbrirTemplate, tplEliminarTemplate,
+              tplFiltrarGuardados, tplLimpiarFiltros) vive en
+              static/js/features/modelador/template_editor.js.
+         Los 6 botones de ELEMENTO ya no están aquí: el elemento se elige DENTRO del
+         editor (selector del ribbon, _cambiarElemento) y se puede cambiar sin salir.
+         Al crear se parte de VIGA, que es lo que ya hacía el default de esta card. -->
     <style>
-      #tplElemGrid button:not(:disabled):hover { border-color:#8BC34A !important; }
-      #tplElemGrid button.on { border-color:#558B2F !important; background:#f7fbf2 !important; color:#33691e; }
-      #tplElemGrid button:disabled { opacity:.5; cursor:default; }
       #tplBtnCrear:not(:disabled):hover { background:#558B2F !important; }
       #tplBtnCrear:disabled { opacity:.5; cursor:default; }
+      .tplCfgBtn { flex:1; min-width:200px; text-align:left; padding:11px 14px; border:1px solid #dbe1e8;
+                   background:#fff; border-radius:9px; cursor:pointer; font-size:13px; color:#33691e; }
+      .tplCfgBtn:hover { border-color:#8BC34A; background:#f7fbf2; }
+      .tplCfgBtn .d { display:block; color:#8a97a6; font-size:11px; font-weight:400; margin-top:3px; }
+      .tplOrdenBtn { border:1px solid #dbe1e8; background:#fff; border-radius:7px; font-size:12px;
+                     padding:6px 12px; cursor:pointer; color:#6b7a8d; }
+      .tplOrdenBtn.on { border-color:#558B2F; background:#f7fbf2; color:#33691e; font-weight:700; }
     </style>
     <div id="catSubTemplates" style="display:none;">
-      <!-- CARD 1 — Nuevo template -->
+      <!-- CARD 1 — Configuración del modelador -->
       <div class="card" style="border-top:3px solid #558B2F;">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
-          <h3 style="margin:0; color:#558B2F;">🧱 Nuevo template</h3>
-          <span class="muted" style="font-size:11px;">Colocador por proyecciones</span>
+          <h3 style="margin:0; color:#558B2F;">⚙️ Configuración</h3>
+          <span class="muted" style="font-size:11px;">Con qué nacen las cosas</span>
         </div>
-        <p class="muted" style="font-size:12px; margin:0 0 12px 0;">Elige el elemento y ponle nombre. Las dimensiones del hormigón se editan DENTRO del editor (ribbon), con los valores por defecto del elemento ya cargados.</p>
-
-        <div class="muted" style="font-size:10.5px; font-weight:700; letter-spacing:.5px; margin-bottom:6px;">ELEMENTO</div>
-        <!-- Orden CANÓNICO: MURO · LOSA · VIGA · COLUMNA · FUNDACION · GEN.
-             VIGA y MURO ya tienen máquina (vistas, dims y tipologías propias) →
-             habilitados. El resto sigue DESHABILITADO con tooltip "Próximamente"
-             (decisión del usuario). -->
-        <div id="tplElemGrid" style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:14px;">
-          <button id="tplElemBtn_MURO" data-elem="MURO" onclick="tplSeleccionarElemento('MURO')"
-                  title="Muro: largo × alto × espesor · mallas en las 2 cortinas"
-                  style="width:92px; padding:8px 4px; border:1px solid #dbe1e8; background:#fff; border-radius:8px; cursor:pointer;">
-            <div style="font-size:20px;">🧱</div><div style="font-size:11px; font-weight:700;">MURO</div>
+        <p class="muted" style="font-size:12px; margin:0 0 12px 0;">
+          Cuatro tablas con los valores de partida del modelador: qué figura, φ y separación trae cada
+          tipología, cómo se calculan los largos del gancho, con qué recubrimiento nace cada elemento y
+          qué lado de cada figura queda fijo.
+          <b>Todavía no se guardan</b>: esta iteración sólo los muestra (los campos van apagados);
+          poder editarlos y que el editor los lea es la iteración siguiente.
+        </p>
+        <div style="display:flex; flex-wrap:wrap; gap:8px;">
+          <button class="tplCfgBtn" onclick="cfgModAbrir('tipologias')">
+            📐 <b>Figuras por tipología</b>
+            <span class="d">Figura por defecto, sugeridas, φ, @ sep y colocación · por elemento</span>
           </button>
-          <button id="tplElemBtn_LOSA" data-elem="LOSA" disabled title="Próximamente"
-                  style="width:92px; padding:8px 4px; border:1px solid #dbe1e8; background:#fff; border-radius:8px; cursor:pointer;">
-            <div style="font-size:20px;">⬜</div><div style="font-size:11px; font-weight:700;">LOSA</div>
+          <button class="tplCfgBtn" onclick="cfgModAbrir('largos')">
+            📏 <b>Reglas de largos</b>
+            <span class="d">Fabricación / NCh 211 / Custom + redondeo del corte</span>
           </button>
-          <button id="tplElemBtn_VIGA" data-elem="VIGA" class="on" onclick="tplSeleccionarElemento('VIGA')"
-                  style="width:92px; padding:8px 4px; border:1px solid #dbe1e8; background:#fff; border-radius:8px; cursor:pointer;">
-            <div style="font-size:20px;">📏</div><div style="font-size:11px; font-weight:700;">VIGA</div>
+          <button class="tplCfgBtn" onclick="cfgModAbrir('recub')">
+            🧱 <b>Recubrimientos</b>
+            <span class="d">Recubrimiento por defecto de cada tipo de elemento</span>
           </button>
-          <button id="tplElemBtn_COLUMNA" data-elem="COLUMNA" disabled title="Próximamente"
-                  style="width:92px; padding:8px 4px; border:1px solid #dbe1e8; background:#fff; border-radius:8px; cursor:pointer;">
-            <div style="font-size:20px;">🏛</div><div style="font-size:11px; font-weight:700;">COLUMNA</div>
-          </button>
-          <button id="tplElemBtn_FUNDACION" data-elem="FUNDACION" disabled title="Próximamente"
-                  style="width:92px; padding:8px 4px; border:1px solid #dbe1e8; background:#fff; border-radius:8px; cursor:pointer;">
-            <div style="font-size:20px;">🪨</div><div style="font-size:11px; font-weight:700;">FUNDACION</div>
-          </button>
-          <button id="tplElemBtn_GEN" data-elem="GEN" disabled title="Próximamente"
-                  style="width:92px; padding:8px 4px; border:1px solid #dbe1e8; background:#fff; border-radius:8px; cursor:pointer;">
-            <div style="font-size:20px;">📦</div><div style="font-size:11px; font-weight:700;">GEN</div>
+          <button class="tplCfgBtn" onclick="cfgModAbrir('figura')">
+            📎 <b>Por figura</b>
+            <span class="d">Qué lado nace en automático y cuál queda fijo</span>
           </button>
         </div>
+      </div>
 
-        <!-- Las DIMENSIONES ya no se piden aquí: al crear se aplican en silencio los
-             defaults del elemento (TPL_DIMS_POR_ELEMENTO, template_editor.js) y se
-             editan en el grupo HORMIGÓN del ribbon del modal. -->
+      <!-- CARD 2 — Gestor de templates.
+           Crear (nombre → modal) + biblioteca. La lista es LIVIANA (GET /templates
+           sin `params`) con buscador por nombre y filtro por elemento: los dos los
+           resuelve el BACKEND (?nombre= / ?tipo=). El ORDEN, en cambio, es local
+           (elemento o fecha) porque la lista ya está entera en el navegador.
+           Cada fila: Abrir (GET /templates/{id} → modal) y 🗑 Eliminar (DELETE, con
+           confirmación que nombra el template; si responde 409 el template está en
+           uso y NO se borra). La lógica vive en template_editor.js. -->
+      <div class="card" id="tplGuardadosCard" style="border-top:3px solid #558B2F;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+          <h3 style="margin:0; color:#558B2F;">📂 Gestor de templates</h3>
+          <span id="tplGuardadosCount" class="muted" style="font-size:11px;"></span>
+        </div>
 
-        <div class="muted" style="font-size:10.5px; font-weight:700; letter-spacing:.5px; margin:14px 0 6px;">NOMBRE DEL TEMPLATE</div>
-        <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+        <!-- Crear: sólo el nombre. Las dimensiones y el elemento se eligen DENTRO
+             del editor (grupo HORMIGÓN del ribbon), con los defaults ya cargados. -->
+        <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:12px;">
           <input id="tplNombre" maxlength="80" placeholder="Nombre del template (ej. Viga fundación tipo A)"
                  oninput="tplValidar()"
                  onkeydown="if(event.key==='Enter'){var b=document.getElementById('tplBtnCrear'); if(b &amp;&amp; !b.disabled) b.click();}"
@@ -298,20 +313,10 @@
                   style="font-size:13px; font-weight:700; padding:9px 18px; background:#8BC34A; color:#fff; border:none; border-radius:8px; cursor:pointer;">
             🧱 Crear template
           </button>
+          <span class="muted" style="font-size:11px;">El elemento y las dimensiones se eligen dentro del editor.</span>
         </div>
-      </div>
 
-      <!-- CARD 2 — Templates guardados (BIBLIOTECA).
-           Lista LIVIANA (GET /templates sin `params`) con buscador por nombre y
-           filtro por elemento: los dos los resuelve el BACKEND (?nombre= / ?tipo=).
-           Cada fila: Abrir (GET /templates/{id} → modal) y 🗑 Eliminar (DELETE, con
-           confirmación que nombra el template; si responde 409 el template está en
-           uso y NO se borra). La lógica vive en template_editor.js. -->
-      <div class="card" id="tplGuardadosCard" style="border-top:3px solid #558B2F;">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
-          <h3 style="margin:0; color:#558B2F;">📂 Templates guardados</h3>
-          <span id="tplGuardadosCount" class="muted" style="font-size:11px;"></span>
-        </div>
+        <div style="border-top:1px dashed #e6eaef; margin-bottom:12px;"></div>
 
         <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:10px;">
           <input id="tplBuscar" maxlength="80" placeholder="🔎 Buscar por nombre…"
@@ -325,6 +330,13 @@
                   style="border:1px solid #dbe1e8; background:#fff; border-radius:7px; font-size:12px; padding:6px 12px; cursor:pointer;">Limpiar</button>
           <button onclick="tplCargarGuardados()" title="Volver a cargar la lista"
                   style="border:1px solid #dbe1e8; background:#fff; border-radius:7px; font-size:12px; padding:6px 12px; cursor:pointer;">↻</button>
+          <!-- ORDEN: el estado (cuál está `on`) lo pinta _tplPintarOrden() al
+               cargar la lista, para que no se desincronice con _tplOrden. -->
+          <span class="muted" style="font-size:11px; margin-left:auto;">Ordenar:</span>
+          <button id="tplOrdenElemento" class="tplOrdenBtn" onclick="tplSetOrden('elemento')"
+                  title="Agrupa por tipo de elemento (muro, losa, viga…)">Por elemento</button>
+          <button id="tplOrdenFecha" class="tplOrdenBtn" onclick="tplSetOrden('fecha')"
+                  title="Los editados más recientemente arriba">Por fecha</button>
         </div>
 
         <!-- Resultado de eliminar / abrir: verde si salió, rojo con el motivo del
@@ -334,4 +346,9 @@
         <div id="tplGuardadosLista"><div class="muted">Cargando templates…</div></div>
       </div>
     </div>
+
+    <!-- Las 4 tablas de la card "Configuración". Va acá y no en bootstrap.js porque
+         es exclusivo de este tab y no depende de ningún otro script: los onclick de
+         arriba se resuelven recién al hacer clic, así que el orden de carga da igual. -->
+    <script src="/static/js/features/catalogo/config_modelador.js?v={{ cache_bust }}"></script>
   </div>
