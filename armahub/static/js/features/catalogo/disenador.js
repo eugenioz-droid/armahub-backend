@@ -95,10 +95,13 @@
     // escalón separa los φ aunque el grosor real no alcance: 8→2.40, 16→2.84, 25→3.34, 32→3.72.
     // Los que SÍ alcanzan (estribos/trabas/ganchos, bbox < ~70 cm) pasan de largo el piso y se
     // dibujan con su grosor de verdad.
-    // 19-ago: el escalón iba de 2.40 (φ8) a 3.94 (φ36) — millímetro y medio de rango
-    // total, invisible en pantalla. Ahora va de 3.6 a 8.0: la φ32 se ve gruesa al lado
-    // de la φ8 sin necesidad de que la escala alcance para el grosor real.
-    var piso = 3.6 + (diamMM - 8) * 0.157;
+    // 19-ago: el escalón iba de 2.40 (φ8) a 3.94 (φ36) — píxel y medio de rango total,
+    // invisible en pantalla. Ahora va de 5.0 a 9.0. El piso de la φ8 arranca EN el
+    // nominal (5.5) a propósito: con un piso más bajo, una barra real de φ8 se dibujaba
+    // MÁS FLACA que la misma figura en el catálogo, que es exactamente al revés de lo
+    // que uno espera. Así el fierro nunca se ve más delgado que su ficha, y quedan 4 px
+    // de rango entre la φ8 y la φ36 — visible sin que la escala alcance el grosor real.
+    var piso = 5.0 + (diamMM - 8) * 0.143;
     // TOPE. El trazo sobresale sw/2 del bbox y la fórmula de encuadre (scale/tx) NO lo contempla
     // — no se toca, porque el lienzo del editor la replica y meter el grosor adentro descuadraría
     // el editor respecto del preview. El tope resuelve el desborde: con sw ≤ 0.9·pad lo que

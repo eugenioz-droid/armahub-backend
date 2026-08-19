@@ -10,8 +10,8 @@
 //   A. LA REGLA. sw = clamp(φ_cm × scale, PISO(φ), min(9, pad×0.9)), con
 //      PISO(φ_mm) = 2.4 + (φ_mm − 8) × 0.055. Se comprueba con los CUATRO números
 //      que fijó el usuario, MEDIDOS sobre el SVG que sale del motor (no deducidos):
-//        φ8  recta 600 @ Bar Manager M     → 3.60   (manda el piso)
-//        φ32 recta 600 @ Bar Manager M     → 7.37   (manda el piso)
+//        φ8  recta 600 @ Bar Manager M     → 5.00   (manda el piso)
+//        φ32 recta 600 @ Bar Manager M     → 8.43   (manda el piso)
 //        φ16 estribo 25×45 @ Bar Manager XL → 4.27  (manda el grosor REAL)
 //        φ32 traba 10×15 @ Bar Manager XL   → 14.00  (manda el tope)
 //
@@ -87,7 +87,7 @@ const BM_TAM = { s: { w: 70, h: 52 }, m: { w: 110, h: 80 }, l: { w: 160, h: 118 
 const DIAMS = [8, 10, 12, 16, 18, 22, 25, 28, 32, 36];      // AC2_DIAMS (mm)
 const MIN_LADO_REL = 0.28;                                   // BM_MIN_LADO_REL / AC2_MIN_LADO_REL
 const LADOS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I'];
-const PISO = (mm) => 3.6 + (mm - 8) * 0.157;
+const PISO = (mm) => 5.0 + (mm - 8) * 0.143;
 const NOMINAL = 5.5;
 
 // Figura de catálogo a partir de direcciones unitarias (puntos en unidades de grilla).
@@ -138,10 +138,10 @@ const D_TRABA   = { A: 10, B: 15 };
 
 // ── A · los cuatro números del criterio ──────────────────────────────────────
 console.log('A · la regla, medida sobre el SVG que sale del motor:');
-ok(casi(sw(render(RECTA, { A: 600 }, BM_TAM.m, 8, true)), 3.60),
-  'φ8 · recta 600 @ BM M = 3.60 (manda el piso: el grosor real es 0.09 px)');
-ok(casi(sw(render(RECTA, { A: 600 }, BM_TAM.m, 32, true)), 7.37),
-  'φ32 · recta 600 @ BM M = 7.37 (manda el piso, y es OTRO que el de φ8)');
+ok(casi(sw(render(RECTA, { A: 600 }, BM_TAM.m, 8, true)), 5.00),
+  'φ8 · recta 600 @ BM M = 5.00 (manda el piso: el grosor real es 0.09 px)');
+ok(casi(sw(render(RECTA, { A: 600 }, BM_TAM.m, 32, true)), 8.43),
+  'φ32 · recta 600 @ BM M = 8.43 (manda el piso, y es OTRO que el de φ8)');
 ok(casi(sw(render(ESTRIBO, D_ESTRIBO, BM_TAM.xl, 16, true)), PISO(16)),
   'φ16 · estribo 25x45 @ BM XL: el fisico (4.27) no llega al piso de su φ (4.86) y manda el piso');
 ok(casi(sw(render(TRABA, D_TRABA, BM_TAM.xl, 32, true)), 14.00),
@@ -155,16 +155,19 @@ ok(new Set(pisos).size === DIAMS.length,
 ok(pisos.every(function (v, i) { return i === 0 || v > pisos[i - 1]; }),
   'y son estrictamente crecientes con el φ');
 ok(DIAMS.every(function (d, i) { return casi(pisos[i], Math.round(PISO(d) * 100) / 100); }),
-  'cada uno vale PISO(φ) = 3.6 + (φ - 8) x 0.157');
+  'cada uno vale PISO(φ) = 5.0 + (φ - 8) x 0.143');
 
 // ── C · la trampa de las unidades (mm vs cm) ─────────────────────────────────
 console.log('C · φ en mm, puntos en cm: se divide por 10 UNA sola vez:');
 ok(sw(render(ESTRIBO, D_ESTRIBO, BM_TAM.xl, 16, true)) > sw(render(ESTRIBO, D_ESTRIBO, BM_TAM.xl, 8, true)),
   'φ16 sigue siendo mas gruesa que φ8 en el mismo estribo (la conversion mm->cm no se repite)');
-ok(casi(sw(render(ESTRIBO, D_ESTRIBO, BM_TAM.xl, 25, true)), 6.67),
-  'φ25 en el mismo estribo = 6.67 px = 2.5 cm x 2.667 px/cm — grosor FISICO, no una constante');
+// Con el piso en 5.0-9.0, el grosor FISICO solo manda cuando supera al piso de su φ:
+// φ36 pide 9.60 y su piso es 9.00, asi que gana el fisico. Es el caso que prueba que el
+// numero sale de la geometria y no de una constante.
+ok(casi(sw(render(ESTRIBO, D_ESTRIBO, BM_TAM.xl, 36, true)), 9.60),
+  'φ36 en el mismo estribo = 9.60 px = 3.6 cm x 2.667 px/cm — grosor FISICO, no una constante');
 ok(casi(sw(render(ESTRIBO, D_ESTRIBO, BM_TAM.xl, 8, true)), PISO(8)),
-  'φ8 en ese estribo pide 2.13 px (fisico) pero el piso lo sube a 3.60: el clamp no deja bajar');
+  'φ8 en ese estribo pide 2.13 px (fisico) pero el piso lo sube a 5.00: el clamp no deja bajar');
 ok(casi(sw(render(ESTRIBO, D_ESTRIBO, BM_TAM.xl, 36, true)), 9.60),
   'φ36 en ese estribo dibuja su grosor FISICO (9.60 px), por debajo del tope de 14');
 // La MISMA figura a dos tamaños: si el φ estuviera mal convertido, el escalón no aparecería.
@@ -235,9 +238,14 @@ ok(srcBM.indexOf('_bmMiniFigura') === -1,
 // ── G · convivencia con el trazo grueso ──────────────────────────────────────
 console.log('G · nodos y letras conviviendo con el trazo grueso:');
 function nCirculos(s) { return (s.match(/<circle/g) || []).length; }
-var sFino  = render(ESTRIBO, D_ESTRIBO, BM_TAM.xl, 16, true);   // sw = piso(16)
-var sGordo = render(ESTRIBO, D_ESTRIBO, BM_TAM.xl, 22, true);   // sw 5.87
-ok(sw(sFino) < 5 && nCirculos(sFino) === 5, 'sw < 5: los 5 nodos de vértice se siguen dibujando');
+var sFino  = render(ESTRIBO, D_ESTRIBO, BM_TAM.xl, 16, true);   // sw = piso(16) = 6.14
+var sGordo = render(ESTRIBO, D_ESTRIBO, BM_TAM.xl, 22, true);   // sw = piso(22) = 7.00
+// Con la calibracion del 19-ago NINGUN caso vivo baja de 5: el piso de la φ8 ya vale
+// 5.0 y el nominal 5.5. O sea que los nodos de vertice no se dibujan en ninguna parte
+// — el trazo los tapa enteros (r 2.5 = 5 px de diametro). El corte sigue en el codigo
+// como guarda por si alguien baja los pisos.
+ok(sw(sFino) >= 5 && nCirculos(sFino) === 0,
+  'con la calibracion viva ningun trazo baja de 5, asi que el nodo nunca se pinta debajo');
 ok(sw(sGordo) >= 5 && nCirculos(sGordo) === 0,
   'sw >= 5: ningún <circle> — el nodo más grande (r 2.5 = 5 px de diámetro) queda entero bajo el trazo');
 ok(nCirculos(MOTOR.dibujarFigura(ESTRIBO, null, { width: 220, height: 160, pad: 20 })) === 0,
