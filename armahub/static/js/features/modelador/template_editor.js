@@ -3574,18 +3574,28 @@
   // texto. Dentro del grupo: si miden lo mismo —el caso normal, es el par espejo de
   // la figura— sale UN rótulo con las dos letras, `A·C=30`; si midieran distinto se
   // apilan uno debajo del otro, como una cota encadenada de CAD.
-  var COTA_LADO_OFF = 7;        // px del viewBox entre el trazo y el rótulo
-  var COTA_LADO_PASO = 11;      // alto de línea: separación de los rótulos apilados
+  // TAMAÑO DE LETRA (19-ago, el usuario las pidió más grandes: 9.5 → 11.5 px). Los
+  // cuatro números de abajo NO son independientes del CSS: si sube la letra y no
+  // suben ellos, el rótulo se cree más angosto de lo que es y el filtro de encaje
+  // deja salir textos que ya no caben sobre su lado. Todos escalan por el MISMO
+  // factor 11.5/9.5 = 1.21, salvo el encaje, que se DIVIDE por él justamente para
+  // que el conjunto de lados rotulados no cambie: lo que se veía se sigue viendo,
+  // sólo que legible.
+  var COTA_LADO_OFF = 8;        // px del viewBox entre el trazo y el rótulo
+  var COTA_LADO_PASO = 13.5;    // alto de línea: separación de los rótulos apilados
   var COTA_LADO_MIN_PX = 18;    // anclaje mínimo del rótulo sobre su lado
   var COTA_LADO_PARAL = 15;     // grados: hasta acá dos lados se consideran paralelos
-  var COTA_LADO_CHAR = 5.6;     // ancho medio de un carácter (700 9.5px Segoe UI)
+  var COTA_LADO_CHAR = 6.8;     // ancho medio de un carácter (700 11.5px Segoe UI)
   // Cuánto puede el rótulo ser MÁS CORTO que su propio texto antes de dejar de
   // señalar a su lado. 0.65 = el texto puede sobresalir hasta ~1.5× el trecho.
   // Los dos números que lo fijan, MEDIDOS: un `A·C=24` (33.6 px) sobre el travesaño
   // de 23.2 px del estribo en PLANTA es legible y tiene que salir; un `A·C·E=22`
   // (44.8 px) sobre los 20.1 px de una 105A φ25 es 2.2× su lado y se mete encima de
   // los vecinos — ése no. El corte queda entre los dos.
-  var COTA_LADO_ENCAJE = 0.65;
+  // 19-ago: 0.65 → 0.54 = 0.65 ÷ 1.21, la misma razón en que creció la letra. El
+  // producto `anchoTxt · ENCAJE` queda idéntico, o sea que los dos casos medidos
+  // arriba siguen cayendo del mismo lado del corte con la letra nueva.
+  var COTA_LADO_ENCAJE = 0.54;
 
   // ¿ESTE LADO SE VE EN ESTE PLANO? Regla GEOMÉTRICA pura (sin píxeles ni cámara):
   // se proyecta el tramo y se mide. Devuelve el largo PROYECTADO en cm, o 0 si el
