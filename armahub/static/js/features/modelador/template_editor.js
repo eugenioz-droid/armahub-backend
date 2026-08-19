@@ -2675,6 +2675,7 @@
   // trecho recto y no se mete dentro de los codos.
   function _tramosRectos(puntos, verts) {
     var out = [], k, a, b;
+    if (!puntos || !verts) return out;   // contrato: sin trazo no hay tramos (está exportada)
     for (k = 0; k + 1 < verts.length; k++) {
       a = verts[k][1]; b = verts[k + 1][0];
       out.push({ i0: a, i1: b, L: (b > a) ? _dist3(puntos[a], puntos[b]) : 0 });
@@ -2762,12 +2763,40 @@
     if (!verts || verts.length < 5) return null;
     var tramos = _tramosRectos(puntos, verts);
     if (tramos.length < 4) return null;
-    // (1) los 4 más largos, y SEGUIDOS
-    var idx = tramos.map(function (t, i) { return i; })
-      .sort(function (a, b) { return tramos[b].L - tramos[a].L; })
-      .slice(0, 4).sort(function (a, b) { return a - b; });
-    if (idx[3] - idx[0] !== 3) return null;
-    var k = idx[0], L = [tramos[k].L, tramos[k + 1].L, tramos[k + 2].L, tramos[k + 3].L];
+    // (1) LOS 4 LADOS = LOS 4 TRECHOS SEGUIDOS QUE CIERRAN.
+    // -----------------------------------------------------------------------
+    // Acá decía "los 4 MÁS LARGOS, y seguidos" y estaba MAL (auditoría 19-ago). En
+    // una sección angosta la PATA del gancho (6·φ, mínimo 7.5 cm) mide más que el
+    // lado corto del marco, se colaba en el grupo —y el guard de "seguidos" pasaba
+    // igual, porque la ventana corrida también es consecutiva—, así que el rótulo
+    // quedaba escrito sobre la pata y un lado real del estribo se quedaba mudo.
+    // MEDIDO: 104D φ6 en una viga 15×20 recub 3 → tramos
+    // [7.50 · 11.90 · 8.40 · 13.40 · 6.90 · 0.25 · 7.50]; "los 4 más largos" elige
+    // k=0 (se come la pata) en vez de k=1. Pasaba en el 7.8% de las combinaciones
+    // realistas de estribo (φ6-16 con ancho 12-21 cm: pilarcitos, vigas angostas).
+    //
+    // El criterio correcto no es el LARGO, es la TOPOLOGÍA: un marco CIERRA, o sea
+    // sus 4 vectores suman ~0. No exactamente 0 —los dos lados que tocan el gancho
+    // están recortados en Rc— así que el marco bueno deja un residuo de Rc·√2
+    // (3.54·φ). Se prueba cada ventana de 4 tramos seguidos y gana la que MENOS
+    // abre. En el ejemplo de arriba: k=1 abre 2.121 y k=0 abre 7.475 — no hay
+    // empate posible, y el criterio no depende de qué mida cada lado.
+    var k = -1, abreMin = Infinity, kk, jj, s, pa, pb, ab;
+    for (kk = 0; kk + 3 < tramos.length; kk++) {
+      s = { x: 0, y: 0, z: 0 };
+      for (jj = 0; jj < 4; jj++) {
+        pa = puntos[tramos[kk + jj].i0]; pb = puntos[tramos[kk + jj].i1];
+        s.x += pb.x - pa.x; s.y += pb.y - pa.y; s.z += pb.z - pa.z;
+      }
+      ab = Math.sqrt(s.x * s.x + s.y * s.y + s.z * s.z);
+      if (ab < abreMin) { abreMin = ab; k = kk; }
+    }
+    if (k < 0) return null;
+    // …y la ganadora tiene que cerrar DE VERDAD: se admite el doble del residuo que
+    // dejan los dos recortes del gancho. Si ninguna ventana cierra, esto no es un
+    // marco y no se rotula (mejor sin cota que con una inventada).
+    if (!(abreMin <= 2 * Math.SQRT2 * 2.5 * (Number(diamCm) || 0))) return null;
+    var L = [tramos[k].L, tramos[k + 1].L, tramos[k + 2].L, tramos[k + 3].L];
     if (!(L[0] > 0) || !(L[1] > 0) || !(L[2] > 0) || !(L[3] > 0)) return null;
     // (2) lados opuestos = mismo largo salvo el codo (Rc = 2.5·φ); se deja un pelo
     // más de holgura (3·φ) para no rechazar por el muestreo del arco.
@@ -3487,12 +3516,21 @@
   var COTA_LADO_PASO = 11;      // alto de línea: separación de los rótulos apilados
   var COTA_LADO_MIN_PX = 18;    // anclaje mínimo del rótulo sobre su lado
   var COTA_LADO_PARAL = 15;     // grados: hasta acá dos lados se consideran paralelos
+  var COTA_LADO_CHAR = 5.6;     // ancho medio de un carácter (700 9.5px Segoe UI)
+  // Cuánto puede el rótulo ser MÁS CORTO que su propio texto antes de dejar de
+  // señalar a su lado. 0.65 = el texto puede sobresalir hasta ~1.5× el trecho.
+  // Los dos números que lo fijan, MEDIDOS: un `A·C=24` (33.6 px) sobre el travesaño
+  // de 23.2 px del estribo en PLANTA es legible y tiene que salir; un `A·C·E=22`
+  // (44.8 px) sobre los 20.1 px de una 105A φ25 es 2.2× su lado y se mete encima de
+  // los vecinos — ése no. El corte queda entre los dos.
+  var COTA_LADO_ENCAJE = 0.65;
 
   // ¿ESTE LADO SE VE EN ESTE PLANO? Regla GEOMÉTRICA pura (sin píxeles ni cámara):
   // se proyecta el tramo y se mide. Devuelve el largo PROYECTADO en cm, o 0 si el
   // lado colapsa (corre por la profundidad del plano → es un punto, no un lado).
   function _ladoVisibleEnPlano(puntos, lado, proj) {
-    if (!puntos || !lado || !puntos[lado.i0] || !puntos[lado.i1]) return 0;
+    if (!puntos || !lado || typeof proj !== 'function') return 0;
+    if (!puntos[lado.i0] || !puntos[lado.i1]) return 0;
     var qa = proj(puntos[lado.i0]), qb = proj(puntos[lado.i1]);
     if (!qa || !qb || !isFinite(qa.u) || !isFinite(qa.v) || !isFinite(qb.u) || !isFinite(qb.v)) return 0;
     var d = Math.hypot(qb.u - qa.u, qb.v - qa.v);
@@ -3578,7 +3616,7 @@
       // (girar 180° un texto centrado lo deja en el mismo sitio, sólo que legible).
       ang = Math.atan2(y1 - y0, x1 - x0) * 180 / Math.PI;
       if (ang > 90) ang -= 180; else if (ang < -90) ang += 180;
-      vis.push({ lado: L.lado, valor: L.valor, mx: (x0 + x1) / 2, my: (y0 + y1) / 2, ang: ang });
+      vis.push({ lado: L.lado, valor: L.valor, mx: (x0 + x1) / 2, my: (y0 + y1) / 2, ang: ang, lpx: lpx });
     }
     if (!vis.length) return;
 
@@ -3619,6 +3657,12 @@
       // ('A·C=24' y no 'C·A=24').
       var textos = igual ? [letras.sort().join('·') + '=' + v0]
                          : g.map(function (e) { return e.lado + '=' + Math.round(e.valor); });
+      // ENCAJE — se comprueba con el texto YA ARMADO, no antes: agrupar dos lados
+      // alarga el rótulo ('B=52' → 'B·D=52') y el trecho sigue siendo el mismo, así
+      // que un umbral fijo dejaba salir rótulos del doble de ancho que su lado.
+      var anchoTxt = 0;
+      for (j = 0; j < textos.length; j++) anchoTxt = Math.max(anchoTxt, textos[j].length * COTA_LADO_CHAR);
+      if (g[0].lpx < anchoTxt * COTA_LADO_ENCAJE) continue;
       for (j = 0; j < textos.length; j++) {
         var t = _svgEl('text', {
           'class': 'te-cotalado', 'text-anchor': 'middle', 'dominant-baseline': 'central',

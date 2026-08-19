@@ -44,6 +44,12 @@
 //      tipologías × 3 φ × 2 poses × viga/muro): ninguna letra cae en un lado que se
 //      aleje más del tope FÍSICO 6·φ, y ningún par de letras comparte trecho. Es la
 //      prueba de que el mapeo no está cruzado, y no depende de una lista a mano.
+//   L. SECCIÓN ANGOSTA (defecto de auditoría, 19-ago) — la pata del gancho mide
+//      más que el lado corto del marco y se colaba entre «los 4 más largos»: el
+//      rótulo iba sobre la pata y un lado real quedaba mudo. Ahora el marco se
+//      reconoce porque CIERRA, y eso se barre con verdad de tierra propia.
+//   M. ENCAJE DEL RÓTULO — agrupar alarga el texto y el trecho sigue igual, así
+//      que el encaje se mide con el texto YA armado: ninguno pasa de 1.55× su lado.
 //
 // Correr con: node tests/test_cotas_lados.js
 
@@ -669,6 +675,137 @@ console.log('\nK · BARRIDO DEL CATÁLOGO ENTERO — ninguna letra en el lado eq
     ' (peor desvío del barrido: ' + peor.toFixed(2) + ' cm en ' + peorEn + ')');
   ok(duplicados.length === 0, 'ningún par de letras comparte el mismo trecho del trazo' +
     (duplicados.length ? (' — ' + duplicados.slice(0, 5).join(' · ')) : ''));
+}
+
+
+// ---------------------------------------------------------------------------
+console.log('\nL · SECCIÓN ANGOSTA — la pata del gancho no se disfraza de lado');
+// ---------------------------------------------------------------------------
+{
+  // DEFECTO REAL, encontrado por auditoría el 19-ago. El reconocedor del marco
+  // tomaba "los 4 trechos MÁS LARGOS y seguidos". En una sección angosta la PATA
+  // del gancho (6·φ, mínimo 7.5 cm) mide más que el lado corto del marco y se
+  // colaba en el grupo: el rótulo quedaba escrito sobre la pata y un lado real del
+  // estribo se quedaba mudo. Pasaba en el 7.8 % de las combinaciones realistas.
+  // El criterio ahora es TOPOLÓGICO: gana la ventana de 4 tramos seguidos que
+  // CIERRA (sus vectores suman ~0). Este bloque fija el caso testigo y barre la
+  // banda entera con la verdad de tierra independiente: ¿cierra o no cierra?
+  const ANGOSTA = { largo: 400, alto: 20, ancho: 15, recub_sup: 3, recub_inf: 3, recub_lat: 3 };
+  function estribo(fig, dm, host) {
+    const c = comp(fig, 'ES'); c.diam = dm; c.cara = 'lat';
+    const pls = R.expandirComponente(c, host);
+    return (pls && pls.length) ? { pl: pls[0], rol: c._rol } : null;
+  }
+  // CASO TESTIGO medido: 104D φ6 en 15×20 recub 3 →
+  // tramos [7.50(pata) · 11.90 · 8.40 · 13.40 · 6.90 · 0.25 · 7.50(pata)].
+  // "Los 4 más largos" elegía k=0 (abre 7.475); el que cierra es k=1 (abre 2.121).
+  {
+    const b = estribo('104D', 6, ANGOSTA);
+    const ls = TE._ladosRotulables(b.pl, b.rol);
+    ok(!!ls && ls.length === 4, '104D φ6 en 15×20: salen los 4 lados [' + (ls ? ls.length : 0) + ']');
+    const largos = (ls || []).map(l => largoTrazo(b.pl, l).toFixed(2)).sort().join(' ');
+    ok(largos === '11.90 13.40 6.90 8.40',
+      'y son los 4 del MARCO (6.90/8.40/11.90/13.40), no la pata de 7.50 [' + largos + ']');
+    const m = porLetra(ls);
+    ok(Math.round(m.A.valor) === 9 && Math.round(m.C.valor) === 9 &&
+       Math.round(m.B.valor) === 14 && Math.round(m.D.valor) === 14,
+      'con sus medidas reales: A·C = 9 (ancho útil) y B·D = 14 (alto útil)');
+  }
+  // BARRIDO de la banda que fallaba, con la verdad de tierra: los 4 lados del marco
+  // tienen que CERRAR. El residuo admisible es el que dejan los dos recortes del
+  // codo (Rc·√2 = 3.54·φ), con holgura al doble.
+  {
+    const MARCOS = Object.keys(CAT.FIGURAS || {}).filter(f => {
+      try {
+        return FP.familiaDeDibujo(f, 'estribo') === 'estribo' &&
+               (FP.ladosMarcoOrdenados(f, 'estribo') || []).length === 4;
+      } catch (e) { return false; }
+    });
+    let n = 0, noCierra = 0, ejemplo = '';
+    for (const fig of MARCOS) for (const dm of [6, 8, 10, 12, 16]) for (const ancho of [12, 14, 16, 18, 20, 21, 30, 60]) {
+      const host = { largo: 400, alto: 60, ancho: ancho, recub_sup: 3, recub_inf: 3, recub_lat: 3 };
+      let b; try { b = estribo(fig, dm, host); } catch (e) { continue; }
+      if (!b || !b.pl.puntos || b.pl.puntos.length < 5) continue;
+      n++;
+      const ls = TE._ladosMarcoEnTrazo(fig, b.rol, b.pl.puntos, b.pl.diam, b.pl.dims);
+      if (!ls) continue;                                   // no reconocido: no rotula (correcto)
+      const orden = FP.ladosMarcoOrdenados(fig, b.rol) || [];
+      const marco = ls.filter(l => orden.indexOf(l.lado) >= 0);
+      if (marco.length !== 4) { noCierra++; continue; }
+      let sx = 0, sy = 0, sz = 0;
+      for (const l of marco) {
+        const a = b.pl.puntos[l.i0], q = b.pl.puntos[l.i1];
+        sx += q.x - a.x; sy += q.y - a.y; sz += q.z - a.z;
+      }
+      const abre = Math.hypot(sx, sy, sz);
+      if (abre > 2 * Math.SQRT2 * 2.5 * b.pl.diam) {
+        noCierra++;
+        if (!ejemplo) ejemplo = fig + ' φ' + dm + ' ancho ' + ancho + ' abre ' + abre.toFixed(2);
+      }
+    }
+    ok(n > 300, 'barrido de secciones angostas: ' + n + ' estribos');
+    ok(noCierra === 0, 'en NINGUNO el grupo elegido deja de cerrar' + (ejemplo ? (' — ' + ejemplo) : ''));
+  }
+}
+
+// ---------------------------------------------------------------------------
+console.log('\nM · EL RÓTULO NO PUEDE SER MUCHO MÁS ANCHO QUE SU LADO');
+// ---------------------------------------------------------------------------
+{
+  // La otra mitad de la auditoría: al agrupar, el texto se ALARGA ('B=52' → 'B·D=52')
+  // y el trecho sigue igual, así que el encaje hay que medirlo con el texto YA
+  // armado. Con un umbral fijo salían rótulos del doble de ancho que su lado
+  // (medido: 'A·C·E=22', 44.8 px, sobre 20.1 px de una 105A φ25).
+  function Nodo(tag) { this.tag = tag; this.attrs = {}; this.hijos = []; this.textContent = ''; }
+  Nodo.prototype.setAttribute = function (k, v) { this.attrs[k] = v; };
+  Nodo.prototype.appendChild = function (c) { this.hijos.push(c); return c; };
+  Object.defineProperty(Nodo.prototype, 'firstChild', {
+    get() { return this.hijos.length ? this.hijos[0] : null; }, configurable: true
+  });
+  function SvgRec() { this.hijos = []; }
+  SvgRec.prototype.appendChild = function (c) { this.hijos.push(c); return c; };
+  const antes = win.document.createElementNS;
+  win.document.createElementNS = (ns, tag) => new Nodo(tag);
+  const ST = TE._ST;
+  const recetaAntes = ST.receta, selAntes = ST.selCi, ortoAntes = ST.orto;
+  ST.orto = null;
+
+  const HOSTS = [HOST, { largo: 300, alto: 40, ancho: 40, recub_sup: 4, recub_inf: 4, recub_lat: 4 }];
+  let emitidos = 0, anchos = 0, peor = 0, peorTxt = '';
+  for (const H of HOSTS) for (const fig of Object.keys(CAT.FIGURAS || {})) for (const tip of ['CBS', 'ES', 'MH']) for (const dm of [8, 25]) {
+    const c = comp(fig, tip); c.diam = dm; c.cara = 'lat';
+    let pls; try { pls = R.expandirComponente(c, H); } catch (e) { continue; }
+    if (!pls || !pls.length) continue;
+    const pl = pls[0]; pl.meta = { ci: 0 };
+    ST.receta = { componentes: [c] }; ST.selCi = 0;
+    for (const p of ['seccion', 'largo', 'planta']) {
+      const W = (p === 'seccion') ? H.ancho : H.largo;
+      const Hh = (p === 'seccion') ? H.alto : (p === 'largo' ? H.alto : H.ancho);
+      const esc = Math.min(560 / Math.max(W, 1), 240 / Math.max(Hh, 1));
+      const X = (u) => 310 + u * esc, Y = (v) => 150 - v * esc;
+      const svg = new SvgRec();
+      TE._dibujarCotasLados(svg, p, proyDe(p), X, Y, { placements: [pl] });
+      const ls = TE._ladosRotulables(pl, c._rol) || [];
+      svg.hijos.forEach(g => g.hijos.forEach(t => {
+        emitidos++;
+        const m = /translate\(([-\d.]+),([-\d.]+)\)/.exec(t.attrs.transform);
+        let mejor = Infinity, lpx = 1;
+        for (const l of ls) {
+          const a = proyDe(p)(pl.puntos[l.i0]), b = proyDe(p)(pl.puntos[l.i1]);
+          const d = Math.hypot((X(a.u) + X(b.u)) / 2 - Number(m[1]), (Y(a.v) + Y(b.v)) / 2 - Number(m[2]));
+          if (d < mejor) { mejor = d; lpx = Math.hypot(X(b.u) - X(a.u), Y(b.v) - Y(a.v)); }
+        }
+        const r = (t.textContent.length * 5.6) / Math.max(lpx, 0.001);
+        if (r > 1.55) { anchos++; if (r > peor) { peor = r; peorTxt = fig + '/' + tip + ' ' + p + ' "' + t.textContent + '"'; } }
+      }));
+    }
+  }
+  ok(emitidos > 2000, 'barrido de dibujo: ' + emitidos + ' rótulos emitidos');
+  ok(anchos === 0, 'ninguno pasa de 1.55× el ancho de su lado' +
+    (anchos ? (' — ' + anchos + ', peor ' + peor.toFixed(2) + '× en ' + peorTxt) : ''));
+
+  ST.orto = ortoAntes; ST.selCi = selAntes; ST.receta = recetaAntes;
+  win.document.createElementNS = antes;
 }
 
 console.log(fallos ? ('\n' + fallos + ' FALLO(S)') : '\nTODO OK');
