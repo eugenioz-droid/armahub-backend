@@ -252,14 +252,15 @@
     // Se apagan con el trazo grueso: el nodo más grande es r = 2.5, o sea 5 px de diámetro,
     // así que a partir de sw = 5 el trazo lo tapa ENTERO. Dibujarlos ahí no muestra nada —
     // solo mancha el trazo con el verde oscuro de las puntas y engorda el innerHTML, que es
-    // el costo dominante del render (~620 KB por 500 figuras XL, medido). Con la calibración
-    // viva NINGÚN trazo baja de 5 (piso φ8 = 5.0, nominal = 5.5): el bloque es la guarda por
-    // si alguien vuelve a bajar los pisos.
+    // el costo dominante del render (~620 KB por 500 figuras XL, medido).
+    // HOY ESTE BLOQUE ES INALCANZABLE, y se deja dicho para no engañar al que lo lea: con la
+    // calibración viva ningún trazo baja de 5 (piso φ8 = 5.0, nominal = 5.5) — barrido de
+    // 6930 renders (63 figuras × 10 encuadres × los 10 φ + sin φ): CERO círculos dibujados.
+    // Es la guarda por si alguien vuelve a bajar los pisos, no una rama viva.
     // LOS NODOS INTERMEDIOS SE FUERON (codos, 19-ago): con el vértice redondeado el trazo YA
-    // NO PASA por el vértice — se separa hasta R·(1/cos(giro/2) − 1) de él. Un punto ahí
-    // quedaría flotando en el hueco de la curva, marcando una esquina que el fierro no tiene.
-    // Las dos PUNTAS sí siguen sobre el trazo (un extremo no se dobla) y son las que informan
-    // algo: dónde empieza y dónde termina la barra.
+    // NO PASA por el vértice — se separa R·(1/cos(giro/2) − 1) de él. Un punto ahí quedaría
+    // flotando en el hueco de la curva, marcando una esquina que el fierro no tiene. Quedan
+    // sólo las dos PUNTAS, que son los únicos nodos que siguen sobre el trazo.
     if (swTrazo < 5) {
       [0, tpts.length - 1].forEach(function(i) {
         var p = tpts[i];
@@ -476,18 +477,20 @@
   //      (El motor 3D usa 0.49 para lo mismo — es el límite duro de no solaparse.)
   //   2. QUE LA FIGURA SIGA SIENDO ESA FIGURA. Acá manda un problema que el 3D no tiene:
   //      el trazo NO se achica con el render (tiene piso de 5.0–5.5 px en cualquier
-  //      tamaño), así que en la miniatura de 90×72 el fierro dibujado es ~3 veces más
-  //      gordo respecto de la figura que en el preview de 210×140. MEDIDO sobre las 63
-  //      figuras del catálogo × los 6 tamaños vivos: con el tope en 0.49 la miniatura se
-  //      deformaba —un 104A quedaba de "squircle", con el codo comiéndose el 29% de cada
-  //      lado (13.75 px de 48), y un 106A quedaba mancha— y había 62 renders con un tramo
-  //      recto de 0.13 a 0.34 px, o sea lados comidos enteros (57 en Bar Manager S, cuyo
-  //      recuadro útil es de 30×12 px, y 5 en M). Con 0.20: CERO tramos comidos, el más
-  //      corto de todo el barrido pasa a 4.23 px, y todo lado conserva ≥ 60% recto.
-  //      Dónde entra el tope: en la miniatura, en 174 de los 199 codos (la figura es
-  //      chica y el trazo no); en el preview sólo en 46, y son las PUNTAS AGUDAS — un
-  //      vértice de 45° pide una tangencia de 2.41·R contra 1.00·R de uno de 90°. En los
-  //      lados largos con doblez normal el tope ni se entera: ahí manda el radio de norma.
+  //      tamaño), así que en la miniatura de 90×72 el fierro dibujado es 2.2 veces más
+  //      gordo respecto de la figura que en el preview de 210×140 (medido trazo/lado mayor
+  //      sobre las 63: mediana 2.18×, máximo 2.64×). MEDIDO sobre las 63 figuras del
+  //      catálogo × los 10 encuadres vivos: con el tope en 0.49 la miniatura se deformaba
+  //      —un 104A quedaba de "squircle", con el codo comiéndose el 29% de cada lado
+  //      (13.75 px de 48), y un 106A quedaba mancha— y había 62 renders con lados comidos
+  //      enteros: 57 en Bar Manager S (recuadro útil de 30×12 px), con tramos rectos de
+  //      0.13 a 0.34 px, y 5 en M, con 0.47 px. Con 0.20: CERO tramos comidos, el más corto
+  //      de todo el barrido pasa a 4.23 px, y todo lado conserva ≥ 60% recto.
+  //      Dónde entra el tope: en la miniatura, en 174 de los 199 codos (la figura es chica
+  //      y el trazo no); en el preview sólo en 46, y 38 de esos son PUNTAS AGUDAS — un
+  //      vértice de 45° pide una tangencia de 2.41·R contra 1.00·R de uno de 90°. Los 8
+  //      restantes son dobleces de 90° sobre lados de 36–43 px (104R, 104S, 105L, 105N,
+  //      105Q): lados cortos de verdad, que es justo lo que el tope está para atender.
   // NO se baja el radio "por si acaso": el 0.20 sólo entra donde el codo de norma no
   // cabe, y cuando entra se BAJA EL RADIO manteniendo la tangencia (ver _codoVertice),
   // que es lo que hace la máquina cuando le piden doblar un lado corto.
@@ -1181,10 +1184,13 @@
     if (_puntos.length >= 2) {
       // En etiquetado 3D, dibujar el arco con sus puntos proyectados (polyline fiel al
       // 3D), no reconstruido con 'A' (que invertía la guata). _arcosIso3d es null en 2D.
-      // El lienzo dibuja los MISMOS codos que el preview (radio nominal): si acá los
-      // vértices fueran en punta, la figura "cambiaría de forma" al pasar del lienzo al
-      // preview. Los nodos arrastrables se siguen pintando encima, así que el vértice
-      // real se ve igual aunque el trazo lo esquive.
+      // El lienzo dibuja el codo con el MISMO radio que el preview (13.75 px, el nominal):
+      // si acá los vértices fueran en punta, la figura cambiaría de forma al pasar del
+      // lienzo al preview. No queda idéntica —el preview reescala la figura al recuadro y
+      // el lienzo no, así que en un cuadrado de 80 px de lienzo el codo se lleva el 17.2%
+      // del lado y en el preview el 13.2%— pero el doblez se ve doblez en los dos.
+      // Los nodos arrastrables se siguen pintando encima, así que el vértice real se ve
+      // igual aunque el trazo lo esquive.
       s += '<path d="' + _pathDesdePuntos(_puntos, _tiposSeg, _radiosSeg, _sweepsSeg, _arcosIso3d, _radioDoblado(SW_NOMINAL)) + '" fill="none" stroke="#00695c" stroke-width="' + SW_NOMINAL + '" stroke-linejoin="round" stroke-linecap="round"/>';
     }
     // Cotas automáticas del arco (3D): ya están en coords de lienzo → tx identidad.

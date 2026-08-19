@@ -47,7 +47,7 @@
 //      ese "extremo" es un vértice más. Sin tratarlo, el marco salía con 3 codos y la
 //      cuarta esquina en punta — justo la más visible, porque es donde arranca el path.
 //
-//   I. BARRIDO DE LAS 63 FIGURAS DEL CATÁLOGO × los 6 tamaños vivos: ni un NaN, ni una
+//   I. BARRIDO DE LAS 63 FIGURAS DEL CATÁLOGO × los 10 encuadres vivos: ni un NaN, ni una
 //      que se salga del viewBox, ni un tramo comido por el codo.
 //
 // Correr con: node tests/test_codo_figura.js
@@ -166,7 +166,7 @@ console.log('B · tangencia: las dos patas entran a la curva sin quiebre:');
   var cs = codos(pathDe(c[1]));
   ok(cs.length > 0 && cs.every(function (k) { return casi(k.t1, k.t2, 0.03); }),
     c[0] + ': las dos tangencias están a la misma distancia del vértice');
-  ok(cs.every(function (k) { return casi(k.t1, k.R * Math.tan(k.giro * Math.PI / 360), 0.05); }),
+  ok(cs.length > 0 && cs.every(function (k) { return casi(k.t1, k.R * Math.tan(k.giro * Math.PI / 360), 0.05); }),
     c[0] + ': y esa distancia es t = R·tan(giro/2) — el arco es tangente de verdad');
 });
 
@@ -226,9 +226,9 @@ console.log('E · el codo no se puede comer el lado (tope = 20% del lado más co
 const ZETA = figura([[100, 0], [0, 12], [100, 0]]);
 var cz = codos(pathDe(ZETA));
 ok(cz.length === 2, 'la zeta con el tramo corto igual sale con sus 2 codos');
-ok(cz.every(function (k) { return k.R < K_CHICO * NOMINAL; }),
+ok(cz.length === 2 && cz.every(function (k) { return k.R < K_CHICO * NOMINAL; }),
   'con el lado corto el RADIO baja (no se recorta la pata): ' + cz.map(function (k) { return k.R.toFixed(2); }).join(' / '));
-ok(cz.every(function (k) { return casi(k.t1, k.R * Math.tan(k.giro * Math.PI / 360), 0.05); }),
+ok(cz.length === 2 && cz.every(function (k) { return casi(k.t1, k.R * Math.tan(k.giro * Math.PI / 360), 0.05); }),
   'y el codo capeado SIGUE siendo tangente (bajar el radio no puede introducir un quiebre)');
 // El tope se lee midiendo el lado corto en el propio path: es la recta entre los 2 arcos.
 var nz = nodos(pathDe(ZETA));
@@ -238,8 +238,14 @@ ok(ladoCorto > 0, 'el tramo del medio NO se lo comió el codo: quedan ' + ladoCo
 ok(casi(ladoCorto / (ladoCorto + cz[0].t1 + cz[1].t1), 1 - 2 * TMAX, 0.02),
   'y lo que queda recto es el 60% del lado: cada codo se lleva como mucho el 20% (tope ' + TMAX + ')');
 ok(cz[0].sweep !== cz[1].sweep, 'la zeta dobla para lados opuestos: los dos codos curvan al revés');
-// Dos codos del mismo lado NUNCA se pisan: con el tope en 20% se llevan 40% entre los dos.
-ok(2 * TMAX < 1, 'el tope garantiza que dos codos del mismo lado no se solapen (2 × ' + TMAX + ' < 1)');
+// Dos codos del mismo lado NUNCA se pisan. Se mide sobre el peor caso posible: una zeta
+// con el tramo del medio DIMINUTO, donde los dos codos tiran del mismo lado a la vez.
+var ZETA_MIN = figura([[100, 0], [0, 0.6], [100, 0]]);
+var nzm = nodos(pathDe(ZETA_MIN));
+var rectosZm = [];
+for (var zi = 1; zi < nzm.length; zi++) if (nzm[zi].cmd === 'L') rectosZm.push(dist(nzm[zi - 1], nzm[zi]));
+ok(rectosZm.every(function (L) { return L >= 0; }),
+  'ni con el tramo del medio en 0.6 unidades se cruzan los codos: ningún tramo recto sale negativo');
 
 // ── F · ángulos agudos y vuelta en U ─────────────────────────────────────────
 console.log('F · donde el codo se sale de madre: la punta aguda y la vuelta en U:');
@@ -264,7 +270,12 @@ CON_ARCO.radios_seg = [0, 120, 0];
 CON_ARCO.sweeps_seg = [1, 1, 1];
 var dArco = pathDe(CON_ARCO);
 ok(nArcos(dArco) === 1, 'los 2 vértices tocan el tramo en arco → ni uno recibe codo (1 solo A: el arco declarado)');
-ok(dArco.indexOf(' A 120') !== -1 || /A \d+/.test(dArco), 'y el arco declarado se dibuja con SU radio, no con el del codo');
+// El radio del arco declarado viaja ESCALADO (radios_seg × scale), así que no se puede
+// buscar el 120 literal: se compara contra el radio del codo, que es lo que este chequeo
+// existe para distinguir. 120 unidades de figura son ~85 px acá; el codo son 13.75.
+var rArco = Number(/ A ([\d.]+)/.exec(dArco)[1]);
+ok(rArco > 3 * (K_CHICO * NOMINAL),
+  'y ese arco tiene SU radio (' + rArco.toFixed(1) + ' px, el declarado escalado), no el del codo (' + (K_CHICO * NOMINAL) + ')');
 
 // ── H · la figura cerrada cierra redonda ─────────────────────────────────────
 console.log('H · el estribo no puede tener 3 esquinas redondas y una en punta:');
@@ -281,11 +292,17 @@ ok(cMarco.length >= 3 && cMarco.every(function (k) { return casi(k.R, K_CHICO * 
 ok(nArcos(pathDe(U)) === 2, 'una U (abierta) sigue con 2 codos: el cierre no se inventa donde no lo hay');
 
 // ── I · barrido de las 63 figuras del catálogo × los 6 tamaños vivos ─────────
-console.log('I · barrido del catálogo real (63 figuras × 6 tamaños):');
+console.log('I · barrido del catálogo real (63 figuras × los 10 encuadres vivos):');
 global.ModeladorCatalogoFiguras = require(path.join(DIR, 'modelador', 'catalogo_figuras.js'));
 const FP = require(path.join(DIR, 'modelador', 'figura_puntos.js'));
+// LOS 10 ENCUADRES VIVOS, no 6: Bar Manager y el Fabricator comparten los 4 recuadros
+// (70×52 / 110×80 / 160×118 / 220×160) pero NO el pad — barmanager.js clava 20 y
+// agregar_cubicacion2.js usa round(min(w,h)×0.22) = 11/18/26/35. Con pads distintos la
+// figura queda a otra escala, así que son 10 casos a medir, no 6.
 const TAMS = [['miniatura', MINI], ['preview', PREV], ['BM S', { width: 70, height: 52, pad: 20 }],
-              ['BM M', { width: 110, height: 80, pad: 20 }], ['BM L', { width: 160, height: 118, pad: 20 }], ['BM XL', XL]];
+              ['BM M', { width: 110, height: 80, pad: 20 }], ['BM L', { width: 160, height: 118, pad: 20 }], ['BM XL', XL],
+              ['Fab S', { width: 70, height: 52, pad: 11 }], ['Fab M', { width: 110, height: 80, pad: 18 }],
+              ['Fab L', { width: 160, height: 118, pad: 26 }], ['Fab XL', { width: 220, height: 160, pad: 35 }]];
 var CATALOGO = global.ModeladorCatalogoFiguras.codigos().map(function (cod) {
   var tr = FP.derivarTramos(cod);
   return tr ? { codigo: cod, geometria: { dim: '2D', tramos: tr } } : null;
@@ -322,7 +339,7 @@ ok(malFuera.length === 0, 'ninguna figura se sale de su viewBox' + (malFuera.len
 ok(malComido.length === 0, 'ningún tramo recto comido por el codo' + (malComido.length ? ': ' + malComido.slice(0, 5).join(', ') : ''));
 ok(minRecto > 4, 'el tramo recto más corto de todo el barrido mide ' + minRecto.toFixed(2) + ' px (> 4)');
 ok(sinCodo.length === 0, 'toda figura con doblez sale con codo' + (sinCodo.length ? ': ' + sinCodo.slice(0, 5).join(', ') : ''));
-ok(nCodos > 1000, 'el barrido midió ' + nCodos + ' codos (no se está probando sobre una lista vacía)');
+ok(nCodos > 1900, 'el barrido midió ' + nCodos + ' codos (no se está probando sobre una lista vacía)');
 
 // ── J · el fuente: un solo sitio decide el codo ──────────────────────────────
 console.log('J · el fuente (que nadie vuelva a la polilínea en punta):');
