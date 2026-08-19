@@ -7301,7 +7301,6 @@
   }
 
   function _applyCam() {
-    if (!ST.camera || !ST.target) return;
     ST.camera.position.copy(_ojoCam());
     // La orientación se ESCRIBE, no se deduce con lookAt: lookAt la reconstruye con
     // el "arriba" del mundo y borraría el alabeo en cada frame.
@@ -7344,21 +7343,19 @@
   // IGUAL. (Con la nube entera no: la familia daba el eje del reparto y el estribo
   // suelto su lado largo, dos respuestas distintas para la misma pieza.)
   //
-  // La regla es la del fierro, y son dos casos:
+  // La regla es la del fierro, y son dos casos (quién decide cuál: _piezaEsPlana,
+  // que le pregunta al catálogo y sólo si no sabe mira la forma de la nube):
   //   · pieza LINEAL (una barra): su eje es su propia recta → dirección de MAYOR
   //     varianza (λ1).
   //   · pieza PLANA (un estribo, o cualquier figura cerrada o doblada dentro de un
   //     plano): el fierro da la vuelta a un contorno y su eje es el del carrete, o
   //     sea la NORMAL de su plano → dirección de MENOR varianza (λ3).
-  // El corte entre los dos casos es λ2/λ1 < 0,05, y los números medidos dicen que no
-  // es un ajuste fino: barra recta = 0,0000 · barra de 600 con patas de 20 = 0,0011 ·
-  // estribo 60×30 = 0,2387 · estribo cuadrado 60×60 = 0,7143. Hay dos órdenes de
-  // magnitud entre un caso y el otro. Con la geometría REAL de la semilla de viga:
-  // CBS (103B) = 0,0005 y ES (104D) = 0,1598, y las cuatro piezas dan el eje que uno
-  // señalaría con el dedo (x, x, x y la traba vertical y) — ver C6 del test.
-  // El único que queda del lado "lineal" sin ser una barra es un estribo larguísimo y
-  // flaco (200×10 → 0,0024): gira sobre su lado largo, que es exactamente lo que uno
-  // espera de una pieza que se ve como una barra.
+  // El INDICIO geométrico (el que se usa sólo cuando el catálogo no sabe) corta en
+  // λ2/λ1 < 0,05, y los números medidos dicen que no es un ajuste fino: barra recta =
+  // 0,0000 · barra de 600 con patas de 20 = 0,0011 · estribo 60×30 = 0,2387 · estribo
+  // cuadrado 60×60 = 0,7143. Con la geometría REAL de la semilla de viga: CBS (103B)
+  // = 0,0005 y ES (104D) = 0,1598, y las cuatro piezas dan el eje que uno señalaría
+  // con el dedo (x, x, x y la traba vertical y) — ver C6 del test.
   var LINEAL_MAX = 0.05;
 
   // Covarianza 3×3 de una nube de puntos (matriz simétrica, en fila mayor).
@@ -7406,10 +7403,40 @@
   // −u son el mismo eje), pero el SENTIDO decide para qué lado gira el arrastre; si
   // se dedujera de la cámara podría darse vuelta a mitad del gesto y el arrastre se
   // invertiría solo. Con una regla puramente geométrica, no.
+  // LO QUE ESTO CUESTA, dicho: como el eje es fijo en el mundo, mirando la pieza desde
+  // el otro lado el gesto se siente invertido (medido: el mismo arrastre mueve un
+  // punto +36 px con la cámara abajo y −26 px con la cámara arriba). Es lo que hace
+  // cualquier asador: girar sobre un eje fijo se ve al revés desde el otro lado. La
+  // órbita normal no lo muestra porque su tope de ±83° la deja siempre en el mismo
+  // hemisferio. Cambiar el signo según la cámara traería una discontinuidad peor: el
+  // gesto se invertiría A MITAD del arrastre al cruzar el plano de la pieza.
   function _signoCanonico(v) {
     var ax = Math.abs(v.x), ay = Math.abs(v.y), az = Math.abs(v.z);
     var c = (ax >= ay && ax >= az) ? v.x : (ay >= az ? v.y : v.z);
     return (c < 0) ? { x: -v.x, y: -v.y, z: -v.z } : { x: v.x, y: v.y, z: v.z };
+  }
+
+  // ¿Contorno cerrado o barra? PRIMERO se le pregunta AL CATÁLOGO (_esContornoCerrado,
+  // que sale de la familia de dibujo de la figura): es la verdad, y la forma de la nube
+  // sólo es un indicio. Se vio con dos casos que el indicio solo se come:
+  //   · barra de 100 con patas de 40 → λ2/λ1 = 0,16 → la nube dice "plana" y la hacía
+  //     girar como carrete, cuando es una barra y su eje es su largo;
+  //   · estribo 400×12 → λ2/λ1 = 0,002 → la nube dice "lineal" y le quitaba su eje de
+  //     carrete, que es lo que un estribo es.
+  // ALCANCE REAL DEL CAMBIO, medido: de 441 combinaciones figura×tipología, 314 pasan
+  // a decidirse distinto que con la nube sola, y TODAS son 'cadena' (barra doblada) —
+  // o sea, barras dobladas que antes giraban como carrete y ahora giran sobre su
+  // largo. Es un cambio de política, no dos parches. En el otro sentido no cambia
+  // nada: no hay ni un caso de "el catálogo dice plana y la nube decía lineal".
+  // EL FALLBACK GEOMÉTRICO casi no se usa, y hay que decirlo: familiaDeDibujo SIEMPRE
+  // contesta algo para una figura con nombre (aunque sea inventada). Sólo entra
+  // cuando el componente no tiene figura todavía, o cuando este editor corre sin el
+  // módulo de figuras (los tests headless de cámara, por ejemplo).
+  function _piezaEsPlana(comp, m, traza, u1, u3) {
+    if (comp && _familiaDibujo(comp)) return _esContornoCerrado(comp);
+    var l1 = _varianzaEn(m, u1);
+    var l3 = u3 ? _varianzaEn(m, u3) : 0;
+    return !!(u3 && l1 > 0 && ((traza - l1 - l3) / l1) >= LINEAL_MAX);
   }
 
   // Devuelve el eje propio (unitario, {x,y,z}) o null si la pieza todavía no tiene
@@ -7430,14 +7457,12 @@
     for (var i = 0; i < 9; i++) mi[i] = -mi[i];
     mi[0] += traza; mi[4] += traza; mi[8] += traza;
     var u3 = _dominante(mi);
-    var l1 = _varianzaEn(m, u1);
-    var l3 = u3 ? _varianzaEn(m, u3) : 0;
-    var l2 = traza - l1 - l3;
-    var plana = (u3 && l1 > 0 && (l2 / l1) >= LINEAL_MAX);
-    return _signoCanonico(plana ? u3 : u1);
+    var comp = ST.receta && ST.receta.componentes && ST.receta.componentes[ST.selCi];
+    var plana = _piezaEsPlana(comp, m, traza, u1, u3);
+    return _signoCanonico((plana && u3) ? u3 : u1);
   }
 
-  // ESTADO REAL de la cámara de este instante: ojo, orientación y base. Ahora es
+  // ESTADO REAL de la cámara de este instante: ojo y orientación. Ahora es
   // álgebra sobre ST (antes había que correr _applyCam primero y leer la matriz, que
   // podía ser la del frame anterior; ese requisito ya no existe).
   function _estadoCamara() {
@@ -7454,9 +7479,16 @@
   //   ojo − p = dist·atrás + panX·derecha + panY·arriba
   // y cada término sale de un producto punto. Devuelve false si `p` queda detrás del
   // ojo (no hay pivote posible).
-  // YA NO TOPEA LA ELEVACIÓN: el modelo viejo la recortaba acá a ±1,45 y eso rompía
-  // la rigidez justo en el tope (la pieza se descolocaba). El tope vive donde tiene
-  // que vivir, en el incremento de la órbita normal (_orbitarMundo).
+  // ACÁ NO SE RECORTA NADA, Y ES A PROPÓSITO. Recortar en esta función es cambiar el
+  // ojo que se pidió, o sea mover la imagen sin que nadie lo haya pedido:
+  //   · la ELEVACIÓN se recortaba acá a ±1,45 y rompía la rigidez justo en el tope;
+  //     el tope ahora vive en el incremento de la órbita normal (_orbitarMundo).
+  //   · la DISTANCIA pasaba por _clampDist, y con la pieza más cerca del ojo que el
+  //     mínimo (dist 40 y la pieza 30 cm por delante → 10, recortado a 15) la imagen
+  //     SALTABA 152 px al empezar a girar (medido). Ahora ese pivote sencillamente
+  //     SE RECHAZA: el gesto cae al giro normal, que no salta.
+  // Devuelve false si `p` no sirve de pivote (detrás del ojo o fuera del rango de
+  // distancia en el que la cámara sabe vivir).
   function _fijarCamDesdeOjo(eye, q, p) {
     var THREE = global.THREE;
     if (!THREE || !ST.target || !eye || !q || !p) return false;
@@ -7466,13 +7498,20 @@
     var atras = new THREE.Vector3(0, 0, 1).applyQuaternion(q);
     var w = new THREE.Vector3(eye.x - p.x, eye.y - p.y, eye.z - p.z);
     var distN = w.dot(atras);
-    if (!(distN > 0)) return false;   // p está detrás de la cámara
+    // TOLERANCIA DE 1e-6 cm EN EL RANGO — no es cosmética. La vuelta por el producto
+    // punto pierde ~2e-12 cm, así que con la cámara en el mínimo EXACTO (dist = 15,
+    // que es donde la deja el clamp de la rueda: 80 ruedas y ahí estás) el pivote de
+    // siempre daba 14,999999999999998 y quedaba RECHAZADO: el arrastre se moría de a
+    // ratos y el enderezado no volvía nunca. La tolerancia separa el ruido de coma
+    // flotante en el borde de lo que el guard sí tiene que atajar — la pieza a 10 cm
+    // con el mínimo en 15, que es el salto de 152 px.
+    if (!(distN >= DIST_MIN - 1e-6 && distN <= DIST_MAX + 1e-6)) return false;   // detrás del ojo, encima o lejísimos
     // Sin renormalizar a propósito: la orientación se acumula multiplicando
     // quaternions unitarios y la norma se desvía 1,4e-13 en 100.000 pasos de arrastre
     // (medido). Un gesto largo son unos miles: renormalizar sería ruido.
     ST.quat = q.clone();
     ST.target.set(p.x, p.y, p.z);
-    ST.dist = _clampDist(distN);
+    ST.dist = distN;                  // ya validado arriba: nada que recortar
     ST.panX = w.dot(derecha);
     ST.panY = w.dot(arriba);
     _marcarSucio();
@@ -7564,6 +7603,66 @@
   // el gesto puede dar la vuelta entera, y toparlo rompería la rigidez.
   var ELEV_MAX = 1.45;
 
+  // ALABEO ACTUAL (rad): cuánto está torcido el horizonte respecto de la vertical del
+  // mundo. Sale de comparar el "arriba" de la cámara con el que tendría un lookAt
+  // normal desde la misma dirección. Cero mirando al cenit (ahí no hay horizonte que
+  // medir) — y ahí tampoco hace falta enderezar nada.
+  function _alabeoCam(b) {
+    var THREE = global.THREE;
+    var der0 = new THREE.Vector3().crossVectors(new THREE.Vector3(0, 1, 0), b.atras);
+    if (!(der0.length() > 1e-6)) return 0;
+    der0.normalize();
+    var arr0 = new THREE.Vector3().crossVectors(b.atras, der0).normalize();
+    return Math.atan2(-b.arriba.dot(der0), b.arriba.dot(arr0));
+  }
+
+  // ENDEREZADO PROGRESIVO: fracción del alabeo que se devuelve POR CADA PÍXEL
+  // RECORRIDO de arrastre normal. Existe porque el giro sobre la pieza deja el
+  // horizonte torcido y la única salida era el ⟳, que además tira abajo el encuadre
+  // (medido: dist 240 → 1320, pan a cero y pivote al origen), y porque 500 pasos de
+  // órbita normal no enderezaban una cámara volcada.
+  // POR PÍXEL Y NO POR EVENTO — importa: cobrándolo por mousemove, el MISMO gesto de
+  // 60 px corregía 2,4% partido en 60 eventos de 1 px y 94% en un solo evento de 60
+  // (factor 38 medido). Quien parte el gesto es el muestreo del ratón, no el usuario.
+  // Con 0,06 por píxel: 60 px de recorrido dejan 2,4% del alabeo —un arrastre normal
+  // endereza— y 10 px dejan 54%, así que no se siente como tirón. Sólo actúa si hay
+  // alabeo: con la cámara a nivel el giro normal es EXACTAMENTE el de siempre
+  // (verificado, 2,8e-10 cm de ojo en 60 pasos).
+  var ROLL_DECAY = 0.06;
+
+  // Destuerce el horizonte girando sobre el EJE DE VISTA QUE PASA POR EL OJO. El ojo
+  // no se mueve y la dirección de vista tampoco: la imagen sólo ROTA en torno al
+  // centro de la pantalla. Hacerlo pasando por el PIVOTE —como estaba— la traslada
+  // cuando el pivote no está al centro, que es justo lo que pasa después de un giro
+  // con ctrl: medido, el primer píxel de arrastre normal movía la imagen 32 px en vez
+  // de los 3 que mueve el arrastre solo.
+  // `dPix` = píxeles recorridos por el gesto en este evento.
+  // NO PASA POR _fijarCamDesdeOjo, y hay una razón medida: un giro sobre `atrás` deja
+  // `atrás` —y por lo tanto `dist`— intactos, pero recalcular dist con un producto
+  // punto pierde 2,2e-12 cm, y con la cámara en el mínimo exacto (dist = 15, que es
+  // donde te deja el clamp de la rueda: 80 ruedas y ahí estás) eso devolvía
+  // 14,999999999999998 → el guard del rango lo rechazaba y el enderezado se apagaba
+  // EN SILENCIO Y PARA SIEMPRE (medido: 100 de 100 pasos sin enderezar, alabeo
+  // clavado en 51,6°). Acá dist ni se toca y el pan se gira con la fórmula exacta:
+  //   ojo = target + dist·atrás + panX·derecha + panY·arriba, y girar la base φ sobre
+  //   `atrás` pide pan' = (panX·cosφ + panY·senφ, −panX·senφ + panY·cosφ) para que el
+  //   ojo quede EXACTAMENTE donde estaba. El test lo verifica (ojo inmóvil, 1e-9).
+  function _enderezarHorizonte(dPix) {
+    var THREE = global.THREE;
+    var b = _baseCam();
+    var roll = _alabeoCam(b);
+    if (!roll) return;
+    var frac = 1 - Math.pow(1 - ROLL_DECAY, Math.max(0, dPix || 0));
+    if (!(frac > 0)) return;
+    var ang = -roll * frac;
+    ST.quat = new THREE.Quaternion().setFromAxisAngle(b.atras, ang).multiply(_quatCam());
+    var c = Math.cos(ang), s = Math.sin(ang);
+    var pX = ST.panX * c + ST.panY * s;
+    ST.panY = -ST.panX * s + ST.panY * c;
+    ST.panX = pX;
+    _marcarSucio();
+  }
+
   // ÓRBITA NORMAL. Componer el acimut alrededor de +Y del mundo con la elevación
   // alrededor de la derecha (ya girada) da EXACTAMENTE lo que daba `rotY += dAz;
   // rotX += dEl`, porque el quaternion manda la base vieja a la nueva y el ojo se
@@ -7578,7 +7677,13 @@
     var qAz = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), dAz);
     var derecha = b.derecha.clone().applyQuaternion(qAz);
     var q = new THREE.Quaternion().setFromAxisAngle(derecha, -dEl).multiply(qAz);
-    return _girarCamRigido(ST.target, q);
+    if (!_girarCamRigido(ST.target, q)) return false;
+    // El giro del mundo devuelve el horizonte a nivel, y se cobra con los píxeles que
+    // REALMENTE giraron: por eso se calculan ACÁ, después del tope de elevación y no
+    // antes. Contra el tope, un arrastre vertical de 18 px giraba la vista 0,66° y se
+    // comía el alabeo entero (medido) — la misma trampa que el radial de eje.
+    _enderezarHorizonte(Math.sqrt(dAz * dAz + dEl * dEl) / K_GIRO);
+    return true;
   }
 
   // MESA GIRATORIA CON EL EJE DE LA PIEZA. Es la MISMA construcción de arriba
@@ -7588,6 +7693,12 @@
   //         derecha de la cámara (three la arma igual: normalize(arriba_mundo × atrás)).
   // Mirando justo a lo largo de la pieza ese producto cruz se degenera y se cae a la
   // derecha de la cámara, así el arrastre vertical nunca queda muerto.
+  // EFECTO LATERAL CONOCIDO: al pivotar en la pieza, `dist` pasa a ser la distancia al
+  // plano de LA PIEZA, no al del centro de pantalla (medido: −7% con la pieza 100 cm
+  // más cerca, −45% con 600). Como el pan y el paso de la rueda se escalan con `dist`,
+  // después de un giro con ctrl el pan va más lento. Es coherente —se pana a la
+  // profundidad de lo que se está mirando— y es el precio de que el pivote sea la
+  // pieza; el primer pan lo devuelve al centro de pantalla (_absorberPanEnTarget).
   function _girarSobreEje(p, u, dAz, dEl) {
     var THREE = global.THREE;
     var b = _baseCam();
@@ -7602,9 +7713,21 @@
     return _girarCamRigido(p, q);
   }
 
+  // ¿EL EJE DE LA PIEZA ES EL VERTICAL DEL MUNDO? Ahí los dos modos COINCIDEN, y no
+  // por un error: el giro normal ya gira sobre la vertical, así que girar sobre el eje
+  // de una barra de pie es el MISMO giro y sólo queda de diferencia el centro (los
+  // 12,7 px de siempre). Medido con la traba de la semilla, arrastre horizontal:
+  // 0,0 px de diferencia. No se puede arreglar sin dejar de hacer lo que dice el
+  // nombre del modo, así que se DICE en la barra de estado en vez de fingir.
+  // EL CORTE ES ANGOSTO A PROPÓSITO: 0,996 = 5° de la vertical, que es donde el gesto
+  // completo separa ~23 px (o sea, casi nada). Con 12° ya separaba 64 px —se ve— y el
+  // aviso habría estado mintiendo al revés: diciendo "esto se verá igual" cuando sí se
+  // nota. Más vale avisar de menos.
+  var COS_VERTICAL = 0.996;
+
   // Aplica un paso de arrastre. `enPieza` = ctrl sostenido (y con selección viva).
-  // Devuelve el modo que REALMENTE se aplicó ('pieza' | 'mundo') o null si el gesto
-  // no movía nada, para que la barra de estado pueda decir la verdad.
+  // Devuelve el modo que REALMENTE se aplicó ('pieza' | 'pieza-vertical' | 'mundo') o
+  // null si el gesto no movía nada, para que la barra de estado pueda decir la verdad.
   function _girarPorArrastre(dx, dy, enPieza) {
     var THREE = global.THREE;
     if (!THREE || !ST.target) return null;
@@ -7620,8 +7743,12 @@
     if (!dAz && !dEl) return null;
     if (enPieza) {
       var u = _ejePropioSeleccion3D();
-      if (u && _girarSobreEje(_centroSeleccion3D(), u, dAz, dEl)) return 'pieza';
+      if (u && _girarSobreEje(_centroSeleccion3D(), u, dAz, dEl)) {
+        return (Math.abs(u.y) >= COS_VERTICAL) ? 'pieza-vertical' : 'pieza';
+      }
     }
+    // (el enderezado del horizonte se cobra dentro de _orbitarMundo, con los píxeles
+    // que sobreviven al radial de eje Y al tope de elevación)
     return _orbitarMundo(dAz, dEl) ? 'mundo' : null;
   }
 
@@ -7668,8 +7795,10 @@
   // donde uno tiene la pieza — 12,7 px de diferencia en todo el gesto. Ahora ctrl
   // cambia el EJE, no el centro; el álgebra y los números están en la nota de
   // _girarPorArrastre. La decisión aquí es sólo de reparto de botones.
-  // El pivote SE QUEDA en la pieza al terminar el gesto en vez de volver al que
-  // había: si pediste girar sobre la barra, el arrastre siguiente sigue ahí.
+  // El pivote QUEDA en la pieza mientras dure el gesto y también el arrastre siguiente
+  // (no se "presta" y se devuelve). Lo que sí lo suelta es el primer pan o la primera
+  // rueda, porque _absorberPanEnTarget lo lleva al centro de la pantalla: es lo que
+  // hace falta para que el zoom al cursor no mande la escena a volar.
   //
   // El mousedown captura el botón real (e.button) Y los modificadores del PROPIO evento
   // (no de un mousemove posterior, que podía llegar sin shift y caer a rotar). El middle
@@ -7724,9 +7853,10 @@
         var modo = _girarPorArrastre(dx, dy, quiereEnPieza);
         if (quiereEnPieza && !ctrlAviso && modo) {
           ctrlAviso = true;
-          _actualizarStatus(modo === 'pieza'
-            ? 'Giro sobre el EJE PROPIO de la pieza: queda clavada y la escena gira a su alrededor (el horizonte se inclina; ⟳ lo endereza).'
-            : 'No se pudo agarrar el eje de esa pieza (¿quedó fuera de cuadro?): se gira la escena.');
+          _actualizarStatus(
+            modo === 'pieza' ? 'Giro sobre el EJE PROPIO de la pieza: su recta queda clavada y la escena da vueltas a su alrededor (el horizonte se inclina; el arrastre normal lo vuelve a enderezar).'
+              : modo === 'pieza-vertical' ? 'El eje de esta pieza es VERTICAL, así que girar sobre él se ve casi igual que el giro normal (sólo cambia el centro). Con una barra o un estribo tumbado la diferencia salta.'
+                : 'No se pudo agarrar el eje de esa pieza (¿quedó fuera de cuadro o pegada al ojo?): se gira la escena.');
         }
       }
       _marcarSucio();   // PERF: la cámara 3D cambió → repintar
@@ -9100,6 +9230,7 @@
     // MODELO DE CÁMARA (quaternion) + los dos modos de giro y su descomposición inversa
     _baseCam: _baseCam, _ojoCam: _ojoCam, _quatDeAngulos: _quatDeAngulos, CAM0: CAM0,
     _girarPorArrastre: _girarPorArrastre, _girarCamRigido: _girarCamRigido,
+    _alabeoCam: _alabeoCam, _enderezarHorizonte: _enderezarHorizonte,
     _fijarCamDesdeOjo: _fijarCamDesdeOjo,
     _estadoCamara: _estadoCamara, _applyCam: _applyCam,
     _factorZoomRueda: _factorZoomRueda, _clampDist: _clampDist,   // zoom de rueda + techo de acercamiento

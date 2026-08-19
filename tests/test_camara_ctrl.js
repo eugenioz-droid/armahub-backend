@@ -22,6 +22,14 @@
 //        modelo viejo, de 2 grados, se degeneraba justo ahí).
 //   C5 · Lo que ya funcionaba sigue igual: pivotar sin mover, absorber el pan y
 //        panear en el plano de pantalla — también con el horizonte inclinado.
+//   C6 · Con la GEOMETRÍA REAL de la semilla de viga: cada pieza da el eje que uno
+//        señalaría con el dedo, y el editor avisa cuando el eje es vertical.
+//   C7 · Barrido de 48 escenarios: los dos modos se separan cientos de píxeles en
+//        todos, salvo el caso débil conocido (pieza vertical), que queda congelado.
+//   C8 · Un pivote imposible (la pieza pegada al ojo) se RECHAZA en vez de recortarse:
+//        el gesto cae al giro normal y la imagen no pega el tirón de 152 px.
+//   C9 · El arrastre normal endereza el horizonte que dejó el ctrl, sin tocar el
+//        encuadre y sin tirones.
 //
 // Corre el template_editor.js REAL sobre un mini-DOM y un THREE de mentira (three
 // viene de CDN y en Node no está; acá sólo hacen falta Vector3, Quaternion y una
@@ -284,8 +292,9 @@ console.log('\nC1 — la órbita NORMAL no cambió (mismo ojo que `rotY += dAz; 
   const d = Math.hypot(ojo.x - esperado.x, ojo.y - esperado.y, ojo.z - esperado.z);
   ok(d < 1e-9, pasos + ' pasos de arrastre dejan el ojo donde lo dejaba la fórmula vieja (Δ=' + d.toExponential(2) + ' cm)');
   ok(alabeoGrados(TE) < 1e-9, 'la órbita normal NO inclina el horizonte (alabeo ' + f6(alabeoGrados(TE)) + '°)');
-  ok(Math.abs(rotX - 1.45) < 1e-12, 'el gesto llegó al tope de elevación (1,45 rad) y ahí se quedó');
-  ok(Math.abs(elevGrados(TE) - 1.45 * 180 / Math.PI) < 1e-6, 'la cámara está EXACTAMENTE en el tope, sin pasarse');
+  // el gesto era lo bastante largo como para llegar al tope (la fórmula espejo también
+  // topó), así que esto mide el tope de VERDAD: dónde quedó la cámara.
+  ok(Math.abs(elevGrados(TE) - 1.45 * 180 / Math.PI) < 1e-6, 'la cámara queda EXACTAMENTE en el tope de 1,45 rad, sin pasarse');
   // el pivote no se mueve en pantalla: es el hecho medido que desmiente la teoría del
   // "pivote = target + pan" (0,000000 px en 60 pasos).
   const w2 = sesion(), T2 = w2.TemplateEditor;
@@ -323,6 +332,25 @@ console.log('\nC2 — EJE PROPIO de la pieza (barra = su recta · estribo = la n
   montar(TE, [{ meta: { ci: 0 }, puntos: [{ x: 10, y: -150, z: 5 }, { x: 10, y: 150, z: 5 }] }]);
   const uv = TE._ejePropioSeleccion3D();
   ok(!!uv && Math.abs(uv.y - 1) < 1e-6, 'barra vertical → eje y (vertical del mundo)');
+
+  // EL CATÁLOGO MANDA sobre la forma de la nube. Dos casos donde el indicio
+  // geométrico solo se equivoca (los midió la auditoría):
+  //   · barra de 100 con patas de 40 → la nube la ve "plana" (λ2/λ1 = 0,16) y la haría
+  //     girar como carrete; es una barra y su eje es su largo.
+  //   · estribo 400×12 → la nube la ve "lineal" (0,002) y le quitaría su eje de
+  //     carrete; es un estribo y su eje es la normal.
+  const barraPatas = [{ meta: { ci: 0 }, puntos: [
+    { x: -50, y: 40, z: 0 }, { x: -50, y: 0, z: 0 }, { x: 50, y: 0, z: 0 }, { x: 50, y: 40, z: 0 }] }];
+  montar(TE, barraPatas);
+  TE._st.receta = { componentes: [{ tipologia: 'CBS', figura: '103B' }] };
+  const ub = TE._ejePropioSeleccion3D();
+  ok(Math.abs(ub.x - 1) < 1e-6, 'barra de 100 con patas de 40 (figura de cadena) → eje x, su largo (' + f6(ub.x) + ')');
+  const estFlaco = [{ meta: { ci: 0 }, puntos: [
+    { x: 0, y: -200, z: -6 }, { x: 0, y: 200, z: -6 }, { x: 0, y: 200, z: 6 }, { x: 0, y: -200, z: 6 }, { x: 0, y: -200, z: -6 }] }];
+  montar(TE, estFlaco);
+  TE._st.receta = { componentes: [{ tipologia: 'ES', figura: '104D' }] };
+  const ue = TE._ejePropioSeleccion3D();
+  ok(Math.abs(ue.x - 1) < 1e-6, 'estribo 400×12 (figura de estribo) → eje x, la normal de su plano (' + f6(ue.x) + ')');
 
   montar(TE, []);
   ok(TE._ejePropioSeleccion3D() === null, 'sin selección no hay eje propio (null, no un eje inventado)');
@@ -460,13 +488,20 @@ console.log('\nC5 — lo que ya funcionaba sigue igual (pivotar, absorber el pan
     ok(dZ < 1e-6, 'el punto bajo el cursor queda clavado al hacer zoom con el horizonte inclinado (' + f6(dZ) + ' px)');
   }
 
-  // el radial de EJE sigue restringiendo el gesto en los dos modos
+  // EL RADIAL DE EJE sigue restringiendo el gesto EN LOS DOS MODOS. Con 'z' sólo pasa
+  // el acimut: el arrastre vertical no mueve nada y el horizontal sí, también con ctrl
+  // (ahí el "acimut" es el giro sobre el eje de la pieza).
   const wE = sesion(), TEj = wE.TemplateEditor; montar(TEj, BARRA);
   TEj._st.ejeRot = 'z';
   const e0 = elevGrados(TEj);
   TEj._girarPorArrastre(0, 30, false);
   ok(Math.abs(elevGrados(TEj) - e0) < 1e-9, 'con el eje Z fijado, el arrastre vertical no cambia la elevación');
-  ok(TEj._girarPorArrastre(0, 30, true) === null, 'y con ctrl tampoco hay nada que aplicar (gesto nulo)');
+  ok(TEj._girarPorArrastre(0, 30, true) === null, 'y con ctrl el arrastre vertical tampoco aplica nada');
+  const ejeBarra = [{ x: -250, y: 15, z: 12 }, { x: 250, y: 15, z: 12 }];
+  const antesEje = ejeBarra.map((P) => proyectar(TEj, P));
+  ok(TEj._girarPorArrastre(30, 0, true) === 'pieza', 'pero el HORIZONTAL con ctrl sí gira sobre el eje de la pieza');
+  peor = Math.max.apply(Math, ejeBarra.map((P, k) => dist2(proyectar(TEj, P), antesEje[k])));
+  ok(peor < 1e-6, 'y con el eje Z fijado sigue siendo rígido sobre la pieza (' + f6(peor) + ' px)');
 }
 
 // ================================================================ C6
@@ -477,7 +512,10 @@ console.log('\nC6 — con la GEOMETRÍA REAL de la semilla (lo que el usuario ti
   const out = w.ModeladorGenerar.generarElemento(receta);
   ok(out.placements.length > 50, 'la semilla genera ' + out.placements.length + ' colocaciones reales');
 
-  const ejeDe = (ci) => { montar(TE, out.placements); TE._st.selCi = ci; return TE._ejePropioSeleccion3D(); };
+  // Con la RECETA puesta, el eje se decide como en el editor de verdad: preguntándole
+  // al catálogo si la figura es contorno cerrado (_piezaEsPlana), no adivinando por la
+  // forma de la nube.
+  const ejeDe = (ci) => { montar(TE, out.placements, ci); TE._st.receta = receta; return TE._ejePropioSeleccion3D(); };
   const esperado = { 0: 'x', 1: 'x', 2: 'x', 3: 'y' };   // CBS · CBI · ES(estribo) · TRV(traba)
   const nombre = { 0: 'CBS (barra sup. doblada, 103B)', 1: 'CBI (barra inf. recta)', 2: 'ES (estribo 104D)', 3: 'TRV (traba vertical)' };
   Object.keys(esperado).forEach((k) => {
@@ -486,14 +524,21 @@ console.log('\nC6 — con la GEOMETRÍA REAL de la semilla (lo que el usuario ti
     ok(dom === esperado[k], nombre[k] + ' → eje ' + dom + ' (' + [f6(u.x), f6(u.y), f6(u.z)].join(', ') + ')');
   });
 
+  // EL MODO QUE SE ANUNCIA es distinto para la traba: su eje es vertical y eso hace
+  // que el giro se vea casi igual que el normal. El editor lo DICE en vez de fingir
+  // (ver el mensaje de _bindOrbita), y acá se congela que lo distingue.
+  const modoDe = (ci) => { montar(TE, out.placements, ci); TE._st.receta = receta; return TE._girarPorArrastre(4, 0, true); };
+  ok(modoDe(0) === 'pieza' && modoDe(2) === 'pieza', 'barra y estribo → modo "pieza" (el giro se nota)');
+  ok(modoDe(3) === 'pieza-vertical', 'traba de pie → modo "pieza-vertical" (el editor avisa que se verá parecido)');
+
   // EL CASO REAL: el estribo (la pieza que más se mira en una viga). Su eje propio es
   // el del reparto, horizontal, así que el ctrl se nota de inmediato.
-  const wC = sesion(), TC = wC.TemplateEditor; montar(TC, out.placements); TC._st.selCi = 2;
+  const wC = sesion(), TC = wC.TemplateEditor; montar(TC, out.placements, 2);
   const c = TC._centroSeleccion3D(), u = TC._ejePropioSeleccion3D();
   const sobreEje = [-200, 200].map((t) => ({ x: c.x + u.x * t, y: c.y + u.y * t, z: c.z + u.z * t }));
   const testigo = { x: 0, y: -150, z: 200 };
   const mCtrl = arrastrar(TC, 60, 4, 0, true, sobreEje.concat([testigo]));
-  const wN = sesion(), TN = wN.TemplateEditor; montar(TN, out.placements); TN._st.selCi = 2;
+  const wN = sesion(), TN = wN.TemplateEditor; montar(TN, out.placements, 2);
   const mNorm = arrastrar(TN, 60, 4, 0, false, sobreEje.concat([testigo]));
   ok(mCtrl[0] < 1e-6 && mCtrl[1] < 1e-6,
     'estribo real: con ctrl su eje queda clavado (' + f6(mCtrl[0]) + ' / ' + f6(mCtrl[1]) + ' px)');
@@ -538,6 +583,130 @@ console.log('\nC7 — BARRIDO: los dos modos no se parecen en ninguna combinaci�
   // pivote), este número sube y hay que venir a mirarlo — no es un fallo, es el aviso.
   ok(minPorPieza[3] < 100 && minPorPieza[3] > 5,
     'TRV (traba vertical) es el caso débil conocido: baja hasta ' + f1(minPorPieza[3]) + ' px');
+}
+
+// ================================================================ C8
+console.log('\nC8 — la pieza PEGADA AL OJO no se agarra: se gira la escena, pero no se salta');
+{
+  // Con la cámara muy cerca (dist 40) y la pieza 30 cm por delante del pivote, el
+  // plano de la pieza cae a 10 cm del ojo — por debajo del mínimo de la cámara (15).
+  // Recortar ahí (lo que hacía _clampDist) reconstruía OTRO ojo y la imagen saltaba
+  // 152 px de golpe. Ahora ese pivote se rechaza y el gesto cae al giro normal.
+  const w = sesion(), TE = w.TemplateEditor;
+  montar(TE, BARRA);
+  TE._st.dist = 25;
+  // pieza pequeña puesta 10 cm DELANTE del pivote, sobre el eje de vista: su plano
+  // queda a 25 − 10 = 15… justo en el límite; a 12 cm queda a 13, por debajo.
+  const b = TE._baseCam();
+  const c = { x: b.atras.x * 12, y: b.atras.y * 12, z: b.atras.z * 12 };
+  const cerca = [{ meta: { ci: 0 }, puntos: [{ x: c.x - 4, y: c.y, z: c.z }, { x: c.x + 4, y: c.y, z: c.z }] }];
+  TE._st.ultimoOut = { placements: cerca };
+  const pivote = { x: 0, y: 0, z: 0 };
+  const antes = proyectar(TE, pivote);
+  const modo = TE._girarPorArrastre(1, 0, true);
+  ok(modo === 'mundo', 'ctrl sobre una pieza pegada al ojo cae al giro de la escena (modo=' + modo + ')');
+  ok(Math.abs(TE._st.dist - 25) < 1e-9, 'y NO se reescribe la distancia (dist=' + f1(TE._st.dist) + ')');
+  // el giro normal mueve la escena, claro; lo que se mide es que no hubo SALTO: el
+  // pivote sigue clavado, que es justo lo que el clamp rompía (152 px de tirón).
+  ok(dist2(proyectar(TE, pivote), antes) < 1e-9,
+    'el pivote sigue clavado: no hubo tirón (' + f6(dist2(proyectar(TE, pivote), antes)) + ' px)');
+  // y con la cámara a distancia normal esa MISMA pieza sí se agarra
+  const w2 = sesion(), T2 = w2.TemplateEditor;
+  montar(T2, cerca);
+  ok(T2._girarPorArrastre(1, 0, true) === 'pieza', 'a distancia normal esa misma pieza sí se agarra');
+}
+
+// ================================================================ C9
+console.log('\nC9 — el arrastre normal ENDEREZA el horizonte que dejó el ctrl');
+{
+  // Deja la cámara torcida Y con el pivote descentrado (que es como queda de verdad
+  // tras un ctrl sobre una pieza que no está al medio): así se ve si el enderezado
+  // sólo destuerce o además arrastra la imagen.
+  // (el pan de 200 cm es el que hace visible el defecto: con el pivote al centro el
+  // enderezado mal hecho tampoco se notaba)
+  const torcida = (TE) => { montar(TE, BARRA); TE._st.panX = 200; TE._st.panY = -80; arrastrar(TE, 30, 4, 0, true, []); };
+  const w = sesion(), TE = w.TemplateEditor;
+  torcida(TE);
+  const alab0 = alabeoGrados(TE);
+  ok(alab0 > 10, 'tras el ctrl el horizonte quedó a ' + f1(alab0) + '°');
+
+  // EL PRIMER PÍXEL NO DA UN TIRÓN. Se compara contra el MISMO arrastre sin alabeo:
+  // si el enderezado empujara la imagen, este número se dispararía (medido con el
+  // enderezado girando sobre el pivote: 32 px contra 3).
+  const centro = () => { const b = TE._baseCam(); return new V3().copy(TE._ojoCam(b)).addScaledVector(b.atras, -TE._st.dist); };
+  const P = centro(), antes = proyectar(TE, P);
+  TE._girarPorArrastre(1, 0, false);
+  const salto = dist2(proyectar(TE, P), antes);
+  // la MISMA cámara pero a nivel (mismo pivote descentrado: lo único que cambia es el
+  // alabeo, así que la diferencia entre los dos números es lo que aporta el enderezado)
+  const wL = sesion(), TL = wL.TemplateEditor; montar(TL, BARRA);
+  TL._st.dist = TE._st.dist; TL._st.panX = TE._st.panX; TL._st.panY = TE._st.panY;
+  const PL = (() => { const b = TL._baseCam(); return new V3().copy(TL._ojoCam(b)).addScaledVector(b.atras, -TL._st.dist); })();
+  const antesL = proyectar(TL, PL);
+  TL._girarPorArrastre(1, 0, false);
+  const saltoL = dist2(proyectar(TL, PL), antesL);
+  ok(salto < saltoL * 1.5 + 0.5,
+    'el primer píxel con el horizonte torcido mueve ' + f1(salto) + ' px, igual que sin torcer (' + f1(saltoL) + ' px): no hay tirón');
+
+  // MISMO GESTO, MISMO RESULTADO: cobrar por PÍXEL y no por evento. 60 px partidos en
+  // 60, en 6 o en 1 evento tienen que dejar el mismo alabeo (antes: 2,4% / 69% / 94%).
+  const restante = (pasos, dxx) => { const t = sesion().TemplateEditor; torcida(t); const a = alabeoGrados(t); arrastrar(t, pasos, dxx, 0, false, []); return alabeoGrados(t) / a; };
+  const r60 = restante(60, 1), r6 = restante(6, 10), r1 = restante(1, 60);
+  ok(Math.abs(r60 - r1) < 0.02 && Math.abs(r60 - r6) < 0.02,
+    '60 px dejan el mismo alabeo se partan como se partan: ' + f1(r60 * 100) + '% / ' + f1(r6 * 100) + '% / ' + f1(r1 * 100) + '%');
+  ok(r60 < 0.05, 'y ese mismo recorrido de 60 px deja menos del 5% (' + f1(r60 * 100) + '%)');
+  ok(restante(1, 10) > 0.4 && restante(1, 10) < 0.7,
+    'con 10 px sólo se corrige el ' + f1((1 - restante(1, 10)) * 100) + '%: es progresivo, no un salto');
+
+  // NO TOCA EL ENCUADRE (a diferencia del ⟳, que reencuadra entero)
+  const w3 = sesion(), T3 = w3.TemplateEditor; torcida(T3);
+  const d0 = T3._st.dist;
+  arrastrar(T3, 60, 2, 0, false, []);
+  ok(Math.abs(T3._st.dist - d0) < 1e-9, 'la distancia no se mueve (' + f1(T3._st.dist) + ')');
+  ok(alabeoGrados(T3) < 1, 'y el horizonte queda a nivel (' + f1(alabeoGrados(T3)) + '°)');
+
+  // EL OJO NO SE MUEVE al destorcer (es lo que separa "rotar la imagen" de
+  // "arrastrarla"), y `dist` no se toca NI UN BIT: recalcularla con un producto punto
+  // perdía 2,2e-12 y con la cámara en el mínimo exacto (dist 15, donde deja el clamp
+  // de la rueda) el enderezado se apagaba en silencio para siempre.
+  const w5 = sesion(), T5 = w5.TemplateEditor; torcida(T5);
+  T5._st.dist = 15;                                    // el mínimo EXACTO
+  const ojoAntes = T5._ojoCam(), alabMin0 = alabeoGrados(T5);
+  T5._girarPorArrastre(2, 0, false);
+  const dOjo = Math.hypot(T5._ojoCam().x - ojoAntes.x, T5._ojoCam().y - ojoAntes.y, T5._ojoCam().z - ojoAntes.z);
+  ok(Math.abs(T5._st.dist - 15) < 1e-9, 'a dist 15 exacto la distancia se queda en 15 (' + T5._st.dist + ')');
+  ok(alabeoGrados(T5) < alabMin0 - 5, 'y ahí SÍ gira y SÍ endereza (' + f1(alabMin0) + '° → ' + f1(alabeoGrados(T5)) + '°)');
+  ok(dOjo > 1e-6, 'el arrastre movió el ojo, o sea que el giro no quedó rechazado en el borde (' + f6(dOjo) + ' cm)');
+  // EL CONTRATO DEL ENDEREZADO, medido solo (sin el giro encima): destuerce sin mover
+  // el ojo ni un micrón y sin tocar dist. Es lo que lo separa de "arrastrar la imagen".
+  const w6 = sesion(), T6 = w6.TemplateEditor; torcida(T6);
+  const ojo6 = T6._ojoCam(), dist6 = T6._st.dist, alab6 = alabeoGrados(T6);
+  T6._enderezarHorizonte(20);
+  const mov6 = Math.hypot(T6._ojoCam().x - ojo6.x, T6._ojoCam().y - ojo6.y, T6._ojoCam().z - ojo6.z);
+  ok(mov6 < 1e-9, 'enderezar NO mueve el ojo (' + f6(mov6) + ' cm)');
+  ok(T6._st.dist === dist6, 'ni toca la distancia (sigue en ' + f1(T6._st.dist) + ', bit a bit)');
+  ok(alabeoGrados(T6) < alab6 * 0.35, 'y sí destuerce: ' + f1(alab6) + '° → ' + f1(alabeoGrados(T6)) + '° con 20 px');
+
+  // NO SE COBRAN LOS PÍXELES QUE NO GIRAN NADA. Dos sitios donde el gesto se
+  // descarta: el radial de eje y el tope de elevación. Contra el tope, un arrastre
+  // vertical giraba la vista 0,66° y borraba el alabeo entero.
+  const wZ = sesion(), TZ = wZ.TemplateEditor; torcida(TZ);
+  TZ._st.ejeRot = 'z';
+  const az0 = alabeoGrados(TZ);
+  arrastrar(TZ, 12, 0, 50, false, []);                  // 600 px verticales, todos descartados
+  ok(Math.abs(alabeoGrados(TZ) - az0) < 1e-9, 'con el eje Z fijado, 600 px verticales no tocan el alabeo (' + f1(alabeoGrados(TZ)) + '°)');
+  const wT = sesion(), TT = wT.TemplateEditor; torcida(TT);
+  arrastrar(TT, 60, 0, 8, false, []);                   // sube hasta el tope de elevación
+  const at0 = alabeoGrados(TT);
+  arrastrar(TT, 12, 0, 50, false, []);                  // ya topado: 600 px que no giran nada
+  ok(Math.abs(alabeoGrados(TT) - at0) < 0.5, 'contra el tope de elevación tampoco (' + f1(at0) + '° → ' + f1(alabeoGrados(TT)) + '°)');
+
+  // LA CÁMARA VOLCADA también vuelve (era el caso que 500 pasos no arreglaban)
+  const w4 = sesion(), T4 = w4.TemplateEditor; montar(T4, BARRA);
+  arrastrar(T4, 60, 4, 0, true, []);
+  ok(T4._baseCam().arriba.y < 0, 'un ctrl largo deja la cámara dada vuelta (arriba.y=' + f6(T4._baseCam().arriba.y) + ')');
+  arrastrar(T4, 40, 2, 0, false, []);
+  ok(alabeoGrados(T4) < 5, 'y 80 px de arrastre normal la enderezan (' + f1(alabeoGrados(T4)) + '°)');
 }
 
 console.log('\n' + (fallos ? '✗ ' + fallos + ' fallo(s)' : '✓ todo verde'));
