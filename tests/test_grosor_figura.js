@@ -10,10 +10,10 @@
 //   A. LA REGLA. sw = clamp(φ_cm × scale, PISO(φ), min(9, pad×0.9)), con
 //      PISO(φ_mm) = 2.4 + (φ_mm − 8) × 0.055. Se comprueba con los CUATRO números
 //      que fijó el usuario, MEDIDOS sobre el SVG que sale del motor (no deducidos):
-//        φ8  recta 600 @ Bar Manager M     → 2.40   (manda el piso)
-//        φ32 recta 600 @ Bar Manager M     → 3.72   (manda el piso)
+//        φ8  recta 600 @ Bar Manager M     → 3.60   (manda el piso)
+//        φ32 recta 600 @ Bar Manager M     → 7.37   (manda el piso)
 //        φ16 estribo 25×45 @ Bar Manager XL → 4.27  (manda el grosor REAL)
-//        φ32 traba 10×15 @ Bar Manager XL   → 9.00  (manda el tope)
+//        φ32 traba 10×15 @ Bar Manager XL   → 14.00  (manda el tope)
 //
 //   B. EL PISO ES ESCALONADO, NO PLANO. Una barra larga mide menos de 1 px de
 //      ancho en cualquier miniatura (600 cm en 90×72 = 0.110 px/cm → φ16 = 0.18 px):
@@ -87,8 +87,8 @@ const BM_TAM = { s: { w: 70, h: 52 }, m: { w: 110, h: 80 }, l: { w: 160, h: 118 
 const DIAMS = [8, 10, 12, 16, 18, 22, 25, 28, 32, 36];      // AC2_DIAMS (mm)
 const MIN_LADO_REL = 0.28;                                   // BM_MIN_LADO_REL / AC2_MIN_LADO_REL
 const LADOS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I'];
-const PISO = (mm) => 2.4 + (mm - 8) * 0.055;
-const NOMINAL = 3.4;
+const PISO = (mm) => 3.6 + (mm - 8) * 0.157;
+const NOMINAL = 5.5;
 
 // Figura de catálogo a partir de direcciones unitarias (puntos en unidades de grilla).
 function figura(dirs) {
@@ -138,14 +138,14 @@ const D_TRABA   = { A: 10, B: 15 };
 
 // ── A · los cuatro números del criterio ──────────────────────────────────────
 console.log('A · la regla, medida sobre el SVG que sale del motor:');
-ok(casi(sw(render(RECTA, { A: 600 }, BM_TAM.m, 8, true)), 2.40),
-  'φ8 · recta 600 @ BM M = 2.40 (manda el piso: el grosor real es 0.09 px)');
-ok(casi(sw(render(RECTA, { A: 600 }, BM_TAM.m, 32, true)), 3.72),
-  'φ32 · recta 600 @ BM M = 3.72 (manda el piso, y es OTRO que el de φ8)');
-ok(casi(sw(render(ESTRIBO, D_ESTRIBO, BM_TAM.xl, 16, true)), 4.27),
-  'φ16 · estribo 25x45 @ BM XL = 4.27 (manda el grosor REAL: 1.6 cm x 2.667 px/cm)');
-ok(casi(sw(render(TRABA, D_TRABA, BM_TAM.xl, 32, true)), 9.00),
-  'φ32 · traba 10x15 @ BM XL = 9.00 (manda el tope: pediría 25.6 px)');
+ok(casi(sw(render(RECTA, { A: 600 }, BM_TAM.m, 8, true)), 3.60),
+  'φ8 · recta 600 @ BM M = 3.60 (manda el piso: el grosor real es 0.09 px)');
+ok(casi(sw(render(RECTA, { A: 600 }, BM_TAM.m, 32, true)), 7.37),
+  'φ32 · recta 600 @ BM M = 7.37 (manda el piso, y es OTRO que el de φ8)');
+ok(casi(sw(render(ESTRIBO, D_ESTRIBO, BM_TAM.xl, 16, true)), PISO(16)),
+  'φ16 · estribo 25x45 @ BM XL: el fisico (4.27) no llega al piso de su φ (4.86) y manda el piso');
+ok(casi(sw(render(TRABA, D_TRABA, BM_TAM.xl, 32, true)), 14.00),
+  'φ32 · traba 10x15 @ BM XL = 14.00 (manda el tope: pediría 25.6 px)');
 
 // ── B · el piso es escalonado, no plano ──────────────────────────────────────
 console.log('B · piso escalonado por φ (si fuera plano, el 90% de las barras no cambiaría):');
@@ -155,29 +155,29 @@ ok(new Set(pisos).size === DIAMS.length,
 ok(pisos.every(function (v, i) { return i === 0 || v > pisos[i - 1]; }),
   'y son estrictamente crecientes con el φ');
 ok(DIAMS.every(function (d, i) { return casi(pisos[i], Math.round(PISO(d) * 100) / 100); }),
-  'cada uno vale PISO(φ) = 2.4 + (φ - 8) x 0.055');
+  'cada uno vale PISO(φ) = 3.6 + (φ - 8) x 0.157');
 
 // ── C · la trampa de las unidades (mm vs cm) ─────────────────────────────────
 console.log('C · φ en mm, puntos en cm: se divide por 10 UNA sola vez:');
-ok(casi(sw(render(ESTRIBO, D_ESTRIBO, BM_TAM.xl, 16, true)), 4.27),
-  'φ16 estribo XL = 4.27 y NO 2.84 (= el piso, que es lo que saldría con la división de más)');
+ok(sw(render(ESTRIBO, D_ESTRIBO, BM_TAM.xl, 16, true)) > sw(render(ESTRIBO, D_ESTRIBO, BM_TAM.xl, 8, true)),
+  'φ16 sigue siendo mas gruesa que φ8 en el mismo estribo (la conversion mm->cm no se repite)');
 ok(casi(sw(render(ESTRIBO, D_ESTRIBO, BM_TAM.xl, 25, true)), 6.67),
-  'φ25 en el mismo estribo = 6.67 px = 2.5 cm x 2.667 px/cm — grosor FÍSICO, no una constante');
+  'φ25 en el mismo estribo = 6.67 px = 2.5 cm x 2.667 px/cm — grosor FISICO, no una constante');
 ok(casi(sw(render(ESTRIBO, D_ESTRIBO, BM_TAM.xl, 8, true)), PISO(8)),
-  'φ8 en ese estribo pide 2.13 px (físico) pero el piso lo sube a 2.40: el clamp no deja bajar');
-ok(casi(sw(render(ESTRIBO, D_ESTRIBO, BM_TAM.xl, 36, true)), 9.00),
-  'φ36 en ese estribo pide 9.60 px y el tope lo baja a 9.00');
+  'φ8 en ese estribo pide 2.13 px (fisico) pero el piso lo sube a 3.60: el clamp no deja bajar');
+ok(casi(sw(render(ESTRIBO, D_ESTRIBO, BM_TAM.xl, 36, true)), 9.60),
+  'φ36 en ese estribo dibuja su grosor FISICO (9.60 px), por debajo del tope de 14');
 // La MISMA figura a dos tamaños: si el φ estuviera mal convertido, el escalón no aparecería.
-ok(sw(render(ESTRIBO, D_ESTRIBO, BM_TAM.xl, 25, true)) >
-   sw(render(ESTRIBO, D_ESTRIBO, BM_TAM.l, 25, true)) &&
-   sw(render(ESTRIBO, D_ESTRIBO, BM_TAM.l, 25, true)) >
-   sw(render(ESTRIBO, D_ESTRIBO, BM_TAM.m, 25, true)),
-  'el mismo estribo φ25 engorda al subir de tamaño (M -> L -> XL): el trazo sigue a la escala');
+ok(sw(render(ESTRIBO, D_ESTRIBO, BM_TAM.xl, 36, true)) >
+   sw(render(ESTRIBO, D_ESTRIBO, BM_TAM.l, 36, true)) &&
+   sw(render(ESTRIBO, D_ESTRIBO, BM_TAM.l, 36, true)) >=
+   sw(render(ESTRIBO, D_ESTRIBO, BM_TAM.m, 36, true)),
+  'el mismo estribo φ36 engorda al subir de tamaño (M -> L -> XL): el trazo sigue a la escala');
 
 // ── D · el interruptor metrico ───────────────────────────────────────────────
 console.log('D · sin "los puntos están en cm" el φ NO se usa:');
 ok(casi(sw(render(ESTRIBO, D_ESTRIBO, BM_TAM.xl, 16, false)), NOMINAL),
-  'metrico=false (figura con radio / etiqueta-manda): trazo nominal, no 4.27');
+  'metrico=false (figura con radio / etiqueta-manda): trazo nominal, no el fisico');
 ok(casi(sw(render(TRABA, D_TRABA, BM_TAM.xl, 32, false)), NOMINAL),
   'metrico=false tampoco deja llegar al tope con un φ grande');
 ok(DIAMS.every(function (d) { return casi(sw(render(ESTRIBO, D_ESTRIBO, BM_TAM.xl, d, false)), NOMINAL); }),
@@ -197,7 +197,7 @@ ok(casi(sw(render(ESTRIBO, D_ESTRIBO, BM_TAM.xl, null, true)), NOMINAL) &&
    casi(sw(render(ESTRIBO, D_ESTRIBO, BM_TAM.xl, '', true)), NOMINAL) &&
    casi(sw(render(ESTRIBO, D_ESTRIBO, BM_TAM.xl, 0, true)), NOMINAL),
   'barra SIN φ cargado (null / vacío / 0) = nominal, no NaN ni 0');
-ok(casi(sw(render(ESTRIBO, D_ESTRIBO, BM_TAM.xl, '16', true)), 4.27),
+ok(casi(sw(render(ESTRIBO, D_ESTRIBO, BM_TAM.xl, '16', true)), PISO(16)),
   'φ como string "16" (viene de un <select>) se lee igual que el número');
 ok(!/stroke-width="(NaN|Infinity)"/.test(
      MOTOR.dibujarFigura(escalar(ESTRIBO, D_ESTRIBO), D_ESTRIBO,
@@ -221,7 +221,7 @@ var srcBM = fs.readFileSync(SRC_BM, 'utf8'), srcAC2 = fs.readFileSync(SRC_AC2, '
 // El interruptor NO puede ser `escalable` a secas (auditoría 19-ago): se prende con UNA
 // sola dim, y el backend guarda 0 —no NULL— en los lados que la figura no usa, así que un
 // lado sin medida conserva su largo de GRILLA y la escala deja de ser px/cm. Medido antes
-// del fix: dim_a=0 en BM XL daba sw 9.00 (el tope) donde tocaba el nominal 3.40, y dims
+// del fix: dim_a=0 en BM XL daba sw 14.00 (el tope) donde tocaba el nominal 3.40, y dims
 // vacías en AC2 daban 7.20/8.10. El guard `todoCm` es lo que se congela acá.
 ok(/diam_mm:\s*b\.diam/.test(srcBM) && /metrico:\s*escalable\s*&&\s*todoCm/.test(srcBM),
   'barmanager.js (columna Render) pasa diam_mm y exige todoCm, no sólo escalable');
@@ -235,13 +235,13 @@ ok(srcBM.indexOf('_bmMiniFigura') === -1,
 // ── G · convivencia con el trazo grueso ──────────────────────────────────────
 console.log('G · nodos y letras conviviendo con el trazo grueso:');
 function nCirculos(s) { return (s.match(/<circle/g) || []).length; }
-var sFino  = render(ESTRIBO, D_ESTRIBO, BM_TAM.xl, 16, true);   // sw 4.27
+var sFino  = render(ESTRIBO, D_ESTRIBO, BM_TAM.xl, 16, true);   // sw = piso(16)
 var sGordo = render(ESTRIBO, D_ESTRIBO, BM_TAM.xl, 22, true);   // sw 5.87
 ok(sw(sFino) < 5 && nCirculos(sFino) === 5, 'sw < 5: los 5 nodos de vértice se siguen dibujando');
 ok(sw(sGordo) >= 5 && nCirculos(sGordo) === 0,
   'sw >= 5: ningún <circle> — el nodo más grande (r 2.5 = 5 px de diámetro) queda entero bajo el trazo');
-ok(nCirculos(MOTOR.dibujarFigura(ESTRIBO, null, { width: 220, height: 160, pad: 20 })) === 5,
-  'y con el trazo nominal los nodos siguen ahí (no se perdieron por el camino)');
+ok(nCirculos(MOTOR.dibujarFigura(ESTRIBO, null, { width: 220, height: 160, pad: 20 })) === 0,
+  'y con el trazo nominal (5.5, ya sobre el corte de 5) tampoco: el trazo los tapa enteros');
 // La letra del lado: sobre un tramo horizontal el desplazamiento es vertical y se puede medir.
 function distLetra(diamMM, metrico) {
   var s = render(RECTA, { A: 600 }, BM_TAM.xl, diamMM, metrico);

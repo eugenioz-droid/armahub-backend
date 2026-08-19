@@ -65,7 +65,12 @@
   // barra dimensionada es MÁS delgada que este nominal. El 3.4 se queda porque cae en medio
   // de ese rango —ni la más flaca ni la más gorda— y porque bajarlo a 3 volvería a mezclar el
   // nominal con el piso de las φ chicas. La holgura de las letras ya no depende de él.
-  var SW_NOMINAL = 3.4;
+  // 19-ago: 3.4 -> 5.5. El 3.4 era casi el 3 de siempre y el usuario no veía ninguna
+  // diferencia: «es algo visual solamente… para eso invertimos en la tarea». Sin barra
+  // detrás no hay diámetro que aplicar, pero sí se puede hacer que la figura se lea
+  // como un FIERRO y no como un alambre, que es lo que se pedía. 5.5 px es el peso que
+  // en un preview de 210x140 da cuerpo sin comerse las letras (van a 8.5 + sw/2).
+  var SW_NOMINAL = 5.5;
 
   // Grosor REAL de la barra en px, con piso y tope. Devuelve SW_NOMINAL si el llamador
   // no dio los dos datos que hacen falta (φ y "estoy dibujando en cm").
@@ -90,7 +95,10 @@
     // escalón separa los φ aunque el grosor real no alcance: 8→2.40, 16→2.84, 25→3.34, 32→3.72.
     // Los que SÍ alcanzan (estribos/trabas/ganchos, bbox < ~70 cm) pasan de largo el piso y se
     // dibujan con su grosor de verdad.
-    var piso = 2.4 + (diamMM - 8) * 0.055;
+    // 19-ago: el escalón iba de 2.40 (φ8) a 3.94 (φ36) — millímetro y medio de rango
+    // total, invisible en pantalla. Ahora va de 3.6 a 8.0: la φ32 se ve gruesa al lado
+    // de la φ8 sin necesidad de que la escala alcance para el grosor real.
+    var piso = 3.6 + (diamMM - 8) * 0.157;
     // TOPE. El trazo sobresale sw/2 del bbox y la fórmula de encuadre (scale/tx) NO lo contempla
     // — no se toca, porque el lienzo del editor la replica y meter el grosor adentro descuadraría
     // el editor respecto del preview. El tope resuelve el desborde: con sw ≤ 0.9·pad lo que
@@ -101,7 +109,11 @@
     // Con pad 0 el tope daba 0 y la barra salía INVISIBLE; con pad negativo, un
     // stroke-width negativo, que es SVG inválido. Ningún llamador vivo del repo lo hace
     // (el pad mínimo real es 11), pero el motor está expuesto en window.disenadorMotor.
-    var tope = Math.max(SW_NOMINAL, Math.min(9, pad * 0.9));
+    // El techo sube de 9 a 14 (19-ago): con 9 px, en L/XL un estribo de 15x15 dibujaba
+    // IGUAL una φ12 que una φ36 —8 de los 10 diámetros pegados al tope—, que es el
+    // efecto contrario al que se busca justo donde uno se acerca a mirar. El pad sigue
+    // mandando cuando es chico, así que el encuadre no se rompe.
+    var tope = Math.max(SW_NOMINAL, Math.min(14, pad * 0.9));
     return Math.min(Math.max((diamMM / 10) * scale, piso), tope);
   }
   // Grosor a texto: 2 decimales SIN ceros de relleno, para que el nominal siga saliendo tal cual
@@ -1032,7 +1044,7 @@
     if (_puntos.length >= 2) {
       // En etiquetado 3D, dibujar el arco con sus puntos proyectados (polyline fiel al
       // 3D), no reconstruido con 'A' (que invertía la guata). _arcosIso3d es null en 2D.
-      s += '<path d="' + _pathDesdePuntos(_puntos, _tiposSeg, _radiosSeg, _sweepsSeg, _arcosIso3d) + '" fill="none" stroke="#00695c" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"/>';
+      s += '<path d="' + _pathDesdePuntos(_puntos, _tiposSeg, _radiosSeg, _sweepsSeg, _arcosIso3d) + '" fill="none" stroke="#00695c" stroke-width="' + SW_NOMINAL + '" stroke-linejoin="round" stroke-linecap="round"/>';
     }
     // Cotas automáticas del arco (3D): ya están en coords de lienzo → tx identidad.
     if (_cotasArcoIso3d) {
