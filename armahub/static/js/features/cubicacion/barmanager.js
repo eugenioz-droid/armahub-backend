@@ -42,23 +42,6 @@ async function _bmCargarGeometrias() {
   })();
   return _bmGeomPromesa;
 }
-// Geometría cruda del catálogo para un código (o null). Helper para no repetir el
-// acceso _bmGeometrias[codigo].geometria en varios sitios.
-function _bmGeoDe(codigo) {
-  var f = codigo && _bmGeometrias && _bmGeometrias[codigo];
-  return (f && f.geometria) || null;
-}
-// Mini-SVG de la figura a tamaño fijo, SIN escalar a las dims (se usa en la celda
-// "Figura" como referencia visual del tipo). '' si no hay geometría / motor.
-function _bmMiniFigura(codigo) {
-  var geo = _bmGeoDe(codigo);
-  if (!geo) return '';
-  if (!window.disenadorMotor || !window.disenadorMotor.dibujarFigura) return '';
-  try {
-    return window.disenadorMotor.dibujarFigura(geo, null, { width: 90, height: 72, pad: 12 });
-  } catch (e) { return ''; }
-}
-
 // ── RENDER ESCALADO A LAS DIMS DE LA BARRA (columna "Render", toggle Render + S/M/L/XL) ──
 // Réplica del control del editor Agregar Despiece: un toggle "Render" y tamaños S/M/L/XL. Por defecto
 // DESACTIVADO (el dibujo escalado tiene costo). Análogo a AC2.render / AC2.tam / ac2SetTam del editor.
@@ -128,7 +111,10 @@ function _bmFiguraSvg(b) {
   try {
     var t = BM_TAM[bmTam] || BM_TAM.m;   // tamaño elegido (S/M/L/XL)
     return '<span style="display:inline-block; vertical-align:middle;">' +
-      window.disenadorMotor.dibujarFigura(geoUse, dims, { width: t.w, height: t.h, pad: 20 }) +
+      // El trazo crece con el φ SOLO si los puntos se reconstruyeron en cm (escalable); si
+      // no, `scale` no es px/cm y el motor cae al trazo nominal. φ va en mm (b.diam).
+      window.disenadorMotor.dibujarFigura(geoUse, dims,
+        { width: t.w, height: t.h, pad: 20, diam_mm: b.diam, metrico: escalable }) +
       '</span>';
   } catch (e) { return ''; }
 }

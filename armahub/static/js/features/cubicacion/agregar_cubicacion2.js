@@ -260,7 +260,10 @@ function ac2FigSvg(b){
       });
     }
     try { return '<span style="display:inline-block; vertical-align:middle;">' +
-      window.disenadorMotor.dibujarFigura(geoUse, dims, { width:t.w, height:t.h, pad:Math.round(Math.min(t.w,t.h)*0.22) }) + '</span>'; }
+      // Trazo = φ real solo si los puntos se reconstruyeron en cm (escalable); si no, el motor
+      // cae al nominal (`scale` no sería px/cm). φ en mm, como lo guarda la barra.
+      window.disenadorMotor.dibujarFigura(geoUse, dims, { width:t.w, height:t.h, pad:Math.round(Math.min(t.w,t.h)*0.22),
+        diam_mm:b.diam, metrico:escalable }) + '</span>'; }
     catch(e){}
   }
   // Fallback: la figura NO tiene geometría dibujada en el catálogo (o el motor no cargó). Antes

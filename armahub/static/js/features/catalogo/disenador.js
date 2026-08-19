@@ -55,6 +55,51 @@
     return pts;
   }
 
+  // ---- Grosor del trazo de la barra ----
+  // Trazo NOMINAL cuando no hay barra detrás (catálogo/galería/preview del Diseñador y
+  // del 3D): una figura del catálogo es una FORMA sin escala — sus puntos están en unidades
+  // de grilla, no en cm — así que no se le puede inventar un diámetro. 3.4 px: un peldaño
+  // sobre el 3 de antes para que la figura no se vea más flaca que la misma figura ya
+  // dimensionada en Bar Manager (donde el piso arranca en 2.4 y sube con el φ).
+  var SW_NOMINAL = 3.4;
+
+  // Grosor REAL de la barra en px, con piso y tope. Devuelve SW_NOMINAL si el llamador
+  // no dio los dos datos que hacen falta (φ y "estoy dibujando en cm").
+  //
+  // OJO CON LAS UNIDADES — este error ya se cometió en este repo (ver el comentario de
+  // template_editor.js: el círculo de la barra de punta salía 10× chico por re-aplicar
+  // la conversión mm→cm, y el piso de 3 px lo tapaba dibujando todos los φ iguales):
+  // `diam` viaja en MILÍMETROS (AC2_DIAMS = [8,10,…,36]; el API /barras lo entrega así;
+  // el kg se calcula con diam/2000). Acá se divide por 10 UNA sola vez.
+  //
+  // opts.metrico es el interruptor y NO es opcional: solo cuando el llamador reconstruyó
+  // los puntos con las dims reales de la barra (rama "escalable" de Bar Manager y del
+  // creador de despieces) `scale` es px/cm de verdad. En la rama NO escalable (figura
+  // con radio o etiqueta-manda) los puntos siguen en px del lienzo del Diseñador y `scale`
+  // no es px/cm: aplicar φ ahí daría un grosor arbitrario → cae al nominal.
+  function _grosorTrazo(opts, scale, pad) {
+    var diamMM = Number(opts.diam_mm);
+    if (!opts.metrico || !(diamMM > 0)) return SW_NOMINAL;
+    // PISO ESCALONADO POR φ (no plano). El grosor real de una barra larga no llega a 1 px en
+    // ningún tamaño en uso (600 cm en la miniatura de 90×72 = 0.110 px/cm → φ16 = 0.18 px), así
+    // que con un piso plano el 90% de las barras se dibujaría exactamente igual que hoy. El
+    // escalón separa los φ aunque el grosor real no alcance: 8→2.40, 16→2.84, 25→3.34, 32→3.72.
+    // Los que SÍ alcanzan (estribos/trabas/ganchos, bbox < ~70 cm) pasan de largo el piso y se
+    // dibujan con su grosor de verdad.
+    var piso = 2.4 + (diamMM - 8) * 0.055;
+    // TOPE. El trazo sobresale sw/2 del bbox y la fórmula de encuadre (scale/tx) NO lo contempla
+    // — no se toca, porque el lienzo del editor la replica y meter el grosor adentro descuadraría
+    // el editor respecto del preview. El tope resuelve el desborde: con sw ≤ 0.9·pad lo que
+    // sobresale (≤ 0.45·pad) siempre cabe en el margen. El 9 px es el techo de legibilidad (una
+    // traba de 10×15 con φ32 en XL pediría 25.6 px de ancho: el dibujo sería una mancha). Con los
+    // pads vivos (20 en Bar Manager, 11…35 en el creador) el que manda es siempre el 9.
+    var tope = Math.min(9, pad * 0.9);
+    return Math.min(Math.max((diamMM / 10) * scale, piso), tope);
+  }
+  // Grosor a texto: 2 decimales SIN ceros de relleno, para que el nominal siga saliendo tal cual
+  // (string idéntico al de antes) y el calculado no arrastre 4.266666666666667.
+  function _swTxt(sw) { return String(Math.round(sw * 100) / 100); }
+
   // ---- Render: puntos → <svg> string ----
   // Escala y centra la polilínea en un viewBox fijo, con margen. Dibuja los
   // vértices y etiqueta cada lado con su letra.
@@ -122,6 +167,7 @@
     // El eje Y del SVG crece hacia abajo; invertimos para que no salga espejada.
     function tx(p) { return { x: offX + (p.x - minX) * scale, y: H - (offY + (p.y - minY) * scale) }; }
     var tpts = pts.map(tx);
+    var swTrazo = _grosorTrazo(opts, scale, pad);
 
     var svg = '<svg width="' + W + '" height="' + H + '" viewBox="0 0 ' + W + ' ' + H + '" style="max-width:100%; height:auto;">';
     svg += '<defs>' +
@@ -164,7 +210,7 @@
         arcosTx[k] = (opts.arcos_iso[k] || []).map(tx);
       });
     }
-    svg += '<path d="' + _pathDesdePuntos(tpts, tiposEsc, radiosEsc, sweepsEsc, arcosTx) + '" fill="none" stroke="#00695c" stroke-width="3" stroke-linejoin="round" stroke-linecap="round" />';
+    svg += '<path d="' + _pathDesdePuntos(tpts, tiposEsc, radiosEsc, sweepsEsc, arcosTx) + '" fill="none" stroke="#00695c" stroke-width="' + _swTxt(swTrazo) + '" stroke-linejoin="round" stroke-linecap="round" />';
     // Cotas automáticas del ARCO. Dos orígenes, MISMO formato y MISMA función de dibujo:
     //  - 3D: el editor las calcula en el espacio real y las pasa proyectadas
     //    (cotas_arco_iso, en coords de la proyección) → se mapean con tx().
@@ -177,11 +223,17 @@
       _cotas2d.forEach(function(seg) { svg += _dibujarCotasArcoProyectadas(seg, tx); });
     }
     // Vértices (nodos pequeños para no recargar la miniatura).
-    tpts.forEach(function(p, i) {
-      var isEnd = (i === 0 || i === tpts.length - 1);
-      svg += '<circle cx="' + p.x.toFixed(1) + '" cy="' + p.y.toFixed(1) + '" r="' + (isEnd ? 2.5 : 2) +
-        '" fill="' + (isEnd ? '#004d40' : '#4db6ac') + '" />';
-    });
+    // Se apagan con el trazo grueso: el nodo más grande es r = 2.5, o sea 5 px de diámetro,
+    // así que a partir de sw = 5 el trazo lo tapa ENTERO. Dibujarlos ahí no muestra nada —
+    // solo mancha el trazo con el verde oscuro de las puntas y engorda el innerHTML, que es
+    // el costo dominante del render (~620 KB por 500 figuras XL, medido).
+    if (swTrazo < 5) {
+      tpts.forEach(function(p, i) {
+        var isEnd = (i === 0 || i === tpts.length - 1);
+        svg += '<circle cx="' + p.x.toFixed(1) + '" cy="' + p.y.toFixed(1) + '" r="' + (isEnd ? 2.5 : 2) +
+          '" fill="' + (isEnd ? '#004d40' : '#4db6ac') + '" />';
+      });
+    }
     // Etiquetas de lado AUTOMÁTICAS, desplazadas perpendicular a la línea (no encima).
     // Se pueden suprimir con opts.labels_auto === false (modo etiqueta-manda: las
     // letras las pone el usuario a mano, no se muestran las automáticas).
@@ -192,7 +244,11 @@
         var lbl = labels[i - 1] || '';
         if (lbl) {
           var svx = b.x - a.x, svy = b.y - a.y; var sl = Math.sqrt(svx*svx + svy*svy) || 1;
-          var lox = mx - (svy/sl) * 10, loy = my + (svx/sl) * 10;
+          // Los 10 px se medían desde el EJE de la barra. Con trazo grueso eso ya no alcanza:
+          // a sw = 9 el borde del trazo está a 4.5 px del eje y la letra caía casi encima.
+          // Sumando medio trazo, la separación al BORDE vuelve a ser 10 px con cualquier φ.
+          var lOff = 10 + swTrazo / 2;
+          var lox = mx - (svy/sl) * lOff, loy = my + (svx/sl) * lOff;
           svg += '<text x="' + lox.toFixed(1) + '" y="' + (loy + 3).toFixed(1) +
             '" text-anchor="middle" fill="#00695c" font-size="11" font-weight="700">' + lbl + '</text>';
         }
@@ -286,7 +342,10 @@
               arcos_iso: (geometria && geometria.arcos_iso) || null,
               ejes_iso: (geometria && geometria.ejes_iso) || null,
               angulos_iso: (geometria && geometria.angulos_iso) || null,
-              cotas_arco_iso: (geometria && geometria.cotas_arco_iso) || null };
+              cotas_arco_iso: (geometria && geometria.cotas_arco_iso) || null,
+              // Grosor real: φ en mm + "los puntos están en cm". Si falta cualquiera de
+              // los dos, el motor usa el trazo nominal (ver _grosorTrazo).
+              diam_mm: opts.diam_mm, metrico: opts.metrico };
     return svgDesdePuntos(pts, o);
   }
 
