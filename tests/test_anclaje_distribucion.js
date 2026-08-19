@@ -79,9 +79,13 @@ console.log('A — la distribución SIGUE al hormigón (gaps a los bordes consta
 const recA = receta(600, [estribo({ from: -260, to: 260, sep: 20, eje: 'x' })]);
 R.normalizarReceta(recA);
 const anclaA = recA.componentes[0].distribucion.rango.ancla;
-ok(anclaA && anclaA.ini.ref === 'min' && anclaA.ini.d === 40 &&
-   anclaA.fin.ref === 'max' && anclaA.fin.d === 40,
-  'el ancla derivada dice lo que el usuario dibujó: 40 cm de cada borde (=' + JSON.stringify(anclaA) + ')');
+// 36 y no 40: desde el 19-ago la referencia del ancla de un RANGO es la línea de
+// recubrimiento, no la cara del hormigón — el fierro vive en la zona útil, y por eso
+// cambiar el recubrimiento tiene que mover el abanico (el usuario: «si modifico el
+// recubrimiento no se me ajusta el abanico»). 40 al borde − 4 de recub de extremo = 36.
+ok(anclaA && anclaA.ini.ref === 'min' && anclaA.ini.d === 36 &&
+   anclaA.fin.ref === 'max' && anclaA.fin.d === 36,
+  'el ancla se mide desde el RECUBRIMIENTO: 36 = los 40 dibujados − 4 de recub (=' + JSON.stringify(anclaA) + ')');
 
 const a600 = repartir(recA);
 ok(a600.xs.length === 27 && a600.xs[0] === -260 && a600.xs[26] === 260,
@@ -119,12 +123,12 @@ ok(col.xs[0] === -26 && col.xs[col.xs.length - 1] === 26,
   'cada extremo cae en SU borde útil (±30 ∓ recub 4 = ±26), sin cruzarse (=' +
   col.xs[0] + ' / ' + col.xs[col.xs.length - 1] + ')');
 ok(col.fuera <= 0, 'y nada asoma fuera del hormigón (=' + col.fuera + ')');
-ok(col.avisos.length > 0 && /40/.test(col.avisos.join(' ')),
-  'el tope se AVISA con el número que lo causó (los 40 cm declarados) (=' +
+ok(col.avisos.length > 0 && /36/.test(col.avisos.join(' ')),
+  'el tope se AVISA con el número que lo causó (los 36 cm al recubrimiento) (=' +
   (col.avisos[0] || '—').slice(0, 60) + '…)');
 const anclaTrasTope = recA.componentes[0].distribucion.rango.ancla;
-ok(anclaTrasTope.ini.d === 40 && anclaTrasTope.fin.d === 40,
-  'el tope NO reescribió la receta: el anclaje declarado sigue diciendo 40 y 40');
+ok(anclaTrasTope.ini.d === 36 && anclaTrasTope.fin.d === 36,
+  'el tope NO reescribió la receta: el anclaje declarado sigue diciendo 36 y 36');
 recA.geometria.largo = 600;
 const trasTope = repartir(recA);
 ok(JSON.stringify(trasTope.xs) === JSON.stringify(a600.xs),
@@ -244,7 +248,7 @@ const limpia = conAnclasViejas(null);
     v.out.resumen.kg + ' kg)');
 });
 ok(limpia.comp.distribucion.rango.ancla.ini.ref === 'max' &&
-   limpia.comp.distribucion.rango.ancla.ini.d === 200 &&
+   limpia.comp.distribucion.rango.ancla.ini.d === 196 &&
    limpia.comp.pos_ancla.y.ref === 'max',
   '…y las anclas quedan re-derivadas a bordes (=' +
   JSON.stringify(limpia.comp.distribucion.rango.ancla.ini) + ' · ' +

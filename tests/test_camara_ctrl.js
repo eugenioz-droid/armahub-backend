@@ -388,16 +388,13 @@ console.log('\nC2 — EL PUNTO BAJO EL CURSOR (el pivote del ctrl)');
   ok(!!caja && caja.prof < profBarra,
     'la cara del hormigón está ' + f1(profBarra - caja.prof) + ' cm DELANTE de la barra, y aun así gana la barra');
 
-  // apuntando al vacío DENTRO de la silueta del hormigón → el pivote es el hormigón
+  // EL HORMIGÓN YA NO SE SEÑALA (19-ago, decisión del usuario: «no queremos que detecte
+  // la superficie del hormigón, la idea sería que rote en el punto en el que está»). Su
+  // cara metía el pivote a una profundidad que no era la que se estaba mirando.
   const hHorm = puntoBajo(TE, { x: 0, y: -20, z: 0 });
-  ok(!!hHorm && hHorm.tipo === 'hormigon', 'apuntando donde no hay barra pero sí hormigón → tipo=' + (hHorm && hHorm.tipo));
-  ok(!!hHorm && Math.abs(Math.abs(hHorm.x) - GEO.largo / 2) < 1e-6 || (hHorm && (Math.abs(Math.abs(hHorm.y) - GEO.alto / 2) < 1e-6 || Math.abs(Math.abs(hHorm.z) - GEO.ancho / 2) < 1e-6)),
-    'y el punto cae EN una cara de la caja (' + [f1(hHorm.x), f1(hHorm.y), f1(hHorm.z)].join(', ') + ')');
-
-  // con el 🧊 apagado no hay hormigón que señalar
-  TE._st.verHormigon = false;
-  ok(puntoBajo(TE, { x: 0, y: -20, z: 0 }) === null, 'con el hormigón OCULTO no se puede señalar la caja (null)');
-  TE._st.verHormigon = true;
+  ok(hHorm === null, 'apuntando donde no hay barra, el hormigón NO se señala (=' + JSON.stringify(hHorm) + ')');
+  ok(puntoBajo(TE, { x: 0, y: -20, z: 0 }) === null,
+    'y da lo mismo el 🧊: la caja dejó de ser un objetivo del pivote');
 
   // LA HOLGURA DE AGARRE: 10 px al lado del eje agarran, 30 no. (Una φ16 a 900 cm mide
   // 1,3 px de ancho: sin holgura habría que acertarle al píxel.)
@@ -443,15 +440,26 @@ console.log('\nC2 — EL PUNTO BAJO EL CURSOR (el pivote del ctrl)');
   ok(hS === null || (typeof hS.y === 'number' && isFinite(hS.y)),
     'una coordenada que es un string NO se cuela en el pivote (' + JSON.stringify(hS) + ')');
 
-  // SIN NADA BAJO EL CURSOR: la caída es selección → elemento
+  // SIN NADA BAJO EL CURSOR: el pivote es EL PUNTO QUE SEÑALA EL CURSOR, en el plano
+  // paralelo a la pantalla que pasa por la pieza (19-ago). Antes caía al centro de la
+  // selección, y ese salto era justo lo que el usuario no quería: «la idea sería que
+  // rote en el punto en el que está».
   const wN = sesion(), TN = wN.TemplateEditor;
   montar(TN, BARRA, 0, null, null);
   const pv = TN._pivoteDelCursor(0.02, 0.98, W, H);
-  ok(pv.fuente === 'seleccion', 'sin geometría bajo el cursor, el pivote cae al centro de la barra SELECCIONADA (' + pv.fuente + ')');
-  ok(Math.abs(pv.p.x) < 1e-9 && Math.abs(pv.p.y - 15) < 1e-9, 'que es el centro de su caja (' + [f1(pv.p.x), f1(pv.p.y), f1(pv.p.z)].join(', ') + ')');
+  ok(pv.fuente === 'plano', 'sin geometría bajo el cursor, el pivote es el punto señalado (' + pv.fuente + ')');
+  // el punto está EN el plano de la pieza: misma profundidad que su centro…
+  const cen = TN._centroSeleccion3D(), oj = TN._ojoCam(), at = TN._baseCam().atras;
+  const profPiv = -((pv.p.x - oj.x) * at.x + (pv.p.y - oj.y) * at.y + (pv.p.z - oj.z) * at.z);
+  const profCen = -((cen.x - oj.x) * at.x + (cen.y - oj.y) * at.y + (cen.z - oj.z) * at.z);
+  ok(Math.abs(profPiv - profCen) < 1e-6,
+    'a la MISMA profundidad que la pieza (' + f1(profPiv) + ' vs ' + f1(profCen) + ')');
+  // …y NO es el centro: el cursor está en una esquina del cuadrante
+  ok(Math.hypot(pv.p.x - cen.x, pv.p.y - cen.y, pv.p.z - cen.z) > 1,
+    'y NO es el centro de la pieza: sigue al cursor (' + [f1(pv.p.x), f1(pv.p.y), f1(pv.p.z)].join(', ') + ')');
   TN._st.selCi = -1;
   const pv2 = TN._pivoteDelCursor(0.02, 0.98, W, H);
-  ok(pv2.fuente === 'elemento', 'y sin selección, al centro del ELEMENTO (' + pv2.fuente + ') — el editor lo dice en la barra de estado');
+  ok(pv2.fuente === 'plano', 'y sin selección, sigue siendo el punto señalado — ya no hay salto al centro (' + pv2.fuente + ')');
   // apuntar a la BARRA sigue ganando aunque no esté seleccionada
   TN._st.selCi = -1;
   const pv3 = señalar(TN, P);

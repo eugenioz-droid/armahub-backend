@@ -1365,6 +1365,14 @@
   // la barra no puede violar ninguno de los dos recubrimientos. Documentado como
   // límite: con recub_sup ≠ recub_inf una pieza de pie queda centrada contra el
   // recubrimiento más exigente (para el muro típico son iguales).
+  // Recubrimiento de CADA lado de un eje (el sup y el inf pueden diferir). Es la
+  // referencia del ancla de un rango: la zona util, no la caja de hormigon.
+  function _recubLadosEje(host, e) {
+    if (e === 'x') { var rx = _recubDeCara(host, 'ext'); return { min: rx, max: rx }; }
+    if (e === 'z') { var rz = _recubDeCara(host, 'lat'); return { min: rz, max: rz }; }
+    return { min: _recubDeCara(host, 'inf'), max: _recubDeCara(host, 'sup') };
+  }
+
   function _recubDeEje(host, e) {
     if (e === 'x') return _recubDeCara(host, 'ext');
     if (e === 'z') return _recubDeCara(host, 'lat');
@@ -1531,23 +1539,30 @@
   // ahí sería moverle el fierro al usuario sin decírselo).
   // Sin dimensión de host NO se ancla (null): inventar una referencia sería guardar
   // una intención que nadie declaró. Quien llama ya sabe qué hacer con el null.
-  function anclaDeCoord(coord, dim) {
+  // rMin/rMax (opcionales, 19-ago): recubrimiento de cada lado. Con ellos la distancia
+  // se mide desde la LÍNEA DE RECUBRIMIENTO y no desde la cara del hormigón, que es lo
+  // que el usuario espera de una distribución: «si modifico el recubrimiento no se me
+  // ajusta el abanico; las dimensiones de la barra sí». El fierro vive en la zona útil,
+  // así que su referencia es el borde de esa zona. Sin ellos (0) la cuenta es la de
+  // antes, bit a bit — por eso el pos_hint, que se mide contra la cara, no cambia.
+  function anclaDeCoord(coord, dim, rMin, rMax) {
     var c = Number(coord);
     if (!isFinite(c)) return null;
     var D = Number(dim);
     if (!isFinite(D) || D <= 0) return null;
-    var dMin = Math.abs(c + D / 2), dMax = Math.abs(D / 2 - c);
-    if (dMax < dMin - _EPS_ANCLA) return { ref: 'max', d: _r6(D / 2 - c) };
-    return { ref: 'min', d: _r6(c + D / 2) };   // empate → el borde de origen
+    var a = -D / 2 + (Number(rMin) || 0), b = D / 2 - (Number(rMax) || 0);
+    var dMin = Math.abs(c - a), dMax = Math.abs(b - c);
+    if (dMax < dMin - _EPS_ANCLA) return { ref: 'max', d: _r6(b - c) };
+    return { ref: 'min', d: _r6(c - a) };   // empate → el borde de origen
   }
 
   // ANCLA → COORDENADA contra un host de dimensión `dim`.
-  function coordDeAncla(a, dim) {
+  function coordDeAncla(a, dim, rMin, rMax) {
     if (!a) return null;
     var D = Number(dim), d = Number(a.d) || 0;
     if (!isFinite(D)) return null;
-    if (a.ref === 'min') return -D / 2 + d;
-    if (a.ref === 'max') return D / 2 - d;
+    if (a.ref === 'min') return -D / 2 + (Number(rMin) || 0) + d;
+    if (a.ref === 'max') return D / 2 - (Number(rMax) || 0) - d;
     return null;                                // ref desconocida (p.ej. un 'centro' viejo)
   }
 
@@ -1571,7 +1586,9 @@
     if (!forzar && _tieneAncla(rango)) return rango;
     var D = _dimEje(host, eje || rango.eje || 'x');
     if (!isFinite(D) || D <= 0) return rango;
-    var ini = anclaDeCoord(rango.from, D), fin = anclaDeCoord(rango.to, D);
+    var rl = _recubLadosEje(host, eje || rango.eje || 'x');
+    var ini = anclaDeCoord(rango.from, D, rl.min, rl.max),
+        fin = anclaDeCoord(rango.to, D, rl.min, rl.max);
     if (!ini || !fin) return rango;
     rango.ancla = { ini: ini, fin: fin };
     return rango;
@@ -1625,7 +1642,9 @@
     var ej = eje || rango.eje || 'x';
     var D = _dimEje(host, ej);
     if (!isFinite(D) || D <= 0) return out;
-    var fr = coordDeAncla(rango.ancla.ini, D), to = coordDeAncla(rango.ancla.fin, D);
+    var rlr = _recubLadosEje(host, ej);
+    var fr = coordDeAncla(rango.ancla.ini, D, rlr.min, rlr.max),
+        to = coordDeAncla(rango.ancla.fin, D, rlr.min, rlr.max);
     // Bordes: el del HORMIGÓN (±D/2) y el ÚTIL (±D/2 ∓ recub). Un elemento cuyo
     // recubrimiento se come el eje entero no tiene borde útil: ahí manda el hormigón.
     var loU = -D / 2 + _recubBordeEje(host, ej, 'min');

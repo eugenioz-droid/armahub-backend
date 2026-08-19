@@ -201,8 +201,12 @@ console.log('\nB · EL NÚMERO ES EL DEL ANCLAJE (no una cuenta paralela)');
   const a = c.distribucion.rango.ancla;
   ok(cs[0].txt === '40' && cs[1].txt === '40',
     'viga 600, rango −260→260: 40 y 40 cm a los testeros [' + cs.map(x => x.txt).join('/') + ']');
-  ok(cs[0].txt === String(Math.round(a.ini.d)) && cs[1].txt === String(Math.round(a.fin.d)),
-    'y son EXACTAMENTE el ancla que guarda la receta [' + JSON.stringify(a) + ']');
+// LA COTA Y EL ANCLA DIFIEREN EXACTAMENTE EN EL RECUBRIMIENTO (19-ago). El ancla de un
+// rango se mide desde la LÍNEA DE RECUBRIMIENTO —para que cambiar el recub mueva el
+// abanico—, pero lo que se MUESTRA al arrastrar una distribución es el hueco contra el
+// HORMIGÓN, que es lo que el usuario pidió ver. Por eso acá se suma el recub del lado.
+  ok(Number(cs[0].txt) === Math.round(a.ini.d + 4) && Number(cs[1].txt) === Math.round(a.fin.d + 4),
+    'y son el ancla guardada MÁS el recub de extremo (4): 36+4 = 40 [' + JSON.stringify(a) + ']');
   ok(cs[0].ref === 'min' && cs[1].ref === 'max', 'cada una declara su referencia (min/max)');
 
   // EL CASO QUE DELATA UNA CUENTA PROPIA: un extremo que pasó la mitad. El ancla lo
@@ -219,8 +223,8 @@ console.log('\nB · EL NÚMERO ES EL DEL ANCLAJE (no una cuenta paralela)');
     'un `from` en 100 (viga 600) se ancla al testero +: dice 200 [' + cs2[0].txt + '/' + cs2[0].ref + ']');
   ok(cs2[0].txt !== '400', '…y NO los 400 cm al testero de origen, que es lo que el editor NO hace');
   ok(cs2.every(x => x.ref !== 'centro'), 'ninguna cota declara la referencia `centro`: ya no existe');
-  ok(cs2[0].txt === String(Math.round(cc.distribucion.rango.ancla.ini.d)),
-    'sigue coincidiendo con el ancla guardada [' + JSON.stringify(cc.distribucion.rango.ancla.ini) + ']');
+  ok(Number(cs2[0].txt) === Math.round(cc.distribucion.rango.ancla.ini.d + 4),
+    'sigue siendo el ancla guardada + el recub [' + JSON.stringify(cc.distribucion.rango.ancla.ini) + ']');
 
   // RANGO AL REVÉS (to < from): `from` es el extremo del borde +, no del −.
   const ci = montar([estribo({ from: 260, to: -260, sep: 20, eje: 'x' })]);
@@ -283,8 +287,8 @@ console.log('\nD · EJES QUE NO SON X (la pieza girada reparte en Z; hay líneas
     'SECCIÓN (u=z): 3 y 3 cm a las caras laterales (ancho 30) [' + hz.map(x => x.txt).join('/') + ']');
   ok(vz.length === 2 && vz[0].txt === '3' && vz[1].txt === '3',
     'PLANTA (v=z): el MISMO número, la flecha es vertical [' + vz.map(x => x.txt).join('/') + ']');
-  ok(hz[0].txt === String(Math.round(cz.distribucion.rango.ancla.ini.d)),
-    'y sale del ancla del eje Z, no del largo [' + JSON.stringify(cz.distribucion.rango.ancla) + ']');
+  ok(Number(hz[0].txt) === Math.round(cz.distribucion.rango.ancla.ini.d + 3),
+    'y sale del ancla del eje Z (+ su recub lateral 3), no del largo [' + JSON.stringify(cz.distribucion.rango.ancla) + ']');
   // en la vista donde Z es la PROFUNDIDAD (a lo largo: depth=z) no hay flecha ni cota
   ok(cotas('largo').length === 0, 'donde el eje del rango apunta al observador no se rotula nada');
   soltar();
@@ -326,8 +330,8 @@ console.log('\nE · LAS DOS LÍNEAS DEL ARREGLO (rango / rango2)');
   ok(c2.length === 2 && c2[0].txt === '8' && c2[1].txt === '8',
     'arrastrando la 2ª: las suyas, en SU eje (alto 60, −22→22 → 8 y 8) [' + c2.map(x => x.txt).join('/') + ']');
   const a2 = c.distribucion.rango2.ancla;
-  ok(c2[0].txt === String(Math.round(a2.ini.d)) && c2[1].txt === String(Math.round(a2.fin.d)),
-    'y coinciden con el ancla de rango2 [' + JSON.stringify(a2) + ']');
+  ok(Number(c2[0].txt) === Math.round(a2.ini.d + 4) && Number(c2[1].txt) === Math.round(a2.fin.d + 4),
+    'y son el ancla de rango2 + el recub de esa cara [' + JSON.stringify(a2) + ']');
   soltar();
 }
 

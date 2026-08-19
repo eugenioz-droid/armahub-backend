@@ -256,41 +256,6 @@
       .tplOrdenBtn.on { border-color:#558B2F; background:#f7fbf2; color:#33691e; font-weight:700; }
     </style>
     <div id="catSubTemplates" style="display:none;">
-      <!-- CARD 1 — Configuración del modelador -->
-      <div class="card" style="border-top:3px solid #558B2F;">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
-          <h3 style="margin:0; color:#558B2F;">⚙️ Configuración</h3>
-          <span class="muted" style="font-size:11px;">Con qué nacen las cosas</span>
-        </div>
-        <p class="muted" style="font-size:12px; margin:0 0 12px 0;">
-          Cuatro tablas con los valores de partida del modelador: qué figura, φ y separación trae cada
-          tipología, cómo se calculan los largos del gancho, con qué recubrimiento nace cada elemento y
-          qué lado de cada figura queda fijo.
-          Lo que guardes aquí decide con qué nacen las barras <b>nuevas</b> del editor; un template ya
-          guardado no cambia. Dos cosas siguen sin cablear y cada tabla lo dice: la <b>regla de largos</b>
-          se guarda pero el motor todavía no la lee, y el <b>redondeo</b> y los <b>lados fijos por
-          figura</b> no existen en el motor.
-        </p>
-        <div style="display:flex; flex-wrap:wrap; gap:8px;">
-          <button class="tplCfgBtn" onclick="cfgModAbrir('tipologias')">
-            📐 <b>Figuras por tipología</b>
-            <span class="d">Figura por defecto, sugeridas, φ, @ sep y colocación · por elemento</span>
-          </button>
-          <button class="tplCfgBtn" onclick="cfgModAbrir('largos')">
-            📏 <b>Reglas de largos</b>
-            <span class="d">Fabricación / NCh 211 / Custom + redondeo del corte</span>
-          </button>
-          <button class="tplCfgBtn" onclick="cfgModAbrir('recub')">
-            🧱 <b>Recubrimientos</b>
-            <span class="d">Recubrimiento por defecto de cada tipo de elemento</span>
-          </button>
-          <button class="tplCfgBtn" onclick="cfgModAbrir('figura')">
-            📎 <b>Por figura</b>
-            <span class="d">Qué lado nace en automático y cuál queda fijo</span>
-          </button>
-        </div>
-      </div>
-
       <!-- CARD 2 — Gestor de templates.
            Crear (nombre → modal) + biblioteca. La lista es LIVIANA (GET /templates
            sin `params`) con buscador por nombre y filtro por elemento: los dos los
@@ -349,6 +314,41 @@
         <div id="tplGuardadosLista"><div class="muted">Cargando templates…</div></div>
       </div>
     </div>
+
+      <!-- CARD 1 — Configuración del modelador -->
+      <div class="card" style="border-top:3px solid #558B2F;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+          <h3 style="margin:0; color:#558B2F;">⚙️ Configuración</h3>
+          <span class="muted" style="font-size:11px;">Con qué nacen las cosas</span>
+        </div>
+        <p class="muted" style="font-size:12px; margin:0 0 12px 0;">
+          Cuatro tablas con los valores de partida del modelador: qué figura, φ y separación trae cada
+          tipología, cómo se calculan los largos del gancho, con qué recubrimiento nace cada elemento y
+          qué lado de cada figura queda fijo.
+          Lo que guardes aquí decide con qué nacen las barras <b>nuevas</b> del editor; un template ya
+          guardado no cambia. Dos cosas siguen sin cablear y cada tabla lo dice: la <b>regla de largos</b>
+          se guarda pero el motor todavía no la lee, y el <b>redondeo</b> y los <b>lados fijos por
+          figura</b> no existen en el motor.
+        </p>
+        <div style="display:flex; flex-wrap:wrap; gap:8px;">
+          <button class="tplCfgBtn" onclick="cfgModAbrir('tipologias')">
+            📐 <b>Figuras por tipología</b>
+            <span class="d">Figura por defecto, sugeridas, φ, @ sep y colocación · por elemento</span>
+          </button>
+          <button class="tplCfgBtn" onclick="cfgModAbrir('largos')">
+            📏 <b>Reglas de largos</b>
+            <span class="d">Fabricación / NCh 211 / Custom + redondeo del corte</span>
+          </button>
+          <button class="tplCfgBtn" onclick="cfgModAbrir('recub')">
+            🧱 <b>Recubrimientos</b>
+            <span class="d">Recubrimiento por defecto de cada tipo de elemento</span>
+          </button>
+          <button class="tplCfgBtn" onclick="cfgModAbrir('figura')">
+            📎 <b>Por figura</b>
+            <span class="d">Qué lado nace en automático y cuál queda fijo</span>
+          </button>
+        </div>
+      </div>
 
     <!-- Las 4 tablas de la card "Configuración". Va acá y no en bootstrap.js porque
          es exclusivo de este tab y no depende de ningún otro script: los onclick de

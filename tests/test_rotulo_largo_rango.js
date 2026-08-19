@@ -217,8 +217,8 @@ console.log('\nB · ESCRIBIR EL LARGO EN PANTALLA (se mueve el `to`, no el `from
   TE._setLargoRango(cf.distribucion, 'rango', 900);
   R.reanclarReceta(ST.receta);
   ok(cf.distribucion.rango.to === 640, 'largo 900 en una viga de 600: el `to` se escribe igual (640)');
-  ok(cf.distribucion.rango.ancla.fin.d === -340,
-    'el ancla dice 340 cm MÁS ALLÁ del borde + (no se recorta la intención) [' +
+  ok(cf.distribucion.rango.ancla.fin.d === -344,
+    'el ancla dice 344 cm más allá de su referencia — no se recorta la intención [' +
     cf.distribucion.rango.ancla.fin.d + ']');
   delete cf._avisos;
   R.expandirComponente(cf, Object.assign({}, ST.receta.geometria));
@@ -234,7 +234,7 @@ console.log('\nB · ESCRIBIR EL LARGO EN PANTALLA (se mueve el `to`, no el `from
   ok(cf.distribucion.rango.from === -660 && cf.distribucion.rango.to === 696,
     'viga 1400: el extremo se topa en el borde útil (696), no asoma [' +
     cf.distribucion.rango.from + '→' + cf.distribucion.rango.to + ']');
-  ok(cf.distribucion.rango.ancla.fin.d === -340, 'y el anclaje declarado NO se tocó');
+  ok(cf.distribucion.rango.ancla.fin.d === -344, 'y el anclaje declarado NO se tocó');
   ok(rotulos('largo')[0].txt === '1356', 'el rótulo dice el largo REALMENTE resuelto (1356) [' +
     rotulos('largo')[0].txt + ']');
 
@@ -288,9 +288,9 @@ console.log('\nD · EL ANCLAJE QUEDA RE-DERIVADO (sobrevive a cambiar el hormig�
   TE._setLargoRango(c.distribucion, 'rango', 480);         // from −260 · to 220
   const a = c.distribucion.rango.ancla;
   ok(JSON.stringify(a) !== a0, 'escribir el largo RE-DERIVA el ancla (no deja la vieja pegada)');
-  ok(!!a && a.ini.ref === 'min' && a.ini.d === 40,
+  ok(!!a && a.ini.ref === 'min' && a.ini.d === 36,
     'el extremo inicial sigue a 40 cm del borde − [' + JSON.stringify(a && a.ini) + ']');
-  ok(!!a && a.fin.ref === 'max' && a.fin.d === 80,
+  ok(!!a && a.fin.ref === 'max' && a.fin.d === 76,
     'el extremo final se re-ancló al borde + (300−220 = 80 cm) [' + JSON.stringify(a && a.fin) + ']');
 
   // LA PRUEBA DE FUEGO: se agranda la viga y la distribución conserva SUS distancias
@@ -316,7 +316,7 @@ console.log('\nD · EL ANCLAJE QUEDA RE-DERIVADO (sobrevive a cambiar el hormig�
   const cc = montar([estribo({ from: -260, to: 260, sep: 20, eje: 'x' })]);
   R.reanclarReceta(ST.receta);
   TE._setLargoRango(cc.distribucion, 'rango', 400);        // to = 140 → más cerca del testero +
-  ok(cc.distribucion.rango.ancla.fin.ref === 'max' && cc.distribucion.rango.ancla.fin.d === 160,
+  ok(cc.distribucion.rango.ancla.fin.ref === 'max' && cc.distribucion.rango.ancla.fin.d === 156,
     'un `to` a 140 (viga 600) se ancla a 160 cm del testero +, su borde más cercano [' +
     JSON.stringify(cc.distribucion.rango.ancla.fin) + ']');
   ST.receta.geometria.largo = 800;
@@ -375,8 +375,8 @@ console.log('\nF · LAS DOS LÍNEAS: rango y rango2 (arreglo por área)');
   ok(d.rango2.from === -22 && d.rango2.to === 18, 'rango2: se movió el `to` (−22 → 18) [' + d.rango2.to + ']');
   ok(d.rango.to === 260, '…y la 1ª línea NO se enteró (el `cual` no se cruza)');
   const a2 = d.rango2.ancla;
-  ok(!!a2 && a2.ini.ref === 'min' && a2.ini.d === 8 && a2.fin.ref === 'max' && a2.fin.d === 12,
-    'rango2 queda anclado en SU eje (alto 60: 8 cm del borde inferior, 12 del superior) [' +
+  ok(!!a2 && a2.ini.ref === 'min' && a2.ini.d === 4 && a2.fin.ref === 'max' && a2.fin.d === 8,
+    'rango2 queda anclado en SU eje (alto 60: 4 y 8 desde las líneas de recubrimiento) [' +
     JSON.stringify(a2) + ']');
   ST.receta.geometria.alto = 80;
   R.reanclarReceta(ST.receta);
@@ -504,8 +504,8 @@ console.log('\nH · LA RUEDA: ±1 cm sobre el rótulo, y el zoom del cuadrante i
   ok(Math.round(TE._largoRango(d.rango)) === 519, 'rueda abajo ×2: 521 → 519 [' +
     Math.round(TE._largoRango(d.rango)) + ']');
   ok(d.rango.from === -260, 'la rueda tampoco mueve el `from`');
-  ok(!!d.rango.ancla && d.rango.ancla.fin.ref === 'max' && d.rango.ancla.fin.d === 41,
-    'y re-ancla en cada vuelta (fin a 41 cm del borde +) [' + JSON.stringify(d.rango.ancla.fin) + ']');
+  ok(!!d.rango.ancla && d.rango.ancla.fin.ref === 'max' && d.rango.ancla.fin.d === 37,
+    'y re-ancla en cada vuelta (fin a 37 de su referencia) [' + JSON.stringify(d.rango.ancla.fin) + ']');
 
   // CONTRA EL PISO la rueda no apila undo basura: si el largo ya es 0, seguir girando
   // no cambia nada y no puede llenar la pila de deshacer.
@@ -570,8 +570,8 @@ console.log('\nI · OTROS EJES Y OTRO ELEMENTO (nada de esto conoce a la viga)')
   ok(c.distribucion.rango.to === 8 && rotulos('seccion')[0].txt === '20',
     'se edita igual en Z: to = −12+20 = 8 [' + c.distribucion.rango.to + ']');
   const az = c.distribucion.rango.ancla;
-  ok(az.ini.ref === 'min' && az.ini.d === 3 && az.fin.ref === 'max' && az.fin.d === 7,
-    'y se ancla contra el ANCHO (30), no contra el largo: 3 y 7 cm de cada cara [' +
+  ok(az.ini.ref === 'min' && az.ini.d === 0 && az.fin.ref === 'max' && az.fin.d === 4,
+    'y se ancla contra el ANCHO (30), no contra el largo: 0 y 4 desde el recubrimiento lateral [' +
     JSON.stringify(az) + ']');
 
   // MURO — otra tabla de planos (seccion u=x/v=z · largo u=x/v=y · planta u=z/v=y).
@@ -779,8 +779,8 @@ console.log('\nK · DEFECTOS DE AUDITORÍA (19-ago) — congelados para que no v
     (rot2 || {}).eje + ']');
   TE._setLargoRango(ce.distribucion, 'rango2', 40, rot2.eje);
   const a2 = ce.distribucion.rango2.ancla;
-  ok(ce.distribucion.rango2.eje === 'y' && a2.ini.ref === 'min' && a2.ini.d === 8 && a2.fin.d === 12,
-    'con el eje del rótulo se ancla contra el ALTO (8 y 12), no contra el largo [' +
+  ok(ce.distribucion.rango2.eje === 'y' && a2.ini.ref === 'min' && a2.ini.d === 4 && a2.fin.d === 8,
+    'con el eje del rótulo se ancla contra el ALTO (4 y 8 al recubrimiento), no contra el largo [' +
     JSON.stringify(a2) + ']');
 
   // K4 · SALTAR DE UN RÓTULO A OTRO NO TIRA LO TECLEADO. Sacar el <input> del DOM no

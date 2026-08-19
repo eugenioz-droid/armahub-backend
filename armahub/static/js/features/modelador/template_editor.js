@@ -4061,17 +4061,23 @@
     return !!(dr && dr.ci === ST.selCi && (dr.cual || 'rango') === cual);
   }
 
-  // ANCLA de UN punto sobre un eje — la del MOTOR, sin fórmula propia.
-  // Se ancla un rango DEGENERADO (from = to = el punto) porque `anclarRango` es el
-  // helper único de escritura: entra por la misma puerta que el arrastre real y sale
-  // el mismo { ref, d }. El objeto es de usar y tirar; la receta no se toca.
+  // ANCLA de UN punto sobre un eje, para la COTA VIVA — la fórmula del motor, sin una
+  // propia: `anclaDeCoord` es la misma que escribe el ancla real al arrastrar.
+  //
+  // POR QUÉ SIN RECUBRIMIENTO (19-ago). El ancla de un rango se mide desde la LÍNEA DE
+  // RECUBRIMIENTO, para que cambiar el recub mueva el abanico. Pero lo que el usuario
+  // pidió VER mientras arrastra una distribución es el hueco contra el HORMIGÓN
+  // («para las cortinas está bien que sea al hormigón»; al recubrimiento es sólo el
+  // tirador que redimensiona la barra). Los dos números difieren exactamente en el
+  // recub, y la línea de extensión termina donde el número dice, así que el dibujo
+  // sigue siendo la verificación del número.
   function _anclaViva(coord, eje) {
     var dp = _deps();
     var c = Number(coord);
-    if (!isFinite(c) || !dp.reglas || typeof dp.reglas.anclarRango !== 'function') return null;
-    var tmp = { from: c, to: c };
-    try { dp.reglas.anclarRango(tmp, _hostDeReceta(), eje || 'x', true); } catch (e) { return null; }
-    return (tmp.ancla && tmp.ancla.ini) || null;
+    if (!isFinite(c) || !dp.reglas || typeof dp.reglas.anclaDeCoord !== 'function') return null;
+    var g = _hostDeReceta(); if (!g) return null;
+    var D = (eje === 'y') ? Number(g.alto) : (eje === 'z') ? Number(g.ancho) : Number(g.largo);
+    return dp.reglas.anclaDeCoord(c, D);
   }
 
   // Coordenada de la REFERENCIA que eligió el ancla, deducida del ancla mismo:
@@ -6236,10 +6242,9 @@
     poseRow.appendChild(_label('Pose'));
     var poseWrap = _div('');
     poseWrap.style.cssText = 'display:flex;gap:8px;align-items:center;flex-wrap:wrap';
-    var poseTxt = document.createElement('span');
-    poseTxt.className = 'te-posetxt';
-    poseTxt.textContent = _poseTexto(pose);
-    poseTxt.title = 'Cara de anclaje · eje por el que corre la pieza · espejo. Gira 90° en la vista activa con R.';
+    // El texto "cara inf · corre en largo (Y)" se retiró de la ficha (19-ago): describe
+    // el modelo interno de la pose, no algo que quien cubica fierro necesite leer en
+    // cada barra. Sigue vivo en el tooltip del botón de girar, que es donde importa.
     var espSeg = _radial([['no', 'Normal'], ['si', 'Espejo']], pose.espejo ? 'si' : 'no', function (v) {
       var quiere = (v === 'si');
       if (quiere === _poseDe(c).espejo) return;
@@ -6251,27 +6256,21 @@
     });
     espSeg.title = 'Espejo: la MISMA pose dada vuelta sobre su eje de anclaje ' +
       '(el gancho cierra al otro lado). Girando con R también se pasa por acá.';
-    poseWrap.appendChild(poseTxt);
     poseWrap.appendChild(espSeg);
     poseRow.appendChild(poseWrap);
 
-    // Rotación (ángulo exacto + botón 90°)
+    // ROTAR — dos giros de POSE y nada más (19-ago). Antes esta fila tenía TRES
+    // controles para lo que el usuario lee como "girar": el input de grados (que en
+    // realidad INCLINA, giro rígido), +90° y Plano 90°, y encima +90° ya estaba
+    // repetido en la tecla R y en el botón flotante sobre la pieza. El input se
+    // retiró por decisión del usuario: inclinar una barra no es lo que se hace acá.
     var rotRow = _div('te-row');
-    rotRow.appendChild(_label('Rotación °'));
+    rotRow.appendChild(_label('Rotar'));
     var rotWrap = _div('');
     rotWrap.style.display = 'flex'; rotWrap.style.gap = '6px'; rotWrap.style.alignItems = 'center';
-    var rotInp = _input({ value: (c.orient && c.orient.deg) ? c.orient.deg : 0, type: 'number' }, function (v) {
-      // eje = profundidad de la vista activa SEGÚN EL ELEMENTO (no la tabla viga)
-      var eje = _ejeProfundidadDeVista(ST.ultimoPlano) || (c.orient && c.orient.eje) || 'x';
-      c.orient = c.orient || {};
-      c.orient.eje = eje; c.orient.deg = Number(v) || 0;   // conserva spin/pivot
-      _mut(ci);
-    });
-    rotInp.style.width = '70px';
     // +90° = giro de POSE en la vista activa (13-ago): re-deriva dims contra lo
     // nuevo que cruzan, re-ancla a la cara y re-reparte. Antes era rotación
-    // RÍGIDA en grados (la pieza giraba tal cual y se salía del hormigón); los
-    // grados del input quedan SOLO para inclinar (barras a 45°).
+    // RÍGIDA en grados (la pieza giraba tal cual y se salía del hormigón).
     var rot90 = document.createElement('button'); rot90.className = 'te-ctool'; rot90.textContent = '+90°'; rot90.style.padding = '3px 8px';
     rot90.title = 'Girar 90° en la vista activa (pose): se reajusta a recubrimientos y reparto. Igual que R.';
     rot90.addEventListener('click', function () { _rotarPoseSeleccion(_vistaActiva()); });
@@ -6285,7 +6284,7 @@
       var d = defs[_vistaActiva()] || defs.seccion;
       _rotarPoseSeleccionEje(d.v);
     });
-    rotWrap.appendChild(rotInp); rotWrap.appendChild(rot90); rotWrap.appendChild(rotPlano);
+    rotWrap.appendChild(rot90); rotWrap.appendChild(rotPlano);
     rotRow.appendChild(rotWrap);
     body.appendChild(rotRow);
     // La fila Pose (espejo) va PEGADA a Rotación: el kit de orientar la pieza
@@ -7694,8 +7693,8 @@
     // Los DOS botones "agregar" hacen lo mismo: entrar en modo colocación.
     var addRib = $('te_btnAgregarBarra');
     if (addRib && !addRib._teBound) { addRib._teBound = true; addRib.addEventListener('click', function () { _entrarModoColocacion(); }); }
-    var add = $('te_addComp');
-    if (add && !add._teBound) { add._teBound = true; add.addEventListener('click', function () { _entrarModoColocacion(); }); }
+    // (el botón "＋ Agregar componente" del panel se retiró el 19-ago: era el mismo
+    // handler que el del ribbon, y dos puertas para la misma acción confundían.)
 
     // Botón contextual "Girar 90° en esta vista (R)" sobre la pieza seleccionada.
     // MISMA acción que la tecla R (una sola semántica de giro grueso).
@@ -8731,13 +8730,31 @@
       else if (c.sepPx <= mejor.sepPx + EMPATE_PX && c.prof < mejor.prof) mejor = c;   // empatan: la de adelante
     }
     if (mejor) return { x: mejor.p.x, y: mejor.p.y, z: mejor.p.z, tipo: 'barra' };
-    // El hormigón sólo se puede señalar si está VISIBLE: con el 🧊 apagado no hay nada
-    // dibujado ahí y el pivote saldría de una caja invisible.
-    var g = ST.receta && ST.receta.geometria;
-    if (!ST.verHormigon || !g || !isFinite(Number(g.largo))) return null;
-    var hc = _cortarCajaConRayo(r, g);
-    if (!hc) return null;
-    return { x: hc.p.x, y: hc.p.y, z: hc.p.z, tipo: 'hormigon' };
+    // El HORMIGÓN ya no se señala (19-ago, decisión del usuario: «no queremos que
+    // detecte la superficie del hormigón, la idea sería que rote en el punto en el que
+    // está»). Su cara metía el pivote a una profundidad que no era la que el usuario
+    // miraba, y encima dependía de tener el 🧊 encendido.
+    return null;
+  }
+
+  // EL PUNTO QUE EL CURSOR SEÑALA CUANDO NO HAY FIERRO DEBAJO. No se inventa nada: se
+  // corta el rayo con el plano PARALELO A LA PANTALLA que pasa por la pieza (o por el
+  // elemento si no hay selección), que es la profundidad a la que el usuario está
+  // mirando. Así el ctrl gira siempre alrededor del punto donde está el cursor, con o
+  // sin barra debajo, y desaparece el salto al centro.
+  function _puntoEnPlanoDeVista(fx, fy, wpx, hpx) {
+    if (!(wpx > 1) || !(hpx > 1)) return null;
+    var r = _rayoDesdeCursor(fx, fy, wpx / hpx);
+    if (!r) return null;
+    var C = (ST.selCi >= 0 && _placementsSeleccion3D().length)
+      ? _centroSeleccion3D() : _centroElemento3D();
+    if (!C || !_esPunto3D(C)) return null;
+    var b = _baseCam();
+    // Profundidad de C: su proyección sobre el eje de vista. `dir` no viene normalizado
+    // justamente para que el parámetro SEA la profundidad (misma convención que el pick).
+    var prof = -((C.x - r.ojo.x) * b.atras.x + (C.y - r.ojo.y) * b.atras.y + (C.z - r.ojo.z) * b.atras.z);
+    if (!(prof > 1e-6)) return null;
+    return { x: r.ojo.x + r.dir.x * prof, y: r.ojo.y + r.dir.y * prof, z: r.ojo.z + r.dir.z * prof };
   }
 
   // EL PIVOTE DEL CTRL, CON SUS CAÍDAS. Nunca devuelve null: siempre hay pivote.
@@ -8751,7 +8768,8 @@
   function _pivoteDelCursor(fx, fy, wpx, hpx) {
     var h = _puntoBajoCursor3D(fx, fy, wpx, hpx);
     if (h) return { p: { x: h.x, y: h.y, z: h.z }, fuente: h.tipo };
-    if (ST.selCi >= 0 && _placementsSeleccion3D().length) return { p: _centroSeleccion3D(), fuente: 'seleccion' };
+    var pl = _puntoEnPlanoDeVista(fx, fy, wpx, hpx);
+    if (pl) return { p: pl, fuente: 'plano' };
     return { p: _centroElemento3D(), fuente: 'elemento' };
   }
 
@@ -9105,8 +9123,7 @@
     var ultimoAviso = '';
     var MSG = {
       barra: 'Giro alrededor del punto de la barra que señalaste: ese punto queda clavado y todo lo demás gira a su alrededor.',
-      hormigon: 'Giro alrededor del punto del hormigón que señalaste: ese punto queda clavado.',
-      seleccion: 'No había geometría bajo el cursor: se gira alrededor del centro de la barra seleccionada.',
+      plano: 'Giro alrededor del punto que señalaste: queda clavado, aunque no haya fierro debajo.',
       elemento: 'No había geometría bajo el cursor ni barra seleccionada: se gira alrededor del centro del elemento, igual que sin ctrl.'
     };
 
