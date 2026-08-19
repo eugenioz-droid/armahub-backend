@@ -191,6 +191,9 @@
     function tx(p) { return { x: offX + (p.x - minX) * scale, y: H - (offY + (p.y - minY) * scale) }; }
     var tpts = pts.map(tx);
     var swTrazo = _grosorTrazo(opts, scale, pad);
+    // Radio del codo de doblado, en px del render (mismas unidades que tpts). Sale del
+    // trazo, así que ya viene escalado — no se multiplica por `scale` (ver _radioDoblado).
+    var rFillet = _radioDoblado(swTrazo, opts.diam_mm, opts.metrico);
 
     var svg = '<svg width="' + W + '" height="' + H + '" viewBox="0 0 ' + W + ' ' + H + '" style="max-width:100%; height:auto;">';
     svg += '<defs>' +
@@ -233,7 +236,7 @@
         arcosTx[k] = (opts.arcos_iso[k] || []).map(tx);
       });
     }
-    svg += '<path d="' + _pathDesdePuntos(tpts, tiposEsc, radiosEsc, sweepsEsc, arcosTx) + '" fill="none" stroke="#00695c" stroke-width="' + _swTxt(swTrazo) + '" stroke-linejoin="round" stroke-linecap="round" />';
+    svg += '<path d="' + _pathDesdePuntos(tpts, tiposEsc, radiosEsc, sweepsEsc, arcosTx, rFillet) + '" fill="none" stroke="#00695c" stroke-width="' + _swTxt(swTrazo) + '" stroke-linejoin="round" stroke-linecap="round" />';
     // Cotas automáticas del ARCO. Dos orígenes, MISMO formato y MISMA función de dibujo:
     //  - 3D: el editor las calcula en el espacio real y las pasa proyectadas
     //    (cotas_arco_iso, en coords de la proyección) → se mapean con tx().
@@ -245,16 +248,22 @@
       // 2D: calculadas sobre pts originales (arriba); tx las escala/posiciona al render.
       _cotas2d.forEach(function(seg) { svg += _dibujarCotasArcoProyectadas(seg, tx); });
     }
-    // Vértices (nodos pequeños para no recargar la miniatura).
+    // PUNTAS de la barra (nodos pequeños para no recargar la miniatura).
     // Se apagan con el trazo grueso: el nodo más grande es r = 2.5, o sea 5 px de diámetro,
     // así que a partir de sw = 5 el trazo lo tapa ENTERO. Dibujarlos ahí no muestra nada —
     // solo mancha el trazo con el verde oscuro de las puntas y engorda el innerHTML, que es
-    // el costo dominante del render (~620 KB por 500 figuras XL, medido).
+    // el costo dominante del render (~620 KB por 500 figuras XL, medido). Con la calibración
+    // viva NINGÚN trazo baja de 5 (piso φ8 = 5.0, nominal = 5.5): el bloque es la guarda por
+    // si alguien vuelve a bajar los pisos.
+    // LOS NODOS INTERMEDIOS SE FUERON (codos, 19-ago): con el vértice redondeado el trazo YA
+    // NO PASA por el vértice — se separa hasta R·(1/cos(giro/2) − 1) de él. Un punto ahí
+    // quedaría flotando en el hueco de la curva, marcando una esquina que el fierro no tiene.
+    // Las dos PUNTAS sí siguen sobre el trazo (un extremo no se dobla) y son las que informan
+    // algo: dónde empieza y dónde termina la barra.
     if (swTrazo < 5) {
-      tpts.forEach(function(p, i) {
-        var isEnd = (i === 0 || i === tpts.length - 1);
-        svg += '<circle cx="' + p.x.toFixed(1) + '" cy="' + p.y.toFixed(1) + '" r="' + (isEnd ? 2.5 : 2) +
-          '" fill="' + (isEnd ? '#004d40' : '#4db6ac') + '" />';
+      [0, tpts.length - 1].forEach(function(i) {
+        var p = tpts[i];
+        svg += '<circle cx="' + p.x.toFixed(1) + '" cy="' + p.y.toFixed(1) + '" r="2.5" fill="#004d40" />';
       });
     }
     // Etiquetas de lado AUTOMÁTICAS, desplazadas perpendicular a la línea (no encima).
@@ -434,13 +443,131 @@
   // La traducción entre las dos vive en esta única función.
   function _verticeDesdeGiro(giro) { return 180 - (Number(giro) || 0); }
 
+  // ---- CODO REDONDEADO EN EL VÉRTICE (fillet) ----
+  // Un fierro doblado NO tiene esquinas en punta: tiene un codo con radio. Mientras el
+  // trazo era una línea de 3 px daba lo mismo, pero al subirlo a 5–14 px (19-ago) cada
+  // vértice quedó como un pico de flecha y el usuario lo dijo derecho: «no parecen barras
+  // reales… debiera tener las curvas como corresponde». La referencia es la vista de
+  // sección del Template Editor, que dibuja el SÓLIDO 3D con toros tangentes en los
+  // dobleces (motor_geom.analizarBarra). Acá se hace la MISMA construcción en 2D.
+  //
+  // EL RADIO SALE DEL TRAZO, NO DEL φ — y no es un atajo, es la única lectura correcta:
+  //   · La norma (NCh 204 / ACI 318, ver motor_geom.radioDobladoNorma) dice radio INTERNO
+  //     2φ hasta φ16 y 3.5φ sobre φ16; el radio del EJE —que es lo que dibuja una línea
+  //     de un solo trazo— suma medio diámetro: 2.5φ y 4φ.
+  //   · `swTrazo` ES el diámetro dibujado (_grosorTrazo). Así que R = 2.5·sw da el codo de
+  //     norma AUTOMÁTICAMENTE en el único caso en que el motor dibuja el φ real (cuando el
+  //     grosor físico φ·scale gana al piso: R = 2.5·φ·scale, el radio de norma escalado).
+  //   · Y en todos los demás casos —catálogo, galería, previews, y las barras donde manda
+  //     el piso— sigue siendo coherente CON LO QUE SE VE: el codo mide siempre lo mismo
+  //     respecto del fierro que dobla. Fijarlo en cm ahí daría el efecto contrario: una U
+  //     de 20+300+20 cm con φ12 en Bar Manager M se dibuja a 0.233 px/cm, así que el radio
+  //     de norma (2.5 × 1.2 cm) mediría 0.70 px bajo un trazo de 5.57 px — el codo quedaría
+  //     ENTERO dentro del grosor, invisible, o sea la punta de siempre.
+  //   · En el catálogo NO hay diámetro (los puntos están en unidades de grilla): se usa el
+  //     2.5 de las φ ≤ 16 mm, que son 4 de los 10 diámetros en uso y los más frecuentes.
+  var FIL_K = 2.5;          // R del eje / diámetro, φ ≤ 16 mm (2φ interno + φ/2)
+  var FIL_K_GRANDE = 4;     // idem φ > 16 mm (3.5φ interno + φ/2)
+  var FIL_UMBRAL_MM = 16;   // el mismo corte que NORMA.limiteDiametroCm del modelador
+  // TOPE DE LA TANGENCIA, como fracción del lado más corto que llega al vértice.
+  // Dos trabajos, un número:
+  //   1. QUE DOS CODOS NO SE PISEN. Cada vértice se lleva como mucho esta fracción del
+  //      lado que comparte con el vecino, así que entre los dos nunca pasan del 40%.
+  //      (El motor 3D usa 0.49 para lo mismo — es el límite duro de no solaparse.)
+  //   2. QUE LA FIGURA SIGA SIENDO ESA FIGURA. Acá manda un problema que el 3D no tiene:
+  //      el trazo NO se achica con el render (tiene piso de 5.0–5.5 px en cualquier
+  //      tamaño), así que en la miniatura de 90×72 el fierro dibujado es ~3 veces más
+  //      gordo respecto de la figura que en el preview de 210×140. MEDIDO sobre las 63
+  //      figuras del catálogo × los 6 tamaños vivos: con el tope en 0.49 la miniatura se
+  //      deformaba —un 104A quedaba de "squircle", con el codo comiéndose el 29% de cada
+  //      lado (13.75 px de 48), y un 106A quedaba mancha— y había 62 renders con un tramo
+  //      recto de 0.13 a 0.34 px, o sea lados comidos enteros (57 en Bar Manager S, cuyo
+  //      recuadro útil es de 30×12 px, y 5 en M). Con 0.20: CERO tramos comidos, el más
+  //      corto de todo el barrido pasa a 4.23 px, y todo lado conserva ≥ 60% recto.
+  //      Dónde entra el tope: en la miniatura, en 174 de los 199 codos (la figura es
+  //      chica y el trazo no); en el preview sólo en 46, y son las PUNTAS AGUDAS — un
+  //      vértice de 45° pide una tangencia de 2.41·R contra 1.00·R de uno de 90°. En los
+  //      lados largos con doblez normal el tope ni se entera: ahí manda el radio de norma.
+  // NO se baja el radio "por si acaso": el 0.20 sólo entra donde el codo de norma no
+  // cabe, y cuando entra se BAJA EL RADIO manteniendo la tangencia (ver _codoVertice),
+  // que es lo que hace la máquina cuando le piden doblar un lado corto.
+  var FIL_TMAX = 0.20;
+
+  function _radioDoblado(sw, diamMM, metrico) {
+    // El φ sólo entra por la MISMA puerta que el grosor (ver _grosorTrazo): sin `metrico`
+    // el trazo es el nominal y aplicar el factor de las φ gruesas sería inventar.
+    var k = (metrico && Number(diamMM) > FIL_UMBRAL_MM) ? FIL_K_GRANDE : FIL_K;
+    return k * sw;
+  }
+
+  // Codo tangente en el vértice p1 entre p0→p1 y p1→p2. Devuelve {T1,T2,R,sweep} o null.
+  // MISMA construcción que motor_geom.analizarBarra (el 3D que dibuja la vista de sección
+  // del Template Editor), incluido el capeo: `ang` es el GIRO del doblez (0 = seguir recto),
+  // la tangencia vale t = R·tan(ang/2) y no puede pasar de FIL_TMAX del lado más corto.
+  // Cuando no cabe se BAJA EL RADIO manteniendo la tangencia (t = tMax → R = t/tan(ang/2)):
+  // el codo queda más cerrado —que es justo lo que pasa en la máquina cuando le piden doblar
+  // un lado corto— y NUNCA se recorta la pata, así que la figura no pierde largo de fierro.
+  function _codoVertice(p0, p1, p2, R) {
+    var d1x = p1.x - p0.x, d1y = p1.y - p0.y, l1 = Math.sqrt(d1x * d1x + d1y * d1y);
+    var d2x = p2.x - p1.x, d2y = p2.y - p1.y, l2 = Math.sqrt(d2x * d2x + d2y * d2y);
+    if (!(R > 0) || !(l1 > 0) || !(l2 > 0)) return null;
+    d1x /= l1; d1y /= l1; d2x /= l2; d2y /= l2;
+    var cosA = d1x * d2x + d1y * d2y;
+    if (cosA > 1) cosA = 1; else if (cosA < -1) cosA = -1;
+    var ang = Math.acos(cosA);                       // giro del doblez (rad)
+    // Colineal (no hay doblez) y VUELTA EN U (giro ≈ 180°, o sea vértice ≈ 0°): en la U
+    // la tangente tiende a infinito y el codo degenera; se deja el vértice como está —
+    // el linejoin redondo lo cierra— en vez de inventar una curva que no cabe.
+    if (ang < 0.02 || ang > Math.PI - 0.02) return null;
+    var t = R * Math.tan(ang / 2);
+    var tMax = FIL_TMAX * Math.min(l1, l2);
+    if (t > tMax) { t = tMax; R = t / Math.tan(ang / 2); }
+    // Sub-píxel: un codo de menos de 0.4 px no se distingue de la punta ni del redondeo
+    // que el propio stroke-linejoin ya hace, y sólo alarga el `d`. Se deja el vértice.
+    // (El codo más chico que sobrevive en todo el catálogo mide 0.58 px, y es en el
+    // recuadro de 30×12 px de Bar Manager S.)
+    if (!(R > 0.4) || !(t > 0.4)) return null;
+    // Sentido del arco: el eje Y del SVG crece HACIA ABAJO, así que un producto cruz
+    // positivo es un giro horario en pantalla, que es el sweep-flag 1 del comando A.
+    var cruz = d1x * d2y - d1y * d2x;
+    return { T1: { x: p1.x - d1x * t, y: p1.y - d1y * t },
+             T2: { x: p1.x + d2x * t, y: p1.y + d2y * t },
+             R: R, sweep: cruz > 0 ? 1 : 0 };
+  }
+
+  // Redondeo a 2 decimales sin ceros de relleno (los puntos crudos del path se siguen
+  // emitiendo tal cual: sin codos, el `d` sale byte a byte igual que antes).
+  function _n2(v) { return String(Math.round(v * 100) / 100); }
+
   // Construye el atributo `d` de un <path> desde puntos, usando L (línea) para
   // segmentos rectos y A (arco) para curvos. tipos/radios son paralelos a los
   // segmentos (índice = i-1 para el segmento entre punto i-1 e i).
-  function _pathDesdePuntos(pts, tipos, radios, sweeps, arcosTx) {
+  // `rFil` = radio del codo de doblado (mismas unidades que pts). 0 / ausente = vértices
+  // en punta, como antes. Los codos SÓLO se meten entre dos tramos RECTOS: donde ya hay
+  // un arco declarado, la curva ES el doblez (mismo criterio que `sinFilletEnArcos` del
+  // motor 3D, que tampoco le mete un toro a un vértice que ya viene de un arco).
+  function _pathDesdePuntos(pts, tipos, radios, sweeps, arcosTx, rFil) {
     if (!pts || pts.length < 1) return '';
-    var d = 'M ' + pts[0].x + ' ' + pts[0].y;
-    for (var i = 1; i < pts.length; i++) {
+    var n = pts.length, i;
+    function _recto(s) { return (((tipos && tipos[s]) || 'recto') !== 'arco'); }
+    var codos = [];                                  // codos[i] = codo en el vértice i
+    for (i = 0; i < n; i++) codos.push(null);
+    if (rFil > 0) {
+      for (i = 1; i < n - 1; i++) {
+        if (_recto(i - 1) && _recto(i)) codos[i] = _codoVertice(pts[i - 1], pts[i], pts[i + 1], rFil);
+      }
+    }
+    // FIGURA CERRADA (estribo, marco): el punto final vuelve al inicial, así que ese
+    // "extremo" es en realidad un vértice más. Sin esto un estribo salía con 3 codos
+    // redondos y el cuarto en punta — el más visible, porque es donde arranca el path.
+    var cierre = null;
+    if (rFil > 0 && n >= 4 && _recto(n - 2) && _recto(0) &&
+        Math.abs(pts[0].x - pts[n - 1].x) < 0.01 && Math.abs(pts[0].y - pts[n - 1].y) < 0.01) {
+      cierre = _codoVertice(pts[n - 2], pts[0], pts[1], rFil);
+    }
+    var ini = cierre ? cierre.T2 : pts[0];
+    var d = 'M ' + (cierre ? _n2(ini.x) + ' ' + _n2(ini.y) : pts[0].x + ' ' + pts[0].y);
+    for (i = 1; i < n; i++) {
       var tipo = (tipos && tipos[i - 1]) || 'recto';
       // 3D: si hay puntos proyectados del arco, dibujarlo como polyline (fiel al 3D).
       var arcPts = arcosTx && arcosTx[i - 1];
@@ -457,8 +584,15 @@
         var sw = (sweeps && sweeps[i - 1] != null) ? sweeps[i - 1] : 1;
         d += ' A ' + r.toFixed(1) + ' ' + r.toFixed(1) + ' 0 0 ' + sw + ' ' + b.x + ' ' + b.y;
       } else {
-        d += ' L ' + pts[i].x + ' ' + pts[i].y;
+        // El tramo recto termina en la TANGENCIA del codo que viene (o en el vértice,
+        // si ese vértice no lleva codo). El fierro no se acorta: lo que el tramo deja
+        // de recorrer recto lo recorre el arco.
+        var co = codos[i] || (i === n - 1 ? cierre : null);
+        var fin = co ? co.T1 : pts[i];
+        d += ' L ' + (co ? _n2(fin.x) + ' ' + _n2(fin.y) : pts[i].x + ' ' + pts[i].y);
       }
+      var cd = codos[i] || (i === n - 1 ? cierre : null);
+      if (cd) d += ' A ' + _n2(cd.R) + ' ' + _n2(cd.R) + ' 0 0 ' + cd.sweep + ' ' + _n2(cd.T2.x) + ' ' + _n2(cd.T2.y);
     }
     return d;
   }
@@ -1047,7 +1181,11 @@
     if (_puntos.length >= 2) {
       // En etiquetado 3D, dibujar el arco con sus puntos proyectados (polyline fiel al
       // 3D), no reconstruido con 'A' (que invertía la guata). _arcosIso3d es null en 2D.
-      s += '<path d="' + _pathDesdePuntos(_puntos, _tiposSeg, _radiosSeg, _sweepsSeg, _arcosIso3d) + '" fill="none" stroke="#00695c" stroke-width="' + SW_NOMINAL + '" stroke-linejoin="round" stroke-linecap="round"/>';
+      // El lienzo dibuja los MISMOS codos que el preview (radio nominal): si acá los
+      // vértices fueran en punta, la figura "cambiaría de forma" al pasar del lienzo al
+      // preview. Los nodos arrastrables se siguen pintando encima, así que el vértice
+      // real se ve igual aunque el trazo lo esquive.
+      s += '<path d="' + _pathDesdePuntos(_puntos, _tiposSeg, _radiosSeg, _sweepsSeg, _arcosIso3d, _radioDoblado(SW_NOMINAL)) + '" fill="none" stroke="#00695c" stroke-width="' + SW_NOMINAL + '" stroke-linejoin="round" stroke-linecap="round"/>';
     }
     // Cotas automáticas del arco (3D): ya están en coords de lienzo → tx identidad.
     if (_cotasArcoIso3d) {
