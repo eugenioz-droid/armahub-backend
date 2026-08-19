@@ -54,10 +54,8 @@
   #te_modal #te_elemSel{border:1px solid var(--te-line);background:#fff;border-radius:8px;
     padding:5px 8px;font-size:12px;font-weight:700;color:var(--te-ink);cursor:pointer;text-transform:none;letter-spacing:0}
   #te_modal #te_elemSel option:disabled{color:#9aa4b0}
-  #te_modal .te-seg{display:inline-flex;border:1px solid var(--te-line);border-radius:8px;overflow:hidden}
-  #te_modal .te-seg button{border:none;background:#fff;padding:6px 13px;font-size:12px;color:var(--te-muted);cursor:pointer;font-weight:600}
-  #te_modal .te-seg button+button{border-left:1px solid var(--te-line)}
-  #te_modal .te-seg button.on{background:var(--te-acero);color:#fff}
+  /* .te-seg (el segmentado Viga|Muro|Columna que vivía en el titlebar) se retiró
+     junto con su CSS: el elemento se elige en #te_elemSel, aquí arriba. */
   #te_modal .te-btn{border:none;border-radius:9px;padding:8px 14px;font-size:12.5px;font-weight:700;cursor:pointer}
   #te_modal .te-btn.primary{background:var(--te-acero);color:#fff}
   #te_modal .te-btn.primary:hover{background:var(--te-acero-d)}
@@ -880,8 +878,13 @@
         <!-- Lista dinámica de componentes -->
         <div id="te_compList"></div>
 
-        <button class="te-addcomp" id="te_addComp">＋ Agregar componente</button>
-        <div class="te-note" style="margin-top:8px">＋ Agregar componente = mismo modo colocación que "＋ Agregar barra" del ribbon (Esc o clic derecho para salir). Selecciona una barra para editarla aquí; arrastra ⠿ para reordenar.</div>
+        <!-- La nota permanente que estaba aquí decía tres cosas que ya se dicen
+             solas: que este botón es el mismo "＋ Agregar barra" del ribbon (jerga
+             del código), cómo salir de colocar (lo dice la barra de estado al
+             entrar) y para qué es el ⠿ (lo dice su tooltip). En su lugar, la lista
+             vacía se explica sola (_renderPanel). -->
+        <button class="te-addcomp" id="te_addComp"
+                title="Colocar una barra: clic en una vista · Esc o clic derecho para salir">＋ Agregar componente</button>
 
         <!-- El LISTADO DE BARRAS vivía acá (desplegable de 5 columnas al fondo del
              panel). Se mudó al pie de los cuadrantes: con las 13 columnas del

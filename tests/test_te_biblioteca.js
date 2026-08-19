@@ -524,8 +524,10 @@ function abrirDeBiblioteca(w, extra) {
     ok(kpi(0) === '0', 'pero un 0 REAL se pinta 0 (no se confunde con "falta el dato")');
     const html = w._el('tplGuardadosLista').innerHTML;
     ok((html.match(/—/g) || []).length >= 9, 'las 3 KPI sin cablear salen en "—" en las 3 filas');
-    ok(/GET \/templates todavía no los manda/.test(html),
-      'y la tabla DICE que faltan en el backend, en vez de disimularlo');
+    // El texto dejó de nombrar el endpoint (19-ago, limpieza de jerga): lo que se
+    // congela es que la tabla SIGA DICIENDO que esos datos faltan, no la frase exacta.
+    ok(/todavía no se calculan para la lista/.test(html),
+      'y la tabla DICE que faltan, en vez de disimularlo');
   }
 
   console.log(fallos ? '\nFALLOS: ' + fallos : '\nTODO OK');

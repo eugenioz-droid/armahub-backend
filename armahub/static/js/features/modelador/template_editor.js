@@ -264,8 +264,10 @@
     return {
       gen: global.ModeladorGenerar,
       geom: global.ModeladorMotorGeom,
-      reglas: global.ModeladorReglas,
-      semilla: global.ModeladorSemilla
+      reglas: global.ModeladorReglas
+      // `semilla` salió de acá con la puerta de entrada única: la semilla de viga
+      // era el contenido de la apertura sin argumentos, que ya no existe. El módulo
+      // sigue cargado porque lo usa el Enfierrador (panel_3d.js).
     };
   }
 
@@ -5766,6 +5768,15 @@
     var cnt = $('te_compCount'); if (cnt) cnt.textContent = ST.receta.componentes.length;
     cont.innerHTML = '';
     ST._panelVivo = [];   // el DOM viejo se va: sus refrescadores también
+    // LISTA VACÍA: se dice qué hacer AHÍ, que es donde el usuario está mirando, y
+    // se va sola con la primera barra. Reemplaza a la nota fija que vivía bajo el
+    // botón y que seguía ahí con el template lleno.
+    if (!ST.receta.componentes.length) {
+      var vacio = _div('te-note');
+      vacio.style.marginTop = '2px';
+      vacio.textContent = 'Todavía no hay barras: se agregan con ＋ Agregar barra y un clic en una vista.';
+      cont.appendChild(vacio);
+    }
     ST.receta.componentes.forEach(function (c, ci) {
       cont.appendChild(_compEl(c, ci));
     });
@@ -6078,9 +6089,8 @@
     var spec = _figSpec(c.figura);
     var d = c.distribucion || {};
     // FICHA POR FAMILIA: la barra que se dibuja como CONTORNO CERRADO no tiene
-    // patas que apuntar ni extremo libre que empalmar (el marco manda la forma).
-    // Los controles no se ofrecen — y, sobre todo, se DICE por qué: hasta acá
-    // simplemente no aparecían y la ficha quedaba muda.
+    // patas que apuntar ni extremo libre que empalmar (el marco manda la forma),
+    // así que esos controles no se ofrecen.
     var cerrado = _esContornoCerrado(c);
 
     // Identidad
@@ -6205,9 +6215,13 @@
 
     // Recub override — SUBE antes del kit de rotaciones (pedido 13-ago: Rotación,
     // Pose/Espejo —y la rotación de plano cuando vuelva— quedan AGRUPADAS abajo).
+    // "Recub. override" era el nombre del campo de la receta puesto en pantalla.
+    // El dato sigue llamándose recub_override; lo que se lee dice qué hace.
     var recRow = _div('te-row');
-    recRow.appendChild(_label('Recub. override'));
-    recRow.appendChild(_input({ value: (c.recub_override != null ? c.recub_override : ''), placeholder: 'global cm' }, function (v) { c.recub_override = (v === '' ? null : Number(v)); _mut(ci); }));
+    recRow.appendChild(_label('Recub. propio'));
+    var inRec = _input({ value: (c.recub_override != null ? c.recub_override : ''), placeholder: 'el del elemento' }, function (v) { c.recub_override = (v === '' ? null : Number(v)); _mut(ci); });
+    inRec.title = 'Recubrimiento en cm sólo para esta barra. Vacío = el del elemento.';
+    recRow.appendChild(inRec);
     body.appendChild(recRow);
 
     // INDICADOR COMPACTO DE POSE + toggle ESPEJO. El texto dice de un vistazo dónde
@@ -6303,21 +6317,15 @@
     // Δ de EXTREMO LIBRE (empalme) — sólo en los extremos SIN pata.
     _filasEmpalme(body, c, ci, rol, patas, cerrado);
 
-    // …y por qué esta ficha trae menos controles que otra (ver `cerrado` arriba).
-    if (cerrado) {
-      var nCer = _div('te-note');
-      nCer.textContent = 'Contorno cerrado: el marco manda la forma y se ajusta al recubrimiento ' +
-        'del hormigón. Por eso no lleva patas ni Δ de empalme — el largo sale del contorno.';
-      body.appendChild(nCer);
-    } else if (rol === 'estribo' || rol === 'traba') {
-      // Pieza de sección ABIERTA (una cadena de sección, p.ej. una TC 104B): el
-      // marco no la cierra, pero el motor sigue ignorando el Δ de empalme en
-      // estribos y trabas (reglas.js · empIgnorado), así que tampoco se ofrece.
-      var nSec = _div('te-note');
-      nSec.textContent = 'Pieza de sección: se encuadra contra el recubrimiento del núcleo. ' +
-        'El Δ de empalme no se ofrece porque el motor sólo lo aplica a las barras longitudinales.';
-      body.appendChild(nSec);
-    }
+    // (Limpieza 19-ago) Aquí salían DOS notas grises explicando por qué la ficha de
+    // un marco cerrado —o de un estribo/traba— trae menos controles: que el marco
+    // manda la forma, que el motor sólo aplica el Δ de empalme a las longitudinales.
+    // Eso es funcionamiento interno del motor: va en este comentario, no en la
+    // pantalla. Quien cubica fierro no necesita que le expliquen la ausencia de un
+    // control que nunca vio. Motivo técnico, para quien lea el código:
+    //   · contorno cerrado → el largo sale del contorno, no hay pata ni extremo libre;
+    //   · estribo/traba → reglas.js ignora `empalme` (empIgnorado), así que ofrecerlo
+    //     sería un campo que no cambia el fierro.
 
     // COLOR DE LA BARRA — default el de su tipología (COL2D), editable por
     // componente y guardado en la receta (D9 del usuario: "colores por defecto
@@ -6439,9 +6447,10 @@
         angRow.appendChild(_fld('α' + (i + 1) + ' (°)', inpA));
       });
       body.appendChild(angRow);
-      if (!nAngMsg.textContent) nAngMsg.textContent =
-        'Catálogo = valor por defecto. Editarlo desplaza el gancho dentro del rango de su doblez; el largo total no cambia.';
-      body.appendChild(nAngMsg);
+      // La nota SÓLO aparece cuando hay algo que avisar. Antes, sin aviso, se
+      // pintaba igual con un texto explicando de dónde sale el valor por defecto —
+      // lo mismo que ya dice el tooltip de cada campo α, en una línea gris fija.
+      if (nAngMsg.textContent) body.appendChild(nAngMsg);
     }
     // FIGURA CON RADIO (catálogo: radio = true, p.ej. 201A). Se DICE, no se ofrece un
     // campo: generar.js escribe `radio: null` fijo en la BarraPayload, así que un
@@ -6449,11 +6458,12 @@
     if (spec.radio) {
       var nRad = _div('te-note');
       nRad.style.color = '#c62828';
-      nRad.textContent = '⚠ Figura con RADIO: el editor todavía no lo edita y el payload lo manda en null.';
+      nRad.textContent = '⚠ Esta figura lleva radio de doblado y el editor todavía no lo maneja: el radio va vacío en el despiece.';
       body.appendChild(nRad);
     }
-    var note = _div('te-note'); note.textContent = 'Dim en Auto se derivan del elemento (largo/alto/ancho − recub). Fija = valor manual.';
-    body.appendChild(note);
+    // (Limpieza 19-ago) Se fue la nota fija "Dim en Auto se derivan del elemento…":
+    // decía palabra por palabra lo mismo que el tooltip del candado de cada fila de
+    // dimensión, que es donde el usuario pregunta.
     return body;
   }
 
@@ -6539,8 +6549,7 @@
       (e.inicio ? 'inicio ' + e.inicio + ' cm' : '') +
       (e.inicio && e.fin ? ' · ' : '') +
       (e.fin ? 'fin ' + e.fin + ' cm' : '') +
-      '). El campo se retiró: ahora el traslapo se pone con el Δ de cada lado. ' +
-      'El motor sigue aplicando este valor hasta que lo pases.';
+      '). Sigue sumando al largo de corte; el traslapo ahora se pone con el Δ de cada lado.';
     body.appendChild(n);
     var dom = _ladoDominante(c);
     if (!dom || !c.dims || !c.dims[dom]) return;
@@ -6592,27 +6601,26 @@
   function _notaLadoDominante(body, c, spec, efectivo, esMarco) {
     var fp = global.ModeladorFiguraPuntos || {};
     var elegibles = (fp.ladosDominantesElegibles ? fp.ladosDominantesElegibles(c.figura) : []) || [];
+    // Figura sin lado elegible: NO se pinta nota (ni se crea el div). Antes había
+    // una explicando que esta figura cierra sobre sí misma y por eso no hay
+    // dominante — la misma frase que ya sale al pasar el mouse por cualquiera de
+    // las letras, que están grises justamente por eso.
+    if (!esMarco && !elegibles.length) return;
     var n = _div('te-note');
     // PIEZA DE MARCO: acá el dominante SÍ manda (mueve la esquina de los
     // ganchos), así que el aviso rojo de «el motor la ignoró» ya no corresponde
     // (reporte 17-ago: «me tira un texto grande en rojo que no sé si sirve»).
     if (esMarco) {
-      n.textContent = 'Contorno cerrado: la letra elegida manda DÓNDE CIERRAN LOS GANCHOS ' +
-        '(ESPACIO también los gira de esquina). El Δ de un lado se replica en su espejo.';
-      body.appendChild(n);
-      return;
-    }
-    if (!elegibles.length) {
-      n.textContent = 'Esta figura cierra sobre sí misma: no tiene un lado que se estire ni que se empalme. ' +
-        'El Δ de un lado se replica en su espejo y el marco crece simétrico.';
+      n.textContent = 'La letra elegida marca dónde cierran los ganchos (ESPACIO los gira de esquina). ' +
+        'El Δ de un lado se copia en su espejo.';
       body.appendChild(n);
       return;
     }
     var elegido = _ladoDomElegido(c);
-    n.textContent = 'Clic en una letra = ese lado es el DOMINANTE (el que corre a lo largo: el que Auto ' +
-      'estira contra el hormigón y el que recibe el empalme). Δ = cuánto se suma a ese lado.' +
+    n.textContent = 'Clic en una letra: ese lado es el que corre a lo largo, el que se estira contra el ' +
+      'hormigón y el que recibe el empalme. Δ = cuánto se le suma.' +
       ((elegido && elegido !== efectivo)
-        ? ' ⚠ La elección ' + elegido + ' no está mandando (el motor la ignoró y avisa): manda ' + (efectivo || '—') + '.'
+        ? ' ⚠ La elección ' + elegido + ' no está mandando: manda ' + (efectivo || '—') + '.'
         : '');
     if (elegido && elegido !== efectivo) n.style.color = '#e65100';
     body.appendChild(n);
@@ -6838,7 +6846,7 @@
       'Separación entre ejes de capas (eje a eje)'));
     box.appendChild(g3);
     _filaAnidar(box, c, ci, rol, d);
-    var note = _div('te-note'); note.textContent = 'Las capas se apilan desde la cara hacia el núcleo con la separación indicada.';
+    var note = _div('te-note'); note.textContent = 'Las capas se apilan desde la cara hacia adentro.';
     box.appendChild(note);
   }
 
@@ -6891,7 +6899,7 @@
         zr.appendChild(_fld('@ sep cm', _inputSep(z.sep, function (v) { z.sep = v; _mut(ci); })));
         box.appendChild(zr);
       });
-      var note0 = _div('te-note'); note0.textContent = 'Zonas de espaciamiento (extremos confinados / centro). Para pasar a rango, arrastra la flecha de rango sobre la barra seleccionada.';
+      var note0 = _div('te-note'); note0.textContent = 'Para pasar a un rango, arrastra la flecha doble sobre la barra seleccionada.';
       box.appendChild(note0);
       return;
     }
@@ -6904,7 +6912,9 @@
     g2.appendChild(_fld(edR._rotulo(), edR));
     box.appendChild(g2);
     _tramosEditor(box, d, ci);
-    var note = _div('te-note'); note.textContent = 'Define el rango (from → to) por campos o arrastrando la flecha doble en las vistas. cant = ceil(dist/@)+1.';
+    // El "cant = ceil(dist/@)+1" que cerraba esta nota era la fórmula del código:
+    // el número ya sale calculado en el campo de al lado.
+    var note = _div('te-note'); note.textContent = 'El rango se edita con los campos o arrastrando la flecha doble en las vistas.';
     box.appendChild(note);
   }
 
@@ -6962,9 +6972,8 @@
     _filaAnidar(box, c, ci, rol, d);
     var note = _div('te-note');
     note.textContent = legadoCapas
-      ? 'Arreglo con CAPAS (forma antigua): rango a lo largo × N capas en profundidad. Convertir la deja como dos líneas de distribución.'
-      : 'Arreglo por ÁREA: dos líneas de distribución, cada una con su eje, su rango y su @. ' +
-        'La cantidad es el producto de las dos. Es lo que reparte trabas de muro, de confinamiento y estribos de confinamiento.';
+      ? 'Forma antigua: un rango a lo largo × N capas en profundidad. Convertir lo deja como dos líneas de reparto.'
+      : 'Dos líneas de reparto, cada una con su rango y su @. La cantidad final es una por la otra.';
     box.appendChild(note);
   }
 
@@ -9505,50 +9514,54 @@
     }
   }
 
-  // T2 — templateEditorAbrir(cfg) con firma EXTENDIDA (§GAP-ANALYSIS-TE · AGENTE 1):
+  // PUERTA DE ENTRADA ÚNICA (19-ago) — al editor se entra SÓLO desde el Gestor de
+  // templates del tab (Catálogo › Template Editor): "Crear template" (tplCrearTemplate)
+  // o "Abrir" de una fila de la lista (tplAbrirTemplate). No hay otra forma.
   //   cfg = { elemento, nombre, dims, receta?, templateId?, obra?, puedeModificar? }
-  //         | undefined.
-  //   · Con cfg (pantalla previa "Crear" / "Abrir"): hormigón listo desde dims y
-  //     CERO componentes (o la receta guardada si viene de "Abrir").
-  //   · SIN args (ruta vieja / tests): conserva el comportamiento actual con semilla.
+  //   · Sin receta ("Crear"): hormigón listo desde dims y CERO componentes.
+  //   · Con receta ("Abrir"): la guardada, normalizada al abrir.
+  // ANTES existía una segunda puerta: llamar sin argumentos abría el editor con la
+  // semilla de viga hardcodeada ("Viga tipo Explora"), sin nombre y sin templateId —
+  // un template fantasma que no salía de la lista y que al guardar creaba una copia
+  // huérfana. Nadie la usaba (ni la UI ni los tests) y se retiró: quien llame mal
+  // ahora no abre nada y lo dice, en vez de abrir algo que el usuario no pidió.
   global.templateEditorAbrir = function (cfg) {
     var bd = $('te_backdrop');
     if (!bd) { alert('El Template Editor aún se está cargando. Reintenta en un momento.'); return; }
-    var d = _deps();
-    if (cfg && cfg.elemento) {
-      ST.elemento = String(cfg.elemento).toLowerCase();
-      ST.nombre = (cfg.nombre || '').trim();
-      ST.templateId = (cfg.templateId != null) ? cfg.templateId : null;
-      ST.obra = (cfg.obra != null) ? cfg.obra : null;
-      // Sin dato explícito se asume que SÍ (un template nuevo es de quien lo crea);
-      // el backend manda el valor real al abrir uno de la biblioteca.
-      ST.puedeModificar = (cfg.puedeModificar === false) ? false : true;
-      if (cfg.receta) {
-        // "Abrir": receta guardada (params del backend), clonada para no mutar la fuente.
-        ST.receta = JSON.parse(JSON.stringify(cfg.receta));
-        // NORMALIZADOR DE APERTURA (reglas.normalizarReceta): deja cada componente
-        // con la vista canónica que el motor de hoy espera, DERIVADA de lo que la
-        // receta ya decía, y marca lo que no se pudo derivar (figura que el catálogo
-        // ya no tiene, dims sin medida…). Va ANTES del primer _renderPanel para que
-        // la lista de barras ya nazca con las marcas puestas.
-        _normalizarRecetaViva();
-      } else {
-        // "Crear": SIEMPRE rectángulo de hormigón desde dims + componentes vacíos.
-        var geo = {}, src = cfg.dims || {};
-        for (var k in src) if (src.hasOwnProperty(k)) geo[k] = Number(src[k]);
-        geo.contorno = null;
-        ST.receta = { tipo: ST.elemento, geometria: geo, componentes: [] };
+    if (!cfg || !cfg.elemento) {
+      // No es un caso de usuario: es un llamado mal hecho desde el código. Se avisa
+      // por consola y NO se abre (abrir "algo" sería inventarle un template).
+      if (global.console && global.console.warn) {
+        global.console.warn('[TE] templateEditorAbrir necesita { elemento, … }: se entra desde el Gestor de templates.');
       }
-      if (!ST.receta.tipo) ST.receta.tipo = ST.elemento;
-      ST.selCi = -1; ST.ultimoOut = null;
-      ST.dragMove = null; ST.dragMarco = null; ST.dragRango = null;
-    } else {
-      // Ruta vieja: semilla (solo para tests / compatibilidad).
-      if (!ST.receta && d.semilla) ST.receta = d.semilla.semillaViga();
-      ST.elemento = (ST.receta && ST.receta.tipo) || 'viga';
-      if (!ST.nombre) ST.nombre = 'Viga tipo Explora';
-      if (ST.templateId === undefined) ST.templateId = null;
+      return;
     }
+    ST.elemento = String(cfg.elemento).toLowerCase();
+    ST.nombre = (cfg.nombre || '').trim();
+    ST.templateId = (cfg.templateId != null) ? cfg.templateId : null;
+    ST.obra = (cfg.obra != null) ? cfg.obra : null;
+    // Sin dato explícito se asume que SÍ (un template nuevo es de quien lo crea);
+    // el backend manda el valor real al abrir uno de la biblioteca.
+    ST.puedeModificar = (cfg.puedeModificar === false) ? false : true;
+    if (cfg.receta) {
+      // "Abrir": receta guardada (params del backend), clonada para no mutar la fuente.
+      ST.receta = JSON.parse(JSON.stringify(cfg.receta));
+      // NORMALIZADOR DE APERTURA (reglas.normalizarReceta): deja cada componente
+      // con la vista canónica que el motor de hoy espera, DERIVADA de lo que la
+      // receta ya decía, y marca lo que no se pudo derivar (figura que el catálogo
+      // ya no tiene, dims sin medida…). Va ANTES del primer _renderPanel para que
+      // la lista de barras ya nazca con las marcas puestas.
+      _normalizarRecetaViva();
+    } else {
+      // "Crear": SIEMPRE rectángulo de hormigón desde dims + componentes vacíos.
+      var geo = {}, src = cfg.dims || {};
+      for (var k in src) if (src.hasOwnProperty(k)) geo[k] = Number(src[k]);
+      geo.contorno = null;
+      ST.receta = { tipo: ST.elemento, geometria: geo, componentes: [] };
+    }
+    if (!ST.receta.tipo) ST.receta.tipo = ST.elemento;
+    ST.selCi = -1; ST.ultimoOut = null;
+    ST.dragMove = null; ST.dragMarco = null; ST.dragRango = null;
     // Asegurar el flag de distribución en la semilla (estribo/traba ya distribuidos).
     (ST.receta.componentes || []).forEach(function (c) {
       var rol = _rolComp(c);
@@ -10325,7 +10338,7 @@
   // creer que el template está vacío y un número inventado es peor todavía.
   function _tplKpi(valor, sufijo) {
     if (valor == null || valor === '') {
-      return '<span class="muted" title="El backend todavía no manda este dato en GET /templates">—</span>';
+      return '<span class="muted" title="Este dato todavía no se calcula para la lista: se ve al abrir el template">—</span>';
     }
     return _esc(valor) + (sufijo ? ' <span class="muted" style="font-size:10px;">' + _esc(sufijo) + '</span>' : '');
   }
@@ -10387,11 +10400,11 @@
       }).join('') +
       '</table>' +
       // Pendiente A LA VISTA, no escondido en un comentario: mientras GET /templates
-      // no traiga estos tres campos, las columnas quedan en '—'.
-      '<div class="muted" style="font-size:10.5px; margin-top:8px;">Barras, peso estimado y φ promedio ' +
-      'salen en «—» porque <b>GET /templates todavía no los manda</b>: la lista es liviana y sólo trae ' +
-      'el número de componentes. Los pesos, cuando lleguen, son <b>estimados</b> (dependen del hormigón ' +
-      'contra el que se genere el template).</div>';
+      // no traiga estos tres campos, las columnas quedan en '—'. Dicho SIN nombrar el
+      // endpoint: quien lee esta pantalla cubica fierro, no llama a la API.
+      '<div class="muted" style="font-size:10.5px; margin-top:8px;">Barras, peso y φ promedio ' +
+      '<b>todavía no se calculan para la lista</b>: se ven al abrir el template. El peso, cuando ' +
+      'llegue acá, es <b>estimado</b> (depende del hormigón contra el que se genere).</div>';
   }
 
   function _tplHayFiltro() {
