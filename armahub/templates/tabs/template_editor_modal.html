@@ -446,10 +446,6 @@
     display:flex;align-items:center;justify-content:center;padding:0}
   #te_modal .te-3dtools button:hover{color:var(--te-ink);border-color:var(--te-acero)}
   #te_modal .te-3dtools button.off{opacity:.45}
-  /* 🎯 ENCENDIDO = ancla puesta (el giro orbita la pieza aunque no sostengas ctrl).
-     Va con DOS ids a propósito: `.te-3dtools button.on` de una sola clase también
-     pintaría al 🧊 del hormigón, que nace con class="on" y usa .off para apagarse. */
-  #te_modal .te-3dtools #te_3dAnclar.on{background:var(--te-acero);color:#fff;border-color:var(--te-acero)}
   /* Radial de EJE del 3D. OJO ESPECIFICIDAD: la regla de arriba
      (`#te_modal .te-3dtools button`) fija 24×24 px; ésta la gana porque suma la clase
      .te-3dseg — si se escribiera con una sola clase, los botones de texto saldrían
@@ -918,18 +914,18 @@
           <button type="button" class="te-vzoom" title="Agrandar este cuadrante">🔍</button>
           <!-- El gizmo 3D (triad de ejes que sigue a la cámara) lo pinta el RENDERER en la
                esquina inf-izq de este cuadrante (viewport propio, ver _renderGizmo3D). -->
-          <div class="te-vhint">arrastra = rotar · ctrl+arrastre = girar en torno a la selección · rueda = zoom al cursor · medio/der = pan · 🎯 = dejarlo anclado</div>
+          <div class="te-vhint">arrastra = girar la escena · ctrl+arrastre = girar sobre el eje de la barra seleccionada · rueda = zoom al cursor · medio/der = pan</div>
           <!-- Herramientas del 3D (17-ago). Van arriba-derecha porque la esquina
                inf-izq la ocupa el gizmo de ejes que pinta el renderer.
-               · 🎯 anclar: INTERRUPTOR (18-ago). Encendido, TODO arrastre de giro orbita
-                 rígidamente el centro de la barra seleccionada —sin sostener ctrl— y ni el
-                 pan ni la rueda lo sueltan. Al encenderlo centra la pieza TRASLADANDO la
-                 cámara (se lee como "la cámara camina hasta la pieza"), nunca
-                 re-apuntándola. Antes era un disparo suelto y el ancla se perdía en el
-                 primer pan: _absorberPanEnTarget devuelve el pivote al centro de la
-                 pantalla. El ctrl+arrastre hace lo mismo, sólo mientras dura el gesto.
+               EL 🎯 (anclar) YA NO ESTÁ (19-ago): anclaba el pivote en la pieza, y eso
+               —medido— es indistinguible del giro normal, porque el pivote normal ya
+               queda en el centro de la pantalla, que es donde uno tiene la pieza. Lo
+               que hace distinto al ctrl+arrastre es el EJE (el propio de la barra), no
+               el centro, y para eso no hace falta interruptor. Ver _girarPorArrastre.
                · ⟳ recentrar: hace falta desde que la cámara dejó de re-encuadrarse
-                 sola en cada clic (antes el reset accidental hacía de "volver").
+                 sola en cada clic (antes el reset accidental hacía de "volver"). Es
+                 además lo que ENDEREZA EL HORIZONTE tras un giro con ctrl (ese giro
+                 inclina la cámara, y tiene que inclinarla).
                · 🧊 hormigón: ST.verHormigon existía desde siempre SIN botón que lo
                  tocara — la función estaba escrita y no se podía usar.
                A la derecha, el radial de EJE de rotación (portado del Enfierrador).
@@ -945,8 +941,7 @@
                ningún botón lleva data-eje="libre", ninguno queda encendido. -->
           <div class="te-3dtools">
             <div class="te-3drow">
-              <button id="te_3dAnclar" type="button" title="Anclar el giro en la barra seleccionada (interruptor: vuelve a pulsarlo para soltarlo)">🎯</button>
-              <button id="te_3dReset" type="button" title="Recentrar el 3D (giro, zoom y encuadre)">⟳</button>
+              <button id="te_3dReset" type="button" title="Recentrar el 3D (giro, zoom y encuadre) y enderezar el horizonte">⟳</button>
               <button id="te_3dHormigon" type="button" class="on" title="Mostrar u ocultar el hormigón">🧊</button>
             </div>
             <div class="te-3drow">

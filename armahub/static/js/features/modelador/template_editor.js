@@ -96,9 +96,8 @@
   // medía 83 cm: una barra φ16 (1,6 cm) ocupaba ~7 px y era imposible mirarle el
   // gancho. Con 15 la ventana baja a ~10 cm, que es el detalle de un doblez.
   // near sigue en 1 (ver _initEscena): con el ojo a 15 no recorta nada útil.
-  // UNA SOLA CONSTANTE Y UN SOLO CLAMP: el mínimo estaba escrito en cuatro sitios
-  // (_pivotarEn, la rueda) y los otros dos —encuadre automático y botón ⟳— ni
-  // siquiera pasaban por él.
+  // UNA SOLA CONSTANTE Y UN SOLO CLAMP: el mínimo estaba escrito en cuatro sitios y
+  // dos de ellos —encuadre automático y botón ⟳— ni siquiera pasaban por él.
   //
   // 38° → 25° (18-ago, «la viga cambia de orientación al panear»). NO era un bug de
   // la pose ni del pan: es DISTORSIÓN DE PERSPECTIVA. Con un lente abierto los rayos
@@ -109,6 +108,10 @@
   // parece dar al cruzar la pantalla se reduce a dos tercios, y el resultado se lee
   // más como dibujo técnico (una ortográfica sería 0°, pero perdería la profundidad).
   var FOV3D = 25;
+  // PUNTO DE PARTIDA de la cámara: elevación 0,55 rad (31°) y acimut 0,9 rad (52°),
+  // sin alabeo. Los mismos dos números los usaban el literal de ST y el botón ⟳
+  // escritos a mano en los dos sitios; ahora salen de acá (una sola vez).
+  var CAM0 = { elev: 0.55, azim: 0.9 };
   var DIST_MIN = 15, DIST_MAX = 6000;
   function _clampDist(d) {
     d = Number(d);
@@ -155,15 +158,24 @@
     receta: null, ultimoOut: null,
     scene: null, camera: null, renderer: null, world: null, grid: null,
     materiales: null,
-    rotX: 0.55, rotY: 0.9, dist: 900, target: null, panX: 0, panY: 0,
+    // ORIENTACIÓN DE LA CÁMARA = UN QUATERNION, no dos ángulos (19-ago).
+    // Antes eran rotX (elevación) + rotY (acimut) con el "arriba" clavado en +Y del
+    // mundo: 2 grados de libertad y sin alabeo. Ese modelo NO da para girar en torno
+    // a un eje cualquiera —el eje propio de la pieza, que es lo que hace ctrl—:
+    // girar sobre un eje horizontal INCLINA el horizonte (tercer grado que no
+    // existía) y encima pasa por el cenit, donde la pareja (elevación, acimut) es
+    // singular: la base se degenera porque |derecha| = cos(elev) → 0 y el gesto se
+    // trababa justo ahí. Con el quaternion los 3 grados están, el cenit no es un
+    // punto especial y ctrl gira 360° sin trabarse. La órbita normal NO cambió: se
+    // compone EXACTAMENTE el mismo par de giros (ver _girarPorArrastre).
+    // Nace en _initEscena, desde CAM0 (necesita THREE).
+    quat: null, dist: 900, target: null, panX: 0, panY: 0,
     threeCargado: false, webglOk: null, rafId: null, verHormigon: true,
     // tema3d: clave de TEMAS3D — fondo y grilla del cuadrante 3D. Sólo memoria
     //   (no viaja en la receta: es preferencia de mirada, no dato del template).
     // ejeRot: 'libre' | 'x' | 'y' | 'z' — restringe el arrastre de la órbita a un
     //   solo eje (portado del Enfierrador).
-    // anclado: 🎯 encendido — TODO arrastre de giro orbita rígidamente el centro de
-    //   la selección, sin tener que sostener ctrl, y ni el pan ni el zoom lo sueltan.
-    tema3d: 'claro', ejeRot: 'libre', anclado: false,
+    tema3d: 'claro', ejeRot: 'libre',
     // --- Estado de interacción 2D ---
     // figura y φ parten VACÍOS (pedido 13-ago): el usuario elige antes de colocar.
     figura: '', tipologia: 'CBS', diam: null, contorno: true,
@@ -1721,14 +1733,6 @@
     ST.grid.position.y = -1;
     ST.scene.add(ST.grid);
     _marcarSucio();
-  }
-
-  // Apaga el ancla 🎯 (estado + botón). Está aparte porque la apagan dos caminos:
-  // el propio botón y la apertura de otro template (donde la selección se pierde).
-  function _soltarAncla() {
-    ST.anclado = false;
-    var b = $('te_3dAnclar');
-    if (b) b.classList.remove('on');
   }
 
   // Marca el tema vigente EN EL DOM: de esta clase cuelgan las variables --te-ov-*
@@ -6712,9 +6716,13 @@
       b3r._teBound = true;
       b3r.addEventListener('click', function (e) {
         e.stopPropagation();
-        // mismos valores con que nace la cámara (ST inicial) + el encuadre del
-        // elemento actual: es "volver al punto de partida", no un encuadre nuevo.
-        ST.rotX = 0.55; ST.rotY = 0.9; ST.panX = 0; ST.panY = 0;
+        // mismos valores con que nace la cámara (CAM0) + el encuadre del elemento
+        // actual: es "volver al punto de partida", no un encuadre nuevo. Devolver la
+        // orientación a CAM0 también ENDEREZA EL HORIZONTE: el giro sobre el eje de
+        // la pieza (ctrl) deja alabeo, y éste es el botón que lo saca.
+        // (a null: _quatCam la rearma en CAM0 al primer uso, así el botón también
+        // funciona si THREE todavía no terminó de cargar.)
+        ST.quat = null; ST.panX = 0; ST.panY = 0;
         if (ST.target && ST.target.set) ST.target.set(0, 0, 0);
         var gg = ST.receta && ST.receta.geometria;
         if (gg && isFinite(Number(gg.largo))) ST.dist = _distEncuadre(gg.largo);
@@ -6734,35 +6742,6 @@
         if (ST.ultimoOut) _redibujar(ST.ultimoOut);
         _marcarSucio();
         _actualizarStatus(ST.verHormigon ? 'Hormigón visible.' : 'Hormigón oculto (solo las barras).');
-      });
-    }
-    // 🎯 ANCLAR EL GIRO EN LA SELECCIÓN — INTERRUPTOR, no acción de una vez.
-    // Antes era un disparo suelto: _pivotarEn centraba la pieza (traslación pura del
-    // ojo y la mira, eso ya estaba bien) y dejaba el pivote en ella… hasta el primer
-    // pan o la primera rueda, que terminan llamando a _absorberPanEnTarget y mueven el
-    // pivote al punto que quedó AL CENTRO DE LA PANTALLA. Medido: basta un pan para
-    // que el "ancla" deje de estar en la pieza. De ahí que el usuario dijera que el
-    // botón "sólo rota levemente": el ancla se soltaba sola.
-    // Ahora ENCENDIDO significa que todo arrastre de giro orbita rígidamente el centro
-    // de la pieza, y que el pan y la rueda ya no absorben el pivote. Se apaga
-    // volviendo a pulsarlo.
-    var b3a = $('te_3dAnclar');
-    if (b3a && !b3a._teBound) {
-      b3a._teBound = true;
-      b3a.addEventListener('click', function (e) {
-        e.stopPropagation();
-        if (ST.anclado) {
-          _soltarAncla();
-          _actualizarStatus('Ancla suelta: el giro vuelve al centro de la pantalla.');
-          return;
-        }
-        if (ST.selCi < 0) { _actualizarStatus('Nada seleccionado: elige una barra y vuelve a 🎯 para anclar el giro en ella.'); return; }
-        ST.anclado = true;
-        b3a.classList.add('on');
-        // Centrar la pieza es TRASLACIÓN pura (ojo y mira se mueven juntos, misma
-        // dirección y mismo zoom): re-apuntar sin mover el ojo se leería como un salto.
-        _pivotarEn(_centroSeleccion3D());
-        _actualizarStatus('Giro anclado en la barra seleccionada: arrastra y la escena gira a su alrededor (🎯 otra vez lo suelta).');
       });
     }
     // EJE DE ROTACIÓN (X/Y/Z) — radial portado del Enfierrador. Allá había un cuarto
@@ -7265,38 +7244,86 @@
   }
 
   // ==========================================================================
-  // Cámara / órbita / loop / resize (3D) — sin cambios de comportamiento
+  // CÁMARA DEL CUADRANTE 3D — modelo, órbita y giro sobre el eje de la pieza
+  //
+  // MODELO (19-ago): (target, dist, quat, panX, panY).
+  //   base   = {derecha, arriba, atrás} = los tres ejes del QUATERNION
+  //   ojo    = target + dist·atrás + panX·derecha + panY·arriba
+  //   mirada = −atrás
+  // Es el modelo de siempre con la orientación guardada como quaternion en vez de
+  // (rotX = elevación, rotY = acimut) + el "arriba" clavado en +Y del mundo. Lo que
+  // se gana es el TERCER GRADO DE LIBERTAD (el alabeo) y perder la singularidad del
+  // cenit —donde la base vieja se degeneraba porque |derecha| = cos(elev) → 0—, y
+  // sin las dos cosas no hay giro posible en torno a un eje cualquiera: ver
+  // _girarPorArrastre. Lo que NO cambia: el pan y el zoom al cursor siguen apoyados
+  // en la MISMA base de pantalla, y la órbita normal compone exactamente los dos
+  // giros de antes (verificado numéricamente en tests/test_camara_ctrl.js: mismo ojo
+  // hasta 1e-9 tras 60 pasos).
   // ==========================================================================
-  function _applyCam() {
+
+  // Los tres ejes de la cámara, en coordenadas de mundo.
+  function _baseCam() {
     var THREE = global.THREE;
-    var cx = ST.dist * Math.cos(ST.rotX) * Math.sin(ST.rotY);
-    var cy = ST.dist * Math.sin(ST.rotX);
-    var cz = ST.dist * Math.cos(ST.rotX) * Math.cos(ST.rotY);
-    ST.camera.up.set(0, 1, 0);
-    ST.camera.position.set(cx + ST.target.x, cy + ST.target.y, cz + ST.target.z);
-    ST.camera.lookAt(ST.target);
-    // lookAt sólo escribe el quaternion: `matrix` se recompone en el render, o sea
-    // que sin esto las columnas de abajo son las del FRAME ANTERIOR. Con el pan solo
-    // se notaba como un fotograma de retraso al panear mientras se rota, pero
-    // _pivotarEnSinMover necesita la base EXACTA de este instante (si la base está
-    // vieja, "cambiar el pivote sin mover un píxel" mueve píxeles).
-    ST.camera.updateMatrix();
-    var right = new THREE.Vector3().setFromMatrixColumn(ST.camera.matrix, 0);
-    var up = new THREE.Vector3().setFromMatrixColumn(ST.camera.matrix, 1);
-    var shift = right.multiplyScalar(ST.panX).add(up.multiplyScalar(ST.panY));
-    ST.camera.position.add(shift);
-    ST.camera.lookAt(new THREE.Vector3().copy(ST.target).add(shift));
+    var q = _quatCam();
+    return {
+      derecha: new THREE.Vector3(1, 0, 0).applyQuaternion(q),
+      arriba: new THREE.Vector3(0, 1, 0).applyQuaternion(q),
+      atras: new THREE.Vector3(0, 0, 1).applyQuaternion(q)   // three mira por su −Z
+    };
+  }
+
+  // EL OJO, sacado de la parametrización de ST. Es álgebra pura (no toca ST.camera),
+  // así que se puede pedir en cualquier momento sin depender de si la matriz de la
+  // cámara es la de este frame o la del anterior — que era el flanco del modelo viejo.
+  function _ojoCam(b) {
+    var THREE = global.THREE;
+    b = b || _baseCam();
+    return new THREE.Vector3().copy(ST.target)
+      .addScaledVector(b.atras, ST.dist)
+      .addScaledVector(b.derecha, ST.panX)
+      .addScaledVector(b.arriba, ST.panY);
+  }
+
+  // Quaternion SIN alabeo para (elevación, acimut): la orientación con la que nace el
+  // editor y a la que vuelve el ⟳. Es la composición de los dos giros que hacían
+  // rotX/rotY —acimut alrededor de +Y del mundo, elevación alrededor del X ya girado—
+  // y da el MISMO vector que la fórmula vieja atrás = (cos e·sin a, sin e, cos e·cos a).
+  function _quatDeAngulos(elev, azim) {
+    var THREE = global.THREE;
+    return new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), azim)
+      .multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -elev));
+  }
+
+  // La orientación vigente, creándola en el primer uso (ST nace sin THREE cargado).
+  function _quatCam() {
+    if (!ST.quat) ST.quat = _quatDeAngulos(CAM0.elev, CAM0.azim);
+    return ST.quat;
+  }
+
+  function _applyCam() {
+    if (!ST.camera || !ST.target) return;
+    ST.camera.position.copy(_ojoCam());
+    // La orientación se ESCRIBE, no se deduce con lookAt: lookAt la reconstruye con
+    // el "arriba" del mundo y borraría el alabeo en cada frame.
+    ST.camera.quaternion.copy(_quatCam());
+    ST.camera.updateMatrix();   // el render la recompone igual; el gizmo la lee ya hecha
+  }
+
+  // Las colocaciones del componente SELECCIONADO. El filtro por meta.ci vive acá una
+  // sola vez: lo usan el centro y el eje propio, y si divergieran, el pivote y el eje
+  // del giro dejarían de ser de la misma pieza.
+  function _placementsSeleccion3D() {
+    var out = ST.ultimoOut;
+    if (ST.selCi < 0 || !out || !out.placements) return [];
+    return out.placements.filter(function (pl) { return !!(pl.meta && pl.meta.ci === ST.selCi); });
   }
 
   // CENTRO (en coords de mundo) del ELEMENTO SELECCIONADO: bbox de TODOS sus
   // placements. Sin selección (o sin geometría todavía) devuelve el centro de la
   // escena — el host está centrado en el origen.
   function _centroSeleccion3D() {
-    var out = ST.ultimoOut;
-    if (ST.selCi < 0 || !out || !out.placements) return { x: 0, y: 0, z: 0 };
     var lo = { x: Infinity, y: Infinity, z: Infinity }, hi = { x: -Infinity, y: -Infinity, z: -Infinity }, n = 0;
-    out.placements.forEach(function (pl) {
-      if (!pl.meta || pl.meta.ci !== ST.selCi) return;
+    _placementsSeleccion3D().forEach(function (pl) {
       (pl.puntos || []).forEach(function (p) {
         if (!p || !isFinite(p.x) || !isFinite(p.y) || !isFinite(p.z)) return;
         if (p.x < lo.x) lo.x = p.x; if (p.x > hi.x) hi.x = p.x;
@@ -7309,151 +7336,169 @@
     return { x: (lo.x + hi.x) / 2, y: (lo.y + hi.y) / 2, z: (lo.z + hi.z) / 2 };
   }
 
-  // ANCLAR EL GIRO EN `p` (botón 🎯) — TRASLADANDO LA CÁMARA, no re-apuntándola.
-  // Conserva rotX/rotY/dist y suelta el pan: el ojo y la mira se mueven JUNTOS hasta
-  // que `p` queda al centro de la pantalla, con la misma dirección de vista y el mismo
-  // zoom. Es un movimiento grande y a propósito (el usuario lo pidió con un botón) y
-  // se lee como "la cámara camina hasta la pieza"; re-apuntar sin mover el ojo —lo que
-  // hacía antes— se leía como un salto, porque la escena entera giraba de golpe.
-  // Para cambiar el pivote SIN mover un solo píxel está _pivotarEnSinMover.
-  function _pivotarEn(p) {
-    if (!ST.camera || !ST.target || !p) return;
-    if (!isFinite(p.x) || !isFinite(p.y) || !isFinite(p.z)) return;
-    ST.target.set(p.x, p.y, p.z);
-    ST.panX = 0; ST.panY = 0;
-    _marcarSucio();
+  // --- EJE PROPIO DE LA PIEZA (lo que hace distinto al ctrl+arrastre) -------------
+  //
+  // Sale de la geometría de UNA colocación —la primera del componente—, no de la nube
+  // entera: las copias de una distribución son traslaciones, así que todas dan el
+  // mismo eje, y con una sola un estribo suelto y una familia de 30 estribos giran
+  // IGUAL. (Con la nube entera no: la familia daba el eje del reparto y el estribo
+  // suelto su lado largo, dos respuestas distintas para la misma pieza.)
+  //
+  // La regla es la del fierro, y son dos casos:
+  //   · pieza LINEAL (una barra): su eje es su propia recta → dirección de MAYOR
+  //     varianza (λ1).
+  //   · pieza PLANA (un estribo, o cualquier figura cerrada o doblada dentro de un
+  //     plano): el fierro da la vuelta a un contorno y su eje es el del carrete, o
+  //     sea la NORMAL de su plano → dirección de MENOR varianza (λ3).
+  // El corte entre los dos casos es λ2/λ1 < 0,05, y los números medidos dicen que no
+  // es un ajuste fino: barra recta = 0,0000 · barra de 600 con patas de 20 = 0,0011 ·
+  // estribo 60×30 = 0,2387 · estribo cuadrado 60×60 = 0,7143. Hay dos órdenes de
+  // magnitud entre un caso y el otro. Con la geometría REAL de la semilla de viga:
+  // CBS (103B) = 0,0005 y ES (104D) = 0,1598, y las cuatro piezas dan el eje que uno
+  // señalaría con el dedo (x, x, x y la traba vertical y) — ver C6 del test.
+  // El único que queda del lado "lineal" sin ser una barra es un estribo larguísimo y
+  // flaco (200×10 → 0,0024): gira sobre su lado largo, que es exactamente lo que uno
+  // espera de una pieza que se ve como una barra.
+  var LINEAL_MAX = 0.05;
+
+  // Covarianza 3×3 de una nube de puntos (matriz simétrica, en fila mayor).
+  function _covarianzaPuntos(pts) {
+    var n = pts.length, i, cx = 0, cy = 0, cz = 0;
+    for (i = 0; i < n; i++) { cx += pts[i].x; cy += pts[i].y; cz += pts[i].z; }
+    cx /= n; cy /= n; cz /= n;
+    var m = [0, 0, 0, 0, 0, 0, 0, 0, 0];
+    for (i = 0; i < n; i++) {
+      var dx = pts[i].x - cx, dy = pts[i].y - cy, dz = pts[i].z - cz;
+      m[0] += dx * dx; m[1] += dx * dy; m[2] += dx * dz;
+      m[4] += dy * dy; m[5] += dy * dz; m[8] += dz * dz;
+    }
+    for (i = 0; i < 9; i++) m[i] /= n;
+    m[3] = m[1]; m[6] = m[2]; m[7] = m[5];
+    return m;
   }
 
-  // CAMBIA EL PIVOTE A `p` SIN MOVER UN SOLO PÍXEL. Es la pieza que faltaba: la
-  // versión vieja de ctrl+arrastre re-apuntaba la cámara al punto nuevo (target.set +
-  // lookAt) y encima anulaba el pan, así que si la barra no estaba justo al centro la
-  // imagen SALTABA — por eso se había quitado el ctrl orbitando la selección.
-  // Acá el ojo y la dirección de vista se dejan intactos y sólo se reparte el estado:
-  // la distancia nueva es la PROYECCIÓN de `p` sobre el eje de vista (o sea, el plano
-  // de `p`), y lo que `p` está corrido respecto del centro de la pantalla —la sombra,
-  // el componente perpendicular a la vista— se guarda tal cual en el pan. Como
-  // _applyCam reconstruye el ojo como target + dist·atrás + pan, la suma vuelve a dar
-  // exactamente el mismo ojo. Devuelve false si no pudo (p detrás del ojo).
-  function _pivotarEnSinMover(p) {
-    var THREE = global.THREE;
-    if (!THREE || !ST.camera || !ST.target || !p) return false;
-    _applyCam();   // deja cámara y matriz exactamente como se están viendo
-    var est = _estadoCamara(); if (!est) return false;
-    return _fijarCamDesdeOjo(est.eye, est.v, p);
+  function _matPorVec(m, v) {
+    return { x: m[0] * v.x + m[1] * v.y + m[2] * v.z,
+             y: m[3] * v.x + m[4] * v.y + m[5] * v.z,
+             z: m[6] * v.x + m[7] * v.y + m[8] * v.z };
+  }
+  function _varianzaEn(m, v) { var w = _matPorVec(m, v); return v.x * w.x + v.y * w.y + v.z * w.z; }
+
+  // Autovector DOMINANTE por iteración de potencia (48 vueltas). No se arma un
+  // solucionador general porque acá sólo hacen falta los dos extremos del espectro:
+  // el menor de C es el dominante de tr(C)·I − C, y esta misma función lo saca.
+  // La semilla es el eje del mundo con más varianza propia (nunca es ortogonal al que
+  // se busca) con una pizca en los otros dos, para que una nube perfectamente alineada
+  // con un eje no deje la iteración clavada en un autovector equivocado.
+  function _dominante(m) {
+    var k = (m[0] >= m[4] && m[0] >= m[8]) ? 0 : (m[4] >= m[8] ? 1 : 2);
+    var v = { x: k === 0 ? 1 : 1e-3, y: k === 1 ? 1 : 1e-3, z: k === 2 ? 1 : 1e-3 };
+    for (var i = 0; i < 48; i++) {
+      v = _matPorVec(m, v);
+      var L = Math.sqrt(v.x * v.x + v.y * v.y + v.z * v.z);
+      if (!(L > 1e-12)) return null;
+      v.x /= L; v.y /= L; v.z /= L;
+    }
+    return v;
   }
 
-  // ESTADO REAL de la cámara de este instante: ojo y dirección de vista. Sale de la
-  // MATRIZ (no de rotX/rotY), que es lo único que incluye el pan — y el pan forma
-  // parte de hacia dónde se está mirando.
-  // Requiere que _applyCam() ya haya corrido en este mismo tick (la matriz se
-  // recompone ahí; leerla antes devuelve la del frame anterior).
+  // SIGNO CANÓNICO: la componente de mayor módulo, positiva. El eje es una recta (u y
+  // −u son el mismo eje), pero el SENTIDO decide para qué lado gira el arrastre; si
+  // se dedujera de la cámara podría darse vuelta a mitad del gesto y el arrastre se
+  // invertiría solo. Con una regla puramente geométrica, no.
+  function _signoCanonico(v) {
+    var ax = Math.abs(v.x), ay = Math.abs(v.y), az = Math.abs(v.z);
+    var c = (ax >= ay && ax >= az) ? v.x : (ay >= az ? v.y : v.z);
+    return (c < 0) ? { x: -v.x, y: -v.y, z: -v.z } : { x: v.x, y: v.y, z: v.z };
+  }
+
+  // Devuelve el eje propio (unitario, {x,y,z}) o null si la pieza todavía no tiene
+  // dos puntos distintos que definan una dirección.
+  function _ejePropioSeleccion3D() {
+    var pls = _placementsSeleccion3D();
+    if (!pls.length) return null;
+    var pts = [];
+    (pls[0].puntos || []).forEach(function (p) {
+      if (p && isFinite(p.x) && isFinite(p.y) && isFinite(p.z)) pts.push(p);
+    });
+    if (pts.length < 2) return null;
+    var m = _covarianzaPuntos(pts);
+    var traza = m[0] + m[4] + m[8];
+    if (!(traza > 1e-9)) return null;                 // todos los puntos en el mismo sitio
+    var u1 = _dominante(m); if (!u1) return null;
+    var mi = m.slice();                               // tr·I − C: su dominante es el MENOR de C
+    for (var i = 0; i < 9; i++) mi[i] = -mi[i];
+    mi[0] += traza; mi[4] += traza; mi[8] += traza;
+    var u3 = _dominante(mi);
+    var l1 = _varianzaEn(m, u1);
+    var l3 = u3 ? _varianzaEn(m, u3) : 0;
+    var l2 = traza - l1 - l3;
+    var plana = (u3 && l1 > 0 && (l2 / l1) >= LINEAL_MAX);
+    return _signoCanonico(plana ? u3 : u1);
+  }
+
+  // ESTADO REAL de la cámara de este instante: ojo, orientación y base. Ahora es
+  // álgebra sobre ST (antes había que correr _applyCam primero y leer la matriz, que
+  // podía ser la del frame anterior; ese requisito ya no existe).
   function _estadoCamara() {
     var THREE = global.THREE;
-    if (!THREE || !ST.camera) return null;
-    var m = ST.camera.matrix;
-    // la columna 2 es el +Z de la cámara, que apunta HACIA ATRÁS: la vista es su opuesto
-    var v = new THREE.Vector3().setFromMatrixColumn(m, 2).normalize().multiplyScalar(-1);
-    if (!isFinite(v.x) || !isFinite(v.y) || !isFinite(v.z)) return null;
-    return { eye: new THREE.Vector3().copy(ST.camera.position), v: v };
+    if (!THREE || !ST.target) return null;
+    return { eye: _ojoCam(), q: _quatCam().clone() };
   }
 
-  // ESCRIBE UN PAR (ojo, dirección de vista) EN LA PARAMETRIZACIÓN DE ST, pivotando
-  // en `p`. Es la conversión inversa de _applyCam y la usan LOS DOS caminos que
-  // mueven la cámara "a mano" (_pivotarEnSinMover y el ctrl+arrastre rígido): estaba
-  // escrita dentro de _pivotarEnSinMover y duplicarla habría dejado dos álgebras que
-  // pueden divergir al primer cambio de _applyCam.
-  //   dist = proyección de (ojo − p) sobre el eje de vista  → el plano de p
-  //   pan  = la SOMBRA (lo que queda perpendicular a la vista) en la base de pantalla
-  // Como _applyCam reconstruye ojo = p + dist·atrás + right·panX + up·panY y la
-  // sombra vive justo en el plano {right, up}, la suma devuelve EXACTAMENTE el mismo
-  // ojo y la misma dirección. Devuelve false si p queda detrás del ojo.
-  // La base {right, up, atrás} se recalcula desde los ÁNGULOS YA CLAMPEADOS —no desde
-  // la matriz vieja— porque es la base que _applyCam va a usar: tomarla de la matriz
-  // anterior mete un error justo cuando la elevación toca el tope.
-  function _fijarCamDesdeOjo(eye, v, p) {
+  // ESCRIBE UN PAR (ojo, orientación) EN LA PARAMETRIZACIÓN DE ST, pivotando en `p`.
+  // Es la conversión inversa de _applyCam y la usan LOS DOS caminos que mueven la
+  // cámara "a mano" (_pivotarEnSinMover y el giro rígido): está escrita una sola vez
+  // porque duplicarla dejaría dos álgebras que divergen al primer cambio de _applyCam.
+  // Con la base ortonormal del quaternion no hay que proyectar en dos pasos:
+  //   ojo − p = dist·atrás + panX·derecha + panY·arriba
+  // y cada término sale de un producto punto. Devuelve false si `p` queda detrás del
+  // ojo (no hay pivote posible).
+  // YA NO TOPEA LA ELEVACIÓN: el modelo viejo la recortaba acá a ±1,45 y eso rompía
+  // la rigidez justo en el tope (la pieza se descolocaba). El tope vive donde tiene
+  // que vivir, en el incremento de la órbita normal (_orbitarMundo).
+  function _fijarCamDesdeOjo(eye, q, p) {
     var THREE = global.THREE;
-    if (!THREE || !ST.target || !eye || !v || !p) return false;
+    if (!THREE || !ST.target || !eye || !q || !p) return false;
     if (!isFinite(p.x) || !isFinite(p.y) || !isFinite(p.z)) return false;
-    var rotX = Math.max(-1.45, Math.min(1.45, Math.asin(-v.y)));
-    var rotY = Math.atan2(-v.x, -v.z);
-    // MISMA fórmula que _applyCam para el vector "hacia atrás" (ojo − mira).
-    var atras = new THREE.Vector3(
-      Math.cos(rotX) * Math.sin(rotY), Math.sin(rotX), Math.cos(rotX) * Math.cos(rotY));
-    var vE = new THREE.Vector3().copy(atras).multiplyScalar(-1);
-    // three arma la base de un lookAt con x = normalize(up_mundo × atrás), y = atrás × x.
-    var right = new THREE.Vector3().crossVectors(new THREE.Vector3(0, 1, 0), atras);
-    if (!(right.length() > 1e-9)) return false;   // mirando justo al cenit: base degenerada
-    right.normalize();
-    var up = new THREE.Vector3().crossVectors(atras, right).normalize();
+    var derecha = new THREE.Vector3(1, 0, 0).applyQuaternion(q);
+    var arriba = new THREE.Vector3(0, 1, 0).applyQuaternion(q);
+    var atras = new THREE.Vector3(0, 0, 1).applyQuaternion(q);
     var w = new THREE.Vector3(eye.x - p.x, eye.y - p.y, eye.z - p.z);
-    var wv = w.dot(vE);
-    var distN = -wv;
-    if (!(distN > 0)) return false;   // p está detrás de la cámara: no hay pivote posible
-    var sombra = new THREE.Vector3().copy(w).addScaledVector(vE, -wv);
+    var distN = w.dot(atras);
+    if (!(distN > 0)) return false;   // p está detrás de la cámara
+    // Sin renormalizar a propósito: la orientación se acumula multiplicando
+    // quaternions unitarios y la norma se desvía 1,4e-13 en 100.000 pasos de arrastre
+    // (medido). Un gesto largo son unos miles: renormalizar sería ruido.
+    ST.quat = q.clone();
     ST.target.set(p.x, p.y, p.z);
     ST.dist = _clampDist(distN);
-    ST.rotX = rotX;
-    ST.rotY = rotY;
-    ST.panX = sombra.dot(right);
-    ST.panY = sombra.dot(up);
+    ST.panX = w.dot(derecha);
+    ST.panY = w.dot(arriba);
     _marcarSucio();
     return true;
   }
 
-  // GIRO RÍGIDO DE LA CÁMARA ALREDEDOR DE `p`.
-  //
-  // LO QUE SE MIDIÓ (18-ago, síntoma «no siento ni veo diferencia alguna al usar
-  // CTRL»). Se sospechaba que el pan formaba parte del pivote —o sea que rotX/rotY
-  // girarían en torno a `target + shift`, el centro de la pantalla— y que por eso
-  // _pivotarEnSinMover no cambiaba nada. ES FALSO, y se comprobó proyectando puntos:
-  // rotar rotX/rotY deja `target` CLAVADO (0,000000 px en 60 pasos) y mueve
-  // `target + shift` 639 px. La razón es que `right` sólo depende de rotY y `up` sale
-  // de right×atrás, así que al mover los ángulos el trío {atrás, right, up} gira
-  // ENTERO: el ojo (target + dist·atrás + right·panX + up·panY) y la dirección de
-  // vista giran con la MISMA rotación en torno a target. El pivote efectivo ES target.
-  //
-  // La causa real del síntoma es otra, y también está medida: tras cada pan o rueda
-  // corre _absorberPanEnTarget, que deja `target` = el punto que está AL CENTRO DE LA
-  // PANTALLA. Con la pieza cerca del centro —que es como uno la mira— girar en torno
-  // al centro y girar en torno a la pieza difieren 13 px en todo el gesto: son
-  // indistinguibles. Sólo con la pieza lejos del centro se separan (490 px).
-  //
-  // Entonces, ¿por qué esta función y no seguir tocando los ángulos? Porque hace lo
-  // mismo con menos estado y sin los tres flancos del camino viejo:
-  //   · no secuestra `target` ni tiene que devolverlo al soltar (no queda estado pegado),
-  //   · no reescribe `ST.dist` a mitad del gesto —_pivotarEnSinMover lo hacía, y con eso
-  //     cambiaba de golpe la velocidad del pan y podía morder el clamp—,
-  //   · topea la elevación en el INCREMENTO, así que el giro sigue siendo rígido
-  //     también cuando se llega al tope (el clamp de después descolocaba la pieza).
-  // Gira la cámara COMO CUERPO RÍGIDO (ojo y dirección de vista con la MISMA rotación)
-  // y recién después descompone el resultado: la proyección de p queda clavada en
-  // pantalla (verificado: 0,000000 px) y es la escena la que gira a su alrededor.
-  //   dAz = incremento de ACIMUT   → giro alrededor del eje vertical del MUNDO,
-  //         que es el mismo eje que mueve rotY.
-  //   dEl = incremento de ELEVACIÓN → giro alrededor del `right` de la cámara, que es
-  //         el mismo eje que mueve rotX. El signo va invertido porque rotar `atrás`
-  //         alrededor de +right BAJA el ojo (comprobado con rotY = 0: R_x(α) manda
-  //         (0,0,1) a (0,−sinα,cosα), y rotX pide +sin).
-  // La elevación se topea ANTES de rotar (no después, en la descomposición): topearla
-  // después rompería la rigidez justo en el tope y la pieza se movería.
-  function _orbitarRigidoEnTorno(p, dAz, dEl) {
-    var THREE = global.THREE;
-    if (!THREE || !ST.camera || !p) return false;
-    if (!isFinite(p.x) || !isFinite(p.y) || !isFinite(p.z)) return false;
-    _applyCam();   // matriz de ESTE instante (ver _estadoCamara)
+  // CAMBIA EL PIVOTE A `p` SIN MOVER UN SOLO PÍXEL: el ojo y la orientación se dejan
+  // intactos y sólo se reparte el estado (dist ← lo que hay hasta el plano de `p`,
+  // pan ← lo que `p` está corrido respecto del centro de pantalla). Verificado:
+  // 0,000000 px de deriva.
+  function _pivotarEnSinMover(p) {
     var est = _estadoCamara(); if (!est) return false;
-    var elevAct = Math.asin(Math.max(-1, Math.min(1, -est.v.y)));
-    dEl = Math.max(-1.45 - elevAct, Math.min(1.45 - elevAct, dEl || 0));
-    dAz = dAz || 0;
-    if (!dAz && !dEl) return true;
-    var qAz = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), dAz);
-    var right = new THREE.Vector3().setFromMatrixColumn(ST.camera.matrix, 0).normalize().applyQuaternion(qAz);
-    var qEl = new THREE.Quaternion().setFromAxisAngle(right, -dEl);
-    var q = qEl.multiply(qAz);   // primero el acimut, después la elevación
+    return _fijarCamDesdeOjo(est.eye, est.q, p);
+  }
+
+  // GIRA LA CÁMARA COMO CUERPO RÍGIDO alrededor de `p` con el quaternion `q` (el ojo
+  // y la orientación reciben el MISMO giro) y deja el resultado escrito en ST. Todo
+  // lo que esté sobre el EJE de `q` que pasa por `p` queda CLAVADO en pantalla —no un
+  // punto, la recta entera—, y eso es exactamente lo que el test mide (0,000000 px).
+  function _girarCamRigido(p, q) {
+    var THREE = global.THREE;
+    if (!THREE || !p || !q) return false;
+    var est = _estadoCamara(); if (!est) return false;
     var eye = new THREE.Vector3(est.eye.x - p.x, est.eye.y - p.y, est.eye.z - p.z)
       .applyQuaternion(q).add(new THREE.Vector3(p.x, p.y, p.z));
-    var v = new THREE.Vector3().copy(est.v).applyQuaternion(q).normalize();
-    return _fijarCamDesdeOjo(eye, v, p);
+    return _fijarCamDesdeOjo(eye, q.clone().multiply(est.q), p);
   }
 
   // ABSORBE EL PAN DENTRO DEL PIVOTE — invisible, y evita de raíz el enganche del
@@ -7462,13 +7507,122 @@
   // "se va volando" porque gira en torno a un punto que no se ve. Mover el pivote al
   // punto que está AL CENTRO DE LA PANTALLA (a la distancia actual) deja el pan en
   // cero sin mover la imagen: el giro siempre es en torno a lo que se está mirando.
+  // El alabeo SOBREVIVE (se reescribe el mismo quaternion): un pan después de un
+  // giro sobre la pieza no puede enderezar el horizonte de golpe.
   function _absorberPanEnTarget() {
     var THREE = global.THREE;
-    if (!THREE || !ST.camera || !ST.target) return;
+    if (!THREE || !ST.target) return;
     if (!ST.panX && !ST.panY) return;
-    _applyCam();
-    var v = new THREE.Vector3().setFromMatrixColumn(ST.camera.matrix, 2).normalize().multiplyScalar(-1);
-    _pivotarEnSinMover(new THREE.Vector3().copy(ST.camera.position).addScaledVector(v, ST.dist));
+    var b = _baseCam();
+    _pivotarEnSinMover(_ojoCam(b).addScaledVector(b.atras, -ST.dist));
+  }
+
+  // ==========================================================================
+  // UN PASO DEL ARRASTRE DE GIRO — LOS DOS MODOS, EN UN SOLO SITIO.
+  //
+  // POR QUÉ SON DOS COSAS DISTINTAS Y NO DOS VARIANTES DE LO MISMO (no hay que
+  // volver a buscarlo, está medido):
+  //   · el ojo SIEMPRE orbita el `target`: la base es ortonormal, así que la
+  //     distancia no depende de la orientación. Medido en 60 pasos: el target se
+  //     mueve 0,000000 px. La teoría de que el pivote efectivo era "target + pan" es
+  //     FALSA.
+  //   · el ctrl viejo —orbitar rígidamente EN TORNO A LA PIEZA— no se notaba porque
+  //     tras cada pan o rueda corre _absorberPanEnTarget y deja el pivote en el punto
+  //     que está AL CENTRO DE LA PANTALLA; como uno mira la pieza teniéndola cerca
+  //     del centro, girar en torno al centro y girar en torno a la pieza difieren
+  //     12,7 px en TODO el gesto (490 px sólo con la pieza lejos del centro). Eran el
+  //     mismo gesto.
+  // Por eso ctrl ahora cambia el EJE, no el centro:
+  //   · arrastre normal → MESA GIRATORIA DEL MUNDO: acimut alrededor de +Y del mundo,
+  //     elevación alrededor de la derecha de la cámara. Igual que siempre.
+  //   · ctrl+arrastre   → MESA GIRATORIA DE LA PIEZA: el eje vertical del mundo se
+  //     reemplaza por el EJE PROPIO de la pieza y el pivote pasa por su centro. La
+  //     pieza queda clavada —su recta entera— y la escena da vueltas a su alrededor
+  //     como un asador.
+  // MEDIDO (tests/test_camara_ctrl.js · barra de 600 cm · arrastre horizontal de
+  // 60 pasos × 4 px): los dos puntos de la recta de la pieza se mueven 0,000000 px
+  // con ctrl y 339 px sin él; un punto cualquiera de la escena se mueve 735 px con
+  // ctrl (la escena SÍ gira), y la imagen de un modo termina hasta 346 px separada de
+  // la del otro. Contra los 12,7 px de las cuatro vueltas anteriores.
+  //
+  // EL PRECIO ES EL ALABEO: girar sobre un eje que no es el vertical INCLINA el
+  // horizonte, y tiene que ser así (una cámara rígida no puede girar sobre un eje
+  // horizontal dejando el horizonte a nivel). El ⟳ lo devuelve a cero.
+  //
+  // DÓNDE SE NOTA MENOS, dicho y no escondido: si el eje propio de la pieza ES el
+  // vertical del mundo, los dos modos casi coinciden (el eje es el mismo y sólo queda
+  // de diferencia el pivote: los 12,7 px de arriba). Barrido de 48 escenarios con la
+  // geometría real de la semilla (4 piezas × 4 poses de cámara × 3 gestos, C7 del
+  // test): la barra superior, la inferior y el estribo se separan como MÍNIMO 334 px
+  // en todos; la única que baja es la TRABA, que es vertical, hasta 11,1 px.
+  // ==========================================================================
+
+  var K_GIRO = 0.008;    // rad por píxel de arrastre — el MISMO en los dos modos
+  // Tope de elevación de la órbita normal: 1,45 rad ≈ 83°. Existe para no llegar al
+  // cenit mirando desde arriba (el gesto se vuelve confuso), no por el modelo — el
+  // modelo ya no tiene ahí ninguna singularidad. El giro sobre la pieza NO lo usa: ahí
+  // el gesto puede dar la vuelta entera, y toparlo rompería la rigidez.
+  var ELEV_MAX = 1.45;
+
+  // ÓRBITA NORMAL. Componer el acimut alrededor de +Y del mundo con la elevación
+  // alrededor de la derecha (ya girada) da EXACTAMENTE lo que daba `rotY += dAz;
+  // rotX += dEl`, porque el quaternion manda la base vieja a la nueva y el ojo se
+  // reconstruye con los mismos dist/pan. El tope se aplica al INCREMENTO y no al
+  // resultado: recortarlo después descoloca la escena en vez de frenarla.
+  function _orbitarMundo(dAz, dEl) {
+    var THREE = global.THREE;
+    var b = _baseCam();
+    var elev = Math.asin(Math.max(-1, Math.min(1, b.atras.y)));
+    dEl = Math.max(-ELEV_MAX - elev, Math.min(ELEV_MAX - elev, dEl));
+    if (!dAz && !dEl) return false;
+    var qAz = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), dAz);
+    var derecha = b.derecha.clone().applyQuaternion(qAz);
+    var q = new THREE.Quaternion().setFromAxisAngle(derecha, -dEl).multiply(qAz);
+    return _girarCamRigido(ST.target, q);
+  }
+
+  // MESA GIRATORIA CON EL EJE DE LA PIEZA. Es la MISMA construcción de arriba
+  // cambiando dos cosas: el eje vertical del mundo por `u` y el pivote por `p`.
+  //   dAz → giro alrededor de u — el asador: la recta de la pieza no se mueve.
+  //   dEl → giro alrededor de normalize(u × atrás), que es el análogo EXACTO de la
+  //         derecha de la cámara (three la arma igual: normalize(arriba_mundo × atrás)).
+  // Mirando justo a lo largo de la pieza ese producto cruz se degenera y se cae a la
+  // derecha de la cámara, así el arrastre vertical nunca queda muerto.
+  function _girarSobreEje(p, u, dAz, dEl) {
+    var THREE = global.THREE;
+    var b = _baseCam();
+    var ejeU = new THREE.Vector3(u.x, u.y, u.z);
+    if (!(ejeU.length() > 1e-9)) return false;
+    ejeU.normalize();
+    var qAz = new THREE.Quaternion().setFromAxisAngle(ejeU, dAz);
+    var perp = new THREE.Vector3().crossVectors(ejeU, b.atras);
+    if (!(perp.length() > 1e-6)) perp.copy(b.derecha);
+    perp.normalize().applyQuaternion(qAz);
+    var q = new THREE.Quaternion().setFromAxisAngle(perp, -dEl).multiply(qAz);
+    return _girarCamRigido(p, q);
+  }
+
+  // Aplica un paso de arrastre. `enPieza` = ctrl sostenido (y con selección viva).
+  // Devuelve el modo que REALMENTE se aplicó ('pieza' | 'mundo') o null si el gesto
+  // no movía nada, para que la barra de estado pueda decir la verdad.
+  function _girarPorArrastre(dx, dy, enPieza) {
+    var THREE = global.THREE;
+    if (!THREE || !ST.target) return null;
+    // EJE RESTRINGIDO (radial X/Y/Z): el incremento se recorta ANTES de elegir el
+    // modo, así los dos usan el MISMO delta y el ctrl no cambia la velocidad del
+    // gesto, sólo su eje. Las letras son las visibles del editor (EJE_DISPLAY): acá
+    // la vertical se rotula 'Z', igual que en el gizmo.
+    //   Z    → sólo el giro de acimut (o el del eje de la pieza, con ctrl).
+    //   X/Y  → sólo el de elevación (o el de su perpendicular, con ctrl).
+    var eje = ST.ejeRot || 'libre';
+    var dAz = (eje === 'libre' || eje === 'z') ? -dx * K_GIRO : 0;
+    var dEl = (eje === 'z') ? 0 : dy * K_GIRO;
+    if (!dAz && !dEl) return null;
+    if (enPieza) {
+      var u = _ejePropioSeleccion3D();
+      if (u && _girarSobreEje(_centroSeleccion3D(), u, dAz, dEl)) return 'pieza';
+    }
+    return _orbitarMundo(dAz, dEl) ? 'mundo' : null;
   }
 
   // ZOOM HACIA EL CURSOR — antes el zoom iba siempre al centro del cuadrante, así
@@ -7503,24 +7657,19 @@
   // BUG 4 — PAN del 3D rotaba en vez de panear. Rediseño del reparto de botones con un
   // ÚNICO estado 'mode' ('pan' | 'rot' | null) fijado en el mousedown, mutuamente
   // exclusivo (antes había 2 flags drag/panning que podían quedar mal). Reparto:
-  //   · botón IZQUIERDO sin modificador     → ROTAR (órbita en torno al pivote actual)
-  //   · CTRL/⌘ + izquierdo                  → ROTAR EN TORNO A LA PIEZA SELECCIONADA
+  //   · botón IZQUIERDO sin modificador     → ROTAR (mesa giratoria del mundo)
+  //   · CTRL/⌘ + izquierdo                  → GIRAR SOBRE EL EJE PROPIO DE LA PIEZA
   //   · botón MEDIO, botón DERECHO, o SHIFT/ALT+izq → PAN
   //
-  // EL CTRL, CUARTA VUELTA (18-ago), por «no siento ni veo diferencia alguna al usar
-  // CTRL». La causa MEDIDA no es que el giro estuviera mal (no lo estaba: la pieza ya
-  // quedaba clavada), sino que sin ctrl se gira en torno a lo que está AL CENTRO DE LA
-  // PANTALLA y la pieza que uno mira suele estar justo ahí — los dos movimientos
-  // difieren 13 px en un gesto completo. La nota larga de _orbitarRigidoEnTorno tiene
-  // los números. Dos cambios, entonces:
-  //   · el giro pasa por _orbitarRigidoEnTorno (misma trayectoria, menos estado: ya no
-  //     hay pivote que "prestar" y devolver, ni reescritura de ST.dist a mitad del
-  //     gesto). Soltar el ctrl a mitad tampoco puede dar salto: lo que queda escrito
-  //     es el estado real de la cámara.
-  //   · el pivote SE QUEDA en la pieza al terminar el gesto en vez de volver al que
-  //     había: si pediste girar en torno a la barra, el arrastre siguiente sigue ahí.
-  // Y para que la diferencia se vea SIEMPRE está 🎯, que ancla de forma permanente
-  // (ver su handler: antes el ancla se soltaba sola en el primer pan o rueda).
+  // EL CTRL, QUINTA VUELTA (19-ago), por «no siento ni veo diferencia alguna al usar
+  // CTRL» arrastrado durante varias sesiones. Las cuatro anteriores movieron el
+  // CENTRO del giro (pivote en la pieza), y eso está medido: es indistinguible del
+  // giro normal, porque el pivote normal queda en el centro de la pantalla y ahí es
+  // donde uno tiene la pieza — 12,7 px de diferencia en todo el gesto. Ahora ctrl
+  // cambia el EJE, no el centro; el álgebra y los números están en la nota de
+  // _girarPorArrastre. La decisión aquí es sólo de reparto de botones.
+  // El pivote SE QUEDA en la pieza al terminar el gesto en vez de volver al que
+  // había: si pediste girar sobre la barra, el arrastre siguiente sigue ahí.
   //
   // El mousedown captura el botón real (e.button) Y los modificadores del PROPIO evento
   // (no de un mousemove posterior, que podía llegar sin shift y caer a rotar). El middle
@@ -7545,9 +7694,7 @@
       ctrlAviso = false;
       // Fin de un gesto de PAN: el pivote vuelve a lo que quedó al centro (ver
       // _absorberPanEnTarget). Sin esto el giro siguiente sale volando.
-      // OJO: NO se absorbe tras un gesto anclado/ctrl — absorber mueve el pivote al
-      // centro de la pantalla, que es justo lo que el ancla NO quiere.
-      if (mode === 'pan' && !ST.anclado) _absorberPanEnTarget();
+      if (mode === 'pan') _absorberPanEnTarget();
       mode = null;
     });
     global.addEventListener('mousemove', function (e) {
@@ -7557,47 +7704,29 @@
       if (mode === 'pan') {
         ST.panX -= dx * ST.dist * 0.0011; ST.panY += dy * ST.dist * 0.0011;
       } else {   // rot
-        var k = 0.008;
-        // EJE DE GIRO restringido (portado del Enfierrador): con un eje elegido el
-        // arrastre sólo mueve ESA rotación; el otro grado de libertad queda quieto.
-        // LAS LETRAS SON LAS VISIBLES DE ESTE EDITOR (EJE_DISPLAY): acá la vertical
-        // se rotula 'Z' —igual que en el gizmo y en los títulos de las vistas—, no
-        // 'Y' como en el Enfierrador. Copiar sus letras tal cual habría puesto el
-        // radial a contradecir al gizmo que está tres centímetros más abajo.
-        //   Z → sólo ACIMUT (ST.rotY). Restricción EXACTA: la cámara gira alrededor
-        //       del eje vertical del mundo.
-        //   X / Y → sólo ELEVACIÓN (ST.rotX). Es una aproximación, y hay que decirlo:
-        //       la elevación gira alrededor del vector "derecha" de la cámara, que
-        //       coincide con un eje horizontal del mundo sólo en ciertos acimuts.
-        //       Esta órbita tiene 2 grados de libertad (rotX/rotY) y no da para más
-        //       (el Enfierrador tiene la misma limitación: allá 'z' hacía lo mismo
-        //       que 'y'). Un giro exacto por eje pediría cambiar el modelo de cámara.
-        var eje = ST.ejeRot || 'libre';
-        // Incremento del gesto ANTES de decidir cómo aplicarlo: los dos caminos
-        // (ángulos y giro rígido) usan EXACTAMENTE el mismo delta, así que el ctrl
-        // no cambia la velocidad — sólo el centro de giro.
-        var dAz = (eje === 'libre' || eje === 'z') ? -dx * k : 0;
-        var dEl = (eje === 'z') ? 0 : dy * k;
         // El modificador se lee del PROPIO mousemove (no del mousedown) para poder
-        // apretarlo y soltarlo A MITAD del gesto: se encuadra girando en torno al
-        // centro y se remata girando en torno a la pieza, sin soltar el botón.
-        // 🎯 (ST.anclado) hace lo mismo pero PERMANENTE, sin tener que sostener ctrl.
-        var quiereEnPieza = (!!(e.ctrlKey || e.metaKey) || !!ST.anclado);
+        // apretarlo y soltarlo A MITAD del gesto: se encuadra con la mesa del mundo y
+        // se remata girando sobre el eje de la pieza, sin soltar el botón.
+        var quiereEnPieza = !!(e.ctrlKey || e.metaKey);
         if (quiereEnPieza && ST.selCi < 0) {
-          // Sin selección no hay en torno a qué girar: se rota normal y se avisa.
+          // Sin selección no hay eje propio: se gira normal y se avisa.
           if (!ctrlAviso) {
             ctrlAviso = true;
-            _actualizarStatus('El giro en torno a la pieza necesita una barra seleccionada: no hay ninguna, se gira en torno al centro.');
+            _actualizarStatus('El giro sobre el eje de la pieza necesita una barra seleccionada: no hay ninguna, se gira la escena.');
           }
           quiereEnPieza = false;
         }
-        // GIRO RÍGIDO alrededor del centro de la pieza (ver _orbitarRigidoEnTorno).
-        // Si no se puede (la pieza quedó detrás del ojo) cae al giro normal en vez de
-        // dejar el arrastre muerto.
-        if (!quiereEnPieza || !_orbitarRigidoEnTorno(_centroSeleccion3D(), dAz, dEl)) {
-          ST.rotY += dAz;
-          ST.rotX += dEl;
-          ST.rotX = Math.max(-1.45, Math.min(1.45, ST.rotX));
+        // Los dos modos viven en _girarPorArrastre (con el mismo delta: ctrl cambia el
+        // eje, no la velocidad). Devuelve lo que REALMENTE hizo, y de ahí sale el
+        // aviso: es la única señal en pantalla de que el arrastre está haciendo otra
+        // cosa, y se dice UNA vez por gesto (el mousemove llega decenas de veces por
+        // segundo).
+        var modo = _girarPorArrastre(dx, dy, quiereEnPieza);
+        if (quiereEnPieza && !ctrlAviso && modo) {
+          ctrlAviso = true;
+          _actualizarStatus(modo === 'pieza'
+            ? 'Giro sobre el EJE PROPIO de la pieza: queda clavada y la escena gira a su alrededor (el horizonte se inclina; ⟳ lo endereza).'
+            : 'No se pudo agarrar el eje de esa pieza (¿quedó fuera de cuadro?): se gira la escena.');
         }
       }
       _marcarSucio();   // PERF: la cámara 3D cambió → repintar
@@ -7614,12 +7743,9 @@
         hayRect ? (e.clientY - r.top) / r.height : 0.5,
         hayRect ? (r.width / r.height) : 0);
       // Fin del gesto de rueda = mismo silencio que usa _factorZoomRueda. Ahí el pan
-      // acumulado se absorbe en el pivote (ver _absorberPanEnTarget) — salvo con el
-      // ancla 🎯 puesta: absorber lleva el pivote al centro de la pantalla y eso
-      // desharía el ancla en el primer zoom, que es justo lo que hacía que "anclar"
-      // no se notara.
+      // acumulado se absorbe en el pivote (ver _absorberPanEnTarget).
       if (_absTimer) global.clearTimeout(_absTimer);
-      _absTimer = global.setTimeout(function () { _absTimer = null; if (!ST.anclado) _absorberPanEnTarget(); }, _ZOOM_GAP);
+      _absTimer = global.setTimeout(function () { _absTimer = null; _absorberPanEnTarget(); }, _ZOOM_GAP);
       _marcarSucio();
     }, { passive: false });
   }
@@ -7802,8 +7928,7 @@
 
   // Pinta el gizmo en la esquina inf-izq del cuadrante 3D (tras el pase 3D).
   function _renderGizmo3D() {
-    var THREE = global.THREE;
-    if (!THREE || !ST.renderer || !ST.camera) return;
+    if (!global.THREE || !ST.renderer || !ST.camera) return;
     var gz = _initGizmo3D(); if (!gz) return;
     var d3 = document.querySelector('#te_quad .te-vista.d3'); if (!d3) return;
     var r = d3.getBoundingClientRect();
@@ -7812,14 +7937,16 @@
     var pad = 8;
     var x = (r.left - full.left) + pad;
     var y = full.height - ((r.top - full.top) + r.height) + pad;   // esquina INFERIOR
-    // la cámara del gizmo copia la ORIENTACIÓN de la perspectiva (dirección desde el
-    // target hacia la cámara), a distancia fija → mismo giro, tamaño constante.
+    // la cámara del gizmo copia la ORIENTACIÓN de la perspectiva a distancia fija →
+    // mismo giro, tamaño constante.
     // Distancia 4.4 (no 3.4): con fov 42 el half-extent a 3.4 era ~1.30 y las letras
     // viven a 1.34·L → la Y/Z quedaban FUERA del frustum ("solo se ve la X").
-    var dir = new THREE.Vector3().subVectors(ST.camera.position, ST.target).normalize();
-    gz.cam.position.copy(dir.multiplyScalar(4.4));
-    gz.cam.up.copy(ST.camera.up);
-    gz.cam.lookAt(0, 0, 0);
+    // La ORIENTACIÓN se copia entera (quaternion), no se reconstruye con lookAt: el
+    // giro sobre el eje de la pieza deja ALABEO, y un lookAt con el arriba del mundo
+    // lo perdería — el triad diría que el horizonte está a nivel cuando no lo está.
+    var b = _baseCam();
+    gz.cam.position.copy(b.atras.multiplyScalar(4.4));
+    gz.cam.quaternion.copy(_quatCam());
     gz.cam.aspect = 1; gz.cam.updateProjectionMatrix();
     ST.renderer.clippingPlanes = [];              // el gizmo NUNCA se corta
     ST.renderer.setViewport(x, y, GIZMO_PX, GIZMO_PX);
@@ -7965,10 +8092,6 @@
       if (!ST.receta.tipo) ST.receta.tipo = ST.elemento;
       ST.selCi = -1; ST.ultimoOut = null;
       ST.dragMove = null; ST.dragMarco = null; ST.dragRango = null;
-      // El ancla 🎯 muere con la selección: apuntaba a una barra de OTRO template.
-      // Dejarla encendida haría que el primer arrastre avisara "no hay nada
-      // seleccionado" sin que el usuario hubiera pedido nada.
-      _soltarAncla();
     } else {
       // Ruta vieja: semilla (solo para tests / compatibilidad).
       if (!ST.receta && d.semilla) ST.receta = d.semilla.semillaViga();
@@ -8970,10 +9093,14 @@
     _ladoDomMotor: _ladoDomMotor,                               // el del MOTOR, sin fallback
     _ladoDomElegido: _ladoDomElegido, _setLadoDominante: _setLadoDominante,
     _tramoDominanteEnTrazo: _tramoDominanteEnTrazo,             // rango [i0,i1] en el trazo
-    _centroSeleccion3D: _centroSeleccion3D, _pivotarEn: _pivotarEn,   // órbita en torno a la selección
+    // PIEZA SELECCIONADA: dónde está (pivote) y cuál es su eje propio (el de ctrl)
+    _placementsSeleccion3D: _placementsSeleccion3D, _centroSeleccion3D: _centroSeleccion3D,
+    _ejePropioSeleccion3D: _ejePropioSeleccion3D,
     _pivotarEnSinMover: _pivotarEnSinMover, _absorberPanEnTarget: _absorberPanEnTarget,
-    // GIRO RÍGIDO en torno a la pieza (ctrl / 🎯) + su descomposición inversa
-    _orbitarRigidoEnTorno: _orbitarRigidoEnTorno, _fijarCamDesdeOjo: _fijarCamDesdeOjo,
+    // MODELO DE CÁMARA (quaternion) + los dos modos de giro y su descomposición inversa
+    _baseCam: _baseCam, _ojoCam: _ojoCam, _quatDeAngulos: _quatDeAngulos, CAM0: CAM0,
+    _girarPorArrastre: _girarPorArrastre, _girarCamRigido: _girarCamRigido,
+    _fijarCamDesdeOjo: _fijarCamDesdeOjo,
     _estadoCamara: _estadoCamara, _applyCam: _applyCam,
     _factorZoomRueda: _factorZoomRueda, _clampDist: _clampDist,   // zoom de rueda + techo de acercamiento
     FOV3D: FOV3D, _distEncuadre: _distEncuadre,                   // lente + encuadre automático
