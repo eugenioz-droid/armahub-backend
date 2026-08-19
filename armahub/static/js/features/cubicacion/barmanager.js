@@ -77,6 +77,12 @@ function _bmFiguraSvg(b) {
   var escalable = (tieneDims && geo.tramos && geo.tramos.length &&
                    geo.puntos && geo.puntos.length >= 2 &&
                    !f.radio && !geo.etiquetas_manda);
+  // ¿TODOS los lados traen medida real? `escalable` NO sirve como interruptor del grosor:
+  // se prende con UNA sola dim, y el backend guarda 0 (no NULL) en los lados que la figura
+  // no usa, así que basta un dim_a=0 para prenderlo. Los lados sin medida conservan su largo
+  // de GRILLA, y esa mezcla deja de ser px/cm. Medido: con dim_a=0 el trazo se iba al tope de
+  // 9 px donde correspondía el nominal de 3.4. El φ solo se aplica si no quedó ningún l0.
+  var todoCm = true;
   if (escalable) {
     // Longitud nueva de cada segmento = dim del lado (o el largo original si falta).
     var largos = [];
@@ -85,7 +91,8 @@ function _bmFiguraSvg(b) {
       var dym = geo.puntos[mi + 1].y - geo.puntos[mi].y;
       var l0 = Math.sqrt(dxm * dxm + dym * dym) || 1;
       var vm = dims[geo.tramos[mi].lado];
-      largos.push((vm != null && !isNaN(vm) && vm > 0) ? Number(vm) : l0);
+      if (vm != null && !isNaN(vm) && vm > 0) { largos.push(Number(vm)); }
+      else { largos.push(l0); todoCm = false; }   // cayó a grilla → ya no es px/cm
     }
     var maxLado = Math.max.apply(null, largos.concat([1]));
     var minLado = maxLado * BM_MIN_LADO_REL;
@@ -114,7 +121,7 @@ function _bmFiguraSvg(b) {
       // El trazo crece con el φ SOLO si los puntos se reconstruyeron en cm (escalable); si
       // no, `scale` no es px/cm y el motor cae al trazo nominal. φ va en mm (b.diam).
       window.disenadorMotor.dibujarFigura(geoUse, dims,
-        { width: t.w, height: t.h, pad: 20, diam_mm: b.diam, metrico: escalable }) +
+        { width: t.w, height: t.h, pad: 20, diam_mm: b.diam, metrico: escalable && todoCm }) +
       '</span>';
   } catch (e) { return ''; }
 }

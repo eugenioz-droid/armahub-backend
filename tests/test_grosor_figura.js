@@ -218,10 +218,17 @@ ok(/function _grosorTrazo\(/.test(srcMotor),
 ok((srcMotor.match(/diamMM \/ 10/g) || []).length === 1,
   'la conversión mm->cm aparece UNA sola vez (repetirla es exactamente el bug de template_editor)');
 var srcBM = fs.readFileSync(SRC_BM, 'utf8'), srcAC2 = fs.readFileSync(SRC_AC2, 'utf8');
-ok(/diam_mm:\s*b\.diam/.test(srcBM) && /metrico:\s*escalable/.test(srcBM),
-  'barmanager.js (columna Render) le pasa al motor diam_mm: b.diam + metrico: escalable');
-ok(/diam_mm:\s*b\.diam/.test(srcAC2) && /metrico:\s*escalable/.test(srcAC2),
-  'agregar_cubicacion2.js (creador de despieces) le pasa lo mismo');
+// El interruptor NO puede ser `escalable` a secas (auditoría 19-ago): se prende con UNA
+// sola dim, y el backend guarda 0 —no NULL— en los lados que la figura no usa, así que un
+// lado sin medida conserva su largo de GRILLA y la escala deja de ser px/cm. Medido antes
+// del fix: dim_a=0 en BM XL daba sw 9.00 (el tope) donde tocaba el nominal 3.40, y dims
+// vacías en AC2 daban 7.20/8.10. El guard `todoCm` es lo que se congela acá.
+ok(/diam_mm:\s*b\.diam/.test(srcBM) && /metrico:\s*escalable\s*&&\s*todoCm/.test(srcBM),
+  'barmanager.js (columna Render) pasa diam_mm y exige todoCm, no sólo escalable');
+ok(/diam_mm:\s*b\.diam/.test(srcAC2) && /metrico:\s*\(?escalable\s*&&\s*todoCm\)?/.test(srcAC2),
+  'agregar_cubicacion2.js (creador de despieces) exige lo mismo');
+ok(/todoCm\s*=\s*false/.test(srcBM) && /todoCm\s*=\s*false/.test(srcAC2),
+  'los dos apagan todoCm cuando un lado cae a su largo de grilla');
 ok(srcBM.indexOf('_bmMiniFigura') === -1,
   '_bmMiniFigura (código muerto: 0 llamadas en todo el repo) no volvió a aparecer');
 
@@ -245,8 +252,8 @@ function distLetra(diamMM, metrico) {
 }
 [[null, false], [8, true], [16, true], [32, true]].forEach(function (c) {
   var r = distLetra(c[0], c[1]);
-  ok(casi(r.d, 10 + r.sw / 2, 0.06),
-    'φ' + (c[0] || '-') + ' (sw ' + r.sw + '): la letra va a 10 + sw/2 = ' + (10 + r.sw / 2).toFixed(2) +
+  ok(casi(r.d, 8.5 + r.sw / 2, 0.06),
+    'φ' + (c[0] || '-') + ' (sw ' + r.sw + '): la letra va a 8.5 + sw/2 = ' + (8.5 + r.sw / 2).toFixed(2) +
     ' px del eje, o sea 10 px del BORDE del trazo con cualquier φ');
 });
 

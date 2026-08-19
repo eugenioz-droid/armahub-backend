@@ -58,9 +58,13 @@
   // ---- Grosor del trazo de la barra ----
   // Trazo NOMINAL cuando no hay barra detrás (catálogo/galería/preview del Diseñador y
   // del 3D): una figura del catálogo es una FORMA sin escala — sus puntos están en unidades
-  // de grilla, no en cm — así que no se le puede inventar un diámetro. 3.4 px: un peldaño
-  // sobre el 3 de antes para que la figura no se vea más flaca que la misma figura ya
-  // dimensionada en Bar Manager (donde el piso arranca en 2.4 y sube con el φ).
+  // de grilla, no en cm — así que no se le puede inventar un diámetro.
+  // POR QUÉ 3.4 Y NO 3 (corregido 19-ago: la razón que estaba escrita acá era falsa).
+  // Decía "para que no se vea más flaca que la misma figura en Bar Manager", y es al revés:
+  // el piso de allá va de 2.40 (φ8) a 3.94 (φ36), o sea que en 7 de los 10 φ del catálogo la
+  // barra dimensionada es MÁS delgada que este nominal. El 3.4 se queda porque cae en medio
+  // de ese rango —ni la más flaca ni la más gorda— y porque bajarlo a 3 volvería a mezclar el
+  // nominal con el piso de las φ chicas. La holgura de las letras ya no depende de él.
   var SW_NOMINAL = 3.4;
 
   // Grosor REAL de la barra en px, con piso y tope. Devuelve SW_NOMINAL si el llamador
@@ -93,7 +97,11 @@
     // sobresale (≤ 0.45·pad) siempre cabe en el margen. El 9 px es el techo de legibilidad (una
     // traba de 10×15 con φ32 en XL pediría 25.6 px de ancho: el dibujo sería una mancha). Con los
     // pads vivos (20 en Bar Manager, 11…35 en el creador) el que manda es siempre el 9.
-    var tope = Math.min(9, pad * 0.9);
+    // El Math.max NO es una defensa que tape un dato malo: es el contrato de la función.
+    // Con pad 0 el tope daba 0 y la barra salía INVISIBLE; con pad negativo, un
+    // stroke-width negativo, que es SVG inválido. Ningún llamador vivo del repo lo hace
+    // (el pad mínimo real es 11), pero el motor está expuesto en window.disenadorMotor.
+    var tope = Math.max(SW_NOMINAL, Math.min(9, pad * 0.9));
     return Math.min(Math.max((diamMM / 10) * scale, piso), tope);
   }
   // Grosor a texto: 2 decimales SIN ceros de relleno, para que el nominal siga saliendo tal cual
@@ -246,8 +254,12 @@
           var svx = b.x - a.x, svy = b.y - a.y; var sl = Math.sqrt(svx*svx + svy*svy) || 1;
           // Los 10 px se medían desde el EJE de la barra. Con trazo grueso eso ya no alcanza:
           // a sw = 9 el borde del trazo está a 4.5 px del eje y la letra caía casi encima.
-          // Sumando medio trazo, la separación al BORDE vuelve a ser 10 px con cualquier φ.
-          var lOff = 10 + swTrazo / 2;
+          // Sumando medio trazo, la separación al BORDE deja de depender del φ.
+          // EL 8.5 NO ES ARBITRARIO (19-ago): con 10 fijo, las 4 vistas SIN barra —que este
+          // cambio no debía tocar— perdían 1.70 px de holgura, y en la miniatura de 90×72 la
+          // letra de arriba de un estribo pasaba de verse 63% a 42%. Con 8.5 el nominal da
+          // 10.2, o sea la holgura de siempre, y el crecimiento con el φ se conserva igual.
+          var lOff = 8.5 + swTrazo / 2;
           var lox = mx - (svy/sl) * lOff, loy = my + (svx/sl) * lOff;
           svg += '<text x="' + lox.toFixed(1) + '" y="' + (loy + 3).toFixed(1) +
             '" text-anchor="middle" fill="#00695c" font-size="11" font-weight="700">' + lbl + '</text>';

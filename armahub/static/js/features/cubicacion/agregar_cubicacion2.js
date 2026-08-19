@@ -232,12 +232,17 @@ function ac2FigSvg(b){
       // viewport y el chico se pierde. Comprimimos el rango dando a cada lado un mínimo relativo
       // al lado más grande (AC2_MIN_LADO_REL). Se pierde algo de proporción realista (aceptado),
       // pero los lados chicos siguen siendo visibles.
-      var largos=[];
+      // todoCm: ¿TODOS los lados traen medida real? `escalable` NO sirve como interruptor
+      // del grosor del trazo — se prende con UNA sola dim, y un lado sin medida conserva su
+      // largo de GRILLA, con lo que la escala deja de ser px/cm y el φ daría un grosor
+      // arbitrario (medido: dims vacías + φ32 daba 7.2 px donde tocaba el nominal 3.4).
+      var largos=[], todoCm=true;
       for (var mi=0; mi<geo.tramos.length && mi+1<geo.puntos.length; mi++){
         var dxm=geo.puntos[mi+1].x-geo.puntos[mi].x, dym=geo.puntos[mi+1].y-geo.puntos[mi].y;
         var l0=Math.sqrt(dxm*dxm+dym*dym)||1;
         var vm=dims[geo.tramos[mi].lado];
-        largos.push((vm!=null && !isNaN(vm) && vm>0) ? Number(vm) : l0);
+        if (vm!=null && !isNaN(vm) && vm>0) { largos.push(Number(vm)); }
+        else { largos.push(l0); todoCm=false; }   // cayó a grilla → ya no es px/cm
       }
       var maxLado=Math.max.apply(null, largos.concat([1]));
       var minLado=maxLado*AC2_MIN_LADO_REL;                          // piso visual por lado
@@ -263,7 +268,7 @@ function ac2FigSvg(b){
       // Trazo = φ real solo si los puntos se reconstruyeron en cm (escalable); si no, el motor
       // cae al nominal (`scale` no sería px/cm). φ en mm, como lo guarda la barra.
       window.disenadorMotor.dibujarFigura(geoUse, dims, { width:t.w, height:t.h, pad:Math.round(Math.min(t.w,t.h)*0.22),
-        diam_mm:b.diam, metrico:escalable }) + '</span>'; }
+        diam_mm:b.diam, metrico:(escalable && todoCm) }) + '</span>'; }
     catch(e){}
   }
   // Fallback: la figura NO tiene geometría dibujada en el catálogo (o el motor no cargó). Antes
