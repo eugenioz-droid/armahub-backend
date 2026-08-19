@@ -398,6 +398,23 @@
   /* Esquina reservada para el gizmo 3D (lo pinta el RENDERER con su propio viewport,
      no el DOM): sólo se documenta el tamaño para que nada se le encime. */
   #te_modal .te-vista.d3 .te-vhint{right:78px}
+  /* PUNTO DEL PIVOTE (el punto rosado de Tekla): marca ALREDEDOR DE QUÉ está girando
+     la cámara mientras dura el arrastre. Lo posiciona _dibujarPivote en píxeles del
+     cuadrante (transform:translate(-50%,-50%) → el centro del punto es el pivote).
+     · relleno  = pivote de CTRL, el punto que el usuario señaló;
+     · hueco    = pivote normal, el centro del elemento;
+     · .fuera   = el pivote quedó fuera de cuadro y el punto está pegado al borde,
+                  indicando hacia dónde (esconderlo dejaría al usuario sin saber por
+                  qué el giro se comporta como se comporta).
+     pointer-events:none: es un indicador, nunca se le puede clicar encima. */
+  #te_modal .te-vista.d3 .te-pivote{position:absolute;z-index:6;width:13px;height:13px;
+    border-radius:50%;border:2px solid #fff;background:#ff2d95;
+    box-shadow:0 0 0 1px rgba(0,0,0,.5);transform:translate(-50%,-50%);
+    pointer-events:none;display:none}
+  #te_modal .te-vista.d3 .te-pivote.on{display:block}
+  #te_modal .te-vista.d3 .te-pivote:not(.pto){width:11px;height:11px;background:transparent;
+    border-color:#ff2d95;box-shadow:0 0 0 1px rgba(255,255,255,.85)}
+  #te_modal .te-vista.d3 .te-pivote.fuera{opacity:.6}
   #te_modal .te-vista svg{width:100%;height:100%;display:block}
   #te_modal .te-vista canvas{width:100%;height:100%;display:block}
   /* Vistas 2D = render ORTOGRÁFICO del 3D (canvas de fondo) + SVG overlay encima.
@@ -949,18 +966,21 @@
           <button type="button" class="te-vzoom" title="Agrandar este cuadrante">🔍</button>
           <!-- El gizmo 3D (triad de ejes que sigue a la cámara) lo pinta el RENDERER en la
                esquina inf-izq de este cuadrante (viewport propio, ver _renderGizmo3D). -->
-          <div class="te-vhint">arrastra = girar la escena · ctrl+arrastre = girar sobre el eje de la barra seleccionada · rueda = zoom al cursor · medio/der = pan</div>
+          <div class="te-vhint">arrastra = girar en torno al elemento · ctrl+arrastre = girar en torno al punto que señalas · rueda = zoom al cursor · medio/der = pan</div>
           <!-- Herramientas del 3D (17-ago). Van arriba-derecha porque la esquina
                inf-izq la ocupa el gizmo de ejes que pinta el renderer.
-               EL 🎯 (anclar) YA NO ESTÁ (19-ago): anclaba el pivote en la pieza, y eso
-               —medido— es indistinguible del giro normal, porque el pivote normal ya
-               queda en el centro de la pantalla, que es donde uno tiene la pieza. Lo
-               que hace distinto al ctrl+arrastre es el EJE (el propio de la barra), no
-               el centro, y para eso no hace falta interruptor. Ver _girarPorArrastre.
+               EL 🎯 (anclar) YA NO ESTÁ (19-ago) y no hace falta: el pivote ya no es un
+               estado que se prenda y se apague, se elige en cada gesto. Sin ctrl es el
+               CENTRO DEL ELEMENTO (fijo, del modelo); con ctrl es EL PUNTO QUE SE
+               SEÑALA, y mientras se gira se dibuja en pantalla (el punto rosado, como
+               en Tekla). Ver _girarPorArrastre y _dibujarPivote.
+               (El 20-ago se deshizo el "asador" —ctrl giraba sobre el EJE PROPIO de la
+               barra—: nunca fue eso lo pedido y daba un giro horizontal raro.)
                · ⟳ recentrar: hace falta desde que la cámara dejó de re-encuadrarse
                  sola en cada clic (antes el reset accidental hacía de "volver"). Es
-                 además lo que ENDEREZA EL HORIZONTE tras un giro con ctrl (ese giro
-                 inclina la cámara, y tiene que inclinarla).
+                 además la salida cuando el pan y la rueda dejaron el centro del
+                 elemento fuera de cuadro: devuelve el pan a cero y el pivote del giro
+                 normal a la vista.
                · 🧊 hormigón: ST.verHormigon existía desde siempre SIN botón que lo
                  tocara — la función estaba escrita y no se podía usar.
                A la derecha, el radial de EJE de rotación (portado del Enfierrador).
