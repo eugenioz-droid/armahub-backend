@@ -253,9 +253,17 @@
   #te_modal .te-rango-line.te-r2{stroke:#7b1fa2}
   #te_modal .te-rango-arrow.te-r2{stroke:#7b1fa2;fill:none}
   #te_modal .te-rango-end.te-r2{fill:#fff;stroke:#7b1fa2}
-  /* Cota viva al borde mientras se arrastra una línea de reparto. */
+  /* COTAS VIVAS DEL ARRASTRE — mientras se mueve una línea de reparto, cada extremo
+     dice a cuánto quedó de la referencia que el ANCLA eligió (borde −, centro,
+     borde +), con una línea de extensión que llega hasta esa referencia.
+     El halo blanco (paint-order:stroke) borra la línea por detrás del número, que es
+     el remate de cualquier cota de plano; sin él, el trazo cruza las cifras.
+     pointer-events:none — son lectura de un gesto en curso, no un objetivo: sin esto
+     se meterían entre el cursor y el tirador que el usuario está arrastrando. */
   #te_modal .te-rango-cota{font-size:10px;font-weight:700;fill:#33691e;paint-order:stroke;
-    stroke:#fff;stroke-width:3px;stroke-linejoin:round}
+    stroke:#fff;stroke-width:3px;stroke-linejoin:round;pointer-events:none;user-select:none}
+  #te_modal .te-rango-cotaL{stroke:#33691e;stroke-width:.9;stroke-dasharray:3 2;
+    pointer-events:none}
   /* Fila de ángulos: tantas columnas como ángulos declare la figura (2 anchos, 4 caben). */
   #te_modal .te-angrow{display:grid;gap:8px;margin-bottom:6px}
   /* Δ heredado del lado espejo: BLOQUEADO y en azul — es la misma medida que su

@@ -3500,7 +3500,17 @@
     // de todo lo demás del overlay: son texto y no se leen a medio tapar. No pelean
     // por el puntero (pointer-events:none) y mientras SHIFT esté apretado el
     // cuadrante no acepta clics, así que tampoco esconden un tirador usable.
-    if (ST.cotasLado) _dibujarCotasLados(svg, plano, proj, X, Y, out);
+    // ESTIRANDO EL MARCO SE ENCIENDEN SOLAS (etapa 2, 20-ago): «la medida
+    // resultante del lado que se está cambiando» ES esta capa. No se escribe una
+    // segunda: la que existe ya sabe qué lado se ve en esta vista, cuál cae fuera
+    // del cuchillo y cómo agrupar los que se pisan. Soltar la apaga.
+    if (ST.cotasLado || (ST.dragMarco && ST.dragMarco.pushed)) _dibujarCotasLados(svg, plano, proj, X, Y, out);
+
+    // COTAS VIVAS DE LA PIEZA — el hueco contra el hormigón mientras se mueve o se
+    // estira. Reusa el bbox que acaba de calcular el marco de selección.
+    if (_arrastrandoPieza() && isFinite(bU0)) {
+      _cotasVivasPieza(svg, plano, X, Y, VW, VH, { u0: bU0, u1: bU1, v0: bV0, v1: bV1 });
+    }
 
   }
 
@@ -3818,8 +3828,11 @@
         attrs.style = 'cursor:move';
         g.appendChild(_svgEl('rect', attrs));
         handle(xa, yy, 'from', 'ew-resize'); handle(xb, yy, 'to', 'ew-resize');
-        _rotuloLargoRango(g, rango, L.cual, eje, activa, true, xa, xb, yy, VW, VH, sfx);
+        var cajaLen = _rotuloLargoRango(g, rango, L.cual, eje, activa, true, xa, xb, yy, VW, VH, sfx);
         if (activa && !L.segunda) _dibujarTramosRango(g, d, rango, true, X, yy, plano, eje, L.cual);
+        // LO ÚLTIMO = encima de todo (igual que las cotas por lado): son números que
+        // el usuario está leyendo MIENTRAS mueve, no se leen a medio tapar.
+        if (_arrastrandoLinea(L.cual)) _cotasVivas(g, rango, eje, true, X, yy, VW, VH, cajaLen);
       } else {
         var xx = TE_RANGO_OFF_H + (L.segunda ? 16 : 0);
         var ya = Y(rango.from), yb = Y(rango.to);
@@ -3831,34 +3844,9 @@
         attrs.style = 'cursor:move';
         g.appendChild(_svgEl('rect', attrs));
         handle(xx, ya, 'from', 'ns-resize'); handle(xx, yb, 'to', 'ns-resize');
-        _rotuloLargoRango(g, rango, L.cual, eje, activa, false, ya, yb, xx, VW, VH, sfx);
+        var cajaLenV = _rotuloLargoRango(g, rango, L.cual, eje, activa, false, ya, yb, xx, VW, VH, sfx);
         if (activa && !L.segunda) _dibujarTramosRango(g, d, rango, false, Y, xx, plano, eje, L.cual);
-      }
-      // COTA VIVA AL BORDE (pedido 15-ago): mientras se arrastra ESTA línea, cada
-      // extremo dice a cuánto quedó del borde del elemento en su eje. Es la
-      // pregunta real del usuario ("¿cuánto me falta para el borde?") y sin ella
-      // hay que soltar, mirar el campo y volver a agarrar.
-      if (ST.dragRango && ST.dragRango.ci === ST.selCi && ST.dragRango.cual === L.cual) {
-        var lim = _facesEje(eje), bordes = [];
-        for (var q = 0; q < lim.length; q++) bordes.push(Number(lim[q]));
-        if (bordes.length) {
-          var bMin = Math.min.apply(null, bordes), bMax = Math.max.apply(null, bordes);
-          var dIni = Math.abs(Number(rango.from) - bMin), dFin = Math.abs(bMax - Number(rango.to));
-          var horiz = (eje === def.u);
-          var yTxt = horiz ? (TE_RANGO_OFF_V + (L.segunda ? 16 : 0) - 10) : 0;
-          function cota(px, py, txt) {
-            var t = _svgEl('text', { 'class': 'te-rango-cota', x: px, y: py, 'text-anchor': 'middle' });
-            t.textContent = txt; g.appendChild(t);
-          }
-          if (horiz) {
-            cota(X(rango.from), yTxt, Math.round(dIni) + '');
-            cota(X(rango.to), yTxt, Math.round(dFin) + '');
-          } else {
-            var xT = TE_RANGO_OFF_H + (L.segunda ? 16 : 0) + 16;
-            cota(xT, Y(rango.from) + 3, Math.round(dIni) + '');
-            cota(xT, Y(rango.to) + 3, Math.round(dFin) + '');
-          }
-        }
+        if (_arrastrandoLinea(L.cual)) _cotasVivas(g, rango, eje, false, Y, xx, VW, VH, cajaLenV);
       }
     });
   }
@@ -3963,12 +3951,16 @@
   // el número quedaba fuera de pantalla justo cuando el usuario se acercó a leerlo.
   // Si no se ve nada de la flecha, no se dibuja (un número suelto en el borde de una
   // vista donde no hay flecha no se entiende).
+  // DEVUELVE la caja que ocupó ({x0,x1,y0,y1} en px del viewBox) o null: las cotas
+  // vivas del arrastre (20-ago) comparten renglón con ella y la esquivan con ese
+  // rect. Con un umbral fijo no alcanzaba — la caja se MUEVE (se sale de la flecha
+  // en rangos cortos), así que el único dato que no miente es dónde quedó.
   function _rotuloLargoRango(g, rango, cual, eje, activa, horiz, a, b, fija, VW, VH, sfx) {
     var txt = String(Math.round(_largoRango(rango)));
     var w = _anchoRotulo(txt);
     var lim = horiz ? VW : VH;
     var lo = Math.max(Math.min(a, b), 0), hi = Math.min(Math.max(a, b), lim);
-    if (hi - lo < 4) return;
+    if (hi - lo < 4) return null;
     var med = (lo + hi) / 2, bx, by;
     if (horiz) {
       // ENCAJE (defecto de auditoría, 19-ago). La caja va SOBRE la línea, así que con
@@ -3999,6 +3991,227 @@
           PASO_ARRASTRE_CM + ' cm. Se mueve el extremo final; la cantidad la recalcula el motor con el mismo @.'
         : 'Distancia del rango por defecto (cm). Arrastra la flecha para activar la distribución.',
       sfx);
+    return { x0: bx, x1: bx + w, y0: by, y1: by + ROT_H };
+  }
+
+  // ==========================================================================
+  // COTAS VIVAS DEL ARRASTRE (20-ago) — «un poco como lo hace Revit»
+  // --------------------------------------------------------------------------
+  // Mientras se ARRASTRA una línea de reparto (los dos extremos, el rango entero,
+  // un divisor de tramo, y lo mismo en la 2ª línea), cada extremo dice EN VIVO a
+  // cuánto quedó de su referencia, con una línea de extensión que llega hasta esa
+  // referencia. El LARGO del abanico no se duplica acá: ya lo dice
+  // _rotuloLargoRango, que se redibuja en el mismo rAF del arrastre y por lo tanto
+  // también va en vivo — y además es CLICABLE (se edita a mano). Un solo rótulo
+  // que fuera a la vez control editable y lectura efímera dejaría ambiguo qué se
+  // edita al clicarlo.
+  //
+  // EL NÚMERO ES EL DEL ANCLAJE, NO UNO PROPIO. Se lo pide a `reglas.anclarRango`,
+  // la MISMA función que _anclarRangoUI usa para escribir rango.ancla al arrastrar.
+  // La cota anterior medía siempre `from` contra el borde − y `to` contra el +, y
+  // eso se contradice con lo que el editor guarda en cuanto el punto pasa la mitad
+  // del elemento: en una viga de 600 con el rango 100→260, el ancla del `from` es
+  // {centro, 100} y la cota decía 400. Peor con el rango al revés (to < from):
+  // 260→−260 anclaba {max,40}/{min,40} y la cota mostraba 560 y 560.
+  //
+  // COSTE: el arrastre dispara decenas de eventos por segundo, así que se midió.
+  // Headless sobre la viga-semilla (72 placements), 20.000 pasadas de
+  // _dibujarFlechaRango: 0.5857 ms sin cotas · 0.5899 ms con cotas = 4.2 µs de
+  // helper, el 0.025% de los 16.7 ms de un frame a 60 fps. No hace falta cachear
+  // nada (y cachear el ancla sería justo la copia de dato que este helper evita).
+  // ==========================================================================
+  // Ancho aproximado por carácter de .te-rango-cota (10 px, bold). ROT_CHAR (5.1)
+  // es el de los rótulos de 9 px; escalado a 10 px da 5.7. Sólo se usa para ENCAJAR
+  // el número en su trecho, no para dibujarlo.
+  var COTA_VIVA_CHAR = 5.7, COTA_VIVA_MED = 5.5;   // medio alto de la caja de texto
+
+  // ¿Se está arrastrando ESTA línea de la selección? (from/to, el rango entero o un
+  // divisor: los cuatro tiradores escriben en la misma línea y todos merecen cota).
+  function _arrastrandoLinea(cual) {
+    var dr = ST.dragRango;
+    return !!(dr && dr.ci === ST.selCi && (dr.cual || 'rango') === cual);
+  }
+
+  // ANCLA de UN punto sobre un eje — la del MOTOR, sin fórmula propia.
+  // Se ancla un rango DEGENERADO (from = to = el punto) porque `anclarRango` es el
+  // helper único de escritura: entra por la misma puerta que el arrastre real y sale
+  // el mismo { ref, d }. El objeto es de usar y tirar; la receta no se toca.
+  function _anclaViva(coord, eje) {
+    var dp = _deps();
+    var c = Number(coord);
+    if (!isFinite(c) || !dp.reglas || typeof dp.reglas.anclarRango !== 'function') return null;
+    var tmp = { from: c, to: c };
+    try { dp.reglas.anclarRango(tmp, _hostDeReceta(), eje || 'x', true); } catch (e) { return null; }
+    return (tmp.ancla && tmp.ancla.ini) || null;
+  }
+
+  // Coordenada de la REFERENCIA que eligió el ancla, deducida del ancla mismo:
+  //   'min' → coord − d   ·   'max' → coord + d   ·   'centro' → 0
+  // No se vuelve a pedir la dimensión del host: la línea de extensión termina donde
+  // el número dice que termina, así que el dibujo es la verificación del número (si
+  // alguna vez discreparan, la línea se pasaría del borde a la vista).
+  function _coordRefAncla(a, coord) {
+    if (!a) return null;
+    if (a.ref === 'min') return Number(coord) - Number(a.d);
+    if (a.ref === 'max') return Number(coord) + Number(a.d);
+    return 0;
+  }
+
+  function _solapa(r1, r2) {
+    return !!(r1 && r2 && r1.x0 < r2.x1 && r1.x1 > r2.x0 && r1.y0 < r2.y1 && r1.y1 > r2.y0);
+  }
+
+  // Cota viva de UN extremo. `P` proyecta la coordenada del eje a px del viewBox y
+  // `fija` es la línea de la flecha. `obst` son las cajas ya ocupadas (el rótulo del
+  // largo y la cota del otro extremo). Devuelve la caja que ocupó, o null.
+  function _cotaVivaExtremo(g, coord, eje, horiz, P, fija, VW, VH, obst) {
+    var a = _anclaViva(coord, eje);
+    var ref = _coordRefAncla(a, coord);
+    if (ref == null || !isFinite(ref)) return null;
+    return _cotaEntre(g, P(Number(coord)), P(ref), String(Math.round(Number(a.d))),
+      horiz, fija, VW, VH, obst, a.ref);
+  }
+
+  // EL DIBUJO de una cota viva, ya en píxeles: trecho del punto (`p0`) a su
+  // referencia (`p1`), tick en la punta y el número encajado en ese trecho.
+  // Está separado del CÁLCULO porque las dos etapas lo comparten: la del abanico
+  // mide contra el ancla del rango y la de la pieza contra la cara del hormigón
+  // (ver _cotasVivasPieza), pero se dibujan igual — y un segundo dibujo copiado
+  // divergiría en el primer ajuste de encaje.
+  function _cotaEntre(g, p0, p1, txt, horiz, fija, VW, VH, obst, marca) {
+    if (!isFinite(p0) || !isFinite(p1) || !isFinite(fija)) return null;
+    var lim = horiz ? VW : VH;
+    // Ni el punto ni su referencia entran en el cuadrante: no se dibuja (misma
+    // regla que el rótulo del largo — un número suelto en el borde no se entiende).
+    if (Math.max(p0, p1) < 1 || Math.min(p0, p1) > lim - 1) return null;
+    txt = String(txt);
+    var w = txt.length * COTA_VIVA_CHAR;
+    var sgn = (p1 >= p0) ? 1 : -1;
+    var m = (p0 + p1) / 2;
+    // El trecho no da para el número (extremo pegado a su referencia): se sale por
+    // fuera de la referencia en vez de encimarse a la línea de extensión.
+    if (Math.abs(p1 - p0) < w + 6) m = p1 + sgn * (w / 2 + 5);
+    // ESQUIVAR lo que ya está dibujado en el mismo renglón. Se corre a lo largo del
+    // eje de la flecha (la única dirección libre: arriba está el título de la vista,
+    // que llega hasta ~27 del viewBox, y abajo los "@N" de los tramos).
+    for (var k = 0; k < 3; k++) {
+      var caja = _cajaCota(m, w, horiz, fija);
+      var choque = null;
+      for (var i = 0; i < obst.length; i++) if (_solapa(caja, obst[i])) { choque = obst[i]; break; }
+      if (!choque) break;
+      var lo = horiz ? choque.x0 : choque.y0, hi = horiz ? choque.x1 : choque.y1;
+      m = (sgn > 0) ? Math.max(m, hi + w / 2 + 3) : Math.min(m, lo - w / 2 - 3);
+    }
+    m = Math.max(w / 2 + 1, Math.min(m, lim - w / 2 - 1));
+    // Línea de extensión + tick en cada punta (una cota de plano de toda la vida).
+    // Va ANTES del texto: el halo blanco de .te-rango-cota la borra por detrás del
+    // número, que es exactamente el efecto que se busca.
+    var T = 3;
+    if (horiz) {
+      g.appendChild(_svgEl('line', { 'class': 'te-rango-cotaL', x1: p0, y1: fija, x2: p1, y2: fija }));
+      g.appendChild(_svgEl('line', { 'class': 'te-rango-cotaL', x1: p1, y1: fija - T, x2: p1, y2: fija + T }));
+    } else {
+      g.appendChild(_svgEl('line', { 'class': 'te-rango-cotaL', x1: fija, y1: p0, x2: fija, y2: p1 }));
+      g.appendChild(_svgEl('line', { 'class': 'te-rango-cotaL', x1: fija - T, y1: p1, x2: fija + T, y2: p1 }));
+    }
+    var t = _svgEl('text', {
+      'class': 'te-rango-cota', 'text-anchor': 'middle',
+      x: horiz ? m : (fija + 7 + w / 2), y: (horiz ? fija : m) + 3.5,
+      'data-cota-viva': (marca || '')
+    });
+    t.textContent = txt;
+    g.appendChild(t);
+    return _cajaCota(m, w, horiz, fija);
+  }
+
+  function _cajaCota(m, w, horiz, fija) {
+    if (horiz) return { x0: m - w / 2, x1: m + w / 2, y0: fija - COTA_VIVA_MED, y1: fija + COTA_VIVA_MED };
+    return { x0: fija + 7, x1: fija + 7 + w, y0: m - COTA_VIVA_MED, y1: m + COTA_VIVA_MED };
+  }
+
+  // Las DOS cotas de una línea. `cajaLen` es la del rótulo del largo (o null).
+  function _cotasVivas(g, rango, eje, horiz, P, fija, VW, VH, cajaLen) {
+    if (!rango || rango.from == null || rango.to == null) return;
+    var obst = cajaLen ? [cajaLen] : [];
+    var b = _cotaVivaExtremo(g, rango.from, eje, horiz, P, fija, VW, VH, obst);
+    if (b) obst.push(b);
+    _cotaVivaExtremo(g, rango.to, eje, horiz, P, fija, VW, VH, obst);
+  }
+
+  // ==========================================================================
+  // COTAS VIVAS DE LA PIEZA (etapa 2, 20-ago) — mover y redimensionar
+  // --------------------------------------------------------------------------
+  // MOVER (ST.dragMove): los DOS huecos que la pieza deja contra el hormigón en
+  //   cada eje que la vista controla. Los dos, no "el más cercano": al mover hacia
+  //   un lado uno crece y el otro se achica, y un número que salta de cara al
+  //   cruzar la mitad no se puede leer con la mano ocupada.
+  // REDIMENSIONAR (ST.dragMarco): el hueco del borde que se está estirando, y
+  //   nada más — los otros tres no cambian y serían ruido. La MEDIDA del lado la
+  //   pone _dibujarCotasLados, el mismo layer del gate SHIFT, encendido mientras
+  //   dura el arrastre: es exactamente «la medida resultante del lado que se está
+  //   cambiando» y ya está escrito, encajado y probado (test_cotas_lados.js).
+  //
+  // ACÁ EL NÚMERO NO SALE DEL ANCLAJE, Y ES A PROPÓSITO (medido). `pos_hint` NO es
+  // la posición de la barra: es una TRASLACIÓN que se suma a su geometría base, y
+  // `anclarPosHint` ancla ESA traslación. Medido con la 101A inferior sobre una
+  // viga 600×60: la barra nace en y = 25.2, con pos_hint.y = 20 queda en y = 45.2
+  // —fuera del hormigón, que llega a 30— y su ancla dice {ref:'max', d:10}, o sea
+  // «a 10 cm de la cara superior». Dibujar ese 10 sería escribirle al usuario un
+  // número que su propia pantalla desmiente. Lo que se rotula es el hueco REAL
+  // entre el bbox de la pieza y la cara del hormigón: el recubrimiento, que es lo
+  // que se comprueba con el ojo y lo que se fabrica. El bbox es el MISMO que ya
+  // calculó el marco de selección (no se recorre la geometría dos veces).
+  //
+  // COSTE medido en headless sobre la viga-semilla (72 placements, 20.000 pasadas):
+  // 0.030 ms moviendo (4 huecos) y 0.007 ms estirando (1 hueco) por vista, más
+  // 0.052 ms de _dibujarCotasLados. Por frame (3 cuadrantes) son 0.09 y 0.18 ms
+  // contra los 3.6 ms que cuesta generarViga en ese mismo frame: el arrastre no lo
+  // nota. Por eso no se cachea nada.
+  // ==========================================================================
+  function _cotasVivasPieza(svg, plano, X, Y, VW, VH, b) {
+    var def = (_defsPlanos() || {})[plano]; if (!def || !b) return;
+    var marco = ST.dragMarco;
+    // QUÉ EJES SE ROTULAN. Redimensionando: sólo el borde que la mano arrastra.
+    // Moviendo: los dos ejes que la vista controla (el arrastre toca los dos).
+    var filas = marco
+      ? [{ eje: (marco.eje === 'u') ? def.u : def.v, horiz: (marco.eje === 'u'), lado: marco.ladoUV }]
+      : [{ eje: def.u, horiz: true, lado: null }, { eje: def.v, horiz: false, lado: null }];
+    var g = _svgEl('g', {}), n = 0;
+    for (var i = 0; i < filas.length; i++) {
+      var f = filas[i];
+      var caras = _facesEje(f.eje);                  // [−dim/2, +dim/2, …] del eje
+      if (!caras || caras.length < 2) continue;
+      var loW = Math.min(caras[0], caras[1]), hiW = Math.max(caras[0], caras[1]);
+      var a0 = f.horiz ? Math.min(b.u0, b.u1) : Math.min(b.v0, b.v1);
+      var a1 = f.horiz ? Math.max(b.u0, b.u1) : Math.max(b.v0, b.v1);
+      var P = f.horiz ? X : Y;
+      // La cota corre por el MEDIO de la pieza en el eje perpendicular (como una
+      // cota temporal de Revit): el trecho queda FUERA del bbox, así que la línea
+      // no cruza el dibujo de la barra — sólo el número cae en el hueco.
+      var q0 = f.horiz ? Y(b.v0) : X(b.u0), q1 = f.horiz ? Y(b.v1) : X(b.u1);
+      var fija = Math.max(12, Math.min((q0 + q1) / 2, (f.horiz ? VH : VW) - 4));
+      var obst = [];
+      // Los dos huecos (o sólo el del borde arrastrado). Un hueco NEGATIVO se
+      // escribe con su signo: la barra está fuera del hormigón y eso se dice, no
+      // se tapa (el aviso del motor ya lo repite con el mismo número).
+      if (f.lado !== '+') {
+        var c1 = _cotaEntre(g, P(a0), P(loW), String(Math.round(a0 - loW)), f.horiz, fija, VW, VH, obst, 'pieza');
+        if (c1) { obst.push(c1); n++; }
+      }
+      if (f.lado !== '-') {
+        var c2 = _cotaEntre(g, P(a1), P(hiW), String(Math.round(hiW - a1)), f.horiz, fija, VW, VH, obst, 'pieza');
+        if (c2) { obst.push(c2); n++; }
+      }
+    }
+    if (n) svg.appendChild(g);
+  }
+
+  // ¿Hay un arrastre de PIEZA en curso sobre la selección? `pushed` = ya hubo
+  // movimiento real: un simple clic para seleccionar deja ST.dragMove armado y sin
+  // esto haría parpadear las cotas sin que nada se haya movido.
+  function _arrastrandoPieza() {
+    var dm = ST.dragMove || ST.dragMarco;
+    return !!(dm && dm.pushed && dm.ci === ST.selCi);
   }
 
   // Rótulos de UN tramo: [largo][@], pegados, en la misma fila — así no hay dos
@@ -5142,6 +5355,12 @@
         if (!(ST.dragMove || ST.dragMarco || ST.dragRango)) return;
         ST.dragMove = null; ST.dragMarco = null; ST.dragRango = null;
         _renderPanel();
+        // AL SOLTAR SE BORRAN LAS COTAS VIVAS (las del abanico y las de la pieza).
+        // _renderPanel NO toca el overlay SVG, y el último rAF del arrastre ya se
+        // había ejecutado si el usuario paró la mano ≥1 frame antes de soltar: los
+        // números se quedaban pegados en la vista hasta el siguiente redibujo.
+        // Cuesta UN repintado, y sólo al soltar.
+        _sincronizarOverlayOrto();
       });
     }
   }
@@ -5423,7 +5642,15 @@
     _anclarRangoUI(rango, eje);
     _syncN(d, cual, true);                  // arrastraste: N sigue al largo nuevo
     if (cual === 'rango') _syncTramos(d);   // los tramos viven en la 1ª línea
-    _sincronizarOverlayOrto();              // repinta la cota viva del borde
+    // UN SOLO REPINTADO POR FRAME. Acá había además un _sincronizarOverlayOrto(),
+    // que es _redibujar2D(ST.ultimoOut): cada una tiene su propio flag (_overlayPend
+    // / _regenPendiente) pero las dos se encolan en el MISMO rAF, así que los 3
+    // cuadrantes se dibujaban DOS veces por frame de arrastre — la primera con el
+    // `out` VIEJO, que ni siquiera es el que se acaba de mover. Se queda el
+    // _regenerarDiferido, que redibuja al final de _regenerar y con el resultado
+    // bueno. Medido en headless sobre la viga-semilla (72 placements): generarViga
+    // 3.6 ms por frame y _dibujarFlechaRango 0.59 ms por vista — el repintado
+    // duplicado era ~1.8 ms de los 16.7 que da un frame a 60 fps, tirados.
     _regenerarDiferido();
   }
 
@@ -10160,6 +10387,17 @@
     _moverDivisor: _moverDivisor, _addTramo: _addTramo, _syncTramos: _syncTramos,
     _syncN: _syncN, _anclarRangoUI: _anclarRangoUI, _rangoDefault: _rangoDefault,
     _dibujarFlechaRango: _dibujarFlechaRango, PASO_ARRASTRE_CM: PASO_ARRASTRE_CM,
+    // COTAS VIVAS DEL ARRASTRE (20-ago) — el número que se ve mientras se mueve un
+    // abanico. Se exponen la CUENTA (_anclaViva, que es la del motor) y su
+    // referencia (_coordRefAncla) para que el test headless compruebe que dicen lo
+    // mismo que el ancla que la receta guarda, y no una cuenta paralela.
+    _anclaViva: _anclaViva, _coordRefAncla: _coordRefAncla,
+    _cotasVivas: _cotasVivas, _arrastrandoLinea: _arrastrandoLinea,
+    // …y las de la PIEZA (etapa 2): acá el número NO es el del ancla del pos_hint
+    // —que ancla la TRASLACIÓN, no la posición— sino el hueco real contra la cara
+    // del hormigón. El test lo congela con la 101A que el ancla ubica "a 10 cm de
+    // la cara superior" estando 15 cm FUERA del hormigón.
+    _cotasVivasPieza: _cotasVivasPieza, _arrastrandoPieza: _arrastrandoPieza,
     _ruedaRotulo: _ruedaRotulo,     // la rueda sobre el rótulo: ±1 cm y NO le roba el zoom al cuadrante
     _abrirEditorLargo: _abrirEditorLargo, _abrirEditorLargoTramo: _abrirEditorLargoTramo,
     _abrirEditorAt: _abrirEditorAt,   // el clic sobre cada rótulo (camino real de la edición)
