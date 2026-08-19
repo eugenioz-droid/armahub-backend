@@ -192,6 +192,10 @@
     dragMove: null,            // {ci, plano, startHost, startHint} durante mover
     dragMarco: null,           // arrastre del marco de la barra (ver _iniciarDragMarco)
     dragRango: null,           // {ci} durante arrastre de la flechita doble
+    // Campos del panel con NÚMERO VIVO: funciones que releen la receta y reescriben
+    // su <input>/<label> sin re-armar el DOM (ver _refrescarPanelVivo). Las registra
+    // quien los construye y las tira _renderPanel al re-armar la lista.
+    _panelVivo: [],
     // --- Snap de CARA (§INTERACCIÓN-2.0) — elegir la cara VIENDO ---
     caraHi: null,              // {plano, cara, edge, orient, pos, a, b} cara resaltada bajo el cursor
     _regenPendiente: false,
@@ -1028,6 +1032,11 @@
     return rango;
   }
 
+  // El hint que acaba de escribir el gesto INVALIDA las anclas de posición del
+  // componente (todos sus ejes con hint). No las reescribe: el ancla del pos_hint
+  // guarda la POSICIÓN de la barra (base + hint) y la base —dónde nace la pieza sin
+  // traslación— sólo existe mientras el motor expande. Las estampa él, en la
+  // regeneración que viene detrás de cada arrastre.
   function _anclarHintUI(comp) {
     var d = _deps();
     if (!comp || !d.reglas || typeof d.reglas.anclarPosHint !== 'function') return comp;
@@ -1038,15 +1047,15 @@
   // Rango por defecto (toda la dimensión útil del EJE DE DISTRIBUCIÓN) para los modos
   // que lo necesitan. `eje` = 'x' (normal) | 'z' (pieza volteada) | 'y'.
   function _rangoDefault(sep, eje) {
-    var g = ST.receta.geometria;
-    var dim, r;
-    if (eje === 'z') { dim = Number(g.ancho); r = (g.recub_lat != null ? Number(g.recub_lat) : 3); }
-    else if (eje === 'y') { dim = Number(g.alto); r = (g.recub_sup != null ? Number(g.recub_sup) : 4); }
-    else { dim = Number(g.largo); r = 4; }
+    // Las líneas de recubrimiento salen del helper ÚNICO (_lineasRecubEje): acá
+    // vivía una tabla propia que además fijaba 4 cm a lo largo pasara lo que pasara,
+    // así que con un recub distinto de 4 el rango por defecto nacía en un sitio y el
+    // imán del arrastre lo llevaba a otro.
+    var r = _lineasRecubEje(eje === 'y' ? 'y' : (eje === 'z' ? 'z' : 'x'));
     // `eje` SIEMPRE declarado: sin él, el distribuidor cae a X y un rango de
     // cabezal (valores en Z, ±ancho/2) se interpretaba como X → 2 barras juntas.
-    var rg = { from: -dim / 2 + r, to: dim / 2 - r, sep: sep || 20, eje: (eje === 'y' || eje === 'z') ? eje : 'x' };
-    return _anclarRangoUI(rg, rg.eje);   // nace anclado a los bordes (r cm de cada uno)
+    var rg = { from: r.lo, to: r.hi, sep: sep || 20, eje: (eje === 'y' || eje === 'z') ? eje : 'x' };
+    return _anclarRangoUI(rg, rg.eje);   // nace anclado: el recub de cada borde ES su ancla
   }
 
   // ==========================================================================
@@ -1248,7 +1257,10 @@
       if (!d.rango) d.rango = _rangoDefault(d.sep, ejeD);
       else if (d.rango.eje == null) d.rango.eje = ejeD;   // migrar rangos viejos sin eje
       d.activa = true;
-      if (c.pos_hint) delete c.pos_hint[ejeD];   // el rango la distribuye
+      // el rango la distribuye: se va el hint Y su ancla (una intención de posición
+      // sin hint que la sostenga es dato muerto que reaparecería al próximo arrastre).
+      if (c.pos_hint) delete c.pos_hint[ejeD];
+      if (c.pos_ancla) delete c.pos_ancla[ejeD];
     } else { // arreglo
       if (d.sep == null) d.sep = _sepDefault(c.tipologia);
       if (!d.rango) d.rango = _rangoDefault(d.sep, ejeD);
@@ -1262,6 +1274,7 @@
       if (!d.rango2 && !(Number(d.n_capas) > 1)) d.rango2 = _rango2Default(c, d);
       d.activa = true;
       if (c.pos_hint) delete c.pos_hint[ejeD];
+      if (c.pos_ancla) delete c.pos_ancla[ejeD];
     }
   }
 
@@ -1347,13 +1360,26 @@
   // generó. generarViga concatena placements EN ORDEN de componentes, así que
   // re-expandimos por componente (barato) y estampamos ci por rango de índice.
   // Esto habilita el hit-testing 2D sin tocar generar.js.
+  //
+  // SE EXPANDE UN CLON, NO EL COMPONENTE (21-ago). Este host NO es el de la
+  // generación real: `_hostDeReceta` no lleva las pilas por cara (jer_caras) que
+  // generar.js arma, así que la pieza nace en otro sitio. Y expandir MUTA el
+  // componente —estampa el ancla del pos_hint y re-deriva el hint contra la base
+  // que vea—, o sea que este conteo le estaba reescribiendo la posición a la barra
+  // con una base equivocada. MEDIDO en un cabezal de jerarquía 2 (detrás de un
+  // estribo φ8) con pos_hint.y = −5: el hint quedaba en −5.8, los 0.8 de la pila
+  // que este host no tiene, y al volver a agarrar la barra saltaba esos 0.8 cm.
+  // El clon devuelve el mismo conteo sin tocar la receta (mismo criterio que
+  // _iniciarDragMarco, que sondea con clones por la misma razón). Coste medido en
+  // headless sobre la viga-semilla: 0.461 → 0.510 ms el etiquetado entero, contra
+  // 1.06 ms que cuesta generarViga en ese mismo frame.
   function _etiquetarCi(out) {
     var d = _deps();
     if (!out || !out.placements || !d.reglas) return;
     var host = _hostDeReceta();
     var idx = 0;
     (ST.receta.componentes || []).forEach(function (comp, ci) {
-      var n = d.reglas.expandirComponente(comp, host).length;
+      var n = d.reglas.expandirComponente(JSON.parse(JSON.stringify(comp)), host).length;
       for (var k = 0; k < n && idx < out.placements.length; k++, idx++) {
         out.placements[idx].meta = out.placements[idx].meta || {};
         out.placements[idx].meta.ci = ci;
@@ -1468,6 +1494,7 @@
     _renderBarras();     // listado de barras (subtítulo siempre; tabla si está visible)
     _pintarFichaSel();   // ficha flotante de la barra seleccionada (la receta cambió)
     _refrescarDescComps();   // "· N barras ·" de cada fila del panel (depende de ESTE out)
+    _refrescarPanelVivo();   // …y los campos que el arrastre está escribiendo (rango, tramos, Δ)
     _redibujar2D(out);
     // WARNING ANTI-COLAPSO: se evalúa SIEMPRE (aunque no haya WebGL) — el aviso es
     // sobre el tamaño del elemento, no sobre el 3D.
@@ -4011,7 +4038,7 @@
   // La cota anterior medía siempre `from` contra el borde − y `to` contra el +, y
   // eso se contradice con lo que el editor guarda en cuanto el punto pasa la mitad
   // del elemento: en una viga de 600 con el rango 100→260, el ancla del `from` es
-  // {centro, 100} y la cota decía 400. Peor con el rango al revés (to < from):
+  // {max, 200} y la cota decía 400. Peor con el rango al revés (to < from):
   // 260→−260 anclaba {max,40}/{min,40} y la cota mostraba 560 y 560.
   //
   // COSTE: el arrastre dispara decenas de eventos por segundo, así que se midió.
@@ -4046,15 +4073,18 @@
   }
 
   // Coordenada de la REFERENCIA que eligió el ancla, deducida del ancla mismo:
-  //   'min' → coord − d   ·   'max' → coord + d   ·   'centro' → 0
+  //   'min' → coord − d   ·   'max' → coord + d
   // No se vuelve a pedir la dimensión del host: la línea de extensión termina donde
   // el número dice que termina, así que el dibujo es la verificación del número (si
   // alguna vez discreparan, la línea se pasaría del borde a la vista).
+  // SÓLO HAY DOS REFERENCIAS (21-ago): el 'centro' se retiró del anclaje, y una ref
+  // desconocida devuelve null (sin cota) en vez de dibujar una línea al origen que
+  // no corresponde a ningún borde.
   function _coordRefAncla(a, coord) {
     if (!a) return null;
     if (a.ref === 'min') return Number(coord) - Number(a.d);
     if (a.ref === 'max') return Number(coord) + Number(a.d);
-    return 0;
+    return null;
   }
 
   function _solapa(r1, r2) {
@@ -4151,16 +4181,31 @@
   //   dura el arrastre: es exactamente «la medida resultante del lado que se está
   //   cambiando» y ya está escrito, encajado y probado (test_cotas_lados.js).
   //
-  // ACÁ EL NÚMERO NO SALE DEL ANCLAJE, Y ES A PROPÓSITO (medido). `pos_hint` NO es
-  // la posición de la barra: es una TRASLACIÓN que se suma a su geometría base, y
-  // `anclarPosHint` ancla ESA traslación. Medido con la 101A inferior sobre una
-  // viga 600×60: la barra nace en y = 25.2, con pos_hint.y = 20 queda en y = 45.2
-  // —fuera del hormigón, que llega a 30— y su ancla dice {ref:'max', d:10}, o sea
-  // «a 10 cm de la cara superior». Dibujar ese 10 sería escribirle al usuario un
-  // número que su propia pantalla desmiente. Lo que se rotula es el hueco REAL
-  // entre el bbox de la pieza y la cara del hormigón: el recubrimiento, que es lo
-  // que se comprueba con el ojo y lo que se fabrica. El bbox es el MISMO que ya
-  // calculó el marco de selección (no se recorre la geometría dos veces).
+  // CONTRA QUÉ SE MIDE (21-ago, pedido del usuario: «tengo la duda de si es más
+  // conveniente que lo muestre hacia el recubrimiento o hacia el hormigón… podemos
+  // hacer el cambio al recubrimiento, pero sería solamente para cuando redimensiono
+  // una barra; para las cortinas está bien que sea al hormigón»):
+  //   · REDIMENSIONAR → la LÍNEA DE RECUBRIMIENTO. Estirar una barra es decidir
+  //     hasta dónde llega el fierro, y el límite no es el borde del hormigón sino el
+  //     recubrimiento: el número dice cuánto queda antes de pasarse. Si la barra ya
+  //     lo invadió sale NEGATIVO, con su signo — es lo que hay, y es más útil que un
+  //     número positivo al hormigón que no avisa de nada (una barra puede estar
+  //     dentro del hormigón y aun así fuera de norma).
+  //     DOS PRECISIONES para leer el número: (1) los puntos son el EJE de la barra,
+  //     así que una pieza tangente al recubrimiento marca φ/2, no 0; (2) es el
+  //     recubrimiento del HORMIGÓN, pelado — una barra de nivel 2 se ancla además
+  //     detrás de la pila de su cara (0.8 cm tras un estribo φ8), así que su margen
+  //     real es ese tanto menor. La línea que se rotula es la de la norma, que es la
+  //     que el usuario pidió ver.
+  //   · MOVER (y los abanicos de la distribución) → el HORMIGÓN, como hasta hoy.
+  //
+  // EL NÚMERO NO SALE DEL ANCLAJE, y es a propósito: es el hueco REAL entre el bbox
+  // de la pieza y la cara, que es lo que se comprueba con el ojo y lo que se fabrica.
+  // Desde el 21-ago el ancla del `pos_hint` guarda la POSICIÓN (ver reglas.js) y ya
+  // no lo contradice —la 101A del ejemplo declara «15.2 cm PASADA la cara superior»,
+  // que es exactamente el −15 que se dibuja—, pero el hueco se sigue midiendo sobre
+  // el bbox: es el mismo que ya calculó el marco de selección (no se recorre la
+  // geometría dos veces) y sirve igual para mover que para estirar.
   //
   // COSTE medido en headless sobre la viga-semilla (72 placements, 20.000 pasadas):
   // 0.030 ms moviendo (4 huecos) y 0.007 ms estirando (1 hueco) por vista, más
@@ -4181,7 +4226,10 @@
       var f = filas[i];
       var caras = _facesEje(f.eje);                  // [−dim/2, +dim/2, …] del eje
       if (!caras || caras.length < 2) continue;
-      var loW = Math.min(caras[0], caras[1]), hiW = Math.max(caras[0], caras[1]);
+      // Contra qué se mide: recubrimiento estirando, hormigón moviendo (ver arriba).
+      var lim = marco ? _lineasRecubEje(f.eje)
+        : { lo: Math.min(caras[0], caras[1]), hi: Math.max(caras[0], caras[1]) };
+      var loW = lim.lo, hiW = lim.hi;
       var a0 = f.horiz ? Math.min(b.u0, b.u1) : Math.min(b.v0, b.v1);
       var a1 = f.horiz ? Math.max(b.u0, b.u1) : Math.max(b.v0, b.v1);
       var P = f.horiz ? X : Y;
@@ -4192,8 +4240,9 @@
       var fija = Math.max(12, Math.min((q0 + q1) / 2, (f.horiz ? VH : VW) - 4));
       var obst = [];
       // Los dos huecos (o sólo el del borde arrastrado). Un hueco NEGATIVO se
-      // escribe con su signo: la barra está fuera del hormigón y eso se dice, no
-      // se tapa (el aviso del motor ya lo repite con el mismo número).
+      // escribe con su signo: la barra se pasó de la línea contra la que se mide y
+      // eso se dice, no se tapa (el aviso del motor ya lo repite con el mismo
+      // número cuando además sale del hormigón).
       if (f.lado !== '+') {
         var c1 = _cotaEntre(g, P(a0), P(loW), String(Math.round(a0 - loW)), f.horiz, fija, VW, VH, obst, 'pieza');
         if (c1) { obst.push(c1); n++; }
@@ -4521,11 +4570,51 @@
     return Math.round(val / PASO_ARRASTRE_CM) * PASO_ARRASTRE_CM;
   }
 
+  // RECUBRIMIENTO de un eje, por borde. La convención es la del MOTOR (reglas
+  // `_recubBordeEje`/`_recubDeCara`): en Y los dos bordes son caras distintas
+  // (inf/sup), en Z manda `recub_lat`, y en X —los testeros— el usuario no declara
+  // un recub propio, así que vale el VERTICAL (`recub_ext` si viniera, si no
+  // `recub_sup`): es el mismo `anchorBase.recubExtremo` con el que el motor cierra
+  // el eje longitudinal. Una segunda tabla acá diría otra cosa a la primera
+  // geometría con recubrimientos distintos de los default.
+  function _recubEje(eje, ref) {
+    var g = ST.receta.geometria;
+    if (eje === 'y') {
+      var v = (ref === 'min') ? g.recub_inf : g.recub_sup;
+      return Number(v != null ? v : 4);
+    }
+    if (eje === 'z') return Number(g.recub_lat != null ? g.recub_lat : 3);
+    return Number(g.recub_ext != null ? g.recub_ext
+      : (g.recub_sup != null ? g.recub_sup : 4));
+  }
+
+  // Línea del RECUBRIMIENTO de cada borde del eje (la "útil"), en coordenadas del
+  // host. CUANDO EL RECUBRIMIENTO SE COME EL EJE ENTERO manda el hormigón: es la
+  // MISMA regla del motor (`resolverRango`: «un elemento cuyo recubrimiento no deja
+  // borde útil no tiene borde útil»), y sin ella los dos límites salen CRUZADOS.
+  // Medido con ancho 5 y recub_lat 3: {lo: 0.5, hi: −0.5} → _rangoDefault devolvía
+  // un rango invertido y la cota del tirador rotulaba los dos huecos con el signo
+  // dado vuelta. En X es nuevo (antes el 4 cableado sólo cruzaba con largo < 8).
+  function _dimEjeGeo(eje) {
+    var g = ST.receta.geometria;
+    return Number(eje === 'y' ? g.alto : (eje === 'z' ? g.ancho : g.largo));
+  }
+  function _lineasRecubEje(eje) {
+    var D = _dimEjeGeo(eje);
+    var lo = -D / 2 + _recubEje(eje, 'min'), hi = D / 2 - _recubEje(eje, 'max');
+    if (!(lo < hi)) { lo = -D / 2; hi = D / 2; }
+    return { lo: lo, hi: hi };
+  }
+
   function _facesEje(eje) {
     var g = ST.receta.geometria;
-    if (eje === 'x') return [-g.largo / 2, g.largo / 2, 0];
-    if (eje === 'y') return [-g.alto / 2, g.alto / 2, 0, g.alto / 2 - (g.recub_sup || 4), -g.alto / 2 + (g.recub_inf || 4)];
-    return [-g.ancho / 2, g.ancho / 2, 0, g.ancho / 2 - (g.recub_lat || 3), -g.ancho / 2 + (g.recub_lat || 3)];
+    var r = _lineasRecubEje(eje);
+    // X tenía sólo bordes y centro: el imán se saltaba justo la línea contra la que
+    // el motor arranca las barras a lo largo (el recub de extremo). Ahora los tres
+    // ejes ofrecen los mismos nodos: los dos bordes, el centro y los dos recubs.
+    if (eje === 'x') return [-g.largo / 2, g.largo / 2, 0, r.hi, r.lo];
+    if (eje === 'y') return [-g.alto / 2, g.alto / 2, 0, r.hi, r.lo];
+    return [-g.ancho / 2, g.ancho / 2, 0, r.hi, r.lo];
   }
 
   // Click host con snap por eje (según el plano).
@@ -5395,10 +5484,14 @@
       c.pos_hint.x = (base.x || 0) + dx;
       c.pos_hint.z = (base.z || 0) + dz;
     }
-    // DONDE LA SOLTASTE ES EL ANCLA: el hint se guarda como distancia a la referencia
-    // más cercana de su eje (borde − / centro / borde +), no como coordenada fija.
-    // Sin esto, la barra arrastrada a 50 cm del testero aparecía a 150 cm del testero
-    // en cuanto la viga pasaba de 600 a 800.
+    // DONDE LA SOLTASTE ES EL ANCLA: la POSICIÓN de la barra se guarda como distancia
+    // al borde más cercano de su eje, no como coordenada fija. Sin esto, la barra
+    // arrastrada a 50 cm del testero aparecía a 150 cm del testero en cuanto la viga
+    // pasaba de 600 a 800.
+    // ACÁ SÓLO SE INVALIDA el ancla vieja: para ESCRIBIRLA hace falta saber dónde
+    // nace la pieza sin traslación, y eso sólo lo sabe el motor mientras expande. La
+    // estampa él en el _regenerarDiferido de la línea siguiente (ver «SE ANCLA LA
+    // POSICIÓN» en reglas.js).
     _anclarHintUI(c);
     _regenerarDiferido();
   }
@@ -5588,8 +5681,17 @@
       d.activa = true;
       d.rango = _rangoDefault(d.sep, eje);
       // La barra base ya no necesita pos_hint en ese eje (el rango la distribuye).
+      // Su ancla se va CON él: dejarla suelta guardaba en la receta una intención de
+      // una posición que ya no existe, y volvería a aplicarse si ese eje recibiera
+      // otro hint más adelante.
       if (c.pos_hint) delete c.pos_hint[eje];
-      // el mouseup global ya re-renderiza el panel → la ficha muestra el modo nuevo
+      if (c.pos_ancla) delete c.pos_ancla[eje];
+      // LA FICHA CAMBIA DE FORMA (aparecen los campos del rango), así que acá SÍ se
+      // re-arma el panel — una sola vez, en el frame en que la distribución se
+      // enciende. Los refrescadores en vivo sólo saben reescribir valores de campos
+      // que ya existen, y estos todavía no existían. Es seguro: el arrastre vive en
+      // ST + el listener global del window, no en el DOM del panel.
+      _renderPanel();
     }
     var rango = d[cual] || _rangoDefault(d.sep, eje);
     if (dr.div != null) {
@@ -5663,6 +5765,7 @@
     var cont = $('te_compList'); if (!cont || !ST.receta) return;
     var cnt = $('te_compCount'); if (cnt) cnt.textContent = ST.receta.componentes.length;
     cont.innerHTML = '';
+    ST._panelVivo = [];   // el DOM viejo se va: sus refrescadores también
     ST.receta.componentes.forEach(function (c, ci) {
       cont.appendChild(_compEl(c, ci));
     });
@@ -5676,12 +5779,50 @@
     _pintarFichaSel();
   }
 
+  // ==========================================================================
+  // NÚMEROS VIVOS DEL PANEL (21-ago) — el panel sigue al gesto, no al soltar
+  // --------------------------------------------------------------------------
+  // El panel izquierdo y el dibujo leen la MISMA receta, así que no pueden decir
+  // cosas distintas ni por un segundo. Medido antes de tocar nada: durante un
+  // arrastre, `_regenerar` refrescaba la línea de descripción (_refrescarDescComps),
+  // la ficha flotante y el listado de barras… pero NO los campos de la ficha del
+  // componente. Los que el propio arrastre está escribiendo:
+  //     · el rango (desde/hasta, o la cantidad) y su rótulo "Rango · N cm"
+  //     · el largo de cada tramo (el tirador del divisor)
+  //     · el Δ del lado que estira el tirador del marco
+  // se quedaban con el número de ANTES hasta el mouseup, que es donde estaba el
+  // único _renderPanel. O sea: la vista decía 360 y el panel 520.
+  //
+  // POR QUÉ NO SE RE-ARMA EL PANEL Y SE REESCRIBE EL VALOR: _renderPanel reconstruye
+  // el DOM de la ficha y le mata el foco al input que el usuario está tecleando (por
+  // eso _mut sólo la re-arma cuando cambia la FORMA de la ficha). Cada campo vivo
+  // registra un refrescador que RELEE la receta y reescribe su propio valor.
+  //
+  // SÓLO DURANTE UN ARRASTRE: es la única situación en la que el número cambia sin
+  // que el usuario esté escribiendo en el panel. Con la mano en el cuadrante no hay
+  // edición que pisar; fuera del arrastre manda quien teclea.
+  function _vivo(fn) { if (typeof fn === 'function') ST._panelVivo.push(fn); }
+
+  // NUNCA SE PISA EL CAMPO CON EL FOCO. El gate del arrastre ya debería bastar (con
+  // la mano en el cuadrante no se teclea), pero un mouseup perdido fuera de la
+  // ventana deja la bandera de arrastre pegada y a partir de ahí cada regeneración
+  // le borraría al usuario lo que está escribiendo. El foco es el dato honesto de
+  // "acá está el usuario"; todo campo vivo escribe por acá.
+  function _valVivo(el, v) {
+    if (!el || (document.activeElement === el)) return;
+    el.value = v;
+  }
+
+  function _refrescarPanelVivo() {
+    if (!(ST.dragRango || ST.dragMarco || ST.dragMove)) return;
+    var L = ST._panelVivo;
+    for (var i = 0; i < L.length; i++) { try { L[i](); } catch (e) { /* un campo no rompe el arrastre */ } }
+  }
+
   // Refresca SÓLO la línea de descripción de cada componente YA pintado (cara ·
   // reparto · N barras · ø). Hace falta porque la CANTIDAD DE BARRAS no sale de la
   // receta sino del último generado: tocar un @, mover un rango o cambiar el hormigón
-  // la mueve sin que el panel se re-arme. Y llamar a _renderPanel desde _regenerar NO
-  // es opción: re-arma toda la ficha y le mata el foco al input que el usuario está
-  // tecleando (por eso _mut sólo la re-arma cuando cambia la FORMA de la ficha).
+  // la mueve sin que el panel se re-arme.
   function _refrescarDescComps() {
     var cont = $('te_compList'); if (!cont || !ST.receta) return;
     var comps = ST.receta.componentes || [];
@@ -6584,6 +6725,11 @@
     lblD.title = 'Prolongación de este lado (traslapo). Se suma al largo de corte y a los kg.';
     wrap.appendChild(lblD);
     wrap.appendChild(inDelta);
+    // El TIRADOR DEL MARCO escribe este mismo Δ (son la misma perilla): mientras se
+    // estira la pieza, el campo dice el número que el tirador acaba de dejar en la
+    // receta y no el de antes de agarrarla. El lado espejo se deja quieto: su valor
+    // lo replica el motor y el campo está bloqueado.
+    if (!esEspejo) _vivo(function () { _valVivo(inDelta, (d.delta != null && d.delta !== '') ? d.delta : ''); });
 
     // FLECHA: por qué punta crece o se acorta. En un contorno CERRADO no se
     // ofrece — ahí el Δ va en pareja y el marco crece SIMÉTRICO (el motor ignora
@@ -6848,9 +6994,16 @@
       box.appendChild(head);
       arr.forEach(function (t, i) {
         var row = _div('te-tramo');
-        row.appendChild(_fld('Largo ' + (i + 1) + ' cm', _input({ value: Math.round(t.long * 10) / 10, type: 'number' }, function (v) {
+        var inLong = _input({ value: Math.round(t.long * 10) / 10, type: 'number' }, function (v) {
           _pushUndo(); _setLongTramo(d, i, Number(v) || 0); _mut(ci, true);
-        })));
+        });
+        row.appendChild(_fld('Largo ' + (i + 1) + ' cm', inLong));
+        // El tirador del DIVISOR mueve este largo: se relee de la receta en cada
+        // frame del arrastre (`_tramosDe`, no el `t` capturado, que es una copia).
+        _vivo(function () {
+          var a = _tramosDe(d);
+          if (a[i]) _valVivo(inLong, Math.round(a[i].long * 10) / 10);
+        });
         row.appendChild(_fld('@ ' + (i + 1) + ' cm', _inputSep(t.sep, function (v) {
           _pushUndo();
           var a = _tramosDe(d); a[i].sep = v; _setTramos(d, a);
@@ -6932,16 +7085,25 @@
     // (el motor ignora los campos que no conoce).
     var r = d[cual];
     var porCantidad = (r.n != null && Number(r.n) > 0);
-    function _sepDe() { return Number(r.sep) || Number(d.sep) || 20; }
+    // EL RANGO VIVO, no el capturado: el arrastre puede REEMPLAZAR el objeto
+    // (`_dragRangoMove` termina con `d[cual] = rango`, y activar la distribución
+    // estrena uno nuevo). Leyendo el capturado, el refresco en vivo escribía el
+    // número de un objeto muerto — medido: con el rango cambiado a 592 cm @20 (31
+    // columnas) el campo seguía diciendo 11.
+    function _rr() { return d[cual] || r; }
+    function _sepDe() { return Number(_rr().sep) || Number(d.sep) || 20; }
     function _nDeRango() {
-      return _cantidadDe(Number(r.to) - Number(r.from), _sepDe());
+      return _cantidadDe(Number(_rr().to) - Number(_rr().from), _sepDe());
     }
+    // Escribe SIEMPRE sobre el rango vivo (_rr), no sobre el capturado: si un
+    // arrastre reemplazó el objeto, escribir en el muerto se pierde en silencio.
     function _aplicarN(n) {
+      var rv = _rr();
       n = Math.max(1, Math.round(Number(n) || 1));
-      r.n = n;
-      var sgn = (Number(r.to) >= Number(r.from)) ? 1 : -1;
-      r.to = Number(r.from) + sgn * (n - 1) * _sepDe();
-      _anclarRangoUI(r, r.eje);               // el `to` calculado por N también se ancla
+      rv.n = n;
+      var sgn = (Number(rv.to) >= Number(rv.from)) ? 1 : -1;
+      rv.to = Number(rv.from) + sgn * (n - 1) * _sepDe();
+      _anclarRangoUI(rv, rv.eje);             // el `to` calculado por N también se ancla
       if (cual === 'rango') _syncTramos(d);
       _mut(ci, true);
     }
@@ -6959,7 +7121,7 @@
       ? 'Expresado por CANTIDAD de columnas. Clic para volver a extremos (desde → hasta en cm).'
       : 'Expresar por CANTIDAD DE COLUMNAS: deja una sola celda con cuántas van (cada @, desde el mismo inicio).';
     tog.onclick = function () {
-      if (porCantidad) { delete r.n; _mut(ci, true); }
+      if (porCantidad) { delete _rr().n; _mut(ci, true); }
       else { _aplicarN(_nDeRango()); }
     };
     if (porCantidad) {
@@ -6968,6 +7130,7 @@
       nn.title = 'CUÁNTAS columnas. Parten en ' + Math.round(r.from) + ' cm, cada ' + _sepDe() +
         ' cm; el final se calcula solo.';
       wrap.appendChild(nn);
+      _vivo(function () { if (d[cual]) { _valVivo(nn, _nDeRango()); _refrescarRotulo(); } });
     } else {
       var fi = _input({ value: Math.round(r.from), type: 'number' }, function (v) { _setExtremo('from', v); });
       fi.style.width = '52px';
@@ -6976,6 +7139,14 @@
       ff.style.width = '52px';
       ff.title = 'Dónde va la ÚLTIMA barra (cm). La cantidad la calcula el motor: ceil(dist/@)+1.';
       wrap.appendChild(fi); wrap.appendChild(ff);
+      // ARRASTRE EN CURSO: los dos extremos y el rótulo siguen al tirador. Se relee
+      // `d[cual]` —el rango VIVO de la receta— y no una copia: el arrastre puede
+      // reemplazar el objeto entero (activar la distribución estrena uno nuevo).
+      _vivo(function () {
+        var rr = d[cual]; if (!rr) return;
+        _valVivo(fi, Math.round(rr.from)); _valVivo(ff, Math.round(rr.to));
+        _refrescarRotulo();
+      });
     }
     wrap.appendChild(tog);
     return wrap;
@@ -10343,6 +10514,10 @@
     _actualizarBtnGuardar: _actualizarBtnGuardar, _puedeSobrescribir: _puedeSobrescribir,
     _guardarTemplate: _guardarTemplate, _sellarGuardado: _sellarGuardado,
     _msgHttp: _msgHttp, _nombreLimpio: _nombreLimpio,
+    // Conteo por componente para el hit-testing 2D. Expuesto porque expande, y
+    // expandir MUTA: el test congela que lo hace sobre un CLON y no le re-deriva
+    // la posición a la barra con un host que no es el de la generación real.
+    _etiquetarCi: _etiquetarCi,
     _normalizarRecetaViva: _normalizarRecetaViva, _avisarMigracion: _avisarMigracion,
     _migracionDe: _migracionDe,
     // TANDA 3 · no perder trabajo + capeo del @
@@ -10393,11 +10568,13 @@
     // mismo que el ancla que la receta guarda, y no una cuenta paralela.
     _anclaViva: _anclaViva, _coordRefAncla: _coordRefAncla,
     _cotasVivas: _cotasVivas, _arrastrandoLinea: _arrastrandoLinea,
-    // …y las de la PIEZA (etapa 2): acá el número NO es el del ancla del pos_hint
-    // —que ancla la TRASLACIÓN, no la posición— sino el hueco real contra la cara
-    // del hormigón. El test lo congela con la 101A que el ancla ubica "a 10 cm de
-    // la cara superior" estando 15 cm FUERA del hormigón.
+    // …y las de la PIEZA (etapa 2): el hueco real entre el bbox y la cara —contra el
+    // RECUBRIMIENTO si se está redimensionando, contra el HORMIGÓN si se mueve.
     _cotasVivasPieza: _cotasVivasPieza, _arrastrandoPieza: _arrastrandoPieza,
+    _lineasRecubEje: _lineasRecubEje, _facesEje: _facesEje,
+    // El panel sigue al gesto EN VIVO: los campos que el arrastre escribe (rango,
+    // largo de tramo, Δ) se releen de la receta sin re-armar el DOM de la ficha.
+    _refrescarPanelVivo: _refrescarPanelVivo,
     _ruedaRotulo: _ruedaRotulo,     // la rueda sobre el rótulo: ±1 cm y NO le roba el zoom al cuadrante
     _abrirEditorLargo: _abrirEditorLargo, _abrirEditorLargoTramo: _abrirEditorLargoTramo,
     _abrirEditorAt: _abrirEditorAt,   // el clic sobre cada rótulo (camino real de la edición)

@@ -306,20 +306,24 @@ console.log('\nD · EL ANCLAJE QUEDA RE-DERIVADO (sobrevive a cambiar el hormig�
     Math.round(TE._largoRango(c.distribucion.rango)) + ']');
   ok(rotulos('largo')[0].txt === '680', 'el rótulo de pantalla ya dice 680 [' + rotulos('largo')[0].txt + ']');
 
-  // LA REGLA DEL ANCLA ES LA DE SIEMPRE (reglas.anclaDeCoord, 18-ago): cada extremo se
-  // amarra a la referencia MÁS CERCANA de su eje — borde −, CENTRO o borde +. Un `to`
-  // que cae más cerca del centro que de un testero queda anclado al centro, y ahí se
-  // queda al crecer el elemento. No se escribe una segunda regla para este rótulo:
-  // esto se congela para que nadie la "arregle" pensando que es un bug del largo.
+  // LA REGLA DEL ANCLA ES LA DE reglas.anclaDeCoord: cada extremo se amarra al BORDE
+  // MÁS CERCANO de su eje. Son DOS referencias, no tres — el 'centro' existió del 18
+  // al 20-ago y lo retiró el usuario: con él, un `to` en 140 quedaba anclado «a 140
+  // del centro» y se quedaba CLAVADO en 140 al crecer la viga, mientras el otro
+  // extremo seguía al testero. Ahora declara sus 160 cm al testero + y se va a 240.
+  // No se escribe una segunda regla para este rótulo: esto se congela para que nadie
+  // la "arregle" pensando que es un bug del largo.
   const cc = montar([estribo({ from: -260, to: 260, sep: 20, eje: 'x' })]);
   R.reanclarReceta(ST.receta);
-  TE._setLargoRango(cc.distribucion, 'rango', 400);        // to = 140 → más cerca del centro
-  ok(cc.distribucion.rango.ancla.fin.ref === 'centro' && cc.distribucion.rango.ancla.fin.d === 140,
-    'un `to` a 140 (viga 600) se ancla al CENTRO, que es su referencia más cercana [' +
+  TE._setLargoRango(cc.distribucion, 'rango', 400);        // to = 140 → más cerca del testero +
+  ok(cc.distribucion.rango.ancla.fin.ref === 'max' && cc.distribucion.rango.ancla.fin.d === 160,
+    'un `to` a 140 (viga 600) se ancla a 160 cm del testero +, su borde más cercano [' +
     JSON.stringify(cc.distribucion.rango.ancla.fin) + ']');
   ST.receta.geometria.largo = 800;
   R.reanclarReceta(ST.receta);
-  ok(cc.distribucion.rango.to === 140, '…y por eso al crecer la viga ese extremo se queda en 140');
+  ok(cc.distribucion.rango.to === 240,
+    '…y al crecer la viga ese extremo sigue a 160 del testero: 240 (ya no se queda en 140) [' +
+    cc.distribucion.rango.to + ']');
 }
 
 // ---------------------------------------------------------------------------

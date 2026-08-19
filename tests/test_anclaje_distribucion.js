@@ -13,9 +13,13 @@
 // y una barra puntual arrastrada a 50 cm del testero aparecía a 150 cm del testero
 // al pasar la viga a 800.
 //
-// Ahora la receta guarda la INTENCIÓN: cada punto lleva su distancia a la referencia
-// más cercana de su eje (borde −, centro, borde +) y el motor resuelve la coordenada
-// contra el host EN CADA GENERACIÓN — el mismo trato que las dims en 'auto'.
+// Ahora la receta guarda la INTENCIÓN: cada punto lleva su distancia al BORDE más
+// cercano de su eje (borde − o borde +) y el motor resuelve la coordenada contra el
+// host EN CADA GENERACIÓN — el mismo trato que las dims en 'auto'.
+// SON DOS REFERENCIAS, NO TRES: el 'centro' existió del 18 al 20-ago y lo retiró el
+// usuario («cuando eso ocurra parecerá más un error del programa que un ajuste
+// pensado»). Un punto anclado a una referencia invisible se quedaba clavado mientras
+// el resto de la distribución seguía al hormigón.
 //
 // A — el mismo componente a 600 / 800 / 400 conserva sus gaps a los bordes y el
 //     conteo sube con el mismo @; a 400 no asoma nada fuera del hormigón.
@@ -27,7 +31,7 @@
 // D — ANTI-REGRESIÓN (la prueba que manda): una receta vieja —sin `ancla`— abierta
 //     con SU geometría original genera EXACTAMENTE lo mismo que antes, punto por
 //     punto y kilo por kilo. La viga-semilla incluida.
-// E — pos_hint conserva su distancia al borde.
+// E — pos_hint conserva su distancia al borde, y NINGÚN ancla usa `centro`.
 //
 // Correr con: node tests/test_anclaje_distribucion.js
 
@@ -205,6 +209,96 @@ ok(JSON.stringify(semN3.placements.map(p => p.puntos)) === JSON.stringify(semCru
     'ancla(' + t[0] + ' en ' + t[1] + ') = ' + a.ref + '/' + a.d + ' → vuelve a ' + t[0]);
 });
 
+// D4 — UNA RECETA CON ANCLAS VIEJAS ABRE SIN MOVERSE, sea cual sea la forma vieja.
+//   · rango con ref 'centro' → `_anclaValida` ya no la reconoce y se re-deriva del
+//     propio from/to contra la geometría con la que abre.
+//   · pos_ancla del 18-20 ago → anclaba el DESPLAZAMIENTO con las MISMAS refs
+//     'min'/'max' de ahora, o sea que a simple vista es INDISTINGUIBLE de una nueva
+//     y se leería como una posición. Por eso el ancla de posición DICE QUÉ MIDE
+//     (`mide:'pos'`): la que no lo dice no la acepta ningún lector y el motor la
+//     re-deriva de pos_hint + la base, que es de donde salía. Sin eso —medido— la
+//     101A de una viga 600×60 con pos_hint.y = 20 y su ancla guardada {max, 10}
+//     saltaba de y = 45.2 a y = 20 al reabrir el template: 25.2 cm, en silencio.
+function conAnclasViejas(viejas) {
+  const c = {
+    tipologia: 'ES', figura: '104D', diam: 8, cara: 'lateral', angulos: [135, 135],
+    dims: { A: { modo: 'auto' }, B: { modo: 'auto' }, C: { modo: 'auto' }, D: { modo: 'auto' } },
+    distribucion: { modo: 'linear', activa: true, sep: 20, rango: { from: 100, to: 260, sep: 20, eje: 'x' } },
+    pos_hint: { y: 3 }
+  };
+  if (viejas) {
+    c.distribucion.rango.ancla = { ini: { ref: 'centro', d: 100 }, fin: { ref: 'max', d: 40 } };
+    c.pos_ancla = { y: viejas };            // la que escribía el código viejo
+  }
+  const r = receta(600, [c]);
+  R.normalizarReceta(r);
+  return { out: G.generarViga(r, {}), comp: r.componentes[0] };
+}
+const limpia = conAnclasViejas(null);
+[['centro', { ref: 'centro', d: 3 }], ['del desplazamiento', { ref: 'max', d: 27 }]].forEach(function (t) {
+  const v = conAnclasViejas(t[1]);
+  ok(JSON.stringify(v.out.placements.map(p => p.puntos)) ===
+     JSON.stringify(limpia.out.placements.map(p => p.puntos)),
+    'receta guardada con ancla ' + t[0] + ' (' + JSON.stringify(t[1]) + '): abre EXACTAMENTE ' +
+    'igual que una sin ancla, punto por punto (' + v.out.resumen.barras + ' barras, ' +
+    v.out.resumen.kg + ' kg)');
+});
+ok(limpia.comp.distribucion.rango.ancla.ini.ref === 'max' &&
+   limpia.comp.distribucion.rango.ancla.ini.d === 200 &&
+   limpia.comp.pos_ancla.y.ref === 'max',
+  '…y las anclas quedan re-derivadas a bordes (=' +
+  JSON.stringify(limpia.comp.distribucion.rango.ancla.ini) + ' · ' +
+  JSON.stringify(limpia.comp.pos_ancla) + ')');
+
+// El caso que lo delataba, con el número: la 101A de la viga 600×60.
+const guardadaVieja = {
+  comp_id: 'L1', jerarquia: 1, tipologia: 'LO', figura: '101A', diam: 16, cara: 'inferior',
+  modo: 'puntual', plano_pieza: { orientacion: 'acostada', volteado: false },
+  dims: { A: { modo: 'auto' } }, pos_hint: { y: 20 },
+  pos_ancla: { y: { ref: 'max', d: 10 } },      // ancla del DELTA (código 18-20 ago)
+  distribucion: { modo: 'layered', activa: false }
+};
+const recVieja = receta(600, [guardadaVieja]);
+R.normalizarReceta(recVieja);
+const yVieja = r4(G.generarViga(recVieja, {}).placements[0].puntos[0].y);
+ok(yVieja === 45.2,
+  'la 101A guardada el 19-ago reabre en y = 45.2, donde el usuario la dejó — no en ' +
+  'y = 20, que es lo que decía su ancla del delta leída como posición (=' + yVieja + ')');
+// …Y SIN PASAR POR EL NORMALIZADOR. No todos los consumidores abren por esa puerta:
+// el "Abrir template" del Enfierrador (panel_3d) arma la receta con los `params`
+// crudos del backend y llama derecho a generarViga. Por eso la marca vive en el
+// ANCLA y no en el normalizador: la migración no puede depender de por dónde entró.
+const yCrudo = r4(G.generarViga(receta(600, [clon(guardadaVieja)]), {}).placements[0].puntos[0].y);
+ok(yCrudo === 45.2,
+  'y generando en crudo (sin normalizarReceta) da lo mismo: 45.2 (=' + yCrudo + ')');
+const nuevaMarcada = receta(600, [clon(guardadaVieja)]);
+delete nuevaMarcada.componentes[0].pos_ancla;
+G.generarViga(nuevaMarcada, {});
+ok(nuevaMarcada.componentes[0].pos_ancla.y.mide === 'pos',
+  'el ancla que estampa el motor DICE QUÉ MIDE (=' +
+  JSON.stringify(nuevaMarcada.componentes[0].pos_ancla) + ')');
+// …y una marcada SÍ se respeta: sube el alto y la barra la sigue (no se re-deriva).
+nuevaMarcada.geometria.alto = 80;
+R.reanclarReceta(nuevaMarcada);
+ok(r4(G.generarViga(nuevaMarcada, {}).placements[0].puntos[0].y) === 55.2,
+  '…y una marcada sobrevive: a 80 de alto la barra sigue a sus 15.2 de la cara (55.2)');
+
+// D5 — ABRIR SIN TOCAR NADA NO ENSUCIA EL TEMPLATE. El editor sella el estado
+// "recién abierto" DESPUÉS de la 1ª regeneración, y vuelve a normalizar cuando llega
+// el catálogo real (asíncrono) SIN regenerar. Si el normalizador tocara el pos_ancla,
+// ese 2º sello quedaría sin él y la regeneración siguiente lo re-estamparía → el
+// botón de guardar se encendería solo, sin que el usuario hiciera nada.
+const recSello = S.semillaViga();
+recSello.componentes.push(clon(guardadaVieja));
+R.normalizarReceta(recSello); G.generarViga(recSello, {});
+const sello = JSON.stringify(recSello);
+R.normalizarReceta(recSello);                       // llegada del catálogo: re-normaliza
+ok(JSON.stringify(recSello) === sello,
+  're-normalizar una receta ya abierta NO la cambia (sin eso, el 2º sello del ' +
+  'dirty-tracking dejaba el template "sucio" solo)');
+G.generarViga(recSello, {});
+ok(JSON.stringify(recSello) === sello, '…y la regeneración siguiente tampoco la mueve');
+
 // =============================================================================
 console.log('\nE — pos_hint: la barra arrastrada conserva su distancia al borde:');
 const puntual = {
@@ -215,6 +309,12 @@ const puntual = {
 };
 const recE = receta(600, [puntual]);
 R.normalizarReceta(recE);
+// EL ANCLA DEL pos_hint LA ESTAMPA EL MOTOR, no el normalizador (21-ago): desde que
+// se ancla la POSICIÓN y no el desplazamiento hace falta saber dónde NACE la pieza
+// sin traslación, y eso sólo existe mientras se expande. El editor expande al abrir
+// (_normalizarRecetaViva → _renderPanel → _regenerar), así que el ancla queda amarrada
+// a la geometría CON LA QUE ABRE igual que antes; acá se hace ese mismo primer pase.
+R.expandirComponente(puntual, host(600));
 ok(puntual.pos_ancla && puntual.pos_ancla.x.ref === 'max' && puntual.pos_ancla.x.d === 50,
   'el hint se ancla a 50 cm del testero (=' + JSON.stringify(puntual.pos_ancla) + ')');
 [[600, 250], [800, 350], [400, 150]].forEach(function (t) {
@@ -223,15 +323,71 @@ ok(puntual.pos_ancla && puntual.pos_ancla.x.ref === 'max' && puntual.pos_ancla.x
   const x = r4(R.expandirComponente(puntual, host(t[0]))[0].puntos[0].x);
   ok(x === t[1], 'largo ' + t[0] + ' → x = ' + t[1] + ' (sigue a 50 cm del testero) (=' + x + ')');
 });
-// una barra dejada al MEDIO se queda al medio (el centro es referencia, como en el
-// snap del editor): sin esto, x=0 se anclaría a 300 cm de un borde y saltaría 100 cm.
+// UNA BARRA AL MEDIO SE ANCLA A UN BORDE, NO AL CENTRO (21-ago, decisión del
+// usuario: «no quiero que se ancle en el centro. Definitivamente no queremos eso»).
+// Hasta el 20-ago había una 3ª referencia y esta misma barra se quedaba clavada en
+// x = 0 al crecer la viga. Ahora declara sus 300 cm al testero de origen y los
+// conserva: a 800 aparece en −100. Es el mismo criterio que ve el usuario en
+// pantalla (una distancia a una cara), no una referencia invisible.
 const alMedio = clon(puntual); alMedio.pos_hint = { x: 0 }; delete alMedio.pos_ancla;
 const recE0 = receta(600, [alMedio]);
 R.normalizarReceta(recE0);
-recE0.geometria.largo = 800; R.reanclarReceta(recE0);
-ok(r4(R.expandirComponente(alMedio, host(800))[0].puntos[0].x) === 0,
-  'una barra dejada al medio del vano SIGUE al medio al cambiar el largo (=' +
+R.expandirComponente(alMedio, host(600));            // 1ª generación: estampa el ancla
+ok(alMedio.pos_ancla.x.ref === 'min' && alMedio.pos_ancla.x.d === 300,
+  'una barra al medio de una viga de 600 se ancla a 300 cm del testero de origen (=' +
   JSON.stringify(alMedio.pos_ancla) + ')');
+recE0.geometria.largo = 800; R.reanclarReceta(recE0);
+ok(r4(R.expandirComponente(alMedio, host(800))[0].puntos[0].x) === -100,
+  '…y a 800 sigue a esos 300 cm del testero: x = −100, ya NO se queda al medio (=' +
+  r4(R.expandirComponente(alMedio, host(800))[0].puntos[0].x) + ')');
+ok(JSON.stringify(recA.componentes[0].distribucion.rango.ancla).indexOf('centro') < 0 &&
+   JSON.stringify(alMedio.pos_ancla).indexOf('centro') < 0,
+  'NINGÚN ancla —ni de rango ni de posición— sale con la referencia `centro`');
+
+// =============================================================================
+console.log('\nE2 — SE ANCLA LA POSICIÓN, NO EL DESPLAZAMIENTO:');
+// `pos_hint` no es dónde está la barra: es una TRASLACIÓN que se suma a su geometría
+// base. Para un estribo da igual (nace en 0, su hint ES su posición), pero para todo
+// lo demás anclar la traslación guardaba un número que no describe ningún fierro.
+// CASO MEDIDO — 101A sobre una viga 600×60: nace en y = 25.2 y con pos_hint.y = 20
+// queda en y = 45.2, o sea 15.2 cm por ENCIMA de la cara superior (que está en 30).
+// Anclando el DELTA, su ancla decía {max, 10} («a 10 cm de la cara superior») y al
+// llevar la viga a 80 de alto resolvía la traslación a 30 → la barra se iba a
+// y = 65.2: 25.2 fuera. El anclaje EMPUJABA la barra hacia afuera.
+function longi(hint) {
+  return {
+    comp_id: 'L1', jerarquia: 1, tipologia: 'LO', figura: '101A', diam: 16, cara: 'inferior',
+    modo: 'puntual', plano_pieza: { orientacion: 'acostada', volteado: false },
+    dims: { A: { modo: 'auto' } }, pos_hint: clon(hint),
+    distribucion: { modo: 'layered', activa: false }
+  };
+}
+function hostAlto(a) { return Object.assign(host(600), { alto: a }); }
+function yDe(c, h) { return r4(R.expandirComponente(c, h)[0].puntos[0].y); }
+
+const arriba = longi({ y: 20 });
+ok(yDe(arriba, hostAlto(60)) === 45.2, 'la 101A con pos_hint.y = 20 queda en y = 45.2 (=' +
+  yDe(arriba, hostAlto(60)) + ')');
+ok(arriba.pos_ancla.y.ref === 'max' && r4(arriba.pos_ancla.y.d) === -15.2,
+  'y su ancla dice {max, −15.2}: DÓNDE ESTÁ el fierro (15.2 pasada la cara superior), ' +
+  'no los {max, 10} del desplazamiento (=' + JSON.stringify(arriba.pos_ancla) + ')');
+ok(yDe(arriba, hostAlto(80)) === 55.2,
+  'viga de 80 de alto: la barra sigue 15.2 cm sobre la cara superior → y = 55.2, ' +
+  'no 65.2 como daba el ancla del desplazamiento (=' + yDe(arriba, hostAlto(80)) + ')');
+
+// El caso normal (barra DENTRO del hormigón) es el que más se nota: arrastrada al
+// fondo del vano, a 10.2 cm de la cara inferior, se queda a 10.2 pase lo que pase.
+const abajo = longi({ y: -45 });
+ok(yDe(abajo, hostAlto(60)) === -19.8, 'arrastrada al fondo: y = −19.8 (=' + yDe(abajo, hostAlto(60)) + ')');
+ok(abajo.pos_ancla.y.ref === 'min' && r4(abajo.pos_ancla.y.d) === 10.2,
+  '…su ancla son los 10.2 cm a la cara inferior (=' + JSON.stringify(abajo.pos_ancla) + ')');
+ok(yDe(abajo, hostAlto(80)) === -29.8 && r4(abajo.pos_hint.y) === -65,
+  'alto 80 → y = −29.8, los mismos 10.2 de la cara inferior; el hint se RE-DERIVA a −65 ' +
+  '(era −45): es un valor calculado, como from/to (=' + yDe(abajo, hostAlto(80)) + ')');
+ok(yDe(abajo, hostAlto(40)) === -9.8, 'alto 40 → y = −9.8, otra vez a 10.2 de la cara (=' +
+  yDe(abajo, hostAlto(40)) + ')');
+ok(yDe(abajo, hostAlto(60)) === -19.8 && r4(abajo.pos_hint.y) === -45,
+  'y al volver a 60 vuelve EXACTO a −19.8 con su hint original de −45 (el ancla es el dato)');
 
 // =============================================================================
 console.log('\nF — PASO DEL ARRASTRE = 1 cm (era 5) sin matar el imán a las caras:');

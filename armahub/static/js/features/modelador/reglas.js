@@ -689,6 +689,11 @@
     // que el template no cambia ni de forma ni de kilos al abrirlo. Va DESPUÉS de
     // normalizarComponente porque ahí es donde una traba vieja convierte sus `zonas`
     // en el `rango` que hay que anclar.
+    //
+    // El `pos_ancla` no se toca acá: se identifica SOLO (ver `mide:'pos'` en la nota
+    // del POS_HINT). Un ancla del 18-20 ago no lleva la marca, así que ningún lector
+    // la acepta y el motor la re-deriva en la 1ª expansión — sin depender de que la
+    // receta haya pasado por este normalizador.
     reanclarReceta(receta);
     return receta;
   }
@@ -1465,21 +1470,24 @@
   // template existe justamente para aplicarse a elementos de OTRAS medidas.
   //
   // LA REGLA (única, sin controles nuevos en el panel): la posición en la que está
-  // el punto ES el ancla. Cada punto guarda su DISTANCIA a la REFERENCIA MÁS CERCANA
-  // de su eje y el motor resuelve la coordenada contra el host en cada generación.
+  // el punto ES el ancla. Cada punto guarda su DISTANCIA AL BORDE MÁS CERCANO de su
+  // eje y el motor resuelve la coordenada contra el host en cada generación.
   //
-  // TRES REFERENCIAS, no dos: los dos bordes (−dim/2 y +dim/2) y el CENTRO. El
-  // centro no es un capricho: es la 3ª referencia que el propio editor ya ofrece al
-  // colocar (`_facesEje` snapea a −dim/2, 0 y +dim/2), y sin él una barra dejada en
-  // la mitad del vano —el caso más común de `pos_hint`, porque el snap la pega a 0—
-  // quedaría anclada a 300 cm de un borde y se iría a 100 cm del centro en cuanto la
-  // viga pasara de 600 a 800. Con las tres, "al medio" sigue al medio y "a 4 cm del
-  // borde" sigue a 4 cm del borde, sin ningún control nuevo que explicar.
-  // EMPATE: manda `centro` (la referencia estable) y entre los dos bordes, `min`.
+  // DOS REFERENCIAS: los dos bordes (−dim/2 y +dim/2). NADA MÁS.
+  // Hubo una tercera —el CENTRO— entre el 18 y el 21-ago, y la retiró el usuario:
+  // «veo que el ancla tome el centro como innecesario; cuando eso ocurra parecerá
+  // más un error del programa que un ajuste pensado» · «no quiero que se ancle en el
+  // centro. Definitivamente no queremos eso». Y tenía razón medida: un `to` en 140
+  // sobre una viga de 600 caía a 140 del centro y a 160 del testero, así que al
+  // pasar la viga a 800 el extremo se quedaba CLAVADO en 140 mientras el resto de la
+  // distribución se estiraba — un punto que no sigue a nada visible. Con dos
+  // referencias, ese mismo extremo declara 160 cm al testero y se va a 240: la
+  // distancia que el usuario ve en pantalla es la que manda.
+  // EMPATE (el punto justo en la mitad): manda `min`, el borde de origen del eje.
   //
   // SHAPE (persistido en la receta, una sola fuente de verdad):
-  //   rango.ancla   = { ini:{ref:'min'|'centro'|'max', d}, fin:{…} }   (d en cm)
-  //   comp.pos_ancla = { x:{ref,d}, y:{…}, z:{…} }   (sólo los ejes con hint)
+  //   rango.ancla   = { ini:{ref:'min'|'max', d}, fin:{…} }   (d en cm)
+  //   comp.pos_ancla = { x:{ref,d,mide:'pos'}, … }   (sólo los ejes con hint)
   // `from`/`to` y `pos_hint` SIGUEN existiendo y siguen siendo lo que el panel
   // muestra y edita, pero pasan a ser el valor DERIVADO: quien los escribe (arrastre
   // de handles, campos del rango, _syncN, _rangoDefault) re-deriva el ancla contra el
@@ -1490,6 +1498,9 @@
   // propio from/to contra el host CON EL QUE ABRE, así que resolverla devuelve
   // exactamente las mismas coordenadas → misma forma y mismos kilos. Es criterio de
   // aceptación, no un deseo (lo congela tests/test_anclaje_distribucion.js).
+  // Un ancla vieja con ref 'centro' entra por esa MISMA puerta: `_anclaValida` ya no
+  // la reconoce, así que se re-deriva de su propio from/to contra la geometría con
+  // la que abre — cero movimiento al abrir, y desde ahí el punto sigue a su borde.
   var _EPS_ANCLA = 1e-6;
 
   // 6 decimales: el ida y vuelta coord → ancla → coord tiene que ser exacto a la
@@ -1514,34 +1525,34 @@
     return _recubDeCara(host, 'ext');
   }
 
-  // COORDENADA → ANCLA. Devuelve { ref, d } con la referencia más cercana.
+  // COORDENADA → ANCLA. Devuelve { ref, d } con el BORDE más cercano.
+  // `d` puede salir NEGATIVA y es un dato, no un error: un punto pasado del borde
+  // declara cuánto asoma, y al cambiar el hormigón sigue asomando lo mismo (mentir
+  // ahí sería moverle el fierro al usuario sin decírselo).
+  // Sin dimensión de host NO se ancla (null): inventar una referencia sería guardar
+  // una intención que nadie declaró. Quien llama ya sabe qué hacer con el null.
   function anclaDeCoord(coord, dim) {
     var c = Number(coord);
     if (!isFinite(c)) return null;
     var D = Number(dim);
-    if (!isFinite(D) || D <= 0) return { ref: 'centro', d: _r6(c) };
-    var dCen = Math.abs(c), dMin = Math.abs(c + D / 2), dMax = Math.abs(D / 2 - c);
-    var ref = 'centro', mejor = dCen;
-    if (dMin < mejor - _EPS_ANCLA) { ref = 'min'; mejor = dMin; }
-    if (dMax < mejor - _EPS_ANCLA) { ref = 'max'; mejor = dMax; }
-    if (ref === 'min') return { ref: 'min', d: _r6(c + D / 2) };
-    if (ref === 'max') return { ref: 'max', d: _r6(D / 2 - c) };
-    return { ref: 'centro', d: _r6(c) };
+    if (!isFinite(D) || D <= 0) return null;
+    var dMin = Math.abs(c + D / 2), dMax = Math.abs(D / 2 - c);
+    if (dMax < dMin - _EPS_ANCLA) return { ref: 'max', d: _r6(D / 2 - c) };
+    return { ref: 'min', d: _r6(c + D / 2) };   // empate → el borde de origen
   }
 
   // ANCLA → COORDENADA contra un host de dimensión `dim`.
   function coordDeAncla(a, dim) {
-    if (!a || a.ref == null) return null;
+    if (!a) return null;
     var D = Number(dim), d = Number(a.d) || 0;
     if (!isFinite(D)) return null;
     if (a.ref === 'min') return -D / 2 + d;
     if (a.ref === 'max') return D / 2 - d;
-    return d;                                   // 'centro'
+    return null;                                // ref desconocida (p.ej. un 'centro' viejo)
   }
 
   function _anclaValida(a) {
-    return !!(a && (a.ref === 'min' || a.ref === 'max' || a.ref === 'centro') &&
-      isFinite(Number(a.d)));
+    return !!(a && (a.ref === 'min' || a.ref === 'max') && isFinite(Number(a.d)));
   }
 
   // ¿El rango ya declara su intención? (los dos extremos anclados)
@@ -1621,11 +1632,7 @@
     var hiU = D / 2 - _recubBordeEje(host, ej, 'max');
     if (!(loU < hiU)) { loU = -D / 2; hiU = D / 2; }
     var sgn = (Number(rango.to) >= Number(rango.from)) ? 1 : -1;
-    var bordeDe = function (a) {
-      if (a.ref === 'min') return loU;
-      if (a.ref === 'max') return hiU;
-      return Math.max(loU, Math.min(hiU, 0));
-    };
+    var bordeDe = function (a) { return (a.ref === 'min') ? loU : hiU; };
     if ((to - fr) * sgn < -_EPS_POS) {
       // COLISIÓN: las dos distancias no caben en el elemento. Cada extremo a SU borde.
       out.avisos.push('El elemento no da para las distancias a borde declaradas (' +
@@ -1685,33 +1692,98 @@
   // POS_HINT — el arrastre manual de una barra es UN PUNTO más, así que se ancla con
   // la MISMA regla. Medido: una barra arrastrada a 50 cm del testero en una viga de
   // 600 se quedaba en su x absoluta y aparecía a 150 cm del testero al pasar la viga
-  // a 800. El hint es la coordenada del MUNDO que el editor escribe desde el clic
-  // (`_posHintDeClick`: ph[rumbo] = host[rumbo]), así que anclarlo es anclar la
-  // posición que el usuario ve.
+  // a 800.
+  //
+  // SE ANCLA LA POSICIÓN, NO EL DESPLAZAMIENTO (21-ago). `pos_hint` NO es dónde está
+  // la barra: es una TRASLACIÓN que se suma a la geometría base, y hasta hoy se
+  // anclaba ESA traslación. Para un estribo daba lo mismo (nace en x = 0, así que su
+  // hint ES su posición) pero para todo lo demás guardaba un número que no describe
+  // ningún fierro. MEDIDO con la 101A de la viga-semilla, 600×60:
+  //     nace en y = 25.2 · con pos_hint.y = 20 queda en y = 45.2 (el hormigón
+  //     llega a 30, o sea que asoma 15.2) · el ancla del delta decía {max, 10},
+  //     «a 10 cm de la cara superior», que la pantalla desmiente
+  // y al pasar la viga a 80 de alto ese ancla resolvía el delta a 30 → la barra se
+  // iba a y = 65.2, o sea 25.2 fuera: el anclaje EMPUJABA la barra hacia afuera en
+  // vez de mantenerla donde el usuario la dejó. Ahora se ancla `base + hint` (la
+  // coordenada real del centro del bbox de la pieza) y el hint pasa a ser el valor
+  // DERIVADO —el mismo trato que `rango.from/to`—: a 80 de alto el ancla resuelve
+  // y = 55.2, que sigue siendo la misma barra 15.2 cm por encima de la cara.
+  //
+  // QUIÉN SABE LA BASE: sólo el motor, y sólo mientras expande (_aplicarPostTransform
+  // tiene los placements ya girados y re-anclados, o sea la pieza SIN traslación).
+  // Por eso `base` es un argumento y no un cálculo repetido: la UI que mueve la barra
+  // llama SIN base y eso INVALIDA el ancla (el gesto manda), y el motor la vuelve a
+  // estampar en la expansión siguiente. Un solo estampador.
+  // La invalidación barre TODOS los ejes con hint, no sólo el que el gesto movió: la
+  // UI entrega el componente, no la lista de ejes que tocó, y re-estampar un eje
+  // quieto contra el mismo host devuelve el mismo ancla — no mueve nada.
+  //
+  // EL ANCLA DICE QUÉ MIDE (`mide:'pos'`) Y ESO ES LA MIGRACIÓN. Del 18 al 20-ago
+  // este mismo campo guardó el ancla del DESPLAZAMIENTO, con las MISMAS refs
+  // 'min'/'max' que ahora: un ancla vieja es INDISTINGUIBLE de una nueva a simple
+  // vista y se leería como si fuera una posición. MEDIDO con la 101A de una viga
+  // 600×60 y pos_hint.y = 20: guardada decía {max, 10} (el delta) y al reabrir el
+  // template la barra saltaba de y = 45.2 a y = 20 —25.2 cm— en silencio. Con la
+  // marca, un ancla sin ella no la acepta NINGÚN lector y el motor la re-deriva de
+  // `pos_hint` + base contra la geometría que la receta trae: misma coordenada, cero
+  // movimiento. Va en el ancla y no en el normalizador de apertura a propósito: hay
+  // consumidores que generan sin pasar por él (el "Abrir template" del Enfierrador
+  // arma la receta con los `params` crudos del backend y llama a generarViga), y la
+  // migración no puede depender de por qué puerta entró la receta.
+  //
   // NO se clampea (igual que hoy, ver la nota de _aplicarPostTransform): una barra
   // que asoma se VE y el aviso de "fierro fuera del hormigón" ya lo dice con sus
   // centímetros. Moverla sola sería mentir sobre dónde está el fierro.
   var _EJES_HINT = ['x', 'y', 'z'];
 
-  function anclarPosHint(comp, host, forzar) {
+  // Marca del ancla de POSICIÓN. `_anclaValida` sola no basta: la comparten el rango
+  // (que ancla un punto suelto) y el pos_hint (que ancla base + traslación).
+  var _MIDE_POS = 'pos';
+  function _posAnclaValida(a) { return _anclaValida(a) && a.mide === _MIDE_POS; }
+
+  // ¿El componente declara traslación en algún eje? (lo mira _aplicarPostTransform
+  // ANTES de girar, para saber si tiene que calcular la base).
+  function _hayPosHint(comp) {
+    var ph = comp && comp.pos_hint;
+    if (!ph || typeof ph !== 'object') return false;
+    for (var i = 0; i < _EJES_HINT.length; i++) {
+      var e = _EJES_HINT[i];
+      if (ph[e] != null && isFinite(Number(ph[e]))) return true;
+    }
+    return false;
+  }
+
+  function anclarPosHint(comp, host, forzar, base) {
     var ph = comp && comp.pos_hint;
     if (!ph || typeof ph !== 'object') return comp;
     var pa = (comp.pos_ancla && typeof comp.pos_ancla === 'object') ? comp.pos_ancla : null;
     for (var i = 0; i < _EJES_HINT.length; i++) {
       var e = _EJES_HINT[i];
       if (ph[e] == null || !isFinite(Number(ph[e]))) continue;
-      if (!forzar && pa && _anclaValida(pa[e])) continue;
-      var a = anclaDeCoord(ph[e], _dimEje(host, e));
+      if (!base) {
+        // Sin base no se puede anclar la POSICIÓN (ver arriba): quien escribe el
+        // hint sólo puede decir «esto que había ya no vale». Se BORRA en vez de
+        // guardar una intención inventada, y el motor la estampa al expandir.
+        if (forzar && pa) delete pa[e];
+        continue;
+      }
+      if (!forzar && _posAnclaValida(pa && pa[e])) continue;
+      var a = anclaDeCoord(Number(base[e]) + Number(ph[e]), _dimEje(host, e));
       if (!a) continue;
+      a.mide = _MIDE_POS;               // esto ancla una POSICIÓN, no un desplazamiento
       if (!pa) pa = comp.pos_ancla = {};
       pa[e] = a;
     }
     return comp;
   }
 
-  // { x, y, z } ya resueltos contra el host (los ejes sin hint valen 0, como hoy).
+  // TRASLACIÓN { x, y, z } ya resuelta contra el host (los ejes sin hint valen 0).
   // `_hay` = el componente tiene traslación (lo mira _aplicarPostTransform).
-  function posHintResuelto(comp, host) {
+  // CON `base` resuelve el ancla (posición − base = traslación); SIN base devuelve el
+  // `pos_hint` guardado tal cual — que es el valor ya derivado, porque el motor lo
+  // reescribe en cada expansión. Ese es el caso de generar.js, que se lo descuenta a
+  // los puntos para saber qué caras ocupa la barra ANTES de moverla a mano.
+  function posHintResuelto(comp, host, base) {
     var ph = (comp && comp.pos_hint) || null;
     var pa = (comp && comp.pos_ancla) || null;
     var out = { x: 0, y: 0, z: 0, _hay: false };
@@ -1720,9 +1792,9 @@
       if (!ph || ph[e] == null || !isFinite(Number(ph[e]))) continue;
       out._hay = true;
       var v = Number(ph[e]);
-      if (pa && _anclaValida(pa[e])) {
+      if (base && pa && _posAnclaValida(pa[e])) {
         var c = coordDeAncla(pa[e], _dimEje(host, e));
-        if (c != null && isFinite(c)) v = _r6(c);
+        if (c != null && isFinite(c)) v = _r6(c - Number(base[e]));
       }
       out[e] = v;
     }
@@ -1746,8 +1818,8 @@
 
   // REANCLAR LA RECETA — (1) estampa el ancla que falte (derivada del from/to que la
   // receta ya traía, contra SU propia geometría: migración sin movimiento) y (2)
-  // reescribe from/to/tramos/pos_hint con el valor DERIVADO del ancla, para que lo
-  // que el panel muestra y lo que el motor reparte sean el MISMO número.
+  // reescribe from/to/tramos con el valor DERIVADO del ancla, para que lo que el
+  // panel muestra y lo que el motor reparte sean el MISMO número.
   // Idempotente: llamarla dos veces seguidas no mueve nada. El editor la llama en
   // cada regeneración, que es el único sitio por el que pasan todos los cambios.
   function reanclarReceta(receta) {
@@ -1764,15 +1836,10 @@
         _reanclarUno(d.rango, host, 'x');
         _reanclarUno(d.rango2, host, 'y');
       }
-      anclarPosHint(c, host, false);
-      var ph = c.pos_hint;
-      if (ph && typeof ph === 'object') {
-        var res = posHintResuelto(c, host);
-        for (var k = 0; k < _EJES_HINT.length; k++) {
-          var e = _EJES_HINT[k];
-          if (ph[e] != null && isFinite(Number(ph[e]))) ph[e] = res[e];
-        }
-      }
+      // `pos_hint` NO se toca acá: anclarlo pide la BASE de la pieza (dónde nace sin
+      // traslación) y eso sólo lo sabe el motor mientras expande. Lo estampa y lo
+      // re-deriva _aplicarPostTransform, que corre en la misma regeneración —
+      // reanclarReceta va justo antes de generar.
     }
     return receta;
   }
@@ -3215,18 +3282,16 @@
     var tieneRot = orient && orient.deg && isFinite(orient.deg);
     var tieneSpin = orient && orient.spin && isFinite(orient.spin);
     // TRASLACIÓN ANCLADA (ver «ANCLAJE POR DISTANCIA AL BORDE»): el hint se ancla
-    // contra ESTE host si todavía no lo estaba —derivado de su propio valor, así que
-    // una receta abierta con su geometría original no se mueve— y se resuelve. Sin
-    // esto la barra arrastrada se quedaba en su x ABSOLUTA: 50 cm del testero en una
-    // viga de 600 pasaban a ser 150 cm al llevarla a 800.
-    anclarPosHint(comp, host, false);
-    var phR = posHintResuelto(comp, host);
-    var tieneTras = phR._hay;
+    // contra ESTE host si todavía no lo estaba —derivado de la posición que la barra
+    // tiene AHORA, así que una receta abierta con su geometría original no se mueve—
+    // y se resuelve. Sin esto la barra arrastrada se quedaba en su x ABSOLUTA: 50 cm
+    // del testero en una viga de 600 pasaban a ser 150 cm al llevarla a 800. El
+    // anclaje ocurre más abajo, cuando ya está calculada la BASE (§2bis).
+    var tieneTras = _hayPosHint(comp);
     if (!tieneRot && !tieneSpin && !tieneTras) return placements;
     var rad = tieneRot ? (Number(orient.deg) * Math.PI / 180) : 0;
     var radSpin = tieneSpin ? (Number(orient.spin) * Math.PI / 180) : 0;
     var eje = (orient && orient.eje) || 'x';
-    var dx = phR.x, dy = phR.y, dz = phR.z;
     // El re-anclaje sólo tiene sentido tras GIRAR y con un host conocido; el
     // arrastre (pos_hint) NO se clampea aquí (el clamp de la UI ya lo gobierna).
     // El marco es EL DE SU NIVEL (con las pilas del host REAL: los placements ya
@@ -3272,6 +3337,33 @@
     //    por un caso especial. La cascada de marcos (nivel → recubrimiento →
     //    hormigón) vale igual para rotación y para spin.
     var r = marcos ? _deltaReanclaje(_bboxLista(giradas), marcos) : { x: 0, y: 0, z: 0 };
+    // 2bis) LA BASE: dónde queda la pieza SIN traslación manual (ya girada y ya
+    //    re-anclada), medida en el centro de su bbox. Es la referencia contra la que
+    //    el hint deja de ser un delta suelto y pasa a describir una POSICIÓN: el
+    //    ancla guarda `base + hint` y el hint se re-deriva de ella en cada
+    //    generación. Se calcula acá y no antes porque antes NO EXISTE: los puntos
+    //    todavía no están girados ni re-anclados.
+    //    El bbox es el de TODAS las barras del componente: el hint mueve el
+    //    componente entero como cuerpo rígido, así que su posición es la del grupo.
+    var dx = 0, dy = 0, dz = 0;
+    if (tieneTras) {
+      var bbB = _bboxLista(giradas);
+      var basePos = bbB
+        ? { x: bbB.c.x + r.x, y: bbB.c.y + r.y, z: bbB.c.z + r.z } : null;
+      anclarPosHint(comp, host, false, basePos);
+      var phR = posHintResuelto(comp, host, basePos);
+      dx = phR.x; dy = phR.y; dz = phR.z;
+      // EL HINT GUARDADO ES EL DERIVADO (mismo trato que rango.from/to): así el
+      // panel, el próximo arrastre —que parte del hint que hay— y generar.js
+      // (que se lo descuenta para saber qué caras ocupa la barra) leen el número
+      // que el motor acaba de aplicar, y no uno de una geometría anterior.
+      var phG = comp.pos_hint;
+      for (var iE = 0; iE < _EJES_HINT.length; iE++) {
+        var eH = _EJES_HINT[iE];
+        if (phG[eH] == null || !isFinite(Number(phG[eH]))) continue;
+        if (Math.abs(phR[eH] - Number(phG[eH])) > _EPS_ANCLA) phG[eH] = phR[eH];
+      }
+    }
     // 3) traslación final (re-anclaje + pos_hint).
     placements.forEach(function (pl, i) {
       pl.puntos = giradas[i].map(function (q) {
@@ -4435,12 +4527,14 @@
     // del "borde más cercano" no puede quedar repartida en cinco sitios) y lee la
     // coordenada ya resuelta contra el hormigón de HOY.
     // -------------------------------------------------------------------------
-    anclaDeCoord: anclaDeCoord,        // coordenada → { ref:'min'|'centro'|'max', d }
+    anclaDeCoord: anclaDeCoord,        // coordenada → { ref:'min'|'max', d } (null sin dim)
     coordDeAncla: coordDeAncla,        // ancla + dimensión → coordenada
     anclarRango: anclarRango,          // (rango, host, eje, forzar) — escribe rango.ancla
     resolverRango: resolverRango,      // (rango, host, eje) → {from,to,tramos,clamp,avisos}
-    anclarPosHint: anclarPosHint,      // (comp, host, forzar) — escribe comp.pos_ancla
-    posHintResuelto: posHintResuelto,  // (comp, host) → {x,y,z} ya resueltos
+    // (comp, host, forzar, base) — escribe comp.pos_ancla con la POSICIÓN (base +
+    // hint). SIN `base` sólo invalida el eje tocado: la posición la sabe el motor.
+    anclarPosHint: anclarPosHint,
+    posHintResuelto: posHintResuelto,  // (comp, host, base) → traslación {x,y,z}
     reanclarReceta: reanclarReceta,    // receta entera: ancla lo que falte + re-deriva
     tramosElasticos: _tramosElasticos, // (tramos, diff, avisos?) → el MEDIO absorbe
     migracionDe: migracionDe,              // { derivados, avisos, figura_desconocida }

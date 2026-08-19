@@ -206,17 +206,19 @@ console.log('\nB · EL NÚMERO ES EL DEL ANCLAJE (no una cuenta paralela)');
   ok(cs[0].ref === 'min' && cs[1].ref === 'max', 'cada una declara su referencia (min/max)');
 
   // EL CASO QUE DELATA UNA CUENTA PROPIA: un extremo que pasó la mitad. El ancla lo
-  // amarra al CENTRO (es su referencia más cercana) y ahí se queda al crecer la
-  // viga — así que la cota tiene que decir 100, no 400. La cota anterior medía
-  // siempre `from` contra el borde − y decía 400: el helper y el comportamiento
-  // real se contradecían.
+  // amarra al testero MÁS CERCANO —el de +, a 200 cm— y no al de origen, así que la
+  // cota tiene que decir 200, no 400. La cota anterior medía siempre `from` contra
+  // el borde − y decía 400: el helper y el comportamiento real se contradecían.
+  // (Del 18 al 20-ago hubo una 3ª referencia y acá salía 100 «al centro»; el usuario
+  // la retiró — ver la nota del anclaje en reglas.js.)
   const cc = montar([estribo({ from: 100, to: 260, sep: 20, eje: 'x' })]);
   R.reanclarReceta(ST.receta);
   agarrar('rango', 'from');
   const cs2 = cotas('largo');
-  ok(cs2[0].txt === '100' && cs2[0].ref === 'centro',
-    'un `from` en 100 (viga 600) se ancla al CENTRO: dice 100 [' + cs2[0].txt + '/' + cs2[0].ref + ']');
-  ok(cs2[0].txt !== '400', '…y NO los 400 cm al testero, que es lo que el editor NO hace');
+  ok(cs2[0].txt === '200' && cs2[0].ref === 'max',
+    'un `from` en 100 (viga 600) se ancla al testero +: dice 200 [' + cs2[0].txt + '/' + cs2[0].ref + ']');
+  ok(cs2[0].txt !== '400', '…y NO los 400 cm al testero de origen, que es lo que el editor NO hace');
+  ok(cs2.every(x => x.ref !== 'centro'), 'ninguna cota declara la referencia `centro`: ya no existe');
   ok(cs2[0].txt === String(Math.round(cc.distribucion.rango.ancla.ini.d)),
     'sigue coincidiendo con el ancla guardada [' + JSON.stringify(cc.distribucion.rango.ancla.ini) + ']');
 
@@ -248,12 +250,14 @@ console.log('\nC · LA LÍNEA DE EXTENSIÓN TERMINA EN LA REFERENCIA');
   ok(Math.abs(trechos[1].x1 - X(260)) < 0.01 && Math.abs(trechos[1].x2 - X(300)) < 0.01,
     'el 2º va de 260 a 300 [' + trechos[1].x1 + '→' + trechos[1].x2 + ']');
 
-  // con ancla al CENTRO la línea termina en 0, que es donde el ancla dice.
+  // un extremo pasado de la mitad se amarra al testero +: la línea cruza el centro
+  // y termina en 300, que es donde el ancla dice (antes moría en 0, «el centro»).
   montar([estribo({ from: 100, to: 260, sep: 20, eje: 'x' })]);
   R.reanclarReceta(ST.receta);
   agarrar('rango', 'from');
   const t2 = extensiones('largo').filter(l => l.x1 !== l.x2);
-  ok(Math.abs(t2[0].x2 - X(0)) < 0.01, 'anclada al centro, la línea termina en el centro [' + t2[0].x2 + ']');
+  ok(Math.abs(t2[0].x2 - X(300)) < 0.01,
+    'un `from` en 100 lleva su línea hasta el testero + (300), no hasta el centro [' + t2[0].x2 + ']');
 
   // FUERA DEL CUADRANTE no se dibuja: un número suelto en el borde de una vista
   // donde no se ve ni el extremo ni su referencia no se entiende (misma regla que
@@ -397,8 +401,8 @@ console.log('\nH · EL LARGO TAMBIÉN VA EN VIVO');
   // lo que hace el arrastre: mover el `to` y re-anclar (el mismo helper único).
   c.distribucion.rango.to = 100; TE._anclarRangoUI(c.distribucion.rango, 'x');
   ok(rotuloLargo('largo') === '360', '…y al mover el extremo pasa a 360 sin soltar [' + rotuloLargo('largo') + ']');
-  ok(cotas('largo')[1].txt === '100' && cotas('largo')[1].ref === 'centro',
-    'la cota de ese extremo lo sigue: 100 al centro, que es su ancla nueva [' +
+  ok(cotas('largo')[1].txt === '200' && cotas('largo')[1].ref === 'max',
+    'la cota de ese extremo lo sigue: 200 al testero +, que es su ancla nueva [' +
     JSON.stringify(c.distribucion.rango.ancla.fin) + ']');
   // el rótulo del largo y el campo del panel siguen diciendo lo mismo (no se rompió).
   ok(TE._rangoEditor(c, c.distribucion, 0)._rotulo() === 'Rango · 360 cm',
@@ -421,15 +425,19 @@ console.log('\nI · LA CUENTA SUELTA (_anclaViva) ES LA DEL MOTOR');
   // La referencia se deduce del ancla, sin volver a preguntar la dimensión.
   ok(TE._coordRefAncla({ ref: 'min', d: 40 }, -260) === -300, 'ref min: coord − d = −300');
   ok(TE._coordRefAncla({ ref: 'max', d: 40 }, 260) === 300, 'ref max: coord + d = 300');
-  ok(TE._coordRefAncla({ ref: 'centro', d: 100 }, 100) === 0, 'ref centro: 0');
+  // Una ref que no es un borde (el 'centro' de las recetas del 18 al 20-ago) NO
+  // dibuja cota: sin esto la línea de extensión moría en el origen, que desde el
+  // 21-ago no es referencia de nada.
+  ok(TE._coordRefAncla({ ref: 'centro', d: 100 }, 100) === null, 'ref desconocida: sin cota (null)');
 }
 
 // ---------------------------------------------------------------------------
 console.log('\nJ · LA PIEZA (etapa 2): el hueco REAL contra el hormigón');
 // ---------------------------------------------------------------------------
-// ACÁ EL NÚMERO NO ES EL DEL ANCLA DEL pos_hint, y es a propósito: `pos_hint` es
-// una TRASLACIÓN que se suma a la geometría base, no la posición de la barra, y
-// `anclarPosHint` ancla esa traslación. Se congela el caso medido que lo delata.
+// El número es el HUECO REAL entre el bbox de la pieza y la cara, no el del ancla:
+// se mide sobre lo que se ve. Desde el 21-ago el ancla del `pos_hint` guarda la
+// POSICIÓN (antes guardaba la TRASLACIÓN) y los dos dicen lo mismo — se congela el
+// caso medido que antes los contradecía.
 {
   // 101A inferior sobre una viga 600×60: nace en y = 25.2. Con pos_hint.y = 20
   // queda en 45.2 — 15.2 cm FUERA del hormigón, que llega a 30.
@@ -444,10 +452,15 @@ console.log('\nJ · LA PIEZA (etapa 2): el hueco REAL contra el hormigón');
   let ylo = Infinity, yhi = -Infinity;
   pls.forEach(p => p.puntos.forEach(q => { if (q.y < ylo) ylo = q.y; if (q.y > yhi) yhi = q.y; }));
   ok(Math.abs(ylo - 45.2) < 0.01, 'la 101A con pos_hint.y=20 queda en y = 45.2 [' + ylo.toFixed(2) + ']');
-  const anc = R.anclaDeCoord(20, GEO.alto);
-  ok(anc.ref === 'max' && anc.d === 10,
-    'y su ancla dice {max, 10}: "a 10 cm de la cara superior", con la barra 15 cm fuera [' +
-    JSON.stringify(anc) + ']');
+  // EL ANCLA ES LA DE LA POSICIÓN: la expansión ya la estampó sobre la barra REAL
+  // (y = 45.2), así que dice «15.2 cm PASADA la cara superior» — el mismo −15 que
+  // se dibuja abajo. Cuando esto anclaba la TRASLACIÓN decía {max, 10}, «a 10 cm de
+  // la cara superior», con la barra 15 cm fuera: un número que la pantalla desmiente.
+  const conAncla = JSON.parse(JSON.stringify(longi));
+  R.expandirComponente(conAncla, Object.assign({}, GEO));
+  ok(conAncla.pos_ancla.y.ref === 'max' && Math.abs(conAncla.pos_ancla.y.d + 15.2) < 1e-6,
+    'su ancla dice {max, −15.2}: donde está el fierro, no dónde lo empujó el arrastre [' +
+    JSON.stringify(conAncla.pos_ancla) + ']');
 
   // Lo que se dibuja es el HUECO: y=45.2 contra la cara superior (+30) = −15
   // (negativo = asoma), y contra la inferior (−30) = +75.
@@ -458,8 +471,7 @@ console.log('\nJ · LA PIEZA (etapa 2): el hueco REAL contra el hormigón');
   const nums = cs.filter(n => n.tag === 'text' && n.attrs['data-cota-viva'] === 'pieza')
     .map(n => n.textContent);
   ok(nums.indexOf('-15') >= 0,
-    'la cota dice −15: la barra ASOMA 15 cm por arriba (no los 10 del ancla) [' + nums.join('/') + ']');
-  ok(nums.indexOf('10') < 0, '…y NO dice 10, que es lo que la pantalla desmiente');
+    'la cota dice −15: la barra ASOMA 15 cm por arriba [' + nums.join('/') + ']');
   ok(nums.indexOf('75') >= 0, 'y el hueco a la cara inferior es 75 [' + nums.join('/') + ']');
   ok(nums.length === 4, 'en «a lo largo» (u=x, v=y) salen los 4 huecos: 2 por eje [' + nums.join('/') + ']');
   ok(nums.indexOf('4') >= 0 && nums.filter(n => n === '4').length === 2,
@@ -483,18 +495,31 @@ console.log('\nK · REDIMENSIONAR: sólo el borde que la mano arrastra');
     return t.filter(n => n.tag === 'text' && n.attrs['data-cota-viva'] === 'pieza').map(n => n.textContent);
   }
   ok(pieza('largo', null).length === 4, 'moviendo: los 4 huecos (los dos ejes de la vista)');
-  ok(pieza('largo', { ci: 0, eje: 'u', ladoUV: '+', pushed: true }).join('') === '200',
-    'estirando el borde +u: SÓLO ese hueco (300−100 = 200) [' +
+  // ESTIRANDO SE MIDE AL RECUBRIMIENTO (21-ago, pedido del usuario: «podemos hacer
+  // el cambio al recubrimiento… pero sería solamente para cuando redimensiono una
+  // barra; para las cortinas está bien que sea al hormigón»). Viga 600×60×30 con
+  // recub 4/4/3 → las líneas útiles son ±296 (x, recub de extremo = el vertical),
+  // ±26 (y) y ±12 (z). Antes estos cuatro números eran 200 / 200 / 10 / −85, o sea
+  // el hueco al HORMIGÓN: la barra parecía tener sitio de sobra cuando en realidad
+  // ya se estaba comiendo el recubrimiento.
+  ok(pieza('largo', { ci: 0, eje: 'u', ladoUV: '+', pushed: true }).join('') === '196',
+    'estirando el borde +u: SÓLO ese hueco, y al RECUBRIMIENTO (296−100 = 196, no 200) [' +
     pieza('largo', { ci: 0, eje: 'u', ladoUV: '+', pushed: true }).join('/') + ']');
-  ok(pieza('largo', { ci: 0, eje: 'u', ladoUV: '-', pushed: true }).join('') === '200',
-    'estirando el borde −u: el otro (−100 − (−300) = 200)');
-  ok(pieza('largo', { ci: 0, eje: 'v', ladoUV: '+', pushed: true }).join('') === '10',
-    'estirando el borde +v: el hueco del ALTO (30−20 = 10) [' +
+  ok(pieza('largo', { ci: 0, eje: 'u', ladoUV: '-', pushed: true }).join('') === '196',
+    'estirando el borde −u: el otro (−100 − (−296) = 196)');
+  ok(pieza('largo', { ci: 0, eje: 'v', ladoUV: '+', pushed: true }).join('') === '6',
+    'estirando el borde +v: el hueco del ALTO al recubrimiento (26−20 = 6, no 10) [' +
     pieza('largo', { ci: 0, eje: 'v', ladoUV: '+', pushed: true }).join('/') + ']');
   // en SECCIÓN los ejes son otros (u=z, v=y): el mismo bbox mide contra el ancho.
-  ok(pieza('seccion', { ci: 0, eje: 'u', ladoUV: '+', pushed: true }).join('') === '-85',
-    'en SECCIÓN el eje u es Z (ancho 30): un bbox de ±100 asoma 85 cm [' +
+  ok(pieza('seccion', { ci: 0, eje: 'u', ladoUV: '+', pushed: true }).join('') === '-88',
+    'en SECCIÓN el eje u es Z (ancho 30, recub 3): un bbox de ±100 se pasa 88 cm de ' +
+    'la línea de recubrimiento, y el signo se dice [' +
     pieza('seccion', { ci: 0, eje: 'u', ladoUV: '+', pushed: true }).join('/') + ']');
+  // …y MOVER esa misma barra sigue midiendo al HORMIGÓN: son dos gestos distintos y
+  // el número tiene que decir lo que cada uno decide.
+  ok(pieza('largo', null).join('/') === '200/200/10/10',
+    'moviendo, los cuatro huecos siguen siendo al hormigón (200/200/10/10) [' +
+    pieza('largo', null).join('/') + ']');
 }
 
 // ---------------------------------------------------------------------------
@@ -514,6 +539,115 @@ console.log('\nL · SÓLO CON ARRASTRE REAL (un clic para seleccionar no las enc
   ST.dragMarco = { ci: 0, eje: 'u', ladoUV: '+', pushed: true };
   ok(TE._arrastrandoPieza() === true, 'estirando el marco: sí');
   ST.dragMarco = null;
+}
+
+// ---------------------------------------------------------------------------
+console.log('\nM · EL PANEL SIGUE AL GESTO, NO AL SOLTAR');
+// ---------------------------------------------------------------------------
+// El panel izquierdo y el dibujo leen la MISMA receta: no pueden decir cosas
+// distintas ni por un segundo. Medido antes del arreglo: durante el arrastre se
+// refrescaban la línea de descripción, la ficha flotante y el listado de barras,
+// pero los CAMPOS de la ficha (desde/hasta del rango y su rótulo) se quedaban con
+// el número de antes hasta el mouseup — la vista decía 360 y el panel 520.
+{
+  const c = montar([estribo({ from: -260, to: 260, sep: 20, eje: 'x' })]);
+  R.reanclarReceta(ST.receta);
+  ST._panelVivo = [];
+  const ed = TE._rangoEditor(c, c.distribucion, 0);
+  ed._lbl = { textContent: ed._rotulo() };          // lo que hace _fld al armar el campo
+  const fi = ed.children[0], ff = ed.children[1];
+  ok(String(fi.value) === '-260' && String(ff.value) === '260' && ed._lbl.textContent === 'Rango · 520 cm',
+    'el campo nace con el rango de ahora [' + fi.value + '/' + ff.value + ' · ' + ed._lbl.textContent + ']');
+  ok(ST._panelVivo.length === 1, 'y registró UN refrescador vivo [' + ST._panelVivo.length + ']');
+
+  // lo que hace el arrastre del tirador: mover el `to` y re-anclar.
+  c.distribucion.rango.to = 100; TE._anclarRangoUI(c.distribucion.rango, 'x');
+
+  // SIN arrastre no se pisa nada: fuera del gesto manda quien está tecleando en el
+  // panel, y reescribirle el <input> le borraría lo que lleva escrito.
+  ST.dragRango = null; ST.dragMarco = null; ST.dragMove = null;
+  TE._refrescarPanelVivo();
+  ok(String(ff.value) === '260', 'quieto, el refresco NO toca el campo (no le pisa el tecleo al usuario)');
+
+  agarrar('rango', 'to');
+  TE._refrescarPanelVivo();
+  ok(String(ff.value) === '100', 'con el tirador en la mano, el campo pasa a 100 SIN soltar [' + ff.value + ']');
+  ok(ed._lbl.textContent === 'Rango · 360 cm',
+    '…y el rótulo del campo dice el mismo 360 que la vista [' + ed._lbl.textContent + ']');
+  ok(rotuloLargo('largo') === '360', 'panel y pantalla, el mismo número en el mismo frame');
+
+  // NUNCA SE PISA EL CAMPO CON EL FOCO. El gate del arrastre ya debería bastar, pero
+  // un mouseup perdido fuera de la ventana deja la bandera pegada y a partir de ahí
+  // cada regeneración le borraría al usuario lo que está tecleando.
+  ff.value = 'tecleando';
+  win.document.activeElement = ff;
+  TE._refrescarPanelVivo();
+  ok(ff.value === 'tecleando', 'el campo con el FOCO no se toca, ni con el arrastre en curso');
+  win.document.activeElement = null;
+  TE._refrescarPanelVivo();
+  ok(String(ff.value) === '100', '…y en cuanto suelta el foco vuelve a seguir al gesto [' + ff.value + ']');
+
+  // El refrescador lee el rango VIVO de la receta, no el objeto capturado al armar
+  // el campo: el arrastre puede REEMPLAZARLO (`_dragRangoMove` termina con
+  // `d[cual] = rango`, y activar la distribución estrena uno nuevo).
+  c.distribucion.rango = { from: -296, to: 296, sep: 20, eje: 'x' };
+  TE._anclarRangoUI(c.distribucion.rango, 'x');
+  TE._refrescarPanelVivo();
+  ok(String(fi.value) === '-296' && String(ff.value) === '296',
+    'si el arrastre reemplaza el objeto del rango, el campo sigue al NUEVO [' +
+    fi.value + '/' + ff.value + ']');
+  soltar();
+}
+
+// ---------------------------------------------------------------------------
+console.log('\nN · RECUBRIMIENTO QUE SE COME EL EJE: manda el hormigón');
+// ---------------------------------------------------------------------------
+// Misma regla que el motor (`resolverRango`: un elemento sin borde útil no tiene
+// borde útil). Sin ella los dos límites salen CRUZADOS y el tirador rotula los dos
+// huecos con el signo dado vuelta — y `_rangoDefault` nace invertido.
+{
+  montar([estribo({ from: -260, to: 260, sep: 20, eje: 'x' })], Object.assign({}, GEO, { ancho: 5 }));
+  ok(JSON.stringify(TE._lineasRecubEje('z')) === JSON.stringify({ lo: -2.5, hi: 2.5 }),
+    'ancho 5 con recub_lat 3: manda el hormigón (±2.5), no un {0.5, −0.5} cruzado [' +
+    JSON.stringify(TE._lineasRecubEje('z')) + ']');
+  const rg = TE._rangoDefault(20, 'z');
+  ok(rg.from < rg.to, '…y el rango por defecto de ese eje nace derecho, no invertido [' +
+    rg.from + '→' + rg.to + ']');
+  // el caso normal no se toca
+  montar([estribo({ from: -260, to: 260, sep: 20, eje: 'x' })]);
+  ok(JSON.stringify(TE._lineasRecubEje('z')) === JSON.stringify({ lo: -12, hi: 12 }),
+    'ancho 30 con recub_lat 3: las líneas de siempre (±12) [' +
+    JSON.stringify(TE._lineasRecubEje('z')) + ']');
+  ok(JSON.stringify(TE._lineasRecubEje('x')) === JSON.stringify({ lo: -296, hi: 296 }),
+    'y en X el recub de EXTREMO, que el motor ya usaba y el editor no tenía (±296) [' +
+    JSON.stringify(TE._lineasRecubEje('x')) + ']');
+}
+
+// ---------------------------------------------------------------------------
+console.log('\nÑ · CONTAR BARRAS NO LE MUEVE LA POSICIÓN A NADIE');
+// ---------------------------------------------------------------------------
+// `_etiquetarCi` re-expande cada componente para saber cuántas barras aportó, y lo
+// hace con `_hostDeReceta`, que NO lleva las pilas por cara (jer_caras) que arma
+// generar.js: la pieza nace en otro sitio. Como expandir MUTA (estampa el ancla del
+// pos_hint y re-deriva el hint contra la base que vea), ese conteo le reescribía la
+// posición a la barra con una base equivocada. MEDIDO: un cabezal de jerarquía 2
+// (detrás de un estribo φ8) con pos_hint.y = −5 quedaba en −5.8 —los 0.8 de la pila
+// que ese host no tiene— y al volver a agarrarlo saltaba esos 0.8 cm.
+{
+  const cab = {
+    comp_id: 'CH', jerarquia: 2, tipologia: 'CBS', figura: '101A', diam: 16, cara: 'sup',
+    modo: 'puntual', plano_pieza: { orientacion: 'acostada', volteado: false },
+    dims: { A: { modo: 'auto' } }, pos_hint: { y: -5 },
+    distribucion: { modo: 'layered', n_capas: 1, barras_capa: 1 }
+  };
+  montar([estribo({ from: -260, to: 260, sep: 20, eje: 'x' }), cab]);
+  const out = win.ModeladorGenerar.generarViga(ST.receta, {});
+  const antes = JSON.stringify(cab.pos_hint);
+  ok(antes === '{"y":-5}', 'tras generar, el hint es el que puso el arrastre (−5) [' + antes + ']');
+  TE._etiquetarCi(out);
+  ok(JSON.stringify(cab.pos_hint) === antes,
+    'contar las barras NO le tocó el hint (seguía −5, no −5.8) [' + JSON.stringify(cab.pos_hint) + ']');
+  ok(out.placements.some(p => p.meta && p.meta.ci === 1), '…y el etiquetado por ci se hizo igual');
 }
 
 console.log(fallos ? ('\n' + fallos + ' FALLO(S)') : '\nTODO OK');
