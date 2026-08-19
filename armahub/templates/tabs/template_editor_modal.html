@@ -619,6 +619,14 @@
     padding:4px 9px;font-size:11px;font-weight:600;color:var(--te-acero-d);cursor:pointer}
   #te_modal .te-tramo-add:hover{background:#f7fbf2;border-color:var(--te-acero)}
   #te_modal .te-dim{fill:var(--te-ov-dim);font:9px "Segoe UI",monospace}
+  /* COTAS POR LADO (gate SHIFT): LETRA=MEDIDA sobre cada lado visible de la barra
+     seleccionada. Magenta = el mismo de .te-bar-halo, que es la marca de "esto es
+     lo seleccionado" en 2D y 3D. El halo se pinta con el color del LIENZO (que sí
+     sigue al tema) para que el texto se lea sobre el render 3D de abajo, que puede
+     ser fierro oscuro u hormigón claro. */
+  #te_modal .te-cotalado{fill:#ff00b8;font:700 9.5px "Segoe UI",system-ui,sans-serif;
+    paint-order:stroke;stroke:var(--te-ov-lienzo);stroke-width:2.6px;stroke-linejoin:round;
+    pointer-events:none;user-select:none}
   #te_modal .te-dimL{stroke:var(--te-ov-dimL);stroke-width:.8}
   #te_modal .te-dimTick{stroke:var(--te-ov-dimL);stroke-width:.8}
   /* Cursores por herramienta (sobre las 3 vistas 2D). */
@@ -894,7 +902,10 @@
           <div class="te-vtitle">PLANTA · YX</div>
           <div class="te-vgizmo"></div>
           <button type="button" class="te-vzoom" title="Agrandar este cuadrante">🔍</button>
-          <div class="te-vhint">shift+arrastre = pan · R = girar 90° en esta vista</div>
+          <!-- El pan de las vistas 2D es BOTÓN MEDIO. Decía "shift+arrastre = pan":
+               shift dejó de panear el 19-ago (se recicló como gate de las cotas por
+               lado) y esta línea era lo único que quedaba diciéndolo. -->
+          <div class="te-vhint">botón medio = pan · shift = medidas de la barra · R = girar 90°</div>
           <canvas class="te-vcanvas" data-plano="planta"></canvas>
           <svg id="te_svgPlanta" class="te-vsvg" viewBox="0 0 620 260" preserveAspectRatio="xMidYMid meet"></svg>
           <button class="te-vreset" data-plano="planta" title="Centrar vista">⟳</button>

@@ -180,6 +180,13 @@
     // figura y φ parten VACÍOS (pedido 13-ago): el usuario elige antes de colocar.
     figura: '', tipologia: 'CBS', diam: null, contorno: true,
     tool: 'mover', snap: true, cotas: false,   // arranca en SELECCIONAR (flechita), no colocando
+    // cotasLado: gate MOMENTÁNEO de las cotas por lado de la barra seleccionada
+    //   (SHIFT apretado). Es OTRA capa que `cotas`, que es el toggle PERSISTENTE
+    //   del botón del ribbon y acota el HORMIGÓN: responden preguntas distintas
+    //   (cuánto mide el elemento vs. cuánto mide cada lado de esta barra) y se
+    //   dibujan en sitios distintos (fuera del rect vs. sobre el trazo), así que
+    //   conviven sin pisarse y ninguno apaga al otro.
+    cotasLado: false,
     selCi: -1,                 // índice del componente seleccionado (-1 = ninguno)
     ultimoPlano: 'largo',      // última vista tocada (define el eje de rotación)
     transforms: {},            // {plano: {minU,maxU,minV,maxV,s,offX,offY}}
@@ -2639,28 +2646,20 @@
     return Math.sqrt((a.x - b.x) * (a.x - b.x) + (a.y - b.y) * (a.y - b.y) + (a.z - b.z) * (a.z - b.z));
   }
 
-  // Rango [i0, i1] de índices de `puntos` que ocupa el LADO DOMINANTE, o null si
-  // el mapeo no se pudo derivar con certeza. `rol` es el rol EFECTIVO con el que
-  // el motor dibujó la barra (comp._rol), no el que sugiere la tipología: la
-  // topología de la figura puede mandar a un 106A al pipeline de sección aunque el
-  // chip diga MH, y entonces la familia de dibujo es otra.
-  function _tramoDominanteEnTrazo(figura, rol, puntos, diamCm, ladoDom) {
-    var fp = _figPuntos();
-    if (!fp || !fp.tramosDeFigura || !fp.familiaDeDibujo) return null;
-    if (!ladoDom || !puntos || puntos.length < 2) return null;
-    if (!GHOST_FAM_MAPEABLE[fp.familiaDeDibujo(figura, rol || null)]) return null;
-    var tr = fp.tramosDeFigura(figura);
-    if (!tr || !tr.tramos || !tr.tramos.length) return null;
-    var i, iDom = -1;
-    for (i = 0; i < tr.tramos.length; i++) {
-      if (tr.tramos[i] && String(tr.tramos[i].lado || '').toUpperCase() === ladoDom) { iDom = i; break; }
-    }
-    if (iDom < 0) return null;
-    // Agrupar los puntos en VÉRTICES (suelto | grupo de arco pegado).
-    var maxCuerda = 1.5 * (Number(diamCm) || 0);
-    if (!(maxCuerda > 0)) return null;              // sin φ no hay cota: no se adivina
-    var verts = [];
-    i = 0;
+  // Cota de "puntos de arco PEGADOS", en múltiplos de φ. Ver la nota de arriba: la
+  // cuerda de un muestreo de 10° sobre el codo (R = 2.5·φ) mide ≈0.44·φ y el tramo
+  // más corto que una figura puede traer es la extensión de gancho normativa (6·φ).
+  // El corte va en medio. Vivía suelto dentro de _tramoDominanteEnTrazo; se sacó
+  // porque ahora lo usan también el mapeo de TODOS los tramos y el del marco.
+  var _CUERDA_ARCO_PHI = 1.5;
+
+  // VÉRTICES DE LA FIGURA dentro del trazo → [[i0,i1], …]: un punto suelto, o un
+  // grupo de puntos de ARCO consecutivos y PEGADOS. null = sin φ no hay cota con
+  // que agrupar (no se adivina) o no hay trazo.
+  function _verticesDelTrazo(puntos, diamCm) {
+    var maxCuerda = _CUERDA_ARCO_PHI * (Number(diamCm) || 0);
+    if (!(maxCuerda > 0) || !puntos || puntos.length < 2) return null;
+    var verts = [], i = 0;
     while (i < puntos.length) {
       if (!puntos[i] || !puntos[i].esArco) { verts.push([i, i]); i++; continue; }
       var j = i;
@@ -2668,12 +2667,160 @@
         _dist3(puntos[j], puntos[j + 1]) <= maxCuerda) j++;
       verts.push([i, j]); i = j + 1;
     }
-    if (verts.length !== tr.tramos.length + 1) return null;
-    // El tramo va del FINAL del vértice que lo abre al PRINCIPIO del que lo cierra:
-    // así el resaltado cubre el trecho recto y no se mete dentro de los codos.
-    var a = verts[iDom][1], b = verts[iDom + 1][0];
-    if (!(b > a)) return null;
-    return { i0: a, i1: b };
+    return verts;
+  }
+
+  // Trechos RECTOS entre vértices consecutivos → [{i0,i1,L}] (L en cm). El tramo va
+  // del FINAL del vértice que lo abre al PRINCIPIO del que lo cierra: así cubre el
+  // trecho recto y no se mete dentro de los codos.
+  function _tramosRectos(puntos, verts) {
+    var out = [], k, a, b;
+    for (k = 0; k + 1 < verts.length; k++) {
+      a = verts[k][1]; b = verts[k + 1][0];
+      out.push({ i0: a, i1: b, L: (b > a) ? _dist3(puntos[a], puntos[b]) : 0 });
+    }
+    return out;
+  }
+
+  // TODOS los lados de la figura, ubicados en el trazo → [{lado, i0, i1}] o null.
+  // Es el mapeo del que _tramoDominanteEnTrazo saca UNO: las mismas dos redes de
+  // seguridad (sólo familias donde el trazo ES la cadena de tramos de la figura, y
+  // el conteo exacto de vértices) escritas una sola vez.
+  function _tramosEnTrazo(figura, rol, puntos, diamCm) {
+    var fp = _figPuntos();
+    if (!fp || !fp.tramosDeFigura || !fp.familiaDeDibujo) return null;
+    if (!GHOST_FAM_MAPEABLE[fp.familiaDeDibujo(figura, rol || null)]) return null;
+    var tr = fp.tramosDeFigura(figura);
+    if (!tr || !tr.tramos || !tr.tramos.length) return null;
+    var verts = _verticesDelTrazo(puntos, diamCm);
+    if (!verts || verts.length !== tr.tramos.length + 1) return null;
+    var rectos = _tramosRectos(puntos, verts), out = [], i;
+    for (i = 0; i < rectos.length; i++) {
+      if (!(rectos[i].i1 > rectos[i].i0)) return null;
+      out.push({
+        lado: String((tr.tramos[i] && tr.tramos[i].lado) || '').toUpperCase(),
+        i0: rectos[i].i0, i1: rectos[i].i1
+      });
+    }
+    return out;
+  }
+
+  // Rango [i0, i1] de índices de `puntos` que ocupa el LADO DOMINANTE, o null si
+  // el mapeo no se pudo derivar con certeza. `rol` es el rol EFECTIVO con el que
+  // el motor dibujó la barra (comp._rol), no el que sugiere la tipología: la
+  // topología de la figura puede mandar a un 106A al pipeline de sección aunque el
+  // chip diga MH, y entonces la familia de dibujo es otra.
+  function _tramoDominanteEnTrazo(figura, rol, puntos, diamCm, ladoDom) {
+    if (!ladoDom) return null;
+    var tt = _tramosEnTrazo(figura, rol, puntos, diamCm);
+    if (!tt) return null;
+    for (var i = 0; i < tt.length; i++) {
+      if (tt[i].lado === ladoDom) return { i0: tt[i].i0, i1: tt[i].i1 };
+    }
+    return null;
+  }
+
+  // ==========================================================================
+  // LOS 4 LADOS DEL MARCO CERRADO, UBICADOS EN EL TRAZO
+  // ==========================================================================
+  // El estribo NO pasa por _tramosEnTrazo: `_estriboPerimetral` tiene constructor
+  // propio (con sus arcos de gancho sísmico calibrados) y su polilínea NO es la
+  // cadena de tramos del catálogo — MEDIDO en una 104D φ8 de viga 600×30×60: SIETE
+  // trechos rectos para 4 parciales (pata 7.5 · izq 49.2 · inf 23.2 · der 51.2 ·
+  // sup 21.2 · cuerda que abre el 2º codo 0.34 · pata 7.5). Pero el marco SÍ es
+  // reconocible sin adivinar:
+  //
+  //   1. sus 4 lados son los 4 trechos MÁS LARGOS y van SEGUIDOS (los otros tres
+  //      son las dos patas del gancho y la cuerda del codo);
+  //   2. los lados OPUESTOS miden lo mismo salvo lo que el codo se come, que es
+  //      exactamente Rc = 2.5·φ (49.2 vs 51.2 y 21.2 vs 23.2: 2.0 cm con φ0.8, en
+  //      los dos pares). Si esa cuenta no cierra, lo agrupado NO es un marco y se
+  //      devuelve null: mejor sin rótulo que con uno inventado.
+  //
+  // QUÉ LETRA VA EN CADA LADO. `ladosMarcoOrdenados` da la cadena del catálogo
+  // (104D → [A,B,C,D] · 106A → [B,C,D,E]) y `ejesMarcoSeccion` contra qué eje mide
+  // cada una (u = ancho · v = alto), o sea las letras ALTERNAN igual que los lados
+  // del dibujo. Lo único que falta es el DESFASE, y no se supone: se elige el que
+  // menos se aleja de las dims REALES de esta barra (medido: 104D → desfase 1, con
+  // 7.2 cm de error total contra 112 del desfase 0; 106A → desfase 0). Es una
+  // comparación de LARGOS, así que vale con la pieza girada: la misma 104D con pose
+  // de rumbo z (lados 591.2/49.2/589.2/51.2) elige el mismo desfase 1.
+  //
+  // AMBIGÜEDAD QUE QUEDA, dicha: el desfase 0 empata siempre con el 2 (y el 1 con el
+  // 3) — es el intercambio A↔C / B↔D — y se queda el menor. En un contorno CERRADO
+  // ese par es el PAR ESPEJO: los dos lados miden LO MISMO por construcción
+  // (reglas.js replica el Δ en el par o la figura deja de cerrar), así que el
+  // intercambio no cambia NINGÚN número mostrado, sólo cuál de las dos letras del
+  // par cae arriba.
+  function _ladosMarcoEnTrazo(figura, rol, puntos, diamCm, dims) {
+    var fp = _figPuntos();
+    if (!fp || !fp.familiaDeDibujo || !fp.ladosMarcoOrdenados) return null;
+    if (fp.familiaDeDibujo(figura, rol || null) !== 'estribo') return null;
+    var orden = fp.ladosMarcoOrdenados(figura, rol || null);
+    if (!orden || orden.length !== 4) return null;
+    var verts = _verticesDelTrazo(puntos, diamCm);
+    if (!verts || verts.length < 5) return null;
+    var tramos = _tramosRectos(puntos, verts);
+    if (tramos.length < 4) return null;
+    // (1) los 4 más largos, y SEGUIDOS
+    var idx = tramos.map(function (t, i) { return i; })
+      .sort(function (a, b) { return tramos[b].L - tramos[a].L; })
+      .slice(0, 4).sort(function (a, b) { return a - b; });
+    if (idx[3] - idx[0] !== 3) return null;
+    var k = idx[0], L = [tramos[k].L, tramos[k + 1].L, tramos[k + 2].L, tramos[k + 3].L];
+    if (!(L[0] > 0) || !(L[1] > 0) || !(L[2] > 0) || !(L[3] > 0)) return null;
+    // (2) lados opuestos = mismo largo salvo el codo (Rc = 2.5·φ); se deja un pelo
+    // más de holgura (3·φ) para no rechazar por el muestreo del arco.
+    var tolPar = 3 * (Number(diamCm) || 0);
+    if (Math.abs(L[0] - L[2]) > tolPar || Math.abs(L[1] - L[3]) > tolPar) return null;
+    // (3) desfase de la cadena: el que menos se aleja de las dims reales
+    var mejor = 0, mejorErr = Infinity, off, j, err, v;
+    for (off = 0; off < 4; off++) {
+      err = 0;
+      for (j = 0; j < 4; j++) {
+        v = Number(dims && dims[orden[(j + off) % 4]]);
+        if (!isFinite(v)) { err = Infinity; break; }
+        err += Math.abs(L[j] - v);
+      }
+      if (err < mejorErr) { mejorErr = err; mejor = off; }
+    }
+    if (!isFinite(mejorErr)) return null;      // sin dims no hay con qué elegir
+    var out = [];
+    for (j = 0; j < 4; j++) {
+      out.push({ lado: orden[(j + mejor) % 4], i0: tramos[k + j].i0, i1: tramos[k + j].i1 });
+    }
+    // PATAS DE GANCHO DECLARADAS (106x: A y F son parciales con su propia dim). El
+    // trazo las pone justo ANTES del marco y al FINAL de la lista — medido en la
+    // 106A: tramos 0 y 6 de 7, los dos de 7.5 = dims A = dims F. La 104D no las
+    // declara (ganchosTerminales → null) y ahí no hay letra que poner.
+    var gt = fp.ganchosTerminales ? fp.ganchosTerminales(figura, rol || null) : null;
+    if (gt && gt.ini && k >= 1) out.push({ lado: gt.ini, i0: tramos[k - 1].i0, i1: tramos[k - 1].i1 });
+    if (gt && gt.fin && tramos.length > k + 4) {
+      out.push({ lado: gt.fin, i0: tramos[tramos.length - 1].i0, i1: tramos[tramos.length - 1].i1 });
+    }
+    return out;
+  }
+
+  // LADOS ROTULABLES de un placement → [{lado, valor, i0, i1}] o null.
+  // El VALOR es `pl.dims[letra]`: la dim EFECTIVA con la que el motor generó ESTA
+  // barra —los 'auto' ya resueltos contra el hormigón y los Δ ya sumados—, o sea la
+  // medida que se va a CORTAR. No se mide sobre el trazo a propósito: el trecho
+  // dibujado es más corto que la dim (la convención BVBS mide a VÉRTICE y el codo se
+  // come el setback), así que rotular el largo dibujado sería mostrar un número que
+  // no está en ningún despiece (103B φ16: cuerpo dibujado 587.2 · dim B = 591.2).
+  function _ladosRotulables(pl, rol) {
+    if (!pl || !pl.puntos || !pl.dims) return null;
+    var d = Number(pl.diam) || 0;
+    var t = _tramosEnTrazo(pl.figura, rol, pl.puntos, d) ||
+            _ladosMarcoEnTrazo(pl.figura, rol, pl.puntos, d, pl.dims);
+    if (!t) return null;
+    var out = [], i, v;
+    for (i = 0; i < t.length; i++) {
+      v = Number(pl.dims[t[i].lado]);
+      if (!isFinite(v) || !(v > 0)) continue;   // lado sin medida: no se inventa una
+      out.push({ lado: t[i].lado, valor: v, i0: t[i].i0, i1: t[i].i1 });
+    }
+    return out.length ? out : null;
   }
 
   // BARRA REAL que va a nacer de este clic — el PLACEMENT del motor (o null).
@@ -3259,6 +3406,12 @@
     // activa; "inactiva" en gris si todavía no lo está — arrastrarla la activa).
     _dibujarFlechaRango(svg, plano, X, Y, VW, VH);
 
+    // COTAS POR LADO de la barra seleccionada (gate SHIFT). Van LO ÚLTIMO = encima
+    // de todo lo demás del overlay: son texto y no se leen a medio tapar. No pelean
+    // por el puntero (pointer-events:none) y mientras SHIFT esté apretado el
+    // cuadrante no acepta clics, así que tampoco esconden un tirador usable.
+    if (ST.cotasLado) _dibujarCotasLados(svg, plano, proj, X, Y, out);
+
   }
 
   // Eje del mundo con MAYOR extensión de una polilínea = "por dónde corre" la barra.
@@ -3292,6 +3445,191 @@
     svg.appendChild(_svgEl('line', { 'class': 'te-dimL', x1: x0, y1: Y(-rect.H / 2), x2: x0, y2: Y(rect.H / 2) }));
     var tH = _svgEl('text', { 'class': 'te-dim', x: x0 - 2, y: Y(0), 'text-anchor': 'middle', transform: 'rotate(-90 ' + (x0 - 2) + ' ' + Y(0) + ')' });
     tH.textContent = Math.round(rect.H) + ' cm'; svg.appendChild(tH);
+  }
+
+
+  // ==========================================================================
+  // COTAS POR LADO DE LA BARRA — LETRA=MEDIDA, SÓLO EN LOS TRAMOS VISIBLES
+  // ==========================================================================
+  // Gate: SHIFT apretado (ST.cotasLado). Sólo la barra SELECCIONADA, y de sus N
+  // placements UNO SOLO — cuál, lo decide el cuchillo de cada vista (ver abajo).
+  //
+  // TRES FILTROS, en este orden, y ninguno es opcional:
+  //   1. ¿CUÁL barra? — la que ESTA vista está mostrando (la más cercana al corte).
+  //   2. ¿ESTE LADO SE VE? — no si se proyecta como un punto, no si el cuchillo lo
+  //      dejó fuera de la banda, no si no queda sitio para leer el rótulo.
+  //   3. ¿SE PISA CON OTRO? — dos rótulos calcados se agrupan en uno.
+  //
+  // QUÉ ES UN TRAMO VISIBLE. El plano de cada vista colapsa su eje `depth`: un lado
+  // que corre por ahí se proyecta COMO UN PUNTO y no hay lado que rotular. La cota
+  // de "esto es un punto" no se inventa acá: es GHOST_PT_TOL (0.5 cm), la misma con
+  // la que el ghost decide que dos puntos proyectados son el mismo.
+  //
+  // Y una segunda condición, de LECTURA y no de geometría: un rótulo sobre un
+  // trecho de 9 px no señala nada, flota. Se pide un anclaje mínimo de
+  // COTA_LADO_MIN_PX. No se pierde el dato: el umbral es en PÍXELES y el transform
+  // sigue a la cámara, así que acercando el zoom el rótulo vuelve solo. MEDIDO en la
+  // viga-semilla a encuadre completo (≈1 px/cm en 'largo'): las patas de 9.6 cm de
+  // la 103B sólo caben en SECCIÓN (≈15 px/cm) y aparecen en las otras al acercarse.
+  //
+  // LADOS QUE SE PISAN EN LA PROYECCIÓN (defecto MEDIDO el 19-ago). "Visible" no
+  // basta: dos lados distintos pueden caer sobre el MISMO trecho de pantalla y sus
+  // rótulos quedan calcados, que se lee como un borrón en negrita. Medido en la
+  // viga-semilla: las dos patas de la 103B en SECCIÓN, a 0.0 px una de otra; los dos
+  // costados del estribo en A LO LARGO y sus dos travesaños en PLANTA, a 1.0 px (no
+  // 0: el codo del gancho acorta un lado del par en Rc, así que "mismo segmento" no
+  // sirve como criterio — el que sirve es "los dos rótulos se pisan").
+  // Se AGRUPAN los lados PARALELOS cuyos anclajes quedan a menos de una línea de
+  // texto. Dentro del grupo: si miden lo mismo —el caso normal, es el par espejo de
+  // la figura— sale UN rótulo con las dos letras, `A·C=30`; si midieran distinto se
+  // apilan uno debajo del otro, como una cota encadenada de CAD.
+  var COTA_LADO_OFF = 7;        // px del viewBox entre el trazo y el rótulo
+  var COTA_LADO_PASO = 11;      // alto de línea: separación de los rótulos apilados
+  var COTA_LADO_MIN_PX = 18;    // anclaje mínimo del rótulo sobre su lado
+  var COTA_LADO_PARAL = 15;     // grados: hasta acá dos lados se consideran paralelos
+
+  // ¿ESTE LADO SE VE EN ESTE PLANO? Regla GEOMÉTRICA pura (sin píxeles ni cámara):
+  // se proyecta el tramo y se mide. Devuelve el largo PROYECTADO en cm, o 0 si el
+  // lado colapsa (corre por la profundidad del plano → es un punto, no un lado).
+  function _ladoVisibleEnPlano(puntos, lado, proj) {
+    if (!puntos || !lado || !puntos[lado.i0] || !puntos[lado.i1]) return 0;
+    var qa = proj(puntos[lado.i0]), qb = proj(puntos[lado.i1]);
+    if (!qa || !qb || !isFinite(qa.u) || !isFinite(qa.v) || !isFinite(qb.u) || !isFinite(qb.v)) return 0;
+    var d = Math.hypot(qb.u - qa.u, qb.v - qa.v);
+    return (d > GHOST_PT_TOL) ? d : 0;
+  }
+
+  // ¿Los rótulos de estos dos lados se PISARÍAN? (anclajes a menos de una línea de
+  // texto y trazos paralelos). Los dos van en píxeles del viewBox: es una pregunta
+  // de pantalla, no de geometría.
+  function _rotulosSePisan(a, b) {
+    if (Math.hypot(a.mx - b.mx, a.my - b.my) >= COTA_LADO_PASO) return false;
+    var d = Math.abs(a.ang - b.ang) % 180;
+    return (d <= COTA_LADO_PARAL || d >= 180 - COTA_LADO_PARAL);
+  }
+
+  // ¿A qué distancia del CUCHILLO de esta vista queda esta barra? (0 = lo cruza).
+  // Se mide sobre el eje de PROFUNDIDAD del plano, que es donde corta la banda.
+  function _distAlCorte(pl, dep, corte) {
+    var lo = Infinity, hi = -Infinity, w, i;
+    for (i = 0; i < pl.puntos.length; i++) {
+      w = pl.puntos[i][dep];
+      if (!isFinite(w)) continue;
+      if (w < lo) lo = w; if (w > hi) hi = w;
+    }
+    if (!isFinite(lo)) return Infinity;
+    return (corte < lo) ? (lo - corte) : (corte > hi ? corte - hi : 0);
+  }
+
+  function _dibujarCotasLados(svg, plano, proj, X, Y, out) {
+    if (ST.selCi < 0) return;
+    var pls = (out && out.placements) || [], pl = null, i, j;
+    // ¿CUÁL de las N barras del componente? LA QUE ESTA VISTA ESTÁ MOSTRANDO.
+    // -----------------------------------------------------------------------
+    // Un componente repartido son N barras congruentes (la viga-semilla trae 40
+    // estribos con el mismo ci): rotularlas todas serían 160 rótulos apilados, así
+    // que se rotula UNA. Pero no puede ser "la primera de la lista": cada cuadrante
+    // tiene su CUCHILLO y en SECCIÓN la banda es FINA —del grosor de una barra, ver
+    // _actualizarCorte— y deja pasar UN estribo. Con el corte a media viga, la
+    // primera barra (x = −296) NO ESTÁ EN PANTALLA: los rótulos quedaban flotando
+    // sobre una sección vacía. Se elige la que MENOS se aleja del corte, con los
+    // MISMOS números que usa el render (o.cortePos / o.corteGrosor, no una copia), y
+    // si ni esa entra en la banda no se rotula nada: esta vista no la está mostrando.
+    var def = (_defsPlanos() || {})[plano];
+    var o = ST.orto && ST.orto[plano];
+    var dep = def && def.depth;
+    var corte = (o && o.cortePos != null && isFinite(o.cortePos)) ? o.cortePos : null;
+    var mejorD = Infinity, d;
+    for (i = 0; i < pls.length; i++) {
+      if (!pls[i] || !pls[i].meta || pls[i].meta.ci !== ST.selCi) continue;
+      if (!pls[i].puntos || !pls[i].puntos.length) continue;
+      if (!dep || corte == null) { pl = pls[i]; mejorD = 0; break; }   // sin cuchillo: la primera
+      d = _distAlCorte(pls[i], dep, corte);
+      if (d < mejorD) { mejorD = d; pl = pls[i]; }
+    }
+    if (!pl) return;
+    var grosor = (o && o.corteGrosor != null && isFinite(o.corteGrosor)) ? o.corteGrosor : null;
+    if (grosor != null && mejorD > grosor) return;   // ninguna barra del componente entra en la banda
+    // ROL EFECTIVO: el que el motor estampó en el componente (comp._rol). La
+    // tipología PROPONE el rol y la topología de la figura MANDA, así que
+    // re-derivarlo de la tipología podría leer otra familia de dibujo —y con ella
+    // otro mapeo de tramos— que la que realmente se dibujó.
+    var comp = _compDePl(pl);
+    var lados = _ladosRotulables(pl, (comp && comp._rol) || _rolComp(comp));
+    if (!lados) return;
+
+    // (1) los VISIBLES, ya llevados a píxeles del viewBox
+    var vis = [], L, qa, qb, x0, y0, x1, y1, lpx, ang;
+    for (i = 0; i < lados.length; i++) {
+      L = lados[i];
+      if (!_ladoVisibleEnPlano(pl.puntos, L, proj)) continue;   // se proyecta como punto
+      // …y el CUCHILLO también corta LADO POR LADO, no sólo barra por barra: el
+      // cuerpo de un longitudinal cruza la sección entera (por eso se lo ve como
+      // círculo) pero sus PATAS viven en las puntas de la viga. Con el corte a media
+      // luz, esas patas NO están en pantalla y rotularlas era poner una medida sobre
+      // nada. Misma banda, misma cuenta, a la escala del lado.
+      if (dep && corte != null && grosor != null &&
+          _distAlCorte({ puntos: [pl.puntos[L.i0], pl.puntos[L.i1]] }, dep, corte) > grosor) continue;
+      qa = proj(pl.puntos[L.i0]); qb = proj(pl.puntos[L.i1]);
+      x0 = X(qa.u); y0 = Y(qa.v); x1 = X(qb.u); y1 = Y(qb.v);
+      lpx = Math.hypot(x1 - x0, y1 - y0);
+      if (!(lpx >= COTA_LADO_MIN_PX)) continue;   // sin anclaje: mejor nada que un rótulo flotando
+      // El ángulo se pliega a [−90°, 90°] para que el texto nunca quede de cabeza
+      // (girar 180° un texto centrado lo deja en el mismo sitio, sólo que legible).
+      ang = Math.atan2(y1 - y0, x1 - x0) * 180 / Math.PI;
+      if (ang > 90) ang -= 180; else if (ang < -90) ang += 180;
+      vis.push({ lado: L.lado, valor: L.valor, mx: (x0 + x1) / 2, my: (y0 + y1) / 2, ang: ang });
+    }
+    if (!vis.length) return;
+
+    // (2) agrupar los que se pisarían
+    var grupos = [], g;
+    for (i = 0; i < vis.length; i++) {
+      g = null;
+      for (j = 0; j < grupos.length; j++) if (_rotulosSePisan(grupos[j][0], vis[i])) { g = grupos[j]; break; }
+      if (g) g.push(vis[i]); else grupos.push([vis[i]]);
+    }
+
+    var capa = _svgEl('g', { 'class': 'te-cotalado-g' });
+    // Centroide proyectado de la barra: el rótulo se corre hacia AFUERA de la figura
+    // (si no, los 4 lados de un estribo escriben hacia adentro y el texto cae encima
+    // del propio marco).
+    var cu = 0, cv = 0, n = 0, q;
+    for (i = 0; i < pl.puntos.length; i++) {
+      q = proj(pl.puntos[i]);
+      if (isFinite(q.u) && isFinite(q.v)) { cu += q.u; cv += q.v; n++; }
+    }
+    if (n) { cu /= n; cv /= n; }
+    var cx = X(cu), cy = Y(cv);
+
+    for (i = 0; i < grupos.length; i++) {
+      g = grupos[i];
+      var mx = g[0].mx, my = g[0].my, rad = g[0].ang * Math.PI / 180;
+      // Hacia qué lado del trazo se corre: el que se aleja del centroide. En el
+      // marco de la rotación, el eje +Y local apunta a (−sin α, cos α).
+      var fuera = ((mx - cx) * -Math.sin(rad) + (my - cy) * Math.cos(rad)) >= 0 ? 1 : -1;
+      // ¿el grupo mide lo mismo? (el caso normal: es el par espejo de la figura)
+      var v0 = Math.round(g[0].valor), igual = true, letras = [];
+      for (j = 0; j < g.length; j++) {
+        if (Math.round(g[j].valor) !== v0) igual = false;
+        letras.push(g[j].lado);
+      }
+      // Las letras del rótulo agrupado van en ORDEN ALFABÉTICO, no en el orden en
+      // que el trazo recorre la figura: es una lista para leer, no un recorrido
+      // ('A·C=24' y no 'C·A=24').
+      var textos = igual ? [letras.sort().join('·') + '=' + v0]
+                         : g.map(function (e) { return e.lado + '=' + Math.round(e.valor); });
+      for (j = 0; j < textos.length; j++) {
+        var t = _svgEl('text', {
+          'class': 'te-cotalado', 'text-anchor': 'middle', 'dominant-baseline': 'central',
+          x: 0, y: (fuera * (COTA_LADO_OFF + j * COTA_LADO_PASO)).toFixed(1),
+          transform: 'translate(' + mx.toFixed(1) + ',' + my.toFixed(1) + ') rotate(' + g[0].ang.toFixed(1) + ')'
+        });
+        t.textContent = textos[j];
+        capa.appendChild(t);
+      }
+    }
+    if (capa.firstChild) svg.appendChild(capa);
   }
 
   // AJUSTADOR DE DISTRIBUCIÓN — flechita doble ↔ (o ↕) para desplazar el rango del
@@ -4300,11 +4638,13 @@
         // lógica de selección/colocación (un middle-click en modo colocar PONÍA
         // una barra) y peleaba con el arrastre del pan ("no agarra a la primera").
         if (evt.button === 1) return;
-        // SHIFT+arrastre TAMBIÉN es PAN de la vista (_bindVistaOrto, en el contenedor
-        // .te-vista). Mismo problema que el botón medio: los dos handlers se disputaban
-        // el mismo mousedown, así que el pan con shift "no agarraba" (y en modo colocar
-        // dejaba una barra suelta al empezar a panear). El pan vive en el contenedor;
-        // aquí sólo hay que soltarle el evento.
+        // SHIFT = GATE DE COTAS POR LADO (19-ago). Este `return` estaba desde que
+        // shift era el PAN de la vista (los dos handlers se disputaban el mousedown y
+        // el pan "no agarraba"); ahora shift no panea, pero el filtro SE QUEDA y por
+        // una razón mejor: con shift apretado el cuadrante es de MIRAR. Un clic ahí
+        // no selecciona, no coloca y no arranca ningún arrastre — que es justo lo que
+        // hay que evitar cuando la mano está en el teclado leyendo medidas (antes,
+        // en modo colocar, el clic dejaba una barra suelta).
         if (evt.shiftKey) return;
         ST.ultimoPlano = plano;
         var sp = _svgPoint(svg, evt); if (!sp) return;
@@ -6570,7 +6910,10 @@
     if (ST.selCi >= 0 && ST.receta.componentes[ST.selCi]) {
       var c = ST.receta.componentes[ST.selCi];
       var ang = (c.orient && c.orient.deg) ? (' · ' + c.orient.deg + '°') : '';
-      selTxt = ' · sel: <b>' + _esc(c.tipologia + ' ' + c.figura) + ang + '</b>';
+      // El gate de SHIFT no tiene botón: si no se dice, no existe. Se anuncia SÓLO
+      // con algo seleccionado, que es cuando hace algo.
+      selTxt = ' · sel: <b>' + _esc(c.tipologia + ' ' + c.figura) + ang + '</b>' +
+        ' · <span style="color:var(--te-ov-hint)">SHIFT = medidas de sus lados</span>';
       // AVISOS DEL MOTOR (comp._avisos): lo que NO se generó y por qué — hoy, capas
       // anidadas que no caben (dims ≤ 0 con ese Sep). Se muestran en ROJO junto a
       // la selección: antes esas capas salían con dims aplastadas a 0 (payload que
@@ -6591,10 +6934,39 @@
       tipTxt + selTxt + avisoTxt;
   }
 
+  // GATE DE LAS COTAS POR LADO (SHIFT). Prende/apaga ST.cotasLado y REPINTA el
+  // overlay una sola vez por transición: el keydown AUTO-REPITE decenas de veces
+  // por segundo mientras la tecla está apretada, así que sin este guard el gate
+  // costaría un _redibujar2D por repetición. Con él, mantener shift cuesta 2
+  // redibujos (uno al apretar, uno al soltar) y CERO en el medio: el ghost del
+  // mousemove pinta en su propia capa y no pasa por acá.
+  // Sin selección no hay barra que acotar: no se prende (y así tampoco se paga el
+  // redibujo de un overlay que no dibujaría nada).
+  function _setCotasLado(v) {
+    v = !!v;
+    if (v) {
+      var bd = $('te_backdrop');
+      if (!bd || !bd.classList.contains('on')) return;   // editor cerrado
+      if (ST.selCi < 0) return;                          // nada seleccionado
+    }
+    if (ST.cotasLado === v) return;
+    ST.cotasLado = v;
+    if (ST.ultimoOut) _redibujar2D(ST.ultimoOut);
+  }
+
   // Teclado: Ctrl+Z deshace · ESPACIO rota el ángulo fino 90° · R gira la pieza 90°
-  // EN LA VISTA ACTIVA (rotar-en-vista, TANDA P) · Supr/Backspace borra.
+  // EN LA VISTA ACTIVA (rotar-en-vista, TANDA P) · Supr/Backspace borra ·
+  // SHIFT (mantenido) muestra las cotas por lado de la barra seleccionada.
   function _bindTeclado() {
     if (ST._tecladoOk) return; ST._tecladoOk = true;
+    // SOLTAR el gate no puede depender del foco ni del cuadrante: si el keyup se
+    // pierde (alt-tab con shift apretado, foco que se fue a un input) los rótulos
+    // quedarían PEGADOS en pantalla. Se apaga con el keyup de Shift, con cualquier
+    // tecla que llegue ya sin shift, y al perder el foco la ventana.
+    document.addEventListener('keyup', function (e) {
+      if (e.key === 'Shift' || !e.shiftKey) _setCotasLado(false);
+    });
+    global.addEventListener('blur', function () { _setCotasLado(false); });
     document.addEventListener('keydown', function (e) {
       var bd = $('te_backdrop');
       if (!bd || !bd.classList.contains('on')) return;
@@ -6602,6 +6974,10 @@
       // campo de texto y el tipeo normal)
       var tag = (e.target && e.target.tagName || '').toLowerCase();
       if (tag === 'input' || tag === 'select' || tag === 'textarea') return;
+      // SHIFT mantenido → cotas por lado de la barra seleccionada. Va ANTES que
+      // todo lo demás y con `return`: shift solo no es atajo de nada más, y el
+      // Shift+Ctrl+Z de más abajo se filtra por su propia condición (!e.shiftKey).
+      if (e.key === 'Shift') { _setCotasLado(true); return; }
       // Ctrl/Cmd+Z → deshacer (tarea 4). Shift+Ctrl+Z NO se usa (sin redo).
       if ((e.ctrlKey || e.metaKey) && (e.key === 'z' || e.key === 'Z') && !e.shiftKey) {
         e.preventDefault(); _undo(); return;
@@ -7077,8 +7453,12 @@
     // vistas 2D no). Mismo remedio aquí.
     host.addEventListener('auxclick', function (e) { if (e.button === 1) e.preventDefault(); });
     host.addEventListener('mousedown', function (e) {
-      // pan con botón medio o shift (el clic izq queda para la interacción SVG)
-      if (e.button === 1 || e.shiftKey) { panning = true; lx = e.clientX; ly = e.clientY; e.preventDefault(); }
+      // PAN = BOTÓN MEDIO, y sólo él. SHIFT dejó de panear (19-ago): se recicló como
+      // gate de las cotas por lado (ver _setCotasLado). No se pierde nada — el pan
+      // ya respondía al botón medio y era el gesto que el usuario usaba —, pero el
+      // gate y el pan NO pueden compartir tecla: mirar las medidas arrastraría la
+      // vista. El clic izq queda para la interacción del SVG.
+      if (e.button === 1) { panning = true; lx = e.clientX; ly = e.clientY; e.preventDefault(); }
     });
     global.addEventListener('mouseup', function () { panning = false; });
     global.addEventListener('mousemove', function (e) {
@@ -9223,6 +9603,12 @@
     _ladoDomMotor: _ladoDomMotor,                               // el del MOTOR, sin fallback
     _ladoDomElegido: _ladoDomElegido, _setLadoDominante: _setLadoDominante,
     _tramoDominanteEnTrazo: _tramoDominanteEnTrazo,             // rango [i0,i1] en el trazo
+    // COTAS POR LADO (gate SHIFT) — el mapeo lado↔trazo y el filtro de visibilidad
+    // son funciones PURAS a propósito: el test headless las corre sin DOM.
+    _verticesDelTrazo: _verticesDelTrazo, _tramosRectos: _tramosRectos,
+    _tramosEnTrazo: _tramosEnTrazo, _ladosMarcoEnTrazo: _ladosMarcoEnTrazo,
+    _ladosRotulables: _ladosRotulables, _ladoVisibleEnPlano: _ladoVisibleEnPlano,
+    _setCotasLado: _setCotasLado, _dibujarCotasLados: _dibujarCotasLados,
     // PIEZA SELECCIONADA: dónde está (pivote) y cuál es su eje propio (el de ctrl)
     _placementsSeleccion3D: _placementsSeleccion3D, _centroSeleccion3D: _centroSeleccion3D,
     _ejePropioSeleccion3D: _ejePropioSeleccion3D,
