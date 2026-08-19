@@ -604,6 +604,30 @@
     cursor:pointer;user-select:none}
   #te_modal .te-rango-at:hover{fill:#33691E}
   #te_modal .te-rango-atbg{fill:#fff;opacity:.85;stroke:var(--te-ov-rango);stroke-width:.6;cursor:pointer}
+  /* RÓTULO DEL LARGO del abanico (la distancia que recorre la distribución) y el
+     largo de cada tramo del nodo múltiple. Misma familia que el "@N" —es la misma
+     pieza de UI— con caja OPACA: sobre la flecha horizontal interrumpe el trazo,
+     como una cota de plano. El hover se pinta sobre el GRUPO para que se iluminen
+     la caja y el número a la vez (pasar por encima del texto dejaba el fondo
+     apagado y el realce se leía a medias). */
+  #te_modal .te-rango-len{fill:var(--te-ov-rango);font:700 9px "Segoe UI",system-ui,sans-serif;
+    cursor:pointer;user-select:none}
+  #te_modal .te-rango-lenbg{fill:#fff;opacity:.9;stroke:var(--te-ov-rango);stroke-width:.6;cursor:pointer}
+  #te_modal .te-rango-lengrp:hover .te-rango-lenbg{fill:#eef6e2;opacity:1;stroke-width:1.3}
+  #te_modal .te-rango-lengrp:hover .te-rango-len{fill:#33691E}
+  /* El "@N" gana el mismo realce completo (caja Y número). Tenía sólo el :hover del
+     texto suelto, que es justo el "realce a medias" que el grupo vino a arreglar. */
+  #te_modal .te-rango-atgrp:hover .te-rango-atbg{fill:#eef6e2;opacity:1;stroke-width:1.3}
+  #te_modal .te-rango-atgrp:hover .te-rango-at{fill:#33691E}
+  /* La 2ª línea del arreglo por área lleva su color también en el rótulo: si el
+     número saliera verde no se sabría de cuál de las dos flechas es. El :hover de
+     arriba tiene MÁS especificidad (1,3,0) que .te-rango-len.te-r2 (1,2,0), así que
+     el morado necesita su propia regla de hover o el rótulo de la 2ª línea se volvía
+     verde justo al apuntarlo — la ambigüedad que el color existe para evitar. */
+  #te_modal .te-rango-len.te-r2{fill:#7b1fa2}
+  #te_modal .te-rango-lenbg.te-r2{stroke:#7b1fa2}
+  #te_modal .te-rango-lengrp:hover .te-rango-len.te-r2{fill:#4a148c}
+  #te_modal .te-rango-lengrp:hover .te-rango-lenbg.te-r2{fill:#f7eefb;stroke:#4a148c}
   /* Input inline que abre el clic sobre "@N" (HTML flotante sobre el cuadrante). */
   #te_modal .te-atedit{position:absolute;z-index:8;width:48px;padding:1px 3px;font-size:10px;
     border:1px solid var(--te-acero-d);border-radius:4px;background:#fff;color:var(--te-ink);

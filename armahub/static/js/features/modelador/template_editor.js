@@ -1058,10 +1058,31 @@
   // escribe `tramos`: manda el @ simple (d.sep), que se mantiene como atajo del panel.
   // Los tramos SUBDIVIDEN el rango; el largo total lo siguen mandando sus handles.
   // ==========================================================================
-  function _rangoLong(d) {
-    var r = d && d.rango;
+  // LARGO de UNA línea de reparto = la distancia que recorre su abanico. Es la
+  // cuenta que usan el rótulo de pantalla, el campo del panel y el editor inline:
+  // UNA sola, porque el mismo número escrito dos veces se desincroniza a la primera.
+  function _largoRango(r) {
     if (!r || r.from == null || r.to == null) return 0;
     return Math.abs(Number(r.to) - Number(r.from));
+  }
+
+  function _rangoLong(d) { return _largoRango(d && d.rango); }
+
+  // cm para mostrar: al décimo (los mensajes de estado y los rótulos no llevan ruido).
+  function _cm(v) { return Math.round(Number(v) * 10) / 10; }
+
+  // CUÁNTAS barras salen de un largo con un @ — LA CUENTA ES DEL MOTOR
+  // (reglas.redondeoCantidadZona = ceil(span/@)+1, espejo exacto de ArmaPilot).
+  // Acá vivía un Math.round(span/@)+1 propio, y las dos cuentas sólo coinciden
+  // cuando el largo es múltiplo del @: medido, 521 cm @20 decía 27 en el panel
+  // mientras el motor repartía 28. Con el largo rotulado en pantalla al lado de la
+  // celda de cantidad, esa divergencia pasó de invisible a evidente — así que la
+  // regla se pide prestada en vez de reescribirla.
+  function _cantidadDe(span, sep) {
+    var R = global.ModeladorReglas;
+    var d = Math.abs(Number(span) || 0), s = Number(sep) || 0;
+    if (R && R.redondeoCantidadZona) return R.redondeoCantidadZona(d, s);
+    return (s <= 0 || d <= 0) ? 1 : Math.ceil(d / s) + 1;
   }
 
   // Reencaja una lista de tramos en `total` recalculando por LÍMITES acumulados y
@@ -1147,6 +1168,36 @@
     var ini = 0;
     for (var i = 0; i < k - 1; i++) ini += a[i].long;
     _setLongTramo(d, k - 1, off - ini);
+  }
+
+  // LARGO DE LA LÍNEA DE REPARTO — lo escribe el rótulo de pantalla (19-ago) y es
+  // exactamente lo mismo que teclear `to` = from ± largo en el panel.
+  // SE MUEVE EL `to`, NO EL `from`: el `from` es «dónde va la PRIMERA barra» (lo que
+  // el usuario ancló contra su borde) y moverlo desplazaría la distribución entera
+  // en vez de estirarla.
+  // Pasa por los MISMOS helpers que el arrastre —no hay una segunda cuenta acá—:
+  //   · _anclarRangoUI  → el largo escrito ES la intención; sin re-anclar, cambiar
+  //     el hormigón después dejaría la distribución congelada donde quedó.
+  //   · _syncN          → la cantidad sigue al largo nuevo con el mismo @.
+  //   · _syncTramos     → el sobrante lo absorbe el tramo del MEDIO (regla única).
+  // Devuelve true si cambió algo; el llamador decide cuándo regenerar.
+  function _setLargoRango(d, cual, cm, eje) {
+    var r = d && d[cual];
+    if (!r || r.from == null || r.to == null) return false;
+    var v = Number(cm);
+    if (!isFinite(v) || v < 0) return false;      // un abanico no recorre menos que 0
+    // EL EJE LO DICE LA LÍNEA DIBUJADA, igual que el arrastre de handles (que hace
+    // `if (rango.eje == null) rango.eje = eje`). Una receta vieja puede no traerlo, y
+    // sin él _anclarRangoUI cae a 'x': el rango del ALTO se anclaría contra el LARGO.
+    if (r.eje == null && eje) r.eje = eje;
+    var sgn = (Number(r.to) >= Number(r.from)) ? 1 : -1;
+    var nuevo = Number(r.from) + sgn * v;
+    if (Math.abs(nuevo - Number(r.to)) < 1e-9) return false;
+    r.to = nuevo;
+    _anclarRangoUI(r, r.eje);
+    _syncN(d, cual, true);
+    if (cual === 'rango') _syncTramos(d);
+    return true;
   }
 
   // "+ Tramo": parte el ÚLTIMO en dos mitades con el mismo @ (el rango no cambia).
@@ -1438,6 +1489,17 @@
     if (ST._regenPendiente) return;
     ST._regenPendiente = true;
     global.requestAnimationFrame(function () { ST._regenPendiente = false; _regenerar(); });
+  }
+
+  // Mutación a ritmo de RUEDA (rótulos del abanico): regenerar Y repintar el panel en
+  // CADA evento tranca la vista, así que se coalescen en UN rAF — y en ese orden, para
+  // que el panel muestre lo que el motor ya resolvió (un tope contra el borde incluido)
+  // y no el número crudo que se acaba de escribir.
+  var _mutPend = false;
+  function _mutDiferido() {
+    if (_mutPend) return;
+    _mutPend = true;
+    global.requestAnimationFrame(function () { _mutPend = false; _regenerar(); _renderPanel(); });
   }
 
   function _num(n) { try { return Number(n).toLocaleString('es-CL'); } catch (e) { return '' + n; } }
@@ -3747,7 +3809,8 @@
         attrs.style = 'cursor:move';
         g.appendChild(_svgEl('rect', attrs));
         handle(xa, yy, 'from', 'ew-resize'); handle(xb, yy, 'to', 'ew-resize');
-        if (activa && !L.segunda) _dibujarTramosRango(g, d, rango, true, X, yy, plano);
+        _rotuloLargoRango(g, rango, L.cual, eje, activa, true, xa, xb, yy, VW, VH, sfx);
+        if (activa && !L.segunda) _dibujarTramosRango(g, d, rango, true, X, yy, plano, eje, L.cual);
       } else {
         var xx = TE_RANGO_OFF_H + (L.segunda ? 16 : 0);
         var ya = Y(rango.from), yb = Y(rango.to);
@@ -3759,7 +3822,8 @@
         attrs.style = 'cursor:move';
         g.appendChild(_svgEl('rect', attrs));
         handle(xx, ya, 'from', 'ns-resize'); handle(xx, yb, 'to', 'ns-resize');
-        if (activa && !L.segunda) _dibujarTramosRango(g, d, rango, false, Y, xx, plano);
+        _rotuloLargoRango(g, rango, L.cual, eje, activa, false, ya, yb, xx, VW, VH, sfx);
+        if (activa && !L.segunda) _dibujarTramosRango(g, d, rango, false, Y, xx, plano, eje, L.cual);
       }
       // COTA VIVA AL BORDE (pedido 15-ago): mientras se arrastra ESTA línea, cada
       // extremo dice a cuánto quedó del borde del elemento en su eje. Es la
@@ -3796,24 +3860,31 @@
   // `P` proyecta la coordenada del eje de reparto a px; `fija` es la coordenada
   // perpendicular (la línea de la flecha). Se dibuja DESPUÉS del rect de arrastre y de
   // los handles → queda encima y se puede clicar.
-  function _dibujarTramosRango(svg, d, rango, horiz, P, fija, plano) {
+  function _dibujarTramosRango(svg, d, rango, horiz, P, fija, plano, eje, cual) {
     var arr = _tramosDe(d);
     if (!arr.length) return;
+    var multi = arr.length > 1;
     var sgn = (Number(rango.to) >= Number(rango.from)) ? 1 : -1;
     var acc = Number(rango.from);
     for (var i = 0; i < arr.length; i++) {
       var a = acc, b = acc + sgn * arr[i].long;
       if (i > 0) {                                   // divisor: sólo en límites INTERNOS
         var pd = P(a);
-        _divisorTramo(svg, i, horiz ? pd : fija, horiz ? fija : pd, horiz, plano);
+        _divisorTramo(svg, i, horiz ? pd : fija, horiz ? fija : pd, horiz, plano, eje, cual);
       }
       var pm = P((a + b) / 2);
-      _etiquetaAt(svg, arr[i].sep, i, horiz ? pm : fija, horiz ? fija : pm, horiz, plano);
+      // El LARGO del tramo sólo se rotula con VARIOS tramos: con uno solo su largo
+      // ES el del rango —ya lo dice el rótulo del abanico— y encima no sería
+      // editable (_setLongTramo necesita un vecino que compense). Se le pasa el
+      // TRECHO EN PANTALLA de este tramo para que la pareja [largo][@] se caiga
+      // sola cuando no cabe (ver _etiquetaAt).
+      _etiquetaAt(svg, arr[i].sep, i, horiz ? pm : fija, horiz ? fija : pm, horiz, plano,
+        multi ? arr[i].long : null, Math.abs(P(b) - P(a)));
       acc = b;
     }
   }
 
-  function _divisorTramo(svg, idx, x, y, horiz, plano) {
+  function _divisorTramo(svg, idx, x, y, horiz, plano, eje, cual) {
     var L = 6;
     svg.appendChild(_svgEl('line', {
       'class': 'te-rango-div',
@@ -3824,81 +3895,189 @@
       'class': 'te-rango-divhit',
       x: (horiz ? x - 4 : x - L - 2), y: (horiz ? y - L - 2 : y - 4),
       width: (horiz ? 8 : 2 * L + 4), height: (horiz ? 2 * L + 4 : 8),
+      // EL EJE Y LA LÍNEA VIAJAN EN EL TIRADOR (fix 19-ago): el arrastre del divisor
+      // los deducía con _ejeDistDe(comp), que es el eje de reparto de AHORA. Girada
+      // la pieza, ese eje cambia y el del rango guardado no, así que el divisor se
+      // arrastraba contra el eje equivocado y no seguía al cursor. Manda lo dibujado.
       'data-rango-div': idx, 'data-plano': plano,
+      'data-rango-eje': eje || '', 'data-rango-cual': cual || 'rango',
       style: 'cursor:' + (horiz ? 'ew-resize' : 'ns-resize')
     }));
   }
 
-  function _etiquetaAt(svg, sep, idx, x, y, horiz, plano) {
-    var txt = '@' + (Math.round(Number(sep) * 10) / 10);
-    var w = txt.length * 5.1 + 6, h = 11;
-    // La etiqueta va DEBAJO de la flecha horizontal (arriba está la .te-vtitle de la
-    // vista, que llega hasta ~27 del viewBox y se la comería) y a la DERECHA de la
-    // vertical. Se dibuja después del rect de arrastre → queda clicable.
-    var bx = horiz ? (x - w / 2) : (x + 6);
-    var by = horiz ? (y + 6) : (y - h / 2);
-    svg.appendChild(_svgEl('rect', {
-      'class': 'te-rango-atbg', x: bx, y: by, width: w, height: h, rx: 2,
-      'data-rango-at': idx, 'data-plano': plano
-    }));
-    var t = _svgEl('text', {
-      'class': 'te-rango-at', x: bx + w / 2, y: by + h - 3, 'text-anchor': 'middle',
-      'data-rango-at': idx, 'data-plano': plano
-    });
-    t.textContent = txt;
-    svg.appendChild(t);
+  // ==========================================================================
+  // RÓTULOS DEL ABANICO (19-ago) — la distancia que recorre la distribución, EN
+  // PANTALLA y EDITABLE ahí mismo (pedido del usuario). Tres gestos sobre el mismo
+  // rótulo, y ninguno inventa un dato nuevo:
+  //   · hover → se ilumina (CSS .te-rango-lengrp:hover): es un objetivo, no un letrero.
+  //   · clic  → input inline (el MISMO editor del "@N", generalizado).
+  //   · rueda → ±PASO_ARRASTRE_CM (1 cm), el paso de todos los arrastres del editor.
+  // El número se DERIVA de from/to en cada repintado (_largoRango), así que el
+  // rótulo y el campo del panel no pueden decir cosas distintas.
+  // ==========================================================================
+  var ROT_CHAR = 5.1, ROT_H = 11;             // ancho por carácter y alto de la caja
+
+  function _anchoRotulo(txt) { return txt.length * ROT_CHAR + 6; }
+
+  // Caja + texto de un rótulo del abanico, agrupados en un <g> para que el hover
+  // ilumine LOS DOS (con el rect y el texto sueltos, pasar por encima del número
+  // dejaba el fondo apagado y el realce se leía a medias).
+  function _cajaRotulo(svg, txt, bx, by, clase, attrs, titulo, sfx) {
+    var w = _anchoRotulo(txt), k;
+    var g = _svgEl('g', { 'class': clase + 'grp' });
+    var aR = { 'class': clase + 'bg' + (sfx || ''), x: bx, y: by, width: w, height: ROT_H, rx: 2 };
+    var aT = { 'class': clase + (sfx || ''), x: bx + w / 2, y: by + ROT_H - 3, 'text-anchor': 'middle' };
+    for (k in attrs) if (attrs.hasOwnProperty(k)) { aR[k] = attrs[k]; aT[k] = attrs[k]; }
+    // El <title> va PRIMERO: el SVG pide que sea el primer hijo de su padre para que
+    // el tooltip valga para todo el grupo (caja y número), no sólo para un trozo.
+    if (titulo) g.appendChild(_svgEl('title', {})).textContent = titulo;
+    g.appendChild(_svgEl('rect', aR));
+    g.appendChild(_svgEl('text', aT)).textContent = txt;
+    svg.appendChild(g);
+    return w;
   }
 
-  // INPUT INLINE del "@N" — un <input> HTML flotando sobre el cuadrante (la .te-vista
-  // es position:relative), no un <foreignObject>: así hereda el estilo del modal, el
-  // foco y el teclado sin rarezas de SVG. Se confirma con Enter o al perder el foco;
-  // Esc cancela. Sólo edita el @ de ESE tramo: el resto del reparto no se toca.
-  var _atEditEl = null;
-  function _cerrarEditorAt() {
+  // Rótulo del LARGO de una línea de reparto.
+  //   horizontal → CENTRADO SOBRE LA LÍNEA, con caja opaca que interrumpe el trazo
+  //     (una cota de plano de toda la vida). Arriba NO cabe: la .te-vtitle llega
+  //     hasta ~27 del viewBox y por eso la flecha vive en 34; abajo están los "@N".
+  //   vertical   → a la IZQUIERDA de la línea (los "@N" van a la derecha).
+  // Le cuesta al rect de arrastre unas 21 unidades de viewBox en el centro del
+  // abanico (de ~500 en un rango completo): el resto del tramo central sigue
+  // desplazando el rango, y los DIVISORES se dibujan DESPUÉS → quedan encima y no
+  // pierden ni un píxel de su tirador.
+  // En la flecha PREVIEW (distribución inactiva) el rótulo NO recibe puntero: ahí el
+  // único gesto que vale es arrastrar para ACTIVAR, y un rótulo clicable se lo comería.
+  // `a`/`b` son los dos extremos de la flecha en px del viewBox y `fija` la
+  // coordenada perpendicular (la línea). El rótulo se centra en el trozo VISIBLE del
+  // abanico, no en su punto medio: con zoom media flecha se va fuera del cuadrante y
+  // el número quedaba fuera de pantalla justo cuando el usuario se acercó a leerlo.
+  // Si no se ve nada de la flecha, no se dibuja (un número suelto en el borde de una
+  // vista donde no hay flecha no se entiende).
+  function _rotuloLargoRango(g, rango, cual, eje, activa, horiz, a, b, fija, VW, VH, sfx) {
+    var txt = String(Math.round(_largoRango(rango)));
+    var w = _anchoRotulo(txt);
+    var lim = horiz ? VW : VH;
+    var lo = Math.max(Math.min(a, b), 0), hi = Math.min(Math.max(a, b), lim);
+    if (hi - lo < 4) return;
+    var med = (lo + hi) / 2, bx, by;
+    if (horiz) {
+      // ENCAJE (defecto de auditoría, 19-ago). La caja va SOBRE la línea, así que con
+      // un rango corto es MÁS ANCHA que la flecha y tapaba LOS DOS handles y el rect
+      // de arrastre: medido a 0.93 u/cm, un rango de 20 cm deja los handles en
+      // [63.8, 70.8] y [82.5, 89.5] y la caja en [68.6, 84.8] — el abanico quedaba
+      // inarrastrable, y con la rueda del propio rótulo se llega ahí sin querer.
+      // Por debajo de w+16 unidades (los 7+7 de los dos handles más aire) el rótulo
+      // SE SALE de la flecha y se pone al lado, que es lo que hace cualquier cota
+      // apretada en un plano.
+      if (hi - lo >= w + 16) bx = med - w / 2;
+      else if (hi + 4 + w <= VW - 1) bx = hi + 4;       // pasada la punta de la flecha
+      else bx = lo - 4 - w;                             // …o antes del otro extremo
+      bx = Math.max(1, Math.min(bx, VW - w - 1));
+      by = fija - ROT_H / 2;
+    } else {
+      // a la IZQUIERDA de la línea, y si el número es largo (elementos de 4 cifras)
+      // se pega al borde del cuadrante antes que salirse y quedar cortado.
+      bx = Math.max(1, fija - 8 - w);
+      by = Math.max(1, Math.min(med - ROT_H / 2, VH - ROT_H - 1));
+    }
+    _cajaRotulo(g, txt, bx, by, 'te-rango-len',
+      // `data-rango-eje` NO es decoración: lo leen el clic y la rueda para pasárselo a
+      // _setLargoRango, que es el único escritor de from/to que no lo recibía.
+      activa ? { 'data-rango-len': cual, 'data-rango-eje': eje } : { 'pointer-events': 'none' },
+      activa
+        ? 'Distancia que recorre la distribución (cm). Clic para escribirla, rueda = ±' +
+          PASO_ARRASTRE_CM + ' cm. Se mueve el extremo final; la cantidad la recalcula el motor con el mismo @.'
+        : 'Distancia del rango por defecto (cm). Arrastra la flecha para activar la distribución.',
+      sfx);
+  }
+
+  // Rótulos de UN tramo: [largo][@], pegados, en la misma fila — así no hay dos
+  // cajas peleando por el mismo sitio cuando el tramo es corto.
+  function _etiquetaAt(svg, sep, idx, x, y, horiz, plano, largo, trechoPx) {
+    var tAt = '@' + (Math.round(Number(sep) * 10) / 10);
+    var wAt = _anchoRotulo(tAt);
+    var tLen = (largo != null) ? String(Math.round(Number(largo))) : null;
+    var wLen = tLen ? _anchoRotulo(tLen) : 0;
+    // ENCAJE (defecto de auditoría 19-ago): la pareja mide el DOBLE que el "@N" solo,
+    // así que en tramos cortos los rótulos de dos tramos vecinos se pisan y queda un
+    // borrón que no se lee ni corrige nada. Si no cabe, se cae el LARGO y queda el
+    // "@N" de siempre — el largo sigue estando en el panel y en el rótulo del abanico.
+    // Horizontal: la pareja corre A LO LARGO del tramo. Vertical: va al costado, así
+    // que lo que aprieta es el ALTO de la caja contra el trecho del tramo.
+    if (tLen && trechoPx != null && trechoPx < (horiz ? (wLen + 2 + wAt + 4) : (ROT_H + 2))) {
+      tLen = null; wLen = 0;
+    }
+    var hueco = tLen ? 2 : 0;
+    var W = wLen + hueco + wAt;
+    // La pareja va DEBAJO de la flecha horizontal (arriba está la .te-vtitle de la
+    // vista, que llega hasta ~27 del viewBox y se la comería) y a la DERECHA de la
+    // vertical. Se dibuja después del rect de arrastre → queda clicable.
+    var bx = horiz ? (x - W / 2) : (x + 6);
+    var by = horiz ? (y + 6) : (y - ROT_H / 2);
+    if (tLen) {
+      _cajaRotulo(svg, tLen, bx, by, 'te-rango-len',
+        { 'data-rango-tlen': idx, 'data-plano': plano },
+        'Largo del tramo ' + (idx + 1) + ' (cm). Clic para escribirlo, rueda = ±' + PASO_ARRASTRE_CM +
+        ' cm. Mueve el límite con el tramo vecino: el rango NO cambia de largo.');
+    }
+    _cajaRotulo(svg, tAt, bx + wLen + hueco, by, 'te-rango-at',
+      { 'data-rango-at': idx, 'data-plano': plano },
+      'Espaciamiento del tramo ' + (idx + 1) + ' (cm, mínimo ' + SEP_MIN + '). Clic para escribirlo.');
+  }
+
+  // INPUT INLINE de los rótulos del abanico ("@N", el largo del rango, el largo de un
+  // tramo) — un <input> HTML flotando sobre el cuadrante (la .te-vista es
+  // position:relative), no un <foreignObject>: así hereda el estilo del modal, el foco
+  // y el teclado sin rarezas de SVG. Se confirma con Enter o al perder el foco; Esc
+  // cancela. ES UNO SOLO para los tres rótulos: con un editor por rótulo, el capeo,
+  // el Esc y el "no me robes el pan/zoom del cuadrante" quedarían a medias en alguno.
+  //   cfg = { valor, min, titulo, valido(v), msgMal, aplicar(v) }
+  var _atEditEl = null, _atEditCerrar = null;
+  // `aplicando` = se está abriendo OTRO rótulo con este todavía escrito. Sacar el
+  // <input> del DOM NO dispara blur en Chrome, y el mousedown del rótulo nuevo hace
+  // preventDefault antes del cambio de foco: lo tecleado se perdía en silencio
+  // (defecto de auditoría 19-ago — con tres rótulos, saltar de uno a otro es lo
+  // normal). Se cierra CONFIRMANDO, que es lo que el usuario cree que pasó.
+  function _cerrarEditorAt(aplicando) {
+    var f = _atEditCerrar;
+    _atEditCerrar = null;
+    if (aplicando && f) { f(true); return; }   // f() vuelve acá sin `aplicando` y limpia
     var el = _atEditEl; _atEditEl = null;
     if (el && el.parentNode) el.parentNode.removeChild(el);
   }
-  function _abrirEditorAt(plano, svg, idx, evt) {
-    _cerrarEditorAt();
-    if (ST.selCi < 0 || !ST.receta) return;
-    var c = ST.receta.componentes[ST.selCi]; if (!c) return;
-    var d = c.distribucion || {}; if (!d.rango) return;
-    var arr = _tramosDe(d); if (!arr[idx]) return;
+  function _abrirEditorNum(svg, evt, cfg) {
+    _cerrarEditorAt(true);
     var vista = svg.closest ? svg.closest('.te-vista') : null; if (!vista) return;
     var rv = vista.getBoundingClientRect();
     var inp = document.createElement('input');
-    inp.type = 'number'; inp.className = 'te-atedit'; inp.value = arr[idx].sep;
-    inp.min = SEP_MIN; inp.step = 'any';   // capeo del @ también en el editor inline
-    inp.title = 'Espaciamiento del tramo ' + (idx + 1) + ' (cm, mínimo ' + SEP_MIN + ')';
+    inp.type = 'number'; inp.className = 'te-atedit'; inp.value = cfg.valor;
+    if (cfg.min != null) inp.min = cfg.min;
+    inp.step = 'any';
+    inp.title = cfg.titulo || '';
     inp.style.left = Math.max(2, Math.round(evt.clientX - rv.left - 24)) + 'px';
     inp.style.top = Math.max(2, Math.round(evt.clientY - rv.top - 9)) + 'px';
     var cerrado = false;
-    // ¿el valor tecleado pasa el capeo del @? Si no: borde rojo + status y NO se aplica.
-    function _sepOk() {
+    // ¿el valor tecleado pasa el capeo? Si no: borde rojo + status y NO se aplica.
+    function _valOk() {
       var v = Number(inp.value);
-      if (isFinite(v) && v >= SEP_MIN) { inp.classList.remove('bad'); return true; }
+      if (isFinite(v) && (!cfg.valido || cfg.valido(v))) { inp.classList.remove('bad'); return true; }
       inp.classList.add('bad');
-      _actualizarStatus('@ mínimo ' + SEP_MIN + ' cm: valor rechazado.');
+      _actualizarStatus(cfg.msgMal || 'Valor rechazado.');
       return false;
     }
     function cerrar(guardar) {
       if (cerrado) return;
-      if (guardar && !_sepOk()) guardar = false;   // se cierra igual (no atrapa el foco)
+      if (guardar && !_valOk()) guardar = false;   // se cierra igual (no atrapa el foco)
       cerrado = true;
       var v = Number(inp.value);
       _cerrarEditorAt();
-      if (!guardar) return;
-      var a = _tramosDe(d);
-      if (!a[idx] || a[idx].sep === v) return;
-      _pushUndo();
-      a[idx].sep = v;
-      _setTramos(d, a);
-      _regenerar(); _renderPanel();
+      if (guardar) cfg.aplicar(v);
     }
     inp.addEventListener('keydown', function (e) {
       e.stopPropagation();                       // Supr/Esc del editor no borran la barra
-      // Enter con un @ inválido NO cierra: marca en rojo y deja corregir en el sitio.
-      if (e.key === 'Enter') { e.preventDefault(); if (_sepOk()) cerrar(true); }
+      // Enter con un valor inválido NO cierra: marca en rojo y deja corregir en el sitio.
+      if (e.key === 'Enter') { e.preventDefault(); if (_valOk()) cerrar(true); }
       else if (e.key === 'Escape') { e.preventDefault(); cerrar(false); }
     });
     inp.addEventListener('blur', function () { cerrar(true); });
@@ -3906,8 +4085,138 @@
       inp.addEventListener(ev, function (e) { e.stopPropagation(); });   // no pan/zoom del cuadrante
     });
     vista.appendChild(inp);
-    _atEditEl = inp;
+    _atEditEl = inp; _atEditCerrar = cerrar;
     inp.focus(); inp.select();
+  }
+
+  // La distribución del componente SELECCIONADO: los rótulos del abanico son suyos y
+  // se dibujan sólo para él (_dibujarFlechaRango arranca con ST.selCi).
+  function _distSel() {
+    if (ST.selCi < 0 || !ST.receta) return null;
+    var c = ST.receta.componentes[ST.selCi];
+    return (c && c.distribucion) ? c.distribucion : null;
+  }
+
+  // "@N" de un tramo: sólo toca el @ de ESE tramo; el resto del reparto no se mueve.
+  function _abrirEditorAt(plano, svg, idx, evt) {
+    var d = _distSel(); if (!d || !d.rango) return;
+    var arr = _tramosDe(d); if (!arr[idx]) return;
+    _abrirEditorNum(svg, evt, {
+      valor: arr[idx].sep, min: SEP_MIN,
+      titulo: 'Espaciamiento del tramo ' + (idx + 1) + ' (cm, mínimo ' + SEP_MIN + ')',
+      valido: function (v) { return v >= SEP_MIN; },
+      msgMal: '@ mínimo ' + SEP_MIN + ' cm: valor rechazado.',
+      aplicar: function (v) {
+        var a = _tramosDe(d);
+        if (!a[idx] || a[idx].sep === v) return;
+        _pushUndo();
+        a[idx].sep = v;
+        _setTramos(d, a);
+        _regenerar(); _renderPanel();
+      }
+    });
+  }
+
+  // LARGO DEL ABANICO — la distancia que recorre la distribución. Se mueve el extremo
+  // final y el motor recalcula la cantidad con el mismo @ (ver _setLargoRango).
+  function _abrirEditorLargo(plano, svg, cual, evt, eje) {
+    var d = _distSel(); if (!d || !d[cual]) return;
+    _abrirEditorNum(svg, evt, {
+      valor: Math.round(_largoRango(d[cual])), min: 0,
+      titulo: 'Distancia que recorre la distribución (cm). Se mueve el extremo final; ' +
+              'la cantidad la recalcula el motor con el mismo @.',
+      valido: function (v) { return v >= 0; },
+      msgMal: 'El largo de un rango no puede ser negativo: valor rechazado.',
+      aplicar: function (v) {
+        if (Math.abs(v - _largoRango(d[cual])) < 1e-9) return;
+        _pushUndo();
+        if (_setLargoRango(d, cual, v, eje)) { _regenerar(); _renderPanel(); }
+      }
+    });
+  }
+
+  // LARGO DE UN TRAMO (nodo múltiple) — mueve su límite con el vecino: el PAR conserva
+  // su largo total, así que el rango no cambia y los demás tramos no se enteran.
+  function _abrirEditorLargoTramo(plano, svg, idx, evt) {
+    var d = _distSel(); if (!d || !d.rango) return;
+    var arr = _tramosDe(d); if (!arr[idx] || arr.length < 2) return;
+    _abrirEditorNum(svg, evt, {
+      valor: Math.round(arr[idx].long), min: 0,
+      titulo: 'Largo del tramo ' + (idx + 1) + ' (cm). El vecino compensa: el rango no cambia de largo.',
+      valido: function (v) { return v >= 0; },
+      msgMal: 'El largo de un tramo no puede ser negativo: valor rechazado.',
+      aplicar: function (v) {
+        var a = _tramosDe(d);
+        if (!a[idx] || Math.abs(a[idx].long - v) < 1e-9) return;
+        var j = (idx + 1 < a.length) ? idx + 1 : idx - 1;
+        var par = a[idx].long + ((a[j] && a[j].long) || 0);
+        _pushUndo();
+        _setLongTramo(d, idx, v);
+        // TOPA Y AVISA CON EL NÚMERO (defecto de auditoría 19-ago): el PAR conserva su
+        // largo total, así que un tramo no puede pasar de la suma de los dos. Antes se
+        // topaba en silencio y el usuario veía otro número del que escribió.
+        if (v > par + 1e-9) {
+          _actualizarStatus('El tramo ' + (idx + 1) + ' y su vecino suman ' + _cm(par) +
+            ' cm: ' + _cm(v) + ' no cabe, se topó en ' + _cm(par) + '.');
+        }
+        _regenerar(); _renderPanel();
+      }
+    });
+  }
+
+  // RUEDA SOBRE UN RÓTULO DE LARGO = ±PASO_ARRASTRE_CM, el mismo paso de todos los
+  // arrastres del editor ("no fabricamos al milímetro, fabricamos al centímetro").
+  // LA RUEDA DEL CUADRANTE ES EL ZOOM y vive en el .te-vista, al que le llega por
+  // burbujeo desde el SVG: acá se corta la burbuja SÓLO cuando el cursor está encima
+  // de un rótulo editable. En cualquier otro punto de la vista el zoom queda intacto.
+  // Con SHIFT no hace nada: con shift el cuadrante es de MIRAR (mismo criterio que el
+  // mousedown, que también se filtra completo).
+  // El valor se lleva PRIMERO al paso (_enPaso) para que la rueda aterrice en el mismo
+  // número que muestra el rótulo: un largo con decimales (tramo elástico repartido)
+  // sumado a 1 daría 592.4 → 593.4 y el rótulo, que redondea, saltaría de 592 a 593.
+  var _ruedaUndoT = 0;
+  function _enPaso(v) { return Math.round(Number(v) / PASO_ARRASTRE_CM) * PASO_ARRASTRE_CM; }
+  function _ruedaRotulo(plano, svg, evt) {
+    if (evt.shiftKey) return;
+    var t = evt.target; if (!t || !t.getAttribute) return;
+    var cual = t.getAttribute('data-rango-len');
+    var tl = t.getAttribute('data-rango-tlen');
+    if (cual == null && tl == null) return;      // no es un rótulo: que la rueda haga zoom
+    var d = _distSel(); if (!d) return;
+    // Rótulo HUÉRFANO (la línea que rotulaba ya no existe): no se toca el evento, así
+    // la rueda sigue siendo el zoom en vez de quedar muerta sobre un número viejo.
+    if (cual != null && !d[cual]) return;
+    // Un evento SIN deltaY vertical (rueda horizontal, trackpad de lado) no es un
+    // gesto de "sube/baja": si se tomara igual, rozar el rótulo de costado sumaría
+    // un centímetro que nadie pidió. Se deja pasar y el zoom tampoco hace nada con él.
+    var dy = Number(evt.deltaY) || 0;
+    if (!dy) return;
+    evt.preventDefault(); evt.stopPropagation();
+    var paso = (dy > 0 ? -1 : 1) * PASO_ARRASTRE_CM;
+    // SE CALCULA EL VALOR NUEVO ANTES DE APILAR EL UNDO: seguir dando vueltas contra
+    // el piso (largo 0) no puede llenar la pila de deshacer con pasos que no movieron
+    // nada. Sólo se apila cuando el número VA a cambiar. Ojo: contra el piso el evento
+    // YA se consumió y eso es a propósito — con el cursor sobre un rótulo la rueda es
+    // del rótulo, y ponerse a hacer zoom porque el valor tocó fondo sería un salto
+    // que el usuario no pidió.
+    var idx = -1, nuevo = 0, a;
+    if (cual != null) {
+      nuevo = _enPaso(_largoRango(d[cual])) + paso;
+      if (nuevo < 0 || Math.abs(nuevo - _largoRango(d[cual])) < 1e-9) return;
+    } else {
+      idx = Number(tl); a = _tramosDe(d);
+      if (!a[idx] || a.length < 2) return;
+      nuevo = Math.max(0, _enPaso(a[idx].long) + paso);
+      if (Math.abs(nuevo - a[idx].long) < 1e-9) return;
+    }
+    // UN GESTO DE RUEDA = UN SOLO UNDO. Sin esto, deshacer un ajuste de 20 cm costaría
+    // veinte Ctrl+Z y la pila (acotada) se comería el resto del historial.
+    var ahora = Date.now();
+    if (ahora - _ruedaUndoT > 500) _pushUndo();
+    _ruedaUndoT = ahora;
+    if (cual != null) _setLargoRango(d, cual, nuevo, t.getAttribute('data-rango-eje'));
+    else _setLongTramo(d, idx, nuevo);
+    _mutDiferido();     // repinta el overlay (el rótulo) y el panel, coalescidos en un rAF
   }
 
   // Coordenada HOST bajo el cursor MEDIDA SOBRE EL EJE DE REPARTO (absoluta, no delta).
@@ -4668,6 +4977,11 @@
         if (ST.caraHi && ST.caraHi.plano === plano) ST.caraHi = null;
       });
 
+      // RUEDA: por defecto es el ZOOM de la vista (el handler vive en el .te-vista y
+      // le llega por burbujeo). Acá sólo se atiende cuando cae sobre un rótulo de
+      // largo del abanico — ver _ruedaRotulo, que corta la burbuja SÓLO en ese caso.
+      svg.addEventListener('wheel', function (evt) { _ruedaRotulo(plano, svg, evt); }, { passive: false });
+
       // Clic DERECHO = cancelar el modo colocación (además de Esc). No abre el menú
       // contextual del navegador dentro del cuadrante.
       svg.addEventListener('contextmenu', function (evt) {
@@ -4707,6 +5021,19 @@
         var tgtAt = evt.target && evt.target.getAttribute && evt.target.getAttribute('data-rango-at');
         if (tgtAt != null) { evt.preventDefault(); _abrirEditorAt(plano, svg, Number(tgtAt), evt); return; }
 
+        // ¿tocó el rótulo del LARGO del abanico (o el de un tramo)? → input inline.
+        // Van ANTES del divisor y del rect de arrastre porque son objetivos pequeños
+        // dibujados encima; el divisor, que se dibuja DESPUÉS del rótulo del abanico,
+        // conserva igual su tirador completo (ver _rotuloLargoRango).
+        var tgtLen = evt.target && evt.target.getAttribute && evt.target.getAttribute('data-rango-len');
+        if (tgtLen != null) {
+          evt.preventDefault();
+          _abrirEditorLargo(plano, svg, tgtLen, evt, evt.target.getAttribute('data-rango-eje'));
+          return;
+        }
+        var tgtTLen = evt.target && evt.target.getAttribute && evt.target.getAttribute('data-rango-tlen');
+        if (tgtTLen != null) { evt.preventDefault(); _abrirEditorLargoTramo(plano, svg, Number(tgtTLen), evt); return; }
+
         // ¿tocó un DIVISOR de tramo? → arrastra el límite entre dos tramos contiguos
         // (el par conserva su largo total; el rango no cambia).
         var tgtDiv = evt.target && evt.target.getAttribute && evt.target.getAttribute('data-rango-div');
@@ -4714,7 +5041,11 @@
           evt.preventDefault(); _pushUndo();
           ST.dragRango = {
             ci: ST.selCi, plano: plano, lastX: sp.px, lastY: sp.py,
-            end: null, div: Number(tgtDiv), eje: null
+            end: null, div: Number(tgtDiv),
+            // El eje y la línea los dice EL TIRADOR DIBUJADO, no _ejeDistDe(comp)
+            // (ver _divisorTramo): con la pieza girada los dos ya no coinciden.
+            eje: evt.target.getAttribute('data-rango-eje') || null,
+            cual: evt.target.getAttribute('data-rango-cual') || 'rango'
           };
           return;
         }
@@ -6187,7 +6518,8 @@
     var multi = _tramosDe(d).length > 1;
     var g2 = _div(multi ? '' : 'te-grid2');
     if (!multi) g2.appendChild(_fld('@ sep cm', _inputSep(d.sep || 20, function (v) { d.sep = v; if (d.rango) d.rango.sep = d.sep; _syncN(d, 'rango'); _mut(ci, true); })));
-    g2.appendChild(_fld('Rango', _rangoEditor(c, d, ci)));
+    var edR = _rangoEditor(c, d, ci);
+    g2.appendChild(_fld(edR._rotulo(), edR));
     box.appendChild(g2);
     _tramosEditor(box, d, ci);
     var note = _div('te-note'); note.textContent = 'Define el rango (from → to) por campos o arrastrando la flecha doble en las vistas. cant = ceil(dist/@)+1.';
@@ -6201,7 +6533,8 @@
     var multi = _tramosDe(d).length > 1;
     var g2 = _div(multi ? '' : 'te-grid2');
     if (!multi) g2.appendChild(_fld('@ sep (rango) cm', _inputSep(d.sep || 20, function (v) { d.sep = v; if (d.rango) d.rango.sep = d.sep; _syncN(d, 'rango'); _mut(ci, true); })));
-    g2.appendChild(_fld('Rango', _rangoEditor(c, d, ci)));
+    var edR = _rangoEditor(c, d, ci);
+    g2.appendChild(_fld(edR._rotulo(), edR));
     box.appendChild(g2);
     _tramosEditor(box, d, ci);
 
@@ -6239,7 +6572,8 @@
       g2b.appendChild(_fld('@ sep (2ª) cm', _inputSep(d.rango2.sep || 20, function (v) {
         d.rango2.sep = v; _syncN(d, 'rango2'); _mut(ci, true);
       }), 'Espaciamiento de la SEGUNDA línea (la del eje ' + nomEje2 + ')'));
-      g2b.appendChild(_fld('Rango 2ª · ' + nomEje2, _rangoEditor(c, d, ci, 'rango2'),
+      var edR2 = _rangoEditor(c, d, ci, 'rango2', 'Rango 2ª · ' + nomEje2);
+      g2b.appendChild(_fld(edR2._rotulo(), edR2,
         'La 2ª línea corre por el ' + nomEje2 + ' (automático: el otro eje del plano de la pieza).'));
       box.appendChild(g2b);
     }
@@ -6313,8 +6647,7 @@
     if (!r || r.n == null) return;
     var sep = Number(r.sep) || Number(d.sep) || 20;
     if (desdeArrastre) {
-      var span = Math.abs(Number(r.to) - Number(r.from));
-      r.n = Math.max(1, Math.round(span / sep) + 1);
+      r.n = _cantidadDe(Number(r.to) - Number(r.from), sep);
       return;
     }
     var sgn = (Number(r.to) >= Number(r.from)) ? 1 : -1;
@@ -6322,10 +6655,24 @@
     _anclarRangoUI(r, r.eje);   // el `to` se movió → su ancla también (helper único)
   }
 
-  function _rangoEditor(c, d, ci, campo) {
+  function _rangoEditor(c, d, ci, campo, prefijo) {
     var cual = (campo === 'rango2') ? 'rango2' : 'rango';
+    var pref = (prefijo != null) ? prefijo : 'Rango';
+    // EL RÓTULO DEL CAMPO LLEVA EL LARGO (19-ago) — el MISMO número que se ve sobre el
+    // abanico en la vista, sacado de la MISMA cuenta (_largoRango) sobre el MISMO
+    // from/to. No es una copia del dato: es la única fuente leída dos veces, que es lo
+    // único que no se puede desincronizar.
+    function _rotulo() { return pref + ' · ' + Math.round(_largoRango(d[cual])) + ' cm'; }
     var wrap = _div(''); wrap.style.cssText = 'display:flex;gap:4px;align-items:center';
-    if (!d[cual]) { return _static('(arrastra la flecha de rango)'); }
+    wrap._rotulo = _rotulo;
+    if (!d[cual]) {
+      var st = _static('(arrastra la flecha de rango)');
+      st._rotulo = function () { return pref; };   // sin rango no hay largo que decir
+      return st;
+    }
+    // Se refresca A MANO tras cada edición: el panel NO se re-renderiza mientras se
+    // teclea (le robaría el foco al usuario) y un número que miente es peor que ninguno.
+    function _refrescarRotulo() { if (wrap._lbl) wrap._lbl.textContent = _rotulo(); }
     // Cambiar from/to reencaja los TRAMOS (si los hay) y sólo entonces redibuja la
     // ficha — si no, un re-render en cada campo le robaría el foco al usuario.
     function _setExtremo(k, v) {
@@ -6334,6 +6681,7 @@
       var hayTramos = !!(d[cual].tramos && d[cual].tramos.length > 1);
       if (cual === 'rango') _syncTramos(d);
       _mut(ci, hayTramos);
+      _refrescarRotulo();   // DESPUÉS de regenerar: el motor pudo topar el extremo
     }
     // ============================================================
     // TOGGLE «hasta dónde» ⇄ «cuántas» (pedido 15-ago)
@@ -6350,8 +6698,7 @@
     var porCantidad = (r.n != null && Number(r.n) > 0);
     function _sepDe() { return Number(r.sep) || Number(d.sep) || 20; }
     function _nDeRango() {
-      var span = Math.abs(Number(r.to) - Number(r.from));
-      return Math.max(1, Math.round(span / _sepDe()) + 1);
+      return _cantidadDe(Number(r.to) - Number(r.from), _sepDe());
     }
     function _aplicarN(n) {
       n = Math.max(1, Math.round(Number(n) || 1));
@@ -6408,6 +6755,10 @@
     var l = _label(labelText);
     if (title) { l.title = title; f.title = title; }
     f.appendChild(l); f.appendChild(inputEl);
+    // El campo se queda con su <label> a mano: hay rótulos que llevan un NÚMERO VIVO
+    // (el largo del rango) y tienen que poder refrescarse sin re-renderizar el panel,
+    // que en mitad de una edición le robaría el foco al usuario.
+    inputEl._lbl = l;
     return f;
   }
   function _static(txt) { var s = document.createElement('div'); s.textContent = txt; s.style.cssText = 'font-size:11px;color:var(--te-muted);padding:4px 0'; return s; }
@@ -9653,6 +10004,19 @@
     _tramosEnTrazo: _tramosEnTrazo, _ladosMarcoEnTrazo: _ladosMarcoEnTrazo,
     _ladosRotulables: _ladosRotulables, _ladoVisibleEnPlano: _ladoVisibleEnPlano,
     _setCotasLado: _setCotasLado, _dibujarCotasLados: _dibujarCotasLados,
+    // RÓTULO DEL LARGO DEL ABANICO (19-ago) — la distancia que recorre la distribución,
+    // editable en pantalla. Se exponen la CUENTA (_largoRango), la ESCRITURA
+    // (_setLargoRango / _setLongTramo) y el DIBUJO (_dibujarFlechaRango) para que el
+    // test headless compruebe que el rótulo, el panel y el motor dicen lo mismo.
+    _largoRango: _largoRango, _rangoLong: _rangoLong, _setLargoRango: _setLargoRango,
+    _tramosDe: _tramosDe, _setTramos: _setTramos, _setLongTramo: _setLongTramo,
+    _moverDivisor: _moverDivisor, _addTramo: _addTramo, _syncTramos: _syncTramos,
+    _syncN: _syncN, _anclarRangoUI: _anclarRangoUI, _rangoDefault: _rangoDefault,
+    _dibujarFlechaRango: _dibujarFlechaRango, PASO_ARRASTRE_CM: PASO_ARRASTRE_CM,
+    _ruedaRotulo: _ruedaRotulo,     // la rueda sobre el rótulo: ±1 cm y NO le roba el zoom al cuadrante
+    _abrirEditorLargo: _abrirEditorLargo, _abrirEditorLargoTramo: _abrirEditorLargoTramo,
+    _abrirEditorAt: _abrirEditorAt,   // el clic sobre cada rótulo (camino real de la edición)
+    _rangoEditor: _rangoEditor,     // el campo del panel (su ._rotulo() lleva el mismo largo)
     // PIEZA SELECCIONADA: dónde está (pivote) y cuál es su eje propio (el de ctrl)
     _placementsSeleccion3D: _placementsSeleccion3D, _centroSeleccion3D: _centroSeleccion3D,
     _ejePropioSeleccion3D: _ejePropioSeleccion3D,
