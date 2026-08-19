@@ -251,7 +251,18 @@
                    background:#fff; border-radius:9px; cursor:pointer; font-size:13px; color:#33691e; }
       .tplCfgBtn:hover { border-color:#8BC34A; background:#f7fbf2; }
       .tplCfgBtn .d { display:block; color:#8a97a6; font-size:11px; font-weight:400; margin-top:3px; }
-      .tplOrdenBtn { border:1px solid #dbe1e8; background:#fff; border-radius:7px; font-size:12px;
+    
+  /* Fila de template: el objetivo de clic es la fila entera, así que tiene que
+     avisarlo al pasar por encima. El basurero va sin recuadro (un botón enmarcado
+     dentro de una fila clicable se leía como una caja suelta) y sólo se enciende
+     cuando el cursor está en su fila. */
+  #tplGuardadosLista tr.tplFila:hover{background:#f3f8ec;}
+  #tplGuardadosLista .tplBorrar{border:none;background:none;font-size:15px;line-height:1;
+    padding:4px 6px;border-radius:6px;cursor:pointer;opacity:.35;transition:opacity .12s,background .12s;}
+  #tplGuardadosLista tr.tplFila:hover .tplBorrar{opacity:.75;}
+  #tplGuardadosLista .tplBorrar:hover{opacity:1;background:#fdecea;}
+  #tplGuardadosLista .tplBorrar[disabled]{cursor:default;}
+  .tplOrdenBtn { border:1px solid #dbe1e8; background:#fff; border-radius:7px; font-size:12px;
                      padding:6px 12px; cursor:pointer; color:#6b7a8d; }
       .tplOrdenBtn.on { border-color:#558B2F; background:#f7fbf2; color:#33691e; font-weight:700; }
     </style>
@@ -294,10 +305,6 @@
                desde TPL_DIMS_POR_ELEMENTO (misma tabla que el selector del editor). -->
           <select id="tplFiltroTipo" onchange="tplFiltrarGuardados()"
                   style="border:1px solid #dbe1e8; border-radius:7px; padding:6px 8px; font-size:12.5px; cursor:pointer;"></select>
-          <button onclick="tplLimpiarFiltros()" title="Limpiar búsqueda y filtro"
-                  style="border:1px solid #dbe1e8; background:#fff; border-radius:7px; font-size:12px; padding:6px 12px; cursor:pointer;">Limpiar</button>
-          <button onclick="tplCargarGuardados()" title="Volver a cargar la lista"
-                  style="border:1px solid #dbe1e8; background:#fff; border-radius:7px; font-size:12px; padding:6px 12px; cursor:pointer;">↻</button>
           <!-- ORDEN: el estado (cuál está `on`) lo pinta _tplPintarOrden() al
                cargar la lista, para que no se desincronice con _tplOrden. -->
           <span class="muted" style="font-size:11px; margin-left:auto;">Ordenar:</span>
@@ -321,31 +328,18 @@
           <h3 style="margin:0; color:#558B2F;">⚙️ Configuración</h3>
           <span class="muted" style="font-size:11px;">Con qué nacen las cosas</span>
         </div>
-        <p class="muted" style="font-size:12px; margin:0 0 12px 0;">
-          Cuatro tablas con los valores de partida del modelador: qué figura, φ y separación trae cada
-          tipología, cómo se calculan los largos del gancho, con qué recubrimiento nace cada elemento y
-          qué lado de cada figura queda fijo.
-          Lo que guardes aquí decide con qué nacen las barras <b>nuevas</b> del editor; un template ya
-          guardado no cambia. Dos cosas siguen sin cablear y cada tabla lo dice: la <b>regla de largos</b>
-          se guarda pero el motor todavía no la lee, y el <b>redondeo</b> y los <b>lados fijos por
-          figura</b> no existen en el motor.
-        </p>
         <div style="display:flex; flex-wrap:wrap; gap:8px;">
           <button class="tplCfgBtn" onclick="cfgModAbrir('tipologias')">
             📐 <b>Figuras por tipología</b>
-            <span class="d">Figura por defecto, sugeridas, φ, @ sep y colocación · por elemento</span>
           </button>
           <button class="tplCfgBtn" onclick="cfgModAbrir('largos')">
             📏 <b>Reglas de largos</b>
-            <span class="d">Fabricación / NCh 211 / Custom + redondeo del corte</span>
           </button>
           <button class="tplCfgBtn" onclick="cfgModAbrir('recub')">
             🧱 <b>Recubrimientos</b>
-            <span class="d">Recubrimiento por defecto de cada tipo de elemento</span>
           </button>
           <button class="tplCfgBtn" onclick="cfgModAbrir('figura')">
             📎 <b>Por figura</b>
-            <span class="d">Qué lado nace en automático y cuál queda fijo</span>
           </button>
         </div>
       </div>

@@ -10393,7 +10393,13 @@
         // muchas barras. Las tres KPI que faltan van en '—' hasta que el backend
         // las mande (n_barras, kg estimados y φ promedio de la receta).
         var comps = (t.n_componentes == null) ? null : Number(t.n_componentes);
-        return '<tr style="border-bottom:1px solid #eee;">' +
+        // LA FILA ENTERA ABRE EL TEMPLATE (19-ago). Antes habia un boton "Abrir" al final
+        // que competia con el basurero en la misma celda y se leia como dos cajas sueltas.
+        // La fila es el objetivo natural: es lo que uno intenta clicar.
+        return '<tr data-id="' + _esc(t.id) + '" class="tplFila"' +
+          ' onclick="tplAbrirTemplate(this.getAttribute(\'data-id\'))"' +
+          ' title="Abrir este template para seguir editandolo"' +
+          ' style="border-bottom:1px solid #eee; cursor:pointer;">' +
           '<td style="padding:4px 6px; font-weight:700;">' + _esc(t.nombre) +
             (t.creado_por ? '<div class="muted" style="font-weight:400; font-size:10.5px;">' + _esc(t.creado_por) + '</div>' : '') + '</td>' +
           '<td style="padding:4px 6px;"><span style="font-size:10px; text-transform:uppercase; font-weight:700; color:#fff; background:' + col + '; border-radius:8px; padding:1px 7px;">' + _esc(tipo) + '</span></td>' +
@@ -10405,14 +10411,12 @@
           '<td style="padding:4px 6px;">' + _esc(_tplFecha(edit)) +
             (quien ? '<div class="muted" style="font-size:10.5px;">' + _esc(quien) + '</div>' : '') + '</td>' +
           '<td style="padding:4px 6px; text-align:right; white-space:nowrap;">' +
-            '<button data-id="' + _esc(t.id) + '" onclick="tplAbrirTemplate(this.getAttribute(\'data-id\'))"' +
-            ' style="' + btnCss + '">Abrir</button> ' +
             // Eliminar sólo a quien el BACKEND dijo que puede (puede_modificar): un
             // botón que siempre termina en 403 no es un botón, es una trampa.
             '<button data-id="' + _esc(t.id) + '"' + (puedo ? '' : ' disabled') +
-            ' onclick="tplEliminarTemplate(this.getAttribute(\'data-id\'))"' +
+            ' class="tplBorrar" onclick="event.stopPropagation(); tplEliminarTemplate(this.getAttribute(\'data-id\'))"' +
             ' title="' + (puedo ? 'Eliminar este template' : 'Sólo su autor (o un administrador) puede eliminarlo') + '"' +
-            ' style="' + btnCss + (puedo ? ' color:#c62828;' : ' opacity:.4; cursor:default;') + '">🗑</button>' +
+            ' style="' + (puedo ? '' : 'opacity:.25; cursor:default;') + '">🗑</button>' +
           '</td></tr>';
       }).join('') +
       '</table>' +
