@@ -1,0 +1,783 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Maqueta · Temas del Template Editor</title>
+<!--
+  MAQUETA VISUAL — SIN LOGICA (20-ago). Pagina suelta para MIRAR y decidir, igual
+  que config_modelador.html y template3d.html. No toca el editor, no guarda nada.
+
+  QUE MUESTRA
+  -----------
+  Hoy el selector de fondo (id te_3dTema) pinta SOLO los 4 cuadrantes: el ribbon,
+  el panel de componentes, la fila de herramientas y el pie se quedan en blanco.
+  Contra un lienzo #14171c eso es un marco blanco alrededor de un agujero negro.
+  Aca esta la propuesta: que el MODAL ENTERO acompane al fondo.
+
+  REGLAS QUE ESTA MAQUETA RESPETA
+  -------------------------------
+  1) El tema CLARO no se toca: es exactamente el juego de hoy
+     (template_editor_modal.html:19-26).
+  2) Los CUADRANTES no cambian de color en ningun tema. Los tres lienzos siguen
+     siendo los de TEMAS3D (template_editor.js:59-63):
+        claro #d8dee7 · medio #2b3242 · oscuro #14171c
+     y los trazos del overlay siguen siendo los bloques --te-ov-* que ya existen
+     (template_editor_modal.html:350-376), copiados aca tal cual.
+  3) El boton de fondo sigue donde esta hoy, en la fila de herramientas.
+
+  COMO SE IMPLEMENTA DESPUES (si se aprueba)
+  ------------------------------------------
+  El modal ya declara sus colores como variables --te-* en #te_backdrop. La
+  implementacion es: (a) que la clase de tema que ya calcula _marcarTemaEnQuad
+  marque tambien #te_modal, para poder reasignar las --te-* por tema, y (b)
+  convertir a variable los pocos #fff literales sueltos del CSS (fondos de input,
+  de boton y de ficha). Esta maqueta ya nombra esas variables nuevas:
+  --te-field, --te-field-b, --te-ghost, --te-hover, --te-faint, --te-acero-t,
+  --te-azul-t, --te-sw-ring, --te-shadow.
+-->
+<style>
+  /* ===================== PAGINA (chrome de la maqueta) ===================== */
+  *{box-sizing:border-box}
+  body{margin:0;background:#e7ebf0;color:#1f2a37;
+       font:13px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+  header{background:#fff;border-bottom:1px solid #dbe1e8;padding:13px 20px}
+  header h1{margin:0;font-size:17px;display:flex;align-items:center;gap:9px}
+  header p{margin:5px 0 0;color:#6b7a8d;font-size:12px;max-width:1040px}
+  .maqueta{display:inline-block;background:#fff3e0;color:#e65100;border:1px solid #ffcc80;
+           border-radius:99px;padding:2px 10px;font-size:11px;font-weight:700}
+  .barra{display:flex;align-items:center;gap:18px;flex-wrap:wrap;
+         padding:9px 20px;background:#fff;border-bottom:1px solid #dbe1e8}
+  .barra .g{display:flex;align-items:center;gap:7px}
+  .barra .lb{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#8d9aab}
+  .seg{display:inline-flex;border:1px solid #dbe1e8;border-radius:8px;overflow:hidden;background:#fff}
+  .seg button{border:0;background:#fff;padding:6px 12px;font:inherit;font-size:12px;font-weight:600;
+              color:#64748b;cursor:pointer}
+  .seg button+button{border-left:1px solid #dbe1e8}
+  .seg button:hover{background:#f2f7ea;color:#558B2F}
+  .seg button.on{background:#8BC34A;color:#fff}
+  .seg button:disabled{opacity:.35;cursor:not-allowed}
+  .hoy{display:flex;align-items:center;gap:6px;font-size:12px;color:#455;cursor:pointer;
+       border:1px solid #dbe1e8;border-radius:8px;padding:5px 10px;background:#fff;font-weight:600}
+  .hoy input{margin:0;cursor:pointer;accent-color:#e65100}
+  .hoy.act{border-color:#e65100;background:#fff4e8;color:#a34d00}
+  .expl{padding:11px 20px 0;font-size:12px;color:#54617a;max-width:1180px;min-height:34px}
+  .expl b{color:#1f2a37}
+  .stage{padding:10px 20px 26px}
+  footer.pie{padding:0 20px 44px;font-size:12px;color:#6b7a8d;max-width:1100px}
+  footer.pie h3{font-size:12.5px;margin:18px 0 5px;color:#1f2a37}
+  footer.pie ul{margin:4px 0;padding-left:18px}
+  footer.pie li{margin-bottom:4px}
+  code{background:#f1f4f8;border:1px solid #e0e6ee;border-radius:4px;padding:0 4px;font-size:11.5px}
+
+  /* ===================== LOS TRES TEMAS ===================== */
+  /* CLARO = el juego de HOY, copiado 1:1 de #te_backdrop. NO SE TOCA. */
+  .tw{
+    --te-bg:#eef1f4; --te-ink:#1f2937; --te-muted:#64748b; --te-faint:#9aa4b0;
+    --te-line:#dbe1e8; --te-panel:#ffffff; --te-panel2:#f6f8fa;
+    --te-field:#ffffff; --te-field-b:#dbe1e8;
+    --te-ghost:#eef2f6; --te-ghost-ink:#37474f; --te-hover:#f7fbf2;
+    --te-acero:#8BC34A; --te-acero-d:#558B2F; --te-acero-t:#558B2F;
+    --te-azul:#1565c0; --te-azul-b:#e3f2fd; --te-azul-t:#1565c0;
+    --te-chip:#eef5e6; --te-chip-ink:#33691e; --te-chip-b:#c5e1a5;
+    --te-sw-ring:rgba(15,20,28,.22); --te-shadow:rgba(15,20,28,.16);
+    --te-hormigon:#c9d2dc; --te-hormigon-b:#8a96a5;
+    /* --- overlay de los cuadrantes: IDENTICO al bloque de hoy --- */
+    --te-ov-lienzo:#d8dee7;
+    --te-ov-recub:#263238; --te-ov-dim:#607089; --te-ov-dimL:#b6c2d0; --te-ov-bbox:#7d8da0;
+    --te-ov-rango:#558B2F;
+    --te-ov-grid:rgba(15,20,28,.10); --te-ov-grid-m:rgba(15,20,28,.20);
+    --te-ov-chip-bg:rgba(255,255,255,.78); --te-ov-chip-ink:#5b6a7d; --te-ov-hint:#9aa4b0;
+  }
+  /* MEDIO — GRAFITO AZULADO. El lienzo #2b3242 tiene tinte azul y el marco lo
+     acompana: el panel queda un escalon POR ENCIMA del lienzo (el cuadrante es lo
+     mas hundido de la pantalla, como en cualquier CAD) y panel2 —titulo, fila de
+     herramientas, pie, cabeceras de ficha— medio escalon por debajo del panel,
+     que es la MISMA relacion que en el claro (#fff sobre #f6f8fa), invertida. */
+  .tw.t-medio{
+    --te-bg:#1e2431; --te-ink:#e8edf5; --te-muted:#a6b3c6; --te-faint:#98a7bb;
+    --te-line:#48536a; --te-panel:#363f52; --te-panel2:#2e3648;
+    --te-field:#262d3b; --te-field-b:#4b5670;
+    --te-ghost:#3d4759; --te-ghost-ink:#d5dded; --te-hover:#414c61;
+    --te-acero:#8BC34A; --te-acero-d:#9ccc65; --te-acero-t:#a5d76a;
+    --te-azul:#3d8bdc; --te-azul-b:rgba(100,181,246,.20); --te-azul-t:#7cc0f8;
+    --te-chip:rgba(139,195,74,.16); --te-chip-ink:#bfe392; --te-chip-b:rgba(139,195,74,.40);
+    --te-sw-ring:rgba(255,255,255,.30); --te-shadow:rgba(0,0,0,.45);
+    --te-ov-lienzo:#2b3242;
+    --te-ov-recub:#c7d2de; --te-ov-dim:#b9c6d6; --te-ov-dimL:#6c7a8d; --te-ov-bbox:#93a3b6;
+    --te-ov-rango:#a5d76a;
+    --te-ov-grid:rgba(226,236,248,.13); --te-ov-grid-m:rgba(226,236,248,.26);
+    --te-ov-chip-bg:rgba(20,26,34,.72); --te-ov-chip-ink:#c3cfdd; --te-ov-hint:#8695a8;
+  }
+  /* OSCURO — VARIANTE A: CARBON NEUTRO. El lienzo #14171c es casi neutro y el
+     marco tambien: grafito sin tinte. Es el oscuro "de taller" (Fusion, Rhino,
+     Blender): el unico color de la pantalla lo ponen las barras. */
+  .tw.t-oscuro{
+    --te-bg:#0e1114; --te-ink:#e7ecf2; --te-muted:#9fabb9; --te-faint:#8e99a7;
+    --te-line:#2f353d; --te-panel:#1e2228; --te-panel2:#181c21;
+    --te-field:#141820; --te-field-b:#39414b;
+    --te-ghost:#262b32; --te-ghost-ink:#d3dbe4; --te-hover:#2a3038;
+    --te-acero:#8BC34A; --te-acero-d:#9ccc65; --te-acero-t:#aada6f;
+    --te-azul:#4a94e0; --te-azul-b:rgba(100,181,246,.16); --te-azul-t:#82c2f7;
+    --te-chip:rgba(139,195,74,.14); --te-chip-ink:#c2e59a; --te-chip-b:rgba(139,195,74,.34);
+    --te-sw-ring:rgba(255,255,255,.34); --te-shadow:rgba(0,0,0,.60);
+    --te-ov-lienzo:#14171c;
+    --te-ov-recub:#d3dde8; --te-ov-dim:#c3d0e0; --te-ov-dimL:#5d6b7d; --te-ov-bbox:#8d9cb0;
+    --te-ov-rango:#b4e178;
+    --te-ov-grid:rgba(226,236,248,.11); --te-ov-grid-m:rgba(226,236,248,.24);
+    --te-ov-chip-bg:rgba(10,13,18,.78); --te-ov-chip-ink:#c9d5e3; --te-ov-hint:#7d8b9d;
+  }
+  /* OSCURO — VARIANTE B: AZUL NOCHE. MISMO lienzo (no se toca), pero el marco
+     conserva el tinte azul del tema medio: las tres posiciones se leen como UN
+     dimmer continuo (gris azulado → pizarra → noche) y no como dos familias. */
+  .tw.t-oscuro.v-b{
+    --te-bg:#0b0e15; --te-ink:#e8eef7; --te-muted:#a1aec2; --te-faint:#8f9db2;
+    --te-line:#303a4c; --te-panel:#1c2230; --te-panel2:#161b26;
+    --te-field:#121724; --te-field-b:#3a4557;
+    --te-ghost:#242c3c; --te-ghost-ink:#d5deea; --te-hover:#29324a;
+    --te-sw-ring:rgba(255,255,255,.32); --te-shadow:rgba(0,0,0,.62);
+  }
+  /* "COMPARAR CON HOY": deja los cuadrantes con el fondo del tema elegido pero
+     devuelve TODO el marco al blanco. Es literalmente lo que se ve hoy. */
+  .tw.hoy-on{
+    --te-bg:#eef1f4; --te-ink:#1f2937; --te-muted:#64748b; --te-faint:#9aa4b0;
+    --te-line:#dbe1e8; --te-panel:#ffffff; --te-panel2:#f6f8fa;
+    --te-field:#ffffff; --te-field-b:#dbe1e8;
+    --te-ghost:#eef2f6; --te-ghost-ink:#37474f; --te-hover:#f7fbf2;
+    --te-acero-d:#558B2F; --te-acero-t:#558B2F;
+    --te-azul:#1565c0; --te-azul-b:#e3f2fd; --te-azul-t:#1565c0;
+    --te-chip:#eef5e6; --te-chip-ink:#33691e; --te-chip-b:#c5e1a5;
+    --te-sw-ring:rgba(15,20,28,.22); --te-shadow:rgba(15,20,28,.16);
+  }
+
+  /* ===================== COPIA ESTATICA DEL MODAL =====================
+     Estructura y medidas calcadas de template_editor_modal.html; lo unico que
+     cambia es que cada color literal paso a variable. Los ids llevan prefijo
+     mq_ para dejar claro que esto NO es el modal (no hay handlers detras). */
+  .tw{background:var(--te-bg);border-radius:14px;padding:9px;transition:background .18s}
+  .modal{background:var(--te-panel);border-radius:12px;overflow:hidden;
+         box-shadow:0 18px 50px var(--te-shadow);display:flex;flex-direction:column;
+         color:var(--te-ink);font:13px/1.45 "Segoe UI",system-ui,sans-serif;
+         height:78vh;min-height:640px}
+  .tw *{box-sizing:border-box}
+
+  /* ---- TITULO ---- */
+  .tbar{display:flex;align-items:center;gap:12px;padding:10px 18px;
+        border-bottom:1px solid var(--te-line);background:var(--te-panel2)}
+  .tbar .dot{width:26px;height:26px;border-radius:7px;background:var(--te-acero);
+             display:flex;align-items:center;justify-content:center;font-size:15px}
+  .tbar h1{font-size:15px;font-weight:600;margin:0;color:var(--te-ink)}
+  .tbar .sub{font-size:11.5px;color:var(--te-muted);display:flex;align-items:center;gap:6px}
+  .tbar .nombre{border:1px solid transparent;background:transparent;border-radius:6px;padding:2px 6px;
+                font:inherit;font-size:12.5px;font-weight:700;color:var(--te-ink);width:210px}
+  .tbar .nombre:hover{border-color:var(--te-line);background:var(--te-field)}
+  .sp{flex:1}
+  .elemsel{display:inline-flex;align-items:center;gap:6px;font-size:10.5px;font-weight:700;
+           text-transform:uppercase;letter-spacing:.5px;color:var(--te-muted)}
+  .btn{border:none;border-radius:9px;padding:8px 14px;font:inherit;font-size:12.5px;font-weight:700;cursor:pointer}
+  .btn.primary{background:var(--te-acero);color:#fff}
+  .btn.primary:hover{background:var(--te-acero-d);color:#12300a}
+  .btn.ghost{background:var(--te-ghost);color:var(--te-ghost-ink);border:1px solid var(--te-line)}
+  .xbtn{border:1px solid var(--te-line);background:var(--te-field);border-radius:8px;width:32px;height:30px;
+        cursor:pointer;font-size:15px;color:var(--te-muted);display:inline-flex;align-items:center;
+        justify-content:center;padding:0;line-height:1}
+  .chip{font-size:9.5px;color:var(--te-chip-ink);background:var(--te-chip);border:1px solid var(--te-chip-b);
+        border-radius:9px;padding:1px 6px;font-weight:600}
+
+  /* Campos: UN solo juego para todo el modal (ribbon, panel y titulo). */
+  .tw input,.tw select{font:inherit;border:1px solid var(--te-field-b);border-radius:6px;
+                       padding:4px 7px;font-size:12px;background:var(--te-field);color:var(--te-ink)}
+  .tw input::placeholder{color:var(--te-faint)}
+  .tw input:focus,.tw select:focus{outline:none;border-color:var(--te-acero)}
+
+  /* ---- RIBBON ---- */
+  .ribbon{display:flex;align-items:center;gap:14px;padding:9px 18px;flex-wrap:wrap;row-gap:8px;
+          border-bottom:1px solid var(--te-line);background:var(--te-panel)}
+  .grp{display:flex;align-items:center;gap:8px;flex-wrap:nowrap}
+  .grp-barra{flex-wrap:wrap;row-gap:6px}
+  .hormrows{display:flex;flex-direction:column;gap:5px}
+  .hormrow{display:flex;align-items:center;gap:8px}
+  .geo{display:inline-flex;flex-direction:column;gap:2px}
+  .geo label{font-size:9.5px;color:var(--te-muted);font-weight:600;letter-spacing:.2px;white-space:nowrap}
+  .geo input{width:64px}
+  .lbl{font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--te-muted)}
+  .divv{width:1px;height:30px;background:var(--te-line)}
+  .contorno{display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--te-muted);font-weight:600}
+  .contorno input{width:auto;accent-color:var(--te-acero)}
+  .tipbtns{display:inline-flex;gap:5px;flex-wrap:wrap}
+  .tipbtn{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--te-line);
+          background:var(--te-field);border-radius:8px;padding:6px 11px;font:inherit;font-size:12px;
+          color:var(--te-ink);cursor:pointer;font-weight:600}
+  .tipbtn:hover{border-color:var(--te-acero);background:var(--te-hover)}
+  .tipbtn.on{background:var(--te-acero);color:#1d3d09;border-color:var(--te-acero)}
+  /* ANILLO DEL SWATCH: las tipologias oscuras (CBS #1565c0, TRV #7b1fa2) se
+     fundian con el boton en tema oscuro. El anillo va por variable, asi que en
+     claro casi no se ve y en oscuro despega el cuadradito del fondo. */
+  .sw{width:11px;height:11px;border-radius:3px;flex:0 0 auto;
+      box-shadow:0 0 0 1px var(--te-sw-ring)}
+  .note{font-size:10.5px;color:var(--te-faint)}
+
+  /* ---- FILA DE HERRAMIENTAS ---- */
+  .ctools{display:flex;align-items:center;gap:7px;padding:6px 14px;
+          border-bottom:1px solid var(--te-line);background:var(--te-panel2)}
+  .ctools .tlbl{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;
+                color:var(--te-faint);margin-right:2px}
+  .ctool{border:1px solid var(--te-line);background:var(--te-field);border-radius:7px;padding:5px 11px;
+         font:inherit;font-size:11.5px;cursor:pointer;color:var(--te-ink);font-weight:600}
+  .ctool:hover{border-color:var(--te-acero);background:var(--te-hover)}
+  .ctool.on{background:var(--te-acero);color:#1d3d09;border-color:var(--te-acero)}
+  .ctool-ico{padding:5px 8px;display:inline-flex;align-items:center;justify-content:center}
+  .ctools .divv{height:22px;margin:0 3px}
+  .ctools .estado{font-size:10.5px;color:var(--te-faint)}
+  /* RADIAL DE FONDO — SE QUEDA DONDE ESTA HOY (fila de herramientas). */
+  .tema3d{display:inline-flex;border:1px solid var(--te-line);border-radius:7px;overflow:hidden;
+          background:var(--te-field)}
+  .tema3d button{width:auto;height:24px;padding:0 8px;border:none;border-radius:0;background:transparent;
+                 color:var(--te-muted);font-size:13px;line-height:1;cursor:pointer;
+                 display:flex;align-items:center;justify-content:center}
+  .tema3d button+button{border-left:1px solid var(--te-line)}
+  .tema3d button:hover{background:var(--te-hover);color:var(--te-acero-t)}
+  .tema3d button.on{background:var(--te-acero);color:#1d3d09}
+  .lbl3d{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--te-faint)}
+
+  /* ---- CUERPO ---- */
+  .body{flex:1;display:flex;min-height:0}
+
+  /* PANEL IZQUIERDO */
+  .side{width:340px;min-width:340px;border-right:1px solid var(--te-line);background:var(--te-panel);
+        overflow-y:auto;padding:11px 14px 20px}
+  .sh{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--te-muted);
+      margin:6px 0 8px;display:flex;align-items:center;gap:6px}
+  .sh .ln{flex:1;height:1px;background:var(--te-line)}
+  .comp{border:1px solid var(--te-line);border-radius:9px;margin-bottom:7px;overflow:hidden;
+        background:var(--te-panel)}
+  .comp.sel{border-color:var(--te-acero);box-shadow:0 0 0 2px rgba(139,195,74,.18)}
+  .comp .ch{display:flex;align-items:center;gap:8px;padding:7px 9px;cursor:pointer;background:var(--te-panel2)}
+  .comp .ch .sw{width:12px;height:12px}
+  .comp .nm{font-weight:700;font-size:12.5px;color:var(--te-ink)}
+  .comp .de{font-size:10.5px;color:var(--te-muted)}
+  .comp .drag,.comp .mini{color:var(--te-faint);font-size:12px;background:none;border:none;cursor:pointer;padding:1px 3px}
+  .comp .jer{width:auto;font-size:10.5px;padding:1px 3px;border-radius:5px;color:var(--te-muted)}
+  .comp .cbody{padding:9px 10px;border-top:1px solid var(--te-line)}
+  .fld{display:flex;flex-direction:column;gap:2px;margin-bottom:7px}
+  .fld label{font-size:10.5px;color:var(--te-muted);font-weight:600}
+  .fld input,.fld select{width:100%}
+  .grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}
+  .modeseg{display:grid;grid-template-columns:1fr 1fr 1fr;border:1px solid var(--te-line);border-radius:7px;
+           overflow:hidden;margin-bottom:8px;background:var(--te-field)}
+  .modebtn{border:none;background:var(--te-field);padding:6px 4px;font:inherit;font-size:11px;font-weight:700;
+           color:var(--te-muted);cursor:pointer}
+  .modeseg .modebtn+.modebtn{border-left:1px solid var(--te-line)}
+  .modebtn:hover{background:var(--te-hover);color:var(--te-acero-t)}
+  .modebtn.on{background:var(--te-acero);color:#1d3d09}
+  .modebox{border:1px solid var(--te-line);border-radius:8px;padding:8px 9px;background:var(--te-panel2);
+           margin-bottom:8px}
+  .modebox .mh{font-size:10.5px;font-weight:700;color:var(--te-muted);margin-bottom:6px;
+               display:flex;align-items:center;gap:6px}
+  .row{display:grid;grid-template-columns:96px 1fr;gap:8px;align-items:center;margin-bottom:6px}
+  .row label{font-size:11px;color:var(--te-muted);font-weight:600}
+  .dimrow{grid-template-columns:30px 1fr}
+  .dimrow .der{display:flex;align-items:center;gap:5px}
+  .dimletra{border:1px solid var(--te-field-b);background:var(--te-field);border-radius:6px;width:28px;
+            padding:2px 0;font:inherit;font-size:11px;font-weight:800;color:var(--te-muted);cursor:pointer;
+            text-align:center}
+  .dimletra.manda{border-color:var(--te-azul);color:var(--te-azul-t);background:var(--te-azul-b);
+                  box-shadow:inset 0 0 0 1px var(--te-azul)}
+  .dimletra:disabled{background:var(--te-panel2);border-color:var(--te-line);color:var(--te-faint);
+                     cursor:not-allowed}
+  .dimrow input{width:56px}
+  .dimrow input.delta{width:52px;text-align:right}
+  .deltalbl{font-size:11px;font-weight:700;color:var(--te-muted)}
+  .lock{border:1px solid var(--te-line);background:var(--te-field);border-radius:6px;width:26px;
+        padding:2px 0;font-size:12px;line-height:1;cursor:pointer}
+  .lock.abierto{border-color:#7cb342;background:rgba(139,195,74,.14)}
+  .radial{display:inline-flex;border:1px solid var(--te-line);border-radius:7px;overflow:hidden}
+  .radial button{border:none;background:var(--te-field);padding:5px 9px;font:inherit;font-size:11px;
+                 color:var(--te-muted);cursor:pointer;font-weight:600}
+  .radial button+button{border-left:1px solid var(--te-line)}
+  .radial button.on{background:var(--te-azul-b);color:var(--te-azul-t)}
+  .color{width:44px;height:24px;padding:1px 2px;border:1px solid var(--te-field-b);border-radius:6px;
+         background:var(--te-field);cursor:pointer}
+  .colsws{display:flex;flex-wrap:wrap;gap:4px;align-items:center}
+  .colsw{width:16px;height:16px;padding:0;border-radius:4px;border:1px solid var(--te-sw-ring);
+         cursor:pointer;line-height:0}
+  .posetxt{font-size:10.5px;color:var(--te-muted);font-weight:600}
+
+  /* ---- 4 CUADRANTES (los colores de aca NO CAMBIAN entre propuestas) ---- */
+  .quad{flex:1;display:grid;grid-template-columns:2fr 3fr;grid-template-rows:2fr 3fr;gap:1px;
+        background:var(--te-line);min-width:0;position:relative}
+  .vista{background:var(--te-ov-lienzo);position:relative;overflow:hidden}
+  .vista svg{width:100%;height:100%;display:block}
+  .vtitle{position:absolute;top:8px;left:10px;z-index:3;font-size:11px;font-weight:700;
+          color:var(--te-ov-chip-ink);background:var(--te-ov-chip-bg);border:1px solid var(--te-line);
+          border-radius:6px;padding:2px 8px;letter-spacing:.3px}
+  .vhint{position:absolute;bottom:7px;right:10px;z-index:3;font-size:9.5px;color:var(--te-ov-hint)}
+  .vzoom{position:absolute;right:6px;top:6px;z-index:6;width:24px;height:24px;border:1px solid var(--te-line);
+         background:var(--te-ov-chip-bg);border-radius:6px;cursor:pointer;font-size:12px;
+         color:var(--te-ov-chip-ink);line-height:1;padding:0;display:flex;align-items:center;justify-content:center}
+  .vista.pon::after{content:'';position:absolute;inset:0;z-index:5;border:2.5px solid #2f80ed;
+                    pointer-events:none;border-radius:2px}
+  .vista.pon .vtitle{background:#2f80ed;color:#fff;border-color:#2f80ed}
+  .horm{fill:var(--te-hormigon);opacity:.5;stroke:var(--te-hormigon-b);stroke-width:1.2}
+  .recub{fill:none;stroke:var(--te-ov-recub);stroke-width:1.1;stroke-dasharray:5 4}
+  .grid2d{fill:none;stroke:var(--te-ov-grid);stroke-width:1}
+  .grid2d-m{stroke:var(--te-ov-grid-m)}
+  .bar{fill:none;stroke-width:3;stroke-linecap:round;stroke-linejoin:round}
+  .halo{fill:none;stroke:#ff00b8;stroke-width:1.6;opacity:.95;stroke-linecap:round;stroke-linejoin:round}
+  .selbbox{fill:none;stroke:var(--te-ov-bbox);stroke-width:1;stroke-dasharray:4 3}
+  .dim{fill:var(--te-ov-dim);font:9px "Segoe UI",monospace}
+  .dimL{stroke:var(--te-ov-dimL);stroke-width:.8}
+  .cotalado{fill:#ff00b8;font:700 11px "Segoe UI",system-ui,sans-serif;paint-order:stroke;
+            stroke:var(--te-ov-lienzo);stroke-width:3px;stroke-linejoin:round}
+  .stats3d{position:absolute;right:8px;bottom:26px;z-index:3;display:flex;gap:12px;
+           background:var(--te-ov-chip-bg);border:1px solid var(--te-line);border-radius:8px;padding:5px 10px;
+           font-size:11px;color:var(--te-ov-chip-ink)}
+  .stats3d b{color:var(--te-ink);font-weight:700}
+  .stats3d .kg b{color:var(--te-acero-t)}
+  /* FICHA de la barra seleccionada: ya era oscura en el tema claro (es un tooltip
+     sobre el 3D) — se deja tal cual en los tres temas, es la misma pieza. */
+  .selcard{position:absolute;left:10px;top:34px;z-index:3;background:rgba(20,26,34,.92);
+           border:1px solid #2f3947;border-radius:8px;padding:7px 10px;font-size:11px;line-height:1.5;
+           color:#dbe3ec;box-shadow:0 8px 24px rgba(0,0,0,.35);max-width:230px}
+  .selcard .sct{font-weight:700;color:#fff;display:flex;align-items:center;gap:6px}
+  .selcard .scsw{width:9px;height:9px;border-radius:2px}
+  .selcard .scr{color:#93a2b3}
+  .tools3d{position:absolute;right:34px;top:6px;z-index:3;display:flex;align-items:center;gap:9px}
+  .tools3d button{width:24px;height:24px;border:1px solid var(--te-line);border-radius:6px;
+                  background:var(--te-ov-chip-bg);color:var(--te-ov-chip-ink);font-size:13px;line-height:1;
+                  cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0}
+  .seg3d{display:inline-flex;border:1px solid var(--te-line);border-radius:6px;overflow:hidden;
+         background:var(--te-ov-chip-bg)}
+  .seg3d button{width:auto;height:20px;padding:0 7px;border:none;border-radius:0;font:inherit;font-size:10px;
+                font-weight:700;background:transparent;color:var(--te-ov-chip-ink)}
+  .seg3d button+button{border-left:1px solid var(--te-line)}
+
+  /* ---- PIE ---- */
+  .pie2{display:flex;align-items:center;gap:10px;padding:9px 18px;border-top:1px solid var(--te-line);
+        background:var(--te-panel2)}
+  .pie2 .nota{font-size:11.5px;color:var(--te-muted)}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Temas del Template Editor <span class="maqueta">MAQUETA · sin logica</span></h1>
+  <p>El selector de fondo del editor (<code>●◐○</code>) hoy pinta solo los cuatro cuadrantes y deja el resto del
+     modal en blanco. Aca esta la propuesta de que el modal <b>entero</b> acompane al fondo. Los cuadrantes
+     conservan exactamente los colores de hoy en las tres posiciones: lo unico que se diseno es el marco.</p>
+</header>
+
+<div class="barra">
+  <div class="g">
+    <span class="lb">Fondo</span>
+    <div class="seg" id="mq_seg">
+      <button data-t="oscuro">● oscuro</button><button data-t="medio">◐ medio</button><button data-t="claro" class="on">○ claro</button>
+    </div>
+  </div>
+  <div class="g">
+    <span class="lb">Variante del oscuro</span>
+    <div class="seg" id="mq_var">
+      <button data-v="a" class="on">A · carbon neutro</button><button data-v="b">B · azul noche</button>
+    </div>
+  </div>
+  <label class="hoy" id="mq_hoyLbl">
+    <input type="checkbox" id="mq_hoy"> comparar con HOY (marco siempre blanco)
+  </label>
+</div>
+
+<div class="expl" id="mq_expl"></div>
+
+<div class="stage">
+  <div class="tw" id="mq_tw">
+    <div class="modal">
+
+      <!-- TITULO -->
+      <div class="tbar">
+        <div class="dot">📐</div>
+        <div>
+          <h1>Template Editor — Viga</h1>
+          <div class="sub">Nombre:
+            <input class="nombre" value="Viga tipo V-12">
+            <span>· nuevo · Catalogo › Templates</span>
+          </div>
+        </div>
+        <div class="sp"></div>
+        <label class="elemsel">Elemento
+          <select><option>Viga</option><option>Muro</option><option>Columna</option></select>
+        </label>
+        <span class="chip">VIGA</span>
+        <button class="btn ghost">📂 Abrir</button>
+        <button class="xbtn">✕</button>
+      </div>
+
+      <!-- RIBBON -->
+      <div class="ribbon">
+        <div class="grp">
+          <span class="lbl">Hormigon</span>
+          <div class="hormrows">
+            <div class="hormrow">
+              <span class="geo"><label>Largo</label><input value="600"></span>
+              <span class="geo"><label>Alto</label><input value="60"></span>
+              <span class="geo"><label>Ancho</label><input value="30"></span>
+            </div>
+            <div class="hormrow">
+              <span class="geo"><label>Recub (cm)</label><input value="4"></span>
+            </div>
+          </div>
+        </div>
+        <div class="divv"></div>
+        <div class="grp grp-barra">
+          <label class="contorno"><input type="checkbox" checked> tomar contorno</label>
+          <span class="lbl">Figura</span>
+          <input value="103B" style="width:110px">
+          <span class="lbl">φ mm</span>
+          <select><option>8</option><option>10</option><option selected>16</option><option>25</option></select>
+          <span class="lbl">Tipologia</span>
+          <div class="tipbtns">
+            <button class="tipbtn on"><span class="sw" style="background:#1565c0"></span>CBS</button>
+            <button class="tipbtn"><span class="sw" style="background:#42a5f5"></span>CBS2</button>
+            <button class="tipbtn"><span class="sw" style="background:#00897b"></span>CBI</button>
+            <button class="tipbtn"><span class="sw" style="background:#e65100"></span>ES</button>
+            <button class="tipbtn"><span class="sw" style="background:#7b1fa2"></span>TRV</button>
+            <button class="tipbtn"><span class="sw" style="background:#607d8b"></span>LT</button>
+          </div>
+        </div>
+        <div class="divv"></div>
+        <div class="grp"><button class="btn primary">＋ Agregar barra</button></div>
+        <div class="sp"></div>
+        <span class="note">Define el hormigon → figura, φ y tipologia → ＋ Agregar barra y clic en una vista.</span>
+      </div>
+
+      <!-- HERRAMIENTAS -->
+      <div class="ctools">
+        <span class="tlbl">Herramientas</span>
+        <button class="ctool ctool-ico on"><svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor"><path d="M5 3l14 8-6 1.5 3.5 6-2.5 1.4-3.4-6L5 19V3z"/></svg></button>
+        <span class="divv"></span>
+        <button class="ctool on">🧲 Snap</button>
+        <button class="ctool">📐 Cotas</button>
+        <span class="divv"></span>
+        <button class="ctool">🗑 Borrar</button>
+        <span class="divv"></span>
+        <button class="ctool">📋 Barras</button>
+        <span class="sp"></span>
+        <span class="estado">Tipologia activa: <b style="color:#4a94e0">CBS</b> · figura 103B</span>
+        <span class="divv"></span>
+        <!-- El radial de FONDO se queda EXACTAMENTE donde vive hoy. -->
+        <span class="lbl3d">fondo</span>
+        <span class="tema3d" id="mq_tema3d">
+          <button data-t="oscuro">●</button><button data-t="medio">◐</button><button data-t="claro" class="on">○</button>
+        </span>
+      </div>
+
+      <!-- CUERPO -->
+      <div class="body">
+
+        <!-- PANEL DE COMPONENTES -->
+        <div class="side">
+          <div class="sh"><span>Componentes colocados</span><span class="ln"></span><span style="color:var(--te-muted);font-size:11px">3</span></div>
+
+          <!-- Ficha 1 — SELECCIONADA y abierta -->
+          <div class="comp sel">
+            <div class="ch">
+              <span class="drag">⠿</span>
+              <span class="sw" style="background:#1565c0"></span>
+              <div>
+                <div class="nm">CBS · 103B · φ16</div>
+                <div class="de">cara sup · corre en largo · 4 barras</div>
+              </div>
+              <span class="sp"></span>
+              <select class="jer"><option>1</option><option>2</option></select>
+              <button class="mini">⧉</button><button class="mini">🗑</button>
+            </div>
+            <div class="cbody">
+              <div class="modeseg">
+                <button class="modebtn">Puntual</button><button class="modebtn on">Distribucion</button><button class="modebtn">Arreglo</button>
+              </div>
+              <div class="grid2">
+                <div class="fld"><label>Figura</label><input value="103B"></div>
+                <div class="fld"><label>φ (mm)</label><select><option selected>16</option><option>18</option></select></div>
+              </div>
+              <div class="modebox">
+                <div class="mh">Dimensiones <span class="chip">auto</span></div>
+                <div class="row dimrow">
+                  <button class="dimletra manda" title="lado dominante">A</button>
+                  <div class="der"><input value="560"><span class="deltalbl">Δ</span><input class="delta" value="0"><button class="lock abierto">🔓</button></div>
+                </div>
+                <div class="row dimrow">
+                  <button class="dimletra">B</button>
+                  <div class="der"><input value="22"><span class="deltalbl">Δ</span><input class="delta" value="0"><button class="lock abierto">🔓</button></div>
+                </div>
+                <div class="row dimrow">
+                  <button class="dimletra" disabled title="gancho">C</button>
+                  <div class="der"><input value="12"><span class="deltalbl">Δ</span><input class="delta" value="0"><button class="lock abierto">🔓</button></div>
+                </div>
+              </div>
+              <div class="row">
+                <label>Rotacion °</label>
+                <div class="radial"><button class="on">0</button><button>90</button><button>180</button><button>270</button></div>
+              </div>
+              <div class="row">
+                <label>Color</label>
+                <div style="display:flex;align-items:center;gap:8px">
+                  <input class="color" type="color" value="#1565c0">
+                  <div class="colsws">
+                    <button class="colsw" style="background:#1565c0"></button>
+                    <button class="colsw" style="background:#00897b"></button>
+                    <button class="colsw" style="background:#e65100"></button>
+                    <button class="colsw" style="background:#7b1fa2"></button>
+                    <button class="colsw" style="background:#607d8b"></button>
+                  </div>
+                </div>
+              </div>
+              <div class="posetxt">cara sup · corre en largo (Y) · sin espejar</div>
+            </div>
+          </div>
+
+          <!-- Ficha 2 — cerrada -->
+          <div class="comp">
+            <div class="ch">
+              <span class="drag">⠿</span>
+              <span class="sw" style="background:#00897b"></span>
+              <div>
+                <div class="nm">CBI · 103B · φ25</div>
+                <div class="de">cara inf · corre en largo · 3 barras</div>
+              </div>
+              <span class="sp"></span>
+              <select class="jer"><option>2</option></select>
+              <button class="mini">⧉</button><button class="mini">🗑</button>
+            </div>
+          </div>
+
+          <!-- Ficha 3 — cerrada, con marca de espejo -->
+          <div class="comp">
+            <div class="ch">
+              <span class="drag">⠿</span>
+              <span class="sw" style="background:#e65100"></span>
+              <div>
+                <div class="nm">ES · 106A · φ8</div>
+                <div class="de">estribo · sep 20 · 30 barras</div>
+              </div>
+              <span class="sp"></span>
+              <select class="jer"><option>3</option></select>
+              <button class="mini">⧉</button><button class="mini">🗑</button>
+            </div>
+          </div>
+
+          <div class="note" style="margin-top:10px">Las notas grises del panel usan <code style="font-size:10px">--te-faint</code>:
+             en oscuro suben de tono para no volverse ilegibles.</div>
+        </div>
+
+        <!-- 4 CUADRANTES -->
+        <div class="quad">
+
+          <!-- SECCION -->
+          <div class="vista">
+            <div class="vtitle">SECCION · XZ</div>
+            <button class="vzoom">🔍</button>
+            <div class="vhint">R = girar 90° en esta vista</div>
+            <svg viewBox="0 0 360 300" preserveAspectRatio="xMidYMid meet">
+              <g class="grid2d"><path d="M40 0V300M80 0V300M120 0V300M160 0V300M200 0V300M240 0V300M280 0V300M320 0V300M0 40H360M0 80H360M0 120H360M0 160H360M0 200H360M0 240H360M0 280H360"/></g>
+              <g class="grid2d grid2d-m"><path d="M200 0V300M0 160H360"/></g>
+              <rect class="horm" x="120" y="60" width="160" height="200"/>
+              <rect class="recub" x="132" y="72" width="136" height="176"/>
+              <rect class="bar" x="132" y="72" width="136" height="176" stroke="#e65100" rx="8"/>
+              <circle cx="146" cy="86" r="6" fill="#1565c0"/><circle cx="200" cy="86" r="6" fill="#1565c0"/><circle cx="254" cy="86" r="6" fill="#1565c0"/>
+              <circle cx="146" cy="234" r="7" fill="#00897b"/><circle cx="200" cy="234" r="7" fill="#00897b"/><circle cx="254" cy="234" r="7" fill="#00897b"/>
+              <circle cx="200" cy="86" r="9" class="halo"/>
+              <rect class="selbbox" x="186" y="72" width="28" height="28"/>
+              <g class="dimL"><path d="M120 275H280M120 270V280M280 270V280"/></g>
+              <text class="dim" x="188" y="292">30</text>
+              <text class="cotalado" x="212" y="80">A=560</text>
+            </svg>
+          </div>
+
+          <!-- A LO LARGO (plano de trabajo activo) -->
+          <div class="vista pon">
+            <div class="vtitle">A LO LARGO · YZ</div>
+            <button class="vzoom">🔍</button>
+            <div class="vhint">clic en un borde = cara y lado</div>
+            <svg viewBox="0 0 620 300" preserveAspectRatio="xMidYMid meet">
+              <g class="grid2d"><path d="M60 0V300M120 0V300M180 0V300M240 0V300M300 0V300M360 0V300M420 0V300M480 0V300M540 0V300M0 50H620M0 100H620M0 150H620M0 200H620M0 250H620"/></g>
+              <g class="grid2d grid2d-m"><path d="M300 0V300M0 150H620"/></g>
+              <rect class="horm" x="50" y="90" width="520" height="140"/>
+              <rect class="recub" x="62" y="102" width="496" height="116"/>
+              <path class="bar" stroke="#1565c0" d="M70 110H550"/>
+              <path class="bar" stroke="#1565c0" d="M70 124H550"/>
+              <path class="bar" stroke="#00897b" stroke-width="4" d="M70 198H550"/>
+              <path class="bar" stroke="#00897b" stroke-width="4" d="M70 210H550"/>
+              <g class="bar" stroke="#e65100" stroke-width="2.4">
+                <path d="M90 104V214M150 104V214M210 104V214M270 104V214M330 104V214M390 104V214M450 104V214M510 104V214"/>
+              </g>
+              <path class="halo" d="M70 110H550"/>
+              <rect class="selbbox" x="66" y="104" width="488" height="12"/>
+              <g class="dimL"><path d="M90 246H150M90 241V251M150 241V251"/></g>
+              <text class="dim" x="108" y="262">20</text>
+              <text class="cotalado" x="250" y="100">A=560</text>
+            </svg>
+          </div>
+
+          <!-- PLANTA -->
+          <div class="vista">
+            <div class="vtitle">PLANTA · YX</div>
+            <button class="vzoom">🔍</button>
+            <div class="vhint">boton medio = pan · shift = medidas</div>
+            <svg viewBox="0 0 360 260" preserveAspectRatio="xMidYMid meet">
+              <g class="grid2d"><path d="M40 0V260M80 0V260M120 0V260M160 0V260M200 0V260M240 0V260M280 0V260M320 0V260M0 40H360M0 80H360M0 120H360M0 160H360M0 200H360M0 240H360"/></g>
+              <g class="grid2d grid2d-m"><path d="M180 0V260M0 120H360"/></g>
+              <rect class="horm" x="30" y="95" width="300" height="70"/>
+              <rect class="recub" x="40" y="104" width="280" height="52"/>
+              <path class="bar" stroke="#1565c0" d="M46 112H314"/>
+              <path class="bar" stroke="#1565c0" d="M46 130H314"/>
+              <path class="bar" stroke="#1565c0" d="M46 148H314"/>
+              <path class="halo" d="M46 112H314"/>
+              <g class="dimL"><path d="M30 186H330M30 181V191M330 181V191"/></g>
+              <text class="dim" x="166" y="202">600</text>
+            </svg>
+          </div>
+
+          <!-- 3D -->
+          <div class="vista">
+            <div class="vtitle">3D · en vivo</div>
+            <button class="vzoom">🔍</button>
+            <div class="tools3d">
+              <button>⟳</button><button>🧊</button>
+              <span class="lbl3d" style="color:var(--te-ov-hint)">eje</span>
+              <span class="seg3d"><button>X</button><button>Y</button><button>Z</button></span>
+            </div>
+            <div class="selcard">
+              <div class="sct"><span class="scsw" style="background:#1565c0"></span> CBS · 103B · φ16</div>
+              <div class="scr">cara sup · corre en largo · Δ 0</div>
+            </div>
+            <div class="stats3d">
+              <span>Items: <b>3</b></span><span>Barras: <b>44</b></span><span class="kg">Peso: <b>187,4 kg</b></span>
+            </div>
+            <div class="vhint">arrastra = girar · rueda = zoom · medio = pan</div>
+            <svg viewBox="0 0 620 300" preserveAspectRatio="xMidYMid meet">
+              <g opacity="0.9">
+                <polygon points="70,120 500,95 570,140 140,165" fill="rgba(140,150,165,.20)" stroke="#9aa6b5" stroke-width="1"/>
+                <polygon points="140,165 570,140 570,240 140,265" fill="rgba(140,150,165,.13)" stroke="#9aa6b5" stroke-width="1"/>
+                <polygon points="500,95 570,140 570,240 500,195" fill="rgba(140,150,165,.08)" stroke="#9aa6b5" stroke-width="1"/>
+              </g>
+              <line x1="92" y1="138" x2="524" y2="112" stroke="#ff00b8" stroke-width="5" stroke-linecap="round"/>
+              <line x1="106" y1="146" x2="538" y2="120" stroke="#1565c0" stroke-width="5" stroke-linecap="round"/>
+              <line x1="120" y1="245" x2="548" y2="218" stroke="#00897b" stroke-width="6" stroke-linecap="round"/>
+              <g stroke="#e65100" stroke-width="3.5" fill="none" stroke-linecap="round">
+                <path d="M150,132 L158,250 M158,250 L205,246 M205,246 L197,127"/>
+                <path d="M300,122 L308,240 M308,240 L355,236 M355,236 L347,117"/>
+                <path d="M470,110 L478,228 M478,228 L525,224 M525,224 L517,105"/>
+              </g>
+            </svg>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- PIE -->
+      <div class="pie2">
+        <span class="nota">El 3D se arma combinando las vistas · el despiece va en 📋 Barras</span>
+        <div class="sp"></div>
+        <button class="btn ghost">🧊 Ver en 3D</button>
+        <button class="btn ghost">🧬 Guardar como nuevo</button>
+        <button class="btn primary">💾 Guardar template</button>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<footer class="pie">
+  <h3>Que se decidio y por que</h3>
+  <ul>
+    <li><b>El cuadrante es lo mas hundido de la pantalla.</b> En claro el marco (#fff) es mas claro que el
+        lienzo (#d8dee7); en medio y oscuro se mantiene la misma relacion invertida: el panel queda un escalon
+        <i>por encima</i> del lienzo. Asi el dibujo sigue leyendose como el hueco de trabajo y no como una mancha.</li>
+    <li><b>panel2 sigue medio escalon por debajo de panel</b> (titulo, herramientas, pie, cabeceras de ficha),
+        igual que #f6f8fa contra #fff en el claro. La jerarquia del modal no cambia, cambia el nivel.</li>
+    <li><b>Los campos se hunden.</b> En claro el input es blanco sobre panel blanco y solo lo define el borde.
+        En oscuro eso no funciona: el campo va <i>mas oscuro</i> que el panel (--te-field), que es como se lee
+        "aca se escribe" sin subir el contraste del borde.</li>
+    <li><b>Textos secundarios con dos niveles, no uno.</b> --te-muted (etiquetas de campo) y --te-faint (notas,
+        estado, placeholders) suben de tono en oscuro en vez de heredar el gris del claro, que sobre #1e2228
+        quedaba por debajo de 3:1.</li>
+    <li><b>Acentos con version "para texto".</b> El verde acero #8BC34A y el azul #1565c0 se conservan como
+        fondo de boton, pero cuando pintan <i>texto o borde</i> sobre oscuro pasan a --te-acero-t / --te-azul-t
+        (tonos claros). El azul #1565c0 en texto sobre negro era ilegible.</li>
+    <li><b>Anillo en los swatches de tipologia.</b> Las tipologias oscuras (CBS #1565c0, TRV #7b1fa2) se fundian
+        con el boton en tema oscuro. El anillo --te-sw-ring es casi invisible en claro y despega el cuadradito
+        en oscuro. <u>Ningun color de tipologia se cambio.</u></li>
+    <li><b>El magenta de seleccion (#ff00b8) no se toca</b>: ya estaba elegido justamente por contrastar con los
+        tres lienzos, y como los lienzos no cambian, sigue valiendo.</li>
+  </ul>
+
+  <h3>Las dos variantes del oscuro</h3>
+  <ul>
+    <li><b>A · carbon neutro</b> — marco gris grafito sin tinte (#1e2228 / #181c21), a juego con el lienzo
+        #14171c, que tambien es casi neutro. Es el oscuro de taller (Fusion, Rhino, Blender): el unico color de
+        la pantalla lo ponen las barras, y los azules/teales/naranjas de las tipologias saltan al maximo.</li>
+    <li><b>B · azul noche</b> — mismo lienzo, pero el marco conserva el tinte azul del tema medio
+        (#1c2230 / #161b26). Las tres posiciones se leen como un solo dimmer continuo (gris azulado → pizarra →
+        noche) en vez de dos familias distintas; a cambio, los azules de tipologia (CBS, MH) tienen un pelo
+        menos de separacion contra el marco.</li>
+    <li>Si el criterio es <i>que el dibujo mande</i>, la A. Si es <i>que las tres posiciones se sientan la misma
+        pantalla mas o menos apagada</i>, la B.</li>
+  </ul>
+
+  <h3>Que falta para implementarlo</h3>
+  <ul>
+    <li>Que la clase de tema que ya calcula <code>_marcarTemaEnQuad</code> marque tambien <code>#te_modal</code>
+        (hoy solo marca <code>#te_quad</code>), para poder reasignar las <code>--te-*</code> por tema.</li>
+    <li>Convertir a variable los <code>#fff</code> literales sueltos del CSS del modal (fondos de input, de boton
+        y de ficha): son las variables nuevas que esta maqueta ya nombra.</li>
+    <li>El bloque de los cuadrantes (<code>--te-ov-*</code>) queda como esta: ya resuelve los tres fondos.</li>
+  </ul>
+</footer>
+
+<script>
+  // Maqueta: lo unico que hace el script es cambiar clases. Nada de logica real.
+  var tw = document.getElementById('mq_tw');
+  var expl = document.getElementById('mq_expl');
+  var hoy = document.getElementById('mq_hoy');
+  var hoyLbl = document.getElementById('mq_hoyLbl');
+  var varSeg = document.getElementById('mq_var');
+  var tema = 'claro', variante = 'a';
+
+  var TXT = {
+    claro: '<b>CLARO — sin cambios.</b> Es exactamente el tema de hoy, y esta aca solo como punto de comparacion.',
+    medio: '<b>MEDIO — grafito azulado.</b> El marco toma el tinte del lienzo #2b3242 y queda un escalon por encima de el.',
+    'oscuro-a': '<b>OSCURO A — carbon neutro.</b> Marco grafito sin tinte, a juego con el lienzo #14171c. El color lo ponen solo las barras.',
+    'oscuro-b': '<b>OSCURO B — azul noche.</b> Mismo lienzo, marco con el tinte azul del tema medio: las tres posiciones se leen como un dimmer continuo.'
+  };
+
+  function pintar() {
+    tw.className = 'tw t-' + tema + (tema === 'oscuro' && variante === 'b' ? ' v-b' : '') + (hoy.checked ? ' hoy-on' : '');
+    var k = tema === 'oscuro' ? 'oscuro-' + variante : tema;
+    expl.innerHTML = TXT[k] + (hoy.checked
+      ? ' &nbsp;<span style="color:#a34d00;font-weight:600">· mostrando el marco de HOY (blanco) contra este fondo.</span>' : '');
+    // los dos selectores (el de la pagina y el del modal) marcan la misma posicion
+    ['mq_seg', 'mq_tema3d'].forEach(function (id) {
+      Array.prototype.forEach.call(document.getElementById(id).children, function (b) {
+        b.classList.toggle('on', b.dataset.t === tema);
+      });
+    });
+    Array.prototype.forEach.call(varSeg.children, function (b) {
+      b.classList.toggle('on', b.dataset.v === variante);
+      b.disabled = (tema !== 'oscuro');
+    });
+    hoyLbl.classList.toggle('act', hoy.checked);
+  }
+
+  ['mq_seg', 'mq_tema3d'].forEach(function (id) {
+    document.getElementById(id).addEventListener('click', function (e) {
+      var b = e.target.closest('button'); if (!b) return;
+      tema = b.dataset.t; pintar();
+    });
+  });
+  varSeg.addEventListener('click', function (e) {
+    var b = e.target.closest('button'); if (!b || b.disabled) return;
+    variante = b.dataset.v; pintar();
+  });
+  hoy.addEventListener('change', pintar);
+  pintar();
+</script>
+</body>
+</html>
