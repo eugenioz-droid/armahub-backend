@@ -1067,6 +1067,179 @@
     return comp;
   }
 
+  // ==========================================================================
+  // DESPLAZAMIENTO MEDIDO CON CARA DE REFERENCIA (21-ago)
+  // --------------------------------------------------------------------------
+  // EL PROBLEMA (palabras del usuario): no había forma de decir «esta pieza va a
+  // tantos centímetros de esta cara». O se daba una medida absoluta, o se dejaba que
+  // la pieza llenara el hormigón; toda colocación deliberada terminaba arrastrando a
+  // mano y perdiendo el control del número. Hace falta para poner una segunda capa de
+  // cabezales sin arrastrarla y para colocar estribos de confinamiento de a uno.
+  //
+  // LO QUE YA EXISTÍA: el arrastre guarda la posición como DISTANCIA A LA CARA MÁS
+  // CERCANA (comp.pos_ancla, que estampa el motor vía reglas.anclarPosHint) y la
+  // resuelve contra el hormigón en cada generación. El dato, la referencia y la
+  // resolución ya funcionaban: lo único que faltaba era poder ESCRIBIR el número y
+  // VER contra qué cara se está midiendo. Esto no agrega un modelo nuevo.
+  //
+  // LA MISMA PUERTA QUE EL ARRASTRE. _setHuecoACara traduce «déjame tantos cm a esta
+  // cara» a un delta de traslación y lo suma a pos_hint, igual que _dragMover, y
+  // después invalida el ancla con _anclarHintUI para que el motor la re-estampe en la
+  // regeneración siguiente. Si escribiera por su cuenta (tocando pos_ancla, por
+  // ejemplo) el número tecleado y el gesto podrían discrepar; así no pueden.
+  //
+  // EL NÚMERO ES EL HUECO, NO EL ANCLA. La cota viva del arrastre ya rotula el hueco
+  // REAL entre el bbox de la pieza y la cara (ver _cotasVivasPieza), y ése es el
+  // número que el usuario ve mientras mueve y el que se mide en obra. El ancla guarda
+  // la distancia al CENTRO del grupo —misma intención, otro punto de medida—, así
+  // que la ficha rotula el hueco para no decir un número distinto del que la pantalla
+  // ya muestra. Consecuencia honesta: al cambiar el hormigón se conserva la distancia
+  // ANCLADA, y el hueco la acompaña mientras la pieza no cambie de tamaño en ese eje
+  // (una dimensión en 'auto' que crece con el elemento SÍ lo mueve, y debe hacerlo).
+  //
+  // LA CARA NO SE ELIGE AL CREAR NI SALE DEL LADO DOMINANTE (decisión cerrada): al
+  // colocar nadie sabe todavía dónde va a quedar la pieza, y el lado dominante habla
+  // de la FORMA y de los ganchos, no de la colocación. Se DERIVA —la más cercana, que
+  // es lo que ya hace el motor—, se MUESTRA siempre y se puede cambiar ahí mismo.
+  // El selector de cara NO se persiste: dice desde dónde se está midiendo AHORA. El
+  // ancla la sigue eligiendo el motor (la cara más cercana), que es la regla que el
+  // usuario ya validó; por eso al reabrir la ficha el selector vuelve a esa cara.
+  // ==========================================================================
+
+  // Nombres de OBRA de las dos caras de cada eje. Sin jerga de ejes: la ficha dice
+  // «a 12 cm del testero», no «x = −285». La letra del eje queda en el tooltip, con
+  // _ejeLetra (que es la única traducción interno → letra visible).
+  var CARAS_OBRA = {
+    viga: {
+      x: { min: 'testero inicio', max: 'testero fin' },
+      y: { min: 'cara inferior', max: 'cara superior' },
+      z: { min: 'cara lateral −', max: 'cara lateral +' }
+    },
+    muro: {
+      x: { min: 'extremo inicio', max: 'extremo fin' },
+      y: { min: 'borde inferior', max: 'borde superior' },
+      z: { min: 'cara −', max: 'cara +' }
+    }
+  };
+  // Cómo se llama el EJE en la ficha (tampoco por su letra: por lo que recorre).
+  var EJE_ROTULO_POS = { x: 'A lo largo', y: 'En altura', z: 'A lo ancho' };
+
+  function _carasObraEje(eje) {
+    var t = CARAS_OBRA[_tipoElemento()] || CARAS_OBRA.viga;
+    return t[eje] || CARAS_OBRA.viga[eje];
+  }
+
+  // bbox del componente EN COORDENADAS DEL HOST (cm), de lo ÚLTIMO GENERADO.
+  // Sale del generado real (ST.ultimoOut, etiquetado con meta.ci) y no de una
+  // expansión propia a propósito: _hostDeReceta no lleva las pilas por cara que arma
+  // generar.js, así que una expansión aparte pondría la pieza en otro sitio y la
+  // ficha rotularía un hueco que el dibujo desmiente (la misma razón por la que
+  // _etiquetarCi expande CLONES). null = todavía no hay nada generado.
+  function _bboxCompMundo(ci) {
+    var out = ST.ultimoOut;
+    if (!out || !out.placements) return null;
+    var EJES = ['x', 'y', 'z'];
+    var lo = { x: Infinity, y: Infinity, z: Infinity };
+    var hi = { x: -Infinity, y: -Infinity, z: -Infinity };
+    var n = 0;
+    out.placements.forEach(function (pl) {
+      if (!pl.meta || pl.meta.ci !== ci) return;
+      (pl.puntos || []).forEach(function (pt) {
+        for (var i = 0; i < 3; i++) {
+          var e = EJES[i], v = Number(pt[e]);
+          if (!isFinite(v)) continue;
+          if (v < lo[e]) lo[e] = v;
+          if (v > hi[e]) hi[e] = v;
+          n++;
+        }
+      });
+    });
+    if (!n) return null;
+    var bb = {};
+    for (var k = 0; k < 3; k++) {
+      var ej = EJES[k];
+      if (!isFinite(lo[ej]) || !isFinite(hi[ej])) return null;
+      bb[ej] = { lo: lo[ej], hi: hi[ej], c: (lo[ej] + hi[ej]) / 2 };
+    }
+    return bb;
+  }
+
+  // EJES EN LOS QUE EL DESPLAZAMIENTO APLICA (verificado MIDIENDO el motor, no
+  // supuesto):
+  //   · El EJE POR EL QUE REPARTE UNA DISTRIBUCIÓN queda FUERA. Ahí la posición la
+  //     manda el rango, y el propio editor borra pos_hint/pos_ancla de ese eje al
+  //     encender la distribución (_setModoComp y el 1er arrastre del abanico): un
+  //     número escrito ahí se lo lleva el primer gesto. Se excluye el eje del rango
+  //     y, en un ARREGLO, también el de la 2ª línea.
+  //   · EL EJE DE LA CARA CONTRA LA QUE SE ANCLA UN CABEZAL SÍ SE OFRECE. El aviso
+  //     del motor («la posición la fija el recubrimiento, no el rango») habla del
+  //     RANGO, no del desplazamiento: medido sobre la viga-semilla, un pos_hint en
+  //     ese eje mueve la pieza y el ancla se estampa bien (CBS con hint.y = 10 pasa
+  //     de y = 10.876 a 20.876 y declara 9.12 cm a la cara superior, que es lo que
+  //     se dibuja). Y es JUSTO el caso que el usuario pidió: la segunda capa de
+  //     cabezales a tantos cm de la cara. El arrastre no escribe la Y de un cabezal
+  //     —ahí la gobiernan las capas—, así que en ese eje escribir el número es el
+  //     único camino, que es exactamente de lo que se trata esto.
+  function _ejesDesplazables(c) {
+    var libres = ['x', 'y', 'z'];
+    var d = c && c.distribucion;
+    if (!d || !d.activa) return libres;
+    var modo = _modoDe(c);
+    if (modo !== 'lineal' && modo !== 'arreglo') return libres;
+    var fuera = {};
+    fuera[(d.rango && d.rango.eje) || _ejeDistDe(c)] = true;
+    if (modo === 'arreglo' && d.rango2 && d.rango2.eje) fuera[d.rango2.eje] = true;
+    return libres.filter(function (e) { return !fuera[e]; });
+  }
+
+  // LA CARA QUE ELIGIÓ EL MOTOR. Con ancla estampada, la suya; sin ella (la pieza
+  // nunca se movió) se deriva con LA FÓRMULA DEL MOTOR —la cara más cercana al centro
+  // del grupo, reglas.anclaDeCoord— y no con una cuenta propia que pudiera discrepar.
+  function _caraRefEje(c, eje, bb) {
+    var pa = c && c.pos_ancla && c.pos_ancla[eje];
+    if (pa && (pa.ref === 'min' || pa.ref === 'max')) return pa.ref;
+    var d = _deps();
+    if (bb && bb[eje] && d.reglas && typeof d.reglas.anclaDeCoord === 'function') {
+      var a = d.reglas.anclaDeCoord(bb[eje].c, _dimEjeGeo(eje));
+      if (a && (a.ref === 'min' || a.ref === 'max')) return a.ref;
+    }
+    return 'min';
+  }
+
+  // HUECO entre la pieza y una cara del HORMIGÓN (cm). Mismo criterio que la cota
+  // viva del arrastre: borde del bbox contra la cara, no contra el recubrimiento.
+  // Negativo = la pieza se pasó de esa cara, y se dice con su signo.
+  function _huecoACara(bb, eje, ref) {
+    if (!bb || !bb[eje]) return null;
+    var D = _dimEjeGeo(eje);
+    if (!isFinite(D)) return null;
+    return (ref === 'max') ? (D / 2 - bb[eje].hi) : (bb[eje].lo + D / 2);
+  }
+
+  // ESCRIBIR el desplazamiento: «déjame `cm` entre esta pieza y esta cara». Se
+  // traduce a un delta de traslación y se suma a pos_hint —LA MISMA PUERTA que usa
+  // _dragMover— y se invalida el ancla para que el motor la re-estampe al expandir.
+  // NO regenera: eso lo hace quien llama (_mut), igual que el resto de los campos.
+  // Devuelve true si escribió (o si ya estaba ahí), false si no había con qué medir.
+  function _setHuecoACara(ci, eje, ref, cm) {
+    var c = ST.receta && ST.receta.componentes && ST.receta.componentes[ci];
+    if (!c) return false;
+    var n = Number(cm);
+    if (!isFinite(n)) return false;
+    var hoy = _huecoACara(_bboxCompMundo(ci), eje, ref);
+    if (hoy == null) return false;
+    // El delta es la diferencia entre el hueco que se pide y el que hay: mover la
+    // pieza ESE tanto la deja exactamente ahí (el bbox se traslada rígido con ella).
+    // Contra la cara 'max' el signo se invierte: acercarse a ella es ir hacia +.
+    var delta = (ref === 'max') ? (hoy - n) : (n - hoy);
+    if (!isFinite(delta)) return false;
+    if (Math.abs(delta) < 1e-9) return true;   // ya está donde se pide
+    c.pos_hint = c.pos_hint || {};
+    c.pos_hint[eje] = (Number(c.pos_hint[eje]) || 0) + delta;
+    _anclarHintUI(c);
+    return true;
+  }
+
   // Rango por defecto (toda la dimensión útil del EJE DE DISTRIBUCIÓN) para los modos
   // que lo necesitan. `eje` = 'x' (normal) | 'z' (pieza volteada) | 'y'.
   function _rangoDefault(sep, eje) {
@@ -6378,6 +6551,10 @@
       body.appendChild(ladoRow);
     }
 
+    // POSICIÓN MEDIDA — va PEGADA a Cara/Lado porque es la misma familia: contra qué
+    // cara se ancla la pieza, de qué lado, y a cuántos centímetros de ella.
+    _filasDesplazamiento(body, c, ci);
+
     // Recub override — SUBE antes del kit de rotaciones (pedido 13-ago: Rotación,
     // Pose/Espejo —y la rotación de plano cuando vuelva— quedan AGRUPADAS abajo).
     // "Recub. override" era el nombre del campo de la receta puesto en pantalla.
@@ -7343,6 +7520,78 @@
   }
 
   // --- fábricas de UI reutilizables ---
+
+  // FILAS DE POSICIÓN de la ficha: «esta pieza a tantos cm de esta cara», una por
+  // cada eje en el que el desplazamiento aplica de verdad (_ejesDesplazables).
+  // Ver la nota larga de «DESPLAZAMIENTO MEDIDO CON CARA DE REFERENCIA» arriba: acá
+  // sólo está la pantalla; el número, la cara y la escritura salen de esos helpers.
+  function _filasDesplazamiento(body, c, ci) {
+    var bb = _bboxCompMundo(ci);
+    // Sin nada generado no hay medida honesta que rotular (la barra todavía no está
+    // en ningún sitio). Aparece sola en cuanto se genera.
+    if (!bb) return;
+    _ejesDesplazables(c).forEach(function (eje) {
+      if (!bb[eje]) return;
+      var caras = _carasObraEje(eje);
+      // La cara arranca en la que ELIGIÓ EL MOTOR. El selector sólo cambia desde
+      // dónde se mide AHORA, así que vive en esta clausura: no se persiste en la
+      // receta (nadie elige cara al crear la pieza) ni en ST (sería estado que se
+      // queda viejo cuando el componente cambia de sitio o se borra).
+      var ref = _caraRefEje(c, eje, bb);
+      var row = _div('te-row');
+      row.appendChild(_label(EJE_ROTULO_POS[eje]));
+      var wrap = _div('te-posrow');
+      var inp = _input({ value: _cm1(_huecoACara(bb, eje, ref)), type: 'number', step: 'any' }, function (v) {
+        // Campo vaciado = no hay medida que aplicar. Se repinta el valor de ahora en
+        // vez de escribir un 0 que el usuario no pidió (mismo criterio que el
+        // candado de las dims: un clic no inventa una medida).
+        if (String(v == null ? '' : v).trim() === '') { refrescar(); return; }
+        _pushUndo();
+        if (!_setHuecoACara(ci, eje, ref, v)) { refrescar(); return; }
+        _mut(ci);      // regenera; la ficha NO cambia de forma, así que no se re-arma
+        refrescar();   // …y el campo dice dónde quedó DE VERDAD (pudo toparse)
+      });
+      inp.className = 'te-posd';
+      var un = document.createElement('span');
+      un.className = 'te-posun';
+      un.textContent = 'cm de';
+      var sel = _selectPairs([['min', caras.min], ['max', caras.max]], ref, function (v) {
+        ref = (v === 'max') ? 'max' : 'min';
+        refrescar();   // no muta nada: sólo cambia desde qué cara se está midiendo
+      });
+      sel.className = 'te-poscara';
+      function refrescar() {
+        var b2 = _bboxCompMundo(ci) || bb;
+        _valVivo(inp, _cm1(_huecoACara(b2, eje, ref)));
+        titular();
+      }
+      function titular() {
+        var nom = (ref === 'max') ? caras.max : caras.min;
+        inp.title = 'Distancia entre esta barra y ' + nom + ', en cm (eje ' + _ejeLetra(eje) + '). ' +
+          'Escríbela y la barra se va ahí: es el MISMO camino que arrastrarla, así que el ' +
+          'número y el gesto no pueden discrepar. Al cambiar el hormigón la barra conserva ' +
+          'su distancia a la cara. Negativo = la barra se pasó de esa cara.';
+        sel.title = 'Cara desde la que se mide. La que aparece al abrir la ficha es la que ' +
+          'el motor eligió para anclar esta barra (la más cercana); cambiarla acá sólo ' +
+          'cambia desde dónde se mide, no mueve nada.';
+      }
+      titular();
+      wrap.appendChild(inp); wrap.appendChild(un); wrap.appendChild(sel);
+      row.appendChild(wrap);
+      body.appendChild(row);
+      // El campo sigue al ARRASTRE en vivo: mover la barra con la mano cambia esta
+      // distancia, y el panel no puede decir un número distinto del que se dibuja
+      // (es el mismo trato que el rango, los tramos y el Δ).
+      _vivo(refrescar);
+    });
+  }
+
+  // cm con UN decimal (lo que se lee en obra). null → campo vacío.
+  function _cm1(v) {
+    if (v == null || !isFinite(Number(v))) return '';
+    return String(Math.round(Number(v) * 10) / 10);
+  }
+
   function _div(cls) { var d = document.createElement('div'); if (cls) d.className = cls; return d; }
   function _label(t) { var l = document.createElement('label'); l.textContent = t; return l; }
   // `title` opcional: el label queda CORTO (no empuja la columna de la grilla) y la
@@ -11234,6 +11483,13 @@
     // RECUBRIMIENTO si se está redimensionando, contra el HORMIGÓN si se mueve.
     _cotasVivasPieza: _cotasVivasPieza, _arrastrandoPieza: _arrastrandoPieza,
     _lineasRecubEje: _lineasRecubEje, _facesEje: _facesEje,
+    // DESPLAZAMIENTO MEDIDO CON CARA DE REFERENCIA (21-ago) — el número que la ficha
+    // escribe. Se exponen la MEDIDA (_huecoACara sobre _bboxCompMundo), la CARA que
+    // eligió el motor (_caraRefEje), los EJES en los que aplica (_ejesDesplazables) y
+    // la ESCRITURA (_setHuecoACara), que es la misma puerta del arrastre.
+    _bboxCompMundo: _bboxCompMundo, _huecoACara: _huecoACara, _caraRefEje: _caraRefEje,
+    _ejesDesplazables: _ejesDesplazables, _setHuecoACara: _setHuecoACara,
+    _filasDesplazamiento: _filasDesplazamiento, _carasObraEje: _carasObraEje,
     // El panel sigue al gesto EN VIVO: los campos que el arrastre escribe (rango,
     // largo de tramo, Δ) se releen de la receta sin re-armar el DOM de la ficha.
     _refrescarPanelVivo: _refrescarPanelVivo,
