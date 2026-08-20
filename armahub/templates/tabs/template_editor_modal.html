@@ -15,16 +15,130 @@
      OJO: NO tocar modelador3d_modal.html ni panel_3d.js (otro agente).
      ========================================================================== -->
 <style>
+  /* ---- TEMA CLARO = EL DE SIEMPRE. NO SE TOCA ----
+     Cada valor de aquí es el literal que el modal ya tenía; las variables nuevas
+     nacen valiendo exactamente el color que hoy está escrito a mano en la regla que
+     las va a usar, para que el claro quede idéntico. Los temas medio y oscuro
+     reasignan ESTAS MISMAS variables más abajo (#te_modal.te-tema-*): así el modal
+     entero acompaña al selector de fondo (●◐○) en vez de quedar como un marco blanco
+     alrededor de un agujero negro. Paleta aprobada en static/demo/te_temas.html. */
   #te_backdrop{
     --te-bg:#eef1f4; --te-ink:#1f2937; --te-muted:#64748b; --te-line:#dbe1e8;
     --te-panel:#ffffff; --te-panel2:#f6f8fa;
     --te-acero:#8BC34A; --te-acero-d:#558B2F; --te-azul:#1565c0; --te-azul-b:#e3f2fd;
+    /* SEGUNDO nivel de gris. --te-muted = etiquetas de campo · --te-faint = notas,
+       estado y placeholders. En claro casi no se distinguen; hacían falta dos porque
+       heredar un solo gris dejaba las notas por debajo de 3:1 sobre el panel oscuro. */
+    --te-faint:#9aa4b0;
+    /* CAMPOS Y BOTONES NEUTROS. En claro el input es blanco sobre panel blanco y lo
+       define el borde; en oscuro eso no funciona, así que el campo va MÁS OSCURO que
+       el panel (--te-field), que es como se lee "aquí se escribe" sin tener que
+       subirle el contraste al borde. --te-field-b es ese borde. */
+    --te-field:#ffffff; --te-field-b:#dbe1e8;
+    --te-ghost:#eef2f6; --te-ghost-ink:#37474f; --te-hover:#f7fbf2;
+    /* Versión "PARA TEXTO" de los acentos. El acero y el azul se conservan como
+       FONDO de botón en los tres temas (y encima siguen llevando texto blanco), pero
+       cuando pintan texto o borde sobre oscuro pasan a estos tonos claros: #1565c0
+       en texto sobre negro era ilegible. En claro valen lo mismo que --te-acero-d y
+       --te-azul, o sea que el cambio no se nota. */
+    --te-acero-t:#558B2F; --te-azul-t:#1565c0;
+    /* Anillo del cuadradito de tipología. Vale el mismo que ya usaba el archivador
+       de colores (.te-colsw) y SÓLO se dibuja sobre .te-sw en medio/oscuro, donde las
+       tipologías oscuras (CBS #1565c0, TRV #7b1fa2) se fundían con el botón.
+       NINGÚN color de tipología cambia: el anillo despega el cuadradito del fondo. */
+    --te-sw-ring:rgba(15,20,28,.28);
+    /* ERROR (rojo) y AVISO (ámbar) del editor. Son ROLES, no tipologías: --te-warn
+       vale lo mismo que --te-es en claro pero NO es él — el naranja de ES es identidad
+       de una barra y no puede aclararse con el tema. Los usa también el markup que
+       genera template_editor.js (fichas, notas y barra de estado). */
+    --te-err:#c62828; --te-err-bg:#fff6f5;
+    --te-warn:#e65100; --te-warn-bg:#fff8ef;
+    /* Franja de TOTAL del listado de barras: fondo hundido + línea gruesa. */
+    --te-band:#e6ecf3; --te-band-b:#b7c3d0;
     /* --te-canvas3d = TEMAS3D.claro.bg de template_editor.js. Desde que el fondo es
        global lo usan los 4 cuadrantes (via --te-ov-lienzo), no sólo el 3D. */
     --te-canvas3d:#d8dee7; --te-hormigon:#c9d2dc; --te-hormigon-b:#8a96a5;
     --te-chip:#eef5e6; --te-chip-ink:#33691e; --te-chip-b:#c5e1a5;
     --te-cbs:#1565c0; --te-cbi:#00897b; --te-es:#e65100; --te-trv:#7b1fa2; --te-mall:#5e35b1;
   }
+  /* ---- EL MODAL ENTERO SIGUE AL SELECTOR DE FONDO ----
+     La clase te-tema-* la pone _marcarTemaEnQuad (template_editor.js) en #te_quad Y
+     en #te_modal. Va en #te_modal y no en <body> A PROPÓSITO: el tema NO puede
+     escaparse del modal — el tab del Catálogo y el resto de la plataforma no se
+     tiñen. Lo único que cambia aquí son COLORES: ni una medida, ni un control movido.
+     Lo que NO se reasigna: --te-acero / --te-azul (son FONDO de botón con texto
+     blanco, y funcionan igual sobre los tres marcos), --te-hormigon (el hormigón es
+     claro en todos los temas) y los colores de tipología. */
+  /* MEDIO — GRAFITO AZULADO. El lienzo #2b3242 tiene tinte azul y el marco lo
+     acompaña: el panel queda un escalón POR ENCIMA del lienzo (el cuadrante es lo más
+     hundido de la pantalla, como en cualquier CAD) y panel2 —título, herramientas,
+     pie, cabeceras de ficha— medio escalón por debajo del panel, que es la MISMA
+     relación que en el claro (#fff sobre #f6f8fa), invertida. */
+  #te_modal.te-tema-medio{
+    --te-bg:#1e2431; --te-ink:#e8edf5; --te-muted:#a6b3c6; --te-faint:#98a7bb;
+    --te-line:#48536a; --te-panel:#363f52; --te-panel2:#2e3648;
+    --te-field:#262d3b; --te-field-b:#4b5670;
+    --te-ghost:#3d4759; --te-ghost-ink:#d5dded; --te-hover:#414c61;
+    --te-acero-t:#a5d76a; --te-azul-b:rgba(100,181,246,.20); --te-azul-t:#7cc0f8;
+    --te-chip:rgba(139,195,74,.16); --te-chip-ink:#bfe392; --te-chip-b:rgba(139,195,74,.40);
+    --te-sw-ring:rgba(255,255,255,.30);
+    --te-err:#ef8a84; --te-err-bg:rgba(198,40,40,.22);
+    --te-warn:#ffab5e; --te-warn-bg:rgba(230,81,0,.22);
+    --te-band:#232a38; --te-band-b:#4b5670;
+  }
+  /* OSCURO — VARIANTE A: CARBÓN NEUTRO (la implementada). El lienzo #14171c es casi
+     neutro y el marco también: grafito sin tinte. Es el oscuro "de taller" (Fusion,
+     Rhino, Blender): el único color de la pantalla lo ponen las barras. */
+  #te_modal.te-tema-oscuro{
+    --te-bg:#0e1114; --te-ink:#e7ecf2; --te-muted:#9fabb9; --te-faint:#8e99a7;
+    --te-line:#2f353d; --te-panel:#1e2228; --te-panel2:#181c21;
+    --te-field:#141820; --te-field-b:#39414b;
+    --te-ghost:#262b32; --te-ghost-ink:#d3dbe4; --te-hover:#2a3038;
+    --te-acero-t:#aada6f; --te-azul-b:rgba(100,181,246,.16); --te-azul-t:#82c2f7;
+    --te-chip:rgba(139,195,74,.14); --te-chip-ink:#c2e59a; --te-chip-b:rgba(139,195,74,.34);
+    --te-sw-ring:rgba(255,255,255,.34);
+    --te-err:#f2938c; --te-err-bg:rgba(198,40,40,.20);
+    --te-warn:#ffb877; --te-warn-bg:rgba(230,81,0,.20);
+    --te-band:#13171c; --te-band-b:#39414b;
+  }
+  /* OSCURO — VARIANTE B: AZUL NOCHE. NO está implementada; queda escrita para que
+     cambiarla sea SUSTITUIR NÚMEROS en el bloque .te-tema-oscuro de arriba y nada más
+     (el resto de sus líneas —acentos, chip, err/warn— no cambian entre A y B).
+     Mismo lienzo #14171c (ese no se toca nunca), pero el marco conserva el tinte azul
+     del tema medio: las tres posiciones se leen como UN dimmer continuo (gris azulado
+     -> pizarra -> noche) y no como dos familias distintas. A cambio, los azules de
+     tipología (CBS, MH) tienen un pelo menos de separación contra el marco.
+       --te-bg:#0b0e15; --te-ink:#e8eef7; --te-muted:#a1aec2; --te-faint:#8f9db2;
+       --te-line:#303a4c; --te-panel:#1c2230; --te-panel2:#161b26;
+       --te-field:#121724; --te-field-b:#3a4557;
+       --te-ghost:#242c3c; --te-ghost-ink:#d5deea; --te-hover:#29324a;
+       --te-sw-ring:rgba(255,255,255,.32);
+       --te-band:#111726; --te-band-b:#3a4557;
+  */
+  /* FONDO DE LOS CAMPOS POR VARIABLE. Antes no había regla: los inputs y selects se
+     quedaban con el blanco por defecto del navegador, o sea que en oscuro TODOS los
+     campos del modal habrían salido en blanco. En claro --te-field ES ese blanco, así
+     que no cambia nada. El color del TEXTO sólo se fuerza fuera del claro, para no
+     tocar el negro por defecto del navegador en el tema de siempre.
+     OJO ESPECIFICIDAD: va con UN id y el tipo (1,0,1) a proposito. Con `:not([type=…])`
+     la regla subia a (1,2,1) y le ganaba a `#te_modal input.bad` / `input.warn`, o sea
+     que el campo invalido perdia su fondo rojo. Checkbox y range no necesitan quedar
+     fuera: el checkbox nativo no pinta background, y el range ya declara el suyo. */
+  #te_modal input,#te_modal select{background:var(--te-field)}
+  #te_modal.te-tema-medio input,#te_modal.te-tema-medio select,
+  #te_modal.te-tema-oscuro input,#te_modal.te-tema-oscuro select{color:var(--te-ink)}
+  #te_modal.te-tema-medio input::placeholder,
+  #te_modal.te-tema-oscuro input::placeholder{color:var(--te-faint)}
+  /* ANILLO DEL SWATCH DE TIPOLOGÍA — sólo en medio/oscuro. En claro el cuadradito ya
+     despega contra el botón blanco y ponerle un aro sería cambiar el tema que no se
+     toca; en oscuro, sin él, CBS y TRV se fundían con el botón. */
+  #te_modal.te-tema-medio .te-sw,
+  #te_modal.te-tema-oscuro .te-sw{box-shadow:0 0 0 1px var(--te-sw-ring)}
+  /* La marca de espejo usa el morado de TRV como TEXTO (no como trazo): sobre el
+     panel oscuro no se leía. Se aclara aquí y no en --te-trv, que es identidad de
+     tipología y tiene que seguir dibujando la barra con su color exacto. */
+  #te_modal.te-tema-medio .te-comp .te-espm,
+  #te_modal.te-tema-oscuro .te-comp .te-espm{color:#ce93d8}
   #te_backdrop{position:fixed;inset:0;z-index:9800;background:rgba(15,20,28,.5);display:none;align-items:center;justify-content:center;padding:8px;
     font:13px/1.45 "Segoe UI",system-ui,sans-serif;color:var(--te-ink)}
   #te_backdrop.on{display:flex}
@@ -42,8 +156,8 @@
      título no debe parecer un formulario, pero tiene que INVITAR a editarse). */
   #te_modal #te_nombre{border:1px solid transparent;background:transparent;border-radius:6px;
     padding:2px 6px;font-size:12.5px;font-weight:700;color:var(--te-ink);width:230px;max-width:34vw}
-  #te_modal #te_nombre:hover{border-color:var(--te-line);background:#fff}
-  #te_modal #te_nombre:focus{border-color:var(--te-acero);background:#fff;outline:none}
+  #te_modal #te_nombre:hover{border-color:var(--te-line);background:var(--te-field)}
+  #te_modal #te_nombre:focus{border-color:var(--te-acero);background:var(--te-field);outline:none}
   #te_modal #te_nombre::placeholder{font-weight:400;color:var(--te-muted)}
   /* SELECTOR DE ELEMENTO (viga / muro / …) — vive DENTRO del editor: cambiar de
      elemento ya no obliga a salir a la pantalla previa y crear otro template.
@@ -51,26 +165,26 @@
      salen deshabilitadas ("próximamente") y el navegador ya las pinta en gris. */
   #te_modal .te-elemsel{display:inline-flex;align-items:center;gap:6px;font-size:10.5px;
     font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--te-muted)}
-  #te_modal #te_elemSel{border:1px solid var(--te-line);background:#fff;border-radius:8px;
+  #te_modal #te_elemSel{border:1px solid var(--te-field-b);background:var(--te-field);border-radius:8px;
     padding:5px 8px;font-size:12px;font-weight:700;color:var(--te-ink);cursor:pointer;text-transform:none;letter-spacing:0}
-  #te_modal #te_elemSel option:disabled{color:#9aa4b0}
+  #te_modal #te_elemSel option:disabled{color:var(--te-faint)}
   /* .te-seg (el segmentado Viga|Muro|Columna que vivía en el titlebar) se retiró
      junto con su CSS: el elemento se elige en #te_elemSel, aquí arriba. */
   #te_modal .te-btn{border:none;border-radius:9px;padding:8px 14px;font-size:12.5px;font-weight:700;cursor:pointer}
   #te_modal .te-btn.primary{background:var(--te-acero);color:#fff}
   #te_modal .te-btn.primary:hover{background:var(--te-acero-d)}
-  #te_modal .te-btn.ghost{background:#eef2f6;color:#37474f;border:1px solid var(--te-line)}
+  #te_modal .te-btn.ghost{background:var(--te-ghost);color:var(--te-ghost-ink);border:1px solid var(--te-line)}
   /* Botón de guardar APAGADO = no hay cambios que guardar (template abierto de la
      biblioteca y receta idéntica a la del servidor). Se ve, pero no invita. */
   #te_modal .te-btn:disabled{opacity:.45;cursor:default}
   #te_modal .te-btn.primary:disabled:hover{background:var(--te-acero)}
-  #te_modal .te-xbtn{border:1px solid var(--te-line);background:#fff;border-radius:8px;width:32px;height:30px;cursor:pointer;
+  #te_modal .te-xbtn{border:1px solid var(--te-line);background:var(--te-field);border-radius:8px;width:32px;height:30px;cursor:pointer;
     font-size:15px;color:var(--te-muted);display:inline-flex;align-items:center;justify-content:center;padding:0;line-height:1;flex-shrink:0}
 
   /* ---- RIBBON: 1) hormigón · 2) agregar barra (con su bloque de colocación) ----
      Wrappea por GRUPOS (row-gap): cada .te-grp es indivisible, así ninguno se
      parte por la mitad al cambiar el ancho de la ventana. */
-  #te_modal #te_ribbon{display:flex;align-items:center;gap:14px;padding:9px 18px;border-bottom:1px solid var(--te-line);background:#fff;
+  #te_modal #te_ribbon{display:flex;align-items:center;gap:14px;padding:9px 18px;border-bottom:1px solid var(--te-line);background:var(--te-panel);
     flex-wrap:wrap;row-gap:8px}
   #te_modal #te_ribbon .te-grp{display:flex;align-items:center;gap:8px;flex-wrap:nowrap}
   /* GRUPO COLOCAR (20-ago): el botón "＋ Agregar barra" arriba y DEBAJO el bloque
@@ -91,20 +205,20 @@
   #te_modal .te-hormrow{display:flex;align-items:center;gap:8px;flex-wrap:nowrap}
   #te_modal .te-geo{display:inline-flex;flex-direction:column;gap:2px}
   #te_modal .te-geo label{font-size:9.5px;color:var(--te-muted);font-weight:600;letter-spacing:.2px;white-space:nowrap}
-  #te_modal .te-geo input{width:64px;border:1px solid var(--te-line);border-radius:6px;padding:4px 6px;font-size:12px}
-  #te_modal .te-geo input.bad{border-color:#c62828;background:#fff6f5}
+  #te_modal .te-geo input{width:64px;border:1px solid var(--te-field-b);border-radius:6px;padding:4px 6px;font-size:12px}
+  #te_modal .te-geo input.bad{border-color:var(--te-err);background:var(--te-err-bg)}
   /* Campo inválido en GENERAL (no sólo el grupo hormigón): hoy lo usa el campo
      FIGURA del ribbon y el de la ficha del componente cuando el código tipeado no
      existe en el catálogo o no es dibujable aquí. */
-  #te_modal input.bad{border-color:#c62828;background:#fff6f5}
+  #te_modal input.bad{border-color:var(--te-err);background:var(--te-err-bg)}
   /* El select de φ también parpadea en rojo cuando el clic intenta colocar sin
      diámetro elegido (la ayuda visible del gate de colocación). */
-  #te_modal select.bad{border-color:#c62828;background:#fff6f5}
+  #te_modal select.bad{border-color:var(--te-err);background:var(--te-err-bg)}
   /* AVISO (ámbar), distinto del error (rojo): el valor SÍ se aplica pero hay que
      mirarlo. Hoy lo usa el campo FIGURA — ribbon y ficha — cuando la figura existe
      en el catálogo pero NO es de la tipología activa (p.ej. 106A estando en MH):
      se puede colocar igual, pero casi siempre es un error de tipeo. */
-  #te_modal input.warn{border-color:#e65100;background:#fff8ef}
+  #te_modal input.warn{border-color:var(--te-warn);background:var(--te-warn-bg)}
   /* (El check "tomar contorno" y su CSS se ELIMINARON el 20-ago: era dato muerto
      —sólo lo leía el ghost de respaldo, así que el fantasma prometía un recinto
      que la barra colocada después no respetaba.) */
@@ -117,18 +231,18 @@
   #te_modal .te-figpick{display:inline-flex;align-items:center;gap:6px}
   /* 92 px (era 120): el bloque de colocación mete figura + φ + 9 tipologías en una
      sola línea bajo el botón, y un código de figura son 4 caracteres. */
-  #te_modal .te-figpick input{border:1px solid var(--te-line);border-radius:7px;padding:6px 9px;font-size:13px;width:92px}
+  #te_modal .te-figpick input{border:1px solid var(--te-field-b);border-radius:7px;padding:6px 9px;font-size:13px;width:92px}
   /* φ sin la palabra "MM" (20-ago): el símbolo solo, y más grande que un .te-lbl
      normal porque a 10.5 px una letra griega suelta no se lee. */
   #te_modal #te_ribbon .te-lbl.te-lbl-phi{font-size:16px;font-weight:700;text-transform:none;letter-spacing:0;color:var(--te-ink)}
   #te_modal .te-tipbtns{display:inline-flex;gap:5px;flex-wrap:wrap}
-  #te_modal .te-tipbtn{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--te-line);background:#fff;border-radius:8px;padding:6px 11px;font-size:12px;cursor:pointer;font-weight:600}
+  #te_modal .te-tipbtn{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--te-line);background:var(--te-field);border-radius:8px;padding:6px 11px;font-size:12px;cursor:pointer;font-weight:600}
   #te_modal .te-tipbtn .te-sw{width:11px;height:11px;border-radius:3px}
-  #te_modal .te-tipbtn:hover{border-color:var(--te-acero);background:#f7fbf2}
+  #te_modal .te-tipbtn:hover{border-color:var(--te-acero);background:var(--te-hover)}
   #te_modal .te-tipbtn.on{background:var(--te-acero);color:#fff;border-color:var(--te-acero)}
   #te_modal .te-tipbtn.on .te-mode{color:#eaffd9}
-  #te_modal .te-tipbtn .te-mode{font-size:9px;color:#9aa4b0;border:1px solid var(--te-line);border-radius:7px;padding:0 5px}
-  #te_modal .te-note{font-size:10.5px;color:#9aa4b0;margin-top:4px}
+  #te_modal .te-tipbtn .te-mode{font-size:9px;color:var(--te-faint);border:1px solid var(--te-line);border-radius:7px;padding:0 5px}
+  #te_modal .te-note{font-size:10.5px;color:var(--te-faint);margin-top:4px}
 
   #te_modal #te_body{flex:1;display:flex;min-height:0}
 
@@ -136,7 +250,7 @@
   #te_modal #te_side{width:360px;min-width:360px;border-right:1px solid var(--te-line);background:var(--te-panel);overflow-y:auto;padding:11px 14px 20px}
   #te_modal .te-sh{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--te-muted);margin:6px 0 8px;display:flex;align-items:center;gap:6px}
   #te_modal .te-sh .te-ln{flex:1;height:1px;background:var(--te-line)}
-  #te_modal .te-comp{border:1px solid var(--te-line);border-radius:9px;margin-bottom:7px;overflow:hidden;background:#fff}
+  #te_modal .te-comp{border:1px solid var(--te-line);border-radius:9px;margin-bottom:7px;overflow:hidden;background:var(--te-panel)}
   #te_modal .te-comp.sel{border-color:var(--te-acero);box-shadow:0 0 0 2px rgba(139,195,74,.15)}
   #te_modal .te-comp .te-ch{display:flex;align-items:center;gap:8px;padding:7px 9px;cursor:pointer;background:var(--te-panel2)}
   #te_modal .te-comp .te-sw{width:12px;height:12px;border-radius:3px;flex-shrink:0}
@@ -148,15 +262,15 @@
     font-weight:700;margin-left:-4px;cursor:help}
   #te_modal .te-comp .te-nm{font-weight:700;font-size:12.5px}
   #te_modal .te-comp .te-de{font-size:10.5px;color:var(--te-muted)}
-  #te_modal .te-comp .te-drag{cursor:grab;color:#b6c0cc;margin-right:2px}
+  #te_modal .te-comp .te-drag{cursor:grab;color:var(--te-faint);margin-right:2px}
   #te_modal .te-comp .te-sp{flex:1}
-  #te_modal .te-comp .te-mini{border:none;background:none;cursor:pointer;font-size:12px;color:#b6c0cc;padding:1px 3px}
+  #te_modal .te-comp .te-mini{border:none;background:none;cursor:pointer;font-size:12px;color:var(--te-faint);padding:1px 3px}
   #te_modal .te-comp .te-mini:hover{color:var(--te-ink)}
   #te_modal .te-comp .te-cbody{display:none;padding:9px 10px;border-top:1px solid var(--te-line)}
   #te_modal .te-comp.open .te-cbody{display:block}
   #te_modal .te-fld{display:flex;flex-direction:column;gap:2px;margin-bottom:7px}
   #te_modal .te-fld label{font-size:10.5px;color:var(--te-muted);font-weight:600}
-  #te_modal #te_side input,#te_modal #te_side select{border:1px solid var(--te-line);border-radius:6px;padding:4px 7px;font-size:12px;width:100%}
+  #te_modal #te_side input,#te_modal #te_side select{border:1px solid var(--te-field-b);border-radius:6px;padding:4px 7px;font-size:12px;width:100%}
   /* minmax(0,1fr): columnas EXACTAMENTE iguales. Con `1fr` (= minmax(auto,1fr)) un
      label largo impone su min-content y ROBA ancho a las otras columnas (el campo se
      desplaza). Los labels además quedan cortos y la explicación va en el title. */
@@ -165,14 +279,14 @@
   #te_modal .te-row{display:grid;grid-template-columns:96px 1fr;gap:8px;align-items:center;margin-bottom:6px}
   #te_modal .te-row label{font-size:11px;color:var(--te-muted);font-weight:600}
   #te_modal .te-radial{display:inline-flex;border:1px solid var(--te-line);border-radius:7px;overflow:hidden}
-  #te_modal .te-radial button{border:none;background:#fff;padding:5px 9px;font-size:11px;color:var(--te-muted);cursor:pointer;font-weight:600}
+  #te_modal .te-radial button{border:none;background:var(--te-field);padding:5px 9px;font-size:11px;color:var(--te-muted);cursor:pointer;font-weight:600}
   #te_modal .te-radial button+button{border-left:1px solid var(--te-line)}
-  #te_modal .te-radial button.on{background:var(--te-azul-b);color:var(--te-azul)}
+  #te_modal .te-radial button.on{background:var(--te-azul-b);color:var(--te-azul-t)}
   /* LADO DOMINANTE de la figura (TANDA P): la letra del parcial que se estira/ancla
      contra el elemento va DESTACADA en la lista de dims (el resto son patas que
      cuelgan de él). Tooltip: "lado dominante: se estira/ancla". */
-  #te_modal .te-row label.te-dim-dom{color:var(--te-azul);font-weight:800;
-    border-bottom:2px solid var(--te-azul);width:fit-content;cursor:help}
+  #te_modal .te-row label.te-dim-dom{color:var(--te-azul-t);font-weight:800;
+    border-bottom:2px solid var(--te-azul-t);width:fit-content;cursor:help}
   /* INDICADOR COMPACTO DE POSE ("cara sup · corre en largo (Y) · espejada"). */
   #te_modal .te-posetxt{font-size:10.5px;color:var(--te-muted);font-weight:600;letter-spacing:.1px}
   #te_modal .te-modebox{border:1px solid var(--te-line);border-radius:8px;padding:8px 9px;background:var(--te-panel2);margin-bottom:8px}
@@ -181,14 +295,14 @@
   /* LETRAS-BOTÓN DEL DOMINANTE (tanda 14-ago): 'auto' + una letra por lado.
      .on = elegido · .manda = el que el motor resuelve HOY (borde azul, como el
      marcado de _dimRow) · disabled = gancho/diagonal, con el motivo en el title. */
-  #te_modal .te-dombtn{border:1px solid var(--te-line);background:#fff;border-radius:6px;
+  #te_modal .te-dombtn{border:1px solid var(--te-field-b);background:var(--te-field);border-radius:6px;
     min-width:26px;padding:3px 7px;font-size:11px;font-weight:800;color:var(--te-muted);cursor:pointer}
-  #te_modal .te-dombtn:hover:not(:disabled){background:#f7fbf2;color:var(--te-acero-d)}
-  #te_modal .te-dombtn.manda{border-color:var(--te-azul);color:var(--te-azul)}
+  #te_modal .te-dombtn:hover:not(:disabled){background:var(--te-hover);color:var(--te-acero-t)}
+  #te_modal .te-dombtn.manda{border-color:var(--te-azul-t);color:var(--te-azul-t)}
   #te_modal .te-dombtn.on{background:var(--te-azul);border-color:var(--te-azul);color:#fff}
   #te_modal .te-dombtn:disabled{opacity:.38;cursor:not-allowed;text-decoration:line-through}
   /* PICKER DE COLOR POR BARRA (D9): compacto, a la altura de los inputs. */
-  #te_modal input.te-color{width:44px;height:24px;padding:1px 2px;border:1px solid var(--te-line);border-radius:6px;background:#fff;cursor:pointer}
+  #te_modal input.te-color{width:44px;height:24px;padding:1px 2px;border:1px solid var(--te-field-b);border-radius:6px;background:var(--te-field);cursor:pointer}
   /* ARCHIVADOR DE COLORES DEL TEMPLATE — muestras de los colores que ya están en uso
      en la receta abierta (las arma _coloresDeReceta). El picker de al lado inventa
      colores; esto los REPITE, que es lo que no se podía hacer con un picker cromático.
@@ -198,21 +312,21 @@
      regla genérica del panel no se los coma. */
   #te_modal #te_side .te-colsws{display:flex;flex-wrap:wrap;gap:4px;align-items:center;flex:1 1 100%}
   #te_modal #te_side .te-colsw{width:16px;height:16px;flex:0 0 auto;padding:0;border-radius:4px;
-    border:1px solid rgba(15,20,28,.28);cursor:pointer;line-height:0}
+    border:1px solid var(--te-sw-ring);cursor:pointer;line-height:0}
   #te_modal #te_side .te-colsw:hover{transform:scale(1.18);border-color:var(--te-ink)}
   /* FILA DE DIMENSIÓN (rediseño 15-ago): la LETRA es el botón radial del dominante
      y a la derecha entran el Δ del lado y su flecha de extremo. Todo en un renglón. */
   /* La fila de dims usa una columna ANGOSTA para la letra: los 96 px del label
      genérico eran espacio muerto que ahora ocupa el Δ y sus atajos. */
   #te_modal .te-row.te-dimrow{grid-template-columns:30px 1fr;gap:6px}
-  #te_modal .te-dimletra{border:1px solid var(--te-line);background:#fff;border-radius:6px;
+  #te_modal .te-dimletra{border:1px solid var(--te-field-b);background:var(--te-field);border-radius:6px;
     width:28px;padding:2px 0;font-size:11px;font-weight:800;color:var(--te-muted);
     cursor:pointer;justify-self:start;text-align:center}
-  #te_modal .te-dimletra:hover:not(:disabled){background:#f7fbf2;color:var(--te-acero-d)}
-  #te_modal .te-dimletra.manda{border-color:var(--te-azul);color:var(--te-azul)}
+  #te_modal .te-dimletra:hover:not(:disabled){background:var(--te-hover);color:var(--te-acero-t)}
+  #te_modal .te-dimletra.manda{border-color:var(--te-azul-t);color:var(--te-azul-t)}
   #te_modal .te-dimletra.on{background:var(--te-azul);border-color:var(--te-azul);color:#fff}
   /* Bloqueado = GRIS (no tachado): dice "no aplica" sin gritar "error". */
-  #te_modal .te-dimletra:disabled{background:#f2f4f6;border-color:#e3e7ea;color:#b6bec6;cursor:not-allowed}
+  #te_modal .te-dimletra:disabled{background:var(--te-panel2);border-color:var(--te-line);color:var(--te-faint);cursor:not-allowed}
   #te_modal .te-deltalbl{font-size:11px;font-weight:700;color:var(--te-muted);margin-left:2px;flex:0 0 auto}
   /* OJO CON LA ESPECIFICIDAD: la regla base de la ficha es `#te_modal #te_side
      input {width:100%}` (DOS ids). Cualquier ancho de esta fila tiene que
@@ -233,34 +347,34 @@
   /* CANDADO con COLOR (15-ago): de reojo los dos emojis se confundían. Abierto
      (AUTO, lo deriva el elemento) = verde · cerrado (FIJA, lo escribió el
      usuario) = ámbar, que es el color que este editor usa para "dato tuyo". */
-  #te_modal .te-lock{border:1px solid var(--te-line);background:#fff;border-radius:6px;
+  #te_modal .te-lock{border:1px solid var(--te-field-b);background:var(--te-field);border-radius:6px;
     width:26px;padding:2px 0;font-size:12px;line-height:1;cursor:pointer}
-  #te_modal .te-lock:hover{background:#f7fbf2}
-  #te_modal .te-lock.abierto{border-color:#9ccc65;background:#f3faec}
-  #te_modal .te-lock.cerrado{border-color:#e65100;background:#fff4e8}
+  #te_modal .te-lock:hover{background:var(--te-hover)}
+  #te_modal .te-lock.abierto{border-color:#9ccc65;background:var(--te-chip)}
+  #te_modal .te-lock.cerrado{border-color:var(--te-warn);background:var(--te-warn-bg)}
   /* El lado DOMINANTE se pinta de verdad: relleno azul suave + borde, para que se
      vea de un vistazo cuál manda aunque no esté elegido a mano. */
-  #te_modal .te-dimletra.manda{border-color:var(--te-azul);color:var(--te-azul);
-    background:#eaf2fb;box-shadow:inset 0 0 0 1px var(--te-azul)}
+  #te_modal .te-dimletra.manda{border-color:var(--te-azul-t);color:var(--te-azul-t);
+    background:var(--te-azul-b);box-shadow:inset 0 0 0 1px var(--te-azul-t)}
   /* Tiradores del HORMIGÓN: ámbar y huecos, para no confundirlos con los handles
      azules de la barra seleccionada (se estaban agarrando unos por otros). */
   /* tirador del MARCO DE LA BARRA seleccionada: azul como su bbox (es SU perilla) */
   #te_modal .te-mh{fill:#fff;stroke:#2f80ed;stroke-width:1.3}
   #te_modal .te-mh:hover{fill:#2f80ed}
   /* Toggle del rango: «→» hasta dónde · «N» cuántas. Uno por línea. */
-  #te_modal #te_side .te-rmodo{border:1px solid var(--te-line);background:#fff;border-radius:6px;
+  #te_modal #te_side .te-rmodo{border:1px solid var(--te-field-b);background:var(--te-field);border-radius:6px;
     width:24px;padding:2px 0;font-size:11px;font-weight:800;color:var(--te-muted);cursor:pointer;flex:0 0 auto}
-  #te_modal .te-rmodo:hover{background:#f7fbf2;color:var(--te-acero-d)}
+  #te_modal .te-rmodo:hover{background:var(--te-hover);color:var(--te-acero-t)}
   #te_modal .te-rmodo.on{background:var(--te-azul);border-color:var(--te-azul);color:#fff}
   /* Atajos de traslapo (rescatados del empalme retirado). */
-  #te_modal .te-phibtn{border:1px solid var(--te-line);background:#fff;border-radius:6px;
+  #te_modal .te-phibtn{border:1px solid var(--te-field-b);background:var(--te-field);border-radius:6px;
     padding:2px 5px;font-size:10px;font-weight:700;color:var(--te-muted);cursor:pointer}
-  #te_modal .te-phibtn:hover{background:#f7fbf2;color:var(--te-acero-d)}
+  #te_modal .te-phibtn:hover{background:var(--te-hover);color:var(--te-acero-t)}
   /* 2ª LÍNEA DE DISTRIBUCIÓN DEL ARREGLO — mismo dibujo, otro color, para no
      tener que adivinar cuál flecha reparte por cuál eje. */
-  #te_modal .te-rango-line.te-r2{stroke:#7b1fa2}
-  #te_modal .te-rango-arrow.te-r2{stroke:#7b1fa2;fill:none}
-  #te_modal .te-rango-end.te-r2{fill:#fff;stroke:#7b1fa2}
+  #te_modal .te-rango-line.te-r2{stroke:var(--te-ov-r2)}
+  #te_modal .te-rango-arrow.te-r2{stroke:var(--te-ov-r2);fill:none}
+  #te_modal .te-rango-end.te-r2{fill:#fff;stroke:var(--te-ov-r2)}
   /* COTAS VIVAS DEL ARRASTRE — mientras se mueve una línea de reparto, cada extremo
      dice a cuánto quedó de la referencia que el ANCLA eligió (borde −, centro,
      borde +), con una línea de extensión que llega hasta esa referencia.
@@ -268,34 +382,34 @@
      el remate de cualquier cota de plano; sin él, el trazo cruza las cifras.
      pointer-events:none — son lectura de un gesto en curso, no un objetivo: sin esto
      se meterían entre el cursor y el tirador que el usuario está arrastrando. */
-  #te_modal .te-rango-cota{font-size:10px;font-weight:700;fill:#33691e;paint-order:stroke;
-    stroke:#fff;stroke-width:3px;stroke-linejoin:round;pointer-events:none;user-select:none}
-  #te_modal .te-rango-cotaL{stroke:#33691e;stroke-width:.9;stroke-dasharray:3 2;
+  #te_modal .te-rango-cota{font-size:10px;font-weight:700;fill:var(--te-ov-rango-f);paint-order:stroke;
+    stroke:var(--te-ov-cota-bg);stroke-width:3px;stroke-linejoin:round;pointer-events:none;user-select:none}
+  #te_modal .te-rango-cotaL{stroke:var(--te-ov-rango-f);stroke-width:.9;stroke-dasharray:3 2;
     pointer-events:none}
   /* Fila de ángulos: tantas columnas como ángulos declare la figura (2 anchos, 4 caben). */
   #te_modal .te-angrow{display:grid;gap:8px;margin-bottom:6px}
   /* Δ heredado del lado espejo: BLOQUEADO y en azul — es la misma medida que su
      par, y en un contorno cerrado no pueden ser dos números distintos. */
-  #te_modal input.te-delta.te-delta-esp{color:var(--te-azul);font-weight:700;
-    background:#f4f8fd;border-color:#c9dcf0;font-style:italic;opacity:1;-webkit-text-fill-color:var(--te-azul)}
-  #te_modal .te-deltadir{border:1px solid var(--te-line);background:#fff;border-radius:6px;
+  #te_modal input.te-delta.te-delta-esp{color:var(--te-azul-t);font-weight:700;
+    background:var(--te-azul-b);border-color:var(--te-field-b);font-style:italic;opacity:1;-webkit-text-fill-color:var(--te-azul-t)}
+  #te_modal .te-deltadir{border:1px solid var(--te-field-b);background:var(--te-field);border-radius:6px;
     width:24px;padding:2px 0;font-size:11px;color:var(--te-muted);cursor:pointer}
-  #te_modal .te-deltadir:hover{background:#f7fbf2;color:var(--te-acero-d)}
+  #te_modal .te-deltadir:hover{background:var(--te-hover);color:var(--te-acero-t)}
   /* SELECTOR DE MODO DE COLOCACIÓN (3 botoncitos: Puntual / Distribución / Arreglo).
      Control segmentado que ocupa el ancho del panel; el activo va en acero. Cambiarlo
      re-renderiza los campos contextuales de abajo (menú contextual por modo). */
-  #te_modal .te-modeseg{display:grid;grid-template-columns:1fr 1fr 1fr;gap:0;border:1px solid var(--te-line);border-radius:7px;overflow:hidden;margin-bottom:8px;background:#fff}
-  #te_modal .te-modebtn{border:none;background:#fff;padding:6px 4px;font-size:11px;font-weight:700;color:var(--te-muted);cursor:pointer;letter-spacing:.2px}
+  #te_modal .te-modeseg{display:grid;grid-template-columns:1fr 1fr 1fr;gap:0;border:1px solid var(--te-line);border-radius:7px;overflow:hidden;margin-bottom:8px;background:var(--te-field)}
+  #te_modal .te-modebtn{border:none;background:var(--te-field);padding:6px 4px;font-size:11px;font-weight:700;color:var(--te-muted);cursor:pointer;letter-spacing:.2px}
   #te_modal .te-modeseg .te-modebtn+.te-modebtn{border-left:1px solid var(--te-line)}
-  #te_modal .te-modebtn:hover{background:#f7fbf2;color:var(--te-acero-d)}
+  #te_modal .te-modebtn:hover{background:var(--te-hover);color:var(--te-acero-t)}
   #te_modal .te-modebtn.on{background:var(--te-acero);color:#fff}
   #te_modal .te-modebtn.on:hover{background:var(--te-acero-d);color:#fff}
-  #te_modal .te-addcomp{width:100%;border:1px dashed var(--te-acero);color:var(--te-acero-d);background:#f7fbf2;border-radius:9px;padding:8px;font-size:12px;font-weight:600;cursor:pointer;margin-top:4px}
+  #te_modal .te-addcomp{width:100%;border:1px dashed var(--te-acero);color:var(--te-acero-t);background:var(--te-hover);border-radius:9px;padding:8px;font-size:12px;font-weight:600;cursor:pointer;margin-top:4px}
   /* JERARQUÍA por componente (select chico en el header, junto a ⧉/🗑).
      OJO especificidad: la regla "#te_modal #te_side select{width:100%}" lleva DOS
      ids, así que este selector también los repite (si no, el select saldría ancho). */
   #te_modal #te_side .te-comp .te-ch select.te-jer{width:auto;flex:0 0 auto;font-size:10.5px;padding:1px 3px;
-    border:1px solid var(--te-line);border-radius:5px;background:#fff;color:var(--te-muted);cursor:pointer}
+    border:1px solid var(--te-field-b);border-radius:5px;background:var(--te-field);color:var(--te-muted);cursor:pointer}
   #te_modal #te_side .te-comp .te-ch select.te-jer:hover{color:var(--te-ink);border-color:var(--te-acero)}
 
   /* ---- LISTADO DE BARRAS (despiece) — franja al pie de los 4 cuadrantes ----
@@ -303,7 +417,7 @@
      re-maqueta la grilla, así que abrir/cerrar el listado no dispara el resize de
      los 4 viewports del renderer. Se muestra con .open (lo pone _bindBarras). */
   #te_modal #te_quad .te-barras{position:absolute;left:0;right:0;bottom:0;z-index:7;display:none;
-    background:#fff;border-top:1px solid #c2ccd7;box-shadow:0 -6px 18px rgba(15,20,28,.14)}
+    background:var(--te-panel);border-top:1px solid var(--te-band-b);box-shadow:0 -6px 18px rgba(15,20,28,.14)}
   #te_modal #te_quad .te-barras.open{display:block}
   #te_modal .te-barras-h{display:flex;align-items:center;gap:8px;padding:5px 10px;background:var(--te-panel2);
     border-bottom:1px solid var(--te-line);font-size:11px;font-weight:700;text-transform:uppercase;
@@ -311,8 +425,8 @@
   /* Subtítulo VIVO ("5 items · 77 barras · 264,4 kg · se actualiza en vivo"), igual
      que el del Enfierrador: en minúscula y sin tracking, para que se lea como frase
      y no como otro encabezado. */
-  #te_modal .te-barras-c{font-size:10.5px;font-weight:600;text-transform:none;letter-spacing:0;color:#9aa4b0}
-  #te_modal .te-barras-x{border:1px solid var(--te-line);background:#fff;border-radius:6px;width:22px;height:20px;
+  #te_modal .te-barras-c{font-size:10.5px;font-weight:600;text-transform:none;letter-spacing:0;color:var(--te-faint)}
+  #te_modal .te-barras-x{border:1px solid var(--te-line);background:var(--te-field);border-radius:6px;width:22px;height:20px;
     cursor:pointer;font-size:11px;color:var(--te-muted);line-height:1;padding:0}
   #te_modal .te-barras-x:hover{color:var(--te-ink);border-color:var(--te-acero)}
   /* Alto ACOTADO (como el .tb del Enfierrador): la franja no puede comerse los
@@ -320,10 +434,10 @@
   #te_modal .te-barras-b{max-height:34vh;overflow:auto}
   #te_modal .te-btab{width:100%;border-collapse:collapse;font-size:11.5px}
   #te_modal .te-btab th{text-align:left;font-weight:600;color:var(--te-muted);font-size:10.5px;
-    padding:4px 10px;background:#eef1f4;position:sticky;top:0;white-space:nowrap;z-index:1}
+    padding:4px 10px;background:var(--te-bg);position:sticky;top:0;white-space:nowrap;z-index:1}
   #te_modal .te-btab td{padding:4px 10px;border-top:1px solid var(--te-line);vertical-align:top;white-space:nowrap}
   #te_modal .te-btab th.te-bnum,#te_modal .te-btab td.te-bnum{text-align:right;font-variant-numeric:tabular-nums}
-  #te_modal .te-btab tbody tr:hover td{background:#eef7ff}
+  #te_modal .te-btab tbody tr:hover td{background:var(--te-azul-b)}
   /* (No hay resaltado de "la fila seleccionada": generar.js AGRUPA las barras por
      figura+φ+marca+suf+dims y la fila resultante no guarda de qué componente salió.
      Casarlas por esos campos sería una adivinanza que acertaría casi siempre y
@@ -334,11 +448,11 @@
      para poder pegarla abajo: con la tabla scrolleando dentro de .te-barras-b, el
      total tiene que quedar a la vista aunque estés mirando la fila 40.
      Fondo propio + borde grueso arriba = se lee como resumen, no como un dato más. */
-  #te_modal .te-btab tfoot td{padding:5px 10px;background:#e6ecf3;font-weight:700;color:var(--te-ink);
-    border-top:2px solid #b7c3d0;position:sticky;bottom:0;white-space:nowrap}
+  #te_modal .te-btab tfoot td{padding:5px 10px;background:var(--te-band);font-weight:700;color:var(--te-ink);
+    border-top:2px solid var(--te-band-b);position:sticky;bottom:0;white-space:nowrap}
   #te_modal .te-btab tfoot .te-btot{text-transform:uppercase;letter-spacing:.5px;font-size:10.5px;color:var(--te-muted)}
   #te_modal .te-btab .te-btip{font-weight:700}
-  #te_modal .te-btab .te-bsuf{color:var(--te-acero-d);font-size:10.5px}
+  #te_modal .te-btab .te-bsuf{color:var(--te-acero-t);font-size:10.5px}
   #te_modal .te-barras-vacio{padding:10px;font-size:11px;color:var(--te-muted)}
 
   /* ---- CENTRO: 4 cuadrantes ---- */
@@ -369,6 +483,15 @@
     --te-ov-chip-ink:#5b6a7d;
     --te-ov-hint:#9aa4b0;
     --te-ov-lienzo:var(--te-canvas3d);   /* = TEMAS3D.claro.bg: el DOM y el clear de WebGL, el mismo gris */
+    /* Las siete de aqui abajo nacieron con los temas del marco (20-ago): eran
+       literales claros DENTRO del cuadrante, o sea parches blancos en cuanto el
+       fondo se oscurece. Los LIENZOS y el magenta de seleccion no se tocan. */
+    --te-ov-btn-bg:rgba(255,255,255,.92); /* botones flotantes sobre el lienzo */
+    --te-ov-rango-f:#33691E;              /* verde FUERTE: cota viva y realce al pasar */
+    --te-ov-cota-bg:#ffffff;              /* caja/halo que interrumpe el trazo tras el número */
+    --te-ov-cota-bgh:#eef6e2;             /* su realce al pasar por encima */
+    --te-ov-r2:#7b1fa2; --te-ov-r2-h:#4a148c;  /* 2ª línea del arreglo (morado) */
+    --te-ov-cota-bgh2:#f7eefb;
   }
   #te_modal #te_quad.te-tema-medio{
     --te-ov-recub:#c7d2de; --te-ov-dim:#b9c6d6; --te-ov-dimL:#6c7a8d; --te-ov-bbox:#93a3b6;
@@ -376,6 +499,9 @@
     --te-ov-grid:rgba(226,236,248,.13); --te-ov-grid-m:rgba(226,236,248,.26);
     --te-ov-chip-bg:rgba(20,26,34,.72); --te-ov-chip-ink:#c3cfdd; --te-ov-hint:#8695a8;
     --te-ov-lienzo:#2b3242;
+    --te-ov-btn-bg:rgba(20,26,34,.80); --te-ov-rango-f:#c3ea8f;
+    --te-ov-cota-bg:#2b3242; --te-ov-cota-bgh:rgba(139,195,74,.22);
+    --te-ov-r2:#ce93d8; --te-ov-r2-h:#e4bfe9; --te-ov-cota-bgh2:rgba(186,104,200,.22);
   }
   #te_modal #te_quad.te-tema-oscuro{
     --te-ov-recub:#d3dde8; --te-ov-dim:#c3d0e0; --te-ov-dimL:#5d6b7d; --te-ov-bbox:#8d9cb0;
@@ -383,6 +509,9 @@
     --te-ov-grid:rgba(226,236,248,.11); --te-ov-grid-m:rgba(226,236,248,.24);
     --te-ov-chip-bg:rgba(10,13,18,.78); --te-ov-chip-ink:#c9d5e3; --te-ov-hint:#7d8b9d;
     --te-ov-lienzo:#14171c;
+    --te-ov-btn-bg:rgba(10,13,18,.84); --te-ov-rango-f:#cdf29b;
+    --te-ov-cota-bg:#14171c; --te-ov-cota-bgh:rgba(139,195,74,.20);
+    --te-ov-r2:#d8a4e0; --te-ov-r2-h:#ecccf0; --te-ov-cota-bgh2:rgba(186,104,200,.20);
   }
   /* GRILLA de las vistas 2D — la emite _dibujarGrilla2D como dos <path> (fina y
      marcada cada 5 pasos). vector-effect para que el grosor NO escale con el zoom:
@@ -411,6 +540,10 @@
     pointer-events:none;line-height:0}
   #te_modal .te-vgizmo svg{width:46px;height:46px;display:block;overflow:visible}
   #te_modal .te-vgizmo .te-gzt{font:700 9px "Segoe UI",system-ui,sans-serif}
+  /* Caja del gizmo: la emite _svgGizmoOrto DENTRO del cuadrante, así que tenía que
+     seguir al tema del lienzo (era un blanco literal = un parche claro sobre el
+     fondo oscuro). Las flechas y las letras conservan su color por eje. */
+  #te_modal .te-vgizmo .te-gzbox{fill:var(--te-ov-chip-bg);stroke:var(--te-line)}
   /* Esquina reservada para el gizmo 3D (lo pinta el RENDERER con su propio viewport,
      no el DOM): sólo se documenta el tamaño para que nada se le encime. */
   #te_modal .te-vista.d3 .te-vhint{right:78px}
@@ -444,7 +577,7 @@
   #te_modal .te-vsvg{position:absolute;inset:0;width:100%;height:100%;display:block;background:transparent;z-index:1}
   /* Botón "centrar vista" (reset de pan/zoom) — esquina inf-izq del cuadrante. */
   #te_modal .te-vreset{position:absolute;left:6px;bottom:6px;z-index:3;width:24px;height:24px;
-    border:1px solid var(--te-line);background:rgba(255,255,255,.9);border-radius:6px;cursor:pointer;
+    border:1px solid var(--te-line);background:var(--te-ov-btn-bg);border-radius:6px;cursor:pointer;
     font-size:13px;color:var(--te-muted);line-height:1;padding:0;display:flex;align-items:center;justify-content:center}
   #te_modal .te-vreset:hover{color:var(--te-ink);border-color:var(--te-acero)}
   /* LUPA — agranda ESE cuadrante a toda la grilla y vuelve a los 4 al re-pulsarla o
@@ -457,7 +590,7 @@
      solos; los ocultos miden 0 y se saltan. Lo único que hay que re-emitir a mano es
      el overlay SVG (ver _maximizarVista). */
   #te_modal .te-vzoom{position:absolute;right:6px;top:6px;z-index:6;width:24px;height:24px;
-    border:1px solid var(--te-line);background:rgba(255,255,255,.92);border-radius:6px;cursor:pointer;
+    border:1px solid var(--te-line);background:var(--te-ov-btn-bg);border-radius:6px;cursor:pointer;
     font-size:12px;color:var(--te-muted);line-height:1;padding:0;display:flex;align-items:center;justify-content:center}
   #te_modal .te-vzoom:hover{color:var(--te-ink);border-color:var(--te-acero)}
   #te_modal .te-vzoom.on{background:var(--te-acero);border-color:var(--te-acero);color:#fff}
@@ -475,7 +608,7 @@
     align-items:center;justify-content:flex-end;gap:9px;flex-wrap:nowrap}
   #te_modal .te-3drow{display:flex;align-items:center;gap:4px;flex:0 0 auto}
   #te_modal .te-3dtools button{width:24px;height:24px;border:1px solid var(--te-line);border-radius:6px;
-    background:rgba(255,255,255,.92);color:var(--te-muted);font-size:13px;line-height:1;cursor:pointer;
+    background:var(--te-ov-btn-bg);color:var(--te-muted);font-size:13px;line-height:1;cursor:pointer;
     display:flex;align-items:center;justify-content:center;padding:0}
   #te_modal .te-3dtools button:hover{color:var(--te-ink);border-color:var(--te-acero)}
   #te_modal .te-3dtools button.off{opacity:.45}
@@ -485,13 +618,13 @@
      cuadrados y recortados.
      .te-3dlbl y .te-3dseg van SIN el ancestro .te-3dtools a propósito: el radial de
      FONDO los reusa desde #te_ribbon, que está fuera del cuadrante 3D. */
-  #te_modal .te-3dlbl{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:#8d9aab}
+  #te_modal .te-3dlbl{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--te-faint)}
   #te_modal .te-3dseg{display:inline-flex;border:1px solid var(--te-line);border-radius:6px;overflow:hidden;
-    background:rgba(255,255,255,.92)}
+    background:var(--te-ov-btn-bg)}
   #te_modal .te-3dtools .te-3dseg button{width:auto;height:20px;padding:0 7px;border:none;border-radius:0;
     font-size:10px;font-weight:700;letter-spacing:.2px;background:transparent;color:var(--te-muted)}
   #te_modal .te-3dtools .te-3dseg button+button{border-left:1px solid var(--te-line)}
-  #te_modal .te-3dtools .te-3dseg button:hover{background:#f2f7ea;color:var(--te-acero-d);border-color:var(--te-line)}
+  #te_modal .te-3dtools .te-3dseg button:hover{background:var(--te-hover);color:var(--te-acero-t);border-color:var(--te-line)}
   #te_modal .te-3dtools .te-3dseg button.on{background:var(--te-acero);color:#fff}
   /* RADIAL DE FONDO — vive en el RIBBON (20-ago; antes en #te_ctools), fuera de
      .te-3dtools, así que NINGUNA de las reglas de botón de esa barra le llega y trae
@@ -500,22 +633,22 @@
      Tamaño +25% respecto de cuando vivía entre las herramientas (24→30 px de alto,
      13→16 px de símbolo, 8→10 px de padding): ahí competía con botones de texto; acá
      compite con el botón primario, y los símbolos ●◐○ tienen que leerse de un vistazo. */
-  #te_modal #te_ribbon #te_3dTema{flex:0 0 auto;background:#fff;border-radius:7px}
+  #te_modal #te_ribbon #te_3dTema{flex:0 0 auto;background:var(--te-field);border-radius:7px}
   #te_modal #te_ribbon .te-3dlbl{flex:0 0 auto}
   #te_modal #te_ribbon #te_3dTema button{width:auto;height:30px;padding:0 10px;border:none;border-radius:0;
     background:transparent;color:var(--te-muted);font-size:16px;line-height:1;cursor:pointer;
     display:flex;align-items:center;justify-content:center}
   #te_modal #te_ribbon #te_3dTema button+button{border-left:1px solid var(--te-line)}
-  #te_modal #te_ribbon #te_3dTema button:hover{background:#f2f7ea;color:var(--te-acero-d)}
+  #te_modal #te_ribbon #te_3dTema button:hover{background:var(--te-hover);color:var(--te-acero-t)}
   #te_modal #te_ribbon #te_3dTema button.on{background:var(--te-acero);color:#fff}
   /* Cuadro RESUMEN flotante del 3D (items · barras · peso). Abajo-derecha: la
      esquina inf-izq es del gizmo de ejes y el borde inferior derecho lo usa la
      ayuda (.te-vhint), que va más abajo. */
   #te_modal #te_3dstats{position:absolute;right:8px;bottom:26px;z-index:3;display:flex;gap:12px;
-    background:rgba(255,255,255,.9);border:1px solid var(--te-line);border-radius:8px;padding:5px 10px;
+    background:var(--te-ov-btn-bg);border:1px solid var(--te-line);border-radius:8px;padding:5px 10px;
     font-size:11px;color:var(--te-muted);box-shadow:0 2px 8px rgba(15,20,28,.12)}
   #te_modal #te_3dstats b{color:var(--te-ink);font-weight:700}
-  #te_modal #te_3dstats .te-kg b{color:var(--te-acero-d);font-size:12.5px}
+  #te_modal #te_3dstats .te-kg b{color:var(--te-acero-t);font-size:12.5px}
   /* FICHA de la barra seleccionada — flotante arriba-izquierda, bajo el título del
      cuadrante. No captura eventos (el arrastre del 3D pasa por debajo). */
   #te_modal #te_selcard{position:absolute;left:10px;top:34px;z-index:3;pointer-events:none;
@@ -605,16 +738,16 @@
      _pintarFlipBtn, que muestra el RUMBO de la pieza: .flipped = corre hacia el
      fondo (⊗) · .depie = corre en vertical (↕) · .espejo = pose espejada. */
   #te_modal #te_flipBtn{position:absolute;z-index:6;display:none;align-items:center;justify-content:center;
-    width:30px;height:30px;border-radius:50%;border:1.5px solid var(--te-acero-d);
-    background:#fff;color:var(--te-acero-d);cursor:pointer;padding:0;
+    width:30px;height:30px;border-radius:50%;border:1.5px solid var(--te-acero-t);
+    background:var(--te-panel);color:var(--te-acero-t);cursor:pointer;padding:0;
     box-shadow:0 3px 10px rgba(20,40,10,.28);transition:transform .12s ease,background .12s ease,box-shadow .12s ease;
     font-size:16px;line-height:1}
   #te_modal #te_flipBtn.on{display:inline-flex}
   #te_modal #te_flipBtn:hover{transform:scale(1.18);background:var(--te-acero);color:#fff;box-shadow:0 5px 16px rgba(20,40,10,.36)}
   #te_modal #te_flipBtn:active{transform:scale(1.05)}
-  #te_modal #te_flipBtn.flipped{background:var(--te-azul-b);color:var(--te-azul);border-color:var(--te-azul)}
+  #te_modal #te_flipBtn.flipped{background:var(--te-azul-b);color:var(--te-azul-t);border-color:var(--te-azul-t)}
   #te_modal #te_flipBtn.flipped:hover{background:var(--te-azul);color:#fff}
-  #te_modal #te_flipBtn.depie{background:#fff3e0;color:var(--te-es);border-color:var(--te-es)}
+  #te_modal #te_flipBtn.depie{background:var(--te-warn-bg);color:var(--te-warn);border-color:var(--te-warn)}
   #te_modal #te_flipBtn.depie:hover{background:var(--te-es);color:#fff}
   /* Pose ESPEJADA: mismo color, borde punteado (se lee como "reflejada"). */
   #te_modal #te_flipBtn.espejo{border-style:dashed}
@@ -637,8 +770,8 @@
   #te_modal .te-rango-divhit{fill:rgba(85,139,47,.001)}
   #te_modal .te-rango-at{fill:var(--te-ov-rango);font:700 9px "Segoe UI",system-ui,sans-serif;
     cursor:pointer;user-select:none}
-  #te_modal .te-rango-at:hover{fill:#33691E}
-  #te_modal .te-rango-atbg{fill:#fff;opacity:.85;stroke:var(--te-ov-rango);stroke-width:.6;cursor:pointer}
+  #te_modal .te-rango-at:hover{fill:var(--te-ov-rango-f)}
+  #te_modal .te-rango-atbg{fill:var(--te-ov-cota-bg);opacity:.85;stroke:var(--te-ov-rango);stroke-width:.6;cursor:pointer}
   /* RÓTULO DEL LARGO del abanico (la distancia que recorre la distribución) y el
      largo de cada tramo del nodo múltiple. Misma familia que el "@N" —es la misma
      pieza de UI— con caja OPACA: sobre la flecha horizontal interrumpe el trazo,
@@ -647,36 +780,36 @@
      apagado y el realce se leía a medias). */
   #te_modal .te-rango-len{fill:var(--te-ov-rango);font:700 9px "Segoe UI",system-ui,sans-serif;
     cursor:pointer;user-select:none}
-  #te_modal .te-rango-lenbg{fill:#fff;opacity:.9;stroke:var(--te-ov-rango);stroke-width:.6;cursor:pointer}
-  #te_modal .te-rango-lengrp:hover .te-rango-lenbg{fill:#eef6e2;opacity:1;stroke-width:1.3}
-  #te_modal .te-rango-lengrp:hover .te-rango-len{fill:#33691E}
+  #te_modal .te-rango-lenbg{fill:var(--te-ov-cota-bg);opacity:.9;stroke:var(--te-ov-rango);stroke-width:.6;cursor:pointer}
+  #te_modal .te-rango-lengrp:hover .te-rango-lenbg{fill:var(--te-ov-cota-bgh);opacity:1;stroke-width:1.3}
+  #te_modal .te-rango-lengrp:hover .te-rango-len{fill:var(--te-ov-rango-f)}
   /* El "@N" gana el mismo realce completo (caja Y número). Tenía sólo el :hover del
      texto suelto, que es justo el "realce a medias" que el grupo vino a arreglar. */
-  #te_modal .te-rango-atgrp:hover .te-rango-atbg{fill:#eef6e2;opacity:1;stroke-width:1.3}
-  #te_modal .te-rango-atgrp:hover .te-rango-at{fill:#33691E}
+  #te_modal .te-rango-atgrp:hover .te-rango-atbg{fill:var(--te-ov-cota-bgh);opacity:1;stroke-width:1.3}
+  #te_modal .te-rango-atgrp:hover .te-rango-at{fill:var(--te-ov-rango-f)}
   /* La 2ª línea del arreglo por área lleva su color también en el rótulo: si el
      número saliera verde no se sabría de cuál de las dos flechas es. El :hover de
      arriba tiene MÁS especificidad (1,3,0) que .te-rango-len.te-r2 (1,2,0), así que
      el morado necesita su propia regla de hover o el rótulo de la 2ª línea se volvía
      verde justo al apuntarlo — la ambigüedad que el color existe para evitar. */
-  #te_modal .te-rango-len.te-r2{fill:#7b1fa2}
-  #te_modal .te-rango-lenbg.te-r2{stroke:#7b1fa2}
-  #te_modal .te-rango-lengrp:hover .te-rango-len.te-r2{fill:#4a148c}
-  #te_modal .te-rango-lengrp:hover .te-rango-lenbg.te-r2{fill:#f7eefb;stroke:#4a148c}
+  #te_modal .te-rango-len.te-r2{fill:var(--te-ov-r2)}
+  #te_modal .te-rango-lenbg.te-r2{stroke:var(--te-ov-r2)}
+  #te_modal .te-rango-lengrp:hover .te-rango-len.te-r2{fill:var(--te-ov-r2-h)}
+  #te_modal .te-rango-lengrp:hover .te-rango-lenbg.te-r2{fill:var(--te-ov-cota-bgh2);stroke:var(--te-ov-r2-h)}
   /* Input inline que abre el clic sobre "@N" (HTML flotante sobre el cuadrante). */
   #te_modal .te-atedit{position:absolute;z-index:8;width:48px;padding:1px 3px;font-size:10px;
-    border:1px solid var(--te-acero-d);border-radius:4px;background:#fff;color:var(--te-ink);
+    border:1px solid var(--te-acero-t);border-radius:4px;background:var(--te-field);color:var(--te-ink);
     text-align:center;box-shadow:0 2px 6px rgba(20,40,10,.25)}
   /* Editor de TRAMOS del panel (una fila por tramo: largo cm + @ cm + ×). */
   #te_modal .te-tramo{display:grid;grid-template-columns:1fr 1fr 22px;gap:5px;align-items:end;margin-bottom:5px}
   #te_modal .te-tramo .te-fld{margin-bottom:0}
-  #te_modal .te-tramo-x{border:1px solid var(--te-line);background:#fff;border-radius:6px;
-    height:25px;line-height:1;cursor:pointer;color:#c0392b;font-weight:700;font-size:12px;padding:0}
-  #te_modal .te-tramo-x:hover{background:#fdecea;border-color:#c0392b}
+  #te_modal .te-tramo-x{border:1px solid var(--te-line);background:var(--te-field);border-radius:6px;
+    height:25px;line-height:1;cursor:pointer;color:var(--te-err);font-weight:700;font-size:12px;padding:0}
+  #te_modal .te-tramo-x:hover{background:var(--te-err-bg);border-color:var(--te-err)}
   #te_modal .te-tramo-x:disabled{opacity:.3;cursor:default}
-  #te_modal .te-tramo-add{border:1px dashed var(--te-line);background:#fff;border-radius:6px;
-    padding:4px 9px;font-size:11px;font-weight:600;color:var(--te-acero-d);cursor:pointer}
-  #te_modal .te-tramo-add:hover{background:#f7fbf2;border-color:var(--te-acero)}
+  #te_modal .te-tramo-add{border:1px dashed var(--te-line);background:var(--te-field);border-radius:6px;
+    padding:4px 9px;font-size:11px;font-weight:600;color:var(--te-acero-t);cursor:pointer}
+  #te_modal .te-tramo-add:hover{background:var(--te-hover);border-color:var(--te-acero)}
   #te_modal .te-dim{fill:var(--te-ov-dim);font:9px "Segoe UI",monospace}
   /* COTAS POR LADO (gate SHIFT): LETRA=MEDIDA sobre cada lado visible de la barra
      seleccionada. Magenta = el mismo de .te-bar-halo, que es la marca de "esto es
@@ -694,8 +827,8 @@
 
   /* barra de herramientas del colocador (aplica a las 4 vistas) */
   #te_modal #te_ctools{display:flex;align-items:center;gap:7px;padding:6px 14px;border-bottom:1px solid var(--te-line);background:var(--te-panel2)}
-  #te_modal #te_ctools .te-tlbl{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#9aa4b0;margin-right:2px}
-  #te_modal .te-ctool{border:1px solid var(--te-line);background:#fff;border-radius:7px;padding:5px 11px;font-size:11.5px;cursor:pointer;color:#455;font-weight:600}
+  #te_modal #te_ctools .te-tlbl{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--te-faint);margin-right:2px}
+  #te_modal .te-ctool{border:1px solid var(--te-line);background:var(--te-field);border-radius:7px;padding:5px 11px;font-size:11.5px;cursor:pointer;color:var(--te-ink);font-weight:600}
   #te_modal .te-ctool.on{background:var(--te-acero);color:#fff;border-color:var(--te-acero)}
   /* botón solo-ícono (flecha de selección): compacto, cuadrado. */
   #te_modal .te-ctool-ico{padding:5px 8px;display:inline-flex;align-items:center;justify-content:center}
@@ -704,7 +837,7 @@
 
   #te_modal #te_footer{display:flex;align-items:center;gap:10px;padding:9px 18px;border-top:1px solid var(--te-line);background:var(--te-panel2)}
   #te_modal #te_footer .te-spacer{flex:1}
-  #te_modal .te-webglmsg{position:absolute;inset:0;display:none;align-items:center;justify-content:center;flex-direction:column;gap:6px;text-align:center;padding:20px;color:#5b6a7d;font-size:11.5px;z-index:4}
+  #te_modal .te-webglmsg{position:absolute;inset:0;display:none;align-items:center;justify-content:center;flex-direction:column;gap:6px;text-align:center;padding:20px;color:var(--te-ov-chip-ink);font-size:11.5px;z-index:4}
 
   /* ---- WARNING ANTI-COLAPSO (elemento grande) ----
      Banner NO modal y descartable, entre el ribbon y las herramientas. NUNCA bloquea
@@ -715,6 +848,14 @@
   #te_modal #te_bigwarn.on{display:flex}
   #te_modal #te_bigwarn.warn{background:#fff8e1;color:#8a6100;border-bottom-color:#ffe0a3}
   #te_modal #te_bigwarn.danger{background:#fdecea;color:#a5261c;border-bottom-color:#f5c2bd}
+  /* El banner es una BANDA de ancho completo: en oscuro, el amarillo y el rojo
+     pastel del claro quedaban como dos focos encendidos dentro del modal. Se
+     re-tinta por tema (no por variable) porque son tres colores atados entre sí y
+     sólo los usa este banner; el claro no se toca. */
+  #te_modal.te-tema-medio #te_bigwarn.warn,
+  #te_modal.te-tema-oscuro #te_bigwarn.warn{background:rgba(255,193,7,.13);color:#ffd98a;border-bottom-color:rgba(255,193,7,.32)}
+  #te_modal.te-tema-medio #te_bigwarn.danger,
+  #te_modal.te-tema-oscuro #te_bigwarn.danger{background:rgba(198,40,40,.20);color:#f2938c;border-bottom-color:rgba(198,40,40,.42)}
   #te_modal #te_bigwarn .te-bwico{font-size:14px;line-height:1}
   #te_modal #te_bigwarn .te-bwsp{flex:1}
   #te_modal #te_bigwarn .te-bwx{border:none;background:transparent;cursor:pointer;font-size:14px;
@@ -731,11 +872,11 @@
   #te_modal #te_borrador.on{display:flex}
   #te_modal #te_borrador .te-brico{font-size:13px;line-height:1}
   #te_modal #te_borrador .te-brsp{flex:1}
-  #te_modal #te_borrador button{border:1px solid var(--te-chip-b);background:#fff;border-radius:7px;
+  #te_modal #te_borrador button{border:1px solid var(--te-chip-b);background:var(--te-field);border-radius:7px;
     padding:3px 11px;font-size:11px;font-weight:700;color:var(--te-chip-ink);cursor:pointer}
   #te_modal #te_borrador button:hover{background:var(--te-acero);color:#fff;border-color:var(--te-acero)}
   #te_modal #te_borrador button.te-brghost{color:var(--te-muted);border-color:var(--te-line)}
-  #te_modal #te_borrador button.te-brghost:hover{background:#eef2f6;color:var(--te-ink);border-color:var(--te-line)}
+  #te_modal #te_borrador button.te-brghost:hover{background:var(--te-ghost);color:var(--te-ink);border-color:var(--te-line)}
 </style>
 
 <div id="te_backdrop">
@@ -873,7 +1014,7 @@
       <button class="te-ctool" id="te_barrasToggle" aria-expanded="false"
               title="Mostrar u ocultar el listado de barras a crear">📋 Barras</button>
       <span style="flex:1"></span>
-      <span id="te_ctoolsStatus" style="font-size:10.5px;color:#9aa4b0">Tipología activa: <b style="color:var(--te-cbs)">CBS</b> · figura 103B</span>
+      <span id="te_ctoolsStatus" style="font-size:10.5px;color:var(--te-faint)">Tipología activa: <b style="color:var(--te-cbs)">CBS</b> · figura 103B</span>
       <!-- El radial de FONDO estuvo acá entre el 18 y el 20-ago; ahora vive en el
            RIBBON (arriba), donde se lee como lo que es: un ajuste de vista global. -->
     </div>
@@ -1103,7 +1244,7 @@
       <span style="font-size:11.5px;color:var(--te-muted)">El 3D se arma combinando las vistas · el despiece va en 📋 Barras</span>
       <div class="te-spacer"></div>
       <button class="te-btn ghost" onclick="templateEditorVerEn3D()">🧊 Ver en 3D</button>
-      <span id="te_saveErr" style="font-size:11px;color:#c62828;flex:0 1 auto;max-width:520px;line-height:1.3;text-align:right"></span>
+      <span id="te_saveErr" style="font-size:11px;color:var(--te-err);flex:0 1 auto;max-width:520px;line-height:1.3;text-align:right"></span>
       <!-- Aquí sólo se GUARDA el template; el paso "usar en el despiece" vive fuera
            del editor (no había handler: el botón no hacía nada).
            DOS botones, y el texto del primero DICE cuál de las dos cosas hace

@@ -56,6 +56,11 @@
   // se soltó a secas: el tema ahora también marca #te_quad con la clase te-tema-*, y
   // el CSS reasigna con ella las variables --te-ov-* de TODOS los trazos del overlay.
   // Los trazos claros/oscuros se invierten con el fondo, no se dejan a la suerte.
+  //
+  // Y DESDE EL 20-AGO EL MARCO ACOMPAÑA (paleta de static/demo/te_temas.html): la
+  // misma clase se pone también en #te_modal, de donde cuelgan las --te-* del ribbon,
+  // el panel, las fichas y el pie. Antes el radial dejaba todo eso en blanco, que
+  // contra el lienzo #14171c era un marco blanco alrededor de un agujero negro.
   var TEMAS3D = {
     oscuro: { bg: 0x14171c, g1: 0x2a3340, g2: 0x222a34 },
     medio: { bg: 0x2b3242, g1: 0x4a5568, g2: 0x3a4353 },
@@ -1835,14 +1840,22 @@
     _marcarSucio();
   }
 
-  // Marca el tema vigente EN EL DOM: de esta clase cuelgan las variables --te-ov-*
-  // (colores de todo lo que dibuja el overlay SVG de las vistas 2D) y el color de su
-  // grilla de fondo. Es lo que evita que oscurecer el fondo deje texto oscuro sobre
-  // oscuro. Se llama también al abrir el modal, no sólo al tocar el radial.
+  // Marca el tema vigente EN EL DOM, en DOS nodos:
+  //   · #te_quad  — de su clase cuelgan las variables --te-ov-* (todo lo que dibuja
+  //     el overlay SVG de las vistas 2D) y el color de su grilla de fondo;
+  //   · #te_modal — de la suya cuelgan las --te-* del MARCO ENTERO: ribbon, panel de
+  //     componentes, fichas, fila de herramientas y pie. Antes el radial sólo pintaba
+  //     el cuadrante y el resto se quedaba blanco: contra el lienzo #14171c eso era
+  //     un marco blanco alrededor de un agujero negro.
+  // La clase va en el MODAL y no en <body> a propósito: así el tema no puede
+  // escaparse al tab del Catálogo ni al resto de la plataforma.
+  // Es lo que evita que oscurecer el fondo deje texto oscuro sobre oscuro. Se llama
+  // también al abrir el modal, no sólo al tocar el radial.
   function _marcarTemaEnQuad() {
-    var quad = $('te_quad'); if (!quad) return;
+    var nodos = [$('te_quad'), $('te_modal')];
     ['oscuro', 'medio', 'claro'].forEach(function (k) {
-      quad.classList.toggle('te-tema-' + k, ST.tema3d === k);
+      var on = (ST.tema3d === k);
+      nodos.forEach(function (n) { if (n) n.classList.toggle('te-tema-' + k, on); });
     });
   }
 
@@ -2296,7 +2309,10 @@
              '<polygon points="' + pts + '" fill="' + color + '"/>';
     }
     return '<svg viewBox="0 0 46 46" aria-hidden="true" style="font:700 9px \'Segoe UI\',system-ui,sans-serif">' +
-      '<rect x="0" y="0" width="46" height="46" rx="8" fill="rgba(255,255,255,.85)" stroke="#dbe1e8"/>' +
+      // La caja va por CSS (.te-gzbox, en template_editor_modal.html): con el fill y
+      // el stroke escritos acá el gizmo se quedaba BLANCO en cuanto el fondo de los
+      // cuadrantes se oscurece. Las flechas y las letras siguen con su color por eje.
+      '<rect x="0" y="0" width="46" height="46" rx="8" class="te-gzbox"/>' +
       flecha(ox, oy, ox + L, oy, cu) +
       '<text x="' + (ox + L + 3) + '" y="' + (oy + 3.5) + '" fill="' + cu + '">' + _ejeLetra(u) + '</text>' +
       flecha(ox, oy, ox, oy - L, cv) +
@@ -6001,14 +6017,14 @@
     // usuario cierra las fichas y mira la lista, y ahí es donde tiene que ver
     // CUÁL de sus barras quedó con la tipología de otro elemento.
     var ajena = _tipAjenaAlElemento(c);
-    if (ajena) wrap.style.borderLeft = '3px solid #e65100';
+    if (ajena) wrap.style.borderLeft = '3px solid var(--te-warn)';
 
     // FIGURA QUE EL CATÁLOGO YA NO TIENE (la marca el normalizador de apertura al
     // abrir un template viejo). Es más grave que la tipología ajena —de esta barra
     // NO sale nada— así que va en ROJO y pisa la marca ámbar.
     var mig = _migracionDe(c);
     var sinFig = !!(mig && mig.figura_desconocida);
-    if (sinFig) wrap.style.borderLeft = '3px solid #c62828';
+    if (sinFig) wrap.style.borderLeft = '3px solid var(--te-err)';
 
     // MARCA DE ESPEJO — pegada al swatch y SÓLO si la pose está espejada.
     // Es la contrapartida de haberle sacado la cara a _compDesc: sin ella, dos
@@ -6024,9 +6040,9 @@
       '<span class="te-drag" title="Arrastrar para reordenar">⠿</span>' +
       '<span class="te-sw" style="background:' + col + '"></span>' + esp +
       '<div><div class="te-nm">' +
-      (sinFig ? '<span style="color:#c62828" title="La figura ' + _esc(c.figura || '') +
+      (sinFig ? '<span style="color:var(--te-err)" title="La figura ' + _esc(c.figura || '') +
         ' no está en el catálogo vigente: esta barra no se genera.">⛔ </span>' : '') +
-      (ajena ? '<span style="color:#e65100" title="' + _esc(ajena.texto) + '">⚠ </span>' : '') +
+      (ajena ? '<span style="color:var(--te-warn)" title="' + _esc(ajena.texto) + '">⚠ </span>' : '') +
       _esc(c.tipologia) + ' · ' + _esc(c.figura) + '</div>' +
       '<div class="te-de">' + _esc(_compDesc(c, ci)) + '</div></div>' +
       '<span class="te-sp"></span>' +
@@ -6120,7 +6136,7 @@
     var avTipAj = _tipAjenaAlElemento(c);
     if (avTipAj) {
       var nTipAj = _div('te-note');
-      nTipAj.style.color = '#e65100';
+      nTipAj.style.color = 'var(--te-warn)';
       nTipAj.textContent = '⚠ ' + avTipAj.texto +
         ' Cambiarla acá no mueve la barra: su cara, su giro y su posición quedan donde están.';
       body.appendChild(nTipAj);
@@ -6147,7 +6163,7 @@
     var errFig = _figError(c.figura);
     if (errFig) {
       var nErr = _div('te-note');
-      nErr.style.color = '#c62828';
+      nErr.style.color = 'var(--te-err)';
       nErr.textContent = '⚠ ' + errFig + ' — esta barra no se dibuja ni pesa hasta corregirla.';
       body.appendChild(nErr);
     } else {
@@ -6158,7 +6174,7 @@
       var avFig = _figAvisoTipologia(c.figura, _tipoElemento(), c.tipologia);
       if (avFig) {
         var nAv = _div('te-note');
-        nAv.style.color = '#e65100';
+        nAv.style.color = 'var(--te-warn)';
         nAv.textContent = '⚠ ' + avFig.texto;
         body.appendChild(nAv);
       }
@@ -6444,7 +6460,7 @@
           var vv = fpAng.validarAngulo(c.figura, i, ovr);
           if (!vv.ok && !vv.vacio) {
             inpA.classList.add('bad');
-            nAngMsg.style.color = '#e65100';
+            nAngMsg.style.color = 'var(--te-warn)';
             nAngMsg.textContent = '⚠ α' + (i + 1) + ': ' + vv.motivo + '. El motor usa el del catálogo (' + a + '°) y avisa.';
           }
         }
@@ -6461,7 +6477,7 @@
     // input aquí sería un valor que el usuario edita y que nunca llega al backend.
     if (spec.radio) {
       var nRad = _div('te-note');
-      nRad.style.color = '#c62828';
+      nRad.style.color = 'var(--te-err)';
       nRad.textContent = '⚠ Esta figura lleva radio de doblado y el editor todavía no lo maneja: el radio va vacío en el despiece.';
       body.appendChild(nRad);
     }
@@ -6548,7 +6564,7 @@
     var total = (Number(e.inicio) || 0) + (Number(e.fin) || 0);
     if (!total) return;
     var n = _div('te-note');
-    n.style.color = '#e65100';
+    n.style.color = 'var(--te-warn)';
     n.textContent = '⚠ Esta barra tiene un empalme guardado (' +
       (e.inicio ? 'inicio ' + e.inicio + ' cm' : '') +
       (e.inicio && e.fin ? ' · ' : '') +
@@ -6626,7 +6642,7 @@
       ((elegido && elegido !== efectivo)
         ? ' ⚠ La elección ' + elegido + ' no está mandando: manda ' + (efectivo || '—') + '.'
         : '');
-    if (elegido && elegido !== efectivo) n.style.color = '#e65100';
+    if (elegido && elegido !== efectivo) n.style.color = 'var(--te-warn)';
     body.appendChild(n);
   }
 
@@ -7795,7 +7811,7 @@
 
   function _actualizarStatus(msg) {
     var s = $('te_ctoolsStatus'); if (!s) return;
-    if (msg) { s.innerHTML = '<b style="color:var(--te-acero-d)">' + _esc(msg) + '</b>'; return; }
+    if (msg) { s.innerHTML = '<b style="color:var(--te-acero-t)">' + _esc(msg) + '</b>'; return; }
     var selTxt = '', avisoTxt = '';
     if (ST.selCi >= 0 && ST.receta.componentes[ST.selCi]) {
       var c = ST.receta.componentes[ST.selCi];
@@ -7810,7 +7826,7 @@
       // el backend rechaza) y con el bbox fuera del hormigón, en SILENCIO.
       var av = c._avisos;
       if (av && av.length) {
-        avisoTxt = ' · <b style="color:#c62828">⚠ ' + _esc(av.join(' · ')) + '</b>';
+        avisoTxt = ' · <b style="color:var(--te-err)">⚠ ' + _esc(av.join(' · ')) + '</b>';
       }
     }
     // AVISO FIGURA vs TIPOLOGÍA — se RECALCULA acá (no se guarda en ST) para que
@@ -7818,7 +7834,7 @@
     // que la línea vuelva a estar limpia. Ámbar = aviso (se puede colocar), a
     // diferencia del rojo de los avisos del motor, que son cosas que NO salieron.
     var avTip = _figAvisoTipologia(ST.figura, _tipoElemento(), ST.tipologia);
-    var tipTxt = avTip ? (' · <b style="color:#e65100">⚠ ' + _esc(avTip.corto) + '</b>') : '';
+    var tipTxt = avTip ? (' · <b style="color:var(--te-warn)">⚠ ' + _esc(avTip.corto) + '</b>') : '';
     s.innerHTML = 'Herramienta: <b>' + _esc(ST.tool) + '</b> · figura <b>' + _esc(ST.figura) + '</b> · ' +
       '<b style="color:' + _colDe(ST.tipologia) + '">' + _esc(ST.tipologia) + '</b> ø' + _esc(ST.diam) +
       tipTxt + selTxt + avisoTxt;
@@ -8460,8 +8476,9 @@
     // MISMO renderer y de la MISMA escena, así que `scene.background` es uno solo y el
     // fondo se sigue fijando POR PASE — pero ahora con el mismo valor. Lo que antes
     // obligaba a dejar las 2D siempre claras (los overlays SVG dibujados para fondo
-    // claro) lo resuelve el CSS: _aplicarTema3D marca #te_quad con te-tema-* y las
-    // variables --te-ov-* invierten cotas, recubrimiento, handles y textos.
+    // claro) lo resuelve el CSS: _aplicarTema3D marca #te_quad (y #te_modal) con
+    // te-tema-* y las variables --te-ov-* invierten cotas, recubrimiento, handles y
+    // textos; las --te-* hacen lo propio con el marco del modal.
     _fondoEscena(_tema3D().bg);
     var luz = _luzOrto();
     if (luz) luz.visible = true;
