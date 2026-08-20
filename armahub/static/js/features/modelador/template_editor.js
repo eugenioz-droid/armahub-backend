@@ -905,16 +905,137 @@
     _setOrientacion(comp, _RUMBO_A_ORIENT[rumbo] || 'acostada');   // plano_pieza (compat)
   }
 
-  // Texto compacto de la pose para la ficha / tooltips: "cara sup · corre en largo (Y)".
-  // La LETRA del eje sale siempre de _ejeLetra (única traducción interno→visible).
-  var _CARA_TXT = { sup: 'cara sup', inf: 'cara inf', lateral: 'cara lateral', extremo: 'extremo' };
-  function _poseTexto(p) {
+  // (22-ago) Acá vivía `_poseTexto` — "cara inf · corre en largo (Y)", la pose dicha
+  // en coordenadas del MODELO (cara + signo + eje + letra). Su único llamador era el
+  // tooltip del botón de giro, y desde el bloque ORIENTACIÓN ese tooltip usa la MISMA
+  // frase de obra que la ficha (_fraseOrientacion). Dos vocabularios para el mismo
+  // estado, en dos sitios que se miran a la vez, era justo lo que había que sacar.
+
+  // ==========================================================================
+  // ORIENTACIÓN EN LENGUAJE DE OBRA — la capa de PRESENTACIÓN de la pose (22-ago).
+  //
+  // POR QUÉ EXISTE. La ficha mostraba CINCO filas para una sola cosa —cómo está
+  // puesta la pieza—: «Cara / anclaje», «Lado», «Rotar», «Pose» y «Patas». Y encima
+  // la fila de Cara mezclaba dos niveles: 'sup' e 'inf' son CARAS CONCRETAS (el signo
+  // va en el nombre) mientras 'lateral' y 'extremo' son PARES que necesitaban la fila
+  // «Lado» para desambiguar. Por eso esa fila existía, por eso quedaba inerte la mitad
+  // del tiempo, y por eso se comía un renglón entero de un panel de 360 px.
+  //
+  // Peor que eso: se enseñaban las COORDENADAS DEL MODELO (cara + signo + rumbo +
+  // espejo, cada una en su fila) en vez del RESULTADO. Al girar 90° se movían dos
+  // filas a la vez y parecía un error, cuando era UNA orientación cambiando.
+  //
+  // EL DATO NO CAMBIA: la pose sigue siendo {cara, lado, rumbo, espejo} con sus 24
+  // orientaciones, y quien las escribe sigue siendo _setPose. Lo que cambia es cómo
+  // se dice: las 6 caras de la caja en UN control (cara+lado fundidos), el RUMBO como
+  // control propio —que antes no existía pese a ser una coordenada que el giro
+  // cambia—, y una FRASE que lee la pose entera y la dice en una línea.
+  //
+  // EL VOCABULARIO NO ES NUEVO. Sale de CARAS_OBRA (la misma tabla del selector del
+  // desplazamiento medido: «cara frontal», «lateral posterior», «testero inicio») y de
+  // EJE_ROTULO_POS («a lo largo», «en altura», «a lo ancho»). Un solo vocabulario en
+  // todo el editor: si esas tablas cambian con el elemento, esto cambia con ellas.
+  // ==========================================================================
+  // Las 6 caras de la caja = (cara, lado) APLANADO. Cada una trae el eje del mundo y
+  // el extremo de ese eje que le tocan, y de ahí sale su nombre por CARAS_OBRA — no
+  // hay una segunda tabla de nombres que se pueda desincronizar de la primera.
+  var _CARAS6 = [
+    { id: 'sup', cara: 'sup', lado: 1, eje: 'y', ref: 'max' },
+    { id: 'inf', cara: 'inf', lado: 1, eje: 'y', ref: 'min' },
+    { id: 'lat+', cara: 'lateral', lado: 1, eje: 'z', ref: 'max' },
+    { id: 'lat-', cara: 'lateral', lado: -1, eje: 'z', ref: 'min' },
+    { id: 'ext+', cara: 'extremo', lado: 1, eje: 'x', ref: 'max' },
+    { id: 'ext-', cara: 'extremo', lado: -1, eje: 'x', ref: 'min' }
+  ];
+  function _cara6(id) {
+    for (var i = 0; i < _CARAS6.length; i++) if (_CARAS6[i].id === id) return _CARAS6[i];
+    return _CARAS6[0];
+  }
+  // Pose → id de cara. OJO CON EL `lado` DE sup/inf: el motor devuelve lado −1 para
+  // 'inf' (su signo ES la cara) y _setPose lo normaliza a 1. O sea que el lado de
+  // esas dos caras NO se puede mirar: la cara sola ya identifica.
+  function _caraId(p) {
+    if (!p) return 'sup';
+    if (p.cara === 'sup' || p.cara === 'inf') return p.cara;
+    var neg = (Number(p.lado) < 0);
+    return (p.cara === 'extremo') ? (neg ? 'ext-' : 'ext+') : (neg ? 'lat-' : 'lat+');
+  }
+  // Nombre de obra de una cara — el MISMO que rotula el desplazamiento medido.
+  function _nombreCara6(id) {
+    var f = _cara6(id);
+    var caras = _carasObraEje(f.eje);
+    return (f.ref === 'max') ? caras.max : caras.min;
+  }
+  // Nombre de obra de un RUMBO ("a lo largo" / "en altura" / "a lo ancho"), en
+  // minúscula porque va dentro de una frase y no encabezando una fila.
+  function _nombreRumbo(r) {
+    var n = EJE_ROTULO_POS[r];
+    return n ? (n.charAt(0).toLowerCase() + n.slice(1)) : String(r || '');
+  }
+  // El artículo sale de la PRIMERA PALABRA del nombre de obra, que cambia con el
+  // elemento ("cara/lateral/testero" en viga · "borde/cara/extremo" en muro): así no
+  // hay una tabla de géneros que mantener a mano al lado de CARAS_OBRA.
+  var _ART_CARA = { cara: 'la ', lateral: 'el ', testero: 'el ', borde: 'el ', extremo: 'el ' };
+  // LA FRASE DE ESTADO. Es la pieza clave del bloque: dice la pose entera en una
+  // línea de obra («Apoyada en la cara frontal · corre a lo largo · espejada»), y es
+  // lo que le explica al usuario por qué al girar se movieron dos controles a la vez.
+  function _fraseOrientacion(p) {
     if (!p) return '';
-    var t = _CARA_TXT[p.cara] || ('cara ' + p.cara);
-    if (p.cara === 'lateral' || p.cara === 'extremo') t += (p.lado < 0 ? ' −' : ' +');
-    t += ' · corre en ' + (_EJE_NOMBRE[p.rumbo] || p.rumbo) + ' (' + _ejeLetra(p.rumbo) + ')';
+    var nom = _nombreCara6(_caraId(p));
+    var art = _ART_CARA[String(nom).split(' ')[0]] || '';
+    var t = 'Apoyada en ' + art + nom + ' · corre ' + _nombreRumbo(p.rumbo);
     if (p.espejo) t += ' · espejada';
     return t;
+  }
+
+  // ICONO DE CARA — la caja del elemento en axonometría con ESA cara encendida (el
+  // cubo de vistas de Revit/Tekla). El botón no lleva texto: el nombre lo dice la
+  // frase de arriba y el `title` del botón.
+  //
+  // LA CAJA VA EN ALAMBRE, no maciza, POR UNA RAZÓN: de las 6 caras sólo 3 miran al
+  // observador (superior, frontal y fin). Sin relleno, las otras 3 tienen su propio
+  // paralelogramo —desplazado del de su opuesta— y se pueden encender igual; las
+  // aristas ocultas van punteadas, que es lo que le dice al ojo cuál es el fondo.
+  // Todo se dibuja con `currentColor`, así el icono sigue al estado del botón
+  // (apagado = gris de campo · encendido = azul) y a los tres temas sin una regla más.
+  var _ICO_CARA = (function () {
+    // Caja: rectángulo de FRENTE (x0,y0)-(x1,y1) + vector al FONDO (dx,dy).
+    var x0 = 3, y0 = 9, x1 = 29, y1 = 25, dx = 8, dy = -6;
+    function P(x, y) { return x + ',' + y; }
+    var n = { bl: P(x0, y1), br: P(x1, y1), tr: P(x1, y0), tl: P(x0, y0) };
+    var f = {
+      bl: P(x0 + dx, y1 + dy), br: P(x1 + dx, y1 + dy),
+      tr: P(x1 + dx, y0 + dy), tl: P(x0 + dx, y0 + dy)
+    };
+    return {
+      // `frente:false` = la cara queda al fondo → se pinta más tenue y punteada.
+      caras: {
+        'sup': { pts: [n.tl, n.tr, f.tr, f.tl], frente: true },
+        'inf': { pts: [n.bl, n.br, f.br, f.bl], frente: false },
+        'lat+': { pts: [n.bl, n.br, n.tr, n.tl], frente: true },
+        'lat-': { pts: [f.bl, f.br, f.tr, f.tl], frente: false },
+        'ext+': { pts: [n.br, f.br, f.tr, n.tr], frente: true },
+        'ext-': { pts: [n.bl, f.bl, f.tl, n.tl], frente: false }
+      },
+      frenteRect: [n.bl, n.br, n.tr, n.tl].join(' '),
+      fondoVis: [f.tl, f.tr, f.br].join(' '),          // aristas del fondo que SÍ se ven
+      unen: 'M' + n.tl + 'L' + f.tl + 'M' + n.tr + 'L' + f.tr + 'M' + n.br + 'L' + f.br,
+      ocultas: 'M' + n.bl + 'L' + f.bl + 'M' + f.bl + 'L' + f.tl + 'M' + f.bl + 'L' + f.br
+    };
+  })();
+  function _iconoCara6(id) {
+    var c = _ICO_CARA.caras[id] || _ICO_CARA.caras.sup;
+    var relleno = '<polygon points="' + c.pts.join(' ') + '" fill="currentColor" fill-opacity="' +
+      (c.frente ? '.88' : '.32') + '" stroke="currentColor" stroke-width="1" stroke-opacity="' +
+      (c.frente ? '.9' : '.65') + '"' + (c.frente ? '' : ' stroke-dasharray="2 1.5"') + '/>';
+    return '<svg class="te-caraico" viewBox="0 0 40 28" width="30" height="21" aria-hidden="true" focusable="false">' +
+      relleno +
+      '<g fill="none" stroke="currentColor" stroke-width="1" stroke-linejoin="round" stroke-linecap="round">' +
+      '<polygon points="' + _ICO_CARA.frenteRect + '" opacity=".6"/>' +
+      '<polyline points="' + _ICO_CARA.fondoVis + '" opacity=".6"/>' +
+      '<path d="' + _ICO_CARA.unen + '" opacity=".6"/>' +
+      '<path d="' + _ICO_CARA.ocultas + '" opacity=".28" stroke-dasharray="2 1.5"/>' +
+      '</g></svg>';
   }
 
   // POSE POR DEFECTO de una tipología — la AUTORIDAD es el motor (tabla
@@ -5455,7 +5576,10 @@
     var vista = _vistaActiva();
     var nomVista = (_titulosSemanticos() || {})[vista] || vista;
     btn.textContent = _RUMBO_ICONO[p.rumbo] || '⟲';
-    var t = 'Girar 90° en ' + nomVista + ' (R) — ' + _poseTexto(p);
+    // El tooltip dice la pose CON LA MISMA FRASE que la ficha (22-ago). Antes usaba
+    // _poseTexto, que habla en coordenadas del modelo ("cara inf · corre en largo (Y)"):
+    // dos vocabularios para el mismo estado en dos sitios que se miran a la vez.
+    var t = 'Girar 90° en ' + nomVista + ' (R) — ' + _fraseOrientacion(p);
     btn.title = t;
     btn.setAttribute('aria-label', t);
     btn.setAttribute('data-rumbo', p.rumbo);
@@ -6499,69 +6623,171 @@
     }
 
     // ------------------------------------------------------------------
-    // POSE (TANDA P) — cara + lado + rumbo + espejo, el modelo único. La ficha
-    // ESCRIBE siempre con _setPose (que espeja los campos viejos), nunca campo a
-    // campo: así la ficha, el botón de giro y el motor no pueden divergir.
+    // ORIENTACIÓN — cómo está puesta la pieza, TODO en un bloque (22-ago).
+    //
+    // Reemplaza las cinco filas de antes (Cara/anclaje · Lado · Rotar · Pose · Patas),
+    // que decían la misma cosa repartida en cinco renglones y en coordenadas del
+    // modelo. Ver la nota grande de _fraseOrientacion: el DATO es el mismo —la pose
+    // sigue siendo {cara, lado, rumbo, espejo} y se escribe siempre con _setPose, así
+    // que ficha, botón de giro y motor no pueden divergir— y lo que cambia es que
+    // arriba se LEE el resultado y abajo se ACTÚA, separado por una línea.
     // ------------------------------------------------------------------
     var pose = _poseDe(c);
+    // Las PATAS suben desde el final de la ficha: son una ACCIÓN sobre la orientación
+    // (giran los ganchos sin mover la barra), no un campo suelto. `patas` lo sigue
+    // consumiendo _filasEmpalme más abajo, por eso se calcula una sola vez acá.
+    var patas = _patasDe(c);
 
-    // Cara / anclaje (radial) — 4 caras: las dos del eje vertical (sup/inf), la
-    // LATERAL (cortinas) y el EXTREMO (testeros del elemento), que antes no se podía
-    // elegir ni clicando el borde.
-    // FILA ANCHA (rótulo arriba): son CUATRO botones y en la columna de valor de la
-    // grilla normal el último se salía por el borde del panel — inalcanzable.
-    var caraRow = _div('te-row te-row-ancha');
-    caraRow.appendChild(_label('Cara / anclaje'));
-    caraRow.appendChild(_radial(
-      [['sup', 'Superior'], ['inf', 'Inferior'], ['lateral', 'Lateral'], ['extremo', 'Extremo']],
-      pose.cara,
-      function (v) {
-        if (v === pose.cara) return;
+    var oriBox = _div('te-modebox');
+    var oriHead = _div('te-mh');
+    oriHead.appendChild(_span('Orientación'));
+    oriBox.appendChild(oriHead);
+
+    // (a) LA FRASE DE ESTADO — lo primero y lo más importante del bloque: dice la pose
+    // entera en lenguaje de obra. Es lo que explica que al girar se muevan dos
+    // controles a la vez (es UNA orientación cambiando, no dos cosas sueltas).
+    // Se re-arma en cada _renderPanel, y TODOS los caminos que tocan la pose pasan por
+    // ahí —los botones de acá vía _mut(ci,true), y la tecla R / ESPACIO / el botón
+    // flotante vía rotarPoseEnVista y _rotarPoseSeleccionEje, que llaman _renderPanel—,
+    // así que la frase no puede quedarse diciendo una pose vieja.
+    var frase = _div('te-ofrase');
+    frase.textContent = _fraseOrientacion(pose);
+    frase.title = 'Cómo está puesta esta pieza ahora mismo. Cambia sola con la cara, el rumbo, ' +
+      'el espejo y los giros (R y ESPACIO): si al girar se movieron dos controles a la vez, ' +
+      'esta línea dice por qué — es UNA orientación cambiando.';
+    oriBox.appendChild(frase);
+
+    // (b) CARA — UN control de SEIS opciones que funde las viejas «Cara» y «Lado».
+    // La fila «Lado» desapareció: 'sup'/'inf' traían el signo en el nombre y
+    // 'lateral'/'extremo' lo necesitaban aparte, o sea que aquella fila era la mitad
+    // de este control puesta en otro renglón (y por eso quedaba inerte a ratos).
+    // GANANCIA REAL, no sólo cosmética: «Lado» sólo se mostraba en 'extremo' o si el
+    // rol era cabezal, así que las dos caras laterales de un estribo NO se podían
+    // elegir desde la ficha. Ahora las seis están siempre.
+    var caraRow = _div('te-row te-rowchica');
+    caraRow.appendChild(_label('Cara'));
+    caraRow.appendChild(_radialIconos(_CARAS6.map(function (f) {
+      return { v: f.id, svg: _iconoCara6(f.id), title: 'Apoyar en ' + _nombreCara6(f.id) };
+    }), _caraId(pose), function (v) {
+      var f = _cara6(v);
+      var p = _poseDe(c);
+      // sup/inf no miran el `lado` (su signo ES la cara): comparar por él haría que
+      // el clic en «inferior» pareciera un cambio que no es.
+      if (f.cara === p.cara && (!_CARA_CON_LADO[f.cara] || f.lado === p.lado)) return;
+      _pushUndo();
+      var ejeAntes = _ejeDistDe(c);
+      p.cara = f.cara;
+      p.lado = f.lado;
+      // el rumbo tiene que seguir siendo ⊥ a la cara nueva; si no lo es, cae al
+      // rumbo por defecto de esa cara (el largo cuando es posible).
+      if (!_rumboValido(p.cara, p.rumbo)) p.rumbo = _rumboDefaultDeCara(p.cara);
+      _setPose(c, p);
+      _reencuadrarReparto(c, ejeAntes);   // la cara puede cambiar el eje de reparto
+      _mut(ci, true);
+    }, 'te-caras'));
+    oriBox.appendChild(caraRow);
+
+    // (c) CORRE (el rumbo) — control que ANTES NO EXISTÍA, pese a ser una coordenada
+    // que el giro cambia: el usuario veía moverse un estado que no podía tocar.
+    // Sólo se ofrecen los DOS rumbos válidos de la cara elegida; el tercero (el eje
+    // paralelo a la normal) es imposible por geometría y el motor lo normaliza solo,
+    // así que ofrecerlo sería un botón que se deshace al pulsarlo.
+    var corRow = _div('te-row te-rowchica');
+    corRow.appendChild(_label('Corre'));
+    var corWrap = _div('te-orow');
+    var rumSeg = _radial(_rumbosDeCara(pose.cara).map(function (r) {
+      return [r, _nombreRumbo(r)];
+    }), pose.rumbo, function (v) {
+      if (v === pose.rumbo) return;
+      _pushUndo();
+      var ejeAntes = _ejeDistDe(c);
+      var p = _poseDe(c);
+      p.rumbo = v;
+      _setPose(c, p);
+      _reencuadrarReparto(c, ejeAntes);   // el rumbo también manda el eje de reparto
+      _mut(ci, true);
+    });
+    rumSeg.title = 'Hacia dónde CORRE la pieza. Sólo salen los dos rumbos posibles de la cara ' +
+      'elegida: el tercero sería atravesar el hormigón por su normal.';
+    corWrap.appendChild(rumSeg);
+
+    // (d) ESPEJO — botón compacto, no una fila. Casi nunca se toca a mano: lo enciende
+    // y lo apaga el propio giro al pasar por la media vuelta. Se conserva porque si una
+    // rotación deja la pieza espejada sin querer, hay que poder devolverla SIN girar
+    // de más. ES TAMBIÉN LA MEDIA VUELTA (ver _signoLong en reglas.js): en una pieza
+    // PLANA, reflejarla en su plano y girarla 180° sobre su normal son lo mismo, así
+    // que este bit es el SENTIDO del rumbo — el que completa las 24 orientaciones.
+    var espBtn = document.createElement('button');
+    espBtn.type = 'button';
+    espBtn.className = 'te-espbtn' + (pose.espejo ? ' on' : '');
+    espBtn.textContent = 'E';
+    espBtn.title = 'Espejo: la MISMA pose dada vuelta sobre su eje de anclaje (el gancho cierra ' +
+      'al otro lado). Ahora está ' + (pose.espejo ? 'ESPEJADA — clic para devolverla.' : 'normal.') +
+      ' Girando con R también se pasa por acá.';
+    espBtn.addEventListener('click', function () {
+      _pushUndo();
+      var p = _poseDe(c);
+      p.espejo = !p.espejo;
+      _setPose(c, p);
+      _mut(ci, true);
+    });
+    corWrap.appendChild(espBtn);
+    corRow.appendChild(corWrap);
+    oriBox.appendChild(corRow);
+
+    // (e) ACCIONES — separadas del ESTADO por una línea. Antes estaban mezcladas con él
+    // en filas idénticas y no se distinguía qué DESCRIBE y qué HACE.
+    var accRow = _div('te-oacc');
+    // Girar 90° = giro de POSE en la vista activa (13-ago): re-deriva dims contra lo
+    // nuevo que cruzan, re-ancla a la cara y re-reparte. Antes era rotación RÍGIDA en
+    // grados (la pieza giraba tal cual y se salía del hormigón).
+    var rot90 = document.createElement('button');
+    rot90.type = 'button'; rot90.className = 'te-ctool'; rot90.textContent = 'Girar 90°';
+    rot90.style.padding = '3px 8px';
+    rot90.title = 'Girar 90° en la vista activa (pose): se reajusta a recubrimientos y reparto. Igual que R.';
+    rot90.addEventListener('click', function () { _rotarPoseSeleccion(_vistaActiva()); });
+    // Girar de plano: manda la pieza a PROFUNDIDAD — gira 90° en torno al eje VERTICAL
+    // de la vista activa (como una puerta). También es giro de pose.
+    var rotPlano = document.createElement('button');
+    rotPlano.type = 'button'; rotPlano.className = 'te-ctool'; rotPlano.textContent = 'Girar de plano';
+    rotPlano.style.padding = '3px 8px';
+    rotPlano.title = 'Girar DE PLANO: la pieza pasa a estar colocada en profundidad (gira en el eje vertical de la vista).';
+    rotPlano.addEventListener('click', function () {
+      var defs = _defsPlanos();
+      var dv = defs[_vistaActiva()] || defs.seccion;
+      _rotarPoseSeleccionEje(dv.v);
+    });
+    accRow.appendChild(rot90);
+    accRow.appendChild(rotPlano);
+
+    // PATAS — hacia dónde apuntan los ganchos. Es orient.spin (0/90/180/270): el motor
+    // gira SÓLO las patas alrededor del eje longitudinal, la barra NO se mueve de su
+    // sitio. Sólo si la figura TIENE patas y el rol no es estribo/traba (esos son
+    // marcos cerrados: no hay dirección de pata que elegir).
+    if (!cerrado && rol !== 'estribo' && rol !== 'traba' && (patas.inicio || patas.fin)) {
+      // El rótulo y sus flechas van en UN envoltorio: la fila de acciones envuelve
+      // cuando no cabe, y sueltos el "Patas" podía quedarse en un renglón y sus
+      // flechas irse al siguiente.
+      var patWrap = _div('te-opatas');
+      var patLbl = _span('Patas');
+      patLbl.className = 'te-oacclbl';
+      patWrap.appendChild(patLbl);
+      var spinNow = ((((Number(c.orient && c.orient.spin) || 0) % 360) + 360) % 360);
+      var spinSeg = _radial([['0', '↓'], ['90', '→'], ['180', '↑'], ['270', '←']], String(spinNow), function (v) {
         _pushUndo();
-        var ejeAntes = _ejeDistDe(c);
-        var p = _poseDe(c);
-        p.cara = v;
-        // el rumbo tiene que seguir siendo ⊥ a la cara nueva; si no lo es, cae al
-        // rumbo por defecto de esa cara (el largo cuando es posible).
-        if (!_rumboValido(v, p.rumbo)) p.rumbo = _rumboDefaultDeCara(v);
-        if (v !== 'lateral' && v !== 'extremo') p.lado = 1;   // sup/inf ya llevan el signo
-        _setPose(c, p);
-        _reencuadrarReparto(c, ejeAntes);   // la cara puede cambiar el eje de reparto
-        _mut(ci, true);
-      }
-    ));
-    body.appendChild(caraRow);
-
-    // LADO de la cara — sólo lo tienen las caras cuyo signo NO va en el nombre:
-    // LATERAL (cortina +Z/−Z) y EXTREMO (testero inicio/fin). Escribe comp.lado
-    // (1 | −1), que es lo que el motor mira para anclar; el arrastre (pos_hint) no
-    // lo cambia. Los estribos/trabas laterales encuadran el núcleo entero (no tienen
-    // lado que elegir), pero en un EXTREMO sí lo tienen.
-    var mostrarLado = _CARA_CON_LADO[pose.cara] && (pose.cara === 'extremo' || rol === 'cabezal');
-    if (mostrarLado) {
-      var esExtremo = (pose.cara === 'extremo');
-      var ladoRow = _div('te-row');
-      ladoRow.appendChild(_label('Lado'));
-      var ladoSeg = _radial(
-        esExtremo ? [['1', 'Fin +'], ['-1', 'Inicio −']] : [['1', '+Z'], ['-1', '−Z']],
-        String(pose.lado),
-        function (v) {
-          _pushUndo();
-          var p = _poseDe(c);
-          p.lado = (Number(v) < 0) ? -1 : 1;
-          _setPose(c, p);
-          _mut(ci, true);   // redibuja la ficha → el botón activo sigue al valor
-        }
-      );
-      ladoSeg.title = esExtremo
-        ? 'Testero contra el que se ancla: Fin (+' + _ejeLetra('x') + ') o Inicio (−' + _ejeLetra('x') + ').'
-        : 'Cara cortina contra la que se apoya (+Z / −Z). El arrastre no la cambia.';
-      ladoRow.appendChild(ladoSeg);
-      body.appendChild(ladoRow);
+        c.orient = c.orient || {};
+        c.orient.spin = Number(v) || 0;
+        _mut(ci, true);   // redibuja la ficha → el botón activo sigue al valor
+      });
+      spinSeg.title = 'Dirección de las patas (la barra no se mueve de su sitio)';
+      patWrap.appendChild(spinSeg);
+      accRow.appendChild(patWrap);
     }
+    oriBox.appendChild(accRow);
+    body.appendChild(oriBox);
 
-    // POSICIÓN MEDIDA — va PEGADA a Cara/Lado porque es la misma familia: contra qué
-    // cara se ancla la pieza, de qué lado, y a cuántos centímetros de ella.
+    // POSICIÓN MEDIDA — va PEGADA a ORIENTACIÓN porque es la misma familia: contra qué
+    // cara se ancla la pieza y a cuántos centímetros de ella.
     _filasDesplazamiento(body, c, ci);
 
     // Recub override — SUBE antes del kit de rotaciones (pedido 13-ago: Rotación,
@@ -6575,88 +6801,9 @@
     recRow.appendChild(inRec);
     body.appendChild(recRow);
 
-    // INDICADOR COMPACTO DE POSE + toggle ESPEJO. El texto dice de un vistazo dónde
-    // está anclada y hacia dónde corre; el espejo refleja la misma pose (los ganchos
-    // cierran al otro lado) sin tocar cara ni rumbo.
-    // ESPEJO ES TAMBIÉN LA MEDIA VUELTA (ver _signoLong en reglas.js): en una pieza
-    // PLANA, reflejarla en su plano y girarla 180° sobre su normal son lo mismo, así
-    // que este bit es el SENTIDO del rumbo — el que completa las 24 orientaciones. Por
-    // eso R lo enciende y lo apaga solo al pasar por la media vuelta: no es que el
-    // botón se mueva "por su cuenta", es la pose girando entera.
-    var poseRow = _div('te-row');
-    poseRow.appendChild(_label('Pose'));
-    var poseWrap = _div('');
-    poseWrap.style.cssText = 'display:flex;gap:8px;align-items:center;flex-wrap:wrap';
-    // El texto "cara inf · corre en largo (Y)" se retiró de la ficha (19-ago): describe
-    // el modelo interno de la pose, no algo que quien cubica fierro necesite leer en
-    // cada barra. Sigue vivo en el tooltip del botón de girar, que es donde importa.
-    var espSeg = _radial([['no', 'Normal'], ['si', 'Espejo']], pose.espejo ? 'si' : 'no', function (v) {
-      var quiere = (v === 'si');
-      if (quiere === _poseDe(c).espejo) return;
-      _pushUndo();
-      var p = _poseDe(c);
-      p.espejo = quiere;
-      _setPose(c, p);
-      _mut(ci, true);
-    });
-    espSeg.title = 'Espejo: la MISMA pose dada vuelta sobre su eje de anclaje ' +
-      '(el gancho cierra al otro lado). Girando con R también se pasa por acá.';
-    poseWrap.appendChild(espSeg);
-    poseRow.appendChild(poseWrap);
-
-    // ROTAR — dos giros de POSE y nada más (19-ago). Antes esta fila tenía TRES
-    // controles para lo que el usuario lee como "girar": el input de grados (que en
-    // realidad INCLINA, giro rígido), +90° y Plano 90°, y encima +90° ya estaba
-    // repetido en la tecla R y en el botón flotante sobre la pieza. El input se
-    // retiró por decisión del usuario: inclinar una barra no es lo que se hace acá.
-    var rotRow = _div('te-row');
-    rotRow.appendChild(_label('Rotar'));
-    var rotWrap = _div('');
-    rotWrap.style.display = 'flex'; rotWrap.style.gap = '6px'; rotWrap.style.alignItems = 'center';
-    // +90° = giro de POSE en la vista activa (13-ago): re-deriva dims contra lo
-    // nuevo que cruzan, re-ancla a la cara y re-reparte. Antes era rotación
-    // RÍGIDA en grados (la pieza giraba tal cual y se salía del hormigón).
-    var rot90 = document.createElement('button'); rot90.className = 'te-ctool'; rot90.textContent = '+90°'; rot90.style.padding = '3px 8px';
-    rot90.title = 'Girar 90° en la vista activa (pose): se reajusta a recubrimientos y reparto. Igual que R.';
-    rot90.addEventListener('click', function () { _rotarPoseSeleccion(_vistaActiva()); });
-    // ROTAR DE PLANO (restaurada, 13-ago): manda la pieza a PROFUNDIDAD — gira
-    // 90° en torno al eje VERTICAL de la vista activa (como una puerta). También
-    // es giro de POSE: respeta recubrimientos y dims del hormigón.
-    var rotPlano = document.createElement('button'); rotPlano.className = 'te-ctool'; rotPlano.textContent = 'Plano 90°'; rotPlano.style.padding = '3px 8px';
-    rotPlano.title = 'Rotar DE PLANO: la pieza pasa a estar colocada en profundidad (gira en el eje vertical de la vista).';
-    rotPlano.addEventListener('click', function () {
-      var defs = _defsPlanos();
-      var d = defs[_vistaActiva()] || defs.seccion;
-      _rotarPoseSeleccionEje(d.v);
-    });
-    rotWrap.appendChild(rot90); rotWrap.appendChild(rotPlano);
-    rotRow.appendChild(rotWrap);
-    body.appendChild(rotRow);
-    // La fila Pose (espejo) va PEGADA a Rotación: el kit de orientar la pieza
-    // queda junto (Rotación° · Pose/Espejo · y la rotación de plano cuando vuelva).
-    body.appendChild(poseRow);
-
-    // PATAS — hacia dónde apuntan los ganchos. Es orient.spin (0/90/180/270): el motor
-    // gira SÓLO las patas alrededor del eje longitudinal, la barra NO se mueve de su
-    // sitio. Reemplaza la fila "Giro barra °" (número libre + botón +90°): un ángulo
-    // en grados no describe nada que el usuario pueda ver, la dirección de la pata sí.
-    // Sólo aparece si la figura TIENE patas y el rol no es estribo/traba (esos son
-    // marcos cerrados: no hay dirección de pata que elegir).
-    var patas = _patasDe(c);
-    if (!cerrado && rol !== 'estribo' && rol !== 'traba' && (patas.inicio || patas.fin)) {
-      var spinRow = _div('te-row');
-      spinRow.appendChild(_label('Patas'));
-      var spinNow = ((((Number(c.orient && c.orient.spin) || 0) % 360) + 360) % 360);
-      var spinSeg = _radial([['0', '↓'], ['90', '→'], ['180', '↑'], ['270', '←']], String(spinNow), function (v) {
-        _pushUndo();
-        c.orient = c.orient || {};
-        c.orient.spin = Number(v) || 0;
-        _mut(ci, true);   // redibuja la ficha → el botón activo sigue al valor
-      });
-      spinSeg.title = 'Dirección de las patas (la barra no se mueve)';
-      spinRow.appendChild(spinSeg);
-      body.appendChild(spinRow);
-    }
+    // (Las filas «Pose», «Rotar» y «Patas» que vivían acá se fueron ARRIBA, al bloque
+    // ORIENTACIÓN: eran el mismo asunto —cómo está puesta la pieza— repartido por la
+    // ficha, con el estado y las acciones mezclados en filas idénticas.)
 
     // Δ de EXTREMO LIBRE (empalme) — sólo en los extremos SIN pata.
     _filasEmpalme(body, c, ci, rol, patas, cerrado);
@@ -7619,6 +7766,9 @@
 
   function _div(cls) { var d = document.createElement('div'); if (cls) d.className = cls; return d; }
   function _label(t) { var l = document.createElement('label'); l.textContent = t; return l; }
+  // <span> con texto: los rótulos que van DENTRO de una fila (la cabecera del bloque,
+  // el "Patas" de la fila de acciones) no son <label> de ningún campo.
+  function _span(t) { var s = document.createElement('span'); s.textContent = t; return s; }
   // `title` opcional: el label queda CORTO (no empuja la columna de la grilla) y la
   // explicación larga vive en el tooltip del campo entero.
   function _fld(labelText, inputEl, title) {
@@ -7691,6 +7841,25 @@
     pairs.forEach(function (p) {
       var b = document.createElement('button'); b.textContent = p[1]; if (p[0] === val) b.className = 'on';
       b.addEventListener('click', function () { onchange(p[0]); });
+      r.appendChild(b);
+    });
+    return r;
+  }
+  // RADIAL DE ICONOS — el mismo control que _radial (mismo marco, mismo .on) pero con
+  // un DIBUJO en cada botón en vez de una palabra. Lo usa el selector de las 6 caras:
+  // ahí el nombre lo dicen la frase de estado y el `title`, así que meter texto en el
+  // botón sería decir tres veces lo mismo… y en 360 px seis palabras no entran.
+  // `items` = [{ v, svg, title }]. El SVG es una constante del módulo (_iconoCara6),
+  // nunca dato del usuario: por eso puede ir por innerHTML sin pasar por _esc.
+  function _radialIconos(items, val, onchange, cls) {
+    var r = _div('te-radial' + (cls ? ' ' + cls : ''));
+    items.forEach(function (it) {
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.innerHTML = it.svg;
+      if (it.title) { b.title = it.title; b.setAttribute('aria-label', it.title); }
+      if (it.v === val) { b.className = 'on'; b.setAttribute('aria-pressed', 'true'); }
+      b.addEventListener('click', function () { onchange(it.v); });
       r.appendChild(b);
     });
     return r;
@@ -11469,9 +11638,15 @@
     _ghostPlacement: _ghostPlacement, _ghostFormaBasica: _ghostFormaBasica,
     _compDesdeClick: _compDesdeClick,
     // TANDA P · POSE CANÓNICA {cara, lado, rumbo, espejo} + rotar-en-vista
-    _poseDe: _poseDe, _setPose: _setPose, _poseTexto: _poseTexto,
+    _poseDe: _poseDe, _setPose: _setPose,
     _poseDefault: _poseDefault, _poseDefaultMotor: _poseDefaultMotor,
     _rumbosDeCara: _rumbosDeCara, _rumboValido: _rumboValido, _rumboDefaultDeCara: _rumboDefaultDeCara,
+    // BLOQUE ORIENTACIÓN (22-ago) — la PRESENTACIÓN de la pose: las 6 caras aplanadas
+    // (cara+lado en un solo control), sus nombres de obra, el rumbo y la FRASE de
+    // estado. Se exportan para que el test headless congele que la frase describe la
+    // pose y que las 24 orientaciones siguen siendo alcanzables desde estos controles.
+    _CARAS6: _CARAS6, _cara6: _cara6, _caraId: _caraId, _nombreCara6: _nombreCara6,
+    _nombreRumbo: _nombreRumbo, _fraseOrientacion: _fraseOrientacion, _iconoCara6: _iconoCara6,
     rotarPoseEnVista: rotarPoseEnVista,                         // gira 90° en el eje de profundidad de la vista
     _rotarPoseSeleccion: _rotarPoseSeleccion, _vistaActiva: _vistaActiva,
     _ejeProfundidadDeVista: _ejeProfundidadDeVista,

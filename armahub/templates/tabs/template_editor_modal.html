@@ -319,11 +319,12 @@
   #te_modal .te-grid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px}
   #te_modal .te-row{display:grid;grid-template-columns:96px 1fr;gap:8px;align-items:center;margin-bottom:6px}
   #te_modal .te-row label{font-size:11px;color:var(--te-muted);font-weight:600}
-  /* FILA ANCHA: el rótulo va ARRIBA y el control se lleva el ancho entero de la ficha.
-     La usa «Cara / anclaje», que son CUATRO botones: en la columna de valor (1fr de
-     una grilla 96px+1fr dentro de un panel de 360 px) el cuarto se salía por el borde
-     y quedaba INALCANZABLE. Con el rótulo arriba entran los cuatro en una línea. */
-  #te_modal .te-row.te-row-ancha{grid-template-columns:1fr;gap:3px}
+  /* FILA DE RÓTULO CORTO: los 96 px del label genérico son espacio muerto cuando el
+     rótulo es una palabra («Cara», «Corre») y el control necesita el resto. Las usa el
+     bloque ORIENTACIÓN: con 48 px de rótulo quedan ~238 px de valor, y los seis iconos
+     de cara piden ~223. Antes «Cara / anclaje» tenía que irse a fila ancha (rótulo
+     arriba) porque su cuarto botón se salía por el borde del panel — inalcanzable. */
+  #te_modal .te-row.te-rowchica{grid-template-columns:48px 1fr;gap:6px}
   /* …y por si aun así no entran (zoom del navegador, un idioma más largo, una opción
      nueva), el radial ENVUELVE en vez de desbordar: ningún botón puede quedar fuera.
      min-width:0 es lo que deja que la celda de grilla lo comprima hasta obligarlo a
@@ -338,8 +339,42 @@
      cuelgan de él). Tooltip: "lado dominante: se estira/ancla". */
   #te_modal .te-row label.te-dim-dom{color:var(--te-azul-t);font-weight:800;
     border-bottom:2px solid var(--te-azul-t);width:fit-content;cursor:help}
-  /* INDICADOR COMPACTO DE POSE ("cara sup · corre en largo (Y) · espejada"). */
-  #te_modal .te-posetxt{font-size:10.5px;color:var(--te-muted);font-weight:600;letter-spacing:.1px}
+  /* ===== BLOQUE ORIENTACIÓN (22-ago) — ver la nota grande de _fraseOrientacion en
+     template_editor.js. Sustituye a las cinco filas que decían la misma cosa (Cara /
+     Lado / Rotar / Pose / Patas) y al viejo .te-posetxt, que ya no lo usaba nadie.
+     LA FRASE va en el tono del TEXTO y no en gris de nota: es el ESTADO de la pieza —
+     lo primero que hay que poder leer— y no una acotación al margen. */
+  #te_modal .te-ofrase{font-size:11px;line-height:1.35;color:var(--te-ink);font-weight:600;
+    margin:-1px 0 8px;cursor:help}
+  /* Las 6 CARAS son ICONOS: el botón sólo aporta marco y estado (.on), así que se le
+     quita el padding pensado para texto. line-height:0 = el <svg> no arrastra el
+     interlineado de una línea de texto y el botón queda a la altura del dibujo.
+     El icono se dibuja con currentColor, o sea que hereda el color del botón (gris
+     apagado · azul encendido) y funciona en los tres temas sin una regla más. */
+  #te_modal .te-radial.te-caras button{padding:3px 3px;line-height:0}
+  #te_modal .te-caraico{display:block}
+  /* Fila «Corre» = los dos rumbos válidos + el botón de ESPEJO, que NO es una fila
+     propia: casi nunca se toca a mano (lo mueve el propio giro). */
+  #te_modal .te-orow{display:flex;align-items:center;gap:6px;min-width:0;flex-wrap:wrap}
+  #te_modal .te-espbtn{border:1px solid var(--te-field-b);background:var(--te-field);
+    border-radius:6px;min-width:24px;padding:4px 7px;font-size:11px;font-weight:800;
+    color:var(--te-muted);cursor:pointer;flex:0 0 auto}
+  #te_modal .te-espbtn:hover{background:var(--te-hover);color:var(--te-acero-t)}
+  /* Encendido = el MORADO con el que ya se marca el espejo en la cabecera del
+     componente (.te-espm): una sola señal para una sola cosa. Va de FONDO con texto
+     blanco, como --te-azul, así que se lee igual en los tres temas. */
+  #te_modal .te-espbtn.on{background:var(--te-trv);border-color:var(--te-trv);color:#fff}
+  /* ACCIONES separadas del ESTADO por una línea: arriba se LEE cómo está puesta la
+     pieza, abajo se la MUEVE. Antes iban mezcladas en filas idénticas y no se
+     distinguía qué describe y qué hace. Envuelven (flex-wrap) porque los dos giros más
+     las cuatro patas no entran en un renglón de ~290 px, y ningún control puede quedar
+     cortado — ya pasó con la fila de Cara. */
+  #te_modal .te-oacc{display:flex;align-items:center;gap:6px;flex-wrap:wrap;
+    border-top:1px solid var(--te-line);padding-top:8px;margin-top:2px}
+  #te_modal .te-oacclbl{font-size:11px;color:var(--te-muted);font-weight:600}
+  /* «Patas» + sus flechas viajan JUNTOS al envolver: sueltos, el rótulo se quedaba en
+     un renglón y las flechas se iban al siguiente. */
+  #te_modal .te-opatas{display:inline-flex;align-items:center;gap:6px;flex:0 0 auto;margin-left:2px}
   #te_modal .te-modebox{border:1px solid var(--te-line);border-radius:8px;padding:8px 9px;background:var(--te-panel2);margin-bottom:8px}
   #te_modal .te-modebox .te-mh{font-size:10.5px;font-weight:700;color:var(--te-muted);margin-bottom:6px;display:flex;align-items:center;gap:6px}
   #te_modal .te-chip{font-size:9.5px;color:var(--te-chip-ink);background:var(--te-chip);border:1px solid var(--te-chip-b);border-radius:9px;padding:1px 6px;font-weight:600}
@@ -1188,7 +1223,9 @@
           <div class="te-vtitle">A LO LARGO · YZ</div>
           <div class="te-vgizmo"></div>
           <button type="button" class="te-vzoom" title="Agrandar este cuadrante">🔍</button>
-          <div class="te-vhint">clic en un borde = cara y lado · R = girar 90° en esta vista</div>
+          <!-- Decía "cara y lado": la fila «Lado» ya no existe (se fundió en las 6 caras
+               del bloque ORIENTACIÓN), así que la pista nombra lo que el usuario ve. -->
+          <div class="te-vhint">clic en un borde = apoyar en esa cara · R = girar 90° en esta vista</div>
           <canvas class="te-vcanvas" data-plano="largo"></canvas>
           <svg id="te_svgLargo" class="te-vsvg" viewBox="0 0 620 300" preserveAspectRatio="xMidYMid meet"></svg>
           <button class="te-vreset" data-plano="largo" title="Centrar vista">⟳</button>
