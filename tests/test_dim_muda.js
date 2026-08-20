@@ -271,17 +271,33 @@ console.log('\nD — Δ en un lado que el trazo no lee: el dato es correcto y se
     JSON.stringify(avisosDelTrazo(c3)) + ')');
 }
 
-// ======================= E · DIM FIJA SOBRE EL MARCO: TAMBIÉN AVISA; EL Δ NO
-console.log('\nE — el marco lo fija el hormigón: una dim fija tampoco lo mueve, y se dice');
+// ============== E · DIM FIJA SOBRE EL MARCO: LO MANDA IGUAL QUE EL Δ (21-ago)
+console.log('\nE — el marco obedece a la medida escrita, no sólo al Δ');
 {
-  // 104D como estribo: A/C llevan el ancho del marco y B/D el alto. El Δ SÍ los
-  // mueve (crece el marco, `anchor.marcoDelta`); una medida FIJA no, porque el
-  // marco sale del recubrimiento y las pilas, no de un número escrito. Las dos
-  // cosas son ciertas a la vez y por eso el aviso distingue.
+  // REGLA NUEVA (21-ago). Antes este bloque congelaba lo contrario —«el marco lo
+  // fija el hormigón: una medida fija no lo mueve»— y el motor lo AVISABA. Esa
+  // regla tenía una consecuencia que el usuario midió: el tirador del marco tenía
+  // que escribir Δ (un ajuste RELATIVO) porque era lo único que movía el dibujo, y
+  // un Δ no es una medida. Al achicar el muro de 600 a 200 el 'auto' bajaba y el Δ
+  // seguía montado encima: el estribo se achicaba DOS VECES — MEDIDO, Δ −30 sobre
+  // un lado cuyo auto valía 13 dejaba el lado en −17 cm.
+  // Ahora la medida fija manda el marco, así que el tirador puede escribir MEDIDA y
+  // el estribo mide lo mismo con el muro en 600 que con el muro en 200.
   const cFija = comp('104D', 'ES', c => { c.dims.B = { modo: 'fija', valor: 80 }; });
-  R.expandirComponente(cFija, HOST);
-  ok(avisosDelTrazo(cFija).length === 1 && /marco lo fija el HORMIGÓN/.test(avisosDelTrazo(cFija)[0]),
-    'dim B fija en 80: avisa que el trazo sale del marco (=' + JSON.stringify(avisosDelTrazo(cFija)) + ')');
+  const bF = R.expandirComponente(cFija, HOST);
+  ok(avisosDelTrazo(cFija).length === 0,
+    'dim B fija en 80: NINGÚN aviso de dim muda — el trazo ya la lleva (=' +
+    JSON.stringify(avisosDelTrazo(cFija)) + ')');
+  const aF = R.expandirComponente(comp('104D', 'ES'), HOST);
+  // B fija en 80 se replica en su par espejo D (los dos miden el alto del marco, 52
+  // en 'auto'): el corte sube 2×28 = 56 y el rectángulo dibujado sube los mismos 56
+  // de perímetro. Medir y dibujar, el mismo número.
+  ok(Number(bF[0].dims.B) === 80 && Number(bF[0].dims.D) === 80,
+    'el par espejo D sigue a B (80/80; en auto valían 52) (=' +
+    bF[0].dims.B + '/' + bF[0].dims.D + ')');
+  casi(perimetro(bF[0].puntos) - perimetro(aF[0].puntos),
+    sumaDims(bF[0].dims) - sumaDims(aF[0].dims), 1e-9,
+    'y el trazo crece exactamente lo que crece el corte (+56)');
 
   const a = R.expandirComponente(comp('104D', 'ES'), HOST);
   const cDelta = comp('104D', 'ES', c => { c.dims.B.delta = 5; });

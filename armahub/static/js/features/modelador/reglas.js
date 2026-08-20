@@ -246,7 +246,23 @@
   // BYTE-IDÉNTICA a la de antes de esta tanda.
   function _dimCanon(letra, decl, mig) {
     var res = _dimCanonModo(letra, decl, mig);
-    return (res && typeof res === 'object') ? _deltaCanon(letra, decl, res, mig) : res;
+    if (!res || typeof res !== 'object') return res;
+    res = _deltaCanon(letra, decl, res, mig);
+    // EXTREMO DE UNA MEDIDA FIJA (21-ago). `_deltaCanon` sólo conserva `extremo`
+    // cuando hay Δ, porque hasta hoy el extremo describía por dónde CRECÍA el Δ.
+    // Ahora el tirador del marco escribe la medida como FIJA, y esa medida también
+    // se carga a un borde (el estribo de confinamiento se achica y se pega a un
+    // costado): sin este rescate el extremo moría en la vista canónica y el marco
+    // volvía a crecer/achicar CENTRADO, deshaciendo el gesto.
+    // Sólo en 'fija': en un lado 'auto' sin Δ el extremo no describe nada y
+    // escribirlo cambiaría la canónica de recetas que hoy no lo usan.
+    if (res.modo === 'fija' && res.extremo == null && decl && typeof decl === 'object') {
+      var exF = String(decl.extremo == null ? '' : decl.extremo).toLowerCase().trim();
+      if (exF === 'ini' || exF === 'inicio') res.extremo = 'ini';
+      else if (exF === 'fin') res.extremo = 'fin';
+      else if (exF === 'centro') res.extremo = 'centro';
+    }
+    return res;
   }
 
   // Δ de UNA dim → se agrega al objeto canónico `out` (y se devuelve `out`).
@@ -485,6 +501,59 @@
       if (!P || out[P]) return;          // sin par, o el par ya trae el SUYO
       out[P] = { delta: out[L].delta, extremo: out[L].extremo, origen: 'espejo', de: L };
     });
+    return out;
+  }
+
+  // ---------------------------------------------------------------------------
+  // MEDIDA FIJA DE UN LADO DEL MARCO, REPLICADA EN SU PAR ESPEJO
+  // ---------------------------------------------------------------------------
+  // La hermana de _deltasEfectivos para el número ESCRITO, y por la misma razón:
+  // en un contorno CERRADO los lados opuestos son la MISMA medida vista dos veces
+  // (el alto de un estribo lo miden B y D). Un Δ ya se replicaba; una medida fija
+  // no, porque hasta hoy no llegaba al trazo (se listaba y se cortaba, y el marco
+  // seguía saliendo del hormigón). Desde que el tirador del marco escribe MEDIDA
+  // —«que mida esto», no «tanto menos de lo que dé el hormigón»— la fija sí manda
+  // el marco, así que sin réplica el cuadrilátero dejaría de cerrar: el lado
+  // dibujado mediría lo escrito y su opuesto seguiría listando el 'auto'.
+  //
+  // SÓLO LOS LADOS DEL MARCO de una pieza de SECCIÓN (ejesMarcoSeccion → 'u'/'v').
+  // Es donde vive la obligación de cerrar y donde el marco deriva su forma; en una
+  // cadena (305A) o en un longitudinal cada lado se dibuja de SU dim y replicar
+  // inventaría una medida que el usuario no escribió.
+  //
+  // LO QUE SE REPLICA ES EL CRECIMIENTO, NO EL NÚMERO. En la 104D los dos lados
+  // del par miden lo mismo en 'auto' y da igual, pero en la 106A no: el ancho lo
+  // miden C y E y sus 'auto' valen 19 y 24 (uno está recortado por el gancho).
+  // Copiando el NÚMERO, fijar C = 25 dejaba a E pidiendo un marco 6 cm más ancho y
+  // a C pidiéndolo 1 cm más ancho — el propio motor lo cazaba con «Δ distintos en
+  // los dos lados que miden el mismo ancho: el contorno no cierra». Copiando el
+  // CRECIMIENTO los dos empujan el marco lo mismo y el contorno cierra, que es
+  // exactamente lo que hace la réplica del Δ.
+  //
+  // EL NÚMERO EXPLÍCITO GANA, igual que en el Δ: si el usuario escribió medida en
+  // los DOS lados del par se respetan las dos tal cual (y el marco avisa que no
+  // cierra). Devuelve SÓLO los lados que RECIBEN la réplica → { LETRA: {de} }.
+  function _fijasEspejo(comp) {
+    var out = {};
+    if (!comp || comp._rol !== 'estribo') return out;
+    var fp = _fp();
+    if (!fp || !fp.ejesMarcoSeccion || !fp.paresEspejoFigura) return out;
+    var ejes = fp.ejesMarcoSeccion(comp.figura, comp._rol);
+    if (!ejes) return out;
+    var pares = fp.paresEspejoFigura(comp.figura);
+    if (!pares) return out;
+    var g = _dimsDecl(comp), k, d, P, dP;
+    for (k in g) {
+      if (!Object.prototype.hasOwnProperty.call(g, k)) continue;
+      if (ejes[k] !== 'u' && ejes[k] !== 'v') continue;   // gancho: no mide el marco
+      d = g[k];
+      if (!d || d.modo !== 'fija' || !isFinite(Number(d.valor))) continue;
+      P = pares[k];
+      if (!P || ejes[P] !== ejes[k] || out[P]) continue;  // sin par, o par de otro eje
+      dP = g[P];
+      if (dP && dP.modo === 'fija') continue;             // el par trae la SUYA
+      out[P] = { de: k };
+    }
     return out;
   }
 
@@ -3566,7 +3635,7 @@
     var esDato = { x: false, y: false, z: false };
     var dist2 = comp && comp.distribucion;
     if (dist2 && dist2.rango2 && dist2.rango2.eje) esDato[dist2.rango2.eje] = true;
-    var dlDir = _deltaMarcoSeccion(comp, []);
+    var dlDir = _deltaMarcoSeccion(comp, [], host);
     if (dlDir && (dlDir.altoDir || dlDir.anchoDir)) {
       var PD = _permDe(comp);
       if (dlDir.altoDir) esDato[PD ? PD.y : 'y'] = true;
@@ -3646,6 +3715,11 @@
     // leerse igual. Antes un número plano no matcheaba `d.modo === 'fija'` y la dim
     // fijada por el usuario se resolvía como 'auto' — el valor se perdía en silencio.
     var g = _dimsDecl(comp);
+    // Medidas fijas HEREDADAS del par espejo (ver _fijasEspejo): el lado opuesto de
+    // un marco cerrado mide lo mismo, así que se resuelve con el número escrito en
+    // su par y no con el 'auto' del hormigón. Vacío ({}) en todo lo que no sea un
+    // lado del marco de una pieza de sección → el resto queda byte-idéntico.
+    var fijEsp = _fijasEspejo(comp);
     var mk = marcoUtilNivel(null, host, (nivel !== undefined) ? nivel : null);
     // Lado LONGITUDINAL del cabezal (B en 10x con patas, A en 101/102): es el
     // ÚNICO que se estira al largo útil. Las PATAS en 'auto' toman la extensión
@@ -3819,6 +3893,14 @@
     Object.keys(g).forEach(function (k) {
       var d = g[k];
       if (d && d.modo === 'fija') { dims[k] = fijaVert(k, d.valor); return; }
+      // ESPEJO: este lado sigue a su par. Lo que hereda es el CRECIMIENTO sobre el
+      // 'auto' (ver _fijasEspejo), no el número: así los dos empujan el marco lo
+      // mismo y el contorno cierra aunque sus 'auto' no coincidan (106A: 19 y 24).
+      if (fijEsp[k]) {
+        var Lo = fijEsp[k].de;
+        dims[k] = autoDeLado(k) + (fijaVert(Lo, g[Lo].valor) - autoDeLado(Lo));
+        return;
+      }
       if (k === ladoLong) return;   // 2ª pasada
       // AUTO: deriva según la DIRECCIÓN del lado en la pose (regla universal);
       // sin clasificación (figura sin tramos), cae al gancho de siempre.
@@ -4000,6 +4082,79 @@
     return (d.extremo === 'ini') ? { ini: d.delta, fin: 0 } : { ini: 0, fin: d.delta };
   }
 
+  // DIMS 'AUTO' PURAS DE LOS LADOS DEL MARCO — la línea base contra el hormigón
+  // de AHORA. Se re-resuelve con un clon del componente cuyos lados del marco
+  // están en 'auto' pelado (sin medida escrita y sin Δ): es la única forma de
+  // saber cuánto se APARTA del hormigón la medida que el usuario fijó, y por lo
+  // tanto cuánto tiene que crecer/achicar el marco para dibujarla.
+  // El clon hereda por prototipo (`Object.create`) para no perder los campos NO
+  // ENUMERABLES que el motor ya publicó en el componente (_rol, _pose, _dist…):
+  // copiarlo con un for-in los dejaría fuera y el clon se resolvería con otro rol.
+  // Sin `avisos`: lo que diga esta pasada auxiliar ya lo dice la real.
+  function _dimsAutoMarco(comp, host, ejes) {
+    if (!host) return null;
+    var g = _dimsDecl(comp), lim = {}, k;
+    for (k in g) {
+      if (!Object.prototype.hasOwnProperty.call(g, k)) continue;
+      lim[k] = (ejes[k] === 'u' || ejes[k] === 'v') ? { modo: 'auto' } : g[k];
+    }
+    var clon = Object.create(comp);
+    _publicar(clon, '_dims', lim);
+    try { return _dimsEfectivas(clon, host, nivelJerarquia(comp.jerarquia), undefined, null); }
+    catch (e) { return null; }
+  }
+
+  // CRECIMIENTO DEL MARCO POR LADO → { LETRA: {delta, extremo, origen, de} }.
+  // Reúne las DOS formas de pedirlo, que se SUMAN igual que se suman en la dim:
+  //   · el Δ (relativo al hormigón, con su réplica en el par espejo) — lo de siempre;
+  //   · la medida FIJA (absoluta), traducida a `medida − 'auto' de ahora`.
+  // Se llama `delta` el campo porque es lo que consume el marco: un crecimiento.
+  function _crecMarcoSeccion(comp, ejes, host) {
+    var out = {}, deltas = _deltasEfectivos(comp), k;
+    for (k in deltas) {
+      if (!Object.prototype.hasOwnProperty.call(deltas, k)) continue;
+      out[k] = { delta: deltas[k].delta, extremo: deltas[k].extremo,
+        origen: deltas[k].origen, de: deltas[k].de };
+    }
+    var g = _dimsDecl(comp), fijEsp = _fijasEspejo(comp), propias = [];
+    for (k in ejes) {
+      if (ejes[k] !== 'u' && ejes[k] !== 'v') continue;   // gancho: no mide el marco
+      if (g[k] && g[k].modo === 'fija' && isFinite(Number(g[k].valor))) propias.push(k);
+    }
+    if (!propias.length) return out;               // sin medida escrita: todo igual que antes
+    var auto = _dimsAutoMarco(comp, host, ejes);
+    if (!auto) return out;
+    propias.forEach(function (L) {
+      if (auto[L] == null || !isFinite(Number(auto[L]))) return;
+      // El Δ se SUMA a la medida fija (es así como se suman en la dim), y el
+      // extremo del Δ manda si lo hay — es la perilla que el usuario acaba de
+      // tocar; si no, el de la fija, que el tirador escribe con el borde arrastrado.
+      var yaD = out[L] ? Number(out[L].delta) : 0;
+      var cr = Number(g[L].valor) - Number(auto[L]) + yaD;
+      if (!cr) { delete out[L]; return; }          // mide justo el 'auto': nada que crecer
+      out[L] = {
+        delta: cr,
+        extremo: (out[L] && out[L].extremo) ? out[L].extremo : _extremoDe(g[L]),
+        origen: 'propio', de: null
+      };
+    });
+    // EL ESPEJO COPIA EL CRECIMIENTO DE SU ORIGEN, TAL CUAL. Recalcularlo desde su
+    // propio 'auto' lo dejaría a un redondeo de distancia del otro y el motor
+    // cantaría «Δ distintos — el contorno no cierra» por medio centímetro.
+    for (k in fijEsp) {
+      if (!Object.prototype.hasOwnProperty.call(fijEsp, k)) continue;
+      var src = out[fijEsp[k].de];
+      if (!src) { delete out[k]; continue; }       // el origen no crece: el espejo tampoco
+      out[k] = { delta: src.delta, extremo: src.extremo, origen: 'espejo', de: fijEsp[k].de };
+    }
+    return out;
+  }
+
+  function _extremoDe(d) {
+    var e = d && d.extremo;
+    return (e === 'ini') ? 'ini' : (e === 'fin' ? 'fin' : 'centro');
+  }
+
   // Δ DE UNA PIEZA DE SECCIÓN → CUÁNTO CRECE SU MARCO ({alto, ancho} en cm, o null).
   // ---------------------------------------------------------------------------
   // Una pieza de sección CERRADA no se dibuja con sus dims: su forma la manda el
@@ -4014,13 +4169,24 @@
   // marco 5 cm más alto, no 10. Por eso se toma el Δ del eje, no la suma: sumarlos
   // doblaría el crecimiento y el perímetro dibujado dejaría de coincidir con el
   // largo de corte (que sí sube 10, porque son dos lados de 5 más cada uno).
-  function _deltaMarcoSeccion(comp, avisos) {
+  //
+  // Y LA MEDIDA FIJA ENTRA POR ACÁ TAMBIÉN (21-ago). Hasta hoy sólo el Δ movía el
+  // marco, así que el tirador escribía Δ: un ajuste RELATIVO al hormigón. El
+  // usuario achicó un estribo de confinamiento a 600 de muro y al bajar el muro a
+  // 200 el estribo se achicó DOS VECES (el 'auto' bajó y el Δ seguía montado
+  // encima) — MEDIDO: Δ −30 sobre un lado cuyo auto valía 13 dejaba el lado en
+  // −17 cm. Arrastrar el tirador significa «que mida esto», y una medida no puede
+  // depender de lo que dé el hormigón. Ahora la fija llega al marco traducida al
+  // crecimiento que le corresponde CONTRA EL HORMIGÓN DE AHORA (medida − 'auto'),
+  // que es lo único que el trazo del marco sabe consumir: el marco mide lo escrito
+  // con el muro en 600 y sigue midiéndolo con el muro en 200.
+  function _deltaMarcoSeccion(comp, avisos, host) {
     if (!comp || comp._rol !== 'estribo') return null;
     var fp = _fp();
     if (!fp || !fp.ejesMarcoSeccion) return null;
     var ejes = fp.ejesMarcoSeccion(comp.figura, comp._rol);
     if (!ejes) return null;                       // se dibuja con sus dims: nada que crecer
-    var deltas = _deltasEfectivos(comp), acc = { u: null, v: null }, k, e;
+    var deltas = _crecMarcoSeccion(comp, ejes, host), acc = { u: null, v: null }, k, e;
     // HACIA DÓNDE crece/acorta el marco (pedido 15-ago). Por defecto CENTRADO —el
     // contorno cerrado crecía siempre simétrico—, pero un estribo de confinamiento
     // se acorta y se CARGA A UN LADO. La dirección la da el `extremo` de la dim
@@ -4074,6 +4240,11 @@
       if (!Object.prototype.hasOwnProperty.call(g, k)) continue;
       d = g[k];
       if (d && typeof d === 'object' && d.modo === 'fija') out[k] = 'fija';
+    }
+    var fEsp = _fijasEspejo(comp);      // la medida heredada del par también la expresó el usuario
+    for (k in fEsp) {
+      if (!Object.prototype.hasOwnProperty.call(fEsp, k)) continue;
+      if (!out[k]) out[k] = 'fija';
     }
     var del = _deltasEfectivos(comp);
     for (k in del) {
@@ -4161,7 +4332,7 @@
     var fp = _fp();
     if (!fp || !fp.canalDelTrazo || !comp || !dims) return;
     var expr = _ladosExpresados(comp), k, canal;
-    var fijos = [], mudos = [];
+    var mudos = [];
     // Orden ALFABÉTICO de las letras, no el de iteración del objeto: el mismo
     // componente tiene que dar el mismo texto siempre (el aviso se compara para
     // deduplicar y el usuario lo lee dos veces seguidas).
@@ -4170,20 +4341,13 @@
       k = letras[i];
       if (dims[k] == null) continue;             // lado que esta figura no resuelve
       canal = fp.canalDelTrazo(comp.figura, comp._rol, k);
-      if (canal === 'dims' || canal === 'gancho') continue;
-      if (canal === 'marco') {
-        if (expr[k] !== 'fija') continue;        // el Δ SÍ crece el marco (marcoDelta)
-        fijos.push(k + ' = ' + _num2(dims[k]));
-        continue;
-      }
+      // 'marco' YA NO ES MUDO (21-ago). Aquí salía «el marco lo fija el HORMIGÓN,
+      // no esa dim; para mover el dibujo usa el Δ»: era cierto mientras la medida
+      // fija se listaba sin llegar al trazo. Desde que `_crecMarcoSeccion` la
+      // traduce a crecimiento del marco, las dos rutas —Δ y medida— mueven el
+      // dibujo, y repetir aquel texto mandaría al usuario a la perilla equivocada.
+      if (canal === 'dims' || canal === 'gancho' || canal === 'marco') continue;
       mudos.push(k + ' = ' + _num2(dims[k]));
-    }
-    if (fijos.length) {
-      _avisarEn(avisos, _plural(fijos.length, 'Lado', 'Lados') + ' ' + fijos.join(' · ') +
-        ' cm: en la ' + comp.figura + ' como pieza de sección el marco lo fija el ' +
-        'HORMIGÓN (recubrimiento + pilas), no ' + _plural(fijos.length, 'esa dim', 'esas dims') +
-        '. La medida viaja al despiece —largo de corte y kg— pero el trazo 3D sale del ' +
-        'marco; para mover el dibujo usa el Δ, que sí lo hace crecer.');
     }
     if (mudos.length) {
       _avisarEn(avisos, _plural(mudos.length, 'Lado', 'Lados') + ' ' + mudos.join(' · ') +
@@ -4461,7 +4625,7 @@
     // resuelve para el longitudinal: allá el Δ ya estaba en el trazo y sólo
     // faltaba por qué punta asomaba; acá el trazo no viene de las dims, así que
     // el Δ tiene que entrar por el marco o el dibujo no se entera.
-    var dlMarco = _deltaMarcoSeccion(comp, base.avisos);
+    var dlMarco = _deltaMarcoSeccion(comp, base.avisos, host);
     if (dlMarco) base.anchorBase.marcoDelta = dlMarco;
     // …y en la OTRA mitad de esa misma figura —los ganchos declarados de la 106x—
     // la medida llega entera, no como crecimiento: la pata es un largo, no un lado
@@ -4695,6 +4859,10 @@
     //   { LETRA: { delta, extremo:'ini'|'fin', origen:'propio'|'espejo', de } }
     // Fuente única para el motor y para la UI (que pinta el par que se mueve junto).
     deltasDeComponente: _deltasEfectivos,
+    // Medidas fijas HEREDADAS del par espejo (sólo las que RECIBEN la réplica). La
+    // ficha del editor las pinta bloqueadas, igual que hace con el Δ replicado: si
+    // no, el lado opuesto de un marco cerrado aparecería en 'auto' mintiendo.
+    fijasEspejoDeComponente: _fijasEspejo,
     // Elección de dominante del componente, YA validada (null = no hay o no sirve).
     ladoDominanteElegido: _domElegido,
     rolDeTipologia: _rolDeTipologia,   // jerarquía: generar calcula host.jer_phi

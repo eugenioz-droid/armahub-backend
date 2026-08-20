@@ -335,25 +335,38 @@ ok(JSON.stringify(e20.comp).indexOf('_avisos') === -1,
 // Sin capas que no quepan, el array queda VACÍO (no se acumulan avisos viejos).
 ok((estriboNCapas(2, 3).comp._avisos || []).length === 0,
   'Sep 3 (todo cabe) → sin avisos: se recalculan en cada expansión');
-// 3) MARCO del anillo: con dims fijas grandes las dims nunca llegan a 0, pero el
-//    marco sí se cruza. Capa 3 (inset 20): w2 = 15 − 3 − 0.4 − 20 = −8.4 → ancho
-//    −16.8 (alto 11.2). Se omite igual, avisando con el marco.
+// 3) MARCO del anillo: hay insets con los que las dims del anillo siguen siendo
+//    POSITIVAS y el marco, en cambio, ya se cruzó. La diferencia son los φ/2 que
+//    el marco descuenta en sus tres fronteras y la dim no: ancho útil 24 (dim) vs
+//    marco 23.2. Con Sep 11.8 (inset 23.6) la capa 2 da dim A = 0.4 — sobrevive al
+//    corte por dims — y marco −0.4: se omite igual, avisando CON EL MARCO.
+//    (21-ago) Este bloque usaba dims FIJAS de 200 para forzar esa divergencia,
+//    apoyándose en que una medida fija no mandaba el marco. Ya no es cierto —el
+//    tirador escribe medida y la medida manda el marco—, así que la divergencia se
+//    provoca donde de verdad existe: en el φ/2 del marco, con las dims en 'auto'.
 const cMarco = {
+  tipologia: 'ES', figura: '104D', diam: 8, cara: 'lateral',
+  dims: { A: { modo: 'auto' }, B: { modo: 'auto' }, C: { modo: 'auto' }, D: { modo: 'auto' } },
+  distribucion: { modo: 'layered', n_capas: 2, barras_capa: 1, gap: 11.8 }
+};
+const plMarco = R.expandirComponente(cMarco, host);
+ok(plMarco.length === 1 && (cMarco._avisos || []).some(a => /marco 27\.6×-0\.4/.test(a)),
+  'dims > 0 pero MARCO cruzado (27.6×−0.4) → capa omitida con aviso (=' +
+  plMarco.length + ' placements · ' + JSON.stringify(cMarco._avisos) + ')');
+// …y la medida FIJA manda el marco (21-ago): el mismo estribo con las cuatro dims
+// en 200 ya no dibuja el marco del hormigón —dibuja el de 200—, así que sus tres
+// capas anidadas caben y se generan. Es el reverso del mismo cambio: la que se
+// omite es la capa que no cabe DE VERDAD, no la que no cabía en un marco que el
+// usuario no había pedido.
+const cFijaMarco = {
   tipologia: 'ES', figura: '104D', diam: 8, cara: 'lateral',
   dims: { A: { modo: 'fija', valor: 200 }, B: { modo: 'fija', valor: 200 }, C: { modo: 'fija', valor: 200 }, D: { modo: 'fija', valor: 200 } },
   distribucion: { modo: 'layered', n_capas: 3, barras_capa: 1, gap: 10 }
 };
-const plMarco = R.expandirComponente(cMarco, host);
-// `.some` EN VEZ DE `[0]` (14-ago) — razón física, no acomodo: este componente
-// tiene DOS problemas distintos y ahora el motor los dice los dos. El primero es
-// que sus dims fijas de 200 cm no mandan el marco (lo fija el hormigón: 11.2 de
-// alto), divergencia que antes se dibujaba en silencio; el segundo, el que este
-// assert vigila, es la capa 3 que no cabe. El aviso de las dims sale primero
-// porque se emite al resolverlas, o sea antes de repartir las capas. Lo que se
-// verifica sigue siendo lo mismo: la capa omitida se reporta CON SU MARCO cruzado.
-ok(plMarco.length === 2 && (cMarco._avisos || []).some(a => /marco 11\.2×-16\.8/.test(a)),
-  'dims > 0 pero MARCO cruzado (11.2×−16.8) → capa omitida con aviso (=' +
-  plMarco.length + ' placements · ' + JSON.stringify(cMarco._avisos) + ')');
+const plFijaMarco = R.expandirComponente(cFijaMarco, host);
+ok(plFijaMarco.length === 3 && !(cFijaMarco._avisos || []).some(a => /^Capa /.test(a)),
+  'dims fijas de 200: el marco las obedece y las 3 capas caben (=' +
+  plFijaMarco.length + ' placements · ' + JSON.stringify(cFijaMarco._avisos) + ')');
 // 4) Mismo criterio en el distribuidor ARREGLO (una sola regla para los dos).
 const cArr = {
   tipologia: 'ES', figura: '104D', diam: 8, cara: 'lateral',

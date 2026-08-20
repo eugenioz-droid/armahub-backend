@@ -688,8 +688,11 @@
   //   · 'marco'  → lado que lleva una medida del MARCO DE NÚCLEO (104x A/C/B/D,
   //     106x B..E, todos los de la traba). El marco NO sale de las dims: lo fija el
   //     hormigón (recubrimiento + pilas) — «el marco manda la forma», fix 13-ago.
-  //     Ahí sólo entra el Δ (por `anchor.marcoDelta`, que es un CRECIMIENTO); una
-  //     medida FIJA se lista y se corta, pero el trazo sigue saliendo del hormigón.
+  //     Entra por `anchor.marcoDelta`, que es un CRECIMIENTO sobre ese marco. El Δ
+  //     es un crecimiento por definición; una medida FIJA también llega, traducida
+  //     a `medida − 'auto' de ahora` (reglas._crecMarcoSeccion, 21-ago). Antes la
+  //     fija se listaba y se cortaba y el trazo seguía saliendo del hormigón: por
+  //     eso el tirador tenía que escribir Δ, y un Δ no es una medida.
   //   · null     → ninguna ruta: esa dim no toca el dibujo de ninguna forma.
   // Quién puede usar cada ruta lo decide reglas.js, que es quien sabe si el usuario
   // escribió una medida fija o un Δ.

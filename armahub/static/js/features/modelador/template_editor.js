@@ -5666,7 +5666,12 @@
       }
       try { return R.expandirComponente(clon, host) || []; } catch (e) { return []; }
     }
-    var b0 = _bboxUVdePls(expandir(null), plano);
+    // La expansión base sirve para DOS cosas: el bbox contra el que se sondea y
+    // la MEDIDA que tiene ahora mismo cada lado (`pl.dims`), que es la que el
+    // arrastre va a mover y a dejar escrita.
+    var pls0 = expandir(null);
+    var b0 = _bboxUVdePls(pls0, plano);
+    var dims0 = (pls0[0] && pls0[0].dims) || {};
     if (!b0) { _actualizarStatus('No se pudo medir la pieza en esta vista.'); return; }
     // EL PAR ESPEJO ES UNA SOLA PERILLA (fix 17-ago, «pasado la mitad se
     // bloquea»). B y D miden LA MISMA medida del marco: escribir Δ propio en los
@@ -5674,18 +5679,25 @@
     // mayor», y el sondeo sobre el par de un lado ya arrastrado no medía el
     // efecto de +5 sino el salto del conflicto (~40 cm de borde por cm de Δ):
     // ganaba el par, el drag escribía el lado equivocado y el estribo quedaba
-    // trabado/saltando. Por eso: todo candidato se PLIEGA al lado del par que
-    // ya trae Δ propio, y el par jamás recibe un Δ nuevo desde el tirador.
+    // trabado/saltando. Por eso: todo candidato se PLIEGA al lado del par que ya
+    // trae perilla propia, y el par jamás recibe nada nuevo desde el tirador — su
+    // medida (o su Δ) se la replica el motor, que es donde vive esa regla.
     var fpM = global.ModeladorFiguraPuntos || {};
     var pares = (fpM.paresEspejoFigura ? fpM.paresEspejoFigura(c.figura) : null) || {};
-    function deltaPropioDe(L) {
+    // PERILLA PROPIA de un lado = lo que el usuario ya escribió en ÉL: un Δ, o
+    // una MEDIDA FIJA. Antes sólo contaba el Δ porque era lo único que el tirador
+    // escribía; desde que escribe medida, un lado ya arrastrado se reconoce por su
+    // fija — si no, el 2º arrastre podía plegarse al par y escribir el lado
+    // equivocado (que es el defecto que este plegado existe para impedir).
+    function perillaPropiaDe(L) {
       var d = c.dims && c.dims[L];
-      return (d && typeof d === 'object' && d.delta) ? d : null;
+      if (!d || typeof d !== 'object') return null;
+      return (d.delta || (d.modo === 'fija' && isFinite(Number(d.valor)))) ? d : null;
     }
     function plegarAlKnob(L) {
-      if (deltaPropioDe(L)) return L;
+      if (perillaPropiaDe(L)) return L;
       var P = pares[L];
-      return (P && deltaPropioDe(P)) ? P : L;
+      return (P && perillaPropiaDe(P)) ? P : L;
     }
     // candidatos: primero los lados que YA traen Δ propio (arrastrar continúa lo
     // escrito en vez de pelearlo), después el resto de los lados de la figura —
@@ -5693,12 +5705,20 @@
     var spec = _figSpec(c.figura);
     var lados = [];
     function agregar(L) { L = plegarAlKnob(L); if (lados.indexOf(L) < 0) lados.push(L); }
-    Object.keys(c.dims || {}).forEach(function (L) { if (deltaPropioDe(L)) agregar(L); });
+    Object.keys(c.dims || {}).forEach(function (L) { if (perillaPropiaDe(L)) agregar(L); });
     ((spec && spec.parciales) || Object.keys(c.dims || {})).forEach(agregar);
     var mejor = null;
     lados.forEach(function (L) {
-      var dEx = deltaPropioDe(L);
-      var extEx = dEx ? ((dEx.extremo === 'ini') ? 'ini' : (dEx.extremo === 'centro' ? 'centro' : 'fin')) : null;
+      // La perilla ya escrita en ESTE lado (Δ o medida) y el borde por el que se
+      // desarrolla. El default no es el mismo en las dos: un Δ sin extremo crece
+      // por 'fin' y una medida fija sin extremo crece CENTRADA — es lo que hace el
+      // motor, y si acá se supusiera otra cosa la línea base del sondeo mediría un
+      // recolocado que no existe.
+      var dEx = perillaPropiaDe(L);
+      var extEx = !dEx ? null
+        : ((dEx.extremo === 'ini') ? 'ini'
+          : (dEx.extremo === 'fin' ? 'fin'
+            : (dEx.extremo === 'centro' ? 'centro' : (dEx.delta ? 'fin' : 'centro'))));
       ['fin', 'ini'].forEach(function (E) {
         // LÍNEA BASE POR CANDIDATO: si el lado ya acumula Δ con OTRO extremo,
         // compararlo contra el estado actual mediría el volteo del acumulado
@@ -5739,12 +5759,23 @@
       _actualizarStatus('Ningún lado de la ' + (c.figura || 'figura') + ' mueve ese borde en esta vista.');
       return;
     }
-    var d0 = (c.dims && c.dims[mejor.L] && typeof c.dims[mejor.L] === 'object')
-      ? (Number(c.dims[mejor.L].delta) || 0) : 0;
+    // MEDIDA DE PARTIDA del lado que manda: la que ese lado tiene AHORA según el
+    // motor. Es la que el arrastre mueve y la que va a quedar escrita — el gesto
+    // dice «que mida esto». `delta0` es el Δ que el usuario haya escrito A MANO en
+    // ese lado: sigue vivo y se descuenta del valor guardado para que la suma
+    // (valor + Δ) dé exactamente la medida hasta donde se soltó el tirador.
+    var dRef = (c.dims && typeof c.dims[mejor.L] === 'object') ? c.dims[mejor.L] : null;
+    var d0 = dRef ? (Number(dRef.delta) || 0) : 0;
+    var m0 = Number(dims0[mejor.L]);
+    if (!isFinite(m0)) {
+      _actualizarStatus('El motor no reporta medida para el lado ' + mejor.L +
+        ': no se puede redimensionar arrastrando.');
+      return;
+    }
     ST.dragMarco = {
       plano: plano, ci: ci, eje: eje, ladoUV: ladoUV,
       L: mejor.L, extremo: mejor.extremo, ratio: mejor.ratio || 1,
-      delta0: d0, uv0: uv0, pushed: false
+      medida0: m0, delta0: d0, uv0: uv0, pushed: false
     };
   }
 
@@ -5757,18 +5788,35 @@
     // PASO 1 cm, el mismo del resto de los arrastres: era 0.5 y el usuario lo corrigió
     // el 18-ago — «no fabricamos al milímetro, fabricamos al centímetro».
     var pasoT = PASO_ARRASTRE_CM;
-    var delta = Math.round((dm.delta0 + afuera / (dm.ratio || 1)) / pasoT) * pasoT;
+    var medida = Math.round((dm.medida0 + afuera / (dm.ratio || 1)) / pasoT) * pasoT;
     c.dims = c.dims || {};
     var d = c.dims[dm.L];
     if (!d || typeof d !== 'object') {
       d = c.dims[dm.L] = (d != null && isFinite(Number(d)))
         ? { modo: 'fija', valor: Number(d) } : { modo: 'auto' };
     }
-    // misma escritura que el campo Δ de la ficha: 0 = sin Δ (se borra la clave)
-    if (!delta) { delete d.delta; }
-    else { d.delta = delta; d.extremo = dm.extremo; }
-    _actualizarStatus('Δ ' + dm.L + ' = ' + delta + ' cm (' +
-      (dm.extremo === 'ini' ? '← ini' : 'fin →') + ') — se suma al largo de corte.');
+    // EL TIRADOR ESCRIBE UNA MEDIDA, NO UN DESCUENTO (21-ago).
+    // Antes escribía Δ, o sea «tanto menos de lo que dé el hormigón»: un ajuste
+    // RELATIVO. El usuario achicó un estribo de confinamiento con el muro en 600 y
+    // al bajar el muro a 200 el estribo se achicó dos veces (bajó el 'auto' y el Δ
+    // seguía montado encima) — MEDIDO: Δ −30 sobre un lado cuyo auto valía 13 dejó el
+    // lado en −17 cm. Arrastrar el tirador significa «que mida esto», así que se
+    // guarda la MEDIDA EFECTIVA y deja de depender del hormigón.
+    //
+    // SE FIJA ESTE LADO Y SU ESPEJO, NUNCA LA PIEZA ENTERA: el par que cruza el
+    // espesor no se toca y sigue en 'auto' para reajustarse con los recubrimientos.
+    // La réplica al espejo NO se escribe acá — la hace el motor (reglas._fijasEspejo),
+    // el mismo sitio y la misma regla con la que ya replicaba el Δ.
+    //
+    // EL Δ ESCRITO A MANO SIGUE VIVO: es una intención distinta y válida. Como la
+    // dim final es valor + Δ, se guarda `medida − Δ` para que el lado termine
+    // midiendo justo donde quedó el tirador.
+    d.modo = 'fija';
+    d.valor = medida - dm.delta0;
+    d.extremo = dm.extremo;
+    _actualizarStatus('Lado ' + dm.L + ' = ' + medida + ' cm (' +
+      (dm.extremo === 'ini' ? '← ini' : 'fin →') + ')' +
+      (dm.delta0 ? ' — incluye el Δ ' + dm.delta0 + ' de la ficha' : '') + '.');
     _regenerarDiferido();
   }
 
@@ -6784,6 +6832,23 @@
       d.modo = 'fija'; d.valor = Number(v); _mut(ci);
     });
     if (d.modo === 'auto') inp.disabled = true;
+    // ESPEJO DE UNA MEDIDA FIJA: en un contorno CERRADO el lado opuesto mide lo
+    // mismo y el motor le replica el crecimiento (reglas._fijasEspejo). El campo lo
+    // DICE en vez de quedarse en 'auto' mintiendo — el mismo trato que ya recibe el
+    // Δ replicado unas líneas más abajo.
+    var Rm = global.ModeladorReglas;
+    var fEsp = (Rm && Rm.fijasEspejoDeComponente) ? (Rm.fijasEspejoDeComponente(c) || {}) : {};
+    if (fEsp[L]) {
+      inp.disabled = true;
+      inp.placeholder = '↔ ' + fEsp[L].de;
+      inp.title = 'Este lado mide lo mismo que ' + fEsp[L].de + ' (contorno cerrado): ' +
+        'su medida se replica sola. Para cambiarla, edita el lado ' + fEsp[L].de + '.';
+    }
+    // El TIRADOR DEL MARCO escribe ESTE campo (ya no el Δ): mientras se estira la
+    // pieza, la ficha tiene que decir la medida que el tirador acaba de dejar en la
+    // receta y no la de antes de agarrarla. Misma regla que el resto de los campos
+    // vivos; el lado espejo se deja quieto porque su valor lo replica el motor.
+    if (!fEsp[L]) _vivo(function () { _valVivo(inp, (d.modo === 'fija' && d.valor != null) ? d.valor : ''); });
     // CANDADO en vez de "Fija/Auto" (idea del usuario, 15-ago): el texto se comía
     // ~45 px y en el flex los controles de la derecha se COMPRIMÍAN hasta
     // desaparecer — por eso la flecha "no se veía". Cerrado = medida FIJA (la
@@ -6843,10 +6908,13 @@
     lblD.title = 'Prolongación de este lado (traslapo). Se suma al largo de corte y a los kg.';
     wrap.appendChild(lblD);
     wrap.appendChild(inDelta);
-    // El TIRADOR DEL MARCO escribe este mismo Δ (son la misma perilla): mientras se
-    // estira la pieza, el campo dice el número que el tirador acaba de dejar en la
-    // receta y no el de antes de agarrarla. El lado espejo se deja quieto: su valor
-    // lo replica el motor y el campo está bloqueado.
+    // ESTE Δ YA NO LO ESCRIBE EL TIRADOR (21-ago): el tirador escribe la MEDIDA (el
+    // campo de arriba). El Δ se queda como estaba porque sigue siendo una intención
+    // distinta y válida —«tanto menos de lo que dé el hormigón»— y el motor lo suma
+    // a la medida. Se refresca en vivo igual: un arrastre puede cambiar la medida de
+    // este lado y el panel no puede decir un número distinto del que se dibuja.
+    // El lado espejo se deja quieto: su valor lo replica el motor y el campo está
+    // bloqueado.
     if (!esEspejo) _vivo(function () { _valVivo(inDelta, (d.delta != null && d.delta !== '') ? d.delta : ''); });
 
     // FLECHA: por qué punta crece o se acorta. En un contorno CERRADO no se
@@ -7906,9 +7974,8 @@
 
   function _actualizarStatus(msg) {
     var s = $('te_ctoolsStatus'); if (!s) return;
-    if (msg) { s.innerHTML = '<b style="color:var(--te-acero-t)">' + _esc(msg) + '</b>'; return; }
     var selTxt = '', avisoTxt = '';
-    if (ST.selCi >= 0 && ST.receta.componentes[ST.selCi]) {
+    if (ST.selCi >= 0 && ST.receta && ST.receta.componentes[ST.selCi]) {
       var c = ST.receta.componentes[ST.selCi];
       var ang = (c.orient && c.orient.deg) ? (' · ' + c.orient.deg + '°') : '';
       // El gate de SHIFT no tiene botón: si no se dice, no existe. Se anuncia SÓLO
@@ -7923,6 +7990,16 @@
       if (av && av.length) {
         avisoTxt = ' · <b style="color:var(--te-err)">⚠ ' + _esc(av.join(' · ')) + '</b>';
       }
+    }
+    // UN MENSAJE DE PASO NO TAPA UN AVISO DEL MOTOR (21-ago). El mensaje del gesto
+    // (el del tirador, el de una herramienta) reemplazaba la línea ENTERA, avisos
+    // incluidos: arrastrando el marco hasta dejar un lado en −17 cm, el motor lo
+    // decía —«El lado A queda en −17 cm: esa barra no es construible»— y la pantalla
+    // mostraba sólo la medida del arrastre hasta soltar. El aviso rojo va SIEMPRE
+    // detrás del mensaje; es el aviso que ya emite el motor, no uno nuevo.
+    if (msg) {
+      s.innerHTML = '<b style="color:var(--te-acero-t)">' + _esc(msg) + '</b>' + avisoTxt;
+      return;
     }
     // AVISO FIGURA vs TIPOLOGÍA — se RECALCULA acá (no se guarda en ST) para que
     // aparezca y desaparezca solo: basta corregir la figura o la tipología para

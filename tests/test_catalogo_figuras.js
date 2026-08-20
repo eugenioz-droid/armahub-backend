@@ -293,12 +293,18 @@ ok(!validarSlots(out106.barras[0]), '106A pasa validar_geometria: 6 dims + ang1/
 //     dice el aviso de fierro fuera del hormigón, medido sobre estos mismos puntos.
 //     Ese fierro asomaba igual antes — la receta pide un gancho de 30 cm en una
 //     viga de 30 de ancho —, sólo que el dibujo lo tapaba.
-//   · las dims C/D/E del rectángulo NO mandan el marco (lo fija recub + pilas), y
-//     eso también se dice ahora en vez de dibujar otra cosa en silencio.
+//   · y las dims C/D/E del rectángulo SÍ mandan el marco desde el 21-ago (antes se
+//     listaban y el trazo salía del hormigón; ahora el alto dibujado es el 25 que
+//     pide la receta, no los 52 del núcleo). Con eso a la vista, la receta se
+//     delata sola: C y E miden EL MISMO ancho del marco pero sus 'auto' valen 19 y
+//     24 —uno está recortado por el gancho—, así que ponerles 25 a las dos pide
+//     dos anchos distintos y el contorno no cierra. El motor dibuja el mayor y lo
+//     dice, que es el mismo aviso que ya emitía para dos Δ en conflicto.
 // Lo que este bloque cuida NO cambia y sigue arriba: la 106A genera su barra,
 // pesa, sale con polilínea de marco y pasa validar_geometria.
-ok((comp106._avisos || []).some(a => /marco lo fija el HORMIGÓN/.test(a)),
-  'avisa que sus dims fijas no mandan el marco (el 3D dejó de mentir en silencio)');
+ok((comp106._avisos || []).some(a => /el contorno no cierra/.test(a)),
+  'avisa que sus dos dims del ancho piden marcos distintos (=' +
+  JSON.stringify(comp106._avisos) + ')');
 ok(!(comp106._avisos || []).some(a => /no la soporta|omitid/i.test(a)),
   'y ningún aviso es un rechazo: la figura se genera entera (=' +
   JSON.stringify(comp106._avisos) + ')');
@@ -327,8 +333,12 @@ ok(G.placementABarra({ figura: '999Z', diam: 1.6, dims: {}, puntos: [] }, {}) ==
 // no se negocia. Antes familiaDeDibujo dejaba que el rol 'cabezal' la clasificara
 // como corchete ("ruta histórica": 3 lados + aviso del 4º), la misma inconsistencia
 // que hizo aterrizar la 106A bajo MH en el plano equivocado. Ahora el marco manda
-// también aquí: la barra sale con TODAS sus dims al despiece y el aviso es el del
-// marco (las dims fijas no mueven el trazo; para eso está el Δ).
+// también aquí: la barra sale con TODAS sus dims al despiece.
+// Y desde el 21-ago el marco OBEDECE a esas dims fijas (antes se dibujaba el del
+// hormigón y el aviso decía «el marco lo fija el HORMIGÓN; para moverlo usa el Δ»).
+// El par espejo hace que B siga a D: el marco pedido mide 30 × 20 y ocupa 28.4 cm
+// de z en un núcleo de 22.4 — la receta no cabe en la viga y ESO es lo que se avisa
+// ahora, en vez de tapar la medida escrita dibujando otra cosa.
 const compD = {
   comp_id: 'D', tipologia: 'CBS', figura: '104A', diam: 16, cara: 'sup', suf_tipo: '',
   dims: {
@@ -340,8 +350,10 @@ const compD = {
 const outD = G.generarViga({ tipo: 'viga', geometria: GEO, componentes: [compD] }, CTX);
 ok(outD.barras.length === 1 && outD.barras[0].dim_d === 20,
   '104A como cabezal: la barra sale igual y lleva su lado D (=' + (outD.barras[0] || {}).dim_d + ')');
-ok((compD._avisos || []).some(a => /marco lo fija el HORMIG/.test(a)),
-  'con el aviso del MARCO (las dims fijas viajan al corte; el trazo lo fija el hormigón) (=' + (compD._avisos || [])[0] + ')');
+ok(Number(outD.placements[0].dims.B) === 20 &&
+   (compD._avisos || []).some(a => /no cabe ni una vez/.test(a)),
+  'el marco obedece a las dims escritas (B sigue a su espejo D = 20) y se avisa que ' +
+  'no cabe en la viga (=' + (compD._avisos || [])[0] + ')');
 
 // ---------------------------------------------------------------------------
 // E. EMPALME SOLO DONDE ES REAL (kg fantasma en estribo/traba)

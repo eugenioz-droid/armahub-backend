@@ -83,8 +83,13 @@ ok(span(bTrv, 'z') < 8, 'ganchos en z (span=' + span(bTrv, 'z').toFixed(1) + ')'
 console.log('— ESTRIBO cerrado en la sección del muro: en el plano de la vista —');
 var ec = { tipologia: 'EC', figura: '104D', diam: 0.8,
   pose: { cara: 'lateral', lado: 1, rumbo: 'y' },
-  dims: { A: { modo: 'fija', valor: 30 }, B: { modo: 'auto' },
-          C: { modo: 'fija', valor: 30 }, D: { modo: 'auto' } },
+  // A/C = 15, el espesor útil del muro (era 30, un número que no cabía en un muro
+  // de 20 y que daba igual mientras la medida fija NO mandara el marco: se dibujaba
+  // el del hormigón). Desde el 21-ago la medida fija SÍ manda el marco, así que un
+  // 30 acá pediría un estribo 10 cm más ancho que el muro y este bloque —que mira
+  // el PLANO de la pieza, no si cabe— fallaría por un dato mal escrito.
+  dims: { A: { modo: 'fija', valor: 15 }, B: { modo: 'auto' },
+          C: { modo: 'fija', valor: 15 }, D: { modo: 'auto' } },
   distribucion: { modo: 'lineal', rango: { eje: 'y', from: -100, to: 100, sep: 50 } } };
 var plsEc = R.expandirComponente(ec, MURO);
 ok(plsEc.length >= 4, 'estribo repartido en altura: n=' + plsEc.length);
