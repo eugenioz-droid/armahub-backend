@@ -67,16 +67,22 @@
   #te_modal .te-xbtn{border:1px solid var(--te-line);background:#fff;border-radius:8px;width:32px;height:30px;cursor:pointer;
     font-size:15px;color:var(--te-muted);display:inline-flex;align-items:center;justify-content:center;padding:0;line-height:1;flex-shrink:0}
 
-  /* ---- RIBBON: 1) hormigón · 2) predefiniciones de la barra · 3) agregar barra ----
-     Wrappea por GRUPOS (row-gap): cada .te-grp es indivisible, así el check
-     "tomar contorno" queda SIEMPRE pegado al inicio del grupo BARRA y no se
-     desplaza al cambiar el ancho de la ventana. */
+  /* ---- RIBBON: 1) hormigón · 2) agregar barra (con su bloque de colocación) ----
+     Wrappea por GRUPOS (row-gap): cada .te-grp es indivisible, así ninguno se
+     parte por la mitad al cambiar el ancho de la ventana. */
   #te_modal #te_ribbon{display:flex;align-items:center;gap:14px;padding:9px 18px;border-bottom:1px solid var(--te-line);background:#fff;
     flex-wrap:wrap;row-gap:8px}
   #te_modal #te_ribbon .te-grp{display:flex;align-items:center;gap:8px;flex-wrap:nowrap}
-  /* El grupo BARRA sí puede wrappear por dentro (9 tipologías no caben siempre);
-     el check "tomar contorno" es su PRIMER hijo, así que queda anclado igual. */
-  #te_modal #te_ribbon .te-grp-barra{flex-wrap:wrap;row-gap:6px}
+  /* GRUPO COLOCAR (20-ago): el botón "＋ Agregar barra" arriba y DEBAJO el bloque
+     figura+φ+tipología. En columna y alineado a la izquierda para que el bloque
+     cuelgue del botón, no se le ponga al lado. */
+  #te_modal #te_ribbon .te-grp-colocar{flex-direction:column;align-items:flex-start;gap:6px}
+  /* El bloque SÓLO existe mientras se coloca: lo prende/apaga _activarHerramienta
+     con la clase .on (ST.tool === 'colocar'). Antes figura/φ/tipologías estaban
+     siempre a la vista y hacían creer que elegirlos ya colocaba algo. Puede
+     wrappear por dentro: 9 tipologías no siempre caben en una línea. */
+  #te_modal #te_colocBloque{display:none}
+  #te_modal #te_colocBloque.on{display:flex;align-items:center;gap:8px;flex-wrap:wrap;row-gap:6px}
   /* Campos chicos del grupo HORMIGÓN (cm) — escriben ST.receta.geometria.
      El grupo va en DOS FILAS: dims arriba (largo/alto/ancho) y el RECUB ÚNICO
      abajo (un solo campo que escribe recub_sup = recub_inf = recub_lat). */
@@ -99,10 +105,9 @@
      en el catálogo pero NO es de la tipología activa (p.ej. 106A estando en MH):
      se puede colocar igual, pero casi siempre es un error de tipeo. */
   #te_modal input.warn{border-color:#e65100;background:#fff8ef}
-  /* Check "tomar contorno" ANCLADO al inicio del grupo BARRA (posición fija). */
-  #te_modal .te-contorno{display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--te-muted);
-    font-weight:600;white-space:nowrap;flex:0 0 auto}
-  #te_modal .te-contorno input{width:auto}
+  /* (El check "tomar contorno" y su CSS se ELIMINARON el 20-ago: era dato muerto
+     —sólo lo leía el ghost de respaldo, así que el fantasma prometía un recinto
+     que la barra colocada después no respetaba.) */
   /* Botón primario "＋ Agregar barra" → MODO COLOCACIÓN (se marca .on mientras dura). */
   #te_modal #te_btnAgregarBarra{white-space:nowrap}
   #te_modal #te_btnAgregarBarra.on,
@@ -110,7 +115,12 @@
   #te_modal #te_ribbon .te-lbl{font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--te-muted)}
   #te_modal #te_ribbon .te-divv{width:1px;height:30px;background:var(--te-line)}
   #te_modal .te-figpick{display:inline-flex;align-items:center;gap:6px}
-  #te_modal .te-figpick input{border:1px solid var(--te-line);border-radius:7px;padding:6px 9px;font-size:13px;width:120px}
+  /* 92 px (era 120): el bloque de colocación mete figura + φ + 9 tipologías en una
+     sola línea bajo el botón, y un código de figura son 4 caracteres. */
+  #te_modal .te-figpick input{border:1px solid var(--te-line);border-radius:7px;padding:6px 9px;font-size:13px;width:92px}
+  /* φ sin la palabra "MM" (20-ago): el símbolo solo, y más grande que un .te-lbl
+     normal porque a 10.5 px una letra griega suelta no se lee. */
+  #te_modal #te_ribbon .te-lbl.te-lbl-phi{font-size:16px;font-weight:700;text-transform:none;letter-spacing:0;color:var(--te-ink)}
   #te_modal .te-tipbtns{display:inline-flex;gap:5px;flex-wrap:wrap}
   #te_modal .te-tipbtn{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--te-line);background:#fff;border-radius:8px;padding:6px 11px;font-size:12px;cursor:pointer;font-weight:600}
   #te_modal .te-tipbtn .te-sw{width:11px;height:11px;border-radius:3px}
@@ -458,8 +468,8 @@
      líneas). Arranca a la izquierda de la lupa (right:34px) y crece hacia la
      izquierda, así no pisa el título del cuadrante (arriba-izq) ni el gizmo de ejes
      (abajo-izq, que lo pinta el renderer).
-     Desde el 18-ago la fila es aún más corta: el radial de FONDO se mudó a #te_ctools
-     (es global, no del 3D). Los grupos siguen siendo .te-3drow para no perder los
+     Desde el 18-ago la fila es aún más corta: el radial de FONDO se mudó fuera del 3D
+     (es global, no del 3D: hoy vive en el ribbon de arriba). Los grupos siguen siendo .te-3drow para no perder los
      pares etiqueta+radial al envolver. */
   #te_modal .te-3dtools{position:absolute;right:34px;top:6px;z-index:3;display:flex;flex-direction:row;
     align-items:center;justify-content:flex-end;gap:9px;flex-wrap:nowrap}
@@ -474,7 +484,7 @@
      .te-3dseg — si se escribiera con una sola clase, los botones de texto saldrían
      cuadrados y recortados.
      .te-3dlbl y .te-3dseg van SIN el ancestro .te-3dtools a propósito: el radial de
-     FONDO los reusa desde #te_ctools, que está fuera del cuadrante 3D. */
+     FONDO los reusa desde #te_ribbon, que está fuera del cuadrante 3D. */
   #te_modal .te-3dlbl{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:#8d9aab}
   #te_modal .te-3dseg{display:inline-flex;border:1px solid var(--te-line);border-radius:6px;overflow:hidden;
     background:rgba(255,255,255,.92)}
@@ -483,19 +493,21 @@
   #te_modal .te-3dtools .te-3dseg button+button{border-left:1px solid var(--te-line)}
   #te_modal .te-3dtools .te-3dseg button:hover{background:#f2f7ea;color:var(--te-acero-d);border-color:var(--te-line)}
   #te_modal .te-3dtools .te-3dseg button.on{background:var(--te-acero);color:#fff}
-  /* RADIAL DE FONDO — vive en #te_ctools (fila de arriba), fuera de .te-3dtools, así
-     que NINGUNA de las reglas de botón de esa barra le llega y trae acá su propio
-     juego. Alto 24 px = el mismo de los .te-ctool de la fila (padding 5px + 11.5px de
-     texto), para que no quede ni desalineado ni apretado entre ellos. Sus etiquetas
-     son símbolos (●◐○), que a 10 px se leerían como puntitos: van a 13. */
-  #te_modal #te_ctools #te_3dTema{flex:0 0 auto;background:#fff;border-radius:7px}
-  #te_modal #te_ctools .te-3dlbl{flex:0 0 auto}
-  #te_modal #te_ctools #te_3dTema button{width:auto;height:24px;padding:0 8px;border:none;border-radius:0;
-    background:transparent;color:var(--te-muted);font-size:13px;line-height:1;cursor:pointer;
+  /* RADIAL DE FONDO — vive en el RIBBON (20-ago; antes en #te_ctools), fuera de
+     .te-3dtools, así que NINGUNA de las reglas de botón de esa barra le llega y trae
+     acá su propio juego. Se subió porque pinta LOS 4 CUADRANTES, no el 3D: es un
+     ajuste de vista global, del mismo rango que el hormigón.
+     Tamaño +25% respecto de cuando vivía entre las herramientas (24→30 px de alto,
+     13→16 px de símbolo, 8→10 px de padding): ahí competía con botones de texto; acá
+     compite con el botón primario, y los símbolos ●◐○ tienen que leerse de un vistazo. */
+  #te_modal #te_ribbon #te_3dTema{flex:0 0 auto;background:#fff;border-radius:7px}
+  #te_modal #te_ribbon .te-3dlbl{flex:0 0 auto}
+  #te_modal #te_ribbon #te_3dTema button{width:auto;height:30px;padding:0 10px;border:none;border-radius:0;
+    background:transparent;color:var(--te-muted);font-size:16px;line-height:1;cursor:pointer;
     display:flex;align-items:center;justify-content:center}
-  #te_modal #te_ctools #te_3dTema button+button{border-left:1px solid var(--te-line)}
-  #te_modal #te_ctools #te_3dTema button:hover{background:#f2f7ea;color:var(--te-acero-d)}
-  #te_modal #te_ctools #te_3dTema button.on{background:var(--te-acero);color:#fff}
+  #te_modal #te_ribbon #te_3dTema button+button{border-left:1px solid var(--te-line)}
+  #te_modal #te_ribbon #te_3dTema button:hover{background:#f2f7ea;color:var(--te-acero-d)}
+  #te_modal #te_ribbon #te_3dTema button.on{background:var(--te-acero);color:#fff}
   /* Cuadro RESUMEN flotante del 3D (items · barras · peso). Abajo-derecha: la
      esquina inf-izq es del gizmo de ejes y el borde inferior derecho lo usa la
      ayuda (.te-vhint), que va más abajo. */
@@ -773,8 +785,8 @@
       <button type="button" class="te-brghost" id="te_borradorNo" title="Borrar el borrador guardado">Descartar</button>
     </div>
 
-    <!-- RIBBON — orden de trabajo: 1) HORMIGÓN · 2) PREDEFINICIONES DE LA BARRA ·
-         3) botón AGREGAR BARRA (entra en modo colocación). -->
+    <!-- RIBBON — orden de trabajo: 1) HORMIGÓN · 2) botón AGREGAR BARRA, y sólo
+         entonces figura/φ/tipología (el bloque que cuelga del botón). -->
     <div id="te_ribbon">
       <!-- GRUPO 1 — HORMIGÓN (cm). Los valores salen/entran a
            ST.receta.geometria y cada cambio válido regenera las 4 vistas
@@ -783,41 +795,49 @@
         <span class="te-lbl">Hormigón</span>
         <!-- VACÍO a propósito: los campos los renderiza _renderRibbonGeo()
              (template_editor.js) desde GEO_CAMPOS_POR_ELEMENTO según ST.elemento.
-             VIGA = Largo/Alto/Ancho + "Recub (cm)" único (sup/inf/lat).
-             MURO = Largo/Alto/Espesor + "Recub caras" y "Recub bordes".
-             Todos escriben las claves CANÓNICAS de ST.receta.geometria. -->
+             Largo/Alto/Ancho(Espesor) + UN SOLO "Recub (cm)" para todos los
+             elementos, que escribe las tres claves canónicas de la geometría
+             (recub_sup, recub_inf, recub_lat). -->
         <div class="te-hormrows" id="te_hormRows"></div>
       </div>
       <div class="te-divv"></div>
-      <!-- GRUPO 2 — BARRA: predefiniciones (contorno + figura + φ + tipología).
+      <!-- GRUPO 2 — COLOCAR: el botón, y DEBAJO lo que hay que definir para colocar.
+           El bloque sólo se ve en modo colocación (_activarHerramienta le pone .on):
+           fuera de ese modo, figura/φ/tipología no deciden nada y sólo distraían.
            Los botones de tipología son SELECTOR PURO (no activan herramientas). -->
-      <div class="te-grp te-grp-barra">
-        <label class="te-contorno" title="El estribo toma el contorno del hormigón">
-          <input type="checkbox" id="te_ribContorno" checked> tomar contorno
-        </label>
-        <span class="te-lbl">Figura</span>
-        <div class="te-figpick">
-          <input id="te_ribFigura" value="" list="te_figs" placeholder="buscar figura…">
-        </div>
-        <span class="te-lbl">φ mm</span>
-        <select id="te_ribDiam" style="width:auto;padding:6px 8px;font-size:12px;border:1px solid var(--te-line);border-radius:7px">
-          <!-- φ estándar (espejo de armahub/diametros.py: DIAM_ESTANDAR). Si cambian,
-               actualizar también TE_DIAMS en template_editor.js. -->
-          <option>8</option><option>10</option><option>12</option><option selected>16</option><option>18</option><option>22</option><option>25</option><option>28</option><option>32</option><option>36</option>
-        </select>
-        <span class="te-lbl">Tipología</span>
-        <!-- VACÍO a propósito: lo renderiza _renderRibbonTips() (template_editor.js)
-             desde TPL_TIPOLOGIAS según ST.elemento (espejo de _TIPOLOGIAS_SEED). -->
-        <div class="te-tipbtns" id="te_tipbtns"></div>
-      </div>
-      <div class="te-divv"></div>
-      <!-- GRUPO 3 — MODO COLOCACIÓN (mismo efecto que "＋ Agregar componente" del panel) -->
-      <div class="te-grp">
+      <div class="te-grp te-grp-colocar">
         <button type="button" class="te-btn primary" id="te_btnAgregarBarra"
-                title="Colocar la barra definida arriba: clic en una vista · Esc o clic derecho para salir">＋ Agregar barra</button>
+                title="Definir la barra y colocarla: clic en una vista · Esc o clic derecho para salir">＋ Agregar barra</button>
+        <div id="te_colocBloque">
+          <span class="te-lbl">Figura</span>
+          <div class="te-figpick">
+            <input id="te_ribFigura" value="" list="te_figs" placeholder="figura…">
+          </div>
+          <span class="te-lbl te-lbl-phi" title="Diámetro de la barra, en mm">φ</span>
+          <select id="te_ribDiam" title="Diámetro de la barra (mm)"
+                  style="width:auto;padding:6px 8px;font-size:12px;border:1px solid var(--te-line);border-radius:7px">
+            <!-- φ estándar (espejo de armahub/diametros.py: DIAM_ESTANDAR). Si cambian,
+                 actualizar también TE_DIAMS en template_editor.js. -->
+            <option>8</option><option>10</option><option>12</option><option selected>16</option><option>18</option><option>22</option><option>25</option><option>28</option><option>32</option><option>36</option>
+          </select>
+          <span class="te-lbl">Tipología</span>
+          <!-- VACÍO a propósito: lo renderiza _renderRibbonTips() (template_editor.js)
+               desde TPL_TIPOLOGIAS según ST.elemento (espejo de _TIPOLOGIAS_SEED). -->
+          <div class="te-tipbtns" id="te_tipbtns"></div>
+        </div>
       </div>
       <div class="te-spacer" style="flex:1"></div>
-      <span class="te-note" style="margin:0">Define el hormigón → figura, φ y tipología → ＋ Agregar barra y clic en una vista.</span>
+      <span class="te-note" style="margin:0">Define el hormigón → ＋ Agregar barra → figura, φ y tipología → clic en una vista.</span>
+      <!-- FONDO (●◐○ = oscuro/medio/claro). SUBIÓ ACÁ desde la fila de herramientas
+           (20-ago): pinta LOS 4 CUADRANTES —fondo, grilla 2D y la inversión de los
+           trazos del overlay—, no el 3D, así que es un ajuste global del mismo rango
+           que el hormigón. Es una MUDANZA: mismo id, mismas tres opciones y el mismo
+           handler de template_editor.js, que lo busca por id ($('te_3dTema')). -->
+      <div class="te-divv"></div>
+      <span class="te-3dlbl">fondo</span>
+      <span class="te-3dseg" id="te_3dTema" title="Fondo y grilla de LOS 4 CUADRANTES — 3D y los tres planos (no cambia el color de las barras)">
+        <button type="button" data-tema="oscuro" title="Fondo oscuro">●</button><button type="button" data-tema="medio" title="Fondo medio">◐</button><button type="button" class="on" data-tema="claro" title="Fondo claro">○</button>
+      </span>
     </div>
 
     <!-- WARNING ANTI-COLAPSO: lo muestra/oculta _actualizarWarnTamano() tras cada
@@ -854,17 +874,8 @@
               title="Mostrar u ocultar el listado de barras a crear">📋 Barras</button>
       <span style="flex:1"></span>
       <span id="te_ctoolsStatus" style="font-size:10.5px;color:#9aa4b0">Tipología activa: <b style="color:var(--te-cbs)">CBS</b> · figura 103B</span>
-      <!-- FONDO (●◐○ = oscuro/medio/claro). VIVE ACÁ, en el extremo opuesto al botón
-           de barras, y no en la barra del cuadrante 3D: desde el 18-ago pinta LOS 4
-           CUADRANTES (fondo, grilla 2D y la inversión de los trazos del overlay), así
-           que meterlo entre las herramientas del 3D mentía sobre su alcance. Es una
-           MUDANZA: mismo id, mismas tres opciones y el mismo handler de
-           template_editor.js, que lo busca por id ($('te_3dTema')). -->
-      <span class="te-divv"></span>
-      <span class="te-3dlbl">fondo</span>
-      <span class="te-3dseg" id="te_3dTema" title="Fondo y grilla de LOS 4 CUADRANTES — 3D y los tres planos (no cambia el color de las barras)">
-        <button type="button" data-tema="oscuro" title="Fondo oscuro">●</button><button type="button" data-tema="medio" title="Fondo medio">◐</button><button type="button" class="on" data-tema="claro" title="Fondo claro">○</button>
-      </span>
+      <!-- El radial de FONDO estuvo acá entre el 18 y el 20-ago; ahora vive en el
+           RIBBON (arriba), donde se lee como lo que es: un ajuste de vista global. -->
     </div>
 
     <div id="te_body">

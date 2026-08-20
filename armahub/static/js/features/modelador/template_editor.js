@@ -6,7 +6,7 @@
 // EDITOR INTERACTIVO (§DISCOVERY-INTERACCIÓN del programa):
 //   - COLOCAR (modo): "＋ Agregar barra" (ribbon) / "＋ Agregar componente" (panel)
 //     entran en MODO COLOCACIÓN; figura+tipología del ribbon → clic en una vista 2D → nace un
-//     componente anclado a la cara clicada (estribo "toma contorno"; barra con
+//     componente anclado a la cara clicada (el estribo abraza el recinto útil; barra con
 //     lados se orienta según su figura). Se agrega a ST.receta.componentes y se
 //     regenera (las 4 vistas + el 3D se actualizan).
 //   - SELECCIONAR / MOVER / BORRAR: clic en una barra dibujada la selecciona
@@ -177,7 +177,10 @@
     tema3d: 'claro', ejeRot: 'libre',
     // --- Estado de interacción 2D ---
     // figura y φ parten VACÍOS (pedido 13-ago): el usuario elige antes de colocar.
-    figura: '', tipologia: 'CBS', diam: null, contorno: true,
+    // (20-ago) `contorno` SE FUE con su check: nadie leía el dato salvo el ghost de
+    // respaldo, así que sólo servía para que el fantasma prometiera un recinto que
+    // la barra ya colocada no respetaba.
+    figura: '', tipologia: 'CBS', diam: null,
     tool: 'mover', snap: true, cotas: false,   // arranca en SELECCIONAR (flechita), no colocando
     // cotasLado: gate MOMENTÁNEO de las cotas por lado de la barra seleccionada
     //   (SHIFT apretado). Es OTRA capa que `cotas`, que es el toggle PERSISTENTE
@@ -224,7 +227,7 @@
     _recetaGuardada: null, _nombreGuardado: null, _guardando: false,
     // --- INTERACCIÓN-2.0 (esta entrega) ---
     // cargado: "sello" de lo que quedó cargado en el ribbon para colocar
-    //   { figura, tipologia, diam, contorno } | null. Se setea al elegir
+    //   { figura, tipologia, diam } | null. Se setea al elegir
     //   figura+tipología con una herramienta de colocación (colocar/rango);
     //   Esc lo suelta (deselecciona → herramienta 'mover').
     cargado: null,
@@ -926,10 +929,11 @@
   // estado del viejo botón de voltear, que murió cuando el volteo y la tecla R
   // pasaron a ser una sola operación (_rotarPoseSeleccion). Cero llamadores.
 
-  // dims por defecto para una figura recién colocada. Estribo con "tomar contorno"
-  // → todas auto (se ajustan al recubrimiento; recub 0 = al borde). Cabezal con
-  // lados → B auto (largo − recub), patas A/C fijas.
-  function _dimsDefault(fig, rol, contorno) {
+  // dims por defecto para una figura recién colocada: TODAS auto (se ajustan al
+  // recubrimiento; recub 0 = al borde).
+  // (20-ago) Ya no recibe `contorno`: escribía dims.__contorno = false, una marca que
+  // NADIE leía nunca — ni el motor, ni las vistas, ni el backend.
+  function _dimsDefault(fig) {
     var spec = _figSpec(fig);
     var dims = {};
     // TODO EN AUTO, para todos los roles (pedido del usuario 13-ago, tras el
@@ -938,7 +942,6 @@
     // largo → largo útil). Los defaults fijos anteriores (15 y luego el gancho)
     // eran muletas de cuando las patas en auto no se anclaban a nada.
     spec.parciales.forEach(function (L) { dims[L] = { modo: 'auto' }; });
-    if (rol === 'estribo' && contorno === false) dims.__contorno = false;
     return dims;
   }
 
@@ -3062,19 +3065,21 @@
     if (!b) return null;
     var rect = _rectPlano(geo, plano);          // W/H exteriores + iW/iH útiles (recub)
     var iW = rect.iW > 0 ? rect.iW : rect.W, iH = rect.iH > 0 ? rect.iH : rect.H;
-    var contorno = (ST.cargado.contorno !== false);
 
     if (rol === 'estribo') {
-      // Estribo/traba "toma contorno": rectángulo al recubrimiento (o al borde si
-      // contorno=false / recub 0). En SECCIÓN se ve el recinto completo; en las
-      // vistas donde X es horizontal se ve como un trazo vertical a la X del cursor.
+      // Estribo/traba: rectángulo AL RECUBRIMIENTO (con recub 0 el útil ya es el
+      // borde, así que no hace falta ninguna variante). En SECCIÓN se ve el recinto
+      // completo; en las vistas donde X es horizontal, un trazo vertical a la X del
+      // cursor. (20-ago) Antes esto ramificaba por el check "tomar contorno": el
+      // ghost dibujaba el recinto al borde y la barra colocada salía igual al
+      // recubrimiento, porque nadie leía ese dato aguas abajo.
       if (plano === 'seccion') {
-        var hw = (contorno ? iW : rect.W) / 2, hh = (contorno ? iH : rect.H) / 2;
+        var hw = iW / 2, hh = iH / 2;
         return { tipo: 'rect', pts: [{ u: -hw, v: hh }, { u: -hw, v: -hh }, { u: hw, v: -hh }, { u: hw, v: hh }], cerrar: true };
       }
       // largo/planta: el estribo es un trazo perpendicular al eje X (vertical), a la
       // X clicada. Su alto = recinto útil en V.
-      var vh = (contorno ? iH : rect.H) / 2;
+      var vh = iH / 2;
       return { tipo: 'line', pts: [{ u: uv.u, v: vh }, { u: uv.u, v: -vh }] };
     }
 
@@ -4642,7 +4647,7 @@
   // barra REAL bajo el cursor) y _colocarEnVista (para crearla). Que sea la MISMA
   // función es lo que impide que el preview mienta: construidos por separado, el
   // ghost y la barra colocada volverían a divergir al primer cambio de defaults.
-  // `sel` = { tipologia, figura, diam, contorno } — el ribbon (ST.*) al colocar,
+  // `sel` = { tipologia, figura, diam } — el ribbon (ST.*) al colocar,
   // ST.cargado al previsualizar (son lo mismo: los sella _sellarCargado).
   // NO muta ST ni la receta: devuelve el componente suelto.
   function _compDesdeClick(plano, host, sel) {
@@ -4778,7 +4783,7 @@
       recub_override: null,
       angulos: _figSpec(sel.figura).angulos.slice(),
       modo: meta.modo, plano_pieza: meta.plano_pieza, arreglo: meta.arreglo,
-      dims: _dimsDefault(sel.figura, rol, sel.contorno),
+      dims: _dimsDefault(sel.figura),
       distribucion: _distDefault(sel.tipologia)
     };
     // POSE canónica + espejo de los campos viejos (cara / lado / plano_pieza): el
@@ -4839,7 +4844,7 @@
     }
     _pushUndo();   // snapshot ANTES de mutar (tarea 1: _pushUndo antes de colocar)
     var comp = _compDesdeClick(plano, host, {
-      tipologia: ST.tipologia, figura: ST.figura, diam: ST.diam, contorno: ST.contorno
+      tipologia: ST.tipologia, figura: ST.figura, diam: ST.diam
     });
     ST.receta.componentes.push(comp);
     ST.selCi = ST.receta.componentes.length - 1;
@@ -7302,7 +7307,7 @@
   // RIBBON + HERRAMIENTAS
   // ==========================================================================
 
-  // "Cargar" = sellar figura+tipología+φ+contorno del ribbon → el ghost sigue el
+  // "Cargar" = sellar figura+tipología+φ del ribbon → el ghost sigue el
   // cursor y el clic coloca (§INTERACCIÓN-2.0 tarea 1). Se sella al elegir en el
   // ribbon o al activar una herramienta de colocación.
   function _sellarCargado() {
@@ -7313,7 +7318,7 @@
     if (!Number(ST.diam)) { ST.cargado = null; _limpiarGhost(); _actualizarStatus('Elige el diámetro φ para colocar.'); return; }
     var err = _figError(ST.figura);
     if (err) { ST.cargado = null; _limpiarGhost(); _actualizarStatus(err); return; }
-    ST.cargado = { figura: ST.figura, tipologia: ST.tipologia, diam: Number(ST.diam), contorno: ST.contorno !== false };
+    ST.cargado = { figura: ST.figura, tipologia: ST.tipologia, diam: Number(ST.diam) };
     _actualizarStatus();
   }
 
@@ -7378,7 +7383,7 @@
     var dia = $('te_ribDiam');
     var diamCfg = cfg.diamDefault(elem, tip);
     if (dia && diamCfg && (forzar || !String(dia.value || '').trim())) {
-      // El <select> arranca en el placeholder 'φ…'; asignarle un φ que no está en
+      // El <select> arranca en su placeholder vacío; asignarle un φ que no está en
       // TE_DIAMS lo dejaría en blanco, así que se comprueba contra la lista.
       if (TE_DIAMS.indexOf(Number(diamCfg)) >= 0) {
         dia.value = String(diamCfg);
@@ -7433,7 +7438,9 @@
       // PARTE VACÍO (pedido 13-ago): el usuario elige el φ antes de colocar.
       dia.innerHTML = '';
       var ph = document.createElement('option');
-      ph.value = ''; ph.textContent = 'φ…'; ph.selected = true;
+      // El texto del placeholder es sólo '…': la φ ya la pone la etiqueta grande de
+      // al lado (20-ago), y repetirla acá dejaba "φ φ…" en pantalla.
+      ph.value = ''; ph.textContent = '…'; ph.selected = true;
       dia.appendChild(ph);
       TE_DIAMS.forEach(function (d) {
         var op = document.createElement('option');
@@ -7443,8 +7450,8 @@
       dia.addEventListener('change', function () { ST.diam = Number(dia.value) || null; if (_hayCargado()) _sellarCargado(); else _actualizarStatus(); });
       ST.diam = Number(dia.value) || null;
     }
-    var con = $('te_ribContorno');
-    if (con && !con._teBound) { con._teBound = true; con.addEventListener('change', function () { ST.contorno = con.checked; if (_hayCargado()) _sellarCargado(); }); ST.contorno = con.checked; }
+    // (20-ago) Acá se cableaba el check "tomar contorno" (#te_ribContorno). Se
+    // eliminó junto con el check: su valor no llegaba a ninguna parte.
 
     // DELEGACIÓN en el contenedor (no por botón): el ribbon se re-renderiza por
     // elemento (_renderRibbonTips) y los listeners por-botón morirían con el innerHTML.
@@ -7487,33 +7494,75 @@
   // POR ELEMENTO (TANDA 1): la geometría se guarda SIEMPRE con las claves canónicas
   // (largo/alto/ancho/recub_sup/recub_inf/recub_lat) — son las que leen el motor y
   // las vistas — pero cada elemento las MUESTRA con su nombre de obra:
-  //   VIGA: Largo · Alto · Ancho + "Recub (cm)" ÚNICO (escribe los 3 → como estaba).
-  //   MURO: Largo · Alto · ESPESOR(=ancho) + "Recub caras"(=recub_lat) y
-  //         "Recub bordes"(=recub_sup+recub_inf, un solo campo para los dos).
+  //   VIGA: Largo · Alto · Ancho
+  //   MURO: Largo · Alto · ESPESOR (= geometria.ancho)
   // Un campo con `ks` escribe varias claves; el ajuste fino por barra sigue en
   // "Recub. override" del panel.
+  //
+  // RECUBRIMIENTO — UN SOLO CAMPO PARA TODOS LOS ELEMENTOS (20-ago). El muro tenía
+  // "Recub caras" (recub_lat, donde se anclan las cortinas) y "Recub bordes"
+  // (recub_sup + recub_inf) separados, y la distinción resultó poco intuitiva: en
+  // obra se habla de UN recubrimiento. El MODELO DE DATOS NO CAMBIA — las tres claves
+  // siguen existiendo y el motor las sigue usando por separado —; lo que cambia es
+  // que el ribbon escribe las tres con el mismo número.
+  // GANCHO PARA RE-EXPONER EL CONTROL POR CARA: `GEO_RECUB_POR_CARA` elige entre el
+  // campo único y los campos por cara, que siguen ACÁ y VIVOS. El botón con la
+  // isométrica que el usuario tiene pensado no necesita más que llamar a
+  // _setRecubPorCara(true) — el render, el bind, la validación y el volcado ya
+  // trabajan con listas de campos, no con estos campos en particular.
   // ==========================================================================
   var GEO_RECUB_DEF = 2;   // cm — lo que muestra el campo si la receta no trae recub
-  var GEO_CAMPOS_POR_ELEMENTO = {
+  var GEO_RECUB_POR_CARA = false;   // false = un solo campo (hoy) · true = por cara
+  // Campo ÚNICO: la misma definición para todo elemento (por eso no está en la tabla
+  // por elemento). `k` = clave que se MUESTRA cuando las tres difieren (una receta
+  // vieja, o la semilla de viga, que nace 4/4/3).
+  var GEO_RECUB_UNICO = {
+    id: 'te_geoRecub', k: 'recub_sup', ks: ['recub_sup', 'recub_inf', 'recub_lat'],
+    lbl: 'Recub (cm)', min: 0, def: GEO_RECUB_DEF, fila: 2,
+    title: 'Recubrimiento (cm) — se aplica a todas las caras y bordes'
+  };
+  // Campos POR CARA, por elemento. Hoy no se renderizan (GEO_RECUB_POR_CARA=false),
+  // pero son la definición que vuelve a entrar entera cuando se re-exponga.
+  var GEO_RECUB_POR_CARA_CAMPOS = {
     viga: [
-      { id: 'te_geoLargo', k: 'largo', lbl: 'Largo', min: 1, title: 'Largo del elemento (cm)' },
-      { id: 'te_geoAlto', k: 'alto', lbl: 'Alto', min: 1, title: 'Alto del elemento (cm)' },
-      { id: 'te_geoAncho', k: 'ancho', lbl: 'Ancho', min: 1, title: 'Ancho del elemento (cm)' },
-      { id: 'te_geoRecub', k: 'recub_sup', ks: ['recub_sup', 'recub_inf', 'recub_lat'], lbl: 'Recub (cm)',
-        min: 0, def: GEO_RECUB_DEF, fila: 2, title: 'Recubrimiento (cm) — se aplica arriba, abajo y a los lados' }
+      { id: 'te_geoRecubSupInf', k: 'recub_sup', ks: ['recub_sup', 'recub_inf'], lbl: 'Recub sup/inf', min: 0, fila: 2,
+        title: 'Recubrimiento ARRIBA y ABAJO de la viga (cm)' },
+      { id: 'te_geoRecubLat', k: 'recub_lat', lbl: 'Recub lateral', min: 0, fila: 2,
+        title: 'Recubrimiento de las CARAS laterales de la viga (cm)' }
     ],
     muro: [
-      { id: 'te_geoLargo', k: 'largo', lbl: 'Largo', min: 1, title: 'Largo del muro (cm)' },
-      { id: 'te_geoAlto', k: 'alto', lbl: 'Alto', min: 1, title: 'Alto del muro (cm)' },
-      { id: 'te_geoAncho', k: 'ancho', lbl: 'Espesor', min: 1, title: 'Espesor del muro (cm) — geometria.ancho' },
       { id: 'te_geoRecubCaras', k: 'recub_lat', lbl: 'Recub caras', min: 0, fila: 2,
         title: 'Recubrimiento de las CARAS del muro (cm) — donde se anclan las cortinas' },
       { id: 'te_geoRecubBordes', k: 'recub_sup', ks: ['recub_sup', 'recub_inf'], lbl: 'Recub bordes', min: 0, fila: 2,
         title: 'Recubrimiento de los BORDES del muro (cm) — arriba, abajo y extremos' }
     ]
   };
+  // DIMS por elemento (sin recubrimientos: esos los pone _geoCampos según el modo).
+  var GEO_CAMPOS_POR_ELEMENTO = {
+    viga: [
+      { id: 'te_geoLargo', k: 'largo', lbl: 'Largo', min: 1, title: 'Largo del elemento (cm)' },
+      { id: 'te_geoAlto', k: 'alto', lbl: 'Alto', min: 1, title: 'Alto del elemento (cm)' },
+      { id: 'te_geoAncho', k: 'ancho', lbl: 'Ancho', min: 1, title: 'Ancho del elemento (cm)' }
+    ],
+    muro: [
+      { id: 'te_geoLargo', k: 'largo', lbl: 'Largo', min: 1, title: 'Largo del muro (cm)' },
+      { id: 'te_geoAlto', k: 'alto', lbl: 'Alto', min: 1, title: 'Alto del muro (cm)' },
+      { id: 'te_geoAncho', k: 'ancho', lbl: 'Espesor', min: 1, title: 'Espesor del muro (cm) — geometria.ancho' }
+    ]
+  };
   function _geoCampos() {
-    return GEO_CAMPOS_POR_ELEMENTO[_tipoElemento()] || GEO_CAMPOS_POR_ELEMENTO.viga;
+    var el = _tipoElemento();
+    var dims = GEO_CAMPOS_POR_ELEMENTO[el] || GEO_CAMPOS_POR_ELEMENTO.viga;
+    if (!GEO_RECUB_POR_CARA) return dims.concat([GEO_RECUB_UNICO]);
+    return dims.concat(GEO_RECUB_POR_CARA_CAMPOS[el] || GEO_RECUB_POR_CARA_CAMPOS.viga);
+  }
+  // Cambia entre el recubrimiento único y el control por cara, y repinta el grupo.
+  // Existe para el botón futuro (isométrica de recubrimientos): sin él, re-exponer
+  // el control obligaría a tocar el render y el bind.
+  function _setRecubPorCara(v) {
+    GEO_RECUB_POR_CARA = !!v;
+    _renderRibbonGeo();
+    _sincronizarRibbonGeo();
   }
 
   // Dibuja los campos del grupo HORMIGÓN según el elemento activo y los cablea.
@@ -7546,7 +7595,26 @@
       if ((v == null || !isFinite(Number(v))) && f.def != null) v = f.def;
       el.value = (v == null || !isFinite(Number(v))) ? '' : String(Math.round(Number(v) * 100) / 100);
       el.classList.remove('bad');
+      // UN CAMPO, VARIAS CLAVES: si las claves que escribe NO valen todas lo mismo
+      // (receta hecha cuando el muro tenía caras y bordes por separado, o la semilla
+      // de viga, que nace 4/4/3), el input muestra UNA de ellas. No se toca el dato
+      // —el motor sigue usando cada clave por su lado— pero el tooltip lo dice: el
+      // número de la pantalla no es toda la verdad hasta que se edite el campo.
+      el.title = _tituloGeoCampo(f, g);
     });
+  }
+
+  // Tooltip del campo: el suyo, más el detalle de las claves cuando difieren.
+  function _tituloGeoCampo(f, g) {
+    var base = f.title || f.lbl;
+    var ks = f.ks || [f.k];
+    if (ks.length < 2) return base;
+    var vals = ks.map(function (k) { return Number(g[k]); });
+    var difieren = vals.some(function (x) { return !(x === vals[0]); });
+    if (!difieren) return base;
+    return base + ' · HOY DIFIEREN: ' + ks.map(function (k, i) {
+      return k + ' = ' + (isFinite(vals[i]) ? vals[i] : '—');
+    }).join(', ') + '. Al editar este campo se igualan.';
   }
 
   // Geometría COMPLETA para validar: una receta vieja puede no traer recubs y sin
@@ -7619,6 +7687,7 @@
     if (!cambia) return;
     _pushUndo();
     ks.forEach(function (k) { g[k] = v; });
+    el.title = _tituloGeoCampo(f, g);   // las claves ya coinciden → fuera el aviso
     // Mismo refresco que el arrastre de nodos: regenerar re-encuadra las cámaras
     // ortográficas (leen la geometría en cada frame) y redibuja los 4 cuadrantes.
     _regenerarDiferido();
@@ -7642,6 +7711,15 @@
     else _soltarCargado();
     var btnAdd = $('te_btnAgregarBarra');
     if (btnAdd) btnAdd.classList.toggle('on', tool === 'colocar');
+    // BLOQUE DE COLOCACIÓN (figura + φ + tipologías) — SÓLO en modo colocación
+    // (20-ago). Va acá y no en el botón porque _activarHerramienta es el ÚNICO paso
+    // por el que se entra y se sale del modo (botón, Esc, clic derecho, apertura del
+    // editor y las herramientas de la fila): cablearlo en cada puerta habría dejado
+    // alguna sin el bloque. Los campos siguen existiendo en el DOM mientras está
+    // oculto —_renderRibbonTips y _prellenarRibbonDesdeConfig escriben en ellos
+    // igual—, sólo no se ven.
+    var bloque = $('te_colocBloque');
+    if (bloque) bloque.classList.toggle('on', tool === 'colocar');
     if (caraPlano) _redibujar2D(ST.ultimoOut);   // limpia la cara resaltada
     _setQuadCursor();
     _actualizarStatus();
@@ -7652,10 +7730,12 @@
   // clic derecho sobre una vista. Sustituye a la vieja herramienta "Colocar" y al
   // antiguo _agregarComponenteManual() (que agregaba al tiro, sin pasar por pantalla).
   function _entrarModoColocacion() {
-    _sellarCargado();   // re-valida figura/φ y deja el motivo en el status si falta algo
-    _activarHerramienta('colocar');
-    // Sin sello (figura vacía/inválida o φ vacío) el status ya dice por qué.
-    if (!ST.cargado) return;
+    _activarHerramienta('colocar');   // abre el bloque figura/φ/tipología y sella
+    // Sin sello (figura vacía/inválida o φ vacío) hay que RE-sellar: el
+    // _actualizarStatus() con que termina _activarHerramienta se comió el motivo, y
+    // desde que el bloque sólo aparece acá ese motivo es la única pista de que falta
+    // llenar algo — el bloque recién abierto está a la vista para hacerlo.
+    if (!ST.cargado) { _sellarCargado(); return; }
     ST.espejoColoc = false;   // el previsualizador parte en Normal
     _actualizarStatus('Colocando ' + ST.tipologia + ' ' + ST.figura +
       ': clic en una vista · ESPACIO alterna Normal/Espejo · Esc o clic derecho para salir.');
@@ -10563,6 +10643,9 @@
     _motivoGeoInvalida: _motivoGeoInvalida, SEP_MIN: SEP_MIN,
     _dentroDelBoundary: _dentroDelBoundary, _clampAlBoundary: _clampAlBoundary,
     _sellarCargado: _sellarCargado, _soltarCargado: _soltarCargado,
+    // RECUBRIMIENTO: hoy un solo campo. _setRecubPorCara(true) re-expone los campos
+    // por cara (es el gancho del botón futuro con la isométrica).
+    _geoCampos: _geoCampos, _setRecubPorCara: _setRecubPorCara,
     _ghostForma: _ghostForma,
     // Ghost con la FORMA REAL: la polilínea proyectada y el componente de preview
     // (el MISMO que crea el clic) — para poder comparar ghost ≡ barra colocada.
