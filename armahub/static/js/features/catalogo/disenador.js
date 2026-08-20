@@ -70,7 +70,13 @@
   // detrás no hay diámetro que aplicar, pero sí se puede hacer que la figura se lea
   // como un FIERRO y no como un alambre, que es lo que se pedía. 5.5 px es el peso que
   // en un preview de 210x140 da cuerpo sin comerse las letras (van a 8.5 + sw/2).
-  var SW_NOMINAL = 5.5;
+  // 20-ago: 5.5 -> 2.75, LA MITAD EXACTA. El 5.5 se pasó para el otro lado: el usuario
+  // lo ve «demasiado gordo». Se baja a la mitad TODA la calibración a la vez (nominal,
+  // piso y tope), no sólo el nominal, para que la relación entre los tres no cambie:
+  // el fierro sigue engordando con el φ igual que antes, sólo que con la mitad del peso.
+  // El radio del codo NO se toca porque no hace falta: R = k × sw (ver _radioDoblado),
+  // así que se divide solo — el codo mide siempre lo mismo respecto del fierro que dobla.
+  var SW_NOMINAL = 2.75;
 
   // Grosor REAL de la barra en px, con piso y tope. Devuelve SW_NOMINAL si el llamador
   // no dio los dos datos que hacen falta (φ y "estoy dibujando en cm").
@@ -101,7 +107,12 @@
     // MÁS FLACA que la misma figura en el catálogo, que es exactamente al revés de lo
     // que uno espera. Así el fierro nunca se ve más delgado que su ficha, y quedan 4 px
     // de rango entre la φ8 y la φ36 — visible sin que la escala alcance el grosor real.
-    var piso = 5.0 + (diamMM - 8) * 0.143;
+    // 20-ago: la mitad, igual que el nominal — de 2.5 (φ8) a 4.5 (φ36). Las dos
+    // propiedades calibradas ayer se conservan porque se dividió TODO por 2 a la vez:
+    // el piso de la φ8 sigue pegado al nominal (2.5 contra 2.75 — el fierro real no
+    // se ve más flaco que su ficha del catálogo) y el rango φ8→φ36 sigue siendo el
+    // 80% del nominal (2 px sobre 2.75), o sea el mismo salto relativo entre φ que antes.
+    var piso = 2.5 + (diamMM - 8) * 0.0715;
     // TOPE. El trazo sobresale sw/2 del bbox y la fórmula de encuadre (scale/tx) NO lo contempla
     // — no se toca, porque el lienzo del editor la replica y meter el grosor adentro descuadraría
     // el editor respecto del preview. El tope resuelve el desborde: con sw ≤ 0.9·pad lo que
@@ -116,12 +127,61 @@
     // IGUAL una φ12 que una φ36 —8 de los 10 diámetros pegados al tope—, que es el
     // efecto contrario al que se busca justo donde uno se acerca a mirar. El pad sigue
     // mandando cuando es chico, así que el encuadre no se rompe.
-    var tope = Math.max(SW_NOMINAL, Math.min(14, pad * 0.9));
+    // 20-ago: 14 -> 7, la mitad, junto con el nominal y el piso. Se baja el TECHO y no
+    // sólo los otros dos porque si no el tope dejaba de morder: con el piso en 2.5-4.5
+    // y el techo en 14, los φ gruesos de los encuadres grandes se dibujarían casi el
+    // triple de gordos que su propia ficha, que es la mancha que el usuario acaba de
+    // mandar a bajar. La condición de encuadre (sw <= 0.9*pad) es la misma de antes.
+    var tope = Math.max(SW_NOMINAL, Math.min(7, pad * 0.9));
     return Math.min(Math.max((diamMM / 10) * scale, piso), tope);
   }
   // Grosor a texto: 2 decimales SIN ceros de relleno, para que el nominal siga saliendo tal cual
   // (string idéntico al de antes) y el calculado no arrastre 4.266666666666667.
   function _swTxt(sw) { return String(Math.round(sw * 100) / 100); }
+
+  // ---- LA LETRA DEL LADO: cuánto se aparta, y cuánto sitio hay que guardarle ----
+  // Las dos cosas viven acá juntas a propósito. El defecto que arregla (20-ago) era
+  // justamente que estaban separadas: la letra se dibujaba a 8.5 + sw/2 px del eje de
+  // la barra, pero el ENCUADRE (bbox → scale) sólo miraba los puntos de la figura, así
+  // que nadie le reservaba ese sitio. Medido sobre las 63 figuras del catálogo × los 10
+  // encuadres vivos: 128 letras cortadas por el borde del viewBox, hasta 5.72 px por
+  // fuera, todas en los dos encuadres de pad chico (miniatura del catálogo, pad 12, y
+  // Fabricator S, pad 11). No es un problema de la letra: es que el marco no la contaba.
+  var ROT_FS = 11;        // font-size del <text> de la letra (el mismo que se emite)
+  var ROT_DY = 3;         // corrimiento de la línea base respecto del centro del rótulo
+  var ROT_OFF = 8.5;      // separación base al eje de la barra; + sw/2 = al BORDE del trazo
+  function _offsetRotulo(sw) { return ROT_OFF + sw / 2; }
+  // Semi-extensión del glifo alrededor de su punto de anclaje, en px. Vertical: la
+  // ascendente (0.75·fs) menos el dy, y la descendente (0.22·fs) más el dy → 5.25 / 5.42.
+  // Horizontal: ~0.30·fs por carácter (la letra suele ser una sola, pero el Diseñador
+  // deja renombrar el lado, así que se mide el rótulo más largo que se va a dibujar).
+  // Devuelve 0 si no hay ninguna letra que dibujar (no todos los llamadores rotulan:
+  // el modo etiqueta-manda y las figuras sin `lado` llegan con el array vacío o en
+  // blanco, y ahí no hay nada a lo que guardarle sitio).
+  function _extensionRotulo(labels) {
+    var n = 0;
+    (labels || []).forEach(function(l) { var L = String(l == null ? '' : l).length; if (L > n) n = L; });
+    if (!n) return 0;
+    return Math.max(ROT_FS * 0.22 + ROT_DY, ROT_FS * 0.30 * n);
+  }
+  // El píxel de aire NO es "por si acaso": la semi-extensión de arriba es una ESTIMACIÓN
+  // de la caja del glifo (el font-family real lo elige el navegador, y las coordenadas se
+  // emiten con un decimal), así que sin él la letra queda calzada al ras del borde —
+  // medido: 0.02 px por fuera en 82 de los 4550 rótulos, o sea pegada al marco.
+  var ROT_AIRE = 1;
+  // Pad MÍNIMO para que la letra quepa entera. La letra se va como mucho _offsetRotulo
+  // hacia afuera del bbox de la figura, más su medio glifo: reservando eso en el margen,
+  // ninguna letra puede salirse, en ningún encuadre y con cualquier φ — sin medir figura
+  // por figura ni recortar nada después.
+  // EL TERCIO ES EL CONTRATO, NO UNA DEFENSA: por debajo de eso el recuadro es tan chico
+  // que la reserva se comería la figura entera (y la letra tampoco se leería). El motor
+  // está expuesto en window.disenadorMotor y acepta cualquier tamaño; sin este límite un
+  // recuadro de 30 px daría scale <= 0, o sea un SVG vacío.
+  function _padRotulo(labels, sw, W, H) {
+    var ext = _extensionRotulo(labels);
+    if (!ext) return 0;
+    return Math.min(_offsetRotulo(sw) + ext + ROT_AIRE, Math.min(W, H) / 3);
+  }
 
   // ---- Render: puntos → <svg> string ----
   // Escala y centra la polilínea en un viewBox fijo, con margen. Dibuja los
@@ -185,12 +245,29 @@
     // Escalar para llenar el marco (menos el pad), y luego CENTRAR la figura en el
     // SVG (no anclarla a la esquina). Así queda centrada y aprovecha el espacio.
     var scale = Math.min((W - 2 * pad) / bw, (H - 2 * pad) / bh);
+    var swTrazo = _grosorTrazo(opts, scale, pad);
+    // SITIO PARA LA LETRA DEL LADO (20-ago). El rótulo sale del bbox de la figura, así
+    // que el margen tiene que alcanzarle: si el pad que pidió el llamador es más chico
+    // que lo que ocupa la letra, manda la letra y la figura se dibuja un poco más chica.
+    // Se hace ACÁ, en el encuadre, y no recortando o corriendo el rótulo después: la
+    // letra dice cuál lado es, moverla de su lado sería mentir sobre la figura.
+    // Dos pasadas y no un despeje: el grosor depende de la escala y la escala del pad.
+    // La segunda escala es MENOR, y con menos escala el trazo no engorda (sw = clamp(
+    // φ·scale, piso, tope)), así que el sitio reservado con el grosor de la 1ª pasada
+    // nunca se queda corto. El barrido del test lo verifica figura por figura.
+    if (opts.labels_auto !== false) {
+      var padRot = _padRotulo(labels, swTrazo, W, H);
+      if (padRot > pad) {
+        pad = padRot;
+        scale = Math.min((W - 2 * pad) / bw, (H - 2 * pad) / bh);
+        swTrazo = _grosorTrazo(opts, scale, pad);
+      }
+    }
     var fw = bw * scale, fh = bh * scale;         // tamaño final de la figura
     var offX = (W - fw) / 2, offY = (H - fh) / 2; // centrado
     // El eje Y del SVG crece hacia abajo; invertimos para que no salga espejada.
     function tx(p) { return { x: offX + (p.x - minX) * scale, y: H - (offY + (p.y - minY) * scale) }; }
     var tpts = pts.map(tx);
-    var swTrazo = _grosorTrazo(opts, scale, pad);
     // Radio del codo de doblado, en px del render (mismas unidades que tpts). Sale del
     // trazo, así que ya viene escalado — no se multiplica por `scale` (ver _radioDoblado).
     var rFillet = _radioDoblado(swTrazo, opts.diam_mm, opts.metrico);
@@ -236,7 +313,15 @@
         arcosTx[k] = (opts.arcos_iso[k] || []).map(tx);
       });
     }
-    svg += '<path d="' + _pathDesdePuntos(tpts, tiposEsc, radiosEsc, sweepsEsc, arcosTx, rFillet) + '" fill="none" stroke="#00695c" stroke-width="' + _swTxt(swTrazo) + '" stroke-linejoin="round" stroke-linecap="round" />';
+    // LA PUNTA VA PLANA, NO REDONDA (20-ago). Un fierro se CORTA: el extremo es una cara
+    // plana, no una semiesfera. Con `round` cada punta se alargaba media barra de grosor
+    // en forma de domo — a 5.5 px de trazo el usuario lo señaló derecho. `butt` corta el
+    // trazo exactamente en el nodo, que además es donde termina el largo del fierro.
+    // El linejoin SÍ se queda en `round`, y no es lo mismo: son las UNIONES, no las
+    // puntas. Con el codo tangente ya casi no se ve, pero sigue haciendo falta donde el
+    // codo no se dibuja —vuelta en U, codo sub-píxel, vértice contra un arco declarado—
+    // y ahí `miter` sacaría el pico de flecha que el codo vino justamente a matar.
+    svg += '<path d="' + _pathDesdePuntos(tpts, tiposEsc, radiosEsc, sweepsEsc, arcosTx, rFillet) + '" fill="none" stroke="#00695c" stroke-width="' + _swTxt(swTrazo) + '" stroke-linejoin="round" stroke-linecap="butt" />';
     // Cotas automáticas del ARCO. Dos orígenes, MISMO formato y MISMA función de dibujo:
     //  - 3D: el editor las calcula en el espacio real y las pasa proyectadas
     //    (cotas_arco_iso, en coords de la proyección) → se mapean con tx().
@@ -248,25 +333,16 @@
       // 2D: calculadas sobre pts originales (arriba); tx las escala/posiciona al render.
       _cotas2d.forEach(function(seg) { svg += _dibujarCotasArcoProyectadas(seg, tx); });
     }
-    // PUNTAS de la barra (nodos pequeños para no recargar la miniatura).
-    // Se apagan con el trazo grueso: el nodo más grande es r = 2.5, o sea 5 px de diámetro,
-    // así que a partir de sw = 5 el trazo lo tapa ENTERO. Dibujarlos ahí no muestra nada —
-    // solo mancha el trazo con el verde oscuro de las puntas y engorda el innerHTML, que es
-    // el costo dominante del render (~620 KB por 500 figuras XL, medido).
-    // HOY ESTE BLOQUE ES INALCANZABLE, y se deja dicho para no engañar al que lo lea: con la
-    // calibración viva ningún trazo baja de 5 (piso φ8 = 5.0, nominal = 5.5) — barrido de
-    // 6930 renders (63 figuras × 10 encuadres × los 10 φ + sin φ): CERO círculos dibujados.
-    // Es la guarda por si alguien vuelve a bajar los pisos, no una rama viva.
-    // LOS NODOS INTERMEDIOS SE FUERON (codos, 19-ago): con el vértice redondeado el trazo YA
-    // NO PASA por el vértice — se separa R·(1/cos(giro/2) − 1) de él. Un punto ahí quedaría
-    // flotando en el hueco de la curva, marcando una esquina que el fierro no tiene. Quedan
-    // sólo las dos PUNTAS, que son los únicos nodos que siguen sobre el trazo.
-    if (swTrazo < 5) {
-      [0, tpts.length - 1].forEach(function(i) {
-        var p = tpts[i];
-        svg += '<circle cx="' + p.x.toFixed(1) + '" cy="' + p.y.toFixed(1) + '" r="2.5" fill="#004d40" />';
-      });
-    }
+    // LAS PUNTAS YA NO LLEVAN NODO (20-ago). Acá se dibujaban dos círculos de r = 2.5 en
+    // los extremos, con la guarda `sw < 5` para no pintarlos cuando el trazo ya los tapaba.
+    // Ese bloque tenía que IRSE, no ajustarse: con el trazo a la mitad (nominal 2.75) la
+    // guarda se habría abierto y los círculos habrían vuelto — 5 px de diámetro sobre un
+    // trazo de 2.75, o sea un bolón en cada punta, y encima REDONDO, justo lo contrario de
+    // la punta plana que se acaba de pedir (ver el linecap `butt` de arriba). El extremo del
+    // fierro es el corte: no lleva adorno.
+    // (Los nodos INTERMEDIOS ya se habían ido con el codo, 19-ago: con el vértice redondeado
+    // el trazo no pasa por el vértice, así que el punto quedaba flotando en el hueco de la
+    // curva marcando una esquina que el fierro no tiene.)
     // Etiquetas de lado AUTOMÁTICAS, desplazadas perpendicular a la línea (no encima).
     // Se pueden suprimir con opts.labels_auto === false (modo etiqueta-manda: las
     // letras las pone el usuario a mano, no se muestran las automáticas).
@@ -284,10 +360,12 @@
           // cambio no debía tocar— perdían 1.70 px de holgura, y en la miniatura de 90×72 la
           // letra de arriba de un estribo pasaba de verse 63% a 42%. Con 8.5 el nominal da
           // 10.2, o sea la holgura de siempre, y el crecimiento con el φ se conserva igual.
-          var lOff = 8.5 + swTrazo / 2;
+          var lOff = _offsetRotulo(swTrazo);
           var lox = mx - (svy/sl) * lOff, loy = my + (svx/sl) * lOff;
-          svg += '<text x="' + lox.toFixed(1) + '" y="' + (loy + 3).toFixed(1) +
-            '" text-anchor="middle" fill="#00695c" font-size="11" font-weight="700">' + lbl + '</text>';
+          // fs y dy salen de las MISMAS constantes con las que el encuadre le reservó
+          // sitio (_padRotulo): si alguien agranda la letra acá, el margen crece con ella.
+          svg += '<text x="' + lox.toFixed(1) + '" y="' + (loy + ROT_DY).toFixed(1) +
+            '" text-anchor="middle" fill="#00695c" font-size="' + ROT_FS + '" font-weight="700">' + lbl + '</text>';
         }
       }
     }
@@ -1184,14 +1262,15 @@
     if (_puntos.length >= 2) {
       // En etiquetado 3D, dibujar el arco con sus puntos proyectados (polyline fiel al
       // 3D), no reconstruido con 'A' (que invertía la guata). _arcosIso3d es null en 2D.
-      // El lienzo dibuja el codo con el MISMO radio que el preview (13.75 px, el nominal):
-      // si acá los vértices fueran en punta, la figura cambiaría de forma al pasar del
-      // lienzo al preview. No queda idéntica —el preview reescala la figura al recuadro y
-      // el lienzo no, así que en un cuadrado de 80 px de lienzo el codo se lleva el 17.2%
-      // del lado y en el preview el 13.2%— pero el doblez se ve doblez en los dos.
+      // El lienzo dibuja el codo con el MISMO radio que el preview (6.875 px = 2.5 × el
+      // nominal): si acá los vértices fueran en punta, la figura cambiaría de forma al
+      // pasar del lienzo al preview. No queda idéntica —el preview reescala la figura al
+      // recuadro y el lienzo no, así que en un cuadrado de 80 px de lienzo el codo se lleva
+      // el 8.6% del lado— pero el doblez se ve doblez en los dos.
       // Los nodos arrastrables se siguen pintando encima, así que el vértice real se ve
-      // igual aunque el trazo lo esquive.
-      s += '<path d="' + _pathDesdePuntos(_puntos, _tiposSeg, _radiosSeg, _sweepsSeg, _arcosIso3d, _radioDoblado(SW_NOMINAL)) + '" fill="none" stroke="#00695c" stroke-width="' + SW_NOMINAL + '" stroke-linejoin="round" stroke-linecap="round"/>';
+      // igual aunque el trazo lo esquive. La punta va `butt` como en el render: es el
+      // MISMO fierro, y con el trazo fino un domo en la punta se notaba contra el nodo.
+      s += '<path d="' + _pathDesdePuntos(_puntos, _tiposSeg, _radiosSeg, _sweepsSeg, _arcosIso3d, _radioDoblado(SW_NOMINAL)) + '" fill="none" stroke="#00695c" stroke-width="' + SW_NOMINAL + '" stroke-linejoin="round" stroke-linecap="butt"/>';
     }
     // Cotas automáticas del arco (3D): ya están en coords de lienzo → tx identidad.
     if (_cotasArcoIso3d) {

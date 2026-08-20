@@ -23,7 +23,12 @@
 //      redondeo es cómo se dibuja el doblez, no cuánto dobla.
 //
 //   D. EL RADIO. R = 2.5 × el trazo (2φ interno + φ/2, la norma de motor_geom para
-//      φ ≤ 16 mm) y 4 × el trazo sobre φ16, y SOLO cuando el llamador declaró `metrico`
+//      φ ≤ 16 mm) y 4 × el trazo sobre φ16, y SOLO cuando el llamador declaró `metrico`.
+//      20-ago: el trazo se fue a la mitad (nominal 5.5 → 2.75, ver test_grosor_figura) y
+//      el codo lo siguió SOLO, sin tocar una constante de acá: R = k × sw, así que el
+//      nominal pasó de 13.75 a 6.875 px. Eso es exactamente lo que la regla promete —
+//      el codo mide siempre lo mismo respecto del fierro que dobla— y es la razón de que
+//      este test compare contra el sw que emite el motor y no contra un número clavado
 //      — la misma puerta que usa el grosor. Sin φ (catálogo, galería, previews) el codo
 //      igual existe, con el trazo nominal. Es lo que hace que el codo salga EXACTO al de
 //      norma cuando el motor dibuja el φ real, sin cablear centímetros en ningún lado.
@@ -83,8 +88,8 @@ vm.runInContext(fs.readFileSync(SRC_MOTOR, 'utf8'), sandbox, { filename: 'disena
 const MOTOR = sandbox.window.disenadorMotor;
 
 // ── Constantes de calibración (las mismas del fuente; el bloque J las verifica) ──
-const K_CHICO = 2.5, K_GRANDE = 4, TMAX = 0.20, NOMINAL = 5.5;
-const PISO = (mm) => 5.0 + (mm - 8) * 0.143;
+const K_CHICO = 2.5, K_GRANDE = 4, TMAX = 0.20, NOMINAL = 2.75;
+const PISO = (mm) => 2.5 + (mm - 8) * 0.0715;
 const LADOS = 'ABCDEFGHI'.split('');
 const PREV = { width: 210, height: 140, pad: 18 };   // preview del Diseñador / del 3D
 const MINI = { width: 90, height: 72, pad: 12 };     // miniatura del catálogo / galería
@@ -182,7 +187,7 @@ ok(casi(codos(pathDe(G45))[0].giro, 135, 0.2), 'vértice de 45° (punta aguda) �
 // ── D · el radio ─────────────────────────────────────────────────────────────
 console.log('D · R = k × el TRAZO (k de norma), y el φ entra por la misma puerta que el grosor:');
 ok(casi(codos(pathDe(L90))[0].R, K_CHICO * NOMINAL),
-  'sin φ (catálogo/galería/previews): R = 2.5 × 5.5 = ' + (K_CHICO * NOMINAL) + ' px');
+  'sin φ (catálogo/galería/previews): R = 2.5 × 2.75 = ' + (K_CHICO * NOMINAL) + ' px');
 // Con φ: se dibuja como Bar Manager (puntos ya en cm + metrico). Lados largos para que
 // el capeo no entre en juego y se pueda leer el radio pelado.
 function conPhi(diamMM, metrico, geo, opts) {
@@ -249,11 +254,19 @@ ok(rectosZm.every(function (L) { return L >= 0; }),
 
 // ── F · ángulos agudos y vuelta en U ─────────────────────────────────────────
 console.log('F · donde el codo se sale de madre: la punta aguda y la vuelta en U:');
-var c45 = codos(pathDe(G45))[0];
+var c45 = codos(pathDe(G45))[0];              // preview (lados largos)
+var c45m = codos(pathDe(G45, MINI))[0];      // miniatura (los mismos lados, a 1/3 de escala)
 ok(c45 && c45.R > 0 && isFinite(c45.R), 'vértice de 45°: sale un codo con radio finito, no un NaN');
-ok(c45.R < K_CHICO * NOMINAL,
-  'y el radio BAJA (' + c45.R.toFixed(2) + ' < ' + (K_CHICO * NOMINAL) + '): en un vértice de 45° la tangencia pide 2.41·R y el tope la corta');
-ok(casi(c45.t1, c45.R * Math.tan(c45.giro * Math.PI / 360), 0.05), 'y sigue siendo tangente');
+// 20-ago: en el PREVIEW este codo ya no se capea. Con el trazo a la mitad el codo de
+// norma pide 2.41 × 6.875 = 16.6 px de tangencia donde antes pedía 33.1, y en un lado de
+// 104 px el 20% (20.8) le alcanza. O sea que adelgazar el trazo devolvió forma: el tope
+// dejó de morder en 85 de los 398 codos del par miniatura+preview (de 220 a 135).
+ok(casi(c45.R, K_CHICO * NOMINAL, 0.03),
+  'en el preview el codo de norma AHORA CABE en la punta aguda (R = ' + c45.R.toFixed(2) + '): el tope ya no la corta');
+ok(c45m.R < K_CHICO * NOMINAL,
+  'y donde el lado SÍ es corto (miniatura 90x72) el tope sigue mordiendo: R baja a ' + c45m.R.toFixed(2));
+ok(casi(c45.t1, c45.R * Math.tan(c45.giro * Math.PI / 360), 0.05) &&
+   casi(c45m.t1, c45m.R * Math.tan(c45m.giro * Math.PI / 360), 0.05), 'y los dos siguen siendo tangentes');
 // Vuelta en U (giro ≈ 180°, vértice ≈ 0°): la tangente tiende a infinito → sin codo.
 const U_TURN = figura([[100, 0], [-100, 0.0001]]);
 ok(nArcos(pathDe(U_TURN)) === 0, 'vuelta en U: NO se inventa un codo (la tangente diverge); queda la punta');
@@ -292,14 +305,14 @@ ok(cMarco.length >= 3 && cMarco.every(function (k) { return casi(k.R, K_CHICO * 
 ok(nArcos(pathDe(U)) === 2, 'una U (abierta) sigue con 2 codos: el cierre no se inventa donde no lo hay');
 
 // ── I · barrido de las 63 figuras del catálogo × los 6 tamaños vivos ─────────
-console.log('I · barrido del catálogo real (63 figuras × los 10 encuadres vivos):');
+console.log('I · barrido del catálogo real (63 figuras × los 11 encuadres vivos):');
 global.ModeladorCatalogoFiguras = require(path.join(DIR, 'modelador', 'catalogo_figuras.js'));
 const FP = require(path.join(DIR, 'modelador', 'figura_puntos.js'));
-// LOS 10 ENCUADRES VIVOS, no 6: Bar Manager y el Fabricator comparten los 4 recuadros
+// LOS ENCUADRES VIVOS (11), no 6: Bar Manager y el Fabricator comparten los 4 recuadros
 // (70×52 / 110×80 / 160×118 / 220×160) pero NO el pad — barmanager.js clava 20 y
 // agregar_cubicacion2.js usa round(min(w,h)×0.22) = 11/18/26/35. Con pads distintos la
 // figura queda a otra escala, así que son 10 casos a medir, no 6.
-const TAMS = [['miniatura', MINI], ['preview', PREV], ['BM S', { width: 70, height: 52, pad: 20 }],
+const TAMS = [['miniatura', MINI], ['ficha catálogo', { width: 130, height: 86, pad: 12 }], ['preview', PREV], ['BM S', { width: 70, height: 52, pad: 20 }],
               ['BM M', { width: 110, height: 80, pad: 20 }], ['BM L', { width: 160, height: 118, pad: 20 }], ['BM XL', XL],
               ['Fab S', { width: 70, height: 52, pad: 11 }], ['Fab M', { width: 110, height: 80, pad: 18 }],
               ['Fab L', { width: 160, height: 118, pad: 26 }], ['Fab XL', { width: 220, height: 160, pad: 35 }]];

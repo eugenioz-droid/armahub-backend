@@ -90,32 +90,40 @@
     function _miniFig(f) {
       if (!f.geometria || !f.geometria.tramos || !f.geometria.tramos.length) return '<span class="muted" style="font-size:11px;">—</span>';
       if (!window.disenadorMotor || !window.disenadorMotor.dibujarFigura) return '<span class="muted" style="font-size:11px;">—</span>';
-      try { return window.disenadorMotor.dibujarFigura(f.geometria, null, { width: 90, height: 72, pad: 12 }); }
+      // 130x86 (y no los 90x72 de la galería): la ficha de la grilla es más ancha que
+      // alta, así que este recuadro la llena sin deformar nada — el motor encuadra la
+      // figura dentro del marco que se le pida. Es lo ÚNICO que cambia del dibujo.
+      try { return window.disenadorMotor.dibujarFigura(f.geometria, null, { width: 130, height: 86, pad: 12 }); }
       catch (e) { return '<span class="muted" style="font-size:11px;">—</span>'; }
     }
-    cont.innerHTML = '<table style="width:100%; font-size:12px; border-collapse:collapse;">' +
-      '<tr style="background:#f5f5f5; text-align:left;">' +
-        '<th style="padding:5px 6px;">Código</th>' +
-        '<th style="padding:5px 6px; text-align:center;">Figura</th>' +
-        '<th style="padding:5px 6px;">Lados (dims)</th>' +
-        '<th style="padding:5px 6px; text-align:center;">N° lados</th>' +
-        '<th style="padding:5px 6px;">Ángulos</th>' +
-        '<th style="padding:5px 6px; text-align:center;">Radio</th>' +
-      '</tr>' +
+    // MATRIZ DE FICHAS, NO UNA TABLA DE FILAS (20-ago). Una figura de fierro se busca
+    // mirando, no leyendo: con la tabla había que barrer 63 filas de arriba a abajo para
+    // dar con una forma. En la grilla las miniaturas se ven todas juntas y los datos van
+    // debajo de cada una. La MISMA data que tenía la tabla (código, lados, n° de lados,
+    // ángulos, radio) — es un cambio de presentación, el dibujo lo sigue haciendo el
+    // motor único (_miniFig → disenadorMotor.dibujarFigura), sin tocar nada del render.
+    // El buscador y el contador no se mueven: filtran y cuentan igual que antes.
+    function _dato(rot, val) {
+      return '<div class="fig-card-dato"><b>' + rot + '</b><span>' + val + '</span></div>';
+    }
+    cont.innerHTML = '<div class="fig-grid">' +
       rows.map(function(f) {
         var parc = (f.parciales || []).join(', ');
         var ang = (f.angulos || []).length ? (f.angulos.join('°, ') + '°') : '—';
-        return '<tr style="border-bottom:1px solid #eee;">' +
-          '<td style="padding:4px 6px; font-weight:600;">' + _esc(f.codigo) + '</td>' +
-          '<td style="padding:4px 6px; text-align:center;">' + _miniFig(f) + '</td>' +
-          '<td style="padding:4px 6px; font-size:11px;">' + _esc(parc || '—') + '</td>' +
-          '<td style="padding:4px 6px; text-align:center;">' + (f.parciales || []).length + '</td>' +
-          '<td style="padding:4px 6px; font-size:11px;">' + _esc(ang) + '</td>' +
-          '<td style="padding:4px 6px; text-align:center;">' + (f.radio ? '✓' : '—') + '</td>' +
-          '</tr>';
+        var nLados = (f.parciales || []).length;
+        return '<div class="fig-card">' +
+          '<div class="fig-card-cab">' +
+            '<span class="fig-card-cod">' + _esc(f.codigo) + '</span>' +
+            '<span class="fig-card-n">' + nLados + ' lado' + (nLados === 1 ? '' : 's') + '</span>' +
+          '</div>' +
+          '<div class="fig-card-fig">' + _miniFig(f) + '</div>' +
+          _dato('Lados', _esc(parc || '—')) +
+          _dato('Áng.', _esc(ang)) +
+          _dato('Radio', (f.radio ? '✓' : '—')) +
+          '</div>';
       }).join('') +
-      '</table>' +
-      '<div class="muted" style="font-size:11px; margin-top:4px;">Mostrando ' + rows.length + ' de ' + _figurasData.length + ' figura(s)</div>';
+      '</div>' +
+      '<div class="muted" style="font-size:11px; margin-top:6px;">Mostrando ' + rows.length + ' de ' + _figurasData.length + ' figura(s)</div>';
   }
 
   // ---- Tipologías ----

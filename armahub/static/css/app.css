@@ -320,3 +320,54 @@ tr:hover { background: #fafafa; }
   border-top: 1px solid #eceff1; background: #fafafa; position: sticky; bottom: 0; }
 /* Campo con texto que NO corresponde a ninguna opción (y no es texto libre). */
 .cb-invalido { border-color: #e57373 !important; background: #ffebee !important; }
+
+/* ---- Catálogo Armacero: las figuras en MATRIZ (20-ago) ------------------
+   Antes era una tabla de filas: una figura por línea, con la miniatura metida
+   en una celda y 5 columnas de texto al lado. Con 63 figuras eso obliga a
+   barrer la pantalla de arriba a abajo para encontrar una forma, que es
+   justo al revés de cómo se busca una figura de fierro — se busca MIRANDO.
+   La grilla pone las miniaturas una al lado de la otra y deja los datos
+   debajo de cada una. auto-fill + minmax = la cantidad por fila la decide el
+   ancho disponible, así que sirve igual en un notebook que en pantalla ancha.
+   El alto tope + scroll interno es el "rectángulo": el buscador y el contador
+   quedan siempre a la vista, sin que la grilla empuje la página entera. */
+.fig-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(158px, 1fr));
+  gap: 10px;
+  padding: 12px;
+  background: #fafafa;
+  border: 1px solid #e6e6e6;
+  border-radius: 8px;
+  max-height: 62vh;
+  overflow-y: auto;
+}
+.fig-card {
+  background: #fff;
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
+  padding: 8px 8px 6px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  transition: border-color .15s, box-shadow .15s;
+}
+.fig-card:hover { border-color: #5d4037; box-shadow: 0 2px 8px rgba(0,0,0,.10); }
+.fig-card-cab { display: flex; align-items: baseline; justify-content: space-between; gap: 6px; }
+.fig-card-cod { font-weight: 700; font-size: 13px; color: #5d4037; letter-spacing: .3px; }
+/* Nº de lados: va de badge en la cabecera y no de fila, porque es el dato que
+   distingue dos figuras parecidas de un vistazo (una C de 3 lados de una Z de 3). */
+.fig-card-n {
+  font-size: 10px; font-weight: 700; color: #6d4c41;
+  background: #efebe9; border-radius: 9px; padding: 1px 7px; white-space: nowrap;
+}
+/* La miniatura manda el alto de la fila: se le da altura fija para que todas las
+   tarjetas queden alineadas aunque una figura sea alta y la de al lado chata. */
+.fig-card-fig {
+  height: 86px; display: flex; align-items: center; justify-content: center;
+  background: #fff; border-radius: 4px; overflow: hidden;
+}
+.fig-card-fig svg { max-width: 100%; max-height: 100%; height: auto; }
+.fig-card-dato { display: flex; gap: 5px; font-size: 10.5px; line-height: 1.35; }
+.fig-card-dato b { color: #8d6e63; font-weight: 600; flex: 0 0 auto; }
+.fig-card-dato span { color: #444; word-break: break-word; }
