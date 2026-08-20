@@ -911,7 +911,9 @@
         <select id="te_elemSel"></select>
       </label>
       <span class="te-chip" id="te_elemBadge">VIGA</span>
-      <button class="te-btn ghost" onclick="templateEditorVolverALista()">📂 Abrir</button>
+      <!-- id: lo esconde _aplicarModoObra() en modo obra — "volver a la lista"
+           lleva al Gestor del Catalogo, que no es de donde se entro al despiece. -->
+      <button class="te-btn ghost" id="te_btnVolverLista" onclick="templateEditorVolverALista()">📂 Abrir</button>
       <button class="te-xbtn" onclick="templateEditorCerrar()">✕</button>
     </div>
 
@@ -966,6 +968,27 @@
                desde TPL_TIPOLOGIAS según ST.elemento (espejo de _TIPOLOGIAS_SEED). -->
           <div class="te-tipbtns" id="te_tipbtns"></div>
         </div>
+      </div>
+      <!-- GRUPO OBRA (el editor haciendo de ENFIERRADOR) — SOLO se ve cuando el
+           modal se abre con contexto de despiece (templateEditorAbrirEnObra). En modo
+           biblioteca queda display:none y el ribbon se ve exactamente como antes.
+           Va todo en UN bloque a proposito: la interfaz se re-estila de una sola vez.
+             · Piso — uno por ESTRUCTURA (no por barra): se estampa igual en todas sus
+               barras. El backend lo exige no vacio (lotes.py agregar_barras).
+             · Template — la lista llega filtrada por el ELEMENTO en curso
+               (GET /templates?tipo=): haciendo muros solo se ofrecen los de muro. -->
+      <div class="te-divv" id="te_grpObraSep" style="display:none"></div>
+      <div class="te-grp" id="te_grpObra" style="display:none">
+        <span class="te-lbl">Despiece</span>
+        <span class="te-chip" id="te_obraCtx" title="Obra · sector · ciclo · eje del despiece">—</span>
+        <span class="te-lbl">Piso</span>
+        <input id="te_ribPiso" maxlength="20" placeholder="P4"
+               title="Piso de esta estructura. Se estampa igual en TODAS sus barras."
+               style="width:64px;padding:6px 8px;font-size:12px;border:1px solid var(--te-line);border-radius:7px">
+        <span class="te-lbl">Template</span>
+        <select id="te_ribTemplate"
+                title="Templates del elemento en curso. Al elegir uno se carga su receta en este despiece."
+                style="width:180px;padding:6px 8px;font-size:12px;border:1px solid var(--te-line);border-radius:7px"></select>
       </div>
       <div class="te-spacer" style="flex:1"></div>
       <span class="te-note" style="margin:0">Define el hormigón → ＋ Agregar barra → figura, φ y tipología → clic en una vista.</span>
@@ -1254,6 +1277,12 @@
                y aparece "Guardar como nuevo" = POST para duplicarlo a propósito.
              · template nuevo → "Guardar template" = POST, y el de al lado se
                esconde (no hay nada de qué hacer una copia todavía). -->
+      <!-- CARGAR AL DESPIECE — solo en modo obra. Es la MISMA generacion que ya
+           alimenta el 3D y el listado de barras; lo unico distinto es que sale por
+           POST /lotes/{id}/barras, el canal que ya existia. -->
+      <button class="te-btn primary" id="te_btnCargarDespiece" style="display:none"
+              onclick="templateEditorCargarAlDespiece()"
+              title="Guarda esta estructura en el despiece (barras con origen 3D)">🧱 Cargar al despiece</button>
       <button class="te-btn ghost" id="te_btnGuardarNuevo" style="display:none"
               onclick="templateEditorGuardarComoNuevo()"
               title="Crea una COPIA nueva en la biblioteca y deja el original intacto">🧬 Guardar como nuevo</button>

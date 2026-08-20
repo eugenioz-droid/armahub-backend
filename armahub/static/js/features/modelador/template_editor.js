@@ -263,7 +263,20 @@
     // _catPedido: ya se pidió el catálogo real de figuras (GET /figuras-catalogo) en
     //   esta sesión de página. Se pide UNA vez; si el fetch falla vuelve a false para
     //   reintentar la próxima vez que se abra el editor.
-    _catPedido: false
+    _catPedido: false,
+    // ------------------------------------------------------------------------
+    // MODO OBRA (el editor haciendo de ENFIERRADOR)
+    // ------------------------------------------------------------------------
+    // El editor es UNO SOLO: lo que cambia es que le entre CONTEXTO DE OBRA por la
+    // puerta (templateEditorAbrirEnObra). Sin contexto (ctxObra = null) se comporta
+    // EXACTAMENTE igual que siempre — biblioteca de templates y nada más. Así una
+    // mejora del editor aparece en los dos lados por construccion, sin fork.
+    //   ctxObra   : {loteId, id_proyecto, sector, ciclo, eje, nombre_plano, estructura}
+    //   piso      : UNO por estructura, se estampa igual en todas sus barras. El
+    //               backend lo EXIGE no vacio por barra (lotes.py agregar_barras).
+    //   instanciaId: fila de elementos_template de ESTA estructura (traza).
+    ctxObra: null, piso: '', instanciaId: null, tplOrigen: null,
+    _tplsObra: null   // templates del elemento, cacheados para el selector de obra
   };
 
   function $(id) { return document.getElementById(id); }
@@ -1477,6 +1490,23 @@
     _actualizarStatus(msg);
   }
 
+  // CONTEXTO DE GENERACION — el hueco que separaba al editor del Enfierrador era
+  // esta sola linea: generarViga(receta, {}) generaba barras SIN ubicacion, asi que
+  // nunca podian entrar a un lote (el backend exige sector/piso/ciclo/eje). Con
+  // contexto de obra devuelve la ubicacion real; sin el, {} y todo queda como estaba.
+  function _ctxGen() {
+    var c = ST.ctxObra;
+    if (!c) return {};
+    return {
+      sector: c.sector || null, ciclo: c.ciclo || null,
+      piso: (ST.piso || '').trim() || null, eje: c.eje || null,
+      nombre_plano: c.nombre_plano || null,
+      template_instancia_id: (ST.instanciaId != null) ? ST.instanciaId : null
+    };
+  }
+
+  function _modoObra() { return !!(ST.ctxObra && ST.ctxObra.loteId); }
+
   function _regenerar() {
     var d = _deps();
     if (!d.gen || !ST.receta) return;
@@ -1491,7 +1521,7 @@
     if (d.reglas && typeof d.reglas.reanclarReceta === 'function') {
       try { d.reglas.reanclarReceta(ST.receta); } catch (e) { /* nunca romper el render */ }
     }
-    var out = d.gen.generarViga(ST.receta, {});
+    var out = d.gen.generarViga(ST.receta, _ctxGen());
     _etiquetarCi(out);
     ST.ultimoOut = out;
     // Items · barras · peso: van al CUADRO FLOTANTE sobre el 3D (te_3dstats). Estaban
@@ -9657,6 +9687,16 @@
     // Sin dato explícito se asume que SÍ (un template nuevo es de quien lo crea);
     // el backend manda el valor real al abrir uno de la biblioteca.
     ST.puedeModificar = (cfg.puedeModificar === false) ? false : true;
+    // MODO OBRA — el contexto de despiece entra POR LA PUERTA (decision 1 del
+    // usuario): no hay rama, ni fork, ni modal paralelo. Si no viene, las tres
+    // variables quedan apagadas y el editor es EXACTAMENTE el de la biblioteca.
+    ST.ctxObra = (cfg.ctxObra && cfg.ctxObra.loteId) ? cfg.ctxObra : null;
+    ST.piso = (cfg.piso != null) ? String(cfg.piso) : '';
+    ST.instanciaId = (cfg.instanciaId != null) ? cfg.instanciaId : null;
+    // De que template de la biblioteca salio esta estructura (solo TRAZA). NO se
+    // reusa como ST.templateId: en modo obra el hormigon se ajusta a lo REAL y un
+    // PUT con esa geometria corromperia el template de la biblioteca.
+    ST.tplOrigen = (cfg.tplOrigen != null) ? cfg.tplOrigen : null;
     if (cfg.receta) {
       // "Abrir": receta guardada (params del backend), clonada para no mutar la fuente.
       ST.receta = JSON.parse(JSON.stringify(cfg.receta));
@@ -9710,6 +9750,7 @@
     _refrescarDefsOrto();      // cada cámara orto vuelve a leer el def de su plano
     _actualizarTitulosVista(); // títulos (SECCIÓN/ELEVACIÓN/PLANTA) + gizmo de ejes
     _sincronizarRibbonGeo();   // el grupo HORMIGÓN del ribbon refleja la receta
+    _aplicarModoObra();        // grupo DESPIECE del ribbon + botón "Cargar al despiece"
     _marcarSucio();     // PERF (render-on-demand): al abrir siempre hay que pintar
     // Undo limpio por sesión. Se ABRE SIEMPRE en SELECCIONAR: colocar es un modo
     // explícito ("＋ Agregar barra"), nunca el estado inicial.
@@ -9731,6 +9772,233 @@
     global.requestAnimationFrame(function () { global.requestAnimationFrame(function () {
       _iniciar3dEnVivo();
     }); });
+  };
+
+
+  // ==========================================================================
+  // MODO OBRA - EL EDITOR HACIENDO DE ENFIERRADOR
+  // --------------------------------------------------------------------------
+  // NO hay un segundo editor. Es el mismo modal, el mismo motor y el mismo
+  // listado de barras: lo unico que cambia es que ST.ctxObra trae la ubicacion
+  // del despiece, y con ella _ctxGen() deja de devolver {} - que era, literal, el
+  // unico hueco entre "generar barras" y "cargarlas a un lote".
+  //
+  // Las barras salen por POST /lotes/{id}/barras, el MISMO endpoint del ingreso
+  // manual, con origen='template' (clasificacion propia de las barras nacidas del
+  // 3D: en un despiece conviven con las del CSV y las del editor de despieces, y
+  // el sistema las distingue por ese campo).
+  // ==========================================================================
+
+  // Texto del chip de contexto: lo que el usuario necesita para saber DONDE esta
+  // cargando (no es decorativo: el sector/ciclo/eje se estampan en cada barra).
+  function _ctxObraTexto() {
+    var c = ST.ctxObra; if (!c) return '\u2014';
+    return [c.id_proyecto, c.sector, c.ciclo, c.eje].filter(function (x) {
+      return !!(x && String(x).trim());
+    }).join(' \u00b7 ') || '\u2014';
+  }
+
+  // NOMBRE DE LA ESTRUCTURA - se DERIVA, no se pide (decision 3 del usuario: "no
+  // debiera haber 2 muros por eje; si un eje tiene 2 muros, el cubicador los
+  // subdivide"). Obra + ciclo + piso + eje identifican la estructura sin campo.
+  function _nombreEstructura() {
+    var c = ST.ctxObra; if (!c) return '';
+    return [c.id_proyecto, c.ciclo, (ST.piso || '').trim(), c.eje].filter(function (x) {
+      return !!(x && String(x).trim());
+    }).join(' \u00b7 ');
+  }
+
+  // Muestra/esconde TODO lo que es exclusivo del modo obra. Un solo sitio: si
+  // manana se agrega otro control de obra, se enciende aqui y no en 5 llamadores.
+  function _aplicarModoObra() {
+    var obra = _modoObra();
+    ['te_grpObra', 'te_grpObraSep'].forEach(function (id) {
+      var el = $(id); if (el) el.style.display = obra ? '' : 'none';
+    });
+    var btn = $('te_btnCargarDespiece');
+    if (btn) { btn.style.display = obra ? '' : 'none'; btn.disabled = false; }
+    // "Volver a la lista" lleva al Gestor del Catalogo: desde un despiece no es a
+    // donde se entro, asi que en modo obra no se ofrece.
+    var vl = $('te_btnVolverLista'); if (vl) vl.style.display = obra ? 'none' : '';
+    if (!obra) return;
+    var chip = $('te_obraCtx'); if (chip) chip.textContent = _ctxObraTexto();
+    var pi = $('te_ribPiso'); if (pi) pi.value = ST.piso || '';
+    _bindObra();
+    _cargarTemplatesObra();
+  }
+
+  function _bindObra() {
+    var pi = $('te_ribPiso');
+    if (pi && !pi._teBound) {
+      pi._teBound = true;
+      // El piso viaja EN CADA BARRA (el backend lo exige no vacio), asi que cambiarlo
+      // obliga a regenerar: si no, el payload conservaria el piso anterior.
+      var aplicar = function () {
+        var v = (pi.value || '').trim();
+        if (v === (ST.piso || '')) return;
+        ST.piso = v;
+        _regenerar();
+      };
+      pi.addEventListener('change', aplicar);
+      pi.addEventListener('blur', aplicar);
+    }
+    var sel = $('te_ribTemplate');
+    if (sel && !sel._teBound) {
+      sel._teBound = true;
+      sel.addEventListener('change', function () {
+        var id = sel.value;
+        sel.value = '';                   // vuelve al placeholder: es una ACCION, no un estado
+        if (!id) return;
+        _cargarRecetaTemplateEnObra(id);
+      });
+    }
+  }
+
+  // FILTRO POR ELEMENTO (decision 4): haciendo muros solo se pueden llamar templates
+  // de muro. El filtro lo hace el BACKEND (?tipo=), que es donde vive la lista.
+  function _cargarTemplatesObra() {
+    var sel = $('te_ribTemplate'); if (!sel) return;
+    var tipo = (ST.elemento || '').toLowerCase();
+    sel.innerHTML = '<option value="">cargando\u2026</option>';
+    _tplFetch('/templates?tipo=' + encodeURIComponent(tipo), { headers: _tplHeaders(false) })
+      .then(function (data) {
+        var tpls = (data && data.templates) || [];
+        ST._tplsObra = tpls;
+        sel.innerHTML = '<option value="">' +
+          (tpls.length ? ('\u2014 llamar template de ' + _esc(tipo) + ' \u2014')
+                       : ('sin templates de ' + _esc(tipo))) + '</option>' +
+          tpls.map(function (t) {
+            return '<option value="' + _esc(t.id) + '">' + _esc(t.nombre || ('#' + t.id)) + '</option>';
+          }).join('');
+      })
+      .catch(function () { sel.innerHTML = '<option value="">no se pudo cargar la lista</option>'; });
+  }
+
+  // Llamar un template DENTRO del modo obra: se reabre el MISMO modal con la receta
+  // del template y el contexto de obra intacto. Se reusa templateEditorAbrir a
+  // proposito (normalizador, render y sellos son los mismos): duplicar ese camino
+  // seria justamente el fork que no queremos.
+  function _cargarRecetaTemplateEnObra(id) {
+    _errObra('');
+    if (_hayCambiosSinGuardar() &&
+        !global.confirm('Llamar un template REEMPLAZA lo que hay en pantalla. \u00bfContinuar?')) return;
+    _tplFetch('/templates/' + encodeURIComponent(id), { headers: _tplHeaders(false) })
+      .then(function (t) {
+        if (!t || !t.params || !t.params.geometria) {
+          _errObra('Ese template no tiene receta utilizable.');
+          return;
+        }
+        global.templateEditorAbrir({
+          elemento: String(t.tipo || ST.elemento || 'viga').toUpperCase(),
+          nombre: t.nombre || '',
+          dims: t.params.geometria,
+          receta: t.params,
+          // templateId NULL a proposito: en obra el hormigon se ajusta a lo REAL
+          // (decision 5) y un "Guardar cambios" con esa geometria pisaria el
+          // template de la biblioteca. Su id queda solo como TRAZA (tplOrigen).
+          templateId: null, tplOrigen: t.id,
+          ctxObra: ST.ctxObra, piso: ST.piso, instanciaId: ST.instanciaId
+        });
+      })
+      .catch(function (e) {
+        _errObra('No se pudo abrir el template: ' + ((e && e.message) || ''));
+      });
+  }
+
+  // PUERTA DE ENTRADA DEL MODO OBRA - la usa "Agregar Cubicacion" (ac2AbrirEditor3D).
+  //   ctx = { loteId, id_proyecto, sector, ciclo, eje, nombre_plano, estructura }
+  // Sin receta abre en blanco con el hormigon por defecto del ELEMENTO del lote
+  // (su estructura); con receta (reabrir una estructura ya cargada) abre esa.
+  global.templateEditorAbrirEnObra = function (ctx, opts) {
+    if (!ctx || !ctx.loteId) {
+      if (global.console && global.console.warn) {
+        global.console.warn('[TE] templateEditorAbrirEnObra necesita { loteId, ... }.');
+      }
+      return;
+    }
+    opts = opts || {};
+    var elem = String(opts.elemento || ctx.estructura || 'VIGA').toUpperCase();
+    if (!TPL_DIMS_POR_ELEMENTO[elem]) elem = 'VIGA';
+    global.templateEditorAbrir({
+      elemento: elem,
+      nombre: opts.nombre || '',
+      dims: (opts.receta && opts.receta.geometria) || _tplDimsDefault(elem),
+      receta: opts.receta || null,
+      templateId: null,
+      tplOrigen: (opts.tplOrigen != null) ? opts.tplOrigen : null,
+      ctxObra: ctx,
+      piso: opts.piso || '',
+      instanciaId: (opts.instanciaId != null) ? opts.instanciaId : null
+    });
+  };
+
+  // Payload de barras: lo que YA genero el motor, sin las claves de trabajo (las que
+  // empiezan con "_" son estimaciones del front - largo y peso los calcula el
+  // backend) y con la traza de la instancia estampada.
+  function _barrasPayload(instId) {
+    var out = ST.ultimoOut;
+    if (!out || !out.barras) return [];
+    return out.barras.map(function (b) {
+      var o = {};
+      for (var k in b) if (b.hasOwnProperty(k) && k.charAt(0) !== '_') o[k] = b[k];
+      o.origen = 'template';
+      o.template_instancia_id = (instId != null) ? instId : null;
+      return o;
+    });
+  }
+
+  function _errObra(msg) {
+    var err = $('te_saveErr'); if (err) { err.textContent = msg || ''; err.title = msg || ''; }
+  }
+
+  // CARGAR AL DESPIECE - reusa POST /lotes/{id}/barras (el canal del ingreso manual).
+  global.templateEditorCargarAlDespiece = function () {
+    if (!_modoObra()) return;
+    var btn = $('te_btnCargarDespiece');
+    if (btn && btn.disabled) return;
+    _errObra('');
+    var piso = (ST.piso || '').trim();
+    if (!piso) {
+      // El backend lo rechaza con 400, pero el arreglo esta ACA (campo del ribbon).
+      _errObra('Elige el piso de esta estructura (arriba, en el grupo Despiece).');
+      var pi = $('te_ribPiso'); if (pi && pi.focus) { pi.focus(); if (pi.select) pi.select(); }
+      return;
+    }
+    var barras = _barrasPayload(null);
+    if (!barras.length) {
+      _errObra('Todavia no hay barras generadas: agrega componentes al elemento.');
+      return;
+    }
+    if (btn) { btn.disabled = true; btn.textContent = 'Cargando\u2026'; }
+    var ctx = ST.ctxObra;
+    // 1) TRAZA de la estructura (elementos_template). Es la fila que hace real el
+    //    409 del DELETE de un template y la que permitira reabrirla.
+    _tplFetch('/elementos/instancia', {
+      method: 'POST', headers: _tplHeaders(true),
+      body: JSON.stringify({ lote_id: ctx.loteId, template_id: ST.tplOrigen, params: ST.receta })
+    }).catch(function () { return null; })
+      .then(function (ri) {
+        var instId = (ri && ri.ok && ri.id != null) ? ri.id : null;
+        if (instId != null) ST.instanciaId = instId;
+        return _tplFetch('/lotes/' + encodeURIComponent(ctx.loteId) + '/barras', {
+          method: 'POST', headers: _tplHeaders(true),
+          body: JSON.stringify({ barras: _barrasPayload(instId) })
+        });
+      })
+      .then(function (r) {
+        if (btn) { btn.disabled = false; btn.textContent = '\ud83e\uddf1 Cargar al despiece'; }
+        var n = (r && r.creadas) || barras.length;
+        _errObra('');
+        _actualizarStatus('\u2705 ' + n + ' item(s) cargados al despiece \u00b7 ' + _nombreEstructura());
+        // La grilla del despiece tiene que mostrar lo que acaba de entrar.
+        if (typeof global.ac2CargarLote === 'function') {
+          try { global.ac2CargarLote(ctx.loteId); } catch (e) { /* la carga ya esta hecha */ }
+        }
+      })
+      .catch(function (e) {
+        if (btn) { btn.disabled = false; btn.textContent = '\ud83e\uddf1 Cargar al despiece'; }
+        _errObra('No se cargaron las barras: ' + ((e && e.message) || 'error desconocido'));
+      });
   };
 
   // Cierre SIN confirm (interno): esconde el modal y limpia estado transitorio.
@@ -10072,6 +10340,10 @@
     _renderRibbonTips();       // chips de tipología (+ datalist y re-validación de Figura)
     _renderRibbonGeo();        // campos del grupo HORMIGÓN de ESTE elemento
     _sincronizarRibbonGeo();   // …con los valores de la receta
+    // El selector de templates del modo obra lista SOLO los del elemento en curso
+    // (decision 4): cambiar de elemento tiene que cambiar la lista, o se ofrecerian
+    // templates de viga a alguien que ya esta haciendo un muro.
+    if (_modoObra()) _cargarTemplatesObra();
     _refrescarDefsOrto();      // cada cámara orto vuelve a leer el def de su plano
     _actualizarTitulosVista(); // títulos de las 3 vistas + gizmo de ejes
     if (_hayCargado()) _sellarCargado();

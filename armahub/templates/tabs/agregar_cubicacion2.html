@@ -21,9 +21,11 @@
       <button id="ac2_descartarBtn" onclick="ac2Descartar()" title="Descartar lo no guardado" style="display:none; font-size:14px; font-weight:700; padding:6px 11px; background:#fff; color:#c62828; border:1px solid #e0a0a0; border-radius:4px; cursor:pointer;">✕</button>
       <!-- 🗑 ELIMINAR LOTE: única forma de borrar un lote (pide escribir ELIMINAR). Aplica incluso a terminados. -->
       <button id="ac2_eliminarBtn" onclick="ac2EliminarLote()" title="Eliminar este despiece y sus barras (irreversible)" style="display:none; font-size:14px; padding:6px 12px; background:#fff; color:#c62828; border:1px solid #c62828; border-radius:4px; cursor:pointer;">🗑 Eliminar</button>
-      <!-- 🧱 3D TEMPLATE (Modelador 3D · F1): abre el modal AJUSTAR. Solo visible con lote activo
-           (AC2.loteId). Genera barras desde una viga-semilla y las carga al despiece. -->
-      <button id="ac2_modelador3dBtn" onclick="modelador3dAbrir()" title="Generar barras con el Enfierrador 3D (viga paramétrica)"
+      <!-- 🧱 ENFIERRADOR: abre el TEMPLATE EDITOR con contexto de obra (un solo modal,
+           un solo motor — lo que cambia es el contexto que entra por la puerta). Solo
+           visible con lote activo (AC2.loteId). El modal viejo (modelador3dAbrir) sigue
+           cargado y funcionando; se retira cuando el usuario verifique este camino. -->
+      <button id="ac2_modelador3dBtn" onclick="ac2AbrirEditor3D()" title="Modelar la estructura y cargar sus barras al despiece"
               style="display:none; font-size:13px; font-weight:600; padding:6px 12px; background:#8BC34A; color:#fff; border:none; border-radius:4px; cursor:pointer;">🧱 Enfierrador 3D</button>
     </div>
 

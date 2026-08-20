@@ -1797,14 +1797,50 @@ window.ac2DuplicarLote=async function(loteId){
   alert('⎘ Despiece duplicado como #'+(r.data&&r.data.num_obra)+' ('+(r.data&&r.data.barras)+' barras) en Ciclo '+ciclo+' · Eje '+eje+'.\nÁbrelo desde el repositorio para revisarlo.');
 };
 
+// ── ENFIERRADOR = TEMPLATE EDITOR CON CONTEXTO DE OBRA ──────────────────────────
+// No hay dos editores ni un modal paralelo: es el MISMO Template Editor, al que se le
+// pasa el contexto del despiece por la puerta (templateEditorAbrirEnObra). Sin ese
+// contexto el editor se comporta igual que en el Catálogo.
+window.ac2CtxEditor3D=function(){
+  return { loteId:AC2.loteId, id_proyecto:AC2.proyecto||null, sector:AC2.sector||null,
+           ciclo:AC2.ciclo||null, eje:AC2.eje||null, nombre_plano:AC2.plano||null,
+           estructura:AC2.estructura||null };
+};
+
+window.ac2AbrirEditor3D=function(){
+  if (!AC2.loteId){ alert('Crea primero el despiece (Obra + Ciclo + Eje).'); return; }
+  if (AC2.loteEstado!=='borrador'){
+    // El backend responde 409 al agregar barras a un lote terminado: se dice ANTES,
+    // no después de que el usuario modele la estructura completa.
+    alert('Este despiece ya está terminado: sus barras se corrigen en el Bar Manager.'); return;
+  }
+  if (typeof window.templateEditorAbrirEnObra!=='function'){
+    alert('El editor aún se está cargando. Reintenta en un momento.'); return;
+  }
+  window.templateEditorAbrirEnObra(ac2CtxEditor3D(), {});
+};
+
+// RECARGAR el despiece abierto. El editor 3D llama a esto tras cargar barras. NO
+// existía (sólo ac2CargarLotes, que es el REPOSITORIO de despieces de la obra): por eso
+// al volver del enfierrador la grilla seguía mostrando lo de antes.
+window.ac2CargarLote=function(id){
+  var lid=(id!=null)?id:AC2.loteId;
+  if (lid==null) return;
+  return window.ac2RetomarLote(lid, true);
+};
+
 // RETOMAR un lote: carga sus barras (GET /lotes/{id}) y reconstruye el formulario. Un lote
 // TERMINADO se abre en solo-lectura (sus barras se corrigen en Bar Manager). Uno en borrador
 // se puede seguir editando. Advierte si hay cambios sin guardar en el form actual.
-window.ac2RetomarLote=async function(id){
-  if (id===AC2.loteId) return;   // ya está abierto
+window.ac2RetomarLote=async function(id, forzar){
+  // forzar = RECARGAR el mismo lote (lo usa ac2CargarLote tras cargar barras desde el
+  // editor 3D): sin esto la grilla se quedaba mostrando lo de antes.
+  if (id===AC2.loteId && !forzar) return;   // ya está abierto
   var pend=AC2.barras.filter(function(b){return !b._guardada;}).length;
   if (pend && !confirm('Tienes '+pend+' barra(s) sin guardar en el formulario. Si abres otro despiece se descartarán.\n\n¿Continuar?')) return;
-  _ac2DescartarLoteVacioSiCorresponde();   // si el despiece actual estaba vacío, borrarlo antes de abrir otro
+  // Al RECARGAR el lote abierto no hay nada que soltar: descartar aquí borraría el
+  // propio despiece que se está releyendo (AC2.barras aún es el de antes de la carga).
+  if (!forzar) _ac2DescartarLoteVacioSiCorresponde();   // si el despiece actual estaba vacío, borrarlo antes de abrir otro
   var d=await _ac2Get('/lotes/'+id);
   if (!d || !d.lote){ alert('No se pudo abrir el despiece.'); return; }
   var L=d.lote, bs=d.barras||[];
@@ -1827,6 +1863,9 @@ window.ac2RetomarLote=async function(id){
     AC2_DIMKEYS.forEach(function(k){ nb[k]=x[k]; });
     ['ang1','ang2','ang3','ang4'].forEach(function(a){ nb[a]=x[a]; });
     nb._guardada=true; nb._dbid=x.id;   // id de BD para sincronizar revisada (/revisar) al terminar
+    // ORIGEN de la barra: 'csv' | 'manual' | 'template' (las nacidas del editor 3D).
+    // Un despiece puede tener de varias clases y el front tiene que distinguirlas.
+    nb._origen=x.origen||''; nb._instanciaId=(x.template_instancia_id!=null?x.template_instancia_id:null);
     return nb;
   });
   // Sincronizar tipologías de la estructura + reflejar contexto en los comboboxes/chips.

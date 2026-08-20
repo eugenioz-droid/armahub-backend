@@ -17,9 +17,14 @@
 //        SIN templateId (todavía no existe en la biblioteca).
 //   E4 · "Abrir" de la lista pide GET /templates/{id} y entra con esa receta y ese id.
 //   E5 · "📂 Abrir" del titlebar devuelve a la lista: cierra el modal y la re-pide.
-//   E6 · ESTRUCTURAL — templateEditorAbrir se llama desde TRES sitios y sólo tres:
-//        los dos del gestor (las puertas) y el "Recuperar" de la barra de borrador,
-//        que ya vive dentro del editor abierto. Ninguna plantilla HTML la invoca.
+//   E6 · ESTRUCTURAL — templateEditorAbrir se llama desde CINCO sitios y sólo cinco:
+//        los dos del gestor (las puertas del Catálogo), el "Recuperar" de la barra de
+//        borrador —que ya vive dentro del editor abierto— y los dos del MODO OBRA:
+//        templateEditorAbrirEnObra (la puerta del despiece, la que llama Agregar
+//        Cubicación) y _cargarRecetaTemplateEnObra (llamar un template sin salir del
+//        despiece). Los cinco están DENTRO de template_editor.js: ningún otro archivo
+//        JS ni plantilla HTML abre el modal por su cuenta. El modo obra NO es un fork:
+//        entra por la MISMA función, sólo que con ctxObra en el cfg.
 //
 // Corre el template_editor.js REAL sobre un mini-DOM (no hay jsdom en el proyecto),
 // igual que tests/test_te_biblioteca.js. Correr con: node tests/test_te_puerta_entrada.js
@@ -292,16 +297,89 @@ function sinComentariosJs(src) {
     ok(nuevas.length === 1 && nuevas[0].metodo === 'GET', 'y la lista se vuelve a pedir al volver');
   }
 
+  // ============================================================== E7
+  // MODO OBRA — el mismo editor haciendo de Enfierrador. Lo que se fija acá es que el
+  // contexto de obra ENTRA POR LA PUERTA y llega hasta el payload: el hueco que había
+  // era generarViga(receta, {}) — barras sin ubicación, que el backend rechaza porque
+  // exige sector/piso/ciclo/eje en cada una.
+  console.log('E7 — con contexto de obra el editor carga barras al despiece');
+  {
+    const w = sesion();
+    const ctx = { loteId: 42, id_proyecto: 'EXPLORA', sector: 'VCIELO', ciclo: 'C1',
+                  eje: 'E3', nombre_plano: 'P-101', estructura: 'VIGA' };
+    w._responder = (url) => {
+      if (/\/elementos\/instancia/.test(url)) return { status: 200, body: { ok: true, id: 55 } };
+      if (/\/lotes\/42\/barras/.test(url)) return { status: 200, body: { ok: true, creadas: 9 } };
+      return { status: 200, body: {} };
+    };
+    w.templateEditorAbrirEnObra(ctx, { receta: w.ModeladorSemilla.semillaViga() });
+    const ST = w.TemplateEditor._st;
+    ok(w._abierto() === true, 'la puerta del despiece abre el MISMO modal');
+    ok(ST.ctxObra && ST.ctxObra.loteId === 42, 'con el contexto de obra puesto');
+    ok(ST.templateId == null, 'y SIN templateId: guardar no puede pisar el template de la biblioteca');
+    ok(w._el('te_grpObra').style.display === '' && w._el('te_btnCargarDespiece').style.display === '',
+      'el grupo Despiece y el botón "Cargar al despiece" se ven');
+    ok(w._el('te_btnVolverLista').style.display === 'none',
+      'y "Abrir" (volver a la lista del Catálogo) no se ofrece desde un despiece');
+
+    // Sin PISO no se manda nada: el backend lo exige por barra y el arreglo está en el ribbon.
+    const antes = w._llamadas.length;
+    w.templateEditorCargarAlDespiece();
+    ok(w._llamadas.length === antes, 'sin piso NO se llama al backend');
+    ok(/piso/i.test(w._el('te_saveErr').textContent), 'y se dice que falta el piso');
+
+    // Con piso: la ubicación viaja en CADA barra y el origen las distingue de las del CSV.
+    w._el('te_ribPiso').value = 'P4';
+    w._el('te_ribPiso').dispatchEvent({ type: 'change' });
+    ok(ST.piso === 'P4', 'el piso queda en el estado de la estructura (uno para todas sus barras)');
+    const b0 = ST.ultimoOut.barras[0];
+    ok(b0.piso === 'P4' && b0.sector === 'VCIELO' && b0.ciclo === 'C1' && b0.eje === 'E3',
+      'y cada barra generada nace con la ubicación del despiece');
+    ok(b0.nombre_plano === 'P-101', 'con el plano del lote');
+    ok(b0.origen === 'template', 'y con origen propio (no se confunde con las del CSV ni las manuales)');
+
+    w.templateEditorCargarAlDespiece();
+    await tick(); await tick(); await tick();
+    const post = w._llamadas.filter(l => l.metodo === 'POST');
+    const inst = post.find(l => /\/elementos\/instancia$/.test(l.url));
+    const carga = post.find(l => /\/lotes\/42\/barras$/.test(l.url));
+    ok(!!inst, 'primero se guarda la traza de la estructura (elementos_template)');
+    ok(!!carga, 'y las barras entran por POST /lotes/{id}/barras — el canal que ya existía');
+    ok(carga && carga.body.barras.length > 0, 'con barras adentro');
+    ok(carga && carga.body.barras.every(b => b.template_instancia_id === 55),
+      'todas trazadas contra esa instancia');
+    ok(carga && carga.body.barras.every(b => !Object.keys(b).some(k => k.charAt(0) === '_')),
+      'y sin las claves de trabajo del front (largo y peso los calcula el backend)');
+  }
+
+  // ============================================================== E8
+  console.log('E8 — sin contexto de obra el editor es el de siempre');
+  {
+    const w = sesion();
+    w._el('tplNombre').value = 'Viga normal';
+    w.tplValidar();
+    w.tplCrearTemplate();
+    const ST = w.TemplateEditor._st;
+    ok(ST.ctxObra === null, 'ctxObra queda en null');
+    ok(w._el('te_grpObra').style.display === 'none', 'el grupo Despiece no se ve');
+    ok(w._el('te_btnCargarDespiece').style.display === 'none', 'ni el botón de cargar al despiece');
+    const antes = w._llamadas.length;
+    w.templateEditorCargarAlDespiece();
+    ok(w._llamadas.length === antes, 'y llamarlo a mano no hace nada (no hay despiece al que cargar)');
+  }
+
   // ============================================================== E6
   console.log('E6 — la puerta es UNA: nadie más llama al modal');
   {
     const teSrc = sinComentariosJs(fs.readFileSync(path.join(BASE, 'template_editor.js'), 'utf8'));
-    // Tres sitios y sólo tres: los DOS del gestor (las puertas de verdad) y el
-    // "Recuperar" de la barra de borrador, que NO es una puerta — la barra sólo
-    // aparece dentro del editor ya abierto, y recargar el borrador es volver a
-    // entrar por el mismo camino con la receta que quedó a medias.
+    // Cinco sitios y sólo cinco: los DOS del gestor (las puertas del Catálogo), el
+    // "Recuperar" de la barra de borrador —que NO es una puerta: la barra sólo
+    // aparece dentro del editor ya abierto— y los DOS del modo obra. El modo obra
+    // reusa templateEditorAbrir a propósito: si se copiara el camino de apertura
+    // tendríamos dos editores divergiendo, que es justo lo que se quiere evitar.
     const dueno = (idx) => {
-      const anclas = ['function _bindBorrador', 'global.tplCrearTemplate', 'global.tplAbrirTemplate'];
+      const anclas = ['function _bindBorrador', 'global.tplCrearTemplate', 'global.tplAbrirTemplate',
+                      'function _cargarRecetaTemplateEnObra', 'global.templateEditorAbrirEnObra'];
       let quien = '(suelta)', mejor = -1;
       anclas.forEach(a => { const i = teSrc.lastIndexOf(a, idx); if (i > mejor) { mejor = i; quien = a; } });
       return quien;
@@ -310,11 +388,23 @@ function sinComentariosJs(src) {
     const re = /templateEditorAbrir\s*\(/g;
     let m;
     while ((m = re.exec(teSrc))) sitios.push(dueno(m.index));
-    ok(sitios.length === 3, 'template_editor.js llama al modal en 3 sitios (hay ' + sitios.length + ')');
+    ok(sitios.length === 5, 'template_editor.js llama al modal en 5 sitios (hay ' + sitios.length + ')');
     ok(sitios.filter(s => s === 'global.tplCrearTemplate').length === 1, 'uno es "Crear template"');
     ok(sitios.filter(s => s === 'global.tplAbrirTemplate').length === 1, 'otro es "Abrir" de la lista');
     ok(sitios.filter(s => s === 'function _bindBorrador').length === 1,
-      'y el tercero es Recuperar borrador, que ya está dentro del editor');
+      'el tercero es Recuperar borrador, que ya está dentro del editor');
+    ok(sitios.filter(s => s === 'global.templateEditorAbrirEnObra').length === 1,
+      'el cuarto es la puerta del DESPIECE (modo obra)');
+    ok(sitios.filter(s => s === 'function _cargarRecetaTemplateEnObra').length === 1,
+      'y el quinto es llamar un template sin salir del despiece');
+
+    // El modo obra entra por templateEditorAbrirEnObra, NO por templateEditorAbrir:
+    // el contexto de obra tiene que pasar por un solo sitio que lo valide.
+    const abrenEnObra = archivos(path.join(RAIZ, 'static', 'js'), '.js')
+      .filter(p => path.basename(p) !== 'template_editor.js')
+      .filter(p => /templateEditorAbrirEnObra\s*\(/.test(sinComentariosJs(fs.readFileSync(p, 'utf8'))));
+    ok(abrenEnObra.length === 1 && /agregar_cubicacion2\.js$/.test(abrenEnObra[0]),
+      'y la puerta del despiece la usa sólo Agregar Cubicación');
 
     const otros = archivos(path.join(RAIZ, 'static', 'js'), '.js')
       .filter(p => path.basename(p) !== 'template_editor.js')

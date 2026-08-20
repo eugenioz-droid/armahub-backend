@@ -852,7 +852,11 @@ def ver_lote(lote_id: int, user=Depends(get_current_user)):
     # su estado "revisada" (/revisar) al terminar un lote retomado.
     campos = ["id", "sector", "piso", "ciclo", "eje", "marca", "figura", "diam", "cant", "mult",
               "dim_a", "dim_b", "dim_c", "dim_d", "dim_e", "dim_f", "dim_g", "dim_h", "dim_i",
-              "ang1", "ang2", "ang3", "ang4", "radio", "revisada", "suf_tipo"]
+              "ang1", "ang2", "ang3", "ang4", "radio", "revisada", "suf_tipo",
+              # ORIGEN de la barra: el front necesita distinguir las nacidas del editor
+              # 3D ('template') de las del CSV y las del ingreso manual, que conviven en
+              # el mismo despiece. template_instancia_id dice de QUÉ estructura salió.
+              "origen", "template_instancia_id"]
     with get_conn() as conn:
         with conn.cursor() as cur:
             _check_permiso(cur, user)
