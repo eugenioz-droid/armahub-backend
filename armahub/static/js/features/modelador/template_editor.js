@@ -6960,14 +6960,16 @@
       body.appendChild(n);
       return;
     }
+    // La explicación de qué significa clicar una letra se retiró (20-ago): ocupaba
+    // tres renglones fijos del panel para contar algo que se aprende una vez. Lo
+    // que SÍ se queda es el aviso, porque es un dato que cambia y que el usuario no
+    // puede deducir mirando: su elección no está mandando.
     var elegido = _ladoDomElegido(c);
-    n.textContent = 'Clic en una letra: ese lado es el que corre a lo largo, el que se estira contra el ' +
-      'hormigón y el que recibe el empalme. Δ = cuánto se le suma.' +
-      ((elegido && elegido !== efectivo)
-        ? ' ⚠ La elección ' + elegido + ' no está mandando: manda ' + (efectivo || '—') + '.'
-        : '');
-    if (elegido && elegido !== efectivo) n.style.color = 'var(--te-warn)';
-    body.appendChild(n);
+    if (elegido && elegido !== efectivo) {
+      n.textContent = '⚠ La elección ' + elegido + ' no está mandando: manda ' + (efectivo || '—') + '.';
+      n.style.color = 'var(--te-warn)';
+      body.appendChild(n);
+    }
   }
 
   function _dimRow(c, ci, L, dom) {
@@ -7294,10 +7296,9 @@
     g2.appendChild(_fld(edR._rotulo(), edR));
     box.appendChild(g2);
     _tramosEditor(box, d, ci);
-    // El "cant = ceil(dist/@)+1" que cerraba esta nota era la fórmula del código:
-    // el número ya sale calculado en el campo de al lado.
-    var note = _div('te-note'); note.textContent = 'El rango se edita con los campos o arrastrando la flecha doble en las vistas.';
-    box.appendChild(note);
+    // La nota que explicaba cómo se edita el rango se retiró (20-ago): los campos
+    // están ahí mismo y la flecha se ve en las vistas — describía lo evidente y
+    // ocupaba alto del panel, que es lo escaso.
   }
 
   // ARREGLO — rango en un sentido + n_capas + sep_capas (rango × capas). El eje de
