@@ -10432,9 +10432,7 @@
       // El texto DICE cual de las dos cosas hace: crear la estructura o actualizarla.
       if (obra) btn.textContent = _textoBotonDespiece();
     }
-    // "Volver a la lista" lleva al Gestor del Catalogo: desde un despiece no es a
-    // donde se entro, asi que en modo obra no se ofrece.
-    var vl = $('te_btnVolverLista'); if (vl) vl.style.display = obra ? 'none' : '';
+    // (Aca se escondia "📂 Abrir" en modo obra: ese boton ya no existe — 21-ago.)
     if (!obra) return;
     var chip = $('te_obraCtx'); if (chip) chip.textContent = _ctxObraTexto();
     var pi = $('te_ribPiso'); if (pi) pi.value = ST.piso || '';
@@ -10680,6 +10678,12 @@
     ST.caraHi = null;
     _limpiarGhost();
     var fb = $('te_flipBtn'); if (fb) fb.classList.remove('on');
+    // RE-PEDIR LA BIBLIOTECA AL SALIR (21-ago). Esto lo hacía sólo el botón "📂 Abrir"
+    // del titlebar, que se eliminó; ahora vive donde tiene que estar: la lista del tab
+    // queda DEBAJO del modal ya dibujada, así que si en esta sesión se guardó o se
+    // renombró algo, cerrar por cualquier vía (✕, backdrop, Esc) dejaba a la vista los
+    // datos viejos hasta que alguien tocara el tab.
+    if (typeof global.tplCargarGuardados === 'function') global.tplCargarGuardados();
   }
 
   // T2 — dirty-check en TODAS las salidas (✕, backdrop, Esc pasan por aquí).
@@ -10688,15 +10692,11 @@
     _cerrarModal();
   };
 
-  // Botón "📂 Abrir" del titlebar: volver a la pantalla previa (que ya lista los
-  // guardados — no hay mini-lista dentro del modal). Confirm propio si hay cambios.
-  global.templateEditorVolverALista = function () {
-    if (_hayCambiosSinGuardar() && !global.confirm('Hay cambios sin guardar. ¿Volver a la lista igual?')) return;
-    _cerrarModal();
-    // La biblioteca se re-pide al volver: si se guardó (o se renombró) en esta
-    // sesión, la lista de atrás tiene los datos viejos hasta que alguien la toque.
-    if (typeof global.tplCargarGuardados === 'function') global.tplCargarGuardados();
-  };
+  // El botón "📂 Abrir" del titlebar y su templateEditorVolverALista SE ELIMINARON
+  // (21-ago). Era una SEGUNDA salida hacia la lista del tab, que es exactamente a
+  // donde deja la ✕ al cerrar el modal. Lo único propio que tenía —re-pedir la
+  // biblioteca al salir— se mudó a _cerrarModal(), o sea que ahora lo hacen TODAS
+  // las salidas y no sólo ese botón.
 
   global.templateEditorVerEn3D = function () { _iniciar3dEnVivo(); };
 
@@ -10841,12 +10841,14 @@
     // Con el foco DENTRO no se pisa: el usuario está escribiendo (y le borraría el
     // cursor a mitad de palabra). El campo ya es la fuente de ST.nombre.
     if (inp && document.activeElement !== inp) inp.value = ST.nombre || '';
-    // Sufijo informativo: si el template vino de la biblioteca se dice, para que
-    // "Guardar cambios" no sorprenda a nadie.
+    // Sufijo informativo. El "· biblioteca #<id>" SE FUE (21-ago, pedido del usuario):
+    // el número es la clave primaria de la tabla, no dice nada de este template y sólo
+    // servía para depurar. Lo que SÍ queda es el aviso de propiedad: si el template es
+    // de otro usuario, "Guardar cambios" no puede sorprender a nadie.
     var ruta = $('te_subRuta');
     if (ruta) {
       ruta.textContent = (ST.templateId != null)
-        ? ('· biblioteca #' + ST.templateId + (ST.puedeModificar === false ? ' (de otro usuario)' : ''))
+        ? (ST.puedeModificar === false ? '· de otro usuario' : '')
         : '· nuevo · Catálogo › Templates';
     }
   }

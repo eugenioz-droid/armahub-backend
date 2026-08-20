@@ -16,7 +16,8 @@
 //   E3 · "Crear template" con nombre abre en blanco: ese nombre, cero componentes y
 //        SIN templateId (todavía no existe en la biblioteca).
 //   E4 · "Abrir" de la lista pide GET /templates/{id} y entra con esa receta y ese id.
-//   E5 · "📂 Abrir" del titlebar devuelve a la lista: cierra el modal y la re-pide.
+//   E5 · Cerrar el editor re-pide la lista del tab (el botón "📂 Abrir" del titlebar
+//        se eliminó el 21-ago; su única acción propia se mudó a _cerrarModal).
 //   E6 · ESTRUCTURAL — templateEditorAbrir se llama desde CINCO sitios y sólo cinco:
 //        los dos del gestor (las puertas del Catálogo), el "Recuperar" de la barra de
 //        borrador —que ya vive dentro del editor abierto— y los dos del MODO OBRA:
@@ -299,13 +300,19 @@ function sinComentariosJs(src) {
     ok(ST.receta.componentes.length === 1, 'y con sus componentes, no con una semilla');
 
     // ---------------------------------------------------------- E5
-    console.log('E5 — "📂 Abrir" del titlebar devuelve a la lista');
+    // El botón "📂 Abrir" del titlebar se eliminó (21-ago): era una segunda salida
+    // hacia la lista. Lo que sí tiene que seguir pasando —y por eso el contrato no
+    // se borra, se muda— es que AL CERRAR se re-pida la biblioteca: la lista del tab
+    // queda debajo del modal y si se guardó o renombró algo, mostraría datos viejos.
+    console.log('E5 — cerrar el editor re-pide la lista del tab');
     const antes = w._llamadas.length;
-    w.templateEditorVolverALista();
+    w.templateEditorCerrar();
     ok(w._abierto() === false, 'el modal se cierra');
     ok(w._confirms.length === 0, 'sin cambios no pregunta nada');
     const nuevas = w._llamadas.slice(antes).filter(l => /\/templates(\?|$)/.test(l.url));
-    ok(nuevas.length === 1 && nuevas[0].metodo === 'GET', 'y la lista se vuelve a pedir al volver');
+    ok(nuevas.length === 1 && nuevas[0].metodo === 'GET', 'y la lista se vuelve a pedir al salir');
+    ok(typeof w.templateEditorVolverALista === 'undefined',
+      'y la puerta vieja (templateEditorVolverALista) ya no existe');
   }
 
   // ============================================================== E7
@@ -330,8 +337,8 @@ function sinComentariosJs(src) {
     ok(ST.templateId == null, 'y SIN templateId: guardar no puede pisar el template de la biblioteca');
     ok(w._el('te_grpObra').style.display === '' && w._el('te_btnCargarDespiece').style.display === '',
       'el grupo Despiece y el botón "Cargar al despiece" se ven');
-    ok(w._el('te_btnVolverLista').style.display === 'none',
-      'y "Abrir" (volver a la lista del Catálogo) no se ofrece desde un despiece');
+    // (Aquí se comprobaba que "📂 Abrir" quedara oculto en modo obra: ese botón se
+    //  eliminó del titlebar el 21-ago, así que no hay nada que esconder.)
 
     // Sin PISO no se manda nada: el backend lo exige por barra y el arreglo está en el ribbon.
     const antes = w._llamadas.length;

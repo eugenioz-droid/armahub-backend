@@ -55,6 +55,11 @@
     --te-warn:#e65100; --te-warn-bg:#fff8ef;
     /* Franja de TOTAL del listado de barras: fondo hundido + línea gruesa. */
     --te-band:#e6ecf3; --te-band-b:#b7c3d0;
+    /* TABLA del listado de barras. Estos tres NACEN valiendo el literal que app.css
+       le imponía a la tabla desde fuera del modal (ver .te-btab): marco/línea de
+       cabecera #ddd, separador de filas #efefef y fila apuntada #fafafa. En claro,
+       por lo tanto, la franja se ve exactamente igual que antes. */
+    --te-btab-b:#dddddd; --te-btab-row:#efefef; --te-btab-hover:#fafafa;
     /* --te-canvas3d = TEMAS3D.claro.bg de template_editor.js. Desde que el fondo es
        global lo usan los 4 cuadrantes (via --te-ov-lienzo), no sólo el 3D. */
     --te-canvas3d:#d8dee7; --te-hormigon:#c9d2dc; --te-hormigon-b:#8a96a5;
@@ -85,6 +90,7 @@
     --te-err:#ef8a84; --te-err-bg:rgba(198,40,40,.22);
     --te-warn:#ffab5e; --te-warn-bg:rgba(230,81,0,.22);
     --te-band:#232a38; --te-band-b:#4b5670;
+    --te-btab-b:#4b5670; --te-btab-row:#48536a; --te-btab-hover:#414c61;
   }
   /* OSCURO — VARIANTE A: CARBÓN NEUTRO (la implementada). El lienzo #14171c es casi
      neutro y el marco también: grafito sin tinte. Es el oscuro "de taller" (Fusion,
@@ -100,6 +106,7 @@
     --te-err:#f2938c; --te-err-bg:rgba(198,40,40,.20);
     --te-warn:#ffb877; --te-warn-bg:rgba(230,81,0,.20);
     --te-band:#13171c; --te-band-b:#39414b;
+    --te-btab-b:#39414b; --te-btab-row:#2f353d; --te-btab-hover:#2a3038;
   }
   /* OSCURO — VARIANTE B: AZUL NOCHE. NO está implementada; queda escrita para que
      cambiarla sea SUSTITUIR NÚMEROS en el bloque .te-tema-oscuro de arriba y nada más
@@ -114,6 +121,7 @@
        --te-ghost:#242c3c; --te-ghost-ink:#d5deea; --te-hover:#29324a;
        --te-sw-ring:rgba(255,255,255,.32);
        --te-band:#111726; --te-band-b:#3a4557;
+       --te-btab-b:#3a4557; --te-btab-row:#303a4c; --te-btab-hover:#29324a;
   */
   /* FONDO DE LOS CAMPOS POR VARIABLE. Antes no había regla: los inputs y selects se
      quedaban con el blanco por defecto del navegador, o sea que en oscuro TODOS los
@@ -203,8 +211,7 @@
     flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden;scrollbar-width:thin}
   /* Los grupos NO se encogen: si algo tiene que ceder es la nota, no un campo. */
   #te_modal #te_ribbon .te-grp{display:flex;align-items:center;gap:8px;flex-wrap:nowrap;flex:0 0 auto}
-  #te_modal #te_ribbon .te-divv,#te_modal #te_ribbon .te-3dlbl,
-  #te_modal #te_ribbon .te-3dseg{flex:0 0 auto}
+  #te_modal #te_ribbon .te-divv{flex:0 0 auto}
   /* GRUPO COLOCAR (21-ago): el botón "＋ Agregar barra" y, A SU DERECHA, el bloque
      figura+φ+tipología. Estuvo en COLUMNA (el bloque colgando del botón) del 20 al
      21-ago: se leía bien pero costaba una fila entera de altura al cuadrante, y el
@@ -533,11 +540,29 @@
   /* Alto ACOTADO (como el .tb del Enfierrador): la franja no puede comerse los
      cuadrantes, la tabla scrollea por dentro. */
   #te_modal .te-barras-b{max-height:34vh;overflow:auto}
-  #te_modal .te-btab{width:100%;border-collapse:collapse;font-size:11.5px}
+  /* EL FONDO Y LOS BORDES DE ESTA TABLA LOS PONÍA app.css (arreglado el 21-ago).
+     Las reglas globales de la plataforma —`table{background:white;border:1px solid
+     #ddd}`, `th{border-bottom:2px solid #ddd}`, `td{border-bottom:1px solid #efefef}`
+     y `tr:hover{background:#fafafa}`— le ganan a un color HEREDADO por más ids que
+     tenga el ancestro (la herencia es lo más débil de la cascada). Resultado: la
+     franja se pintaba BLANCA con líneas claras dijera lo que dijera el tema, y en
+     oscuro quedaba el texto claro (--te-ink) sobre tabla blanca, o sea ilegible —
+     que es justo lo que el usuario señaló.
+     Se arregla en la FUENTE: los cuatro valores se declaran acá, por variable, en vez
+     de dejar que los ponga una hoja que no sabe del tema. Los valores del tema CLARO
+     son EXACTAMENTE los literales que app.css imponía, así que el claro no cambia. */
+  #te_modal .te-btab{width:100%;border-collapse:collapse;font-size:11.5px;
+    background:var(--te-panel);border:1px solid var(--te-btab-b)}
   #te_modal .te-btab th{text-align:left;font-weight:600;color:var(--te-muted);font-size:10.5px;
-    padding:4px 10px;background:var(--te-bg);position:sticky;top:0;white-space:nowrap;z-index:1}
-  #te_modal .te-btab td{padding:4px 10px;border-top:1px solid var(--te-line);vertical-align:top;white-space:nowrap}
+    padding:4px 10px;background:var(--te-bg);position:sticky;top:0;white-space:nowrap;z-index:1;
+    border-bottom:2px solid var(--te-btab-b)}
+  #te_modal .te-btab td{padding:4px 10px;border-top:1px solid var(--te-line);vertical-align:top;white-space:nowrap;
+    border-bottom:1px solid var(--te-btab-row)}
   #te_modal .te-btab th.te-bnum,#te_modal .te-btab td.te-bnum{text-align:right;font-variant-numeric:tabular-nums}
+  /* El hover se pinta en DOS capas: la <tr> (que es la que ponía app.css) y la celda.
+     La de la celda es semitransparente en medio/oscuro, así que si la <tr> se queda
+     con el #fafafa global la fila apuntada salía blanca sobre el panel negro. */
+  #te_modal .te-btab tr:hover{background:var(--te-btab-hover)}
   #te_modal .te-btab tbody tr:hover td{background:var(--te-azul-b)}
   /* (No hay resaltado de "la fila seleccionada": generar.js AGRUPA las barras por
      figura+φ+marca+suf+dims y la fila resultante no guarda de qué componente salió.
@@ -577,7 +602,14 @@
     --te-ov-dim:#607089;        /* texto de las cotas */
     --te-ov-dimL:#b6c2d0;       /* líneas y ticks de cota */
     --te-ov-bbox:#7d8da0;       /* bbox punteado de la selección */
-    --te-ov-rango:#558B2F;      /* flecha de rango + tramos (verde acero oscuro) */
+    /* ABANICO DE DISTRIBUCIÓN (flecha doble del rango + divisores + rótulos @N).
+       AZUL ELÉCTRICO desde el 21-ago; era verde acero (#558B2F) y el usuario lo pidió
+       MUCHO más notorio: el verde compartía tono con el acento de la interfaz
+       (--te-acero) y sobre el lienzo gris se leía a 3,0:1. Este azul da 3,9:1 sobre el
+       mismo lienzo, o sea que además de destacar más, contrasta más.
+       NO invade la 2ª línea del arreglo, que sigue en morado (--te-ov-r2): son dos
+       flechas simultáneas y el color es lo único que dice cuál reparte por cuál eje. */
+    --te-ov-rango:#0b57ff;      /* flecha de rango + tramos (azul eléctrico) */
     --te-ov-grid:rgba(15,20,28,.10);
     --te-ov-grid-m:rgba(15,20,28,.20);
     --te-ov-chip-bg:rgba(255,255,255,.78);   /* fondo de título/etiquetas flotantes */
@@ -588,30 +620,30 @@
        literales claros DENTRO del cuadrante, o sea parches blancos en cuanto el
        fondo se oscurece. Los LIENZOS y el magenta de seleccion no se tocan. */
     --te-ov-btn-bg:rgba(255,255,255,.92); /* botones flotantes sobre el lienzo */
-    --te-ov-rango-f:#33691E;              /* verde FUERTE: cota viva y realce al pasar */
+    --te-ov-rango-f:#0033d6;              /* azul FUERTE: cota viva y realce al pasar */
     --te-ov-cota-bg:#ffffff;              /* caja/halo que interrumpe el trazo tras el número */
-    --te-ov-cota-bgh:#eef6e2;             /* su realce al pasar por encima */
+    --te-ov-cota-bgh:#e4ebff;             /* su realce al pasar por encima */
     --te-ov-r2:#7b1fa2; --te-ov-r2-h:#4a148c;  /* 2ª línea del arreglo (morado) */
     --te-ov-cota-bgh2:#f7eefb;
   }
   #te_modal #te_quad.te-tema-medio{
     --te-ov-recub:#c7d2de; --te-ov-dim:#b9c6d6; --te-ov-dimL:#6c7a8d; --te-ov-bbox:#93a3b6;
-    --te-ov-rango:#a5d76a;
+    --te-ov-rango:#4da3ff;
     --te-ov-grid:rgba(226,236,248,.13); --te-ov-grid-m:rgba(226,236,248,.26);
     --te-ov-chip-bg:rgba(20,26,34,.72); --te-ov-chip-ink:#c3cfdd; --te-ov-hint:#8695a8;
     --te-ov-lienzo:#2b3242;
-    --te-ov-btn-bg:rgba(20,26,34,.80); --te-ov-rango-f:#c3ea8f;
-    --te-ov-cota-bg:#2b3242; --te-ov-cota-bgh:rgba(139,195,74,.22);
+    --te-ov-btn-bg:rgba(20,26,34,.80); --te-ov-rango-f:#8ec8ff;
+    --te-ov-cota-bg:#2b3242; --te-ov-cota-bgh:rgba(77,163,255,.24);
     --te-ov-r2:#ce93d8; --te-ov-r2-h:#e4bfe9; --te-ov-cota-bgh2:rgba(186,104,200,.22);
   }
   #te_modal #te_quad.te-tema-oscuro{
     --te-ov-recub:#d3dde8; --te-ov-dim:#c3d0e0; --te-ov-dimL:#5d6b7d; --te-ov-bbox:#8d9cb0;
-    --te-ov-rango:#b4e178;
+    --te-ov-rango:#58a9ff;
     --te-ov-grid:rgba(226,236,248,.11); --te-ov-grid-m:rgba(226,236,248,.24);
     --te-ov-chip-bg:rgba(10,13,18,.78); --te-ov-chip-ink:#c9d5e3; --te-ov-hint:#7d8b9d;
     --te-ov-lienzo:#14171c;
-    --te-ov-btn-bg:rgba(10,13,18,.84); --te-ov-rango-f:#cdf29b;
-    --te-ov-cota-bg:#14171c; --te-ov-cota-bgh:rgba(139,195,74,.20);
+    --te-ov-btn-bg:rgba(10,13,18,.84); --te-ov-rango-f:#9ed0ff;
+    --te-ov-cota-bg:#14171c; --te-ov-cota-bgh:rgba(88,169,255,.22);
     --te-ov-r2:#d8a4e0; --te-ov-r2-h:#ecccf0; --te-ov-cota-bgh2:rgba(186,104,200,.20);
   }
   /* GRILLA de las vistas 2D — la emite _dibujarGrilla2D como dos <path> (fina y
@@ -703,7 +735,7 @@
      izquierda, así no pisa el título del cuadrante (arriba-izq) ni el gizmo de ejes
      (abajo-izq, que lo pinta el renderer).
      Desde el 18-ago la fila es aún más corta: el radial de FONDO se mudó fuera del 3D
-     (es global, no del 3D: hoy vive en el ribbon de arriba). Los grupos siguen siendo .te-3drow para no perder los
+     (es global, no del 3D: hoy vive en la fila de herramientas). Los grupos siguen siendo .te-3drow para no perder los
      pares etiqueta+radial al envolver. */
   #te_modal .te-3dtools{position:absolute;right:34px;top:6px;z-index:3;display:flex;flex-direction:row;
     align-items:center;justify-content:flex-end;gap:9px;flex-wrap:nowrap}
@@ -718,7 +750,7 @@
      .te-3dseg — si se escribiera con una sola clase, los botones de texto saldrían
      cuadrados y recortados.
      .te-3dlbl y .te-3dseg van SIN el ancestro .te-3dtools a propósito: el radial de
-     FONDO los reusa desde #te_ribbon, que está fuera del cuadrante 3D. */
+     FONDO reusa .te-3dseg desde #te_ctools, que está fuera del cuadrante 3D. */
   #te_modal .te-3dlbl{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--te-faint)}
   #te_modal .te-3dseg{display:inline-flex;border:1px solid var(--te-line);border-radius:6px;overflow:hidden;
     background:var(--te-ov-btn-bg)}
@@ -727,21 +759,20 @@
   #te_modal .te-3dtools .te-3dseg button+button{border-left:1px solid var(--te-line)}
   #te_modal .te-3dtools .te-3dseg button:hover{background:var(--te-hover);color:var(--te-acero-t);border-color:var(--te-line)}
   #te_modal .te-3dtools .te-3dseg button.on{background:var(--te-acero);color:#fff}
-  /* RADIAL DE FONDO — vive en el RIBBON (20-ago; antes en #te_ctools), fuera de
-     .te-3dtools, así que NINGUNA de las reglas de botón de esa barra le llega y trae
-     acá su propio juego. Se subió porque pinta LOS 4 CUADRANTES, no el 3D: es un
-     ajuste de vista global, del mismo rango que el hormigón.
-     Tamaño +25% respecto de cuando vivía entre las herramientas (24→30 px de alto,
-     13→16 px de símbolo, 8→10 px de padding): ahí competía con botones de texto; acá
-     compite con el botón primario, y los símbolos ●◐○ tienen que leerse de un vistazo. */
-  #te_modal #te_ribbon #te_3dTema{flex:0 0 auto;background:var(--te-field);border-radius:7px}
-  #te_modal #te_ribbon .te-3dlbl{flex:0 0 auto}
-  #te_modal #te_ribbon #te_3dTema button{width:auto;height:30px;padding:0 10px;border:none;border-radius:0;
-    background:transparent;color:var(--te-muted);font-size:16px;line-height:1;cursor:pointer;
+  /* RADIAL DE FONDO — vive en la fila de HERRAMIENTAS (#te_ctools) desde el 21-ago;
+     estuvo en el ribbon el 20 y dentro del 3D antes. Va fuera de .te-3dtools, así que
+     NINGUNA de las reglas de botón de esa barra le llega y trae acá su propio juego.
+     Alto 24 px + borde = los mismos ~26 px que un .te-ctool de al lado: la fila tiene
+     que leerse como UNA hilera de controles, no como un control pegado a otros.
+     El símbolo a 14 px (no 16, que era el tamaño de cuando competía con el botón
+     primario del ribbon): acá el vecino es texto de 11.5 px. */
+  #te_modal #te_ctools #te_3dTema{flex:0 0 auto;background:var(--te-field);border-radius:7px}
+  #te_modal #te_ctools #te_3dTema button{width:auto;height:24px;padding:0 9px;border:none;border-radius:0;
+    background:transparent;color:var(--te-muted);font-size:14px;line-height:1;cursor:pointer;
     display:flex;align-items:center;justify-content:center}
-  #te_modal #te_ribbon #te_3dTema button+button{border-left:1px solid var(--te-line)}
-  #te_modal #te_ribbon #te_3dTema button:hover{background:var(--te-hover);color:var(--te-acero-t)}
-  #te_modal #te_ribbon #te_3dTema button.on{background:var(--te-acero);color:#fff}
+  #te_modal #te_ctools #te_3dTema button+button{border-left:1px solid var(--te-line)}
+  #te_modal #te_ctools #te_3dTema button:hover{background:var(--te-hover);color:var(--te-acero-t)}
+  #te_modal #te_ctools #te_3dTema button.on{background:var(--te-acero);color:#fff}
   /* Cuadro RESUMEN flotante del 3D (items · barras · peso). Abajo-derecha: la
      esquina inf-izq es del gizmo de ejes y el borde inferior derecho lo usa la
      ayuda (.te-vhint), que va más abajo. */
@@ -856,19 +887,21 @@
   /* Marcador de SNAP (cruz fina donde engancha). */
   #te_modal .te-snap{stroke:var(--te-azul);stroke-width:1;opacity:.9}
   /* Flechita doble de RANGO (desplazamiento de la distribución).
-     VERDE ACERO (var(--te-acero-d) #558B2F) — es el color histórico de la flecha; el
-     rediseño azul la confundía con la selección/el slider de corte. El preview
-     inactivo sigue distinguiéndose por su opacity (la pone el JS en el <g>). */
+     AZUL ELÉCTRICO por variable (--te-ov-rango, un valor por tema). Fue verde acero
+     hasta el 21-ago; se cambió porque el usuario la quiere MUCHO más notoria y el
+     verde era el mismo tono que el acento de la interfaz. Se puede confundir con la
+     SELECCIÓN (que es magenta #ff2d95, otra familia) menos que antes con el acento.
+     El preview inactivo sigue distinguiéndose por su opacity (la pone el JS en el <g>). */
   #te_modal .te-rango-line{stroke:var(--te-ov-rango);stroke-width:1;stroke-dasharray:3 3;opacity:.85}
   #te_modal .te-rango-arrow{fill:none;stroke:var(--te-ov-rango);stroke-width:1.3}
-  #te_modal .te-rango-hit{fill:rgba(85,139,47,.001)}
+  #te_modal .te-rango-hit{fill:rgba(0,0,0,.001)}
   #te_modal .te-rango-end{fill:#fff;stroke:var(--te-ov-rango);stroke-width:1.2}
   #te_modal .te-rango-end:hover{fill:var(--te-ov-rango)}
   /* TRAMOS (multi-@) sobre la flecha de rango: un DIVISOR arrastrable en cada límite
      entre tramos contiguos + una etiqueta "@N" clicable por tramo (abre un input
-     inline). Mismo verde acero de la flecha — es la misma pieza de UI. */
+     inline). Mismo azul de la flecha — es la misma pieza de UI. */
   #te_modal .te-rango-div{stroke:var(--te-ov-rango);stroke-width:1.4}
-  #te_modal .te-rango-divhit{fill:rgba(85,139,47,.001)}
+  #te_modal .te-rango-divhit{fill:rgba(0,0,0,.001)}
   #te_modal .te-rango-at{fill:var(--te-ov-rango);font:700 9px "Segoe UI",system-ui,sans-serif;
     cursor:pointer;user-select:none}
   #te_modal .te-rango-at:hover{fill:var(--te-ov-rango-f)}
@@ -889,10 +922,10 @@
   #te_modal .te-rango-atgrp:hover .te-rango-atbg{fill:var(--te-ov-cota-bgh);opacity:1;stroke-width:1.3}
   #te_modal .te-rango-atgrp:hover .te-rango-at{fill:var(--te-ov-rango-f)}
   /* La 2ª línea del arreglo por área lleva su color también en el rótulo: si el
-     número saliera verde no se sabría de cuál de las dos flechas es. El :hover de
+     número saliera azul no se sabría de cuál de las dos flechas es. El :hover de
      arriba tiene MÁS especificidad (1,3,0) que .te-rango-len.te-r2 (1,2,0), así que
      el morado necesita su propia regla de hover o el rótulo de la 2ª línea se volvía
-     verde justo al apuntarlo — la ambigüedad que el color existe para evitar. */
+     azul justo al apuntarlo — la ambigüedad que el color existe para evitar. */
   #te_modal .te-rango-len.te-r2{fill:var(--te-ov-r2)}
   #te_modal .te-rango-lenbg.te-r2{stroke:var(--te-ov-r2)}
   #te_modal .te-rango-lengrp:hover .te-rango-len.te-r2{fill:var(--te-ov-r2-h)}
@@ -1012,9 +1045,10 @@
         <select id="te_elemSel"></select>
       </label>
       <span class="te-chip" id="te_elemBadge">VIGA</span>
-      <!-- id: lo esconde _aplicarModoObra() en modo obra — "volver a la lista"
-           lleva al Gestor del Catalogo, que no es de donde se entro al despiece. -->
-      <button class="te-btn ghost" id="te_btnVolverLista" onclick="templateEditorVolverALista()">📂 Abrir</button>
+      <!-- El botón "📂 Abrir" del titlebar SE ELIMINÓ (21-ago). Al editor se entra por
+           la lista del tab y sólo por ahí (esa puerta única se cerró hace poco): un
+           botón que devolvía a la lista era una SEGUNDA vía a lo mismo que hace la ✕
+           —cerrar— con la diferencia de que ésta ya vuelve a donde se estaba. -->
       <button class="te-xbtn" onclick="templateEditorCerrar()">✕</button>
     </div>
 
@@ -1096,16 +1130,9 @@
            CSS), por eso lleva el texto completo tambien en el title. -->
       <span class="te-note" style="margin:0"
             title="Define el hormigón → ＋ Agregar barra → figura, φ y tipología → clic en una vista.">Define el hormigón → ＋ Agregar barra → figura, φ y tipología → clic en una vista.</span>
-      <!-- FONDO (●◐○ = oscuro/medio/claro). SUBIÓ ACÁ desde la fila de herramientas
-           (20-ago): pinta LOS 4 CUADRANTES —fondo, grilla 2D y la inversión de los
-           trazos del overlay—, no el 3D, así que es un ajuste global del mismo rango
-           que el hormigón. Es una MUDANZA: mismo id, mismas tres opciones y el mismo
-           handler de template_editor.js, que lo busca por id ($('te_3dTema')). -->
-      <div class="te-divv"></div>
-      <span class="te-3dlbl">fondo</span>
-      <span class="te-3dseg" id="te_3dTema" title="Fondo y grilla de LOS 4 CUADRANTES — 3D y los tres planos (no cambia el color de las barras)">
-        <button type="button" data-tema="oscuro" title="Fondo oscuro">●</button><button type="button" data-tema="medio" title="Fondo medio">◐</button><button type="button" class="on" data-tema="claro" title="Fondo claro">○</button>
-      </span>
+      <!-- El radial de FONDO (●◐○) estuvo acá el 20-ago; el 21-ago BAJÓ a la fila de
+           HERRAMIENTAS, entre "Borrar" y "Barras", que es donde viven los interruptores
+           de vista. Sigue siendo el mismo id y el mismo handler. -->
     </div>
 
     <!-- WARNING ANTI-COLAPSO: lo muestra/oculta _actualizarWarnTamano() tras cada
@@ -1168,6 +1195,17 @@
         <span class="te-divv"></span>
         <button class="te-ctool" id="te_btnBorrar" title="Borrar la barra seleccionada (Supr)">🗑 Borrar</button>
         <span class="te-divv"></span>
+        <!-- FONDO (●◐○ = oscuro/medio/claro) — MUDANZA del 21-ago desde el ribbon:
+             mismo id, mismas tres opciones y el mismo handler de template_editor.js
+             (lo busca por id, $('te_3dTema')). Va SIN etiqueta: los tres círculos ya
+             dicen "más oscuro / más claro" y en esta fila la palabra sólo gastaba
+             ancho. Está entre Borrar y Barras porque es un interruptor de VISTA, que
+             es lo que hay a su alrededor (snap, cotas, listado), no un dato del
+             template. Pinta LOS 4 CUADRANTES, no sólo el 3D. -->
+        <span class="te-3dseg" id="te_3dTema" title="Fondo y grilla de LOS 4 CUADRANTES — 3D y los tres planos (no cambia el color de las barras)">
+          <button type="button" data-tema="oscuro" title="Fondo oscuro">●</button><button type="button" data-tema="medio" title="Fondo medio">◐</button><button type="button" class="on" data-tema="claro" title="Fondo claro">○</button>
+        </span>
+        <span class="te-divv"></span>
         <!-- MOSTRAR/OCULTAR el listado de barras. Vive ACÁ y no junto a la tabla
              (pedido explícito: "un botón que la muestre y la oculte apareciendo siempre
              en el mismo lugar"): la barra de herramientas es fija, mientras que el fondo
@@ -1177,8 +1215,6 @@
                 title="Mostrar u ocultar el listado de barras a crear">📋 Barras</button>
         <span style="flex:1"></span>
         <span id="te_ctoolsStatus" style="font-size:10.5px;color:var(--te-faint)">Tipología activa: <b style="color:var(--te-cbs)">CBS</b> · figura 103B</span>
-        <!-- El radial de FONDO estuvo acá entre el 18 y el 20-ago; ahora vive en el
-             RIBBON (arriba), donde se lee como lo que es: un ajuste de vista global. -->
       </div>
 
       <!-- CENTRO: 4 CUADRANTES -->
