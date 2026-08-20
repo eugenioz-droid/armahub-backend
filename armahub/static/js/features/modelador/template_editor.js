@@ -187,13 +187,13 @@
     // la barra ya colocada no respetaba.
     figura: '', tipologia: 'CBS', diam: null,
     tool: 'mover', snap: true, cotas: false,   // arranca en SELECCIONAR (flechita), no colocando
-    // cotasLado: gate MOMENTÁNEO de las cotas por lado de la barra seleccionada
-    //   (SHIFT apretado). Es OTRA capa que `cotas`, que es el toggle PERSISTENTE
-    //   del botón del ribbon y acota el HORMIGÓN: responden preguntas distintas
-    //   (cuánto mide el elemento vs. cuánto mide cada lado de esta barra) y se
-    //   dibujan en sitios distintos (fuera del rect vs. sobre el trazo), así que
-    //   conviven sin pisarse y ninguno apaga al otro.
-    cotasLado: false,
+    // `cotas` = UN SOLO INTERRUPTOR PARA LAS DOS CAPAS DE MEDIDAS (20-ago, pedido del
+    // usuario). Antes eran dos cosas separadas —el botón del ribbon acotaba el
+    // HORMIGÓN y SHIFT apretado mostraba las medidas por lado de la barra— y había
+    // que acordarse de cuál prendía cada una. Ahora el botón «Cotas» y la tecla
+    // SHIFT prenden y apagan LAS DOS JUNTAS, y SHIFT es un interruptor (se pulsa y
+    // quedan; se vuelve a pulsar y se van), no un gate que hay que mantener.
+    // El estado vive acá y sólo acá: el botón refleja `cotas`, no al revés.
     selCi: -1,                 // índice del componente seleccionado (-1 = ninguno)
     ultimoPlano: 'largo',      // última vista tocada (define el eje de rotación)
     transforms: {},            // {plano: {minU,maxU,minV,maxV,s,offX,offY}}
@@ -1172,10 +1172,40 @@
     d.rango.sep = d.sep;
   }
 
-  // El rango cambió de largo (handles, campos from/to) → los tramos se renormalizan
-  // para seguir cubriéndolo. Sin esto, el motor leería longs viejos que ya no suman.
+  // Los tramos con el sobrante YA ABSORBIDO POR EL DEL MEDIO, pero SIN el recorte
+  // contra el fin del rango. Es _tramosDe partido en dos: la parte elástica (que es
+  // reversible: el medio es un derivado, no un dato) y la parte de recorte (que NO
+  // lo es). Sólo la primera se persiste — ver _syncTramos.
+  function _tramosElasticosDe(d) {
+    var total = _rangoLong(d);
+    var sepBase = Math.max(SEP_MIN, Number(d && d.sep) || 20);
+    var t = (d && d.rango && d.rango.tramos) || null;
+    if (!t || !t.length) return [{ long: total, sep: sepBase }];
+    var arr = t.map(function (x) {
+      return { long: Math.max(0, Number(x && x.long) || 0), sep: Math.max(SEP_MIN, Number(x && x.sep) || sepBase) };
+    });
+    var R = global.ModeladorReglas;
+    if (!(R && R.tramosElasticos)) return arr;
+    var suma = 0;
+    for (var i = 0; i < arr.length; i++) suma += arr[i].long;
+    return R.tramosElasticos(arr, total - suma, null);
+  }
+
+  // El rango cambió de largo (handles, campos from/to) → el tramo del MEDIO lo sigue.
+  // LO QUE NO SE ESCRIBE ES EL RECORTE (fix 20-ago). Antes esto guardaba el reparto
+  // YA RESUELTO (_tramosDe, que además de estirar el medio CLAMPEA cada tramo contra
+  // el fin del rango): los centímetros que el usuario DECLARÓ en los extremos —el
+  // confinamiento— quedaban destruidos en cuanto el rango se achicaba de más, y al
+  // reagrandar el elástico repartía sobre el destrozo. Medido: 100/320/100 → achicar
+  // a 150 (persistía 100/0/50) → agrandar a 520 devolvía 100/370/50, con 50 cm de
+  // confinamiento perdidos y sin una palabra.
+  // Ahora el recorte vive DONDE NO ENSUCIA: en la lectura (_tramosDe, para el panel y
+  // la flecha) y en el motor (posicionesRango clampea cada tramo contra `to` y sigue
+  // dando el mismo reparto). La receta guarda lo declarado y el ida y vuelta cierra.
+  // OJO: _setLongTramo, _addTramo y _delTramo SÍ escriben — eso es el usuario
+  // editando un tramo, que es otra cosa que un rango que se achicó.
   function _syncTramos(d) {
-    if (d && d.rango && d.rango.tramos && d.rango.tramos.length > 1) _setTramos(d, _tramosDe(d));
+    if (d && d.rango && d.rango.tramos && d.rango.tramos.length > 1) _setTramos(d, _tramosElasticosDe(d));
   }
 
   // Mueve el LÍMITE entre el tramo i y su vecino: el PAR conserva su largo total, así
@@ -3613,7 +3643,7 @@
     // resultante del lado que se está cambiando» ES esta capa. No se escribe una
     // segunda: la que existe ya sabe qué lado se ve en esta vista, cuál cae fuera
     // del cuchillo y cómo agrupar los que se pisan. Soltar la apaga.
-    if (ST.cotasLado || (ST.dragMarco && ST.dragMarco.pushed)) _dibujarCotasLados(svg, plano, proj, X, Y, out);
+    if (ST.cotas || (ST.dragMarco && ST.dragMarco.pushed)) _dibujarCotasLados(svg, plano, proj, X, Y, out);
 
     // COTAS VIVAS DE LA PIEZA — el hueco contra el hormigón mientras se mueve o se
     // estira. Reusa el bbox que acaba de calcular el marco de selección.
@@ -3660,8 +3690,9 @@
   // ==========================================================================
   // COTAS POR LADO DE LA BARRA — LETRA=MEDIDA, SÓLO EN LOS TRAMOS VISIBLES
   // ==========================================================================
-  // Gate: SHIFT apretado (ST.cotasLado). Sólo la barra SELECCIONADA, y de sus N
-  // placements UNO SOLO — cuál, lo decide el cuchillo de cada vista (ver abajo).
+  // Gate: el interruptor de cotas (ST.cotas — botón «Cotas» o SHIFT). Sólo la barra
+  // SELECCIONADA, y de sus N placements UNO SOLO — cuál, lo decide el cuchillo de
+  // cada vista (ver abajo).
   //
   // TRES FILTROS, en este orden, y ninguno es opcional:
   //   1. ¿CUÁL barra? — la que ESTA vista está mostrando (la más cercana al corte).
@@ -7829,10 +7860,15 @@
       });
       ct.querySelectorAll('.te-ctool[data-toggle]').forEach(function (b) {
         b.addEventListener('click', function () {
-          b.classList.toggle('on');
           var t = b.getAttribute('data-toggle');
+          // COTAS: el clic NO escribe el estado, PIDE el cambio. Quien manda es
+          // _setCotas —la misma puerta que usa el atajo SHIFT—, que deja el botón y
+          // ST.cotas siempre diciendo lo mismo. Si acá se hiciera el toggle de la
+          // clase por fuera, prender con la tecla y después clicar apagaría… y
+          // volvería a prender, porque el botón venía pintado al revés.
+          if (t === 'cotas') { _setCotas(!ST.cotas); return; }
+          b.classList.toggle('on');
           if (t === 'snap') ST.snap = b.classList.contains('on');
-          if (t === 'cotas') { ST.cotas = b.classList.contains('on'); _redibujar2D(ST.ultimoOut); }
         });
       });
     }
@@ -7899,39 +7935,40 @@
       tipTxt + selTxt + avisoTxt;
   }
 
-  // GATE DE LAS COTAS POR LADO (SHIFT). Prende/apaga ST.cotasLado y REPINTA el
-  // overlay una sola vez por transición: el keydown AUTO-REPITE decenas de veces
-  // por segundo mientras la tecla está apretada, así que sin este guard el gate
-  // costaría un _redibujar2D por repetición. Con él, mantener shift cuesta 2
-  // redibujos (uno al apretar, uno al soltar) y CERO en el medio: el ghost del
-  // mousemove pinta en su propia capa y no pasa por acá.
-  // Sin selección no hay barra que acotar: no se prende (y así tampoco se paga el
-  // redibujo de un overlay que no dibujaría nada).
-  function _setCotasLado(v) {
+  // EL INTERRUPTOR DE LAS COTAS — ÚNICA PUERTA (botón «Cotas» y tecla SHIFT).
+  // Prende/apaga LAS DOS CAPAS a la vez (cotas del hormigón + medidas por lado de la
+  // barra seleccionada) y REPINTA el overlay una sola vez por transición.
+  // El BOTÓN se sincroniza acá dentro, no en el llamador: da igual que lo prenda el
+  // ratón o el atajo, el ribbon tiene que decir el estado de verdad. Y se toca ANTES
+  // del corto-circuito de "ya estaba así", porque el botón puede haber quedado
+  // desfasado (clic que se comió otro handler) y esta es la que lo devuelve a su sitio.
+  // Sin selección NO se bloquea (ya no): las cotas del hormigón se ven igual, es la
+  // capa de la barra la que se dibuja sola cuando hay algo seleccionado.
+  function _btnCotas() {
+    var ct = $('te_ctools');
+    return ct ? ct.querySelector('.te-ctool[data-toggle="cotas"]') : null;
+  }
+  function _setCotas(v) {
     v = !!v;
     if (v) {
       var bd = $('te_backdrop');
       if (!bd || !bd.classList.contains('on')) return;   // editor cerrado
-      if (ST.selCi < 0) return;                          // nada seleccionado
     }
-    if (ST.cotasLado === v) return;
-    ST.cotasLado = v;
+    var b = _btnCotas();
+    if (b) { if (v) b.classList.add('on'); else b.classList.remove('on'); }
+    if (ST.cotas === v) return;
+    ST.cotas = v;
     if (ST.ultimoOut) _redibujar2D(ST.ultimoOut);
   }
 
   // Teclado: Ctrl+Z deshace · ESPACIO rota el ángulo fino 90° · R gira la pieza 90°
   // EN LA VISTA ACTIVA (rotar-en-vista, TANDA P) · Supr/Backspace borra ·
-  // SHIFT (mantenido) muestra las cotas por lado de la barra seleccionada.
+  // SHIFT prende y apaga las cotas (las dos capas) — es un INTERRUPTOR, no un gate.
   function _bindTeclado() {
     if (ST._tecladoOk) return; ST._tecladoOk = true;
-    // SOLTAR el gate no puede depender del foco ni del cuadrante: si el keyup se
-    // pierde (alt-tab con shift apretado, foco que se fue a un input) los rótulos
-    // quedarían PEGADOS en pantalla. Se apaga con el keyup de Shift, con cualquier
-    // tecla que llegue ya sin shift, y al perder el foco la ventana.
-    document.addEventListener('keyup', function (e) {
-      if (e.key === 'Shift' || !e.shiftKey) _setCotasLado(false);
-    });
-    global.addEventListener('blur', function () { _setCotasLado(false); });
+    // El keyup y el blur que APAGABAN las cotas se fueron con el gate (20-ago): con
+    // un interruptor, soltar la tecla no significa nada y apagar al perder el foco
+    // borraría lo que el usuario dejó encendido a propósito.
     document.addEventListener('keydown', function (e) {
       var bd = $('te_backdrop');
       if (!bd || !bd.classList.contains('on')) return;
@@ -7939,10 +7976,13 @@
       // campo de texto y el tipeo normal)
       var tag = (e.target && e.target.tagName || '').toLowerCase();
       if (tag === 'input' || tag === 'select' || tag === 'textarea') return;
-      // SHIFT mantenido → cotas por lado de la barra seleccionada. Va ANTES que
-      // todo lo demás y con `return`: shift solo no es atajo de nada más, y el
+      // SHIFT → prende/apaga las cotas (el MISMO estado del botón «Cotas»). Va ANTES
+      // que todo lo demás y con `return`: shift solo no es atajo de nada más, y el
       // Shift+Ctrl+Z de más abajo se filtra por su propia condición (!e.shiftKey).
-      if (e.key === 'Shift') { _setCotasLado(true); return; }
+      // `e.repeat` es OBLIGATORIO acá: mantener la tecla auto-repite el keydown
+      // decenas de veces por segundo, y un interruptor que se dispara con cada
+      // repetición parpadearía en vez de conmutar.
+      if (e.key === 'Shift') { if (!e.repeat) _setCotas(!ST.cotas); return; }
       // Ctrl/Cmd+Z → deshacer (tarea 4). Shift+Ctrl+Z NO se usa (sin redo).
       if ((e.ctrlKey || e.metaKey) && (e.key === 'z' || e.key === 'Z') && !e.shiftKey) {
         e.preventDefault(); _undo(); return;
@@ -8419,9 +8459,9 @@
     host.addEventListener('auxclick', function (e) { if (e.button === 1) e.preventDefault(); });
     host.addEventListener('mousedown', function (e) {
       // PAN = BOTÓN MEDIO, y sólo él. SHIFT dejó de panear (19-ago): se recicló como
-      // gate de las cotas por lado (ver _setCotasLado). No se pierde nada — el pan
-      // ya respondía al botón medio y era el gesto que el usuario usaba —, pero el
-      // gate y el pan NO pueden compartir tecla: mirar las medidas arrastraría la
+      // interruptor de las cotas (ver _setCotas). No se pierde nada — el pan
+      // ya respondía al botón medio y era el gesto que el usuario usaba —, pero las
+      // cotas y el pan NO pueden compartir tecla: mirar las medidas arrastraría la
       // vista. El clic izq queda para la interacción del SVG.
       if (e.button === 1) { panning = true; lx = e.clientX; ly = e.clientY; e.preventDefault(); }
     });
@@ -9295,8 +9335,13 @@
     cv.addEventListener('auxclick', function (e) { if (e.button === 1) e.preventDefault(); });   // mata autoscroll medio
     cv.addEventListener('mousedown', function (e) {
       lx = e.clientX; ly = e.clientY;
-      // PAN si: botón medio (1) · botón derecho (2) · o izquierdo con shift/alt.
-      var quierePan = (e.button === 1 || e.button === 2 || e.shiftKey || e.altKey);
+      // PAN si: botón medio (1) · botón derecho (2) · o izquierdo con ALT.
+      // SHIFT SE FUE DE ACÁ (20-ago). Las vistas 2D ya se lo habían quitado el
+      // 19-ago; el 3D era el último que lo tenía, y como el atajo de las cotas
+      // escucha el keydown a nivel de DOCUMENTO, panear el 3D con shift prendía de
+      // paso los rótulos de las cuatro vistas. Quedan medio, derecho y alt, que son
+      // los gestos que el usuario ya usaba.
+      var quierePan = (e.button === 1 || e.button === 2 || e.altKey);
       if (e.button === 0 && !quierePan) mode = 'rot';   // con o sin ctrl: rotar
       else mode = quierePan ? 'pan' : null;
       if (mode === 'rot') {
@@ -11042,14 +11087,16 @@
     _verticesDelTrazo: _verticesDelTrazo, _tramosRectos: _tramosRectos,
     _tramosEnTrazo: _tramosEnTrazo, _ladosMarcoEnTrazo: _ladosMarcoEnTrazo,
     _ladosRotulables: _ladosRotulables, _ladoVisibleEnPlano: _ladoVisibleEnPlano,
-    _setCotasLado: _setCotasLado, _dibujarCotasLados: _dibujarCotasLados,
+    _setCotas: _setCotas, _dibujarCotasLados: _dibujarCotasLados,
     // RÓTULO DEL LARGO DEL ABANICO (19-ago) — la distancia que recorre la distribución,
     // editable en pantalla. Se exponen la CUENTA (_largoRango), la ESCRITURA
     // (_setLargoRango / _setLongTramo) y el DIBUJO (_dibujarFlechaRango) para que el
     // test headless compruebe que el rótulo, el panel y el motor dicen lo mismo.
     _largoRango: _largoRango, _rangoLong: _rangoLong, _setLargoRango: _setLargoRango,
-    _tramosDe: _tramosDe, _setTramos: _setTramos, _setLongTramo: _setLongTramo,
-    _moverDivisor: _moverDivisor, _addTramo: _addTramo, _syncTramos: _syncTramos,
+    _tramosDe: _tramosDe, _tramosElasticosDe: _tramosElasticosDe,
+    _setTramos: _setTramos, _setLongTramo: _setLongTramo,
+    _moverDivisor: _moverDivisor, _addTramo: _addTramo, _delTramo: _delTramo,
+    _syncTramos: _syncTramos,
     _syncN: _syncN, _anclarRangoUI: _anclarRangoUI, _rangoDefault: _rangoDefault,
     _dibujarFlechaRango: _dibujarFlechaRango, PASO_ARRASTRE_CM: PASO_ARRASTRE_CM,
     // COTAS VIVAS DEL ARRASTRE (20-ago) — el número que se ve mientras se mueve un

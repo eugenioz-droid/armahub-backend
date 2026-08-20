@@ -19,10 +19,14 @@
  *      colocar una barra nueva.
  *   ✅ Recubrimientos — con qué recubrimiento nace cada elemento.
  *   ⚠ Reglas de largos — SE GUARDA pero el motor todavía NO la lee: figura_puntos
- *      .extGancho sigue con 6φ mínimo 7,5 cm escritos a mano. Aplicarlo mueve
- *      largos y kilos, así que es un paso aparte que el usuario confirma.
- *   ❌ Redondeo del corte y «Por figura» (lados fijos) — NO existen en el motor:
- *      esos campos siguen apagados. Guardar algo que nadie lee sería peor.
+ *      .extGancho lleva la pata escrita a mano (20-ago: 10φ, mínimo 7,5 cm). Que
+ *      coincida con la config no es que esté cableada: cambiar la config no mueve
+ *      una barra. Aplicarlo al motor es un paso aparte que el usuario confirma.
+ *   ❌ «Por figura» (lados fijos) — NO existe en el motor: esos campos siguen
+ *      apagados. Guardar algo que nadie lee sería peor.
+ *   ℹ Redondeo del corte — el motor SÍ redondea desde e8698fe (al centímetro y por
+ *      lado: arriba los mínimos normativos, abajo los que topa el hormigón). Lo que
+ *      no se puede es ELEGIR otro paso desde acá; la celda va apagada por eso.
  *
  * LA CONFIG DECIDE CON QUÉ NACEN LAS COSAS NUEVAS. Un template ya guardado se
  * abre con SUS valores; nada de acá lo reescribe.
@@ -262,14 +266,32 @@
         d: 'Tú defines la pata. Se usa cuando la especificación del proyecto manda otra cosa.' }
     ];
 
-    return '<div class="cfgmod-nota"><b>⚠ Esto se guarda, pero el motor todavía NO lo lee.</b> El ' +
-      'modelador sigue calculando la pata con <b>' + _esc(gm.factor) + ' × φ (mínimo ' + _esc(gm.min) +
-      ' cm)</b> escrito a mano en el código, mientras acá la configuración dice <b>' +
-      (ga.factor == null ? 'sin valor' : _esc(ga.factor) + ' × φ (mínimo ' + _esc(ga.min) + ' cm)') +
-      '</b>. Pasar de ' + _esc(gm.factor) + 'φ a 10φ <b>mueve largos de corte y kilos</b> (medido: en ' +
-      'una viga armada como la arma hoy el editor, +1,2 kg de 136,2 → 137,4; con estribo 106A φ16, ' +
-      '+10,7 kg de 234,9 → 245,6), así que aplicarlo al motor es un paso aparte que tienes que ' +
-      'confirmar. Guardar aquí no cambia ninguna barra todavía.</div>' +
+    // EL AVISO SE ARMA CON LOS DOS NÚMEROS DE VERDAD, no con uno supuesto (fix 20-ago).
+    // Esta frase decía «pasar de Xφ a 10φ mueve largos de corte y kilos» con la X del
+    // motor: cuando el motor pasó a 10φ esa misma mañana, la pantalla quedó diciendo
+    // «pasar de 10φ a 10φ mueve largos», que no es una exageración sino una mentira.
+    // Lo único que NO cambió —y es lo que hay que decir siempre— es que el motor no lee
+    // esta pantalla: la pata la lleva escrita en el código.
+    var mismaPata = (ga.factor != null && Number(ga.factor) === Number(gm.factor) &&
+                     Number(ga.min) === Number(gm.min));
+    var txtMotor = _esc(gm.factor) + ' × φ (mínimo ' + _esc(gm.min) + ' cm)';
+    var txtCfg = (ga.factor == null) ? 'sin valor'
+      : (_esc(ga.factor) + ' × φ (mínimo ' + _esc(ga.min) + ' cm)');
+
+    return '<div class="cfgmod-nota"><b>⚠ Esto se guarda, pero el motor todavía NO lo lee.</b> ' +
+      'Al armar la barra, el modelador dobla la pata a <b>' + txtMotor + '</b>, un número escrito a ' +
+      'mano en el código; acá la configuración dice <b>' + txtCfg + '</b>. ' +
+      (mismaPata
+        ? 'Hoy los dos dicen lo mismo, así que guardar tal cual no mueve ni una barra. Pero si ' +
+          'cambias la pata en esta pantalla, el taller va a seguir recibiendo largos calculados ' +
+          'con ' + txtMotor + ': hacer que el motor lea esta pantalla es un trabajo aparte que ' +
+          'hay que pedir.'
+        : 'O sea que lo que está escrito acá <b>no se está aplicando a ninguna barra</b>: los ' +
+          'largos de corte y los kilos siguen saliendo con ' + txtMotor + '.') +
+      ' Y para que se vea que esto no es un detalle: el día que la pata pasó de 6φ a 10φ ' +
+      '(20-ago, ya aplicado) los kilos se movieron —en una viga armada como la arma hoy el ' +
+      'editor, +1,2 kg de 136,2 → 137,4; con estribo 106A φ16, +10,7 kg de 234,9 → 245,6—, ' +
+      'así que cambiarla es cambiar lo que se factura.</div>' +
       '<div class="cfgmod-card">' +
         '<h4>Modo de norma</h4>' +
         '<p class="cfgmod-sub">El modo fija la pata del gancho. «Fabricación» es una tabla fija (por ' +
@@ -306,15 +328,21 @@
         'catálogo (los 135° de una 104D, los 45° de una 106A). Cambiarlo es editar la figura.</p>' +
       '</div>' +
       '<div class="cfgmod-card">' +
-        '<h4>Redondeo del corte <span class="cfgmod-pie">— sin cablear</span></h4>' +
-        '<p class="cfgmod-sub">Las barras no se cortan con decimales, pero <b>hoy el modelador no ' +
-        'redondea nada</b>: no hay código que lea esta opción. Va apagada a propósito — guardar un ' +
-        'ajuste que nadie aplica sería peor que no ofrecerlo.</p>' +
+        '<h4>Redondeo del corte <span class="cfgmod-pie">— fijo en 1 cm: no se elige acá</span></h4>' +
+        '<p class="cfgmod-sub">Las barras no se cortan con decimales, y el modelador ya no los entrega: ' +
+        '<b>redondea al centímetro, lado por lado</b>. Los lados que fija una ' +
+        'norma —las patas del gancho— <b>suben</b> al centímetro de arriba, para que no queden bajo el ' +
+        'mínimo; los que limita el hormigón —los que salen de la luz útil o del marco interior del ' +
+        'estribo— <b>bajan</b> al de abajo, para no meter el fierro dentro del recubrimiento. El largo ' +
+        'total es la suma de los lados ya redondeados, y la barra se dibuja con ese mismo número: lo ' +
+        'que se ve en pantalla es lo que se corta. Un lado que <b>tú</b> escribiste no se toca nunca, ' +
+        'salga redondo o no. Lo que <b>no</b> está cableado es elegir <i>otro</i> paso de redondeo desde ' +
+        'acá: el centímetro está escrito en el código, y por eso la celda va apagada.</p>' +
         '<table><tbody>' +
         '<tr><td style="width:340px">Redondear las medidas a</td>' +
-        '<td style="width:220px">' + _ro('No redondear (lo que hace hoy)', 'Sin cablear: el motor no redondea.') + '</td>' +
-        '<td class="cfgmod-pie" style="margin:0">Se aplicaría lado por lado, y el largo total sería la ' +
-        'suma de los lados ya redondeados.</td></tr>' +
+        '<td style="width:220px">' + _ro('1 cm (lo que hace hoy)', 'El paso está escrito en el código: esta celda no lo cambia.') + '</td>' +
+        '<td class="cfgmod-pie" style="margin:0">Se aplica lado por lado y sólo a los lados que resuelve ' +
+        'el modelador: arriba los mínimos de norma, abajo los que topa el hormigón.</td></tr>' +
         '</tbody></table>' +
       '</div>';
   }

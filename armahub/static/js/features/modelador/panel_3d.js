@@ -522,7 +522,10 @@
     cv.addEventListener('mousedown', function (e) {
       lx = e.clientX; ly = e.clientY;
       // Pan con botón MEDIO (1) o derecho (2) — NO rota. Rotar = botón izquierdo.
-      if (e.button === 1 || e.button === 2 || e.shiftKey) { panning = true; e.preventDefault(); }
+      // SHIFT ya NO panea (20-ago): pasó a ser el interruptor de las cotas del
+      // Template Editor, y su keydown escucha a nivel de documento — panear acá con
+      // shift prendía y apagaba los rótulos de las cuatro vistas de al lado.
+      if (e.button === 1 || e.button === 2) { panning = true; e.preventDefault(); }
       else drag = true;
     });
     global.addEventListener('mouseup', function () { drag = false; panning = false; });

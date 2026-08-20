@@ -22,9 +22,11 @@
 //      largo dibujado: el trazo mide menos que la dim porque la convención BVBS
 //      mide a vértice y el codo se come el setback (103B φ16: cuerpo dibujado
 //      582.4, dim B = 590.4 → el rótulo dice 590). Y se redondea al CENTÍMETRO.
-//   E. EL GATE — _setCotasLado no se prende sin selección ni con el editor
-//      cerrado, y soltar SIEMPRE apaga (un keyup perdido no puede dejar los
-//      rótulos pegados en pantalla).
+//   E. EL INTERRUPTOR — desde el 20-ago SHIFT y el botón «Cotas» son LO MISMO y
+//      son un interruptor, no un gate: _setCotas conmuta ST.cotas (UNA sola capa
+//      de estado para las cotas del hormigón y las medidas por lado), NO exige
+//      selección —las del hormigón se ven igual— y no prende con el editor
+//      cerrado. Apagar siempre se puede.
 //   F. LO QUE NO SE PUEDE MAPEAR NO SE ROTULA — figura fuera del catálogo, sin φ,
 //      sin placement: null, no una letra inventada.
 //   G. EL CAMINO DE DIBUJO REAL — _dibujarCotasLados contra un SVG que graba: qué
@@ -366,21 +368,27 @@ console.log('\nD · EL VALOR ES LA MEDIDA REAL DE CORTE, AL CENTÍMETRO');
 }
 
 // ---------------------------------------------------------------------------
-console.log('\nE · EL GATE (SHIFT)');
+console.log('\nE · EL INTERRUPTOR (botón «Cotas» = SHIFT)');
 // ---------------------------------------------------------------------------
 {
   const ST = TE._ST;
-  ST.cotasLado = false; ST.selCi = -1; ST.ultimoOut = null;
-  TE._setCotasLado(true);
-  ok(ST.cotasLado === false, 'SHIFT sin selección no prende el gate (no hay barra que acotar)');
-  // con selección pero con el editor cerrado (no hay #te_backdrop en este DOM stub)
-  ST.selCi = 0;
-  TE._setCotasLado(true);
-  ok(ST.cotasLado === false, 'SHIFT con el editor cerrado tampoco lo prende');
-  // apagar SIEMPRE se puede (un keyup perdido no puede dejar los rótulos pegados)
-  ST.cotasLado = true;
-  TE._setCotasLado(false);
-  ok(ST.cotasLado === false, 'soltar SHIFT apaga el gate incondicionalmente');
+  // UNA SOLA CAPA DE ESTADO: `cotasLado` ya no existe. Si alguien la revive, el
+  // botón del ribbon volvería a prender media cosa y SHIFT la otra media.
+  ok(!('cotasLado' in ST), 'ST.cotasLado se fue: cotas del hormigón y por lado son UN estado');
+  ST.cotas = false; ST.selCi = -1; ST.ultimoOut = null;
+  // con el editor cerrado (no hay #te_backdrop en este DOM stub) no prende
+  TE._setCotas(true);
+  ok(ST.cotas === false, 'con el editor cerrado el interruptor no prende');
+  // …y sin selección YA NO SE BLOQUEA (ese era el gate viejo): las cotas del
+  // hormigón se ven igual sin ninguna barra elegida. Se simula el editor abierto.
+  const bd = { classList: { contains: (c) => c === 'on' } };
+  const getPrev = win.document.getElementById;
+  win.document.getElementById = (id) => (id === 'te_backdrop' ? bd : null);
+  TE._setCotas(true);
+  ok(ST.cotas === true, 'sin selección SÍ prende: las cotas del hormigón no piden barra');
+  TE._setCotas(false);
+  ok(ST.cotas === false, 'apagar siempre se puede');
+  win.document.getElementById = getPrev;
   ST.selCi = -1;
 }
 
