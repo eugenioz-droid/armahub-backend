@@ -74,7 +74,11 @@ const viga = { largo: 600, alto: 60, ancho: 30, recub_sup: 4, recub_inf: 4, recu
 // anclaba en y = −25.2, o sea PEGADA A LA CARA INFERIOR, con z = 0 (al centro).
 // r3 para comparar con lim(), que también redondea a 3 decimales.
 const R_CODO_16 = 2 * 1.6 + 1.6 / 2;                                    // 4.0 con φ16
-const PATA_Z_45 = r3(10 * Math.SQRT1_2 + R_CODO_16 * (1 + Math.SQRT1_2));  // 13.899
+// 20-AGO · MEDIDA HASTA LA CRESTA: la pata FIJA de 10 cm ya incluye su doblez, así que
+// su tramo recto es 10 − (R + φ) = 5.2 y la punta alcanza 10.505 en vez de 13.899. La
+// barra que se corta mide lo mismo; lo que cambió es qué parte de esa medida es recta.
+const SOB_A_103B = global.ModeladorFiguraPuntos.sobresCresta('103B', 'cabezal', 1.6, null).A;
+const PATA_Z_45 = r3((10 - SOB_A_103B) * Math.SQRT1_2 + R_CODO_16 * (1 + Math.SQRT1_2));  // 10.505
 console.log('L1 — CARA LATERAL = cara CORTINA (espejo de sup/inf con Y↔Z):');
 function cabLateral(extra) {
   return Object.assign({
@@ -89,7 +93,7 @@ ok(pl1.length === 6 && c1.length === 3, '2 capas × 3 barras = 6 placements');
 ok(c1.every(p => close(lim(p, 'z').hi, 11.2)),
   'capa 1 PEGADA a la cara Z+: eje z = ancho/2 − recub_lat − φ/2 = 11.2 (=' + lim(c1[0], 'z').hi + ')');
 ok(c1.every(p => close(lim(p, 'z').lo, 11.2 - PATA_Z_45)),
-  'las patas salen por la NORMAL de la cara (−Z, al núcleo): punta en 11.2 − 13.899 = −2.699 (=' + lim(c1[0], 'z').lo + ')');
+  'las patas salen por la NORMAL de la cara (−Z, al núcleo): punta en 11.2 − 10.505 = 0.695 (=' + lim(c1[0], 'z').lo + ')');
 ok(c2.every(p => close(lim(p, 'z').hi, 11.2 - 5)),
   'capa 2 entra hacia el núcleo EN Z: 11.2 − Sep = 6.2 (=' + lim(c2[0], 'z').hi + ')');
 ok(JSON.stringify(unicos(c1, 'y')) === JSON.stringify([-25.2, 0, 25.2]),
@@ -103,7 +107,7 @@ ok(!pl1.some(p => close(centro(p, 'y'), -25.2) && close(centro(p, 'z'), 0)),
 //   lado −1 → eje en −11.2, patas hacia +Z → z ∈ [−11.2, −4.1289]
 const plNeg = R.expandirComponente(cabLateral({ lado: -1 }), viga);
 ok(close(lim(plNeg[0], 'z').lo, -11.2) && close(lim(plNeg[0], 'z').hi, -(11.2 - PATA_Z_45)),
-  'comp.lado = −1 → cortina de −Z (eje −11.2, patas hacia +Z hasta 2.699) (=' +
+  'comp.lado = −1 → cortina de −Z (eje −11.2, patas hacia +Z hasta −0.695) (=' +
   JSON.stringify(lim(plNeg[0], 'z')) + ')');
 // pos_hint = TRASLACIÓN PURA: con lado +1 (default) un arrastre a z negativo NO
 // cambia de cara, sólo corre la barra: [4.1289, 11.2] − 1 = [3.1289, 10.2].
@@ -375,11 +379,13 @@ const capaT1 = mvT.filter(p => p.meta.capa === 1), capaT2 = mvT.filter(p => p.me
 // reserva es la CRESTA del codo, φ/2 = 0.5, para que quede en línea con el recub de
 // borde.
 //   B = 244 − 2·0.5 = 243   (antes 244 − 2·4.0355 = 235.9289)
-const RESERVA_MA = 2 * 0.5;   // 1.0 (antes 8.0711)
-ok(close(capaT1[0].dims.B, 244 - RESERVA_MA) && close(capaT1[0].dims.A, 5),
-  'la dim auto de pie se mide contra los BORDES (244) menos la reserva de la cresta = 243, y las patas quedan fijas (=' + capaT1[0].dims.B + ')');
-ok(close(capaT2[0].dims.B, 244 - RESERVA_MA - 2 * 1.0) && close(capaT2[0].dims.A, 5),
-  'anidado × de pie: la capa 2 ajusta SOLO B (−2·φ = 241) y no toca las patas (=' + capaT2[0].dims.B + ')');
+// 20-AGO · la MEDIDA HASTA LA CRESTA le devuelve a B justo los 0.5 por punta que la
+// reserva le quitaba: B = 244, el borde a borde exacto. (El redondeo al centímetro no
+// lo mueve porque ya es entero.)
+ok(close(capaT1[0].dims.B, 244) && close(capaT1[0].dims.A, 5),
+  'la dim auto de pie se mide contra los BORDES: 244 exactos, y las patas quedan fijas (=' + capaT1[0].dims.B + ')');
+ok(close(capaT2[0].dims.B, 244 - 2 * 1.0) && close(capaT2[0].dims.A, 5),
+  'anidado × de pie: la capa 2 ajusta SOLO B (−2·φ = 242) y no toca las patas (=' + capaT2[0].dims.B + ')');
 ok(close(lim(capaT1[0], 'z').hi, Z_CORTINA) && close(lim(capaT2[0], 'z').hi, Z_CORTINA - 1),
   'y la posición la puso sep_capas (1 cm hacia el núcleo), no el anidado (=' +
   lim(capaT1[0], 'z').hi + ' / ' + lim(capaT2[0], 'z').hi + ')');

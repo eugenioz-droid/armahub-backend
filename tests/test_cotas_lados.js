@@ -193,10 +193,15 @@ console.log('\nA · MAPEO LADO ↔ TRAZO (cadenas y recta)');
   const ls = TE._ladosRotulables(b.pl, b.rol);
   ok(!!ls && ls.length === 5, '305A: 5 lados rotulables (salieron ' + (ls ? ls.length : 0) + ')');
   ok(ls.map(l => l.lado).join('') === 'ABCDE', '305A: letras en orden de cadena A-E');
-  // el trazo de cada lado mide lo que dice su dim (esta figura no tiene codos)
+  // 20-AGO · el trazo de cada lado mide su dim MENOS el sobre de cresta (la dim suma
+  // R + φ por cada doblez que la cierra; el trazo va por vértices). Esta figura no
+  // lleva arcos, así que la resta es exacta, sin tolerancia.
+  const sc305 = FP.sobresCresta('305A', b.rol, b.pl.diam, null);
   let exacto = true;
-  ls.forEach(l => { if (Math.abs(largoTrazo(b.pl, l) - l.valor) > 1e-6) exacto = false; });
-  ok(exacto, '305A: cada lado mapeado mide exactamente su dim (23.2/51.2/23.2/51.2/23.2)');
+  ls.forEach(l => {
+    if (Math.abs(largoTrazo(b.pl, l) - (l.valor - (Number(sc305[l.lado]) || 0))) > 1e-6) exacto = false;
+  });
+  ok(exacto, '305A: cada lado mapeado mide su dim menos el sobre de cresta');
 }
 {
   // 103B: dos ganchos ARQUEADOS (15 puntos cada uno) con el cuerpo justo entre los
@@ -259,8 +264,11 @@ console.log('\nB · MARCO CERRADO (el estribo no es la cadena del catálogo)');
   const set = (ls || []).map(l => l.lado).sort().join('');
   ok(set === 'ABCDEF', '106A: los 4 lados del marco MÁS las dos patas declaradas (' + set + ')');
   const m = porLetra(ls);
-  ok(Math.round(m.A.valor) === 8 && Math.round(m.F.valor) === 8,
-    '106A: las patas A y F rotulan su propia dim (7.5 → 8)');
+  // 20-AGO: la pata normativa pasó a 10φ y se mide hasta la cresta (10φ + R + φ),
+  // redondeada ARRIBA por ser un mínimo normativo.
+  const gCr = Math.ceil(FP.ganchoAutoCresta(b.pl.diam));
+  ok(Math.round(m.A.valor) === gCr && Math.round(m.F.valor) === gCr,
+    '106A: las patas A y F rotulan su propia dim (' + gCr + ')');
   ok(Math.round(m.C.valor) === 24 && Math.round(m.E.valor) === 24, '106A: C y E = 24 (ancho)');
   ok(Math.round(m.B.valor) === 52 && Math.round(m.D.valor) === 52, '106A: B y D = 52 (alto)');
   // la pata del INICIO es el primer trecho del trazo y la del FIN el último
@@ -332,8 +340,9 @@ console.log('\nD · EL VALOR ES LA MEDIDA REAL DE CORTE, AL CENTÍMETRO');
   const m = porLetra(TE._ladosRotulables(b.pl, b.rol));
   const dibujado = largoTrazo(b.pl, m.B);
   ok(Math.abs(dibujado - 582.4) < 0.05, '103B φ16: el cuerpo DIBUJADO mide 582.4 (' + dibujado.toFixed(1) + ')');
-  ok(Math.abs(m.B.valor - 590.4) < 0.05, '103B φ16: la dim EFECTIVA de B es 590.4 (la que se corta)');
-  ok(rotulo(m.B) === 'B=590', '103B: el rótulo dice B=590, no B=582');
+  ok(Math.abs(m.B.valor - 592) < 0.05,
+    '103B φ16: la dim EFECTIVA de B es 592 = la luz útil (la que se corta)');
+  ok(rotulo(m.B) === 'B=592', '103B: el rótulo dice B=592, no B=582');
 }
 {
   // Δ del usuario: el rótulo tiene que MOVERSE con él (la dim efectiva ya lo trae).
@@ -348,7 +357,9 @@ console.log('\nD · EL VALOR ES LA MEDIDA REAL DE CORTE, AL CENTÍMETRO');
   // Redondeo AL CENTÍMETRO (así se fabrica): 7.5 → 8, 23.2 → 23.
   const b = barra('106A', 'ES');
   const m = porLetra(TE._ladosRotulables(b.pl, b.rol));
-  ok(rotulo(m.A) === 'A=8', '106A: la pata de 7.5 se rotula A=8');
+  ok(rotulo(m.A) === 'A=' + Math.ceil(FP.ganchoAutoCresta(b.pl.diam)),
+    '106A: la pata normativa se rotula A=' + Math.ceil(FP.ganchoAutoCresta(b.pl.diam)) +
+    ' [' + rotulo(m.A) + ']');
   const c = barra('305A', 'ES');
   const mc = porLetra(TE._ladosRotulables(c.pl, c.rol));
   ok(rotulo(mc.A) === 'A=23', '305A: el lado de 23.2 se rotula A=23');
@@ -605,13 +616,13 @@ console.log('\nJ · EL CUCHILLO, LADO POR LADO (no sólo barra por barra)');
   // Las patas de esta 103B (φ16, dims auto → 9.6 cm) van de x = −294.03 a −287.24 y su
   // espejo; el cuerpo B cruza la viga entera. MEDIDO con el motor.
   ok(textos(0, 4) === '', 'corte a media luz: la sección NO rotula las patas (no están ahí)');
-  ok(textos(-290, 4).indexOf('=10') >= 0,
+  ok(textos(-290, 4).indexOf('=21') >= 0,
     'corte sobre la punta: ahí sí sale la pata [' + textos(-290, 4) + ']');
   // sin cuchillo declarado (o.corteGrosor ausente) se rotula todo lo visible
   ST.orto = null;
   const svg = new SvgRec(); TE._dibujarCotasLados(svg, 'seccion', proyDe('seccion'), X, Y, out);
   const t = []; svg.hijos.forEach(g => g.hijos.forEach(x => t.push(x.textContent)));
-  ok(t.join(' ') === 'A·C=10', 'sin cuchillo (ST.orto ausente) se rotula lo visible [' + t.join(' ') + ']');
+  ok(t.join(' ') === 'A·C=21', 'sin cuchillo (ST.orto ausente) se rotula lo visible [' + t.join(' ') + ']');
 
   ST.orto = ortoAntes; ST.selCi = selAntes; ST.receta = recetaAntes;
   win.document.createElementNS = antes;
@@ -654,8 +665,22 @@ console.log('\nK · BARRIDO DEL CATÁLOGO ENTERO — ninguna letra en el lado eq
       catch (e) { cruzados.push(fig + '/' + tip + ' EXCEPCIÓN ' + e.message); continue; }
       if (!ls) continue;                       // no se pudo mapear: no rotula (es lo correcto)
       conRotulo++;
-      const tope = 6 * pl.diam;
+      // 20-AGO · EL TOPE SUMA EL SOBRE DE CRESTA DEL LADO. La dim ya no es la cadena
+      // de vértices: suma R + φ por cada doblez que la cierra, y el trazo mide esa
+      // dim menos ese sobre. Es la MISMA cantidad que devuelve figura_puntos, no un
+      // margen inventado, así que el tope sigue separando limpio un rótulo cruzado
+      // (ancho contra alto de un estribo son 24 contra 52).
+      const scSw = FP.sobresCresta(fig, c._rol, pl.diam, null);
+      // Y la PATA DECLARADA de un marco cerrado (106x A/F) queda fuera del barrido:
+      // su dim es el mínimo normativo y su trazo lo ACOTA el sitio que deja el marco
+      // (`_pataGancho`, el clamp que impide que un anillo anidado ensanche), así que
+      // los dos números son distintos a propósito y por una cantidad que depende del
+      // hormigón, no del mapeo lado↔trazo que este barrido vigila.
+      const gTer = FP.ganchosTerminales(fig, c._rol);
+      const esMarco = FP.familiaDeDibujo(fig, c._rol) === 'estribo';
       for (const l of ls) {
+        if (esMarco && gTer && (gTer.ini === l.lado || gTer.fin === l.lado)) continue;
+        const tope = 6 * pl.diam + (Number(scSw[l.lado]) || 0);
         const a = pl.puntos[l.i0], b = pl.puntos[l.i1];
         const d = Math.abs(Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z) - l.valor);
         if (d > peor) { peor = d; peorEn = fig + '/' + tip + ' φ' + dm + ' lado ' + l.lado; }

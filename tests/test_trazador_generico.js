@@ -262,10 +262,14 @@ ok(FP.familiaDeDibujo('104B', null) === 'cadena',
   // la regla de la cresta; las PATAS (A y D) cuelgan enteras.
   ok(ladosDe(pts, RC) === 4, '104B traza sus 4 lados (=' + ladosDe(pts, RC) + ')');
   const lg = largosDe(pts, RC);
-  ok(Math.abs(lg[0] - 30) < 1e-9 && Math.abs(lg[1] - (592 - RC)) < 1e-9 &&
-     Math.abs(lg[2] - (30 - RC)) < 1e-9 && Math.abs(lg[3] - 40) < 1e-9,
-    'los 4 lados miden A/B/C/D del catálogo, con los dos CUERPOS retranqueados el ' +
-    'radio del codo (30/' + (592 - RC) + '/' + (30 - RC) + '/40 =' + lg.map(v => v.toFixed(0)).join('/') + ')');
+  // 20-AGO · MEDIDA HASTA LA CRESTA: la dim que entra suma R + φ por cada doblez que
+  // cierra el lado, así que el trazo la mide MENOS ese sobre (y menos el retranqueo
+  // del codo arqueado donde lo hay, que es lo que ya decía este assert).
+  const sc = FP.sobresCresta('104B', 'cabezal', 1.6, null);
+  const espB = [30 - sc.A, 592 - sc.B - RC, 30 - sc.C - RC, 40 - sc.D];
+  ok(lg.every((v, i) => Math.abs(v - espB[i]) < 1e-9),
+    'los 4 lados miden A/B/C/D menos su sobre de cresta, con los dos CUERPOS retranqueados el ' +
+    'radio del codo (' + espB.map(v => v.toFixed(1)).join('/') + ' =' + lg.map(v => v.toFixed(1)).join('/') + ')');
   const gg = verticesDe(pts, RC);
   ok(Math.abs(gg[0] - 45) < 1e-6 && Math.abs(gg[2] - 45) < 1e-6,
     '45° de VÉRTICE en los DOS dobleces EXTREMOS (=' + gg[0].toFixed(0) + '° / ' + gg[2].toFixed(0) + '°)');
@@ -276,12 +280,15 @@ ok(FP.familiaDeDibujo('104B', null) === 'cadena',
   // pasa a ser el cuerpo pelado: ±296. Eso es exactamente lo que se buscaba con la
   // corrección (una pata replegada no le roba largo a la barra), y es la misma razón
   // por la que el 'auto' del CBS de la semilla sube de 547.974 a 590.4.
-  const bbMitad = 592 / 2;                               // 296
+  // 20-AGO: el cuerpo dibujado es 592 menos su sobre de cresta (1.6 con φ16), o sea
+  // la CARA del fierro —no su eje— la que llega a ±296. Es el sentido de la medida
+  // nueva: la dim B = 592 ES la envolvente de la barra.
+  const bbMitad = (592 - sc.B) / 2;                      // 295.2
   const xsTodos = pts.map(p => p.x);
   ok(Math.abs(Math.min(...xsTodos) + bbMitad) < 1e-6 && Math.abs(Math.max(...xsTodos) - bbMitad) < 1e-6,
     'la PIEZA COMPLETA queda centrada (bbox ±' + bbMitad.toFixed(3) + ', no el tramo B)');
-  ok(Math.abs(lg[1] - (592 - RC)) < 1e-9,
-    'B sigue midiendo 592 menos el retranqueo de su codo (=' + lg[1].toFixed(3) + ')');
+  ok(Math.abs(lg[1] - (592 - sc.B - RC)) < 1e-9,
+    'B sigue midiendo 592 menos su sobre de cresta y el retranqueo de su codo (=' + lg[1].toFixed(3) + ')');
   ok(pts.every(p => p.y <= 26 + 1e-9), 'toda la figura dobla hacia el núcleo (cara sup: y ≤ 26)');
   const inf = FP.cadenaInfo('104B', dims);
   ok(inf.fuente === 'derivado' && inf.cerrada === false && inf.ladoLong === 'B',
@@ -573,12 +580,18 @@ console.log('\nF — viga-semilla (listado intacto, kg re-derivado):');
 // Ítems y barras no se mueven en ninguno de los dos saltos, y las otras tres barras
 // del listado (2 × 101A y el estribo 104D) quedan idénticas al gramo.
 const semilla = G.generarViga(S.semillaViga(), CTX);
-ok(semilla.resumen.items === 4 && semilla.resumen.barras === 72 && semilla.resumen.kg === 140.1,
-  'semilla = {items:4, barras:72, kg:140.1} (=' + JSON.stringify(semilla.resumen) + ')');
+// 20-AGO · 140.1 -> 140.2 kg (MEDIDA HASTA LA CRESTA, decision del usuario). Un lado
+// ya no se mide a VERTICE: es una medida recta que suma R + phi por cada doblez que lo
+// cierra (lado = tramo recto + R + phi). El unico numero de la semilla que se mueve es
+// el B del CBS 103B phi16: 590.4 -> 592.0, que es la luz util exacta de la viga
+// (600 - 2*4); esos 1.6 cm x 6 barras phi16 pesan 0.1 kg. Las patas 30/30 son FIJAS:
+// las escribio el usuario y ni la cresta ni el redondeo las tocan.
+ok(semilla.resumen.items === 4 && semilla.resumen.barras === 72 && semilla.resumen.kg === 140.2,
+  'semilla = {items:4, barras:72, kg:140.2} (=' + JSON.stringify(semilla.resumen) + ')');
 const cbs = semilla.barras.filter(b => b.marca === 'CBS')[0];
-ok(cbs && Math.abs(cbs.dim_b - (592 - 2 * 0.8)) < 1e-6 &&
+ok(cbs && Math.abs(cbs.dim_b - 592) < 1e-6 &&
    cbs.dim_a === 30 && cbs.dim_c === 30,
-  'y el número que se movió es UNO: B del CBS = 592 − 2·0.8 = 590.4, patas 30/30 intactas (=' +
+  'y el número que se movió es UNO: B del CBS = 592 = la luz útil exacta, patas 30/30 intactas (=' +
   (cbs || {}).dim_b + ')');
 
 console.log(fallos === 0 ? '\nTODO OK' : '\n' + fallos + ' FALLO(S)');

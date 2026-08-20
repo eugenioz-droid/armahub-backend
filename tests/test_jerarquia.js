@@ -68,6 +68,11 @@ const PHI_ES = 0.8;   // φ8 del estribo, en cm
 // OJO: esta reserva es de la FIGURA, no de la pila — nada que ver con el φ del
 // estribo, que es justo lo que estos asserts protegen.
 const RESERVA_103B_30_PHI16 = 1.6 / 2;   // 0.8 (antes 22.013203)
+// 20-AGO · MEDIDA HASTA LA CRESTA: la dim suma R + φ por cada doblez que la cierra, y
+// para los dos ganchos replegados de la 103B eso devuelve justo los 0.8 por punta que
+// la reserva le quitaba. El TRAZO no se mueve (sigue en 590.4 de vértice); la dim que
+// se corta pasa a ser la luz útil exacta. Y los lados 'auto' se redondean al
+// centímetro —hacia ABAJO los que los limita el hormigón— antes de dibujar.
 
 // ===========================================================================
 console.log('CERO REGRESIÓN — la viga-semilla: mismo listado, kg re-derivado:');
@@ -85,8 +90,14 @@ console.log('CERO REGRESIÓN — la viga-semilla: mismo listado, kg re-derivado:
 // pieza asomaba 21.2 cm FUERA del hormigón por cada extremo (la proyección de la
 // pata a 45° que el cabezal no dibujaba). Ítems y barras no se mueven.
 const semilla = G.generarViga(S.semillaViga(), {});
-ok(semilla.resumen.items === 4 && semilla.resumen.barras === 72 && semilla.resumen.kg === 140.1,
-  'semilla = {items:4, barras:72, kg:140.1} (=' + JSON.stringify(semilla.resumen) + ')');
+// 20-AGO · 140.1 -> 140.2 kg (MEDIDA HASTA LA CRESTA, decision del usuario). Un lado
+// ya no se mide a VERTICE: es una medida recta que suma R + phi por cada doblez que lo
+// cierra (lado = tramo recto + R + phi). El unico numero de la semilla que se mueve es
+// el B del CBS 103B phi16: 590.4 -> 592.0, que es la luz util exacta de la viga
+// (600 - 2*4); esos 1.6 cm x 6 barras phi16 pesan 0.1 kg. Las patas 30/30 son FIJAS:
+// las escribio el usuario y ni la cresta ni el redondeo las tocan.
+ok(semilla.resumen.items === 4 && semilla.resumen.barras === 72 && semilla.resumen.kg === 140.2,
+  'semilla = {items:4, barras:72, kg:140.2} (=' + JSON.stringify(semilla.resumen) + ')');
 
 // ===========================================================================
 console.log('\nJ0 — normalización 1-BASED de comp.jerarquia:');
@@ -137,10 +148,11 @@ const cb2 = dimsDe(oJ, 'CBS'), tr2 = dimsDe(oJ, 'TRV'), es1 = dimsDe(oJ, 'ES');
 // POR DENTRO del estribo. Su largo lo limita sólo el recubrimiento de extremo.
 // (Lo que se protege acá es que NO aparezca el φ del estribo en la cuenta. Lo que
 // sí se descuenta es la reserva de la PROPIA figura — ver RESERVA_103B_30_PHI16.)
-ok(close(cb2.dim_b, 600 - 2 * 4 - 2 * RESERVA_103B_30_PHI16),
-  'cabezal nivel 2: B auto = largo − 2·recubExtremo − su propia reserva de cresta = 590.4, SIN φ1 (el estribo no ocupa extremos) (=' + cb2.dim_b + ')');
+ok(close(cb2.dim_b, 600 - 2 * 4),
+  'cabezal nivel 2: B auto = largo − 2·recubExtremo = 592, SIN φ1 (el estribo no ocupa extremos) (=' + cb2.dim_b + ')');
 // La traba cruza sup e inf, caras que el estribo SÍ ocupa → ahí sí la empuja.
-ok(close(tr2.dim_a, 60 - 2 * (4 + PHI_ES)), 'traba nivel 2: A auto = alto − prof(sup) − prof(inf) = 50.4 (=' + tr2.dim_a + ')');
+ok(close(tr2.dim_a, Math.floor(60 - 2 * (4 + PHI_ES))),
+  'traba nivel 2: A auto = alto − prof(sup) − prof(inf) = 50.4, al centímetro hacia abajo = 50 (=' + tr2.dim_a + ')');
 ok(close(es1.dim_a, 30 - 2 * 3) && close(es1.dim_b, 60 - 2 * 4),
   'estribo nivel 1 (más externo, Σφ previos = 0): sigue al recubrimiento (24 / 52)');
 ok(tr2.dim_a < 60 - 2 * 4, 'la barra de nivel 2 que SÍ cruza al estribo se acorta (no lo atraviesa)');
@@ -154,8 +166,8 @@ ok(R.marcoUtilNivel({ jerarquia: 1 }, { largo: 600, alto: 60, ancho: 30, jer_phi
 // ===========================================================================
 console.log("\nJ2 — jerarquia:'no' (pegado al recub, NO aporta φ):");
 const oNo = G.generarViga(receta('no'), {});
-ok(close(dimsDe(oNo, 'CBS').dim_b, 600 - 2 * 4 - 2 * RESERVA_103B_30_PHI16),
-  "con el estribo en 'no', el cabezal nivel 2 da el MISMO 547.974 que con el estribo " +
+ok(close(dimsDe(oNo, 'CBS').dim_b, 600 - 2 * 4),
+  "con el estribo en 'no', el cabezal nivel 2 da el MISMO 592 que con el estribo " +
   "en nivel 1: el 'no' NO aporta φ a la cadena (lo único descontado es la reserva propia de sus 45°)");
 ok(close(dimsDe(oNo, 'TRV').dim_a, 60 - 2 * 4), "ídem la traba nivel 2 (52)");
 // Geometría: una traba 'no' se pega al recubrimiento (eje = recub + φ/2), una de
@@ -172,8 +184,8 @@ function trabaY(jer) {
 // no al eje-a-eje −φ/2 de la convención de sección.
 ok(close(trabaY('no'), 60 / 2 - 4, 1e-6),
   "traba 'no': su punta llega a la línea útil = 26 (=" + trabaY('no') + ')');
-ok(close(trabaY(2), 60 / 2 - 4 - PHI_ES, 1e-6),
-  'traba nivel 2: útil por dentro del estribo → 25.2 (=' + trabaY(2) + ')');
+ok(close(trabaY(2), Math.floor(60 - 2 * (4 + PHI_ES)) / 2, 1e-6),
+  'traba nivel 2: útil por dentro del estribo, al centímetro → 25 (=' + trabaY(2) + ')');
 ok(close(trabaY(1), trabaY('no'), 1e-6), "nivel 1 y 'no' comparten posición (ambos al recub); difieren en si aportan φ");
 
 // ===========================================================================

@@ -74,8 +74,14 @@ console.log('R0 — la viga-semilla: items/barras intactos, kg re-derivado:');
 // Las otras tres piezas no se mueven ni un decimal (CBI 101A recta, ES 104D
 // marco cerrado, TRV 101A recta): siguen 72 barras y 4 ítems.
 const semilla = G.generarViga(S.semillaViga(), {});
-ok(semilla.resumen.items === 4 && semilla.resumen.barras === 72 && semilla.resumen.kg === 140.1,
-  'semilla = {items:4, barras:72, kg:140.1} (=' + JSON.stringify(semilla.resumen) + ')');
+// 20-AGO · 140.1 -> 140.2 kg (MEDIDA HASTA LA CRESTA, decision del usuario). Un lado
+// ya no se mide a VERTICE: es una medida recta que suma R + phi por cada doblez que lo
+// cierra (lado = tramo recto + R + phi). El unico numero de la semilla que se mueve es
+// el B del CBS 103B phi16: 590.4 -> 592.0, que es la luz util exacta de la viga
+// (600 - 2*4); esos 1.6 cm x 6 barras phi16 pesan 0.1 kg. Las patas 30/30 son FIJAS:
+// las escribio el usuario y ni la cresta ni el redondeo las tocan.
+ok(semilla.resumen.items === 4 && semilla.resumen.barras === 72 && semilla.resumen.kg === 140.2,
+  'semilla = {items:4, barras:72, kg:140.2} (=' + JSON.stringify(semilla.resumen) + ')');
 
 
 // ---------------------------------------------------------------------------
@@ -293,7 +299,11 @@ ok(close(cuerpoIni(ptsSpin).x, cuerpoIni(ptsBase).x) && close(cuerpoFin(ptsSpin)
 // La pata sigue midiendo lo mismo (20): lo que cambió es su DIRECCIÓN y el arranque.
 // Las PUNTAS se leen con punta0/puntaN, no con los índices 0 y 3: con el codo
 // arqueado el punto 3 cae dentro del muestreo del arco (medía −5.816).
-const PENETRA_20 = r6(20 * Math.SQRT1_2 + R_CODO * (1 + Math.SQRT1_2));   // 20.970563
+// 20-AGO · MEDIDA HASTA LA CRESTA: la pata FIJA de 20 ya incluye su doblez (R + φ =
+// 4.8 con φ16), así que su tramo recto es 15.2 y la penetración baja de 20.9706 a
+// 17.5765. La barra que se corta mide lo mismo; el número incluye ahora el codo.
+const SOB_103B = global.ModeladorFiguraPuntos.sobresCresta('103B', 'cabezal', 1.6, null);
+const PENETRA_20 = r6((20 - SOB_103B.A) * Math.SQRT1_2 + R_CODO * (1 + Math.SQRT1_2));   // 17.576450
 const zPatas = [r6(punta0(ptsSpin).z), r6(puntaN(ptsSpin).z)];
 ok(eq(zPatas, [-PENETRA_20, -PENETRA_20]),
   'las PATAS sí giran: pasan de −Y a −Z (z = −' + PENETRA_20 + ') (=' +
@@ -378,8 +388,12 @@ const pl103 = R.expandirComponente({
 }, host)[0];
 ok(r6(pl103.dims.B) === 430, 'el empalme suma a B (el tramo largo), no a las patas (=' + pl103.dims.B + ')');
 ok(r6(pl103.dims.A) === 30 && r6(pl103.dims.C) === 30, 'las patas A y C quedan intactas (30 / 30)');
-ok(r6(cuerpoIni(pl103.puntos).x) === r6(-210 + R_CODO) && r6(cuerpoFin(pl103.puntos).x) === r6(220 - R_CODO),
-  'el tramo B asoma 10 / 20 (vértices en x = −210 / 220; dibujado −206 / 216 por la cresta del codo) (=' +
+// 20-AGO: B = 430 es la medida HASTA LA CRESTA, o sea la envolvente; los vértices
+// quedan medio sobre más adentro por punta (SOB_103B.B / 2 = 0.8) y el trazo, además,
+// retranqueado el radio del codo → −205.2 / 215.2.
+ok(r6(cuerpoIni(pl103.puntos).x) === r6(-210 + R_CODO + SOB_103B.B / 2) &&
+   r6(cuerpoFin(pl103.puntos).x) === r6(220 - R_CODO - SOB_103B.B / 2),
+  'el tramo B asoma 10 / 20 (envolvente en x = −210 / 220; dibujado −205.2 / 215.2 por la cresta del codo) (=' +
   r6(cuerpoIni(pl103.puntos).x) + ' / ' + r6(cuerpoFin(pl103.puntos).x) + ')');
 // MIGRACIÓN CABEZAL → TRAZADOR: la PUNTA de cada pata ya no comparte la x de su
 // esquina. Con las patas a 90° (lo que dibujaba el cabezal) la punta caía en
@@ -392,10 +406,10 @@ ok(r6(cuerpoIni(pl103.puntos).x) === r6(-210 + R_CODO) && r6(cuerpoFin(pl103.pun
 // Lo que el assert protege es lo mismo de antes —que la punta viaja PEGADA a su
 // esquina cuando el empalme corre el tramo—, así que se sigue midiendo contra la
 // esquina y no contra un número absoluto; lo que cambió es el signo y el brazo.
-const BRAZO_PATA = (30 - R_CODO) * Math.SQRT1_2;   // 18.384776
+const BRAZO_PATA = (30 - SOB_103B.A - R_CODO) * Math.SQRT1_2;   // 14.990663
 ok(close(punta0(pl103.puntos).x, cuerpoIni(pl103.puntos).x + BRAZO_PATA) &&
    close(puntaN(pl103.puntos).x, cuerpoFin(pl103.puntos).x - BRAZO_PATA),
-  'y las patas acompañan a su extremo, REPLEGADAS los 18.3848 sobre el cuerpo (=' +
+  'y las patas acompañan a su extremo, REPLEGADAS los 14.9907 sobre el cuerpo (=' +
   r6(punta0(pl103.puntos).x) + ' / ' + r6(puntaN(pl103.puntos).x) + ')');
 
 if (fallos) { console.error('\nFALLARON ' + fallos + ' aserciones'); process.exit(1); }

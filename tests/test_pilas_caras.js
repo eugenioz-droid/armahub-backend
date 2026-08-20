@@ -93,8 +93,14 @@ console.log('R1 — la viga-semilla: pilas y listado intactos, kg re-derivado:')
 // φ16 del CBS pasan de 61.745 a 57.575 kg. Con B = 592 la pieza asomaba 21.2 cm
 // FUERA del hormigón por cada extremo.
 const semilla = G.generarViga(S.semillaViga(), {});
-ok(semilla.resumen.items === 4 && semilla.resumen.barras === 72 && semilla.resumen.kg === 140.1,
-  'semilla = {items:4, barras:72, kg:140.1} (=' + JSON.stringify(semilla.resumen) + ')');
+// 20-AGO · 140.1 -> 140.2 kg (MEDIDA HASTA LA CRESTA, decision del usuario). Un lado
+// ya no se mide a VERTICE: es una medida recta que suma R + phi por cada doblez que lo
+// cierra (lado = tramo recto + R + phi). El unico numero de la semilla que se mueve es
+// el B del CBS 103B phi16: 590.4 -> 592.0, que es la luz util exacta de la viga
+// (600 - 2*4); esos 1.6 cm x 6 barras phi16 pesan 0.1 kg. Las patas 30/30 son FIJAS:
+// las escribio el usuario y ni la cresta ni el redondeo las tocan.
+ok(semilla.resumen.items === 4 && semilla.resumen.barras === 72 && semilla.resumen.kg === 140.2,
+  'semilla = {items:4, barras:72, kg:140.2} (=' + JSON.stringify(semilla.resumen) + ')');
 // Ejes verificados: con estribo φ8 nivel 1 + cabezales/traba nivel 2 (default por rol)
 // las pilas quedan sup/inf/lat = 0.8 y ext = 0, así que TODOS los anclajes de la
 // semilla dan el mismo número que con el inset escalar anterior.
@@ -120,8 +126,9 @@ const cbsZ = semilla.placements.filter(p => p.tipologia === 'CBS').map(p => Math
 ok(Math.max.apply(null, cbsZ) === 10.4 && Math.min.apply(null, cbsZ) === -10.4,
   'CBS φ16 nivel 2: z = ±(15 − (3 + 0.8) − 0.8) = ±10.4');
 // (14-ago, Modelo A) longitudinal de_pie: punta en la línea útil del nivel.
-ok(close(maxE(semilla.placements.filter(p => p.tipologia === 'TRV')[0], 'y'), 25.2, 1e-9),
-  'traba φ8 nivel 2: y = 30 − (4 + 0.8) = 25.2 (punta en la línea útil)');
+ok(close(maxE(semilla.placements.filter(p => p.tipologia === 'TRV')[0], 'y'), 25, 1e-9),
+  'traba φ8 nivel 2: alto auto 50.4 al centímetro hacia abajo = 50 → su punta en 25 (=' +
+  maxE(semilla.placements.filter(p => p.tipologia === 'TRV')[0], 'y') + ')');
 
 // ===========================================================================
 // A · CASO DE ACEPTACIÓN — corchete doble ANIDADO pegado al estribo.
@@ -173,27 +180,39 @@ function corchete(volteado, gap, figura) {
 // para que la CRESTA del codo —no el eje— quede en línea con el recubrimiento. Es
 // la misma regla del estribo. Un extremo RECTO (101A) no dobla contra nada y no
 // retira nada. La 103A dobla en sus DOS extremos → 2·φ/2 = φ = 1.6.
+// 20-AGO · MEDIDA HASTA LA CRESTA + REDONDEO AL CENTIMETRO (decision del usuario).
+// Los numeros de este archivo se mueven por dos cosas, y ninguna es un ajuste fino:
+//   · la dim de un lado ya no es su cadena de vertices: suma R + phi por cada doblez
+//     que lo cierra, y en un extremo con pata eso devuelve justo el phi/2 de cresta
+//     que la reserva le quitaba (590.4 -> 592, 20.8 -> 22.4);
+//   · el lado 'auto' se redondea al centimetro ANTES de dibujar, hacia ABAJO cuando
+//     lo limita el hormigon (22.4 -> 22, 50.4 -> 50). Por eso la punta que antes
+//     quedaba TANGENTE al estribo (1.2 de eje a eje) ahora deja 1.4: el redondeo a
+//     la baja siempre sobra hacia el nucleo, nunca invade el recubrimiento.
+// La PATA FIJA de 30 tampoco se toca, pero ahora esa medida INCLUYE su doblez, asi
+// que su tramo recto es 30 - (R + phi) = 25.2 y su punta sube.
 const CRESTA_2 = 1.6;   // φ16: φ/2 por cada uno de los dos extremos con pata
 const oA = run([estribo(), corchete(false)]);
 const co = plsDe(oA, 'CO');
 const esA = unaDe(oA, 'ES');
 ok(co.length === 2, '2 capas → 2 placements');
 ok(close(maxE(esA, 'y'), 25.6), 'estribo nivel 1 al recubrimiento: eje y = 25.6');
-ok(close(co[0].dims.B, 592 - CRESTA_2) && close(co[0].dims.A, 30),
-  'capa 1: B auto = 600 − 2·recubExtremo − 2·(φ/2 de cresta) = 590.4 (=' + co[0].dims.B + ')');
+ok(close(co[0].dims.B, 592) && close(co[0].dims.A, 30),
+  'capa 1: B auto = 600 − 2·recubExtremo = 592, la luz útil exacta (=' + co[0].dims.B + ')');
 ok(close(co[0].puntos[1].y, 24.4), 'capa 1: eje del tramo = 30 − (4 + 0.8) − 0.8 = 24.4 (=' + co[0].puntos[1].y + ')');
 ok(close(maxE(esA, 'y') - co[0].puntos[1].y, PHI_ES / 2 + 1.6 / 2),
   'capa 1 TANGENTE al estribo: separación de ejes = φest/2 + φ/2 = 1.2');
-ok(close(co[1].dims.B, 592 - CRESTA_2 - 3.2) && close(co[1].dims.A, 30) && close(co[1].dims.C, 30),
-  'capa 2 anidada: B − 2·φ = 587.2 y PATAS INTACTAS 30/30 (antes 28.4)');
+ok(close(co[1].dims.B, 592 - 3.2) && close(co[1].dims.A, 30) && close(co[1].dims.C, 30),
+  'capa 2 anidada: B − 2·φ = 588.8 y PATAS INTACTAS 30/30 (antes 28.4)');
 ok(close(co[1].puntos[1].y, 22.8), 'capa 2 más adentro: 24.4 − Sep(1.6) = 22.8 (=' + co[1].puntos[1].y + ')');
-ok(close(co[0].puntos[0].y, -5.6) && close(co[1].puntos[0].y, -7.2),
-  'las PUNTAS bajan con la pieza: −5.6 y −7.2 (NO se alinean) (=' + co[1].puntos[0].y + ')');
+ok(close(co[0].puntos[0].y, -4.8) && close(co[1].puntos[0].y, -6.4),
+  'las PUNTAS bajan con la pieza: −4.8 y −6.4 (NO se alinean; la pata fija de 30 ya lleva ' +
+  'su doblez dentro de la medida) (=' + co[1].puntos[0].y + ')');
 // El campo Sep manda la POSICIÓN también acá, y el ajuste de dims no lo mira:
 // con Sep 5 la capa 2 baja 5 y sigue midiendo B − 2·φ.
 const coSep5 = plsDe(run([estribo(), corchete(false, 5)]), 'CO');
-ok(close(coSep5[1].puntos[1].y, 24.4 - 5) && close(coSep5[1].dims.B, 592 - CRESTA_2 - 3.2),
-  'con Sep 5: capa 2 a 19.4 (el campo manda) y B sigue en 587.2 (el anidado sólo ajusta dims) (=' +
+ok(close(coSep5[1].puntos[1].y, 24.4 - 5) && close(coSep5[1].dims.B, 592 - 3.2),
+  'con Sep 5: capa 2 a 19.4 (el campo manda) y B sigue en 588.8 (el anidado sólo ajusta dims) (=' +
   coSep5[1].puntos[1].y + ' / ' + coSep5[1].dims.B + ')');
 
 // --- el MISMO corchete, VOLTEADO -------------------------------------------
@@ -222,23 +241,24 @@ ok(close(coSep5[1].puntos[1].y, 24.4 - 5) && close(coSep5[1].dims.B, 592 - CREST
 console.log('\nA2 — el MISMO corchete VOLTEADO (marco, pilas y recubs permutados):');
 const oAv = run([estribo(), corchete(true)]);
 const cov = plsDe(oAv, 'CO');
-ok(close(cov[0].dims.B, 20.8),
-  'volteado capa 1: B auto = 30 − 2·(recub_lat + φest) − 2·(φ/2) = 20.8 (=' + cov[0].dims.B + ')');
+ok(close(cov[0].dims.B, 22),
+  'volteado capa 1: B auto = 30 − 2·(recub_lat + φest) = 22.4, al centímetro hacia abajo = 22 (=' + cov[0].dims.B + ')');
 ok(!close(cov[0].dims.B, 24), 'sin permutar las pilas habría dado 24 (se comía el estribo lateral)');
 ok(!close(cov[0].dims.B, 20.4), 'sin permutar el recub habría dado 20.4 (2·(recub_sup−recub_lat) corto)');
-ok(!close(cov[0].dims.B, 22.4), 'sin el medio diámetro habría dado 22.4 (la punta mordía el estribo 0.8)');
+ok(!close(cov[0].dims.B, 24), 'sin permutar la pila habría dado 24 (se comía el estribo lateral)');
 ok(close(cov[0].puntos[1].y, 24.4) &&
   close(maxE(unaDe(oAv, 'ES'), 'y') - cov[0].puntos[1].y, 1.2),
   'volteado: sigue TANGENTE al estribo en su nuevo plano (y = 24.4, separación 1.2)');
-ok(close(maxE(cov[0], 'z'), 10.4) && close(minE(cov[0], 'z'), -10.4),
-  'volteado: el tramo corre en Z de −10.4 a +10.4 (B/2 = 10.4)');
-ok(close(maxE(unaDe(oAv, 'ES'), 'z') - maxE(cov[0], 'z'), PHI_ES / 2 + 1.6 / 2),
-  'volteado: punta y pierna del estribo TANGENTES (separación de ejes = 0.4 + 0.8 = 1.2)');
+ok(close(maxE(cov[0], 'z'), 10.2) && close(minE(cov[0], 'z'), -10.2),
+  'volteado: el tramo corre en Z de −10.2 a +10.2 (B de vértice = 22 − 1.6 = 20.4)');
+ok(close(maxE(unaDe(oAv, 'ES'), 'z') - maxE(cov[0], 'z'), PHI_ES / 2 + 1.6 / 2 + 0.2),
+  'volteado: punta y pierna del estribo a 1.4 — el 1.2 tangente más los 0.2 que sobran del ' +
+  'redondeo a la baja, que siempre sobra hacia el núcleo');
 ok(close(maxE(cov[0], 'x'), 0) && close(minE(cov[0], 'x'), 0), 'volteado: ya no corre en X');
-ok(close(cov[1].dims.B, 17.6) && close(cov[1].dims.A, 30),
-  'volteado capa 2 anidada: B − 2·φ = 20.8 − 3.2 = 17.6, patas intactas 30');
-ok(close(cov[1].puntos[1].y, 22.8) && close(cov[1].puntos[0].y, -7.2),
-  'volteado capa 2: y = 24.4 − Sep = 22.8 y la punta baja con la pieza (−7.2)');
+ok(close(cov[1].dims.B, 18.8) && close(cov[1].dims.A, 30),
+  'volteado capa 2 anidada: B − 2·φ = 22 − 3.2 = 18.8, patas intactas 30');
+ok(close(cov[1].puntos[1].y, 22.8) && close(cov[1].puntos[0].y, -6.4),
+  'volteado capa 2: y = 24.4 − Sep = 22.8 y la punta baja con la pieza (−6.4)');
 
 // ===========================================================================
 // A3 · EL MISMO CORCHETE PERO 103B (patas a 45°) VOLTEADO: NO CABE, Y SE VE.
@@ -276,9 +296,9 @@ ok(close(cov[1].puntos[1].y, 22.8) && close(cov[1].puntos[0].y, -7.2),
 // (Con las patas a 90° del cabezal viejo la proyección era 0 y el problema no se
 // veía: la pieza "cabía" dibujada de una forma que no es la suya.)
 const covB = plsDe(run([estribo(), corchete(true, null, '103B')]), 'CO');
-const B_103B_VOLT = 22.4 - 2 * 0.8;   // 20.8 (antes −21.6264, con la pata abierta)
+const B_103B_VOLT = Math.floor(22.4);   // 22 (la cresta devuelve el φ/2 y el redondeo baja)
 ok(close(covB[0].dims.B, B_103B_VOLT),
-  'una 103B (patas 30 REPLEGADAS) volteada: B = 22.4 − 2·0.8 = 20.8, el número del motor viaja tal cual (=' +
+  'una 103B (patas 30 REPLEGADAS) volteada: B = 22.4 al centímetro hacia abajo = 22, el número del motor viaja tal cual (=' +
   covB[0].dims.B + ')');
 ok(covB[0].dims.A === 30 && covB[0].dims.C === 30,
   'y las patas siguen midiendo lo que el usuario fijó (30/30): no se "acomoda" nada para que quepa');
@@ -321,8 +341,8 @@ const traba2 = {
 const oB = run([estribo(), recto('CB', 'CBS', 'sup', 16, 2), traba2]);
 ok(close(unaDe(oB, 'CB').dims.A, 592),
   'cabezal nivel 2: largo auto = 600 − 2·recubExtremo = 592, SIN φest (=' + unaDe(oB, 'CB').dims.A + ')');
-ok(close(unaDe(oB, 'TR').dims.A, 50.4),
-  'traba nivel 2: alto auto = 60 − prof(sup) − prof(inf) = 60 − 4.8 − 4.8 = 50.4 (=' + unaDe(oB, 'TR').dims.A + ')');
+ok(close(unaDe(oB, 'TR').dims.A, Math.floor(50.4)),
+  'traba nivel 2: alto auto = 60 − 4.8 − 4.8 = 50.4, al centímetro hacia abajo = 50 (=' + unaDe(oB, 'TR').dims.A + ')');
 // Y la razón, derivada geométricamente: se consulta qué caras ocupa cada barra.
 const carasES = R.carasOcupadas(unaDe(oB, 'ES'), { largo: 600, alto: 60, ancho: 30, recub_sup: 4, recub_inf: 4, recub_lat: 3 }, 1);
 ok(carasES.indexOf('sup') >= 0 && carasES.indexOf('inf') >= 0 && carasES.indexOf('lat') >= 0 &&
@@ -488,9 +508,10 @@ console.log('\nG — medio diámetro en TODO extremo con doblez (recto no descue
 const GEO4 = { largo: 600, ancho: 30, alto: 60, recub_sup: 4, recub_inf: 4, recub_lat: 4 };
 const oG4 = G.generarViga({ tipo: 'viga', geometria: GEO4, componentes: [estribo(), corchete(true)] }, {});
 const coG4 = plsDe(oG4, 'CO')[0], esG4 = unaDe(oG4, 'ES');
-ok(close(coG4.dims.B, 18.8), 'recub único 4: B = 30 − 2·(4 + 0.8) − 2·(φ/2) = 18.8 (=' + coG4.dims.B + ')');
-ok(close(maxE(esG4, 'z') - maxE(coG4, 'z'), PHI_ES / 2 + 0.8),
-  'y la punta queda TANGENTE a la pierna del estribo (1.2 de eje a eje), sin morderlo');
+ok(close(coG4.dims.B, 20), 'recub único 4: B = 30 − 2·(4 + 0.8) = 20.4, al centímetro hacia abajo = 20 (=' + coG4.dims.B + ')');
+ok(close(maxE(esG4, 'z') - maxE(coG4, 'z'), PHI_ES / 2 + 0.8 + 0.2),
+  'y la punta queda a 1.4 de la pierna del estribo: el 1.2 tangente más los 0.2 que sobran ' +
+  'del redondeo a la baja — nunca al revés');
 // G2 · contra HORMIGÓN PELADO la cuenta es la MISMA: los extremos de la viga son
 // la cara 'ext' y el estribo (plano YZ) no la ocupa, así que la pila está vacía y
 // NO aparece ningún φ8 — pero los dos extremos igual doblan, y su cresta también
@@ -498,19 +519,19 @@ ok(close(maxE(esG4, 'z') - maxE(coG4, 'z'), PHI_ES / 2 + 0.8),
 //   B = 600 − 2·4 − 2·(φ/2) = 590.4   (el φ del estribo NO está en esta cuenta)
 // El 592 de antes dejaba el eje del codo justo en el recub y su superficie 0.8
 // DENTRO de él. La discriminación real la hace G3: recto vs con doblez.
-ok(close(unaDe(oA, 'CO').dims.B, 592 - CRESTA_2),
-  'el MISMO corchete sin voltear, contra hormigón pelado: 590.4 = 592 − 2·(φ/2), sin rastro del φ8 del estribo (=' + unaDe(oA, 'CO').dims.B + ')');
+ok(close(unaDe(oA, 'CO').dims.B, 592),
+  'el MISMO corchete sin voltear, contra hormigón pelado: 592 = la luz útil, sin rastro del φ8 del estribo (=' + unaDe(oA, 'CO').dims.B + ')');
 // G3 · un extremo RECTO no resta aunque haya fierro: 101A no tiene patas.
 const rectoV = recto('RV', 'CBS', 'sup', 16, 2); rectoV.plano_pieza = { volteado: true };
 const oG3 = run([estribo(), rectoV]);
-ok(close(unaDe(oG3, 'RV').dims.A, 30 - 2 * (3 + PHI_ES)),
-  'volteada y contra el estribo, pero RECTA (101A): 22.4 sin descuento de φ/2 (=' + unaDe(oG3, 'RV').dims.A + ')');
+ok(close(unaDe(oG3, 'RV').dims.A, Math.floor(30 - 2 * (3 + PHI_ES))),
+  'volteada y contra el estribo, pero RECTA (101A): 22.4 sin dobleces que sumar, al centímetro hacia abajo = 22 (=' + unaDe(oG3, 'RV').dims.A + ')');
 // G4 · y la viga-semilla conserva su LISTADO (4 ítems / 72 barras: ninguna pila
 // cambió de cara ni de nivel). Los kg bajan 140.2 → 136.1 por la migración
 // cabezal → trazador: su CBS es una 103B de 45°/45° y el auto-largo pasa a
 // reservar 30·cos45 + φ/2 = 22.0132 por punta (ver la nota de R1).
-ok(semilla.resumen.kg === 140.1 && semilla.resumen.barras === 72 && semilla.resumen.items === 4,
-  'la viga-semilla: 140.1 kg / 72 barras / 4 ítems');
+ok(semilla.resumen.kg === 140.2 && semilla.resumen.barras === 72 && semilla.resumen.items === 4,
+  'la viga-semilla: 140.2 kg / 72 barras / 4 ítems');
 
 // ===========================================================================
 // H · VOLTEO — la pieza CONSERVA SU CENTRO donde ahora es puntual.

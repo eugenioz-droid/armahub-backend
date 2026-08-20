@@ -145,7 +145,13 @@ console.log('\nB — traba clásica de muro: altura × largo');
   // (span z entre 12 y 16, y `fuera(c)` vacío). O sea: el cuerpo ya no vale por sí
   // solo el espesor, lo cruzan el cuerpo MÁS la proyección de su gancho, y los dos
   // números salen del MISMO ángulo. El gancho sigue siendo el mínimo normativo.
-  ok(Math.abs(pls[0].dims.B - 9.0717) < 1e-3 && pls[0].dims.A === 7.5,
+  // 20-AGO · PATA 10φ + MEDIDA HASTA LA CRESTA + REDONDEO. El gancho normativo φ8 pasa
+  // de 7.5 a 8.0 de extensión libre y su dim lo mide hasta la cresta (8.0 + R + φ =
+  // 10.4), redondeada ARRIBA por ser un mínimo → 17 con el φ de esta barra. El cuerpo
+  // se encoge lo que el gancho más largo le come del espesor y se redondea hacia ABAJO
+  // → 7. La regla que este bloque protege no cambia: cuerpo + proyección del gancho
+  // cruzan el espesor útil sin salirse (span z y `fuera(c)` siguen verdes arriba).
+  ok(pls[0].dims.B === 7 && pls[0].dims.A === 17,
     'cuerpo + proyección del gancho cruzan el espesor, con el gancho en el mínimo ' +
     'normativo (B=' + pls[0].dims.B + ', A=' + pls[0].dims.A + ')');
   ok(fuera(c).length === 0, 'ninguna de las 15 se sale del hormigón: ' + JSON.stringify(fuera(c)));
@@ -238,19 +244,26 @@ console.log('\nE — la pieza ocupa su ancho también en el 2º eje, y si no cab
     const c = comp('EC', '305A', dist, 'y', { A: 14, B: 30, C: 14, D: 30, E: 14 }, 8);
     return { c: c, pls: R.expandirComponente(c, MURO) };
   };
-  const justo = mk(-184.6), pasado = mk(-185);
+  // 20-AGO · MEDIDA HASTA LA CRESTA: las dims FIJAS de esta 305A (30 en el eje x) ya
+  // incluyen el R + φ de sus dos codos, así que la pieza DIBUJADA mide 0.8 menos y el
+  // punto en que su cara toca el borde se corre 0.4. Lo que el bloque protege —que
+  // justo en el borde no avise, 0.4 más allá sí, y que NO se clampe la posición— es
+  // exactamente lo mismo, medido donde ahora ocurre.
+  const justo = mk(-185), pasado = mk(-185.4);
   ok(justo.pls.length === 9 && pasado.pls.length === 9, 'las dos recetas colocan las mismas 9 barras');
   ok(fuera(justo.c).length === 0,
-    'con el centro a −184.6 la cara del fierro toca EXACTO el borde: 0 cm fuera');
+    'con el centro a −185 la cara del fierro toca EXACTO el borde: 0 cm fuera');
   ok(fuera(pasado.c).length === 1 && /0\.4 cm por el eje x/.test(fuera(pasado.c)[0]),
-    'con el centro a −185 el aviso da el eje y los 0.4 cm: ' + JSON.stringify(fuera(pasado.c)[0]));
+    'con el centro a −185.4 el aviso da el eje y los 0.4 cm: ' + JSON.stringify(fuera(pasado.c)[0]));
   casi(extremos(pasado.pls, 'x')[0], -200, 1e-9,
     'y la barra se dibuja donde la receta la puso (eje a −200), sin clamp que lo tape');
 
   // La ocupación se MIDE (no se pregunta la familia): es la misma cuenta que usa el
   // reparto de una pieza de sección, y vale igual en el eje x que en el z.
-  casi(extremos(justo.pls, 'x')[1] - extremos(justo.pls, 'x')[0], 30 + 2 * 15,
-    1e-9, 'las 3 columnas ocupan 30 (la pieza) + 30 (el reparto) = 60 cm en x');
+  // La PIEZA dibujada mide su dim (30) menos el sobre de cresta del lado que corre en x.
+  const sobX = global.ModeladorFiguraPuntos.sobresCresta('305A', 'estribo', 0.8, null).B;
+  casi(extremos(justo.pls, 'x')[1] - extremos(justo.pls, 'x')[0], 30 - sobX + 2 * 15,
+    1e-9, 'las 3 columnas ocupan la pieza (30 menos su sobre de cresta) + 30 del reparto en x');
 }
 
 // ================================================================ F · GUARDAS

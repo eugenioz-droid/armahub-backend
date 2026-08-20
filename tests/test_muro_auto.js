@@ -54,8 +54,13 @@ console.log('MH 104B φ16 TODO AUTO (el caso reportado por el usuario):');
   // convención de VÉRTICE queda replegado colgando de la salida del arco. Explicado
   // en detalle en el bloque de la 103C, más abajo (mismo número exacto). El fierro
   // sigue DENTRO del hormigón: cara del fierro en −7.72 contra la del muro en −10.
-  ok(close(z.hi, 6.7, 1e-6) && close(z.lo, -6.916652224137049, 1e-9),
-    'la profundidad se ajusta al espesor útil: z ∈ [' + r2(z.lo) + ', ' + r2(z.hi) +
+  // 20-AGO · LA PATA PASO A 10φ (decisión del usuario) y con φ16 eso son 16 cm de
+  // extensión libre. En diagonal a 45° dentro de un espesor útil de 13.4 cm eje a eje
+  // NO CABE: la punta se pasa 2.38 cm de la cara del muro. El motor la dibuja igual y
+  // lo DICE (el aviso de fierro fuera del hormigón, que se comprueba abajo); antes,
+  // con 6φ, cabía justa. No es una regresión del trazo: es la pata nueva.
+  ok(close(z.hi, 6.7, 1e-6) && close(z.lo, -11.583556979968261, 1e-9),
+    'la profundidad se ajusta al espesor útil y la punta del gancho de 10φ se pasa: z ∈ [' + r2(z.lo) + ', ' + r2(z.hi) +
     '] (cuerpo en 6.7, punta del gancho replegado en −6.916652)');
   // largo: eje del doblez a recub_borde + φ/2 → ±196.2 (la CRESTA del doblez en
   // línea con el recub; antes el eje llegaba a ±197 y la superficie lo invadía).
@@ -72,10 +77,14 @@ console.log('MH 103A φ16 (patas de 90°) TODO AUTO — el clásico también obe
   });
   ok(!!pl, 'genera placement');
   const z = lim(pl, 'z');
-  ok(close(z.hi, 6.7, 1e-6) && close(z.lo, -6.7, 1e-6),
-    'las patas ⊥ en auto cruzan EXACTO el espesor útil: z = [' + r2(z.lo) + ', ' + r2(z.hi) + '] (= ±6.7)');
-  ok(close(pl.dims.A, 13.4, 1e-6) && close(pl.dims.C, 13.4, 1e-6),
-    'A = C = espesor útil eje a eje = 15 − φ = 13.4 (la fórmula universal) (=' + r2(pl.dims.A) + ')');
+  // 20-AGO: la dim es de CRESTA (13.4 de eje a eje + el R + φ de su codo = 14.2) y se
+  // redondea al centímetro hacia ABAJO porque la limita el hormigón → 14. El trazo va
+  // por vértices: 14 − 0.8 = 13.2, o sea 0.2 de sobra hacia el núcleo. Nunca al revés.
+  ok(close(z.hi, 6.7, 1e-6) && close(z.lo, -6.5, 1e-6),
+    'las patas ⊥ en auto cruzan el espesor útil con los 0.2 que sobran del redondeo a la baja: z = [' +
+    r2(z.lo) + ', ' + r2(z.hi) + ']');
+  ok(close(pl.dims.A, 14, 1e-6) && close(pl.dims.C, 14, 1e-6),
+    'A = C = espesor útil eje a eje 13.4 + el codo (R + φ) = 14.2, al centímetro hacia abajo = 14 (=' + r2(pl.dims.A) + ')');
 }
 
 // GUARDA DE LA MIGRACIÓN CABEZAL → TRAZADOR (bug reportado por el usuario: «una
@@ -94,17 +103,22 @@ console.log('MH 103C φ16 (un solo gancho a 45°) — YA NO se dibuja como una 1
     pose: { cara: 'lateral', lado: 1, rumbo: 'x' },
     dims: autoDims(['A', 'B', 'C']), distribucion: distY
   });
-  const pl = unaPieza({
+  const comp103C = {
     tipologia: 'MH', figura: '103C', diam: 16, cara: 'lateral',
     pose: { cara: 'lateral', lado: 1, rumbo: 'x' },
     dims: autoDims(['A', 'B', 'C']), distribucion: distY
-  });
+  };
+  const pl = unaPieza(comp103C);
   ok(!!pl, 'genera placement');
   const mismo = pl.puntos.length === p103A.puntos.length && pl.puntos.every((p, i) =>
     close(p.x, p103A.puntos[i].x) && close(p.y, p103A.puntos[i].y) && close(p.z, p103A.puntos[i].z));
   ok(!mismo, 'su polilínea NO coincide con la de la 103A (el bug reportado)');
-  ok(close(pl.dims.A, 9.6, 1e-6) && close(pl.dims.C, 13.4, 1e-6),
-    'A (diagonal) = gancho 9.6 y C (⊥) = espesor útil 13.4: cada pata según SU dirección (=' +
+  // 20-AGO: la diagonal vale la pata normativa MEDIDA HASTA LA CRESTA (10φ + R + φ =
+  // 20.8), redondeada hacia ARRIBA por ser un mínimo normativo → 21; la ⊥ sigue
+  // valiendo el espesor, redondeado hacia ABAJO → 14. La regla —cada pata según SU
+  // dirección— es la misma; lo que cambió es el número y hacia dónde redondea cada uno.
+  ok(close(pl.dims.A, 21, 1e-6) && close(pl.dims.C, 14, 1e-6),
+    'A (diagonal) = pata normativa hasta la cresta = 21 y C (⊥) = espesor útil = 14: cada pata según SU dirección (=' +
     r2(pl.dims.A) + ' / ' + r2(pl.dims.C) + ')');
   // ÁNGULO DEL VÉRTICE de cada doblez (18-ago: es el número que declara el catálogo).
   // Se mide sobre los tramos RECTOS: con la convención de vértice el 45° de la 103C
@@ -148,11 +162,15 @@ console.log('MH 103C φ16 (un solo gancho a 45°) — YA NO se dibuja como una 1
   // −7.72 contra la cara del muro en −10), que es lo que este assert protegía; lo
   // que se estrecha es el recubrimiento nominal de esa cara. Se congela el número
   // EXACTO en vez de una cota floja para que cualquier movimiento futuro se vea.
-  ok(close(z.hi, 6.7, 1e-6) && close(z.lo, -6.916652224137049, 1e-9),
-    'el cuerpo cierra contra el núcleo (z.hi = 6.7) y la punta del gancho replegado ' +
-    'llega a −6.916652 (=' + r2(z.lo) + ', ' + r2(z.hi) + ')');
-  ok(Math.abs(z.lo) + 1.6 / 2 <= muro.ancho / 2 - 1e-9 && Math.abs(z.hi) + 1.6 / 2 <= muro.ancho / 2,
-    '…y no saca fierro por el espesor: la cara del fierro queda en ' +
+  ok(close(z.hi, 6.7, 1e-6) && close(z.lo, -11.583556979968261, 1e-9),
+    'el cuerpo cierra contra el núcleo (z.hi = 6.7) y la punta del gancho de 10φ ' +
+    'llega a −11.583557 (=' + r2(z.lo) + ', ' + r2(z.hi) + ')');
+  // 20-AGO · YA NO CABE, Y ESO ES EL DATO. Con la pata en 10φ la punta se pasa 2.38 cm
+  // de la cara del muro. Lo que este assert protege ahora es lo único que no se
+  // negocia: que el motor NO lo calle. (Antes protegía que cupiera, con 6φ.)
+  ok(Math.abs(z.lo) + 1.6 / 2 > muro.ancho / 2 &&
+     (comp103C._avisos || []).some(a => /FUERA/.test(a)),
+    '…saca fierro por el espesor (la pata de 10φ no cabe en 20 cm) Y EL MOTOR LO DICE: ' +
     r2(Math.abs(z.lo) + 0.8) + ' ⊆ ' + (muro.ancho / 2));
 }
 
@@ -164,7 +182,9 @@ console.log('MH 103B φ16 (patas 45°) TODO AUTO — la diagonal sigue al gancho
     dims: autoDims(['A', 'B', 'C']), distribucion: distY
   });
   ok(!!pl, 'genera placement');
-  ok(close(pl.dims.A, 9.6, 1e-6), 'pata diagonal en auto = gancho normativo 6φ = 9.6 (=' + r2(pl.dims.A) + ')');
+  ok(close(pl.dims.A, 21, 1e-6),
+    'pata diagonal en auto = gancho normativo 10φ medido hasta la cresta (16 + 4.8 = 20.8), ' +
+    'redondeado ARRIBA por ser un mínimo = 21 (=' + r2(pl.dims.A) + ')');
 }
 
 console.log('EC 104D φ8 TODO AUTO — el estribo del muro encuadra su marco:');
@@ -208,7 +228,14 @@ console.log('Barrido MH/MV × figuras × capas — nada saca fierro del hormigó
     MH: { cara: 'lateral', lado: 1, rumbo: 'x' },
     MV: { cara: 'lateral', lado: 1, rumbo: 'y' }
   };
-  let n = 0; const fuera = [];
+  // 20-AGO · LA PATA DE 10φ NO CABE EN UN MURO DE 20, Y EL BARRIDO YA NO PUEDE PEDIR
+  // QUE QUEPA. Con φ16 la extensión libre de norma son 16 cm; en DIAGONAL a 45° eso
+  // pide 11.3 cm de un espesor útil de 13.4 eje a eje, más el desplazamiento del arco.
+  // Las que se pasan son EXACTAMENTE las de gancho diagonal (103B y 104B, ficha 45°);
+  // las de pata recta (103A) y la 102A siguen dentro. Lo que este barrido protege —y
+  // es lo único que no se negocia— es que NINGUNA salga MUDA: cada pieza que se pasa
+  // trae su aviso de fierro fuera del hormigón.
+  let n = 0; const fuera = [], mudas = [];
   ['MH', 'MV'].forEach(tip => figs.forEach(fg => [1, 2].forEach(capas => {
     const spec = global.ModeladorCatalogoFiguras.get(fg.f);
     const comp = {
@@ -221,11 +248,19 @@ console.log('Barrido MH/MV × figuras × capas — nada saca fierro del hormigó
       const x = lim(pl, 'x'), y = lim(pl, 'y'), z = lim(pl, 'z');
       const s = Math.max(0, x.hi - 200, -200 - x.lo, y.hi - 125, -125 - y.lo,
         z.hi + 0.8 - 10, -10 - (z.lo - 0.8));   // z a la CARA del fierro (φ16)
-      if (s > 1e-6) fuera.push(tip + '/' + fg.f + '×' + capas + ' (+' + r2(s) + ')');
+      if (s > 1e-6) {
+        fuera.push(tip + '/' + fg.f + '×' + capas + ' (+' + r2(s) + ')');
+        if (!(comp._avisos || []).some(a => /FUERA/.test(a))) {
+          mudas.push(tip + '/' + fg.f + '×' + capas);
+        }
+      }
     });
   })));
-  ok(fuera.length === 0, n + ' piezas y 0 con fierro fuera del hormigón' +
-    (fuera.length ? ' — ' + fuera.join(' · ') : ''));
+  ok(mudas.length === 0, n + ' piezas: las que se pasan lo DICEN, ninguna muda' +
+    (mudas.length ? ' — MUDAS: ' + mudas.join(' · ') : '') +
+    ' (se pasan ' + fuera.length + ': ' + fuera.join(' · ') + ')');
+  ok(fuera.every(f => /103B|104B/.test(f)),
+    'y las que se pasan son SOLO las de gancho DIAGONAL (103B / 104B): la pata recta y la 102A caben');
 }
 
 console.log(fallos === 0 ? '\nTODO OK' : '\n' + fallos + ' FALLO(S)');

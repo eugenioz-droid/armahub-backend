@@ -255,13 +255,20 @@ console.log('\nP1c — recetas viejas que se MUEVEN a propósito (anclaje al tes
   //     salida del arco, desplazada R = 2·φ + φ/2 = 4 cm respecto de la cadena de
   //     vértices. Alcance = 30·sin45 + R·(1 + cos45) = 21.2132 + 6.8284 = 28.0416
   //     → punta en 295.2 − 28.0416 = 267.158 (antes 273.987).
-  const RESERVA_CBS = 1.6 / 2;                       // 0.8 por punta (antes 22.013203)
+  // 20-AGO · MEDIDA HASTA LA CRESTA. Dos consecuencias en este mismo caso:
+  //   · B (auto) suma el R + φ de sus dos codos, que es justo lo que la reserva le
+  //     quitaba → 52 exactos, el alto útil (y el redondeo al centímetro no lo mueve);
+  //   · la pata FIJA de 30 ahora se mide HASTA LA CRESTA, o sea su tramo recto es
+  //     30 − (R + φ) = 25.2. La barra que se corta mide lo mismo que antes; lo que
+  //     cambió es que ese número ya incluye el doblez, así que el trazo alcanza
+  //     25.2·sin45 + R·(1 + cos45) = 24.647 y la punta queda en 270.553.
+  const sobCBS = FP.sobresCresta('103B', 'cabezal', 1.6, [45, 45]);
   const R_CODO_CBS = 2 * 1.6 + 1.6 / 2;              // 4.0 con φ16
-  const ALCANCE_PATA = 30 * Math.SQRT1_2 + R_CODO_CBS * (1 + Math.SQRT1_2);   // 28.0416
+  const ALCANCE_PATA = (30 - sobCBS.A) * Math.SQRT1_2 + R_CODO_CBS * (1 + Math.SQRT1_2);
   ok(cbs.n === 6 && close(cbs.x.lo, r3(295.2 - ALCANCE_PATA)) && close(cbs.x.hi, 295.2) &&
-    close(JSON.parse(cbs.dims).B, 52 - 2 * RESERVA_CBS) &&
+    close(JSON.parse(cbs.dims).B, 52) &&
     JSON.parse(cbs.dims).A === 30 && JSON.parse(cbs.dims).C === 30,
-    'CBS 103B sup+de_pie: pegada al testero +X (x.hi 295.2, punta 267.158) · 6 barras · patas 30/30 y B = 52 − 2·0.8 = 50.4 (=' +
+    'CBS 103B sup+de_pie: pegada al testero +X (x.hi 295.2, punta 270.553) · 6 barras · patas 30/30 y B = 52 = el alto útil (=' +
     JSON.stringify(cbs.x) + ' ' + cbs.dims + ')');
   const cbi = mide({
     tipologia: 'CBI', figura: '101A', diam: 18, cara: 'inf', plano_pieza: { orientacion: 'de_pie' },
@@ -447,8 +454,10 @@ const g0 = barraPose({ cara: 'sup', lado: 1, rumbo: 'x' });
 const g1 = barraPose({ cara: 'extremo', lado: -1, rumbo: 'y' });
 const g2 = barraPose({ cara: 'inf', lado: -1, rumbo: 'x' });
 const g3 = barraPose({ cara: 'extremo', lado: 1, rumbo: 'y' });
-ok(close(g0.dims.A, 589.2) && close(lim(g0, 'y').hi, 23.2),
-  'sup/x: A = 600 − 2·(4 + pila ext 1.4) = 589.2 · y = 23.2 (pila SUP) (=' + g0.dims.A + '/' + lim(g0, 'y').hi + ')');
+// 20-AGO: la 101A es recta (sin dobleces → sin sobre de cresta), pero su 'auto' lo
+// limita el hormigón y se redondea al centímetro hacia ABAJO: 589.2 → 589.
+ok(close(g0.dims.A, Math.floor(589.2)) && close(lim(g0, 'y').hi, 23.2),
+  'sup/x: A = 600 − 2·(4 + pila ext 1.4) = 589.2, al centímetro hacia abajo = 589 · y = 23.2 (pila SUP) (=' + g0.dims.A + '/' + lim(g0, 'y').hi + ')');
 ok(close(g1.dims.A, 48) && close(lim(g1, 'x').lo, -293.8),
   'extremo−/y: A = 60 − 2·(4 + pila y 2.0) = 48 · x = −293.8 (pila EXT) (=' + g1.dims.A + '/' + lim(g1, 'x').lo + ')');
 ok(close(lim(g2, 'y').lo, -24.2),
@@ -685,9 +694,12 @@ ok(JSON.stringify(unicos(es305, 'x')) === JSON.stringify([-50, 0, 50]),
 // La versión anterior de este test asertaba lo CONTRARIO (B = 52 a lo ancho) y
 // congelaba el bug: en una viga de 30 de ancho eso son 11 cm de fierro FUERA del
 // hormigón, con el test en verde.
-ok(close(lim(es305[0], 'z').hi - lim(es305[0], 'z').lo, 24) &&
-  close(lim(es305[0], 'y').hi - lim(es305[0], 'y').lo, 52),
-  'sus lados miden lo que dicen las dims SIN TRANSPONER (A = 24 a lo ancho/Z · B = 52 de alto/Y) (=' +
+// 20-AGO: las dims son de CRESTA (24 y 52 = el ancho y el alto ÚTILES) y el TRAZO va
+// por vértices, o sea cada lado dibujado mide su dim menos el sobre del codo.
+const sob305 = FP.sobresCresta('305A', 'estribo', 0.8, null);
+ok(close(lim(es305[0], 'z').hi - lim(es305[0], 'z').lo, 24 - (sob305.A || 0)) &&
+  close(lim(es305[0], 'y').hi - lim(es305[0], 'y').lo, 52 - (sob305.B || 0)),
+  'sus lados miden sus dims menos el sobre de cresta, SIN TRANSPONER (A a lo ancho/Z · B de alto/Y) (=' +
   r3(lim(es305[0], 'z').hi - lim(es305[0], 'z').lo) + ' × ' +
   r3(lim(es305[0], 'y').hi - lim(es305[0], 'y').lo) + ')');
 // GUARDA DE REGRESIÓN del defecto D1 — Y DE LAS REGRESIONES QUE SUS FIXES FUERON
@@ -981,8 +993,14 @@ console.log('\nP8 — la viga-semilla: poses intactas, kg re-derivado:');
 // catálogo, y al honrarlos el auto-largo reserva 30·cos45 + φ/2 = 22.0132 por
 // punta → B = 592 − 44.0264 = 547.974.
 const sem = G.generarViga(SEM.semillaViga(), {});
-ok(sem.resumen.items === 4 && sem.resumen.barras === 72 && close(sem.resumen.kg, 140.1, 0.05),
-  'semilla = {items:4, barras:72, kg:140.1} (=' + JSON.stringify(sem.resumen) + ')');
+// 20-AGO · 140.1 -> 140.2 kg (MEDIDA HASTA LA CRESTA, decision del usuario). Un lado
+// ya no se mide a VERTICE: es una medida recta que suma R + phi por cada doblez que lo
+// cierra (lado = tramo recto + R + phi). El unico numero de la semilla que se mueve es
+// el B del CBS 103B phi16: 590.4 -> 592.0, que es la luz util exacta de la viga
+// (600 - 2*4); esos 1.6 cm x 6 barras phi16 pesan 0.1 kg. Las patas 30/30 son FIJAS:
+// las escribio el usuario y ni la cresta ni el redondeo las tocan.
+ok(sem.resumen.items === 4 && sem.resumen.barras === 72 && close(sem.resumen.kg, 140.2, 0.05),
+  'semilla = {items:4, barras:72, kg:140.2} (=' + JSON.stringify(sem.resumen) + ')');
 
 if (fallos) { console.error('\nFALLARON ' + fallos + ' aserciones'); process.exit(1); }
 console.log('\nOK — modelo de POSE (24 orientaciones + espejo) pasa.');

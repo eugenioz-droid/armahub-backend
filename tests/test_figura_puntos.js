@@ -25,10 +25,17 @@ var pts = F.figuraAPuntos('103B', { A: 30, B: 592, C: 30 }, host, anchor, { rol:
 // Los valores viejos (4 puntos, tramo de −296 a +296) describían la lectura
 // contraria, en la que el 45 era el recorrido y no había codo que dibujar.
 var R_CODO = 2 * 1.6 + 1.6 / 2;                                  // 4 cm con φ16
+// 20-AGO · MEDIDA HASTA LA CRESTA. El B = 592 que entra ya NO es la cadena de
+// vértices: es la medida recta hasta la cresta de los dos codos, o sea la ENVOLVENTE
+// de la barra. El eje se traza en 592 − (R + φ)·2 + R·2 = 590.4 → ±295.2, y la CARA
+// del fierro (eje + φ/2) llega justo a ±296. Que ese número sea exactamente la mitad
+// de la dim es el sentido de la convención nueva, no una coincidencia.
 ok(pts.length === 32, '32 puntos (2 patas + 2 codos arqueados de 15) (=' + pts.length + ')');
-ok(Math.abs(Math.min.apply(null, pts.map(p => p.x)) + 296) < 1e-6 &&
-   Math.abs(Math.max.apply(null, pts.map(p => p.x)) - 296) < 1e-6,
-  'la envolvente sigue en ±296: la CRESTA del codo toca la línea del vértice');
+var envEje = 592 / 2 - 1.6 / 2;                                  // 295.2
+ok(Math.abs(Math.min.apply(null, pts.map(p => p.x)) + envEje) < 1e-6 &&
+   Math.abs(Math.max.apply(null, pts.map(p => p.x)) - envEje) < 1e-6,
+  'el EJE llega a ±295.2 y la CARA del fierro a ±296 = la dim B entera: la medida de ' +
+  'cresta ES la envolvente de la barra');
 ok(pts[0].y < 26, 'pata inicial va hacia el núcleo (abajo, cara sup): y = ' + pts[0].y.toFixed(3));
 ok(Math.abs(Math.max.apply(null, pts.map(p => p.y)) - 26) < 1e-6,
   'el tramo largo sigue a la altura del anchor (y = 26)');

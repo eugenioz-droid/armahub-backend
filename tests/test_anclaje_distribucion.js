@@ -184,8 +184,14 @@ console.log('\nD — ANTI-REGRESIÓN: la receta vieja abierta con SU geometría 
 //      la traba): mismos placements, punto por punto, antes y después de anclar.
 const semCruda = G.generarViga(S.semillaViga(), {});
 const semNorm = (() => { const r = S.semillaViga(); R.normalizarReceta(r); return G.generarViga(r, {}); })();
-ok(JSON.stringify(semCruda.resumen) === '{"items":4,"barras":72,"kg":140.1}',
-  'la semilla sigue dando {items:4, barras:72, kg:140.1} (=' + JSON.stringify(semCruda.resumen) + ')');
+// 20-AGO · 140.1 -> 140.2 kg (MEDIDA HASTA LA CRESTA, decision del usuario). Un lado
+// ya no se mide a VERTICE: es una medida recta que suma R + phi por cada doblez que lo
+// cierra (lado = tramo recto + R + phi). El unico numero de la semilla que se mueve es
+// el B del CBS 103B phi16: 590.4 -> 592.0, que es la luz util exacta de la viga
+// (600 - 2*4); esos 1.6 cm x 6 barras phi16 pesan 0.1 kg. Las patas 30/30 son FIJAS:
+// las escribio el usuario y ni la cresta ni el redondeo las tocan.
+ok(JSON.stringify(semCruda.resumen) === '{"items":4,"barras":72,"kg":140.2}',
+  'la semilla sigue dando {items:4, barras:72, kg:140.2} (=' + JSON.stringify(semCruda.resumen) + ')');
 ok(JSON.stringify(semNorm.resumen) === JSON.stringify(semCruda.resumen),
   'y normalizarla (que estampa las anclas) no le mueve NI UN KILO (=' + JSON.stringify(semNorm.resumen) + ')');
 ok(JSON.stringify(semNorm.placements.map(p => p.puntos)) ===

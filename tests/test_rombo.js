@@ -59,10 +59,15 @@ console.log('106A φ16 todo auto en la viga 600×60×30 (recub 4/4/3):');
   // marco (patas al núcleo) incluidos: nada asoma del hormigón.
   ok(close(y.hi, 25.2) && close(y.lo, -25.2), 'marco al alto: y ±25.2 (=' + r2(y.hi) + '/' + r2(y.lo) + ')');
   ok(close(z.hi, 11.2) && close(z.lo, -11.2), 'marco al ancho: z ±11.2 (=' + r2(z.hi) + '/' + r2(z.lo) + ')');
-  // Dims listadas = lo que el marco dibuja (exterior, como el 104D): ganchos A/F
-  // normativos 6φ = 9.6; cuerpo B..E en orden de recorrido alto/ancho/alto/ancho.
-  ok(close(pl.dims.A, 9.6, 0.05) && close(pl.dims.F, 9.6, 0.05),
-    'ganchos A/F = 6φ = 9.6 (=' + r2(pl.dims.A) + '/' + r2(pl.dims.F) + ')');
+  // Dims listadas = lo que el marco dibuja (exterior, como el 104D); cuerpo B..E en
+  // orden de recorrido alto/ancho/alto/ancho.
+  // 20-AGO: la pata pasó a 10φ y la dim la mide HASTA LA CRESTA, o sea la extensión
+  // libre MÁS su doblez (10φ + R + φ = 16 + 4.8 = 20.8 con φ16), redondeada hacia
+  // ARRIBA por ser un mínimo normativo → 21. El trazo le resta el R + φ.
+  const gA = FP.ganchoAutoCresta(1.6);
+  ok(close(pl.dims.A, Math.ceil(gA), 0.05) && close(pl.dims.F, Math.ceil(gA), 0.05),
+    'ganchos A/F = 10φ + R + φ redondeado arriba = ' + Math.ceil(gA) + ' (=' +
+    r2(pl.dims.A) + '/' + r2(pl.dims.F) + ')');
   ok(close(pl.dims.B, 52, 0.05) && close(pl.dims.D, 52, 0.05),
     'B/D = alto útil 52 (=' + r2(pl.dims.B) + '/' + r2(pl.dims.D) + ')');
   ok(close(pl.dims.C, 24, 0.05) && close(pl.dims.E, 24, 0.05),

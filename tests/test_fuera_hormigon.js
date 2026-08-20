@@ -132,8 +132,15 @@ console.log('\nB — traba: su bbox se centra en el anchor, no cuelga de él:');
   const z = lim(pl, 'z');
   const y = lim(pl, 'y');
   // (el pie/gancho ⊥ puede cruzar el espesor: es el auto-universal del cabezal)
-  ok(Math.max(Math.abs(z.lo), Math.abs(z.hi)) + 0.8 <= 10 + 1e-9,
-    f + ': cara del fierro dentro del espesor (z = ' + r2(z.lo) + '…' + r2(z.hi) + ')');
+  // 20-AGO · LA PATA PASÓ A 10φ y con φ16 son 16 cm de extensión libre. La 102C —la
+  // única de las cuatro cuyo gancho entra en DIAGONAL— ya no cabe en un muro de 20:
+  // se pasa 2.38 cm. Lo que este assert protege sigue siendo lo mismo (la pieza se
+  // CENTRA en su anchor, no cuelga de él); lo que se acepta es que con la pata nueva
+  // esa figura no entra, y el motor lo DICE en vez de callarlo.
+  const cabe = Math.max(Math.abs(z.lo), Math.abs(z.hi)) + 0.8 <= 10 + 1e-9;
+  ok(cabe || (c._avisos || []).some(a => /FUERA/.test(a)),
+    f + ': cara del fierro dentro del espesor, o fuera PERO avisada (z = ' +
+    r2(z.lo) + '…' + r2(z.hi) + (cabe ? '' : ' · avisada') + ')');
   ok((y.hi - y.lo) > 200, f + ': corre vertical (span y = ' + r2(y.hi - y.lo) + ')');
 });
 // ASSERT CAMBIADO (14-ago) POR UNA RAZÓN FÍSICA, no para que pase. Antes acá se
@@ -261,9 +268,12 @@ console.log('\nE — capas de un longitudinal: el auto se re-resuelve por capa:'
     { modo: 'layered', n_capas: 3, barras_capa: 1, gap: 3 });
   const pls = R.expandirComponente(c, MURO);
   ok(pls.length === 3, '3 capas (=' + pls.length + ')');
-  [13.4, 10.4, 7.4].forEach(function (v, i) {
+  // 20-AGO: cada una es su espesor eje a eje MÁS el R + φ de su codo (medida de
+  // cresta) y redondeada al centímetro hacia ABAJO porque la limita el hormigón:
+  // 13.4 → 14.2 → 14 · 10.4 → 11.2 → 11 · 7.4 → 8.2 → 8.
+  [14, 11, 8].forEach(function (v, i) {
     ok(close(pls[i].dims.A, v, 1e-6) && close(pls[i].dims.C, v, 1e-6),
-      'capa ' + (i + 1) + ': las patas ⊥ miden el espesor útil MENOS lo que la capa ya se comió = ' +
+      'capa ' + (i + 1) + ': las patas ⊥ miden, hasta la cresta y al centímetro, el espesor útil MENOS lo que la capa ya se comió = ' +
       v + ' (=' + r2(pls[i].dims.A) + ')');
   });
   ok(pls.every(p => Math.max(Math.abs(lim(p, 'z').lo), Math.abs(lim(p, 'z').hi)) + 0.8 <= 10 + 1e-9),
@@ -293,15 +303,16 @@ console.log('\nE — capas de un longitudinal: el auto se re-resuelve por capa:'
   ok(peor > 0 && avisos(c).some(a => /Fierro FUERA del hormigón/.test(a)),
     'la 105B no puede encoger su gancho: sale ' + r2(peor) + ' cm y el motor lo DICE (=' +
     JSON.stringify(avisos(c)) + ')');
-  // Y la contraparte: la 105F, que era la que no cabía con la lectura vieja, ahora
-  // cabe y NO avisa. Se deja escrito para que el intercambio quede documentado con
-  // sus dos mitades y no parezca que se perdió cobertura.
+  // Y la contraparte: la 105F cabía con 6φ y con la pata de 10φ (20-ago) ya no —
+  // 2.73 cm por la capa 3. La regla no cambió (un gancho normativo no se encoge para
+  // que la barra quepa); cambió el mínimo. Lo que se exige es lo de siempre: que el
+  // motor lo DIGA, con el número y la capa.
   const cF = comp('105F', 'MH', { cara: 'lateral', lado: 1, rumbo: 'x' }, 16,
     { modo: 'layered', n_capas: 3, barras_capa: 1, gap: 3 });
   const plsF = R.expandirComponente(cF, MURO);
   const peorF = Math.max.apply(null, plsF.map(p => fueraDeHormigon(p, MURO, 1.6).fuera));
-  ok(peorF <= 1e-6 && avisos(cF).length === 0,
-    'y la 105F (ficha 135° = quiebre suave) ahora CABE: 0 cm fuera y sin avisos (=' +
+  ok(peorF > 0 && avisos(cF).some(a => /Fierro FUERA del hormigón/.test(a)),
+    'y la 105F tampoco encoge su gancho de 10φ: sale ' + r2(peorF) + ' cm y el motor lo DICE (=' +
     r2(peorF) + ' / ' + JSON.stringify(avisos(cF)) + ')');
 }
 

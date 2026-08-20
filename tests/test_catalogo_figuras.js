@@ -448,7 +448,13 @@ console.log('\nG — viga-semilla: mismo listado, kg re-derivado:');
 const semilla = G.generarViga(S.semillaViga(), CTX);
 ok(semilla.resumen.items === 4, 'items = 4 (=' + semilla.resumen.items + ')');
 ok(semilla.resumen.barras === 72, 'barras = 72 (=' + semilla.resumen.barras + ')');
-ok(r1(semilla.resumen.kg) === 140.1, 'kg = 140.1 (=' + semilla.resumen.kg + ')');
+// 20-AGO · 140.1 -> 140.2 kg (MEDIDA HASTA LA CRESTA, decision del usuario). Un lado
+// ya no se mide a VERTICE: es una medida recta que suma R + phi por cada doblez que lo
+// cierra (lado = tramo recto + R + phi). El unico numero de la semilla que se mueve es
+// el B del CBS 103B phi16: 590.4 -> 592.0, que es la luz util exacta de la viga
+// (600 - 2*4); esos 1.6 cm x 6 barras phi16 pesan 0.1 kg. Las patas 30/30 son FIJAS:
+// las escribio el usuario y ni la cresta ni el redondeo las tocan.
+ok(r1(semilla.resumen.kg) === 140.2, 'kg = 140.2 (=' + semilla.resumen.kg + ')');
 ok(semilla.barras.every(b => !validarSlots(b)), 'sus 4 ítems pasan validar_geometria contra el catálogo real');
 
 // ---------------------------------------------------------------------------

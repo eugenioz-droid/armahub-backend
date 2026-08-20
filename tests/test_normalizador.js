@@ -387,7 +387,13 @@ console.log('\nN6 — VIGA-SEMILLA: la referencia viva NO se mueve');
 (function () {
   const r = SEM.semillaViga();
   const antes = G.generarViga(clon(r), {});
-  ok(antes.items !== 0 && J(antes.resumen) === J({ items: 4, barras: 72, kg: 140.1 }),
+  // 20-AGO · 140.1 -> 140.2 kg (MEDIDA HASTA LA CRESTA, decision del usuario). Un lado
+  // ya no se mide a VERTICE: es una medida recta que suma R + phi por cada doblez que lo
+  // cierra (lado = tramo recto + R + phi). El unico numero de la semilla que se mueve es
+  // el B del CBS 103B phi16: 590.4 -> 592.0, que es la luz util exacta de la viga
+  // (600 - 2*4); esos 1.6 cm x 6 barras phi16 pesan 0.1 kg. Las patas 30/30 son FIJAS:
+  // las escribio el usuario y ni la cresta ni el redondeo las tocan.
+  ok(antes.items !== 0 && J(antes.resumen) === J({ items: 4, barras: 72, kg: 140.2 }),
     'semilla intacta: ' + J(antes.resumen));
   // …y normalizarla (dos veces) tampoco la mueve.
   R.normalizarReceta(r); R.normalizarReceta(r);

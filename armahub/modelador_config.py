@@ -159,12 +159,12 @@ _RECUB_DEFAULT = {
 # 10φ (obra_config.DEFAULT_FACTOR_EXTREMO). La config nace en 10φ, que es el número de
 # la casa.
 #
-# ⚠ EL MOTOR TODAVÍA NO LEE ESTO. Pasar de 6φ a 10φ mueve largos de corte y kilos
-# (medido: viga-semilla como la arma hoy el editor, +1,2 kg de 136,2 → 137,4; con
-# estribo 106A φ16, +10,7 kg de 234,9 → 245,6), y además rompe la suite headless
-# (tests/test_pose.js fija extGancho(0.8) = 7.5). Se guarda, se muestra y se avisa;
-# aplicarlo al motor es un paso APARTE que el usuario tiene que confirmar. Que quede
-# guardado y sin efecto está DICHO en la pantalla, no escondido.
+# 20-AGO · EL MOTOR YA CORTA A 10φ, PERO SIGUE SIN LEER ESTO. El usuario cerró el
+# cambio y `figura_puntos.PATA_FACTOR_PHI` pasó a 10 (piso de 7,5 cm intacto), así que
+# el número del motor y el de esta config COINCIDEN — pero por estar cableados igual,
+# no porque el motor consulte. La regla POR OBRA (que es de lo que trata esta pantalla)
+# sigue siendo un paso APARTE: `gancho_aplicado_al_motor` se queda en False y eso es lo
+# que la pantalla debe seguir diciendo, sin esconderlo.
 MODOS_LARGOS = ("fabricacion", "nch211", "custom")
 GANCHO_FABRICACION = {"factor": 10.0, "min": 7.5}
 # NCh 211 se OFRECE como modo pero no tiene tabla: nadie escribió sus valores por rango
@@ -173,7 +173,11 @@ GANCHO_FABRICACION = {"factor": 10.0, "min": 7.5}
 GANCHO_NCH211 = None
 # El gancho que el MOTOR usa hoy, para poder contrastarlo en la pantalla sin que el
 # front tenga que volver a escribir la constante (figura_puntos.js extGancho).
-GANCHO_MOTOR_HOY = {"factor": 6.0, "min": 7.5}
+# 20-AGO: el motor pasó de 6φ a 10φ (decisión del usuario), o sea que coincide con
+# GANCHO_FABRICACION. Es un DATO que la pantalla muestra: dejarlo en 6.0 diría que el
+# motor corta patas que ya no corta. `gancho_aplicado_al_motor` sigue en False porque
+# lo que no ha cambiado es que el motor NO LEE la config: el 10φ está cableado.
+GANCHO_MOTOR_HOY = {"factor": 10.0, "min": 7.5}
 
 
 # ---------------------------------------------------------------------------

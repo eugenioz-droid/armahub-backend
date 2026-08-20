@@ -238,8 +238,14 @@ console.log('\nP4c — la viga-semilla: ningún tope tocado, kg re-derivado:');
 // proyección de cada pata (30·cos45 = 21.2132) más el φ/2 de la cresta del codo →
 // B = 592 − 2·22.0132 = 547.974. Es una sola dim: no cambia ni un conteo.
 const semilla = G.generarViga(S.semillaViga(), {});
-ok(semilla.resumen.items === 4 && semilla.resumen.barras === 72 && semilla.resumen.kg === 140.1,
-  'semilla = {items:4, barras:72, kg:140.1} (=' + JSON.stringify(semilla.resumen) + ')');
+// 20-AGO · 140.1 -> 140.2 kg (MEDIDA HASTA LA CRESTA, decision del usuario). Un lado
+// ya no se mide a VERTICE: es una medida recta que suma R + phi por cada doblez que lo
+// cierra (lado = tramo recto + R + phi). El unico numero de la semilla que se mueve es
+// el B del CBS 103B phi16: 590.4 -> 592.0, que es la luz util exacta de la viga
+// (600 - 2*4); esos 1.6 cm x 6 barras phi16 pesan 0.1 kg. Las patas 30/30 son FIJAS:
+// las escribio el usuario y ni la cresta ni el redondeo las tocan.
+ok(semilla.resumen.items === 4 && semilla.resumen.barras === 72 && semilla.resumen.kg === 140.2,
+  'semilla = {items:4, barras:72, kg:140.2} (=' + JSON.stringify(semilla.resumen) + ')');
 ok(eq(R.posicionesRango({ from: -12, to: 12, sep: 20 }).map(function (v) { return Math.round(v * 1e6) / 1e6; }),
   [-12, 0, 12]), 'el reparto de siempre (paso real) no se movió');
 

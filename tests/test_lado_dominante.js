@@ -179,7 +179,12 @@ console.log('\nB — el tramo que el preview destaca ES el lado dominante');
     const rng = TE._tramoDominanteEnTrazo(fig, r.rol, r.pl.puntos, r.pl.diam, dom);
     if (!rng) { ok(false, fig + ' ' + tip + ': no se derivó el tramo dominante'); return; }
     const medido = largoTramo(r.pl.puntos, rng.i0, rng.i1);
-    const esperado = Number(r.pl.dims[dom]);
+    // 20-AGO · MEDIDA HASTA LA CRESTA. La dim ya no es la cadena de vértices: suma
+    // R + φ por cada doblez que cierra el lado, así que el TRAZO mide la dim menos
+    // ese sobre (y menos el retranqueo del codo arqueado, que es lo que siguen
+    // cubriendo las tolerancias de arriba, intactas).
+    const sc = FP.sobresCresta(fig, r.rol, r.pl.diam, null);
+    const esperado = Number(r.pl.dims[dom]) - (Number(sc[dom]) || 0);
     ok(Math.abs(medido - esperado) <= tol,
       fig + ' ' + tip + ': destaca el lado ' + dom + ' (' + medido.toFixed(1) +
       ' cm vs dim ' + esperado.toFixed(1) + ', tol ' + tol + ')');

@@ -2850,7 +2850,7 @@
     _avisar(base, 'Fierro FUERA del hormigón: ' + (Math.round(peor * 100) / 100) +
       ' cm por el eje ' + ejePeor + (capaPeor > 1 ? ' (capa ' + capaPeor + ')' : '') +
       '. Se dibuja igual —el dato tiene que verse—, pero esa barra no es construible: ' +
-      'revisa la figura, el diámetro (el gancho normativo es 6φ) o el Sep de las capas.');
+      'revisa la figura, el diámetro (el gancho normativo es 10φ) o el Sep de las capas.');
   }
 
   // ¿El bbox `a` está CONTENIDO en `b`? (tolerancia de coma flotante; con gap 0 las
@@ -3649,7 +3649,7 @@
     var mk = marcoUtilNivel(null, host, (nivel !== undefined) ? nivel : null);
     // Lado LONGITUDINAL del cabezal (B en 10x con patas, A en 101/102): es el
     // ÚNICO que se estira al largo útil. Las PATAS en 'auto' toman la extensión
-    // de gancho NORMATIVA (6φ, mín 7.5 — la misma regla del motor), NO el largo
+    // de gancho NORMATIVA (10φ, mín 7.5 más su doblez — la misma regla del motor), NO el largo
     // útil: antes una 105A/106A con todo en auto salía 592+592+… = 29.6 m y
     // 46.7 kg FANTASMA que validar_geometria aceptaba (hallazgo D2 del
     // verificador de la Tanda 2).
@@ -3670,8 +3670,32 @@
     var angOvr = _angOvr(comp);
     var ladoLong = _ladoLongitudinal(comp.figura, g, domOvr);
     var fpD = _fp();
-    var ganchoAuto = (fpD && fpD.extGancho) ? fpD.extGancho(Number(comp.diam) / 10)
-      : Math.max(6 * Number(comp.diam) / 10, 7.5);
+    // -------------------------------------------------------------------------
+    // DOS MARCOS DE MEDIDA, UNA SOLA VERDAD (20-ago)
+    // -------------------------------------------------------------------------
+    // Esta función resuelve los 'auto' contra el HORMIGÓN, y para eso trabaja en el
+    // marco del TRAZO: la cadena de VÉRTICES, que es lo que miden marcoUtilNivel,
+    // los solvers de sección/profundidad y sobresCadena. Pero la dim que se LISTA y
+    // se CORTA es la de CRESTA (figura_puntos.sobresCresta: lado = tramo recto +
+    // R + φ por doblez, definición del usuario). Así que todo el cuerpo de abajo
+    // sigue en vértices —sin tocar una sola cuenta— y la conversión ocurre AL
+    // FINAL, junto con el redondeo, ANTES de que las dims salgan a dibujar.
+    // `dC(k)` = cuánto hay que sumarle al vértice para tener la cresta.
+    var phiCm = Number(comp.diam) / 10;
+    var sobCresta = (fpD && fpD.sobresCresta)
+      ? fpD.sobresCresta(comp.figura, comp._rol, phiCm, angOvr) : {};
+    function dC(k) { var v = Number(sobCresta[k]); return isFinite(v) ? v : 0; }
+    // Lo que el usuario ESCRIBIÓ es una medida de cresta: a los solvers entra en
+    // vértices, y al final vuelve a salir con el número exacto que escribió.
+    function fijaVert(k, valor) { return Number(valor) - dC(k); }
+    // La pata en 'auto' vale la extensión libre de norma MÁS su doblez (10φ + R + φ,
+    // `A = L + R + φ`); en vértices es eso menos su propio sobre, que para un gancho
+    // de más de 90° devuelve exactamente la extensión libre (trazo intacto) y para
+    // uno de 90° la deja por fin completa (antes el fillet se comía el setback).
+    var ganchoCresta = (fpD && fpD.ganchoAutoCresta) ? fpD.ganchoAutoCresta(phiCm)
+      : Math.max(10 * phiCm, 7.5) + 3 * phiCm;
+    function ganchoAutoDe(k) { return ganchoCresta - dC(k); }
+
     // EL 'AUTO' DE UNA PIEZA DE SECCIÓN LO DECIDE EL TRAZO, NO LA LETRA.
     // A/C = ancho, B/D = alto es la lectura del RECTÁNGULO de 4 lados y vale para
     // las figuras que dibuja `_estriboPerimetral`. Para las que se trazan como
@@ -3691,8 +3715,8 @@
       var baseSec = {};
       Object.keys(g).forEach(function (k) {
         var d = g[k];
-        if (d && d.modo === 'fija') baseSec[k] = Number(d.valor);
-        else if (ejesSec[k] === 'd') baseSec[k] = ganchoAuto;   // diagonal = pata
+        if (d && d.modo === 'fija') baseSec[k] = fijaVert(k, d.valor);
+        else if (ejesSec[k] === 'd') baseSec[k] = ganchoAutoDe(k);   // diagonal = pata
       });
       // …CONTRA EL MARCO DE NÚCLEO, NO CONTRA LA LUZ LIBRE (defecto F2).
       // El recubrimiento se mide a la CARA del fierro: por eso el eje de una pieza
@@ -3733,9 +3757,9 @@
         var baseLong = {};
         Object.keys(g).forEach(function (k2) {
           var d2 = g[k2];
-          if (d2 && d2.modo === 'fija') baseLong[k2] = Number(d2.valor);
+          if (d2 && d2.modo === 'fija') baseLong[k2] = fijaVert(k2, d2.valor);
           else if (k2 === ladoLong) baseLong[k2] = 1000;         // placeholder: sólo mueve u
-          else if (ejesLong[k2] !== 'v') baseLong[k2] = ganchoAuto;
+          else if (ejesLong[k2] !== 'v') baseLong[k2] = ganchoAutoDe(k2);
         });
         // Profundidad útil de la POSE: de la cara de anclaje a la opuesta, entre
         // pilas (marcoUtilNivel), eje a eje (−φ). caraLocal lateral = local z
@@ -3759,14 +3783,32 @@
       fpD.esEstriboConGanchos(comp.figura) && fpD.dimsEstriboGanchos)
       ? fpD.dimsEstriboGanchos(comp.figura, mk.anchoUtil, mk.altoUtil, Number(comp.diam) / 10 || 0)
       : null;
+    // HACIA DÓNDE REDONDEA CADA 'AUTO' (20-ago, decisión del usuario). El redondeo
+    // al centímetro no puede ir siempre en la misma dirección: hay dos clases de
+    // lado derivado y quieren cosas opuestas.
+    //   'arriba' → MÍNIMO NORMATIVO (las patas de gancho): redondear hacia abajo
+    //              las dejaría bajo la norma.
+    //   'abajo'  → LIMITADO POR EL HORMIGÓN (lo que sale de la luz útil / del marco
+    //              de núcleo): redondear hacia arriba metería la barra en el
+    //              recubrimiento.
+    // Se anota AQUÍ, donde se sabe de dónde salió el número; el redondeo se aplica
+    // al final, sobre la medida de cresta.
+    var dirRed = {};
+    // Las patas DECLARADAS de un marco cerrado (106x A y F) son mínimo normativo
+    // igual que cualquier otra pata; el resto de sus lados los fija el marco.
+    var gTerm = (fpD && fpD.ganchosTerminales) ? fpD.ganchosTerminales(comp.figura, comp._rol) : null;
     function autoDeLado(k) {
-      if (dimsRomboVals && dimsRomboVals[k] != null) return dimsRomboVals[k];
+      if (dimsRomboVals && dimsRomboVals[k] != null) {
+        dirRed[k] = (gTerm && (gTerm.ini === k || gTerm.fin === k)) ? 'arriba' : 'abajo';
+        return dimsRomboVals[k];
+      }
       if (ejesSec) {
         var e = ejesSec[k];
-        if (e === 'u') return autoSec.u;
-        if (e === 'v') return autoSec.v;
-        if (e === 'd') return ganchoAuto;
+        if (e === 'u') { dirRed[k] = 'abajo'; return autoSec.u; }
+        if (e === 'v') { dirRed[k] = 'abajo'; return autoSec.v; }
+        if (e === 'd') { dirRed[k] = 'arriba'; return ganchoAutoDe(k); }
       }
+      dirRed[k] = 'abajo';
       if (comp._rol === 'estribo') return (k === 'A' || k === 'C') ? mk.anchoUtil : mk.altoUtil;
       return mk.altoUtil;   // (sin rol traba en el motor, acá solo llega el estribo)
     }
@@ -3776,12 +3818,14 @@
     // reserva del extremo final salía con un largo placebo.
     Object.keys(g).forEach(function (k) {
       var d = g[k];
-      if (d && d.modo === 'fija') { dims[k] = Number(d.valor); return; }
+      if (d && d.modo === 'fija') { dims[k] = fijaVert(k, d.valor); return; }
       if (k === ladoLong) return;   // 2ª pasada
       // AUTO: deriva según la DIRECCIÓN del lado en la pose (regla universal);
       // sin clasificación (figura sin tramos), cae al gancho de siempre.
       if (comp._rol === 'cabezal') {
-        dims[k] = (ejesLong && ejesLong[k] === 'v' && autoProf != null) ? autoProf : ganchoAuto;
+        var esProf = (ejesLong && ejesLong[k] === 'v' && autoProf != null);
+        dirRed[k] = esProf ? 'abajo' : 'arriba';   // profundidad = hormigón · resto = pata
+        dims[k] = esProf ? autoProf : ganchoAutoDe(k);
       } else {
         dims[k] = autoDeLado(k);
       }
@@ -3798,10 +3842,45 @@
         var sob = (fpS && fpS.sobresCadena)
           ? fpS.sobresCadena(comp.figura, dims, ladoLong, Number(comp.diam) / 10 || 0, angOvr)
           : { ini: 0, fin: 0 };
+        dirRed[ladoLong] = 'abajo';   // el largo lo fija la luz útil del hormigón
         dims[ladoLong] = mk.largoUtil - (sob.ini || 0) - (sob.fin || 0);
       } else {
         dims[ladoLong] = autoDeLado(ladoLong);
       }
+    }
+    // -------------------------------------------------------------------------
+    // DE VÉRTICE A CRESTA, Y REDONDEO AL CENTÍMETRO — ANTES DE LA GEOMETRÍA
+    // -------------------------------------------------------------------------
+    // Hasta acá `dims` está en el marco del TRAZO (vértices). Lo que se lista y se
+    // corta es la medida de CRESTA (lado = tramo recto + R + φ por doblez), así que
+    // se convierte, y ENSEGUIDA se redondea al centímetro: el usuario lo pidió
+    // explícito —«el redondeo ocurre ANTES de construir la geometría, no al
+    // mostrar»—, porque figuraAPuntos va a trazar a partir de ESTE número y así la
+    // barra dibujada representa la cota, sin descuadre entre el trazo y el rótulo.
+    //
+    // LO QUE EL USUARIO EXPRESÓ NO SE TOCA JAMÁS. Sólo se redondea el lado 'auto',
+    // que lo resolvió el motor; una dim FIJA vuelve a salir con el número exacto
+    // que se escribió (por eso se re-lee de `g`, en vez de deshacer la resta y
+    // arrastrar el ruido del flotante). El Δ y el empalme se suman DESPUÉS, enteros
+    // o no: son del usuario y tampoco se redondean.
+    //
+    // El lado del que no se sabe la procedencia (sin entrada en dirRed) NO se
+    // redondea: preferimos un decimal a inventarle una dirección.
+    //
+    // Y ANTES DE CONVERTIR SE GUARDA LA CADENA DE VÉRTICES: es con ella —no con la de
+    // cresta— con la que se decide TOPOLOGÍA más abajo (si la figura CIERRA). Sumarle
+    // el sobre a cada lado puede hacer que un contorno cerrado deje de cerrar por unos
+    // milímetros, y eso cambiaría qué lado es el longitudinal y quién recibe el empalme.
+    var dimsVert = {}; Object.keys(dims).forEach(function (kv) { dimsVert[kv] = dims[kv]; });
+    var _lados = Object.keys(dims), _i, _k, _dd, _v;
+    for (_i = 0; _i < _lados.length; _i++) {
+      _k = _lados[_i]; _dd = g[_k];
+      if (_dd && _dd.modo === 'fija') { dims[_k] = Number(_dd.valor); continue; }
+      _v = Number(dims[_k]) + dC(_k);
+      if (!isFinite(_v)) { dims[_k] = _v; continue; }
+      if (dirRed[_k] === 'arriba') _v = Math.ceil(_v - 1e-9);
+      else if (dirRed[_k] === 'abajo') _v = Math.floor(_v + 1e-9);
+      dims[_k] = _v;
     }
     // AVISO UNIVERSAL DEL LADO ≤ 0 (15-ago). El único aviso de "no construible"
     // vivía DENTRO del bucle del Δ: una fija negativa, o un AUTO que resuelve
@@ -3863,8 +3942,9 @@
     // (_baseDeComponente), en vez de sumar en silencio.
     // Se re-consulta con las dims YA RESUELTAS (no con las declaradas): para una
     // cadena, `_ladoLongitudinal` decide con ellas si la figura CIERRA, y una
-    // cerrada devuelve null = no hay lado que empalmar.
-    var lado = _ladoLongitudinal((comp.figura || '').toUpperCase(), dims, domOvr);
+    // cerrada devuelve null = no hay lado que empalmar. Con las de VÉRTICE: son
+    // las que trazan el contorno.
+    var lado = _ladoLongitudinal((comp.figura || '').toUpperCase(), dimsVert, domOvr);
     if (comp._rol === 'cabezal') {
       var empTot = _empalmeTotalCm(comp, Number(comp.diam) / 10);
       if (empTot > 0 && dims[lado] != null) dims[lado] = Number(dims[lado]) + empTot;
@@ -4016,12 +4096,19 @@
   // agujero que `marcoDelta` tapó para los lados del rectángulo, en la otra mitad
   // de la figura.
   //
-  // SÓLO VIAJA LO QUE EL USUARIO EXPRESÓ. Con la pata en 'auto' y sin Δ no se
-  // escribe el canal y `_estriboPerimetral` sigue con su pata normativa acotada al
-  // marco, byte por byte: es lo que garantiza que ninguna receta de hoy se mueva
-  // (la dim derivada vale `round(extGancho·10)/10` y la del trazo `extGancho`, dos
-  // números que difieren en el último bit del flotante — mandarla siempre habría
-  // movido el trazo ~1e-15 en todas las 106x del catálogo).
+  // AHORA VIAJA SIEMPRE, EXPRESADA O NO (20-ago). Antes sólo se mandaba la pata que
+  // el usuario había escrito: con la pata en 'auto' la dim derivada y la del trazo
+  // eran el mismo `extGancho` salvo el último bit del flotante, así que callarla no
+  // cambiaba nada. Con el REDONDEO al centímetro dejó de ser cierto — MEDIDO en la
+  // 106A φ8: la dim 'auto' de cresta vale 10.4 y se lista 11, mientras el trazo
+  // seguía con su 8.0, y un Δ +5 movía el corte 5.0 y el dibujo 5.6. Mandándola
+  // siempre, el trazo sale del MISMO número redondeado que se corta, que es la
+  // razón de ser del redondeo antes de la geometría.
+  //
+  // `acotarIni`/`acotarFin` conservan la única diferencia que sí importa: una pata
+  // DERIVADA (la eligió el motor) se sigue acotando al sitio real del marco —el
+  // clamp que impide que un anillo anidado ensanche—, y una que ESCRIBIÓ el usuario
+  // no se recorta ni a la norma ni al marco: si no cabe, asoma y se ve.
   function _ganchoDimSeccion(comp, dims) {
     if (!comp || comp._rol !== 'estribo') return null;
     var fp = _fp();
@@ -4029,8 +4116,12 @@
     var g = fp.ganchosTerminales(comp.figura, comp._rol);
     if (!g) return null;
     var expr = _ladosExpresados(comp), out = null;
-    if (expr[g.ini] && dims[g.ini] != null) { out = out || {}; out.ini = Number(dims[g.ini]); }
-    if (expr[g.fin] && dims[g.fin] != null) { out = out || {}; out.fin = Number(dims[g.fin]); }
+    if (dims[g.ini] != null) {
+      out = out || {}; out.ini = Number(dims[g.ini]); out.acotarIni = !expr[g.ini];
+    }
+    if (dims[g.fin] != null) {
+      out = out || {}; out.fin = Number(dims[g.fin]); out.acotarFin = !expr[g.fin];
+    }
     return out;
   }
 

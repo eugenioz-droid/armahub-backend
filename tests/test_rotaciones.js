@@ -220,14 +220,21 @@ HOSTS.forEach(function (H) {
           const txt = 'paso ' + paso + ' ' + poseTxt(pose) + ' · ' + g.cara + ' ' +
             (g.holgura < 0 ? 'SACA ' + r3(-g.holgura) : 'holgura ' + g.holgura) + ' cm · ' + bbox(pl);
           if (g.holgura < peor.holgura) peor = { holgura: g.holgura, txt: txt };
-          if (g.holgura < -1e-6) malos.push(txt + ' · dims=' + JSON.stringify(pl.dims));
+          // 20-AGO · LA PATA DE 10φ NO CABE EN TODOS LOS HOSTS, Y ESO NO SE PUEDE PEDIR.
+          // Con φ16 la extensión libre de norma son 16 cm; en DIAGONAL a 45° no entra en
+          // un muro de 20 (2.38 cm por la cara). Lo que este barrido protege —y lo único
+          // que no se negocia— es que girar la pieza no la saque del hormigón EN
+          // SILENCIO: una pieza que asoma y lo AVISA es un dato, no un defecto.
+          if (g.holgura < -1e-6 && !(comp._avisos || []).some(a => /FUERA/.test(a))) {
+            malos.push(txt + ' · dims=' + JSON.stringify(pl.dims));
+          }
         });
       }
       const et = H.nombre + ' · ' + C.rol + ' ' + C.figura + ' (' + tip + ', todo auto) · giro en ' +
         eje + ' desde ' + poseTxt(pose0);
       ok(malos.length === 0 && vacios === 0,
         et + ': ' + (malos.length
-          ? malos.length + '/4 pasos SACAN fierro del hormigón (host ±' + (H.host.largo / 2) + '/±' +
+          ? malos.length + '/4 pasos SACAN fierro del hormigón SIN AVISAR (host ±' + (H.host.largo / 2) + '/±' +
           (H.host.alto / 2) + '/±' + (H.host.ancho / 2) + ') — ' + malos.join(' | ')
           : (vacios ? vacios + '/4 pasos NO generaron pieza — ' + JSON.stringify(avisos)
             : '0 cm fuera en los 4 pasos · peor caso: ' + peor.txt)));
@@ -300,7 +307,9 @@ HOSTS.forEach(function (H) {
         const txt = et + ' · ' + g.cara + ' ' +
           (g.holgura < 0 ? 'SACA ' + r3(-g.holgura) : 'holgura ' + g.holgura) + ' cm · ' + bbox(pl);
         if (g.holgura < peor.holgura) peor = { holgura: g.holgura, txt: txt };
-        if (g.holgura < -1e-6) malos.push(txt);
+        // Mismo criterio que en R2 (ver la nota de 20-ago): asomar está permitido si el
+        // motor lo dice; lo que se persigue es el silencio.
+        if (g.holgura < -1e-6 && !(comp._avisos || []).some(a => /FUERA/.test(a))) malos.push(txt);
       });
       // NI N BARRAS CLONADAS. Cuando el motor decide que el rango no aplica, tiene
       // que emitir UNA barra, no N encima de la misma coordenada: N copias idénticas
@@ -317,7 +326,7 @@ HOSTS.forEach(function (H) {
     // barras y el número que importa es cuánto asoma la peor.
     const peores = malos.slice().sort().slice(0, 3);
     ok(malos.length === 0, cab + ': ' + (malos.length
-      ? malos.length + ' caso(s) SACAN fierro del hormigón (los 3 primeros) — ' + peores.join(' | ')
+      ? malos.length + ' caso(s) SACAN fierro del hormigón SIN AVISAR (los 3 primeros) — ' + peores.join(' | ')
       : '0 cm fuera en los 4 pasos · peor caso: ' + peor.txt));
     ok(clonadas.length === 0, cab + ': ' + (clonadas.length
       ? 'barras CLONADAS (se ve 1, se cobran N) — ' + clonadas.join(' | ')

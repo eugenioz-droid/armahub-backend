@@ -176,8 +176,14 @@ var G = require(path.join(base, 'generar.js'));
 var S = require(path.join(base, 'semilla_viga.js'));
 var out = G.generarViga(S.semillaViga(), { sector: 'V', ciclo: 'C1', piso: 'P1', eje: 'E1' });
 ok(out.resumen.items === 4 && out.resumen.barras === 72 &&
-  Math.abs(out.resumen.kg - 140.1) < 0.05,
-  'semilla {4, 72, 140.1}: ' + JSON.stringify(out.resumen));
+  // 20-AGO · 140.1 -> 140.2 kg (MEDIDA HASTA LA CRESTA, decision del usuario). Un lado
+  // ya no se mide a VERTICE: es una medida recta que suma R + phi por cada doblez que lo
+  // cierra (lado = tramo recto + R + phi). El unico numero de la semilla que se mueve es
+  // el B del CBS 103B phi16: 590.4 -> 592.0, que es la luz util exacta de la viga
+  // (600 - 2*4); esos 1.6 cm x 6 barras phi16 pesan 0.1 kg. Las patas 30/30 son FIJAS:
+  // las escribio el usuario y ni la cresta ni el redondeo las tocan.
+  Math.abs(out.resumen.kg - 140.2) < 0.05,
+  'semilla {4, 72, 140.2}: ' + JSON.stringify(out.resumen));
 
 if (fallas) { console.log('\n' + fallas + ' FALLA(S)'); process.exit(1); }
 console.log('\nTODO OK');

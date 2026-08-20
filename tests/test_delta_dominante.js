@@ -100,8 +100,14 @@ function semilla(mut) {
 console.log('A — sin Δ y sin elección, el motor da EXACTAMENTE lo de siempre');
 {
   const { res } = semilla();
-  ok(res.resumen.items === 4 && res.resumen.barras === 72 && res.resumen.kg === 140.1,
-    'viga-semilla en {items:4, barras:72, kg:140.1} — la referencia viva');
+  // 20-AGO · 140.1 -> 140.2 kg (MEDIDA HASTA LA CRESTA, decision del usuario). Un lado
+  // ya no se mide a VERTICE: es una medida recta que suma R + phi por cada doblez que lo
+  // cierra (lado = tramo recto + R + phi). El unico numero de la semilla que se mueve es
+  // el B del CBS 103B phi16: 590.4 -> 592.0, que es la luz util exacta de la viga
+  // (600 - 2*4); esos 1.6 cm x 6 barras phi16 pesan 0.1 kg. Las patas 30/30 son FIJAS:
+  // las escribio el usuario y ni la cresta ni el redondeo las tocan.
+  ok(res.resumen.items === 4 && res.resumen.barras === 72 && res.resumen.kg === 140.2,
+    'viga-semilla en {items:4, barras:72, kg:140.2} — la referencia viva');
   // Las dims completas (con su cola de flotante): si el Δ tocara algo cuando NO
   // está declarado, acá se vería aunque los kg redondeados no se movieran.
   // (14-ago, Modelo A) la TRV es un longitudinal de_pie: mismo 50.4, pero la
@@ -113,10 +119,15 @@ console.log('A — sin Δ y sin elección, el motor da EXACTAMENTE lo de siempre
   // le roban largo al tramo B y su 'auto' sube. Las otras tres barras quedan
   // idénticas dígito a dígito, incluida la cola de flotante — que es justo lo que este
   // assert vigila.
+  // 20-AGO · MEDIDA HASTA LA CRESTA + REDONDEO AL CENTÍMETRO. Dos números se mueven y
+  // los dos son el cambio, no un efecto lateral: el B del CBS sube de 590.4 a 592 (su
+  // medida ahora incluye el R + φ de cada codo, y eso da la luz útil exacta de la viga)
+  // y la TRV baja de 50.4 a 50 (lado 'auto' limitado por el hormigón → redondeo hacia
+  // ABAJO). Las patas fijas 30/30 y el estribo 24/52/24/52 quedan idénticos.
   ok(firma === [
-    '103B|6|30|590.4000000000001|30|', '101A|4|592|||',
-    '104D|47|24|52|24|52', '101A|15|50.4|||'
-  ].join(' ; '), 'las 4 barras salen con las MISMAS dims que antes de la tanda Δ');
+    '103B|6|30|592|30|', '101A|4|592|||',
+    '104D|47|24|52|24|52', '101A|15|50|||'
+  ].join(' ; '), 'las 4 barras salen con las dims de la medida nueva, sin cola de flotante (=' + firma + ')');
 
   // Δ = 0 y Δ = null son "sin Δ": no basta con que el número no cambie, la dim
   // CANÓNICA no debe siquiera estrenar el campo (si lo estrenara, cualquier
@@ -146,7 +157,8 @@ console.log('\nB — el Δ viaja al despiece dentro de la dim (largo de corte y 
   // 18-AGO: la base pasó de 136.1 a 140.1 (convención de vértice, ver bloque A), así que
   // el total con Δ pasa de 137.2 a 141.2. Lo que este assert mide —el INCREMENTO de
   // 1.1355 kg— no se mueve.
-  casi(conD.res.resumen.kg, 141.2, 0.05, 'los kg suben lo que pesan 6 barras φ16 × 12 cm');
+  // 20-AGO: la base pasó de 140.1 a 140.2, así que el total con Δ pasa de 141.2 a 141.3.
+  casi(conD.res.resumen.kg, 141.3, 0.05, 'los kg suben lo que pesan 6 barras φ16 × 12 cm');
   ok(b1.dim_a === b0.dim_a && b1.dim_c === b0.dim_c,
     'las patas A y C no se mueven: el Δ es de UN lado, no un escalado');
   // Un Δ en una PATA también viaja (no es un privilegio del dominante).
@@ -276,8 +288,12 @@ console.log('\nF — comp.lado_dominante manda, y dibujo y medida usan EL MISMO'
     ok(segs.length === TRAMOS_105A.length,
       '105A: un segmento por tramo (' + segs.length + ') — el mapeo lado↔segmento es directo');
     const i = TRAMOS_105A.indexOf(elec);
-    casi(segs[i], pl.dims[elec], 0.01,
-      '105A/' + elec + ': el segmento DIBUJADO del lado ' + elec + ' mide su dim RESUELTA');
+    // 20-AGO: la dim RESUELTA es de CRESTA (suma R + φ por doblez); el trazo va por
+    // vértices, así que mide esa dim menos el sobre del lado.
+    const sc105 = FP.sobresCresta('105A', 'cabezal', pl.diam, null);
+    casi(segs[i], pl.dims[elec] - (Number(sc105[elec]) || 0), 0.01,
+      '105A/' + elec + ': el segmento DIBUJADO del lado ' + elec +
+      ' mide su dim RESUELTA menos el sobre de cresta');
     // …y es el largo de la pieza, no una pata: el dominante es el que se estira
     // contra el hormigón (largo útil 600 − 2·4 = 592, menos los sobres).
     ok(pl.dims[elec] > 500,

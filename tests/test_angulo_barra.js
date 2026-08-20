@@ -87,6 +87,23 @@ function largoPoli(p) {
 function sumaDims(d) { let s = 0; for (const k in d) s += Number(d[k]); return s; }
 
 // ---------------------------------------------------------------------------
+// SOBRE DE CRESTA (20-ago) — LA DIM YA NO ES LA CADENA DE VERTICES
+// ---------------------------------------------------------------------------
+// Cada lado se mide RECTO hasta la cresta del codo: lado = tramo recto + R + phi por
+// cada doblez que lo cierra. El motor traza por vertices, asi que el trazo mide la
+// dim MENOS ese sobre. Los numeros de este archivo se escriben como
+// «dim − sobre», no a mano: si manana cambia el radio de norma, siguen valiendo.
+function sobre(fig, lado, phi, ang) {
+  const sc = FP.sobresCresta(fig, 'cabezal', phi == null ? 1.6 : phi, ang || null);
+  return Number(sc[lado]) || 0;
+}
+function sobreTotal(fig, phi, ang) {
+  const sc = FP.sobresCresta(fig, 'cabezal', phi == null ? 1.6 : phi, ang || null);
+  let s = 0; for (const k in sc) s += Number(sc[k]) || 0;
+  return s;
+}
+
+// ---------------------------------------------------------------------------
 // MEDIR VÉRTICES SOBRE UN TRAZO QUE PUEDE LLEVAR CODOS ARQUEADOS (18-ago)
 // ---------------------------------------------------------------------------
 // Un doblez de más de 90° de RECORRIDO lo dibuja `_conGanchosRadio` con el arco
@@ -132,8 +149,14 @@ console.log('A — sin override efectivo el motor da EXACTAMENTE lo de siempre')
   // REPLEGADAS sobre el cuerpo. Replegadas ya no le roban largo al tramo B, así que
   // su 'auto' sube de 547.974 a 590.4 cm y esos 42.4 cm × 6 barras φ16 pesan 4.0 kg.
   // Las otras tres barras (2 × 101A y el estribo 104D) no se mueven ni un gramo.
-  ok(res.resumen.items === 4 && res.resumen.barras === 72 && res.resumen.kg === 140.1,
-    'viga-semilla en {items:4, barras:72, kg:140.1} — la referencia viva');
+  // 20-AGO · 140.1 -> 140.2 kg (MEDIDA HASTA LA CRESTA, decision del usuario). Un lado
+  // ya no se mide a VERTICE: es una medida recta que suma R + phi por cada doblez que lo
+  // cierra (lado = tramo recto + R + phi). El unico numero de la semilla que se mueve es
+  // el B del CBS 103B phi16: 590.4 -> 592.0, que es la luz util exacta de la viga
+  // (600 - 2*4); esos 1.6 cm x 6 barras phi16 pesan 0.1 kg. Las patas 30/30 son FIJAS:
+  // las escribio el usuario y ni la cresta ni el redondeo las tocan.
+  ok(res.resumen.items === 4 && res.resumen.barras === 72 && res.resumen.kg === 140.2,
+    'viga-semilla en {items:4, barras:72, kg:140.2} — la referencia viva');
   const firma = res.barras.map(b => [b.figura, b.cant, b.ang1, b.ang2].join('|')).join(' ; ');
   ok(firma === ['103B|6|45|45', '101A|4||', '104D|47|135|135', '101A|15||'].join(' ; '),
     'los ang1..ang4 del despiece salen con los mismos valores que antes de la tanda');
@@ -183,8 +206,11 @@ console.log('\nB — con dims FIJAS, mover el ángulo mueve la punta y NADA más
   const DIMS = { A: 20, B: 500, C: 20 };
   const base = expandir(comp('103C', null, DIMS))[0];
   casi(sumaDims(base.dims), 540, 1e-9, 'el LARGO DE CORTE es A+B+C = 540 cm');
-  casi(largoPoli(base.puntos), 545.413577, 1e-5,
-    '…y con el gancho replegado de ficha el DIBUJO mide 545.413577 (540 con el codo arqueado)');
+  // 20-AGO: el DIBUJO baja los 7.2 cm del sobre de cresta (4.8 de la pata A + 1.6 del
+  // cuerpo + 0.8 de la pata C): el largo de corte no sale del trazo doblado.
+  casi(largoPoli(base.puntos), 545.413577 - sobreTotal('103C'), 1e-5,
+    '…y con el gancho replegado de ficha el DIBUJO mide 545.413577 menos el sobre de cresta (=' +
+    largoPoli(base.puntos).toFixed(6) + ')');
   const R_CODO = 4;   // 2·φ + φ/2 con φ16 — el radio de eje de `_conGanchosRadio`
 
   let puntas = [];
@@ -194,10 +220,15 @@ console.log('\nB — con dims FIJAS, mover el ángulo mueve la punta y NADA más
     // el radio del codo. Es más fuerte que el viejo «la polilínea mide 540»: fija
     // lado por lado en vez de fijar sólo la suma. Con α = 90 no hay codo (recorrido
     // 90 = el fillet del motor) y B sale entero — por eso la excepción explícita.
-    const esp = (a === 90) ? [20, 500, 20] : [20, 500 - R_CODO, 20];
+    // 20-AGO: a cada lado se le descuenta SU sobre de cresta (la dim es hasta la
+    // cresta; el trazo va por vertices). El sobre depende del angulo, asi que se
+    // pregunta con el override puesto.
+    const sA = sobre('103C', 'A', 1.6, [a]), sB = sobre('103C', 'B', 1.6, [a]), sC = sobre('103C', 'C', 1.6, [a]);
+    const esp = (a === 90) ? [20 - sA, 500 - sB, 20 - sC] : [20 - sA, 500 - sB - R_CODO, 20 - sC];
     const s = segsRectos(pl.puntos).map(x => x.L);
     ok(s.length === 3 && s.every((v, i) => Math.abs(v - esp[i]) < 1e-6),
-      'α1 = ' + a + '°: los 3 lados DIBUJADOS miden ' + esp.join('/') + ' (=' +
+      'α1 = ' + a + '°: los 3 lados DIBUJADOS miden su dim menos el sobre: ' +
+      esp.map(v => v.toFixed(3)).join('/') + ' (=' +
       s.map(v => v.toFixed(3)).join('/') + ')');
     casi(sumaDims(pl.dims), 540, 1e-9, 'α1 = ' + a + '°: el largo de corte sigue siendo 540 cm');
     ok(JSON.stringify(pl.dims) === JSON.stringify(base.dims),
@@ -227,7 +258,8 @@ console.log('\nB — con dims FIJAS, mover el ángulo mueve la punta y NADA más
     const v = verticesDe(p);
     casi(v[0], a, 1e-6, 'α1 = ' + a + '°: el VÉRTICE REAL entre A y B mide ' + a + '°');
     casi(v[1], 90, 1e-6, '…y el otro doblez sigue siendo el de escuadra');
-    casi(segsRectos(p)[0].L, 20, 1e-9, '…y la pata A sigue midiendo sus 20 cm');
+    casi(segsRectos(p)[0].L, 20 - sobre('103C', 'A', 1.6, [a]), 1e-9,
+      '…y la pata A sigue midiendo sus 20 cm menos el sobre de cresta');
   });
 
   // VÉRTICE > 90° (102B, catálogo 135°): es la otra familia, la del quiebre suave.
@@ -243,8 +275,10 @@ console.log('\nB — con dims FIJAS, mover el ángulo mueve la punta y NADA más
       '102B: bajar el vértice de 135° a 110° no toca las dims (' + JSON.stringify(a1.dims) + ')');
     ok(Math.abs(a1.puntos[0].x - a0.puntos[0].x) > 1,
       '…pero la punta del gancho se mueve (' + a0.puntos[0].x.toFixed(2) + ' → ' + a1.puntos[0].x.toFixed(2) + ')');
-    casi(largoPoli(a0.puntos), 520, 1e-9, '…y sin arco la polilínea mide A+B = 520 cm exactos');
-    casi(largoPoli(a1.puntos), 520, 1e-9, '…los mismos 520 con el vértice en 110° (el largo NO se mueve)');
+    casi(largoPoli(a0.puntos), 520 - sobreTotal('102B'), 1e-9,
+      '…y sin arco la polilínea mide A+B menos el sobre de cresta');
+    casi(largoPoli(a1.puntos), 520 - sobreTotal('102B', 1.6, [110]), 1e-9,
+      '…lo mismo con el vértice en 110° (el largo de CORTE no se mueve; el sobre sigue al ángulo)');
     casi(verticesDe(a0.puntos)[0], 135, 1e-9, '…y el vértice dibujado es el 135° de la ficha');
     casi(verticesDe(a1.puntos)[0], 110, 1e-9, '…y con override, los 110° pedidos');
   }
@@ -261,7 +295,8 @@ console.log('\nB — con dims FIJAS, mover el ángulo mueve la punta y NADA más
     [90, 110, 135, 150, 170].forEach(a => {
       const pl = expandir(comp('103D', [a], DIMS))[0];
       ok(pl.puntos.length === 4, 'α1 = ' + a + '°: 4 puntos, sin codo arqueado (=' + pl.puntos.length + ')');
-      casi(largoPoli(pl.puntos), 540, 1e-9, 'α1 = ' + a + '°: la polilínea mide A+B+C = 540 cm EXACTOS');
+      casi(largoPoli(pl.puntos), 540 - sobreTotal('103D', 1.6, [a]), 1e-9,
+        'α1 = ' + a + '°: la polilínea mide A+B+C menos el sobre de cresta (el corte sigue en 540)');
       casi(verticesDe(pl.puntos)[0], a, 1e-6, 'α1 = ' + a + '°: el vértice dibujado ES el declarado');
       ok(JSON.stringify(pl.dims) === JSON.stringify(base135.dims),
         'α1 = ' + a + '°: las dims no se mueven (' + JSON.stringify(pl.dims) + ')');
@@ -401,10 +436,12 @@ console.log('\nE — con dims AUTO el ángulo cambia dims y trazo, y los dos van
     // pata es A, que cuelga completa). Sin codo (α = 90) no hay retranqueo.
     const retranq = (a === 90) ? {} : { B: R_CODO };
     tramos.forEach((L, i) => {
-      const esp = pl.dims[L] - (retranq[L] || 0);
+      // 20-AGO: la dim RESUELTA es hasta la CRESTA, asi que el trazo mide esa dim
+      // menos el sobre del lado (mas el retranqueo del codo arqueado donde lo hay).
+      const esp = pl.dims[L] - sobre('105B', L, 1.6, [a]) - (retranq[L] || 0);
       casi(s[i], esp, 0.01,
-        '105B/α=' + a + ': el lado ' + L + ' DIBUJADO mide su dim RESUELTA' +
-        (retranq[L] ? ' menos el radio del codo' : '') + ' (' + esp.toFixed(2) + ')');
+        '105B/α=' + a + ': el lado ' + L + ' DIBUJADO mide su dim RESUELTA menos el sobre de cresta' +
+        (retranq[L] ? ' y el radio del codo' : '') + ' (' + esp.toFixed(2) + ')');
     });
     // Y el vértice DIBUJADO es el pedido: medir y dibujar salen del mismo número.
     casi(verticesDe(pl.puntos)[0], a, 1e-6,
@@ -413,8 +450,16 @@ console.log('\nE — con dims AUTO el ángulo cambia dims y trazo, y los dos van
       '105B/α=' + a + ': 0 fierro fuera del hormigón (el auto se resolvió con ESTE ángulo)');
     anteriores.push(JSON.stringify(pl.dims));
   });
-  ok(new Set(anteriores).size === 3,
-    'y las dims resueltas son distintas en los 3 ángulos: el auto respondió a la figura real');
+  // 20-AGO · DOS JUEGOS, NO TRES, Y ES LA CONFIRMACION DEL CAMBIO. Con la medida
+  // hasta la CRESTA el ángulo dejó de mover el largo de corte —«el ángulo de doblado
+  // no mueve kilos», definición del usuario—: el B de la 105B da 592 en los tres
+  // (la luz util exacta), porque el sobre del codo compensa justo lo que la reserva
+  // de sobres le quitaba. Lo que SÍ cambia es la FORMA: con α = 90 el lado A deja de
+  // ser una pata y pasa a cruzar la profundidad, 21 → 51. Entre 45 y 70 la diferencia
+  // que quedaba era de milímetros y el redondeo al centímetro se la come.
+  ok(new Set(anteriores).size === 2,
+    'las dims responden a la FORMA (α = 90 saca A de pata: 21 → 51) y ya no al ángulo por sí mismo (=' +
+    new Set(anteriores).size + ' juegos)');
 }
 
 // ================================ F · DONDE EL TRAZO NO LEE ÁNGULOS, SE DICE

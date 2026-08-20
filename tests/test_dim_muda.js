@@ -110,8 +110,14 @@ function avisosDelTrazo(c) {
 console.log('A — sin dims escritas a mano, el motor da EXACTAMENTE lo de siempre');
 {
   const res = G.generarViga(S.semillaViga(), {});
-  ok(res.resumen.items === 4 && res.resumen.barras === 72 && res.resumen.kg === 140.1,
-    'viga-semilla en {items:4, barras:72, kg:140.1} — la referencia viva');
+  // 20-AGO · 140.1 -> 140.2 kg (MEDIDA HASTA LA CRESTA, decision del usuario). Un lado
+  // ya no se mide a VERTICE: es una medida recta que suma R + phi por cada doblez que lo
+  // cierra (lado = tramo recto + R + phi). El unico numero de la semilla que se mueve es
+  // el B del CBS 103B phi16: 590.4 -> 592.0, que es la luz util exacta de la viga
+  // (600 - 2*4); esos 1.6 cm x 6 barras phi16 pesan 0.1 kg. Las patas 30/30 son FIJAS:
+  // las escribio el usuario y ni la cresta ni el redondeo las tocan.
+  ok(res.resumen.items === 4 && res.resumen.barras === 72 && res.resumen.kg === 140.2,
+    'viga-semilla en {items:4, barras:72, kg:140.2} — la referencia viva');
   // (14-ago, Modelo A) la TRV es un longitudinal de_pie: mismo 50.4, pero la
   // aritmética llega por resta directa del largo útil local — sin cola flotante.
   const firma = res.barras.map(b => [b.figura, b.cant, b.dim_a, b.dim_b, b.dim_c, b.dim_d].join('|')).join(' ; ');
@@ -120,10 +126,14 @@ console.log('A — sin dims escritas a mano, el motor da EXACTAMENTE lo de siemp
   // ángulo ENTRE la pata y el cuerpo: patas REPLEGADAS en vez de abiertas, o sea que
   // dejan de robarle largo al tramo B. Las otras tres barras quedan idénticas dígito a
   // dígito, cola de flotante incluida.
+  // 20-AGO · MEDIDA HASTA LA CRESTA + REDONDEO AL CENTÍMETRO: el B del CBS sube de
+  // 590.4 a 592 (su medida ahora incluye el R + φ de cada codo → la luz útil exacta)
+  // y la TRV baja de 50.4 a 50 (lado 'auto' limitado por el hormigón → hacia ABAJO).
+  // Las patas fijas 30/30 y el estribo 24/52/24/52 quedan idénticos.
   ok(firma === [
-    '103B|6|30|590.4000000000001|30|', '101A|4|592|||',
-    '104D|47|24|52|24|52', '101A|15|50.4|||'
-  ].join(' ; '), 'las 4 barras salen con las MISMAS dims que antes de esta corrección');
+    '103B|6|30|592|30|', '101A|4|592|||',
+    '104D|47|24|52|24|52', '101A|15|50|||'
+  ].join(' ; '), 'las 4 barras salen con las dims de la medida nueva (=' + firma + ')');
   // Y la semilla no estrena NI UN aviso. Sus dims 'auto' las resolvió el motor
   // contra el hormigón, así que medir y dibujar salen del mismo sitio y no hay
   // nada que decir; y sus dos dims FIJAS (las patas A/C del cabezal 103B) están en
@@ -137,16 +147,20 @@ console.log('A — sin dims escritas a mano, el motor da EXACTAMENTE lo de siemp
   ok(ruido.length === 0, 'los 4 componentes de la semilla se expanden sin un solo aviso (=' +
     JSON.stringify(ruido) + ')');
 
-  // EL GANCHO SIN TOCAR SIGUE SIENDO EL NORMATIVO, AL BIT. La dim derivada vale
-  // round(extGancho·10)/10 y la pata del trazo vale extGancho: dos números que
-  // difieren en el último bit del flotante. Si el canal `ganchoDim` viajara
-  // siempre, TODAS las 106x del catálogo se moverían ~1e-15 sin que nadie lo
-  // pidiera. Por eso sólo viaja lo que el usuario escribió, y por eso este
-  // perímetro tiene que ser el de siempre, exacto.
+  // EL GANCHO SIN TOCAR SIGUE SIENDO EL NORMATIVO — Y AHORA EL TRAZO LO SIGUE AL
+  // CENTÍMETRO. Hasta el 20-ago el canal `ganchoDim` sólo viajaba si el usuario había
+  // escrito la pata: derivada valía lo mismo en la dim y en el trazo salvo el último
+  // bit del flotante. Con el REDONDEO eso dejó de ser cierto (la dim de cresta 10.4 se
+  // lista 11 y el trazo seguía en 8.0), así que ahora viaja SIEMPRE y el dibujo sale
+  // del mismo número que se corta: pata dibujada = 11 − (R + φ) = 8.6, o sea 1.1 más
+  // por gancho y 2.2 más de perímetro. Ese es el precio —medido— de que el trazo no
+  // mienta sobre la barra.
   const pl = R.expandirComponente(comp('106A', 'ES'), HOST);
-  casi(perimetro(pl[0].puntos), 169.21365909, 1e-6,
-    '106A ES con todo en auto: perímetro dibujado intacto');
-  casi(pl[0].dims.A, 7.5, 1e-9, 'y su gancho A sigue siendo la pata normativa (6φ mín 7.5)');
+  casi(perimetro(pl[0].puntos), 171.41365879, 1e-6,
+    '106A ES con todo en auto: el perímetro dibujado sigue a la dim redondeada (169.21 → 171.41)');
+  casi(pl[0].dims.A, 11, 1e-9,
+    'y su gancho A sigue siendo la pata normativa: 10φ mín 7.5 hasta la cresta = 10.4, ' +
+    'redondeada ARRIBA por ser un mínimo = 11');
 }
 
 // ============================================ B · Δ EN UN GANCHO → EL TRAZO CRECE
@@ -168,15 +182,17 @@ console.log('\nB — Δ en un gancho declarado: el dibujo crece lo mismo que el 
     return { out: out, barra: out.barras.find(b => b.figura === '106A') };
   }
   const s0 = semilla106(null), s5 = semilla106(5);
-  casi(s0.barra.dim_a, 7.5, 1e-9, 'sin Δ: dim_a = 7.5 (gancho normativo φ8)');
-  casi(s5.barra.dim_a, 12.5, 1e-9, 'con Δ +5: dim_a = 12.5');
-  casi(s0.barra._largoEstimado, 167, 1e-9, 'largo de corte sin Δ = 167 cm');
-  casi(s5.barra._largoEstimado, 172, 1e-9, 'largo de corte con Δ = 172 cm (+5, como debe)');
+  // 20-AGO: el gancho normativo φ8 medido hasta la cresta vale 8.0 + 2.4 = 10.4 y se
+  // lista 11 (mínimo normativo → hacia arriba). El Δ se suma DESPUÉS y entero: 16.
+  casi(s0.barra.dim_a, 11, 1e-9, 'sin Δ: dim_a = 11 (gancho normativo φ8 hasta la cresta)');
+  casi(s5.barra.dim_a, 16, 1e-9, 'con Δ +5: dim_a = 16');
+  casi(s0.barra._largoEstimado, 174, 1e-9, 'largo de corte sin Δ = 174 cm');
+  casi(s5.barra._largoEstimado, 179, 1e-9, 'largo de corte con Δ = 179 cm (+5, como debe)');
   // 18-AGO: la base de la semilla pasó de 136.1 a 140.1 (convención de vértice, ver
   // bloque A), así que estos dos totales suben los mismos 4.0 kg: 138.8 → 142.8 y
   // 139.8 → 143.8. El Δ que mide el bloque (+1.0 kg entre uno y otro) no se mueve.
-  casi(s0.out.resumen.kg, 142.8, 0.05, 'kg sin Δ = 142.8');
-  casi(s5.out.resumen.kg, 143.8, 0.05, 'kg con Δ = 143.8');
+  casi(s0.out.resumen.kg, 144.3, 0.05, 'kg sin Δ = 144.3');
+  casi(s5.out.resumen.kg, 145.2, 0.05, 'kg con Δ = 145.2');
 
   // LO QUE ESTE TEST EXISTE PARA VIGILAR: el trazo. Antes 169.213659 → 169.213659.
   const p0 = perimetro(R.expandirComponente(comp('106A', 'ES'), HOST)[0].puntos);

@@ -716,8 +716,140 @@
     return { inicio: P.indexOf('A') >= 0, fin: P.indexOf('C') >= 0 };
   }
 
-  // Extensión libre del gancho tras el doblez (norma aprox): 6φ, mínimo ~7.5 cm.
-  function extGancho(diamCm) { return Math.max(6 * diamCm, 7.5); }
+  // ===========================================================================
+  // NÚMEROS DE NORMA DEL DOBLADO — FUENTE ÚNICA DEL MÓDULO
+  // ===========================================================================
+  // Estaban escritos a mano en cuatro sitios (_conGanchosRadio, _estriboPerimetral,
+  // _pataGancho y el propio extGancho). Salen de acá para que el día que la pata
+  // pase a ser una regla POR OBRA (cosa del Enfierrador, no de esta pasada) haya
+  // que sustituir la FUENTE y no cazar constantes por el archivo.
+  //
+  // PATA_FACTOR_PHI: 6φ → 10φ (decisión del usuario, 20-ago). El piso absoluto de
+  // 7.5 cm se conserva tal cual: con φ8 la norma da 8.0 y ya lo supera; con φ6
+  // sigue mandando el piso.
+  var PATA_FACTOR_PHI = 10;
+  var PATA_MIN_CM = 7.5;
+
+  // Radio INTERNO de doblado (mandril 2φ) y radio del EJE del trazo (2φ + φ/2).
+  // Es el que ya usaban el estribo y los ganchos con radio; motor_geom aplica
+  // además la excepción de norma 3.5φ para φ > 16 mm en su fillet, divergencia
+  // PREEXISTENTE que esta pasada no toca (moverla cambiaría el trazo de toda
+  // barra φ > 16).
+  function radioDobladoCm(diamCm) { return 2 * (Number(diamCm) || 0); }
+  function radioEjeCm(diamCm) { return radioDobladoCm(diamCm) + (Number(diamCm) || 0) / 2; }
+
+  // Lo que cada doblez SUMA a la medida del lado que cierra: R + φ (ver sobresCresta).
+  function sobreDobladoCm(diamCm) { return radioDobladoCm(diamCm) + (Number(diamCm) || 0); }
+
+  // Extensión LIBRE del gancho tras el doblez (norma): 10φ, mínimo 7.5 cm.
+  function extGancho(diamCm) { return Math.max(PATA_FACTOR_PHI * (Number(diamCm) || 0), PATA_MIN_CM); }
+
+  // Medida de CRESTA de una pata en 'auto': la extensión libre MÁS el doblez que la
+  // cierra (`A = L + R + φ`, textual del usuario). Es el número que se lista y se
+  // corta; el trazo sale de restarle el retranqueo (ver sobresCresta).
+  function ganchoAutoCresta(diamCm) { return extGancho(diamCm) + sobreDobladoCm(diamCm); }
+
+  // ---------------------------------------------------------------------------
+  // MEDIDA HASTA LA CRESTA — CUÁNTO SUMA CADA DOBLEZ AL LADO QUE CIERRA
+  // ---------------------------------------------------------------------------
+  // Definición del usuario (20-ago), que es dueño del negocio: el largo de corte
+  // NO sale del trazo doblado. Cada lado es una MEDIDA RECTA, del borde del tramo
+  // recto a la CRESTA de la curva y paralela a ese tramo:
+  //     lado = tramo recto + (R + φ) por cada doblez que lo cierra
+  // y el largo de corte es la suma pelada de los lados (A+B+C…), que es lo que ya
+  // hace el backend (catalogo.largo_desde_lados). Consecuencia buscada: el ÁNGULO
+  // de doblado no mueve kilos en un lado con medida escrita — lo que los mueve es
+  // el largo de cada lado.
+  //
+  // El motor traza por VÉRTICES (una dim = la distancia vértice a vértice), así que
+  // las dos medidas del mismo lado difieren en lo que el doblez RETRANQUEA del
+  // vértice (el setback t):
+  //     cresta = vértice + Σ_dobleces ( (R + φ) − t )
+  // Esta función devuelve ese Σ por lado. Con él, `reglas._dimsEfectivas` resuelve
+  // los 'auto' contra el hormigón como siempre (vértice) y publica la dim de
+  // CRESTA, y `figuraAPuntos` hace el viaje de vuelta antes de trazar: medir y
+  // dibujar siguen saliendo del mismo número.
+  //
+  // t SALE DEL TRAZO REAL, no de una fórmula paralela:
+  //   · doblez normal (≤ 90°, o interior)  → fillet del motor: t = r·tan(w/2).
+  //   · gancho TERMINAL de más de 90°      → lo dibuja `_ganchoFinal2D`, que
+  //     retranquea r sobre el CUERPO y cuelga la PATA ÍNTEGRA desde la salida del
+  //     arco: t = r del lado del cuerpo y t = 0 del lado de la pata.
+  // MEDIDO en la 103B φ16 sobre viga 600×60×30 recub 4, todo en 'auto' (giros de
+  // 135°), SOLO por este cambio y con la pata todavía en 6φ: A 9.60 → 14.40,
+  // B 590.40 → 592.00 (= 600 − 2·4, la luz útil exacta — el número redondo con el que
+  // el usuario verificó a mano), C 9.60 → 14.40; total 609.60 → 620.80 cm, un 1.8% más
+  // de acero que hoy se cubica de menos. Con la pata ya en 10φ y el redondeo, esa
+  // misma barra sale 21 / 592 / 21 = 634.
+  //
+  // El MARCO CERRADO no entra: sus dims no salen de una cadena de vértices sino del
+  // marco de núcleo (ancho/alto ÚTIL, cara a cara del hormigón), y eso YA ES la
+  // medida de cresta — el eje va a útil − φ, el tramo recto entre dos esquinas de
+  // 90° mide útil − 6φ y sumarle 2·(R+φ) = 6φ devuelve útil, exacto. Δ = 0.
+  function sobresCresta(figura, rol, diamCm, angOvr) {
+    var f = (figura || '').toUpperCase();
+    var out = {};
+    var phi = Number(diamCm) || 0;
+    if (!(phi > 0)) return out;
+    if (familiaDeDibujo(f, rol || null) === 'estribo') return out;
+    var tr = tramosDeFigura(f, angOvr);
+    // 'recta' (un solo lado, sin dobleces) y la red de seguridad del cabezal
+    // clásico (figura fuera del catálogo): no hay cadena que medir → 0.
+    if (!tr) return out;
+    var tramos = tr.tramos, n = tramos.length;
+    var cerrada = _cadenaCierra(_cadena2D(tramos, {}, 1).pts);
+    var sob = sobreDobladoCm(phi), rEje = radioEjeCm(phi);
+    // LA ESQUINA DEL CIERRE NO ESTÁ EN LA LISTA DE TRAMOS, Y EXISTE. La cadena
+    // describe un RECORRIDO: el primer tramo lleva giro 0 (arranca el eje) y el
+    // último no declara salida, pero en un contorno CERRADO esas dos puntas son la
+    // MISMA esquina y cierra los dos lados. Su giro es el que le falta a la vuelta
+    // completa (360° − Σ de los giros del recorrido). Sin esto un pentágono de 5
+    // lados iguales salía con A y E un doblez más cortos que B/C/D: el contorno
+    // dejaba de cerrar por 99 cm y la figura recibía auto-largo y empalme como si
+    // fuera abierta (medido 20-ago sobre el contorno de 5 lados del Diseñador).
+    var giroCierre = 0;
+    if (cerrada) {
+      var acc = 0, j, gj;
+      for (j = 1; j < n; j++) {
+        gj = Number(tramos[j].giro) || 0;
+        acc += (tramos[j].sentido === 'der') ? -gj : gj;
+      }
+      giroCierre = Math.abs(((360 - acc) % 360 + 540) % 360 - 180);
+    }
+    // Doblez `i` = el que hay ENTRE el tramo i−1 y el tramo i; `i === n` = la esquina
+    // del cierre. `esPata` = el lado que se está midiendo es el que CUELGA de ese
+    // gancho terminal (sólo existe en cadena abierta).
+    function tDe(i, esPata) {
+      var w = ((i <= 0 || i >= n) ? giroCierre
+        : Math.abs(Number(tramos[i].giro) || 0)) * Math.PI / 180;
+      var terminal = !cerrada && (i === 1 || i === n - 1);
+      if (terminal && w > Math.PI / 2 + 0.009) return esPata ? 0 : rEje;
+      return rEje * Math.tan(w / 2);
+    }
+    for (var i = 0; i < n; i++) {
+      var L = tramos[i].lado;
+      if (L == null) continue;
+      var d = 0;
+      if (i > 0) d += sob - tDe(i, i === n - 1);              // doblez de ENTRADA
+      else if (cerrada) d += sob - tDe(0, false);             // …o la esquina del cierre
+      if (i < n - 1) d += sob - tDe(i + 1, i === 0);          // doblez de SALIDA
+      else if (cerrada) d += sob - tDe(n, false);             // …o la esquina del cierre
+      out[L] = (out[L] || 0) + d;
+    }
+    return out;
+  }
+
+  // dims de CRESTA → dims de VÉRTICE (las que trazan). Copia: nunca muta la
+  // entrada, que es el `base.dims` que viaja al placement y al despiece.
+  function dimsAVertice(figura, rol, dims, diamCm, angOvr) {
+    var sc = sobresCresta(figura, rol, diamCm, angOvr), out = {}, k, v;
+    for (k in dims) {
+      if (!Object.prototype.hasOwnProperty.call(dims, k)) continue;
+      v = Number(dims[k]);
+      out[k] = (isFinite(v) && sc[k]) ? v - sc[k] : dims[k];
+    }
+    return out;
+  }
 
   // ---------------------------------------------------------------------------
   // PLANO DE TRABAJO DE LA PIEZA — FUENTE ÚNICA DEL ANCLAJE LONGITUDINAL
@@ -945,7 +1077,7 @@
   // función: por eso viaja como parámetro y no se adivina por largos.
   function _conGanchosRadio(pts, diamCm, cerrada, sinClamp, iCuerpo) {
     if (!pts || pts.length < 3 || cerrada) return pts;
-    var R = 2 * diamCm + diamCm / 2;   // radio del EJE del codo (= estribo)
+    var R = radioEjeCm(diamCm);        // radio del EJE del codo (= estribo)
     if (!(R > 0)) return pts;
     // UN SOLO DOBLEZ con el dominante al FINAL → sólo el pase INVERSO (ahí el
     // cuerpo es el 2º tramo y la pata el 1º). El pase directo posterior sería un
@@ -1445,7 +1577,7 @@
     // Sin tramos no hay cadena: red de seguridad (dibujabilidad ya la excluyó),
     // nunca un dibujo inventado.
     if (!tr) return _cabezalLongitudinal(figura, dims, host, anchor, diamCm);
-    // Un lado sin dimensión toma la extensión de gancho normativa (6φ, mín 7.5),
+    // Un lado sin dimensión toma la extensión de gancho normativa (10φ, mín 7.5),
     // la MISMA que usa reglas.js para las patas en 'auto'.
     var c = _cadena2D(tr.tramos, dims, extGancho(diamCm));
     // DIBUJO Y MEDIDA, EL MISMO DOMINANTE. El override del componente viaja en el
@@ -2191,7 +2323,7 @@
   // el bbox de la capa k+1 queda contenido en el de la capa k, por construcción.
   //
   // Esto NO es un clamp que tape un dato del usuario: `largoPata` es geometría
-  // DERIVADA (norma 6φ mín 7.5) y sólo visual — el largo y los kg salen de las
+  // DERIVADA (norma 10φ mín 7.5) y sólo visual — el largo y los kg salen de las
   // dims A–D en el backend. Cuando ni el CODO cabe (room ≤ 0) no hay pata que
   // dibujar y el anillo deja de ser un estribo: eso lo detecta el llamador
   // comparando el bbox de la capa con el de la anterior (reglas.distribuidorLayered),
@@ -2199,11 +2331,11 @@
   // tolerancia inventada acá.
   var _D45 = Math.SQRT1_2;
   function _pataGancho(m, diamCm) {
-    var Rc = 2 * diamCm + diamCm / 2;
+    var Rc = radioEjeCm(diamCm);
     var roomZ = 2 * m.w2 - Rc * (1 + _D45);            // de la salida del codo al lado opuesto
     var roomY = (m.ySup - m.yInf) - Rc * (1 - _D45);
     var sitio = Math.min(roomZ, roomY) / _D45;         // la pata viaja a 45°
-    return { max: sitio, norma: Math.max(6 * diamCm, 7.5) };
+    return { max: sitio, norma: extGancho(diamCm) };
   }
 
   // ¿CABE el marco de núcleo que produce este anchor? (hallazgo A del verificador)
@@ -2297,10 +2429,10 @@
     var wPos = (m.w2Pos != null) ? m.w2Pos : w2;
     var wNeg = (m.w2Neg != null) ? m.w2Neg : -w2;
     var xx = anchor.x || 0;
-    var Rc = 2 * diamCm + diamCm / 2;  // radio del EJE del codo (norma: interno 2φ + φ/2)
+    var Rc = radioEjeCm(diamCm);       // radio del EJE del codo (norma: interno 2φ + φ/2)
     var O = { x: xx, y: ySup - Rc, z: wNeg + Rc };  // centro común de ambos codos (esquina sup-izq)
     var D = Math.SQRT1_2;              // 0.7071 (diagonal unitaria)
-    // Pata del gancho (norma 6φ mín 7.5cm), acotada al SITIO REAL que deja el marco
+    // Pata del gancho (norma 10φ mín 7.5cm), acotada al SITIO REAL que deja el marco
     // después del codo (ver _pataGancho): la pata viaja a 45° hacia el núcleo, así
     // que su tope lo fija el lado del marco que primero se le acaba, no la diagonal.
     var pg = _pataGancho(m, diamCm);
@@ -2324,9 +2456,22 @@
     // control de bbox del anidado en reglas.distribuidorLayered). Recortarla acá
     // dibujaría un estribo que cabe mintiendo sobre la barra que se va a cortar.
     // Ausente (el caso normal) → `largoPata` tal cual, trazo byte-idéntico.
+    // …Y ESA MEDIDA ES DE CRESTA (20-ago). `ganchoDim` trae la dim que se lista y
+    // se corta, o sea la pata LIBRE más el doblez que la cierra (L + R + φ). Lo que
+    // se dibuja desde la salida del arco es la pata libre: se le descuenta el R + φ.
+    // El caso normal (pata en 'auto', sin ganchoDim) sigue con `largoPata`, que ya
+    // es la extensión libre de norma — trazo byte-idéntico salvo por el 6φ → 10φ.
     var gd = anchor.ganchoDim || null;
-    var pataA = (gd && gd.ini != null) ? Math.max(0, Number(gd.ini)) : largoPata;
-    var pataB = (gd && gd.fin != null) ? Math.max(0, Number(gd.fin)) : largoPata;
+    var sobG = sobreDobladoCm(diamCm);
+    // `acotar` = la dim la DERIVÓ el motor (pata en 'auto'): se le sigue aplicando el
+    // tope del marco, que es lo que impide que un anillo anidado ensanche. Una medida
+    // ESCRITA por el usuario entra sin tope (ver arriba).
+    function _pataDeDim(v, acotar) {
+      var p = Math.max(0, Number(v) - sobG);
+      return acotar ? Math.min(p, Math.max(0, pg.max)) : p;
+    }
+    var pataA = (gd && gd.ini != null) ? _pataDeDim(gd.ini, gd.acotarIni) : largoPata;
+    var pataB = (gd && gd.fin != null) ? _pataDeDim(gd.fin, gd.acotarFin) : largoPata;
     var dirPata = { y: -D, z: D };     // diagonal hacia el núcleo (abajo-derecha) — COMÚN
 
     // GANCHO A (inicio del fierro): pata → codo [θ: 45° → −90°] → tangente al lado izq.
@@ -2457,13 +2602,16 @@
   // del marco EXTERIOR — el listado dice lo que _estriboPerimetral dibuja. El
   // recorrido del marco es: gancho A → baja el lado IZQUIERDO (alto) → inferior
   // (ancho) → sube el derecho (alto) → superior (ancho) → gancho F. O sea:
-  //   primer y último parcial = gancho normativo (6φ, mín 7.5)
+  //   primer y último parcial = gancho normativo (10φ, mín 7.5) MÁS su doblez
   //   lados del cuerpo, EN ORDEN: alto, ancho, alto, ancho.
+  // Las cuatro medidas son de CRESTA y por el mismo motivo: el ancho/alto ÚTIL ya
+  // es cara a cara del hormigón, y la pata suma su R + φ como cualquier otra
+  // (ganchoAutoCresta). El trazo les resta lo suyo en _estriboPerimetral.
   function dimsEstriboGanchos(figura, anchoUtilExt, altoUtilExt, diamCm) {
     var f = (figura || '').toUpperCase();
     var tr = tramosDeFigura(f);
     if (!tr) return null;
-    var g = Math.round(extGancho(diamCm) * 10) / 10;
+    var g = Math.round(ganchoAutoCresta(diamCm) * 10) / 10;
     var n = tr.tramos.length, out = {}, i, t, kCuerpo = 0;
     for (i = 0; i < n; i++) {
       t = tr.tramos[i];
@@ -2700,9 +2848,14 @@
     var diamCm = opts.diamCm != null ? opts.diamCm : 1.0;
     var rol = opts.rol || _rolPorFigura(figura, anchor);
     var familia = familiaDeDibujo(figura, rol);
-    if (familia === 'estribo') return _estriboPerimetral(figura, dims, host, anchor, diamCm);
-    if (familia === 'cadena') return _cadenaGenerica(figura, dims, host, anchor, diamCm, rol);
-    return _cabezalLongitudinal(figura, dims, host, anchor, diamCm);   // recta | cabezal
+    // LA DIM QUE LLEGA ES DE CRESTA (la que se lista y se corta); los constructores
+    // trazan por VÉRTICES. La traducción vive ACÁ, en el único despachador, para
+    // que TODO llamador —el motor, el Template Editor, el panel 3D— entre con la
+    // misma medida sin tener que enterarse. Ver sobresCresta.
+    var dimsV = dimsAVertice(figura, rol, dims, diamCm, anchor && anchor.angulos);
+    if (familia === 'estribo') return _estriboPerimetral(figura, dimsV, host, anchor, diamCm);
+    if (familia === 'cadena') return _cadenaGenerica(figura, dimsV, host, anchor, diamCm, rol);
+    return _cabezalLongitudinal(figura, dimsV, host, anchor, diamCm);   // recta | cabezal
   }
 
   // Rol cuando la tipología no lo dice: perímetro cerrado = estribo; el resto
@@ -2715,6 +2868,17 @@
   var API = {
     figuraAPuntos: figuraAPuntos,
     extGancho: extGancho,
+    // NÚMEROS DE NORMA DEL DOBLADO — fuente única (ver el bloque de constantes).
+    // El día que la pata sea una regla POR OBRA se sustituye acá y punto.
+    radioDobladoCm: radioDobladoCm,
+    radioEjeCm: radioEjeCm,
+    sobreDobladoCm: sobreDobladoCm,
+    ganchoAutoCresta: ganchoAutoCresta,
+    // MEDIDA HASTA LA CRESTA: cuánto suma cada doblez al lado que cierra, y el
+    // viaje de vuelta a la cadena de vértices que se traza. reglas._dimsEfectivas
+    // publica dims de CRESTA; figuraAPuntos las convierte antes de dibujar.
+    sobresCresta: sobresCresta,
+    dimsAVertice: dimsAVertice,
     // CLASIFICACIÓN DE DIBUJO (fuente única; se evalúa contra el catálogo vigente).
     // La UI usa `noDibujables()` para EXCLUIR figuras del selector con su motivo,
     // y `familiaDeDibujo`/`patasDeFigura` para armar los controles del componente.

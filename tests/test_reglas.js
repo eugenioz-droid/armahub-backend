@@ -83,9 +83,14 @@ ok(plCBS.every(function (p) { return ladosDe(p.puntos) === 3; }),
 // el cuerpo y no le roba ni un centímetro al eje, así que lo único que se reserva es
 // la cresta del codo, φ/2 = 0.8, para que quede en línea con el recub de extremo.
 // B = 592 − 1.6 = 590.4. Medido en `figura_puntos.sobresCadena` → {ini:0.8, fin:0.8}.
-var RESERVA_CRESTA = 1.6 / 2;   // 0.8 (antes 22.013203)
-ok(Math.abs(plCBS[0].dims.B - (600 - 8 - 2 * RESERVA_CRESTA)) < 1e-6,
-  'B auto = largo − 2·recub − reserva de la cresta del codo = 590.4 (=' + plCBS[0].dims.B + ')');
+// 20-AGO · LA RESERVA SIGUE AHÍ, PERO LA DIM YA NO ES EL VÉRTICE. Con la medida hasta
+// la CRESTA el lado suma R + φ por cada doblez que lo cierra, y para los dos ganchos
+// replegados de la 103B eso devuelve exactamente los 0.8 por punta que la reserva le
+// había quitado: B = 592, la LUZ ÚTIL EXACTA de la viga (600 − 2·4). El trazo sigue
+// con sus 590.4 de vértice —no se movió ni un milímetro—; lo que cambió es qué número
+// se corta. Es el número redondo que el usuario usó para verificar el cambio a mano.
+ok(Math.abs(plCBS[0].dims.B - (600 - 8)) < 1e-6,
+  'B auto = la luz útil exacta, 600 − 2·4 = 592 (=' + plCBS[0].dims.B + ')');
 
 console.log('CABEZAL inferior 101A recto 1 capa × 4:');
 var compCBI = {
